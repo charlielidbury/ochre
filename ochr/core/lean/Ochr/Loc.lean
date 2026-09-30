@@ -40,6 +40,13 @@ structure Locs where
   keep : Array Term := #[]
   /-- a call node's address ↦ its arguments' ranges -/
   args : Std.HashMap USize (Array (Option Loc)) := {}
+  /-- a match node's address ↦ its scrutinee's range -/
+  scruts : Std.HashMap USize Loc := {}
+  /-- the scrutinee (place, range) of the match being split, whose content the next tail
+  term (an arm) notes on its path -/
+  arm : Option (Place × Loc) := none
+  /-- the innermost located term being evaluated (set by `located`; `Rules.fire` notes there) -/
+  here : Option Loc := none
   /-- the arguments' ranges of the call being evaluated (set by `located`, read by `callType`) -/
   callArgs : Array (Option Loc) := #[]
   /-- off while evaluating what is not the declaration's own code at this point (a callee's

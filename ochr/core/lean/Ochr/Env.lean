@@ -266,9 +266,23 @@ inductive Fail where
 
 instance : Inhabited Fail := ⟨.error "?"⟩
 
-/-- The machine monad. The inner `StateM` holds the trace, which survives both state
-restores and errors (so a rejected definition still shows how far it got). -/
-abbrev M := StateT MState (ExceptT Fail (StateM (Array String)))
+/-- What the editor shows on hover at a located term, for one check of it (`Located.note`). -/
+inductive Note where
+  | value (v : Value) (T : Option Value) (pointsTo : List String)   -- its value and type; a borrow's lender
+  | goal (G : Value)                                               -- the goal a tail term is checked against
+  | expected (A : Value)                                           -- the type an argument is checked against
+  | rule (name : String)                                           -- a rule applied here (`Rules.fire`)
+
+/-- An entry of the log: a trace line (`Config.trace`), or a note for the editor, at a source
+range, with the [Split] refinements of the path it was made on. -/
+inductive LogEntry where
+  | line (s : String)
+  | note (l : Loc) (refs : List (Nat × Value)) (n : Note)
+
+/-- The machine monad. The inner `StateM` holds the log (the trace, and the editor's notes),
+which survives both state restores and errors (so a rejected definition still shows how far
+it got). -/
+abbrev M := StateT MState (ExceptT Fail (StateM (Array LogEntry)))
 
 def err {α : Type} (msg : String) : M α := throw (.error msg)
 
@@ -342,7 +356,7 @@ def onCopy {α : Type} (x : M α) : M α := do
   pure r
 
 def trace (msg : Unit → String) : M Unit := do
-  if (← get).cfg.trace then modifyThe (Array String) (·.push (msg ()))
+  if (← get).cfg.trace then modifyThe (Array LogEntry) (·.push (.line (msg ())))
 
 def freshLoan : M Nat := do
   let s ← get

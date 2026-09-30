@@ -17,7 +17,7 @@ structure Row where
   name : String
   expectAccept : Bool
   verdict : Verdict
-  trace : Array String := #[]
+  trace : Array LogEntry := #[]     -- the trace (`Config.trace`) and the editor's notes
 
 def Row.asExpected (r : Row) : Bool := r.expectAccept == r.verdict.ok
 
@@ -34,7 +34,7 @@ def Report.passed (r : Report) : Nat := (r.rows.filter Row.asExpected).length
 The verdict and trace of each, by name. The declarations `located` names are resolved and
 checked with their source locations (the editor), so their rejections say where. -/
 def checkProgram (p : Program) (cfg : Config) (fuel : Nat) (located : String → Bool := fun _ => false) :
-    List (String × Verdict × Array String) := Id.run do
+    List (String × Verdict × Array LogEntry) := Id.run do
   let mut defs : List Item := []
   let mut bad : List (String × String × Option Loc) := []
   let mut locs : List (String × Locs) := []

@@ -249,7 +249,7 @@ globals and inductive types accepted so far. The library (`Pair`, `False`, `True
 is not built in (v2.1): it is the `Prelude` block (`Ochr/Prelude.lean`), whose
 declarations come first in every program (`Ochr.Test.libOf`). -/
 def checkDefs (cfg : Config) (ds : List Item) (fuel : Nat := 2000000)
-    (locsOf : String → Locs := fun _ => {}) : List (String × Verdict × Array String) := Id.run do
+    (locsOf : String → Locs := fun _ => {}) : List (String × Verdict × Array LogEntry) := Id.run do
   let mut globals : List GDef := []
   let mut inds : List IndDecl := []
   let mut out := #[]

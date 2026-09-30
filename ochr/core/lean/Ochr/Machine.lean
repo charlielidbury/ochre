@@ -1626,7 +1626,8 @@ evaluated on a private copy of Ω, argument evaluation included, and the copy is
 discarded. Every value of a proposition is `⋆` (C7) and only such terms evaluate to
 `⋆`, so this is decided on the value, in both modes. -/
 partial def eval (typed : Bool) (t : Term) (hint : Option Value := none) : M (Value × Option Value) :=
-  located t (evalAt typed t hint)     -- the editor: an error here is reported at `t`
+  -- the editor: an error here is reported at `t`, and hovering `t` shows its value
+  located t (noteValue t (evalAt typed t hint))
 
 partial def evalAt (typed : Bool) (t : Term) (hint : Option Value := none) : M (Value × Option Value) := do
   let before := (← get).env
@@ -2240,6 +2241,7 @@ partial def callType (piTy : Value) (ws : Array Value) (tys : Array (Option Valu
     let (pds, _) ← paramDecls cs hs ds c
     for (((d, h), i), pd) in ((ds.zip hs).zipIdx).zip pds do
       let A ← evalType d
+      noteLoc argLocs[i]?.join (.expected A)
       atLoc argLocs[i]?.join <| expectTy s!"argument {i + 1} ({h.name})" tys[i]! A
       pushBind h (some A) ws[i]! (pf.getD i false) (← refineDecl pd (some A) ws[i]!) (d matches .val (.tRef _))
     evalType c
@@ -3183,7 +3185,8 @@ partial def splitTarget (f : String) : M (Nat × Value) := do
 its type (in that path's refined state). A match on an abstract `σ` here is split:
 each arm is checked to the end under its refinement ([Split]). -/
 partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit :=
-  located t (checkTailAt t k)     -- the editor: an error here (`k`'s included) is reported at `t`
+  -- the editor: an error here (`k`'s included) is reported at `t`, and hovering `t` shows its goal
+  locatedTail t (checkTailAt t k)
 
 partial def checkTailAt (t : Term) (k : Value → Value → M Unit) : M Unit := do
   match t with

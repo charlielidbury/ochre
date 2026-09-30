@@ -278,6 +278,11 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
       | .call _ as => as.toArray.map STerm.loc?
       | _ => #[]
     modify (·.recordLoc r ⟨s, e⟩ args)
+    -- a match's scrutinee is a place, not a term: record its range with the match
+    if let .matchGen sc _ := u then
+      if let some l := sc.loc? then
+        modify fun st => if st.record && st.locs.table.contains (termAddr r) then
+          { st with locs := { st.locs with scruts := st.locs.scruts.insert (termAddr r) l } } else st
     pure r
   -- a call's head is matched on below (`J`, `clone`, a constructor, a type); its range is the call's
   | .call (.loc _ _ f) as => resolve ctx ty (.call f as)

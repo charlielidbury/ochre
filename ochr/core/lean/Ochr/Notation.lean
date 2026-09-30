@@ -350,11 +350,58 @@ open Lean.Elab Lean.Elab.Command in
 opaque evalBlock (n : Name) : CommandElabM Block
 
 open Lean.Elab Lean.Elab.Command in
-/-- Text shown on hover over `stx` (a leaf of the info tree whose docstring is `text`). -/
-def addHover (stx : Syntax) (text : String) : CommandElabM Unit :=
+/-- Text shown on hover over `stx` (a leaf of the info tree whose docstring is `text`, computed
+when it is shown). -/
+def addHoverLazy (stx : Syntax) (text : Unit → String) : CommandElabM Unit :=
   pushInfoLeaf <| .ofDelabTermInfo {
     elaborator := `Ochr.Notation.ochrProgram, stx, lctx := {}, expectedType? := none,
-    expr := mkConst ``Unit.unit, mkDocString? := some fun _ => pure text }
+    expr := mkConst ``Unit.unit, mkDocString? := some fun _ => pure (text ()) }
+
+open Lean.Elab Lean.Elab.Command in
+def addHover (stx : Syntax) (text : String) : CommandElabM Unit := addHoverLazy stx fun _ => text
+
+/-- The path a note was made on: its [Split] refinements, oldest first. -/
+def pathLabel (refs : List (Nat × Value)) : String :=
+  if refs.isEmpty then "before any split" else ", ".intercalate (refs.reverse.map fun (σ, v) => s!"σ{σ} = {v}")
+
+def _root_.Ochr.Note.show : Note → String
+  | .value v T ps =>
+    let ty := match T with | some T => s!" : {T}" | none => ""
+    let lend := if ps.isEmpty then "" else s!", borrowing {", ".intercalate (ps.map (s!"`{·}`"))}"
+    s!"`{v}{ty}`{lend}"
+  | .goal G => s!"goal `{G}`"
+  | .expected A => s!"expected `{A}`"
+  | .rule r => r
+
+/-- What a hover over a located term shows: each distinct thing its checks noted (its value
+and type, the goal a proof or a split was checked against, the type expected of it as an
+argument), labelled by the path's [Split] refinements when there is more than one path. A
+goal is left out where the term has a value that is not a proof, and an expected type where
+it is the type the term has. -/
+def notesText (ns : Array (List (Nat × Value) × Note)) : String := Id.run do
+  let data := ns.any fun (_, n) => match n with | .value v _ _ => v != .proof | _ => false
+  let types := ns.filterMap fun (_, n) => match n with | .value _ (some T) _ => some (toString T) | _ => none
+  let ns := ns.filter fun (_, n) => match n with
+    | .goal _ => !data
+    | .expected A => !types.contains (toString A)
+    | _ => true
+  let paths := (ns.map fun (r, _) => pathLabel r).toList.eraseDups
+  let mut lines : Array String := #[]
+  -- the rules applied here, in the paper's names, one line per path
+  for p in paths do
+    let rs := (ns.filterMap fun (r, n) => match n with
+      | .rule x => if pathLabel r == p then some x else none
+      | _ => none).toList.eraseDups
+    unless rs.isEmpty do
+      lines := lines.push ((if paths.length > 1 then s!"- *{p}*: " else "- ") ++ "rules " ++ " ".intercalate rs)
+  for (r, n) in ns.filter (!·.2 matches .rule _) do
+    let l := if paths.length > 1 then s!"- *{pathLabel r}*: {n.show}" else s!"- {n.show}"
+    unless lines.contains l do lines := lines.push l
+  let more := if lines.size > 16 then s!"\n- … {lines.size - 16} more" else ""
+  let head := match paths with
+    | [p] => if p == pathLabel [] then "" else s!"*where {p}*\n\n"
+    | _ => ""
+  pure (head ++ "\n".intercalate (lines.extract 0 16).toList ++ more)
 
 /-- The name of a declaration of an `ochr` block (its first identifier). -/
 def declName (d : Syntax) : Syntax := (d.getArgs.find? (·.isIdent)).getD d
@@ -385,26 +432,42 @@ def checkBlock (n : Name) (ref : Syntax) (decls : Array Syntax) (kw : Syntax := 
   out.set (some r)
   let t1 ← IO.monoNanosNow
   let ms := (t1 - t0) / 1000000
+  -- a location outside its declaration's own source would be a wrong underline or hover (a
+  -- wrong one is worse than none): such a location is not used
+  let inside (i : Nat) (l : Loc) : Bool := match decls[i]? with
+    | some d => d.getPos?.any (·.byteIdx ≤ l.start) && d.getTailPos?.any (l.stop ≤ ·.byteIdx)
+    | none => false
+  -- what each located term noted when it was checked (phase 3), and where a `reject def` is
+  -- rejected, one hover per source range
+  let mut notes : Std.HashMap (Nat × Nat) (Array (List (Nat × Value) × Note)) := {}
+  let mut heads : Std.HashMap (Nat × Nat) String := {}
+  for (row, i) in r.rows.zipIdx do
+    for e in row.trace do
+      if let .note l refs n := e then
+        if inside i l then
+          notes := notes.insert (l.start, l.stop) ((notes.getD (l.start, l.stop) #[]).push (refs, n))
+    if let .rejected m (some l) := row.verdict then
+      unless row.expectAccept || !inside i l do
+        heads := heads.insert (l.start, l.stop) s!"{row.name} is rejected here, as expected: {m}\n\n"
+  for ((a, z), ns) in notes do
+    let head := heads.getD (a, z) ""
+    addHoverLazy (locStx ⟨a, z⟩) fun _ => head ++ notesText ns
+  for ((a, z), head) in heads do
+    unless notes.contains (a, z) do addHover (locStx ⟨a, z⟩) head
   addHover kw s!"ochr block {b.name}: {r.passed}/{r.count} declarations as expected ({ms} ms)"
   for (row, i) in r.rows.zipIdx do
     let at_ := match decls[i]? with
       | some d => declName d
       | none => ref
-    -- a rejection is reported at the innermost term being checked (phase 2), else at the name;
-    -- a location outside the declaration would be a wrong underline, so it falls back too
-    let inside (l : Loc) : Bool := match decls[i]? with
-      | some d => d.getPos?.any (·.byteIdx ≤ l.start) && d.getTailPos?.any (l.stop ≤ ·.byteIdx)
-      | none => false
+    -- a rejection is reported at the innermost term being checked (phase 2), else at the name
     let verdict := match row.verdict with
-      | .rejected m (some l) => if inside l then row.verdict else .rejected m none
+      | .rejected m (some l) => if inside i l then row.verdict else .rejected m none
       | v => v
     match verdict, row.expectAccept with
     | .accepted, true => addHover at_ s!"{row.name}: accepted"
     | .accepted, false => logErrorAt at_ m!"{row.name}: expected rejection, but accepted"
     | .rejected m l, true => logErrorAt ((l.map locStx).getD at_) m!"{row.name}: {m}"
-    | .rejected m l, false =>
-      addHover at_ s!"{row.name}: rejected, as expected: {m}"
-      if let some l := l then addHover (locStx l) s!"{row.name} is rejected here, as expected: {m}"
+    | .rejected m _, false => addHover at_ s!"{row.name}: rejected, as expected: {m}"
 
 open Lean.Elab Lean.Elab.Command in
 elab_rules : command

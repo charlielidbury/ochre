@@ -29,10 +29,12 @@ also makes its arguments' ranges the ones `callType` reads. -/
   if s.locs.table.isEmpty then x else
   let a := termAddr t
   let here := s.depth == 0 && s.locs.on
-  let saved := s.locs.callArgs
-  set { s with locs.callArgs := if here then s.locs.args.getD a #[] else #[] }
-  let r ← if here then atLoc (s.locs.table.get? a) x else x
-  modify fun s => { s with locs.callArgs := saved }
+  let saved := (s.locs.callArgs, s.locs.here)
+  let l := if here then s.locs.table.get? a else none
+  set { s with locs.callArgs := if here then s.locs.args.getD a #[] else #[],
+               locs.here := if l.isSome then l else s.locs.here }
+  let r ← if here then atLoc l x else x
+  modify fun s => { s with locs.callArgs := saved.1, locs.here := saved.2 }
   pure r
 
 /-- Run `x` with no term located: it is not the declaration's own code at this point. -/
@@ -61,6 +63,63 @@ def enderLoc (ender : Array (Option Nat)) (ws : Array Value) : M (Option Loc) :=
   let s ← get
   if s.locs.table.isEmpty then return none
   pure ((ws.findIdx? (· == .bot)).bind fun i => ender[i]?.join.bind fun j => s.locs.callArgs[j]?.join)
+
+/-! ## Notes: what the editor shows on hover (phase 3) -/
+
+/-- Record `n` at the range `l`, labelled by the path's [Split] refinements, if this is the
+declaration's own code at this point (as `located`). -/
+def noteLoc (l : Option Loc) (n : Note) : M Unit := do
+  let s ← get
+  if s.depth != 0 then return
+  if let some l := l then modifyThe (Array LogEntry) (·.push (.note l s.refs n))
+
+/-- Record `n` at the term `t`, if it is located and this is the declaration's own code here. -/
+def noteAt (t : Term) (n : Note) : M Unit := do
+  let s ← get
+  if s.locs.table.isEmpty || !s.locs.on then return
+  noteLoc (s.locs.table.get? (termAddr t)) n
+
+/-- The name of a position of Ω (its binding's name). -/
+def posName (env : Env) : Pos → String
+  | .bind f i => env[f]!.binds[i]!.hint.name
+  | .temp _ _ => "a temporary"
+
+/-- Run `x`, the evaluation of `t`, and note its value and type at `t`: for a borrow, where it
+points to (the owners of its loan, RULES §4). -/
+def noteValue (t : Term) (x : M (Value × Option Value)) : M (Value × Option Value) := do
+  let r ← x
+  let s ← get
+  if !s.locs.table.isEmpty then
+    let lenders := match r.1 with
+      | .borrow l _ => (owners s.env l).map (posName s.env)
+      | _ => []
+    noteAt t (.value r.1 r.2 lenders)
+  pure r
+
+/-- The content of a place of the top frame, if it has one (as `Machine.content`). -/
+def placeContent? (p : Place) : M (Option Value) := do
+  let (i, ss) := p.steps
+  let fr := (← get).env.back!
+  if i < fr.binds.size then pure (fr.binds[fr.binds.size - 1 - i]!.val.follow ss) else pure none
+
+/-- `checkTail t`'s entry, located (`located`): hovering `t` shows the goal it is checked
+against, and a match's scrutinee shows its content on each path: before the split, and in
+each arm, as that arm's refinement made it. -/
+def locatedTail (t : Term) (x : M Unit) : M Unit := located t do
+  let s ← get
+  if !s.locs.table.isEmpty && s.depth == 0 && s.locs.on then
+    if let some G := s.goal then noteAt t (.goal G)
+    -- the first tail term under a split is an arm: its scrutinee's content on this path
+    if let some (p, l) := s.locs.arm then
+      if let some v ← placeContent? p then noteLoc (some l) (.value v none [])
+      modify fun s => { s with locs.arm := none }
+    match t with
+    | .matchNat p .. | .matchInd p .. =>
+      if let some l := s.locs.scruts.get? (termAddr t) then
+        if let some v ← placeContent? p then noteLoc (some l) (.value v none [])
+        modify fun s => { s with locs.arm := some (p, l) }
+    | _ => pure ()
+  x
 
 /-- `new` is `old` rebuilt with the same shape: its nodes get `old`'s ranges. -/
 def relocate (old new : Term) : M Unit := do

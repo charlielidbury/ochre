@@ -146,17 +146,22 @@ def Ext.name (e : Ext) : String := ((reprStr e).drop "Ochr.Ext.".length).toStrin
 /-- One application of a rule. `msg` is built only when the line is recorded. -/
 def fire (r : Rule) (msg : Unit → String := fun _ => "") : M Unit := do
   let s ← get
+  -- the editor (docs/07): hovering the innermost located term shows the rule
+  if let some l := s.locs.here then
+    if s.depth == 0 then modifyThe (Array LogEntry) (·.push (.note l s.refs (.rule s!"[{r.name}]")))
   if s.cfg.derivation || (s.cfg.trace && r.coarse) then
     let m := msg ()
     let ind := if s.cfg.derivation then "".pushn ' ' (2 * s.depth) else ""
-    modifyThe (Array String) (·.push s!"{ind}[{r.name}]{if m.isEmpty then "" else " " ++ m}")
+    modifyThe (Array LogEntry) (·.push (.line s!"{ind}[{r.name}]{if m.isEmpty then "" else " " ++ m}"))
 
 /-- One use of a checker extension. -/
 def fireExt (e : Ext) (msg : Unit → String := fun _ => "") : M Unit := do
   let s ← get
+  if let some l := s.locs.here then
+    if s.depth == 0 then modifyThe (Array LogEntry) (·.push (.note l s.refs (.rule s!"(checker) {e.name}")))
   if s.cfg.derivation then
     let m := msg ()
     let ind := "".pushn ' ' (2 * s.depth)
-    modifyThe (Array String) (·.push s!"{ind}(checker) {e.name}{if m.isEmpty then "" else ": " ++ m}")
+    modifyThe (Array LogEntry) (·.push (.line s!"{ind}(checker) {e.name}{if m.isEmpty then "" else ": " ++ m}"))
 
 end Ochr

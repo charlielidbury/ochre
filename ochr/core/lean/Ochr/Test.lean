@@ -91,7 +91,7 @@ def Row.show (r : Row) : String :=
 
 def Report.showTrace (r : Report) (name : String) : String :=
   match r.rows.find? (·.name == name) with
-  | some row => "\n".intercalate row.trace.toList
+  | some row => "\n".intercalate (row.trace.toList.filterMap fun | .line s => some s | _ => none)
   | none => s!"no declaration {name}"
 
 def Report.show (r : Report) : String :=
