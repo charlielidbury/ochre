@@ -479,6 +479,38 @@ The model sketch of @sec-meta-model translates terms by the clauses of @fig-mode
 
 == Notes on the definition <app-notes>
 
+#let grp(t) = table.cell(colspan: 2, inset: (x: 4pt, top: 5pt, bottom: 2pt), emph(t))
+#figure(kind: image, supplement: [Figure], placement: none,
+  block(breakable: false, { set text(size: 8.5pt); set par(justify: false); table(columns: (30%, 70%), stroke: none, inset: (x: 4pt, y: 2pt), align: (left, left),
+    table.hline(stroke: 0.5pt),
+    [*Condition*], [*What goes wrong without it*],
+    table.hline(stroke: 0.4pt),
+    grp[The two paths agree (@sec-typing-two)],
+    [Erasure by declared type, never by value or normal form], [A local function into `U(n)`, where `U(Z)` computes to `Prop`, runs at the generic `n` but would be erased at `n = Z`, proving `False`; a variable read as a proof by its value `⋆` is one at an instance but not at the generic call.],
+    [Erased terms run on a private copy, and are confined], [Proof irrelevance identifies `λx. ⋆` with `λx. (*x := 7; ⋆)`; a proof block run inline keeps effects that the same block closed off discards.],
+    [Pattern variables are places; a block moves what an arm moves], [`match *x { S p => p := Z }`, closed off, captures `*x` by copy, proving `False`; a borrow moved in only some arms stays usable after the block.],
+    [All owners observed], [A borrow returned into one of two arguments leaves its hole in both; observing one proves `Eq Nat 0 1`.],
+    [Recursion on entry values; `f` only as a call head; no `f` without `by`], [`*x := S *x; match *x { S p => f(&p) }` recurses on the original value; passing `f` to a helper, or a `by`-less body, avoids the check. Each proves `False`.],
+    [[Close]’s row and `&` read from the declared type], [A codomain that computes to `&Nat` is closed off as data at the generic call but returns a live borrow at an instance.],
+    [Generalisations are global; names never reused], [A generalisation made while forming a type is lost with its private copy and its name reused, proving `False`.],
+    grp[Types carry what the machine needs (@sec-typing-types)],
+    [Π-types record their class and whether they return a borrow], [`H(x : &Nat) : P0 := (*x := S Z; ⊤)`, with `P0 := Prop`, is passed at `RefPred(0)`, which computes to `Π(x : &Nat). Prop`; a run that reads a call's class from the function value erases the call at the generic call and runs it at the instance, proving `False`.],
+    [Sorts are syntactic; universes are not cumulative], [`Π(x : &Nat). T(Z)`, with `T(n) : P(n)` and `P(n)` computing to `Prop`, is a proposition whose inhabitants a data function tells apart.],
+    [Functions compared by their observation], [Comparing results alone identifies `λx. (*x := S Z)` with `λx. ()`; without writing through a returned borrow, `λ(x, y). x` is identified with `λ(x, y). y`.],
+    grp[Stuck, never ill-typed (@sec-typing-stuck)],
+    [Exclusive access; matches end loans in neutral heads], [A live loan copied into a sealed program, or a hole generalised away, lets an accepted program write through an ended borrow.],
+    [`J` computes only on convertible endpoints], [Under an absurd hypothesis a cast puts `5` at type `Bool`, or embeds the untyped λ-calculus; the checker fails or diverges on good programs.],
+    [A zero-arm match outside a proof is stuck], [Re-running a sealed program under a refinement that falsifies a hypothesis yields `⋆` as data, and true theorems are rejected.],
+    grp[Conditions of the set model (@sec-meta-model)],
+    [Borrows only of data], [`Π(x : &Type₀)(a : *x). *x : Type₀` makes `Type₀` impredicative, embedding System U⁻.],
+    [A borrow-returning function type takes a borrow], [`g : Π(n : Nat). &Nat` returns a borrow that no owner observes, so Ochr refutes a type that safe Rust inhabits with a leaked `'static` borrow.],
+    [Strict positivity], [`inductive Bad := MkBad(f : Π(x : Bad). False)` gives a closed proof of `False` that is never run.],
+    [Subsingleton elimination], [`IsL` (@sec-typing-prop) has no set-theoretic meaning; if proofs kept their constructors, it would prove `False`.],
+    table.hline(stroke: 0.5pt),
+  )}),
+  caption: [The side conditions of Ochr, by the principle they apply, and the counterexamples that forced them.],
+) <fig-why>
+
 Notes 1–11 explain the side conditions of @fig-why that are finest-grained in this appendix: each gives a program that, without the condition, is a closed proof of a false equation (or, for note 8, makes normalisation diverge; note 3's program also needs [Type-pos] off); by the disjointness rule of @app-conv, an equation between distinct constructors, such as `Eq Nat Z (S Z)`, is `False` itself. Notes 12–27 record choices where the definition could have gone either way.
 
 + *A function's erasure class is read from its codomain term.* A local `fix` is formed, and so checked by [Def], each time the term containing it is evaluated, and its codomain may depend on captured values. Deciding its class from the codomain's _value_ would give different answers on the two paths:
