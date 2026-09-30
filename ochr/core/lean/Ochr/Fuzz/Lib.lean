@@ -181,6 +181,9 @@ ochr FuzzLib {
   def TG (n : Nat) : Type := match n { Z => Nat, S _ => B2 }
   def CmpBx (b : Bx(B2)) : Prop := (let c = b; Id Unit (c := MkBx[B2](T)) (c := MkBx[B2](F)))
   def CmpB2 (b : B2) : Prop := (let c = b; Id Unit (c := T) (c := F))
+  -- instances of the families' dependent function parameters (`h : Π(n : Nat). TG(n)`)
+  def HG (n : Nat) : TG(n) := match n { Z => 0, S _ => F }
+  def HF (n : Nat) : TF(n) := match n { Z => MkBx[Unit](()), S _ => MkBx[B2](T) }
 }
 
 /-- The codomain types written differently from what they evaluate to (D54, D55). -/
