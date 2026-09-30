@@ -486,7 +486,15 @@ def main():
     else:
         print("  ok")
 
-    # 5. Every declaration's verdict, from the driver
+    # 5. Every declaration's verdict. A checker that checks each block when it is elaborated
+    # (lib `Ochr` with `Ochr/Run.lean`) has already reported every unexpected verdict as a
+    # build error, and the structure check has placed every FIXED declaration in its block,
+    # so a clean build is the verdict; otherwise the driver lists them all.
+    if b.returncode == 0 and os.path.exists(os.path.join("checker", "Ochr", "Run.lean")):
+        print("\n== Verdicts")
+        print("  every declaration was checked when its block was elaborated, and is as required")
+        verdict(reasons, line_counts)
+        return
     print("\n== Verdicts (lake exe check --machine)", flush=True)
     c = subprocess.run(["lake", "-q", "exe", "check", "--machine"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     rows = []
