@@ -100,13 +100,30 @@ ochr Borrows uses Std {
     (let b = &a; let r = &(*b).1; G1(b, n); *r := S Z);
     a
   )
+
+  -- D19's witnesses since then (fuzz-port, `--diff --switch D19`). In `V` a stuck block
+  -- returns a borrow of `n0`, so `n0` holds a sealed program with that borrow's loan inside
+  -- it; reading `n0` must end the borrow, and the write through `a0` then has no place.
+  -- Without D19, `V` is accepted and `V(0)` goes wrong: the block runs, the read of `n0`
+  -- ends `a0`, and the write is to nothing.
+  reject def V (n0 : Nat) : Unit := (let a0 = match n0 { Z => &n0, S _ => &n0 }; *a0 := n0)
+  reject def VRun : Unit := V(0)
+
+  -- [Close]'s precondition (a stuck call's arguments hold no live loans): `&a` holds `r`'s
+  -- loan inside, [Close] would seal it into `out`, and the write through `r` would be
+  -- accepted; at `n = 1` the call runs and overwrites `a` while `r` borrows inside it. The
+  -- result goes to `out`, declared before `r`, so `r` dies first and [Drop] never sees the
+  -- loan in it (bound after `r`, as in `BadA1`, [Drop] catches it even without D19).
+  def G2 (x : &Nat) (n : Nat) : Nat := (match n { Z => 0, S _ => *x := 0; 0 })
+  reject def W (n : Nat) : Nat := (let a = S Z; let out = 0; (let r = &a.1; out := G2(&a, n); *r := S Z); out)
+  reject def WRun : Nat := W(1)
 }
 
 #eval IO.println (run "Borrows" Borrows).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Borrows" Borrows).allAsExpected
-#guard (run "Borrows" Borrows).count == 14
+#guard (run "Borrows" Borrows).count == 19
 
 /-! ## Moves and copies (D53)
 

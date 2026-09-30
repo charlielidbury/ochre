@@ -1046,3 +1046,25 @@ The fuzzer defaults to D53 off, and `--switch +D53` turns it on.
 When M1, M2, M2b, M3 and RN are fixed and the execution oracle shows no findings in at least 10⁵ cases, `d53` becomes true by default. The tour flips first, then the case studies as their lanes adapt.
 
 `preD53` is gone.
+
+## 36. D19 is soundness again; the `subsumed` class is gone
+
+fuzz-port found two D19 witnesses without a `Unit` call (`Scratch/D19Witness.lean` on ochr-fuzz-v2, `--diff --switch D19`). Both are now in `Borrows`, next to `BadA1`:
+- **`V`**, the primary witness, makes no call: `let a0 = match n0 { Z => &n0, S _ => &n0 }; *a0 := n0`. The stuck block returns a borrow of `n0`, so `n0` holds a sealed program with that borrow's loan inside. Reading `n0` must end the borrow, which is D19's "loans inside the content". Without D19, `V` is accepted, and `V(0)` writes through an ended borrow.
+- **`W`** (with `G2`) is [Close]'s precondition. It passes `&a`, holding `r`'s loan inside, to a stuck `Nat` call. The result goes to `out`, which is declared before `r`, so `r` dies first and [Drop] never sees the loan. Without D19, `W` is accepted and `W(1)` overwrites `a` while `r` borrows inside it.
+
+The D19 row is soundness (going wrong when run), with witnesses `V` and `W`.
+
+With it, no row flips nothing, and the `subsumed` class is removed. `classOk` now requires every row to flip something, and every non-completeness row to name a witness. These are the ledger's invariants: every rule is needed, and a rule that flips nothing is deleted.
+
+49 rows:
+- soundness 20;
+- false lemma 1;
+- model 4;
+- policy 2;
+- cost 1;
+- completeness 21.
+
+1001 verdicts.
+
+*RULES numbering:* the D53 draft's "P3 Reads move…" replaces the old P3 ("Data is copied, borrows are moved"). D53 is that principle's change, so there is no collision. RULES states D53 as the rule; the checker applies it only in `Moves` until acceptance.

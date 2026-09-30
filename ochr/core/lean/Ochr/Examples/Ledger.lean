@@ -2,12 +2,12 @@ import Ochr.Examples.Registry
 
 namespace Ochr.Registry
 
-/-- A row's class is checked with its flips: a completeness row flips only to rejected, a
-subsumed row flips nothing, any other row flips its named witnesses to accepted. -/
+/-- A row's class is checked with its flips: a completeness row flips only to rejected, any
+other row flips its named witnesses to accepted. Every row flips something: a rule that flips
+nothing is not needed, and is deleted. -/
 def classOk (k : String) (ws fs : List String) : Bool :=
-  if k == "completeness" then !fs.isEmpty && fs.all (·.endsWith ":rejected")
-  else if k == "subsumed" then fs.isEmpty
-  else ws.all fun w => fs.contains s!"{w}:accepted"
+  !fs.isEmpty && if k == "completeness" then fs.all (·.endsWith ":rejected")
+  else !ws.isEmpty && ws.all fun w => fs.contains s!"{w}:accepted"
 
 /-- One ledger row: switching `c` off flips exactly `e`, blocks exactly `bl` (declarations
 that fail only because a library declaration they use flipped; none so far), and `e` fits
@@ -52,12 +52,14 @@ open Ochr.Registry in
    "Recursion.KnotLBoom:accepted", "Recursion.Lie:accepted", "Recursion.Boom:accepted",
    "Recursion.LieCap:accepted", "Recursion.BoomCap:accepted", "Recursion.LieRead:accepted",
    "Recursion.BoomRead:accepted", "Recursion.LieId:accepted", "Recursion.BoomId:accepted"]
--- D19 switched off flips nothing since η for `Unit` (D59): its witness `BadA1` passes a live
--- loan into a stuck `Unit` call, whose result, a sealed program now rather than `()`, carries
--- the loan, and discarding it is a [Drop] error (the [Close] precondition is unchecked)
+-- D19 switched off: a place read with a loan inside its content keeps the borrow alive. `V`'s
+-- stuck block leaves a borrow's loan inside `n0`, and the later write through `a0` goes to
+-- nothing at `V(0)`; `W` passes `&a` holding `r`'s loan to a stuck call ([Close]'s
+-- precondition, unchecked). Both are accepted and go wrong when run (fuzz-port). Since η for
+-- `Unit` (D59), the old witness `BadA1` is caught by [Drop] either way
 open Ochr.Registry in
 #guard rowOk { accessInside := false }
-  []
+  ["Borrows.V:accepted", "Borrows.W:accepted"]
 open Ochr.Registry in
 #guard rowOk { selfHeadOnly := false }
   ["Recursion.Knot:accepted", "Recursion.KnotBoom:accepted"]
