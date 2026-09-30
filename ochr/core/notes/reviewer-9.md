@@ -145,9 +145,13 @@ The gap is that "extend α … for each record, in the order the records were ma
 
 ### 11. MINOR: [Clone] in the appendix breaks the well-formedness that `exec_wf` is cited for
 
-*Location.* Appendix [Clone]; the proof's table row `exec_wf` (unique borrows).
+*Location.* Appendix [Clone] (`appendix.typ` line 158) and the note under it (line 161); the proof's table row `exec_wf` (unique borrows).
 
-The appendix rule returns $v^circle$ for whatever `p` holds. For a borrow that gives a second $"borrow"_ell$ (against well-formedness condition 1), and for ⊥ it gives ⊥. `RULES.md` §3 [Read] says `clone(p)` is "a read of `p` inside an erased term", which is [Copy] and excludes both. The checker does a third thing: it moves a cloned borrow (`CloneB2`: after `clone(x)`, `x` is ⊥) and rejects a clone of ⊥ (`CloneBot`). F does not exclude `clone`. Either restrict [Clone] to data (not a borrow, not ⊥) in the appendix, or exclude cloning borrow-typed places from F.
+The appendix rule returns $v^circle$ for whatever `p` holds. For a borrow that gives a second $"borrow"_ell$, against well-formedness condition 1. For ⊥ it gives ⊥.
+
+`RULES.md` §3 [Read] (line 57) takes the other reading. A borrow is moved even inside an erased term: "content a borrow → move" comes before the erased-term clause, and reading ⊥ is an error. `clone(p)` is "a read of `p` inside an erased term", so it follows the same clauses. The checker follows `RULES.md`: it moves a cloned borrow (`CloneB2`: after `clone(x)`, `x` is ⊥) and rejects a clone of ⊥ (`CloneBot`). So the appendix alone is wrong, and it also contradicts its own [Move].
+
+F does not exclude `clone`. Give [Clone] the premises of [Copy], [Move] and [Read-err] (a borrow is moved; ⊥ or undefined content is an error), or restrict it to data.
 
 ### 12. MINOR: Corollary 2 (adequacy) is about copying runs
 
@@ -169,8 +173,8 @@ At a ground valuation nothing closes off, nothing is stuck and no arm is checked
 
 ### 15. MINOR: where `RULES.md` and the paper differ
 
-- *[Clone].* Finding 10.
-- *Match on a ghost.* No rule applies in the appendix. [Match] needs a constructor, [Match-stuck] a neutral, and [Match-err] lists only "undefined or ⊥". Add a ghost to [Match-err]. The checker rejects it: `GhostMatch`, "[Match] on n, which was moved out".
+- *[Clone].* Finding 11 (the appendix disagrees with `RULES.md` and the checker, which agree with each other).
+- *Match on a ghost.* No rule applies in the appendix. [Match] (`appendix.typ` line 248) needs a constructor, [Match-stuck] (line 249) a neutral or an inert loan, and [Match-err] (line 250) lists only "undefined or ⊥". `RULES.md` §3 [Match] (line 64) does not mention ghosts either. Add a ghost to [Match-err]. The checker rejects it: `GhostMatch`, "[Match] on n, which was moved out".
 - *Stuck-block captures.* The appendix copies a capture that is only read (mode `cp`) and moves only whole variables. `RULES.md` §3 reads such a capture in place without consuming it, moves parts at sub-place granularity, passes proof places by value, and makes closures formed inside a block capture through its `&` parameters (fuzz-port R2). Not in F, but the two definitions disagree.
 - *[Seal]'s final read.* `RULES.md` says the final read `K` of a sealed program copies (it is an observation). The appendix's [Seal] runs `t` with runtime semantics and makes no exception.
 - *Stale text in `RULES.md`.*
