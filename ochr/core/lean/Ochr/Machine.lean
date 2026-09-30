@@ -2415,7 +2415,7 @@ partial def splitArmsThenClose (mt : Term) (σ : Nat) (arms : List (M Value × T
     let armMoved ← armMoves ((← get).placeLog.extract ls (← get).placeLog.size) f0 n0
     for q in armMoved do
       unless moved.any (placeEq · q) do moved := moved ++ [q]
-    restoreKeep saved
+    restoreArm saved
     tys := tys.push T
   let B ← match expected with
     | some E => pure E
@@ -2522,7 +2522,7 @@ partial def evalMatchByType (typed : Bool) (p : Place) (ty : String) (arms : Lis
     let saved ← get
     discard (eval false arms[0]!.2)
     let pf := (← getFlags).2
-    restoreKeep saved
+    restoreArm saved
     if pf then setFlags (true, true); return (.proof, none)
     stuckNow
   let saved ← get
@@ -2540,7 +2540,7 @@ partial def evalMatchByType (typed : Bool) (p : Place) (ty : String) (arms : Lis
     if let some E := expected then
       unless ← conv T E do err s!"an arm of the annotated match has type {T}, but the annotation is {E}"
     tys := tys.push T
-    restoreKeep saved
+    restoreArm saved
   modify fun s => { s with effects := s.effects ++ pending }
   let B ← match expected with
     | some E => pure E
@@ -2926,12 +2926,12 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
       refine σ .zero
       trace fun _ => s!"[Split] σ{σ} := 0"
       checkTail u k
-      restoreKeep saved
+      restoreArm saved
       let σ' ← freshAbs .tNat
       refine σ (.succ (.abs σ'))
       trace fun _ => s!"[Split] σ{σ} := S σ{σ'}"
       checkTail u k
-      restoreKeep saved
+      restoreArm saved
     | .tInd n ps =>
       let d ← lookupInd n
       for c in List.range d.ctors.length do
@@ -2939,7 +2939,7 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
         refine σ r
         trace fun _ => s!"[Split] σ{σ} := {r}"
         checkTail u k
-        restoreKeep saved
+        restoreArm saved
     | _ => err s!"split {f}: its result type {T} is not an inductive type"
   | .prim "splitArms" [.const f, .letIn h _ w] =>
     -- D61: `split f { C(x̄) => u, … }`: the split value is bound to a hidden variable, and
@@ -2987,12 +2987,12 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
       refine σ .zero
       trace fun _ => s!"[Split] σ{σ} := 0"
       checkTail z k
-      restoreKeep saved
+      restoreArm saved
       let σ' ← freshAbs .tNat
       refine σ (.succ (.abs σ'))
       trace fun _ => s!"[Split] σ{σ} := S σ{σ'}"
       checkTail s k
-      restoreKeep saved
+      restoreArm saved
     | v@(.sealed _) | v@(.loan _) =>
       discard (generalizeNeutral p v)
       checkTail t k
@@ -3020,7 +3020,7 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
         let saved ← get
         for ((_, a), c) in arms.zipIdx do
           checkTail (← bindDataFields p d ps c a) k'     -- D49 (3)
-          restoreKeep saved
+          restoreArm saved
       return
     accessPath p
     accessNeutralHead p
@@ -3038,7 +3038,7 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
         refine σ r
         trace fun _ => s!"[Split] σ{σ} := {r}"
         checkTail a k
-        restoreKeep saved
+        restoreArm saved
     | v@(.sealed _) | v@(.loan _) =>
       discard (generalizeNeutral p v)
       checkTail t k

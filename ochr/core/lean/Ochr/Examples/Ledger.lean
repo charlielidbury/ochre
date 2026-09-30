@@ -213,13 +213,14 @@ open Ochr.Registry in
    "Equality.NotAdd01:rejected", "Equality.WriteNeq:rejected", "Equality.WriteDisj:rejected",
    "Equality.NoConf:rejected", "Equality.NoConfS:rejected", "Equality.NoConfMatch:rejected",
    "Equality.NoConfBack:rejected", "Equality.BoolDisj:rejected", "RenormPi.Plain:rejected",
-   "RenormPi.InPi:rejected", "RenormPi.InConj:rejected", "Splitting.PickTwo:rejected"]
+   "RenormPi.InPi:rejected", "RenormPi.InConj:rejected", "Splitting.PickTwo:rejected",
+   "ArmRecords.L2:rejected"]
 -- v2.1 D52 switched off: equal constructors are not taken apart in Eq, so programs that
 -- need an equation between successors or pairs taken apart are rejected (completeness)
 open Ochr.Registry in
 #guard rowOk { injective := false }
   ["Equality.Inj:rejected", "Equality.PairInj:rejected", "Recursion.AddZeroCopy:rejected",
-   "Recursion.InjStep:rejected", "CurrentState.AddSubIdReborrow:rejected"]
+   "Recursion.InjStep:rejected", "ArmRecords.L2:rejected", "CurrentState.AddSubIdReborrow:rejected"]
 -- finding (v2.0 round): v1.9 assumed a data match's scrutinee type from its arms
 open Ochr.Registry in
 #guard rowOk { scrutTyped := false }

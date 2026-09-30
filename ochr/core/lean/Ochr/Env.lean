@@ -269,6 +269,16 @@ def restoreKeep (saved : MState) : M Unit :=
                absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size }
     else s
 
+/-- Restore after a [Split] arm: as `restoreKeep`, but the generalisation records the arm made
+are the arm's own and are dropped. Sibling arms are exclusive worlds in which the same program
+text can have different types (it may mention a value the arm refined), so a record made in
+one must not name that text in another (reviewer-6's A1: `⌈g(())⌉ := σ3 : Box(Unit)` from the
+arm `n := Z`, reused in the arm `n := S m`, where `g(())` is a `Box(Bool)`). D37 keeps records
+across private copies, within one world, and that is unchanged. -/
+def restoreArm (saved : MState) : M Unit := do
+  restoreKeep saved
+  modify fun s => { s with neutrals := saved.neutrals }
+
 /-- D53: run `x` as an erased term, whose reads copy. -/
 def withErased {α : Type} (x : M α) : M α := do
   modify fun s => { s with erasedDepth := s.erasedDepth + 1 }

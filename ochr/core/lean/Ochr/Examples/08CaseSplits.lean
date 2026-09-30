@@ -431,3 +431,40 @@ ochr ArmLocalBoom {
 
 #guard (run "ArmLocalBoom" ArmLocalBoom).allAsExpected
 #guard (run "ArmLocalBoom" ArmLocalBoom).count == 10
+
+/-! Generalisation records belong to their arm too (reviewer-6's A1, a closed proof of `False`
+in the default checker until then). In the arm `n := Z`, `match x` generalises the stuck
+call `⌈g(())⌉` to a fresh `σ` of type `T(0) = Box(Unit)`. The arm `n := S m` derives the same
+program text `⌈g(())⌉`, whose type there is `T(S m) = Box(Bool)`. With the record global, it
+was mapped to that `σ`, typed `Box(Unit)`: `Cmp2(y)` then compared `MkBox(true)` with
+`MkBox(false)` at `Unit`, which η made true, and `L2` returned `False`. Records survive a
+private copy (D37), which stays within one world, but sibling arms are different worlds, so
+a record an arm makes is dropped with the arm (`restoreArm`). `FLie` is the fuzzer's shape
+(fuzz-port, `--a1`): the statement's arm does not call `g`, the proof's arm makes the record.
+(Since η at `Unit` is a property of values, D59 refined, the comparison is no longer true at a
+stale type either: `true` and `false` are distinct constructors whatever the type says.) -/
+
+ochr ArmRecords uses Std {
+  def T (n : Nat) : Type := match n { Z => Box(Unit), S _ => Box(Bool) }
+  def Cmp2 (b : Box(Bool)) : Prop := (let c = clone(b); Id Unit (c := MkBox(true)) (c := MkBox(false)))
+  def L2 (b : Box(Bool)) (h : Cmp2(b)) : False := h
+  def G (n : Nat) : Prop := match n { Z => ⊤, S _ => False }
+  reject def F (n : Nat) (g : Π(u : Unit). T(n)) : G(n) := (
+    match n {
+      Z => (let x = g(()); match x { MkBox(v) => refl }),
+      S _ => (let y = g(()); L2(y, refl)),
+    }
+  )
+  reject def Boom : False := F(1, λ(u : Unit) : T(1) => MkBox(true))
+  reject def FLie (n0 : Nat) (g1 : Π(u : Unit). T(n0)) :
+      Id Prop (match n0 { Z => ⊤, S p7 => let y6 = g1(()); Cmp2(y6) }) ⊤ := (
+    match n0 { Z => (let x5 = g1(()); match x5 { MkBox(v) => refl }), S _ => refl })
+  reject def FBoom : False := (
+    let h = FLie(1, λ(u : Unit) : T(1) => MkBox(true));
+    J(Prop, ⊤, False, λ(P : Prop) : Prop => P, symm h, refl))
+}
+
+#eval IO.println (run "ArmRecords" ArmRecords).show
+
+#guard (run "ArmRecords" ArmRecords).allAsExpected
+#guard (run "ArmRecords" ArmRecords).count == 8
