@@ -380,11 +380,10 @@ ochr DepVec uses ArrayBench {
     let r = VGetMut(v, i, h);
     *r := x
   )
+  -- (through the natives: runtime code does not see the array's representation, K3)
   def VGet (E : Type) (v : Vec(E)) (i : Word) (h : Lt(i, VLen(E, v))) : E := (
     match v {
-      MkVec(n, items) => match items {
-        MkArray(s) => Nth(E, n, s, i, h),
-      },
+      MkVec(n, items) => Read(E, n, AsSlice(E, n, &items), i, h),
     }
   )
   def PushRun : Id Word (let v = VNew(Word); Push(Word, &v, W(3)); PushInPlace(Word, &v, W(4)); VLen(Word, v)) W(2) := refl
