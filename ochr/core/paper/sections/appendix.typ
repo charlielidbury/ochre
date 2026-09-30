@@ -272,7 +272,7 @@ Let $m = kw("match") p {ty("C")_1 => t_1, dots, ty("C")_m => t_m}$ be stuck in �
 $ (z_i : U_i, a_i) = cases((z_i : \&"type"_Omega (q_i), thick \&q_i) & "if" q_i "is" "ref,", (z_i : "type"_Omega (q_i), thick q_i) & "otherwise (a move if its content is a borrow, a copy if not)".) $
 The body $m'$ is `m` with each place $q_i pi$ renamed to $(dr z_i) pi$ if $q_i$ is `ref`, and to $z_i pi$ otherwise. Then
 $ "block"(Omega, m, B, M) := F_m (a_1, dots, a_n) quad "where" F_m = chevron.l thin tack.r kw("fix") \_ (z_1 : U_1 dots z_n : U_n) : B := m' chevron.r, $
-a non-recursive closure with no captured values. Evaluating the block by [Call] gets stuck on the head of `m` inside $F_m$'s body and closes off by [App-close], with [Close]’s row chosen by `B`. #lean("closeOffMatch", "splitThenClose")
+a non-recursive closure with no captured values. Evaluating the block by [Call] gets stuck on the head of `m` inside $F_m$'s body and closes off by [App-close], with [Close]’s row chosen by `B`. A function or Π-type in an arm of a stuck match that mentions a place the block takes by `&` (because an arm writes it) is a type error where the block is formed, since the block's re-run would capture that borrow parameter. #lean("closeOffMatch", "splitThenClose", "Term.fnOccs (Basic.lean)")
 
 == Observation, `Id` and conversion <app-conv>
 
