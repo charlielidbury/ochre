@@ -142,7 +142,10 @@ ochr FuzzLib {
   def U (n : Nat) : Type := match n { Z => Prop, S _ => Prop }
   def V (n : Nat) : U(n) := match n { Z => ⊤, S _ => ⊤ }
   def W (x : &Nat) (n : Nat) : U(n) := *x := S Z; V(n)
-  def MkF (n : Nat) : (Π(x : &Nat). U(n)) := λ(x : &Nat) : U(n) => (*x := S Z; V(n))
+  -- `reject def`: rejected by the checker since D53 (MkF, Clo, CapN: a closure moves out a
+  -- capture) and D55 (WV, FV, GV, TT: `V(Z)` is a type only by computation); the harness
+  -- leaves them out either way (`prepare`)
+  reject def MkF (n : Nat) : (Π(x : &Nat). U(n)) := λ(x : &Nat) : U(n) => (*x := S Z; V(n))
   def Le (a : Nat) (b : Nat) : Prop by a := match a { Z => ⊤, S a' => match b { Z => False, S b' => Le(a', b') } }
   def Lemma (u : Unit) : ⊤ := refl
   def F5 (x : &Nat) : Prop := *x := 5; ⊤
@@ -155,8 +158,8 @@ ochr FuzzLib {
   def OrProof (h : Or(⊤, ⊤)) : ⊤ := match h { Inl(p) => p, Inr(q) => q }
   def ExProof (h : ExN) : ⊤ := match h { Wit(n, e) => match n { Z => refl, S m => e } }
   def EffL (x : &Nat) (h : Or(⊤, ⊤)) : ⊤ := match h { Inl(p) => (*x := 1; refl), Inr(q) => (*x := 2; refl) }
-  def Clo (n : Nat) (y : Nat) : Nat := let f = (λ(z : Nat) : Nat => Add(n, z)); f(y)
-  def CapN (x : &Nat) : Nat := let n = *x; let f = (λ(z : Nat) : Nat => n); AddM(&*x, 1); f(0)
+  reject def Clo (n : Nat) (y : Nat) : Nat := let f = (λ(z : Nat) : Nat => Add(n, z)); f(y)
+  reject def CapN (x : &Nat) : Nat := let n = *x; let f = (λ(z : Nat) : Nat => n); AddM(&*x, 1); f(0)
   def PropIf (n : Nat) : Prop := match n { Z => ⊤, S _ => False }
   def P0 : Type := Prop
   def H (x : &Nat) : P0 := (*x := S Z; ⊤)
@@ -171,10 +174,10 @@ ochr FuzzLib {
   def IdFU (f : Π(x : &Nat). Unit) : (Π(x : &Nat). Unit) := f
   def RunG (f : Π(x : &Nat). Prop) : Nat := (let c = Z; let g = f; g(&c); c)
   def RunK (k : Π(x : &Nat). ⊤) (x : &Nat) : Unit := (k(x); ())
-  def WV (u : Unit) : V(Z) := refl
-  def FV (x : &Nat) : V(Z) := (*x := S Z; WV(()))
-  def GV (x : &Nat) : V(Z) := WV(())
-  def TT : Prop := (Π(x : &Nat). V(Z))
+  reject def WV (u : Unit) : V(Z) := refl
+  reject def FV (x : &Nat) : V(Z) := (*x := S Z; WV(()))
+  reject def GV (x : &Nat) : V(Z) := WV(())
+  reject def TT : Prop := (Π(x : &Nat). V(Z))
   -- reviewer-6's A1/L1 family: a type family whose arms are different data types, and
   -- type-level observers of a place of the second (their `Id` compares at the place's type)
   inductive Bx (A : Type) := MkBx(v : A)
