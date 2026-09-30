@@ -127,8 +127,9 @@ ochr Borrows uses Std {
 
 /-! ## Moves and copies (D53)
 
-D53 is checked in this block only, until its acceptance run passes (`Ochr.Test.d53Blocks`);
-the rest of the tour reads by copying, as before D53, and its `clone`s are harmless there. -/
+Reading data whose type is not a copy type moves it; `clone` copies; a copy type is declared
+`copy` or is not recursive with copy fields; erased reads copy and see ghosts; the Fn rule;
+and a stuck match's effect on what it captures, moves included (RULES P3, D53). -/
 
 ochr Moves uses Std {
   -- Reading a `Nat` moves it: after `let m = n`, `n` is gone ...

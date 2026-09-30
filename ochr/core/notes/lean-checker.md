@@ -1092,3 +1092,16 @@ fuzz-port's execution oracle runs accepted data functions at ground inputs, with
 *With D53 on everywhere:* the tour has no failures. The case studies have 225, all of them missing clones or `Word`s, as before; Quicksort's count is 48, down from 52.
 
 1013 verdicts.
+
+## 38. The D53 flip (branch `ochr-d53-on`, pending acceptance)
+
+This branch is prepared to be merged once fuzz-port's acceptance run passes: the execution oracle with D53 on, zero findings over at least 10⁵ cases. It changes three things:
+- `Config.d53` defaults to true;
+- `Test.d53Blocks` is replaced by `Test.preD53`, the case-study blocks, which are checked with `d53 := false` until their lanes adapt them;
+- the unit tests' expected sealed programs end in `peek` again.
+
+The tour has no failures with D53 on.
+
+The ledger's D53 rows now range over the whole tour:
+- `ghosts` gains the three `CurrentState.AddSub*` proofs;
+- `fnRule` gains `Equality.Om`, the `Functions.Twice*` family, and the trees' `Size`/`SizeInsert`, which call a closure twice.
