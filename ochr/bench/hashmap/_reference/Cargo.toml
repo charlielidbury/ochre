@@ -1,0 +1,15 @@
+[package]
+name = "hashmap-reference"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "hashmap_reference"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hashmap-reference"
+path = "src/main.rs"
+
+[dependencies]

@@ -7,8 +7,9 @@ far as the checker's surface needs (`def`, curried binders, `Type₀` → `Type`
 paper, which is also the suite's (CurrentState.AddSub/AddSubStale, InPlaceTrees,
 Snapshots.CapCopy/CapS, Naturality.PickEarly*, BorrowTypes.G/UseG,
 HashMapLookup.InsertFindOther). Every other printed program is unchanged and still gets its
-printed verdict. The arrays and quicksort blocks (QSCorrect, B1Join) are still checked without
-D53 (`Test.preD53`), and are not repeated here. -/
+printed verdict. The arrays and quicksort blocks (QSCorrect, B1Join) were checked without D53
+when this was written; since e4bb5d85 they check with it (`Test.preD53` is empty, and QSCorrect's
+numbers are `Word`s), and `Scratch/paper_sweep.py` covers them. -/
 
 -- §1–§2. Unchanged: AddM … AddToOne. Changed: AddSub (`*x` is moved out, so `&*x` borrows ⊥;
 -- the printed AddSubStale is rejected for that reason, not because the requirement mentions

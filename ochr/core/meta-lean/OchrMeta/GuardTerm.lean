@@ -401,8 +401,8 @@ OPEN in general; proved without `sorry` for two sub-fragments:
   the actual run, `sim_gexec`; strong induction on the actual entry value; call order).
 
 What the borrow case still needs, on top of that proof (whose structure carries over):
-1. the invariant: `exec_bf` (only the top frame changes) becomes Lemma 0 (W1–W4, `exec_wf`, itself
-   `sorry` in WF.lean), strengthened to hold at every call site, where `call_effect` (T2b,
+1. the invariant: `exec_bf` (only the top frame changes) becomes Lemma 0 (W1–W4, `exec_wf`, proved
+   in WF.lean), strengthened to hold at every call site, where `call_effect` (T2b,
    Frame.lean) reduces a call to `callRun` from exactly the state the checker starts from;
 2. the approximation `VR` gains a loan-name correspondence `ρ` (symbolic `borrow ℓ`/`loan ℓ` stand
    for actual `borrow ρℓ`/`loan ρℓ`), extended at each borrow creation: once an actual recursive

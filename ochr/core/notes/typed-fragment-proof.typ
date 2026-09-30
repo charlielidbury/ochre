@@ -13,233 +13,330 @@
 #let res = $rho$
 #let ok(x) = $tack.double #x$
 
-= A theorem for a typed fragment <sec-tf>
+= Soundness of a typed fragment, conditional on naturality <sec-tf>
 
-_Draft for an appendix section. Notes file: `ochr/core/notes/typed-fragment-proof.typ` (2026-09-30). The plan it carries out is `notes/typed-fragment-plan.md`. References to "the appendix" are to the paper's appendix, whose rules this section uses by name._
+_Draft for an appendix section. Notes file: `ochr/core/notes/typed-fragment-proof.typ`. Revision 2, 2026-09-30, answering the cold review `notes/reviewer-9.md`; revision 2.1 assumes D65 and drops restriction F5. References to "the appendix" are to the paper's appendix, whose rules this section uses by name._
 
-This section proves a theorem about the typed calculus for a fragment F. F has natural numbers, `Unit`, the propositions `True`, `False` and `And`, `Eq` and `Id`, first-order top-level functions with borrow parameters (some of which return a borrow), [Close], and [Split] with refinement and generalisation. The theorem says two things. Every accepted data function runs without error at every concrete input. Every accepted lemma is true at every concrete input at which its hypotheses are true. Consistency of F and adequacy of `Id` follow (@tf-cor-cons, @tf-cor-adeq), and so does the part of stability that soundness uses (@tf-cor-stab).
+This section reduces soundness of a fragment F to a simulation assumption between the two evaluation paths. F has natural numbers, `Unit`, the propositions `True`, `False` and `And`, `Eq` and `Id`, first-order top-level functions with borrow parameters (some of which return a borrow), [Close], and [Split] with refinement and generalisation. For F we prove that, if the assumption holds, two things are true of every accepted program:
+- every data function runs without error at every concrete input;
+- every lemma is true at every concrete input at which its hypotheses are true.
 
-The proof is by induction on the program and on the [Rec] measure, and it has one step that is not proved here. We state that step as an assumption, naturality (@tf-ass-n). It says that a run on abstract inputs and the run on concrete inputs agree once every borrow is ended. Everything else is either proved below or cites a lemma mechanised in `ochr/core/meta-lean` (@tf-anchors). The assumption is where the risk is. A probe written for this proof found that it is false for the full rules (`DropProbe`, @tf-drop), and F excludes the programs involved (restriction F5).
+Consistency of F and adequacy of `Id` follow (@tf-cor-cons, @tf-cor-adeq).
+
+The assumption, naturality (@tf-ass-n), says one step at a time that a symbolic run and the ground run agree once every borrow is ended. It holds almost all of the operational content. It was false for the rules as they stood: a probe written for this proof found an accepted function that fails at a concrete input (@tf-drop). The rules have been changed (D65), and the proof assumes the change. A second assumption (@tf-ass-t) covers the transfer of the mechanised lemmas from rule set 1.3 to the current rules. Everything else is proved on paper here, and each mechanised lemma that is used is named where it is used (@tf-anchors).
 
 == The fragment F <tf-frag>
 
-F is the calculus of the appendix restricted as follows. Each restriction says why.
+F is the calculus of the appendix restricted as follows. Each restriction says why; @tf-remains lists where each is used.
 
-+ *Data.* The only inductive declarations are the library's `Nat`, `Unit`, `False`, `True` and `And`. Data types are `Nat` and `Unit`; borrow types are `&Nat` and `&Unit`. There are no pairs and no user inductives. _Why:_ it keeps ground values to numerals and `()`.
-+ *First order.* Programs are sequences of top-level definitions $kw("def") f (x_1 : A_1 dots x_n : A_n) : B space [kw("by") x_j] := b$ ($n >= 0$; $n = 0$ is a constant). Each $A_i$ is a data type, a borrow type or a proposition, and `B` is a data type, a borrow type (and then some $A_i$ is one, D44) or a proposition. There are no `fix` or `λ` inside bodies, no Π-types as values, no function parameters (so no abstract functions), no universes other than as the sorts of these types, no parameters of sort `Prop`, no type families and no Prop-valued functions. A definition is a _data function_ if `B` is data or a borrow type, and a _lemma_ if `B` is a proposition. _Why:_ this makes the type of every sealed program a closed data type (@tf-gen), which is what reviewer 6's closed proof of `False` (A1) lacked.
-+ *Propositions.* $P ::= ty("True") | ty("False") | P and Q | ty("Eq") D thin a thin b | ty("Id") D thin t thin u$, with $D in {ty("Nat"), ty("Unit")}$. The terms `a`, `b`, `t`, `u` inside a type contain no `match`. _Why:_ a match inside a type that gets stuck is closed off as a stuck block, which F leaves out. It also makes every place occurrence in a statement reached by the statement's run (@tf-lem-w).
-+ *No stuck blocks.* A `match` on data occurs only in tail position in a definition's body: the body itself, an arm of a match in tail position, or the tail of a `let` or sequence in tail position. It never occurs on the right of a `let`. So [Split] is only [Tail-split] and [Tail-gen], and no stuck block is ever formed.
-+ *No borrow is assigned into an existing place.* In `p := t`, `t` does not have a borrow type. Borrows are bound by `let`, passed as arguments, or returned. _Why:_ @tf-drop. With the assignment `x := Pick(n, &a, &b)` the symbolic path accepts a function that fails at a concrete instance. Without it, a borrower is declared after every place it borrows, so it is dropped before them on both paths. The checker fix for this (ghost borrows, @tf-drop) is expected to make F5 unnecessary; that has to be re-checked when it lands.
-+ *Proof forms.* Proof terms are `refl`, $chevron.l h, k chevron.r$, proof variables, lemma calls, a match on a proof of `And` or `True` (one arm), and `match h {}` on a proof of `False`. `match h {}` occurs only in lemma bodies. There is no `J`, `rewrite` or `split`. _Why:_ a data function's run then never depends on the truth of its hypotheses (@tf-thm, part (i)).
++ *Data.* The only inductive declarations are the library's `Nat`, `Unit`, `False`, `True` and `And`. Data types are `Nat` and `Unit`; borrow types are `&Nat` and `&Unit`. There are no pairs and no user inductives. _Why:_ ground values are then numerals and `()`.
++ *First order, with bodies.*
+  - Programs are sequences of top-level definitions with bodies, $kw("def") f (x_1 : A_1 dots x_n : A_n) : B space [kw("by") x_j] := b$, where $n >= 0$ and $n = 0$ is a constant. There are no opaque definitions, since an opaque lemma is an axiom.
+  - Each $A_i$ is a data type, a borrow type or a proposition. `B` is a data type, a borrow type (and then some $A_i$ is one, D44) or a proposition.
+  - There are no `fix` or `λ` inside bodies, no Π-types as values, no function parameters (so no abstract functions), no universes other than as the sorts of these types, no parameters of sort `Prop`, no type families and no Prop-valued functions.
+  - A definition mentions itself only as the head of a call in its body, never in a type: not in its parameter types or codomain, and not in an annotation, `Eq` or `Id` inside its body.
+  - A definition is a _data function_ if `B` is data or a borrow type, and a _lemma_ if `B` is a proposition.
 
-Moves (D53) are as in the rules: `Nat` is not a copy type, so a runtime read of a `Nat` place moves it.
+  _Why:_ conversion on data is then syntactic (@tf-lem-conv), the type of every sealed program is a closed data type (@tf-gen), and every call inside a type is to an earlier definition.
++ *Propositions.* $P ::= ty("True") | ty("False") | P and Q | ty("Eq") D thin a thin b | ty("Id") D thin t thin u$, with $D in {ty("Nat"), ty("Unit")}$. The terms `a`, `b`, `t`, `u` inside a type contain no `match`. _Why:_ a match inside a type that gets stuck is closed off as a stuck block, which F leaves out. It also means the typed run of a statement reaches every place occurrence in it (@tf-lem-w).
++ *No stuck blocks.* A `match` on data occurs only in tail position in a definition's body: the body itself, an arm of a match in tail position, or the tail of a `let` or sequence in tail position. It never occurs on the right of a `let`. So [Split] is only [Tail-split] and [Tail-gen]. No stuck block is ever formed, and [Split-gen] and [T-Split-goal] never run.
++ _(Removed in revision 2.1.)_ Revision 2 forbade assigning a borrow into an existing place, because of `Bad2` (@tf-drop). Under D65 it is no longer needed: the [Drop] clause of (N1) holds without it, and @tf-lem-w now covers statements that assign a borrow variable the symbolic path has already ended. The number is kept so that references to F6–F8 stay valid.
++ *Proof forms.* Proof terms are:
+  - `refl`, $chevron.l h, k chevron.r$, proof variables and their field places, and lemma calls;
+  - a `let` or sequence whose tail is a proof;
+  - a match on a proof of `And` or `True` (one arm);
+  - `match h {}` on a proof of `False`, which occurs only in lemma bodies.
 
-== Ground instances, truth and agreement <tf-defs>
+  There is no `J`, `rewrite` or `split`. _Why:_ a data function's run then never depends on the truth of its hypotheses (@tf-thm, part (i)).
++ *No move out through a borrow.* In code that runs, a read of a place under `*` (such as `*x`, or `(*x).1` of a number) is written `clone(…)`. Reading a borrow variable itself, which moves the borrow, is allowed. Reads in types and proofs copy anyway. _Why:_ no borrow ever holds a ghost (@tf-lem-res). Resolution is then defined at every state the proof visits, and every call's borrow arguments are whole (reviewer 9, findings 2 and 3). It excludes D53's `mem::replace` pattern `let v = *x; *x := S v`, which must be written with `clone(*x)`.
++ *`clone` of data only.* `clone(p)` only for `p` of a data type. _Why:_ the appendix's [Clone] would duplicate a borrow or copy ⊥. `RULES.md` reads `clone(p)` as a read inside an erased term, which excludes both, and that is the reading F uses (@tf-lem-w).
 
-#thm([Definition], [ground], [
+Moves (D53) are otherwise as in the rules: `Nat` is not a copy type, so a runtime read of an owned `Nat` place moves it and leaves a ghost.
+
+*Rule readings.* Where the appendix and `RULES.md` differ, F uses these readings:
+- *D65* (decided 2026-09-30; not yet in the checker, and assumed here until it lands): [Drop] of an owned value that holds a live loan ends that loan's borrower, as a write through [Access] would, and never fails. The borrower becomes ⊥;
+- [Match-err] also covers a ghost, as the checker does;
+- [Seal]'s final read copies, as `RULES.md` says;
+- a generalisation record belongs to the [Split] arm that made it (checker commit 969e3254, reviewer 6's A1). The appendix still calls records global.
+
+== Ground instances, truth, resolution and agreement <tf-defs>
+
+#thm([Definition], [ground, valuation], [
   A value is _ground_ if it contains no abstract value, no sealed program and no inert loan; a ground value of type `Nat` is a numeral and one of type `Unit` is `()`. A state is ground if its values are; it may hold live borrows and loans. A _valuation_ α assigns to each abstract value σ in its domain a ground value of type Δ(σ). For a state Ω whose abstract values α covers, $Omega alpha$ is $Omega[alpha(sigma) slash sigma]^+$, substitution followed by normalisation (appendix, item 6 of the auxiliary definitions); it is _defined_ when every normalisation it triggers ends without error. α _respects_ the records of the state if $alpha(sigma) = r alpha$ for every refinement $sigma := r$ and $alpha(sigma) = "nf"(n alpha)$ for every generalisation record $n := sigma$.
 ]) <tf-def-ground>
 
-The _generic state_ of a definition `d` is $Gamma";" phi$, its generic call's environment (appendix, item 10): borrow parameters are bound to $"borrow"_(ell_i) sigma_i$ with owned cells $c_i |-> "loan"_(ell_i)$, data parameters to fresh $sigma_i$, and proof parameters to ⋆ with their types stored. A _ground instance_ of `d` is a valuation β of $sigma_1, dots, sigma_n$; its state is $Gamma beta";" phi beta$. Its _hypotheses_ are the proof parameters' types evaluated at the ground instance, left to right. The goal at the ground instance is `B` evaluated there, which is the [Call-type] of the call $d(overline(a) beta)$ from a caller whose frame holds the cells.
+The _generic state_ of a definition `d` is $Gamma";" phi$, its generic call's environment (appendix, item 10). Borrow parameters are bound to $"borrow"_(ell_i) sigma_i$, with owned cells $c_i |-> "loan"_(ell_i)$. Data parameters are bound to fresh $sigma_i$, and proof parameters to ⋆ with their types stored.
+- A _ground instance_ of `d` is a valuation β of $sigma_1, dots, sigma_n$; its state is $Gamma beta";" phi beta$.
+- Its _hypotheses_ are the proof parameters' types, evaluated at the ground instance left to right.
+- Its _goal_ is `B` evaluated there, which is the [Call-type] of the call $d(overline(a) beta)$ from a caller whose frame holds the cells.
+- A call made at a ground state is _at_ the ground instance whose values are its arguments: a data argument's numeral, and the content of a borrow argument, which is a numeral by @tf-lem-res.
+
+A run is in _runtime mode_ when its reads of non-copy data move, and in _erased mode_ when every read copies (types, proofs, and the sides of `Id`, all on private copies).
 
 #thm([Definition], [truth], [
-  At a ground state, `eq` on two numerals computes to `True`, `False` or an `And` of such, and `eq` on `Unit` to `True`, so a proposition value computed at a ground state is built from `True`, `False` and `And` alone. _Truth_ ⊨ is defined on these by $ok(ty("True"))$, $not ok(ty("False"))$, and $ok(P and Q)$ iff $ok(P)$ and $ok(Q)$.
+  At a ground state, `eq` on two numerals computes to `True`, `False` or an `And` of such, and `eq` on `Unit` to `True`. So a proposition value computed at a ground state is built from `True`, `False` and `And` alone. _Truth_ ⊨ is defined on these by $ok(ty("True"))$, $not ok(ty("False"))$, and $ok(P and Q)$ iff $ok(P)$ and $ok(Q)$.
 ]) <tf-def-truth>
+
+*Resolution.* For a well-formed state Ω, $res(Omega)$ ends every borrow, and $res_Omega (w)$ is the value `w` with each live loan replaced by the resolved content of its borrow, which is well defined by acyclicity.
+
+#thm([Lemma], [resolution], [
+  In F no borrow ever holds a ghost. At every well-formed state of F, ρ is defined, and it does not depend on the order in which borrows are ended. Ending some borrows first does not change it.
+]) <tf-lem-res>
+#proof[
+  - *No borrow holds a ghost.* A ghost is created only by a runtime read of non-copy data, which leaves `ghost(v)` in the place read. By F7 no such read is under `*`, so a ghost appears only at an owned position or inside one. [Borrow] refuses a place that holds a ghost. So a borrow's content never holds one, and [End]'s wholeness premise always holds.
+  - *Order independence.* A ghost holds a loan-free value, because [Access] ends every loan inside a place before it is read. So substitution passes a ghost by, as it passes an abstract value. With each ghost read as an opaque atom, a state of F is a state of `meta-lean`'s machine. There, property 4 is mechanised: `end_order_indep` (resolution exists in a well-formed state, and every order of the held borrows reaches it) and `endAll_endSeq` (ending some borrows first does not change it).
+  - *What this needs.* Well-formedness of F's states is @tf-ass-t (T1).
+]
 
 #thm([Definition], [agreement], [
   Let $Omega_s$ be a state on the symbolic path, α a valuation that covers and respects it, and $Omega_g$ a ground state with the same frames, bindings and temporaries. $Omega_s agr(alpha) Omega_g$ holds when:
   (A1) $Omega_s alpha$ is defined;
-  (A2) $res(Omega_s alpha) = res(Omega_g)$ up to a renaming of loans, where ρ ends every borrow;
+  (A2) $res(Omega_s alpha) = res(Omega_g)$ up to a renaming of loans;
   (A3) every position that holds a borrow in $Omega_s$ holds a borrow in $Omega_g$;
-  (A4) at every position that holds $"borrow"_ell$ in $Omega_s$ and $"borrow"_(ell')$ in $Omega_g$, $"owners"_(Omega_g)(ell') subset.eq "owners"_(Omega_s)(ell)$.
+  (A4) at every position that holds $"borrow"_ell$ in $Omega_s$ and $"borrow"_(ell')$ in $Omega_g$, $"owners"_(Omega_g)(ell') subset.eq "owners"_(Omega_s)(ell)$;
+  (A5) at every position that holds $"borrow"_ell w_s$ in $Omega_s$ and $"borrow"_(ell') w_g$ in $Omega_g$, $res_(Omega_s alpha)(w_s alpha) = res_(Omega_g)(w_g)$: each live borrow holds the same value once the loans inside it are resolved.
 ]) <tf-def-agr>
 
-Both $Omega_s alpha$ and $Omega_g$ are ground, and at a ground state [End] is plain substitution, because there are no sealed programs to re-normalise. So ρ is the resolution of the claims table's order-independence property (property 4), which is mechanised: the result does not depend on the order in which borrows are ended (`end_order_indep`). Moreover, a state reached by any successful sequence of [End]s resolves to the same state (`endAll_endSeq`). Two consequences are used throughout:
-- (A2) is equivalent to "some sequences of [End]s take $Omega_s alpha$ and $Omega_g$ to one state", which is the form the F5 counterexample of the mechanisation forced (`notes/lean-meta.md`);
-- (A2) survives an [End] on either side, which is how the symbolic path may end a borrow earlier than the ground path (the naturality conjecture's `Pick` example) without breaking agreement.
+The clauses do the following:
+- (A2) is equivalent to "some sequences of [End]s take $Omega_s alpha$ and $Omega_g$ to one state" (@tf-lem-res). That is the form the mechanisation's schedule counterexample (`Sched.lean`, on the unmerged branch `ochr-core-meta-t1b`) showed is needed. It survives an [End] on either side, which is how the symbolic path may end a borrow earlier than the ground path (the naturality conjecture's `Pick` example).
+- (A3) says the symbolic path has ended at least the borrows the ground path has.
+- (A4) says its owners over-approximate: a returned borrow's hole sits in the fill of every place it may point into.
+- (A5) fixes what each live borrow holds. Without it the relation admits pairs that resolve alike but in which a borrow points at different parts of its target (reviewer 9, finding 1): symbolically `p` borrows the predecessor field of `x`'s target, and on the ground it borrows the whole target. `match *p` would then take different arms, and a decreasing argument behind `p` would have different sizes.
 
-(A3) says that the symbolic path has ended at least the borrows the ground path has. (A4) says that its owners over-approximate: a returned borrow's hole sits in the fill of every place it may point into.
+The consequence the proof uses is this. At agreeing states, a place that is readable on both paths has the same resolved content: by (A2) at an owned position, and by (A5) through a borrow. In particular, after [Access], a scrutinee has the same head constructor on both paths. A loan-free value in flight, such as a call's data argument, is the symbolic value under α. And the content of a borrow argument, which is loan-free (appendix, condition 5) and whole (@tf-lem-res), is the symbolic content under α.
 
 == What the proof assumes, and what it cites <tf-anchors>
 
-#thm([Assumption], [naturality], [
-  Let every data function that a term `t` of F calls be safe, in the sense of @tf-thm (i). Let $Omega_s agr(alpha) Omega_g$, and let `t` not be a match on data. If $Omega_s tack.r t ev v_s : A tack.l Omega'_s$ on the symbolic path, then:
-  (N1) the machine run $cfg(Omega_g, t) ev cfg(Omega'_g, v_g)$ ends without error;
-  (N2) $Omega'_s dot v_s agr(alpha) Omega'_g dot v_g$;
-  (N3) if $"drop"(Omega'_s, v_s)$, or the pop of a frame, succeeds on the symbolic path, it succeeds on the ground path, and agreement is kept;
-  (N4) resolution commutes with valuation: $res(Omega_s) alpha = res(Omega_s alpha)$ up to a renaming of loans.
+#thm([Assumption], [naturality, step by step], [
+  Let $Omega_s agr(alpha) Omega_g$, and consider one step of a rule of F, in runtime mode or in erased mode, that succeeds from $Omega_s$ on the symbolic path (the typing judgement, in which stuck calls close off).
+  (N1) _Primitive steps._ For [Access] ($"acc"^R$ and $"acc"^M$), [Read], [Copy], [Move], [Borrow], [Assign], [Clone], [Ctor], binding a `let` and dropping its binding, dropping a discarded value, pushing a frame of agreeing values, and popping a frame: the same step succeeds from $Omega_g$ in the same mode, and the resulting states, with the step's value as a temporary, agree.
+  (N2) _Calls._ At agreeing call points, whose arguments are temporaries of both states, suppose the symbolic call returns, by [App] after running the callee's body in the machine or by [Close], and the ground call runs to completion without error. Then the resulting states and results agree.
+  (N3) _Erased mode._ A run in erased mode is confined on the symbolic path iff it is confined on the ground path (@tf-lem-types's type formers).
+  (N4) _Resolution commutes with valuation._ $res(Omega_s) alpha = res(Omega_s alpha)$ up to a renaming of loans, including through [Seal]'s re-normalisation of a fill whose hole is inert.
 ]) <tf-ass-n>
 
-This is the relational form of the naturality conjecture (property 9). The symbolic run includes the runs of callee bodies in the machine ([T-Call]), where calls stuck on an abstract value close off. On the ground path those calls run.
+This is naturality in relational form, stated per step so that the proof can use agreement at every call point and every pushed frame (reviewer 9, finding 3 (d)).
+- Its hypothesis about callees is per call: (N2) assumes only that the ground call it relates is safe. The proof supplies that call by call (@tf-lem-runs), at the arguments the ground run actually passes (finding 3 (a)).
+- By F7 every such call is at a ground instance (finding 3 (b)), and (N1)–(N3) cover erased mode (finding 3 (c)).
 
-*It is false without restriction F5.* The probe `ochr/core/lean/Scratch/DropProbe.lean` (@tf-drop) is an accepted data function whose ground run fails at a [Drop], against (N1) and (N3). We believe F5 restores (N1) and (N3), by the argument given in F5, but we have not proved it. The other risks in @tf-ass-n are:
-- (N4), for [Seal] with inert loans. A fill ⌈`L; let r = C; *r := loan_k; c`⌉ is normalised with `loan_k` inert, and ending `k` later substitutes into it and re-normalises;
-- the preservation of (A4) by every rule.
+*It was false before D65* (@tf-drop). The risks we know of, in (N1)–(N4):
+- agreement after a [Drop] under D65, and the preservation of (A3): early ends are deep, so no reborrow outlives its early-ended borrow on the symbolic path (@tf-drop);
+- the preservation of (A5) by [Close]. Under α, a closed-off call's fills place the hole where the ground call's returned borrow points: `close_cur`, `close_back`;
+- (N4) through [Seal] with inert loans. Reviewer 9 could not break it for `Pick`'s fills. The lemma behind it is _hole parametricity_: a fill's run writes its hole and reads its cells, but never inspects the hole.
 
-Its proof would go by induction on the machine's rules. It would use these mechanised facts, which are stated for `meta-lean`'s machine (rule set 1.3: copy reads, lazy normalisation, and a `Unit` row in [Close]):
+A proof of @tf-ass-n would go rule by rule and use the mechanised lemmas below.
+
+#thm([Assumption], [transfer from rule set 1.3], [
+  (T1) The current rules, restricted to F, preserve well-formedness conditions 1–5 of the appendix, as `exec_wf` proves for rule set 1.3.
+  (T2) The frame property holds for F, as `frame_local` and `call_effect` prove for rule set 1.3: a run changes the environment below its own frame only through the loans held by that frame's borrows, and a call's effect is its isolated run, plugged back into the caller.
+]) <tf-ass-t>
+
+The mechanised machine has no ghosts, reads by copying, normalises sealed programs only when states are compared, and has a `Unit` row in [Close]. (T1) and (T2) are the two facts about it that this section uses outside @tf-ass-n (reviewer 9, finding 5). They are stated as an assumption, not "folded into" naturality. Two other mechanised facts are about values, not runs, and they carry over by the argument of @tf-lem-res: a ghost holds no loan, so it is an atom for substitution. These are order-independence (@tf-lem-res) and the injectivity of contexts (`ctx_inj`, @tf-lem-call).
 
 #table(columns: (30%, 1fr, 24%), stroke: none, inset: (x: 4pt, y: 3pt), align: left,
   table.hline(stroke: 0.5pt),
-  [*Lean*], [*Statement*], [*Used for*],
+  [*Lean (`meta-lean`)*], [*Statement, for rule set 1.3*], [*Used for*],
   table.hline(stroke: 0.4pt),
-  [`end_order_indep`, `endAll_endSeq`], [resolution exists in a well-formed state, does not depend on the order of [End]s, and is not changed by ending some borrows first], [@tf-def-agr],
-  [`frame_local`, `call_effect`], [a run changes the environment below its frame only through the loans of its own borrows; a call's effect is its isolated run, plugged back], [@tf-lem-w, @tf-lem-call; (N1)–(N2) at calls],
-  [`close_res`, `close_fin`, `close_cur`, `close_back`], [the sealed programs of [Close] normalise to the call's result, the final contents of its borrowed places, its current content and its backward function], [(N2) and (N4) at [Close]],
+  [`end_order_indep`, `endAll_endSeq`], [in a well-formed state resolution exists, every order of the held borrows reaches it, and ending some borrows first does not change it], [@tf-lem-res],
+  [`frame_local`, `call_effect`], [the frame property], [@tf-ass-t (T2); @tf-lem-w; @tf-lem-call],
   [`ctx_inj`], [a context holding a loan is injective in the loan's final value], [@tf-lem-call],
-  [`exec_wf`], [runs preserve well-formedness: unique borrows, bound and acyclic loans, loan-free values in flight], [owners are defined; @tf-lem-call],
-  [`exec_total`, `termination_of_calls`], [a run terminates if every call it makes does], [(N1): the ground run ends],
-  [`exec_rename`], [the machine commutes with renaming loans], [(A2)'s renaming],
+  [`exec_wf`], [runs of terms that do not name the machine's temporaries preserve well-formedness], [@tf-ass-t (T1)],
+  [`endBorrow_nb_lt`], [each [End] removes a borrow, so [Access] and [Drop] end], [@tf-lem-runs (termination)],
+  [`close_res`, `close_fin`, `close_cur`, `close_back`], [if a call's isolated run completes, the sealed programs of [Close] normalise to its result, the final contents of its borrowed places, its current content and its backward function. They also need hypotheses on the arguments (loan-free, not moved out, no borrows inside) and on the results (no loans or borrows in the data rows), which follow from well-formedness but are not yet discharged in Lean], [a proof of @tf-ass-n: (A1), (A5) and (N4) at [Close]],
+  [`exec_rename`], [the machine commutes with renaming loans], [a proof of @tf-ass-n: (A2)'s renaming],
   table.hline(stroke: 0.5pt),
 )
-
-Transferring these from rule set 1.3 to the current rules is part of @tf-ass-n. So are moves, which the mechanised machine does not have. Everything below @tf-ass-n is proved on paper in this section.
 
 == Lemmas <tf-lemmas>
 
 #thm([Lemma], [truth and conversion], [
   (a) If $P equiv Q$ are proposition values at a ground state, then $ok(P)$ iff $ok(Q)$. (b) In F, if $v equiv w$ then $v alpha equiv w alpha$ for every valuation α for which both are defined.
 ]) <tf-lem-conv>
-#proof[In F the conversion rules that apply are [Conv-refl], [Conv-cong] and [Conv-unit]: F has no function values and no Π-closures, and its only η is `eq`'s for `Unit`. On data values, [Conv-cong] compares sealed programs by their programs, component by component, so on data ≡ is equality up to the names of bound variables. (a) At a ground state a proposition is built from `True`, `False` and `And` (@tf-def-truth). [Conv-cong] relates `And` to `And` componentwise, and [Conv-unit] removes `True` conjuncts. Both preserve truth, by induction on the derivation of ≡. (b) A valuation substitutes and then normalises, rebuilding every `Eq` type with `eq`. So it sends equal values to equal values, and the unit laws commute with substitution.]
+#proof[
+  - *Which rules apply.* In F the conversion rules that apply are [Conv-refl], [Conv-cong] and [Conv-unit]. F has no function values and no Π-closures (F2), and its only η is `eq`'s for `Unit`. On data values, [Conv-cong] compares sealed programs by their programs, component by component. So on data, ≡ is equality up to the names of bound variables.
+  - *(a).* At a ground state a proposition is built from `True`, `False` and `And` (@tf-def-truth). [Conv-cong] relates `And` to `And` componentwise, and [Conv-unit] removes `True` conjuncts. Both preserve truth, by induction on the derivation of ≡.
+  - *(b).* A valuation substitutes and then normalises, rebuilding every `Eq` type with `eq`. It sends equal values to equal values, and the unit laws commute with substitution.
+]
 
 #thm([Lemma], [generalisation], [
-  Let α cover and respect $Omega_s$, except for the abstract values that generalisation records introduce, and let $Omega_s alpha$ be defined. Extend α by $alpha(sigma) := "nf"(n alpha)$ for each record $n := sigma$, in the order the records were made. Then:
-  (a) $alpha(sigma)$ is a ground value of type Δ(σ);
-  (b) $(Omega_s [sigma slash n]^+) alpha = Omega_s alpha$, so generalising is invisible under α;
-  (c) the extension does not depend on which path of the case tree, or which private copy, made the record.
+  Let a node of a [Def] case tree have state $Omega_s$. Let α cover and respect every abstract value of $Omega_s$ except those introduced by the generalisation records made on the path to that node, and let $Omega_s alpha$ be defined once α is extended. Extend α by $alpha(sigma) := "nf"(n alpha)$ for each such record $n := sigma$, in the order the records were made. Then:
+  (a) the records visible at the node are exactly those made by [Tail-gen] on the path from the root to it;
+  (b) $alpha(sigma)$ is a ground value of type Δ(σ);
+  (c) $(Omega_s [sigma slash n]^+) alpha = Omega_s alpha$, so generalising is invisible under α.
 ]) <tf-gen>
 #proof[
-  - *Shape.* In F every sealed program has one of the two row shapes of [Close], with a head call $C = f(overline(a))^h$ of a data function `f`. There are no neutral heads, closures or stuck blocks (F2, F4).
-  - *(a).* $n alpha$ is a closed program with ground embedded values. Its normal form exists because $Omega_s alpha$ is defined. It is a value of `f`'s declared codomain for ⌈`L; C`⌉ and ⌈`L; let r = C; *r`⌉, and of the cell's declared type for the fill rows. [Tail-gen] gives σ the type of the matched place. In F the type of a place is a closed data type that no refinement changes (F1, F2), and it is the type just named.
-  - *(b).* Every occurrence of `n` becomes σ, and every later re-derivation of `n` normalises to $rho^*(sigma)$ ([Seal-stuck]). Under α both become $"nf"(n alpha)$, which is what `n` itself becomes, since normalisation is deterministic.
-  - *(c).* The record is global and keyed by the text of `n` (D37: it survives private copies and is seen by sibling arms). The text fixes the value of `n` under any valuation of the abstract values it mentions. Fresh names are never reused, so those values mean the same on every path where they exist. So on any path that sees the record, $alpha(sigma) = "nf"(n alpha)$ is forced.
-  - *Where A1 fits.* What differed between arms in reviewer 6's A1 was Δ(σ), through an abstract function whose result type depended on a refinement. F excludes both.
+  - *(a).* In F, [Split-gen] and [T-Split-goal] never run (F3, F4), so records come only from [Tail-gen], in tail position of the body being checked, on no private copy. A record made in an arm is dropped when the arm ends (969e3254). A record made while checking an earlier definition is keyed by a text that mentions that check's abstract values or loan labels, and fresh names are never reused, so no state of this check can derive that text again. What remains is exactly the records made on this path.
+  - *(b).* Take a record $n := sigma$ made at a node on the path. `n` occurs in that node's state, so its normal form under α exists by (A1) at that node, which the walk of @tf-thm maintains. In F, `n` has one of the two row shapes of [Close], with a head call of a data function (F2, F4). Its normal form under α is a value of that function's declared codomain, or of the declared type of the cell a fill row reads. [Tail-gen] gives σ the type of the matched place, which in F is the same closed data type (F1, F2).
+  - *(c).* Every occurrence of `n` becomes σ, and every later re-derivation of `n` on the path normalises to $rho^*(sigma)$ ([Seal-stuck]). Under α both become $"nf"(n alpha)$, which is what `n` itself becomes, since normalisation is deterministic.
+
+  No record crosses a sibling arm, so there is no cross-arm consistency to show. Reviewer 6's A1 was exactly such a crossing, through a type family.
 ]
 
 #thm([Lemma], [footprints], [
   Let $Omega_s agr(alpha) Omega_g$, and let `t` and `u` be statement terms of F whose typed runs from $Omega_s$ succeed. Let $W_s$ and $W_g$ be the footprints $W(t, u)$ at $Omega_s$ and at $Omega_g$, as sets of positions. Then:
-  (a) $W_g subset.eq W_s$;
-  (b) for each $pi in W_s without W_g$, the ground runs of `t` and of `u` from $Omega_g$ leave the resolved content of π unchanged;
+  (a) every $pi in W_g without W_s$ is owned only through borrow variables that hold ⊥ at $Omega_s$, and `t` and `u` only assign those variables, as whole variables;
+  (b) for each π in $W_s without W_g$ or in $W_g without W_s$, the erased-mode ground runs of `t` and of `u` from $Omega_g$ leave the resolved content of π unchanged;
   (c) each observed place has the same type on both paths.
 ]) <tf-lem-w>
 #proof[
-  *(b).* By `frame_local`, a run changes the environment below its own frame only through the loans held by that frame's borrows. In its own frame it changes only the places it writes, borrows or moves. A place that is moved out holds a ghost, and its resolved content, read through the ghost, is unchanged. So the positions whose resolved content a run of `t` can change are the owners of the places `t` writes or borrows and of the borrow variables it names: $W_g (t)$, by the definition of the footprint. A position outside $W_g = W_g (t) union W_g (u)$ is left unchanged by both runs.
+  *The frame fact.* By @tf-ass-t (T2), a run changes the environment below its own frame only through the loans held by that frame's borrows, and in its own frame only the places it writes or borrows. In erased mode reads copy, so no read changes a place. Ending a borrow, including the old borrow that an assignment to a borrow variable drops, does not change any resolved content. So the resolved content of a position π can change only if `t` writes π or writes through a live borrow that π owns. Both are the owners of the places `t` writes or borrows and of the borrow variables it names, which is $W_g (t)$ by the definition of the footprint.
 
-  *(a).* Let $pi in W_g$, owned by the root of an occurrence `p` in `t` or `u`.
+  *(a).* Let $pi in W_g$ be owned by the root of an occurrence `p` in `t` or `u`.
   - If `p` is rooted at an owned variable, it contributes that variable on both paths.
-  - If `p` is rooted at a borrow variable `x`, then `x` holds a borrow at $Omega_g$, and at $Omega_s$ it holds a borrow or ⊥. It never holds a loan, since `&&D` is not a type.
-  - It cannot hold ⊥. The statement terms are match-free (F3), so the typed run of `t` reaches every occurrence in `t`. That includes those in erased positions, which the typing judgement runs on private copies ([T-Erase]). An occurrence rooted at a variable holding ⊥ is an error ([Read-err], [Borrow-err], [Assign], [Match-err]), and the run succeeded.
-  - So `x` holds a borrow at $Omega_s$, and (A4) gives $"own"_(Omega_g)(x) subset.eq "own"_(Omega_s)(x)$. Hence $pi in W_s$.
+  - If `p` is rooted at a borrow variable `x`, then `x` holds a borrow at $Omega_g$, since a variable holding ⊥ contributes nothing. At $Omega_s$ it holds a borrow or ⊥; it never holds a loan, since `&&D` is not a type. If it holds a borrow, (A4) gives $"own"_(Omega_g)(x) subset.eq "own"_(Omega_s)(x)$, so $pi in W_s$.
+  - Suppose it holds ⊥. The statement terms are match-free (F3), so the typed run of `t` reaches every occurrence in `t`, including those in erased positions, which the typing judgement runs on private copies ([T-Erase]).
+    - Every occurrence rooted at a variable holding ⊥ is an error except an assignment to the whole variable. A read of `x` or of a place under it is [Read-err]. A borrow is [Borrow-err]. A match is [Match-err]. An assignment through `x` fails because its content is undefined. A `clone` of `x` is excluded by F8 (`CloneBot` in `Reviewer9Probe` shows the escape outside F).
+    - `x := t'` drops ⊥, which is loan-free, and binds a new borrow. After it, `x` holds that same new borrow on both paths.
+    - So `t` and `u` use `x` only by assigning it as a whole. This is `AssignBot` in `Reviewer9Probe`.
+
+  *(b).* A position outside $W_g$ is left unchanged by both ground runs, by the frame fact. That covers $W_s without W_g$.
+  - Let $pi in W_g without W_s$. By (a), π is owned only through borrow variables that hold ⊥ at $Omega_s$, which `t` and `u` only assign.
+  - On the ground, such an assignment drops the variable's old borrow, which ends it and changes no resolved content.
+  - If `t` wrote π through any other place `q`, the root of `q` would hold a live borrow at $Omega_s$, or be π itself. By (A4), π would then be in $W_s$.
+  - So neither run changes π.
 
   *(c).* Observed places have type `Nat` or `Unit`. A place's type is read from its stored type; a temporary's is read from its value's type, which is a numeral's, Δ(σ)'s or a sealed program's declared codomain. Agreement relates positions of the same binding, and in F no refinement changes these types (F1, F2).
 ]
 
-The probe `ochr/core/lean/Scratch/FootprintProbe.lean` shows (a) is strict. With `r = Pick(n, &a, &b)`, an `Id` about writes through `r` has conjuncts over `a` and `b` at an abstract `n`, and over `a` alone at `n = 0`. Formed at the abstract `n` and then refined, its `b` conjunct becomes `True`, as (b) predicts.
+The symbolic side's extras are real, and their conjuncts do become `True`. Probe `R9Foot` (in `Reviewer9Probe.lean`) checks this with verdicts. In arm `Z`, a hypothesis formed at an abstract `n` has type `False ∧ ⊤`, and `FPZ` uses its second conjunct as `True`. `FPZshow`'s rejection prints arm `S`'s type as `⊤ ∧ False`.
 
 #thm([Lemma], [types agree], [
-  Let $Omega_s agr(alpha) Omega_g$ and let `A` be a proposition of F. If `A` evaluates to $T_s$ at $Omega_s$ (in a type position, on a private copy), then it evaluates to some $T_g$ at $Omega_g$, and $ok(T_s alpha)$ iff $ok(T_g)$.
+  Let $Omega_s agr(alpha) Omega_g$ and let `A` be a proposition of F. Suppose every call made in erased mode by the ground evaluation of `A` runs to completion without error. If `A` evaluates to $T_s$ at $Omega_s$ (in a type position, on a private copy), then it evaluates to some $T_g$ at $Omega_g$, and $ok(T_s alpha)$ iff $ok(T_g)$.
 ]) <tf-lem-types>
-#proof[Induction on `A`.
+#proof[By induction on `A`. The runs involved are in erased mode, and by (N3) the type former is confined on both paths or on neither.
   - *`True`, `False`.* $T_s = T_g$.
-  - *`P ∧ Q`.* [T-Ind] keeps the head `And`. Its parts are evaluated one after the other on one private copy, and by (N2) agreement holds between them. Use the induction hypothesis.
-  - *`Eq D a b`.* By (N1)–(N2) the ground runs of `a` and `b` succeed and their values agree. Values in flight are loan-free (`exec_wf`), so agreement of values is equality after valuation: $a_s alpha = a_g$ and $b_s alpha = b_g$. $T_s = "eq"(D, a_s, b_s)$, and valuation rebuilds `Eq` types with `eq`, so $T_s alpha = "eq"(D, a_g, b_g) = T_g$.
-  - *`Id D t u`.* By (N1)–(N2) the ground runs of `t` and `u` succeed in agreement with the symbolic ones. The observation then ends every borrow. By (N4) and (A2), each symbolic observation under α equals the ground one after resolution, position by position: $r_s alpha = r_g$, and $w_s (pi) alpha = w_g (pi)$ for every position π; the same holds for `u`. So:
-    - $T_s alpha$ is `and` of $"eq"(D, r_g, r'_g)$ and of $"eq"(T_pi, w_g (pi), w'_g (pi))$ over $pi in W_s$;
-    - $T_g$ is the same over $pi in W_g$;
-    - by @tf-lem-w (a) $W_g subset.eq W_s$; by (b) each conjunct over $W_s without W_g$ compares equal values, so it is `True`; by (c) the conjuncts' types agree;
-    - `and` drops `True` conjuncts, and the truth of a conjunction does not depend on the order of its conjuncts.
+  - *`P ∧ Q`.* [T-Ind] keeps the head `And`, and its parts are evaluated one after the other on one private copy. By @tf-lem-runs agreement holds between them. Use the induction hypothesis.
+  - *`Eq D a b`.* By @tf-lem-runs the ground runs of `a` and `b` succeed and their values agree. Values in flight are loan-free (T1), so $a_s alpha = a_g$ and $b_s alpha = b_g$. $T_s = "eq"(D, a_s, b_s)$, and valuation rebuilds `Eq` types with `eq`. `eq` may already have dropped a `True` conjunct symbolically that valuation does not restore, so $T_s alpha$ and $"eq"(D, a_g, b_g) = T_g$ need not be equal as values. But they have the same truth, which is what the lemma claims.
+  - *`Id D t u`.* By @tf-lem-runs the ground runs of `t` and `u` succeed in agreement with the symbolic ones. The observation then ends every borrow. By (N4) and (A2), each symbolic observation under α equals the ground one after resolution, position by position: $r_s alpha = r_g$, and $w_s (pi) alpha = w_g (pi)$ for every position π; the same holds for `u`. So:
+    - $T_s alpha$ has the truth of the conjunction of $"eq"(D, r_g, r'_g)$ and of $"eq"(T_pi, w_g (pi), w'_g (pi))$ over $pi in W_s$;
+    - $T_g$ is the same conjunction over $pi in W_g$;
+    - by @tf-lem-w (b), each conjunct over a position in only one of $W_s$ and $W_g$ compares equal values, so it is `True`; by (c) the conjuncts' types agree;
+    - the truth of a conjunction does not depend on the order of its conjuncts.
 ]
 
 #thm([Lemma], [call types], [
-  Let `L` be a lemma of F with parameters $overline(x) : overline(A)$ and codomain `B`, called at a ground call point $Omega_g$ with arguments $overline(w)$. Let β be the ground instance with $beta(sigma_i) = w_i$ for a data parameter, and $beta(sigma_i) = u_i$ for a borrow parameter with $w_i = "borrow"_(ell_i) u_i$. Then each parameter type, and `B`, are true at the call site ([Call-type]) iff they are true at the ground instance.
+  Let `L` be a lemma of F with parameters $overline(x) : overline(A)$ and codomain `B`, called at a ground call point $Omega_g$ with arguments $overline(w)$. Let β be the ground instance the call is at. Then each parameter type, and `B`, are true at the call site ([Call-type]) iff they are true at the ground instance.
 ]) <tf-lem-call>
 #proof[
   - *Setup.* At the call site the types are evaluated in $Omega_g";" (overline(x) |-> overline(w))$, and at the instance in $Gamma beta";" phi beta$. The two states differ only below the parameter frame. At the instance the borrow parameters' loans sit in the cells $c_i$; at the call site they sit in the caller's places.
-  - *Runs.* Apply `frame_local` with the parameter frame as the core. Its ports are exactly the cells: "`callRun` *is* the meta-model's CallRun" (`notes/lean-meta.md`). Each run made while evaluating a type at the call site is then the run at the instance, with the ports' final values substituted into the caller's frames. So results, and the final contents of the parameter frame's own positions, coincide.
+  - *Runs.* Apply (T2) with the parameter frame as the core. Its ports are exactly the cells: in `meta-lean`, `callRun` runs from the generic call's state. Each run made while evaluating a type at the call site is then the run at the instance, with the ports' final values substituted into the caller's frames. So results, and the final contents of the parameter frame's own positions, coincide.
   - *Borrow parameters.* An `Id` conjunct over a borrow parameter's owner compares, at the instance, the final contents of $c_i$. At the call site it compares the final contents of the owners of $ell_i$.
-  - *One owner.* At a ground state a loan occurs at most once: only sealed programs may hold a loan twice (well-formedness condition 2, preserved by `exec_wf`), and a ground state has none. So $ell_i$ has one owner, reached through a chain of borrow contents, and its final content is $K[v]$ for the borrow's final value `v` and a context `K` that holds the hole once.
+  - *One owner.* At a ground state a loan occurs at most once: only sealed programs may hold a loan twice (condition 2 of well-formedness, by T1), and a ground state has none. So $ell_i$ has one owner, reached through a chain of borrow contents, and its final content is $K[v]$ for the borrow's final value `v` and a context `K` that holds the hole once.
   - *Injectivity.* By `ctx_inj`, `K` is injective, so $"eq"(K[v], K[v'])$ is true iff $"eq"(v, v')$ is.
+]
+
+#thm([Lemma], [runs agree], [
+  Let $Omega_s agr(alpha) Omega_g$. Let `t` be a term of F that is not a match on data, and suppose $Omega_s tack.r t ev v_s : A tack.l Omega'_s$ on the symbolic path, in runtime or erased mode. Suppose also that every call that the ground run of `t` makes at a call site of `t` runs to completion without error, in that mode, at the ground instance it is at. Then:
+  - the ground run of `t` in that mode terminates without error, as $cfg(Omega_g, t) ev cfg(Omega'_g, v_g)$;
+  - the states agree at every call point of `t`, and there each ground argument is the symbolic argument under α (for a borrow argument, its content);
+  - the final states, with the values as temporaries, agree.
+]) <tf-lem-runs>
+#proof[By induction on `t`, one step at a time.
+  - *Steps.* Each primitive step is (N1).
+  - *Calls.* At a call, the arguments are evaluated into temporaries by the induction hypothesis. The consequence of agreement stated after @tf-def-agr then gives the ground arguments: loan-free data arguments equal the symbolic ones under α, and borrow arguments' contents are whole and equal the symbolic contents under α. So the ground call is at the ground instance the lemma names. It runs to completion by hypothesis, and (N2) gives agreement after it.
+  - *Termination.* F has no loops, a match on data is never part of `t` (F4), and a match on a proof takes its one arm or is never run. So the ground run of `t` visits each subterm of `t` at most once. In addition it performs finitely many [End]s at each [Access] and [Drop], since each removes a borrow (`endBorrow_nb_lt`), and it makes the calls, which end by hypothesis. So it terminates.
+
+  This is the "trace-indexed" form reviewer 9 asked for (finding 4): what is assumed about a call is its safety at the arguments it actually receives, not every call at every argument list, which is `exec_total`'s premise.
+]
+
+#thm([Lemma], [modes], [
+  If a data function's runtime-mode run from a ground instance completes without error, so does its erased-mode run, with the same result.
+]) <tf-lem-modes>
+#proof[
+  - *Where the modes differ.* They differ only at [Read] of owned non-copy data. Runtime mode leaves `ghost(v)` behind, and erased mode leaves `v`. By F7 no such read is under `*`, and a ground instance holds no ghost.
+  - *The erased state has fewer ghosts.* Run both from the instance. At each step the erased state is the runtime state with the ghosts that runtime-mode reads created replaced by their values.
+  - *Premises.* Ghosts only ever make a premise fail: [Read-err], [Borrow-err], [Match-err], and [End]'s wholeness. So every premise that holds on the runtime state holds on the erased state.
+  - *Results.* The values the steps produce are the same.
 ]
 
 == The theorem <tf-thm-sec>
 
-#thm([Theorem], [accepted programs of F are sound at every ground instance], [
+#thm([Theorem], [soundness of F, conditional on @tf-ass-n and @tf-ass-t], [
   Let $cal(P) = d_1 dots d_m$ be a program of F whose definitions are accepted in order by [Def] and [Const]. Then for every $d_k$ and every ground instance β of $d_k$:
-  (i) if $d_k$ is a data function, its body runs from its ground instance to completion without error, and the pop of its frame succeeds;
+  (i) if $d_k$ is a data function, its body runs from the ground instance to completion without error, in runtime mode and in erased mode, and the pop of its frame succeeds;
   (ii) if $d_k$ is a lemma, or a constant of proposition type, and its hypotheses at β are true, then its goal at β is true.
 ]) <tf-thm>
 
 #proof[
-  *The induction.* By induction on the pairs $(k, |beta(sigma_j)|)$, ordered lexicographically. $|v|$ is the size of the numeral that is $d_k$'s decreasing argument, read through the borrow for `&Nat`; it is 0 without `by`. Fix `k` and β, and assume (i) and (ii) for every smaller pair. A constant ($n = 0$) is checked by [Const] from the empty environment, without a case tree. A data constant's value is computed once, at checking time, and (ii) for a proof constant is the claim below with $alpha = emptyset$, as in @tf-cor-cons. The rest of the proof is about definitions with parameters, checked by [Def].
+  *The induction.* By induction on the pairs $(k, |beta(sigma_j)|)$, ordered lexicographically. $|v|$ is the size of the numeral that is $d_k$'s decreasing argument, read through the borrow for `&Nat`; it is 0 without `by`. Fix `k` and β, and assume (i) and (ii) for every smaller pair.
+  - A constant ($n = 0$) is checked by [Const] from the empty environment, without a case tree. A data constant's value is computed once, at checking time. For a proof constant, (ii) is the claim below with $alpha = emptyset$, as in @tf-cor-cons.
+  - For (i), erased mode follows from runtime mode by @tf-lem-modes. The rest of the proof is about runtime mode and about definitions with parameters, checked by [Def].
 
-  *Callees are safe.* A data function called directly by the body of $d_k$ on its symbolic path is some $d_j$ with $j < k$, since a definition is checked against the ones before it, or it is $d_k$ itself. A call of $d_k$ in its own body passes, in position `j`, a strict subterm of $rho^*(sigma_j)$ ([Rec]). Under any α that respects the path, that is a numeral smaller than $beta(sigma_j)$. So the induction hypothesis makes every direct callee safe, as @tf-ass-n requires. Calls made inside a callee's run are that callee's business, covered by the induction hypothesis at its own instance. The same bound gives (ii) for recursive lemma calls.
+  *Which calls the walk needs, and why each is safe.* @tf-lem-runs needs every call that the ground run makes at a call site of the body to be safe at the ground instance it is at. There are three kinds.
+  - A call of $d_j$ with $j < k$, since a definition is checked against the ones before it: safe by the induction hypothesis (i), in either mode.
+  - A recursive call of $d_k$ at a call site on the walk's path. The symbolic check applied [Rec] there ([T-Call]'s premise), so the symbolic decreasing argument, or its content, is a strict subterm of $rho^*(sigma_j)$. By @tf-lem-runs the ground argument at that call point is the symbolic one under α. α respects ρ, so it is a strict subterm of $alpha(sigma_j) = beta(sigma_j)$, and the pair is smaller.
+  - A call made while evaluating a type. By F2 it is to an earlier definition, and it is in erased mode; safe by the induction hypothesis (i) and @tf-lem-modes.
+
+  Proof calls are never run at ground ([Erase-proof]); only their types are evaluated, which is the third kind.
 
   *The walk.* We follow $d_k$'s case tree $cal(L)$, from [Def], along β. Throughout we keep five things:
   - a node of the tree with its symbolic state $Omega_s$;
   - a valuation $alpha supset.eq beta$ that covers and respects $Omega_s$;
   - the ground state $Omega_g$ that the ground run of the body has reached;
   - agreement, $Omega_s agr(alpha) Omega_g$;
-  - when $d_k$ is a lemma, the invariant (I): every proof binding $x : T$ of $Omega_s$ has $ok(T alpha)$.
+  - when $d_k$ is a lemma, the invariant (I): every proof place of $Omega_s$ (a binding declared a proof, or a field place of one) has a type $T$ with $ok(T alpha)$.
 
   At the root, $Omega_s = Gamma";" phi^+$, $Omega_g = Gamma beta";" phi^+ beta$ and $alpha = beta$. Agreement is immediate, since $Omega_s beta = Omega_g$. (I) holds by @tf-lem-types, applied to each hypothesis in turn: its type at the generic state is true under β iff it is true at the ground instance, where it is true by assumption. The tail rules move down the tree:
-  - *[Tail-let], [Tail-seq].* `t` is not a match on data (F4). By @tf-ass-n its ground run succeeds, agreement is kept, and (N3) covers the drop. (I) is kept: a proof bound by the `let` has a true type by the claim below.
-  - *[Tail-match].* Both paths take the same arm: after [Access], the scrutinee's content has the same constructor on both.
-  - *[Tail-split] on σ.* The ground run matches on the same place, whose content after [Access] is α(σ) by agreement. If $alpha(sigma) = ty("C")_i (overline(v))$, the ground run takes arm `i`, and we move to the tree's arm `i`, extending α by $alpha(sigma_(i j)) := v_j$. α respects $sigma := r_i$ and $(Omega_s [sigma := r_i]) alpha = Omega_s alpha$, so agreement and (I) carry over.
+  - *[Tail-let], [Tail-seq].* `t` is not a match on data (F4). By @tf-lem-runs its ground run succeeds and agreement is kept; (N1) covers the drop. (I) is kept: a proof bound by the `let` has a true type by the claim below.
+  - *[Tail-match].* [Access] is (N1). By the consequence of agreement stated after @tf-def-agr, the scrutinee then has the same head constructor on both paths, so both take the same arm.
+  - *[Tail-split] on σ.* After [Access], by the same consequence, the ground scrutinee's head is that of α(σ), say $ty("C")_i$, so the ground run takes arm `i`. We move to the tree's arm `i` and extend α to the arm's fresh field values by the fields of α(σ). α respects $sigma := r_i$ and $(Omega_s [sigma := r_i]) alpha = Omega_s alpha$, so agreement and (I) carry over.
   - *[Tail-gen] on a sealed program `n`.* Extend α by @tf-gen and continue as for [Tail-split].
   - *[Tail-prop] (lemma bodies).*
-    - With one arm (`And`, `True`), move to it. Its fields hold ⋆ at the field types, which are true, since $ok((P and Q) alpha)$ gives $ok(P alpha)$ and $ok(Q alpha)$.
-    - With no arms the scrutinee's type is `False`, and (I) would give $ok(ty("False"))$. So no ground instance reaches this node, and there is nothing to prove. This is where ex falso is sound.
+    - With one arm (`And`, `True`), move to it. Its field places have the field types, which are true, since $ok((P and Q) alpha)$ gives $ok(P alpha)$ and $ok(Q alpha)$; (I) is extended to them.
+    - With no arms, the scrutinee's type is `False`, and (I) would give $ok(ty("False"))$. So no ground instance reaches this node, and there is nothing to prove. This is where ex falso is sound.
   - *[Tail-end] `t`.*
     - This is a leaf $(Omega'_s, v, A)$. [Def] gives $"pop"(Omega'_s, v)$ succeeding and $A equiv G'$, the goal refined along the path.
-    - By (N1)–(N3) the ground run of `t` and the ground pop succeed. With the steps before, the ground run of the body has run to completion without error, since it follows the path of the walk one tail rule at a time; each segment ends by (N1). This is (i).
-    - For (ii), `v` is a proof and the claim below gives $ok(A alpha)$. By @tf-lem-conv (b), $A alpha equiv G' alpha$.
-    - $G' alpha = G beta$, because α respects the path's refinements and records (@tf-gen (b)) and `G` mentions only generic values. By @tf-lem-conv (a), $ok(G beta)$.
-    - By @tf-lem-types at the root, the goal at the ground instance is true.
+    - By @tf-lem-runs the ground run of `t` succeeds, and by (N1) so does the ground pop. The ground run of the body follows the walk's path one tail rule at a time. The path is finite, and each segment terminates (@tf-lem-runs). So the body runs to completion without error. This is (i).
+    - For (ii), `v` is a proof, and the claim below gives $ok(A alpha)$. By @tf-lem-conv (b), $A alpha equiv G' alpha$.
+    - $G' alpha = G beta$, because α respects the path's refinements and records (@tf-gen (c)) and `G` mentions only generic values. By @tf-lem-conv (a), $ok(G beta)$.
+    - By @tf-lem-types at the root, the goal at the ground instance is true. The calls made in evaluating it are to earlier definitions (F2).
 
   *Claim (proof terms have true types).* Let $Omega_s agr(alpha) Omega_g$ with (I), and $Omega_s tack.r t ev star : A tack.l Omega'_s$ for a proof term `t` of F. Then $ok(A alpha)$. By induction on the derivation:
   - `refl` has type `True`.
   - $chevron.l h, k chevron.r$: [T-Ctor] types `h : P'` and `k : Q'` with $P' equiv P$ and $Q' equiv Q$. Use the induction hypothesis and @tf-lem-conv.
-  - A proof variable has its stored type, true by (I). A proof constant `c` has its declared type ([T-Const]), true by the induction hypothesis (ii) for `c`, which comes earlier in the program.
-  - *`let` and sequence inside a proof.* The proof runs on a private copy, and the machine never runs it. By @tf-ass-n, the same data steps run from $Omega_g$ succeed and keep agreement, so there are ground states in agreement at every intermediate state, and the induction hypothesis applies to the proof subterms there.
+  - A proof place has its type, true by (I). A proof constant `c` has its declared type ([T-Const]), which is true by the theorem's induction hypothesis (ii), since `c` is earlier in the program.
+  - *A `let` or sequence whose tail is a proof* (F6). The proof runs on a private copy, in erased mode, and the machine never runs it. By @tf-lem-runs, in erased mode with the calls justified above, the same steps run from $Omega_g$ succeed and keep agreement. So there are ground states in agreement at every intermediate state, and the induction hypothesis applies to the proof subterms there.
   - A match on a proof: as for [Tail-prop]. With no arms (under an annotation, [T-Match-erased]), the premise gives `h : False`, against (I), so the case is vacuous.
   - *A lemma call $L_j (overline(u))$ ([T-Call-proof]).*
-    - The arguments evaluate at $Omega_s$ to $overline(w)_s$, ending at $Omega_(s 1)$. By @tf-ass-n the ground evaluation gives $overline(w)_g$ at $Omega_(g 1)$, in agreement.
-    - The parameter types $T_i$ and the call's type `B'` are evaluated at $Omega_(s 1)";" (overline(x) |-> overline(w)_s)$. That state agrees with $Omega_(g 1)";" (overline(x) |-> overline(w)_g)$, so by @tf-lem-types each has the truth of the corresponding type at the ground call site.
-    - A proof argument $u_i$ has type $A'_i equiv T_i$, which is true under α by the induction hypothesis and @tf-lem-conv. So the ground call site's hypotheses are true, and by @tf-lem-call so are those of the ground instance $beta_j$ of $L_j$, with $beta_j (sigma_i) = w_(g, i)$.
-    - The pair $(j, |beta_j|)$ is smaller than the current one: $j < k$, or $j = k$ and [Rec] made the decreasing argument a strict subterm. So the theorem's induction hypothesis (ii) makes $L_j$'s goal at $beta_j$ true.
+    - The arguments evaluate at $Omega_s$ to $overline(w)_s$, ending at $Omega_(s 1)$. By @tf-lem-runs the ground evaluation gives $overline(w)_g$ at $Omega_(g 1)$, in agreement, with each ground argument the symbolic one under α.
+    - The parameter types $T_i$ and the call's type `B'` are evaluated after pushing the parameter frame, which is (N1). By @tf-lem-types each has the truth of the corresponding type at the ground call site; the calls in them are to definitions before $L_j$ (F2).
+    - A proof argument $u_i$ has type $A'_i equiv T_i$, which is true under α by the induction hypothesis and @tf-lem-conv. So the ground call site's hypotheses are true, and by @tf-lem-call so are those of the ground instance $beta_j$ of $L_j$ the call is at.
+    - The pair $(j, |beta_j|)$ is smaller than the current one: $j < k$, or $j = k$ and [Rec] ([T-Call-proof]'s premise) made the decreasing argument a strict subterm, as for data calls. So the theorem's induction hypothesis (ii) makes $L_j$'s goal at $beta_j$ true.
     - By @tf-lem-call, `B'` at the ground call site is true, and by @tf-lem-types, $ok(B' alpha)$.
 ]
 
-Termination is not a separate assumption. The ground run's segments end by (N1). (N1) rests on the mechanised structural half (`exec_total`, `termination_of_calls`: a run terminates if every call it makes does), and the induction supplies the calls. This is the recursive half that the general termination statement in `GuardTerm.lean` lacks, obtained here from [Rec] under α. Its cost is that it is only as strong as @tf-ass-n.
+This theorem reduces soundness of F to @tf-ass-n and @tf-ass-t. It is not a proof of soundness outright (reviewer 9, finding 6).
+- *What is proved.* The case analysis at tail matches and [Rec]'s decrease under α. Termination at the level of calls. The truth bookkeeping, footprints, call types and generalisation.
+- *What is assumed.* That each step of a symbolic run and the corresponding ground step agree, with agreement including what each live borrow holds (A5). And that the 1.3 machine's well-formedness and frame property hold for F.
 
 == Corollaries <tf-cors>
 
-#thm([Corollary], [consistency of F], [
-  No closed term of F has type `False`. More generally:
+#thm([Corollary], [consistency of F, conditional], [
+  Under @tf-ass-n and @tf-ass-t, no closed term of F has type `False`. More generally:
   - if a closed proof term `t` of F is typed from the empty environment, $epsilon tack.r t ev star : A tack.l Omega'$, after the definitions of an accepted program, then $ok(A)$;
   - every accepted constant of proposition type is true.
 
   In particular no closed term has type `Eq Nat Z (S Z)`, which computes to `False`.
 ]) <tf-cor-cons>
-#proof[The empty state is ground, and $epsilon agr(emptyset) epsilon$ holds with (I) vacuous. The claim in the proof of @tf-thm, with $alpha = emptyset$ and @tf-thm itself supplying the lemma calls, gives $ok(A)$. `False` is not true, and truth is invariant under conversion (@tf-lem-conv (a)), so $A equiv.not ty("False")$.]
+#proof[The empty state is ground, and $epsilon agr(emptyset) epsilon$ holds with (I) vacuous. The claim in the proof of @tf-thm, with $alpha = emptyset$ and @tf-thm itself supplying the lemma calls and the calls in types, gives $ok(A)$. `False` is not true, and truth is invariant under conversion (@tf-lem-conv (a)), so $A equiv.not ty("False")$.]
 
-#thm([Corollary], [adequacy of `Id`], [
-  If a lemma $L : Pi(overline(x) : overline(A)). ty("Id") D thin t thin u$ of F is accepted, then at every ground instance whose hypotheses are true, `t` and `u` have equal observations: the same result and the same final contents of every place either of them changes.
+#thm([Corollary], [adequacy of `Id`, conditional], [
+  Under @tf-ass-n and @tf-ass-t, suppose a lemma $L : Pi(overline(x) : overline(A)). ty("Id") D thin t thin u$ of F is accepted. Then at every ground instance whose hypotheses are true, the _observations_ of `t` and `u` are equal: their runs on private copies, in erased mode, give the same result and the same final contents of every place either run changes.
 ]) <tf-cor-adeq>
 #proof[By @tf-thm (ii), $"and"("eq"(D, r, r'), "eq"(T_pi, w_pi, w'_pi), dots)$ is true. At a ground state, `eq` on two numerals is `True` iff they are equal, and `Unit` has one value. By @tf-lem-w (b), every place that `t` or `u` changes is observed.]
 
-#thm([Corollary], [stability for F, at ground valuations], [
-  For a term of F run at $Omega_s$ and at $Omega_g$ with $Omega_s agr(alpha) Omega_g$, the decisions of the stability conjecture (§7) are:
-  (1) the same erasures and the same matches decided by the type of a proof, read from declared types and constructor names, which F never changes;
-  (2) no stuck blocks on either path;
-  (3) no arm is checked at a ground instance, where every match takes its arm; what soundness needs of item (3) is @tf-thm;
-  (4) the same class and [Close] row for each call, read from the callee's declared codomain;
-  (5) the same type for each observed place (@tf-lem-w (c));
-  (6) $W_g subset.eq W_s$, and each conjunct over $W_s without W_g$ becomes `True` under α (@tf-lem-w, and the proof of @tf-lem-types).
-]) <tf-cor-stab>
+The corollary is about observations, which read by copying. It says nothing directly about `t` and `u` as runtime code, whose reads of an owned `Nat` move. Probe `R9Copy`: `Id Nat (let z = a; a) a` is proved by `refl`, while `let z = a; a` is rejected as code. By @tf-lem-modes, an accepted data function's runtime and erased runs from a ground instance agree, so for calls of accepted functions the distinction does not matter.
 
-The stability conjecture at refinements that are not ground, such as $sigma := ty("S") sigma'$, is not proved here. Soundness only needs its instances at ground valuations.
+*Remarks on stability.* For a term of F at agreeing states, the decisions of the stability conjecture are:
+- (1) and (4), erasure, matches decided by a proof's type, and each call's class and [Close] row, are read from declared types, constructor names and declared codomains. F never changes those.
+- (2): F forms no stuck blocks.
+- (3): at a ground instance every match takes its arm, so no arm is checked.
+- (5): the same types for observed places (@tf-lem-w (c)).
+- (6): footprints may differ in both directions, but every position in only one of them contributes a conjunct that is `True` (@tf-lem-w). The symbolic side's extras are the common case, from over-approximate owners (`R9Foot`). The ground side's extras come only from borrow variables that the symbolic path has already ended and that a statement reassigns (`AssignBot`).
 
-== Naturality fails without F5 <tf-drop>
+These are remarks, not a corollary. At ground valuations most items hold trivially. The refinements that matter for [Split], such as $sigma := ty("S") sigma'$, are not ground, and this section says nothing about them. Soundness uses @tf-thm, not stability (reviewer 9, finding 12).
+
+== [Drop] after an early end: `DropProbe`, and D65 <tf-drop>
 
 The probe `ochr/core/lean/Scratch/DropProbe.lean` (5 of 5 verdicts as described, with and without D53) contains
 ```
@@ -250,34 +347,67 @@ def Bad2 (n : Nat) (b : Nat) (x : &Nat) : Unit := ( let a = 0; x := Pick(n, &a, 
 - *At `n = 1`* it runs.
 - *The same with a local `let x = &c` declared before `a`* (`Bad3`).
 
-The symbolic path ended a borrow earlier than the ground path, which (A2) allows. An earlier end is exactly what lets a later [Drop] succeed, so (N1) and (N3) fail.
+The symbolic path ended a borrow earlier than the ground path, which (A2) allows. An earlier end is exactly what lets a later [Drop] succeed, so under the rules as they stood the [Drop] clause of (N1) failed. Reviewer 9 found a second route to the same failure (`Bad4`, `Bad5` in `Reviewer9Probe`): a match on a fill with one owner ends every loan inside it (D29), while on the ground the loan sits deeper and survives the match.
 
-*Why F5 excludes it.* Without assignments of borrows, a borrow value is created by `&p`, which needs `p` to exist, and is then bound by `let`, moved into another `let`, passed to a call, or returned. A borrower is therefore always declared after every place it borrows, and is dropped before them on both paths. A borrow passed to a call is dropped when the callee's frame pops, which happens before the caller's locals are dropped. So when the ground path drops a place, no live borrow into it remains, and the symbolic path has ended at least as much (A3). This is an argument, not a proof, and it is part of @tf-ass-n.
+*The fix, D65.* [Drop] of an owned value that holds a live loan ends that loan's borrower, as a write through [Access] would, and never fails. This is the non-lexical-lifetime reading: dropping `a` while `x` borrows it is fine if `x` is not used again. The [Drop] clause of (N1) then holds by construction, in the sense that a ground [Drop] never fails.
+- If the symbolic counterpart of the ended borrower is live, the symbolic [Drop] ends it too.
+- If it was ended earlier, the symbolic path has already done what the ground path now does. (A2) is unaffected, since ending borrows does not change the resolution, and (A3)–(A5) are kept.
+- Agreement after a drop is still part of @tf-ass-n.
 
-*Consequences for the paper.*
-- The clause "if the run of tα ends, it ends without error" of the naturality conjecture is false for the full rules.
-- So is "accepted programs do not go wrong when run", beyond the fuzzer's generator, which does not assign returned borrows into variables declared earlier.
-- We see no route from this to a closed proof of `False`. The model reads a run through its resolution, and resolution does not see a [Drop] error. But the symbolic path must never be more permissive than a ground one.
-- *The fix being implemented* (team-lead's decision, 2026-09-30) is in the checker lane. When [Access] ends a borrow only because its loan sits in a sealed fill that has other possible owners, it releases only the accessed owner. The borrower becomes a _ghost borrow_: dead to runtime code, as a D53 ghost is, but still holding its loans in the other owners' fills until its binding is dropped, as lexical lifetimes do. `Bad2` is then rejected: `a` is dropped while `x`'s ghost still holds a loan in its fill.
-- Once that lands, F5 should be re-checked against the new [Access] and [Drop], and lifted if (N1) and (N3) hold without it. This section is written for the rules without the fix, with F5.
+`Bad2`–`Bad5` become accepted and run without error. Returning a borrow of a local (`let a = 0; &a`) still has to be rejected: under D65 the result is an ended borrow, and [Def]'s result check refuses it.
 
-== What would remove the assumption <tf-remains>
+Revision 2 excluded `Bad2` with a restriction, F5: no borrow is assigned into an existing place. Under D65, F5 is not needed:
+- the [Drop] clause holds without it;
+- @tf-lem-w, which revision 2 made depend on F5 through `AssignBot`, now covers statements that assign a borrow variable the symbolic path has already ended.
 
-+ *Prove @tf-ass-n for F.* This is item M4 of `notes/typed-fragment-plan.md`: a simulation, rule by rule, between the typing judgement's symbolic run and the ground machine, with agreement as the relation. It uses order-independence (property 4) at every [End], `close_*` at every [Close], and the frame lemma at every call. Its three risks are:
-  - F5's sufficiency for (N1) and (N3);
-  - (N4) through [Seal] with inert loans;
-  - the preservation of (A4).
-+ *Lift the mechanised lemmas to the current rules.* Moves (ghosts); [Close] without the `Unit` row; normalisation at every refinement and [End] rather than when states are compared.
+We found no other use of F5.
+
+An early symbolic end does not leave a reborrow alive that the ground path later ends. In F, the symbolic path ends a borrow early only through [Access] of a place that holds its loan, or through a [Drop] of such a place. Both keep ending loans until none remains in that place, and the ended borrow's content, reborrows included, is substituted into it. So the reborrows of an early-ended borrow end with it. A probe of this (a reborrow through `Pick`'s result, then `x := &c`) is rejected on the symbolic path for that reason.
+
+Pairs would break this argument. A shallow read of one field would leave a reborrow in the other field alive. F has none (F1). The argument is part of @tf-ass-n, as the preservation of (A3).
+
+Dropping F5 does not make the theorem cover the reborrow-and-replace idiom `x := &(*x).1`. The current rules reject it: the assignment's [Access] on `x` ends the new borrow, whose loan sits inside `x`'s content. This is the completeness question that `notes/lean-meta.md` records as F1.
+
+== What would remove the assumptions <tf-remains>
+
++ *Prove @tf-ass-n for F.* This is a simulation, rule by rule, between the typing judgement's symbolic run and the ground machine, with agreement (A1)–(A5) as the relation. It uses property 4 at every [End], the `close_*` equations at every [Close], and the frame property at every call. The risks are:
+  - the preservation of (A3) (early ends are deep), (A4) and (A5);
+  - agreement after a drop under D65;
+  - (N4) through [Seal] with inert loans.
+
+  Item M4 of `notes/typed-fragment-plan.md` estimates it at 3–5k lines of Lean.
++ *Prove @tf-ass-t,* by porting `exec_wf` and the frame lemma to ghosts and the current [Close].
 + *Widen F.* Each addition brings back a decision of the stability conjecture:
-  - stuck blocks: their captures and modes;
+  - moves through borrows (F7): ghost-transparent resolution;
+  - stuck blocks (F4): captures and modes;
   - closures and Π-values: class, captured types, [Conv-fun];
-  - user inductives and pairs: disjointness and injectivity in `eq`, and matches on several-constructor proofs;
-  - type families: generalisation types, where A1 lives;
-  - `J` and `rewrite`: transport, and the stuck casts of D56.
+  - user inductives and pairs: disjointness and injectivity in `eq`;
+  - type families: generalisation types, where A1 lived;
+  - `J` and `rewrite`: transport and the stuck casts of D56.
 
 *Where F's restrictions are used.*
-- F1 and F2: @tf-gen (a) and (c) (the closed type of a sealed program); @tf-lem-w (c).
-- F3: @tf-lem-w (a) (every occurrence in a statement is reached).
-- F4: the walk has no stuck blocks, and every non-tail term is typed without [Split].
-- F5: @tf-ass-n's (N1) and (N3), through @tf-drop.
-- F6: @tf-thm (i), since a data function's run never depends on the truth of a hypothesis.
+- F1: ground values (@tf-def-truth); @tf-gen (b); @tf-lem-w (c).
+- F2: @tf-lem-conv (conversion on data is syntactic); @tf-gen (b); @tf-lem-w (c); calls in types are to earlier definitions (@tf-thm).
+- F3: @tf-lem-w (a) (every occurrence in a statement is reached); with F4, @tf-gen (a) (records come only from [Tail-gen]).
+- F4: the walk forms no stuck blocks; @tf-lem-runs.
+- F5: removed in revision 2.1 (D65).
+- F6: @tf-thm (i) (a data function's run never depends on the truth of a hypothesis); the claim's `let` case.
+- F7: @tf-lem-res; the whole borrow arguments of @tf-lem-runs; @tf-lem-modes.
+- F8: @tf-lem-w (a).
+- D65, assumed: the [Drop] clause of (N1) (@tf-drop).
+
+*Changes from revision 1*, for reviewer 9's findings:
+- (1) (A5), used at the tail steps and at [Rec]'s decrease.
+- (2) F7 and @tf-lem-res; resolution is defined at every state visited.
+- (3) @tf-ass-n stated per step, with per-call hypotheses (N2), erased mode (N1), (N3), and pushed frames (N1); @tf-lem-runs; @tf-lem-modes. Calls at non-ground instances are excluded by F7.
+- (4) Termination from @tf-lem-runs, not from `exec_total`, which is no longer cited.
+- (5) @tf-ass-t is separate from @tf-ass-n. The table gives the `close_*` hypotheses.
+- (6) The theorem is titled conditional, with the paragraph after its proof.
+- (7) Revision 2 corrected the F5 argument (it depends on (A4)). Revision 2.1 replaces F5 with D65, after reviewer 9's `Bad4` refuted the ghost-borrow fix.
+- (8) @tf-lem-w (a)'s case list is corrected (F8). In revision 2.1, (a) and (b) are symmetric and cover `AssignBot` without F5.
+- (9) @tf-gen is rewritten for arm-local records (969e3254): records come only from [Tail-gen] on the current path, and are defined by (A1).
+- (10) F8.
+- (11) @tf-cor-adeq is about observations.
+- (12) Stability is given as remarks.
+- (13) @tf-lem-types (`Eq`) claims equal truth, not equality; (I) covers field places; F6 has `let` and sequence; [Access] is (N1); bodies are required (F2); the new uses of F2, F3 and F4 are listed; the mechanisation's schedule counterexample is named `Sched.lean`, not F5; `R9Foot` is cited.
+- (14) Rule readings are stated in @tf-frag.
