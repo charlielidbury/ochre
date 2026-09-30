@@ -1,31 +1,26 @@
 import Ochr.Prelude
+import Ochr.Run
 
 /-!
 # Running example programs and asserting their verdicts
 
 Each declaration in an `ochr` program carries an expectation (`def`: accepted,
 `reject def`: rejected). `run` checks the block (after the declarations the blocks it
-`uses` export) and pairs each of its own declarations' expectations with its verdict. Example files assert `(run P).allAsExpected` and the exact number of
-assertions with `#guard`, so a green build means every verdict is as expected and
-that no assertion silently disappeared (a truncated file would change the count).
+`uses` export) and pairs each of its own declarations' expectations with its verdict. The
+`ochr` command checks every block this way when it is elaborated (`Ochr.Notation.checkBlock`),
+so a green build means every verdict is as expected; `run` is for programmatic runs (the
+test runner, the counterfactual ledger, the fuzzer, traces).
 -/
 
 namespace Ochr.Test
 open Ochr Ochr.Surface
 
-structure Row where
-  name : String
-  expectAccept : Bool
-  verdict : Verdict
-  trace : Array String := #[]
+/-- What a block exports under `cfg` (`exportsWith`, the library block `Prelude`). -/
+def exportsOf (cfg : Config) (fuel : Nat) (b : Block) : Program := exportsWith (some Prelude) cfg fuel b
 
-def Row.asExpected (r : Row) : Bool := r.expectAccept == r.verdict.ok
-
-structure Report where
-  program : String
-  rows : List Row
-
-def Report.allAsExpected (r : Report) : Bool := r.rows.all Row.asExpected
+/-- A block's library under `cfg` (`libWith`): `Prelude`'s exports, then those of the blocks it
+uses, transitively. -/
+def libOf (cfg : Config) (fuel : Nat) (b : Block) : Program := libWith (some Prelude) cfg fuel b
 
 /-- Each named declaration is rejected with a message that starts as given (the reason, not
 only the verdict). -/
@@ -33,52 +28,10 @@ def Report.rejectedWith (r : Report) (exp : List (String × String)) : Bool :=
   exp.all fun (n, pre) => match r.rows.find? (·.name == n) with
     | some { verdict := .rejected m, .. } => pre.isPrefixOf m
     | _ => false
-def Report.count (r : Report) : Nat := r.rows.length
-def Report.passed (r : Report) : Nat := (r.rows.filter Row.asExpected).length
 
-/-- Check a list of declarations as one program: each is resolved against the whole list
-(a resolution failure is a rejection of that declaration), then they are checked in order.
-The verdict and trace of each, by name. -/
-def checkProgram (p : Program) (cfg : Config) (fuel : Nat) : List (String × Verdict × Array String) :=
-  Id.run do
-  let mut defs : List Item := []
-  let mut bad : List (String × String) := []
-  for d in p do
-    match resolveProgram p d with
-    | .ok df => defs := defs ++ [df]
-    | .error e => bad := bad ++ [(d.name, e)]
-  let verdicts := checkDefs cfg defs fuel
-  pure (p.map fun d => match bad.lookup d.name with
-    | some e => (d.name, Verdict.rejected s!"(surface) {e}", #[])
-    | none => (d.name, (verdicts.lookup d.name).getD (.rejected "not checked", #[])))
-
-mutual
-/-- What a block exports under `cfg`: its own declarations that are expected to be accepted
-(`def`, not `reject def`) and are accepted, checked after its own library. A rejected or
-`reject` declaration is never visible to the block's users. -/
-partial def exportsOf (cfg : Config) (fuel : Nat) (b : Block) : Program :=
-  let vs := checkProgram (libOf cfg fuel b ++ b.decls) cfg fuel
-  b.decls.filter fun d => d.expectAccept && ((vs.lookup d.name).map (·.1.ok)).getD false
-
-/-- A block's library under `cfg`: the exports of every block it uses, transitively, each
-once, a block after the blocks it uses. It is checked again, under `cfg`, ahead of the
-block's own declarations: nothing is cached, so switching a rule off re-decides the library
-too. -/
-partial def libOf (cfg : Config) (fuel : Nat) (b : Block) : Program :=
-  if b.name == "Prelude" then [] else
-  -- the library, `Prelude`, is used by every block, first (v2.1)
-  exportsOf cfg fuel Prelude ++
-    (b.closure.filter (·.name != "Prelude")).flatMap (exportsOf cfg fuel)
-end
-
-/-- Check a block: its library, then its own declarations. The report has a row for each of
-its own declarations only; a library declaration is asserted in its home block. -/
+/-- Check a block: its library, then its own declarations (`runWith`). -/
 def run (name : String) (b : Block) (cfg : Config := {}) (fuel : Nat := 2000000) : Report :=
-  let vs := checkProgram (libOf cfg fuel b ++ b.decls) cfg fuel
-  let rows := b.decls.map fun d =>
-    let (v, tr) := (vs.lookup d.name).getD (.rejected "not checked", #[])
-    { name := d.name, expectAccept := d.expectAccept, verdict := v, trace := tr }
-  { program := name, rows := rows }
+  runWith (some Prelude) name b cfg fuel
 
 /-- The library declarations of `b` whose visibility under `cfg` differs from the default
 (a library declaration flipped by the switched-off rule), as `(name, home block)`. -/

@@ -1,4 +1,4 @@
-import Ochr.Surface
+import Ochr.Run
 import Lean.Elab.Command
 
 /-!
@@ -30,10 +30,16 @@ arm's body (`ochr_term:10`) ends at the next top-level comma. Line breaks are wh
 file or an imported one). A block is checked after the declarations its used blocks export,
 transitively and each block once: their own declarations that are `def`s (not `reject`) and
 are accepted, checked afresh under the same configuration (`Ochr.Test.libOf`). A block's
-report and its assertions cover its own declarations only. The names of a block and of the
-blocks it uses form one namespace: a clash is an error when the block is elaborated
-(`#ochr_check`, which the command expands to, using `Block.clashes`). Every block also
-uses the library block `Prelude` (`Ochr/Prelude.lean`) implicitly.
+report covers its own declarations only. The names of a block and of the blocks it uses form
+one namespace: a clash is an error. Every block also uses the library block `Prelude`
+(`Ochr/Prelude.lean`) implicitly.
+
+The command defines the block and checks it at once, when it is elaborated (`checkBlock`,
+docs/07): a rejected `def` is an error at the declaration, and so is an accepted
+`reject def`; hovering a declaration's name shows its verdict, the reason for a rejection
+included. The checker runs natively: the lakefile precompiles the checker's modules, and
+the elaborator calls it (`Ochr.Test.runWith`). `#ochr_check B` checks a block defined
+earlier, reporting at `B`.
 -/
 
 namespace Ochr.Notation
@@ -114,7 +120,7 @@ syntax ochr_indmod* "inductive " ident ochr_binder* (" : " ochr_term:21)? (" := 
 syntax "reject " ochr_indmod* "inductive " ident ochr_binder* (" : " ochr_term:21)? (" := " sepBy1(ochr_ctor, " | "))? : ochr_decl
 
 syntax (name := ochrProgram) "ochr " ident (&" uses " ident,+)? " { " ochr_decl* " }" : command
-/-- Report a clash in an `ochr` block's flat namespace (the command `ochr` expands to this). -/
+/-- Check a block defined earlier, as the `ochr` command does, reporting at the name. -/
 syntax (name := ochrCheck) "#ochr_check " ident : command
 
 def strLit (s : String) : TSyntax `term := quote s
@@ -320,36 +326,77 @@ def elabDecl (stx : TSyntax `ochr_decl) : MacroM (TSyntax `term) := do
   | `(ochr_decl| reject $ms:ochr_indmod* inductive $n:ident $bs* $[: $s?]? $[:= $cs?|*]?) => elabInd n bs s? cs? false ms
   | _ => Macro.throwErrorAt stx "unsupported declaration"
 
-macro_rules
-  | `(ochr $name:ident $[uses $us,*]? { $ds* }) => do
-    let decls ← ds.mapM elabDecl
-    let us : Array (TSyntax `term) := match us with
-      | some us => us.getElems.map fun u => ⟨u.raw⟩
-      | none => #[]
-    let defn ← `(def $name : Ochr.Surface.Block :=
-      Ochr.Surface.Block.mk $(strLit name.getId.toString) [$us,*] [$decls,*])
-    let check ← `(#ochr_check $name)
-    return mkNullNode #[defn, check]
-
-open Lean.Elab.Command in
+open Lean.Elab Lean.Elab.Command in
 unsafe def evalBlockUnsafe (n : Name) : CommandElabM Block := do
   match (← getEnv).evalConst Block (← getOptions) n with
   | .ok b => pure b
   | .error e => throwError e
 
-open Lean.Elab.Command in
+open Lean.Elab Lean.Elab.Command in
 @[implemented_by evalBlockUnsafe]
 opaque evalBlock (n : Name) : CommandElabM Block
 
-open Lean.Elab.Command in
+open Lean.Elab Lean.Elab.Command in
+/-- Text shown on hover over `stx` (a leaf of the info tree whose docstring is `text`). -/
+def addHover (stx : Syntax) (text : String) : CommandElabM Unit :=
+  pushInfoLeaf <| .ofDelabTermInfo {
+    elaborator := `Ochr.Notation.ochrProgram, stx, lctx := {}, expectedType? := none,
+    expr := mkConst ``Unit.unit, mkDocString? := some fun _ => pure text }
+
+/-- The name of a declaration of an `ochr` block (its first identifier). -/
+def declName (d : Syntax) : Syntax := (d.getArgs.find? (·.isIdent)).getD d
+
+open Lean.Elab Lean.Elab.Command in
+/-- Check block `n` when it is elaborated: the name clashes of its namespace, then every
+declaration, with the checker, after the block's library (`Ochr.Test.runWith`, with the
+library block `Prelude` once it is declared). `decls` are the declarations' syntax, in
+order (empty: every message goes to `ref`). An accepted `def` and a rejected `reject def`
+are silent; hovering a declaration's name shows its verdict (a rejection's reason). A
+rejected `def` is an error at the declaration, and so is an accepted `reject def`. -/
+def checkBlock (n : Name) (ref : Syntax) (decls : Array Syntax) (kw : Syntax := ref) : CommandElabM Unit := do
+  let b ← evalBlock n
+  -- every block implicitly uses the library, `Prelude` (v2.1), once it is declared
+  let pre ← if b.name == "Prelude" then pure none else
+    try pure (some (← evalBlock `Prelude)) catch _ => pure none
+  let cs := b.clashes pre.toList
+  unless cs.isEmpty do
+    throwErrorAt ref m!"ochr {b.name}: {"; ".intercalate cs}"
+  -- the report is stored before the clock stops, so its (pure) computation is timed; hovering
+  -- the `ochr` keyword shows the block's summary
+  let out ← IO.mkRef (none : Option Ochr.Test.Report)
+  let t0 ← IO.monoNanosNow
+  let r := Ochr.Test.runWith pre b.name b
+  out.set (some r)
+  let t1 ← IO.monoNanosNow
+  let ms := (t1 - t0) / 1000000
+  addHover kw s!"ochr block {b.name}: {r.passed}/{r.count} declarations as expected ({ms} ms)"
+  for (row, i) in r.rows.zipIdx do
+    let at_ := match decls[i]? with
+      | some d => declName d
+      | none => ref
+    match row.verdict, row.expectAccept with
+    | .accepted, true => addHover at_ s!"{row.name}: accepted"
+    | .accepted, false => logErrorAt at_ m!"{row.name}: expected rejection, but accepted"
+    | .rejected m, true => logErrorAt at_ m!"{row.name}: {m}"
+    | .rejected m, false => addHover at_ s!"{row.name}: rejected, as expected: {m}"
+
+open Lean.Elab Lean.Elab.Command in
+elab_rules : command
+  | `(ochr $name:ident $[uses $us,*]? { $ds* }) => do
+    let stx ← getRef
+    let decls ← liftMacroM <| ds.mapM elabDecl
+    let us : Array (TSyntax `term) := match us with
+      | some us => us.getElems.map fun u => ⟨u.raw⟩
+      | none => #[]
+    elabCommand (← `(def $name : Ochr.Surface.Block :=
+      Ochr.Surface.Block.mk $(strLit name.getId.toString) [$us,*] [$decls,*]))
+    -- the definition failed (its error is logged): nothing to check
+    unless (← getEnv).contains ((← getCurrNamespace) ++ name.getId) do return
+    checkBlock (← liftCoreM (realizeGlobalConstNoOverload name)) name (ds.map (·.raw)) stx[0]
+
+open Lean.Elab Lean.Elab.Command in
 elab_rules : command
   | `(#ochr_check $n:ident) => do
-    let b ← evalBlock (← liftCoreM (realizeGlobalConstNoOverload n))
-    -- every block implicitly uses the library, `Prelude` (v2.1), once it is declared
-    let pre ← if b.name == "Prelude" then pure [] else
-      try pure [← evalBlock `Prelude] catch _ => pure []
-    let cs := b.clashes pre
-    unless cs.isEmpty do
-      throwErrorAt n m!"ochr {b.name}: {"; ".intercalate cs}"
+    checkBlock (← liftCoreM (realizeGlobalConstNoOverload n)) n #[]
 
 end Ochr.Notation

@@ -1331,3 +1331,12 @@ A field's type may mention the fields before it: `Vec(E) := MkVec(n : Word, item
   - Proof fields that change in place beyond `Pos`/`Grow` (docs/06's second milestone).
 
 1209 verdicts.
+## 49. Using the checker in the editor (docs/07)
+
+**Checking at elaboration.** The `ochr` command defines the block and checks it at once (`Notation.checkBlock`), after its library: `Prelude`, then the blocks it `uses`, re-checked as `run` does (`Run.libWith`, which takes the library block as a parameter, because `Prelude` is itself defined by the command). A green build therefore means every verdict is as expected, with no `#eval`/`#guard` lines.
+- An accepted `def` and a rejected `reject def` are silent. Hovering a declaration's name shows its verdict: "accepted", or "rejected, as expected: *reason*" (so a negative test still shows why it is rejected).
+- A rejected `def` is an error at its name, with the checker's reason. An accepted `reject def` is an error "expected rejection, but accepted".
+- Hovering `ochr` shows the block's count of verdicts as expected and its check time.
+- `#ochr_check B` checks a block defined earlier, reporting at `B`.
+
+**Native.** The library `Ochr` (every module but the examples) is precompiled (`precompileModules`), so the elaborator runs the compiled checker; the examples are a separate, non-precompiled library, `OchrExamples`, whose root `Ochr/Examples.lean` imports the registry and the ledger. Hovers are info-tree leaves (`DelabTermInfo` with a docstring, `Notation.addHover`): in Lean 4.33 that is the node whose hover shows custom text alone.
