@@ -1380,3 +1380,23 @@ x : &Nat ↦ borrow_0 0
 ⊢ ⊤
 ```
 (the `Z` arm of `AddMZero` with its `refl` replaced by `?`). A hole whose type the context does not fix is an error saying so; a run that reaches a hole (a call of a function with one) is stuck, so the call closes off. A declaration with a hole is accepted, as Lean accepts a `sorry` with a warning.
+
+## 50. Ghost borrows reverted; D65 amended ([Drop] ends bound borrowers)
+
+The ghost-borrow fix for Bad2 (§45, a632b90c) is reverted: reviewer-9 showed it covers only the several-owner channel, and a one-owner channel (`Bad4`: a match on a sealed fill ends every loan in it, while on the ground the loan sits deeper and survives) gives the same [Drop] failure. The `ghostBorrows` switch, `releaseHere`, `Value.ghostBorrow` and the `GhostBorrows` block are gone; §45's RULES draft is dead.
+
+In their place, D65 as amended (DECISIONS; reviewer-9's patch `Scratch/Reviewer9D65Amended.patch`, applied as is): at a [Drop] of an owned value holding a live loan (`dropTopBind` for a binding, `dropValue` for a discarded value), the loan's borrower is ended if it is held in a binding, repeating as [Access] does (`endLoansOfTopBind`, `endLoansOfTopTemp`). If the borrower is a value in flight (a temporary), the drop is an error. Assigning over a lent place is unchanged (an error). RULES [Drop] now says this.
+
+*Regressions,* the block `Drops` (02Borrows, 21 declarations):
+- accepted, each with a `…Run` at the instance that used to fail, also accepted: `Bad2`, `Bad3`, `Bad4`, `D1`–`D4`, `AssignBot`;
+- rejected: `RetLocal`, `FR`, `Blk`, `G`, `UseG`.
+
+*Ledger:* a new row, `dropEndsBound`, class soundness (going wrong when run), witnesses `Blk` and `UseG`. Switched off, it is pure D65: a borrower in flight is ended too, and `RetLocal`, `FR`, `Blk`, `G`, `UseG` are accepted (in a stuck block, [Split] discards the arm's ended borrow and [Close] gives the block a fresh live one, so `Blk` writes through ⊥ at `n = 0`). Other rows that changed:
+- `accessInside` gains `Naturality.PickEarly:accepted` (as reviewer-9 predicted) and `Drops.D2`, `D2Run` (rejected);
+- the `generalize` row gains `Drops.Bad4`, `Bad4Run` (rejected).
+
+The switch between D65 and the old error at [Drop] has no row. Its flips would be the `…Run` declarations, all rejections, so its class would be completeness, although what it prevents is a generic acceptance whose instance fails.
+
+55 rows: soundness 22, false lemma 1, model 4, policy 7, completeness 21. 1134 verdicts.
+
+The scratch probes `DropProbe`, `DropVariants` and `Reviewer9Probe` still record the verdicts from before D65.

@@ -60,7 +60,8 @@ open Ochr.Registry in
 -- original witness `BadA1` (a stuck `Unit` call's result is `()`, D59 refined)
 open Ochr.Registry in
 #guard rowOk { accessInside := false }
-  ["Borrows.BadA1:accepted", "Borrows.V:accepted", "Borrows.W:accepted", "GhostBorrows.Ok1:rejected"]
+  ["Borrows.BadA1:accepted", "Borrows.V:accepted", "Borrows.W:accepted", "Drops.D2:rejected",
+   "Drops.D2Run:rejected", "Naturality.PickEarly:accepted"]
 open Ochr.Registry in
 #guard rowOk { selfHeadOnly := false }
   ["Recursion.Knot:accepted", "Recursion.KnotBoom:accepted"]
@@ -69,15 +70,16 @@ open Ochr.Registry in
   ["Borrows.Dead:accepted", "Borrows.DeadTwice:accepted"]
 open Ochr.Registry in
 #guard rowOk { generalize := false }
-  ["ClosingOff.UseDec:rejected", "Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected",
-   "GenType.GenL:rejected", "RenormPi.G:rejected", "RenormPi.Plain:rejected", "RenormPi.InPi:rejected",
-   "RenormPi.InConj:rejected", "Splitting.Pick:rejected", "Splitting.PickNotZero:rejected",
-   "Splitting.PickNotZeroCopy:rejected", "Splitting.Pick22:rejected", "Splitting.Pick22NotZero:rejected",
-   "Splitting.PickTwo:rejected", "Splitting.DoubleVal:rejected", "ScrutineeTypes.M2Zero:rejected",
-   "Trees.InsertM:rejected", "Trees.Insert:rejected", "Trees.InsertMEq:rejected",
-   "Trees.InsertMSwap:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.InsertM:rejected",
-   "InPlaceTrees.Insert:rejected", "InPlaceTrees.InsertMIsInsert:rejected",
-   "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected"]
+  ["Drops.Bad4:rejected", "Drops.Bad4Run:rejected", "ClosingOff.UseDec:rejected",
+   "Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected", "GenType.GenL:rejected",
+   "RenormPi.G:rejected", "RenormPi.Plain:rejected", "RenormPi.InPi:rejected", "RenormPi.InConj:rejected",
+   "Splitting.Pick:rejected", "Splitting.PickNotZero:rejected", "Splitting.PickNotZeroCopy:rejected",
+   "Splitting.Pick22:rejected", "Splitting.Pick22NotZero:rejected", "Splitting.PickTwo:rejected",
+   "Splitting.DoubleVal:rejected", "ScrutineeTypes.M2Zero:rejected", "Trees.InsertM:rejected",
+   "Trees.Insert:rejected", "Trees.InsertMEq:rejected", "Trees.InsertMSwap:rejected",
+   "Trees.SizeInsert:rejected", "InPlaceTrees.InsertM:rejected", "InPlaceTrees.Insert:rejected",
+   "InPlaceTrees.InsertMIsInsert:rejected", "InPlaceTrees.SizeInsert:rejected",
+   "InPlaceTrees.SizeInsertRw:rejected"]
 open Ochr.Registry in
 #guard rowOk { blockMoves := false }
   ["ClosingOff.MovedByBlock:accepted"]
@@ -329,13 +331,6 @@ open Ochr.Registry in
 #guard rowOk { unsizedTypes := false }
   ["Abstraction.Take:accepted", "Abstraction.ReadV:accepted"]
 
--- ghost borrows switched off: reading one possible owner of a hole ends the borrow outright,
--- earlier than the ground path may, so a later [Drop] of another owner is let through
--- (meta-order's Bad2: accepted, and wrong at n = 0)
-open Ochr.Registry in
-#guard rowOk { ghostBorrows := false }
-  ["GhostBorrows.Bad2:accepted", "GhostBorrows.Bad3:accepted", "GhostBorrows.D1:accepted",
-   "GhostBorrows.D2:accepted", "GhostBorrows.D3:accepted", "GhostBorrows.D4:accepted"]
 -- D64 [Repack] switched off: a value left open (its length changed, its array not) is returned,
 -- read, passed and observed as if it were of its type; `Absurd`, true of every packed `V`, then
 -- proves `Boom : False` from the lie's result
@@ -389,6 +384,14 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { typedObs := false }
   ["Equality.Conv1:rejected"]
+-- D65 amended switched off (pure D65): a dying place's borrower in flight is ended too, so a
+-- block or function returns an ended borrow of its own local; in a stuck block [Split]
+-- discards the arm's value and [Close] gives the block a fresh live borrow, so `Blk` and
+-- `UseG` pass generically and write through ⊥ at `n = 0` (reviewer-9 finding 16)
+open Ochr.Registry in
+#guard rowOk { dropEndsBound := false }
+  ["Drops.RetLocal:accepted", "Drops.FR:accepted", "Drops.Blk:accepted", "Drops.G:accepted",
+   "Drops.UseG:accepted"]
 
 -- every row of `switches` has a class
 open Ochr.Registry in
