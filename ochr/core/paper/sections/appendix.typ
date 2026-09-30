@@ -462,10 +462,39 @@ A state (Ω, Δ, Σ) is _well formed_ when the following hold. They are the four
 
 That the machine preserves conditions 1 to 5 is property 2 of @fig-claims, mechanised for the first-order fragment of @sec-meta-mech.
 
-== The model's translation <app-model>
+== The model <app-model>
 
 #let dg(x) = $#x^dagger$
-The model sketch of @sec-meta-model translates terms by the clauses of @fig-model.
+// Numbered statements (definitions) as in the body.
+#let thm(kind, name, body) = figure(kind: "ochr-thm", supplement: kind, numbering: "1", caption: name, body)
+#show figure.where(kind: "ochr-thm"): it => block(width: 100%, above: 0.9em, below: 0.9em, breakable: true, align(left)[
+  *#it.supplement #context it.counter.display(it.numbering) (#it.caption.body).* #it.body
+])
+This section gives the interpretation that @sec-meta-model summarises, as a sketch.
+
+*Types.* An inductive declaration in `Type₀` denotes the least set closed under its constructors, at each value of its parameters, so `Nat` denotes $NN$; constructors are injective and have disjoint images. One in `Prop` denotes a subsingleton, ${•}$ if that least set is inhabited and $emptyset$ otherwise: `False` denotes $emptyset$, `True` denotes ${•}$, and `And(P, Q)` denotes $dg(P) inter dg(Q)$. `Eq A a b` denotes $[dg(a) = dg(b)] subset.eq {•}$. For a function type with borrow parameters `xᵢ : &Tᵢ` at positions $i in I$, let $D_i = dg(T_i)$ for $i in I$, $D_j = dg(A_j)$ otherwise, and $"Fin" = product_(i in I) dg(T_i)$, the final contents of the borrowed places:
+
+$ dg((Pi(overline(x) : overline(A)). B)) = R_(Pi(overline(x) : overline(A)). B) subset.eq Pi(overline(d) : overline(D)). "Out"_B (overline(d)), quad
+  "Out"_B (overline(d)) = cases(
+    dg(B)(overline(d)) & "if" B "is a proposition,",
+    dg(B)(overline(d)) times "Fin" & "if" B "is borrow-free data,",
+    dg(T) times (dg(T) -> "Fin") quad & "if" B = \&T.
+  ) $
+
+Here $dg(B)(overline(d))$ is $B$ at the generic call of [Def]. We write $"fwd"_F$ and $"back"_F$ for the two components of $F(overline(d))$. For a returned borrow, $"back"_F (overline(d))$ is Aeneas's backward function: it maps the value the caller eventually leaves in the borrow to the final contents. A proposition has no $"Fin"$ component, because proofs run on a private copy (@sec-typing).
+
+#thm([Definition], [injectivity relation], [
+  $R_A subset.eq dg(A)$ is defined by induction on $A$. For propositions and universes $R_A = dg(A)$; at an inductive type, $R$ holds of a constructor value when it holds of each field at the field's type, so it reaches functions stored under a type parameter, such as `Box(Π(y : &Nat). &Nat)`; and $R_(\&T) = R_T$. For a function type, $F in R_(Pi(overline(x) : overline(A)). B)$ iff, for all $overline(d)$ with $d_i in R_(T_i)$ for $i in I$ and $d_j in R_(A_j)$ otherwise, $"fwd"_F (overline(d)) in R_B$, and, if $B = \&T$, $"back"_F (overline(d))$ is injective: equal tuples of final contents come only from equal final values of the returned borrow.
+]) <def-inj>
+
+$R$ is forced: by [Call-type], Ochr proves of every abstract `g : Π(x : &Nat). &Nat` that writing `0` or `1` through `g(x)` leaves different states, which is false of a Rust function that returns a leaked `'static` borrow (@sec-discussion).
+
+*Terms.* Abstract values become variables, and a loan $ell$ becomes a variable $h_ell$, a _hole_ for the final content of its borrow. The _view_ $dg(Omega)$ reads a borrow as its current content and a loan as its hole; the _resolution_ $rho_Omega$ substitutes each hole by its borrow's content, that is, it ends every borrow. A term translates to a state-passing function on views (@fig-model); a sealed program denotes the result of running it from the empty view; a definition is a well-founded recursion on the entry value of its decreasing parameter; and `Id` is the equation between the tuples of result and resolved footprint. A symbolic and a concrete run of one term can place their borrows differently (@sec-meta-nat), so runs are related through their resolutions.
+
+Four invariants of the machine make this well defined (@app-wf): each borrow is held once, every loan is bound by a held borrow or lies inside a sealed program (the only place a loan may occur twice), loans nest in borrows acyclically, and every value read, moved or passed is loan-free. That machine steps preserve them is property 2 of @fig-claims, which is mechanised.
+
+
+The translation of terms follows the clauses of @fig-model.
 
 #figure(kind: image, supplement: [Figure],
   block(width: 100%)[

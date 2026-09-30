@@ -36,7 +36,7 @@ Ochr is a dependent type theory in the style of Lean's kernel @theory-of-lean, e
 
 `Eq` is the one primitive proposition. It is not an inductive family, for two reasons: it computes by the structure of the values it compares, as in observational type theory (@sec-obs), and the core has no indexed families.
 
-The imperative fragment is small. A _place_ `p` is a variable, a dereference `*p`, or a field `p.g` of a constructor value, such as the predecessor field `p.1` of a number. A place used as a term reads it; `&p` borrows it; `p := t` assigns it; `let x = t; u` introduces a new place `x`. The pattern variables of a `match` are _sub-places_: in `match p { S y => u }`, `y` stands for `p.1`, and nothing is copied.
+The imperative fragment is small. A _place_ `p` is a variable, a dereference `*p`, or a field `p.g` of a constructor value, such as the predecessor field `p.1` of a number. A place used as a term reads it; `&p` borrows it; `p := t` assigns it; `let x = t; u` introduces a new place `x`. The pattern variables of a `match` are _sub-places_: in `match p { S y => u }`, `y` stands for `p.1`, and nothing is copied, so a read of `y` after `p` is reassigned sees the new content, where a Rust binding would have taken the old value or rejected the assignment.
 
 `&A` is the type of a mutable borrow of an `A`, and `A` must be data: an inductive type in `Type₀`, never a universe, a Π-type or a proposition. `&` occurs only at the top of a type as written, as the type of a variable, parameter or result; never inside another type, and never as the result of computing one. So there are no borrows stored in data structures and no borrows of borrows. Shared borrows, loops and `'static` borrows are absent (@fig-scope), and recursion is structural.
 
