@@ -186,6 +186,8 @@ structure Config where
   k4 : Bool := true              -- K4: a field type may call an earlier type function (e.g. `Array(T, n)`)
   k4Nest : Bool := true          -- K4's nesting condition: a parameter an inductive passes to a type function
                                  -- is not nestable (the type being declared may not appear there)
+  dropEndsBound : Bool := true   -- D65 amended: [Drop] of a lent place ends a borrower held in a binding (a
+                                 -- borrower in flight is still an error); off, every lent drop is an error
   ghosts : Bool := true          -- D53 (c): a move leaves a ghost of the value, which erased terms still read
   fnRule : Bool := true          -- D53 (e): a call does not consume its function; a closure is copy iff its captures are, and its body may not move them out
   unitNorm : Bool := false       -- counterfactual D50: the unit laws normalise stored types (v2.0 as first built)

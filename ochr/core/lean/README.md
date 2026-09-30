@@ -79,7 +79,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 |---|---|---|---|
 | `00Std` | `Std`: in-place and pure addition, adding zero does nothing, `TailM`, `Bool`, `List(A)`, `Box(A)`, the copy type `Word`; `Fixtures`: `Pick`, `Empty`, `U`/`V`; and the assertions for `Prelude` | §1, §3, §7 | 12 (+4) |
 | `01Numbers` | evaluation in types, the pure theorem by the in-place lemma; matching on numbers; pairs; calls | §1, §3, §7 | 20 |
-| `02Borrows` | moving, copying and reborrowing; argument order; the borrow checker ([Access], [Drop]); `Moves`: D53's moves, copy types, `clone`, ghosts, the Fn rule, and a stuck block's captures | §3 | 73 |
+| `02Borrows` | moving, copying and reborrowing; argument order; the borrow checker ([Access], [Drop]); `Drops`: a local that dies while borrowed ends a bound borrower and rejects one in flight (D65 amended); `Moves`: D53's moves, copy types, `clone`, ghosts, the Fn rule, and a stuck block's captures | §3 | 100 |
 | `03ReturnedBorrows` | functions returning a borrow (`TailM`); a returned borrow must come from a borrow argument (D44) | §1, §3 [Close] | 20 |
 | `04ClosingOff` | stuck calls and matches, sealed programs, a borrow chosen by a branch, what a stuck match captures, [Close]'s rows and η for `Unit` (D59), typing a sealed program; closures inside a stuck block; naturality up to resolution | §3 | 52 |
 | `05Equality` | `Id` and `Eq`: observation, footprints, disjointness, injectivity (pairs included), `J` and its stuck casts (D56); `rewrite h in t` (D60); all owners of a returned borrow are observed (D18), in the order the sides reach them | §4 | 65 |
@@ -97,7 +97,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `17HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code; keys and sizes are `Word`s (`notes/hashmap-case-study.md`) | all | 188 |
 | `18DependentFields` | dependent fields (D64): a field's type from the earlier fields, writing them in place (open, then repacked), proof fields, restricted injectivity, type functions in field types (K4) and its nesting condition; and a case study, `DepVec`: `Vec(E)` with push, pop, an element borrow and lemmas about pushing, and a hash table that stores its capacity and resizes | §8 | 43 (+44) |
 
-1208 declarations in all, the `Prelude`'s 4 and the case studies' 405 included. D53 (reads of non-copy data move) is the only read semantics: the old copy-on-read paths, `Config.d53`, `Test.preD53` and the `moves` switch are deleted (`notes/lean-checker.md` §47). `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+1235 declarations in all, the `Prelude`'s 4 and the case studies' 405 included. D53 (reads of non-copy data move) is the only read semantics: the old copy-on-read paths, `Config.d53`, `Test.preD53` and the `moves` switch are deleted (`notes/lean-checker.md` §47). `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 
@@ -109,7 +109,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | §3 [Borrow] | `borrowPlace` |
 | §3 [Assign] | `eval` (`.assign`), `assignPlace` |
 | §3 [Let] | `eval` (`.letIn`) |
-| §3 [Drop] | `dropTopBind`, `dropValue`, `popFrame` |
+| §3 [Drop] | `dropTopBind`, `dropValue`, `popFrame`; `endLoansOfTopBind`, `endLoansOfTopTemp` (D65 amended: end a bound borrower, err on one in flight) |
 | §3 [Call] | `evalCall`, `callFn`, `runBody`, `endBorrowArgs` |
 | §3 [Match] | `evalMatch` (`Nat`), `evalMatchInd` (declared inductives; `scrutType` reads the scrutinee's type `D(ā)`) |
 | §3 [Close] | `closeCall` (asserts the precondition), `declKind` (the table's row, from the declared codomain, v1.7) |

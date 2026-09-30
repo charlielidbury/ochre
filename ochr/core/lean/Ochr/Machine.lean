@@ -580,27 +580,52 @@ partial def assignPlace (p : Place) (v : Value) : M Unit := do
   logEffect p "assigns"
   setPlace p v'
 
-/-- [Drop] the most recent binding of the top frame: a borrow ends; an owned value
-holding a live loan is an error (something borrows a dying place). -/
+/-- [Drop] the most recent binding of the top frame: a borrow ends. An owned value holding
+a live loan ends that loan's borrower if the borrower is held in a binding (D65 amended: the
+non-lexical-lifetime reading, the borrower is not used again), and is an error if the borrower
+is a value in flight (a block or a function may not return a borrow of its own local). -/
 partial def dropTopBind : M Unit := do
   let f ← topIdx
   let some b := (← get).env[f]!.binds.back? | err "internal: no binding to drop"
   match b.val with
   | .borrow l _ => endBorrow l
-  | v =>
-    if !(liveLoansIn (← get).env v).isEmpty then
-      err s!"[Drop] {b.hint.name} goes out of scope while it is borrowed"
+  | _ => endLoansOfTopBind f
   modifyFrame f fun fr => { fr with binds := fr.binds.pop }
+
+/-- D65 amended: end the borrowers of the live loans in the top frame's last binding, repeating
+as [Access] does (ending one brings its content's loans in); a borrower in flight is an error. -/
+partial def endLoansOfTopBind (f : Nat) : M Unit := do
+  let some b := (← get).env[f]!.binds.back? | pure ()
+  match liveLoansIn (← get).env b.val with
+  | l :: _ =>
+    if !(← get).cfg.dropEndsBound then
+      err s!"[Drop] {b.hint.name} goes out of scope while it is borrowed"
+    match findBorrow (← get).env l with
+    | some (.temp _ _) => err s!"[Drop] {b.hint.name} dies while a value in flight borrows it"
+    | _ => endBorrow l; endLoansOfTopBind f
+  | [] => pure ()
 
 /-- [Drop] a discarded value (`t; u`). -/
 partial def dropValue (v : Value) : M Unit := do
   pushTemp v
   match v with
   | .borrow l _ => endBorrow l
-  | _ =>
-    if !(liveLoansIn (← get).env v).isEmpty then
-      err "[Drop] a discarded value holds a live loan"
+  | _ => endLoansOfTopTemp
   discard popTemp
+
+/-- D65 amended, for a discarded value (the top temporary): end the borrowers of its live
+loans, repeating; a borrower in flight is an error. -/
+partial def endLoansOfTopTemp : M Unit := do
+  let f ← topIdx
+  let some v := (← get).env[f]!.temps.back? | pure ()
+  match liveLoansIn (← get).env v with
+  | l :: _ =>
+    if !(← get).cfg.dropEndsBound then
+      err "[Drop] a discarded value holds a live loan"
+    match findBorrow (← get).env l with
+    | some (.temp _ _) => err "[Drop] a discarded value dies while a value in flight borrows it"
+    | _ => endBorrow l; endLoansOfTopTemp
+  | [] => pure ()
 
 /-- Pop the top frame, dropping its bindings (most recent first). -/
 partial def popFrame : M Unit := do
