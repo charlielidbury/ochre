@@ -69,7 +69,7 @@ Ochr is a core calculus, and it covers a small part of Rust (@fig-scope). Its bo
     [Generic `&A`], [No: `A` must be known to be data, so there is no generic `swap` (@sec-discussion).],
     [`'static` borrows], [No: a returned borrow derives from a borrow argument (@sec-discussion).],
     [Moves, `Copy`, `clone`], [Yes: runtime reads of non-copy data move, `clone` copies, and closures follow `Fn` (@sec-eval).],
-    [Integers, arrays], [Peano numbers only; arrays as a library, borrowed in parts only through a continuation (@sec-eval-qs).],
+    [Integers, arrays], [Peano numbers only; arrays as a library, borrowed in parts only through a continuation, and growable vectors as a user type with a dependent field (@sec-eval-qs).],
     [`unsafe`, interior mutability], [No.],
     table.hline(stroke: 0.5pt),
   )}),
