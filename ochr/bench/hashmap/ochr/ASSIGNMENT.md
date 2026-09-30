@@ -91,7 +91,7 @@ Do not change the checker, the library, the build files or the grader: only `Has
 
 ## Checking your work
 
-- `lake exe check` prints the checker's verdict on every declaration, with the reason for each rejection. `lake exe check HashMapSolution` skips the tests; `lake exe check --trace GetInsertSame` shows the checker's view of that declaration's goal.
+- `lake -q exe check` prints the checker's verdict on every declaration, with the reason for each rejection. `lake -q exe check HashMapSolution` skips the tests; `lake -q exe check --trace GetInsertSame` shows the checker's view of that declaration's goal.
 - `./grade.sh` runs everything the grader checks. Its last line is `GRADE: PASS` or `GRADE: FAIL: <reasons>`, and it lists the remaining holes.
 
 ## When you are done

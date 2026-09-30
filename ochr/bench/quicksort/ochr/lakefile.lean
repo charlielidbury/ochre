@@ -10,9 +10,11 @@ package «quicksort-ochr» where
 require ochr from "checker"
 
 -- Your solution: the `ochr` blocks of Quicksort.lean.
+@[default_target]
 lean_lib Quicksort
 
 -- `lake exe check`: the checker's verdict on every declaration (see Check.lean).
 @[default_target]
 lean_exe check where
   root := `Check
+  supportInterpreter := true

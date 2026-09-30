@@ -225,15 +225,22 @@ def library_blocks_used(pkg, files):
 
 
 def copy_checker(checker, dest, wanted):
+    """The checker's lib `Ochr` (every top-level `Ochr/*.lean` module; `Ochr.lean` imports only
+    those, as upstream's does since the examples moved to their own lib), and a lib
+    `OchrExamples` with the tour and the extracted library, rooted at a generated
+    `Ochr/Examples.lean`. The lakefile follows upstream's: `Ochr` is precompiled when upstream
+    precompiles it (the `ochr` command then checks blocks natively at elaboration), and the
+    examples are not."""
     ex_src = os.path.join(checker, "Ochr", "Examples")
     core_dst = os.path.join(dest, "Ochr")
     ex_dst = os.path.join(core_dst, "Examples")
     os.makedirs(ex_dst)
-    modules = []
+    core = []
     for f in sorted(os.listdir(os.path.join(checker, "Ochr"))):
-        if f.endswith(".lean") and f not in CORE_EXCLUDE:
+        # `Ochr/Examples.lean` is upstream's root of the examples, which imports the case studies
+        if f.endswith(".lean") and f not in CORE_EXCLUDE and f != "Examples.lean":
             shutil.copy2(os.path.join(checker, "Ochr", f), core_dst)
-            modules.append("Ochr." + f[:-5])
+            core.append("Ochr." + f[:-5])
     numbered = sorted(f for f in os.listdir(ex_src) if re.match(r"^\d\d.*\.lean$", f))
     tour = [f for f in numbered if int(f[:2]) < TOUR_LIMIT]
     later = [os.path.join(ex_src, f) for f in numbered if int(f[:2]) >= TOUR_LIMIT]
@@ -243,28 +250,37 @@ def copy_checker(checker, dest, wanted):
     for f, text in lib.items():
         with open(os.path.join(ex_dst, f), "w", encoding="utf-8") as h:
             h.write(text)
-    for f in tour + sorted(lib):
-        modules.append("Ochr.Examples.«" + f[:-5] + "»")
+    examples = ["Ochr.Examples.«" + f[:-5] + "»" for f in tour + sorted(lib)]
     shutil.copy2(os.path.join(checker, "lean-toolchain"), dest)
+    upstream = open(os.path.join(checker, "lakefile.lean"), encoding="utf-8").read()
+    precompile = "precompileModules := true" in upstream
     with open(os.path.join(dest, "lakefile.lean"), "w") as h:
         h.write("import Lake\nopen Lake DSL\n\n"
-                "-- The Ochr checker, as distributed with a benchmark sandbox: the checker's sources,\n"
-                "-- the examples tour and the arrays library. `lake build` checks every example.\n"
+                "-- The Ochr checker, as distributed with a benchmark sandbox: the checker (lib Ochr),\n"
+                "-- and the examples tour with the arrays library (lib OchrExamples).\n"
                 "package «ochr» where\n  leanOptions := #[\n    ⟨`autoImplicit, false⟩,\n"
                 "    -- no linter warnings: the checker's own are replayed on every build\n"
                 "    ⟨`linter.all, false⟩\n  ]\n\n"
-                "@[default_target]\nlean_lib «Ochr» where\n  srcDir := \".\"\n")
+                "@[default_target]\nlean_lib «Ochr» where\n  srcDir := \".\"\n"
+                + ("  precompileModules := true\n" if precompile else "") +
+                "\n@[default_target]\nlean_lib OchrExamples where\n  srcDir := \".\"\n"
+                "  roots := #[`Ochr.Examples]\n")
+    # upstream's Ochr.lean, without any example imports (older revisions imported them)
+    up_root = open(os.path.join(checker, "Ochr.lean"), encoding="utf-8").read().splitlines(keepends=True)
     with open(os.path.join(dest, "Ochr.lean"), "w") as h:
-        h.write("".join(f"import {m}\n" for m in modules))
+        h.write("".join(l for l in up_root if not l.startswith("import Ochr.Examples")))
+    with open(os.path.join(core_dst, "Examples.lean"), "w") as h:
+        h.write("-- The examples tour and the arrays library, as distributed with a benchmark sandbox.\n"
+                + "".join(f"import {m}\n" for m in examples))
     # every import of a copied file must resolve to a copied module
-    have = set(modules) | {"Lean", "Lean.Elab.Command", "Lake"}
+    have = set(core) | set(examples) | {"Ochr", "Ochr.Examples", "Lean", "Lean.Elab.Command", "Lake"}
     for root, _, files in os.walk(dest):
         for f in files:
             if not f.endswith(".lean") or f == "lakefile.lean":
                 continue
             for line in open(os.path.join(root, f), encoding="utf-8"):
                 m = re.match(r"^import (\S+)", line)
-                if m and m.group(1) not in have and not m.group(1).startswith("Lean"):
+                if m and m.group(1) not in have and not m.group(1).split(".")[0] in ("Lean", "Std", "Init", "Lake"):
                     die(f"checker/{os.path.relpath(os.path.join(root, f), dest)} imports {m.group(1)}, which is not in the sandbox")
 
 
@@ -359,11 +375,15 @@ def main():
         sys.exit(1)
 
     if not a.no_build:
-        print(f"make-sandbox: building {dest} (checker, skeleton, verdict driver) ...", flush=True)
-        r = subprocess.run(["lake", "build"], cwd=dest, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        print(f"make-sandbox: building {dest} (checker, library, verdict driver, skeleton) ...", flush=True)
+        r = subprocess.run(["lake", "-q", "build", "check"], cwd=dest, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         if r.returncode != 0:
             print(r.stdout[-4000:])
-            die("the sandbox does not build")
+            die("the checker or the verdict driver does not build")
+        # the skeleton's holes are rejected declarations, which the checker reports as build
+        # errors when it checks each block at elaboration: build it to warm the cache only
+        libs = [os.path.splitext(f)[0] for f in files]
+        subprocess.run(["lake", "-q", "build"] + libs, cwd=dest, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print(f"make-sandbox: ready: {dest}")
 
 

@@ -276,8 +276,9 @@ def check_statements():
         typ = f"∀ {binders}, {stmt}" if binders else stmt
         lines.append(f"example : {typ} := @{ns}.{name}")
     lines.append("")
-    # The solution module's own declarations: no instances (they are exported
-    # into this file and would change how the restatements above elaborate),
+    # The solution module's own declarations: no instances on types it does not
+    # define (they are exported into this file and would change how the
+    # restatements above elaborate),
     # no axioms or opaque constants, and no meta-level code (elaborators,
     # environment hacks). Grader-owned code; solution files may not contain it.
     lines += [
@@ -289,7 +290,21 @@ def check_statements():
         "    `Lean.Core, `Lean.Declaration, `Lean.ConstantInfo, `Lean.Parser, `IO, `EIO, `BaseIO, `EStateM, `Lean.Compiler]",
         "  for n in env.header.moduleData[idx.toNat]!.constNames do",
         "    let some ci := env.find? n | continue",
-        "    if (← liftCoreM (Meta.isInstance n)) then logError m!\"grade-env: {n} is an instance\"",
+        "    -- Instances are allowed only on types the solution itself defines (Lean",
+        "    -- generates SizeOf instances for every structure and inductive, and",
+        "    -- `deriving` makes more). Each class argument is first reduced as instance",
+        "    -- search would see it, so `abbrev T := Nat` or `(fun _ => Nat) x` does not",
+        "    -- count; an inductive type is never unfolded, so an instance on one cannot",
+        "    -- apply to a FIXED statement. (The reduction rule is bench-controls'.)",
+        "    if (← liftCoreM (Meta.isInstance n)) then",
+        "      let own ← liftTermElabM <| Meta.forallTelescopeReducing ci.type fun _ body => do",
+        "        let mut ok := false",
+        "        for a in body.getAppArgs do",
+        "          let r ← Meta.withTransparency .instances <| Meta.reduce a (skipTypes := false)",
+        "          if r.getUsedConstants.any (fun c => env.getModuleIdxFor? c == some idx &&",
+        "              ((env.find? c).map (·.isInductive)).getD false) then ok := true",
+        "        return ok",
+        "      unless own do logError m!\"grade-env: {n} is an instance on types the solution does not define\"",
         "    match ci with",
         "    | .axiomInfo _ => logError m!\"grade-env: {n} is an axiom\"",
         "    | .opaqueInfo _ => logError m!\"grade-env: {n} is an opaque constant\"",

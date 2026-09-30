@@ -14,10 +14,16 @@ Run by the sandbox's grade.sh. It passes (exit 0, last line `GRADE: PASS ...`) i
     commands, attributes or options; a new `ochr` block; declaring a built-in, library or FIXED
     name again, such as `Unit`, `Word`, `Lt` or `Sorted`); in a block whose name ends in `Model`
     (condition ochr-2p) it also has no borrows (`&`) and no assignment (`p := t`);
- 3. everything builds (`lake build`), and the checker's verdicts (`lake exe check --machine`)
-    show every declaration of every block of the skeleton as expected: each FIXED declaration
-    is present in its block, the FIXED `reject def`s are rejected, and everything else, the
-    tests and every helper the solver added included, is accepted.
+ 3. by Lean's own parser (`lake exe check --outline`), each solution file is made of the
+    skeleton's imports and the skeleton's `ochr` blocks, in order, and nothing else at Lean
+    level (doc comments aside): no command, initializer, macro, elaborator, option or
+    attribute can reach the checker from a solution file;
+ 4. the solution builds (`lake build`; since the `ochr` command checks each block when it is
+    elaborated, a rejected declaration is a build error), and the checker's verdicts
+    (`lake exe check --machine`) show every declaration of every block of the skeleton as
+    expected: each FIXED declaration is present in its block, the FIXED `reject def`s are
+    rejected, and everything else, the tests and every helper the solver added included, is
+    accepted.
 """
 import argparse
 import os
@@ -411,26 +417,83 @@ def main():
         verdict(reasons, line_counts)
         return
 
-    # 3. Build and check
-    print("\n== Build (lake build)", flush=True)
-    b = subprocess.run(["lake", "build"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    # 3. The driver, then the file's structure by Lean's own parser
+    print("\n== Build the verdict driver (lake build check)", flush=True)
+    b = subprocess.run(["lake", "-q", "build", "check"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     if b.returncode != 0:
-        errs = [l for l in b.stdout.splitlines() if "error" in l.lower()]
-        for l in (errs or b.stdout.splitlines())[:40]:
-            print("  " + l)
-        reasons.append("the build failed")
+        print(b.stdout[-3000:])
+        reasons.append("the verdict driver does not build (a packaging error)")
         verdict(reasons, line_counts)
         return
     print("  ok")
+    print("\n== Structure (Lean's parser: only the skeleton's imports and ochr blocks)", flush=True)
+    bad_structure = []
+    for f in files:
+        want, got = outline(os.path.join("tools", "original", f)), outline(f)
+        if want is None or got is None:
+            bad_structure.append(f"{f}: the outline driver failed")
+            continue
+        (wi, wc, _), (gi, gc, ge) = want, got
+        if gi != wi:
+            bad_structure.append(f"{f}: the imports are {gi}, not the skeleton's {wi}")
+        others = [(k, n, l) for k, n, l in gc if k != "Ochr.Notation.ochrProgram"]
+        for k, n, l in others:
+            bad_structure.append(f"{f}: line {l}: a top-level `{k.split('.')[-1]}` command; a solution file may hold only the skeleton's ochr blocks")
+        blocks_w = [n for k, n, l in wc if k == "Ochr.Notation.ochrProgram"]
+        blocks_g = [n for k, n, l in gc if k == "Ochr.Notation.ochrProgram"]
+        if blocks_g != blocks_w:
+            bad_structure.append(f"{f}: the ochr blocks are {blocks_g}, not the skeleton's {blocks_w}")
+        for e in ge[:10]:
+            bad_structure.append(f"{f}: parse error: {e}")
+    if bad_structure:
+        for l in bad_structure:
+            print("  " + l)
+        reasons.append("the file's structure is not the skeleton's")
+        # Lean code outside the ochr blocks could run when the file is elaborated (an `#eval`,
+        # an elaborator), so a file of the wrong shape is never built or elaborated
+        print("\n  (not built: a file of the wrong shape is never elaborated)")
+        verdict(reasons, line_counts)
+        return
+    print("  ok")
+
+    # 4. Build the solution: the checker runs when each block is elaborated (a rejected
+    # declaration is then a build error), and the build must succeed
+    libs = [os.path.splitext(f)[0] for f in files]
+    print(f"\n== Build the solution (lake build {' '.join(libs)})", flush=True)
+    b = subprocess.run(["lake", "-q", "build"] + libs, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    build_errors = [l for l in b.stdout.splitlines() if l.startswith("error:") and "Lean exited" not in l
+                    and "build failed" not in l and not l.startswith("error: Some required")]
+    # the declarations each error is about; a rejected declaration's error is `NAME: reason`
+    decl_names = set()
+    for f in files:
+        decl_names.update(n for n, _ in declared_names(Lex(open(f, encoding="utf-8").read()).tokens))
+    about = lambda l: (re.match(r"error: [^:]+:\d+:\d+: ([^:\s]+):", l) or [None, None])[1]
+    other_errors = [l for l in build_errors if about(l) not in decl_names]
+    if b.returncode != 0:
+        n_decl = len(build_errors) - len(other_errors)
+        if n_decl:
+            print(f"  {n_decl} declaration(s) rejected by the checker (listed under Verdicts)")
+        for l in other_errors[:25]:
+            print("  " + l[:400])
+        if len(other_errors) > 25:
+            print(f"  ... and {len(other_errors) - 25} more errors")
+        reasons.append(f"the build reports {len(build_errors) or 'some'} error(s)")
+    else:
+        print("  ok")
+
+    # 5. Every declaration's verdict, from the driver
     print("\n== Verdicts (lake exe check --machine)", flush=True)
-    c = subprocess.run(["lake", "exe", "check", "--machine"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    c = subprocess.run(["lake", "-q", "exe", "check", "--machine"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     rows = []
     for l in c.stdout.splitlines():
         if l.startswith("ROW\t"):
             _, blk, name, expect, got, msg = (l.split("\t") + [""] * 6)[:6]
             rows.append((blk, name, expect, got, msg))
+    for l in c.stderr.splitlines():
+        if "is missing from" in l:
+            print("  " + l)
     if c.returncode != 0 or not rows:
-        print(c.stdout[-3000:])
+        print((c.stdout + c.stderr)[-3000:])
         reasons.append("the verdict driver failed")
         verdict(reasons, line_counts)
         return
@@ -467,7 +530,7 @@ def main():
     for l in bad_tests[:5]:
         print("  FAIL " + l)
     if len(bad_tests) > 5:
-        print(f"  ... and {len(bad_tests) - 5} more tests fail (`lake exe check` shows them all)")
+        print(f"  ... and {len(bad_tests) - 5} more tests fail (`lake -q exe check` shows them all)")
     for l in missing:
         print("  MISSING " + l)
     if bad:
@@ -475,6 +538,26 @@ def main():
     if missing:
         reasons.append(f"{len(missing)} FIXED declaration(s) not checked")
     verdict(reasons, line_counts)
+
+
+def outline(path):
+    """(imports, [(command kind, block name, line)], parse errors) of a file, by Lean's parser
+    (`lake exe check --outline`), or None if the driver failed."""
+    r = subprocess.run(["lake", "-q", "exe", "check", "--outline", path], stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT, text=True)
+    if r.returncode != 0:
+        return None
+    imports, cmds, errors = [], [], []
+    for l in r.stdout.splitlines():
+        parts = l.split("\t")
+        if parts[0] == "IMPORT":
+            imports.append(parts[1])
+        elif parts[0] == "CMD" and len(parts) >= 4:
+            if parts[1] != "Lean.Parser.Command.moduleDoc":
+                cmds.append((parts[1], parts[2], parts[3]))
+        elif parts[0] == "ERROR":
+            errors.append(parts[1])
+    return imports, cmds, errors
 
 
 def verdict(reasons, line_counts):
