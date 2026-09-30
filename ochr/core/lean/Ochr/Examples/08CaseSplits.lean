@@ -275,13 +275,28 @@ ochr ScrutineeTypes {
       LCons(h, t) => h,
     }
   )
+
+  -- A `Nat` match reads the stored type too (rule-audit item 2, fuzz-port's M2, D63). Without
+  -- it, `NatT` split an `x` of a type variable with Nat's constructors, and `NatTUse(BT)` ran
+  -- the match on `BT`; `M2` did the same through a stuck family, and `M2Run` goes wrong.
+  inductive B2 := BF | BT
+  def TG (n : Nat) : Type := match n { Z => Nat, S _ => B2 }
+  def HB (n : Nat) : TG(n) := match n { Z => 0, S _ => BF }
+  reject def NatT (A : Type) (x : A) : Nat := (match x { Z => 0, S _ => 1 })
+  reject def NatTUse (b : B2) : Nat := NatT(B2, b)
+  reject def NatTNT (A : Type) (x : A) : Nat := (let r = match x { Z => 0, S _ => 1 }; r)
+  reject def M2 (n : Nat) (h : Π(n : Nat). TG(n)) : Nat := (let x = h(n); match x { Z => 0, S _ => 1 })
+  reject def M2Run : Nat := M2(1, HB)
+
+  -- Where the family computes to `Nat`, the match is fine.
+  def M2Zero (h : Π(n : Nat). TG(n)) : Nat := (let x = h(0); match x { Z => 0, S _ => 1 })
 }
 
 #eval IO.println (run "ScrutineeTypes" ScrutineeTypes).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ScrutineeTypes" ScrutineeTypes).allAsExpected
-#guard (run "ScrutineeTypes" ScrutineeTypes).count == 5
+#guard (run "ScrutineeTypes" ScrutineeTypes).count == 14
 
 /-! Generalisations are global (D37). Forming `Esc`'s goal generalises a sealed program on a
 private copy of the environment, and names it with a fresh abstract value. That record,

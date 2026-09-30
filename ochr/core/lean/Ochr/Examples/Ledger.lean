@@ -221,10 +221,12 @@ open Ochr.Registry in
 #guard rowOk { injective := false }
   ["Equality.Inj:rejected", "Equality.PairInj:rejected", "Recursion.AddZeroCopy:rejected",
    "Recursion.InjStep:rejected", "ArmRecords.L2:rejected", "CurrentState.AddSubIdReborrow:rejected"]
--- finding (v2.0 round): v1.9 assumed a data match's scrutinee type from its arms
+-- finding (v2.0 round): v1.9 assumed a data match's scrutinee type from its arms; since D63
+-- a Nat match reads the stored type too (rule-audit item 2, fuzz-port's M2)
 open Ochr.Registry in
 #guard rowOk { scrutTyped := false }
-  ["ScrutineeTypes.f:accepted", "ScrutineeTypes.g:accepted"]
+  ["ScrutineeTypes.f:accepted", "ScrutineeTypes.g:accepted", "ScrutineeTypes.NatT:accepted",
+   "ScrutineeTypes.NatTUse:accepted", "ScrutineeTypes.NatTNT:accepted", "ScrutineeTypes.M2:accepted"]
 -- D48 (1) switched off: &Type makes Type₀ impredicative (System U⁻), and &Prop, &True, &Π, &A pass
 open Ochr.Registry in
 #guard rowOk { refData := false }

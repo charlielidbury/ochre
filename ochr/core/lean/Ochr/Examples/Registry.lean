@@ -105,7 +105,7 @@ def switches : List (String × Config) :=
    ("D45 + D42 (v2.0): subsingleton elimination and erased Prop values, both off", { subsingleton := false, propValues := false }),
    ("D47 (v2.0): distinct constructors are disjoint in Eq", { disjoint := false }),
    ("D52 (v2.1): Eq is injective on constructors", { injective := false }),
-   ("finding (v2.0 round): a match's scrutinee has its constructors' type (read, not assumed)", { scrutTyped := false }),
+   ("finding (v2.0 round), D63: a match's scrutinee has its constructors' type (read, not assumed), Nat's included", { scrutTyped := false }),
    ("D48 (1): only data types are borrowed", { refData := false }),
    ("D48 (2): & only at the top of a declared type", { refTop := false }),
    ("D48 (3): Π-types are compared under their binders", { piUnder := false }),
@@ -173,7 +173,7 @@ def rowClass : List (String × List String) :=
    ("soundness", ["Subsingletons.Boom", "Subsingletons.SqBoom"]),
    ("completeness", []),
    ("completeness", []),
-   ("soundness", ["ScrutineeTypes.g"]),
+   ("soundness", ["ScrutineeTypes.g", "ScrutineeTypes.NatTUse", "ScrutineeTypes.M2"]),
    ("model", ["Universes.Impred", "Universes.SelfApp"]),
    ("soundness", ["BorrowTypes.G"]),
    ("completeness", []),
@@ -195,7 +195,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1067
+def Ochr.Registry.expectedTotal : Nat := 1076
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

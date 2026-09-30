@@ -2248,6 +2248,7 @@ partial def evalMatch (typed : Bool) (p : Place) (z s : Term) (expected : Option
     M (Value × Option Value) := do
   accessPath p
   accessNeutralHead p
+  if typed then natScrutType p
   let v ← matchContent p
   match v with
   | .zero => eval typed z
@@ -2455,6 +2456,18 @@ partial def ctorRefinement (d : IndDecl) (ps : List Value) (c : Nat) : M Value :
   for (_, T) in ← fieldTypes d ps c do fs := fs.push (← genericValue T)
   pure (.ind d.name c ⟨cn⟩ ps fs.toList)
 
+/-- A match's scrutinee has the type of its patterns' inductive (A.399), `Nat` included: a
+`Nat` match reads the place's stored type too (rule-audit item 2, fuzz-port's M2, D63). Without
+this, `match x { Z => …, S _ => … }` split an abstract `x : T` of any type `T`, a type variable
+or a stuck family `TG(n)`, and the accepted function went wrong at a ground instance
+(`NatTUse(true)`: "[Match] on a non-Nat value"). Typed code only: the untyped machine has no
+stored types. -/
+partial def natScrutType (p : Place) : M Unit := do
+  if !(← get).cfg.scrutTyped then return
+  match ← placeType p with
+  | .tNat => pure ()
+  | T => err s!"[Match] on {← ppPlace p} : {T}, with the constructors of Nat"
+
 /-- The inductive type of a matched place and its parameters, from the place's type (the
 arms' constructors name `ty`; `""` for a match with no arms). The type is read, not
 assumed from the arms (finding: v1.9's checker split a `T(n)`-typed place with `L`'s
@@ -2566,6 +2579,7 @@ partial def evalMatchInd (typed : Bool) (p : Place) (ty : String) (arms : List (
   match v with
   | .ind t c _ _ _ =>
     if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
+    if typed then discard (scrutType p ty)
     match arms[c]? with
     | some (_, a) => eval typed a
     | none => err s!"[Match] no arm for constructor {c}"
@@ -2979,6 +2993,7 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
   | .matchNat p z s =>
     accessPath p
     accessNeutralHead p
+    natScrutType p
     match ← matchContent p with
     | .zero => checkTail z k
     | .succ _ => checkTail s k
@@ -3027,6 +3042,7 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
     match ← matchContent p with
     | .ind t c _ _ _ =>
       if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
+      discard (scrutType p ty)
       match arms[c]? with
       | some (_, a) => checkTail a k
       | none => err s!"[Match] no arm for constructor {c}"
