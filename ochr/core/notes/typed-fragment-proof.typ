@@ -15,7 +15,7 @@
 
 = Soundness of a typed fragment, conditional on naturality <sec-tf>
 
-_Draft for an appendix section. Notes file: `ochr/core/notes/typed-fragment-proof.typ`. Revision 2, 2026-09-30, answering the cold review `notes/reviewer-9.md`; revision 2.1 assumes D65 and drops restriction F5. References to "the appendix" are to the paper's appendix, whose rules this section uses by name._
+_Draft for an appendix section. Notes file: `ochr/core/notes/typed-fragment-proof.typ`. Revision 2, 2026-09-30, answering the cold review `notes/reviewer-9.md`; revision 2.1 assumes D65 and drops restriction F5; revision 2.2 assumes D65 as amended after reviewer 9's finding 16. References to "the appendix" are to the paper's appendix, whose rules this section uses by name._
 
 This section reduces soundness of a fragment F to a simulation assumption between the two evaluation paths. F has natural numbers, `Unit`, the propositions `True`, `False` and `And`, `Eq` and `Id`, first-order top-level functions with borrow parameters (some of which return a borrow), [Close], and [Split] with refinement and generalisation. For F we prove that, if the assumption holds, two things are true of every accepted program:
 - every data function runs without error at every concrete input;
@@ -23,7 +23,7 @@ This section reduces soundness of a fragment F to a simulation assumption betwee
 
 Consistency of F and adequacy of `Id` follow (@tf-cor-cons, @tf-cor-adeq).
 
-The assumption, naturality (@tf-ass-n), says one step at a time that a symbolic run and the ground run agree once every borrow is ended. It holds almost all of the operational content. It was false for the rules as they stood: a probe written for this proof found an accepted function that fails at a concrete input (@tf-drop). The rules have been changed (D65), and the proof assumes the change. A second assumption (@tf-ass-t) covers the transfer of the mechanised lemmas from rule set 1.3 to the current rules. Everything else is proved on paper here, and each mechanised lemma that is used is named where it is used (@tf-anchors).
+The assumption, naturality (@tf-ass-n), says one step at a time that a symbolic run and the ground run agree once every borrow is ended. It holds almost all of the operational content. It was false for the rules as they stood: a probe written for this proof found an accepted function that fails at a concrete input (@tf-drop). The rules have been changed (D65, amended), and the proof assumes the change. A second assumption (@tf-ass-t) covers the transfer of the mechanised lemmas from rule set 1.3 to the current rules. Everything else is proved on paper here, and each mechanised lemma that is used is named where it is used (@tf-anchors).
 
 == The fragment F <tf-frag>
 
@@ -40,7 +40,7 @@ F is the calculus of the appendix restricted as follows. Each restriction says w
   _Why:_ conversion on data is then syntactic (@tf-lem-conv), the type of every sealed program is a closed data type (@tf-gen), and every call inside a type is to an earlier definition.
 + *Propositions.* $P ::= ty("True") | ty("False") | P and Q | ty("Eq") D thin a thin b | ty("Id") D thin t thin u$, with $D in {ty("Nat"), ty("Unit")}$. The terms `a`, `b`, `t`, `u` inside a type contain no `match`. _Why:_ a match inside a type that gets stuck is closed off as a stuck block, which F leaves out. It also means the typed run of a statement reaches every place occurrence in it (@tf-lem-w).
 + *No stuck blocks.* A `match` on data occurs only in tail position in a definition's body: the body itself, an arm of a match in tail position, or the tail of a `let` or sequence in tail position. It never occurs on the right of a `let`. So [Split] is only [Tail-split] and [Tail-gen]. No stuck block is ever formed, and [Split-gen] and [T-Split-goal] never run.
-+ _(Removed in revision 2.1.)_ Revision 2 forbade assigning a borrow into an existing place, because of `Bad2` (@tf-drop). Under D65 it is no longer needed: the [Drop] clause of (N1) holds without it, and @tf-lem-w now covers statements that assign a borrow variable the symbolic path has already ended. The number is kept so that references to F6–F8 stay valid.
++ _(Removed in revision 2.1.)_ Revision 2 forbade assigning a borrow into an existing place, because of `Bad2` (@tf-drop). Under D65 (amended) it is no longer needed: the [Drop] clause of (N1) holds without it, and @tf-lem-w now covers statements that assign a borrow variable the symbolic path has already ended. The number is kept so that references to F6–F8 stay valid.
 + *Proof forms.* Proof terms are:
   - `refl`, $chevron.l h, k chevron.r$, proof variables and their field places, and lemma calls;
   - a `let` or sequence whose tail is a proof;
@@ -54,7 +54,10 @@ F is the calculus of the appendix restricted as follows. Each restriction says w
 Moves (D53) are otherwise as in the rules: `Nat` is not a copy type, so a runtime read of an owned `Nat` place moves it and leaves a ghost.
 
 *Rule readings.* Where the appendix and `RULES.md` differ, F uses these readings:
-- *D65* (decided 2026-09-30; not yet in the checker, and assumed here until it lands): [Drop] of an owned value that holds a live loan ends that loan's borrower, as a write through [Access] would, and never fails. The borrower becomes ⊥;
+- *D65, amended* (decided 2026-09-30; not yet in the checker, and assumed here until it lands): when [Drop] meets a live loan in a dying owned value, what happens depends on the borrower.
+  - A borrower _held in a binding_ (a variable, or a place inside one) is ended, as a write through [Access] would end it, and becomes ⊥.
+  - A borrower that is a _value in flight_ (a temporary: a call argument, the value being assigned, a let-block's or arm's result, a call's result while its frame pops) makes the drop an error, as before D65.
+  - This is Rust's split: a local may die while a variable that borrowed it is never used again, but a block or a function may not return a reference to its own local;
 - [Match-err] also covers a ghost, as the checker does;
 - [Seal]'s final read copies, as `RULES.md` says;
 - a generalisation record belongs to the [Split] arm that made it (checker commit 969e3254, reviewer 6's A1). The appendix still calls records global.
@@ -253,7 +256,7 @@ The symbolic side's extras are real, and their conjuncts do become `True`. Probe
 
 #thm([Theorem], [soundness of F, conditional on @tf-ass-n and @tf-ass-t], [
   Let $cal(P) = d_1 dots d_m$ be a program of F whose definitions are accepted in order by [Def] and [Const]. Then for every $d_k$ and every ground instance β of $d_k$:
-  (i) if $d_k$ is a data function, its body runs from the ground instance to completion without error, in runtime mode and in erased mode, and the pop of its frame succeeds;
+  (i) if $d_k$ is a data function, its body runs from the ground instance to completion without error, in runtime mode and in erased mode, and the pop of its frame succeeds; if $d_k$ returns a borrow, the result is a live borrow, not ⊥;
   (ii) if $d_k$ is a lemma, or a constant of proposition type, and its hypotheses at β are true, then its goal at β is true.
 ]) <tf-thm>
 
@@ -286,7 +289,9 @@ The symbolic side's extras are real, and their conjuncts do become `True`. Probe
     - With no arms, the scrutinee's type is `False`, and (I) would give $ok(ty("False"))$. So no ground instance reaches this node, and there is nothing to prove. This is where ex falso is sound.
   - *[Tail-end] `t`.*
     - This is a leaf $(Omega'_s, v, A)$. [Def] gives $"pop"(Omega'_s, v)$ succeeding and $A equiv G'$, the goal refined along the path.
-    - By @tf-lem-runs the ground run of `t` succeeds, and by (N1) so does the ground pop. The ground run of the body follows the walk's path one tail rule at a time. The path is finite, and each segment terminates (@tf-lem-runs). So the body runs to completion without error. This is (i).
+    - By @tf-lem-runs the ground run of `t` succeeds, and by (N1) so does the ground pop. The ground run of the body follows the walk's path one tail rule at a time. The path is finite, and each segment terminates (@tf-lem-runs). So the body runs to completion without error.
+    - *The result is live.* In F a term of borrow type never evaluates to ⊥ on the symbolic path. Reading ⊥ is [Read-err]. [Borrow] makes a live borrow. A call's result is live by [Close]'s borrow row, or, for a call that runs, by the same argument for the callee's tail term. There are no stuck blocks (F4), which is how `Blk` of reviewer 9's finding 16 produced one.
+    - The pop does not end the result either: under amended D65, a dying local lent to the result, which is a temporary during the pop, makes the pop an error, not an end. So the symbolic result is a live borrow, held as a temporary after the pop. By (A3) the ground result, at the same position, is a borrow too. This is (i). Revision 2.1 lacked this clause, which pure D65 would have needed (finding 16).
     - For (ii), `v` is a proof, and the claim below gives $ok(A alpha)$. By @tf-lem-conv (b), $A alpha equiv G' alpha$.
     - $G' alpha = G beta$, because α respects the path's refinements and records (@tf-gen (c)) and `G` mentions only generic values. By @tf-lem-conv (a), $ok(G beta)$.
     - By @tf-lem-types at the root, the goal at the ground instance is true. The calls made in evaluating it are to earlier definitions (F2).
@@ -349,14 +354,22 @@ def Bad2 (n : Nat) (b : Nat) (x : &Nat) : Unit := ( let a = 0; x := Pick(n, &a, 
 
 The symbolic path ended a borrow earlier than the ground path, which (A2) allows. An earlier end is exactly what lets a later [Drop] succeed, so under the rules as they stood the [Drop] clause of (N1) failed. Reviewer 9 found a second route to the same failure (`Bad4`, `Bad5` in `Reviewer9Probe`): a match on a fill with one owner ends every loan inside it (D29), while on the ground the loan sits deeper and survives the match.
 
-*The fix, D65.* [Drop] of an owned value that holds a live loan ends that loan's borrower, as a write through [Access] would, and never fails. This is the non-lexical-lifetime reading: dropping `a` while `x` borrows it is fine if `x` is not used again. The [Drop] clause of (N1) then holds by construction, in the sense that a ground [Drop] never fails.
-- If the symbolic counterpart of the ended borrower is live, the symbolic [Drop] ends it too.
-- If it was ended earlier, the symbolic path has already done what the ground path now does. (A2) is unaffected, since ending borrows does not change the resolution, and (A3)–(A5) are kept.
-- Agreement after a drop is still part of @tf-ass-n.
+*The fix, D65 as amended.* When [Drop] meets a live loan in a dying owned value, it ends the borrower if the borrower is held in a binding, and fails if the borrower is a value in flight (@tf-frag, rule readings). This is the non-lexical-lifetime reading: dropping `a` while `x` borrows it is fine if `x` is not used again, but a block or a function may not return a borrow of its own local.
 
-`Bad2`–`Bad5` become accepted and run without error. Returning a borrow of a local (`let a = 0; &a`) still has to be rejected: under D65 the result is an ended borrow, and [Def]'s result check refuses it.
+Pure D65, which ended every borrower, was broken outside F by reviewer 9's `Blk` (finding 16). A stuck block's arm returns a borrow of an arm-local, which pure D65 turns into ⊥. [Split] discards the arm's value, and [Close]'s borrow row then gives the block a fresh live borrow. So the ground run meets ⊥ where the symbolic run holds a live borrow.
 
-Revision 2 excluded `Bad2` with a restriction, F5: no borrow is assigned into an existing place. Under D65, F5 is not needed:
+Under the amended rule the [Drop] clause of (N1) holds by the following argument, which is part of @tf-ass-n. A ground drop fails only if the dying place is lent to a value in flight. Take that temporary's symbolic counterpart, at the same position.
+- If it is live, (A4) puts the dying place among its symbolic owners, so the symbolic drop fails too.
+- If it is ⊥, the symbolic path ended it early while it was in flight. In F, a borrow is in flight during a call's argument evaluation, during an assignment's [Access], during a let-block's final drops, and during a pop.
+  - A call argument ended in flight is [Call-err] on the symbolic path.
+  - During drops and pops, only borrowers held in bindings are ended, so a temporary is never ended there.
+  - A new value ended by its own assignment's [Access] is ended on both paths alike, since its loan sits in the assigned place's content on both. After the assignment it is a binding, no longer in flight.
+
+So when the symbolic drop succeeds, the ground drop succeeds. The borrowers the ground drop ends are those held in bindings whose owners include the dying place. By (A4) their symbolic counterparts are ended by the symbolic drop too, or were already ⊥. So (A3) is kept, and (A2), (A4) and (A5) are unaffected, since ending borrows does not change the resolution.
+
+`Bad2`–`Bad5` become accepted and run without error. Returning a borrow of a local (`let a = 0; &a`) is still rejected, with no separate result check: the result is a value in flight when the local is dropped.
+
+Revision 2 excluded `Bad2` with a restriction, F5: no borrow is assigned into an existing place. Under amended D65, F5 is not needed:
 - the [Drop] clause holds without it;
 - @tf-lem-w, which revision 2 made depend on F5 through `AssignBot`, now covers statements that assign a borrow variable the symbolic path has already ended.
 
@@ -394,7 +407,7 @@ Dropping F5 does not make the theorem cover the reborrow-and-replace idiom `x :=
 - F6: @tf-thm (i) (a data function's run never depends on the truth of a hypothesis); the claim's `let` case.
 - F7: @tf-lem-res; the whole borrow arguments of @tf-lem-runs; @tf-lem-modes.
 - F8: @tf-lem-w (a).
-- D65, assumed: the [Drop] clause of (N1) (@tf-drop).
+- D65, amended, assumed: the [Drop] clause of (N1), and the live result of @tf-thm (i) (@tf-drop).
 
 *Changes from revision 1*, for reviewer 9's findings:
 - (1) (A5), used at the tail steps and at [Rec]'s decrease.
@@ -411,3 +424,4 @@ Dropping F5 does not make the theorem cover the reborrow-and-replace idiom `x :=
 - (12) Stability is given as remarks.
 - (13) @tf-lem-types (`Eq`) claims equal truth, not equality; (I) covers field places; F6 has `let` and sequence; [Access] is (N1); bodies are required (F2); the new uses of F2, F3 and F4 are listed; the mechanisation's schedule counterexample is named `Sched.lean`, not F5; `R9Foot` is cited.
 - (14) Rule readings are stated in @tf-frag.
+- (16) Revision 2.2 assumes the amended D65. Bound borrowers are ended; a borrower in flight still makes the drop an error. @tf-thm (i) states that a borrow-typed result is live, and its proof shows it. The [Drop] argument is redone for borrowers in flight. F5 stays removed.
