@@ -29,7 +29,7 @@ F is the calculus of the appendix restricted as follows. Each restriction says w
 + *First order.* Programs are sequences of top-level definitions $kw("def") f (x_1 : A_1 dots x_n : A_n) : B space [kw("by") x_j] := b$ ($n >= 0$; $n = 0$ is a constant). Each $A_i$ is a data type, a borrow type or a proposition, and `B` is a data type, a borrow type (and then some $A_i$ is one, D44) or a proposition. There are no `fix` or `λ` inside bodies, no Π-types as values, no function parameters (so no abstract functions), no universes other than as the sorts of these types, no parameters of sort `Prop`, no type families and no Prop-valued functions. A definition is a _data function_ if `B` is data or a borrow type, and a _lemma_ if `B` is a proposition. _Why:_ this makes the type of every sealed program a closed data type (@tf-gen), which is what reviewer 6's closed proof of `False` (A1) lacked.
 + *Propositions.* $P ::= ty("True") | ty("False") | P and Q | ty("Eq") D thin a thin b | ty("Id") D thin t thin u$, with $D in {ty("Nat"), ty("Unit")}$. The terms `a`, `b`, `t`, `u` inside a type contain no `match`. _Why:_ a match inside a type that gets stuck is closed off as a stuck block, which F leaves out. It also makes every place occurrence in a statement reached by the statement's run (@tf-lem-w).
 + *No stuck blocks.* A `match` on data occurs only in tail position in a definition's body: the body itself, an arm of a match in tail position, or the tail of a `let` or sequence in tail position. It never occurs on the right of a `let`. So [Split] is only [Tail-split] and [Tail-gen], and no stuck block is ever formed.
-+ *No borrow is assigned into an existing place.* In `p := t`, `t` does not have a borrow type. Borrows are bound by `let`, passed as arguments, or returned. _Why:_ @tf-drop. With the assignment `x := Pick(n, &a, &b)` the symbolic path accepts a function that fails at a concrete instance. Without it, a borrower is declared after every place it borrows, so it is dropped before them on both paths.
++ *No borrow is assigned into an existing place.* In `p := t`, `t` does not have a borrow type. Borrows are bound by `let`, passed as arguments, or returned. _Why:_ @tf-drop. With the assignment `x := Pick(n, &a, &b)` the symbolic path accepts a function that fails at a concrete instance. Without it, a borrower is declared after every place it borrows, so it is dropped before them on both paths. The checker fix for this (ghost borrows, @tf-drop) is expected to make F5 unnecessary; that has to be re-checked when it lands.
 + *Proof forms.* Proof terms are `refl`, $chevron.l h, k chevron.r$, proof variables, lemma calls, a match on a proof of `And` or `True` (one arm), and `match h {}` on a proof of `False`. `match h {}` occurs only in lemma bodies. There is no `J`, `rewrite` or `split`. _Why:_ a data function's run then never depends on the truth of its hypotheses (@tf-thm, part (i)).
 
 Moves (D53) are as in the rules: `Nat` is not a copy type, so a runtime read of a `Nat` place moves it.
@@ -54,9 +54,9 @@ The _generic state_ of a definition `d` is $Gamma";" phi$, its generic call's en
   (A4) at every position that holds $"borrow"_ell$ in $Omega_s$ and $"borrow"_(ell')$ in $Omega_g$, $"owners"_(Omega_g)(ell') subset.eq "owners"_(Omega_s)(ell)$.
 ]) <tf-def-agr>
 
-Both $Omega_s alpha$ and $Omega_g$ are ground, and at a ground state [End] is plain substitution, because there are no sealed programs to re-normalise. So ρ is the resolution of property 7, which is mechanised: the result does not depend on the order in which borrows are ended (`end_order_indep`). Moreover, a state reached by any successful sequence of [End]s resolves to the same state (`endAll_endSeq`). Two consequences are used throughout:
+Both $Omega_s alpha$ and $Omega_g$ are ground, and at a ground state [End] is plain substitution, because there are no sealed programs to re-normalise. So ρ is the resolution of the claims table's order-independence property (property 4), which is mechanised: the result does not depend on the order in which borrows are ended (`end_order_indep`). Moreover, a state reached by any successful sequence of [End]s resolves to the same state (`endAll_endSeq`). Two consequences are used throughout:
 - (A2) is equivalent to "some sequences of [End]s take $Omega_s alpha$ and $Omega_g$ to one state", which is the form the F5 counterexample of the mechanisation forced (`notes/lean-meta.md`);
-- (A2) survives an [End] on either side, which is how the symbolic path may end a borrow earlier than the ground path (property 9's `Pick` example) without breaking agreement.
+- (A2) survives an [End] on either side, which is how the symbolic path may end a borrow earlier than the ground path (the naturality conjecture's `Pick` example) without breaking agreement.
 
 (A3) says that the symbolic path has ended at least the borrows the ground path has. (A4) says that its owners over-approximate: a returned borrow's hole sits in the fill of every place it may point into.
 
@@ -70,7 +70,7 @@ Both $Omega_s alpha$ and $Omega_g$ are ground, and at a ground state [End] is pl
   (N4) resolution commutes with valuation: $res(Omega_s) alpha = res(Omega_s alpha)$ up to a renaming of loans.
 ]) <tf-ass-n>
 
-This is the relational form of property 9. The symbolic run includes the runs of callee bodies in the machine ([T-Call]), where calls stuck on an abstract value close off. On the ground path those calls run.
+This is the relational form of the naturality conjecture (property 9). The symbolic run includes the runs of callee bodies in the machine ([T-Call]), where calls stuck on an abstract value close off. On the ground path those calls run.
 
 *It is false without restriction F5.* The probe `ochr/core/lean/Scratch/DropProbe.lean` (@tf-drop) is an accepted data function whose ground run fails at a [Drop], against (N1) and (N3). We believe F5 restores (N1) and (N3), by the argument given in F5, but we have not proved it. The other risks in @tf-ass-n are:
 - (N4), for [Seal] with inert loans. A fill ⌈`L; let r = C; *r := loan_k; c`⌉ is normalised with `loan_k` inert, and ending `k` later substitutes into it and re-normalises;
@@ -228,7 +228,7 @@ Termination is not a separate assumption. The ground run's segments end by (N1).
 #proof[By @tf-thm (ii), $"and"("eq"(D, r, r'), "eq"(T_pi, w_pi, w'_pi), dots)$ is true. At a ground state, `eq` on two numerals is `True` iff they are equal, and `Unit` has one value. By @tf-lem-w (b), every place that `t` or `u` changes is observed.]
 
 #thm([Corollary], [stability for F, at ground valuations], [
-  For a term of F run at $Omega_s$ and at $Omega_g$ with $Omega_s agr(alpha) Omega_g$, the decisions of Conjecture 3 (stability, §7) are:
+  For a term of F run at $Omega_s$ and at $Omega_g$ with $Omega_s agr(alpha) Omega_g$, the decisions of the stability conjecture (§7) are:
   (1) the same erasures and the same matches decided by the type of a proof, read from declared types and constructor names, which F never changes;
   (2) no stuck blocks on either path;
   (3) no arm is checked at a ground instance, where every match takes its arm; what soundness needs of item (3) is @tf-thm;
@@ -237,7 +237,7 @@ Termination is not a separate assumption. The ground run's segments end by (N1).
   (6) $W_g subset.eq W_s$, and each conjunct over $W_s without W_g$ becomes `True` under α (@tf-lem-w, and the proof of @tf-lem-types).
 ]) <tf-cor-stab>
 
-Conjecture 3 at refinements that are not ground, such as $sigma := ty("S") sigma'$, is not proved here. Soundness only needs its instances at ground valuations.
+The stability conjecture at refinements that are not ground, such as $sigma := ty("S") sigma'$, is not proved here. Soundness only needs its instances at ground valuations.
 
 == Naturality fails without F5 <tf-drop>
 
@@ -257,16 +257,18 @@ The symbolic path ended a borrow earlier than the ground path, which (A2) allows
 *Consequences for the paper.*
 - The clause "if the run of tα ends, it ends without error" of the naturality conjecture is false for the full rules.
 - So is "accepted programs do not go wrong when run", beyond the fuzzer's generator, which does not assign returned borrows into variables declared earlier.
-- We see no route from this to a closed proof of `False`. The model reads a run through its resolution, and resolution does not see a [Drop] error. But the rules should change, or state the restriction. The options are in the team notes: keep other owners lent after an over-approximate end, as lexical lifetimes do; let a ground [Drop] end a live borrower, as non-lexical lifetimes do; or adopt F5.
+- We see no route from this to a closed proof of `False`. The model reads a run through its resolution, and resolution does not see a [Drop] error. But the symbolic path must never be more permissive than a ground one.
+- *The fix being implemented* (team-lead's decision, 2026-09-30) is in the checker lane. When [Access] ends a borrow only because its loan sits in a sealed fill that has other possible owners, it releases only the accessed owner. The borrower becomes a _ghost borrow_: dead to runtime code, as a D53 ghost is, but still holding its loans in the other owners' fills until its binding is dropped, as lexical lifetimes do. `Bad2` is then rejected: `a` is dropped while `x`'s ghost still holds a loan in its fill.
+- Once that lands, F5 should be re-checked against the new [Access] and [Drop], and lifted if (N1) and (N3) hold without it. This section is written for the rules without the fix, with F5.
 
 == What would remove the assumption <tf-remains>
 
-+ *Prove @tf-ass-n for F.* This is item M4 of `notes/typed-fragment-plan.md`: a simulation, rule by rule, between the typing judgement's symbolic run and the ground machine, with agreement as the relation. It uses property 7 at every [End], `close_*` at every [Close], and the frame lemma at every call. Its three risks are:
++ *Prove @tf-ass-n for F.* This is item M4 of `notes/typed-fragment-plan.md`: a simulation, rule by rule, between the typing judgement's symbolic run and the ground machine, with agreement as the relation. It uses order-independence (property 4) at every [End], `close_*` at every [Close], and the frame lemma at every call. Its three risks are:
   - F5's sufficiency for (N1) and (N3);
   - (N4) through [Seal] with inert loans;
   - the preservation of (A4).
 + *Lift the mechanised lemmas to the current rules.* Moves (ghosts); [Close] without the `Unit` row; normalisation at every refinement and [End] rather than when states are compared.
-+ *Widen F.* Each addition brings back a decision of Conjecture 3:
++ *Widen F.* Each addition brings back a decision of the stability conjecture:
   - stuck blocks: their captures and modes;
   - closures and Π-values: class, captured types, [Conv-fun];
   - user inductives and pairs: disjointness and injectivity in `eq`, and matches on several-constructor proofs;
