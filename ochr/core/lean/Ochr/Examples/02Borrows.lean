@@ -282,6 +282,25 @@ ochr Moves uses Std {
   reject def ThroughLocal (q0 : Nat × Nat) (n1 : Nat) : Nat × Nat := (
     let a = match n1 { Z => 0, S _ => (let r = &q0; match *r { Mk(u, _) => u }) }; q0)
 
+  -- A borrow passed to a call that closes off, or to an erased call, must be whole: [Close]
+  -- seals the borrowed content (hiding the hole), and an erased call's writes vanish at
+  -- runtime, so neither makes it whole before the borrow ends (fuzz-port P). A call that
+  -- runs may (`TakeRefill`).
+  def G1 (x : &Nat) (n : Nat) : Unit := match n { Z => (), S _ => *x := 0 }
+  def F5 (x : &Nat) : Prop := (*x := 5; ⊤)
+  def Refill (x : &Nat) (v : Nat) : Unit := *x := v
+  reject def P1 (x0 : &Nat) : Unit := (let a3 = *x0; G1(x0, a3))
+  reject def P2 (x1 : &Nat) : Unit := ((let a0 = *x1; match a0 { Z => (), S _ => F5(x1); () }); ())
+  def TakeRefill (x : &Nat) : Unit := (let v = *x; Refill(x, v))
+  -- A closure made in an arm that captures (moves) `q0` for its `q0.1` moves `q0` (Q); a
+  -- move of `a4.2` in one arm and an inspection of `a4` in another split `a4`, whichever way
+  -- the field is written (`.2` or a pattern's `snd`: K)
+  reject def Q1 (q0 : Nat × Nat) (n1 : Nat) : Nat × Nat := (
+    match q0 { Mk(p0, p1) => let a2 = match n1 { Z => (λ(y4 : Nat) : Unit => p0 := y4), S p6 => (λ(y8 : Nat) : Unit => ()) }; (p0, 0) })
+  inductive Sw := SwF | SwT
+  reject def K1 (b0 : Sw) : Nat × Nat := (
+    let a4 = (0, 0); let t = match b0 { SwF => match a4 { Mk(p, q) => 0 }, SwT => let s = a4.2; 0 }; a4)
+
   -- RN: a split in a data function re-normalises its hypotheses' types, as types (reads copy)
   def DataSplit (n : Nat) (h : Id (Nat × Nat) (match n { Z => (n, n), S p => (p, p) })
       (match n { Z => (0, 0), S p => (p, p) })) : Nat := (
@@ -291,4 +310,4 @@ ochr Moves uses Std {
 #eval IO.println (run "Moves" Moves).show
 
 #guard (run "Moves" Moves).allAsExpected
-#guard (run "Moves" Moves).count == 39
+#guard (run "Moves" Moves).count == 48
