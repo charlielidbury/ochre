@@ -275,13 +275,22 @@ ochr ScrutineeTypes {
       LCons(h, t) => h,
     }
   )
+
+  -- The same for a match on numbers (fuzz-port's M2): `Z`/`S` need a scrutinee whose type is
+  -- `Nat`, and `TG(n)` is `Nat` only at `0`. The checker once took the constructors from the
+  -- patterns, and `M2(1, HB)` met `F` when run.
+  inductive B2 := BF | BT
+  def TG (n : Nat) : Type := match n { Z => Nat, S _ => B2 }
+  def HB (n : Nat) : TG(n) := match n { Z => 0, S _ => BF }
+  reject def M2 (n : Nat) (h : Π(n : Nat). TG(n)) : Nat := (let x = h(n); match x { Z => 0, S _ => 1 })
+  def M2Zero (h : Π(n : Nat). TG(n)) : Nat := (let x = h(0); match x { Z => 0, S _ => 1 })
 }
 
 #eval IO.println (run "ScrutineeTypes" ScrutineeTypes).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ScrutineeTypes" ScrutineeTypes).allAsExpected
-#guard (run "ScrutineeTypes" ScrutineeTypes).count == 5
+#guard (run "ScrutineeTypes" ScrutineeTypes).count == 10
 
 /-! Generalisations are global (D37). Forming `Esc`'s goal generalises a sealed program on a
 private copy of the environment, and names it with a fresh abstract value. That record,

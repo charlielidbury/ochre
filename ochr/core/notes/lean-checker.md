@@ -1270,3 +1270,16 @@ The lead chose option (b), on the principle that uncertainty never makes the sym
 *RULES draft for [Access] (for the lead's review; not applied):* "When the loan occurs inside `content(p)` and also inside another owner's content (the hole of a borrow returned by a stuck call or match sits in the fill of every place it may borrow: its real owner is not known), the borrow is not ended: `loan_ℓ` is replaced by the borrow's content in `content(p)` only, and `borrow_ℓ v` becomes the *ghost borrow* `ghost(borrow_ℓ v)`. A ghost borrow is unusable, as an ended one is: any use is an error. It still holds its loans in the other owners, so dropping or overwriting one of them while it lives is a [Drop] error. It ends by [End ℓ] when its binding is dropped or overwritten. The symbolic path thus never ends a borrow earlier than some instance does, and uncertainty about the owner never makes [Drop] more permissive."
 
 1100 verdicts.
+
+## 46. M2: a match takes its constructors from the scrutinee's type
+
+fuzz-port's M2: `let x = h(n); match x { Z => 0, S _ => 1 }` with `h : Π(n). TG(n)`, where `TG(n)` is `Nat` only at `0`, was accepted. `M2(1, HB)` met `F` when run. For `Z`/`S` matches the checker took the constructors from the patterns: it split `x`'s abstract content as a `Nat` without reading its type. Inductive matches already read theirs (`scrutType`).
+
+`natScrutinee` now requires the scrutinee's type to normalise to `Nat`, in `evalMatch` (typed) and in `checkTail`'s `matchNat`. A stuck type is not known to be `Nat` (fail-safe). This is under the existing switch `scrutTyped` (the v2.0 finding "a match's scrutinee has its constructors' type"), whose row now flips `M2`.
+
+Regressions (ScrutineeTypes):
+- `B2`, `TG` and `HB`, accepted;
+- `M2`, rejected;
+- `M2Zero`, accepted: at `h(0)` the type is `Nat`.
+
+1111 verdicts.

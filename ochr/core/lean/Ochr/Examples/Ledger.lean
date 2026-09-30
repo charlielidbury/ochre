@@ -72,11 +72,11 @@ open Ochr.Registry in
    "GenType.GenL:rejected", "RenormPi.G:rejected", "RenormPi.Plain:rejected", "RenormPi.InPi:rejected",
    "RenormPi.InConj:rejected", "Splitting.Pick:rejected", "Splitting.PickNotZero:rejected",
    "Splitting.PickNotZeroCopy:rejected", "Splitting.Pick22:rejected", "Splitting.Pick22NotZero:rejected",
-   "Splitting.PickTwo:rejected", "Splitting.DoubleVal:rejected", "Trees.InsertM:rejected",
-   "Trees.Insert:rejected", "Trees.InsertMEq:rejected", "Trees.InsertMSwap:rejected",
-   "Trees.SizeInsert:rejected", "InPlaceTrees.InsertM:rejected", "InPlaceTrees.Insert:rejected",
-   "InPlaceTrees.InsertMIsInsert:rejected", "InPlaceTrees.SizeInsert:rejected",
-   "InPlaceTrees.SizeInsertRw:rejected"]
+   "Splitting.PickTwo:rejected", "Splitting.DoubleVal:rejected", "ScrutineeTypes.M2Zero:rejected",
+   "Trees.InsertM:rejected", "Trees.Insert:rejected", "Trees.InsertMEq:rejected",
+   "Trees.InsertMSwap:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.InsertM:rejected",
+   "InPlaceTrees.Insert:rejected", "InPlaceTrees.InsertMIsInsert:rejected",
+   "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected"]
 open Ochr.Registry in
 #guard rowOk { blockMoves := false }
   ["ClosingOff.MovedByBlock:accepted"]
@@ -225,7 +225,7 @@ open Ochr.Registry in
 -- finding (v2.0 round): v1.9 assumed a data match's scrutinee type from its arms
 open Ochr.Registry in
 #guard rowOk { scrutTyped := false }
-  ["ScrutineeTypes.f:accepted", "ScrutineeTypes.g:accepted"]
+  ["ScrutineeTypes.f:accepted", "ScrutineeTypes.g:accepted", "ScrutineeTypes.M2:accepted"]
 -- D48 (1) switched off: &Type makes Type₀ impredicative (System U⁻), and &Prop, &True, &Π, &A pass
 open Ochr.Registry in
 #guard rowOk { refData := false }

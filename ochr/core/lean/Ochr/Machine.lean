@@ -2270,6 +2270,7 @@ partial def refine (σ : Nat) (r : Value) : M Unit := do
 
 partial def evalMatch (typed : Bool) (p : Place) (z s : Term) (expected : Option Value := none) :
     M (Value × Option Value) := do
+  if typed then natScrutinee p
   accessPath p
   accessNeutralHead p
   let v ← matchContent p
@@ -2285,6 +2286,16 @@ partial def evalMatch (typed : Bool) (p : Place) (z s : Term) (expected : Option
       let expected ← expected.mapM (substV v (.abs σ))
       splitThenClose p z s σ expected
   | _ => err s!"[Match] on a non-Nat value {v}"
+
+/-- A match's constructors come from its scrutinee's type, never from its patterns: a match
+on `Z`/`S` needs a scrutinee whose type normalises to `Nat` (fuzz-port's M2: `x : TG(σ)`,
+stuck, was split as a `Nat`, and at `TG(1) = B2` the run met `F`). A type that is stuck is
+not known to be `Nat` (fail-safe, as `scrutType` does for inductive matches). -/
+partial def natScrutinee (p : Place) : M Unit := do
+  if !(← get).cfg.scrutTyped then return
+  match ← placeType p with
+  | .tNat => pure ()
+  | T => err s!"[Match] on {← ppPlace p} with `Z`/`S`, but its type {T} is not Nat"
 
 /-- [Split] on a neutral that is not an abstract value (a sealed program left by an
 opaque call, deriver-e346 §E4.3): generalise first, i.e. replace every occurrence of it
@@ -3006,6 +3017,7 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
     dropValue v
     checkTail w k
   | .matchNat p z s =>
+    natScrutinee p
     accessPath p
     accessNeutralHead p
     match ← matchContent p with
