@@ -28,7 +28,7 @@ Places are variables `x`, dereferences `*p` and fields such as the predecessor f
 Add(x : Nat, y : Nat) : Nat := AddM(&x, y); x
 ```
 
-Because definitional equality is evaluation, `Id Nat (Add(2, 3)) 5` holds by `refl`: the checker runs `Add(2, 3)`, which runs `AddM` in place on a local copy, and compares the result with `5`.
+Because definitional equality is evaluation, `Id Nat (Add(2, 3)) 5` holds by `refl`: the checker runs `Add(2, 3)`, which runs `AddM` in place on its own `x`, and compares the result with `5`.
 
 The machine that does this is the symbolic semantics of Aeneas's low-level borrow calculus @aeneas. An environment Ω maps variables to values; borrowing `x` moves its content `v` into the borrow, written `borrow₀ v`, and leaves a _loan_ `loan₀` behind; ending the borrow moves the content back.
 
@@ -134,27 +134,27 @@ Now a caller that first adds and then subtracts:
 ```
 LeAdd(n : Nat, m : Nat) : Le(n, Add(n, m)) by n := match n { Z => refl, S n' => LeAdd(n', m) }
 
-AddSub(x : &Nat, y : Nat) : Unit := let old = *x; AddM(&*x, y); SubM(x, old, LeAdd(old, y))
+AddSub(x : &Nat, y : Nat) : Unit := let old = clone(*x); AddM(&*x, y); SubM(x, old, LeAdd(old, y))
 ```
 
-At the call to `SubM`, `*x` has just been mutated in place by `AddM`, so on symbolic input it holds the sealed program `N(σ, y) = ⌈let c = σ; AddM(&c, y); c⌉`, and `SubM` demands a proof of `Le(σ, N(σ, y))`. The lemma `LeAdd` is about the _pure_ `Add` of the snapshot `old`, and its type is `Le(σ, Add(σ, y))`. The two meet because `Add(σ, y)` normalises to the very same sealed program: the in-place computation and the pure one are the same program to the type checker. A proof about the pure function is accepted where a proof about the mutated state is required, with no bridging lemma. `LeAdd` is also the idiom for a postcondition: a property of what an in-place function leaves behind is stated by running it on a copy inside the statement, here through its wrapper `Add`, since a type formed before the body runs cannot see the body's writes (@sec-typing). Using the snapshot after further mutation, `…; AddM(&*x, y); *x := Z; SubM(x, old, LeAdd(old, y))`, is rejected, since the requirement then mentions `Z`.
+At the call to `SubM`, `*x` has just been mutated in place by `AddM`, so on symbolic input it holds the sealed program `N(σ, y) = ⌈let c = σ; AddM(&c, y); c⌉`, and `SubM` demands a proof of `Le(σ, N(σ, y))`. `clone` copies `*x`, since reading a number through a borrow would move it out; `old` is then moved into `SubM`, while `LeAdd(old, y)`, a proof, still reads it, since erased uses do not count. The lemma `LeAdd` is about the _pure_ `Add` of the snapshot `old`, and its type is `Le(σ, Add(σ, y))`. The two meet because `Add(σ, y)` normalises to the very same sealed program: the in-place computation and the pure one are the same program to the type checker. A proof about the pure function is accepted where a proof about the mutated state is required, with no bridging lemma. `LeAdd` is also the idiom for a postcondition: a property of what an in-place function leaves behind is stated by running it on a copy inside the statement, here through its wrapper `Add`, since a type formed before the body runs cannot see the body's writes (@sec-typing). Using the snapshot after further mutation, `…; AddM(&*x, y); *x := Z; SubM(x, old, LeAdd(old, y))`, is rejected, since the requirement then mentions `Z`.
 
 == Trees
 
-Nothing above is specific to numbers. With several constructors and several fields, a pattern variable names a field place, and the environment keeps every field that a recursive call does not touch. In-place insertion into a binary search tree recurses into the left or the right subtree according to a comparison, so which place is mutated depends on a value. Its pure version is not written separately; like `Add`, it runs the in-place one on a copy:
+Nothing above is specific to numbers. With several constructors and several fields, a pattern variable names a field place, and the environment keeps every field that a recursive call does not touch. In-place insertion into a binary search tree recurses into the left or the right subtree according to a comparison, so which place is mutated depends on a value. Its pure version is not written separately; like `Add`, it runs the in-place one on the tree it is given. Keys are `Word`s, a library type of numbers that code only compares, which is unary in the logic, a machine word in the cost model, and copied when read (@sec-eval):
 
 ```
-InsertM(t : &Tree, k : Nat) : Unit by t :=
+InsertM(t : &Tree, k : Word) : Unit by t :=
   match *t { Leaf          => *t := Node(Leaf, k, Leaf),
              Node(l, v, r) => let b = Lt(k, v);
                               match b { true => InsertM(&l, k), false => InsertM(&r, k) } }
-Insert(t : Tree, k : Nat) : Tree := InsertM(&t, k); t
+Insert(t : Tree, k : Word) : Tree := InsertM(&t, k); t
 ```
 
 A property of the in-place code is then stated and proved directly: insertion adds one node.
 
 ```
-SizeInsert(t : Tree, k : Nat) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :=
+SizeInsert(t : Tree, k : Word) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :=
   match t { Leaf => refl,
             Node(l, v, r) => let b = Lt(k, v); match b {
               true  => rewrite SizeInsert(l, k) in refl,
