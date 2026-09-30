@@ -15,7 +15,7 @@
 
 = Soundness of a typed fragment, conditional on naturality <sec-tf>
 
-_Draft for an appendix section. Notes file: `ochr/core/notes/typed-fragment-proof.typ`. Revision 2, 2026-09-30, answering the cold review `notes/reviewer-9.md`. References to "the appendix" are to the paper's appendix, whose rules this section uses by name._
+_Draft for an appendix section. Notes file: `ochr/core/notes/typed-fragment-proof.typ`. Revision 2, 2026-09-30, answering the cold review `notes/reviewer-9.md`; revision 2.1 assumes D65 and drops restriction F5. References to "the appendix" are to the paper's appendix, whose rules this section uses by name._
 
 This section reduces soundness of a fragment F to a simulation assumption between the two evaluation paths. F has natural numbers, `Unit`, the propositions `True`, `False` and `And`, `Eq` and `Id`, first-order top-level functions with borrow parameters (some of which return a borrow), [Close], and [Split] with refinement and generalisation. For F we prove that, if the assumption holds, two things are true of every accepted program:
 - every data function runs without error at every concrete input;
@@ -23,7 +23,7 @@ This section reduces soundness of a fragment F to a simulation assumption betwee
 
 Consistency of F and adequacy of `Id` follow (@tf-cor-cons, @tf-cor-adeq).
 
-The assumption, naturality (@tf-ass-n), says one step at a time that a symbolic run and the ground run agree once every borrow is ended. It holds almost all of the operational content. It is false for the full rules: a probe written for this proof found an accepted function that fails at a concrete input (@tf-drop). F excludes that program, and the language is being changed so that it is rejected. A second assumption (@tf-ass-t) covers the transfer of the mechanised lemmas from rule set 1.3 to the current rules. Everything else is proved on paper here, and each mechanised lemma that is used is named where it is used (@tf-anchors).
+The assumption, naturality (@tf-ass-n), says one step at a time that a symbolic run and the ground run agree once every borrow is ended. It holds almost all of the operational content. It was false for the rules as they stood: a probe written for this proof found an accepted function that fails at a concrete input (@tf-drop). The rules have been changed (D65), and the proof assumes the change. A second assumption (@tf-ass-t) covers the transfer of the mechanised lemmas from rule set 1.3 to the current rules. Everything else is proved on paper here, and each mechanised lemma that is used is named where it is used (@tf-anchors).
 
 == The fragment F <tf-frag>
 
@@ -40,7 +40,7 @@ F is the calculus of the appendix restricted as follows. Each restriction says w
   _Why:_ conversion on data is then syntactic (@tf-lem-conv), the type of every sealed program is a closed data type (@tf-gen), and every call inside a type is to an earlier definition.
 + *Propositions.* $P ::= ty("True") | ty("False") | P and Q | ty("Eq") D thin a thin b | ty("Id") D thin t thin u$, with $D in {ty("Nat"), ty("Unit")}$. The terms `a`, `b`, `t`, `u` inside a type contain no `match`. _Why:_ a match inside a type that gets stuck is closed off as a stuck block, which F leaves out. It also means the typed run of a statement reaches every place occurrence in it (@tf-lem-w).
 + *No stuck blocks.* A `match` on data occurs only in tail position in a definition's body: the body itself, an arm of a match in tail position, or the tail of a `let` or sequence in tail position. It never occurs on the right of a `let`. So [Split] is only [Tail-split] and [Tail-gen]. No stuck block is ever formed, and [Split-gen] and [T-Split-goal] never run.
-+ *No borrow is assigned into an existing place.* In `p := t`, `t` does not have a borrow type. Borrows are bound by `let`, passed as arguments, or returned. _Why:_ @tf-drop. The checker is being changed ("ghost borrows") so that this restriction can be lifted; that has to be re-checked when the change lands.
++ _(Removed in revision 2.1.)_ Revision 2 forbade assigning a borrow into an existing place, because of `Bad2` (@tf-drop). Under D65 it is no longer needed: the [Drop] clause of (N1) holds without it, and @tf-lem-w now covers statements that assign a borrow variable the symbolic path has already ended. The number is kept so that references to F6–F8 stay valid.
 + *Proof forms.* Proof terms are:
   - `refl`, $chevron.l h, k chevron.r$, proof variables and their field places, and lemma calls;
   - a `let` or sequence whose tail is a proof;
@@ -54,6 +54,7 @@ F is the calculus of the appendix restricted as follows. Each restriction says w
 Moves (D53) are otherwise as in the rules: `Nat` is not a copy type, so a runtime read of an owned `Nat` place moves it and leaves a ghost.
 
 *Rule readings.* Where the appendix and `RULES.md` differ, F uses these readings:
+- *D65* (decided 2026-09-30; not yet in the checker, and assumed here until it lands): [Drop] of an owned value that holds a live loan ends that loan's borrower, as a write through [Access] would, and never fails. The borrower becomes ⊥;
 - [Match-err] also covers a ghost, as the checker does;
 - [Seal]'s final read copies, as `RULES.md` says;
 - a generalisation record belongs to the [Split] arm that made it (checker commit 969e3254, reviewer 6's A1). The appendix still calls records global.
@@ -118,8 +119,8 @@ This is naturality in relational form, stated per step so that the proof can use
 - Its hypothesis about callees is per call: (N2) assumes only that the ground call it relates is safe. The proof supplies that call by call (@tf-lem-runs), at the arguments the ground run actually passes (finding 3 (a)).
 - By F7 every such call is at a ground instance (finding 3 (b)), and (N1)–(N3) cover erased mode (finding 3 (c)).
 
-*It is false without F5* (@tf-drop). The risks we know of, in (N1)–(N4):
-- the preservation of (A4), on which the [Drop] clause of (N1) depends (@tf-drop);
+*It was false before D65* (@tf-drop). The risks we know of, in (N1)–(N4):
+- agreement after a [Drop] under D65, and the preservation of (A3): early ends are deep, so no reborrow outlives its early-ended borrow on the symbolic path (@tf-drop);
 - the preservation of (A5) by [Close]. Under α, a closed-off call's fills place the hole where the ground call's returned borrow points: `close_cur`, `close_back`;
 - (N4) through [Seal] with inert loans. Reviewer 9 could not break it for `Pick`'s fills. The lemma behind it is _hole parametricity_: a fill's run writes its hole and reads its cells, but never inspects the hole.
 
@@ -173,25 +174,31 @@ The mechanised machine has no ghosts, reads by copying, normalises sealed progra
 
 #thm([Lemma], [footprints], [
   Let $Omega_s agr(alpha) Omega_g$, and let `t` and `u` be statement terms of F whose typed runs from $Omega_s$ succeed. Let $W_s$ and $W_g$ be the footprints $W(t, u)$ at $Omega_s$ and at $Omega_g$, as sets of positions. Then:
-  (a) $W_g subset.eq W_s$;
-  (b) for each $pi in W_s without W_g$, the erased-mode ground runs of `t` and of `u` from $Omega_g$ leave the resolved content of π unchanged;
+  (a) every $pi in W_g without W_s$ is owned only through borrow variables that hold ⊥ at $Omega_s$, and `t` and `u` only assign those variables, as whole variables;
+  (b) for each π in $W_s without W_g$ or in $W_g without W_s$, the erased-mode ground runs of `t` and of `u` from $Omega_g$ leave the resolved content of π unchanged;
   (c) each observed place has the same type on both paths.
 ]) <tf-lem-w>
 #proof[
-  *(b).* By @tf-ass-t (T2), a run changes the environment below its own frame only through the loans held by that frame's borrows, and in its own frame only the places it writes or borrows. In erased mode reads copy, so no read changes a place. The positions whose resolved content a run of `t` can change are therefore the owners of the places `t` writes or borrows and of the borrow variables it names. That is $W_g (t)$, by the definition of the footprint. A position outside $W_g = W_g (t) union W_g (u)$ is left unchanged by both runs.
+  *The frame fact.* By @tf-ass-t (T2), a run changes the environment below its own frame only through the loans held by that frame's borrows, and in its own frame only the places it writes or borrows. In erased mode reads copy, so no read changes a place. Ending a borrow, including the old borrow that an assignment to a borrow variable drops, does not change any resolved content. So the resolved content of a position π can change only if `t` writes π or writes through a live borrow that π owns. Both are the owners of the places `t` writes or borrows and of the borrow variables it names, which is $W_g (t)$ by the definition of the footprint.
 
   *(a).* Let $pi in W_g$ be owned by the root of an occurrence `p` in `t` or `u`.
   - If `p` is rooted at an owned variable, it contributes that variable on both paths.
-  - If `p` is rooted at a borrow variable `x`, then `x` holds a borrow at $Omega_g$, since a variable holding ⊥ contributes nothing. At $Omega_s$ it holds a borrow or ⊥; it never holds a loan, since `&&D` is not a type. Suppose it holds ⊥.
-    - The statement terms are match-free (F3), so the typed run of `t` reaches every occurrence in `t`, including those in erased positions, which the typing judgement runs on private copies ([T-Erase]).
-    - Each kind of occurrence rooted at a variable holding ⊥ is an error. A read of `x` or of a place under it is [Read-err]. A borrow is [Borrow-err]. A match is [Match-err]. An assignment through `x` fails because its content is undefined.
-    - An assignment to `x` itself would assign a borrow, which F5 excludes. A `clone` of `x` is excluded by F8; outside F, `AssignBot` and `CloneBot` (probe `Reviewer9Probe`) show both escapes.
-    - The run succeeded, so `x` holds a borrow at $Omega_s$, and (A4) gives $"own"_(Omega_g)(x) subset.eq "own"_(Omega_s)(x)$. Hence $pi in W_s$.
+  - If `p` is rooted at a borrow variable `x`, then `x` holds a borrow at $Omega_g$, since a variable holding ⊥ contributes nothing. At $Omega_s$ it holds a borrow or ⊥; it never holds a loan, since `&&D` is not a type. If it holds a borrow, (A4) gives $"own"_(Omega_g)(x) subset.eq "own"_(Omega_s)(x)$, so $pi in W_s$.
+  - Suppose it holds ⊥. The statement terms are match-free (F3), so the typed run of `t` reaches every occurrence in `t`, including those in erased positions, which the typing judgement runs on private copies ([T-Erase]).
+    - Every occurrence rooted at a variable holding ⊥ is an error except an assignment to the whole variable. A read of `x` or of a place under it is [Read-err]. A borrow is [Borrow-err]. A match is [Match-err]. An assignment through `x` fails because its content is undefined. A `clone` of `x` is excluded by F8 (`CloneBot` in `Reviewer9Probe` shows the escape outside F).
+    - `x := t'` drops ⊥, which is loan-free, and binds a new borrow. After it, `x` holds that same new borrow on both paths.
+    - So `t` and `u` use `x` only by assigning it as a whole. This is `AssignBot` in `Reviewer9Probe`.
+
+  *(b).* A position outside $W_g$ is left unchanged by both ground runs, by the frame fact. That covers $W_s without W_g$.
+  - Let $pi in W_g without W_s$. By (a), π is owned only through borrow variables that hold ⊥ at $Omega_s$, which `t` and `u` only assign.
+  - On the ground, such an assignment drops the variable's old borrow, which ends it and changes no resolved content.
+  - If `t` wrote π through any other place `q`, the root of `q` would hold a live borrow at $Omega_s$, or be π itself. By (A4), π would then be in $W_s$.
+  - So neither run changes π.
 
   *(c).* Observed places have type `Nat` or `Unit`. A place's type is read from its stored type; a temporary's is read from its value's type, which is a numeral's, Δ(σ)'s or a sealed program's declared codomain. Agreement relates positions of the same binding, and in F no refinement changes these types (F1, F2).
 ]
 
-(a) is strict, and the extra conjuncts do become `True`. Probe `R9Foot` (in `Reviewer9Probe.lean`) checks this with verdicts. In arm `Z`, a hypothesis formed at an abstract `n` has type `False ∧ ⊤`, and `FPZ` uses its second conjunct as `True`. `FPZshow`'s rejection prints arm `S`'s type as `⊤ ∧ False`.
+The symbolic side's extras are real, and their conjuncts do become `True`. Probe `R9Foot` (in `Reviewer9Probe.lean`) checks this with verdicts. In arm `Z`, a hypothesis formed at an abstract `n` has type `False ∧ ⊤`, and `FPZ` uses its second conjunct as `True`. `FPZshow`'s rejection prints arm `S`'s type as `⊤ ∧ False`.
 
 #thm([Lemma], [types agree], [
   Let $Omega_s agr(alpha) Omega_g$ and let `A` be a proposition of F. Suppose every call made in erased mode by the ground evaluation of `A` runs to completion without error. If `A` evaluates to $T_s$ at $Omega_s$ (in a type position, on a private copy), then it evaluates to some $T_g$ at $Omega_g$, and $ok(T_s alpha)$ iff $ok(T_g)$.
@@ -203,7 +210,7 @@ The mechanised machine has no ghosts, reads by copying, normalises sealed progra
   - *`Id D t u`.* By @tf-lem-runs the ground runs of `t` and `u` succeed in agreement with the symbolic ones. The observation then ends every borrow. By (N4) and (A2), each symbolic observation under α equals the ground one after resolution, position by position: $r_s alpha = r_g$, and $w_s (pi) alpha = w_g (pi)$ for every position π; the same holds for `u`. So:
     - $T_s alpha$ has the truth of the conjunction of $"eq"(D, r_g, r'_g)$ and of $"eq"(T_pi, w_g (pi), w'_g (pi))$ over $pi in W_s$;
     - $T_g$ is the same conjunction over $pi in W_g$;
-    - by @tf-lem-w (a) $W_g subset.eq W_s$; by (b) each conjunct over $W_s without W_g$ compares equal values, so it is `True`; by (c) the conjuncts' types agree;
+    - by @tf-lem-w (b), each conjunct over a position in only one of $W_s$ and $W_g$ compares equal values, so it is `True`; by (c) the conjuncts' types agree;
     - the truth of a conjunction does not depend on the order of its conjuncts.
 ]
 
@@ -325,11 +332,11 @@ The corollary is about observations, which read by copying. It says nothing dire
 - (2): F forms no stuck blocks.
 - (3): at a ground instance every match takes its arm, so no arm is checked.
 - (5): the same types for observed places (@tf-lem-w (c)).
-- (6): containment of footprints, with the extra conjuncts becoming `True` (@tf-lem-w).
+- (6): footprints may differ in both directions, but every position in only one of them contributes a conjunct that is `True` (@tf-lem-w). The symbolic side's extras are the common case, from over-approximate owners (`R9Foot`). The ground side's extras come only from borrow variables that the symbolic path has already ended and that a statement reassigns (`AssignBot`).
 
 These are remarks, not a corollary. At ground valuations most items hold trivially. The refinements that matter for [Split], such as $sigma := ty("S") sigma'$, are not ground, and this section says nothing about them. Soundness uses @tf-thm, not stability (reviewer 9, finding 12).
 
-== Naturality fails without F5 <tf-drop>
+== [Drop] after an early end: `DropProbe`, and D65 <tf-drop>
 
 The probe `ochr/core/lean/Scratch/DropProbe.lean` (5 of 5 verdicts as described, with and without D53) contains
 ```
@@ -340,22 +347,32 @@ def Bad2 (n : Nat) (b : Nat) (x : &Nat) : Unit := ( let a = 0; x := Pick(n, &a, 
 - *At `n = 1`* it runs.
 - *The same with a local `let x = &c` declared before `a`* (`Bad3`).
 
-The symbolic path ended a borrow earlier than the ground path, which (A2) allows. An earlier end is exactly what lets a later [Drop] succeed, so the [Drop] clause of (N1) fails.
+The symbolic path ended a borrow earlier than the ground path, which (A2) allows. An earlier end is exactly what lets a later [Drop] succeed, so under the rules as they stood the [Drop] clause of (N1) failed. Reviewer 9 found a second route to the same failure (`Bad4`, `Bad5` in `Reviewer9Probe`): a match on a fill with one owner ends every loan inside it (D29), while on the ground the loan sits deeper and survives the match.
 
-*Why F5 should restore it, given (A4).* On the ground path, a place dies with a live borrow into it only if some borrower is still live. Take that borrower's symbolic counterpart.
-- If it is live, (A4) puts the dying place among its symbolic owners. The symbolic [Drop] then fails too, so the program was not accepted.
-- If it is ⊥, ended early, then it is not a temporary. A call argument ended in flight is [Call-err] on the symbolic path. A let-block's result is followed only by drops, and a drop ends only the borrow it drops, so the result is never ended early.
-- So it is a binding. By F5 a binding that holds a borrow was bound by `let` after its target existed, so it is dropped before its target on both paths.
+*The fix, D65.* [Drop] of an owned value that holds a live loan ends that loan's borrower, as a write through [Access] would, and never fails. This is the non-lexical-lifetime reading: dropping `a` while `x` borrows it is fine if `x` is not used again. The [Drop] clause of (N1) then holds by construction, in the sense that a ground [Drop] never fails.
+- If the symbolic counterpart of the ended borrower is live, the symbolic [Drop] ends it too.
+- If it was ended earlier, the symbolic path has already done what the ground path now does. (A2) is unaffected, since ending borrows does not change the resolution, and (A3)–(A5) are kept.
+- Agreement after a drop is still part of @tf-ass-n.
 
-This corrects revision 1, which claimed that every borrower is declared after its target. A borrow in flight can outlive a block's locals (`E1` in `Reviewer9Probe`), and the first case rejects it. The argument uses (A4), so the [Drop] clause of (N1) depends on (A4)'s preservation. It is an argument, not a proof, and it is part of @tf-ass-n.
+`Bad2`–`Bad5` become accepted and run without error. Returning a borrow of a local (`let a = 0; &a`) still has to be rejected: under D65 the result is an ended borrow, and [Def]'s result check refuses it.
 
-*The language fix* (checker lane, decided 2026-09-30) makes the symbolic path no more permissive than the ground one. When [Access] ends a borrow only because its loan sits in a sealed fill that has other possible owners, it releases only the accessed owner. The borrower becomes a _ghost borrow_: dead to runtime code, but still holding its loans in the other owners' fills until its binding is dropped, as lexical lifetimes do. `Bad2` is then rejected. When that lands, F5 should be re-checked: the question is whether the [Drop] clause of (N1) then holds by construction. We see no route from `Bad2` to a closed proof of `False`, since resolution does not see a [Drop] error. But it contradicts "accepted programs do not go wrong when run".
+Revision 2 excluded `Bad2` with a restriction, F5: no borrow is assigned into an existing place. Under D65, F5 is not needed:
+- the [Drop] clause holds without it;
+- @tf-lem-w, which revision 2 made depend on F5 through `AssignBot`, now covers statements that assign a borrow variable the symbolic path has already ended.
+
+We found no other use of F5.
+
+An early symbolic end does not leave a reborrow alive that the ground path later ends. In F, the symbolic path ends a borrow early only through [Access] of a place that holds its loan, or through a [Drop] of such a place. Both keep ending loans until none remains in that place, and the ended borrow's content, reborrows included, is substituted into it. So the reborrows of an early-ended borrow end with it. A probe of this (a reborrow through `Pick`'s result, then `x := &c`) is rejected on the symbolic path for that reason.
+
+Pairs would break this argument. A shallow read of one field would leave a reborrow in the other field alive. F has none (F1). The argument is part of @tf-ass-n, as the preservation of (A3).
+
+Dropping F5 does not make the theorem cover the reborrow-and-replace idiom `x := &(*x).1`. The current rules reject it: the assignment's [Access] on `x` ends the new borrow, whose loan sits inside `x`'s content. This is the completeness question that `notes/lean-meta.md` records as F1.
 
 == What would remove the assumptions <tf-remains>
 
 + *Prove @tf-ass-n for F.* This is a simulation, rule by rule, between the typing judgement's symbolic run and the ground machine, with agreement (A1)–(A5) as the relation. It uses property 4 at every [End], the `close_*` equations at every [Close], and the frame property at every call. The risks are:
-  - the preservation of (A4) and (A5);
-  - the [Drop] clause under F5;
+  - the preservation of (A3) (early ends are deep), (A4) and (A5);
+  - agreement after a drop under D65;
   - (N4) through [Seal] with inert loans.
 
   Item M4 of `notes/typed-fragment-plan.md` estimates it at 3–5k lines of Lean.
@@ -373,10 +390,11 @@ This corrects revision 1, which claimed that every borrower is declared after it
 - F2: @tf-lem-conv (conversion on data is syntactic); @tf-gen (b); @tf-lem-w (c); calls in types are to earlier definitions (@tf-thm).
 - F3: @tf-lem-w (a) (every occurrence in a statement is reached); with F4, @tf-gen (a) (records come only from [Tail-gen]).
 - F4: the walk forms no stuck blocks; @tf-lem-runs.
-- F5: the [Drop] clause of (N1) (@tf-drop); @tf-lem-w (a).
+- F5: removed in revision 2.1 (D65).
 - F6: @tf-thm (i) (a data function's run never depends on the truth of a hypothesis); the claim's `let` case.
 - F7: @tf-lem-res; the whole borrow arguments of @tf-lem-runs; @tf-lem-modes.
 - F8: @tf-lem-w (a).
+- D65, assumed: the [Drop] clause of (N1) (@tf-drop).
 
 *Changes from revision 1*, for reviewer 9's findings:
 - (1) (A5), used at the tail steps and at [Rec]'s decrease.
@@ -385,8 +403,8 @@ This corrects revision 1, which claimed that every borrower is declared after it
 - (4) Termination from @tf-lem-runs, not from `exec_total`, which is no longer cited.
 - (5) @tf-ass-t is separate from @tf-ass-n. The table gives the `close_*` hypotheses.
 - (6) The theorem is titled conditional, with the paragraph after its proof.
-- (7) The F5 argument is corrected, and it depends on (A4).
-- (8) @tf-lem-w (a)'s case list is corrected, with F5 and F8.
+- (7) Revision 2 corrected the F5 argument (it depends on (A4)). Revision 2.1 replaces F5 with D65, after reviewer 9's `Bad4` refuted the ghost-borrow fix.
+- (8) @tf-lem-w (a)'s case list is corrected (F8). In revision 2.1, (a) and (b) are symmetric and cover `AssignBot` without F5.
 - (9) @tf-gen is rewritten for arm-local records (969e3254): records come only from [Tail-gen] on the current path, and are defined by (A1).
 - (10) F8.
 - (11) @tf-cor-adeq is about observations.
