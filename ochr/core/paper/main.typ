@@ -48,3 +48,4 @@
 #set heading(numbering: "A.1")
 = Formal definition <sec-appendix>
 #include "sections/appendix.typ"
+#include "sections/tf.typ"
