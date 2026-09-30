@@ -1,4 +1,4 @@
-import Ochr.Env
+import Ochr.Rules
 
 /-!
 # Places, owners and the footprint (RULES §3 paths, §4 Owners / Footprint)

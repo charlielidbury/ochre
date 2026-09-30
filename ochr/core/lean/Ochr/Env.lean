@@ -161,6 +161,7 @@ structure Config where
   confineBodies : Bool := false  -- an extension of D41, not in RULES: the body of a function whose calls are
                                  -- erased, and each arm of an erased stuck block, are confined too
   trace : Bool := false          -- record goals, splits and call types (for inspection)
+  derivation : Bool := false     -- record every rule application, in the paper's names (`fire`, Rules.lean)
 deriving Inhabited, Repr, BEq
 
 /-- D53's parts, where D53 applies (`d53`). -/
@@ -172,7 +173,7 @@ def Config.fnRuleOn (c : Config) : Bool := c.d53 && c.fnRule
 they stand; a counterfactual run switches a rule off and measures that alone. D53's switches
 do not change what is erased, so the blocks checked without D53 (`preD53`) are checked too. -/
 def Config.prePassAssert (c : Config) : Bool :=
-  c.prePass && { c with trace := false, d53 := ({} : Config).d53, moves := true, ghosts := true, fnRule := true }
+  c.prePass && { c with trace := false, derivation := false, d53 := ({} : Config).d53, moves := true, ghosts := true, fnRule := true }
     == ({} : Config)
 
 /-- D41: one assignment, borrow or move, by the position of its place's root. It is
