@@ -77,7 +77,9 @@ structure GDef where
 /-- A declared inductive type (v2.0, D45/D46): uniform parameters (a telescope of type
 terms, each in the scope of the earlier parameters), a sort (`0` = `Prop`, `1` = `Type₀`),
 and zero or more constructors with named fields, whose types are terms in the scope of
-the parameters (de Bruijn: the last parameter is `var 0`). -/
+the parameters (de Bruijn: the last parameter is `var 0`) and of the constructor's fields
+(D64: field `j` of `k` is `var (np + k - 1 - j)`, after the parameters; [Ind] admits only
+the earlier fields). -/
 structure IndDecl where
   name : String
   params : List (Hint × Term) := []
@@ -89,6 +91,28 @@ structure IndDecl where
   unsized : Bool := false   -- declared `unsized` (K2): at runtime, outside model code, a place of this type is
                             -- only borrowed (never read, moved, assigned or matched)
 deriving Inhabited
+
+/-- D64: the fields of constructor `c` that the field type term `FT` mentions, as field
+indices (read off the declaration). -/
+def IndDecl.fieldRefs (d : IndDecl) (c : Nat) (FT : Term) : List Nat :=
+  let np := d.params.length
+  let k := ((d.ctors[c]?).map (·.2.length)).getD 0
+  FT.freeVars.filterMap fun v => if np ≤ v && v < np + k then some (np + k - 1 - v) else none
+
+/-- D64: the *index fields* of constructor `c`: the fields some later field's type mentions
+(syntactic, read off the declaration). -/
+def IndDecl.indexFields (d : IndDecl) (c : Nat) : List Nat :=
+  let fs := ((d.ctors[c]?).map (·.2)).getD []
+  (List.range fs.length).filter fun j => fs.any fun (_, FT) => (d.fieldRefs c FT).contains j
+
+/-- D64: constructor `c` has a dependent field (a field whose type mentions an earlier one). -/
+def IndDecl.dependent (d : IndDecl) (c : Nat) : Bool := !(d.indexFields c).isEmpty
+
+/-- D64: field `i`'s declared type mentions an earlier field. -/
+def IndDecl.fieldDependent (d : IndDecl) (c i : Nat) : Bool :=
+  match (d.ctors[c]?).bind (·.2[i]?) with
+  | some (_, FT) => !(d.fieldRefs c FT).isEmpty
+  | none => false
 
 /-- A function whose body is being checked, for [Rec]: its entry values and the
 recursive positions that have survived its recursive calls so far. The candidates are
@@ -157,6 +181,13 @@ structure Config where
                                  -- only; the borrow becomes a ghost, still holding the others (meta-order's Bad2)
   abstractTypes : Bool := true   -- K3: an abstract type's constructors and matches only in erased positions and model code
   unsizedTypes : Bool := true    -- K2: outside model code, a place of an unsized type is only borrowed at runtime
+  repack : Bool := true          -- D64 [Repack]: a value of a dependent type is of its telescope again at
+                                 -- every whole-again point of the checked program
+  depInj : Bool := true          -- D64: `Eq` decomposes a dependent constructor only while its index fields
+                                 -- are convertible on both sides (D52 restricted)
+  k4 : Bool := true              -- K4: a field type may call an earlier type function (e.g. `Array(T, n)`)
+  k4Nest : Bool := true          -- K4's nesting condition: a parameter an inductive passes to a type function
+                                 -- is not nestable (the type being declared may not appear there)
   ghosts : Bool := true          -- D53 (c): a move leaves a ghost of the value, which erased terms still read
   fnRule : Bool := true          -- D53 (e): a call does not consume its function; a closure is copy iff its captures are, and its body may not move them out
   unitNorm : Bool := false       -- counterfactual D50: the unit laws normalise stored types (v2.0 as first built)
@@ -220,6 +251,8 @@ structure MState where
   erasedDepth : Nat := 0                  -- D53: > 0 while evaluating an erased term, whose reads copy
   inPlace : Bool := false                 -- D53: the next read is in place (a call's head, a block's read-only capture)
   modelDepth : Nat := 0                   -- K2/K3: > 0 inside model code, which never runs at runtime
+  typing : Bool := false                  -- the term being evaluated is part of the checked program (`eval true`),
+                                          -- where D64's [Repack] points are checked
 deriving Inhabited
 
 inductive Fail where
