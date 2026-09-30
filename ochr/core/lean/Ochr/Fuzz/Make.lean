@@ -187,6 +187,24 @@ outlives one of the borrowed places, then accesses another owner. Symbolically t
 ends the borrow; at a ground instance it may not, and the place goes out of scope while
 borrowed. The execution oracle runs it at ground inputs. -/
 def genDropFn : Gen SDecl := do
+  -- reviewer-9's Bad4 (Scratch/Reviewer9Probe.lean): a borrow into a single owner (`TailM`,
+  -- whose result points at the owner or deep inside it), then a match on (or another access
+  -- to) the owner; symbolically the match ends the borrow, on the ground the loan may sit
+  -- deeper and survive it
+  if ← chance 40 then
+    let xParam ← chance 60
+    let ownerParam ← chance 60
+    let owner := if ownerParam then "a" else "b"
+    let acc ← weighted [
+      (3, pure (STerm.matchGen (.ident owner) [("Z", [], .unitLit), ("S", ["_"], .unitLit)])),
+      (2, pure (STerm.matchGen (.ident owner) [("Z", [], .unitLit), ("S", ["p"], .matchGen (.ident "p") [("Z", [], .unitLit), ("S", ["_"], .unitLit)])])),
+      (1, pure (STerm.letIn "z" none (.ident owner) .unitLit)),
+      (1, pure (STerm.assign (.ident owner) (.num 3))) ]
+    let body := STerm.seq (.assign (.ident "x") (.call (.ident "TailM") [.amp (.ident owner)])) acc
+    let body := if ownerParam then body else .letIn "b" none (.ident "a") body
+    let body := if xParam then body else .letIn "c" none (.num 1) (.letIn "x" none (.amp (.ident "c")) body)
+    let ps : List (String × STerm) := (if xParam then [("x", .amp (.ident "Nat"))] else []) ++ [("a", .ident "Nat")]
+    return { name := "RD", params := ps, ret := .ident "Unit", body := body, expectAccept := true }
   let xParam ← chance 60
   let call ← weighted [
     (3, pure (STerm.call (.ident "Pick") [.ident "n", .amp (.ident "a"), .amp (.ident "b")])),
@@ -312,7 +330,7 @@ def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 
   let (w, _) := (caseRng seed (i + 7000003)).next
   if drop > 0 && w.toNat % 100 < drop then
     let (rd, g7) := genDropFn.run { rng := caseRng seed (i + 8000009) }
-    return ({ c0 with lib := closeDeps (lib ++ ["Pick", "PickX"]), extra := c0.extra ++ [rd] }, g7.rng)
+    return ({ c0 with lib := closeDeps (lib ++ ["Pick", "PickX", "TailM"]), extra := c0.extra ++ [rd] }, g7.rng)
   let (z, _) := (caseRng seed (i + 5000011)).next
   if rules > 0 && z.toNat % 100 < rules then
     let (rd, g6) := genRule.run { rng := caseRng seed (i + 6000013) }

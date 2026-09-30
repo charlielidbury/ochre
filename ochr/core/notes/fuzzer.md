@@ -97,6 +97,8 @@ A finding at a refinement where some proof parameter's type is `False` is marked
 - It then makes zero to two accesses: a read, write or borrow of `b`, or a write or read through `x`.
 - `a` lives in the function's scope or in an inner block.
 
+In 40% of the family's cases the function takes reviewer-9's Bad4 shape instead (`Scratch/Reviewer9Probe.lean`). It assigns a borrow into a single owner, `x := TailM(&a)`, which points at the owner itself or deep inside it. The owner is a parameter, or a local copy `let b = a`. It then matches on the owner, one or two levels deep, or reads or writes it.
+
 **The audit family (`--audit N`, rule-audit's witnesses, `notes/rule-audit.md`).** These are declarations where the checker and the printed rules disagree, with random constants and forms. The rules oracle requires rejection of:
 - `NatT`, a `Nat` match on a value whose stored type is not `Nat`, as data or as a proof by splitting ([Split]'s stored-type premise);
 - `EqConf`, an assignment to an outer place inside a side of `Eq` ([T-Erase], [Erase-err]);
@@ -187,7 +189,9 @@ The cold reviewers' attack shapes are included:
     - both `Pick` orders, and the stuck block alone, with no call
     - a read, a write or a borrow of the other owner
 
-    Symbolically, accessing one owner ends the returned borrow; at a ground instance it may not, and the place goes out of scope while borrowed. `Scratch/DropVariants.lean` has four variants. The fix is being written by the checker lane: an uncertain [End] releases only the accessed owner, and the borrower becomes a ghost borrow. Its acceptance check is `--drop 100` with zero `exec` findings.
+    Symbolically, accessing one owner ends the returned borrow; at a ground instance it may not, and the place goes out of scope while borrowed. `Scratch/DropVariants.lean` has four variants.
+
+    With reviewer-9's Bad4 shape added (single owner, `x := TailM(&a); match a { … }`), `--drop 100` on seed 1 gives 42,782 `exec` findings. Among the shrunk examples, 17 have the TailM shape and 19 the Pick shape. There are also 5 `verdict` findings, the same failure reached through a statement: the family's function is the instance of a function parameter (`h0 := RD`). The fix is D65: [Drop] ends a dying place's loans instead of erring. Its acceptance check is `--drop 100` with zero `exec` and zero `verdict` findings. Any other finding kind there would be a new class, a borrow ended symbolically but used on the ground. The fix is being written by the checker lane: an uncertain [End] releases only the accessed owner, and the borrower becomes a ghost borrow. Its acceptance check is `--drop 100` with zero `exec` findings.
 12. **Rule-audit's witnesses, at scale (the audit family, ochr-core 54a4cff2).** With `--audit 100` (seed 1, 10⁵ cases), every generated witness of each reject kind is accepted: `NatT` 17,457, `EqConf` 17,308, `JT` 17,394, `MixPos` 8,747 and `BlockRef` 17,490. The `EtaP`/`EtaCtl` pair is decided differently in 8,908 cases, all those whose block moves a field. These divergences are deterministic, and each fix's acceptance check is zero findings of its kind under `--audit 100`.
 6. **The cold reviewers' attacks**, re-found by the extended generator with their switch off (seeds 1 and 3, 2·10⁴ cases each):
 
