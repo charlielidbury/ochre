@@ -2,6 +2,10 @@
 
 For whoever runs the benchmark or writes it up. `make-sandbox.sh` does not copy this file into sandboxes. The shared design is `ochr/docs/05-agent-effort-benchmark.md`, the protocol is `ochr/bench/README.md` (§14 covers which checker revision a trial uses), and the shared tooling is `ochr/bench/common/ochr/`. The same notes are in `../ochr-2p/NOTES.md`.
 
+## Pending: the generic value type (D66)
+
+The SPEC is generic in the value type `V` (2adc7147), with Ochr's read API amended at c04914fd: `Bucket(V)`; `contains(&m, k) : Bool`; `get(&m, k, h : Contains(*m, k)) : &V`, a borrow used read-only, with the key required present as for `get_mut`; `insert`/`remove → Opt(V)` moved out; `get_mut → &V`. Properties that mention `get` split into a part about `contains` and a part about the value read through the borrow (H5a/H5b and so on, SPEC §3), and H17 covers `contains` and a read-only `get`. A test's `get` op with `expect: null` checks that `contains` is false; with `expect: w`, that it is true and the value read is `w`. Generic `&V` needs D66 (`&A` for every `A : Type₀`), which is not on `ochr-core` yet, so these packages still use `Word` values and a clone-free `get` returning `Opt`. When D66 lands, both hashmap packages are to be regenerated to this API, with `SlotMut` replaced by the library's own element borrow and the tests at `V := Word`.
+
 ## Design decisions
 
 - **The capacity lives in the type.** `Map(cap) = MapOf(Cells(Bucket, cap))`, i.e. `MkMap(slots : Array(Bucket, cap), len : Word)`. `MapOf` takes the array's model type as a parameter, because a field cannot yet have the type `Array(Bucket, cap)` (the arrays library's `[K4]`).

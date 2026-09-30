@@ -105,7 +105,7 @@ def switches : List (String × Config) :=
    ("D45 + D42 (v2.0): subsingleton elimination and erased Prop values, both off", { subsingleton := false, propValues := false }),
    ("D47 (v2.0): distinct constructors are disjoint in Eq", { disjoint := false }),
    ("D52 (v2.1): Eq is injective on constructors", { injective := false }),
-   ("finding (v2.0 round): a match's scrutinee has its constructors' type (read, not assumed)", { scrutTyped := false }),
+   ("finding (v2.0 round), D63: a match's scrutinee has its constructors' type (read, not assumed), Nat's included", { scrutTyped := false }),
    ("D48 (1): only data types are borrowed", { refData := false }),
    ("D48 (2): & only at the top of a declared type", { refTop := false }),
    ("D48 (3): Π-types are compared under their binders", { piUnder := false }),
@@ -121,7 +121,10 @@ def switches : List (String × Config) :=
    ("D59 (refined): η-normal forms at Unit (the readback at Unit is (); [Close] has no Unit row)", { unitEta := false }),
    ("K3: an abstract type's constructors and matches only in erased positions and model code", { abstractTypes := false }),
    ("K2: outside model code, a place of an unsized type is only borrowed at runtime", { unsizedTypes := false }),
-   ("[Access] with several possible owners: release the accessed one only; the borrow becomes a ghost", { ghostBorrows := false })]
+   ("[Access] with several possible owners: release the accessed one only; the borrow becomes a ghost", { ghostBorrows := false }),
+   ("D63: a match whose arms disagree about being proofs has no declared type", { armsAgree := false }),
+   ("D63 (switched ON): a closure in a stuck block captures through the block's borrow parameter (fuzz-port R2 (ii))", { blockRefCapture := true }),
+   ("D63: [Id] observes with the typing judgement in untyped runs too", { typedObs := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -171,7 +174,7 @@ def rowClass : List (String × List String) :=
    ("soundness", ["Subsingletons.Boom", "Subsingletons.SqBoom"]),
    ("completeness", []),
    ("completeness", []),
-   ("soundness", ["ScrutineeTypes.g"]),
+   ("soundness", ["ScrutineeTypes.g", "ScrutineeTypes.NatTUse", "ScrutineeTypes.M2"]),
    ("model", ["Universes.Impred", "Universes.SelfApp"]),
    ("soundness", ["BorrowTypes.G"]),
    ("completeness", []),
@@ -179,7 +182,7 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("completeness", []),
    ("soundness", ["Functions.BoomPow"]),
-   ("completeness", []),
+   ("policy", ["Equality.JT"]),
    ("completeness", []),
    ("model", ["Sorts.K1", "Sorts.K2"]),
    ("completeness", []),
@@ -187,13 +190,16 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("policy", ["Abstraction.Peek"]),
    ("policy", ["Abstraction.Take"]),
-   ("soundness", ["GhostBorrows.Bad2", "GhostBorrows.Bad3"])]
+   ("soundness", ["GhostBorrows.Bad2", "GhostBorrows.Bad3"]),
+   ("policy", ["ErasureBySyntax.MixPos"]),
+   ("policy", ["ClosingOff.LamReadInWrittenBlock"]),
+   ("completeness", [])]
 
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1111
+def Ochr.Registry.expectedTotal : Nat := 1122
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

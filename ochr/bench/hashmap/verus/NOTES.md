@@ -6,9 +6,9 @@ These are the five fairness points raised when this package and its quicksort tw
 
 ## 1. `spec_get` and `spec_len` are holes (hashmap)
 
-A Verus specification cannot call an executable function, so the properties H1–H16 cannot mention `get` and `len` directly. The skeleton states them through two spec functions, `spec_get(&self, key) -> Option<u64>` and `spec_len(&self) -> nat`. The FIXED contracts of the executable `get` and `len` say they return exactly these values (`r == self.spec_get(key)`, `n == self.spec_len()`), so every property still holds of what the real `get` and `len` return.
+A Verus specification cannot call an executable function, so the properties H1–H16 cannot mention `get` and `len` directly. The skeleton states them through two spec functions, `spec_get(&self, key) -> Option<V>` and `spec_len(&self) -> nat`. The FIXED contracts of the executable `get` and `len` say they return exactly these values (`observe(r) == self.spec_get(key)`, `n == self.spec_len()`), so every property still holds of what the real `get` and `len` return.
 
-Their bodies are holes, like `inv`, so the solver writes them: a spec-level lookup over the bucket, or a `Map<u64, u64>` view. This is a small second program next to the executable code. That second program is the cost the benchmark measures (the "two-program" setup), so it would be wrong to hand it to the solver as FIXED.
+Their bodies are holes, like `inv`, so the solver writes them: a spec-level lookup over the bucket, or a `Map<u64, V>` view. This is a small second program next to the executable code. That second program is the cost the benchmark measures (the "two-program" setup), so it would be wrong to hand it to the solver as FIXED.
 
 A hole here cannot weaken the task. The FIXED contracts of `get` and `len` pin the spec functions to the code, `new` must establish `inv`, and every mutating operation must preserve it. So whatever the solver defines, the verified properties transfer to the executable observers.
 
@@ -55,6 +55,8 @@ Two consequences in this package:
 **Ruling:** totality as stated.
 
 ## Other things a reader should know
+
+- **The map is generic in its value type** (user ruling, SPEC at 2adc7147). `V` has no trait bounds, and the `impl<V> HashMap<V>` header is a FIXED region, so the solver cannot add any. `get` returns `Option<&V>`, a shared reference and not a copy: an unbounded `V` cannot be copied, and a user `Clone` could not be proved to return an equal value. The FIXED spec function `observe` turns the `Option<&V>` into the observed `Option<V>`, and `get` ensures `observe(r) == self.spec_get(key)`. `insert` and `remove` return the old value moved out. The tests instantiate `V := u64` and compare `get(k).copied()`. The grader's witness is generic in an unbounded `V`, so it also fails if the solver bounds `V` in any way that reaches the FIXED functions.
 
 - **The grader's witness.** `grade.sh` appends grader-owned functions (the witness) to a copy of the solution before verifying it. They call every FIXED function under its FIXED preconditions and assert its FIXED postconditions, so a FIXED contract neutralised from outside its region fails verification. This is the README §8 check that the FIXED items were really verified.
 - **Validation.** `maint/validate.sh` re-runs all of the package's validation: the untouched skeleton fails naming its holes, and planted cheats are each rejected for the expected reason.

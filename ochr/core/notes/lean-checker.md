@@ -1297,4 +1297,4 @@ Since both case studies check under D53 (`Test.preD53` was empty), the old copy-
 
 The pre-pass assertion normalises `trace`, `ghosts` and `fnRule` (`prePassAssert`), as before minus `d53` and `moves`.
 
-*Ledger:* 51 rows: soundness 21, false lemma 1, model 4, policy 4, completeness 21. 1111 verdicts, unchanged.
+*Ledger:* 54 rows after merging ochr-core (D63 added three): soundness 21, false lemma 1, model 4, policy 7, completeness 21. 1122 verdicts, none changed by the deletion.

@@ -23,6 +23,7 @@ inductive DeclInfo where
   | ref (A : DeclInfo)
   | other
   | any
+  | conflict    -- a match whose arms disagree about being proofs: it has no declared type (D63)
 deriving BEq, Inhabited, Repr
 
 /-- A proof: a value of a proposition, or a function into proofs (impredicative `Prop`). -/
@@ -138,6 +139,10 @@ structure Config where
   propValues : Bool := true      -- v2.0 D42: a constructor application of a Prop inductive is a proof (⋆, erased)
   disjoint : Bool := true        -- v2.0 D47: `Eq D (C ā) (C' b̄) ≡ False` for distinct constructors C ≠ C'
   scrutTyped : Bool := true      -- finding (v2.0 round): a match's scrutinee must have the constructors' type
+  armsAgree : Bool := true       -- D63: a match whose arms disagree about being proofs has no declared type (off: the arm that runs decides)
+  typedObs : Bool := true        -- D63: [Id] observes with the typing judgement in untyped runs too (off: a stuck side is stuck)
+  blockRefCapture : Bool := false -- ON is the counterfactual: a closure in a stuck block captures through the block's
+                                  -- borrow parameter (fuzz-port R2 (ii)); D63 follows [Fix], which captures no borrow
   refData : Bool := true         -- D48 (1): `&A` only for a data type A (never a universe, Π-type or proposition)
   injective : Bool := true      -- D52: Eq on two values of one constructor is the conjunction over its fields
   refTop : Bool := true          -- D48 (2): `&` only at the top of a declared type, never produced by computation
@@ -160,13 +165,14 @@ structure Config where
   confineBodies : Bool := false  -- an extension of D41, not in RULES: the body of a function whose calls are
                                  -- erased, and each arm of an erased stuck block, are confined too
   trace : Bool := false          -- record goals, splits and call types (for inspection)
+  derivation : Bool := false     -- record every rule application, in the paper's names (`fire`, Rules.lean)
 deriving Inhabited, Repr, BEq
 
 /-- The pre-pass is checked against the after-the-fact classification under the rules as
 they stand; a counterfactual run switches a rule off and measures that alone. D53's switches
 do not change what is erased, so their counterfactual runs are checked too. -/
 def Config.prePassAssert (c : Config) : Bool :=
-  c.prePass && { c with trace := false, ghosts := true, fnRule := true } == ({} : Config)
+  c.prePass && { c with trace := false, derivation := false, ghosts := true, fnRule := true } == ({} : Config)
 
 /-- D41: one assignment, borrow or move, by the position of its place's root. It is
 `pending` once an erased run it belongs to has affected a place outliving that run: an

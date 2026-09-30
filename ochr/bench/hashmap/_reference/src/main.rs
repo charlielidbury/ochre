@@ -11,13 +11,14 @@ fn main() {
     let (mut ops, mut failures) = (0, 0);
     for seq in doc.field("sequences").arr() {
         let name = seq.field("name").str();
-        let mut m = HashMap::new(seq.field("cap").num());
+        // The tests instantiate V := u64 (SPEC §6).
+        let mut m: HashMap<u64> = HashMap::new(seq.field("cap").num());
         for (i, op) in seq.field("ops").arr().iter().enumerate() {
             let key = op.field("key").num();
             let kind = op.field("op").str();
             let got = match kind {
                 "insert" => Some(m.insert(key, op.field("value").num())),
-                "get" => Some(m.get(key)),
+                "get" => Some(m.get(key).copied()),
                 "remove" => Some(m.remove(key)),
                 "get_mut" => {
                     *m.get_mut(key) = op.field("value").num();

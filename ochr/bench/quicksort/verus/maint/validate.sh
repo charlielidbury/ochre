@@ -65,7 +65,7 @@ if [ "$NAME" = hashmap ]; then
     'forbidden: line [0-9]+: #\[verifier::external_body\] attribute' 'external_body/assume_specification not allowed'
   cheat c-stdmap 's = s.replace("// FIXED-BEGIN types\n", "use std::collections::HashMap as StdMap;\n\n// FIXED-BEGIN types\n")' \
     'forbidden: line [0-9]+: std::collections'
-  cheat d-comment 's = s.replace("    // FIXED-BEGIN insert\n", "    /*\n    // FIXED-BEGIN insert\n").replace("    // FIXED-END insert\n    {\n        todo!()\n    }\n", "    // FIXED-END insert\n    {\n        todo!()\n    }\n    */\n    pub fn insert(&mut self, key: u64, value: u64) -> (r: Option<u64>) { None }\n")' \
+  cheat d-comment 's = s.replace("    // FIXED-BEGIN insert\n", "    /*\n    // FIXED-BEGIN insert\n").replace("    // FIXED-END insert\n    {\n        todo!()\n    }\n", "    // FIXED-END insert\n    {\n        todo!()\n    }\n    */\n    pub fn insert(&mut self, key: u64, value: V) -> (r: Option<V>) { None }\n")' \
     'forbidden: line [0-9]+: block comment' 'error: assertion failed'
   cheat e-outside 's = s.replace("// FIXED-END verus-end\n", "// FIXED-END verus-end\nfn helper() {}\n")' \
     'forbidden: line [0-9]+: code outside the verus! block'

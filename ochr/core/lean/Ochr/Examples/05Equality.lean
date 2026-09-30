@@ -149,13 +149,33 @@ ochr Equality uses Std {
       true => 1,
     }
   )
+
+  -- [J-stuck]: with endpoints that are not convertible, `J` does not run `t` at all. The run is
+  -- stuck, and the call containing it closes off (D63, rule-audit item 5); typing checks `t`
+  -- on a private copy and closes the `J` off as a stuck block. So at `JT`'s generic call `c`
+  -- holds a sealed program, and `refl` does not prove the equation. The earlier checker ran
+  -- `t` first and returned a stuck cast of its value, so `c` was already 5.
+  def JF (a : Nat) (b : Nat) (h : Eq Nat a b) (x : &Nat) : Nat := J(Nat, a, b, λ(z : Nat) : Type => Nat, h, (*x := 5; 0))
+  reject def JT (a : Nat) (b : Nat) (h : Eq Nat a b) : Id Nat (let c = 0; JF(a, b, h, &c); c) 5 := refl
+
+  -- `J`'s motive is erased: it runs on a private copy, confined, so a write to an outer place
+  -- there is an error ([Erase-err]; D63, rule-audit item 6). The earlier checker ran it in
+  -- place, with copying reads.
+  reject def JMotiveConf (x : Nat) : Nat := J(Nat, 0, 0, (x := 5; λ(z : Nat) : Type => Nat), refl, 7)
+
+  -- `Id` computes the same way wherever it is evaluated ([Obs] is stated with the typing
+  -- judgement): built in a function's body, run by the machine, its side's stuck match is
+  -- closed off as a block, as when the same `Id` is formed directly (D63, rule-audit item 9).
+  -- The earlier checker observed untyped there, so `FId(n, x)` was the stuck ⌈FId(σ0, σ1)⌉.
+  def FId (n : Nat) (x : Nat) : Prop := Id Nat (match n { Z => x, S _ => x }) x
+  def Conv1 (n : Nat) (x : Nat) (h : Id Nat (match n { Z => x, S _ => x }) x) : FId(n, x) := h
 }
 
 #eval IO.println (run "Equality" Equality).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Equality" Equality).allAsExpected
-#guard (run "Equality" Equality).count == 31
+#guard (run "Equality" Equality).count == 36
 
 /-! ## Rewriting
 
@@ -193,9 +213,12 @@ ochr Rewriting uses Std {
   )
 
   -- The direction matters: `h : x = y` rewrites `y` to `x`, and a goal about `x` needs
-  -- `rewrite ← h`. A rewrite that finds nothing is an error.
+  -- `rewrite ← h`. A rewrite that finds nothing leaves the goal as it is ([T-Rewrite] has no
+  -- premise that `b` occurs; rule-audit C22), so `k` does not prove it in `RwWrongDir`, and
+  -- `RwNothing`'s `refl` does.
   def RwRightDir (x : Nat) (y : Nat) (h : Eq Nat x y) (k : Eq Nat y 3) : Eq Nat x 3 := rewrite ← h in k
   reject def RwWrongDir (x : Nat) (y : Nat) (h : Eq Nat x y) (k : Eq Nat y 3) : Eq Nat x 3 := rewrite h in k
+  def RwNothing (a : Nat) (b : Nat) (h : Eq Nat a b) : ⊤ := rewrite h in refl
 
   -- Here the wrong direction finds `x` inside `Add(x, 0)` too, and leaves a goal `refl`
   -- does not prove.
@@ -219,7 +242,7 @@ ochr Rewriting uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Rewriting" Rewriting).allAsExpected
-#guard (run "Rewriting" Rewriting).count == 17
+#guard (run "Rewriting" Rewriting).count == 18
 
 /-! ## All the owners of a returned borrow are observed
 
