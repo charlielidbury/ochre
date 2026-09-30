@@ -712,22 +712,25 @@ partial def packedErr (v : Value) (T : Value) : M (Option String) := do
   | .ind t c _ ps fs =>
     if !(← hasDependent v) && (← convVal v T) then return none
     let d ← lookupInd t
-    let as? := match T with
-      | .tInd n as => if n == t then some as else none
-      | _ => none
-    let as? := as?.orElse fun _ => if ps.length == d.params.length then some ps else none
-    let some as := as? | return some s!"{v} is not of type {T}"
+    -- `T` must be `t` applied to parameters: a value of another inductive, or one under a stuck
+    -- type, is not of `T` (never checked against its own type instead: `O : One` is not a
+    -- `Fin1(0)`, nor a `⌈Fin1(σ)⌉`, fuzz-port's --dep family)
+    let some as := (match T with
+        | .tInd n as => if n == t then some as else none
+        | _ => none)
+      | return some s!"{v} is not of type {T}"
     if !ps.isEmpty && !(← convList ps as) then return some s!"{v} is not of type {T}"
     let tel ← fieldTypesOf d as c fs
     let cn := (d.ctors[c]!).1
     for (((f, Tf), fv), j) in (tel.zip fs).zipIdx do
       if let some m ← packedErr fv Tf then
         let own ← tryCatch (valType fv) (fun _ => pure .bot)
+        -- name the field, and show both types: what it holds, and its type from the earlier fields
         return some (match fv with
-          | .ind .. => s!"in field {f} of {cn}, {m}"
           | .ghost _ | .bot => s!"field {f} of {cn}: {m}"
           | _ =>
-            if d.fieldDependent c j then
+            if m.startsWith "field " || m.startsWith "in field " then s!"in field {f} of {cn}, {m}"
+            else if d.fieldDependent c j then
               s!"field {f} of {cn} holds a value of type {own}, but its type from the earlier fields is {Tf}"
             else s!"field {f} of {cn}: {m}")
     pure none
