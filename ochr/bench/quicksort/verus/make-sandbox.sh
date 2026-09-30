@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # make-sandbox.sh DEST: build the directory an assessed agent works in.
 #
-# DEST gets this package (minus maint/), the grader's pristine copies (.grader/), and the
+# DEST gets this package (minus maint/ and the maintainer NOTES.md), the grader's pristine copies (.grader/), and the
 # offline docs (docs/): the Verus guide with its code samples inlined, and the vstd
 # source. Nothing else from this repository and nothing from Verus's examples/ directory
 # (which has a hash table and a merge sort). The toolchain is the flake; its inputs must
