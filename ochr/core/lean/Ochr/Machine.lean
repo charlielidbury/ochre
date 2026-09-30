@@ -1078,8 +1078,16 @@ partial def declOf (chk : Bool) (sc : List DeclInfo) (ns : List String) (t : Ter
     let d ← declOf chk sc ns u
     declOf chk (d :: sc) (h.name :: ns) w
   | .seq u w => sub u; declOf chk sc ns w
-  | .matchNat _ z s => pure (agreeDecl (← get).cfg.armsAgree [← declOf chk sc ns z, ← declOf chk sc ns s])
-  | .matchInd _ _ arms => pure (agreeDecl (← get).cfg.armsAgree (← arms.mapM fun (_, a) => declOf chk sc ns a))
+  | .matchNat _ z s =>
+    let d := agreeDecl (← get).cfg.armsAgree [← declOf chk sc ns z, ← declOf chk sc ns s]
+    -- D63: checked where it is written, so that no accepted definition meets it at runtime
+    -- (a dead arm is not typed, but the machine reads every term's declared type)
+    if chk && d == .conflict then err (conflictMsg t ns)
+    pure d
+  | .matchInd _ _ arms =>
+    let d := agreeDecl (← get).cfg.armsAgree (← arms.mapM fun (_, a) => declOf chk sc ns a)
+    if chk && d == .conflict then err (conflictMsg t ns)
+    pure d
   | .const n =>     -- an unknown name is the machine's error, reported where it is met
     if let some d := (← get).constDecls.lookup n then return d
     tryCatch (do

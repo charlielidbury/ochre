@@ -204,17 +204,58 @@ open Ochr.Registry in
 #guard rowOk { subsingleton := false }
   ["Subsingletons.IsL:accepted", "Subsingletons.Irr:accepted", "Subsingletons.OrLie:accepted",
    "Subsingletons.Get:accepted", "Subsingletons.SqIrr:accepted", "ErasureBySyntax.R8Field:rejected"]
--- v2.0 D42 for constructors, switched off: Prop constructor applications are data values, not proofs (completeness)
+-- v2.0 D42 for constructors, switched off: Prop constructor applications are data values, not proofs (completeness).
+-- Most of the row is D63 checked at definition: a proof by cases with a constructor in one arm
+-- (now data) and a proof in another has arms that disagree (`Std.AddMZero`, `refl` against `cong`)
 open Ochr.Registry in
 #guard rowOk { propValues := false }
-  ["Subsingletons.OrComm:rejected", "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected",
-   "Erasure.LieP2:rejected", "ErasureBySyntax.R8Field:rejected", "DepFields.UseEx:rejected"]
+  ["Std.AddMZero:rejected", "ReturnedBorrows.AddMEq:rejected",
+   "ReturnedBorrows.AddMEqOwned:rejected", "ReturnedBorrows.AddM1:rejected",
+   "ReturnedBorrows.TailNoop:rejected", "ClosingOff.RowIInd:rejected",
+   "Equality.AddMZeroLet:rejected", "Recursion.AddZeroCopy:rejected", "Recursion.AddZeroC:rejected",
+   "ArmLocal.Leak:rejected", "ArmLocalBoom.EmptyEq:rejected", "Functions.TwiceMZero:rejected",
+   "Lists.AppendMNil:rejected", "Lists.AppendMEq:rejected", "Trees.InsertMEq:rejected",
+   "Trees.AddMS:rejected", "Trees.AddS:rejected", "Trees.SizeInsert:rejected",
+   "InPlaceTrees.AddMS:rejected", "InPlaceTrees.AddS:rejected", "InPlaceTrees.SizeInsert:rejected",
+   "InPlaceTrees.SizeInsertRw:rejected", "PolyLists.AppendMNil:rejected",
+   "PolyLists.AppendNil:rejected", "PolyLists.AppendNilL:rejected", "PolyLists.Closed:rejected",
+   "Subsingletons.OrComm:rejected", "Subsingletons.SqTrue:rejected",
+   "Subsingletons.SqSplit:rejected", "CurrentState.LeAdd:rejected", "CurrentState.AddSub:rejected",
+   "CurrentState.AddSubId:rejected", "CurrentState.PostCopy:rejected",
+   "CurrentState.AddSubIdReborrow:rejected", "Erasure.LieP2:rejected",
+   "ErasureBySyntax.R8Field:rejected", "DepFields.UseEx:rejected"]
+  ["Numbers.AddZero blocked by Std.AddMZero", "Numbers.AddZero' blocked by Std.AddMZero",
+   "ClosingOff.AddToOneZero blocked by Std.AddMZero",
+   "ClosingOff.AddToOneZero' blocked by Std.AddMZero",
+   "ClosingOff.AddToOneZero'' blocked by Std.AddMZero", "Rewriting.RwSplit blocked by Std.AddMZero",
+   "Recursion.CallSite blocked by Std.AddMZero", "Functions.TwiceMZero' blocked by Std.AddMZero",
+   "Propositions.TwoAt blocked by Std.AddMZero", "Erasure.LemmaMoves blocked by Std.AddMZero",
+   "Erasure.Pass blocked by Std.AddMZero"]
 -- both off: the closed proofs of False (Subsingletons.Boom, SqBoom) go through
 open Ochr.Registry in
 #guard rowOk { subsingleton := false, propValues := false }
-  ["Subsingletons.IsL:accepted", "Subsingletons.Irr:accepted", "Subsingletons.Boom:accepted",
+  ["Std.AddMZero:rejected", "ReturnedBorrows.AddMEq:rejected",
+   "ReturnedBorrows.AddMEqOwned:rejected", "ReturnedBorrows.AddM1:rejected",
+   "ReturnedBorrows.TailNoop:rejected", "ClosingOff.RowIInd:rejected",
+   "Equality.AddMZeroLet:rejected", "Recursion.AddZeroCopy:rejected", "Recursion.AddZeroC:rejected",
+   "ArmLocal.Leak:rejected", "ArmLocalBoom.EmptyEq:rejected", "Functions.TwiceMZero:rejected",
+   "Lists.AppendMNil:rejected", "Lists.AppendMEq:rejected", "Trees.InsertMEq:rejected",
+   "Trees.AddMS:rejected", "Trees.AddS:rejected", "Trees.SizeInsert:rejected",
+   "InPlaceTrees.AddMS:rejected", "InPlaceTrees.AddS:rejected", "InPlaceTrees.SizeInsert:rejected",
+   "InPlaceTrees.SizeInsertRw:rejected", "PolyLists.AppendMNil:rejected",
+   "PolyLists.AppendNil:rejected", "PolyLists.AppendNilL:rejected", "PolyLists.Closed:rejected",
+   "Subsingletons.IsL:accepted", "Subsingletons.Irr:accepted", "Subsingletons.Boom:accepted",
    "Subsingletons.Get:accepted", "Subsingletons.SqIrr:accepted", "Subsingletons.SqBoom:accepted",
+   "CurrentState.LeAdd:rejected", "CurrentState.AddSub:rejected", "CurrentState.AddSubId:rejected",
+   "CurrentState.PostCopy:rejected", "CurrentState.AddSubIdReborrow:rejected",
    "Erasure.LieP2:rejected", "ErasureBySyntax.R8Field:rejected"]
+  ["Numbers.AddZero blocked by Std.AddMZero", "Numbers.AddZero' blocked by Std.AddMZero",
+   "ClosingOff.AddToOneZero blocked by Std.AddMZero",
+   "ClosingOff.AddToOneZero' blocked by Std.AddMZero",
+   "ClosingOff.AddToOneZero'' blocked by Std.AddMZero", "Rewriting.RwSplit blocked by Std.AddMZero",
+   "Recursion.CallSite blocked by Std.AddMZero", "Functions.TwiceMZero' blocked by Std.AddMZero",
+   "Propositions.TwoAt blocked by Std.AddMZero", "Erasure.LemmaMoves blocked by Std.AddMZero",
+   "Erasure.Pass blocked by Std.AddMZero"]
 -- v2.0 D47 switched off: Eq Nat Z (S Z) is irreducible again, so False and Eq Nat 0 1 part ways
 open Ochr.Registry in
 #guard rowOk { disjoint := false }
@@ -370,11 +411,12 @@ open Ochr.Registry in
 
 -- D63 switched off (rule-audit item 10): a match whose arms disagree about being proofs says
 -- nothing (`any`) instead of having no declared type, so [Type-pos] accepts it as a type
--- (`MixPos`) and the erasure pre-pass lets the arm that runs decide (fuzz-port R9's reading)
+-- (`MixPos`), a disagreement in an arm typing never takes is let through (`MixDead`), and the
+-- erasure pre-pass lets the arm that runs decide (fuzz-port R9's reading)
 open Ochr.Registry in
 #guard rowOk { armsAgree := false }
   ["ErasureBySyntax.R9Arms:accepted", "ErasureBySyntax.R9Nested:accepted",
-   "ErasureBySyntax.MixPos:accepted"]
+   "ErasureBySyntax.MixPos:accepted", "ErasureBySyntax.MixDead:accepted"]
 -- D63 switched ON (rule-audit item 7): a closure in a stuck block captures through the block's
 -- borrow parameter (fuzz-port R2 (ii)), where [Fix] captures no borrow
 open Ochr.Registry in
