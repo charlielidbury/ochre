@@ -118,7 +118,7 @@ def switches : List (String × Config) :=
    ("D53: a runtime read of data whose type is not a copy type moves it", { moves := false }),
    ("D53 (c): a move leaves a ghost that erased terms still read", { ghosts := false }),
    ("D53 (e): the Fn rule (a call does not consume its function; closure bodies do not move their captures)", { fnRule := false }),
-   ("D59: η for Unit (any two values of Unit are equal; [Close] has no Unit row)", { unitEta := false })]
+   ("D59 (refined): η-normal forms at Unit (the readback at Unit is (); [Close] has no Unit row)", { unitEta := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -140,7 +140,7 @@ def rowClass : List (String × List String) :=
    ("soundness", ["Erasure.N1Closed", "Erasure.QBoom", "ErasureBySyntax.BoomP"]),
    ("soundness", ["Owners.ClosedD18", "Owners.BadR"]),
    ("soundness", ["Recursion.KnotLBoom"]),
-   ("soundness", ["Borrows.V", "Borrows.W"]),
+   ("soundness", ["Borrows.BadA1", "Borrows.V", "Borrows.W"]),
    ("soundness", ["Recursion.KnotBoom"]),
    ("soundness", ["Borrows.Dead"]),
    ("completeness", []),
@@ -189,7 +189,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1043
+def Ochr.Registry.expectedTotal : Nat := 1045
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

@@ -85,9 +85,9 @@ ochr Borrows uses Std {
   -- of the place itself (D19). Here `r` borrows the predecessor inside `*b`; passing `b` to
   -- `G1` must end `r` first. Without that (switch `accessInside`), the call's stuck result
   -- would keep `r`'s loan inside `a`, and the later write through `r` would go to a place
-  -- that no longer exists. (Since η for `Unit`, D59, the stuck call's result is its sealed
-  -- program, which carries the loan too, and discarding it is a [Drop] error: `BadA1` is
-  -- rejected even with the switch off.)
+  -- that no longer exists. (With the stuck `Unit` call's result `()`, its η-normal form,
+  -- D59 refined, `BadA1` needs D19 again; for a while the result was a sealed program carrying
+  -- the loan, which [Drop] caught.)
   def G1 (x : &Nat) (n : Nat) : Unit := (
     match n {
       Z => (),

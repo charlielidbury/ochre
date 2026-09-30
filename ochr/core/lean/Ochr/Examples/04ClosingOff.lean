@@ -234,18 +234,21 @@ ochr ClosingOff uses Std, Fixtures {
     }
   )
 
-  -- η for `Unit` acts in two places only: `Eq` at `Unit` (the evaluated type, so `UU(Z)`
-  -- counts) is `⊤`, and [Conv-fun] ignores the results of two functions whose codomain is
-  -- written `Unit`. Conversion does not otherwise identify values of `Unit`: an abstract
-  -- `u : Unit` is not convertible with `()`, and a stuck call's result is its own sealed
-  -- program (`⌈let c1 = σ0; AddM(&c1, 0)⌉` in `StuckResult`, the paper's §2 display), built
-  -- from the argument values.
+  -- η for `Unit` (D59, refined): values are in η-normal form, and the readback at type `Unit`
+  -- is `()`. An abstract `u : Unit` is `()`, and a stuck call whose result has type `Unit`
+  -- (declared, or computed, as `UU(Z)`) returns `()`; its effects are in its borrowed
+  -- places' fills. `Eq` at `Unit` and comparing functions into `Unit` then need no rule of
+  -- their own: both sides are `()`.
   def UnitEta (u : Unit) (v : Unit) : Eq Unit u v := refl
   def UnitEtaUU (u : UU(Z)) (v : UU(Z)) : Eq (UU(Z)) u v := refl
-  reject def UnitNotConv (u : Unit) (P : Unit → Prop) (h : P(u)) : P(()) := h
+  def UnitNotConv (u : Unit) (P : Unit → Prop) (h : P(u)) : P(()) := h
   def StuckResult (x : &Nat) (P : Unit → Prop) (h : P(let c = *x; AddM(&c, 0))) : P(let d = *x; AddM(&d, Add(0, 0))) := h
+  -- prop-checker's gap (`Scratch/D59ConvGap.lean`): with the result a sealed program, these
+  -- true statements were rejected
+  def StuckResultUnit (x : &Nat) (P : Unit → Prop) (h : P(())) : P(let c = *x; AddM(&c, 0)) := h
+  def StuckResultArgs (x : &Nat) (P : Unit → Prop) (h : P(let c = *x; AddM(&c, 0))) : P(let c = *x; AddM(&c, 1)) := h
   def ConvUnitRes : Eq (Π(x : &Nat). Unit) (λ(x : &Nat) : Unit => ()) (λ(x : &Nat) : Unit => (let c = clone(*x); G(&c, Z))) := refl
-  reject def ConvUnitWritten :
+  def ConvUnitWritten :
       Eq (Π(x : &Nat). UU(Z)) (λ(x : &Nat) : UU(Z) => ()) (λ(x : &Nat) : UU(Z) => (let c = clone(*x); G(&c, Z))) := (
     refl
   )
@@ -348,7 +351,7 @@ ochr ClosingOff uses Std, Fixtures {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ClosingOff" ClosingOff).allAsExpected
-#guard (run "ClosingOff" ClosingOff).count == 44
+#guard (run "ClosingOff" ClosingOff).count == 46
 
 /-! ## Symbolic checking is not the same as checking every instance
 

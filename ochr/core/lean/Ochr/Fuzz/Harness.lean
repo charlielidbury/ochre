@@ -95,7 +95,9 @@ def setupParams (d : Def) : M (Array PInfo) := do
       let l ← freshLoan
       let cell := (← get).env[0]!.binds.size
       modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
-      pushBind h (some A) (.borrow l (.abs σ)) p pd (dom matches .val (.tRef _))
+      -- η-normal at `Unit` (D59 refined), as `checkFix` binds it
+      let c := if (← get).cfg.unitEta && T == .tUnit then Value.unit else .abs σ
+      pushBind h (some A) (.borrow l c) p pd (dom matches .val (.tRef _))
       out := out.push ⟨h.name, .borrow cell, σ, T⟩
     | _ =>
       let cfg := (← get).cfg
@@ -104,7 +106,8 @@ def setupParams (d : Def) : M (Array PInfo) := do
         out := out.push ⟨h.name, .proof, 0, A⟩
       else
         let σ ← freshAbs A
-        pushBind h (some A) (.abs σ) p (← refineDecl pd (some A) (.abs σ))
+        let c := if cfg.unitEta && A == .tUnit then Value.unit else .abs σ
+        pushBind h (some A) c p (← refineDecl pd (some A) c)
         out := out.push ⟨h.name, .data, σ, A⟩
   pure out
 

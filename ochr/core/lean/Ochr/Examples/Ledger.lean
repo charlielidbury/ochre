@@ -55,11 +55,11 @@ open Ochr.Registry in
 -- D19 switched off: a place read with a loan inside its content keeps the borrow alive. `V`'s
 -- stuck block leaves a borrow's loan inside `n0`, and the later write through `a0` goes to
 -- nothing at `V(0)`; `W` passes `&a` holding `r`'s loan to a stuck call ([Close]'s
--- precondition, unchecked). Both are accepted and go wrong when run (fuzz-port). Since η for
--- `Unit` (D59), the old witness `BadA1` is caught by [Drop] either way
+-- precondition, unchecked). Both are accepted and go wrong when run (fuzz-port), as is the
+-- original witness `BadA1` (a stuck `Unit` call's result is `()`, D59 refined)
 open Ochr.Registry in
 #guard rowOk { accessInside := false }
-  ["Borrows.V:accepted", "Borrows.W:accepted"]
+  ["Borrows.BadA1:accepted", "Borrows.V:accepted", "Borrows.W:accepted"]
 open Ochr.Registry in
 #guard rowOk { selfHeadOnly := false }
   ["Recursion.Knot:accepted", "Recursion.KnotBoom:accepted"]
@@ -305,13 +305,15 @@ open Ochr.Registry in
    "Functions.TwiceM:rejected", "Functions.TwiceMMove:rejected", "Functions.TwiceMZero:rejected",
    "Functions.TwiceMZero':rejected", "Trees.Size:rejected", "Trees.SizeInsert:rejected",
    "InPlaceTrees.Size:rejected", "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected"]
--- D59 switched off: a call written to return `Unit` returns `()` and one that only computes
--- to `Unit` a sealed program, and two values of `Unit` need not be equal, nor two functions'
--- results at `Unit`
+-- D59 (refined) switched off: values are not η-normal at `Unit`. A call written to return
+-- `Unit` returns `()` (the old row), one that only computes to `Unit` its sealed program, and
+-- an abstract `u : Unit` is not `()`, so two values of `Unit`, or two functions' results at
+-- `Unit`, need not be equal
 open Ochr.Registry in
 #guard rowOk { unitEta := false }
   ["ClosingOff.RowI:rejected", "ClosingOff.UnitEta:rejected", "ClosingOff.UnitEtaUU:rejected",
-   "ClosingOff.ConvUnitRes:rejected"]
+   "ClosingOff.UnitNotConv:rejected", "ClosingOff.ConvUnitRes:rejected",
+   "ClosingOff.ConvUnitWritten:rejected"]
 
 -- every row of `switches` has a class
 open Ochr.Registry in

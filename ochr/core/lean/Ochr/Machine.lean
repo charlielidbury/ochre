@@ -998,8 +998,14 @@ partial def sealedSort? (t : Term) : M (Option Nat) := do
 partial def genericValue (A : Value) : M Value := do
   if (← get).cfg.p5 && (← isPropV A) then return .proof
   match A with
-  | .tRef T => pure (.borrow (← freshLoan) (.abs (← freshAbs T)))
-  | _ => pure (.abs (← freshAbs A))
+  | .tRef T => pure (.borrow (← freshLoan) (← absOf T))
+  | _ => absOf A
+
+/-- A fresh abstract value of type `T`, in η-normal form: at `Unit`, `()` (D59 refined: the
+readback at type `Unit` is `()`; a value of `Unit` carries nothing). -/
+partial def absOf (T : Value) : M Value := do
+  if (← get).cfg.unitEta && T == .tUnit then return .unit
+  pure (.abs (← freshAbs T))
 
 /-- Evaluate a type (P2: once, against the current Ω, on a private copy). -/
 partial def evalType (t : Term) : M Value := confinedCopy "a type" do
@@ -1131,10 +1137,10 @@ partial def convPi (P Q : Value) : M Bool := do
         let A ← evalType d
         let w ← match A with
           | .tRef T =>
-            let σ ← freshAbs T
+            let c ← absOf T
             let l ← freshLoan
             modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
-            pure (Value.borrow l (.abs σ))
+            pure (Value.borrow l c)
           | _ => genericValue A
         let pd' ← refineDecl pd (some A) w
         pushBind h (some A) w pd'.isProof pd'
@@ -1212,11 +1218,11 @@ partial def convFnRun (f g pf : Value) (cs : List Value) (hs : List Hint) (ds : 
       let A ← evalType d
       let w ← match A with
         | .tRef T =>
-          let σ ← freshAbs T
+          let c ← absOf T
           let l ← freshLoan
           modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
-          pure (Value.borrow l (.abs σ))
-        | _ => if ← isPropV A then pure Value.proof else pure (Value.abs (← freshAbs A))
+          pure (Value.borrow l c)
+        | _ => if ← isPropV A then pure Value.proof else absOf A
       let pd' ← refineDecl pd (some A) w
       pushBind h (some A) w pd'.isProof pd'
       args := args.push w
@@ -1251,9 +1257,7 @@ partial def convFnRun (f g pf : Value) (cs : List Value) (hs : List Hint) (ds : 
     -- the comparison is asked (a statement's is erased)
     let (rf, cf) ← withRuntime (obs f)
     let (rg, cg) ← withRuntime (obs g)
-    -- D59: results at `Unit` are equal (η)
-    let unitRes := (← get).cfg.unitEta && (pf matches .tPi _ (.pi _ _ .unit))
-    let sameRes ← if unitRes then pure true else conv rf rg
+    let sameRes ← conv rf rg
     if mode == 2 then pure sameRes      -- counterfactual: compare the result only (breaker-fresh F3)
     else pure (sameRes && (← convList cf cg))
 
@@ -1265,8 +1269,6 @@ constructor with one field; no fields: `True`); distinct constructors of one typ
 partial def mkEqM (A a b : Value) : M Value := do
   if ← conv a b then return vTrue
   let cfg := (← get).cfg
-  -- D59: η for `Unit`: every value of `Unit` is `()` in the model
-  if cfg.unitEta && A == .tUnit then return vTrue
   match a, b with
   | .succ a', .succ b' => if cfg.injective then return ← mkEqM .tNat a' b'
   | .ind t c _ ps fs, .ind u d _ qs gs =>
@@ -2048,7 +2050,7 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
   let r ← match fv with
     | .abs _ | .sealed _ =>
       -- a neutral head closes off at once (v1.3), except as [Seal]'s head call (D39)
-      if head && (← get).cfg.headGuardNeutral then stuckNow else closeCall fv ws kind
+      if head && (← get).cfg.headGuardNeutral then stuckNow else closeCall fv ws kind B
     | .gfn _ | .clo _ _ =>
       let (cs, t) ← fixOf fv
       tryCatch (runBody fv cs t ws) fun e =>
@@ -2057,7 +2059,7 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
           if head then throw e
           else do
             modify fun s => { s with fuel := fu }
-            closeCall fv ws kind
+            closeCall fv ws kind B
         | .error m => throw (.error m)
     | _ => err s!"call of {fv}, which is not a function"
   let r := if cls == 2 then Value.proof else r
@@ -2074,10 +2076,20 @@ partial def wholeBorrowArgs (ws : Array Value) (what : String) : M Unit := do
       if u.hasHole then
         err s!"[D53] argument {i + 1} of {what} is a borrow whose content is partly moved out ({u})"
 
+/-- D59 refined: a stuck call's result has type `Unit`: its declared codomain says so, or its
+type as computed at the call (`B` in a typed run; otherwise computed here, when the declared
+codomain does not say). -/
+partial def resultIsUnit (fv : Value) (ws : Array Value) (kind : Kind) (B : Option Value) : M Bool := do
+  if kind == .unit then return true
+  if let some B := B then return B == .tUnit
+  tryCatch (do
+      let piTy ← funType fv none
+      pure ((← resultKind piTy ws) == .unit)) fun _ => pure false
+
 /-- [Close]: the call `f(w̄)` has a stuck body; the partial run has been discarded (the
 state is back at the call point). `L := let cᵢ = uᵢ`, `C := f(ā)` with `aᵢ = &cᵢ` for
 the borrow arguments `wᵢ = borrow_ℓᵢ uᵢ`; the result and the loans follow the table. -/
-partial def closeCall (fv : Value) (ws : Array Value) (kind : Kind) : M Value := do
+partial def closeCall (fv : Value) (ws : Array Value) (kind : Kind) (B : Option Value := none) : M Value := do
   wholeBorrowArgs ws "a call that closes off"
   -- Precondition (v1.1): every argument's content is loan-free (guaranteed by [Access]).
   -- An assertion: a violation is a bug of the rules or of this checker, never a user error.
@@ -2112,10 +2124,17 @@ partial def closeCall (fv : Value) (ws : Array Value) (kind : Kind) : M Value :=
       substEnv (.loan l) (← canonNeutral (.sealed fill)) false
     pure (.borrow k (← canonNeutral (.sealed (wrapL (.letIn ⟨"r"⟩ (C 0) (peek (.place (.deref (.var 0)))))))))
   | _ =>
-    for ((_, l, _), j) in bs.zipIdx do
-      substEnv (.loan l) (← canonNeutral (.sealed (wrapL (.seq (C 0) (peek (cell 0 j)))))) false
-    -- D59: with η for `Unit`, [Close] has no `Unit` row: the result is its sealed program
-    if kind == .unit && !cfg.unitEta then pure .unit else canonNeutral (.sealed (wrapL (C 0)))
+    for ((_, l, u), j) in bs.zipIdx do
+      -- D59 refined: a borrowed place of type `Unit` (its content `()`) is filled with `()`
+      let fill ← if cfg.unitEta && u == .unit then pure .unit
+        else canonNeutral (.sealed (wrapL (.seq (C 0) (peek (cell 0 j)))))
+      substEnv (.loan l) fill false
+    -- D59 refined: the readback at type `Unit` is `()` (η-normal form); the call's effects
+    -- are in the fills above. Without η, the row read off the declared codomain (v1.1–v2.0)
+    if cfg.unitEta then
+      if ← resultIsUnit fv ws kind B then return .unit
+    else if kind == .unit then return .unit
+    canonNeutral (.sealed (wrapL (C 0)))
 
 /-- [Rec]: at a recursive call, a parameter position survives if its argument (the
 content, through a borrow) is a strict subterm of that parameter's entry value as
@@ -2987,19 +3006,23 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
     let A ← evalType d
     match A with
     | .tRef T =>
-      let σ ← freshAbs T
+      let c ← absOf T
       let l ← freshLoan
       modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
-      pushBind h (some A) (.borrow l (.abs σ)) p pd (d matches .val (.tRef _))
-      entries := entries.push (if T == .tNat || (T matches .tInd ..) then some σ else none)
+      pushBind h (some A) (.borrow l c) p pd (d matches .val (.tRef _))
+      entries := entries.push (match c with
+        | .abs σ => if T == .tNat || (T matches .tInd ..) then some σ else none
+        | _ => none)
     | _ =>
       if (← get).cfg.p5 && (← get).cfg.proofParamsStar && (← isPropV A) then
         pushBind h (some A) .proof p (← refineDecl pd (some A) .proof)
         entries := entries.push none
       else
-        let σ ← freshAbs A
-        pushBind h (some A) (.abs σ) p (← refineDecl pd (some A) (.abs σ))
-        entries := entries.push (if A == .tNat || (A matches .tInd ..) then some σ else none)
+        let c ← absOf A
+        pushBind h (some A) c p (← refineDecl pd (some A) c)
+        entries := entries.push (match c with
+          | .abs σ => if A == .tNat || (A matches .tInd ..) then some σ else none
+          | _ => none)
   let goal ← evalType c
   trace fun _ => s!"[Def] {self.name}: goal {goal}"
   let F1 ← popFrameRaw

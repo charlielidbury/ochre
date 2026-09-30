@@ -140,7 +140,8 @@ structure Config where
   prePass : Bool := true         -- erasure is decided before evaluation, from declared types (the syntactic pre-pass)
   jStuck : Bool := true          -- D56: J computes only when its endpoints are convertible, otherwise it is stuck
   zeroArmStuck : Bool := true    -- D58: a zero-arm match outside a proof position is stuck, not ⋆
-  unitEta : Bool := true         -- D59: η for Unit: `Eq Unit a b ≡ True`, and [Close] has no Unit row
+  unitEta : Bool := true         -- D59 (refined): values are η-normal at Unit (the readback at Unit is `()`:
+                                 -- abstract values, stuck calls' results, fills), so `Eq Unit a b ≡ True`
   d53 : Bool := true             -- D53 applies (off only for the case studies not yet adapted, `Test.preD53`);
                                  -- `moves`, `ghosts`, `fnRule` switch its parts
   moves : Bool := true           -- D53: a runtime read of data whose type is not a copy type moves it; erased reads copy

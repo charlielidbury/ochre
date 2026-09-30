@@ -1158,3 +1158,23 @@ I also tried rejecting such matches statically. That is a D55-style check that a
 *Regressions:* `ErasureBySyntax.R9Arms` and `R9Nested` are accepted. fuzz-port's `R9PrePassArms` (`B`, `B6`) is accepted with and without D53.
 
 1030 verdicts.
+
+## 42. D59 refined: η-normal forms at `Unit`
+
+prop-checker found that D59 lost completeness. A stuck call written to return `Unit` returned its sealed program, and conversion had no η, so `P(()) ⊢ P(let c = *x; AddM(&c, 0))` was rejected (`Scratch/D59ConvGap.lean`).
+
+*Refinement (the lead's NbE-standard fix):* values are kept η-normal at `Unit`, and the readback at type `Unit` is `()`.
+- An abstract value of type `Unit` is `()` (`absOf`). This covers `genericValue`, `checkFix`'s parameters and borrowed cells, `convPi`/`convFn`'s generic arguments, and the fuzz harness's parameters.
+- A stuck call whose result has type `Unit` returns `()` (`resultIsUnit`), whether the declared codomain says `Unit` or the type computes to it (`UU(Z)`: `B` in a typed run, otherwise computed at the call). Its effects are in the borrowed places' fills, which are separate, so nothing is lost.
+- A borrowed place of type `Unit` is filled with `()`.
+- `mkEqM`'s `Eq Unit a b ≡ True` and `convFn`'s rule for results at a codomain written `Unit` are deleted. Both sides are now `()`, so both facts follow from reflexivity.
+
+*What flips (default rules):*
+- `ClosingOff.UnitNotConv` ("an abstract `u : Unit` is not `()`") and `ConvUnitWritten` (results at `UU(Z)`) are now accepted: they are true statements.
+- The D59ConvGap statements are in the suite as `StuckResultUnit` and `StuckResultArgs`, accepted.
+- `ConvUnitWrittenAddM` stays rejected, for a D53 reason: `let c = *x` moves `*x` out of the parameter.
+- `Borrows.BadA1` is D19's witness again: with the stuck `Unit` call's result `()`, only D19 catches it. It now joins `V` and `W` in the D19 row.
+
+*Ledger:* the D59 row (switch `unitEta`, completeness) flips `RowI`, `UnitEta`, `UnitEtaUU`, `UnitNotConv`, `ConvUnitRes` and `ConvUnitWritten`, all to rejected. With it off, values are not η-normal at `Unit`, and a call written to return `Unit` returns `()` (the old row). The D19 row gains `BadA1`.
+
+1045 verdicts.
