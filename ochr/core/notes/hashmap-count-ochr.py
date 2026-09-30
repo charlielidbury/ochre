@@ -20,19 +20,19 @@ spec.loader.exec_module(hc)
 
 W = lambda s: s.split()
 
-IMPL = W("""Opt Bucket Slots HashMap EqB Lt ModGo Idx Pred BGet BContains BInsert BRemove BFind
+IMPL = W("""Opt Bucket Slots HashMap EqB Lt ModGo Idx Pred WAdd BGet BContains BInsert BRemove BFind
 IsSome BGetMut Slot EmptySlots New Get ContainsKey InsertNoResize Remove Clear Len Find GetMut
 MoveBucket MoveSlots Resize Insert""")
-RUNS = W("RunLayout RunGet RunGetWrong RunContains RunOverwrite RunCollide RunRemove RunGetMut RunGetMutAbsent RunClear")
+RUNS = W("W RunLayout RunGet RunGetWrong RunContains RunOverwrite RunCollide RunRemove RunGetMut RunGetMutAbsent RunClear")
 # statement vocabulary of the headline theorems: what a reader must trust
 SPEC = W("Buckets BLen Count IfNew Shrink Has Unique AllUnique Nowhere OnlyIn Placed Inv NOf NotOver")
 # definitions used only inside proofs (lemma statements)
 INTERNAL = W("Nth IsNone IfFound OrElse BFindLast SFindLast Fresh FreshS AbsentFrom Apart GUnique")
-NEGATIVE = W("InsertFindNoSplit BRemoveFindDup InsertCountNoHyp")
+NEGATIVE = W("InsertFindNoSplit BRemoveFindDup InsertCountNoHyp BGetMoves")
 WALLED = W("")   # the three GetMut theorems were walled until D58; now proofs: get_mut
 GROUPS = {
     "helpers (keys, arithmetic, equality)": W("""EqBRefl EqBSound EqBTrans EqBContra EqBSymm NeqFlip
-        TransO AddMS AddS SymmN AddZero AddAssoc TransN LtS LtAdd LtPred"""),
+        TransO AddMS AddS SymmN AddZero AddAssoc TransN LtS LtAdd LtPred WAddS WAddZero WAddAssoc"""),
     "new, clear": W("""NthEmpty NewFind ClearFind EmptyCount NewCount ClearCount NowhereEmpty OnlyInEmpty
         UniqueEmpty NewInv ClearInv"""),
     "get, contains_key (F1 bridges)": W("BGetFind SlotGetFind GetFind BContainsFind SlotContainsFind ContainsFind"),
