@@ -288,7 +288,9 @@ open Ochr.Registry in
    "Moves.MoveInArm:accepted", "Moves.RetMoved:accepted", "Moves.A1:accepted", "Moves.A2:accepted",
    "Moves.B1:accepted", "Moves.B2:accepted", "Moves.B3:accepted", "Moves.B4:accepted", "Moves.N1:accepted",
    "Moves.N2:accepted", "Moves.N3:accepted", "Moves.ThroughLocal:accepted", "Moves.P1:accepted",
-   "Moves.P2:accepted", "Moves.Q1:accepted", "Moves.K1:accepted"]
+   "Moves.P2:accepted", "Moves.FullMove:accepted", "Moves.PartMove:accepted",
+   "Moves.PartMoveOpaque:accepted", "Moves.Thm1:accepted", "Moves.TailMove:accepted", "Moves.Q1:accepted",
+   "Moves.K1:accepted"]
 -- D53 (c) switched off: a move leaves `⊥`, so a proof that mentions a moved value fails
 open Ochr.Registry in
 #guard rowOk { ghosts := false }
