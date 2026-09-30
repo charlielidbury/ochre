@@ -23,15 +23,15 @@ namespace Ochr.Fuzz
 open Ochr
 
 inductive Kind where
-  | nat | falseProof | verdict | renorm | escape | adequacy | frame | conv | truth | irrel
+  | nat | falseProof | verdict | renorm | escape | adequacy | frame | conv | truth | irrel | exec
 deriving BEq, Inhabited, Repr
 
 def Kind.name : Kind → String
   | .nat => "nat" | .falseProof => "false" | .verdict => "verdict" | .renorm => "renorm"
   | .escape => "escape" | .adequacy => "adequacy" | .frame => "frame" | .conv => "conv" | .truth => "truth"
-  | .irrel => "irrel"
+  | .irrel => "irrel" | .exec => "exec"
 
-def Kind.all : List Kind := [.nat, .falseProof, .verdict, .renorm, .escape, .adequacy, .frame, .conv, .truth, .irrel]
+def Kind.all : List Kind := [.nat, .falseProof, .verdict, .renorm, .escape, .adequacy, .frame, .conv, .truth, .irrel, .exec]
 
 structure Finding where
   kind : Kind
@@ -60,6 +60,7 @@ structure CaseResult where
   findings : List Finding := []
   synOnly : Nat := 0       -- syntactically different, equal on every ground completion
   incomplete : Nat := 0    -- the generic path errs where a direct path succeeds
+  execAccepted : Nat := 0  -- how many of the statement's sides the checker accepts as data functions
 deriving Inhabited
 
 def Except.isOk {ε α : Type} : Except ε α → Bool
@@ -73,10 +74,13 @@ def showE : Except String Value → String
 /-- Run one observation component, keeping the final state. -/
 def obsRun (st : MState) (A t u : Term) (W : List Pos) (typed : Bool) (k : Nat) :
     Except String (Value × MState) :=
+  -- the observations are what the statement's `Id` type is made of, and a type is evaluated as
+  -- the checker evaluates a goal: erased, on a confined copy (`evalType`). Under D53 this
+  -- matters: erased reads copy, so a side of `Id` never moves out of an owner.
   let act : M Value := match k with
-    | 0 => do let A' ← evalType A; let (r, ws) ← observe typed t A' W; pure (obsVal r ws)
-    | 1 => do let A' ← evalType A; let (r, ws) ← observe typed u A' W; pure (obsVal r ws)
-    | _ => do let (v, _) ← eval typed (.id A t u); pure v
+    | 0 => confinedCopy "a type" do let A' ← evalType A; let (r, ws) ← observe typed t A' W; pure (obsVal r ws)
+    | 1 => confinedCopy "a type" do let A' ← evalType A; let (r, ws) ← observe typed u A' W; pure (obsVal r ws)
+    | _ => confinedCopy "a type" do let (v, _) ← eval typed (.id A t u); pure v
   runSt act st
 
 /-- Compare the symbolic path's value `r` (from state `sR`) with the direct path's `d`
@@ -84,7 +88,8 @@ def obsRun (st : MState) (A t u : Term) (W : List Pos) (typed : Bool) (k : Nat) 
 one side, the error's class, or `none`; the Bool says the two differ syntactically but
 agree on every ground completion. -/
 def compareVals (sR sD : MState) (pinned : List Nat) (r d : Value) (rng : Rng)
-    (fns : List (Nat × List Value) := []) : Option (Kind × String × String × String) × Bool := Id.run do
+    (fns : List (Nat × List Value) := []) (erased : Bool := true) :
+    Option (Kind × String × String × String) × Bool := Id.run do
   if canon pinned r == canon pinned d then return (none, false)
   -- abstract values recorded as generalisations (by re-normalisation) are names, not escapes
   let recR := sR.neutrals.map (·.2)
@@ -98,7 +103,7 @@ def compareVals (sR sD : MState) (pinned : List Nat) (r d : Value) (rng : Rng)
   let recVals := sR.neutrals.map (·.1) ++ sD.neutrals.map (·.1)
   for γ in completions sR pinned ([r, d] ++ recVals) 4 rng fns do
     let lbl := ", ".intercalate (γ.map fun (σ, v) => s!"σ{σ} := {v}")
-    match refineVal sR sR.neutrals γ r, refineVal sD sD.neutrals γ d with
+    match refineVal sR sR.neutrals γ r erased, refineVal sD sD.neutrals γ d erased with
     | .ok r', .ok d' =>
       -- a completion that leaves an abstract value (a function parameter with no instance in
       -- the library) can only compare normal forms, which may differ in where they are stuck

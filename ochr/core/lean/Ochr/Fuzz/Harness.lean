@@ -84,8 +84,7 @@ it: parameter types evaluated left to right, each binding carrying its declared 
 def setupParams (d : Def) : M (Array PInfo) := do
   modify fun s => { s with env := #[{}], goal := none }
   let pf ← paramFlags [] d.doms
-  -- what each parameter's declared type says (the erasure pre-pass), as `checkFix` records it
-  let (pds, _) ← paramDecls [] d.hs d.doms d.cod
+  let (pds, _) ← paramDecls [] d.hs d.doms d.cod     -- the erasure pre-pass's reading of each parameter
   pushFrame
   let mut out := #[]
   for (((dom, h), p), pd) in ((d.doms.zip d.hs).zip pf).zip pds do
@@ -154,9 +153,12 @@ def compName : Nat → String
 /-- Refine a value: first undo the generalisations (`σ_g := ⌈n⌉`, newest first: a
 generalised σ names the closed program it replaced), then substitute; `substV`
 re-normalises every sealed program the substitution reaches. -/
-def refineValS (st : MState) (gens : List (Value × Nat)) (α : List (Nat × Value)) (v : Value) :
-    Except String (Value × MState) :=
-  let act : M Value := do
+def refineValS (st : MState) (gens : List (Value × Nat)) (α : List (Nat × Value)) (v : Value)
+    (erased : Bool := true) : Except String (Value × MState) :=
+  -- the value is an observation inside a type (a statement), so by default it is refined as
+  -- a proof refines its goal: erased (under D53, reads copy). With `erased := false` it is
+  -- refined at runtime depth, as a data function's split refines a stored type.
+  let act : M Value := withErasedIf erased do
     modify fun s => { s with neutrals := [] }
     let mut v := v
     for (n, σ) in gens do v ← substV (.abs σ) n v
@@ -167,8 +169,8 @@ def refineValS (st : MState) (gens : List (Value × Nat)) (α : List (Nat × Val
 /-- `refineValS` without the final state. Its final state's `neutrals` are exactly the
 generalisations re-normalisation made (a type formed inside a sealed program may split
 on a sealed scrutinee), which a later completion must undo too. -/
-def refineVal (st : MState) (gens : List (Value × Nat)) (α : List (Nat × Value)) (v : Value) :
-    Except String Value :=
-  (refineValS st gens α v).map (·.1)
+def refineVal (st : MState) (gens : List (Value × Nat)) (α : List (Nat × Value)) (v : Value)
+    (erased : Bool := true) : Except String Value :=
+  (refineValS st gens α v erased).map (·.1)
 
 end Ochr.Fuzz
