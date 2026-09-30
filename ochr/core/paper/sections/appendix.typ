@@ -556,7 +556,7 @@ Notes 1–11 explain the side conditions of @fig-why that are finest-grained in 
 
 + *A function's erasure class is read from its codomain term.* A local `fix` is formed, and so checked by [Def], each time the term containing it is evaluated, and its codomain may depend on captured values. Deciding its class from the codomain's _value_ would give different answers on the two paths:
   ```
-  U(n : Nat) : Type₀ := match n { Z => Prop, S _ => Prop }
+  U(n : Nat) : Type₁ := match n { Z => Prop, S _ => Prop }
   V(n : Nat) : U(n) := match n { Z => ⊤, S _ => ⊤ }
   LieL(n : Nat) : Id Nat (let h = λ(x : &Nat) : U(n) => (*x := S Z; V(n)); let c = Z; h(&c); c) (S Z) := refl
   BoomL : Eq Nat Z (S Z) := LieL(Z)
@@ -602,13 +602,13 @@ Notes 1–11 explain the side conditions of @fig-why that are finest-grained in 
   Boom : False := Irr(Inl(refl), Inr(refl))
   ```
   Without the condition, `IsL` and `Irr` check: at the generic call `h` and `k` are both ⋆, so both sides are the stuck ⌈`IsL(⋆)`⌉. `Boom` is still rejected, because `Inl(refl)` is a proof, whose value is ⋆, so `Irr`'s instance is `Eq Bool` ⌈`IsL(⋆)`⌉ ⌈`IsL(⋆)`⌉, which is `True`. Only if a proof also kept its constructor would `Boom` prove `False`, as it would in a system where proofs keep their constructors. The condition is required all the same: `IsL` has no meaning in the set model once proofs are irrelevant (`Eq Bool (IsL(Inl(refl))) (IsL(Inr(refl)))`, provable by `refl`, reads `Eq Bool true false` there); `IsL(Inl(refl))` is a closed `Bool` that is stuck for ever, against canonicity and adequacy; and a two-constructor match on a proof, which cannot take an arm, has a value only because every arm is a proof. For `False`, `True` and `And` the type determines the arm and the fields are proofs, so nothing is chosen.
-+ *Borrows are only of data, and `&` only at the top of a declared type* ([T-Ref], [T-Borrow]). If `&A` were allowed for every type `A`, a borrow of a type would quantify over `Type₀` inside `Type₀`:
++ *Borrows are only of `Type₀`, and `&` only at the top of a declared type* ([T-Ref], [T-Borrow]). If `&A` were allowed for every type `A`, a borrow of a type would quantify over `Type₀` inside `Type₀`:
   ```
   Impred : Type₀ := Π(x : &Type₀) (a : *x). *x
   PolyId(x : &Type₀, a : *x) : *x := a
   SelfApp(u : Unit) : Impred := let T = Impred; PolyId(&T, PolyId)
   ```
-  `Π(X : Type₀)(a : X). X` lives in `Type₁`, but through the borrow it would live in `Type₀`, which becomes impredicative: with the impredicative `Prop` below it, the rules contain Girard's System U⁻, in which Hurkens' paradox is a closed term, and no set model exists. And if a codomain could compute to a borrow type, as in `F(n : Nat, x : &Nat) : (match n { Z => &Nat, S _ => Nat })`, [Close] would read the data row at the generic call, where the match is stuck, while `F(0, &a)` returns a live borrow at the instance; `G(n, a) := let r = F(n, &a); let b = a; let r2 = r; ()` is accepted at the generic call and, at `n = 0`, reads `r` after reading `a` has ended it. Because data is read from the evaluated head of `A`, a type variable is rejected too: `SwapT(A : Type₀, x : &A, y : &A)` is not well formed, since `A` could be `Type₀` itself.
+  `Π(X : Type₀)(a : X). X` lives in `Type₁`, but through the borrow it would live in `Type₀`, which becomes impredicative: with the impredicative `Prop` below it, the rules contain Girard's System U⁻, in which Hurkens' paradox is a closed term, and no set model exists. And if a codomain could compute to a borrow type, as in `F(n : Nat, x : &Nat) : (match n { Z => &Nat, S _ => Nat })`, [Close] would read the data row at the generic call, where the match is stuck, while `F(0, &a)` returns a live borrow at the instance; `G(n, a) := let r = F(n, &a); let b = a; let r2 = r; ()` is accepted at the generic call and, at `n = 0`, reads `r` after reading `a` has ended it. A type variable is borrowable exactly when it is declared in `Type₀`: `SwapT(A : Type₀, x : &A, y : &A)` is well formed, and `SwapT1(A : Type₁, x : &A, y : &A)` is not, since there `A` could be `Type₀` itself.
 + *Proofs are not run.* A proof call's arguments are evaluated and its [Call-type] and [Rec] checked, on a private copy; its body is never run ([T-Call-proof]), and the machine skips proofs altogether ([Erase-proof]). Running and skipping agree, since erased terms run on a private copy.
 + *The order of [Access].* Loans are ended from the root of the place outward, then left to right inside its content. The resolution does not depend on the order (property 4 of @fig-claims, mechanised for the first-order fragment).
 + *A match on a constructor checks only the arm taken*, in typing as in the machine ([T-Match]).
