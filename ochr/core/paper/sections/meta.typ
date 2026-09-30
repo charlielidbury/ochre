@@ -25,7 +25,7 @@ This section states the properties Ochr is designed to have and the evidence for
     table.cell(colspan: 3, emph[Partly mechanised, and conjectured]),
     [7. Concrete runs of programs accepted by [Rec] terminate.], [partly mechanised], [for borrow-free and for non-recursive programs; in general `sorry`],
     [8. Stability: the two evaluation paths take the same decisions (@lem-stable), a substitution lemma for typing decisions.], [conjecture], [the counterexamples of @fig-why, the ledger (@sec-impl) and the differential fuzzer; a probe corrected item (6), footprints (`FootprintProbe`)],
-    [9. Naturality and adequacy (@conj-nat): refining and running commute once every borrow is ended, so an `Id` computed on abstract inputs holds on every concrete input.], [conjecture], [the fuzzer; the form without resolution is false (mechanised counterexample)],
+    [9. Naturality and adequacy (@conj-nat): refining and running commute once every borrow is ended, so an `Id` computed on abstract inputs holds on every concrete input where it computes.], [conjecture], [the fuzzer; the form without resolution is false (mechanised counterexample)],
     [10. Consistency: no closed term has type `False` (@cor-consistent).], [conjecture], [the model sketch below; the regression suite],
     table.hline(stroke: 0.5pt),
   )}),
@@ -70,10 +70,11 @@ let r = Pick(clone(n), &a, &b); let z = b; match n { Z => *r := 5, S _ => () }
 runs for every concrete `n` but is rejected: `Pick`'s hole sits in the fills of both `a` and `b`, so reading `b` ends `r` symbolically, and `r` is dead in the `Z` arm. The refined symbolic state and the concrete one agree only after every borrow is ended (a mechanised counterexample to the stronger form), which is why naturality is stated up to resolution; Rust likewise treats `r` as borrowing both places while it is live.
 
 #thm([Conjecture], [naturality], [
-  Let every definition of the program be accepted, let $Omega tack.r t arrow.b.double chevron.l Omega', v chevron.r$ on the symbolic path, and let α be a refinement. If the run of $t alpha$ at $Omega alpha$ ends, it ends without error, as $chevron.l Omega'', v'' chevron.r$, and after every borrow is ended in both, the final states and results are equal up to a renaming of loans: $rho(Omega' alpha) = rho(Omega'')$ and $rho(v alpha) = rho(v'')$, where α re-normalises sealed programs and ρ ends every borrow. In particular, an `Id` that computes to ⊤ at Ω computes to ⊤ at $Omega alpha$: an `Id` computed on abstract inputs holds on every concrete input (adequacy).
+  Let every definition of the program be accepted, let $Omega tack.r t arrow.b.double chevron.l Omega', v chevron.r$ on the symbolic path, and let α be a refinement. If the run of $t alpha$ at $Omega alpha$ ends as $chevron.l Omega'', v'' chevron.r$, then after every borrow is ended in both, the final states and results are equal up to a renaming of loans: $rho(Omega' alpha) = rho(Omega'')$ and $rho(v alpha) = rho(v'')$, where α re-normalises sealed programs and ρ ends every borrow. In particular, an `Id` that computes to ⊤ at Ω computes to ⊤ at $Omega alpha$ whenever it computes there.
 ]) <conj-nat>
 
-Whether the run of $t alpha$ ends is property 7; the requirement that every definition be accepted is needed because a call closed off at Ω runs at $Omega alpha$, and only its own [Def] check says it runs without error there.
+The run of $t alpha$ can fail where the run of $t$ succeeds: ending a borrow early on the symbolic path can let a later [Drop] succeed that fails at the instance (`DropProbe`).
+// TODO(prop-paper): the DropProbe sentence depends on the lead's decision about a fix; drop or reword if the rules change.
 
 == What is mechanised <sec-meta-mech>
 
