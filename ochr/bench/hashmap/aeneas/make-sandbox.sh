@@ -9,6 +9,8 @@
 #   - vendor/aeneas: the allowed part of the pinned Aeneas source (Lean library,
 #     pre-built; docs; tutorial). Never Aeneas's tests/;
 #   - vendor/charon-docs: Charon's documentation;
+#   - vendor/lean-docs: the Lean books (Theorem Proving in Lean 4, Functional
+#     Programming in Lean, the reference manual) at the `lean` condition's pins;
 #   - lean/.lake/packages: Mathlib and its dependencies, pre-built, as pinned;
 #   - .elan: the Lean toolchain named by lean/lean-toolchain;
 #   - .tools: a symlink to the Nix store path of the pinned tools (charon, aeneas,
@@ -22,7 +24,7 @@ dest="${1:?usage: ./make-sandbox.sh DEST}"
 if [ -e "$dest" ] && [ -n "$(ls -A "$dest")" ]; then echo "make-sandbox.sh: $dest is not empty" >&2; exit 2; fi
 # shellcheck source=env.sh
 . "$here/env.sh"
-if [ ! -f "$here/vendor/aeneas/REV" ] || [ ! -f "$here/vendor/charon-docs/REV" ] || [ ! -d "$here/lean/.lake/packages/mathlib/.lake/build" ]; then
+if [ ! -f "$here/vendor/aeneas/REV" ] || [ ! -f "$here/vendor/charon-docs/REV" ] || [ ! -f "$here/vendor/lean-docs/REV" ] || [ ! -d "$here/lean/.lake/packages/mathlib/.lake/build" ]; then
   echo "make-sandbox.sh: run ./setup.sh first" >&2; exit 2
 fi
 mkdir -p "$dest"
@@ -45,7 +47,7 @@ cp "$here/../../common/check_fixed.py" "$dest/grader/"
 
 echo "[sandbox] pre-built libraries"
 mkdir -p "$dest/vendor" "$dest/lean/.lake"
-cp -a --reflink=auto "$here/vendor/aeneas" "$here/vendor/charon-docs" "$dest/vendor/"
+cp -a --reflink=auto "$here/vendor/aeneas" "$here/vendor/charon-docs" "$here/vendor/lean-docs" "$dest/vendor/"
 cp -a --reflink=auto "$here/lean/.lake/packages" "$dest/lean/.lake/"
 
 echo "[sandbox] Lean toolchain"
@@ -70,7 +72,7 @@ check() {  # check DESCRIPTION COMMAND...: the command must print nothing
 }
 check "no Aeneas tests/ directory" find "$dest/vendor" -path '*/tests*'
 check "no hashmap or sort source outside the skeleton and the general libraries" \
-  find "$dest" \( -path "$dest/lean/$mod" -o -path "$dest/lean/$mod.lean" -o -path "$dest/grader/orig" -o -path "$dest/lean/.lake" -o -path "$dest/.elan" \) -prune \
+  find "$dest" \( -path "$dest/lean/$mod" -o -path "$dest/lean/$mod.lean" -o -path "$dest/grader/orig" -o -path "$dest/lean/.lake" -o -path "$dest/.elan" -o -path "$dest/vendor/lean-docs" \) -prune \
     -o -type f \( -name '*.lean' -o -name '*.rs' \) \( -iname '*hash*map*' -o -iname '*sort*' \) -print
 check "none of Aeneas's hashmap test definitions anywhere (sandbox, Mathlib, Lean core)" \
   grep -rlE --include='*.lean' 'allocate_slots|move_elements_from_list|insert_no_resize|try_resize|hash_key' "$dest"
@@ -84,5 +86,6 @@ check "every symlink out of the sandbox points into .tools-closure" \
     grep -qxF "$(echo "$t" | cut -d/ -f1-4)" "$1/.tools-closure" || echo "$t"; done' _ "$dest"
 echo "  note: general libraries with hashmap or sort files (allowed, as for every Lean condition):"
 echo "    $(find "$dest/lean/.lake/packages" "$dest/.elan" -type f -name '*.lean' \( -iname '*hash*map*' -o -iname '*sort*' -o -path '*HashMap*' \) | wc -l) files in Mathlib/Batteries/Lean core (e.g. List.mergeSort lemmas, Std.HashMap lemmas)"
+echo "    in the Lean books: $(find "$dest/vendor/lean-docs" -type f \( -iname '*hash*map*' -o -iname '*sort*' \) -printf '%P ' )"
 if [ $bad -ne 0 ]; then echo "make-sandbox.sh: exclusion check failed" >&2; exit 1; fi
 echo "[sandbox] ready: $dest ($(wc -l < "$dest/.tools-closure") store paths in .tools-closure)"

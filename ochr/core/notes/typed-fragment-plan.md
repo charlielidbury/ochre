@@ -4,7 +4,7 @@ Assessment only, 2026-09-30 (agent meta-order, for team-lead).
 
 **Updates, same day, after two probes in the checker:**
 - **R3 is confirmed and harmless.** `lean/Scratch/FootprintProbe.lean`: a footprint formed before a refinement has extra places, whose equations become `⊤` once the refinement is applied.
-- **Part 1 of Theorem A is false for the current rules.** `lean/Scratch/DropProbe.lean`: `Bad2(n, b, x : &Nat) := let a = 0; x := Pick(n, &a, &b); let z = b; ()` is accepted, but `Bad2(0, 5, &y)` fails with a [Drop] error. The symbolic path ends `x`'s borrow early, and that lets `a` be dropped. The paper proof (`typed-fragment-proof.typ`) therefore restricts F: a borrow is never assigned into an existing variable. Whether to fix the rules instead is team-lead's call.
+- **Part 1 of Theorem A is false for the current rules.** `lean/Scratch/DropProbe.lean`: `Bad2(n, b, x : &Nat) := let a = 0; x := Pick(n, &a, &b); let z = b; ()` is accepted, but `Bad2(0, 5, &y)` fails with a [Drop] error. The symbolic path ends `x`'s borrow early, and that lets `a` be dropped. The rules were fixed instead, by D65 as amended (`DECISIONS.md`): at a drop, a borrower held in a binding is ended, and a borrower in flight is still an error. The paper proof (`typed-fragment-proof.typ`, revision 2.3) assumes the amended D65 and does not need the temporary restriction "a borrow is never assigned into an existing variable".
 
 The original text follows. Written against `ochr-core` at cf55b4ef. The Lean facts below were checked against `ochr/core/meta-lean`, not taken from `notes/lean-meta.md`, which is stale in places (it still lists Lemma 0 as `sorry`, and it names a `Sched.lean` that exists only on the unmerged branch `ochr-core-meta-t1b`).
 

@@ -1,0 +1,9 @@
+# FIXED-BEGIN cargo
+[package]
+name = "hashmap"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# FIXED-END cargo

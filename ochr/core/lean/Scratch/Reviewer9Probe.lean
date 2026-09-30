@@ -267,7 +267,48 @@ ochr R9D65 uses Std, Fixtures {
     let a = 0;
     &a
   )
+  -- inside F once F5 is removed (typed-fragment proof revision 2.1): a tail match whose arm
+  -- returns a borrow of an arm-local. Under D65 without a result check in [Def], `FR` is
+  -- accepted, and so is `UseFR(n, c) := let r = FR(n, &c); *r := 1`, since `FR`'s call closes
+  -- off to a live borrow; `UseFR(0, 1)` then writes through an ended borrow (scratch D65 run,
+  -- reviewer-9.md, re-check of revision 2.1). The variant rejects `FR`.
+  reject def FR (n : Nat) (x : &Nat) : &Nat := (
+    match n {
+      Z => (
+        let a = 0;
+        &a
+      ),
+      S _ => x,
+    }
+  )
 }
 #eval IO.println (run "R9D65" R9D65).show
 #guard (run "R9D65" R9D65).allAsExpected
-#guard (run "R9D65" R9D65).count == 4
+#guard (run "R9D65" R9D65).count == 5
+
+/-! ## Re-check of the typed-fragment proof, revision 2.2: an assignment's own [Access] can
+end its new value on the symbolic path only. `Pick`'s hole sits in `x`'s content (through
+the reborrow `&*x`) and in `b`'s, so the [Access] on `x` ends the new borrow symbolically; at
+`n = 1` the ground borrow points into `b` and survives. Harmless (the symbolic path ends
+more), but it contradicts revision 2.2's "ended on both paths alike". -/
+ochr R9AS uses Std, Fixtures {
+  def AS (n : Nat) (b : Nat) (x : &Nat) : Unit := (
+    x := Pick(n, &*x, &b)
+  )
+  -- after the assignment x is ⊥ symbolically
+  reject def AS2 (n : Nat) (b : Nat) (x : &Nat) : Unit := (
+    x := Pick(n, &*x, &b);
+    *x := 5
+  )
+  -- at n = 1 the ground run writes through the same assignment's result without error
+  def AS2g1 : Unit := (
+    let b = 3;
+    let c = 0;
+    let q = &c;
+    q := Pick(1, &*q, &b);
+    *q := 5
+  )
+}
+#eval IO.println (run "R9AS" R9AS).show
+#guard (run "R9AS" R9AS).allAsExpected
+#guard (run "R9AS" R9AS).count == 3

@@ -4,8 +4,8 @@
 # agent, whose sandbox is made ready by make-sandbox.sh):
 #   1. build the pinned toolchain (.tools, from flake.nix);
 #   2. vendor the allowed part of the pinned Aeneas source into vendor/aeneas
-#      (the Lean library, docs and tutorial; never its tests/), and Charon's
-#      docs into vendor/charon-docs;
+#      (the Lean library, docs and tutorial; never its tests/), Charon's
+#      docs into vendor/charon-docs, and the Lean books into vendor/lean-docs;
 #   3. fetch Mathlib's pre-built cache and build the Aeneas Lean library;
 #   4. translate and build the skeleton (its holes show up as sorry warnings).
 set -euo pipefail
@@ -24,6 +24,10 @@ docs="$(nix build "$here#charon-docs" --no-link --print-out-paths)"
 rm -rf "$here/vendor/charon-docs"
 cp -r "$docs" "$here/vendor/charon-docs"
 chmod -R u+w "$here/vendor/charon-docs"
+books="$(nix build "$here#lean-docs" --no-link --print-out-paths)"
+rm -rf "$here/vendor/lean-docs"
+cp -r "$books" "$here/vendor/lean-docs"
+chmod -R u+w "$here/vendor/lean-docs"
 cd "$here/lean"
 echo "[setup] Mathlib cache"
 lake exe cache get

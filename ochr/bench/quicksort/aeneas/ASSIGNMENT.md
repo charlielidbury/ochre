@@ -35,12 +35,14 @@ Files:
 | `grade.sh` | The grader (section 8). |
 | `vendor/aeneas/` | The Aeneas Lean library (`backends/lean/Aeneas/`), its documentation and its tutorial. Read-only. |
 | `vendor/charon-docs/` | Charon's documentation. Read-only. |
+| `vendor/lean-docs/` | The Lean books, as source. Read-only. |
 | `SOLUTION_FILES` | The files that make up your solution (section 6). |
 | `lean/.lake/packages/` | Mathlib and its dependencies. Read-only. |
 
 Documentation, all offline:
 - `vendor/aeneas/documentation/`: start with `getting-started.md` and `aeneas-overview.md`, then `proof-strategies.md`, `tactics-reference.md` and `tips-and-tricks.md`. The files in `documentation/skills/` are the Aeneas team's own guides for AI agents doing Aeneas proofs; `aeneas-lean-core.instructions.md` and `aeneas-tactics-quickref.instructions.md` are the most useful here. Some of them mention a `lean-lsp-mcp` tool; use it if your environment provides it, otherwise `lake build` and `lake env lean FILE` do the same job more slowly.
 - `vendor/aeneas/tutorial/`: the Aeneas tutorial. `src/tutorial/src/lib.rs` is its Rust, `lean/Tutorial/Tutorial.lean` the generated model, and `lean/Tutorial/Exercises.lean` and `Solutions.lean` worked exercises (linked lists, loops over vectors, `&mut` borrows returned from functions).
+- `vendor/lean-docs/`: the Lean books, as their Verso sources, readable as text: `theorem-proving-in-lean4/` (Theorem Proving in Lean 4), `functional-programming-in-lean/` (Functional Programming in Lean) and `lean-reference-manual/` (the Lean reference manual). The chapters are under `book/` in the first two and `Manual/` in the third.
 - `vendor/charon-docs/`: Charon's documentation; `what_charon_translates.md` and `limitations.md` say which Rust it accepts.
 - `vendor/aeneas/backends/lean/Aeneas/`: the library itself. The specifications of the primitives your code will call (slices, `split_at_mut`, `swap`, indexing, scalar arithmetic, ...) are here, tagged `@[step]`.
 

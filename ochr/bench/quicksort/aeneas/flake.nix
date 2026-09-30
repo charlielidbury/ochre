@@ -11,9 +11,14 @@
     charon.follows = "aeneas/charon";
     nixpkgs.follows = "aeneas/nixpkgs";
     flake-utils.follows = "aeneas/flake-utils";
+    # The Lean books, at the revisions the `lean` condition ships (Aeneas proofs
+    # are Lean proofs, so both Lean-based conditions get the same Lean docs).
+    tpil = { url = "github:leanprover/theorem_proving_in_lean4/4e28129fdd58037f8f5857548d5e99fe4fb0cc57"; flake = false; };
+    fpil = { url = "github:leanprover/fp-lean/0abeea545d560a324e2561f7210fbd6ed154fa02"; flake = false; };
+    reference-manual = { url = "github:leanprover/reference-manual/4f677697f1f86b7ea817746eba00d339e9f59d68"; flake = false; };
   };
 
-  outputs = { self, nixpkgs, flake-utils, aeneas, charon }:
+  outputs = { self, nixpkgs, flake-utils, aeneas, charon, tpil, fpil, reference-manual }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
@@ -56,9 +61,18 @@
           cp ${charon}/README.md ${charon}/LICENSE.md $out/
           echo "${charon.rev}" > $out/REV
         '';
+        # The Lean books' sources, copied (not linked) so the sandbox needs no
+        # extra store paths.
+        lean-docs = pkgs.runCommand "lean-docs" { } ''
+          mkdir -p $out
+          cp -r ${tpil} $out/theorem-proving-in-lean4
+          cp -r ${fpil} $out/functional-programming-in-lean
+          cp -r ${reference-manual} $out/lean-reference-manual
+          printf '%s\n' "theorem_proving_in_lean4 ${tpil.rev}" "fp-lean ${fpil.rev}" "reference-manual ${reference-manual.rev}" > $out/REV
+        '';
       in {
         packages = {
-          inherit tools aeneas-src charon-docs;
+          inherit tools aeneas-src charon-docs lean-docs;
           default = tools;
         };
         devShells.default = pkgs.mkShell {
