@@ -703,6 +703,7 @@ partial def depFieldType (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Pla
   -- D64: a field's type from the earlier fields' contents
   let some (_, T) := (← fieldTypesOf d ps g.ctor fs (some (g.idx + 1)))[g.idx]?
     | err s!"{← ppPlace q}.{g.name}: no such field"
+  fire .Field fun _ => s!"{g.name}: {T}, from the earlier fields' contents"
   if !d.fieldDependent g.ctor g.idx then return T
   let c := (fs.getD g.idx .bot).unghost
   if c == .bot || c == .proof then return T

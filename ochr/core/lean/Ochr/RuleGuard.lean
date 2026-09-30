@@ -36,7 +36,7 @@ def proseRules : List (String × String) :=
    ("Conv-pi", "- [Conv-pi]"), ("Conv-fun", "- [Conv-fun]"),
    ("Drop", "*Drop* ([Drop])"), ("Capture", "*Capture* ([Capture])"), ("Block", "*Block* ([Block])"),
    ("Eq-inj", "\"[Eq-inj]\""), ("Eq-refl", "\"[Eq-refl]\""), ("Eq-disj", "\"[Eq-disj]\""),
-   ("Eq-stuck", "\"[Eq-stuck]\"")]
+   ("Eq-stuck", "\"[Eq-stuck]\""), ("Field", "cont(p.n))$ ([Field])")]
 
 /-- Bracketed words of the paper's text that are content, not rule references. -/
 def notRules : List String :=
@@ -54,7 +54,7 @@ def expectedIssues : List String := [
 ]
 
 /-- Rules already tagged with a `fire` call. -/
-def fired : List Rule := [.Open, .Repack, .IndDecl, .EqInj, .EqStuck, .Access]
+def fired : List Rule := [.Field, .Open, .Repack, .IndDecl, .EqInj, .EqStuck, .Access]
 
 /-- Rules and extensions not yet tagged with a `fire` call (the tagging is in progress). -/
 def notYetFired : List String :=
