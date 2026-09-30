@@ -8,7 +8,7 @@ ochr ClassE {
 }
 ochr ClassV {
   def Stmt (n0 : Nat) (h1 : False) : Prop :=
-    Id Unit (match n0 { Z => (match h1 {} : Unit), S p21 => () }) (match h1 {})
+    Id Unit (match n0 { Z => (match h1 {} : Unit), S p21 => () }) (match h1 {} : Unit)
 }
 #eval IO.println (replay ClassE)
 #eval IO.println (replay ClassV)

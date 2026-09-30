@@ -3,7 +3,7 @@ import Ochr.Examples.«16Arrays»
 
 /-! # Verified in-place hash map, two programs (condition `ochr-2p`)
 
-Read `ASSIGNMENT.md` first. Replace every `TODO` with a definition or a proof, and add any
+Read `ASSIGNMENT.md` first. Replace every hole `?` with a definition or a proof, and add any
 helper definitions and lemmas you need to the blocks `HashMapModel` and
 `HashMapSolution`, between their FIXED regions. Everything inside a FIXED region must stay exactly as it is.
 
@@ -458,129 +458,129 @@ ochr HashMapModel uses HashMapSpec {
   -- The model's type.
   def MMap : Type :=
   -- FIXED-END model-type
-    TODO
+    ?
 
   -- FIXED-BEGIN model-new
   -- The model of new(c): the empty map.
   def MNew : MMap :=
   -- FIXED-END model-new
-    TODO
+    ?
 
   -- FIXED-BEGIN model-len
   -- The model of len.
   def MLen (a : MMap) : Word :=
   -- FIXED-END model-len
-    TODO
+    ?
 
   -- FIXED-BEGIN model-get
   -- The model of get.
   def MGet (a : MMap) (k : Word) : Opt :=
   -- FIXED-END model-get
-    TODO
+    ?
 
   -- FIXED-BEGIN model-insert
   -- The model of insert: the map afterwards. (The value insert returns is
   -- MGet(a, k), by AgreeInsertResult below.)
   def MInsert (a : MMap) (k : Word) (v : Word) : MMap :=
   -- FIXED-END model-insert
-    TODO
+    ?
 
   -- FIXED-BEGIN model-remove
   -- The model of remove: the map afterwards. (The value remove returns is
   -- MGet(a, k), by AgreeRemoveResult below.)
   def MRemove (a : MMap) (k : Word) : MMap :=
   -- FIXED-END model-remove
-    TODO
+    ?
 
   -- FIXED-BEGIN model-write
   -- The model of writing `w` through get_mut(m, k): the map afterwards.
   def MWrite (a : MMap) (k : Word) (w : Word) : MMap :=
   -- FIXED-END model-write
-    TODO
+    ?
 
   -- FIXED-BEGIN model-inv
   -- The model's invariant: any predicate on models that the properties below need
   -- (it may be ⊤).
   def MInv (a : MMap) : Prop :=
   -- FIXED-END model-inv
-    TODO
+    ?
 
   -- FIXED-BEGIN model-abs
   -- The abstraction: the model of a map, from its buckets (a view, as `SlotsOf` gives
   -- it) and its length field.
   def Abs (cap : Word) (s : Slice(Bucket, cap)) (len : Word) : MMap :=
   -- FIXED-END model-abs
-    TODO
+    ?
 
   -- FIXED-BEGIN M4
   -- M4 (H4 about the model): the model of get on the empty map.
   def MGetNew (k : Word) :
       Eq Opt (MGet(MNew, k)) None :=
   -- FIXED-END M4
-    TODO
+    ?
 
   -- FIXED-BEGIN M5
   -- M5 (H5 about the model): get after insert, at the same key.
   def MGetInsertSame (a : MMap) (k : Word) (v : Word) (h : MInv(a)) :
       Eq Opt (MGet(MInsert(a, k, v), k)) (Some(v)) :=
   -- FIXED-END M5
-    TODO
+    ?
 
   -- FIXED-BEGIN M6
   -- M6 (H6 about the model): get after insert, at another key.
   def MGetInsertOther (a : MMap) (k : Word) (k2 : Word) (v : Word) (h : MInv(a)) (ne : Π(e : Eq Word k2 k). False) :
       Eq Opt (MGet(MInsert(a, k, v), k2)) (MGet(a, k2)) :=
   -- FIXED-END M6
-    TODO
+    ?
 
   -- FIXED-BEGIN M8
   -- M8 (H8 about the model): get after remove, at the same key.
   def MGetRemoveSame (a : MMap) (k : Word) (h : MInv(a)) :
       Eq Opt (MGet(MRemove(a, k), k)) None :=
   -- FIXED-END M8
-    TODO
+    ?
 
   -- FIXED-BEGIN M9
   -- M9 (H9 about the model): get after remove, at another key.
   def MGetRemoveOther (a : MMap) (k : Word) (k2 : Word) (h : MInv(a)) (ne : Π(e : Eq Word k2 k). False) :
       Eq Opt (MGet(MRemove(a, k), k2)) (MGet(a, k2)) :=
   -- FIXED-END M9
-    TODO
+    ?
 
   -- FIXED-BEGIN M11
   -- M11 (H11 about the model): the length of the empty map.
   def MLenNew :
       Eq Word (MLen(MNew)) Zero :=
   -- FIXED-END M11
-    TODO
+    ?
 
   -- FIXED-BEGIN M12
   -- M12 (H12 about the model): the length after insert.
   def MLenInsert (a : MMap) (k : Word) (v : Word) (h : MInv(a)) :
       Eq Word (MLen(MInsert(a, k, v))) (Grow(MGet(a, k), MLen(a))) :=
   -- FIXED-END M12
-    TODO
+    ?
 
   -- FIXED-BEGIN M13
   -- M13 (H13 about the model): the length after remove.
   def MLenRemove (a : MMap) (k : Word) (h : MInv(a)) :
       Eq Word (MLen(MRemove(a, k))) (Shrink(MGet(a, k), MLen(a))) :=
   -- FIXED-END M13
-    TODO
+    ?
 
   -- FIXED-BEGIN M14
   -- M14 (H14 about the model): a write has the effect of insert on every get.
   def MWriteGet (a : MMap) (k : Word) (w : Word) (k2 : Word) (h : MInv(a)) (hk : IsSome(MGet(a, k))) :
       Eq Opt (MGet(MWrite(a, k, w), k2)) (MGet(MInsert(a, k, w), k2)) :=
   -- FIXED-END M14
-    TODO
+    ?
 
   -- FIXED-BEGIN M15
   -- M15 (H15 about the model): ... and on the length.
   def MWriteLen (a : MMap) (k : Word) (w : Word) (h : MInv(a)) (hk : IsSome(MGet(a, k))) :
       Eq Word (MLen(MWrite(a, k, w))) (MLen(MInsert(a, k, w))) :=
   -- FIXED-END M15
-    TODO
+    ?
 
 -- FIXED-BEGIN solution-header
 }
@@ -603,31 +603,31 @@ ochr HashMapSolution uses HashMapModel, HashMapCompose {
   -- new(c): an empty map, with `cap` empty buckets and length 0. `h` is the precondition c ≥ 1.
   def MapNew (cap : Word) (h : Lt(Zero, cap)) : Map(cap) :=
   -- FIXED-END new
-    TODO
+    ?
 
   -- FIXED-BEGIN len
   -- len(m): the number of keys in the map.
   def MapLen (cap : Word) (m : &Map(cap)) : Word :=
   -- FIXED-END len
-    TODO
+    ?
 
   -- FIXED-BEGIN get
   -- get(m, k): Some(v) if `k` is bound to `v`, None otherwise.
   def MapGet (cap : Word) (m : &Map(cap)) (k : Word) : Opt :=
   -- FIXED-END get
-    TODO
+    ?
 
   -- FIXED-BEGIN insert
   -- insert(m, k, v): bind `k` to `v`, in place; return what `k` was bound to before.
   def MapInsert (cap : Word) (m : &Map(cap)) (k : Word) (v : Word) : Opt :=
   -- FIXED-END insert
-    TODO
+    ?
 
   -- FIXED-BEGIN remove
   -- remove(m, k): unbind `k`, in place; return what it was bound to.
   def MapRemove (cap : Word) (m : &Map(cap)) (k : Word) : Opt :=
   -- FIXED-END remove
-    TODO
+    ?
 
   -- FIXED-BEGIN get_mut
   -- get(m, k) and len(m) of a map value, run on a copy of it: what the properties observe.
@@ -638,88 +638,88 @@ ochr HashMapSolution uses HashMapModel, HashMapCompose {
   -- get_mut(m, k): a borrow of the value stored for `k`, which must be present.
   def MapGetMut (cap : Word) (m : &Map(cap)) (k : Word) (h : IsSome(GetOf(cap, *m, k))) : &Word :=
   -- FIXED-END get_mut
-    TODO
+    ?
 
   -- FIXED-BEGIN inv
   -- Inv(m): your invariant, any predicate that makes H1–H18 provable.
   def Inv (cap : Word) (m : Map(cap)) : Prop :=
   -- FIXED-END inv
-    TODO
+    ?
 
   -- FIXED-BEGIN abs-inv
   -- The invariant on maps gives the model's invariant.
   def AbsInv (cap : Word) (m : &Map(cap)) (hm : Inv(cap, *m)) : MInv(AbsOf(cap, *m)) :=
   -- FIXED-END abs-inv
-    TODO
+    ?
 
   -- FIXED-BEGIN H1
   -- H1: Inv(new(c)).
   def InvNew (cap : Word) (h : Lt(Zero, cap)) : Inv(cap, MapNew(cap, h)) :=
   -- FIXED-END H1
-    TODO
+    ?
 
   -- FIXED-BEGIN H2
   -- H2: insert preserves Inv.
   def InvInsert (cap : Word) (m : &Map(cap)) (k : Word) (v : Word) (hm : Inv(cap, *m)) :
       (let c = *m; MapInsert(cap, &c, k, v); Inv(cap, c)) :=
   -- FIXED-END H2
-    TODO
+    ?
 
   -- FIXED-BEGIN H3
   -- H3: remove preserves Inv.
   def InvRemove (cap : Word) (m : &Map(cap)) (k : Word) (hm : Inv(cap, *m)) :
       (let c = *m; MapRemove(cap, &c, k); Inv(cap, c)) :=
   -- FIXED-END H3
-    TODO
+    ?
 
   -- FIXED-BEGIN agree-new
   -- Agreement: new(c) is the empty model.
   def AbsNew (cap : Word) (h : Lt(Zero, cap)) :
       Eq MMap (AbsOf(cap, MapNew(cap, h))) MNew :=
   -- FIXED-END agree-new
-    TODO
+    ?
 
   -- FIXED-BEGIN agree-len
   -- Agreement: len agrees with the model.
   def AgreeLen (cap : Word) (m : &Map(cap)) (hm : Inv(cap, *m)) :
       Eq Word (LenOf(cap, *m)) (MLen(AbsOf(cap, *m))) :=
   -- FIXED-END agree-len
-    TODO
+    ?
 
   -- FIXED-BEGIN agree-get
   -- Agreement: get agrees with the model.
   def AgreeGet (cap : Word) (m : &Map(cap)) (k : Word) (hm : Inv(cap, *m)) :
       Eq Opt (GetOf(cap, *m, k)) (MGet(AbsOf(cap, *m), k)) :=
   -- FIXED-END agree-get
-    TODO
+    ?
 
   -- FIXED-BEGIN agree-insert
   -- Agreement: insert agrees with the model: the map afterwards.
   def AgreeInsert (cap : Word) (m : &Map(cap)) (k : Word) (v : Word) (hm : Inv(cap, *m)) :
       Eq MMap (let c = *m; MapInsert(cap, &c, k, v); AbsOf(cap, c)) (MInsert(AbsOf(cap, *m), k, v)) :=
   -- FIXED-END agree-insert
-    TODO
+    ?
 
   -- FIXED-BEGIN agree-insert-result
   -- Agreement: ... and the value it returns.
   def AgreeInsertResult (cap : Word) (m : &Map(cap)) (k : Word) (v : Word) (hm : Inv(cap, *m)) :
       Eq Opt (let c = *m; MapInsert(cap, &c, k, v)) (MGet(AbsOf(cap, *m), k)) :=
   -- FIXED-END agree-insert-result
-    TODO
+    ?
 
   -- FIXED-BEGIN agree-remove
   -- Agreement: remove agrees with the model: the map afterwards.
   def AgreeRemove (cap : Word) (m : &Map(cap)) (k : Word) (hm : Inv(cap, *m)) :
       Eq MMap (let c = *m; MapRemove(cap, &c, k); AbsOf(cap, c)) (MRemove(AbsOf(cap, *m), k)) :=
   -- FIXED-END agree-remove
-    TODO
+    ?
 
   -- FIXED-BEGIN agree-remove-result
   -- Agreement: ... and the value it returns.
   def AgreeRemoveResult (cap : Word) (m : &Map(cap)) (k : Word) (hm : Inv(cap, *m)) :
       Eq Opt (let c = *m; MapRemove(cap, &c, k)) (MGet(AbsOf(cap, *m), k)) :=
   -- FIXED-END agree-remove-result
-    TODO
+    ?
 
   -- FIXED-BEGIN agree-write
   -- Agreement: a write through get_mut agrees with the model.
@@ -727,7 +727,7 @@ ochr HashMapSolution uses HashMapModel, HashMapCompose {
       (hk : IsSome(GetOf(cap, *m, k))) :
       Eq MMap (let c = *m; let r = MapGetMut(cap, &c, k, hk); *r := w; AbsOf(cap, c)) (MWrite(AbsOf(cap, *m), k, w)) :=
   -- FIXED-END agree-write
-    TODO
+    ?
 
   -- FIXED-BEGIN H16
   -- H16: ... and preserves Inv.
@@ -735,19 +735,19 @@ ochr HashMapSolution uses HashMapModel, HashMapCompose {
       (hk : IsSome(GetOf(cap, *m, k))) :
       (let c = *m; let r = MapGetMut(cap, &c, k, hk); *r := w; Inv(cap, c)) :=
   -- FIXED-END H16
-    TODO
+    ?
 
   -- FIXED-BEGIN H17
   -- H17: get leaves the map unchanged (for every map, not only those with Inv).
   def GetUnchanged (cap : Word) (m : &Map(cap)) (k : Word) : Eq (Map(cap)) (let c = *m; MapGet(cap, &c, k); c) (*m) :=
   -- FIXED-END H17
-    TODO
+    ?
 
   -- FIXED-BEGIN H18
   -- H18: len leaves the map unchanged.
   def LenUnchanged (cap : Word) (m : &Map(cap)) : Eq (Map(cap)) (let c = *m; MapLen(cap, &c); c) (*m) :=
   -- FIXED-END H18
-    TODO
+    ?
 
   -- FIXED-BEGIN H4
   -- H4: get(new(c), k) = None.

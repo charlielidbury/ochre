@@ -180,8 +180,6 @@ structure Config where
   zeroArmStuck : Bool := true    -- D58: a zero-arm match outside a proof position is stuck, not ⋆
   unitEta : Bool := true         -- D59 (refined): values are η-normal at Unit (the readback at Unit is `()`:
                                  -- abstract values, stuck calls' results, fills), so `Eq Unit a b ≡ True`
-  ghostBorrows : Bool := true    -- [Access]: a loan with other possible owners is released in the accessed one
-                                 -- only; the borrow becomes a ghost, still holding the others (meta-order's Bad2)
   abstractTypes : Bool := true   -- K3: an abstract type's constructors and matches only in erased positions and model code
   unsizedTypes : Bool := true    -- K2: outside model code, a place of an unsized type is only borrowed at runtime
   repack : Bool := true          -- D64 [Repack]: a value of a dependent type is of its telescope again at
@@ -191,6 +189,7 @@ structure Config where
   k4 : Bool := true              -- K4: a field type may call an earlier type function (e.g. `Array(T, n)`)
   k4Nest : Bool := true          -- K4's nesting condition: a parameter an inductive passes to a type function
                                  -- is not nestable (the type being declared may not appear there)
+  dropEndsBound : Bool := true   -- D65 amended: [Drop] of a lent place ends only borrowers held in bindings; one in flight is an error (off: pure D65, it ends every borrower)
   ghosts : Bool := true          -- D53 (c): a move leaves a ghost of the value, which erased terms still read
   fnRule : Bool := true          -- D53 (e): a call does not consume its function; a closure is copy iff its captures are, and its body may not move them out
   unitNorm : Bool := false       -- counterfactual D50: the unit laws normalise stored types (v2.0 as first built)
@@ -278,6 +277,7 @@ inductive Note where
   | goal (G : Value)                                               -- the goal a tail term is checked against
   | expected (A : Value)                                           -- the type an argument is checked against
   | rule (name : String)                                           -- a rule applied here (`Rules.fire`)
+  | hole (G : Value) (Ω : List (String × Option Value × Value))    -- a hole's goal, and Ω there
 
 /-- An entry of the log: a trace line (`Config.trace`), or a note for the editor, at a source
 range, with the [Split] refinements of the path it was made on. -/

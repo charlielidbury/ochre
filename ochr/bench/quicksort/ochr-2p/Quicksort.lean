@@ -3,7 +3,7 @@ import Ochr.Examples.«16Arrays»
 
 /-! # Verified in-place quicksort, two programs (condition `ochr-2p`)
 
-Read `ASSIGNMENT.md` first. Replace every `TODO` with a definition or a proof, and add any
+Read `ASSIGNMENT.md` first. Replace every hole `?` with a definition or a proof, and add any
 helper definitions and lemmas you need to the blocks `QuicksortModel` and
 `QuicksortSolution`, between their FIXED regions. Everything inside a FIXED region must stay exactly as it is.
 
@@ -71,19 +71,19 @@ ochr QuicksortModel uses QuicksortSpec {
   -- The model: `v` sorted, computed without borrows or assignment.
   def SortModel (n : Word) (v : Slice(Word, n)) : Slice(Word, n) :=
   -- FIXED-END model
-    TODO
+    ?
 
   -- FIXED-BEGIN M1
   -- Q1 about the model: its result is sorted.
   def SortModelSorted (n : Word) (v : Slice(Word, n)) : Sorted(n, SortModel(n, v)) :=
   -- FIXED-END M1
-    TODO
+    ?
 
   -- FIXED-BEGIN M2
   -- Q2 about the model: its result is a permutation of its input.
   def SortModelPerm (n : Word) (v : Slice(Word, n)) : Perm(n, SortModel(n, v), v) :=
   -- FIXED-END M2
-    TODO
+    ?
 -- FIXED-BEGIN solution-header
 }
 
@@ -102,13 +102,13 @@ ochr QuicksortSolution uses QuicksortModel, QuicksortCompose {
   -- quicksort(a : &mut Array(𝕎)): sort the `n` words of `*s` in place.
   def QuickSort (n : Word) (s : &Slice(Word, n)) : Unit :=
   -- FIXED-END quicksort
-    TODO
+    ?
 
   -- FIXED-BEGIN agree
   -- The agreement: running `QuickSort(n, s)` has the same effect as `*s := SortModel(n, *s)`.
   def QuickSortAgrees (n : Word) (s : &Slice(Word, n)) : Id Unit (QuickSort(n, s)) (*s := SortModel(n, *s)) :=
   -- FIXED-END agree
-    TODO
+    ?
 
   -- FIXED-BEGIN Q1
   -- Q1: sorted(a₁), where a₁ is the contents after `QuickSort` (provided: from the model).

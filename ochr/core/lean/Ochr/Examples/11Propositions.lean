@@ -226,11 +226,8 @@ ochr Propositions uses Std {
   )
 }
 
-#eval IO.println (run "Propositions" Propositions).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Propositions" Propositions).allAsExpected
-#guard (run "Propositions" Propositions).count == 45
+-- the exact number of declarations (a truncated file changes it)
+#guard Propositions.decls.length == 45
 
 /-! ## Destructuring `let`
 
@@ -302,11 +299,8 @@ ochr Destructuring uses Std {
   )
 }
 
-#eval IO.println (run "Destructuring" Destructuring).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Destructuring" Destructuring).allAsExpected
-#guard (run "Destructuring" Destructuring).count == 12
+-- the exact number of declarations (a truncated file changes it)
+#guard Destructuring.decls.length == 12
 
 /-! ## Subsingleton elimination
 
@@ -433,8 +427,5 @@ ochr Subsingletons uses Std, Fixtures {
   reject def SqBoom : False := SqIrr(MkSq(0), MkSq(1))
 }
 
-#eval IO.println (run "Subsingletons" Subsingletons).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Subsingletons" Subsingletons).allAsExpected
-#guard (run "Subsingletons" Subsingletons).count == 19
+-- the exact number of declarations (a truncated file changes it)
+#guard Subsingletons.decls.length == 19

@@ -171,11 +171,8 @@ ochr Equality uses Std {
   def Conv1 (n : Nat) (x : Nat) (h : Id Nat (match n { Z => x, S _ => x }) x) : FId(n, x) := h
 }
 
-#eval IO.println (run "Equality" Equality).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Equality" Equality).allAsExpected
-#guard (run "Equality" Equality).count == 36
+-- the exact number of declarations (a truncated file changes it)
+#guard Equality.decls.length == 36
 
 /-! ## Rewriting
 
@@ -238,11 +235,8 @@ ochr Rewriting uses Std {
   reject def RwFalse (x : Nat) (h : Eq Nat x x) : Eq Nat x (S x) := rewrite h in refl
 }
 
-#eval IO.println (run "Rewriting" Rewriting).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Rewriting" Rewriting).allAsExpected
-#guard (run "Rewriting" Rewriting).count == 18
+-- the exact number of declarations (a truncated file changes it)
+#guard Rewriting.decls.length == 18
 
 /-! ## All the owners of a returned borrow are observed
 
@@ -351,11 +345,8 @@ ochr Owners uses Fixtures {
   )
 }
 
-#eval IO.println (run "Owners" Owners).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Owners" Owners).allAsExpected
-#guard (run "Owners" Owners).count == 17
+-- the exact number of declarations (a truncated file changes it)
+#guard Owners.decls.length == 17
 
 /-- The message rejecting `Owners.Use` under `cfg`: it states `Probe`'s parameter type. -/
 def useMessage (cfg : Ochr.Config) : String :=

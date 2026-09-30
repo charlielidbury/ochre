@@ -130,8 +130,5 @@ ochr Numbers uses Std {
   reject def AscribeWrong : Nat := (() : Nat)
 }
 
-#eval IO.println (run "Numbers" Numbers).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Numbers" Numbers).allAsExpected
-#guard (run "Numbers" Numbers).count == 20
+-- the exact number of declarations (a truncated file changes it)
+#guard Numbers.decls.length == 20

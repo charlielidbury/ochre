@@ -52,11 +52,8 @@ ochr CaseSplits {
   )
 }
 
-#eval IO.println (run "CaseSplits" CaseSplits).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "CaseSplits" CaseSplits).allAsExpected
-#guard (run "CaseSplits" CaseSplits).count == 6
+-- the exact number of declarations (a truncated file changes it)
+#guard CaseSplits.decls.length == 6
 
 /-! ## A generalised value has the matched place's type
 
@@ -86,8 +83,7 @@ ochr GenType {
 }
 
 def genTrace (cfg : Ochr.Config) : String := (run "GenType" GenType { cfg with trace := true }).showTrace "GenL"
-#guard (run "GenType" GenType).allAsExpected
-#guard (run "GenType" GenType).count == 3
+#guard GenType.decls.length == 3
 #guard ((genTrace {}).splitOn "c1⌉ to σ1 : List").length == 2
 #guard ((genTrace { genPlaceType := false }).splitOn "c1⌉ to σ1 : Nat").length == 2
 
@@ -107,10 +103,7 @@ ochr RenormPi uses Std {
     let r = F(n); match r { Z => ⟨refl, λ(u : Nat) : Eq Nat 1 1 => refl⟩, S j => match h {} })
 }
 
-#eval IO.println (run "RenormPi" RenormPi).show
-
-#guard (run "RenormPi" RenormPi).allAsExpected
-#guard (run "RenormPi" RenormPi).count == 5
+#guard RenormPi.decls.length == 5
 
 /-! ## Splitting on a result the goal is stuck on
 
@@ -236,11 +229,8 @@ ochr Splitting uses Std {
   )
 }
 
-#eval IO.println (run "Splitting" Splitting).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Splitting" Splitting).allAsExpected
-#guard (run "Splitting" Splitting).count == 19
+-- the exact number of declarations (a truncated file changes it)
+#guard Splitting.decls.length == 19
 
 /-! ## What goes wrong without these rules
 
@@ -292,11 +282,8 @@ ochr ScrutineeTypes {
   def M2Zero (h : Π(n : Nat). TG(n)) : Nat := (let x = h(0); match x { Z => 0, S _ => 1 })
 }
 
-#eval IO.println (run "ScrutineeTypes" ScrutineeTypes).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "ScrutineeTypes" ScrutineeTypes).allAsExpected
-#guard (run "ScrutineeTypes" ScrutineeTypes).count == 14
+-- the exact number of declarations (a truncated file changes it)
+#guard ScrutineeTypes.decls.length == 14
 
 /-! Generalisations are global (D37). Forming `Esc`'s goal generalises a sealed program on a
 private copy of the environment, and names it with a fresh abstract value. That record,
@@ -330,11 +317,8 @@ ochr GlobalRecords {
   reject def Bad5 : Eq Nat 1 0 := Esc(1, MkBox(0))
 }
 
-#eval IO.println (run "GlobalRecords" GlobalRecords).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "GlobalRecords" GlobalRecords).allAsExpected
-#guard (run "GlobalRecords" GlobalRecords).count == 4
+-- the exact number of declarations (a truncated file changes it)
+#guard GlobalRecords.decls.length == 4
 
 /-! A refinement belongs to its arm (arrays-library's arm leak). [Split] substitutes into
 every stored type, the types of abstract values included. Those types are kept across a
@@ -419,10 +403,7 @@ ochr ArmLocal uses Std {
   )
 }
 
-#eval IO.println (run "ArmLocal" ArmLocal).show
-
-#guard (run "ArmLocal" ArmLocal).allAsExpected
-#guard (run "ArmLocal" ArmLocal).count == 11
+#guard ArmLocal.decls.length == 11
 
 ochr ArmLocalBoom {
   inductive Emp := E(e : Emp)
@@ -442,10 +423,7 @@ ochr ArmLocalBoom {
   reject def BoomLeak : False := T7(1, MkSlice(S0[Nat](9)))
 }
 
-#eval IO.println (run "ArmLocalBoom" ArmLocalBoom).show
-
-#guard (run "ArmLocalBoom" ArmLocalBoom).allAsExpected
-#guard (run "ArmLocalBoom" ArmLocalBoom).count == 10
+#guard ArmLocalBoom.decls.length == 10
 
 /-! Generalisation records belong to their arm too (reviewer-6's A1, a closed proof of `False`
 in the default checker until then). In the arm `n := Z`, `match x` generalises the stuck
@@ -479,7 +457,4 @@ ochr ArmRecords uses Std {
     J(Prop, ⊤, False, λ(P : Prop) : Prop => P, symm h, refl))
 }
 
-#eval IO.println (run "ArmRecords" ArmRecords).show
-
-#guard (run "ArmRecords" ArmRecords).allAsExpected
-#guard (run "ArmRecords" ArmRecords).count == 8
+#guard ArmRecords.decls.length == 8

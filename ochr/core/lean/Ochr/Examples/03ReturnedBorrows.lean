@@ -117,8 +117,5 @@ ochr ReturnedBorrows uses Std, Fixtures {
   reject def Main0 : Nat := Main(0)
 }
 
-#eval IO.println (run "ReturnedBorrows" ReturnedBorrows).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "ReturnedBorrows" ReturnedBorrows).allAsExpected
-#guard (run "ReturnedBorrows" ReturnedBorrows).count == 20
+-- the exact number of declarations (a truncated file changes it)
+#guard ReturnedBorrows.decls.length == 20

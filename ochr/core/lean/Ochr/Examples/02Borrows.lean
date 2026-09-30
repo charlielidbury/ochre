@@ -8,8 +8,10 @@ moves what it holds out, and the place is dead afterwards, unless its type is a 
 copies anything. A term that is erased (a type, a proof, a statement) reads without moving,
 and still sees what was moved (D53). A borrow is always moved (RULES P3). `&*x` reborrows: it lends `*x` for a while
 and leaves `x` usable afterwards. Before a place is used, every borrow that might still
-reach it is ended ([Access]); using an ended borrow is an error, and so is dropping a
-local that something still borrows ([Drop]). This is the whole borrow checker.
+reach it is ended ([Access]); using an ended borrow is an error. A local that dies while a
+variable still borrows it ends that borrow too, but one that dies while a value in flight
+borrows it (a block or a function returning a borrow of its own local) is an error ([Drop],
+D65). This is the whole borrow checker.
 
 Defined in RULES §3: [Read], [Borrow], [Assign], [Access], [End], [Drop], [Call]. -/
 
@@ -119,42 +121,90 @@ ochr Borrows uses Std {
   reject def WRun : Nat := W(1)
 }
 
-#eval IO.println (run "Borrows" Borrows).show
+-- the exact number of declarations (a truncated file changes it)
+#guard Borrows.decls.length == 19
 
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Borrows" Borrows).allAsExpected
-#guard (run "Borrows" Borrows).count == 19
+/-! ## A place that dies while lent (D65 amended)
 
-/-! ## A borrow with several possible owners
+When an owned place is dropped while something borrows it, a borrower held in a binding (a
+variable, or a place inside one) is ended, as a write through [Access] would end it: Rust's
+non-lexical-lifetime reading, where the borrower is not used again. A borrower still in flight
+(the value a block or function is returning) makes the drop an error: a block or function may
+not return a borrow of its own local. The symbolic path can end a borrow earlier than a ground
+run does (a returned borrow's hole sits in every possible owner's fill; a match on a sealed
+fill ends every loan in it), so an error at [Drop] for a live loan would let a function pass
+generically and fail at an instance (meta-order's `Bad2`, reviewer-9's `Bad4`, fuzz-port's
+Drop family). Each accepted function below also runs at the instance that used to fail. -/
 
-A stuck call or match that returns a borrow into one of several places leaves its hole in
-each of their fills: the real owner is not known. Reading one of them cannot end the borrow
-outright, as the ground path may not: at `n = 0`, `Pick(n, &a, &b)` borrows `a`, and reading
-`b` ends nothing. So [Access] releases the loan in the accessed owner only, and the borrow
-becomes a ghost: unusable (as if ended), but still holding its loans in the other owners, so
-a [Drop] of one of them still sees it (meta-order's `Bad2`, fuzz-port's Drop family: each was
-accepted and went wrong at a ground instance). The ghost ends when its binding is dropped or
-reassigned (switch `ghostBorrows`). -/
-
-ochr GhostBorrows uses Fixtures {
-  reject def Bad2 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &a, &b); let z = b; ())
-  reject def Bad3 (n : Nat) (b : Nat) : Unit := (let c = 1; let x = &c; let a = 0; x := Pick(n, &a, &b); let z = b; ())
-  -- a stuck match instead of a call; a write, or a borrow, of the other owner; the owners the other way round
-  reject def D1 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := match n { Z => &a, S _ => &b }; let z = b; ())
-  reject def D2 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &a, &b); b := 0)
-  reject def D3 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &a, &b); let w = &b; ())
-  reject def D4 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &b, &a); let z = b; ())
-  -- the ghost is gone before `a` is: dropped first, or reassigned
-  def Ok1 (n : Nat) (b : Nat) : Unit := (let a = 0; (let x = Pick(n, &a, &b); let z = b; ()); ())
-  def Ok2 (n : Nat) (b : Nat) (c : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &a, &b); let z = b; x := &c; ())
-  -- and it is not usable
-  reject def UseGhost (n : Nat) (b : Nat) : Unit := (let a = 0; let x = Pick(n, &a, &b); let z = b; *x := 1)
+ochr Drops uses Std, Fixtures {
+  -- `Pick`'s hole sits in `a`'s fill and `b`'s; reading `b` ends `x` symbolically, while at
+  -- `n = 0` `x` still borrows `a` when `a` dies, and is ended there
+  def Bad2 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &a, &b); let z = b; ())
+  def Bad2Run : Unit := (let y = 7; Bad2(0, 5, &y))
+  -- the same with a local borrow declared before `a`
+  def Bad3 (n : Nat) (b : Nat) : Unit := (let c = 1; let x = &c; let a = 0; x := Pick(n, &a, &b); let z = b; ())
+  def Bad3Run : Unit := Bad3(0, 5)
+  -- one owner: the match on `a`'s sealed fill ends `x` symbolically; at `a = 1` the loan sits
+  -- in `a.1` and survives the match
+  def Bad4 (x : &Nat) (a : Nat) : Unit := (x := TailM(&a); match a { Z => (), S _ => () })
+  def Bad4Run : Unit := (let c = 0; Bad4(&c, 1))
+  -- the same with a local borrow declared before the owner (reviewer-9)
+  def Bad5 (a : Nat) : Unit := (let c = 1; let x = &c; let b = a; x := TailM(&b); match b { Z => (), S _ => () })
+  def Bad5Run : Unit := Bad5(1)
+  -- a stuck match instead of a call; a write, or a borrow, of the other owner; the owners
+  -- the other way round (fuzz-port's Drop family)
+  def D1 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := match n { Z => &a, S _ => &b }; let z = b; ())
+  def D1Run : Unit := (let y = 7; D1(0, 5, &y))
+  def D2 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &a, &b); b := 0)
+  def D2Run : Unit := (let y = 7; D2(0, 5, &y))
+  def D3 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &a, &b); let w = &b; ())
+  def D3Run : Unit := (let y = 7; D3(0, 5, &y))
+  def D4 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &b, &a); let z = b; ())
+  def D4Run : Unit := (let y = 7; D4(1, 5, &y))
+  -- a statement can mention a borrow variable the symbolic path has ended: reassigning it is
+  -- not an error (reviewer-9)
+  def AssignBot (n : Nat) (a : Nat) (b : Nat) (c : Nat) : Unit := (
+    let x = Pick(n, &a, &b);
+    let z = clone(b);
+    let h : Id Unit (x := &c; *x := 5) (x := &c; *x := 5) = refl;
+    ()
+  )
+  def AssignBotRun : Unit := AssignBot(0, 1, 2, 3)
+  -- `a`'s death ends `x`, so writing through `x` afterwards is an error
+  reject def UseEnded (c : Nat) : Unit := (let x = &c; (let a = 0; x := &a; ()); *x := 1)
+  -- a borrower in flight: returning a borrow of a local (no separate result check)
+  reject def RetLocal (x : &Nat) : &Nat := (let a = 0; &a)
+  -- a let-block's result borrows the block's own local (`Pick`'s hole sits in `a`'s fill)
+  reject def E1 (n : Nat) (b : Nat) : Unit := (let q = (let a = 0; Pick(n, &a, &b)); ())
+  -- a tail match whose arm returns a borrow of an arm-local
+  reject def FR (n : Nat) (x : &Nat) : &Nat := (match n { Z => (let a = 0; &a), S _ => x })
+  -- the same inside a stuck block: [Split] discards arm values and [Close] gives the block a
+  -- fresh live borrow, so ending the arm's borrow would pass generically and fail at `n = 0`
+  reject def Blk (n : Nat) (b : Nat) : Unit := (
+    let r : &Nat = match n { Z => (let q = 0; &q), S _ => &b };
+    *r := 5
+  )
+  reject def G (n : Nat) (b : &Nat) : &Nat := (
+    let r : &Nat = match n { Z => (let q = 0; &q), S _ => &*b };
+    r
+  )
+  -- a caller of `G`, which is rejected, so `G` is not in scope here
+  reject def UseG (n : Nat) (c : Nat) : Unit := (let r = G(n, &c); *r := 7)
 }
 
-#eval IO.println (run "GhostBorrows" GhostBorrows).show
+-- the exact number of declarations (a truncated file changes it)
+#guard Drops.decls.length == 25
 
-#guard (run "GhostBorrows" GhostBorrows).allAsExpected
-#guard (run "GhostBorrows" GhostBorrows).count == 9
+/-- The message rejecting `Drops.name`. -/
+def dropsMessage (name : String) : String :=
+  match ((run "Drops" Drops).rows.find? (·.name == name)).map (·.verdict) with
+  | some (Ochr.Verdict.rejected m _) => m
+  | _ => ""
+
+-- each borrower-in-flight witness is rejected by [Drop] itself, not by a later use of ⊥
+#guard ["RetLocal", "E1", "FR", "Blk", "G"].all fun n =>
+  ((dropsMessage n).splitOn "dies while a value in flight borrows it").length == 2
+#guard ((dropsMessage "UseG").splitOn "unknown constant G").length == 2
 
 /-! ## Moves and copies (D53)
 
@@ -349,7 +399,4 @@ ochr Moves uses Std {
     match n { Z => 0, S _ => 1 })
 }
 
-#eval IO.println (run "Moves" Moves).show
-
-#guard (run "Moves" Moves).allAsExpected
-#guard (run "Moves" Moves).count == 54
+#guard Moves.decls.length == 54

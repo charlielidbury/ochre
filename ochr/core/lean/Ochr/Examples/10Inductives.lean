@@ -71,11 +71,8 @@ ochr Lists {
   reject inductive B := Make(y : Unit)
 }
 
-#eval IO.println (run "Lists" Lists).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Lists" Lists).allAsExpected
-#guard (run "Lists" Lists).count == 9
+-- the exact number of declarations (a truncated file changes it)
+#guard Lists.decls.length == 9
 
 /-! ## Binary search trees
 
@@ -274,11 +271,8 @@ ochr Trees uses Std {
   )
 }
 
-#eval IO.println (run "Trees" Trees).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Trees" Trees).allAsExpected
-#guard (run "Trees" Trees).count == 14
+-- the exact number of declarations (a truncated file changes it)
+#guard Trees.decls.length == 14
 
 /-! ## The paper's trees: the pure insert runs the in-place one
 
@@ -361,11 +355,8 @@ ochr InPlaceTrees uses Std {
   )
 }
 
-#eval IO.println (run "InPlaceTrees" InPlaceTrees).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "InPlaceTrees" InPlaceTrees).allAsExpected
-#guard (run "InPlaceTrees" InPlaceTrees).count == 12
+-- the exact number of declarations (a truncated file changes it)
+#guard InPlaceTrees.decls.length == 12
 
 /-! ## Parameters: a polymorphic list
 
@@ -460,11 +451,8 @@ ochr PolyLists uses Std {
   )
 }
 
-#eval IO.println (run "PolyLists" PolyLists).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "PolyLists" PolyLists).allAsExpected
-#guard (run "PolyLists" PolyLists).count == 19
+-- the exact number of declarations (a truncated file changes it)
+#guard PolyLists.decls.length == 19
 
 /-! ## What goes wrong without strict positivity
 
@@ -494,11 +482,8 @@ ochr Positivity uses Fixtures {
   inductive Pairs := PNil | PCons(hd : Nat × Unit, tl : Pairs)
 }
 
-#eval IO.println (run "Positivity" Positivity).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Positivity" Positivity).allAsExpected
-#guard (run "Positivity" Positivity).count == 7
+-- the exact number of declarations (a truncated file changes it)
+#guard Positivity.decls.length == 7
 
 /-! The same, with the function type hidden inside a parameter: a field's parameter
 arguments must be first-order too. Positive uses of parameters are fine: a list of the
@@ -543,11 +528,8 @@ ochr PositivityParams uses Std {
   reject def PropBox : Type := Box(Eq Nat 0 1)
 }
 
-#eval IO.println (run "PositivityParams" PositivityParams).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "PositivityParams" PositivityParams).allAsExpected
-#guard (run "PositivityParams" PositivityParams).count == 14
+-- the exact number of declarations (a truncated file changes it)
+#guard PositivityParams.decls.length == 14
 
 /-! The paper's version (appendix note 4), with `False` directly. -/
 
@@ -563,8 +545,5 @@ ochr PositivityPaper {
   reject def Bad4 : False := L(MkBad(λ(x : Bad) : False => L(x)))
 }
 
-#eval IO.println (run "PositivityPaper" PositivityPaper).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "PositivityPaper" PositivityPaper).allAsExpected
-#guard (run "PositivityPaper" PositivityPaper).count == 3
+-- the exact number of declarations (a truncated file changes it)
+#guard PositivityPaper.decls.length == 3

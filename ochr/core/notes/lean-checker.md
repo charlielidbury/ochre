@@ -1371,7 +1371,39 @@ The fuzzer inspects the shape of library terms, so it reads blocks through `SDec
 - A `reject def` rejected at a located term shows why there too ("… is rejected here, as expected: …").
 - The rules the checker applied at a term, in the paper's names: `Rules.fire` (rule-audit's) also notes its rule at the innermost located term being evaluated (`Locs.here`, maintained by `located`), and the hover lists them per path ("rules [Call] [Close]"; an extension shows as "(checker) Name"). So far only dep-fields' rules fire (`[Ind-decl]`, `[Open]`, `[Repack]`, `[Eq-inj]`, `[Eq-stuck]`; rule-audit's tags for the rest are in progress), and every rule shows as soon as it fires: in `18DependentFields.Refill`, hovering `x := O` shows "rules [Open] [Repack]" (the write that makes the value whole again).
 
-## 50. D66: `Prop : Type₁`; `&A` iff `A : Type₀`
+**Holes (phase 4).** `?` (or `sorry`) is a hole: resolved to `prim "hole"`, it evaluates, where the context says what type it must have (tail position: the goal; a call's argument: the parameter's type; an annotation), to a value of that type, a fresh abstract value or `⋆` for a proposition, so the rest of the declaration checks around it. Its class is its context's (`declOf` reads it as `.any`, and it is a proof iff its type is a proposition). The editor reports it as a warning with Lean's goal view: the borrow parameters' cells and the frame's bindings, each with its type and value, then `⊢` the goal, on each path that reaches it:
+```
+hole
+where σ0 = 0:
+x° : Nat ↦ loan_0
+x : &Nat ↦ borrow_0 0
+⊢ ⊤
+```
+(the `Z` arm of `AddMZero` with its `refl` replaced by `?`). A hole whose type the context does not fix is an error saying so; a run that reaches a hole (a call of a function with one) is stuck, so the call closes off. A declaration with a hole is accepted, as Lean accepts a `sorry` with a warning.
+
+## 50. Ghost borrows reverted; D65 amended ([Drop] ends bound borrowers)
+
+The ghost-borrow fix for Bad2 (§45, a632b90c) is reverted: reviewer-9 showed it covers only the several-owner channel, and a one-owner channel (`Bad4`: a match on a sealed fill ends every loan in it, while on the ground the loan sits deeper and survives) gives the same [Drop] failure. The `ghostBorrows` switch, `releaseHere`, `Value.ghostBorrow` and the `GhostBorrows` block are gone; §45's RULES draft is dead.
+
+In their place, D65 as amended (DECISIONS; reviewer-9's patch `Scratch/Reviewer9D65Amended.patch`, applied as is): at a [Drop] of an owned value holding a live loan (`dropTopBind` for a binding, `dropValue` for a discarded value), the loan's borrower is ended if it is held in a binding, repeating as [Access] does (`endLoansOfTopBind`, `endLoansOfTopTemp`). If the borrower is a value in flight (a temporary), the drop is an error. Assigning over a lent place is unchanged (an error). RULES [Drop] now says this.
+
+*Regressions,* the block `Drops` (02Borrows, 21 declarations):
+- accepted, each with a `…Run` at the instance that used to fail, also accepted: `Bad2`, `Bad3`, `Bad4`, `D1`–`D4`, `AssignBot`;
+- rejected: `RetLocal`, `FR`, `Blk`, `G`, `UseG`.
+
+*Ledger:* a new row, `dropEndsBound`, class soundness (going wrong when run), witnesses `Blk` and `UseG`. Switched off, it is pure D65: a borrower in flight is ended too, and `RetLocal`, `FR`, `Blk`, `G`, `UseG` are accepted (in a stuck block, [Split] discards the arm's ended borrow and [Close] gives the block a fresh live one, so `Blk` writes through ⊥ at `n = 0`). Other rows that changed:
+- `accessInside` gains `Naturality.PickEarly:accepted` (as reviewer-9 predicted) and `Drops.D2`, `D2Run` (rejected);
+- the `generalize` row gains `Drops.Bad4`, `Bad4Run` (rejected).
+
+The switch between D65 and the old error at [Drop] has no row. Its flips would be the `…Run` declarations, all rejections, so its class would be completeness, although what it prevents is a generic acceptance whose instance fails.
+
+At its base 042a06f7: 55 rows (soundness 22, false lemma 1, model 4, policy 7, completeness 21), 1134 verdicts.
+
+*Added by d65-lane* (the same job, reassigned): `Bad5`/`Bad5Run` (reviewer-9's local-borrow variant of `Bad4`); `UseEnded`, rejected (writing through a borrower that a drop ended); `E1`, rejected (a let-block's result borrows the block's local); a `-- a caller of G` note on `UseG`. Message assertions: `RetLocal`, `E1`, `FR`, `Blk` and `G` are rejected by "[Drop] … dies while a value in flight borrows it", and `UseG` by "unknown constant G" (it is rejected because `G` is). The `dropEndsBound` row gains `E1:accepted`; the `generalize` row gains `Bad5`, `Bad5Run`. The scratch probes `DropProbe`, `DropVariants` and `Reviewer9Probe` now record amended D65's verdicts: `RunBad0`, `RunBad3`, `D1`–`D4` with their runs, `RunBad4S` and `RunBad5S` accepted.
+
+25 `Drops` verdicts, 1233 in all.
+
+## 51. D66: `Prop : Type₁`; `&A` iff `A : Type₀`
 
 Brief: ochr/docs/08-borrowable-universe.md.
 
@@ -1410,4 +1442,4 @@ A borrow type cannot instantiate `V`: `&Nat` is not a term (`Swap(&Nat, …)` do
   - `piUnder` gains the capturing closure;
   - `fnRule` gains the call through a borrow.
 
-60 rows: soundness 23, false lemma 1, model 4, policy 9, completeness 23. 1254 verdicts.
+60 rows: soundness 23, false lemma 1, model 4, policy 9, completeness 23. 1271 verdicts (after D65 and the editor phases).
