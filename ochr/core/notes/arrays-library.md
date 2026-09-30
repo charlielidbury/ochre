@@ -505,3 +505,35 @@ For after the soundness batch (D54–D56). Each rule is read from syntax and dec
   2. **Proof fields later, if ever.** A proof field (`h : Sorted(xs)`) freezes the payload it talks about. That brings back DLLBC's packed-borrow walls.
 
   Injectivity (D52) decomposes a constructor equation only while the index fields on both sides are convertible.
+
+## 12. Moves (D53)
+
+Since D53, a runtime read of data that is not a copy type moves it. The five blocks check with moves on (`Test.preD53` is empty): 170 declarations, all as expected.
+
+- **`Word` for every number.** Indices, lengths, fuel, counts and quicksort's elements are `Word`s (Std's `copy inductive Word`), so reading one copies it. The switch was a rename (`Nat` → `Word`, `Z`/`S` → `Zero`/`Succ`, `Add` → `WAdd`, numerals → `Zero`, `Succ(Zero)` and `W(n)`), because the library had one number type throughout. `Index` gains `WAdd` and `W(n)` (the `Word` for a numeral, for the runs). Sorting `Word`s is sorting a copy type, as Rust's and Verus's quicksorts sort `i32`.
+- **Seven `clone`s**, where a generic element or a whole view is used twice:
+  - library, six:
+    - `Read` reads element `i` of `clone(*s)`, so the view is left as it was;
+    - `WithSplit` takes both pieces from one view (`TakeS(…, clone(v), …)`, then `DropS(…, v)`);
+    - `Replicate` and `FillFrom` each write one element `x` repeatedly (`clone(x)`);
+    - the model `SwapS` reads the view three times (`clone(s)` twice);
+  - quicksort, one: in `Recurse`, the first continuation calls `rec` and hands it on to the second, which would move it out of the first closure's captures. A closure may run again, so the second continuation gets `clone(rec)`.
+- **One new negative test:** `ReadMoves` is `Read` without the clone. It is rejected because the borrow of the view ends partly moved out.
+- **Proofs: unchanged**, apart from the rename. No proof needed a clone. Statements read places inside erased terms, which copy and see ghosts. Every negative test is still rejected for its original reason.
+
+Sizes after D53, measured as in §10 (lines / tokens; "before" is the D60 version with `Nat`):
+
+| | before (D60, `Nat`) | after (D53, `Word`) |
+|---|---|---|
+| B2 program | 52 / 739 | 53 / 807 |
+| B2 spec (`AllLe`, `AllGe`, `Sorted`) | 30 / 229 | 30 / 235 |
+| B2 proof: permutation | 83 / 1,424 | 83 / 1,528 |
+| B2 proof: sortedness glue | 296 / 4,252 | 296 / 4,468 |
+| B2 proof: the partition's contract | 392 / 7,205 | 392 / 7,587 |
+| B2 proof: `QSSortedFull`, `QSCorrect` | 9 / 201 | 9 / 201 |
+| **B2 proofs, total** | **780 / 13,082** | **780 / 13,784 (+5%)** |
+| `Index` / `Arrays` / `ArrayLemmas` | 123 / 947; 174 / 1,913; 224 / 2,301 | 135 / 1,102; 174 / 1,971; 224 / 2,360 |
+| `ArrayBench` | 171 / 2,749 | 172 / 3,029 |
+| whole file | 1,563 / 22,775 | 1,577 / 24,358 (+7%) |
+
+Moves themselves cost one line: `Recurse`'s `let rec2 = clone(rec)`. The other clones sit inside existing expressions. Most of the token growth is notation: `Succ(x)` is four tokens where `S x` was two, `Succ(Zero)` four where `1` was one, and `W(n)` three where a numeral was one. Quicksort's `Word` development (program, spec, proofs) is 863 lines and 14.8k tokens, against Verus's 108 lines and 1.1k tokens: 8 times the lines and 14 times the tokens (13 times before the switch to `Word`). `Quicksort` checks in 0.3–0.5 s with moves on (0.3 s before), and the five blocks in about 0.6 s.
