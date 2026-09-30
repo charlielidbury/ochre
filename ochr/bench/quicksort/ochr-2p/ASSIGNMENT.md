@@ -49,6 +49,7 @@ The grader rejects, in `Quicksort.lean` outside the FIXED regions:
 - `TODO` (the hole marker);
 - `reject def` (a declaration the checker must reject counts as correct when it fails, so it would turn a failed proof into a pass);
 - new `implemented by` functions, and `abstract`, `unsized` or `copy` declarations;
+- declaring a name that already exists: a built-in (`Nat`, `Unit`, …), a library name (`Word`, `Lt`, `Count`, …) or a name declared in a FIXED region (the checker itself refuses most of these; `Nat` and `Unit` it would accept, and a FIXED statement could then change meaning);
 - in the block `QuicksortModel`: any borrow (`&`) or assignment (`p := t`);
 - any Lean outside the `ochr` blocks, a new `ochr` block, and any Lean command inside one (`axiom`, `sorry`, `set_option`, `macro`, `notation`, attributes, `#eval`, `import`, `open`, …);
 - code that closes a block early, or opens a comment or string that runs into a FIXED region.

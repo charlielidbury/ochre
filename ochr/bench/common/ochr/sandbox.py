@@ -38,7 +38,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 COMMON = os.path.dirname(HERE)
 
 # Package files that stay in the repository.
-PACKAGE_EXCLUDE = {"make-sandbox.sh", "gen_tests.py", ".lake", "lake-manifest.json", "result", "__pycache__"}
+PACKAGE_EXCLUDE = {"make-sandbox.sh", "gen_tests.py", "NOTES.md", ".lake", "lake-manifest.json", "result", "__pycache__"}
 
 # Top-level checker modules that are not part of the checker proper.
 CORE_EXCLUDE = set()
