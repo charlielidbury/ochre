@@ -99,7 +99,10 @@ A finding at a refinement where some proof parameter's type is `False` is marked
 **More proof candidates for the truth oracle (reviewer-6 W10):**
 - the induction hypothesis at the call site through a borrowed list's tail (`Cons(_, q) => Lie(&q)`);
 - `rewrite h in refl` and `rewrite ← h in refl` along each `Eq` hypothesis (D60);
-- `split f in refl` and `split f in split f in refl` for each library function the statement calls (D61).
+- `split f in refl` and `split f in split f in refl` for each library function the statement calls (D61);
+- the paper's central mechanism, the in-place lemma `AddMZeroL (x : &Nat) : Id Unit (AddM(x, 0)) ()` (itself proved through the reborrow `&p`) applied at the call site: to a parameter, to its predecessor field (`match n { Z => refl, S p => AddMZeroL(&p) }`, AddZero's shape), or to a pair's field (`match q { Mk(a, b) => AddMZeroL(&a) }`). The lemma is checked only inside the truth oracle. When it was added to the case's library, it became an instance of function parameters of convertible type, which shifted the refinements drawn and changed other verdicts.
+
+On the ordinary generator none of these candidates finds anything: seeds 1–2 and 4–7, 10⁵ cases each, give the same findings as before.
 
 **The A1 family (`--a1 N`, reviewer-6 W10).** It has two parameters: `n0 : Nat`, and an abstract function `g1 : Π(u : Unit). Fam(n0)` (or over `&Nat`) whose codomain depends on `n0`. Two families are used:
 - `TF`: `Bx(Unit)` / `Bx(B2)`, one constructor at two parameters, as A1's `Box`.
