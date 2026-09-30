@@ -8,8 +8,10 @@ moves what it holds out, and the place is dead afterwards, unless its type is a 
 copies anything. A term that is erased (a type, a proof, a statement) reads without moving,
 and still sees what was moved (D53). A borrow is always moved (RULES P3). `&*x` reborrows: it lends `*x` for a while
 and leaves `x` usable afterwards. Before a place is used, every borrow that might still
-reach it is ended ([Access]); using an ended borrow is an error, and so is dropping a
-local that something still borrows ([Drop]). This is the whole borrow checker.
+reach it is ended ([Access]); using an ended borrow is an error. A local that dies while a
+variable still borrows it ends that borrow too, but one that dies while a value in flight
+borrows it (a block or a function returning a borrow of its own local) is an error ([Drop],
+D65). This is the whole borrow checker.
 
 Defined in RULES §3: [Read], [Borrow], [Assign], [Access], [End], [Drop], [Call]. -/
 
@@ -146,6 +148,9 @@ ochr Drops uses Std, Fixtures {
   -- in `a.1` and survives the match
   def Bad4 (x : &Nat) (a : Nat) : Unit := (x := TailM(&a); match a { Z => (), S _ => () })
   def Bad4Run : Unit := (let c = 0; Bad4(&c, 1))
+  -- the same with a local borrow declared before the owner (reviewer-9)
+  def Bad5 (a : Nat) : Unit := (let c = 1; let x = &c; let b = a; x := TailM(&b); match b { Z => (), S _ => () })
+  def Bad5Run : Unit := Bad5(1)
   -- a stuck match instead of a call; a write, or a borrow, of the other owner; the owners
   -- the other way round (fuzz-port's Drop family)
   def D1 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := match n { Z => &a, S _ => &b }; let z = b; ())
@@ -165,8 +170,12 @@ ochr Drops uses Std, Fixtures {
     ()
   )
   def AssignBotRun : Unit := AssignBot(0, 1, 2, 3)
+  -- `a`'s death ends `x`, so writing through `x` afterwards is an error
+  reject def UseEnded (c : Nat) : Unit := (let x = &c; (let a = 0; x := &a; ()); *x := 1)
   -- a borrower in flight: returning a borrow of a local (no separate result check)
   reject def RetLocal (x : &Nat) : &Nat := (let a = 0; &a)
+  -- a let-block's result borrows the block's own local (`Pick`'s hole sits in `a`'s fill)
+  reject def E1 (n : Nat) (b : Nat) : Unit := (let q = (let a = 0; Pick(n, &a, &b)); ())
   -- a tail match whose arm returns a borrow of an arm-local
   reject def FR (n : Nat) (x : &Nat) : &Nat := (match n { Z => (let a = 0; &a), S _ => x })
   -- the same inside a stuck block: [Split] discards arm values and [Close] gives the block a
@@ -179,11 +188,23 @@ ochr Drops uses Std, Fixtures {
     let r : &Nat = match n { Z => (let q = 0; &q), S _ => &*b };
     r
   )
+  -- a caller of `G`, which is rejected, so `G` is not in scope here
   reject def UseG (n : Nat) (c : Nat) : Unit := (let r = G(n, &c); *r := 7)
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard Drops.decls.length == 21
+#guard Drops.decls.length == 25
+
+/-- The message rejecting `Drops.name`. -/
+def dropsMessage (name : String) : String :=
+  match ((run "Drops" Drops).rows.find? (·.name == name)).map (·.verdict) with
+  | some (Ochr.Verdict.rejected m _) => m
+  | _ => ""
+
+-- each borrower-in-flight witness is rejected by [Drop] itself, not by a later use of ⊥
+#guard ["RetLocal", "E1", "FR", "Blk", "G"].all fun n =>
+  ((dropsMessage n).splitOn "dies while a value in flight borrows it").length == 2
+#guard ((dropsMessage "UseG").splitOn "unknown constant G").length == 2
 
 /-! ## Moves and copies (D53)
 

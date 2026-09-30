@@ -1397,6 +1397,8 @@ In their place, D65 as amended (DECISIONS; reviewer-9's patch `Scratch/Reviewer9
 
 The switch between D65 and the old error at [Drop] has no row. Its flips would be the `…Run` declarations, all rejections, so its class would be completeness, although what it prevents is a generic acceptance whose instance fails.
 
-55 rows: soundness 22, false lemma 1, model 4, policy 7, completeness 21. 1134 verdicts.
+At its base 042a06f7: 55 rows (soundness 22, false lemma 1, model 4, policy 7, completeness 21), 1134 verdicts.
 
-The scratch probes `DropProbe`, `DropVariants` and `Reviewer9Probe` still record the verdicts from before D65.
+*Added by d65-lane* (the same job, reassigned): `Bad5`/`Bad5Run` (reviewer-9's local-borrow variant of `Bad4`); `UseEnded`, rejected (writing through a borrower that a drop ended); `E1`, rejected (a let-block's result borrows the block's local); a `-- a caller of G` note on `UseG`. Message assertions: `RetLocal`, `E1`, `FR`, `Blk` and `G` are rejected by "[Drop] … dies while a value in flight borrows it", and `UseG` by "unknown constant G" (it is rejected because `G` is). The `dropEndsBound` row gains `E1:accepted`; the `generalize` row gains `Bad5`, `Bad5Run`. The scratch probes `DropProbe`, `DropVariants` and `Reviewer9Probe` now record amended D65's verdicts: `RunBad0`, `RunBad3`, `D1`–`D4` with their runs, `RunBad4S` and `RunBad5S` accepted.
+
+25 `Drops` verdicts, 1233 in all.

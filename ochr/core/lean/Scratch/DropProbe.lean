@@ -11,7 +11,10 @@ nothing, and `a` goes out of scope while `x` still borrows it: [Drop] fails. The
 ended the borrow earlier than the ground path (F3's over-approximation), and an early end makes
 a later [Drop] succeed. Independent of D53 (the same with `d53 := false`). `x` needs to outlive
 `a`, which takes an assignment of a borrow into an existing variable (a parameter here, or a
-`let` declared before `a`, `Bad3`). -/
+`let` declared before `a`, `Bad3`).
+
+Fixed by amended D65 (d65-lane): `a`'s drop ends `x`, a borrower held in a binding, instead of
+erring, so the ground runs complete. The tour's `Drops` block (02Borrows) holds these. -/
 ochr DropProbe uses Fixtures {
   def Bad2 (n : Nat) (b : Nat) (x : &Nat) : Unit := (
     let a = 0;
@@ -19,8 +22,8 @@ ochr DropProbe uses Fixtures {
     let z = b;
     ()
   )
-  -- should be accepted if `Bad2` is: it is `Bad2` at a ground instance
-  reject def RunBad0 : Unit := (
+  -- accepted, as `Bad2` is: it is `Bad2` at a ground instance
+  def RunBad0 : Unit := (
     let y = 7;
     Bad2(0, 5, &y)
   )
@@ -37,7 +40,7 @@ ochr DropProbe uses Fixtures {
     let z = b;
     ()
   )
-  reject def RunBad3 : Unit := Bad3(0, 5)
+  def RunBad3 : Unit := Bad3(0, 5)
 }
 #eval IO.println (run "DropProbe" DropProbe).show
 #guard (run "DropProbe" DropProbe).allAsExpected

@@ -70,7 +70,8 @@ open Ochr.Registry in
   ["Borrows.Dead:accepted", "Borrows.DeadTwice:accepted"]
 open Ochr.Registry in
 #guard rowOk { generalize := false }
-  ["Drops.Bad4:rejected", "Drops.Bad4Run:rejected", "ClosingOff.UseDec:rejected",
+  ["Drops.Bad4:rejected", "Drops.Bad4Run:rejected", "Drops.Bad5:rejected", "Drops.Bad5Run:rejected",
+   "ClosingOff.UseDec:rejected",
    "Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected", "GenType.GenL:rejected",
    "RenormPi.G:rejected", "RenormPi.Plain:rejected", "RenormPi.InPi:rejected", "RenormPi.InConj:rejected",
    "Splitting.Pick:rejected", "Splitting.PickNotZero:rejected", "Splitting.PickNotZeroCopy:rejected",
@@ -390,8 +391,8 @@ open Ochr.Registry in
 -- `UseG` pass generically and write through ⊥ at `n = 0` (reviewer-9 finding 16)
 open Ochr.Registry in
 #guard rowOk { dropEndsBound := false }
-  ["Drops.RetLocal:accepted", "Drops.FR:accepted", "Drops.Blk:accepted", "Drops.G:accepted",
-   "Drops.UseG:accepted"]
+  ["Drops.RetLocal:accepted", "Drops.E1:accepted", "Drops.FR:accepted", "Drops.Blk:accepted",
+   "Drops.G:accepted", "Drops.UseG:accepted"]
 
 -- every row of `switches` has a class
 open Ochr.Registry in
