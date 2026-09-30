@@ -125,6 +125,25 @@ ochr SweepDep uses ArrayBench {
   def SetTwoRev (v : &Vec(Word)) : Unit := match *v { MkVec(n, items) => (items := Two; n := W(2)) }
 }
 #eval IO.println (run "SweepDep" SweepDep).show
+-- the typed-fragment appendix (tf.typ): Bad2 as printed and the claims around it. Trav and
+-- ReborrowPick0 are rejected until D67 (overwriting a borrow keeps the reborrows behind it)
+-- lands; then tf.typ's "the rules reject it" (Trav) changes, and ReborrowPick0 is accepted
+ochr SweepTF uses Std, Fixtures {
+  def Bad2 (n : Nat) (b : Nat) (x : &Nat) : Unit := let a = 0; x := Pick(n, &a, &b); let z = b; ()
+  def Bad2Run : Unit := (let y = 7; Bad2(0, 5, &y))
+  def Bad4 (x : &Nat) (a : Nat) : Unit := (x := TailM(&a); match a { Z => (), S _ => () })
+  def Bad4Run : Unit := (let c = 0; Bad4(&c, 1))
+  reject def RetLocal (x : &Nat) : &Nat := (let a = 0; &a)
+  def IdLet (a : Nat) : Id Nat (let z = a; a) a := refl
+  reject def LetCode (a : Nat) : Nat := let z = a; a
+  reject def AssignPick (n : Nat) (b : Nat) (x : &Nat) : Unit := (x := Pick(n, &*x, &b); *x := 5)
+  def AssignPick1 (b : Nat) (c : Nat) : Unit := (let x = &c; let n = 1; x := Pick(n, &*x, &b); *x := 5)
+  def AssignPickDrop (n : Nat) (b : Nat) (x : &Nat) : Unit := (x := Pick(n, &*x, &b); ())
+  reject def ReborrowPick (n : Nat) (a : Nat) (b : Nat) (c : Nat) : Unit := (let x = Pick(n, &a, &b); let y = &*x; x := &c; *y := 0)
+  reject def ReborrowPick0 (a : Nat) (b : Nat) (c : Nat) : Unit := (let n = 0; let x = Pick(n, &a, &b); let y = &*x; x := &c; *y := 0)
+  reject def Trav (x : &Nat) : Unit := match *x { Z => (), S p => (x := &p; *x := 0) }
+}
+#eval IO.println (run "SweepTF" SweepTF).show
 -- appendix note 11's `G`. The ochr command checks under the default configuration, where
 -- `F` is rejected ([D48]); the note's point is with `&` read from the declared type switched
 -- off (`refTop`), where `F` and `G` are accepted and `UseG` is not
