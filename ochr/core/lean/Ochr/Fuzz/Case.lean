@@ -23,6 +23,7 @@ structure Case where
   conv : Option (STerm × STerm × STerm) := none   -- a function type and two functions: conversion oracle
   extraProofs : List STerm := []   -- a family's own proof candidates for the truth oracle (A1)
   ruleDecls : List (String × SDecl) := []   -- declarations a rule forbids, with the rule's name (rules oracle)
+  agreeDecls : List (String × SDecl × SDecl) := []   -- pairs the rules decide alike (rules oracle)
 deriving Inhabited
 
 def Case.stmtDecl (c : Case) : SDecl :=
@@ -40,7 +41,8 @@ def convDecls : Option (STerm × STerm × STerm) → List SDecl
 
 /-- The case's own declarations (what a counterexample prints). -/
 def Case.own (c : Case) : List SDecl :=
-  c.lib.filterMap libDecl ++ c.extra ++ convDecls c.conv ++ c.ruleDecls.map (·.2) ++ [c.stmtDecl]
+  c.lib.filterMap libDecl ++ c.extra ++ convDecls c.conv ++ c.ruleDecls.map (·.2) ++
+    c.agreeDecls.flatMap (fun (_, a, b) => [a, b]) ++ [c.stmtDecl]
 
 /-- The program checked: the library block `Prelude` (D52: `Pair`, `False`, `True`, `And`),
 which every `ochr` block uses implicitly, then the case's own declarations. -/

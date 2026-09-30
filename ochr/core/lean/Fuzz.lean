@@ -83,6 +83,7 @@ structure Args where
   edep : Nat := 0               -- percent drawn from the E family with a dependent codomain
   rules : Nat := 0              -- percent that also carry a declaration a rule forbids (rules oracle)
   drop : Nat := 0               -- percent that also carry a Drop-family data function (DropProbe's Bad2)
+  audit : Nat := 0              -- percent that carry rule-audit's witness shapes (rules oracle)
   raw : List String := []       -- the arguments, for re-spawning workers
 
 partial def parseArgs (a : Args) : List String → Except String Args
@@ -103,6 +104,7 @@ partial def parseArgs (a : Args) : List String → Except String Args
   | "--edep" :: n :: r => do parseArgs { a with edep := n.toNat! } r
   | "--rules" :: n :: r => do parseArgs { a with rules := n.toNat! } r
   | "--drop" :: n :: r => do parseArgs { a with drop := n.toNat! } r
+  | "--audit" :: n :: r => do parseArgs { a with audit := n.toNat! } r
   | "--switch" :: s :: r => do
     match switchCfg a.cfg s, switchCfg a.base s with
     | some c, some b =>
@@ -127,7 +129,7 @@ def runRange (a : Args) (o : Opts) : IO Unit := do
   let mut shrunk : List (String × Nat) := []
   for i in [a.start:a.start + a.count] do
     if a.worker then out.putStrLn s!"@BEGIN {i}"; out.flush
-    let (c, r) := mkCase a.seed i o.fuel a.a1 a.edep a.rules a.drop
+    let (c, r) := mkCase a.seed i o.fuel a.a1 a.edep a.rules a.drop a.audit
     let res := checkCase o c r
     let st := if res.status.startsWith "invalid" then "invalid" else res.status
     stats := bump stats st
@@ -211,7 +213,7 @@ def main (argv : List String) : IO UInt32 := do
     | .error e => IO.eprintln e; return 2
   let o : Opts := { cfg := a.cfg, base := if a.diff then some a.base else none, runtimeRefine := a.runtimeRefine }
   if let some i := a.show? then
-    let (c, r) := mkCase a.seed i o.fuel a.a1 a.edep a.rules a.drop
+    let (c, r) := mkCase a.seed i o.fuel a.a1 a.edep a.rules a.drop a.audit
     IO.println (c.show s!"Case{i}")
     if a.printOnly then return 0
     (← IO.getStdout).flush

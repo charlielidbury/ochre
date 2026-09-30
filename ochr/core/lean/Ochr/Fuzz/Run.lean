@@ -302,7 +302,13 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
   let ruleF : List Finding := c.ruleDecls.filterMap fun (why, d) =>
     if prep.rejected.any (·.1 == d.name) then none
     else some ⟨.rule, d.name, "its declaration", s!"accepted:\n  {ppDecl d}", s!"but it breaks the rule: {why}", why⟩
-  let convF := (convOracle o prep).toList ++ execF ++ ruleF
+  let agreeF : List Finding := c.agreeDecls.filterMap fun (why, a, b) =>
+    let ra := prep.rejected.any (·.1 == a.name)
+    let rb := prep.rejected.any (·.1 == b.name)
+    if ra == rb then none
+    else some ⟨.rule, a.name, "the pair", s!"{a.name} {if ra then "rejected" else "accepted"}:\n  {ppDecl a}",
+      s!"{b.name} {if rb then "rejected" else "accepted"}:\n  {ppDecl b}", s!"decided differently: {why}"⟩
+  let convF := (convOracle o prep).toList ++ execF ++ ruleF ++ agreeF
   let .id A t u := prep.stmt.body | return { status := "invalid: not an Id statement", findings := convF, execAccepted := execN }
   let st0 : MState := { globals := prep.globals, inds := prep.inds, cfg := o.cfg, fuel := o.fuel }
   let (ps, st1) ← match runSt (setupParams prep.stmt) st0 with
