@@ -1,6 +1,6 @@
 # Reviewer 9: cold review of `notes/typed-fragment-proof.typ`
 
-Reviewer 9, 2026-09-30. Read: the whole paper (`paper/main.typ` and every section, the appendix included), `RULES.md`, the proof, the plan it carries out (`notes/typed-fragment-plan.md`), the cited `meta-lean` lemmas, and the two cited probes. Probes of my own: `lean/Scratch/Reviewer9Probe.lean` (25 verdicts in five blocks, each asserted with `#guard`; run with `lake env lean Scratch/Reviewer9Probe.lean` from `ochr/core/lean`).
+Reviewer 9, 2026-09-30. Read: the whole paper (`paper/main.typ` and every section, the appendix included), `RULES.md`, the proof, the plan it carries out (`notes/typed-fragment-plan.md`), the cited `meta-lean` lemmas, and the two cited probes. This review is of the proof as of commit c0e3b665, which records the planned ghost-borrow fix for DropProbe and follows the renumbered claims table; the file has not changed since. Probes of my own: `lean/Scratch/Reviewer9Probe.lean` (30 verdicts in six blocks, each asserted with `#guard`; run with `lake env lean Scratch/Reviewer9Probe.lean` from `ochr/core/lean`).
 
 ## Score: weak reject
 
@@ -16,6 +16,8 @@ The proof is organised well. It walks the definition's case tree along one groun
 On top of that, Assumption 4 holds almost all of the operational content, and it is known to be false for the full rules. A reader should be told plainly that this is a reduction of soundness for F to a simulation lemma, not a proof of soundness.
 
 No finding is FATAL. I found no counterexample to Theorem 10 or to its corollaries as stated.
+
+The planned ghost-borrow fix that c0e3b665 records does not cover every way the symbolic path ends a borrow early. `Bad4` fails like `Bad2` with only one owner and no `Pick`, and the fix as described does not reach it (finding 7). F5 therefore has to stay until the fix covers that channel too.
 
 ## Findings, most severe first
 
@@ -93,7 +95,29 @@ The cited lemmas themselves, checked with `#print axioms` in `meta-lean`:
 
 N1–N4 amount to a complete simulation between the typing judgement (with [Close], [Seal] and eager renormalisation, generalisation records, moves and erased private copies) and the ground machine. Below the assumption, the proof does the case analysis at tail matches, the truth bookkeeping, and three lemmas. The assumption is false for the full rules (DropProbe), and F5 restores it only by an informal argument. The proof is candid about all this, but "Theorem 10" in an appendix will be read as a soundness theorem. Please present it as "soundness of F, conditional on Assumption 4". Name the three risks the proof already lists, and add findings 1–3 here to that list.
 
-### 7. MINOR: author's attack point 1 (F5): no counterexample in F, but the written argument has a false step
+### 7. GAP (about the planned fix, not about Theorem 10): the ghost-borrow fix as described misses a second early-end channel, so it cannot lift F5
+
+*Location.* F5 (line 32: "The checker fix for this (ghost borrows) is expected to make F5 unnecessary"). "Naturality fails without F5", the last two bullets (lines 261–262).
+
+*Claim.* The planned fix covers the way the symbolic path ends a borrow earlier than the ground path. When [Access] ends a borrow only because its loan sits in a sealed fill that has other possible owners, the fix releases only the accessed owner and keeps the borrower as a ghost borrow until its binding dies. After that, F5 should be re-checked and lifted.
+
+*Why it fails.* There is a second channel that has one owner, not several. A match on a place whose content is a sealed program ends every loan inside that program (the rule that matches end loans in neutral heads, D29), because the loan's position inside the neutral is unknown. On the ground the loan sits deeper and survives the match. Nothing about this involves other possible owners, so the fix as described does not apply. Probe `R9Bad4`:
+
+```
+def Bad4 (x : &Nat) (a : Nat) : Unit := ( x := TailM(&a); match a { Z => (), S _ => () } )
+```
+
+- `Bad4` is accepted. At the generic call, `TailM(&a)` closes off, and `a` holds a fill with `x`'s hole inside. The tail match on `a` ends `x`, so `a` is loan-free when it is dropped.
+- At `a = 1` it fails with "[Drop] a goes out of scope while it is borrowed" (`RunBad4S`). `TailM` returns a borrow of `a.1`, the match sees the head `S` and ends nothing, and `a` dies while `x` still borrows it.
+- At `a = 0` it runs (`RunBad4Z`), because `TailM` returns `&a` itself and the match ends `x` on the ground too.
+- `Bad5` is the same with a local borrow declared before the owner, as in `Bad3`.
+- All of this holds with and without D53.
+
+`Bad4` and `Bad5` assign a borrow into an older variable, so F5 excludes them, and Theorem 10 for F is not affected. But the line 32 expectation is wrong for this channel. The fix is also not a simple extension here. To keep `x`'s loan in `a`'s fill as a ghost, the checker would have to keep a live loan inside the very neutral that [Tail-gen] is about to generalise away, and generalising a hole away is one of the counterexamples in the paper's table of side conditions ("a hole generalised away").
+
+*Missing argument.* Either the fix handles every end that is uncertain (a different owner, or a different position inside the same owner), or F5 stays.
+
+### 8. MINOR: author's attack point 1 (F5): no counterexample in F, but the written argument has a false step
 
 I looked for a program in F that ends a borrow earlier on the symbolic path and then fails at a ground [Drop] or pop. The symbolic path ends a borrow early in two ways. One is a hole in several fills (probe `E2`: reading the other owner of `Pick`'s hole). The other is a match on a fill, which ends every loan inside the fill even when it has one owner (`E3`). I also tried returning a parameter after an early end (`E4`) and a borrow in flight that outlives a block-local (`E1`). Every candidate either runs at its ground instances or is rejected on the symbolic path too (probe `R9Early`, 9 verdicts).
 
@@ -104,14 +128,14 @@ The argument at lines 32 and 255 says that "a borrower is always declared after 
 
 Write it that way. It also shows that N3 depends on (A4), which the proof lists only as a risk.
 
-### 8. MINOR: author's attack point 2 (Lemma 7 (a)): true in F, but the case list is wrong and it uses F5
+### 9. MINOR: author's attack point 2 (Lemma 7 (a)): true in F, but the case list is wrong and it uses F5
 
 *Location.* Lemma 7 (a), line 130: "An occurrence rooted at a variable holding ⊥ is an error ([Read-err], [Borrow-err], [Assign], [Match-err])."
 
 - *[Assign].* Assigning a whole variable that holds ⊥ is not an error: [Assign] drops the old content, and ⊥ is loan-free. Outside F, `AssignBot` is accepted (probe `R9Clone`). It ends `x` symbolically, then types `Id Unit (x := &c; *x := 5) …`. So the symbolic statement mentions a ⊥ borrow variable, and the ground footprint contains `x`'s ground owner, which the symbolic one lacks. In F this is excluded only because assigning to a borrow variable would assign a borrow, which F5 forbids. Add F5 to Lemma 7 (a) in "Where F's restrictions are used".
-- *[Clone].* The appendix's [Clone] has no premise excluding ⊥ (finding 10). By the appendix, `clone(x)` of an ended borrow variable succeeds. The checker rejects it (`CloneBot`). Cite the corrected rule.
+- *[Clone].* The appendix's [Clone] has no premise excluding ⊥ (finding 11). By the appendix, `clone(x)` of an ended borrow variable succeeds. The checker rejects it (`CloneBot`). Cite the corrected rule.
 
-### 9. MINOR: author's attack point 3 (Lemma 6 (c)): true in F, and the private-copy half is vacuous; one definitional gap
+### 10. MINOR: author's attack point 3 (Lemma 6 (c)): true in F, and the private-copy half is vacuous; one definitional gap
 
 In F, F3 (no match in a type) and F4 (no non-tail data match) mean that [Split-gen] never runs. [T-Split-goal] is excluded, and the machine closes calls off and never generalises. So the only records are made by [Tail-gen], on the main path of some arm, and the "private copies" clause of (c) never arises. Say so; it is a simpler argument than the one given.
 
@@ -119,21 +143,21 @@ For sibling arms, the argument is right. A text made in one arm can be derived a
 
 The gap is that "extend α … for each record, in the order the records were made" (line 105) includes records whose text mentions abstract values that exist only on another path, or only in an earlier definition's check (Δ and records are global). α does not cover those values, so $"nf"(n alpha)$ is not ground and (a) fails for them. Restrict the extension to records whose text mentions only values that α covers, and show those are the only records the current path can hit. For records made in a sibling, also say why $"nf"(n alpha)$ is defined: it is callee safety through the induction hypothesis, not "because $Omega_s alpha$ is defined".
 
-### 10. MINOR: [Clone] in the appendix breaks the well-formedness that `exec_wf` is cited for
+### 11. MINOR: [Clone] in the appendix breaks the well-formedness that `exec_wf` is cited for
 
 *Location.* Appendix [Clone]; the proof's table row `exec_wf` (unique borrows).
 
 The appendix rule returns $v^circle$ for whatever `p` holds. For a borrow that gives a second $"borrow"_ell$ (against well-formedness condition 1), and for ⊥ it gives ⊥. `RULES.md` §3 [Read] says `clone(p)` is "a read of `p` inside an erased term", which is [Copy] and excludes both. The checker does a third thing: it moves a cloned borrow (`CloneB2`: after `clone(x)`, `x` is ⊥) and rejects a clone of ⊥ (`CloneBot`). F does not exclude `clone`. Either restrict [Clone] to data (not a borrow, not ⊥) in the appendix, or exclude cloning borrow-typed places from F.
 
-### 11. MINOR: Corollary 2 (adequacy) is about copying runs
+### 12. MINOR: Corollary 2 (adequacy) is about copying runs
 
 `Id`'s observations run with copying reads, so adequacy says that the erased runs of `t` and `u` agree, not the runtime runs. `IdCopies` (`Id Nat (let z = a; a) a`, by `refl`) is accepted, while `let z = a; a` as code fails ([Read] of a moved `Nat`) (probe `R9Copy`). As stated, "the same result and the same final contents" is true of observations. Say "observations (runs in which reads copy)", so that no reader takes it to be about the moving program.
 
-### 12. MINOR: Corollary 3 is mostly vacuous, and is not a corollary of Theorem 10
+### 13. MINOR: Corollary 3 is mostly vacuous, and is not a corollary of Theorem 10
 
 At a ground valuation nothing closes off, nothing is stuck and no arm is checked, so items (2)–(4) hold trivially. Item (6) is Lemma 7, which rests on the assumption. The refinements that matter for [Split] are the non-ground ones, such as $sigma := ty("S") sigma'$, and line 240 says they are not proved. Calling the rest "the part of stability that soundness uses" (line 20) overstates it. Soundness uses Theorem 10, not stability. Present these as remarks.
 
-### 13. MINOR: smaller slips in the lemmas and the claim
+### 14. MINOR: smaller slips in the lemmas and the claim
 
 - *Lemma 8, `Eq` case.* "$T_s alpha = "eq"(D, a_g, b_g) = T_g$" is not a literal equality. The symbolic `eq`/`and` may already have dropped a `True` conjunct, or kept an `And` that valuation does not rebuild. What holds is equal truth, which is all that is needed.
 - *(I) and field places.* (I) is about "proof bindings". Inside `match h { Intro(l, k) => … }`, `l` is the field place `h.l`, not a binding, and its type comes from `h`'s type. The claim's "a proof variable has its stored type, true by (I)" needs the one-line extension to field places. So does [Tail-prop] when its scrutinee is a field place.
@@ -143,7 +167,7 @@ At a ground valuation nothing closes off, nothing is stuck and no arm is checked
 - *Naming.* "F5" names both the restriction and `lean-meta.md`'s counterexample (line 58, "the form the F5 counterexample of the mechanisation forced"). Rename one.
 - *FootprintProbe.* Its verdicts accept or reject whole definitions. They show neither that (a) is strict nor that the extra conjunct becomes ⊤; only its comments say so. `R9Foot` turns the second into a verdict. In arm `Z` a hypothesis formed at an abstract `n` has type `False ∧ ⊤`, and `FPZ` uses its second conjunct as `True`. `FPZshow`'s rejection prints arm `S`'s type as `⊤ ∧ False`. This supports Lemma 7 (b).
 
-### 14. MINOR: where `RULES.md` and the paper differ
+### 15. MINOR: where `RULES.md` and the paper differ
 
 - *[Clone].* Finding 10.
 - *Match on a ghost.* No rule applies in the appendix. [Match] needs a constructor, [Match-stuck] a neutral, and [Match-err] lists only "undefined or ⊥". Add a ghost to [Match-err]. The checker rejects it: `GhostMatch`, "[Match] on n, which was moved out".
@@ -160,7 +184,7 @@ At a ground valuation nothing closes off, nothing is stuck and no arm is checked
 - F6 is the right restriction to decouple (i) from the hypotheses.
 - Lemma 9 is right for F. In F, two borrow arguments never share an owner, and at a ground state a loan occurs once, so the context is injective. `ctx_inj` is the right syntactic fact.
 - (N4) I could not break. For `Pick`'s fills, valuing first (the hole inert) and ending first give the same state. A fill's run writes its hole and reads $c_i$, but never inspects the hole, and that is the "hole parametricity" lemma the proof should state for the (N4) risk.
-- F5 appears to suffice for (N1) and (N3) (finding 7).
+- F5 appears to suffice for (N1) and (N3) inside F (finding 8), but see finding 7 for the planned fix.
 
 ## The one thing to fix before this goes in the paper
 

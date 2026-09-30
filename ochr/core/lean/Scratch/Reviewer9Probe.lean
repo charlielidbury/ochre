@@ -1,7 +1,7 @@
 import Ochr.Examples.«00Std»
 open Ochr Ochr.Test
 /-! Reviewer 9 (cold review of `notes/typed-fragment-proof.typ`, 2026-09-30): probes for the
-findings in `notes/reviewer-9.md`. Each verdict below is the one the checker gives; the
+findings in `notes/reviewer-9.md` (review of the proof at c0e3b665). Each verdict below is the one the checker gives; the
 comments say what it shows. -/
 
 /-! ## Early ends inside F (F5 respected): no accepted program found that fails at a ground
@@ -177,3 +177,46 @@ ochr R9Foot uses Std, Fixtures {
 #eval IO.println (run "R9Foot" R9Foot).show
 #guard (run "R9Foot" R9Foot).allAsExpected
 #guard (run "R9Foot" R9Foot).count == 2
+
+/-! ## The planned ghost-borrow fix (proof §"Naturality fails without F5") covers the
+several-owner channel (`Pick`'s hole in two fills). A second channel has one owner: a match on
+a place whose content is a sealed fill ends every loan inside it (D29), because the loan's
+position inside the neutral is unknown; on the ground the loan sits deeper and survives the
+match. Outside F (it assigns a borrow into an older variable, against F5), the same [Drop]
+failure as `Bad2` follows. -/
+ochr R9Bad4 uses Std, Fixtures {
+  def Bad4 (x : &Nat) (a : Nat) : Unit := (
+    x := TailM(&a);
+    match a {
+      Z => (),
+      S _ => (),
+    }
+  )
+  -- at a = 1, TailM returns a borrow of a.1; the match on a (head S) ends nothing, and a is
+  -- dropped while x still borrows it
+  reject def RunBad4S : Unit := (
+    let c = 0;
+    Bad4(&c, 1)
+  )
+  -- at a = 0, TailM returns &a itself, and the match ends x on the ground too
+  def RunBad4Z : Unit := (
+    let c = 0;
+    Bad4(&c, 0)
+  )
+  -- the same with a local borrow declared before the owner
+  def Bad5 (a : Nat) : Unit := (
+    let c = 1;
+    let x = &c;
+    let b = a;
+    x := TailM(&b);
+    match b {
+      Z => (),
+      S _ => (),
+    }
+  )
+  reject def RunBad5S : Unit := Bad5(1)
+}
+#eval IO.println (run "R9Bad4" R9Bad4).show
+#guard (run "R9Bad4" R9Bad4).allAsExpected
+#guard (run "R9Bad4" R9Bad4 { d53 := false }).allAsExpected
+#guard (run "R9Bad4" R9Bad4).count == 5
