@@ -16,13 +16,18 @@ def opt(x):
     return "None" if x is None else f"Some({x})"
 
 
+def optref(x):
+    return "None" if x is None else f"Some(&{x})"
+
+
 def main():
     doc = json.loads(SRC.read_text())
     out = [
         "// FIXED-BEGIN tests",
         "// Generated mechanically from the benchmark's test vectors. Do not edit.",
         "// Each test replays one sequence of operations (see ASSIGNMENT.md) on one map, checking the",
-        "// result of every op and len() after it.",
+        "// result of every op and len() after it. The value type is V := u64; get returns a",
+        "// shared reference, compared as Some(&v).",
         "use hashmap::HashMap;",
         "",
     ]
@@ -32,14 +37,14 @@ def main():
         names.append(name)
         out.append("#[test]")
         out.append(f"fn {name}() {{")
-        out.append(f"    let mut m = HashMap::new({seq['cap']});")
+        out.append(f"    let mut m: HashMap<u64> = HashMap::new({seq['cap']});")
         for i, op in enumerate(seq["ops"]):
             k = op["key"]
             if op["op"] == "insert":
                 call = f"m.insert({k}, {op['value']})"
                 out.append(f"    assert_eq!({call}, {opt(op['expect'])}, \"op {i}: insert({k}, {op['value']})\");")
             elif op["op"] == "get":
-                out.append(f"    assert_eq!(m.get({k}), {opt(op['expect'])}, \"op {i}: get({k})\");")
+                out.append(f"    assert_eq!(m.get({k}), {optref(op['expect'])}, \"op {i}: get({k})\");")
             elif op["op"] == "remove":
                 out.append(f"    assert_eq!(m.remove({k}), {opt(op['expect'])}, \"op {i}: remove({k})\");")
             elif op["op"] == "get_mut":

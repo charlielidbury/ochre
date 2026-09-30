@@ -1,12 +1,13 @@
 // FIXED-BEGIN tests
 // Generated mechanically from the benchmark's test vectors. Do not edit.
 // Each test replays one sequence of operations (see ASSIGNMENT.md) on one map, checking the
-// result of every op and len() after it.
+// result of every op and len() after it. The value type is V := u64; get returns a
+// shared reference, compared as Some(&v).
 use hashmap::HashMap;
 
 #[test]
 fn scripted() {
-    let mut m = HashMap::new(4);
+    let mut m: HashMap<u64> = HashMap::new(4);
     assert_eq!(m.get(0), None, "op 0: get(0)");
     assert_eq!(m.len(), 0, "op 0: len after get");
     assert_eq!(m.remove(3), None, "op 1: remove(3)");
@@ -17,11 +18,11 @@ fn scripted() {
     assert_eq!(m.len(), 2, "op 3: len after insert");
     assert_eq!(m.insert(9, 90), None, "op 4: insert(9, 90)");
     assert_eq!(m.len(), 3, "op 4: len after insert");
-    assert_eq!(m.get(1), Some(10), "op 5: get(1)");
+    assert_eq!(m.get(1), Some(&10), "op 5: get(1)");
     assert_eq!(m.len(), 3, "op 5: len after get");
-    assert_eq!(m.get(5), Some(50), "op 6: get(5)");
+    assert_eq!(m.get(5), Some(&50), "op 6: get(5)");
     assert_eq!(m.len(), 3, "op 6: len after get");
-    assert_eq!(m.get(9), Some(90), "op 7: get(9)");
+    assert_eq!(m.get(9), Some(&90), "op 7: get(9)");
     assert_eq!(m.len(), 3, "op 7: len after get");
     assert_eq!(m.get(13), None, "op 8: get(13)");
     assert_eq!(m.len(), 3, "op 8: len after get");
@@ -29,25 +30,25 @@ fn scripted() {
     assert_eq!(m.len(), 3, "op 9: len after get");
     assert_eq!(m.insert(5, 55), Some(50), "op 10: insert(5, 55)");
     assert_eq!(m.len(), 3, "op 10: len after insert");
-    assert_eq!(m.get(5), Some(55), "op 11: get(5)");
+    assert_eq!(m.get(5), Some(&55), "op 11: get(5)");
     assert_eq!(m.len(), 3, "op 11: len after get");
-    assert_eq!(m.get(1), Some(10), "op 12: get(1)");
+    assert_eq!(m.get(1), Some(&10), "op 12: get(1)");
     assert_eq!(m.len(), 3, "op 12: len after get");
-    assert_eq!(m.get(9), Some(90), "op 13: get(9)");
+    assert_eq!(m.get(9), Some(&90), "op 13: get(9)");
     assert_eq!(m.len(), 3, "op 13: len after get");
     assert_eq!(m.insert(0, 0), None, "op 14: insert(0, 0)");
     assert_eq!(m.len(), 4, "op 14: len after insert");
     assert_eq!(m.insert(4, 40), None, "op 15: insert(4, 40)");
     assert_eq!(m.len(), 5, "op 15: len after insert");
-    assert_eq!(m.get(0), Some(0), "op 16: get(0)");
+    assert_eq!(m.get(0), Some(&0), "op 16: get(0)");
     assert_eq!(m.len(), 5, "op 16: len after get");
     assert_eq!(m.remove(5), Some(55), "op 17: remove(5)");
     assert_eq!(m.len(), 4, "op 17: len after remove");
     assert_eq!(m.get(5), None, "op 18: get(5)");
     assert_eq!(m.len(), 4, "op 18: len after get");
-    assert_eq!(m.get(1), Some(10), "op 19: get(1)");
+    assert_eq!(m.get(1), Some(&10), "op 19: get(1)");
     assert_eq!(m.len(), 4, "op 19: len after get");
-    assert_eq!(m.get(9), Some(90), "op 20: get(9)");
+    assert_eq!(m.get(9), Some(&90), "op 20: get(9)");
     assert_eq!(m.len(), 4, "op 20: len after get");
     assert_eq!(m.remove(5), None, "op 21: remove(5)");
     assert_eq!(m.len(), 4, "op 21: len after remove");
@@ -61,21 +62,21 @@ fn scripted() {
     assert_eq!(m.len(), 2, "op 25: len after get");
     *m.get_mut(4) = 44;
     assert_eq!(m.len(), 2, "op 26: len after get_mut");
-    assert_eq!(m.get(4), Some(44), "op 27: get(4)");
+    assert_eq!(m.get(4), Some(&44), "op 27: get(4)");
     assert_eq!(m.len(), 2, "op 27: len after get");
-    assert_eq!(m.get(0), Some(0), "op 28: get(0)");
+    assert_eq!(m.get(0), Some(&0), "op 28: get(0)");
     assert_eq!(m.len(), 2, "op 28: len after get");
     *m.get_mut(0) = 7;
     assert_eq!(m.len(), 2, "op 29: len after get_mut");
-    assert_eq!(m.get(0), Some(7), "op 30: get(0)");
+    assert_eq!(m.get(0), Some(&7), "op 30: get(0)");
     assert_eq!(m.len(), 2, "op 30: len after get");
-    assert_eq!(m.get(4), Some(44), "op 31: get(4)");
+    assert_eq!(m.get(4), Some(&44), "op 31: get(4)");
     assert_eq!(m.len(), 2, "op 31: len after get");
     assert_eq!(m.insert(4, 45), Some(44), "op 32: insert(4, 45)");
     assert_eq!(m.len(), 2, "op 32: len after insert");
     assert_eq!(m.insert(1, 11), None, "op 33: insert(1, 11)");
     assert_eq!(m.len(), 3, "op 33: len after insert");
-    assert_eq!(m.get(1), Some(11), "op 34: get(1)");
+    assert_eq!(m.get(1), Some(&11), "op 34: get(1)");
     assert_eq!(m.len(), 3, "op 34: len after get");
     assert_eq!(m.insert(7, 70), None, "op 35: insert(7, 70)");
     assert_eq!(m.len(), 4, "op 35: len after insert");
@@ -85,19 +86,19 @@ fn scripted() {
     assert_eq!(m.len(), 6, "op 37: len after insert");
     *m.get_mut(3) = 33;
     assert_eq!(m.len(), 6, "op 38: len after get_mut");
-    assert_eq!(m.get(7), Some(70), "op 39: get(7)");
+    assert_eq!(m.get(7), Some(&70), "op 39: get(7)");
     assert_eq!(m.len(), 6, "op 39: len after get");
-    assert_eq!(m.get(3), Some(33), "op 40: get(3)");
+    assert_eq!(m.get(3), Some(&33), "op 40: get(3)");
     assert_eq!(m.len(), 6, "op 40: len after get");
-    assert_eq!(m.get(11), Some(99), "op 41: get(11)");
+    assert_eq!(m.get(11), Some(&99), "op 41: get(11)");
     assert_eq!(m.len(), 6, "op 41: len after get");
     assert_eq!(m.remove(11), Some(99), "op 42: remove(11)");
     assert_eq!(m.len(), 5, "op 42: len after remove");
-    assert_eq!(m.get(3), Some(33), "op 43: get(3)");
+    assert_eq!(m.get(3), Some(&33), "op 43: get(3)");
     assert_eq!(m.len(), 5, "op 43: len after get");
     assert_eq!(m.remove(0), Some(7), "op 44: remove(0)");
     assert_eq!(m.len(), 4, "op 44: len after remove");
-    assert_eq!(m.get(4), Some(45), "op 45: get(4)");
+    assert_eq!(m.get(4), Some(&45), "op 45: get(4)");
     assert_eq!(m.len(), 4, "op 45: len after get");
     assert_eq!(m.remove(4), Some(45), "op 46: remove(4)");
     assert_eq!(m.len(), 3, "op 46: len after remove");
@@ -107,13 +108,13 @@ fn scripted() {
     assert_eq!(m.len(), 3, "op 48: len after get");
     assert_eq!(m.insert(0, 1), None, "op 49: insert(0, 1)");
     assert_eq!(m.len(), 4, "op 49: len after insert");
-    assert_eq!(m.get(0), Some(1), "op 50: get(0)");
+    assert_eq!(m.get(0), Some(&1), "op 50: get(0)");
     assert_eq!(m.len(), 4, "op 50: len after get");
 }
 
 #[test]
 fn random_cap1() {
-    let mut m = HashMap::new(1);
+    let mut m: HashMap<u64> = HashMap::new(1);
     assert_eq!(m.remove(2), None, "op 0: remove(2)");
     assert_eq!(m.len(), 0, "op 0: len after remove");
     assert_eq!(m.insert(2, 27), None, "op 1: insert(2, 27)");
@@ -130,7 +131,7 @@ fn random_cap1() {
     assert_eq!(m.len(), 2, "op 6: len after insert");
     assert_eq!(m.insert(4, 20), None, "op 7: insert(4, 20)");
     assert_eq!(m.len(), 3, "op 7: len after insert");
-    assert_eq!(m.get(4), Some(20), "op 8: get(4)");
+    assert_eq!(m.get(4), Some(&20), "op 8: get(4)");
     assert_eq!(m.len(), 3, "op 8: len after get");
     *m.get_mut(7) = 79;
     assert_eq!(m.len(), 3, "op 9: len after get_mut");
@@ -140,9 +141,9 @@ fn random_cap1() {
     assert_eq!(m.len(), 3, "op 11: len after insert");
     assert_eq!(m.remove(1), None, "op 12: remove(1)");
     assert_eq!(m.len(), 3, "op 12: len after remove");
-    assert_eq!(m.get(7), Some(78), "op 13: get(7)");
+    assert_eq!(m.get(7), Some(&78), "op 13: get(7)");
     assert_eq!(m.len(), 3, "op 13: len after get");
-    assert_eq!(m.get(7), Some(78), "op 14: get(7)");
+    assert_eq!(m.get(7), Some(&78), "op 14: get(7)");
     assert_eq!(m.len(), 3, "op 14: len after get");
     *m.get_mut(0) = 41;
     assert_eq!(m.len(), 3, "op 15: len after get_mut");
@@ -154,9 +155,9 @@ fn random_cap1() {
     assert_eq!(m.len(), 3, "op 18: len after remove");
     assert_eq!(m.insert(2, 8), None, "op 19: insert(2, 8)");
     assert_eq!(m.len(), 4, "op 19: len after insert");
-    assert_eq!(m.get(4), Some(20), "op 20: get(4)");
+    assert_eq!(m.get(4), Some(&20), "op 20: get(4)");
     assert_eq!(m.len(), 4, "op 20: len after get");
-    assert_eq!(m.get(7), Some(78), "op 21: get(7)");
+    assert_eq!(m.get(7), Some(&78), "op 21: get(7)");
     assert_eq!(m.len(), 4, "op 21: len after get");
     assert_eq!(m.remove(6), None, "op 22: remove(6)");
     assert_eq!(m.len(), 4, "op 22: len after remove");
@@ -174,9 +175,9 @@ fn random_cap1() {
     assert_eq!(m.len(), 5, "op 28: len after get");
     assert_eq!(m.remove(6), None, "op 29: remove(6)");
     assert_eq!(m.len(), 5, "op 29: len after remove");
-    assert_eq!(m.get(2), Some(12), "op 30: get(2)");
+    assert_eq!(m.get(2), Some(&12), "op 30: get(2)");
     assert_eq!(m.len(), 5, "op 30: len after get");
-    assert_eq!(m.get(0), Some(8), "op 31: get(0)");
+    assert_eq!(m.get(0), Some(&8), "op 31: get(0)");
     assert_eq!(m.len(), 5, "op 31: len after get");
     assert_eq!(m.insert(4, 0), Some(86), "op 32: insert(4, 0)");
     assert_eq!(m.len(), 5, "op 32: len after insert");
@@ -210,7 +211,7 @@ fn random_cap1() {
     assert_eq!(m.len(), 7, "op 46: len after insert");
     assert_eq!(m.insert(1, 25), Some(19), "op 47: insert(1, 25)");
     assert_eq!(m.len(), 7, "op 47: len after insert");
-    assert_eq!(m.get(0), Some(11), "op 48: get(0)");
+    assert_eq!(m.get(0), Some(&11), "op 48: get(0)");
     assert_eq!(m.len(), 7, "op 48: len after get");
     *m.get_mut(0) = 84;
     assert_eq!(m.len(), 7, "op 49: len after get_mut");
@@ -218,7 +219,7 @@ fn random_cap1() {
 
 #[test]
 fn random_cap3() {
-    let mut m = HashMap::new(3);
+    let mut m: HashMap<u64> = HashMap::new(3);
     assert_eq!(m.insert(6, 48), None, "op 0: insert(6, 48)");
     assert_eq!(m.len(), 1, "op 0: len after insert");
     assert_eq!(m.insert(2, 20), None, "op 1: insert(2, 20)");
@@ -245,7 +246,7 @@ fn random_cap3() {
     assert_eq!(m.len(), 6, "op 11: len after insert");
     assert_eq!(m.insert(6, 18), Some(36), "op 12: insert(6, 18)");
     assert_eq!(m.len(), 6, "op 12: len after insert");
-    assert_eq!(m.get(3), Some(70), "op 13: get(3)");
+    assert_eq!(m.get(3), Some(&70), "op 13: get(3)");
     assert_eq!(m.len(), 6, "op 13: len after get");
     assert_eq!(m.insert(2, 42), Some(20), "op 14: insert(2, 42)");
     assert_eq!(m.len(), 6, "op 14: len after insert");
@@ -263,7 +264,7 @@ fn random_cap3() {
     assert_eq!(m.len(), 6, "op 20: len after get_mut");
     *m.get_mut(3) = 31;
     assert_eq!(m.len(), 6, "op 21: len after get_mut");
-    assert_eq!(m.get(7), Some(12), "op 22: get(7)");
+    assert_eq!(m.get(7), Some(&12), "op 22: get(7)");
     assert_eq!(m.len(), 6, "op 22: len after get");
     assert_eq!(m.insert(9, 60), None, "op 23: insert(9, 60)");
     assert_eq!(m.len(), 7, "op 23: len after insert");
@@ -271,7 +272,7 @@ fn random_cap3() {
     assert_eq!(m.len(), 8, "op 24: len after insert");
     assert_eq!(m.insert(7, 66), Some(12), "op 25: insert(7, 66)");
     assert_eq!(m.len(), 8, "op 25: len after insert");
-    assert_eq!(m.get(11), Some(55), "op 26: get(11)");
+    assert_eq!(m.get(11), Some(&55), "op 26: get(11)");
     assert_eq!(m.len(), 8, "op 26: len after get");
     assert_eq!(m.remove(8), Some(83), "op 27: remove(8)");
     assert_eq!(m.len(), 7, "op 27: len after remove");
@@ -283,17 +284,17 @@ fn random_cap3() {
     assert_eq!(m.len(), 9, "op 30: len after insert");
     assert_eq!(m.remove(0), None, "op 31: remove(0)");
     assert_eq!(m.len(), 9, "op 31: len after remove");
-    assert_eq!(m.get(11), Some(32), "op 32: get(11)");
+    assert_eq!(m.get(11), Some(&32), "op 32: get(11)");
     assert_eq!(m.len(), 9, "op 32: len after get");
-    assert_eq!(m.get(7), Some(66), "op 33: get(7)");
+    assert_eq!(m.get(7), Some(&66), "op 33: get(7)");
     assert_eq!(m.len(), 9, "op 33: len after get");
     assert_eq!(m.get(4), None, "op 34: get(4)");
     assert_eq!(m.len(), 9, "op 34: len after get");
-    assert_eq!(m.get(2), Some(53), "op 35: get(2)");
+    assert_eq!(m.get(2), Some(&53), "op 35: get(2)");
     assert_eq!(m.len(), 9, "op 35: len after get");
     assert_eq!(m.insert(2, 53), Some(53), "op 36: insert(2, 53)");
     assert_eq!(m.len(), 9, "op 36: len after insert");
-    assert_eq!(m.get(2), Some(53), "op 37: get(2)");
+    assert_eq!(m.get(2), Some(&53), "op 37: get(2)");
     assert_eq!(m.len(), 9, "op 37: len after get");
     assert_eq!(m.insert(4, 30), None, "op 38: insert(4, 30)");
     assert_eq!(m.len(), 10, "op 38: len after insert");
@@ -323,7 +324,7 @@ fn random_cap3() {
 
 #[test]
 fn random_cap4() {
-    let mut m = HashMap::new(4);
+    let mut m: HashMap<u64> = HashMap::new(4);
     assert_eq!(m.insert(3, 6), None, "op 0: insert(3, 6)");
     assert_eq!(m.len(), 1, "op 0: len after insert");
     *m.get_mut(3) = 19;
@@ -334,7 +335,7 @@ fn random_cap4() {
     assert_eq!(m.len(), 2, "op 3: len after get_mut");
     *m.get_mut(3) = 73;
     assert_eq!(m.len(), 2, "op 4: len after get_mut");
-    assert_eq!(m.get(1), Some(3), "op 5: get(1)");
+    assert_eq!(m.get(1), Some(&3), "op 5: get(1)");
     assert_eq!(m.len(), 2, "op 5: len after get");
     assert_eq!(m.insert(12, 39), None, "op 6: insert(12, 39)");
     assert_eq!(m.len(), 3, "op 6: len after insert");
@@ -342,7 +343,7 @@ fn random_cap4() {
     assert_eq!(m.len(), 3, "op 7: len after insert");
     assert_eq!(m.insert(7, 84), None, "op 8: insert(7, 84)");
     assert_eq!(m.len(), 4, "op 8: len after insert");
-    assert_eq!(m.get(12), Some(39), "op 9: get(12)");
+    assert_eq!(m.get(12), Some(&39), "op 9: get(12)");
     assert_eq!(m.len(), 4, "op 9: len after get");
     assert_eq!(m.remove(2), None, "op 10: remove(2)");
     assert_eq!(m.len(), 4, "op 10: len after remove");
@@ -356,7 +357,7 @@ fn random_cap4() {
     assert_eq!(m.len(), 7, "op 14: len after get_mut");
     assert_eq!(m.get(4), None, "op 15: get(4)");
     assert_eq!(m.len(), 7, "op 15: len after get");
-    assert_eq!(m.get(12), Some(39), "op 16: get(12)");
+    assert_eq!(m.get(12), Some(&39), "op 16: get(12)");
     assert_eq!(m.len(), 7, "op 16: len after get");
     assert_eq!(m.insert(1, 59), Some(3), "op 17: insert(1, 59)");
     assert_eq!(m.len(), 7, "op 17: len after insert");
@@ -380,13 +381,13 @@ fn random_cap4() {
     assert_eq!(m.len(), 11, "op 26: len after insert");
     *m.get_mut(5) = 30;
     assert_eq!(m.len(), 11, "op 27: len after get_mut");
-    assert_eq!(m.get(1), Some(59), "op 28: get(1)");
+    assert_eq!(m.get(1), Some(&59), "op 28: get(1)");
     assert_eq!(m.len(), 11, "op 28: len after get");
     assert_eq!(m.remove(4), None, "op 29: remove(4)");
     assert_eq!(m.len(), 11, "op 29: len after remove");
     assert_eq!(m.remove(10), None, "op 30: remove(10)");
     assert_eq!(m.len(), 11, "op 30: len after remove");
-    assert_eq!(m.get(13), Some(20), "op 31: get(13)");
+    assert_eq!(m.get(13), Some(&20), "op 31: get(13)");
     assert_eq!(m.len(), 11, "op 31: len after get");
     assert_eq!(m.remove(9), Some(7), "op 32: remove(9)");
     assert_eq!(m.len(), 10, "op 32: len after remove");
@@ -410,13 +411,13 @@ fn random_cap4() {
     assert_eq!(m.len(), 10, "op 41: len after insert");
     assert_eq!(m.insert(3, 86), Some(19), "op 42: insert(3, 86)");
     assert_eq!(m.len(), 10, "op 42: len after insert");
-    assert_eq!(m.get(12), Some(39), "op 43: get(12)");
+    assert_eq!(m.get(12), Some(&39), "op 43: get(12)");
     assert_eq!(m.len(), 10, "op 43: len after get");
     *m.get_mut(7) = 17;
     assert_eq!(m.len(), 10, "op 44: len after get_mut");
     assert_eq!(m.get(10), None, "op 45: get(10)");
     assert_eq!(m.len(), 10, "op 45: len after get");
-    assert_eq!(m.get(12), Some(39), "op 46: get(12)");
+    assert_eq!(m.get(12), Some(&39), "op 46: get(12)");
     assert_eq!(m.len(), 10, "op 46: len after get");
     assert_eq!(m.remove(4), None, "op 47: remove(4)");
     assert_eq!(m.len(), 10, "op 47: len after remove");
@@ -428,7 +429,7 @@ fn random_cap4() {
 
 #[test]
 fn random_cap7() {
-    let mut m = HashMap::new(7);
+    let mut m: HashMap<u64> = HashMap::new(7);
     assert_eq!(m.insert(10, 82), None, "op 0: insert(10, 82)");
     assert_eq!(m.len(), 1, "op 0: len after insert");
     assert_eq!(m.insert(15, 33), None, "op 1: insert(15, 33)");
@@ -453,7 +454,7 @@ fn random_cap7() {
     assert_eq!(m.len(), 5, "op 10: len after remove");
     assert_eq!(m.remove(0), Some(39), "op 11: remove(0)");
     assert_eq!(m.len(), 4, "op 11: len after remove");
-    assert_eq!(m.get(13), Some(82), "op 12: get(13)");
+    assert_eq!(m.get(13), Some(&82), "op 12: get(13)");
     assert_eq!(m.len(), 4, "op 12: len after get");
     assert_eq!(m.insert(5, 37), None, "op 13: insert(5, 37)");
     assert_eq!(m.len(), 5, "op 13: len after insert");
@@ -479,13 +480,13 @@ fn random_cap7() {
     assert_eq!(m.len(), 8, "op 23: len after get");
     assert_eq!(m.get(15), None, "op 24: get(15)");
     assert_eq!(m.len(), 8, "op 24: len after get");
-    assert_eq!(m.get(5), Some(67), "op 25: get(5)");
+    assert_eq!(m.get(5), Some(&67), "op 25: get(5)");
     assert_eq!(m.len(), 8, "op 25: len after get");
     assert_eq!(m.remove(9), None, "op 26: remove(9)");
     assert_eq!(m.len(), 8, "op 26: len after remove");
     assert_eq!(m.insert(13, 87), Some(82), "op 27: insert(13, 87)");
     assert_eq!(m.len(), 8, "op 27: len after insert");
-    assert_eq!(m.get(19), Some(27), "op 28: get(19)");
+    assert_eq!(m.get(19), Some(&27), "op 28: get(19)");
     assert_eq!(m.len(), 8, "op 28: len after get");
     *m.get_mut(11) = 84;
     assert_eq!(m.len(), 8, "op 29: len after get_mut");
