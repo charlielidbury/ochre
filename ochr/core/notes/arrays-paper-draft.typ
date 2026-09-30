@@ -1,6 +1,6 @@
 #import "../paper/style.typ": *
 
-// Draft of a half-page case study on arrays and quicksort, for the paper lane to integrate (suggested heading: "== Arrays and quicksort"). Numbers are from notes/arrays-library.md §10 (notes/arrays-count.py over lean/Ochr/Examples/16Arrays.lean, and hashmap-count.py over competitors/verus/src/main.rs); the program printed here is 16Arrays's `QSCorrect`, verbatim (de-indented), and every inline fragment is a substring of that file. The table's "sortedness" row includes the 9-line `QSSortedFull`/`QSCorrect`; "before" is ochr-arrays 9b9b0073, "after" 824166e0.
+// Draft of a half-page case study on arrays and quicksort, for the paper lane to integrate (suggested heading: "== Arrays and quicksort"). Numbers are from notes/arrays-library.md §10 (notes/arrays-count.py over lean/Ochr/Examples/16Arrays.lean, and hashmap-count.py over competitors/verus/src/main.rs); the program printed here is 16Arrays's `QSCorrect`, verbatim (de-indented), and every inline fragment is a substring of that file. The table's "sortedness" row includes the 9-line `QSSortedFull`/`QSCorrect`; "before" is ochr-arrays 9b9b0073, "after" 824166e0. The excerpt is the D53 version (`Word` numbers, reads move); the table's numbers predate D53, and notes/arrays-library.md §12 has the D53 sizes. The paper's own copy of this section is paper/sections/impl.typ.
 
 *Arrays are a library.* Ochr has no built-in array. `Cells(E, n)` is a type computed by recursion on `n`, with exactly `n` elements; a view `Slice(E, n)` and an owned `Array(E, n)` wrap it, so the length lives only in the type and nothing stores it at runtime. The model functions (reading, writing, taking, dropping and joining elements) are ordinary Ochr definitions, and proofs reason about them directly. Eight functions are primitive at runtime: taking the view of an array, `Read`, `Set`, `GetMut` (a borrow of one element), `WithSplit`, and the empty array, push and pop. The checker runs each one's Ochr body as its model, and compiled code would call native code instead, which is trusted to implement the model. Nothing recurses over an array, only over an index, and a part of an array is borrowed only while a continuation runs. `WithSplit` takes the view apart, passes borrows `l : &Slice(E, k)` and `r : &Slice(E, Sub(n, k))` of the two pieces to a function, and joins what they hold when it returns.
 
@@ -9,9 +9,9 @@
 *Quicksort.* Lomuto's in-place quicksort partitions the view by swapping, then borrows the two sides of the pivot with `WithSplit` and sorts each. Until Ochr has recursion on a measure, it recurses on fuel. With fuel equal to the length, the checker accepts its correctness, stated about the in-place program itself. The result is sorted, and no value's count changes:
 
 ```
-def QSCorrect (n : Nat) (s : &Slice(Nat, n)) (q : Nat) :
+def QSCorrect (n : Word) (s : &Slice(Word, n)) (q : Word) :
     (let c = *s; QS(n, n, &c); Sorted(n, c)) ∧
-      (let old = *s; Eq Nat (Count(q, n, (QS(n, n, &*s); *s))) (Count(q, n, old))) := (
+      (let old = *s; Eq Word (Count(q, n, (QS(n, n, &*s); *s))) (Count(q, n, old))) := (
   ⟨QSSortedFull(n, n, s, LeRefl(n)), QSPerm(n, n, s, q)⟩
 )
 ```

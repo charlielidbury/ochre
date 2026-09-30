@@ -25,7 +25,7 @@ This note covers the paper's flagship case study. It reimplements the resizing h
 
 **get_mut was briefly walled.** It hit a rules gap: an unreachable arm normalised to `⋆` at a borrow type (§4). The gap was fixed by D58, after which the three theorems checked as written.
 
-**Size.** Hand-written, in lines / tokens:
+**Size.** Hand-written, in lines / tokens. The tokens here are *source* tokens, a size measure only. They are not the effort metric the user intended, which is the tokens an agent spends reaching a verified solution (`ochr/bench/`, user ruling 2026-09-30). The paper reports lines only.
 
 | | Total | Of which property proofs |
 |---|---|---|

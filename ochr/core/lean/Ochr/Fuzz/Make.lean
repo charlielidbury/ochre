@@ -85,10 +85,106 @@ def genA1 : Gen (List (String × STerm) × STerm × STerm × STerm × List STerm
   let proofs := [.matchGen (.ident "n0") [("Z", [], zProof), ("S", ["_"], .ident "refl")]]
   pure (ps, A, lhs, rhs, proofs)
 
-/-- The template names the A1 family needs. -/
-def a1Lib : List String := ["B2", "Bx", "TF", "TG", "CmpBx", "CmpB2"]
+/-- The E family with a dependent codomain (reviewer-6 W10: E against A1). A stuck block
+returns a closure whose codomain mentions a value the arm refined (`λ(u : Unit) : Fam(p1) =>
+h(clone(p1))` in `match q0 { Mk(p1, p2) => … }`), so the block's inferred Π-type captures an
+arm-local σ (class E); or, over `n0 : Nat`, each arm's closure has codomain `Fam(n0)`, with
+or without the block annotated. The continuation calls the closure in several arms of a
+match on the same data and splits or observes the result at that arm's type. -/
+def genEDep : Gen (List (String × STerm) × STerm × STerm × STerm × List STerm) := do
+  let tf ← chance 60
+  let fam := if tf then "TF" else "TG"
+  let famOf (t : STerm) : STerm := .call (.ident fam) [t]
+  let clo (t : STerm) : STerm :=
+    .fix "_" [("u", .ident "Unit")] (famOf t) none (.call (.ident "h") [.call (.ident "clone") [t]])
+  let splitZ (x : String) (e : STerm) : STerm :=
+    if tf then .matchGen (.ident x) [("MkBx", ["v"], e)]
+    else .matchGen (.ident x) [("Z", [], e), ("S", ["_"], e)]
+  let observe (y : String) : STerm := .call (.ident (if tf then "CmpBx" else "CmpB2")) [.ident y]
+  let useZ ← pick [STerm.letIn "x5" none (.call (.ident "f") [.unitLit]) (splitZ "x5" .top), .top]
+  let useS ← pick [STerm.letIn "y6" none (.call (.ident "f") [.unitLit]) (observe "y6"), .top]
+  let hTy : STerm := .pi [("n", .ident "Nat")] (famOf (.ident "n"))
+  -- data: a match on the result of `h`, whose type is the family at a parameter (stuck at the
+  -- generic call), with the patterns of one of the family's types
+  if ← chance 30 then
+    let ps : List (String × STerm) := [("n0", .ident "Nat"), ("h", hTy)]
+    let x : STerm := .call (.ident "h") [.ident "n0"]
+    let m := if tf then STerm.matchGen (.ident "x5") [("MkBx", ["v"], .num 0)]
+      else STerm.matchGen (.ident "x5") [("Z", [], .num 0), ("S", ["_"], .num 1)]
+    let lhs := STerm.letIn "x5" none x m
+    return (ps, .ident "Nat", lhs, ← pick [STerm.num 0, .num 1], [])
+  let pairScrut ← chance 60
+  if pairScrut then
+    let ps : List (String × STerm) := [("q0", .prod (.ident "Nat") (.ident "Nat")), ("h", hTy)]
+    let block := STerm.matchGen (.ident "q0") [("Mk", ["p1", "p2"], clo (.ident "p1"))]
+    let cont := STerm.matchGen (.ident "q0") [("Mk", ["a", "b"], .matchGen (.ident "a") [("Z", [], useZ), ("S", ["_"], useS)])]
+    let lhs := STerm.letIn "f" none block cont
+    let rhs ← pick [STerm.top, .matchGen (.ident "q0") [("Mk", ["a", "b"], .matchGen (.ident "a") [("Z", [], .top), ("S", ["_"], .ident "False")])]]
+    let zProof : STerm := .letIn "f" none block (.letIn "x5" none (.call (.ident "f") [.unitLit]) (splitZ "x5" (.ident "refl")))
+    let proofs := [.matchGen (.ident "q0") [("Mk", ["a", "b"], .matchGen (.ident "a") [("Z", [], .ident "refl"), ("S", ["_"], .ident "refl")])],
+                   .matchGen (.ident "q0") [("Mk", ["a", "b"], .matchGen (.ident "a") [("Z", [], zProof), ("S", ["_"], .ident "refl")])]]
+    pure (ps, .sort 0, lhs, rhs, proofs)
+  else
+    let ps : List (String × STerm) := [("n0", .ident "Nat"), ("h", hTy)]
+    let annotated ← chance 50
+    let block := STerm.matchGen (.ident "n0") [("Z", [], clo (.ident "n0")), ("S", ["p"], clo (.ident "n0"))]
+    let fTy : STerm := .pi [("u", .ident "Unit")] (famOf (.ident "n0"))
+    let cont := STerm.matchGen (.ident "n0") [("Z", [], useZ), ("S", ["_"], useS)]
+    let lhs := STerm.letIn "f" (if annotated then some fTy else none) block cont
+    let rhs ← pick [STerm.top, .matchGen (.ident "n0") [("Z", [], .top), ("S", ["_"], .ident "False")]]
+    let zProof : STerm := .letIn "f" (if annotated then some fTy else none) block
+      (.letIn "x5" none (.call (.ident "f") [.unitLit]) (splitZ "x5" (.ident "refl")))
+    let proofs := [.matchGen (.ident "n0") [("Z", [], zProof), ("S", ["_"], .ident "refl")]]
+    pure (ps, .sort 0, lhs, rhs, proofs)
 
-def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) : Case × Rng := Id.run do
+/-- The rules family (reviewer-6 W5): a declaration that a rule of the calculus forbids, which
+the checker must reject. [T-Borrow]'s premise, that only places of a data type are
+borrowed, at the term level: a borrow of a proof, of a value of a type variable, of a type
+variable itself, of a function. And closures in data: an inductive parameter instantiated
+at a Π-type or a sort (`Bx(Π(n : Nat). Nat)`, `Bx(Prop)`). Returns (rule, declaration). -/
+def genRule : Gen (String × SDecl) := do
+  let unitRet : STerm := .ident "Unit"
+  let nat : STerm := .ident "Nat"
+  let piNat : STerm := .pi [("n", nat)] nat
+  let piRef : STerm := .pi [("y", .amp nat)] (.amp nat)
+  let mk (ps : List (String × STerm)) (ret body : STerm) : SDecl :=
+    { name := "RuleX", params := ps, ret := ret, body := body, expectAccept := false }
+  let borrowThen (x : String) (after : STerm) : STerm := .letIn "r" none (.amp (.ident x)) after
+  weighted [
+    -- a borrow of a proof
+    (3, do
+      let P ← pick [STerm.top, .and .top .top, .app "Eq" [nat, .num 0, .num 0]]
+      let after ← pick [STerm.unitLit, .seq (.deref (.ident "r")) .unitLit]
+      pure ("borrow of a proof", mk [("h", P)] unitRet (borrowThen "h" after))),
+    -- a borrow of a value of a type variable
+    (2, do
+      let after ← pick [STerm.unitLit, .assign (.deref (.ident "r")) (.ident "x")]
+      pure ("borrow of a type variable's value", mk [("A", .sort 1), ("x", .ident "A")] unitRet (borrowThen "x" after))),
+    -- a borrow of a type variable, written through
+    (2, do
+      let after ← pick [STerm.unitLit, .assign (.deref (.ident "r")) nat]
+      pure ("borrow of a type", mk [("A", .sort 1)] unitRet (borrowThen "A" after))),
+    -- a borrow of a function
+    (2, do
+      let after ← pick [STerm.unitLit, .assign (.deref (.ident "r")) (.ident "f")]
+      pure ("borrow of a function", mk [("f", piNat)] unitRet (borrowThen "f" after))),
+    -- a closure in data: an inductive parameter at a Π-type
+    (3, do
+      let (T, body, ret) ← pick [
+        (piNat, STerm.ctorP "MkBx" [piNat] [.ident "f"], STerm.call (.ident "Bx") [piNat]),
+        (piNat, STerm.unitLit, unitRet),
+        (piRef, STerm.unitLit, unitRet)]
+      let ps := if body matches .unitLit then [("b", STerm.call (.ident "Bx") [T])] else [("f", T)]
+      pure ("Π-type as an inductive parameter", mk ps ret body)),
+    -- an inductive parameter at a sort
+    (1, do
+      let so ← pick [STerm.sort 0, .sort 1]
+      pure ("sort as an inductive parameter", mk [("b", .call (.ident "Bx") [so])] unitRet .unitLit)) ]
+
+/-- The template names the A1 family needs. -/
+def a1Lib : List String := ["B2", "Bx", "TF", "TG", "CmpBx", "CmpB2", "HG", "HF"]
+
+def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 0) (rules : Nat := 0) : Case × Rng := Id.run do
   let phase1 : Gen (List String × List (SDecl × LibFn)) := do
     let lib ← genTemplates
     pure (lib, ← genExtras lib)
@@ -110,6 +206,15 @@ def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) : Case × Rng :
     let ((ps, A, lhs, rhs, prf), g4) := genA1.run { rng := caseRng seed (i + 2000003) }
     return ({ c0 with lib := closeDeps (lib ++ a1Lib), params := ps, ty := A, lhs := lhs, rhs := rhs,
                       conv := none, extraProofs := prf }, g4.rng)
+  let (z, _) := (caseRng seed (i + 5000011)).next
+  if rules > 0 && z.toNat % 100 < rules then
+    let (rd, g6) := genRule.run { rng := caseRng seed (i + 6000013) }
+    return ({ c0 with lib := closeDeps (lib ++ ["Bx"]), ruleDecls := [rd] }, g6.rng)
+  let (y, _) := (caseRng seed (i + 3000017)).next
+  if edep > 0 && y.toNat % 100 < edep then
+    let ((ps, A, lhs, rhs, prf), g5) := genEDep.run { rng := caseRng seed (i + 4000037) }
+    return ({ c0 with lib := closeDeps (lib ++ a1Lib), params := ps, ty := A, lhs := lhs, rhs := rhs,
+                      conv := none, extraProofs := prf }, g5.rng)
   (c0, g3.rng)
 
 end Ochr.Fuzz
