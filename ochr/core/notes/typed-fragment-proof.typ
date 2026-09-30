@@ -364,10 +364,11 @@ Ending every borrower, including those in flight, would be unsound. A stuck bloc
 
 *Why the [Drop] clause of (N1) holds.* The argument is part of @tf-ass-n. A ground drop fails only if the dying place is lent to a value in flight. Take that temporary's symbolic counterpart, at the same position.
 - If it is live, (A4) puts the dying place among its symbolic owners, so the symbolic drop fails too.
-- If it is ⊥, the symbolic path ended it early while it was in flight. In F, a borrow is in flight during a call's argument evaluation, during an assignment's [Access], during a let-block's final drops, and during a pop.
+- If it is ⊥, the symbolic path ended it early while it was in flight. In F, a borrow is in flight during a call's argument evaluation, during an assignment's [Access], during a let-block's final drops, during a pop, and, as the discarded value of `t; u`, during its own drop. Constructor fields are data. Type formers and observations run on private copies, a callee's parameters are bindings once its frame is pushed, and [Close] consumes its borrow arguments, so none of these adds a case.
   - A call argument ended in flight is [Call-err] on the symbolic path.
   - During drops and pops, only borrowers held in bindings are ended, so a temporary is never ended there.
-  - A new value can be ended by its own assignment's [Access] on the symbolic path only: `x := Pick(n, &*x, &b)` ends the new borrow symbolically, while at `n = 1` the ground one survives. That is the permitted direction, the symbolic path ending more, and after the assignment the value is a binding, no longer in flight.
+  - An assignment's new value can be ended by the assignment's own [Access] on the symbolic path only: `x := Pick(n, &*x, &b)` ends the new borrow symbolically, while at `n = 1` the ground one survives. This is harmless for the drop clause. While the new value is in flight, the only drop is of the assigned place's old content. That content is a borrow, since the place has borrow type, so the drop ends it and never fails. After the assignment the value is a binding.
+  - A discarded value of `t; u` that is a borrow is ended by its own drop, which never fails.
 
 So when the symbolic drop succeeds, the ground drop succeeds. The borrowers the ground drop ends are those held in bindings whose owners include the dying place. By (A4) their symbolic counterparts are ended by the symbolic drop too, or were already ⊥. So (A3) is kept, and (A2), (A4) and (A5) are unaffected, since ending borrows does not change the resolution.
 

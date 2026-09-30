@@ -11,7 +11,8 @@ Run by the sandbox's grade.sh. It passes (exit 0, last line `GRADE: PASS ...`) i
     skeleton's editable `ochr` block, does not close that block or open a comment or string
     that runs into a FIXED region, and uses none of the forbidden constructs (the hole marker
     TODO; `reject`; `implemented by`, `abstract`, `unsized` and `copy` declarations; Lean
-    commands, attributes or options; a new `ochr` block); in a block whose name ends in `Model`
+    commands, attributes or options; a new `ochr` block; declaring a built-in, library or FIXED
+    name again, such as `Unit`, `Word`, `Lt` or `Sorted`); in a block whose name ends in `Model`
     (condition ochr-2p) it also has no borrows (`&`) and no assignment (`p := t`);
  3. everything builds (`lake build`), and the checker's verdicts (`lake exe check --machine`)
     show every declaration of every block of the skeleton as expected: each FIXED declaration
@@ -180,7 +181,98 @@ LEAN_COMMANDS = {"import", "open", "set_option", "macro", "macro_rules", "syntax
                  "protected", "initialize", "builtin_initialize", "declare_syntax_cat"}
 
 
-def scan_gap(text, s, e, block, gap_name, problems, holes, info):
+# Names the checker knows without a declaration. A block may redeclare some of them (`Nat`,
+# `Unit`), and later declarations would then mean the solver's type: a FIXED statement could
+# silently change meaning, so the grader forbids it.
+BUILTIN_NAMES = {"Nat", "Unit", "Z", "S", "Type", "Prop", "Eq", "Id", "J", "refl", "clone", "Pair", "Mk",
+                 "True", "False", "And", "Intro", "I", "Word", "Zero", "Succ"}
+
+# The library files a skeleton's blocks use (relative to the sandbox): their names are reserved.
+LIBRARY_FILES = ["checker/Ochr/Prelude.lean", "checker/Ochr/Examples/00Std.lean",
+                 "checker/Ochr/Examples/16Arrays.lean"]
+
+
+def declared_names(toks):
+    """(name, offset) for every name the declarations among `toks` introduce: the name after
+    `def` or `inductive`, and an inductive's constructors (the identifier after its `:=` and
+    after each `|`)."""
+    out, depth, pending, ctors = [], 0, None, None
+    for k, (t, o) in enumerate(toks):
+        nxt = toks[k + 1][0] if k + 1 < len(toks) else None
+        if t in OPEN:
+            depth += 1
+        elif t in CLOSE:
+            depth -= 1
+            if ctors is not None and depth < ctors:
+                ctors = None
+        if t in ("def", "inductive") and nxt:
+            out.append((nxt, o))
+            pending, ctors = (depth if t == "inductive" else None), None
+        elif t == ":=" and pending is not None and depth == pending:
+            pending, ctors = None, depth
+            if nxt:
+                out.append((nxt, o))
+        elif t == "|" and ctors is not None and depth == ctors and nxt:
+            out.append((nxt, o))
+    return out
+
+
+def blocks_in(toks):
+    """{block name: (uses, tokens of its body)} for the `ochr NAME uses A, B { … }` blocks."""
+    out, i = {}, 0
+    while i < len(toks):
+        if toks[i][0] == "ochr" and i + 1 < len(toks):
+            name, j, uses = toks[i + 1][0], i + 2, []
+            while j < len(toks) and toks[j][0] != "{":
+                if toks[j][0] not in ("uses", ","):
+                    uses.append(toks[j][0])
+                j += 1
+            depth, k = 0, j
+            while k < len(toks):
+                depth += toks[k][0] in OPEN
+                depth -= toks[k][0] in CLOSE
+                if depth == 0:
+                    break
+                k += 1
+            out[name] = (uses, toks[j + 1:k])
+            i = k + 1
+        else:
+            i += 1
+    return out
+
+
+def reserved_names(root, originals):
+    """Names a solution may not declare: the built-ins, the names of the library blocks the
+    skeleton uses (transitively, and the Prelude), and every name the skeleton declares inside
+    a FIXED region."""
+    names = set(BUILTIN_NAMES)
+    lib = {}
+    for f in LIBRARY_FILES:
+        p = os.path.join(root, f)
+        if os.path.exists(p):
+            lib.update(blocks_in(Lex(open(p, encoding="utf-8").read()).tokens))
+    todo = ["Prelude"]
+    for text in originals:
+        for uses, _ in blocks_in(Lex(text).tokens).values():
+            todo += uses
+    seen = set()
+    while todo:
+        b = todo.pop()
+        if b in seen or b not in lib:
+            continue
+        seen.add(b)
+        todo += lib[b][0]
+        names.update(n for n, _ in declared_names(lib[b][1]))
+    for text in originals:
+        parts = split_regions(text) or []
+        toks = Lex(text).tokens
+        for kind, _, s, e in parts:
+            if kind == "fixed":
+                names.update(n for n, _ in declared_names([(t, o) for t, o in toks if s <= o < e]))
+    return names
+
+
+def scan_gap(text, s, e, block, gap_name, problems, holes, info, reserved=frozenset()):
     """Check the code the solver wrote between two FIXED regions."""
     body = text[s:e]
     lex = Lex(body, s)
@@ -189,6 +281,10 @@ def scan_gap(text, s, e, block, gap_name, problems, holes, info):
         problems.append(f"line {line_of(s)}: the text after FIXED region {gap_name} ends inside a {lex.state}; "
                         f"it would hide the FIXED region that follows")
     toks = lex.tokens
+    for name, o in declared_names(toks):
+        if name in reserved:
+            problems.append(f"line {line_of(o)}: `{name}` is already a built-in, library or FIXED name; "
+                            f"declaring it again is forbidden (it could change what a FIXED statement means)")
     if block is None:
         if toks:
             problems.append(f"line {line_of(toks[0][1])}: code outside the editable ochr block "
@@ -272,6 +368,7 @@ def main():
 
     # 2. The code outside the FIXED regions
     problems, required, hole_names, info = [], [], [], {}
+    reserved = reserved_names(root, [open(os.path.join("tools", "original", f), encoding="utf-8").read() for f in files])
     for f in files:
         orig = open(os.path.join("tools", "original", f), encoding="utf-8").read()
         sol = open(f, encoding="utf-8").read()
@@ -292,7 +389,7 @@ def main():
                 problems.append(f"{f}: code after FIXED region {key}, which the original does not have")
                 continue
             before = len(problems)
-            scan_gap(sol, s, e, gap_ctx[key], key, problems, holes, info)
+            scan_gap(sol, s, e, gap_ctx[key], key, problems, holes, info, reserved)
             for i in range(before, len(problems)):
                 problems[i] = f"{f}: " + problems[i]
         hole_names += [enclosing_decl(sol, o) for o in holes]

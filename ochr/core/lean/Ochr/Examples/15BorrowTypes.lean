@@ -120,9 +120,14 @@ ochr Abstraction uses Std {
   reject def Peek (s : &View) : Nat := match *s { MkView(v) => clone(v) }
   reject def Poke (s : &View) : Unit := *s := MkView(0)
   reject def Take (s : &View) : Nat := ViewVal(clone(*s))
+  -- ... nor is reading one, moving one into a call, or assigning one view to another (the
+  -- paper's "only ever borrowed, never read, moved, assigned, cloned or matched")
+  reject def ReadV (s : &View) : Unit := (let w = *s; *s := w)
+  reject def PassV (s : &View) : Nat := ViewVal(*s)
+  reject def AssignV (s : &View) (t : &View) : Unit := *s := *t
 }
 
 #eval IO.println (run "Abstraction" Abstraction).show
 
 #guard (run "Abstraction" Abstraction).allAsExpected
-#guard (run "Abstraction" Abstraction).count == 9
+#guard (run "Abstraction" Abstraction).count == 12

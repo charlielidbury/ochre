@@ -276,15 +276,39 @@ def check_statements():
         typ = f"∀ {binders}, {stmt}" if binders else stmt
         lines.append(f"example : {typ} := @{ns}.{name}")
     lines.append("")
+    # The solution module's own declarations: no instances (they are exported
+    # into this file and would change how the restatements above elaborate),
+    # no axioms or opaque constants, and no meta-level code (elaborators,
+    # environment hacks). Grader-owned code; solution files may not contain it.
+    lines += [
+        "open Lean Elab Command in",
+        "run_cmd do",
+        "  let env ← getEnv",
+        f"  let some idx := env.getModuleIdx? `{CFG['solution_module']} | logError \"grade-env: module {CFG['solution_module']} not loaded\"",
+        "  let metaPrefixes : List Name := [`Lean.Environment, `Lean.Elab, `Lean.Meta, `Lean.Syntax, `Lean.Macro, `Lean.MacroM,",
+        "    `Lean.Core, `Lean.Declaration, `Lean.ConstantInfo, `Lean.Parser, `IO, `EIO, `BaseIO, `EStateM, `Lean.Compiler]",
+        "  for n in env.header.moduleData[idx.toNat]!.constNames do",
+        "    let some ci := env.find? n | continue",
+        "    if (← liftCoreM (Meta.isInstance n)) then logError m!\"grade-env: {n} is an instance\"",
+        "    match ci with",
+        "    | .axiomInfo _ => logError m!\"grade-env: {n} is an axiom\"",
+        "    | .opaqueInfo _ => logError m!\"grade-env: {n} is an opaque constant\"",
+        "    | _ => pure ()",
+        "    if let some c := ci.type.getUsedConstants.find? (fun c => metaPrefixes.any (·.isPrefixOf c)) then",
+        "      logError m!\"grade-env: {n} is meta-level code (it uses {c})\"",
+        "",
+    ]
     for name, _, _ in thms:
         lines.append(f"#print axioms {ns}.{name}")
     path = os.path.join(WORK, "lean", "GradeCheck.lean")
     open(path, "w").write("\n".join(lines) + "\n")
     code, out = run(["lake", "env", "lean", "GradeCheck.lean"], cwd=os.path.join(WORK, "lean"),
                     log=os.path.join(PKG, ".grade", "check.log"))
-    for e in re.findall(r"^GradeCheck\.lean:\d+:\d+: error.*$", out, re.M)[:10]:
+    for e in re.findall(r"^GradeCheck\.lean:\d+:\d+: error: grade-env: (.*)$", out, re.M)[:20]:
+        problem("environment", e)
+    for e in re.findall(r"^GradeCheck\.lean:\d+:\d+: error(?!: grade-env).*$", out, re.M)[:10]:
         problem("statement", e + " (a FIXED definition or statement no longer means what the skeleton says; see .grade/check.log)")
-    if code != 0 and not any(k == "statement" for k, _ in problems):
+    if code != 0 and not any(k in ("statement", "environment") for k, _ in problems):
         problem("statement", "checking the statements failed; see .grade/check.log")
     unproved, bad = [], 0
     for m in re.finditer(r"'(\S+)' depends on axioms: \[(.*?)\]", out, re.S):
@@ -299,6 +323,18 @@ def check_statements():
     print(f"  {len(thms)} FIXED theorem(s) restated; {len(unproved)} unproved; {bad} with disallowed axioms")
 
 
+def kernel_replay():
+    section("kernel replay (leanchecker)")
+    code, out = run(["lake", "env", "leanchecker", CFG["lean_root"]], cwd=os.path.join(WORK, "lean"),
+                    log=os.path.join(PKG, ".grade", "leanchecker.log"))
+    if code != 0:
+        for l in out.strip().splitlines()[-5:]:
+            print(f"  {l}")
+        problem("kernel", f"leanchecker rejected the {CFG['lean_root']} modules: a declaration did not pass the kernel; see .grade/leanchecker.log")
+    else:
+        print(f"  ok: every declaration of the {CFG['lean_root']} modules replays through the kernel")
+
+
 def main():
     print(f"grading {SOL} against {ORIG}")
     os.makedirs(os.path.join(PKG, ".grade"), exist_ok=True)
@@ -308,6 +344,7 @@ def main():
     check_rust()
     if translate() and lean_build():
         check_statements()
+        kernel_replay()
     kinds = {}
     for k, _ in problems:
         kinds[k] = kinds.get(k, 0) + 1

@@ -319,7 +319,7 @@ open Ochr.Registry in
 #guard rowOk { unitEta := false }
   ["ClosingOff.RowI:rejected", "ClosingOff.UnitEta:rejected", "ClosingOff.UnitEtaUU:rejected",
    "ClosingOff.UnitNotConv:rejected", "ClosingOff.ConvUnitRes:rejected",
-   "ClosingOff.ConvUnitWritten:rejected"]
+   "ClosingOff.ConvUnitWritten:rejected", "ClosingOff.ComputedUnit:rejected"]
 
 -- K3 switched off: runtime code may build and take apart an abstract type's representation
 -- (the arrays' views, reviewer-7's Suffix/TwoParts/Rebuild); sound in the model, but no
@@ -330,7 +330,7 @@ open Ochr.Registry in
 -- K2 switched off: runtime code may copy a view out (`Take`)
 open Ochr.Registry in
 #guard rowOk { unsizedTypes := false }
-  ["Abstraction.Take:accepted"]
+  ["Abstraction.Take:accepted", "Abstraction.ReadV:accepted"]
 
 -- ghost borrows switched off: reading one possible owner of a hole ends the borrow outright,
 -- earlier than the ground path may, so a later [Drop] of another owner is let through

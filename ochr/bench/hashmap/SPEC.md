@@ -238,27 +238,27 @@ Each package fills in its own table: for each property, the file and declaration
 
 | Id | File | Declaration | Notes |
 |---|---|---|---|
-| Representation, `idx` | | | |
-| new, len, get, insert, remove, get_mut | | | |
-| Inv | | | |
-| H1 | | | |
-| H2 | | | |
-| H3 | | | |
-| H4 | | | |
-| H5 | | | |
-| H6 | | | |
-| H7 | | | |
-| H8 | | | |
-| H9 | | | |
-| H10 | | | |
-| H11 | | | |
-| H12 | | | |
-| H13 | | | |
-| H14 | | | |
-| H15 | | | |
-| H16 | | | |
-| H17 | | | |
-| H18 | | | |
+| Representation, `idx` | `lean/Solution.lean` | `Bench.Bucket`, `Bench.HashMap`, `Bench.HashMap.idx` (region `repr`) | `Bucket := List (UInt64 × UInt64)`, an immutable list; `slots : Array Bucket`, capacity `slots.size`; `len : UInt64`; `idx m k = k.toNat % m.slots.size`. `Check.lean` restates the structure and `idx`. |
+| new, len, get, insert, remove, get_mut | `lean/Solution.lean` | `HashMap.new`, the field `HashMap.len`, `HashMap.get`, `HashMap.insert`, `HashMap.remove`, `HashMap.modify` | Pure functions: `insert` and `remove` return `(m′, r)`. `len` is the structure field, so it is not a hole. `get_mut` has no pure counterpart; its most direct functional form is `modify m k w`, the map with `w` written into `k`'s entry (§3), and H14–H16 are stated about it. Must be total: no `partial`, no panicking `!` operations. |
+| Inv | `lean/Solution.lean` | `HashMap.Inv` (region `Inv`) | A hole: `def Inv (m : HashMap) : Prop := sorry`. |
+| H1 | `lean/Solution.lean` | `inv_new` | `∀ c, 1 ≤ c → Inv (new c)`. |
+| H2 | `lean/Solution.lean` | `inv_insert` | Adds `m.len.toNat < 2 ^ 64 - 1` (the bounded-integer allowance: `len` is a `UInt64`). |
+| H3 | `lean/Solution.lean` | `inv_remove` | As §5. |
+| H4 | `lean/Solution.lean` | `get_new` | `1 ≤ c → (new c).get k = none`. |
+| H5 | `lean/Solution.lean` | `get_insert_self` | Adds `m.len.toNat < 2 ^ 64 - 1` (the bounded-integer allowance: `len` is a `UInt64`). |
+| H6 | `lean/Solution.lean` | `get_insert_ne` | Adds `m.len.toNat < 2 ^ 64 - 1` (the bounded-integer allowance: `len` is a `UInt64`). |
+| H7 | `lean/Solution.lean` | `insert_result` | Adds `m.len.toNat < 2 ^ 64 - 1` (the bounded-integer allowance: `len` is a `UInt64`). |
+| H8 | `lean/Solution.lean` | `get_remove_self` | As §5. |
+| H9 | `lean/Solution.lean` | `get_remove_ne` | As §5. |
+| H10 | `lean/Solution.lean` | `remove_result` | As §5. |
+| H11 | `lean/Solution.lean` | `len_new` | `1 ≤ c → (new c).len = 0`. |
+| H12 | `lean/Solution.lean` | `len_insert` | Lengths compared in ℕ via `UInt64.toNat`, as an `if m.get k = none then … else …`. Adds `m.len.toNat < 2 ^ 64 - 1` (the bounded-integer allowance: `len` is a `UInt64`). |
+| H13 | `lean/Solution.lean` | `len_remove` | Lengths compared in ℕ via `UInt64.toNat` (truncated subtraction, which the `if` guards). |
+| H14 | `lean/Solution.lean` | `get_modify` | About `m.modify k w` in place of `m[k ≔ w]`. Adds `m.len.toNat < 2 ^ 64 - 1` (the bounded-integer allowance: `len` is a `UInt64`). |
+| H15 | `lean/Solution.lean` | `len_modify` | About `m.modify k w`; equality of `UInt64`s. Adds `m.len.toNat < 2 ^ 64 - 1` (the bounded-integer allowance: `len` is a `UInt64`). |
+| H16 | `lean/Solution.lean` | `inv_modify` | About `m.modify k w`. Adds `m.len.toNat < 2 ^ 64 - 1` (the bounded-integer allowance: `len` is a `UInt64`). |
+| H17 | | | Omitted: `get` is a pure function, so it cannot change the map. |
+| H18 | | | Omitted: `len` is a pure function (the field projection), so it cannot change the map. |
 
 ### rust
 
@@ -266,6 +266,6 @@ The `rust` condition has no properties. It implements the same representation an
 
 | Id | File | Declaration | Notes |
 |---|---|---|---|
-| Representation, `idx` | | | |
-| new, len, get, insert, remove, get_mut | | | |
-| Tests | | | |
+| Representation, `idx` | `rust/src/lib.rs` | `List`, `HashMap`, `bucket_index` (region `types`) | Byte-for-byte the Rust of the `aeneas` package's skeleton (only the module doc comment differs): `enum List { Cons(u64, u64, Box<List>), Nil }`, `slots: Vec<List>`, `len: u64`, `bucket_index(key, cap) = key % cap`. |
+| new, len, get, insert, remove, get_mut | `rust/src/lib.rs` | `HashMap::new(cap: usize)`, `len(&self)`, `get(&self, key)`, `insert(&mut self, key, value)`, `remove(&mut self, key)`, `get_mut(&mut self, key) -> &mut u64` | Same signatures as `aeneas`. `new` and `get_mut` may panic when their precondition fails. |
+| Tests | `rust/tests/spec.rs` | `scripted`, `random_cap1`, `random_cap3`, `random_cap4`, `random_cap7` | Transcribed from `tests.json` by `rust/tools/gen_tests.py`, one `#[test]` per sequence; `grade.sh` requires all 5 to pass. |

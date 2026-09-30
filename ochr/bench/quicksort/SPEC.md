@@ -111,12 +111,12 @@ Each package fills in its own table: for each item, the file and declaration tha
 
 | Id | File | Declaration | Notes |
 |---|---|---|---|
-| quicksort (signature) | | | |
-| sorted | | | |
-| count, perm | | | |
-| Q1 | | | |
-| Q2 | | | |
-| Partition scheme | | | |
+| quicksort (signature) | `lean/Solution.lean` | `Bench.quicksort : Array UInt64 → Array UInt64` | A pure function, in place when the array is unshared. The two borrowed sub-slices become two recursive calls on disjoint index ranges `[lo, p)`, `[p + 1, hi)` of the one array (A2). Termination by `termination_by`; must be total: no `partial`, no panicking `!` operations. |
+| sorted | `lean/Solution.lean` | `Bench.sorted` (region `defs`) | Pairwise, as §4: `∀ i j (hij : i < j) (hj : j < a.size), a[i]'(Nat.lt_trans hij hj) ≤ a[j]`. `Check.lean` restates it. |
+| count, perm | `lean/Solution.lean` | `Bench.count`, `Bench.perm` (region `defs`) | `count x : List UInt64 → Nat` by recursion over the list; `perm a b := ∀ x, count x a.toList = count x b.toList`. Not the library's `List.count`/`List.Perm`, which the solver may relate them to. |
+| Q1 | `lean/Solution.lean` | `quicksort_sorted` | `∀ a, sorted (quicksort a)`; `a₁ = quicksort a₀`. |
+| Q2 | `lean/Solution.lean` | `quicksort_perm` | `∀ a, perm (quicksort a) a`. |
+| Partition scheme | | | The solver's choice (Lomuto or Hoare), stated in a comment at the partition function; checked by the human reader (A1). |
 
 ### rust
 
@@ -124,6 +124,6 @@ The `rust` condition has no properties. It implements the same signature and run
 
 | Id | File | Declaration | Notes |
 |---|---|---|---|
-| quicksort (signature) | | | |
-| Tests | | | |
-| Partition scheme | | | |
+| quicksort (signature) | `rust/src/lib.rs` | `pub fn quicksort(a: &mut [u64])` (region `quicksort`) | Byte-for-byte the Rust of the `aeneas` package's skeleton (only the module doc comment differs). |
+| Tests | `rust/tests/spec.rs` | one `#[test]` per case (29) | Transcribed from `tests.json` by `rust/tools/gen_tests.py`; `grade.sh` requires all 29 to pass. |
+| Partition scheme | | | The solver's choice (Lomuto or Hoare), stated in a comment at the partition function; checked by the human reader (A1). |

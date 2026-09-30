@@ -108,6 +108,15 @@
     [
       "skipKernelTC|\\bdebug\\.",
       "debug options"
+    ],
+    [
+      "\\bimport\\s+Lean\\b|\\bLean\\s*\\.\\s*(Elab|Meta|Parser|Environment|Syntax|Macro|Core|Compiler|IR)\\b|\\b(Environment|CommandElab\\w*|TermElab\\w*|TacticM|MetaM|CoreM|MacroM|CommandElabM|TermElabM|Declaration|ConstantInfo|TheoremVal|DefinitionVal)\\b|\\b(addDecl\\w*|modifyEnv|setEnv|getEnv|evalExpr|evalConst)\\b|\\bopen\\s+[^\\n]*\\bLean\\b",
+      "meta-programming (elaborators, environment access, declaration building): not needed for proofs, and can bypass the kernel"
+    ],
+    [
+      "@\\[[^\\]]*\\b(command_elab|term_elab|tactic|macro|delab|app_unexpander|builtin_\\w+|init|env_extension|csimp)\\b|\\battribute\\s*\\[[^\\]]*\\b(command_elab|term_elab|tactic|macro|builtin_\\w+|init)\\b",
+      "attribute that registers an elaborator, macro or initialiser"
     ]
-  ]
+  ],
+  "solution_module": "Quicksort.Properties"
 }
