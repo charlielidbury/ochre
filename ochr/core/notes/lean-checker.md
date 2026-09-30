@@ -1247,3 +1247,24 @@ The impredicativity route (reviewer-3) needed a type `&Type₀` that a program c
 - rejected: `BorrowProp`, `BorrowVar`, `BorrowType`, `BorrowTypeUse`, `BorrowFn`, `BorrowProof`, `BorrowStuck`, `BlockBorrowStuck`;
 - accepted: `BorrowData`.
 The D48 (1) row (model) now flips them too.
+
+## 45. Bad2: [Access] with several possible owners (ghost borrows)
+
+This is meta-order's DropProbe and fuzz-port's Drop family. A borrow returned by a stuck call or match leaves its hole in the fills of all its possible owners: `Pick(n, &a, &b)` at an abstract `n` puts `loan_k` in both `a` and `b`. Reading `b` ended `x`'s borrow outright (D19), so `a` was dropped as plain data, and `Bad2` was accepted. At `n = 0` the borrow is of `a`, reading `b` ends nothing, and `a`'s drop fails. The symbolic path ended the borrow earlier than an instance does, which made [Drop] more permissive.
+
+The lead chose option (b), on the principle that uncertainty never makes the symbolic path more permissive:
+- When [Access] finds, inside the accessed content, a loan that other owners hold too (`owners(ℓ)` beyond the accessed binding), the loan is released in the accessed place only: substituted by the borrow's content (`releaseHere`).
+- The borrow becomes `ghost(borrow_ℓ v)`. It is unusable, and a runtime read of a ghost is an error, as for a moved value.
+- It still holds its loans in the other owners, so their [Drop] errors.
+- It ends by [End ℓ] when its binding is dropped or reassigned. `dropTopBind`, `dropValue` and `assignPlace` end ghost borrows; `holdsBorrow`, `takeBorrow` and `firstBorrowLabel` see through the ghost.
+
+*Regressions,* in a new block `GhostBorrows` (02Borrows):
+- rejected: `Bad2`, `Bad3`, `D1`–`D4` (a stuck match; a write or a borrow of the other owner; the owners the other way round);
+- rejected: `UseGhost` (using the ghost);
+- accepted: `Ok1` (the ghost dropped before `a`) and `Ok2` (reassigned).
+
+*Ledger:* a new row, `ghostBorrows`, class soundness (going wrong when run), witnesses `Bad2` and `Bad3`. It flips `Bad2`, `Bad3` and `D1`–`D4`.
+
+*RULES draft for [Access] (for the lead's review; not applied):* "When the loan occurs inside `content(p)` and also inside another owner's content (the hole of a borrow returned by a stuck call or match sits in the fill of every place it may borrow: its real owner is not known), the borrow is not ended: `loan_ℓ` is replaced by the borrow's content in `content(p)` only, and `borrow_ℓ v` becomes the *ghost borrow* `ghost(borrow_ℓ v)`. A ghost borrow is unusable, as an ended one is: any use is an error. It still holds its loans in the other owners, so dropping or overwriting one of them while it lives is a [Drop] error. It ends by [End ℓ] when its binding is dropped or overwritten. The symbolic path thus never ends a borrow earlier than some instance does, and uncertainty about the owner never makes [Drop] more permissive."
+
+1100 verdicts.

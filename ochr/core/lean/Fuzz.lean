@@ -59,6 +59,7 @@ def switchCfg (c : Config) : String → Option Config
   | "D59" | "unitEta" => some { c with unitEta := false }
   | "K3" | "abstractTypes" => some { c with abstractTypes := false }
   | "K2" | "unsizedTypes" => some { c with unsizedTypes := false }
+  | "ghostBorrows" | "Bad2" => some { c with ghostBorrows := false }
   | "D50on" | "unitNorm" => some { c with unitNorm := true }          -- switched ON (a counterfactual)
   | "confineBodies" => some { c with confineBodies := true }          -- switched ON (an extension)
   | "C8" | "generalize" => some { c with generalize := false }

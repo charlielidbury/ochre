@@ -30,7 +30,7 @@ open Ochr Ochr.Test Ochr.Surface
 namespace Ochr.Registry
 
 def programs : List (String × Block) :=
-  [("Prelude", Prelude), ("Std", Std), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("Moves", Moves), ("ReturnedBorrows", ReturnedBorrows),
+  [("Prelude", Prelude), ("Std", Std), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("GhostBorrows", GhostBorrows), ("Moves", Moves), ("ReturnedBorrows", ReturnedBorrows),
    ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("Equality", Equality), ("Rewriting", Rewriting),
    ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion),
    ("CaseSplits", CaseSplits), ("GenType", GenType), ("RenormPi", RenormPi), ("Splitting", Splitting), ("ScrutineeTypes", ScrutineeTypes),
@@ -121,7 +121,8 @@ def switches : List (String × Config) :=
    ("D53 (e): the Fn rule (a call does not consume its function; closure bodies do not move their captures)", { fnRule := false }),
    ("D59 (refined): η-normal forms at Unit (the readback at Unit is (); [Close] has no Unit row)", { unitEta := false }),
    ("K3: an abstract type's constructors and matches only in erased positions and model code", { abstractTypes := false }),
-   ("K2: outside model code, a place of an unsized type is only borrowed at runtime", { unsizedTypes := false })]
+   ("K2: outside model code, a place of an unsized type is only borrowed at runtime", { unsizedTypes := false }),
+   ("[Access] with several possible owners: release the accessed one only; the borrow becomes a ghost", { ghostBorrows := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -189,13 +190,14 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("completeness", []),
    ("policy", ["Abstraction.Peek"]),
-   ("policy", ["Abstraction.Take"])]
+   ("policy", ["Abstraction.Take"]),
+   ("soundness", ["GhostBorrows.Bad2", "GhostBorrows.Bad3"])]
 
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1091
+def Ochr.Registry.expectedTotal : Nat := 1100
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

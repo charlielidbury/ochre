@@ -148,6 +148,8 @@ structure Config where
   zeroArmStuck : Bool := true    -- D58: a zero-arm match outside a proof position is stuck, not ⋆
   unitEta : Bool := true         -- D59 (refined): values are η-normal at Unit (the readback at Unit is `()`:
                                  -- abstract values, stuck calls' results, fills), so `Eq Unit a b ≡ True`
+  ghostBorrows : Bool := true    -- [Access]: a loan with other possible owners is released in the accessed one
+                                 -- only; the borrow becomes a ghost, still holding the others (meta-order's Bad2)
   abstractTypes : Bool := true   -- K3: an abstract type's constructors and matches only in erased positions and model code
   unsizedTypes : Bool := true    -- K2: outside model code, a place of an unsized type is only borrowed at runtime
   d53 : Bool := true             -- D53 applies (off only for the case studies not yet adapted, `Test.preD53`);
