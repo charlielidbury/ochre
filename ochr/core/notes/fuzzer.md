@@ -49,7 +49,7 @@ lake exe fuzz … --list                                             # also prin
 - Case `i` of seed `S` is a pure function of `(S, i)`.
 - `--switch X` names a ledger row: `D17`…`D59`, `P1`/`P2`/`P3`, `L1`–`L3`, `C5`, `C8`, `G1`, `capTypes`, `scrutTyped`, `confineBodies`, `D50on`, and D53's three: `moves`, `ghosts`, `fnRule`. D53 is on by default in ochr-core since the flip (728756a1); `--switch +D53`, which turned it on for the default and the `--diff` base alike while it was off, is kept for old command lines. D53's rows are `--switch moves`, `--switch ghosts` and `--switch fnRule`. The D35 rows were deleted with the erasure pre-pass.
 - `--diff` keeps only the findings a case shows with the switches on and not with the default rules. With `--list` it also prints `@FLIP i base>switched` when the switch changes the statement's verdict, and `@XFLIP i m>n` when it changes how many of the statement's two sides the checker accepts as data functions (the execution oracle's `ExecL`/`ExecR`). A row such as `moves` changes acceptance without changing any value, and this is how it is measured.
-- `--edep N` draws N percent of the cases from the E family with a dependent codomain. `--rules N` gives N percent of the cases one declaration that a rule forbids, and `--drop N` gives them one Drop-family data function (§v2.2). Like `--a1`, each draws on its own stream, and the default is 0.
+- `--edep N` draws N percent of the cases from the E family with a dependent codomain. `--rules N` gives N percent of the cases one declaration that a rule forbids, `--drop N` gives them one Drop-family data function, and `--audit N` gives them one of rule-audit's witness shapes (§v2.2). Like `--a1`, each draws on its own stream, and the default is 0.
 - `--a1 N` draws N percent of the cases from reviewer-6's A1 family instead (§v2.2). Each case chooses on its own random stream, so every other case is the same as without the flag. The default is 0, so the headline numbers are unchanged.
 - `--runtime-refine` refines the generic observation at runtime depth instead of erased. It is a diagnostic for the RN class (§v2.6). The checker refines statements erased, so most of what it reports are artefacts.
 - `--jobs J` runs crash-isolated worker processes.
@@ -96,6 +96,15 @@ A finding at a refinement where some proof parameter's type is `False` is marked
 - It assigns a borrow into a variable `x` that outlives one of the borrowed places (`x` is a borrow parameter, or a local borrow declared before `a`). The borrow comes from a stuck call or block whose hole sits in two owners' fills: `Pick(n, &a, &b)`, `Pick(n, &b, &a)`, or `match n { Z => &a, S _ => &b }`; `PickX` is the not-stuck control.
 - It then makes zero to two accesses: a read, write or borrow of `b`, or a write or read through `x`.
 - `a` lives in the function's scope or in an inner block.
+
+**The audit family (`--audit N`, rule-audit's witnesses, `notes/rule-audit.md`).** These are declarations where the checker and the printed rules disagree, with random constants and forms. The rules oracle requires rejection of:
+- `NatT`, a `Nat` match on a value whose stored type is not `Nat`, as data or as a proof by splitting ([Split]'s stored-type premise);
+- `EqConf`, an assignment to an outer place inside a side of `Eq` ([T-Erase], [Erase-err]);
+- `JT`, `J` with non-convertible endpoints running its body, through a helper `JF` ([J-stuck]);
+- `MixPos`, a type annotation whose arms disagree on being proofs ([Type-pos]);
+- `BlockRef`, a closure in a stuck block's arm capturing a written place ([Fix]).
+
+It also requires `EtaP`/`EtaCtl` to be decided alike: a read of one field of a pair after a block that moved the other, and the same read without the block. The read field is never the moved one. Both are rejected by the printed rules and both are accepted under D62.
 
 **The rules family (`--rules N`, reviewer-6 W5).** It generates declarations that break two rules:
 - [T-Borrow]'s data premise, at the term level: a borrow of a proof, of a value of a type variable, of a type variable, or of a function, each with or without a write through it.
@@ -179,6 +188,7 @@ The cold reviewers' attack shapes are included:
     - a read, a write or a borrow of the other owner
 
     Symbolically, accessing one owner ends the returned borrow; at a ground instance it may not, and the place goes out of scope while borrowed. `Scratch/DropVariants.lean` has four variants. The fix is being written by the checker lane: an uncertain [End] releases only the accessed owner, and the borrower becomes a ghost borrow. Its acceptance check is `--drop 100` with zero `exec` findings.
+12. **Rule-audit's witnesses, at scale (the audit family, ochr-core 54a4cff2).** With `--audit 100` (seed 1, 10⁵ cases), every generated witness of each reject kind is accepted: `NatT` 17,457, `EqConf` 17,308, `JT` 17,394, `MixPos` 8,747 and `BlockRef` 17,490. The `EtaP`/`EtaCtl` pair is decided differently in 8,908 cases, all those whose block moves a field. These divergences are deterministic, and each fix's acceptance check is zero findings of its kind under `--audit 100`.
 6. **The cold reviewers' attacks**, re-found by the extended generator with their switch off (seeds 1 and 3, 2·10⁴ cases each):
 
 | attack | switch | found? | as | first shrunk example |
