@@ -21,6 +21,7 @@ structure Case where
   lhs : STerm := .num 0
   rhs : STerm := .num 0
   conv : Option (STerm × STerm × STerm) := none   -- a function type and two functions: conversion oracle
+  extraProofs : List STerm := []   -- a family's own proof candidates for the truth oracle (A1)
 deriving Inhabited
 
 def Case.stmtDecl (c : Case) : SDecl :=
