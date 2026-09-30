@@ -124,6 +124,19 @@ ochr SweepDep uses ArrayBench {
   def SetTwo (v : &Vec(Word)) : Unit := match *v { MkVec(n, items) => (n := W(2); items := Two) }
   def SetTwoRev (v : &Vec(Word)) : Unit := match *v { MkVec(n, items) => (items := Two; n := W(2)) }
 }
+-- appendix A.4.8, nesting: `NBox` is accepted, `Bad` nested in it is not, and a field that is
+-- a Π at the generic fields is rejected already
+ochr SweepNest uses Std {
+  inductive Void : Type
+  def IsSucc (n : Word) : Prop := match n { Zero => False, Succ(_) => True }
+  def NegIf (n : Word) (A : Type) : Type := match n { Zero => Unit, Succ(m) => Π(x : A). Void }
+  inductive NBox (A : Type) := MkNBox(n : Word, f : NegIf(n, A), h : IsSucc(n))
+  reject inductive Bad := MkBad(b : NBox(Bad))
+  def Neg (A : Type) : Type := Π(x : A). Void
+  reject inductive NegBox (A : Type) := MkNegBox(f : Neg(A))
+}
+#eval IO.println (run "SweepNest" SweepNest).show
+#guard ((run "SweepNest" SweepNest { k4Nest := false }).rows.map (fun r => r.verdict matches .accepted)) == [true, true, true, true, true, true, false]
 #eval IO.println (run "SweepDep" SweepDep).show
 -- the typed-fragment appendix (tf.typ): Bad2 as printed and the claims around it. Trav and
 -- ReborrowPick0 are rejected until D67 (overwriting a borrow keeps the reborrows behind it)
