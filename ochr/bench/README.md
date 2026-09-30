@@ -47,7 +47,7 @@ Each package (`<problem>/<condition>/`) contains:
 
 ### Main tasks
 
-- **Hashmap** (`hashmap/SPEC.md`): a fixed-capacity hash map from word keys to values of an arbitrary type `V`, with separate chaining, in place, with `new`, `len`, `get`, `insert`, `remove` and `get_mut`, and eighteen properties (H1–H18) stated through `get` and `len` under an invariant the solver chooses. `get` returns a shared reference `Option<&V>` in Rust, Verus and Aeneas, and a copy of the value in Ochr (built-in `clone`) and pure Lean.
+- **Hashmap** (`hashmap/SPEC.md`): a fixed-capacity hash map from word keys to values of an arbitrary type `V`, with separate chaining, in place, with `new`, `len`, `get`, `insert`, `remove` and `get_mut`, and eighteen properties (H1–H18) stated through `get` and `len` under an invariant the solver chooses. `get` returns a shared reference `Option<&V>` in Rust, Verus and Aeneas. In Ochr, `contains` answers presence and `get` returns a borrow into the map, used read-only and requiring the key to be present. In pure Lean, `get` returns the value itself.
 - **Quicksort** (`quicksort/SPEC.md`): in-place quicksort with a Lomuto or Hoare partition and two recursive calls on disjoint borrowed sub-ranges, proved sorted (Q1) and a permutation of its input (Q2).
 
 Each package's `ASSIGNMENT.md` transcribes its SPEC into the system's notation and cites the property numbers. The correspondence table at the end of each SPEC records, per condition, which declaration states which property and where a statement differs.

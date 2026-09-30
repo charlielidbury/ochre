@@ -38,7 +38,7 @@ The bucket of key `k` is `slots[idx(k)]`, where
 |---|---|---|
 | new | `new(c : 𝕎) → Map(V)` | `c ≥ 1` |
 | len | `len(m : &Map(V)) → 𝕎` | |
-| get | `get(m : &Map(V), k : 𝕎) → Opt(&V)`, or `→ Opt(V)` (see below) | |
+| get | `get(m : &Map(V), k : 𝕎) → Opt(&V)`; Ochr and Lean differ (see below) | |
 | insert | `insert(m : &mut Map(V), k : 𝕎, v : V) → Opt(V)` | see §5 for bounded integers |
 | remove | `remove(m : &mut Map(V), k : 𝕎) → Opt(V)` | |
 | get_mut | `get_mut(m : &mut Map(V), k : 𝕎) → &mut V` | `get(m, k) ≠ None` |
@@ -53,19 +53,21 @@ What they mean, informally (§5 is the formal statement):
 
 **The form of `get`.** `get` returns the value at `k` in each system's natural read-only form:
 - `rust`, `aeneas`, `verus`: a shared reference into the map, `get(m : &Map(V), k) → Option<&V>`. It is not `V: Clone` with a copy: Rust's `Clone` is an arbitrary user implementation, so nothing lets Aeneas or Verus prove that a generic `clone` returns an equal value, and `get`'s properties would become unprovable.
-- `ochr`: by value, `get(m : &Map(V), k) → Opt(V)`, returning a copy made with Ochr's built-in `clone`, which is a real copy and runs no user code. Ochr has only mutable borrows, so the map is passed by `&` and H17 says `get` leaves it unchanged; the same holds for `len` and H18.
-- `lean`: by value, as a pure function `get : Map V → 𝕎 → Option V`.
+- `ochr`: a borrow into the map, used read-only, with presence asked separately: `contains(m : &Map(V), k) → Bool` and `get(m : &Map(V), k, h : Contains(*m, k)) → &V`. Ochr has no shared borrows and cannot put a borrow inside an `Option`, so `get` requires the key to be present, as `get_mut` does. Neither operation copies or moves a value: a plain read in Ochr moves, and a `clone` would deep-copy an arbitrary `V`, which is a different cost from Rust's `&V`. Taking the value out of the map is `remove`. Ochr's `&` is mutable, so H17 says that `contains` and a read-only `get` leave the map unchanged, and H18 says the same for `len`.
+- `lean`: by value, as a pure function `get : Map V → 𝕎 → Option V`. Lean's values are immutable, so nothing moves and nothing is copied.
 
-`get_mut` returns `&mut V` in Rust, Verus and Aeneas, and `&V` in Ochr, whose `&` is mutable. Ochr's `&V` for a type parameter `V` needs rule D66 (`&A` for every `A : Type₀`), which is not on `ochr-core` yet; until it lands, the Ochr packages keep their current form of `get_mut` and say so in their correspondence rows.
+`get_mut` returns `&mut V` in Rust, Verus and Aeneas, and `&V` in Ochr, whose `&` is mutable. Ochr's `&V` for a type parameter `V`, in `get` and `get_mut`, needs rule D66 (`&A` for every `A : Type₀`), which is not on `ochr-core` yet; until it lands, the Ochr packages keep their current word-valued form and say so in their correspondence rows.
 
-**The observed value.** In the properties, `get(m, k)` stands for the value it observes, an element of Opt(V): where `get` returns `Option<&V>`, the value the reference points to (in Aeneas's translation and in Verus's specifications, a shared reference already is its value). Equality on `V` is the logic's own equality.
+**The observed value.** In the properties, `get(m, k)` stands for the value it observes, an element of Opt(V). Equality on `V` is the logic's own equality.
+- Where `get` returns `Option<&V>`, it is the value the reference points to (in Aeneas's translation and in Verus's specifications, a shared reference already is its value).
+- In Ochr, it is None when `contains(m, k)` is false, and otherwise Some of the value read through `get(&m, k, h)`. So each property that mentions `get` is stated in Ochr in two parts: part (a) about `contains`, and part (b) about the value read through `get` when the key is present. For example, H5 becomes H5a `contains(m′, k) = true` and H5b `*get(&m′, k, h) = v`. H6 becomes H6a `contains(m′, k′) = contains(m, k′)` and H6b `*get(&m′, k′, h′) = *get(&m, k′, h)` when `k′` is present. H7 becomes H7a `r = None ⟺ contains(m, k) = false` and H7b `r = Some(x) ⟹ x = *get(&m, k, h)`. H4 and H8, which only say None, and the conditions in H12, H13 and `get_mut`'s precondition, need only the `contains` part. The read through the borrow happens inside the statement. Statements are erased, and erased reads copy, so observing the value costs nothing at run time. The correspondence rows cite the parts as H5a, H5b and so on.
 
 A system without borrows (`lean`) expresses `get_mut` in its most direct functional form: a function that takes `m`, `k` and `w : V` and returns the map with `w` written into `k`'s entry, found by the same walk down `k`'s bucket that `get_mut` does. H14–H16 are then stated about that function, and the correspondence table says so.
 
 ## 4. Algorithm requirements (checked by a human reader, not by the grader)
 
 - **A1 (hashing).** Every operation on key `k` reads or changes only the bucket `slots[idx(k)]` and the `len` field. No operation scans other buckets.
-- **A2 (in place).** Operations change the map in place. No operation copies the table or a bucket, or rebuilds a bucket from a copy. A new entry may go at either end of its bucket, at the implementer's choice. `remove` unlinks the node. `get` copies nothing where it returns a reference; in Ochr it copies only the one value it returns.
+- **A2 (in place).** Operations change the map in place. No operation copies the table or a bucket, or rebuilds a bucket from a copy. A new entry may go at either end of its bucket, at the implementer's choice. `remove` unlinks the node. `get` copies nothing: it returns a reference into the map (in pure Lean, the stored value itself).
 - **A3 (nothing extra).** No auxiliary structure (a second table, a list of keys, a cache), no resizing, and no library map, set or association list.
 
 The `lean` condition has no memory model: there, A2 means the table array is updated with the operations that are in place when the array is unshared (`Array.set`, `Array.modify` and similar), and buckets are immutable lists by nature.
@@ -108,13 +110,13 @@ Notation. For a mutating operation, `op(m, …) ⇝ (m′, r)` means: running `o
 - **H17.** `get(m, k) ⇝ (m′, r)  ⟹  m′ = m` (equality of the representation).
 - **H18.** `len(m) ⇝ (m′, r)  ⟹  m′ = m`.
 
-H17 and H18 are stated only where the type system does not already guarantee them. Where `get` and `len` take the map by shared reference (Rust `&self`: `rust`, `aeneas`, `verus`) or are pure functions (`lean`), the package omits them and says so in its correspondence table. Ochr states them, since its `get` and `len` take the map by mutable borrow.
+H17 and H18 are stated only where the type system does not already guarantee them. Where `get` and `len` take the map by shared reference (Rust `&self`: `rust`, `aeneas`, `verus`) or are pure functions (`lean`), the package omits them and says so in its correspondence table. Ochr states them, since its `contains`, `get` and `len` take the map by mutable borrow: in Ochr, H17 says the map is unchanged after `contains(&m, k)`, and after `get(&m, k, h)` whose borrow is only read and then ends.
 
 **Bounded integers.** In a system whose `len` is a bounded machine word, the properties that run `insert` (H2, H5, H6, H7, H12, and H14–H16) may additionally assume `len(m) < 2⁶⁴ − 1`, and `insert` may require it. No other extra hypothesis is allowed.
 
 ## 6. Tests
 
-`tests.json` holds the test vectors. Every package runs all of them, transcribed mechanically from the JSON (by a script, where practical). The tests instantiate the value type as words, `V := 𝕎` (`u64`, Ochr's `Word`), and compare the observed value of `get` (§3).
+`tests.json` holds the test vectors. Every package runs all of them, transcribed mechanically from the JSON (by a script, where practical). The tests instantiate the value type as words, `V := 𝕎` (`u64`, Ochr's `Word`), and compare the observed value of `get` (§3). In Ochr, a `get` op whose `expect` is `null` checks that `contains` is false, and one whose `expect` is `w` checks that `contains` is true and that the value read through `get` is `w`.
 
 The file holds a list of `sequences`. Each sequence starts from `new(cap)` and applies its `ops` in order to that one map. Each op is one object:
 
@@ -141,8 +143,8 @@ Each package fills in its own table: for each property, the file and declaration
 
 | Id | File | Declaration | Notes |
 |---|---|---|---|
-| Representation, `idx` | `ochr/HashMap.lean` | `Bucket`, `MapOf`, `Map`, `Idx`, `IdxLt` (region `header`, block `HashMapSpec`) | **Pending D66.** Values are `Word` for now: `Bucket := BNil | BCons(key : Word, value : Word, next : Bucket)`, `MapGet` returns an `Opt` of a `Word` (a copy) and `MapGetMut` a `&Word`. The generic `Bucket(V)`, with `get → Opt(V)` by `clone` and `get_mut → &V`, replaces it when D66 (`&A` for every `A : Type₀`) is on ochr-core, and `SlotMut` goes then. `Map(cap) = MapOf(Cells(Bucket, cap))`, i.e. `MkMap(slots : Array(Bucket, cap), len : Word)`: the capacity is in the type (a field cannot yet be `Array(Bucket, cap)` directly, so `MapOf` takes the array's model type as a parameter). `Idx(cap, k)` is `k mod cap` by counting; `IdxLt` its bound. Also provided: `Opt`, `IsSome`, `Grow`, `Shrink`, `EqDec` (key comparison with evidence), and `SlotMut`, a native borrow of bucket `i` (the library's `GetMut` at element type `Bucket`, since `&E` is not yet well formed for a type variable). |
-| new, len, get, insert, remove, get_mut | `ochr/HashMap.lean` | `MapNew`, `MapLen`, `MapGet`, `MapInsert`, `MapRemove`, `MapGetMut` (regions `new` … `get_mut`) | Pending D66 (above): at `V` = `Word`. `MapNew (cap) (h : Lt(Zero, cap))`; the others take `m : &Map(cap)`, `MapLen` and `MapGet` too (no shared borrows). `MapGetMut` requires `h : IsSome(GetOf(cap, *m, k))`. `GetOf`, `LenOf` (provided) run `MapGet`, `MapLen` on a copy of a map value; the properties observe through them. |
+| Representation, `idx` | `ochr/HashMap.lean` | `Bucket`, `MapOf`, `Map`, `Idx`, `IdxLt` (region `header`, block `HashMapSpec`) | **Pending D66.** Values are `Word` for now: `Bucket := BNil | BCons(key : Word, value : Word, next : Bucket)`, `MapGet` returns an `Opt` of a `Word` (a copy) and `MapGetMut` a `&Word`. The generic `Bucket(V)` replaces it when D66 (`&A` for every `A : Type₀`) is on ochr-core, with §3's Ochr read API: `contains(&m, k) : Bool`, `get(&m, k, h : Contains(*m, k)) : &V` used read-only, and `get_mut → &V`. H4–H10, H12–H14 and H17 are then stated in their `contains` and value parts (§3: H5a, H5b, …), and `SlotMut` goes then. `Map(cap) = MapOf(Cells(Bucket, cap))`, i.e. `MkMap(slots : Array(Bucket, cap), len : Word)`: the capacity is in the type (a field cannot yet be `Array(Bucket, cap)` directly, so `MapOf` takes the array's model type as a parameter). `Idx(cap, k)` is `k mod cap` by counting; `IdxLt` its bound. Also provided: `Opt`, `IsSome`, `Grow`, `Shrink`, `EqDec` (key comparison with evidence), and `SlotMut`, a native borrow of bucket `i` (the library's `GetMut` at element type `Bucket`, since `&E` is not yet well formed for a type variable). |
+| new, len, get, insert, remove, get_mut | `ochr/HashMap.lean` | `MapNew`, `MapLen`, `MapGet`, `MapInsert`, `MapRemove`, `MapGetMut` (regions `new` … `get_mut`) | Pending D66 (above): at `V` = `Word`, with today's `MapGet` returning an `Opt` of a copied `Word` and no `contains`. `MapNew (cap) (h : Lt(Zero, cap))`; the others take `m : &Map(cap)`, `MapLen` and `MapGet` too (no shared borrows). `MapGetMut` requires `h : IsSome(GetOf(cap, *m, k))`. `GetOf`, `LenOf` (provided) run `MapGet`, `MapLen` on a copy of a map value; the properties observe through them. |
 | Inv | `ochr/HashMap.lean` | `Inv` (region `inv`) | A hole: `Inv (cap : Word) (m : Map(cap)) : Prop`. |
 | H1 | `ochr/HashMap.lean` | `InvNew` (region `H1`) | `Inv(cap, MapNew(cap, h))`. |
 | H2 | `ochr/HashMap.lean` | `InvInsert` (region `H2`) | `(let c = *m; MapInsert(cap, &c, k, v); Inv(cap, c))` under `hm : Inv(cap, *m)`: every mutating property runs the operation on a copy `c` of the map `*m` and observes `c`. |
@@ -167,7 +169,7 @@ Each package fills in its own table: for each property, the file and declaration
 
 | Id | File | Declaration | Notes |
 |---|---|---|---|
-| Representation, `idx` | `ochr-2p/HashMap.lean` | `Bucket`, `MapOf`, `Map`, `Idx`, `IdxLt` (region `header`, block `HashMapSpec`) | Pending D66, as `ochr`. As `ochr`, plus `SlotsOf` and `LenField`, a map value's buckets (as a view) and length field, for the abstraction. |
+| Representation, `idx` | `ochr-2p/HashMap.lean` | `Bucket`, `MapOf`, `Map`, `Idx`, `IdxLt` (region `header`, block `HashMapSpec`) | Pending D66, as `ochr` (the same generic API replaces it when D66 lands). As `ochr`, plus `SlotsOf` and `LenField`, a map value's buckets (as a view) and length field, for the abstraction. |
 | new, len, get, insert, remove, get_mut | `ochr-2p/HashMap.lean` | `MapNew`, `MapLen`, `MapGet`, `MapInsert`, `MapRemove`, `MapGetMut` (regions `new` … `get_mut`) | Pending D66, as `ochr`. As `ochr`. |
 | Model and agreement | `ochr-2p/HashMap.lean` | block `HashMapModel`: `MMap`, `MNew`, `MLen`, `MGet`, `MInsert`, `MRemove`, `MWrite`, `MInv`, `Abs`; `MGetNew` (M4), `MGetInsertSame` (M5), `MGetInsertOther` (M6), `MGetRemoveSame` (M8), `MGetRemoveOther` (M9), `MLenNew` (M11), `MLenInsert` (M12), `MLenRemove` (M13), `MWriteGet` (M14), `MWriteLen` (M15). Block `HashMapSolution`: `AbsInv`, `AbsNew`, `AgreeLen`, `AgreeGet`, `AgreeInsert`, `AgreeInsertResult`, `AgreeRemove`, `AgreeRemoveResult`, `AgreeWrite` | The model is the solver's pure finite map (no borrows, no assignment in its block; the grader checks), with a model invariant `MInv` (may be `⊤`); M4–M15 are H4–H15 about it (H7 and H10 have none: the agreement says `insert` and `remove` return `MGet` of the model before). `Abs(cap, s, len)` maps a map's buckets (a view) and length to the model; `AbsOf(cap, m)` applies it to a map value. The agreement holds under the concrete `Inv`, and `AbsInv : Inv(m) ⟹ MInv(AbsOf(m))`. H1–H3 and H16–H18 concern the in-place map only and remain the solver's, as in `ochr`. |
 | Inv | `ochr-2p/HashMap.lean` | `Inv` (region `inv`) | A hole, as `ochr`: the invariant on maps, needed by the agreement. |
