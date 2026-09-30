@@ -41,5 +41,5 @@ ochr DropProbe uses Fixtures {
 }
 #eval IO.println (run "DropProbe" DropProbe).show
 #guard (run "DropProbe" DropProbe).allAsExpected
-#guard (run "DropProbe" DropProbe { d53 := false }).allAsExpected
+#guard (run "DropProbe" DropProbe {}).allAsExpected
 #guard (run "DropProbe" DropProbe).count == 5

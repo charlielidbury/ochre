@@ -48,8 +48,6 @@ def switchCfg (c : Config) : String → Option Config
   | "D48.3" | "piUnder" => some { c with piUnder := false }
   | "D49.3" | "proofDataFields" => some { c with proofDataFields := false }
   | "D52" | "injective" => some { c with injective := false }
-  | "+D53" | "d53" => some { c with d53 := true }           -- D53 on (the default now; kept for old command lines)
-  | "moves" | "D53" => some { c with moves := false }       -- D53: runtime reads of non-copy data move
   | "ghosts" | "D53c" => some { c with ghosts := false }     -- D53 (c): a move leaves a ghost erased terms read
   | "fnRule" | "D53e" => some { c with fnRule := false }     -- D53 (e): calls do not consume their function
   | "D54" | "classInType" => some { c with classInType := false }

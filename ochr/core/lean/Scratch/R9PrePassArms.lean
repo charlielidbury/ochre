@@ -19,4 +19,4 @@ ochr R9 {
   def B6 : Nat := (let n = 0; let a = match n { Z => refl, S _ => 0 }; n)
 }
 #eval IO.println (run "R9" R9).show
-#eval IO.println (run "R9 (D53 on)" R9 { d53 := true }).show
+#eval IO.println (run "R9 (D53 on)" R9 {}).show

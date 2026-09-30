@@ -16,11 +16,11 @@ def timedRun (cfgRef : IO.Ref Config) (b : Block) : IO (List (String × Bool × 
   let sink ← IO.mkRef (0 : Nat)
   -- the block's library (`Prelude`, then what the blocks it `uses` export), checked first
   -- but not timed
-  let lib := libOf (blockCfg b (← cfgRef.get)) 2000000 b
+  let lib := libOf (← cfgRef.get) 2000000 b
   let p := lib ++ b.decls
   for (d, i) in p.zipIdx do
     let t0 ← IO.monoNanosNow
-    let cfg := blockCfg b (← cfgRef.get)
+    let cfg ← cfgRef.get
     let ok : Bool := match resolveProgram p d with
       | .error _ => false
       | .ok df =>

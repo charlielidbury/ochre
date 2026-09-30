@@ -284,18 +284,6 @@ open Ochr.Registry in
   ["Functions.WV:accepted", "Subsingletons.EffL:accepted", "Subsingletons.EffLNoop:accepted",
    "ErasureBySyntax.LieH:accepted", "Sorts.W:accepted", "Sorts.f:accepted", "Sorts.TT:accepted",
    "Sorts.g2:accepted", "Sorts.k:accepted", "Sorts.K1:accepted", "Sorts.K2:accepted"]
--- D53 switched off: reads copy everything, so data is duplicated without `clone`, and a place
--- moved out through a borrow is not caught (the cost model's rule, not the logic's)
-open Ochr.Registry in
-#guard rowOk { moves := false }
-  ["Moves.UseAfterMove:accepted", "Moves.TwiceNat:accepted", "Moves.TakeFromBorrow:accepted",
-   "Moves.ReturnMovedBorrow:accepted", "Moves.ClosureMovesCapture:accepted", "Moves.ClosureMoved:accepted",
-   "Moves.MoveInArm:accepted", "Moves.RetMoved:accepted", "Moves.A1:accepted", "Moves.A2:accepted",
-   "Moves.B1:accepted", "Moves.B2:accepted", "Moves.B3:accepted", "Moves.B4:accepted", "Moves.N1:accepted",
-   "Moves.N2:accepted", "Moves.N3:accepted", "Moves.ThroughLocal:accepted", "Moves.P1:accepted",
-   "Moves.P2:accepted", "Moves.FullMove:accepted", "Moves.PartMove:accepted",
-   "Moves.PartMoveOpaque:accepted", "Moves.Thm1:accepted", "Moves.TailMove:accepted", "Moves.Q1:accepted",
-   "Moves.K1:accepted"]
 -- D53 (c) switched off: a move leaves `⊥`, so a proof that mentions a moved value fails
 open Ochr.Registry in
 #guard rowOk { ghosts := false }

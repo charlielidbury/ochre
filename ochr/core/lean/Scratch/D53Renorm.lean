@@ -14,5 +14,4 @@ ochr D53Renorm {
     match n { Z => refl, S _ => refl }
   )
 }
-#eval IO.println (run "D53Renorm" D53Renorm { d53 := true }).show
-#eval IO.println (run "D53Renorm" D53Renorm { d53 := true, moves := false }).show
+#eval IO.println (run "D53Renorm" D53Renorm {}).show

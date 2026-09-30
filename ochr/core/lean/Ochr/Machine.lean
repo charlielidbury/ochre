@@ -263,7 +263,7 @@ partial def endBorrow (l : Nat) : M Unit := do
     | some (c, rest) =>
       -- D53 (h): moving out through a borrow is allowed if the content is whole again when
       -- the borrow ends
-      if (← get).cfg.movesOn && c.hasHole then
+      if c.hasHole then
         err s!"[D53] a borrow ends while its content is partly moved out ({c})"
       setAt p rest
       substEnv (.loan l) c false
@@ -391,11 +391,11 @@ partial def readPlace (p : Place) : M Value := do
   match v with
   | .bot => err s!"[Read] {← ppPlace p} was moved out or its borrow ended (reading ⊥)"
   | .ghost w =>
-    if erased && cfg.ghostsOn then return w.unghost
+    if erased && cfg.ghosts then return w.unghost
     err s!"[Read] {← ppPlace p} was moved out (D53)"
   | .borrow _ _ => logEffect p "moves"; setPlace p .bot; pure v
   | _ =>
-    if !cfg.movesOn || v == .proof then return v
+    if v == .proof then return v
     if erased then return v.unghost
     -- read in place: not consumed, but it must be there (D53: a call's head, the Fn rule;
     -- a stuck block's read-only capture, as the match inspects its place)
@@ -404,10 +404,10 @@ partial def readPlace (p : Place) : M Value := do
       return v
     if v.hasHole then err s!"[Read] {← ppPlace p} was partly moved out (D53)"
     if ← copyRead p v then return v
-    if cfg.fnRuleOn && (← isCapture p) then
+    if cfg.fnRule && (← isCapture p) then
       err s!"[D53] a closure's body moves a captured value out ({← ppPlace p}); a closure may run again: clone it"
     logEffect p "moves"
-    setPlace p (if cfg.ghostsOn then .ghost v else .bot)
+    setPlace p (if cfg.ghosts then .ghost v else .bot)
     pure v
 
 /-- D53: reading `p` (holding `v`) copies: its type is a copy type, or it holds a function
@@ -418,9 +418,9 @@ partial def copyRead (p : Place) (v : Value) : M Bool := do
 
 partial def isCopyValue (T : Value) (v : Value) : M Bool := do
   match T, v with
-  | .tPi .., .gfn _ => pure (← get).cfg.fnRuleOn
+  | .tPi .., .gfn _ => pure (← get).cfg.fnRule
   | .tPi .., .clo cs _ =>
-    if !(← get).cfg.fnRuleOn then return false
+    if !(← get).cfg.fnRule then return false
     cs.allM fun c => do
       match c with
       | .proof | .tNat | .tUnit | .tRef _ | .tInd .. | .tEq .. | .tPi .. | .sort _ => pure true
@@ -438,7 +438,7 @@ partial def isCapture (p : Place) : M Bool := do
 partial def matchContent (p : Place) : M Value := do
   match ← content p with
   | .ghost w =>
-    if (← get).erasedDepth > 0 && (← get).cfg.ghostsOn then pure w
+    if (← get).erasedDepth > 0 && (← get).cfg.ghosts then pure w
     else err s!"[Match] on {← ppPlace p}, which was moved out"
   | v => pure v
 
@@ -450,10 +450,8 @@ partial def logEffect (p : Place) (kind : String) : M Unit := do
     if kind == "moves" || kind == "assigns" then
       let isMove := kind == "moves"
       modify fun s => { s with placeLog := s.placeLog.push (f, i, p, isMove) }
-      -- (a step through a local borrow matters only for data moves, D53)
-      if (← get).cfg.movesOn then
-       if let some (i', ss) ← throughLocalBorrow f i p then
-         modify fun s => { s with placeLog := s.placeLog.push (f, i', ss.foldl stepPlace (Place.var 0), isMove) }
+      if let some (i', ss) ← throughLocalBorrow f i p then
+        modify fun s => { s with placeLog := s.placeLog.push (f, i', ss.foldl stepPlace (Place.var 0), isMove) }
     if (← get).cfg.confine then
       let root := (← get).env[f]!.binds[i]!.hint.name
       modify fun s => { s with effects := s.effects.push { f, i, kind, place := p, root } }
@@ -540,7 +538,7 @@ partial def borrowPlace (p : Place) : M Value := do
   | .bot | .ghost _ => err s!"[Borrow] {← ppPlace p} was moved out (borrowing ⊥)"
   | .borrow _ _ => err "[Borrow] a borrow of a borrow (&&T is outside the core)"
   | _ =>
-    if (← get).cfg.movesOn && v.hasHole then
+    if v.hasHole then
       err s!"[Borrow] {← ppPlace p} was partly moved out (D53)"
     logEffect p "borrows"
     let l ← freshLoan
@@ -1114,20 +1112,20 @@ partial def capture (t : Term) : M (List Value × Term) := do
     | .bot => err "a closure or Π-type captures a moved place"
     | .ghost w =>
       -- D53: an erased closure or Π-type reads a moved value's ghost
-      if (← get).erasedDepth > 0 && (← get).cfg.ghostsOn then vals := vals.push w.unghost
+      if (← get).erasedDepth > 0 && (← get).cfg.ghosts then vals := vals.push w.unghost
       else err "a closure or Π-type captures a moved place"
     | _ =>
-      if (← get).cfg.movesOn && (← get).erasedDepth > 0 then vals := vals.push v.unghost
+      if (← get).erasedDepth > 0 then vals := vals.push v.unghost
       else
         vals := vals.push v
         -- D53: a runtime closure moves the variables it captures whose types are not copies
-        if (← get).cfg.movesOn && !(v matches .proof) then
+        if !(v matches .proof) then
           if v.hasHole then err "[D53] a closure captures a place that was partly moved out"
           unless ← copyRead p v do
-            if (← get).cfg.fnRuleOn && (← isCapture p) then
+            if (← get).cfg.fnRule && (← isCapture p) then
               err s!"[D53] a closure's body moves a captured value ({← ppPlace p}) into a closure; clone it"
             logEffect p "moves"
-            setPlace p (if (← get).cfg.ghostsOn then .ghost v else .bot)
+            setPlace p (if (← get).cfg.ghosts then .ghost v else .bot)
   let idx (o : Nat) : Nat := (fvs.findIdx? (· == o)).getD 0
   let t0 := if through.isEmpty then t else
     t.mapFreePlace (fun c q => (if through.contains q.root then q.stripDeref else q).mapRoot fun j => .var (j + c)) 0
@@ -1929,7 +1927,7 @@ partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
     (cls? : Option Nat := none) : M (Value × Option Value) := do
   modify fun s => { s with headEval := true }
   -- D53 (e): a call does not consume the function it calls (read in place)
-  if (← get).cfg.fnRuleOn && (f matches .place _) then modify fun s => { s with inPlace := true }
+  if (← get).cfg.fnRule && (f matches .place _) then modify fun s => { s with inPlace := true }
   let (fv, fT) ← eval typed f
   modify fun s => { s with inPlace := false }
   pushTemp fv
@@ -2101,7 +2099,7 @@ partial def runBodyCore (fv : Value) (cs : List Value) (t : Term) (ws : Array Va
 ends: a function may not hand back a borrow of a place it moved out of. -/
 partial def wholeReturned (v : Value) : M Unit := do
   if let .borrow _ c := v then
-    if (← get).cfg.movesOn && c.hasHole then
+    if c.hasHole then
       err s!"[D53] a returned borrow's content is partly moved out ({c})"
 
 partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array Value)
@@ -2167,7 +2165,7 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
 call, must be whole. [Close] seals the borrowed place's content, which hides a hole, and an
 erased call's writes vanish at runtime, so neither can make it whole before the borrow ends. -/
 partial def wholeBorrowArgs (ws : Array Value) (what : String) : M Unit := do
-  if !(← get).cfg.movesOn || (← get).erasedDepth > 0 then return
+  if (← get).erasedDepth > 0 then return
   for (w, i) in ws.toList.zipIdx do
     if let .borrow _ u := w then
       if u.hasHole then
@@ -2212,7 +2210,7 @@ partial def closeCall (fv : Value) (ws : Array Value) (kind : Kind) (B : Option 
   let cell (d j : Nat) : Term := .place (.var (d + m - 1 - j))
   -- D53: the final read of a sealed program (its `K`) is an observation: it copies, while
   -- the program before it runs with runtime semantics
-  let peek (t : Term) : Term := if cfg.movesOn then .prim "peek" [t] else t
+  let peek (t : Term) : Term := .prim "peek" [t]
   match kind with
   | .ref =>
     let k ← freshLoan
@@ -2670,11 +2668,9 @@ read is copied. A borrow variable read as a whole is a move (reading a borrow mo
 assigning a borrow variable as a whole moves it too (passing `&x` would be `&&T`). -/
 partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof : Bool) :
     M (Value × Option Value) := do
-  let moved ← if (← get).cfg.movesOn then
-      moved.foldlM (fun acc q => do
-        let q' ← movedPlace q
-        pure (if acc.contains q' then acc else acc ++ [q'])) []
-    else pure moved
+  let moved ← moved.foldlM (fun acc q => do
+      let q' ← movedPlace q
+      pure (if acc.contains q' then acc else acc ++ [q'])) []
   let f ← topIdx
   let nb := (← get).env[f]!.binds.size
   -- the free places used, re-rooted at the frame index, with their capture mode
@@ -2710,14 +2706,12 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
       caps := caps.push (q, mode)
   -- D53 (fuzz-port Q): a place some arm moved out whole that is a strict prefix of captures
   -- (a closure in an arm capturing `q0` for its `q0.1`) is moved in whole, covering them
-  if (← get).cfg.movesOn then
-    for m in moved do
-      if caps.any (fun (c, _) => placePrefix m c && !placeEq m c) then
-        caps := (caps.filter fun (c, _) => !placePrefix m c).push (m, 2)
+  for m in moved do
+    if caps.any (fun (c, _) => placePrefix m c && !placeEq m c) then
+      caps := (caps.filter fun (c, _) => !placePrefix m c).push (m, 2)
   -- D53 (fuzz-port M2): a capture that some arm moves out whole is moved in, whatever it is
   -- (`*x0`, `n1.1`), as the direct path moves it
-  if (← get).cfg.movesOn then
-    caps := caps.map fun (q, k) => if moved.any (placeEq · q) then (q, 2) else (q, k)
+  caps := caps.map fun (q, k) => if moved.any (placeEq · q) then (q, 2) else (q, k)
   -- a proof is never taken by `&` (D48 (1): only data is borrowed): its value is `⋆`, so an
   -- arm's write through a pattern variable of a matched proof (a field, a fresh value by
   -- D49 (3), in a proof position by D45) is local to the block's own copy (R8, fuzz-port)
@@ -2729,43 +2723,41 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
   -- moved while `q1.2` is lent; the block's matches on the split place take the arm of its
   -- constructor. A place used whole otherwise than as a scrutinee is moved in whole.
   let mut split : List (Place × Option Nat) := []
-  if (← get).cfg.movesOn then
-    let mut todo := caps.toList
-    let mut out : Array (Place × Nat) := #[]
-    while !todo.isEmpty do
-      let (q, k) := todo.head!
-      todo := todo.tail!
-      let inner := moved.filter fun m => placePrefix q m && !(placeEq m q)
-      if k == 2 || inner.isEmpty then out := out.push (q, k); continue
-      if wholeUses.any (fun (p, pk) => placeEq p q && pk != .scrut) then out := out.push (q, 2); continue
-      let children : Option (Option Nat × List Place) ← match ← content q with
-        | .ind t c _ _ fs => do
-          let names ← tryCatch (do
-              let d ← lookupInd t
-              pure ((d.ctors[c]?.map (·.2.map (·.1))).getD [])) fun _ => pure []
-          pure (some (some c, fs.zipIdx.map fun (_, i) => Place.field ⟨t, c, i, names.getD i s!"f{i}"⟩ q))
-        | .succ _ => pure (some (none, [Place.fst q]))
-        | _ => pure none
-      match children with
-      | none => out := out.push (q, 2)
-      | some (ctor, chs) =>
-        split := (q, ctor) :: split
-        for ch in chs do
-          let under := uses.filter fun (p, _) => placePrefix ch p
-          if under.isEmpty && !(moved.any fun m => placePrefix ch m) then continue
-          let m := under.foldl (fun m (_, k) => max m k) 0
-          todo := todo ++ [(ch, if moved.any (placeEq · ch) then 2 else m)]
-    caps := out
+  let mut todo := caps.toList
+  let mut out : Array (Place × Nat) := #[]
+  while !todo.isEmpty do
+    let (q, k) := todo.head!
+    todo := todo.tail!
+    let inner := moved.filter fun m => placePrefix q m && !(placeEq m q)
+    if k == 2 || inner.isEmpty then out := out.push (q, k); continue
+    if wholeUses.any (fun (p, pk) => placeEq p q && pk != .scrut) then out := out.push (q, 2); continue
+    let children : Option (Option Nat × List Place) ← match ← content q with
+      | .ind t c _ _ fs => do
+        let names ← tryCatch (do
+            let d ← lookupInd t
+            pure ((d.ctors[c]?.map (·.2.map (·.1))).getD [])) fun _ => pure []
+        pure (some (some c, fs.zipIdx.map fun (_, i) => Place.field ⟨t, c, i, names.getD i s!"f{i}"⟩ q))
+      | .succ _ => pure (some (none, [Place.fst q]))
+      | _ => pure none
+    match children with
+    | none => out := out.push (q, 2)
+    | some (ctor, chs) =>
+      split := (q, ctor) :: split
+      for ch in chs do
+        let under := uses.filter fun (p, _) => placePrefix ch p
+        if under.isEmpty && !(moved.any fun m => placePrefix ch m) then continue
+        let m := under.foldl (fun m (_, k) => max m k) 0
+        todo := todo ++ [(ch, if moved.any (placeEq · ch) then 2 else m)]
+  caps := out
   -- D53 (fuzz-port M2b, N2): a borrow variable the block moves in whole is ended by the
   -- block's frame, so an arm that moves out through it (and does not restore it) leaves it
   -- partly moved when it ends
-  if (← get).cfg.movesOn then
-    for (q, k) in caps do
-      if let .var o := q then
-        let b := (← get).env[f]!.binds[nb - 1 - o]!
-        if k == 2 && (b.val.isBorrow || (b.ty matches some (.tRef _))) &&
-            moved.any (fun m => m.root == o && m.steps.2.head? == some .deref) then
-          err s!"[D53] a borrow ends while its content is partly moved out ({b.hint.name}: moved into a stuck match whose arm moves out through it)"
+  for (q, k) in caps do
+    if let .var o := q then
+      let b := (← get).env[f]!.binds[nb - 1 - o]!
+      if k == 2 && (b.val.isBorrow || (b.ty matches some (.tRef _))) &&
+          moved.any (fun m => m.root == o && m.steps.2.head? == some .deref) then
+        err s!"[D53] a borrow ends while its content is partly moved out ({b.hint.name}: moved into a stuck match whose arm moves out through it)"
   -- order the captures by frame position (oldest binding first), then by path
   let capsS := caps.qsort fun (a, _) (b, _) => a.root > b.root || (a.root == b.root && (a.steps.2.length < b.steps.2.length))
   let n := capsS.size
@@ -2799,7 +2791,7 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
     | _ =>
       -- D53: a place the block only reads is read in place, not consumed
       doms := doms.push T
-      args := args.push (if (← get).cfg.movesOn then .prim "inplace" [Term.place q] else Term.place q)
+      args := args.push (.prim "inplace" [Term.place q])
   let capsL := capsS.toList
   let mt := if split.isEmpty then mt else mt.selectArms (fun p => (split.find? (placeEq ·.1 p)).map (·.2)) 0
   let body := mt.mapFreePlace (fun c p =>

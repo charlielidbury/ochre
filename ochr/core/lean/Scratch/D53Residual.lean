@@ -44,4 +44,4 @@ ochr D53Residual {
   -- was: def N5Run : Nat := let c = 1; N5(&c); c
   reject def N5b (x0 : &Nat) : &Nat := (match *x0 { Z => x0, S p2 => let a3 = *x0; x0 })
 }
-#eval IO.println (run "D53Residual" D53Residual { d53 := true }).show
+#eval IO.println (run "D53Residual" D53Residual {}).show

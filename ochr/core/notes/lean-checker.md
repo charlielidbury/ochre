@@ -1283,3 +1283,18 @@ Regressions (ScrutineeTypes):
 - `M2Zero`, accepted: at `h(0)` the type is `Nat`.
 
 1111 verdicts.
+
+## 47. The copy system deleted
+
+Since both case studies check under D53 (`Test.preD53` was empty), the old copy-on-read semantics is deleted. Reads of data whose type is not a copy type move; nothing in the checker copies them "because D53 is off". What is gone:
+- `Config.d53`, and the helpers `movesOn`, `ghostsOn`, `fnRuleOn` (each was `d53 && …`);
+- the `moves` switch and its ledger row (class `cost`, witnesses `Moves.TwiceNat`, `Moves.ClosureMovesCapture`), so the `cost` class is gone too;
+- `Test.preD53` and `Test.blockCfg` (the runner checks every block, case studies included, under the one configuration);
+- every path gated on `movesOn`: [Read]'s copy of non-copy data; closing off's `peek` and `inplace` wrappers, the moved-place refinement (`movedPlace`), the per-sub-place capture split and the partly-moved-borrow check; the effect log's steps through local borrows; the hole checks on moved-out borrows;
+- the fuzzer's `--switch +D53`/`d53` (they turned it on) and `--switch moves`/`D53`.
+
+*Kept as rules:* `ghosts` (D53 (c): a move leaves a ghost that erased terms still read; off, a move leaves `⊥` and a proof mentioning a moved value fails) and `fnRule` (D53 (e): a call does not consume its function, and closure bodies do not move their captures; off, calls consume and a closure is never a copy). Both are genuine rules within move semantics, not a way back to copying, and each keeps its ledger row.
+
+The pre-pass assertion normalises `trace`, `ghosts` and `fnRule` (`prePassAssert`), as before minus `d53` and `moves`.
+
+*Ledger:* 51 rows: soundness 21, false lemma 1, model 4, policy 4, completeness 21. 1111 verdicts, unchanged.

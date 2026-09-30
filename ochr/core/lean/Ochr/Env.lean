@@ -152,9 +152,6 @@ structure Config where
                                  -- only; the borrow becomes a ghost, still holding the others (meta-order's Bad2)
   abstractTypes : Bool := true   -- K3: an abstract type's constructors and matches only in erased positions and model code
   unsizedTypes : Bool := true    -- K2: outside model code, a place of an unsized type is only borrowed at runtime
-  d53 : Bool := true             -- D53 applies (off only for the case studies not yet adapted, `Test.preD53`);
-                                 -- `moves`, `ghosts`, `fnRule` switch its parts
-  moves : Bool := true           -- D53: a runtime read of data whose type is not a copy type moves it; erased reads copy
   ghosts : Bool := true          -- D53 (c): a move leaves a ghost of the value, which erased terms still read
   fnRule : Bool := true          -- D53 (e): a call does not consume its function; a closure is copy iff its captures are, and its body may not move them out
   unitNorm : Bool := false       -- counterfactual D50: the unit laws normalise stored types (v2.0 as first built)
@@ -165,17 +162,11 @@ structure Config where
   trace : Bool := false          -- record goals, splits and call types (for inspection)
 deriving Inhabited, Repr, BEq
 
-/-- D53's parts, where D53 applies (`d53`). -/
-def Config.movesOn (c : Config) : Bool := c.d53 && c.moves
-def Config.ghostsOn (c : Config) : Bool := c.d53 && c.ghosts
-def Config.fnRuleOn (c : Config) : Bool := c.d53 && c.fnRule
-
 /-- The pre-pass is checked against the after-the-fact classification under the rules as
 they stand; a counterfactual run switches a rule off and measures that alone. D53's switches
-do not change what is erased, so the blocks checked without D53 (`preD53`) are checked too. -/
+do not change what is erased, so their counterfactual runs are checked too. -/
 def Config.prePassAssert (c : Config) : Bool :=
-  c.prePass && { c with trace := false, d53 := ({} : Config).d53, moves := true, ghosts := true, fnRule := true }
-    == ({} : Config)
+  c.prePass && { c with trace := false, ghosts := true, fnRule := true } == ({} : Config)
 
 /-- D41: one assignment, borrow or move, by the position of its place's root. It is
 `pending` once an erased run it belongs to has affected a place outliving that run: an

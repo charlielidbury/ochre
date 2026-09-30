@@ -12,4 +12,4 @@ ochr D53Renorm3 {
   )
   def DataSplitNoH (n : Nat) : Nat := match n { Z => 0, S _ => 1 }
 }
-#eval IO.println (run "D53Renorm3" D53Renorm3 { d53 := true }).show
+#eval IO.println (run "D53Renorm3" D53Renorm3 {}).show

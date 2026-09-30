@@ -116,7 +116,6 @@ def switches : List (String × Config) :=
    ("D56 (v2.1): J computes only when its endpoints are convertible", { jStuck := false }),
    ("D58 (v2.1): a zero-arm match outside a proof position is stuck, not ⋆", { zeroArmStuck := false }),
    ("D55 (v2.1): sorts are syntactic (one notion of proposition)", { sortsSyntactic := false }),
-   ("D53: a runtime read of data whose type is not a copy type moves it", { moves := false }),
    ("D53 (c): a move leaves a ghost that erased terms still read", { ghosts := false }),
    ("D53 (e): the Fn rule (a call does not consume its function; closure bodies do not move their captures)", { fnRule := false }),
    ("D59 (refined): η-normal forms at Unit (the readback at Unit is (); [Close] has no Unit row)", { unitEta := false }),
@@ -136,9 +135,7 @@ def switches : List (String × Config) :=
 * `policy`: it accepts only programs that are true under the other rules (a fail-safe or
   a stability condition, with no witness here);
 * `completeness`: it only rejects good programs;
-* `cost`: it accepts programs that copy data whose type is not a copy type without saying
-  so (`clone`), or leave a borrowed place partly moved out: the cost model's rule (D53),
-  not the logic's. -/
+ -/
 def rowClass : List (String × List String) :=
   [("soundness", ["Erasure.BoomP2"]),
    ("soundness", ["Erasure.N1Closed", "Erasure.QBoom", "ErasureBySyntax.BoomP"]),
@@ -185,7 +182,6 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("completeness", []),
    ("model", ["Sorts.K1", "Sorts.K2"]),
-   ("cost", ["Moves.TwiceNat", "Moves.ClosureMovesCapture"]),
    ("completeness", []),
    ("completeness", []),
    ("completeness", []),

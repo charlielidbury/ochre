@@ -41,4 +41,4 @@ ochr D53Residual2 {
   reject def KBorrow (b0 : B2) : Nat × Nat := let a4 = (0, 0); let t = match b0 { F => G1(&a4.2, 0); 0, T => let s = a4.2; 0 }; a4
   reject def KWrite (b0 : B2) (n : Nat) : Nat := let t = match b0 { F => n := 1; 0, T => let s = n; 0 }; n
 }
-#eval IO.println (run "D53Residual2" D53Residual2 { d53 := true }).show
+#eval IO.println (run "D53Residual2" D53Residual2 {}).show

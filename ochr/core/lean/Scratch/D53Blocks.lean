@@ -30,4 +30,4 @@ ochr D53Blocks {
   reject def C1 (q0 : Nat × Nat) : Nat × Nat := match q0 { Mk(p, _) => let a = p; q0 }
   reject def C2 (x0 : &Nat) : Nat := *x0
 }
-#eval IO.println (run "D53Blocks" D53Blocks { d53 := true }).show
+#eval IO.println (run "D53Blocks" D53Blocks {}).show

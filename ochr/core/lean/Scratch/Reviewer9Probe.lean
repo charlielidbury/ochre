@@ -218,7 +218,7 @@ ochr R9Bad4 uses Std, Fixtures {
 }
 #eval IO.println (run "R9Bad4" R9Bad4).show
 #guard (run "R9Bad4" R9Bad4).allAsExpected
-#guard (run "R9Bad4" R9Bad4 { d53 := false }).allAsExpected
+#guard (run "R9Bad4" R9Bad4 {}).allAsExpected
 #guard (run "R9Bad4" R9Bad4).count == 5
 
 /-! ## D65 ([Drop] ends the borrows of a dying place; DECISIONS 37500b5b) is not implemented
