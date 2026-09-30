@@ -1,6 +1,6 @@
 # Reviewer 9: cold review of `notes/typed-fragment-proof.typ`
 
-Reviewer 9, 2026-09-30. Read: the whole paper (`paper/main.typ` and every section, the appendix included), `RULES.md`, the proof, the plan it carries out (`notes/typed-fragment-plan.md`), the cited `meta-lean` lemmas, and the two cited probes. This review is of the proof as of commit c0e3b665, which records the planned ghost-borrow fix for DropProbe and follows the renumbered claims table; the file has not changed since. Probes of my own: `lean/Scratch/Reviewer9Probe.lean` (30 verdicts in six blocks, each asserted with `#guard`; run with `lake env lean Scratch/Reviewer9Probe.lean` from `ochr/core/lean`).
+Reviewer 9, 2026-09-30. Read: the whole paper (`paper/main.typ` and every section, the appendix included), `RULES.md`, the proof, the plan it carries out (`notes/typed-fragment-plan.md`), the cited `meta-lean` lemmas, and the two cited probes. This review is of the proof as of commit c0e3b665, which records the planned ghost-borrow fix for DropProbe and follows the renumbered claims table; the file has not changed since. Probes of my own: `lean/Scratch/Reviewer9Probe.lean` (34 verdicts in seven blocks, each asserted with `#guard`; run with `lake env lean Scratch/Reviewer9Probe.lean` from `ochr/core/lean`).
 
 ## Score: weak reject
 
@@ -181,6 +181,63 @@ At a ground valuation nothing closes off, nothing is stuck and no arm is checked
   - The title says "rule set v2.0", but the body is v2.1.
   - §0 P2 says D59 "will make" the `Unit` rows convertible; D59 is already in.
   - §7's `AddSub` still reads `let old = *x`, which moves `*x` under D53, so the later `&*x` fails. The paper has `clone(*x)`.
+
+## Addendum: D65, `[Drop]` ends the borrows of a dying place (DECISIONS, 37500b5b)
+
+The lead asked whether D65 can be broken. It can, through stuck blocks. I also tested a variant that closes the hole.
+
+### 16. GAP (a soundness witness against D65 as written; outside F): an arm of a stuck block can return an ended borrow, and closing the block off revives it
+
+*Location.* D65's argument ("a later use of an ended borrow errs on the symbolic path whenever it errs on the ground, since the symbolic path ends at least as much"), and its note that returning a borrow of a local is caught by "[Def]'s result check".
+
+*The witness* (probe block `R9D65`; see below for how it was run):
+
+```
+def Blk (n : Nat) (b : Nat) : Unit := (
+  let r : &Nat = match n { Z => (let q = 0; &q), S _ => &b };
+  *r := 5 )
+```
+
+- *Under D65, arm `Z` is ⊥.* Arm `Z` returns a borrow of its own local `q`. Before D65, dropping `q` was an error, so `Blk` was rejected. Under D65 the drop ends the borrow, so arm `Z` evaluates to ⊥ at type `&Nat`.
+- *[Split] passes it.* [Split] checks the arms and then discards their values; only their types (`&Nat`) have to agree.
+- *[Close] revives it.* The match is then closed off as a block. [Close]'s `&T` row gives the block's result a fresh live `borrow_k`, whose hole sits in the fill of `b` (the only place the block borrows).
+- *So the symbolic path accepts it.* On the symbolic path `*r := 5` writes through a live borrow, and `Blk` is accepted.
+- *And the ground run goes wrong.* At `n = 0` the ground run takes arm `Z` directly, `r` is ⊥, and `*r := 5` fails: "no such place *r: its path does not exist in ⊥".
+
+This is the one direction D65's argument rules out: the ground has ended a borrow that the symbolic path holds live. It happens because [Close]'s `&T` row assumes that the summarised code returns a live borrow into a borrowed argument. For functions, D44 and [Def]'s result check make that true. For a stuck block's arms, nothing checks it once a drop can produce ⊥.
+
+- `G(n, b : &Nat) : &Nat` returns such a block's result. Its generic result is the block's live borrow, so a [Def] check that the result is not ⊥ passes. Yet `G(0, &c)` returns an ended borrow.
+- `UseG(n, c) := let r = G(n, &c); *r := 7` is accepted at its generic call, because there `G` closes off to a live borrow. `UseG(0, 1)` then reads an ended borrow.
+
+The fuzzer finds the same shape on its own. On `--drop 100`, seed 1, 20,000 cases, pure D65 has 5 findings of a new kind, `renorm` ("no such place *r: its path does not exist in ⊥"). Case 220 is typical: its statement contains `let a0 = match n0 { Z => …; &n0, S p1 => let a2 = p1; &a2 }`. There, too, one arm returns a borrow of an arm-local. The symbolic statement holds a sealed program that errors when `n0` is refined, while the direct path runs.
+
+*Two smaller points.*
+
+- *The result check is not in the rules yet.* The appendix's [Def] requires only "pop succeeds and $A equiv G'$". Nothing in it rejects a ⊥ result, so D65 must add that premise, and the suite does not test it. The suite's dangling-return tests (`DanglingLocal`, `DanglingReborrow`, `DanglingTail`) have no borrow parameter, so D44 rejects them first. Under scratch D65 without the check, `RetLocal(x : &Nat) : &Nat := let a = 0; &a` is accepted, and no verdict in the suite changes. With D44 switched off, the three dangling returns flip to accepted: the `borrowParam` ledger row gains them.
+- *Theorem 10 (i) needs strengthening under D65.* Before D65, "the pop of its frame succeeds" excluded a dangling result. Under D65 the pop never errs, so for borrow-returning data functions (i) must also say that the result is live. Revision 2.1 of the proof (d2bfc99f), which assumes D65 and drops F5, should check this. `Blk` itself is outside F (F4 excludes stuck blocks).
+
+*A fix, tested.* D65 should end the dying place's borrowers only when they are held in bindings: a variable that is not used again, which is the reading of Rust's non-lexical lifetimes. When the borrower is a temporary, the drop should stay an error. A temporary is a value in flight: a let-block's or an arm's result, or a call's result while its frame pops, and it is always used next. With this variant:
+
+- `Blk`, `G`, `UseG` and `RetLocal` are rejected, with no separate result check in [Def] or [Split];
+- `Bad2`, `Bad4` and every `DropVariants` run are accepted and run without error, as D65 intends.
+
+Soundness in outline: for a borrower held in a temporary, (A4) puts the dying place among its symbolic owners whenever it is among its ground owners, so if the ground drop errs, the symbolic drop errs too.
+
+*How it was run.* The checker does not implement D65, so the verdicts in `R9D65` are today's (all four rejected by [Drop]). I ran three reflinked copies of the checker at 37a74e89 in a scratch directory; the shared checkout was not modified.
+
+- *Scratch D65.* In `dropTopBind` and `dropValue`, where [Drop] used to err, end the borrower of each live loan in the dying value, repeating until none is left, as [Access] does.
+- *The variant.* The same, but if that borrower's position is a temporary, err: `[Drop] q dies while a value in flight borrows it`.
+- *The baseline.* The same copy with the change reverted.
+
+| | today's checker | scratch D65 | variant |
+|---|---|---|---|
+| example and case-study verdicts that change | – | none | none |
+| ledger rows that change | – | `accessInside` gains `Naturality.PickEarly`; `borrowParam` gains the three dangling returns | `accessInside` gains `Naturality.PickEarly` |
+| `--drop 100`, seed 1, 20,000 cases: `exec` [Drop] findings | 7,228 | 0 | 0 |
+| same run: `renorm` findings | 0 | 5 | 0 |
+| same run: checked / rejected / invalid | 18,739 / 959 / 302 | 18,744 / 955 / 301 | 18,739 / 959 / 302 |
+
+All three runs also have 551 `adequacy: vacuous` findings, so those are not caused by D65.
 
 ## What holds up
 

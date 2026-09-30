@@ -89,12 +89,12 @@ Each package fills in its own table: for each item, the file and declaration tha
 
 | Id | File | Declaration | Notes |
 |---|---|---|---|
-| quicksort (signature) | | | |
-| sorted | | | |
-| count, perm | | | |
-| Q1 | | | |
-| Q2 | | | |
-| Partition scheme | | | |
+| quicksort (signature) | `aeneas/rust/src/lib.rs` | `quicksort` (region `quicksort`) | `pub fn quicksort(a: &mut [u64])`; its generated model is `quicksort.quicksort : Slice U64 → Result (Slice U64)`. No fuel: the solver proves termination (the recursion is on the slice's length). |
+| sorted | `aeneas/lean/Quicksort/Spec.lean` | `quicksort.sorted` (region `spec`: the whole file, which is not a solution file) | Over the list of a slice's elements (`s.val : List U64`): `∀ i j, i < j → j < l.length → l[i]!.val ≤ l[j]!.val`. |
+| count, perm | `aeneas/lean/Quicksort/Spec.lean` | `quicksort.count`, `quicksort.perm` (region `spec`) | `count` by recursion over the list; `perm l₁ l₂ := ∀ x, count x l₁ = count x l₂`. |
+| Q1 | `aeneas/lean/Quicksort/Properties.lean` | `Q1_sorted` | `quicksort a ⦃ a' => sorted a'.val ⦄`: total (terminates, and no panic from an out-of-bounds index or `usize` underflow). |
+| Q2 | `aeneas/lean/Quicksort/Properties.lean` | `Q2_perm` | `quicksort a ⦃ a' => perm a'.val a.val ⦄`, total as Q1. |
+| Partition scheme | `aeneas/rust/src/lib.rs` | the solver's partition function | Lomuto or Hoare, named by the solver in a comment (A1), checked by the human reader. |
 
 ### verus
 

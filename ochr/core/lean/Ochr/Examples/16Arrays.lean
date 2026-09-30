@@ -21,20 +21,20 @@ only a generic element `x : E` or a whole view is ever used twice, and that take
 the model `SwapS` twice) except one in quicksort's `Recurse`, which passes the recursion
 `rec` on to a second closure.
 
-Phase A uses today's checker, so these workarounds are marked where they occur, for phase B to
-remove:
+The representation is enforced (K2, K3): `SliceOf` is `unsized abstract`, and `Cell`,
+`CellsEnd` and `ArrayOf` are `abstract`, so outside model code (the `implemented by` bodies,
+and the model functions, which take or return a view by value) runtime code only borrows a
+view and never builds or takes apart the representation. The remaining workarounds are marked
+where they occur:
 * `[K1]` There is no universe of data types yet, so `&E` is not well formed for a type
   variable `E`, nor `&Cells(E, n)` at an unknown `n` (D48). Each cell's tail is therefore
   wrapped in the view type `SliceOf`, whose borrows are always well formed, and the one
   function that returns a borrow of an element, `GetMut`, is written for `Word` elements.
-* `[K2]` `SliceOf` should be unsized: runtime code could only borrow it.
-* `[K3]` `SliceOf`, `ArrayOf` and `Cell` should be abstract: runtime code could not match on
-  them, and the `[native]` functions would be linked to native code.
 * `[K4]` A struct cannot yet have a field of type `Array(E, cap)` (a type function applied to a
   parameter, D36), so the hashmap takes the model type as a parameter.
 * `[K6]` Quicksort recurses on fuel; with recursion on a measure it recurses on the length.
-* `[checker]` Two proofs name a conjunction's parts (`AndI`) where `⟨p, q⟩` would do: in
-  `AllGeJoin` and `SortedJoin` the inferred conjuncts are typed with a dead arm's refinement.
+* `[checker]` The scan's invariant is stated pointwise, one lemma per fact, where one
+  proposition with `Π`s inside went stale after a case split (see there).
 
 Defined in D57 and notes/arrays-library.md. -/
 
@@ -781,10 +781,6 @@ ochr ArrayBench uses ArrayLemmas {
   reject def GetMutReadNoop (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) :
       Id Unit (let r = GetMut(n, s, i, h); let x = *r; ()) () := refl
 
-  -- Reads move (D53), so `Read`'s model reads a copy of the view: taking the element out of
-  -- `*s` itself would end the borrow with the view partly moved out.
-  reject def ReadMoves (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (h : Lt(i, n)) : E := Nth(E, n, *s, i, h)
-
   -- Reading after a write, at the same index and at another.
   def ReadAfterSet (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (x : E) (h : Lt(i, n)) :
       Eq E (let c = *s; Set(E, n, &c, i, x, h); Read(E, n, &c, i, h)) x := NthSetSame(E, n, *s, i, x, h)
@@ -972,9 +968,10 @@ ochr ArrayBench uses ArrayLemmas {
   reject def Suffix (m : Word) (s : &Slice(Word, Succ(m))) : &Slice(Word, m) := (
     match *s { MkSlice(c) => match c { MkC(x, t) => &t } })
   reject def TwoParts (m : Word) (s : &Slice(Word, Succ(m))) : Unit := (
-    match *s { MkSlice(c) => match c { MkC(x, t) => (let a = &x; let b = &t; *a := Zero; Fill(Word, m, b, Zero)) } })
-  reject def Rebuild (s : &Slice(Word, Succ(Zero))) : Unit := (*s := MkSlice(MkC(Zero, MkSlice(End))))
-  -- A model function at runtime would need a view by value.
+    match *s { MkSlice(c) => match c { MkC(x, t) => (let a = &x; let b = &t; *a := Zero; Fill(Word, m, b, Succ(Zero))) } })
+  reject def Rebuild (s : &Slice(Word, Succ(Zero))) : Unit := (*s := MkSlice(MkC(W(7), MkSlice(End))))
+  -- A model function at runtime would need a view by value. (Under D53 alone, reading `*s`
+  -- would also end the borrow with the view moved out; `Read`'s model reads `clone(*s)`.)
   reject def ReadModel (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) : Word := Nth(Word, n, *s, i, h)
   -- In a statement, the model is unrestricted.
   def ReadIsNth (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) :
@@ -985,7 +982,7 @@ ochr ArrayBench uses ArrayLemmas {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ArrayBench" ArrayBench).allAsExpected
-#guard (run "ArrayBench" ArrayBench).count == 39
+#guard (run "ArrayBench" ArrayBench).count == 38
 
 /-! ## B2: quicksort
 
@@ -1230,12 +1227,6 @@ ochr Quicksort uses ArrayLemmas {
     }
   )
 
-  -- [checker] A conjunction built with its conjuncts named. `⟨p, q⟩` infers them from the
-  -- expected type, and in `AllGeJoin` and `SortedJoin` (after the dead arm `n := Zero`) that
-  -- inference sees a type from the dead arm (`SliceOf(CellsEnd)`); naming them avoids it.
-  def AndI (P : Prop) (Q : Prop) (p : P) (q : Q) : P ∧ Q := ⟨p, q⟩
-
-
   def AllGeJoin (n : Word) (k : Word) (l : Slice(Word, k)) (r : Slice(Word, Sub(n, k))) (h : Le(k, n)) (a : Word)
       (hl : AllGe(k, l, a)) (hr : AllGe(Sub(n, k), r, a)) : AllGe(n, JoinS(Word, n, k, l, r), a) by k := (
     match k {
@@ -1246,7 +1237,7 @@ ochr Quicksort uses ArrayLemmas {
           MkSlice(c) => match c {
             MkC(y, t) => (
               let ⟨hy, ht⟩ = hl;
-              AndI(Le(a, y), AllGe(m, JoinS(Word, m, k', t, r), a), hy, AllGeJoin(m, k', t, r, h, a, ht, hr))
+              ⟨hy, AllGeJoin(m, k', t, r, h, a, ht, hr)⟩
             ),
           },
         },
@@ -1268,9 +1259,8 @@ ochr Quicksort uses ArrayLemmas {
             MkC(a, t) => (
               let ⟨hla, hlt⟩ = hl;
               let ⟨hax, htx⟩ = hlx;
-              AndI(AllGe(m, JoinS(Word, m, k', t, r), a), Sorted(m, JoinS(Word, m, k', t, r)),
-                AllGeJoin(m, k', t, r, h, a, hla, AllGeWeaken(Sub(m, k'), r, x, a, hrx, hax)),
-                SortedJoin(m, k', t, r, h, x, hlt, htx, hr, hrx))
+              ⟨AllGeJoin(m, k', t, r, h, a, hla, AllGeWeaken(Sub(m, k'), r, x, a, hrx, hax)),
+                SortedJoin(m, k', t, r, h, x, hlt, htx, hr, hrx)⟩
             ),
           },
         },
@@ -2027,4 +2017,4 @@ ochr Quicksort uses ArrayLemmas {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Quicksort" Quicksort).allAsExpected
-#guard (run "Quicksort" Quicksort).count == 77
+#guard (run "Quicksort" Quicksort).count == 76
