@@ -8,6 +8,24 @@ Step 1 of the user's requirement: "when I look at any example in the paper, I wa
 
 Status values: **MATCH** (the code performs the printed rule; mechanism differences that cannot change a verdict are noted but do not count), **DIVERGES** (a verdict or a value can differ; "(paper)" when the printed rule is the one at fault and the checker does the sensible thing), **MISSING-IN-CHECKER** (a printed premise with no code), **CHECKER-ONLY** (behaviour no printed rule states). "Known, in progress" marks the divergences already reported by reviewer-6 (W1, W5) and reviewer-7 and queued for the checker lane (task #21, examples-tour on `ochr-core-lean`).
 
+## Status after D62/D63 (2026-09-30, ochr-core ad2bdd26)
+
+This note is the audit as of d671309b; the lead's decisions are D62 and D63 (DECISIONS.md). What has changed since, by item of the top 10 and by audit row:
+
+- **1, A1 (`Boom : False`)**: fixed by examples-tour, 969e3254 (generalisation records belong to their [Split] arm); `Scratch/A1Leak.lean`'s `F`, `Boom`, `FuzzLie`, `FuzzBoom` are now rejected. The paper's "records are global" text (A.105, A.406) needs the per-arm clause.
+- **2, `Nat` scrutinee type (T29, T32; §3.2)**: fixed. examples-tour's d528f111 (`natScrutinee`, with fuzz-port's M2), and this lane's 540035f7 (a declared inductive's match on a constructor checks the stored type too; regressions NatT, NatTUse, NatTNT, M2Run). fuzz-port's `--edep 100`: 0 findings in 10⁵.
+- **3, η via blocks (O10, C42)**: D62 decided (η for one-constructor data types); implemented, not landed: three hash-map proofs need adapting (GetMutFind, GetMutFindOther, GetMutInv).
+- **4, [T-Borrow]'s data premise (T7, §3.1)**: examples-tour's queue (A12), and D66 (`&A` iff `A : Type₀`).
+- **5, [J-stuck] (T19, E25)**: fixed, 3d15de1c. The machine is stuck; typing checks `t` on a private copy and closes the `J` off as a block ([T-J-stuck], sent to prop-paper). `jValue` deleted.
+- **6, confinement (T5, T17, E28, §3.5)**: `J`'s motive now on a confined private copy (3d15de1c). `Eq`'s sides not yet: confining them rejects the paper's own `QSCorrect`, whose `Eq` side borrows `*s`; the lead is deciding between confining and running them as `Id`'s sides are.
+- **7, capture through a block's borrow parameter (E18a, C5)**: fixed, 38966e3f; the old device is the counterfactual switch `blockRefCapture`.
+- **8, the printed stuck-block rule (O10)**: paper side (D63); the text follows once D62 lands, since D62 changes when a block is formed.
+- **9, `Id` in the machine (O4, C49)**: fixed, b7b0cb83 (`observeTyping`: a side stuck in the machine is observed again with the typing judgement).
+- **10, `.any` (T1b, T2, C10, C13)**: fixed, 38966e3f: a match whose arms disagree about being proofs has no declared type and is rejected wherever one is read; one reader of declared types (`propDecl` and its helpers deleted).
+- **C22, rewrite that finds nothing (T20a)**: fixed, af086351 (a no-op, as printed).
+- **Paper-only rows (T1a, T39, T46a, O3, E12, the [Ind] names, [Pair]/[Drop], the dead pointers, the unnamed prose rules)**: fixed by prop-paper, as the rule guard confirms, except the two pointers to functions this lane deleted (`propDecl`, `jValue`).
+- **§5–§6**: `Ochr/Rules.lean` (`Rule`, `Ext`, `fire`) and `Ochr/RuleGuard.lean` (report-only) landed, 8ef93227 and ad2bdd26. The `fire` calls are next.
+
 ## Summary
 
 Rows in the table of §1: 117 (111 for paper rules and definitions, some rows grouping a family such as the four [App-*] rules; 6 for surface forms and conveniences).

@@ -342,3 +342,5 @@ Rule: before assigning `p`, [Access] ends the loans in the part of `content(p)` 
 - loans inside a neutral are still ended, because their position is unknown (fail-safe);
 - reads, moves and borrows of `p` still end every loan inside `content(p)`, so a borrow passed to a call stays loan-free, as [Close]'s precondition needs.
 Why the two checking paths still agree: the symbolic path ends at least what the ground path ends, because neutrals are ended conservatively and refined values behave as on the ground.
+
+D67 clarified (meta-order, 2026-09-30): "loans inside a neutral are still ended" means neutrals in the part of `content(p)` that `p` owns. A neutral behind a borrow held in `content(p)` travels back to its owner with that borrow's content, like any loan behind a borrow, and is not ended. This is Rust's reading, and the more complete one. `x := Pick(n, &*x, &b)` is therefore accepted on both paths. The typed-fragment proof holds under either reading (the symbolic path still ends at least what the ground path does), and `Trav` is inside its fragment F once D67 lands.
