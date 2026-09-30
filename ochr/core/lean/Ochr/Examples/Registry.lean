@@ -132,10 +132,6 @@ def switches : List (String × Config) :=
 * `policy`: it accepts only programs that are true under the other rules (a fail-safe or
   a stability condition, with no witness here);
 * `completeness`: it only rejects good programs;
-* `subsumed`: it flips nothing on this suite, pending a decision (a rule that flips nothing
-  and is not needed is deleted, as D35's after-the-fact clauses were once the erasure
-  pre-pass decided erasure before a term runs): D19, whose witness falls to [Drop] since η
-  for `Unit` (D59: a stuck `Unit` call's result carries its arguments);
 * `cost`: it accepts programs that copy data whose type is not a copy type without saying
   so (`clone`), or leave a borrowed place partly moved out: the cost model's rule (D53),
   not the logic's. -/
@@ -144,7 +140,7 @@ def rowClass : List (String × List String) :=
    ("soundness", ["Erasure.N1Closed", "Erasure.QBoom", "ErasureBySyntax.BoomP"]),
    ("soundness", ["Owners.ClosedD18", "Owners.BadR"]),
    ("soundness", ["Recursion.KnotLBoom"]),
-   ("subsumed", []),
+   ("soundness", ["Borrows.V", "Borrows.W"]),
    ("soundness", ["Recursion.KnotBoom"]),
    ("soundness", ["Borrows.Dead"]),
    ("completeness", []),
@@ -193,7 +189,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 996
+def Ochr.Registry.expectedTotal : Nat := 1013
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

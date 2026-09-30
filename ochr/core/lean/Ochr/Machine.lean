@@ -215,16 +215,18 @@ partial def substEnv (x r : Value) (types : Bool) : M Unit := do
     if types then
       if let .bind f i := p then
         if let some T := (← get).env[f]!.binds[i]!.ty then
-          let T' ← substV x r T
+          -- a type's sealed programs re-run as types: erased, reads copy (D53, fuzz-port RN)
+          let T' ← withErased (substV x r T)
           modifyFrame f fun fr => { fr with binds := fr.binds.modify i ({ · with ty := some T' }) }
   if types then
-    let tys := (← get).absTy
-    let mut tys' := #[]
-    for T in tys do tys' := tys'.push (← substV x r T)
-    modify fun s => { s with absTy := tys' }
-    if let some g := (← get).goal then
-      let g' ← substV x r g
-      modify fun s => { s with goal := some g' }
+    withErased do
+      let tys := (← get).absTy
+      let mut tys' := #[]
+      for T in tys do tys' := tys'.push (← substV x r T)
+      modify fun s => { s with absTy := tys' }
+      if let some g := (← get).goal then
+        let g' ← substV x r g
+        modify fun s => { s with goal := some g' }
 
 /-- [Seal] `nf(⌈t⌉)`: run `t` from the empty environment. Its head call is marked
 (`Term.call _ _ true`) and is not eligible for [Close]; loans whose borrow is outside
@@ -1633,10 +1635,11 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     -- J(A, a, b, P, h, t) : P(b) for h : Eq A a b and t : P(a) (endpoints explicit, D23)
     if !typed then
       if (← get).cfg.jStuck && !(← jErased P) then
-        let A' ← onCopy (evalType A)
-        let (av, _) ← onCopy (eval false a)
-        let (bv, _) ← onCopy (eval false b)
-        let (Pv, _) ← onCopy (eval false P)
+        -- its endpoints and motive are type positions: erased, whatever path runs them (D53)
+        let A' ← onCopy (withErased (evalType A))
+        let (av, _) ← onCopy (withErased (eval false a))
+        let (bv, _) ← onCopy (withErased (eval false b))
+        let (Pv, _) ← onCopy (withErased (eval false P))
         let (v, _) ← eval false u
         return (← jValue A' av bv Pv v, none)
       return (← eval false u)
@@ -1645,7 +1648,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     let (bv, Tb) ← confinedCopy "J's endpoint" (eval true b)
     expectTy "J's first endpoint" Ta A'
     expectTy "J's second endpoint" Tb A'
-    let (Pv, PT) ← eval true P
+    let (Pv, PT) ← withErased (eval true P)
     let (_, Th) ← eval true h
     expectTy "J's equation" Th (← mkEqM A' av bv)
     let (v, Tu) ← eval true u
@@ -2158,15 +2161,16 @@ refined, sealed programs whose runs derive it may now make progress). -/
 partial def renormAll : M Unit := do
   for p in allPos (← get).env do
     setAt p (← renormV (← getAt p))
+  -- types re-normalise as types: erased, reads copy (D53)
   if let some g := (← get).goal then
-    let g' ← renormV g
+    let g' ← withErased (renormV g)
     modify fun s => { s with goal := some g' }
   let f := (← get).env.size
   for fi in [0:f] do
     let n := (← get).env[fi]!.binds.size
     for i in [0:n] do
       if let some T := (← get).env[fi]!.binds[i]!.ty then
-        let T' ← renormV T
+        let T' ← withErased (renormV T)
         modifyFrame fi fun fr => { fr with binds := fr.binds.modify i ({ · with ty := some T' }) }
 
 partial def renormV (v : Value) : M Value := do
@@ -2230,7 +2234,6 @@ builder produces (fresh abstract values for the fields), then close off. -/
 partial def splitArmsThenClose (mt : Term) (σ : Nat) (arms : List (M Value × Term))
     (expected : Option Value) : M (Value × Option Value) := do
   let fvs := mt.freeVars
-  let before ← fvs.mapM fun o => do getAt (← varPos o)
   let saved ← get
   let mut tys : Array Value := #[]
   let mut moved : List Place := []
@@ -2239,9 +2242,14 @@ partial def splitArmsThenClose (mt : Term) (σ : Nat) (arms : List (M Value × T
   let mut pending : Array Effect := #[]           -- D41: the arms' pending steps, judged after the block
   let f0 := (← get).env.size - 1
   let n0 := (← get).env[f0]!.binds.size
+  let mut wholeMoved : List Nat := []          -- D53: borrow variables some arm moves whole
+  let mut holedInside : List (Nat × String) := [] -- ... and those an arm leaves partly moved
   for (mk, arm) in arms do
     let r ← mk
     refine σ r
+    -- what the captured places hold under this arm's refinement, so that a move of a field
+    -- the arm's pattern exposed (`q0.1`, `n0`'s predecessor) is seen (fuzz-port M1)
+    let before ← fvs.mapM fun o => do getAt (← varPos o)
     let es := (← get).effects.size
     let (_, T) ← eval true arm
     allProof := allProof && (← getFlags).2
@@ -2257,12 +2265,26 @@ partial def splitArmsThenClose (mt : Term) (σ : Nat) (arms : List (M Value × T
     for (o, b) in fvs.zip before do
       let v ← getAt (← varPos o)
       -- the places some arm moved out (D53: at the granularity of the move, `q1.1`)
-      for ss in ← newHoles b v do
+      -- without D53 only a whole move can happen (a borrow variable read whole)
+      let hs ← if (← get).cfg.movesOn then newHoles b v
+        else pure (if (v == .bot || v matches .ghost _) && !(b == .bot || b matches .ghost _) then [[]] else [])
+      for ss in hs do
         let q := ss.foldl (fun q st => match st with
           | .deref => Place.deref q | .fst => .fst q | .snd => .snd q | .field g => .field g q) (Place.var o)
         unless moved.any (· == q) do moved := moved ++ [q]
+      -- a borrow variable: moved whole by this arm, or left partly moved through (M2b)
+      if b.isBorrow then
+        if hs.any (·.isEmpty) then wholeMoved := o :: wholeMoved
+        else if hs.any (fun ss => ss.head? == some .deref) then
+          holedInside := (o, (← get).env.back!.binds[(← get).env.back!.binds.size - 1 - o]!.hint.name) :: holedInside
     restoreKeep saved
     tys := tys.push T
+  -- D53 (fuzz-port M2b): a borrow that some arm moves whole is moved into the block, whose
+  -- frame then ends it; an arm that moves out through it leaves it partly moved when it ends
+  if (← get).cfg.movesOn then
+    for (o, n) in holedInside do
+      if wholeMoved.contains o then
+        err s!"[D53] a borrow ends while its content is partly moved out ({n}: moved into a stuck match by one arm, moved out through by another)"
   let B ← match expected with
     | some E => pure E
     | none =>
@@ -2428,6 +2450,7 @@ data (a move by an arm, D53; a borrow moved out). -/
 partial def newHoles (before after : Value) : M (List (List Step)) := do
   let hole (v : Value) : Bool := v == .bot || v matches .ghost _
   if hole after then return (if hole before then [] else [[]])
+  if !after.hasHole then return []
   match before, after with
   | .succ b, .succ v => return (← newHoles b v).map (Step.fst :: ·)
   | .borrow _ b, .borrow _ v => return (← newHoles b v).map (Step.deref :: ·)
@@ -2443,6 +2466,30 @@ partial def newHoles (before after : Value) : M (List (List Step)) := do
     pure out
   | _, _ => pure []
 
+/-- D53: a place an arm moved out, as it exists in the closed-off (unrefined) state. The
+arm's refinement may have exposed it (`q0.1` of an abstract pair, `n0`'s predecessor):
+through a value of a single-constructor type the abstract value is refined to that
+constructor, a total refinement (as a split with one arm); through any other, the move is
+of the longest prefix that exists, since some arm moves a part of it (fuzz-port M1). -/
+partial def movedPlace (q : Place) : M Place := do
+  if ← tryCatch (do discard (content q); pure true) (fun _ => pure false) then return q
+  let parent : Place → Option Place
+    | .deref p | .fst p | .snd p | .field _ p => some p
+    | .var _ => none
+  let some p := parent q | return q
+  let p ← movedPlace p
+  match ← content p with
+  | .abs σ =>
+    match ← absType σ with
+    | .tInd n ps =>
+      let d ← lookupInd n
+      if d.ctors.length == 1 then
+        refine σ (← ctorRefinement d ps 0)
+        movedPlace q
+      else pure p
+    | _ => pure p
+  | _ => pure p
+
 /-- Stuck blocks (RULES §3, v1.3): close a stuck match off as a call to an anonymous
 function of its free places, captured as Rust infers closure captures, on maximal place
 prefixes: a place some arm moves out of is moved in; otherwise a place written or
@@ -2451,6 +2498,11 @@ read is copied. A borrow variable read as a whole is a move (reading a borrow mo
 assigning a borrow variable as a whole moves it too (passing `&x` would be `&&T`). -/
 partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof : Bool) :
     M (Value × Option Value) := do
+  let moved ← if (← get).cfg.movesOn then
+      moved.foldlM (fun acc q => do
+        let q' ← movedPlace q
+        pure (if acc.contains q' then acc else acc ++ [q'])) []
+    else pure moved
   let f ← topIdx
   let nb := (← get).env[f]!.binds.size
   -- the free places used, re-rooted at the frame index, with their capture mode
@@ -2482,6 +2534,10 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
     if !hasPrefix && !(caps.any fun (c, _) => c == q) then
       let mode := (uses.filter fun (p, _) => placePrefix q p).foldl (fun m (_, k) => max m k) 0
       caps := caps.push (q, mode)
+  -- D53 (fuzz-port M2): a capture that some arm moves out whole is moved in, whatever it is
+  -- (`*x0`, `n1.1`), as the direct path moves it
+  if (← get).cfg.movesOn then
+    caps := caps.map fun (q, k) => if moved.any (· == q) then (q, 2) else (q, k)
   -- a proof is never taken by `&` (D48 (1): only data is borrowed): its value is `⋆`, so an
   -- arm's write through a pattern variable of a matched proof (a field, a fresh value by
   -- D49 (3), in a proof position by D45) is local to the block's own copy (R8, fuzz-port)

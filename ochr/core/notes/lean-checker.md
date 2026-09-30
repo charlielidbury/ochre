@@ -1046,3 +1046,49 @@ The fuzzer defaults to D53 off, and `--switch +D53` turns it on.
 When M1, M2, M2b, M3 and RN are fixed and the execution oracle shows no findings in at least 10⁵ cases, `d53` becomes true by default. The tour flips first, then the case studies as their lanes adapt.
 
 `preD53` is gone.
+
+## 36. D19 is soundness again; the `subsumed` class is gone
+
+fuzz-port found two D19 witnesses without a `Unit` call (`Scratch/D19Witness.lean` on ochr-fuzz-v2, `--diff --switch D19`). Both are now in `Borrows`, next to `BadA1`:
+- **`V`**, the primary witness, makes no call: `let a0 = match n0 { Z => &n0, S _ => &n0 }; *a0 := n0`. The stuck block returns a borrow of `n0`, so `n0` holds a sealed program with that borrow's loan inside. Reading `n0` must end the borrow, which is D19's "loans inside the content". Without D19, `V` is accepted, and `V(0)` writes through an ended borrow.
+- **`W`** (with `G2`) is [Close]'s precondition. It passes `&a`, holding `r`'s loan inside, to a stuck `Nat` call. The result goes to `out`, which is declared before `r`, so `r` dies first and [Drop] never sees the loan. Without D19, `W` is accepted and `W(1)` overwrites `a` while `r` borrows inside it.
+
+The D19 row is soundness (going wrong when run), with witnesses `V` and `W`.
+
+With it, no row flips nothing, and the `subsumed` class is removed. `classOk` now requires every row to flip something, and every non-completeness row to name a witness. These are the ledger's invariants: every rule is needed, and a rule that flips nothing is deleted.
+
+49 rows:
+- soundness 20;
+- false lemma 1;
+- model 4;
+- policy 2;
+- cost 1;
+- completeness 21.
+
+1001 verdicts.
+
+*RULES numbering:* the D53 draft's "P3 Reads move…" replaces the old P3 ("Data is copied, borrows are moved"). D53 is that principle's change, so there is no collision. RULES states D53 as the rule; the checker applies it only in `Moves` until acceptance.
+
+## 37. The D53 acceptance mechanisms (fuzz-port's execution oracle)
+
+fuzz-port's execution oracle runs accepted data functions at ground inputs, with reads moving. It found 15,567 programs in 10⁶ that the checker accepts and that go wrong when run. The principle behind every fix below is that a closed-off block's effect on its captured places equals the direct path's, moves included, and that whether a computation is a runtime one depends on where it runs, never on the code path the machine takes to run it.
+
+- **M1: a move of a field the arm's pattern exposed was lost.** `splitArmsThenClose` took `before` from the unrefined `σ`, which has no fields, so `newHoles` found nothing.
+  - `before` is now taken per arm, after the refinement.
+  - A moved place that does not exist in the closed-off (unrefined) state is mapped into it (`movedPlace`). If it runs through an abstract value of a single-constructor type, that value is refined to its constructor, which is total, like a split with one arm. So `q0.1` is moved in and `q0.2` stays. Otherwise the longest existing prefix is moved in: `n0`, since its predecessor exists only in one arm.
+  - `A1` and `A2` are now rejected; `A3` stays accepted.
+- **M2: a moved capture that is not a whole variable** (`*x0`, `*x1`) stayed a read-in-place capture. A capture that some arm moves out whole is now moved in (mode 2). `B1`, `B2`, `B3` are rejected.
+- **M2b: one arm moves a borrow into the block whole and another moves out through it.** The block's frame ends that borrow partly moved. `splitArmsThenClose` records, per borrow variable, which arms moved it whole and which left it holed inside, and rejects the block if both happen. `B4` is rejected.
+- **M3 (i): the untyped `J` read its endpoints at runtime depth.** `J`'s type, endpoints and motive are now evaluated erased on both paths. `J1` and `J1Run` are accepted.
+- **M3 (ii): an `Id` side writing a moved place.** It was already fixed by §34 (owners are typed by what the observation reads). `I1` and `I1Run` are accepted.
+- **RN: a split in a data function re-ran a type's sealed program as code**, so the program's reads moved. `substEnv`'s stored types, `absTy` and goal, and `renormAll`'s goal and stored types, are now re-normalised erased. `DataSplit` is accepted.
+
+*Regressions.* All twelve are in `Moves`: `A1`, `A2`, `A3`, `B1`–`B4`, `J1`, `J1Run`, `I1`, `I1Run`, `DataSplit`.
+
+*Ledger.* The `moves` row gains `A1`, `A2` and `B1`–`B4`. The `ghosts` row gains `J1` and `J1Run`: without ghosts, the erased endpoint reads `⊥`.
+
+*Cost with D53 off.* The per-arm comparison of captured values runs in full only with D53 on. Without D53 only a whole move can happen, and `newHoles` returns early on a value with no hole. Check times match the previous head up to machine load: with a load average of 16, every block was about 1.4× slower, uniformly.
+
+*With D53 on everywhere:* the tour has no failures. The case studies have 225, all of them missing clones or `Word`s, as before; Quicksort's count is 48, down from 52.
+
+1013 verdicts.
