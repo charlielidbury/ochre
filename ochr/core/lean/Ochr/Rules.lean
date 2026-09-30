@@ -44,7 +44,7 @@ inductive Rule where
   | TGlobal | TConst | TFix | CallType | TCall | TCallProof | Rec
   | TMatch | Split | SplitGen | TSplitGoal
   | TailSplit | TailGen | TailMatch | TailLet | TailSeq | TailEnd
-  | TMatchProp | TMatchErased | TailProp
+  | TMatchProp | TMatchErased | TMatchNone | TailProp
   -- definitions
   | Def | IndDecl | Const
 deriving BEq, Repr, Inhabited
@@ -67,14 +67,13 @@ def Rule.all : List Rule :=
    .TGlobal, .TConst, .TFix, .CallType, .TCall, .TCallProof, .Rec,
    .TMatch, .Split, .SplitGen, .TSplitGoal,
    .TailSplit, .TailGen, .TailMatch, .TailLet, .TailSeq, .TailEnd,
-   .TMatchProp, .TMatchErased, .TailProp,
+   .TMatchProp, .TMatchErased, .TMatchNone, .TailProp,
    .Def, .IndDecl, .Const]
 
-/-- The rule's name as the paper prints it. The paper defines some rules in prose without a
-bracketed name (drop, capture, stuck blocks, the clauses of `eq`); their names here are the
-ones the guard asks the paper to adopt (`RuleGuard.lean`, `unnamedInPaper`). -/
+/-- The rule's name as the paper prints it: in an inference rule, or as the label of a rule the
+appendix defines in prose (`*Drop* ([Drop])`, the `eq` clauses' `[Eq-inj]` …). -/
 def Rule.name : Rule → String
-  | .EndL => "End ℓ" | .Access => "Access" | .Copy => "Copy" | .Read => "Read" | .Move => "Move"
+  | .EndL => "End" | .Access => "Access" | .Copy => "Copy" | .Read => "Read" | .Move => "Move"
   | .ReadErr => "Read-err" | .Borrow => "Borrow" | .BorrowErr => "Borrow-err" | .Clone => "Clone"
   | .Assign => "Assign" | .Drop => "Drop"
   | .Let => "Let" | .Seq => "Seq" | .Ctor => "Ctor"
@@ -102,8 +101,9 @@ def Rule.name : Rule → String
   | .TSplitGoal => "T-Split-goal"
   | .TailSplit => "Tail-split" | .TailGen => "Tail-gen" | .TailMatch => "Tail-match"
   | .TailLet => "Tail-let" | .TailSeq => "Tail-seq" | .TailEnd => "Tail-end"
-  | .TMatchProp => "T-Match-prop" | .TMatchErased => "T-Match-erased" | .TailProp => "Tail-prop"
-  | .Def => "Def" | .IndDecl => "Ind" | .Const => "Const"
+  | .TMatchProp => "T-Match-prop" | .TMatchErased => "T-Match-erased" | .TMatchNone => "T-Match-none"
+  | .TailProp => "Tail-prop"
+  | .Def => "Def" | .IndDecl => "Ind-decl" | .Const => "Const"
 
 /-- The rules the plain trace (`cfg.trace`) has always shown: goals, splits, call types. -/
 def Rule.coarse : Rule → Bool
@@ -115,15 +115,12 @@ def Rule.coarse : Rule → Bool
 a normal form. The comment on each gives its item in `notes/rule-audit.md` §2. -/
 inductive Ext where
   | ErasedReadMovesBorrow    -- C3: an erased read of a borrow moves it
-  | BlockRefCapture          -- C5: a closure in a stuck block captures through its borrow parameter
   | CaptureTypeFromValue     -- C6: a captured datum's type is re-derived from its value
   | TypeOfSealed             -- C8: the type of a sealed program, a live loan, an unannotated constructor
   | FieldTypeFromPattern     -- C9: a field place's type from the pattern's constructor
-  | ArmsDisagree             -- C10: arms that disagree on being proofs; the arm that runs decides
   | EmbeddedDecl             -- C12: an embedded value's declared type read from the value
   | CapturedPropFromValue    -- C18: a captured variable is a proposition by its value's class
   | TermProjection           -- C20: `t.1`/`t.2` of a term that is not a place
-  | RewriteNothing           -- C22: a rewrite that finds nothing is an error
   | TailRewrite              -- C24: in tail position, the rewritten goal is the path's goal
   | ErasedCallWhole          -- C28: a borrow argument of an erased call must be whole
   | ErasedBodyCopies         -- C33: the body of a function whose calls are erased reads by copying
@@ -135,11 +132,9 @@ inductive Ext where
   | BlockProofNotRef         -- C45: a proof is never captured by `&`
   | BlockBorrowPartlyMoved   -- C46: a borrow moved into a block whose arm moves out through it
   | BlockNestedReads         -- C47: uses inside a nested function are reads for the captures
-  | UntypedObs               -- C49: an observation in an untyped run does not split
   | OwnerTypeFromObs         -- C50: an untyped owner typed by its observed values
   | ConvErrorFalse           -- C52: a comparison that errors or is stuck answers "no"
   | ConvCycleFalse           -- C53: a comparison already in progress answers "no"
-  | JStuckRuns               -- E25: `J` on endpoints that are not convertible runs its body
 deriving BEq, Repr, Inhabited
 
 def Ext.name (e : Ext) : String := ((reprStr e).drop "Ochr.Ext.".length).toString

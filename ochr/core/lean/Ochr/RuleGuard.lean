@@ -33,7 +33,10 @@ def proseRules : List (String × String) :=
   [("Access", "*[Access]*"), ("Close", "caption: [[Close]:"), ("Type-pos", "_Sorts are syntactic_ ([Type-pos])"),
    ("Rec", "*[Rec]*"), ("Call-type", "*[Call-type]*"), ("Def", "*[Def]*"),
    ("Conv-refl", "- [Conv-refl]"), ("Conv-cong", "- [Conv-cong]"), ("Conv-unit", "- [Conv-unit]"),
-   ("Conv-pi", "- [Conv-pi]"), ("Conv-fun", "- [Conv-fun]")]
+   ("Conv-pi", "- [Conv-pi]"), ("Conv-fun", "- [Conv-fun]"),
+   ("Drop", "*Drop* ([Drop])"), ("Capture", "*Capture* ([Capture])"), ("Block", "*Block* ([Block])"),
+   ("Eq-inj", "\"[Eq-inj]\""), ("Eq-refl", "\"[Eq-refl]\""), ("Eq-disj", "\"[Eq-disj]\""),
+   ("Eq-stuck", "\"[Eq-stuck]\"")]
 
 /-- Bracketed words of the paper's text that are content, not rule references. -/
 def notRules : List String :=
@@ -42,47 +45,29 @@ def notRules : List String :=
 /-- The issues the guard currently finds, without line numbers. Remove a line when its issue
 is fixed; the build fails until the list matches. -/
 def expectedIssues : List String := [
-  "paper rule [End] (eval.typ) has no Rule constructor",
-  "name [Ind] is defined by more than one appendix rule",
-  "name [Ind] is the name of more than one Rule",
-  "Rule [Drop] is not printed by the paper",
-  "Rule [Capture] is not printed by the paper",
-  "Rule [Block] is not printed by the paper",
-  "Rule [Eq-inj] is not printed by the paper",
-  "Rule [Eq-refl] is not printed by the paper",
-  "Rule [Eq-disj] is not printed by the paper",
-  "Rule [Eq-stuck] is not printed by the paper",
-  "reference [Pair] names no rule",
-  "reference [Drop] names no rule",
-  "pointer `Term.refsOk`: not in Ochr.Machine (it is in Ochr.Basic)",
-  "pointer `refTopOk (Basic.lean)`: no declaration Ochr.refTopOk",
-  "pointer `Term.placeOccs`: not in Ochr.Machine (it is in Ochr.Basic)",
-  "pointer `evalCore (.pi, .fix, .sort, .prod, .ref, .eq, .tind, .prim \"J\", .const)`: no constructor .prod",
-  "pointer `mkAnd`: not in Ochr.Machine (it is in Ochr.Basic)",
-  "pointer `tupleVal (Obs.lean)`: no declaration Ochr.tupleVal",
-  "pointer `footprint`: not in Ochr.Machine (it is in Ochr.Obs)",
-  "pointer `evalCore (.sort, .nat, .unit, .prod, .ref, .eq, .pi, .id, .tind)`: no constructor .prod",
-  "pointer `checkInd`: not in Ochr.Machine (it is in Ochr.Check)"
+  -- deleted by rule-audit's items 10 and 5 (fc5cacb6, 79570f2d); the paper's pointers follow
+  "pointer `propDecl`: no declaration Ochr.propDecl",
+  "pointer `jValue`: no declaration Ochr.jValue"
 ]
 
 /-- Rules and extensions not yet tagged with a `fire` call (the tagging is in progress). -/
 def notYetFired : List String :=
   Rule.all.map (·.name) ++
-  ["ErasedReadMovesBorrow", "BlockRefCapture", "CaptureTypeFromValue", "TypeOfSealed",
-   "FieldTypeFromPattern", "ArmsDisagree", "EmbeddedDecl", "CapturedPropFromValue",
-   "TermProjection", "RewriteNothing", "TailRewrite", "ErasedCallWhole", "ErasedBodyCopies",
+  ["ErasedReadMovesBorrow", "CaptureTypeFromValue", "TypeOfSealed",
+   "FieldTypeFromPattern", "EmbeddedDecl", "CapturedPropFromValue",
+   "TermProjection", "TailRewrite", "ErasedCallWhole", "ErasedBodyCopies",
    "ZeroArmByType", "BlockMovesByPlace", "BlockEta", "BlockFieldSplit", "BlockMoveAnyShape",
-   "BlockProofNotRef", "BlockBorrowPartlyMoved", "BlockNestedReads", "UntypedObs",
-   "OwnerTypeFromObs", "ConvErrorFalse", "ConvCycleFalse", "JStuckRuns"]
+   "BlockProofNotRef", "BlockBorrowPartlyMoved", "BlockNestedReads",
+   "OwnerTypeFromObs", "ConvErrorFalse", "ConvCycleFalse"]
 
 /-- Every `Ext`, by name (the guard checks each is fired). -/
 def extNames : List String :=
-  [Ext.ErasedReadMovesBorrow, .BlockRefCapture, .CaptureTypeFromValue, .TypeOfSealed,
-   .FieldTypeFromPattern, .ArmsDisagree, .EmbeddedDecl, .CapturedPropFromValue, .TermProjection,
-   .RewriteNothing, .TailRewrite, .ErasedCallWhole, .ErasedBodyCopies, .ZeroArmByType,
+  [Ext.ErasedReadMovesBorrow, .CaptureTypeFromValue, .TypeOfSealed,
+   .FieldTypeFromPattern, .EmbeddedDecl, .CapturedPropFromValue, .TermProjection,
+   .TailRewrite, .ErasedCallWhole, .ErasedBodyCopies, .ZeroArmByType,
    .BlockMovesByPlace, .BlockEta, .BlockFieldSplit, .BlockMoveAnyShape, .BlockProofNotRef,
-   .BlockBorrowPartlyMoved, .BlockNestedReads, .UntypedObs, .OwnerTypeFromObs, .ConvErrorFalse,
-   .ConvCycleFalse, .JStuckRuns].map (·.name)
+   .BlockBorrowPartlyMoved, .BlockNestedReads, .OwnerTypeFromObs, .ConvErrorFalse,
+   .ConvCycleFalse].map (·.name)
 
 /-! ## Reading the paper -/
 
