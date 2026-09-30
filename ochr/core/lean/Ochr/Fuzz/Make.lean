@@ -35,7 +35,60 @@ def genExtras (lib : List String) : Gen (List (SDecl × LibFn)) := do
     fns := fns ++ [f]
   pure out.toList
 
-def mkCase (seed i : Nat) (fuel : Nat := 200000) : Case × Rng := Id.run do
+/-- Reviewer-6's A1/L1 family (W10): a parameter `n0 : Nat` and an abstract function
+`g1 : Π(u : Unit). Fam(n0)` (or over `&Nat`) whose codomain depends on `n0` through a
+family whose arms are different data types (`TF`: `Bx(Unit)`/`Bx(B2)`, one constructor at two
+parameters, as A1's `Box`; `TG`: `Nat`/`B2`, as L1). A match on
+`n0` calls `g1` in several arms and uses the result at that arm's type: splits it, or (in
+the `S` arm) observes it with a type-level function (`CmpBx`, `CmpB2`) whose `Id` compares
+a place at its type. A split in one arm generalises the call; the other arm re-derives the
+same program text. Returns the statement and the family's own proof candidates. -/
+def genA1 : Gen (List (String × STerm) × STerm × STerm × STerm × List STerm) := do
+  let tf ← chance 60
+  let fam := if tf then "TF" else "TG"
+  let byRef ← chance 25
+  let dom : STerm := if byRef then .amp (.ident "Nat") else .ident "Unit"
+  let ps : List (String × STerm) :=
+    [("n0", .ident "Nat"), ("g1", .pi [("u", dom)] (.call (.ident fam) [.ident "n0"]))]
+  let callG : STerm := if byRef then .call (.ident "g1") [.amp (.ident "c9")] else .call (.ident "g1") [.unitLit]
+  let bind (x : String) (body : STerm) : STerm :=
+    let b := STerm.letIn x none callG body
+    if byRef then .letIn "c9" none (.num 0) b else b
+  -- the Z arm's value (at the family's Z type) and the S arm's (at its S type), as a proposition
+  -- or as a number
+  let prop ← chance 70
+  let splitZ (x : String) (e : STerm) : STerm :=
+    if tf then .matchGen (.ident x) [("MkBx", ["v"], e)]
+    else .matchGen (.ident x) [("Z", [], e), ("S", ["_"], e)]
+  let splitS (y : String) (ef et : STerm) : STerm :=
+    if tf then .matchGen (.ident y) [("MkBx", ["v"], .matchGen (.ident "v") [("F", [], ef), ("T", [], et)])]
+    else .matchGen (.ident y) [("F", [], ef), ("T", [], et)]
+  let observe (y : String) : STerm := .call (.ident (if tf then "CmpBx" else "CmpB2")) [.ident y]
+  let armZ ← if prop then
+      weighted [(3, pure (bind "x5" (splitZ "x5" .top))), (1, pure (bind "x5" .top)), (1, pure .top)]
+    else
+      weighted [(3, pure (bind "x5" (splitZ "x5" (.num 0)))), (1, pure (.num 0))]
+  let armS ← if prop then
+      weighted [(3, pure (bind "y6" (observe "y6"))), (1, pure (bind "y6" (splitS "y6" .top (.ident "False")))),
+                (1, pure (bind "y6" .top))]
+    else
+      weighted [(3, pure (bind "y6" (splitS "y6" (.num 1) (.num 2)))), (1, pure (.num 1))]
+  -- which arm comes first in the program text: the Z arm is checked first either way
+  let body := STerm.matchGen (.ident "n0") [("Z", [], armZ), ("S", ["p7"], armS)]
+  let lhs ← weighted [(3, pure body), (1, pure (.letIn "a8" none body (.ident "a8")))]
+  let A : STerm := if prop then .sort 0 else .ident "Nat"
+  let rhs ← if prop then
+      weighted [(2, pure .top), (2, pure (.matchGen (.ident "n0") [("Z", [], .top), ("S", ["_"], .ident "False")]))]
+    else weighted [(1, pure (.num 1)), (1, pure (.num 0)), (1, pure lhs)]
+  -- the family's proofs: A1's own shape (a split of the call in the Z arm, `refl` in the S arm)
+  let zProof : STerm := bind "x5" (splitZ "x5" (.ident "refl"))
+  let proofs := [.matchGen (.ident "n0") [("Z", [], zProof), ("S", ["_"], .ident "refl")]]
+  pure (ps, A, lhs, rhs, proofs)
+
+/-- The template names the A1 family needs. -/
+def a1Lib : List String := ["B2", "Bx", "TF", "TG", "CmpBx", "CmpB2"]
+
+def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) : Case × Rng := Id.run do
   let phase1 : Gen (List String × List (SDecl × LibFn)) := do
     let lib ← genTemplates
     pure (lib, ← genExtras lib)
@@ -49,6 +102,14 @@ def mkCase (seed i : Nat) (fuel : Nat := 200000) : Case × Rng := Id.run do
   let mutate (b : STerm) : List STerm := [.seq .unitLit b, .letIn "z9" none (.num 0) b] ++ shrinkT b
   let ((conv, _), g3) := (do
       if ← chance 25 then pure (← genConvPair fns (indsOf lib) mutate, ()) else pure (none, ())).run g2
-  ({ lib := lib, extra := extras.map (·.1), params := ps, ty := A, lhs := lhs, rhs := rhs, conv := conv }, g3.rng)
+  let c0 : Case := { lib := lib, extra := extras.map (·.1), params := ps, ty := A, lhs := lhs, rhs := rhs, conv := conv }
+  -- `a1` percent of the cases are the A1 family instead, drawn from their own streams so
+  -- that every other case is the one it would be without the family
+  let (x, _) := (caseRng seed (i + 1000003)).next
+  if a1 > 0 && x.toNat % 100 < a1 then
+    let ((ps, A, lhs, rhs, prf), g4) := genA1.run { rng := caseRng seed (i + 2000003) }
+    return ({ c0 with lib := closeDeps (lib ++ a1Lib), params := ps, ty := A, lhs := lhs, rhs := rhs,
+                      conv := none, extraProofs := prf }, g4.rng)
+  (c0, g3.rng)
 
 end Ochr.Fuzz

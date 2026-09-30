@@ -49,6 +49,7 @@ lake exe fuzz … --list                                             # also prin
 - Case `i` of seed `S` is a pure function of `(S, i)`.
 - `--switch X` names a ledger row: `D17`…`D59`, `P1`/`P2`/`P3`, `L1`–`L3`, `C5`, `C8`, `G1`, `capTypes`, `scrutTyped`, `confineBodies`, `D50on`, and D53's three: `moves`, `ghosts`, `fnRule`. D53 is on by default in ochr-core since the flip (728756a1); `--switch +D53`, which turned it on for the default and the `--diff` base alike while it was off, is kept for old command lines. D53's rows are `--switch moves`, `--switch ghosts` and `--switch fnRule`. The D35 rows were deleted with the erasure pre-pass.
 - `--diff` keeps only the findings a case shows with the switches on and not with the default rules. With `--list` it also prints `@FLIP i base>switched` when the switch changes the statement's verdict, and `@XFLIP i m>n` when it changes how many of the statement's two sides the checker accepts as data functions (the execution oracle's `ExecL`/`ExecR`). A row such as `moves` changes acceptance without changing any value, and this is how it is measured.
+- `--a1 N` draws N percent of the cases from reviewer-6's A1 family instead (§v2.2). Each case chooses on its own random stream, so every other case is the same as without the flag. The default is 0, so the headline numbers are unchanged.
 - `--runtime-refine` refines the generic observation at runtime depth instead of erased. It is a diagnostic for the RN class (§v2.6). The checker refines statements erased, so most of what it reports are artefacts.
 - `--jobs J` runs crash-isolated worker processes.
 - `--shrink K` shrinks and prints K findings per kind and worker. A printed counterexample is an `ochr` block. After `import Ochr.Fuzz.Replay`, `#eval IO.println (replay Cex)` re-runs the oracles on it.
@@ -68,7 +69,7 @@ lake exe fuzz … --list                                             # also prin
 **Oracles.**
 - **`nat`**: the refined generic observation differs from the direct one.
 - **`false`**: the generic `Id` is `⊤`, while a ground instance's is `False` and its hypotheses are `⊤`.
-- **`truth`**: a proof of a statement that is `False` at some instance is accepted. About ten proof shapes are tried, among them non-decreasing recursion, Knot's L1 shape and KnotL's L3 shape.
+- **`truth`**: a proof of a statement that is `False` at some instance is accepted. About ten proof shapes are tried, among them non-decreasing recursion, Knot's L1 shape and KnotL's L3 shape, plus a family's own shapes (A1's). Since the A1 family, a refinement that is not ground also counts as a false instance when the statement's `Id` computes to `False` there (so at every completion), and `Eq Prop False ⊤`, either way round, counts as false. On the ordinary generator this changes nothing: 10⁵ cases on seed 1 give the same findings as before.
 - **`irrel`** (new, reviewer-4 W2): two instances of a parameter whose type is a proposition by computation give different data.
 - **`verdict` / `renorm`**: one path errs where the other succeeds.
 - **`escape`**: an abstract value that is neither a parameter nor a generalisation record appears, or a loan survives.
@@ -86,6 +87,12 @@ A finding at a refinement where some proof parameter's type is `False` is marked
 - proof parameters (`⊤`, `⊤ ∧ ⊤`, `False`, `Or`, `ExN`, and hypotheses about data parameters);
 - matches on proofs by their type (D45), zero-arm matches, and proof constructors;
 - about 45 templates, plus 0–2 random, sometimes recursive, functions.
+
+**The A1 family (`--a1 N`, reviewer-6 W10).** It has two parameters: `n0 : Nat`, and an abstract function `g1 : Π(u : Unit). Fam(n0)` (or over `&Nat`) whose codomain depends on `n0`. Two families are used:
+- `TF`: `Bx(Unit)` / `Bx(B2)`, one constructor at two parameters, as A1's `Box`.
+- `TG`: `Nat` / `B2`, as L1.
+
+A match on `n0` calls `g1` in its arms and uses each result at that arm's type. An arm either splits the result, or, in the `S` arm, observes it with a type-level function (`CmpBx`, `CmpB2`) whose `Id` compares a place at its type. The family's own proof candidate is A1's shape: split the call in the `Z` arm, `refl` in the `S` arm.
 
 The cold reviewers' attack shapes are included:
 - **D54, reviewer-5.** Function parameters on one borrow whose codomain is `Prop`, `⊤`, `Unit`, `&Nat`, or a term that evaluates to one of them (`P0`, `UU(Z)`, `V(Z)`). Library writers at those codomains (`H`, `HP`, `HU`, `HW`, `HTop`, `HTopW`) and identity wrappers (`IdFP`/`IdFT`/`IdFU`, `RunG`, `RunK`). Calls through a parameter, a `let` alias, a wrapper, or an annotated `let` whose codomain is written differently (Boom4's shape).
@@ -127,6 +134,13 @@ The cold reviewers' attack shapes are included:
    - N5: a block's returned borrow, whose content an arm moved out. The same body returned from a function is rejected.
 
    Rates in 10⁶ cases on 55977f8e: 15,567 cases. To check that M1 and M2 account for them, a diagnostic patch was applied locally and never committed. It computes `before` per arm, after the refinement, and makes a capture a move whenever the capture itself is in `moved`. On seed 1 (10⁵ cases) it takes the exec findings from 1,608 to 111. All 111 are M2b. The statuses are unchanged (93,656 checked against 93,659). M3 is rare: 4 cases of (ii) in 10⁶. (i) is out of the generator's reach, because the execution oracle skips functions with an `Eq` hypothesis.
+7. **A1 re-found by the A1 family (reviewer-6, after their report).** With `--a1 100`, 267 of 2,000 cases (seed 1) are `truth` findings on ochr-core 305f1c77. The shrunk form is simpler than A1: the statement's `Z` arm does not call `g1` at all, and the proof's `Z` arm mints the record by splitting `g1(())`:
+   ```
+   def FuzzLie (n0 : Nat) (g1 : Π (u : Unit). TF(n0)) : Id Prop (match n0 { Z => ⊤, S p7 => let y6 = g1(()); CmpBx(y6) }) ⊤ :=
+     match n0 { Z => (let x5 = g1(()); match x5 { MkBx(v) => refl }), S _ => refl }
+   def FuzzBoom : False := (let h = FuzzLie(1, λ(u : Unit) : TF(1) => MkBx[B2](T)); J(Prop, ⊤, False, λ(P : Prop) : Prop => P, symm h, refl))
+   ```
+   Both are accepted (`Scratch/A1Leak.lean`, which also has reviewer-6's A1). Switching off `unitEta` (D59), `globalRecords` (D37) or `genConsistent` (G1) removes the `truth` findings, as reviewer-6 reports for A1. The family's first version compared `BU`/`BB`, two different constructors. There the leak showed only as a stuck `Eq BU MkBB(T) MkBB(F)`, not a false proof: A1 needs one constructor at two parameters, so that injectivity reaches the `Unit` field and η makes it true.
 6. **The cold reviewers' attacks**, re-found by the extended generator with their switch off (seeds 1 and 3, 2·10⁴ cases each):
 
 | attack | switch | found? | as | first shrunk example |
@@ -266,7 +280,7 @@ Each class has a true statement that the checker rejected, in `lean/Scratch/` (`
 - Borrows of non-data types (D48(1)/(2)).
 - Abstract functions returning borrows without borrow parameters (D44).
 - Recursive local functions.
-- Abstract function parameters whose Π-type depends on an earlier parameter and is refined in several arms (reviewer-6's A1 shape), recursive proofs whose induction hypothesis is typed at the call site, `rewrite`/`split` forms, and user inductives with type parameters instantiated at Π-types, `Prop` or types (reviewer-6, W10).
+- Recursive proofs whose induction hypothesis is typed at the call site, `rewrite`/`split` forms, and user inductives with type parameters instantiated at Π-types, `Prop` or types (reviewer-6, W10). A1's shape, an abstract function parameter whose Π-type depends on an earlier parameter and is refined in several arms, is generated only by the A1 family (`--a1 N`), and only over `n0 : Nat` with the `TF`/`TG` families.
 - Arrays (D57).
 - Runtime code, for D53, only through the execution oracle. That oracle never runs a function with a hypothesis other than `⊤` or with a function parameter, so the `J` casts, which all sit under an `Eq` hypothesis, are never run at runtime depth (M3 (i) was found by hand).
 
