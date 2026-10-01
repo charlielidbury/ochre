@@ -64,11 +64,13 @@ The _generic state_ of a definition `d` is $Gamma";" phi$, its generic call's en
 - Its _goal_ is `B` evaluated there, which is the [Call-type] of the call $d(overline(a) beta)$ from a caller whose frame holds the cells.
 - A call made at a ground state is _at_ the ground instance whose values are its arguments: a data argument's numeral, and the content of a borrow argument, which is a numeral by @tf-lem-res.
 
-A run is in _runtime mode_ when its reads of non-copy data move, and in _erased mode_ when every read copies (types, proofs, and the sides of `Id`, all on private copies).
+A run is in _runtime mode_ when it is code, and in _erased mode_ when it runs a statement: a type, a proof, a side of `Eq` or `Id`, or an argument of a call that returns a type or a proof. A statement runs on its own private copy of the state, which is discarded at its end, and its reads move exactly as code's do (D68).
 
 #thm([Definition], [truth], [
-  At a ground state, `eq` on two numerals computes to `True`, `False` or an `And` of such, and `eq` on `Unit` to `True`. So a proposition value computed at a ground state is built from `True`, `False` and `And` alone. _Truth_ ⊨ is defined on these by $ok(ty("True"))$, $not ok(ty("False"))$, and $ok(P and Q)$ iff $ok(P)$ and $ok(Q)$.
+  At a ground state, `eq` on two numerals computes to `True`, `False` or an `And` of such, and `eq` on `Unit` to `True`, unless `⊥` occurs in either side, when the equation is stuck ([Eq-stuck]). So a proposition value computed at a ground state is built from `True`, `False`, `And` and stuck equations. _Truth_ ⊨ is defined on these by $ok(ty("True"))$, $not ok(ty("False"))$, $ok(P and Q)$ iff $ok(P)$ and $ok(Q)$, and $ok(E)$ for every stuck equation `E`.
 ]) <tf-def-truth>
+
+A stuck equation asserts nothing, so it counts as true. That is safe for what follows. No proof form of F eliminates a stuck equation (it is neither `True`, `False` nor an `And`), so its truth is never used to derive another proposition; a proof can only pass it on. `False` is not stuck, so @tf-cor-cons is unaffected, and @tf-cor-adeq says nothing about a place whose equation is stuck. A stuck equation arises at a ground state only from an `Id` whose side leaves an observed place moved out.
 
 *Resolution.* For a well-formed state Ω, $res(Omega)$ ends every borrow, and $res_Omega (w)$ is the value `w` with each live loan replaced by the resolved content of its borrow, which is well defined by acyclicity.
 
@@ -169,11 +171,11 @@ The mechanised machine reads by copying, normalises sealed programs only when st
 #thm([Lemma], [footprints], [
   Let $Omega_s agr(alpha) Omega_g$, and let `t` and `u` be statement terms of F whose typed runs from $Omega_s$ succeed. Let $W_s$ and $W_g$ be the footprints $W(t, u)$ at $Omega_s$ and at $Omega_g$, as sets of positions. Then:
   (a) every $pi in W_g without W_s$ is owned only through borrow variables that hold ⊥ at $Omega_s$, and `t` and `u` only assign those variables, as whole variables;
-  (b) for each π in $W_s without W_g$ or in $W_g without W_s$, the erased-mode ground runs of `t` and of `u` from $Omega_g$ leave the resolved content of π unchanged;
+  (b) for each π in $W_s without W_g$ or in $W_g without W_s$, the erased-mode ground runs of `t` and of `u` from $Omega_g$ leave the resolved content of π unchanged, or one of them moves π out, so that π's equation is stuck;
   (c) each observed place has the same type on both paths.
 ]) <tf-lem-w>
 #proof[
-  *The frame fact.* By @tf-ass-t (T2), a run changes the environment below its own frame only through the loans held by that frame's borrows, and in its own frame only the places it writes or borrows. A read changes only the owned place it moves out of, which then holds `⊥` (D68); this section's claims about changed places are about writes, and a place only moved out is not observed (@sec-obs). Ending a borrow, including the old borrow that an assignment to a borrow variable drops, does not change any resolved content. So the resolved content of a position π can change only if `t` writes π or writes through a live borrow that π owns. Both are the owners of the places `t` writes or borrows and of the borrow variables it names, which is $W_g (t)$ by the definition of the footprint.
+  *The frame fact.* By @tf-ass-t (T2), a run changes the environment below its own frame only through the loans held by that frame's borrows, and in its own frame only the places it writes or borrows. A read changes only the owned place it moves out of, which then holds `⊥` (D68). By F6 no read moves out through a borrow, so a move is a read of an owned place by name, which both paths make alike. Ending a borrow, including the old borrow that an assignment to a borrow variable drops, does not change any resolved content. So, apart from a move, the resolved content of a position π can change only if `t` writes π or writes through a live borrow that π owns. Writing through a borrow takes a place under it written or borrowed, or the borrow variable read whole and passed on; a read through a borrow is a `clone` by F6 and writes nothing. So π is among the owners of the places `t` writes or borrows and of the borrow variables it reads whole, which is $W_g (t)$ by the definition of the footprint.
 
   *(a).* Let $pi in W_g$ be owned by the root of an occurrence `p` in `t` or `u`.
   - If `p` is rooted at an owned variable, it contributes that variable on both paths.
@@ -183,11 +185,13 @@ The mechanised machine reads by copying, normalises sealed programs only when st
     - `x := t'` drops ⊥, which is loan-free, and binds a new borrow. After it, `x` holds that same new borrow on both paths.
     - So `t` and `u` use `x` only by assigning it as a whole. The test `AssignBot` (the artifact's `Drops` block) is such a statement.
 
-  *(b).* A position outside $W_g$ is left unchanged by both ground runs, by the frame fact. That covers $W_s without W_g$.
+  *(b).* By the frame fact, a position outside $W_g$ is changed by neither ground run, except by a move. That covers $W_s without W_g$.
   - Let $pi in W_g without W_s$. By (a), π is owned only through borrow variables that hold ⊥ at $Omega_s$, which `t` and `u` only assign.
   - On the ground, such an assignment drops the variable's old borrow, which ends it and changes no resolved content.
   - If `t` wrote π through any other place `q`, the root of `q` would hold a live borrow at $Omega_s$, or be π itself. By (A4), π would then be in $W_s$.
-  - So neither run changes π.
+  - So neither run changes π, except by a move.
+
+  A run that moves π leaves `⊥` in π's content, so π's equation is stuck.
 
   *(c).* Observed places have type `Nat` or `Unit`. A place's type is read from its stored type; a temporary's is read from its value's type, which is a numeral's, Δ(σ)'s or a sealed program's declared codomain. Agreement relates positions of the same binding, and in F no refinement changes these types (F1, F2).
 ]
@@ -204,7 +208,7 @@ The symbolic side's extra positions do occur, and their conjuncts do become `Tru
   - *`Id D t u`.* By @tf-lem-runs the ground runs of `t` and `u` succeed in agreement with the symbolic ones. The observation then ends every borrow. By (N3) and (A2), each symbolic observation under α equals the ground one after resolution, position by position: $r_s alpha = r_g$, and $w_s (pi) alpha = w_g (pi)$ for every position π; the same holds for `u`. So:
     - $T_s alpha$ has the truth of the conjunction of $"eq"(D, r_g, r'_g)$ and of $"eq"(T_pi, w_g (pi), w'_g (pi))$ over $pi in W_s$;
     - $T_g$ is the same conjunction over $pi in W_g$;
-    - by @tf-lem-w (b), each conjunct over a position in only one of $W_s$ and $W_g$ compares equal values, so it is `True`; by (c) the conjuncts' types agree;
+    - by @tf-lem-w (b), each conjunct over a position in only one of $W_s$ and $W_g$ compares equal values, so it is `True`, or it is stuck, which also counts as true (@tf-def-truth); by (c) the conjuncts' types agree;
     - the truth of a conjunction does not depend on the order of its conjuncts.
 ]
 
@@ -317,9 +321,9 @@ This theorem reduces soundness of F to @tf-ass-n and @tf-ass-t; it is not a proo
 #proof[The empty state is ground, and $epsilon agr(emptyset) epsilon$ holds with (I) vacuous. The claim in the proof of @tf-thm, with $alpha = emptyset$ and @tf-thm itself supplying the lemma calls and the calls in types, gives $ok(A)$. `False` is not true, and truth is invariant under conversion (@tf-lem-conv (a)), so $A equiv.not ty("False")$.]
 
 #thm([Corollary], [adequacy of `Id`, conditional], [
-  Under @tf-ass-n and @tf-ass-t, suppose a lemma $L : Pi(overline(x) : overline(A)). ty("Id") D thin t thin u$ of F is accepted. Then at every ground instance whose hypotheses are true, the _observations_ of `t` and `u` are equal: their runs on private copies, in erased mode, give the same result and the same final contents of every place either run writes or borrows.
+  Under @tf-ass-n and @tf-ass-t, suppose a lemma $L : Pi(overline(x) : overline(A)). ty("Id") D thin t thin u$ of F is accepted. Then at every ground instance whose hypotheses are true, the _observations_ of `t` and `u` are equal: their runs on private copies, in erased mode, give the same result and the same final contents of every place either run writes or borrows, except a place that a run leaves moved out. That place's equation is stuck ([Eq-stuck]), and the corollary says nothing about it.
 ]) <tf-cor-adeq>
-#proof[By @tf-thm (ii), $"and"("eq"(D, r, r'), "eq"(T_pi, w_pi, w'_pi), dots)$ is true. At a ground state, `eq` on two numerals is `True` iff they are equal, and `Unit` has one value. By @tf-lem-w (b), every place that `t` or `u` writes is observed.]
+#proof[By @tf-thm (ii), $"and"("eq"(D, r, r'), "eq"(T_pi, w_pi, w'_pi), dots)$ is true. A conjunct that is not stuck is true only if its sides are equal: at a ground state `eq` on two numerals is `True` iff they are equal, and `Unit` has one value. The results are never stuck, since a value read is whole. By the definition of the footprint and @tf-lem-w, every place that `t` or `u` writes or borrows is observed.]
 
 The corollary is about observations. Since D68 an observation reads as runtime code does, on its own copy of the state: `Id Nat (let z = a; a) a` is rejected, as `let z = a; a` is, since `a` is used twice. By @tf-lem-modes, an accepted data function's runtime and erased runs from a ground instance agree, so for calls of accepted functions the distinction does not matter.
 
