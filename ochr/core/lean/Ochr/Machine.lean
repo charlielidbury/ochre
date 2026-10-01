@@ -1549,7 +1549,7 @@ partial def mkEqM (A a b : Value) : M Value := do
   -- D68: a moved place (`⊥` inside) has no content to compare: the equation is stuck, neither
   -- `⊤` nor `False`. Whether a stuck block's arm moved the place differs between an abstract and
   -- a ground run, so either answer could be wrong at some instance
-  if (← get).cfg.erasedMoves && (a.hasHole || b.hasHole) then return .tEq A a b
+  if (← get).cfg.erasedMoves && (← get).cfg.movedStuck && (a.hasHole || b.hasHole) then return .tEq A a b
   if ← conv a b then return vTrue
   let cfg := (← get).cfg
   match a, b with
@@ -3111,7 +3111,7 @@ partial def idType (typed : Bool) (A t u : Term) : M Value := do
   let A' ← evalType A
   if A'.typeHasRef then err s!"Id at {A'}: A must be borrow-free (RULES §4)"
   let st ← get
-  let W := footprint st.env [t, u] st.cfg.multiOwner st.cfg.erasedMoves
+  let W := footprint st.env [t, u] st.cfg.multiOwner st.cfg.erasedMoves st.cfg.movedStuck
   let (a, as) ← observeTyping typed t A' W
   let (b, bs) ← observeTyping typed u A' W
   -- an owner's type: its binding's, else its content's. An untyped owner that is lent out

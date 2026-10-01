@@ -180,10 +180,17 @@ ochr Equality uses Std {
   def SideOld (x : &Nat) : Eq Nat (let c = *x; *x := 7; c) (*x) := refl
   -- ... so this is not provable: at `*x = 5` the left side is 1 and the right side is 6.
   reject def SideShared (x : &Nat) : Eq Nat (*x := 0; 1) (S(*x)) := refl
+
+  -- A place a side consumed has no content to compare: its equation is stuck, neither `⊤` nor
+  -- `False` (D68). A stuck block takes a place by move if any arm moves it, so at an unknown `n`
+  -- both sides below leave `x` moved, while at `n = 0` only the left one does. Were `⊥ = ⊥`
+  -- true, `refl` would prove the statement for every `n` (switch `movedStuck`; fuzz case 11014).
+  reject def MovedBothSides (n : Nat) (x : Nat) :
+      Id Unit (let r = &x; match n { Z => (let y = x; ()), S _ => () }) (let r = &x; match n { Z => (), S _ => (let y = x; ()) }) := refl
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard Equality.decls.length == 40
+#guard Equality.decls.length == 41
 
 /-! ## Rewriting
 

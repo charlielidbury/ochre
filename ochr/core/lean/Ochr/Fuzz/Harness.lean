@@ -150,7 +150,7 @@ with it, and `Id` observes only the places its sides write or borrow (`footprint
 `onlyWrites`): a binding a side only reads may be moved on one path (a stuck block taking
 it by move) and untouched on the other, and neither path's `Id` looks at it. -/
 def obsPositions (env : Env) (ts : List Term) (cfg : Config) : List Pos :=
-  if cfg.erasedMoves then footprint env ts cfg.multiOwner true
+  if cfg.erasedMoves then footprint env ts cfg.multiOwner true cfg.movedStuck
   else (allPos env).filter fun | .bind .. => true | _ => false
 
 def compName : Nat → String

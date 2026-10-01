@@ -59,6 +59,7 @@ def switchCfg (c : Config) : String → Option Config
   | "propUp" => some { c with propUp := false }
   | "eqSidesApart" => some { c with eqSidesApart := false }
   | "copyByType" => some { c with copyByType := false }
+  | "movedStuck" => some { c with movedStuck := false }
   | "D65" | "dropEndsBound" => some { c with dropEndsBound := false }
   | "D50on" | "unitNorm" => some { c with unitNorm := true }          -- switched ON (a counterfactual)
   | "C8" | "generalize" => some { c with generalize := false }

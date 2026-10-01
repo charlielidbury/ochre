@@ -111,7 +111,8 @@ reached through a borrow-typed variable, not in Ω's order: closing off a match 
 sealed program binds its captures in its own order, and a borrow parameter's cell is not where
 the caller's is) and turns a captured place's reads into reads through a borrow, and `Id`'s
 conjunction must come out the same on every path (fuzz-port's R6). -/
-def footprint (env : Env) (ts : List Term) (multi : Bool := true) (onlyWrites : Bool := false) : List Pos := Id.run do
+def footprint (env : Env) (ts : List Term) (multi : Bool := true) (onlyWrites : Bool := false)
+    (obsMoved : Bool := false) : List Pos := Id.run do
   let f := env.size - 1
   let n := env[f]!.binds.size
   let mut out : List Pos := []
@@ -126,7 +127,7 @@ def footprint (env : Env) (ts : List Term) (multi : Bool := true) (onlyWrites : 
             | .borrow m _ => let os := owners env m; if multi then os else os.take 1
             -- D68: a place moved out is still observed (its equation is stuck): whether a stuck
             -- block's arm moved it differs between an abstract and a ground run
-            | .bot => if onlyWrites && !isRefTy then [pos] else []
+            | .bot => if onlyWrites && obsMoved && !isRefTy then [pos] else []
             | _ => [pos]
           -- D68: only places written or borrowed are observed: a borrow variable passed whole (its
           -- callee may write through it) counts; one only read through (`*x`) does not

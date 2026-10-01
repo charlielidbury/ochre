@@ -121,6 +121,9 @@ def compareVals (sR sD : MState) (pinned : List Nat) (r d : Value) (rng : Rng)
     let lbl := ", ".intercalate (γ.map fun (σ, v) => s!"σ{σ} := {v}")
     match refineVal sR sR.neutrals γ r erased, refineVal sD sD.neutrals γ d erased with
     | .ok r', .ok d' =>
+      -- D68: a completion that leaves the symbolic value with a moved place inside an equation
+      -- is a stuck equation there (`mkEqM`): the symbolic path proves nothing: fail-safe
+      if (fillHoles r' d').hasHole then continue
       -- a completion that leaves an abstract value (a function parameter with no instance in
       -- the library) can only compare normal forms, which may differ in where they are stuck
       if canon pinned r' != canon pinned d' && groundV r' && groundV d' then

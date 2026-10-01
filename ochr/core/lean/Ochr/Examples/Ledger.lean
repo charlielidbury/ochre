@@ -334,7 +334,7 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { erasedMoves := false }
   ["ClosingOff.LamWriteInBlock:accepted", "ClosingOff.LamReadInWrittenBlock:rejected",
-   "ClosingOff.LamReadOtherArm:rejected"]
+   "ClosingOff.LamReadOtherArm:rejected", "Equality.MovedBothSides:accepted"]
 -- D53 (e) switched off: calls consume their function and a closure is never a copy, so a
 -- function cannot be called twice
 open Ochr.Registry in
@@ -453,3 +453,8 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { copyByType := false }
   ["Moves.ClosureCopy:accepted"]
+-- D68's stuck equations switched off: `⊥ = ⊥` is `⊤` and a moved binding is not observed, so a
+-- stuck block's over-approximated move makes two sides that differ at `n = 0` compare equal
+open Ochr.Registry in
+#guard rowOk { movedStuck := false }
+  ["Equality.MovedBothSides:accepted"]
