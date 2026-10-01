@@ -173,6 +173,14 @@ def AddMZero (x : &Nat) : Id(Unit, AddM(x, 0), ()) by x := (   -- Std
 
 `Id` computes to a conjunction of `Eq`s, one for the result and one per affected place, and is proved like one.
 
+**`Eq` versus `Id`.** They compare different things:
+
+- **`Eq(A, a, b)` compares two values.** It is propositional equality, Lean's `a = b`. Each side is evaluated on its own private copy of the state, and only the resulting values are compared. If a side has effects, they happen inside that copy and are thrown away with it. `Eq` is the primitive: it computes by structure (equal constructors give the equations between their fields, different constructors give `False`), and `refl` proves it when both sides normalise to the same value.
+- **`Id(A, t, u)` compares two programs: their results and their effects.** Each side runs on its own copy of the state. Then `Id` compares the results *and* the final contents of every place either side may affect (its *footprint*: places assigned or borrowed, and what borrow parameters point to). It isn't a separate primitive. It computes to the conjunction
+  `Eq(A, result of t, result of u) ∧ Eq(T₁, final w₁ after t, final w₁ after u) ∧ …`, one conjunct per footprint place.
+- **So `Id` is `Eq` plus the effects.** For programs that change nothing, `Id(A, t, u)` is just `Eq(A, t, u)`. For a `Unit`-returning program (`Id(Unit, AddM(x, 0), ())`), the result conjunct is trivially `⊤`, and the statement is entirely about the effect.
+- **Rule of thumb:** use `Eq` to say what something *computes*, and `Id` to say what it *does*. In Rust terms, `Eq` compares return values, and `Id` compares return values and the final state of every `&mut` the code touched. In Aeneas terms, `Id` compares a function's forward result *and* its backward functions.
+
 ## 8. Proofs
 
 A proof is a program whose type is the statement. It never runs at runtime.
