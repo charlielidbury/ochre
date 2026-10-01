@@ -132,7 +132,9 @@ def compareVals (sR sD : MState) (pinned : List Nat) (r d : Value) (rng : Rng)
         return (some (.nat, s!"{r.pp}  ⟶[{lbl}]  {r'.pp}", s!"{d.pp}  ⟶[{lbl}]  {d'.pp}", why), false)
     | .ok r', .error e => if !isResource e then
         return (some (.verdict, s!"{r.pp} ⟶[{lbl}] {r'.pp}", s!"{d.pp} ⟶[{lbl}] error: {e}", errKey e), false)
-    | .error e, .ok d' => if !isResource e then
+    -- the symbolic re-run errs at [Drop] of a block's own parameter: a known incompleteness
+    -- that fails safe (notes/lean-checker.md §57)
+    | .error e, .ok d' => if !isResource e && !isInFlightDrop e then
         return (some (.renorm, s!"{r.pp} ⟶[{lbl}] error: {e}", s!"{d.pp} ⟶[{lbl}] {d'.pp}", errKey e), false)
     | _, _ => pure ()
   pure (none, true)

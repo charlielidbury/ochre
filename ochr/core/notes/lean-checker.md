@@ -1529,3 +1529,14 @@ D69 deleted D41 (confinement) once every erased term ran on its own copy. The co
 Fuzz (seed 1, 2·10⁴ cases, 6 workers): ochr-core 20189c39 checked 18731, rejected 942, invalid 327, with adequacy-vacuous 708 the only kind. This branch checked 18276, rejected 1401, invalid 323, with adequacy-vacuous 678 the only kind. With `--rules 20`: 18731/947/322 with adequacy-vacuous 712 before, 18276/1406/318 with adequacy-vacuous 681 after. Oracle changes, each an artefact of the oracle observing more than `Id` does: observations compare `Id`'s footprint (`obsPositions`), not every binding; a symbolic `⊥` is fail-safe (`fillHoles`); η field names count as recorded.
 
 Migrations: 148 suite verdicts flipped once the fixes were in. All are migrated with `clone` or intended. Intended rejections are `GhostRead`, `J1`, `J1Run`, `LamWriteInBlock` and `ClosureCopy`: a value used twice in one statement, or a statement reading what code moved. Paper: `AddSub`, `InsertFindOther` and `QSCorrect` take `clone`s, and the sweep's `IdLet` is a `reject def`.
+
+## 57. Known incompleteness: a block that moves a place in one arm and returns a borrow of it in another
+
+Fuzz seed 10, case 8706 (renorm, "[Drop] … dies while a value in flight borrows"). A stuck block takes a place by move if any arm moves it. When another arm borrows that place and returns the borrow, as in `match n2 { Z => (*x0 := n1; &*x0), S _ => &n1 }`, the block's `S` arm returns a borrow of the block's own parameter. Re-running the sealed program after a refinement then fails at [Drop]. The direct path at the instance succeeds. This fails safe: `renormAll` and `nfSealed` rethrow the error, so the program is rejected.
+
+- Witnesses: `ClosingOff.MoveBorrowSplit` (an `Id` statement) and its runtime-code twin `ClosingOff.MoveBorrowCode`. Both are `reject def`s.
+- The code twin is rejected with or without D68. D68 makes statements reach it, because a statement's read now moves. Only `Id`'s typed observation (D63) closes a side's match off: an `Eq` side or a call argument re-runs as one sealed program and is accepted.
+- So the `erasedMoves` and `typedObs` rows also flip `MoveBorrowSplit` to accepted. `knownIncomplete` in Ledger.lean lets a completeness row show it.
+- The fuzzer counts this reason as incomplete (`isInFlightDrop`), not as a renorm finding.
+
+Candidate rule change, not made: a capture mode for a place that one arm moves and another borrows. Taking it by `&` would make the moving arm move out through a borrow; taking it by move is today's rule.

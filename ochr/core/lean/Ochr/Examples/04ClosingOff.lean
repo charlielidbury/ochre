@@ -360,10 +360,31 @@ ochr ClosingOff uses Std, Fixtures {
     };
     h
   )
+
+  -- Known incompleteness, fail-safe (seed 10 case 8706). A stuck block takes a place by move
+  -- if any arm moves it, so the block over `n2` takes `n1` by move (arm `Z` moves it into `*x0`),
+  -- and arm `S`'s `&n1` then returns a borrow of the block's own parameter. Re-running the
+  -- sealed program after the split on `n2` errors ([Drop] of `n1` while the result borrows
+  -- it), so `MoveBorrowSplit` is rejected although every instance is fine. Since D68 a
+  -- statement's read moves, so statements reach it too (with `erasedMoves` off it is
+  -- accepted); `MoveBorrowCode` is its runtime-code twin, rejected the same way before and
+  -- after D68. In a statement only `Id`'s typed observation (D63) closes the side's match off,
+  -- so with `typedObs` off it is accepted too (an `Eq` side or a call argument re-runs as one
+  -- sealed program). Candidate rule change: a capture-mode rule for a place one arm moves and
+  -- another borrows (notes/lean-checker.md §57)
+  def MoveBorrowBlk (x0 : &Nat) (n1 : Nat) (n2 : Nat) : Prop :=
+    Id Unit (let r = match n2 { Z => (*x0 := n1; &*x0), S _ => &n1 }; ()) ()
+  reject def MoveBorrowSplit (x0 : &Nat) (n1 : Nat) (n2 : Nat) (h : MoveBorrowBlk(x0, n1, n2)) : Unit :=
+    match n2 { Z => (), S _ => () }
+  reject def MoveBorrowCode (x0 : &Nat) (n1 : Nat) (n2 : Nat) : Unit := (
+    let m = clone(n2);
+    let r = match m { Z => (*x0 := n1; &*x0), S _ => &n1 };
+    match n2 { Z => (), S _ => () }
+  )
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard ClosingOff.decls.length == 50
+#guard ClosingOff.decls.length == 53
 
 /-! ## Symbolic checking is not the same as checking every instance
 

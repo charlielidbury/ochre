@@ -28,6 +28,12 @@ def runSt {α : Type} (x : M α) (st : MState) : Except String (α × MState) :=
 def isResource (e : String) : Bool :=
   e.startsWith "out of fuel" || e.startsWith "call depth exceeded"
 
+/-- [Drop] of a block's own parameter while its result borrows it: on the symbolic path, the
+re-run of a stuck block that took by move a place another arm borrows and returns. Known
+incompleteness, fail-safe (notes/lean-checker.md §57). -/
+def isInFlightDrop (e : String) : Bool :=
+  e.startsWith "[Drop]" && (e.splitOn "dies while a value in flight borrows").length > 1
+
 structure Prepared where
   globals : List GDef
   inds : List IndDecl

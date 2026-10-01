@@ -2,11 +2,17 @@ import Ochr.Examples.Registry
 
 namespace Ochr.Registry
 
+/-- Known incompletenesses that fail safe: valid programs the checker rejects, pinned as
+`reject def`s. Switching off a rule that exposes one accepts it, which a completeness row may
+then show alongside its rejections (notes/lean-checker.md §57). -/
+def knownIncomplete : List String := ["ClosingOff.MoveBorrowSplit"]
+
 /-- A row's class is checked with its flips: a completeness row flips only to rejected, any
 other row flips its named witnesses to accepted. Every row flips something: a rule that flips
 nothing is not needed, and is deleted. -/
 def classOk (k : String) (ws fs : List String) : Bool :=
-  !fs.isEmpty && if k == "completeness" then fs.all (·.endsWith ":rejected")
+  !fs.isEmpty && if k == "completeness" then
+    fs.all fun f => f.endsWith ":rejected" || knownIncomplete.any (f == s!"{·}:accepted")
   else !ws.isEmpty && ws.all fun w => fs.contains s!"{w}:accepted"
 
 /-- One ledger row: switching `c` off flips exactly `e`, blocks exactly `bl` (declarations
@@ -338,7 +344,8 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { erasedMoves := false }
   ["ClosingOff.LamWriteInBlock:accepted", "ClosingOff.LamReadInWrittenBlock:rejected",
-   "ClosingOff.LamReadOtherArm:rejected", "Equality.MovedBothSides:accepted"]
+   "ClosingOff.LamReadOtherArm:rejected", "ClosingOff.MoveBorrowSplit:accepted",
+   "Equality.MovedBothSides:accepted"]
 -- D53 (e) switched off: calls consume their function and a closure is never a copy, so a
 -- function cannot be called twice
 open Ochr.Registry in
@@ -428,7 +435,7 @@ open Ochr.Registry in
 -- untyped, so a side's stuck match makes the whole `Id` stuck instead of being closed off
 open Ochr.Registry in
 #guard rowOk { typedObs := false }
-  ["Equality.Conv1:rejected"]
+  ["ClosingOff.MoveBorrowSplit:accepted", "Equality.Conv1:rejected"]
 -- D65 amended switched off (pure D65): a dying place's borrower in flight is ended too, so a
 -- block or function returns an ended borrow of its own local; in a stuck block [Split]
 -- discards the arm's value and [Close] gives the block a fresh live borrow, so `Blk` and

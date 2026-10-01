@@ -387,7 +387,11 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
         | .ok (rv, _), .error e =>
           if !isResource e then fs := push fs .verdict (compName k) α.label s!"{g.pp}  ⟶  {rv.pp}" s!"error: {e}" (vacK vac (errKey e))
         | .error e, .ok (dv, _) =>
-          if !isResource e then fs := push fs .renorm (compName k) α.label s!"{g.pp}  ⟶  error: {e}" dv.pp (vacK vac (errKey e))
+          -- the re-run of a block that took by move a place another arm borrows and returns
+          -- errors where the direct path succeeds: a known incompleteness that fails safe
+          -- (ClosingOff.MoveBorrowSplit, notes/lean-checker.md §57)
+          if isInFlightDrop e then incomplete := incomplete + 1
+          else if !isResource e then fs := push fs .renorm (compName k) α.label s!"{g.pp}  ⟶  error: {e}" dv.pp (vacK vac (errKey e))
         | .error _, .error _ => pure ()
     -- the observations at an instance of one proof-irrelevance parameter alone
     if let [(σ, _)] := α.subst then
