@@ -156,7 +156,7 @@ def PushLen (A : Type) (l : &List(A)) (x : A) :
     Eq(Word, (let c = *l; Push(A, &c, x); Len(A, &c)), Succ(Len(A, l))) := refl
 ```
 
-`c` is a copy of the current `*l`, `Push` mutates the copy, and the right-hand side still sees the original `*l`. (This one is proved by `refl` because both sides compute to the same thing.)
+`c` is a copy of the current `*l` (inside a statement, reading data copies it; the same `let` in runtime code would move), `Push` mutates the copy, and the right-hand side still sees the original `*l`. (This one is proved by `refl` because both sides compute to the same thing.) Mutating `*l` itself inside a statement doesn't work: effects on places outside the statement are discarded, and passing `l` hands over the borrow, so a later `Len(A, l)` finds it ended. Mutate a local copy you own.
 
 **`Id(A, t, u)`** says that the programs `t` and `u`, each run on its own copy of the current state, return equal results of type `A` *and* leave equal contents in every place they write or borrow:
 
