@@ -134,7 +134,8 @@ def switches : List (String × Config) :=
    ("K4: a field type may call an earlier type function", { k4 := false }),
    ("K4's nesting condition: no nesting at a parameter passed to a type function", { k4Nest := false }),
    ("D65 amended: [Drop] of a lent place ends only borrowers held in bindings; one in flight is an error", { dropEndsBound := false }),
-   ("each side of Eq runs on its own private copy of the state", { eqSidesApart := false })]
+   ("each side of Eq runs on its own private copy of the state", { eqSidesApart := false }),
+   ("D64 amended: a proof field assigned while part of its value is lent is checked with what the borrow holds unknown", { lentProofs := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -211,13 +212,14 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("soundness", ["DepFields.Boom2"]),
    ("soundness", ["Drops.Blk", "Drops.UseG"]),
-   ("model", ["Equality.SideShared"])]
+   ("model", ["Equality.SideShared"]),
+   ("soundness", ["DepFields.BoomLent", "DepFields.BoomGetLent"])]
 
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1357
+def Ochr.Registry.expectedTotal : Nat := 1368
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal

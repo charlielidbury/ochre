@@ -68,6 +68,13 @@ partial def Value.takeBorrow (l : Nat) : Value → Option (Value × Value)
   | .succ w => (w.takeBorrow l).map fun (c, w') => (c, .succ w')
   | _ => none
 
+/-- D64 amended ([Open]): the value with the content of `borrow_ℓ` replaced by `c`. -/
+partial def Value.setBorrowContent (v : Value) (l : Nat) (c : Value) : Value :=
+  match v with
+  | .borrow m w => if m == l then .borrow m c else .borrow m (w.setBorrowContent l c)
+  | .succ w => .succ (w.setBorrowContent l c)
+  | v => v
+
 def findBorrow (env : Env) (l : Nat) : Option Pos :=
   (allPos env).find? fun p => (valAt env p).holdsBorrow l
 

@@ -61,6 +61,7 @@ def switchCfg (c : Config) : String → Option Config
   | "propUp" => some { c with propUp := false }
   | "eqSidesApart" => some { c with eqSidesApart := false }
   | "D65" | "dropEndsBound" => some { c with dropEndsBound := false }
+  | "D64lent" | "lentProofs" => some { c with lentProofs := false }   -- D64 amended: a proof field assigned while lent
   | "D50on" | "unitNorm" => some { c with unitNorm := true }          -- switched ON (a counterfactual)
   | "confineBodies" => some { c with confineBodies := true }          -- switched ON (an extension)
   | "C8" | "generalize" => some { c with generalize := false }

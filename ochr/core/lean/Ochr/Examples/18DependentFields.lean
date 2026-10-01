@@ -226,6 +226,95 @@ ochr DepFields uses Std {
       ),
     }
   )
+  -- D64 amended: a proof field assigned while the field its type mentions is lent must hold
+  -- whatever the borrow leaves there. The borrow writes later, not through a field place, so
+  -- nothing invalidates the proof again, and [Repack] cannot check a proof (`⋆`)
+  reject def LieLent (p : &Pos) : Unit := (
+    match *p {
+      MkPos(n, h) => (
+        let h0 = h;
+        let r = &n;
+        h := h0;
+        *r := Zero
+      ),
+    }
+  )
+  reject def BoomLent : False := (
+    let p = MkPos(Succ(Zero), refl);
+    LieLent(&p);
+    match p {
+      MkPos(n, h) => h,
+    }
+  )
+  -- the same through a returned borrow: the caller writes
+  reject def GetLent (p : &Pos) : &Word := (
+    match *p {
+      MkPos(n, h) => (
+        let h0 = h;
+        let r = &n;
+        h := h0;
+        r
+      ),
+    }
+  )
+  reject def BoomGetLent : False := (
+    let p = MkPos(Succ(Zero), refl);
+    let r = GetLent(&p);
+    *r := Zero;
+    match p {
+      MkPos(n, h) => h,
+    }
+  )
+  -- a borrow still live when the proof is assigned (it could write again): refused, though
+  -- it writes nothing more; ending it first is accepted (`RefillLent`)
+  reject def RefillLentLive (p : &Pos) : Unit := (
+    match *p {
+      MkPos(n, h) => (
+        let r = &n;
+        *r := Succ(Zero);
+        h := refl
+      ),
+    }
+  )
+  def RefillLent (p : &Pos) : Unit := (
+    match *p {
+      MkPos(n, h) => (
+        (let r = &n; *r := Succ(Zero));
+        h := refl
+      ),
+    }
+  )
+  -- an invariant that holds whatever the borrow writes: an element borrow out of a full cell
+  inductive Opt (A : Type) := None | Some(v : A)
+  def IsSome (o : Opt(Word)) : Prop := (
+    match o {
+      None => False,
+      Some(v) => ⊤,
+    }
+  )
+  inductive Cell := MkCell(o : Opt(Word), h : IsSome(o))
+  def CellGet (c : &Cell) : &Word := (
+    match *c {
+      MkCell(o, h) => match o {
+        Some(v) => (
+          let r = &v;
+          h := refl;
+          r
+        ),
+        None => match h {},
+      },
+    }
+  )
+  def CellGetRun : Id(Word, (
+      let c = MkCell(Some(Zero), refl);
+      let r = CellGet(&c);
+      *r := Succ(Zero);
+      match c {
+        MkCell(o, h) => match o {
+          Some(v) => v,
+          None => match h {},
+        },
+      }), Succ(Zero)) := refl
   -- in a proposition: the witness's proof is typed by the witness
   inductive ExSucc : Prop := WitS(w : Word, h : IsSucc(w))
   def ExOne : ExSucc := WitS(Succ(Zero), refl)
@@ -270,7 +359,7 @@ ochr DepFields uses Std {
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard DepFields.decls.length == 51
+#guard DepFields.decls.length == 62
 -- each rejection for its reason
 #guard (run "DepFields" DepFields).rejectedWith [
   ("NoneAt0", "field x of MkV has type One, expected Empty0"),
@@ -293,6 +382,11 @@ ochr DepFields uses Std {
   ("ToZero", "[Repack] a borrow of it ends, but it is open: field h of MkPos: it holds ⊥"),
   ("ToZeroProof", "the assigned value has type ⊤, expected False"),
   ("StaleProof", "[Open] (*p).h is a proof field invalidated by a write to a field its type mentions"),
+  ("LieLent", "the proof assigned to h (while part of its value is lent, what the borrow holds unknown: [Open]) has type ⌈IsSucc(σ1)⌉, expected ⌈IsSucc(σ2)⌉"),
+  ("BoomLent", "unknown constant LieLent"),
+  ("GetLent", "the proof assigned to h (while part of its value is lent, what the borrow holds unknown: [Open]) has type ⌈IsSucc(σ1)⌉, expected ⌈IsSucc(σ2)⌉"),
+  ("BoomGetLent", "unknown constant GetLent"),
+  ("RefillLentLive", "the proof assigned to h (while part of its value is lent, what the borrow holds unknown: [Open]) has type ⊤, expected ⌈IsSucc(σ2)⌉"),
   ("Bad", "field b of MkBad : NBox(Bad): Bad occurs at the parameter A of NBox, which NBox passes to a type function"),
   ("Boom2", "unknown constant K"),
   ("NegBox", "field f of MkNegBox : Neg(A) computes to Π")]
