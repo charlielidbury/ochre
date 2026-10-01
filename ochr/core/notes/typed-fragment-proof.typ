@@ -15,6 +15,8 @@
 
 = Soundness of a typed fragment, conditional on naturality <sec-tf>
 
+_Superseded: the canonical text is the paper's appendix, `ochr/core/paper/sections/tf.typ`, which has since been updated for D67, D68 and D69. This file predates D68: it still says that reads in types and proofs copy, and it has ghosts._
+
 This section reduces soundness of a fragment F to an assumption that the two evaluation paths simulate each other. F has natural numbers, `Unit`, the propositions `True`, `False` and `And`, `Eq` and `Id`, first-order top-level functions with borrow parameters (some of which return a borrow), [Close], and [Split] with refinement and generalisation. For F we prove that, if the assumption holds, two things are true of every accepted program:
 - every data function runs without error at every concrete input;
 - every lemma is true at every concrete input at which its hypotheses are true.
