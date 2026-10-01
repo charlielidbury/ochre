@@ -21,7 +21,7 @@ Proof fields (`h : Sorted(xs)`) are the same extension. With open/repack they ar
 
 ## Acceptance
 - Checked:
-  - `Vec(T) := Mk(n : Word, items : Array(T, n))`, with `Push`/`Pop` by `ArrPush`/`ArrPop` (they exist in the arrays library) and an element borrow `&(*v).items[i]` with a bounds proof against `(*v).n`;
+  - `Vec(T) := Mk(n : Word, items : Array(T, n))`, with `Push`/`Pop` by `ArrPush`/`ArrPop` (they exist in the arrays library) and an element borrow `&(*v).items[i]` with a bounds proof against `(*v).n`; (since docs/09 §7 an array never changes its length and `ArrPush`/`ArrPop` are gone; `Vec` is `MkVec(len, cap, buf : Array(Opt(E), cap), hl : Le(len, cap))`, user code, in `18DependentFields.lean`)
   - a resizable hashmap table, `MkHM(cap : Word, slots : Array(Bucket, cap), len : Word)`, with a `Resize` that allocates the new table and re-inserts by recursion over the old index;
   - lemmas about `Push` (the length grows by one, the old elements are unchanged, the new element is last).
 - Checked, in-place growth with a temporary break: `*v.0 := Succ(n); *v.1 := ArrPush(T, n, items, x)` in either order, and the user's example `*v.0 := 2; *v.1 := [0,1]`.
