@@ -242,36 +242,42 @@ For a reader who knows Lean's tactics:
   - `Le(a, b)`, `Lt(a, b)`, propositions;
   - `LeDec(a, b) : Dec(Le(a, b), Lt(b, a))` and `LtDec(i, n) : Dec(Lt(i, n), Le(n, i))`, comparisons that return the proof;
   - `Leb`, `Eqb` (`Bool`), `WAdd`, `Sub`, `W(n)`;
-  - facts: `LeRefl`, `LeStep`, `LeTrans`, `LeAddL`, `AddRS`, `AddZeroR`, `AddOneR`, `SubPos`, `SubOneLe`.
+  - facts: `LeRefl`, `LeStep`, `LeTrans`, `LeAddL`, `AddRS`, `AddZeroR`, `AddOneR`, `SubPos`, `SubOneLe`, `SubPosLt`, `LtNe`, `LeAntisym`.
 - **Model** (pure, used in statements):
   - `Slice(E, n)` is a view of `n` elements, and `Array(E, n)` is an owned array;
   - `Nth(E, n, s, i, h)` is element `i`, given `h : Lt(i, n)`;
-  - `SetS` replaces an element;
+  - `SetS` replaces an element, and `SwapS` exchanges two;
   - `TakeS`, `DropS` and `JoinS` split and join;
   - `SnocS`, `PopS`.
-- **Runtime operations**, the only way code touches an array:
+- **Runtime operations**, the only way code touches an array. Six are native:
   - `AsSlice(E, n, &a)`;
-  - `Read(E, n, s, i, h)`, `Set(E, n, s, i, x, h)`;
-  - `GetMut(n, s, i, h)`, a borrow of a `Word` element;
+  - `GetMut(E, n, s, i, h) : &E`, a borrow of element `i`. Every element is read and written through it, and `*GetMut(…)` is a place (as Rust's `*v.get_mut(i)`):
+    - `*GetMut(Word, n, s, i, h)` reads a `Word` (a copy type copies);
+    - `clone(*GetMut(E, n, s, i, h))` copies any element. Copying is the caller's to write: `*GetMut(E, …)` of a non-copy element is rejected, since it would move the element out through the borrow;
+    - `*GetMut(E, n, s, i, h) := x` writes one;
   - `WithSplit(E, R, n, k, s, h, f)` runs `f` on two disjoint borrows, the first `k` elements and the rest. It is Ochr's `split_at_mut`;
-  - `ArrEmpty`, `ArrPush`, `ArrPop`;
-  - `Swap(E, n, s, i, j, hi, hj)`, `Replicate`, `Fill`, `FillFrom`.
+  - `ArrEmpty`, `ArrPush`, `ArrPop`.
+
+  Built from them, in Ochr: `Swap(E, n, s, i, j, hi, hj)`, which splits the view and exchanges through two element borrows, copying nothing; `Replicate`, `Fill`, `FillFrom`. Two element borrows of one view at once are refused (taking the second ends the first), which is why `Swap` splits first.
 - **Lemmas:**
-  - `NthSetSame`, `NthSetOther`;
-  - `JoinTakeDrop`, `TakeJoin`, `DropJoin`;
-  - `Count(q, n, s)` (occurrences of `q`), with `CountJoin`, `CountSet`, `CountSwap`;
-  - `SwapIsSwapS`, `GetMutSet`.
+  - what is done through an element borrow: `GetMutRead` (a read is `Nth`, and leaves the view as it was), `GetMutSet` (a write is `SetS`'s), and `GetMutReadV`, `GetMutSetV`, the same about a view given by value;
+  - `SwapIsSwapS` (`Swap` is the write of `SwapS`), and `SwapIsSwapSV`;
+  - `NthSetSame`, `NthSetOther`, `SetSComm`;
+  - `JoinTakeDrop`, `TakeJoin`, `DropJoin`, `NthTakeS`, `NthDropS`, `JoinSetS`;
+  - `Count(q, n, s)` (occurrences of `q`), with `CountJoin`, `CountSet`, `CountSwap`.
 - **Rule:** runtime code only *borrows* views. It never reads one by value or matches on its representation. Statements and proofs may do both freely (`Nth(E, n, *s, i, h)` in a type is fine).
+- **Reads and writes in proofs.** At an unknown index, what a program reads or writes through `GetMut`, or swaps, is a sealed program, not `Nth` or `SetS`. Name the facts with the lemmas and rewrite with them. `let ⟨hv, hp⟩ = GetMutRead(…)` gives the value read (`hv : Eq(E, read, Nth(…))`) and the view after it, a put-back program (`hp : Eq(Slice(E, n), put-back, *s)`). A rewrite does not reach inside a sealed program, such as a recursive call on the put-back view, so state the induction hypothesis at the view the program leaves, and rewrite the rest of the goal onto it (`ScanPerm` in `16Arrays.lean` does both). At a known index, splitting the view (`match v { MkSlice(c) => match c { MkC(y, t) => … } }`) makes the read compute.
 
 ```
 def Bump (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) : Unit := (
-  let x = Read(Word, n, &*s, i, h);
-  Set(Word, n, s, i, Succ(x), h)
+  *GetMut(Word, n, &*s, i, h) := Succ(*GetMut(Word, n, &*s, i, h))
 )
 
 def SetThenRead (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) :
-    Eq(Word, (let c = *s; Set(Word, n, &c, i, W(7), h); Read(Word, n, &c, i, h)), W(7)) := (
-  NthSetSame(Word, n, *s, i, W(7), h)
+    Eq(Word, (let c = *s; *GetMut(Word, n, &c, i, h) := W(7); *GetMut(Word, n, &c, i, h)), W(7)) := (
+  let c = SetS(Word, n, *s, i, W(7));
+  let ⟨hv, hp⟩ = GetMutRead(Word, n, &c, i, h);
+  rewrite ← GetMutSetV(Word, n, *s, i, W(7), h) in rewrite ← hv in NthSetSame(Word, n, *s, i, W(7), h)
 )
 
 def ZeroBoth (n : Word) (k : Word) (s : &Slice(Word, n)) (h : Le(k, n)) : Unit := (
@@ -288,7 +294,8 @@ def ZeroBoth (n : Word) (k : Word) (s : &Slice(Word, n)) (h : Le(k, n)) : Unit :
 |---|---|
 | `unknown constant X` | `X` is undefined, misspelled, declared later, or was itself rejected |
 | `[Read] x was moved out or its borrow ended (reading ⊥)` | `clone` it, pass `&*x` instead of `x`, or read once and reuse the binding |
-| `(surface) not a place` | `match` needs a place: `let v = call(…); match v { … }` |
+| `(surface) f(x) is not a place …` | `match`, `&`, `:=` and `clone` need a place: `let v = f(x); match v { … }`. A dereferenced call, `*f(x)`, is a place when `f` returns a borrow |
+| `[D53] reading *GetMut(…) moves its content out through the borrow …` | the element is not a copy type: `clone(*GetMut(…))` copies it |
 | `the body of P has type A, but the goal is B` | your proof proves `A`; compare with `B`, and case-split or rewrite until they meet |
 | `argument i (h) has type A, expected B` | wrong argument type, often a proof that needs a `rewrite` first |
 | `[Repack] … field x … holds a value of type T, but its type from the earlier fields is U` | a dependent field doesn't match its index where the value must be whole |

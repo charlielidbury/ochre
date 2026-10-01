@@ -661,7 +661,13 @@ partial def placeType (p : Place) : M Value := do
     | none => valType (← getAt pos)
   | .deref q => match ← placeType q with
     | .tRef T => pure T
-    | T => err s!"*{← ppPlace q}: not a borrow (type {T})"
+    | T =>
+      let q' ← ppPlace q
+      -- the temporary of a dereferenced call (`*f(ā)`, a surface desugaring) is named `⋄*f(…)`
+      if q'.startsWith "⋄*" then
+        let call := (q'.drop 2).toString
+        err s!"*{call}: {call} does not return a borrow (type {T}), so *{call} is not a place"
+      err s!"*{q'}: not a borrow (type {T})"
   | .fst q => match ← placeType q with
     | .tNat => pure .tNat
     | .tInd "Pair" [A, _] => pure A           -- field 1 of the library's Pair (D52)

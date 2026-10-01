@@ -111,26 +111,27 @@ When a proof is rejected, `lake -q exe check --trace Name` shows the goal in eva
 
 Blocks `Index`, `Arrays` and `ArrayLemmas` in `checker/Ochr/Examples/16Arrays.lean`. Read that file: every declaration is short and checked. In outline:
 
-- **Numbers (`Index`).** `Le(a, b)`, `Lt(a, b)` (propositions, by recursion); `LeDec(a, b) : Dec(Le(a, b), Lt(b, a))` and `LtDec(i, n) : Dec(Lt(i, n), Le(n, i))`, comparisons that return the proof (`Yes(h)` / `No(k)`); `Leb`, `Eqb` (booleans); `WAdd`, `Sub`, `W`; and facts: `LeRefl`, `LeStep`, `LeTrans`, `LeAddL`, `AddRS`, `AddZeroR`, `AddOneR`, `SubPos`, `SubOneLe`.
-- **The model (`Arrays`).** `Slice(E, n)` is a view of `n` elements, `Array(E, n)` an owned array. The pure functions on views: `Nth(E, n, s, i, h)` is element `i` (with `h : Lt(i, n)`), `SetS` replaces an element, `TakeS`/`DropS` split at `k` and `JoinS` joins, `SnocS`/`PopS` work at the end.
-- **The natives (`Arrays`),** the only way runtime code reaches an array: `AsSlice(E, n, &a)` (the view of an array), `Read(E, n, s, i, h)`, `Set(E, n, s, i, x, h)`, `GetMut(n, s, i, h)` (a borrow of element `i`, for `Word` elements), `WithSplit(E, R, n, k, s, h, f)` (runs `f` on borrows of the first `k` elements and of the rest, then puts them back: the `split_at_mut` of Ochr), `ArrEmpty`, `ArrPush`, `ArrPop`. Built from them: `Swap(E, n, s, i, j, hi, hj)`, `Replicate`, `Fill`, `FillFrom`.
-- **Lemmas (`ArrayLemmas`).** `NthSetSame`, `NthSetOther`, `JoinTakeDrop`, `TakeJoin`, `DropJoin`; counting: `Count(q, n, s)` (how many elements equal `q`), `Ind`, `CountJoin`, `CountSet`, `CountSwap`; `SwapS` (the model of `Swap`) with `SwapIsSwapS`; `GetMutSet` (writing through `GetMut` is `Set`).
+- **Numbers (`Index`).** `Le(a, b)`, `Lt(a, b)` (propositions, by recursion); `LeDec(a, b) : Dec(Le(a, b), Lt(b, a))` and `LtDec(i, n) : Dec(Lt(i, n), Le(n, i))`, comparisons that return the proof (`Yes(h)` / `No(k)`); `Leb`, `Eqb` (booleans); `WAdd`, `Sub`, `W`; and facts: `LeRefl`, `LeStep`, `LeTrans`, `LeAddL`, `AddRS`, `AddZeroR`, `AddOneR`, `SubPos`, `SubOneLe`, `SubPosLt`, `LtNe`, `LeAntisym`.
+- **The model (`Arrays`).** `Slice(E, n)` is a view of `n` elements, `Array(E, n)` an owned array. The pure functions on views: `Nth(E, n, s, i, h)` is element `i` (with `h : Lt(i, n)`), `SetS` replaces an element, `SwapS` exchanges two, `TakeS`/`DropS` split at `k` and `JoinS` joins, `SnocS`/`PopS` work at the end.
+- **The natives (`Arrays`),** the only way runtime code reaches an array: `AsSlice(E, n, &a)` (the view of an array), `GetMut(E, n, s, i, h) : &E` (a borrow of element `i`), `WithSplit(E, R, n, k, s, h, f)` (runs `f` on borrows of the first `k` elements and of the rest, then puts them back: the `split_at_mut` of Ochr), `ArrEmpty`, `ArrPush`, `ArrPop`. Built from them: `Swap(E, n, s, i, j, hi, hj)` (it splits the view and exchanges through two element borrows, copying nothing), `Replicate`, `Fill`, `FillFrom`.
+- **Elements are read and written through `GetMut`.** `*GetMut(…)` is a place, as Rust's `*v.get_mut(i)`: `*GetMut(Word, n, s, i, h)` reads a `Word` (a copy type copies), `clone(*GetMut(E, n, s, i, h))` copies any element (without `clone`, reading a non-copy element is rejected: it would move it out through the borrow), and `*GetMut(E, n, s, i, h) := x` writes one. Two element borrows of one view at once are refused (the second ends the first); split the view first.
+- **Lemmas (`ArrayLemmas`).** Through an element borrow: `GetMutRead` (a read is `Nth`, and leaves the view as it was), `GetMutSet` (a write is `SetS`'s), and `GetMutReadV`, `GetMutSetV` about a view given by value; `SwapIsSwapS` (`Swap` is the write of `SwapS`) and `SwapIsSwapSV`. On the model: `NthSetSame`, `NthSetOther`, `SetSComm`, `JoinTakeDrop`, `TakeJoin`, `DropJoin`, `NthTakeS`, `NthDropS`, `JoinSetS`; counting: `Count(q, n, s)` (how many elements equal `q`), `Ind`, `CountJoin`, `CountSet`, `CountSwap`.
+- **Reads, writes and swaps in proofs.** At an unknown index, what a program does through `GetMut`, or by `Swap`, is a sealed program, not `Nth` or `SetS`. Name the facts with the lemmas above and rewrite with them: `let ⟨hv, hp⟩ = GetMutRead(…)` gives the value read (`hv`) and the view it leaves (`hp`, equal to `*s`). A rewrite does not reach inside a sealed program (such as a recursive call on the view a read leaves), so state the induction hypothesis at that view, and rewrite the rest of the goal onto it. At a known index, splitting the view (`match v { MkSlice(c) => match c { MkC(y, t) => … } }`) makes a read compute.
 - **The rules.** The representation is abstract: outside *model code* (the natives' bodies, and *model functions*, which take or return a view by value and so never run at runtime), runtime code only borrows views. It never reads a view by value, matches on `MkSlice`/`MkC`/`MkArray`, or builds one. Statements and proofs may do all of this freely: `Nth(E, n, *s, i, h)` is fine in a type. A function that takes `(v : Slice(E, n))` by value is a model function: it may match on the representation, and it can be used in statements and other model code but not called from runtime code.
 
 Examples (all checked):
 
 ```
--- Reading and writing through the natives.
+-- Reading and writing through an element borrow.
 def Bump (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) : Unit := (
-  let x = Read(Word, n, &*s, i, h);
-  Set(Word, n, s, i, Succ(x), h)
+  *GetMut(Word, n, &*s, i, h) := Succ(*GetMut(Word, n, &*s, i, h))
 )
 
 -- A bounds proof from a runtime comparison.
 def ReadOr (n : Word) (s : &Slice(Word, n)) (i : Word) (d : Word) : Word := (
   let dec = LtDec(i, n);
   match dec {
-    Yes(h) => Read(Word, n, s, i, h),
+    Yes(h) => *GetMut(Word, n, s, i, h),
     No(k) => d,
   }
 )
@@ -143,14 +144,17 @@ def ZeroBoth (n : Word) (k : Word) (s : &Slice(Word, n)) (h : Le(k, n)) : Unit :
   ))
 )
 
--- A statement about in-place code, run on a copy, proved by a library lemma.
+-- A statement about in-place code, run on a copy, proved by library lemmas: the write is
+-- SetS's, the read is Nth, and NthSetSame is about the model.
 def SetThenRead (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) :
-    Eq Word (let c = *s; Set(Word, n, &c, i, W(7), h); Read(Word, n, &c, i, h)) (W(7)) := (
-  NthSetSame(Word, n, *s, i, W(7), h)
+    Eq Word (let c = *s; *GetMut(Word, n, &c, i, h) := W(7); *GetMut(Word, n, &c, i, h)) (W(7)) := (
+  let c = SetS(Word, n, *s, i, W(7));
+  let ⟨hv, hp⟩ = GetMutRead(Word, n, &c, i, h);
+  rewrite ← GetMutSetV(Word, n, *s, i, W(7), h) in rewrite ← hv in NthSetSame(Word, n, *s, i, W(7), h)
 )
 
 -- A concrete run, checked by evaluation.
-def BumpRun : Id Word (let a = ArrPush(Word, W(1), ArrPush(Word, Zero, ArrEmpty(Word), W(4)), W(9)); Bump(W(2), AsSlice(Word, W(2), &a), Succ(Zero), refl); Read(Word, W(2), AsSlice(Word, W(2), &a), Succ(Zero), refl)) (W(10)) := refl
+def BumpRun : Id Word (let a = ArrPush(Word, W(1), ArrPush(Word, Zero, ArrEmpty(Word), W(4)), W(9)); Bump(W(2), AsSlice(Word, W(2), &a), Succ(Zero), refl); *GetMut(Word, W(2), AsSlice(Word, W(2), &a), Succ(Zero), refl)) (W(10)) := refl
 
 -- Induction on a number, a rewrite, a conjunction, and an empty case.
 def CountDown (k : Word) : Word by k := (

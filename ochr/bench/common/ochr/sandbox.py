@@ -58,7 +58,7 @@ FORBIDDEN = [
     r"\bPartitionPerm\b", r"\bScanPerm\b", r"\bScanLt\b", r"\bScanPivot\b", r"\bRecursePerm\b",
     r"\bRecurseSorted\b", r"\bRecWith\b", r"\bSortArray\b", r"\bSortRun\b", r"\bPartLeProof\b",
     r"\bPartLe\b", r"\bAllLeTakeOf\b", r"\bTakeOneDrop\b",
-    r"\bHMSlot\b", r"\bHashMapOf\b", r"\bBInsert\b", r"\bInsertB\b", r"\bGetMutB\b",
+    r"\bHMSlot\b", r"\bHashMapOf\b", r"\bBInsert\b", r"\bInsertB\b",
     r"\bBGetMut\b", r"\bBGet\b", r"\bBRemove\b", r"\bBFind\b", r"\bMoveBucket\b",
     r"\bMoveSlots\b", r"\bEmptySlots\b", r"\bSlotInsertFind\b", r"\bInsertFind\b",
     r"\bBRemoveFind\b", r"\bGetMutIsInsert\b", r"\bInsertCount\b",
@@ -139,9 +139,12 @@ computed by recursion on the length `n`: `CellsEnd` at zero, and a `Cell` holdin
 and the rest at `Succ(m)`. So the length lives only in the type, and a value of `Cells(E, n)`
 has exactly `n` elements. A view `Slice(E, n)` wraps the cells, and an owned array
 `Array(E, n)` wraps a view. Proofs reason about this model directly (`Nth`, `SetS`, `TakeS`,
-`DropS`, `JoinS`, `Count`, ...). Compiled code uses a flat buffer instead, through eight native
-functions whose models are the Ochr bodies given here (`implemented by`): `AsSlice`, `Read`,
-`Set`, `GetMut`, `WithSplit`, `ArrEmpty`, `ArrPush`, `ArrPop`.
+`DropS`, `JoinS`, `Count`, ...). Compiled code uses a flat buffer instead, through six native
+functions whose models are the Ochr bodies given here (`implemented by`): `AsSlice`, `GetMut`,
+`WithSplit`, `ArrEmpty`, `ArrPush`, `ArrPop`. Elements are read and written through `GetMut`:
+`*GetMut(Word, n, s, i, h)` reads a `Word`, `clone(*GetMut(E, n, s, i, h))` copies any element,
+and `*GetMut(E, n, s, i, h) := x` writes one. `Swap` is built from `WithSplit` and two
+`GetMut`s and copies nothing.
 
 The rules: nothing recurses over an array, only over an index; runtime code never owns part
 of an array; a borrow of part of an array is scoped by a continuation (`WithSplit`).
@@ -152,9 +155,10 @@ functions, which take or return a view by value and so never run at runtime), ru
 only borrows a view: it never reads, moves, assigns or matches one, and never builds or takes
 apart the representation. Statements and proofs (erased code) are unrestricted.
 
-`&E` is not yet well formed for a type variable `E`, so the one native that returns a borrow
-of an element, `GetMut`, is written for `Word` elements. Reads move (D53); indices, lengths
-and `Word` elements are copies.
+Reads move (D53); indices, lengths and `Word` elements are copies. At an unknown index, what
+is done through an element borrow (or by `Swap`) is a sealed program, not the model's `Nth` or
+`SetS`: proofs name it with `GetMutRead`, `GetMutSet` and `SwapIsSwapS` (and their forms
+about a view given by value, `GetMutReadV`, `GetMutSetV`, `SwapIsSwapSV`).
 
 This file holds the library blocks: `Index` (the order on `Word` and facts about it),
 `Arrays` (the model and the natives) and `ArrayLemmas` (the lemma library). -/

@@ -16,20 +16,30 @@ Proofs rewrite with `rewrite h in t` and take conjunctions apart with a destruct
 (D60); no proof here writes `J` or a motive.
 
 Reads move (D53). Indices, lengths and quicksort's elements are `Word`s, which are copies, so
-only a generic element `x : E` or a whole view is ever used twice, and that takes a
-`clone`: seven of them, all in library code (`Read`, `WithSplit`, `Replicate`, `FillFrom`,
-the model `SwapS` twice) except one in quicksort's `Recurse`, which passes the recursion
-`rec` on to a second closure.
+only a generic element `x : E`, a whole view or a closure is ever used twice, and that takes a
+`clone`. Copying an element is the caller's to write: there is no read native, and an element
+is read through its borrow, `*GetMut(Word, …)` for a copy type (the scan's and the partition's
+reads) and `clone(*GetMut(E, …))` otherwise (`GetOr`). Six `clone`s are in code: `Replicate`
+and `FillFrom` copy the element they repeat, two model bodies copy a view (`WithSplit`'s, and
+`SwapS`'s twice; model code never runs at runtime), and quicksort's `Recurse` passes the
+recursion `rec` on to a second closure. `Swap` copies nothing: it exchanges through two
+element borrows, by moves.
+
+What is done through an element borrow at an unknown index is a sealed program, not the
+model's `Nth` or `SetS`, so a proof about code that reads, writes or swaps elements calls
+`GetMutRead`, `GetMutSet` or `SwapIsSwapS` (or their forms about a view given by value) where
+the program does so (see `ScanPerm`).
 
 The representation is enforced (K2, K3): `SliceOf` is `unsized abstract`, and `Cell`,
 `CellsEnd` and `ArrayOf` are `abstract`, so outside model code (the `implemented by` bodies,
 and the model functions, which take or return a view by value) runtime code only borrows a
 view and never builds or takes apart the representation. The remaining workarounds are marked
 where they occur:
-* `[K1]` There is no universe of data types yet, so `&E` is not well formed for a type
-  variable `E`, nor `&Cells(E, n)` at an unknown `n` (D48). Each cell's tail is therefore
-  wrapped in the view type `SliceOf`, whose borrows are always well formed, and the one
-  function that returns a borrow of an element, `GetMut`, is written for `Word` elements.
+* `[K1]` (resolved by D66) `&A` is well formed for every `A : Type₀`, so `GetMut` returns `&E`
+  for any element type `E`. Each cell's tail is wrapped in the view type `SliceOf`, which made
+  the tail borrowable while `&Cells(E, n)` at an unknown `n` was not well formed (D48). It now
+  is, so borrows no longer need the wrapping; it stays because `GetMut` and the model
+  functions recurse on the tail as a view (`GetMut(E, m, &t, i', h)`, `DropS(E, m, k', t)`).
 * `[K4]` A struct cannot yet have a field of type `Array(E, cap)` (a type function applied to a
   parameter, D36), so the hashmap takes the model type as a parameter.
 * `[K6]` Quicksort recurses on fuel; with recursion on a measure it recurses on the length.
@@ -261,7 +271,8 @@ proofs use them, and they are the models of the native functions below. -/
 ochr Arrays uses Index {
   -- [K2] [K3] A view: unsized and abstract (runtime code only borrows it).
   unsized abstract inductive SliceOf (R : Type) := MkSlice(c : R)
-  -- [K1] [K3] A cell: an element and the rest, which is a view so that it can be borrowed.
+  -- [K1] [K3] A cell: an element and the rest, which is a view, so that what recurses on the
+  -- rest recurses on a view.
   abstract inductive Cell (E : Type) (R : Type) := MkC(h : E, t : SliceOf(R))
   -- [K3] The end of the cells. (Not `Unit`: an unknown `Unit` cannot be taken apart, so a
   -- proof about an empty view could not see that it is the empty view.)
@@ -749,7 +760,7 @@ ochr ArrayLemmas uses Arrays {
   -- ## Element borrows
   -- At an unknown index, a borrow of an element is a sealed program, so what is done through it
   -- is known by these two lemmas, by the same bare recursion as `AddMEq`. Writing through it is
-  -- `Set` (in place is functional).
+  -- the model's write `SetS` (in place is functional).
   def GetMutSet (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (w : E) (h : Lt(i, n)) :
       Id(Unit, (*GetMut(E, n, s, i, h) := w), (*s := SetS(E, n, *s, i, w))) by i := (
     match n {
@@ -1041,7 +1052,7 @@ ochr ArrayBench uses ArrayLemmas {
   -- ends with the element moved out (D53): the copy is the caller's to write.
   reject def ReadMove (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (h : Lt(i, n)) : E := *GetMut(E, n, s, i, h)
   -- `*f(…)` is a place only for a call that returns a borrow.
-  reject def NotAPlace (n : Word) (s : &Slice(Word, n)) : Unit := *Nth(Word, n, *s, Zero, refl) := Zero
+  reject def NotAPlace (a : Word) (b : Word) : Unit := *Leb(a, b) := true
 
   -- A read leaves the view as it was, but not by definition: at an unknown index the view
   -- afterwards is a put-back program ...
@@ -1255,7 +1266,7 @@ ochr ArrayBench uses ArrayLemmas {
 
   -- ## The abstraction is enforced (K2, K3)
   -- `SliceOf` is `unsized abstract`, `Cell`, `CellsEnd` and `ArrayOf` are `abstract`, and the
-  -- eight natives are `implemented by` native code. Outside model code (their bodies, and
+  -- six natives are `implemented by` native code. Outside model code (their bodies, and
   -- the model functions, which take or return a view by value and so never run at runtime),
   -- runtime code never reads, moves, assigns or matches a view, and never builds or takes
   -- apart the representation. reviewer-7's three programs bypassed the natives: `Suffix`
@@ -1276,6 +1287,12 @@ ochr ArrayBench uses ArrayLemmas {
 
 -- the exact number of declarations (a truncated file changes it)
 #guard ArrayBench.decls.length == 48
+-- the element reads' rejections, each for its reason
+#guard (run "ArrayBench" ArrayBench).rejectedWith [
+  ("ReadMove", "[D53] reading *GetMut(…) moves its content out through the borrow GetMut(…) returns, which then ends with it moved out (⊥): copy it with clone(*GetMut(…))"),
+  ("NotAPlace", "*Leb(…): Leb(…) does not return a borrow (type Bool), so *Leb(…) is not a place"),
+  ("ReadPastEnd", "argument 5 (h) has type ⊤, expected False"),
+  ("TwoGetMut", "[Read] a was moved out or its borrow ended")]
 
 /-! ## B2: quicksort
 

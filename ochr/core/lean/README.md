@@ -95,7 +95,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `13Erasure` | erased terms run on a private copy, confinement, erasure decided by syntax (the pre-pass) | P2 | 66 |
 | `14Universes` | `Prop : Type₁` beside `Type` (D66), no `Type : Type`, no cumulativity, why `&Type` is refused; sorts are syntactic (D55, reviewer-4's programs) | preamble, P2 | 27 |
 | `15BorrowTypes` | what may be borrowed (D66: `&A` iff `A : Type`) and where `&` may appear (D48); `FnBorrows`: borrowing functions and type variables, a generic swap and bucket; abstract and unsized types, model code (K2, K3) | §1 | 74 |
-| `16Arrays` | case study: arrays as a library (slices, indices), its lemmas and benchmarks, and in-place quicksort proved sorted and a permutation; indices, lengths and elements are `Word`s (`notes/arrays-library.md`) | all | 173 |
+| `16Arrays` | case study: arrays as a library (slices, indices), its lemmas and benchmarks, and in-place quicksort proved sorted and a permutation; indices, lengths and elements are `Word`s (`notes/arrays-library.md`) | all | 194 |
 | `17HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code; keys and sizes are `Word`s (`notes/hashmap-case-study.md`) | all | 188 |
 | `18DependentFields` | dependent fields (D64): a field's type from the earlier fields, writing them in place (open, then repacked), proof fields, restricted injectivity, type functions in field types (K4) and its nesting condition; and a case study, `DepVec`: `Vec(E)` with push, pop, an element borrow and lemmas about pushing, and a hash table that stores its capacity and resizes | §8 | 43 (+44) |
 
