@@ -13,7 +13,8 @@ Checked under switches that are off by default (`set_option ochr.<switch> true i
   are ordinary Ochr definitions, with no native and no other new rule. Rust's `MaybeUninit`
   copies when `T` does, and so does `Uninit(E)` (a non-recursive inductive of copy fields).
 * `lentProofs`: a proof field assigned while part of its value is lent is checked with each
-  lent part an unknown value of its type ([Lent-proof]). Without it, ochr-core accepts a
+  lent part an unknown value of its type ([Lent-proof]; landed on ochr-core as "D64 amended",
+  8e036130, on by default there, with witnesses DepFields.BoomLent and BoomGetLent). Without it, ochr-core accepts a
   closed proof of `False` (`LentProofs.Boom`). With it, a value with an invariant can hand
   out a borrow into the data its invariant is about, provided the invariant holds whatever
   is written through that borrow: `UVec.Get` returns `&E` into the buffer of a user-land
