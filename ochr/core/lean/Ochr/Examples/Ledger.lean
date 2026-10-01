@@ -25,10 +25,14 @@ end Ochr.Registry
 Switching one rule off flips exactly the verdicts below and nothing else. (v1's P5
 switch, `p5 := false`, is not in the ledger: since v1.3 skipping a proof is an
 optimisation of P2, and in this checker switching it off also switches off the `⋆`
-representation of proofs, so its row would not isolate one rule.) -/
--- P2 switched off: confinement lets an erased term pass an outer place to an erased call,
--- whose writes then persist on the direct path but not on the closed-off one, so `BoomP2`
--- is a closed proof of False (fuzz-port; the row was classed completeness until then)
+representation of proofs, so its row would not isolate one rule.) D28's switch,
+`erasureByDecl := false`, has no row either: its witnesses were D41 errors, and no by-value
+counterexample was found in 2·10⁴ fuzz cases after D41's deletion (D69; seed 1: one more
+case checked, no finding kind added). D28 stays: with D41 gone, syntactic erasure is what
+keeps the two paths discarding the same effects. -/
+-- P2 switched off: an erased term's writes to an outer place then persist on the direct
+-- path but not on the closed-off one, so `BoomP2` is a closed proof of False (fuzz-port; the
+-- row was classed completeness until then)
 open Ochr.Registry in
 #guard rowOk { eraseOnCopy := false }
   ["Functions.RunGGen:rejected", "Functions.RunIGen:rejected", "Functions.RunPowGen:rejected",
