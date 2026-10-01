@@ -47,6 +47,8 @@ inductive Rule where
   | TMatchProp | TMatchErased | TMatchNone | TailProp
   -- dependent fields (D64)
   | Field | Open | Repack
+  -- docs/10 prototype (switches uninitTypes, lentProofs)
+  | Untagged | MoveEmpty | LentProof
   -- definitions
   | Def | IndDecl | Const
 deriving BEq, Repr, Inhabited
@@ -71,6 +73,7 @@ def Rule.all : List Rule :=
    .TailSplit, .TailGen, .TailMatch, .TailLet, .TailSeq, .TailEnd,
    .TMatchProp, .TMatchErased, .TMatchNone, .TailProp,
    .Field, .Open, .Repack,
+   .Untagged, .MoveEmpty, .LentProof,
    .Def, .IndDecl, .Const]
 
 /-- The rule's name as the paper prints it: in an inference rule, or as the label of a rule the
@@ -107,6 +110,7 @@ def Rule.name : Rule → String
   | .TMatchProp => "T-Match-prop" | .TMatchErased => "T-Match-erased" | .TMatchNone => "T-Match-none"
   | .TailProp => "Tail-prop"
   | .Field => "Field" | .Open => "Open" | .Repack => "Repack"
+  | .Untagged => "Untagged" | .MoveEmpty => "Move-empty" | .LentProof => "Lent-proof"
   | .Def => "Def" | .IndDecl => "Ind-decl" | .Const => "Const"
 
 /-- The rules the plain trace (`cfg.trace`) has always shown: goals, splits, call types. -/

@@ -91,6 +91,10 @@ structure IndDecl where
                             -- positions and model code (`implemented by` bodies, model functions)
   unsized : Bool := false   -- declared `unsized` (K2): at runtime, outside model code, a place of this type is
                             -- only borrowed (never read, moved, assigned or matched)
+  untagged : Bool := false  -- declared `untagged` (docs/10, switch `uninitTypes`): no tag at runtime, so its
+                            -- constructors are built anywhere, but a runtime match on it has one live arm (the
+                            -- others refuted by a hypothesis); its first constructor has no fields, and with
+                            -- `moveEmpty` a move out of it leaves that (`Uninit(E) := Empty | Full(x : E)`)
 deriving Inhabited
 
 /-- D64: the fields of constructor `c` that the field type term `FT` mentions, as field
@@ -200,6 +204,14 @@ structure Config where
   proofDataFields : Bool := true -- D49 (3): a data field of a matched proof is a fresh abstract value (not ⋆)
   confineBodies : Bool := false  -- an extension of D41, not in RULES: the body of a function whose calls are
                                  -- erased, and each arm of an erased stuck block, are confined too
+  uninitTypes : Bool := false    -- docs/10 prototype (uninit-bot): `untagged` inductives ([Untagged]): built anywhere,
+                                 -- matched at runtime only with one live arm (the others refuted by a hypothesis)
+  moveEmpty : Bool := false      -- docs/10, the merge's rule 4 (needs uninitTypes): a move out of an untagged value
+                                 -- leaves its empty value ([Move-empty]), and a stuck block takes such a place by `&`.
+                                 -- Unsound where statements copy instead of moving (ochr-core: MoveEmptyBoom)
+  lentProofs : Bool := false     -- docs/10 finding: a proof field assigned while part of the value is lent is
+                                 -- checked with each lent part an unknown value of its type ([Lent-proof]); off:
+                                 -- its current content, which a live borrow can still change (ProofLent2.Boom)
   trace : Bool := false          -- record goals, splits and call types (for inspection)
   derivation : Bool := false     -- record every rule application, in the paper's names (`fire`, Rules.lean)
 deriving Inhabited, Repr, BEq
@@ -212,7 +224,8 @@ def Config.sortSucc (c : Config) (l : Nat) : Nat := if l == 0 && c.propUp then 2
 they stand; a counterfactual run switches a rule off and measures that alone. D53's switches
 do not change what is erased, so their counterfactual runs are checked too. -/
 def Config.prePassAssert (c : Config) : Bool :=
-  c.prePass && { c with trace := false, derivation := false, ghosts := true, fnRule := true } == ({} : Config)
+  c.prePass && { c with trace := false, derivation := false, ghosts := true, fnRule := true,
+                         uninitTypes := false, moveEmpty := false, lentProofs := false } == ({} : Config)
 
 /-- D41: one assignment, borrow or move, by the position of its place's root. It is
 `pending` once an erased run it belongs to has affected a place outliving that run: an

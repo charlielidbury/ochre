@@ -45,6 +45,24 @@ earlier, reporting at `B`.
 namespace Ochr.Notation
 open Lean Ochr.Surface
 
+-- docs/10 (uninit-bot): blocks checked with a switch that is off by default, `set_option
+-- ochr.uninitTypes true in ochr B { … }` (the switch applies to the block's library too)
+register_option ochr.uninitTypes : Bool := {
+  defValue := false
+  descr := "check `ochr` blocks with Config.uninitTypes (docs/10: untagged inductives, Uninit)" }
+register_option ochr.moveEmpty : Bool := {
+  defValue := false
+  descr := "check `ochr` blocks with Config.moveEmpty (docs/10: a move out of an untagged value leaves its empty value)" }
+register_option ochr.lentProofs : Bool := {
+  defValue := false
+  descr := "check `ochr` blocks with Config.lentProofs (docs/10: a proof field assigned while part of the value is lent)" }
+
+/-- The configuration the `ochr` command checks with: the default, with the switches set by
+`set_option ochr.… true`. -/
+def blockConfig (opts : Options) : Config :=
+  { uninitTypes := ochr.uninitTypes.get opts, moveEmpty := ochr.moveEmpty.get opts,
+    lentProofs := ochr.lentProofs.get opts }
+
 declare_syntax_cat ochr_term
 declare_syntax_cat ochr_binder
 declare_syntax_cat ochr_decl
@@ -121,6 +139,7 @@ syntax "reject " "def " ident ochr_binder* " : " ochr_term:21 (" by " ident)? " 
 syntax "copy " : ochr_indmod
 syntax "abstract " : ochr_indmod
 syntax "unsized " : ochr_indmod
+syntax "untagged " : ochr_indmod
 syntax ochr_indmod* "inductive " ident ochr_binder* (" : " ochr_term:21)? (" := " sepBy1(ochr_ctor, " | "))? : ochr_decl
 syntax "reject " ochr_indmod* "inductive " ident ochr_binder* (" : " ochr_term:21)? (" := " sepBy1(ochr_ctor, " | "))? : ochr_decl
 
@@ -324,6 +343,7 @@ def elabInd (n : TSyntax `ident) (bs : Array (TSyntax `ochr_binder)) (s? : Optio
   let isCopy := has "copy"
   let isAbstract := has "abstract"
   let isUnsized := has "unsized"
+  let isUntagged := has "untagged"
   let cs' ← match cs? with
     | some cs => cs.getElems.mapM elabCtor
     | none => pure #[]
@@ -332,7 +352,7 @@ def elabInd (n : TSyntax `ident) (bs : Array (TSyntax `ochr_binder)) (s? : Optio
     | none => `(none)
   `(({ name := $(strLit n.getId.toString), params := [], indParams := [$(← bs.mapM elabBinder),*],
        indSort := $sort, ind? := some [$cs',*], indCopy := $(quote isCopy), indAbstract := $(quote isAbstract),
-       indUnsized := $(quote isUnsized), expectAccept := $(quote accept) } : SDecl))
+       indUnsized := $(quote isUnsized), indUntagged := $(quote isUntagged), expectAccept := $(quote accept) } : SDecl))
 
 def elabDecl (stx : TSyntax `ochr_decl) : MacroM (TSyntax `term) := do
   match stx with
@@ -445,7 +465,7 @@ def checkBlock (n : Name) (ref : Syntax) (decls : Array Syntax) (kw : Syntax := 
   -- the `ochr` keyword shows the block's summary
   let out ← IO.mkRef (none : Option Ochr.Test.Report)
   let t0 ← IO.monoNanosNow
-  let r := Ochr.Test.runWith pre b.name b (located := true)
+  let r := Ochr.Test.runWith pre b.name b (blockConfig (← getOptions)) (located := true)
   out.set (some r)
   let t1 ← IO.monoNanosNow
   let ms := (t1 - t0) / 1000000
@@ -521,7 +541,7 @@ elab_rules : command
     let b ← evalBlock (← liftCoreM (realizeGlobalConstNoOverload n))
     let pre ← if b.name == "Prelude" then pure none else
       try pure (some (← evalBlock `Prelude)) catch _ => pure none
-    let r := Ochr.Test.runWith pre b.name b (located := true)
+    let r := Ochr.Test.runWith pre b.name b (blockConfig (← getOptions)) (located := true)
     match ((r.rows.find? (·.name == d.getId.toString)).map (·.verdict) : Option Verdict) with
     | some (.rejected m (some l)) =>
       let exp := t.getString

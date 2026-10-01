@@ -365,6 +365,44 @@ partial def abstractMatchCheck (p : Place) (ty : String) : M Unit := do
   if (d.abstract || d.unsized) && (← get).cfg.abstractTypes && (← atRuntime) then
     err s!"[K3] a match on {← ppPlace p} with the constructors of the abstract type {ty} at runtime, outside model code"
 
+/-- docs/10 [Untagged]: a match on a value of an untagged type at runtime (outside erased code
+and model code) has one live arm; every other arm is a zero-arm match on a hypothesis, which
+typing checks is refuted there, so the compiled match needs no tag (it is its live arm). Read
+off the arms, so the same on every path. -/
+partial def untaggedMatchCheck (p : Place) (ty : String) (arms : List (Hint × Term)) : M Unit := do
+  if ty == "" || !(← get).cfg.uninitTypes then return
+  let some d := (← get).inds.find? (·.name == ty) | return
+  unless d.untagged && (← atRuntime) do return
+  let live := arms.filter fun (_, a) => !(a matches .matchInd _ _ [])
+  fire .Untagged fun _ => s!"a match on {ty} at runtime: {live.length} live arm(s)"
+  if live.length > 1 then
+    err s!"[Untagged] a match on {← ppPlace p} with the constructors of the untagged type {ty} at runtime: it has no tag to inspect, so every arm but one must be refuted by a hypothesis (`C => match h \{}`)"
+
+/-- docs/10 [Move-empty]: what a move out of a place holding `v` leaves there when `v` is a
+value of an untagged type (a constructor value of one, or a neutral whose type is one): its
+first constructor, its empty value (`Empty` for `Uninit(E)`), not the moved-out marker. -/
+partial def emptyOf (v : Value) : M (Option Value) := do
+  if !((← get).cfg.uninitTypes && (← get).cfg.moveEmpty) then return none
+  let T? ← match v with
+    | .ind t _ _ ps _ => pure (some (Value.tInd t ps))
+    | .abs σ => tryCatch (some <$> absType σ) fun _ => pure none
+    | .sealed _ => tryCatch (some <$> valType v) fun _ => pure none
+    | _ => pure none
+  let some (.tInd n ps) := T? | return none
+  let some d := (← get).inds.find? (·.name == n) | return none
+  if !d.untagged then return none
+  let some (cn, []) := d.ctors.head? | return none
+  pure (some (.ind n 0 ⟨cn⟩ ps []))
+
+/-- A move out of `p`, which holds `v`: an untagged value leaves its empty value ([Move-empty]),
+anything else a ghost (D53 (c)) or `⊥`. -/
+partial def moveOut (p : Place) (v : Value) : M Unit := do
+  match ← emptyOf v with
+  | some e =>
+    fire .MoveEmpty fun _ => s!"{v} moved out: the place holds {e}"
+    setPlace p e
+  | none => setPlace p (if (← get).cfg.ghosts then .ghost v else .bot)
+
 /-- A type headed by an `unsized` declaration (K2). -/
 partial def isUnsizedType (T : Value) : M Bool := do
   match T with
@@ -439,7 +477,7 @@ partial def readPlace (p : Place) : M Value := do
     if cfg.fnRule && (← isCapture p) then
       err s!"[D53] a closure's body moves a captured value out ({← ppPlace p}); a closure may run again: clone it"
     logEffect p "moves"
-    setPlace p (if cfg.ghosts then .ghost v else .bot)
+    moveOut p v
     pure v
 
 /-- D53: reading `p` (holding `v`) copies: its type is a copy type, or it holds a function
@@ -1390,7 +1428,7 @@ partial def capture (t : Term) : M (List Value × Term) := do
             if (← get).cfg.fnRule && (← isCapture p) then
               err s!"[D53] a closure's body moves a captured value ({← ppPlace p}) into a closure; clone it"
             logEffect p "moves"
-            setPlace p (if (← get).cfg.ghosts then .ghost v else .bot)
+            moveOut p v
   let idx (o : Nat) : Nat := (fvs.findIdx? (· == o)).getD 0
   let t0 := if through.isEmpty then t else
     t.mapFreePlace (fun c q => (if through.contains q.root then q.stripDeref else q).mapRoot fun j => .var (j + c)) 0
@@ -1874,6 +1912,8 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     openWrite p
     pure (b, T.map .tRef)
   | .assign p u =>
+    if typed && (← get).cfg.lentProofs then
+      if let some r ← lentProofAssign p u then return r
     -- the place's type is the type the context requires of a constructor's parameters and of an
     -- embedded value with no type of its own (an inert loan in a sealed program's `*r := loan`)
     let hint ← if typed && (u matches .ctor .. | .val _) then
@@ -2110,6 +2150,38 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     expectTy "the ascribed term" T A'
     setFlags fl
     pure (v, some A')
+
+/-- docs/10 [Lent-proof]: `p := u` for a proof field of a dependent constructor value while part
+of the value is lent (a live loan in its fields). The proof is about the whole value, and a live
+borrow can still write its part, which nothing would then invalidate (a write through the
+borrow is not a write through a field place, and [Repack] cannot check a proof, `⋆`). So the
+assignment is checked on a private copy in which each such borrow holds a fresh unknown value
+of its type: the proof must hold whatever the borrow leaves there. `none`: not this case. -/
+partial def lentProofAssign (p : Place) (u : Term) : M (Option (Value × Option Value)) := do
+  let .field g q := p | return none
+  let some d := (← get).inds.find? (·.name == g.ty) | return none
+  unless d.dependent g.ctor && (← fieldIsProof g) do return none
+  let cv ← tryCatch (content q) fun _ => pure .bot
+  let some fs ← ctorFields cv g | return none
+  let env := (← get).env
+  let ls := (fs.flatMap fun w => liveLoansIn env w).eraseDups
+  if ls.isEmpty then return none
+  fire .LentProof fun _ => s!"{g.name}: checked with what borrows {ls} hold unknown"
+  onCopy do
+    for l in ls do
+      let env := (← get).env
+      let some pos := findBorrow env l | continue
+      let some (c, _) := (valAt env pos).takeBorrow l | continue
+      let T ← tryCatch (valType c) fun _ =>
+        err s!"[Lent-proof] the proof field {g.name} is assigned while its value is lent, and the type of what the borrow holds ({c}) is not known"
+      let σ ← absOf T
+      setAt pos ((valAt env pos).setBorrowContent l σ)
+    let T ← placeType p
+    let (_, Tv) ← eval true u (some T)
+    expectTy s!"the proof assigned to {g.name} (the lent part unknown, [Lent-proof])" Tv T
+  assignPlace p .proof
+  openWrite p
+  pure (some (.unit, some .tUnit))
 
 /-- `D(ā)` (v2.0, D46): the arguments stand in type positions, so each is evaluated on a
 private copy, confined (P2); when typed, each is checked against its parameter's type,
@@ -2872,6 +2944,7 @@ partial def evalMatchByType (typed : Bool) (p : Place) (ty : String) (arms : Lis
 partial def evalMatchInd (typed : Bool) (p : Place) (ty : String) (arms : List (Hint × Term))
     (expected : Option Value := none) : M (Value × Option Value) := do
   abstractMatchCheck p ty
+  untaggedMatchCheck p ty arms
   if ← byTypeMatch ty arms then return ← evalMatchByType typed p ty arms expected
   accessPath p
   accessNeutralHead p
@@ -2941,6 +3014,12 @@ partial def movedPlace (q : Place) : M Place := do
     | _ => pure p
   | _ => pure p
 
+/-- docs/10: the place's type is an untagged inductive (read off its stored type). -/
+partial def untaggedPlace (q : Place) : M Bool := do
+  match ← tryCatch (placeType q) (fun _ => pure .bot) with
+  | .tInd n _ => pure (((← get).inds.find? (·.name == n)).map (·.untagged) |>.getD false)
+  | _ => pure false
+
 /-- Stuck blocks (RULES §3, v1.3): close a stuck match off as a call to an anonymous
 function of its free places, captured as Rust infers closure captures, on maximal place
 prefixes: a place some arm moves out of is moved in; otherwise a place written or
@@ -2952,6 +3031,14 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
   let moved ← moved.foldlM (fun acc q => do
       let q' ← movedPlace q
       pure (if acc.contains q' then acc else acc ++ [q'])) []
+  -- docs/10: a move out of a place of an untagged type leaves its empty value ([Move-empty]), a
+  -- write, so the block takes the place by `&` and its fill says what each arm left there. Moved
+  -- in, it would be empty after the block on this path even where the arm that runs keeps it
+  -- full (the over-approximation erased-moves met as `Eq ⊥ ⊥`, here a wrong value)
+  let (writesEmpty, moved) ← if (← get).cfg.uninitTypes && (← get).cfg.moveEmpty then
+      moved.foldlM (fun (w, m) q => do
+        if ← untaggedPlace q then pure (w ++ [q], m) else pure (w, m ++ [q])) ([], [])
+    else pure ([], moved)
   let f ← topIdx
   let nb := (← get).env[f]!.binds.size
   -- the free places used, re-rooted at the frame index, with their capture mode
@@ -2978,6 +3065,7 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
       else 0
     uses := uses.push (q, mode)
     wholeUses := wholeUses.push (q, k)
+  for q in writesEmpty do uses := uses.push (q, 1)
   -- maximal prefixes: places with no strict prefix among the used places
   let mut caps : Array (Place × Nat) := #[]
   for (q, _) in uses do
@@ -3347,6 +3435,7 @@ partial def checkTailAt (t : Term) (k : Value → Value → M Unit) : M Unit := 
       k v T.get!
   | .matchInd p ty arms =>
     abstractMatchCheck p ty
+    untaggedMatchCheck p ty arms
     if ← byTypeMatch ty arms then
       -- D45 (v2.0): [Split] on a proof is by its type: each arm is checked, with the fields
       -- as places holding ⋆ and no refinement; no arms, no paths

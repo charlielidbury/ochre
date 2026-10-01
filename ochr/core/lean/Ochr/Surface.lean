@@ -68,6 +68,7 @@ structure SDecl where
   indCopy : Bool := false                                         -- declared `copy` (D53)
   indAbstract : Bool := false                                     -- declared `abstract` (K3)
   indUnsized : Bool := false                                      -- declared `unsized` (K2)
+  indUntagged : Bool := false                                     -- declared `untagged` (docs/10)
   implBy : Option String := none                                  -- `implemented by "sym"` (K3)
   expectAccept : Bool
 deriving Inhabited, Repr
@@ -529,7 +530,7 @@ def resolveDecl (d : SDecl) : R Item := do
       | some (.sort 0) => pure 0
       | some _ => throw s!"{d.name}: an inductive type is in Prop or Type"
     return .ind { name := d.name, params := hs.zip ps, sort := sort, ctors := cs', copy := d.indCopy,
-                  abstract := d.indAbstract, unsized := d.indUnsized }
+                  abstract := d.indAbstract, unsized := d.indUnsized, untagged := d.indUntagged }
   let (ctx', hs, ds) ← binders [] d.params
   let cod ← resolve ctx' true d.ret
   let body ←

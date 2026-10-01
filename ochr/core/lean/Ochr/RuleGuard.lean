@@ -50,11 +50,16 @@ def expectedIssues : List String := [
   "pointer `jValue`: no declaration Ochr.jValue",
   -- D64 (dep-fields): the checker's rules, until prop-paper prints them in the appendix
   "Rule [Open] is not printed by the paper",
-  "Rule [Repack] is not printed by the paper"
+  "Rule [Repack] is not printed by the paper",
+  -- docs/10 (uninit-bot): a feasibility prototype, not for the paper
+  "Rule [Untagged] is not printed by the paper",
+  "Rule [Move-empty] is not printed by the paper",
+  "Rule [Lent-proof] is not printed by the paper"
 ]
 
 /-- Rules already tagged with a `fire` call. -/
-def fired : List Rule := [.Field, .Open, .Repack, .IndDecl, .EqInj, .EqStuck, .Access]
+def fired : List Rule := [.Field, .Open, .Repack, .IndDecl, .EqInj, .EqStuck, .Access,
+  .Untagged, .MoveEmpty, .LentProof]
 
 /-- Rules and extensions not yet tagged with a `fire` call (the tagging is in progress). -/
 def notYetFired : List String :=

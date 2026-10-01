@@ -180,6 +180,15 @@ def checkInd (d : IndDecl) : M Unit := do
     if (← get).inds.any (·.ctors.any (·.1 == cn)) || (d.ctors.filter (·.1 == cn)).length > 1 then
       err s!"{n}: the constructor name {cn} is already used (constructors are resolved by name)"
   if d.sort > 1 then err s!"{n}: an inductive type is in Prop or Type"
+  -- docs/10 [Untagged]: no tag at runtime, so its values are told apart only in erased code and by
+  -- hypotheses; its first constructor has no fields and is what a move leaves ([Move-empty])
+  if d.untagged then
+    unless (← get).cfg.uninitTypes do
+      err s!"[Untagged] {n}: `untagged` inductives are not in the rules (switch uninitTypes, docs/10)"
+    if d.sort != 1 || d.abstract || d.unsized || d.copy then
+      err s!"[Untagged] {n}: an untagged inductive is a data type in Type, not declared abstract, unsized or copy"
+    unless (d.ctors.head?.map (·.2.isEmpty)).getD false do
+      err s!"[Untagged] {n}: its first constructor is its empty value, so it has no fields"
   modify fun s => { s with env := #[{}], inds := s.inds ++ [{ d with ctors := [] }] }
   let np := d.params.length
   let pnames := (d.params.map (·.1.name)).reverse
