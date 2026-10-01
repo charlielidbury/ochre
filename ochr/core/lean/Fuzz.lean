@@ -69,6 +69,7 @@ def switchCfg (c : Config) : String → Option Config
   | "uninit" | "uninitTypes" => some { c with uninitTypes := true }
   | "lentProofs" => some { c with lentProofs := true }
   | "moveEmpty" => some { c with moveEmpty := true }
+  | "moveEmptyByRef" => some { c with moveEmptyByRef := false }   -- the docs/10 Q1 fix switched off
   | _ => none
 
 structure Args where
