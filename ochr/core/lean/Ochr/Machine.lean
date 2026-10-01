@@ -263,6 +263,14 @@ partial def endBorrow (l : Nat) : M Unit := do
         if let (.borrow _ _, some (.tRef A)) := (valAt env p, ← tyAt p) then
           repackCheck "a borrow of it ends" c A
       if c.hasHole then
+        -- the temporary of a dereferenced call (`*f(ā)`, a surface desugaring) is named `⋄*f(…)`
+        match p with
+        | .bind f i =>
+          let x := env[f]!.binds[i]!.hint.name
+          if x.startsWith "⋄*" then
+            let call := (x.drop 2).toString
+            err s!"[D53] reading *{call} moves its content out through the borrow {call} returns, which then ends with it moved out ({c}): copy it with clone(*{call}), or write it back first"
+        | _ => pure ()
         err s!"[D53] a borrow ends while its content is partly moved out ({c})"
       setAt p rest
       substEnv (.loan l) c false
