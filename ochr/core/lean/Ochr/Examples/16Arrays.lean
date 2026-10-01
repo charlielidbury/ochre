@@ -351,24 +351,22 @@ ochr Arrays uses Index {
     }
   ) implemented by "ochr_arr_as_slice"
 
-  -- [native] Read element `i`. The model reads a copy of the view (`clone(*s)`), so the view
-  -- itself is left exactly as it was.
-  def Read (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (h : Lt(i, n)) : E := Nth(E, n, clone(*s), i, h) implemented by "ochr_arr_read"
-
   -- [native] Write element `i`.
   def Set (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (x : E) (h : Lt(i, n)) : Unit := (
     *s := SetS(E, n, *s, i, x)
   ) implemented by "ochr_arr_set"
 
-  -- [native] [K1] A borrow of element `i`, for `Word` elements until `&E` is well formed.
-  def GetMut (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) : &Word by i := (
+  -- [native] A borrow of element `i`. Reading an element is reading through it, which moves
+  -- unless the element is a copy: `*GetMut(Word, n, s, i, h)` copies a `Word`, and
+  -- `clone(*GetMut(E, n, s, i, h))` copies any element, so a copy is always written by the caller.
+  def GetMut (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (h : Lt(i, n)) : &E by i := (
     match n {
       Zero => match h {},
       Succ(m) => match *s {
         MkSlice(c) => match c {
           MkC(x, t) => match i {
             Zero => &x,
-            Succ(i') => GetMut(m, &t, i', h),
+            Succ(i') => GetMut(E, m, &t, i', h),
           },
         },
       },
@@ -409,14 +407,17 @@ ochr Arrays uses Index {
     }
   ) implemented by "ochr_arr_pop"
 
-  -- ## Built from those, in Ochr
+  -- The view with elements `i` and `j` exchanged, the model of `Swap`. (A model function takes
+  -- the view by value and never runs at runtime, so its `clone`s copy nothing at runtime.)
+  def SwapS (E : Type) (n : Word) (s : Slice(E, n)) (i : Word) (j : Word) (hi : Lt(i, n)) (hj : Lt(j, n)) :
+      Slice(E, n) := SetS(E, n, SetS(E, n, clone(s), i, Nth(E, n, clone(s), j, hj)), j, Nth(E, n, s, i, hi))
 
+  -- [native] Exchange elements `i` and `j` in place (Rust's `slice::swap`): nothing is copied.
   def Swap (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (j : Word) (hi : Lt(i, n)) (hj : Lt(j, n)) : Unit := (
-    let a = Read(E, n, &*s, i, hi);
-    let b = Read(E, n, &*s, j, hj);
-    Set(E, n, &*s, i, b, hi);
-    Set(E, n, s, j, a, hj)
-  )
+    *s := SwapS(E, n, *s, i, j, hi, hj)
+  ) implemented by "ochr_arr_swap"
+
+  -- ## Built from those, in Ochr
 
   -- `n` copies of `x`, by recursion on `n`.
   def Replicate (E : Type) (n : Word) (x : E) : Array(E, n) by n := (
@@ -633,10 +634,7 @@ ochr ArrayLemmas uses Arrays {
   )
 
   -- ## Swapping
-  -- The model of `Swap`: `Swap` is, by definition, this write to its view.
-  def SwapS (E : Type) (n : Word) (s : Slice(E, n)) (i : Word) (j : Word) (hi : Lt(i, n)) (hj : Lt(j, n)) :
-      Slice(E, n) := SetS(E, n, SetS(E, n, clone(s), i, Nth(E, n, clone(s), j, hj)), j, Nth(E, n, s, i, hi))
-
+  -- `Swap` is, by definition, the write of its model to its view.
   def SwapIsSwapS (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (j : Word) (hi : Lt(i, n)) (hj : Lt(j, n)) :
       Id Unit (Swap(E, n, s, i, j, hi, hj)) (*s := SwapS(E, n, *s, i, j, hi, hj)) := refl
 
@@ -689,26 +687,53 @@ ochr ArrayLemmas uses Arrays {
   )
 
   -- ## Element borrows
-  -- Writing through a borrow of element `i` is `Set` (in place is functional), by the same
-  -- bare recursion as `AddMEq`.
-  def GetMutSet (n : Word) (s : &Slice(Word, n)) (i : Word) (w : Word) (h : Lt(i, n)) :
-      Id Unit (let r = GetMut(n, s, i, h); *r := w) (Set(Word, n, s, i, w, h)) by i := (
+  -- At an unknown index, a borrow of an element is a sealed program, so what is done through it
+  -- is known by these two lemmas, by the same bare recursion as `AddMEq`. Writing through it is
+  -- `Set` (in place is functional).
+  def GetMutSet (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (w : E) (h : Lt(i, n)) :
+      Id(Unit, (*GetMut(E, n, s, i, h) := w), Set(E, n, s, i, w, h)) by i := (
     match n {
       Zero => match h {},
       Succ(m) => match *s {
         MkSlice(c) => match c {
           MkC(x, t) => match i {
             Zero => refl,
-            Succ(i') => GetMutSet(m, &t, i', w, h),
+            Succ(i') => GetMutSet(E, m, &t, i', w, h),
           },
         },
       },
     }
   )
+
+  -- Reading through it gives the model's element, and puts the view back as it was. (It
+  -- computes to the two facts, `let ⟨hv, hp⟩ = GetMutRead(…)`: the value read is `Nth(…)`, and
+  -- the view afterwards, a put-back program, is `*s`.)
+  def GetMutRead (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (h : Lt(i, n)) :
+      Id(E, clone(*GetMut(E, n, s, i, h)), Nth(E, n, *s, i, h)) by i := (
+    match n {
+      Zero => match h {},
+      Succ(m) => match *s {
+        MkSlice(c) => match c {
+          MkC(x, t) => match i {
+            Zero => refl,
+            Succ(i') => GetMutRead(E, m, &t, i', h),
+          },
+        },
+      },
+    }
+  )
+
+  -- The same about a view `v` given by value (a model function's run), as the two facts.
+  def GetMutReadV (E : Type) (n : Word) (v : Slice(E, n)) (i : Word) (h : Lt(i, n)) :
+      Eq(E, (let c = v; clone(*GetMut(E, n, &c, i, h))), Nth(E, n, v, i, h)) ∧
+        Eq(Slice(E, n), (let c = v; let x = clone(*GetMut(E, n, &c, i, h)); c), v) := (
+    let c = v;
+    GetMutRead(E, n, &c, i, h)
+  )
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard ArrayLemmas.decls.length == 14
+#guard ArrayLemmas.decls.length == 15
 
 /-! ## The benchmarks (D57)
 
@@ -753,35 +778,64 @@ ochr ArrayBench uses ArrayLemmas {
     WithSplit(Word, Unit, W(5), W(2), s, refl, λ(l : &Slice(Word, W(2))) (r : &Slice(Word, W(3))) : Unit => Fill(Word, W(2), l, Zero))
   )
 
-  def ZeroFirst2Run : Id Word
-      (let a = Replicate(Word, W(5), W(7)); ZeroFirst2(AsSlice(Word, W(5), &a)); Read(Word, W(5), AsSlice(Word, W(5), &a), Succ(Zero), refl)
-        ) Zero := refl
+  def ZeroFirst2Run : Id(Word,
+      (let a = Replicate(Word, W(5), W(7)); ZeroFirst2(AsSlice(Word, W(5), &a)); *GetMut(Word, W(5), AsSlice(Word, W(5), &a), Succ(Zero), refl)),
+      Zero) := refl
 
-  def ZeroFirst2Rest : Id Word
-      (let a = Replicate(Word, W(5), W(7)); ZeroFirst2(AsSlice(Word, W(5), &a)); Read(Word, W(5), AsSlice(Word, W(5), &a), W(2), refl)
-        ) W(7) := refl
+  def ZeroFirst2Rest : Id(Word,
+      (let a = Replicate(Word, W(5), W(7)); ZeroFirst2(AsSlice(Word, W(5), &a)); *GetMut(Word, W(5), AsSlice(Word, W(5), &a), W(2), refl)),
+      W(7)) := refl
 
   -- ## Reading and writing
-  -- A read leaves the view exactly as it was, by definition ...
+  -- An element is read and written through its borrow. `*GetMut(…)` is a place (a surface
+  -- desugaring of `let r = GetMut(…); … *r …`, Rust's `*v.get_mut(i)`): reading it copies a
+  -- `Word`, `clone` copies any element, and a write is one line.
+  def ReadE (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (h : Lt(i, n)) : E := clone(*GetMut(E, n, s, i, h))
+  def WriteE (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (x : E) (h : Lt(i, n)) : Unit := *GetMut(E, n, s, i, h) := x
+  def Bump (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) : Unit := (
+    *GetMut(Word, n, &*s, i, h) := Succ(*GetMut(Word, n, &*s, i, h))
+  )
+  def BumpRun : Id(Word,
+      (let a = Replicate(Word, W(3), W(7)); Bump(W(3), AsSlice(Word, W(3), &a), Succ(Zero), refl); *GetMut(Word, W(3), AsSlice(Word, W(3), &a), Succ(Zero), refl)),
+      W(8)) := refl
+  -- Reading a generic element without `clone` would move it out through the borrow, which then
+  -- ends with the element moved out (D53): the copy is the caller's to write.
+  reject def ReadMove (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (h : Lt(i, n)) : E := *GetMut(E, n, s, i, h)
+  -- `*f(…)` is a place only for a call that returns a borrow.
+  reject def NotAPlace (n : Word) (s : &Slice(Word, n)) : Unit := *Nth(Word, n, *s, Zero, refl) := Zero
+
+  -- A read leaves the view as it was, but not by definition: at an unknown index the view
+  -- afterwards is a put-back program ...
+  reject def ReadNoopRefl (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (h : Lt(i, n)) :
+      Id(Unit, (let x = clone(*GetMut(E, n, s, i, h)); ()), ()) := refl
+
+  -- ... which is the view by `GetMutRead`.
   def ReadNoop (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (h : Lt(i, n)) :
-      Id Unit (let x = Read(E, n, s, i, h); ()) () := refl
+      Eq(Slice(E, n), (let c = *s; let x = clone(*GetMut(E, n, &c, i, h)); c), *s) := (
+    let ⟨hv, hp⟩ = GetMutRead(E, n, s, i, h);
+    hp
+  )
 
-  -- ... a read through a borrow of the element does not: it leaves a put-back program.
-  reject def GetMutReadNoop (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) :
-      Id Unit (let r = GetMut(n, s, i, h); let x = *r; ()) () := refl
-
-  -- Reading after a write, at the same index and at another.
+  -- Reading after a write, at the same index and at another: the model's lemmas, once
+  -- `GetMutRead` has made each read the model's element.
   def ReadAfterSet (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (x : E) (h : Lt(i, n)) :
-      Eq E (let c = *s; Set(E, n, &c, i, x, h); Read(E, n, &c, i, h)) x := NthSetSame(E, n, *s, i, x, h)
+      Eq(E, (let c = *s; Set(E, n, &c, i, x, h); clone(*GetMut(E, n, &c, i, h))), x) := (
+    let c = SetS(E, n, *s, i, x);
+    let ⟨hv, hp⟩ = GetMutRead(E, n, &c, i, h);
+    rewrite ← hv in NthSetSame(E, n, *s, i, x, h)
+  )
 
   def ReadAfterSetOther (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (j : Word) (x : E) (hi : Lt(i, n))
-      (hj : Lt(j, n)) (ne : Π(e : Eq Word i j). False) :
-      Eq E (let c = *s; Set(E, n, &c, i, x, hi); Read(E, n, &c, j, hj)) (Read(E, n, s, j, hj)) := (
-    NthSetOther(E, n, *s, i, j, x, hi, hj, ne)
+      (hj : Lt(j, n)) (ne : Π(e : Eq(Word, i, j)). False) :
+      Eq(E, (let c = *s; Set(E, n, &c, i, x, hi); clone(*GetMut(E, n, &c, j, hj))), clone(*GetMut(E, n, s, j, hj))) := (
+    let c = SetS(E, n, *s, i, x);
+    let ⟨hv, hp⟩ = GetMutRead(E, n, &c, j, hj);
+    let ⟨hv2, hp2⟩ = GetMutRead(E, n, s, j, hj);
+    rewrite ← hv in rewrite ← hv2 in NthSetOther(E, n, *s, i, j, x, hi, hj, ne)
   )
 
   reject def ReadAfterSetRefl (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (x : E) (h : Lt(i, n)) :
-      Eq E (let c = *s; Set(E, n, &c, i, x, h); Read(E, n, &c, i, h)) x := refl
+      Eq(E, (let c = *s; Set(E, n, &c, i, x, h); clone(*GetMut(E, n, &c, i, h))), x) := refl
 
   -- A bounds proof mentions only the index and the length in the type, so no write makes it
   -- stale ...
@@ -791,13 +845,13 @@ ochr ArrayBench uses ArrayLemmas {
   )
 
   -- ... and without one there is no read.
-  reject def ReadPastEnd (s : &Slice(Word, W(2))) : Word := Read(Word, W(2), s, W(2), refl)
+  reject def ReadPastEnd (s : &Slice(Word, W(2))) : Word := *GetMut(Word, W(2), s, W(2), refl)
 
   -- ## B4: a bounds proof from a runtime comparison
   def GetOr (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (d : E) : E := (
     let dec = LtDec(i, n);
     match dec {
-      Yes(h) => Read(E, n, s, i, h),
+      Yes(h) => clone(*GetMut(E, n, s, i, h)),
       No(k) => d,
     }
   )
@@ -854,22 +908,6 @@ ochr ArrayBench uses ArrayLemmas {
 
   inductive Entry := MkE(key : Word, val : Word)
 
-  -- [native] [K1] `GetMut` at the element type `List(Entry)`, until one generic `GetMut` can
-  -- return `&E`.
-  def GetMutB (n : Word) (s : &Slice(List(Entry), n)) (i : Word) (h : Lt(i, n)) : &List(Entry) by i := (
-    match n {
-      Zero => match h {},
-      Succ(m) => match *s {
-        MkSlice(c) => match c {
-          MkC(x, t) => match i {
-            Zero => &x,
-            Succ(i') => GetMutB(m, &t, i', h),
-          },
-        },
-      },
-    }
-  ) implemented by "ochr_arr_get_mut"
-
   -- [K4] A struct holding an array: the model type is a parameter until a field may be written
   -- `Array(E, cap)`. The capacity is a type parameter, so no dependent field is needed.
   inductive HashMapOf (R : Type) := MkHM(slots : ArrayOf(R), size : Word)
@@ -902,7 +940,7 @@ ochr ArrayBench uses ArrayLemmas {
     match *hm {
       MkHM(slots, size) => (
         let i = ModS(k, cap);
-        let b = GetMutB(cap, AsSlice(List(Entry), cap, &slots), i, ModLt(k, cap, hc));
+        let b = GetMut(List(Entry), cap, AsSlice(List(Entry), cap, &slots), i, ModLt(k, cap, hc));
         let fresh = InsertB(b, k, v);
         match fresh {
           true => size := Succ(size),
@@ -932,14 +970,14 @@ ochr ArrayBench uses ArrayLemmas {
       Insert(W(2), &hm, W(3), W(30), refl);
       Insert(W(2), &hm, W(5), W(51), refl);
       match hm {
-        MkHM(slots, size) => Read(List(Entry), W(2), AsSlice(List(Entry), W(2), &slots), Succ(Zero), refl),
+        MkHM(slots, size) => clone(*GetMut(List(Entry), W(2), AsSlice(List(Entry), W(2), &slots), Succ(Zero), refl)),
       }) (Cons(MkE(W(5), W(51)), Cons(MkE(W(3), W(30)), Nil))) := refl
 
   -- Without a proof that the slot is in bounds there is no borrow of it.
   reject def InsertUnbounded (cap : Word) (hm : &HashMap(cap)) (k : Word) (v : Word) : Unit := (
     match *hm {
       MkHM(slots, size) => (
-        let b = GetMutB(cap, AsSlice(List(Entry), cap, &slots), ModS(k, cap), refl);
+        let b = GetMut(List(Entry), cap, AsSlice(List(Entry), cap, &slots), ModS(k, cap), refl);
         let fresh = InsertB(b, k, v);
         ()
       ),
@@ -960,15 +998,15 @@ ochr ArrayBench uses ArrayLemmas {
     match *s { MkSlice(c) => match c { MkC(x, t) => (let a = &x; let b = &t; *a := Zero; Fill(Word, m, b, Succ(Zero))) } })
   reject def Rebuild (s : &Slice(Word, Succ(Zero))) : Unit := (*s := MkSlice(MkC(W(7), MkSlice(End))))
   -- A model function at runtime would need a view by value. (Under D53 alone, reading `*s`
-  -- would also end the borrow with the view moved out; `Read`'s model reads `clone(*s)`.)
+  -- would also end the borrow with the view moved out.)
   reject def ReadModel (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) : Word := Nth(Word, n, *s, i, h)
   -- In a statement, the model is unrestricted.
   def ReadIsNth (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) :
-      Id Word (Read(Word, n, &*s, i, h)) (Nth(Word, n, *s, i, h)) := refl
+      Id(Word, *GetMut(Word, n, s, i, h), Nth(Word, n, *s, i, h)) := GetMutRead(Word, n, s, i, h)
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard ArrayBench.decls.length == 38
+#guard ArrayBench.decls.length == 43
 
 /-! ## B2: quicksort
 
@@ -1001,7 +1039,7 @@ ochr Quicksort uses ArrayLemmas {
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
         let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
-        let x = Read(Word, n, &*s, j, hjn);
+        let x = *GetMut(Word, n, &*s, j, hjn);
         let b = Leb(x, p);
         match b {
           true => (
@@ -1016,7 +1054,7 @@ ochr Quicksort uses ArrayLemmas {
 
   -- The pivot's final index.
   def Partition (m : Word) (s : &Slice(Word, Succ(m))) : Word := (
-    let p = Read(Word, Succ(m), &*s, Zero, refl);
+    let p = *GetMut(Word, Succ(m), &*s, Zero, refl);
     Scan(Succ(m), s, p, Zero, Succ(Zero), m, refl, AddOneR(m))
   )
 
@@ -1078,23 +1116,36 @@ ochr Quicksort uses ArrayLemmas {
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
         let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
-        let x = Nth(Word, n, *s, j, hjn);
+        -- the scan reads element `j` through its borrow: the value `x`, and the view `v`
+        -- afterwards, a put-back program with the same counts by `GetMutRead`
+        let x = (let c = *s; *GetMut(Word, n, &c, j, hjn));
+        let v = (let c = *s; let y = *GetMut(Word, n, &c, j, hjn); c);
+        let ⟨hx, hv⟩ = GetMutRead(Word, n, s, j, hjn);
+        let hc : Eq(Word, Count(q, n, v), Count(q, n, *s)) = (rewrite ← hv in refl);
         let b = Leb(x, p);
+        rewrite hc in
         match b {
           true => (
-            let c = SwapS(Word, n, *s, Succ(i), j, LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn), hjn);
-            rewrite CountSwap(q, n, *s, Succ(i), j, LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn), hjn) in
+            let c = SwapS(Word, n, v, Succ(i), j, LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn), hjn);
+            rewrite CountSwap(q, n, v, Succ(i), j, LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn), hjn) in
               ScanPerm(n, &c, p, Succ(i), Succ(j), r, hij, hr2, q)
           ),
-          false => ScanPerm(n, s, p, i, Succ(j), r, LeStep(Succ(i), j, hij), hr2, q),
+          false => ScanPerm(n, &v, p, i, Succ(j), r, LeStep(Succ(i), j, hij), hr2, q),
         }
       ),
     }
   )
   def PartitionPerm (m : Word) (s : &Slice(Word, Succ(m))) (q : Word) :
       (let old = *s; Eq Word (Count(q, Succ(m), (Partition(m, &*s); *s))) (Count(q, Succ(m), old))) := (
-    let p = Nth(Word, Succ(m), *s, Zero, refl);
-    ScanPerm(Succ(m), s, p, Zero, Succ(Zero), m, refl, AddOneR(m), q)
+    -- the pivot is read at 0: once the view's first cell is split off, the read computes
+    match *s {
+      MkSlice(c) => match c {
+        MkC(y, t) => (
+          let p = y;
+          ScanPerm(Succ(m), s, p, Zero, Succ(Zero), m, refl, AddOneR(m), q)
+        ),
+      },
+    }
   )
 
   -- The recursive step permutes, for any `rec` that does.
@@ -1830,11 +1881,13 @@ ochr Quicksort uses ArrayLemmas {
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
         let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
-        let x = Nth(Word, n, v, j, hjn);
+        -- element `j`, read through its borrow, and the view `w` the read leaves
+        let x = (let c = v; *GetMut(Word, n, &c, j, hjn));
+        let w = (let c = v; let y = *GetMut(Word, n, &c, j, hjn); c);
         let b = Leb(x, p);
         match b {
-          true => ScanLt(n, SwapS(Word, n, v, Succ(i), j, LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn), hjn), p, Succ(i), Succ(j), r, hij, hr2),
-          false => ScanLt(n, v, p, i, Succ(j), r, LeStep(Succ(i), j, hij), hr2),
+          true => ScanLt(n, SwapS(Word, n, w, Succ(i), j, LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn), hjn), p, Succ(i), Succ(j), r, hij, hr2),
+          false => ScanLt(n, w, p, i, Succ(j), r, LeStep(Succ(i), j, hij), hr2),
         }
       ),
     }
@@ -1853,16 +1906,22 @@ ochr Quicksort uses ArrayLemmas {
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
         let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
-        let x = Nth(Word, n, v, j, hjn);
+        -- element `j`, read through its borrow, and the view `w` the read leaves
+        let x = (let c = v; *GetMut(Word, n, &c, j, hjn));
+        let w = (let c = v; let y = *GetMut(Word, n, &c, j, hjn); c);
+        let ⟨hxv, hw0⟩ = GetMutReadV(Word, n, v, j, hjn);
+        let hw : Eq(Slice(Word, n), w, v) = hw0;
+        let j0w : Π(h0 : Lt(Zero, n)). Eq(Word, Nth(Word, n, w, Zero, h0), p) = (
+          λ(h0 : Lt(Zero, n)) : Eq(Word, Nth(Word, n, w, Zero, h0), p) => rewrite ← hw in j0(h0));
         let b = Leb(x, p);
         match b {
           true => (
             let hsi : Lt(Succ(i), n) = LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn);
-            let c2 = SwapS(Word, n, v, Succ(i), j, hsi, hjn);
+            let c2 = SwapS(Word, n, w, Succ(i), j, hsi, hjn);
             ScanPivot(n, c2, p, Succ(i), Succ(j), r, hij, hr2,
-              λ(h0 : Lt(Zero, n)) : Eq Word (Nth(Word, n, c2, Zero, h0)) p => StepJ0(n, v, p, i, j, hsi, hjn, hij, j0, h0), hk)
+              λ(h0 : Lt(Zero, n)) : Eq Word (Nth(Word, n, c2, Zero, h0)) p => StepJ0(n, w, p, i, j, hsi, hjn, hij, j0w, h0), hk)
           ),
-          false => ScanPivot(n, v, p, i, Succ(j), r, LeStep(Succ(i), j, hij), hr2, j0, hk),
+          false => ScanPivot(n, w, p, i, Succ(j), r, LeStep(Succ(i), j, hij), hr2, j0w, hk),
         }
       ),
     }
@@ -1882,19 +1941,26 @@ ochr Quicksort uses ArrayLemmas {
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
         let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
-        let x = Nth(Word, n, v, j, hjn);
+        -- element `j`, read through its borrow, and the view `w` the read leaves
+        let x = (let c = v; *GetMut(Word, n, &c, j, hjn));
+        let w = (let c = v; let y = *GetMut(Word, n, &c, j, hjn); c);
+        let ⟨hxv, hw0⟩ = GetMutReadV(Word, n, v, j, hjn);
+        let hw : Eq(Slice(Word, n), w, v) = hw0;
+        let j1w : Π(t2 : Word) (ht2 : Lt(t2, n)) (a : Lt(Zero, t2)) (b2 : Le(t2, i)). Le(Nth(Word, n, w, t2, ht2), p) = (
+          λ(t2 : Word) (ht2 : Lt(t2, n)) (a : Lt(Zero, t2)) (b2 : Le(t2, i)) : Le(Nth(Word, n, w, t2, ht2), p) =>
+          rewrite ← hw in j1(t2, ht2, a, b2));
         let b = Leb(x, p);
         match b {
           true => (
             let hsi : Lt(Succ(i), n) = LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn);
-            let hx : Le(x, p) = LebLe(x, p, refl);
-            let c2 = SwapS(Word, n, v, Succ(i), j, hsi, hjn);
+            let hx : Le(Nth(Word, n, w, j, hjn), p) = (rewrite ← hw in rewrite hxv in LebLe(x, p, refl));
+            let c2 = SwapS(Word, n, w, Succ(i), j, hsi, hjn);
             ScanLeft(n, c2, p, Succ(i), Succ(j), r, hij, hr2,
               λ(t2 : Word) (ht2 : Lt(t2, n)) (a : Lt(Zero, t2)) (b2 : Le(t2, Succ(i))) : Le(Nth(Word, n, c2, t2, ht2), p) =>
-                StepJ1(n, v, p, i, j, hsi, hjn, hij, j1, hx, t2, ht2, a, b2),
+                StepJ1(n, w, p, i, j, hsi, hjn, hij, j1w, hx, t2, ht2, a, b2),
               t, ht, htn)
           ),
-          false => ScanLeft(n, v, p, i, Succ(j), r, LeStep(Succ(i), j, hij), hr2, j1, t, ht, htn),
+          false => ScanLeft(n, w, p, i, Succ(j), r, LeStep(Succ(i), j, hij), hr2, j1w, t, ht, htn),
         }
       ),
     }
@@ -1914,22 +1980,29 @@ ochr Quicksort uses ArrayLemmas {
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
         let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
-        let x = Nth(Word, n, v, j, hjn);
+        -- element `j`, read through its borrow, and the view `w` the read leaves
+        let x = (let c = v; *GetMut(Word, n, &c, j, hjn));
+        let w = (let c = v; let y = *GetMut(Word, n, &c, j, hjn); c);
+        let ⟨hxv, hw0⟩ = GetMutReadV(Word, n, v, j, hjn);
+        let hw : Eq(Slice(Word, n), w, v) = hw0;
+        let j2w : Π(t2 : Word) (ht2 : Lt(t2, n)) (a : Lt(i, t2)) (b2 : Lt(t2, j)). Lt(p, Nth(Word, n, w, t2, ht2)) = (
+          λ(t2 : Word) (ht2 : Lt(t2, n)) (a : Lt(i, t2)) (b2 : Lt(t2, j)) : Lt(p, Nth(Word, n, w, t2, ht2)) =>
+          rewrite ← hw in j2(t2, ht2, a, b2));
         let b = Leb(x, p);
         match b {
           true => (
             let hsi : Lt(Succ(i), n) = LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn);
-            let c2 = SwapS(Word, n, v, Succ(i), j, hsi, hjn);
+            let c2 = SwapS(Word, n, w, Succ(i), j, hsi, hjn);
             ScanRight(n, c2, p, Succ(i), Succ(j), r, hij, hr2,
               λ(t2 : Word) (ht2 : Lt(t2, n)) (a : Lt(Succ(i), t2)) (b2 : Lt(t2, Succ(j))) : Lt(p, Nth(Word, n, c2, t2, ht2)) =>
-                StepJ2(n, v, p, i, j, hsi, hjn, hij, j2, t2, ht2, a, b2),
+                StepJ2(n, w, p, i, j, hsi, hjn, hij, j2w, t2, ht2, a, b2),
               t, ht, hkt)
           ),
           false => (
-            let hx : Lt(p, x) = LebGt(x, p, refl);
-            ScanRight(n, v, p, i, Succ(j), r, LeStep(Succ(i), j, hij), hr2,
-              λ(t2 : Word) (ht2 : Lt(t2, n)) (a : Lt(i, t2)) (b2 : Lt(t2, Succ(j))) : Lt(p, Nth(Word, n, v, t2, ht2)) =>
-                StepJ2F(n, v, p, i, j, hjn, j2, hx, t2, ht2, a, b2),
+            let hx : Lt(p, Nth(Word, n, w, j, hjn)) = (rewrite ← hw in rewrite hxv in LebGt(x, p, refl));
+            ScanRight(n, w, p, i, Succ(j), r, LeStep(Succ(i), j, hij), hr2,
+              λ(t2 : Word) (ht2 : Lt(t2, n)) (a : Lt(i, t2)) (b2 : Lt(t2, Succ(j))) : Lt(p, Nth(Word, n, w, t2, ht2)) =>
+                StepJ2F(n, w, p, i, j, hjn, j2w, hx, t2, ht2, a, b2),
               t, ht, hkt)
           ),
         }
@@ -1956,33 +2029,61 @@ ochr Quicksort uses ArrayLemmas {
   )
 
   def PartLeProof (m : Word) (v : Slice(Word, Succ(m))) : PartLe(m, v) := (
-    ScanLt(Succ(m), v, Nth(Word, Succ(m), v, Zero, refl), Zero, Succ(Zero), m, refl, AddOneR(m))
+    -- the pivot is read at 0: once the first cell is split off, the read computes
+    match v {
+      MkSlice(c0) => match c0 {
+        MkC(y0, t0) => (
+          ScanLt(Succ(m), v, Nth(Word, Succ(m), v, Zero, refl), Zero, Succ(Zero), m, refl, AddOneR(m))
+        ),
+      },
+    }
   )
 
   def PartLeftProof (m : Word) (v : Slice(Word, Succ(m))) (hk : PartLe(m, v)) : PartLeft(m, v, hk) := (
-    AllLeTakeOf(Succ(m), PartK(m, v), PartV(m, v), Nth(Word, Succ(m), v, Zero, refl), LeStep(PartK(m, v), m, hk),
-      λ(t : Word) (ht : Lt(t, PartK(m, v))) (htn : Lt(t, Succ(m))) : Le(Nth(Word, Succ(m), PartV(m, v), t, htn), Nth(Word, Succ(m), v, Zero, refl)) =>
-        ScanLeft(Succ(m), v, Nth(Word, Succ(m), v, Zero, refl), Zero, Succ(Zero), m, refl, AddOneR(m),
-          λ(t2 : Word) (ht2 : Lt(t2, Succ(m))) (a : Lt(Zero, t2)) (b : Le(t2, Zero)) : Le(Nth(Word, Succ(m), v, t2, ht2), Nth(Word, Succ(m), v, Zero, refl)) =>
-            Start1(m, v, t2, ht2, a, b),
-          t, ht, htn))
+    -- the pivot is read at 0: once the first cell is split off, the read computes
+    match v {
+      MkSlice(c0) => match c0 {
+        MkC(y0, t0) => (
+          AllLeTakeOf(Succ(m), PartK(m, v), PartV(m, v), Nth(Word, Succ(m), v, Zero, refl), LeStep(PartK(m, v), m, hk),
+            λ(t : Word) (ht : Lt(t, PartK(m, v))) (htn : Lt(t, Succ(m))) : Le(Nth(Word, Succ(m), PartV(m, v), t, htn), Nth(Word, Succ(m), v, Zero, refl)) =>
+              ScanLeft(Succ(m), v, Nth(Word, Succ(m), v, Zero, refl), Zero, Succ(Zero), m, refl, AddOneR(m),
+                λ(t2 : Word) (ht2 : Lt(t2, Succ(m))) (a : Lt(Zero, t2)) (b : Le(t2, Zero)) : Le(Nth(Word, Succ(m), v, t2, ht2), Nth(Word, Succ(m), v, Zero, refl)) =>
+                  Start1(m, v, t2, ht2, a, b),
+                t, ht, htn))
+        ),
+      },
+    }
   )
 
   def PartPivotProof (m : Word) (v : Slice(Word, Succ(m))) (hk : PartLe(m, v)) : PartPivot(m, v, hk) := (
-    rewrite TakeOneDrop(Succ(m), PartK(m, v), PartV(m, v), hk) in
-    rewrite ← ScanPivot(Succ(m), v, Nth(Word, Succ(m), v, Zero, refl), Zero, Succ(Zero), m, refl, AddOneR(m),
-        λ(h0 : Lt(Zero, Succ(m))) : Eq Word (Nth(Word, Succ(m), v, Zero, h0)) (Nth(Word, Succ(m), v, Zero, refl)) => Start0(m, v, h0), hk) in
-      refl
+    -- the pivot is read at 0: once the first cell is split off, the read computes
+    match v {
+      MkSlice(c0) => match c0 {
+        MkC(y0, t0) => (
+          rewrite TakeOneDrop(Succ(m), PartK(m, v), PartV(m, v), hk) in
+          rewrite ← ScanPivot(Succ(m), v, Nth(Word, Succ(m), v, Zero, refl), Zero, Succ(Zero), m, refl, AddOneR(m),
+              λ(h0 : Lt(Zero, Succ(m))) : Eq Word (Nth(Word, Succ(m), v, Zero, h0)) (Nth(Word, Succ(m), v, Zero, refl)) => Start0(m, v, h0), hk) in
+            refl
+        ),
+      },
+    }
   )
 
   def PartRightProof (m : Word) (v : Slice(Word, Succ(m))) (hk : PartLe(m, v)) : PartRight(m, v, hk) := (
-    AllGeDropOf(Succ(m), PartK(m, v), PartV(m, v), Nth(Word, Succ(m), v, Zero, refl),
-      λ(t : Word) (ht : Lt(t, Succ(m))) (hkt : Lt(PartK(m, v), t)) : Le(Nth(Word, Succ(m), v, Zero, refl), Nth(Word, Succ(m), PartV(m, v), t, ht)) =>
-        LeOfLt(Nth(Word, Succ(m), v, Zero, refl), Nth(Word, Succ(m), PartV(m, v), t, ht),
-          ScanRight(Succ(m), v, Nth(Word, Succ(m), v, Zero, refl), Zero, Succ(Zero), m, refl, AddOneR(m),
-            λ(t2 : Word) (ht2 : Lt(t2, Succ(m))) (a : Lt(Zero, t2)) (b : Lt(t2, Succ(Zero))) : Lt(Nth(Word, Succ(m), v, Zero, refl), Nth(Word, Succ(m), v, t2, ht2)) =>
-              Start2(m, v, t2, ht2, a, b),
-            t, ht, hkt)))
+    -- the pivot is read at 0: once the first cell is split off, the read computes
+    match v {
+      MkSlice(c0) => match c0 {
+        MkC(y0, t0) => (
+          AllGeDropOf(Succ(m), PartK(m, v), PartV(m, v), Nth(Word, Succ(m), v, Zero, refl),
+            λ(t : Word) (ht : Lt(t, Succ(m))) (hkt : Lt(PartK(m, v), t)) : Le(Nth(Word, Succ(m), v, Zero, refl), Nth(Word, Succ(m), PartV(m, v), t, ht)) =>
+              LeOfLt(Nth(Word, Succ(m), v, Zero, refl), Nth(Word, Succ(m), PartV(m, v), t, ht),
+                ScanRight(Succ(m), v, Nth(Word, Succ(m), v, Zero, refl), Zero, Succ(Zero), m, refl, AddOneR(m),
+                  λ(t2 : Word) (ht2 : Lt(t2, Succ(m))) (a : Lt(Zero, t2)) (b : Lt(t2, Succ(Zero))) : Lt(Nth(Word, Succ(m), v, Zero, refl), Nth(Word, Succ(m), v, t2, ht2)) =>
+                    Start2(m, v, t2, ht2, a, b),
+                  t, ht, hkt)))
+        ),
+      },
+    }
   )
 
   -- Quicksort sorts, for fuel at least the length, with no hypotheses.

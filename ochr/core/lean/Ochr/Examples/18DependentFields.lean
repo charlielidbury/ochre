@@ -416,7 +416,7 @@ ochr DepVec uses ArrayBench {
   -- an element borrow, its bound against the length
   def VGetMut (v : &Vec(Word)) (i : Word) (h : Lt(i, VLen(Word, *v))) : &Word := (
     match *v {
-      MkVec(n, items) => GetMut(n, AsSlice(Word, n, &items), i, h),
+      MkVec(n, items) => GetMut(Word, n, AsSlice(Word, n, &items), i, h),
     }
   )
   def VSet (v : &Vec(Word)) (i : Word) (h : Lt(i, VLen(Word, *v))) (x : Word) : Unit := (
@@ -426,7 +426,7 @@ ochr DepVec uses ArrayBench {
   -- (through the natives: runtime code does not see the array's representation, K3)
   def VGet (E : Type) (v : Vec(E)) (i : Word) (h : Lt(i, VLen(E, v))) : E := (
     match v {
-      MkVec(n, items) => Read(E, n, AsSlice(E, n, &items), i, h),
+      MkVec(n, items) => clone(*GetMut(E, n, AsSlice(E, n, &items), i, h)),
     }
   )
   def PushRun : Id Word (let v = VNew(Word); Push(Word, &v, W(3)); PushInPlace(Word, &v, W(4)); VLen(Word, v)) W(2) := refl
@@ -489,7 +489,11 @@ ochr DepVec uses ArrayBench {
       Eq E (VGet(E, Pushed(E, v, x), VLen(E, v), h)) x := (
     match v {
       MkVec(n, items) => match items {
-        MkArray(s) => NthSnocLast(E, n, s, x, h),
+        MkArray(s) => (
+          -- `VGet` reads through an element borrow: `GetMutReadV` makes it the model's element
+          let ⟨hv, hp⟩ = GetMutReadV(E, Succ(n), SnocS(E, n, s, x), n, h);
+          rewrite ← hv in NthSnocLast(E, n, s, x, h)
+        ),
       },
     }
   )
@@ -497,7 +501,11 @@ ochr DepVec uses ArrayBench {
       Eq E (VGet(E, Pushed(E, v, x), i, h2)) (VGet(E, v, i, h)) := (
     match v {
       MkVec(n, items) => match items {
-        MkArray(s) => NthSnocOld(E, n, s, x, i, h, h2),
+        MkArray(s) => (
+          let ⟨hv, hp⟩ = GetMutReadV(E, Succ(n), SnocS(E, n, s, x), i, h2);
+          let ⟨hv2, hp2⟩ = GetMutReadV(E, n, s, i, h);
+          rewrite ← hv in rewrite ← hv2 in NthSnocOld(E, n, s, x, i, h, h2)
+        ),
       },
     }
   )
@@ -519,7 +527,7 @@ ochr DepVec uses ArrayBench {
     match *t {
       MkTable(cap, slots, len) => (
         let i = ModS(k, cap);
-        let b = GetMutB(cap, AsSlice(List(Entry), cap, &slots), i, ModLt(k, cap, hc));
+        let b = GetMut(List(Entry), cap, AsSlice(List(Entry), cap, &slots), i, ModLt(k, cap, hc));
         let fresh = InsertB(b, k, v);
         match fresh {
           true => len := Succ(len),
@@ -543,7 +551,7 @@ ochr DepVec uses ArrayBench {
       Nil => (),
       Cons(e, rest) => match e {
         MkE(k, v) => (
-          let bk = GetMutB(ncap, &*ns, ModS(k, ncap), ModLt(k, ncap, hc));
+          let bk = GetMut(List(Entry), ncap, &*ns, ModS(k, ncap), ModLt(k, ncap, hc));
           let fresh = InsertB(bk, k, v);
           match fresh {
             true => *nl := Succ(*nl),
@@ -560,7 +568,7 @@ ochr DepVec uses ArrayBench {
     match rem {
       Zero => (),
       Succ(r) => (
-        let b = Read(List(Entry), cap, &*old, r, hr);
+        let b = clone(*GetMut(List(Entry), cap, &*old, r, hr));
         InsertAll(ncap, &*ns, &*nl, b, hc);
         MoveAll(cap, old, ncap, ns, nl, r, LeSuccL(r, cap, hr), hc)
       ),
