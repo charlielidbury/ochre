@@ -9,7 +9,7 @@ For whoever runs the benchmark or writes it up. `make-sandbox.sh` does not copy 
 - **Definitions.** `Sorted` is the SPEC's pairwise definition, with one extra hypothesis: the bound `hi : Lt(i, n)` that reading `a[i]` needs, which `i < j < n` implies. `Perm` uses the library's `Count`, whose lemmas (`CountSwap`, `CountJoin`, `CountSet`) the solver may use. Those lemmas are library, not solution.
 - **`ochr-2p` equivalence is mechanical.** `QuickSortSorted` and `QuickSortPerm` are the `ochr` statements, character for character, with proofs provided. The provided lemmas are `SortedFromModel` and `PermFromModel` (block `QuicksortCompose`), generic in the sort and the model. Instantiating them was checked against a stub sort and against the repo's case-study `QS`, with the hypotheses as parameters.
 - **The pure model.** It is `SortModel(n, v : Slice(Word, n))`, a model function on views. The grader forbids `&` and assignment in the block `QuicksortModel`.
-- **Tests.** The 29 SPEC cases are transcribed by `common/ochr/gen_tests.py`, each as a whole-array `Id` comparison, plus one negative test (`TestReject_unsorted`). They take about 6 s in the compiled checker with a Lomuto quicksort at fuel = length.
+- **Tests.** The 29 SPEC cases are transcribed by `common/ochr/gen_tests.py`, each as a whole-array `Id` comparison, plus one negative test (`TestReject_unsorted`). With the library's Lomuto quicksort at fuel = length, `lake -q exe check QuicksortTests` takes about 90 s in a sandbox (measured 2026-10-01 after docs/09; it was about 23 s before: reading elements through `GetMut` costs about three-quarters of the difference, and the copy-free `Swap` the rest).
 
 ## Ways the language makes this condition harder or different
 
