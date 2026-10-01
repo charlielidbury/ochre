@@ -10,9 +10,11 @@ still use local state of its own.
 Which terms are erased is decided from the syntax alone, never from a computed value: a
 function returns proofs if its declared result type is a proposition and types if it is a
 sort, a call is erased if its function's is, and a match that is closed off is erased
-when each of its arms is (D28, D35, D40, D42). As a fail-safe, an erased term may not
-write, borrow or move a place that outlives it, except by passing it to another erased
-call (D41, *confinement*).
+when each of its arms is (D28, D35, D40, D42). Every erased term, nested ones included, runs
+on its own copy, so whatever it writes, borrows or moves is undone with the copy, as at
+runtime, where it does not run at all (D68). Erasure decided from syntax, plus these private
+copies, is what keeps the two paths in agreement; D41's *confinement*, which rejected such
+effects as a fail-safe, is deleted.
 
 Most of this file is what goes wrong otherwise. A statement is computed twice, once at a
 definition's generic call through closing off and once directly at each use, and the two
@@ -50,7 +52,7 @@ ochr Erasure uses Std {
   -- leaves `*x` as it was.
   def EffArgErased (x : &Nat) : Id Unit (Lemma(W5(&*x)); ()) () := refl
 
-  -- ## Confinement
+  -- ## A proof runs on its own copy
   -- A proof may change its own locals ...
   def Local (x : &Nat) : Nat := (
     let h : ⊤ = (let y = 0; y := 1; refl);
@@ -63,13 +65,14 @@ ochr Erasure uses Std {
     clone(*x)
   )
 
-  -- ... but may not write, borrow or move one itself.
-  reject def Write (x : &Nat) : Nat := (
+  -- ... and write or borrow one itself: the write lands on the proof's own copy and is
+  -- discarded with it, so `clone(*x)` reads the old value (D41 rejected this until D68).
+  def Write (x : &Nat) : Nat := (
     let h : ⊤ = (*x := 5; refl);
     clone(*x)
   )
 
-  reject def Borrow (x : &Nat) : Nat := (
+  def Borrow (x : &Nat) : Nat := (
     let h : ⊤ = (AddM(&*x, 0); refl);
     clone(*x)
   )
@@ -160,18 +163,21 @@ ochr Erasure uses Std {
     }
   )
 
-  -- ## What goes wrong without confinement
+  -- ## What goes wrong without the private copy
   -- A match whose arms are proofs that write `a`. An earlier version erased it when it was
   -- closed off but ran it when it ran directly, so sealing then refining gave `0` and running
-  -- directly gave `1`: `N1Closed` proved `1 = 0`. With the private copy both give `0`; with
-  -- confinement, a proof that writes `a` is an error. Switching both off accepts `N1Closed`
-  -- and `QBoom` (switches `eraseOnCopy` and `confine`).
-  reject def N1T (n : Nat) :
+  -- directly gave `1`: `N1Closed` proved `1 = 0`. With the private copy both give `0`: the
+  -- write lands on the proof's own copy and is discarded, so `N1T` holds (D41 rejected it
+  -- until D68), and `N1Closed` is rejected because `N1T(0)` proves `0 = 0`, not `1 = 0`.
+  -- Switching the copy off accepts `N1Closed` and `QBoom` (switch `eraseOnCopy`).
+  def N1T (n : Nat) :
       Id Nat (let a = 0; let h = match n { Z => (a := S Z; refl), S _ => refl }; a) 0 := refl
 
   reject def N1Closed : Id Nat 1 0 := N1T(0)
 
-  reject def Q (b : Nat) (a : Nat) :
+  -- the same, observed by `Id`: the write to `a` is discarded with the proof's copy, so `Q`
+  -- holds, and `QBoom` is rejected because `Q(0, 0)` is not an equation between `1` and `0`
+  def Q (b : Nat) (a : Nat) :
       Id ⊤ (match b { Z => (a := S Z; refl), S _ => (a := S Z; refl) }) refl := refl
 
   reject def QBoom : False := (
@@ -316,9 +322,10 @@ ochr ErasureBySyntax uses Fixtures {
   def SeqT : Id Nat (let c = Z; let T = (c := S Z; F(&c)); c) (S Z) := refl
 
   -- A place holding a proof was once not treated as a proof, so a sequence ending in one
-  -- was not erased, and at `n = Z` the match ran for real. Its arms write `c`, which
-  -- confinement now rejects.
-  reject def LieP (n : Nat) :
+  -- was not erased, and at `n = Z` the match ran for real. Its arms write `c`; the match is a
+  -- proof, so the write lands on its own copy and is discarded, and `LieP` holds (D41
+  -- rejected it until D68). `BoomP` is rejected: `LieP(Z)` proves `Z = Z`, not `S Z = Z`.
+  def LieP (n : Nat) :
       Id Nat
         (let c = Z; let h : ⊤ = refl; let T = match n { Z => (c := S Z; h), S _ => (c := S Z; h) }; c)
         Z := (

@@ -74,7 +74,6 @@ def flips (cfg : Config) : List String := (flipsDetail cfg).1
 /-- Each switch disables one rule; the ledger records what it was guarding. -/
 def switches : List (String × Config) :=
   [("P2 (v1.3, D26): erased terms run on a private copy", { eraseOnCopy := false }),
-   ("P2 without D41 (v1.8)", { eraseOnCopy := false, confine := false }),
    ("D18: owners are sets", { multiOwner := false }),
    ("D17: [Rec] entry-value guard", { recGuard := false }),
    ("D19: [Access] ends loans inside the content", { accessInside := false }),
@@ -84,21 +83,17 @@ def switches : List (String × Config) :=
    ("C5: a stuck block moves in a borrow variable an arm moves", { blockMoves := false }),
    ("D27 (v1.4): proof parameters are ⋆ at the generic call", { proofParamsStar := false }),
    ("L3 (v1.3): [Rec] covers nested functions", { recNested := false }),
-   ("D28 (v1.5): erasure by declared class, not by value", { erasureByDecl := false }),
    ("D29 (v1.5): matching ends loans inside a neutral head", { matchEndsInside := false }),
    ("D30 (v1.5): closures compared by generic-call observation (vs result only)", { closureConv := 2 }),
    ("D31 (v1.5): without `by`, f is not in scope", { unboundWithoutBy := false }),
    ("D32 (v1.5): writes through pattern variables are writes to the scrutinee", { patternWritesVisible := false }),
    ("G1 (finding): a generalised neutral stays generalised under normalisation", { genConsistent := false }),
-   ("P1 (finding): a variable declared of sort Prop is a proof (redundant under D41)", { leafRule := 0 }),
-   ("P1 without D41", { leafRule := 0, confine := false }),
-   ("P3 (finding): ... by its declaration, not its value ⋆ (redundant under D41)", { leafRule := 1 }),
-   ("P3 without D41", { leafRule := 1, confine := false }),
+   ("P1 (finding): a variable declared of sort Prop is a proof", { leafRule := 0 }),
+   ("P3 (finding): ... by its declaration, not its value ⋆", { leafRule := 1 }),
    ("D36 (v1.7): constructor fields are first-order data", { positivity := false }),
    ("D37 (v1.8): generalisation records and fresh names survive private copies", { globalRecords := false }),
    ("D38 (v1.8): a borrow result is observed through a fresh value written into it", { obsBorrow := false }),
    ("D39 (v1.8): [Seal]'s head guard covers neutral-headed calls", { headGuardNeutral := false }),
-   ("D41 (v1.9): erased terms are confined", { confine := false }),
    ("D44 (v1.9): a function type returning a borrow has a borrow parameter", { borrowParam := false }),
    ("captured neutral data and proofs keep their types", { capTypes := false }),
    ("D45 (v2.0): a match on a proof is by its type, not its content", { byType := false }),
@@ -115,7 +110,6 @@ def switches : List (String × Config) :=
    ("D48 (3): Π-types are compared under their binders", { piUnder := false }),
    ("D49 (3): a data field of a matched proof is a fresh abstract value", { proofDataFields := false }),
    ("D50 (switched ON): the unit laws normalise stored types instead of converting", { unitNorm := true }),
-   ("extension (switched ON): bodies of erased-class functions and arms of erased blocks are confined", { confineBodies := true }),
    ("D54 (v2.1): a Π-type's erasure class, and whether it returns a borrow, are part of it", { classInType := false }),
    ("D56 (v2.1): J computes only when its endpoints are convertible", { jStuck := false }),
    ("D58 (v2.1): a zero-arm match outside a proof position is stuck, not ⋆", { zeroArmStuck := false }),
@@ -140,8 +134,8 @@ def switches : List (String × Config) :=
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
 * `soundness`: switching the rule off accepts a closed proof of a false proposition, or a
   program that goes wrong when run (a use of `⊥`); the witnesses are named;
-* `false lemma`: it accepts a false open lemma, whose closed instances another rule
-  (D41) still rejects;
+* `false lemma`: it accepts a false open lemma, whose closed instances another rule still
+  rejects;
 * `model`: it accepts definitions with no set-theoretic model (an impredicative `Type₀`,
   a large elimination from a non-subsingleton, a refutation of a type Rust inhabits), but
   the suite has no closed false proof;
@@ -151,7 +145,6 @@ def switches : List (String × Config) :=
  -/
 def rowClass : List (String × List String) :=
   [("soundness", ["Erasure.BoomP2"]),
-   ("soundness", ["Erasure.N1Closed", "Erasure.QBoom", "ErasureBySyntax.BoomP"]),
    ("soundness", ["Owners.ClosedD18", "Owners.BadR"]),
    ("soundness", ["Recursion.KnotLBoom"]),
    ("soundness", ["Borrows.BadA1", "Borrows.V", "Borrows.W"]),
@@ -161,21 +154,17 @@ def rowClass : List (String × List String) :=
    ("soundness", ["ClosingOff.MovedByBlock"]),
    ("completeness", []),
    ("soundness", ["Recursion.KnotLBoom"]),
-   ("completeness", []),
    ("soundness", ["ReturnedBorrows.Main"]),
    ("soundness", ["Functions.Boom3"]),
    ("soundness", ["Recursion.LoopNoByBoom"]),
    ("soundness", ["ClosingOff.Boom5"]),
    ("completeness", []),
    ("completeness", []),
-   ("policy", ["Erasure.Write"]),
    ("completeness", []),
-   ("false lemma", ["ErasureBySyntax.LieP"]),
    ("soundness", ["Positivity.Boom", "PositivityParams.Boom"]),
    ("soundness", ["GlobalRecords.Bad5"]),
    ("soundness", ["Functions.BoomX4"]),
    ("completeness", []),
-   ("policy", ["Erasure.Write"]),
    ("model", ["ReturnedBorrows.Boom"]),
    ("completeness", []),
    ("completeness", []),
@@ -189,7 +178,6 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("policy", ["FnBorrows.SwapProps"]),
    ("soundness", ["BorrowTypes.G"]),
-   ("completeness", []),
    ("completeness", []),
    ("completeness", []),
    ("completeness", []),

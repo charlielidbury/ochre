@@ -75,12 +75,12 @@ def showE : Except String Value → String
 def obsRun (st : MState) (A t u : Term) (W : List Pos) (typed : Bool) (k : Nat) :
     Except String (Value × MState) :=
   -- the observations are what the statement's `Id` type is made of, and a type is evaluated as
-  -- the checker evaluates a goal: erased, on a confined copy (`evalType`). Under D53 this
+  -- the checker evaluates a goal: erased, on a private copy (`evalType`). Under D53 this
   -- matters: erased reads copy, so a side of `Id` never moves out of an owner.
   let act : M Value := match k with
-    | 0 => confinedCopy "a type" do let A' ← evalType A; let (r, ws) ← observe typed t A' W; pure (obsVal r ws)
-    | 1 => confinedCopy "a type" do let A' ← evalType A; let (r, ws) ← observe typed u A' W; pure (obsVal r ws)
-    | _ => confinedCopy "a type" do let (v, _) ← eval typed (.id A t u); pure v
+    | 0 => stmtCopy do let A' ← evalType A; let (r, ws) ← observe typed t A' W; pure (obsVal r ws)
+    | 1 => stmtCopy do let A' ← evalType A; let (r, ws) ← observe typed u A' W; pure (obsVal r ws)
+    | _ => stmtCopy do let (v, _) ← eval typed (.id A t u); pure v
   runSt act st
 
 /-- D68: where the symbolic observation holds `⊥` (a place a stuck block took by move, which

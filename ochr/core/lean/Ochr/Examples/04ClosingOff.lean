@@ -170,12 +170,11 @@ ochr ClosingOff uses Std, Fixtures {
     }
   )
 
-  -- When an arm really writes a place, the block takes it by `&`. A closure in an arm that
-  -- reads the place would capture the block's borrow parameter when the block re-runs, and
-  -- [Fix] captures no borrow, so the block is a type error where it is formed (D63, rule-audit
-  -- item 7). The earlier checker captured the value behind the parameter (fuzz-port R2 (ii),
-  -- switch `blockRefCapture`), which no printed rule does; the direct path captures the place itself.
-  reject def LamReadInWrittenBlock (q2 : Nat × Nat) :
+  -- A closure in an arm captures by move what it mentions, in a statement too (D68), so the
+  -- block takes `p5` by move on every path, whether or not the run took that arm; the closure
+  -- keeps the value it captured before `c` is overwritten. (D63 rejected this: the block took
+  -- the place by `&`, and [Fix] captures no borrow.)
+  def LamReadInWrittenBlock (q2 : Nat × Nat) :
       Id Nat
         (let c = q2; let a0 = match c { Mk(p5, p6) => (let f = (λ(y7 : Nat) : Nat => p5); c := (1, 1); f) }; a0(0))
         (match q2 { Mk(p5, p6) => p5 }) := (

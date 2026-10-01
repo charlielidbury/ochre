@@ -155,7 +155,6 @@ structure Config where
   obsBorrow : Bool := true       -- v1.8 D38: a borrow result is observed through a fresh value written into it
   headGuardNeutral : Bool := true -- v1.8 D39: [Seal]'s head guard covers neutral-headed calls
   genPlaceType : Bool := true    -- v1.8: a generalised σ has the matched place's type
-  confine : Bool := true         -- v1.9 D41: an erased term may not assign, borrow or move a place that outlives it
   borrowParam : Bool := true     -- v1.9 D44: a function type returning `&T` has a borrow parameter
   capTypes : Bool := true        -- captured neutral data and proofs keep their types (reviewer-2, lean-checker)
   byType : Bool := true          -- v2.0 D45: a match on a proof (a Prop inductive) is by its type, not its content
@@ -199,8 +198,6 @@ structure Config where
   unitNorm : Bool := false       -- counterfactual D50: the unit laws normalise stored types (v2.0 as first built)
   piUnder : Bool := true         -- D48 (3): Π-types are compared under their binders, at generic values
   proofDataFields : Bool := true -- D49 (3): a data field of a matched proof is a fresh abstract value (not ⋆)
-  confineBodies : Bool := false  -- an extension of D41, not in RULES: the body of a function whose calls are
-                                 -- erased, and each arm of an erased stuck block, are confined too
   trace : Bool := false          -- record goals, splits and call types (for inspection)
   derivation : Bool := false     -- record every rule application, in the paper's names (`fire`, Rules.lean)
 deriving Inhabited, Repr, BEq
@@ -214,21 +211,6 @@ they stand; a counterfactual run switches a rule off and measures that alone. D5
 do not change what is erased, so their counterfactual runs are checked too. -/
 def Config.prePassAssert (c : Config) : Bool :=
   c.prePass && { c with trace := false, derivation := false, fnRule := true } == ({} : Config)
-
-/-- D41: one assignment, borrow or move, by the position of its place's root. It is
-`pending` once an erased run it belongs to has affected a place outliving that run: an
-enclosing erased term in which the place is local resolves it, anything else rejects. -/
-structure Effect where
-  f : Nat
-  i : Nat
-  kind : String
-  place : Place
-  root : String          -- the root binding's name (printed only on an error)
-  pending : Bool := false
-deriving Inhabited
-
-def Effect.desc (e : Effect) : String :=
-  s!"{e.kind} {e.place.pp ((List.replicate e.place.root "?") ++ [e.root])}"
 
 structure MState where
   env : Env := #[{}]
@@ -250,7 +232,6 @@ structure MState where
   convStack : List (Value × Value) := []  -- function pairs being compared observationally (D30)
   neutrals : List (Value × Nat) := []     -- [Split] generalisations: sealed program ↦ its σ (finding G1)
   depth : Nat := 0                        -- call depth (bounded, like fuel: the checker must terminate)
-  effects : Array Effect := #[]           -- D41: assigns, borrows and moves so far (restored with the state)
   placeLog : Array (Nat × Nat × Place × Bool) := #[]  -- D53: every move (true) and assignment (false), at its
                                           -- root binding's position (restored with the state)
   preAssert : Option Bool := none         -- `cfg.prePassAssert`, computed once

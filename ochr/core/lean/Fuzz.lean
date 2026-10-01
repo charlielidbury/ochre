@@ -35,7 +35,6 @@ def switchCfg (c : Config) : String → Option Config
   | "D37" | "globalRecords" => some { c with globalRecords := false }
   | "D38" | "obsBorrow" => some { c with obsBorrow := false }
   | "D39" | "headGuardNeutral" => some { c with headGuardNeutral := false }
-  | "D41" | "confine" => some { c with confine := false }
   | "D44" | "borrowParam" => some { c with borrowParam := false }
   | "capTypes" | "D51" => some { c with capTypes := false }
   | "D45" | "byType" => some { c with byType := false }
@@ -62,7 +61,6 @@ def switchCfg (c : Config) : String → Option Config
   | "copyByType" => some { c with copyByType := false }
   | "D65" | "dropEndsBound" => some { c with dropEndsBound := false }
   | "D50on" | "unitNorm" => some { c with unitNorm := true }          -- switched ON (a counterfactual)
-  | "confineBodies" => some { c with confineBodies := true }          -- switched ON (an extension)
   | "C8" | "generalize" => some { c with generalize := false }
   | "C5" | "blockMoves" => some { c with blockMoves := false }
   | _ => none

@@ -33,14 +33,8 @@ open Ochr.Registry in
 #guard rowOk { eraseOnCopy := false }
   ["Functions.RunGGen:rejected", "Functions.RunIGen:rejected", "Functions.RunPowGen:rejected",
    "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected", "Erasure.BoomP2Pair:accepted",
-   "Erasure.BoomP2:accepted"]
-open Ochr.Registry in
-#guard rowOk { eraseOnCopy := false, confine := false }
-  ["Equality.JMotiveConf:accepted", "Functions.RunGGen:rejected", "Functions.RunIGen:rejected",
-   "Functions.RunPowGen:rejected", "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected",
-   "Erasure.Write:accepted", "Erasure.Borrow:accepted", "Erasure.BoomP2Pair:accepted",
-   "Erasure.BoomP2:accepted", "Erasure.N1T:accepted", "Erasure.N1Closed:accepted", "Erasure.Q:accepted",
-   "Erasure.QBoom:accepted", "ErasureBySyntax.LieP:accepted", "ErasureBySyntax.BoomP:accepted"]
+   "Erasure.BoomP2:accepted", "Erasure.N1Closed:accepted", "Erasure.QBoom:accepted",
+   "ErasureBySyntax.BoomP:accepted"]
 open Ochr.Registry in
 #guard rowOk { multiOwner := false }
   ["Owners.BadD18:accepted", "Owners.ClosedD18:accepted", "Owners.GR:accepted", "Owners.BadR:accepted"]
@@ -96,11 +90,6 @@ open Ochr.Registry in
 #guard rowOk { recNested := false }
   ["Recursion.KnotL:accepted", "Recursion.KnotLBoom:accepted"]
 open Ochr.Registry in
-#guard rowOk { erasureByDecl := false }
-  ["Functions.RunG:rejected", "Functions.RunGGen:rejected", "Functions.RunI:rejected",
-   "Functions.RunIGen:rejected", "Functions.RunPow:rejected", "Functions.RunPowGen:rejected",
-   "Erasure.TypeErased:rejected", "Erasure.LieP2:rejected", "ErasureBySyntax.SeqT:rejected"]
-open Ochr.Registry in
 #guard rowOk { matchEndsInside := false }
   ["ReturnedBorrows.Bad:accepted", "ReturnedBorrows.Main:accepted"]
 open Ochr.Registry in
@@ -124,21 +113,9 @@ open Ochr.Registry in
   ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected",
    "Snapshots.UseCapOf:rejected"]
 open Ochr.Registry in
-#guard rowOk { leafRule := 0, confine := false }
-  ["Equality.Om:rejected", "Equality.JMotiveConf:accepted", "Snapshots.CapP:rejected",
-   "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected", "Snapshots.UseCapOf:rejected",
-   "Erasure.Write:accepted", "Erasure.Borrow:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted",
-   "ErasureBySyntax.LieP:accepted"]
-open Ochr.Registry in
 #guard rowOk { leafRule := 1 }
   ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected",
    "Snapshots.UseCapOf:rejected"]
-open Ochr.Registry in
-#guard rowOk { leafRule := 1, confine := false }
-  ["Equality.Om:rejected", "Equality.JMotiveConf:accepted", "Snapshots.CapP:rejected",
-   "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected", "Snapshots.UseCapOf:rejected",
-   "Erasure.Write:accepted", "Erasure.Borrow:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted",
-   "ErasureBySyntax.LieP:accepted"]
 open Ochr.Registry in
 #guard rowOk { positivity := false }
   ["Functions.FnBox:accepted", "Positivity.Bad:accepted", "Positivity.L:accepted", "Positivity.K:accepted",
@@ -157,16 +134,6 @@ open Ochr.Registry in
 #guard rowOk { headGuardNeutral := false }
   ["ReturnedBorrows.Inj:rejected", "ClosingOff.P1:rejected", "Functions.BoxBorrowFn:rejected",
    "BorrowTypes.HO:rejected", "FnBorrows.RefRetFn:rejected"]
-open Ochr.Registry in
-#guard rowOk { confine := false }
-  ["Equality.JMotiveConf:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted",
-   "Erasure.N1T:accepted", "Erasure.Q:accepted", "ErasureBySyntax.LieP:accepted"]
-open Ochr.Registry in
-#guard rowOk { confineBodies := true }
-  ["Moves.F5:rejected", "Snapshots.CapPi:rejected", "Functions.TwiceMZero':rejected", "Erasure.F5:rejected",
-   "Erasure.TypeErased:rejected", "Erasure.TailSteps:rejected", "Erasure.P2:rejected",
-   "Erasure.FP2:rejected", "Erasure.BoomIsTrue:rejected", "Erasure.p2:rejected", "Erasure.TA2:rejected",
-   "Erasure.LieP2:rejected", "ErasureBySyntax.F:rejected", "ErasureBySyntax.SeqT:rejected"]
 open Ochr.Registry in
 #guard rowOk { borrowParam := false }
   ["ReturnedBorrows.LeakT:accepted", "ReturnedBorrows.Q:accepted", "ReturnedBorrows.Boom:accepted",
@@ -204,21 +171,19 @@ open Ochr.Registry in
 -- (now data) and a proof in another has arms that disagree (`Std.AddMZero`, `refl` against `cong`)
 open Ochr.Registry in
 #guard rowOk { propValues := false }
-  ["Std.AddMZero:rejected", "ReturnedBorrows.AddMEq:rejected",
-   "ReturnedBorrows.AddMEqOwned:rejected", "ReturnedBorrows.AddM1:rejected",
-   "ReturnedBorrows.TailNoop:rejected", "ClosingOff.RowIInd:rejected",
+  ["Std.AddMZero:rejected", "ReturnedBorrows.AddMEq:rejected", "ReturnedBorrows.AddMEqOwned:rejected",
+   "ReturnedBorrows.AddM1:rejected", "ReturnedBorrows.TailNoop:rejected", "ClosingOff.RowIInd:rejected",
    "Equality.AddMZeroLet:rejected", "Recursion.AddZeroCopy:rejected", "Recursion.AddZeroC:rejected",
    "ArmLocal.Leak:rejected", "ArmLocalBoom.EmptyEq:rejected", "Functions.TwiceMZero:rejected",
    "Lists.AppendMNil:rejected", "Lists.AppendMEq:rejected", "Trees.InsertMEq:rejected",
-   "Trees.AddMS:rejected", "Trees.AddS:rejected", "Trees.SizeInsert:rejected",
-   "InPlaceTrees.AddMS:rejected", "InPlaceTrees.AddS:rejected", "InPlaceTrees.SizeInsert:rejected",
-   "InPlaceTrees.SizeInsertRw:rejected", "PolyLists.AppendMNil:rejected",
-   "PolyLists.AppendNil:rejected", "PolyLists.AppendNilL:rejected", "PolyLists.Closed:rejected",
-   "Subsingletons.OrComm:rejected", "Subsingletons.SqTrue:rejected",
+   "Trees.AddMS:rejected", "Trees.AddS:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.AddMS:rejected",
+   "InPlaceTrees.AddS:rejected", "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected",
+   "PolyLists.AppendMNil:rejected", "PolyLists.AppendNil:rejected", "PolyLists.AppendNilL:rejected",
+   "PolyLists.Closed:rejected", "Subsingletons.OrComm:rejected", "Subsingletons.SqTrue:rejected",
    "Subsingletons.SqSplit:rejected", "CurrentState.LeAdd:rejected", "CurrentState.AddSub:rejected",
    "CurrentState.AddSubId:rejected", "CurrentState.PostCopy:rejected",
-   "CurrentState.AddSubIdReborrow:rejected", "Erasure.LieP2:rejected",
-   "ErasureBySyntax.R8Field:rejected", "DepFields.UseEx:rejected"]
+   "CurrentState.AddSubIdReborrow:rejected", "Erasure.LieP2:rejected", "Erasure.N1T:rejected",
+   "Erasure.Q:rejected", "ErasureBySyntax.R8Field:rejected", "DepFields.UseEx:rejected"]
   ["Numbers.AddZero blocked by Std.AddMZero", "Numbers.AddZero' blocked by Std.AddMZero",
    "ClosingOff.AddToOneZero blocked by Std.AddMZero",
    "ClosingOff.AddToOneZero' blocked by Std.AddMZero",
@@ -229,21 +194,20 @@ open Ochr.Registry in
 -- both off: the closed proofs of False (Subsingletons.Boom, SqBoom) go through
 open Ochr.Registry in
 #guard rowOk { subsingleton := false, propValues := false }
-  ["Std.AddMZero:rejected", "ReturnedBorrows.AddMEq:rejected",
-   "ReturnedBorrows.AddMEqOwned:rejected", "ReturnedBorrows.AddM1:rejected",
-   "ReturnedBorrows.TailNoop:rejected", "ClosingOff.RowIInd:rejected",
+  ["Std.AddMZero:rejected", "ReturnedBorrows.AddMEq:rejected", "ReturnedBorrows.AddMEqOwned:rejected",
+   "ReturnedBorrows.AddM1:rejected", "ReturnedBorrows.TailNoop:rejected", "ClosingOff.RowIInd:rejected",
    "Equality.AddMZeroLet:rejected", "Recursion.AddZeroCopy:rejected", "Recursion.AddZeroC:rejected",
    "ArmLocal.Leak:rejected", "ArmLocalBoom.EmptyEq:rejected", "Functions.TwiceMZero:rejected",
    "Lists.AppendMNil:rejected", "Lists.AppendMEq:rejected", "Trees.InsertMEq:rejected",
-   "Trees.AddMS:rejected", "Trees.AddS:rejected", "Trees.SizeInsert:rejected",
-   "InPlaceTrees.AddMS:rejected", "InPlaceTrees.AddS:rejected", "InPlaceTrees.SizeInsert:rejected",
-   "InPlaceTrees.SizeInsertRw:rejected", "PolyLists.AppendMNil:rejected",
-   "PolyLists.AppendNil:rejected", "PolyLists.AppendNilL:rejected", "PolyLists.Closed:rejected",
-   "Subsingletons.IsL:accepted", "Subsingletons.Irr:accepted", "Subsingletons.Boom:accepted",
-   "Subsingletons.Get:accepted", "Subsingletons.SqIrr:accepted", "Subsingletons.SqBoom:accepted",
-   "CurrentState.LeAdd:rejected", "CurrentState.AddSub:rejected", "CurrentState.AddSubId:rejected",
-   "CurrentState.PostCopy:rejected", "CurrentState.AddSubIdReborrow:rejected",
-   "Erasure.LieP2:rejected", "ErasureBySyntax.R8Field:rejected"]
+   "Trees.AddMS:rejected", "Trees.AddS:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.AddMS:rejected",
+   "InPlaceTrees.AddS:rejected", "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected",
+   "PolyLists.AppendMNil:rejected", "PolyLists.AppendNil:rejected", "PolyLists.AppendNilL:rejected",
+   "PolyLists.Closed:rejected", "Subsingletons.IsL:accepted", "Subsingletons.Irr:accepted",
+   "Subsingletons.Boom:accepted", "Subsingletons.Get:accepted", "Subsingletons.SqIrr:accepted",
+   "Subsingletons.SqBoom:accepted", "CurrentState.LeAdd:rejected", "CurrentState.AddSub:rejected",
+   "CurrentState.AddSubId:rejected", "CurrentState.PostCopy:rejected",
+   "CurrentState.AddSubIdReborrow:rejected", "Erasure.LieP2:rejected", "Erasure.N1T:rejected",
+   "Erasure.Q:rejected", "ErasureBySyntax.R8Field:rejected"]
   ["Numbers.AddZero blocked by Std.AddMZero", "Numbers.AddZero' blocked by Std.AddMZero",
    "ClosingOff.AddToOneZero blocked by Std.AddMZero",
    "ClosingOff.AddToOneZero' blocked by Std.AddMZero",
@@ -362,14 +326,15 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { sortsSyntactic := false }
   ["Functions.WV:accepted", "Subsingletons.EffL:accepted", "Subsingletons.EffLNoop:accepted",
-   "ErasureBySyntax.LieH:accepted", "Sorts.W:accepted", "Sorts.f:accepted", "Sorts.TT:accepted",
-   "Sorts.g2:accepted", "Sorts.k:accepted", "Sorts.K1:accepted", "Sorts.K2:accepted"]
+   "Subsingletons.EffInline:accepted", "ErasureBySyntax.LieH:accepted", "Sorts.W:accepted",
+   "Sorts.f:accepted", "Sorts.TT:accepted", "Sorts.g2:accepted", "Sorts.k:accepted", "Sorts.K1:accepted",
+   "Sorts.K2:accepted"]
 -- D68 switched off: reads in a statement copy instead of moving (the old erased-read mode), so a
 -- statement may use a value twice in one argument or read one an earlier argument moved
 open Ochr.Registry in
 #guard rowOk { erasedMoves := false }
-  ["ClosingOff.LamWriteInBlock:accepted", "ClosingOff.LamReadOtherArm:rejected",
-   "Erasure.EffArgErased:rejected", "Erasure.Move:rejected"]
+  ["ClosingOff.LamWriteInBlock:accepted", "ClosingOff.LamReadInWrittenBlock:rejected",
+   "ClosingOff.LamReadOtherArm:rejected"]
 -- D53 (e) switched off: calls consume their function and a closure is never a copy, so a
 -- function cannot be called twice
 open Ochr.Registry in

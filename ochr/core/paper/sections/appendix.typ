@@ -195,7 +195,6 @@ In [Ind] the parameters are evaluated like arguments ([Args], below); a type $ty
 #rules(
   ir(name: "Erase-proof", $t "erased, a declared proof"$, $cfg(Omega, t) ev cfg(Omega, star)$),
   ir(name: "Erase-type", $t "erased, a type"$, $cfg(Omega, t) ev_0 cfg(Omega', T) "confined"$, $cfg(Omega, t) ev cfg(Omega, T)$),
-  ir(name: "Erase-err", $t "erased"$, $cfg(Omega, t) ev_0 cfg(Omega', v) "not confined"$, $cfg(Omega, t) ev err$),
 )
 Here $ev_0$ is the judgement in which the rule for `t`'s own form is applied at the root instead of [Erase-type]. A run of `t` from Ω is _confined_ if none of its steps assigns, borrows or moves out of a place rooted at a position of Ω, except a borrow or move that evaluates an argument of an erased call; a step inside nested erased occurrences is judged by the outermost erased occurrence containing it, so an erased term may mutate its own locals freely. A proof that the machine skips ([Erase-proof]) was checked to be confined by [T-Erase] when its enclosing definition was checked. #lean("eval", "callFn", "fnClass", "paramFlags", "preFlags", "declOf", "confinedCopy", "onCopy (Env.lean)")
 
@@ -325,7 +324,7 @@ A `let`, sequence or match that computes a type is not erased as a whole: its pa
 #rules(
   ir(name: "T-Erase", $t "erased"$, $Omega scripts(tack.r)_0 t ev v : A tack.l Omega' "by a confined run"$, $Omega tack.r t ev v^bullet : A tack.l Omega$),
 )
-Here $v^bullet = star$ if `t` is a proof (clause 1) and $v^bullet = v$ otherwise, $scripts(tack.r)_0$ applies the rule for `t`'s own form at the root, and a run that is not confined (@app-machine, [Erase-err]) is a type error. So an erased term is typed like any other term, on a private copy of the environment, and leaves no trace. Confinement is redundant for a correctly classified term, since the private copy already discards its effects; it is a fail-safe: if the two evaluation paths ever disagreed about whether a term is erased, the path that erases a term with outside effects would reject it, instead of silently discarding effects that the other path keeps. A proof may still mutate its own locals, and may hand outer places to other erased calls, as `AddMZero`'s recursive call `AddMZero(&p)` does. #lean("eval", "fnClass", "preFlags", "declOf", "confinedCopy", "typeDecl", "typeClass", "jErased", "evalType", "onCopy (Env.lean)")
+Here $v^bullet = star$ if `t` is a proof (clause 1) and $v^bullet = v$ otherwise, $scripts(tack.r)_0$ applies the rule for `t`'s own form at the root. So an erased term is typed like any other term, on its own private copy of the environment, and leaves no trace: whatever it writes, borrows or moves is undone with the copy, as at runtime, where it does not run. Erasure is decided from syntax alone, so the two evaluation paths agree on which terms are erased, and with every erased term on its own copy neither path keeps an effect the other discards. A proof may mutate its own locals, and may hand outer places to other erased calls, as `AddMZero`'s recursive call `AddMZero(&p)` does. #lean("eval", "fnClass", "preFlags", "declOf", "stmtCopy", "typeDecl", "typeClass", "jErased", "evalType", "onCopy (Env.lean)")
 
 
 

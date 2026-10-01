@@ -26,7 +26,7 @@ inductive Rule where
   | Let | Seq | Ctor
   -- functions, types and proofs
   | Global | Fix | Pi | Sort | IndType | Ref | Eq | J | JStuck | Capture
-  | EraseProof | EraseType | EraseErr
+  | EraseProof | EraseType
   -- calls
   | ArgsNil | Args | Call | CallErr | App | AppClose | AppHead | AppNeutral | AppNeutralHead
   | Close
@@ -56,7 +56,7 @@ def Rule.all : List Rule :=
   [.EndL, .Access, .Copy, .Read, .Move, .ReadErr, .Borrow, .BorrowErr, .Clone, .Assign, .Drop,
    .Let, .Seq, .Ctor,
    .Global, .Fix, .Pi, .Sort, .IndType, .Ref, .Eq, .J, .JStuck, .Capture,
-   .EraseProof, .EraseType, .EraseErr,
+   .EraseProof, .EraseType,
    .ArgsNil, .Args, .Call, .CallErr, .App, .AppClose, .AppHead, .AppNeutral, .AppNeutralHead,
    .Close,
    .Match, .MatchStuck, .MatchErr, .MatchProp, .MatchNone,
@@ -82,7 +82,7 @@ def Rule.name : Rule → String
   | .Let => "Let" | .Seq => "Seq" | .Ctor => "Ctor"
   | .Global => "Global" | .Fix => "Fix" | .Pi => "Pi" | .Sort => "Sort" | .IndType => "Ind"
   | .Ref => "Ref" | .Eq => "Eq" | .J => "J" | .JStuck => "J-stuck" | .Capture => "Capture"
-  | .EraseProof => "Erase-proof" | .EraseType => "Erase-type" | .EraseErr => "Erase-err"
+  | .EraseProof => "Erase-proof" | .EraseType => "Erase-type"
   | .ArgsNil => "Args-nil" | .Args => "Args" | .Call => "Call" | .CallErr => "Call-err"
   | .App => "App" | .AppClose => "App-close" | .AppHead => "App-head"
   | .AppNeutral => "App-neutral" | .AppNeutralHead => "App-neutral-head" | .Close => "Close"

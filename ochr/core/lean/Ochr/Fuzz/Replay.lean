@@ -10,7 +10,7 @@ elaborates to a `Program`; `replay` runs the oracles on it:
 ```
 ochr Cex { … }
 #eval IO.println (replay Cex)
-#eval IO.println (replay Cex { confine := false })     -- with one rule switched off
+#eval IO.println (replay Cex { eraseOnCopy := false })     -- with one rule switched off
 ```
 -/
 

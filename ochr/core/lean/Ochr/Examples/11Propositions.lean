@@ -381,8 +381,7 @@ ochr Subsingletons uses Std, Fixtures {
   reject def EffLNoop (x : &Nat) (h : Or(⊤, ⊤)) : Id Unit (let t = EffL(x, h); ()) () := refl
   reject def EffLOne (x : &Nat) (h : Or(⊤, ⊤)) : Id Unit (let t = EffL(x, h); ()) (*x := 1) := refl
 
-  -- Inline, outside tail position, the arms are erased terms, and writing a place that
-  -- outlives them is an error (D41).
+  -- Inline, outside tail position, the arms are erased terms, each on its own copy (D68).
   -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
   reject def EffInline (x : &Nat) (h : Or(⊤, ⊤)) : Nat := (
     let t : V(Z) = match h {

@@ -158,10 +158,10 @@ ochr Equality uses Std {
   def JF (a : Nat) (b : Nat) (h : Eq Nat a b) (x : &Nat) : Nat := J(Nat, a, b, λ(z : Nat) : Type => Nat, h, (*x := 5; 0))
   reject def JT (a : Nat) (b : Nat) (h : Eq Nat a b) : Id Nat (let c = 0; JF(a, b, h, &c); c) 5 := refl
 
-  -- `J`'s motive is erased: it runs on a private copy, confined, so a write to an outer place
-  -- there is an error ([Erase-err]; D63, rule-audit item 6). The earlier checker ran it in
-  -- place, with copying reads.
-  reject def JMotiveConf (x : Nat) : Nat := J(Nat, 0, 0, (x := 5; λ(z : Nat) : Type => Nat), refl, 7)
+  -- `J`'s motive is erased: it runs on its own private copy, so a write to an outer place
+  -- there lands on the copy and is discarded (D68; D41 made it an error, [Erase-err], until
+  -- D68 deleted confinement). The earlier checker ran it in place, with copying reads.
+  def JMotiveConf (x : Nat) : Nat := J(Nat, 0, 0, (x := 5; λ(z : Nat) : Type => Nat), refl, 7)
 
   -- `Id` computes the same way wherever it is evaluated ([Obs] is stated with the typing
   -- judgement): built in a function's body, run by the machine, its side's stuck match is

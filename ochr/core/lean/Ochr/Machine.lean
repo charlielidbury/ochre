@@ -467,7 +467,7 @@ partial def matchContent (p : Place) : M Value := do
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
   | v => pure v
 
-/-- D41: record an assignment, borrow or move of `p` by its root position. -/
+/-- D53: record an assignment, borrow or move of `p` by its root position (a stuck block's captures, `armMoves`). -/
 partial def logEffect (p : Place) (kind : String) : M Unit := do
   if let .bind f i ← varPos p.root then
     -- D53: moves and assignments by place, from which a stuck block's effect on what it
@@ -477,11 +477,6 @@ partial def logEffect (p : Place) (kind : String) : M Unit := do
       modify fun s => { s with placeLog := s.placeLog.push (f, i, p, isMove) }
       if let some (i', ss) ← throughLocalBorrow f i p then
         modify fun s => { s with placeLog := s.placeLog.push (f, i', ss.foldl stepPlace (Place.var 0), isMove) }
-    -- one mental model: a move in a statement happens on the statement's private copy and is
-    -- undone with it, so it is not an effect on an outer place (writes and borrows are)
-    if (← get).cfg.confine && !(kind == "moves" && (← get).cfg.erasedMoves) then
-      let root := (← get).env[f]!.binds[i]!.hint.name
-      modify fun s => { s with effects := s.effects.push { f, i, kind, place := p, root } }
 
 /-- One step added to a place. -/
 partial def stepPlace (q : Place) : Step → Place
@@ -515,47 +510,9 @@ partial def throughLocalBorrow (f i : Nat) (p : Place) : M (Option (Nat × List 
       return some (j, path ++ rest)
   pure none
 
-/-- D41: the run since the log had `start` entries is confined with respect to the
-state it started from (frames below `f0`, and the first `n0` bindings of frame `f0`):
-none of its steps assigned, borrowed or moved a place rooted there. -/
-partial def checkConfined (start f0 n0 : Nat) (what : String) : M Unit := do
-  if let some m ← confinementViolation start f0 n0 what then err m
-
-partial def confinementViolation (start f0 n0 : Nat) (what : String) : M (Option String) := do
-  let es := (← get).effects
-  for e in es.extract start es.size do
-    if e.pending || e.f < f0 || (e.f == f0 && e.i < n0) then
-      return some s!"[D41] {what} {e.desc}, a place that outlives it (an erased term may affect outer places only by passing them to an erased call)"
-  pure none
-
-/-- D41, at the end of an erased run: a step on a place created inside the run is local
-to it (resolved, dropped); a step on a place of the start state stays, marked pending. -/
-partial def settleErased (start f0 n0 : Nat) : M Unit := do
-  if (← get).effects.size == start then return
-  modify fun s =>
-    let (keep, rest) := (s.effects.extract 0 start, s.effects.extract start s.effects.size)
-    let outer := rest.filterMap fun e =>
-      if e.f < f0 || (e.f == f0 && e.i < n0) then some { e with pending := true } else none
-    { s with effects := keep ++ outer }
-
-/-- D41: a type position is erased; run it on a private copy, confined. -/
-partial def confinedCopy {α : Type} (what : String) (x : M α) : M α := onCopy <| withErased do
-  let st ← get
-  let start := st.effects.size
-  let f0 := st.env.size - 1
-  let n0 := st.env[f0]!.binds.size
-  let r ← x
-  if (← get).cfg.confine then checkConfined start f0 n0 s!"{what}, an erased term,"
-  pure r
-
-/-- D41, in a context that is not erased: an erased run below it that affected a place
-outliving it is a type error. -/
-partial def flushPending (start : Nat) : M Unit := do
-  let es := (← get).effects
-  if es.size == start then return
-  for e in es.extract start es.size do
-    if e.pending then
-      err s!"[D41] an erased term {e.desc}, a place that outlives it (an erased term may affect outer places only by passing them to an erased call)"
+/-- A statement position (a type, `J`'s endpoints and motive, an erased call's parameter): it
+runs on its own private copy of the state, which is thrown away (P2, D68). -/
+partial def stmtCopy {α : Type} (x : M α) : M α := onCopy <| withErased x
 
 /-- [Borrow] `&p ⇓ borrow_ℓ v` with `p ↦ loan_ℓ`. -/
 partial def borrowPlace (p : Place) : M Value := do
@@ -1327,7 +1284,7 @@ partial def absOf (T : Value) : M Value := do
   pure (.abs (← freshAbs T))
 
 /-- Evaluate a type (P2: once, against the current Ω, on a private copy). -/
-partial def evalType (t : Term) : M Value := confinedCopy "a type" do
+partial def evalType (t : Term) : M Value := stmtCopy do
   let (v, T) ← eval true t
   match T with
   | some (.sort _) => pure v
@@ -1666,9 +1623,6 @@ partial def eval (typed : Bool) (t : Term) (hint : Option Value := none) : M (Va
 
 partial def evalAt (typed : Bool) (t : Term) (hint : Option Value := none) : M (Value × Option Value) := do
   let before := (← get).env
-  let start := (← get).effects.size
-  let f0 := before.size - 1
-  let n0 := before[f0]!.binds.size
   -- the erasure pre-pass: decided before the term runs, from declared types (a call's
   -- head is not classified: its flags are the call's)
   let head := (← get).headEval
@@ -1687,7 +1641,18 @@ partial def evalAt (typed : Bool) (t : Term) (hint : Option Value := none) : M (
   -- (tracked with or without D53: K2/K3 read it too)
   let typing0 := (← get).typing
   modify fun s => { s with typing := typed }
-  let r ← tryCatch (withErasedIf (pre matches some (true, _)) (evalCore typed t hint))
+  -- D68: an erased term is a statement: it runs on its own private
+  -- copy of the state, so what it moves, writes or borrows is undone with the copy, as at
+  -- runtime, where it does not run at all
+  let erasedHere := pre matches some (true, _)
+  let ownCopy := erasedHere && (← get).cfg.erasedMoves && (← get).cfg.eraseOnCopy
+  let run : M (Value × Option Value) := withErasedIf erasedHere (evalCore typed t hint)
+  let r ← tryCatch (if ownCopy then do
+        -- the classification flags the term set are its own, not the copy's
+        let (r, fl) ← onCopy (do let r ← run; pure (r, ← getFlags))
+        setFlags fl
+        pure r
+      else run)
     fun e => do modify (fun s => { s with typing := typing0 }); throw e
   modify fun s => { s with typing := typing0 }
   -- D28 (v1.5): whether this term is erased is decided syntactically and by declared
@@ -1740,10 +1705,6 @@ partial def evalAt (typed : Bool) (t : Term) (hint : Option Value := none) : M (
         err s!"INTERNAL [pre-pass] {t.pp []}: erased/proof = {f} by its declared type, {(erased, proof)} after running (please report)"
       pure f
     | none => pure (erased, proof)
-  -- D41 (v1.9): an erased run is confined, judged by the outermost erased term around
-  -- it (a proof may mutate its own locals); a non-erased context rejects what is pending
-  if cfg.confine then
-    if erased then settleErased start f0 n0 else flushPending start
   if erased && (← get).cfg.eraseOnCopy then
     modify fun s => { s with env := before }
   setFlags (erased, proof)
@@ -1867,12 +1828,16 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     let hint ← if typed && (u matches .ctor .. | .val _) then
         tryCatch (some <$> placeType p) fun _ => pure none
       else pure none
+    -- the place's type, read before the value is evaluated: evaluating it may move the place's
+    -- content out (`*x := match *x {…}`, D68), and an untyped frame types a place by its content
+    let Tp0 ← if typed then tryCatch (some <$> placeType p) (fun _ => pure none) else pure none
     let (v, Tv) ← eval typed u hint
     -- D64 [Open]: a field whose declared type mentions earlier fields takes any value (a strong
     -- update: while its value is open it is typed by what it holds); [Repack] checks it later
     -- [Open]: a strong update
     if typed && (← strongUpdate p) then fire .Open fun _ => s!"a strong update of a dependent field, to a value of type {Tv.getD .bot}"
-    if typed && !(← strongUpdate p) then expectTy "the assigned value" Tv (← placeType p)
+    if typed && !(← strongUpdate p) then
+      expectTy "the assigned value" Tv (← match Tp0 with | some T => pure T | none => placeType p)
     assignPlace p v
     openWrite p
     pure (.unit, ty .tUnit)
@@ -1989,21 +1954,21 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     -- J(A, a, b, P, h, t) : P(b) for h : Eq A a b and t : P(a) (endpoints explicit, D23)
     if !typed then
       if (← get).cfg.jStuck && !(← jErased P) then
-        -- its endpoints are erased positions, on private copies, confined; `A`, `P` and `h`
+        -- its endpoints are erased positions, on private copies; `A`, `P` and `h`
         -- are never run by the machine (A.191)
-        let (av, _) ← confinedCopy "J's endpoint" (eval false a)
-        let (bv, _) ← confinedCopy "J's endpoint" (eval false b)
+        let (av, _) ← stmtCopy (eval false a)
+        let (bv, _) ← stmtCopy (eval false b)
         -- [J]: the endpoints are convertible, `J` is `t`; [J-stuck]: otherwise the run is
         -- stuck, and `t` does not run (D56, D63, rule-audit item 5)
         if ← conv av bv then return ← eval false u
         stuckNow
       return (← eval false u)
     let A' ← evalType A
-    let (av, Ta) ← confinedCopy "J's endpoint" (eval true a)
-    let (bv, Tb) ← confinedCopy "J's endpoint" (eval true b)
+    let (av, Ta) ← stmtCopy (eval true a)
+    let (bv, Tb) ← stmtCopy (eval true b)
     expectTy "J's first endpoint" Ta A'
     expectTy "J's second endpoint" Tb A'
-    let (Pv, PT) ← confinedCopy "J's motive" (eval true P)
+    let (Pv, PT) ← stmtCopy (eval true P)
     let (_, Th) ← eval true h
     let hT ← mkEqM A' av bv
     expectTy "J's equation" Th hT
@@ -2100,7 +2065,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     pure (v, some A')
 
 /-- `D(ā)` (v2.0, D46): the arguments stand in type positions, so each is evaluated on a
-private copy, confined (P2); when typed, each is checked against its parameter's type,
+private copy (P2); when typed, each is checked against its parameter's type,
 evaluated with the earlier parameters bound. Its sort is the declared one. -/
 partial def evalTInd (typed : Bool) (n : String) (as : List Term) : M (Value × Option Value) := do
   let d ← lookupInd n
@@ -2110,13 +2075,13 @@ partial def evalTInd (typed : Bool) (n : String) (as : List Term) : M (Value × 
   if typed then checkParams d n vs tys
   pure (mkTInd n vs.toList (← get).cfg.unitNorm, if typed then some (.sort d.sort) else none)
 
-/-- Parameters are type positions: each on a private copy, confined (P2). -/
+/-- Parameters are type positions: each on a private copy (P2). -/
 partial def evalParams (n : String) (as : List Term) (typed : Bool) :
     M (Array Value × Array (Option Value)) := do
   let mut vs := #[]
   let mut tys := #[]
   for a in as do
-    let (v, T) ← confinedCopy s!"a parameter of {n}" (eval typed a)
+    let (v, T) ← stmtCopy (eval typed a)
     vs := vs.push v
     tys := tys.push T
   pure (vs, tys)
@@ -2217,27 +2182,19 @@ partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
   -- arguments a statement position, run on its own private copy of the state
   let stmt ← stmtCallee fv fT cls?
   let mut tys := #[]
-  let mut argSteps : Array (Nat × Nat) := #[]   -- D41: the borrows and moves that evaluate arguments
   let mut ws0 := #[]
   let mut ender := #[]     -- the editor: which argument ended each argument's borrow
   for a in as do
-    let s := (← get).effects.size
     -- v2.0: a constructor argument's parameters may come from the parameter's type
     let hint ← if typed && (a matches .ctor .. | .val _ | .prim "rewrite" _ | .prim "rewriteR" _ | .prim "hole" _) then argHint fv fT ws0 else pure none
     let (w, T) ← stmtArgIf stmt (eval typed a hint)
-    if a matches .borrow _ | .place _ then argSteps := argSteps.push (s, (← get).effects.size)
     pushTemp w
     ws0 := ws0.push w
     ender ← noteEnders ender ws0
     tys := tys.push T
   let ws ← popTemps as.length
   let fv ← popTemp
-  let r ← atLoc (← enderLoc ender ws) <| callFn typed fv fT ws tys head cls?
-  -- D41: passing an outer place to an erased call is allowed
-  if (← getFlags).1 && !argSteps.isEmpty then
-    modify fun s => { s with effects := (s.effects.zipIdx.filter fun (_, k) =>
-      !argSteps.any fun (a, b) => a ≤ k && k < b).map (·.1) }
-  pure r
+  atLoc (← enderLoc ender ws) <| callFn typed fv fT ws tys head cls?
 
 /-- The type of the next parameter of `fv`, with the earlier ones bound to the arguments
 evaluated so far (a hint for a constructor argument's parameters; `none` if unknown). -/
@@ -2373,15 +2330,13 @@ partial def runBodyCore (fv : Value) (cs : List Value) (t : Term) (ws : Array Va
   pushBind self none fv false (.pi cd)
   for (((((h, w), p), pd), d), i) in ((((hs.zip ws.toList).zip pf).zip pds).zip ds).zipIdx do
     pushBind h (ptys[i]?.getD none) w p (← refineDecl pd none w) (d matches .val (.tRef _))
-  let es := (← get).effects.size
   -- D53: a body is code; a function whose calls are erased has an erased body (b)
   let erasedFn ← tryCatch (do pure ((← fnClass (← funType fv none)) != 0)) (fun _ => pure false)
   let (v, _) ← withErasedIf erasedFn (eval false body)
   wholeReturned v
   pushTempAt ((← topIdx) - 1) v
   popFrame
-  -- the body's steps are rooted in its own frame, which is gone
-  modify fun s => { s with depth := d, effects := s.effects.extract 0 es }
+  modify fun s => { s with depth := d }
   popTemp
 
 /-- D53 (fuzz-port shape (c)): a returned borrow's content must be whole, as when a borrow
@@ -2711,21 +2666,14 @@ partial def splitArmsThenClose (mt : Term) (σ : Nat) (arms : List (M Value × T
   let mut tys : Array Value := #[]
   let mut moved : List Place := []
   let mut allProof := true
-  let mut violation : Option String := none     -- D41: an arm with an outer effect
-  let mut pending : Array Effect := #[]           -- D41: the arms' pending steps, judged after the block
   let f0 := (← get).env.size - 1
   let n0 := (← get).env[f0]!.binds.size
   for (mk, arm) in arms do
     let r ← mk
     refine σ r
     let ls := (← get).placeLog.size
-    let es := (← get).effects.size
     let (_, T) ← eval true arm
     allProof := allProof && (← getFlags).2
-    let armEs := (← get).effects
-    pending := pending ++ (armEs.extract es armEs.size).filter (·.pending)
-    if violation.isNone then
-      violation ← confinementViolation es f0 n0 "an arm of an erased stuck block"
     let some T := T | err "internal: untyped arm"
     if let some E := expected then
       let E' ← substV (.abs σ) r E
@@ -2747,12 +2695,7 @@ partial def splitArmsThenClose (mt : Term) (σ : Nat) (arms : List (M Value × T
         unless ← conv T T0 do
           err s!"the arms of a non-tail match have different types ({T0} and {T}); annotate it (let x : T = match …)"
       pure T0
-  let r ← closeOffMatch mt B moved allProof
-  modify fun s => { s with effects := s.effects ++ pending }
-  -- D41: an erased block's run is one of its arms, so each arm must be confined
-  if (← getFlags).1 && (← get).cfg.confine && (← get).cfg.confineBodies then
-    if let some m := violation then err m
-  pure r
+  closeOffMatch mt B moved allProof
 
 /-- D53: what a run left moved out among the bindings `(f0, i < n0)`, from its log of moves
 and assignments in order: a move adds its place, an assignment restores every moved place it
@@ -2850,20 +2793,15 @@ partial def evalMatchByType (typed : Bool) (p : Place) (ty : String) (arms : Lis
   let saved ← get
   let mut tys := #[]
   let mut allProof := true
-  let mut pending : Array Effect := #[]
   for ((_, a0), c) in arms.zipIdx do
     let a ← bindDataFields p d ps c a0
-    let es := (← get).effects.size
     let (_, T) ← eval true a
     allProof := allProof && (← getFlags).2
-    let armEs := (← get).effects
-    pending := pending ++ (armEs.extract es armEs.size).filter (·.pending)
     let some T := T | err "internal: untyped arm"
     if let some E := expected then
       unless ← conv T E do err s!"an arm of the annotated match has type {T}, but the annotation is {E}"
     tys := tys.push T
     restoreArm saved
-  modify fun s => { s with effects := s.effects ++ pending }
   let B ← match expected with
     | some E => pure E
     | none =>
@@ -2965,6 +2903,18 @@ read is copied. A borrow variable read as a whole is a move (reading a borrow mo
 assigning a borrow variable as a whole moves it too (passing `&x` would be `&&T`). -/
 partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof : Bool) :
     M (Value × Option Value) := do
+  -- D68: a closure or Π-type in an arm captures by move what it mentions (unless a copy), in a
+  -- statement too, whether or not the run took that arm: the block takes the place by move on
+  -- every path (fuzz case 14942: the abstract run's inner block moved it, the ground run's did
+  -- not, and only the ground run found the closure capturing a borrowed place)
+  let moved ← if (← get).cfg.erasedMoves then do
+      let mut mv := moved
+      for (o, p) in mt.fnOccs 0 do
+        let q := p.mapRoot fun _ => .var o
+        unless ← tryCatch (do isCopyType (← placeType q)) (fun _ => pure false) do
+          unless mv.any (placeEq · q) do mv := mv ++ [q]
+      pure mv
+    else pure moved
   let moved ← moved.foldlM (fun acc q => do
       let q' ← movedPlace q
       pure (if acc.contains q' then acc else acc ++ [q'])) []
@@ -3130,9 +3080,7 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
 and the final contents of the owners in `W` (a tuple of the machine, not a `Pair` value,
 D52). -/
 partial def observe (typed : Bool) (t : Term) (A : Value) (W : List Pos) : M (Value × List Value) := onCopy do
-  let es := (← get).effects.size
   let (v, T) ← eval typed t A      -- A: a hint for a constructor's parameters
-  if (← get).cfg.confine then flushPending es   -- D41: a side of Id is not an erased context
   expectTy "a side of Id" T A
   pushTemp v
   modify fun s => { s with observing := true }
@@ -3324,10 +3272,8 @@ partial def checkTailAt (t : Term) (k : Value → Value → M Unit) : M Unit := 
     modify fun s => { s with goal := some G' }
     checkTail u k
   | .letIn h u w =>
-    let es := (← get).effects.size
     let du ← if (← get).cfg.prePass then withLive true (declOf false [] [] u) else pure .other
     let (v, T) ← eval true u
-    flushPending es     -- D41: the tail judgement is not an erased context
     pushBind h T v (← getFlags).2 (← refineDecl du T v)
     checkTail w fun r R => do
       let fl ← getFlags      -- the path's tail flags (dropping may normalise)
@@ -3336,9 +3282,7 @@ partial def checkTailAt (t : Term) (k : Value → Value → M Unit) : M Unit := 
       setFlags fl
       k (← popTemp) R
   | .seq u w =>
-    let es := (← get).effects.size
     let (v, _) ← eval true u
-    flushPending es
     dropValue v
     checkTail w k
   | .matchNat p z s =>
@@ -3413,9 +3357,7 @@ partial def checkTailAt (t : Term) (k : Value → Value → M Unit) : M Unit := 
       let (v, T) ← eval true t
       k v T.get!
   | _ =>
-    let es := (← get).effects.size
     let (v, T) ← eval true t (← get).goal     -- the goal: a hint for a constructor's parameters
-    flushPending es
     match T with
     | some T => k v T
     | none => err "internal: untyped result in the checker"
@@ -3496,30 +3438,12 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
       modify fun s => { s with goal := some goal, recStack := fr :: s.recStack }
     else  -- counterfactual L3: a nested function's check starts with a fresh [Rec] context
       modify fun s => { s with goal := some goal, recStack := [fr] }
-  -- D41: the body of a function whose calls are erased must be confined
-  let bodyErased? ← if (← get).cfg.confine && (← get).cfg.confineBodies then
-      if (← get).cfg.erasureByDecl then pure (some ((← fnClass piTy) != 0)) else pure none
-    else pure (some false)
-  let es := (← get).effects.size
-  let bf := (← get).env.size - 1
-  -- the parameters through which the body reaches its caller's places: borrow parameters
-  -- (a by-value parameter, a capture or a local is the body's own)
-  let outer : List Nat := ((← get).env[bf]!.binds.toList.zipIdx.filter fun (b, _) =>
-    b.ty matches some (.tRef _)).map (·.2)
   -- D53 (b): the body of a function whose calls are erased is an erased term
   -- (tracked with or without D53: K2/K3 read it too)
   let bodyCopies ← pure ((← fnClass piTy) != 0)
   withErasedIf bodyCopies <| checkTail body fun v T => do
     wholeReturned v
     repackCheck s!"{self.name} returns it" v T
-    let erasedBody ← match bodyErased? with
-      | some b => pure b
-      | none => erasedValue v          -- the v1.4 reading: by the value
-    if erasedBody then
-      let es' := (← get).effects
-      for e in es'.extract es es'.size do
-        if e.f < bf || (e.f == bf && outer.contains e.i) then
-          err s!"[D41+] the body of {self.name}, whose calls are erased, {e.desc}, a place of its caller (through a borrow parameter)"
     pushTempAt ((← topIdx) - 1) v
     popFrame
     discard popTemp
