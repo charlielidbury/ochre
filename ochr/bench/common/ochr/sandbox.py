@@ -141,7 +141,8 @@ has exactly `n` elements. A view `Slice(E, n)` wraps the cells, and an owned arr
 `Array(E, n)` wraps a view. Proofs reason about this model directly (`Nth`, `SetS`, `TakeS`,
 `DropS`, `JoinS`, `Count`, ...). Compiled code uses a flat buffer instead, through six native
 functions whose models are the Ochr bodies given here (`implemented by`): `AsSlice`, `GetMut`,
-`WithSplit`, `ArrEmpty`, `ArrPush`, `ArrPop`. Elements are read and written through `GetMut`:
+`WithSplit`, `ArrFromFn`, `ArrOfList`. An array never changes its length; an array literal
+`[x, y]`, written at its type `Array(E, n)`, is `ArrOfList`. Elements are read and written through `GetMut`:
 `*GetMut(Word, n, s, i, h)` reads a `Word`, `clone(*GetMut(E, n, s, i, h))` copies any element,
 and `*GetMut(E, n, s, i, h) := x` writes one. `Swap` is built from `WithSplit` and two
 `GetMut`s and copies nothing.

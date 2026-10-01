@@ -11,11 +11,11 @@ from what tests.json gives.
 
 Numbers are written `W(n)`, the arrays library's `Word` for the numeral n.
 
-Quicksort (SPEC §6): one test per case. The input and the expected output are arrays built
-with `ArrPush` from `ArrEmpty`; the test sorts the input in place and compares the whole
-array, `Id (Array(Word, W(n))) (let a = input; QuickSort(...); a) (expected) := refl`. One
-negative test follows: the `mixed` case with its unsorted input as the expected output,
-which must be rejected.
+Quicksort (SPEC §6): one test per case. The input and the expected output are array literals
+written at their type; the test sorts the input in place and compares the whole array,
+`Id(Array(Word, W(n)), (let a : Array(Word, W(n)) = [input]; QuickSort(...); a), ([expected] :
+Array(Word, W(n)))) := refl`. One negative test follows: the `mixed` case with its unsorted input
+as the expected output, which must be rejected.
 
 Hashmap (SPEC §6): one test per sequence. The program starts from `MapNew(cap, refl)`, runs the
 ops in order, and collects each op's result and the length after it in a `Trace`, which is
@@ -35,11 +35,8 @@ def W(n):
     return f"W({n})"
 
 
-def arr(xs):
-    t = "ArrEmpty(Word)"
-    for i, x in enumerate(xs):
-        t = f"ArrPush(Word, {W(i)}, {t}, {W(x)})"
-    return t
+def lit(xs):
+    return "[" + ", ".join(W(x) for x in xs) + "]"
 
 
 def ident(name):
@@ -51,15 +48,15 @@ def quicksort(tests):
     for c in tests["cases"]:
         n = len(c["input"])
         out.append(f"  -- {c['name']}: {c['input']} ↦ {c['expected']}\n")
-        out.append(f"  def {ident(c['name'])} : Id (Array(Word, {W(n)})) "
-                   f"(let a = {arr(c['input'])}; QuickSort({W(n)}, AsSlice(Word, {W(n)}, &a)); a) "
-                   f"({arr(c['expected'])}) := refl\n")
+        out.append(f"  def {ident(c['name'])} : Id(Array(Word, {W(n)}), "
+                   f"(let a : Array(Word, {W(n)}) = {lit(c['input'])}; QuickSort({W(n)}, AsSlice(Word, {W(n)}, &a)); a), "
+                   f"({lit(c['expected'])} : Array(Word, {W(n)}))) := refl\n")
     mixed = next(c for c in tests["cases"] if c["name"] == "mixed")
     n = len(mixed["input"])
     out.append(f"  -- must be rejected: the expected array is the unsorted input {mixed['input']}\n")
-    out.append(f"  reject def TestReject_unsorted : Id (Array(Word, {W(n)})) "
-               f"(let a = {arr(mixed['input'])}; QuickSort({W(n)}, AsSlice(Word, {W(n)}, &a)); a) "
-               f"({arr(mixed['input'])}) := refl\n")
+    out.append(f"  reject def TestReject_unsorted : Id(Array(Word, {W(n)}), "
+               f"(let a : Array(Word, {W(n)}) = {lit(mixed['input'])}; QuickSort({W(n)}, AsSlice(Word, {W(n)}, &a)); a), "
+               f"({lit(mixed['input'])} : Array(Word, {W(n)}))) := refl\n")
     return out
 
 

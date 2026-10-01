@@ -364,30 +364,28 @@ ochr Arrays uses Index {
     }
   )
 
-  -- One more element at the end, and the last element taken off.
-  def SnocS (E : Type) (n : Word) (s : Slice(E, n)) (x : E) : Slice(E, Succ(n)) by n := (
+  -- The view `f(k), f(k + 1), …` of `n` elements, the model of `ArrFromFn`.
+  def FromFnS (E : Type) (n : Word) (f : Π(i : Word). E) (k : Word) : Slice(E, n) by n := (
     match n {
-      Zero => MkSlice(MkC(x, MkSlice(End))),
-      Succ(m) => match s {
-        MkSlice(c) => match c {
-          MkC(y, t) => MkSlice(MkC(y, SnocS(E, m, t, x))),
-        },
-      },
+      Zero => MkSlice(End),
+      Succ(m) => MkSlice(MkC(f(k), FromFnS(E, m, f, Succ(k)))),
     }
   )
 
-  def PopS (E : Type) (n : Word) (s : Slice(E, Succ(n))) : Slice(E, n) × E by n := (
-    match s {
-      MkSlice(c) => match c {
-        MkC(y, t) => match n {
-          Zero => (MkSlice(End), y),
-          Succ(m) => (
-            let p = PopS(E, m, t);
-            match p {
-              Mk(init, last) => (MkSlice(MkC(y, init)), last),
-            }
-          ),
-        },
+  -- The length of a list, and the view of a list of `n` elements, the model of `ArrOfList`.
+  def LenL (E : Type) (l : List(E)) : Word by l := (
+    match l {
+      Nil => Zero,
+      Cons(x, t) => Succ(LenL(E, t)),
+    }
+  )
+
+  def OfListS (E : Type) (n : Word) (l : List(E)) (h : Eq(Word, LenL(E, l), n)) : Slice(E, n) by n := (
+    match n {
+      Zero => MkSlice(End),
+      Succ(m) => match l {
+        Nil => match h {},
+        Cons(x, t) => MkSlice(MkC(x, OfListS(E, m, t, h))),
       },
     }
   )
@@ -433,26 +431,18 @@ ochr Arrays uses Index {
     res
   ) implemented by "ochr_arr_with_split"
 
-  -- [native] An empty array, and growing or shrinking at the end. `ArrPush` takes the array
-  -- by value, so no borrow into its block is live when the block is reallocated.
-  def ArrEmpty (E : Type) : Array(E, Zero) := MkArray(MkSlice(End)) implemented by "ochr_arr_empty"
+  -- [native] A new array of `n` elements, element `i` being `f(i)` (Rust's `array::from_fn`):
+  -- the one allocation. An array never changes its length.
+  def ArrFromFn (E : Type) (n : Word) (f : Π(i : Word). E) : Array(E, n) := (
+    MkArray(FromFnS(E, n, f, Zero))
+  ) implemented by "ochr_arr_from_fn"
 
-  def ArrPush (E : Type) (n : Word) (a : Array(E, n)) (x : E) : Array(E, Succ(n)) := (
-    match a {
-      MkArray(s) => MkArray(SnocS(E, n, s, x)),
-    }
-  ) implemented by "ochr_arr_push"
-
-  def ArrPop (E : Type) (n : Word) (a : Array(E, Succ(n))) : Array(E, n) × E := (
-    match a {
-      MkArray(s) => (
-        let p = PopS(E, n, s);
-        match p {
-          Mk(init, last) => (MkArray(init), last),
-        }
-      ),
-    }
-  ) implemented by "ochr_arr_pop"
+  -- [native] A new array holding the elements of a list of `n` elements, moved in. An array
+  -- literal `[x, y, z]`, written at its type `Array(E, n)`, is `ArrOfList(E, n, [x, y, z] as a
+  -- list, refl)` (a surface form), so a literal computes to its cells.
+  def ArrOfList (E : Type) (n : Word) (l : List(E)) (h : Eq(Word, LenL(E, l), n)) : Array(E, n) := (
+    MkArray(OfListS(E, n, l, h))
+  ) implemented by "ochr_arr_of_list"
 
   -- ## Built from those, in Ochr
   -- An element is written through its borrow, `*GetMut(E, n, s, i, h) := x`; that is `SetS`'s
@@ -494,13 +484,8 @@ ochr Arrays uses Index {
   def SwapS (E : Type) (n : Word) (s : Slice(E, n)) (i : Word) (j : Word) (hi : Lt(i, n)) (hj : Lt(j, n)) :
       Slice(E, n) := SetS(E, n, SetS(E, n, clone(s), i, Nth(E, n, clone(s), j, hj)), j, Nth(E, n, s, i, hi))
 
-  -- `n` copies of `x`, by recursion on `n`.
-  def Replicate (E : Type) (n : Word) (x : E) : Array(E, n) by n := (
-    match n {
-      Zero => ArrEmpty(E),
-      Succ(m) => ArrPush(E, m, Replicate(E, m, clone(x)), x),
-    }
-  )
+  -- `n` copies of `x`.
+  def Replicate (E : Type) (n : Word) (x : E) : Array(E, n) := ArrFromFn(E, n, λ(i : Word) : E => clone(x))
 
   -- Write `x` at `i, …, n - 1`, by recursion on the count `rem` still to go (`rem + i = n`).
   def FillFrom (E : Type) (n : Word) (s : &Slice(E, n)) (x : E) (i : Word) (rem : Word)
@@ -1109,17 +1094,17 @@ ochr ArrayBench uses ArrayLemmas {
 
   -- On `[4, 9]`, in both orders of the indices, and at one index.
   def SwapRun : Id(Word,
-      (let a = ArrPush(Word, Succ(Zero), ArrPush(Word, Zero, ArrEmpty(Word), W(4)), W(9));
+      (let a : Array(Word, W(2)) = [W(4), W(9)];
        Swap(Word, W(2), AsSlice(Word, W(2), &a), Succ(Zero), Zero, refl, refl);
        *GetMut(Word, W(2), AsSlice(Word, W(2), &a), Zero, refl)),
       W(9)) := refl
   def SwapRunLt : Id(Word,
-      (let a = ArrPush(Word, Succ(Zero), ArrPush(Word, Zero, ArrEmpty(Word), W(4)), W(9));
+      (let a : Array(Word, W(2)) = [W(4), W(9)];
        Swap(Word, W(2), AsSlice(Word, W(2), &a), Zero, Succ(Zero), refl, refl);
        *GetMut(Word, W(2), AsSlice(Word, W(2), &a), Succ(Zero), refl)),
       W(4)) := refl
   def SwapRunSame : Id(Word,
-      (let a = ArrPush(Word, Succ(Zero), ArrPush(Word, Zero, ArrEmpty(Word), W(4)), W(9));
+      (let a : Array(Word, W(2)) = [W(4), W(9)];
        Swap(Word, W(2), AsSlice(Word, W(2), &a), Zero, Zero, refl, refl);
        *GetMut(Word, W(2), AsSlice(Word, W(2), &a), Zero, refl)),
       W(4)) := refl
@@ -1139,10 +1124,20 @@ ochr ArrayBench uses ArrayLemmas {
   def GetOrIn : Id Word (let a = Replicate(Word, W(3), W(7)); GetOr(Word, W(3), AsSlice(Word, W(3), &a), Succ(Zero), Zero)) W(7) := refl
   def GetOrOut : Id Word (let a = Replicate(Word, W(3), W(7)); GetOr(Word, W(3), AsSlice(Word, W(3), &a), W(5), Zero)) Zero := refl
 
-  -- ## Growth
-  -- The length is in the type: pushing onto an `Array(E, n)` gives an `Array(E, S n)`.
-  def PushPop : Id Word (let a = ArrPush(Word, Zero, ArrEmpty(Word), W(4)); let p = ArrPop(Word, Zero, a); p.2) W(4) := refl
-  reject def PushWrongLength (a : Array(Word, W(2))) : Array(Word, W(2)) := ArrPush(Word, W(2), a, Zero)
+  -- ## Making arrays
+  -- An array has the length in its type and never changes it. A literal is written at its type;
+  -- it computes to its cells, so a statement about one holds by evaluation.
+  def Lit : Id(Word, (let a : Array(Word, W(3)) = [W(4), W(9), W(2)]; *GetMut(Word, W(3), AsSlice(Word, W(3), &a), Succ(Zero), refl)), W(9)) := refl
+  def LitCells : Eq(Array(Word, W(2)), ([W(4), W(9)] : Array(Word, W(2))), MkArray(MkSlice(MkC(W(4), MkSlice(MkC(W(9), MkSlice(End))))))) := refl
+  def LitEmpty : Eq(Array(Word, Zero), ([] : Array(Word, Zero)), MkArray(MkSlice(End))) := refl
+  -- A literal moves its elements in: a generic one copies nothing.
+  def LitGeneric (E : Type) (x : E) (y : E) : Array(E, W(2)) := [x, y]
+  reject def LitWrongLength : Array(Word, W(2)) := [W(4)]
+  -- `ArrFromFn(E, n, f)` allocates `n` cells, element `i` being `f(i)`.
+  def FromFn : Id(Word, (let a = ArrFromFn(Word, W(4), λ(i : Word) : Word => Succ(i)); *GetMut(Word, W(4), AsSlice(Word, W(4), &a), W(3), refl)), W(4)) := refl
+  def ReplicateList : Id(List(Word),
+      (let a = Replicate(List(Word), W(2), Cons(W(1), Nil)); clone(*GetMut(List(Word), W(2), AsSlice(List(Word), W(2), &a), Succ(Zero), refl))),
+      Cons(W(1), Nil)) := refl
 
   -- ## B3: insert into a hashmap's bucket, in place
   -- The slot is `k mod cap`, whose bound is a lemma: no runtime check.
@@ -1286,12 +1281,13 @@ ochr ArrayBench uses ArrayLemmas {
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard ArrayBench.decls.length == 48
+#guard ArrayBench.decls.length == 53
 -- the element reads' rejections, each for its reason
 #guard (run "ArrayBench" ArrayBench).rejectedWith [
   ("ReadMove", "[D53] reading *GetMut(…) moves its content out through the borrow GetMut(…) returns, which then ends with it moved out (⊥): copy it with clone(*GetMut(…))"),
   ("NotAPlace", "*Leb(…): Leb(…) does not return a borrow (type Bool), so *Leb(…) is not a place"),
   ("ReadPastEnd", "argument 5 (h) has type ⊤, expected False"),
+  ("LitWrongLength", "argument 4 (h) has type ⊤, expected False"),
   ("TwoGetMut", "[Read] a was moved out or its borrow ended")]
 
 /-! ## B2: quicksort
@@ -1381,13 +1377,13 @@ ochr Quicksort uses ArrayLemmas {
 
   def SortArray (n : Word) (a : &Array(Word, n)) : Unit := QS(n, n, AsSlice(Word, n, a))
 
-  def SortRun : Id (Array(Word, W(5)))
-      (let a = MkArray(MkSlice(MkC(W(3), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(4), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(End)))))))))))); SortArray(W(5), &a); a)
-      (MkArray(MkSlice(MkC(Succ(Zero), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(MkC(W(3), MkSlice(MkC(W(4), MkSlice(End))))))))))))) := refl
+  def SortRun : Id(Array(Word, W(5)),
+      (let a : Array(Word, W(5)) = [W(3), W(1), W(4), W(1), W(2)]; SortArray(W(5), &a); a),
+      ([W(1), W(1), W(2), W(3), W(4)] : Array(Word, W(5)))) := refl
 
-  reject def SortRunWrong : Id (Array(Word, W(5)))
-      (let a = MkArray(MkSlice(MkC(W(3), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(4), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(End)))))))))))); SortArray(W(5), &a); a)
-      (MkArray(MkSlice(MkC(Succ(Zero), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(MkC(W(4), MkSlice(MkC(W(3), MkSlice(End))))))))))))) := refl
+  reject def SortRunWrong : Id(Array(Word, W(5)),
+      (let a : Array(Word, W(5)) = [W(3), W(1), W(4), W(1), W(2)]; SortArray(W(5), &a); a),
+      ([W(1), W(1), W(2), W(4), W(3)] : Array(Word, W(5)))) := refl
 
   -- ## Quicksort permutes: every count is unchanged
   -- The scan only swaps.

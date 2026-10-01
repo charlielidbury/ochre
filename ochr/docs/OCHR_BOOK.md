@@ -248,17 +248,20 @@ For a reader who knows Lean's tactics:
   - `Nth(E, n, s, i, h)` is element `i`, given `h : Lt(i, n)`;
   - `SetS` replaces an element, and `SwapS` exchanges two;
   - `TakeS`, `DropS` and `JoinS` split and join;
-  - `SnocS`, `PopS`.
-- **Runtime operations**, the only way code touches an array. Six are native:
+  - `FromFnS`, `OfListS`, the models of making an array.
+- **Runtime operations**, the only way code touches an array. Five are native:
   - `AsSlice(E, n, &a)`;
   - `GetMut(E, n, s, i, h) : &E`, a borrow of element `i`. Every element is read and written through it, and `*GetMut(…)` is a place (as Rust's `*v.get_mut(i)`):
     - `*GetMut(Word, n, s, i, h)` reads a `Word` (a copy type copies);
     - `clone(*GetMut(E, n, s, i, h))` copies any element. Copying is the caller's to write: `*GetMut(E, …)` of a non-copy element is rejected, since it would move the element out through the borrow;
     - `*GetMut(E, n, s, i, h) := x` writes one;
   - `WithSplit(E, R, n, k, s, h, f)` runs `f` on two disjoint borrows, the first `k` elements and the rest. It is Ochr's `split_at_mut`;
-  - `ArrEmpty`, `ArrPush`, `ArrPop`.
+  - `ArrFromFn(E, n, f)`, a new array of `n` elements, element `i` being `f(i)` (Rust's `array::from_fn`);
+  - `ArrOfList(E, n, l, h)`, a new array holding the `n` elements of the list `l`. An array literal `[x, y, z]` is this, written at its type: `let a : Array(Word, W(3)) = [W(4), W(9), W(2)]`, `([W(4), W(9), W(2)] : Array(Word, W(3)))`, or a definition's body. A literal computes to its cells, so a statement about one holds by evaluation.
 
-  Built from them, in Ochr: `Swap(E, n, s, i, j, hi, hj)`, which splits the view and exchanges through two element borrows, copying nothing; `Replicate`, `Fill`, `FillFrom`. Two element borrows of one view at once are refused (taking the second ends the first), which is why `Swap` splits first.
+  An array never changes its length: there is no push or pop. A growable vector is user code over an array (`Vec` in `18DependentFields.lean`).
+
+  Built from them, in Ochr: `Swap(E, n, s, i, j, hi, hj)`, which splits the view and exchanges through two element borrows, copying nothing; `Replicate(E, n, x)` (`ArrFromFn` with a `clone` of `x`), `Fill`, `FillFrom`. Two element borrows of one view at once are refused (taking the second ends the first), which is why `Swap` splits first.
 - **Lemmas:**
   - what is done through an element borrow: `GetMutRead` (a read is `Nth`, and leaves the view as it was), `GetMutSet` (a write is `SetS`'s), and `GetMutReadV`, `GetMutSetV`, the same about a view given by value;
   - `SwapIsSwapS` (`Swap` is the write of `SwapS`), and `SwapIsSwapSV`;
