@@ -77,6 +77,9 @@ syntax:max (name := ochrCall) ochr_term:max noWs "(" ochr_term,* ")" : ochr_term
 syntax:max (name := ochrProj) ochr_term:max noWs "." noWs num : ochr_term
 syntax:max (name := ochrCtorP0) ident noWs "[" ochr_term,* "]" : ochr_term
 syntax:max (name := ochrCtorP) ident noWs "[" ochr_term,* "]" noWs "(" ochr_term,* ")" : ochr_term
+-- an array literal, `[a, b, c]`: written where its type `Array(E, n)` is given (an ascription,
+-- an annotated `let`, or a definition's body)
+syntax:max (name := ochrArrLit) "[" ochr_term,* "]" : ochr_term
 syntax:max "*" ochr_term:max : ochr_term
 syntax:max "&" ochr_term:max : ochr_term
 syntax:60 ident (ws ochr_term:max)+ : ochr_term
@@ -192,6 +195,8 @@ partial def elabTermCore (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := 
     let arms := stx.raw[3].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_arm)
     let as ← arms.mapM elabArm
     return ← `(STerm.splitArms $(strLit f) [$as,*])
+  if stx.raw.getKind == ``ochrArrLit then
+    Macro.throwErrorAt stx "an array literal needs its type written next to it: `let a : Array(E, n) = [x, y]` or `([x, y] : Array(E, n))`"
   if stx.raw.getKind == ``ochrProj then
     let t : TSyntax `ochr_term := ⟨stx.raw[0]⟩
     let i := stx.raw[2].isNatLit?.getD 0
@@ -202,7 +207,7 @@ partial def elabTermCore (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := 
   | `(ochr_term| ()) => `(STerm.unitLit)
   | `(ochr_term| ($t)) => elabTerm t
   | `(ochr_term| ($a, $b)) => do `(STerm.pair $(← elabTerm a) $(← elabTerm b))
-  | `(ochr_term| ($a : $b)) => do `(STerm.ascribe $(← elabTerm a) $(← elabTerm b))
+  | `(ochr_term| ($a : $b)) => do `(STerm.ascribe $(← elabTermAt a b) $(← elabTerm b))
   | `(ochr_term| ⟨$a, $b⟩) => do `(STerm.andI $(← elabTerm a) $(← elabTerm b))
   | `(ochr_term| ⊤) => `(STerm.top)
   | `(ochr_term| Prop) => `(STerm.sort 0)
@@ -224,7 +229,7 @@ partial def elabTermCore (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := 
   | `(ochr_term| let $x:ident = $t; $u) => do
     `(STerm.letIn $(strLit x.getId.toString) none $(← elabTerm t) $(← elabTerm u))
   | `(ochr_term| let $x:ident : $A = $t; $u) => do
-    `(STerm.letIn $(strLit x.getId.toString) (some $(← elabTerm A)) $(← elabTerm t) $(← elabTerm u))
+    `(STerm.letIn $(strLit x.getId.toString) (some $(← elabTerm A)) $(← elabTermAt t A) $(← elabTerm u))
   | `(ochr_term| match $p {}) => do `(STerm.matchGen $(← elabTerm p) [])
   | `(ochr_term| rewrite $h in $t) => do `(STerm.rewrite false $(← elabTerm h) $(← elabTerm t))
   | `(ochr_term| split $f:ident in $t) => do `(STerm.split $(strLit f.getId.toString) $(← elabTerm t))
@@ -235,6 +240,31 @@ partial def elabTermCore (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := 
   | `(ochr_term| fix $f:ident $bs* : $r $[by $d?]? := $b) => do
     `(STerm.fix $(strLit f.getId.toString) [$(← bs.mapM elabBinder),*] $(← elabTerm r) $(decOf d?) $(← elabTerm b))
   | _ => Macro.throwErrorAt stx "unsupported ochr term"
+
+/-- A term written at the type `A` (an ascription, an annotated `let`, a definition's body). An array literal
+`[x₁, …, xₖ]` at `A = Array(E, n)` is the native call `ArrOfList(E, n, Cons[E](x₁, … Nil[E]), refl)`:
+the elements are moved into one new array of `n` cells, and the model is the cells holding them,
+so a literal computes to its `Cells` value. `refl` is the proof that the list has `n` elements
+(at a concrete `n`; a literal of the wrong length is a type error there). A surface desugaring:
+`ArrOfList` is a declaration of the arrays library. -/
+partial def elabTermAt (t : TSyntax `ochr_term) (A : TSyntax `ochr_term) : MacroM (TSyntax `term) := do
+  unless t.raw.getKind == ``ochrArrLit do return ← elabTerm t
+  let A0 := if A.raw.getNumArgs == 3 && A.raw[0].isToken "(" && A.raw[2].isToken ")" then A.raw[1] else A.raw
+  let head := if A0[0].isIdent then A0[0] else A0[0][0]
+  unless A0.getKind == ``ochrCall && head.isIdent && head.getId.toString == "Array" do
+    Macro.throwErrorAt t "an array literal is written at a type `Array(E, n)`"
+  let targs := A0[2].getSepArgs
+  unless targs.size == 2 do Macro.throwErrorAt t "an array literal is written at a type `Array(E, n)`"
+  let E ← elabTerm ⟨targs[0]!⟩
+  let n ← elabTerm ⟨targs[1]!⟩
+  let elems := t.raw[1].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_term)
+  let mut l ← `(STerm.ctorP "Nil" [$E] [])
+  for e in elems.reverse do
+    l ← `(STerm.ctorP "Cons" [$E] [$(← elabTerm e), $l])
+  let call ← `(STerm.call (STerm.ident "ArrOfList") [$E, $n, $l, STerm.ident "refl"])
+  match t.raw.getPos?, t.raw.getTailPos? with
+  | some s, some e => `(STerm.loc $(quote s.byteIdx) $(quote e.byteIdx) $call)
+  | _, _ => pure call
 
 /-- D60: the one-arm match for a destructuring pattern on `scrut` (an elaborated surface
 term, a place), around `body`. `⟨p₁, …, pₙ⟩` is `Intro(p₁, ⟨p₂, …, pₙ⟩)` (right-nested,
@@ -338,11 +368,11 @@ def elabDecl (stx : TSyntax `ochr_decl) : MacroM (TSyntax `term) := do
   match stx with
   | `(ochr_decl| def $f:ident $bs* : $r $[by $d?]? := $b $[implemented by $sym?]?) => do
     `(({ name := $(strLit f.getId.toString), params := [$(← bs.mapM elabBinder),*],
-         ret := $(← elabTerm r), dec := $(decOf d?), body := $(← elabTerm b), implBy := $(implOf sym?),
+         ret := $(← elabTerm r), dec := $(decOf d?), body := $(← elabTermAt b r), implBy := $(implOf sym?),
          expectAccept := true } : SDecl))
   | `(ochr_decl| reject def $f:ident $bs* : $r $[by $d?]? := $b $[implemented by $sym?]?) => do
     `(({ name := $(strLit f.getId.toString), params := [$(← bs.mapM elabBinder),*],
-         ret := $(← elabTerm r), dec := $(decOf d?), body := $(← elabTerm b), implBy := $(implOf sym?),
+         ret := $(← elabTerm r), dec := $(decOf d?), body := $(← elabTermAt b r), implBy := $(implOf sym?),
          expectAccept := false } : SDecl))
   | `(ochr_decl| $ms:ochr_indmod* inductive $n:ident $bs* $[: $s?]? $[:= $cs?|*]?) => elabInd n bs s? cs? true ms
   | `(ochr_decl| reject $ms:ochr_indmod* inductive $n:ident $bs* $[: $s?]? $[:= $cs?|*]?) => elabInd n bs s? cs? false ms

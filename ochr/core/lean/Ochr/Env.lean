@@ -195,6 +195,9 @@ structure Config where
   k4Nest : Bool := true          -- K4's nesting condition: a parameter an inductive passes to a type function
                                  -- is not nestable (the type being declared may not appear there)
   dropEndsBound : Bool := true   -- D65 amended: [Drop] of a lent place ends only borrowers held in bindings; one in flight is an error (off: pure D65, it ends every borrower)
+  lentProofs : Bool := true      -- D64 amended (uninit-bot's finding): a proof field assigned while part of its value
+                                 -- is lent is checked with what each such borrow holds unknown ([Open]); off: with
+                                 -- its current content, which the live borrow can still change (DepFields.BoomLent)
   fnRule : Bool := true          -- D53 (e): a call does not consume its function; a closure is copy iff its captures are, and its body may not move them out
   unitNorm : Bool := false       -- counterfactual D50: the unit laws normalise stored types (v2.0 as first built)
   piUnder : Bool := true         -- D48 (3): Π-types are compared under their binders, at generic values

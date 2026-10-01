@@ -61,6 +61,7 @@ def switchCfg (c : Config) : String → Option Config
   | "copyByType" => some { c with copyByType := false }
   | "movedStuck" => some { c with movedStuck := false }
   | "D65" | "dropEndsBound" => some { c with dropEndsBound := false }
+  | "D64lent" | "lentProofs" => some { c with lentProofs := false }   -- D64 amended: a proof field assigned while lent
   | "D50on" | "unitNorm" => some { c with unitNorm := true }          -- switched ON (a counterfactual)
   | "C8" | "generalize" => some { c with generalize := false }
   | "C5" | "blockMoves" => some { c with blockMoves := false }

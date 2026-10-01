@@ -86,7 +86,7 @@ Reserved names, which you can't declare: `Nat`, `Unit`, `Z`, `S`, `refl`, `Id`, 
   - `Bool := false | true`, `List(A) := Nil | Cons(h, t)`, `Box(A) := MkBox(x)`.
   - `AddM(&x, y)` and `Add(x, y)` on `Nat`.
 - **Your own types:** `inductive Opt (A : Type) := None | Some(v : A)`. Fields are data: other inductives, the type itself, numbers, function types reached through a type parameter (`Box(Π(n : Word). Word)`), and borrows nowhere. Parameters are types in `Type`.
-- **Dependent fields:** a field's type may mention earlier fields: `inductive Vec (E : Type) := MkVec(n : Word, items : Array(E, n))`. You may break the dependency temporarily, writing the fields one at a time in either order: `match *v { MkVec(n, items) => (n := W(2); items := two) }`. It must hold again wherever the value is used whole (read, passed, returned, borrow ended), or you get a `[Repack]` error naming the field and both types. A proof field (`h : Sorted(xs)`) is cleared when the data it mentions changes, and must be re-assigned before the value is used whole. Examples: `18DependentFields.lean`.
+- **Dependent fields:** a field's type may mention earlier fields: `inductive Vec (E : Type) := MkVec(len : Word, cap : Word, buf : Array(Opt(E), cap), hl : Le(len, cap))`. You may break the dependency temporarily, writing the fields one at a time in either order: `match *v { MkVec(len, cap, buf, hl) => (cap := W(2); buf := two; len := W(2); hl := refl) }`. It must hold again wherever the value is used whole (read, passed, returned, borrow ended), or you get a `[Repack]` error naming the field and both types. A proof field (`hl`) is cleared when the data it mentions changes, or is borrowed, and must be re-assigned before the value is used whole. So a proof field about data that a function returns a borrow into cannot be kept: state it as a separate proposition instead (`VInv`). Examples: `18DependentFields.lean`.
 - **No `if`:** match on a `Bool`, or on a decision type such as `Dec(Le(a, b), Lt(b, a))` (`Yes(h)` / `No(k)`), which also gives you the proof.
 
 ## 5. Ownership: moves, copies, borrows
@@ -242,36 +242,45 @@ For a reader who knows Lean's tactics:
   - `Le(a, b)`, `Lt(a, b)`, propositions;
   - `LeDec(a, b) : Dec(Le(a, b), Lt(b, a))` and `LtDec(i, n) : Dec(Lt(i, n), Le(n, i))`, comparisons that return the proof;
   - `Leb`, `Eqb` (`Bool`), `WAdd`, `Sub`, `W(n)`;
-  - facts: `LeRefl`, `LeStep`, `LeTrans`, `LeAddL`, `AddRS`, `AddZeroR`, `AddOneR`, `SubPos`, `SubOneLe`.
+  - facts: `LeRefl`, `LeStep`, `LeTrans`, `LeAddL`, `AddRS`, `AddZeroR`, `AddOneR`, `SubPos`, `SubOneLe`, `SubPosLt`, `LtNe`, `LeAntisym`.
 - **Model** (pure, used in statements):
   - `Slice(E, n)` is a view of `n` elements, and `Array(E, n)` is an owned array;
   - `Nth(E, n, s, i, h)` is element `i`, given `h : Lt(i, n)`;
-  - `SetS` replaces an element;
+  - `SetS` replaces an element, and `SwapS` exchanges two;
   - `TakeS`, `DropS` and `JoinS` split and join;
-  - `SnocS`, `PopS`.
-- **Runtime operations**, the only way code touches an array:
+  - `FromFnS`, `OfListS`, the models of making an array.
+- **Runtime operations**, the only way code touches an array. Five are native:
   - `AsSlice(E, n, &a)`;
-  - `Read(E, n, s, i, h)`, `Set(E, n, s, i, x, h)`;
-  - `GetMut(n, s, i, h)`, a borrow of a `Word` element;
+  - `GetMut(E, n, s, i, h) : &E`, a borrow of element `i`. Every element is read and written through it, and `*GetMut(…)` is a place (as Rust's `*v.get_mut(i)`):
+    - `*GetMut(Word, n, s, i, h)` reads a `Word` (a copy type copies);
+    - `clone(*GetMut(E, n, s, i, h))` copies any element. Copying is the caller's to write: `*GetMut(E, …)` of a non-copy element is rejected, since it would move the element out through the borrow;
+    - `*GetMut(E, n, s, i, h) := x` writes one;
   - `WithSplit(E, R, n, k, s, h, f)` runs `f` on two disjoint borrows, the first `k` elements and the rest. It is Ochr's `split_at_mut`;
-  - `ArrEmpty`, `ArrPush`, `ArrPop`;
-  - `Swap(E, n, s, i, j, hi, hj)`, `Replicate`, `Fill`, `FillFrom`.
+  - `ArrFromFn(E, n, f)`, a new array of `n` elements, element `i` being `f(i)` (Rust's `array::from_fn`);
+  - `ArrOfList(E, n, l, h)`, a new array holding the `n` elements of the list `l`, moved in. It is the model of an array literal `[x, y, z]` (a compiler lowers a literal directly, building no list) and a general list-to-array conversion. A literal is written at its type: `let a : Array(Word, W(3)) = [W(4), W(9), W(2)]`, `([W(4), W(9), W(2)] : Array(Word, W(3)))`, or a definition's body. A literal computes to its cells, so a statement about one holds by evaluation.
+
+  An array never changes its length: there is no push or pop. A growable vector is user code over an array (`Vec` in `18DependentFields.lean`).
+
+  Built from them, in Ochr: `Swap(E, n, s, i, j, hi, hj)`, which splits the view and exchanges through two element borrows, copying nothing; `Replicate(E, n, x)` (`ArrFromFn` with a `clone` of `x`), `Fill`, `FillFrom`. Two element borrows of one view at once are refused (taking the second ends the first), which is why `Swap` splits first.
 - **Lemmas:**
-  - `NthSetSame`, `NthSetOther`;
-  - `JoinTakeDrop`, `TakeJoin`, `DropJoin`;
-  - `Count(q, n, s)` (occurrences of `q`), with `CountJoin`, `CountSet`, `CountSwap`;
-  - `SwapIsSwapS`, `GetMutSet`.
+  - what is done through an element borrow: `GetMutRead` (a read is `Nth`, and leaves the view as it was), `GetMutSet` (a write is `SetS`'s), and `GetMutReadV`, `GetMutSetV`, the same about a view given by value;
+  - `SwapIsSwapS` (`Swap` is the write of `SwapS`), and `SwapIsSwapSV`;
+  - `NthSetSame`, `NthSetOther`, `SetSComm`;
+  - `JoinTakeDrop`, `TakeJoin`, `DropJoin`, `NthTakeS`, `NthDropS`, `JoinSetS`;
+  - `Count(q, n, s)` (occurrences of `q`), with `CountJoin`, `CountSet`, `CountSwap`.
 - **Rule:** runtime code only *borrows* views. It never reads one by value or matches on its representation. Statements and proofs may do both freely (`Nth(E, n, *s, i, h)` in a type is fine).
+- **Reads and writes in proofs.** At an unknown index, what a program reads or writes through `GetMut`, or swaps, is a sealed program, not `Nth` or `SetS`. Name the facts with the lemmas and rewrite with them. `let ⟨hv, hp⟩ = GetMutRead(…)` gives the value read (`hv : Eq(E, read, Nth(…))`) and the view after it, a put-back program (`hp : Eq(Slice(E, n), put-back, *s)`). A rewrite does not reach inside a sealed program, such as a recursive call on the put-back view, so state the induction hypothesis at the view the program leaves, and rewrite the rest of the goal onto it (`ScanPerm` in `16Arrays.lean` does both). At a known index, splitting the view (`match v { MkSlice(c) => match c { MkC(y, t) => … } }`) makes the read compute.
 
 ```
 def Bump (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) : Unit := (
-  let x = Read(Word, n, &*s, i, h);
-  Set(Word, n, s, i, Succ(x), h)
+  *GetMut(Word, n, &*s, i, h) := Succ(*GetMut(Word, n, &*s, i, h))
 )
 
 def SetThenRead (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) :
-    Eq(Word, (let c = *s; Set(Word, n, &c, i, W(7), h); Read(Word, n, &c, i, h)), W(7)) := (
-  NthSetSame(Word, n, *s, i, W(7), h)
+    Eq(Word, (let c = *s; *GetMut(Word, n, &c, i, h) := W(7); *GetMut(Word, n, &c, i, h)), W(7)) := (
+  let c = SetS(Word, n, *s, i, W(7));
+  let ⟨hv, hp⟩ = GetMutRead(Word, n, &c, i, h);
+  rewrite ← GetMutSetV(Word, n, *s, i, W(7), h) in rewrite ← hv in NthSetSame(Word, n, *s, i, W(7), h)
 )
 
 def ZeroBoth (n : Word) (k : Word) (s : &Slice(Word, n)) (h : Le(k, n)) : Unit := (
@@ -288,7 +297,8 @@ def ZeroBoth (n : Word) (k : Word) (s : &Slice(Word, n)) (h : Le(k, n)) : Unit :
 |---|---|
 | `unknown constant X` | `X` is undefined, misspelled, declared later, or was itself rejected |
 | `[Read] x was moved out or its borrow ended (reading ⊥)` | `clone` it, pass `&*x` instead of `x`, or read once and reuse the binding |
-| `(surface) not a place` | `match` needs a place: `let v = call(…); match v { … }` |
+| `(surface) f(x) is not a place …` | `match`, `&`, `:=` and `clone` need a place: `let v = f(x); match v { … }`. A dereferenced call, `*f(x)`, is a place when `f` returns a borrow |
+| `[D53] reading *GetMut(…) moves its content out through the borrow …` | the element is not a copy type: `clone(*GetMut(…))` copies it |
 | `the body of P has type A, but the goal is B` | your proof proves `A`; compare with `B`, and case-split or rewrite until they meet |
 | `argument i (h) has type A, expected B` | wrong argument type, often a proof that needs a `rewrite` first |
 | `[Repack] … field x … holds a value of type T, but its type from the earlier fields is U` | a dependent field doesn't match its index where the value must be whole |

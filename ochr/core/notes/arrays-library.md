@@ -538,3 +538,44 @@ Sizes after D53, K2/K3 and the A1 fix, measured as in §10 (lines / tokens; "bef
 | whole file | 1,563 / 22,775 | 1,582 / 24,549 |
 
 Moves themselves cost one line: `Recurse`'s `let rec2 = clone(rec)`. The other clones sit inside existing expressions. Most of the token growth is notation: `Succ(x)` is four tokens where `S x` was two, `Succ(Zero)` four where `1` was one, and `W(n)` three where a numeral was one. Quicksort's `Word` development (program, spec, proofs) is 861 lines and 14.7k tokens, against Verus's 108 lines and 1.1k tokens: 8 times the lines and 14 times the tokens (13 times before the switch to `Word`). `Quicksort` checks in 0.3–0.5 s with moves on (0.3 s before), and the five blocks in about 0.6 s.
+
+## 13. After `&E` (docs/09 §1–5, lane arrays-e, 2026-10-01)
+
+(For array literals, which a compiler lowers directly, and the interim `Vec` cells, see §14.)
+
+D66 made `&A` well formed for every `A : Type₀`, so the library follows through:
+
+- **Generic `GetMut(E, n, s, i, h) : &E`** replaces the `Word`-only one; `GetMutB` (the `List(Entry)` copy) is deleted.
+- **No read native.** The user: copying elements should be left to the caller. An element is read through its borrow: `*GetMut(Word, …)` copies a `Word`, `clone(*GetMut(E, …))` copies anything. `*f(ā)` is a place (a surface desugaring of `let tmp = f(ā); … *tmp …`, the temporary scoped to the enclosing read, write, borrow, `clone` or match), so a write is `*GetMut(E, n, s, i, h) := x`. Reading a non-copy `*GetMut(…)` is rejected with a message that says it moves the element out through the borrow.
+- **No write native, and `Swap` derived** (the measurement of docs/09 §3, below). `Swap` cases on `LtDec(i, j)`, `LtDec(j, i)` (equal indices do nothing), splits at the larger index with `WithSplit` and exchanges through one element borrow in each piece, by moves. It copies nothing.
+- **Six natives:** `AsSlice`, `GetMut`, `WithSplit`, `ArrEmpty`, `ArrPush`, `ArrPop`.
+
+**What it costs in proofs.** At an unknown index, a read or write through `GetMut` is a sealed program: the value read is ⌈`let c1 = v; let r = GetMut(…, &c1, i, ⋆); *r`⌉ and the view it leaves is a put-back program, not `Nth(v, i)` and `v`. Proofs name them with `GetMutRead` (an `Id` that computes to both facts), `GetMutSet` and `SwapIsSwapS`, and their forms about a view given by value (`GetMutReadV`, `GetMutSetV`, `SwapIsSwapSV`; a lemma called on `&c` inside a `let` block cannot have its type inferred, so the value forms exist for the scan lemmas, which are about values). Two things to know when using them:
+- a `rewrite` does not reach inside a sealed program, so the put-back view inside a recursive call (⌈`let c1 = P; Scan(…)`⌉) cannot be rewritten back to `v`. Instead the induction hypothesis is taken at the view the program leaves, and the rest of the goal is rewritten onto it (`ScanPerm`: the count equation `hc` on the put-back view; the scan lemmas: the invariant hypotheses `j0w`, `j1w`, `j2w` transported onto it);
+- at a known index the view can be split instead (`match v { MkSlice(c0) => match c0 { MkC(y0, t0) => … } }`), after which the read computes: the partition's pivot read at 0 costs no lemma.
+
+**The measurements** (lemma invocations added at use sites; every proof kept):
+
+| change | quicksort | arrays lemmas and tests | hashmap case studies | total |
+|---|---|---|---|---|
+| remove `Read` | 4 (`ScanPerm`, `ScanPivot`, `ScanLeft`, `ScanRight`; `ScanLt` needs none, being generic in the view; the five partition proofs split the view instead) | 5 (the restated `Read` tests: `ReadNoop` 1, `ReadAfterSet` 1, `ReadAfterSetOther` 2, `ReadIsNth` 1) | 3 (18's `PushedLast` 1, `PushedOld` 2) | 12 |
+| then remove `Set`, derive `Swap` | 8 (the same four scan lemmas, two each: the final swap and the step's swap) | 2 (`ReadAfterSet`, `ReadAfterSetOther`) | 0 | 10 |
+
+docs/09 §3's rule (keep the removal if the migration adds at most about 10 invocations and keeps every proof) gives 10: removal kept. The price is in the library: `SwapIsSwapS` is now a lemma, proved from seven new facts about the model (`NthTakeS`, `NthDropS`, `JoinSetRight`, `JoinSetS`, `SetSComm`, `SwapSSame`, `SwapLtIsSwapS`), about 175 lines, with about 11 invocations inside it. Sizes (as §10): `Index` / `Arrays` / `ArrayLemmas` 135 / 174 / 224 → 171 / 189 / 397 lines (`Index` gains `SubPosLt`, `LtNe` and `LeAntisym` from the quicksort block, which `Swap` needs); B2 proofs 778 → 801 lines (permutation 83 → 96, partition contract 392 → 402 after giving up those three lemmas). Check time (`lake exe tests`, Quicksort block): 488 ms before, 515 ms with `Read` removed, 627 ms with `Swap` derived, the concrete partition runs `ContractRun1`/`ContractRun2` doubling (64/75 → 100/134 ms) since each swap now runs the split; all case studies 852 → 1,110 ms.
+
+**`SliceOf` on cell tails.** It made the tail borrowable while `&Cells(E, n)` at an unknown `n` was not well formed. Probed: with D66 a borrow `&Cells(E, n)` is well formed at an unknown `n`, and an element borrow over bare cells (`Cell(E, R) := MkC(h : E, t : R)`, recursing on `&t : &Cells(E, m)`) checks and runs. So the wrapping is no longer needed; it is kept (docs/09 §5: report, don't change) because `GetMut` and the model functions recurse on the tail as a view, which bare cells would make re-wrap (`DropS(E, m, k', MkSlice(t))`) or recurse through a second function.
+
+## 14. A fixed-size `Array`; `Vec` as user code (docs/09 §7, user ruling 2026-10-01)
+
+The user: an `Array` is Rust's `[T; n]`, not `Vec<T>`; `Vec` must be user code. So:
+
+- **No push or pop.** `ArrEmpty`, `ArrPush`, `ArrPop` and their models `SnocS`, `PopS` are gone.
+- **`ArrFromFn(E, n, f : Π(i : Word). E)`** is the one allocation native (Rust's `array::from_fn`), model `FromFnS` by recursion on `n`. `Replicate(E, n, x)` is Ochr: `ArrFromFn(E, n, λ(i) => clone(x))`.
+- **Array literals.** `[x, y, z]`, written where its type `Array(E, n)` is given (an ascription, an annotated `let`, a definition's body), elaborates to the native `ArrOfList(E, n, Cons[E](x, … Nil[E]), refl)`. `ArrOfList` is the literal's *model* (and a general list-to-array conversion): a compiler lowers a literal directly into one array of `n` cells, building no list at runtime. Its model `OfListS` is the cells, so a literal computes to its `Cells` value. This adds one native (the simplest sound form found: `ArrFromFn` alone would need clones, since a closure may not move its captures, and the representation's constructors are refused at runtime). The natives are now five: `AsSlice`, `GetMut`, `WithSplit`, `ArrFromFn`, `ArrOfList`.
+- **The cell representation is interim.** `Vec` stores `Opt(E)` cells (one tag per cell at runtime) pending the user's decision on a tag-free `Uninit(E)` cell type, possibly merged with the ⊥ a move leaves (docs/10). Not built here, but noted: with ⊥ in types, "cells below `len` hold elements" could be a type computed by recursion, roughly `Mixed(E, len, cap)` (cells below `len` at `E`, the rest at `E`-or-⊥); borrowing a cell would then clear nothing, so get could return `&E` with no external invariant.
+- **`Vec` (18DependentFields, `DepVec`)** is `MkVec(len, cap, buf : Array(Opt(E), cap), hl : Le(len, cap))`. Push writes `Some(x)` into cell `len`; when full it allocates `2·cap + 1` cells holding `None`, moves every element across (`VMoveCells`: each cell exchanged with an empty one through two `GetMut`s), drops the old array, then writes. Pop takes cell `len - 1`. Get returns `&E` through `GetMut` and `UnwrapMut`, the empty cell ruled out by the invariant.
+- **The invariant is not a field.** That the first `len` cells hold elements and the rest nothing is `VInv`, a proposition about a vector. As a proof field it would make get impossible: any borrow into `buf` clears a proof field that mentions `buf`, the vector must be whole again when the borrow parameter ends, and get's returned borrow is still live then, so no proof can be assigned (`VGetP`, rejected). Push and pop alone could keep it as a field (the proof stated on a copy before the write, then assigned; probed). The dependent-field showcase stays: `buf`'s type depends on `cap`, and `hl` on `len` and `cap`.
+- **Proofs.** `PushLen`, `PushInv`, `PushAt` (the new element is last), `PushAtOld` (the others stay), `PopLen`, `PopInv`, `PopReturns`, `GetAt`. The growing case goes through the model of the moves: `MoveIs` says `VMoveCells` is `MovedS` (by recursion, one exchange at a time with `ExchOld`/`ExchNew`, each from `GetMutSetV` and `GetMutReadV`), and `PackedMoved`, `AtMoved` and `AtMovedFrame` are facts about `MovedS`. Get's proof splits on the stuck read of the cell (`match o { None => …, Some(y2) => … }`) and uses `trans`.
+- **Quicksort's tests** (`gen_tests.py`, both skeletons) and every concrete test array are literals.
+
+Check time: see `lake exe tests`.

@@ -156,7 +156,7 @@ ochr FnBorrows uses Std {
     }
   )
   def IsTrue (b : Bool) : Prop := match b { false => False, true => ⊤ }
-  -- presence, on a copy, for statements (as the hash map's `BFind`)
+  -- presence, on a copy, for statements (as the hash map case study's lookup on a copy)
   def GFind (V : Type) (b : GBucket(V)) (k : Word) : Bool := GContains(V, &b, k)
   def GHas (V : Type) (b : GBucket(V)) (k : Word) : Prop := IsTrue(GFind(V, b, k))
   def GGetMut (V : Type) (b : &GBucket(V)) (k : Word) (h : GHas(V, *b, k)) : &V by b := (

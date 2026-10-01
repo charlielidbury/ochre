@@ -262,6 +262,14 @@ partial def endBorrow (l : Nat) : M Unit := do
           repackCheck "a borrow of it ends" c A
       -- D68: an observation reads what a side consumed as `⊥` (its equation is stuck, `mkEqM`)
       if c.hasHole && !((← get).observing && (← get).cfg.erasedMoves) then
+        -- the temporary of a dereferenced call (`*f(ā)`, a surface desugaring) is named `⋄*f(…)`
+        match p with
+        | .bind f i =>
+          let x := env[f]!.binds[i]!.hint.name
+          if x.startsWith "⋄*" then
+            let call := (x.drop 2).toString
+            err s!"[D53] reading *{call} moves its content out through the borrow {call} returns, which then ends with it moved out ({c}): copy it with clone(*{call}), or write it back first"
+        | _ => pure ()
         err s!"[D53] a borrow ends while its content is partly moved out ({c})"
       setAt p rest
       substEnv (.loan l) c false
@@ -613,7 +621,13 @@ partial def placeType (p : Place) : M Value := do
     | none => valType (← getAt pos)
   | .deref q => match ← placeType q with
     | .tRef T => pure T
-    | T => err s!"*{← ppPlace q}: not a borrow (type {T})"
+    | T =>
+      let q' ← ppPlace q
+      -- the temporary of a dereferenced call (`*f(ā)`, a surface desugaring) is named `⋄*f(…)`
+      if q'.startsWith "⋄*" then
+        let call := (q'.drop 2).toString
+        err s!"*{call}: {call} does not return a borrow (type {T}), so *{call} is not a place"
+      err s!"*{q'}: not a borrow (type {T})"
   | .fst q => match ← placeType q with
     | .tNat => pure .tNat
     | .tInd "Pair" [A, _] => pure A           -- field 1 of the library's Pair (D52)
@@ -1823,6 +1837,8 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     openWrite p
     pure (b, T.map .tRef)
   | .assign p u =>
+    if typed && (← get).cfg.lentProofs then
+      if let some r ← lentProofAssign p u then return r
     -- the place's type is the type the context requires of a constructor's parameters and of an
     -- embedded value with no type of its own (an inert loan in a sealed program's `*r := loan`)
     let hint ← if typed && (u matches .ctor .. | .val _) then
@@ -2063,6 +2079,39 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     expectTy "the ascribed term" T A'
     setFlags fl
     pure (v, some A')
+
+/-- D64 amended ([Open]): `p := u` for a proof field of a dependent constructor value while part
+of the value is lent (a live loan in its fields). The proof is about the whole value, and a live
+borrow can still write its part, which nothing would then invalidate: the write goes through the
+borrow, not through a field place, and [Repack] cannot check a proof, `⋆`. So the assignment is
+checked on a private copy in which each such borrow holds a fresh abstract value of its type:
+the proof must hold whatever the borrow leaves there. `none`: not this case (the ordinary
+[Assign] path checks it). -/
+partial def lentProofAssign (p : Place) (u : Term) : M (Option (Value × Option Value)) := do
+  let .field g q := p | return none
+  let some d := (← get).inds.find? (·.name == g.ty) | return none
+  unless d.dependent g.ctor && (← fieldIsProof g) do return none
+  let cv ← tryCatch (content q) fun _ => pure .bot
+  let some fs ← ctorFields cv g | return none
+  let env := (← get).env
+  let ls := (fs.flatMap fun w => liveLoansIn env w).eraseDups
+  if ls.isEmpty then return none
+  fire .Open fun _ => s!"the proof field {g.name} is assigned while borrows {ls} lend part of its value: checked with what they hold unknown"
+  onCopy do
+    for l in ls do
+      let env := (← get).env
+      let some pos := findBorrow env l | continue
+      let some (c, _) := (valAt env pos).takeBorrow l | continue
+      let T ← tryCatch (valType c) fun _ =>
+        err s!"[Open] the proof field {g.name} is assigned while its value is lent, and the type of what the borrow holds ({c}) is not known"
+      let σ ← absOf T
+      setAt pos ((valAt env pos).setBorrowContent l σ)
+    let T ← placeType p
+    let (_, Tv) ← eval true u (some T)
+    expectTy s!"the proof assigned to {g.name} (while part of its value is lent, what the borrow holds unknown: [Open])" Tv T
+  assignPlace p .proof
+  openWrite p
+  pure (some (.unit, some .tUnit))
 
 /-- `D(ā)` (v2.0, D46): the arguments stand in type positions, so each is evaluated on a
 private copy (P2); when typed, each is checked against its parameter's type,

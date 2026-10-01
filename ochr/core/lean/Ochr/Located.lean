@@ -89,11 +89,14 @@ points to (the owners of its loan, RULES §4). -/
 def noteValue (t : Term) (x : M (Value × Option Value)) : M (Value × Option Value) := do
   let r ← x
   let s ← get
-  if !s.locs.table.isEmpty then
-    let lenders := match r.1 with
-      | .borrow l _ => (owners s.env l).map (posName s.env)
-      | _ => []
-    noteAt t (.value r.1 r.2 lenders)
+  -- a note is kept only at the declaration's own located code (`noteAt`, `noteLoc`), so the
+  -- lenders, a walk of Ω, are computed only there: in the runs a call makes they are not needed
+  if !s.locs.table.isEmpty && s.locs.on && s.depth == 0 then
+    if let some loc := s.locs.table.get? (termAddr t) then
+      let lenders := match r.1 with
+        | .borrow l _ => (owners s.env l).map (posName s.env)
+        | _ => []
+      noteLoc (some loc) (.value r.1 r.2 lenders)
   pure r
 
 /-- The content of a place of the top frame, if it has one (as `Machine.content`). -/

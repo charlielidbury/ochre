@@ -129,7 +129,8 @@ def switches : List (String × Config) :=
    ("D65 amended: [Drop] of a lent place ends only borrowers held in bindings; one in flight is an error", { dropEndsBound := false }),
    ("each side of Eq runs on its own private copy of the state", { eqSidesApart := false }),
    ("D68: a value is copied only when its type is a copy type (a function type is not)", { copyByType := false }),
-   ("D68: an equation over a moved place is stuck, and a moved binding stays observed", { movedStuck := false })]
+   ("D68: an equation over a moved place is stuck, and a moved binding stays observed", { movedStuck := false }),
+   ("D64 amended: a proof field assigned while part of its value is lent is checked with what the borrow holds unknown", { lentProofs := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -201,13 +202,14 @@ def rowClass : List (String × List String) :=
    ("soundness", ["Drops.Blk", "Drops.UseG"]),
    ("model", ["Equality.SideShared"]),
    ("policy", ["Moves.ClosureCopy"]),
-   ("model", ["Equality.MovedBothSides"])]
+   ("model", ["Equality.MovedBothSides"]),
+   ("soundness", ["DepFields.BoomLent", "DepFields.BoomGetLent"])]
 
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1296
+def Ochr.Registry.expectedTotal : Nat := 1369
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal

@@ -1,14 +1,29 @@
 # examples-tour's queue (maintained by team-lead; re-read before starting each item)
 
-Last updated 2026-09-30 by team-lead (second update). Your next item is 2, D66.
+Last updated 2026-10-01 by team-lead. Your current item is 6, erased moves.
 
 1. (REASSIGNED 2026-09-30 to d65-lane: revert the ghost borrows and land amended D65. Do NOT do this item.)
-2. **D66** (ochr/docs/08). `Prop : Type₁`; `&A` iff `A : Type₀`, replacing the data-only check.
-   - Function borrows and `&V` become accepted.
-   - Borrows of proofs, propositions and types, and `Box(Prop)`, are rejected by the universe check.
-   - Tell fuzz-port the new `--rules` expectations.
-3. (DONE at 042a06f7) **Delete the old copy system**: `Config.d53`, `preD53`, runtime copy paths, the `moves` switch, the "cost" ledger row. Tell fuzz-port and prop-paper.
-4. **A2.**
-5. **Nat/Unit redeclaration.**
+2. (DONE) **D66** (ochr/docs/08): `Prop : Type₁`; `&A` iff `A : Type₀`.
+3. (DONE at 042a06f7) **Delete the old copy system**.
+4. **A2.** After item 6, if not already done.
+5. **Nat/Unit redeclaration.** After item 6, if not already done.
+6. **CURRENT: one mental model, "using a variable consumes it".** The user approved this on 2026-10-01. Part A (Eq sides apart) is DONE at 9c406bf5. Part B is on branch `erased-moves` (d4c9a24d):
+   - Reads inside statements move.
+   - A move doesn't count as an outer-place effect under D41.
+   - Every argument of a type- or proof-returning call runs on its own copy, so Eq and Id are ordinary instances.
+   - No exception for an Id side moving out through a borrow: migrate those sites to `clone(*x)`.
+   - The Fn rule isn't applied to statement-position bodies.
+   - Delete ghosts. Id observes only places written or borrowed.
+   - Make it the default and add a ledger row.
+   - Update DECISIONS, RULES, the paper and OCHR_BOOK (§5 rule 1, §7 copy idiom). The book's rule: "using a variable consumes it; a statement, and each argument of a statement, runs on its own copy of the state".
+   - **Landing condition:**
+     - all builds and tests are green, with the default config rerun;
+     - every residual flip is intended or migrated, and any unexplained flip is reported before landing;
+     - fuzz statuses are unchanged (at most 6 workers, taskset 0-14);
+     - every paper-printed program checks, and the page count is unchanged.
+   - Land by FF-CAS, rebasing over callform if it lands first.
+
+7. (REASSIGNED 2026-10-01 to the fresh lane `arrays-e`, brief ochr/docs/09-arrays-after-borrowable-e.md: generic GetMut, remove Read, Set/Swap, `*f(…)` places. Do NOT do this item.)
+8. (REASSIGNED 2026-10-01 to `arrays-e`, §6 of the same brief: the generic-V Ochr hashmap packages. Do NOT do this item.)
 
 Not yours: M2 and the `Nat` match stored-type check (rule-audit, done on rule-tags); `armRecords` witness search (30 min max, then a ledger note).

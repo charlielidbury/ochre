@@ -52,7 +52,7 @@ open Ochr.Registry in
 #guard rowOk { accessInside := false }
   ["Borrows.BadA1:accepted", "Borrows.V:accepted", "Borrows.W:accepted", "Drops.D2:rejected",
    "Drops.D2Run:rejected", "Reborrows.PassWhileReborrowed:accepted",
-   "Naturality.PickEarly:accepted"]
+   "Naturality.PickEarly:accepted", "DepFields.CellGet:rejected", "DepFields.CellGetRun:rejected"]
 open Ochr.Registry in
 #guard rowOk { selfHeadOnly := false }
   ["Recursion.Knot:accepted", "Recursion.KnotBoom:accepted"]
@@ -402,8 +402,9 @@ open Ochr.Registry in
   ["DepFields.V:rejected", "DepFields.VN:rejected", "DepFields.One1:rejected", "DepFields.Refill:rejected",
    "DepFields.RefillRev:rejected", "DepFields.Nop:rejected", "DepFields.Absurd:rejected",
    "DepFields.InjSame:rejected", "DepFields.InjLenCong:rejected", "DepFields.Pos:rejected",
-   "DepFields.Grow:rejected", "DepFields.ExSucc:rejected", "DepFields.ExOne:rejected",
-   "DepFields.UseEx:rejected", "DepFields.NBox:rejected"]
+   "DepFields.Grow:rejected", "DepFields.RefillLent:rejected", "DepFields.Cell:rejected",
+   "DepFields.CellGet:rejected", "DepFields.CellGetRun:rejected", "DepFields.ExSucc:rejected",
+   "DepFields.ExOne:rejected", "DepFields.UseEx:rejected", "DepFields.NBox:rejected"]
 -- K4's nesting condition switched off: `Bad` nests itself in `NBox`, which passes its parameter to
 -- `NegIf`, a function type at 1, and the D36 attack goes through (`Boom2 : False`)
 open Ochr.Registry in
@@ -458,3 +459,11 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { movedStuck := false }
   ["Equality.MovedBothSides:accepted"]
+-- D64 amended switched off: a proof field re-assigned while the field its type mentions is lent
+-- is checked against the borrow's current content; the borrow then writes another value, which
+-- nothing invalidates (not a write through a field place) and [Repack] cannot check (`⋆`), so
+-- `BoomLent` (in place) and `BoomGetLent` (through a returned borrow) are closed proofs of False
+open Ochr.Registry in
+#guard rowOk { lentProofs := false }
+  ["DepFields.LieLent:accepted", "DepFields.BoomLent:accepted", "DepFields.GetLent:accepted",
+   "DepFields.BoomGetLent:accepted", "DepFields.RefillLentLive:accepted"]
