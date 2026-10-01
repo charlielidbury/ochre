@@ -23,4 +23,12 @@ Last updated 2026-10-01 by team-lead. Your current item is 6, erased moves.
      - every paper-printed program checks, and the page count is unchanged.
    - Land by FF-CAS, rebasing over callform if it lands first.
 
+7. **K1 cleanup in 16Arrays, after item 6.** D66 made `&E` well formed, so the `[K1]` workaround is obsolete:
+   - Make `GetMut` generic in `E`.
+   - Make `GetMutSet` and the other `GetMut` lemmas generic.
+   - Delete `GetMutB` (the `List(Entry)` copy) and point its callers at `GetMut(List(Entry), …)`.
+   - Rewrite the K1 note at the top of the file. If `&Cells(E, n)` at an unknown `n` is now well formed too, say whether the `SliceOf` wrapping of cell tails can go, but don't change the representation without asking.
+   - The lead checked a generic `GetMut` (native) and `GetMutSet` against ochr-core 297dff47: both are accepted. The scratch file is /home/charlielidbury/.claude/jobs/16809284/tmp/book/TG.lean.
+   - The landing condition is the same as item 6: green builds and tests, fuzz statuses unchanged, paper programs check.
+
 Not yours: M2 and the `Nat` match stored-type check (rule-audit, done on rule-tags); `armRecords` witness search (30 min max, then a ledger note).
