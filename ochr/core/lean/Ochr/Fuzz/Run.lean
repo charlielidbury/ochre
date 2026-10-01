@@ -325,7 +325,7 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
   let ((refs, rng, fns), st2) ← match runSt (buildRefinements ps o.nGround r) st1 with
     | .ok x => pure x
     | .error e => return { status := s!"invalid: refinements: {e}" }
-  let W := obsPositions st2.env
+  let W := obsPositions st2.env [t, u] o.cfg
   let pinned := List.range st2.nextAbs
   let G := [0, 1, 2].map fun k => obsRun st2 A t u W true k
   if G.all (!·.isOk) then return { status := "rejected", findings := convF, execAccepted := execN }
@@ -350,7 +350,8 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
     | .ok (v, s) =>
       match refineValS s s.neutrals [] v er with
       | .ok (v', s') =>
-        let rec' := s'.neutrals.map (·.2)
+        -- D68: the fields of a parameter's η-refinement name parts of that parameter
+        let rec' := s'.neutrals.map (·.2) ++ s.etaRefs.flatMap (absIn ·.2)
         let bad := (absIn v').filter fun σ => !pinned.contains σ && !rec'.contains σ
         if !bad.isEmpty || !(loansIn v').isEmpty then
           fs := push fs .escape (compName k) "the generic call"
@@ -432,6 +433,8 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
   for p in ps do
     let .borrow cell := p.kind | continue
     let some (Value.loan l) := (st2.env[0]!.binds[cell]?).map (fun (b : Binding) => b.val) | continue
+    -- the cell's index among the observed positions (all bindings before D68; the footprint since)
+    let some ci := W.findIdx? (· == Pos.bind 0 cell) | continue
     for (K, oT) in contexts st2.inds p.ty do
       let stK := { st2 with env := st2.env.modify 0 fun fr =>
         { fr with binds := fr.binds.modify cell fun b => { b with val := K (.loan l), ty := some oT } } }
@@ -445,7 +448,7 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
             | .tEq .. | .tInd .. | .sort _ | .tPi .. | .proof => true | _ => false
           if hasTy g || hasTy d then continue
           let (r0, ws) := obsParts g
-          let pred := obsVal r0 (ws.set cell (K (ws[cell]?.getD .bot)))
+          let pred := obsVal r0 (ws.set ci (K (ws[ci]?.getD .bot)))
           let (res, _) := compareVals sg sd pinned pred d rng fns er
           if let some (_, sv, dvs, _) := res then
             fs := push fs .frame (compName k) lbl s!"generic plugged: {sv}" dvs
@@ -463,7 +466,7 @@ def debugCase (o : Opts) (c : Case) : List String := Id.run do
   let .id A t u := prep.stmt.body | return out
   let st0 : MState := { globals := prep.globals, inds := prep.inds, cfg := o.cfg, fuel := o.fuel }
   let .ok (_, st1) := runSt (setupParams prep.stmt) st0 | return out ++ ["setup failed"]
-  let W := obsPositions st1.env
+  let W := obsPositions st1.env [t, u] o.cfg
   for k in [0:3] do
     out := out ++ [s!"generic {compName k}: {showE ((obsRun st1 A t u W true k).map (·.1))}"]
   pure out

@@ -83,6 +83,17 @@ def obsRun (st : MState) (A t u : Term) (W : List Pos) (typed : Bool) (k : Nat) 
     | _ => confinedCopy "a type" do let (v, _) ← eval typed (.id A t u); pure v
   runSt act st
 
+/-- D68: where the symbolic observation holds `⊥` (a place a stuck block took by move, which
+the ground run's arm may not have moved), take the direct path's value. -/
+partial def fillHoles (r d : Value) : Value :=
+  match r, d with
+  | .bot, _ => d
+  | .succ a, .succ b => .succ (fillHoles a b)
+  | .ind t c h ps fs, .ind t' c' _ _ gs =>
+    if t == t' && c == c' && fs.length == gs.length then .ind t c h ps ((fs.zip gs).map fun (a, b) => fillHoles a b) else r
+  | .borrow l a, .borrow _ b => .borrow l (fillHoles a b)
+  | _, _ => r
+
 /-- Compare the symbolic path's value `r` (from state `sR`) with the direct path's `d`
 (from `sD`). Returns a finding kind with the two values printed and, for an error on
 one side, the error's class, or `none`; the Bool says the two differ syntactically but
@@ -90,10 +101,15 @@ agree on every ground completion. -/
 def compareVals (sR sD : MState) (pinned : List Nat) (r d : Value) (rng : Rng)
     (fns : List (Nat × List Value) := []) (erased : Bool := true) :
     Option (Kind × String × String × String) × Bool := Id.run do
+  -- D68: the symbolic path's equations over a moved place are stuck (`mkEqM`), so it proves
+  -- nothing about that place: fail-safe. Compare the rest; a hole left inside an equation
+  -- (the `Id` component) is such a stuck equation
+  let r := fillHoles r d
+  if r.hasHole then return (none, false)
   if canon pinned r == canon pinned d then return (none, false)
   -- abstract values recorded as generalisations (by re-normalisation) are names, not escapes
-  let recR := sR.neutrals.map (·.2)
-  let recD := sD.neutrals.map (·.2)
+  let recR := sR.neutrals.map (·.2) ++ sR.etaRefs.flatMap (absIn ·.2)
+  let recD := sD.neutrals.map (·.2) ++ sD.etaRefs.flatMap (absIn ·.2)
   if (absIn r).any (fun σ => !pinned.contains σ && !recR.contains σ) ||
      (absIn d).any (fun σ => !pinned.contains σ && !recD.contains σ) then
     return (some (.escape, r.pp, d.pp, ""), false)

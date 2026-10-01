@@ -260,7 +260,8 @@ partial def endBorrow (l : Nat) : M Unit := do
       if (← get).typing then
         if let (.borrow _ _, some (.tRef A)) := (valAt env p, ← tyAt p) then
           repackCheck "a borrow of it ends" c A
-      if c.hasHole then
+      -- D68: an observation reads what a side consumed as `⊥` (its equation is stuck, `mkEqM`)
+      if c.hasHole && !((← get).observing && (← get).cfg.erasedMoves) then
         err s!"[D53] a borrow ends while its content is partly moved out ({c})"
       setAt p rest
       substEnv (.loan l) c false
@@ -421,8 +422,10 @@ partial def readPlace (p : Place) : M Value := do
     if inPlace then
       if v.hasHole then err s!"[Read] {← ppPlace p} was partly moved out (D53)"
       return v
-    if v.hasHole then err s!"[Read] {← ppPlace p} was partly moved out (D53)"
+    -- a copy-type value is read whole whatever it holds (a proposition whose stuck equation
+    -- mentions a moved place, D68)
     if ← copyRead p v then return v
+    if v.hasHole then err s!"[Read] {← ppPlace p} was partly moved out (D53)"
     if cfg.fnRule && !(erased && cfg.erasedMoves) && (← isCapture p) then
       err s!"[D53] a closure's body moves a captured value out ({← ppPlace p}); a closure may run again: clone it"
     logEffect p "moves"
@@ -1586,6 +1589,10 @@ field types instantiated at the parameters (v2.1, D52: injectivity; `S` is `Nat`
 constructor with one field; no fields: `True`); distinct constructors of one type are
 `False` (v2.0, D47). Proofs are all `⋆`, so an equation between proofs is reflexive. -/
 partial def mkEqM (A a b : Value) : M Value := do
+  -- D68: a moved place (`⊥` inside) has no content to compare: the equation is stuck, neither
+  -- `⊤` nor `False`. Whether a stuck block's arm moved the place differs between an abstract and
+  -- a ground run, so either answer could be wrong at some instance
+  if (← get).cfg.erasedMoves && (a.hasHole || b.hasHole) then return .tEq A a b
   if ← conv a b then return vTrue
   let cfg := (← get).cfg
   match a, b with
@@ -2447,7 +2454,8 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
 call, must be whole. [Close] seals the borrowed place's content, which hides a hole, and an
 erased call's writes vanish at runtime, so neither can make it whole before the borrow ends. -/
 partial def wholeBorrowArgs (ws : Array Value) (what : String) : M Unit := do
-  if (← get).erasedDepth > 0 then return
+  -- D68: a statement follows the runtime rules too
+  if (← get).erasedDepth > 0 && !(← get).cfg.erasedMoves then return
   for (w, i) in ws.toList.zipIdx do
     if let .borrow _ u := w then
       if u.hasHole then
@@ -2936,7 +2944,14 @@ partial def movedPlace (q : Place) : M Place := do
     | .tInd n ps =>
       let d ← lookupInd n
       if d.ctors.length == 1 then
-        refine σ (← ctorRefinement d ps 0)
+        -- D68: the same fields in every private copy (a statement's sides each move out of `σ`)
+        let r ← match (← get).etaRefs.lookup σ with
+          | some r => pure r
+          | none => do
+            let r ← ctorRefinement d ps 0
+            modify fun s => { s with etaRefs := (σ, r) :: s.etaRefs }
+            pure r
+        refine σ r
         movedPlace q
       else pure p
     | _ => pure p
@@ -3120,7 +3135,9 @@ partial def observe (typed : Bool) (t : Term) (A : Value) (W : List Pos) : M (Va
   if (← get).cfg.confine then flushPending es   -- D41: a side of Id is not an erased context
   expectTy "a side of Id" T A
   pushTemp v
+  modify fun s => { s with observing := true }
   endAll
+  modify fun s => { s with observing := false }
   let v ← popTemp
   let ws ← W.mapM getAt
   pure (v, ws)
@@ -3157,7 +3174,9 @@ partial def idType (typed : Bool) (A t u : Term) : M Value := do
     | some T => pure T
     | none =>
       tryCatch (valType (← getAt p)) fun e =>
-        tryCatch (valType as[i]!) fun _ => tryCatch (valType bs[i]!) fun _ => throw e
+        tryCatch (valType as[i]!) fun _ => tryCatch (valType bs[i]!) fun _ =>
+          -- D68: an owner both sides consumed has no type to read; its equation is stuck
+          if as[i]!.hasHole || bs[i]!.hasHole then pure .tUnit else throw e
   -- D64 [Repack]: `Id` observes its result and owners whole
   if typed then
     for (T, (x, y)) in (A', (a, b)) :: Ts.zip (as.zip bs) do

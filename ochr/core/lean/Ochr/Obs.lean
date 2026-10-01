@@ -124,7 +124,9 @@ def footprint (env : Env) (ts : List Term) (multi : Bool := true) (onlyWrites : 
           let isRefTy := match b.ty with | some (.tRef _) => true | _ => false
           let ownersOfRoot : List Pos := match b.val with
             | .borrow m _ => let os := owners env m; if multi then os else os.take 1
-            | .bot => []
+            -- D68: a place moved out is still observed (its equation is stuck): whether a stuck
+            -- block's arm moved it differs between an abstract and a ground run
+            | .bot => if onlyWrites && !isRefTy then [pos] else []
             | _ => [pos]
           -- D68: only places written or borrowed are observed: a borrow variable passed whole (its
           -- callee may write through it) counts; one only read through (`*x`) does not

@@ -144,9 +144,14 @@ def hypsHold (st : MState) (ps : Array PInfo) : Bool := Id.run do
     i := i + 1
   pure true
 
-/-- Every binding of Ω (the resolution observes all of them). -/
-def obsPositions (env : Env) : List Pos :=
-  (allPos env).filter fun | .bind .. => true | _ => false
+/-- The bindings an observation compares. Before D68, every binding of Ω (the resolution
+observes all of them). Since D68 a statement's moves happen on its own copy and are undone
+with it, and `Id` observes only the places its sides write or borrow (`footprint`, with
+`onlyWrites`): a binding a side only reads may be moved on one path (a stuck block taking
+it by move) and untouched on the other, and neither path's `Id` looks at it. -/
+def obsPositions (env : Env) (ts : List Term) (cfg : Config) : List Pos :=
+  if cfg.erasedMoves then footprint env ts cfg.multiOwner true
+  else (allPos env).filter fun | .bind .. => true | _ => false
 
 def compName : Nat → String
   | 0 => "lhs"
@@ -166,6 +171,13 @@ def refineValS (st : MState) (gens : List (Value × Nat)) (α : List (Nat × Val
     let mut v := v
     for (n, σ) in gens do v ← substV (.abs σ) n v
     for (σ, r) in α do v ← substV (.abs σ) r v
+    -- D68: a one-constructor abstract value's η-refinement names its fields; refining the value
+    -- refines them
+    for (σ, r) in α do
+      if let (some (.ind _ c _ _ fs), .ind _ c' _ _ gs) := (st.etaRefs.lookup σ, r) then
+        if c == c' then
+          for (f, g) in fs.zip gs do
+            if let .abs σf := f then v ← substV (.abs σf) g v
     pure v
   runSt act st
 

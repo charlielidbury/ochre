@@ -238,6 +238,7 @@ structure MState where
   nextAbs : Nat := 0
   absTy : Array Value := #[]
   refs : List (Nat × Value) := []     -- [Split] refinements made so far: σ ↦ Z | S σ'
+  etaRefs : List (Nat × Value) := []  -- D68: η-refinements of one-constructor abstract values (σ ↦ C(σ₁, …)), global like fresh names, so every private copy names σ's fields alike
   goal : Option Value := none
   recStack : List RecCtx := []        -- the functions whose bodies enclose the current point (top first)
   nextRecUid : Nat := 0               -- fresh `RecCtx.uid`s (never reused)
@@ -262,6 +263,7 @@ structure MState where
   inPlace : Bool := false                 -- D53: the next read is in place (a call's head, a block's read-only capture)
   modelDepth : Nat := 0                   -- K2/K3: > 0 inside model code, which never runs at runtime
   copying : Bool := false      -- inside `clone`/`peek`: reads copy (the explicit copy, not an erased-read mode)
+  observing : Bool := false    -- D68: `Id` reading a side's final state: a borrow may end over a moved-out part, observed as `⊥`
   typing : Bool := false                  -- the term being evaluated is part of the checked program (`eval true`),
                                           -- where D64's [Repack] points are checked
   locs : Locs := {}                       -- the editor: where the declaration's terms are (`located`)
@@ -325,7 +327,7 @@ def restoreKeep (saved : MState) : M Unit :=
     -- older one's type ([Split] substitutes into every stored type) is that run's alone, and
     -- must not reach a sibling arm (arrays-library's arm leak)
     if cur.cfg.globalRecords then
-      { s with nextAbs := cur.nextAbs, nextLoan := cur.nextLoan, neutrals := cur.neutrals,
+      { s with nextAbs := cur.nextAbs, nextLoan := cur.nextLoan, neutrals := cur.neutrals, etaRefs := cur.etaRefs,
                absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size }
     else s
 
