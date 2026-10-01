@@ -65,6 +65,10 @@ def switchCfg (c : Config) : String → Option Config
   | "confineBodies" => some { c with confineBodies := true }          -- switched ON (an extension)
   | "C8" | "generalize" => some { c with generalize := false }
   | "C5" | "blockMoves" => some { c with blockMoves := false }
+  -- docs/10 (uninit-bot): switched ON
+  | "uninit" | "uninitTypes" => some { c with uninitTypes := true }
+  | "lentProofs" => some { c with lentProofs := true }
+  | "moveEmpty" => some { c with moveEmpty := true }
   | _ => none
 
 structure Args where
@@ -89,6 +93,7 @@ structure Args where
   drop : Nat := 0               -- percent that also carry a Drop-family data function (DropProbe's Bad2)
   audit : Nat := 0              -- percent that carry rule-audit's witness shapes (rules oracle)
   dep : Nat := 0                -- percent that carry the dependent-fields family (D64)
+  uninit : Nat := 0             -- percent drawn from the Uninit family (docs/10; needs `--switch uninit`)
   raw : List String := []       -- the arguments, for re-spawning workers
 
 partial def parseArgs (a : Args) : List String → Except String Args
@@ -111,6 +116,7 @@ partial def parseArgs (a : Args) : List String → Except String Args
   | "--drop" :: n :: r => do parseArgs { a with drop := n.toNat! } r
   | "--audit" :: n :: r => do parseArgs { a with audit := n.toNat! } r
   | "--dep" :: n :: r => do parseArgs { a with dep := n.toNat! } r
+  | "--uninit" :: n :: r => do parseArgs { a with uninit := n.toNat! } r
   | "--switch" :: s :: r => do
     match switchCfg a.cfg s, switchCfg a.base s with
     | some c, some b =>
@@ -135,7 +141,7 @@ def runRange (a : Args) (o : Opts) : IO Unit := do
   let mut shrunk : List (String × Nat) := []
   for i in [a.start:a.start + a.count] do
     if a.worker then out.putStrLn s!"@BEGIN {i}"; out.flush
-    let (c, r) := mkCase a.seed i o.fuel a.a1 a.edep a.rules a.drop a.audit a.dep
+    let (c, r) := mkCase a.seed i o.fuel a.a1 a.edep a.rules a.drop a.audit a.dep a.uninit
     let res := checkCase o c r
     let st := if res.status.startsWith "invalid" then "invalid" else res.status
     stats := bump stats st
@@ -219,7 +225,7 @@ def main (argv : List String) : IO UInt32 := do
     | .error e => IO.eprintln e; return 2
   let o : Opts := { cfg := a.cfg, base := if a.diff then some a.base else none, runtimeRefine := a.runtimeRefine }
   if let some i := a.show? then
-    let (c, r) := mkCase a.seed i o.fuel a.a1 a.edep a.rules a.drop a.audit a.dep
+    let (c, r) := mkCase a.seed i o.fuel a.a1 a.edep a.rules a.drop a.audit a.dep a.uninit
     IO.println (c.show s!"Case{i}")
     if a.printOnly then return 0
     (← IO.getStdout).flush

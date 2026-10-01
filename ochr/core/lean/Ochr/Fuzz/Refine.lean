@@ -40,6 +40,22 @@ partial def groundVals (inds : List IndDecl) (T : Value) (depth : Nat) : List Va
     if depth == 0 then [] else
     (combos [(groundVals inds A (depth - 1)).take 2, (groundVals inds B (depth - 1)).take 2]).map
       (Value.ind "Pair" 0 ⟨"Mk"⟩ [A, B])
+  -- docs/10: an untagged inductive at its parameters (`Uninit(Nat)`: `Empty`, `Full(0)`, …),
+  -- its fields a parameter or a monomorphic type
+  | .tInd n ps@(_ :: _) => match inds.find? (·.name == n) with
+    | some d =>
+      if !d.untagged || ps.length != d.params.length then [] else
+      let np := d.params.length
+      let fty : Term → Option Value := fun
+        | .place (.var j) => if j < np then ps[np - 1 - j]? else none
+        | t => fieldTy t
+      d.ctors.zipIdx.flatMap fun ((cn, fs), c) =>
+        if fs.isEmpty then [Value.ind n c ⟨cn⟩ ps []]
+        else if depth == 0 then []
+        else match fs.mapM (fun (_, FT) => fty FT) with
+          | none => []
+          | some FTs => (combos (FTs.map fun FT => (groundVals inds FT (depth - 1)).take 2)).map (Value.ind n c ⟨cn⟩ ps)
+    | none => []
   | .tInd n [] => match inds.find? (·.name == n) with
     | none => []
     | some d =>

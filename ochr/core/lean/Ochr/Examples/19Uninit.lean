@@ -22,7 +22,9 @@ Checked under switches that are off by default (`set_option ochr.<switch> true i
   empty, so the moved-out marker and the empty value are one thing). Unsound on ochr-core,
   where statements read by copying: the move is observable to runtime code but never happens
   in a statement (`MoveEmpty`). It needs statements that move, as the `erased-moves` branch
-  (D68) makes them.
+  (D68) makes them, and a stuck block that takes such a cell by `&` (`moveEmptyByRef`). On that
+  base it checks out (`Scratch/Uninit/MoveEmptyD68.lean`: the probes as expected, 0 fuzz
+  findings in 2·10⁴ cases; without the `&` capture, a closed proof of `False`).
 
 `Uninit(E)` here is the "four natives" design of docs/10 with its four natives written in
 Ochr instead, and the empty value a constructor rather than the `⊥` a move leaves. -/

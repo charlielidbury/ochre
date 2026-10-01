@@ -412,10 +412,78 @@ def genDep : Gen (List (String × SDecl) × List SDecl) := do
     (.seq (.matchGen (.ident "v") [(ctor, pat, seqAll lops.toList .unitLit)]) rely))
   pure (rds, [lie, broken, run])
 
+/-- docs/10 (uninit-bot): the `--uninit` family. A statement over `n0 : Nat` and a borrowed
+cell `u1 : &Uninit(Nat)` (sometimes with a hypothesis `h2 : Init(Nat, *u1)`): each side writes,
+empties, takes (justified by `refl` after a write) and reads the cell, moves out of it with or
+without refilling it, reads it through a one-live-arm match or `UGet` under the hypothesis, and
+puts some of these in the arms of a match on `n0`, which the generic call closes off as a stuck
+block. A data function runs the same kind of program on a local cell (the execution oracle runs
+it, and the statement's sides, at runtime depth), and a runtime match with two live arms must
+be rejected (rules oracle). Returns (params, type, sides, proofs, helpers, rule decls). -/
+def genUninit : Gen (List (String × STerm) × STerm × STerm × STerm × List STerm × List SDecl × List (String × SDecl)) := do
+  let nat : STerm := .ident "Nat"
+  let uT : STerm := .call (.ident "Uninit") [nat]
+  let c (k : Nat) : STerm := .num k
+  let seqAll (ts : List STerm) (last : STerm) : STerm := ts.foldr (fun t acc => .seq t acc) last
+  let hasH ← chance 40
+  let ps : List (String × STerm) := [("n0", nat), ("u1", .amp uT)] ++
+    (if hasH then [("h2", .call (.ident "Init") [nat, .deref (.ident "u1")])] else [])
+  -- one operation on the cell; `hyp`: a hypothesis that it is full, if one holds here
+  let op (cell cellRef : STerm) (hyp : Option STerm) (k : Nat) : Gen STerm := do
+    let v ← pick [c 0, c 1, c 2, .app "S" [c k]]
+    let hy := hyp.getD (.ident "refl")
+    weighted [
+      (3, pure (.assign cell (.call (.ident "Full") [v]))),
+      (2, pure (.call (.ident "UWrite") [nat, cellRef, v])),
+      (2, pure (.assign cell (.ctorP "Empty" [nat] []))),
+      (1, pure (.call (.ident "UClear") [nat, cellRef])),
+      (2, pure (.seq (.assign cell (.call (.ident "Full") [v]))
+             (.letIn s!"h{k}" (some (.call (.ident "Init") [nat, cell])) (.ident "refl")
+               (.letIn s!"y{k}" none (.call (.ident "UTake") [nat, cellRef, .ident s!"h{k}"]) .unitLit)))),
+      (1, pure (.letIn s!"m{k}" none cell (.assign cell (.call (.ident "Full") [v])))),
+      (1, pure (.letIn s!"m{k}" none cell .unitLit)),
+      (if hyp.isSome then 2 else 0, pure (.letIn s!"r{k}" none
+          (.matchGen cell [("Full", ["x"], .call (.ident "clone") [.ident "x"]), ("Empty", [], .matchGen hy [])]) .unitLit)),
+      (if hyp.isSome then 1 else 0, pure (.letIn s!"g{k}" none (.call (.ident "UGet") [nat, cellRef, hy])
+          (.assign (.deref (.ident s!"g{k}")) v)))]
+  let nOps ← weighted [(2, pure 1), (3, pure 2), (2, pure 3)]
+  let prog (cell cellRef : STerm) (hyp0 : Option STerm) (k0 : Nat) (fin : STerm) : Gen STerm := do
+    let mut ops : Array STerm := #[]
+    for j in [0:nOps] do
+      let hyp := if j == 0 then hyp0 else none
+      let o ← op cell cellRef hyp (k0 + j)
+      let o ← if ← chance 35 then do
+          let o2 ← op cell cellRef hyp (k0 + j + 50)
+          if ← chance 50 then pure (STerm.matchGen (.ident "n0") [("Z", [], o), ("S", ["p"], o2)])
+          else pure (STerm.matchGen (.ident "n0") [("Z", [], o2), ("S", ["p"], .unitLit)])
+        else pure o
+      ops := ops.push o
+    pure (seqAll ops.toList fin)
+  let cell : STerm := .deref (.ident "u1")
+  let cellRef : STerm := .amp (.deref (.ident "u1"))
+  let hyp := if hasH then some (STerm.ident "h2") else none
+  let byNat ← chance 30
+  let A : STerm := if byNat then nat else uT
+  let fin : STerm := if byNat then c 0 else .call (.ident "clone") [cell]
+  let lhs ← prog cell cellRef hyp 10 fin
+  let rhs ← weighted [(3, prog cell cellRef hyp 20 fin), (1, pure fin)]
+  let proofs : List STerm := [.ident "refl", .matchGen (.ident "n0") [("Z", [], .ident "refl"), ("S", ["p"], .ident "refl")]]
+  -- the execution oracle: the same kind of program on a local cell
+  let lc : STerm := .ident "c9"
+  let start ← pick [STerm.call (.ident "Full") [c 1], .ctorP "Empty" [nat] []]
+  let body ← prog lc (.amp lc) none 30 lc
+  let runBody : STerm := .letIn "c9" (some uT) start body
+  let runPs : List (String × STerm) := [("n0", nat)]
+  let run : SDecl := { name := "RUninit", params := runPs, ret := uT, body := runBody, expectAccept := true }
+  let twoBody : STerm := .matchGen (.deref (.ident "u")) [("Full", ["x"], c 1), ("Empty", [], c 0)]
+  let twoPs : List (String × STerm) := [("u", .amp uT)]
+  let two : SDecl := { name := "TwoLive", params := twoPs, ret := nat, body := twoBody, expectAccept := false }
+  pure (ps, A, lhs, rhs, proofs, [run], [("a runtime match on an untagged type has one live arm", two)])
+
 /-- The template names the A1 family needs. -/
 def a1Lib : List String := ["B2", "Bx", "TF", "TG", "CmpBx", "CmpB2", "HG", "HF"]
 
-def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 0) (rules : Nat := 0) (drop : Nat := 0) (audit : Nat := 0) (dep : Nat := 0) : Case × Rng := Id.run do
+def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 0) (rules : Nat := 0) (drop : Nat := 0) (audit : Nat := 0) (dep : Nat := 0) (uninit : Nat := 0) : Case × Rng := Id.run do
   let phase1 : Gen (List String × List (SDecl × LibFn)) := do
     let lib ← genTemplates
     pure (lib, ← genExtras lib)
@@ -437,6 +505,11 @@ def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 
     let ((ps, A, lhs, rhs, prf), g4) := genA1.run { rng := caseRng seed (i + 2000003) }
     return ({ c0 with lib := closeDeps (lib ++ a1Lib), params := ps, ty := A, lhs := lhs, rhs := rhs,
                       conv := none, extraProofs := prf }, g4.rng)
+  let (uu, _) := (caseRng seed (i + 14000071)).next
+  if uninit > 0 && uu.toNat % 100 < uninit then
+    let ((ps, A, lhs, rhs, prf, helpers, rds), g10) := genUninit.run { rng := caseRng seed (i + 15000073) }
+    return ({ c0 with extra := c0.extra ++ uninitLib ++ helpers, params := ps, ty := A, lhs := lhs, rhs := rhs,
+                      conv := none, extraProofs := prf, ruleDecls := rds }, g10.rng)
   let (dd, _) := (caseRng seed (i + 11000027)).next
   if dep > 0 && dd.toNat % 100 < dep then
     let ((rds, helpers), g9) := genDep.run { rng := caseRng seed (i + 12000041) }

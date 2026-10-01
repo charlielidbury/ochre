@@ -53,6 +53,9 @@ register_option ochr.uninitTypes : Bool := {
 register_option ochr.moveEmpty : Bool := {
   defValue := false
   descr := "check `ochr` blocks with Config.moveEmpty (docs/10: a move out of an untagged value leaves its empty value)" }
+register_option ochr.moveEmptyByRef : Bool := {
+  defValue := true
+  descr := "check `ochr` blocks with Config.moveEmptyByRef (docs/10 Q1: a stuck block takes an untagged place it moves out of by &)" }
 register_option ochr.lentProofs : Bool := {
   defValue := false
   descr := "check `ochr` blocks with Config.lentProofs (docs/10: a proof field assigned while part of the value is lent)" }
@@ -61,6 +64,7 @@ register_option ochr.lentProofs : Bool := {
 `set_option ochr.… true`. -/
 def blockConfig (opts : Options) : Config :=
   { uninitTypes := ochr.uninitTypes.get opts, moveEmpty := ochr.moveEmpty.get opts,
+    moveEmptyByRef := ochr.moveEmptyByRef.get opts,
     lentProofs := ochr.lentProofs.get opts }
 
 declare_syntax_cat ochr_term

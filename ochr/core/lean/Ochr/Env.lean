@@ -209,6 +209,9 @@ structure Config where
   moveEmpty : Bool := false      -- docs/10, the merge's rule 4 (needs uninitTypes): a move out of an untagged value
                                  -- leaves its empty value ([Move-empty]), and a stuck block takes such a place by `&`.
                                  -- Unsound where statements copy instead of moving (ochr-core: MoveEmptyBoom)
+  moveEmptyByRef : Bool := true  -- docs/10 Q1, with moveEmpty: a stuck block takes a place of an untagged type that
+                                 -- an arm moves out of by `&`, so its fill says what the arm that runs left there.
+                                 -- Off: moved in, which empties it on this path even where that arm keeps it full
   lentProofs : Bool := false     -- docs/10 finding: a proof field assigned while part of the value is lent is
                                  -- checked with each lent part an unknown value of its type ([Lent-proof]); off:
                                  -- its current content, which a live borrow can still change (ProofLent2.Boom)
@@ -225,7 +228,7 @@ they stand; a counterfactual run switches a rule off and measures that alone. D5
 do not change what is erased, so their counterfactual runs are checked too. -/
 def Config.prePassAssert (c : Config) : Bool :=
   c.prePass && { c with trace := false, derivation := false, ghosts := true, fnRule := true,
-                         uninitTypes := false, moveEmpty := false, lentProofs := false } == ({} : Config)
+                         uninitTypes := false, moveEmpty := false, moveEmptyByRef := true, lentProofs := false } == ({} : Config)
 
 /-- D41: one assignment, borrow or move, by the position of its place's root. It is
 `pending` once an erased run it belongs to has affected a place outliving that run: an

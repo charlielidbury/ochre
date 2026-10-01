@@ -203,6 +203,18 @@ ochr FuzzLib {
   def AbsurdP (p : Pos) (h : Eq Nat (PN(p)) 0) : False := match p { MkPos(n, hh) => match n { Z => match hh {}, S m => match h {} } }
 }
 
+-- docs/10 (uninit-bot): the `--uninit` family's library, checked with `uninitTypes` (an untagged
+-- inductive has no runtime tag; a runtime match on one has one live arm)
+set_option ochr.uninitTypes true in
+ochr FuzzUninitLib {
+  untagged inductive Uninit (E : Type) := Empty | Full(x : E)
+  def Init (E : Type) (u : Uninit(E)) : Prop := match u { Empty => False, Full(x) => ⊤ }
+  def UGet (E : Type) (u : &Uninit(E)) (h : Init(E, *u)) : &E := match *u { Full(x) => &x, Empty => match h {} }
+  def UTake (E : Type) (u : &Uninit(E)) (h : Init(E, *u)) : E := (let y = *u; *u := Empty; match y { Full(x) => x, Empty => match h {} })
+  def UWrite (E : Type) (u : &Uninit(E)) (x : E) : Unit := *u := Full(x)
+  def UClear (E : Type) (u : &Uninit(E)) : Unit := *u := Empty
+}
+
 /-- The codomain types written differently from what they evaluate to (D54, D55). -/
 def tyP0 : GTy := .alias (.ident "P0") "P0" .prop
 def tyUUZ : GTy := .alias (.call (.ident "UU") [.num 0]) "UU(Z)" .unit
@@ -260,6 +272,10 @@ def libFns : List LibFn :=
 
 /-- The declaration of a template by name. -/
 def libDecl (n : String) : Option SDecl := ((Block.decls FuzzLib).find? (·.name == n)).map SDecl.strip
+
+/-- docs/10: the `--uninit` family's library declarations (carried as a case's extra
+declarations, so they are not templates). -/
+def uninitLib : List SDecl := (Block.decls FuzzUninitLib).map SDecl.strip
 
 /-- Close a set of template names under dependencies, in library order. -/
 partial def closeDeps (ns : List String) : List String :=

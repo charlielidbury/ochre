@@ -3035,7 +3035,7 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
   -- write, so the block takes the place by `&` and its fill says what each arm left there. Moved
   -- in, it would be empty after the block on this path even where the arm that runs keeps it
   -- full (the over-approximation erased-moves met as `Eq ⊥ ⊥`, here a wrong value)
-  let (writesEmpty, moved) ← if (← get).cfg.uninitTypes && (← get).cfg.moveEmpty then
+  let (writesEmpty, moved) ← if (← get).cfg.uninitTypes && (← get).cfg.moveEmpty && (← get).cfg.moveEmptyByRef then
       moved.foldlM (fun (w, m) q => do
         if ← untaggedPlace q then pure (w ++ [q], m) else pure (w, m ++ [q])) ([], [])
     else pure ([], moved)
