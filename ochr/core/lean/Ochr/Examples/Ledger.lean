@@ -374,13 +374,13 @@ open Ochr.Registry in
 -- function cannot be called twice
 open Ochr.Registry in
 #guard rowOk { fnRule := false }
-  ["Moves.CallTwice:rejected", "Moves.ClosureClones:rejected", "Moves.ClosureCopy:rejected",
-   "Equality.Om:rejected", "Snapshots.CapAssign:rejected", "Snapshots.CapAssignRun:rejected",
-   "Functions.Twice:rejected", "Functions.TwiceNoop:rejected", "Functions.TwiceM:rejected",
-   "Functions.TwiceMMove:rejected", "Functions.TwiceMZero:rejected", "Functions.TwiceMZero':rejected",
-   "Trees.Size:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.Size:rejected",
-   "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected",
-   "FnBorrows.CallThrough:rejected", "FnBorrows.RunSucc:rejected", "FnBorrows.RefRetFn:rejected"]
+  ["Moves.CallTwice:rejected", "Moves.ClosureClones:rejected", "Equality.Om:rejected",
+   "Snapshots.CapAssign:rejected", "Snapshots.CapAssignRun:rejected", "Functions.Twice:rejected",
+   "Functions.TwiceNoop:rejected", "Functions.TwiceM:rejected", "Functions.TwiceMMove:rejected",
+   "Functions.TwiceMZero:rejected", "Functions.TwiceMZero':rejected", "Trees.Size:rejected",
+   "Trees.SizeInsert:rejected", "InPlaceTrees.Size:rejected", "InPlaceTrees.SizeInsert:rejected",
+   "InPlaceTrees.SizeInsertRw:rejected", "FnBorrows.CallThrough:rejected", "FnBorrows.RunSucc:rejected",
+   "FnBorrows.RefRetFn:rejected"]
 -- D59 (refined) switched off: values are not η-normal at `Unit`. A call written to return
 -- `Unit` returns `()` (the old row), one that only computes to `Unit` its sealed program, and
 -- an abstract `u : Unit` is not `()`, so two values of `Unit`, or two functions' results at
@@ -482,3 +482,9 @@ open Ochr.Registry in
    "Snapshots.CapOf:rejected", "Snapshots.UseCapOf:rejected", "Recursion.SuccGoal:rejected",
    "Recursion.InjStep:rejected", "Recursion.CallSite:rejected", "Splitting.DoubleVal:rejected",
    "Propositions.WriteIfAt:rejected", "Destructuring.DCallField:rejected"]
+-- D68 (a) switched off: a function value whose captures are copies is copied, so `ClosureCopy`
+-- calls one closure through two names; whether a read of an unknown function moves then
+-- depends on the function it turns out to be
+open Ochr.Registry in
+#guard rowOk { copyByType := false }
+  ["Moves.ClosureCopy:accepted"]

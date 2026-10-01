@@ -173,6 +173,7 @@ structure Config where
   propUp : Bool := true          -- D66: `Prop : Type₁`, beside `Type₀` (off: `Prop : Type₀`)
   eqSidesApart : Bool := true    -- each side of `Eq` runs on its own private copy (off: both sides share one copy)
   erasedMoves : Bool := true     -- D68 (one mental model): reads in statements move as at runtime (off: they copy)
+  copyByType : Bool := true     -- D68 (a): a value is copied only when its type is a copy type (off: a function whose captures are copies is copied)
   injective : Bool := true      -- D52: Eq on two values of one constructor is the conjunction over its fields
   refTop : Bool := true          -- D48 (2): `&` only at the top of a declared type, never produced by computation
   sortsSyntactic : Bool := true  -- D55: a term written where a type is expected has a declared type that is syntactically a sort

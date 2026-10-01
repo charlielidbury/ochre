@@ -133,7 +133,8 @@ def switches : List (String × Config) :=
    ("K4: a field type may call an earlier type function", { k4 := false }),
    ("K4's nesting condition: no nesting at a parameter passed to a type function", { k4Nest := false }),
    ("D65 amended: [Drop] of a lent place ends only borrowers held in bindings; one in flight is an error", { dropEndsBound := false }),
-   ("each side of Eq runs on its own private copy of the state", { eqSidesApart := false })]
+   ("each side of Eq runs on its own private copy of the state", { eqSidesApart := false }),
+   ("D68: a value is copied only when its type is a copy type (a function type is not)", { copyByType := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -209,7 +210,8 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("soundness", ["DepFields.Boom2"]),
    ("soundness", ["Drops.Blk", "Drops.UseG"]),
-   ("model", ["Equality.SideShared"])]
+   ("model", ["Equality.SideShared"]),
+   ("policy", ["Moves.ClosureCopy"])]
 
 
 end Ochr.Registry

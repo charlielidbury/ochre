@@ -438,6 +438,10 @@ partial def copyRead (p : Place) (v : Value) : M Bool := do
   isCopyValue T v
 
 partial def isCopyValue (T : Value) (v : Value) : M Bool := do
+  -- D68: copy-ness is the type's, never the value's: a Π type is not a copy type, so reading a
+  -- Π-typed place moves it, whatever function it holds (with `copyByType` off, a function value
+  -- whose captures are copies is copied, as D53 first had it)
+  if (← get).cfg.copyByType then return ← isCopyType T
   match T, v with
   | .tPi .., .gfn _ => pure (← get).cfg.fnRule
   | .tPi .., .clo cs _ =>

@@ -261,8 +261,8 @@ ochr Moves uses Std {
 
   -- A call does not consume the function it calls, so a function can be called twice. A
   -- closure may run again, so its body may not move out of what it captured: returning a
-  -- captured `Nat` needs `clone`. A closure whose captures are copies is a copy itself;
-  -- otherwise reading it moves it.
+  -- captured `Nat` needs `clone`. A function type is not a copy type, so reading a place
+  -- that holds a function moves it, whatever it captured (D68: copy-ness is the type's).
   def CallTwice (f : Π(x : Nat). Nat) (x : Nat) : Nat := f(f(x))
 
   reject def ClosureMovesCapture (n : Nat) : Nat × Nat := (
@@ -275,7 +275,7 @@ ochr Moves uses Std {
     (f(()), f(()))
   )
 
-  def ClosureCopy (w : Word) : Word × Word := (
+  reject def ClosureCopy (w : Word) : Word × Word := (
     let f = (λ(u : Unit) : Word => w);
     let g = f;
     (f(()), g(()))
