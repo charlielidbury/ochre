@@ -255,6 +255,48 @@ def Tables.ofProgram (p : List SDecl) : Tables :=
         types := t.types ++ [d.name] }
     | none => t) {}
 
+mutual
+/-- A term as it is written (in call form), for messages. -/
+partial def STerm.show : STerm → String
+  | .loc _ _ t => t.show
+  | .ident x => x
+  | .num n => toString n
+  | .app f as | .call (.ident f) as => s!"{f}({", ".intercalate (as.map STerm.show)})"
+  | .call f as => s!"{f.atom}({", ".intercalate (as.map STerm.show)})"
+  | .ctorP c ps as => s!"{c}[{", ".intercalate (ps.map STerm.show)}]({", ".intercalate (as.map STerm.show)})"
+  | .deref t => s!"*{t.atom}"
+  | .proj i t => s!"{t.atom}.{i}"
+  | .amp t => s!"&{t.atom}"
+  | .assign p t => s!"{p.show} := {t.show}"
+  | .letIn x _ t u => s!"let {x} = {t.show}; {u.show}"
+  | .seq a b => s!"{a.show}; {b.show}"
+  | .matchGen sc _ => s!"match {sc.show} \{ … }"
+  | .split f t => s!"split {f} in {t.show}"
+  | .splitArms f _ => s!"split {f} \{ … }"
+  | .pi _ c => s!"Π(…). {c.show}"
+  | .arrow a b => s!"{a.atom} → {b.show}"
+  | .fix "_" _ _ _ _ => "λ(…) => …"
+  | .fix f _ _ _ _ => s!"fix {f} …"
+  | .unitLit => "()"
+  | .pair a b => s!"({a.show}, {b.show})"
+  | .andI a b => s!"⟨{a.show}, {b.show}⟩"
+  | .top => "⊤"
+  | .and a b => s!"{a.atom} ∧ {b.atom}"
+  | .prod a b => s!"{a.atom} × {b.atom}"
+  | .ascribe a A => s!"({a.show} : {A.show})"
+  | .sort 0 => "Prop"
+  | .sort 1 => "Type"
+  | .sort l => s!"Type{l - 1}"
+  | .rewrite rev h t => s!"rewrite {if rev then "← " else ""}{h.show} in {t.show}"
+
+/-- `STerm.show`, parenthesised unless it is an atom. -/
+partial def STerm.atom (t : STerm) : String :=
+  match t.unloc with
+  | .ident _ | .num _ | .app .. | .call .. | .ctorP .. | .deref _ | .proj .. | .unitLit | .pair .. | .andI ..
+  | .top | .sort _ | .ascribe .. => t.show
+  | _ => s!"({t.show})"
+end
+
 partial def toPlace (ctx : Ctx) : STerm → R Place
   | .loc _ _ t => toPlace ctx t
   | .ident x => match lookup ctx x with
@@ -263,7 +305,33 @@ partial def toPlace (ctx : Ctx) : STerm → R Place
   | .deref t => return .deref (← toPlace ctx t)
   | .proj 1 t => return .fst (← toPlace ctx t)
   | .proj 2 t => return .snd (← toPlace ctx t)
-  | t => throw s!"not a place: {repr t}"
+  | t => throw s!"{t.show} is not a place (a variable, *p, or a field of a place): bind it first, let v = {t.show}; …"
+
+/-- A place whose root is a dereferenced call, `*f(ā)` (also `(*f(ā)).1`, `**f(ā)`): the call,
+and the place with the variable `x` in the call's position. Such a place is written for
+`let x = f(ā); … *x …`, the temporary ending with the enclosing read, assignment, borrow,
+`clone` or match (Rust's `*v.get_mut(i) = x`). A surface desugaring: the core has no such place. -/
+partial def callRoot (x : String) : STerm → Option (STerm × STerm)
+  | .loc s e t => (callRoot x t).map fun (c, p) => (c, .loc s e p)
+  | .deref t => match t.unloc with
+    | .call .. => some (t, .deref (.ident x))
+    | _ => (callRoot x t).map fun (c, p) => (c, .deref p)
+  | .proj i t => (callRoot x t).map fun (c, p) => (c, .proj i p)
+  | _ => none
+
+/-- The temporary that `*f(ā)` binds `f(ā)` to: named after the call, so that a message about
+it (D53: reading `*f(ā)` moves out through the borrow) can say which. No user name has `⋄`. -/
+def derefTemp (c : STerm) : String :=
+  match c.unloc with
+  | .call f _ => s!"⋄*{f.atom}(…)"
+  | _ => "⋄*"
+
+/-- `*f(ā)` written where a place is expected (`callRoot`), bound first: `let x = f(ā); k(p)`. -/
+def withCallRoot (t : STerm) (k : STerm → STerm) : Option STerm := do
+  let (c, _) ← callRoot "" t
+  let x := derefTemp c
+  let (c, p) ← callRoot x t
+  pure (.letIn x none c (k p))
 
 def isPlace (ctx : Ctx) (t : STerm) : Bool := (((toPlace ctx t).run {}).run.run' {}).toOption.isSome
 
@@ -342,6 +410,7 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
                       ← resolve ctx false P, ← resolve ctx false h, ← resolve ctx false u]
   | .call (.ident "clone") [p] =>      -- D53: the built-in copy of a place
     if (lookup ctx "clone").isSome then return .call (← resolve ctx false (.ident "clone")) [← resolve ctx false p] false
+    if let some t' := withCallRoot p fun p' => .call (.ident "clone") [p'] then return ← resolve ctx ty t'
     match ← resolve ctx false p with
     | t@(.place _) => return .prim "clone" [t]
     | _ => throw "clone takes a place: clone(p)"
@@ -360,14 +429,22 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     let some (_, ty, i, fs) := tb.ctors.find? (·.1 == c) | throw s!"{c} is not a constructor"
     if fs.length != as.length then throw s!"constructor {c} takes {fs.length} fields, given {as.length}"
     return .ctor ty i ⟨c⟩ (← ps.mapM (resolve ctx true)) (← as.mapM (resolve ctx false))
-  | .deref _ => return .place (← toPlace ctx t)
+  | .deref _ =>
+    if let some t' := withCallRoot t id then return ← resolve ctx ty t'
+    return .place (← toPlace ctx t)
   | .proj i a =>
+    if let some t' := withCallRoot t id then return ← resolve ctx ty t'
     if isPlace ctx t then return .place (← toPlace ctx t)
     else if i == 1 then return .fst (← resolve ctx false a) else return .snd (← resolve ctx false a)
   | .amp a =>
     if ty then return .ref (← resolve ctx true a)
-    else return .borrow (← toPlace ctx a)
-  | .assign p a => return .assign (← toPlace ctx p) (← resolve ctx false a)
+    if let some t' := withCallRoot a .amp then return ← resolve ctx ty t'
+    return .borrow (← toPlace ctx a)
+  | .assign p a =>
+    -- `*f(ā) := t`: the value first, then the place, as `p := t` evaluates them (and Rust)
+    if let some t' := withCallRoot p fun p' => .assign p' (.ident "⋄val") then
+      return ← resolve ctx ty (.letIn "⋄val" none a t')
+    return .assign (← toPlace ctx p) (← resolve ctx false a)
   | .letIn x A a u =>
     let a' ← resolve ctx false a
     let a' ← match A with
@@ -376,6 +453,7 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     return .letIn ⟨x⟩ a' (← resolve (.bound x :: ctx) ty u)
   | .seq a b => return .seq (← resolve ctx false a) (← resolve ctx ty b)
   | .matchGen sc arms =>
+    if let some t' := withCallRoot sc fun p => .matchGen p arms then return ← resolve ctx ty t'
     let p ← toPlace ctx sc
     match arms with
     | [("Z", [], z), ("S", [y], s)] =>
