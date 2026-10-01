@@ -281,9 +281,19 @@ def succFn : Term :=
 -- the source (a closed term such as `refl`'s would otherwise be hoisted and shared)
 set_option compiler.extract_closed false
 
+/-- The built-ins written by juxtaposition (`Eq A a b`, `Id A t u`, `cong f h`, `trans h k`,
+`symm h`) may also be written as calls, `Eq(A, a, b)`, so that everything is a call. A call whose
+head is one of these names is read as the juxtaposition form. They are reserved names, so no user
+definition can be shadowed. -/
+def STerm.builtinCall : STerm → STerm
+  | t@(.call f as) => match f.unloc with
+    | .ident n => if ["Eq", "Id", "cong", "trans", "symm"].contains n then .app n as else t
+    | _ => t
+  | t => t
+
 mutual
 partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
-  match t with
+  match t.builtinCall with
   | .loc s e u =>
     let r ← tryCatch (resolve ctx ty u) fun msg => do
       modify fun st => if st.failAt.isNone then { st with failAt := some ⟨s, e⟩ } else st
