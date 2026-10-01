@@ -415,12 +415,12 @@ partial def readPlace (p : Place) : M Value := do
         err s!"[Open] {← ppPlace p} is a proof field invalidated by a write to a field its type mentions: assign it a new proof first"
     err s!"[Read] {← ppPlace p} was moved out or its borrow ended (reading ⊥)"
   | .ghost w =>
-    if erased && cfg.ghosts then return w.unghost
+    if erased && cfg.ghosts && !cfg.erasedMoves then return w.unghost
     err s!"[Read] {← ppPlace p} was moved out (D53)"
   | .borrow _ _ => logEffect p "moves"; setPlace p .bot; pure v
   | _ =>
     if v == .proof then return v
-    if erased then return v.unghost
+    if (erased && !cfg.erasedMoves) || (← get).copying then return v.unghost
     -- read in place: not consumed, but it must be there (D53: a call's head, the Fn rule;
     -- a stuck block's read-only capture, as the match inspects its place)
     if inPlace then
@@ -462,7 +462,7 @@ partial def isCapture (p : Place) : M Bool := do
 partial def matchContent (p : Place) : M Value := do
   match ← content p with
   | .ghost w =>
-    if (← get).erasedDepth > 0 && (← get).cfg.ghosts then pure w
+    if (← get).erasedDepth > 0 && (← get).cfg.ghosts && !(← get).cfg.erasedMoves then pure w
     else err s!"[Match] on {← ppPlace p}, which was moved out"
   | v => pure v
 
@@ -1359,14 +1359,14 @@ partial def capture (t : Term) : M (List Value × Term) := do
     | .bot => err "a closure or Π-type captures a moved place"
     | .ghost w =>
       -- D53: an erased closure or Π-type reads a moved value's ghost
-      if (← get).erasedDepth > 0 && (← get).cfg.ghosts then vals := vals.push w.unghost
+      if (← get).erasedDepth > 0 && (← get).cfg.ghosts && !(← get).cfg.erasedMoves then vals := vals.push w.unghost
       else err "a closure or Π-type captures a moved place"
     | _ =>
       -- D64 [Repack]: a closure or Π-type captures the value whole
       if (← get).typing then
         if let some T := b0.ty then
           unless viaRef do repackCheck s!"a closure or Π-type captures {b0.hint.name}" v T
-      if (← get).erasedDepth > 0 then vals := vals.push v.unghost
+      if (← get).erasedDepth > 0 && !(← get).cfg.erasedMoves then vals := vals.push v.unghost
       else
         vals := vals.push v
         -- D53: a runtime closure moves the variables it captures whose types are not copies
@@ -2075,8 +2075,8 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     -- K2: cloning a view at runtime copies it
     if let .place p := u then
       if let some v ← tryCatch (some <$> content p) (fun _ => pure none) then unsizedCheck p v "cloned"
-    withErased (eval typed u hint)
-  | .prim "peek" [u] => withErased (eval typed u hint)
+    withCopying (withErased (eval typed u hint))
+  | .prim "peek" [u] => withCopying (withErased (eval typed u hint))
   | .prim "inplace" [t] =>
     if t matches .place _ then modify fun s => { s with inPlace := true }
     let r ← eval typed t hint

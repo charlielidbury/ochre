@@ -172,6 +172,7 @@ structure Config where
   borrowUniverse : Bool := true  -- D66: that test is `A : Type₀` (off: D48 (1)'s old test, A is data)
   propUp : Bool := true          -- D66: `Prop : Type₁`, beside `Type₀` (off: `Prop : Type₀`)
   eqSidesApart : Bool := true    -- each side of `Eq` runs on its own private copy (off: both sides share one copy)
+  erasedMoves : Bool := false    -- viability (one mental model): reads in erased terms move as at runtime; no ghost reads
   injective : Bool := true      -- D52: Eq on two values of one constructor is the conjunction over its fields
   refTop : Bool := true          -- D48 (2): `&` only at the top of a declared type, never produced by computation
   sortsSyntactic : Bool := true  -- D55: a term written where a type is expected has a declared type that is syntactically a sort
@@ -260,6 +261,7 @@ structure MState where
   erasedDepth : Nat := 0                  -- D53: > 0 while evaluating an erased term, whose reads copy
   inPlace : Bool := false                 -- D53: the next read is in place (a call's head, a block's read-only capture)
   modelDepth : Nat := 0                   -- K2/K3: > 0 inside model code, which never runs at runtime
+  copying : Bool := false      -- inside `clone`/`peek`: reads copy (the explicit copy, not an erased-read mode)
   typing : Bool := false                  -- the term being evaluated is part of the checked program (`eval true`),
                                           -- where D64's [Repack] points are checked
   locs : Locs := {}                       -- the editor: where the declaration's terms are (`located`)
@@ -349,13 +351,22 @@ even where the term that started it is erased: erasure applies to the reads writ
 the erased term, not to the bodies of the functions it calls. -/
 def withRuntime {α : Type} (x : M α) : M α := do
   let d := (← get).erasedDepth
-  modify fun s => { s with erasedDepth := 0 }
-  let r ← tryCatch x (fun e => do modify (fun s => { s with erasedDepth := d }); throw e)
-  modify fun s => { s with erasedDepth := d }
+  let c := (← get).copying
+  modify fun s => { s with erasedDepth := 0, copying := false }
+  let r ← tryCatch x (fun e => do modify (fun s => { s with erasedDepth := d, copying := c }); throw e)
+  modify fun s => { s with erasedDepth := d, copying := c }
   pure r
 
 /-- D53: `withErased x` if `b`, else `x`. -/
 def withErasedIf {α : Type} (b : Bool) (x : M α) : M α := if b then withErased x else x
+
+/-- `clone` and closing off's `peek`: reads copy (with `erasedMoves`, erased reads alone move). -/
+def withCopying {α : Type} (x : M α) : M α := do
+  let c := (← get).copying
+  modify fun s => { s with copying := true }
+  let r ← tryCatch x (fun e => do modify (fun s => { s with copying := c }); throw e)
+  modify fun s => { s with copying := c }
+  pure r
 
 /-- Run `x` on a private copy of the state (P2, P6): its effects are discarded. -/
 def onCopy {α : Type} (x : M α) : M α := do
