@@ -352,3 +352,19 @@ D66 status (2026-09-30): LANDED on ochr-core (f0bed3db, examples-tour). `Config.
 D67 status (2026-09-30): LANDED at d45b0ecd (dep-fields): block Reborrows (Trav, WriteLast, ReplaceKeep, PickMove and ground runs), ledger row reborrowSurvives (completeness); fuzz comparison base vs D67 identical per kind in ordinary, --drop and --dep at 10^5.
 
 D62 status (2026-09-30): PARKED on branch rule-tags-d62 @ eb8b51e3, not landed, because of the token budget. It is green against ochr-core before D65/D66/D67 and needs a rebase over those, plus fuzz-oracle work (92 escape findings not yet classified). Until it lands, the two paths still disagree on pair-field access (EtaP/EtaCtl, 8,908 per 10^5 in --audit), as a known gap. Item 7 (a closure in a stuck block capturing through the block borrow) landed at 0f16139a: rejected where the block is formed, on every path.
+
+## D68. One mental model: using a variable consumes it, in statements too (user, 2026-10-01) [decided; checker lane: examples-tour]
+The user's principle: no "modes" of operation; the programmer has one mental model, "using a variable consumes it", with as few exceptions as possible (the yardstick is `ochr/docs/OCHR_BOOK.md`, where every wart shows up as an explanation). Two modes are removed:
+- **Eq sides.** Each side of `Eq(T, a, b)` runs on its own private copy of the state (before, both sides shared one copy, so the right side saw the left side's writes). Landed first, at 9c406bf5 (ledger row `eqSidesApart`).
+- **Erased reads.** D53's "a read inside an erased term copies, and sees a ghost's value" is gone. A *statement* (a type, a proof, a side of `Eq` or `Id`, and each argument of a call that returns a type or a proof) runs on its own private copy of the state with exactly the runtime rules: non-copy data moves, borrows move, writes are visible to the rest of the statement, and the copy is thrown away at the end. Ghosts are deleted: a move leaves `⊥`.
+
+The rule the programmer reads (book §5): *using a variable consumes it; a statement, and each argument of a statement, runs on its own copy of the state.*
+
+Four consequences, each approved by the user after the viability run (221 suite verdicts flipped with none of them):
+1. A move is not an outer-place effect under D41. It happens on the statement's copy and is undone with it. Writes and borrows still are effects.
+2. Every argument of a call that returns a type or a proof, and of a proof constructor, runs on its own copy, as `Eq`'s sides do: `Le(n, Add(n, m))` is well formed. An argument whose value holds a borrow runs in place, since a copy's borrow would alias the real one.
+3. No exception for an `Id` side moving out through a borrow: such a side writes `clone(*x)`, exactly as runtime code must (the copy idiom in an `Id` side is `let c = clone(*x)`).
+4. The Fn rule (a closure body may not move a capture) does not apply to a body that is itself a statement (a Π-type's codomain, a closure returning a type or a proof): it runs on its own copy each time.
+`Id` observes only the places a side writes or borrows (a borrow variable passed whole counts, one only read through does not), so a side that reads `*x` does not put `x`'s owner in the footprint.
+
+Intended rejections: a value used twice inside one argument (`Add(x, x)`), and a statement reading a value that runtime code moved (`GhostRead`, `J1`, `LamWriteInBlock`). Everything else was migrated with `clone`. Switch `erasedMoves` (off: statements copy) is a ledger row, class policy, witness `LamWriteInBlock`. Notes: notes/lean-checker.md.

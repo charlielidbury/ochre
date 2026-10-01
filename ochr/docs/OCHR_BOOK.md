@@ -93,7 +93,7 @@ Reserved names, which you can't declare: `Nat`, `Unit`, `Z`, `S`, `refl`, `Id`, 
 
 These are the rules you'll hit most:
 
-1. **Reading a place moves it** unless its type is a copy type. Copy types: `Unit`, `Word`, `Bool`, propositions, types, `copy` inductives, and non-recursive inductives whose fields are copies (such as `Opt(Word)`). Reading a moved place is an error: `[Read] x was moved out`. Use `clone(p)` for an explicit copy.
+1. **Using a variable consumes it; a statement, and each argument of a statement, runs on its own copy of the state.** Reading a place moves it unless its type is a copy type, in runtime code and in types and proofs alike. Copy types: `Unit`, `Word`, `Bool`, propositions, types, `copy` inductives, and non-recursive inductives whose fields are copies (such as `Opt(Word)`). Reading a moved place is an error: `[Read] x was moved out`. Use `clone(p)` for an explicit copy.
 2. **A borrow variable moves when you pass it.** `Inc(x); Inc(x)` fails at the second `x`. Pass a reborrow to keep `x`: `Inc(&*x); Inc(x)`.
 3. **`x : &T` is a mutable borrow.** The function may read and write `*x`. There are no shared borrows: a read-only function still takes `&`, and "it doesn't change anything" is a statement you prove when it matters.
 4. **Borrows end automatically** when the owner, or anything containing it, is used again. Using a borrow after that is an error. This is Rust's borrow checker, enforced on symbolic runs.
@@ -123,7 +123,7 @@ These are the rules you'll hit most:
 8. **Moving a cursor down** works as in Rust: `match *x { Cons(_, t) => (x := &t; *x := Nil), … }`.
 9. **Borrowable types** are anything in `Type`: data, functions, and type parameters `A : Type` (`Swap` above is generic). Proofs, propositions and types can't be borrowed.
 10. **Closures capture values, never borrows**, and may run again. So a closure body may not move a captured value out; `clone` it.
-11. **Types and proofs never move anything.** Reads inside them copy, and whatever they run happens on a private copy of the state, so statements can freely mention `*x`.
+11. **Types and proofs run on their own copy.** A statement (a type, a proof, a side of `Eq` or `Id`, each argument of a call that returns a type or a proof) runs on a private copy of the state by the same rules as runtime code, and the copy is thrown away: whatever it moves or writes is gone with it. So `Le(n, Add(n, m))` is fine (each argument has its own copy), but inside one argument a value is used once, as in runtime code: `Add(clone(x), x)`, not `Add(x, x)`.
 
 ## 6. Recursion
 
@@ -153,10 +153,10 @@ So `refl` proves any equation whose two sides evaluate to the same normal form.
 def Push (A : Type) (l : &List(A)) (x : A) : Unit := *l := Cons(x, *l)
 
 def PushLen (A : Type) (l : &List(A)) (x : A) :
-    Eq(Word, (let c = *l; Push(A, &c, x); Len(A, &c)), Succ(Len(A, l))) := refl
+    Eq(Word, (let c = clone(*l); Push(A, &c, x); Len(A, &c)), Succ(Len(A, l))) := refl
 ```
 
-`c` is a copy of the current `*l` (inside a statement, reading data copies it; the same `let` in runtime code would move), `Push` mutates the copy, and the right-hand side still sees the original `*l`. (This one is proved by `refl` because both sides compute to the same thing.) You can also mutate `*l` itself inside a side. Each side of `Eq` runs on its own private copy of the whole state, with the ordinary rules, so a write is seen by the rest of that side and by nothing else: `Eq(Word, (Push(A, &*l, x); Len(A, l)), Succ(Len(A, l)))` states the same thing. Reborrow (`&*l`) for every use of `l` but the side's last, since passing `l` itself hands over the borrow.
+`c` is a clone of the current `*l` (`let c = *l` would move the list out from behind the borrow, as in runtime code), `Push` mutates the clone, and the right-hand side still sees the original `*l`. (This one is proved by `refl` because both sides compute to the same thing.) You can also mutate `*l` itself inside a side. Each side of `Eq` runs on its own private copy of the whole state, with the ordinary rules, so a write is seen by the rest of that side and by nothing else: `Eq(Word, (Push(A, &*l, x); Len(A, l)), Succ(Len(A, l)))` states the same thing. Reborrow (`&*l`) for every use of `l` but the side's last, since passing `l` itself hands over the borrow.
 
 **`Id(A, t, u)`** says that the programs `t` and `u`, each run on its own copy of the current state, return equal results of type `A` *and* leave equal contents in every place they write or borrow:
 
