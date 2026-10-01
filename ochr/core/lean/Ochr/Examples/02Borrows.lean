@@ -32,7 +32,7 @@ ochr Borrows uses Std {
 
   -- A statement is erased, and its reads copy, so `Add(x, x)` reads `x` twice, and
   -- `x + x = x` is a well-formed statement (a false one).
-  def AddXX (x : Nat) : Prop := Id Nat (Add(x, x)) x
+  def AddXX (x : Nat) : Prop := Id Nat (Add(clone(x), x)) x
 
   -- A borrow of a local writes to the local: after `*y := 2` through `y = &x`, `x` is `2`.
   def LetZ (x : Nat) : Nat := (
@@ -64,7 +64,7 @@ ochr Borrows uses Std {
   def NotDead (f : Π(a : Word) (b : &Word). Unit) (x : Word) : Unit := f(x, &x)
 
   -- A statement about two separate borrows ...
-  def g (x : &Nat) (y : &Nat) : Id Nat (*x := 0; *y := 1; *x) (*x := 0; *y := 1; 0) := refl
+  def g (x : &Nat) (y : &Nat) : Id Nat (*x := 0; *y := 1; clone(*x)) (*x := 0; *y := 1; 0) := refl
 
   -- ... cannot be used on two borrows of the same place: passing `z` ends the reborrow `a`,
   -- in whichever order the two are passed (D19).
@@ -235,8 +235,9 @@ ochr Moves uses Std {
   reject copy inductive NatBox := MkNatBox(n : Nat)
   def TwicePt (p : Pt) : Pt × Pt := (p, p)
 
-  -- A statement reads without moving, and sees what was moved (its ghost), in any order.
-  def GhostRead (n : Nat) : Nat := (
+  -- A statement reads like any code (D68): `n` was moved into `m`, so the statement cannot
+  -- read it (it runs on its own copy of the state, which has `n` moved out too).
+  reject def GhostRead (n : Nat) : Nat := (
     let m = n;
     let h : Id Nat n m = refl;
     m
@@ -340,10 +341,11 @@ ochr Moves uses Std {
   -- M2b: one arm moves the borrow into the block, another moves out through it, and the
   -- block's frame ends the borrow partly moved
   reject def B4 (x0 : &Nat) : Nat := S (match *x0 { Z => x0; 0, S _ => *x0 })
-  -- M3: erased positions read without moving, whichever path runs them: `J`'s endpoints and
-  -- motive (as run by a call, untyped), and an `Id` side on its private copy
-  def J1 (n : Nat) (h : Eq Nat n 1) : Nat := (let m = n; J(Nat, n, 1, λ(z : Nat) : Type => Nat, h, m))
-  def J1Run : Nat := J1(1, refl)
+  -- M3: statement positions run on their own copy, whichever path runs them: `J`'s endpoints
+  -- and motive (as run by a call, untyped), and an `Id` side. A statement reads like any code
+  -- (D68), so `J`'s endpoint cannot read the moved `n`.
+  reject def J1 (n : Nat) (h : Eq Nat n 1) : Nat := (let m = n; J(Nat, n, 1, λ(z : Nat) : Type => Nat, h, m))
+  reject def J1Run : Nat := J1(1, refl)
   def I1 (n1 : Nat) : Nat := (let m = n1; let a0 = Id Unit () (n1 := 0); 0)
   def I1Run : Nat := I1(0)
   -- A block's effect on its captures is read from its arms' moves and assignments, by place
@@ -394,8 +396,8 @@ ochr Moves uses Std {
     let a4 = (0, 0); let t = match b0 { SwF => match a4 { Mk(p, q) => 0 }, SwT => let s = a4.2; 0 }; a4)
 
   -- RN: a split in a data function re-normalises its hypotheses' types, as types (reads copy)
-  def DataSplit (n : Nat) (h : Id (Nat × Nat) (match n { Z => (n, n), S p => (p, p) })
-      (match n { Z => (0, 0), S p => (p, p) })) : Nat := (
+  def DataSplit (n : Nat) (h : Id (Nat × Nat) (match n { Z => (clone(n), n), S p => (clone(p), p) })
+      (match n { Z => (0, 0), S p => (clone(p), p) })) : Nat := (
     match n { Z => 0, S _ => 1 })
 }
 

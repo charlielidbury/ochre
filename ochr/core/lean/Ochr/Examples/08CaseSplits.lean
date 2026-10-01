@@ -198,7 +198,7 @@ ochr Splitting uses Std {
     }
   )
 
-  def DoubleVal (n : Nat) : Eq Nat (Double(Look(n))) (Add(Val(Look(n)), Val(Look(n)))) := (
+  def DoubleVal (n : Nat) : Eq Nat (Double(Look(n))) (Add(Val(Look(clone(n))), Val(Look(n)))) := (
     split Look {
       None => refl,
       Some(x) => refl,

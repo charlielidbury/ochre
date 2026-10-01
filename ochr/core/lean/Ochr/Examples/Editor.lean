@@ -42,7 +42,7 @@ ochr EditorErrors uses Std {
   reject def Dead (f : Π(a : &Nat) (b : Nat). Unit) (y : Nat) : Unit := f(&y, y)
 
   -- a failed `refl` in one arm: that `refl`
-  reject def ArmRefl (x : &Nat) : Id Nat (*x) 0 := (
+  reject def ArmRefl (x : &Nat) : Id Nat (clone(*x)) 0 := (
     match *x {
       Z => refl,
       S p => refl,

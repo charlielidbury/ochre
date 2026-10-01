@@ -101,7 +101,7 @@ ochr ReturnedBorrows uses Std, Fixtures {
     match *x {
       Z => (
         *t := S Z;
-        let h : Id Nat (*x) Z = refl;
+        let h : Id Nat (clone(*x)) Z = refl;
         ()
       ),
       S _ => (),

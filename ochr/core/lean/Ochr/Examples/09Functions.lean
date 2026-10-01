@@ -49,7 +49,7 @@ ochr Functions uses Std, Fixtures {
   -- alone; `J` composes the two instances. `Add(s, 0)` closes off into the same sealed program
   -- as `AddM(&*x, 0)`.
   def TwiceMZero' (x : &Nat) : Id Unit (TwiceM(λ(z : &Nat) : Unit => AddM(z, 0), x)) () := (
-    let s = *x;
+    let s = clone(*x);
     let h1 = AddMZero(&*x);
     AddM(&*x, 0);
     let h2 = AddMZero(&*x);

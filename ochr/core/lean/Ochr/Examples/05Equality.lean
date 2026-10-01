@@ -281,7 +281,7 @@ ochr Owners uses Fixtures {
   def K (z : &Nat) (e : Id Unit (*z := 0) (*z := 1)) : Eq Nat 0 1 := e
 
   reject def BadD18 (s : Nat) (hs : Eq Nat s 1) (a : Nat) (b : Nat) : Eq Nat 0 1 := (
-    let r = Pick3(&a, &b, s);
+    let r = Pick3(&a, &b, clone(s));
     let e : Id Unit (*r := 0) (*r := 1) = match s {
       Z => hs,
       S _ => refl,
@@ -326,21 +326,21 @@ ochr Owners uses Fixtures {
   -- still come out as written (fuzz-port's R6: the order was Ω's, and the true statement
   -- `IdOrder` was rejected at the generic call, where `OrderSwapped` was accepted).
   def IdOrder (n0 : Nat) (x2 : &Nat) :
-      Id Prop (match n0 { Z => Id Unit (*x2 := 1) (n0 := *x2), S p2 => ⊤ })
+      Id Prop (match n0 { Z => Id Unit (*x2 := 1) (n0 := clone(*x2)), S p2 => ⊤ })
         (match n0 { Z => Eq Nat 1 *x2 ∧ Eq Nat 0 *x2, S p2 => ⊤ }) := (
     match n0 { Z => refl, S _ => refl }
   )
   reject def OrderSwapped (n0 : Nat) (x2 : &Nat) :
-      Id Prop (match n0 { Z => Id Unit (*x2 := 1) (n0 := *x2), S p2 => ⊤ })
+      Id Prop (match n0 { Z => Id Unit (*x2 := 1) (n0 := clone(*x2)), S p2 => ⊤ })
         (match n0 { Z => Eq Nat 0 *x2 ∧ Eq Nat 1 *x2, S p2 => ⊤ }) := (
     match n0 { Z => refl, S _ => refl }
   )
   def OrderAtZero (x2 : &Nat) :
-      Id Prop (let n0 = 0; Id Unit (*x2 := 1) (n0 := *x2)) (Eq Nat 1 *x2 ∧ Eq Nat 0 *x2) := refl
+      Id Prop (let n0 = 0; Id Unit (*x2 := 1) (n0 := clone(*x2))) (Eq Nat 1 *x2 ∧ Eq Nat 0 *x2) := refl
   -- Written places come first, then places only read through a borrow: closed off, `n1`
   -- becomes a borrow parameter, and its read in `(1, n1)` must not put it first.
   def IdOrderRead (x0 : &(Nat × Nat)) (n1 : Nat) :
-      Id Prop (match n1 { Z => ⊤, S p => Id Unit (*x0 := (1, n1)) (n1 := 0) })
+      Id Prop (match n1 { Z => ⊤, S p => Id Unit (*x0 := (1, clone(n1))) (n1 := 0) })
         (match n1 { Z => ⊤, S p => Eq (Nat × Nat) (1, n1) *x0 ∧ Eq Nat n1 0 }) := (
     match n1 { Z => refl, S _ => refl }
   )
@@ -350,8 +350,8 @@ ochr Owners uses Fixtures {
   -- (fuzz-port's R1 residual, once rejected with "cannot infer the type of the value loan").
   def RetSub (x0 : &Nat) : &Nat := match *x0 { Z => &*x0, S p3 => &p3 }
   def IdThroughRet (x0 : &Nat) (x1 : &Nat) :
-      Id Prop (match *x0 { Z => let a6 = RetSub(x1); Id Unit (*x0 := *a6) (), S p7 => ⊤ })
-        (match *x0 { Z => let a6 = RetSub(x1); Id Unit (*x0 := *a6) (), S p7 => ⊤ ∧ ⊤ }) := (
+      Id Prop (match *x0 { Z => let a6 = RetSub(x1); Id Unit (*x0 := clone(*a6)) (), S p7 => ⊤ })
+        (match *x0 { Z => let a6 = RetSub(x1); Id Unit (*x0 := clone(*a6)) (), S p7 => ⊤ ∧ ⊤ }) := (
     match *x0 { Z => refl, S _ => refl }
   )
 }

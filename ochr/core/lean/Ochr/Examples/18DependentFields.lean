@@ -486,7 +486,7 @@ ochr DepVec uses ArrayBench {
     }
   )
   def PushedLast (E : Type) (v : Vec(E)) (x : E) (h : Lt(VLen(E, v), VLen(E, Pushed(E, v, x)))) :
-      Eq E (VGet(E, Pushed(E, v, x), VLen(E, v), h)) x := (
+      Eq E (VGet(E, Pushed(E, clone(v), clone(x)), VLen(E, v), h)) x := (
     match v {
       MkVec(n, items) => match items {
         MkArray(s) => NthSnocLast(E, n, s, x, h),

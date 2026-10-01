@@ -32,27 +32,23 @@ representation of proofs, so its row would not isolate one rule.) -/
 open Ochr.Registry in
 #guard rowOk { eraseOnCopy := false }
   ["Functions.RunGGen:rejected", "Functions.RunIGen:rejected", "Functions.RunPowGen:rejected",
-   "CurrentState.TwoPhase:rejected", "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected",
-   "Erasure.BoomP2Pair:accepted", "Erasure.BoomP2:accepted"]
+   "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected", "Erasure.BoomP2Pair:accepted",
+   "Erasure.BoomP2:accepted"]
 open Ochr.Registry in
 #guard rowOk { eraseOnCopy := false, confine := false }
   ["Equality.JMotiveConf:accepted", "Functions.RunGGen:rejected", "Functions.RunIGen:rejected",
-   "Functions.RunPowGen:rejected", "CurrentState.TwoPhase:rejected", "Erasure.LemmaMoves:rejected",
-   "Erasure.TypeErased:rejected", "Erasure.EffArg:accepted", "Erasure.Write:accepted",
-   "Erasure.Borrow:accepted", "Erasure.Move:accepted", "Erasure.BoomP2Pair:accepted",
-   "Erasure.BoomP2:accepted", "Erasure.N1T:accepted", "Erasure.N1Closed:accepted",
-   "Erasure.Q:accepted", "Erasure.QBoom:accepted", "ErasureBySyntax.LieP:accepted",
-   "ErasureBySyntax.BoomP:accepted"]
+   "Functions.RunPowGen:rejected", "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected",
+   "Erasure.Write:accepted", "Erasure.Borrow:accepted", "Erasure.BoomP2Pair:accepted",
+   "Erasure.BoomP2:accepted", "Erasure.N1T:accepted", "Erasure.N1Closed:accepted", "Erasure.Q:accepted",
+   "Erasure.QBoom:accepted", "ErasureBySyntax.LieP:accepted", "ErasureBySyntax.BoomP:accepted"]
 open Ochr.Registry in
 #guard rowOk { multiOwner := false }
   ["Owners.BadD18:accepted", "Owners.ClosedD18:accepted", "Owners.GR:accepted", "Owners.BadR:accepted"]
 open Ochr.Registry in
 #guard rowOk { recGuard := false }
-  ["Recursion.Loop:accepted", "Recursion.Bot':accepted", "Recursion.Loop2:accepted",
-   "Recursion.Spin:accepted", "Recursion.OuterBad:accepted", "Recursion.KnotL:accepted",
-   "Recursion.KnotLBoom:accepted", "Recursion.Lie:accepted", "Recursion.Boom:accepted",
-   "Recursion.LieCap:accepted", "Recursion.BoomCap:accepted", "Recursion.LieRead:accepted",
-   "Recursion.BoomRead:accepted", "Recursion.LieId:accepted", "Recursion.BoomId:accepted"]
+  ["Recursion.Loop2:accepted", "Recursion.Spin:accepted", "Recursion.OuterBad:accepted",
+   "Recursion.KnotL:accepted", "Recursion.KnotLBoom:accepted", "Recursion.Lie:accepted",
+   "Recursion.Boom:accepted"]
 -- D19 switched off: a place read with a loan inside its content keeps the borrow alive. `V`'s
 -- stuck block leaves a borrow's loan inside `n0`, and the later write through `a0` goes to
 -- nothing at `V(0)`; `W` passes `&a` holding `r`'s loan to a stuck call ([Close]'s
@@ -131,8 +127,7 @@ open Ochr.Registry in
 #guard rowOk { leafRule := 0, confine := false }
   ["Equality.Om:rejected", "Equality.JMotiveConf:accepted", "Snapshots.CapP:rejected",
    "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected", "Snapshots.UseCapOf:rejected",
-   "Erasure.EffArgErased:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted",
-   "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted",
+   "Erasure.Write:accepted", "Erasure.Borrow:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted",
    "ErasureBySyntax.LieP:accepted"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 1 }
@@ -142,8 +137,7 @@ open Ochr.Registry in
 #guard rowOk { leafRule := 1, confine := false }
   ["Equality.Om:rejected", "Equality.JMotiveConf:accepted", "Snapshots.CapP:rejected",
    "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected", "Snapshots.UseCapOf:rejected",
-   "Erasure.EffArgErased:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted",
-   "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted",
+   "Erasure.Write:accepted", "Erasure.Borrow:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted",
    "ErasureBySyntax.LieP:accepted"]
 open Ochr.Registry in
 #guard rowOk { positivity := false }
@@ -165,16 +159,14 @@ open Ochr.Registry in
    "BorrowTypes.HO:rejected", "FnBorrows.RefRetFn:rejected"]
 open Ochr.Registry in
 #guard rowOk { confine := false }
-  ["Equality.JMotiveConf:accepted", "Erasure.EffArgErased:accepted", "Erasure.Write:accepted",
-   "Erasure.Borrow:accepted", "Erasure.Move:accepted", "Erasure.N1T:accepted",
-   "Erasure.Q:accepted", "ErasureBySyntax.LieP:accepted"]
+  ["Equality.JMotiveConf:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted",
+   "Erasure.N1T:accepted", "Erasure.Q:accepted", "ErasureBySyntax.LieP:accepted"]
 open Ochr.Registry in
 #guard rowOk { confineBodies := true }
-  ["Moves.F5:rejected", "ReturnedBorrows.Inj:rejected", "Snapshots.CapPi:rejected",
-   "Functions.TwiceMZero':rejected", "Erasure.F5:rejected", "Erasure.TypeErased:rejected",
-   "Erasure.TailSteps:rejected", "Erasure.P2:rejected", "Erasure.FP2:rejected",
-   "Erasure.BoomIsTrue:rejected", "Erasure.p2:rejected", "Erasure.TA2:rejected", "Erasure.LieP2:rejected",
-   "ErasureBySyntax.F:rejected", "ErasureBySyntax.SeqT:rejected"]
+  ["Moves.F5:rejected", "Snapshots.CapPi:rejected", "Functions.TwiceMZero':rejected", "Erasure.F5:rejected",
+   "Erasure.TypeErased:rejected", "Erasure.TailSteps:rejected", "Erasure.P2:rejected",
+   "Erasure.FP2:rejected", "Erasure.BoomIsTrue:rejected", "Erasure.p2:rejected", "Erasure.TA2:rejected",
+   "Erasure.LieP2:rejected", "ErasureBySyntax.F:rejected", "ErasureBySyntax.SeqT:rejected"]
 open Ochr.Registry in
 #guard rowOk { borrowParam := false }
   ["ReturnedBorrows.LeakT:accepted", "ReturnedBorrows.Q:accepted", "ReturnedBorrows.Boom:accepted",
@@ -182,10 +174,10 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { capTypes := false }
   ["ClosingOff.UseDec:rejected", "ClosingOff.UseApply:rejected", "Equality.Om:rejected",
-   "Owners.IdThroughRet:rejected", "Snapshots.CapS:rejected", "Snapshots.CapSId:rejected",
-   "Snapshots.CapPi:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected",
-   "Snapshots.CapOf:rejected", "Snapshots.UseCapOf:rejected", "RenormPi.InPi:rejected",
-   "RenormPi.InConj:rejected", "ArmLocal.JoinS:rejected", "ArmLocal.AllGe:rejected", "ArmLocal.Leak:rejected", "DepFields.UseEx:rejected"]
+   "Snapshots.CapS:rejected", "Snapshots.CapSId:rejected", "Snapshots.CapPi:rejected",
+   "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected",
+   "Snapshots.UseCapOf:rejected", "RenormPi.InPi:rejected", "RenormPi.InConj:rejected",
+   "ArmLocal.JoinS:rejected", "ArmLocal.AllGe:rejected", "ArmLocal.Leak:rejected", "DepFields.UseEx:rejected"]
 -- `genPlaceType` changes no verdict; 08CaseSplits.lean asserts its effect on the generalised σ's type
 -- v2.0 D45 by type, switched off: a match on a proof inspects its content (⋆) like data: completeness only
 open Ochr.Registry in
@@ -372,22 +364,23 @@ open Ochr.Registry in
   ["Functions.WV:accepted", "Subsingletons.EffL:accepted", "Subsingletons.EffLNoop:accepted",
    "ErasureBySyntax.LieH:accepted", "Sorts.W:accepted", "Sorts.f:accepted", "Sorts.TT:accepted",
    "Sorts.g2:accepted", "Sorts.k:accepted", "Sorts.K1:accepted", "Sorts.K2:accepted"]
--- D53 (c) switched off: a move leaves `⊥`, so a proof that mentions a moved value fails
+-- D68 switched off: reads in a statement copy instead of moving (the old erased-read mode), so a
+-- statement may use a value twice in one argument or read one an earlier argument moved
 open Ochr.Registry in
-#guard rowOk { ghosts := false }
-  ["Moves.GhostRead:rejected", "Moves.J1:rejected", "Moves.J1Run:rejected", "CurrentState.AddSub:rejected",
-   "CurrentState.AddSubId:rejected", "CurrentState.AddSubIdReborrow:rejected"]
+#guard rowOk { erasedMoves := false }
+  ["ClosingOff.LamWriteInBlock:accepted", "ClosingOff.LamReadOtherArm:rejected",
+   "Erasure.EffArgErased:rejected", "Erasure.Move:rejected"]
 -- D53 (e) switched off: calls consume their function and a closure is never a copy, so a
 -- function cannot be called twice
 open Ochr.Registry in
 #guard rowOk { fnRule := false }
   ["Moves.CallTwice:rejected", "Moves.ClosureClones:rejected", "Moves.ClosureCopy:rejected",
-   "Equality.Om:rejected", "Snapshots.CapAssignRun:rejected", "Functions.Twice:rejected",
-   "Functions.TwiceNoop:rejected", "Functions.TwiceM:rejected", "Functions.TwiceMMove:rejected",
-   "Functions.TwiceMZero:rejected", "Functions.TwiceMZero':rejected", "Trees.Size:rejected",
-   "Trees.SizeInsert:rejected", "InPlaceTrees.Size:rejected", "InPlaceTrees.SizeInsert:rejected",
-   "InPlaceTrees.SizeInsertRw:rejected", "FnBorrows.CallThrough:rejected", "FnBorrows.RunSucc:rejected",
-   "FnBorrows.RefRetFn:rejected"]
+   "Equality.Om:rejected", "Snapshots.CapAssign:rejected", "Snapshots.CapAssignRun:rejected",
+   "Functions.Twice:rejected", "Functions.TwiceNoop:rejected", "Functions.TwiceM:rejected",
+   "Functions.TwiceMMove:rejected", "Functions.TwiceMZero:rejected", "Functions.TwiceMZero':rejected",
+   "Trees.Size:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.Size:rejected",
+   "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected",
+   "FnBorrows.CallThrough:rejected", "FnBorrows.RunSucc:rejected", "FnBorrows.RefRetFn:rejected"]
 -- D59 (refined) switched off: values are not η-normal at `Unit`. A call written to return
 -- `Unit` returns `()` (the old row), one that only computes to `Unit` its sealed program, and
 -- an abstract `u : Unit` is not `()`, so two values of `Unit`, or two functions' results at
@@ -461,11 +454,6 @@ open Ochr.Registry in
 #guard rowOk { armsAgree := false }
   ["ErasureBySyntax.R9Arms:accepted", "ErasureBySyntax.R9Nested:accepted",
    "ErasureBySyntax.MixPos:accepted", "ErasureBySyntax.MixDead:accepted"]
--- D63 switched ON (rule-audit item 7): a closure in a stuck block captures through the block's
--- borrow parameter (fuzz-port R2 (ii)), where [Fix] captures no borrow
-open Ochr.Registry in
-#guard rowOk { blockRefCapture := true }
-  ["ClosingOff.LamReadInWrittenBlock:accepted", "ClosingOff.LamReadOtherArm:accepted"]
 -- D63 switched off (rule-audit item 9): an `Id` evaluated by the machine observes its sides
 -- untyped, so a side's stuck match makes the whole `Id` stuck instead of being closed off
 open Ochr.Registry in
@@ -488,5 +476,9 @@ open Ochr.Registry in
 -- reads it back no longer matches the other side's view
 open Ochr.Registry in
 #guard rowOk { eqSidesApart := false }
-  ["Equality.EffInSide:rejected", "Equality.AddMInSide:rejected", "Equality.SideOld:rejected",
-   "Equality.SideShared:accepted"]
+  ["Equality.IdIsConjSealed:rejected", "Equality.IdIsConj:rejected", "Equality.IdIsEq:rejected",
+   "Equality.EqIsId:rejected", "Equality.EffInSide:rejected", "Equality.AddMInSide:rejected",
+   "Equality.SideOld:rejected", "Equality.SideShared:accepted", "Rewriting.RwSealed:rejected",
+   "Snapshots.CapOf:rejected", "Snapshots.UseCapOf:rejected", "Recursion.SuccGoal:rejected",
+   "Recursion.InjStep:rejected", "Recursion.CallSite:rejected", "Splitting.DoubleVal:rejected",
+   "Propositions.WriteIfAt:rejected", "Destructuring.DCallField:rejected"]

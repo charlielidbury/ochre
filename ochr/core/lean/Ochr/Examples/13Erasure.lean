@@ -38,16 +38,17 @@ ochr Erasure uses Std {
     ⊤
   )
 
-  def TypeErased (x : &Nat) : Id Nat (let T = F5(&*x); *x) (*x) := refl
+  def TypeErased (x : &Nat) : Id Nat (let T = F5(&*x); clone(*x)) (clone(*x)) := refl
 
   -- A proof's argument runs on the copy as well, so `W5`'s write inside it is not seen ...
   def Lemma (u : Unit) : ⊤ := refl
   def W5 (x : &Nat) : Unit := *x := 5
   reject def EffArg (x : &Nat) : Id Unit (Lemma(W5(&*x)); ()) (*x := 5) := refl
 
-  -- ... and since the argument writes `*x` for a call that is not erased, confinement makes
-  -- it an error rather than a silent no-op.
-  reject def EffArgErased (x : &Nat) : Id Unit (Lemma(W5(&*x)); ()) () := refl
+  -- ... and since `Lemma` returns a proof, its argument is a statement position and runs on
+  -- its own copy of the state (D68): `W5`'s write is thrown away with that copy, and the side
+  -- leaves `*x` as it was.
+  def EffArgErased (x : &Nat) : Id Unit (Lemma(W5(&*x)); ()) () := refl
 
   -- ## Confinement
   -- A proof may change its own locals ...
@@ -73,7 +74,9 @@ ochr Erasure uses Std {
     clone(*x)
   )
 
-  reject def Move (x : &Nat) : Nat := (
+  -- A move is not an effect on an outer place: it happens on the statement's own copy and is
+  -- undone with it (D68).
+  def Move (x : &Nat) : Nat := (
     let h : ⊤ = (let y = x; refl);
     0
   )
@@ -147,7 +150,7 @@ ochr Erasure uses Std {
   -- on the direct path: in the `S` arm, `F5(&*x)` writes `*x := 5`, while the closed-off
   -- block, being erased, skips it. So `LieP2`, true as checked, is false at `1`, and
   -- `BoomP2` is a closed proof of `False` (fuzz-port).
-  def LieP2 (x : &Nat) : Id Nat (let a = match *x { Z => refl, S p => (F5(&*x); refl) }; *x) (*x) := refl
+  def LieP2 (x : &Nat) : Id Nat (let a = match *x { Z => refl, S p => (F5(&*x); refl) }; clone(*x)) (clone(*x)) := refl
   reject def BoomP2Pair : False ∧ False := (let c = 1; LieP2(&c))
 
   reject def BoomP2 : False := (

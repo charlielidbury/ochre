@@ -215,7 +215,7 @@ ochr Abstraction uses Std {
   -- runtime code goes through the natives ...
   def Bump (s : &View) : Unit := (let n = Get(&*s); Put(s, S n))
   -- ... and statements see the model
-  def GetIs (s : &View) : Id Nat (Get(s)) (ViewVal(*s)) := refl
+  def GetIs (s : &View) : Id Nat (Get(s)) (ViewVal(clone(*s))) := refl
   -- matching, building, reading or assigning a view at runtime is not allowed
   reject def Peek (s : &View) : Nat := match *s { MkView(v) => clone(v) }
   reject def Poke (s : &View) : Unit := *s := MkView(0)

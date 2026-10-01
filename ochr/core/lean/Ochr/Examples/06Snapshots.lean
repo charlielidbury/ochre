@@ -61,7 +61,7 @@ ochr Snapshots uses Std {
   reject def CapSnapNew : Id Nat (let a = 0; let f = (λ(y : Nat) : Nat => a); a := 1; f(0)) 1 := refl
 
   -- The same at an abstract number.
-  def CapMut (n : Nat) : Id Nat (let m = n; let f = (λ(u : Unit) : Nat => m); m := S m; f(())) n := refl
+  def CapMut (n : Nat) : Id Nat (let m = n; let f = (λ(u : Unit) : Nat => m); m := 5; f(())) n := refl
 
   -- A closure may not capture a borrow: a closure is a value, and values hold no borrows
   -- (RULES §1).
@@ -97,13 +97,13 @@ ochr Snapshots uses Std {
   reject def PiBorrow (x : &Nat) : Prop := Π(n : Nat). Id Nat n (*x)
 
   def PiCopy (x : &Nat) : Prop := (
-    let m = *x;
+    let m = clone(*x);
     Π(n : Nat). Id Nat n m
   )
 
   def CapPi (x : &Nat) : Prop := (
     AddM(&*x, 1);
-    let n = *x;
+    let n = clone(*x);
     Π(y : Nat). Id Nat n y
   )
 

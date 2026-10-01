@@ -218,7 +218,7 @@ ochr Propositions uses Std {
     }
   )
 
-  def GetZIs (x : &Nat) (h : IsZ(*x)) : Id Nat (let q = GetZ(&*x, h); *q) 0 := (
+  def GetZIs (x : &Nat) (h : IsZ(*x)) : Id Nat (let q = GetZ(&*x, h); clone(*q)) 0 := (
     match *x {
       Z => refl,
       S _ => match h {},

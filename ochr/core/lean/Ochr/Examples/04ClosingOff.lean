@@ -160,7 +160,9 @@ ochr ClosingOff uses Std, Fixtures {
   -- write by the block: the block copies `n0` in, and the closure can capture it again when
   -- the block re-runs (fuzz-port R2 (i); counted as the block's write, `n0` went in by `&`,
   -- and the re-run closure captured a borrow).
-  def LamWriteInBlock (n0 : Nat) :
+  -- Since D68 the closure captures `n0` by move in a statement too, so the arm's later read of
+  -- `n0` is a use after a move.
+  reject def LamWriteInBlock (n0 : Nat) :
       Id Nat (match n0 { Z => n0, S p2 => (let a5 = (λ(y6 : &Nat) : Unit => n0 := 0); n0) }) n0 := (
     match n0 {
       Z => refl,
@@ -182,10 +184,10 @@ ochr ClosingOff uses Std, Fixtures {
     }
   )
 
-  -- ... also when the closure is in another arm than the write, and the block is formed only in
-  -- a statement: rejected when the statement is typed, not later when a refinement re-runs the
-  -- block (fuzz-port, seed 1, case 182)
-  reject def LamReadOtherArm (n0 : Nat) : Prop :=
+  -- ... in a statement, though, a closure captures by move like any code (D68), so the block
+  -- takes `n0` by move, not by borrow, and the closure captures the moved value (fuzz-port,
+  -- seed 1, case 182, was rejected for capturing a borrow)
+  def LamReadOtherArm (n0 : Nat) : Prop :=
     Id Nat (match n0 { Z => (n0 := S n0; 0), S _ => (let f = (λ(y : Nat) : Nat => n0); 0) }) 0
 
   -- Comparing two blocks' functions observes them at a generic argument, where a pattern's
@@ -195,7 +197,7 @@ ochr ClosingOff uses Std, Fixtures {
     match q0 {
       Mk(a, b) =>
         Id (Nat × Nat)
-          (match q0 { Mk(p0, p1) => match p0 { Z => q0, S p7 => (q0 := Mk(p1, p1); q0) } })
+          (match q0 { Mk(p0, p1) => match p0 { Z => q0, S p7 => (q0 := Mk(clone(p1), p1); q0) } })
           (match q0 { Mk(p15, p16) => match p16 { Z => (p16 := 0; (1, 0)), S _ => q0 } }),
     }
   )
@@ -231,10 +233,10 @@ ochr ClosingOff uses Std, Fixtures {
     }
   )
 
-  def RowUnit (x : &Nat) : Id Unit (let c = *x; AddU(&c)) () := refl
-  def RowI (x : &Nat) : Id Unit (let c = *x; G(&c, Z)) () := refl
+  def RowUnit (x : &Nat) : Id Unit (let c = clone(*x); AddU(&c)) () := refl
+  def RowI (x : &Nat) : Id Unit (let c = clone(*x); G(&c, Z)) () := refl
 
-  def RowIInd (x : &Nat) : Id Unit (let c = *x; G(&c, Z)) () by x := (
+  def RowIInd (x : &Nat) : Id Unit (let c = clone(*x); G(&c, Z)) () by x := (
     match *x {
       Z => refl,
       S p => RowIInd(&p),

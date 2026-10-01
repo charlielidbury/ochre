@@ -123,7 +123,6 @@ partial def expandRefs (refs : List (Nat × Value)) : Value → Value
       | some r => expandRefs refs r
       | none => .abs σ
   | .succ v => .succ (expandRefs refs v)
-  | .ghost v => .ghost (expandRefs refs v)
   | .ind t c h ps fs => .ind t c h ps (fs.map (expandRefs refs))
   | v => v
 
@@ -163,7 +162,6 @@ partial def substV (x r : Value) (v : Value) : M Value := do
   match v with
   | .abs _ | .loan _ => return (if v == x then r else v)
   | .succ w => return .succ (← substV x r w)
-  | .ghost w => return .ghost (← substV x r w)
   | .borrow l w => return .borrow l (← substV x r w)
   | .clo cs t => return .clo (← cs.mapM (substV x r)) (← substT x r t)
   | .tPi cs t => return .tPi (← cs.mapM (substV x r)) (← substT x r t)
@@ -282,7 +280,7 @@ partial def repackCheck (what : String) (v : Value) (T : Value) : M Unit := do
 or captured whole. A place moved out or ended is left to the machine's own error. -/
 partial def repackAt (p : Place) (T : Value) (what : String) : M Unit := do
   let v ← tryCatch (content p) fun _ => pure .bot
-  if v matches .bot | .ghost _ then return
+  if v matches .bot then return
   repackCheck s!"{← ppPlace p} is {what}" v T
 
 /-- D64 [Open]: a write or borrow through an index field of a dependent constructor value
@@ -396,10 +394,10 @@ partial def unsizedTerm (T : Term) (fuel : Nat) : M Bool := do
     | _ => pure false
   | _ => pure false
 
-/-- [Read]: a borrow is moved out (`p ↦ ⊥`), in any term. Borrow-free content is copied
-by an erased term (D53 (a)) and when its type is a copy type; otherwise a runtime read
-moves it out, leaving a ghost that erased terms still read (D53 (c)). A place partly
-moved out cannot be read at runtime (D53 (h)). -/
+/-- [Read]: reading a place moves its content out (`p ↦ ⊥`), in any term: a statement runs on
+its own private copy, so its moves are undone with the copy (one mental model, D68). Content
+is copied when its type is a copy type, and by `clone` (with `erasedMoves` off, by an erased
+term too). A place partly moved out cannot be read (D53 (h)). -/
 partial def readPlace (p : Place) : M Value := do
   accessPath p; accessInside p
   let v ← content p
@@ -414,13 +412,10 @@ partial def readPlace (p : Place) : M Value := do
       if (← lookupInd g.ty).dependent g.ctor && (← fieldIsProof g) then
         err s!"[Open] {← ppPlace p} is a proof field invalidated by a write to a field its type mentions: assign it a new proof first"
     err s!"[Read] {← ppPlace p} was moved out or its borrow ended (reading ⊥)"
-  | .ghost w =>
-    if erased && cfg.ghosts && !cfg.erasedMoves then return w.unghost
-    err s!"[Read] {← ppPlace p} was moved out (D53)"
   | .borrow _ _ => logEffect p "moves"; setPlace p .bot; pure v
   | _ =>
     if v == .proof then return v
-    if (erased && !cfg.erasedMoves) || (← get).copying then return v.unghost
+    if (erased && !cfg.erasedMoves) || (← get).copying then return v
     -- read in place: not consumed, but it must be there (D53: a call's head, the Fn rule;
     -- a stuck block's read-only capture, as the match inspects its place)
     if inPlace then
@@ -428,16 +423,18 @@ partial def readPlace (p : Place) : M Value := do
       return v
     if v.hasHole then err s!"[Read] {← ppPlace p} was partly moved out (D53)"
     if ← copyRead p v then return v
-    if cfg.fnRule && (← isCapture p) then
+    if cfg.fnRule && !(erased && cfg.erasedMoves) && (← isCapture p) then
       err s!"[D53] a closure's body moves a captured value out ({← ppPlace p}); a closure may run again: clone it"
     logEffect p "moves"
-    setPlace p (if cfg.ghosts then .ghost v else .bot)
+    setPlace p .bot
     pure v
 
 /-- D53: reading `p` (holding `v`) copies: its type is a copy type, or it holds a function
 whose captures are copies (the Fn rule). -/
 partial def copyRead (p : Place) (v : Value) : M Bool := do
-  let T ← tryCatch (placeType p) (fun _ => pure .bot)
+  -- an untyped run (a called body) may not know a pattern variable's type: the value's own
+  -- type, read off its constructor, is its type
+  let T ← tryCatch (placeType p) (fun _ => tryCatch (valType v) (fun _ => pure .bot))
   isCopyValue T v
 
 partial def isCopyValue (T : Value) (v : Value) : M Bool := do
@@ -457,13 +454,10 @@ partial def isCapture (p : Place) : M Bool := do
   | .bind f i => pure (← get).env[f]!.binds[i]!.cap
   | _ => pure false
 
-/-- A match's scrutinee: a match inspects its place in place (no move). A place moved out
-(D53) can be matched only by an erased term, which sees its ghost. -/
+/-- A match's scrutinee: a match inspects its place in place (no move). -/
 partial def matchContent (p : Place) : M Value := do
   match ← content p with
-  | .ghost w =>
-    if (← get).erasedDepth > 0 && (← get).cfg.ghosts && !(← get).cfg.erasedMoves then pure w
-    else err s!"[Match] on {← ppPlace p}, which was moved out"
+  | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
   | v => pure v
 
 /-- D41: record an assignment, borrow or move of `p` by its root position. -/
@@ -476,7 +470,9 @@ partial def logEffect (p : Place) (kind : String) : M Unit := do
       modify fun s => { s with placeLog := s.placeLog.push (f, i, p, isMove) }
       if let some (i', ss) ← throughLocalBorrow f i p then
         modify fun s => { s with placeLog := s.placeLog.push (f, i', ss.foldl stepPlace (Place.var 0), isMove) }
-    if (← get).cfg.confine then
+    -- one mental model: a move in a statement happens on the statement's private copy and is
+    -- undone with it, so it is not an effect on an outer place (writes and borrows are)
+    if (← get).cfg.confine && !(kind == "moves" && (← get).cfg.erasedMoves) then
       let root := (← get).env[f]!.binds[i]!.hint.name
       modify fun s => { s with effects := s.effects.push { f, i, kind, place := p, root } }
 
@@ -559,7 +555,7 @@ partial def borrowPlace (p : Place) : M Value := do
   accessPath p; accessInside p
   let v ← content p
   match v with
-  | .bot | .ghost _ => err s!"[Borrow] {← ppPlace p} was moved out (borrowing ⊥)"
+  | .bot => err s!"[Borrow] {← ppPlace p} was moved out (borrowing ⊥)"
   | .borrow _ _ => err "[Borrow] a borrow of a borrow (&&T is outside the core)"
   | _ =>
     if v.hasHole then
@@ -673,12 +669,11 @@ partial def placeType (p : Place) : M Value := do
     | T => err s!"{← ppPlace q}.{g.name}: no field at type {T}"
 
 /-- D64: the fields of the constructor value a place holds, as a constructor `g` names it:
-through a ghost (a moved value's fields are its ghosts) and through a loan (a place lent out
+through a loan (a place lent out
 has its borrow's content). -/
 partial def ctorFields (v : Value) (g : FieldRef) : M (Option (List Value)) := do
   match v with
   | .ind t c _ _ fs => pure (if t == g.ty && c == g.ctor then some fs else none)
-  | .ghost w => pure ((← ctorFields w g).map (·.map .ghost))
   | .loan l =>
     let env := (← get).env
     match (findBorrow env l).bind fun p => (valAt env p).takeBorrow l with
@@ -705,7 +700,7 @@ partial def depFieldType (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Pla
     | err s!"{← ppPlace q}.{g.name}: no such field"
   fire .Field fun _ => s!"{g.name}: {T}, from the earlier fields' contents"
   if !d.fieldDependent g.ctor g.idx then return T
-  let c := (fs.getD g.idx .bot).unghost
+  let c := fs.getD g.idx .bot
   if c == .bot || c == .proof then return T
   if (← packedErr c T).isNone then return T
   let S ← tryCatch (valType c) fun _ => pure T
@@ -716,11 +711,11 @@ partial def depFieldType (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Pla
 constructors inside it, or `none`. A constructor value is checked field by field against its
 field types, computed from its own earlier fields and `T`'s parameters; a leaf by its own type
 (an abstract value's stored type, a sealed program's, a proof against a proposition). A hole
-(`⊥`, a ghost) is not packed. A constructor value with no dependent constructor inside whose
+(`⊥`) is not packed. A constructor value with no dependent constructor inside whose
 type is `T` needs no walk. -/
 partial def packedErr (v : Value) (T : Value) : M (Option String) := do
   match v with
-  | .ghost _ | .bot => pure (some s!"it holds {v} (moved out, or a proof invalidated by a write to a field its type mentions)")
+  | .bot => pure (some s!"it holds {v} (moved out, or a proof invalidated by a write to a field its type mentions)")
   | .proof => pure (if ← isPropV T then none else some s!"a proof where {T} is expected")
   | .ind t c _ ps fs =>
     if !(← hasDependent v) && (← convVal v T) then return none
@@ -740,7 +735,7 @@ partial def packedErr (v : Value) (T : Value) : M (Option String) := do
         let own ← tryCatch (valType fv) (fun _ => pure .bot)
         -- name the field, and show both types: what it holds, and its type from the earlier fields
         return some (match fv with
-          | .ghost _ | .bot => s!"field {f} of {cn}: {m}"
+          | .bot => s!"field {f} of {cn}: {m}"
           | _ =>
             if m.startsWith "field " || m.startsWith "in field " then s!"in field {f} of {cn}, {m}"
             else if d.fieldDependent c j then
@@ -770,7 +765,7 @@ partial def hasDependent (v : Value) : M Bool := do
   | .ind t c _ _ fs =>
     if (← lookupInd t).dependent c then return true
     fs.anyM hasDependent
-  | .ghost w | .borrow _ w | .succ w => hasDependent w
+  | .borrow _ w | .succ w => hasDependent w
   | _ => pure false
 
 /-- The type of a value, for untyped bindings (captured values) and embedded values. -/
@@ -1357,26 +1352,22 @@ partial def capture (t : Term) : M (List Value × Term) := do
       let n := ((← get).env.back!.binds[(← get).env.back!.binds.size - 1 - o]!).hint.name
       err s!"a closure or Π-type captures the borrow {n} (closures capture no borrows, RULES §1)"
     | .bot => err "a closure or Π-type captures a moved place"
-    | .ghost w =>
-      -- D53: an erased closure or Π-type reads a moved value's ghost
-      if (← get).erasedDepth > 0 && (← get).cfg.ghosts && !(← get).cfg.erasedMoves then vals := vals.push w.unghost
-      else err "a closure or Π-type captures a moved place"
     | _ =>
       -- D64 [Repack]: a closure or Π-type captures the value whole
       if (← get).typing then
         if let some T := b0.ty then
           unless viaRef do repackCheck s!"a closure or Π-type captures {b0.hint.name}" v T
-      if (← get).erasedDepth > 0 && !(← get).cfg.erasedMoves then vals := vals.push v.unghost
+      if (← get).erasedDepth > 0 && !(← get).cfg.erasedMoves then vals := vals.push v
       else
         vals := vals.push v
         -- D53: a runtime closure moves the variables it captures whose types are not copies
         if !(v matches .proof) then
           if v.hasHole then err "[D53] a closure captures a place that was partly moved out"
           unless ← copyRead p v do
-            if (← get).cfg.fnRule && (← isCapture p) then
+            if (← get).cfg.fnRule && !((← get).erasedDepth > 0 && (← get).cfg.erasedMoves) && (← isCapture p) then
               err s!"[D53] a closure's body moves a captured value ({← ppPlace p}) into a closure; clone it"
             logEffect p "moves"
-            setPlace p (if (← get).cfg.ghosts then .ghost v else .bot)
+            setPlace p .bot
   let idx (o : Nat) : Nat := (fvs.findIdx? (· == o)).getD 0
   let t0 := if through.isEmpty then t else
     t.mapFreePlace (fun c q => (if through.contains q.root then q.stripDeref else q).mapRoot fun j => .var (j + c)) 0
@@ -2159,11 +2150,13 @@ partial def evalCtor (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts : Li
   let mut ws0 : Array Value := #[]
   -- D64: a dependent field's hint is its type at the fields evaluated so far
   let dep := d.dependent c
+  -- one mental model: a proof constructor's arguments are statement positions
+  let stmtC := (← get).cfg.erasedMoves && (← tryCatch (ctorIsProof ty) (fun _ => pure false))
   for ((a, (_, FT)), i) in (as.zip fields).zipIdx do
     let fh ← if typed && ((np > 0 && (a matches .ctor .. | .prim "rewrite" _ | .prim "rewriteR" _)) || (a matches .val _)
         || (dep && d.fieldDependent c i))
       then fieldTypeAt d sol c i ws0.toList else pure none
-    let (w, T) ← eval typed a fh
+    let (w, T) ← stmtArgIf stmtC (eval typed a fh)
     if let some T := T then sol := unifyParams np FT T sol
     tys := tys.push T
     pushTemp w
@@ -2185,6 +2178,22 @@ partial def evalCtor (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts : Li
 
 -- ### Calls: [Call], P5, [Call-type], [Close], [Rec]
 
+/-- One mental model: does `fv` return a type or a proof (its class, D28/D35)? Its arguments are
+then statement positions. -/
+partial def stmtCallee (fv : Value) (fT : Option Value) (cls? : Option Nat) : M Bool := do
+  if !(← get).cfg.erasedMoves then return false
+  if let some k := cls? then return k != 0
+  tryCatch (do pure ((← fnClass (← funType fv fT)) != 0)) fun _ => pure false
+
+/-- A statement position (an argument of a statement, a side of `Eq`): it runs on its own private
+copy of the state, by the ordinary rules. An argument whose value holds a borrow cannot: the
+borrow must be the real one (a copy's borrow would alias the place it borrows), so it runs in
+place. -/
+partial def stmtArgIf (b : Bool) (x : M (Value × Option Value)) : M (Value × Option Value) := do
+  if !b then return ← x
+  let r ← onCopy x
+  if r.1.anyAtom (fun | .borrow .. | .loan _ => true | _ => false) then x else pure r
+
 partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
     (cls? : Option Nat := none) : M (Value × Option Value) := do
   modify fun s => { s with headEval := true }
@@ -2193,6 +2202,9 @@ partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
   let (fv, fT) ← eval typed f
   modify fun s => { s with inPlace := false }
   pushTemp fv
+  -- one mental model: a call that returns a type or a proof is a statement, and each of its
+  -- arguments a statement position, run on its own private copy of the state
+  let stmt ← stmtCallee fv fT cls?
   let mut tys := #[]
   let mut argSteps : Array (Nat × Nat) := #[]   -- D41: the borrows and moves that evaluate arguments
   let mut ws0 := #[]
@@ -2201,7 +2213,7 @@ partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
     let s := (← get).effects.size
     -- v2.0: a constructor argument's parameters may come from the parameter's type
     let hint ← if typed && (a matches .ctor .. | .val _ | .prim "rewrite" _ | .prim "rewriteR" _ | .prim "hole" _) then argHint fv fT ws0 else pure none
-    let (w, T) ← eval typed a hint
+    let (w, T) ← stmtArgIf stmt (eval typed a hint)
     if a matches .borrow _ | .place _ then argSteps := argSteps.push (s, (← get).effects.size)
     pushTemp w
     ws0 := ws0.push w
@@ -2630,7 +2642,6 @@ partial def renormV (v : Value) : M Value := do
     let t' ← renormT t
     canonNeutral (← nfSealed t')
   | .succ w => return .succ (← renormV w)
-  | .ghost w => return .ghost (← renormV w)
   | .borrow l w => return .borrow l (← renormV w)
   | .ind ty c h ps fs => return .ind ty c h (← ps.mapM renormV) (← fs.mapM renormV)
   | .tEq A a b => mkEqM (← renormV A) (← renormV a) (← renormV b)
@@ -3131,7 +3142,7 @@ partial def idType (typed : Bool) (A t u : Term) : M Value := do
   let A' ← evalType A
   if A'.typeHasRef then err s!"Id at {A'}: A must be borrow-free (RULES §4)"
   let st ← get
-  let W := footprint st.env [t, u] st.cfg.multiOwner
+  let W := footprint st.env [t, u] st.cfg.multiOwner st.cfg.erasedMoves
   let (a, as) ← observeTyping typed t A' W
   let (b, bs) ← observeTyping typed u A' W
   -- an owner's type: its binding's, else its content's. An untyped owner that is lent out

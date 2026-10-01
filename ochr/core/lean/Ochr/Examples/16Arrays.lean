@@ -496,7 +496,7 @@ ochr ArrayLemmas uses Arrays {
   )
 
   def JoinTakeDrop (E : Type) (n : Word) (k : Word) (s : Slice(E, n)) (h : Le(k, n)) :
-      Eq (Slice(E, n)) (JoinS(E, n, k, TakeS(E, n, k, s, h), DropS(E, n, k, s))) s by k := (
+      Eq (Slice(E, n)) (JoinS(E, n, k, TakeS(E, n, k, clone(s), h), DropS(E, n, k, s))) s by k := (
     match k {
       Zero => refl,
       Succ(k') => match n {
@@ -596,7 +596,7 @@ ochr ArrayLemmas uses Arrays {
 
   -- Writing `x` over element `i` trades one occurrence of the old element for one of `x`.
   def CountSet (q : Word) (n : Word) (s : Slice(Word, n)) (i : Word) (x : Word) (h : Lt(i, n)) :
-      Eq Word (WAdd(Ind(q, Nth(Word, n, s, i, h)), Count(q, n, SetS(Word, n, s, i, x))))
+      Eq Word (WAdd(Ind(q, Nth(Word, n, clone(s), i, h)), Count(q, n, SetS(Word, n, s, i, x))))
         (WAdd(Ind(q, x), Count(q, n, s))) by i := (
     match n {
       Zero => match h {},
@@ -643,7 +643,7 @@ ochr ArrayLemmas uses Arrays {
   -- A swap with the head: the head moves to position `i + 1` of the rest, whose old element
   -- becomes the head. Counts are unchanged, by `CountSet` on the rest.
   def CountSwapHead (q : Word) (m : Word) (y : Word) (t : Slice(Word, m)) (i : Word) (h : Lt(i, m)) :
-      Eq Word (Count(q, Succ(m), MkSlice(MkC(Nth(Word, m, t, i, h), SetS(Word, m, t, i, y)))))
+      Eq Word (Count(q, Succ(m), MkSlice(MkC(Nth(Word, m, clone(t), i, h), SetS(Word, m, t, i, y)))))
         (Count(q, Succ(m), MkSlice(MkC(y, t)))) := (
     let hs = CountSet(q, m, t, i, y, h);
     let eb = Eqb(q, Nth(Word, m, t, i, h));
@@ -722,7 +722,7 @@ ochr ArrayBench uses ArrayLemmas {
   -- `k` elements, joined to the old rest.
   def B1Join (E : Type) (n : Word) (k : Word) (g : Π(x : &Slice(E, k)). Unit) (s : &Slice(E, n)) (h : Le(k, n)) :
       Id Unit (WithSplit(E, Unit, n, k, s, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => g(l)))
-        (*s := JoinS(E, n, k, (let c = TakeS(E, n, k, *s, h); g(&c); c), DropS(E, n, k, *s))) := refl
+        (*s := JoinS(E, n, k, (let c = TakeS(E, n, k, clone(*s), h); g(&c); c), DropS(E, n, k, clone(*s)))) := refl
 
   -- Stated about the rest alone, it takes one lemma, for any `g`: `g`'s result has length `k`
   -- by its type, so the rest starts where it did.
@@ -964,7 +964,7 @@ ochr ArrayBench uses ArrayLemmas {
   reject def ReadModel (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) : Word := Nth(Word, n, *s, i, h)
   -- In a statement, the model is unrestricted.
   def ReadIsNth (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) :
-      Id Word (Read(Word, n, &*s, i, h)) (Nth(Word, n, *s, i, h)) := refl
+      Id Word (Read(Word, n, &*s, i, h)) (Nth(Word, n, clone(*s), i, h)) := refl
 }
 
 -- the exact number of declarations (a truncated file changes it)
@@ -1069,21 +1069,21 @@ ochr Quicksort uses ArrayLemmas {
   -- The scan only swaps.
   def ScanPerm (n : Word) (s : &Slice(Word, n)) (p : Word) (i : Word) (j : Word) (rem : Word)
       (hij : Lt(i, j)) (hr : Eq Word (WAdd(rem, j)) n) (q : Word) :
-      (let old = *s; Eq Word (Count(q, n, (Scan(n, &*s, p, i, j, rem, hij, hr); *s))) (Count(q, n, old))) by rem := (
+      (let old = clone(*s); Eq Word (Count(q, n, (Scan(n, &*s, p, i, j, rem, hij, hr); clone(*s)))) (Count(q, n, old))) by rem := (
     match rem {
       Zero => (
         let hin : Lt(i, n) = (rewrite hr in hij);
-        CountSwap(q, n, *s, Zero, i, LeTrans(Succ(Zero), Succ(i), n, refl, hin), hin)
+        CountSwap(q, n, clone(*s), Zero, i, LeTrans(Succ(Zero), Succ(i), n, refl, hin), hin)
       ),
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
         let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
-        let x = Nth(Word, n, *s, j, hjn);
+        let x = Nth(Word, n, clone(*s), j, hjn);
         let b = Leb(x, p);
         match b {
           true => (
-            let c = SwapS(Word, n, *s, Succ(i), j, LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn), hjn);
-            rewrite CountSwap(q, n, *s, Succ(i), j, LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn), hjn) in
+            let c = SwapS(Word, n, clone(*s), Succ(i), j, LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn), hjn);
+            rewrite CountSwap(q, n, clone(*s), Succ(i), j, LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn), hjn) in
               ScanPerm(n, &c, p, Succ(i), Succ(j), r, hij, hr2, q)
           ),
           false => ScanPerm(n, s, p, i, Succ(j), r, LeStep(Succ(i), j, hij), hr2, q),
@@ -1092,40 +1092,40 @@ ochr Quicksort uses ArrayLemmas {
     }
   )
   def PartitionPerm (m : Word) (s : &Slice(Word, Succ(m))) (q : Word) :
-      (let old = *s; Eq Word (Count(q, Succ(m), (Partition(m, &*s); *s))) (Count(q, Succ(m), old))) := (
-    let p = Nth(Word, Succ(m), *s, Zero, refl);
+      (let old = clone(*s); Eq Word (Count(q, Succ(m), (Partition(m, &*s); clone(*s)))) (Count(q, Succ(m), old))) := (
+    let p = Nth(Word, Succ(m), clone(*s), Zero, refl);
     ScanPerm(Succ(m), s, p, Zero, Succ(Zero), m, refl, AddOneR(m), q)
   )
 
   -- The recursive step permutes, for any `rec` that does.
   def RecursePerm (rec : Π(n : Word) (s : &Slice(Word, n)). Unit)
-      (ih : Π(n : Word) (s : &Slice(Word, n)) (q : Word). (let old = *s; Eq Word (Count(q, n, (rec(n, &*s); *s))) (Count(q, n, old))))
+      (ih : Π(n : Word) (s : &Slice(Word, n)) (q : Word). (let old = clone(*s); Eq Word (Count(q, n, (rec(n, &*s); clone(*s)))) (Count(q, n, old))))
       (m : Word) (k : Word) (s : &Slice(Word, Succ(m))) (q : Word) :
-      (let old = *s; Eq Word (Count(q, Succ(m), (Recurse(rec, m, k, &*s); *s))) (Count(q, Succ(m), old))) := (
+      (let old = clone(*s); Eq Word (Count(q, Succ(m), (Recurse(rec, m, k, &*s); clone(*s)))) (Count(q, Succ(m), old))) := (
     let d = LeDec(k, m);
     match d {
       Yes(hk) => (
         let hk2 = LeStep(k, m, hk);
         let h1 = SubPos(m, k, hk);
         -- the pieces before, and after the two recursive calls
-        let tk = TakeS(Word, Succ(m), k, *s, hk2);
-        let r0 = DropS(Word, Succ(m), k, *s);
-        let pv = TakeS(Word, Sub(Succ(m), k), Succ(Zero), r0, h1);
-        let rr = DropS(Word, Sub(Succ(m), k), Succ(Zero), r0);
-        let l2 = (let c = tk; rec(k, &c); c);
-        let rr2 = (let c = rr; rec(Sub(Sub(Succ(m), k), Succ(Zero)), &c); c);
-        let x2 = JoinS(Word, Sub(Succ(m), k), Succ(Zero), pv, rr2);
+        let tk = TakeS(Word, Succ(m), k, clone(*s), hk2);
+        let r0 = DropS(Word, Succ(m), k, clone(*s));
+        let pv = TakeS(Word, Sub(Succ(m), k), Succ(Zero), clone(r0), h1);
+        let rr = DropS(Word, Sub(Succ(m), k), Succ(Zero), clone(r0));
+        let l2 = (let c = clone(tk); rec(k, &c); c);
+        let rr2 = (let c = clone(rr); rec(Sub(Sub(Succ(m), k), Succ(Zero)), &c); c);
+        let x2 = JoinS(Word, Sub(Succ(m), k), Succ(Zero), clone(pv), clone(rr2));
         -- the left part: the recursive call permutes it
         rewrite ← CountJoin(q, Succ(m), k, l2, x2, hk2) in
-        rewrite ← (let c = tk; ih(k, &c, q)) in
+        rewrite ← (let c = clone(tk); ih(k, &c, q)) in
         -- the right part: the pivot is untouched and the recursive call permutes the rest
         rewrite ← CountJoin(q, Sub(Succ(m), k), Succ(Zero), pv, rr2, h1) in
-        rewrite ← (let c = rr; ih(Sub(Sub(Succ(m), k), Succ(Zero)), &c, q)) in
+        rewrite ← (let c = clone(rr); ih(Sub(Sub(Succ(m), k), Succ(Zero)), &c, q)) in
         rewrite CountJoin(q, Sub(Succ(m), k), Succ(Zero), pv, rr, h1) in
         rewrite ← JoinTakeDrop(Word, Sub(Succ(m), k), Succ(Zero), r0, h1) in
         -- and the two parts are the view, split
         rewrite CountJoin(q, Succ(m), k, tk, r0, hk2) in
-        rewrite ← JoinTakeDrop(Word, Succ(m), k, *s, hk2) in refl
+        rewrite ← JoinTakeDrop(Word, Succ(m), k, clone(*s), hk2) in refl
       ),
       No(nk) => refl,
     }
@@ -1142,18 +1142,18 @@ ochr Quicksort uses ArrayLemmas {
 
   -- Quicksort permutes its view: every count is unchanged.
   def QSPerm (fuel : Word) (n : Word) (s : &Slice(Word, n)) (q : Word) :
-      (let old = *s; Eq Word (Count(q, n, (QS(fuel, n, &*s); *s))) (Count(q, n, old))) by fuel := (
+      (let old = clone(*s); Eq Word (Count(q, n, (QS(fuel, n, &*s); clone(*s)))) (Count(q, n, old))) by fuel := (
     match fuel {
       Zero => refl,
       Succ(f) => match n {
         Zero => refl,
         Succ(m) => (
           let rec = RecWith(QS, fuel);
-          let c = *s;
+          let c = clone(*s);
           let k = Partition(m, &c);
           let e1 = RecursePerm(rec,
             λ(n2 : Word) (s2 : &Slice(Word, n2)) (q2 : Word) :
-                (let old = *s2; Eq Word (Count(q2, n2, (QS(f, n2, &*s2); *s2))) (Count(q2, n2, old))) =>
+                (let old = clone(*s2); Eq Word (Count(q2, n2, (QS(f, n2, &*s2); clone(*s2)))) (Count(q2, n2, old))) =>
               QSPerm(f, n2, s2, q2),
             m, k, &c, q);
           rewrite PartitionPerm(m, s, q) in e1
@@ -1428,34 +1428,34 @@ ochr Quicksort uses ArrayLemmas {
   -- ends at `k`; everything before is at most `x`, everything after at least `x`) and a
   -- `rec` that sorts and permutes views no longer than `m`.
   def RecurseSorted (m : Word) (rec : Π(n : Word) (s : &Slice(Word, n)). Unit)
-      (ihS : Π(n : Word) (s : &Slice(Word, n)) (hn : Le(n, m)). (let c = *s; rec(n, &c); Sorted(n, c)))
-      (ihP : Π(n : Word) (s : &Slice(Word, n)) (q : Word). (let old = *s; Eq Word (Count(q, n, (rec(n, &*s); *s))) (Count(q, n, old))))
+      (ihS : Π(n : Word) (s : &Slice(Word, n)) (hn : Le(n, m)). (let c = clone(*s); rec(n, &c); Sorted(n, c)))
+      (ihP : Π(n : Word) (s : &Slice(Word, n)) (q : Word). (let old = clone(*s); Eq Word (Count(q, n, (rec(n, &*s); clone(*s)))) (Count(q, n, old))))
       (k : Word) (hk : Le(k, m)) (x : Word) (s : &Slice(Word, Succ(m)))
-      (hL : AllLe(k, TakeS(Word, Succ(m), k, *s, LeStep(k, m, hk)), x))
-      (hP : Eq (Slice(Word, Succ(Zero))) (MkSlice(MkC(x, MkSlice(End)))) (TakeS(Word, Sub(Succ(m), k), Succ(Zero), DropS(Word, Succ(m), k, *s), SubPos(m, k, hk))))
-      (hR : AllGe(Sub(Sub(Succ(m), k), Succ(Zero)), DropS(Word, Sub(Succ(m), k), Succ(Zero), DropS(Word, Succ(m), k, *s)), x)) :
-      (let c = *s; Recurse(rec, m, k, &c); Sorted(Succ(m), c)) := (
+      (hL : AllLe(k, TakeS(Word, Succ(m), k, clone(*s), LeStep(k, m, hk)), x))
+      (hP : Eq (Slice(Word, Succ(Zero))) (MkSlice(MkC(x, MkSlice(End)))) (TakeS(Word, Sub(Succ(m), k), Succ(Zero), DropS(Word, Succ(m), k, clone(*s)), SubPos(m, k, hk))))
+      (hR : AllGe(Sub(Sub(Succ(m), k), Succ(Zero)), DropS(Word, Sub(Succ(m), k), Succ(Zero), DropS(Word, Succ(m), k, clone(*s))), x)) :
+      (let c = clone(*s); Recurse(rec, m, k, &c); Sorted(Succ(m), c)) := (
     let d = LeDec(k, m);
     match d {
       Yes(hk3) => (
         let hk2 = LeStep(k, m, hk);
         let h1 = SubPos(m, k, hk);
-        let tk = TakeS(Word, Succ(m), k, *s, hk2);
-        let r0 = DropS(Word, Succ(m), k, *s);
-        let pv = TakeS(Word, Sub(Succ(m), k), Succ(Zero), r0, h1);
-        let rr = DropS(Word, Sub(Succ(m), k), Succ(Zero), r0);
-        let l2 = (let c = tk; rec(k, &c); c);
-        let rr2 = (let c = rr; rec(Sub(Sub(Succ(m), k), Succ(Zero)), &c); c);
-        let x2 = JoinS(Word, Sub(Succ(m), k), Succ(Zero), pv, rr2);
+        let tk = TakeS(Word, Succ(m), k, clone(*s), hk2);
+        let r0 = DropS(Word, Succ(m), k, clone(*s));
+        let pv = TakeS(Word, Sub(Succ(m), k), Succ(Zero), clone(r0), h1);
+        let rr = DropS(Word, Sub(Succ(m), k), Succ(Zero), clone(r0));
+        let l2 = (let c = clone(tk); rec(k, &c); c);
+        let rr2 = (let c = clone(rr); rec(Sub(Sub(Succ(m), k), Succ(Zero)), &c); c);
+        let x2 = JoinS(Word, Sub(Succ(m), k), Succ(Zero), clone(pv), clone(rr2));
         -- the left part: sorted by `rec`, and still at most `x` because `rec` permutes
-        let sl2 : Sorted(k, l2) = (let c = tk; ihS(k, &c, hk));
+        let sl2 : Sorted(k, l2) = (let c = clone(tk); ihS(k, &c, hk));
         let bl2 : AllLe(k, l2, x) = AllLePerm(k, tk, l2, x, hL,
-          λ(q : Word) : Eq Word (Count(q, k, l2)) (Count(q, k, tk)) => (let c = tk; ihP(k, &c, q)));
+          λ(q : Word) : Eq Word (Count(q, k, l2)) (Count(q, k, tk)) => (let c = clone(tk); ihP(k, &c, q)));
         -- the right part: likewise, at least `x`
-        let srr2 : Sorted(Sub(Sub(Succ(m), k), Succ(Zero)), rr2) = (let c = rr; ihS(Sub(Sub(Succ(m), k), Succ(Zero)), &c, SubOneLe(m, k)));
+        let srr2 : Sorted(Sub(Sub(Succ(m), k), Succ(Zero)), rr2) = (let c = clone(rr); ihS(Sub(Sub(Succ(m), k), Succ(Zero)), &c, SubOneLe(m, k)));
         let brr2 : AllGe(Sub(Sub(Succ(m), k), Succ(Zero)), rr2, x) = AllGePerm(Sub(Sub(Succ(m), k), Succ(Zero)), rr, rr2, x, hR,
           λ(q : Word) : Eq Word (Count(q, Sub(Sub(Succ(m), k), Succ(Zero)), rr2)) (Count(q, Sub(Sub(Succ(m), k), Succ(Zero)), rr)) =>
-            (let c = rr; ihP(Sub(Sub(Succ(m), k), Succ(Zero)), &c, q)));
+            (let c = clone(rr); ihP(Sub(Sub(Succ(m), k), Succ(Zero)), &c, q)));
         -- the pivot piece is `[x]`
         let spv : Sorted(Succ(Zero), pv) = (rewrite hP in refl);
         let lpv : AllLe(Succ(Zero), pv, x) = (rewrite hP in ⟨LeRefl(x), refl⟩);
@@ -1490,16 +1490,16 @@ ochr Quicksort uses ArrayLemmas {
   def PartLe (m : Word) (v : Slice(Word, Succ(m))) : Prop := Le(PartK(m, v), m)
 
   def PartLeft (m : Word) (v : Slice(Word, Succ(m))) (hk : PartLe(m, v)) : Prop := (
-    AllLe(PartK(m, v), TakeS(Word, Succ(m), PartK(m, v), PartV(m, v), LeStep(PartK(m, v), m, hk)), Nth(Word, Succ(m), v, Zero, refl))
+    AllLe(PartK(m, v), TakeS(Word, Succ(m), PartK(m, clone(v)), PartV(m, clone(v)), LeStep(PartK(m, v), m, hk)), Nth(Word, Succ(m), v, Zero, refl))
   )
 
   def PartPivot (m : Word) (v : Slice(Word, Succ(m))) (hk : PartLe(m, v)) : Prop := (
     Eq (Slice(Word, Succ(Zero))) (MkSlice(MkC(Nth(Word, Succ(m), v, Zero, refl), MkSlice(End))))
-      (TakeS(Word, Sub(Succ(m), PartK(m, v)), Succ(Zero), DropS(Word, Succ(m), PartK(m, v), PartV(m, v)), SubPos(m, PartK(m, v), hk)))
+      (TakeS(Word, Sub(Succ(m), PartK(m, clone(v))), Succ(Zero), DropS(Word, Succ(m), PartK(m, clone(v)), PartV(m, clone(v))), SubPos(m, PartK(m, v), hk)))
   )
 
   def PartRight (m : Word) (v : Slice(Word, Succ(m))) (hk : PartLe(m, v)) : Prop := (
-    AllGe(Sub(Sub(Succ(m), PartK(m, v)), Succ(Zero)), DropS(Word, Sub(Succ(m), PartK(m, v)), Succ(Zero), DropS(Word, Succ(m), PartK(m, v), PartV(m, v))),
+    AllGe(Sub(Sub(Succ(m), PartK(m, v)), Succ(Zero)), DropS(Word, Sub(Succ(m), PartK(m, clone(v))), Succ(Zero), DropS(Word, Succ(m), PartK(m, clone(v)), PartV(m, v))),
       Nth(Word, Succ(m), v, Zero, refl))
   )
 
@@ -1509,7 +1509,7 @@ ochr Quicksort uses ArrayLemmas {
       (specP : Π(m : Word) (v : Slice(Word, Succ(m))) (hk : PartLe(m, v)). PartPivot(m, v, hk))
       (specR : Π(m : Word) (v : Slice(Word, Succ(m))) (hk : PartLe(m, v)). PartRight(m, v, hk))
       (fuel : Word) (n : Word) (s : &Slice(Word, n)) (hf : Le(n, fuel)) :
-      (let c = *s; QS(fuel, n, &c); Sorted(n, c)) by fuel := (
+      (let c = clone(*s); QS(fuel, n, &c); Sorted(n, c)) by fuel := (
     match fuel {
       Zero => match n {
         Zero => refl,
@@ -1519,15 +1519,15 @@ ochr Quicksort uses ArrayLemmas {
         Zero => refl,
         Succ(m) => (
           let rec = RecWith(QS, fuel);
-          let v = *s;
+          let v = clone(*s);
           let hk = specLe(m, v);
-          let c = *s;
+          let c = clone(*s);
           let k = Partition(m, &c);
           RecurseSorted(m, rec,
-            λ(n2 : Word) (s2 : &Slice(Word, n2)) (hn : Le(n2, m)) : (let c2 = *s2; QS(f, n2, &c2); Sorted(n2, c2)) =>
+            λ(n2 : Word) (s2 : &Slice(Word, n2)) (hn : Le(n2, m)) : (let c2 = clone(*s2); QS(f, n2, &c2); Sorted(n2, c2)) =>
               QSSorted(specLe, specL, specP, specR, f, n2, s2, LeTrans(n2, m, f, hn, hf)),
             λ(n2 : Word) (s2 : &Slice(Word, n2)) (q2 : Word) :
-                (let old = *s2; Eq Word (Count(q2, n2, (QS(f, n2, &*s2); *s2))) (Count(q2, n2, old))) =>
+                (let old = clone(*s2); Eq Word (Count(q2, n2, (QS(f, n2, &*s2); clone(*s2)))) (Count(q2, n2, old))) =>
               QSPerm(f, n2, s2, q2),
             k, hk, Nth(Word, Succ(m), v, Zero, refl), &c, specL(m, v, hk), specP(m, v, hk), specR(m, v, hk))
         ),
@@ -1609,7 +1609,7 @@ ochr Quicksort uses ArrayLemmas {
   -- ## Reading a swapped view
   def NthSwapB (n : Word) (c : Slice(Word, n)) (a : Word) (b : Word) (ha : Lt(a, n)) (hb : Lt(b, n)) :
       Eq Word (Nth(Word, n, SwapS(Word, n, c, a, b, ha, hb), b, hb)) (Nth(Word, n, c, a, ha)) := (
-    NthSetSame(Word, n, SetS(Word, n, c, a, Nth(Word, n, c, b, hb)), b, Nth(Word, n, c, a, ha), hb)
+    NthSetSame(Word, n, SetS(Word, n, clone(c), a, Nth(Word, n, c, b, hb)), b, Nth(Word, n, c, a, ha), hb)
   )
 
   def NthSwapA (n : Word) (c : Slice(Word, n)) (a : Word) (b : Word) (ha : Lt(a, n)) (hb : Lt(b, n)) :
@@ -1636,7 +1636,7 @@ ochr Quicksort uses ArrayLemmas {
   def NthSwapOther (n : Word) (c : Slice(Word, n)) (a : Word) (b : Word) (t : Word) (ha : Lt(a, n)) (hb : Lt(b, n))
       (ht : Lt(t, n)) (na : Π(e : Eq Word a t). False) (nb : Π(e : Eq Word b t). False) :
       Eq Word (Nth(Word, n, SwapS(Word, n, c, a, b, ha, hb), t, ht)) (Nth(Word, n, c, t, ht)) := (
-    rewrite ← NthSetOther(Word, n, SetS(Word, n, c, a, Nth(Word, n, c, b, hb)), b, t, Nth(Word, n, c, a, ha), hb, ht, nb) in
+    rewrite ← NthSetOther(Word, n, SetS(Word, n, clone(c), a, Nth(Word, n, c, b, hb)), b, t, Nth(Word, n, c, a, ha), hb, ht, nb) in
       NthSetOther(Word, n, c, a, t, Nth(Word, n, c, b, hb), ha, ht, na)
   )
 
@@ -1830,7 +1830,7 @@ ochr Quicksort uses ArrayLemmas {
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
         let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
-        let x = Nth(Word, n, v, j, hjn);
+        let x = Nth(Word, n, clone(v), j, hjn);
         let b = Leb(x, p);
         match b {
           true => ScanLt(n, SwapS(Word, n, v, Succ(i), j, LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn), hjn), p, Succ(i), Succ(j), r, hij, hr2),
@@ -1843,7 +1843,7 @@ ochr Quicksort uses ArrayLemmas {
   def ScanPivot (n : Word) (v : Slice(Word, n)) (p : Word) (i : Word) (j : Word) (rem : Word) (hij : Lt(i, j))
       (hr : Eq Word (WAdd(rem, j)) n) (j0 : Π(h0 : Lt(Zero, n)). Eq Word (Nth(Word, n, v, Zero, h0)) p)
       (hk : Lt(ScanK(n, v, p, i, j, rem, hij, hr), n)) :
-      Eq Word (Nth(Word, n, ScanV(n, v, p, i, j, rem, hij, hr), ScanK(n, v, p, i, j, rem, hij, hr), hk)) p by rem := (
+      Eq Word (Nth(Word, n, ScanV(n, clone(v), p, i, j, rem, hij, hr), ScanK(n, v, p, i, j, rem, hij, hr), hk)) p by rem := (
     match rem {
       Zero => (
         let hin : Lt(i, n) = (rewrite hr in hij);
@@ -1853,12 +1853,12 @@ ochr Quicksort uses ArrayLemmas {
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
         let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
-        let x = Nth(Word, n, v, j, hjn);
+        let x = Nth(Word, n, clone(v), j, hjn);
         let b = Leb(x, p);
         match b {
           true => (
             let hsi : Lt(Succ(i), n) = LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn);
-            let c2 = SwapS(Word, n, v, Succ(i), j, hsi, hjn);
+            let c2 = SwapS(Word, n, clone(v), Succ(i), j, hsi, hjn);
             ScanPivot(n, c2, p, Succ(i), Succ(j), r, hij, hr2,
               λ(h0 : Lt(Zero, n)) : Eq Word (Nth(Word, n, c2, Zero, h0)) p => StepJ0(n, v, p, i, j, hsi, hjn, hij, j0, h0), hk)
           ),
@@ -1882,13 +1882,13 @@ ochr Quicksort uses ArrayLemmas {
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
         let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
-        let x = Nth(Word, n, v, j, hjn);
+        let x = Nth(Word, n, clone(v), j, hjn);
         let b = Leb(x, p);
         match b {
           true => (
             let hsi : Lt(Succ(i), n) = LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn);
             let hx : Le(x, p) = LebLe(x, p, refl);
-            let c2 = SwapS(Word, n, v, Succ(i), j, hsi, hjn);
+            let c2 = SwapS(Word, n, clone(v), Succ(i), j, hsi, hjn);
             ScanLeft(n, c2, p, Succ(i), Succ(j), r, hij, hr2,
               λ(t2 : Word) (ht2 : Lt(t2, n)) (a : Lt(Zero, t2)) (b2 : Le(t2, Succ(i))) : Le(Nth(Word, n, c2, t2, ht2), p) =>
                 StepJ1(n, v, p, i, j, hsi, hjn, hij, j1, hx, t2, ht2, a, b2),
@@ -1914,12 +1914,12 @@ ochr Quicksort uses ArrayLemmas {
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
         let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
-        let x = Nth(Word, n, v, j, hjn);
+        let x = Nth(Word, n, clone(v), j, hjn);
         let b = Leb(x, p);
         match b {
           true => (
             let hsi : Lt(Succ(i), n) = LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn);
-            let c2 = SwapS(Word, n, v, Succ(i), j, hsi, hjn);
+            let c2 = SwapS(Word, n, clone(v), Succ(i), j, hsi, hjn);
             ScanRight(n, c2, p, Succ(i), Succ(j), r, hij, hr2,
               λ(t2 : Word) (ht2 : Lt(t2, n)) (a : Lt(Succ(i), t2)) (b2 : Lt(t2, Succ(j))) : Lt(p, Nth(Word, n, c2, t2, ht2)) =>
                 StepJ2(n, v, p, i, j, hsi, hjn, hij, j2, t2, ht2, a, b2),
@@ -1993,8 +1993,8 @@ ochr Quicksort uses ArrayLemmas {
 
   -- Quicksort is correct: its result is sorted and a permutation of its input.
   def QSCorrect (n : Word) (s : &Slice(Word, n)) (q : Word) :
-      (let c = *s; QS(n, n, &c); Sorted(n, c)) ∧
-        (let old = *s; Eq Word (Count(q, n, (QS(n, n, &*s); *s))) (Count(q, n, old))) := (
+      (let c = clone(*s); QS(n, n, &c); Sorted(n, c)) ∧
+        (let old = clone(*s); Eq Word (Count(q, n, (QS(n, n, &*s); clone(*s)))) (Count(q, n, old))) := (
     ⟨QSSortedFull(n, n, s, LeRefl(n)), QSPerm(n, n, s, q)⟩
   )
 }

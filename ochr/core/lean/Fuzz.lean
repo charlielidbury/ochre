@@ -48,7 +48,6 @@ def switchCfg (c : Config) : String → Option Config
   | "D48.3" | "piUnder" => some { c with piUnder := false }
   | "D49.3" | "proofDataFields" => some { c with proofDataFields := false }
   | "D52" | "injective" => some { c with injective := false }
-  | "ghosts" | "D53c" => some { c with ghosts := false }     -- D53 (c): a move leaves a ghost erased terms read
   | "fnRule" | "D53e" => some { c with fnRule := false }     -- D53 (e): calls do not consume their function
   | "D54" | "classInType" => some { c with classInType := false }
   | "D55" | "sortsSyntactic" => some { c with sortsSyntactic := false }

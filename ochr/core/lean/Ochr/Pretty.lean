@@ -116,7 +116,6 @@ partial def Value.pp : Value → String
   | .borrow l v => s!"borrow_{l} {v.ppArg}"
   | .loan l => s!"loan_{l}"
   | .bot => "⊥"
-  | .ghost _ => "⊥"
   | .abs s => s!"σ{s}"
   | .sealed t => s!"⌈{t.pp []}⌉"
   | .proof => "⋆"
@@ -135,7 +134,7 @@ partial def Value.pp : Value → String
 
 partial def Value.ppArg (v : Value) : String :=
   match v with
-  | .zero | .unit | .gfn _ | .loan _ | .bot | .ghost _ | .abs _ | .sealed _ | .proof | .tNat | .tUnit
+  | .zero | .unit | .gfn _ | .loan _ | .bot | .abs _ | .sealed _ | .proof | .tNat | .tUnit
   | .sort _ | .ind _ _ _ _ _ => v.pp
   | .tInd "And" [_, _] | .tInd "Pair" [_, _] => s!"({v.pp})"
   | .tInd _ _ => v.pp

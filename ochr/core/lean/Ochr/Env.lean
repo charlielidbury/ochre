@@ -172,7 +172,7 @@ structure Config where
   borrowUniverse : Bool := true  -- D66: that test is `A : Type₀` (off: D48 (1)'s old test, A is data)
   propUp : Bool := true          -- D66: `Prop : Type₁`, beside `Type₀` (off: `Prop : Type₀`)
   eqSidesApart : Bool := true    -- each side of `Eq` runs on its own private copy (off: both sides share one copy)
-  erasedMoves : Bool := false    -- viability (one mental model): reads in erased terms move as at runtime; no ghost reads
+  erasedMoves : Bool := true     -- D68 (one mental model): reads in statements move as at runtime (off: they copy)
   injective : Bool := true      -- D52: Eq on two values of one constructor is the conjunction over its fields
   refTop : Bool := true          -- D48 (2): `&` only at the top of a declared type, never produced by computation
   sortsSyntactic : Bool := true  -- D55: a term written where a type is expected has a declared type that is syntactically a sort
@@ -194,7 +194,6 @@ structure Config where
   k4Nest : Bool := true          -- K4's nesting condition: a parameter an inductive passes to a type function
                                  -- is not nestable (the type being declared may not appear there)
   dropEndsBound : Bool := true   -- D65 amended: [Drop] of a lent place ends only borrowers held in bindings; one in flight is an error (off: pure D65, it ends every borrower)
-  ghosts : Bool := true          -- D53 (c): a move leaves a ghost of the value, which erased terms still read
   fnRule : Bool := true          -- D53 (e): a call does not consume its function; a closure is copy iff its captures are, and its body may not move them out
   unitNorm : Bool := false       -- counterfactual D50: the unit laws normalise stored types (v2.0 as first built)
   piUnder : Bool := true         -- D48 (3): Π-types are compared under their binders, at generic values
@@ -213,7 +212,7 @@ def Config.sortSucc (c : Config) (l : Nat) : Nat := if l == 0 && c.propUp then 2
 they stand; a counterfactual run switches a rule off and measures that alone. D53's switches
 do not change what is erased, so their counterfactual runs are checked too. -/
 def Config.prePassAssert (c : Config) : Bool :=
-  c.prePass && { c with trace := false, derivation := false, ghosts := true, fnRule := true } == ({} : Config)
+  c.prePass && { c with trace := false, derivation := false, fnRule := true } == ({} : Config)
 
 /-- D41: one assignment, borrow or move, by the position of its place's root. It is
 `pending` once an erased run it belongs to has affected a place outliving that run: an

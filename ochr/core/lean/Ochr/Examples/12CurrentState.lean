@@ -48,11 +48,13 @@ ochr CurrentState uses Std {
     }
   )
 
-  -- A proof made from the copy `old`, about the changed `*x`.
+  -- A proof made from the copy `old`, about the changed `*x`. Passing `old` and `y` moves them,
+  -- and the proof reads both, so the earlier uses take clones (D68: a statement reads like any
+  -- code).
   def AddSub (x : &Nat) (y : Nat) : Unit := (
     let old = clone(*x);
-    AddM(&*x, y);
-    SubM(x, old, LeAdd(old, y))
+    AddM(&*x, clone(y));
+    SubM(x, clone(old), LeAdd(old, y))
   )
 
   -- Adding `y` and then subtracting the old `*x` leaves `y` in `*x`. The induction hypothesis
@@ -61,7 +63,7 @@ ochr CurrentState uses Std {
     match *x {
       Z => refl,
       S p => (
-        let c = p;
+        let c = clone(p);
         AddSubId(&c, y)
       ),
     }
