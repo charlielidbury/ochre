@@ -134,7 +134,7 @@ ochr SweepInline uses Std, Fixtures {
 -- fields in either order
 ochr SweepDep uses ArrayBench {
   inductive Vec (E : Type) := MkVec(n : Word, items : Array(E, n))
-  def Two : Array(Word, W(2)) := ArrPush(Word, Succ(Zero), ArrPush(Word, Zero, ArrEmpty(Word), Zero), Succ(Zero))
+  def Two : Array(Word, W(2)) := [Zero, Succ(Zero)]
   def SetTwo (v : &Vec(Word)) : Unit := match *v { MkVec(n, items) => (n := W(2); items := Two) }
   def SetTwoRev (v : &Vec(Word)) : Unit := match *v { MkVec(n, items) => (items := Two; n := W(2)) }
 }

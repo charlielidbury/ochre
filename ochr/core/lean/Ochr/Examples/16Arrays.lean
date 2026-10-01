@@ -1261,7 +1261,7 @@ ochr ArrayBench uses ArrayLemmas {
 
   -- ## The abstraction is enforced (K2, K3)
   -- `SliceOf` is `unsized abstract`, `Cell`, `CellsEnd` and `ArrayOf` are `abstract`, and the
-  -- six natives are `implemented by` native code. Outside model code (their bodies, and
+  -- five natives are `implemented by` native code. Outside model code (their bodies, and
   -- the model functions, which take or return a view by value and so never run at runtime),
   -- runtime code never reads, moves, assigns or matches a view, and never builds or takes
   -- apart the representation. reviewer-7's three programs bypassed the natives: `Suffix`
