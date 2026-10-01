@@ -94,3 +94,22 @@ Write all new code in call form, with no `.1`/`.2` projections. Whoever lands se
 Then land 6 separately. Pin heavy commands to cores 0-14 (`taskset -c 0-14`). Run one `lake build` at a time.
 
 Scratch checks by the lead: `/home/charlielidbury/.claude/jobs/16809284/tmp/book/TG.lean`. It contains a generic `GetMutG` (native), `UseG`, a generic `GetMutSetG`, `SwapRefs`, `SwapLt`, a concrete `SwapRun` that swaps `[4, 9]` and reads `9`, and `TwoGetMut`, which is rejected because the second `GetMut` ends the first.
+
+## 7. `Array` is fixed size; `Vec` is user code (user ruling, 2026-10-01)
+
+The user's ruling: "the runtime representation of Array will be like Rusts [T; n]. It will not be Vec<T>. Array is used to implement Vec, it is the constant sized primitive. This means pop and push are NOT available." And: "Vec should not be a primitive (this is a hard requirement). If Vec cannot be made user-land then Array needs fixing." Also: "Replicate(E, n, x) shouldn't _need_ to be native."
+
+The design, option A:
+- **Remove `ArrPush` and `ArrPop`.** Migrate every use: `Replicate`, `Vec` and the tests in 18DependentFields, the quicksort benchmark tests (`gen_tests.py`), the GUIDE's `BumpRun`, `Two`, the paper sweep, book §9, `sandbox.py`, the notes, `docs/06`, and the paper's list of primitives.
+- **One allocation native, `ArrFromFn(E, n, f : Π(i : Word). E) : Array(E, n)`.** It is Rust's `array::from_fn`: it allocates `n` cells and fills cell `i` with `f(i)`. Its model is the recursion on `n`. `ArrEmpty` becomes `ArrFromFn(E, Zero, …)`, or the literal `[]`.
+- **`Replicate` in Ochr, not native:** `ArrFromFn(E, n, λ(i : Word) : E => clone(x))`.
+- **Array literals.** `[a, b, c] : Array(E, W(3))` is a surface form. It is primitive, as Rust's array literal is, and its model is the `Cells` value, so lemmas fire by evaluation. Choose the simplest sound implementation (for example, an elaboration to a dedicated literal native), and report what it is and whether it adds to the native count. Use literals for the quicksort benchmark tests and every other concrete test array.
+- **`Vec` as user code over `Array`:** `MkVec(len, cap, buf : Array(Opt(E), cap), …)` with proof fields saying that cells below `len` are `Some` and cells from `len` on are `None`, and `len ≤ cap`.
+  - Push writes `Some(x)` into cell `len` through `GetMut`. When `len = cap`, it allocates `ArrFromFn(Opt(E), 2·cap + 1, λ…. None)`, moves the elements across (take each cell by replacing it with `None`), and drops the old buffer.
+  - Pop takes cell `len - 1`.
+  - Get returns `&E` from `GetMut` on the cell, with the `None` arm ruled out by the invariant.
+  - This keeps the dependent-fields showcase (`buf`'s type depends on `cap`; the proof fields depend on `len` and `buf`).
+  - Write lemmas for push, pop and get in the same style as the rest of 18DependentFields.
+- **The cost of A** is one tag per cell at runtime. If that ever matters, the fix belongs in `Array`'s element types (a tag-free uninitialised cell type whose model is `Opt(E)`, like Rust's `MaybeUninit`), not in `Vec`. Note that in your report; don't build it.
+
+The natives would then be `AsSlice`, `GetMut`, `WithSplit` and `ArrFromFn`, plus `Set`/`Swap` if §3's measurement keeps them, plus any literal native. Land §7 together with 1–5, or as its own FF-CAS landing right after them, under the same acceptance.
