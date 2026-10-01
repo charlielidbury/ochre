@@ -1953,9 +1953,13 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
       | _ => none
     pure (r, R)
   | .eq A a b => onCopy <| withErased do
+    -- each side is a statement position: it runs on its own private copy of the state, so
+    -- its effects are visible to the rest of that side and to nothing else (one copy per side;
+    -- switch `eqSidesApart` off: both sides share one copy, the right seeing the left's writes)
+    let apart := (← get).cfg.eqSidesApart
     let A' ← evalType A
-    let (va, Ta) ← eval typed a
-    let (vb, Tb) ← eval typed b
+    let (va, Ta) ← onCopyIf apart (eval typed a)
+    let (vb, Tb) ← onCopyIf apart (eval typed b)
     expectTy "the left side of Eq" Ta A'
     expectTy "the right side of Eq" Tb A'
     pure (← mkEqM A' va vb, some (.sort 0))

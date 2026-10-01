@@ -483,3 +483,10 @@ open Ochr.Registry in
 -- every row of `switches` has a class
 open Ochr.Registry in
 #guard rowClass.length == switches.length
+-- the sides of Eq on one shared copy (as before): the right side sees the left side's writes,
+-- so `SideShared`, false at `*x = 5`, is proved by `refl`, and a side that mutates `*x` and
+-- reads it back no longer matches the other side's view
+open Ochr.Registry in
+#guard rowOk { eqSidesApart := false }
+  ["Equality.EffInSide:rejected", "Equality.AddMInSide:rejected", "Equality.SideOld:rejected",
+   "Equality.SideShared:accepted"]

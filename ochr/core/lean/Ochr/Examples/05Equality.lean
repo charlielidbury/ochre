@@ -169,10 +169,21 @@ ochr Equality uses Std {
   -- The earlier checker observed untyped there, so `FId(n, x)` was the stuck ⌈FId(σ0, σ1)⌉.
   def FId (n : Nat) (x : Nat) : Prop := Id Nat (match n { Z => x, S _ => x }) x
   def Conv1 (n : Nat) (x : Nat) (h : Id Nat (match n { Z => x, S _ => x }) x) : FId(n, x) := h
+
+  -- Each side of `Eq` runs on its own private copy of the state, by the ordinary rules: a
+  -- write in a side is seen by the rest of that side, and by nothing else; the other side
+  -- starts from the state as it was (switch `eqSidesApart`). So mutating `*x` inside a side
+  -- states what the mutated value is ...
+  def EffInSide (x : &Nat) : Eq Nat (*x := S(*x); *x) (S(*x)) := refl
+  def AddMInSide (x : &Nat) : Eq Nat (AddM(&*x, 1); *x) (Add(*x, 1)) := refl
+  -- ... the right side does not see the left side's write ...
+  def SideOld (x : &Nat) : Eq Nat (let c = *x; *x := 7; c) (*x) := refl
+  -- ... so this is not provable: at `*x = 5` the left side is 1 and the right side is 6.
+  reject def SideShared (x : &Nat) : Eq Nat (*x := 0; 1) (S(*x)) := refl
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard Equality.decls.length == 36
+#guard Equality.decls.length == 40
 
 /-! ## Rewriting
 

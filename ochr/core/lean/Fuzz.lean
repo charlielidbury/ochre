@@ -59,6 +59,7 @@ def switchCfg (c : Config) : String → Option Config
   | "K2" | "unsizedTypes" => some { c with unsizedTypes := false }
   | "borrowUniverse" => some { c with borrowUniverse := false }
   | "propUp" => some { c with propUp := false }
+  | "eqSidesApart" => some { c with eqSidesApart := false }
   | "D65" | "dropEndsBound" => some { c with dropEndsBound := false }
   | "D50on" | "unitNorm" => some { c with unitNorm := true }          -- switched ON (a counterfactual)
   | "confineBodies" => some { c with confineBodies := true }          -- switched ON (an extension)

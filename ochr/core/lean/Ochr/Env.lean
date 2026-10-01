@@ -171,6 +171,7 @@ structure Config where
   refData : Bool := true         -- D48 (1), D66: `&A` only for `A : Type₀` (off: any A)
   borrowUniverse : Bool := true  -- D66: that test is `A : Type₀` (off: D48 (1)'s old test, A is data)
   propUp : Bool := true          -- D66: `Prop : Type₁`, beside `Type₀` (off: `Prop : Type₀`)
+  eqSidesApart : Bool := true    -- each side of `Eq` runs on its own private copy (off: both sides share one copy)
   injective : Bool := true      -- D52: Eq on two values of one constructor is the conjunction over its fields
   refTop : Bool := true          -- D48 (2): `&` only at the top of a declared type, never produced by computation
   sortsSyntactic : Bool := true  -- D55: a term written where a type is expected has a declared type that is syntactically a sort
@@ -362,6 +363,8 @@ def onCopy {α : Type} (x : M α) : M α := do
   let r ← tryCatch x (fun e => do restoreKeep saved; throw e)
   restoreKeep saved
   pure r
+
+def onCopyIf {α : Type} (b : Bool) (x : M α) : M α := if b then onCopy x else x
 
 def trace (msg : Unit → String) : M Unit := do
   if (← get).cfg.trace then modifyThe (Array LogEntry) (·.push (.line (msg ())))

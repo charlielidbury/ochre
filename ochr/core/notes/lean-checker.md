@@ -1504,3 +1504,9 @@ The `unitEta` row (D59) gains `Numbers.UnitStill:rejected`. 1277 verdicts.
 *Ledger:* a new row, `reborrowSurvives`, class completeness. It flips the nine accepted declarations to rejected. The D19 row also flips `PassWhileReborrowed` to accepted: with D19 off, a read does not end the loans inside. `fire .Access` tags [Access], and RuleGuard's `fired` lists it.
 
 1290 verdicts.
+
+## 55. Each side of `Eq` on its own copy
+
+Both sides of `Eq` ran inside one private copy, so the right side saw the left side's writes: `Eq Nat (let c = *x; *x := 7; c) (*x)` compared σ0 with 7. Now each side runs on its own copy (`onCopyIf`), by the ordinary rules: a write in a side is visible to the rest of that side and to nothing else. Mutating `*x` inside a side states what the mutated value is: `EffInSide`, `Eq Nat (*x := S(*x); *x) (S(*x))`, and `AddMInSide`.
+
+Switch `eqSidesApart`; ledger row class model, witness `SideShared`, which is `Eq Nat (*x := 0; 1) (S(*x))`. It is proved by `refl` on a shared copy and is false at `*x = 5`. With the switch off, `EffInSide`, `AddMInSide` and `SideOld` are rejected. 1295 verdicts.
