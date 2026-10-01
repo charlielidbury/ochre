@@ -2,13 +2,13 @@ import Ochr.Examples.«16Arrays»
 
 /-! # 18. Dependent fields
 
-A field's type may mention the fields before it (docs/06, D64): `MkVec(n : Word, items :
-Array(E, n))` stores a length next to an array of that length. The field types are a
-telescope ([Ind]), and a field's type is computed from the earlier fields' current contents
-(`type(p.items) = Array(E, content(p.n))`).
+A field's type may mention the fields before it (docs/06, D64): `MkVec(len : Word, cap : Word,
+buf : Array(Opt(E), cap), hl : Le(len, cap))` stores a capacity next to an array of that many
+cells, and a proof about both. The field types are a telescope ([Ind]), and a field's type is
+computed from the earlier fields' current contents (`type(p.buf) = Array(Opt(E), content(p.cap))`).
 
 Fields can be written in place, so a write can break the dependency for a while: after
-`n := Succ(n)`, `items` is still an array of the old length. The value is then *open*: each
+`cap := Succ(cap)`, `buf` is still an array of the old length. The value is then *open*: each
 dependent field is typed by what it holds. It must be *repacked*, of its telescope again, at
 every point where it is used whole ([Repack]): read or moved whole, borrowed whole, passed, a
 borrow of it ending (a borrow parameter's, when the function returns), returned, observed by
@@ -299,104 +299,148 @@ ochr DepFields uses Std {
 
 /-! ## A growable vector and a resizable hash table (a case study)
 
-`Vec(E)` over the arrays library: push, in place and whole, an element borrow with a bound
-against the length, lemmas about pushing, and `Table`, a hash table that stores its capacity
-next to its slots and resizes by moving every entry into a new table. -/
+An array never changes its length, so a growable vector is user code over one (docs/09 §7).
+`Vec(E)` holds `len` elements in an array of `cap` cells of `Opt(E)`: `buf`'s type depends on
+`cap`, and the proof field `hl` (`len ≤ cap`) on `len` and `cap`. That the first `len` cells hold
+the elements and the rest nothing is `VInv`, a statement about a vector, not a field (`VGetP`
+shows why). Push writes into cell `len`, and when the cells are full first moves every element
+into a new array of `2·cap + 1` cells (`VMoveCells`, each cell exchanged with an empty one);
+pop takes the last element out; get returns a borrow of an element, its cell's emptiness ruled
+out by `VInv`. The lemmas say what each does (`PushLen`, `PushInv`, `PushAt`, `PushAtOld`,
+`PopLen`, `PopInv`, `PopReturns`, `GetAt`), through the model of the moves (`MovedS`, `MoveIs`).
+Then `Table`, a hash table that stores its capacity next to its slots and resizes by moving every
+entry into a new table. -/
 
 ochr DepVec uses ArrayBench {
-  inductive Vec (E : Type) := MkVec(n : Word, items : Array(E, n))
-  def VNew (E : Type) : Vec(E) := MkVec[E](Zero, ArrEmpty(E))
+  -- ## The cells
+  -- A cell holds an element or nothing.
+  inductive Opt (E : Type) := None | Some(v : E)
+  def IsSome (E : Type) (o : Opt(E)) : Prop := (
+    match o {
+      None => False,
+      Some(x) => ⊤,
+    }
+  )
+  def IsNone (E : Type) (o : Opt(E)) : Prop := (
+    match o {
+      None => ⊤,
+      Some(x) => False,
+    }
+  )
+  -- A borrow of the element in a cell known to hold one.
+  def UnwrapMut (E : Type) (o : &Opt(E)) (h : IsSome(E, *o)) : &E := (
+    match *o {
+      None => match h {},
+      Some(x) => &x,
+    }
+  )
+  -- The first `len` cells of a view hold elements, and the rest nothing.
+  def Packed (E : Type) (n : Word) (s : Slice(Opt(E), n)) (len : Word) : Prop by n := (
+    match n {
+      Zero => ⊤,
+      Succ(m) => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => match len {
+            Zero => IsNone(E, x) ∧ Packed(E, m, t, Zero),
+            Succ(l) => IsSome(E, x) ∧ Packed(E, m, t, l),
+          },
+        },
+      },
+    }
+  )
+
+  -- ## The vector
+  -- `len` elements in an array of `cap` cells: `buf`'s type depends on `cap`, and the proof field
+  -- `hl` on `len` and `cap`. That the first `len` cells hold the elements is `VInv`, a statement
+  -- about a vector rather than a field: a field would be invalidated by every borrow into `buf`,
+  -- and `VGet` returns one.
+  inductive Vec (E : Type) := MkVec(len : Word, cap : Word, buf : Array(Opt(E), cap), hl : Le(len, cap))
+  def PackedA (E : Type) (n : Word) (a : Array(Opt(E), n)) (len : Word) : Prop := (
+    match a {
+      MkArray(s) => Packed(E, n, s, len),
+    }
+  )
+  def VInv (E : Type) (v : Vec(E)) : Prop := (
+    match v {
+      MkVec(len, cap, buf, hl) => PackedA(E, cap, buf, len),
+    }
+  )
+  def VNew (E : Type) : Vec(E) := MkVec[E](Zero, Zero, ([] : Array(Opt(E), Zero)), refl)
   def VLen (E : Type) (v : Vec(E)) : Word := (
     match v {
-      MkVec(n, items) => n,
+      MkVec(len, cap, buf, hl) => len,
+    }
+  )
+  def VCap (E : Type) (v : Vec(E)) : Word := (
+    match v {
+      MkVec(len, cap, buf, hl) => cap,
     }
   )
   def Nop (v : &Vec(Word)) : Unit := ()
 
+  -- ## Dependent fields at work
   -- rebuilt whole: [T-Ctor] checks the telescope
-  def Push (E : Type) (v : &Vec(E)) (x : E) : Unit := (
-    match *v {
-      MkVec(n, items) => *v := MkVec[E](Succ(n), ArrPush(E, n, items, x)),
-    }
-  )
-  reject def PushWrongLen (E : Type) (v : &Vec(E)) (x : E) : Unit := (
-    match *v {
-      MkVec(n, items) => *v := MkVec[E](n, ArrPush(E, n, items, x)),
-    }
-  )
-  -- in place, either field first
-  def PushInPlace (E : Type) (v : &Vec(E)) (x : E) : Unit := (
-    match *v {
-      MkVec(n, items) => (
-        let m = n;
-        n := Succ(m);
-        items := ArrPush(E, m, items, x)
-      ),
-    }
-  )
-  def PushInPlaceRev (E : Type) (v : &Vec(E)) (x : E) : Unit := (
-    match *v {
-      MkVec(n, items) => (
-        items := ArrPush(E, n, items, x);
-        n := Succ(n)
-      ),
-    }
-  )
-  def Pop (E : Type) (v : &Vec(E)) (d : E) : E := (
-    match *v {
-      MkVec(n, items) => match n {
-        Zero => d,
-        Succ(m) => (
-          let p = ArrPop(E, m, items);
-          match p {
-            Mk(rest, last) => (
-              *v := MkVec[E](m, rest);
-              last
-            ),
-          }
-        ),
-      },
-    }
-  )
-  -- the user's example, `*v.0 := 2; *v.1 := [0,1]`, in both orders
-  def Two : Array(Word, W(2)) := ArrPush(Word, Succ(Zero), ArrPush(Word, Zero, ArrEmpty(Word), Zero), Succ(Zero))
+  def Clear (E : Type) (v : &Vec(E)) : Unit := *v := MkVec[E](Zero, Zero, ([] : Array(Opt(E), Zero)), refl)
+  reject def ClearWrongCap (E : Type) (v : &Vec(E)) : Unit := *v := MkVec[E](Zero, Succ(Zero), ([] : Array(Opt(E), Zero)), refl)
+  -- in place, in either order: the user's example (`*v.0 := 2; *v.1 := [0, 1]`), here with the
+  -- capacity and the proof field too
+  def Two : Array(Opt(Word), W(2)) := [Some(Zero), Some(Succ(Zero))]
   def SetTwo (v : &Vec(Word)) : Unit := (
     match *v {
-      MkVec(n, items) => (
-        n := W(2);
-        items := Two
+      MkVec(len, cap, buf, hl) => (
+        cap := W(2);
+        buf := Two;
+        len := W(2);
+        hl := refl
       ),
     }
   )
   def SetTwoRev (v : &Vec(Word)) : Unit := (
     match *v {
-      MkVec(n, items) => (
-        items := Two;
-        n := W(2)
+      MkVec(len, cap, buf, hl) => (
+        len := W(2);
+        buf := Two;
+        cap := W(2);
+        hl := refl
       ),
     }
   )
+  -- a capacity that is not the array's
   reject def Lie (E : Type) (v : &Vec(E)) : Unit := (
     match *v {
-      MkVec(n, items) => n := Succ(n),
+      MkVec(len, cap, buf, hl) => cap := Succ(cap),
+    }
+  )
+  -- a write through `len` invalidates `hl` until it is proved again
+  reject def LieLen (E : Type) (v : &Vec(E)) : Unit := (
+    match *v {
+      MkVec(len, cap, buf, hl) => len := Zero,
+    }
+  )
+  def SetLenZero (E : Type) (v : &Vec(E)) : Unit := (
+    match *v {
+      MkVec(len, cap, buf, hl) => (
+        len := Zero;
+        hl := refl
+      ),
     }
   )
   reject def ReadBroken (v : &Vec(Word)) : Word := (
     match *v {
-      MkVec(n, items) => (
-        let m = n;
-        n := Succ(m);
+      MkVec(len, cap, buf, hl) => (
+        let c = cap;
+        cap := Succ(c);
         let w = VLen(Word, clone(*v));
-        n := m;
+        cap := c;
         w
       ),
     }
   )
   reject def MoveBroken (v : &Vec(Word)) : Unit := (
     match *v {
-      MkVec(n, items) => (
-        let m = n;
-        n := Succ(m);
+      MkVec(len, cap, buf, hl) => (
+        let c = cap;
+        cap := Succ(c);
         let w = *v;
         *v := w
       ),
@@ -404,109 +448,605 @@ ochr DepVec uses ArrayBench {
   )
   reject def PassBroken (v : &Vec(Word)) : Unit := (
     match *v {
-      MkVec(n, items) => (
-        let m = n;
-        n := Succ(m);
+      MkVec(len, cap, buf, hl) => (
+        let c = cap;
+        cap := Succ(c);
         Nop(&*v);
-        n := m
+        cap := c
       ),
     }
   )
 
-  -- an element borrow, its bound against the length
-  def VGetMut (v : &Vec(Word)) (i : Word) (h : Lt(i, VLen(Word, *v))) : &Word := (
-    match *v {
-      MkVec(n, items) => GetMut(Word, n, AsSlice(Word, n, &items), i, h),
-    }
-  )
-  def VSet (v : &Vec(Word)) (i : Word) (h : Lt(i, VLen(Word, *v))) (x : Word) : Unit := (
-    let r = VGetMut(v, i, h);
-    *r := x
-  )
-  -- (through the natives: runtime code does not see the array's representation, K3)
-  def VGet (E : Type) (v : Vec(E)) (i : Word) (h : Lt(i, VLen(E, v))) : E := (
-    match v {
-      MkVec(n, items) => clone(*GetMut(E, n, AsSlice(E, n, &items), i, h)),
-    }
-  )
-  def PushRun : Id Word (let v = VNew(Word); Push(Word, &v, W(3)); PushInPlace(Word, &v, W(4)); VLen(Word, v)) W(2) := refl
-  def SetRun : Id Word (
-      let v = VNew(Word);
-      Push(Word, &v, W(3));
-      PushInPlaceRev(Word, &v, W(4));
-      VSet(&v, Succ(Zero), refl, W(9));
-      VGet(Word, v, Succ(Zero), refl)) W(9) := refl
-  def PopRun : Id Word (let v = VNew(Word); Push(Word, &v, W(3)); Push(Word, &v, W(4)); Pop(Word, &v, Zero)) W(4) := refl
-  reject def PushRunWrong : Id Word (let v = VNew(Word); Push(Word, &v, W(3)); VLen(Word, v)) W(2) := refl
-
-  -- pushing: the length grows by one, the old elements are unchanged, the new one is last
-  def Pushed (E : Type) (v : Vec(E)) (x : E) : Vec(E) := (
-    match v {
-      MkVec(n, items) => MkVec[E](Succ(n), ArrPush(E, n, items, x)),
-    }
-  )
-  def PushIs (E : Type) (v : &Vec(E)) (x : E) : Id Unit (Push(E, v, x)) (*v := Pushed(E, clone(*v), x)) := (
-    match *v {
-      MkVec(n, items) => refl,
-    }
-  )
-  def PushedLen (E : Type) (v : Vec(E)) (x : E) : Eq Word (VLen(E, Pushed(E, v, x))) (Succ(VLen(E, v))) := (
-    match v {
-      MkVec(n, items) => refl,
-    }
-  )
-  reject def PushedLenTwo (E : Type) (v : Vec(E)) (x : E) : Eq Word (VLen(E, Pushed(E, v, x))) (Succ(Succ(VLen(E, v)))) := (
-    match v {
-      MkVec(n, items) => refl,
-    }
-  )
-  def NthSnocLast (E : Type) (n : Word) (s : Slice(E, n)) (x : E) (h : Lt(n, Succ(n))) :
-      Eq E (Nth(E, Succ(n), SnocS(E, n, s, x), n, h)) x by n := (
-    match n {
+  -- ## Push, pop and get
+  def LeSuccL (a : Word) (b : Word) (h : Le(Succ(a), b)) : Le(a, b) by a := (
+    match a {
       Zero => refl,
-      Succ(m) => match s {
-        MkSlice(c) => match c {
-          MkC(y, t) => NthSnocLast(E, m, t, x, h),
-        },
+      Succ(a2) => match b {
+        Zero => match h {},
+        Succ(b2) => LeSuccL(a2, b2, h),
       },
     }
   )
-  def NthSnocOld (E : Type) (n : Word) (s : Slice(E, n)) (x : E) (i : Word) (h : Lt(i, n)) (h2 : Lt(i, Succ(n))) :
-      Eq E (Nth(E, Succ(n), SnocS(E, n, s, x), i, h2)) (Nth(E, n, s, i, h)) by i := (
+  -- Move cells `k, …, n - 1` of `os` into the same cells of `ns`, each by exchanging it with
+  -- the cell it goes to (which holds nothing), by recursion on the count `rem` still to go.
+  def VMoveCells (E : Type) (n : Word) (os : &Slice(Opt(E), n)) (m : Word) (ns : &Slice(Opt(E), m)) (k : Word) (rem : Word)
+      (hr : Eq(Word, WAdd(rem, k), n)) (hnm : Le(n, m)) : Unit by rem := (
+    match rem {
+      Zero => (),
+      Succ(r) => (
+        let hk : Lt(k, n) = (rewrite hr in LeAddL(r, k));
+        let hkm : Lt(k, m) = LeTrans(Succ(k), n, m, hk, hnm);
+        let hr2 : Eq(Word, WAdd(r, Succ(k)), n) = (rewrite AddRS(r, k) in hr);
+        SwapRefs(Opt(E), GetMut(Opt(E), n, &*os, k, hk), GetMut(Opt(E), m, &*ns, k, hkm));
+        VMoveCells(E, n, os, m, ns, Succ(k), r, hr2, hnm)
+      ),
+    }
+  )
+  -- Push: write `Some(x)` into cell `len`. When the cells are full, first move the elements
+  -- into a new array of `2·cap + 1` cells, and drop the old one.
+  def VPush (E : Type) (v : &Vec(E)) (x : E) : Unit := (
+    match *v {
+      MkVec(len, cap, buf, hl) => (
+        let d = LtDec(len, cap);
+        match d {
+          Yes(h) => (
+            *GetMut(Opt(E), cap, AsSlice(Opt(E), cap, &buf), len, h) := Some(x);
+            len := Succ(len);
+            hl := h
+          ),
+          No(full) => (
+            let ncap = Succ(WAdd(cap, cap));
+            let hc : Le(cap, ncap) = LeStep(cap, WAdd(cap, cap), LeAddL(cap, cap));
+            let h2 : Lt(len, ncap) = LeTrans(len, cap, WAdd(cap, cap), hl, LeAddL(cap, cap));
+            let nb = ArrFromFn(Opt(E), ncap, λ(i : Word) : Opt(E) => None[E]);
+            VMoveCells(E, cap, AsSlice(Opt(E), cap, &buf), ncap, AsSlice(Opt(E), ncap, &nb), Zero, cap, AddZeroR(cap), hc);
+            cap := ncap;
+            buf := nb;
+            *GetMut(Opt(E), ncap, AsSlice(Opt(E), ncap, &buf), len, h2) := Some(x);
+            len := Succ(len);
+            hl := h2
+          ),
+        }
+      ),
+    }
+  )
+  -- Pop: take the element in cell `len - 1`, leaving nothing there; nothing for an empty vector.
+  def VPop (E : Type) (v : &Vec(E)) : Opt(E) := (
+    match *v {
+      MkVec(len, cap, buf, hl) => match len {
+        Zero => None[E],
+        Succ(l) => (
+          let h : Lt(l, cap) = hl;
+          let l2 = l;
+          let r = GetMut(Opt(E), cap, AsSlice(Opt(E), cap, &buf), l2, h);
+          let o = *r;
+          *r := None[E];
+          len := l2;
+          hl := LeSuccL(l2, cap, h);
+          o
+        ),
+      },
+    }
+  )
+  -- Cell `i < len` holds an element.
+  def PackedNth (E : Type) (n : Word) (s : Slice(Opt(E), n)) (len : Word) (hp : Packed(E, n, s, len)) (i : Word) (hi : Lt(i, len)) (hn : Lt(i, n)) :
+      IsSome(E, Nth(Opt(E), n, s, i, hn)) by i := (
     match n {
-      Zero => match h {},
+      Zero => match hn {},
       Succ(m) => match s {
         MkSlice(c) => match c {
-          MkC(y, t) => match i {
-            Zero => refl,
-            Succ(i2) => NthSnocOld(E, m, t, x, i2, h, h2),
+          MkC(x, t) => match len {
+            Zero => match hi {},
+            Succ(l) => (
+              let ⟨hx, ht⟩ = hp;
+              match i {
+                Zero => hx,
+                Succ(i') => PackedNth(E, m, t, l, ht, i', hi, hn),
+              }
+            ),
           },
         },
       },
     }
   )
-  def PushedLast (E : Type) (v : Vec(E)) (x : E) (h : Lt(VLen(E, v), VLen(E, Pushed(E, v, x)))) :
-      Eq E (VGet(E, Pushed(E, v, x), VLen(E, v), h)) x := (
-    match v {
-      MkVec(n, items) => match items {
+  -- ... so reading cell `i` through its borrow gives an element.
+  def GetSome (E : Type) (cap : Word) (a : Array(Opt(E), cap)) (len : Word) (hp : PackedA(E, cap, a, len)) (i : Word)
+      (h : Lt(i, len)) (hc : Lt(i, cap)) : IsSome(E, (let c = a; clone(*GetMut(Opt(E), cap, AsSlice(Opt(E), cap, &c), i, hc)))) := (
+    match a {
+      MkArray(s) => (
+        let ⟨hv, hw⟩ = GetMutReadV(Opt(E), cap, s, i, hc);
+        rewrite ← hv in PackedNth(E, cap, s, len, hp, i, h, hc)
+      ),
+    }
+  )
+  -- Get: a borrow of element `i`, whose cell holds one by the invariant.
+  def VGet (E : Type) (v : &Vec(E)) (i : Word) (h : Lt(i, VLen(E, *v))) (inv : VInv(E, *v)) : &E := (
+    match *v {
+      MkVec(len, cap, buf, hl) => (
+        let hc : Lt(i, cap) = LeTrans(Succ(i), len, cap, h, hl);
+        let p = GetSome(E, cap, buf, len, inv, i, h, hc);
+        UnwrapMut(E, GetMut(Opt(E), cap, AsSlice(Opt(E), cap, &buf), i, hc), p)
+      ),
+    }
+  )
+  def PushRun : Id(Word, (let v = VNew(Word); VPush(Word, &v, W(3)); VPush(Word, &v, W(4)); VPush(Word, &v, W(5)); VLen(Word, v)), W(3)) := refl
+  def PushCapRun : Id(Word, (let v = VNew(Word); VPush(Word, &v, W(3)); VPush(Word, &v, W(4)); VCap(Word, v)), W(3)) := refl
+  def PopRun : Id(Opt(Word), (let v = VNew(Word); VPush(Word, &v, W(3)); VPush(Word, &v, W(4)); VPop(Word, &v)), Some(W(4))) := refl
+  def PopEmptyRun : Id(Opt(Word), (let v = VNew(Word); VPop(Word, &v)), None[Word]) := refl
+  def GetRun : Id(Word, (let v = VNew(Word); VPush(Word, &v, W(3)); VPush(Word, &v, W(4)); *VGet(Word, &v, Succ(Zero), refl, refl)), W(4)) := refl
+  def SetRun : Id(Word, (let v = VNew(Word); VPush(Word, &v, W(3)); VPush(Word, &v, W(4)); *VGet(Word, &v, Zero, refl, refl) := W(9); *VGet(Word, &v, Zero, refl, refl)), W(9)) := refl
+  reject def PushRunWrong : Id(Word, (let v = VNew(Word); VPush(Word, &v, W(3)); VLen(Word, v)), W(2)) := refl
+
+  -- ## What push, pop and get do
+  -- The model of `VMoveCells`: both views, written cell by cell as the moves write them.
+  def MovedS (E : Type) (n : Word) (ov : Slice(Opt(E), n)) (m : Word) (nv : Slice(Opt(E), m)) (k : Word) (rem : Word)
+      (hr : Eq(Word, WAdd(rem, k), n)) (hnm : Le(n, m)) : Slice(Opt(E), m) by rem := (
+    match rem {
+      Zero => nv,
+      Succ(r) => (
+        let hk : Lt(k, n) = (rewrite hr in LeAddL(r, k));
+        let hkm : Lt(k, m) = LeTrans(Succ(k), n, m, hk, hnm);
+        let hr2 : Eq(Word, WAdd(r, Succ(k)), n) = (rewrite AddRS(r, k) in hr);
+        MovedS(E, n, SetS(Opt(E), n, clone(ov), k, Nth(Opt(E), m, clone(nv), k, hkm)), m,
+          SetS(Opt(E), m, nv, k, Nth(Opt(E), n, ov, k, hk)), Succ(k), r, hr2, hnm)
+      ),
+    }
+  )
+  -- One move: the two cells exchanged, on views given by value.
+  def ExchNew (E : Type) (n : Word) (ov : Slice(Opt(E), n)) (m : Word) (nv : Slice(Opt(E), m)) (k : Word) (hk : Lt(k, n)) (hkm : Lt(k, m)) :
+      Eq(Slice(Opt(E), m), (let co = ov; let cn = nv; SwapRefs(Opt(E), GetMut(Opt(E), n, &co, k, hk), GetMut(Opt(E), m, &cn, k, hkm)); cn),
+        SetS(Opt(E), m, nv, k, Nth(Opt(E), n, ov, k, hk))) := (
+    let ra = (let c = ov; clone(*GetMut(Opt(E), n, &c, k, hk)));
+    let ⟨ha, ha2⟩ = GetMutReadV(Opt(E), n, ov, k, hk);
+    rewrite ← GetMutSetV(Opt(E), m, nv, k, ra, hkm) in rewrite ← ha in refl
+  )
+  def ExchOld (E : Type) (n : Word) (ov : Slice(Opt(E), n)) (m : Word) (nv : Slice(Opt(E), m)) (k : Word) (hk : Lt(k, n)) (hkm : Lt(k, m)) :
+      Eq(Slice(Opt(E), n), (let co = ov; let cn = nv; SwapRefs(Opt(E), GetMut(Opt(E), n, &co, k, hk), GetMut(Opt(E), m, &cn, k, hkm)); co),
+        SetS(Opt(E), n, ov, k, Nth(Opt(E), m, nv, k, hkm))) := (
+    let rb = (let c = nv; clone(*GetMut(Opt(E), m, &c, k, hkm)));
+    let ⟨hb, hb2⟩ = GetMutReadV(Opt(E), m, nv, k, hkm);
+    rewrite ← GetMutSetV(Opt(E), n, ov, k, rb, hk) in rewrite ← hb in refl
+  )
+  -- `VMoveCells` is its model.
+  def MoveIs (E : Type) (n : Word) (ov : Slice(Opt(E), n)) (m : Word) (nv : Slice(Opt(E), m)) (k : Word) (rem : Word)
+      (hr : Eq(Word, WAdd(rem, k), n)) (hnm : Le(n, m)) :
+      Eq(Slice(Opt(E), m), (let co = ov; let cn = nv; VMoveCells(E, n, &co, m, &cn, k, rem, hr, hnm); cn),
+        MovedS(E, n, ov, m, nv, k, rem, hr, hnm)) by rem := (
+    match rem {
+      Zero => refl,
+      Succ(r) => (
+        let hk : Lt(k, n) = (rewrite hr in LeAddL(r, k));
+        let hkm : Lt(k, m) = LeTrans(Succ(k), n, m, hk, hnm);
+        let hr2 : Eq(Word, WAdd(r, Succ(k)), n) = (rewrite AddRS(r, k) in hr);
+        let ov1 = (let co = ov; let cn = nv; SwapRefs(Opt(E), GetMut(Opt(E), n, &co, k, hk), GetMut(Opt(E), m, &cn, k, hkm)); co);
+        let nv1 = (let co = ov; let cn = nv; SwapRefs(Opt(E), GetMut(Opt(E), n, &co, k, hk), GetMut(Opt(E), m, &cn, k, hkm)); cn);
+        rewrite ExchOld(E, n, ov, m, nv, k, hk, hkm) in rewrite ExchNew(E, n, ov, m, nv, k, hk, hkm) in
+          MoveIs(E, n, ov1, m, nv1, Succ(k), r, hr2, hnm)
+      ),
+    }
+  )
+  -- Cells `k, …, n - 1` hold elements.
+  def SomeFrom (E : Type) (n : Word) (s : Slice(Opt(E), n)) (k : Word) : Prop by n := (
+    match n {
+      Zero => ⊤,
+      Succ(m) => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => match k {
+            Zero => IsSome(E, x) ∧ SomeFrom(E, m, t, Zero),
+            Succ(k') => SomeFrom(E, m, t, k'),
+          },
+        },
+      },
+    }
+  )
+  def SomeFromNth (E : Type) (n : Word) (s : Slice(Opt(E), n)) (k : Word) (hs : SomeFrom(E, n, s, k)) (hk : Lt(k, n)) :
+      IsSome(E, Nth(Opt(E), n, s, k, hk)) by k := (
+    match n {
+      Zero => match hk {},
+      Succ(m) => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => match k {
+            Zero => (
+              let ⟨hx, ht⟩ = hs;
+              hx
+            ),
+            Succ(k') => SomeFromNth(E, m, t, k', hs, hk),
+          },
+        },
+      },
+    }
+  )
+  def SomeFromSet (E : Type) (n : Word) (s : Slice(Opt(E), n)) (k : Word) (y : Opt(E)) (hs : SomeFrom(E, n, s, k)) (hk : Lt(k, n)) :
+      SomeFrom(E, n, SetS(Opt(E), n, s, k, y), Succ(k)) by k := (
+    match n {
+      Zero => match hk {},
+      Succ(m) => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => match k {
+            Zero => (
+              let ⟨hx, ht⟩ = hs;
+              ht
+            ),
+            Succ(k') => SomeFromSet(E, m, t, k', y, hs, hk),
+          },
+        },
+      },
+    }
+  )
+  -- Writing an element at `len` keeps the cells packed, one longer; taking the last one out,
+  -- one shorter.
+  def PackedSet (E : Type) (n : Word) (s : Slice(Opt(E), n)) (len : Word) (h : Lt(len, n)) (y : Opt(E)) (hy : IsSome(E, y))
+      (hp : Packed(E, n, s, len)) : Packed(E, n, SetS(Opt(E), n, s, len, y), Succ(len)) by len := (
+    match n {
+      Zero => match h {},
+      Succ(m) => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => match len {
+            Zero => (
+              let ⟨hx, ht⟩ = hp;
+              ⟨hy, ht⟩
+            ),
+            Succ(l) => (
+              let ⟨hx, ht⟩ = hp;
+              ⟨hx, PackedSet(E, m, t, l, h, y, hy, ht)⟩
+            ),
+          },
+        },
+      },
+    }
+  )
+  def PackedTake (E : Type) (n : Word) (s : Slice(Opt(E), n)) (l : Word) (h : Lt(l, n)) (hp : Packed(E, n, s, Succ(l))) :
+      Packed(E, n, SetS(Opt(E), n, s, l, None[E]), l) by l := (
+    match n {
+      Zero => match h {},
+      Succ(m) => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => match l {
+            Zero => (
+              let ⟨hx, ht⟩ = hp;
+              ⟨refl, ht⟩
+            ),
+            Succ(l') => (
+              let ⟨hx, ht⟩ = hp;
+              ⟨hx, PackedTake(E, m, t, l', h, ht)⟩
+            ),
+          },
+        },
+      },
+    }
+  )
+  -- Moving the elements from `k` on into cells that are packed up to `k` packs them all.
+  def PackedMoved (E : Type) (n : Word) (ov : Slice(Opt(E), n)) (m : Word) (nv : Slice(Opt(E), m)) (k : Word) (rem : Word)
+      (hr : Eq(Word, WAdd(rem, k), n)) (hnm : Le(n, m)) (hs : SomeFrom(E, n, ov, k)) (hp : Packed(E, m, nv, k)) :
+      Packed(E, m, MovedS(E, n, ov, m, nv, k, rem, hr, hnm), n) by rem := (
+    match rem {
+      Zero => rewrite hr in hp,
+      Succ(r) => (
+        let hk : Lt(k, n) = (rewrite hr in LeAddL(r, k));
+        let hkm : Lt(k, m) = LeTrans(Succ(k), n, m, hk, hnm);
+        let hr2 : Eq(Word, WAdd(r, Succ(k)), n) = (rewrite AddRS(r, k) in hr);
+        PackedMoved(E, n, SetS(Opt(E), n, ov, k, Nth(Opt(E), m, nv, k, hkm)), m, SetS(Opt(E), m, nv, k, Nth(Opt(E), n, ov, k, hk)),
+          Succ(k), r, hr2, hnm,
+          SomeFromSet(E, n, ov, k, Nth(Opt(E), m, nv, k, hkm), hs, hk),
+          PackedSet(E, m, nv, k, hkm, Nth(Opt(E), n, ov, k, hk), SomeFromNth(E, n, ov, k, hs, hk), hp))
+      ),
+    }
+  )
+  -- Full cells hold elements from 0 on; new cells holding nothing are packed at 0.
+  def PackedFull (E : Type) (n : Word) (s : Slice(Opt(E), n)) (l : Word) (e : Eq(Word, l, n)) (hp : Packed(E, n, s, l)) :
+      SomeFrom(E, n, s, Zero) by n := (
+    match n {
+      Zero => refl,
+      Succ(m) => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => match l {
+            Zero => match e {},
+            Succ(l') => (
+              let ⟨hx, ht⟩ = hp;
+              ⟨hx, PackedFull(E, m, t, l', e, ht)⟩
+            ),
+          },
+        },
+      },
+    }
+  )
+  def PackedNone (E : Type) (m : Word) (k : Word) :
+      Packed(E, m, FromFnS(Opt(E), m, λ(i : Word) : Opt(E) => None[E], k), Zero) by m := (
+    match m {
+      Zero => refl,
+      Succ(m') => ⟨refl, PackedNone(E, m', Succ(k))⟩,
+    }
+  )
+  def PushLen (E : Type) (v : &Vec(E)) (x : E) : Eq(Word, (let c = *v; VPush(E, &c, x); VLen(E, c)), Succ(VLen(E, *v))) := (
+    match *v {
+      MkVec(len, cap, buf, hl) => (
+        let d = LtDec(len, cap);
+        match d {
+          Yes(h) => refl,
+          No(full) => refl,
+        }
+      ),
+    }
+  )
+  def PushInv (E : Type) (v : &Vec(E)) (x : E) (inv : VInv(E, *v)) : VInv(E, (let c = *v; VPush(E, &c, x); c)) := (
+    match *v {
+      MkVec(len, cap, buf, hl) => match buf {
         MkArray(s) => (
-          -- `VGet` reads through an element borrow: `GetMutReadV` makes it the model's element
-          let ⟨hv, hp⟩ = GetMutReadV(E, Succ(n), SnocS(E, n, s, x), n, h);
-          rewrite ← hv in NthSnocLast(E, n, s, x, h)
+          let d = LtDec(len, cap);
+          match d {
+            Yes(h) => rewrite ← GetMutSetV(Opt(E), cap, s, len, Some(x), h) in PackedSet(E, cap, s, len, h, Some(x), refl, inv),
+            No(full) => (
+              -- full: the elements were moved into `2·cap + 1` new cells, then `x` written
+              let e : Eq(Word, len, cap) = LeAntisym(len, cap, hl, full);
+              let ncap = Succ(WAdd(cap, cap));
+              let hc : Le(cap, ncap) = LeStep(cap, WAdd(cap, cap), LeAddL(cap, cap));
+              let h2 : Lt(len, ncap) = LeTrans(len, cap, WAdd(cap, cap), hl, LeAddL(cap, cap));
+              let nv = FromFnS(Opt(E), ncap, λ(i : Word) : Opt(E) => None[E], Zero);
+              let mv = (let co = s; let cn = nv; VMoveCells(E, cap, &co, ncap, &cn, Zero, cap, AddZeroR(cap), hc); cn);
+              rewrite ← GetMutSetV(Opt(E), ncap, mv, len, Some(x), h2) in
+              rewrite ← MoveIs(E, cap, s, ncap, nv, Zero, cap, AddZeroR(cap), hc) in
+              PackedSet(E, ncap, MovedS(E, cap, s, ncap, nv, Zero, cap, AddZeroR(cap), hc), len, h2, Some(x), refl,
+                rewrite ← e in PackedMoved(E, cap, s, ncap, nv, Zero, cap, AddZeroR(cap), hc,
+                  PackedFull(E, cap, s, len, e, inv), PackedNone(E, ncap, Zero)))
+            ),
+          }
         ),
       },
     }
   )
-  def PushedOld (E : Type) (v : Vec(E)) (x : E) (i : Word) (h : Lt(i, VLen(E, v))) (h2 : Lt(i, VLen(E, Pushed(E, v, x)))) :
-      Eq E (VGet(E, Pushed(E, v, x), i, h2)) (VGet(E, v, i, h)) := (
+  -- Cell `i` of a view holds `o` (false past the end); of a vector's cells, `VAt`.
+  def AtS (E : Type) (n : Word) (s : Slice(E, n)) (i : Word) (o : E) : Prop by n := (
+    match n {
+      Zero => False,
+      Succ(m) => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => match i {
+            Zero => Eq(E, x, o),
+            Succ(i') => AtS(E, m, t, i', o),
+          },
+        },
+      },
+    }
+  )
+  def VAt (E : Type) (v : Vec(E)) (i : Word) (o : Opt(E)) : Prop := (
     match v {
-      MkVec(n, items) => match items {
+      MkVec(len, cap, buf, hl) => match buf {
+        MkArray(s) => AtS(Opt(E), cap, s, i, o),
+      },
+    }
+  )
+  def AtSetSame (E : Type) (n : Word) (s : Slice(E, n)) (i : Word) (y : E) (h : Lt(i, n)) : AtS(E, n, SetS(E, n, s, i, y), i, y) by i := (
+    match n {
+      Zero => match h {},
+      Succ(m) => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => match i {
+            Zero => refl,
+            Succ(i') => AtSetSame(E, m, t, i', y, h),
+          },
+        },
+      },
+    }
+  )
+  def AtSetOther (E : Type) (n : Word) (s : Slice(E, n)) (i : Word) (j : Word) (y : E) (o : E) (ne : Π(e : Eq(Word, i, j)). False)
+      (ha : AtS(E, n, s, i, o)) : AtS(E, n, SetS(E, n, s, j, y), i, o) by i := (
+    match n {
+      Zero => match ha {},
+      Succ(m) => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => match i {
+            Zero => match j {
+              Zero => (
+                let no = ne(refl);
+                match no {}
+              ),
+              Succ(j') => ha,
+            },
+            Succ(i') => match j {
+              Zero => ha,
+              Succ(j') => AtSetOther(E, m, t, i', j', y, o, ne, ha),
+            },
+          },
+        },
+      },
+    }
+  )
+  def AtNth (E : Type) (n : Word) (s : Slice(E, n)) (i : Word) (o : E) (h : Lt(i, n)) (ha : AtS(E, n, s, i, o)) :
+      Eq(E, Nth(E, n, s, i, h), o) by i := (
+    match n {
+      Zero => match h {},
+      Succ(m) => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => match i {
+            Zero => ha,
+            Succ(i') => AtNth(E, m, t, i', o, h, ha),
+          },
+        },
+      },
+    }
+  )
+  -- The moves leave the new cells below `k` alone, and put the old cells from `k` on in place.
+  def AtMovedFrame (E : Type) (n : Word) (ov : Slice(Opt(E), n)) (m : Word) (nv : Slice(Opt(E), m)) (k : Word) (rem : Word)
+      (hr : Eq(Word, WAdd(rem, k), n)) (hnm : Le(n, m)) (i : Word) (o : Opt(E)) (hik : Lt(i, k)) (ha : AtS(Opt(E), m, nv, i, o)) :
+      AtS(Opt(E), m, MovedS(E, n, ov, m, nv, k, rem, hr, hnm), i, o) by rem := (
+    match rem {
+      Zero => ha,
+      Succ(r) => (
+        let hk : Lt(k, n) = (rewrite hr in LeAddL(r, k));
+        let hkm : Lt(k, m) = LeTrans(Succ(k), n, m, hk, hnm);
+        let hr2 : Eq(Word, WAdd(r, Succ(k)), n) = (rewrite AddRS(r, k) in hr);
+        AtMovedFrame(E, n, SetS(Opt(E), n, ov, k, Nth(Opt(E), m, nv, k, hkm)), m, SetS(Opt(E), m, nv, k, Nth(Opt(E), n, ov, k, hk)),
+          Succ(k), r, hr2, hnm, i, o, LeStep(Succ(i), k, hik),
+          AtSetOther(Opt(E), m, nv, i, k, Nth(Opt(E), n, ov, k, hk), o, λ(e : Eq(Word, i, k)) : False => LtNe(i, k, hik, e), ha))
+      ),
+    }
+  )
+  def AtMoved (E : Type) (n : Word) (ov : Slice(Opt(E), n)) (m : Word) (nv : Slice(Opt(E), m)) (k : Word) (rem : Word)
+      (hr : Eq(Word, WAdd(rem, k), n)) (hnm : Le(n, m)) (i : Word) (o : Opt(E)) (hi : Lt(i, n)) (hki : Le(k, i))
+      (ha : AtS(Opt(E), n, ov, i, o)) : AtS(Opt(E), m, MovedS(E, n, ov, m, nv, k, rem, hr, hnm), i, o) by rem := (
+    match rem {
+      Zero => (
+        let no = LtNe(i, i, LeTrans(Succ(i), k, i, rewrite ← hr in hi, hki), refl);
+        match no {}
+      ),
+      Succ(r) => (
+        let hk : Lt(k, n) = (rewrite hr in LeAddL(r, k));
+        let hkm : Lt(k, m) = LeTrans(Succ(k), n, m, hk, hnm);
+        let hr2 : Eq(Word, WAdd(r, Succ(k)), n) = (rewrite AddRS(r, k) in hr);
+        let d = LtDec(k, i);
+        match d {
+          Yes(hlt) => AtMoved(E, n, SetS(Opt(E), n, ov, k, Nth(Opt(E), m, nv, k, hkm)), m, SetS(Opt(E), m, nv, k, Nth(Opt(E), n, ov, k, hk)),
+            Succ(k), r, hr2, hnm, i, o, hi, hlt,
+            AtSetOther(Opt(E), n, ov, i, k, Nth(Opt(E), m, nv, k, hkm), o, λ(e : Eq(Word, i, k)) : False => LtNe(k, i, hlt, rewrite e in refl), ha)),
+          No(hge) => (
+            let e : Eq(Word, k, i) = LeAntisym(k, i, hki, hge);
+            AtMovedFrame(E, n, SetS(Opt(E), n, ov, k, Nth(Opt(E), m, nv, k, hkm)), m, SetS(Opt(E), m, nv, k, Nth(Opt(E), n, ov, k, hk)),
+              Succ(k), r, hr2, hnm, i, o, rewrite e in LeRefl(Succ(k)),
+              rewrite e in rewrite AtNth(Opt(E), n, ov, k, o, hk, rewrite ← e in ha) in AtSetSame(Opt(E), m, nv, k, Nth(Opt(E), n, ov, k, hk), hkm))
+          ),
+        }
+      ),
+    }
+  )
+  -- After a push the new element is last, and the old ones are where they were.
+  def PushAt (E : Type) (v : &Vec(E)) (x : E) : VAt(E, (let c = *v; VPush(E, &c, x); c), VLen(E, *v), Some(x)) := (
+    match *v {
+      MkVec(len, cap, buf, hl) => match buf {
         MkArray(s) => (
-          let ⟨hv, hp⟩ = GetMutReadV(E, Succ(n), SnocS(E, n, s, x), i, h2);
-          let ⟨hv2, hp2⟩ = GetMutReadV(E, n, s, i, h);
-          rewrite ← hv in rewrite ← hv2 in NthSnocOld(E, n, s, x, i, h, h2)
+          let d = LtDec(len, cap);
+          match d {
+            Yes(h) => rewrite ← GetMutSetV(Opt(E), cap, s, len, Some(x), h) in AtSetSame(Opt(E), cap, s, len, Some(x), h),
+            No(full) => (
+              let ncap = Succ(WAdd(cap, cap));
+              let hc : Le(cap, ncap) = LeStep(cap, WAdd(cap, cap), LeAddL(cap, cap));
+              let h2 : Lt(len, ncap) = LeTrans(len, cap, WAdd(cap, cap), hl, LeAddL(cap, cap));
+              let nv = FromFnS(Opt(E), ncap, λ(i : Word) : Opt(E) => None[E], Zero);
+              let mv = (let co = s; let cn = nv; VMoveCells(E, cap, &co, ncap, &cn, Zero, cap, AddZeroR(cap), hc); cn);
+              rewrite ← GetMutSetV(Opt(E), ncap, mv, len, Some(x), h2) in
+              rewrite ← MoveIs(E, cap, s, ncap, nv, Zero, cap, AddZeroR(cap), hc) in
+              AtSetSame(Opt(E), ncap, MovedS(E, cap, s, ncap, nv, Zero, cap, AddZeroR(cap), hc), len, Some(x), h2)
+            ),
+          }
         ),
       },
+    }
+  )
+  def PushAtOld (E : Type) (v : &Vec(E)) (x : E) (i : Word) (o : Opt(E)) (hi : Lt(i, VLen(E, *v))) (ha : VAt(E, *v, i, o)) :
+      VAt(E, (let c = *v; VPush(E, &c, x); c), i, o) := (
+    match *v {
+      MkVec(len, cap, buf, hl) => match buf {
+        MkArray(s) => (
+          let l0 = len;
+          let ne : Π(e : Eq(Word, i, l0)). False = (λ(e : Eq(Word, i, l0)) : False => LtNe(i, l0, hi, e));
+          let d = LtDec(len, cap);
+          match d {
+            Yes(h) => rewrite ← GetMutSetV(Opt(E), cap, s, len, Some(x), h) in AtSetOther(Opt(E), cap, s, i, len, Some(x), o, ne, ha),
+            No(full) => (
+              let ncap = Succ(WAdd(cap, cap));
+              let hc : Le(cap, ncap) = LeStep(cap, WAdd(cap, cap), LeAddL(cap, cap));
+              let h2 : Lt(len, ncap) = LeTrans(len, cap, WAdd(cap, cap), hl, LeAddL(cap, cap));
+              let nv = FromFnS(Opt(E), ncap, λ(i : Word) : Opt(E) => None[E], Zero);
+              let mv = (let co = s; let cn = nv; VMoveCells(E, cap, &co, ncap, &cn, Zero, cap, AddZeroR(cap), hc); cn);
+              rewrite ← GetMutSetV(Opt(E), ncap, mv, len, Some(x), h2) in
+              rewrite ← MoveIs(E, cap, s, ncap, nv, Zero, cap, AddZeroR(cap), hc) in
+              AtSetOther(Opt(E), ncap, MovedS(E, cap, s, ncap, nv, Zero, cap, AddZeroR(cap), hc), i, len, Some(x), o, ne,
+                AtMoved(E, cap, s, ncap, nv, Zero, cap, AddZeroR(cap), hc, i, o, LeTrans(Succ(i), len, cap, hi, hl), refl, ha))
+            ),
+          }
+        ),
+      },
+    }
+  )
+  -- A pop takes the last element out: one fewer, still packed, and the result is that element.
+  def PopLen (E : Type) (v : &Vec(E)) : Eq(Word, (let c = *v; let o = VPop(E, &c); VLen(E, c)), Sub(VLen(E, *v), Succ(Zero))) := (
+    match *v {
+      MkVec(len, cap, buf, hl) => match len {
+        Zero => refl,
+        Succ(l) => refl,
+      },
+    }
+  )
+  def PopInv (E : Type) (v : &Vec(E)) (inv : VInv(E, *v)) : VInv(E, (let c = *v; let o = VPop(E, &c); c)) := (
+    match *v {
+      MkVec(len, cap, buf, hl) => match buf {
+        MkArray(s) => match len {
+          Zero => inv,
+          Succ(l) => rewrite ← GetMutSetV(Opt(E), cap, s, l, None[E], hl) in PackedTake(E, cap, s, l, hl, inv),
+        },
+      },
+    }
+  )
+  def PopReturns (E : Type) (v : &Vec(E)) (l : Word) (o : Opt(E)) (hn : Eq(Word, VLen(E, *v), Succ(l))) (ha : VAt(E, *v, l, o)) :
+      Eq(Opt(E), (let c = *v; VPop(E, &c)), o) := (
+    match *v {
+      MkVec(len, cap, buf, hl) => match buf {
+        MkArray(s) => match len {
+          Zero => match hn {},
+          Succ(l2) => (
+            let h : Lt(l2, cap) = hl;
+            let ⟨hv, hw⟩ = GetMutReadV(Opt(E), cap, s, l2, h);
+            rewrite ← hv in AtNth(Opt(E), cap, s, l2, o, h, rewrite ← hn in ha)
+          ),
+        },
+      },
+    }
+  )
+  -- Reading through `VGet` gives the element in the cell.
+  def GetAt (E : Type) (v : &Vec(E)) (i : Word) (y : E) (h : Lt(i, VLen(E, *v))) (inv : VInv(E, *v)) (ha : VAt(E, *v, i, Some(y))) :
+      Eq(E, clone(*VGet(E, v, i, h, inv)), y) := (
+    match *v {
+      MkVec(len, cap, buf, hl) => match buf {
+        MkArray(s) => (
+          let hc : Lt(i, cap) = LeTrans(Succ(i), len, cap, h, hl);
+          let ⟨hv, hw⟩ = GetMutReadV(Opt(E), cap, s, i, hc);
+          let hn = AtNth(Opt(E), cap, s, i, Some(y), hc, ha);
+          -- the cell read is the stuck read; split on it
+          let o = (let c = s; clone(*GetMut(Opt(E), cap, &c, i, hc)));
+          match o {
+            None => (
+              let no : Eq(Opt(E), None[E], Some(y)) = trans(hv, hn);
+              match no {}
+            ),
+            Some(y2) => trans(hv, hn),
+          }
+        ),
+      },
+    }
+  )
+  reject def PushLenTwo (E : Type) (v : &Vec(E)) (x : E) : Eq(Word, (let c = *v; VPush(E, &c, x); VLen(E, c)), Succ(Succ(VLen(E, *v)))) := (
+    match *v {
+      MkVec(len, cap, buf, hl) => (
+        let d = LtDec(len, cap);
+        match d {
+          Yes(h) => refl,
+          No(full) => refl,
+        }
+      ),
+    }
+  )
+  -- Without the invariant, nothing rules out an empty cell.
+  reject def VGetNoInv (E : Type) (v : &Vec(E)) (i : Word) (h : Lt(i, VLen(E, *v))) : &E := (
+    match *v {
+      MkVec(len, cap, buf, hl) => UnwrapMut(E, GetMut(Opt(E), cap, AsSlice(Opt(E), cap, &buf), i, LeTrans(Succ(i), len, cap, h, hl)), refl),
+    }
+  )
+  -- Why the invariant is not a field: a get returns a borrow into `buf`, which clears such a field,
+  -- and the vector must be whole again when the borrow parameter ends, with the get's borrow
+  -- still live, so no proof can be assigned to it.
+  inductive VecP (E : Type) := MkVecP(len : Word, cap : Word, buf : Array(Opt(E), cap), hl : Le(len, cap), hp : PackedA(E, cap, buf, len))
+  reject def VGetP (E : Type) (v : &VecP(E)) (i : Word) (len : Word) (h : Lt(i, len)) : &E := (
+    match *v {
+      MkVecP(len2, cap, buf, hl, hp) => (
+        let d = LtDec(i, len2);
+        match d {
+          Yes(hi) => (
+            let hc : Lt(i, cap) = LeTrans(Succ(i), len2, cap, hi, hl);
+            let p = GetSome(E, cap, buf, len2, hp, i, hi, hc);
+            UnwrapMut(E, GetMut(Opt(E), cap, AsSlice(Opt(E), cap, &buf), i, hc), p)
+          ),
+          No(k) => match h {},
+        }
+      ),
     }
   )
 
@@ -534,15 +1074,6 @@ ochr DepVec uses ArrayBench {
           false => (),
         }
       ),
-    }
-  )
-  def LeSuccL (a : Word) (b : Word) (h : Le(Succ(a), b)) : Le(a, b) by a := (
-    match a {
-      Zero => refl,
-      Succ(a2) => match b {
-        Zero => match h {},
-        Succ(b2) => LeSuccL(a2, b2, h),
-      },
     }
   )
   -- insert every entry of a bucket into the new slots
@@ -611,15 +1142,18 @@ ochr DepVec uses ArrayBench {
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard DepVec.decls.length == 44
+#guard DepVec.decls.length == 80
 -- each rejection for its reason
 #guard (run "DepVec" DepVec).rejectedWith [
-  ("PushWrongLen", "field items of MkVec has type ArrayOf(Cell(σ0, ⌈Cells(σ0, σ3)⌉)), expected ArrayOf(⌈Cells(σ0, σ3)⌉)"),
-  ("Lie", "[Repack] a borrow of it ends, but it is open: field items of MkVec holds a value of type ArrayOf(⌈Cells(σ0, σ2)⌉), but its type from the earlier fields is ArrayOf(Cell(σ0, ⌈Cells(σ0, σ2)⌉))"),
+  ("ClearWrongCap", "field buf of MkVec has type ArrayOf(CellsEnd), expected ArrayOf(Cell(Opt(σ0), CellsEnd))"),
+  ("Lie", "[Repack] a borrow of it ends, but it is open: field buf of MkVec holds a value of type ArrayOf(⌈Cells(Opt(σ0), σ3)⌉), but its type from the earlier fields is ArrayOf(Cell(Opt(σ0), ⌈Cells(Opt(σ0), σ3)⌉))"),
+  ("LieLen", "[Repack] a borrow of it ends, but it is open: field hl of MkVec: it holds ⊥"),
   ("ReadBroken", "[Repack] *v is read whole, but it is open"),
   ("MoveBroken", "[Repack] *v is read whole, but it is open"),
   ("PassBroken", "[Repack] *v is borrowed whole, but it is open"),
   ("PushRunWrong", "the body of PushRunWrong has type ⊤, but the goal is False"),
-  ("PushedLenTwo", "the body of PushedLenTwo has type ⊤, but the goal is Eq Word σ3 Succ(σ3)"),
+  ("PushLenTwo", "the body of PushLenTwo has type ⊤, but the goal is Eq Word σ3 Succ(σ3)"),
+  ("VGetNoInv", "argument 3 (h) has type ⊤, expected ⌈IsSome("),
+  ("VGetP", "[Repack] a borrow of it ends, but it is open: field hp of MkVecP: it holds ⊥"),
   ("ResizeKeep", "[Repack] a borrow of it ends, but it is open: field slots of MkTable holds a value of type ArrayOf(⌈Cells(List(Entry), σ2)⌉), but its type from the earlier fields is ArrayOf(⌈Cells(List(Entry), σ1)⌉)"),
   ("ResizeRunWrong", "the body of ResizeRunWrong has type ⊤, but the goal is False")]
