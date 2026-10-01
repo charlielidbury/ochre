@@ -257,7 +257,7 @@ For a reader who knows Lean's tactics:
     - `*GetMut(E, n, s, i, h) := x` writes one;
   - `WithSplit(E, R, n, k, s, h, f)` runs `f` on two disjoint borrows, the first `k` elements and the rest. It is Ochr's `split_at_mut`;
   - `ArrFromFn(E, n, f)`, a new array of `n` elements, element `i` being `f(i)` (Rust's `array::from_fn`);
-  - `ArrOfList(E, n, l, h)`, a new array holding the `n` elements of the list `l`. An array literal `[x, y, z]` is this, written at its type: `let a : Array(Word, W(3)) = [W(4), W(9), W(2)]`, `([W(4), W(9), W(2)] : Array(Word, W(3)))`, or a definition's body. A literal computes to its cells, so a statement about one holds by evaluation.
+  - `ArrOfList(E, n, l, h)`, a new array holding the `n` elements of the list `l`, moved in. It is the model of an array literal `[x, y, z]` (a compiler lowers a literal directly, building no list) and a general list-to-array conversion. A literal is written at its type: `let a : Array(Word, W(3)) = [W(4), W(9), W(2)]`, `([W(4), W(9), W(2)] : Array(Word, W(3)))`, or a definition's body. A literal computes to its cells, so a statement about one holds by evaluation.
 
   An array never changes its length: there is no push or pop. A growable vector is user code over an array (`Vec` in `18DependentFields.lean`).
 

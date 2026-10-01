@@ -309,7 +309,11 @@ pop takes the last element out; get returns a borrow of an element, its cell's e
 out by `VInv`. The lemmas say what each does (`PushLen`, `PushInv`, `PushAt`, `PushAtOld`,
 `PopLen`, `PopInv`, `PopReturns`, `GetAt`), through the model of the moves (`MovedS`, `MoveIs`).
 Then `Table`, a hash table that stores its capacity next to its slots and resizes by moving every
-entry into a new table. -/
+entry into a new table.
+
+The cell representation is interim: `Opt(E)` cells cost a tag each at runtime, and the user is
+weighing a tag-free `Uninit(E)` cell type (possibly the ⊥ a move leaves, docs/10), with which
+"cells below `len` hold elements" could be a computed type rather than `VInv`. -/
 
 ochr DepVec uses ArrayBench {
   -- ## The cells
