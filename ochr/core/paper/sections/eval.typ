@@ -13,20 +13,20 @@ The judgement is big-step: `⟨Ω, t⟩ ⇓ ⟨Ω', v⟩` runs `t` from environm
       infer(name: "Borrow", $v = "content"(Omega, p)$, $cfg(Omega, \&p) arrow.b.double cfg(Omega[p |-> "loan"_ell], "borrow"_ell v)$),
     )
     #rules(
-      infer(name: "Copy", $v = "content"(Omega, p) "borrow-free," p "of a copy type or the read erased"$, $cfg(Omega, p) arrow.b.double cfg(Omega, v)$),
-      infer(name: "Read", $v = "content"(Omega, p) "borrow-free, not a copy"$, $cfg(Omega, p) arrow.b.double cfg(Omega[p |-> "ghost"(v)], v)$),
+      infer(name: "Copy", $v = "content"(Omega, p) "borrow-free," p "of a copy type"$, $cfg(Omega, p) arrow.b.double cfg(Omega, v)$),
+      infer(name: "Read", $v = "content"(Omega, p) "borrow-free, not a copy"$, $cfg(Omega, p) arrow.b.double cfg(Omega[p |-> bot], v)$),
       infer(name: "Move", $"content"(Omega, p) = "borrow"_ell v$, $cfg(Omega, p) arrow.b.double cfg(Omega[p |-> bot], "borrow"_ell v)$),
       infer(name: "Assign", $cfg(Omega, t) arrow.b.double cfg(Omega_1, v)$, $Omega_2 = "drop"(Omega_1, "content"(Omega_1, p))$, $cfg(Omega, p := t) arrow.b.double cfg(Omega_2[p |-> v], ())$),
     )
   ],
-  caption: [Borrows. Every rule that accesses a place `p` is preceded by [Access]: end every borrow whose loan lies on the path to `p` or inside its content (for a match, which inspects only the head: on the path, at the head, or anywhere inside a neutral head). `drop` ends the borrows inside a dropped value and fails on a live loan in a dropped owned value. A ghost or `⊥` may not be read, borrowed, or left inside a borrow's content when the borrow ends.],
+  caption: [Borrows. Every rule that accesses a place `p` is preceded by [Access]: end every borrow whose loan lies on the path to `p` or inside its content (for a match, which inspects only the head: on the path, at the head, or anywhere inside a neutral head). `drop` ends the borrows inside a dropped value and fails on a live loan in a dropped owned value. `⊥` may not be read, borrowed, or left inside a borrow's content when the borrow ends.],
 ) <fig-borrows>
 
 @fig-borrows gives the rules for borrows. They are Aeneas's, simplified by treating loans as variables.
 
 *Ending* a borrow [End] replaces it by `⊥` and substitutes its content for its loan. There is no side condition: if the content itself contains loans (because something has reborrowed part of it), they travel with it, and the reborrows remain valid. Ending is allowed at any time; the machine does it lazily, when a place is accessed. [Access] makes every access exclusive: before a place is read, borrowed, assigned or matched on, every borrow whose loan lies on the path to it or inside its content is ended. A borrower that has been ended holds `⊥`, and any later use of it is an error. This is the whole of the borrow checker: exclusivity of mutable borrows is not a separate analysis but a consequence of running the program.
 
-*Reading* a place at runtime moves its content out, as in Rust. A borrow leaves `⊥` behind [Move]; data leaves a _ghost_ of itself [Read], which runtime code may not use again but erased terms (types, proofs, statements) still read, so erased uses of a moved value do not count. Data of a _copy type_ is copied instead [Copy]: `Unit`, sorts, propositions, inductive types declared `copy`, and non-recursive inductive types whose fields are copy types. The library declares `Word`, a copy type of numbers that code only computes with, as Rust's `usize` is `Copy`; `Nat` is not one, since in-place code walks and moves it. `clone(p)` copies explicitly, as an erased read. A borrow must be whole again, with no ghost or `⊥` in its content, when it ends, is returned, or is passed to a call that closes off. Reborrowing is explicit (`&*x`). Inside types every read copies: `Id Nat (Add(x, x)) x` is a well-formed statement, and so is `x + x = 2 · x`.
+*Reading* a place moves its content out, as in Rust, and leaves `⊥` behind: a borrow [Move], or data [Read]. Types and proofs read as code does. Data of a _copy type_ is copied instead [Copy]: `Unit`, sorts, propositions, inductive types declared `copy`, and non-recursive inductive types whose fields are copy types. The library declares `Word`, a copy type of numbers that code only computes with, as Rust's `usize` is `Copy`; `Nat` is not one, since in-place code walks and moves it. `clone(p)` copies explicitly. A borrow must be whole again, with no `⊥` in its content, when it ends, is returned, or is passed to a call that closes off. Reborrowing is explicit (`&*x`). A statement, and each argument of a statement, runs on its own copy of the state, so `Id Nat (Add(x, Z)) x` is well formed, each side using `x` once, while `Add(x, x)` must be written `Add(clone(x), x)`, in a type as in code.
 
 == Calls and matches
 

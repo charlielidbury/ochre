@@ -8,7 +8,7 @@ This section introduces Ochr through its running examples. Everything is informa
     [`σ`, `σ'`], [an _abstract value_: an unknown value of a known type, as a free variable in Lean],
     [#seal(`t`)], [a _sealed program_: a closed source program whose run is stuck; a neutral value],
     [`borrow₀ v`, `loan₀`], [a borrow holding `v`, and the placeholder it left where it was taken],
-    [`⊥`, `ghost(v)`], [a place whose borrow was moved out, or whose data `v` was moved out],
+    [`⊥`], [a place whose content was moved out],
     [`⋆`], [the value of every proof],
     [`{ c ↦ v | x ↦ w }`], [an environment: bindings, with frames separated by `|`, oldest first],
     [generic call], [the most general call of a definition, at which it is checked (@sec-typing)],
@@ -134,10 +134,11 @@ Now a caller that first adds and then subtracts:
 ```
 LeAdd(n : Nat, m : Nat) : Le(n, Add(n, m)) by n := match n { Z => refl, S n' => LeAdd(n', m) }
 
-AddSub(x : &Nat, y : Nat) : Unit := let old = clone(*x); AddM(&*x, y); SubM(x, old, LeAdd(old, y))
+AddSub(x : &Nat, y : Nat) : Unit :=
+  let old = clone(*x); AddM(&*x, clone(y)); SubM(x, clone(old), LeAdd(old, y))
 ```
 
-At the call to `SubM`, `*x` has just been mutated in place by `AddM`, so on symbolic input it holds the sealed program `N(σ, y) = ⌈let c = σ; AddM(&c, y); c⌉`, and `SubM` demands a proof of `Le(σ, N(σ, y))`. `clone` copies `*x`, since reading a number through a borrow would move it out; `old` is then moved into `SubM`, while `LeAdd(old, y)`, a proof, still reads it, since erased uses do not count. The lemma `LeAdd` is about the _pure_ `Add` of the snapshot `old`, and its type is `Le(σ, Add(σ, y))`. The two meet because `Add(σ, y)` normalises to the very same sealed program: the in-place computation and the pure one are the same program to the type checker. A proof about the pure function is accepted where a proof about the mutated state is required, with no bridging lemma. `LeAdd` is also the idiom for a postcondition: a property of what an in-place function leaves behind is stated by running it on a copy inside the statement, here through its wrapper `Add`, since a type formed before the body runs cannot see the body's writes (@sec-typing). Using the snapshot after further mutation, `…; AddM(&*x, y); *x := Z; SubM(x, old, LeAdd(old, y))`, is rejected, since the requirement then mentions `Z`.
+At the call to `SubM`, `*x` has just been mutated in place by `AddM`, so on symbolic input it holds the sealed program `N(σ, y) = ⌈let c = σ; AddM(&c, y); c⌉`, and `SubM` demands a proof of `Le(σ, N(σ, y))`. `clone` copies `*x`, since reading a number through a borrow would move it out. A proof uses a variable as code does, so `old` and `y`, each needed again by the proof `LeAdd(old, y)`, are passed to the code as copies. The lemma `LeAdd` is about the _pure_ `Add` of the snapshot `old`, and its type is `Le(σ, Add(σ, y))`. The two meet because `Add(σ, y)` normalises to the very same sealed program: the in-place computation and the pure one are the same program to the type checker. A proof about the pure function is accepted where a proof about the mutated state is required, with no bridging lemma. `LeAdd` is also the idiom for a postcondition: a property of what an in-place function leaves behind is stated by running it on a copy inside the statement, here through its wrapper `Add`, since a type formed before the body runs cannot see the body's writes (@sec-typing). Using the snapshot after further mutation, `…; AddM(&*x, clone(y)); *x := Z; SubM(x, clone(old), LeAdd(old, y))`, is rejected, since the requirement then mentions `Z`.
 
 == Trees
 

@@ -1563,7 +1563,9 @@ partial def mkEqM (A a b : Value) : M Value := do
   -- D68: a moved place (`⊥` inside) has no content to compare: the equation is stuck, neither
   -- `⊤` nor `False`. Whether a stuck block's arm moved the place differs between an abstract and
   -- a ground run, so either answer could be wrong at some instance
-  if (← get).cfg.erasedMoves && (← get).cfg.movedStuck && (a.hasHole || b.hasHole) then return .tEq A a b
+  if (← get).cfg.erasedMoves && (← get).cfg.movedStuck && (a.hasHole || b.hasHole) then
+    fire .EqStuck fun _ => s!"{a} and {b}: a side holds ⊥ (D68)"
+    return .tEq A a b
   if ← conv a b then return vTrue
   let cfg := (← get).cfg
   match a, b with

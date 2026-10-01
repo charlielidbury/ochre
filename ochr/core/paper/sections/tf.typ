@@ -43,13 +43,13 @@ F is the calculus of the appendix restricted as follows. Each restriction says w
   - `match h {}` on a proof of `False`, which occurs only in lemma bodies.
 
   There is no `J`, `rewrite` or `split`. _Why:_ a data function's run then never depends on the truth of its hypotheses (@tf-thm, part (i)).
-+ *No move out through a borrow.* In code that runs, a read of a place under `*` (such as `*x`, or `(*x).1` of a number) is written `clone(…)`. Reading a borrow variable itself, which moves the borrow, is allowed. Reads in types and proofs copy anyway. _Why:_ no borrow ever holds a ghost (@tf-lem-res). Resolution is then defined at every ground state the proof visits, and every call's borrow arguments are whole. It excludes the `mem::replace` pattern `let v = *x; *x := S v`, which must be written with `clone(*x)`.
++ *No move out through a borrow.* In code that runs, a read of a place under `*` (such as `*x`, or `(*x).1` of a number) is written `clone(…)`. Reading a borrow variable itself, which moves the borrow, is allowed. Types and proofs read as code does (D68), so the restriction covers them too. _Why:_ no borrow ever holds a moved-out `⊥` (@tf-lem-res). Resolution is then defined at every ground state the proof visits, and every call's borrow arguments are whole. It excludes the `mem::replace` pattern `let v = *x; *x := S v`, which must be written with `clone(*x)`.
 
-Moves are otherwise as in the rules (D53): `Nat` is not a copy type, so a runtime read of an owned `Nat` place moves it and leaves a ghost.
+Moves are otherwise as in the rules (D53): `Nat` is not a copy type, so a read of an owned `Nat` place moves it and leaves `⊥`, in types and proofs as in code.
 
 The proof uses three properties of the rules, all stated in the appendix:
 - *[Drop] of a lent place* (@app-aux). When a dying owned value holds a live loan, a borrower _held in a binding_ (a variable, or a place inside one) is ended, as a write through [Access] would end it. A borrower that is a _value in flight_ (a call argument, the value being assigned, a let-block's or arm's result, or a call's result while its frame pops) makes the drop an error. So a local may die while a variable that borrowed it is never used again, but a block or a function may not return a borrow of its own local.
-- *Moved-out places* (@app-machine). A match on a place that holds a ghost is an error at runtime ([Match-err]).
+- *Moved-out places* (@app-machine). A match on a place that holds `⊥` is an error ([Match-err]).
 - *[Seal]'s final read* (@app-seal). The final read of a sealed program copies, so a sealed program never moves out through a borrow.
 
 === Ground instances, truth, resolution and agreement <tf-defs>
@@ -73,13 +73,13 @@ A run is in _runtime mode_ when its reads of non-copy data move, and in _erased 
 *Resolution.* For a well-formed state Ω, $res(Omega)$ ends every borrow, and $res_Omega (w)$ is the value `w` with each live loan replaced by the resolved content of its borrow, which is well defined by acyclicity.
 
 #thm([Lemma], [resolution], [
-  In F no borrow ever holds a ghost. At every well-formed ground state of F, ρ is defined, and it does not depend on the order in which borrows are ended. Ending some borrows first does not change it.
+  In F no borrow ever holds a moved-out `⊥`. At every well-formed ground state of F, ρ is defined, and it does not depend on the order in which borrows are ended. Ending some borrows first does not change it.
 ]) <tf-lem-res>
 #proof[
-  - *No borrow holds a ghost.* A ghost is created only by a runtime read of non-copy data, which leaves `ghost(v)` in the place read. By F6 no such read is under `*`, and a sealed program's final read copies. So a ghost appears only at an owned position or inside one. [Borrow] refuses a place that holds a ghost. So a borrow's content never holds one, and [End]'s wholeness premise always holds.
-  - *Order independence.* A ghost holds a loan-free value, because [Access] ends every loan inside a place before it is read. So substitution passes a ghost by, as it passes an abstract value. With each ghost read as an opaque atom, a ground state of F is a state of the mechanised machine. There, order-independence (property 4 of @fig-claims) is mechanised: `end_order_indep` (resolution exists in a well-formed state, and every order of the held borrows reaches it) and `endAll_endSeq` (ending some borrows first does not change it).
+  - *No borrow holds a moved-out `⊥`.* A read of non-copy data leaves `⊥` in the place read. By F6 no such read is under `*`, and a sealed program's final read copies. So such a `⊥` appears only at an owned position or inside one. [Borrow] refuses a place that is not whole. So a borrow's content never holds one, and [End]'s wholeness premise always holds.
+  - *Order independence.* `⊥` holds no loan, so substitution passes it by, and a ground state of F is a state of the mechanised machine. There, order-independence (property 4 of @fig-claims) is mechanised: `end_order_indep` (resolution exists in a well-formed state, and every order of the held borrows reaches it) and `endAll_endSeq` (ending some borrows first does not change it).
   - *What this needs.* Well-formedness of F's states is @tf-ass-t (T1).
-  - *Why only ground states.* At a symbolic state, ending a borrow re-normalises the sealed programs it substitutes into, which reading ghosts as atoms does not cover. Every use of ρ at a symbolic state goes through (N3) of @tf-ass-n.
+  - *Why only ground states.* At a symbolic state, ending a borrow re-normalises the sealed programs it substitutes into, which this argument does not cover. Every use of ρ at a symbolic state goes through (N3) of @tf-ass-n.
 ]
 
 #thm([Definition], [agreement], [
@@ -125,7 +125,7 @@ A proof of @tf-ass-n would go rule by rule and use the mechanised lemmas below.
   (T2) The frame property holds for F, as `frame_local` and `call_effect` prove for the earlier rule set: a run changes the environment below its own frame only through the loans held by that frame's borrows, and a call's effect is its isolated run, plugged back into the caller.
 ]) <tf-ass-t>
 
-The mechanised machine has no ghosts, reads by copying, normalises sealed programs only when states are compared, and has a `Unit` row in [Close]. (T1) and (T2) are the two facts about it that this section uses outside @tf-ass-n. Two other mechanised facts are about values, not runs, and they carry over by the argument of @tf-lem-res: a ghost holds no loan, so it is an atom for substitution. These are order-independence (@tf-lem-res) and the injectivity of contexts (`ctx_inj`, @tf-lem-call).
+The mechanised machine reads by copying, normalises sealed programs only when states are compared, and has a `Unit` row in [Close]. (T1) and (T2) are the two facts about it that this section uses outside @tf-ass-n. Two other mechanised facts are about values, not runs, and they carry over by the argument of @tf-lem-res: `⊥` holds no loan. These are order-independence (@tf-lem-res) and the injectivity of contexts (`ctx_inj`, @tf-lem-call).
 
 #table(columns: (30%, 1fr, 24%), stroke: none, inset: (x: 4pt, y: 3pt), align: left,
   table.hline(stroke: 0.5pt),
@@ -142,16 +142,6 @@ The mechanised machine has no ghosts, reads by copying, normalises sealed progra
 )
 
 === Lemmas <tf-lemmas>
-
-#thm([Lemma], [confinement is decided by syntax], [
-  For a type term of F evaluated at agreeing states $Omega_s agr(alpha) Omega_g$, its erased-mode run is confined on the symbolic path iff it is confined on the ground path.
-]) <tf-lem-conf>
-#proof[
-  - Confinement judges each step by the root of the place it assigns, borrows or moves: whether that root is a position of the environment the erased term started from.
-  - Type terms of F are match-free (F3), so both runs perform the same steps of the term's syntax, on the same places.
-  - Steps inside a callee's run are rooted in the callee's own frame, and so are never judged against the outer environment.
-  - So the decision is a function of the syntax and of which positions exist, and agreement relates positions of the same binding.
-]
 
 #thm([Lemma], [truth and conversion], [
   (a) If $P equiv Q$ are proposition values at a ground state, then $ok(P)$ iff $ok(Q)$. (b) In F, if $v equiv w$ then $v alpha equiv w alpha$ for every valuation α for which both are defined.
@@ -183,7 +173,7 @@ The mechanised machine has no ghosts, reads by copying, normalises sealed progra
   (c) each observed place has the same type on both paths.
 ]) <tf-lem-w>
 #proof[
-  *The frame fact.* By @tf-ass-t (T2), a run changes the environment below its own frame only through the loans held by that frame's borrows, and in its own frame only the places it writes or borrows. In erased mode reads copy, so no read changes a place. Ending a borrow, including the old borrow that an assignment to a borrow variable drops, does not change any resolved content. So the resolved content of a position π can change only if `t` writes π or writes through a live borrow that π owns. Both are the owners of the places `t` writes or borrows and of the borrow variables it names, which is $W_g (t)$ by the definition of the footprint.
+  *The frame fact.* By @tf-ass-t (T2), a run changes the environment below its own frame only through the loans held by that frame's borrows, and in its own frame only the places it writes or borrows. A read changes only the owned place it moves out of, which then holds `⊥` (D68); this section's claims about changed places are about writes, and a place only moved out is not observed (@sec-obs). Ending a borrow, including the old borrow that an assignment to a borrow variable drops, does not change any resolved content. So the resolved content of a position π can change only if `t` writes π or writes through a live borrow that π owns. Both are the owners of the places `t` writes or borrows and of the borrow variables it names, which is $W_g (t)$ by the definition of the footprint.
 
   *(a).* Let $pi in W_g$ be owned by the root of an occurrence `p` in `t` or `u`.
   - If `p` is rooted at an owned variable, it contributes that variable on both paths.
@@ -207,7 +197,7 @@ The symbolic side's extra positions do occur, and their conjuncts do become `Tru
 #thm([Lemma], [types agree], [
   Let $Omega_s agr(alpha) Omega_g$ and let `A` be a proposition of F. Suppose every call made in erased mode by the ground evaluation of `A` runs to completion without error. If `A` evaluates to $T_s$ at $Omega_s$ (in a type position, on a private copy), then it evaluates to some $T_g$ at $Omega_g$, and $ok(T_s alpha)$ iff $ok(T_g)$.
 ]) <tf-lem-types>
-#proof[By induction on `A`. The runs involved are in erased mode, and by @tf-lem-conf the type former is confined on both paths or on neither.
+#proof[By induction on `A`. The runs involved are in erased mode.
   - *`True`, `False`.* $T_s = T_g$.
   - *`P ∧ Q`.* [T-Ind] keeps the head `And`, and its parts are evaluated one after the other on one private copy. By @tf-lem-runs agreement holds between them. Use the induction hypothesis.
   - *`Eq D a b`.* By @tf-lem-runs the ground runs of `a` and `b` succeed and their values agree. Values in flight are loan-free (T1), so $a_s alpha = a_g$ and $b_s alpha = b_g$. $T_s = "eq"(D, a_s, b_s)$, and valuation rebuilds `Eq` types with `eq`. `eq` may already have dropped a `True` conjunct symbolically that valuation does not restore, so $T_s alpha$ and $"eq"(D, a_g, b_g) = T_g$ need not be equal as values. But they have the same truth, which is what the lemma claims.
@@ -250,10 +240,7 @@ The symbolic side's extra positions do occur, and their conjuncts do become `Tru
   If a data function's runtime-mode run from a ground instance completes without error, so does its erased-mode run, with the same result.
 ]) <tf-lem-modes>
 #proof[
-  - *Where the modes differ.* They differ only at [Read] of owned non-copy data. Runtime mode leaves `ghost(v)` behind, and erased mode leaves `v`. By F6 no such read is under `*`, and a ground instance holds no ghost.
-  - *The erased state has fewer ghosts.* Run both from the instance. At each step the erased state is the runtime state with the ghosts that runtime-mode reads created replaced by their values.
-  - *Premises.* Ghosts only ever make a premise fail: [Read-err], [Borrow-err], [Match-err], and [End]'s wholeness. So every premise that holds on the runtime state holds on the erased state.
-  - *Results.* The values the steps produce are the same.
+  - *The modes agree on F.* Since D68 an erased read moves as a runtime read does. The one remaining difference, the Fn rule's check of a call through a place, concerns function values, which F does not have (F2). So the two runs take the same steps from the instance, and reach the same result.
 ]
 
 === The theorem <tf-thm-sec>
@@ -315,7 +302,7 @@ The symbolic side's extra positions do occur, and their conjuncts do become `Tru
 ]
 
 This theorem reduces soundness of F to @tf-ass-n and @tf-ass-t; it is not a proof of soundness outright.
-- *What is proved.* The case analysis at tail matches and [Rec]'s decrease under α. Termination at the level of calls. The truth bookkeeping, footprints, call types, confinement and generalisation.
+- *What is proved.* The case analysis at tail matches and [Rec]'s decrease under α. Termination at the level of calls. The truth bookkeeping, footprints, call types and generalisation.
 - *What is assumed.* That each step of a symbolic run and the corresponding ground step agree, with agreement including what each live borrow holds (A5). And that the earlier rule set's well-formedness and frame property hold for F.
 
 === Corollaries <tf-cors>
@@ -330,11 +317,11 @@ This theorem reduces soundness of F to @tf-ass-n and @tf-ass-t; it is not a proo
 #proof[The empty state is ground, and $epsilon agr(emptyset) epsilon$ holds with (I) vacuous. The claim in the proof of @tf-thm, with $alpha = emptyset$ and @tf-thm itself supplying the lemma calls and the calls in types, gives $ok(A)$. `False` is not true, and truth is invariant under conversion (@tf-lem-conv (a)), so $A equiv.not ty("False")$.]
 
 #thm([Corollary], [adequacy of `Id`, conditional], [
-  Under @tf-ass-n and @tf-ass-t, suppose a lemma $L : Pi(overline(x) : overline(A)). ty("Id") D thin t thin u$ of F is accepted. Then at every ground instance whose hypotheses are true, the _observations_ of `t` and `u` are equal: their runs on private copies, in erased mode, give the same result and the same final contents of every place either run changes.
+  Under @tf-ass-n and @tf-ass-t, suppose a lemma $L : Pi(overline(x) : overline(A)). ty("Id") D thin t thin u$ of F is accepted. Then at every ground instance whose hypotheses are true, the _observations_ of `t` and `u` are equal: their runs on private copies, in erased mode, give the same result and the same final contents of every place either run writes or borrows.
 ]) <tf-cor-adeq>
-#proof[By @tf-thm (ii), $"and"("eq"(D, r, r'), "eq"(T_pi, w_pi, w'_pi), dots)$ is true. At a ground state, `eq` on two numerals is `True` iff they are equal, and `Unit` has one value. By @tf-lem-w (b), every place that `t` or `u` changes is observed.]
+#proof[By @tf-thm (ii), $"and"("eq"(D, r, r'), "eq"(T_pi, w_pi, w'_pi), dots)$ is true. At a ground state, `eq` on two numerals is `True` iff they are equal, and `Unit` has one value. By @tf-lem-w (b), every place that `t` or `u` writes is observed.]
 
-The corollary is about observations, which read by copying. It says nothing directly about `t` and `u` as runtime code, whose reads of an owned `Nat` move. For example, `Id Nat (let z = a; a) a` is proved by `refl`, while `let z = a; a` is rejected as code. By @tf-lem-modes, an accepted data function's runtime and erased runs from a ground instance agree, so for calls of accepted functions the distinction does not matter.
+The corollary is about observations. Since D68 an observation reads as runtime code does, on its own copy of the state: `Id Nat (let z = a; a) a` is rejected, as `let z = a; a` is, since `a` is used twice. By @tf-lem-modes, an accepted data function's runtime and erased runs from a ground instance agree, so for calls of accepted functions the distinction does not matter.
 
 *Remarks on stability.* For a term of F at agreeing states, the decisions of @lem-stable are:
 - (1) and (4), erasure, matches decided by a proof's type, and each call's class and [Close] row, are read from declared types, constructor names and declared codomains. F never changes those.
@@ -389,9 +376,9 @@ The reborrow-and-replace idiom is in F, and it is accepted. `Trav(x : &Nat) : Un
   - (N3) through [Seal] with inert loans.
 
   We estimate it at 3–5k lines of Lean.
-+ *Prove @tf-ass-t,* by porting `exec_wf` and the frame lemma to ghosts and to the current [Close].
++ *Prove @tf-ass-t,* by porting `exec_wf` and the frame lemma to moving reads and to the current [Close].
 + *Widen F.* Each addition brings back a decision of @lem-stable:
-  - moves through borrows (F6): ghost-transparent resolution;
+  - moves through borrows (F6): resolution over a moved-out `⊥`;
   - stuck blocks (F4): captures and modes;
   - closures and Π-values: class, captured types, [Conv-fun];
   - user inductives and pairs: disjointness and injectivity in `eq`;
@@ -401,7 +388,7 @@ The reborrow-and-replace idiom is in F, and it is accepted. `Trav(x : &Nat) : Un
 *Where F's restrictions are used.*
 - F1: ground values (@tf-def-truth); @tf-gen (b); @tf-lem-w (c); early ends are deep (@tf-drop).
 - F2: @tf-lem-conv (conversion on data is syntactic); @tf-gen (b); @tf-lem-w (c); calls in types are to earlier definitions (@tf-thm).
-- F3: @tf-lem-conf; @tf-lem-w (a) (every occurrence in a statement is reached); with F4, @tf-gen (a) (records come only from [Tail-gen]).
+- F3: @tf-lem-w (a) (every occurrence in a statement is reached); with F4, @tf-gen (a) (records come only from [Tail-gen]).
 - F4: the walk forms no stuck blocks; @tf-lem-runs; the live result of @tf-thm (i).
 - F5: @tf-thm (i) (a data function's run never depends on the truth of a hypothesis); the claim's `let` case.
 - F6: @tf-lem-res; the whole borrow arguments of @tf-lem-runs; @tf-lem-modes.

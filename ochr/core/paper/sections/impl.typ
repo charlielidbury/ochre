@@ -55,8 +55,8 @@ We wrote the resizing hash map that Aeneas verifies @aeneas as one Ochr program,
 ```
 InsertFindOther(hm : &HashMap, k : Word, v : Nat, k2 : Word,
                 h : Eq Bool (EqB(k, k2)) false) :
-    Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k2))
-           (let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r) :=
+    Id Opt (InsertNoResize(&*hm, k, v); Find(clone(*hm), k2))
+           (let r = Find(clone(*hm), k2); InsertNoResize(&*hm, k, v); r) :=
   match *hm { HM(n, len, slots) =>
     split BInsert in SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h) }
 ```
@@ -76,7 +76,7 @@ InsertFindOther(hm : &HashMap, k : Word, v : Nat, k2 : Word,
 ```
 QSCorrect(n : Word, s : &Slice(Word, n), q : Word) :
     (let c = *s; QS(n, n, &c); Sorted(n, c)) ∧
-    (let old = *s; Eq Word (Count(q, n, (QS(n, n, &*s); *s))) (Count(q, n, old))) :=
+    (let old = clone(*s); Eq Word (Count(q, n, (QS(n, n, &*s); *s))) (Count(q, n, old))) :=
   ⟨QSSortedFull(n, n, s, LeRefl(n)), QSPerm(n, n, s, q)⟩
 ```
 

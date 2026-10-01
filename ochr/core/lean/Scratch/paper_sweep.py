@@ -150,7 +150,7 @@ ochr SweepTF uses Std, Fixtures {
   def Bad4 (x : &Nat) (a : Nat) : Unit := (x := TailM(&a); match a { Z => (), S _ => () })
   def Bad4Run : Unit := (let c = 0; Bad4(&c, 1))
   reject def RetLocal (x : &Nat) : &Nat := (let a = 0; &a)
-  def IdLet (a : Nat) : Id Nat (let z = a; a) a := refl
+  reject def IdLet (a : Nat) : Id Nat (let z = a; a) a := refl
   reject def LetCode (a : Nat) : Nat := let z = a; a
   def AssignPick (n : Nat) (b : Nat) (x : &Nat) : Unit := (x := Pick(n, &*x, &b); *x := 5)
   def AssignPick1 (b : Nat) (c : Nat) : Unit := (let x = &c; let n = 1; x := Pick(n, &*x, &b); *x := 5)

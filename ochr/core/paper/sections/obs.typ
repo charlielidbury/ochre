@@ -38,4 +38,4 @@ Two consequences are worth drawing out.
 
 *Owned locals are observed.* The footprint includes places the current function owns, not only the places behind its borrow parameters. This is forced. A context such as `(□; x)`, which reads `x` afterwards, distinguishes `x := 6` from `()`; if `Id` ignored owned locals it would equate them, and transport along that equation would prove `Eq Nat 6 5`.
 
-*Unobserved moves are harmless.* The two sides of an `Id` may consume different borrow variables, but borrow variables are never in the footprint, their owners are, and ending the remaining borrows puts every borrowed content back in its owner.
+*Unobserved moves are harmless.* The two sides of an `Id` may consume different borrow variables, but borrow variables are never in the footprint, their owners are, and ending the remaining borrows puts every borrowed content back in its owner. They may also consume different owned data, `Id Nat (let z = a; Z) Z` holds: a place only read is not observed, and code that reads it after the side that moved it is rejected, so no accepted context tells the sides apart by it.

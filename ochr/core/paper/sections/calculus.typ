@@ -47,7 +47,7 @@ The propositional fragment is Lean's: `Prop` is an impredicative universe with d
 #figure(kind: image, supplement: [Figure],
   block(width: 100%, inset: (y: 4pt), grammar(
     ($v, w$, $ty("C")(v_1, ..., v_k) | star | f | chevron.l overline(kappa) tack.r kw("fix") f (overline(x) : overline(A)) : B dots := t chevron.r | "types"$, [data, proofs, functions, closures, types]),
-    ([], $"borrow"_ell v | "loan"_ell | bot | "ghost"(v)$, [borrows, loans, moved-out]),
+    ([], $"borrow"_ell v | "loan"_ell | bot$, [borrows, loans, moved-out]),
     ([], $n$, [neutrals]),
     ($n$, $sigma | seal(t)$, [abstract values, sealed programs]),
     ($Omega$, $dot.c | Omega, x : A |-> v | Omega | Omega'$, [bindings, grouped in frames]),

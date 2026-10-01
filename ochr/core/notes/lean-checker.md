@@ -1510,3 +1510,22 @@ The `unitEta` row (D59) gains `Numbers.UnitStill:rejected`. 1277 verdicts.
 Both sides of `Eq` ran inside one private copy, so the right side saw the left side's writes: `Eq Nat (let c = *x; *x := 7; c) (*x)` compared σ0 with 7. Now each side runs on its own copy (`onCopyIf`), by the ordinary rules: a write in a side is visible to the rest of that side and to nothing else. Mutating `*x` inside a side states what the mutated value is: `EffInSide`, `Eq Nat (*x := S(*x); *x) (S(*x))`, and `AddMInSide`.
 
 Switch `eqSidesApart`; ledger row class model, witness `SideShared`, which is `Eq Nat (*x := 0; 1) (S(*x))`. It is proved by `refl` on a shared copy and is false at `*x = 5`. With the switch off, `EffInSide`, `AddMInSide` and `SideOld` are rejected. 1295 verdicts.
+
+## 56. D68: reads in statements move; D69: D41 deleted
+
+The rule the programmer reads: using a variable consumes it; a statement, and each argument of a statement, runs on its own copy of the state. Erased reads used to copy and to see through ghosts. Now `readPlace` moves in a statement exactly as in code (`erasedMoves`, default on), a move leaves `⊥`, and `Value.ghost` is gone. `clone` copies through the `copying` flag, which callee bodies reset.
+
+What it took, beyond the four approved consequences (DECISIONS D68):
+- `evalAt` runs every erased term on its own copy, at any depth, keeping the flags across the copy (the pre-pass assertion fired when they were lost). `stmtArgIf` puts each argument of a type- or proof-returning call (and of a proof constructor) on its own copy, unless its value holds a borrow.
+- `footprint … (onlyWrites) (obsMoved)`: a place counts only if written or borrowed, or if it is a borrow variable read whole. An owned binding holding `⊥` stays observed when written or borrowed.
+- `mkEqM` returns a stuck `Eq` when either side holds `⊥` (`movedStuck`, tagged [Eq-stuck]). A stuck block takes a place by move if any arm moves it, so `⊥` at the generic call need not be `⊥` at an instance. Before this, `⊥ = ⊥` was `⊤`, and fuzz case 11014 (probe U1) proved for every `n` a statement false at `n = 0`. Witness `MovedBothSides`.
+- `copyByType`: a value is copied only when its type is a copy type, so a function-typed place moves. Witness `ClosureCopy`.
+- `closeOffMatch` adds the non-copy places that a closure or Π-type in an arm mentions to the moved set.
+- One-constructor η-refinements are global (`etaRefs`, kept by `restoreKeep`). [Assign] types the place before it evaluates the value.
+- `observe` sets `observing`, so ending a borrow over a part the side consumed reads `⊥` instead of failing.
+
+D69 deleted D41 (confinement) once every erased term ran on its own copy. The counterfactual with D41 off flipped six statements to accepted (`JMotiveConf`, `Write`, `Borrow`, `N1T`, `Q`, `LieP`), each a write that lands on the statement's copy, and removed five fuzz finding kinds without adding any. The effects log, `checkConfined`, the D41+ body check, `confine`/`confineBodies` and [Erase-err] are gone. `confinedCopy` is now `stmtCopy`. The D28 row (`erasureByDecl`) flips nothing in the suite any more and left the ledger; the switch stays.
+
+Fuzz (seed 1, 2·10⁴ cases, 6 workers): ochr-core 20189c39 checked 18731, rejected 942, invalid 327, with adequacy-vacuous 708 the only kind. This branch checked 18276, rejected 1401, invalid 323, with adequacy-vacuous 678 the only kind. Oracle changes, each an artefact of the oracle observing more than `Id` does: observations compare `Id`'s footprint (`obsPositions`), not every binding; a symbolic `⊥` is fail-safe (`fillHoles`); η field names count as recorded.
+
+Migrations: 148 suite verdicts flipped once the fixes were in. All are migrated with `clone` or intended. Intended rejections are `GhostRead`, `J1`, `J1Run`, `LamWriteInBlock` and `ClosureCopy`: a value used twice in one statement, or a statement reading what code moved. Paper: `AddSub`, `InsertFindOther` and `QSCorrect` take `clone`s, and the sweep's `IdLet` is a `reject def`.

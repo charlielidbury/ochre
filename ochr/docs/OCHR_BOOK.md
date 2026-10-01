@@ -93,7 +93,7 @@ Reserved names, which you can't declare: `Nat`, `Unit`, `Z`, `S`, `refl`, `Id`, 
 
 These are the rules you'll hit most:
 
-1. **Using a variable consumes it; a statement, and each argument of a statement, runs on its own copy of the state.** Reading a place moves it unless its type is a copy type, in runtime code and in types and proofs alike. Copy types: `Unit`, `Word`, `Bool`, propositions, types, `copy` inductives, and non-recursive inductives whose fields are copies (such as `Opt(Word)`). Reading a moved place is an error: `[Read] x was moved out`. Use `clone(p)` for an explicit copy.
+1. **Using a variable consumes it; a statement, and each argument of a statement, runs on its own copy of the state.** Reading a place moves it unless its type is a copy type, in runtime code and in types and proofs alike. Copy types: `Unit`, `Word`, `Bool`, propositions, types, `copy` inductives, and non-recursive inductives whose fields are copies (such as `Opt(Word)`). A function type is not a copy type: reading a place that holds a function moves it (calling it, `f(x)`, doesn't). Reading a moved place is an error: `[Read] x was moved out`. Use `clone(p)` for an explicit copy.
 2. **A borrow variable moves when you pass it.** `Inc(x); Inc(x)` fails at the second `x`. Pass a reborrow to keep `x`: `Inc(&*x); Inc(x)`.
 3. **`x : &T` is a mutable borrow.** The function may read and write `*x`. There are no shared borrows: a read-only function still takes `&`, and "it doesn't change anything" is a statement you prove when it matters.
 4. **Borrows end automatically** when the owner, or anything containing it, is used again. Using a borrow after that is an error. This is Rust's borrow checker, enforced on symbolic runs.
@@ -122,7 +122,7 @@ These are the rules you'll hit most:
    You can never return a borrow of a local.
 8. **Moving a cursor down** works as in Rust: `match *x { Cons(_, t) => (x := &t; *x := Nil), … }`.
 9. **Borrowable types** are anything in `Type`: data, functions, and type parameters `A : Type` (`Swap` above is generic). Proofs, propositions and types can't be borrowed.
-10. **Closures capture values, never borrows**, and may run again. So a closure body may not move a captured value out; `clone` it.
+10. **Closures capture values, never borrows**, and may run again. Forming one moves what it captures (unless a copy). A closure body may not move a captured value out, so `clone` it; a closure that returns a type or a proof is the exception, since each run is a statement on its own copy.
 11. **Types and proofs run on their own copy.** A statement (a type, a proof, a side of `Eq` or `Id`, each argument of a call that returns a type or a proof) runs on a private copy of the state by the same rules as runtime code, and the copy is thrown away: whatever it moves or writes is gone with it. So `Le(n, Add(n, m))` is fine (each argument has its own copy), but inside one argument a value is used once, as in runtime code: `Add(clone(x), x)`, not `Add(x, x)`.
 
 ## 6. Recursion

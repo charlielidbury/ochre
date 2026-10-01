@@ -55,7 +55,7 @@ Every statement is evaluated along two paths: at a definition's generic call, wh
 
 Each of these was once read from a normal form, and each time the result was a closed proof of `False` or an accepted program that goes wrong (@fig-why).
 
-*Erased terms leave no trace.* An erased term runs on a private copy of the environment, which is then discarded, so running a proof and skipping it are indistinguishable, and the machine skips proofs, as a compiled program would. Erased terms are also _confined_: they may not write, borrow or move a place that outlives them, except by handing it to another erased call. This is redundant for a correctly classified term, and is kept as a fail-safe: if the paths ever disagreed about whether a term is erased, the path that erases it would reject it instead of discarding its effects.
+*Erased terms leave no trace.* Every erased term, nested ones included, runs on its own private copy of the environment, which is then discarded, so running a proof and skipping it are indistinguishable, and the machine skips proofs, as a compiled program would. A write inside a statement lands on the statement's copy and is lost with it.
 
 == Types carry what the machine needs <sec-typing-types>
 
