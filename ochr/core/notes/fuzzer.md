@@ -320,8 +320,9 @@ Probe for the `fnRule` row: `def F (n : Nat) : Nat := let f = (λ (u : Unit) : N
 
 On 55977f8e the statuses were 936,239 checked, 47,833 rejected and 15,928 unresolved, with no crashes.
 
-**Open (deferred by the lead, 2026-09-30).** Two items were deferred to save tokens:
-- A 10⁶ baseline on the checker since D65–D67 and rule-audit's fixes. The last 10⁵ runs there (seed 1, ochr-core 8ff94c98) show only adequacy-vacuous 3,460, escape 3 and renorm-vacuous 7.
+**10⁶ baseline on ochr-core b349bd76 (2026-09-30, seeds 1–10, 6 workers).** 935,665 checked, 48,416 rejected, 15,919 invalid, no crashes, 0 `exec`, 0 `verdict`. The findings were adequacy-vacuous 34,683, renorm "cannot infer the type" 68 (15 not vacuous), escape 22, and one `nat`: seed 10, case 83896. That case was an artefact of the oracle's refinement order, not a checker bug. Substituting `x0` first unsealed a block whose `Clr(&n2)` was then generalised while `n2` was still abstract. `refineValS` now substitutes to a fixpoint (`Scratch/RefineOrder.lean`); the checker proves such statements in either split order.
+
+**Open (deferred by the lead, 2026-09-30).**
 - Restoring the closure templates `MkF`, `Clo` and `CapN`. They copy their captures with `clone` and are parked on branch `ochr-fuzz-clo` (549054f4, not run at scale). When resumed: record the baseline commit and seed first. A case that picks one of these templates now offers it to the statement generator, so those cases shift. Then run 10⁵ and report any new classes.
 
 ### v2.6 The fail-safe classes, one sentence each

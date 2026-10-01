@@ -170,14 +170,32 @@ def refineValS (st : MState) (gens : List (Value × Nat)) (α : List (Nat × Val
     modify fun s => { s with neutrals := [] }
     let mut v := v
     for (n, σ) in gens do v ← substV (.abs σ) n v
-    for (σ, r) in α do v ← substV (.abs σ) r v
-    -- D68: a one-constructor abstract value's η-refinement names its fields; refining the value
-    -- refines them
-    for (σ, r) in α do
-      if let (some (.ind _ c _ _ fs), .ind _ c' _ _ gs) := (st.etaRefs.lookup σ, r) then
-        if c == c' then
-          for (f, g) in fs.zip gs do
-            if let .abs σf := f then v ← substV (.abs σf) g v
+    let inst (v : Value) : M Value := do
+      let mut v := v
+      for (σ, r) in α do v ← substV (.abs σ) r v
+      -- D68: a one-constructor abstract value's η-refinement names its fields; refining the
+      -- value refines them
+      for (σ, r) in α do
+        if let (some (.ind _ c _ _ fs), .ind _ c' _ _ gs) := (st.etaRefs.lookup σ, r) then
+          if c == c' then
+            for (f, g) in fs.zip gs do
+              if let .abs σf := f then v ← substV (.abs σf) g v
+      pure v
+    -- to a fixpoint: substituting one parameter can unseal a program that then generalises a
+    -- stuck split on a parameter substituted later (seed 10, case 83896: `x0 := 0` runs
+    -- `Clr(&n2)` while `n2` is still σ2); undo each such generalisation once the instance
+    -- reaches its program
+    v ← inst v
+    let mut done : List Nat := []
+    for _ in [0:8] do
+      let ns := (← get).neutrals.filter (!done.contains ·.2)
+      let mut changed := false
+      for (n, σ) in ns do
+        done := σ :: done
+        let n' ← inst n
+        if n' != n then v ← substV (.abs σ) n' v; changed := true
+      if !changed then break
+      v ← inst v
     pure v
   runSt act st
 
