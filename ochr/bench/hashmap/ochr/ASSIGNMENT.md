@@ -14,7 +14,7 @@ Ochr is a research language, so you will not have met it before. Read `docs/GUID
 - `Bucket`, `BNil | BCons(key : Word, value : Word, next : Bucket)`: a singly linked list of entries, each node owning the next.
 - `Map(cap)`: a map of capacity `cap`, the value `MkMap(slots, len)`, where `slots` is an array of exactly `cap` buckets (`Array(Bucket, cap)`) and `len` is a word. The capacity is part of the type and never changes; there is no resizing. (The type is written `MapOf(Cells(Bucket, cap))`, because a field cannot yet have the type `Array(Bucket, cap)`; it is the same thing.)
 - `Idx(cap, k)`, the bucket of key `k`: `k mod cap`. `IdxLt(cap, k, h) : Lt(Idx(cap, k), cap)` is its bound, given `h : Lt(Zero, cap)`.
-- `EqDec(a, b)`, key comparison that returns the evidence: `Yes(e)` with `e : Eq Word a b`, or `No(ne)` with `ne : Π(e : Eq Word a b). False`. The library's boolean `Eqb` is also available.
+- `EqDec(a, b)`, key comparison that returns the evidence: `Yes(e)` with `e : Eq(Word, a, b)`, or `No(ne)` with `ne : Π(e : Eq(Word, a, b)). False`. The library's boolean `Eqb` is also available.
 - `SlotMut(cap, s, i, h) : &Bucket`, a borrow of bucket `i` of the view `s` (the arrays library's `GetMut` at the element type `Bucket`). It is the only way for runtime code to reach a bucket in place; the view of the array field is `AsSlice(Bucket, cap, &slots)`.
 - `Grow(g, l)` is `l + 1` if `g` is `None` and `l` otherwise; `Shrink(g, l)` is `l − 1` if `g` is `Some(_)` and `l` otherwise. They state H12 and H13.
 
@@ -56,7 +56,7 @@ Ochr has only mutable borrows, so `MapLen` and `MapGet` take the map by `&` too;
 | H17 | `GetUnchanged` | `get(m, k)` leaves the map equal to what it was (for every map) |
 | H18 | `LenUnchanged` | `len(m)` leaves the map equal to what it was (for every map) |
 
-`k2 ≠ k` is the hypothesis `ne : Π(e : Eq Word k2 k). False`. The exact statements are in `HashMap.lean`.
+`k2 ≠ k` is the hypothesis `ne : Π(e : Eq(Word, k2, k)). False`. The exact statements are in `HashMap.lean`.
 
 ## The tests (given, SPEC §6)
 

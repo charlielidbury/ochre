@@ -4,7 +4,7 @@ import Ochr.Examples.«00Std»
 
 `inductive D (a : A) … := C₁(f : T, …) | …` declares a type with constructors. A match on a
 value of `D` has one arm per constructor, and its pattern variables name the field places
-`p.f`, as `S y` names `p.1`. [Split] refines an abstract value to `C(σ₁, …, σₖ)`, and [Rec]
+`p.f`, as `S y` names `p.0`. [Split] refines an abstract value to `C(σ₁, …, σₖ)`, and [Rec]
 accepts a recursive call on any field. Parameters are uniform (`List(A)`); a constructor
 takes them first, written `Cons[Nat](1, Nil[Nat])` or left out when they can be inferred
 (D46, D49). A field's type is first-order data: other inductive types, the type itself,
@@ -31,7 +31,7 @@ ochr Lists {
     }
   )
 
-  def AppendMNil (xs : &List) : Id Unit (AppendM(xs, Nil)) () by xs := (
+  def AppendMNil (xs : &List) : Id(Unit, AppendM(xs, Nil), ()) by xs := (
     match *xs {
       Nil => refl,
       Cons(h, t) => AppendMNil(&t),
@@ -39,7 +39,7 @@ ochr Lists {
   )
 
   -- Appending a one-element list does something.
-  reject def AppendMOne (xs : &List) : Id Unit (AppendM(xs, Cons(0, Nil))) () by xs := (
+  reject def AppendMOne (xs : &List) : Id(Unit, AppendM(xs, Cons(0, Nil)), ()) by xs := (
     match *xs {
       Nil => refl,
       Cons(h, t) => AppendMOne(&t),
@@ -59,7 +59,7 @@ ochr Lists {
     *r := ys
   )
 
-  def AppendMEq (xs : &List) (ys : List) : Id Unit (AppendM(xs, ys)) (AppendM'(xs, ys)) by xs := (
+  def AppendMEq (xs : &List) (ys : List) : Id(Unit, AppendM(xs, ys), AppendM'(xs, ys)) by xs := (
     match *xs {
       Nil => refl,
       Cons(h, t) => AppendMEq(&t, ys),
@@ -128,7 +128,7 @@ ochr Trees uses Std {
   )
 
   -- The in-place insert is the pure insert.
-  def InsertMEq (t : &Tree) (k : Word) : Id Unit (InsertM(t, k)) (*t := Insert(*t, k)) by t := (
+  def InsertMEq (t : &Tree) (k : Word) : Id(Unit, InsertM(t, k), *t := Insert(*t, k)) by t := (
     match *t {
       Leaf => refl,
       Node(l, v, r) => (
@@ -155,7 +155,7 @@ ochr Trees uses Std {
     }
   )
 
-  reject def InsertMSwapEq (t : &Tree) (k : Word) : Id Unit (InsertMSwap(t, k)) (*t := Insert(*t, k)) by t := (
+  reject def InsertMSwapEq (t : &Tree) (k : Word) : Id(Unit, InsertMSwap(t, k), *t := Insert(*t, k)) by t := (
     match *t {
       Leaf => refl,
       Node(l, v, r) => (
@@ -178,25 +178,25 @@ ochr Trees uses Std {
 
   -- Inserting grows the size by one. In the `true` arm this follows from the induction
   -- hypothesis, since `Add` recurses on its first argument. The `false` arm needs
-  -- `x + S y = S (x + y)`, itself proved in place by bare recursion. Both arms rewrite
+  -- `x + S(y) = S(x + y)`, itself proved in place by bare recursion. Both arms rewrite
   -- with `J`.
-  def AddMS (x : &Nat) (y : Nat) : Id Unit (AddM(x, S y)) (AddM(&*x, y); *x := S *x) by x := (
+  def AddMS (x : &Nat) (y : Nat) : Id(Unit, AddM(x, S(y)), AddM(&*x, y); *x := S(*x)) by x := (
     match *x {
       Z => refl,
       S p => AddMS(&p, y),
     }
   )
 
-  def AddS (x : Nat) (y : Nat) : Id Nat (Add(x, S y)) (S (Add(x, y))) := AddMS(&x, y)
+  def AddS (x : Nat) (y : Nat) : Id(Nat, Add(x, S(y)), S(Add(x, y))) := AddMS(&x, y)
 
   def Size (t : Tree) : Nat by t := (
     match t {
       Leaf => 0,
-      Node(l, v, r) => S (Add(Size(l), Size(r))),
+      Node(l, v, r) => S(Add(Size(l), Size(r))),
     }
   )
 
-  def SizeInsert (t : Tree) (k : Word) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t := (
+  def SizeInsert (t : Tree) (k : Word) : Id(Nat, S(Size(t)), Size(Insert(t, k))) by t := (
     match t {
       Leaf => refl,
       Node(l, v, r) => (
@@ -205,15 +205,15 @@ ochr Trees uses Std {
           false =>
             J(
               Nat,
-              Add(Size(l), S (Size(r))),
-              S (Add(Size(l), Size(r))),
-              λ(z : Nat) : Prop => Id Nat (S z) (S (Add(Size(l), Size(Insert(r, k))))),
+              Add(Size(l), S(Size(r))),
+              S(Add(Size(l), Size(r))),
+              λ(z : Nat) : Prop => Id(Nat, S(z), S(Add(Size(l), Size(Insert(r, k))))),
               AddS(Size(l), Size(r)),
               J(
                 Nat,
-                S (Size(r)),
+                S(Size(r)),
                 Size(Insert(r, k)),
-                λ(z : Nat) : Prop => Id Nat (S (Add(Size(l), S (Size(r))))) (S (Add(Size(l), z))),
+                λ(z : Nat) : Prop => Id(Nat, S(Add(Size(l), S(Size(r)))), S(Add(Size(l), z))),
                 SizeInsert(r, k),
                 refl
               )
@@ -221,9 +221,9 @@ ochr Trees uses Std {
           true =>
             J(
               Nat,
-              S (Size(l)),
+              S(Size(l)),
               Size(Insert(l, k)),
-              λ(z : Nat) : Prop => Id Nat (S (S (Add(Size(l), Size(r))))) (S (Add(z, Size(r)))),
+              λ(z : Nat) : Prop => Id(Nat, S(S(Add(Size(l), Size(r)))), S(Add(z, Size(r)))),
               SizeInsert(l, k),
               refl
             ),
@@ -233,7 +233,7 @@ ochr Trees uses Std {
   )
 
   -- Without the arithmetic lemma the `false` arm does not check ...
-  reject def SizeInsertNoLemma (t : Tree) (k : Word) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t := (
+  reject def SizeInsertNoLemma (t : Tree) (k : Word) : Id(Nat, S(Size(t)), Size(Insert(t, k))) by t := (
     match t {
       Leaf => refl,
       Node(l, v, r) => (
@@ -242,18 +242,18 @@ ochr Trees uses Std {
           false =>
             J(
               Nat,
-              S (Size(r)),
+              S(Size(r)),
               Size(Insert(r, k)),
-              λ(z : Nat) : Prop => Id Nat (S (S (Add(Size(l), Size(r))))) (S (Add(Size(l), z))),
+              λ(z : Nat) : Prop => Id(Nat, S(S(Add(Size(l), Size(r)))), S(Add(Size(l), z))),
               SizeInsertNoLemma(r, k),
               refl
             ),
           true =>
             J(
               Nat,
-              S (Size(l)),
+              S(Size(l)),
               Size(Insert(l, k)),
-              λ(z : Nat) : Prop => Id Nat (S (S (Add(Size(l), Size(r))))) (S (Add(z, Size(r)))),
+              λ(z : Nat) : Prop => Id(Nat, S(S(Add(Size(l), Size(r)))), S(Add(z, Size(r)))),
               SizeInsertNoLemma(l, k),
               refl
             ),
@@ -263,7 +263,7 @@ ochr Trees uses Std {
   )
 
   -- ... and inserting does not grow the size by two.
-  reject def SizeInsertTwo (t : Tree) (k : Word) : Id Nat (S (S (Size(t)))) (Size(Insert(t, k))) by t := (
+  reject def SizeInsertTwo (t : Tree) (k : Word) : Id(Nat, S(S(Size(t))), Size(Insert(t, k))) by t := (
     match t {
       Leaf => refl,
       Node(l, v, r) => SizeInsertTwo(l, k),
@@ -300,54 +300,54 @@ ochr InPlaceTrees uses Std {
                                 match b { true => InsertM(&l, k), false => InsertM(&r, k) } }
   def Insert (t : Tree) (k : Word) : Tree := InsertM(&t, k); t
 
-  def InsertMIsInsert (t : &Tree) (k : Word) : Id Unit (InsertM(t, k)) (*t := Insert(*t, k)) := refl
+  def InsertMIsInsert (t : &Tree) (k : Word) : Id(Unit, InsertM(t, k), *t := Insert(*t, k)) := refl
 
-  def AddMS (x : &Nat) (y : Nat) : Id Unit (AddM(x, S y)) (AddM(&*x, y); *x := S *x) by x := (
+  def AddMS (x : &Nat) (y : Nat) : Id(Unit, AddM(x, S(y)), AddM(&*x, y); *x := S(*x)) by x := (
     match *x {
       Z => refl,
       S p => AddMS(&p, y),
     }
   )
 
-  def AddS (x : Nat) (y : Nat) : Id Nat (Add(x, S y)) (S (Add(x, y))) := AddMS(&x, y)
+  def AddS (x : Nat) (y : Nat) : Id(Nat, Add(x, S(y)), S(Add(x, y))) := AddMS(&x, y)
 
   def Size (t : Tree) : Nat by t := (
     match t {
       Leaf => 0,
-      Node(l, v, r) => S (Add(Size(l), Size(r))),
+      Node(l, v, r) => S(Add(Size(l), Size(r))),
     }
   )
 
-  def SizeInsert (t : Tree) (k : Word) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :=
+  def SizeInsert (t : Tree) (k : Word) : Id(Nat, S(Size(t)), Size(Insert(t, k))) by t :=
     match t { Leaf => refl,
               Node(l, v, r) => let b = Lt(k, v); match b {
-                true  => J(Nat, S (Size(l)), Size(Insert(l, k)),
-                           λ(z : Nat) : Prop => Id Nat (S (S (Add(Size(l), Size(r))))) (S (Add(z, Size(r)))),
+                true  => J(Nat, S(Size(l)), Size(Insert(l, k)),
+                           λ(z : Nat) : Prop => Id(Nat, S(S(Add(Size(l), Size(r)))), S(Add(z, Size(r)))),
                            SizeInsert(l, k), refl),
-                false => J(Nat, Add(Size(l), S (Size(r))), S (Add(Size(l), Size(r))),
-                           λ(z : Nat) : Prop => Id Nat (S z) (S (Add(Size(l), Size(Insert(r, k))))),
+                false => J(Nat, Add(Size(l), S(Size(r))), S(Add(Size(l), Size(r))),
+                           λ(z : Nat) : Prop => Id(Nat, S(z), S(Add(Size(l), Size(Insert(r, k))))),
                            AddS(Size(l), Size(r)),
-                           J(Nat, S (Size(r)), Size(Insert(r, k)),
-                             λ(z : Nat) : Prop => Id Nat (S (Add(Size(l), S (Size(r))))) (S (Add(Size(l), z))),
+                           J(Nat, S(Size(r)), Size(Insert(r, k)),
+                             λ(z : Nat) : Prop => Id(Nat, S(Add(Size(l), S(Size(r)))), S(Add(Size(l), z))),
                              SizeInsert(r, k), refl)) } }
 
   -- The same theorem with D60's `rewrite` instead of `J`, in the paper's layout.
-  def SizeInsertRw (t : Tree) (k : Word) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :=
+  def SizeInsertRw (t : Tree) (k : Word) : Id(Nat, S(Size(t)), Size(Insert(t, k))) by t :=
     match t { Leaf => refl,
               Node(l, v, r) => let b = Lt(k, v); match b {
                 true  => rewrite SizeInsertRw(l, k) in refl,
                 false => rewrite SizeInsertRw(r, k) in rewrite AddS(Size(l), Size(r)) in refl } }
 
   -- Without `AddS` the `false` arm does not check: rewriting with the induction hypothesis
-  -- alone leaves `S (Add(Size(l), Size(r)))` against `Add(Size(l), S (Size(r)))`.
-  reject def SizeInsertRwNoLemma (t : Tree) (k : Word) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :=
+  -- alone leaves `S(Add(Size(l), Size(r)))` against `Add(Size(l), S(Size(r)))`.
+  reject def SizeInsertRwNoLemma (t : Tree) (k : Word) : Id(Nat, S(Size(t)), Size(Insert(t, k))) by t :=
     match t { Leaf => refl,
               Node(l, v, r) => let b = Lt(k, v); match b {
                 true  => rewrite SizeInsertRwNoLemma(l, k) in refl,
                 false => rewrite SizeInsertRwNoLemma(r, k) in refl } }
 
   -- Inserting does not grow the size by two.
-  reject def SizeInsertTwo (t : Tree) (k : Word) : Id Nat (S (S (Size(t)))) (Size(Insert(t, k))) by t := (
+  reject def SizeInsertTwo (t : Tree) (k : Word) : Id(Nat, S(S(Size(t))), Size(Insert(t, k))) by t := (
     match t {
       Leaf => refl,
       Node(l, v, r) => SizeInsertTwo(l, k),
@@ -372,7 +372,7 @@ ochr PolyLists uses Std {
     }
   )
 
-  def AppendMNil (A : Type) (xs : &List(A)) : Id Unit (AppendM(A, xs, Nil)) () by xs := (
+  def AppendMNil (A : Type) (xs : &List(A)) : Id(Unit, AppendM(A, xs, Nil), ()) by xs := (
     match *xs {
       Nil => refl,
       Cons(h, t) => AppendMNil(A, &t),
@@ -380,7 +380,7 @@ ochr PolyLists uses Std {
   )
 
   reject def AppendMOne (A : Type) (a : A) (xs : &List(A)) :
-      Id Unit (AppendM(A, xs, Cons(a, Nil))) () by xs := (
+      Id(Unit, AppendM(A, xs, Cons(a, Nil)), ()) by xs := (
     match *xs {
       Nil => refl,
       Cons(h, t) => AppendMOne(A, a, &t),
@@ -394,16 +394,16 @@ ochr PolyLists uses Std {
     xs
   )
 
-  def AppendNil (A : Type) (xs : List(A)) : Id (List(A)) (Append(A, xs, Nil)) xs := AppendMNil(A, &xs)
+  def AppendNil (A : Type) (xs : List(A)) : Id(List(A), Append(A, xs, Nil), xs) := AppendMNil(A, &xs)
 
   -- Instances: a list of lists, a closed list, and a wrong statement (the two lists have
   -- different constructors, D47).
-  def AppendNilL (xs : List(List(Nat))) : Id (List(List(Nat))) (Append(List(Nat), xs, Nil)) xs := (
+  def AppendNilL (xs : List(List(Nat))) : Id(List(List(Nat)), Append(List(Nat), xs, Nil), xs) := (
     AppendNil(List(Nat), xs)
   )
 
-  def Closed : Id (List(Nat)) (Append(Nat, Cons(1, Nil), Nil)) (Cons(1, Nil)) := AppendNil(Nat, Cons(1, Nil))
-  reject def ClosedWrong : Id (List(Nat)) (Append(Nat, Cons(1, Nil), Nil)) Nil := AppendNil(Nat, Cons(1, Nil))
+  def Closed : Id(List(Nat), Append(Nat, Cons(1, Nil), Nil), Cons(1, Nil)) := AppendNil(Nat, Cons(1, Nil))
+  reject def ClosedWrong : Id(List(Nat), Append(Nat, Cons(1, Nil), Nil), Nil) := AppendNil(Nat, Cons(1, Nil))
 
   -- Parameters written out ...
   def Explicit : List(Nat) := Cons[Nat](1, Nil[Nat])
@@ -522,10 +522,10 @@ ochr PositivityParams uses Std {
     }
   )
 
-  def SigAt : Eq Nat 1 1 := SigProof(Eq Nat 1 1, MkSig(3, refl))
+  def SigAt : Eq(Nat, 1, 1) := SigProof(Eq(Nat, 1, 1), MkSig(3, refl))
 
   -- Universes are not cumulative: a proposition is not a `Type` parameter.
-  reject def PropBox : Type := Box(Eq Nat 0 1)
+  reject def PropBox : Type := Box(Eq(Nat, 0, 1))
 }
 
 -- the exact number of declarations (a truncated file changes it)

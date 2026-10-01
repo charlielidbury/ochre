@@ -46,13 +46,13 @@ Terms:
 | `λ(x : A) (y : B) : C => t` | a closure (captures values, never borrows) |
 | `Π(x : A) (y : B). C`, `A → B` | function types |
 | `(a, b)`, `A × B` | pairs (`Pair`); take them apart with `match p { Mk(a, b) => … }` or `let (a, b) = p; …` |
-| `Eq A a b`, `refl` | equality and its proof |
-| `Id A t u` | the programs `t` and `u` have the same result and the same effect (§6) |
+| `Eq(A, a, b)`, `refl` | equality and its proof |
+| `Id(A, t, u)` | the programs `t` and `u` have the same result and the same effect (§6) |
 | `⊤`, `False`, `P ∧ Q`, `⟨h, k⟩` | true, false, conjunction, a proof of a conjunction |
 | `let ⟨h, k⟩ = p; u` | take a conjunction apart |
 | `rewrite h in t`, `rewrite ← h in t` | rewriting (§7) |
 | `split F in t`, `split F { C(x) => t, … }` | split the goal on a stuck call of `F` (§7) |
-| `Nat`, `Z`, `S n`, numerals | unary natural numbers (built in) |
+| `Nat`, `Z`, `S(n)`, numerals | unary natural numbers (built in) |
 | `Unit`, `()` | the unit type |
 
 Layout conventions (the tour's): one declaration per line group, a multi-line body in parentheses `:= ( … )`, one match arm per line with a trailing comma, a multi-statement arm in `( … ),`, and matches inside types and argument lists on one line without a trailing comma. Line breaks are whitespace. Comments are `-- …` and `/- … -/`.
@@ -78,9 +78,9 @@ A recursive function declares its decreasing parameter, `by x`, and every recurs
 Types are programs, so a statement can run the in-place code. Two forms recur:
 
 - **On a copy.** `(let c = *s; F(&c); P(c))` copies the current contents of `*s` into a local `c`, runs `F` on it in place, and states `P` of the result. `*s` itself is untouched, so the same statement can still mention the contents before as `*s`: `(let c = *s; F(&c); Perm(n, c, *s))`.
-- **`Id A t u`** says that the programs `t` and `u`, each run on its own copy of the current state, return equal results *and* leave equal contents in every place they may write (their footprint: places they assign or borrow, and what borrow parameters point to). For example `Id Unit (F(s)) (*s := G(*s))` says that `F` has exactly the effect of writing `G`'s result. `Id` evaluates to a conjunction of `Eq`s, one per observed place, so it is proved like any conjunction of equations.
+- **`Id(A, t, u)`** says that the programs `t` and `u`, each run on its own copy of the current state, return equal results *and* leave equal contents in every place they may write (their footprint: places they assign or borrow, and what borrow parameters point to). For example `Id(Unit, F(s), *s := G(*s))` says that `F` has exactly the effect of writing `G`'s result. `Id` evaluates to a conjunction of `Eq`s, one per observed place, so it is proved like any conjunction of equations.
 
-`Eq` computes: `Eq A a a` is `⊤` (proved by `refl`); `Eq D (C(a1, a2)) (C(b1, b2))` is `Eq _ a1 b1 ∧ Eq _ a2 b2`; `Eq D (C1 …) (C2 …)` for different constructors is `False`; `Eq Unit a b` is `⊤`. So `refl` proves an equation whenever both sides evaluate to the same normal form, and many "obvious" equations are `refl` after the right `match`.
+`Eq` computes: `Eq(A, a, a)` is `⊤` (proved by `refl`); `Eq(D, C(a1, a2), C(b1, b2))` is `Eq(_, a1, b1) ∧ Eq(_, a2, b2)`; `Eq(D, C1 …, C2 …)` for different constructors is `False`; `Eq(Unit, a, b)` is `⊤`. So `refl` proves an equation whenever both sides evaluate to the same normal form, and many "obvious" equations are `refl` after the right `match`.
 
 ## 7. Proofs
 
@@ -91,7 +91,7 @@ A proof is a program whose type is the statement; it is erased when the program 
 - **Lemmas** are ordinary functions returning propositions; call them to get facts: `LeTrans(a, b, c, h1, h2)`. A lemma about in-place code can be called on a borrow of a local copy inside a proof: `(let c = *s; F(&c); Lemma(n, &c))` has `Lemma`'s statement about the contents after `F`.
 - **False.** `match h {}` for `h` of an empty type. A contradictory equation between different constructors is `False` by computation, so it matches with no arms too.
 - **Conjunctions.** Build with `⟨p, q⟩`; take apart with `let ⟨p, q⟩ = h; …`.
-- **Rewriting.** For `h : Eq A a b`, `rewrite h in t` proves the goal `G` from `t : G'`, where `G'` is `G` with every occurrence of `b` replaced by `a`; `rewrite ← h in t` replaces `a` by `b`. The goal must be known (the declaration's type, a call's argument, or `let x : T = (rewrite …); …`). A rewrite that finds no occurrence is an error, and occurrences hidden inside a stuck `match` are not found, so state helper facts about calls rather than about inline matches. Several rewrites chain: `rewrite h1 in rewrite ← h2 in t`. Examples: `05Equality.lean`, and the lemma library in `16Arrays.lean`.
+- **Rewriting.** For `h : Eq(A, a, b)`, `rewrite h in t` proves the goal `G` from `t : G'`, where `G'` is `G` with every occurrence of `b` replaced by `a`; `rewrite ← h in t` replaces `a` by `b`. The goal must be known (the declaration's type, a call's argument, or `let x : T = (rewrite …); …`). A rewrite that finds no occurrence is an error, and occurrences hidden inside a stuck `match` are not found, so state helper facts about calls rather than about inline matches. Several rewrites chain: `rewrite h1 in rewrite ← h2 in t`. Examples: `05Equality.lean`, and the lemma library in `16Arrays.lean`.
 - **`split F in t`** splits the goal on the first stuck call of `F` it contains, as a `match` on that call's result would; `split F { C1 => t1, C2(x) => t2 }` gives each arm. Examples: `08CaseSplits.lean`.
 - **`J`** (transport) exists but `rewrite` is almost always easier.
 
@@ -145,12 +145,12 @@ def ZeroBoth (n : Word) (k : Word) (s : &Slice(Word, n)) (h : Le(k, n)) : Unit :
 
 -- A statement about in-place code, run on a copy, proved by a library lemma.
 def SetThenRead (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) :
-    Eq Word (let c = *s; Set(Word, n, &c, i, W(7), h); Read(Word, n, &c, i, h)) (W(7)) := (
+    Eq(Word, let c = *s; Set(Word, n, &c, i, W(7), h); Read(Word, n, &c, i, h), W(7)) := (
   NthSetSame(Word, n, *s, i, W(7), h)
 )
 
 -- A concrete run, checked by evaluation.
-def BumpRun : Id Word (let a = ArrPush(Word, W(1), ArrPush(Word, Zero, ArrEmpty(Word), W(4)), W(9)); Bump(W(2), AsSlice(Word, W(2), &a), Succ(Zero), refl); Read(Word, W(2), AsSlice(Word, W(2), &a), Succ(Zero), refl)) (W(10)) := refl
+def BumpRun : Id(Word, let a = ArrPush(Word, W(1), ArrPush(Word, Zero, ArrEmpty(Word), W(4)), W(9)); Bump(W(2), AsSlice(Word, W(2), &a), Succ(Zero), refl); Read(Word, W(2), AsSlice(Word, W(2), &a), Succ(Zero), refl), W(10)) := refl
 
 -- Induction on a number, a rewrite, a conjunction, and an empty case.
 def CountDown (k : Word) : Word by k := (
@@ -160,21 +160,21 @@ def CountDown (k : Word) : Word by k := (
   }
 )
 
-def CountDownZero (k : Word) : Eq Word (CountDown(k)) Zero by k := (
+def CountDownZero (k : Word) : Eq(Word, CountDown(k), Zero) by k := (
   match k {
     Zero => refl,
     Succ(k') => CountDownZero(k'),
   }
 )
 
-def UseRewrite (a : Word) (b : Word) (h : Eq Word a b) (p : Le(a, W(3))) : Le(b, W(3)) := rewrite h in p
+def UseRewrite (a : Word) (b : Word) (h : Eq(Word, a, b)) (p : Le(a, W(3))) : Le(b, W(3)) := rewrite h in p
 
 def Both (a : Word) (h : Le(a, W(3)) ∧ Le(W(3), W(5))) : Le(a, W(5)) := (
   let ⟨h1, h2⟩ = h;
   LeTrans(a, W(3), W(5), h1, h2)
 )
 
-def NotLtZero (a : Word) (h : Lt(a, Zero)) : Eq Word a Zero := match h {}
+def NotLtZero (a : Word) (h : Lt(a, Zero)) : Eq(Word, a, Zero) := match h {}
 ```
 
 ## 10. Limitations to plan around
@@ -183,6 +183,6 @@ def NotLtZero (a : Word) (h : Lt(a, Zero)) : Eq Word a Zero := match h {}
 - No shared borrows: read-only functions take `&` and their not changing anything is a statement to prove.
 - No automation: every case split, induction and rewrite is written out. Keep lemmas small and state them about calls, so that `rewrite` can find them.
 - `Word` is unary: concrete runs are fast only for small numbers (the tests use numbers below 100).
-- No projections of stuck pairs (`t.1` on a pair that is not yet a constructor value is an error): return separate results, or `match` on the pair.
+- No projections of stuck pairs (`t.0` on a pair that is not yet a constructor value is an error): return separate results, or `match` on the pair.
 - `&E` is not well formed for a type variable `E`, and a returned borrow must come from a borrow parameter.
 - A field of an inductive cannot have a type computed by a function applied to a parameter (such as `Array(E, cap)`); the assignment's types show the workaround where it matters.

@@ -15,16 +15,17 @@ ochr Std {
 }
 
 ochr Numbers uses Std {
-  def Add23 : Id Nat (Add(2, 3)) 5 := refl
-  reject def Bad (x : &Nat) : Id Nat (*x) 5 := *x := 5; refl
+  def Add23 : Id(Nat, Add(2, 3), 5) := refl
+  reject def Bad (x : &Nat) : Id(Nat, *x, 5) := *x := 5; refl
 }
 ```
 defines `Std Numbers : Ochr.Surface.Block`. `def` expects the checker to accept the
 definition, `reject def` expects it to be rejected. Calls are saturated and written
-`f(a, …)` with no space before the parenthesis; `S t`, `Id A t u`, `Eq A t u` and
-`cong f h` are written by juxtaposition. Match arms are separated by commas, and a trailing
-comma after the last arm is allowed. No term form contains a comma outside brackets, so an
-arm's body (`ochr_term:10`) ends at the next top-level comma. Line breaks are whitespace.
+`f(a, …)` with no space before the parenthesis, including the built-ins `S(n)`, `Id(A, t, u)`,
+`Eq(A, t, u)`, `cong(f, h)`, `trans(h, k)` and `symm(h)`: everything is a call. Match arms are
+separated by commas, and a trailing comma after the last arm is allowed. No term form contains
+a comma outside brackets, so an arm's body (`ochr_term:10`) ends at the next top-level comma.
+Line breaks are whitespace.
 
 `uses A, B` (optional) names blocks, Lean constants made by earlier `ochr` commands (in this
 file or an imported one). A block is checked after the declarations its used blocks export,
@@ -79,7 +80,6 @@ syntax:max (name := ochrCtorP0) ident noWs "[" ochr_term,* "]" : ochr_term
 syntax:max (name := ochrCtorP) ident noWs "[" ochr_term,* "]" noWs "(" ochr_term,* ")" : ochr_term
 syntax:max "*" ochr_term:max : ochr_term
 syntax:max "&" ochr_term:max : ochr_term
-syntax:60 ident (ws ochr_term:max)+ : ochr_term
 syntax:35 ochr_term:36 " × " ochr_term:35 : ochr_term
 syntax:35 ochr_term:36 " ∧ " ochr_term:35 : ochr_term
 syntax:25 ochr_term:26 " → " ochr_term:25 : ochr_term
@@ -213,9 +213,6 @@ partial def elabTermCore (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := 
   | `(ochr_term| sorry) => `(STerm.ident "?")
   | `(ochr_term| *$t) => do `(STerm.deref $(← elabTerm t))
   | `(ochr_term| &$t) => do `(STerm.amp $(← elabTerm t))
-  | `(ochr_term| $f:ident $args*) => do
-    let as ← args.mapM elabTerm
-    `(STerm.app $(strLit f.getId.toString) [$as,*])
   | `(ochr_term| $a × $b) => do `(STerm.prod $(← elabTerm a) $(← elabTerm b))
   | `(ochr_term| $a ∧ $b) => do `(STerm.and $(← elabTerm a) $(← elabTerm b))
   | `(ochr_term| $a → $b) => do `(STerm.arrow $(← elabTerm a) $(← elabTerm b))

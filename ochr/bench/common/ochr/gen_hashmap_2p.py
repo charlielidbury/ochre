@@ -120,16 +120,16 @@ ochr HashMapModel uses HashMapSpec {
     out.append(region("model-abs", "  -- The abstraction: the model of a map, from its buckets (a view, as `SlotsOf` gives\n"
                       "  -- it) and its length field.\n  def Abs (cap : Word) (s : Slice(Bucket, cap)) (len : Word) : MMap :=\n"))
     M = [
-      ("M4", "the model of get on the empty map", "MGetNew", "(k : Word)", "Eq Opt (MGet(MNew, k)) None"),
-      ("M5", "get after insert, at the same key", "MGetInsertSame", "(a : MMap) (k : Word) (v : Word) (h : MInv(a))", "Eq Opt (MGet(MInsert(a, k, v), k)) (Some(v))"),
-      ("M6", "get after insert, at another key", "MGetInsertOther", "(a : MMap) (k : Word) (k2 : Word) (v : Word) (h : MInv(a)) (ne : Π(e : Eq Word k2 k). False)", "Eq Opt (MGet(MInsert(a, k, v), k2)) (MGet(a, k2))"),
-      ("M8", "get after remove, at the same key", "MGetRemoveSame", "(a : MMap) (k : Word) (h : MInv(a))", "Eq Opt (MGet(MRemove(a, k), k)) None"),
-      ("M9", "get after remove, at another key", "MGetRemoveOther", "(a : MMap) (k : Word) (k2 : Word) (h : MInv(a)) (ne : Π(e : Eq Word k2 k). False)", "Eq Opt (MGet(MRemove(a, k), k2)) (MGet(a, k2))"),
-      ("M11", "the length of the empty map", "MLenNew", "", "Eq Word (MLen(MNew)) Zero"),
-      ("M12", "the length after insert", "MLenInsert", "(a : MMap) (k : Word) (v : Word) (h : MInv(a))", "Eq Word (MLen(MInsert(a, k, v))) (Grow(MGet(a, k), MLen(a)))"),
-      ("M13", "the length after remove", "MLenRemove", "(a : MMap) (k : Word) (h : MInv(a))", "Eq Word (MLen(MRemove(a, k))) (Shrink(MGet(a, k), MLen(a)))"),
-      ("M14", "a write has the effect of insert on every get", "MWriteGet", "(a : MMap) (k : Word) (w : Word) (k2 : Word) (h : MInv(a)) (hk : IsSome(MGet(a, k)))", "Eq Opt (MGet(MWrite(a, k, w), k2)) (MGet(MInsert(a, k, w), k2))"),
-      ("M15", "... and on the length", "MWriteLen", "(a : MMap) (k : Word) (w : Word) (h : MInv(a)) (hk : IsSome(MGet(a, k)))", "Eq Word (MLen(MWrite(a, k, w))) (MLen(MInsert(a, k, w)))"),
+      ("M4", "the model of get on the empty map", "MGetNew", "(k : Word)", "Eq(Opt, MGet(MNew, k), None)"),
+      ("M5", "get after insert, at the same key", "MGetInsertSame", "(a : MMap) (k : Word) (v : Word) (h : MInv(a))", "Eq(Opt, MGet(MInsert(a, k, v), k), Some(v))"),
+      ("M6", "get after insert, at another key", "MGetInsertOther", "(a : MMap) (k : Word) (k2 : Word) (v : Word) (h : MInv(a)) (ne : Π(e : Eq(Word, k2, k)). False)", "Eq(Opt, MGet(MInsert(a, k, v), k2), MGet(a, k2))"),
+      ("M8", "get after remove, at the same key", "MGetRemoveSame", "(a : MMap) (k : Word) (h : MInv(a))", "Eq(Opt, MGet(MRemove(a, k), k), None)"),
+      ("M9", "get after remove, at another key", "MGetRemoveOther", "(a : MMap) (k : Word) (k2 : Word) (h : MInv(a)) (ne : Π(e : Eq(Word, k2, k)). False)", "Eq(Opt, MGet(MRemove(a, k), k2), MGet(a, k2))"),
+      ("M11", "the length of the empty map", "MLenNew", "", "Eq(Word, MLen(MNew), Zero)"),
+      ("M12", "the length after insert", "MLenInsert", "(a : MMap) (k : Word) (v : Word) (h : MInv(a))", "Eq(Word, MLen(MInsert(a, k, v)), Grow(MGet(a, k), MLen(a)))"),
+      ("M13", "the length after remove", "MLenRemove", "(a : MMap) (k : Word) (h : MInv(a))", "Eq(Word, MLen(MRemove(a, k)), Shrink(MGet(a, k), MLen(a)))"),
+      ("M14", "a write has the effect of insert on every get", "MWriteGet", "(a : MMap) (k : Word) (w : Word) (k2 : Word) (h : MInv(a)) (hk : IsSome(MGet(a, k)))", "Eq(Opt, MGet(MWrite(a, k, w), k2), MGet(MInsert(a, k, w), k2))"),
+      ("M15", "... and on the length", "MWriteLen", "(a : MMap) (k : Word) (w : Word) (h : MInv(a)) (hk : IsSome(MGet(a, k)))", "Eq(Word, MLen(MWrite(a, k, w)), MLen(MInsert(a, k, w)))"),
     ]
     for mid, comment, name, params, goal in M:
         sig = f"  def {name}{(' ' + params) if params else ''} :\n      {goal} :=\n"
@@ -159,14 +159,14 @@ ochr HashMapSolution uses HashMapModel, HashMapCompose {
     for rid in ["H1", "H2", "H3"]:
         out.append(R[rid] + "    ?\n\n")
     A = [
-      ("agree-new", "new(c) is the empty model", "AbsNew", "(cap : Word) (h : Lt(Zero, cap))", "Eq MMap (AbsOf(cap, MapNew(cap, h))) MNew"),
-      ("agree-len", "len agrees with the model", "AgreeLen", "(cap : Word) (m : &Map(cap)) (hm : Inv(cap, *m))", "Eq Word (LenOf(cap, *m)) (MLen(AbsOf(cap, *m)))"),
-      ("agree-get", "get agrees with the model", "AgreeGet", "(cap : Word) (m : &Map(cap)) (k : Word) (hm : Inv(cap, *m))", "Eq Opt (GetOf(cap, *m, k)) (MGet(AbsOf(cap, *m), k))"),
-      ("agree-insert", "insert agrees with the model: the map afterwards", "AgreeInsert", "(cap : Word) (m : &Map(cap)) (k : Word) (v : Word) (hm : Inv(cap, *m))", "Eq MMap (let c = *m; MapInsert(cap, &c, k, v); AbsOf(cap, c)) (MInsert(AbsOf(cap, *m), k, v))"),
-      ("agree-insert-result", "... and the value it returns", "AgreeInsertResult", "(cap : Word) (m : &Map(cap)) (k : Word) (v : Word) (hm : Inv(cap, *m))", "Eq Opt (let c = *m; MapInsert(cap, &c, k, v)) (MGet(AbsOf(cap, *m), k))"),
-      ("agree-remove", "remove agrees with the model: the map afterwards", "AgreeRemove", "(cap : Word) (m : &Map(cap)) (k : Word) (hm : Inv(cap, *m))", "Eq MMap (let c = *m; MapRemove(cap, &c, k); AbsOf(cap, c)) (MRemove(AbsOf(cap, *m), k))"),
-      ("agree-remove-result", "... and the value it returns", "AgreeRemoveResult", "(cap : Word) (m : &Map(cap)) (k : Word) (hm : Inv(cap, *m))", "Eq Opt (let c = *m; MapRemove(cap, &c, k)) (MGet(AbsOf(cap, *m), k))"),
-      ("agree-write", "a write through get_mut agrees with the model", "AgreeWrite", "(cap : Word) (m : &Map(cap)) (k : Word) (w : Word) (hm : Inv(cap, *m))\n      (hk : IsSome(GetOf(cap, *m, k)))", "Eq MMap (let c = *m; let r = MapGetMut(cap, &c, k, hk); *r := w; AbsOf(cap, c)) (MWrite(AbsOf(cap, *m), k, w))"),
+      ("agree-new", "new(c) is the empty model", "AbsNew", "(cap : Word) (h : Lt(Zero, cap))", "Eq(MMap, AbsOf(cap, MapNew(cap, h)), MNew)"),
+      ("agree-len", "len agrees with the model", "AgreeLen", "(cap : Word) (m : &Map(cap)) (hm : Inv(cap, *m))", "Eq(Word, LenOf(cap, *m), MLen(AbsOf(cap, *m)))"),
+      ("agree-get", "get agrees with the model", "AgreeGet", "(cap : Word) (m : &Map(cap)) (k : Word) (hm : Inv(cap, *m))", "Eq(Opt, GetOf(cap, *m, k), MGet(AbsOf(cap, *m), k))"),
+      ("agree-insert", "insert agrees with the model: the map afterwards", "AgreeInsert", "(cap : Word) (m : &Map(cap)) (k : Word) (v : Word) (hm : Inv(cap, *m))", "Eq(MMap, let c = *m; MapInsert(cap, &c, k, v); AbsOf(cap, c), MInsert(AbsOf(cap, *m), k, v))"),
+      ("agree-insert-result", "... and the value it returns", "AgreeInsertResult", "(cap : Word) (m : &Map(cap)) (k : Word) (v : Word) (hm : Inv(cap, *m))", "Eq(Opt, let c = *m; MapInsert(cap, &c, k, v), MGet(AbsOf(cap, *m), k))"),
+      ("agree-remove", "remove agrees with the model: the map afterwards", "AgreeRemove", "(cap : Word) (m : &Map(cap)) (k : Word) (hm : Inv(cap, *m))", "Eq(MMap, let c = *m; MapRemove(cap, &c, k); AbsOf(cap, c), MRemove(AbsOf(cap, *m), k))"),
+      ("agree-remove-result", "... and the value it returns", "AgreeRemoveResult", "(cap : Word) (m : &Map(cap)) (k : Word) (hm : Inv(cap, *m))", "Eq(Opt, let c = *m; MapRemove(cap, &c, k), MGet(AbsOf(cap, *m), k))"),
+      ("agree-write", "a write through get_mut agrees with the model", "AgreeWrite", "(cap : Word) (m : &Map(cap)) (k : Word) (w : Word) (hm : Inv(cap, *m))\n      (hk : IsSome(GetOf(cap, *m, k)))", "Eq(MMap, let c = *m; let r = MapGetMut(cap, &c, k, hk); *r := w; AbsOf(cap, c), MWrite(AbsOf(cap, *m), k, w))"),
     ]
     for rid, comment, name, params, goal in A:
         out.append(region(rid, f"  -- Agreement: {comment}.\n  def {name} {params} :\n      {goal} :=\n"))

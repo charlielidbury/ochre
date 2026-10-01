@@ -40,9 +40,9 @@ ochr Std {
   )
 
   -- An effect as a statement: adding zero in place leaves `*x` as it was. The proof is by
-  -- recursion on `*x`: in the `S p` arm, the recursive call about `&p` proves the goal about
+  -- recursion on `*x`: in the `S(p)` arm, the recursive call about `&p` proves the goal about
   -- the whole of `*x`, because the borrow of `p` sits inside `*x`.
-  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x := (
+  def AddMZero (x : &Nat) : Id(Unit, AddM(x, 0), ()) by x := (
     match *x {
       Z => refl,
       S p => AddMZero(&p),

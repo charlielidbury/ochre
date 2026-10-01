@@ -12,7 +12,7 @@ ochr DepFuzz {
   def Fin1 (n : Nat) : Type := match n { Z => Empty0, S _ => One }
   inductive DV := MkDV(n : Nat, x : Fin1(n))
   def DVN (v : DV) : Nat := match v { MkDV(n, x) => n }
-  def AbsurdDV (v : DV) (h : Eq Nat (DVN(v)) 0) : False := match v { MkDV(n, x) => match n { Z => match x {}, S m => match h {} } }
+  def AbsurdDV (v : DV) (h : Eq(Nat, DVN(v), 0)) : False := match v { MkDV(n, x) => match n { Z => match x {}, S m => match h {} } }
   -- (0) the root, in either order: once the dependent field is assigned, the value is
   -- accepted as repacked whatever the index says (the same with `Word` and the tour's `V`)
   reject def Lie0 (v : &DV) : Unit := match *v { MkDV(n, x) => (n := 0; x := O) }

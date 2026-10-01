@@ -43,7 +43,7 @@ F is the calculus of the appendix restricted as follows. Each restriction says w
   - `match h {}` on a proof of `False`, which occurs only in lemma bodies.
 
   There is no `J`, `rewrite` or `split`. _Why:_ a data function's run then never depends on the truth of its hypotheses (@tf-thm, part (i)).
-+ *No move out through a borrow.* In code that runs, a read of a place under `*` (such as `*x`, or `(*x).1` of a number) is written `clone(…)`. Reading a borrow variable itself, which moves the borrow, is allowed. Reads in types and proofs copy anyway. _Why:_ no borrow ever holds a ghost (@tf-lem-res). Resolution is then defined at every ground state the proof visits, and every call's borrow arguments are whole. It excludes the `mem::replace` pattern `let v = *x; *x := S v`, which must be written with `clone(*x)`.
++ *No move out through a borrow.* In code that runs, a read of a place under `*` (such as `*x`, or `(*x).0` of a number) is written `clone(…)`. Reading a borrow variable itself, which moves the borrow, is allowed. Reads in types and proofs copy anyway. _Why:_ no borrow ever holds a ghost (@tf-lem-res). Resolution is then defined at every ground state the proof visits, and every call's borrow arguments are whole. It excludes the `mem::replace` pattern `let v = *x; *x := S(v)`, which must be written with `clone(*x)`.
 
 Moves are otherwise as in the rules (D53): `Nat` is not a copy type, so a runtime read of an owned `Nat` place moves it and leaves a ghost.
 
@@ -210,8 +210,8 @@ The symbolic side's extra positions do occur, and their conjuncts do become `Tru
 #proof[By induction on `A`. The runs involved are in erased mode, and by @tf-lem-conf the type former is confined on both paths or on neither.
   - *`True`, `False`.* $T_s = T_g$.
   - *`P ∧ Q`.* [T-Ind] keeps the head `And`, and its parts are evaluated one after the other on one private copy. By @tf-lem-runs agreement holds between them. Use the induction hypothesis.
-  - *`Eq D a b`.* By @tf-lem-runs the ground runs of `a` and `b` succeed and their values agree. Values in flight are loan-free (T1), so $a_s alpha = a_g$ and $b_s alpha = b_g$. $T_s = "eq"(D, a_s, b_s)$, and valuation rebuilds `Eq` types with `eq`. `eq` may already have dropped a `True` conjunct symbolically that valuation does not restore, so $T_s alpha$ and $"eq"(D, a_g, b_g) = T_g$ need not be equal as values. But they have the same truth, which is what the lemma claims.
-  - *`Id D t u`.* By @tf-lem-runs the ground runs of `t` and `u` succeed in agreement with the symbolic ones. The observation then ends every borrow. By (N3) and (A2), each symbolic observation under α equals the ground one after resolution, position by position: $r_s alpha = r_g$, and $w_s (pi) alpha = w_g (pi)$ for every position π; the same holds for `u`. So:
+  - *`Eq(D, a, b)`.* By @tf-lem-runs the ground runs of `a` and `b` succeed and their values agree. Values in flight are loan-free (T1), so $a_s alpha = a_g$ and $b_s alpha = b_g$. $T_s = "eq"(D, a_s, b_s)$, and valuation rebuilds `Eq` types with `eq`. `eq` may already have dropped a `True` conjunct symbolically that valuation does not restore, so $T_s alpha$ and $"eq"(D, a_g, b_g) = T_g$ need not be equal as values. But they have the same truth, which is what the lemma claims.
+  - *`Id(D, t, u)`.* By @tf-lem-runs the ground runs of `t` and `u` succeed in agreement with the symbolic ones. The observation then ends every borrow. By (N3) and (A2), each symbolic observation under α equals the ground one after resolution, position by position: $r_s alpha = r_g$, and $w_s (pi) alpha = w_g (pi)$ for every position π; the same holds for `u`. So:
     - $T_s alpha$ has the truth of the conjunction of $"eq"(D, r_g, r'_g)$ and of $"eq"(T_pi, w_g (pi), w'_g (pi))$ over $pi in W_s$;
     - $T_g$ is the same conjunction over $pi in W_g$;
     - by @tf-lem-w (b), each conjunct over a position in only one of $W_s$ and $W_g$ compares equal values, so it is `True`; by (c) the conjuncts' types agree;
@@ -325,7 +325,7 @@ This theorem reduces soundness of F to @tf-ass-n and @tf-ass-t; it is not a proo
   - if a closed proof term `t` of F is typed from the empty environment, $epsilon tack.r t ev star : A tack.l Omega'$, after the definitions of an accepted program, then $ok(A)$;
   - every accepted constant of proposition type is true.
 
-  In particular no closed term has type `Eq Nat Z (S Z)`, which computes to `False`.
+  In particular no closed term has type `Eq(Nat, Z, S(Z))`, which computes to `False`.
 ]) <tf-cor-cons>
 #proof[The empty state is ground, and $epsilon agr(emptyset) epsilon$ holds with (I) vacuous. The claim in the proof of @tf-thm, with $alpha = emptyset$ and @tf-thm itself supplying the lemma calls and the calls in types, gives $ok(A)$. `False` is not true, and truth is invariant under conversion (@tf-lem-conv (a)), so $A equiv.not ty("False")$.]
 
@@ -334,7 +334,7 @@ This theorem reduces soundness of F to @tf-ass-n and @tf-ass-t; it is not a proo
 ]) <tf-cor-adeq>
 #proof[By @tf-thm (ii), $"and"("eq"(D, r, r'), "eq"(T_pi, w_pi, w'_pi), dots)$ is true. At a ground state, `eq` on two numerals is `True` iff they are equal, and `Unit` has one value. By @tf-lem-w (b), every place that `t` or `u` changes is observed.]
 
-The corollary is about observations, which read by copying. It says nothing directly about `t` and `u` as runtime code, whose reads of an owned `Nat` move. For example, `Id Nat (let z = a; a) a` is proved by `refl`, while `let z = a; a` is rejected as code. By @tf-lem-modes, an accepted data function's runtime and erased runs from a ground instance agree, so for calls of accepted functions the distinction does not matter.
+The corollary is about observations, which read by copying. It says nothing directly about `t` and `u` as runtime code, whose reads of an owned `Nat` move. For example, `Id(Nat, let z = a; a, a)` is proved by `refl`, while `let z = a; a` is rejected as code. By @tf-lem-modes, an accepted data function's runtime and erased runs from a ground instance agree, so for calls of accepted functions the distinction does not matter.
 
 *Remarks on stability.* For a term of F at agreeing states, the decisions of @lem-stable are:
 - (1) and (4), erasure, matches decided by a proof's type, and each call's class and [Close] row, are read from declared types, constructor names and declared codomains. F never changes those.

@@ -26,24 +26,24 @@ ochr ReturnedBorrows uses Std, Fixtures {
 
   -- ... is the same as `AddM`, in its result and in what it leaves in `*x`. The proof is the
   -- same bare recursion as `AddMZero`'s.
-  def AddMEq (x : &Nat) (y : Nat) : Id Unit (AddM(x, y)) (AddM'(x, y)) by x := (
+  def AddMEq (x : &Nat) (y : Nat) : Id(Unit, AddM(x, y), AddM'(x, y)) by x := (
     match *x {
       Z => refl,
       S p => AddMEq(&p, y),
     }
   )
 
-  def AddMEqOwned (x : Nat) : Id Unit (AddM(&x, 0)) (AddM'(&x, 0)) := AddMEq(&x, 0)
+  def AddMEqOwned (x : Nat) : Id(Unit, AddM(&x, 0), AddM'(&x, 0)) := AddMEq(&x, 0)
 
   -- Reading through the returned borrow, and not using it at all.
-  def AddM1 (x : &Nat) : Id Unit (AddM(x, 1)) (let t = TailM(x); *t := S *t) by x := (
+  def AddM1 (x : &Nat) : Id(Unit, AddM(x, 1), let t = TailM(x); *t := S(*t)) by x := (
     match *x {
       Z => refl,
       S p => AddM1(&p),
     }
   )
 
-  def TailNoop (x : &Nat) : Id Unit (let t = TailM(x); ()) () by x := (
+  def TailNoop (x : &Nat) : Id(Unit, let t = TailM(x); (), ()) by x := (
     match *x {
       Z => refl,
       S p => TailNoop(&p),
@@ -63,9 +63,9 @@ ochr ReturnedBorrows uses Std, Fixtures {
 
   -- Every function of type `Π(x : &Nat). &Nat` returns a borrow into `*x`, so writing
   -- different numbers through its result leaves different numbers in `*x`.
-  def L (x : &Nat) (e : Id Unit (*x := 0) (*x := 1)) : False := e
+  def L (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
 
-  def Inj (g : Π(x : &Nat). &Nat) (x : &Nat) (e : Id Unit (let r = g(x); *r := 0) (let r = g(x); *r := 1)) :
+  def Inj (g : Π(x : &Nat). &Nat) (x : &Nat) (e : Id(Unit, let r = g(x); *r := 0, let r = g(x); *r := 1)) :
       False := (
     let r = g(x);
     L(r, e)
@@ -84,11 +84,11 @@ ochr ReturnedBorrows uses Std, Fixtures {
     }
   )
 
-  def P (x : &Nat) (e : Id Unit (*x := 0) (*x := 1)) : Empty := J(Nat, 0, 1, M, e, ())
+  def P (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : Empty := J(Nat, 0, 1, M, e, ())
   reject def Q (g : Π(n : Nat). &Nat) : Empty := P(g(5), refl)
   reject def Boom (leak : Π(n : Nat). &Nat) : Empty := Q(leak)
   -- the same with the library's `False`
-  def PF (x : &Nat) (e : Id Unit (*x := 0) (*x := 1)) : False := e
+  def PF (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
   reject def QF (g : Π(n : Nat). &Nat) : False := PF(g(5), refl)
 
   -- Matching on a place ends every borrow whose hole is inside the sealed program the
@@ -100,8 +100,8 @@ ochr ReturnedBorrows uses Std, Fixtures {
     let t = TailM(&*x);
     match *x {
       Z => (
-        *t := S Z;
-        let h : Id Nat (*x) Z = refl;
+        *t := S(Z);
+        let h : Id(Nat, *x, Z) = refl;
         ()
       ),
       S _ => (),
@@ -140,8 +140,8 @@ ochr Reborrows uses Std, Fixtures {
       ),
     }
   )
-  def TravRun : Id Nat (let a = 5; Trav(&a); a) 1 := refl
-  reject def TravRunWrong : Id Nat (let a = 5; Trav(&a); a) 0 := refl
+  def TravRun : Id(Nat, let a = 5; Trav(&a); a, 1) := refl
+  reject def TravRunWrong : Id(Nat, let a = 5; Trav(&a); a, 0) := refl
 
   -- a list cursor walks to the last node and writes there
   def WriteLast (x : &List(Word)) (v : Word) : Unit by x := (
@@ -156,10 +156,10 @@ ochr Reborrows uses Std, Fixtures {
       },
     }
   )
-  def WriteLastRun : Id (List(Word)) (
+  def WriteLastRun : Id(List(Word), 
       let l = Cons(Zero, Cons(Succ(Zero), Cons(Succ(Succ(Zero)), Nil)));
       WriteLast(&l, Zero);
-      l) (Cons(Zero, Cons(Succ(Zero), Cons(Zero, Nil)))) := refl
+      l, Cons(Zero, Cons(Succ(Zero), Cons(Zero, Nil)))) := refl
 
   -- Rust allows this: `y` reborrows behind `x`'s borrow, and `x` is then pointed elsewhere
   def ReplaceKeep (x : &Nat) (other : &Nat) : Unit := (
@@ -172,7 +172,7 @@ ochr Reborrows uses Std, Fixtures {
       ),
     }
   )
-  def ReplaceKeepRun : Id (Nat × Nat) (let a = 3; let b = 7; ReplaceKeep(&a, &b); (a, b)) (1, 7) := refl
+  def ReplaceKeepRun : Id(Nat × Nat, let a = 3; let b = 7; ReplaceKeep(&a, &b); (a, b), (1, 7)) := refl
 
   -- a neutral behind the held borrow travels back with it: which of `*x` and `*b` the cursor
   -- ends up at is not known at an abstract `n`
@@ -180,8 +180,8 @@ ochr Reborrows uses Std, Fixtures {
     x := Pick(n, &*x, &*b);
     *x := 0
   )
-  def PickMoveRun0 : Id (Nat × Nat) (let a = 3; let c = 7; PickMove(0, &a, &c); (a, c)) (0, 7) := refl
-  def PickMoveRun1 : Id (Nat × Nat) (let a = 3; let c = 7; PickMove(1, &a, &c); (a, c)) (3, 0) := refl
+  def PickMoveRun0 : Id(Nat × Nat, let a = 3; let c = 7; PickMove(0, &a, &c); (a, c), (0, 7)) := refl
+  def PickMoveRun1 : Id(Nat × Nat, let a = 3; let c = 7; PickMove(1, &a, &c); (a, c), (3, 0)) := refl
 
   -- still rejected: `x` used after it was moved
   reject def UseMoved (x : &Nat) : Unit := (

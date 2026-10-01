@@ -34,11 +34,11 @@ ochr D53Residual {
   reject def N3Other (q1 : Nat × Nat) (k : Nat) : Nat × Nat := let a = match q1 { Mk(p1, p2) => match p2 { Z => p1; &k, S _ => &k } }; q1
   inductive L := Nil | Cons(h : Nat, t : L)
   def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y, S p => AddM(&p, y) }
-  -- N4: p15 := p9 moves q0.fst into (q0.snd).1; q0 is read afterwards
+  -- N4: p15 := p9 moves q0.fst into (q0.snd).0; q0 is read afterwards
   reject def N4 (q0 : Nat × Nat) : Nat × Nat := (match q0 { Mk(p9, p10) => match p10 { Z => (), S p15 => p15 := p9 } }; q0)
   -- "q0 was partly moved out"
   -- was: def N4Run : Nat × Nat := N4((0, 1))
-  -- N5: the block returns x0 from both arms, and the S arm moves *x0 out first
+  -- N5: the block returns x0 from both arms, and the S(arm) moves *x0 out first
   reject def N5 (x0 : &Nat) : Unit := (let a0 = match *x0 { Z => x0, S p2 => let a3 = *x0; x0 }; AddM(a0, 0))
   -- "[Match] on *x, which was moved out"
   -- was: def N5Run : Nat := let c = 1; N5(&c); c

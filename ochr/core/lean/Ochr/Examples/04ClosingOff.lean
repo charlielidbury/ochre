@@ -46,21 +46,21 @@ ochr ClosingOff uses Std, Fixtures {
 
   -- Adding zero through the chosen borrow does nothing, in all three versions. For the
   -- first, the stuck match inside the goal is closed off the same way.
-  def AddToOneZero (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id Unit (AddToOne(b, x1, x2, 0)) () := (
+  def AddToOneZero (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id(Unit, AddToOne(b, x1, x2, 0), ()) := (
     match b {
       Z => AddMZero(x1),
       S _ => AddMZero(x2),
     }
   )
 
-  def AddToOneZero' (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id Unit (AddToOne'(b, x1, x2, 0)) () := (
+  def AddToOneZero' (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id(Unit, AddToOne'(b, x1, x2, 0), ()) := (
     match b {
       Z => AddMZero(x1),
       S _ => AddMZero(x2),
     }
   )
 
-  def AddToOneZero'' (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id Unit (AddToOne''(b, x1, x2, 0)) () := (
+  def AddToOneZero'' (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id(Unit, AddToOne''(b, x1, x2, 0), ()) := (
     match b {
       Z => AddMZero(x1),
       S _ => AddMZero(x2),
@@ -86,10 +86,10 @@ ochr ClosingOff uses Std, Fixtures {
 
   -- ## Stuck matches in statements
   -- Both sides close off into the same sealed program, so `refl` proves the equation.
-  def StuckGoal (b : Nat) : Id Nat (match b { Z => 0, S _ => 1 }) (match b { Z => 0, S _ => 1 }) := refl
+  def StuckGoal (b : Nat) : Id(Nat, (match b { Z => 0, S _ => 1 }), (match b { Z => 0, S _ => 1 })) := refl
 
   -- After a case split on `b`, the sealed programs run again, to each arm's value.
-  def StuckGoalSplit (b : Nat) : Id Nat (match b { Z => 0, S m => S m }) b := (
+  def StuckGoalSplit (b : Nat) : Id(Nat, (match b { Z => 0, S m => S(m) }), b) := (
     match b {
       Z => refl,
       S _ => refl,
@@ -97,7 +97,7 @@ ochr ClosingOff uses Std, Fixtures {
   )
 
   -- A false statement stays unprovable (it fails when `b` is 2 or more).
-  reject def StuckGoalWrong (b : Nat) : Id Nat (match b { Z => 0, S _ => 1 }) b := (
+  reject def StuckGoalWrong (b : Nat) : Id(Nat, (match b { Z => 0, S _ => 1 }), b) := (
     match b {
       Z => refl,
       S _ => refl,
@@ -118,7 +118,7 @@ ochr ClosingOff uses Std, Fixtures {
   -- A local the match writes (`c := 1`) is passed to the block by borrow, so the write is
   -- seen after the block.
   def WriteInBlock (b : Nat) :
-      Id Nat (let c = b; match c { Z => c := 1, S _ => () }; c) (match b { Z => 1, S m => S m }) := (
+      Id(Nat, (let c = b; match c { Z => c := 1, S _ => () }; c), (match b { Z => 1, S m => S(m) })) := (
     match b {
       Z => refl,
       S _ => refl,
@@ -161,7 +161,7 @@ ochr ClosingOff uses Std, Fixtures {
   -- the block re-runs (fuzz-port R2 (i); counted as the block's write, `n0` went in by `&`,
   -- and the re-run closure captured a borrow).
   def LamWriteInBlock (n0 : Nat) :
-      Id Nat (match n0 { Z => n0, S p2 => (let a5 = (λ(y6 : &Nat) : Unit => n0 := 0); n0) }) n0 := (
+      Id(Nat, (match n0 { Z => n0, S p2 => (let a5 = (λ(y6 : &Nat) : Unit => n0 := 0); n0) }), n0) := (
     match n0 {
       Z => refl,
       S p => refl,
@@ -174,9 +174,7 @@ ochr ClosingOff uses Std, Fixtures {
   -- item 7). The earlier checker captured the value behind the parameter (fuzz-port R2 (ii),
   -- switch `blockRefCapture`), which no printed rule does; the direct path captures the place itself.
   reject def LamReadInWrittenBlock (q2 : Nat × Nat) :
-      Id Nat
-        (let c = q2; let a0 = match c { Mk(p5, p6) => (let f = (λ(y7 : Nat) : Nat => p5); c := (1, 1); f) }; a0(0))
-        (match q2 { Mk(p5, p6) => p5 }) := (
+      Id(Nat, let c = q2; let a0 = match c { Mk(p5, p6) => (let f = (λ(y7 : Nat) : Nat => p5); c := (1, 1); f) }; a0(0), match q2 { Mk(p5, p6) => p5 }) := (
     match q2 {
       Mk(a, b) => refl,
     }
@@ -186,7 +184,7 @@ ochr ClosingOff uses Std, Fixtures {
   -- a statement: rejected when the statement is typed, not later when a refinement re-runs the
   -- block (fuzz-port, seed 1, case 182)
   reject def LamReadOtherArm (n0 : Nat) : Prop :=
-    Id Nat (match n0 { Z => (n0 := S n0; 0), S _ => (let f = (λ(y : Nat) : Nat => n0); 0) }) 0
+    Id(Nat, (match n0 { Z => (n0 := S(n0); 0), S _ => (let f = (λ(y : Nat) : Nat => n0); 0) }), 0)
 
   -- Comparing two blocks' functions observes them at a generic argument, where a pattern's
   -- sub-place their arms read may not exist; that answers "not convertible", it is not an
@@ -194,9 +192,7 @@ ochr ClosingOff uses Std, Fixtures {
   def ConvBlocks (q0 : Nat × Nat) : Prop := (
     match q0 {
       Mk(a, b) =>
-        Id (Nat × Nat)
-          (match q0 { Mk(p0, p1) => match p0 { Z => q0, S p7 => (q0 := Mk(p1, p1); q0) } })
-          (match q0 { Mk(p15, p16) => match p16 { Z => (p16 := 0; (1, 0)), S _ => q0 } }),
+        Id(Nat × Nat, (match q0 { Mk(p0, p1) => match p0 { Z => q0, S p7 => (q0 := Mk(p1, p1); q0) } }), (match q0 { Mk(p15, p16) => match p16 { Z => (p16 := 0; (1, 0)), S _ => q0 } })),
     }
   )
 
@@ -231,10 +227,10 @@ ochr ClosingOff uses Std, Fixtures {
     }
   )
 
-  def RowUnit (x : &Nat) : Id Unit (let c = *x; AddU(&c)) () := refl
-  def RowI (x : &Nat) : Id Unit (let c = *x; G(&c, Z)) () := refl
+  def RowUnit (x : &Nat) : Id(Unit, let c = *x; AddU(&c), ()) := refl
+  def RowI (x : &Nat) : Id(Unit, let c = *x; G(&c, Z), ()) := refl
 
-  def RowIInd (x : &Nat) : Id Unit (let c = *x; G(&c, Z)) () by x := (
+  def RowIInd (x : &Nat) : Id(Unit, let c = *x; G(&c, Z), ()) by x := (
     match *x {
       Z => refl,
       S p => RowIInd(&p),
@@ -246,17 +242,17 @@ ochr ClosingOff uses Std, Fixtures {
   -- (declared, or computed, as `UU(Z)`) returns `()`; its effects are in its borrowed
   -- places' fills. `Eq` at `Unit` and comparing functions into `Unit` then need no rule of
   -- their own: both sides are `()`.
-  def UnitEta (u : Unit) (v : Unit) : Eq Unit u v := refl
-  def UnitEtaUU (u : UU(Z)) (v : UU(Z)) : Eq (UU(Z)) u v := refl
+  def UnitEta (u : Unit) (v : Unit) : Eq(Unit, u, v) := refl
+  def UnitEtaUU (u : UU(Z)) (v : UU(Z)) : Eq(UU(Z), u, v) := refl
   def UnitNotConv (u : Unit) (P : Unit → Prop) (h : P(u)) : P(()) := h
   def StuckResult (x : &Nat) (P : Unit → Prop) (h : P(let c = *x; AddM(&c, 0))) : P(let d = *x; AddM(&d, Add(0, 0))) := h
   -- prop-checker's gap (`Scratch/D59ConvGap.lean`): with the result a sealed program, these
   -- true statements were rejected
   def StuckResultUnit (x : &Nat) (P : Unit → Prop) (h : P(())) : P(let c = *x; AddM(&c, 0)) := h
   def StuckResultArgs (x : &Nat) (P : Unit → Prop) (h : P(let c = *x; AddM(&c, 0))) : P(let c = *x; AddM(&c, 1)) := h
-  def ConvUnitRes : Eq (Π(x : &Nat). Unit) (λ(x : &Nat) : Unit => ()) (λ(x : &Nat) : Unit => (let c = clone(*x); G(&c, Z))) := refl
+  def ConvUnitRes : Eq(Π(x : &Nat). Unit, (λ(x : &Nat) : Unit => ()), (λ(x : &Nat) : Unit => (let c = clone(*x); G(&c, Z)))) := refl
   def ConvUnitWritten :
-      Eq (Π(x : &Nat). UU(Z)) (λ(x : &Nat) : UU(Z) => ()) (λ(x : &Nat) : UU(Z) => (let c = clone(*x); G(&c, Z))) := (
+      Eq(Π(x : &Nat). UU(Z), (λ(x : &Nat) : UU(Z) => ()), (λ(x : &Nat) : UU(Z) => (let c = clone(*x); G(&c, Z)))) := (
     refl
   )
 
@@ -264,8 +260,8 @@ ochr ClosingOff uses Std, Fixtures {
   -- which the type is still neutral (`UU(n)`) keeps the value as it is, the sealed program,
   -- and is only more stuck (paper, appendix C).
   def ComputedUnit (x : &Nat) (P : Unit → Prop) (h : P(())) : P(let c = *x; G(&c, Z)) := h
-  reject def NeutralKept (x : &Nat) (n : Nat) (P : UU(n) → Prop) (h : P(let c = *x; G(&c, n))) : P(let c = S (*x); G(&c, n)) := h
-  def NeutralKeptZ (x : &Nat) (P : UU(Z) → Prop) (h : P(let c = *x; G(&c, Z))) : P(let c = S (*x); G(&c, Z)) := h
+  reject def NeutralKept (x : &Nat) (n : Nat) (P : UU(n) → Prop) (h : P(let c = *x; G(&c, n))) : P(let c = S(*x); G(&c, n)) := h
+  def NeutralKeptZ (x : &Nat) (P : UU(Z) → Prop) (h : P(let c = *x; G(&c, Z))) : P(let c = S(*x); G(&c, Z)) := h
 
   -- ## Typing a sealed program
   -- A sealed program is typed by running its program, typed. A value embedded in it with no
@@ -283,7 +279,7 @@ ochr ClosingOff uses Std, Fixtures {
     }
   )
 
-  def Lt (a : Nat) (b : Nat) : Prop := Le(S a, b)
+  def Lt (a : Nat) (b : Nat) : Prop := Le(S(a), b)
 
   inductive Dec (P : Prop) (Q : Prop) := Yes(h : P) | No(k : Q)
 
@@ -322,7 +318,7 @@ ochr ClosingOff uses Std, Fixtures {
 
   -- ... and the `Id` in the stuck match's `Z` arm observes the match's cell for `*x0`, which
   -- the block's re-run at `*x0 := 0` has lent out (fuzz-port).
-  def IdInBlock (x0 : &Nat) : Id Prop (match *x0 { Z => Id Unit () (*x0 := 0), S _ => ⊤ }) ⊤ := (
+  def IdInBlock (x0 : &Nat) : Id(Prop, (match *x0 { Z => Id(Unit, (), *x0 := 0), S _ => ⊤ }), ⊤) := (
     match *x0 {
       Z => refl,
       S _ => refl,
@@ -331,13 +327,13 @@ ochr ClosingOff uses Std, Fixtures {
 
   -- ## What goes wrong without these rules
   -- The closed-off block of `Clear` writes through the pattern variable `p`, which names
-  -- `(*x).1`: a write to `*x` (D32). If the block did not see that write (switch
+  -- `(*x).0`: a write to `*x` (D32). If the block did not see that write (switch
   -- `patternWritesVisible`), it would copy `*x` instead of borrowing it, the write would be
   -- lost, and `Boom5` would prove `1 = 2`.
-  reject def Clear (x : &Nat) : Id Unit (match *x { Z => (), S p => p := Z }) () := refl
+  reject def Clear (x : &Nat) : Id(Unit, (match *x { Z => (), S p => p := Z }), ()) := refl
 
-  reject def Boom5 : Eq Nat (S Z) (S (S Z)) := (
-    let c = S (S Z);
+  reject def Boom5 : Eq(Nat, S(Z), S(S(Z))) := (
+    let c = S(S(Z));
     Clear(&c)
   )
 
@@ -345,14 +341,14 @@ ochr ClosingOff uses Std, Fixtures {
   -- normalised (D39): it is not closed off again, which would loop. `P1` only has to be
   -- checked without looping (switch `headGuardNeutral`).
   def P1 (h : Π(x : &Nat) (y : &Nat). &Nat) : Prop := (
-    Id Nat (let a = Z; let b = Z; (let r = h(&a, &b); ()); a) Z
+    Id(Nat, let a = Z; let b = Z; (let r = h(&a, &b); ()); a, Z)
   )
 
   -- An earlier version joined a match that is not in tail position by taking the refined
-  -- types from its arms, so after `match b` the hypothesis `h : Id Nat b 0` could get the
+  -- types from its arms, so after `match b` the hypothesis `h : Id(Nat, b, 0)` could get the
   -- `S` arm's type, `False`. Closing the match off instead continues from the state before
-  -- the split, where `h` still says `Id Nat b 0` (D15).
-  reject def Bad (b : Nat) (h : Id Nat b 0) : False := (
+  -- the split, where `h` still says `Id(Nat, b, 0)` (D15).
+  reject def Bad (b : Nat) (h : Id(Nat, b, 0)) : False := (
     match b {
       Z => (),
       S _ => (),

@@ -10,11 +10,11 @@ open Ochr Ochr.Test
 - Q (2): a closure made in a stuck block's arm captures a place (by move) and writes its own
   copy; the block does not count the capture as a move of the place.
 - K (1, the fuzzer's case seed 6 28548, delta-debugged by hand): one arm matches the whole
-  place `a4` (an in-place read), another moves `a4.2` out; the block captures `a4` whole
-  and the move of `a4.2` is lost. Moving versus borrowing or writing in the other arm is
+  place `a4` (an in-place read), another moves `a4.1` out; the block captures `a4` whole
+  and the move of `a4.1` is lost. Moving versus borrowing or writing in the other arm is
   handled (`KBorrow`, `KWrite`).
 Since ochr-core-lean b2ce75b5 (borrows passed whole to [Close] and erased calls; a moved
-prefix covers the captures under it; `.1`/`.2` are a pair's fields) each is rejected at the
+prefix covers the captures under it; `.0`/`.1` are a pair's fields) each is rejected at the
 definition; the failing calls are kept as comments. `Q2` is the second Q case (a
 Prop-returning λ reading a field of the scrutinee), also rejected. -/
 ochr D53Residual2 {
@@ -36,9 +36,9 @@ ochr D53Residual2 {
   def PropIf (n : Nat) : Prop := match n { Z => ⊤, S _ => False }
   reject def Q2 (x0 : &Nat) (n1 : L) : &Nat := match n1 { Nil => x0, Cons(p1, p2) => let a3 = match *x0 { Z => λ (y4 : &Nat) : Prop => ⊤, S p5 => λ (y11 : &Nat) : Prop => PropIf(p1) }; match n1 { Nil => x0, Cons(p15, p16) => &*x0 } }
   -- K: "a4 was partly moved out"
-  reject def K1 (b0 : B2) : Nat × Nat := let a4 = (0, 0); let t = match b0 { F => match a4 { Mk(p, q) => 0 }, T => let s = a4.2; 0 }; a4
+  reject def K1 (b0 : B2) : Nat × Nat := let a4 = (0, 0); let t = match b0 { F => match a4 { Mk(p, q) => 0 }, T => let s = a4.1; 0 }; a4
   -- was: def K1Run : Nat × Nat := K1(T)
-  reject def KBorrow (b0 : B2) : Nat × Nat := let a4 = (0, 0); let t = match b0 { F => G1(&a4.2, 0); 0, T => let s = a4.2; 0 }; a4
+  reject def KBorrow (b0 : B2) : Nat × Nat := let a4 = (0, 0); let t = match b0 { F => G1(&a4.1, 0); 0, T => let s = a4.1; 0 }; a4
   reject def KWrite (b0 : B2) (n : Nat) : Nat := let t = match b0 { F => n := 1; 0, T => let s = n; 0 }; n
 }
 #eval IO.println (run "D53Residual2" D53Residual2 {}).show

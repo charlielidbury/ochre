@@ -7,10 +7,10 @@ is typed by what the observation read): `Split` is accepted. -/
 ochr R1Residual {
   def R1 (x0 : &Nat) : &Nat := match *x0 { Z => &*x0, S p3 => &p3 }
   def Stmt (x0 : &Nat) (x1 : &Nat) : Prop :=
-    Id Prop (match *x0 { Z => let a6 = R1(x1); Id Unit (*x0 := *a6) (), S p7 => ⊤ }) ⊤
+    Id(Prop, (match *x0 { Z => let a6 = R1(x1); Id(Unit, *x0 := *a6, ()), S p7 => ⊤ }), ⊤)
   -- a true statement (the two sides differ only in the `S` arm, `⊤` against `⊤ ∧ ⊤`), proved by
   -- splitting: the `Z` arm re-normalises the sealed program, and typing its `Id` failed
-  def Split (x0 : &Nat) (x1 : &Nat) : Id Prop (match *x0 { Z => let a6 = R1(x1); Id Unit (*x0 := *a6) (), S p7 => ⊤ }) (match *x0 { Z => let a6 = R1(x1); Id Unit (*x0 := *a6) (), S p7 => ⊤ ∧ ⊤ }) := (
+  def Split (x0 : &Nat) (x1 : &Nat) : Id(Prop, (match *x0 { Z => let a6 = R1(x1); Id(Unit, *x0 := *a6, ()), S p7 => ⊤ }), (match *x0 { Z => let a6 = R1(x1); Id(Unit, *x0 := *a6, ()), S p7 => ⊤ ∧ ⊤ })) := (
     match *x0 { Z => refl, S _ => refl }
   )
 }

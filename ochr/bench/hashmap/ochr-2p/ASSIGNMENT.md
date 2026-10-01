@@ -14,7 +14,7 @@ Ochr is a research language, so you will not have met it before. Read `docs/GUID
 - `Bucket`, `BNil | BCons(key : Word, value : Word, next : Bucket)`: a singly linked list of entries, each node owning the next.
 - `Map(cap)`: a map of capacity `cap`, the value `MkMap(slots, len)`, where `slots` is an array of exactly `cap` buckets (`Array(Bucket, cap)`) and `len` is a word. The capacity is part of the type and never changes; there is no resizing. (The type is written `MapOf(Cells(Bucket, cap))`, because a field cannot yet have the type `Array(Bucket, cap)`; it is the same thing.)
 - `Idx(cap, k)`, the bucket of key `k`: `k mod cap`. `IdxLt(cap, k, h) : Lt(Idx(cap, k), cap)` is its bound, given `h : Lt(Zero, cap)`.
-- `EqDec(a, b)`, key comparison that returns the evidence: `Yes(e)` with `e : Eq Word a b`, or `No(ne)` with `ne : Π(e : Eq Word a b). False`. The library's boolean `Eqb` is also available.
+- `EqDec(a, b)`, key comparison that returns the evidence: `Yes(e)` with `e : Eq(Word, a, b)`, or `No(ne)` with `ne : Π(e : Eq(Word, a, b)). False`. The library's boolean `Eqb` is also available.
 - `SlotMut(cap, s, i, h) : &Bucket`, a borrow of bucket `i` of the view `s` (the arrays library's `GetMut` at the element type `Bucket`). It is the only way for runtime code to reach a bucket in place; the view of the array field is `AsSlice(Bucket, cap, &slots)`.
 - `Grow(g, l)` is `l + 1` if `g` is `None` and `l` otherwise; `Shrink(g, l)` is `l − 1` if `g` is `Some(_)` and `l` otherwise. They state H12 and H13.
 - For the model: `SlotsOf(cap, m)`, the buckets of a map value as a view, and `LenField(cap, m)`, its length field. `SlotsOf` returns a view by value, so it is model code: it can be used in statements and in other model code, not at runtime.
@@ -90,7 +90,7 @@ Yours: the operations, `Inv`, and these proofs. Every statement is quantified ov
 
 Provided (statements and proofs FIXED, at the end of the block): H4 `GetNew`, H5 `GetInsertSame`, H6 `GetInsertOther`, H7 `InsertReturnsGet`, H8 `GetRemoveSame`, H9 `GetRemoveOther`, H10 `RemoveReturnsGet`, H11 `LenNew`, H12 `LenInsert`, H13 `LenRemove`, H14 `GetMutGet`, H15 `GetMutLen`. Each is an instance of a generic lemma in the block `HashMapCompose` (for example `GetInsertSameFrom`), which derives the property about any operations from their agreement with any model that has the model property; they are checked once your declarations are.
 
-`k2 ≠ k` is the hypothesis `ne : Π(e : Eq Word k2 k). False`, and "`k` present" is `hk : IsSome(GetOf(cap, *m, k))`. The exact statements are in `HashMap.lean`.
+`k2 ≠ k` is the hypothesis `ne : Π(e : Eq(Word, k2, k)). False`, and "`k` present" is `hk : IsSome(GetOf(cap, *m, k))`. The exact statements are in `HashMap.lean`.
 
 ## The tests (given, SPEC §6)
 
@@ -149,7 +149,7 @@ The only difference is the route: here the map properties are proved once about 
 - **`get_mut` has a precondition** (`k` present), because Ochr cannot return a borrow inside an `Opt`. Its type mentions `GetOf`, your `MapGet` run on a copy.
 - **The capacity is in the type.** `Map(cap)` does not record that `cap ≥ 1` (only `MapNew` requires it), and indexing a bucket needs the bound `IdxLt(cap, k, h)` with `h : Lt(Zero, cap)`. An operation can obtain `h` by testing `cap` (`match cap { Zero => …, Succ(c) => … }`, where `refl` proves `Lt(Zero, Succ(c))`) or with `LtDec(Zero, cap)`; the `Zero` case never happens for a map built by `MapNew`.
 - **Only `SlotMut` reaches a bucket.** Runtime code may not take the array apart itself (the checker enforces the array abstraction, see `docs/GUIDE.md` §9). The model, statements and proofs may: `Abs` takes the buckets as a view by value, so it is model code and may match on the view's representation or use the library's `Nth`.
-- **No projections of stuck pairs**: a function that returns a pair cannot have its components taken with `.1` in a statement until the pair is a constructor value; this is why the model's operations return the new map only.
+- **No projections of stuck pairs**: a function that returns a pair cannot have its components taken with `.0` in a statement until the pair is a constructor value; this is why the model's operations return the new map only.
 - **No automation.** Every case split, induction and rewrite is written by hand.
 - **Unary numbers.** `Word` is unary in the logic; keys and values in the tests are small. Ochr's `Word` has no upper bound, so `len` cannot overflow and `insert` needs no bound on `len`.
 - **Statements about copies.** Each property runs the operation on a copy `c` of the map `*m` and observes `c`; in a system with shared references or pure functions the same property would mention the map before and after directly.

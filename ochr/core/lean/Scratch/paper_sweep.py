@@ -63,7 +63,7 @@ def emit(name, uses, items, rename={}):
     for n,t,loc in items:
         if n in rename: t=t.replace(f'def {n} ',f'def {rename[n]} ',1); n=rename[n]
         if n=='Clear': t+=' := refl'
-        t=t.replace('let h = λ(x : &Nat) : U(n) => (*x := S Z; V(n)); let c','let h = (λ(x : &Nat) : U(n) => (*x := S Z; V(n))); let c')
+        t=t.replace('let h = λ(x : &Nat) : U(n) => (*x := S(Z); V(n)); let c','let h = (λ(x : &Nat) : U(n) => (*x := S(Z); V(n))); let c')
         print(f'  -- {loc}')
         print('  '+('reject ' if n in REJECT else '')+t)
     print('}')
@@ -80,9 +80,9 @@ print('''ochr SweepTrees uses Std {
   -- not printed: the tree, `Lt`, `Size`, `AddMS`/`AddS` as in InPlaceTrees
   inductive Tree := Leaf | Node(l : Tree, v : Word, r : Tree)
   def Lt (a : Word) (b : Word) : Bool by a := match a { Zero => match b { Zero => false, Succ _ => true }, Succ a' => match b { Zero => false, Succ b' => Lt(a', b') } }
-  def AddMS (x : &Nat) (y : Nat) : Id Unit (AddM(x, S y)) (AddM(&*x, y); *x := S *x) by x := match *x { Z => refl, S p => AddMS(&p, y) }
-  def AddS (x : Nat) (y : Nat) : Id Nat (Add(x, S y)) (S (Add(x, y))) := AddMS(&x, y)
-  def Size (t : Tree) : Nat by t := match t { Leaf => 0, Node(l, v, r) => S (Add(Size(l), Size(r))) }''')
+  def AddMS (x : &Nat) (y : Nat) : Id(Unit, AddM(x, S(y)), AddM(&*x, y); *x := S(*x)) by x := match *x { Z => refl, S p => AddMS(&p, y) }
+  def AddS (x : Nat) (y : Nat) : Id(Nat, Add(x, S(y)), S(Add(x, y))) := AddMS(&x, y)
+  def Size (t : Tree) : Nat by t := match t { Leaf => 0, Node(l, v, r) => S(Add(Size(l), Size(r))) }''')
 for n,t,loc in S2u:
     if n in trees: print(f'  -- {loc}\n  {t}')
 print('}\n#eval IO.println (run "SweepTrees" SweepTrees).show')
@@ -104,13 +104,13 @@ ochr SweepInline uses Std, Fixtures {
   -- appendix note 27
   def CapS (x : &Nat) : Nat := AddM(&*x, 1); let n = clone(*x); let f = (λ(y : Nat) : Nat => clone(n)); f(0)
   -- typing.typ intro, obs.typ §5
-  def LetZ (x : Nat) : Nat := let z = (let y = &x; *y := 2; x); let h : Id Nat z 2 = refl; z
-  def WriteNeq (x : &Nat) (e : Id Unit (*x := 0) (*x := 1)) : Nat := match e {}
-  reject def OwnedLocal (x : Nat) : Id Unit (x := 6) () := refl
+  def LetZ (x : Nat) : Nat := let z = (let y = &x; *y := 2; x); let h : Id(Nat, z, 2) = refl; z
+  def WriteNeq (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : Nat := match e {}
+  reject def OwnedLocal (x : Nat) : Id(Unit, x := 6, ()) := refl
   -- appendix notes 6, 7, 11, [Close]'s row
   def PickX (x : &Nat) (y : &Nat) : &Nat := x
   def PickY (x : &Nat) (y : &Nat) : &Nat := y
-  def PF (x : &Nat) (e : Id Unit (*x := 0) (*x := 1)) : False := e
+  def PF (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
   reject def QF (g : Π(n : Nat). &Nat) : False := PF(g(5), refl)
   reject def F (n : Nat) (x : &Nat) : (match n { Z => &Nat, S _ => Nat }) := match n { Z => x, S _ => 0 }
   -- D66: `&A` for `A : Type₀` is well formed; a type variable in `Type₁` is not
@@ -150,7 +150,7 @@ ochr SweepTF uses Std, Fixtures {
   def Bad4 (x : &Nat) (a : Nat) : Unit := (x := TailM(&a); match a { Z => (), S _ => () })
   def Bad4Run : Unit := (let c = 0; Bad4(&c, 1))
   reject def RetLocal (x : &Nat) : &Nat := (let a = 0; &a)
-  def IdLet (a : Nat) : Id Nat (let z = a; a) a := refl
+  def IdLet (a : Nat) : Id(Nat, let z = a; a, a) := refl
   reject def LetCode (a : Nat) : Nat := let z = a; a
   def AssignPick (n : Nat) (b : Nat) (x : &Nat) : Unit := (x := Pick(n, &*x, &b); *x := 5)
   def AssignPick1 (b : Nat) (c : Nat) : Unit := (let x = &c; let n = 1; x := Pick(n, &*x, &b); *x := 5)

@@ -8,8 +8,8 @@ block (RULES §1, §8; v2.1, D52). Every block uses `Prelude` implicitly: its de
 come first in every program (`Ochr.Test.libOf`), and its names are in every block's
 namespace. `Eq` is primitive and computes to `True`, `False` and `And` (§4), so the kernel
 knows these by name, as it knows `Pair` for its notation:
-* `Pair (A B : Type₀) := Mk(fst : A, snd : B)`: `A × B`, `(a, b)`, `t.1`, `t.2` are notation
-  (`Surface.resolve`: `.tind "Pair"`, `.ctor "Pair" 0 Mk`; the places `.1`/`.2`,
+* `Pair (A B : Type₀) := Mk(fst : A, snd : B)`: `A × B`, `(a, b)`, `t.0`, `t.1` are notation
+  (`Surface.resolve`: `.tind "Pair"`, `.ctor "Pair" 0 Mk`; the places `.0`/`.1`,
   `Obs.stepV`, `Machine.placeType`); printed back in that notation (`Pretty`); a codomain
   written `A × B` is data (`Machine.isPropTerm?`, `paramFlags`).
 * `False`: `Eq` on distinct constructors computes to it (`Machine.mkEqM`, `vFalse`).

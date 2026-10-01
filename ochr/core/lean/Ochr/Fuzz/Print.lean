@@ -5,7 +5,7 @@ import Ochr.Surface
 
 The output parses back with `Ochr/Notation.lean`, so a shrunk counterexample can be
 pasted into an example file as a regression test. Precedence levels follow the
-notation: match arms are separated by commas; atoms (max), juxtaposition 60, `×`/`∧` 35, `→` 25, `:=` 20, `;`/`let`/`Π`/`λ` 10.
+notation: match arms are separated by commas; atoms (max), `×`/`∧` 35, `→` 25, `:=` 20, `;`/`let`/`Π`/`λ` 10.
 -/
 
 namespace Ochr.Fuzz
@@ -18,9 +18,7 @@ mutual
 partial def pp (p : Nat) : STerm → String
   | .ident x => x
   | .num n => toString n
-  | .app f as => paren (p > 60) (" ".intercalate (f :: as.map fun a => match a with
-      | .matchGen .. | .call .. => s!"({pp 0 a})"
-      | _ => pp 1024 a))
+  | .app f as => s!"{f}({", ".intercalate (as.map (pp 0))})"
   | .call f as => s!"{ppHead f}({", ".intercalate (as.map (pp 0))})"
   | .ctorP c ps [] => s!"{c}[{", ".intercalate (ps.map (pp 0))}]"
   | .ctorP c ps as => s!"{c}[{", ".intercalate (ps.map (pp 0))}]({", ".intercalate (as.map (pp 0))})"

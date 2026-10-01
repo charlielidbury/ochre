@@ -38,16 +38,16 @@ ochr Erasure uses Std {
     ⊤
   )
 
-  def TypeErased (x : &Nat) : Id Nat (let T = F5(&*x); *x) (*x) := refl
+  def TypeErased (x : &Nat) : Id(Nat, let T = F5(&*x); *x, *x) := refl
 
   -- A proof's argument runs on the copy as well, so `W5`'s write inside it is not seen ...
   def Lemma (u : Unit) : ⊤ := refl
   def W5 (x : &Nat) : Unit := *x := 5
-  reject def EffArg (x : &Nat) : Id Unit (Lemma(W5(&*x)); ()) (*x := 5) := refl
+  reject def EffArg (x : &Nat) : Id(Unit, Lemma(W5(&*x)); (), *x := 5) := refl
 
   -- ... and since the argument writes `*x` for a call that is not erased, confinement makes
   -- it an error rather than a silent no-op.
-  reject def EffArgErased (x : &Nat) : Id Unit (Lemma(W5(&*x)); ()) () := refl
+  reject def EffArgErased (x : &Nat) : Id(Unit, Lemma(W5(&*x)); (), ()) := refl
 
   -- ## Confinement
   -- A proof may change its own locals ...
@@ -96,36 +96,36 @@ ochr Erasure uses Std {
     refl
   )
 
-  def F (h : Π(x : &Nat). ⊤) : Prop := Id Nat (let a = 0; h(&a); a) 0
-  def FP2 : Id Nat (let a = 0; P2(&a); a) 0 := refl
+  def F (h : Π(x : &Nat). ⊤) : Prop := Id(Nat, let a = 0; h(&a); a, 0)
+  def FP2 : Id(Nat, let a = 0; P2(&a); a, 0) := refl
 
   def BoomIsTrue : ⊤ := (
-    J(Π(x : &Nat). ⊤, P1, P2, λ(g : Π(x : &Nat). ⊤) : Prop => F(g), (refl : Eq (Π(x : &Nat). ⊤) P1 P2), refl)
+    J(Π(x : &Nat). ⊤, P1, P2, λ(g : Π(x : &Nat). ⊤) : Prop => F(g), (refl : Eq(Π(x : &Nat). ⊤, P1, P2)), refl)
   )
 
   -- ... and transporting along `P1 = P2` gives no proof of `False`.
   reject def Boom : False := (
-    J(Π(x : &Nat). ⊤, P1, P2, λ(g : Π(x : &Nat). ⊤) : Prop => F(g), (refl : Eq (Π(x : &Nat). ⊤) P1 P2), refl)
+    J(Π(x : &Nat). ⊤, P1, P2, λ(g : Π(x : &Nat). ⊤) : Prop => F(g), (refl : Eq(Π(x : &Nat). ⊤, P1, P2)), refl)
   )
 
   -- The same through a function that runs its argument on a local: `k(P1)` and `k(P2)` are
   -- both `0`.
-  reject def Boom' : Eq Nat 0 1 := (
-    (λ(k : Π(h : Π(x : &Nat). ⊤). Nat) : Eq Nat (k(P1)) (k(P2)) => refl)(
+  reject def Boom' : Eq(Nat, 0, 1) := (
+    (λ(k : Π(h : Π(x : &Nat). ⊤). Nat) : Eq(Nat, k(P1), k(P2)) => refl)(
       λ(h : Π(x : &Nat). ⊤) : Nat => (let a = 0; h(&a); a)
     )
   )
 
   -- The same inside a stuck match: sealing `UseP(p2, &c, n)` and then refining `n`, or running
   -- it directly, both leave `c` at `0`.
-  def p1 (x : &Nat) : Eq Nat 0 0 := refl
+  def p1 (x : &Nat) : Eq(Nat, 0, 0) := refl
 
-  def p2 (x : &Nat) : Eq Nat 0 0 := (
-    *x := S Z;
+  def p2 (x : &Nat) : Eq(Nat, 0, 0) := (
+    *x := S(Z);
     refl
   )
 
-  def UseP (h : Π(x : &Nat). Eq Nat 0 0) (x : &Nat) (n : Nat) : Unit := (
+  def UseP (h : Π(x : &Nat). Eq(Nat, 0, 0)) (x : &Nat) (n : Nat) : Unit := (
     match n {
       Z => (
         h(x);
@@ -138,8 +138,8 @@ ochr Erasure uses Std {
     }
   )
 
-  def TA2 (n : Nat) : Id Nat (let c = 0; UseP(p1, &c, n); c) (let c = 0; UseP(p2, &c, n); c) := refl
-  reject def TA2Z : Eq Nat 0 1 := TA2(0)
+  def TA2 (n : Nat) : Id(Nat, let c = 0; UseP(p1, &c, n); c, let c = 0; UseP(p2, &c, n); c) := refl
+  reject def TA2Z : Eq(Nat, 0, 1) := TA2(0)
 
   -- ## What goes wrong without the private copy
   -- Confinement lets an erased term pass an outer place to an erased call, as a proof passes
@@ -147,7 +147,7 @@ ochr Erasure uses Std {
   -- on the direct path: in the `S` arm, `F5(&*x)` writes `*x := 5`, while the closed-off
   -- block, being erased, skips it. So `LieP2`, true as checked, is false at `1`, and
   -- `BoomP2` is a closed proof of `False` (fuzz-port).
-  def LieP2 (x : &Nat) : Id Nat (let a = match *x { Z => refl, S p => (F5(&*x); refl) }; *x) (*x) := refl
+  def LieP2 (x : &Nat) : Id(Nat, (let a = match *x { Z => refl, S p => (F5(&*x); refl) }; *x), *x) := refl
   reject def BoomP2Pair : False ∧ False := (let c = 1; LieP2(&c))
 
   reject def BoomP2 : False := (
@@ -164,15 +164,15 @@ ochr Erasure uses Std {
   -- confinement, a proof that writes `a` is an error. Switching both off accepts `N1Closed`
   -- and `QBoom` (switches `eraseOnCopy` and `confine`).
   reject def N1T (n : Nat) :
-      Id Nat (let a = 0; let h = match n { Z => (a := S Z; refl), S _ => refl }; a) 0 := refl
+      Id(Nat, (let a = 0; let h = match n { Z => (a := S(Z); refl), S _ => refl }; a), 0) := refl
 
-  reject def N1Closed : Id Nat 1 0 := N1T(0)
+  reject def N1Closed : Id(Nat, 1, 0) := N1T(0)
 
   reject def Q (b : Nat) (a : Nat) :
-      Id ⊤ (match b { Z => (a := S Z; refl), S _ => (a := S Z; refl) }) refl := refl
+      Id(⊤, (match b { Z => (a := S(Z); refl), S _ => (a := S(Z); refl) }), refl) := refl
 
   reject def QBoom : False := (
-    J(Nat, S Z, Z, λ(n : Nat) : Prop => match n { Z => False, S _ => ⊤ }, Q(0, 0), refl)
+    J(Nat, S(Z), Z, λ(n : Nat) : Prop => match n { Z => False, S _ => ⊤ }, Q(0, 0), refl)
   )
 }
 
@@ -198,12 +198,12 @@ ochr ErasureBySyntax uses Fixtures {
   -- `W` returns data, by its declared result type `U(n)`, so its write runs at every
   -- instance; `MainW(0)` really is `1`, as compiled code computes.
   def W (x : &Nat) (n : Nat) : U(n) := (
-    *x := S Z;
+    *x := S(Z);
     V(n)
   )
 
-  def Lie (n : Nat) : Id Nat (let c = Z; W(&c, n); c) (S Z) := refl
-  reject def Boom : Eq Nat Z (S Z) := Lie(Z)
+  def Lie (n : Nat) : Id(Nat, let c = Z; W(&c, n); c, S(Z)) := refl
+  reject def Boom : Eq(Nat, Z, S(Z)) := Lie(Z)
 
   def MainW (n : Nat) : Nat := (
     let c = Z;
@@ -211,34 +211,34 @@ ochr ErasureBySyntax uses Fixtures {
     c
   )
 
-  def MainW0 : Id Nat (MainW(0)) 1 := refl
+  def MainW0 : Id(Nat, MainW(0), 1) := refl
 
   -- A local function whose result type computes to a sort: its class is read from the
   -- result type as written, `U(n)`, so `h(&c)` runs on both paths (D35; appendix note 1).
   -- The erasure pre-pass reads it before the call runs, so the old after-the-fact switch is
   -- gone.
   def LieL (n : Nat) :
-      Id Nat (let h = (λ(x : &Nat) : U(n) => (*x := S Z; V(n))); let c = Z; h(&c); c) (S Z) := refl
+      Id(Nat, let h = (λ(x : &Nat) : U(n) => (*x := S(Z); V(n))); let c = Z; h(&c); c, S(Z)) := refl
 
-  reject def BoomL : Eq Nat Z (S Z) := LieL(Z)
+  reject def BoomL : Eq(Nat, Z, S(Z)) := LieL(Z)
 
   -- The same, with the closure made by a top-level function.
-  def MkClosure (n : Nat) : (Π(x : &Nat). U(n)) := λ(x : &Nat) : U(n) => (*x := S Z; V(clone(n)))
-  def Lie8 (n : Nat) : Id Nat (let c = Z; let g = MkClosure(n); g(&c); c) (S Z) := refl
-  reject def Boom8 : Eq Nat Z (S Z) := Lie8(Z)
-  reject def Direct8 : Id Nat (let c = Z; let g = MkClosure(0); g(&c); c) Z := refl
+  def MkClosure (n : Nat) : (Π(x : &Nat). U(n)) := λ(x : &Nat) : U(n) => (*x := S(Z); V(clone(n)))
+  def Lie8 (n : Nat) : Id(Nat, let c = Z; let g = MkClosure(n); g(&c); c, S(Z)) := refl
+  reject def Boom8 : Eq(Nat, Z, S(Z)) := Lie8(Z)
+  reject def Direct8 : Id(Nat, let c = Z; let g = MkClosure(0); g(&c); c, Z) := refl
 
   -- A match whose value is a type. Closed off, it looked like a call returning types and
   -- was erased; run directly, it was not. A closed-off match is erased only when each of
   -- its arms is (D35, D40; appendix note 2; the pre-pass, no switch since). The true
   -- statement is proved by splitting on `n`.
   reject def LieB (n : Nat) :
-      Id Nat (let c = Z; let T = match n { Z => (c := S Z; ⊤), S _ => (c := S Z; ⊤) }; c) Z := refl
+      Id(Nat, (let c = Z; let T = match n { Z => (c := S(Z); ⊤), S _ => (c := S(Z); ⊤) }; c), Z) := refl
 
-  reject def BoomB : Eq Nat (S Z) Z := LieB(Z)
+  reject def BoomB : Eq(Nat, S(Z), Z) := LieB(Z)
 
   def TruthB (n : Nat) :
-      Id Nat (let c = Z; let T = match n { Z => (c := S Z; ⊤), S _ => (c := S Z; ⊤) }; c) (S Z) := (
+      Id(Nat, (let c = Z; let T = match n { Z => (c := S(Z); ⊤), S _ => (c := S(Z); ⊤) }; c), S(Z)) := (
     match n {
       Z => refl,
       S _ => refl,
@@ -248,23 +248,23 @@ ochr ErasureBySyntax uses Fixtures {
   -- The same with an annotation: the type `Prop` is not a proposition, so the match is not
   -- erased on either path; and with a data annotation the write is kept.
   reject def Lie7 (n : Nat) :
-      Id Nat (let c = Z; let T : Prop = match n { Z => (c := S Z; ⊤), S _ => (c := S Z; ⊤) }; c) Z := refl
+      Id(Nat, (let c = Z; let T : Prop = match n { Z => (c := S(Z); ⊤), S _ => (c := S(Z); ⊤) }; c), Z) := refl
 
-  reject def Boom7 : Eq Nat (S Z) Z := Lie7(Z)
+  reject def Boom7 : Eq(Nat, S(Z), Z) := Lie7(Z)
 
   reject def P3d (n : Nat) : Nat := (
     let c = Z;
     let T : Nat = match n {
       Z => (
-        c := S Z;
+        c := S(Z);
         0
       ),
       S _ => (
-        c := S Z;
+        c := S(Z);
         0
       ),
     };
-    let h : Id Nat c Z = refl;
+    let h : Id(Nat, c, Z) = refl;
     c
   )
 
@@ -273,30 +273,26 @@ ochr ErasureBySyntax uses Fixtures {
   -- declared a proposition, so `f(&c)` runs.
   -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
   reject def LieG (m : Nat) (g : Π(y : Nat). V(Z)) :
-      Id Nat
-        (
+      Id(Nat, (
           let c = Z;
-          let f = (λ(x : &Nat) : V(Z) => (*x := S Z; g(0)));
+          let f = (λ(x : &Nat) : V(Z) => (*x := S(Z); g(0)));
           let T = match m { Z => f(&c), S _ => f(&c) };
           c
-        )
-        Z := (
+        ), Z) := (
     refl
   )
 
   -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
-  reject def BoomG : Eq Nat (S Z) Z := LieG(Z, λ(y : Nat) : V(Z) => refl)
+  reject def BoomG : Eq(Nat, S(Z), Z) := LieG(Z, λ(y : Nat) : V(Z) => refl)
 
   -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
   reject def TruthG (m : Nat) (g : Π(y : Nat). V(Z)) :
-      Id Nat
-        (
+      Id(Nat, (
           let c = Z;
-          let f = (λ(x : &Nat) : V(Z) => (*x := S Z; g(0)));
+          let f = (λ(x : &Nat) : V(Z) => (*x := S(Z); g(0)));
           let T = match m { Z => f(&c), S _ => f(&c) };
           c
-        )
-        (S Z) := (
+        ), S(Z)) := (
     match m {
       Z => refl,
       S _ => refl,
@@ -306,46 +302,44 @@ ochr ErasureBySyntax uses Fixtures {
   -- A sequence whose tail returns a type is not erased; only the call `F(&c)` runs on a
   -- private copy (D35; the pre-pass, no switch since).
   def F (x : &Nat) : Prop := (
-    *x := S Z;
+    *x := S(Z);
     ⊤
   )
 
-  def SeqT : Id Nat (let c = Z; let T = (c := S Z; F(&c)); c) (S Z) := refl
+  def SeqT : Id(Nat, let c = Z; let T = (c := S(Z); F(&c)); c, S(Z)) := refl
 
   -- A place holding a proof was once not treated as a proof, so a sequence ending in one
   -- was not erased, and at `n = Z` the match ran for real. Its arms write `c`, which
   -- confinement now rejects.
   reject def LieP (n : Nat) :
-      Id Nat
-        (let c = Z; let h : ⊤ = refl; let T = match n { Z => (c := S Z; h), S _ => (c := S Z; h) }; c)
-        Z := (
+      Id(Nat, (let c = Z; let h : ⊤ = refl; let T = match n { Z => (c := S(Z); h), S _ => (c := S(Z); h) }; c), Z) := (
     refl
   )
 
-  reject def BoomP : Eq Nat (S Z) Z := LieP(Z)
+  reject def BoomP : Eq(Nat, S(Z), Z) := LieP(Z)
 
   -- Whether a variable is a proof is read from its declaration, not from its value: `g(0)`
   -- is `⋆` at an instance but a sealed program at the generic call (D42, switch `leafRule`;
   -- appendix note 3).
   -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
-  reject def LieH (g : Π(y : Nat). V(Z)) : Id Nat (let c = Z; let h = g(0); (c := S Z; h); c) (S Z) := refl
+  reject def LieH (g : Π(y : Nat). V(Z)) : Id(Nat, let c = Z; let h = g(0); (c := S(Z); h); c, S(Z)) := refl
   -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
-  reject def BoomH : Eq Nat Z (S Z) := LieH(λ(y : Nat) : V(Z) => refl)
+  reject def BoomH : Eq(Nat, Z, S(Z)) := LieH(λ(y : Nat) : V(Z) => refl)
 
   -- The pre-pass reads a stuck block's captured proofs as proofs (fuzz-port's R8, true
   -- statements it once rejected with its INTERNAL check): a proof-function parameter, called
   -- on a sub-place; a captured λ into proofs; and a proof whose data field an arm writes
   -- inside a proof, which the block takes by value, never by `&` (D48 (1)).
-  def R8Param (n : Nat) (h2 : Π(z0 : &Nat). ⊤) : Id Nat (match n { Z => 0, S p => h2(&p); 0 }) 0 := (
+  def R8Param (n : Nat) (h2 : Π(z0 : &Nat). ⊤) : Id(Nat, (match n { Z => 0, S p => h2(&p); 0 }), 0) := (
     match n { Z => refl, S _ => refl }
   )
   def R8Lam (n : Nat) :
-      Id Nat (let a5 = (λ(y6 : Nat) (y7 : ⊤ ∧ ⊤) : ⊤ ∧ ⊤ => y7); match n { Z => 0, S p => a5(p, ⟨refl, refl⟩); 0 }) 0 := (
+      Id(Nat, (let a5 = (λ(y6 : Nat) (y7 : ⊤ ∧ ⊤) : ⊤ ∧ ⊤ => y7); match n { Z => 0, S p => a5(p, ⟨refl, refl⟩); 0 }), 0) := (
     match n { Z => refl, S _ => refl }
   )
   inductive ExN : Prop := Wit(n : Nat, e : ⊤)
   def R8Field (n : Nat) (h3 : ExN) :
-      Id Nat (match n { Z => 0, S p => (match h3 { Wit(k, e) => k := 0; refl } : ⊤); 0 }) 0 := (
+      Id(Nat, (match n { Z => 0, S p => (match h3 { Wit(k, e) => k := 0; refl } : ⊤); 0 }), 0) := (
     match n { Z => refl, S _ => refl }
   )
   -- A match whose arms differ in class (a proof in one, data in another) has no declared type:
@@ -366,7 +360,7 @@ ochr ErasureBySyntax uses Fixtures {
   -- Arms that are proofs of different shapes (a proof variable, a λ into proofs) agree on a proof.
   def RunP (k : Π(x : &Nat). ⊤) (x : &Nat) : Unit := (k(x); ())
   def R8Arms (n : Nat) (h0 : Π(z0 : &Nat). ⊤) (m : Nat) :
-      Id Unit (match n { Z => RunP(match m { Z => h0, S _ => (λ(y2 : &Nat) : ⊤ => refl) }, &m), S _ => () }) () := (
+      Id(Unit, (match n { Z => RunP(match m { Z => h0, S _ => (λ(y2 : &Nat) : ⊤ => refl) }, &m), S _ => () }), ()) := (
     match n { Z => match m { Z => refl, S _ => refl }, S _ => refl }
   )
 }

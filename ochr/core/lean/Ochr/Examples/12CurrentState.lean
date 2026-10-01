@@ -33,7 +33,7 @@ ochr CurrentState uses Std {
   )
 
   -- Take `y` successors off the top of `*x`. The precondition survives `*x := p`, and where
-  -- `*x` is `Z` but `y` is not, the split has refined `h`'s type to `Le(S q, Z)`, which
+  -- `*x` is `Z` but `y` is not, the split has refined `h`'s type to `Le(S(q), Z)`, which
   -- computes to `False`, so the arm is `match h {}`.
   def SubM (x : &Nat) (y : Nat) (h : Le(y, *x)) : Unit by y := (
     match y {
@@ -57,7 +57,7 @@ ochr CurrentState uses Std {
 
   -- Adding `y` and then subtracting the old `*x` leaves `y` in `*x`. The induction hypothesis
   -- is about a copy of the predecessor.
-  def AddSubId (x : &Nat) (y : Nat) : Id Unit (AddSub(x, y)) (*x := y) by x := (
+  def AddSubId (x : &Nat) (y : Nat) : Id(Unit, AddSub(x, y), *x := y) by x := (
     match *x {
       Z => refl,
       S p => (
@@ -88,17 +88,17 @@ ochr CurrentState uses Std {
     LeAdd(old, y)
   )
 
-  -- ... it is not about `S old` ...
+  -- ... it is not about `S(old)` ...
   reject def AddSubWrong (x : &Nat) (y : Nat) : Unit := (
     let old = clone(*x);
     AddM(&*x, y);
-    SubM(x, S old, LeAdd(old, y))
+    SubM(x, S(old), LeAdd(old, y))
   )
 
   -- The induction hypothesis may also be about the predecessor in place (a borrow into
   -- `*x`): it is then an equation between two successors, while `SubM` has already removed
   -- the `S` from the goal, and `Eq` takes the successors apart (injectivity, D52).
-  def AddSubIdReborrow (x : &Nat) (y : Nat) : Id Unit (AddSub(x, y)) (*x := y) by x := (
+  def AddSubIdReborrow (x : &Nat) (y : Nat) : Id(Unit, AddSub(x, y), *x := y) by x := (
     match *x {
       Z => refl,
       S p => AddSubId(&p, y),
@@ -114,7 +114,7 @@ ochr CurrentState uses Std {
   def LeId (a : Nat) (b : Nat) (h : Le(a, b)) : Le(a, b) := h
 
   def ProofIrr (x : &Nat) (y : Nat) (h : Le(y, *x)) :
-      Id Unit (SubM(x, y, h)) (let h2 = LeId(y, *x, h); SubM(x, y, h2)) := refl
+      Id(Unit, SubM(x, y, h), let h2 = LeId(y, *x, h); SubM(x, y, h2)) := refl
 
   -- A proof argument may read the state that an earlier argument has lent out, because
   -- proofs run on a private copy (like Rust's two-phase borrows) ...

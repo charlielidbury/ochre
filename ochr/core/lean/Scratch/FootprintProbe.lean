@@ -18,7 +18,7 @@ extra place's conjunct refines to `⊤`, so the two types are convertible. Not a
 lead: the symbolic type is the stronger one, and after refinement it is convertible with the
 ground one. -/
 ochr FootprintProbe uses Fixtures {
-  def Probe (z : &Nat) (e : Id Unit (*z := 0) (*z := 1)) : Unit := ()
+  def Probe (z : &Nat) (e : Id(Unit, *z := 0, *z := 1)) : Unit := ()
   -- formed at an abstract n: owners of r = {a, b}
   reject def UseSym (n : Nat) (a : Nat) (b : Nat) : Unit := (
     let r = Pick(n, &a, &b);
@@ -40,14 +40,14 @@ ochr FootprintProbe uses Fixtures {
   -- formed at an abstract n, then refined in the arms (annotated block)
   reject def PreFormed (n : Nat) (a : Nat) (b : Nat) : Unit := (
     let r = Pick(clone(n), &a, &b);
-    let e : Id Unit (*r := 0) (*r := 1) = match n {
+    let e : Id(Unit, *r := 0, *r := 1) = match n {
       Z => refl,
       S _ => refl,
     };
     ()
   )
   -- a true lemma about writes through a borrow
-  def Same (z : &Nat) : Id Unit (*z := 1; *z := 0) (*z := 0) := refl
+  def Same (z : &Nat) : Id(Unit, *z := 1; *z := 0, *z := 0) := refl
   -- its result at a call site with an abstract n has a conjunct per owner; the b conjunct
   -- is used below as a fact
   def Keep (n : Nat) (a : Nat) (b : Nat) : Unit := (
@@ -56,16 +56,16 @@ ochr FootprintProbe uses Fixtures {
     ()
   )
   -- a lemma whose two sides leave different (abstract) contents behind the borrow
-  def Reset (z : &Nat) (h : Eq Nat *z 0) : Id Unit (*z := 0) () := (
+  def Reset (z : &Nat) (h : Eq(Nat, *z, 0)) : Id(Unit, *z := 0, ()) := (
     rewrite h in refl
   )
   -- its hypothesis and result at a call site with an abstract n: one conjunct per owner
-  reject def ResetShow (n : Nat) (a : Nat) (b : Nat) (h : Eq Nat a 0) : False := (
+  reject def ResetShow (n : Nat) (a : Nat) (b : Nat) (h : Eq(Nat, a, 0)) : False := (
     let r = Pick(n, &a, &b);
     Reset(r, h)
   )
   -- the same at n = 0
-  reject def ResetShowZero (a : Nat) (b : Nat) (h : Eq Nat a 0) : False := (
+  reject def ResetShowZero (a : Nat) (b : Nat) (h : Eq(Nat, a, 0)) : False := (
     let r = Pick(0, &a, &b);
     Reset(r, h)
   )

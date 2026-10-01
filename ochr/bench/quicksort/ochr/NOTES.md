@@ -18,7 +18,7 @@ For whoever runs the benchmark or writes it up. `make-sandbox.sh` does not copy 
 3. **Sub-borrows only through `WithSplit`.** The two recursive calls happen inside the closure passed to `WithSplit`. A closure that hands the recursion on to a nested closure may need `clone`, because a closure may not move a captured value out.
 4. **Unary `Word`.** Tests are capped at 24 elements and values below 99 for every condition (bench-spec, 72ced6c2). The uncapped set (64 elements) took about 100 s.
 5. **Element borrows.** `&E` is not yet well formed for a type variable `E`, so the library's `GetMut` exists only for `Word` elements, which is enough here.
-6. **No projections of stuck pairs.** `t.1` on a pair that is not yet a constructor value is an error. This matters for the model if it returns pairs.
+6. **No projections of stuck pairs.** `t.0` on a pair that is not yet a constructor value is an error. This matters for the model if it returns pairs.
 7. **Checker soundness.** The checker is a prototype, and earlier revisions had closed proofs of `False`. The human check and README §14 (re-grade on the latest checker) guard against solutions that rely on a bug.
 8. **Moving target.** Planned changes (for example D66: `Prop : Type₁`, and `&A` for any `A : Type₀`) can change the library or the typing of the skeletons.
 

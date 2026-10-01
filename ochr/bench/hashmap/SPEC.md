@@ -149,20 +149,20 @@ Each package fills in its own table: for each property, the file and declaration
 | H1 | `ochr/HashMap.lean` | `InvNew` (region `H1`) | `Inv(cap, MapNew(cap, h))`. |
 | H2 | `ochr/HashMap.lean` | `InvInsert` (region `H2`) | `(let c = *m; MapInsert(cap, &c, k, v); Inv(cap, c))` under `hm : Inv(cap, *m)`: every mutating property runs the operation on a copy `c` of the map `*m` and observes `c`. |
 | H3 | `ochr/HashMap.lean` | `InvRemove` (region `H3`) | Likewise for `MapRemove`. |
-| H4 | `ochr/HashMap.lean` | `GetNew` (region `H4`) | `Eq Opt (GetOf(cap, MapNew(cap, h), k)) None`. |
-| H5 | `ochr/HashMap.lean` | `GetInsertSame` (region `H5`) | `Eq Opt (let c = *m; MapInsert(cap, &c, k, v); GetOf(cap, c, k)) (Some(v))`. |
-| H6 | `ochr/HashMap.lean` | `GetInsertOther` (region `H6`) | `k′ ≠ k` is `ne : Π(e : Eq Word k2 k). False`; the right side is `GetOf(cap, *m, k2)`, the map before. |
-| H7 | `ochr/HashMap.lean` | `InsertReturnsGet` (region `H7`) | `Eq Opt (let c = *m; MapInsert(cap, &c, k, v)) (GetOf(cap, *m, k))`. |
+| H4 | `ochr/HashMap.lean` | `GetNew` (region `H4`) | `Eq(Opt, GetOf(cap, MapNew(cap, h), k), None)`. |
+| H5 | `ochr/HashMap.lean` | `GetInsertSame` (region `H5`) | `Eq(Opt, let c = *m; MapInsert(cap, &c, k, v); GetOf(cap, c, k), Some(v))`. |
+| H6 | `ochr/HashMap.lean` | `GetInsertOther` (region `H6`) | `k′ ≠ k` is `ne : Π(e : Eq(Word, k2, k)). False`; the right side is `GetOf(cap, *m, k2)`, the map before. |
+| H7 | `ochr/HashMap.lean` | `InsertReturnsGet` (region `H7`) | `Eq(Opt, let c = *m; MapInsert(cap, &c, k, v), GetOf(cap, *m, k))`. |
 | H8 | `ochr/HashMap.lean` | `GetRemoveSame` (region `H8`) | As H5, for `MapRemove`, `= None`. |
 | H9 | `ochr/HashMap.lean` | `GetRemoveOther` (region `H9`) | As H6, for `MapRemove`. |
 | H10 | `ochr/HashMap.lean` | `RemoveReturnsGet` (region `H10`) | As H7, for `MapRemove`. |
-| H11 | `ochr/HashMap.lean` | `LenNew` (region `H11`) | `Eq Word (LenOf(cap, MapNew(cap, h))) Zero`. |
-| H12 | `ochr/HashMap.lean` | `LenInsert` (region `H12`) | `Eq Word (let c = *m; MapInsert(cap, &c, k, v); LenOf(cap, c)) (Grow(GetOf(cap, *m, k), LenOf(cap, *m)))`, `Grow(g, l)` = `l + 1` if `g = None`, else `l`. No bound on `len`: `Word` is unbounded. |
+| H11 | `ochr/HashMap.lean` | `LenNew` (region `H11`) | `Eq(Word, LenOf(cap, MapNew(cap, h)), Zero)`. |
+| H12 | `ochr/HashMap.lean` | `LenInsert` (region `H12`) | `Eq(Word, let c = *m; MapInsert(cap, &c, k, v); LenOf(cap, c), Grow(GetOf(cap, *m, k), LenOf(cap, *m)))`, `Grow(g, l)` = `l + 1` if `g = None`, else `l`. No bound on `len`: `Word` is unbounded. |
 | H13 | `ochr/HashMap.lean` | `LenRemove` (region `H13`) | `Shrink(g, l)` = `l − 1` (the library's truncated `Sub`) if `g ≠ None`, else `l`. |
 | H14 | `ochr/HashMap.lean` | `GetMutGet` (region `H14`) | Compares `GetOf(cap, c, k2)` after `let r = MapGetMut(cap, &c, k, hk); *r := w` with `GetOf(cap, c, k2)` after `MapInsert(cap, &c, k, w)`, each on its own copy `c` of `*m`. |
 | H15 | `ochr/HashMap.lean` | `GetMutLen` (region `H15`) | Likewise with `LenOf`. |
 | H16 | `ochr/HashMap.lean` | `GetMutInv` (region `H16`) | `(let c = *m; let r = MapGetMut(cap, &c, k, hk); *r := w; Inv(cap, c))`, with `hk : IsSome(GetOf(cap, *m, k))`. |
-| H17 | `ochr/HashMap.lean` | `GetUnchanged` (region `H17`) | Stated, since `MapGet` takes `&`: `Eq (Map(cap)) (let c = *m; MapGet(cap, &c, k); c) (*m)`, for every map (no `Inv`). |
+| H17 | `ochr/HashMap.lean` | `GetUnchanged` (region `H17`) | Stated, since `MapGet` takes `&`: `Eq(Map(cap), let c = *m; MapGet(cap, &c, k); c, *m)`, for every map (no `Inv`). |
 | H18 | `ochr/HashMap.lean` | `LenUnchanged` (region `H18`) | Likewise with `MapLen`. |
 
 ### ochr-2p

@@ -161,21 +161,21 @@ ochr Index uses Std {
     }
   )
 
-  def AddRS (r : Word) (j : Word) : Eq Word (Succ(WAdd(r, j))) (WAdd(r, Succ(j))) by r := (
+  def AddRS (r : Word) (j : Word) : Eq(Word, Succ(WAdd(r, j)), WAdd(r, Succ(j))) by r := (
     match r {
       Zero => refl,
       Succ(r') => AddRS(r', j),
     }
   )
 
-  def AddZeroR (m : Word) : Eq Word (WAdd(m, Zero)) m by m := (
+  def AddZeroR (m : Word) : Eq(Word, WAdd(m, Zero), m) by m := (
     match m {
       Zero => refl,
       Succ(m') => AddZeroR(m'),
     }
   )
 
-  def AddOneR (m : Word) : Eq Word (WAdd(m, Succ(Zero))) (Succ(m)) by m := (
+  def AddOneR (m : Word) : Eq(Word, WAdd(m, Succ(Zero)), Succ(m)) by m := (
     match m {
       Zero => refl,
       Succ(m') => AddOneR(m'),
@@ -428,12 +428,12 @@ ochr Arrays uses Index {
 
   -- Write `x` at `i, …, n - 1`, by recursion on the count `rem` still to go (`rem + i = n`).
   def FillFrom (E : Type) (n : Word) (s : &Slice(E, n)) (x : E) (i : Word) (rem : Word)
-      (hr : Eq Word (WAdd(rem, i)) n) : Unit by rem := (
+      (hr : Eq(Word, WAdd(rem, i), n)) : Unit by rem := (
     match rem {
       Zero => (),
       Succ(r) => (
         let hi : Lt(i, n) = (rewrite hr in LeAddL(r, i));
-        let hr2 : Eq Word (WAdd(r, Succ(i))) n = (rewrite AddRS(r, i) in hr);
+        let hr2 : Eq(Word, WAdd(r, Succ(i)), n) = (rewrite AddRS(r, i) in hr);
         Set(E, n, &*s, i, clone(x), hi);
         FillFrom(E, n, s, x, Succ(i), r, hr2)
       ),
@@ -456,7 +456,7 @@ together gives the original view (`JoinTakeDrop`), the halves of a join are what
 
 ochr ArrayLemmas uses Arrays {
   def NthSetSame (E : Type) (n : Word) (s : Slice(E, n)) (i : Word) (x : E) (h : Lt(i, n)) :
-      Eq E (Nth(E, n, SetS(E, n, s, i, x), i, h)) x by i := (
+      Eq(E, Nth(E, n, SetS(E, n, s, i, x), i, h), x) by i := (
     match n {
       Zero => match h {},
       Succ(m) => match s {
@@ -471,8 +471,8 @@ ochr ArrayLemmas uses Arrays {
   )
 
   def NthSetOther (E : Type) (n : Word) (s : Slice(E, n)) (i : Word) (j : Word) (x : E) (hi : Lt(i, n))
-      (hj : Lt(j, n)) (ne : Π(e : Eq Word i j). False) :
-      Eq E (Nth(E, n, SetS(E, n, s, i, x), j, hj)) (Nth(E, n, s, j, hj)) by i := (
+      (hj : Lt(j, n)) (ne : Π(e : Eq(Word, i, j)). False) :
+      Eq(E, Nth(E, n, SetS(E, n, s, i, x), j, hj), Nth(E, n, s, j, hj)) by i := (
     match n {
       Zero => match hi {},
       Succ(m) => match s {
@@ -496,7 +496,7 @@ ochr ArrayLemmas uses Arrays {
   )
 
   def JoinTakeDrop (E : Type) (n : Word) (k : Word) (s : Slice(E, n)) (h : Le(k, n)) :
-      Eq (Slice(E, n)) (JoinS(E, n, k, TakeS(E, n, k, s, h), DropS(E, n, k, s))) s by k := (
+      Eq(Slice(E, n), JoinS(E, n, k, TakeS(E, n, k, s, h), DropS(E, n, k, s)), s) by k := (
     match k {
       Zero => refl,
       Succ(k') => match n {
@@ -511,7 +511,7 @@ ochr ArrayLemmas uses Arrays {
   )
 
   def TakeJoin (E : Type) (n : Word) (k : Word) (l : Slice(E, k)) (r : Slice(E, Sub(n, k))) (h : Le(k, n)) :
-      Eq (Slice(E, k)) (TakeS(E, n, k, JoinS(E, n, k, l, r), h)) l by k := (
+      Eq(Slice(E, k), TakeS(E, n, k, JoinS(E, n, k, l, r), h), l) by k := (
     match k {
       Zero => match l {
         MkSlice(c) => match c {
@@ -530,7 +530,7 @@ ochr ArrayLemmas uses Arrays {
   )
 
   def DropJoin (E : Type) (n : Word) (k : Word) (l : Slice(E, k)) (r : Slice(E, Sub(n, k))) (h : Le(k, n)) :
-      Eq (Slice(E, Sub(n, k))) (DropS(E, n, k, JoinS(E, n, k, l, r))) r by k := (
+      Eq(Slice(E, Sub(n, k)), DropS(E, n, k, JoinS(E, n, k, l, r)), r) by k := (
     match k {
       Zero => refl,
       Succ(k') => match n {
@@ -574,7 +574,7 @@ ochr ArrayLemmas uses Arrays {
   )
 
   def CountJoin (q : Word) (n : Word) (k : Word) (l : Slice(Word, k)) (r : Slice(Word, Sub(n, k))) (h : Le(k, n)) :
-      Eq Word (Count(q, n, JoinS(Word, n, k, l, r))) (WAdd(Count(q, k, l), Count(q, Sub(n, k), r))) by k := (
+      Eq(Word, Count(q, n, JoinS(Word, n, k, l, r)), WAdd(Count(q, k, l), Count(q, Sub(n, k), r))) by k := (
     match k {
       Zero => refl,
       Succ(k') => match n {
@@ -596,8 +596,7 @@ ochr ArrayLemmas uses Arrays {
 
   -- Writing `x` over element `i` trades one occurrence of the old element for one of `x`.
   def CountSet (q : Word) (n : Word) (s : Slice(Word, n)) (i : Word) (x : Word) (h : Lt(i, n)) :
-      Eq Word (WAdd(Ind(q, Nth(Word, n, s, i, h)), Count(q, n, SetS(Word, n, s, i, x))))
-        (WAdd(Ind(q, x), Count(q, n, s))) by i := (
+      Eq(Word, WAdd(Ind(q, Nth(Word, n, s, i, h)), Count(q, n, SetS(Word, n, s, i, x))), WAdd(Ind(q, x), Count(q, n, s))) by i := (
     match n {
       Zero => match h {},
       Succ(m) => match s {
@@ -638,13 +637,12 @@ ochr ArrayLemmas uses Arrays {
       Slice(E, n) := SetS(E, n, SetS(E, n, clone(s), i, Nth(E, n, clone(s), j, hj)), j, Nth(E, n, s, i, hi))
 
   def SwapIsSwapS (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (j : Word) (hi : Lt(i, n)) (hj : Lt(j, n)) :
-      Id Unit (Swap(E, n, s, i, j, hi, hj)) (*s := SwapS(E, n, *s, i, j, hi, hj)) := refl
+      Id(Unit, Swap(E, n, s, i, j, hi, hj), *s := SwapS(E, n, *s, i, j, hi, hj)) := refl
 
   -- A swap with the head: the head moves to position `i + 1` of the rest, whose old element
   -- becomes the head. Counts are unchanged, by `CountSet` on the rest.
   def CountSwapHead (q : Word) (m : Word) (y : Word) (t : Slice(Word, m)) (i : Word) (h : Lt(i, m)) :
-      Eq Word (Count(q, Succ(m), MkSlice(MkC(Nth(Word, m, t, i, h), SetS(Word, m, t, i, y)))))
-        (Count(q, Succ(m), MkSlice(MkC(y, t)))) := (
+      Eq(Word, Count(q, Succ(m), MkSlice(MkC(Nth(Word, m, t, i, h), SetS(Word, m, t, i, y)))), Count(q, Succ(m), MkSlice(MkC(y, t)))) := (
     let hs = CountSet(q, m, t, i, y, h);
     let eb = Eqb(q, Nth(Word, m, t, i, h));
     let ey = Eqb(q, y);
@@ -662,7 +660,7 @@ ochr ArrayLemmas uses Arrays {
 
   -- A swap leaves every count unchanged.
   def CountSwap (q : Word) (n : Word) (s : Slice(Word, n)) (i : Word) (j : Word) (hi : Lt(i, n)) (hj : Lt(j, n)) :
-      Eq Word (Count(q, n, SwapS(Word, n, s, i, j, hi, hj))) (Count(q, n, s)) by i := (
+      Eq(Word, Count(q, n, SwapS(Word, n, s, i, j, hi, hj)), Count(q, n, s)) by i := (
     match n {
       Zero => match hi {},
       Succ(m) => match s {
@@ -692,7 +690,7 @@ ochr ArrayLemmas uses Arrays {
   -- Writing through a borrow of element `i` is `Set` (in place is functional), by the same
   -- bare recursion as `AddMEq`.
   def GetMutSet (n : Word) (s : &Slice(Word, n)) (i : Word) (w : Word) (h : Lt(i, n)) :
-      Id Unit (let r = GetMut(n, s, i, h); *r := w) (Set(Word, n, s, i, w, h)) by i := (
+      Id(Unit, let r = GetMut(n, s, i, h); *r := w, Set(Word, n, s, i, w, h)) by i := (
     match n {
       Zero => match h {},
       Succ(m) => match *s {
@@ -721,30 +719,25 @@ ochr ArrayBench uses ArrayLemmas {
   -- By definition, for any `g`: after the split, the view is `g`'s result on the old first
   -- `k` elements, joined to the old rest.
   def B1Join (E : Type) (n : Word) (k : Word) (g : Π(x : &Slice(E, k)). Unit) (s : &Slice(E, n)) (h : Le(k, n)) :
-      Id Unit (WithSplit(E, Unit, n, k, s, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => g(l)))
-        (*s := JoinS(E, n, k, (let c = TakeS(E, n, k, *s, h); g(&c); c), DropS(E, n, k, *s))) := refl
+      Id(Unit, WithSplit(E, Unit, n, k, s, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => g(l)), *s := JoinS(E, n, k, (let c = TakeS(E, n, k, *s, h); g(&c); c), DropS(E, n, k, *s))) := refl
 
   -- Stated about the rest alone, it takes one lemma, for any `g`: `g`'s result has length `k`
   -- by its type, so the rest starts where it did.
   def B1 (E : Type) (n : Word) (k : Word) (g : Π(x : &Slice(E, k)). Unit) (s : &Slice(E, n)) (h : Le(k, n)) :
-      Eq (Slice(E, Sub(n, k)))
-        (let c = *s; WithSplit(E, Unit, n, k, &c, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => g(l)); DropS(E, n, k, c))
-        (DropS(E, n, k, *s)) := (
+      Eq(Slice(E, Sub(n, k)), let c = *s; WithSplit(E, Unit, n, k, &c, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => g(l)); DropS(E, n, k, c), DropS(E, n, k, *s)) := (
     DropJoin(E, n, k, (let c = TakeS(E, n, k, *s, h); g(&c); c), DropS(E, n, k, *s), h)
   )
 
   -- A primitive array would give that by definition; here it is not.
   reject def B1Refl (E : Type) (n : Word) (k : Word) (g : Π(x : &Slice(E, k)). Unit) (s : &Slice(E, n)) (h : Le(k, n)) :
-      Eq (Slice(E, Sub(n, k)))
-        (let c = *s; WithSplit(E, Unit, n, k, &c, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => g(l)); DropS(E, n, k, c))
-        (DropS(E, n, k, *s)) := refl
+      Eq(Slice(E, Sub(n, k)), let c = *s; WithSplit(E, Unit, n, k, &c, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => g(l)); DropS(E, n, k, c), DropS(E, n, k, *s)) := refl
 
   -- Nor is splitting and doing nothing the identity by definition; it is `JoinTakeDrop`.
   reject def SplitNoopRefl (E : Type) (n : Word) (k : Word) (s : &Slice(E, n)) (h : Le(k, n)) :
-      Id Unit (WithSplit(E, Unit, n, k, s, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => ())) () := refl
+      Id(Unit, WithSplit(E, Unit, n, k, s, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => ()), ()) := refl
 
   def SplitNoop (E : Type) (n : Word) (k : Word) (s : &Slice(E, n)) (h : Le(k, n)) :
-      Eq (Slice(E, n)) (let c = *s; WithSplit(E, Unit, n, k, &c, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => ()); c) (*s) := (
+      Eq(Slice(E, n), let c = *s; WithSplit(E, Unit, n, k, &c, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => ()); c, *s) := (
     JoinTakeDrop(E, n, k, *s, h)
   )
 
@@ -753,35 +746,33 @@ ochr ArrayBench uses ArrayLemmas {
     WithSplit(Word, Unit, W(5), W(2), s, refl, λ(l : &Slice(Word, W(2))) (r : &Slice(Word, W(3))) : Unit => Fill(Word, W(2), l, Zero))
   )
 
-  def ZeroFirst2Run : Id Word
-      (let a = Replicate(Word, W(5), W(7)); ZeroFirst2(AsSlice(Word, W(5), &a)); Read(Word, W(5), AsSlice(Word, W(5), &a), Succ(Zero), refl)
-        ) Zero := refl
+  def ZeroFirst2Run : Id(Word, let a = Replicate(Word, W(5), W(7)); ZeroFirst2(AsSlice(Word, W(5), &a)); Read(Word, W(5), AsSlice(Word, W(5), &a), Succ(Zero), refl)
+        , Zero) := refl
 
-  def ZeroFirst2Rest : Id Word
-      (let a = Replicate(Word, W(5), W(7)); ZeroFirst2(AsSlice(Word, W(5), &a)); Read(Word, W(5), AsSlice(Word, W(5), &a), W(2), refl)
-        ) W(7) := refl
+  def ZeroFirst2Rest : Id(Word, let a = Replicate(Word, W(5), W(7)); ZeroFirst2(AsSlice(Word, W(5), &a)); Read(Word, W(5), AsSlice(Word, W(5), &a), W(2), refl)
+        , W(7)) := refl
 
   -- ## Reading and writing
   -- A read leaves the view exactly as it was, by definition ...
   def ReadNoop (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (h : Lt(i, n)) :
-      Id Unit (let x = Read(E, n, s, i, h); ()) () := refl
+      Id(Unit, let x = Read(E, n, s, i, h); (), ()) := refl
 
   -- ... a read through a borrow of the element does not: it leaves a put-back program.
   reject def GetMutReadNoop (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) :
-      Id Unit (let r = GetMut(n, s, i, h); let x = *r; ()) () := refl
+      Id(Unit, let r = GetMut(n, s, i, h); let x = *r; (), ()) := refl
 
   -- Reading after a write, at the same index and at another.
   def ReadAfterSet (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (x : E) (h : Lt(i, n)) :
-      Eq E (let c = *s; Set(E, n, &c, i, x, h); Read(E, n, &c, i, h)) x := NthSetSame(E, n, *s, i, x, h)
+      Eq(E, let c = *s; Set(E, n, &c, i, x, h); Read(E, n, &c, i, h), x) := NthSetSame(E, n, *s, i, x, h)
 
   def ReadAfterSetOther (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (j : Word) (x : E) (hi : Lt(i, n))
-      (hj : Lt(j, n)) (ne : Π(e : Eq Word i j). False) :
-      Eq E (let c = *s; Set(E, n, &c, i, x, hi); Read(E, n, &c, j, hj)) (Read(E, n, s, j, hj)) := (
+      (hj : Lt(j, n)) (ne : Π(e : Eq(Word, i, j)). False) :
+      Eq(E, let c = *s; Set(E, n, &c, i, x, hi); Read(E, n, &c, j, hj), Read(E, n, s, j, hj)) := (
     NthSetOther(E, n, *s, i, j, x, hi, hj, ne)
   )
 
   reject def ReadAfterSetRefl (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (x : E) (h : Lt(i, n)) :
-      Eq E (let c = *s; Set(E, n, &c, i, x, h); Read(E, n, &c, i, h)) x := refl
+      Eq(E, let c = *s; Set(E, n, &c, i, x, h); Read(E, n, &c, i, h), x) := refl
 
   -- A bounds proof mentions only the index and the length in the type, so no write makes it
   -- stale ...
@@ -802,12 +793,12 @@ ochr ArrayBench uses ArrayLemmas {
     }
   )
 
-  def GetOrIn : Id Word (let a = Replicate(Word, W(3), W(7)); GetOr(Word, W(3), AsSlice(Word, W(3), &a), Succ(Zero), Zero)) W(7) := refl
-  def GetOrOut : Id Word (let a = Replicate(Word, W(3), W(7)); GetOr(Word, W(3), AsSlice(Word, W(3), &a), W(5), Zero)) Zero := refl
+  def GetOrIn : Id(Word, let a = Replicate(Word, W(3), W(7)); GetOr(Word, W(3), AsSlice(Word, W(3), &a), Succ(Zero), Zero), W(7)) := refl
+  def GetOrOut : Id(Word, let a = Replicate(Word, W(3), W(7)); GetOr(Word, W(3), AsSlice(Word, W(3), &a), W(5), Zero), Zero) := refl
 
   -- ## Growth
-  -- The length is in the type: pushing onto an `Array(E, n)` gives an `Array(E, S n)`.
-  def PushPop : Id Word (let a = ArrPush(Word, Zero, ArrEmpty(Word), W(4)); let p = ArrPop(Word, Zero, a); p.2) W(4) := refl
+  -- The length is in the type: pushing onto an `Array(E, n)` gives an `Array(E, S(n))`.
+  def PushPop : Id(Word, let a = ArrPush(Word, Zero, ArrEmpty(Word), W(4)); let p = ArrPop(Word, Zero, a); p.1, W(4)) := refl
   reject def PushWrongLength (a : Array(Word, W(2))) : Array(Word, W(2)) := ArrPush(Word, W(2), a, Zero)
 
   -- ## B3: insert into a hashmap's bucket, in place
@@ -826,7 +817,7 @@ ochr ArrayBench uses ArrayLemmas {
     }
   )
 
-  def LeNext (a : Word) (c : Word) (h : Le(a, c)) (e : Eq Bool (Eqb(a, c)) false) : Le(Succ(a), c) by a := (
+  def LeNext (a : Word) (c : Word) (h : Le(a, c)) (e : Eq(Bool, Eqb(a, c), false)) : Le(Succ(a), c) by a := (
     match a {
       Zero => match c {
         Zero => match e {},
@@ -919,21 +910,21 @@ ochr ArrayBench uses ArrayLemmas {
   )
 
   -- Keys 5 and 3 collide in a table of two; 5 is inserted twice.
-  def InsertRun : Id Word (
+  def InsertRun : Id(Word, 
       let hm = MkHM(Replicate(List(Entry), W(2), Nil), Zero);
       Insert(W(2), &hm, W(5), W(50), refl);
       Insert(W(2), &hm, W(3), W(30), refl);
       Insert(W(2), &hm, W(5), W(51), refl);
-      Size(W(2), hm)) W(2) := refl
+      Size(W(2), hm), W(2)) := refl
 
-  def InsertRunBucket : Id (List(Entry)) (
+  def InsertRunBucket : Id(List(Entry), (
       let hm = MkHM(Replicate(List(Entry), W(2), Nil), Zero);
       Insert(W(2), &hm, W(5), W(50), refl);
       Insert(W(2), &hm, W(3), W(30), refl);
       Insert(W(2), &hm, W(5), W(51), refl);
       match hm {
         MkHM(slots, size) => Read(List(Entry), W(2), AsSlice(List(Entry), W(2), &slots), Succ(Zero), refl),
-      }) (Cons(MkE(W(5), W(51)), Cons(MkE(W(3), W(30)), Nil))) := refl
+      }), Cons(MkE(W(5), W(51)), Cons(MkE(W(3), W(30)), Nil))) := refl
 
   -- Without a proof that the slot is in bounds there is no borrow of it.
   reject def InsertUnbounded (cap : Word) (hm : &HashMap(cap)) (k : Word) (v : Word) : Unit := (
@@ -964,7 +955,7 @@ ochr ArrayBench uses ArrayLemmas {
   reject def ReadModel (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) : Word := Nth(Word, n, *s, i, h)
   -- In a statement, the model is unrestricted.
   def ReadIsNth (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) :
-      Id Word (Read(Word, n, &*s, i, h)) (Nth(Word, n, *s, i, h)) := refl
+      Id(Word, Read(Word, n, &*s, i, h), Nth(Word, n, *s, i, h)) := refl
 }
 
 -- the exact number of declarations (a truncated file changes it)
@@ -991,7 +982,7 @@ ochr Quicksort uses ArrayLemmas {
   -- most `p` and `i + 1 … j - 1` are greater; `rem` elements are still to scan (`rem + j = n`).
   -- The recursion is on `rem`, never on the view. Every bound is a lemma about indices.
   def Scan (n : Word) (s : &Slice(Word, n)) (p : Word) (i : Word) (j : Word) (rem : Word)
-      (hij : Lt(i, j)) (hr : Eq Word (WAdd(rem, j)) n) : Word by rem := (
+      (hij : Lt(i, j)) (hr : Eq(Word, WAdd(rem, j), n)) : Word by rem := (
     match rem {
       Zero => (
         let hin : Lt(i, n) = (rewrite hr in hij);
@@ -1000,7 +991,7 @@ ochr Quicksort uses ArrayLemmas {
       ),
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
-        let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
+        let hr2 : Eq(Word, WAdd(r, Succ(j)), n) = (rewrite AddRS(r, j) in hr);
         let x = Read(Word, n, &*s, j, hjn);
         let b = Leb(x, p);
         match b {
@@ -1057,19 +1048,15 @@ ochr Quicksort uses ArrayLemmas {
 
   def SortArray (n : Word) (a : &Array(Word, n)) : Unit := QS(n, n, AsSlice(Word, n, a))
 
-  def SortRun : Id (Array(Word, W(5)))
-      (let a = MkArray(MkSlice(MkC(W(3), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(4), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(End)))))))))))); SortArray(W(5), &a); a)
-      (MkArray(MkSlice(MkC(Succ(Zero), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(MkC(W(3), MkSlice(MkC(W(4), MkSlice(End))))))))))))) := refl
+  def SortRun : Id(Array(Word, W(5)), let a = MkArray(MkSlice(MkC(W(3), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(4), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(End)))))))))))); SortArray(W(5), &a); a, MkArray(MkSlice(MkC(Succ(Zero), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(MkC(W(3), MkSlice(MkC(W(4), MkSlice(End))))))))))))) := refl
 
-  reject def SortRunWrong : Id (Array(Word, W(5)))
-      (let a = MkArray(MkSlice(MkC(W(3), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(4), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(End)))))))))))); SortArray(W(5), &a); a)
-      (MkArray(MkSlice(MkC(Succ(Zero), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(MkC(W(4), MkSlice(MkC(W(3), MkSlice(End))))))))))))) := refl
+  reject def SortRunWrong : Id(Array(Word, W(5)), let a = MkArray(MkSlice(MkC(W(3), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(4), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(End)))))))))))); SortArray(W(5), &a); a, MkArray(MkSlice(MkC(Succ(Zero), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(MkC(W(4), MkSlice(MkC(W(3), MkSlice(End))))))))))))) := refl
 
   -- ## Quicksort permutes: every count is unchanged
   -- The scan only swaps.
   def ScanPerm (n : Word) (s : &Slice(Word, n)) (p : Word) (i : Word) (j : Word) (rem : Word)
-      (hij : Lt(i, j)) (hr : Eq Word (WAdd(rem, j)) n) (q : Word) :
-      (let old = *s; Eq Word (Count(q, n, (Scan(n, &*s, p, i, j, rem, hij, hr); *s))) (Count(q, n, old))) by rem := (
+      (hij : Lt(i, j)) (hr : Eq(Word, WAdd(rem, j), n)) (q : Word) :
+      (let old = *s; Eq(Word, Count(q, n, (Scan(n, &*s, p, i, j, rem, hij, hr); *s)), Count(q, n, old))) by rem := (
     match rem {
       Zero => (
         let hin : Lt(i, n) = (rewrite hr in hij);
@@ -1077,7 +1064,7 @@ ochr Quicksort uses ArrayLemmas {
       ),
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
-        let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
+        let hr2 : Eq(Word, WAdd(r, Succ(j)), n) = (rewrite AddRS(r, j) in hr);
         let x = Nth(Word, n, *s, j, hjn);
         let b = Leb(x, p);
         match b {
@@ -1092,16 +1079,16 @@ ochr Quicksort uses ArrayLemmas {
     }
   )
   def PartitionPerm (m : Word) (s : &Slice(Word, Succ(m))) (q : Word) :
-      (let old = *s; Eq Word (Count(q, Succ(m), (Partition(m, &*s); *s))) (Count(q, Succ(m), old))) := (
+      (let old = *s; Eq(Word, Count(q, Succ(m), (Partition(m, &*s); *s)), Count(q, Succ(m), old))) := (
     let p = Nth(Word, Succ(m), *s, Zero, refl);
     ScanPerm(Succ(m), s, p, Zero, Succ(Zero), m, refl, AddOneR(m), q)
   )
 
   -- The recursive step permutes, for any `rec` that does.
   def RecursePerm (rec : Π(n : Word) (s : &Slice(Word, n)). Unit)
-      (ih : Π(n : Word) (s : &Slice(Word, n)) (q : Word). (let old = *s; Eq Word (Count(q, n, (rec(n, &*s); *s))) (Count(q, n, old))))
+      (ih : Π(n : Word) (s : &Slice(Word, n)) (q : Word). (let old = *s; Eq(Word, Count(q, n, (rec(n, &*s); *s)), Count(q, n, old))))
       (m : Word) (k : Word) (s : &Slice(Word, Succ(m))) (q : Word) :
-      (let old = *s; Eq Word (Count(q, Succ(m), (Recurse(rec, m, k, &*s); *s))) (Count(q, Succ(m), old))) := (
+      (let old = *s; Eq(Word, Count(q, Succ(m), (Recurse(rec, m, k, &*s); *s)), Count(q, Succ(m), old))) := (
     let d = LeDec(k, m);
     match d {
       Yes(hk) => (
@@ -1142,7 +1129,7 @@ ochr Quicksort uses ArrayLemmas {
 
   -- Quicksort permutes its view: every count is unchanged.
   def QSPerm (fuel : Word) (n : Word) (s : &Slice(Word, n)) (q : Word) :
-      (let old = *s; Eq Word (Count(q, n, (QS(fuel, n, &*s); *s))) (Count(q, n, old))) by fuel := (
+      (let old = *s; Eq(Word, Count(q, n, (QS(fuel, n, &*s); *s)), Count(q, n, old))) by fuel := (
     match fuel {
       Zero => refl,
       Succ(f) => match n {
@@ -1153,7 +1140,7 @@ ochr Quicksort uses ArrayLemmas {
           let k = Partition(m, &c);
           let e1 = RecursePerm(rec,
             λ(n2 : Word) (s2 : &Slice(Word, n2)) (q2 : Word) :
-                (let old = *s2; Eq Word (Count(q2, n2, (QS(f, n2, &*s2); *s2))) (Count(q2, n2, old))) =>
+                (let old = *s2; Eq(Word, Count(q2, n2, (QS(f, n2, &*s2); *s2)), Count(q2, n2, old))) =>
               QSPerm(f, n2, s2, q2),
             m, k, &c, q);
           rewrite PartitionPerm(m, s, q) in e1
@@ -1255,7 +1242,7 @@ ochr Quicksort uses ArrayLemmas {
   )
 
   -- ## Bounds survive a permutation, by counting
-  def EqbRefl (x : Word) : Eq Bool (Eqb(x, x)) true by x := (
+  def EqbRefl (x : Word) : Eq(Bool, Eqb(x, x), true) by x := (
     match x {
       Zero => refl,
       Succ(x') => EqbRefl(x'),
@@ -1263,7 +1250,7 @@ ochr Quicksort uses ArrayLemmas {
   )
 
   -- If q = x (by Eqb), x <= p and p < q is impossible; and the mirror image.
-  def EqbLeLt (q : Word) (x : Word) (p : Word) (e : Eq Bool (Eqb(q, x)) true) (h1 : Le(x, p)) (h2 : Lt(p, q)) : False by q := (
+  def EqbLeLt (q : Word) (x : Word) (p : Word) (e : Eq(Bool, Eqb(q, x), true)) (h1 : Le(x, p)) (h2 : Lt(p, q)) : False by q := (
     match q {
       Zero => match h2 {},
       Succ(q') => match x {
@@ -1276,7 +1263,7 @@ ochr Quicksort uses ArrayLemmas {
     }
   )
 
-  def EqbGeLt (q : Word) (x : Word) (p : Word) (e : Eq Bool (Eqb(q, x)) true) (h1 : Le(p, x)) (h2 : Lt(q, p)) : False by q := (
+  def EqbGeLt (q : Word) (x : Word) (p : Word) (e : Eq(Bool, Eqb(q, x), true)) (h1 : Le(p, x)) (h2 : Lt(q, p)) : False by q := (
     match q {
       Zero => match x {
         Zero => match p {
@@ -1297,7 +1284,7 @@ ochr Quicksort uses ArrayLemmas {
 
   -- Every element at most `p`: no value above `p` occurs.
   def CountAboveZero (n : Word) (s : Slice(Word, n)) (p : Word) (h : AllLe(n, s, p)) (q : Word) (hq : Lt(p, q)) :
-      Eq Word (Count(q, n, s)) Zero by n := (
+      Eq(Word, Count(q, n, s), Zero) by n := (
     match n {
       Zero => refl,
       Succ(m) => match s {
@@ -1319,7 +1306,7 @@ ochr Quicksort uses ArrayLemmas {
   )
 
   def CountBelowZero (n : Word) (s : Slice(Word, n)) (p : Word) (h : AllGe(n, s, p)) (q : Word) (hq : Lt(q, p)) :
-      Eq Word (Count(q, n, s)) Zero by n := (
+      Eq(Word, Count(q, n, s), Zero) by n := (
     match n {
       Zero => refl,
       Succ(m) => match s {
@@ -1341,8 +1328,8 @@ ochr Quicksort uses ArrayLemmas {
   )
 
   -- A count of zero for the whole is a count of zero for the rest.
-  def CountTailZero (q : Word) (m : Word) (x : Word) (t : Slice(Word, m)) (e0 : Eq Word (Count(q, Succ(m), MkSlice(MkC(x, t)))) Zero) :
-      Eq Word (Count(q, m, t)) Zero := (
+  def CountTailZero (q : Word) (m : Word) (x : Word) (t : Slice(Word, m)) (e0 : Eq(Word, Count(q, Succ(m), MkSlice(MkC(x, t))), Zero)) :
+      Eq(Word, Count(q, m, t), Zero) := (
     let e = Eqb(q, x);
     match e {
       true => match e0 {},
@@ -1352,7 +1339,7 @@ ochr Quicksort uses ArrayLemmas {
 
   -- Conversely: if no value above `p` occurs, every element is at most `p`.
   def AllLeOfCounts (n : Word) (s : Slice(Word, n)) (p : Word)
-      (hz : Π(q : Word) (hq : Lt(p, q)). Eq Word (Count(q, n, s)) Zero) : AllLe(n, s, p) by n := (
+      (hz : Π(q : Word) (hq : Lt(p, q)). Eq(Word, Count(q, n, s), Zero)) : AllLe(n, s, p) by n := (
     match n {
       Zero => refl,
       Succ(m) => match s {
@@ -1360,7 +1347,7 @@ ochr Quicksort uses ArrayLemmas {
           MkC(x, t) => (
             let d = LeDec(x, p);
             match d {
-              Yes(hle) => ⟨hle, AllLeOfCounts(m, t, p, λ(q : Word) (hq : Lt(p, q)) : Eq Word (Count(q, m, t)) Zero => CountTailZero(q, m, x, t, hz(q, hq)))⟩,
+              Yes(hle) => ⟨hle, AllLeOfCounts(m, t, p, λ(q : Word) (hq : Lt(p, q)) : Eq(Word, Count(q, m, t), Zero) => CountTailZero(q, m, x, t, hz(q, hq)))⟩,
               No(nk) => (
                 let e1 = hz(x, nk);
                 let r1 = EqbRefl(x);
@@ -1378,7 +1365,7 @@ ochr Quicksort uses ArrayLemmas {
   )
 
   def AllGeOfCounts (n : Word) (s : Slice(Word, n)) (p : Word)
-      (hz : Π(q : Word) (hq : Lt(q, p)). Eq Word (Count(q, n, s)) Zero) : AllGe(n, s, p) by n := (
+      (hz : Π(q : Word) (hq : Lt(q, p)). Eq(Word, Count(q, n, s), Zero)) : AllGe(n, s, p) by n := (
     match n {
       Zero => refl,
       Succ(m) => match s {
@@ -1386,7 +1373,7 @@ ochr Quicksort uses ArrayLemmas {
           MkC(x, t) => (
             let d = LeDec(p, x);
             match d {
-              Yes(hle) => ⟨hle, AllGeOfCounts(m, t, p, λ(q : Word) (hq : Lt(q, p)) : Eq Word (Count(q, m, t)) Zero => CountTailZero(q, m, x, t, hz(q, hq)))⟩,
+              Yes(hle) => ⟨hle, AllGeOfCounts(m, t, p, λ(q : Word) (hq : Lt(q, p)) : Eq(Word, Count(q, m, t), Zero) => CountTailZero(q, m, x, t, hz(q, hq)))⟩,
               No(nk) => (
                 let e1 = hz(x, nk);
                 let r1 = EqbRefl(x);
@@ -1405,14 +1392,14 @@ ochr Quicksort uses ArrayLemmas {
 
   -- So a bound on every element survives any permutation.
   def AllLePerm (n : Word) (s : Slice(Word, n)) (s2 : Slice(Word, n)) (p : Word) (h : AllLe(n, s, p))
-      (perm : Π(q : Word). Eq Word (Count(q, n, s2)) (Count(q, n, s))) : AllLe(n, s2, p) := (
-    AllLeOfCounts(n, s2, p, λ(q : Word) (hq : Lt(p, q)) : Eq Word (Count(q, n, s2)) Zero =>
+      (perm : Π(q : Word). Eq(Word, Count(q, n, s2), Count(q, n, s))) : AllLe(n, s2, p) := (
+    AllLeOfCounts(n, s2, p, λ(q : Word) (hq : Lt(p, q)) : Eq(Word, Count(q, n, s2), Zero) =>
       rewrite ← perm(q) in CountAboveZero(n, s, p, h, q, hq))
   )
 
   def AllGePerm (n : Word) (s : Slice(Word, n)) (s2 : Slice(Word, n)) (p : Word) (h : AllGe(n, s, p))
-      (perm : Π(q : Word). Eq Word (Count(q, n, s2)) (Count(q, n, s))) : AllGe(n, s2, p) := (
-    AllGeOfCounts(n, s2, p, λ(q : Word) (hq : Lt(q, p)) : Eq Word (Count(q, n, s2)) Zero =>
+      (perm : Π(q : Word). Eq(Word, Count(q, n, s2), Count(q, n, s))) : AllGe(n, s2, p) := (
+    AllGeOfCounts(n, s2, p, λ(q : Word) (hq : Lt(q, p)) : Eq(Word, Count(q, n, s2), Zero) =>
       rewrite ← perm(q) in CountBelowZero(n, s, p, h, q, hq))
   )
 
@@ -1429,10 +1416,10 @@ ochr Quicksort uses ArrayLemmas {
   -- `rec` that sorts and permutes views no longer than `m`.
   def RecurseSorted (m : Word) (rec : Π(n : Word) (s : &Slice(Word, n)). Unit)
       (ihS : Π(n : Word) (s : &Slice(Word, n)) (hn : Le(n, m)). (let c = *s; rec(n, &c); Sorted(n, c)))
-      (ihP : Π(n : Word) (s : &Slice(Word, n)) (q : Word). (let old = *s; Eq Word (Count(q, n, (rec(n, &*s); *s))) (Count(q, n, old))))
+      (ihP : Π(n : Word) (s : &Slice(Word, n)) (q : Word). (let old = *s; Eq(Word, Count(q, n, (rec(n, &*s); *s)), Count(q, n, old))))
       (k : Word) (hk : Le(k, m)) (x : Word) (s : &Slice(Word, Succ(m)))
       (hL : AllLe(k, TakeS(Word, Succ(m), k, *s, LeStep(k, m, hk)), x))
-      (hP : Eq (Slice(Word, Succ(Zero))) (MkSlice(MkC(x, MkSlice(End)))) (TakeS(Word, Sub(Succ(m), k), Succ(Zero), DropS(Word, Succ(m), k, *s), SubPos(m, k, hk))))
+      (hP : Eq(Slice(Word, Succ(Zero)), MkSlice(MkC(x, MkSlice(End))), TakeS(Word, Sub(Succ(m), k), Succ(Zero), DropS(Word, Succ(m), k, *s), SubPos(m, k, hk))))
       (hR : AllGe(Sub(Sub(Succ(m), k), Succ(Zero)), DropS(Word, Sub(Succ(m), k), Succ(Zero), DropS(Word, Succ(m), k, *s)), x)) :
       (let c = *s; Recurse(rec, m, k, &c); Sorted(Succ(m), c)) := (
     let d = LeDec(k, m);
@@ -1450,11 +1437,11 @@ ochr Quicksort uses ArrayLemmas {
         -- the left part: sorted by `rec`, and still at most `x` because `rec` permutes
         let sl2 : Sorted(k, l2) = (let c = tk; ihS(k, &c, hk));
         let bl2 : AllLe(k, l2, x) = AllLePerm(k, tk, l2, x, hL,
-          λ(q : Word) : Eq Word (Count(q, k, l2)) (Count(q, k, tk)) => (let c = tk; ihP(k, &c, q)));
+          λ(q : Word) : Eq(Word, Count(q, k, l2), Count(q, k, tk)) => (let c = tk; ihP(k, &c, q)));
         -- the right part: likewise, at least `x`
         let srr2 : Sorted(Sub(Sub(Succ(m), k), Succ(Zero)), rr2) = (let c = rr; ihS(Sub(Sub(Succ(m), k), Succ(Zero)), &c, SubOneLe(m, k)));
         let brr2 : AllGe(Sub(Sub(Succ(m), k), Succ(Zero)), rr2, x) = AllGePerm(Sub(Sub(Succ(m), k), Succ(Zero)), rr, rr2, x, hR,
-          λ(q : Word) : Eq Word (Count(q, Sub(Sub(Succ(m), k), Succ(Zero)), rr2)) (Count(q, Sub(Sub(Succ(m), k), Succ(Zero)), rr)) =>
+          λ(q : Word) : Eq(Word, Count(q, Sub(Sub(Succ(m), k), Succ(Zero)), rr2), Count(q, Sub(Sub(Succ(m), k), Succ(Zero)), rr)) =>
             (let c = rr; ihP(Sub(Sub(Succ(m), k), Succ(Zero)), &c, q)));
         -- the pivot piece is `[x]`
         let spv : Sorted(Succ(Zero), pv) = (rewrite hP in refl);
@@ -1494,8 +1481,7 @@ ochr Quicksort uses ArrayLemmas {
   )
 
   def PartPivot (m : Word) (v : Slice(Word, Succ(m))) (hk : PartLe(m, v)) : Prop := (
-    Eq (Slice(Word, Succ(Zero))) (MkSlice(MkC(Nth(Word, Succ(m), v, Zero, refl), MkSlice(End))))
-      (TakeS(Word, Sub(Succ(m), PartK(m, v)), Succ(Zero), DropS(Word, Succ(m), PartK(m, v), PartV(m, v)), SubPos(m, PartK(m, v), hk)))
+    Eq(Slice(Word, Succ(Zero)), MkSlice(MkC(Nth(Word, Succ(m), v, Zero, refl), MkSlice(End))), TakeS(Word, Sub(Succ(m), PartK(m, v)), Succ(Zero), DropS(Word, Succ(m), PartK(m, v), PartV(m, v)), SubPos(m, PartK(m, v), hk)))
   )
 
   def PartRight (m : Word) (v : Slice(Word, Succ(m))) (hk : PartLe(m, v)) : Prop := (
@@ -1527,7 +1513,7 @@ ochr Quicksort uses ArrayLemmas {
             λ(n2 : Word) (s2 : &Slice(Word, n2)) (hn : Le(n2, m)) : (let c2 = *s2; QS(f, n2, &c2); Sorted(n2, c2)) =>
               QSSorted(specLe, specL, specP, specR, f, n2, s2, LeTrans(n2, m, f, hn, hf)),
             λ(n2 : Word) (s2 : &Slice(Word, n2)) (q2 : Word) :
-                (let old = *s2; Eq Word (Count(q2, n2, (QS(f, n2, &*s2); *s2))) (Count(q2, n2, old))) =>
+                (let old = *s2; Eq(Word, Count(q2, n2, (QS(f, n2, &*s2); *s2)), Count(q2, n2, old))) =>
               QSPerm(f, n2, s2, q2),
             k, hk, Nth(Word, Succ(m), v, Zero, refl), &c, specL(m, v, hk), specP(m, v, hk), specR(m, v, hk))
         ),
@@ -1539,7 +1525,7 @@ ochr Quicksort uses ArrayLemmas {
   def ContractRun1 : PartLe(W(4), MkSlice(MkC(W(3), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(4), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(End)))))))))))) ∧ PartLeft(W(4), MkSlice(MkC(W(3), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(4), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(End))))))))))), refl) ∧ PartPivot(W(4), MkSlice(MkC(W(3), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(4), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(End))))))))))), refl) ∧ PartRight(W(4), MkSlice(MkC(W(3), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(4), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(End))))))))))), refl) := refl
   def ContractRun2 : PartLe(W(5), MkSlice(MkC(W(2), MkSlice(MkC(W(5), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(5), MkSlice(MkC(Zero, MkSlice(MkC(W(2), MkSlice(End)))))))))))))) ∧ PartLeft(W(5), MkSlice(MkC(W(2), MkSlice(MkC(W(5), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(5), MkSlice(MkC(Zero, MkSlice(MkC(W(2), MkSlice(End))))))))))))), refl) ∧ PartPivot(W(5), MkSlice(MkC(W(2), MkSlice(MkC(W(5), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(5), MkSlice(MkC(Zero, MkSlice(MkC(W(2), MkSlice(End))))))))))))), refl) ∧ PartRight(W(5), MkSlice(MkC(W(2), MkSlice(MkC(W(5), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(5), MkSlice(MkC(Zero, MkSlice(MkC(W(2), MkSlice(End))))))))))))), refl) := refl
   -- A wrong pivot position is not.
-  reject def ContractWrong : PartPivot(W(4), MkSlice(MkC(W(3), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(4), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(End))))))))))), refl) ∧ Eq Word (PartK(W(4), MkSlice(MkC(W(3), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(4), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(End))))))))))))) W(2) := refl
+  reject def ContractWrong : PartPivot(W(4), MkSlice(MkC(W(3), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(4), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(End))))))))))), refl) ∧ Eq(Word, PartK(W(4), MkSlice(MkC(W(3), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(4), MkSlice(MkC(Succ(Zero), MkSlice(MkC(W(2), MkSlice(End)))))))))))), W(2)) := refl
   -- ## The partition meets its contract: Lomuto's invariant
   -- More order facts.
   def LeOfLt (a : Word) (b : Word) (h : Lt(a, b)) : Le(a, b) by a := (
@@ -1559,7 +1545,7 @@ ochr Quicksort uses ArrayLemmas {
   def LtLeTrans (a : Word) (b : Word) (c : Word) (h1 : Lt(a, b)) (h2 : Le(b, c)) : Lt(a, c) := LeTrans(Succ(a), b, c, h1, h2)
 
   -- a < b gives a ≠ b
-  def LtNe (a : Word) (b : Word) (h : Lt(a, b)) (e : Eq Word a b) : False by a := (
+  def LtNe (a : Word) (b : Word) (h : Lt(a, b)) (e : Eq(Word, a, b)) : False by a := (
     match a {
       Zero => match b {
         Zero => match h {},
@@ -1572,7 +1558,7 @@ ochr Quicksort uses ArrayLemmas {
     }
   )
 
-  def LeAntisym (a : Word) (b : Word) (h1 : Le(a, b)) (h2 : Le(b, a)) : Eq Word a b by a := (
+  def LeAntisym (a : Word) (b : Word) (h1 : Le(a, b)) (h2 : Le(b, a)) : Eq(Word, a, b) by a := (
     match a {
       Zero => match b {
         Zero => refl,
@@ -1586,7 +1572,7 @@ ochr Quicksort uses ArrayLemmas {
   )
 
   -- What a comparison said, as a proof.
-  def LebLe (a : Word) (b : Word) (e : Eq Bool (Leb(a, b)) true) : Le(a, b) by a := (
+  def LebLe (a : Word) (b : Word) (e : Eq(Bool, Leb(a, b), true)) : Le(a, b) by a := (
     match a {
       Zero => refl,
       Succ(a') => match b {
@@ -1596,7 +1582,7 @@ ochr Quicksort uses ArrayLemmas {
     }
   )
 
-  def LebGt (a : Word) (b : Word) (e : Eq Bool (Leb(a, b)) false) : Lt(b, a) by a := (
+  def LebGt (a : Word) (b : Word) (e : Eq(Bool, Leb(a, b), false)) : Lt(b, a) by a := (
     match a {
       Zero => match e {},
       Succ(a') => match b {
@@ -1608,12 +1594,12 @@ ochr Quicksort uses ArrayLemmas {
 
   -- ## Reading a swapped view
   def NthSwapB (n : Word) (c : Slice(Word, n)) (a : Word) (b : Word) (ha : Lt(a, n)) (hb : Lt(b, n)) :
-      Eq Word (Nth(Word, n, SwapS(Word, n, c, a, b, ha, hb), b, hb)) (Nth(Word, n, c, a, ha)) := (
+      Eq(Word, Nth(Word, n, SwapS(Word, n, c, a, b, ha, hb), b, hb), Nth(Word, n, c, a, ha)) := (
     NthSetSame(Word, n, SetS(Word, n, c, a, Nth(Word, n, c, b, hb)), b, Nth(Word, n, c, a, ha), hb)
   )
 
   def NthSwapA (n : Word) (c : Slice(Word, n)) (a : Word) (b : Word) (ha : Lt(a, n)) (hb : Lt(b, n)) :
-      Eq Word (Nth(Word, n, SwapS(Word, n, c, a, b, ha, hb), a, ha)) (Nth(Word, n, c, b, hb)) by a := (
+      Eq(Word, Nth(Word, n, SwapS(Word, n, c, a, b, ha, hb), a, ha), Nth(Word, n, c, b, hb)) by a := (
     match n {
       Zero => match ha {},
       Succ(m) => match c {
@@ -1634,8 +1620,8 @@ ochr Quicksort uses ArrayLemmas {
   )
 
   def NthSwapOther (n : Word) (c : Slice(Word, n)) (a : Word) (b : Word) (t : Word) (ha : Lt(a, n)) (hb : Lt(b, n))
-      (ht : Lt(t, n)) (na : Π(e : Eq Word a t). False) (nb : Π(e : Eq Word b t). False) :
-      Eq Word (Nth(Word, n, SwapS(Word, n, c, a, b, ha, hb), t, ht)) (Nth(Word, n, c, t, ht)) := (
+      (ht : Lt(t, n)) (na : Π(e : Eq(Word, a, t)). False) (nb : Π(e : Eq(Word, b, t)). False) :
+      Eq(Word, Nth(Word, n, SwapS(Word, n, c, a, b, ha, hb), t, ht), Nth(Word, n, c, t, ht)) := (
     rewrite ← NthSetOther(Word, n, SetS(Word, n, c, a, Nth(Word, n, c, b, hb)), b, t, Nth(Word, n, c, a, ha), hb, ht, nb) in
       NthSetOther(Word, n, c, a, t, Nth(Word, n, c, b, hb), ha, ht, na)
   )
@@ -1710,8 +1696,7 @@ ochr Quicksort uses ArrayLemmas {
   )
 
   def TakeOneDrop (n : Word) (k : Word) (c : Slice(Word, n)) (hk : Lt(k, n)) :
-      Eq (Slice(Word, Succ(Zero))) (MkSlice(MkC(Nth(Word, n, c, k, hk), MkSlice(End))))
-        (TakeS(Word, Sub(n, k), Succ(Zero), DropS(Word, n, k, c), SubPosLt(n, k, hk))) by k := (
+      Eq(Slice(Word, Succ(Zero)), MkSlice(MkC(Nth(Word, n, c, k, hk), MkSlice(End))), TakeS(Word, Sub(n, k), Succ(Zero), DropS(Word, n, k, c), SubPosLt(n, k, hk))) by k := (
     match k {
       Zero => match n {
         Zero => match hk {},
@@ -1738,18 +1723,18 @@ ochr Quicksort uses ArrayLemmas {
       (t : Word) (ht : Lt(t, i)) (htn : Lt(t, n)) : Le(Nth(Word, n, SwapS(Word, n, s0, Zero, i, h0, hin), t, htn), p) := (
     match t {
       Zero => rewrite ← NthSwapA(n, s0, Zero, i, h0, hin) in j1(i, hin, ht, LeRefl(i)),
-      Succ(t') => rewrite ← NthSwapOther(n, s0, Zero, i, Succ(t'), h0, hin, htn, λ(e : Eq Word Zero (Succ(t'))) : False => match e {},
-          λ(e : Eq Word i (Succ(t'))) : False => LtNe(Succ(t'), i, ht, rewrite e in refl)) in
+      Succ(t') => rewrite ← NthSwapOther(n, s0, Zero, i, Succ(t'), h0, hin, htn, λ(e : Eq(Word, Zero, Succ(t'))) : False => match e {},
+          λ(e : Eq(Word, i, Succ(t'))) : False => LtNe(Succ(t'), i, ht, rewrite e in refl)) in
         j1(Succ(t'), htn, refl, LeOfLt(Succ(t'), i, ht)),
     }
   )
 
   def EndRight (n : Word) (s0 : Slice(Word, n)) (p : Word) (i : Word) (j : Word) (hin : Lt(i, n)) (h0 : Lt(Zero, n))
-      (hjn : Eq Word j n)
+      (hjn : Eq(Word, j, n))
       (j2 : Π(t : Word) (ht : Lt(t, n)) (a : Lt(i, t)) (b : Lt(t, j)). Lt(p, Nth(Word, n, s0, t, ht)))
       (t : Word) (ht : Lt(t, n)) (hkt : Lt(i, t)) : Lt(p, Nth(Word, n, SwapS(Word, n, s0, Zero, i, h0, hin), t, ht)) := (
-    rewrite ← NthSwapOther(n, s0, Zero, i, t, h0, hin, ht, λ(e : Eq Word Zero t) : False => LtNe(Zero, t, LeTrans(Succ(Zero), Succ(i), t, refl, hkt), e),
-        λ(e : Eq Word i t) : False => LtNe(i, t, hkt, e)) in
+    rewrite ← NthSwapOther(n, s0, Zero, i, t, h0, hin, ht, λ(e : Eq(Word, Zero, t)) : False => LtNe(Zero, t, LeTrans(Succ(Zero), Succ(i), t, refl, hkt), e),
+        λ(e : Eq(Word, i, t)) : False => LtNe(i, t, hkt, e)) in
       j2(t, ht, hkt, rewrite ← hjn in ht)
   )
 
@@ -1757,10 +1742,10 @@ ochr Quicksort uses ArrayLemmas {
   -- After swapping `i + 1` with `j` (the element at `j` was at most `p`): the pivot is still at
   -- 0, cells `1 … i + 1` are at most `p`, cells `i + 2 … j` are greater.
   def StepJ0 (n : Word) (s0 : Slice(Word, n)) (p : Word) (i : Word) (j : Word) (hsi : Lt(Succ(i), n)) (hjn : Lt(j, n))
-      (hij : Lt(i, j)) (j0 : Π(h0 : Lt(Zero, n)). Eq Word (Nth(Word, n, s0, Zero, h0)) p) (h0 : Lt(Zero, n)) :
-      Eq Word (Nth(Word, n, SwapS(Word, n, s0, Succ(i), j, hsi, hjn), Zero, h0)) p := (
-    rewrite ← NthSwapOther(n, s0, Succ(i), j, Zero, hsi, hjn, h0, λ(e : Eq Word (Succ(i)) Zero) : False => match e {},
-        λ(e : Eq Word j Zero) : False => LtNe(Zero, j, LeTrans(Succ(Zero), Succ(i), j, refl, hij), rewrite e in refl)) in
+      (hij : Lt(i, j)) (j0 : Π(h0 : Lt(Zero, n)). Eq(Word, Nth(Word, n, s0, Zero, h0), p)) (h0 : Lt(Zero, n)) :
+      Eq(Word, Nth(Word, n, SwapS(Word, n, s0, Succ(i), j, hsi, hjn), Zero, h0), p) := (
+    rewrite ← NthSwapOther(n, s0, Succ(i), j, Zero, hsi, hjn, h0, λ(e : Eq(Word, Succ(i), Zero)) : False => match e {},
+        λ(e : Eq(Word, j, Zero)) : False => LtNe(Zero, j, LeTrans(Succ(Zero), Succ(i), j, refl, hij), rewrite e in refl)) in
       j0(h0)
   )
 
@@ -1771,8 +1756,8 @@ ochr Quicksort uses ArrayLemmas {
     let d = LeDec(t, i);
     match d {
       Yes(hti) => rewrite ← NthSwapOther(n, s0, Succ(i), j, t, hsi, hjn, ht,
-          λ(e : Eq Word (Succ(i)) t) : False => LtNe(t, Succ(i), hti, rewrite e in refl),
-          λ(e : Eq Word j t) : False => LtNe(t, j, LeTrans(Succ(t), Succ(i), j, hti, hij), rewrite e in refl)) in
+          λ(e : Eq(Word, Succ(i), t)) : False => LtNe(t, Succ(i), hti, rewrite e in refl),
+          λ(e : Eq(Word, j, t)) : False => LtNe(t, j, LeTrans(Succ(t), Succ(i), j, hti, hij), rewrite e in refl)) in
         j1(t, ht, a, hti),
       No(nti) => rewrite ← LeAntisym(t, Succ(i), b, nti) in rewrite ← NthSwapA(n, s0, Succ(i), j, hsi, hjn) in hx,
     }
@@ -1783,8 +1768,8 @@ ochr Quicksort uses ArrayLemmas {
       (t : Word) (ht : Lt(t, n)) (a : Lt(Succ(i), t)) (b : Lt(t, Succ(j))) : Lt(p, Nth(Word, n, SwapS(Word, n, s0, Succ(i), j, hsi, hjn), t, ht)) := (
     let d = LeDec(Succ(t), j);
     match d {
-      Yes(htj) => rewrite ← NthSwapOther(n, s0, Succ(i), j, t, hsi, hjn, ht, λ(e : Eq Word (Succ(i)) t) : False => LtNe(Succ(i), t, a, e),
-          λ(e : Eq Word j t) : False => LtNe(t, j, htj, rewrite e in refl)) in
+      Yes(htj) => rewrite ← NthSwapOther(n, s0, Succ(i), j, t, hsi, hjn, ht, λ(e : Eq(Word, Succ(i), t)) : False => LtNe(Succ(i), t, a, e),
+          λ(e : Eq(Word, j, t)) : False => LtNe(t, j, htj, rewrite e in refl)) in
         j2(t, ht, LtTrans(i, Succ(i), t, LeRefl(Succ(i)), a), htj),
       No(ntj) => (
         let e = LeAntisym(t, j, b, ntj);
@@ -1811,25 +1796,25 @@ ochr Quicksort uses ArrayLemmas {
   -- goal holding the scan's result inside a `Π` stays stale.
   -- The scan's result and final view, run on a copy of `v`.
   def ScanK (n : Word) (v : Slice(Word, n)) (p : Word) (i : Word) (j : Word) (rem : Word) (hij : Lt(i, j))
-      (hr : Eq Word (WAdd(rem, j)) n) : Word := (
+      (hr : Eq(Word, WAdd(rem, j), n)) : Word := (
     let c = v;
     Scan(n, &c, p, i, j, rem, hij, hr)
   )
 
   def ScanV (n : Word) (v : Slice(Word, n)) (p : Word) (i : Word) (j : Word) (rem : Word) (hij : Lt(i, j))
-      (hr : Eq Word (WAdd(rem, j)) n) : Slice(Word, n) := (
+      (hr : Eq(Word, WAdd(rem, j), n)) : Slice(Word, n) := (
     let c = v;
     Scan(n, &c, p, i, j, rem, hij, hr);
     c
   )
 
   def ScanLt (n : Word) (v : Slice(Word, n)) (p : Word) (i : Word) (j : Word) (rem : Word) (hij : Lt(i, j))
-      (hr : Eq Word (WAdd(rem, j)) n) : Lt(ScanK(n, v, p, i, j, rem, hij, hr), n) by rem := (
+      (hr : Eq(Word, WAdd(rem, j), n)) : Lt(ScanK(n, v, p, i, j, rem, hij, hr), n) by rem := (
     match rem {
       Zero => rewrite hr in hij,
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
-        let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
+        let hr2 : Eq(Word, WAdd(r, Succ(j)), n) = (rewrite AddRS(r, j) in hr);
         let x = Nth(Word, n, v, j, hjn);
         let b = Leb(x, p);
         match b {
@@ -1841,9 +1826,9 @@ ochr Quicksort uses ArrayLemmas {
   )
 
   def ScanPivot (n : Word) (v : Slice(Word, n)) (p : Word) (i : Word) (j : Word) (rem : Word) (hij : Lt(i, j))
-      (hr : Eq Word (WAdd(rem, j)) n) (j0 : Π(h0 : Lt(Zero, n)). Eq Word (Nth(Word, n, v, Zero, h0)) p)
+      (hr : Eq(Word, WAdd(rem, j), n)) (j0 : Π(h0 : Lt(Zero, n)). Eq(Word, Nth(Word, n, v, Zero, h0), p))
       (hk : Lt(ScanK(n, v, p, i, j, rem, hij, hr), n)) :
-      Eq Word (Nth(Word, n, ScanV(n, v, p, i, j, rem, hij, hr), ScanK(n, v, p, i, j, rem, hij, hr), hk)) p by rem := (
+      Eq(Word, Nth(Word, n, ScanV(n, v, p, i, j, rem, hij, hr), ScanK(n, v, p, i, j, rem, hij, hr), hk), p) by rem := (
     match rem {
       Zero => (
         let hin : Lt(i, n) = (rewrite hr in hij);
@@ -1852,7 +1837,7 @@ ochr Quicksort uses ArrayLemmas {
       ),
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
-        let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
+        let hr2 : Eq(Word, WAdd(r, Succ(j)), n) = (rewrite AddRS(r, j) in hr);
         let x = Nth(Word, n, v, j, hjn);
         let b = Leb(x, p);
         match b {
@@ -1860,7 +1845,7 @@ ochr Quicksort uses ArrayLemmas {
             let hsi : Lt(Succ(i), n) = LeTrans(Succ(Succ(i)), Succ(j), n, hij, hjn);
             let c2 = SwapS(Word, n, v, Succ(i), j, hsi, hjn);
             ScanPivot(n, c2, p, Succ(i), Succ(j), r, hij, hr2,
-              λ(h0 : Lt(Zero, n)) : Eq Word (Nth(Word, n, c2, Zero, h0)) p => StepJ0(n, v, p, i, j, hsi, hjn, hij, j0, h0), hk)
+              λ(h0 : Lt(Zero, n)) : Eq(Word, Nth(Word, n, c2, Zero, h0), p) => StepJ0(n, v, p, i, j, hsi, hjn, hij, j0, h0), hk)
           ),
           false => ScanPivot(n, v, p, i, Succ(j), r, LeStep(Succ(i), j, hij), hr2, j0, hk),
         }
@@ -1869,7 +1854,7 @@ ochr Quicksort uses ArrayLemmas {
   )
 
   def ScanLeft (n : Word) (v : Slice(Word, n)) (p : Word) (i : Word) (j : Word) (rem : Word) (hij : Lt(i, j))
-      (hr : Eq Word (WAdd(rem, j)) n)
+      (hr : Eq(Word, WAdd(rem, j), n))
       (j1 : Π(t : Word) (ht : Lt(t, n)) (a : Lt(Zero, t)) (b : Le(t, i)). Le(Nth(Word, n, v, t, ht), p))
       (t : Word) (ht : Lt(t, ScanK(n, v, p, i, j, rem, hij, hr))) (htn : Lt(t, n)) :
       Le(Nth(Word, n, ScanV(n, v, p, i, j, rem, hij, hr), t, htn), p) by rem := (
@@ -1881,7 +1866,7 @@ ochr Quicksort uses ArrayLemmas {
       ),
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
-        let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
+        let hr2 : Eq(Word, WAdd(r, Succ(j)), n) = (rewrite AddRS(r, j) in hr);
         let x = Nth(Word, n, v, j, hjn);
         let b = Leb(x, p);
         match b {
@@ -1901,7 +1886,7 @@ ochr Quicksort uses ArrayLemmas {
   )
 
   def ScanRight (n : Word) (v : Slice(Word, n)) (p : Word) (i : Word) (j : Word) (rem : Word) (hij : Lt(i, j))
-      (hr : Eq Word (WAdd(rem, j)) n)
+      (hr : Eq(Word, WAdd(rem, j), n))
       (j2 : Π(t : Word) (ht : Lt(t, n)) (a : Lt(i, t)) (b : Lt(t, j)). Lt(p, Nth(Word, n, v, t, ht)))
       (t : Word) (ht : Lt(t, n)) (hkt : Lt(ScanK(n, v, p, i, j, rem, hij, hr), t)) :
       Lt(p, Nth(Word, n, ScanV(n, v, p, i, j, rem, hij, hr), t, ht)) by rem := (
@@ -1913,7 +1898,7 @@ ochr Quicksort uses ArrayLemmas {
       ),
       Succ(r) => (
         let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
-        let hr2 : Eq Word (WAdd(r, Succ(j))) n = (rewrite AddRS(r, j) in hr);
+        let hr2 : Eq(Word, WAdd(r, Succ(j)), n) = (rewrite AddRS(r, j) in hr);
         let x = Nth(Word, n, v, j, hjn);
         let b = Leb(x, p);
         match b {
@@ -1941,7 +1926,7 @@ ochr Quicksort uses ArrayLemmas {
   -- At the start (`i = 0`, `j = 1`) the invariant holds trivially: the pivot is the first
   -- element, and the two ranges are empty.
   def Start0 (m : Word) (v : Slice(Word, Succ(m))) (h0 : Lt(Zero, Succ(m))) :
-      Eq Word (Nth(Word, Succ(m), v, Zero, h0)) (Nth(Word, Succ(m), v, Zero, refl)) := refl
+      Eq(Word, Nth(Word, Succ(m), v, Zero, h0), Nth(Word, Succ(m), v, Zero, refl)) := refl
 
   def Start1 (m : Word) (v : Slice(Word, Succ(m))) (t : Word) (ht : Lt(t, Succ(m))) (a : Lt(Zero, t)) (b : Le(t, Zero)) :
       Le(Nth(Word, Succ(m), v, t, ht), Nth(Word, Succ(m), v, Zero, refl)) := (
@@ -1971,7 +1956,7 @@ ochr Quicksort uses ArrayLemmas {
   def PartPivotProof (m : Word) (v : Slice(Word, Succ(m))) (hk : PartLe(m, v)) : PartPivot(m, v, hk) := (
     rewrite TakeOneDrop(Succ(m), PartK(m, v), PartV(m, v), hk) in
     rewrite ← ScanPivot(Succ(m), v, Nth(Word, Succ(m), v, Zero, refl), Zero, Succ(Zero), m, refl, AddOneR(m),
-        λ(h0 : Lt(Zero, Succ(m))) : Eq Word (Nth(Word, Succ(m), v, Zero, h0)) (Nth(Word, Succ(m), v, Zero, refl)) => Start0(m, v, h0), hk) in
+        λ(h0 : Lt(Zero, Succ(m))) : Eq(Word, Nth(Word, Succ(m), v, Zero, h0), Nth(Word, Succ(m), v, Zero, refl)) => Start0(m, v, h0), hk) in
       refl
   )
 
@@ -1994,7 +1979,7 @@ ochr Quicksort uses ArrayLemmas {
   -- Quicksort is correct: its result is sorted and a permutation of its input.
   def QSCorrect (n : Word) (s : &Slice(Word, n)) (q : Word) :
       (let c = *s; QS(n, n, &c); Sorted(n, c)) ∧
-        (let old = *s; Eq Word (Count(q, n, (QS(n, n, &*s); *s))) (Count(q, n, old))) := (
+        (let old = *s; Eq(Word, Count(q, n, (QS(n, n, &*s); *s)), Count(q, n, old))) := (
     ⟨QSSortedFull(n, n, s, LeRefl(n)), QSPerm(n, n, s, q)⟩
   )
 }

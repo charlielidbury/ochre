@@ -5,7 +5,7 @@ ochr SweepS2 {
   -- intro.typ:5
   def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y, S p => AddM(&p, y) }
   -- intro.typ:12
-  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x := match *x { Z => refl, S p => AddMZero(&p) }
+  def AddMZero (x : &Nat) : Id(Unit, AddM(x, 0), ()) by x := match *x { Z => refl, S p => AddMZero(&p) }
   -- overview.typ:27
   def Add (x : Nat) (y : Nat) : Nat := AddM(&x, y); x
   -- overview.typ:94
@@ -13,7 +13,7 @@ ochr SweepS2 {
   -- overview.typ:94
   def AddM' (x : &Nat) (y : Nat) : Unit := let t = TailM(x); *t := y
   -- overview.typ:111
-  def AddMEq (x : &Nat) (y : Nat) : Id Unit (AddM(x, y)) (AddM'(x, y)) by x := match *x { Z => refl, S p => AddMEq(&p, y) }
+  def AddMEq (x : &Nat) (y : Nat) : Id(Unit, AddM(x, y), AddM'(x, y)) by x := match *x { Z => refl, S p => AddMEq(&p, y) }
   -- overview.typ:122
   def Le (a : Nat) (b : Nat) : Prop by a := match a { Z => True, S a' => match b { Z => False, S b' => Le(a', b') } }
   -- overview.typ:122
@@ -28,30 +28,30 @@ ochr SweepTrees uses Std {
   -- not printed: the tree, `Lt`, `Size`, `AddMS`/`AddS` as in InPlaceTrees
   inductive Tree := Leaf | Node(l : Tree, v : Word, r : Tree)
   def Lt (a : Word) (b : Word) : Bool by a := match a { Zero => match b { Zero => false, Succ _ => true }, Succ a' => match b { Zero => false, Succ b' => Lt(a', b') } }
-  def AddMS (x : &Nat) (y : Nat) : Id Unit (AddM(x, S y)) (AddM(&*x, y); *x := S *x) by x := match *x { Z => refl, S p => AddMS(&p, y) }
-  def AddS (x : Nat) (y : Nat) : Id Nat (Add(x, S y)) (S (Add(x, y))) := AddMS(&x, y)
-  def Size (t : Tree) : Nat by t := match t { Leaf => 0, Node(l, v, r) => S (Add(Size(l), Size(r))) }
+  def AddMS (x : &Nat) (y : Nat) : Id(Unit, AddM(x, S(y)), AddM(&*x, y); *x := S(*x)) by x := match *x { Z => refl, S p => AddMS(&p, y) }
+  def AddS (x : Nat) (y : Nat) : Id(Nat, Add(x, S(y)), S(Add(x, y))) := AddMS(&x, y)
+  def Size (t : Tree) : Nat by t := match t { Leaf => 0, Node(l, v, r) => S(Add(Size(l), Size(r))) }
   -- overview.typ:146
   def InsertM (t : &Tree) (k : Word) : Unit by t := match *t { Leaf => *t := Node(Leaf, k, Leaf), Node(l, v, r) => let b = Lt(k, v); match b { true => InsertM(&l, k), false => InsertM(&r, k) } }
   -- overview.typ:146
   def Insert (t : Tree) (k : Word) : Tree := InsertM(&t, k); t
   -- overview.typ:156
-  def SizeInsert (t : Tree) (k : Word) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t := match t { Leaf => refl, Node(l, v, r) => let b = Lt(k, v); match b { true => rewrite SizeInsert(l, k) in refl, false => rewrite SizeInsert(r, k) in rewrite AddS(Size(l), Size(r)) in refl } }
+  def SizeInsert (t : Tree) (k : Word) : Id(Nat, S(Size(t)), Size(Insert(t, k))) by t := match t { Leaf => refl, Node(l, v, r) => let b = Lt(k, v); match b { true => rewrite SizeInsert(l, k) in refl, false => rewrite SizeInsert(r, k) in rewrite AddS(Size(l), Size(r)) in refl } }
 }
 #eval IO.println (run "SweepTrees" SweepTrees).show
 ochr SweepClear uses Std {
   -- overview.typ:170
-  reject def Clear (x : &Nat) : Id Unit (match *x { Z => (), S p => p := Z }) () := refl
+  reject def Clear (x : &Nat) : Id(Unit, (match *x { Z => (), S p => p := Z }), ()) := refl
 }
 #eval IO.println (run "SweepClear" SweepClear).show
 ochr SweepHM uses Std, HashMap, HashMapLookup {
   -- impl.typ:55
-  def InsertFindOtherP (hm : &HashMap) (k : Word) (v : Nat) (k2 : Word) (h : Eq Bool (EqB(k, k2)) false) : Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k2)) (let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r) := match *hm { HM(n, len, slots) => split BInsert in SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h) }
+  def InsertFindOtherP (hm : &HashMap) (k : Word) (v : Nat) (k2 : Word) (h : Eq(Bool, EqB(k, k2), false)) : Id(Opt, InsertNoResize(&*hm, k, v); Find(*hm, k2), let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r) := match *hm { HM(n, len, slots) => split BInsert in SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h) }
 }
 #eval IO.println (run "SweepHM" SweepHM).show
 ochr SweepQS uses Quicksort {
-  -- impl.typ:76
-  def QSCorrectP (n : Word) (s : &Slice(Word, n)) (q : Word) : (let c = *s; QS(n, n, &c); Sorted(n, c)) ∧ (let old = *s; Eq Word (Count(q, n, (QS(n, n, &*s); *s))) (Count(q, n, old))) := ⟨QSSortedFull(n, n, s, LeRefl(n)), QSPerm(n, n, s, q)⟩
+  -- impl.typ:75
+  def QSCorrectP (n : Word) (s : &Slice(Word, n)) (q : Word) : (let c = *s; QS(n, n, &c); Sorted(n, c)) ∧ (let old = *s; Eq(Word, Count(q, n, (QS(n, n, &*s); *s)), Count(q, n, old))) := ⟨QSSortedFull(n, n, s, LeRefl(n)), QSPerm(n, n, s, q)⟩
 }
 #eval IO.println (run "SweepQS" SweepQS).show
 ochr SweepApp1 {
@@ -60,17 +60,17 @@ ochr SweepApp1 {
   -- appendix.typ:558
   def V (n : Nat) : U(n) := match n { Z => ⊤, S _ => ⊤ }
   -- appendix.typ:558
-  def LieL (n : Nat) : Id Nat (let h = (λ(x : &Nat) : U(n) => (*x := S Z; V(n))); let c = Z; h(&c); c) (S Z) := refl
+  def LieL (n : Nat) : Id(Nat, (let h = (λ(x : &Nat) : U(n) => (*x := S(Z); V(n))); let c = Z; h(&c); c), S(Z)) := refl
   -- appendix.typ:558
-  reject def BoomL : Eq Nat Z (S Z) := LieL(Z)
+  reject def BoomL : Eq(Nat, Z, S(Z)) := LieL(Z)
   -- appendix.typ:566
-  reject def LieB (n : Nat) : Id Nat (let c = Z; let T = match n { Z => (c := S Z; ⊤), S _ => (c := S Z; ⊤) }; c) Z := refl
+  reject def LieB (n : Nat) : Id(Nat, (let c = Z; let T = match n { Z => (c := S(Z); ⊤), S _ => (c := S(Z); ⊤) }; c), Z) := refl
   -- appendix.typ:566
-  reject def BoomB : Eq Nat (S Z) Z := LieB(Z)
+  reject def BoomB : Eq(Nat, S(Z), Z) := LieB(Z)
   -- appendix.typ:572
-  reject def LieH (g : Π(y : Nat). V(Z)) : Id Nat (let c = Z; let h = g(0); (c := S Z; h); c) (S Z) := refl
+  reject def LieH (g : Π(y : Nat). V(Z)) : Id(Nat, let c = Z; let h = g(0); (c := S(Z); h); c, S(Z)) := refl
   -- appendix.typ:572
-  reject def BoomH : Eq Nat Z (S Z) := LieH((λ(y : Nat) : V(Z) => refl))
+  reject def BoomH : Eq(Nat, Z, S(Z)) := LieH((λ(y : Nat) : V(Z) => refl))
   -- appendix.typ:578
   reject inductive Bad : Type := MkBad(f : Π(x : Bad). False)
   -- appendix.typ:578
@@ -80,11 +80,11 @@ ochr SweepApp1 {
   -- appendix.typ:585
   inductive Box := MkBox(x : Nat)
   -- appendix.typ:585
-  def Double (n : Nat) : Nat by n := match n { Z => Z, S p => S (S (Double(p))) }
+  def Double (n : Nat) : Nat by n := match n { Z => Z, S p => S(S(Double(p))) }
   -- appendix.typ:585
-  reject def Esc (n : Nat) (m : Box) : Id Nat (let b = Double(n); match b { Z => 0, S _ => 1 }) (match m { MkBox(x) => match x { Z => 0, S _ => 1 } }) := match m { MkBox(x) => match x { Z => refl, S _ => refl } }
+  reject def Esc (n : Nat) (m : Box) : Id(Nat, (let b = Double(n); match b { Z => 0, S _ => 1 }), (match m { MkBox(x) => match x { Z => 0, S _ => 1 } })) := match m { MkBox(x) => match x { Z => refl, S _ => refl } }
   -- appendix.typ:585
-  reject def Bad5 : Eq Nat 1 0 := Esc(1, MkBox(0))
+  reject def Bad5 : Eq(Nat, 1, 0) := Esc(1, MkBox(0))
   -- appendix.typ:606
   reject def Impred : Type := Π(x : &Type) (a : *x). *x
   -- appendix.typ:606
@@ -99,7 +99,7 @@ ochr SweepApp2 uses Std {
   -- appendix.typ:598
   reject def IsL (h : Or(True, True)) : Bool := match h { Inl(p) => true, Inr(q) => false }
   -- appendix.typ:598
-  reject def Irr (h : Or(True, True)) (k : Or(True, True)) : Eq Bool (IsL(h)) (IsL(k)) := refl
+  reject def Irr (h : Or(True, True)) (k : Or(True, True)) : Eq(Bool, IsL(h), IsL(k)) := refl
   -- appendix.typ:598
   reject def Boom : False := Irr(Inl(refl), Inr(refl))
 }
@@ -116,13 +116,13 @@ ochr SweepInline uses Std, Fixtures {
   -- appendix note 27
   def CapS (x : &Nat) : Nat := AddM(&*x, 1); let n = clone(*x); let f = (λ(y : Nat) : Nat => clone(n)); f(0)
   -- typing.typ intro, obs.typ §5
-  def LetZ (x : Nat) : Nat := let z = (let y = &x; *y := 2; x); let h : Id Nat z 2 = refl; z
-  def WriteNeq (x : &Nat) (e : Id Unit (*x := 0) (*x := 1)) : Nat := match e {}
-  reject def OwnedLocal (x : Nat) : Id Unit (x := 6) () := refl
+  def LetZ (x : Nat) : Nat := let z = (let y = &x; *y := 2; x); let h : Id(Nat, z, 2) = refl; z
+  def WriteNeq (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : Nat := match e {}
+  reject def OwnedLocal (x : Nat) : Id(Unit, x := 6, ()) := refl
   -- appendix notes 6, 7, 11, [Close]'s row
   def PickX (x : &Nat) (y : &Nat) : &Nat := x
   def PickY (x : &Nat) (y : &Nat) : &Nat := y
-  def PF (x : &Nat) (e : Id Unit (*x := 0) (*x := 1)) : False := e
+  def PF (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
   reject def QF (g : Π(n : Nat). &Nat) : False := PF(g(5), refl)
   reject def F (n : Nat) (x : &Nat) : (match n { Z => &Nat, S _ => Nat }) := match n { Z => x, S _ => 0 }
   -- D66: `&A` for `A : Type₀` is well formed; a type variable in `Type₁` is not
@@ -162,7 +162,7 @@ ochr SweepTF uses Std, Fixtures {
   def Bad4 (x : &Nat) (a : Nat) : Unit := (x := TailM(&a); match a { Z => (), S _ => () })
   def Bad4Run : Unit := (let c = 0; Bad4(&c, 1))
   reject def RetLocal (x : &Nat) : &Nat := (let a = 0; &a)
-  def IdLet (a : Nat) : Id Nat (let z = a; a) a := refl
+  def IdLet (a : Nat) : Id(Nat, let z = a; a, a) := refl
   reject def LetCode (a : Nat) : Nat := let z = a; a
   def AssignPick (n : Nat) (b : Nat) (x : &Nat) : Unit := (x := Pick(n, &*x, &b); *x := 5)
   def AssignPick1 (b : Nat) (c : Nat) : Unit := (let x = &c; let n = 1; x := Pick(n, &*x, &b); *x := 5)

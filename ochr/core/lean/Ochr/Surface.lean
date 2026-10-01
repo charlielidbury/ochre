@@ -261,8 +261,8 @@ partial def toPlace (ctx : Ctx) : STerm → R Place
     | some p => pure p
     | none => throw s!"{x} is not a place (not a local variable)"
   | .deref t => return .deref (← toPlace ctx t)
-  | .proj 1 t => return .fst (← toPlace ctx t)
-  | .proj 2 t => return .snd (← toPlace ctx t)
+  | .proj 0 t => return .fst (← toPlace ctx t)
+  | .proj 1 t => return .snd (← toPlace ctx t)
   | t => throw s!"not a place: {repr t}"
 
 def isPlace (ctx : Ctx) (t : STerm) : Bool := (((toPlace ctx t).run {}).run.run' {}).toOption.isSome
@@ -363,7 +363,7 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
   | .deref _ => return .place (← toPlace ctx t)
   | .proj i a =>
     if isPlace ctx t then return .place (← toPlace ctx t)
-    else if i == 1 then return .fst (← resolve ctx false a) else return .snd (← resolve ctx false a)
+    else if i == 0 then return .fst (← resolve ctx false a) else return .snd (← resolve ctx false a)
   | .amp a =>
     if ty then return .ref (← resolve ctx true a)
     else return .borrow (← toPlace ctx a)

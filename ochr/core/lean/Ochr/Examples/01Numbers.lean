@@ -20,11 +20,11 @@ open Ochr.Test
 
 ochr Numbers uses Std {
   -- A type can run a program: `Add(2, 3)` evaluates to `5`, so `refl` proves the equation.
-  def Add23 : Id Nat (Add(2, 3)) 5 := refl
+  def Add23 : Id(Nat, Add(2, 3), 5) := refl
 
   -- The pure theorem follows from the in-place one, applied to the predecessor field of `x`.
   -- No congruence step is written: the environment puts the `S` back around `p`.
-  def AddZero (x : Nat) : Id Nat (Add(x, 0)) x := (
+  def AddZero (x : Nat) : Id(Nat, Add(x, 0), x) := (
     match x {
       Z => refl,
       S p => AddMZero(&p),
@@ -32,27 +32,27 @@ ochr Numbers uses Std {
   )
 
   -- Or directly, by lending all of `x` to the in-place lemma.
-  def AddZero' (x : Nat) : Id Nat (Add(x, 0)) x := AddMZero(&x)
+  def AddZero' (x : Nat) : Id(Nat, Add(x, 0), x) := AddMZero(&x)
 
   -- A function's type is formed when it is called, before its body runs. Writing `5` into
-  -- `*x` does not make `Id Nat (*x) 5` true of the number `*x` held on entry.
-  reject def WriteThenRefl (x : &Nat) : Id Nat (*x) 5 := (
+  -- `*x` does not make `Id(Nat, *x, 5)` true of the number `*x` held on entry.
+  reject def WriteThenRefl (x : &Nat) : Id(Nat, *x, 5) := (
     *x := 5;
     refl
   )
 
   -- ## Matching on numbers
-  -- A match on a number has exactly two arms, `Z` and then `S y`.
+  -- A match on a number has exactly two arms, `Z` and then `S(y)`.
   reject def MissingArm (x : Nat) : Nat := (
     match x {
       Z => 0,
     }
   )
 
-  -- The pattern variable `y` in `S y` is not a copy: it names the place `x.1`, the
-  -- predecessor inside `x`. After `m := S (S 0)`, reading `y` gives the new predecessor.
+  -- The pattern variable `y` in `S(y)` is not a copy: it names the place `x.0`, the
+  -- predecessor inside `x`. After `m := S(S(0))`, reading `y` gives the new predecessor.
   def AliasRead (x : Nat) :
-      Id Nat (let m = x; match m { Z => 0, S y => (m := S (S 0); y) }) (match x { Z => 0, S _ => 1 }) := (
+      Id(Nat, (let m = x; match m { Z => 0, S y => (m := S(S(0)); y) }), (match x { Z => 0, S _ => 1 })) := (
     match x {
       Z => refl,
       S _ => refl,
@@ -70,45 +70,45 @@ ochr Numbers uses Std {
     }
   )
 
-  -- `x.1` can be written directly, but only where `x` is known to be a successor.
+  -- `x.0` can be written directly, but only where `x` is known to be a successor.
   def Pred (x : Nat) : Nat := (
     match x {
       Z => 0,
-      S p => x.1,
+      S p => x.0,
     }
   )
 
-  reject def PredOfAbstract (x : Nat) : Nat := x.1
+  reject def PredOfAbstract (x : Nat) : Nat := x.0
 
   -- ## Pairs
   -- A pair is data too, and each component is a place: it can be read, assigned and borrowed
-  -- (`p.1` and `p.2` are its fields).
+  -- (`p.0` and `p.1` are its fields).
   def PairLocal (n : Nat) : Nat := (
     let p = (n, ());
-    p.1
+    p.0
   )
 
-  def PairLocalIs (n : Nat) : Id Nat (PairLocal(n)) n := refl
+  def PairLocalIs (n : Nat) : Id(Nat, PairLocal(n), n) := refl
 
   def PairWrite (n : Nat) : Nat × Nat := (
     let p = (clone(n), n);
-    p.2 := 5;
+    p.1 := 5;
     p
   )
 
-  def PairWriteIs (n : Nat) : Id (Nat × Nat) (PairWrite(n)) (n, 5) := refl
+  def PairWriteIs (n : Nat) : Id(Nat × Nat, PairWrite(n), (n, 5)) := refl
 
   def PairBorrow (n : Nat) : Nat := (
     let p = (clone(n), n);
-    let r = &p.2;
+    let r = &p.1;
     *r := 7;
-    p.2
+    p.1
   )
 
-  def PairBorrowIs (n : Nat) : Id Nat (PairBorrow(n)) 7 := refl
+  def PairBorrowIs (n : Nat) : Id(Nat, PairBorrow(n), 7) := refl
 
   -- A number has no second component.
-  reject def ProjNat (x : Nat) : Nat := x.2
+  reject def ProjNat (x : Nat) : Nat := x.1
 
   -- A pair is the library inductive `Pair`, whose constructor is `Mk` (D52), so a pair
   -- parameter is taken apart by a match, which splits it like any inductive value ...
@@ -120,7 +120,7 @@ ochr Numbers uses Std {
 
   -- ... and not by projection: until it is split, an abstract pair's components are not
   -- known (there is no η rule), as for a field of any inductive value.
-  reject def SwapPairProj (p : Nat × Unit) : Unit × Nat := (p.2, p.1)
+  reject def SwapPairProj (p : Nat × Unit) : Unit × Nat := (p.1, p.0)
 
   -- ## Calls and ascriptions
   -- Calls are saturated: every parameter gets an argument.
@@ -140,7 +140,7 @@ ochr Numbers uses Std {
   reject def refl : Nat := 0
   reject def clone (x : Nat) : Nat := x
   -- the built-in `Unit` is unaffected by the rejected one: `()` is its only value
-  def UnitStill (x : Unit) : Eq Unit x () := refl
+  def UnitStill (x : Unit) : Eq(Unit, x, ()) := refl
 }
 
 -- the exact number of declarations (a truncated file changes it)

@@ -11,8 +11,8 @@ ochr LeakBoom uses Std {
   def Cells (n : Nat) : Type by n := match n { Z => CellsEnd, S m => Cell(Cells(m)) }
   def Slice (n : Nat) : Type := SliceOf(Cells(n))
   -- a proof that any slice of length Sub(Z, k) is empty (true: Sub(Z,k) = 0)
-  reject def IsEmpty (k : Nat) (s : Slice(Sub(Z, k))) : Id Nat (match s { MkSlice(c) => match c { End => 0 } }) 0 := refl
-  -- feed r (leaked type Slice(Sub(Z,k))) to IsEmpty in the S arm
+  reject def IsEmpty (k : Nat) (s : Slice(Sub(Z, k))) : Id(Nat, match s { MkSlice(c) => match c { End => 0 } }, 0) := refl
+  -- feed r (leaked type Slice(Sub(Z,k))) to IsEmpty in the S(arm)
   reject def Try (n : Nat) (k : Nat) (r : Slice(Sub(n, k))) : Nat by n := match n {
     Z => 0,
     S m => let h = IsEmpty(k, r); 1

@@ -110,7 +110,7 @@ ochr DepFields uses Std {
       MkV(n, x) => (
         let m = n;
         n := Zero;
-        let h : Id Word (VN(clone(*v))) Zero = refl;
+        let h : Id(Word, VN(clone(*v)), Zero) = refl;
         n := m
       ),
     }
@@ -118,14 +118,14 @@ ochr DepFields uses Std {
   reject def IdMakesBroken (v : &V) : Unit := (
     match *v {
       MkV(n, x) => (
-        let h : Id Unit (n := Zero) (n := Zero) = refl;
+        let h : Id(Unit, n := Zero, n := Zero) = refl;
         ()
       ),
     }
   )
 
   -- without [Repack] the lie is a closed proof of False: `Absurd` is true of every packed `V`
-  def Absurd (v : V) (h : Eq Word (VN(v)) Zero) : False := (
+  def Absurd (v : V) (h : Eq(Word, VN(v), Zero)) : False := (
     match v {
       MkV(n, x) => match n {
         Zero => match x {},
@@ -181,13 +181,13 @@ ochr DepFields uses Std {
   reject def BoomBorrow : False := Absurd((let v = MkV(Succ(Zero), O); LieBorrow(&v); v), refl)
 
   -- injectivity, restricted: equal lengths are taken apart; unequal ones are not, since
-  -- `Eq (Fin1(a)) x y` would compare values of different types
-  def InjSame (a : Word) (x : Fin1(a)) (y : Fin1(a)) (h : Eq V (MkV(a, x)) (MkV(a, y))) : Eq (Fin1(a)) x y := h
-  reject def InjLen (a : Word) (b : Word) (x : Fin1(a)) (y : Fin1(b)) (h : Eq V (MkV(a, x)) (MkV(b, y))) : Eq Word a b := (
+  -- `Eq(Fin1(a), x, y)` would compare values of different types
+  def InjSame (a : Word) (x : Fin1(a)) (y : Fin1(a)) (h : Eq(V, MkV(a, x), MkV(a, y))) : Eq(Fin1(a), x, y) := h
+  reject def InjLen (a : Word) (b : Word) (x : Fin1(a)) (y : Fin1(b)) (h : Eq(V, MkV(a, x), MkV(b, y))) : Eq(Word, a, b) := (
     let ⟨h1, h2⟩ = h;
     h1
   )
-  def InjLenCong (a : Word) (b : Word) (x : Fin1(a)) (y : Fin1(b)) (h : Eq V (MkV(a, x)) (MkV(b, y))) : Eq Word a b := cong VN h
+  def InjLenCong (a : Word) (b : Word) (x : Fin1(a)) (y : Fin1(b)) (h : Eq(V, MkV(a, x), MkV(b, y))) : Eq(Word, a, b) := cong(VN, h)
 
   -- a proof field: a write through the field its type mentions invalidates it
   def IsSucc (n : Word) : Prop := (
@@ -289,7 +289,7 @@ ochr DepFields uses Std {
   ("LieBorrow", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Empty0"),
   ("BoomZ", "unknown constant LieZ"),
   ("BoomParam", "unknown constant LieParam"),
-  ("InjLen", "[Match] on h, whose type Eq V MkV(σ0, σ2) MkV(σ1, σ3) is not an inductive type"),
+  ("InjLen", "[Match] on h, whose type Eq(V, MkV(σ0, σ2), MkV(σ1, σ3)) is not an inductive type"),
   ("ToZero", "[Repack] a borrow of it ends, but it is open: field h of MkPos: it holds ⊥"),
   ("ToZeroProof", "the assigned value has type ⊤, expected False"),
   ("StaleProof", "[Open] (*p).h is a proof field invalidated by a write to a field its type mentions"),
@@ -358,7 +358,7 @@ ochr DepVec uses ArrayBench {
       },
     }
   )
-  -- the user's example, `*v.0 := 2; *v.1 := [0,1]`, in both orders
+  -- the user's example, `*v.0 := 2; *v.0 := [0,1]`, in both orders
   def Two : Array(Word, W(2)) := ArrPush(Word, Succ(Zero), ArrPush(Word, Zero, ArrEmpty(Word), Zero), Succ(Zero))
   def SetTwo (v : &Vec(Word)) : Unit := (
     match *v {
@@ -429,15 +429,15 @@ ochr DepVec uses ArrayBench {
       MkVec(n, items) => Read(E, n, AsSlice(E, n, &items), i, h),
     }
   )
-  def PushRun : Id Word (let v = VNew(Word); Push(Word, &v, W(3)); PushInPlace(Word, &v, W(4)); VLen(Word, v)) W(2) := refl
-  def SetRun : Id Word (
+  def PushRun : Id(Word, let v = VNew(Word); Push(Word, &v, W(3)); PushInPlace(Word, &v, W(4)); VLen(Word, v), W(2)) := refl
+  def SetRun : Id(Word, 
       let v = VNew(Word);
       Push(Word, &v, W(3));
       PushInPlaceRev(Word, &v, W(4));
       VSet(&v, Succ(Zero), refl, W(9));
-      VGet(Word, v, Succ(Zero), refl)) W(9) := refl
-  def PopRun : Id Word (let v = VNew(Word); Push(Word, &v, W(3)); Push(Word, &v, W(4)); Pop(Word, &v, Zero)) W(4) := refl
-  reject def PushRunWrong : Id Word (let v = VNew(Word); Push(Word, &v, W(3)); VLen(Word, v)) W(2) := refl
+      VGet(Word, v, Succ(Zero), refl), W(9)) := refl
+  def PopRun : Id(Word, let v = VNew(Word); Push(Word, &v, W(3)); Push(Word, &v, W(4)); Pop(Word, &v, Zero), W(4)) := refl
+  reject def PushRunWrong : Id(Word, let v = VNew(Word); Push(Word, &v, W(3)); VLen(Word, v), W(2)) := refl
 
   -- pushing: the length grows by one, the old elements are unchanged, the new one is last
   def Pushed (E : Type) (v : Vec(E)) (x : E) : Vec(E) := (
@@ -445,23 +445,23 @@ ochr DepVec uses ArrayBench {
       MkVec(n, items) => MkVec[E](Succ(n), ArrPush(E, n, items, x)),
     }
   )
-  def PushIs (E : Type) (v : &Vec(E)) (x : E) : Id Unit (Push(E, v, x)) (*v := Pushed(E, clone(*v), x)) := (
+  def PushIs (E : Type) (v : &Vec(E)) (x : E) : Id(Unit, Push(E, v, x), *v := Pushed(E, clone(*v), x)) := (
     match *v {
       MkVec(n, items) => refl,
     }
   )
-  def PushedLen (E : Type) (v : Vec(E)) (x : E) : Eq Word (VLen(E, Pushed(E, v, x))) (Succ(VLen(E, v))) := (
+  def PushedLen (E : Type) (v : Vec(E)) (x : E) : Eq(Word, VLen(E, Pushed(E, v, x)), Succ(VLen(E, v))) := (
     match v {
       MkVec(n, items) => refl,
     }
   )
-  reject def PushedLenTwo (E : Type) (v : Vec(E)) (x : E) : Eq Word (VLen(E, Pushed(E, v, x))) (Succ(Succ(VLen(E, v)))) := (
+  reject def PushedLenTwo (E : Type) (v : Vec(E)) (x : E) : Eq(Word, VLen(E, Pushed(E, v, x)), Succ(Succ(VLen(E, v)))) := (
     match v {
       MkVec(n, items) => refl,
     }
   )
   def NthSnocLast (E : Type) (n : Word) (s : Slice(E, n)) (x : E) (h : Lt(n, Succ(n))) :
-      Eq E (Nth(E, Succ(n), SnocS(E, n, s, x), n, h)) x by n := (
+      Eq(E, Nth(E, Succ(n), SnocS(E, n, s, x), n, h), x) by n := (
     match n {
       Zero => refl,
       Succ(m) => match s {
@@ -472,7 +472,7 @@ ochr DepVec uses ArrayBench {
     }
   )
   def NthSnocOld (E : Type) (n : Word) (s : Slice(E, n)) (x : E) (i : Word) (h : Lt(i, n)) (h2 : Lt(i, Succ(n))) :
-      Eq E (Nth(E, Succ(n), SnocS(E, n, s, x), i, h2)) (Nth(E, n, s, i, h)) by i := (
+      Eq(E, Nth(E, Succ(n), SnocS(E, n, s, x), i, h2), Nth(E, n, s, i, h)) by i := (
     match n {
       Zero => match h {},
       Succ(m) => match s {
@@ -486,7 +486,7 @@ ochr DepVec uses ArrayBench {
     }
   )
   def PushedLast (E : Type) (v : Vec(E)) (x : E) (h : Lt(VLen(E, v), VLen(E, Pushed(E, v, x)))) :
-      Eq E (VGet(E, Pushed(E, v, x), VLen(E, v), h)) x := (
+      Eq(E, VGet(E, Pushed(E, v, x), VLen(E, v), h), x) := (
     match v {
       MkVec(n, items) => match items {
         MkArray(s) => NthSnocLast(E, n, s, x, h),
@@ -494,7 +494,7 @@ ochr DepVec uses ArrayBench {
     }
   )
   def PushedOld (E : Type) (v : Vec(E)) (x : E) (i : Word) (h : Lt(i, VLen(E, v))) (h2 : Lt(i, VLen(E, Pushed(E, v, x)))) :
-      Eq E (VGet(E, Pushed(E, v, x), i, h2)) (VGet(E, v, i, h)) := (
+      Eq(E, VGet(E, Pushed(E, v, x), i, h2), VGet(E, v, i, h)) := (
     match v {
       MkVec(n, items) => match items {
         MkArray(s) => NthSnocOld(E, n, s, x, i, h, h2),
@@ -582,24 +582,24 @@ ochr DepVec uses ArrayBench {
       MkTable(cap, slots, len) => cap := ncap,
     }
   )
-  def ResizeRun : Id Word (
+  def ResizeRun : Id(Word, 
       let t = TNew(W(2));
       TInsert(&t, W(5), W(50), refl);
       TInsert(&t, W(3), W(30), refl);
       Resize(&t, W(4), refl);
       TInsert(&t, W(7), W(70), refl);
       TInsert(&t, W(5), W(51), refl);
-      TLen(t)) W(3) := refl
-  def ResizeRunCap : Id Word (
+      TLen(t), W(3)) := refl
+  def ResizeRunCap : Id(Word, 
       let t = TNew(W(2));
       TInsert(&t, W(5), W(50), refl);
       Resize(&t, W(4), refl);
-      TCap(t)) W(4) := refl
-  reject def ResizeRunWrong : Id Word (
+      TCap(t), W(4)) := refl
+  reject def ResizeRunWrong : Id(Word, 
       let t = TNew(W(2));
       TInsert(&t, W(5), W(50), refl);
       Resize(&t, W(4), refl);
-      TLen(t)) W(2) := refl
+      TLen(t), W(2)) := refl
 }
 
 -- the exact number of declarations (a truncated file changes it)
@@ -612,6 +612,6 @@ ochr DepVec uses ArrayBench {
   ("MoveBroken", "[Repack] *v is read whole, but it is open"),
   ("PassBroken", "[Repack] *v is borrowed whole, but it is open"),
   ("PushRunWrong", "the body of PushRunWrong has type ⊤, but the goal is False"),
-  ("PushedLenTwo", "the body of PushedLenTwo has type ⊤, but the goal is Eq Word σ3 Succ(σ3)"),
+  ("PushedLenTwo", "the body of PushedLenTwo has type ⊤, but the goal is Eq(Word, σ3, Succ(σ3))"),
   ("ResizeKeep", "[Repack] a borrow of it ends, but it is open: field slots of MkTable holds a value of type ArrayOf(⌈Cells(List(Entry), σ2)⌉), but its type from the earlier fields is ArrayOf(⌈Cells(List(Entry), σ1)⌉)"),
   ("ResizeRunWrong", "the body of ResizeRunWrong has type ⊤, but the goal is False")]

@@ -21,14 +21,14 @@ ochr D19Default {
   -- "no such place *a0"
   reject def V (n0 : Nat) : Unit := (let a0 = match n0 { Z => &n0, S _ => &n0 }; *a0 := n0)
   -- "no such place *r"
-  reject def W (n : Nat) : Nat := (let a = S Z; let out = 0; (let r = &a.1; out := G2(&a, n); *r := S Z); out)
+  reject def W (n : Nat) : Nat := (let a = S(Z); let out = 0; (let r = &a.0; out := G2(&a, n); *r := S(Z)); out)
 }
 ochr D19Off {
   def G2 (x : &Nat) (n : Nat) : Nat := (match n { Z => 0, S _ => *x := 0; 0 })
   def V (n0 : Nat) : Unit := (let a0 = match n0 { Z => &n0, S _ => &n0 }; *a0 := n0)
   -- "no such place *a0"
   reject def VRun : Unit := V(0)
-  def W (n : Nat) : Nat := (let a = S Z; let out = 0; (let r = &a.1; out := G2(&a, n); *r := S Z); out)
+  def W (n : Nat) : Nat := (let a = S(Z); let out = 0; (let r = &a.0; out := G2(&a, n); *r := S(Z)); out)
   -- "[Drop] the old content of *x is overwritten while borrowed"
   reject def WRun : Nat := W(1)
 }

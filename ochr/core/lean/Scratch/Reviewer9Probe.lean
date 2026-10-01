@@ -62,16 +62,16 @@ ochr R9Early uses Std, Fixtures {
 /-! ## Ghosts inside borrows: resolution is undefined at reachable states of F, and calls are
 made at non-ground instances. -/
 ochr R9Ghost uses Std, Fixtures {
-  -- accepted: after `let v = *x`, x's content is a ghost until `*x := S v`
+  -- accepted: after `let v = *x`, x's content is a ghost until `*x := S(v)`
   def Replace (x : &Nat) : Unit := (
     let v = *x;
-    *x := S v
+    *x := S(v)
   )
   -- at that state, ending every borrow (what an observation, and the proof's ρ, do) fails
   reject def ReplaceObs (x : &Nat) : Unit := (
     let v = *x;
-    let h : Id Unit () () = refl;
-    *x := S v
+    let h : Id(Unit, (), ()) = refl;
+    *x := S(v)
   )
   -- a call whose borrow argument holds a ghost: not a ground instance of `W`
   def W (y : &Nat) : Unit := *y := 0
@@ -131,7 +131,7 @@ ochr R9Clone uses Std, Fixtures {
   def AssignBot (n : Nat) (a : Nat) (b : Nat) (c : Nat) : Unit := (
     let x = Pick(n, &a, &b);
     let z = clone(b);
-    let h : Id Unit (x := &c; *x := 5) (x := &c; *x := 5) = refl;
+    let h : Id(Unit, x := &c; *x := 5, x := &c; *x := 5) = refl;
     ()
   )
 }
@@ -141,7 +141,7 @@ ochr R9Clone uses Std, Fixtures {
 
 /-! ## `Id`'s sides run with copying reads; the same code at runtime moves. -/
 ochr R9Copy uses Std, Fixtures {
-  def IdCopies (a : Nat) : Id Nat (let z = a; a) a := refl
+  def IdCopies (a : Nat) : Id(Nat, let z = a; a, a) := refl
   reject def RunTwice (a : Nat) : Nat := (
     let z = a;
     a
@@ -156,7 +156,7 @@ once `n` is refined (FootprintProbe says so in a comment; here it is a verdict).
 ochr R9Foot uses Std, Fixtures {
   -- in arm Z the hypothesis is `False ∧ ⊤`, and its second conjunct is used as `True`
   def FPZ (n : Nat) (a : Nat) (b : Nat)
-      (h : Id Unit (let r = Pick(n, &a, &b); *r := 0) (let r = Pick(n, &a, &b); *r := 1)) : Eq Nat n n := (
+      (h : Id(Unit, let r = Pick(n, &a, &b); *r := 0, let r = Pick(n, &a, &b); *r := 1)) : Eq(Nat, n, n) := (
     match n {
       Z => (
         let w : True = (match h { Intro(l, k) => k });
@@ -167,7 +167,7 @@ ochr R9Foot uses Std, Fixtures {
   )
   -- the rejection message shows arm S's type, `⊤ ∧ False`
   reject def FPZshow (n : Nat) (a : Nat) (b : Nat)
-      (h : Id Unit (let r = Pick(n, &a, &b); *r := 0) (let r = Pick(n, &a, &b); *r := 1)) : Eq Nat n (S n) := (
+      (h : Id(Unit, let r = Pick(n, &a, &b); *r := 0, let r = Pick(n, &a, &b); *r := 1)) : Eq(Nat, n, S(n)) := (
     match n {
       Z => h,
       S _ => h,
@@ -192,7 +192,7 @@ ochr R9Bad4 uses Std, Fixtures {
       S _ => (),
     }
   )
-  -- at a = 1, TailM returns a borrow of a.1; the match on a (head S) ends nothing, and a is
+  -- at a = 1, TailM returns a borrow of a.0; the match on a (head S) ends nothing, and a is
   -- dropped while x still borrows it: under amended D65 the drop ends x, and the run completes
   def RunBad4S : Unit := (
     let c = 0;

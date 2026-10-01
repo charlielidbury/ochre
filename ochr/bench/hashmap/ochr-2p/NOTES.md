@@ -16,7 +16,7 @@ The SPEC is generic in the value type `V` (2adc7147), with Ochr's read API amend
   - `EqDec`, key comparison with evidence;
   - `SlotMut`, the library's `GetMut` at element type `Bucket` (`implemented by "ochr_arr_get_mut"`). It is needed because `&E` is not yet well formed for a type variable, and it is the only way for runtime code to reach a bucket in place.
 - **Names.** The operations are `MapNew`, `MapLen`, `MapGet`, `MapInsert`, `MapRemove` and `MapGetMut`, because the arrays library already declares `GetMut`. `GetOf` and `LenOf` run `MapGet` and `MapLen` on a copy of a map value; the properties observe through them.
-- **Properties run on a copy.** Every property runs the operation on a copy (`let c = *m; op(cap, &c, …); …`). H17 and H18 are stated as `Eq (Map(cap)) (let c = *m; MapGet(cap, &c, k); c) (*m)`, for every map.
+- **Properties run on a copy.** Every property runs the operation on a copy (`let c = *m; op(cap, &c, …); …`). H17 and H18 are stated as `Eq(Map(cap), let c = *m; MapGet(cap, &c, k); c, *m)`, for every map.
 - **Tests.** Each of the five sequences is one test: the ops run on one map, and their results and lengths are collected in a `Trace` and compared with the expected trace. There is one negative test. With an unverified implementation the set takes about 1.5 s in the compiled checker.
 - **`ochr-2p` is generated.** `common/ochr/gen_hashmap_2p.py` builds it from `ochr`, so the representation, signatures, H1–H18 statements and tests are byte-identical.
 - **What `ochr-2p` adds:**

@@ -13,7 +13,7 @@ Numbers are written `W(n)`, the arrays library's `Word` for the numeral n.
 
 Quicksort (SPEC §6): one test per case. The input and the expected output are arrays built
 with `ArrPush` from `ArrEmpty`; the test sorts the input in place and compares the whole
-array, `Id (Array(Word, W(n))) (let a = input; QuickSort(...); a) (expected) := refl`. One
+array, `Id(Array(Word, W(n)), let a = input; QuickSort(...); a, expected) := refl`. One
 negative test follows: the `mixed` case with its unsorted input as the expected output,
 which must be rejected.
 
@@ -51,15 +51,15 @@ def quicksort(tests):
     for c in tests["cases"]:
         n = len(c["input"])
         out.append(f"  -- {c['name']}: {c['input']} ↦ {c['expected']}\n")
-        out.append(f"  def {ident(c['name'])} : Id (Array(Word, {W(n)})) "
-                   f"(let a = {arr(c['input'])}; QuickSort({W(n)}, AsSlice(Word, {W(n)}, &a)); a) "
-                   f"({arr(c['expected'])}) := refl\n")
+        out.append(f"  def {ident(c['name'])} : Id(Array(Word, {W(n)}), "
+                   f"let a = {arr(c['input'])}; QuickSort({W(n)}, AsSlice(Word, {W(n)}, &a)); a, "
+                   f"{arr(c['expected'])}) := refl\n")
     mixed = next(c for c in tests["cases"] if c["name"] == "mixed")
     n = len(mixed["input"])
     out.append(f"  -- must be rejected: the expected array is the unsorted input {mixed['input']}\n")
-    out.append(f"  reject def TestReject_unsorted : Id (Array(Word, {W(n)})) "
-               f"(let a = {arr(mixed['input'])}; QuickSort({W(n)}, AsSlice(Word, {W(n)}, &a)); a) "
-               f"({arr(mixed['input'])}) := refl\n")
+    out.append(f"  reject def TestReject_unsorted : Id(Array(Word, {W(n)}), "
+               f"let a = {arr(mixed['input'])}; QuickSort({W(n)}, AsSlice(Word, {W(n)}, &a)); a, "
+               f"{arr(mixed['input'])}) := refl\n")
     return out
 
 
@@ -100,13 +100,13 @@ def hashmap(tests):
     for seq in tests["sequences"]:
         prog, exp = hashmap_prog(seq, seq["ops"])
         out.append(f"  -- {seq['name']}: {len(seq['ops'])} ops on new({seq['cap']})\n")
-        out.append(f"  def {ident(seq['name'])} : Id Trace ({prog}) ({exp}) := refl\n")
+        out.append(f"  def {ident(seq['name'])} : Id(Trace, {prog}, {exp}) := refl\n")
     seq = next(s for s in tests["sequences"] if s["name"] == "scripted")
     first = next(o for o in seq["ops"] if o["op"] == "insert")
     wrong = dict(first, expect=(first["value"] + 1))
     prog, exp = hashmap_prog(seq, [wrong])
     out.append(f"  -- must be rejected: a fresh map's first insert returns None, not Some\n")
-    out.append(f"  reject def TestReject_insert : Id Trace ({prog}) ({exp}) := refl\n")
+    out.append(f"  reject def TestReject_insert : Id(Trace, {prog}, {exp}) := refl\n")
     return out
 
 
