@@ -285,6 +285,95 @@ ochr UVecOps uses UVec {
     }
   )
 }
+set_option ochr.uninitTypes true in
+set_option ochr.lentProofs true in
+ochr UVecTests uses UVecOps {
+  -- runs: the checker evaluates the user-land Vec on concrete values
+  def PushGet : Id(Word, (
+      let v = VNew(Word, W(3));
+      Push(Word, &v, W(5), refl);
+      Push(Word, &v, W(7), refl);
+      let r = Get(Word, &v, Succ(Zero), refl);
+      *r), W(7)) := refl
+  def WriteThrough : Id(Word, (
+      let v = VNew(Word, W(2));
+      Push(Word, &v, W(5), refl);
+      let r = Get(Word, &v, Zero, refl);
+      *r := W(9);
+      let r2 = Get(Word, &v, Zero, refl);
+      *r2), W(9)) := refl
+  def PushPop : Id(Word, (
+      let v = VNew(Word, W(2));
+      Push(Word, &v, W(5), refl);
+      Push(Word, &v, W(7), refl);
+      let a = Pop(Word, &v, refl);
+      let b = Pop(Word, &v, refl);
+      WAdd(a, b)), W(12)) := refl
+  def PopLen : Id(Word, (
+      let v = VNew(Word, W(2));
+      Push(Word, &v, W(5), refl);
+      let a = Pop(Word, &v, refl);
+      VLen(Word, v)), Zero) := refl
+  -- a non-copy element: the borrow Get returns writes in place
+  def ListElem : Id(Word, (
+      let v = VNew(List(Word), W(1));
+      Push(List(Word), &v, Nil, refl);
+      let r = Get(List(Word), &v, Zero, refl);
+      *r := Cons(W(4), Nil);
+      let l = Pop(List(Word), &v, refl);
+      match l {
+        Nil => Zero,
+        Cons(h, t) => h,
+      }), W(4)) := refl
+  reject def PushPopWrong : Id(Word, (
+      let v = VNew(Word, W(2));
+      Push(Word, &v, W(5), refl);
+      Pop(Word, &v, refl)), W(6)) := refl
+  -- out of capacity and out of length are refused by their bounds
+  reject def PushFull : Unit := (
+    let v = VNew(Word, Zero);
+    Push(Word, &v, W(5), refl)
+  )
+  reject def GetPastLen : Word := (
+    let v = VNew(Word, W(2));
+    Push(Word, &v, W(5), refl);
+    let r = Get(Word, &v, Succ(Zero), refl);
+    *r
+  )
+  reject def PopEmpty : Word := (
+    let v = VNew(Word, W(2));
+    Pop(Word, &v, refl)
+  )
+  -- returning a borrow of the cell itself (`&Uninit(E)`): the caller could empty it, so the
+  -- invariant cannot be re-proved for whatever the borrow writes ([Lent-proof])
+  reject def GetCell (E : Type) (v : &Vec(E)) (i : Word) (h : Lt(i, VLen(E, *v))) : &Uninit(E) := (
+    match *v {
+      MkVec(cap, len, buf, hl, hs) => (
+        let hs0 = hs;
+        let hc = LtLe(i, len, cap, h, hl);
+        let res = GetMut(Uninit(E), cap, AsSlice(Uninit(E), cap, &buf), i, hc);
+        hs := hs0;
+        res
+      ),
+    }
+  )
+  -- without re-proving the invariant, the borrow leaves it invalidated
+  reject def GetNoReproof (E : Type) (v : &Vec(E)) (i : Word) (h : Lt(i, VLen(E, *v))) : &E := (
+    match *v {
+      MkVec(cap, len, buf, hl, hs) => (
+        let hik : Lt(i, len) = h;
+        let hc = LtLe(i, len, cap, hik, hl);
+        let hi = AllInitNth(E, cap, buf, len, i, hik, hc, hs);
+        let hu : Init(E, (let c = buf; clone(*GetMut(Uninit(E), cap, AsSlice(Uninit(E), cap, &c), i, hc)))) =
+          (rewrite ← AsGetReadA(Uninit(E), cap, buf, i, hc) in hi);
+        let r = GetMut(Uninit(E), cap, AsSlice(Uninit(E), cap, &buf), i, hc);
+        UGet(E, r, hu)
+      ),
+    }
+  )
+}
+#eval (run "UVecTests" UVecTests { uninitTypes := true, lentProofs := true }).rows.map fun r => (r.name, r.expectAccept == r.verdict.ok, match r.verdict with | .accepted => "" | .rejected m _ => m)
+#eval (run "UVecTests" UVecTests { uninitTypes := true, lentProofs := false }).rows.map fun r => (r.name, r.verdict.ok)
 #eval (run "UVecOps" UVecOps { uninitTypes := true, lentProofs := true }).rows.map fun r => (r.name, r.expectAccept == r.verdict.ok, match r.verdict with | .accepted => "" | .rejected m _ => m)
 #eval (run "UVec" UVec { uninitTypes := true, lentProofs := true }).rows.map fun r => (r.name, r.expectAccept == r.verdict.ok, match r.verdict with | .accepted => "" | .rejected m _ => m)
 #eval (run "UVecModel" UVecModel { uninitTypes := true, lentProofs := true }).rows.map fun r => (r.name, r.expectAccept == r.verdict.ok, match r.verdict with | .accepted => "" | .rejected m _ => m)
