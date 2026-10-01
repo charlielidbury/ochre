@@ -191,9 +191,7 @@ A proof is a program whose type is the statement. It never runs at runtime.
 - **Lemmas are functions.** Call them to get facts: `LeTrans(a, b, c, h1, h2)`. To use a lemma about in-place code inside another proof, call it on the same copy: `(let c = *s; F(&c); Lemma(n, &c))`.
 - **Contradiction.** `match h {}` when `h`'s type is empty. A hypothesis `Eq(Word, Zero, Succ(n))` *is* `False` after computation, so `match h {}` closes it.
 - **Conjunction.** `⟨p, q⟩` builds one; `let ⟨p, q⟩ = h; …` takes it apart.
-- **`rewrite h in t`**, for `h : Eq(A, a, b)`, proves the goal `G` from `t : G'`, where `G'` is `G` with `b` replaced by `a`. `rewrite ← h in t` replaces `a` by `b`. The goal must be known from the signature, a call's argument, or an annotation. Rewrites chain: `rewrite h1 in rewrite ← h2 in t`. Occurrences inside a stuck `match` aren't found, so state helper lemmas about *calls*.
-- **`split F in t`** splits the goal on the first stuck call of `F` in it. `split F { C1 => t1, C2(x) => t2 }` gives one proof per case.
-- **Reading a failed proof.** `the body of P has type A, but the goal is B` gives both normal forms. A goal stuck on `⌈F(σ3, …)⌉` is waiting for a case split on something `F` matches on. Put `?` there to see the goal and the values in scope.
+- **Intermediate facts.** `let h : P = (t); …` proves `P` once and names it, like Lean's `have`.
 
 ```
 def CountDown (k : Word) : Word by k := match k { Zero => Zero, Succ(k') => CountDown(k') }
@@ -204,9 +202,37 @@ def CountDownZero (k : Word) : Eq(Word, CountDown(k), Zero) by k := (
     Succ(k') => CountDownZero(k'),
   }
 )
+```
 
+### Tactic mode
+
+There is none. A proof is always a term, and there is no `by { … }` block: `by` after a signature names the decreasing argument (§6). Instead, a few terms work like tactics. Each reads the goal it is checked against and hands a changed goal to its body, so you write them outermost first, in the order you would run the tactics. The goal comes from the signature, from the parameter type when the proof is a call's argument, or from an annotation `let h : G = (…); …`.
+
+- **`rewrite h in t`**, for `h : Eq(A, a, b)`, proves the goal `G` from `t : G'`, where `G'` is `G` with `b` replaced by `a`. `rewrite ← h in t` replaces `a` by `b`. Rewrites chain: `rewrite h1 in rewrite ← h2 in t`. Occurrences inside a stuck `match` aren't found, so state helper lemmas about *calls*.
+- **`split F in t`** finds the first stuck call of `F` in the goal, splits on its result, and checks `t` in every case. `split F { C1 => t1, C2(x) => t2 }` gives one proof per case.
+- **`?`** stands for the rest of the proof. The warning shows the goal at that point and the values in scope, as Lean's goal view does after a tactic.
+- **Reading a failed proof.** `the body of P has type A, but the goal is B` gives both normal forms. A goal stuck on `⌈F(σ3, …)⌉` is waiting for a case split on something `F` matches on.
+
+```
 def Pred (n : Word) (h : Eq(Word, n, Succ(Zero))) : Eq(Word, Succ(Zero), n) := rewrite h in refl
 ```
+
+For a reader who knows Lean's tactics:
+
+| Lean | Ochr |
+|---|---|
+| `rfl`, `unfold`, `dsimp only [f]` | `refl`. Types are compared after evaluation, so unfolding needs nothing written |
+| `exact t`, `apply L` | the term `t`, or the call `L(…)` with every argument given |
+| `intro h` | a parameter `(h : P)` of the `def` |
+| `cases x`, `induction x` | `match x { … }`, plus a recursive call for the induction hypothesis (§6) |
+| `obtain ⟨p, q⟩ := h` | `let ⟨p, q⟩ = h; …` |
+| `constructor` | `⟨p, q⟩`, or a call to the constructor |
+| `have h : P := t` | `let h : P = (t); …` |
+| `rw [h]`, `rw [← h]` | `rewrite h in …`, `rewrite ← h in …` |
+| `split` (on a `match` in the goal) | `split F in …` |
+| `contradiction`, `nomatch h` | `match h {}` |
+| `simp`, `omega`, `grind` | none: state the lemma and call it |
+| `sorry` | `sorry` or `?` |
 
 ## 9. The arrays library
 
