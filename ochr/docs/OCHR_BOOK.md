@@ -65,7 +65,7 @@ reject def Bad (…) : T := …                    -- negative test: must be rej
 | `fix f (x : A) : C by x := t` | local recursive function; put it in parentheses inside a `let` |
 | `Π(x : A) (y : B). C`, `A → B` | function types |
 | `(a, b)`, `A × B`, `let (a, b) = p; u` | pairs (`Pair`, constructor `Mk(fst, snd)`) |
-| `p.0`, `p.1` | field projection, counted from 1. Only works on a value whose constructor is known; otherwise `match` |
+| `p.0`, `p.1` | field projection, counted from 0 (`p.0` is the first field). Only works on a value whose constructor is known; otherwise `match` |
 | `Eq(A, a, b)`, `refl` | equality, and its proof |
 | `Id(A, t, u)` | the programs `t` and `u` have the same result and the same effect (§7) |
 | `⊤`, `False`, `P ∧ Q`, `⟨h, k⟩`, `let ⟨h, k⟩ = p; u` | true, false, conjunction, its proof, taking it apart |
