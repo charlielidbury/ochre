@@ -65,7 +65,7 @@ reject def Bad (…) : T := …                    -- negative test: must be rej
 | `fix f (x : A) : C by x := t` | local recursive function; put it in parentheses inside a `let` |
 | `Π(x : A) (y : B). C`, `A → B` | function types |
 | `(a, b)`, `A × B`, `let (a, b) = p; u` | pairs (`Pair`, constructor `Mk(fst, snd)`) |
-| `p.1`, `p.2` | field projection, counted from 1. Only works on a value whose constructor is known; otherwise `match` |
+| `p.0`, `p.1` | field projection, counted from 1. Only works on a value whose constructor is known; otherwise `match` |
 | `Eq(A, a, b)`, `refl` | equality, and its proof |
 | `Id(A, t, u)` | the programs `t` and `u` have the same result and the same effect (§7) |
 | `⊤`, `False`, `P ∧ Q`, `⟨h, k⟩`, `let ⟨h, k⟩ = p; u` | true, false, conjunction, its proof, taking it apart |
@@ -311,5 +311,5 @@ def ZeroBoth (n : Word) (k : Word) (s : &Slice(Word, n)) (h : Le(k, n)) : Unit :
 - No automation: every case split, induction and rewrite is written out. Keep lemmas small, and state them about calls so `rewrite` can find them.
 - Structural recursion only: use fuel for measures.
 - No shared borrows, and no borrows inside data (`Option<&T>` can't be written): use a precondition instead, e.g. `get_mut(m, k, h : Contains(*m, k)) : &V`.
-- `t.1` on a pair that is still unknown is an error: `match` on it, or `let (a, b) = p`.
+- `t.0` on a pair that is still unknown is an error: `match` on it, or `let (a, b) = p`.
 - `Word` is unary: concrete runs (`refl` on closed inputs) are fast only for small numbers.

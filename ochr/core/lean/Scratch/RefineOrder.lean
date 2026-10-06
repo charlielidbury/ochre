@@ -9,13 +9,13 @@ split order. `refineValS` now substitutes to a fixpoint; both blocks replay with
 ochr RefineOrder {
   def Clr (x : &Nat) : Unit := match *x { Z => (), S p => p := Z }
   def Stmt (x0 : Nat) (n1 : Nat) (n2 : Nat) : Prop :=
-    Id Prop (match x0 { Z => Clr(&n2); Id Nat (match n2 { Z => n1, S p4 => 0 }) 0, S p5 => False }) False
+    Id(Prop, (match x0 { Z => Clr(&n2); Id(Nat, (match n2 { Z => n1, S p4 => 0 }), 0), S p5 => False }), False)
 }
 -- the shrunk case as found: a borrowed scrutinee, `Clr` called through a local alias
 ochr RefineOrderAlias {
   def Clr (x : &Nat) : Unit := match *x { Z => (), S p => p := Z }
   def Stmt (x0 : &Nat) (n1 : Nat) (n2 : Nat) : Prop :=
-    Id Prop (match *x0 { Z => (let g0 = Clr; g0(&n2)); Id Nat (match n2 { Z => n1, S p4 => 0 }) 0, S p5 => False }) False
+    Id(Prop, (match *x0 { Z => (let g0 = Clr; g0(&n2)); Id(Nat, (match n2 { Z => n1, S p4 => 0 }), 0), S p5 => False }), False)
 }
 #eval IO.println (replay RefineOrder)
 #eval IO.println (replay RefineOrderAlias)

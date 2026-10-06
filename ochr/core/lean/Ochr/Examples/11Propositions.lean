@@ -20,17 +20,17 @@ ochr Propositions uses Std {
   -- result type: data, a proposition, a statement about effects.
   def absurd (h : False) : Nat := match h {}
   def absurdP (P : Prop) (h : False) : P := match h {}
-  def absurdId (x : &Nat) (h : False) : Id Unit (*x := 5) () := match h {}
+  def absurdId (x : &Nat) (h : False) : Id(Unit, *x := 5, ()) := match h {}
 
   def absurdLet (h : False) : Nat := (
     let n : Nat = match h {};
-    S n
+    S(n)
   )
 
   -- Ex falso by transport, without the match: along `0 = 1`, a motive that is `True` at `0`
   -- and `G` elsewhere carries `refl` to a proof of `G`.
-  def ExFalso (G : Prop) (h : Eq Nat Z (S Z)) : G := (
-    J(Nat, Z, S Z, λ(n : Nat) : Prop => match n { Z => ⊤, S _ => G }, h, refl)
+  def ExFalso (G : Prop) (h : Eq(Nat, Z, S(Z))) : G := (
+    J(Nat, Z, S(Z), λ(n : Nat) : Prop => match n { Z => ⊤, S _ => G }, h, refl)
   )
 
   -- No closed term has type `False`.
@@ -89,17 +89,17 @@ ochr Propositions uses Std {
 
   def FstSwap (P : Prop) (Q : Prop) (h : P ∧ Q) : Q := Fst(Q, P, Swap(P, Q, h))
 
-  def AndL2 (a : Nat) (b : Nat) (h : Eq Nat a 0 ∧ Eq Nat b 0) : Eq Nat a 0 := (
+  def AndL2 (a : Nat) (b : Nat) (h : Eq(Nat, a, 0) ∧ Eq(Nat, b, 0)) : Eq(Nat, a, 0) := (
     match h {
       Intro(l, r) => l,
     }
   )
 
   -- There is no projection on proofs, since a proof is `⋆`: match instead.
-  reject def Proj (P : Prop) (Q : Prop) (h : P ∧ Q) : P := h.1
+  reject def Proj (P : Prop) (Q : Prop) (h : P ∧ Q) : P := h.0
 
   -- A match on a proof outside tail position, then used.
-  def Snd (x : &Nat) (h : Eq Nat (*x) 0 ∧ Id Unit (AddM(x, 0)) ()) : Id Unit (AddM(x, 0)) () := (
+  def Snd (x : &Nat) (h : Eq(Nat, *x, 0) ∧ Id(Unit, AddM(x, 0), ())) : Id(Unit, AddM(x, 0), ()) := (
     let k = match h {
       Intro(a, b) => b,
     };
@@ -115,31 +115,31 @@ ochr Propositions uses Std {
   )
 
   -- An `Id` over several places computes to a conjunction, which a match takes apart.
-  def SplitId (x : &Nat) (y : &Nat) (h : Id Unit (*x := 1; *y := 2) (*x := 3; *y := 4)) : Eq Nat 1 3 := (
+  def SplitId (x : &Nat) (y : &Nat) (h : Id(Unit, *x := 1; *y := 2, *x := 3; *y := 4)) : Eq(Nat, 1, 3) := (
     match h {
       Intro(a, b) => a,
     }
   )
 
-  def TwoOwners (x : &Nat) (y : &Nat) (h : Id Unit (*x := 0; *y := 0) ()) : Eq Nat 0 (*x) := (
+  def TwoOwners (x : &Nat) (y : &Nat) (h : Id(Unit, *x := 0; *y := 0, ())) : Eq(Nat, 0, *x) := (
     match h {
       Intro(l, r) => l,
     }
   )
 
-  def TwoOwnersR (x : &Nat) (y : &Nat) (h : Id Unit (*x := 0; *y := 0) ()) : Eq Nat 0 (*y) := (
+  def TwoOwnersR (x : &Nat) (y : &Nat) (h : Id(Unit, *x := 0; *y := 0, ())) : Eq(Nat, 0, *y) := (
     match h {
       Intro(l, r) => r,
     }
   )
 
-  reject def TwoOwnersWrong (x : &Nat) (y : &Nat) (h : Id Unit (*x := 0; *y := 0) ()) : Eq Nat 0 (*y) := (
+  reject def TwoOwnersWrong (x : &Nat) (y : &Nat) (h : Id(Unit, *x := 0; *y := 0, ())) : Eq(Nat, 0, *y) := (
     match h {
       Intro(l, r) => l,
     }
   )
 
-  def ThreeOwners (x : &Nat) (y : &Nat) (z : &Nat) (h : Id Unit (*x := 0; *y := 0; *z := 0) ()) : Eq Nat 0 (*z) := (
+  def ThreeOwners (x : &Nat) (y : &Nat) (z : &Nat) (h : Id(Unit, *x := 0; *y := 0; *z := 0, ())) : Eq(Nat, 0, *z) := (
     match h {
       Intro(l, r) => match r {
         Intro(m, n) => n,
@@ -156,7 +156,7 @@ ochr Propositions uses Std {
     }
   )
 
-  def FromTrueIs : Eq Nat (FromTrue(refl)) 5 := refl
+  def FromTrueIs : Eq(Nat, FromTrue(refl), 5) := refl
 
   def Two (P : Prop) (Q : Prop) (h : P ∧ Q) : Nat := (
     match h {
@@ -164,7 +164,7 @@ ochr Propositions uses Std {
     }
   )
 
-  def TwoIs (P : Prop) (Q : Prop) (h : P ∧ Q) : Eq Nat (Two(P, Q, h)) 2 := refl
+  def TwoIs (P : Prop) (Q : Prop) (h : P ∧ Q) : Eq(Nat, Two(P, Q, h), 2) := refl
 
   -- ... or have an effect.
   def WriteIf (x : &Nat) (P : Prop) (Q : Prop) (h : P ∧ Q) : Unit := (
@@ -173,30 +173,30 @@ ochr Propositions uses Std {
     }
   )
 
-  def WriteIfId (x : &Nat) (P : Prop) (Q : Prop) (h : P ∧ Q) : Id Unit (WriteIf(x, P, Q, h)) (*x := 7) := refl
+  def WriteIfId (x : &Nat) (P : Prop) (Q : Prop) (h : P ∧ Q) : Id(Unit, WriteIf(x, P, Q, h), *x := 7) := refl
 
   reject def WriteIfLie (x : &Nat) (P : Prop) (Q : Prop) (h : P ∧ Q) :
-      Id Unit (WriteIf(x, P, Q, h)) () := refl
+      Id(Unit, WriteIf(x, P, Q, h), ()) := refl
 
   -- The lemmas above were checked at `h = ⋆`, their generic call. Here they are used at
   -- propositions about a mutated place, where the statements are computed by running
   -- `WriteIf` and `Two` directly: the two ways of computing them agree.
-  def WriteIfAt (x : &Nat) (y : &Nat) (e : Id Unit (AddM(y, 0)) ()) :
-      Id Unit (WriteIf(x, Id Unit (AddM(y, 0)) (), Eq Nat (*y) (*y), ⟨e, refl⟩)) (*x := 7) := (
-    WriteIfId(x, Id Unit (AddM(y, 0)) (), Eq Nat (*y) (*y), ⟨e, refl⟩)
+  def WriteIfAt (x : &Nat) (y : &Nat) (e : Id(Unit, AddM(y, 0), ())) :
+      Id(Unit, WriteIf(x, Id(Unit, AddM(y, 0), ()), Eq(Nat, *y, *y), ⟨e, refl⟩), *x := 7) := (
+    WriteIfId(x, Id(Unit, AddM(y, 0), ()), Eq(Nat, *y, *y), ⟨e, refl⟩)
   )
 
-  reject def WriteIfAtLie (x : &Nat) (y : &Nat) (e : Id Unit (AddM(y, 0)) ()) :
-      Id Unit (WriteIf(x, Id Unit (AddM(y, 0)) (), Eq Nat (*y) (*y), ⟨e, refl⟩)) (*x := 8) := (
-    WriteIfId(x, Id Unit (AddM(y, 0)) (), Eq Nat (*y) (*y), ⟨e, refl⟩)
+  reject def WriteIfAtLie (x : &Nat) (y : &Nat) (e : Id(Unit, AddM(y, 0), ())) :
+      Id(Unit, WriteIf(x, Id(Unit, AddM(y, 0), ()), Eq(Nat, *y, *y), ⟨e, refl⟩), *x := 8) := (
+    WriteIfId(x, Id(Unit, AddM(y, 0), ()), Eq(Nat, *y, *y), ⟨e, refl⟩)
   )
 
-  def TwoAt (y : &Nat) : Eq Nat (Two(Id Unit (AddM(y, 0)) (), ⊤, ⟨AddMZero(y), refl⟩)) 2 := (
-    TwoIs(Id Unit (AddM(y, 0)) (), ⊤, ⟨AddMZero(y), refl⟩)
+  def TwoAt (y : &Nat) : Eq(Nat, Two(Id(Unit, AddM(y, 0), ()), ⊤, ⟨AddMZero(y), refl⟩), 2) := (
+    TwoIs(Id(Unit, AddM(y, 0), ()), ⊤, ⟨AddMZero(y), refl⟩)
   )
 
-  reject def TwoAtLie (y : &Nat) : Eq Nat (Two(Id Unit (AddM(y, 0)) (), ⊤, ⟨AddMZero(y), refl⟩)) 3 := (
-    TwoIs(Id Unit (AddM(y, 0)) (), ⊤, ⟨AddMZero(y), refl⟩)
+  reject def TwoAtLie (y : &Nat) : Eq(Nat, Two(Id(Unit, AddM(y, 0), ()), ⊤, ⟨AddMZero(y), refl⟩), 3) := (
+    TwoIs(Id(Unit, AddM(y, 0), ()), ⊤, ⟨AddMZero(y), refl⟩)
   )
 
   -- A match with no arms is unreachable in a closed run, but an open one reaches it when a
@@ -218,7 +218,7 @@ ochr Propositions uses Std {
     }
   )
 
-  def GetZIs (x : &Nat) (h : IsZ(*x)) : Id Nat (let q = GetZ(&*x, h); clone(*q)) 0 := (
+  def GetZIs (x : &Nat) (h : IsZ(*x)) : Id(Nat, let q = GetZ(&*x, h); clone(*q), 0) := (
     match *x {
       Z => refl,
       S _ => match h {},
@@ -261,7 +261,7 @@ ochr Destructuring uses Std {
 
   -- A field that is a function into proofs is called like any function, and the call is a
   -- proof (hashmap-port: the pre-pass once read it as data).
-  def DCallField (P : Prop) (h : P ∧ (Π(k : Nat). Eq Nat k k)) : Eq Nat 0 0 := (
+  def DCallField (P : Prop) (h : P ∧ (Π(k : Nat). Eq(Nat, k, k))) : Eq(Nat, 0, 0) := (
     let ⟨_, f⟩ = h;
     f(0)
   )
@@ -285,7 +285,7 @@ ochr Destructuring uses Std {
     b := t
   )
 
-  def DPairSwapIs : Id (Nat × Nat) (let p = (1, 2); DPairSwap(&p); p) (2, 1) := refl
+  def DPairSwapIs : Id(Nat × Nat, let p = (1, 2); DPairSwap(&p); p, (2, 1)) := refl
 
   -- The fields have their own types, and the pattern must fit the scrutinee's type.
   reject def DWrongField (P : Prop) (Q : Prop) (h : P ∧ Q) : P := (
@@ -354,9 +354,9 @@ ochr Subsingletons uses Std, Fixtures {
   )
 
   -- ... but nothing is known about it.
-  reject def SqZero (h : Sq) : Id Nat 0 0 := (
+  reject def SqZero (h : Sq) : Id(Nat, 0, 0) := (
     match h {
-      MkSq(n) => (refl : Id Nat n 0),
+      MkSq(n) => (refl : Id(Nat, n, 0)),
     }
   )
 
@@ -378,8 +378,8 @@ ochr Subsingletons uses Std, Fixtures {
   )
 
   -- Rejected since D55, with `EffL`.
-  reject def EffLNoop (x : &Nat) (h : Or(⊤, ⊤)) : Id Unit (let t = EffL(x, h); ()) () := refl
-  reject def EffLOne (x : &Nat) (h : Or(⊤, ⊤)) : Id Unit (let t = EffL(x, h); ()) (*x := 1) := refl
+  reject def EffLNoop (x : &Nat) (h : Or(⊤, ⊤)) : Id(Unit, let t = EffL(x, h); (), ()) := refl
+  reject def EffLOne (x : &Nat) (h : Or(⊤, ⊤)) : Id(Unit, let t = EffL(x, h); (), *x := 1) := refl
 
   -- Inline, outside tail position, the arms are erased terms, each on its own copy (D68).
   -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
@@ -411,9 +411,9 @@ ochr Subsingletons uses Std, Fixtures {
     }
   )
 
-  reject def Irr (h : Or(True, True)) (k : Or(True, True)) : Eq Bool (IsL(h)) (IsL(k)) := refl
+  reject def Irr (h : Or(True, True)) (k : Or(True, True)) : Eq(Bool, IsL(h), IsL(k)) := refl
   reject def Boom : False := Irr(Inl(refl), Inr(refl))
-  reject def OrLie : Eq Bool (IsL(Inl(refl))) (IsL(Inr(refl))) := refl
+  reject def OrLie : Eq(Bool, IsL(Inl(refl)), IsL(Inr(refl))) := refl
 
   -- One constructor with a data field is not a subsingleton either: the field is not known.
   reject def Get (h : Sq) : Nat := (
@@ -422,7 +422,7 @@ ochr Subsingletons uses Std, Fixtures {
     }
   )
 
-  reject def SqIrr (h : Sq) (k : Sq) : Eq Nat (Get(h)) (Get(k)) := refl
+  reject def SqIrr (h : Sq) (k : Sq) : Eq(Nat, Get(h), Get(k)) := refl
   reject def SqBoom : False := SqIrr(MkSq(0), MkSq(1))
 }
 

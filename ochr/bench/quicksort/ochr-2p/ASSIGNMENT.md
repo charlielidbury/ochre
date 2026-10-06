@@ -20,7 +20,7 @@ In `Quicksort.lean`:
   - `SortModelSorted (n : Word) (v : Slice(Word, n)) : Sorted(n, SortModel(n, v))` (Q1 about the model);
   - `SortModelPerm (n : Word) (v : Slice(Word, n)) : Perm(n, SortModel(n, v), v)` (Q2 about the model).
 - **The program's signature** `QuickSort (n : Word) (s : &Slice(Word, n)) : Unit`.
-- **The agreement** (a hole): `QuickSortAgrees (n : Word) (s : &Slice(Word, n)) : Id Unit (QuickSort(n, s)) (*s := SortModel(n, *s))`. Read it as: running `QuickSort(n, s)` has exactly the effect of writing the model's result into `*s` (same result, same final contents).
+- **The agreement** (a hole): `QuickSortAgrees (n : Word) (s : &Slice(Word, n)) : Id(Unit, QuickSort(n, s), *s := SortModel(n, *s))`. Read it as: running `QuickSort(n, s)` has exactly the effect of writing the model's result into `*s` (same result, same final contents).
 - **Q1 and Q2 about the program** (SPEC §5), with their proofs *provided*:
   - Q1, `QuickSortSorted (n : Word) (s : &Slice(Word, n)) : (let c = *s; QuickSort(n, &c); Sorted(n, c))`: take a copy `c` of the array's contents, sort `c` in place with `QuickSort`, and then `c` is sorted;
   - Q2, `QuickSortPerm (n : Word) (s : &Slice(Word, n)) : (let c = *s; QuickSort(n, &c); Perm(n, c, *s))`: the contents afterwards are a permutation of the contents before, which are still `*s`.
@@ -87,4 +87,4 @@ The only difference is the route: here the proofs about sorting are done once on
 - **No automation.** Every case split, induction and rewrite is written by hand.
 - **Unary numbers.** `Word` is unary in the logic, so concrete runs are slow for large numbers; the tests use numbers below 100 and arrays of at most 24 elements. Ochr's `Word` has no upper bound, so there is no overflow to worry about.
 - **Borrows of parts of an array** exist only inside `WithSplit`'s function argument, and the recursion happens inside that function (a recursive call may appear inside a closure in the recursive function's body).
-- **No projections of stuck pairs**: a model function that returns a pair cannot have its components taken with `.1` in a statement until the pair is a constructor value; return separate results or `match` on the pair.
+- **No projections of stuck pairs**: a model function that returns a pair cannot have its components taken with `.0` in a statement until the pair is a constructor value; return separate results or `match` on the pair.

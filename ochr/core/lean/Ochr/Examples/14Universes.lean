@@ -40,7 +40,7 @@ ochr Universes {
   )
 
   reject def SelfAppEq (n : Nat) :
-      Id Nat (let T = Impred; let f = PolyId(&T, PolyId); let N = Nat; f(&N, n)) n := refl
+      Id(Nat, let T = Impred; let f = PolyId(&T, PolyId); let N = Nat; f(&N, n), n) := refl
 
   reject def PolyTy : Type := Π(x : &Type) (a : Nat). Nat
 }
@@ -66,25 +66,25 @@ ochr Sorts {
   def P (n : Nat) : Type₁ := match n { Z => Prop, S _ => Prop }
   def T (n : Nat) : P(n) := match n { Z => ⊤, S _ => ⊤ }
   reject def W (u : Unit) : T(Z) := refl
-  reject def f (x : &Nat) : T(Z) := (*x := S Z; W(()))
+  reject def f (x : &Nat) : T(Z) := (*x := S(Z); W(()))
   def RunK (k : Π(x : &Nat). ⊤) (x : &Nat) : Unit := (k(x); ())
-  def Stmt (k : Π(x : &Nat). ⊤) (x : &Nat) : Id Unit (RunK(k, x)) () := refl
+  def Stmt (k : Π(x : &Nat). ⊤) (x : &Nat) : Id(Unit, RunK(k, x), ()) := refl
   reject def Boom : False := (let c = 0; Stmt(f, &c))
 
-  def RunGen (k : Π(x : &Nat). ⊤) : Id Nat (let c = 0; RunK(k, &c); c) 0 := refl
+  def RunGen (k : Π(x : &Nat). ⊤) : Id(Nat, let c = 0; RunK(k, &c); c, 0) := refl
   reject def Boom2 : False := RunGen(f)
-  reject def RunIs : Id Nat (let c = 0; RunK(f, &c); c) 1 := refl
+  reject def RunIs : Id(Nat, let c = 0; RunK(f, &c); c, 1) := refl
 
-  reject def Lie4 (n : Nat) : Id Nat (let c = Z; match n {
+  reject def Lie4 (n : Nat) : Id(Nat, (let c = Z; match n {
       Z => (let q : (Π(x : &Nat). ⊤) = f; q(&c); ()),
-      S _ => (let q : (Π(x : &Nat). ⊤) = f; q(&c); ()) }; c) 1 := match n { Z => refl, S _ => refl }
+      S _ => (let q : (Π(x : &Nat). ⊤) = f; q(&c); ()) }; c), 1) := match n { Z => refl, S _ => refl }
   reject def Boom4 : False := Lie4(0)
 
   reject def TT : Prop := Π(x : &Nat). T(Z)
   reject def g2 (x : &Nat) : T(Z) := W(())
   reject def k (h : Π(x : &Nat). T(Z)) : Nat := (let c = Z; h(&c); c)
-  reject def K1 : Eq Nat (k(f)) 1 := refl
-  reject def K2 : Eq Nat (k(g2)) 0 := refl
+  reject def K1 : Eq(Nat, k(f), 1) := refl
+  reject def K2 : Eq(Nat, k(g2), 0) := refl
 }
 
 #guard Sorts.decls.length == 17

@@ -26,7 +26,7 @@ structure GVar where
   kind : VKind
   root : String       -- the variable whose accesses end this one (itself for owned)
   param : Bool := false
-  proj : Option Nat := none   -- D52: the component `.1`/`.2` of this pair-typed variable's place
+  proj : Option Nat := none   -- D52: the component `.0`/`.1` of this pair-typed variable's place
 deriving Inhabited
 
 structure Ctx where
@@ -82,11 +82,11 @@ def placesOf (Γ : Ctx) (T : GTy) : Gen (List GVar) := do
     if let some t := v.placeTy then
       if t == T then
         out := out ++ (if v.param then [v, v] else [v])
-      -- D52: a component of a pair is a Nat place (`p.1`, `p.2`), readable only when the
+      -- D52: a component of a pair is a Nat place (`p.0`, `p.1`), readable only when the
       -- pair is a known `Mk(…)` (a local built by `(a, b)`; a parameter is taken apart by
       -- `match`, there is no η rule)
       if T == .nat && t == .ind "Pair" && v.kind == .owned && !v.param then
-        out := out ++ [{ v with proj := some 1 }, { v with proj := some 2 }]
+        out := out ++ [{ v with proj := some 0 }, { v with proj := some 1 }]
   pure out
 
 def natLit (k : Nat) : STerm := .num k
@@ -100,7 +100,7 @@ def readPlace? (Γ : Ctx) (T : GTy) : Gen (Option STerm) := do
   pure (some v.place)
 
 /-- A borrow of content type `T` for a call argument or a `let`: `&p`, a reborrow
-`&*x`, a move of a borrow variable `x`, or (rarely) a borrow of a sub-place `&(p).1`.
+`&*x`, a move of a borrow variable `x`, or (rarely) a borrow of a sub-place `&(p).0`.
 `avoid` are roots already borrowed by the same call. Returns the term and its root. -/
 def borrowOf? (Γ : Ctx) (T : GTy) (avoid : List String) : Gen (Option (STerm × String)) := do
   -- (inside a λ the context has no captured borrows already: `lamCtx`)
@@ -108,14 +108,14 @@ def borrowOf? (Γ : Ctx) (T : GTy) (avoid : List String) : Gen (Option (STerm ×
   if ps.isEmpty then return none
   let v ← pick ps
   touch Γ v.proot false
-  if v.proj.isSome then return some (.amp v.place, v.proot)     -- `&(p).1`, a pair component
+  if v.proj.isSome then return some (.amp v.place, v.proot)     -- `&(p).0`, a pair component
   if v.kind == .bvar then
     if ← chance 30 then
       kill v.name
       return some (.ident v.name, v.root)
     return some (.amp (.deref (.ident v.name)), v.name)
   if T == .nat && (← chance 8) then
-    return some (.amp (.proj 1 v.place), v.proot)
+    return some (.amp (.proj 0 v.place), v.proot)
   pure (some (.amp v.place, v.proot))
 
 /-- The constructors of a declared inductive, with field types, as the generator sees them. -/

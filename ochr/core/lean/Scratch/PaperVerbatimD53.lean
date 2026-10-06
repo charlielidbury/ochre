@@ -18,14 +18,14 @@ numbers are `Word`s), and `Scratch/paper_sweep.py` covers them. -/
 ochr PaperMovesS2 {
   def AddM (x : &Nat) (y : Nat) : Unit by x :=
     match *x { Z => *x := y, S p => AddM(&p, y) }
-  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x :=
+  def AddMZero (x : &Nat) : Id(Unit, AddM(x, 0), ()) by x :=
     match *x { Z => refl, S p => AddMZero(&p) }
   def Add (x : Nat) (y : Nat) : Nat := AddM(&x, y); x
-  def Add23 : Id Nat (Add(2, 3)) 5 := refl
-  def AddZero (x : Nat) : Id Nat (Add(x, 0)) x := AddMZero(&x)
+  def Add23 : Id(Nat, Add(2, 3), 5) := refl
+  def AddZero (x : Nat) : Id(Nat, Add(x, 0), x) := AddMZero(&x)
   def TailM (x : &Nat) : &Nat by x := match *x { Z => x, S p => TailM(&p) }
   def AddM' (x : &Nat) (y : Nat) : Unit := let t = TailM(x); *t := y
-  def AddMEq (x : &Nat) (y : Nat) : Id Unit (AddM(x, y)) (AddM'(x, y)) by x :=
+  def AddMEq (x : &Nat) (y : Nat) : Id(Unit, AddM(x, y), AddM'(x, y)) by x :=
     match *x { Z => refl, S p => AddMEq(&p, y) }
   def Le (a : Nat) (b : Nat) : Prop by a :=
     match a { Z => True, S a' => match b { Z => False, S b' => Le(a', b') } }
@@ -55,10 +55,10 @@ ochr PaperMovesTreesNat uses Std {
                Node(l, v, r) => let b = Lt(k, v);
                                 match b { true => InsertM(&l, k), false => InsertM(&r, k) } }
   reject def Insert (t : Tree) (k : Nat) : Tree := InsertM(&t, k); t
-  def AddMS (x : &Nat) (y : Nat) : Id Unit (AddM(x, S y)) (AddM(&*x, y); *x := S *x) by x := match *x { Z => refl, S p => AddMS(&p, y) }
-  def AddS (x : Nat) (y : Nat) : Id Nat (Add(x, S y)) (S (Add(x, y))) := AddMS(&x, y)
-  def Size (t : Tree) : Nat by t := match t { Leaf => 0, Node(l, v, r) => S (Add(Size(l), Size(r))) }
-  reject def SizeInsert (t : Tree) (k : Nat) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :=
+  def AddMS (x : &Nat) (y : Nat) : Id(Unit, AddM(x, S(y)), AddM(&*x, y); *x := S(*x)) by x := match *x { Z => refl, S p => AddMS(&p, y) }
+  def AddS (x : Nat) (y : Nat) : Id(Nat, Add(x, S(y)), S(Add(x, y))) := AddMS(&x, y)
+  def Size (t : Tree) : Nat by t := match t { Leaf => 0, Node(l, v, r) => S(Add(Size(l), Size(r))) }
+  reject def SizeInsert (t : Tree) (k : Nat) : Id(Nat, S(Size(t)), Size(Insert(t, k))) by t :=
     match t { Leaf => refl,
               Node(l, v, r) => let b = Lt(k, v); match b {
                 true  => rewrite SizeInsert(l, k) in refl,
@@ -75,10 +75,10 @@ ochr PaperMovesTreesWord uses Std {
                Node(l, v, r) => let b = Lt(k, v);
                                 match b { true => InsertM(&l, k), false => InsertM(&r, k) } }
   def Insert (t : Tree) (k : Word) : Tree := InsertM(&t, k); t
-  def AddMS (x : &Nat) (y : Nat) : Id Unit (AddM(x, S y)) (AddM(&*x, y); *x := S *x) by x := match *x { Z => refl, S p => AddMS(&p, y) }
-  def AddS (x : Nat) (y : Nat) : Id Nat (Add(x, S y)) (S (Add(x, y))) := AddMS(&x, y)
-  def Size (t : Tree) : Nat by t := match t { Leaf => 0, Node(l, v, r) => S (Add(Size(l), Size(r))) }
-  def SizeInsert (t : Tree) (k : Word) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :=
+  def AddMS (x : &Nat) (y : Nat) : Id(Unit, AddM(x, S(y)), AddM(&*x, y); *x := S(*x)) by x := match *x { Z => refl, S p => AddMS(&p, y) }
+  def AddS (x : Nat) (y : Nat) : Id(Nat, Add(x, S(y)), S(Add(x, y))) := AddMS(&x, y)
+  def Size (t : Tree) : Nat by t := match t { Leaf => 0, Node(l, v, r) => S(Add(Size(l), Size(r))) }
+  def SizeInsert (t : Tree) (k : Word) : Id(Nat, S(Size(t)), Size(Insert(t, k))) by t :=
     match t { Leaf => refl,
               Node(l, v, r) => let b = Lt(k, v); match b {
                 true  => rewrite SizeInsert(l, k) in refl,
@@ -114,15 +114,13 @@ ochr PaperMovesG uses Std {
 -- §8.2: the keys are `Word`s.
 ochr PaperMovesHM uses Std, HashMap, HashMapLookup {
   reject def InsertFindOtherPrinted (hm : &HashMap) (k : Nat) (v : Nat) (k2 : Nat)
-                (h : Eq Bool (EqB(k, k2)) false) :
-    Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k2))
-           (let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r) :=
+                (h : Eq(Bool, EqB(k, k2), false)) :
+    Id(Opt, InsertNoResize(&*hm, k, v); Find(*hm, k2), let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r) :=
   match *hm { HM(n, len, slots) =>
     split BInsert in SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h) }
   def InsertFindOtherNew (hm : &HashMap) (k : Word) (v : Nat) (k2 : Word)
-                (h : Eq Bool (EqB(k, k2)) false) :
-    Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k2))
-           (let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r) :=
+                (h : Eq(Bool, EqB(k, k2), false)) :
+    Id(Opt, InsertNoResize(&*hm, k, v); Find(*hm, k2), let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r) :=
   match *hm { HM(n, len, slots) =>
     split BInsert in SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h) }
 }
@@ -130,19 +128,19 @@ ochr PaperMovesHM uses Std, HashMap, HashMapLookup {
 
 -- Unchanged under moves: §5, §6 and the appendix notes' programs, verbatim.
 ochr PaperMovesUnchanged uses Std {
-  def WriteNeq (x : &Nat) (e : Id Unit (*x := 0) (*x := 1)) : Nat := match e {}
-  reject def OwnedLocal (x : Nat) : Id Unit (x := 6) () := refl
-  def LetZ (x : Nat) : Nat := let z = (let y = &x; *y := 2; x); let h : Id Nat z 2 = refl; z
-  reject def LamWrite : (Π(x : &Nat). Id Nat (*x) 5) := λ(x : &Nat) : Id Nat (*x) 5 => (*x := 5; refl)
+  def WriteNeq (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : Nat := match e {}
+  reject def OwnedLocal (x : Nat) : Id(Unit, x := 6, ()) := refl
+  def LetZ (x : Nat) : Nat := let z = (let y = &x; *y := 2; x); let h : Id(Nat, z, 2) = refl; z
+  reject def LamWrite : (Π(x : &Nat). Id(Nat, *x, 5)) := λ(x : &Nat) : Id(Nat, *x, 5) => (*x := 5; refl)
   def U (n : Nat) : Type := match n { Z => Prop, S _ => Prop }
   def V (n : Nat) : U(n) := match n { Z => ⊤, S _ => ⊤ }
-  def LieL (n : Nat) : Id Nat (let h = (λ(x : &Nat) : U(n) => (*x := S Z; V(n))); let c = Z; h(&c); c) (S Z) := refl
-  reject def BoomL : Eq Nat Z (S Z) := LieL(Z)
-  reject def LieB (n : Nat) : Id Nat (let c = Z; let T = match n { Z => (c := S Z; ⊤), S _ => (c := S Z; ⊤) }; c) Z := refl
-  reject def LieH (g : Π(y : Nat). V(Z)) : Id Nat (let c = Z; let h = g(0); (c := S Z; h); c) (S Z) := refl
+  def LieL (n : Nat) : Id(Nat, let h = (λ(x : &Nat) : U(n) => (*x := S(Z); V(n))); let c = Z; h(&c); c, S(Z)) := refl
+  reject def BoomL : Eq(Nat, Z, S(Z)) := LieL(Z)
+  reject def LieB (n : Nat) : Id(Nat, (let c = Z; let T = match n { Z => (c := S(Z); ⊤), S _ => (c := S(Z); ⊤) }; c), Z) := refl
+  reject def LieH (g : Π(y : Nat). V(Z)) : Id(Nat, let c = Z; let h = g(0); (c := S(Z); h); c, S(Z)) := refl
   def PickX (x : &Nat) (y : &Nat) : &Nat := x
   def PickY (x : &Nat) (y : &Nat) : &Nat := y
-  def PF (x : &Nat) (e : Id Unit (*x := 0) (*x := 1)) : False := e
+  def PF (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
   reject def QF (g : Π(n : Nat). &Nat) : False := PF(g(5), refl)
   inductive Or (P : Prop) (Q : Prop) : Prop := Inl(p : P) | Inr(q : Q)
   reject def IsL (h : Or(True, True)) : Bool := match h { Inl(p) => true, Inr(q) => false }
@@ -157,8 +155,8 @@ ochr PaperMovesUnchanged uses Std {
 ochr PaperMovesNotes45 {
   reject inductive Bad : Type := MkBad(f : Π(x : Bad). False)
   inductive Box := MkBox(x : Nat)
-  def Double (n : Nat) : Nat by n := match n { Z => Z, S p => S (S (Double(p))) }
-  reject def Esc (n : Nat) (m : Box) : Id Nat (let b = Double(n); match b { Z => 0, S _ => 1 }) (match m { MkBox(x) => match x { Z => 0, S _ => 1 } }) :=
+  def Double (n : Nat) : Nat by n := match n { Z => Z, S p => S(S(Double(p))) }
+  reject def Esc (n : Nat) (m : Box) : Id(Nat, (let b = Double(n); match b { Z => 0, S _ => 1 }), (match m { MkBox(x) => match x { Z => 0, S _ => 1 } })) :=
     match m { MkBox(x) => match x { Z => refl, S _ => refl } }
 }
 #guard (run "PaperMovesNotes45" PaperMovesNotes45).allAsExpected

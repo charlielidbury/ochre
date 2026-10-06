@@ -26,7 +26,7 @@ ochr Functions uses Std, Fixtures {
     f(())
   )
 
-  def TwiceNoop (f : Π(_ : Unit). Unit) : Id Unit (Twice(f)) () := refl
+  def TwiceNoop (f : Π(_ : Unit). Unit) : Id(Unit, Twice(f), ()) := refl
 
   -- With a borrow argument, `f` may write, and what it leaves is a sealed program. Moving
   -- `x` into the second call instead of reborrowing it makes no difference.
@@ -35,10 +35,10 @@ ochr Functions uses Std, Fixtures {
     f(&*x)
   )
 
-  def TwiceMMove (f : Π(_ : &Nat). Unit) (x : &Nat) : Id Unit (TwiceM(f, x)) (f(&*x); f(x)) := refl
+  def TwiceMMove (f : Π(_ : &Nat). Unit) (x : &Nat) : Id(Unit, TwiceM(f, x), f(&*x); f(x)) := refl
 
   -- Instantiated with a function that adds zero, `TwiceM` does nothing, by induction ...
-  def TwiceMZero (x : &Nat) : Id Unit (TwiceM(λ(z : &Nat) : Unit => AddM(z, 0), x)) () by x := (
+  def TwiceMZero (x : &Nat) : Id(Unit, TwiceM(λ(z : &Nat) : Unit => AddM(z, 0), x), ()) by x := (
     match *x {
       Z => refl,
       S p => TwiceMZero(&p),
@@ -48,12 +48,12 @@ ochr Functions uses Std, Fixtures {
   -- ... or by citing the lemma twice. A cited lemma runs on a private copy, so it leaves `*x`
   -- alone; `J` composes the two instances. `Add(s, 0)` closes off into the same sealed program
   -- as `AddM(&*x, 0)`.
-  def TwiceMZero' (x : &Nat) : Id Unit (TwiceM(λ(z : &Nat) : Unit => AddM(z, 0), x)) () := (
+  def TwiceMZero' (x : &Nat) : Id(Unit, TwiceM(λ(z : &Nat) : Unit => AddM(z, 0), x), ()) := (
     let s = clone(*x);
     let h1 = AddMZero(&*x);
     AddM(&*x, 0);
     let h2 = AddMZero(&*x);
-    J(Nat, Add(s, 0), s, λ(z : Nat) : Prop => Id Nat (Add(Add(s, 0), 0)) z, h1, h2)
+    J(Nat, Add(s, 0), s, λ(z : Nat) : Prop => Id(Nat, Add(Add(s, 0), 0), z), h1, h2)
   )
 
   -- `A → B` is a Π-type with an unnamed parameter.
@@ -61,25 +61,23 @@ ochr Functions uses Std, Fixtures {
 
   -- ## Comparing functions
   -- Functions are compared by what their generic calls do, not by their code.
-  def Conv : Eq (Π(x : &Nat). Unit) (λ(x : &Nat) : Unit => ()) (λ(x : &Nat) : Unit => (let y = 0; ())) := refl
+  def Conv : Eq(Π(x : &Nat). Unit, (λ(x : &Nat) : Unit => ()), (λ(x : &Nat) : Unit => (let y = 0; ()))) := refl
 
   def ConvW :
-      Eq (Π(x : &Nat). Unit)
-        (λ(x : &Nat) : Unit => *x := S *x)
-        (λ(x : &Nat) : Unit => (let y = S *x; *x := y)) := (
+      Eq(Π(x : &Nat). Unit, (λ(x : &Nat) : Unit => *x := S(*x)), (λ(x : &Nat) : Unit => (let y = S(*x); *x := y))) := (
     refl
   )
 
   -- A closure that captures a variable has a closed Π-type ...
   def Apply (f : Π(n : Nat). Nat) (n : Nat) : Nat := f(n)
   def Cap (m : Nat) : Nat := Apply(λ(n : Nat) : Nat => Add(n, clone(m)), 0)
-  def CapEq (m : Nat) : Id Nat (Apply(λ(n : Nat) : Nat => Add(n, m), 0)) (Add(0, m)) := refl
+  def CapEq (m : Nat) : Id(Nat, Apply(λ(n : Nat) : Nat => Add(n, m), 0), Add(0, m)) := refl
 
   -- A closure is stored in data only through a type parameter, as in `Box(Π(n : Nat). Nat)`
   -- (paper §4.3), and one returning a borrow too (the model's `Box(Π(y : &Nat). &Nat)`) ...
   def BoxFn : Box(Π(n : Nat). Nat) := MkBox(λ(n : Nat) : Nat => n)
   def UseBoxFn (b : Box(Π(n : Nat). Nat)) : Nat := match b { MkBox(f) => f(0) }
-  def UseBoxFnIs : Id Nat (UseBoxFn(MkBox(λ(n : Nat) : Nat => S n))) 1 := refl
+  def UseBoxFnIs : Id(Nat, UseBoxFn(MkBox(λ(n : Nat) : Nat => S(n))), 1) := refl
   def BoxBorrowFn (b : Box(Π(y : &Nat). &Nat)) (x : &Nat) : Unit := match b { MkBox(g) => (let r = g(x); *r := 0) }
 
   -- ... never as a field of its own (fields are first-order, D36).
@@ -92,19 +90,19 @@ ochr Functions uses Std, Fixtures {
   def P3 (u : Unit) : Prop := UseP(λ(a : Nat) : Prop => ⊤)
 
   -- ... and lemma statements are compared by what they compute to, under their binders.
-  def ZeroAdd (n : Nat) : Id Nat (Add(0, n)) n := refl
-  def UseRefl (h : Π(n : Nat). Id Nat n n) : Unit := ()
+  def ZeroAdd (n : Nat) : Id(Nat, Add(0, n), n) := refl
+  def UseRefl (h : Π(n : Nat). Id(Nat, n, n)) : Unit := ()
   def PassZeroAdd (u : Unit) : Unit := UseRefl(ZeroAdd)
 
   -- Under a borrow binder, one generic place serves both sides.
-  def UseA (h : Π(x : &Nat). Id Unit (AddM(x, 0)) ()) : Unit := ()
-  def PassA (h : Π(y : &Nat). Id Unit (let t = 0; AddM(y, t)) ()) : Unit := UseA(h)
+  def UseA (h : Π(x : &Nat). Id(Unit, AddM(x, 0), ())) : Unit := ()
+  def PassA (h : Π(y : &Nat). Id(Unit, let t = 0; AddM(y, t), ())) : Unit := UseA(h)
 
   -- Statements that differ at the generic arguments stay different.
-  reject def PassStuck (h : Π(n : Nat). Id Nat (Add(n, 0)) n) : Unit := UseRefl(h)
-  reject def PassWrong (h : Π(n : Nat). Id Nat n 0) : Unit := UseRefl(h)
-  def UseW (h : Π(x : &Nat). Id Unit (*x := 0) (*x := 0)) : Unit := ()
-  reject def PassW (h : Π(x : &Nat). Id Unit (*x := 0) (*x := 1)) : Unit := UseW(h)
+  reject def PassStuck (h : Π(n : Nat). Id(Nat, Add(n, 0), n)) : Unit := UseRefl(h)
+  reject def PassWrong (h : Π(n : Nat). Id(Nat, n, 0)) : Unit := UseRefl(h)
+  def UseW (h : Π(x : &Nat). Id(Unit, *x := 0, *x := 0)) : Unit := ()
+  reject def PassW (h : Π(x : &Nat). Id(Unit, *x := 0, *x := 1)) : Unit := UseW(h)
   reject def PassDom (f : Π(n : Unit). Nat) : Nat := Apply(f, 0)
 
   -- Two functions returning a borrow into different arguments ...
@@ -113,40 +111,38 @@ ochr Functions uses Std, Fixtures {
 
   -- ... and a property that tells them apart: writing through the result changes `*x`.
   def Q (h : Π(x : &Nat) (y : &Nat). &Nat) : Prop := (
-    Π(x : &Nat) (y : &Nat). Id Unit (let r = h(x, y); *r := S Z) (*x := S Z)
+    Π(x : &Nat) (y : &Nat). Id(Unit, let r = h(x, y); *r := S(Z), *x := S(Z))
   )
 
   def TX : Q(PickX) := (
     let h = PickX;
-    λ(x : &Nat) (y : &Nat) : Id Unit (let r = h(x, y); *r := S Z) (*x := S Z) => refl
+    λ(x : &Nat) (y : &Nat) : Id(Unit, let r = h(x, y); *r := S(Z), *x := S(Z)) => refl
   )
 
   -- ## What goes wrong without these rules
   -- Compared by their results only (switch `closureConv`), `λx. ()` and `λx. (*x := 1)` would
   -- be equal, and `J` along that equation would prove `1 = 0` (D30).
-  def P (h : Π(x : &Nat). Unit) : Prop := Id Nat (let c = Z; h(&c); c) Z
+  def P (h : Π(x : &Nat). Unit) : Prop := Id(Nat, let c = Z; h(&c); c, Z)
 
-  reject def Boom3 : Eq Nat (S Z) Z := (
-    J(Π(x : &Nat). Unit, λ(x : &Nat) : Unit => (), λ(x : &Nat) : Unit => *x := S Z, P, refl, refl)
+  reject def Boom3 : Eq(Nat, S(Z), Z) := (
+    J(Π(x : &Nat). Unit, λ(x : &Nat) : Unit => (), λ(x : &Nat) : Unit => *x := S(Z), P, refl, refl)
   )
 
   -- Equality of functions is the least relation closed under the rules: two closures that
   -- are stuck at their generic calls are not identified. Read coinductively, these two would
   -- be equal, and `J` would prove `1 = 0`.
   reject def CoInd :
-      Eq (Π(x : &Nat). Unit)
-        (λ(x : &Nat) : Unit => match *x { Z => (), S _ => *x := Z })
-        (λ(x : &Nat) : Unit => match *x { Z => *x := S Z, S _ => () }) := (
+      Eq(Π(x : &Nat). Unit, (λ(x : &Nat) : Unit => match *x { Z => (), S _ => *x := Z }), (λ(x : &Nat) : Unit => match *x { Z => *x := S(Z), S _ => () })) := (
     refl
   )
 
   -- Observing a returned borrow only through its current contents (switch `obsBorrow`) would
   -- identify `PickX` and `PickY`, since neither writes anything, and transport would prove
   -- `0 = 1 ∧ 1 = 0` (D38).
-  reject def ConvPick : Eq (Π(x : &Nat) (y : &Nat). &Nat) PickX PickY := refl
+  reject def ConvPick : Eq(Π(x : &Nat) (y : &Nat). &Nat, PickX, PickY) := refl
   reject def TY : Q(PickY) := J(Π(x : &Nat) (y : &Nat). &Nat, PickX, PickY, Q, refl, TX)
 
-  reject def BoomX4 : Eq Nat 0 1 ∧ Eq Nat 1 0 := (
+  reject def BoomX4 : Eq(Nat, 0, 1) ∧ Eq(Nat, 1, 0) := (
     let c = Z;
     let d = Z;
     TY(&c, &d)
@@ -161,7 +157,7 @@ ochr Functions uses Std, Fixtures {
   def P0 : Type₁ := Prop
 
   def H (x : &Nat) : P0 := (
-    *x := S Z;
+    *x := S(Z);
     ⊤
   )
 
@@ -172,9 +168,9 @@ ochr Functions uses Std, Fixtures {
     c
   )
 
-  def RunGGen (f : Π(x : &Nat). Prop) : Id Nat (RunG(f)) Z := refl
+  def RunGGen (f : Π(x : &Nat). Prop) : Id(Nat, RunG(f), Z) := refl
   reject def Boom : False := RunGGen(H)
-  reject def RunGH : Id Nat (RunG(H)) 1 := refl
+  reject def RunGH : Id(Nat, RunG(H), 1) := refl
 
   def IdF (f : Π(x : &Nat). Prop) : (Π(x : &Nat). Prop) := f
 
@@ -184,7 +180,7 @@ ochr Functions uses Std, Fixtures {
     c
   )
 
-  def RunIGen (f : Π(x : &Nat). Prop) : Id Nat (RunI(f)) Z := refl
+  def RunIGen (f : Π(x : &Nat). Prop) : Id(Nat, RunI(f), Z) := refl
   reject def BoomI : False := RunIGen(H)
 
   -- The pre-pass reads `f`'s class above from its declared type, which is a Π-type as
@@ -203,7 +199,7 @@ ochr Functions uses Std, Fixtures {
     c
   )
 
-  def RunPowGen (p : RefPred(0)) : Id Nat (RunPow(p)) Z := refl
+  def RunPowGen (p : RefPred(0)) : Id(Nat, RunPow(p), Z) := refl
   reject def BoomPow : False := RunPowGen(H)
 
   -- The same for the class "returns proofs", with a codomain `V(Z)` that computes to `⊤`.
@@ -216,9 +212,9 @@ ochr Functions uses Std, Fixtures {
     c
   )
 
-  def RunPGen (f : Π(x : &Nat). ⊤) : Id Nat (RunP(f)) Z := refl
+  def RunPGen (f : Π(x : &Nat). ⊤) : Id(Nat, RunP(f), Z) := refl
   reject def WV (u : Unit) : V(Z) := refl
-  reject def BoomP : False := RunPGen(λ(x : &Nat) : V(Z) => (*x := S Z; WV(())))
+  reject def BoomP : False := RunPGen(λ(x : &Nat) : V(Z) => (*x := S(Z); WV(())))
 
   -- `UU(n)` is `Unit` only by computation, yet `H2` passes where a `Π(x : &Nat). Unit` is
   -- expected (D54 compares only whether a function returns a borrow). Before η for `Unit`
@@ -233,11 +229,11 @@ ochr Functions uses Std, Fixtures {
   )
 
   def H2 (x : &Nat) : UU(Z) := (
-    *x := S Z;
+    *x := S(Z);
     ()
   )
 
-  def RunU (f : Π(x : &Nat). Unit) (n : Nat) : Id Unit (let c = n; f(&c)) () := refl
+  def RunU (f : Π(x : &Nat). Unit) (n : Nat) : Id(Unit, let c = n; f(&c), ()) := refl
   def RunUH (n : Nat) : ⊤ := RunU(H2, n)
 }
 

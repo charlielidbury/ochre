@@ -27,7 +27,7 @@ Ochr is a dependent type theory in the style of Lean's kernel @theory-of-lean, e
       grid.cell(colspan: 2, align: center, $kw("inductive") ty("And") (P : ty("Prop")) (Q : ty("Prop")) : ty("Prop") := ty("Intro")(l : P, r : Q)$),
     ))
   }),
-  caption: [Syntax of Ochr, and the library declarations. A declaration has sort $s in {ty("Type")_0, ty("Prop")}$ and $n >= 0$ constructors. $ty("S") t$ abbreviates $ty("S")(t)$; $()$, $A times B$, $(a, b)$, $top$, $kw("refl")$, $P and Q$ and $chevron.l h, k chevron.r$ are notation for $ty("Tt")$, $ty("Pair")(A, B)$, $ty("Mk")(a, b)$, $ty("True")$, $ty("I")$, $ty("And")(P, Q)$ and $ty("Intro")(h, k)$, and $p.1$, $p.2$ name a place's first and second fields. A $kw("fix")$ without $kw("by")$ is an ordinary $lambda$.],
+  caption: [Syntax of Ochr, and the library declarations. A declaration has sort $s in {ty("Type")_0, ty("Prop")}$ and $n >= 0$ constructors. $()$, $A times B$, $(a, b)$, $top$, $kw("refl")$, $P and Q$ and $chevron.l h, k chevron.r$ are notation for $ty("Tt")$, $ty("Pair")(A, B)$, $ty("Mk")(a, b)$, $ty("True")$, $ty("I")$, $ty("And")(P, Q)$ and $ty("Intro")(h, k)$, and $p.0$, $p.1$ name a place's first and second fields. A $kw("fix")$ without $kw("by")$ is an ordinary $lambda$.],
 ) <fig-syntax>
 
 @fig-syntax gives the syntax. Types and terms share one grammar, as in any pure type system. Functions are n-ary and calls are saturated: a partial application would be a closure capturing its arguments, and a closure capturing a borrow is outside the core (@sec-eval-closures). A recursive function names the parameter it recurses on.
@@ -36,11 +36,11 @@ Ochr is a dependent type theory in the style of Lean's kernel @theory-of-lean, e
 
 `Eq` is the one primitive proposition. It is not an inductive family, for two reasons: it computes by the structure of the values it compares, as in observational type theory (@sec-obs), and the core has no indexed families.
 
-The imperative fragment is small. A _place_ `p` is a variable, a dereference `*p`, or a field `p.g` of a constructor value, such as the predecessor field `p.1` of a number. A place used as a term reads it; `&p` borrows it; `p := t` assigns it; `let x = t; u` introduces a new place `x`. The pattern variables of a `match` are _sub-places_: in `match p { S y => u }`, `y` stands for `p.1`, and nothing is copied, so a read of `y` after `p` is reassigned sees the new content, where a Rust binding would have taken the old value or rejected the assignment.
+The imperative fragment is small. A _place_ `p` is a variable, a dereference `*p`, or a field `p.g` of a constructor value, such as the predecessor field `p.0` of a number. A place used as a term reads it; `&p` borrows it; `p := t` assigns it; `let x = t; u` introduces a new place `x`. The pattern variables of a `match` are _sub-places_: in `match p { S y => u }`, `y` stands for `p.0`, and nothing is copied, so a read of `y` after `p` is reassigned sees the new content, where a Rust binding would have taken the old value or rejected the assignment.
 
 `&A` is the type of a mutable borrow of an `A`, and `A` must be in `Type₀`: data, a function type into data or functions, or a type variable declared in `Type₀`. Propositions and universes are not, since `Prop : Type₁` and `Type₀ : Type₁` (universes are not cumulative). `&` occurs only at the top of a type as written, as the type of a variable, parameter or result; never inside another type, and never as the result of computing one. So there are no borrows stored in data structures and no borrows of borrows. Shared borrows, loops and `'static` borrows are absent (@fig-scope), and recursion is structural.
 
-The propositional fragment is Lean's: `Prop` is an impredicative universe with definitional proof irrelevance, erased at runtime, and `Eq` is its equality. `Id A t u` compares two _computations_ `t` and `u` of type `A`; it is a derived proposition whose computation rule is observation (@sec-obs).
+The propositional fragment is Lean's: `Prop` is an impredicative universe with definitional proof irrelevance, erased at runtime, and `Eq` is its equality. `Id(A, t, u)` compares two _computations_ `t` and `u` of type `A`; it is a derived proposition whose computation rule is observation (@sec-obs).
 
 == Values and environments
 
@@ -59,4 +59,4 @@ The evaluator manipulates the values of @fig-values. Following the low-level bor
 
 Neutral values are stuck computations. An _abstract value_ `σ` is an unknown value of a known type, playing the role of a free variable in Lean's kernel: the checker introduces one for each parameter of a definition it checks, and for each field that a case split or a generalisation exposes; concrete evaluation never introduces one. A _sealed program_ `⌈t⌉` is a closed program whose run is stuck on an abstract value. A value is _borrow-free_ if it contains no borrow and no live loan.
 
-An environment Ω is a stack of frames, one per active call, each binding variables to values. `content(Ω, p)` follows a place through variables, borrows (`*p` looks inside `borrow_ℓ v` at `v`) and fields (`p.1` looks inside `S v` at `v`). We write `Ω[p ↦ v]` for the environment with the content of `p` replaced.
+An environment Ω is a stack of frames, one per active call, each binding variables to values. `content(Ω, p)` follows a place through variables, borrows (`*p` looks inside `borrow_ℓ v` at `v`) and fields (`p.0` looks inside `S(v)` at `v`). We write `Ω[p ↦ v]` for the environment with the content of `p` replaced.

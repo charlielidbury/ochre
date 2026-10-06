@@ -303,8 +303,8 @@ partial def toPlace (ctx : Ctx) : STerm → R Place
     | some p => pure p
     | none => throw s!"{x} is not a place (not a local variable)"
   | .deref t => return .deref (← toPlace ctx t)
-  | .proj 1 t => return .fst (← toPlace ctx t)
-  | .proj 2 t => return .snd (← toPlace ctx t)
+  | .proj 0 t => return .fst (← toPlace ctx t)
+  | .proj 1 t => return .snd (← toPlace ctx t)
   | t => throw s!"{t.show} is not a place (a variable, *p, or a field of a place): bind it first, let v = {t.show}; …"
 
 /-- A place whose root is a dereferenced call, `*f(ā)` (also `(*f(ā)).1`, `**f(ā)`): the call,
@@ -435,7 +435,7 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
   | .proj i a =>
     if let some t' := withCallRoot t id then return ← resolve ctx ty t'
     if isPlace ctx t then return .place (← toPlace ctx t)
-    else if i == 1 then return .fst (← resolve ctx false a) else return .snd (← resolve ctx false a)
+    else if i == 0 then return .fst (← resolve ctx false a) else return .snd (← resolve ctx false a)
   | .amp a =>
     if ty then return .ref (← resolve ctx true a)
     if let some t' := withCallRoot a .amp then return ← resolve ctx ty t'

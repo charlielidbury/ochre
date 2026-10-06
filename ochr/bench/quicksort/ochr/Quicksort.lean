@@ -26,7 +26,7 @@ ochr QuicksortSpec uses ArrayLemmas {
   -- count(x, a) is the library's `Count(x, n, a)`: how many elements of `a` equal `x`, by
   -- recursion over the elements. perm(a, b) :⟺ ∀ x. count(x, a) = count(x, b).
   def Perm (n : Word) (a : Slice(Word, n)) (b : Slice(Word, n)) : Prop := (
-    Π(x : Word). Eq Word (Count(x, n, a)) (Count(x, n, b))
+    Π(x : Word). Eq(Word, Count(x, n, a), Count(x, n, b))
   )
 }
 

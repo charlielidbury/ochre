@@ -128,30 +128,30 @@ ochr FuzzLib {
   inductive ExN : Prop := Wit(n : Nat, e : ⊤)
   def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y, S p => AddM(&p, y) }
   def Add (x : Nat) (y : Nat) : Nat := AddM(&x, y); x
-  def AddMZeroL (x : &Nat) : Id Unit (AddM(x, 0)) () by x := match *x { Z => refl, S p => AddMZeroL(&p) }
+  def AddMZeroL (x : &Nat) : Id(Unit, AddM(x, 0), ()) by x := match *x { Z => refl, S p => AddMZeroL(&p) }
   def TailM (x : &Nat) : &Nat by x := match *x { Z => x, S p => TailM(&p) }
   def Pick (n : Nat) (x : &Nat) (y : &Nat) : &Nat := match n { Z => x, S _ => y }
   def PickX (x : &Nat) (y : &Nat) : &Nat := x
   def PickY (x : &Nat) (y : &Nat) : &Nat := y
   def Keep (x : &Nat) : Unit := ()
-  def Double (n : Nat) : Nat by n := match n { Z => Z, S p => S (S (Double(p))) }
+  def Double (n : Nat) : Nat by n := match n { Z => Z, S p => S(S(Double(p))) }
   def IsZ (n : Nat) : B2 := match n { Z => T, S _ => F }
   def G1 (x : &Nat) (n : Nat) : Unit := match n { Z => (), S _ => *x := 0 }
   def Clr (x : &Nat) : Unit := match *x { Z => (), S p => p := Z }
-  def Inc (x : &Nat) : Unit := *x := S *x
+  def Inc (x : &Nat) : Unit := *x := S(*x)
   def U (n : Nat) : Type₁ := match n { Z => Prop, S _ => Prop }
   def V (n : Nat) : U(n) := match n { Z => ⊤, S _ => ⊤ }
-  def W (x : &Nat) (n : Nat) : U(n) := *x := S Z; V(n)
+  def W (x : &Nat) (n : Nat) : U(n) := *x := S(Z); V(n)
   -- `reject def`: rejected by the checker since D53 (MkF, Clo, CapN: a closure moves out a
   -- capture) and D55 (WV, FV, GV, TT: `V(Z)` is a type only by computation); the harness
   -- leaves them out either way (`prepare`)
-  reject def MkF (n : Nat) : (Π(x : &Nat). U(n)) := λ(x : &Nat) : U(n) => (*x := S Z; V(n))
+  reject def MkF (n : Nat) : (Π(x : &Nat). U(n)) := λ(x : &Nat) : U(n) => (*x := S(Z); V(n))
   def Le (a : Nat) (b : Nat) : Prop by a := match a { Z => ⊤, S a' => match b { Z => False, S b' => Le(a', b') } }
   def Lemma (u : Unit) : ⊤ := refl
   def F5 (x : &Nat) : Prop := *x := 5; ⊤
   def LastM (xs : &L) : &L by xs := match *xs { Nil => xs, Cons(h, t) => LastM(&t) }
   def AppendM (xs : &L) (ys : L) : Unit by xs := match *xs { Nil => *xs := ys, Cons(h, t) => AppendM(&t, ys) }
-  def Len (xs : L) : Nat by xs := match xs { Nil => Z, Cons(h, t) => S (Len(t)) }
+  def Len (xs : L) : Nat by xs := match xs { Nil => Z, Cons(h, t) => S(Len(t)) }
   def AndSwap (h : ⊤ ∧ ⊤) : ⊤ ∧ ⊤ := match h { Intro(a, b) => ⟨b, a⟩ }
   def Absurd (h : False) : Nat := match h {}
   def WriteIf (x : &Nat) (h : ⊤ ∧ ⊤) : Unit := match h { Intro(a, b) => *x := 1 }
@@ -162,20 +162,20 @@ ochr FuzzLib {
   reject def CapN (x : &Nat) : Nat := let n = *x; let f = (λ(z : Nat) : Nat => n); AddM(&*x, 1); f(0)
   def PropIf (n : Nat) : Prop := match n { Z => ⊤, S _ => False }
   def P0 : Type₁ := Prop
-  def H (x : &Nat) : P0 := (*x := S Z; ⊤)
-  def HP (x : &Nat) : Prop := (*x := S Z; ⊤)
+  def H (x : &Nat) : P0 := (*x := S(Z); ⊤)
+  def HP (x : &Nat) : Prop := (*x := S(Z); ⊤)
   def UU (n : Nat) : Type := match n { Z => Unit, S _ => Unit }
-  def HU (x : &Nat) : UU(Z) := *x := S Z
-  def HW (x : &Nat) : Unit := *x := S Z
+  def HU (x : &Nat) : UU(Z) := *x := S(Z)
+  def HW (x : &Nat) : Unit := *x := S(Z)
   def HTop (x : &Nat) : ⊤ := refl
-  def HTopW (x : &Nat) : ⊤ := (*x := S Z; refl)
+  def HTopW (x : &Nat) : ⊤ := (*x := S(Z); refl)
   def IdFP (f : Π(x : &Nat). Prop) : (Π(x : &Nat). Prop) := f
   def IdFT (f : Π(x : &Nat). ⊤) : (Π(x : &Nat). ⊤) := f
   def IdFU (f : Π(x : &Nat). Unit) : (Π(x : &Nat). Unit) := f
   def RunG (f : Π(x : &Nat). Prop) : Nat := (let c = Z; let g = f; g(&c); c)
   def RunK (k : Π(x : &Nat). ⊤) (x : &Nat) : Unit := (k(x); ())
   reject def WV (u : Unit) : V(Z) := refl
-  reject def FV (x : &Nat) : V(Z) := (*x := S Z; WV(()))
+  reject def FV (x : &Nat) : V(Z) := (*x := S(Z); WV(()))
   reject def GV (x : &Nat) : V(Z) := WV(())
   reject def TT : Prop := (Π(x : &Nat). V(Z))
   -- reviewer-6's A1/L1 family: a type family whose arms are different data types, and
@@ -183,8 +183,8 @@ ochr FuzzLib {
   inductive Bx (A : Type) := MkBx(v : A)
   def TF (n : Nat) : Type := match n { Z => Bx(Unit), S _ => Bx(B2) }
   def TG (n : Nat) : Type := match n { Z => Nat, S _ => B2 }
-  def CmpBx (b : Bx(B2)) : Prop := (let c = b; Id Unit (c := MkBx[B2](T)) (c := MkBx[B2](F)))
-  def CmpB2 (b : B2) : Prop := (let c = b; Id Unit (c := T) (c := F))
+  def CmpBx (b : Bx(B2)) : Prop := (let c = b; Id(Unit, c := MkBx[B2](T), c := MkBx[B2](F)))
+  def CmpB2 (b : B2) : Prop := (let c = b; Id(Unit, c := T, c := F))
   -- instances of the families' dependent function parameters (`h : Π(n : Nat). TG(n)`)
   def HG (n : Nat) : TG(n) := match n { Z => 0, S _ => F }
   def HF (n : Nat) : TF(n) := match n { Z => MkBx[Unit](()), S _ => MkBx[B2](T) }
@@ -196,11 +196,11 @@ ochr FuzzLib {
   inductive DV := MkDV(n : Nat, x : Fin1(n))
   def DVN (v : DV) : Nat := match v { MkDV(n, x) => n }
   def NopDV (v : &DV) : Unit := ()
-  def AbsurdDV (v : DV) (h : Eq Nat (DVN(v)) 0) : False := match v { MkDV(n, x) => match n { Z => match x {}, S m => match h {} } }
+  def AbsurdDV (v : DV) (h : Eq(Nat, DVN(v), 0)) : False := match v { MkDV(n, x) => match n { Z => match x {}, S m => match h {} } }
   def IsSucc (n : Nat) : Prop := match n { Z => False, S _ => ⊤ }
   inductive Pos := MkPos(n : Nat, h : IsSucc(n))
   def PN (p : Pos) : Nat := match p { MkPos(n, h) => n }
-  def AbsurdP (p : Pos) (h : Eq Nat (PN(p)) 0) : False := match p { MkPos(n, hh) => match n { Z => match hh {}, S m => match h {} } }
+  def AbsurdP (p : Pos) (h : Eq(Nat, PN(p), 0)) : False := match p { MkPos(n, hh) => match n { Z => match hh {}, S m => match h {} } }
 }
 
 /-- The codomain types written differently from what they evaluate to (D54, D55). -/

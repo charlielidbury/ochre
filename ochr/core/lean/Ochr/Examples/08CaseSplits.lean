@@ -95,12 +95,12 @@ program that computes `F(n)` inside, `⌈G(σ)⌉`, is re-normalised to use the 
 ochr RenormPi uses Std {
   def F (n : Nat) : Nat by n := match n { Z => 0, S m => F(m) }
   def G (n : Nat) : Nat := (let x = F(n); match x { Z => 1, S _ => 2 })
-  def Plain (n : Nat) (h : Eq Nat (F(n)) 0) : (let k = G(n); Eq Nat k 1) := (
+  def Plain (n : Nat) (h : Eq(Nat, F(n), 0)) : (let k = G(n); Eq(Nat, k, 1)) := (
     let r = F(n); match r { Z => refl, S j => match h {} })
-  def InPi (n : Nat) (h : Eq Nat (F(n)) 0) : (let k = G(n); Π(u : Nat). Eq Nat k 1) := (
-    let r = F(n); match r { Z => λ(u : Nat) : Eq Nat 1 1 => refl, S j => match h {} })
-  def InConj (n : Nat) (h : Eq Nat (F(n)) 0) : (let k = G(n); Eq Nat k 1 ∧ (Π(u : Nat). Eq Nat k 1)) := (
-    let r = F(n); match r { Z => ⟨refl, λ(u : Nat) : Eq Nat 1 1 => refl⟩, S j => match h {} })
+  def InPi (n : Nat) (h : Eq(Nat, F(n), 0)) : (let k = G(n); Π(u : Nat). Eq(Nat, k, 1)) := (
+    let r = F(n); match r { Z => λ(u : Nat) : Eq(Nat, 1, 1) => refl, S j => match h {} })
+  def InConj (n : Nat) (h : Eq(Nat, F(n), 0)) : (let k = G(n); Eq(Nat, k, 1) ∧ (Π(u : Nat). Eq(Nat, k, 1))) := (
+    let r = F(n); match r { Z => ⟨refl, λ(u : Nat) : Eq(Nat, 1, 1) => refl⟩, S j => match h {} })
 }
 
 #guard RenormPi.decls.length == 5
@@ -133,10 +133,10 @@ ochr Splitting uses Std {
 
   -- `Pick(n)` is stuck on the sealed `IsZ(n)`, so the goal is too. `split IsZ` finds that
   -- sealed result in the goal and splits on it, as a match on a place holding it would.
-  def PickNotZero (n : Nat) : Eq Bool (IsZ(Pick(n))) false := split IsZ in refl
+  def PickNotZero (n : Nat) : Eq(Bool, IsZ(Pick(n)), false) := split IsZ in refl
 
   -- The same proof without `split`: compute `IsZ(n)` again into a place, and match on it.
-  def PickNotZeroCopy (n : Nat) : Eq Bool (IsZ(Pick(n))) false := (
+  def PickNotZeroCopy (n : Nat) : Eq(Bool, IsZ(Pick(n)), false) := (
     let b = IsZ(n);
     match b {
       false => refl,
@@ -145,7 +145,7 @@ ochr Splitting uses Std {
   )
 
   -- Without a split the goal stays stuck.
-  reject def PickNotZeroNoSplit (n : Nat) : Eq Bool (IsZ(Pick(n))) false := refl
+  reject def PickNotZeroNoSplit (n : Nat) : Eq(Bool, IsZ(Pick(n)), false) := refl
 
   -- Nested: in the second arm of the outer split, `IsZ(m)` has already been generalised
   -- (in the first arm's inner split), and the record says so; `split` finds it all the same.
@@ -164,10 +164,10 @@ ochr Splitting uses Std {
     }
   )
 
-  def Pick22NotZero (n : Nat) (m : Nat) : Eq Bool (IsZ(Pick22(n, m))) false := split IsZ in split IsZ in refl
+  def Pick22NotZero (n : Nat) (m : Nat) : Eq(Bool, IsZ(Pick22(n, m)), false) := split IsZ in split IsZ in refl
 
   -- With arms, when they differ; a hypothesis about the split result is refined too.
-  def PickTwo (n : Nat) (h : Eq Bool (IsZ(n)) true) : Eq Nat (Pick(n)) 2 := (
+  def PickTwo (n : Nat) (h : Eq(Bool, IsZ(n), true)) : Eq(Nat, Pick(n), 2) := (
     split IsZ {
       false => match h {},
       true => refl,
@@ -198,7 +198,7 @@ ochr Splitting uses Std {
     }
   )
 
-  def DoubleVal (n : Nat) : Eq Nat (Double(Look(n))) (Add(Val(Look(clone(n))), Val(Look(n)))) := (
+  def DoubleVal (n : Nat) : Eq(Nat, Double(Look(n)), Add(Val(Look(clone(n))), Val(Look(n)))) := (
     split Look {
       None => refl,
       Some(x) => refl,
@@ -208,23 +208,23 @@ ochr Splitting uses Std {
   -- `split f` needs the goal to be stuck on a result of `f`; the arms must be the
   -- constructors of its type, and each must prove its refined goal. A split cannot prove
   -- a false statement, and it needs the goal, so it is only in tail position.
-  reject def NothingToSplit (n : Nat) : Eq Nat n n := split IsZ in refl
-  reject def WrongHead (n : Nat) : Eq Bool (IsZ(Pick(n))) false := split Look in refl
-  reject def WrongArm (n : Nat) (h : Eq Bool (IsZ(n)) true) : Eq Nat (Pick(n)) 2 := (
+  reject def NothingToSplit (n : Nat) : Eq(Nat, n, n) := split IsZ in refl
+  reject def WrongHead (n : Nat) : Eq(Bool, IsZ(Pick(n)), false) := split Look in refl
+  reject def WrongArm (n : Nat) (h : Eq(Bool, IsZ(n), true)) : Eq(Nat, Pick(n), 2) := (
     split IsZ {
       false => refl,
       true => refl,
     }
   )
-  reject def WrongCtors (n : Nat) : Eq Bool (IsZ(Pick(n))) false := (
+  reject def WrongCtors (n : Nat) : Eq(Bool, IsZ(Pick(n)), false) := (
     split IsZ {
       None => refl,
       Some(x) => refl,
     }
   )
-  reject def SplitLie (n : Nat) : Eq Nat (Pick(n)) 1 := split IsZ in refl
-  reject def NotTail (n : Nat) : Eq Bool (IsZ(Pick(n))) false := (
-    let p : Eq Bool (IsZ(Pick(n))) false = (split IsZ in refl);
+  reject def SplitLie (n : Nat) : Eq(Nat, Pick(n), 1) := split IsZ in refl
+  reject def NotTail (n : Nat) : Eq(Bool, IsZ(Pick(n)), false) := (
+    let p : Eq(Bool, IsZ(Pick(n)), false) = (split IsZ in refl);
     p
   )
 }
@@ -298,14 +298,12 @@ ochr GlobalRecords {
   def Double (n : Nat) : Nat by n := (
     match n {
       Z => Z,
-      S p => S (S (Double(p))),
+      S p => S(S(Double(p))),
     }
   )
 
   reject def Esc (n : Nat) (m : Box) :
-      Id Nat
-        (let b = Double(n); match b { Z => 0, S _ => 1 })
-        (match m { MkBox(x) => match x { Z => 0, S _ => 1 } }) := (
+      Id(Nat, (let b = Double(n); match b { Z => 0, S _ => 1 }), (match m { MkBox(x) => match x { Z => 0, S _ => 1 } })) := (
     match m {
       MkBox(x) => match x {
         Z => refl,
@@ -314,7 +312,7 @@ ochr GlobalRecords {
     }
   )
 
-  reject def Bad5 : Eq Nat 1 0 := Esc(1, MkBox(0))
+  reject def Bad5 : Eq(Nat, 1, 0) := Esc(1, MkBox(0))
 }
 
 -- the exact number of declarations (a truncated file changes it)
@@ -384,7 +382,7 @@ ochr ArmLocal uses Std {
   )
   def AndL (P : Prop) (Q : Prop) (h : P ∧ Q) : P := match h { Intro(p, q) => p }
 
-  -- The arm `n := Z` is checked before the arm `n := S m`; the conjuncts of `⟨…⟩` there
+  -- The arm `n := Z` is checked before the arm `n := S(m)`; the conjuncts of `⟨…⟩` there
   -- are typed through `r`'s value, whose type must not be the `Z` arm's `Slice(0)`.
   def Leak (n : Nat) (k : Nat) (l : Slice(k)) (r : Slice(Sub(n, k))) (a : Nat) (hl : AllGe(k, l, a))
       (ih : Π(m : Nat) (k' : Nat) (t : Slice(k')) (r2 : Slice(Sub(m, k'))). AllGe(m, JoinS(m, k', t, r2), a)) :
@@ -392,7 +390,7 @@ ochr ArmLocal uses Std {
     match k {
       Z => ih(n, 0, l, r),
       S k' => match n {
-        Z => ih(Z, S k', l, r),
+        Z => ih(Z, S(k'), l, r),
         S m => match l {
           MkSlice(c) => match c {
             MkC(y, t) => ⟨AndL(Le(a, y), AllGe(k', t, a), hl), ih(m, k', t, r)⟩,
@@ -407,19 +405,19 @@ ochr ArmLocal uses Std {
 
 ochr ArmLocalBoom {
   inductive Emp := E(e : Emp)
-  def AbsurdEq (x : Emp) (A : Type) (a : A) (b : A) : Eq A a b by x := match x { E(e) => AbsurdEq(e, A, a, b) }
+  def AbsurdEq (x : Emp) (A : Type) (a : A) (b : A) : Eq(A, a, b) by x := match x { E(e) => AbsurdEq(e, A, a, b) }
   inductive Opt (R : Type) := N0 | S0(x : R)
   inductive SliceOf (R : Type) := MkSlice(c : R)
   def Cells (n : Nat) : Type by n := match n { Z => Opt(Emp), S m => Opt(Nat) }
   def Slice (n : Nat) : Type := SliceOf(Cells(n))
   -- every `Slice(0)` is the empty one
-  def EmptyEq (s : Slice(0)) : Eq (Slice(0)) s (MkSlice(N0[Emp])) := (
+  def EmptyEq (s : Slice(0)) : Eq(Slice(0), s, MkSlice(N0[Emp])) := (
     match s { MkSlice(c) => match c { N0 => refl, S0(x) => AbsurdEq(x, Slice(0), MkSlice(S0[Emp](x)), MkSlice(N0[Emp])) } })
-  -- `r : Slice(S m)` in the second arm, where `Eq (Slice(0)) r …` is ill-typed
+  -- `r : Slice(S(m))` in the second arm, where `Eq(Slice(0), r, …)` is ill-typed
   reject def T6 (n : Nat) (r : Slice(n)) : Prop := (
-    match n { Z => ⊤, S m => (λ(u : Nat) : Prop => Eq (Slice(0)) r (MkSlice(N0[Emp])))(0) })
+    match n { Z => ⊤, S m => (λ(u : Nat) : Prop => Eq(Slice(0), r, MkSlice(N0[Emp])))(0) })
   reject def T7 (n : Nat) (r : Slice(n)) : T6(n, r) := (
-    match n { Z => refl, S m => (λ(u : Nat) : Eq (Slice(0)) r (MkSlice(N0[Emp])) => EmptyEq(clone(r)))(0) })
+    match n { Z => refl, S m => (λ(u : Nat) : Eq(Slice(0), r, MkSlice(N0[Emp])) => EmptyEq(clone(r)))(0) })
   reject def BoomLeak : False := T7(1, MkSlice(S0[Nat](9)))
 }
 
@@ -439,7 +437,7 @@ stale type either: `true` and `false` are distinct constructors whatever the typ
 
 ochr ArmRecords uses Std {
   def T (n : Nat) : Type := match n { Z => Box(Unit), S _ => Box(Bool) }
-  def Cmp2 (b : Box(Bool)) : Prop := (let c = clone(b); Id Unit (c := MkBox(true)) (c := MkBox(false)))
+  def Cmp2 (b : Box(Bool)) : Prop := (let c = clone(b); Id(Unit, c := MkBox(true), c := MkBox(false)))
   def L2 (b : Box(Bool)) (h : Cmp2(b)) : False := h
   def G (n : Nat) : Prop := match n { Z => ⊤, S _ => False }
   reject def F (n : Nat) (g : Π(u : Unit). T(n)) : G(n) := (
@@ -450,11 +448,11 @@ ochr ArmRecords uses Std {
   )
   reject def Boom : False := F(1, λ(u : Unit) : T(1) => MkBox(true))
   reject def FLie (n0 : Nat) (g1 : Π(u : Unit). T(n0)) :
-      Id Prop (match n0 { Z => ⊤, S p7 => let y6 = g1(()); Cmp2(y6) }) ⊤ := (
+      Id(Prop, (match n0 { Z => ⊤, S p7 => let y6 = g1(()); Cmp2(y6) }), ⊤) := (
     match n0 { Z => (let x5 = g1(()); match x5 { MkBox(v) => refl }), S _ => refl })
   reject def FBoom : False := (
     let h = FLie(1, λ(u : Unit) : T(1) => MkBox(true));
-    J(Prop, ⊤, False, λ(P : Prop) : Prop => P, symm h, refl))
+    J(Prop, ⊤, False, λ(P : Prop) : Prop => P, symm(h), refl))
 }
 
 #guard ArmRecords.decls.length == 8

@@ -9,13 +9,13 @@ ledger's P2 witness, `Erasure.BoomP2`). The first block is checked under the def
 the second with P2 off; every verdict is as expected in both. -/
 ochr P2Default {
   def F5 (x : &Nat) : Prop := *x := 5; ⊤
-  def Lie (x : &Nat) : Id Nat (let a = match *x { Z => refl, S p => F5(&*x); refl }; *x) *x := refl
+  def Lie (x : &Nat) : Id(Nat, (let a = match *x { Z => refl, S p => F5(&*x); refl }; *x), *x) := refl
   reject def Boom : False ∧ False := let c = 1; Lie(&c)
   reject def Boom2 : False := let b = Boom; match b { Intro(l, r) => l }
 }
 ochr P2Off {
   def F5 (x : &Nat) : Prop := *x := 5; ⊤
-  def Lie (x : &Nat) : Id Nat (let a = match *x { Z => refl, S p => F5(&*x); refl }; *x) *x := refl
+  def Lie (x : &Nat) : Id(Nat, (let a = match *x { Z => refl, S p => F5(&*x); refl }; *x), *x) := refl
   def Boom : False ∧ False := let c = 1; Lie(&c)
   def Boom2 : False := let b = Boom; match b { Intro(l, r) => l }
 }

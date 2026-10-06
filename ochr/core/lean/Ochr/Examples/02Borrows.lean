@@ -32,12 +32,12 @@ ochr Borrows uses Std {
 
   -- A statement is erased, and its reads copy, so `Add(x, x)` reads `x` twice, and
   -- `x + x = x` is a well-formed statement (a false one).
-  def AddXX (x : Nat) : Prop := Id Nat (Add(clone(x), x)) x
+  def AddXX (x : Nat) : Prop := Id(Nat, Add(clone(x), x), x)
 
   -- A borrow of a local writes to the local: after `*y := 2` through `y = &x`, `x` is `2`.
   def LetZ (x : Nat) : Nat := (
     let z = (let y = &x; *y := 2; x);
-    let h : Id Nat z 2 = refl;
+    let h : Id(Nat, z, 2) = refl;
     z
   )
 
@@ -64,16 +64,16 @@ ochr Borrows uses Std {
   def NotDead (f : Π(a : Word) (b : &Word). Unit) (x : Word) : Unit := f(x, &x)
 
   -- A statement about two separate borrows ...
-  def g (x : &Nat) (y : &Nat) : Id Nat (*x := 0; *y := 1; clone(*x)) (*x := 0; *y := 1; 0) := refl
+  def g (x : &Nat) (y : &Nat) : Id(Nat, *x := 0; *y := 1; clone(*x), *x := 0; *y := 1; 0) := refl
 
   -- ... cannot be used on two borrows of the same place: passing `z` ends the reborrow `a`,
   -- in whichever order the two are passed (D19).
-  reject def attack (z : &Nat) : Id Nat 1 0 := (
+  reject def attack (z : &Nat) : Id(Nat, 1, 0) := (
     let a = &*z;
     g(z, a)
   )
 
-  reject def attack' (z : &Nat) : Id Nat 1 0 := (
+  reject def attack' (z : &Nat) : Id(Nat, 1, 0) := (
     let a = &*z;
     g(a, z)
   )
@@ -98,8 +98,8 @@ ochr Borrows uses Std {
   )
 
   reject def BadA1 (n : Nat) : Nat := (
-    let a = S Z;
-    (let b = &a; let r = &(*b).1; G1(b, n); *r := S Z);
+    let a = S(Z);
+    (let b = &a; let r = &(*b).0; G1(b, n); *r := S(Z));
     a
   )
 
@@ -117,7 +117,7 @@ ochr Borrows uses Std {
   -- result goes to `out`, declared before `r`, so `r` dies first and [Drop] never sees the
   -- loan in it (bound after `r`, as in `BadA1`, [Drop] catches it even without D19).
   def G2 (x : &Nat) (n : Nat) : Nat := (match n { Z => 0, S _ => *x := 0; 0 })
-  reject def W (n : Nat) : Nat := (let a = S Z; let out = 0; (let r = &a.1; out := G2(&a, n); *r := S Z); out)
+  reject def W (n : Nat) : Nat := (let a = S(Z); let out = 0; (let r = &a.0; out := G2(&a, n); *r := S(Z)); out)
   reject def WRun : Nat := W(1)
 }
 
@@ -145,7 +145,7 @@ ochr Drops uses Std, Fixtures {
   def Bad3 (n : Nat) (b : Nat) : Unit := (let c = 1; let x = &c; let a = 0; x := Pick(n, &a, &b); let z = b; ())
   def Bad3Run : Unit := Bad3(0, 5)
   -- one owner: the match on `a`'s sealed fill ends `x` symbolically; at `a = 1` the loan sits
-  -- in `a.1` and survives the match
+  -- in `a.0` and survives the match
   def Bad4 (x : &Nat) (a : Nat) : Unit := (x := TailM(&a); match a { Z => (), S _ => () })
   def Bad4Run : Unit := (let c = 0; Bad4(&c, 1))
   -- the same with a local borrow declared before the owner (reviewer-9)
@@ -166,7 +166,7 @@ ochr Drops uses Std, Fixtures {
   def AssignBot (n : Nat) (a : Nat) (b : Nat) (c : Nat) : Unit := (
     let x = Pick(n, &a, &b);
     let z = clone(b);
-    let h : Id Unit (x := &c; *x := 5) (x := &c; *x := 5) = refl;
+    let h : Id(Unit, x := &c; *x := 5, x := &c; *x := 5) = refl;
     ()
   )
   def AssignBotRun : Unit := AssignBot(0, 1, 2, 3)
@@ -239,7 +239,7 @@ ochr Moves uses Std {
   -- read it (it runs on its own copy of the state, which has `n` moved out too).
   reject def GhostRead (n : Nat) : Nat := (
     let m = n;
-    let h : Id Nat n m = refl;
+    let h : Id(Nat, n, m) = refl;
     m
   )
 
@@ -308,7 +308,7 @@ ochr Moves uses Std {
     n0
   )
 
-  -- ... and moves in only the part an arm moves out, `q1.1`, so `q1.2` is still there
+  -- ... and moves in only the part an arm moves out, `q1.0`, so `q1.1` is still there
   -- (fuzz-port shape (a)).
   def BlockMovesField (q1 : Nat × Nat) : Nat := (
     let a = match q1 {
@@ -323,8 +323,7 @@ ochr Moves uses Std {
   -- place, an error as when a borrow ends partly moved. Compared by their results only
   -- through a fresh value written into them (D38), it looked equal to the one that just
   -- returns `y10` (fuzz-port shape (c)).
-  reject def RetMoved : Eq (Π(y9 : &Nat) (y10 : &Nat). &Nat)
-      (λ(y9 : &Nat) (y10 : &Nat) : &Nat => (*y10; y10)) (λ(y9 : &Nat) (y10 : &Nat) : &Nat => y10) := refl
+  reject def RetMoved : Eq(Π(y9 : &Nat) (y10 : &Nat). &Nat, (λ(y9 : &Nat) (y10 : &Nat) : &Nat => (*y10; y10)), (λ(y9 : &Nat) (y10 : &Nat) : &Nat => y10)) := refl
 
   -- A stuck match's effect on what it captures is the direct path's, moves included, at
   -- every granularity (fuzz-port's execution oracle: each of these was accepted and went
@@ -336,22 +335,22 @@ ochr Moves uses Std {
   -- M2: an arm moves a captured place that is not a whole variable (`*x0`, `*x1`), so the
   -- block moves it in and the borrow ends partly moved
   reject def B1 (x0 : &Nat) (n1 : Nat) : Nat := (let a = match n1 { Z => 0, S _ => *x0 }; a)
-  reject def B2 (q0 : Nat × Nat) (x1 : &Nat) : Nat := S (match q0 { Mk(_, _) => *x1 })
+  reject def B2 (q0 : Nat × Nat) (x1 : &Nat) : Nat := S(match q0 { Mk(_, _) => *x1 })
   reject def B3 (x0 : &Nat) (x1 : &Nat) : &Nat := (match *x1 { Z => (), S _ => *x1 := *x0 }; x0)
   -- M2b: one arm moves the borrow into the block, another moves out through it, and the
   -- block's frame ends the borrow partly moved
-  reject def B4 (x0 : &Nat) : Nat := S (match *x0 { Z => x0; 0, S _ => *x0 })
+  reject def B4 (x0 : &Nat) : Nat := S((match *x0 { Z => x0; 0, S _ => *x0 }))
   -- M3: statement positions run on their own copy, whichever path runs them: `J`'s endpoints
   -- and motive (as run by a call, untyped), and an `Id` side. A statement reads like any code
   -- (D68), so `J`'s endpoint cannot read the moved `n`.
-  reject def J1 (n : Nat) (h : Eq Nat n 1) : Nat := (let m = n; J(Nat, n, 1, λ(z : Nat) : Type => Nat, h, m))
+  reject def J1 (n : Nat) (h : Eq(Nat, n, 1)) : Nat := (let m = n; J(Nat, n, 1, λ(z : Nat) : Type => Nat, h, m))
   reject def J1Run : Nat := J1(1, refl)
-  def I1 (n1 : Nat) : Nat := (let m = n1; let a0 = Id Unit () (n1 := 0); 0)
+  def I1 (n1 : Nat) : Nat := (let m = n1; let a0 = Id(Unit, (), n1 := 0); 0)
   def I1Run : Nat := I1(0)
   -- A block's effect on its captures is read from its arms' moves and assignments, by place
   -- (not by comparing values, which are abstract or sealed), so it composes through nested
   -- blocks (N1), sees a borrow moved in whole by an inner block's capture (N2), and gives
-  -- each part of a captured place its own mode: `q1.1` moved, `q1.2` lent (N3). A move that
+  -- each part of a captured place its own mode: `q1.0` moved, `q1.1` lent (N3). A move that
   -- the arm restores, or that goes through a local borrow, counts as the owner's.
   reject def N1 (x0 : &(Nat × Nat)) (n1 : Nat) : Nat := (
     let a = match n1 { Z => match *x0 { Mk(p, _) => p }, S _ => 0 }; a)
@@ -384,20 +383,19 @@ ochr Moves uses Std {
   reject def PartMove (x : &Nat) (n : Nat) : Unit := (match *x { Z => (), S p => (let v = p; H(x, n)) })
   reject def PartMoveOpaque (g : Π(y : &Nat). Unit) (x : &Nat) : Unit := (
     match *x { Z => (), S p => (let v = p; g(x)) })
-  reject def Thm1 : Id Nat (let c = 3; FullMove(&c, 0)) 3 := refl
+  reject def Thm1 : Id(Nat, let c = 3; FullMove(&c, 0), 3) := refl
   reject def TailMove (x : &Nat) (n : Nat) : Nat := (let t = TailM(x); let v = *t; H(t, n); v)
-  -- A closure made in an arm that captures (moves) `q0` for its `q0.1` moves `q0` (Q); a
-  -- move of `a4.2` in one arm and an inspection of `a4` in another split `a4`, whichever way
-  -- the field is written (`.2` or a pattern's `snd`: K)
+  -- A closure made in an arm that captures (moves) `q0` for its `q0.0` moves `q0` (Q); a
+  -- move of `a4.1` in one arm and an inspection of `a4` in another split `a4`, whichever way
+  -- the field is written (`.1` or a pattern's `snd`: K)
   reject def Q1 (q0 : Nat × Nat) (n1 : Nat) : Nat × Nat := (
     match q0 { Mk(p0, p1) => let a2 = match n1 { Z => (λ(y4 : Nat) : Unit => p0 := y4), S p6 => (λ(y8 : Nat) : Unit => ()) }; (p0, 0) })
   inductive Sw := SwF | SwT
   reject def K1 (b0 : Sw) : Nat × Nat := (
-    let a4 = (0, 0); let t = match b0 { SwF => match a4 { Mk(p, q) => 0 }, SwT => let s = a4.2; 0 }; a4)
+    let a4 = (0, 0); let t = match b0 { SwF => match a4 { Mk(p, q) => 0 }, SwT => let s = a4.1; 0 }; a4)
 
   -- RN: a split in a data function re-normalises its hypotheses' types, as types (reads copy)
-  def DataSplit (n : Nat) (h : Id (Nat × Nat) (match n { Z => (clone(n), n), S p => (clone(p), p) })
-      (match n { Z => (0, 0), S p => (clone(p), p) })) : Nat := (
+  def DataSplit (n : Nat) (h : Id(Nat × Nat, (match n { Z => (clone(n), n), S p => (clone(p), p) }), (match n { Z => (0, 0), S p => (clone(p), p) }))) : Nat := (
     match n { Z => 0, S _ => 1 })
 }
 

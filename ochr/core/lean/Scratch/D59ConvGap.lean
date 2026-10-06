@@ -23,7 +23,7 @@ ochr D59ConvGap uses Std {
   -- (since D53 `let c = *x` moves `*x` out of the parameter, which then ends partly moved;
   -- with `clone(*x)` it is `ClosingOff.ConvUnitWritten`)
   reject def ConvUnitWrittenAddM :
-      Eq (Π(x : &Nat). UU(Z)) (λ(x : &Nat) : UU(Z) => ()) (λ(x : &Nat) : UU(Z) => (let c = *x; AddM(&c, 0))) := (
+      Eq(Π(x : &Nat). UU(Z), (λ(x : &Nat) : UU(Z) => ()), (λ(x : &Nat) : UU(Z) => (let c = *x; AddM(&c, 0)))) := (
     refl
   )
 }

@@ -39,7 +39,7 @@ ochr BorrowTypes uses Std {
   -- Not the universe of propositions, not a proposition, and not a universe: none is in
   -- `Type`. A box of propositions is not even a type: `Box`'s parameter is in `Type`, and
   -- `Prop` is not (it was data before D66).
-  reject def PIref (x : &Prop) (h1 : *x) (h2 : *x) : Id (*x) h1 h2 := refl
+  reject def PIref (x : &Prop) (h1 : *x) (h2 : *x) : Id(*x, h1, h2) := refl
   reject def RefTrue (x : &True) : Nat := 0
   reject def RefType (x : &Type) : Nat := 0
   reject def RefBoxProp (x : &Box(Prop)) : Unit := ()
@@ -68,7 +68,7 @@ ochr BorrowTypes uses Std {
 
   -- No `&` inside another type: not in a pair, in `Id`'s type, a list, or a field.
   reject def InPair (p : Nat × &Nat) : Nat := 0
-  reject def InId (x : &Nat) (h : Id (&Nat) x x) : Nat := 0
+  reject def InId (x : &Nat) (h : Id(&Nat, x, x)) : Nat := 0
   reject def IterM (xs : &List(Nat)) : List(&Nat) := Nil
   reject inductive RefCell := MkRef(r : &Nat)
 
@@ -114,29 +114,29 @@ no extensionality. -/
 ochr FnBorrows uses Std {
   -- Borrow a closure, write another through the borrow, and call through it; the new
   -- closure may capture (a closure's body copies its captures: the Fn rule).
-  def SetSucc (f : &(Π(n : Nat). Nat)) : Unit := *f := (λ(n : Nat) : Nat => S n)
+  def SetSucc (f : &(Π(n : Nat). Nat)) : Unit := *f := (λ(n : Nat) : Nat => S(n))
   def SetAdder (f : &(Π(n : Nat). Nat)) (k : Nat) : Unit := *f := (λ(n : Nat) : Nat => Add(clone(k), n))
   def CallThrough (f : &(Π(n : Nat). Nat)) (n : Nat) : Nat := (*f)(n)
-  def RunSucc : Id Nat (let g = (λ(n : Nat) : Nat => 0); SetSucc(&g); CallThrough(&g, 4)) 5 := refl
-  def RunAdder : Id Nat (let g = (λ(n : Nat) : Nat => 0); SetAdder(&g, 3); g(4)) 7 := refl
-  def RunAdderGen (k : Nat) : Id Nat (let g = (λ(n : Nat) : Nat => 0); SetAdder(&g, k); g(0)) (Add(k, 0)) := refl
+  def RunSucc : Id(Nat, let g = (λ(n : Nat) : Nat => 0); SetSucc(&g); CallThrough(&g, 4), 5) := refl
+  def RunAdder : Id(Nat, let g = (λ(n : Nat) : Nat => 0); SetAdder(&g, 3); g(4), 7) := refl
+  def RunAdderGen (k : Nat) : Id(Nat, let g = (λ(n : Nat) : Nat => 0); SetAdder(&g, k); g(0), Add(k, 0)) := refl
 
   -- A function with a function-typed borrow parameter, stuck at an abstract `n`: `g`'s final
   -- content is a sealed program, and `g(3)` is a call with an unknown head.
-  def SetIf (n : Nat) (f : &(Π(m : Nat). Nat)) : Unit := match n { Z => (), S _ => *f := (λ(m : Nat) : Nat => S m) }
+  def SetIf (n : Nat) (f : &(Π(m : Nat). Nat)) : Unit := match n { Z => (), S _ => *f := (λ(m : Nat) : Nat => S(m)) }
   def UseSetIf (n : Nat) : Nat := (let g = (λ(m : Nat) : Nat => m); SetIf(n, &g); g(3))
-  def UseSetIf0 : Id Nat (UseSetIf(0)) 3 := refl
-  def UseSetIfS (n : Nat) : Id Nat (UseSetIf(S n)) 4 := refl
-  reject def UseSetIfWrong (n : Nat) : Id Nat (UseSetIf(n)) 3 := refl
+  def UseSetIf0 : Id(Nat, UseSetIf(0), 3) := refl
+  def UseSetIfS (n : Nat) : Id(Nat, UseSetIf(S(n)), 4) := refl
+  reject def UseSetIfWrong (n : Nat) : Id(Nat, UseSetIf(n), 3) := refl
 
   -- A generic swap, at data and at functions.
   def Swap (V : Type) (a : &V) (b : &V) : Unit := (let t = *a; *a := *b; *b := t)
-  def SwapNats : Id (Nat × Nat) (let x = 1; let y = 2; Swap(Nat, &x, &y); (x, y)) (2, 1) := refl
-  def SwapFns : Id Nat (
+  def SwapNats : Id(Nat × Nat, let x = 1; let y = 2; Swap(Nat, &x, &y); (x, y), (2, 1)) := refl
+  def SwapFns : Id(Nat, 
     let f = (λ(n : Nat) : Nat => 0);
-    let g = (λ(n : Nat) : Nat => S n);
+    let g = (λ(n : Nat) : Nat => S(n));
     Swap(Π(n : Nat). Nat, &f, &g);
-    f(6)) 7 := refl
+    f(6), 7) := refl
 
   -- A bucket generic in its value type, and the borrow of a present key's value.
   inductive GBucket (V : Type) := GNil | GCons(k : Word, v : V, t : GBucket(V))
@@ -168,11 +168,11 @@ ochr FnBorrows uses Std {
       ),
     }
   )
-  def RunGGetMut : Id Nat (
+  def RunGGetMut : Id(Nat, (
     let b = GCons(Zero, (λ(n : Nat) : Nat => n), GNil);
     let r = GGetMut(Π(n : Nat). Nat, &b, Zero, refl);
-    *r := (λ(n : Nat) : Nat => S n);
-    match b { GNil => 0, GCons(k, v, t) => v(4) }) 5 := refl
+    *r := (λ(n : Nat) : Nat => S(n));
+    match b { GNil => 0, GCons(k, v, t) => v(4) }), 5) := refl
 
   -- Still not: a proposition, `Prop`, or a type variable in `Type₁`; and code generic over
   -- `A : Type` is not applied to `Prop`, which is in `Type₁`.
@@ -213,9 +213,9 @@ ochr Abstraction uses Std {
   def Get (s : &View) : Nat := ViewVal(clone(*s)) implemented by "view_get"
   def Put (s : &View) (n : Nat) : Unit := (*s := MkView(n)) implemented by "view_put"
   -- runtime code goes through the natives ...
-  def Bump (s : &View) : Unit := (let n = Get(&*s); Put(s, S n))
+  def Bump (s : &View) : Unit := (let n = Get(&*s); Put(s, S(n)))
   -- ... and statements see the model
-  def GetIs (s : &View) : Id Nat (Get(s)) (ViewVal(clone(*s))) := refl
+  def GetIs (s : &View) : Id(Nat, Get(s), ViewVal(clone(*s))) := refl
   -- matching, building, reading or assigning a view at runtime is not allowed
   reject def Peek (s : &View) : Nat := match *s { MkView(v) => clone(v) }
   reject def Poke (s : &View) : Unit := *s := MkView(0)

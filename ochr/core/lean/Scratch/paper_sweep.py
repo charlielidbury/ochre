@@ -63,7 +63,7 @@ def emit(name, uses, items, rename={}):
     for n,t,loc in items:
         if n in rename: t=t.replace(f'def {n} ',f'def {rename[n]} ',1); n=rename[n]
         if n=='Clear': t+=' := refl'
-        t=t.replace('let h = λ(x : &Nat) : U(n) => (*x := S Z; V(n)); let c','let h = (λ(x : &Nat) : U(n) => (*x := S Z; V(n))); let c')
+        t=t.replace('let h = λ(x : &Nat) : U(n) => (*x := S(Z); V(n)); let c','let h = (λ(x : &Nat) : U(n) => (*x := S(Z); V(n))); let c')
         print(f'  -- {loc}')
         print('  '+('reject ' if n in REJECT else '')+t)
     print('}')
@@ -76,13 +76,7 @@ for d in S2:
 trees={'InsertM','Insert','SizeInsert'}
 print('import Ochr.Examples.«17HashMap»\nimport Ochr.Examples.«16Arrays»\nopen Ochr Ochr.Test')
 emit('SweepS2','',[d for d in S2u if d[0] not in trees|{'Clear'}])
-print('''ochr SweepTrees uses Std {
-  -- not printed: the tree, `Lt`, `Size`, `AddMS`/`AddS` as in InPlaceTrees
-  inductive Tree := Leaf | Node(l : Tree, v : Word, r : Tree)
-  def Lt (a : Word) (b : Word) : Bool by a := match a { Zero => match b { Zero => false, Succ _ => true }, Succ a' => match b { Zero => false, Succ b' => Lt(a', b') } }
-  def AddMS (x : &Nat) (y : Nat) : Id Unit (AddM(x, S y)) (AddM(&*x, y); *x := S *x) by x := match *x { Z => refl, S p => AddMS(&p, y) }
-  def AddS (x : Nat) (y : Nat) : Id Nat (Add(x, S y)) (S (Add(x, y))) := AddMS(&x, y)
-  def Size (t : Tree) : Nat by t := match t { Leaf => 0, Node(l, v, r) => S (Add(Size(l), Size(r))) }''')
+print("ochr SweepTrees uses Std {\n  -- not printed: the tree, `Lt`, `Size`, `AddMS`/`AddS` as in InPlaceTrees\n  inductive Tree := Leaf | Node(l : Tree, v : Word, r : Tree)\n  def Lt (a : Word) (b : Word) : Bool by a := match a { Zero => match b { Zero => false, Succ _ => true }, Succ a' => match b { Zero => false, Succ b' => Lt(a', b') } }\n  def AddMS (x : &Nat) (y : Nat) : Id(Unit, AddM(x, S(y)), AddM(&*x, y); *x := S(*x)) by x := match *x { Z => refl, S p => AddMS(&p, y) }\n  def AddS (x : Nat) (y : Nat) : Id(Nat, Add(x, S(y)), S(Add(x, y))) := AddMS(&x, y)\n  def Size (t : Tree) : Nat by t := match t { Leaf => 0, Node(l, v, r) => S(Add(Size(l), Size(r))) }")
 for n,t,loc in S2u:
     if n in trees: print(f'  -- {loc}\n  {t}')
 print('}\n#eval IO.println (run "SweepTrees" SweepTrees).show')
@@ -92,82 +86,4 @@ emit('SweepQS','Quicksort',defs('impl.typ')[1:],{'QSCorrect':'QSCorrectP'})
 A=defs('appendix.typ')
 emit('SweepApp1','',[d for d in A if d[0] not in {'Or','IsL','Irr','Boom'}])
 emit('SweepApp2','Std',[d for d in A if d[0] in {'Or','IsL','Irr','Boom'}])
-print('''-- inline fragments, verbatim inside the smallest program that runs them
-ochr SweepInline uses Std, Fixtures {
-  -- meta.typ:70 (naturality), at an abstract `n` and at 0, 1
-  reject def PickEarly (n : Nat) (a : Nat) (b : Nat) : Unit := let r = Pick(clone(n), &a, &b); let z = b; match n { Z => *r := 5, S _ => () }
-  def PickEarly0 (a : Nat) (b : Nat) : Unit := let n = 0; let r = Pick(clone(n), &a, &b); let z = b; match n { Z => *r := 5, S _ => () }
-  def PickEarly1 (a : Nat) (b : Nat) : Unit := let n = 1; let r = Pick(clone(n), &a, &b); let z = b; match n { Z => *r := 5, S _ => () }
-  -- eval.typ §4.3 closure fragments
-  def CapCopy (x : &Nat) : Nat := let n = clone(*x); let f = (λ(y : Nat) : Nat => clone(n)); f(0)
-  def TwiceMZeroFrag (x : &Nat) : Unit := let g = (λ(z : &Nat) : Unit => AddM(z, 0)); g(x)
-  -- appendix note 27
-  def CapS (x : &Nat) : Nat := AddM(&*x, 1); let n = clone(*x); let f = (λ(y : Nat) : Nat => clone(n)); f(0)
-  -- typing.typ intro, obs.typ §5
-  def LetZ (x : Nat) : Nat := let z = (let y = &x; *y := 2; x); let h : Id Nat z 2 = refl; z
-  def WriteNeq (x : &Nat) (e : Id Unit (*x := 0) (*x := 1)) : Nat := match e {}
-  reject def OwnedLocal (x : Nat) : Id Unit (x := 6) () := refl
-  -- appendix notes 6, 7, 11, [Close]'s row
-  def PickX (x : &Nat) (y : &Nat) : &Nat := x
-  def PickY (x : &Nat) (y : &Nat) : &Nat := y
-  def PF (x : &Nat) (e : Id Unit (*x := 0) (*x := 1)) : False := e
-  reject def QF (g : Π(n : Nat). &Nat) : False := PF(g(5), refl)
-  reject def F (n : Nat) (x : &Nat) : (match n { Z => &Nat, S _ => Nat }) := match n { Z => x, S _ => 0 }
-  -- D66: `&A` for `A : Type₀` is well formed; a type variable in `Type₁` is not
-  def SwapT (A : Type) (x : &A) (y : &A) : Unit := ()
-  reject def SwapT1 (A : Type₁) (x : &A) (y : &A) : Unit := ()
-}
-#eval IO.println (run "SweepInline" SweepInline).show
--- dependent fields (appendix, impl §8.3): the growable vector and the arm assigning its two
--- fields in either order
-ochr SweepDep uses ArrayBench {
-  inductive Vec (E : Type) := MkVec(n : Word, items : Array(E, n))
-  def Two : Array(Word, W(2)) := [Zero, Succ(Zero)]
-  def SetTwo (v : &Vec(Word)) : Unit := match *v { MkVec(n, items) => (n := W(2); items := Two) }
-  def SetTwoRev (v : &Vec(Word)) : Unit := match *v { MkVec(n, items) => (items := Two; n := W(2)) }
-}
--- appendix A.4.8, nesting: `NBox` is accepted, `Bad` nested in it is not, and a field that is
--- a Π at the generic fields is rejected already
-ochr SweepNest uses Std {
-  inductive Void : Type
-  def IsSucc (n : Word) : Prop := match n { Zero => False, Succ(_) => True }
-  def NegIf (n : Word) (A : Type) : Type := match n { Zero => Unit, Succ(m) => Π(x : A). Void }
-  inductive NBox (A : Type) := MkNBox(n : Word, f : NegIf(n, A), h : IsSucc(n))
-  reject inductive Bad := MkBad(b : NBox(Bad))
-  def Neg (A : Type) : Type := Π(x : A). Void
-  reject inductive NegBox (A : Type) := MkNegBox(f : Neg(A))
-}
-#eval IO.println (run "SweepNest" SweepNest).show
-#guard ((run "SweepNest" SweepNest { k4Nest := false }).rows.map (fun r => r.verdict matches .accepted)) == [true, true, true, true, true, true, false]
-#eval IO.println (run "SweepDep" SweepDep).show
--- the typed-fragment appendix (tf.typ): Bad2 as printed and the claims around it. Since D67
--- (overwriting a borrow keeps the reborrows behind it) an assignment's [Access] leaves a
--- reborrow behind the old borrow alone, so the reborrow-and-replace idiom (Trav) and the
--- Pick variants are accepted on both paths
-ochr SweepTF uses Std, Fixtures {
-  def Bad2 (n : Nat) (b : Nat) (x : &Nat) : Unit := let a = 0; x := Pick(n, &a, &b); let z = b; ()
-  def Bad2Run : Unit := (let y = 7; Bad2(0, 5, &y))
-  def Bad4 (x : &Nat) (a : Nat) : Unit := (x := TailM(&a); match a { Z => (), S _ => () })
-  def Bad4Run : Unit := (let c = 0; Bad4(&c, 1))
-  reject def RetLocal (x : &Nat) : &Nat := (let a = 0; &a)
-  reject def IdLet (a : Nat) : Id Nat (let z = a; a) a := refl
-  reject def LetCode (a : Nat) : Nat := let z = a; a
-  def AssignPick (n : Nat) (b : Nat) (x : &Nat) : Unit := (x := Pick(n, &*x, &b); *x := 5)
-  def AssignPick1 (b : Nat) (c : Nat) : Unit := (let x = &c; let n = 1; x := Pick(n, &*x, &b); *x := 5)
-  def AssignPickDrop (n : Nat) (b : Nat) (x : &Nat) : Unit := (x := Pick(n, &*x, &b); ())
-  def ReborrowPick (n : Nat) (a : Nat) (b : Nat) (c : Nat) : Unit := (let x = Pick(n, &a, &b); let y = &*x; x := &c; *y := 0)
-  def ReborrowPick0 (a : Nat) (b : Nat) (c : Nat) : Unit := (let n = 0; let x = Pick(n, &a, &b); let y = &*x; x := &c; *y := 0)
-  def Trav (x : &Nat) : Unit := match *x { Z => (), S p => (x := &p; *x := 0) }
-}
-#eval IO.println (run "SweepTF" SweepTF).show
--- appendix note 11's `G`. The ochr command checks under the default configuration, where
--- `F` is rejected ([D48]); the note's point is with `&` read from the declared type switched
--- off (`refTop`), where `F` and `G` are accepted and `UseG` is not
-ochr SweepG uses Std {
-  reject def F (n : Nat) (x : &Nat) : (match n { Z => &Nat, S _ => Nat }) := match n { Z => x, S _ => 0 }
-  reject def G (n : Nat) (a : Nat) : Unit := let r = F(n, &a); let b = a; let r2 = r; ()
-  reject def UseG : Unit := G(0, 5)
-}
-#eval IO.println (run "SweepG" SweepG).show
-#guard ((run "SweepG" SweepG { refTop := false }).rows.map (fun r => r.verdict matches .accepted)) == [true, true, false]
-''')
+print("-- inline fragments, verbatim inside the smallest program that runs them\nochr SweepInline uses Std, Fixtures {\n  -- meta.typ:70 (naturality), at an abstract `n` and at 0, 1\n  reject def PickEarly (n : Nat) (a : Nat) (b : Nat) : Unit := let r = Pick(clone(n), &a, &b); let z = b; match n { Z => *r := 5, S _ => () }\n  def PickEarly0 (a : Nat) (b : Nat) : Unit := let n = 0; let r = Pick(clone(n), &a, &b); let z = b; match n { Z => *r := 5, S _ => () }\n  def PickEarly1 (a : Nat) (b : Nat) : Unit := let n = 1; let r = Pick(clone(n), &a, &b); let z = b; match n { Z => *r := 5, S _ => () }\n  -- eval.typ §4.3 closure fragments\n  def CapCopy (x : &Nat) : Nat := let n = clone(*x); let f = (λ(y : Nat) : Nat => clone(n)); f(0)\n  def TwiceMZeroFrag (x : &Nat) : Unit := let g = (λ(z : &Nat) : Unit => AddM(z, 0)); g(x)\n  -- appendix note 27\n  def CapS (x : &Nat) : Nat := AddM(&*x, 1); let n = clone(*x); let f = (λ(y : Nat) : Nat => clone(n)); f(0)\n  -- typing.typ intro, obs.typ §5\n  def LetZ (x : Nat) : Nat := let z = (let y = &x; *y := 2; x); let h : Id(Nat, z, 2) = refl; z\n  def WriteNeq (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : Nat := match e {}\n  reject def OwnedLocal (x : Nat) : Id(Unit, x := 6, ()) := refl\n  -- appendix notes 6, 7, 11, [Close]'s row\n  def PickX (x : &Nat) (y : &Nat) : &Nat := x\n  def PickY (x : &Nat) (y : &Nat) : &Nat := y\n  def PF (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e\n  reject def QF (g : Π(n : Nat). &Nat) : False := PF(g(5), refl)\n  reject def F (n : Nat) (x : &Nat) : (match n { Z => &Nat, S _ => Nat }) := match n { Z => x, S _ => 0 }\n  -- D66: `&A` for `A : Type₀` is well formed; a type variable in `Type₁` is not\n  def SwapT (A : Type) (x : &A) (y : &A) : Unit := ()\n  reject def SwapT1 (A : Type₁) (x : &A) (y : &A) : Unit := ()\n}\n#eval IO.println (run \"SweepInline\" SweepInline).show\n-- dependent fields (appendix, impl §8.3): the growable vector and the arm assigning its two\n-- fields in either order\nochr SweepDep uses ArrayBench {\n  inductive Vec (E : Type) := MkVec(n : Word, items : Array(E, n))\n  def Two : Array(Word, W(2)) := [Zero, Succ(Zero)]\n  def SetTwo (v : &Vec(Word)) : Unit := match *v { MkVec(n, items) => (n := W(2); items := Two) }\n  def SetTwoRev (v : &Vec(Word)) : Unit := match *v { MkVec(n, items) => (items := Two; n := W(2)) }\n}\n-- appendix A.4.8, nesting: `NBox` is accepted, `Bad` nested in it is not, and a field that is\n-- a Π at the generic fields is rejected already\nochr SweepNest uses Std {\n  inductive Void : Type\n  def IsSucc (n : Word) : Prop := match n { Zero => False, Succ(_) => True }\n  def NegIf (n : Word) (A : Type) : Type := match n { Zero => Unit, Succ(m) => Π(x : A). Void }\n  inductive NBox (A : Type) := MkNBox(n : Word, f : NegIf(n, A), h : IsSucc(n))\n  reject inductive Bad := MkBad(b : NBox(Bad))\n  def Neg (A : Type) : Type := Π(x : A). Void\n  reject inductive NegBox (A : Type) := MkNegBox(f : Neg(A))\n}\n#eval IO.println (run \"SweepNest\" SweepNest).show\n#guard ((run \"SweepNest\" SweepNest { k4Nest := false }).rows.map (fun r => r.verdict matches .accepted)) == [true, true, true, true, true, true, false]\n#eval IO.println (run \"SweepDep\" SweepDep).show\n-- the typed-fragment appendix (tf.typ): Bad2 as printed and the claims around it. Since D67\n-- (overwriting a borrow keeps the reborrows behind it) an assignment's [Access] leaves a\n-- reborrow behind the old borrow alone, so the reborrow-and-replace idiom (Trav) and the\n-- Pick variants are accepted on both paths\nochr SweepTF uses Std, Fixtures {\n  def Bad2 (n : Nat) (b : Nat) (x : &Nat) : Unit := let a = 0; x := Pick(n, &a, &b); let z = b; ()\n  def Bad2Run : Unit := (let y = 7; Bad2(0, 5, &y))\n  def Bad4 (x : &Nat) (a : Nat) : Unit := (x := TailM(&a); match a { Z => (), S _ => () })\n  def Bad4Run : Unit := (let c = 0; Bad4(&c, 1))\n  reject def RetLocal (x : &Nat) : &Nat := (let a = 0; &a)\n  reject def IdLet (a : Nat) : Id(Nat, let z = a; a, a) := refl\n  reject def LetCode (a : Nat) : Nat := let z = a; a\n  def AssignPick (n : Nat) (b : Nat) (x : &Nat) : Unit := (x := Pick(n, &*x, &b); *x := 5)\n  def AssignPick1 (b : Nat) (c : Nat) : Unit := (let x = &c; let n = 1; x := Pick(n, &*x, &b); *x := 5)\n  def AssignPickDrop (n : Nat) (b : Nat) (x : &Nat) : Unit := (x := Pick(n, &*x, &b); ())\n  def ReborrowPick (n : Nat) (a : Nat) (b : Nat) (c : Nat) : Unit := (let x = Pick(n, &a, &b); let y = &*x; x := &c; *y := 0)\n  def ReborrowPick0 (a : Nat) (b : Nat) (c : Nat) : Unit := (let n = 0; let x = Pick(n, &a, &b); let y = &*x; x := &c; *y := 0)\n  def Trav (x : &Nat) : Unit := match *x { Z => (), S p => (x := &p; *x := 0) }\n}\n#eval IO.println (run \"SweepTF\" SweepTF).show\n-- appendix note 11's `G`. The ochr command checks under the default configuration, where\n-- `F` is rejected ([D48]); the note's point is with `&` read from the declared type switched\n-- off (`refTop`), where `F` and `G` are accepted and `UseG` is not\nochr SweepG uses Std {\n  reject def F (n : Nat) (x : &Nat) : (match n { Z => &Nat, S _ => Nat }) := match n { Z => x, S _ => 0 }\n  reject def G (n : Nat) (a : Nat) : Unit := let r = F(n, &a); let b = a; let r2 = r; ()\n  reject def UseG : Unit := G(0, 5)\n}\n#eval IO.println (run \"SweepG\" SweepG).show\n#guard ((run \"SweepG\" SweepG { refTop := false }).rows.map (fun r => r.verdict matches .accepted)) == [true, true, false]\n")

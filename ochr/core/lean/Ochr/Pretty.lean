@@ -20,10 +20,10 @@ private def natLitT? : Term → Option Nat
 def Place.pp (ns : List String) : Place → String
   | .var i => nameAt ns i
   | .deref p => s!"*{p.pp ns}"
-  | .fst (.deref p) => s!"(*{p.pp ns}).1"
-  | .fst p => s!"{p.pp ns}.1"
-  | .snd (.deref p) => s!"(*{p.pp ns}).2"
-  | .snd p => s!"{p.pp ns}.2"
+  | .fst (.deref p) => s!"(*{p.pp ns}).0"
+  | .fst p => s!"{p.pp ns}.0"
+  | .snd (.deref p) => s!"(*{p.pp ns}).1"
+  | .snd p => s!"{p.pp ns}.1"
   | .field g (.deref p) => s!"(*{p.pp ns}).{g.name}"
   | .field g p => s!"{p.pp ns}.{g.name}"
 
@@ -55,12 +55,12 @@ partial def Term.pp (ns : List String) : Term → String
   | .zero => "0"
   | .succ t => match natLitT? (.succ t) with
       | some n => toString n
-      | none => s!"S {t.ppArg ns}"
-  | .fst t => s!"{t.ppArg ns}.1"
-  | .snd t => s!"{t.ppArg ns}.2"
-  | .eq a b c => s!"Eq {a.ppArg ns} {b.ppArg ns} {c.ppArg ns}"
-  | .id a b c => s!"Id {a.ppArg ns} {b.ppArg ns} {c.ppArg ns}"
-  | .cong f h => s!"cong {f.ppArg ns} {h.ppArg ns}"
+      | none => s!"S({t.pp ns})"
+  | .fst t => s!"{t.ppArg ns}.0"
+  | .snd t => s!"{t.ppArg ns}.1"
+  | .eq a b c => s!"Eq({a.pp ns}, {b.pp ns}, {c.pp ns})"
+  | .id a b c => s!"Id({a.pp ns}, {b.pp ns}, {c.pp ns})"
+  | .cong f h => s!"cong({f.pp ns}, {h.pp ns})"
   | .ref a => s!"&{a.ppArg ns}"
   | .ascribe t a => s!"({t.pp ns} : {a.pp ns})"
   | .prim "peek" [t] | .prim "inplace" [t] => t.pp ns   -- D53: a read that copies / is not consumed
@@ -82,11 +82,12 @@ partial def Term.pp (ns : List String) : Term → String
 partial def Term.ppArg (ns : List String) (t : Term) : String :=
   match t with
   | .place _ | .const _ | .nat | .unit | .tt | .zero | .sort _
-  | .ascribe _ _ | .call _ _ _ | .ctor _ _ _ _ _ => t.pp ns
+  | .ascribe _ _ | .call _ _ _ | .ctor _ _ _ _ _
+  | .eq _ _ _ | .id _ _ _ | .cong _ _ => t.pp ns
   | .tind "And" [_, _] | .tind "Pair" [_, _] => s!"({t.pp ns})"
   | .tind _ _ => t.pp ns
   | .val v => v.ppArg
-  | .succ _ => if (natLitT? t).isSome then t.pp ns else s!"({t.pp ns})"
+  | .succ _ => t.pp ns
   | _ => s!"({t.pp ns})"
 
 partial def Term.ppHead (ns : List String) (t : Term) : String :=
@@ -109,7 +110,7 @@ partial def Value.pp : Value → String
   | .zero => "0"
   | .succ v => match natLit? (.succ v) with
       | some n => toString n
-      | none => s!"S {v.ppArg}"
+      | none => s!"S({v.pp})"
   | .unit => "()"
   | .gfn n => n
   | .clo cs t => ppClosure "" cs t
@@ -120,7 +121,7 @@ partial def Value.pp : Value → String
   | .sealed t => s!"⌈{t.pp []}⌉"
   | .proof => "⋆"
   | .tNat => "Nat" | .tUnit => "Unit"
-  | .tEq A a b => s!"Eq {A.ppArg} {a.ppArg} {b.ppArg}"
+  | .tEq A a b => s!"Eq({A.pp}, {a.pp}, {b.pp})"
   | .tRef A => s!"&{A.ppArg}"
   | .tPi cs t => ppClosure "" cs t
   | .sort 0 => "Prop"
@@ -135,10 +136,10 @@ partial def Value.pp : Value → String
 partial def Value.ppArg (v : Value) : String :=
   match v with
   | .zero | .unit | .gfn _ | .loan _ | .bot | .abs _ | .sealed _ | .proof | .tNat | .tUnit
-  | .sort _ | .ind _ _ _ _ _ => v.pp
+  | .sort _ | .ind _ _ _ _ _ | .tEq _ _ _ => v.pp
   | .tInd "And" [_, _] | .tInd "Pair" [_, _] => s!"({v.pp})"
   | .tInd _ _ => v.pp
-  | .succ _ => if (natLit? v).isSome then v.pp else s!"({v.pp})"
+  | .succ _ => v.pp
   | _ => s!"({v.pp})"
 
 /-- A closure prints with its captured values named `κ₁ … κₘ` and listed after `where`. -/

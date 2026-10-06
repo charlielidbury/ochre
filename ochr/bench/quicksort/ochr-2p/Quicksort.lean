@@ -26,7 +26,7 @@ ochr QuicksortSpec uses ArrayLemmas {
   -- count(x, a) is the library's `Count(x, n, a)`: how many elements of `a` equal `x`, by
   -- recursion over the elements. perm(a, b) :⟺ ∀ x. count(x, a) = count(x, b).
   def Perm (n : Word) (a : Slice(Word, n)) (b : Slice(Word, n)) : Prop := (
-    Π(x : Word). Eq Word (Count(x, n, a)) (Count(x, n, b))
+    Π(x : Word). Eq(Word, Count(x, n, a), Count(x, n, b))
   )
 }
 
@@ -41,7 +41,7 @@ model `SortModel`, and your proofs. -/
 ochr QuicksortCompose uses QuicksortSpec {
   def SortedFromModel (qs : Π(n : Word) (s : &Slice(Word, n)). Unit)
       (model : Π(n : Word) (v : Slice(Word, n)). Slice(Word, n))
-      (agree : Π(n : Word) (s : &Slice(Word, n)). Id Unit (qs(n, s)) (*s := model(n, *s)))
+      (agree : Π(n : Word) (s : &Slice(Word, n)). Id(Unit, qs(n, s), *s := model(n, *s)))
       (msorted : Π(n : Word) (v : Slice(Word, n)). Sorted(n, model(n, v)))
       (n : Word) (s : &Slice(Word, n)) : (let c = *s; qs(n, &c); Sorted(n, c)) := (
     rewrite ← agree(n, s) in msorted(n, *s)
@@ -49,7 +49,7 @@ ochr QuicksortCompose uses QuicksortSpec {
 
   def PermFromModel (qs : Π(n : Word) (s : &Slice(Word, n)). Unit)
       (model : Π(n : Word) (v : Slice(Word, n)). Slice(Word, n))
-      (agree : Π(n : Word) (s : &Slice(Word, n)). Id Unit (qs(n, s)) (*s := model(n, *s)))
+      (agree : Π(n : Word) (s : &Slice(Word, n)). Id(Unit, qs(n, s), *s := model(n, *s)))
       (mperm : Π(n : Word) (v : Slice(Word, n)). Perm(n, model(n, v), v))
       (n : Word) (s : &Slice(Word, n)) : (let c = *s; qs(n, &c); Perm(n, c, *s)) := (
     rewrite ← agree(n, s) in mperm(n, *s)
@@ -106,7 +106,7 @@ ochr QuicksortSolution uses QuicksortModel, QuicksortCompose {
 
   -- FIXED-BEGIN agree
   -- The agreement: running `QuickSort(n, s)` has the same effect as `*s := SortModel(n, *s)`.
-  def QuickSortAgrees (n : Word) (s : &Slice(Word, n)) : Id Unit (QuickSort(n, s)) (*s := SortModel(n, *s)) :=
+  def QuickSortAgrees (n : Word) (s : &Slice(Word, n)) : Id(Unit, QuickSort(n, s), *s := SortModel(n, *s)) :=
   -- FIXED-END agree
     ?
 

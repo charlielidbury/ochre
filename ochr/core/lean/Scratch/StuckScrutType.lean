@@ -15,6 +15,6 @@ ochr StuckScrutType {
   reject def M2 (n : Nat) (h : Π(n : Nat). TG(n)) : Nat := (let x = h(n); match x { Z => 0, S _ => 1 })
   -- "[Match] on a non-Nat value F"
   reject def M2Run : Nat := M2(1, HB)
-  reject def M3 (n : Nat) (h : Π(n : Nat). TG(n)) : Id Nat (let x = h(n); match x { Z => 0, S _ => 1 }) 0 := refl
+  reject def M3 (n : Nat) (h : Π(n : Nat). TG(n)) : Id(Nat, (let x = h(n); match x { Z => 0, S _ => 1 }), 0) := refl
 }
 #eval IO.println (run "StuckScrutType" StuckScrutType).show

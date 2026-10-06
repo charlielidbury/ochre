@@ -110,7 +110,7 @@ ochr DepFields uses Std {
       MkV(n, x) => (
         let m = n;
         n := Zero;
-        let h : Id Word (VN(clone(*v))) Zero = refl;
+        let h : Id(Word, VN(clone(*v)), Zero) = refl;
         n := m
       ),
     }
@@ -118,14 +118,14 @@ ochr DepFields uses Std {
   reject def IdMakesBroken (v : &V) : Unit := (
     match *v {
       MkV(n, x) => (
-        let h : Id Unit (n := Zero) (n := Zero) = refl;
+        let h : Id(Unit, n := Zero, n := Zero) = refl;
         ()
       ),
     }
   )
 
   -- without [Repack] the lie is a closed proof of False: `Absurd` is true of every packed `V`
-  def Absurd (v : V) (h : Eq Word (VN(v)) Zero) : False := (
+  def Absurd (v : V) (h : Eq(Word, VN(v), Zero)) : False := (
     match v {
       MkV(n, x) => match n {
         Zero => match x {},
@@ -181,13 +181,13 @@ ochr DepFields uses Std {
   reject def BoomBorrow : False := Absurd((let v = MkV(Succ(Zero), O); LieBorrow(&v); v), refl)
 
   -- injectivity, restricted: equal lengths are taken apart; unequal ones are not, since
-  -- `Eq (Fin1(a)) x y` would compare values of different types
-  def InjSame (a : Word) (x : Fin1(a)) (y : Fin1(a)) (h : Eq V (MkV(a, x)) (MkV(a, y))) : Eq (Fin1(a)) x y := h
-  reject def InjLen (a : Word) (b : Word) (x : Fin1(a)) (y : Fin1(b)) (h : Eq V (MkV(a, x)) (MkV(b, y))) : Eq Word a b := (
+  -- `Eq(Fin1(a), x, y)` would compare values of different types
+  def InjSame (a : Word) (x : Fin1(a)) (y : Fin1(a)) (h : Eq(V, MkV(a, x), MkV(a, y))) : Eq(Fin1(a), x, y) := h
+  reject def InjLen (a : Word) (b : Word) (x : Fin1(a)) (y : Fin1(b)) (h : Eq(V, MkV(a, x), MkV(b, y))) : Eq(Word, a, b) := (
     let ⟨h1, h2⟩ = h;
     h1
   )
-  def InjLenCong (a : Word) (b : Word) (x : Fin1(a)) (y : Fin1(b)) (h : Eq V (MkV(a, x)) (MkV(b, y))) : Eq Word a b := cong VN h
+  def InjLenCong (a : Word) (b : Word) (x : Fin1(a)) (y : Fin1(b)) (h : Eq(V, MkV(a, x), MkV(b, y))) : Eq(Word, a, b) := cong(VN, h)
 
   -- a proof field: a write through the field its type mentions invalidates it
   def IsSucc (n : Word) : Prop := (
@@ -378,7 +378,7 @@ ochr DepFields uses Std {
   ("LieBorrow", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Empty0"),
   ("BoomZ", "unknown constant LieZ"),
   ("BoomParam", "unknown constant LieParam"),
-  ("InjLen", "[Match] on h, whose type Eq V MkV(σ0, σ2) MkV(σ1, σ3) is not an inductive type"),
+  ("InjLen", "[Match] on h, whose type Eq(V, MkV(σ0, σ2), MkV(σ1, σ3)) is not an inductive type"),
   ("ToZero", "[Repack] a borrow of it ends, but it is open: field h of MkPos: it holds ⊥"),
   ("ToZeroProof", "the assigned value has type ⊤, expected False"),
   ("StaleProof", "[Open] (*p).h is a proof field invalidated by a write to a field its type mentions"),
@@ -480,7 +480,7 @@ ochr DepVec uses ArrayBench {
   -- rebuilt whole: [T-Ctor] checks the telescope
   def Clear (E : Type) (v : &Vec(E)) : Unit := *v := MkVec[E](Zero, Zero, ([] : Array(Opt(E), Zero)), refl)
   reject def ClearWrongCap (E : Type) (v : &Vec(E)) : Unit := *v := MkVec[E](Zero, Succ(Zero), ([] : Array(Opt(E), Zero)), refl)
-  -- in place, in either order: the user's example (`*v.0 := 2; *v.1 := [0, 1]`), here with the
+  -- in place, in either order: the user's example (`*v.0 := 2; *v.0 := [0, 1]`), here with the
   -- capacity and the proof field too
   def Two : Array(Opt(Word), W(2)) := [Some(Zero), Some(Succ(Zero))]
   def SetTwo (v : &Vec(Word)) : Unit := (
@@ -1219,24 +1219,24 @@ ochr DepVec uses ArrayBench {
       MkTable(cap, slots, len) => cap := ncap,
     }
   )
-  def ResizeRun : Id Word (
+  def ResizeRun : Id(Word, 
       let t = TNew(W(2));
       TInsert(&t, W(5), W(50), refl);
       TInsert(&t, W(3), W(30), refl);
       Resize(&t, W(4), refl);
       TInsert(&t, W(7), W(70), refl);
       TInsert(&t, W(5), W(51), refl);
-      TLen(t)) W(3) := refl
-  def ResizeRunCap : Id Word (
+      TLen(t), W(3)) := refl
+  def ResizeRunCap : Id(Word, 
       let t = TNew(W(2));
       TInsert(&t, W(5), W(50), refl);
       Resize(&t, W(4), refl);
-      TCap(t)) W(4) := refl
-  reject def ResizeRunWrong : Id Word (
+      TCap(t), W(4)) := refl
+  reject def ResizeRunWrong : Id(Word, 
       let t = TNew(W(2));
       TInsert(&t, W(5), W(50), refl);
       Resize(&t, W(4), refl);
-      TLen(t)) W(2) := refl
+      TLen(t), W(2)) := refl
 }
 
 -- the exact number of declarations (a truncated file changes it)
@@ -1250,7 +1250,7 @@ ochr DepVec uses ArrayBench {
   ("MoveBroken", "[Repack] *v is read whole, but it is open"),
   ("PassBroken", "[Repack] *v is borrowed whole, but it is open"),
   ("PushRunWrong", "the body of PushRunWrong has type ⊤, but the goal is False"),
-  ("PushLenTwo", "the body of PushLenTwo has type ⊤, but the goal is Eq Word σ3 Succ(σ3)"),
+  ("PushLenTwo", "the body of PushLenTwo has type ⊤, but the goal is Eq(Word, σ3, Succ(σ3))"),
   ("VGetNoInv", "argument 3 (h) has type ⊤, expected ⌈IsSome("),
   ("VGetP", "[Repack] a borrow of it ends, but it is open: field hp of MkVecP: it holds ⊥"),
   ("ResizeKeep", "[Repack] a borrow of it ends, but it is open: field slots of MkTable holds a value of type ArrayOf(⌈Cells(List(Entry), σ2)⌉), but its type from the earlier fields is ArrayOf(⌈Cells(List(Entry), σ1)⌉)"),

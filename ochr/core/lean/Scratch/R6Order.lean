@@ -8,10 +8,8 @@ for open terms. Fixed by 1678d2a2 (owners in a canonical order: writes first, by
 occurrence): `Direct` is accepted, and `Swapped`, which the generic path used to produce,
 is not. -/
 ochr R6Order {
-  def Direct (n0 : Nat) (x2 : &Nat) : Id Prop (match n0 { Z => Id Unit (*x2 := 1) (n0 := *x2), S p2 => ⊤ })
-      (match n0 { Z => Eq Nat 1 *x2 ∧ Eq Nat 0 *x2, S p2 => ⊤ }) := match n0 { Z => refl, S _ => refl }
-  reject def Swapped (n0 : Nat) (x2 : &Nat) : Id Prop (match n0 { Z => Id Unit (*x2 := 1) (n0 := *x2), S p2 => ⊤ })
-      (match n0 { Z => Eq Nat 0 *x2 ∧ Eq Nat 1 *x2, S p2 => ⊤ }) := match n0 { Z => refl, S _ => refl }
-  def AtZero (x2 : &Nat) : Id Prop (let n0 = 0; Id Unit (*x2 := 1) (n0 := *x2)) (Eq Nat 1 *x2 ∧ Eq Nat 0 *x2) := refl
+  def Direct (n0 : Nat) (x2 : &Nat) : Id(Prop, (match n0 { Z => Id(Unit, *x2 := 1, n0 := *x2), S p2 => ⊤ }), (match n0 { Z => Eq(Nat, 1, *x2) ∧ Eq(Nat, 0, *x2), S p2 => ⊤ })) := match n0 { Z => refl, S _ => refl }
+  reject def Swapped (n0 : Nat) (x2 : &Nat) : Id(Prop, (match n0 { Z => Id(Unit, *x2 := 1, n0 := *x2), S p2 => ⊤ }), (match n0 { Z => Eq(Nat, 0, *x2) ∧ Eq(Nat, 1, *x2), S p2 => ⊤ })) := match n0 { Z => refl, S _ => refl }
+  def AtZero (x2 : &Nat) : Id(Prop, let n0 = 0; Id(Unit, *x2 := 1, n0 := *x2), Eq(Nat, 1, *x2) ∧ Eq(Nat, 0, *x2)) := refl
 }
 #eval IO.println (run "R6Order" R6Order).show
