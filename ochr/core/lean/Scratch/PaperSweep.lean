@@ -46,7 +46,7 @@ ochr SweepClear {
 #eval IO.println (run "SweepClear" SweepClear).show
 ochr SweepHM uses HashMap, HashMapLookup {
   -- impl.typ:55
-  def InsertFindOtherP (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) (k2 : Word) (h : Eq(Bool, EqB(k, k2), false)) : Id(Opt(V), (InsertNoResize(V, &*hm, k, v); Find(V, clone(*hm), k2)), (let r = Find(V, clone(*hm), k2); InsertNoResize(V, &*hm, k, v); r)) := match *hm { HM(n, len, slots) => match slots { MkArray(s) => split BInsert in SlotInsertFindOther(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), Idx(k2, n), IdxLt(k2, n), k, v, k2, h) } }
+  def InsertFindOtherP (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) (k2 : Word) (h : Eq(Bool, EqB(k, k2), false)) : Id(Opt(V), (InsertNoResize(V, &*hm, k, v); Find(V, clone(*hm), k2)), (let r = Find(V, clone(*hm), k2); InsertNoResize(V, &*hm, k, v); r)) := let HM(n, _, MkArray(s)) = *hm; split BInsert in SlotInsertFindOther(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), Idx(k2, n), IdxLt(k2, n), k, v, k2, h)
 }
 #eval IO.println (run "SweepHM" SweepHM).show
 ochr SweepQS uses Quicksort {
