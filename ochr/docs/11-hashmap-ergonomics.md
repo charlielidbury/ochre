@@ -59,6 +59,11 @@ Do not start this phase until team-lead says go.
    - Buckets are Std's `List` of a key–value pair; the table is `Array(…, cap)` from `16Arrays`; `GetMut` comes from the library.
    - Delete the hand-rolled `Opt`/`Bucket`/`Slots`/`Slot`/`BGetMut`/`EmptySlots` and use the generic ones.
    - The new sugar should be used throughout.
+   - **The representation, pending the user's decision (user item 6: "could hashmap be defined in terms of `Array`, so HashMap<V> = Array<List<V>>").**
+     - Buckets must keep their keys: `List(Pair(Word, V))`.
+     - A fixed-capacity map could be just the type function `HashMap(V, cap) := Array(List(Pair(Word, V)), cap)`.
+     - A *resizing* map changes its capacity, and a borrow fixes its type, so it needs the Σ shape: `HM(n : Word, slots : Array(List(Pair(Word, V)), Succ(n)))`.
+     - Dropping the `len` field removes the `len = Count(slots)` invariant entirely, at the cost of an O(cap) `Len`.
 2. **The invariant in the type, pending the user's decision.** The option: `HashMap(V) := HM(n, len, slots : Array(…), inv : Inv(…))`, a dependent proof field (D64). This is possible since D64-amended (8e036130) lets a proof field be re-established while a borrow (`get_mut`'s `&V`) is live. See the `CellGet` test in `18DependentFields`.
 3. **Shared by the other hashmaps.** Consolidate the smaller hashmaps in `16Arrays` and `18DependentFields` onto this one, or delete them, if they only duplicate it.
 4. **The paper.** Re-measure the paper's case-study numbers (lines, check time, the Aeneas comparison table) and update §8 and `notes/hashmap-case-study.md`.
