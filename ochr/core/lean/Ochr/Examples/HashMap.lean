@@ -1,7 +1,7 @@
 import Ochr.Examples.Array
 import Ochr.Examples.Option
 
-/-! # HashMap: a verified hash map
+/-! # HashMap: a verified hash map, its invariant in its type
 
 The case study of `notes/hashmap-case-study.md`: the resizing hash map that Aeneas verifies
 (ICFP 2022, §6), written once, in place, with its theorems stated and proved about that
@@ -11,26 +11,35 @@ statement uses the map's own lookup, run on a copy of the map (`Find`, as `Add` 
 on a copy).
 
 Values have any type `V`, keys are `Word`s. The table is an array of `n + 1` buckets
-(`Array.lean`), each bucket a list of key–value pairs. A map holds its size `n` next to an
+(`Array.lean`), each bucket a list of key–value pairs. A raw map holds its size `n` next to an
 array of that many buckets plus one, so the array's type depends on `n` (a dependent field,
-`DependentFields.lean`), and resizing replaces both. `Slot` borrows the bucket of a key through
-the array's element borrow, as Rust's `&mut slots[i]`; the hash is the identity, as in
-Aeneas, and `k mod (n + 1)` picks the bucket, whose bound is a lemma. Keys, sizes and the
-length are `Word`s, which reading copies; values move, as in Rust. `Insert` and `Remove`
-return the value they move out; `Get` and `MapGetMut` return a borrow of a present key's value
-(Ochr has no shared borrows and no borrows inside data, so both take a proof that the key is
-present).
+`DependentFields.lean`). `Slot` borrows the bucket of a key through the array's element
+borrow, as Rust's `&mut slots[i]`; the hash is the identity, as in Aeneas, and `k mod (n + 1)`
+picks the bucket, whose bound is a lemma. Keys, sizes and the length are `Word`s, which reading
+copies; values move, as in Rust. `Insert` and `Remove` return the value they move out; `Get` and
+`MapGetMut` return a borrow of a present key's value (Ochr has no shared borrows and no borrows
+inside data, so both take a proof that the key is present).
 
-The file has four programs: `HashMap`, the implementation; `HashMapLookup`, lookups after each
-operation; `HashMapLength`, the length field and the count of entries; `HashMapResize`, the
-invariant, resizing, `Insert` with its resize, and the load factor. Each holds only what a later
-block uses (the definitions, and the lemmas later proofs call), and is followed by a companion
-`…Tests` block, which no block uses, with the rest: the concrete runs, the theorems, and the
-negative tests. -/
+The invariant is in the type (docs/12, `hm-inv`): `HashMap(V) := HM(m : RawMap(V), inv : Inv(V,
+m))`, a raw map with a proof field that it has the invariant (the length counts the entries,
+the keys of each bucket are distinct, every key lies only in its own bucket). So no theorem
+takes the invariant as a hypothesis, and that every operation keeps it is the operation's
+type. The file has three layers: `HashMapRaw`, the operations on a raw map; `HashMapInvLib`, the
+invariant and the lemmas that each raw operation keeps it; `HashMap`, the map with its
+invariant, whose operations run the raw ones and re-establish the invariant. Then the theorems:
+`HashMapLookup`, lookups after each operation; `HashMapLength`, the length; `HashMapResize`,
+resizing, `Insert` with its resize, and the load factor. A block that later blocks use holds
+only what they use, and is followed by a companion `…Tests` block, which no block uses, with
+the rest: the concrete runs, the theorems, and the negative tests. -/
 
 open Ochr.Test
 
-ochr HashMap uses Bools, Words, Options, Lists, Arrays, ArrayLemmas {
+/-! ## The raw map
+
+The operations on the table without its invariant: buckets, the index borrow, and the raw
+map's lookup, insert, remove and element borrow. Resizing is in the public layer, which
+builds the new table with the public insert. -/
+ochr HashMapRaw uses Bools, Words, Options, Lists, Arrays, ArrayLemmas {
   -- ## The bucket index
   -- `k mod (n + 1)`, `Words`' `ModS`, and its bound: the index is in an array of `n + 1`
   -- buckets. Key comparison (`EqB`), `LtB`, `Pred` and the arithmetic are `Words`'; `Opt` is
@@ -44,8 +53,10 @@ ochr HashMap uses Bools, Words, Options, Lists, Arrays, ArrayLemmas {
   -- names the array's type, so that the field's type depends on `n` through a type function)
   -- and `len` entries.
   def Bucket (V : Type) : Type := List(Pair(Word, V))
+
   def Slots (V : Type) (n : Word) : Type := Array(Bucket(V), Succ(n))
-  inductive HashMap (V : Type) := HM(n : Word, len : Word, slots : Slots(V, n))
+
+  inductive RawMap (V : Type) := RM(n : Word, len : Word, slots : Slots(V, n))
 
   -- ## Buckets
   -- Test for a key, insert or overwrite it (returning the value it held), remove it
@@ -133,38 +144,25 @@ ochr HashMap uses Bools, Words, Options, Lists, Arrays, ArrayLemmas {
 
   -- ## The map
   -- Every operation finds the key's bucket through `Slot` and works on it in place.
-  def New (V : Type) (n : Word) : HashMap(V) := HM[V](n, Zero, EmptySlots(V, n))
+  def RawNew (V : Type) (n : Word) : RawMap(V) := RM[V](n, Zero, EmptySlots(V, n))
 
   -- The lookup on a copy, for statements, and the length field.
-  def Lookup (V : Type) (hm : &HashMap(V)) (k : Word) : Opt(V) := (
-    let HM(n, _, slots) = *hm;
+  def RawLookup (V : Type) (hm : &RawMap(V)) (k : Word) : Opt(V) := (
+    let RM(n, _, slots) = *hm;
     let b = Slot(V, n, &slots, k);
     BLookup(V, b, k)
   )
 
-  def Find (V : Type) (m : HashMap(V)) (k : Word) : Opt(V) := Lookup(V, &m, k)
+  def RawFind (V : Type) (m : RawMap(V)) (k : Word) : Opt(V) := RawLookup(V, &m, k)
 
-  def Len (V : Type) (m : HashMap(V)) : Word := (
-    let HM(_, len, _) = m;
-    len
-  )
-
-  def ContainsKey (V : Type) (hm : &HashMap(V)) (k : Word) : Bool := (
-    let HM(n, _, slots) = *hm;
+  def RawContainsKey (V : Type) (hm : &RawMap(V)) (k : Word) : Bool := (
+    let RM(n, _, slots) = *hm;
     let b = Slot(V, n, &slots, k);
     BContains(V, b, k)
   )
 
-  -- `Get` and `MapGetMut` borrow a present key's value: `Get`'s borrow is only read (Ochr has
-  -- no shared borrows), `MapGetMut`'s may be written through.
-  def Get (V : Type) (hm : &HashMap(V)) (k : Word) (h : IsSome(V, Find(V, *hm, k))) : &V := (
-    let HM(n, _, slots) = *hm;
-    let b = Slot(V, n, &slots, k);
-    BGet(V, b, k, h)
-  )
-
-  def MapGetMut (V : Type) (hm : &HashMap(V)) (k : Word) (h : IsSome(V, Find(V, *hm, k))) : &V := (
-    let HM(n, _, slots) = *hm;
+  def RawGetMut (V : Type) (hm : &RawMap(V)) (k : Word) (h : IsSome(V, RawFind(V, *hm, k))) : &V := (
+    let RM(n, _, slots) = *hm;
     let b = Slot(V, n, &slots, k);
     BGet(V, b, k, h)
   )
@@ -172,8 +170,8 @@ ochr HashMap uses Bools, Words, Options, Lists, Arrays, ArrayLemmas {
   -- Insert or overwrite, and remove, each returning the value moved out; the length grows
   -- when the bucket insert found nothing to overwrite, and shrinks when the remove found
   -- something.
-  def InsertNoResize (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) : Opt(V) := (
-    let HM(n, len, slots) = *hm;
+  def RawInsertNoResize (V : Type) (hm : &RawMap(V)) (k : Word) (v : V) : Opt(V) := (
+    let RM(n, len, slots) = *hm;
     let b = Slot(V, n, &slots, k);
     let r = BInsert(V, b, k, v);
     match r {
@@ -183,8 +181,8 @@ ochr HashMap uses Bools, Words, Options, Lists, Arrays, ArrayLemmas {
     r
   )
 
-  def Remove (V : Type) (hm : &HashMap(V)) (k : Word) : Opt(V) := (
-    let HM(n, len, slots) = *hm;
+  def RawRemove (V : Type) (hm : &RawMap(V)) (k : Word) : Opt(V) := (
+    let RM(n, len, slots) = *hm;
     let b = Slot(V, n, &slots, k);
     let x = BRemove(V, b, k);
     match x {
@@ -193,189 +191,16 @@ ochr HashMap uses Bools, Words, Options, Lists, Arrays, ArrayLemmas {
     };
     x
   )
-
-  def Clear (V : Type) (hm : &HashMap(V)) : Unit := (
-    let HM(n, len, slots) = *hm;
-    len := Zero;
-    slots := EmptySlots(V, n)
-  )
-
-  -- ## Resizing
-  -- Move every entry into a map with `2n + 2` buckets, by inserting it again. Resizing
-  -- happens when the entries outnumber the buckets (load factor 1). The old buckets are
-  -- visited by index, each taken out of the old array and replaced by an empty one (Rust's
-  -- `mem::take`), so nothing is copied.
-  def MoveBucket (V : Type) (b : Bucket(V)) (hm : &HashMap(V)) : Unit by b := (
-    match b {
-      Nil => (),
-      Cons(e, t) => (
-        let (k, v) = e;
-        InsertNoResize(V, &*hm, k, v);
-        MoveBucket(V, t, hm)
-      ),
-    }
-  )
-
-  def Take (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (h : Lt(i, n)) : Bucket(V) := (
-    let r = GetMut(Bucket(V), n, s, i, h);
-    let b = *r;
-    *r := Nil[Pair(Word, V)];
-    b
-  )
-
-  -- Buckets `i, …, n - 1`, by recursion on the count `rem` still to go (`rem + i = n`).
-  def MoveFrom (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (rem : Word)
-      (hr : Eq(Word, WAdd(rem, i), n)) (hm : &HashMap(V)) : Unit by rem := (
-    match rem {
-      Zero => (),
-      Succ(r) => (
-        let hi : Lt(i, n) = (rewrite hr in LeAddL(r, i));
-        let hr2 : Eq(Word, WAdd(r, Succ(i)), n) = (rewrite AddRS(r, i) in hr);
-        let b = Take(V, n, &*s, i, hi);
-        MoveBucket(V, b, &*hm);
-        MoveFrom(V, n, s, Succ(i), r, hr2, hm)
-      ),
-    }
-  )
-
-  def Resize (V : Type) (hm : &HashMap(V)) : Unit := (
-    let HM(n, _, slots) = *hm;
-    let n0 = n;
-    let old = slots;
-    *hm := New(V, Succ(WAdd(n0, n0)));
-    MoveFrom(V, Succ(n0), AsSlice(Bucket(V), Succ(n0), &old), Zero, Succ(n0), AddZeroR(Succ(n0)), hm)
-  )
-
-  def Insert (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) : Opt(V) := (
-    let r = InsertNoResize(V, &*hm, k, v);
-    let HM(n, len, _) = *hm;
-    if LtB(n, len) { Resize(V, &*hm) };
-    r
-  )
 }
 
-/-! The concrete runs, at `V := Word`, and the lookup without its `clone`. -/
+/-! ## The invariant, and the raw operations keep it
 
-ochr HashMapTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMap {
-  -- ## Runs
-  -- At `V := Word`. Three inserts into a map with two buckets: the second reaches the load
-  -- factor and resizes to four. Every key is found again, an absent one is not.
-  def RunLayout : Id(HashMap(Word),
-    let m = New(Word, W(1));
-    Insert(Word, &m, W(1), W(10));
-    Insert(Word, &m, W(2), W(20));
-    Insert(Word, &m, W(3), W(30));
-    m
-  , HM(W(3), W(3), ([Nil, Cons((W(1), W(10)), Nil), Cons((W(2), W(20)), Nil), Cons((W(3), W(30)), Nil)] : Array(Bucket(Word), W(4))))) := refl
-
-  def RunGet : Id(Word × Opt(Word),
-    let m = New(Word, W(1));
-    Insert(Word, &m, W(1), W(10));
-    Insert(Word, &m, W(2), W(20));
-    Insert(Word, &m, W(3), W(30));
-    let x = *Get(Word, &m, W(2), refl);
-    (x, Find(Word, m, W(5)))
-  , (W(20), None)) := refl
-
-  reject def RunGetWrong : Id(Word,
-    let m = New(Word, W(1));
-    Insert(Word, &m, W(1), W(10));
-    Insert(Word, &m, W(2), W(20));
-    *Get(Word, &m, W(1), refl)
-  , W(20)) := refl
-
-  def RunContains : Id(Bool × Bool,
-    let m = New(Word, W(1));
-    Insert(Word, &m, W(1), W(10));
-    Insert(Word, &m, W(2), W(20));
-    let a = ContainsKey(Word, &m, W(2));
-    (a, ContainsKey(Word, &m, W(3)))
-  , (true, false)) := refl
-
-  -- Overwriting returns the old value and keeps the length.
-  def RunOverwrite : Id(Opt(Word) × (Word × Word),
-    let m = New(Word, W(1));
-    Insert(Word, &m, W(1), W(10));
-    Insert(Word, &m, W(2), W(20));
-    let r = Insert(Word, &m, W(2), W(25));
-    let l = Len(Word, clone(m));
-    (r, (l, *Get(Word, &m, W(2), refl)))
-  , (Some(W(20)), (W(2), W(25)))) := refl
-
-  -- `5` collides with `1` in a map with four buckets.
-  def RunCollide : Id(HashMap(Word),
-    let m = New(Word, W(3));
-    Insert(Word, &m, W(1), W(10));
-    Insert(Word, &m, W(5), W(50));
-    m
-  , HM(W(3), W(2), ([Nil, Cons((W(1), W(10)), Cons((W(5), W(50)), Nil)), Nil, Nil] : Array(Bucket(Word), W(4))))) := refl
-
-  -- Remove returns the value it removed; removing an absent key does nothing.
-  def RunRemove : Id(Opt(Word) × HashMap(Word),
-    let m = New(Word, W(3));
-    Insert(Word, &m, W(1), W(10));
-    Insert(Word, &m, W(5), W(50));
-    let x = Remove(Word, &m, W(1));
-    Remove(Word, &m, W(7));
-    (x, m)
-  , (Some(W(10)), HM(W(3), W(1), ([Nil, Cons((W(5), W(50)), Nil), Nil, Nil] : Array(Bucket(Word), W(4)))))) := refl
-
-  -- Write through the borrow of a present key. For an absent key the proof `refl` of
-  -- `IsSome(Word, Find(Word, m, 5))` does not exist: the precondition computes to `False`.
-  def RunGetMut : Id(Word,
-    let m = New(Word, W(3));
-    Insert(Word, &m, W(1), W(10));
-    Insert(Word, &m, W(5), W(50));
-    let q = MapGetMut(Word, &m, W(5), refl);
-    *q := W(55);
-    *Get(Word, &m, W(5), refl)
-  , W(55)) := refl
-
-  reject def RunGetMutAbsent : Id(Word,
-    let m = New(Word, W(3));
-    Insert(Word, &m, W(1), W(10));
-    let q = MapGetMut(Word, &m, W(5), refl);
-    *q := W(55);
-    *Get(Word, &m, W(5), refl)
-  , W(55)) := refl
-
-  -- Clear empties the map and keeps the number of buckets.
-  def RunClear : Id(HashMap(Word),
-    let m = New(Word, W(1));
-    Insert(Word, &m, W(1), W(10));
-    Clear(Word, &m);
-    m
-  , New(Word, W(1))) := refl
-
-  -- Without a proof that the index is in bounds there is no borrow of the bucket: at an
-  -- unknown key, `refl` does not prove `Lt(Idx(k, n), Succ(n))`, which is what `IdxLt` is for
-  -- (the arrays benchmark B3, `ArrayBench.lean`).
-  reject def SlotUnbounded (V : Type) (n : Word) (slots : &Slots(V, n)) (k : Word) : &Bucket(V) :=
-    GetMut(Bucket(V), Succ(n), AsSlice(Bucket(V), Succ(n), slots), Idx(k, n), refl)
-
-  -- Without its `clone`, the lookup would move the value out of a bucket it only borrows,
-  -- and the borrow would end with the bucket partly moved out.
-  reject def BLookupMoves (V : Type) (b : &Bucket(V)) (k : Word) : Opt(V) by b := (
-    match *b {
-      Nil => None,
-      Cons(e, t) => (
-        let (k', v') = e;
-        if EqB(k', k) { Some(v') } else { BLookupMoves(V, &t, k) }
-      ),
-    }
-  )
-}
-
-/-! ## Lookups after each operation
-
-Each theorem says what `Find` returns after an operation, for the key it touched and for
-any other key. The statements use the operations themselves: "after `InsertNoResize(hm, k,
-v)`, `Find(*hm, k)` is `Some(v)`" is `Id(Opt(V), (InsertNoResize(V, &*hm, k, v); Find(V,
-clone(*hm), k)), (InsertNoResize(V, &*hm, k, clone(v)); Some(v)))`. Each is proved first for
-one bucket, by recursion on the bucket, then lifted through the array's element borrow by
-recursion on the index, following `GetMut`'s own recursion, then stated for the map. -/
-
-ochr HashMapLookup uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMap {
+The invariant and the lemmas that each raw operation keeps it, which the public operations
+call: the length counts the entries (`Counted`, through the count lemmas), the keys of each
+bucket are distinct (`AllUnique`), and every key lies only in its own bucket (`Placed`, a
+statement about every key, `Π(k : Word). OnlyIn(…)`). Each is proved for a bucket, lifted
+through the element borrow by recursion on the index, and stated for the raw map. -/
+ochr HashMapInvLib uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMapRaw {
   -- ## Key comparison
   -- Where the comparison says the keys are equal, they are. `Succ(a) = Succ(b)` is
   -- `a = b` (injectivity), so the recursive call proves the `Succ` case as it stands.
@@ -401,18 +226,17 @@ ochr HashMapLookup uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
     if EqB(b, c) { match h {} } else { match EqBTrans(a, b, c, h1, h2) {} }
   )
 
-  -- ## Insert, in one bucket
-  -- After inserting `k`, looking `k` up gives the inserted value. In the `Nil` arm the
-  -- lookup compares `k` with itself, which the checker cannot compute for an abstract `k`:
-  -- split on it, and the `false` arm contradicts `EqBRefl`.
-  def BInsertFind (V : Type) (b : &Bucket(V)) (k : Word) (v : V) :
-      Id(Opt(V), (BInsert(V, &*b, k, v); BFind(V, clone(*b), k)), (BInsert(V, &*b, k, clone(v)); Some(v))) by b := (
-    match *b {
-      Nil => if EqB(k, k) { refl } else { match EqBRefl(k) {} },
-      Cons(e, t) => (
-        let (k', _) = e;
-        if EqB(k', k) { refl } else { BInsertFind(V, &t, k, v) }
-      ),
+  -- ## Helpers
+  def EqBSymm (a : Word) (b : Word) (h : Eq(Bool, EqB(a, b), true)) : Eq(Bool, EqB(b, a), true) := (
+    rewrite EqBSound(a, b, h) in EqBRefl(a)
+  )
+
+  def NeqFlip (a : Word) (b : Word) (h : Eq(Bool, EqB(a, b), false)) : Eq(Bool, EqB(b, a), false) := (
+    if EqB(b, a) {
+      let p = EqBSymm(b, a, refl);
+      if EqB(a, b) { match h {} } else { match p {} }
+    } else {
+      refl
     }
   )
 
@@ -461,45 +285,6 @@ ochr HashMapLookup uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
     b
   )
 
-  def SlotInsertFind (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (hi : Lt(i, n)) (k : Word) (v : V) :
-      Id(Opt(V), (let b = GetMut(Bucket(V), n, &*s, i, hi); BInsert(V, b, k, v); BFind(V, NthS(V, n, clone(*s), i, hi), k)),
-        (let b = GetMut(Bucket(V), n, &*s, i, hi); BInsert(V, b, k, clone(v)); Some(v))) by i := (
-    match n {
-      Zero => match hi {},
-      Succ(m) => (
-        let MkSlice(MkC(x, t)) = *s;
-        match i {
-          Zero => BInsertFind(V, &x, k, v),
-          Succ(i') => SlotInsertFind(V, m, &t, i', hi, k, v),
-        }
-      ),
-    }
-  )
-
-  -- Writing bucket `i` and reading bucket `j`: the same bucket is the bucket theorem,
-  -- different buckets do not interact.
-  def SlotInsertFindOther (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (hi : Lt(i, n)) (j : Word) (hj : Lt(j, n))
-      (k : Word) (v : V) (k2 : Word) (h : Eq(Bool, EqB(k, k2), false)) :
-      Id(Opt(V), (let b = GetMut(Bucket(V), n, &*s, i, hi); BInsert(V, b, k, v); BFind(V, NthS(V, n, clone(*s), j, hj), k2)),
-        (let r = BFind(V, NthS(V, n, clone(*s), j, hj), k2); let b = GetMut(Bucket(V), n, &*s, i, hi); BInsert(V, b, k, v); r)) by i := (
-    match n {
-      Zero => match hi {},
-      Succ(m) => (
-        let MkSlice(MkC(x, t)) = *s;
-        match i {
-          Zero => match j {
-            Zero => BInsertFindOther(V, &x, k, v, k2, h),
-            Succ(_) => refl,
-          },
-          Succ(i') => match j {
-            Zero => refl,
-            Succ(j') => SlotInsertFindOther(V, m, &t, i', hi, j', hj, k, v, k2, h),
-          },
-        }
-      ),
-    }
-  )
-
   def SlotInsertResult (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (hi : Lt(i, n)) (k : Word) (v : V) :
       Id(Opt(V), (let b = GetMut(Bucket(V), n, &*s, i, hi); BInsert(V, b, k, v)),
         (let r = BFind(V, NthS(V, n, clone(*s), i, hi), k); let b = GetMut(Bucket(V), n, &*s, i, hi); BInsert(V, b, k, v); r)) by i := (
@@ -515,61 +300,7 @@ ochr HashMapLookup uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
     }
   )
 
-  -- ## Insert, in the map
-  -- `InsertNoResize` updates the length according to what the bucket insert returned. That
-  -- result is a sealed program; `split BInsert` splits on it, in each arm the map computes,
-  -- and the slot theorem applies. The view is reached by taking the array apart, which a
-  -- proof may do (the representation is abstract only at runtime).
-  def InsertFind (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) :
-      Id(Opt(V), (InsertNoResize(V, &*hm, k, v); Find(V, clone(*hm), k)), (InsertNoResize(V, &*hm, k, clone(v)); Some(v))) := (
-    let HM(n, _, MkArray(s)) = *hm;
-    split BInsert in SlotInsertFind(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, v)
-  )
-
-  def InsertFindOther (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) (k2 : Word) (h : Eq(Bool, EqB(k, k2), false)) :
-      Id(Opt(V), (InsertNoResize(V, &*hm, k, v); Find(V, clone(*hm), k2)), (let r = Find(V, clone(*hm), k2); InsertNoResize(V, &*hm, k, v); r)) := (
-    let HM(n, _, MkArray(s)) = *hm;
-    split BInsert in
-      SlotInsertFindOther(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), Idx(k2, n), IdxLt(k2, n), k, v, k2, h)
-  )
-
-  -- Insert returns what `Find` returned before it: the old value, or `None`.
-  def InsertResult (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) :
-      Id(Opt(V), InsertNoResize(V, &*hm, k, v), (let r = Find(V, clone(*hm), k); InsertNoResize(V, &*hm, k, v); r)) := (
-    let HM(n, _, MkArray(s)) = *hm;
-    split BInsert in SlotInsertResult(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, v)
-  )
-
-  -- ## Remove
-  -- A bucket's keys are distinct (part of the invariant): each key is absent from the rest
-  -- of the bucket, stated with the lookup itself. Across the table, every bucket; of a map,
-  -- its table (a proposition may take the array apart).
-  def Unique (V : Type) (b : Bucket(V)) : Prop by b := (
-    match b {
-      Nil => ⊤,
-      Cons(e, t) => (
-        let (k, _) = e;
-        Eq(Opt(V), BFind(V, t, k), None[V]) ∧ Unique(V, t)
-      ),
-    }
-  )
-
-  def AllUnique (V : Type) (n : Word) (s : Slice(Bucket(V), n)) : Prop by n := (
-    match n {
-      Zero => ⊤,
-      Succ(m) => (
-        let MkSlice(MkC(b, t)) = s;
-        Unique(V, b) ∧ AllUnique(V, m, t)
-      ),
-    }
-  )
-
-  def KeysUnique (V : Type) (m : HashMap(V)) : Prop := (
-    let HM(n, _, MkArray(s)) = m;
-    AllUnique(V, Succ(n), s)
-  )
-
-  -- Remove returns what a lookup would have returned.
+  -- RawRemove returns what a lookup would have returned.
   def BRemoveResult (V : Type) (b : &Bucket(V)) (k : Word) :
       Id(Opt(V), BRemove(V, &*b, k), (let r = BFind(V, clone(*b), k); BRemove(V, &*b, k); r)) by b := (
     match *b {
@@ -616,7 +347,7 @@ ochr HashMapLookup uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
     }
   )
 
-  -- ## MapGetMut is an insert
+  -- ## RawGetMut is an insert
   -- Writing `w` through the borrow is inserting `k ↦ w`: the key is present, so the
   -- insert overwrites and adds nothing (and returns the old value, which the write drops).
   -- Every other theorem about `MapGetMut` follows from the insert's.
@@ -649,9 +380,9 @@ ochr HashMapLookup uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
 
   -- The map inserts through the same borrow; where the insert would have added an entry,
   -- `SlotInsertResult` says the key was absent, against the precondition.
-  def GetMutIsInsert (V : Type) (hm : &HashMap(V)) (k : Word) (w : V) (h : IsSome(V, Find(V, *hm, k))) :
-      Id(Unit, (let q = MapGetMut(V, &*hm, k, h); *q := w), (InsertNoResize(V, &*hm, k, w); ())) := (
-    let HM(n, _, MkArray(s)) = *hm;
+  def RawGetMutIsInsert (V : Type) (hm : &RawMap(V)) (k : Word) (w : V) (h : IsSome(V, RawFind(V, *hm, k))) :
+      Id(Unit, (let q = RawGetMut(V, &*hm, k, h); *q := w), (RawInsertNoResize(V, &*hm, k, w); ())) := (
+    let RM(n, _, MkArray(s)) = *hm;
     let p = SlotInsertResult(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, w);
     let r = BFind(V, NthS(V, Succ(n), clone(s), Idx(k, n), IdxLt(k, n)), k);
     split BInsert {
@@ -661,214 +392,6 @@ ochr HashMapLookup uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
       },
       Some(_) => SlotGetMutIsInsert(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, w, h),
     }
-  )
-
-  -- ## New and Clear
-  -- Every bucket of a fresh table is empty, so no key is found. `EmptyFrom(V, n, j)` is the
-  -- view `ArrFromFn` builds for `EmptySlots`, from element `j` on (the model `FromFnS`).
-  def EmptyFrom (V : Type) (n : Word) (j : Word) : Slice(Bucket(V), n) := FromFnS(Bucket(V), n, λ(i : Word) : Bucket(V) => Nil[Pair(Word, V)], j)
-
-  def EmptyLookup (V : Type) (n : Word) (j : Word) (i : Word) (h : Lt(i, n)) (k : Word) :
-      Id(Opt(V), (let c = EmptyFrom(V, n, j); BLookup(V, GetMut(Bucket(V), n, &c, i, h), k)), None[V]) by n := (
-    match n {
-      Zero => match h {},
-      Succ(m) => match i {
-        Zero => refl,
-        Succ(i') => EmptyLookup(V, m, Succ(j), i', h, k),
-      },
-    }
-  )
-
-  def NewFind (V : Type) (n : Word) (k : Word) : Id(Opt(V), Find(V, New(V, n), k), None[V]) := (
-    EmptyLookup(V, Succ(n), Zero, Idx(k, n), IdxLt(k, n), k)
-  )
-}
-
-/-! The lookup theorems that no later block uses: after remove, get_mut, clear; `Get` and
-`ContainsKey` agree with `Find`; and the negative tests. -/
-
-ochr HashMapLookupTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMap, HashMapLookup {
-  -- Without the split the goal is stuck on the sealed `InsertNoResize` and does not meet
-  -- the slot theorem's statement.
-  reject def InsertFindNoSplit (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) :
-      Id(Opt(V), (InsertNoResize(V, &*hm, k, v); Find(V, clone(*hm), k)), (InsertNoResize(V, &*hm, k, clone(v)); Some(v))) := (
-    let HM(n, _, MkArray(s)) = *hm;
-    SlotInsertFind(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, v)
-  )
-
-  -- After removing `k`, looking `k` up gives `None`, if the keys are distinct. Where the
-  -- first `k` is removed, the rest of the bucket does not hold `k'`, which is `k`: rewrite
-  -- along `k' = k`.
-  def BRemoveFind (V : Type) (b : &Bucket(V)) (k : Word) (h : Unique(V, clone(*b))) :
-      Id(Opt(V), (BRemove(V, &*b, k); BFind(V, clone(*b), k)), (BRemove(V, &*b, k); None[V])) by b := (
-    match *b {
-      Nil => refl,
-      Cons(e, t) => (
-        let (k', _) = e;
-        let ⟨absent, rest⟩ = h;
-        if EqB(k', k) { rewrite EqBSound(k', k, refl) in absent } else { BRemoveFind(V, &t, k, rest) }
-      ),
-    }
-  )
-
-  reject def BRemoveFindDup (V : Type) (b : &Bucket(V)) (k : Word) :
-      Id(Opt(V), (BRemove(V, &*b, k); BFind(V, clone(*b), k)), (BRemove(V, &*b, k); None[V])) by b := (
-    match *b {
-      Nil => refl,
-      Cons(e, t) => (
-        let (k', _) = e;
-        if EqB(k', k) { refl } else { BRemoveFindDup(V, &t, k) }
-      ),
-    }
-  )
-
-  def SlotRemoveFind (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (hi : Lt(i, n)) (k : Word)
-      (h : AllUnique(V, n, clone(*s))) :
-      Id(Opt(V), (let b = GetMut(Bucket(V), n, &*s, i, hi); BRemove(V, b, k); BFind(V, NthS(V, n, clone(*s), i, hi), k)),
-        (let b = GetMut(Bucket(V), n, &*s, i, hi); BRemove(V, b, k); None[V])) by i := (
-    match n {
-      Zero => match hi {},
-      Succ(m) => (
-        let MkSlice(MkC(x, t)) = *s;
-        let ⟨hb, ht⟩ = h;
-        match i {
-          Zero => BRemoveFind(V, &x, k, hb),
-          Succ(i') => SlotRemoveFind(V, m, &t, i', hi, k, ht),
-        }
-      ),
-    }
-  )
-
-  def SlotRemoveFindOther (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (hi : Lt(i, n)) (j : Word) (hj : Lt(j, n))
-      (k : Word) (k2 : Word) (h : Eq(Bool, EqB(k, k2), false)) :
-      Id(Opt(V), (let b = GetMut(Bucket(V), n, &*s, i, hi); BRemove(V, b, k); BFind(V, NthS(V, n, clone(*s), j, hj), k2)),
-        (let r = BFind(V, NthS(V, n, clone(*s), j, hj), k2); let b = GetMut(Bucket(V), n, &*s, i, hi); BRemove(V, b, k); r)) by i := (
-    match n {
-      Zero => match hi {},
-      Succ(m) => (
-        let MkSlice(MkC(x, t)) = *s;
-        match i {
-          Zero => match j {
-            Zero => BRemoveFindOther(V, &x, k, k2, h),
-            Succ(_) => refl,
-          },
-          Succ(i') => match j {
-            Zero => refl,
-            Succ(j') => SlotRemoveFindOther(V, m, &t, i', hi, j', hj, k, k2, h),
-          },
-        }
-      ),
-    }
-  )
-
-  def RemoveResult (V : Type) (hm : &HashMap(V)) (k : Word) :
-      Id(Opt(V), Remove(V, &*hm, k), (let r = Find(V, clone(*hm), k); Remove(V, &*hm, k); r)) := (
-    let HM(n, _, MkArray(s)) = *hm;
-    split BRemove in SlotRemoveResult(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k)
-  )
-
-  def RemoveFind (V : Type) (hm : &HashMap(V)) (k : Word) (h : KeysUnique(V, clone(*hm))) :
-      Id(Opt(V), (Remove(V, &*hm, k); Find(V, clone(*hm), k)), (Remove(V, &*hm, k); None[V])) := (
-    let HM(n, _, MkArray(s)) = *hm;
-    split BRemove in SlotRemoveFind(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, h)
-  )
-
-  def RemoveFindOther (V : Type) (hm : &HashMap(V)) (k : Word) (k2 : Word) (h : Eq(Bool, EqB(k, k2), false)) :
-      Id(Opt(V), (Remove(V, &*hm, k); Find(V, clone(*hm), k2)), (let r = Find(V, clone(*hm), k2); Remove(V, &*hm, k); r)) := (
-    let HM(n, _, MkArray(s)) = *hm;
-    split BRemove in
-      SlotRemoveFindOther(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), Idx(k2, n), IdxLt(k2, n), k, k2, h)
-  )
-
-  -- ## MapGetMut
-  -- The borrow points at the value a lookup returns. In the `Nil` arm the precondition is
-  -- `IsSome(V, None)`, which is `False`.
-  def BGetMutRead (V : Type) (b : &Bucket(V)) (k : Word) (w : V) (h : IsSome(V, BFind(V, clone(*b), k))) :
-      Id(Opt(V), (let q = BGet(V, &*b, k, h); let x = clone(*q); *q := w; Some(x)),
-        (let r = BFind(V, clone(*b), k); let q = BGet(V, &*b, k, h); *q := w; r)) by b := (
-    match *b {
-      Nil => match h {},
-      Cons(e, t) => (
-        let (k', _) = e;
-        if EqB(k', k) { refl } else { BGetMutRead(V, &t, k, w, h) }
-      ),
-    }
-  )
-
-  -- Lifted through the element borrow, and stated for the map. `MapGetMut` branches on no
-  -- sealed result, so the map theorem is the slot theorem at the key's index.
-  def SlotGetMutRead (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (hi : Lt(i, n)) (k : Word) (w : V)
-      (h : IsSome(V, BFind(V, NthS(V, n, clone(*s), i, hi), k))) :
-      Id(Opt(V), (let b = GetMut(Bucket(V), n, &*s, i, hi); let q = BGet(V, b, k, h); let x = clone(*q); *q := w; Some(x)),
-        (let r = BFind(V, NthS(V, n, clone(*s), i, hi), k); let b = GetMut(Bucket(V), n, &*s, i, hi); let q = BGet(V, b, k, h); *q := w; r)) by i := (
-    match n {
-      Zero => match hi {},
-      Succ(m) => (
-        let MkSlice(MkC(x, t)) = *s;
-        match i {
-          Zero => BGetMutRead(V, &x, k, w, h),
-          Succ(i') => SlotGetMutRead(V, m, &t, i', hi, k, w, h),
-        }
-      ),
-    }
-  )
-
-  def MapGetMutRead (V : Type) (hm : &HashMap(V)) (k : Word) (w : V) (h : IsSome(V, Find(V, clone(*hm), k))) :
-      Id(Opt(V), (let q = MapGetMut(V, &*hm, k, h); let x = clone(*q); *q := w; Some(x)),
-        (let r = Find(V, clone(*hm), k); let q = MapGetMut(V, &*hm, k, h); *q := w; r)) := (
-    let HM(n, _, MkArray(s)) = *hm;
-    SlotGetMutRead(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, w, h)
-  )
-
-  def GetMutFind (V : Type) (hm : &HashMap(V)) (k : Word) (w : V) (h : IsSome(V, Find(V, clone(*hm), k))) :
-      Id(Opt(V), (let q = MapGetMut(V, &*hm, k, h); *q := w; Find(V, clone(*hm), k)),
-        (let q = MapGetMut(V, &*hm, k, h); *q := clone(w); Some(w))) := (
-    rewrite ← GetMutIsInsert(V, &*hm, k, w, h) in InsertFind(V, &*hm, k, w)
-  )
-
-  def GetMutFindOther (V : Type) (hm : &HashMap(V)) (k : Word) (w : V) (h : IsSome(V, Find(V, clone(*hm), k))) (k2 : Word)
-      (ne : Eq(Bool, EqB(k, k2), false)) :
-      Id(Opt(V), (let q = MapGetMut(V, &*hm, k, h); *q := w; Find(V, clone(*hm), k2)),
-        (let r = Find(V, clone(*hm), k2); let q = MapGetMut(V, &*hm, k, h); *q := w; r)) := (
-    rewrite ← GetMutIsInsert(V, &*hm, k, w, h) in InsertFindOther(V, &*hm, k, w, k2, ne)
-  )
-
-  -- ## Get, through the borrow
-  -- `Get` returns a mutable borrow (Ochr has no shared borrows), only read. When the
-  -- lookup is stuck on an abstract bucket, closing it off leaves a sealed program in the
-  -- bucket ("borrow `k`'s value in `u`, then give `u` back"), which is `u` only by a proof.
-  -- These three lemmas are that proof: reading through `Get`'s borrow gives what `Find`
-  -- returns, and leaves the map as it was.
-  def BGetFind (V : Type) (b : &Bucket(V)) (k : Word) (h : IsSome(V, BFind(V, clone(*b), k))) :
-      Id(Opt(V), Some(clone(*BGet(V, &*b, k, h))), BFind(V, clone(*b), k)) by b := (
-    match *b {
-      Nil => match h {},
-      Cons(e, t) => (
-        let (k', _) = e;
-        if EqB(k', k) { refl } else { BGetFind(V, &t, k, h) }
-      ),
-    }
-  )
-
-  def SlotGetFind (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (hi : Lt(i, n)) (k : Word)
-      (h : IsSome(V, BFind(V, NthS(V, n, clone(*s), i, hi), k))) :
-      Id(Opt(V), (let b = GetMut(Bucket(V), n, &*s, i, hi); Some(clone(*BGet(V, b, k, h)))), BFind(V, NthS(V, n, clone(*s), i, hi), k)) by i := (
-    match n {
-      Zero => match hi {},
-      Succ(m) => (
-        let MkSlice(MkC(x, t)) = *s;
-        match i {
-          Zero => BGetFind(V, &x, k, h),
-          Succ(i') => SlotGetFind(V, m, &t, i', hi, k, h),
-        }
-      ),
-    }
-  )
-
-  def GetFind (V : Type) (hm : &HashMap(V)) (k : Word) (h : IsSome(V, Find(V, clone(*hm), k))) :
-      Id(Opt(V), Some(clone(*Get(V, &*hm, k, h))), Find(V, clone(*hm), k)) := (
-    let HM(n, _, MkArray(s)) = *hm;
-    SlotGetFind(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, h)
   )
 
   -- `ContainsKey` also reads through the borrow: it says whether `Find` finds the key.
@@ -903,27 +426,35 @@ ochr HashMapLookupTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
     }
   )
 
-  def ContainsFind (V : Type) (hm : &HashMap(V)) (k : Word) : Id(Bool, ContainsKey(V, &*hm, k), Has(V, Find(V, clone(*hm), k))) := (
-    let HM(n, _, MkArray(s)) = *hm;
+  def RawContainsFind (V : Type) (hm : &RawMap(V)) (k : Word) : Id(Bool, RawContainsKey(V, &*hm, k), Has(V, RawFind(V, clone(*hm), k))) := (
+    let RM(n, _, MkArray(s)) = *hm;
     SlotContainsFind(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k)
   )
 
-  def ClearFind (V : Type) (hm : &HashMap(V)) (k : Word) : Id(Opt(V), (Clear(V, &*hm); Find(V, clone(*hm), k)), (Clear(V, &*hm); None[V])) := (
-    let HM(n, _, _) = *hm;
-    NewFind(V, n, k)
+  -- ## Remove
+  -- A bucket's keys are distinct (part of the invariant): each key is absent from the rest
+  -- of the bucket, stated with the lookup itself. Across the table, every bucket; of a map,
+  -- its table (a proposition may take the array apart).
+  def Unique (V : Type) (b : Bucket(V)) : Prop by b := (
+    match b {
+      Nil => ⊤,
+      Cons(e, t) => (
+        let (k, _) = e;
+        Eq(Opt(V), BFind(V, t, k), None[V]) ∧ Unique(V, t)
+      ),
+    }
   )
-}
 
-/-! ## The length
+  def AllUnique (V : Type) (n : Word) (s : Slice(Bucket(V), n)) : Prop by n := (
+    match n {
+      Zero => ⊤,
+      Succ(m) => (
+        let MkSlice(MkC(b, t)) = s;
+        Unique(V, b) ∧ AllUnique(V, m, t)
+      ),
+    }
+  )
 
-`Len` is the map's `len` field. After an insert it grows by one exactly when the key was
-absent, and after a remove it shrinks by one exactly when the key was present; with the
-invariant `len = Entries(slots)` (the number of entries, `Counted`), each operation keeps
-it. The number of entries reads every bucket, so it is a model function of the array's view
-(it takes the view by value), and `Counted` is a proposition, which may take the array apart:
-the invariant is stated on a copy of the map. -/
-
-ochr HashMapLength uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMap, HashMapLookup {
   -- Sizes, and the ways a length changes.
   def BLen (V : Type) (b : Bucket(V)) : Word by b := (
     match b {
@@ -942,8 +473,8 @@ ochr HashMapLength uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
     }
   )
 
-  def Counted (V : Type) (m : HashMap(V)) : Prop := (
-    let HM(n, len, MkArray(s)) = m;
+  def Counted (V : Type) (m : RawMap(V)) : Prop := (
+    let RM(n, len, MkArray(s)) = m;
     Eq(Word, len, Entries(V, Succ(n), s))
   )
 
@@ -958,27 +489,6 @@ ochr HashMapLength uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
     match r {
       None => l,
       Some(_) => Succ(l),
-    }
-  )
-
-  -- ## The len field
-  -- Split on what the bucket insert returned and on the earlier lookup; where they
-  -- disagree, `SlotInsertResult`'s type is `None = Some(…)` or `Some(…) = None`, which is
-  -- `False`.
-  def InsertLen (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) :
-      Id(Word, (InsertNoResize(V, &*hm, k, v); Len(V, clone(*hm))),
-        (let l = Len(V, clone(*hm)); let r = Find(V, clone(*hm), k); InsertNoResize(V, &*hm, k, v); IfNew(V, r, l))) := (
-    let HM(n, _, MkArray(s)) = *hm;
-    let p = SlotInsertResult(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, v);
-    split BInsert {
-      None => split BLookup {
-        None => refl,
-        Some(_) => match p {},
-      },
-      Some(_) => split BLookup {
-        None => match p {},
-        Some(_) => refl,
-      },
     }
   )
 
@@ -1019,9 +529,9 @@ ochr HashMapLength uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
 
   -- The map: split on what the bucket insert returned and on the earlier lookup (the
   -- mixed arms contradict `SlotInsertResult`), then one rewrite against the hypothesis.
-  def InsertCount (V : Type) (m : HashMap(V)) (k : Word) (v : V) (h : Counted(V, m)) :
-      (let c = m; InsertNoResize(V, &c, k, v); Counted(V, c)) := (
-    let HM(n, _, MkArray(s)) = m;
+  def RawInsertCount (V : Type) (m : RawMap(V)) (k : Word) (v : V) (h : Counted(V, m)) :
+      (let c = m; RawInsertNoResize(V, &c, k, v); Counted(V, c)) := (
+    let RM(n, _, MkArray(s)) = m;
     let p = SlotInsertResult(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, v);
     let r = BFind(V, NthS(V, Succ(n), clone(s), Idx(k, n), IdxLt(k, n)), k);
     split BInsert {
@@ -1033,15 +543,6 @@ ochr HashMapLength uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
         None => match p {},
         Some(_) => rewrite SlotInsertCount(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, v) in h,
       },
-    }
-  )
-
-  -- ## Remove
-  -- The len field shrinks by one exactly when the key was found (the code's `Pred`).
-  def Shrink (V : Type) (r : Opt(V)) (l : Word) : Word := (
-    match r {
-      None => l,
-      Some(_) => Pred(l),
     }
   )
 
@@ -1084,9 +585,9 @@ ochr HashMapLength uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
     }
   )
 
-  def RemoveCount (V : Type) (m : HashMap(V)) (k : Word) (h : Counted(V, m)) :
-      (let c = m; Remove(V, &c, k); Counted(V, c)) := (
-    let HM(n, _, MkArray(s)) = m;
+  def RawRemoveCount (V : Type) (m : RawMap(V)) (k : Word) (h : Counted(V, m)) :
+      (let c = m; RawRemove(V, &c, k); Counted(V, c)) := (
+    let RM(n, _, MkArray(s)) = m;
     let p = SlotRemoveResult(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k);
     let r = BFind(V, NthS(V, Succ(n), clone(s), Idx(k, n), IdxLt(k, n)), k);
     split BRemove {
@@ -1101,7 +602,12 @@ ochr HashMapLength uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
     }
   )
 
-  -- ## New and Clear
+  -- ## RawNew and Clear
+  -- Every bucket of a fresh table is empty, so no key is found. `EmptyFrom(V, n, j)` is the
+  -- view `ArrFromFn` builds for `EmptySlots`, from element `j` on (the model `FromFnS`).
+  def EmptyFrom (V : Type) (n : Word) (j : Word) : Slice(Bucket(V), n) := FromFnS(Bucket(V), n, λ(i : Word) : Bucket(V) => Nil[Pair(Word, V)], j)
+
+  -- ## RawNew and Clear
   def EmptyCount (V : Type) (n : Word) (j : Word) :
       Eq(Word, Entries(V, n, EmptyFrom(V, n, j)), Zero) by n := (
     match n {
@@ -1110,63 +616,7 @@ ochr HashMapLength uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
     }
   )
 
-  def NewCount (V : Type) (n : Word) : Counted(V, New(V, n)) := rewrite ← EmptyCount(V, Succ(n), Zero) in refl
-}
-
-/-! The length theorems that no later block uses, and the negative test. -/
-
-ochr HashMapLengthTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMap, HashMapLookup, HashMapLength {
-  -- The hypothesis is needed.
-  reject def InsertCountNoHyp (V : Type) (m : HashMap(V)) (k : Word) (v : V) :
-      (let c = m; InsertNoResize(V, &c, k, v); Counted(V, c)) := (
-    let HM(n, _, MkArray(s)) = m;
-    SlotInsertCount(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, v)
-  )
-
-  def RemoveLen (V : Type) (hm : &HashMap(V)) (k : Word) :
-      Id(Word, (Remove(V, &*hm, k); Len(V, clone(*hm))),
-        (let l = Len(V, clone(*hm)); let r = Find(V, clone(*hm), k); Remove(V, &*hm, k); Shrink(V, r, l))) := (
-    let HM(n, _, MkArray(s)) = *hm;
-    let p = SlotRemoveResult(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k);
-    split BRemove {
-      None => split BLookup {
-        None => refl,
-        Some(_) => match p {},
-      },
-      Some(_) => split BLookup {
-        None => match p {},
-        Some(_) => refl,
-      },
-    }
-  )
-
-  def ClearCount (V : Type) (m : HashMap(V)) : (let c = m; Clear(V, &c); Counted(V, c)) := (
-    let HM(n, _, _) = m;
-    NewCount(V, n)
-  )
-
-  -- ## MapGetMut
-  -- Writing through the borrow leaves the length as it was.
-  def GetMutLen (V : Type) (hm : &HashMap(V)) (k : Word) (w : V) (h : IsSome(V, Find(V, clone(*hm), k))) :
-      Id(Word, (let q = MapGetMut(V, &*hm, k, h); *q := w; Len(V, clone(*hm))),
-        (let l = Len(V, clone(*hm)); let q = MapGetMut(V, &*hm, k, h); *q := w; l)) := (
-    let HM(_, _, _) = *hm;
-    refl
-  )
-}
-
-/-! ## The invariant, and resizing
-
-The invariant (Aeneas's `hash_map_t_inv`, less its load-factor and overflow clauses): the
-length counts the entries, the keys of each bucket are distinct, and every key lies only in
-its own bucket. The last is a statement about every key, `Π(k : Word). OnlyIn(…)`, proved
-for each key by a function of `k`. Every operation keeps the invariant, stated as "run the
-operation on a copy, then the invariant holds of the copy". Resizing moves every entry with
-`InsertNoResize`, so it keeps every lookup; with the invariant, the insert with resizing
-behaves like the insert without. Resizing visits the old buckets by index, so what it has
-still to move is stated as a list, `Rest`: the old buckets from an index on. -/
-
-ochr HashMapResize uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMap, HashMapLookup, HashMapLength {
+  def RawNewCount (V : Type) (n : Word) : Counted(V, RawNew(V, n)) := rewrite ← EmptyCount(V, Succ(n), Zero) in refl
 
   -- ## Keys stay in their bucket
   -- `k` is in no bucket of the view; in none but bucket `d`; and every key is only in the
@@ -1200,142 +650,9 @@ ochr HashMapResize uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
   -- The length counts the entries, the keys of each bucket are distinct, and every key
   -- lies only in its own bucket (all three are Aeneas's `hash_map_t_inv`, less its load
   -- factor and overflow clauses).
-  def Inv (V : Type) (m : HashMap(V)) : Prop := (
-    let HM(n, len, MkArray(s)) = m;
+  def Inv (V : Type) (m : RawMap(V)) : Prop := (
+    let RM(n, len, MkArray(s)) = m;
     Eq(Word, len, Entries(V, Succ(n), s)) ∧ (AllUnique(V, Succ(n), s) ∧ Placed(V, n, s))
-  )
-
-  -- ## Resizing keeps every lookup
-  -- Re-inserting overwrites, so after moving a bucket (or the buckets still to move) into a
-  -- map, a key's lookup is its last occurrence in what was moved, or else what it was before.
-  -- That needs no hypothesis. The invariant then says the last occurrence of `k` in the old
-  -- buckets is the one `Find` sees: `k` is only in its own bucket, and at most once.
-  def OrElse (V : Type) (a : Opt(V)) (b : Opt(V)) : Opt(V) := (
-    match a {
-      None => b,
-      Some(x) => Some(x),
-    }
-  )
-
-  def BFindLast (V : Type) (b : Bucket(V)) (k : Word) : Opt(V) by b := (
-    match b {
-      Nil => None[V],
-      Cons(e, t) => (
-        let (k', v') = e;
-        if EqB(k', k) { OrElse(V, BFindLast(V, t, k), Some(v')) } else { BFindLast(V, t, k) }
-      ),
-    }
-  )
-
-  -- The old buckets still to move: `Rest` lists the buckets of the view from `i` on, and the
-  -- lookup of a list of buckets is the last occurrence. Taking bucket `i` out gives it and
-  -- leaves an empty bucket in its place (`TakeV`), which `Rest` from `i + 1` on does not see.
-  def Rest (V : Type) (n : Word) (s : Slice(Bucket(V), n)) (i : Word) (rem : Word) (hr : Eq(Word, WAdd(rem, i), n)) :
-      List(Bucket(V)) by rem := (
-    match rem {
-      Zero => Nil[Bucket(V)],
-      Succ(r) => (
-        let hi : Lt(i, n) = (rewrite hr in LeAddL(r, i));
-        let hr2 : Eq(Word, WAdd(r, Succ(i)), n) = (rewrite AddRS(r, i) in hr);
-        Cons(Nth(Bucket(V), n, clone(s), i, hi), Rest(V, n, s, Succ(i), r, hr2))
-      ),
-    }
-  )
-
-  def FindLast (V : Type) (l : List(Bucket(V))) (k : Word) : Opt(V) by l := (
-    match l {
-      Nil => None[V],
-      Cons(b, t) => OrElse(V, FindLast(V, t, k), BFindLast(V, b, k)),
-    }
-  )
-
-  -- `k` is in no bucket of a list; a view's `Nowhere` is its buckets'.
-  def NowhereL (V : Type) (l : List(Bucket(V))) (k : Word) : Prop by l := (
-    match l {
-      Nil => ⊤,
-      Cons(b, t) => Eq(Opt(V), BFind(V, b, k), None[V]) ∧ NowhereL(V, t, k),
-    }
-  )
-
-  -- The keys of `b` are absent from the map `m`.
-  def Fresh (V : Type) (b : Bucket(V)) (m : HashMap(V)) : Prop by b := (
-    match b {
-      Nil => ⊤,
-      Cons(e, t) => (
-        let (k, _) = e;
-        Eq(Opt(V), Find(V, m, k), None[V]) ∧ Fresh(V, t, m)
-      ),
-    }
-  )
-
-  -- Over a list of buckets: the entries, the keys absent from `m`, the keys of `b'` not in
-  -- `b`, every bucket apart from `b`, and the keys distinct within and across buckets.
-  def CountL (V : Type) (l : List(Bucket(V))) : Word by l := (
-    match l {
-      Nil => Zero,
-      Cons(b, t) => WAdd(BLen(V, b), CountL(V, t)),
-    }
-  )
-
-  def FreshL (V : Type) (l : List(Bucket(V))) (m : HashMap(V)) : Prop by l := (
-    match l {
-      Nil => ⊤,
-      Cons(b, t) => Fresh(V, b, m) ∧ FreshL(V, t, m),
-    }
-  )
-
-  def AbsentFrom (V : Type) (b' : Bucket(V)) (b : Bucket(V)) : Prop by b' := (
-    match b' {
-      Nil => ⊤,
-      Cons(e, r) => (
-        let (k, _) = e;
-        Eq(Opt(V), BFind(V, b, k), None[V]) ∧ AbsentFrom(V, r, b)
-      ),
-    }
-  )
-
-  def ApartL (V : Type) (l : List(Bucket(V))) (b : Bucket(V)) : Prop by l := (
-    match l {
-      Nil => ⊤,
-      Cons(b', t) => AbsentFrom(V, b', b) ∧ ApartL(V, t, b),
-    }
-  )
-
-  def GUniqueL (V : Type) (l : List(Bucket(V))) : Prop by l := (
-    match l {
-      Nil => ⊤,
-      Cons(b, t) => Unique(V, b) ∧ (ApartL(V, t, b) ∧ GUniqueL(V, t)),
-    }
-  )
-
-  -- ## The load factor
-  -- The entries do not outnumber the buckets: `len ≤ n`, with `n + 1` buckets. `Insert`
-  -- keeps it by resizing (as Aeneas's `hash_map_not_overloaded_lem`, with a load factor
-  -- of 1 rather than a configurable fraction).
-  def NOf (V : Type) (m : HashMap(V)) : Word := (
-    let HM(n, _, _) = m;
-    n
-  )
-
-  def NotOver (V : Type) (m : HashMap(V)) : Prop := Eq(Bool, LtB(NOf(V, clone(m)), Len(V, m)), false)
-}
-
-/-! The theorems: the invariant and its preservation, resizing, insert with its resize,
-and the load factor. -/
-
-ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMap, HashMapLookup, HashMapLength, HashMapResize {
-  -- ## Helpers
-  def EqBSymm (a : Word) (b : Word) (h : Eq(Bool, EqB(a, b), true)) : Eq(Bool, EqB(b, a), true) := (
-    rewrite EqBSound(a, b, h) in EqBRefl(a)
-  )
-
-  def NeqFlip (a : Word) (b : Word) (h : Eq(Bool, EqB(a, b), false)) : Eq(Bool, EqB(b, a), false) := (
-    if EqB(b, a) {
-      let p = EqBSymm(b, a, refl);
-      if EqB(a, b) { match h {} } else { match p {} }
-    } else {
-      refl
-    }
   )
 
   -- ## Keys stay distinct
@@ -1565,77 +882,847 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
     }
   )
 
-  def NewInv (V : Type) (n : Word) : Inv(V, New(V, n)) := (
+  def RawNewInv (V : Type) (n : Word) : Inv(V, RawNew(V, n)) := (
     let hu : AllUnique(V, Succ(n), EmptyFrom(V, Succ(n), Zero)) = UniqueEmpty(V, Succ(n), Zero);
     let hp : Placed(V, n, EmptyFrom(V, Succ(n), Zero)) = (
       λ(k : Word) : OnlyIn(V, Succ(n), EmptyFrom(V, Succ(n), Zero), Idx(k, n), k) =>
         OnlyInEmpty(V, Succ(n), Zero, Idx(k, n), k));
-    ⟨NewCount(V, n), ⟨hu, hp⟩⟩
+    ⟨RawNewCount(V, n), ⟨hu, hp⟩⟩
   )
 
   -- Each operation keeps it. Split on what the bucket operation returned, as for the
   -- length theorems; the three parts are the lemmas above.
-  def InsertInv (V : Type) (m : HashMap(V)) (k : Word) (v : V) (h : Inv(V, m)) : (let c = m; InsertNoResize(V, &c, k, v); Inv(V, c)) := (
-    let HM(n, _, MkArray(s)) = m;
+  def RawInsertInv (V : Type) (m : RawMap(V)) (k : Word) (v : V) (h : Inv(V, m)) : (let c = m; RawInsertNoResize(V, &c, k, v); Inv(V, c)) := (
+    let RM(n, _, MkArray(s)) = m;
     let ⟨hl, hu, hp⟩ = h;
-    split BInsert in ⟨InsertCount(V, clone(m), k, v, hl), ⟨SlotInsertUnique(V, Succ(n), s, Idx(k, n), IdxLt(k, n), k, v, hu), SlotInsertPlaced(V, n, s, k, v, hp)⟩⟩
+    split BInsert in ⟨RawInsertCount(V, clone(m), k, v, hl), ⟨SlotInsertUnique(V, Succ(n), s, Idx(k, n), IdxLt(k, n), k, v, hu), SlotInsertPlaced(V, n, s, k, v, hp)⟩⟩
   )
 
-  def RemoveInv (V : Type) (m : HashMap(V)) (k : Word) (h : Inv(V, m)) : (let c = m; Remove(V, &c, k); Inv(V, c)) := (
-    let HM(n, _, MkArray(s)) = m;
+  def RawRemoveInv (V : Type) (m : RawMap(V)) (k : Word) (h : Inv(V, m)) : (let c = m; RawRemove(V, &c, k); Inv(V, c)) := (
+    let RM(n, _, MkArray(s)) = m;
     let ⟨hl, hu, hp⟩ = h;
-    split BRemove in ⟨RemoveCount(V, clone(m), k, hl), ⟨SlotRemoveUnique(V, Succ(n), s, Idx(k, n), IdxLt(k, n), k, hu), SlotRemovePlaced(V, n, s, k, hp)⟩⟩
+    split BRemove in ⟨RawRemoveCount(V, clone(m), k, hl), ⟨SlotRemoveUnique(V, Succ(n), s, Idx(k, n), IdxLt(k, n), k, hu), SlotRemovePlaced(V, n, s, k, hp)⟩⟩
   )
 
-  def ClearInv (V : Type) (m : HashMap(V)) : (let c = m; Clear(V, &c); Inv(V, c)) := (
-    let HM(n, _, _) = m;
-    NewInv(V, n)
+  -- `RawGetMut` keeps the invariant whatever is written through it, because writing `w` is
+  -- inserting `k ↦ w` (`RawGetMutIsInsert`).
+  def RawGetMutInv (V : Type) (m : RawMap(V)) (k : Word) (h : IsSome(V, RawFind(V, m, k))) (hi : Inv(V, m)) :
+      (Π(w : V). (let c = m; let q = RawGetMut(V, &c, k, h); *q := w; Inv(V, c))) :=
+    λ(w : V) : (let c = m; let q = RawGetMut(V, &c, k, h); *q := w; Inv(V, c)) =>
+      rewrite ← RawGetMutIsInsert(V, &m, k, w, h) in RawInsertInv(V, m, k, w, hi)
+
+  -- Testing for a key leaves the map as it was (`RawContainsFind`'s second conjunct).
+  def RawContainsInv (V : Type) (m : RawMap(V)) (k : Word) (hi : Inv(V, m)) :
+      (let c = m; RawContainsKey(V, &c, k); Inv(V, c)) := (
+    let mc = clone(m);
+    let ⟨_, same⟩ = RawContainsFind(V, &mc, k);
+    rewrite ← same in hi
+  )
+}
+
+/-! ## The map, with its invariant -/
+ochr HashMap uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMapRaw, HashMapInvLib {
+  -- ## The map
+  -- A raw map and a proof that it has the invariant. Writing or borrowing the field `m` clears
+  -- the proof field, which must be assigned again before the map is used whole (D64). So each
+  -- operation takes the proof that the raw operation keeps the invariant, about the map as it
+  -- is (`p`, a proof, so it runs on a copy and changes nothing), runs the raw operation, and
+  -- assigns `p`.
+  inductive HashMap (V : Type) := HM(m : RawMap(V), inv : Inv(V, m))
+
+  def New (V : Type) (n : Word) : HashMap(V) := HM[V](RawNew(V, n), RawNewInv(V, n))
+
+  -- The lookup on a copy, for statements, and the length field.
+  def Find (V : Type) (m : HashMap(V)) (k : Word) : Opt(V) := (
+    let HM(r, _) = m;
+    RawFind(V, r, k)
   )
 
-  -- `MapGetMut` keeps the invariant, because writing through it is an insert (`GetMutIsInsert`).
-  def GetMutInv (V : Type) (m : HashMap(V)) (k : Word) (w : V) (h : IsSome(V, Find(V, m, k))) (hi : Inv(V, m)) :
-      (let c = m; let q = MapGetMut(V, &c, k, h); *q := w; Inv(V, c)) := (
-    rewrite ← GetMutIsInsert(V, &m, k, w, h) in InsertInv(V, m, k, w, hi)
+  def Len (V : Type) (m : HashMap(V)) : Word := (
+    let HM(RM(_, len, _), _) = m;
+    len
   )
 
-  -- ## Resizing keeps the invariant
-  -- Every entry is moved by `InsertNoResize`, which keeps the invariant, into a fresh
-  -- table, which has it: so the result has it, whatever the old map was. Each step's
-  -- induction hypothesis is about the old view as the step leaves it, and the map after the
-  -- bucket it moved, both sealed programs: no lemma about the take is needed.
-  def MoveBucketInv (V : Type) (b : Bucket(V)) (m : HashMap(V)) (h : Inv(V, m)) : (let c = m; MoveBucket(V, b, &c); Inv(V, c)) by b := (
+  def ContainsKey (V : Type) (hm : &HashMap(V)) (k : Word) : Bool := (
+    let HM(m, inv) = *hm;
+    let p = RawContainsInv(V, m, k, inv);
+    let r = RawContainsKey(V, &m, k);
+    inv := p;
+    r
+  )
+
+  -- `Get` and `MapGetMut` return a borrow into the table, so the proof is assigned while the
+  -- borrow is live, and must hold whatever is written through it (D64, a lent proof field):
+  -- `p` is the invariant after a write of any value, applied to the value the borrow holds.
+  def Get (V : Type) (hm : &HashMap(V)) (k : Word) (h : IsSome(V, Find(V, *hm, k))) : &V := (
+    let HM(m, inv) = *hm;
+    let p = RawGetMutInv(V, m, k, h, inv);
+    let r = RawGetMut(V, &m, k, h);
+    inv := p(clone(*r));
+    r
+  )
+
+  def MapGetMut (V : Type) (hm : &HashMap(V)) (k : Word) (h : IsSome(V, Find(V, *hm, k))) : &V := (
+    let HM(m, inv) = *hm;
+    let p = RawGetMutInv(V, m, k, h, inv);
+    let r = RawGetMut(V, &m, k, h);
+    inv := p(clone(*r));
+    r
+  )
+
+  def InsertNoResize (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) : Opt(V) := (
+    let HM(m, inv) = *hm;
+    let p = RawInsertInv(V, m, k, v, inv);
+    let r = RawInsertNoResize(V, &m, k, v);
+    inv := p;
+    r
+  )
+
+  def Remove (V : Type) (hm : &HashMap(V)) (k : Word) : Opt(V) := (
+    let HM(m, inv) = *hm;
+    let p = RawRemoveInv(V, m, k, inv);
+    let r = RawRemove(V, &m, k);
+    inv := p;
+    r
+  )
+
+  -- Clear empties the map and keeps the number of buckets: a new map of the same size.
+  def Clear (V : Type) (hm : &HashMap(V)) : Unit := (
+    let HM(RM(n, _, _), _) = *hm;
+    *hm := New(V, n)
+  )
+
+  -- ## Resizing
+  -- Move every entry into a map with `2n + 2` buckets, by inserting it again with the public
+  -- insert, which keeps the new map's invariant: the old buckets are raw lists, taken out of
+  -- the old array, and the invariant is never re-established for them. Resizing happens when
+  -- the entries outnumber the buckets (load factor 1). The old buckets are visited by index,
+  -- each taken out and replaced by an empty one (Rust's `mem::take`), so nothing is copied.
+  def MoveBucket (V : Type) (b : Bucket(V)) (hm : &HashMap(V)) : Unit by b := (
     match b {
-      Nil => h,
+      Nil => (),
       Cons(e, t) => (
         let (k, v) = e;
-        let m2 = clone(m);
-        InsertNoResize(V, &m2, k, clone(v));
-        MoveBucketInv(V, t, m2, InsertInv(V, m, k, v, h))
+        InsertNoResize(V, &*hm, k, v);
+        MoveBucket(V, t, hm)
       ),
     }
   )
 
-  def MoveFromInv (V : Type) (n : Word) (s : Slice(Bucket(V), n)) (i : Word) (rem : Word) (hr : Eq(Word, WAdd(rem, i), n))
-      (m : HashMap(V)) (h : Inv(V, m)) : (let c = m; let o = s; MoveFrom(V, n, &o, i, rem, hr, &c); Inv(V, c)) by rem := (
+  def Take (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (h : Lt(i, n)) : Bucket(V) := (
+    let r = GetMut(Bucket(V), n, s, i, h);
+    let b = *r;
+    *r := Nil[Pair(Word, V)];
+    b
+  )
+
+  -- Buckets `i, …, n - 1`, by recursion on the count `rem` still to go (`rem + i = n`).
+  def MoveFrom (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (rem : Word)
+      (hr : Eq(Word, WAdd(rem, i), n)) (hm : &HashMap(V)) : Unit by rem := (
     match rem {
-      Zero => h,
+      Zero => (),
       Succ(r) => (
         let hi : Lt(i, n) = (rewrite hr in LeAddL(r, i));
         let hr2 : Eq(Word, WAdd(r, Succ(i)), n) = (rewrite AddRS(r, i) in hr);
-        let o = clone(s);
-        let b = Take(V, n, &o, i, hi);
-        let m2 = clone(m);
-        MoveBucket(V, clone(b), &m2);
-        MoveFromInv(V, n, o, Succ(i), r, hr2, m2, MoveBucketInv(V, b, m, h))
+        let b = Take(V, n, &*s, i, hi);
+        MoveBucket(V, b, &*hm);
+        MoveFrom(V, n, s, Succ(i), r, hr2, hm)
       ),
     }
   )
 
-  def ResizeInv (V : Type) (m : HashMap(V)) : (let c = m; Resize(V, &c); Inv(V, c)) := (
-    let HM(n, _, MkArray(s)) = m;
-    MoveFromInv(V, Succ(n), s, Zero, Succ(n), AddZeroR(Succ(n)), New(V, Succ(WAdd(n, n))), NewInv(V, Succ(WAdd(n, n))))
+  def Resize (V : Type) (hm : &HashMap(V)) : Unit := (
+    let HM(RM(n, _, slots), _) = *hm;
+    let n0 = n;
+    let old = slots;
+    *hm := New(V, Succ(WAdd(n0, n0)));
+    MoveFrom(V, Succ(n0), AsSlice(Bucket(V), Succ(n0), &old), Zero, Succ(n0), AddZeroR(Succ(n0)), hm)
   )
 
+  def Insert (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) : Opt(V) := (
+    let r = InsertNoResize(V, &*hm, k, v);
+    let HM(RM(n, len, _), _) = *hm;
+    if LtB(n, len) { Resize(V, &*hm) };
+    r
+  )
+}
+
+/-! The concrete runs, at `V := Word`, and the negative tests: the lookup without its
+`clone`, a slot without its bound, and operations that do not re-establish the invariant. -/
+ochr HashMapTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMapRaw, HashMapInvLib, HashMap {
+  -- ## Runs
+  -- At `V := Word`, comparing the raw maps (a map literal would need its proof).
+  def RawOf (V : Type) (m : HashMap(V)) : RawMap(V) := (
+    let HM(r, _) = m;
+    r
+  )
+
+  -- Three inserts into a map with two buckets: the second reaches the load factor and
+  -- resizes to four. Every key is found again, an absent one is not.
+  def RunLayout : Id(RawMap(Word),
+    let m = New(Word, W(1));
+    Insert(Word, &m, W(1), W(10));
+    Insert(Word, &m, W(2), W(20));
+    Insert(Word, &m, W(3), W(30));
+    RawOf(Word, m)
+  , RM(W(3), W(3), ([Nil, Cons((W(1), W(10)), Nil), Cons((W(2), W(20)), Nil), Cons((W(3), W(30)), Nil)] : Array(Bucket(Word), W(4))))) := refl
+
+  def RunGet : Id(Word × Opt(Word),
+    let m = New(Word, W(1));
+    Insert(Word, &m, W(1), W(10));
+    Insert(Word, &m, W(2), W(20));
+    Insert(Word, &m, W(3), W(30));
+    let x = *Get(Word, &m, W(2), refl);
+    (x, Find(Word, m, W(5)))
+  , (W(20), None)) := refl
+
+  reject def RunGetWrong : Id(Word,
+    let m = New(Word, W(1));
+    Insert(Word, &m, W(1), W(10));
+    Insert(Word, &m, W(2), W(20));
+    *Get(Word, &m, W(1), refl)
+  , W(20)) := refl
+
+  def RunContains : Id(Bool × Bool,
+    let m = New(Word, W(1));
+    Insert(Word, &m, W(1), W(10));
+    Insert(Word, &m, W(2), W(20));
+    let a = ContainsKey(Word, &m, W(2));
+    (a, ContainsKey(Word, &m, W(3)))
+  , (true, false)) := refl
+
+  -- Overwriting returns the old value and keeps the length.
+  def RunOverwrite : Id(Opt(Word) × (Word × Word),
+    let m = New(Word, W(1));
+    Insert(Word, &m, W(1), W(10));
+    Insert(Word, &m, W(2), W(20));
+    let r = Insert(Word, &m, W(2), W(25));
+    let l = Len(Word, clone(m));
+    (r, (l, *Get(Word, &m, W(2), refl)))
+  , (Some(W(20)), (W(2), W(25)))) := refl
+
+  -- `5` collides with `1` in a map with four buckets.
+  def RunCollide : Id(RawMap(Word),
+    let m = New(Word, W(3));
+    Insert(Word, &m, W(1), W(10));
+    Insert(Word, &m, W(5), W(50));
+    RawOf(Word, m)
+  , RM(W(3), W(2), ([Nil, Cons((W(1), W(10)), Cons((W(5), W(50)), Nil)), Nil, Nil] : Array(Bucket(Word), W(4))))) := refl
+
+  -- Remove returns the value it removed; removing an absent key does nothing.
+  def RunRemove : Id(Opt(Word) × RawMap(Word),
+    let m = New(Word, W(3));
+    Insert(Word, &m, W(1), W(10));
+    Insert(Word, &m, W(5), W(50));
+    let x = Remove(Word, &m, W(1));
+    Remove(Word, &m, W(7));
+    (x, RawOf(Word, m))
+  , (Some(W(10)), RM(W(3), W(1), ([Nil, Cons((W(5), W(50)), Nil), Nil, Nil] : Array(Bucket(Word), W(4)))))) := refl
+
+  -- Write through the borrow of a present key. For an absent key the proof `refl` of
+  -- `IsSome(Word, Find(Word, m, 5))` does not exist: the precondition computes to `False`.
+  def RunGetMut : Id(Word,
+    let m = New(Word, W(3));
+    Insert(Word, &m, W(1), W(10));
+    Insert(Word, &m, W(5), W(50));
+    let q = MapGetMut(Word, &m, W(5), refl);
+    *q := W(55);
+    *Get(Word, &m, W(5), refl)
+  , W(55)) := refl
+
+  reject def RunGetMutAbsent : Id(Word,
+    let m = New(Word, W(3));
+    Insert(Word, &m, W(1), W(10));
+    let q = MapGetMut(Word, &m, W(5), refl);
+    *q := W(55);
+    *Get(Word, &m, W(5), refl)
+  , W(55)) := refl
+
+  -- Clear empties the map and keeps the number of buckets.
+  def RunClear : Id(HashMap(Word),
+    let m = New(Word, W(1));
+    Insert(Word, &m, W(1), W(10));
+    Clear(Word, &m);
+    m
+  , New(Word, W(1))) := refl
+
+  -- Without a proof that the index is in bounds there is no borrow of the bucket: at an
+  -- unknown key, `refl` does not prove `Lt(Idx(k, n), Succ(n))`, which is what `IdxLt` is for
+  -- (the arrays benchmark B3, `ArrayBench.lean`).
+  reject def SlotUnbounded (V : Type) (n : Word) (slots : &Slots(V, n)) (k : Word) : &Bucket(V) :=
+    GetMut(Bucket(V), Succ(n), AsSlice(Bucket(V), Succ(n), slots), Idx(k, n), refl)
+
+  -- Without its `clone`, the lookup would move the value out of a bucket it only borrows,
+  -- and the borrow would end with the bucket partly moved out.
+  reject def BLookupMoves (V : Type) (b : &Bucket(V)) (k : Word) : Opt(V) by b := (
+    match *b {
+      Nil => None,
+      Cons(e, t) => (
+        let (k', v') = e;
+        if EqB(k', k) { Some(v') } else { BLookupMoves(V, &t, k) }
+      ),
+    }
+  )
+
+  -- The hypothesis is needed.
+  reject def InsertCountNoHyp (V : Type) (m : RawMap(V)) (k : Word) (v : V) :
+      (let c = m; RawInsertNoResize(V, &c, k, v); Counted(V, c)) := (
+    let RM(n, _, MkArray(s)) = m;
+    SlotInsertCount(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, v)
+  )
+
+  -- The invariant is the type's: an operation that does not re-establish it, or assigns the
+  -- proof it had before the raw operation ran, is refused. `MapGetMut`'s proof must hold
+  -- whatever is written through the borrow it returns.
+  reject def InsertNoResizeForgets (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) : Opt(V) := (
+    let HM(m, inv) = *hm;
+    RawInsertNoResize(V, &m, k, v)
+  )
+
+  reject def InsertNoResizeStale (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) : Opt(V) := (
+    let HM(m, inv) = *hm;
+    let p = inv;
+    let r = RawInsertNoResize(V, &m, k, v);
+    inv := p;
+    r
+  )
+
+  reject def MapGetMutStale (V : Type) (hm : &HashMap(V)) (k : Word) (h : IsSome(V, Find(V, *hm, k))) : &V := (
+    let HM(m, inv) = *hm;
+    let p = inv;
+    let r = RawGetMut(V, &m, k, h);
+    inv := p;
+    r
+  )
+}
+
+-- each invariant test for its reason: the type is what refuses them
+#guard (run "HashMapTests" HashMapTests).rejectedWith [
+  ("InsertNoResizeForgets", "[Repack] a borrow of it ends, but it is open: field inv of HM: it holds ⊥"),
+  ("InsertNoResizeStale", "the assigned value has type ⌈Inv(σ0, σ4)⌉, expected ⌈Inv(σ0, ⌈let c1 = σ4; RawInsertNoResize(σ0, &c1, σ2, σ3); c1⌉)⌉"),
+  ("MapGetMutStale", "the proof assigned to inv (while part of its value is lent, what the borrow holds unknown: [Open]) has type ⌈Inv(σ0, σ3)⌉, expected ⌈Inv(σ0, ⌈let c1 = σ3; let r = RawGetMut(σ0, &c1, σ2, ⋆); *r := σ4; c1⌉)⌉")]
+
+/-! ## Lookups after each operation
+
+Each theorem says what `Find` returns after an operation, for the key it touched and for
+any other key. The statements use the operations themselves: "after `InsertNoResize(hm, k,
+v)`, `Find(*hm, k)` is `Some(v)`" is `Id(Opt(V), (InsertNoResize(V, &*hm, k, v); Find(V,
+clone(*hm), k)), (InsertNoResize(V, &*hm, k, clone(v)); Some(v)))`. Each is proved first for
+one bucket, by recursion on the bucket, then lifted through the array's element borrow by
+recursion on the index, following `GetMut`'s own recursion, then stated for the map. -/
+ochr HashMapLookup uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMapRaw, HashMapInvLib, HashMap {
+  -- ## Insert, in one bucket
+  -- After inserting `k`, looking `k` up gives the inserted value. In the `Nil` arm the
+  -- lookup compares `k` with itself, which the checker cannot compute for an abstract `k`:
+  -- split on it, and the `false` arm contradicts `EqBRefl`.
+  def BInsertFind (V : Type) (b : &Bucket(V)) (k : Word) (v : V) :
+      Id(Opt(V), (BInsert(V, &*b, k, v); BFind(V, clone(*b), k)), (BInsert(V, &*b, k, clone(v)); Some(v))) by b := (
+    match *b {
+      Nil => if EqB(k, k) { refl } else { match EqBRefl(k) {} },
+      Cons(e, t) => (
+        let (k', _) = e;
+        if EqB(k', k) { refl } else { BInsertFind(V, &t, k, v) }
+      ),
+    }
+  )
+
+  def SlotInsertFind (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (hi : Lt(i, n)) (k : Word) (v : V) :
+      Id(Opt(V), (let b = GetMut(Bucket(V), n, &*s, i, hi); BInsert(V, b, k, v); BFind(V, NthS(V, n, clone(*s), i, hi), k)),
+        (let b = GetMut(Bucket(V), n, &*s, i, hi); BInsert(V, b, k, clone(v)); Some(v))) by i := (
+    match n {
+      Zero => match hi {},
+      Succ(m) => (
+        let MkSlice(MkC(x, t)) = *s;
+        match i {
+          Zero => BInsertFind(V, &x, k, v),
+          Succ(i') => SlotInsertFind(V, m, &t, i', hi, k, v),
+        }
+      ),
+    }
+  )
+
+  -- Writing bucket `i` and reading bucket `j`: the same bucket is the bucket theorem,
+  -- different buckets do not interact.
+  def SlotInsertFindOther (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (hi : Lt(i, n)) (j : Word) (hj : Lt(j, n))
+      (k : Word) (v : V) (k2 : Word) (h : Eq(Bool, EqB(k, k2), false)) :
+      Id(Opt(V), (let b = GetMut(Bucket(V), n, &*s, i, hi); BInsert(V, b, k, v); BFind(V, NthS(V, n, clone(*s), j, hj), k2)),
+        (let r = BFind(V, NthS(V, n, clone(*s), j, hj), k2); let b = GetMut(Bucket(V), n, &*s, i, hi); BInsert(V, b, k, v); r)) by i := (
+    match n {
+      Zero => match hi {},
+      Succ(m) => (
+        let MkSlice(MkC(x, t)) = *s;
+        match i {
+          Zero => match j {
+            Zero => BInsertFindOther(V, &x, k, v, k2, h),
+            Succ(_) => refl,
+          },
+          Succ(i') => match j {
+            Zero => refl,
+            Succ(j') => SlotInsertFindOther(V, m, &t, i', hi, j', hj, k, v, k2, h),
+          },
+        }
+      ),
+    }
+  )
+
+  -- ## Insert, in the map
+  -- `InsertNoResize` updates the length according to what the bucket insert returned. That
+  -- result is a sealed program; `split BInsert` splits on it, in each arm the map computes,
+  -- and the slot theorem applies. The view is reached by taking the array apart, which a
+  -- proof may do (the representation is abstract only at runtime).
+  def InsertFind (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) :
+      Id(Opt(V), (InsertNoResize(V, &*hm, k, v); Find(V, clone(*hm), k)), (InsertNoResize(V, &*hm, k, clone(v)); Some(v))) := (
+    let HM(RM(n, _, MkArray(s0)), _) = clone(*hm);
+    let s = s0;
+    split BInsert in SlotInsertFind(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, v)
+  )
+
+  def InsertFindOther (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) (k2 : Word) (h : Eq(Bool, EqB(k, k2), false)) :
+      Id(Opt(V), (InsertNoResize(V, &*hm, k, v); Find(V, clone(*hm), k2)), (let r = Find(V, clone(*hm), k2); InsertNoResize(V, &*hm, k, v); r)) := (
+    let HM(RM(n, _, MkArray(s0)), _) = clone(*hm);
+    let s = s0;
+    split BInsert in
+      SlotInsertFindOther(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), Idx(k2, n), IdxLt(k2, n), k, v, k2, h)
+  )
+
+  -- Insert returns what `Find` returned before it: the old value, or `None`.
+  def InsertResult (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) :
+      Id(Opt(V), InsertNoResize(V, &*hm, k, v), (let r = Find(V, clone(*hm), k); InsertNoResize(V, &*hm, k, v); r)) := (
+    let HM(RM(n, _, MkArray(s0)), _) = clone(*hm);
+    let s = s0;
+    split BInsert in SlotInsertResult(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, v)
+  )
+
+  def EmptyLookup (V : Type) (n : Word) (j : Word) (i : Word) (h : Lt(i, n)) (k : Word) :
+      Id(Opt(V), (let c = EmptyFrom(V, n, j); BLookup(V, GetMut(Bucket(V), n, &c, i, h), k)), None[V]) by n := (
+    match n {
+      Zero => match h {},
+      Succ(m) => match i {
+        Zero => refl,
+        Succ(i') => EmptyLookup(V, m, Succ(j), i', h, k),
+      },
+    }
+  )
+
+  def NewFind (V : Type) (n : Word) (k : Word) : Id(Opt(V), Find(V, New(V, n), k), None[V]) := (
+    EmptyLookup(V, Succ(n), Zero, Idx(k, n), IdxLt(k, n), k)
+  )
+
+  -- ## MapGetMut is an insert
+  -- On the map with its invariant, as on the raw map (`RawGetMutIsInsert`). An equation
+  -- between two maps does not take them apart unless their raw maps convert (D52: `inv`'s
+  -- type depends on them), so the raw equation is rewritten into it.
+  def GetMutIsInsert (V : Type) (hm : &HashMap(V)) (k : Word) (w : V) (h : IsSome(V, Find(V, *hm, k))) :
+      Id(Unit, (let q = MapGetMut(V, &*hm, k, h); *q := w), (InsertNoResize(V, &*hm, k, w); ())) := (
+    let HM(m0, _) = clone(*hm);
+    let m = m0;
+    rewrite RawGetMutIsInsert(V, &m, k, w, h) in refl
+  )
+}
+
+/-! The lookup theorems that no later block uses: after remove, get_mut, clear; `Get` and
+`ContainsKey` agree with `Find`; and the negative tests. -/
+ochr HashMapLookupTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMapRaw, HashMapInvLib, HashMap, HashMapLookup {
+  -- Without the split the goal is stuck on the sealed `InsertNoResize` and does not meet
+  -- the slot theorem's statement.
+  reject def InsertFindNoSplit (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) :
+      Id(Opt(V), (InsertNoResize(V, &*hm, k, v); Find(V, clone(*hm), k)), (InsertNoResize(V, &*hm, k, clone(v)); Some(v))) := (
+    let HM(RM(n, _, MkArray(s0)), _) = clone(*hm);
+    let s = s0;
+    SlotInsertFind(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, v)
+  )
+
+  -- After removing `k`, looking `k` up gives `None`, if the keys are distinct. Where the
+  -- first `k` is removed, the rest of the bucket does not hold `k'`, which is `k`: rewrite
+  -- along `k' = k`.
+  def BRemoveFind (V : Type) (b : &Bucket(V)) (k : Word) (h : Unique(V, clone(*b))) :
+      Id(Opt(V), (BRemove(V, &*b, k); BFind(V, clone(*b), k)), (BRemove(V, &*b, k); None[V])) by b := (
+    match *b {
+      Nil => refl,
+      Cons(e, t) => (
+        let (k', _) = e;
+        let ⟨absent, rest⟩ = h;
+        if EqB(k', k) { rewrite EqBSound(k', k, refl) in absent } else { BRemoveFind(V, &t, k, rest) }
+      ),
+    }
+  )
+
+  reject def BRemoveFindDup (V : Type) (b : &Bucket(V)) (k : Word) :
+      Id(Opt(V), (BRemove(V, &*b, k); BFind(V, clone(*b), k)), (BRemove(V, &*b, k); None[V])) by b := (
+    match *b {
+      Nil => refl,
+      Cons(e, t) => (
+        let (k', _) = e;
+        if EqB(k', k) { refl } else { BRemoveFindDup(V, &t, k) }
+      ),
+    }
+  )
+
+  def SlotRemoveFind (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (hi : Lt(i, n)) (k : Word)
+      (h : AllUnique(V, n, clone(*s))) :
+      Id(Opt(V), (let b = GetMut(Bucket(V), n, &*s, i, hi); BRemove(V, b, k); BFind(V, NthS(V, n, clone(*s), i, hi), k)),
+        (let b = GetMut(Bucket(V), n, &*s, i, hi); BRemove(V, b, k); None[V])) by i := (
+    match n {
+      Zero => match hi {},
+      Succ(m) => (
+        let MkSlice(MkC(x, t)) = *s;
+        let ⟨hb, ht⟩ = h;
+        match i {
+          Zero => BRemoveFind(V, &x, k, hb),
+          Succ(i') => SlotRemoveFind(V, m, &t, i', hi, k, ht),
+        }
+      ),
+    }
+  )
+
+  def SlotRemoveFindOther (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (hi : Lt(i, n)) (j : Word) (hj : Lt(j, n))
+      (k : Word) (k2 : Word) (h : Eq(Bool, EqB(k, k2), false)) :
+      Id(Opt(V), (let b = GetMut(Bucket(V), n, &*s, i, hi); BRemove(V, b, k); BFind(V, NthS(V, n, clone(*s), j, hj), k2)),
+        (let r = BFind(V, NthS(V, n, clone(*s), j, hj), k2); let b = GetMut(Bucket(V), n, &*s, i, hi); BRemove(V, b, k); r)) by i := (
+    match n {
+      Zero => match hi {},
+      Succ(m) => (
+        let MkSlice(MkC(x, t)) = *s;
+        match i {
+          Zero => match j {
+            Zero => BRemoveFindOther(V, &x, k, k2, h),
+            Succ(_) => refl,
+          },
+          Succ(i') => match j {
+            Zero => refl,
+            Succ(j') => SlotRemoveFindOther(V, m, &t, i', hi, j', hj, k, k2, h),
+          },
+        }
+      ),
+    }
+  )
+
+  def RemoveResult (V : Type) (hm : &HashMap(V)) (k : Word) :
+      Id(Opt(V), Remove(V, &*hm, k), (let r = Find(V, clone(*hm), k); Remove(V, &*hm, k); r)) := (
+    let HM(RM(n, _, MkArray(s0)), _) = clone(*hm);
+    let s = s0;
+    split BRemove in SlotRemoveResult(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k)
+  )
+
+  def RemoveFind (V : Type) (hm : &HashMap(V)) (k : Word) :
+      Id(Opt(V), (Remove(V, &*hm, k); Find(V, clone(*hm), k)), (Remove(V, &*hm, k); None[V])) := (
+    let HM(RM(n, _, MkArray(s0)), inv) = clone(*hm);
+    let hu : AllUnique(V, Succ(n), s0) = (let ⟨_, u, _⟩ = inv; u);
+    let s = s0;
+    split BRemove in SlotRemoveFind(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, hu)
+  )
+
+  def RemoveFindOther (V : Type) (hm : &HashMap(V)) (k : Word) (k2 : Word) (h : Eq(Bool, EqB(k, k2), false)) :
+      Id(Opt(V), (Remove(V, &*hm, k); Find(V, clone(*hm), k2)), (let r = Find(V, clone(*hm), k2); Remove(V, &*hm, k); r)) := (
+    let HM(RM(n, _, MkArray(s0)), _) = clone(*hm);
+    let s = s0;
+    split BRemove in
+      SlotRemoveFindOther(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), Idx(k2, n), IdxLt(k2, n), k, k2, h)
+  )
+
+  -- ## MapGetMut
+  -- The borrow points at the value a lookup returns. In the `Nil` arm the precondition is
+  -- `IsSome(V, None)`, which is `False`.
+  def BGetMutRead (V : Type) (b : &Bucket(V)) (k : Word) (w : V) (h : IsSome(V, BFind(V, clone(*b), k))) :
+      Id(Opt(V), (let q = BGet(V, &*b, k, h); let x = clone(*q); *q := w; Some(x)),
+        (let r = BFind(V, clone(*b), k); let q = BGet(V, &*b, k, h); *q := w; r)) by b := (
+    match *b {
+      Nil => match h {},
+      Cons(e, t) => (
+        let (k', _) = e;
+        if EqB(k', k) { refl } else { BGetMutRead(V, &t, k, w, h) }
+      ),
+    }
+  )
+
+  -- Lifted through the element borrow, and stated for the map. `MapGetMut` branches on no
+  -- sealed result, so the map theorem is the slot theorem at the key's index.
+  def SlotGetMutRead (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (hi : Lt(i, n)) (k : Word) (w : V)
+      (h : IsSome(V, BFind(V, NthS(V, n, clone(*s), i, hi), k))) :
+      Id(Opt(V), (let b = GetMut(Bucket(V), n, &*s, i, hi); let q = BGet(V, b, k, h); let x = clone(*q); *q := w; Some(x)),
+        (let r = BFind(V, NthS(V, n, clone(*s), i, hi), k); let b = GetMut(Bucket(V), n, &*s, i, hi); let q = BGet(V, b, k, h); *q := w; r)) by i := (
+    match n {
+      Zero => match hi {},
+      Succ(m) => (
+        let MkSlice(MkC(x, t)) = *s;
+        match i {
+          Zero => BGetMutRead(V, &x, k, w, h),
+          Succ(i') => SlotGetMutRead(V, m, &t, i', hi, k, w, h),
+        }
+      ),
+    }
+  )
+
+  def MapGetMutRead (V : Type) (hm : &HashMap(V)) (k : Word) (w : V) (h : IsSome(V, Find(V, clone(*hm), k))) :
+      Id(Opt(V), (let q = MapGetMut(V, &*hm, k, h); let x = clone(*q); *q := w; Some(x)),
+        (let r = Find(V, clone(*hm), k); let q = MapGetMut(V, &*hm, k, h); *q := w; r)) := (
+    let HM(RM(n, _, MkArray(s0)), _) = clone(*hm);
+    let s = s0;
+    SlotGetMutRead(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, w, h)
+  )
+
+  def GetMutFind (V : Type) (hm : &HashMap(V)) (k : Word) (w : V) (h : IsSome(V, Find(V, clone(*hm), k))) :
+      Id(Opt(V), (let q = MapGetMut(V, &*hm, k, h); *q := w; Find(V, clone(*hm), k)),
+        (let q = MapGetMut(V, &*hm, k, h); *q := clone(w); Some(w))) := (
+    let HM(m0, _) = clone(*hm);
+    let m = m0;
+    rewrite ← RawGetMutIsInsert(V, &m, k, w, h) in InsertFind(V, &*hm, k, w)
+  )
+
+  def GetMutFindOther (V : Type) (hm : &HashMap(V)) (k : Word) (w : V) (h : IsSome(V, Find(V, clone(*hm), k))) (k2 : Word)
+      (ne : Eq(Bool, EqB(k, k2), false)) :
+      Id(Opt(V), (let q = MapGetMut(V, &*hm, k, h); *q := w; Find(V, clone(*hm), k2)),
+        (let r = Find(V, clone(*hm), k2); let q = MapGetMut(V, &*hm, k, h); *q := w; r)) := (
+    let HM(m0, _) = clone(*hm);
+    let m = m0;
+    rewrite ← RawGetMutIsInsert(V, &m, k, w, h) in InsertFindOther(V, &*hm, k, w, k2, ne)
+  )
+
+  -- ## Get, through the borrow
+  -- `Get` returns a mutable borrow (Ochr has no shared borrows), only read. When the
+  -- lookup is stuck on an abstract bucket, closing it off leaves a sealed program in the
+  -- bucket ("borrow `k`'s value in `u`, then give `u` back"), which is `u` only by a proof.
+  -- These three lemmas are that proof: reading through `Get`'s borrow gives what `Find`
+  -- returns, and leaves the map as it was.
+  def BGetFind (V : Type) (b : &Bucket(V)) (k : Word) (h : IsSome(V, BFind(V, clone(*b), k))) :
+      Id(Opt(V), Some(clone(*BGet(V, &*b, k, h))), BFind(V, clone(*b), k)) by b := (
+    match *b {
+      Nil => match h {},
+      Cons(e, t) => (
+        let (k', _) = e;
+        if EqB(k', k) { refl } else { BGetFind(V, &t, k, h) }
+      ),
+    }
+  )
+
+  def SlotGetFind (V : Type) (n : Word) (s : &Slice(Bucket(V), n)) (i : Word) (hi : Lt(i, n)) (k : Word)
+      (h : IsSome(V, BFind(V, NthS(V, n, clone(*s), i, hi), k))) :
+      Id(Opt(V), (let b = GetMut(Bucket(V), n, &*s, i, hi); Some(clone(*BGet(V, b, k, h)))), BFind(V, NthS(V, n, clone(*s), i, hi), k)) by i := (
+    match n {
+      Zero => match hi {},
+      Succ(m) => (
+        let MkSlice(MkC(x, t)) = *s;
+        match i {
+          Zero => BGetFind(V, &x, k, h),
+          Succ(i') => SlotGetFind(V, m, &t, i', hi, k, h),
+        }
+      ),
+    }
+  )
+
+  def GetFind (V : Type) (hm : &HashMap(V)) (k : Word) (h : IsSome(V, Find(V, clone(*hm), k))) :
+      Id(Opt(V), Some(clone(*Get(V, &*hm, k, h))), Find(V, clone(*hm), k)) := (
+    let HM(RM(n, _, MkArray(s0)), _) = clone(*hm);
+    let s = s0;
+    let ⟨hv, hs⟩ = SlotGetFind(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, h);
+    ⟨hv, rewrite ← hs in refl⟩
+  )
+
+  -- `ContainsKey` says whether `Find` finds the key, and leaves the map as it was.
+  def ContainsFind (V : Type) (hm : &HashMap(V)) (k : Word) : Id(Bool, ContainsKey(V, &*hm, k), Has(V, Find(V, clone(*hm), k))) := (
+    let HM(m0, _) = clone(*hm);
+    let m = m0;
+    let ⟨hr, hs⟩ = RawContainsFind(V, &m, k);
+    ⟨hr, rewrite ← hs in refl⟩
+  )
+
+  def ClearFind (V : Type) (hm : &HashMap(V)) (k : Word) : Id(Opt(V), (Clear(V, &*hm); Find(V, clone(*hm), k)), (Clear(V, &*hm); None[V])) := (
+    let HM(RM(n, _, _), _) = clone(*hm);
+    NewFind(V, n, k)
+  )
+}
+
+/-! ## The length
+
+`Len` is the raw map's `len` field. After an insert it grows by one exactly when the key was
+absent, and after a remove it shrinks by one exactly when the key was present. -/
+ochr HashMapLength uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMapRaw, HashMapInvLib, HashMap, HashMapLookup {
+  -- ## The len field
+  -- Split on what the bucket insert returned and on the earlier lookup; where they
+  -- disagree, `SlotInsertResult`'s type is `None = Some(…)` or `Some(…) = None`, which is
+  -- `False`.
+  def InsertLen (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) :
+      Id(Word, (InsertNoResize(V, &*hm, k, v); Len(V, clone(*hm))),
+        (let l = Len(V, clone(*hm)); let r = Find(V, clone(*hm), k); InsertNoResize(V, &*hm, k, v); IfNew(V, r, l))) := (
+    let HM(RM(n, _, MkArray(s0)), _) = clone(*hm);
+    let s = s0;
+    let p = SlotInsertResult(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k, v);
+    split BInsert {
+      None => split BLookup {
+        None => refl,
+        Some(_) => match p {},
+      },
+      Some(_) => split BLookup {
+        None => match p {},
+        Some(_) => refl,
+      },
+    }
+  )
+
+  -- ## Remove
+  -- The len field shrinks by one exactly when the key was found (the code's `Pred`).
+  def Shrink (V : Type) (r : Opt(V)) (l : Word) : Word := (
+    match r {
+      None => l,
+      Some(_) => Pred(l),
+    }
+  )
+}
+
+/-! The length theorems that no later block uses. -/
+ochr HashMapLengthTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMapRaw, HashMapInvLib, HashMap, HashMapLookup, HashMapLength {
+  def RemoveLen (V : Type) (hm : &HashMap(V)) (k : Word) :
+      Id(Word, (Remove(V, &*hm, k); Len(V, clone(*hm))),
+        (let l = Len(V, clone(*hm)); let r = Find(V, clone(*hm), k); Remove(V, &*hm, k); Shrink(V, r, l))) := (
+    let HM(RM(n, _, MkArray(s0)), _) = clone(*hm);
+    let s = s0;
+    let p = SlotRemoveResult(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), k);
+    split BRemove {
+      None => split BLookup {
+        None => refl,
+        Some(_) => match p {},
+      },
+      Some(_) => split BLookup {
+        None => match p {},
+        Some(_) => refl,
+      },
+    }
+  )
+
+  -- ## MapGetMut
+  -- Writing through the borrow leaves the length as it was.
+  def GetMutLen (V : Type) (hm : &HashMap(V)) (k : Word) (w : V) (h : IsSome(V, Find(V, clone(*hm), k))) :
+      Id(Word, (let q = MapGetMut(V, &*hm, k, h); *q := w; Len(V, clone(*hm))),
+        (let l = Len(V, clone(*hm)); let q = MapGetMut(V, &*hm, k, h); *q := w; l)) := (
+    let HM(RM(_, _, _), _) = clone(*hm);
+    refl
+  )
+}
+
+/-! ## Resizing
+
+Resizing moves every entry with `InsertNoResize` into a new map, so it keeps every lookup,
+and with the invariant (now the old map's own) the insert with resizing behaves like the
+insert without. Resizing visits the old buckets by index, so what it has still to move is
+stated as a list, `Rest`: the old buckets from an index on. -/
+ochr HashMapResize uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMapRaw, HashMapInvLib, HashMap, HashMapLookup, HashMapLength {
+  -- ## Resizing keeps every lookup
+  -- Re-inserting overwrites, so after moving a bucket (or the buckets still to move) into a
+  -- map, a key's lookup is its last occurrence in what was moved, or else what it was before.
+  -- That needs no hypothesis. The invariant then says the last occurrence of `k` in the old
+  -- buckets is the one `Find` sees: `k` is only in its own bucket, and at most once.
+  def OrElse (V : Type) (a : Opt(V)) (b : Opt(V)) : Opt(V) := (
+    match a {
+      None => b,
+      Some(x) => Some(x),
+    }
+  )
+
+  def BFindLast (V : Type) (b : Bucket(V)) (k : Word) : Opt(V) by b := (
+    match b {
+      Nil => None[V],
+      Cons(e, t) => (
+        let (k', v') = e;
+        if EqB(k', k) { OrElse(V, BFindLast(V, t, k), Some(v')) } else { BFindLast(V, t, k) }
+      ),
+    }
+  )
+
+  -- The old buckets still to move: `Rest` lists the buckets of the view from `i` on, and the
+  -- lookup of a list of buckets is the last occurrence. Taking bucket `i` out gives it and
+  -- leaves an empty bucket in its place (`TakeV`), which `Rest` from `i + 1` on does not see.
+  def Rest (V : Type) (n : Word) (s : Slice(Bucket(V), n)) (i : Word) (rem : Word) (hr : Eq(Word, WAdd(rem, i), n)) :
+      List(Bucket(V)) by rem := (
+    match rem {
+      Zero => Nil[Bucket(V)],
+      Succ(r) => (
+        let hi : Lt(i, n) = (rewrite hr in LeAddL(r, i));
+        let hr2 : Eq(Word, WAdd(r, Succ(i)), n) = (rewrite AddRS(r, i) in hr);
+        Cons(Nth(Bucket(V), n, clone(s), i, hi), Rest(V, n, s, Succ(i), r, hr2))
+      ),
+    }
+  )
+
+  def FindLast (V : Type) (l : List(Bucket(V))) (k : Word) : Opt(V) by l := (
+    match l {
+      Nil => None[V],
+      Cons(b, t) => OrElse(V, FindLast(V, t, k), BFindLast(V, b, k)),
+    }
+  )
+
+  -- `k` is in no bucket of a list; a view's `Nowhere` is its buckets'.
+  def NowhereL (V : Type) (l : List(Bucket(V))) (k : Word) : Prop by l := (
+    match l {
+      Nil => ⊤,
+      Cons(b, t) => Eq(Opt(V), BFind(V, b, k), None[V]) ∧ NowhereL(V, t, k),
+    }
+  )
+
+  -- The keys of `b` are absent from the map `m`.
+  def Fresh (V : Type) (b : Bucket(V)) (m : HashMap(V)) : Prop by b := (
+    match b {
+      Nil => ⊤,
+      Cons(e, t) => (
+        let (k, _) = e;
+        Eq(Opt(V), Find(V, m, k), None[V]) ∧ Fresh(V, t, m)
+      ),
+    }
+  )
+
+  -- Over a list of buckets: the entries, the keys absent from `m`, the keys of `b'` not in
+  -- `b`, every bucket apart from `b`, and the keys distinct within and across buckets.
+  def CountL (V : Type) (l : List(Bucket(V))) : Word by l := (
+    match l {
+      Nil => Zero,
+      Cons(b, t) => WAdd(BLen(V, b), CountL(V, t)),
+    }
+  )
+
+  def FreshL (V : Type) (l : List(Bucket(V))) (m : HashMap(V)) : Prop by l := (
+    match l {
+      Nil => ⊤,
+      Cons(b, t) => Fresh(V, b, m) ∧ FreshL(V, t, m),
+    }
+  )
+
+  def AbsentFrom (V : Type) (b' : Bucket(V)) (b : Bucket(V)) : Prop by b' := (
+    match b' {
+      Nil => ⊤,
+      Cons(e, r) => (
+        let (k, _) = e;
+        Eq(Opt(V), BFind(V, b, k), None[V]) ∧ AbsentFrom(V, r, b)
+      ),
+    }
+  )
+
+  def ApartL (V : Type) (l : List(Bucket(V))) (b : Bucket(V)) : Prop by l := (
+    match l {
+      Nil => ⊤,
+      Cons(b', t) => AbsentFrom(V, b', b) ∧ ApartL(V, t, b),
+    }
+  )
+
+  def GUniqueL (V : Type) (l : List(Bucket(V))) : Prop by l := (
+    match l {
+      Nil => ⊤,
+      Cons(b, t) => Unique(V, b) ∧ (ApartL(V, t, b) ∧ GUniqueL(V, t)),
+    }
+  )
+
+  -- ## The load factor
+  -- The entries do not outnumber the buckets: `len ≤ n`, with `n + 1` buckets. `Insert`
+  -- keeps it by resizing (as Aeneas's `hash_map_not_overloaded_lem`, with a load factor
+  -- of 1 rather than a configurable fraction).
+  def NOf (V : Type) (m : HashMap(V)) : Word := (
+    let HM(RM(n, _, _), _) = m;
+    n
+  )
+
+  def NotOver (V : Type) (m : HashMap(V)) : Prop := Eq(Bool, LtB(NOf(V, clone(m)), Len(V, m)), false)
+}
+
+/-! The theorems: resizing, insert with its resize, and the load factor. -/
+ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMapRaw, HashMapInvLib, HashMap, HashMapLookup, HashMapLength, HashMapResize {
   -- ## Resizing keeps every lookup
   def MoveBucketFind (V : Type) (b : Bucket(V)) (m : HashMap(V)) (k : Word) :
       Id(Opt(V), (let c = m; MoveBucket(V, b, &c); Find(V, c, k)), OrElse(V, BFindLast(V, b, k), Find(V, m, k))) by b := (
@@ -1817,9 +1904,9 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
     }
   )
 
-  -- Resizing keeps every lookup, given the invariant.
-  def ResizeFind (V : Type) (m : HashMap(V)) (k : Word) (h : Inv(V, m)) : Id(Opt(V), (let c = m; Resize(V, &c); Find(V, c, k)), Find(V, m, k)) := (
-    let HM(n, _, MkArray(s)) = m;
+  -- Resizing keeps every lookup: the old map's invariant says its keys are where `Find` looks.
+  def ResizeFind (V : Type) (m : HashMap(V)) (k : Word) : Id(Opt(V), (let c = m; Resize(V, &c); Find(V, c, k)), Find(V, m, k)) := (
+    let HM(RM(n, _, MkArray(s)), h) = m;
     let ⟨hl, hu, hp⟩ = h;
     match FindLast(V, Rest(V, Succ(n), clone(s), Zero, Succ(n), AddZeroR(Succ(n))), k) {
       None => (
@@ -2074,9 +2161,9 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
     }
   )
 
-  -- Resizing keeps the length, given the invariant.
-  def ResizeLen (V : Type) (m : HashMap(V)) (h : Inv(V, m)) : Id(Word, (let c = m; Resize(V, &c); Len(V, c)), Len(V, m)) := (
-    let HM(n, _, MkArray(s)) = m;
+  -- Resizing keeps the length: the old map's invariant says its entries are counted and its keys distinct.
+  def ResizeLen (V : Type) (m : HashMap(V)) : Id(Word, (let c = m; Resize(V, &c); Len(V, c)), Len(V, m)) := (
+    let HM(RM(n, _, MkArray(s)), h) = m;
     let ⟨hl, hu, hp⟩ = h;
     rewrite ← hl in
     rewrite CountRest(V, Succ(n), s) in
@@ -2087,37 +2174,36 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
 
   -- ## Insert, with the resize
   -- Split on what the bucket insert returned and on whether the table is then full. When it
-  -- is, the resize keeps the invariant, every lookup and the length, the last two under the
-  -- invariant, which `InsertInv` gives for the map before the resize. The load factor is
-  -- last.
-  def InsertFindR (V : Type) (m : HashMap(V)) (k : Word) (v : V) (h : Inv(V, m)) :
+  -- is, the resize keeps every lookup and the length, by the invariant of the map it resizes,
+  -- which that map carries. The load factor is last.
+  def InsertFindR (V : Type) (m : HashMap(V)) (k : Word) (v : V) :
       Id(Opt(V), (let c = m; Insert(V, &c, k, v); Find(V, c, k)), Some(v)) := (
-    let HM(_, _, MkArray(_)) = m;
+    let HM(RM(_, _, MkArray(_)), _) = m;
     let mc = clone(m);
     let m2 = clone(m);
     InsertNoResize(V, &m2, k, clone(v));
     split BInsert in split LtB {
       false => InsertFind(V, &mc, k, v),
-      true => rewrite ← ResizeFind(V, m2, k, InsertInv(V, m, k, v, h)) in InsertFind(V, &mc, k, v),
+      true => rewrite ← ResizeFind(V, m2, k) in InsertFind(V, &mc, k, v),
     }
   )
 
-  def InsertFindOtherR (V : Type) (m : HashMap(V)) (k : Word) (v : V) (k2 : Word) (ne : Eq(Bool, EqB(k, k2), false)) (h : Inv(V, m)) :
+  def InsertFindOtherR (V : Type) (m : HashMap(V)) (k : Word) (v : V) (k2 : Word) (ne : Eq(Bool, EqB(k, k2), false)) :
       Id(Opt(V), (let c = m; Insert(V, &c, k, v); Find(V, c, k2)), Find(V, m, k2)) := (
-    let HM(_, _, MkArray(_)) = m;
+    let HM(RM(_, _, MkArray(_)), _) = m;
     let mc = clone(m);
     let m2 = clone(m);
     InsertNoResize(V, &m2, k, clone(v));
     split BInsert in split LtB {
       false => InsertFindOther(V, &mc, k, v, k2, ne),
-      true => rewrite ← ResizeFind(V, m2, k2, InsertInv(V, m, k, v, h)) in InsertFindOther(V, &mc, k, v, k2, ne),
+      true => rewrite ← ResizeFind(V, m2, k2) in InsertFindOther(V, &mc, k, v, k2, ne),
     }
   )
 
   -- The value returned: the resize happens after the bucket insert, so it changes nothing.
   def InsertResultR (V : Type) (m : HashMap(V)) (k : Word) (v : V) :
       Id(Opt(V), (let c = m; Insert(V, &c, k, v)), Find(V, m, k)) := (
-    let HM(_, _, MkArray(_)) = m;
+    let HM(RM(_, _, MkArray(_)), _) = m;
     let mc = clone(m);
     split BInsert in split LtB {
       false => InsertResult(V, &mc, k, v),
@@ -2125,27 +2211,16 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
     }
   )
 
-  -- The invariant.
-  def InsertInvR (V : Type) (m : HashMap(V)) (k : Word) (v : V) (h : Inv(V, m)) : (let c = m; Insert(V, &c, k, v); Inv(V, c)) := (
-    let HM(_, _, MkArray(_)) = m;
-    let m2 = clone(m);
-    InsertNoResize(V, &m2, k, clone(v));
-    split BInsert in split LtB {
-      false => InsertInv(V, m, k, v, h),
-      true => ResizeInv(V, m2),
-    }
-  )
-
   -- The length grows by one exactly when the key was absent.
-  def InsertLenR (V : Type) (m : HashMap(V)) (k : Word) (v : V) (h : Inv(V, m)) :
+  def InsertLenR (V : Type) (m : HashMap(V)) (k : Word) (v : V) :
       Id(Word, (let c = m; Insert(V, &c, k, v); Len(V, c)), IfNew(V, Find(V, clone(m), k), Len(V, m))) := (
-    let HM(_, _, MkArray(_)) = m;
+    let HM(RM(_, _, MkArray(_)), _) = m;
     let mc = clone(m);
     let m2 = clone(m);
     InsertNoResize(V, &m2, k, clone(v));
     split BInsert in split LtB {
       false => InsertLen(V, &mc, k, v),
-      true => rewrite ← ResizeLen(V, m2, InsertInv(V, m, k, v, h)) in InsertLen(V, &mc, k, v),
+      true => rewrite ← ResizeLen(V, m2) in InsertLen(V, &mc, k, v),
     }
   )
 
@@ -2192,7 +2267,7 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
 
   -- Inserting and moving entries does not change the number of buckets; resizing sets it.
   def InsertN (V : Type) (m : HashMap(V)) (k : Word) (v : V) : Id(Word, (let c = m; InsertNoResize(V, &c, k, v); NOf(V, c)), NOf(V, m)) := (
-    let HM(_, _, _) = m;
+    let HM(RM(_, _, _), _) = m;
     split BInsert in refl
   )
 
@@ -2225,21 +2300,21 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
   )
 
   def ResizeN (V : Type) (m : HashMap(V)) : Id(Word, (let c = m; Resize(V, &c); NOf(V, c)), Succ(WAdd(NOf(V, clone(m)), NOf(V, m)))) := (
-    let HM(n, _, MkArray(s)) = m;
+    let HM(RM(n, _, MkArray(s)), _) = m;
     MoveFromN(V, Succ(n), s, Zero, Succ(n), AddZeroR(Succ(n)), New(V, Succ(WAdd(n, n))))
   )
 
   -- After a resize the bucket count is `2n + 2` and the length is unchanged, so the
   -- entries (at most `n + 1`) do not outnumber the buckets.
-  def InsertNotOver (V : Type) (m : HashMap(V)) (k : Word) (v : V) (h : Inv(V, m)) (ho : NotOver(V, m)) :
+  def InsertNotOver (V : Type) (m : HashMap(V)) (k : Word) (v : V) (ho : NotOver(V, m)) :
       (let c = m; Insert(V, &c, k, v); NotOver(V, c)) := (
-    let HM(n, len, MkArray(_)) = m;
+    let HM(RM(n, len, MkArray(_)), _) = m;
     let m2 = clone(m);
     InsertNoResize(V, &m2, k, clone(v));
     split BInsert {
       None => split LtB {
         false => refl,
-        true => rewrite ← ResizeN(V, m2) in rewrite ← ResizeLen(V, m2, InsertInv(V, m, k, v, h)) in LtBAdd(n, len, n, ho),
+        true => rewrite ← ResizeN(V, m2) in rewrite ← ResizeLen(V, m2) in LtBAdd(n, len, n, ho),
       },
       Some(_) => split LtB {
         false => refl,
@@ -2256,7 +2331,7 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
   )
 
   def RemoveNotOver (V : Type) (m : HashMap(V)) (k : Word) (ho : NotOver(V, m)) : (let c = m; Remove(V, &c, k); NotOver(V, c)) := (
-    let HM(n, len, MkArray(_)) = m;
+    let HM(RM(n, len, MkArray(_)), _) = m;
     split BRemove {
       None => ho,
       Some(_) => LtBPred(n, len, ho),
@@ -2265,12 +2340,12 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
 
   def GetMutNotOver (V : Type) (m : HashMap(V)) (k : Word) (w : V) (h : IsSome(V, Find(V, m, k))) (ho : NotOver(V, m)) :
       (let c = m; let q = MapGetMut(V, &c, k, h); *q := w; NotOver(V, c)) := (
-    let HM(_, _, _) = m;
+    let HM(RM(_, _, _), _) = m;
     ho
   )
 
   def ClearNotOver (V : Type) (m : HashMap(V)) : (let c = m; Clear(V, &c); NotOver(V, c)) := (
-    let HM(n, _, _) = m;
+    let HM(RM(n, _, _), _) = m;
     NewNotOver(V, n)
   )
 }

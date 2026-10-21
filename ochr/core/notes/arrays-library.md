@@ -416,21 +416,21 @@ Branch `ochr-arrays`, tour file `lean/Ochr/Examples/16Arrays.lean`, merged with 
     - reads of a swapped view (`NthSwapA`, `NthSwapB`, `NthSwapOther`, `NthIdx`);
     - bridges from positions to pieces (`AllLeTakeOf`, `TakeOneDrop`, `AllGeDropOf`).
 
-**Sizes, before and after D60** (`notes/arrays-count.py`: code lines and tokens per declaration, comments and blanks stripped, with the hashmap study's tokenizer; "before" is 9b9b0073):
+**Sizes, before and after D60** (`notes/arrays-count.py`: code lines per declaration, comments and blanks stripped; "before" is 9b9b0073):
 
-| | before D60 | after D60 | tokens |
-|---|---|---|---|
-| B2 program (`Scan`, `Partition`, `Recurse`, `QS`, `SortArray`) | 52 / 825 | 52 / 739 | −10% |
-| B2 spec (`AllLe`, `AllGe`, `Sorted`) | 30 / 229 | 30 / 229 | |
-| B2 proof: permutation | 107 / 2,400 | 83 / 1,424 | −41% |
-| B2 proof: sortedness glue (incl. the contract's statement) | 293 / 4,620 | 296 / 4,252 | −8% |
-| B2 proof: the partition's contract | 432 / 9,168 | 392 / 7,205 | −21% |
-| B2 proof: `QSSortedFull`, `QSCorrect` | 9 / 201 | 9 / 201 | |
-| **B2 proofs, total** | **841 / 16,389** | **780 / 13,082** | **−20%** |
-| `Index` / `ArrayLemmas` (the lemma library) | 127 / 1,066; 224 / 2,568 | 123 / 947; 224 / 2,301 | −11%; −10% |
-| whole file (167 declarations after; 175 before) | 1,629 / 26,618 | 1,563 / 22,775 | −14% |
+| | before D60 | after D60 |
+|---|---|---|
+| B2 program (`Scan`, `Partition`, `Recurse`, `QS`, `SortArray`) | 52 | 52 |
+| B2 spec (`AllLe`, `AllGe`, `Sorted`) | 30 | 30 |
+| B2 proof: permutation | 107 | 83 |
+| B2 proof: sortedness glue (incl. the contract's statement) | 293 | 296 |
+| B2 proof: the partition's contract | 432 | 392 |
+| B2 proof: `QSSortedFull`, `QSCorrect` | 9 | 9 |
+| **B2 proofs, total** | **841** | **780** |
+| `Index` / `ArrayLemmas` (the lemma library) | 127; 224 | 123; 224 |
+| whole file (167 declarations after; 175 before) | 1,629 | 1,563 |
 
-(lines / tokens.) The runs and negative tests (9 lines, 815 tokens) are unchanged. The program shrinks because its erased index proofs were `J`s. What went:
+(lines.) The runs and negative tests (9 lines) are unchanged. What went:
 - all 40 `J`s with motives (two of them inside `EqSym`/`EqTrans`), the combinators that only oriented them (`EqSym`, `EqTrans`: 46 uses) and the congruence lemmas (`AddCongL`, `AddCongR`, `CountCong`), for 61 `rewrite`s. The permutation step (`RecursePerm`) is now a chain of eight `rewrite`s ending in `refl`, where it was 22 lines of named counts and `EqTrans`;
 - `AndL`/`AndR` (10 uses) and the `Intro` matches, for 6 destructuring `let`s;
 - `NthIdx` (equal indices read equal elements): rewriting the index in the goal does it;
@@ -522,22 +522,22 @@ Since D53, a runtime read of data that is not a copy type moves it. The five blo
 - **K2, K3 and the A1 fix, merged in.** examples-tour's K2/K3 adds these to 16Arrays: the `unsized abstract` / `abstract` modifiers, `implemented by` on the eight natives and `GetMutB`, reviewer-7's `Suffix`, `TwoParts` and `Rebuild` (rejected by K3), and `ReadIsNth`. They carried over unchanged apart from the `Word` rename. With the A1 fix (generalisation records belong to their [Split] arm, 969e3254), the sibling-arm leak of finding 3 is gone: `AllGeJoin` and `SortedJoin` build their conjunctions with `⟨…⟩`, and `AndI` is deleted.
 - **Proofs: unchanged**, apart from the rename. No proof needed a clone. Statements read places inside erased terms, which copy and see ghosts. Every negative test is still rejected for its original reason.
 
-Sizes after D53, K2/K3 and the A1 fix, measured as in §10 (lines / tokens; "before" is the D60 version with `Nat`):
+Sizes after D53, K2/K3 and the A1 fix, measured as in §10 (lines; "before" is the D60 version with `Nat`):
 
 | | before (D60, `Nat`) | after (D53, `Word`) |
 |---|---|---|
-| B2 program | 52 / 739 | 53 / 807 |
-| B2 spec (`AllLe`, `AllGe`, `Sorted`) | 30 / 229 | 30 / 235 |
-| B2 proof: permutation | 83 / 1,424 | 83 / 1,528 |
-| B2 proof: sortedness glue | 296 / 4,252 | 294 / 4,369 (`AndI` gone) |
-| B2 proof: the partition's contract | 392 / 7,205 | 392 / 7,587 |
-| B2 proof: `QSSortedFull`, `QSCorrect` | 9 / 201 | 9 / 201 |
-| **B2 proofs, total** | **780 / 13,082** | **778 / 13,685 (+5%)** |
-| `Index` / `Arrays` / `ArrayLemmas` | 123 / 947; 174 / 1,913; 224 / 2,301 | 135 / 1,102; 174 / 2,016; 224 / 2,360 |
-| `ArrayBench` | 171 / 2,749 | 179 / 3,274 (+ the K2/K3 tests) |
-| whole file | 1,563 / 22,775 | 1,582 / 24,549 |
+| B2 program | 52 | 53 |
+| B2 spec (`AllLe`, `AllGe`, `Sorted`) | 30 | 30 |
+| B2 proof: permutation | 83 | 83 |
+| B2 proof: sortedness glue | 296 | 294 (`AndI` gone) |
+| B2 proof: the partition's contract | 392 | 392 |
+| B2 proof: `QSSortedFull`, `QSCorrect` | 9 | 9 |
+| **B2 proofs, total** | **780** | **778** |
+| `Index` / `Arrays` / `ArrayLemmas` | 123; 174; 224 | 135; 174; 224 |
+| `ArrayBench` | 171 | 179 (+ the K2/K3 tests) |
+| whole file | 1,563 | 1,582 |
 
-Moves themselves cost one line: `Recurse`'s `let rec2 = clone(rec)`. The other clones sit inside existing expressions. Most of the token growth is notation: `Succ(x)` is four tokens where `S x` was two, `Succ(Zero)` four where `1` was one, and `W(n)` three where a numeral was one. Quicksort's `Word` development (program, spec, proofs) is 861 lines and 14.7k tokens, against Verus's 108 lines and 1.1k tokens: 8 times the lines and 14 times the tokens (13 times before the switch to `Word`). `Quicksort` checks in 0.3–0.5 s with moves on (0.3 s before), and the five blocks in about 0.6 s.
+Moves themselves cost one line: `Recurse`'s `let rec2 = clone(rec)`. The other clones sit inside existing expressions. Quicksort's `Word` development (program, spec, proofs) is 861 lines, against Verus's 108: 8 times the lines. `Quicksort` checks in 0.3–0.5 s with moves on (0.3 s before), and the five blocks in about 0.6 s.
 
 ## 13. After `&E` (docs/09 §1–5, lane arrays-e, 2026-10-01)
 
