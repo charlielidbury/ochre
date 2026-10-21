@@ -90,7 +90,7 @@ Read in order (`Ochr/Examples/README.md`), the files teach the whole language: t
 | `Equality` | `Id` and `Eq`: observation, footprints, disjointness, injectivity (pairs included), `J` and its stuck casts (D56); `rewrite h in t` (D60); all owners of a returned borrow are observed (D18), in the order the sides reach them | §4 | 76 |
 | `Snapshots` | types and closures are formed once; what a closure or Π-type captures (values, never borrows; capturing ends a live borrow; a Π-type formed by a call keeps its captured proofs' types) | P2, §1, §5 | 27 |
 | `Recursion` | `by x`, entry-value recursion, induction hypotheses in the caller's environment; typing a sealed program keeps the [Rec] state | §5 [Def], [Rec] | 29 |
-| `CaseSplits` | [Split], dependent matching on a computed type, generalising sealed programs, `split f` on a result the goal is stuck on (D61), scrutinee types, global generalisation records, a refinement belongs to its arm, re-normalising inside Π-types | §5 [Split] | 79 |
+| `CaseSplits` | [Split], dependent matching on a computed type, generalising sealed programs, `split f` on a result the goal is stuck on (D61), scrutinee types, global generalisation records, a refinement belongs to its arm, re-normalising inside Π-types | §5 [Split] | 82 |
 | `Functions` | opaque functions, closures, Π-types, comparing functions by observation (D30, D38, D48 (3)); a function type's class and row (D54) | P1, §1, §4 | 63 |
 | `Inductives` | lists, binary search trees (keys are `Word`s) (and the paper's trees, whose pure insert runs the in-place one), parameters, strict positivity | §8 | 72 |
 | `Propositions` | `False`, `True`, `And`, matching on proofs by type, a stuck zero-arm match (D58), destructuring `let` (D60), subsingleton elimination | §1, §8 | 76 |
@@ -103,7 +103,7 @@ Read in order (`Ochr/Examples/README.md`), the files teach the whole language: t
 | `DependentFields` | dependent fields (D64): a field's type from the earlier fields, writing them in place (open, then repacked), proof fields, restricted injectivity, type functions in field types (K4) and its nesting condition; and a case study, `DepVec`: `Vec(E)` as user code over a fixed-size array of `Opt(E)` cells (push growing it, pop, an element borrow, and lemmas about each), and a hash table that stores its capacity and resizes | §8 | 57 (+76) |
 | `Sugar` | surface sugar: a destructuring `let` for any one-constructor type, `if`, `match` on a term; their errors, and runs showing each computes as its match; `if` on a block's own `Bool`, and without one | §5 [Split] | 48 (+3, +1) |
 
-1406 declarations in all, the `Prelude`'s 4 and the case studies' 426 (the arrays library's 50 among them) included (the registry's `expectedTotal`). D53 (reads of non-copy data move) is the only read semantics: the old copy-on-read paths, `Config.d53`, `Test.preD53` and the `moves` switch are deleted (`notes/lean-checker.md` §47). `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+1409 declarations in all, the `Prelude`'s 4 and the case studies' 426 (the arrays library's 50 among them) included (the registry's `expectedTotal`). D53 (reads of non-copy data move) is the only read semantics: the old copy-on-read paths, `Config.d53`, `Test.preD53` and the `moves` switch are deleted (`notes/lean-checker.md` §47). `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 

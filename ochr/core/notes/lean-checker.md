@@ -1540,3 +1540,13 @@ Fuzz seed 10, case 8706 (renorm, "[Drop] … dies while a value in flight borrow
 - The fuzzer counts this reason as incomplete (`isInFlightDrop`), not as a renorm finding.
 
 Candidate rule change, not made: a capture mode for a place that one arm moves and another borrows. Taking it by `&` would make the moving arm move out through a borrow; taking it by move is today's rule.
+
+## 58. `split f` on a generic function's result (hm-gen, 2026-10-21)
+
+`split f` gives the generalised result the type of `f`'s declared result. Until now the checker read that type only when it mentioned no parameter, so it refused every split on a generic function, `split BInsert` with `BInsert : … Opt(V)` among them: "the type of ⌈…⌉ is not known (its head's result type depends on the arguments)". The rule ([Split-goal], RULES §5) has no such restriction, and the appendix listed it as a gap of this checker.
+
+`sealedResultType?` now evaluates the result type at the call's arguments: the sealed program's head call keeps its argument values, and when every parameter the result type mentions is given a value there (a type parameter, a `Word`), the parameters are bound to them and the result type evaluated, as `fieldTypeAt` does for a constructor's field. The call was checked against its parameter types when it was made, so this is the result's type. Where a mentioned parameter has no value in the head call (a borrow argument, which is a term there), the split is still refused.
+
+- Test: `Splitting.WrapShort` (`split Wrap` on an `Opt(A)`), rejected with the message above on the checker before the change, accepted after it; it flips in the `generalize` ledger row only.
+- Effect elsewhere: none. The tour's other verdicts, the ledger and the fuzzer (seed 1, 2·10⁴ cases, identical output) are unchanged; the generic hash map (`HashMap.lean`) needs it at every `split BInsert`, `split BRemove`, `split BLookup`, `split BFindLast` and `split FindLast`.
+- Found with it, while writing the generic hash map: a constructor whose fields do not fix its parameters (`None`, `Nil`, a single-constructor record such as `HM`) that runs inside a statement records its parameters only when they are written, and a stuck match that later captures such a value cannot type it ("cannot infer the parameters of the value Nil(…)"). Inside `convPi` that error is caught and reported as the two Π-types not converting. The hash map writes `None[V]`, `Nil[Pair(Word, V)]` and `HM[V](…)` in code that statements run; the checker could instead record the parameters from the declared result type of the function whose body builds the value.

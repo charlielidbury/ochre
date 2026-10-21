@@ -1605,9 +1605,9 @@ must have. With `h : Eq A a b`, every occurrence of `b`'s normal form in `G` is 
 to a fresh `σ` (the replacement [Split] uses to generalise a sealed program, D34, here local
 to the goal and not recorded), and `a` is substituted for `σ`, re-normalising what changed.
 `rev` (`rewrite ← h in t`) swaps `a` and `b`. The term is `J(A, a, b, λz. G[z/b], h, t)`
-with the motive read off the goal. A rewrite that finds nothing to rewrite is an error (a
-wrong direction, usually); an `h` whose type computes to `True` rewrites nothing and is
-allowed (its two sides are already equal). -/
+with the motive read off the goal. A rewrite that finds nothing to rewrite leaves the goal
+as it is (rule-audit C22), so a wrong direction shows as a goal `t` does not prove; an `h`
+whose type computes to `True` rewrites nothing either (its two sides are already equal). -/
 partial def rewriteGoal (rev : Bool) (h : Term) (G : Value) : M Value := do
   unless (← typeClass G) == 2 do err s!"rewrite: the goal {G} is not a proposition"
   let (_, Th) ← eval true h
@@ -2610,17 +2610,29 @@ partial def generalizeNeutral (p : Place) (n : Value) : M Nat := do
     modify fun s => { s with neutrals := (n, σ) :: s.neutrals }
   pure σ
 
-/-- The type of a sealed program in result form, from its head's declared codomain
-when that is closed (no dependency on the arguments). -/
+/-- The type of a sealed program in result form, from its head's declared codomain: as it
+stands when it is closed, and otherwise at the call's arguments, when every parameter it
+mentions is given a value (a generic function's `Opt(V)` at the `V` it was called with; the
+call was checked against the parameter types when it was made). -/
 partial def sealedResultType? (t : Term) : M (Option Value) := do
   let rec body : Term → Term
     | .letIn _ _ u => body u
     | u => u
   match body t with
-  | .call (.val f) _ true =>
+  | .call (.val f) as true =>
     match f with
     | .gfn n => match (← lookupGlobal n).ty with
-      | .tPi _ (.pi _ _ c) => if c.freeVars.isEmpty then pure (some (← evalType c)) else pure none
+      | .tPi cs (.pi hs ds c) =>
+        if c.freeVars.isEmpty then pure (some (← evalType c)) else
+        let np := ds.length
+        let ws : Array (Option Value) := (as.map fun | .val v => some v | _ => none).toArray
+        unless cs.isEmpty && ws.size == np && c.freeVars.all (fun j => j < np && (ws[np - 1 - j]!).isSome) do
+          return none
+        tryCatch (onCopy do
+            pushFrame
+            for (h, w) in hs.zip ws.toList do pushBind h none (w.getD .bot)
+            some <$> evalType c)
+          fun _ => pure none
       | _ => pure none
     | _ => pure none
   | _ => pure none
