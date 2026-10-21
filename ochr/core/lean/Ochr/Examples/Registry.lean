@@ -53,7 +53,9 @@ would re-check them twice; their flips are measured once instead, by
 def caseStudies : List (String × Block) :=
   [("Index", Index), ("Arrays", Arrays), ("ArrayLemmas", ArrayLemmas), ("ArrayBench", ArrayBench),
    ("Quicksort", Quicksort),
-   ("HashMap", HashMap), ("HashMapLookup", HashMapLookup), ("HashMapLength", HashMapLength), ("HashMapResize", HashMapResize),
+   ("HashMap", HashMap), ("HashMapTests", HashMapTests), ("HashMapLookup", HashMapLookup),
+   ("HashMapLookupTests", HashMapLookupTests), ("HashMapLength", HashMapLength), ("HashMapLengthTests", HashMapLengthTests),
+   ("HashMapResize", HashMapResize), ("HashMapResizeTests", HashMapResizeTests),
    ("DepVec", DepVec)]
 
 def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
