@@ -55,7 +55,7 @@ CORE_EXCLUDE = {"RuleGuard.lean"}
 LIBRARY = ["Bool", "Logic", "Nat", "Word", "List", "Option", "Box", "Fixtures", "Array"]
 TOUR = ["Numbers", "Borrows", "ReturnedBorrows", "ClosingOff", "Equality", "Snapshots", "Recursion",
         "CaseSplits", "Functions", "Inductives", "Propositions", "CurrentState", "Erasure", "Universes",
-        "BorrowTypes"]
+        "BorrowTypes", "Sugar"]
 # Before the final layout: the tour is the numbered files below this number. Numbered files from
 # it on are case studies, and only the library blocks a skeleton uses are extracted from them.
 TOUR_LIMIT = 16

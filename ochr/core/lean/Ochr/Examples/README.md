@@ -25,7 +25,8 @@ Every file here is checked when `lake build` elaborates it: a `def` must be acce
    - `Numbers`, `Borrows`, `ReturnedBorrows`, `ClosingOff`;
    - `Equality`, `Snapshots`, `Recursion`, `CaseSplits`;
    - `Functions`, `Inductives`, `Propositions`, `CurrentState`;
-   - `Erasure`, `Universes`, `BorrowTypes`.
+   - `Erasure`, `Universes`, `BorrowTypes`;
+   - `Sugar`: the surface sugar (a destructuring `let`, `if`, `match` on a term), which has no rules of its own.
 
    Each file opens with what it covers and where RULES defines it.
 
