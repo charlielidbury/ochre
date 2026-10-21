@@ -205,6 +205,24 @@ ochr Splitting uses Std {
     }
   )
 
+  -- The split result's type is the head's declared result type at the call's arguments:
+  -- here `List(A)` at the caller's `A`, the result of a generic function.
+  def Wrap (A : Type) (x : A) (n : Nat) : List(A) := (
+    match n {
+      Z => Nil[A],
+      S _ => Cons(x, Nil[A]),
+    }
+  )
+
+  def Short (A : Type) (l : List(A)) : Prop := (
+    match l {
+      Nil => ⊤,
+      Cons(h, t) => ⊤,
+    }
+  )
+
+  def WrapShort (A : Type) (x : A) (n : Nat) : Short(A, Wrap(A, x, n)) := split Wrap in refl
+
   -- `split f` needs the goal to be stuck on a result of `f`; the arms must be the
   -- constructors of its type, and each must prove its refined goal. A split cannot prove
   -- a false statement, and it needs the goal, so it is only in tail position.
@@ -230,7 +248,7 @@ ochr Splitting uses Std {
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard Splitting.decls.length == 19
+#guard Splitting.decls.length == 22
 
 /-! ## What goes wrong without these rules
 

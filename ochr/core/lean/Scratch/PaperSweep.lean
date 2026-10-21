@@ -44,13 +44,13 @@ ochr SweepClear uses Std {
   reject def Clear (x : &Nat) : Id(Unit, (match *x { Z => (), S p => p := Z }), ()) := refl
 }
 #eval IO.println (run "SweepClear" SweepClear).show
-ochr SweepHM uses Std, HashMap, HashMapLookup {
+ochr SweepHM uses Index, Arrays, ArrayLemmas, HashMap, HashMapLookup {
   -- impl.typ:55
-  def InsertFindOtherP (hm : &HashMap) (k : Word) (v : Nat) (k2 : Word) (h : Eq(Bool, EqB(k, k2), false)) : Id(Opt, InsertNoResize(&*hm, k, v); Find(clone(*hm), k2), let r = Find(clone(*hm), k2); InsertNoResize(&*hm, k, v); r) := match *hm { HM(n, len, slots) => split BInsert in SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h) }
+  def InsertFindOtherP (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) (k2 : Word) (h : Eq(Bool, EqB(k, k2), false)) : Id(Opt(V), (InsertNoResize(V, &*hm, k, v); Find(V, clone(*hm), k2)), (let r = Find(V, clone(*hm), k2); InsertNoResize(V, &*hm, k, v); r)) := match *hm { HM(n, len, slots) => match slots { MkArray(s) => split BInsert in SlotInsertFindOther(V, Succ(n), &s, Idx(k, n), IdxLt(k, n), Idx(k2, n), IdxLt(k2, n), k, v, k2, h) } }
 }
 #eval IO.println (run "SweepHM" SweepHM).show
 ochr SweepQS uses Quicksort {
-  -- impl.typ:75
+  -- impl.typ:77
   def QSCorrectP (n : Word) (s : &Slice(Word, n)) (q : Word) : (let c = *s; QS(n, n, &c); Sorted(n, c)) ∧ (let old = clone(*s); Eq(Word, Count(q, n, (QS(n, n, &*s); *s)), Count(q, n, old))) := ⟨QSSortedFull(n, n, s, LeRefl(n)), QSPerm(n, n, s, q)⟩
 }
 #eval IO.println (run "SweepQS" SweepQS).show

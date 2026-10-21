@@ -81,7 +81,7 @@ for n,t,loc in S2u:
     if n in trees: print(f'  -- {loc}\n  {t}')
 print('}\n#eval IO.println (run "SweepTrees" SweepTrees).show')
 emit('SweepClear','Std',[d for d in S2u if d[0]=='Clear'])
-emit('SweepHM','Std, HashMap, HashMapLookup',defs('impl.typ')[:1],{'InsertFindOther':'InsertFindOtherP'})
+emit('SweepHM','Index, Arrays, ArrayLemmas, HashMap, HashMapLookup',defs('impl.typ')[:1],{'InsertFindOther':'InsertFindOtherP'})
 emit('SweepQS','Quicksort',defs('impl.typ')[1:],{'QSCorrect':'QSCorrectP'})
 A=defs('appendix.typ')
 emit('SweepApp1','',[d for d in A if d[0] not in {'Or','IsL','Irr','Boom'}])

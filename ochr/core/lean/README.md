@@ -65,7 +65,7 @@ ochr Numbers {
 | `Ochr/Test.lean` | the same with `Prelude` (`libOf`, `run`), verdict tables, traces; attributing a counterfactual flip to a library declaration's home block (`blockFlips`) |
 | `Ochr/Examples/00Std.lean` … `15BorrowTypes.lean` | the example programs, as a tour of the language (next section); `00Std.lean` holds `Std`, the definitions the others use |
 | `Ochr/Examples/18DependentFields.lean` | dependent fields (D64): the telescope, open and repack, restricted injectivity, K4 (`DepFields`, in the ledger); a growable vector and a resizable hash table over the arrays library (`DepVec`, a case study) |
-| `Ochr/Examples/17HashMap.lean` | the case study: Aeneas's verified hash map as one in-place program with its theorems (`notes/hashmap-case-study.md`) |
+| `Ochr/Examples/17HashMap.lean` | the case study: Aeneas's verified hash map as one in-place program, generic in the value type and built on the arrays library, with its theorems (`notes/hashmap-case-study.md`) |
 | `Ochr/Examples/CaseStudyLedger.lean` | the counterfactual ledger for the case study, run by hand (`lake env lean`), not part of `lake build` |
 | `Ochr/Examples/Sugar.lean` | the surface sugar, with no rules of its own: a destructuring `let` for any one-constructor type, `if`, and `match` on a term (`Sugar`, after the tour in the registry) |
 | `Ochr/Examples/Units.lean` | unit tests of machine functions ([Seal], owners, footprint) on hand-built values |
@@ -88,7 +88,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `05Equality` | `Id` and `Eq`: observation, footprints, disjointness, injectivity (pairs included), `J` and its stuck casts (D56); `rewrite h in t` (D60); all owners of a returned borrow are observed (D18), in the order the sides reach them | §4 | 65 |
 | `06Snapshots` | types and closures are formed once; what a closure or Π-type captures (values, never borrows; capturing ends a live borrow; a Π-type formed by a call keeps its captured proofs' types) | P2, §1, §5 | 27 |
 | `07Recursion` | `by x`, entry-value recursion, induction hypotheses in the caller's environment; typing a sealed program keeps the [Rec] state | §5 [Def], [Rec] | 29 |
-| `08CaseSplits` | [Split], dependent matching on a computed type, generalising sealed programs, `split f` on a result the goal is stuck on (D61), scrutinee types, global generalisation records, a refinement belongs to its arm, re-normalising inside Π-types | §5 [Split] | 68 |
+| `08CaseSplits` | [Split], dependent matching on a computed type, generalising sealed programs, `split f` on a result the goal is stuck on (D61), scrutinee types, global generalisation records, a refinement belongs to its arm, re-normalising inside Π-types | §5 [Split] | 83 |
 | `09Functions` | opaque functions, closures, Π-types, comparing functions by observation (D30, D38, D48 (3)); a function type's class and row (D54) | P1, §1, §4 | 63 |
 | `10Inductives` | lists, binary search trees (keys are `Word`s) (and the paper's trees, whose pure insert runs the in-place one), parameters, strict positivity | §8 | 78 |
 | `11Propositions` | `False`, `True`, `And`, matching on proofs by type, a stuck zero-arm match (D58), destructuring `let` (D60), subsingleton elimination | §1, §8 | 76 |
@@ -97,11 +97,11 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `14Universes` | `Prop : Type₁` beside `Type` (D66), no `Type : Type`, no cumulativity, why `&Type` is refused; sorts are syntactic (D55, reviewer-4's programs) | preamble, P2 | 27 |
 | `15BorrowTypes` | what may be borrowed (D66: `&A` iff `A : Type`) and where `&` may appear (D48); `FnBorrows`: borrowing functions and type variables, a generic swap and bucket; abstract and unsized types, model code (K2, K3) | §1 | 74 |
 | `16Arrays` | case study: arrays as a library (slices, indices), its lemmas and benchmarks, and in-place quicksort proved sorted and a permutation; indices, lengths and elements are `Word`s (`notes/arrays-library.md`) | all | 199 |
-| `17HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code; keys and sizes are `Word`s (`notes/hashmap-case-study.md`) | all | 188 |
+| `17HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code; values of any type `V`, keys and sizes `Word`s, the table an array of lists (`notes/hashmap-case-study.md`) | all | 200 |
 | `18DependentFields` | dependent fields (D64): a field's type from the earlier fields, writing them in place (open, then repacked), proof fields, restricted injectivity, type functions in field types (K4) and its nesting condition; and a case study, `DepVec`: `Vec(E)` as user code over a fixed-size array of `Opt(E)` cells (push growing it, pop, an element borrow, and lemmas about each), and a hash table that stores its capacity and resizes | §8 | 51 (+80) |
 | `Sugar` | surface sugar: a destructuring `let` for any one-constructor type, `if`, `match` on a term; their errors, and runs showing each computes as its match; `if` on a block's own `Bool`, and without one | §5 [Split] | 48 (+3, +1) |
 
-1424 declarations in all, the `Prelude`'s 4 and the case studies' 467 included (the registry's `expectedTotal`). D53 (reads of non-copy data move) is the only read semantics: the old copy-on-read paths, `Config.d53`, `Test.preD53` and the `moves` switch are deleted (`notes/lean-checker.md` §47). `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+1439 declarations in all, the `Prelude`'s 4 and the case studies' 479 included (the registry's `expectedTotal`). D53 (reads of non-copy data move) is the only read semantics: the old copy-on-read paths, `Config.d53`, `Test.preD53` and the `moves` switch are deleted (`notes/lean-checker.md` §47). `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 

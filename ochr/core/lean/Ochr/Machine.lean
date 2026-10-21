@@ -1605,9 +1605,9 @@ must have. With `h : Eq A a b`, every occurrence of `b`'s normal form in `G` is 
 to a fresh `σ` (the replacement [Split] uses to generalise a sealed program, D34, here local
 to the goal and not recorded), and `a` is substituted for `σ`, re-normalising what changed.
 `rev` (`rewrite ← h in t`) swaps `a` and `b`. The term is `J(A, a, b, λz. G[z/b], h, t)`
-with the motive read off the goal. A rewrite that finds nothing to rewrite is an error (a
-wrong direction, usually); an `h` whose type computes to `True` rewrites nothing and is
-allowed (its two sides are already equal). -/
+with the motive read off the goal. A rewrite that finds nothing to rewrite leaves the goal
+as it is (rule-audit C22), so a wrong direction shows as a goal `t` does not prove; an `h`
+whose type computes to `True` rewrites nothing either (its two sides are already equal). -/
 partial def rewriteGoal (rev : Bool) (h : Term) (G : Value) : M Value := do
   unless (← typeClass G) == 2 do err s!"rewrite: the goal {G} is not a proposition"
   let (_, Th) ← eval true h
