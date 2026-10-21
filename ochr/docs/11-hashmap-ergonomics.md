@@ -188,15 +188,22 @@ Lane `hm-gen` applies the rule inside the hashmap case study. Lane `hm-lib` appl
 - give each fork its own branch or worktree, or a disjoint set of files with commits by explicit path;
 - the lane owner reviews and lands.
 
-## Outcome of §2, first landing (lane hm-lib, 2026-10-21)
+## The user's ruling against Std (2026-10-21)
 
-An intermediate step towards the final layout below, which splits `00Std.lean` into topic files.
+The user's words: "instead of putting everything in Std, can we remove Std and name the file the things go in something sensible? perhaps the whole Examples/ folder is really 'Std' (but lets not rename it now). the dep. graph will be a DAG with no clear root".
 
-- **Where.** `00Std.lean`. `Std` gained the shared types and facts: `Opt(A)` with `IsSome(A, o)` and `IsNone(A, o)` (propositions), `Dec`, `Void` with `absurdV`, `IsTrue`, and `AddMS`/`AddS`. A new block `Words uses Std` is the `Word` library: the old `Index` block whole (`Le`, `Lt`, `LeDec`, `LtDec`, `WAdd`, `Sub`, `W` and its lemmas), `Pred`, the boolean comparisons, and the two lemmas that two files each proved (`EqBRefl`, `LeOfLt`). `Words` is a separate block because many tour tests that use `Std` define their own `Le` or `Pred` on `Nat`, and the paper's `Borrows.W` is a ledger witness: in `Std` they would clash.
-- **Renames.** A boolean comparison is named for the proposition it decides with a `B`: `EqB` (was `Index`'s `Eqb`), `LeB` (was `Leb`), `LtB` (was the hash map's boolean `Lt`); `Le`/`Lt` stay the propositions. The hash map's boolean `IsNone` is `IsNoneB`. The quicksort's lemmas follow (`EqBLeLt`, `EqBGeLt`, `LeBLe`, `LeBGt`).
-- **Migrated.** `16Arrays` (`Index` deleted), `17HashMap` (arithmetic, `Opt`, `IsSome`, `W`, `EqBRefl`, `WAddZero`), `18DependentFields` (`Opt`, `IsSome`, `IsNone`, `Void`, `absurdV`, `Empty0`, `LeSuccL`), `ClosingOff`'s `Dec`, `Splitting`'s `Opt`, `PositivityParams`' `Void`/`absurdV`, the trees' `AddMS`/`AddS`, `FnBorrows`' `EqW`/`IsTrue`, and the bench hash map header's `Opt` and `IsTrue`.
-- **Kept, each with a comment.** The order on `Nat` (`ClosingOff`, `Recursion`, `ArmLocal`, `CurrentState`) and `Numbers`' `Pred` on `Nat`; the trees' own `Lt` (printed in the paper); `ArmLocal`'s and `ArmLocalBoom`'s own arrays model and option type (minimal regression witnesses); `Lists`' and `GenType`'s own `List`, `GlobalRecords`' `Box`; `Positivity`'s `absurd` on `Empty`. Namesakes that are different functions (`Count`, `Nth`, `GetMutRead`, `Swap`, `Insert`) are not duplicates. Case-study lemmas with one copy (`WAddS`, `WAddAssoc`, `EqBSound`, …), the three bucket indices (`ModGo`/`Idx`, `ArrayBench`'s `ModS`, the bench's `IdxGo`) and the three hash maps are left for phase 2.
-- **Numbers.** No verdict changed; 1372 → 1354 declarations (tour 905 → 924, case studies 467 → 430). The count scripts read the moved definitions from `00Std.lean` and count them where they were, so the paper's case-study line counts are unchanged.
+What follows from it:
+- `00Std.lean` is split into topic files and removed.
+- Each block `uses` only what it needs: a DAG with no root and no catch-all block.
+- Every `uses Std` becomes `uses` of the specific blocks, with the matching `import`s.
+- The centralised definitions go into the topic blocks.
+- `if` must not depend on a block named `Std`.
+
+The final layout above is the user-approved form of this ruling.
+
+## Outcome of §2 before the ruling (lane hm-lib, superseded)
+
+Lane `hm-lib` first centralised into `00Std.lean`: a larger `Std` and a block `Words`. Those commits are in ochr-core's history: b13a6a4e, bff20a35 and f2cc4b1e, landed together with the final layout in one fast-forward. No layout that the user rejected is at any tip, but the history has it. The definitions and renames carried over unchanged into the topic files; the next section describes the result.
 
 ## Outcome of the final layout (lane hm-lib, 2026-10-21)
 
