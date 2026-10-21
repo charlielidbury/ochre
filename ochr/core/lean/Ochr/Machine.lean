@@ -2610,17 +2610,29 @@ partial def generalizeNeutral (p : Place) (n : Value) : M Nat := do
     modify fun s => { s with neutrals := (n, σ) :: s.neutrals }
   pure σ
 
-/-- The type of a sealed program in result form, from its head's declared codomain
-when that is closed (no dependency on the arguments). -/
+/-- The type of a sealed program in result form, from its head's declared codomain: as it
+stands when it is closed, and otherwise at the call's arguments, when every parameter it
+mentions is given a value (a generic function's `Opt(V)` at the `V` it was called with; the
+call was checked against the parameter types when it was made). -/
 partial def sealedResultType? (t : Term) : M (Option Value) := do
   let rec body : Term → Term
     | .letIn _ _ u => body u
     | u => u
   match body t with
-  | .call (.val f) _ true =>
+  | .call (.val f) as true =>
     match f with
     | .gfn n => match (← lookupGlobal n).ty with
-      | .tPi _ (.pi _ _ c) => if c.freeVars.isEmpty then pure (some (← evalType c)) else pure none
+      | .tPi cs (.pi hs ds c) =>
+        if c.freeVars.isEmpty then pure (some (← evalType c)) else
+        let np := ds.length
+        let ws : Array (Option Value) := (as.map fun | .val v => some v | _ => none).toArray
+        unless cs.isEmpty && ws.size == np && c.freeVars.all (fun j => j < np && (ws[np - 1 - j]!).isSome) do
+          return none
+        tryCatch (onCopy do
+            pushFrame
+            for (h, w) in hs.zip ws.toList do pushBind h none (w.getD .bot)
+            some <$> evalType c)
+          fun _ => pure none
       | _ => pure none
     | _ => pure none
   | _ => pure none
