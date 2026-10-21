@@ -23,7 +23,8 @@ import Ochr.Examples.Units
 /-! # Every example program, for the test runner and the counterfactual ledger
 
 The programs of the tour, in reading order (the numbered files, then the blocks of each
-file in order), starting with `Std`, which most of them use. The counterfactual ledger
+file in order), starting with `Std`, which most of them use, and `Words`, the library for
+`Word`s, which the arrays library and the case studies use. The counterfactual ledger
 (`Ledger.lean`) switches one rule off at a time and lists the verdicts that flip, in this
 order. -/
 
@@ -32,7 +33,7 @@ open Ochr Ochr.Test Ochr.Surface
 namespace Ochr.Registry
 
 def programs : List (String × Block) :=
-  [("Prelude", Prelude), ("Std", Std), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("Drops", Drops), ("Moves", Moves), ("ReturnedBorrows", ReturnedBorrows), ("Reborrows", Reborrows),
+  [("Prelude", Prelude), ("Std", Std), ("Words", Words), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("Drops", Drops), ("Moves", Moves), ("ReturnedBorrows", ReturnedBorrows), ("Reborrows", Reborrows),
    ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("Equality", Equality), ("Rewriting", Rewriting),
    ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion),
    ("CaseSplits", CaseSplits), ("GenType", GenType), ("RenormPi", RenormPi), ("Splitting", Splitting), ("ScrutineeTypes", ScrutineeTypes),
@@ -51,7 +52,7 @@ would re-check them twice; their flips are measured once instead, by
 `Ochr/Examples/CaseStudyLedger.lean` (run it with `lake env lean`), and reported in
 `notes/arrays-library.md` and `notes/hashmap-case-study.md`. -/
 def caseStudies : List (String × Block) :=
-  [("Index", Index), ("Arrays", Arrays), ("ArrayLemmas", ArrayLemmas), ("ArrayBench", ArrayBench),
+  [("Arrays", Arrays), ("ArrayLemmas", ArrayLemmas), ("ArrayBench", ArrayBench),
    ("Quicksort", Quicksort),
    ("HashMap", HashMap), ("HashMapLookup", HashMapLookup), ("HashMapLength", HashMapLength), ("HashMapResize", HashMapResize),
    ("DepVec", DepVec)]
@@ -211,7 +212,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1424
+def Ochr.Registry.expectedTotal : Nat := 1406
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal

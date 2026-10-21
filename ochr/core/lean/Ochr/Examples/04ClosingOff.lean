@@ -269,7 +269,8 @@ ochr ClosingOff uses Std, Fixtures {
   -- type of its own is typed by where it sits: a proof argument, `⋆`, by its parameter's
   -- declared type, and a place lent out by its borrow's content. Here `y` is the sealed
   -- `H(σ, ⋆)`, and both a split on a decision about it and a closure capturing it type it
-  -- (arrays-library) ...
+  -- (arrays-library) ... The order is on `Nat` here, not `Words`' on `Word`; `Dec` is
+  -- `Std`'s.
   def Le (a : Nat) (b : Nat) : Prop by a := (
     match a {
       Z => ⊤,
@@ -281,8 +282,6 @@ ochr ClosingOff uses Std, Fixtures {
   )
 
   def Lt (a : Nat) (b : Nat) : Prop := Le(S(a), b)
-
-  inductive Dec (P : Prop) (Q : Prop) := Yes(h : P) | No(k : Q)
 
   def LeDec (a : Nat) (b : Nat) : Dec(Le(a, b), Lt(b, a)) by a := (
     match a {
@@ -380,7 +379,7 @@ ochr ClosingOff uses Std, Fixtures {
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard ClosingOff.decls.length == 53
+#guard ClosingOff.decls.length == 52
 
 /-! ## Symbolic checking is not the same as checking every instance
 

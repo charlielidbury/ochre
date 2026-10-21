@@ -21,6 +21,7 @@ In-place append and its theorems are the same bare recursion as `AddM`'s, and `L
 the list version of `TailM`. -/
 
 ochr Lists {
+  -- A list of numbers declared here, without `Std`'s `List(A)`: the first inductive type.
   inductive List := Nil | Cons(h : Nat, t : List)
 
   -- In-place append, and appending `Nil` does nothing.
@@ -85,7 +86,8 @@ switch `genConsistent`). The size theorem needs one arithmetic lemma, proved in 
 ochr Trees uses Std {
   inductive Tree := Leaf | Node(l : Tree, v : Word, r : Tree)
 
-  -- The order on keys: words, which every read copies (D53).
+  -- The order on keys: words, which every read copies (D53). The paper's trees define their
+  -- own `Lt`, as printed there; it is `Words`' `LtB`.
   def Lt (a : Word) (b : Word) : Bool by a := (
     match a {
       Zero => match b {
@@ -178,17 +180,8 @@ ochr Trees uses Std {
 
   -- Inserting grows the size by one. In the `true` arm this follows from the induction
   -- hypothesis, since `Add` recurses on its first argument. The `false` arm needs
-  -- `x + S(y) = S(x + y)`, itself proved in place by bare recursion. Both arms rewrite
-  -- with `J`.
-  def AddMS (x : &Nat) (y : Nat) : Id(Unit, AddM(x, S(y)), AddM(&*x, y); *x := S(*x)) by x := (
-    match *x {
-      Z => refl,
-      S p => AddMS(&p, y),
-    }
-  )
-
-  def AddS (x : Nat) (y : Nat) : Id(Nat, Add(x, S(y)), S(Add(x, y))) := AddMS(&x, y)
-
+  -- `x + S(y) = S(x + y)`, Std's `AddS`, itself proved in place by bare recursion (`AddMS`).
+  -- Both arms rewrite with `J`.
   def Size (t : Tree) : Nat by t := (
     match t {
       Leaf => 0,
@@ -272,21 +265,22 @@ ochr Trees uses Std {
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard Trees.decls.length == 14
+#guard Trees.decls.length == 12
 
 /-! ## The paper's trees: the pure insert runs the in-place one
 
 The paper (§2, Trees) defines the pure insert as `Add` is defined, by running the in-place
 one on a copy, and proves the size theorem about it. `InsertM`, `Insert` and `SizeInsert`
 are the paper's text, in its layout, with `Word` keys (D53: a key is only compared, so it is a
-copy); `Lt` and `Size` are the ones it assumes, and `AddS`
-(`x + S y = S (x + y)`) is proved in place by bare recursion (`AddMS`) and transferred to
+copy); `Lt` and `Size` are the ones it assumes, and `AddS` (`Std`'s,
+`x + S y = S (x + y)`) is proved in place by bare recursion (`AddMS`) and transferred to
 `Add` by lending, as the prose says. The in-place insert is the pure one by definition
 (`InsertMIsInsert`, by `refl`). -/
 
 ochr InPlaceTrees uses Std {
   inductive Tree := Leaf | Node(l : Tree, v : Word, r : Tree)
 
+  -- The paper's own `Lt`, as `Trees`' (`Words`' `LtB`).
   def Lt (a : Word) (b : Word) : Bool by a := (
     match a {
       Zero => match b { Zero => false, Succ _ => true },
@@ -301,15 +295,6 @@ ochr InPlaceTrees uses Std {
   def Insert (t : Tree) (k : Word) : Tree := InsertM(&t, k); t
 
   def InsertMIsInsert (t : &Tree) (k : Word) : Id(Unit, InsertM(t, k), *t := Insert(*t, k)) := refl
-
-  def AddMS (x : &Nat) (y : Nat) : Id(Unit, AddM(x, S(y)), AddM(&*x, y); *x := S(*x)) by x := (
-    match *x {
-      Z => refl,
-      S p => AddMS(&p, y),
-    }
-  )
-
-  def AddS (x : Nat) (y : Nat) : Id(Nat, Add(x, S(y)), S(Add(x, y))) := AddMS(&x, y)
 
   def Size (t : Tree) : Nat by t := (
     match t {
@@ -356,7 +341,7 @@ ochr InPlaceTrees uses Std {
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard InPlaceTrees.decls.length == 12
+#guard InPlaceTrees.decls.length == 10
 
 /-! ## Parameters: a polymorphic list
 
@@ -462,6 +447,7 @@ alone and proofs are not run, so `Boom` is a closed proof of `False` (D36, switc
 `positivity`). Fields of first-order data are fine. `Empty` is in `Fixtures`. -/
 
 ochr Positivity uses Fixtures {
+  -- `Empty`'s own eliminator, by recursion (the attack is about `Empty`, not Std's `Void`).
   def absurd (e : Empty) : False by e := (
     match e {
       E(e') => absurd(e'),
@@ -487,18 +473,16 @@ ochr Positivity uses Fixtures {
 
 /-! The same, with the function type hidden inside a parameter: a field's parameter
 arguments must be first-order too. Positive uses of parameters are fine: a list of the
-type itself, and a proof field. `Box(A)` and `List(A)` are `Std`'s. -/
+type itself, and a proof field. `Box(A)`, `List(A)`, the empty type `Void` and `absurdV` are
+`Std`'s. -/
 
 ochr PositivityParams uses Std {
-  inductive Void : Type
-
   def unbox (A : Type) (b : Box(A)) : A := (
     match b {
       MkBox(x) => x,
     }
   )
 
-  def absurdV (v : Void) : False := match v {}
   reject inductive Bad := MkBad(f : Box(Π(x : Bad). Void))
 
   reject def L (b : Bad) : Void := (
@@ -529,7 +513,7 @@ ochr PositivityParams uses Std {
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard PositivityParams.decls.length == 14
+#guard PositivityParams.decls.length == 12
 
 /-! The paper's version (appendix note 4), with `False` directly. -/
 

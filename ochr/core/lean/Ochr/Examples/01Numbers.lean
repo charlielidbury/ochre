@@ -70,7 +70,8 @@ ochr Numbers uses Std {
     }
   )
 
-  -- `x.0` can be written directly, but only where `x` is known to be a successor.
+  -- `x.0` can be written directly, but only where `x` is known to be a successor (on `Nat`;
+  -- `Words`' `Pred` is on `Word`).
   def Pred (x : Nat) : Nat := (
     match x {
       Z => 0,

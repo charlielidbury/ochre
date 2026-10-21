@@ -173,7 +173,8 @@ ochr Recursion uses Std, Fixtures {
   -- enclosing functions. That run once wiped the positions that had survived the recursive
   -- calls so far, so no later recursive call was checked and each `Boom` below was a closed
   -- proof of `False` (the recCands fix; an implementation bug, so no switch). Here the
-  -- sealed program is the parameter `Le(σ, 1)` of the conjunction matched on ...
+  -- sealed program is the parameter `Le(σ, 1)` of the conjunction matched on (`Le` on `Nat`,
+  -- the witness's own) ...
   def Le (a : Nat) (b : Nat) : Prop by a := (
     match a {
       Z => ⊤,

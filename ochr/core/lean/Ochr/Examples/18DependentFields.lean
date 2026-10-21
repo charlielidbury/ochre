@@ -29,12 +29,11 @@ arrays library, is a case study. -/
 open Ochr.Test
 
 ochr DepFields uses Std {
-  inductive Empty0 : Type
   inductive One := O
-  -- `Fin1(0)` has no values, `Fin1(n + 1)` has one
+  -- `Fin1(0)` has no values (it is `Std`'s `Void`), `Fin1(n + 1)` has one
   def Fin1 (n : Word) : Type := (
     match n {
-      Zero => Empty0,
+      Zero => Void,
       Succ(m) => One,
     }
   )
@@ -285,14 +284,7 @@ ochr DepFields uses Std {
     }
   )
   -- an invariant that holds whatever the borrow writes: an element borrow out of a full cell
-  inductive Opt (A : Type) := None | Some(v : A)
-  def IsSome (o : Opt(Word)) : Prop := (
-    match o {
-      None => False,
-      Some(v) => ⊤,
-    }
-  )
-  inductive Cell := MkCell(o : Opt(Word), h : IsSome(o))
+  inductive Cell := MkCell(o : Opt(Word), h : IsSome(Word, o))
   def CellGet (c : &Cell) : &Word := (
     match *c {
       MkCell(o, h) => match o {
@@ -330,8 +322,6 @@ ochr DepFields uses Std {
   -- K4: a type function in a field type. The type being declared may not be nested at a
   -- parameter that an inductive passes to a type function: here `NegIf(1, Bad)` is
   -- `Π(x : Bad). Void`, and nesting `Bad` in `NBox` is the positivity attack (D36)
-  inductive Void : Type
-  def absurdV (v : Void) : False := match v {}
   def NegIf (n : Word) (A : Type) : Type := (
     match n {
       Zero => Unit,
@@ -359,12 +349,12 @@ ochr DepFields uses Std {
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard DepFields.decls.length == 62
+#guard DepFields.decls.length == 57
 -- each rejection for its reason
 #guard (run "DepFields" DepFields).rejectedWith [
-  ("NoneAt0", "field x of MkV has type One, expected Empty0"),
+  ("NoneAt0", "field x of MkV has type One, expected Void"),
   ("BadTele", "[Ind] field x of MkBT: its type mentions n, which is not an earlier field"),
-  ("LieV", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is Empty0"),
+  ("LieV", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is Void"),
   ("ReadBroken", "[Repack] *v is read whole, but it is open"),
   ("PassBroken", "[Repack] *v is borrowed whole, but it is open"),
   ("PassBrokenVar", "[Repack] v is read whole, but it is open"),
@@ -372,10 +362,10 @@ ochr DepFields uses Std {
   ("IdMakesBroken", "[Repack] a borrow of it ends, but it is open"),
   ("Broken", "unknown constant LieV"),
   ("Boom", "unknown constant Broken"),
-  ("LieZ", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Empty0"),
-  ("LieZRev", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Empty0"),
+  ("LieZ", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Void"),
+  ("LieZRev", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Void"),
   ("LieParam", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is ⌈Fin1(σ1)⌉"),
-  ("LieBorrow", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Empty0"),
+  ("LieBorrow", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Void"),
   ("BoomZ", "unknown constant LieZ"),
   ("BoomParam", "unknown constant LieParam"),
   ("InjLen", "[Match] on h, whose type Eq(V, MkV(σ0, σ2), MkV(σ1, σ3)) is not an inductive type"),
@@ -411,20 +401,7 @@ weighing a tag-free `Uninit(E)` cell type (possibly the ⊥ a move leaves, docs/
 
 ochr DepVec uses ArrayBench {
   -- ## The cells
-  -- A cell holds an element or nothing.
-  inductive Opt (E : Type) := None | Some(v : E)
-  def IsSome (E : Type) (o : Opt(E)) : Prop := (
-    match o {
-      None => False,
-      Some(x) => ⊤,
-    }
-  )
-  def IsNone (E : Type) (o : Opt(E)) : Prop := (
-    match o {
-      None => ⊤,
-      Some(x) => False,
-    }
-  )
+  -- A cell is Std's `Opt(E)`: an element or nothing (`IsSome`, `IsNone`).
   -- A borrow of the element in a cell known to hold one.
   def UnwrapMut (E : Type) (o : &Opt(E)) (h : IsSome(E, *o)) : &E := (
     match *o {
@@ -556,15 +533,6 @@ ochr DepVec uses ArrayBench {
   )
 
   -- ## Push, pop and get
-  def LeSuccL (a : Word) (b : Word) (h : Le(Succ(a), b)) : Le(a, b) by a := (
-    match a {
-      Zero => refl,
-      Succ(a2) => match b {
-        Zero => match h {},
-        Succ(b2) => LeSuccL(a2, b2, h),
-      },
-    }
-  )
   -- Move cells `k, …, n - 1` of `os` into the same cells of `ns`, each by exchanging it with
   -- the cell it goes to (which holds nothing), by recursion on the count `rem` still to go.
   def VMoveCells (E : Type) (n : Word) (os : &Slice(Opt(E), n)) (m : Word) (ns : &Slice(Opt(E), m)) (k : Word) (rem : Word)
@@ -620,7 +588,7 @@ ochr DepVec uses ArrayBench {
           let o = *r;
           *r := None[E];
           len := l2;
-          hl := LeSuccL(l2, cap, h);
+          hl := LeOfLt(l2, cap, h);
           o
         ),
       },
@@ -1199,7 +1167,7 @@ ochr DepVec uses ArrayBench {
       Succ(r) => (
         let b = clone(*GetMut(List(Entry), cap, &*old, r, hr));
         InsertAll(ncap, &*ns, &*nl, b, hc);
-        MoveAll(cap, old, ncap, ns, nl, r, LeSuccL(r, cap, hr), hc)
+        MoveAll(cap, old, ncap, ns, nl, r, LeOfLt(r, cap, hr), hc)
       ),
     }
   )
@@ -1240,7 +1208,7 @@ ochr DepVec uses ArrayBench {
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard DepVec.decls.length == 80
+#guard DepVec.decls.length == 76
 -- each rejection for its reason
 #guard (run "DepVec" DepVec).rejectedWith [
   ("ClearWrongCap", "field buf of MkVec has type ArrayOf(CellsEnd), expected ArrayOf(Cell(Opt(σ0), CellsEnd))"),

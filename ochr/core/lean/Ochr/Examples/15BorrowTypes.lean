@@ -111,7 +111,7 @@ function type, and a later call of it is a call with an unknown head, which clos
 with a generic value type. Functions are still compared by their generic calls (D30), with
 no extensionality. -/
 
-ochr FnBorrows uses Std {
+ochr FnBorrows uses Std, Words {
   -- Borrow a closure, write another through the borrow, and call through it; the new
   -- closure may capture (a closure's body copies its captures: the Fn rule).
   def SetSucc (f : &(Π(n : Nat). Nat)) : Unit := *f := (λ(n : Nat) : Nat => S(n))
@@ -138,24 +138,18 @@ ochr FnBorrows uses Std {
     Swap(Π(n : Nat). Nat, &f, &g);
     f(6), 7) := refl
 
-  -- A bucket generic in its value type, and the borrow of a present key's value.
+  -- A bucket generic in its value type, and the borrow of a present key's value (keys are
+  -- compared by `Words`' `EqB`).
   inductive GBucket (V : Type) := GNil | GCons(k : Word, v : V, t : GBucket(V))
-  def EqW (a : Word) (b : Word) : Bool by a := (
-    match a {
-      Zero => match b { Zero => true, Succ(_) => false },
-      Succ(a') => match b { Zero => false, Succ(b') => EqW(a', b') },
-    }
-  )
   def GContains (V : Type) (b : &GBucket(V)) (k : Word) : Bool by b := (
     match *b {
       GNil => false,
       GCons(k', v', t) => (
-        let e = EqW(k', k);
+        let e = EqB(k', k);
         match e { false => GContains(V, &t, k), true => true }
       ),
     }
   )
-  def IsTrue (b : Bool) : Prop := match b { false => False, true => ⊤ }
   -- presence, on a copy, for statements (as the hash map case study's lookup on a copy)
   def GFind (V : Type) (b : GBucket(V)) (k : Word) : Bool := GContains(V, &b, k)
   def GHas (V : Type) (b : GBucket(V)) (k : Word) : Prop := IsTrue(GFind(V, b, k))
@@ -163,7 +157,7 @@ ochr FnBorrows uses Std {
     match *b {
       GNil => match h {},
       GCons(k', v', t) => (
-        let e = EqW(k', k);
+        let e = EqB(k', k);
         match e { false => GGetMut(V, &t, k, h), true => &v' }
       ),
     }
@@ -192,7 +186,7 @@ ochr FnBorrows uses Std {
   def BoxFn : Box(Π(n : Nat). Nat) := MkBox(λ(n : Nat) : Nat => n)
 }
 
-#guard FnBorrows.decls.length == 33
+#guard FnBorrows.decls.length == 31
 
 /-! ## Abstract and unsized types (K2, K3)
 

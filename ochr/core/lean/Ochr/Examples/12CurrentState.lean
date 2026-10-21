@@ -13,7 +13,7 @@ Defined in RULES §7 (the E5 example); `match h {}` on a refined type is RULES �
 open Ochr.Test
 
 ochr CurrentState uses Std {
-  -- A function that returns a proposition.
+  -- A function that returns a proposition (the paper's order, on `Nat`; `Words`' is on `Word`).
   def Le (a : Nat) (b : Nat) : Prop by a := (
     match a {
       Z => ⊤,

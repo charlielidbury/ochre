@@ -63,6 +63,7 @@ type. The guards below read the checker's trace (switch `genPlaceType`: an earli
 gave it type `Nat`). -/
 
 ochr GenType {
+  -- Its own list of numbers, not `Std`'s `List(A)`: the guards below read the type's name.
   inductive List := Nil | Cons(h : Nat, t : List)
 
   def AppendM (xs : &List) (ys : List) : Unit by xs := (
@@ -174,24 +175,22 @@ ochr Splitting uses Std {
     }
   )
 
-  -- The arms bind the fields of the split value, as a match's do.
-  inductive Opt := None | Some(v : Nat)
-
-  def Look (n : Nat) : Opt := (
+  -- The arms bind the fields of the split value, as a match's do (`Opt` is `Std`'s).
+  def Look (n : Nat) : Opt(Nat) := (
     match n {
       Z => None,
       S m => Some(m),
     }
   )
 
-  def Double (o : Opt) : Nat := (
+  def Double (o : Opt(Nat)) : Nat := (
     match o {
       None => 0,
       Some(v) => Add(clone(v), v),
     }
   )
 
-  def Val (o : Opt) : Nat := (
+  def Val (o : Opt(Nat)) : Nat := (
     match o {
       None => 0,
       Some(v) => v,
@@ -230,7 +229,7 @@ ochr Splitting uses Std {
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard Splitting.decls.length == 19
+#guard Splitting.decls.length == 18
 
 /-! ## What goes wrong without these rules
 
@@ -293,6 +292,7 @@ when `x` is, for every `n` and `x`, and its instance `Bad5` is a closed proof of
 (switch `globalRecords`). This is note 5 of the paper's appendix, as printed. -/
 
 ochr GlobalRecords {
+  -- As printed in the paper, with its own `Box` of a number.
   inductive Box := MkBox(x : Nat)
 
   def Double (n : Nat) : Nat by n := (
@@ -329,6 +329,8 @@ that a slice of any length is the empty one, by a closure in the second arm that
 `r : Slice(0)`, and its instance `BoomLeak` is a closed proof of `False`. -/
 
 ochr ArmLocal uses Std {
+  -- The witness's own model, on `Nat` (an older copy of the arrays library's): its meaning
+  -- depends on these definitions, so it keeps them rather than `Words` and `16Arrays`.
   def Le (a : Nat) (b : Nat) : Prop by a := (
     match a {
       Z => ⊤,
@@ -406,6 +408,7 @@ ochr ArmLocal uses Std {
 ochr ArmLocalBoom {
   inductive Emp := E(e : Emp)
   def AbsurdEq (x : Emp) (A : Type) (a : A) (b : A) : Eq(A, a, b) by x := match x { E(e) => AbsurdEq(e, A, a, b) }
+  -- Its own option type and slices: a minimal witness, using no other block.
   inductive Opt (R : Type) := N0 | S0(x : R)
   inductive SliceOf (R : Type) := MkSlice(c : R)
   def Cells (n : Nat) : Type by n := match n { Z => Opt(Emp), S m => Opt(Nat) }
