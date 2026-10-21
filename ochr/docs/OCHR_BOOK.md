@@ -283,7 +283,7 @@ def Bump (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) : Unit := (
 
 def SetThenRead (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) :
     Eq(Word, (let c = *s; *GetMut(Word, n, &c, i, h) := W(7); *GetMut(Word, n, &c, i, h)), W(7)) := (
-  let c = SetS(Word, n, *s, i, W(7));
+  let c = SetS(Word, n, clone(*s), i, W(7));
   let ⟨hv, hp⟩ = GetMutRead(Word, n, &c, i, h);
   rewrite ← GetMutSetV(Word, n, *s, i, W(7), h) in rewrite ← hv in NthSetSame(Word, n, *s, i, W(7), h)
 )
