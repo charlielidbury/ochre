@@ -81,3 +81,37 @@ Do not start this phase until team-lead says go.
 - Pin heavy commands with `taskset -c 0-14`, and run one `lake build` at a time.
 - Commit and push the branch at checkpoints, with detailed messages. Never `git stash`.
 - Plain language, and no bare internal ids.
+
+## Addendum (2026-10-21): §1 and §2 run in parallel, and §2 widens to de-duplicating Examples
+
+The user asked: "across the whole Examples folder, are there other examples of duplication (like we saw with word) which can be removed?" and "surely 1. and 2. can be done in parallel?".
+
+- **Lanes.** §1 stays with lane `hm-ergo`. §2 goes to lane `hm-lib` (worktree `ochre-hm-lib`, branch `hm-lib`).
+  - `hm-ergo` adds its sugar tests in their own block, doesn't sweep existing examples to use the sugar, and edits only book §3/§8.
+  - `hm-lib` owns every other edit to existing example files.
+
+### The duplication survey (team-lead, a script over `Examples/*.lean`)
+
+877 declared names, 61 of them declared in more than one file. Most of the 61 are throwaway test names (`F`, `G`, `P`, `T`, `Q`, …) in self-contained feature tests, and are not duplication. The library-like duplicates are:
+
+- **Word/Nat arithmetic and orders:**
+  - `Le` (04ClosingOff, 07Recursion, 08CaseSplits, 12CurrentState, 16Arrays);
+  - `Lt` (04, 10Inductives, 16, 17HashMap);
+  - `Sub` (08, 16), `WAdd` (16, 17), `W` numerals (13Erasure, 16, 17), `Pred` (01Numbers, 17), `Count` (16, 17, Editor);
+  - `Dec`/`LeDec` (04, 16);
+  - `EqB` and `ModGo`/`Idx` (17).
+- **Option-like and empty types:**
+  - `Opt` (08, 17, 18DependentFields; Std has none);
+  - `IsSome`/`IsNone` (17, 18);
+  - `Void`/`absurd`/`absurdV` (10, 11Propositions, 18);
+  - `Box`/`List`/`Pick` redeclared in 08 and 10 beside Std's.
+- **Three hashmaps:** `16Arrays` (`HashMap`, `Insert`, `GetMut`, `Count`, …), `17HashMap`, and `18DependentFields` (`Table`, `Resize`, `Clear`, …). Consolidating them is phase 2 (§3.3). `hm-lib` leaves the hashmap code itself alone, apart from swapping its arithmetic and `Opt` for the central ones.
+- **An older copy of the arrays model in 08CaseSplits:** `Slice`, `SliceOf`, `Cells`, `CellsEnd`, `Cell`, `JoinS`, `AllGe`.
+- **Others:** `Swap` (11, 15BorrowTypes, 16, Units), `Insert`/`AppendM` (08, 10), `Nth` (16, 17), `GetMutRead` (16, 17).
+
+### The rule for `hm-lib`
+
+- **Centralise and migrate** a definition that is used as a helper (arithmetic, orders, decision types, `Opt`, `Void`/`absurd`, numerals, generic containers): `Std` (or a library block every example uses) holds one copy, and the duplicates are deleted.
+- **Keep** a definition that is the *subject* of its test, such as a test about how a user-declared `List` or `Opt` behaves, or a minimal regression witness whose meaning depends on its own definitions. Examples are 08CaseSplits' `BoomLeak` with its own `Slice`, and the feature tests in 01–15 that deliberately don't `use Std`. Each kept duplicate gets a one-line comment saying why.
+- **Report** the list of what you centralised, what you kept and why, and the line counts before and after for each file.
+- **Bench packages** use the central copies where they `use` Std. Their sandboxes must still build, with each skeleton failing only on its named holes.
