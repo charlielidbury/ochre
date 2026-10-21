@@ -115,3 +115,53 @@ The user asked: "across the whole Examples folder, are there other examples of d
 - **Keep** a definition that is the *subject* of its test, such as a test about how a user-declared `List` or `Opt` behaves, or a minimal regression witness whose meaning depends on its own definitions. Examples are 08CaseSplits' `BoomLeak` with its own `Slice`, and the feature tests in 01–15 that deliberately don't `use Std`. Each kept duplicate gets a one-line comment saying why.
 - **Report** the list of what you centralised, what you kept and why, and the line counts before and after for each file.
 - **Bench packages** use the central copies where they `use` Std. Their sandboxes must still build, with each skeleton failing only on its named holes.
+
+## The final Examples layout (user-approved, 2026-10-21)
+
+This supersedes "Std" in §2 and the Addendum. The user's words:
+- "we should instead just delete 00Std.lean and move words into 00Word.lean etc."
+- "is it perhaps worth getting rid of the number prefixes? … 00Array.lean -> Array.lean"
+- on per-block declaration counts: "truncation isn't really worth catching".
+
+**No number prefixes.** Imports become `import Ochr.Examples.Word`. Reading order lives in a new `Examples/README.md`: the library, then the tour in its old order, then the case studies.
+
+**The library.** One block per file, named for its topic. Each block `uses` only what it needs. The graph is a DAG with no root.
+
+| File | Block | Contents | Uses |
+|---|---|---|---|
+| `Bool.lean` | `Bool` | `Bool` | — |
+| `Logic.lean` | `Logic` | `Dec(P, Q)`, `Void`/`absurd` (`False`/`True`/`And` stay in the built-in Prelude) | — |
+| `Nat.lean` | `Nat` | `AddM`, `Add`, `AddMZero`, `TailM` | — |
+| `Word.lean` | `Word` | `Word`, `W(n)`, `WAdd`, `Sub`, `Pred`, `Le`/`Lt` (Prop) and their lemmas, `Leb`/`Eqb` (Bool), `LeDec`/`LtDec`, `ModS`/`ModLt` | Bool, Logic |
+| `List.lean` | `List` | `List(A)`, `LenL` | Word |
+| `Option.lean` | `Option` | `Opt(A)`, `IsSome`, `IsNone` | — |
+| `Box.lean` | `Box` | `Box(A)` | — |
+| `Array.lean` | `Array`, `ArrayLemmas` | from `16Arrays`: the representation, the natives, `Swap`/`Replicate`/`Fill`, and the lemma library | Word, List, Logic |
+| `Fixtures.lean` | `Fixtures` | test-only definitions (`Pick`, `Empty`, `U`/`V`) | — |
+
+Block names that are also Lean namespaces (`Bool`, `Nat`, `List`, `Option`, `Array`) put `<Block>.decls` into those namespaces. Check that this is harmless. If it isn't, fall back to plural block names (`Bools`, …) and keep the file names.
+
+**The tour.** Renamed without prefixes, content unchanged except for its `uses`/`import`s and de-duplication by the Addendum's rule: `Numbers`, `Borrows`, `ReturnedBorrows`, `ClosingOff`, `Equality`, `Snapshots`, `Recursion`, `CaseSplits`, `Functions`, `Inductives`, `Propositions`, `CurrentState`, `Erasure`, `Universes`, `BorrowTypes`.
+
+**The case studies:**
+- `ArrayBench.lean`: what is left of `16Arrays`, the arrays chapter and its benchmarks, renamed so it isn't confused with `Array.lean`.
+- `HashMap.lean`: was `17HashMap`; lane `hm-gen` is rewriting it.
+- `DependentFields.lean`: was `18DependentFields`.
+- `Quicksort.lean`: new, the `Quicksort` block moved out of `16Arrays`.
+
+**Infrastructure** (unchanged names): `Registry`, `Ledger`, `CaseStudyLedger`, `Units`, `Editor`, `Playground` (the user's, untracked: leave it alone).
+
+**Delete every per-block `#guard <Block>.decls.length == N`.** Keep the registry's single expected total.
+
+**References.** Update every living reference to the old names and to `Std`:
+- `Ochr/Examples.lean` and the lakefile;
+- the Registry and the ledgers;
+- the test runner;
+- the paper and its sweep;
+- `OCHR_BOOK.md` §2 (the import header) and its file list;
+- `ochr/core/lean/README.md`;
+- RULES, if it names files;
+- the bench packages, `sandbox.py`, GUIDE and SPEC;
+- `CLAUDE.md`-style pointers.
+
+Historical notes (`ochr/core/notes/`, DECISIONS) keep the old names. A mapping table in `Examples/README.md` resolves them.
