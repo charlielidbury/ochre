@@ -493,7 +493,7 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
       let tb ← read
       let some (_, tyName, _, _) := tb.ctors.find? (·.1 == c0)
         | throw (if c0 == "true" || c0 == "false" then
-            s!"{c0} is not a constructor: `if` and a match on true/false need the type Bool := false | true (uses Std)"
+            s!"{c0} is not a constructor: `if` and a match on true/false need a declared Bool := false | true (use the block that declares it)"
           else s!"{c0} is not a constructor (Nat's are written Z => …, S y => …, in that order)")
       let cs := tb.ctors.filter (·.2.1 == tyName)
       let mut out := #[]

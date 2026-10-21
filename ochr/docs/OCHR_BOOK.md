@@ -54,7 +54,7 @@ reject def Bad (…) : T := …                    -- negative test: must be rej
 | `f(a, b)` | call. Always saturated; **no space** before `(` |
 | `C(a, b)`, `C` | constructor; the type's parameters are inferred (`Cons(x, Nil)`) |
 | `match p { C1(x, y) => t, C2 => u, }` | case analysis. On a **place** `p` the arms bind its sub-places (§5); any other term, `match F(x) { … }`, is bound to a temporary first, which is matched. Arms are separated by commas; a trailing comma is allowed; `_` ignores a field; `S n =>` is the same as `S(n) =>` |
-| `if c { a } else { b }` | `match c { true => a, false => b }` on Std's `Bool`. `else if c2 { … }` chains; without `else` the branch must be `Unit` (the missing one is `()`) |
+| `if c { a } else { b }` | `match c { true => a, false => b }` on `Bool`. `else if c2 { … }` chains; without `else` the branch must be `Unit` (the missing one is `()`) |
 | `let C(x, _, z) = e; u` | `match e { C(x, _, z) => u }`, for a type with **one** constructor (for more, use `match`). Fields by position, `_` ignores one, patterns nest (`let MkW((a, b), T3(_, y, _)) = w`). On a place the names are its sub-places: `let HM(n, len, slots) = *hm; len := Succ(len)` writes `*hm` |
 | `match h {}` | no arms: `h`'s type is empty (`False`, or an equation between different constructors) |
 | `let x = t; u`, `let x : T = t; u` | binding; annotate when the type can't be inferred (proofs, matches) |
