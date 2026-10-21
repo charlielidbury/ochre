@@ -30,7 +30,7 @@ def Report.rejectedWith (r : Report) (exp : List (String × String)) : Bool :=
     | _ => false
 
 /-- Check a block: its library, then its own declarations (`runWith`). -/
-def run (name : String) (b : Block) (cfg : Config := {}) (fuel : Nat := 2000000) : Report :=
+def run (name : String) (b : Block) (cfg : Config := {}) (fuel : Nat := defaultFuel) : Report :=
   runWith (some Prelude) name b cfg fuel
 
 /-- The library declarations of `b` whose visibility under `cfg` differs from the default

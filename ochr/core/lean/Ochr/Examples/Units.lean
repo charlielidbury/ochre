@@ -13,7 +13,7 @@ namespace Ochr.Units
 
 /-- The globals after checking a block (its library first). -/
 def globalsOf (b : Block) : List GDef :=
-  let p := Ochr.Test.libOf {} 2000000 b ++ b.decls
+  let p := Ochr.Test.libOf {} Ochr.Test.defaultFuel b ++ b.decls
   (globalsAfter {} (p.filterMap fun d => (resolveProgram p d).toOption)).1
 
 def st (b : Block) (nAbs : Nat) : MState :=

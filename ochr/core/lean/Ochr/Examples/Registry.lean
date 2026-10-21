@@ -70,7 +70,7 @@ def caseStudies : List (String × Block) :=
    ("HashMapResize", HashMapResize), ("HashMapResizeTests", HashMapResizeTests),
    ("DepVec", DepVec)]
 
-def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
+def reports (cfg : Config := {}) (fuel : Nat := defaultFuel) : List Report :=
   (programs ++ caseStudies).map fun (n, p) => run n p cfg fuel
 
 /-- The declarations whose verdict under `cfg` differs from the default, as

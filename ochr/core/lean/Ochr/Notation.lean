@@ -30,7 +30,9 @@ Line breaks are whitespace.
 `uses A, B` (optional) names blocks, Lean constants made by earlier `ochr` commands (in this
 file or an imported one). A block is checked after the declarations its used blocks export,
 transitively and each block once: their own declarations that are `def`s (not `reject`) and
-are accepted, checked afresh under the same configuration (`Ochr.Test.libOf`). A block's
+are accepted, checked again under the same configuration (`Ochr.Test.libOf`). Which those are
+is recorded on each block's constant when this command checks it (`Block.exports`), and read
+instead of re-decided under the default configuration; any other re-decides it. A block's
 report covers its own declarations only. The names of a block and of the blocks it uses form
 one namespace: a clash is an error. Every block also uses the library block `Prelude`
 (`Ochr/Prelude.lean`) implicitly.
@@ -499,8 +501,9 @@ declaration, with the checker, after the block's library (`Ochr.Test.runWith`, w
 library block `Prelude` once it is declared). `decls` are the declarations' syntax, in
 order (empty: every message goes to `ref`). An accepted `def` and a rejected `reject def`
 are silent; hovering a declaration's name shows its verdict (a rejection's reason). A
-rejected `def` is an error at the declaration, and so is an accepted `reject def`. -/
-def checkBlock (n : Name) (ref : Syntax) (decls : Array Syntax) (kw : Syntax := ref) : CommandElabM Unit := do
+rejected `def` is an error at the declaration, and so is an accepted `reject def`. Returns
+what the block exports under the default configuration: its `def`s that are accepted. -/
+def checkBlock (n : Name) (ref : Syntax) (decls : Array Syntax) (kw : Syntax := ref) : CommandElabM (List String) := do
   let b ← evalBlock n
   -- every block implicitly uses the library, `Prelude` (v2.1), once it is declared
   let pre ← if b.name == "Prelude" then pure none else
@@ -560,8 +563,14 @@ def checkBlock (n : Name) (ref : Syntax) (decls : Array Syntax) (kw : Syntax := 
     | .accepted, false => logErrorAt at_ m!"{row.name}: expected rejection, but accepted"
     | .rejected m l, true => logErrorAt ((l.map locStx).getD at_) m!"{row.name}: {m}"
     | .rejected m _, false => addHover at_ s!"{row.name}: rejected, as expected: {m}"
+  pure ((r.rows.filter fun row => row.expectAccept && row.verdict.ok).map (·.name))
 
 open Lean.Elab Lean.Elab.Command in
+/-- `ochr B uses A, … { … }` defines `B : Ochr.Surface.Block` and checks it. The block is first
+defined without its exports (`B._ochrSource`) and checked; `B` is that block with what it
+exports under the default configuration recorded (`Block.withExports`), so that the blocks
+using it read its exports instead of checking it again (`Ochr.Test.exportsWith`). If the check
+fails to run (a name clash), `B` records nothing, and its users check it themselves. -/
 elab_rules : command
   | `(ochr $name:ident $[uses $us,*]? { $ds* }) => do
     let stx ← getRef
@@ -569,18 +578,28 @@ elab_rules : command
     let us : Array (TSyntax `term) := match us with
       | some us => us.getElems.map fun u => ⟨u.raw⟩
       | none => #[]
+    let src := mkIdent (name.getId ++ `_ochrSource)
     -- a block's term nests as deep as its longest sequence, and every term is wrapped in its
     -- location (`STerm.loc`), which doubles that
-    elabCommand (← `(set_option maxRecDepth 100000 in def $name : Ochr.Surface.Block :=
+    elabCommand (← `(set_option maxRecDepth 100000 in def $src : Ochr.Surface.Block :=
       Ochr.Surface.Block.mk $(strLit name.getId.toString) [$us,*] [$decls,*]))
     -- the definition failed (its error is logged): nothing to check
-    unless (← getEnv).contains ((← getCurrNamespace) ++ name.getId) do return
-    checkBlock (← liftCoreM (realizeGlobalConstNoOverload name)) name (ds.map (·.raw)) stx[0]
+    unless (← getEnv).contains ((← getCurrNamespace) ++ src.getId) do return
+    let define (exports? : Option (List String)) : CommandElabM Unit := do
+      let rhs ← match exports? with
+        | some ns => `(Ochr.Surface.Block.withExports $src [$(ns.toArray.map strLit),*])
+        | none => `($src)
+      elabCommand (← `(set_option maxRecDepth 100000 in def $name : Ochr.Surface.Block := $rhs))
+    try
+      define (some (← checkBlock (← liftCoreM (realizeGlobalConstNoOverload src)) name (ds.map (·.raw)) stx[0]))
+    catch e =>
+      define none
+      throw e
 
 open Lean.Elab Lean.Elab.Command in
 elab_rules : command
   | `(#ochr_check $n:ident) => do
-    checkBlock (← liftCoreM (realizeGlobalConstNoOverload n)) n #[]
+    discard <| checkBlock (← liftCoreM (realizeGlobalConstNoOverload n)) n #[]
 
 open Lean.Elab Lean.Elab.Command in
 elab_rules : command

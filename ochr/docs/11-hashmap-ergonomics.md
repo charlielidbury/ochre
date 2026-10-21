@@ -170,7 +170,7 @@ Historical notes (`ochr/core/notes/`, DECISIONS) keep the old names. A mapping t
 
 The user's words: "it does not hurt for the concrete runs to have a name, but I only want them being run once every time lake build happens … these files should be split into `ochr Numbers uses Std` and `ochr NumbersTests uses Numbers`, then other files import Numbers but not NumbersTests. This will reduce the total amount being checked and make visual separation between whats supposed to be re-used and what is a result".
 
-Why it matters: a used block's accepted declarations are re-checked inside every block that uses it, transitively (`Block.closure`, `libWith`: nothing is cached). So a concrete run or a headline theorem in a used block is re-checked once per user.
+Why it matters: a used block's accepted declarations are re-checked inside every block that uses it, transitively (`Block.closure`, `libWith`: nothing is cached). So a concrete run or a headline theorem in a used block is re-checked once per user. (Since the export cache, 2026-10-21, what a used block exports is recorded when it is checked rather than decided again recursively; its declarations are still checked once more inside each block that uses it.)
 
 The rule:
 - **A block that another block `uses` contains only what is meant to be reused:** types, operations, model functions, and lemmas that later blocks call.

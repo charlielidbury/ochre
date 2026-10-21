@@ -80,17 +80,28 @@ abbrev Program := List SDecl
 
 /-- An `ochr` block: a name, the blocks it `uses`, and its own declarations. A block's
 program, when checked, is the declarations its used blocks export (`Ochr.Test.libOf`)
-followed by its own; each block is checked afresh wherever it is used (no caching). -/
+followed by its own. `exports` caches what the block exports under the default configuration
+and fuel: the names of its declarations that are `def`s and accepted, as the `ochr` command
+found when it checked the block, so that a block using it need not check it again
+(`Ochr.Test.exportsWith`); `none` for a block built by hand. Under any other configuration
+the cache is not used, and the library is checked afresh. -/
 inductive Block where
-  | mk (name : String) (uses : List Block) (decls : Program)
+  | mk (name : String) (uses : List Block) (decls : Program) (exports : Option (List String) := none)
 deriving Inhabited
 
 def Block.name : Block → String
-  | .mk n _ _ => n
+  | .mk n _ _ _ => n
 def Block.uses : Block → List Block
-  | .mk _ us _ => us
+  | .mk _ us _ _ => us
 def Block.decls : Block → Program
-  | .mk _ _ ds => ds
+  | .mk _ _ ds _ => ds
+def Block.exports : Block → Option (List String)
+  | .mk _ _ _ es => es
+
+/-- The block with its exports under the default configuration recorded (the `ochr` command,
+after checking it). -/
+def Block.withExports (b : Block) (names : List String) : Block :=
+  .mk b.name b.uses b.decls (some names)
 
 /-- The blocks `b` uses, transitively, each once (by name), a block after the blocks it
 uses. `b` itself is not included. -/

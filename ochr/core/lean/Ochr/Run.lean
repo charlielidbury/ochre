@@ -4,10 +4,13 @@ import Ochr.Surface
 # Running a block: its library, then its own declarations
 
 A block is checked after the declarations its library exports (`libWith`): the library
-block `Prelude` first, then the blocks it `uses`, transitively. This module is imported by
-the `ochr` command (`Ochr/Notation.lean`), which checks every block when it is elaborated,
-so it cannot name the `Prelude` block (defined by that command, in `Ochr/Prelude.lean`):
-the library block is a parameter here. `Ochr.Test` instantiates it with `Prelude`.
+block `Prelude` first, then the blocks it `uses`, transitively. Under the default
+configuration, what a used block exports is what the `ochr` command recorded when it checked
+that block (`Block.exports`); under any other, it is decided again. This module is imported
+by the `ochr` command (`Ochr/Notation.lean`), which checks every block when it is
+elaborated, so it cannot name the `Prelude` block (defined by that command, in
+`Ochr/Prelude.lean`): the library block is a parameter here. `Ochr.Test` instantiates it
+with `Prelude`.
 -/
 
 namespace Ochr.Test
@@ -50,19 +53,32 @@ def checkProgram (p : Program) (cfg : Config) (fuel : Nat) (located : String →
     | some (e, l) => (d.name, Verdict.rejected s!"(surface) {e}" l, #[])
     | none => (d.name, (verdicts.lookup d.name).getD (.rejected "not checked", #[])))
 
+/-- The fuel of a check under the default configuration (`run`, `runWith`, the `ochr` command). -/
+def defaultFuel : Nat := 2000000
+
 mutual
 /-- What a block exports under `cfg`: its own declarations that are expected to be accepted
 (`def`, not `reject def`) and are accepted, checked after its own library. A rejected or
-`reject` declaration is never visible to the block's users. -/
+`reject` declaration is never visible to the block's users. Under the default configuration
+and fuel, a block the `ochr` command has checked records its exports (`Block.exports`), and
+they are read instead of decided again (test-harness caching). A block's run still checks
+its library's declarations once, ahead of its own, since the checker needs them; what the
+cache saves is deciding again, recursively, what each block of that library exports, which
+checked each library block once more inside every block above it. Any other configuration
+or fuel decides afresh, so a counterfactual run re-decides the library too. -/
 partial def exportsWith (pre : Option Block) (cfg : Config) (fuel : Nat) (b : Block) : Program :=
-  let vs := checkProgram (libWith pre cfg fuel b ++ b.decls) cfg fuel
-  b.decls.filter fun d => d.expectAccept && ((vs.lookup d.name).map (·.1.ok)).getD false
+  match b.exports, cfg == {} && fuel == defaultFuel with
+  | some names, true => b.decls.filter (names.contains ·.name)
+  | _, _ =>
+    let vs := checkProgram (libWith pre cfg fuel b ++ b.decls) cfg fuel
+    b.decls.filter fun d => d.expectAccept && ((vs.lookup d.name).map (·.1.ok)).getD false
 
 /-- A block's library under `cfg`, with `pre` the library block (`Prelude`, v2.1), used by
 every block, first: the exports of `pre` and of every block `b` uses, transitively, each
-once, a block after the blocks it uses. It is checked again, under `cfg`, ahead of the
-block's own declarations: nothing is cached, so switching a rule off re-decides the library
-too. `pre` itself has no library. -/
+once, a block after the blocks it uses. It is checked again ahead of the block's own
+declarations, under `cfg`: what each used block exports is read from its cache under the
+default configuration (`exportsWith`), and decided afresh under any other, so switching a
+rule off re-decides the library too. `pre` itself has no library. -/
 partial def libWith (pre : Option Block) (cfg : Config) (fuel : Nat) (b : Block) : Program :=
   match pre with
   | none => b.closure.flatMap (exportsWith none cfg fuel)
@@ -75,7 +91,7 @@ end
 /-- Check a block after its library (`libWith pre`). The report has a row for each of its
 own declarations only; a library declaration is asserted in its home block. `located`: its
 own declarations' rejections say where (the editor). -/
-def runWith (pre : Option Block) (name : String) (b : Block) (cfg : Config := {}) (fuel : Nat := 2000000)
+def runWith (pre : Option Block) (name : String) (b : Block) (cfg : Config := {}) (fuel : Nat := defaultFuel)
     (located : Bool := false) : Report :=
   let own := b.decls.map (·.name)
   let vs := checkProgram (libWith pre cfg fuel b ++ b.decls) cfg fuel (fun n => located && own.contains n)

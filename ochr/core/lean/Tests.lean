@@ -1,7 +1,8 @@
 import Ochr.Examples.Registry
 
 /-! `lake exe tests`: every example program's verdict table with per-declaration
-check times, then the counterfactual ledger. Exits 1 if any verdict is not the
+check times, a check that every block's recorded exports (`Block.exports`) are what a fresh
+check decides, then the counterfactual ledger. Exits 1 if any verdict is not the
 expected one (the build already asserts all of this; the runner prints it). -/
 
 open Ochr Ochr.Test Ochr.Surface Ochr.Registry
@@ -16,7 +17,7 @@ def timedRun (cfgRef : IO.Ref Config) (b : Block) : IO (List (String × Bool × 
   let sink ← IO.mkRef (0 : Nat)
   -- the block's library (`Prelude`, then what the blocks it `uses` export), checked first
   -- but not timed
-  let lib := libOf (← cfgRef.get) 2000000 b
+  let lib := libOf (← cfgRef.get) defaultFuel b
   let p := lib ++ b.decls
   for (d, i) in p.zipIdx do
     let t0 ← IO.monoNanosNow
@@ -74,10 +75,20 @@ def main : IO UInt32 := do
   IO.println ""
   IO.println "reasons: see the tables printed by `lake build`, or (run name program).show"
   IO.println ""
+  -- the exports each block recorded when the `ochr` command checked it (`Block.exports`, read
+  -- by its users under the default configuration) against a fresh decision
+  let blocks := programs ++ caseStudies
+  let stale := blocks.filterMap fun (n, b) => match b.exports with
+    | some ns =>
+      let fresh := (exportsOf {} defaultFuel (Block.mk b.name b.uses b.decls none)).map (·.name)
+      if fresh == ns then none else some n
+    | none => some s!"{n} (none recorded)"
+  IO.println s!"exports cache: {blocks.length - stale.length}/{blocks.length} blocks agree with a fresh check{if stale.isEmpty then "" else s!"; differ: {", ".intercalate stale}"}"
+  IO.println ""
   IO.println "counterfactual ledger (one rule switched off → verdicts that flip):"
   for ((n, c), (k, ws)) in switches.zip rowClass do
     let (fs, bl) := flipsDetail c
     let wit := if ws.isEmpty then "" else s!" (witness: {", ".intercalate ws})"
     let blk := if bl.isEmpty then "" else s!"; {", ".intercalate bl}"
     IO.println s!"  [{k}{wit}] {n}: {if fs.isEmpty then "nothing" else ", ".intercalate fs}{blk}"
-  return if passed == total && total == expectedTotal then 0 else 1
+  return if passed == total && total == expectedTotal && stale.isEmpty then 0 else 1
