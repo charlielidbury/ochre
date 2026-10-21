@@ -1,5 +1,7 @@
-import Ochr.Examples.«17HashMap»
-import Ochr.Examples.«16Arrays»
+import Ochr.Examples.HashMap
+import Ochr.Examples.Quicksort
+import Ochr.Examples.Nat
+import Ochr.Examples.Fixtures
 open Ochr Ochr.Test
 ochr SweepS2 {
   -- intro.typ:5
@@ -24,8 +26,8 @@ ochr SweepS2 {
   def AddSub (x : &Nat) (y : Nat) : Unit := let old = clone(*x); AddM(&*x, clone(y)); SubM(x, clone(old), LeAdd(old, y))
 }
 #eval IO.println (run "SweepS2" SweepS2).show
-ochr SweepTrees uses Std {
-  -- not printed: the tree, `Lt`, `Size` as in InPlaceTrees (`AddMS`/`AddS` are Std's)
+ochr SweepTrees uses Bools, Nats, WordType {
+  -- not printed: the tree, `Lt`, `Size` as in InPlaceTrees (`AddMS`/`AddS` are Nats')
   inductive Tree := Leaf | Node(l : Tree, v : Word, r : Tree)
   def Lt (a : Word) (b : Word) : Bool by a := match a { Zero => match b { Zero => false, Succ _ => true }, Succ a' => match b { Zero => false, Succ b' => Lt(a', b') } }
   def Size (t : Tree) : Nat by t := match t { Leaf => 0, Node(l, v, r) => S(Add(Size(l), Size(r))) }
@@ -37,12 +39,12 @@ ochr SweepTrees uses Std {
   def SizeInsert (t : Tree) (k : Word) : Id(Nat, S(Size(t)), Size(Insert(t, k))) by t := match t { Leaf => refl, Node(l, v, r) => let b = Lt(k, v); match b { true => rewrite SizeInsert(l, k) in refl, false => rewrite SizeInsert(r, k) in rewrite AddS(Size(l), Size(r)) in refl } }
 }
 #eval IO.println (run "SweepTrees" SweepTrees).show
-ochr SweepClear uses Std {
+ochr SweepClear {
   -- overview.typ:171
   reject def Clear (x : &Nat) : Id(Unit, (match *x { Z => (), S p => p := Z }), ()) := refl
 }
 #eval IO.println (run "SweepClear" SweepClear).show
-ochr SweepHM uses Std, HashMap, HashMapLookup {
+ochr SweepHM uses HashMap, HashMapLookup {
   -- impl.typ:55
   def InsertFindOtherP (hm : &HashMap) (k : Word) (v : Nat) (k2 : Word) (h : Eq(Bool, EqB(k, k2), false)) : Id(Opt(Nat), InsertNoResize(&*hm, k, v); Find(clone(*hm), k2), let r = Find(clone(*hm), k2); InsertNoResize(&*hm, k, v); r) := match *hm { HM(n, len, slots) => split BInsert in SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h) }
 }
@@ -91,7 +93,7 @@ ochr SweepApp1 {
   reject def SelfApp (u : Unit) : Impred := let T = Impred; PolyId(&T, PolyId)
 }
 #eval IO.println (run "SweepApp1" SweepApp1).show
-ochr SweepApp2 uses Std {
+ochr SweepApp2 uses Bools {
   -- appendix.typ:597
   inductive Or (P : Prop) (Q : Prop) : Prop := Inl(p : P) | Inr(q : Q)
   -- appendix.typ:597
@@ -103,7 +105,7 @@ ochr SweepApp2 uses Std {
 }
 #eval IO.println (run "SweepApp2" SweepApp2).show
 -- inline fragments, verbatim inside the smallest program that runs them
-ochr SweepInline uses Std, Fixtures {
+ochr SweepInline uses Nats, Fixtures {
   -- meta.typ:70 (naturality), at an abstract `n` and at 0, 1
   reject def PickEarly (n : Nat) (a : Nat) (b : Nat) : Unit := let r = Pick(clone(n), &a, &b); let z = b; match n { Z => *r := 5, S _ => () }
   def PickEarly0 (a : Nat) (b : Nat) : Unit := let n = 0; let r = Pick(clone(n), &a, &b); let z = b; match n { Z => *r := 5, S _ => () }
@@ -130,7 +132,7 @@ ochr SweepInline uses Std, Fixtures {
 #eval IO.println (run "SweepInline" SweepInline).show
 -- dependent fields (appendix, impl §8.3): the growable vector and the arm assigning its two
 -- fields in either order
-ochr SweepDep uses ArrayBench {
+ochr SweepDep uses ArrayLemmas {
   inductive Vec (E : Type) := MkVec(n : Word, items : Array(E, n))
   def Two : Array(Word, W(2)) := [Zero, Succ(Zero)]
   def SetTwo (v : &Vec(Word)) : Unit := match *v { MkVec(n, items) => (n := W(2); items := Two) }
@@ -138,8 +140,8 @@ ochr SweepDep uses ArrayBench {
 }
 -- appendix A.4.8, nesting: `NBox` is accepted, `Bad` nested in it is not, and a field that is
 -- a Π at the generic fields is rejected already
-ochr SweepNest uses Std {
-  -- `Void` is Std's
+ochr SweepNest uses Logic, WordType {
+  -- `Void` is Logic's
   def IsSucc (n : Word) : Prop := match n { Zero => False, Succ(_) => True }
   def NegIf (n : Word) (A : Type) : Type := match n { Zero => Unit, Succ(m) => Π(x : A). Void }
   inductive NBox (A : Type) := MkNBox(n : Word, f : NegIf(n, A), h : IsSucc(n))
@@ -154,7 +156,7 @@ ochr SweepNest uses Std {
 -- (overwriting a borrow keeps the reborrows behind it) an assignment's [Access] leaves a
 -- reborrow behind the old borrow alone, so the reborrow-and-replace idiom (Trav) and the
 -- Pick variants are accepted on both paths
-ochr SweepTF uses Std, Fixtures {
+ochr SweepTF uses Nats, Fixtures {
   def Bad2 (n : Nat) (b : Nat) (x : &Nat) : Unit := let a = 0; x := Pick(n, &a, &b); let z = b; ()
   def Bad2Run : Unit := (let y = 7; Bad2(0, 5, &y))
   def Bad4 (x : &Nat) (a : Nat) : Unit := (x := TailM(&a); match a { Z => (), S _ => () })
@@ -173,7 +175,7 @@ ochr SweepTF uses Std, Fixtures {
 -- appendix note 11's `G`. The ochr command checks under the default configuration, where
 -- `F` is rejected ([D48]); the note's point is with `&` read from the declared type switched
 -- off (`refTop`), where `F` and `G` are accepted and `UseG` is not
-ochr SweepG uses Std {
+ochr SweepG {
   reject def F (n : Nat) (x : &Nat) : (match n { Z => &Nat, S _ => Nat }) := match n { Z => x, S _ => 0 }
   reject def G (n : Nat) (a : Nat) : Unit := let r = F(n, &a); let b = a; let r2 = r; ()
   reject def UseG : Unit := G(0, 5)

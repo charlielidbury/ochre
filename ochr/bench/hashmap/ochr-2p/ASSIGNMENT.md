@@ -6,20 +6,20 @@ Implement a fixed-capacity hash map from word keys to values of any type `V`, wi
 
 You work in one file, `HashMap.lean`. It is a skeleton: the representation, the provided functions, the signatures, the statements and the tests are given (the FIXED regions, between `FIXED-BEGIN` and `FIXED-END` marker comments), and the holes, written `?`, are yours to fill (the build shows each hole's goal as a warning: the bindings in scope, then `⊢ goal`). Add any helper definitions and lemmas you need to the blocks `HashMapModel` and `HashMapSolution`, between their FIXED regions.
 
-Ochr is a research language, so you will not have met it before. Read `docs/GUIDE.md` first: it teaches enough of the language to start, in about fifteen minutes. The reference is `docs/RULES.md`, the examples tour is `checker/Ochr/Examples/00Std.lean` to `15BorrowTypes.lean`, and the arrays library the map is built on is `checker/Ochr/Examples/16Arrays.lean`.
+Ochr is a research language, so you will not have met it before. Read `docs/GUIDE.md` first: it teaches enough of the language to start, in about fifteen minutes. The reference is `docs/RULES.md`, the library is `checker/Ochr/Examples/Bool.lean` to `Fixtures.lean`, the examples tour is `Numbers.lean` to `BorrowTypes.lean`, and the arrays library the map is built on is `checker/Ochr/Examples/Array.lean`.
 
 ## The representation (given, SPEC §2)
 
 Everything is generic in the value type `V : Type`; nothing may assume that values can be compared, hashed or copied.
 
-- `Opt(V)`, `None | Some(v : V)` (from `Std`): what `insert` and `remove` return. `IsSomeB(V, o)` is whether it holds a value.
+- `Opt(V)`, `None | Some(v : V)` (the library's `Options`): what `insert` and `remove` return. `IsSomeB(V, o)` is whether it holds a value.
 - `Bucket(V)`, `BNil | BCons(key : Word, value : V, next : Bucket(V))`: a singly linked list of entries, each node owning the next.
 - `Map(V, cap)`: a map of capacity `cap`, the value `MkMap(slots, len)`, where `slots` is an array of exactly `cap` buckets (`Array(Bucket(V), cap)`) and `len` is a word. The capacity is part of the type and never changes; there is no resizing. (The type is written `MapOf(Cells(Bucket(V), cap))`; it is the same thing.)
 - `Idx(cap, k)`, the bucket of key `k`: `k mod cap`. `IdxLt(cap, k, h) : Lt(Idx(cap, k), cap)` is its bound, given `h : Lt(Zero, cap)`.
 - `EqDec(a, b)`, key comparison that returns the evidence: `Yes(e)` with `e : Eq(Word, a, b)`, or `No(ne)` with `ne : Π(e : Eq(Word, a, b)). False`. The library's boolean `EqB` (in `Words`) is also available.
 - Bucket `i` is reached in place through the arrays library's element borrow, `GetMut(Bucket(V), cap, s, i, h) : &Bucket(V)`, where the view of the array field is `AsSlice(Bucket(V), cap, &slots)`. It is the only way for runtime code to reach a bucket.
 - For the model: `SlotsOf(V, cap, m)`, the buckets of a map value as a view, and `LenField(V, cap, m)`, its length field. `SlotsOf` returns a view by value, so it is model code: it can be used in statements and in other model code, not at runtime.
-- `IsTrue(b)` (from `Std`) is the proposition that the boolean `b` is `true`. `Grow(c, l)` is `l + 1` if `c` is `false` and `l` otherwise; `Shrink(c, l)` is `l − 1` if `c` is `true` and `l` otherwise. They state H12 and H13, with `c` = `contains(m, k)`.
+- `IsTrue(b)` (the library's `Bools`) is the proposition that the boolean `b` is `true`. `Grow(c, l)` is `l + 1` if `c` is `false` and `l` otherwise; `Shrink(c, l)` is `l − 1` if `c` is `true` and `l` otherwise. They state H12 and H13, with `c` = `contains(m, k)`.
 
 ## The operations (signatures given, SPEC §3)
 

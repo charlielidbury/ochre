@@ -1,6 +1,6 @@
 # The Ochr book
 
-How to write Ochr programs and proofs. This is everything you need to start. You never need the paper, `RULES.md`, or the checker's Lean source: they explain *why* Ochr works, and this book explains how to *use* it. When this book isn't enough, read the checked examples in `ochr/core/lean/Ochr/Examples/` (`00Std.lean` … `18DependentFields.lean`). Every program there is accepted, and every `reject def` there is refused, with a comment saying why.
+How to write Ochr programs and proofs. This is everything you need to start. You never need the paper, `RULES.md`, or the checker's Lean source: they explain *why* Ochr works, and this book explains how to *use* it. When this book isn't enough, read the checked examples in `ochr/core/lean/Ochr/Examples/`, in the order its `README.md` gives: the library (`Bool.lean` … `Array.lean`), the tour (`Numbers.lean` … `BorrowTypes.lean`) and the case studies. Every program there is accepted, and every `reject def` there is refused, with a comment saying why.
 
 ## 1. The idea in one paragraph
 
@@ -12,18 +12,18 @@ An Ochr program lives in `ochr` blocks inside an ordinary Lean file:
 
 ```
 import Ochr.Test
-import Ochr.Examples.«00Std»         -- the libraries Std (Word, Bool, List, Opt, AddM, …) and Words (Le, EqB, W, …)
-import Ochr.Examples.«16Arrays»      -- only if you need arrays
+import Ochr.Examples.Word            -- the library for Words (Le, EqB, W, …), with Bool and Logic
+import Ochr.Examples.Array           -- only if you need arrays
 open Ochr.Test
 
-ochr MyBlock uses Std {
+ochr MyBlock uses Words {
   def Inc (x : &Word) : Unit := *x := Succ(*x)
   -- more declarations …
 }
 ```
 
-- A block sees the accepted declarations of the blocks it `uses`, transitively, plus the always-present `Prelude` (`Pair`, `False`, `True`, `And`). For arithmetic and comparisons on `Word`, write `uses Std, Words`; for arrays, `uses ArrayLemmas`, which brings `Arrays`, `Words` and `Std` with it.
-- A block can't declare a name that a block it uses already declares: the names form one namespace, and a clash is an error. So use `Std`'s `Opt`, `Dec` or `Void` rather than declaring your own.
+- A block sees the accepted declarations of the blocks it `uses`, transitively, plus the always-present `Prelude` (`Pair`, `False`, `True`, `And`). The library is one block per topic, in one file each (`Bool.lean` holds `Bools`, `Word.lean` holds `Words`, …; §4): import the file and `use` the block. For arithmetic and comparisons on `Word`, write `uses Words`; for arrays, `uses ArrayLemmas`, which brings `Arrays`, `Words`, `Lists` and `Logic` with it.
+- A block can't declare a name that a block it uses already declares: the names form one namespace, and a clash is an error. So use the library's `Opt`, `Dec` or `Void` rather than declaring your own.
 - Every block is checked when the file is elaborated, in the editor as you type or in `lake build` / `lake env lean File.lean`. A rejected `def` is an error underlining the responsible piece of source, with the reason. Nothing else needs running.
 - Declarations are checked top to bottom. A helper must come before its first use, and there is no mutual recursion between top-level declarations.
 - A rejected declaration doesn't exist for later ones: everything that mentions it fails with `unknown constant X`. Fix the first error first.
@@ -86,19 +86,20 @@ Reserved names, which you can't declare: `Nat`, `Unit`, `Z`, `S`, `refl`, `Id`, 
 ## 4. Data
 
 - **Built in:** `Unit` (value `()`), and `Nat` (`Z`, `S(n)`, numerals `0`, `1`, …). `Nat` is *not* a copy type, so reading one moves it. It is the type for in-place unary arithmetic examples.
-- **Std** (`uses Std`):
-  - `copy inductive Word := Zero | Succ(pred : Word)` is the number type for keys, values, indices and lengths. It is a copy type, unary in the logic and a machine word at runtime. Numerals are `Nat`, so write `Succ(Zero)`, or `W(7)` from `Words`.
-  - `Bool := false | true`, `List(A) := Nil | Cons(h, t)`, `Box(A) := MkBox(x)`, and `IsTrue(b)`, a boolean as a proposition.
-  - `Opt(A) := None | Some(v)`, with the propositions `IsSome(A, o)` and `IsNone(A, o)`. Where nothing fixes `A`, write it: `None[Nat]`.
-  - `Dec(P, Q) := Yes(h : P) | No(k : Q)`, a decision that carries its proof, and `Void`, a type with no values (`absurdV(v) : False`).
-  - `AddM(&x, y)` and `Add(x, y)` on `Nat`, with `AddMZero` and `AddS`.
-- **Words** (`uses Words`), the library for `Word`s:
+- **The library**, one block per file (import `Ochr.Examples.Word` and write `uses Words`, and so on):
+  - `Word.lean`, block `WordType`: `copy inductive Word := Zero | Succ(pred : Word)` is the number type for keys, values, indices and lengths. It is a copy type, unary in the logic and a machine word at runtime. Numerals are `Nat`, so write `Succ(Zero)`, or `W(7)` from `Words`.
+  - `Bool.lean`, `Bools`: `Bool := false | true`, and `IsTrue(b)`, a boolean as a proposition.
+  - `List.lean`, `Lists`: `List(A) := Nil | Cons(h, t)`, and its length `LenL`. `Box.lean`, `Boxes`: `Box(A) := MkBox(x)`.
+  - `Option.lean`, `Options`: `Opt(A) := None | Some(v)`, with the propositions `IsSome(A, o)` and `IsNone(A, o)`. Where nothing fixes `A`, write it: `None[Nat]`.
+  - `Logic.lean`, `Logic`: `Dec(P, Q) := Yes(h : P) | No(k : Q)`, a decision that carries its proof, and `Void`, a type with no values (`absurdV(v) : False`).
+  - `Nat.lean`, `Nats`: `AddM(&x, y)` and `Add(x, y)` on `Nat`, with `AddMZero` and `AddS`.
+- **Words** (`Word.lean`, `uses Words`), the library for `Word`s:
   - the order `Le(a, b)` and `Lt(a, b)`, propositions, and `LeDec(a, b) : Dec(Le(a, b), Lt(b, a))`, `LtDec(i, n) : Dec(Lt(i, n), Le(n, i))`, comparisons that return the proof;
   - boolean comparisons `EqB`, `LeB`, `LtB`, each named for the proposition it decides with a `B`;
   - `WAdd` (addition), `Sub` (subtraction, truncated at zero), `Pred`, and `W(n)`, the `Word` for the numeral `n`;
   - facts about them, listed in §9.
 - **Your own types:** `inductive Tree (A : Type) := Leaf | Node(l : Tree(A), v : A, r : Tree(A))`. Fields are data: other inductives, the type itself, numbers, function types reached through a type parameter (`Box(Π(n : Word). Word)`), and borrows nowhere. Parameters are types in `Type`.
-- **Dependent fields:** a field's type may mention earlier fields: `inductive Vec (E : Type) := MkVec(len : Word, cap : Word, buf : Array(Opt(E), cap), hl : Le(len, cap))`. You may break the dependency temporarily, writing the fields one at a time in either order: `match *v { MkVec(len, cap, buf, hl) => (cap := W(2); buf := two; len := W(2); hl := refl) }`. It must hold again wherever the value is used whole (read, passed, returned, borrow ended), or you get a `[Repack]` error naming the field and both types. A proof field (`hl`) is cleared when the data it mentions changes, or is borrowed, and must be re-assigned before the value is used whole. So a proof field about data that a function returns a borrow into cannot be kept: state it as a separate proposition instead (`VInv`). Examples: `18DependentFields.lean`.
+- **Dependent fields:** a field's type may mention earlier fields: `inductive Vec (E : Type) := MkVec(len : Word, cap : Word, buf : Array(Opt(E), cap), hl : Le(len, cap))`. You may break the dependency temporarily, writing the fields one at a time in either order: `match *v { MkVec(len, cap, buf, hl) => (cap := W(2); buf := two; len := W(2); hl := refl) }`. It must hold again wherever the value is used whole (read, passed, returned, borrow ended), or you get a `[Repack]` error naming the field and both types. A proof field (`hl`) is cleared when the data it mentions changes, or is borrowed, and must be re-assigned before the value is used whole. So a proof field about data that a function returns a borrow into cannot be kept: state it as a separate proposition instead (`VInv`). Examples: `DependentFields.lean`.
 - **`if`** is on a `Bool` (§3). To get the proof with the answer, match on a decision type such as `Dec(Le(a, b), Lt(b, a))` (`Yes(h)` / `No(k)`).
 
 ## 5. Ownership: moves, copies, borrows
@@ -177,7 +178,7 @@ def PushLen (A : Type) (l : &List(A)) (x : A) :
 ```
 def Inc (x : &Word) : Unit := *x := Succ(*x)
 def IncTwice (x : &Word) : Id(Unit, (Inc(&*x); Inc(x)), *x := Succ(Succ(*x))) := refl
-def AddMZero (x : &Nat) : Id(Unit, AddM(x, 0), ()) by x := (   -- Std
+def AddMZero (x : &Nat) : Id(Unit, AddM(x, 0), ()) by x := (   -- Nats
   match *x {
     Z => refl,
     S p => AddMZero(&p),
@@ -251,9 +252,9 @@ For a reader who knows Lean's tactics:
 
 ## 9. The arrays library
 
-`import Ochr.Examples.«16Arrays»` and `uses ArrayLemmas`. Read `16Arrays.lean`: every declaration is short and checked.
+`import Ochr.Examples.Array` and `uses ArrayLemmas`. Read `Array.lean`, and `ArrayBench.lean` for the design and the benchmarks: every declaration is short and checked.
 
-- **Numbers** are `Words`' (`00Std.lean`, §4):
+- **Numbers** are `Words`' (`Word.lean`, §4):
   - `Le(a, b)`, `Lt(a, b)`, propositions;
   - `LeDec(a, b) : Dec(Le(a, b), Lt(b, a))` and `LtDec(i, n) : Dec(Lt(i, n), Le(n, i))`, comparisons that return the proof;
   - `EqB`, `LeB`, `LtB` (`Bool`), `WAdd`, `Sub`, `Pred`, `W(n)`;
@@ -274,7 +275,7 @@ For a reader who knows Lean's tactics:
   - `ArrFromFn(E, n, f)`, a new array of `n` elements, element `i` being `f(i)` (Rust's `array::from_fn`);
   - `ArrOfList(E, n, l, h)`, a new array holding the `n` elements of the list `l`, moved in. It is the model of an array literal `[x, y, z]` (a compiler lowers a literal directly, building no list) and a general list-to-array conversion. A literal is written at its type: `let a : Array(Word, W(3)) = [W(4), W(9), W(2)]`, `([W(4), W(9), W(2)] : Array(Word, W(3)))`, or a definition's body. A literal computes to its cells, so a statement about one holds by evaluation.
 
-  An array never changes its length: there is no push or pop. A growable vector is user code over an array (`Vec` in `18DependentFields.lean`).
+  An array never changes its length: there is no push or pop. A growable vector is user code over an array (`Vec` in `DependentFields.lean`).
 
   Built from them, in Ochr: `Swap(E, n, s, i, j, hi, hj)`, which splits the view and exchanges through two element borrows, copying nothing; `Replicate(E, n, x)` (`ArrFromFn` with a `clone` of `x`), `Fill`, `FillFrom`. Two element borrows of one view at once are refused (taking the second ends the first), which is why `Swap` splits first.
 - **Lemmas:**
@@ -284,7 +285,7 @@ For a reader who knows Lean's tactics:
   - `JoinTakeDrop`, `TakeJoin`, `DropJoin`, `NthTakeS`, `NthDropS`, `JoinSetS`;
   - `Count(q, n, s)` (occurrences of `q`), with `CountJoin`, `CountSet`, `CountSwap`.
 - **Rule:** runtime code only *borrows* views. It never reads one by value or matches on its representation. Statements and proofs may do both freely (`Nth(E, n, *s, i, h)` in a type is fine).
-- **Reads and writes in proofs.** At an unknown index, what a program reads or writes through `GetMut`, or swaps, is a sealed program, not `Nth` or `SetS`. Name the facts with the lemmas and rewrite with them. `let ⟨hv, hp⟩ = GetMutRead(…)` gives the value read (`hv : Eq(E, read, Nth(…))`) and the view after it, a put-back program (`hp : Eq(Slice(E, n), put-back, *s)`). A rewrite does not reach inside a sealed program, such as a recursive call on the put-back view, so state the induction hypothesis at the view the program leaves, and rewrite the rest of the goal onto it (`ScanPerm` in `16Arrays.lean` does both). At a known index, splitting the view (`match v { MkSlice(c) => match c { MkC(y, t) => … } }`) makes the read compute.
+- **Reads and writes in proofs.** At an unknown index, what a program reads or writes through `GetMut`, or swaps, is a sealed program, not `Nth` or `SetS`. Name the facts with the lemmas and rewrite with them. `let ⟨hv, hp⟩ = GetMutRead(…)` gives the value read (`hv : Eq(E, read, Nth(…))`) and the view after it, a put-back program (`hp : Eq(Slice(E, n), put-back, *s)`). A rewrite does not reach inside a sealed program, such as a recursive call on the put-back view, so state the induction hypothesis at the view the program leaves, and rewrite the rest of the goal onto it (`ScanPerm` in `Quicksort.lean` does both). At a known index, splitting the view (`match v { MkSlice(c) => match c { MkC(y, t) => … } }`) makes the read compute.
 
 ```
 def Bump (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) : Unit := (

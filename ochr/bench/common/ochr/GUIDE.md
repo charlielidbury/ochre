@@ -1,6 +1,6 @@
 # Ochr: a working guide
 
-This guide teaches enough Ochr to start on the assignment. The language reference is `docs/RULES.md` (dense: read it when this guide is not precise enough). The examples tour in `checker/Ochr/Examples/00Std.lean` … `15BorrowTypes.lean` shows every feature with checked examples, each file opening with what it covers; `checker/Ochr/Examples/16Arrays.lean` is the arrays library. When in doubt, find an example in the tour: every program there is checked, and the `reject def`s show what the checker refuses and why.
+This guide teaches enough Ochr to start on the assignment. The language reference is `docs/RULES.md` (dense: read it when this guide is not precise enough). The library is `checker/Ochr/Examples/Bool.lean` … `Fixtures.lean` and the arrays library `Array.lean`, one block per topic (`Bools`, `Logic`, `Nats`, `Words`, `Lists`, `Options`, `Boxes`, `Fixtures`, `Arrays`, `ArrayLemmas`). The examples tour in `checker/Ochr/Examples/Numbers.lean` … `BorrowTypes.lean` shows every feature with checked examples, each file opening with what it covers. When in doubt, find an example in the tour: every program there is checked, and the `reject def`s show what the checker refuses and why.
 
 ## 1. What Ochr is
 
@@ -59,7 +59,7 @@ Terms:
 
 Layout conventions (the tour's): one declaration per line group, a multi-line body in parentheses `:= ( … )`, one match arm per line with a trailing comma, a multi-statement arm in `( … ),`, and matches inside types and argument lists on one line without a trailing comma. Line breaks are whitespace. Comments are `-- …` and `/- … -/`.
 
-Numbers: `Word` (`Zero | Succ(pred : Word)`) is the type of keys, values, indices and lengths. It is unary in the logic and a machine word in the cost model, and it is a *copy* type (§4). `W(7)` (from the library `Words`, in `00Std.lean`) is the `Word` for the numeral 7. `Nat` is a separate built-in type that you will rarely need.
+Numbers: `Word` (`Zero | Succ(pred : Word)`) is the type of keys, values, indices and lengths. It is unary in the logic and a machine word in the cost model, and it is a *copy* type (§4). `W(7)` (from the library `Words`, in `Word.lean`) is the `Word` for the numeral 7. `Nat` is a separate built-in type that you will rarely need.
 
 ## 4. Borrows, moves and copies
 
@@ -89,7 +89,7 @@ Types are programs, so a statement can run the in-place code. Two forms recur:
 A proof is a program whose type is the statement; it is erased when the program runs.
 
 - **Case split.** `match x { Zero => …, Succ(x') => … }` in a proof refines `x` to each constructor, in the goal and in every hypothesis. Matching on a place whose content is stuck (a sealed program) first generalises that program to a fresh abstract value, then splits. To split on the result of a call, match on the call: `match LeDec(a, b) { Yes(h) => …, No(k) => … }` binds it to a temporary and matches that (the same as `let d = LeDec(a, b); match d { … }`); code that makes the same call becomes unstuck in each arm. `if c { … } else { … }` splits on a `Bool` the same way.
-- **Induction** is recursion: a proof declared `by x` may call itself on a strict sub-value of `x`, and that call's type is the induction hypothesis. A proof about a borrowed place can call itself (or another lemma) on a borrow of a field, `Lemma(&p)`, and the result is about the whole: `AddMZero` in `00Std.lean` is the pattern.
+- **Induction** is recursion: a proof declared `by x` may call itself on a strict sub-value of `x`, and that call's type is the induction hypothesis. A proof about a borrowed place can call itself (or another lemma) on a borrow of a field, `Lemma(&p)`, and the result is about the whole: `AddMZero` in `Nat.lean` is the pattern.
 - **Lemmas** are ordinary functions returning propositions; call them to get facts: `LeTrans(a, b, c, h1, h2)`. A lemma about in-place code can be called on a borrow of a local copy inside a proof: `(let c = *s; F(&c); Lemma(n, &c))` has `Lemma`'s statement about the contents after `F`.
 - **False.** `match h {}` for `h` of an empty type. A contradictory equation between different constructors is `False` by computation, so it matches with no arms too.
 - **Conjunctions.** Build with `⟨p, q⟩`; take apart with `let ⟨p, q⟩ = h; …`.
@@ -113,7 +113,7 @@ When a proof is rejected, `lake -q exe check --trace Name` shows the goal in eva
 
 ## 9. The arrays library (`ArrayLemmas`)
 
-Blocks `Arrays` and `ArrayLemmas` in `checker/Ochr/Examples/16Arrays.lean`, over the library `Words` in `checker/Ochr/Examples/00Std.lean`. Read those files: every declaration is short and checked. `Std` there also gives `Opt(A)` (`None | Some(v)`, with `IsSome(A, o)` and `IsNone(A, o)`), `Dec`, `Void` and `IsTrue(b)`: use them rather than declaring your own, since a name a used block declares can't be declared again. In outline:
+Blocks `Arrays` and `ArrayLemmas` in `checker/Ochr/Examples/Array.lean`, over the library `Words` in `checker/Ochr/Examples/Word.lean`. Read those files: every declaration is short and checked. The library also gives `Opt(A)` (`Options`: `None | Some(v)`, with `IsSome(A, o)` and `IsNone(A, o)`), `Dec` and `Void` (`Logic`) and `IsTrue(b)` (`Bools`): use them rather than declaring your own, since a name a used block declares can't be declared again. In outline:
 
 - **Numbers (`Words`).** `Le(a, b)`, `Lt(a, b)` (propositions, by recursion); `LeDec(a, b) : Dec(Le(a, b), Lt(b, a))` and `LtDec(i, n) : Dec(Lt(i, n), Le(n, i))`, comparisons that return the proof (`Yes(h)` / `No(k)`); `EqB`, `LeB`, `LtB` (booleans, each named for the proposition it decides with a `B`); `WAdd`, `Sub`, `Pred`, `W`; and facts: `LeRefl`, `LeStep`, `LeTrans`, `LeOfLt`, `LeAddL`, `AddRS`, `AddZeroR`, `AddOneR`, `SubPos`, `SubOneLe`, `SubPosLt`, `LtNe`, `LeAntisym`, `EqBRefl`.
 - **The model (`Arrays`).** `Slice(E, n)` is a view of `n` elements, `Array(E, n)` an owned array. The pure functions on views: `Nth(E, n, s, i, h)` is element `i` (with `h : Lt(i, n)`), `SetS` replaces an element, `SwapS` exchanges two, `TakeS`/`DropS` split at `k` and `JoinS` joins, `FromFnS` and `OfListS` are the models of making an array.

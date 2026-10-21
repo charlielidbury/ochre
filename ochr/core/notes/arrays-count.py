@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """Sizes for the arrays library and the quicksort case study (notes/arrays-library.md §10).
 
-Splits Ochr/Examples/16Arrays.lean into its declarations (a declaration runs from its
+Splits the arrays files (Ochr/Examples/Array.lean, ArrayBench.lean, Quicksort.lean; before the
+final layout, 16Arrays.lean) into their declarations (a declaration runs from its
 `def`/`inductive` line to the line before the next one, or the end of its `ochr` block),
 assigns each to a category by block and by name, and counts code lines and tokens per
 category with the comment stripping and tokenizer of hashmap-count.py.
 
-The block `Index` moved to the central library in `00Std.lean` (`Words`, with `Dec` in `Std`),
-and two of the quicksort's lemmas with it (`EqBRefl`, `LeOfLt`): those declarations are read
-from there and counted where they were (`INDEX`, `MOVED`), so that moving them changes no
-number. A version of the file that still declares them (under their old names, `Leb`, `Eqb`,
-`EqbRefl`) counts its own instead.
+Declarations that moved to the central library are read from there and counted where they
+were, so that moving them changes no number: the block `Index` (now `Words` in Word.lean, with
+`Dec` in Logic.lean), two of the quicksort's lemmas (`EqBRefl`, `LeOfLt`), `ArrayBench`'s
+`ModS`, `LeNext` and `ModLt` (now `Words`'), and `Arrays`' `LenL` (now `Lists`'). `ArrayBench`'s
+hash map, now the block `ArrayHashMap`, counts as `ArrayBench`. A name that an arrays block of
+the files given still declares (under its old name, `Leb`, `Eqb`, `EqbRefl`) counts there
+instead, so older versions count as they did.
 
-usage: arrays-count.py [path/to/16Arrays.lean [path/to/00Std.lean]]
+usage: arrays-count.py [FILE ...]   (default: the current layout; for an old version, its
+16Arrays.lean, with its 00Std.lean when that holds `Words`)
 """
 import importlib.util
 import os
@@ -48,6 +52,9 @@ INDEX = W("""Le Lt WAdd W Sub LeB EqB Dec LeDec LtDec LeRefl LeStep LeTrans LeAd
 # quicksort lemmas now in `Words`, counted in the quicksort's categories as before
 MOVED = W("EqBRefl LeOfLt")
 OLD_NAME = {"LeB": "Leb", "EqB": "Eqb", "EqBRefl": "EqbRefl"}
+TO_BENCH = W("ModS LeNext ModLt")
+TO_ARRAYS = W("LenL")
+LIBRARY_BLOCKS = {"Std", "Words", "WordType", "Logic", "Lists", "Bools"}
 ORDER = ["Index", "Arrays", "ArrayLemmas", "ArrayBench"] + list(QS)
 DECL = re.compile(r"^  (?:reject )?(?:(?:unsized|abstract|copy) )*(?:def|inductive) ([A-Za-z_][A-Za-z0-9_']*)")
 BLOCK = re.compile(r"^ochr (\w+)")
@@ -79,14 +86,21 @@ def decls_of(path):
 
 
 def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "..", "lean", "Ochr", "Examples", "16Arrays.lean")
-    lib = sys.argv[2] if len(sys.argv) > 2 else os.path.join(here, "..", "lean", "Ochr", "Examples", "00Std.lean")
-    own = decls_of(path)
+    ex = os.path.join(here, "..", "lean", "Ochr", "Examples")
+    files = sys.argv[1:] or [os.path.join(ex, f) for f in
+                             ["Word.lean", "Logic.lean", "List.lean", "Array.lean", "ArrayBench.lean", "Quicksort.lean"]]
+    every = [d for f in files for d in decls_of(f)]
+    own = [d for d in every if d[0] not in LIBRARY_BLOCKS]
     names = {n for _, n, _ in own}
-    moved = [("Index" if n in INDEX else "Quicksort", n, ls) for b, n, ls in decls_of(lib)
-             if b in ("Std", "Words") and (n in INDEX or n in MOVED)
+    def home(n):
+        if n in INDEX: return "Index"
+        if n in MOVED: return "Quicksort"
+        if n in TO_BENCH: return "ArrayBench"
+        if n in TO_ARRAYS: return "Arrays"
+        return None
+    moved = [(home(n), n, ls) for b, n, ls in every if b in LIBRARY_BLOCKS and home(n)
              and n not in names and OLD_NAME.get(n) not in names]
-    decls = moved + own
+    decls = moved + [("ArrayBench" if b == "ArrayHashMap" else b, n, ls) for b, n, ls in own]
     cat = {n: c for c, ns in QS.items() for n in ns}
     totals, missing = {}, []
     for block, name, lines in decls:

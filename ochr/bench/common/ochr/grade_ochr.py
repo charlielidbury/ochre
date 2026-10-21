@@ -199,8 +199,12 @@ BUILTIN_NAMES = {"Nat", "Unit", "Z", "S", "Type", "Prop", "Eq", "Id", "J", "refl
                  "True", "False", "And", "Intro", "I", "Word", "Zero", "Succ"}
 
 # The library files a skeleton's blocks use (relative to the sandbox): their names are reserved.
-LIBRARY_FILES = ["checker/Ochr/Prelude.lean", "checker/Ochr/Examples/00Std.lean",
-                 "checker/Ochr/Examples/16Arrays.lean"]
+# Missing files are skipped, so a sandbox of either layout works.
+LIBRARY_FILES = ["checker/Ochr/Prelude.lean"] + [
+    f"checker/Ochr/Examples/{n}.lean" for n in
+    ["Bool", "Logic", "Nat", "Word", "List", "Option", "Box", "Fixtures", "Array",
+     # before the final layout
+     "00Std", "16Arrays"]]
 
 
 def declared_names(toks):

@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """The Ochr side of the hashmap case study's table (notes/hashmap-case-study.md).
 
-Splits Ochr/Examples/17HashMap.lean into its declarations (a declaration runs from its
+Splits Ochr/Examples/HashMap.lean (before the final layout, 17HashMap.lean) into its declarations (a declaration runs from its
 `def`/`inductive` line to the line before the next one, or the end of its `ochr` block),
 assigns each to a category by name, and counts code lines and tokens per category with
 the same comment stripping and tokenizer as hashmap-count.py.
 
-The definitions the case study wrote for itself until they moved to the central library in
-`00Std.lean` (`MOVED`: Std's `Opt` and `IsSome`, Words' `EqB`, `LtB`, `Pred`, `WAdd`, `W`,
-`EqBRefl` and `AddZeroR`, which was `WAddZero`) are read from there and counted where they
-were, so that moving them changes no number of the comparison with Aeneas. A version of the
+The definitions the case study wrote for itself until they moved to the central library
+(`MOVED`: `Options`' `Opt` and `IsSome` in Option.lean, `Words`' `EqB`, `LtB`, `Pred`, `WAdd`, `W`,
+`EqBRefl` and `AddZeroR`, which was `WAddZero`, in Word.lean) are read from there and counted
+where they were, so that moving them changes no number of the comparison with Aeneas. A version of the
 file that still declares one (under its old name, `Lt`, `WAddZero`) counts its own instead.
 
-usage: hashmap-count-ochr.py [path/to/17HashMap.lean [path/to/00Std.lean]]
+usage: hashmap-count-ochr.py [path/to/HashMap.lean [library file ...]]
 """
 import importlib.util
 import os
@@ -94,11 +94,13 @@ def decls_of(path, keep=None):
 
 
 def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "..", "lean", "Ochr", "Examples", "17HashMap.lean")
-    lib = sys.argv[2] if len(sys.argv) > 2 else os.path.join(here, "..", "lean", "Ochr", "Examples", "00Std.lean")
+    ex = os.path.join(here, "..", "lean", "Ochr", "Examples")
+    path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ex, "HashMap.lean")
+    libs = sys.argv[2:] or [os.path.join(ex, "Option.lean"), os.path.join(ex, "Word.lean")]
     own = decls_of(path)
     names = {n for n, _ in own}
-    decls = [d for d in decls_of(lib, MOVED) if d[0] not in names and OLD_NAME.get(d[0]) not in names] + own
+    decls = [d for lib in libs for d in decls_of(lib, MOVED)
+             if d[0] not in names and OLD_NAME.get(d[0]) not in names] + own
     cat = {}
     for n in IMPL: cat[n] = "implementation"
     for n in RUNS: cat[n] = "runs (tests)"

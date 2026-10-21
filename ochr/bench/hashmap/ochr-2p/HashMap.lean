@@ -1,5 +1,6 @@
 -- FIXED-BEGIN header
-import Ochr.Examples.«16Arrays»
+import Ochr.Examples.Array
+import Ochr.Examples.Option
 
 /-! # Verified in-place hash map, two programs (condition `ochr-2p`)
 
@@ -12,13 +13,13 @@ Check your work with `lake exe check` (the checker's verdict on every declaratio
 
 /-! ## The representation and what is provided (FIXED, SPEC §1–§2)
 
-The arrays library is `ArrayLemmas` (`checker/Ochr/Examples/16Arrays.lean`). A bucket is
+The arrays library is `ArrayLemmas` (`checker/Ochr/Examples/Array.lean`). A bucket is
 reached in place through the library's element borrow, `GetMut(Bucket(V), cap, s, i, h)`. -/
 
-ochr HashMapSpec uses ArrayLemmas {
-  -- From `Std`: `Opt(V)` (`None | Some(v : V)`), what insert and remove return (the value
-  -- moved out of the map, or nothing), and `IsTrue(b)`, a boolean that is true as a
-  -- proposition (the precondition of get and get_mut).
+ochr HashMapSpec uses ArrayLemmas, Options {
+  -- From the library: `Options`' `Opt(V)` (`None | Some(v : V)`), what insert and remove
+  -- return (the value moved out of the map, or nothing), and `Bools`' `IsTrue(b)`, a boolean
+  -- that is true as a proposition (the precondition of get and get_mut).
 
   -- Whether a result holds a value (H7a, H10a).
   def IsSomeB (V : Type) (o : Opt(V)) : Bool := (

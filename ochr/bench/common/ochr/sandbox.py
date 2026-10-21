@@ -12,15 +12,18 @@ unless --worktree is given.
 The sandbox holds:
   - the package's own files (ASSIGNMENT.md, the skeleton, Check.lean, lakefile.lean,
     grade.sh, SOLUTION_FILES, flake.nix, ...), minus the files only the repository needs;
-  - checker/: the checker's sources, the examples tour (Ochr/Examples/00*..15*), and the
-    library blocks the skeleton uses (the arrays library), extracted block by block from
-    the file that holds them, so that the case studies kept in the same file stay out;
+  - checker/: the checker's sources, the library (Ochr/Examples/Bool.lean … Array.lean) and
+    the examples tour (Numbers.lean … BorrowTypes.lean). A revision from before the final
+    layout (numbered files, 00Std.lean … 15BorrowTypes.lean) gets its tour and the library
+    blocks the skeleton uses, extracted block by block from the file that holds them, so that
+    the case studies kept in the same file stay out;
   - docs/RULES.md and docs/GUIDE.md;
   - tools/: check_fixed.py, grade_ochr.py, and tools/original/, the pristine skeleton
     files that check_fixed.py compares the solution against.
 
-Everything else in the repository is left out: the case studies (17HashMap, the Quicksort
-block and ArrayBench), the paper, the notes, the ledger and registry (which import the
+Everything else in the repository is left out: the case studies (ArrayBench, Quicksort,
+HashMap, DependentFields; before the final layout 17HashMap, the Quicksort block and
+ArrayBench), the paper, the notes, the ledger and registry (which import the
 case studies), the fuzzer and the scratch files. After copying, every file of the sandbox
 is searched for distinctive names from the case studies, and the build fails if one is
 found. Unless --no-build is given, the sandbox is then built once (checker, skeleton and
@@ -47,8 +50,14 @@ CORE_EXCLUDE = {"RuleGuard.lean"}
 # Directories of the checker that never go into a sandbox.
 # (Ochr/Fuzz is the fuzzer, Scratch holds probes; neither is needed to check a program.)
 
-# The examples tour: numbered files below this number. Numbered files from it on are case
-# studies, and only the library blocks a skeleton uses are extracted from them.
+# The library and the examples tour, in the final layout (Ochr/Examples/README.md). The other
+# example files are case studies and infrastructure, which stay out.
+LIBRARY = ["Bool", "Logic", "Nat", "Word", "List", "Option", "Box", "Fixtures", "Array"]
+TOUR = ["Numbers", "Borrows", "ReturnedBorrows", "ClosingOff", "Equality", "Snapshots", "Recursion",
+        "CaseSplits", "Functions", "Inductives", "Propositions", "CurrentState", "Erasure", "Universes",
+        "BorrowTypes"]
+# Before the final layout: the tour is the numbered files below this number. Numbered files from
+# it on are case studies, and only the library blocks a skeleton uses are extracted from them.
 TOUR_LIMIT = 16
 
 # Distinctive names from the case studies (17HashMap, the Quicksort block, ArrayBench's
@@ -63,7 +72,8 @@ FORBIDDEN = [
     r"\bMoveSlots\b", r"\bEmptySlots\b", r"\bSlotInsertFind\b", r"\bInsertFind\b",
     r"\bBRemoveFind\b", r"\bGetMutIsInsert\b", r"\bInsertCount\b",
     r"17HashMap", r"CaseStudyLedger", r"hashmap-case-study", r"arrays-library\.md",
-    r"^ochr Quicksort\b", r"^ochr ArrayBench\b", r"^ochr HashMap\b", r"^ochr HashMapLookup\b",
+    r"^ochr Quicksort\b", r"^ochr ArrayBench\b", r"^ochr ArrayHashMap\b", r"^ochr HashMap\b",
+    r"^ochr HashMapLookup\b", r"^ochr DepVec\b",
 ]
 
 
@@ -75,7 +85,7 @@ def die(msg):
 # ---------------------------------------------------------------------------
 # Blocks in example files
 
-BLOCK_HEAD = re.compile(r"^ochr ([A-Za-z_][A-Za-z0-9_']*)(?: uses ([^{]*))?\{", re.M)
+BLOCK_HEAD = re.compile(r"^ochr ([A-Za-z_][A-Za-z0-9_']*)\s*(?:uses ([^{]*))?\{", re.M)
 
 
 def blocks_of(text):
@@ -251,15 +261,27 @@ def copy_checker(checker, dest, wanted):
             shutil.copy2(os.path.join(checker, "Ochr", f), core_dst)
             core.append("Ochr." + f[:-5])
     numbered = sorted(f for f in os.listdir(ex_src) if re.match(r"^\d\d.*\.lean$", f))
-    tour = [f for f in numbered if int(f[:2]) < TOUR_LIMIT]
-    later = [os.path.join(ex_src, f) for f in numbered if int(f[:2]) >= TOUR_LIMIT]
-    for f in tour:
-        shutil.copy2(os.path.join(ex_src, f), ex_dst)
-    lib = extract_library(later, wanted) if wanted else {}
-    for f, text in lib.items():
-        with open(os.path.join(ex_dst, f), "w", encoding="utf-8") as h:
-            h.write(text)
-    examples = ["Ochr.Examples.«" + f[:-5] + "»" for f in tour + sorted(lib)]
+    if numbered:
+        # a revision from before the final layout
+        tour = [f for f in numbered if int(f[:2]) < TOUR_LIMIT]
+        later = [os.path.join(ex_src, f) for f in numbered if int(f[:2]) >= TOUR_LIMIT]
+        for f in tour:
+            shutil.copy2(os.path.join(ex_src, f), ex_dst)
+        lib = extract_library(later, wanted) if wanted else {}
+        for f, text in lib.items():
+            with open(os.path.join(ex_dst, f), "w", encoding="utf-8") as h:
+                h.write(text)
+        examples = ["Ochr.Examples.«" + f[:-5] + "»" for f in tour + sorted(lib)]
+    else:
+        files = [n + ".lean" for n in LIBRARY + TOUR]
+        defined = set()
+        for f in files:
+            shutil.copy2(os.path.join(ex_src, f), ex_dst)
+            defined |= set(blocks_of(open(os.path.join(ex_src, f), encoding="utf-8").read())[0])
+        missing = [w for w in wanted if w not in defined]
+        if missing:
+            die(f"the skeleton uses blocks that are not in the library: {', '.join(missing)}")
+        examples = ["Ochr.Examples." + n for n in LIBRARY + TOUR]
     shutil.copy2(os.path.join(checker, "lean-toolchain"), dest)
     upstream = open(os.path.join(checker, "lakefile.lean"), encoding="utf-8").read()
     precompile = "precompileModules := true" in upstream

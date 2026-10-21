@@ -10,7 +10,7 @@ The SPEC is generic in the value type `V` (2adc7147), with Ochr's read API amend
 
 - **The capacity lives in the type.** `Map(V, cap) = MapOf(Cells(Bucket(V), cap))`, i.e. `MkMap(slots : Array(Bucket(V), cap), len : Word)`. `MapOf` takes the array's model type as a parameter.
 - **Provided in `HashMapSpec`:**
-  - `Opt(V)`, `IsSomeB` (whether an `Opt` holds a value) and `IsTrue` (a boolean as a proposition); `Opt` and `IsTrue` are `Std`'s since the central library (docs/11 §2), and the header no longer declares them;
+  - `Opt(V)`, `IsSomeB` (whether an `Opt` holds a value) and `IsTrue` (a boolean as a proposition); `Opt` and `IsTrue` are the library's (`Options`, `Bools`) since the central library (docs/11), and the header no longer declares them;
   - `Grow` and `Shrink`, the right-hand sides of H12 and H13, over `contains(m, k)`;
   - `Idx` (`k mod cap` by counting) with its bound `IdxLt`, standing in for the `%` and its bound that other systems get from their libraries or automation;
   - `EqDec`, key comparison with evidence.

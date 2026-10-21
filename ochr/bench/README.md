@@ -105,7 +105,7 @@ Both are deliberately textbook exercises, and every system's documentation conta
 
 - **No network.** The assessed agent has no network access for the whole trial. Every toolchain and library must already be in the sandbox or in the nix store.
 - **No known solutions.** `make-sandbox.sh` copies the package and exactly the libraries and documentation it allows, and nothing else from this repository. These are excluded from every sandbox:
-  - this repository's Ochr case studies: `ochr/core/lean/Ochr/Examples/17HashMap.lean`, and the `Quicksort` block and the case-study lemmas in `ochr/core/lean/Ochr/Examples/16Arrays.lean`;
+  - this repository's Ochr case studies: `ochr/core/lean/Ochr/Examples/HashMap.lean`, and `Quicksort.lean` and `ArrayBench.lean` in `ochr/core/lean/Ochr/Examples/` (before the final layout, `17HashMap.lean` and `16Arrays.lean`);
   - the Ochr paper (`ochr/core/paper/`), which prints excerpts of the solutions, and the case-study notes (`ochr/core/notes/`);
   - `competitors/`, and this repository's other verification developments of hash maps or sorting;
   - Aeneas's own hashmap tests and proofs;

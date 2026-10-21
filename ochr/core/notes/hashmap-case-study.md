@@ -561,7 +561,7 @@ def BGet (b : &Bucket) (k : Word) : Opt by b := (
 
 ```
 cd ochr/core/lean
-lake build Ochr.Examples.«17HashMap»          # the four blocks, verdict tables, count guards
+lake build Ochr.Examples.HashMap                # the four blocks and their verdicts (17HashMap.lean before the final layout)
 lake exe tests                                  # all 1354, with per-declaration check times
 lake env lean Ochr/Examples/CaseStudyLedger.lean   # §7 (slow: every rule switch re-checks the case study)
 python3 ../notes/hashmap-count-ochr.py          # the Ochr column of §2 (final), and the statement share
@@ -571,4 +571,4 @@ git show 07771cb6:ochr/core/lean/Ochr/Examples/16HashMap.lean > /tmp/pre.lean &&
 python3 ../notes/hashmap-count.py fstar <Aeneas file> <ranges>   # Aeneas, ranges from ../notes/hashmap-aeneas-categories.py
 ```
 
-Since 2026-10-21 (docs/11 §2, lane hm-lib) the case study's arithmetic and lookup result are the central library's, in `00Std.lean`: `Std`'s `Opt` (now `Opt(Nat)`) and `IsSome` (now `IsSome(Nat, …)`), and `Words`' `EqB`, `LtB` (the case study's boolean `Lt`), `Pred`, `WAdd`, `W`, `EqBRefl` and `AddZeroR` (its `WAddZero`). Its boolean `IsNone` is now `IsNoneB`, since `Std`'s `IsNone` is the proposition. `hashmap-count-ochr.py` reads the moved definitions from `00Std.lean` and counts them where they were (a version of the file that still declares them counts its own), so every line count and category is as before; tokens grow by 345, all from writing the parameter (`Opt(Nat)`, `IsSome(Nat, …)`, and `None[Nat]` at the 24 places where only an equation's type fixes it, which the checker does not infer from).
+Since 2026-10-21 (docs/11 §2, lane hm-lib) the case study's arithmetic and lookup result are the central library's (first in `00Std.lean`, then, in the final layout, `Option.lean` and `Word.lean`): `Std`'s (now `Options`') `Opt` (now `Opt(Nat)`) and `IsSome` (now `IsSome(Nat, …)`), and `Words`' `EqB`, `LtB` (the case study's boolean `Lt`), `Pred`, `WAdd`, `W`, `EqBRefl` and `AddZeroR` (its `WAddZero`). Its boolean `IsNone` is now `IsNoneB`, since `Std`'s `IsNone` is the proposition. `hashmap-count-ochr.py` reads the moved definitions from the library files and counts them where they were (a version of the file that still declares them counts its own), so every line count and category is as before; tokens grow by 345, all from writing the parameter (`Opt(Nat)`, `IsSome(Nat, …)`, and `None[Nat]` at the 24 places where only an equation's type fixes it, which the checker does not infer from).

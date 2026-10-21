@@ -1,5 +1,5 @@
 -- FIXED-BEGIN header
-import Ochr.Examples.«16Arrays»
+import Ochr.Examples.Array
 
 /-! # Verified in-place quicksort, two programs (condition `ochr-2p`)
 
@@ -13,7 +13,7 @@ Check your work with `lake exe check` (the checker's verdict on every declaratio
 /-! ## The definitions (FIXED, SPEC §4)
 
 An array of `n` words is a view `Slice(Word, n)` of the arrays library (`ArrayLemmas`,
-`checker/Ochr/Examples/16Arrays.lean`); element `i` is `Nth(Word, n, s, i, h)`, where the
+`checker/Ochr/Examples/Array.lean`); element `i` is `Nth(Word, n, s, i, h)`, where the
 proof `h : Lt(i, n)` says the index is in bounds. -/
 
 ochr QuicksortSpec uses ArrayLemmas {

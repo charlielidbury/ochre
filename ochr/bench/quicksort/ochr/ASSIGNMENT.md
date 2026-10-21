@@ -6,7 +6,7 @@ Implement quicksort on an array of words, in place, in the language Ochr, and pr
 
 You work in one file, `Quicksort.lean`. It is a skeleton: the definitions, the signature, the two property statements and the tests are given (the FIXED regions, between `FIXED-BEGIN` and `FIXED-END` marker comments), and the holes, written `?`, are yours to fill (the build shows each hole's goal as a warning: the bindings in scope, then `⊢ goal`). Add any helper definitions and lemmas you need to the block `QuicksortSolution`, between its FIXED regions.
 
-Ochr is a research language, so you will not have met it before. Read `docs/GUIDE.md` first: it teaches enough of the language to start, in about fifteen minutes. The reference is `docs/RULES.md`, the examples tour is `checker/Ochr/Examples/00Std.lean` to `15BorrowTypes.lean`, and the arrays library you will use is `checker/Ochr/Examples/16Arrays.lean`.
+Ochr is a research language, so you will not have met it before. Read `docs/GUIDE.md` first: it teaches enough of the language to start, in about fifteen minutes. The reference is `docs/RULES.md`, the library is `checker/Ochr/Examples/Bool.lean` to `Fixtures.lean`, the examples tour is `Numbers.lean` to `BorrowTypes.lean`, and the arrays library you will use is `checker/Ochr/Examples/Array.lean`.
 
 ## What is given
 
