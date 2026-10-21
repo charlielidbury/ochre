@@ -2,7 +2,6 @@ import Ochr.Examples.Logic
 import Ochr.Examples.Word
 import Ochr.Examples.Option
 import Ochr.Examples.Array
-import Ochr.Examples.ArrayBench
 
 /-! # 18. Dependent fields
 
@@ -383,7 +382,7 @@ ochr DepFields uses Logic, WordType, Options {
   ("Boom2", "unknown constant K"),
   ("NegBox", "field f of MkNegBox : Neg(A) computes to Π")]
 
-/-! ## A growable vector and a resizable hash table (a case study)
+/-! ## A growable vector (a case study)
 
 An array never changes its length, so a growable vector is user code over one (docs/09 §7).
 `Vec(E)` holds `len` elements in an array of `cap` cells of `Opt(E)`: `buf`'s type depends on
@@ -394,14 +393,14 @@ into a new array of `2·cap + 1` cells (`VMoveCells`, each cell exchanged with a
 pop takes the last element out; get returns a borrow of an element, its cell's emptiness ruled
 out by `VInv`. The lemmas say what each does (`PushLen`, `PushInv`, `PushAt`, `PushAtOld`,
 `PopLen`, `PopInv`, `PopReturns`, `GetAt`), through the model of the moves (`MovedS`, `MoveIs`).
-Then `Table`, a hash table that stores its capacity next to its slots and resizes by moving every
-entry into a new table.
+A hash table that stores its size next to its slots and resizes by moving every entry into a
+new table is the hash map case study (`HashMap.lean`).
 
 The cell representation is interim: `Opt(E)` cells cost a tag each at runtime, and the user is
 weighing a tag-free `Uninit(E)` cell type (possibly the ⊥ a move leaves, docs/10), with which
 "cells below `len` hold elements" could be a computed type rather than `VInv`. -/
 
-ochr DepVec uses ArrayLemmas, ArrayHashMap, Options {
+ochr DepVec uses ArrayLemmas, Options {
   -- ## The cells
   -- A cell is `Options`' `Opt(E)`: an element or nothing (`IsSome`, `IsNone`).
   -- A borrow of the element in a cell known to hold one.
@@ -1117,96 +1116,6 @@ ochr DepVec uses ArrayLemmas, ArrayHashMap, Options {
       ),
     }
   )
-
-  -- a hash table that stores its capacity and resizes
-  inductive Table := MkTable(cap : Word, slots : Array(List(Entry), cap), len : Word)
-  def TCap (t : Table) : Word := (
-    match t {
-      MkTable(cap, slots, len) => cap,
-    }
-  )
-  def TLen (t : Table) : Word := (
-    match t {
-      MkTable(cap, slots, len) => len,
-    }
-  )
-  def TNew (cap : Word) : Table := MkTable(cap, Replicate(List(Entry), cap, Nil), Zero)
-  def TInsert (t : &Table) (k : Word) (v : Word) (hc : Lt(Zero, TCap(*t))) : Unit := (
-    match *t {
-      MkTable(cap, slots, len) => (
-        let i = ModS(k, cap);
-        let b = GetMut(List(Entry), cap, AsSlice(List(Entry), cap, &slots), i, ModLt(k, cap, hc));
-        let fresh = InsertB(b, k, v);
-        match fresh {
-          true => len := Succ(len),
-          false => (),
-        }
-      ),
-    }
-  )
-  -- insert every entry of a bucket into the new slots
-  def InsertAll (ncap : Word) (ns : &Slice(List(Entry), ncap)) (nl : &Word) (b : List(Entry)) (hc : Lt(Zero, ncap)) : Unit by b := (
-    match b {
-      Nil => (),
-      Cons(e, rest) => match e {
-        MkE(k, v) => (
-          let bk = GetMut(List(Entry), ncap, &*ns, ModS(k, ncap), ModLt(k, ncap, hc));
-          let fresh = InsertB(bk, k, v);
-          match fresh {
-            true => *nl := Succ(*nl),
-            false => (),
-          };
-          InsertAll(ncap, ns, nl, rest, hc)
-        ),
-      },
-    }
-  )
-  -- re-insert the old buckets `0 … rem - 1`, by recursion over the old index
-  def MoveAll (cap : Word) (old : &Slice(List(Entry), cap)) (ncap : Word) (ns : &Slice(List(Entry), ncap)) (nl : &Word)
-      (rem : Word) (hr : Le(rem, cap)) (hc : Lt(Zero, ncap)) : Unit by rem := (
-    match rem {
-      Zero => (),
-      Succ(r) => (
-        let b = clone(*GetMut(List(Entry), cap, &*old, r, hr));
-        InsertAll(ncap, &*ns, &*nl, b, hc);
-        MoveAll(cap, old, ncap, ns, nl, r, LeOfLt(r, cap, hr), hc)
-      ),
-    }
-  )
-  def Resize (t : &Table) (ncap : Word) (hc : Lt(Zero, ncap)) : Unit := (
-    match *t {
-      MkTable(cap, slots, len) => (
-        let ns = Replicate(List(Entry), ncap, Nil);
-        let nl = Zero;
-        MoveAll(cap, AsSlice(List(Entry), cap, &slots), ncap, AsSlice(List(Entry), ncap, &ns), &nl, cap, LeRefl(cap), hc);
-        *t := MkTable(ncap, ns, nl)
-      ),
-    }
-  )
-  -- the new capacity with the old slots
-  reject def ResizeKeep (t : &Table) (ncap : Word) : Unit := (
-    match *t {
-      MkTable(cap, slots, len) => cap := ncap,
-    }
-  )
-  def ResizeRun : Id(Word, 
-      let t = TNew(W(2));
-      TInsert(&t, W(5), W(50), refl);
-      TInsert(&t, W(3), W(30), refl);
-      Resize(&t, W(4), refl);
-      TInsert(&t, W(7), W(70), refl);
-      TInsert(&t, W(5), W(51), refl);
-      TLen(t), W(3)) := refl
-  def ResizeRunCap : Id(Word, 
-      let t = TNew(W(2));
-      TInsert(&t, W(5), W(50), refl);
-      Resize(&t, W(4), refl);
-      TCap(t), W(4)) := refl
-  reject def ResizeRunWrong : Id(Word, 
-      let t = TNew(W(2));
-      TInsert(&t, W(5), W(50), refl);
-      Resize(&t, W(4), refl);
-      TLen(t), W(2)) := refl
 }
 
 -- each rejection for its reason
@@ -1220,6 +1129,4 @@ ochr DepVec uses ArrayLemmas, ArrayHashMap, Options {
   ("PushRunWrong", "the body of PushRunWrong has type ⊤, but the goal is False"),
   ("PushLenTwo", "the body of PushLenTwo has type ⊤, but the goal is Eq(Word, σ3, Succ(σ3))"),
   ("VGetNoInv", "argument 3 (h) has type ⊤, expected ⌈IsSome("),
-  ("VGetP", "[Repack] a borrow of it ends, but it is open: field hp of MkVecP: it holds ⊥"),
-  ("ResizeKeep", "[Repack] a borrow of it ends, but it is open: field slots of MkTable holds a value of type ArrayOf(⌈Cells(List(Entry), σ2)⌉), but its type from the earlier fields is ArrayOf(⌈Cells(List(Entry), σ1)⌉)"),
-  ("ResizeRunWrong", "the body of ResizeRunWrong has type ⊤, but the goal is False")]
+  ("VGetP", "[Repack] a borrow of it ends, but it is open: field hp of MkVecP: it holds ⊥")]

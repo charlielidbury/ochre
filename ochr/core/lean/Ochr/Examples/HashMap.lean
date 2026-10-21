@@ -347,6 +347,12 @@ ochr HashMapTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashMa
     m
   , New(Word, W(1))) := refl
 
+  -- Without a proof that the index is in bounds there is no borrow of the bucket: at an
+  -- unknown key, `refl` does not prove `Lt(Idx(k, n), Succ(n))`, which is what `IdxLt` is for
+  -- (the arrays benchmark B3, `ArrayBench.lean`).
+  reject def SlotUnbounded (V : Type) (n : Word) (slots : &Slots(V, n)) (k : Word) : &Bucket(V) :=
+    GetMut(Bucket(V), Succ(n), AsSlice(Bucket(V), Succ(n), slots), Idx(k, n), refl)
+
   -- Without its `clone`, the lookup would move the value out of a bucket it only borrows,
   -- and the borrow would end with the bucket partly moved out.
   reject def BLookupMoves (V : Type) (b : &Bucket(V)) (k : Word) : Opt(V) by b := (

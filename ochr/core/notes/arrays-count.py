@@ -15,8 +15,15 @@ hash map, now the block `ArrayHashMap`, counts as `ArrayBench`. A name that an a
 the files given still declares (under its old name, `Leb`, `Eqb`, `EqbRefl`) counts there
 instead, so older versions count as they did.
 
-usage: arrays-count.py [FILE ...]   (default: the current layout; for an old version, its
-16Arrays.lean, with its 00Std.lean when that holds `Words`)
+The counting rule (docs/12 step 2, 2026-10-21, as for the hash map): the general library is not
+counted, and everything written for the case study is. So the two quicksort lemmas now in
+`Words` (`EqBRefl`, `LeOfLt`; `EqbRefl` before the rename) are not counted in any version, and
+the quicksort's categories hold only what is written for it. `--old-rule` counts them in the
+quicksort's categories, as before the rule. `ArrayHashMap` is gone (folded into `HashMap.lean`
+with B3's runs); an older file that has it still counts it as `ArrayBench`.
+
+usage: arrays-count.py [--old-rule] [FILE ...]   (default: the current layout; for an old
+version, its 16Arrays.lean, with its 00Std.lean when that holds `Words`)
 """
 import importlib.util
 import os
@@ -87,7 +94,10 @@ def decls_of(path):
 
 def main():
     ex = os.path.join(here, "..", "lean", "Ochr", "Examples")
-    files = sys.argv[1:] or [os.path.join(ex, f) for f in
+    args = sys.argv[1:]
+    old_rule = "--old-rule" in args
+    args = [a for a in args if a != "--old-rule"]
+    files = args or [os.path.join(ex, f) for f in
                              ["Word.lean", "Logic.lean", "List.lean", "Array.lean", "ArrayBench.lean", "Quicksort.lean"]]
     every = [d for f in files for d in decls_of(f)]
     own = [d for d in every if d[0] not in LIBRARY_BLOCKS]
@@ -101,6 +111,9 @@ def main():
     moved = [(home(n), n, ls) for b, n, ls in every if b in LIBRARY_BLOCKS and home(n)
              and n not in names and OLD_NAME.get(n) not in names]
     decls = moved + [("ArrayBench" if b == "ArrayHashMap" else b, n, ls) for b, n, ls in own]
+    if not old_rule:
+        uncounted = set(MOVED) | {OLD_NAME[n] for n in MOVED if n in OLD_NAME}
+        decls = [d for d in decls if not (d[0] == "Quicksort" and d[1] in uncounted)]
     cat = {n: c for c, ns in QS.items() for n in ns}
     totals, missing = {}, []
     for block, name, lines in decls:

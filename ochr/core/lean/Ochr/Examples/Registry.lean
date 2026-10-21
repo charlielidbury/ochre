@@ -63,7 +63,7 @@ would re-check them twice; their flips are measured once instead, by
 `Ochr/Examples/CaseStudyLedger.lean` (run it with `lake env lean`), and reported in
 `notes/arrays-library.md` and `notes/hashmap-case-study.md`. -/
 def caseStudies : List (String × Block) :=
-  [("Arrays", Arrays), ("ArrayLemmas", ArrayLemmas), ("ArrayHashMap", ArrayHashMap), ("ArrayBench", ArrayBench),
+  [("Arrays", Arrays), ("ArrayLemmas", ArrayLemmas), ("ArrayBench", ArrayBench),
    ("Quicksort", Quicksort),
    ("HashMap", HashMap), ("HashMapTests", HashMapTests), ("HashMapLookup", HashMapLookup),
    ("HashMapLookupTests", HashMapLookupTests), ("HashMapLength", HashMapLength), ("HashMapLengthTests", HashMapLengthTests),
@@ -225,7 +225,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1421
+def Ochr.Registry.expectedTotal : Nat := 1401
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal

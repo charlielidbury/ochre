@@ -31,10 +31,10 @@ Every file here is checked when `lake build` elaborates it: a `def` must be acce
    Each file opens with what it covers and where RULES defines it.
 
 3. **The case studies:**
-   - `ArrayBench` explains the arrays library and holds its benchmarks. Its block `ArrayHashMap` is the hash map over an array, which `DepVec` reuses.
+   - `ArrayBench` explains the arrays library and holds its benchmarks. Its hash map over an array, once the block `ArrayHashMap`, is folded into the case study `HashMap` (docs/12 step 2).
    - `Quicksort` is the in-place quicksort, proved sorted and a permutation.
    - `HashMap` is Aeneas's hash map.
-   - `DependentFields` covers dependent fields (`DepFields`), with the growable vector and resizable table `DepVec`.
+   - `DependentFields` covers dependent fields (`DepFields`), with the growable vector `DepVec`.
 
 **Infrastructure:**
 - `Registry` lists every block, and `Ledger` asserts the counterfactual ledger;
@@ -45,7 +45,7 @@ Every file here is checked when `lake build` elaborates it: a `def` must be acce
 
 ## Reusable blocks and results
 
-A used block is checked again inside every block that uses it. So a block that other blocks `use` holds only what they reuse: types, operations, model functions and lemmas. Runs, headline theorems and `reject def`s go in blocks that nothing uses. In the library and the tour, no used block needed splitting. `ArrayBench`'s hash map became its own block, `ArrayHashMap`, because `DepVec` uses it and nothing else in the benchmarks. `Units`' `AttrLib` keeps its `reject def Hidden`, because that test is about what a used block exports.
+A used block is checked again inside every block that uses it. So a block that other blocks `use` holds only what they reuse: types, operations, model functions and lemmas. Runs, headline theorems and `reject def`s go in blocks that nothing uses. In the library and the tour, no used block needed splitting. `ArrayBench`'s hash map became its own block, `ArrayHashMap`, because `DepVec` used it and nothing else in the benchmarks; both have since been folded into `HashMap`. `Units`' `AttrLib` keeps its `reject def Hidden`, because that test is about what a used block exports.
 
 ## Old names
 
@@ -58,6 +58,6 @@ Historical notes (`ochr/core/notes/`, `DECISIONS.md`, `ochr/docs/`), commit mess
 | `01Numbers.lean` … `15BorrowTypes.lean` | `Numbers.lean` … `BorrowTypes.lean`, the same blocks (`10Inductives`' block `Lists` is now `NatLists`) |
 | `16Arrays.lean`: `Index` | `Word.lean`'s `Words` (with `Leb` → `LeB`, `Eqb` → `EqB`), and `Dec` in `Logic` |
 | `16Arrays.lean`: `Arrays`, `ArrayLemmas` | `Array.lean` (`LenL` moved to `Lists`) |
-| `16Arrays.lean`: `ArrayBench` | `ArrayBench.lean`: `ArrayHashMap` (`Entry` … `Size`) and `ArrayBench` (`ModS`, `LeNext`, `ModLt` moved to `Words`) |
+| `16Arrays.lean`: `ArrayBench` | `ArrayBench.lean`: `ArrayHashMap` (`Entry` … `Size`; since folded into `HashMap.lean`) and `ArrayBench` (`ModS`, `LeNext`, `ModLt` moved to `Words`) |
 | `16Arrays.lean`: `Quicksort` | `Quicksort.lean` |
 | `17HashMap.lean`, `18DependentFields.lean` | `HashMap.lean`, `DependentFields.lean` |

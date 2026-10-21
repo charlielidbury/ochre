@@ -43,8 +43,9 @@ where they occur:
   the tail borrowable while `&Cells(E, n)` at an unknown `n` was not well formed (D48). It now
   is, so borrows no longer need the wrapping; it stays because `GetMut` and the model
   functions recurse on the tail as a view (`GetMut(E, m, &t, i', h)`, `DropS(E, m, k', t)`).
-* `[K4]` A struct cannot yet have a field of type `Array(E, cap)` (a type function applied to a
-  parameter, D36), so the hashmap takes the model type as a parameter.
+* `[K4]` (resolved) A field type may call a type function, `Array(E, n)` with `n` an earlier
+  field (`DependentFields.lean`): the hash map (`HashMap.lean`) stores its size next to its
+  array of buckets.
 * `[K6]` Quicksort recurses on fuel; with recursion on a measure it recurses on the length.
 * `[checker]` The scan's invariant is stated pointwise, one lemma per fact, where one
   proposition with `Π`s inside went stale after a case split (see there).
@@ -56,71 +57,14 @@ Defined in D57 and notes/arrays-library.md. -/
 
 open Ochr.Test
 
-/-! ## A hash map over an array (B3)
-
-The table is an array of buckets, each a list of entries, and the slot of a key is `k mod cap`
-(`Words`' `ModS`), whose bound `ModLt` is the bounds proof `GetMut` needs. `DepVec`'s
-resizable table (`DependentFields.lean`) uses it too. -/
-
-ochr ArrayHashMap uses ArrayLemmas {
-  inductive Entry := MkE(key : Word, val : Word)
-
-  -- [K4] A struct holding an array: the model type is a parameter until a field may be written
-  -- `Array(E, cap)`. The capacity is a type parameter, so no dependent field is needed.
-  inductive HashMapOf (R : Type) := MkHM(slots : ArrayOf(R), size : Word)
-  def HashMap (cap : Word) : Type := HashMapOf(Cells(List(Entry), cap))
-
-  -- Insert into a bucket (a list, which may be recursed over): overwrite, or add at the end.
-  -- `true` if the key is new.
-  def InsertB (b : &List(Entry)) (k : Word) (v : Word) : Bool by b := (
-    match *b {
-      Nil => (
-        *b := Cons(MkE(k, v), Nil);
-        true
-      ),
-      Cons(e, t) => match e {
-        MkE(k2, v2) => (
-          let same = EqB(k, k2);
-          match same {
-            true => (
-              v2 := v;
-              false
-            ),
-            false => InsertB(&t, k, v),
-          }
-        ),
-      },
-    }
-  )
-
-  def Insert (cap : Word) (hm : &HashMap(cap)) (k : Word) (v : Word) (hc : Lt(Zero, cap)) : Unit := (
-    match *hm {
-      MkHM(slots, size) => (
-        let i = ModS(k, cap);
-        let b = GetMut(List(Entry), cap, AsSlice(List(Entry), cap, &slots), i, ModLt(k, cap, hc));
-        let fresh = InsertB(b, k, v);
-        match fresh {
-          true => size := Succ(size),
-          false => (),
-        }
-      ),
-    }
-  )
-
-  def Size (cap : Word) (hm : HashMap(cap)) : Word := (
-    match hm {
-      MkHM(slots, size) => size,
-    }
-  )
-}
-
 /-! ## The benchmarks (D57)
 
 B1: borrow the first `k` elements, run anything on them, and the rest is unchanged.
-B2: quicksort (the next section). B3: insert into a hashmap's bucket in place. B4: a bounds
-proof from a runtime comparison. Each is stated about the program itself. -/
+B2: quicksort (`Quicksort.lean`). B3: a hash map over an array, inserting into a key's bucket
+in place: the hash map case study (`HashMap.lean`). B4: a bounds proof from a runtime
+comparison. Each is stated about the program itself. -/
 
-ochr ArrayBench uses ArrayLemmas, ArrayHashMap {
+ochr ArrayBench uses ArrayLemmas {
   -- ## B1
   -- By definition, for any `g`: after the split, the view is `g`'s result on the old first
   -- `k` elements, joined to the old rest.
@@ -277,37 +221,6 @@ ochr ArrayBench uses ArrayLemmas, ArrayHashMap {
   def ReplicateList : Id(List(Word),
       (let a = Replicate(List(Word), W(2), Cons(W(1), Nil)); clone(*GetMut(List(Word), W(2), AsSlice(List(Word), W(2), &a), Succ(Zero), refl))),
       Cons(W(1), Nil)) := refl
-
-  -- ## B3: insert into a hashmap's bucket, in place (`ArrayHashMap`)
-  -- The slot is `k mod cap` (`Words`' `ModS`), whose bound is a lemma (`ModLt`): no runtime
-  -- check.
-  -- Keys 5 and 3 collide in a table of two; 5 is inserted twice.
-  def InsertRun : Id(Word, 
-      let hm = MkHM(Replicate(List(Entry), W(2), Nil), Zero);
-      Insert(W(2), &hm, W(5), W(50), refl);
-      Insert(W(2), &hm, W(3), W(30), refl);
-      Insert(W(2), &hm, W(5), W(51), refl);
-      Size(W(2), hm), W(2)) := refl
-
-  def InsertRunBucket : Id(List(Entry), (
-      let hm = MkHM(Replicate(List(Entry), W(2), Nil), Zero);
-      Insert(W(2), &hm, W(5), W(50), refl);
-      Insert(W(2), &hm, W(3), W(30), refl);
-      Insert(W(2), &hm, W(5), W(51), refl);
-      match hm {
-        MkHM(slots, size) => clone(*GetMut(List(Entry), W(2), AsSlice(List(Entry), W(2), &slots), Succ(Zero), refl)),
-      }), Cons(MkE(W(5), W(51)), Cons(MkE(W(3), W(30)), Nil))) := refl
-
-  -- Without a proof that the slot is in bounds there is no borrow of it.
-  reject def InsertUnbounded (cap : Word) (hm : &HashMap(cap)) (k : Word) (v : Word) : Unit := (
-    match *hm {
-      MkHM(slots, size) => (
-        let b = GetMut(List(Entry), cap, AsSlice(List(Entry), cap, &slots), ModS(k, cap), refl);
-        let fresh = InsertB(b, k, v);
-        ()
-      ),
-    }
-  )
 
   -- ## The abstraction is enforced (K2, K3)
   -- `SliceOf` is `unsized abstract`, `Cell`, `CellsEnd` and `ArrayOf` are `abstract`, and the
