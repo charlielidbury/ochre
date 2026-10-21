@@ -63,7 +63,7 @@ Do not start this phase until team-lead says go.
      - Buckets must keep their keys: `List(Pair(Word, V))`.
      - A fixed-capacity map could be just the type function `HashMap(V, cap) := Array(List(Pair(Word, V)), cap)`.
      - A *resizing* map changes its capacity, and a borrow fixes its type, so it needs the Σ shape: `HM(n : Word, slots : Array(List(Pair(Word, V)), Succ(n)))`.
-     - Dropping the `len` field removes the `len = Count(slots)` invariant entirely, at the cost of an O(cap) `Len`.
+     - Dropping the `len` field removes the `len = Count(slots)` invariant entirely. But it makes `Len` O(cap), and it makes **`Insert` O(cap)** too, because the resize check reads `len` on every insert. Keep `len` (team-lead, 2026-10-21), unless the resize trigger changes, for example to the length of the bucket just inserted into. That would be a different structure from Rust's and Aeneas's, and it would weaken the load-factor theorem.
 2. **The invariant in the type, pending the user's decision.** The option: `HashMap(V) := HM(n, len, slots : Array(…), inv : Inv(…))`, a dependent proof field (D64). This is possible since D64-amended (8e036130) lets a proof field be re-established while a borrow (`get_mut`'s `&V`) is live. See the `CellGet` test in `18DependentFields`.
 3. **Shared by the other hashmaps.** Consolidate the smaller hashmaps in `16Arrays` and `18DependentFields` onto this one, or delete them, if they only duplicate it.
 4. **The paper.** Re-measure the paper's case-study numbers (lines, check time, the Aeneas comparison table) and update §8 and `notes/hashmap-case-study.md`.
