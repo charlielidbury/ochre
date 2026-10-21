@@ -30,6 +30,10 @@ For whoever runs the benchmark or writes it up. `make-sandbox.sh` does not copy 
 - If a library block used by the skeleton is renamed or split, `common/ochr/sandbox.py` extracts blocks by name and fails loudly when one is missing.
 - If a new case-study name appears, add it to `FORBIDDEN` in `sandbox.py`.
 
+## Validation done (2026-10-21, after D68, lane bench-d68)
+
+D68 (reads in statements move) had made `QuickSortPerm` (and `PermFromModel` in `ochr-2p`) fail on the untouched skeleton with "[Read] *s was moved out". After the migration (`let c = clone(*s)`), in sandboxes made from the commit: the untouched skeleton fails on its holes only (every FIXED declaration is accepted; the 29 positive tests fail only because `QuickSort` is a hole), and with the case study's `QS` pasted in as `QuickSort` (outside the repository) all 29 tests pass and `TestReject_unsorted` is rejected, in both packages.
+
 ## Validation done (2026-09-30, `ochr-core` 5e8dd8c0)
 
 - Statements type-check with stub implementations.

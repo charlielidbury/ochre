@@ -51,6 +51,12 @@ The SPEC is generic in the value type `V` (2adc7147), with Ochr's read API amend
 - Check that `HashMapCompose` is still accepted (18/18) and the provided instantiations type-check.
 - Re-run the tests against an unverified implementation, kept outside the repository.
 
+## Validation done (2026-10-21, after D68, lane bench-d68)
+
+D68 (reads in statements move) had made the untouched skeletons fail beyond their holes: `LenInsert`/`LenRemove` in both packages, `MLenInsert`/`MLenRemove` and 12 `HashMapCompose` lemmas in `ochr-2p`, each "[Read] … was moved out". After the migration (the clones above), in sandboxes made from the commit (`ochr-core` + bench-d68):
+- The untouched skeleton fails on its holes only: every FIXED declaration is accepted (`ochr` 52/57 as required, `ochr-2p` 102/107, including the 18 `HashMapCompose` lemmas and the 18 provided instances), and the 5 tests fail only because the operations are holes. Their message, "argument 5 (h) has type ⊤, expected ⌈IsTrue(…)⌉", is `MapGet`'s precondition stuck on the `MapContains` hole, not a fault.
+- With the throwaway implementation (association-list buckets, `Inv := ⊤`, outside the repository), every declaration is as required in both packages: the five sequences pass and `TestReject_insert` is rejected, and the grade fails only on the remaining proof holes.
+
 ## Validation done (2026-10-01, the generic API, lane arrays-e)
 
 - In a sandbox of each package, the untouched skeleton grades as failing on its holes only (it names them; the five tests fail only because the operations are holes), and every FIXED declaration is accepted, including in `ochr-2p` the eighteen `HashMapCompose` lemmas and the eighteen provided instances.
