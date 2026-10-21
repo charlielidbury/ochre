@@ -66,7 +66,7 @@ ochr Numbers {
 | `Ochr/Examples/Bool.lean` … `Fixtures.lean`, `Array.lean` | the library, one block per topic, each using only what it needs (`Ochr/Examples/README.md`) |
 | `Ochr/Examples/Numbers.lean` … `BorrowTypes.lean` | the example programs, as a tour of the language (next section) |
 | `Ochr/Examples/ArrayBench.lean`, `Quicksort.lean` | the arrays library explained, with its benchmarks (`ArrayHashMap`, `ArrayBench`); in-place quicksort proved sorted and a permutation (`notes/arrays-library.md`) |
-| `Ochr/Examples/HashMap.lean` | the case study: Aeneas's verified hash map as one in-place program with its theorems (`notes/hashmap-case-study.md`) |
+| `Ochr/Examples/HashMap.lean` | the case study: Aeneas's verified hash map as one in-place program, generic in the value type and built on the arrays library, with its theorems (`notes/hashmap-case-study.md`) |
 | `Ochr/Examples/DependentFields.lean` | dependent fields (D64): the telescope, open and repack, restricted injectivity, K4 (`DepFields`, in the ledger); a growable vector and a resizable hash table over the arrays library (`DepVec`, a case study) |
 | `Ochr/Examples/CaseStudyLedger.lean` | the counterfactual ledger for the case study, run by hand (`lake env lean`), not part of `lake build` |
 | `Ochr/Examples/Sugar.lean` | the surface sugar, with no rules of its own: a destructuring `let` for any one-constructor type, `if`, and `match` on a term (`Sugar`, after the tour in the registry) |
@@ -99,11 +99,11 @@ Read in order (`Ochr/Examples/README.md`), the files teach the whole language: t
 | `Universes` | `Prop : Type₁` beside `Type` (D66), no `Type : Type`, no cumulativity, why `&Type` is refused; sorts are syntactic (D55, reviewer-4's programs) | preamble, P2 | 27 |
 | `BorrowTypes` | what may be borrowed (D66: `&A` iff `A : Type`) and where `&` may appear (D48); `FnBorrows`: borrowing functions and type variables, a generic swap and bucket; abstract and unsized types, model code (K2, K3) | §1 | 72 |
 | `Array`, `ArrayBench`, `Quicksort` | case study: arrays as a library (slices; indices are `Words`'), its lemmas and benchmarks, and in-place quicksort proved sorted and a permutation; indices, lengths and elements are `Word`s (`notes/arrays-library.md`) | all | 171 |
-| `HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code; keys and sizes are `Word`s (`notes/hashmap-case-study.md`) | all | 179 |
+| `HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code; values of any type `V`, keys and sizes `Word`s, the table an array of lists; each block's results in a `…Tests` companion (`notes/hashmap-case-study.md`) | all | 191 |
 | `DependentFields` | dependent fields (D64): a field's type from the earlier fields, writing them in place (open, then repacked), proof fields, restricted injectivity, type functions in field types (K4) and its nesting condition; and a case study, `DepVec`: `Vec(E)` as user code over a fixed-size array of `Opt(E)` cells (push growing it, pop, an element borrow, and lemmas about each), and a hash table that stores its capacity and resizes | §8 | 57 (+76) |
 | `Sugar` | surface sugar: a destructuring `let` for any one-constructor type, `if`, `match` on a term; their errors, and runs showing each computes as its match; `if` on a block's own `Bool`, and without one | §5 [Split] | 48 (+3, +1) |
 
-1409 declarations in all, the `Prelude`'s 4 and the case studies' 426 (the arrays library's 50 among them) included (the registry's `expectedTotal`). D53 (reads of non-copy data move) is the only read semantics: the old copy-on-read paths, `Config.d53`, `Test.preD53` and the `moves` switch are deleted (`notes/lean-checker.md` §47). `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+1421 declarations in all, the `Prelude`'s 4 and the case studies' 438 (the arrays library's 50 among them) included (the registry's `expectedTotal`). D53 (reads of non-copy data move) is the only read semantics: the old copy-on-read paths, `Config.d53`, `Test.preD53` and the `moves` switch are deleted (`notes/lean-checker.md` §47). `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 

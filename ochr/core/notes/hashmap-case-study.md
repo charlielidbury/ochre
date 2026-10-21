@@ -3,10 +3,48 @@
 This note covers the paper's flagship case study. It reimplements the resizing hash map that Aeneas verifies (Ho and Protzenko, ICFP 2022, §6) as a single in-place Ochr program, and proves Aeneas's theorem suite about that program. It then measures both developments.
 
 - Branch `ochr-hashmap-v2`: cut from `ochr-core` @ 96d788a1 (RULES v2.1, checker with D52), then merged with `ochr-core` @ 84470253 (D54–D56, D58) and later. On this branch the checker also implements D60 (`rewrite`, destructuring `let`) and D61 (`split f`), both merged into `ochr-core`. Last merged with `ochr-core` @ 8467317d, where D53 (runtime reads move) is on by default; the case study checks with it (§6, "What D53 changed").
-- The code is `ochr/core/lean/Ochr/Examples/17HashMap.lean` (it was `16HashMap.lean` until the arrays case study took number 16).
+- The code is `ochr/core/lean/Ochr/Examples/HashMap.lean` (`17HashMap.lean` before the final layout, and `16HashMap.lean` until the arrays case study took number 16).
 - The counting scripts are `notes/hashmap-count.py`, used for both sides, and `notes/hashmap-count-ochr.py`, which assigns each Ochr declaration to a category.
 - `notes/hashmap-aeneas-categories.py` maps every line of Aeneas's `Hashmap.Properties.fst` to a category.
 - The earlier v1.8 port is on branch `ochr-hashmap`. `notes/hashmap-design.md` and `notes/hashmap-impl.md` are on that branch too; its findings F1–F3 are revisited below.
+
+**Current version: generic in `V`, on the arrays library (docs/12, 2026-10-21).** §0 describes it. §1–§10 describe the previous version (values `Nat`, the table a non-empty list of buckets, `Get` returning a copy) and its measurements, which are re-done for the generic version in docs/12 step 2. Where they disagree, §0 is right.
+
+## 0. The generic version
+
+**Status.** 191 declarations (before, 188; 179 after the central library took the helpers), all as expected; the suite is 1421/1421. Written as four blocks of 39 / 46 / 19 / 87 declarations (HashMap, HashMapLookup, HashMapLength, HashMapResize), then split by docs/11's rule into each block's reusable part and a companion `…Tests` block that no block uses: HashMap 28 + HashMapTests 11, HashMapLookup 25 + 21, HashMapLength 15 + 4, HashMapResize 17 (the definitions) + 70 (every proof). The file is `HashMap.lean` (`17HashMap.lean` before the final layout). Check time with `lake exe tests` before the split (compiled, one run, 2026-10-21, machine shared with other agents): 98 / 245 / 95 / 744 ms, 1.18 s in all, against 0.12–0.3 s for the previous version.
+
+**What the split costs here.** A used block's accepted declarations are re-checked in every block that uses it, so each companion re-checks the chain below it, the arrays library's 73 declarations included. Building the hash map module alone took 24.3 s unsplit, 41.1 s with the four companions, and 33.9 s with one companion for the whole file; the declaration checks inside the file go from 717 to 1198. What uses the case study gains: `Editor`'s `EditorAfterLibrary` re-checks 166 declarations instead of 266, the paper sweep's `SweepHM` 132 instead of 159. The rule pays where a block has many users; here each block has one. Not re-checking used blocks would remove the cost.
+
+**Representation.** `HashMap(V) := HM(n : Word, len : Word, slots : Slots(V, n))`, where `Slots(V, n) := Array(Bucket(V), Succ(n))` and `Bucket(V) := List(Pair(Word, V))`, from the arrays library (`Array.lean`) and `Lists`. The array's type depends on the field `n` (a dependent field, `DependentFields.lean`); resizing replaces the whole map. The field's type goes through the type function `Slots` because the field check (K4) takes parameters, fields and numerals as a type function's arguments, but not a constructor application such as `Succ(n)`. `Slot(V, n, &slots, k)` is the library's `GetMut` at `Idx(k, n) = ModS(k, n + 1)`, with the bound `IdxLt` (`Words`' `ModLt`).
+
+**The API** follows the bench packages (`ochr/bench/hashmap/SPEC.md` §3):
+- `Insert`, `InsertNoResize` and `Remove` return the value moved out, `Opt(V)`;
+- `Get` and `MapGetMut` return `&V`, given `h : IsSome(V, Find(V, *hm, k))`. They have the same body; `Get`'s borrow is only read. `MapGetMut` is named so because the arrays library's element borrow is `GetMut`;
+- `ContainsKey : Bool`, `Len` the field, `New`, `Clear`, `Resize`.
+
+The code copies no value. `Find(V, m, k) := Lookup(V, &m, k)` is the statements' lookup: the in-place bucket walk (`BLookup`) run on a copy of the map, copying the value it finds with `clone`. It is no longer the API's `Get` (which copied before, the one `clone` of the previous version); `GetFind` proves that reading through `Get`'s borrow gives what `Find` returns and leaves the map as it was.
+
+**How the proofs changed.**
+- *Slot lemmas* are proved by recursion on the index following `GetMut`'s own recursion (match the length, then the cell, then the index), the analogue of the recursion following `Slot` over the list of buckets. `NthS` takes bucket `i` out of a copy of a view through `GetMut` and refills it, so that at an unknown index its normal form is the bucket the closed-off lookup reads (the previous `Nth` did the same through `Slot`).
+- *Map-level proofs* take the abstract array apart (`match slots { MkArray(s) => … }`) so that `AsSlice` computes; proofs may (K3 restricts runtime code only).
+- *The length.* `Entries(V, n, s)` counts a view's entries. It reads every bucket, so it is a model function of the view, and `len = Entries(…)` is the proposition `Counted(V, m)`, which may take the array apart. A data-valued function of a map that summed its buckets would have to match the abstract array at runtime (K3).
+- *Resize* visits the old buckets by index, `MoveFrom(V, n, s, i, rem, hr, hm)` with `rem + i = n` (as `FillFrom`), taking each bucket out with `Take` (moved out through the element borrow, refilled with `Nil`). What is still to move is a list, `Rest(V, n, s, i, rem, hr)`: the view's buckets from `i` on, read with the model `Nth`. The previous `SFindLast`, `Count`, `FreshS`, `Apart` and `GUnique` over the list of buckets become `FindLast`, `CountL`, `FreshL`, `ApartL` and `GUniqueL` over that list. The bridges are `TakeV` (a take returns `Nth` and leaves `SetS(…, Nil)`), `RestSet` (a write before `j` is invisible to `Rest` from `j`), `RestShift` (on a view whose first cell is known, `Rest` from `j + 1` is the tail's from `j`), `NowhereRest` and `CountRest`. `MoveFromInv` and `MoveFromN` need none of them: their induction hypothesis is instantiated at the sealed view and map the step leaves, and that is the goal.
+- *Generic `split`.* Every `split BInsert`, `split BRemove`, `split BLookup`, `split BFindLast` and `split FindLast` splits a result of type `Opt(V)`. The checker refused these until this version (`notes/lean-checker.md` §58).
+
+**Theorems: kept, restated, added.** Every theorem of the previous list is kept, with these restatements.
+- The four count theorems, `InsertCount`, `RemoveCount`, `NewCount` and `ClearCount`, are propositions on a copy of a map value, `(let c = m; InsertNoResize(V, &c, k, v); Counted(V, c))` given `Counted(V, m)`. They were `Id` statements over a borrowed map comparing `Len` with `Count(Buckets(*hm))` (above). `InsertLen`, `RemoveLen` and `GetMutLen` keep their `Id` form.
+- `GetMutIsInsert`'s right side is `(InsertNoResize(V, &*hm, k, w); ())`, since the insert now returns the old value that the write through the borrow drops.
+- `GetFind`'s left side reads through the borrow: `Some(clone(*Get(V, &*hm, k, h)))`, given `h`. `RemoveFind`'s hypothesis is `KeysUnique(V, *hm)`, the per-bucket uniqueness of the map's table, which replaces `AllUnique(Buckets(*hm))`.
+- Added: `BInsertResult`, `SlotInsertResult` and `InsertResult` (an insert returns what `Find` returned, Aeneas's and the bench's H7), which replace `BInsertAdded`, `SlotInsertAdded` and `IsNone`, and `InsertResultR`, the same with the resize.
+- Dropped: none. Removed helpers: `Buckets` (replaced by `KeysUnique` and `Counted`), `WAddS` and `WAddZero` (the library's `AddRS` and `AddZeroR`), `ModGo` (`Words`' `ModS`), and the copies of `W` and `WAdd`. The boolean `Lt` is `Words`' `LtB`, and its lemmas `LtBS`, `LtBAdd`, `LtBPred`.
+
+**Helpers.** None of its own: `Opt` and `IsSome` are `Options`', `EqB`, `LtB`, `Pred`, `EqBRefl`, `W`, `WAdd` and the order lemmas `Words`', and the index is `Words`' `ModS` with its bound `ModLt` (the case study's own `ModGo`, `LeNextB` and `ModGoLe` were deleted on reconciling with the central library).
+
+**Findings.**
+- `split f` on a generic function's result needed the checker change above.
+- A constructor whose fields do not fix its parameters (`None`, `Nil`, `HM`) that runs inside a statement records its parameters only when they are written, and a stuck match that captures such a value cannot type it; inside `convPi` that error reads as two Π-types not converting. Code that statements run writes `None[V]`, `Nil[Pair(Word, V)]` and `HM[V](…)`.
+- A `rewrite` whose side does not occur in the goal leaves the goal as it is: by design since the rule audit (C22, [T-Rewrite] has no premise that it occurs), so a rewrite in the wrong direction shows only later, as a goal the term does not prove. `rewriteGoal`'s docstring still said it was an error, and is corrected; §6 below records the behaviour before the audit.
 
 ## Summary
 

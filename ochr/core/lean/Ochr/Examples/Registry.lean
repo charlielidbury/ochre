@@ -65,7 +65,9 @@ would re-check them twice; their flips are measured once instead, by
 def caseStudies : List (String × Block) :=
   [("Arrays", Arrays), ("ArrayLemmas", ArrayLemmas), ("ArrayHashMap", ArrayHashMap), ("ArrayBench", ArrayBench),
    ("Quicksort", Quicksort),
-   ("HashMap", HashMap), ("HashMapLookup", HashMapLookup), ("HashMapLength", HashMapLength), ("HashMapResize", HashMapResize),
+   ("HashMap", HashMap), ("HashMapTests", HashMapTests), ("HashMapLookup", HashMapLookup),
+   ("HashMapLookupTests", HashMapLookupTests), ("HashMapLength", HashMapLength), ("HashMapLengthTests", HashMapLengthTests),
+   ("HashMapResize", HashMapResize), ("HashMapResizeTests", HashMapResizeTests),
    ("DepVec", DepVec)]
 
 def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
@@ -223,7 +225,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1409
+def Ochr.Registry.expectedTotal : Nat := 1421
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal
