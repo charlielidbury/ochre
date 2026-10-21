@@ -36,7 +36,9 @@ Terms:
 |---|---|
 | `f(a, b)` | a call, always saturated; no space before `(` |
 | `C(a, b)`, `C` | a constructor; the type's parameters are inferred (`Cons(1, Nil)`) |
-| `match p { C1(x, y) => t, C2 => u, }` | case analysis on a place `p`; `x`, `y` are the *field places* `p.x`, `p.y`, not copies; `_` ignores a field; a trailing comma is allowed |
+| `match p { C1(x, y) => t, C2 => u, }` | case analysis on a place `p`; `x`, `y` are the *field places* `p.x`, `p.y`, not copies; `_` ignores a field; a trailing comma is allowed. On any other term, `match F(x) { … }`, the term is bound to a temporary first, which is matched |
+| `if c { a } else { b }` | `match c { true => a, false => b }` on `Bool`; `else if c2 { … }` chains; without `else`, the branch must be `Unit` |
+| `let C(x, _, z) = e; u` | `match e { C(x, _, z) => u }`, for a type with one constructor (otherwise use `match`); patterns nest, `let MkW((a, b), T3(_, y, _)) = w; …`; on a place the names are its field places, so `let HM(n, len, s) = *m; len := …` writes `*m` |
 | `match h {}` | no arms: `h` has an empty type (`False`, or `Le(Succ(a), Zero)`, …); proves anything |
 | `let x = t; u`, `let x : T = t; u` | local binding (the annotation is needed when the type cannot be inferred, e.g. for a proof or a `match`) |
 | `t; u` | sequence |
@@ -86,7 +88,7 @@ Types are programs, so a statement can run the in-place code. Two forms recur:
 
 A proof is a program whose type is the statement; it is erased when the program runs.
 
-- **Case split.** `match x { Zero => …, Succ(x') => … }` in a proof refines `x` to each constructor, in the goal and in every hypothesis. Matching on a place whose content is stuck (a sealed program) first generalises that program to a fresh abstract value, then splits. To split on the result of a call, bind it and match: `let d = LeDec(a, b); match d { Yes(h) => …, No(k) => … }`; code that makes the same call becomes unstuck in each arm.
+- **Case split.** `match x { Zero => …, Succ(x') => … }` in a proof refines `x` to each constructor, in the goal and in every hypothesis. Matching on a place whose content is stuck (a sealed program) first generalises that program to a fresh abstract value, then splits. To split on the result of a call, match on the call: `match LeDec(a, b) { Yes(h) => …, No(k) => … }` binds it to a temporary and matches that (the same as `let d = LeDec(a, b); match d { … }`); code that makes the same call becomes unstuck in each arm. `if c { … } else { … }` splits on a `Bool` the same way.
 - **Induction** is recursion: a proof declared `by x` may call itself on a strict sub-value of `x`, and that call's type is the induction hypothesis. A proof about a borrowed place can call itself (or another lemma) on a borrow of a field, `Lemma(&p)`, and the result is about the whole: `AddMZero` in `00Std.lean` is the pattern.
 - **Lemmas** are ordinary functions returning propositions; call them to get facts: `LeTrans(a, b, c, h1, h2)`. A lemma about in-place code can be called on a borrow of a local copy inside a proof: `(let c = *s; F(&c); Lemma(n, &c))` has `Lemma`'s statement about the contents after `F`.
 - **False.** `match h {}` for `h` of an empty type. A contradictory equation between different constructors is `False` by computation, so it matches with no arms too.
@@ -104,6 +106,8 @@ When a proof is rejected, `lake -q exe check --trace Name` shows the goal in eva
 - `the body of X has type A, but the goal is B`: the proof proves `A`; the statement needs `B`. Compare the two normal forms.
 - `argument i (h) has type A, expected B`: a call's argument has the wrong type.
 - `[Read] x was moved out (D53)`: `x` was already moved; `clone` it, reborrow, or read it once.
+- `(surface) let C(…) = …: T has n constructors …`: a destructuring `let` only takes apart a type with one constructor; use `match`.
+- `[Match] on c : Word, with the constructors of Bool`: the scrutinee's type is not the arms' type; for an `if`, the condition must be a `Bool`.
 - `[K2]` / `[K3]` errors: runtime code touched the array representation directly (§9).
 - Messages naming a rule (`[Rec]`, `D48`, …) refer to `docs/RULES.md`.
 

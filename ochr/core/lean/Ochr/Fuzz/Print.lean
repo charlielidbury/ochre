@@ -49,6 +49,7 @@ partial def pp (p : Nat) : STerm → String
   | .rewrite rev h t => paren (p > 10) s!"rewrite {if rev then "← " else ""}{pp 0 h} in {pp 10 t}"
   | .split f t => paren (p > 10) s!"split {f} in {pp 10 t}"                  -- D61
   | .splitArms f arms => s!"split {f} \{ {", ".intercalate (arms.map ppArm)} }"
+  | .letPat c xs sc b => paren (p > 10) s!"let {c}({", ".intercalate xs}) = {pp 11 sc}; {pp 10 b}"
   | .sort 0 => "Prop"
   | .sort _ => "Type"
   | .loc _ _ t => pp p t

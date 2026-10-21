@@ -80,6 +80,7 @@ partial def scopedT (names : List String) (bound : List String) : STerm → Bool
   | .seq a b | .pair a b | .andI a b | .and a b | .prod a b | .ascribe a b | .arrow a b =>
       scopedT names bound a && scopedT names bound b
   | .matchGen sc arms => scopedT names bound sc && arms.all fun (_, vs, b) => scopedT names (vs ++ bound) b
+  | .letPat _ vs sc b => scopedT names bound sc && scopedT names (vs ++ bound) b
   | .pi bs c => scopedBs names bound bs c
   | .fix f bs r _ b => scopedBs names bound bs r && scopedT names ((bs.map (·.1)).reverse ++ f :: bound) b
 where
