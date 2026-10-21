@@ -187,6 +187,7 @@ Lane `hm-gen` applies the rule inside the hashmap case study. Lane `hm-lib` appl
 - partition the files, so no two forks edit the same file;
 - give each fork its own branch or worktree, or a disjoint set of files with commits by explicit path;
 - the lane owner reviews and lands.
+
 ## Outcome of §2, first landing (lane hm-lib, 2026-10-21)
 
 An intermediate step towards the final layout below, which splits `00Std.lean` into topic files.
