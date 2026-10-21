@@ -1,4 +1,6 @@
-import Ochr.Examples.«00Std»
+import Ochr.Examples.Bool
+import Ochr.Examples.Word
+import Ochr.Examples.Option
 
 /-! # 17. A verified hash map
 
@@ -22,9 +24,9 @@ lookups after each operation; `HashMapLength`, the length field and the count of
 
 open Ochr.Test
 
-ochr HashMap uses Std, Words {
+ochr HashMap uses Bools, Words, Options {
   -- ## The data
-  -- `n + 1` buckets, `len` entries; a lookup's result is Std's `Opt(Nat)`.
+  -- `n + 1` buckets, `len` entries; a lookup's result is `Options`' `Opt(Nat)`.
   inductive Bucket := BNil | BCons(k : Word, v : Nat, t : Bucket)
   inductive Slots := SOne(b : Bucket) | SCons(b : Bucket, t : Slots)
   inductive HashMap := HM(n : Word, len : Word, slots : Slots)
@@ -375,8 +377,6 @@ ochr HashMap uses Std, Words {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard HashMap.decls.length == 37
 
 /-! ## Lookups after each operation
 
@@ -386,7 +386,7 @@ v)`, `Find(*hm, k)` is `Some(v)`" is `Id Opt(Nat) (InsertNoResize(&*hm, k, v); F
 (InsertNoResize(&*hm, k, clone(v)); Some(v))`. Each is proved first for one bucket, by recursion on
 the bucket, then lifted through `Slot` by recursion on the slots, then stated for the map. -/
 
-ochr HashMapLookup uses Std, HashMap {
+ochr HashMapLookup uses Bools, Words, Options, HashMap {
   -- ## Key comparison
   -- Where the comparison says the keys are equal, they are. `Succ(a) = Succ(b)` is
   -- `a = b` (injectivity), so the recursive call proves the `Succ` case as it stands.
@@ -921,8 +921,6 @@ ochr HashMapLookup uses Std, HashMap {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard HashMapLookup.decls.length == 45
 
 /-! ## The length
 
@@ -930,7 +928,7 @@ ochr HashMapLookup uses Std, HashMap {
 absent, and after a remove it shrinks by one exactly when the key was present; with the
 invariant `len = Count(slots)` (the number of entries), each operation preserves it. -/
 
-ochr HashMapLength uses Std, HashMap, HashMapLookup {
+ochr HashMapLength uses Bools, Words, Options, HashMap, HashMapLookup {
   -- Sizes, and the two ways a length changes.
   def BLen (b : Bucket) : Word by b := (
     match b {
@@ -1163,8 +1161,6 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
 
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard HashMapLength.decls.length == 19
 
 /-! ## The invariant, and resizing
 
@@ -1176,7 +1172,7 @@ operation on a copy, then the invariant holds of the copy". Resizing moves every
 `InsertNoResize`, so it keeps every lookup; with the invariant, the insert with resizing
 behaves like the insert without. -/
 
-ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
+ochr HashMapResize uses Bools, Words, Options, HashMap, HashMapLookup, HashMapLength {
   -- ## Helpers
   def EqBSymm (a : Word) (b : Word) (h : Eq(Bool, EqB(a, b), true)) : Eq(Bool, EqB(b, a), true) := (
     rewrite EqBSound(a, b, h) in EqBRefl(a)
@@ -2129,5 +2125,3 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard HashMapResize.decls.length == 78

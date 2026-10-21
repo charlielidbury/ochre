@@ -1,4 +1,6 @@
-import Ochr.Examples.«00Std»
+import Ochr.Examples.Bool
+import Ochr.Examples.Word
+import Ochr.Examples.List
 
 /-! # Surface sugar: destructuring `let`, `if`, and `match` on any term
 
@@ -23,7 +25,7 @@ stands for. -/
 
 open Ochr.Test
 
-ochr Sugar uses Std {
+ochr Sugar uses Bools, WordType, Lists {
   -- ## Destructuring `let`
   inductive Triple := T3(a : Word, b : Word, c : Word)
   inductive Map := MkMap(n : Word, len : Word, keys : List(Word))

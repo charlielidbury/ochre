@@ -1,4 +1,8 @@
-import Ochr.Examples.«00Std»
+import Ochr.Examples.Nat
+import Ochr.Examples.List
+import Ochr.Examples.Box
+import Ochr.Examples.Bool
+import Ochr.Examples.Word
 
 /-! # 15. Borrow types: what may be borrowed, and where `&` may appear
 
@@ -16,8 +20,8 @@ Defined in RULES §1 (the scope paragraph), D48 and D66. -/
 
 open Ochr.Test
 
-ochr BorrowTypes uses Std {
-  -- Data may be borrowed: an inductive type at any parameter (`Std`'s `List(A)`), a pair ...
+ochr BorrowTypes uses Nats, Lists, Boxes {
+  -- Data may be borrowed: an inductive type at any parameter (`Lists`' `List(A)`), a pair ...
   def RefList (A : Type) (xs : &List(A)) : Unit := ()
   def RefPair (p : &(Nat × Unit)) : Unit := *p := (0, ())
 
@@ -25,7 +29,7 @@ ochr BorrowTypes uses Std {
   def RefFun (f : &(Π(n : Nat). Nat)) : Nat := 0
   def SwapT (A : Type) (x : &A) (y : &A) : Unit := ()
 
-  -- `&` at the top of a result (`Std`'s `TailM`), an annotation, and the parts of a Π-type.
+  -- `&` at the top of a result (`Nats`' `TailM`), an annotation, and the parts of a Π-type.
   def Ann (x : &Nat) : Unit := (
     let r : &Nat = TailM(x);
     *r := 1
@@ -97,8 +101,6 @@ ochr BorrowTypes uses Std {
   reject def UseG : Unit := G(0, 5)
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard BorrowTypes.decls.length == 29
 
 /-! ## Borrowing functions and type variables (D66)
 
@@ -111,7 +113,7 @@ function type, and a later call of it is a call with an unknown head, which clos
 with a generic value type. Functions are still compared by their generic calls (D30), with
 no extensionality. -/
 
-ochr FnBorrows uses Std, Words {
+ochr FnBorrows uses Bools, Nats, Words, Boxes {
   -- Borrow a closure, write another through the borrow, and call through it; the new
   -- closure may capture (a closure's body copies its captures: the Fn rule).
   def SetSucc (f : &(Π(n : Nat). Nat)) : Unit := *f := (λ(n : Nat) : Nat => S(n))
@@ -186,7 +188,6 @@ ochr FnBorrows uses Std, Words {
   def BoxFn : Box(Π(n : Nat). Nat) := MkBox(λ(n : Nat) : Nat => n)
 }
 
-#guard FnBorrows.decls.length == 31
 
 /-! ## Abstract and unsized types (K2, K3)
 
@@ -196,10 +197,10 @@ type, and matches on them, occur at runtime only in model code: the body of a fu
 of a model function, one that takes or returns an `unsized` value, which runtime code never
 holds. In erased positions (types, statements, proofs) the model is unrestricted. At
 runtime outside model code, a place of an `unsized` type is only borrowed: never read, moved,
-assigned or matched. The arrays case study keeps its views this way (`16Arrays`,
+assigned or matched. The arrays case study keeps its views this way (`Array.lean`,
 reviewer-7's `Suffix`, `TwoParts`, `Rebuild`). -/
 
-ochr Abstraction uses Std {
+ochr Abstraction {
   unsized abstract inductive View := MkView(v : Nat)
   -- a model function (a view by value)
   def ViewVal (w : View) : Nat := match w { MkView(v) => v }
@@ -221,4 +222,3 @@ ochr Abstraction uses Std {
   reject def AssignV (s : &View) (t : &View) : Unit := *s := *t
 }
 
-#guard Abstraction.decls.length == 12

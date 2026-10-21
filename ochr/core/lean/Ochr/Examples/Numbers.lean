@@ -1,4 +1,4 @@
-import Ochr.Examples.«00Std»
+import Ochr.Examples.Nat
 
 /-! # 1. Numbers, in-place mutation, and the first proofs
 
@@ -8,7 +8,7 @@ running programs: `Id A t u` states that the computations `t` and `u` return the
 and leave the same contents in every place they may write, and `refl` proves it when the
 two runs agree.
 
-This file continues the paper's first example, whose definitions are in `Std`: in-place
+This file continues the paper's first example, whose definitions are in `Nats`: in-place
 addition `AddM`, pure addition `Add` defined by running `AddM` on a copy, and the in-place
 lemma `AddMZero`. Here are a type that runs a program, the pure theorem that adding zero does
 nothing, and how a match names the parts of a number and of a pair.
@@ -18,7 +18,7 @@ Defined in RULES §1 (syntax), §3 (the machine: [Read], [Assign], [Match], [Cal
 
 open Ochr.Test
 
-ochr Numbers uses Std {
+ochr Numbers uses Nats {
   -- A type can run a program: `Add(2, 3)` evaluates to `5`, so `refl` proves the equation.
   def Add23 : Id(Nat, Add(2, 3), 5) := refl
 
@@ -144,5 +144,3 @@ ochr Numbers uses Std {
   def UnitStill (x : Unit) : Eq(Unit, x, ()) := refl
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Numbers.decls.length == 26

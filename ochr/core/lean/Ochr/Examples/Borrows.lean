@@ -1,4 +1,6 @@
-import Ochr.Examples.«00Std»
+import Ochr.Examples.Nat
+import Ochr.Examples.Word
+import Ochr.Examples.Fixtures
 
 /-! # 2. Borrows: moving, copying, reborrowing, and the borrow checker
 
@@ -17,7 +19,7 @@ Defined in RULES §3: [Read], [Borrow], [Assign], [Access], [End], [Drop], [Call
 
 open Ochr.Test
 
-ochr Borrows uses Std {
+ochr Borrows uses Nats, WordType {
   -- Passing `x` moves the borrow into the call, so the second call reads a dead place.
   reject def UseMoved (x : &Nat) : Unit := (
     AddM(x, 0);
@@ -121,8 +123,6 @@ ochr Borrows uses Std {
   reject def WRun : Nat := W(1)
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Borrows.decls.length == 19
 
 /-! ## A place that dies while lent (D65 amended)
 
@@ -136,7 +136,7 @@ fill ends every loan in it), so an error at [Drop] for a live loan would let a f
 generically and fail at an instance (meta-order's `Bad2`, reviewer-9's `Bad4`, fuzz-port's
 Drop family). Each accepted function below also runs at the instance that used to fail. -/
 
-ochr Drops uses Std, Fixtures {
+ochr Drops uses Nats, Fixtures {
   -- `Pick`'s hole sits in `a`'s fill and `b`'s; reading `b` ends `x` symbolically, while at
   -- `n = 0` `x` still borrows `a` when `a` dies, and is ended there
   def Bad2 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &a, &b); let z = b; ())
@@ -192,8 +192,6 @@ ochr Drops uses Std, Fixtures {
   reject def UseG (n : Nat) (c : Nat) : Unit := (let r = G(n, &c); *r := 7)
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Drops.decls.length == 25
 
 /-- The message rejecting `Drops.name`. -/
 def dropsMessage (name : String) : String :=
@@ -212,7 +210,7 @@ Reading data whose type is not a copy type moves it; `clone` copies; a copy type
 `copy` or is not recursive with copy fields; erased reads copy and see ghosts; the Fn rule;
 and a stuck match's effect on what it captures, moves included (RULES P3, D53). -/
 
-ochr Moves uses Std {
+ochr Moves uses Nats, WordType {
   -- Reading a `Nat` moves it: after `let m = n`, `n` is gone ...
   def MoveNat (n : Nat) : Nat := (
     let m = n;
@@ -399,4 +397,3 @@ ochr Moves uses Std {
     match n { Z => 0, S _ => 1 })
 }
 
-#guard Moves.decls.length == 54

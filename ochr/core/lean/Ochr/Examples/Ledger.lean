@@ -71,7 +71,7 @@ open Ochr.Registry in
   ["Borrows.Dead:accepted", "Borrows.DeadTwice:accepted"]
 open Ochr.Registry in
 #guard rowOk { generalize := false }
-  ["Drops.Bad4:rejected", "Drops.Bad4Run:rejected", "Drops.Bad5:rejected", "Drops.Bad5Run:rejected",
+  ["Words.ModS:rejected", "Words.ModLt:rejected", "Drops.Bad4:rejected", "Drops.Bad4Run:rejected", "Drops.Bad5:rejected", "Drops.Bad5Run:rejected",
    "ClosingOff.UseDec:rejected", "Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected",
    "GenType.GenL:rejected", "RenormPi.G:rejected", "RenormPi.Plain:rejected", "RenormPi.InPi:rejected",
    "RenormPi.InConj:rejected", "Splitting.Pick:rejected", "Splitting.PickNotZero:rejected",
@@ -116,7 +116,7 @@ open Ochr.Registry in
   ["ClosingOff.Clear:accepted", "ClosingOff.Boom5:accepted"]
 open Ochr.Registry in
 #guard rowOk { genConsistent := false }
-  ["RenormPi.Plain:rejected", "RenormPi.InPi:rejected", "RenormPi.InConj:rejected",
+  ["Words.ModLt:rejected", "RenormPi.Plain:rejected", "RenormPi.InPi:rejected", "RenormPi.InConj:rejected",
    "Splitting.PickNotZero:rejected", "Splitting.PickNotZeroCopy:rejected",
    "Splitting.Pick22NotZero:rejected", "Splitting.PickTwo:rejected", "Trees.InsertMEq:rejected",
    "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected",
@@ -184,19 +184,20 @@ open Ochr.Registry in
    "Subsingletons.Get:accepted", "Subsingletons.SqIrr:accepted", "ErasureBySyntax.R8Field:rejected"]
 -- v2.0 D42 for constructors, switched off: Prop constructor applications are data values, not proofs (completeness).
 -- Most of the row is D63 checked at definition: a proof by cases with a constructor in one arm
--- (now data) and a proof in another has arms that disagree (`Std.AddMZero`, `refl` against `cong`;
+-- (now data) and a proof in another has arms that disagree (`Nats.AddMZero`, `refl` against `cong`;
 -- `Words`' facts likewise)
 open Ochr.Registry in
 #guard rowOk { propValues := false }
-  ["Std.AddMZero:rejected", "Std.AddMS:rejected", "Std.AddS:rejected", "Words.LeRefl:rejected", "Words.LeStep:rejected", "Words.LeTrans:rejected",
+  ["Nats.AddMZero:rejected", "Nats.AddMS:rejected", "Nats.AddS:rejected", "Words.LeRefl:rejected", "Words.LeStep:rejected", "Words.LeTrans:rejected",
    "Words.LeOfLt:rejected", "Words.LeAddL:rejected", "Words.AddRS:rejected", "Words.AddZeroR:rejected",
    "Words.AddOneR:rejected", "Words.SubPos:rejected", "Words.SubOneLe:rejected",
    "Words.LeAntisym:rejected", "Words.SubPosLt:rejected", "Words.EqBRefl:rejected",
+   "Words.LeNext:rejected", "Words.ModLt:rejected",
    "ReturnedBorrows.AddMEq:rejected", "ReturnedBorrows.AddMEqOwned:rejected",
    "ReturnedBorrows.AddM1:rejected", "ReturnedBorrows.TailNoop:rejected", "ClosingOff.RowIInd:rejected",
    "Equality.AddMZeroLet:rejected", "Recursion.AddZeroCopy:rejected", "Recursion.AddZeroC:rejected",
    "ArmLocal.Leak:rejected", "ArmLocalBoom.EmptyEq:rejected", "Functions.TwiceMZero:rejected",
-   "Lists.AppendMNil:rejected", "Lists.AppendMEq:rejected", "Trees.InsertMEq:rejected",
+   "NatLists.AppendMNil:rejected", "NatLists.AppendMEq:rejected", "Trees.InsertMEq:rejected",
    "PolyLists.AppendMNil:rejected", "PolyLists.AppendNil:rejected", "PolyLists.AppendNilL:rejected",
    "PolyLists.Closed:rejected", "Subsingletons.OrComm:rejected", "Subsingletons.SqTrue:rejected",
    "Subsingletons.SqSplit:rejected", "CurrentState.LeAdd:rejected", "CurrentState.AddSub:rejected",
@@ -204,26 +205,27 @@ open Ochr.Registry in
    "CurrentState.AddSubIdReborrow:rejected", "Erasure.LieP2:rejected", "Erasure.N1T:rejected",
    "Erasure.Q:rejected", "ErasureBySyntax.R8Field:rejected", "DepFields.UseEx:rejected",
    "Sugar.PosNotZero:rejected"]
-  ["Numbers.AddZero blocked by Std.AddMZero", "Numbers.AddZero' blocked by Std.AddMZero",
-   "ClosingOff.AddToOneZero blocked by Std.AddMZero",
-   "ClosingOff.AddToOneZero' blocked by Std.AddMZero",
-   "ClosingOff.AddToOneZero'' blocked by Std.AddMZero", "Rewriting.RwSplit blocked by Std.AddMZero",
-   "Recursion.CallSite blocked by Std.AddMZero", "Functions.TwiceMZero' blocked by Std.AddMZero",
-   "Trees.SizeInsert blocked by Std.AddS", "InPlaceTrees.SizeInsert blocked by Std.AddS",
-   "InPlaceTrees.SizeInsertRw blocked by Std.AddS", "Propositions.TwoAt blocked by Std.AddMZero", "Erasure.LemmaMoves blocked by Std.AddMZero",
-   "Erasure.Pass blocked by Std.AddMZero"]
+  ["Numbers.AddZero blocked by Nats.AddMZero", "Numbers.AddZero' blocked by Nats.AddMZero",
+   "ClosingOff.AddToOneZero blocked by Nats.AddMZero",
+   "ClosingOff.AddToOneZero' blocked by Nats.AddMZero",
+   "ClosingOff.AddToOneZero'' blocked by Nats.AddMZero", "Rewriting.RwSplit blocked by Nats.AddMZero",
+   "Recursion.CallSite blocked by Nats.AddMZero", "Functions.TwiceMZero' blocked by Nats.AddMZero",
+   "Trees.SizeInsert blocked by Nats.AddS", "InPlaceTrees.SizeInsert blocked by Nats.AddS",
+   "InPlaceTrees.SizeInsertRw blocked by Nats.AddS", "Propositions.TwoAt blocked by Nats.AddMZero", "Erasure.LemmaMoves blocked by Nats.AddMZero",
+   "Erasure.Pass blocked by Nats.AddMZero"]
 -- both off: the closed proofs of False (Subsingletons.Boom, SqBoom) go through
 open Ochr.Registry in
 #guard rowOk { subsingleton := false, propValues := false }
-  ["Std.AddMZero:rejected", "Std.AddMS:rejected", "Std.AddS:rejected", "Words.LeRefl:rejected", "Words.LeStep:rejected", "Words.LeTrans:rejected",
+  ["Nats.AddMZero:rejected", "Nats.AddMS:rejected", "Nats.AddS:rejected", "Words.LeRefl:rejected", "Words.LeStep:rejected", "Words.LeTrans:rejected",
    "Words.LeOfLt:rejected", "Words.LeAddL:rejected", "Words.AddRS:rejected", "Words.AddZeroR:rejected",
    "Words.AddOneR:rejected", "Words.SubPos:rejected", "Words.SubOneLe:rejected",
    "Words.LeAntisym:rejected", "Words.SubPosLt:rejected", "Words.EqBRefl:rejected",
+   "Words.LeNext:rejected", "Words.ModLt:rejected",
    "ReturnedBorrows.AddMEq:rejected", "ReturnedBorrows.AddMEqOwned:rejected",
    "ReturnedBorrows.AddM1:rejected", "ReturnedBorrows.TailNoop:rejected", "ClosingOff.RowIInd:rejected",
    "Equality.AddMZeroLet:rejected", "Recursion.AddZeroCopy:rejected", "Recursion.AddZeroC:rejected",
    "ArmLocal.Leak:rejected", "ArmLocalBoom.EmptyEq:rejected", "Functions.TwiceMZero:rejected",
-   "Lists.AppendMNil:rejected", "Lists.AppendMEq:rejected", "Trees.InsertMEq:rejected",
+   "NatLists.AppendMNil:rejected", "NatLists.AppendMEq:rejected", "Trees.InsertMEq:rejected",
    "PolyLists.AppendMNil:rejected", "PolyLists.AppendNil:rejected", "PolyLists.AppendNilL:rejected",
    "PolyLists.Closed:rejected", "Subsingletons.IsL:accepted", "Subsingletons.Irr:accepted",
    "Subsingletons.Boom:accepted", "Subsingletons.Get:accepted", "Subsingletons.SqIrr:accepted",
@@ -231,18 +233,18 @@ open Ochr.Registry in
    "CurrentState.AddSubId:rejected", "CurrentState.PostCopy:rejected",
    "CurrentState.AddSubIdReborrow:rejected", "Erasure.LieP2:rejected", "Erasure.N1T:rejected",
    "Erasure.Q:rejected", "ErasureBySyntax.R8Field:rejected"]
-  ["Numbers.AddZero blocked by Std.AddMZero", "Numbers.AddZero' blocked by Std.AddMZero",
-   "ClosingOff.AddToOneZero blocked by Std.AddMZero",
-   "ClosingOff.AddToOneZero' blocked by Std.AddMZero",
-   "ClosingOff.AddToOneZero'' blocked by Std.AddMZero", "Rewriting.RwSplit blocked by Std.AddMZero",
-   "Recursion.CallSite blocked by Std.AddMZero", "Functions.TwiceMZero' blocked by Std.AddMZero",
-   "Trees.SizeInsert blocked by Std.AddS", "InPlaceTrees.SizeInsert blocked by Std.AddS",
-   "InPlaceTrees.SizeInsertRw blocked by Std.AddS", "Propositions.TwoAt blocked by Std.AddMZero", "Erasure.LemmaMoves blocked by Std.AddMZero",
-   "Erasure.Pass blocked by Std.AddMZero"]
+  ["Numbers.AddZero blocked by Nats.AddMZero", "Numbers.AddZero' blocked by Nats.AddMZero",
+   "ClosingOff.AddToOneZero blocked by Nats.AddMZero",
+   "ClosingOff.AddToOneZero' blocked by Nats.AddMZero",
+   "ClosingOff.AddToOneZero'' blocked by Nats.AddMZero", "Rewriting.RwSplit blocked by Nats.AddMZero",
+   "Recursion.CallSite blocked by Nats.AddMZero", "Functions.TwiceMZero' blocked by Nats.AddMZero",
+   "Trees.SizeInsert blocked by Nats.AddS", "InPlaceTrees.SizeInsert blocked by Nats.AddS",
+   "InPlaceTrees.SizeInsertRw blocked by Nats.AddS", "Propositions.TwoAt blocked by Nats.AddMZero", "Erasure.LemmaMoves blocked by Nats.AddMZero",
+   "Erasure.Pass blocked by Nats.AddMZero"]
 -- v2.0 D47 switched off: Eq Nat Z (S Z) is irreducible again, so False and Eq Nat 0 1 part ways
 open Ochr.Registry in
 #guard rowOk { disjoint := false }
-  ["Words.LtNe:rejected", "ReturnedBorrows.L:rejected", "ReturnedBorrows.Inj:rejected", "ReturnedBorrows.PF:rejected",
+  ["Words.LtNe:rejected", "Words.LeNext:rejected", "Words.ModLt:rejected", "ReturnedBorrows.L:rejected", "ReturnedBorrows.Inj:rejected", "ReturnedBorrows.PF:rejected",
    "Equality.NotAdd01:rejected", "Equality.WriteNeq:rejected", "Equality.WriteDisj:rejected",
    "Equality.NoConf:rejected", "Equality.NoConfS:rejected", "Equality.NoConfMatch:rejected",
    "Equality.NoConfBack:rejected", "Equality.BoolDisj:rejected", "RenormPi.Plain:rejected",

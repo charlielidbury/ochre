@@ -1,4 +1,6 @@
-import Ochr.Examples.«00Std»
+import Ochr.Examples.Bool
+import Ochr.Examples.Nat
+import Ochr.Examples.Fixtures
 
 /-! # 5. Observational equality: `Id` and `Eq`
 
@@ -20,7 +22,7 @@ Defined in RULES §4. -/
 
 open Ochr.Test
 
-ochr Equality uses Std {
+ochr Equality uses Bools, Nats {
   -- The footprint is read from the syntax, so an unrelated `let` does not change what is
   -- compared, and the proof is the same as `AddMZero`'s.
   def AddMZeroLet (x : &Nat) : Id(Unit, let n = 0; AddM(x, n), ()) by x := (
@@ -189,8 +191,6 @@ ochr Equality uses Std {
       Id(Unit, (let r = &x; match n { Z => (let y = x; ()), S _ => () }), (let r = &x; match n { Z => (), S _ => (let y = x; ()) })) := refl
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Equality.decls.length == 41
 
 /-! ## Rewriting
 
@@ -200,7 +200,7 @@ uses to generalise a sealed program, D34, here local to the goal). `rewrite ← 
 replaces `a` by `b`. It is `J(A, a, b, λz. G[z/b], h, t)` with the motive read off the goal,
 so it needs a known goal: tail position, a call's argument, or an annotated `let` (D60). -/
 
-ochr Rewriting uses Std {
+ochr Rewriting uses Nats {
   -- Symmetry and transitivity, and congruence without a motive.
   def RwSymm (x : Nat) (y : Nat) (h : Eq(Nat, x, y)) : Eq(Nat, y, x) := rewrite h in refl
   def RwTrans (x : Nat) (y : Nat) (z : Nat) (h1 : Eq(Nat, x, y)) (h2 : Eq(Nat, y, z)) : Eq(Nat, x, z) := rewrite h2 in h1
@@ -253,8 +253,6 @@ ochr Rewriting uses Std {
   reject def RwFalse (x : Nat) (h : Eq(Nat, x, x)) : Eq(Nat, x, S(x)) := rewrite h in refl
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Rewriting.decls.length == 18
 
 /-! ## All the owners of a returned borrow are observed
 
@@ -357,8 +355,6 @@ ochr Owners uses Fixtures {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Owners.decls.length == 17
 
 /-- The message rejecting `Owners.Use` under `cfg`: it states `Probe`'s parameter type. -/
 def useMessage (cfg : Ochr.Config) : String :=

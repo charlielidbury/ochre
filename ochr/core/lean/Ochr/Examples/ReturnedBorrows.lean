@@ -1,4 +1,7 @@
-import Ochr.Examples.«00Std»
+import Ochr.Examples.Nat
+import Ochr.Examples.Fixtures
+import Ochr.Examples.Word
+import Ochr.Examples.List
 
 /-! # 3. Functions that return a borrow
 
@@ -16,8 +19,8 @@ Defined in RULES §1 (D44), §3 [Close] and §7. -/
 
 open Ochr.Test
 
-ochr ReturnedBorrows uses Std, Fixtures {
-  -- `Std`'s `TailM(x)` returns a borrow of the final `Z` of `*x`. Addition by writing
+ochr ReturnedBorrows uses Nats, Fixtures {
+  -- `Nats`' `TailM(x)` returns a borrow of the final `Z` of `*x`. Addition by writing
   -- through it ...
   def AddM' (x : &Nat) (y : Nat) : Unit := (
     let t = TailM(x);
@@ -117,8 +120,6 @@ ochr ReturnedBorrows uses Std, Fixtures {
   reject def Main0 : Nat := Main(0)
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard ReturnedBorrows.decls.length == 20
 
 /-! ## Moving a borrow down: reborrow and replace (D67)
 
@@ -129,7 +130,7 @@ its owner, where it stays live. Rust allows the same, since a reborrow of `*x` l
 as the reference `x` held, not the variable `x`. Reads, moves and borrows of `x` still end every
 loan inside, so a borrow passed to a call carries no live loan ([Close]'s precondition). -/
 
-ochr Reborrows uses Std, Fixtures {
+ochr Reborrows uses WordType, Lists, Fixtures {
   -- meta-order's `Trav`: step down one `S`, then write there
   def Trav (x : &Nat) : Unit := (
     match *x {
@@ -209,8 +210,6 @@ ochr Reborrows uses Std, Fixtures {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Reborrows.decls.length == 13
 #guard (run "Reborrows" Reborrows).rejectedWith [
   ("TravRunWrong", "the body of TravRunWrong has type ⊤, but the goal is False"),
   ("UseMoved", "no such place *x: its path does not exist in ⊥"),

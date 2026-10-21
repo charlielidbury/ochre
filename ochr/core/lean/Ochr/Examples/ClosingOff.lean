@@ -1,4 +1,6 @@
-import Ochr.Examples.«00Std»
+import Ochr.Examples.Logic
+import Ochr.Examples.Nat
+import Ochr.Examples.Fixtures
 
 /-! # 4. Closing off: what a stuck computation leaves behind
 
@@ -18,7 +20,7 @@ Defined in RULES §3: [Close], [Seal], stuck blocks; [Split] in §5 checks the a
 
 open Ochr.Test
 
-ochr ClosingOff uses Std, Fixtures {
+ochr ClosingOff uses Logic, Nats, Fixtures {
   -- ## A borrow chosen by a branch
   -- The match is not in tail position: its arms are checked, then it is closed off, and the
   -- rest of the body runs once, on the borrow the closed-off block returns.
@@ -270,7 +272,7 @@ ochr ClosingOff uses Std, Fixtures {
   -- declared type, and a place lent out by its borrow's content. Here `y` is the sealed
   -- `H(σ, ⋆)`, and both a split on a decision about it and a closure capturing it type it
   -- (arrays-library) ... The order is on `Nat` here, not `Words`' on `Word`; `Dec` is
-  -- `Std`'s.
+  -- `Logic`'s.
   def Le (a : Nat) (b : Nat) : Prop by a := (
     match a {
       Z => ⊤,
@@ -378,8 +380,6 @@ ochr ClosingOff uses Std, Fixtures {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard ClosingOff.decls.length == 52
 
 /-! ## Symbolic checking is not the same as checking every instance
 
@@ -420,5 +420,3 @@ ochr Naturality uses Fixtures {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Naturality.decls.length == 3

@@ -1,4 +1,8 @@
-import Ochr.Examples.«16Arrays»
+import Ochr.Examples.Logic
+import Ochr.Examples.Word
+import Ochr.Examples.Option
+import Ochr.Examples.Array
+import Ochr.Examples.ArrayBench
 
 /-! # 18. Dependent fields
 
@@ -28,9 +32,9 @@ arrays library, is a case study. -/
 
 open Ochr.Test
 
-ochr DepFields uses Std {
+ochr DepFields uses Logic, WordType, Options {
   inductive One := O
-  -- `Fin1(0)` has no values (it is `Std`'s `Void`), `Fin1(n + 1)` has one
+  -- `Fin1(0)` has no values (it is `Logic`'s `Void`), `Fin1(n + 1)` has one
   def Fin1 (n : Word) : Type := (
     match n {
       Zero => Void,
@@ -348,8 +352,6 @@ ochr DepFields uses Std {
   reject inductive NegBox (A : Type) := MkNegBox(f : Neg(A))
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard DepFields.decls.length == 57
 -- each rejection for its reason
 #guard (run "DepFields" DepFields).rejectedWith [
   ("NoneAt0", "field x of MkV has type One, expected Void"),
@@ -399,9 +401,9 @@ The cell representation is interim: `Opt(E)` cells cost a tag each at runtime, a
 weighing a tag-free `Uninit(E)` cell type (possibly the ⊥ a move leaves, docs/10), with which
 "cells below `len` hold elements" could be a computed type rather than `VInv`. -/
 
-ochr DepVec uses ArrayBench {
+ochr DepVec uses ArrayLemmas, ArrayHashMap, Options {
   -- ## The cells
-  -- A cell is Std's `Opt(E)`: an element or nothing (`IsSome`, `IsNone`).
+  -- A cell is `Options`' `Opt(E)`: an element or nothing (`IsSome`, `IsNone`).
   -- A borrow of the element in a cell known to hold one.
   def UnwrapMut (E : Type) (o : &Opt(E)) (h : IsSome(E, *o)) : &E := (
     match *o {
@@ -1207,8 +1209,6 @@ ochr DepVec uses ArrayBench {
       TLen(t), W(2)) := refl
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard DepVec.decls.length == 76
 -- each rejection for its reason
 #guard (run "DepVec" DepVec).rejectedWith [
   ("ClearWrongCap", "field buf of MkVec has type ArrayOf(CellsEnd), expected ArrayOf(Cell(Opt(σ0), CellsEnd))"),

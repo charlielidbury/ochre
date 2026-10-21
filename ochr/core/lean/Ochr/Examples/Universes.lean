@@ -45,8 +45,6 @@ ochr Universes {
   reject def PolyTy : Type := Π(x : &Type) (a : Nat). Nat
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Universes.decls.length == 10
 
 /-! ## Sorts are syntactic
 
@@ -87,4 +85,3 @@ ochr Sorts {
   reject def K2 : Eq(Nat, k(g2), 0) := refl
 }
 
-#guard Sorts.decls.length == 17

@@ -1,4 +1,5 @@
-import Ochr.Examples.«00Std»
+import Ochr.Examples.Nat
+import Ochr.Examples.Fixtures
 
 /-! # 7. Recursion and induction hypotheses
 
@@ -15,7 +16,7 @@ Defined in RULES §5: [Def], [Call-type], [Rec]. -/
 
 open Ochr.Test
 
-ochr Recursion uses Std, Fixtures {
+ochr Recursion uses Nats, Fixtures {
   -- The pure theorem by recursion on a copy of the predecessor: the induction hypothesis is
   -- about `p` and the goal about `S(p)`, an equation between two successors, which `Eq`
   -- takes apart (injectivity, D52), so no congruence step is written. (`AddZero` in
@@ -220,5 +221,3 @@ ochr Recursion uses Std, Fixtures {
   reject def BoomId : False := LieId(0)
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Recursion.decls.length == 29

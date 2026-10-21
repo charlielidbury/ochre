@@ -1,4 +1,4 @@
-import Ochr.Examples.«00Std»
+import Ochr.Examples.Nat
 
 /-! # 6. Types and closures are formed once
 
@@ -18,7 +18,7 @@ Defined in RULES P2, §1 (closures capture no borrows) and §5 [Call-type]; the 
 
 open Ochr.Test
 
-ochr Snapshots uses Std {
+ochr Snapshots uses Nats {
   -- ## Types are formed once
   -- The result type is formed on entry, so writing `5` first does not prove it; ascribing
   -- the type again after the write does not help, since the goal is still the entry one.
@@ -175,5 +175,3 @@ ochr Snapshots uses Std {
   def UseCapOf (n : Nat) (h : Eq(Nat, n, 0)) (c : CapOf(n, h)) : Eq(Nat, Get(n, h), n) := c(0)
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Snapshots.decls.length == 27

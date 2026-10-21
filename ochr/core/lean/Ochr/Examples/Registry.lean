@@ -1,43 +1,53 @@
-import Ochr.Examples.«00Std»
-import Ochr.Examples.«01Numbers»
-import Ochr.Examples.«02Borrows»
-import Ochr.Examples.«03ReturnedBorrows»
-import Ochr.Examples.«04ClosingOff»
-import Ochr.Examples.«05Equality»
-import Ochr.Examples.«06Snapshots»
-import Ochr.Examples.«07Recursion»
-import Ochr.Examples.«08CaseSplits»
-import Ochr.Examples.«09Functions»
-import Ochr.Examples.«10Inductives»
-import Ochr.Examples.«11Propositions»
-import Ochr.Examples.«12CurrentState»
-import Ochr.Examples.«13Erasure»
-import Ochr.Examples.«14Universes»
-import Ochr.Examples.«15BorrowTypes»
-import Ochr.Examples.«16Arrays»
-import Ochr.Examples.«17HashMap»
-import Ochr.Examples.«18DependentFields»
+import Ochr.Examples.Bool
+import Ochr.Examples.Logic
+import Ochr.Examples.Nat
+import Ochr.Examples.Word
+import Ochr.Examples.List
+import Ochr.Examples.Option
+import Ochr.Examples.Box
+import Ochr.Examples.Fixtures
+import Ochr.Examples.Array
+import Ochr.Examples.Numbers
+import Ochr.Examples.Borrows
+import Ochr.Examples.ReturnedBorrows
+import Ochr.Examples.ClosingOff
+import Ochr.Examples.Equality
+import Ochr.Examples.Snapshots
+import Ochr.Examples.Recursion
+import Ochr.Examples.CaseSplits
+import Ochr.Examples.Functions
+import Ochr.Examples.Inductives
+import Ochr.Examples.Propositions
+import Ochr.Examples.CurrentState
+import Ochr.Examples.Erasure
+import Ochr.Examples.Universes
+import Ochr.Examples.BorrowTypes
+import Ochr.Examples.ArrayBench
+import Ochr.Examples.Quicksort
+import Ochr.Examples.HashMap
+import Ochr.Examples.DependentFields
 import Ochr.Examples.Sugar
 import Ochr.Examples.Units
 
 /-! # Every example program, for the test runner and the counterfactual ledger
 
-The programs of the tour, in reading order (the numbered files, then the blocks of each
-file in order), starting with `Std`, which most of them use, and `Words`, the library for
-`Word`s, which the arrays library and the case studies use. The counterfactual ledger
-(`Ledger.lean`) switches one rule off at a time and lists the verdicts that flip, in this
-order. -/
+The library blocks (one per file: `Bool.lean` … `Fixtures.lean`), then the programs of the tour,
+in reading order (`Examples/README.md`; the blocks of each file in order). The arrays library
+(`Array.lean`) is registered with the case studies, whose blocks it is checked with. The
+counterfactual ledger (`Ledger.lean`) switches one rule off at a time and lists the verdicts
+that flip, in this order. -/
 
 open Ochr Ochr.Test Ochr.Surface
 
 namespace Ochr.Registry
 
 def programs : List (String × Block) :=
-  [("Prelude", Prelude), ("Std", Std), ("Words", Words), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("Drops", Drops), ("Moves", Moves), ("ReturnedBorrows", ReturnedBorrows), ("Reborrows", Reborrows),
+  [("Prelude", Prelude), ("Bools", Bools), ("Logic", Logic), ("Nats", Nats), ("WordType", WordType), ("Words", Words), ("Lists", Lists),
+   ("Options", Options), ("Boxes", Boxes), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("Drops", Drops), ("Moves", Moves), ("ReturnedBorrows", ReturnedBorrows), ("Reborrows", Reborrows),
    ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("Equality", Equality), ("Rewriting", Rewriting),
    ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion),
    ("CaseSplits", CaseSplits), ("GenType", GenType), ("RenormPi", RenormPi), ("Splitting", Splitting), ("ScrutineeTypes", ScrutineeTypes),
-   ("GlobalRecords", GlobalRecords), ("ArmLocal", ArmLocal), ("ArmLocalBoom", ArmLocalBoom), ("ArmRecords", ArmRecords), ("Functions", Functions), ("Lists", Lists), ("Trees", Trees), ("InPlaceTrees", InPlaceTrees),
+   ("GlobalRecords", GlobalRecords), ("ArmLocal", ArmLocal), ("ArmLocalBoom", ArmLocalBoom), ("ArmRecords", ArmRecords), ("Functions", Functions), ("NatLists", NatLists), ("Trees", Trees), ("InPlaceTrees", InPlaceTrees),
    ("PolyLists", PolyLists), ("Positivity", Positivity), ("PositivityParams", PositivityParams),
    ("PositivityPaper", PositivityPaper), ("Propositions", Propositions), ("Destructuring", Destructuring),
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
@@ -45,14 +55,15 @@ def programs : List (String × Block) :=
    ("Abstraction", Abstraction), ("DepFields", DepFields), ("Sugar", Sugar),
    ("SugarOwnBool", SugarOwnBool), ("SugarNoBool", SugarNoBool)]
 
-/-- Case studies (`16Arrays`, `17HashMap`): checked and counted with the tour, and timed by `lake exe
+/-- The arrays library and the case studies (`Array`, `ArrayBench`, `Quicksort`, `HashMap`,
+`DependentFields`' `DepVec`): checked and counted with the tour, and timed by `lake exe
 tests`, but not re-run by the counterfactual ledger, which is about the rules. A case study's
 programs are large and chained (each block re-checks the blocks it uses), so each ledger row
 would re-check them twice; their flips are measured once instead, by
 `Ochr/Examples/CaseStudyLedger.lean` (run it with `lake env lean`), and reported in
 `notes/arrays-library.md` and `notes/hashmap-case-study.md`. -/
 def caseStudies : List (String × Block) :=
-  [("Arrays", Arrays), ("ArrayLemmas", ArrayLemmas), ("ArrayBench", ArrayBench),
+  [("Arrays", Arrays), ("ArrayLemmas", ArrayLemmas), ("ArrayHashMap", ArrayHashMap), ("ArrayBench", ArrayBench),
    ("Quicksort", Quicksort),
    ("HashMap", HashMap), ("HashMapLookup", HashMapLookup), ("HashMapLength", HashMapLength), ("HashMapResize", HashMapResize),
    ("DepVec", DepVec)]

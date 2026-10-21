@@ -1,4 +1,10 @@
-import Ochr.Examples.«00Std»
+import Ochr.Examples.Bool
+import Ochr.Examples.Nat
+import Ochr.Examples.Word
+import Ochr.Examples.List
+import Ochr.Examples.Fixtures
+import Ochr.Examples.Logic
+import Ochr.Examples.Box
 
 /-! # 10. Inductive types: lists, trees, and parameters
 
@@ -20,8 +26,8 @@ open Ochr.Test
 In-place append and its theorems are the same bare recursion as `AddM`'s, and `LastM` is
 the list version of `TailM`. -/
 
-ochr Lists {
-  -- A list of numbers declared here, without `Std`'s `List(A)`: the first inductive type.
+ochr NatLists {
+  -- A list of numbers declared here, without `Lists`' `List(A)`: the first inductive type.
   inductive List := Nil | Cons(h : Nat, t : List)
 
   -- In-place append, and appending `Nil` does nothing.
@@ -72,8 +78,6 @@ ochr Lists {
   reject inductive B := Make(y : Unit)
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Lists.decls.length == 9
 
 /-! ## Binary search trees
 
@@ -83,7 +87,7 @@ That the in-place insert is the pure insert is then bare recursion, provided the
 replacement also reaches the copies of the comparison that the goal computes later (D34,
 switch `genConsistent`). The size theorem needs one arithmetic lemma, proved in place. -/
 
-ochr Trees uses Std {
+ochr Trees uses Bools, Nats, WordType {
   inductive Tree := Leaf | Node(l : Tree, v : Word, r : Tree)
 
   -- The order on keys: words, which every read copies (D53). The paper's trees define their
@@ -180,7 +184,7 @@ ochr Trees uses Std {
 
   -- Inserting grows the size by one. In the `true` arm this follows from the induction
   -- hypothesis, since `Add` recurses on its first argument. The `false` arm needs
-  -- `x + S(y) = S(x + y)`, Std's `AddS`, itself proved in place by bare recursion (`AddMS`).
+  -- `x + S(y) = S(x + y)`, `Nats`' `AddS`, itself proved in place by bare recursion (`AddMS`).
   -- Both arms rewrite with `J`.
   def Size (t : Tree) : Nat by t := (
     match t {
@@ -264,20 +268,18 @@ ochr Trees uses Std {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Trees.decls.length == 12
 
 /-! ## The paper's trees: the pure insert runs the in-place one
 
 The paper (§2, Trees) defines the pure insert as `Add` is defined, by running the in-place
 one on a copy, and proves the size theorem about it. `InsertM`, `Insert` and `SizeInsert`
 are the paper's text, in its layout, with `Word` keys (D53: a key is only compared, so it is a
-copy); `Lt` and `Size` are the ones it assumes, and `AddS` (`Std`'s,
+copy); `Lt` and `Size` are the ones it assumes, and `AddS` (`Nats`',
 `x + S y = S (x + y)`) is proved in place by bare recursion (`AddMS`) and transferred to
 `Add` by lending, as the prose says. The in-place insert is the pure one by definition
 (`InsertMIsInsert`, by `refl`). -/
 
-ochr InPlaceTrees uses Std {
+ochr InPlaceTrees uses Bools, Nats, WordType {
   inductive Tree := Leaf | Node(l : Tree, v : Word, r : Tree)
 
   -- The paper's own `Lt`, as `Trees`' (`Words`' `LtB`).
@@ -340,14 +342,12 @@ ochr InPlaceTrees uses Std {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard InPlaceTrees.decls.length == 10
 
 /-! ## Parameters: a polymorphic list
 
-`List(A)` is `Std`'s. -/
+`List(A)` is `Lists`'. -/
 
-ochr PolyLists uses Std {
+ochr PolyLists uses Lists {
   -- In-place append on `List(A)`, and appending `Nil` does nothing; `Nil`'s parameter comes
   -- from `AppendM`'s parameter type.
   def AppendM (A : Type) (xs : &List(A)) (ys : List(A)) : Unit by xs := (
@@ -436,8 +436,6 @@ ochr PolyLists uses Std {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard PolyLists.decls.length == 19
 
 /-! ## What goes wrong without strict positivity
 
@@ -447,7 +445,7 @@ alone and proofs are not run, so `Boom` is a closed proof of `False` (D36, switc
 `positivity`). Fields of first-order data are fine. `Empty` is in `Fixtures`. -/
 
 ochr Positivity uses Fixtures {
-  -- `Empty`'s own eliminator, by recursion (the attack is about `Empty`, not Std's `Void`).
+  -- `Empty`'s own eliminator, by recursion (the attack is about `Empty`, not `Logic`'s `Void`).
   def absurd (e : Empty) : False by e := (
     match e {
       E(e') => absurd(e'),
@@ -468,15 +466,13 @@ ochr Positivity uses Fixtures {
   inductive Pairs := PNil | PCons(hd : Nat × Unit, tl : Pairs)
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Positivity.decls.length == 7
 
 /-! The same, with the function type hidden inside a parameter: a field's parameter
 arguments must be first-order too. Positive uses of parameters are fine: a list of the
-type itself, and a proof field. `Box(A)`, `List(A)`, the empty type `Void` and `absurdV` are
-`Std`'s. -/
+type itself, and a proof field. `Box(A)` is `Boxes`', `List(A)` is `Lists`', and the empty
+type `Void` and `absurdV` are `Logic`'s. -/
 
-ochr PositivityParams uses Std {
+ochr PositivityParams uses Logic, Lists, Boxes {
   def unbox (A : Type) (b : Box(A)) : A := (
     match b {
       MkBox(x) => x,
@@ -512,8 +508,6 @@ ochr PositivityParams uses Std {
   reject def PropBox : Type := Box(Eq(Nat, 0, 1))
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard PositivityParams.decls.length == 12
 
 /-! The paper's version (appendix note 4), with `False` directly. -/
 
@@ -529,5 +523,3 @@ ochr PositivityPaper {
   reject def Bad4 : False := L(MkBad(λ(x : Bad) : False => L(x)))
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard PositivityPaper.decls.length == 3

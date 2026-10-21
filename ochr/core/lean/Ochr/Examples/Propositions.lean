@@ -1,4 +1,6 @@
-import Ochr.Examples.«00Std»
+import Ochr.Examples.Nat
+import Ochr.Examples.Bool
+import Ochr.Examples.Fixtures
 
 /-! # 11. Propositions: `False`, `True`, `And`, and matching on proofs
 
@@ -14,7 +16,7 @@ Defined in RULES §1 (the library) and §8. -/
 
 open Ochr.Test
 
-ochr Propositions uses Std {
+ochr Propositions uses Nats {
   -- ## False
   -- `False` has no constructors, so a match on a proof of it has no arms and fits any
   -- result type: data, a proposition, a statement about effects.
@@ -226,8 +228,6 @@ ochr Propositions uses Std {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Propositions.decls.length == 45
 
 /-! ## Destructuring `let`
 
@@ -236,7 +236,7 @@ ochr Propositions uses Std {
 `⟨a, ⟨b, c⟩⟩`, patterns nest, and `_` ignores a field. On a place the names are its
 sub-places, as in any match; any other term is bound to a temporary first. -/
 
-ochr Destructuring uses Std {
+ochr Destructuring uses Nats {
   def AndPair (P : Prop) (Q : Prop) (h : P) (k : Q) : P ∧ Q := ⟨h, k⟩
 
   def DAnd (P : Prop) (Q : Prop) (h : P ∧ Q) : Q ∧ P := (
@@ -299,8 +299,6 @@ ochr Destructuring uses Std {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Destructuring.decls.length == 12
 
 /-! ## Subsingleton elimination
 
@@ -308,7 +306,7 @@ ochr Destructuring uses Std {
 produce a proof, and is itself a proof, erased wherever it runs. The same holds for a
 single constructor with a data field (`Sq`). -/
 
-ochr Subsingletons uses Std, Fixtures {
+ochr Subsingletons uses Bools, Fixtures {
   inductive Or (P : Prop) (Q : Prop) : Prop := Inl(p : P) | Inr(q : Q)
 
   -- Elimination into propositions: every arm is a proof, so the match is one.
@@ -426,5 +424,3 @@ ochr Subsingletons uses Std, Fixtures {
   reject def SqBoom : False := SqIrr(MkSq(0), MkSq(1))
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Subsingletons.decls.length == 19

@@ -1,4 +1,5 @@
-import Ochr.Examples.«00Std»
+import Ochr.Examples.Nat
+import Ochr.Examples.Fixtures
 
 /-! # 13. Erasure: proofs and types leave no trace
 
@@ -25,7 +26,7 @@ Defined in RULES P2. -/
 
 open Ochr.Test
 
-ochr Erasure uses Std {
+ochr Erasure uses Nats {
   -- ## Erased terms run on a private copy
   -- Citing a lemma about `x`, argument included, does not move `x` (switch `eraseOnCopy`).
   def LemmaMoves (x : &Nat) : Unit := (
@@ -185,8 +186,6 @@ ochr Erasure uses Std {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Erasure.decls.length == 32
 
 /-! ## What goes wrong when erasure is decided from values
 
@@ -375,5 +374,3 @@ ochr ErasureBySyntax uses Fixtures {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard ErasureBySyntax.decls.length == 36

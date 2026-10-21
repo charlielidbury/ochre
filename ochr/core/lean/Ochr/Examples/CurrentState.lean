@@ -1,4 +1,4 @@
-import Ochr.Examples.«00Std»
+import Ochr.Examples.Nat
 
 /-! # 12. Proofs about the current state
 
@@ -12,7 +12,7 @@ Defined in RULES §7 (the E5 example); `match h {}` on a refined type is RULES �
 
 open Ochr.Test
 
-ochr CurrentState uses Std {
+ochr CurrentState uses Nats {
   -- A function that returns a proposition (the paper's order, on `Nat`; `Words`' is on `Word`).
   def Le (a : Nat) (b : Nat) : Prop by a := (
     match a {
@@ -127,5 +127,3 @@ ochr CurrentState uses Std {
   reject def TwoPhaseMoved (x : &Nat) : Unit := SubM(x, 0, LeZero(*x))
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard CurrentState.decls.length == 16

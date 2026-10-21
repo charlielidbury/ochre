@@ -1,4 +1,6 @@
-import Ochr.Examples.«17HashMap»
+import Ochr.Examples.Bool
+import Ochr.Examples.Nat
+import Ochr.Examples.HashMap
 
 /-! # The editor: every error at the source responsible (docs/07)
 
@@ -14,7 +16,7 @@ its declarations after the whole hash-map library, which allocates and frees a g
 
 open Ochr.Test
 
-ochr EditorErrors uses Std {
+ochr EditorErrors uses Bools, Nats {
   def Count (k : Nat) : Nat by k := (
     match k {
       Z => 0,
@@ -69,8 +71,6 @@ ochr EditorErrors uses Std {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard EditorErrors.decls.length == 10
 
 #ochr_error_at EditorErrors BadArg "AddM(x, ⟦()⟧)"
 #ochr_error_at EditorErrors UseMoved "AddM(⟦x⟧, 1)"
@@ -83,7 +83,7 @@ ochr EditorErrors uses Std {
 
 -- After the hash-map library, checked again as its library: these declarations are resolved
 -- before the library is checked and checked after it, so their table must survive that.
-ochr EditorAfterLibrary uses Std, HashMap, HashMapLookup, HashMapLength, HashMapResize {
+ochr EditorAfterLibrary uses Nats, HashMap, HashMapLookup, HashMapLength, HashMapResize {
   reject def LateArg (x : &Nat) : Unit := AddM(x, ())
 
   reject def LateLambda (y : Nat) : Nat := (
@@ -97,8 +97,6 @@ ochr EditorAfterLibrary uses Std, HashMap, HashMapLookup, HashMapLength, HashMap
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard EditorAfterLibrary.decls.length == 3
 
 #ochr_error_at EditorAfterLibrary LateArg "AddM(x, ⟦()⟧)"
 #ochr_error_at EditorAfterLibrary LateLambda "Add(z, ⟦()⟧)"

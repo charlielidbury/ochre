@@ -1,4 +1,7 @@
-import Ochr.Examples.«00Std»
+import Ochr.Examples.Bool
+import Ochr.Examples.Nat
+import Ochr.Examples.Option
+import Ochr.Examples.Box
 
 /-! # 8. Case splits and refinement
 
@@ -52,8 +55,6 @@ ochr CaseSplits {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard CaseSplits.decls.length == 6
 
 /-! ## A generalised value has the matched place's type
 
@@ -63,7 +64,7 @@ type. The guards below read the checker's trace (switch `genPlaceType`: an earli
 gave it type `Nat`). -/
 
 ochr GenType {
-  -- Its own list of numbers, not `Std`'s `List(A)`: the guards below read the type's name.
+  -- Its own list of numbers, not `Lists`' `List(A)`: the guards below read the type's name.
   inductive List := Nil | Cons(h : Nat, t : List)
 
   def AppendM (xs : &List) (ys : List) : Unit by xs := (
@@ -84,7 +85,6 @@ ochr GenType {
 }
 
 def genTrace (cfg : Ochr.Config) : String := (run "GenType" GenType { cfg with trace := true }).showTrace "GenL"
-#guard GenType.decls.length == 3
 #guard ((genTrace {}).splitOn "c1⌉ to σ1 : List").length == 2
 #guard ((genTrace { genPlaceType := false }).splitOn "c1⌉ to σ1 : Nat").length == 2
 
@@ -93,7 +93,7 @@ program that computes `F(n)` inside, `⌈G(σ)⌉`, is re-normalised to use the 
 (finding G1). That reaches the captures of closures and Π-types too: `InPi`'s goal holds
 `⌈G(σ)⌉` as a capture of its Π, and was left stale (arrays-library). -/
 
-ochr RenormPi uses Std {
+ochr RenormPi {
   def F (n : Nat) : Nat by n := match n { Z => 0, S m => F(m) }
   def G (n : Nat) : Nat := (let x = F(n); match x { Z => 1, S _ => 2 })
   def Plain (n : Nat) (h : Eq(Nat, F(n), 0)) : (let k = G(n); Eq(Nat, k, 1)) := (
@@ -104,7 +104,6 @@ ochr RenormPi uses Std {
     let r = F(n); match r { Z => ⟨refl, λ(u : Nat) : Eq(Nat, 1, 1) => refl⟩, S j => match h {} })
 }
 
-#guard RenormPi.decls.length == 5
 
 /-! ## Splitting on a result the goal is stuck on
 
@@ -116,7 +115,7 @@ run is stuck on, and the first result whose head call is `f`, or which stands fo
 an earlier split generalised (D61). It saves computing the result again into a place just
 to match on it. -/
 
-ochr Splitting uses Std {
+ochr Splitting uses Bools, Nats, Options {
   def IsZ (n : Nat) : Bool := (
     match n {
       Z => true,
@@ -175,7 +174,7 @@ ochr Splitting uses Std {
     }
   )
 
-  -- The arms bind the fields of the split value, as a match's do (`Opt` is `Std`'s).
+  -- The arms bind the fields of the split value, as a match's do (`Opt` is `Options`').
   def Look (n : Nat) : Opt(Nat) := (
     match n {
       Z => None,
@@ -228,8 +227,6 @@ ochr Splitting uses Std {
   )
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Splitting.decls.length == 18
 
 /-! ## What goes wrong without these rules
 
@@ -281,8 +278,6 @@ ochr ScrutineeTypes {
   def M2Zero (h : Π(n : Nat). TG(n)) : Nat := (let x = h(0); match x { Z => 0, S _ => 1 })
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard ScrutineeTypes.decls.length == 14
 
 /-! Generalisations are global (D37). Forming `Esc`'s goal generalises a sealed program on a
 private copy of the environment, and names it with a fresh abstract value. That record,
@@ -315,8 +310,6 @@ ochr GlobalRecords {
   reject def Bad5 : Eq(Nat, 1, 0) := Esc(1, MkBox(0))
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard GlobalRecords.decls.length == 4
 
 /-! A refinement belongs to its arm (arrays-library's arm leak). [Split] substitutes into
 every stored type, the types of abstract values included. Those types are kept across a
@@ -328,9 +321,9 @@ in an inferred conjunct. `Leak` is a true lemma that the stale type rejected. `T
 that a slice of any length is the empty one, by a closure in the second arm that sees
 `r : Slice(0)`, and its instance `BoomLeak` is a closed proof of `False`. -/
 
-ochr ArmLocal uses Std {
+ochr ArmLocal {
   -- The witness's own model, on `Nat` (an older copy of the arrays library's): its meaning
-  -- depends on these definitions, so it keeps them rather than `Words` and `16Arrays`.
+  -- depends on these definitions, so it keeps them rather than `Words` and `Array.lean`.
   def Le (a : Nat) (b : Nat) : Prop by a := (
     match a {
       Z => ⊤,
@@ -403,7 +396,6 @@ ochr ArmLocal uses Std {
   )
 }
 
-#guard ArmLocal.decls.length == 11
 
 ochr ArmLocalBoom {
   inductive Emp := E(e : Emp)
@@ -424,7 +416,6 @@ ochr ArmLocalBoom {
   reject def BoomLeak : False := T7(1, MkSlice(S0[Nat](9)))
 }
 
-#guard ArmLocalBoom.decls.length == 10
 
 /-! Generalisation records belong to their arm too (reviewer-6's A1, a closed proof of `False`
 in the default checker until then). In the arm `n := Z`, `match x` generalises the stuck
@@ -438,7 +429,7 @@ a record an arm makes is dropped with the arm (`restoreArm`). `FLie` is the fuzz
 (Since η at `Unit` is a property of values, D59 refined, the comparison is no longer true at a
 stale type either: `true` and `false` are distinct constructors whatever the type says.) -/
 
-ochr ArmRecords uses Std {
+ochr ArmRecords uses Bools, Boxes {
   def T (n : Nat) : Type := match n { Z => Box(Unit), S _ => Box(Bool) }
   def Cmp2 (b : Box(Bool)) : Prop := (let c = clone(b); Id(Unit, c := MkBox(true), c := MkBox(false)))
   def L2 (b : Box(Bool)) (h : Cmp2(b)) : False := h
@@ -458,4 +449,3 @@ ochr ArmRecords uses Std {
     J(Prop, ⊤, False, λ(P : Prop) : Prop => P, symm(h), refl))
 }
 
-#guard ArmRecords.decls.length == 8

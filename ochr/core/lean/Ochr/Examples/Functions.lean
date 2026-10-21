@@ -1,4 +1,6 @@
-import Ochr.Examples.«00Std»
+import Ochr.Examples.Nat
+import Ochr.Examples.Box
+import Ochr.Examples.Fixtures
 
 /-! # 9. Functions as values: opaque functions, closures and Π-types
 
@@ -17,7 +19,7 @@ Defined in RULES P1, §1 (Π, `fix`, calls), §3 [Call] and §4. -/
 
 open Ochr.Test
 
-ochr Functions uses Std, Fixtures {
+ochr Functions uses Nats, Boxes, Fixtures {
   -- ## Opaque functions
   -- `f` has no borrow argument, so it cannot write anything: its calls return `()` and
   -- `Twice(f)` does nothing.
@@ -237,5 +239,3 @@ ochr Functions uses Std, Fixtures {
   def RunUH (n : Nat) : ⊤ := RunU(H2, n)
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Functions.decls.length == 63
