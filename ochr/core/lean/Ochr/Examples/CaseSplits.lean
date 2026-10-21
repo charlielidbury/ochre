@@ -203,6 +203,24 @@ ochr Splitting uses Bools, Nats, Options {
     }
   )
 
+  -- The split result's type is the head's declared result type at the call's arguments:
+  -- here `Opt(A)` at the caller's `A`, the result of a generic function.
+  def Wrap (A : Type) (x : A) (n : Nat) : Opt(A) := (
+    match n {
+      Z => None[A],
+      S _ => Some(x),
+    }
+  )
+
+  def Short (A : Type) (o : Opt(A)) : Prop := (
+    match o {
+      None => ⊤,
+      Some(y) => ⊤,
+    }
+  )
+
+  def WrapShort (A : Type) (x : A) (n : Nat) : Short(A, Wrap(A, x, n)) := split Wrap in refl
+
   -- `split f` needs the goal to be stuck on a result of `f`; the arms must be the
   -- constructors of its type, and each must prove its refined goal. A split cannot prove
   -- a false statement, and it needs the goal, so it is only in tail position.
