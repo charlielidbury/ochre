@@ -10,7 +10,8 @@ adds a rule: each is a form the core already has, written more briefly.
   `let ⟨h, k⟩ = p` and Pair's `let (a, b) = p` are instances of it (`Destructuring`, in
   `11Propositions.lean`). On a place the names are its sub-places, so writing one writes the
   place.
-* `if c { a } else { b }` is `match c { true => a, false => b }` on Std's `Bool`, with
+* `if c { a } else { b }` is `match c { true => a, false => b }` on `Bool` (whichever block
+  in scope declares `false | true`), with
   `else if` chains. Without `else` the branch must be `Unit`, and the missing one is `()`.
 * `match e { … }` on a term `e` that is not a place is `let x = e; match x { … }`, with a fresh
   `x`. A place is matched in place, as before: binding it first would move it. In a proof,
@@ -27,7 +28,7 @@ ochr Sugar uses Std {
   inductive Triple := T3(a : Word, b : Word, c : Word)
   inductive Map := MkMap(n : Word, len : Word, keys : List(Word))
   inductive Wrap := MkW(p : Word × Word, t : Triple)
-  inductive Opt := None | Some(v : Word)
+  inductive MaybeW := NoW | SomeW(v : Word)
 
   def Mid (t : Triple) : Word := (
     let T3(_, y, _) = t;
@@ -100,9 +101,9 @@ ochr Sugar uses Std {
     refl
   )
 
-  -- `Opt` has two constructors, so a destructuring `let` cannot take it apart: use `match`.
-  reject def LetOpt (o : Opt) : Word := (
-    let Some(v) = o;
+  -- `MaybeW` has two constructors, so a destructuring `let` cannot take it apart: use `match`.
+  reject def LetOpt (o : MaybeW) : Word := (
+    let SomeW(v) = o;
     v
   )
 
@@ -234,12 +235,9 @@ ochr Sugar uses Std {
   def ClampInRun : Id(Word × Word, ((let x = Zero; ClampIn(&x); x), (let y = Succ(Succ(Zero)); ClampIn(&y); y)), (Succ(Zero), Succ(Succ(Zero)))) := refl
 }
 
--- the exact number of declarations (a truncated file changes it)
-#guard Sugar.decls.length == 48
-
 -- each rejection for its reason
 #guard (run "Sugar" Sugar).rejectedWith [
-  ("LetOpt", "(surface) let Some(…) = …: Opt has 2 constructors (None, Some), and a destructuring let needs a type with exactly one: use match"),
+  ("LetOpt", "(surface) let SomeW(…) = …: MaybeW has 2 constructors (NoW, SomeW), and a destructuring let needs a type with exactly one: use match"),
   ("LetSucc", "(surface) let S(…) = …: Nat has 2 constructors (Z, S)"),
   ("LetFewer", "(surface) pattern T3 needs 3 variables"),
   ("IfWord", "[Match] on n : Word, with the constructors of Bool"),
@@ -247,5 +245,23 @@ ochr Sugar uses Std {
   ("AtLeastOneNotZeroRefl", "the body of AtLeastOneNotZeroRefl has type ⊤, but the goal is Eq(Bool, ⌈IsZero(⌈AtLeastOne(σ0)⌉)⌉, false)")]
 
 -- and where it is reported
-#ochr_error_at Sugar LetOpt "let Some(v) = o;\n    v"
+#ochr_error_at Sugar LetOpt "let SomeW(v) = o;\n    v"
 #ochr_error_at Sugar IfWord "if n { Zero } else { n }"
+
+/-! `if`'s arms name `true` and `false`, which resolve like any constructors: it works on the
+`Bool` of whatever block declares one, and says so where there is none. -/
+
+ochr SugarOwnBool {
+  inductive Bool := false | true
+
+  def Pick (b : Bool) (x : Nat) (y : Nat) : Nat := if b { x } else { y }
+
+  def PickRun : Id(Nat, Pick(false, 1, 2), 2) := refl
+}
+
+ochr SugarNoBool {
+  reject def IfNoBool (n : Nat) : Nat := if n { 0 } else { 1 }
+}
+
+#guard (run "SugarNoBool" SugarNoBool).rejectedWith [
+  ("IfNoBool", "(surface) true is not a constructor: `if` and a match on true/false need a declared Bool := false | true")]

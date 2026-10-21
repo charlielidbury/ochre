@@ -102,7 +102,7 @@ syntax (name := ochrPatCtor) ident "(" ochr_pat,* ")" : ochr_pat
 syntax:10 (name := ochrLetAnd) "let " "⟨" ochr_pat,+ "⟩" " = " ochr_term:11 "; " ochr_term:10 : ochr_term
 syntax:10 (name := ochrLetPair) "let " "(" ochr_pat ", " ochr_pat ")" " = " ochr_term:11 "; " ochr_term:10 : ochr_term
 syntax:10 (name := ochrLetCtor) "let " ident "(" ochr_pat,* ")" " = " ochr_term:11 "; " ochr_term:10 : ochr_term
--- `if c { a } else { b }`, sugar for `match c { true => a, false => b }` on Std's `Bool`;
+-- `if c { a } else { b }`, sugar for `match c { true => a, false => b }` on `Bool`;
 -- `else if` chains, and no `else` for a `Unit` branch (`else { () }`)
 syntax (name := ochrElse) " else " "{ " ochr_term " }" : ochr_else
 syntax (name := ochrElseIf) " else " "if " ochr_term " { " ochr_term " }" (ochr_else)? : ochr_else
@@ -330,8 +330,8 @@ partial def elabTermAt (t : TSyntax `ochr_term) (A : TSyntax `ochr_term) : Macro
   | some s, some e => `(STerm.loc $(quote s.byteIdx) $(quote e.byteIdx) $call)
   | _, _ => pure call
 
-/-- `if c { a } else { b }` is `match c { true => a, false => b }`, on Std's `Bool` (a surface
-desugaring). `else if c' { … } …` is an `if` in the `false` arm, and a missing `else` is
+/-- `if c { a } else { b }` is `match c { true => a, false => b }` (a surface desugaring): the
+arms name `true` and `false`, resolved like any constructors, so this is the `Bool` in scope. `else if c' { … } …` is an `if` in the `false` arm, and a missing `else` is
 `else { () }`, so the branch must be `Unit`. A condition that is not a place is bound to a
 temporary first, as for any `match` (resolution). -/
 partial def elabIf (c t : Syntax) (e? : Option Syntax) : MacroM (TSyntax `term) := do
