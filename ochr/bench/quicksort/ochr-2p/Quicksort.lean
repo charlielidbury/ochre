@@ -51,7 +51,7 @@ ochr QuicksortCompose uses QuicksortSpec {
       (model : Π(n : Word) (v : Slice(Word, n)). Slice(Word, n))
       (agree : Π(n : Word) (s : &Slice(Word, n)). Id(Unit, qs(n, s), *s := model(n, *s)))
       (mperm : Π(n : Word) (v : Slice(Word, n)). Perm(n, model(n, v), v))
-      (n : Word) (s : &Slice(Word, n)) : (let c = *s; qs(n, &c); Perm(n, c, *s)) := (
+      (n : Word) (s : &Slice(Word, n)) : (let c = clone(*s); qs(n, &c); Perm(n, c, *s)) := (
     rewrite ← agree(n, s) in mperm(n, *s)
   )
 }
@@ -119,7 +119,7 @@ ochr QuicksortSolution uses QuicksortModel, QuicksortCompose {
   -- FIXED-BEGIN Q2
   -- Q2: perm(a₁, a₀), where a₁ is the contents after `QuickSort` and a₀ = `*s` those before
   -- (provided: from the model).
-  def QuickSortPerm (n : Word) (s : &Slice(Word, n)) : (let c = *s; QuickSort(n, &c); Perm(n, c, *s)) :=
+  def QuickSortPerm (n : Word) (s : &Slice(Word, n)) : (let c = clone(*s); QuickSort(n, &c); Perm(n, c, *s)) :=
     PermFromModel(QuickSort, SortModel, QuickSortAgrees, SortModelPerm, n, s)
   -- FIXED-END Q2
 -- FIXED-BEGIN tests

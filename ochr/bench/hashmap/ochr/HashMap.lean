@@ -116,7 +116,9 @@ ochr HashMapSpec uses ArrayLemmas {
 The operations, your invariant `Inv`, and the proofs of H1–H18. The properties are stated
 about the operations themselves, run on a copy of the map: `let c = *m; MapInsert(V, cap, &c,
 k, v); ContainsOf(V, cap, c, k)` inserts into a copy `c` of the map `*m` in place, then asks
-whether `k` is in `c`. `*m` is still the map before. A property about the value at a key reads
+whether `k` is in `c`. Each statement, and each side of `Eq`, runs on its own copy of the state,
+so `*m` in another side is still the map before; within one side a value is used once, and a
+second use is a `clone` (H12, H13). A property about the value at a key reads
 it through `MapGet` inside the statement, given that the key is present. -/
 
 ochr HashMapSolution uses HashMapSpec {
@@ -301,14 +303,14 @@ ochr HashMapSolution uses HashMapSpec {
   -- FIXED-BEGIN H12
   -- H12: insert adds one to len if k was absent, and leaves it otherwise.
   def LenInsert (V : Type) (cap : Word) (m : &Map(V, cap)) (k : Word) (v : V) (hm : Inv(V, cap, *m)) :
-      Eq(Word, (let c = *m; MapInsert(V, cap, &c, k, v); LenOf(V, cap, c)), Grow(ContainsOf(V, cap, *m, k), LenOf(V, cap, *m))) :=
+      Eq(Word, (let c = *m; MapInsert(V, cap, &c, k, v); LenOf(V, cap, c)), Grow(ContainsOf(V, cap, clone(*m), k), LenOf(V, cap, *m))) :=
   -- FIXED-END H12
     ?
 
   -- FIXED-BEGIN H13
   -- H13: remove takes one from len if k was present, and leaves it otherwise.
   def LenRemove (V : Type) (cap : Word) (m : &Map(V, cap)) (k : Word) (hm : Inv(V, cap, *m)) :
-      Eq(Word, (let c = *m; MapRemove(V, cap, &c, k); LenOf(V, cap, c)), Shrink(ContainsOf(V, cap, *m, k), LenOf(V, cap, *m))) :=
+      Eq(Word, (let c = *m; MapRemove(V, cap, &c, k); LenOf(V, cap, c)), Shrink(ContainsOf(V, cap, clone(*m), k), LenOf(V, cap, *m))) :=
   -- FIXED-END H13
     ?
 

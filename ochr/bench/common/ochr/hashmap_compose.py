@@ -41,8 +41,8 @@ P = {
  "m8": "(m8 : Π(V : Type) (a : MM(V)) (k : Word) (h : minv(V, a)). Eq(Opt(V), mget(V, mremove(V, a, k), k), None[V]))",
  "m9": "(m9 : Π(V : Type) (a : MM(V)) (k : Word) (k2 : Word) (h : minv(V, a)) (ne : Π(e : Eq(Word, k2, k)). False).\n        Eq(Opt(V), mget(V, mremove(V, a, k), k2), mget(V, a, k2)))",
  "m11": "(m11 : Π(V : Type). Eq(Word, mlen(V, mnew(V)), Zero))",
- "m12": "(m12 : Π(V : Type) (a : MM(V)) (k : Word) (v : V) (h : minv(V, a)). Eq(Word, mlen(V, minsert(V, a, k, v)), Grow(IsSomeB(V, mget(V, a, k)), mlen(V, a))))",
- "m13": "(m13 : Π(V : Type) (a : MM(V)) (k : Word) (h : minv(V, a)). Eq(Word, mlen(V, mremove(V, a, k)), Shrink(IsSomeB(V, mget(V, a, k)), mlen(V, a))))",
+ "m12": "(m12 : Π(V : Type) (a : MM(V)) (k : Word) (v : V) (h : minv(V, a)). Eq(Word, mlen(V, minsert(V, a, k, v)), Grow(IsSomeB(V, mget(V, clone(a), k)), mlen(V, a))))",
+ "m13": "(m13 : Π(V : Type) (a : MM(V)) (k : Word) (h : minv(V, a)). Eq(Word, mlen(V, mremove(V, a, k)), Shrink(IsSomeB(V, mget(V, clone(a), k)), mlen(V, a))))",
  "m14": "(m14 : Π(V : Type) (a : MM(V)) (k : Word) (w : V) (k2 : Word) (h : minv(V, a)) (hk : IsTrue(IsSomeB(V, mget(V, a, k)))).\n        Eq(Opt(V), mget(V, mwrite(V, a, k, w), k2), mget(V, minsert(V, a, k, w), k2)))",
  "m15": "(m15 : Π(V : Type) (a : MM(V)) (k : Word) (w : V) (h : minv(V, a)) (hk : IsTrue(IsSomeB(V, mget(V, a, k)))).\n        Eq(Word, mlen(V, mwrite(V, a, k, w)), mlen(V, minsert(V, a, k, w))))",
 }
@@ -52,10 +52,10 @@ REM = "(let c = *m; rem(V, cap, &c, k); c)"
 WR = "(let c = *m; let r = getMut(V, cap, &c, k, hk); *r := w; c)"
 INSW = "(let c = *m; ins(V, cap, &c, k, w); c)"
 # the agreement at the map a statement runs on: after insert, remove, a write, or insert of w
-AT_INS = "(let c = *m; ins(V, cap, &c, k, v); {})"
-AT_REM = "(let c = *m; rem(V, cap, &c, k); {})"
-AT_WR = "(let c = *m; let r = getMut(V, cap, &c, k, hk); *r := w; {})"
-AT_INSW = "(let c = *m; ins(V, cap, &c, k, w); {})"
+AT_INS = "(let c = clone(*m); ins(V, cap, &c, k, clone(v)); {})"
+AT_REM = "(let c = clone(*m); rem(V, cap, &c, k); {})"
+AT_WR = "(let c = clone(*m); let r = getMut(V, cap, &c, k, hk); *r := clone(w); {})"
+AT_INSW = "(let c = clone(*m); ins(V, cap, &c, k, clone(w)); {})"
 INV_INS = "invIns(V, cap, m, k, v, hm)"
 INV_REM = "invRem(V, cap, m, k, hm)"
 INV_WR = "invWrite(V, cap, m, k, w, hm, hk)"
@@ -159,7 +159,7 @@ L.append(("H11", "LenNewFrom", "len(new(c)) = 0",
 L.append(("H12", "LenInsertFrom", "insert adds one to len if the key was absent",
   "MM ins containsOf lenOf inv absOf mget mlen minsert minv invIns agreeContains agreeLen agreeIns absInv m12".split(),
   M_ARGS + " (k : Word) (v : V) (hm : inv(V, cap, *m))",
-  "Eq(Word, (let c = *m; ins(V, cap, &c, k, v); lenOf(V, cap, c)), Grow(containsOf(V, cap, *m, k), lenOf(V, cap, *m)))",
+  "Eq(Word, (let c = *m; ins(V, cap, &c, k, v); lenOf(V, cap, c)), Grow(containsOf(V, cap, clone(*m), k), lenOf(V, cap, *m)))",
   ["rewrite ← " + AT_INS.format(f"agreeLen(V, cap, &c, {INV_INS})") + " in",
    "rewrite ← agreeIns(V, cap, m, k, v, hm) in",
    "rewrite ← agreeContains(V, cap, m, k, hm) in",
@@ -168,7 +168,7 @@ L.append(("H12", "LenInsertFrom", "insert adds one to len if the key was absent"
 L.append(("H13", "LenRemoveFrom", "remove takes one from len if the key was present",
   "MM rem containsOf lenOf inv absOf mget mlen mremove minv invRem agreeContains agreeLen agreeRem absInv m13".split(),
   M_ARGS + " (k : Word) (hm : inv(V, cap, *m))",
-  "Eq(Word, (let c = *m; rem(V, cap, &c, k); lenOf(V, cap, c)), Shrink(containsOf(V, cap, *m, k), lenOf(V, cap, *m)))",
+  "Eq(Word, (let c = *m; rem(V, cap, &c, k); lenOf(V, cap, c)), Shrink(containsOf(V, cap, clone(*m), k), lenOf(V, cap, *m)))",
   ["rewrite ← " + AT_REM.format(f"agreeLen(V, cap, &c, {INV_REM})") + " in",
    "rewrite ← agreeRem(V, cap, m, k, hm) in",
    "rewrite ← agreeContains(V, cap, m, k, hm) in",

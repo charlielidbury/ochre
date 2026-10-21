@@ -61,7 +61,7 @@ The model's properties (the H-properties about the model; each under `h : MInv(V
 | M8 | `MGetRemoveSame` | `MGet(MRemove(a, k), k) = None` |
 | M9 | `MGetRemoveOther` | `k2 ≠ k` ⟹ `MGet(MRemove(a, k), k2) = MGet(a, k2)` |
 | M11 | `MLenNew` | `MLen(MNew) = 0` |
-| M12 | `MLenInsert` | `MLen(MInsert(a, k, v)) = Grow(IsSomeB(MGet(a, k)), MLen(a))` |
+| M12 | `MLenInsert` | `MLen(MInsert(a, k, v)) = Grow(IsSomeB(MGet(a, k)), MLen(a))` (in Ochr, the first `a` on the right is `clone(a)`: it is used twice in one side) |
 | M13 | `MLenRemove` | `MLen(MRemove(a, k)) = Shrink(IsSomeB(MGet(a, k)), MLen(a))` |
 | M14 | `MWriteGet` | `IsTrue(IsSomeB(MGet(a, k)))` ⟹ `MGet(MWrite(a, k, w), k2) = MGet(MInsert(a, k, w), k2)` |
 | M15 | `MWriteLen` | `IsTrue(IsSomeB(MGet(a, k)))` ⟹ `MLen(MWrite(a, k, w)) = MLen(MInsert(a, k, w))` |
@@ -70,7 +70,7 @@ The model's properties (the H-properties about the model; each under `h : MInv(V
 
 ## The program (block `HashMapSolution`)
 
-Yours: the operations, `Inv`, and these proofs. Every statement is quantified over `V`, `cap`, a map `*m` (a borrow `m : &Map(V, cap)`), keys `k`, `k2` and values `v`, `w : V`; a statement about an operation runs it on a copy `c` of the map, as in `(let c = *m; MapInsert(V, cap, &c, k, v); AbsOf(V, cap, c))`, and `*m` is still the map before.
+Yours: the operations, `Inv`, and these proofs. Every statement is quantified over `V`, `cap`, a map `*m` (a borrow `m : &Map(V, cap)`), keys `k`, `k2` and values `v`, `w : V`; a statement about an operation runs it on a copy `c` of the map, as in `(let c = *m; MapInsert(V, cap, &c, k, v); AbsOf(V, cap, c))`. A statement runs on its own copy of the state, and so does each side of `Eq` and each argument of a call that returns a proposition, so `*m` in another side or argument is still the map before; within one of them a value is used once, as in runtime code (`let c = *m` moves `*m`), so a second use is a `clone`, as in H12 and H13 (`docs/GUIDE.md` §4).
 
 | Id | Declaration | Statement (informally) |
 |---|---|---|

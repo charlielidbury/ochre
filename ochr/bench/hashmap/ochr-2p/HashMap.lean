@@ -180,7 +180,7 @@ ochr HashMapCompose uses HashMapSpec {
       (m5 : Π(V : Type) (a : MM(V)) (k : Word) (v : V) (h : minv(V, a)). Eq(Opt(V), mget(V, minsert(V, a, k, v), k), Some(v)))
       (V : Type) (cap : Word) (m : &Map(V, cap)) (k : Word) (v : V) (hm : inv(V, cap, *m)) :
       Eq(Bool, (let c = *m; ins(V, cap, &c, k, v); containsOf(V, cap, c, k)), true) := (
-    rewrite ← (let c = *m; ins(V, cap, &c, k, v); agreeContains(V, cap, &c, k, invIns(V, cap, m, k, v, hm))) in
+    rewrite ← (let c = clone(*m); ins(V, cap, &c, k, clone(v)); agreeContains(V, cap, &c, k, invIns(V, cap, m, k, v, hm))) in
     rewrite ← agreeIns(V, cap, m, k, v, hm) in
     rewrite ← m5(V, absOf(V, cap, *m), k, v, absInv(V, cap, m, hm)) in
     refl
@@ -210,7 +210,7 @@ ochr HashMapCompose uses HashMapSpec {
       Eq(V, (let c = *m; ins(V, cap, &c, k, v); clone(*get(V, cap, &c, k, h))), v) := (
     let e : Eq(Opt(V), mget(V, absOf(V, cap, (let c = *m; ins(V, cap, &c, k, v); c)), k), Some(v)) = (
       rewrite ← agreeIns(V, cap, m, k, v, hm) in m5(V, absOf(V, cap, *m), k, v, absInv(V, cap, m, hm)));
-    trans((let c = *m; ins(V, cap, &c, k, v); agreeGet(V, cap, &c, k, invIns(V, cap, m, k, v, hm), h)), e)
+    trans((let c = clone(*m); ins(V, cap, &c, k, clone(v)); agreeGet(V, cap, &c, k, invIns(V, cap, m, k, v, hm), h)), e)
   )
 
   -- H6a: after insert(m, k, v), contains(m′, k′) = contains(m, k′) for k′ ≠ k.
@@ -234,7 +234,7 @@ ochr HashMapCompose uses HashMapSpec {
         Eq(Opt(V), mget(V, minsert(V, a, k, v), k2), mget(V, a, k2)))
       (V : Type) (cap : Word) (m : &Map(V, cap)) (k : Word) (k2 : Word) (v : V) (hm : inv(V, cap, *m)) (ne : Π(e : Eq(Word, k2, k)). False) :
       Eq(Bool, (let c = *m; ins(V, cap, &c, k, v); containsOf(V, cap, c, k2)), containsOf(V, cap, *m, k2)) := (
-    rewrite ← (let c = *m; ins(V, cap, &c, k, v); agreeContains(V, cap, &c, k2, invIns(V, cap, m, k, v, hm))) in
+    rewrite ← (let c = clone(*m); ins(V, cap, &c, k, clone(v)); agreeContains(V, cap, &c, k2, invIns(V, cap, m, k, v, hm))) in
     rewrite ← agreeIns(V, cap, m, k, v, hm) in
     rewrite ← agreeContains(V, cap, m, k2, hm) in
     rewrite ← m6(V, absOf(V, cap, *m), k, k2, v, absInv(V, cap, m, hm), ne) in
@@ -266,7 +266,7 @@ ochr HashMapCompose uses HashMapSpec {
       Eq(V, (let c = *m; ins(V, cap, &c, k, v); clone(*get(V, cap, &c, k2, h2))), clone(*get(V, cap, m, k2, h))) := (
     let e : Eq(Opt(V), mget(V, absOf(V, cap, (let c = *m; ins(V, cap, &c, k, v); c)), k2), mget(V, absOf(V, cap, *m), k2)) = (
       rewrite ← agreeIns(V, cap, m, k, v, hm) in m6(V, absOf(V, cap, *m), k, k2, v, absInv(V, cap, m, hm), ne));
-    trans(trans((let c = *m; ins(V, cap, &c, k, v); agreeGet(V, cap, &c, k2, invIns(V, cap, m, k, v, hm), h2)), e), symm(agreeGet(V, cap, m, k2, hm, h)))
+    trans(trans((let c = clone(*m); ins(V, cap, &c, k, clone(v)); agreeGet(V, cap, &c, k2, invIns(V, cap, m, k, v, hm), h2)), e), symm(agreeGet(V, cap, m, k2, hm, h)))
   )
 
   -- H7a: insert returns None exactly when k was absent.
@@ -326,7 +326,7 @@ ochr HashMapCompose uses HashMapSpec {
       (m8 : Π(V : Type) (a : MM(V)) (k : Word) (h : minv(V, a)). Eq(Opt(V), mget(V, mremove(V, a, k), k), None[V]))
       (V : Type) (cap : Word) (m : &Map(V, cap)) (k : Word) (hm : inv(V, cap, *m)) :
       Eq(Bool, (let c = *m; rem(V, cap, &c, k); containsOf(V, cap, c, k)), false) := (
-    rewrite ← (let c = *m; rem(V, cap, &c, k); agreeContains(V, cap, &c, k, invRem(V, cap, m, k, hm))) in
+    rewrite ← (let c = clone(*m); rem(V, cap, &c, k); agreeContains(V, cap, &c, k, invRem(V, cap, m, k, hm))) in
     rewrite ← agreeRem(V, cap, m, k, hm) in
     rewrite ← m8(V, absOf(V, cap, *m), k, absInv(V, cap, m, hm)) in
     refl
@@ -353,7 +353,7 @@ ochr HashMapCompose uses HashMapSpec {
         Eq(Opt(V), mget(V, mremove(V, a, k), k2), mget(V, a, k2)))
       (V : Type) (cap : Word) (m : &Map(V, cap)) (k : Word) (k2 : Word) (hm : inv(V, cap, *m)) (ne : Π(e : Eq(Word, k2, k)). False) :
       Eq(Bool, (let c = *m; rem(V, cap, &c, k); containsOf(V, cap, c, k2)), containsOf(V, cap, *m, k2)) := (
-    rewrite ← (let c = *m; rem(V, cap, &c, k); agreeContains(V, cap, &c, k2, invRem(V, cap, m, k, hm))) in
+    rewrite ← (let c = clone(*m); rem(V, cap, &c, k); agreeContains(V, cap, &c, k2, invRem(V, cap, m, k, hm))) in
     rewrite ← agreeRem(V, cap, m, k, hm) in
     rewrite ← agreeContains(V, cap, m, k2, hm) in
     rewrite ← m9(V, absOf(V, cap, *m), k, k2, absInv(V, cap, m, hm), ne) in
@@ -385,7 +385,7 @@ ochr HashMapCompose uses HashMapSpec {
       Eq(V, (let c = *m; rem(V, cap, &c, k); clone(*get(V, cap, &c, k2, h2))), clone(*get(V, cap, m, k2, h))) := (
     let e : Eq(Opt(V), mget(V, absOf(V, cap, (let c = *m; rem(V, cap, &c, k); c)), k2), mget(V, absOf(V, cap, *m), k2)) = (
       rewrite ← agreeRem(V, cap, m, k, hm) in m9(V, absOf(V, cap, *m), k, k2, absInv(V, cap, m, hm), ne));
-    trans(trans((let c = *m; rem(V, cap, &c, k); agreeGet(V, cap, &c, k2, invRem(V, cap, m, k, hm), h2)), e), symm(agreeGet(V, cap, m, k2, hm, h)))
+    trans(trans((let c = clone(*m); rem(V, cap, &c, k); agreeGet(V, cap, &c, k2, invRem(V, cap, m, k, hm), h2)), e), symm(agreeGet(V, cap, m, k2, hm, h)))
   )
 
   -- H10a: remove returns None exactly when k was absent.
@@ -465,10 +465,10 @@ ochr HashMapCompose uses HashMapSpec {
       (agreeIns : Π(V : Type) (cap : Word) (m : &Map(V, cap)) (k : Word) (v : V) (hm : inv(V, cap, *m)).
         Eq(MM(V), (let c = *m; ins(V, cap, &c, k, v); absOf(V, cap, c)), minsert(V, absOf(V, cap, *m), k, v)))
       (absInv : Π(V : Type) (cap : Word) (m : &Map(V, cap)) (hm : inv(V, cap, *m)). minv(V, absOf(V, cap, *m)))
-      (m12 : Π(V : Type) (a : MM(V)) (k : Word) (v : V) (h : minv(V, a)). Eq(Word, mlen(V, minsert(V, a, k, v)), Grow(IsSomeB(V, mget(V, a, k)), mlen(V, a))))
+      (m12 : Π(V : Type) (a : MM(V)) (k : Word) (v : V) (h : minv(V, a)). Eq(Word, mlen(V, minsert(V, a, k, v)), Grow(IsSomeB(V, mget(V, clone(a), k)), mlen(V, a))))
       (V : Type) (cap : Word) (m : &Map(V, cap)) (k : Word) (v : V) (hm : inv(V, cap, *m)) :
-      Eq(Word, (let c = *m; ins(V, cap, &c, k, v); lenOf(V, cap, c)), Grow(containsOf(V, cap, *m, k), lenOf(V, cap, *m))) := (
-    rewrite ← (let c = *m; ins(V, cap, &c, k, v); agreeLen(V, cap, &c, invIns(V, cap, m, k, v, hm))) in
+      Eq(Word, (let c = *m; ins(V, cap, &c, k, v); lenOf(V, cap, c)), Grow(containsOf(V, cap, clone(*m), k), lenOf(V, cap, *m))) := (
+    rewrite ← (let c = clone(*m); ins(V, cap, &c, k, clone(v)); agreeLen(V, cap, &c, invIns(V, cap, m, k, v, hm))) in
     rewrite ← agreeIns(V, cap, m, k, v, hm) in
     rewrite ← agreeContains(V, cap, m, k, hm) in
     rewrite ← agreeLen(V, cap, m, hm) in
@@ -495,10 +495,10 @@ ochr HashMapCompose uses HashMapSpec {
       (agreeRem : Π(V : Type) (cap : Word) (m : &Map(V, cap)) (k : Word) (hm : inv(V, cap, *m)).
         Eq(MM(V), (let c = *m; rem(V, cap, &c, k); absOf(V, cap, c)), mremove(V, absOf(V, cap, *m), k)))
       (absInv : Π(V : Type) (cap : Word) (m : &Map(V, cap)) (hm : inv(V, cap, *m)). minv(V, absOf(V, cap, *m)))
-      (m13 : Π(V : Type) (a : MM(V)) (k : Word) (h : minv(V, a)). Eq(Word, mlen(V, mremove(V, a, k)), Shrink(IsSomeB(V, mget(V, a, k)), mlen(V, a))))
+      (m13 : Π(V : Type) (a : MM(V)) (k : Word) (h : minv(V, a)). Eq(Word, mlen(V, mremove(V, a, k)), Shrink(IsSomeB(V, mget(V, clone(a), k)), mlen(V, a))))
       (V : Type) (cap : Word) (m : &Map(V, cap)) (k : Word) (hm : inv(V, cap, *m)) :
-      Eq(Word, (let c = *m; rem(V, cap, &c, k); lenOf(V, cap, c)), Shrink(containsOf(V, cap, *m, k), lenOf(V, cap, *m))) := (
-    rewrite ← (let c = *m; rem(V, cap, &c, k); agreeLen(V, cap, &c, invRem(V, cap, m, k, hm))) in
+      Eq(Word, (let c = *m; rem(V, cap, &c, k); lenOf(V, cap, c)), Shrink(containsOf(V, cap, clone(*m), k), lenOf(V, cap, *m))) := (
+    rewrite ← (let c = clone(*m); rem(V, cap, &c, k); agreeLen(V, cap, &c, invRem(V, cap, m, k, hm))) in
     rewrite ← agreeRem(V, cap, m, k, hm) in
     rewrite ← agreeContains(V, cap, m, k, hm) in
     rewrite ← agreeLen(V, cap, m, hm) in
@@ -533,9 +533,9 @@ ochr HashMapCompose uses HashMapSpec {
       (V : Type) (cap : Word) (m : &Map(V, cap)) (k : Word) (w : V) (k2 : Word) (hm : inv(V, cap, *m)) (hk : IsTrue(containsOf(V, cap, *m, k))) :
       Eq(Bool, (let c = *m; let r = getMut(V, cap, &c, k, hk); *r := w; containsOf(V, cap, c, k2)),
         (let c = *m; ins(V, cap, &c, k, w); containsOf(V, cap, c, k2))) := (
-    rewrite ← (let c = *m; let r = getMut(V, cap, &c, k, hk); *r := w; agreeContains(V, cap, &c, k2, invWrite(V, cap, m, k, w, hm, hk))) in
+    rewrite ← (let c = clone(*m); let r = getMut(V, cap, &c, k, hk); *r := clone(w); agreeContains(V, cap, &c, k2, invWrite(V, cap, m, k, w, hm, hk))) in
     rewrite ← agreeWrite(V, cap, m, k, w, hm, hk) in
-    rewrite ← (let c = *m; ins(V, cap, &c, k, w); agreeContains(V, cap, &c, k2, invIns(V, cap, m, k, w, hm))) in
+    rewrite ← (let c = clone(*m); ins(V, cap, &c, k, clone(w)); agreeContains(V, cap, &c, k2, invIns(V, cap, m, k, w, hm))) in
     rewrite ← agreeIns(V, cap, m, k, w, hm) in
     rewrite ← m14(V, absOf(V, cap, *m), k, w, k2, absInv(V, cap, m, hm), (rewrite agreeContains(V, cap, m, k, hm) in hk)) in
     refl
@@ -575,8 +575,8 @@ ochr HashMapCompose uses HashMapSpec {
         (let c = *m; ins(V, cap, &c, k, w); clone(*get(V, cap, &c, k2, h2)))) := (
     let e : Eq(Opt(V), mget(V, absOf(V, cap, (let c = *m; let r = getMut(V, cap, &c, k, hk); *r := w; c)), k2), mget(V, absOf(V, cap, (let c = *m; ins(V, cap, &c, k, w); c)), k2)) = (
       rewrite ← agreeWrite(V, cap, m, k, w, hm, hk) in rewrite ← agreeIns(V, cap, m, k, w, hm) in m14(V, absOf(V, cap, *m), k, w, k2, absInv(V, cap, m, hm), (rewrite agreeContains(V, cap, m, k, hm) in hk)));
-    trans(trans((let c = *m; let r = getMut(V, cap, &c, k, hk); *r := w; agreeGet(V, cap, &c, k2, invWrite(V, cap, m, k, w, hm, hk), h1)), e),
-      symm((let c = *m; ins(V, cap, &c, k, w); agreeGet(V, cap, &c, k2, invIns(V, cap, m, k, w, hm), h2))))
+    trans(trans((let c = clone(*m); let r = getMut(V, cap, &c, k, hk); *r := clone(w); agreeGet(V, cap, &c, k2, invWrite(V, cap, m, k, w, hm, hk), h1)), e),
+      symm((let c = clone(*m); ins(V, cap, &c, k, clone(w)); agreeGet(V, cap, &c, k2, invIns(V, cap, m, k, w, hm), h2))))
   )
 
   -- H15: ... and on len.
@@ -610,9 +610,9 @@ ochr HashMapCompose uses HashMapSpec {
       (V : Type) (cap : Word) (m : &Map(V, cap)) (k : Word) (w : V) (hm : inv(V, cap, *m)) (hk : IsTrue(containsOf(V, cap, *m, k))) :
       Eq(Word, (let c = *m; let r = getMut(V, cap, &c, k, hk); *r := w; lenOf(V, cap, c)),
         (let c = *m; ins(V, cap, &c, k, w); lenOf(V, cap, c))) := (
-    rewrite ← (let c = *m; let r = getMut(V, cap, &c, k, hk); *r := w; agreeLen(V, cap, &c, invWrite(V, cap, m, k, w, hm, hk))) in
+    rewrite ← (let c = clone(*m); let r = getMut(V, cap, &c, k, hk); *r := clone(w); agreeLen(V, cap, &c, invWrite(V, cap, m, k, w, hm, hk))) in
     rewrite ← agreeWrite(V, cap, m, k, w, hm, hk) in
-    rewrite ← (let c = *m; ins(V, cap, &c, k, w); agreeLen(V, cap, &c, invIns(V, cap, m, k, w, hm))) in
+    rewrite ← (let c = clone(*m); ins(V, cap, &c, k, clone(w)); agreeLen(V, cap, &c, invIns(V, cap, m, k, w, hm))) in
     rewrite ← agreeIns(V, cap, m, k, w, hm) in
     m15(V, absOf(V, cap, *m), k, w, absInv(V, cap, m, hm), (rewrite agreeContains(V, cap, m, k, hm) in hk))
   )
@@ -735,14 +735,14 @@ ochr HashMapModel uses HashMapSpec {
   -- FIXED-BEGIN M12
   -- M12 (H12 about the model): the length after insert.
   def MLenInsert (V : Type) (a : MMap(V)) (k : Word) (v : V) (h : MInv(V, a)) :
-      Eq(Word, MLen(V, MInsert(V, a, k, v)), Grow(IsSomeB(V, MGet(V, a, k)), MLen(V, a))) :=
+      Eq(Word, MLen(V, MInsert(V, a, k, v)), Grow(IsSomeB(V, MGet(V, clone(a), k)), MLen(V, a))) :=
   -- FIXED-END M12
     ?
 
   -- FIXED-BEGIN M13
   -- M13 (H13 about the model): the length after remove.
   def MLenRemove (V : Type) (a : MMap(V)) (k : Word) (h : MInv(V, a)) :
-      Eq(Word, MLen(V, MRemove(V, a, k)), Shrink(IsSomeB(V, MGet(V, a, k)), MLen(V, a))) :=
+      Eq(Word, MLen(V, MRemove(V, a, k)), Shrink(IsSomeB(V, MGet(V, clone(a), k)), MLen(V, a))) :=
   -- FIXED-END M13
     ?
 
@@ -1065,7 +1065,7 @@ ochr HashMapSolution uses HashMapModel, HashMapCompose {
   -- FIXED-BEGIN H12
   -- H12: insert adds one to len if k was absent, and leaves it otherwise.
   def LenInsert (V : Type) (cap : Word) (m : &Map(V, cap)) (k : Word) (v : V) (hm : Inv(V, cap, *m)) :
-      Eq(Word, (let c = *m; MapInsert(V, cap, &c, k, v); LenOf(V, cap, c)), Grow(ContainsOf(V, cap, *m, k), LenOf(V, cap, *m))) :=
+      Eq(Word, (let c = *m; MapInsert(V, cap, &c, k, v); LenOf(V, cap, c)), Grow(ContainsOf(V, cap, clone(*m), k), LenOf(V, cap, *m))) :=
     -- provided: from the model, by LenInsertFrom (HashMapCompose)
     LenInsertFrom(MMap, MapInsert, ContainsOf, LenOf, Inv, AbsOf, MGet, MLen, MInsert, MInv, InvInsert, AgreeContains, AgreeLen, AgreeInsert, AbsInv, MLenInsert, V, cap, m, k, v, hm)
   -- FIXED-END H12
@@ -1073,7 +1073,7 @@ ochr HashMapSolution uses HashMapModel, HashMapCompose {
   -- FIXED-BEGIN H13
   -- H13: remove takes one from len if k was present, and leaves it otherwise.
   def LenRemove (V : Type) (cap : Word) (m : &Map(V, cap)) (k : Word) (hm : Inv(V, cap, *m)) :
-      Eq(Word, (let c = *m; MapRemove(V, cap, &c, k); LenOf(V, cap, c)), Shrink(ContainsOf(V, cap, *m, k), LenOf(V, cap, *m))) :=
+      Eq(Word, (let c = *m; MapRemove(V, cap, &c, k); LenOf(V, cap, c)), Shrink(ContainsOf(V, cap, clone(*m), k), LenOf(V, cap, *m))) :=
     -- provided: from the model, by LenRemoveFrom (HashMapCompose)
     LenRemoveFrom(MMap, MapRemove, ContainsOf, LenOf, Inv, AbsOf, MGet, MLen, MRemove, MInv, InvRemove, AgreeContains, AgreeLen, AgreeRemove, AbsInv, MLenRemove, V, cap, m, k, hm)
   -- FIXED-END H13

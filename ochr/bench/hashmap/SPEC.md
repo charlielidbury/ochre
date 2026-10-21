@@ -162,8 +162,8 @@ Each package fills in its own table: for each property, the file and declaration
 | H10a | `ochr/HashMap.lean` | `RemoveReturnsContains` (region `H10a`) | As H7a, for `MapRemove`. |
 | H10b | `ochr/HashMap.lean` | `RemoveReturnsGet` (region `H10b`) | As H7b, for `MapRemove`. |
 | H11 | `ochr/HashMap.lean` | `LenNew` (region `H11`) | `Eq(Word, LenOf(V, cap, MapNew(V, cap, h)), Zero)`. |
-| H12 | `ochr/HashMap.lean` | `LenInsert` (region `H12`) | `Eq(Word, (let c = *m; MapInsert(V, cap, &c, k, v); LenOf(V, cap, c)), Grow(ContainsOf(V, cap, *m, k), LenOf(V, cap, *m)))`, `Grow(c, l)` = `l + 1` if `c` is false, else `l`. No bound on `len`: `Word` is unbounded. |
-| H13 | `ochr/HashMap.lean` | `LenRemove` (region `H13`) | `Shrink(c, l)` = `l − 1` (the library's truncated `Sub`) if `c` is true, else `l`. |
+| H12 | `ochr/HashMap.lean` | `LenInsert` (region `H12`) | `Eq(Word, (let c = *m; MapInsert(V, cap, &c, k, v); LenOf(V, cap, c)), Grow(ContainsOf(V, cap, clone(*m), k), LenOf(V, cap, *m)))`, `Grow(c, l)` = `l + 1` if `c` is false, else `l`. No bound on `len`: `Word` is unbounded. The right side reads `*m` twice inside one side of `Eq` (`Grow` returns data, so its arguments share that side's copy of the state), and a read moves (D68), so the first is a `clone`. |
+| H13 | `ochr/HashMap.lean` | `LenRemove` (region `H13`) | As H12, with `MapRemove` and `Shrink(ContainsOf(V, cap, clone(*m), k), LenOf(V, cap, *m))`. `Shrink(c, l)` = `l − 1` (the library's truncated `Sub`) if `c` is true, else `l`. |
 | H14a | `ochr/HashMap.lean` | `GetMutContains` (region `H14a`) | Compares `ContainsOf(V, cap, c, k2)` after `let r = MapGetMut(V, cap, &c, k, hk); *r := w` with `ContainsOf(V, cap, c, k2)` after `MapInsert(V, cap, &c, k, w)`, each on its own copy `c` of `*m`. |
 | H14b | `ochr/HashMap.lean` | `GetMutGet` (region `H14b`) | Likewise with the values read through `MapGet` at `k2`, given the presence of `k2` in both. |
 | H15 | `ochr/HashMap.lean` | `GetMutLen` (region `H15`) | Likewise with `LenOf`. |

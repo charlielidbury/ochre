@@ -56,7 +56,7 @@ ochr QuicksortSolution uses QuicksortSpec {
 
   -- FIXED-BEGIN Q2
   -- Q2: perm(a₁, a₀), where a₁ is the contents after `QuickSort` and a₀ = `*s` those before.
-  def QuickSortPerm (n : Word) (s : &Slice(Word, n)) : (let c = *s; QuickSort(n, &c); Perm(n, c, *s)) :=
+  def QuickSortPerm (n : Word) (s : &Slice(Word, n)) : (let c = clone(*s); QuickSort(n, &c); Perm(n, c, *s)) :=
   -- FIXED-END Q2
     ?
 -- FIXED-BEGIN tests

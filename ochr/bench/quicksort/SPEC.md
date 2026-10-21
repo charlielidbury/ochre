@@ -70,7 +70,7 @@ Each package fills in its own table: for each item, the file and declaration tha
 | sorted | `ochr/Quicksort.lean` | `Sorted` (region `header`, block `QuicksortSpec`) | `Π(i j : Word) (hij : Lt(i, j)) (hi : Lt(i, n)) (hj : Lt(j, n)). Le(Nth(Word, n, s, i, hi), Nth(Word, n, s, j, hj))`: the SPEC definition, plus the bound `hi` that reading `a[i]` needs, which `hij` and `hj` imply. |
 | count, perm | `ochr/Quicksort.lean` | `Count` (library `ArrayLemmas`), `Perm` (region `header`) | `Count(x, n, a)` counts the elements equal to `x` by recursion over them; `Perm(n, a, b) := Π(x : Word). Eq(Word, Count(x, n, a), Count(x, n, b))`. |
 | Q1 | `ochr/Quicksort.lean` | `QuickSortSorted` (region `Q1`) | `(let c = *s; QuickSort(n, &c); Sorted(n, c))`: sorts a copy `c` of the contents in place and states `sorted` of the result. Total: every Ochr function terminates. |
-| Q2 | `ochr/Quicksort.lean` | `QuickSortPerm` (region `Q2`) | `(let c = *s; QuickSort(n, &c); Perm(n, c, *s))`: `perm(a₁, a₀)`, with `a₀` = `*s`, the contents before. |
+| Q2 | `ochr/Quicksort.lean` | `QuickSortPerm` (region `Q2`) | `(let c = clone(*s); QuickSort(n, &c); Perm(n, c, *s))`: `perm(a₁, a₀)`, with `a₀` = `*s`, the contents before. `c` is a `clone` because the statement reads `*s` twice, and a read moves (D68). |
 | Partition scheme | `ochr/Quicksort.lean` | the solver's partition function | Lomuto or Hoare, the solver's choice, named in a comment (A1). Tests: the 29 cases, and one negative test, `TestReject_unsorted`, that must be rejected. |
 
 ### ochr-2p

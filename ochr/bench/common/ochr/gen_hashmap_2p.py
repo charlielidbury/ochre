@@ -130,8 +130,8 @@ ochr HashMapModel uses HashMapSpec {
       ("M8", "a lookup after remove, at the same key", "MGetRemoveSame", "(V : Type) (a : MMap(V)) (k : Word) (h : MInv(V, a))", "Eq(Opt(V), MGet(V, MRemove(V, a, k), k), None[V])"),
       ("M9", "a lookup after remove, at another key", "MGetRemoveOther", "(V : Type) (a : MMap(V)) (k : Word) (k2 : Word) (h : MInv(V, a)) (ne : Π(e : Eq(Word, k2, k)). False)", "Eq(Opt(V), MGet(V, MRemove(V, a, k), k2), MGet(V, a, k2))"),
       ("M11", "the length of the empty map", "MLenNew", "(V : Type)", "Eq(Word, MLen(V, MNew(V)), Zero)"),
-      ("M12", "the length after insert", "MLenInsert", "(V : Type) (a : MMap(V)) (k : Word) (v : V) (h : MInv(V, a))", "Eq(Word, MLen(V, MInsert(V, a, k, v)), Grow(IsSomeB(V, MGet(V, a, k)), MLen(V, a)))"),
-      ("M13", "the length after remove", "MLenRemove", "(V : Type) (a : MMap(V)) (k : Word) (h : MInv(V, a))", "Eq(Word, MLen(V, MRemove(V, a, k)), Shrink(IsSomeB(V, MGet(V, a, k)), MLen(V, a)))"),
+      ("M12", "the length after insert", "MLenInsert", "(V : Type) (a : MMap(V)) (k : Word) (v : V) (h : MInv(V, a))", "Eq(Word, MLen(V, MInsert(V, a, k, v)), Grow(IsSomeB(V, MGet(V, clone(a), k)), MLen(V, a)))"),
+      ("M13", "the length after remove", "MLenRemove", "(V : Type) (a : MMap(V)) (k : Word) (h : MInv(V, a))", "Eq(Word, MLen(V, MRemove(V, a, k)), Shrink(IsSomeB(V, MGet(V, clone(a), k)), MLen(V, a)))"),
       ("M14", "a write has the effect of insert on every lookup", "MWriteGet", "(V : Type) (a : MMap(V)) (k : Word) (w : V) (k2 : Word) (h : MInv(V, a)) (hk : IsTrue(IsSomeB(V, MGet(V, a, k))))", "Eq(Opt(V), MGet(V, MWrite(V, a, k, w), k2), MGet(V, MInsert(V, a, k, w), k2))"),
       ("M15", "... and on the length", "MWriteLen", "(V : Type) (a : MMap(V)) (k : Word) (w : V) (h : MInv(V, a)) (hk : IsTrue(IsSomeB(V, MGet(V, a, k))))", "Eq(Word, MLen(V, MWrite(V, a, k, w)), MLen(V, MInsert(V, a, k, w)))"),
     ]

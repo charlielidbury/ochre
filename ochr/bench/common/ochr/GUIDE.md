@@ -67,7 +67,7 @@ Numbers: `Word` (`Zero | Succ(pred : Word)`) is the type of keys, values, indice
 - A borrow parameter `x : &T` is a `&mut`: the function may read and write `*x`. There are no shared borrows, so a function that only reads a structure still takes `&` and must be shown not to change it when that matters.
 - A function may return a borrow (`: &T`) only if it takes a borrow parameter; the result borrows from it.
 - Reading a place moves its value out unless the type is a copy type (D53): `Word`, `Unit`, propositions, types, inductives declared `copy`, and non-recursive inductives whose fields are copies (such as `Opt` with a `Word` field, or `Dec`). Reading a moved-out place is an error (`[Read] x was moved out`). Use `clone(p)` for an explicit copy, or reborrow `&*s` instead of moving `s`.
-- Inside types and proofs nothing is moved: those reads always copy (they run on a private copy of the state and leave no trace).
+- Types and proofs follow the same rules: a read moves there too. But a *statement* (a type, a proof, a side of `Eq` or `Id`, and each argument of a call that returns a type or a proof) runs on its own private copy of the state, which is thrown away at the end, so whatever it moves or writes is gone with it. Two arguments may each use the same value (`Perm(n, c, *s)` reads `*s` on its own copy), but within one argument a value is used once, as in runtime code: `G(clone(*s), *s)` where `G` returns data, not `G(*s, *s)`.
 - A closure captures values, never borrows; a closure may run again, so its body may not move a captured value out (use `clone`).
 - A match on a place borrows into it: in `match *s { MkSlice(c) => … }`, `c` is the place `(*s).c`.
 
@@ -79,7 +79,7 @@ A recursive function declares its decreasing parameter, `by x`, and every recurs
 
 Types are programs, so a statement can run the in-place code. Two forms recur:
 
-- **On a copy.** `(let c = *s; F(&c); P(c))` copies the current contents of `*s` into a local `c`, runs `F` on it in place, and states `P` of the result. `*s` itself is untouched, so the same statement can still mention the contents before as `*s`: `(let c = *s; F(&c); Perm(n, c, *s))`.
+- **On a copy.** `(let c = *s; F(&c); P(c))` moves the current contents of `*s` into a local `c`, runs `F` on it in place, and states `P` of the result. All of this happens on the statement's own copy of the state, so the real `*s` is untouched. To mention the contents before in the same statement as well, take `c` as a `clone`: `(let c = clone(*s); F(&c); Perm(n, c, *s))`. A side of `Eq` (or an argument of a call that returns a proposition) has its own copy, so `*s` in another one is still the contents before: `Eq(Word, (let c = *s; F(&c); G(c)), G(*s))`.
 - **`Id(A, t, u)`** says that the programs `t` and `u`, each run on its own copy of the current state, return equal results *and* leave equal contents in every place they may write (their footprint: places they assign or borrow, and what borrow parameters point to). For example `Id(Unit, F(s), *s := G(*s))` says that `F` has exactly the effect of writing `G`'s result. `Id` evaluates to a conjunction of `Eq`s, one per observed place, so it is proved like any conjunction of equations.
 
 `Eq` computes: `Eq(A, a, a)` is `⊤` (proved by `refl`); `Eq(D, C(a1, a2), C(b1, b2))` is `Eq(_, a1, b1) ∧ Eq(_, a2, b2)`; `Eq(D, C1 …, C2 …)` for different constructors is `False`; `Eq(Unit, a, b)` is `⊤`. So `refl` proves an equation whenever both sides evaluate to the same normal form, and many "obvious" equations are `refl` after the right `match`.
@@ -152,7 +152,7 @@ def ZeroBoth (n : Word) (k : Word) (s : &Slice(Word, n)) (h : Le(k, n)) : Unit :
 -- SetS's, the read is Nth, and NthSetSame is about the model.
 def SetThenRead (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) :
     Eq(Word, let c = *s; *GetMut(Word, n, &c, i, h) := W(7); *GetMut(Word, n, &c, i, h), W(7)) := (
-  let c = SetS(Word, n, *s, i, W(7));
+  let c = SetS(Word, n, clone(*s), i, W(7));
   let ⟨hv, hp⟩ = GetMutRead(Word, n, &c, i, h);
   rewrite ← GetMutSetV(Word, n, *s, i, W(7), h) in rewrite ← hv in NthSetSame(Word, n, *s, i, W(7), h)
 )
