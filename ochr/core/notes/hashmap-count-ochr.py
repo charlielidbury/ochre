@@ -34,26 +34,29 @@ W = lambda s: s.split()
 
 IMPL = W("""Opt Bucket Slots HashMap EqB Lt LtB ModGo Idx IdxLt Pred WAdd BGet BContains BInsert BRemove BFind
 IsSome BGetMut Slot EmptySlots New Get ContainsKey InsertNoResize Remove Clear Len Find GetMut
-MoveBucket MoveSlots Resize Insert BLookup Lookup MapGetMut Take MoveFrom""")
-RUNS = W("W RunLayout RunGet RunGetWrong RunContains RunOverwrite RunCollide RunRemove RunGetMut RunGetMutAbsent RunClear")
+MoveBucket MoveSlots Resize Insert BLookup Lookup MapGetMut Take MoveFrom
+RawMap RawNew RawLookup RawFind RawContainsKey RawGetMut RawInsertNoResize RawRemove""")
+RUNS = W("W RawOf RunLayout RunGet RunGetWrong RunContains RunOverwrite RunCollide RunRemove RunGetMut RunGetMutAbsent RunClear")
 # statement vocabulary of the headline theorems: what a reader must trust
 SPEC = W("Buckets BLen Count IfNew Shrink Has Unique AllUnique Nowhere OnlyIn Placed Inv NOf NotOver Entries Counted KeysUnique")
 # definitions used only inside proofs (lemma statements)
 INTERNAL = W("""Nth IsNone IsNoneB IfFound OrElse BFindLast SFindLast Fresh FreshS AbsentFrom Apart GUnique
     NthS EmptyFrom Rest FindLast NowhereL CountL FreshL ApartL GUniqueL""")
-NEGATIVE = W("InsertFindNoSplit BRemoveFindDup InsertCountNoHyp BGetMoves BLookupMoves SlotUnbounded ResizeKeepSlots")
+NEGATIVE = W("""InsertFindNoSplit BRemoveFindDup InsertCountNoHyp BGetMoves BLookupMoves SlotUnbounded ResizeKeepSlots
+    InsertNoResizeForgets InsertNoResizeStale MapGetMutStale""")
 WALLED = W("")   # the three GetMut theorems were walled until D58; now proofs: get_mut
 GROUPS = {
     "helpers (keys, arithmetic, equality)": W("""EqBRefl EqBSound EqBTrans EqBContra EqBSymm NeqFlip
         TransO AddMS AddS SymmN AddZero AddAssoc TransN LtS LtAdd LtPred WAddS WAddZero AddZeroR WAddAssoc
         LtBS LtBAdd LtBPred"""),
     "new, clear": W("""NthEmpty NewFind ClearFind EmptyCount NewCount ClearCount NowhereEmpty OnlyInEmpty
-        UniqueEmpty NewInv ClearInv EmptyLookup"""),
-    "get, contains_key (F1 bridges)": W("BGetFind SlotGetFind GetFind BContainsFind SlotContainsFind ContainsFind"),
+        UniqueEmpty NewInv ClearInv EmptyLookup RawNewCount RawNewInv"""),
+    "get, contains_key (F1 bridges)": W("""BGetFind SlotGetFind GetFind BContainsFind SlotContainsFind ContainsFind
+        RawContainsFind RawContainsInv"""),
     "insert without resize": W("""BInsertFind BInsertFindOther SlotInsertFind SlotInsertFindOther InsertFind
         InsertFindOther BInsertAdded SlotInsertAdded InsertLen BInsertCount SlotInsertCount InsertCount
         BInsertUnique SlotInsertUnique BInsertAbsent NowhereInsert OnlyInOther OnlyInSame SlotInsertPlaced
-        InsertInv BInsertResult SlotInsertResult InsertResult"""),
+        InsertInv BInsertResult SlotInsertResult InsertResult RawInsertCount RawInsertInv"""),
     "resize, and insert with resize": W("""MoveBucketInv MoveSlotsInv ResizeInv MoveBucketFind MoveSlotsFind
         BFindLastNone BFindLastUnique NowhereLast OnlyInLast ResizeFind FreshInsert MoveBucketLen FreshMove
         FreshSMove MoveSlotsLen FreshNew FreshSNew NowhereOnlyIn HeadApart AbsentFromOf ApartOfGo TailOnlyIn
@@ -63,7 +66,7 @@ GROUPS = {
     "load factor": W("""InsertN MoveBucketN MoveSlotsN ResizeN InsertNotOver NewNotOver RemoveNotOver ClearNotOver
         MoveFromN"""),
     "remove": W("""BRemoveResult BRemoveFind BRemoveFindOther SlotRemoveResult SlotRemoveFind SlotRemoveFindOther
-        RemoveResult RemoveFind RemoveFindOther RemoveLen BRemoveCount SlotRemoveCount RemoveCount
+        RemoveResult RemoveFind RemoveFindOther RemoveLen BRemoveCount SlotRemoveCount RemoveCount RawRemoveCount RawRemoveInv
         BRemoveUnique SlotRemoveUnique BRemoveAbsent NowhereRemove OnlyInRemove SlotRemovePlaced RemoveInv"""),
     # the pre-D60 direct proofs (BGetMutFind … SlotGetMutPlaced) are listed too, so the
     # script also counts older versions of the file; the current file proves get_mut
@@ -71,7 +74,7 @@ GROUPS = {
     "get_mut": W("""GetMutLen BGetMutRead BGetMutFind BGetMutFindOther SlotGetMutRead SlotGetMutFind
         SlotGetMutFindOther GetMutRead GetMutFind GetMutFindOther BGetMutCount SlotGetMutCount BGetMutUnique
         SlotGetMutUnique BGetMutAbsent NowhereGetMut OnlyInGetMut SlotGetMutPlaced GetMutInv GetMutNotOver
-        BGetMutIsInsert SlotGetMutIsInsert GetMutIsInsert MapGetMutRead"""),
+        BGetMutIsInsert SlotGetMutIsInsert GetMutIsInsert MapGetMutRead RawGetMutIsInsert RawGetMutInv"""),
 }
 # moved to the central library (00Std.lean), counted here as before; the names they had here
 MOVED = W("Opt IsSome EqB LtB Pred WAdd W EqBRefl AddZeroR")

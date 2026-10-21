@@ -300,7 +300,7 @@ ochr HashMapInvLib uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
     }
   )
 
-  -- RawRemove returns what a lookup would have returned.
+  -- The remove returns what a lookup would have returned.
   def BRemoveResult (V : Type) (b : &Bucket(V)) (k : Word) :
       Id(Opt(V), BRemove(V, &*b, k), (let r = BFind(V, clone(*b), k); BRemove(V, &*b, k); r)) by b := (
     match *b {
@@ -602,12 +602,11 @@ ochr HashMapInvLib uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
     }
   )
 
-  -- ## RawNew and Clear
+  -- ## A new map
   -- Every bucket of a fresh table is empty, so no key is found. `EmptyFrom(V, n, j)` is the
   -- view `ArrFromFn` builds for `EmptySlots`, from element `j` on (the model `FromFnS`).
   def EmptyFrom (V : Type) (n : Word) (j : Word) : Slice(Bucket(V), n) := FromFnS(Bucket(V), n, λ(i : Word) : Bucket(V) => Nil[Pair(Word, V)], j)
 
-  -- ## RawNew and Clear
   def EmptyCount (V : Type) (n : Word) (j : Word) :
       Eq(Word, Entries(V, n, EmptyFrom(V, n, j)), Zero) by n := (
     match n {
@@ -854,7 +853,7 @@ ochr HashMapInvLib uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
     λ(k2 : Word) : OnlyIn(V, Succ(n), c, Idx(k2, n), k2) => OnlyInRemove(V, Succ(n), s, Idx(k, n), IdxLt(k, n), Idx(k2, n), k, k2, h(k2))
   )
 
-  -- ## The invariant
+  -- ## Each raw operation keeps the invariant
   -- A new map has it, and each operation keeps it.
   def NowhereEmpty (V : Type) (n : Word) (j : Word) (k : Word) :
       Nowhere(V, n, EmptyFrom(V, n, j), k) by n := (
@@ -890,8 +889,8 @@ ochr HashMapInvLib uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
     ⟨RawNewCount(V, n), ⟨hu, hp⟩⟩
   )
 
-  -- Each operation keeps it. Split on what the bucket operation returned, as for the
-  -- length theorems; the three parts are the lemmas above.
+  -- Split on what the bucket operation returned, as for the length; the three parts are the
+  -- lemmas above.
   def RawInsertInv (V : Type) (m : RawMap(V)) (k : Word) (v : V) (h : Inv(V, m)) : (let c = m; RawInsertNoResize(V, &c, k, v); Inv(V, c)) := (
     let RM(n, _, MkArray(s)) = m;
     let ⟨hl, hu, hp⟩ = h;
@@ -1269,7 +1268,9 @@ ochr HashMapLookup uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, HashM
   -- `InsertNoResize` updates the length according to what the bucket insert returned. That
   -- result is a sealed program; `split BInsert` splits on it, in each arm the map computes,
   -- and the slot theorem applies. The view is reached by taking the array apart, which a
-  -- proof may do (the representation is abstract only at runtime).
+  -- proof may do (the representation is abstract only at runtime). The map is taken apart on
+  -- a copy, and the view moved out of it: borrowing into `*hm`, or into the copy, would clear
+  -- the proof field `inv`, which a proof cannot assign again.
   def InsertFind (V : Type) (hm : &HashMap(V)) (k : Word) (v : V) :
       Id(Opt(V), (InsertNoResize(V, &*hm, k, v); Find(V, clone(*hm), k)), (InsertNoResize(V, &*hm, k, clone(v)); Some(v))) := (
     let HM(RM(n, _, MkArray(s0)), _) = clone(*hm);
