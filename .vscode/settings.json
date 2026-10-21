@@ -3,5 +3,11 @@
     "kind": "global"
   },
   "ocaml.terminal.shell.osx": "",
-  "lean4.showSetupWarnings": false
+  "lean4.showSetupWarnings": false,
+  "files.trimTrailingWhitespace": false,
+  "files.insertFinalNewline": false,
+  "[lean4]": {
+    "files.trimTrailingWhitespace": false,
+    "files.insertFinalNewline": false
+  }
 }
