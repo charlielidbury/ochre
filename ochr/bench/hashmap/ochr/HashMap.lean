@@ -16,22 +16,15 @@ The arrays library is `ArrayLemmas` (`checker/Ochr/Examples/16Arrays.lean`). A b
 reached in place through the library's element borrow, `GetMut(Bucket(V), cap, s, i, h)`. -/
 
 ochr HashMapSpec uses ArrayLemmas {
-  -- Opt(V): what insert and remove return (the value moved out of the map), or nothing.
-  inductive Opt (V : Type) := None | Some(val : V)
+  -- From `Std`: `Opt(V)` (`None | Some(v : V)`), what insert and remove return (the value
+  -- moved out of the map, or nothing), and `IsTrue(b)`, a boolean that is true as a
+  -- proposition (the precondition of get and get_mut).
 
   -- Whether a result holds a value (H7a, H10a).
   def IsSomeB (V : Type) (o : Opt(V)) : Bool := (
     match o {
       None => false,
       Some(x) => true,
-    }
-  )
-
-  -- A boolean that is true, as a proposition: the precondition of get and get_mut.
-  def IsTrue (b : Bool) : Prop := (
-    match b {
-      false => False,
-      true => ⊤,
     }
   )
 

@@ -25,11 +25,9 @@ ochr SweepS2 {
 }
 #eval IO.println (run "SweepS2" SweepS2).show
 ochr SweepTrees uses Std {
-  -- not printed: the tree, `Lt`, `Size`, `AddMS`/`AddS` as in InPlaceTrees
+  -- not printed: the tree, `Lt`, `Size` as in InPlaceTrees (`AddMS`/`AddS` are Std's)
   inductive Tree := Leaf | Node(l : Tree, v : Word, r : Tree)
   def Lt (a : Word) (b : Word) : Bool by a := match a { Zero => match b { Zero => false, Succ _ => true }, Succ a' => match b { Zero => false, Succ b' => Lt(a', b') } }
-  def AddMS (x : &Nat) (y : Nat) : Id(Unit, AddM(x, S(y)), AddM(&*x, y); *x := S(*x)) by x := match *x { Z => refl, S p => AddMS(&p, y) }
-  def AddS (x : Nat) (y : Nat) : Id(Nat, Add(x, S(y)), S(Add(x, y))) := AddMS(&x, y)
   def Size (t : Tree) : Nat by t := match t { Leaf => 0, Node(l, v, r) => S(Add(Size(l), Size(r))) }
   -- overview.typ:147
   def InsertM (t : &Tree) (k : Word) : Unit by t := match *t { Leaf => *t := Node(Leaf, k, Leaf), Node(l, v, r) => let b = Lt(k, v); match b { true => InsertM(&l, k), false => InsertM(&r, k) } }
@@ -46,11 +44,11 @@ ochr SweepClear uses Std {
 #eval IO.println (run "SweepClear" SweepClear).show
 ochr SweepHM uses Std, HashMap, HashMapLookup {
   -- impl.typ:55
-  def InsertFindOtherP (hm : &HashMap) (k : Word) (v : Nat) (k2 : Word) (h : Eq(Bool, EqB(k, k2), false)) : Id(Opt, InsertNoResize(&*hm, k, v); Find(clone(*hm), k2), let r = Find(clone(*hm), k2); InsertNoResize(&*hm, k, v); r) := match *hm { HM(n, len, slots) => split BInsert in SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h) }
+  def InsertFindOtherP (hm : &HashMap) (k : Word) (v : Nat) (k2 : Word) (h : Eq(Bool, EqB(k, k2), false)) : Id(Opt(Nat), InsertNoResize(&*hm, k, v); Find(clone(*hm), k2), let r = Find(clone(*hm), k2); InsertNoResize(&*hm, k, v); r) := match *hm { HM(n, len, slots) => split BInsert in SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h) }
 }
 #eval IO.println (run "SweepHM" SweepHM).show
 ochr SweepQS uses Quicksort {
-  -- impl.typ:75
+  -- impl.typ:76
   def QSCorrectP (n : Word) (s : &Slice(Word, n)) (q : Word) : (let c = *s; QS(n, n, &c); Sorted(n, c)) ∧ (let old = clone(*s); Eq(Word, Count(q, n, (QS(n, n, &*s); *s)), Count(q, n, old))) := ⟨QSSortedFull(n, n, s, LeRefl(n)), QSPerm(n, n, s, q)⟩
 }
 #eval IO.println (run "SweepQS" SweepQS).show
@@ -141,7 +139,7 @@ ochr SweepDep uses ArrayBench {
 -- appendix A.4.8, nesting: `NBox` is accepted, `Bad` nested in it is not, and a field that is
 -- a Π at the generic fields is rejected already
 ochr SweepNest uses Std {
-  inductive Void : Type
+  -- `Void` is Std's
   def IsSucc (n : Word) : Prop := match n { Zero => False, Succ(_) => True }
   def NegIf (n : Word) (A : Type) : Type := match n { Zero => Unit, Succ(m) => Π(x : A). Void }
   inductive NBox (A : Type) := MkNBox(n : Word, f : NegIf(n, A), h : IsSucc(n))
@@ -150,7 +148,7 @@ ochr SweepNest uses Std {
   reject inductive NegBox (A : Type) := MkNegBox(f : Neg(A))
 }
 #eval IO.println (run "SweepNest" SweepNest).show
-#guard ((run "SweepNest" SweepNest { k4Nest := false }).rows.map (fun r => r.verdict matches .accepted)) == [true, true, true, true, true, true, false]
+#guard ((run "SweepNest" SweepNest { k4Nest := false }).rows.map (fun r => r.verdict matches .accepted)) == [true, true, true, true, true, false]
 #eval IO.println (run "SweepDep" SweepDep).show
 -- the typed-fragment appendix (tf.typ): Bad2 as printed and the claims around it. Since D67
 -- (overwriting a borrow keeps the reborrows behind it) an assignment's [Access] leaves a

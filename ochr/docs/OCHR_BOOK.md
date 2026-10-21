@@ -12,7 +12,7 @@ An Ochr program lives in `ochr` blocks inside an ordinary Lean file:
 
 ```
 import Ochr.Test
-import Ochr.Examples.«00Std»         -- the Std library (Word, Bool, List, Box, AddM, …)
+import Ochr.Examples.«00Std»         -- the libraries Std (Word, Bool, List, Opt, AddM, …) and Words (Le, EqB, W, …)
 import Ochr.Examples.«16Arrays»      -- only if you need arrays
 open Ochr.Test
 
@@ -22,7 +22,8 @@ ochr MyBlock uses Std {
 }
 ```
 
-- A block sees the accepted declarations of the blocks it `uses`, transitively, plus the always-present `Prelude` (`Pair`, `False`, `True`, `And`). For arrays, write `uses Index, Arrays, ArrayLemmas`.
+- A block sees the accepted declarations of the blocks it `uses`, transitively, plus the always-present `Prelude` (`Pair`, `False`, `True`, `And`). For arithmetic and comparisons on `Word`, write `uses Std, Words`; for arrays, `uses ArrayLemmas`, which brings `Arrays`, `Words` and `Std` with it.
+- A block can't declare a name that a block it uses already declares: the names form one namespace, and a clash is an error. So use `Std`'s `Opt`, `Dec` or `Void` rather than declaring your own.
 - Every block is checked when the file is elaborated, in the editor as you type or in `lake build` / `lake env lean File.lean`. A rejected `def` is an error underlining the responsible piece of source, with the reason. Nothing else needs running.
 - Declarations are checked top to bottom. A helper must come before its first use, and there is no mutual recursion between top-level declarations.
 - A rejected declaration doesn't exist for later ones: everything that mentions it fails with `unknown constant X`. Fix the first error first.
@@ -86,10 +87,17 @@ Reserved names, which you can't declare: `Nat`, `Unit`, `Z`, `S`, `refl`, `Id`, 
 
 - **Built in:** `Unit` (value `()`), and `Nat` (`Z`, `S(n)`, numerals `0`, `1`, …). `Nat` is *not* a copy type, so reading one moves it. It is the type for in-place unary arithmetic examples.
 - **Std** (`uses Std`):
-  - `copy inductive Word := Zero | Succ(pred : Word)` is the number type for keys, values, indices and lengths. It is a copy type, unary in the logic and a machine word at runtime. Numerals are `Nat`, so write `Succ(Zero)`, or `W(7)` from the arrays library's `Index`.
-  - `Bool := false | true`, `List(A) := Nil | Cons(h, t)`, `Box(A) := MkBox(x)`.
-  - `AddM(&x, y)` and `Add(x, y)` on `Nat`.
-- **Your own types:** `inductive Opt (A : Type) := None | Some(v : A)`. Fields are data: other inductives, the type itself, numbers, function types reached through a type parameter (`Box(Π(n : Word). Word)`), and borrows nowhere. Parameters are types in `Type`.
+  - `copy inductive Word := Zero | Succ(pred : Word)` is the number type for keys, values, indices and lengths. It is a copy type, unary in the logic and a machine word at runtime. Numerals are `Nat`, so write `Succ(Zero)`, or `W(7)` from `Words`.
+  - `Bool := false | true`, `List(A) := Nil | Cons(h, t)`, `Box(A) := MkBox(x)`, and `IsTrue(b)`, a boolean as a proposition.
+  - `Opt(A) := None | Some(v)`, with the propositions `IsSome(A, o)` and `IsNone(A, o)`. Where nothing fixes `A`, write it: `None[Nat]`.
+  - `Dec(P, Q) := Yes(h : P) | No(k : Q)`, a decision that carries its proof, and `Void`, a type with no values (`absurdV(v) : False`).
+  - `AddM(&x, y)` and `Add(x, y)` on `Nat`, with `AddMZero` and `AddS`.
+- **Words** (`uses Words`), the library for `Word`s:
+  - the order `Le(a, b)` and `Lt(a, b)`, propositions, and `LeDec(a, b) : Dec(Le(a, b), Lt(b, a))`, `LtDec(i, n) : Dec(Lt(i, n), Le(n, i))`, comparisons that return the proof;
+  - boolean comparisons `EqB`, `LeB`, `LtB`, each named for the proposition it decides with a `B`;
+  - `WAdd` (addition), `Sub` (subtraction, truncated at zero), `Pred`, and `W(n)`, the `Word` for the numeral `n`;
+  - facts about them, listed in §9.
+- **Your own types:** `inductive Tree (A : Type) := Leaf | Node(l : Tree(A), v : A, r : Tree(A))`. Fields are data: other inductives, the type itself, numbers, function types reached through a type parameter (`Box(Π(n : Word). Word)`), and borrows nowhere. Parameters are types in `Type`.
 - **Dependent fields:** a field's type may mention earlier fields: `inductive Vec (E : Type) := MkVec(len : Word, cap : Word, buf : Array(Opt(E), cap), hl : Le(len, cap))`. You may break the dependency temporarily, writing the fields one at a time in either order: `match *v { MkVec(len, cap, buf, hl) => (cap := W(2); buf := two; len := W(2); hl := refl) }`. It must hold again wherever the value is used whole (read, passed, returned, borrow ended), or you get a `[Repack]` error naming the field and both types. A proof field (`hl`) is cleared when the data it mentions changes, or is borrowed, and must be re-assigned before the value is used whole. So a proof field about data that a function returns a borrow into cannot be kept: state it as a separate proposition instead (`VInv`). Examples: `18DependentFields.lean`.
 - **`if`** is on a `Bool` (§3). To get the proof with the answer, match on a decision type such as `Dec(Le(a, b), Lt(b, a))` (`Yes(h)` / `No(k)`).
 
@@ -142,6 +150,8 @@ A proposition is a type of sort `Prop`. You write one as a program that computes
 ```
 def Le (a : Word) (b : Word) : Prop by a := match a { Zero => ⊤, Succ(a') => match b { Zero => False, Succ(b') => Le(a', b') } }
 ```
+
+This is `Words`' `Le`: a block that `uses Words` has it already.
 
 **`Eq` computes**:
 - `Eq(A, a, a)` is `⊤`;
@@ -241,13 +251,13 @@ For a reader who knows Lean's tactics:
 
 ## 9. The arrays library
 
-`import Ochr.Examples.«16Arrays»` and `uses Index, Arrays, ArrayLemmas`. Read `16Arrays.lean`: every declaration is short and checked.
+`import Ochr.Examples.«16Arrays»` and `uses ArrayLemmas`. Read `16Arrays.lean`: every declaration is short and checked.
 
-- **`Index`** (numbers):
+- **Numbers** are `Words`' (`00Std.lean`, §4):
   - `Le(a, b)`, `Lt(a, b)`, propositions;
   - `LeDec(a, b) : Dec(Le(a, b), Lt(b, a))` and `LtDec(i, n) : Dec(Lt(i, n), Le(n, i))`, comparisons that return the proof;
-  - `Leb`, `Eqb` (`Bool`), `WAdd`, `Sub`, `W(n)`;
-  - facts: `LeRefl`, `LeStep`, `LeTrans`, `LeAddL`, `AddRS`, `AddZeroR`, `AddOneR`, `SubPos`, `SubOneLe`, `SubPosLt`, `LtNe`, `LeAntisym`.
+  - `EqB`, `LeB`, `LtB` (`Bool`), `WAdd`, `Sub`, `Pred`, `W(n)`;
+  - facts: `LeRefl`, `LeStep`, `LeTrans`, `LeOfLt`, `LeAddL`, `AddRS`, `AddZeroR`, `AddOneR`, `SubPos`, `SubOneLe`, `SubPosLt`, `LtNe`, `LeAntisym`, `EqBRefl`.
 - **Model** (pure, used in statements):
   - `Slice(E, n)` is a view of `n` elements, and `Array(E, n)` is an owned array;
   - `Nth(E, n, s, i, h)` is element `i`, given `h : Lt(i, n)`;

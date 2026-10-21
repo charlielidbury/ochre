@@ -579,3 +579,8 @@ The user: an `Array` is Rust's `[T; n]`, not `Vec<T>`; `Vec` must be user code. 
 - **Quicksort's tests** (`gen_tests.py`, both skeletons) and every concrete test array are literals.
 
 Check time: see `lake exe tests`.
+
+## 15. The order on `Word` moved to the central library (docs/11 §2, lane hm-lib, 2026-10-21)
+
+The block `Index` is now the library `Words` in `00Std.lean`, with `Dec` in `Std`; `Arrays` uses `Words`. Boolean comparisons are named for the proposition they decide with a `B`: `Leb` is `LeB`, `Eqb` is `EqB` (the hash map's name), and the hash map's boolean `Lt` is `LtB`. Two quicksort lemmas that other files also proved moved with it: `EqbRefl` (the hash map's `EqBRefl`) and `LeOfLt` (`DepVec`'s `LeSuccL`, the same body). The quicksort's lemmas about the booleans follow the rename (`EqBLeLt`, `EqBGeLt`, `LeBLe`, `LeBGt`). No verdict and no proof changed. `arrays-count.py` reads the moved declarations from `00Std.lean` and counts them where they were, so its output is identical: `Index` 22 / 171 lines, B2 proofs 799 lines.
+

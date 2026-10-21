@@ -12,14 +12,14 @@ Ochr is a research language, so you will not have met it before. Read `docs/GUID
 
 Everything is generic in the value type `V : Type`; nothing may assume that values can be compared, hashed or copied.
 
-- `Opt(V)`, `None | Some(val : V)`: what `insert` and `remove` return. `IsSomeB(V, o)` is whether it holds a value.
+- `Opt(V)`, `None | Some(v : V)` (from `Std`): what `insert` and `remove` return. `IsSomeB(V, o)` is whether it holds a value.
 - `Bucket(V)`, `BNil | BCons(key : Word, value : V, next : Bucket(V))`: a singly linked list of entries, each node owning the next.
 - `Map(V, cap)`: a map of capacity `cap`, the value `MkMap(slots, len)`, where `slots` is an array of exactly `cap` buckets (`Array(Bucket(V), cap)`) and `len` is a word. The capacity is part of the type and never changes; there is no resizing. (The type is written `MapOf(Cells(Bucket(V), cap))`; it is the same thing.)
 - `Idx(cap, k)`, the bucket of key `k`: `k mod cap`. `IdxLt(cap, k, h) : Lt(Idx(cap, k), cap)` is its bound, given `h : Lt(Zero, cap)`.
-- `EqDec(a, b)`, key comparison that returns the evidence: `Yes(e)` with `e : Eq(Word, a, b)`, or `No(ne)` with `ne : Π(e : Eq(Word, a, b)). False`. The library's boolean `Eqb` is also available.
+- `EqDec(a, b)`, key comparison that returns the evidence: `Yes(e)` with `e : Eq(Word, a, b)`, or `No(ne)` with `ne : Π(e : Eq(Word, a, b)). False`. The library's boolean `EqB` (in `Words`) is also available.
 - Bucket `i` is reached in place through the arrays library's element borrow, `GetMut(Bucket(V), cap, s, i, h) : &Bucket(V)`, where the view of the array field is `AsSlice(Bucket(V), cap, &slots)`. It is the only way for runtime code to reach a bucket.
 - For the model: `SlotsOf(V, cap, m)`, the buckets of a map value as a view, and `LenField(V, cap, m)`, its length field. `SlotsOf` returns a view by value, so it is model code: it can be used in statements and in other model code, not at runtime.
-- `IsTrue(b)` is the proposition that the boolean `b` is `true`. `Grow(c, l)` is `l + 1` if `c` is `false` and `l` otherwise; `Shrink(c, l)` is `l − 1` if `c` is `true` and `l` otherwise. They state H12 and H13, with `c` = `contains(m, k)`.
+- `IsTrue(b)` (from `Std`) is the proposition that the boolean `b` is `true`. `Grow(c, l)` is `l + 1` if `c` is `false` and `l` otherwise; `Shrink(c, l)` is `l − 1` if `c` is `true` and `l` otherwise. They state H12 and H13, with `c` = `contains(m, k)`.
 
 ## The operations (signatures given, SPEC §3)
 

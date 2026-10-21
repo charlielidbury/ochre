@@ -6,7 +6,13 @@ Splits Ochr/Examples/17HashMap.lean into its declarations (a declaration runs fr
 assigns each to a category by name, and counts code lines and tokens per category with
 the same comment stripping and tokenizer as hashmap-count.py.
 
-usage: hashmap-count-ochr.py [path/to/17HashMap.lean]
+The definitions the case study wrote for itself until they moved to the central library in
+`00Std.lean` (`MOVED`: Std's `Opt` and `IsSome`, Words' `EqB`, `LtB`, `Pred`, `WAdd`, `W`,
+`EqBRefl` and `AddZeroR`, which was `WAddZero`) are read from there and counted where they
+were, so that moving them changes no number of the comparison with Aeneas. A version of the
+file that still declares one (under its old name, `Lt`, `WAddZero`) counts its own instead.
+
+usage: hashmap-count-ochr.py [path/to/17HashMap.lean [path/to/00Std.lean]]
 """
 import importlib.util
 import os
@@ -20,19 +26,19 @@ spec.loader.exec_module(hc)
 
 W = lambda s: s.split()
 
-IMPL = W("""Opt Bucket Slots HashMap EqB Lt ModGo Idx Pred WAdd BGet BContains BInsert BRemove BFind
+IMPL = W("""Opt Bucket Slots HashMap EqB Lt LtB ModGo Idx Pred WAdd BGet BContains BInsert BRemove BFind
 IsSome BGetMut Slot EmptySlots New Get ContainsKey InsertNoResize Remove Clear Len Find GetMut
 MoveBucket MoveSlots Resize Insert""")
 RUNS = W("W RunLayout RunGet RunGetWrong RunContains RunOverwrite RunCollide RunRemove RunGetMut RunGetMutAbsent RunClear")
 # statement vocabulary of the headline theorems: what a reader must trust
 SPEC = W("Buckets BLen Count IfNew Shrink Has Unique AllUnique Nowhere OnlyIn Placed Inv NOf NotOver")
 # definitions used only inside proofs (lemma statements)
-INTERNAL = W("Nth IsNone IfFound OrElse BFindLast SFindLast Fresh FreshS AbsentFrom Apart GUnique")
+INTERNAL = W("Nth IsNone IsNoneB IfFound OrElse BFindLast SFindLast Fresh FreshS AbsentFrom Apart GUnique")
 NEGATIVE = W("InsertFindNoSplit BRemoveFindDup InsertCountNoHyp BGetMoves")
 WALLED = W("")   # the three GetMut theorems were walled until D58; now proofs: get_mut
 GROUPS = {
     "helpers (keys, arithmetic, equality)": W("""EqBRefl EqBSound EqBTrans EqBContra EqBSymm NeqFlip
-        TransO AddMS AddS SymmN AddZero AddAssoc TransN LtS LtAdd LtPred WAddS WAddZero WAddAssoc"""),
+        TransO AddMS AddS SymmN AddZero AddAssoc TransN LtS LtAdd LtPred WAddS WAddZero AddZeroR WAddAssoc"""),
     "new, clear": W("""NthEmpty NewFind ClearFind EmptyCount NewCount ClearCount NowhereEmpty OnlyInEmpty
         UniqueEmpty NewInv ClearInv"""),
     "get, contains_key (F1 bridges)": W("BGetFind SlotGetFind GetFind BContainsFind SlotContainsFind ContainsFind"),
@@ -56,11 +62,15 @@ GROUPS = {
         SlotGetMutUnique BGetMutAbsent NowhereGetMut OnlyInGetMut SlotGetMutPlaced GetMutInv GetMutNotOver
         BGetMutIsInsert SlotGetMutIsInsert GetMutIsInsert"""),
 }
-DECL = re.compile(r"^  (?:reject )?(?:def|inductive) ([A-Za-z_][A-Za-z0-9_']*)")
+# moved to the central library (00Std.lean), counted here as before; the names they had here
+MOVED = W("Opt IsSome EqB LtB Pred WAdd W EqBRefl AddZeroR")
+OLD_NAME = {"LtB": "Lt", "AddZeroR": "WAddZero"}
+DECL = re.compile(r"^  (?:reject )?(?:copy )?(?:def|inductive) ([A-Za-z_][A-Za-z0-9_']*)")
 
 
-def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "..", "lean", "Ochr", "Examples", "17HashMap.lean")
+def decls_of(path, keep=None):
+    """The declarations of a file's `ochr` blocks, as (name, code lines), each line stripped
+    of comments; only those named in `keep`, if given."""
     raw = open(path).read()
     stripped = hc.strip_comments(raw, "ochr").split("\n")
     rawlines = raw.split("\n")
@@ -79,7 +89,16 @@ def main():
             cur = [m.group(1), []]
             decls.append(cur)
         if cur is not None:
-            cur[1].append(i)
+            cur[1].append(stripped[i])
+    return [(n, ls) for n, ls in decls if keep is None or n in keep]
+
+
+def main():
+    path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "..", "lean", "Ochr", "Examples", "17HashMap.lean")
+    lib = sys.argv[2] if len(sys.argv) > 2 else os.path.join(here, "..", "lean", "Ochr", "Examples", "00Std.lean")
+    own = decls_of(path)
+    names = {n for n, _ in own}
+    decls = [d for d in decls_of(lib, MOVED) if d[0] not in names and OLD_NAME.get(d[0]) not in names] + own
     cat = {}
     for n in IMPL: cat[n] = "implementation"
     for n in RUNS: cat[n] = "runs (tests)"
@@ -91,12 +110,12 @@ def main():
         for n in ns: cat[n] = "proofs: " + g
     totals = {}
     missing = []
-    for name, idx in decls:
+    for name, lines in decls:
         c = cat.get(name)
         if c is None:
             missing.append(name)
             continue
-        code = [stripped[i] for i in idx if stripped[i].strip()]
+        code = [x for x in lines if x.strip()]
         toks = sum(len(hc.TOKEN.findall(x)) for x in code)
         n, l, t = totals.get(c, (0, 0, 0))
         totals[c] = (n + 1, l + len(code), t + toks)
@@ -115,9 +134,9 @@ def main():
     # a proof's statement is its declaration up to its `:=`: the share of proof tokens that
     # are statements (each lemma is stated at three levels)
     st = 0
-    for name, idx in decls:
+    for name, lines in decls:
         if cat.get(name, "").startswith("proofs"):
-            text = "\n".join(stripped[i] for i in idx)
+            text = "\n".join(lines)
             j = text.find(":=")
             st += len(hc.TOKEN.findall(text[:j] if j >= 0 else text))
     print(f"{'proofs: statements (tokens before :=)':45} {'':5} {'':6} {st:7}  ({100 * st / pt:.1f}% of proof tokens)")

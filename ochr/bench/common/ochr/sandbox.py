@@ -162,8 +162,9 @@ is done through an element borrow (or by `Swap`) is a sealed program, not the mo
 `SetS`: proofs name it with `GetMutRead`, `GetMutSet` and `SwapIsSwapS` (and their forms
 about a view given by value, `GetMutReadV`, `GetMutSetV`, `SwapIsSwapSV`).
 
-This file holds the library blocks: `Index` (the order on `Word` and facts about it),
-`Arrays` (the model and the natives) and `ArrayLemmas` (the lemma library). -/
+This file holds the library blocks `Arrays` (the model and the natives) and `ArrayLemmas`
+(the lemma library). The order on `Word`, the comparisons and the arithmetic that indices use
+are the library `Words`, in `00Std.lean`. -/
 """
 
 
