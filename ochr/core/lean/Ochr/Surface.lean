@@ -10,6 +10,9 @@ named `STerm` below; `resolve` turns them into core `Term`s. Resolution decides:
   `&p` elsewhere;
 * a pattern variable `y` in `match p { …, S y => u }` is the sub-place `p.1`
   (RULES §1), so it is substituted rather than bound;
+* `match e { … }` on a term `e` that is not a place is `let x = e; match x { … }` with a
+  fresh `x`, and `let C(x̄) = e; u` is `match e { C(x̄) => u }` when `C`'s type has one
+  constructor (surface desugarings: the core matches places only);
 * the name of the definition being checked, inside its own body, is its `self` binder;
 * numerals are `S … Z`; `cong S h` takes `S` as the function `λ(n : Nat) : Nat => S n`.
 -/
@@ -43,6 +46,7 @@ inductive STerm where
   | rewrite (rev : Bool) (h t : STerm)           -- `rewrite h in t`, `rewrite ← h in t` (D60)
   | split (f : String) (t : STerm)                -- `split f in t` (D61)
   | splitArms (f : String) (arms : List (String × List String × STerm))   -- `split f { C(x̄) => t, … }` (D61)
+  | letPat (c : String) (vars : List String) (scrut body : STerm)   -- `let C(x̄) = e; u`: `match e { C(x̄) => u }`, C's type having one constructor
   | loc (start stop : Nat) (t : STerm)           -- where `t` is written (byte offsets; the editor)
 deriving Inhabited, Repr
 
@@ -119,6 +123,7 @@ partial def STerm.idents : STerm → List String
   | .matchGen p arms => p.idents ++ arms.flatMap fun (c, _, t) => c :: t.idents
   | .split f t => f :: t.idents
   | .splitArms f arms => f :: arms.flatMap fun (c, _, t) => c :: t.idents
+  | .letPat c _ sc b => c :: sc.idents ++ b.idents
   | .pi bs c => bs.flatMap (·.2.idents) ++ c.idents
   | .fix _ bs r _ b => bs.flatMap (·.2.idents) ++ r.idents ++ b.idents
   | .loc _ _ t => t.idents
@@ -148,6 +153,7 @@ partial def STerm.strip : STerm → STerm
   | .rewrite r h t => .rewrite r h.strip t.strip
   | .split f t => .split f t.strip
   | .splitArms f arms => .splitArms f (arms.map fun (c, xs, t) => (c, xs, t.strip))
+  | .letPat c xs sc b => .letPat c xs sc.strip b.strip
   | t => t
 
 /-- The declaration with every location removed (`STerm.strip`). -/
@@ -288,6 +294,7 @@ partial def STerm.show : STerm → String
   | .sort 1 => "Type"
   | .sort l => s!"Type{l - 1}"
   | .rewrite rev h t => s!"rewrite {if rev then "← " else ""}{h.show} in {t.show}"
+  | .letPat c xs sc b => s!"let {c}({", ".intercalate xs}) = {sc.show}; {b.show}"
 
 /-- `STerm.show`, parenthesised unless it is an atom. -/
 partial def STerm.atom (t : STerm) : String :=
@@ -325,6 +332,13 @@ def derefTemp (c : STerm) : String :=
   match c.unloc with
   | .call f _ => s!"⋄*{f.atom}(…)"
   | _ => "⋄*"
+
+/-- The temporary that `match e { … }` binds a term `e` that is not a place to, named after
+the term for messages, as `derefTemp`. No user name has `⋄`. -/
+def matchTemp (sc : STerm) : String :=
+  match sc.unloc with
+  | .call f _ => s!"⋄{f.atom}(…)"
+  | _ => "⋄match"
 
 /-- `*f(ā)` written where a place is expected (`callRoot`), bound first: `let x = f(ā); k(p)`. -/
 def withCallRoot (t : STerm) (k : STerm → STerm) : Option STerm := do
@@ -371,7 +385,10 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
       | _ => #[]
     modify (·.recordLoc r ⟨s, e⟩ args)
     -- a match's scrutinee is a place, not a term: record its range with the match
-    if let .matchGen sc _ := u then
+    let scrut? := match u with
+      | .matchGen sc _ | .letPat _ _ sc _ => some sc
+      | _ => none
+    if let some sc := scrut? then
       if let some l := sc.loc? then
         modify fun st => if st.record && st.locs.table.contains (termAddr r) then
           { st with locs := { st.locs with scruts := st.locs.scruts.insert (termAddr r) l } } else st
@@ -454,6 +471,18 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
   | .seq a b => return .seq (← resolve ctx false a) (← resolve ctx ty b)
   | .matchGen sc arms =>
     if let some t' := withCallRoot sc fun p => .matchGen p arms then return ← resolve ctx ty t'
+    -- `match e { … }` on a term that is not a place is `let x = e; match x { … }`, with a
+    -- fresh `x` (a surface desugaring). A place is matched in place, its arms binding its
+    -- sub-places; binding it first would move it
+    unless isPlace ctx sc do
+      let x := matchTemp sc
+      let a ← resolve ctx false sc
+      let m ← resolve (.bound x :: ctx) ty (.matchGen (.ident x) arms)
+      -- the editor: the term's range is the scrutinee of the match on the temporary
+      if let some l := sc.loc? then
+        modify fun st => if st.record then
+          { st with locs := { st.locs with scruts := st.locs.scruts.insert (termAddr m) l } } else st
+      return .letIn ⟨x⟩ a m
     let p ← toPlace ctx sc
     match arms with
     | [("Z", [], z), ("S", [y], s)] =>
@@ -463,7 +492,9 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     | (c0, _, _) :: _ =>
       let tb ← read
       let some (_, tyName, _, _) := tb.ctors.find? (·.1 == c0)
-        | throw s!"{c0} is not a constructor (Nat's are written Z => …, S y => …, in that order)"
+        | throw (if c0 == "true" || c0 == "false" then
+            s!"{c0} is not a constructor: `if` and a match on true/false need the type Bool := false | true (uses Std)"
+          else s!"{c0} is not a constructor (Nat's are written Z => …, S y => …, in that order)")
       let cs := tb.ctors.filter (·.2.1 == tyName)
       let mut out := #[]
       for (cn, _, i, fs) in cs do
@@ -475,6 +506,17 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
         out := out.push (Hint.mk cn, ← resolve ctxA ty body)
       if arms.length != cs.length then throw s!"match on {tyName}: {arms.length} arms for {cs.length} constructors"
       return .matchInd p tyName out.toList
+  | .letPat c vars sc body =>
+    -- `let C(x̄) = e; u` is `match e { C(x̄) => u }`, for a type with one constructor only (a
+    -- surface desugaring): with more, the other constructors would have no arm
+    let tb ← read
+    let tyName ← match tb.ctors.find? (·.1 == c) with
+      | some (_, tyName, _, _) => pure tyName
+      | none => if c == "Z" || c == "S" then pure "Nat" else throw s!"let {c}(…) = …: {c} is not a constructor"
+    let cs := if tyName == "Nat" then ["Z", "S"] else (tb.ctors.filter (·.2.1 == tyName)).map (·.1)
+    unless cs.length == 1 do
+      throw s!"let {c}(…) = …: {tyName} has {cs.length} constructors ({", ".intercalate cs}), and a destructuring let needs a type with exactly one: use match"
+    resolve ctx ty (.matchGen sc [(c, vars, body)])
   | .pi bs cod =>
     let (ctx', hs, ds) ← binders ctx bs
     return .pi hs ds (← resolve ctx' true cod)

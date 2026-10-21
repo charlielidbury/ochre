@@ -17,6 +17,7 @@ import Ochr.Examples.«15BorrowTypes»
 import Ochr.Examples.«16Arrays»
 import Ochr.Examples.«17HashMap»
 import Ochr.Examples.«18DependentFields»
+import Ochr.Examples.Sugar
 import Ochr.Examples.Units
 
 /-! # Every example program, for the test runner and the counterfactual ledger
@@ -40,7 +41,7 @@ def programs : List (String × Block) :=
    ("PositivityPaper", PositivityPaper), ("Propositions", Propositions), ("Destructuring", Destructuring),
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
    ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("BorrowTypes", BorrowTypes), ("FnBorrows", FnBorrows),
-   ("Abstraction", Abstraction), ("DepFields", DepFields)]
+   ("Abstraction", Abstraction), ("DepFields", DepFields), ("Sugar", Sugar)]
 
 /-- Case studies (`16Arrays`, `17HashMap`): checked and counted with the tour, and timed by `lake exe
 tests`, but not re-run by the counterfactual ledger, which is about the rules. A case study's
@@ -209,7 +210,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1372
+def Ochr.Registry.expectedTotal : Nat := 1420
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal

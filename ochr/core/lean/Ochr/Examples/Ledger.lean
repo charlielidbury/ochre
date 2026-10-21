@@ -82,7 +82,10 @@ open Ochr.Registry in
    "InPlaceTrees.Insert:rejected", "InPlaceTrees.InsertMIsInsert:rejected",
    "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected", "FnBorrows.GContains:rejected",
    "FnBorrows.GFind:rejected", "FnBorrows.GHas:rejected", "FnBorrows.GGetMut:rejected",
-   "FnBorrows.RunGGetMut:rejected"]
+   "FnBorrows.RunGGetMut:rejected", "Sugar.Xor:rejected", "Sugar.XorRun:rejected",
+   "Sugar.AtLeastOne:rejected", "Sugar.AtLeastOneLet:rejected", "Sugar.AtLeastOneRun:rejected",
+   "Sugar.AtLeastOneNotZero:rejected", "Sugar.AtLeastOneNotZeroLet:rejected",
+   "Sugar.AtLeastOneIsLet:rejected", "Sugar.ClampIn:rejected", "Sugar.ClampInRun:rejected"]
 open Ochr.Registry in
 #guard rowOk { blockMoves := false }
   ["ClosingOff.MovedByBlock:accepted"]
@@ -95,7 +98,7 @@ open Ochr.Registry in
    "Propositions.ThreeOwners:rejected", "Destructuring.DAnd:rejected", "Destructuring.DAnd3:rejected",
    "Destructuring.DNested:rejected", "Destructuring.DWild:rejected", "Destructuring.DCallField:rejected",
    "Subsingletons.OrComm:rejected", "Subsingletons.OrElim:rejected", "Subsingletons.OrLet:rejected",
-   "CurrentState.ProofIrr:rejected"]
+   "CurrentState.ProofIrr:rejected", "Sugar.AndCtor:rejected"]
 open Ochr.Registry in
 #guard rowOk { recNested := false }
   ["Recursion.KnotL:accepted", "Recursion.KnotLBoom:accepted"]
@@ -117,7 +120,8 @@ open Ochr.Registry in
    "Splitting.PickNotZero:rejected", "Splitting.PickNotZeroCopy:rejected",
    "Splitting.Pick22NotZero:rejected", "Splitting.PickTwo:rejected", "Trees.InsertMEq:rejected",
    "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected",
-   "FnBorrows.GGetMut:rejected", "FnBorrows.RunGGetMut:rejected"]
+   "FnBorrows.GGetMut:rejected", "FnBorrows.RunGGetMut:rejected", "Sugar.AtLeastOneNotZero:rejected",
+   "Sugar.AtLeastOneNotZeroLet:rejected", "Sugar.AtLeastOneIsLet:rejected"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 0 }
   ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected",
@@ -154,7 +158,8 @@ open Ochr.Registry in
    "Snapshots.CapS:rejected", "Snapshots.CapSId:rejected", "Snapshots.CapPi:rejected",
    "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected",
    "Snapshots.UseCapOf:rejected", "RenormPi.InPi:rejected", "RenormPi.InConj:rejected",
-   "ArmLocal.JoinS:rejected", "ArmLocal.AllGe:rejected", "ArmLocal.Leak:rejected", "DepFields.UseEx:rejected"]
+   "ArmLocal.JoinS:rejected", "ArmLocal.AllGe:rejected", "ArmLocal.Leak:rejected", "DepFields.UseEx:rejected",
+   "Sugar.PosNotZero:rejected"]
 -- `genPlaceType` changes no verdict; 08CaseSplits.lean asserts its effect on the generalised σ's type
 -- v2.0 D45 by type, switched off: a match on a proof inspects its content (⋆) like data: completeness only
 open Ochr.Registry in
@@ -169,7 +174,8 @@ open Ochr.Registry in
    "Destructuring.DAnd:rejected", "Destructuring.DAnd3:rejected", "Destructuring.DNested:rejected",
    "Destructuring.DWild:rejected", "Destructuring.DCallField:rejected", "Destructuring.DTerm:rejected",
    "Subsingletons.OrComm:rejected", "Subsingletons.OrElim:rejected", "Subsingletons.OrLet:rejected",
-   "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected", "ErasureBySyntax.R8Field:rejected", "DepFields.UseEx:rejected"]
+   "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected", "ErasureBySyntax.R8Field:rejected", "DepFields.UseEx:rejected",
+   "Sugar.AndCtor:rejected", "Sugar.PosNotZero:rejected"]
 -- v2.0 D45 subsingleton elimination, switched off: large elimination from Or and Sq is accepted (IsL, Get have no
 -- model; OrLie is Eq Bool tt ff in the model), but no closed False: D42 erases the constructor it would inspect
 open Ochr.Registry in
@@ -193,7 +199,8 @@ open Ochr.Registry in
    "Subsingletons.SqSplit:rejected", "CurrentState.LeAdd:rejected", "CurrentState.AddSub:rejected",
    "CurrentState.AddSubId:rejected", "CurrentState.PostCopy:rejected",
    "CurrentState.AddSubIdReborrow:rejected", "Erasure.LieP2:rejected", "Erasure.N1T:rejected",
-   "Erasure.Q:rejected", "ErasureBySyntax.R8Field:rejected", "DepFields.UseEx:rejected"]
+   "Erasure.Q:rejected", "ErasureBySyntax.R8Field:rejected", "DepFields.UseEx:rejected",
+   "Sugar.PosNotZero:rejected"]
   ["Numbers.AddZero blocked by Std.AddMZero", "Numbers.AddZero' blocked by Std.AddMZero",
    "ClosingOff.AddToOneZero blocked by Std.AddMZero",
    "ClosingOff.AddToOneZero' blocked by Std.AddMZero",
@@ -233,7 +240,8 @@ open Ochr.Registry in
    "Equality.NoConf:rejected", "Equality.NoConfS:rejected", "Equality.NoConfMatch:rejected",
    "Equality.NoConfBack:rejected", "Equality.BoolDisj:rejected", "RenormPi.Plain:rejected",
    "RenormPi.InPi:rejected", "RenormPi.InConj:rejected", "Splitting.PickTwo:rejected",
-   "ArmRecords.L2:rejected", "DepFields.Absurd:rejected"]
+   "ArmRecords.L2:rejected", "DepFields.Absurd:rejected", "Sugar.NoZeroSucc:rejected",
+   "Sugar.FromNoZeroSucc:rejected"]
 -- v2.1 D52 switched off: equal constructors are not taken apart in Eq, so programs that
 -- need an equation between successors or pairs taken apart are rejected (completeness)
 open Ochr.Registry in
@@ -245,7 +253,8 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { scrutTyped := false }
   ["ScrutineeTypes.f:accepted", "ScrutineeTypes.g:accepted", "ScrutineeTypes.NatT:accepted",
-   "ScrutineeTypes.NatTUse:accepted", "ScrutineeTypes.NatTNT:accepted", "ScrutineeTypes.M2:accepted"]
+   "ScrutineeTypes.NatTUse:accepted", "ScrutineeTypes.NatTNT:accepted", "ScrutineeTypes.M2:accepted",
+   "Sugar.IfWord:accepted"]
 -- D48 (1)/D66 switched off: &Type makes Type₀ impredicative (System U⁻), and &Prop, &True, a proof pass
 open Ochr.Registry in
 #guard rowOk { refData := false }
@@ -415,7 +424,8 @@ open Ochr.Registry in
    "DepFields.InjSame:rejected", "DepFields.InjLenCong:rejected", "DepFields.Pos:rejected",
    "DepFields.Grow:rejected", "DepFields.RefillLent:rejected", "DepFields.Cell:rejected",
    "DepFields.CellGet:rejected", "DepFields.CellGetRun:rejected", "DepFields.ExSucc:rejected",
-   "DepFields.ExOne:rejected", "DepFields.UseEx:rejected", "DepFields.NBox:rejected"]
+   "DepFields.ExOne:rejected", "DepFields.UseEx:rejected", "DepFields.NBox:rejected", "Sugar.Pos:rejected",
+   "Sugar.PosNotZero:rejected"]
 -- K4's nesting condition switched off: `Bad` nests itself in `NBox`, which passes its parameter to
 -- `NegIf`, a function type at 1, and the D36 attack goes through (`Boom2 : False`)
 open Ochr.Registry in

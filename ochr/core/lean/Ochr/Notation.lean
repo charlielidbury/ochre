@@ -54,6 +54,7 @@ declare_syntax_cat ochr_patvar
 declare_syntax_cat ochr_ctor
 declare_syntax_cat ochr_field
 declare_syntax_cat ochr_pat
+declare_syntax_cat ochr_else
 declare_syntax_cat ochr_indmod
 
 syntax "(" ident " : " ochr_term ")" : ochr_binder
@@ -90,14 +91,22 @@ syntax:20 ochr_term:21 " := " ochr_term:20 : ochr_term
 syntax:10 ochr_term:11 "; " ochr_term:10 : ochr_term
 syntax:10 "let " ident " = " ochr_term:11 "; " ochr_term:10 : ochr_term
 syntax:10 "let " ident " : " ochr_term " = " ochr_term:11 "; " ochr_term:10 : ochr_term
--- D60: destructuring `let`, sugar for a one-arm match (`⟨…⟩` is And's `Intro`, `(…, …)`
--- Pair's `Mk`); `rewrite h in t`, a typing rule (RULES [Rewrite])
+-- D60: destructuring `let`, sugar for a one-arm match on a type with one constructor
+-- (`C(…)`; `⟨…⟩` is And's `Intro`, `(…, …)` Pair's `Mk`); `rewrite h in t`, a typing rule
+-- (RULES [Rewrite])
 syntax ident : ochr_pat
 syntax "_" : ochr_pat
 syntax "⟨" ochr_pat,+ "⟩" : ochr_pat
 syntax "(" ochr_pat ", " ochr_pat ")" : ochr_pat
+syntax (name := ochrPatCtor) ident "(" ochr_pat,* ")" : ochr_pat
 syntax:10 (name := ochrLetAnd) "let " "⟨" ochr_pat,+ "⟩" " = " ochr_term:11 "; " ochr_term:10 : ochr_term
 syntax:10 (name := ochrLetPair) "let " "(" ochr_pat ", " ochr_pat ")" " = " ochr_term:11 "; " ochr_term:10 : ochr_term
+syntax:10 (name := ochrLetCtor) "let " ident "(" ochr_pat,* ")" " = " ochr_term:11 "; " ochr_term:10 : ochr_term
+-- `if c { a } else { b }`, sugar for `match c { true => a, false => b }` on Std's `Bool`;
+-- `else if` chains, and no `else` for a `Unit` branch (`else { () }`)
+syntax (name := ochrElse) " else " "{ " ochr_term " }" : ochr_else
+syntax (name := ochrElseIf) " else " "if " ochr_term " { " ochr_term " }" (ochr_else)? : ochr_else
+syntax:max (name := ochrIf) "if " ochr_term " { " ochr_term " }" (ochr_else)? : ochr_term
 syntax:10 "rewrite " ochr_term:11 " in " ochr_term:10 : ochr_term
 syntax:10 "rewrite " "← " ochr_term:11 " in " ochr_term:10 : ochr_term
 -- D61: `split f in t`, `split f { C(x̄) => t, … }`: [Split] on the goal's stuck result of `f`
@@ -147,6 +156,62 @@ def decOf (d? : Option (TSyntax `ident)) : TSyntax `term :=
   | some d => Syntax.mkApp (mkIdent ``Option.some) #[strLit d.getId.toString]
   | none => mkIdent ``Option.none
 
+/-- The argument of an optional piece of syntax (`(…)?`), if it is present. -/
+def optArg (stx : Syntax) : Option Syntax :=
+  if stx.getNumArgs == 0 then none else some stx[0]
+
+/-- A destructuring pattern (D60): a variable, `_`, or a constructor with a pattern per field,
+bound by position. `⟨p₁, …, pₙ⟩` is `Intro(p₁, ⟨p₂, …, pₙ⟩)` (right-nested, n ≥ 2), And's;
+`(p, q)` is `Mk(p, q)`, Pair's. -/
+inductive Pat where
+  | var (x : String)
+  | wild
+  | ctor (c : String) (ps : Array Pat)
+deriving Inhabited
+
+partial def patOf (stx : TSyntax `ochr_pat) : MacroM Pat := do
+  if stx.raw.getKind == ``ochrPatCtor then
+    let ps ← (stx.raw[2].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_pat)).mapM patOf
+    return .ctor stx.raw[0].getId.toString ps
+  match stx with
+  | `(ochr_pat| $x:ident) => pure (.var x.getId.toString)
+  | `(ochr_pat| _) => pure .wild
+  | `(ochr_pat| ⟨$ps,*⟩) => andPat (← ps.getElems.mapM patOf)
+  | `(ochr_pat| ($a, $b)) => pure (.ctor "Mk" #[← patOf a, ← patOf b])
+  | _ => Macro.throwErrorAt stx "unsupported destructuring pattern"
+where
+  andPat (ps : Array Pat) : MacroM Pat := do
+    if ps.size < 2 then Macro.throwError "a destructuring pattern ⟨…⟩ needs at least two components"
+    if ps.size == 2 then return .ctor "Intro" ps
+    return .ctor "Intro" #[ps[0]!, ← andPat (ps.extract 1 ps.size)]
+
+/-- The destructuring `let` of `C(p̄)` on `scrut` (an elaborated surface term) around `body`:
+`STerm.letPat`, the one-arm match `match scrut { C(x̄) => body }`, whose resolution checks that
+`C`'s type has one constructor. A nested pattern gets a fresh name (`⋄k`), matched in turn
+inside the arm. Returns the term and the next fresh index. -/
+partial def destructure (scrut : TSyntax `term) (c : String) (ps : Array Pat) (body : TSyntax `term)
+    (k : Nat) : MacroM (TSyntax `term × Nat) := do
+  let mut names : Array (TSyntax `term) := #[]
+  let mut inner : Array (String × String × Array Pat) := #[]
+  let mut k := k
+  for p in ps do
+    match p with
+    | .var x => names := names.push (strLit x)
+    | .wild => names := names.push (strLit "_")
+    | .ctor c' ps' =>
+      let x := s!"⋄{k}"
+      k := k + 1
+      names := names.push (strLit x)
+      inner := inner.push (x, c', ps')
+  -- the inner matches go around the body, innermost first
+  let mut b := body
+  for (x, c', ps') in inner.reverse do
+    let (m, k') ← destructure (← `(STerm.ident $(strLit x))) c' ps' b k
+    b := m
+    k := k'
+  let m ← `(STerm.letPat $(strLit c) [$names,*] $scrut $b)
+  pure (m, k)
+
 mutual
 /-- A term, wrapped in its source range (`STerm.loc`: located errors and hovers, docs/07).
 Parentheses are not a term of their own: `(t)` is `t`, at `t`'s range. -/
@@ -174,22 +239,24 @@ partial def elabTermCore (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := 
     let arms := stx.raw[3].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_arm)
     let as ← arms.mapM elabArm
     return ← `(STerm.matchGen $(← elabTerm p) [$as,*])
-  if stx.raw.getKind == ``ochrLetAnd || stx.raw.getKind == ``ochrLetPair then
-    let isAnd := stx.raw.getKind == ``ochrLetAnd
-    let scrut : TSyntax `ochr_term := ⟨if isAnd then stx.raw[5] else stx.raw[7]⟩
-    let body : TSyntax `ochr_term := ⟨if isAnd then stx.raw[7] else stx.raw[9]⟩
-    let b ← elabTerm body
-    -- a place is matched as it is (its pattern variables are sub-places); any other
-    -- term is bound to a temporary first
-    let isPlace := scrut.raw.isIdent || (scrut.raw.getNumArgs == 1 && scrut.raw[0].isIdent) ||
-      scrut.raw.getKind == ``ochrProj ||
-      (scrut.raw.getNumArgs == 2 && scrut.raw[0].isToken "*")
-    let top : Sum (Array (TSyntax `ochr_pat)) (TSyntax `ochr_pat × TSyntax `ochr_pat) :=
-      if isAnd then .inl (stx.raw[2].getSepArgs.map (⟨·⟩)) else .inr (⟨stx.raw[2]⟩, ⟨stx.raw[4]⟩)
-    let sc ← if isPlace then elabTerm scrut else `(STerm.ident "⋄0")
-    let (m, _) ← destructure sc top b 1
-    if isPlace then return m
-    return ← `(STerm.letIn "⋄0" none $(← elabTerm scrut) $m)
+  if stx.raw.getKind == ``ochrLetAnd || stx.raw.getKind == ``ochrLetPair || stx.raw.getKind == ``ochrLetCtor then
+    -- the pattern, the scrutinee and the body; a scrutinee that is a place is matched as it is
+    -- (its pattern variables are sub-places), and resolution binds any other term to a
+    -- temporary first, as for any `match`
+    let (pat, scrut, body) ← match stx.raw.getKind with
+      | ``ochrLetAnd => do
+        let ps ← (stx.raw[2].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_pat)).mapM patOf
+        pure (← patOf.andPat ps, stx.raw[5], stx.raw[7])
+      | ``ochrLetPair => do
+        pure (Pat.ctor "Mk" #[← patOf ⟨stx.raw[2]⟩, ← patOf ⟨stx.raw[4]⟩], stx.raw[7], stx.raw[9])
+      | _ => do
+        let ps ← (stx.raw[3].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_pat)).mapM patOf
+        pure (Pat.ctor stx.raw[1].getId.toString ps, stx.raw[6], stx.raw[8])
+    let .ctor c ps := pat | Macro.throwErrorAt stx "a destructuring let needs a constructor pattern"
+    let (m, _) ← destructure (← elabTerm ⟨scrut⟩) c ps (← elabTerm ⟨body⟩) 1
+    return m
+  if stx.raw.getKind == ``ochrIf then
+    return ← elabIf stx.raw[1] stx.raw[3] (optArg stx.raw[5])
   if stx.raw.getKind == ``ochrSplitArms then
     let f := stx.raw[1].getId.toString
     let arms := stx.raw[3].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_arm)
@@ -263,51 +330,24 @@ partial def elabTermAt (t : TSyntax `ochr_term) (A : TSyntax `ochr_term) : Macro
   | some s, some e => `(STerm.loc $(quote s.byteIdx) $(quote e.byteIdx) $call)
   | _, _ => pure call
 
-/-- D60: the one-arm match for a destructuring pattern on `scrut` (an elaborated surface
-term, a place), around `body`. `⟨p₁, …, pₙ⟩` is `Intro(p₁, ⟨p₂, …, pₙ⟩)` (right-nested,
-n ≥ 2); `(p, q)` is `Mk(p, q)`. A nested pattern gets a fresh name (`⋄k`), matched in
-turn. Returns the term and the next fresh index. -/
-partial def destructure (scrut : TSyntax `term) (pat : Sum (Array (TSyntax `ochr_pat)) (TSyntax `ochr_pat × TSyntax `ochr_pat))
-    (body : TSyntax `term) (k : Nat) : MacroM (TSyntax `term × Nat) := do
-  let (ctor, fields) : String × Array (Sum (TSyntax `ochr_pat) (Array (TSyntax `ochr_pat))) ← match pat with
-    | .inl ps =>
-      if ps.size < 2 then Macro.throwError "a destructuring pattern ⟨…⟩ needs at least two components"
-      if ps.size == 2 then pure ("Intro", ps.map .inl)
-      else pure ("Intro", #[.inl ps[0]!, .inr (ps.extract 1 ps.size)])
-    | .inr (a, b) => pure ("Mk", #[.inl a, .inl b])
-  let mut names : Array (TSyntax `term) := #[]
-  let mut inner : Array (String × Sum (Array (TSyntax `ochr_pat)) (TSyntax `ochr_pat × TSyntax `ochr_pat)) := #[]
-  let mut k := k
-  for f in fields do
-    match f with
-    | .inr rest =>
-      let x := s!"⋄{k}"
-      k := k + 1
-      names := names.push (strLit x)
-      inner := inner.push (x, .inl rest)
-    | .inl p =>
-      match p with
-      | `(ochr_pat| $x:ident) => names := names.push (strLit x.getId.toString)
-      | `(ochr_pat| _) => names := names.push (strLit "_")
-      | `(ochr_pat| ⟨$ps,*⟩) =>
-        let x := s!"⋄{k}"
-        k := k + 1
-        names := names.push (strLit x)
-        inner := inner.push (x, .inl ps.getElems)
-      | `(ochr_pat| ($a, $b)) =>
-        let x := s!"⋄{k}"
-        k := k + 1
-        names := names.push (strLit x)
-        inner := inner.push (x, .inr (a, b))
-      | _ => Macro.throwErrorAt p "unsupported destructuring pattern"
-  -- the inner matches go around the body, innermost first
-  let mut b := body
-  for (x, q) in inner.reverse do
-    let (m, k') ← destructure (← `(STerm.ident $(strLit x))) q b k
-    b := m
-    k := k'
-  let m ← `(STerm.matchGen $scrut [($(strLit ctor), [$names,*], $b)])
-  pure (m, k)
+/-- `if c { a } else { b }` is `match c { true => a, false => b }`, on Std's `Bool` (a surface
+desugaring). `else if c' { … } …` is an `if` in the `false` arm, and a missing `else` is
+`else { () }`, so the branch must be `Unit`. A condition that is not a place is bound to a
+temporary first, as for any `match` (resolution). -/
+partial def elabIf (c t : Syntax) (e? : Option Syntax) : MacroM (TSyntax `term) := do
+  let c' ← elabTerm ⟨c⟩
+  let t' ← elabTerm ⟨t⟩
+  let e' ← match e? with
+    | none => `(STerm.unitLit)
+    | some e =>
+      if e.getKind == ``ochrElse then elabTerm ⟨e[2]⟩
+      else
+        -- `else if …`: the inner `if` is written from its `if` to the end of the chain
+        let inner ← elabIf e[2] e[4] (optArg e[6])
+        match e[1].getPos?, e.getTailPos? with
+        | some s, some z => `(STerm.loc $(quote s.byteIdx) $(quote z.byteIdx) $inner)
+        | _, _ => pure inner
+  `(STerm.matchGen $c' [("true", ([] : List String), $t'), ("false", ([] : List String), $e')])
 
 partial def patVar (stx : TSyntax `ochr_patvar) : TSyntax `term :=
   match stx with

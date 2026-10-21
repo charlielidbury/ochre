@@ -53,7 +53,9 @@ reject def Bad (…) : T := …                    -- negative test: must be rej
 |---|---|
 | `f(a, b)` | call. Always saturated; **no space** before `(` |
 | `C(a, b)`, `C` | constructor; the type's parameters are inferred (`Cons(x, Nil)`) |
-| `match p { C1(x, y) => t, C2 => u, }` | case analysis on a **place** `p`. Arms are separated by commas; a trailing comma is allowed; `_` ignores a field; `S n =>` is the same as `S(n) =>` |
+| `match p { C1(x, y) => t, C2 => u, }` | case analysis. On a **place** `p` the arms bind its sub-places (§5); any other term, `match F(x) { … }`, is bound to a temporary first, which is matched. Arms are separated by commas; a trailing comma is allowed; `_` ignores a field; `S n =>` is the same as `S(n) =>` |
+| `if c { a } else { b }` | `match c { true => a, false => b }` on Std's `Bool`. `else if c2 { … }` chains; without `else` the branch must be `Unit` (the missing one is `()`) |
+| `let C(x, _, z) = e; u` | `match e { C(x, _, z) => u }`, for a type with **one** constructor (for more, use `match`). Fields by position, `_` ignores one, patterns nest (`let MkW((a, b), T3(_, y, _)) = w`). On a place the names are its sub-places: `let HM(n, len, slots) = *hm; len := Succ(len)` writes `*hm` |
 | `match h {}` | no arms: `h`'s type is empty (`False`, or an equation between different constructors) |
 | `let x = t; u`, `let x : T = t; u` | binding; annotate when the type can't be inferred (proofs, matches) |
 | `t; u` | sequence |
@@ -76,6 +78,8 @@ reject def Bad (…) : T := …                    -- negative test: must be rej
 
 Layout convention: one match arm per line with a trailing comma, and a multi-statement arm in `( … ),`.
 
+`if`, the destructuring `let` and `match` on a term are surface sugar for the matches they stand for, with no rules of their own; `Ochr/Examples/Sugar.lean` checks each, its errors, and runs showing that it computes as its match.
+
 Reserved names, which you can't declare: `Nat`, `Unit`, `Z`, `S`, `refl`, `Id`, `Eq`, `cong`, `J`, `clone`, `trans`, `symm`.
 
 ## 4. Data
@@ -87,7 +91,7 @@ Reserved names, which you can't declare: `Nat`, `Unit`, `Z`, `S`, `refl`, `Id`, 
   - `AddM(&x, y)` and `Add(x, y)` on `Nat`.
 - **Your own types:** `inductive Opt (A : Type) := None | Some(v : A)`. Fields are data: other inductives, the type itself, numbers, function types reached through a type parameter (`Box(Π(n : Word). Word)`), and borrows nowhere. Parameters are types in `Type`.
 - **Dependent fields:** a field's type may mention earlier fields: `inductive Vec (E : Type) := MkVec(len : Word, cap : Word, buf : Array(Opt(E), cap), hl : Le(len, cap))`. You may break the dependency temporarily, writing the fields one at a time in either order: `match *v { MkVec(len, cap, buf, hl) => (cap := W(2); buf := two; len := W(2); hl := refl) }`. It must hold again wherever the value is used whole (read, passed, returned, borrow ended), or you get a `[Repack]` error naming the field and both types. A proof field (`hl`) is cleared when the data it mentions changes, or is borrowed, and must be re-assigned before the value is used whole. So a proof field about data that a function returns a borrow into cannot be kept: state it as a separate proposition instead (`VInv`). Examples: `18DependentFields.lean`.
-- **No `if`:** match on a `Bool`, or on a decision type such as `Dec(Le(a, b), Lt(b, a))` (`Yes(h)` / `No(k)`), which also gives you the proof.
+- **`if`** is on a `Bool` (§3). To get the proof with the answer, match on a decision type such as `Dec(Le(a, b), Lt(b, a))` (`Yes(h)` / `No(k)`).
 
 ## 5. Ownership: moves, copies, borrows
 
@@ -186,7 +190,7 @@ def AddMZero (x : &Nat) : Id(Unit, AddM(x, 0), ()) by x := (   -- Std
 A proof is a program whose type is the statement. It never runs at runtime.
 
 - **`refl`** proves goals whose sides evaluate to the same thing. A goal that reads `⊤` is `refl` too.
-- **Case split.** `match x { Zero => …, Succ(x') => … }` refines `x` to each constructor, in the goal and in every hypothesis, so stuck computations continue. `match` needs a place. To split on a call's result, bind it first: `let d = LeDec(a, b); match d { Yes(h) => …, No(k) => … }`. Matching a place whose content is a stuck call generalises that call and splits on its result.
+- **Case split.** `match x { Zero => …, Succ(x') => … }` refines `x` to each constructor, in the goal and in every hypothesis, so stuck computations continue. To split on a call's result, match on the call: `match LeDec(a, b) { Yes(h) => …, No(k) => … }` binds it to a temporary and matches that, as `let d = LeDec(a, b); match d { … }` does. The temporary holds the stuck call, so the match generalises the call and splits on its result: wherever the goal makes the same call, it computes in each arm. `if c { … } else { … }` splits on a `Bool` in the same way.
 - **Induction is recursion.** A lemma declared `by x` calls itself on a sub-part of `x`, and that call's type is the induction hypothesis. For a borrowed structure, call the lemma on a borrow of the field (`AddMZero(&p)` above): the result covers the whole.
 - **Lemmas are functions.** Call them to get facts: `LeTrans(a, b, c, h1, h2)`. To use a lemma about in-place code inside another proof, call it on the same copy: `(let c = *s; F(&c); Lemma(n, &c))`.
 - **Contradiction.** `match h {}` when `h`'s type is empty. A hypothesis `Eq(Word, Zero, Succ(n))` *is* `False` after computation, so `match h {}` closes it.
@@ -225,7 +229,8 @@ For a reader who knows Lean's tactics:
 | `exact t`, `apply L` | the term `t`, or the call `L(…)` with every argument given |
 | `intro h` | a parameter `(h : P)` of the `def` |
 | `cases x`, `induction x` | `match x { … }`, plus a recursive call for the induction hypothesis (§6) |
-| `obtain ⟨p, q⟩ := h` | `let ⟨p, q⟩ = h; …` |
+| `obtain ⟨p, q⟩ := h` | `let ⟨p, q⟩ = h; …`, or `let C(p, q) = h; …` for any type with one constructor |
+| `cases h : f x`, `split` on an `if` | `match F(x) { … }`, `if c { … } else { … }` |
 | `constructor` | `⟨p, q⟩`, or a call to the constructor |
 | `have h : P := t` | `let h : P = (t); …` |
 | `rw [h]`, `rw [← h]` | `rewrite h in …`, `rewrite ← h in …` |
@@ -297,7 +302,9 @@ def ZeroBoth (n : Word) (k : Word) (s : &Slice(Word, n)) (h : Le(k, n)) : Unit :
 |---|---|
 | `unknown constant X` | `X` is undefined, misspelled, declared later, or was itself rejected |
 | `[Read] x was moved out or its borrow ended (reading ⊥)` | `clone` it, pass `&*x` instead of `x`, or read once and reuse the binding |
-| `(surface) f(x) is not a place …` | `match`, `&`, `:=` and `clone` need a place: `let v = f(x); match v { … }`. A dereferenced call, `*f(x)`, is a place when `f` returns a borrow |
+| `(surface) f(x) is not a place …` | `&`, `:=` and `clone` need a place: `let v = f(x); &v` (`match` takes any term). A dereferenced call, `*f(x)`, is a place when `f` returns a borrow |
+| `(surface) let C(…) = …: T has n constructors …` | a destructuring `let` takes apart a type with one constructor only: use `match` |
+| `[Match] on c : Word, with the constructors of Bool` | the scrutinee's type is not the arms' type; an `if` condition must be a `Bool` |
 | `[D53] reading *GetMut(…) moves its content out through the borrow …` | the element is not a copy type: `clone(*GetMut(…))` copies it |
 | `the body of P has type A, but the goal is B` | your proof proves `A`; compare with `B`, and case-split or rewrite until they meet |
 | `argument i (h) has type A, expected B` | wrong argument type, often a proof that needs a `rewrite` first |
