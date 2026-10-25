@@ -48,7 +48,7 @@ Pédrot and Tabareau's fire triangle @fire-triangle shows that a type theory wit
 - _Closing off_, which gives every stuck effectful call a neutral form made of sealed source programs, including calls that return borrows (@sec-eval).
 - An observational equality between computations, a derived proposition that computes to ordinary equations (@sec-obs).
 - The principle that keeps the two evaluation paths of a type theory whose conversion is an effectful evaluator in agreement, and the side conditions it yields, each with the counterexample that forced it (@sec-typing).
-- The properties Ochr is designed to have, with their evidence (@sec-meta): the operational core is mechanised for a first-order fragment of an earlier rule set, without types, erasure, closures or stuck blocks; consistency and the agreement of the two paths are conjectures, with a set-theoretic model sketched and a differential fuzzer; termination of type checking is open.
+- The properties Ochr is designed to have, with their evidence (@sec-meta): soundness of a first-order typed fragment, proved on paper conditional on naturality and on invariants of the machine, both stated as assumptions; consistency and the agreement of the two paths are conjectures, with a set-theoretic model sketched and a differential fuzzer; nothing is mechanised, and termination of type checking is open.
 - An executable checker in Lean 4 that checks every example in the paper, with a regression test for every false proof found while designing the calculus and a ledger of which rule each depends on; and two case studies, a hash map compared with Aeneas's development and an in-place quicksort (@sec-impl).
 
 == Scope <sec-intro-scope>

@@ -11,7 +11,7 @@
 #let res = $rho$
 #let ok(x) = $tack.double #x$
 
-== Soundness of a typed fragment, conditional on naturality and transfer <sec-tf>
+== Soundness of a typed fragment, conditional on naturality and the machine's invariants <sec-tf>
 
 This section reduces soundness of a fragment F to an assumption that the two evaluation paths simulate each other. F has natural numbers, `Unit`, the propositions `True`, `False` and `And`, `Eq` and `Id`, first-order top-level functions with borrow parameters (some of which return a borrow), [Close], and [Split] with refinement and generalisation. For F we prove that, if the assumption holds, two things are true of every accepted program:
 - every data function runs without error at every concrete input;
@@ -19,7 +19,7 @@ This section reduces soundness of a fragment F to an assumption that the two eva
 
 Consistency of F and adequacy of `Id` follow (@tf-cor-cons, @tf-cor-adeq).
 
-The assumption, naturality (@tf-ass-n), says one step at a time that a symbolic run and the ground run agree once every borrow is ended. It carries most of the operational content. It holds only because of the [Drop] rule's treatment of lent places (@tf-drop). A second assumption (@tf-ass-t) transfers two mechanised lemmas from the earlier rule set to the current rules. Everything else is proved here, and each mechanised lemma is named where it is used (@tf-anchors).
+The assumption, naturality (@tf-ass-n), says one step at a time that a symbolic run and the ground run agree once every borrow is ended. It carries most of the operational content. It holds only because of the [Drop] rule's treatment of lent places (@tf-drop). A second assumption (@tf-ass-t) collects four invariants of the machine that the proof uses but does not prove: preservation of well-formedness, the frame property, order-independence of [End], and injectivity of contexts. Everything else is proved here, and each assumption is named where it is used (@tf-anchors).
 
 === The fragment F <tf-frag>
 
@@ -79,7 +79,7 @@ A stuck equation asserts nothing, so it counts as true. That is safe for what fo
 ]) <tf-lem-res>
 #proof[
   - *No borrow holds a moved-out `⊥`.* A read of non-copy data leaves `⊥` in the place read. By F6 no such read is under `*`, and a sealed program's final read copies. So such a `⊥` appears only at an owned position or inside one. [Borrow] refuses a place that is not whole. So a borrow's content never holds one, and [End]'s wholeness premise always holds.
-  - *Order independence.* `⊥` holds no loan, so substitution passes it by, and a ground state of F is a state of the mechanised machine. There, order-independence (property 4 of @fig-claims) is mechanised: `end_order_indep` (resolution exists in a well-formed state, and every order of the held borrows reaches it) and `endAll_endSeq` (ending some borrows first does not change it).
+  - *Order independence.* This is @tf-ass-t (T3), whose premise the first bullet supplies: resolution exists in a well-formed state, every order of the held borrows reaches it, and ending some borrows first does not change it.
   - *What this needs.* Well-formedness of F's states is @tf-ass-t (T1).
   - *Why only ground states.* At a symbolic state, ending a borrow re-normalises the sealed programs it substitutes into, which this argument does not cover. Every use of ρ at a symbolic state goes through (N3) of @tf-ass-n.
 ]
@@ -94,14 +94,14 @@ A stuck equation asserts nothing, so it counts as true. That is safe for what fo
 ]) <tf-def-agr>
 
 The clauses do the following:
-- (A2) is equivalent to "some sequences of [End]s take $Omega_s alpha$ and $Omega_g$ to one state" (@tf-lem-res). The stronger form, equality before resolution, fails: while the mechanisation was built, a counterexample showed that ending a borrow early changes which borrows a later assignment ends, although both states agree after resolution. (A2) survives an [End] on either side, which is how the symbolic path may end a borrow earlier than the ground path (the `Pick` example of @conj-nat).
+- (A2) is equivalent to "some sequences of [End]s take $Omega_s alpha$ and $Omega_g$ to one state" (@tf-lem-res). The stronger form, equality before resolution, fails: in a counterexample, ending a borrow early changes which borrows a later assignment ends, although both states agree after resolution. (A2) survives an [End] on either side, which is how the symbolic path may end a borrow earlier than the ground path (the `Pick` example of @conj-nat).
 - (A3) says the symbolic path has ended at least the borrows the ground path has.
 - (A4) says its owners over-approximate: a returned borrow's hole sits in the fill of every place it may point into.
 - (A5) fixes what each live borrow holds. Without it the relation would admit pairs that resolve alike but in which a borrow points at different parts of its target. For example, symbolically `p` borrows the predecessor field of `x`'s target, and on the ground it borrows the whole target. `match *p` would then take different arms, and a decreasing argument behind `p` would have different sizes.
 
 The consequence the proof uses is this. At agreeing states, a place that is readable on both paths has the same resolved content: by (A2) at an owned position, and by (A5) through a borrow. In particular, after [Access], a scrutinee has the same head constructor on both paths. A loan-free value in flight, such as a call's data argument, is the symbolic value under α. And the content of a borrow argument, which is loan-free (well-formedness condition 5) and whole (@tf-lem-res), is the symbolic content under α.
 
-=== What the proof assumes, and what it cites <tf-anchors>
+=== What the proof assumes <tf-anchors>
 
 #thm([Assumption], [naturality, step by step], [
   Let $Omega_s agr(alpha) Omega_g$, and consider one step of a rule of F, in runtime mode or in erased mode, that succeeds from $Omega_s$ on the symbolic path (the typing judgement, in which stuck calls close off).
@@ -117,29 +117,28 @@ This is naturality in relational form. It is stated per step, so that the proof 
 
 The risks we know of are:
 - agreement after a [Drop], and the preservation of (A3): early ends are deep, so no reborrow outlives its early-ended borrow on the symbolic path (@tf-drop);
-- the preservation of (A5) by [Close]. Under α, a closed-off call's fills place the hole where the ground call's returned borrow points: `close_cur`, `close_back`;
+- the preservation of (A5) by [Close]. Under α, a closed-off call's fills place the hole where the ground call's returned borrow points (property 3 of @fig-claims);
 - (N3) through [Seal] with inert loans. The lemma behind it is _hole parametricity_: a fill's run writes its hole and reads its cells, but never inspects the hole.
 
-A proof of @tf-ass-n would go rule by rule and use the mechanised lemmas below.
+A proof of @tf-ass-n would go rule by rule; @tf-remains lists what it needs.
 
-#thm([Assumption], [transfer from the earlier rule set], [
-  (T1) The current rules, restricted to F, preserve well-formedness conditions 1–5, as `exec_wf` proves for the earlier rule set.
-  (T2) The frame property holds for F, as `frame_local` and `call_effect` prove for the earlier rule set: a run changes the environment below its own frame only through the loans held by that frame's borrows, and a call's effect is its isolated run, plugged back into the caller.
+#thm([Assumption], [invariants of the machine], [
+  (T1) _Well-formedness._ The rules of F preserve well-formedness conditions 1–5 (@app-wf; property 1 of @fig-claims).
+  (T2) _Frame._ The frame property holds for F: a run changes the environment below its own frame only through the loans held by that frame's borrows, and a call's effect is its isolated run, plugged back into the caller (property 2).
+  (T3) _Order-independence._ In a well-formed state of F in which no borrow holds a moved-out `⊥`, resolution exists, ending the held borrows one at a time in any order reaches it, and ending some of them first does not change it (property 4).
+  (T4) _Injectivity of contexts._ A context that holds a loan is injective in the loan's final value (property 6).
 ]) <tf-ass-t>
 
-The mechanised machine reads by copying, normalises sealed programs only when states are compared, and has a `Unit` row in [Close]. (T1) and (T2) are the two facts about it that this section uses outside @tf-ass-n. Two other mechanised facts are about values, not runs, and they carry over by the argument of @tf-lem-res: `⊥` holds no loan. These are order-independence (@tf-lem-res) and the injectivity of contexts (`ctx_inj`, @tf-lem-call).
+None of (T1)–(T4) is proved, on paper or in Lean. (T1)–(T3) are about runs of the machine and (T4) is about values. The table lists where each is used.
 
-#table(columns: (30%, 1fr, 24%), stroke: none, inset: (x: 4pt, y: 3pt), align: left,
+#table(columns: (16%, 1fr), stroke: none, inset: (x: 4pt, y: 3pt), align: left,
   table.hline(stroke: 0.5pt),
-  [*Lean*], [*Statement, for the earlier rule set*], [*Used for*],
+  [*Assumption*], [*Used for*],
   table.hline(stroke: 0.4pt),
-  [`end_order_indep`, `endAll_endSeq`], [in a well-formed state resolution exists, every order of the held borrows reaches it, and ending some borrows first does not change it], [@tf-lem-res],
-  [`frame_local`, `call_effect`], [the frame property], [@tf-ass-t (T2); @tf-lem-w; @tf-lem-call; the calls of @tf-thm],
-  [`ctx_inj`], [a context holding a loan is injective in the loan's final value], [@tf-lem-call],
-  [`exec_wf`], [runs of terms that do not name the machine's temporaries preserve well-formedness], [@tf-ass-t (T1)],
-  [`endBorrow_nb_lt`], [each [End] removes a borrow, so [Access] and [Drop] end], [@tf-lem-runs (termination)],
-  [`close_res`, `close_fin`, `close_cur`, `close_back`], [if a call's isolated run completes, the sealed programs of [Close] normalise to its result, the final contents of its borrowed places, its current content and its backward function. They also need hypotheses on the arguments (loan-free, not moved out, no borrows inside) and on the results (no loans or borrows in the data rows), which follow from well-formedness but are not yet discharged in Lean], [a proof of @tf-ass-n: (A1), (A5) and (N3) at [Close]],
-  [`exec_rename`], [the machine commutes with renaming loans], [a proof of @tf-ass-n: (A2)'s renaming],
+  [(T1)], [@tf-lem-res; values in flight are loan-free in @tf-lem-types; one owner per loan in @tf-lem-call],
+  [(T2)], [@tf-lem-w; @tf-lem-call; the calls of @tf-thm],
+  [(T3)], [@tf-lem-res],
+  [(T4)], [@tf-lem-call],
   table.hline(stroke: 0.5pt),
 )
 
@@ -220,7 +219,7 @@ The symbolic side's extra positions do occur, and their conjuncts do become `Tru
   - *Runs.* Apply (T2) with the parameter frame as the core; its ports are exactly the cells. Each run made while evaluating a type at the call site is then the run at the instance, with the ports' final values substituted into the caller's frames. So results, and the final contents of the parameter frame's own positions, coincide.
   - *Borrow parameters.* An `Id` conjunct over a borrow parameter's owner compares, at the instance, the final contents of $c_i$. At the call site it compares the final contents of the owners of $ell_i$.
   - *One owner.* At a ground state a loan occurs at most once: only sealed programs may hold a loan twice (well-formedness condition 2, by T1), and a ground state has none. So $ell_i$ has one owner, reached through a chain of borrow contents, and its final content is $K[v]$ for the borrow's final value `v` and a context `K` that holds the hole once.
-  - *Injectivity.* By `ctx_inj`, `K` is injective, so $"eq"(K[v], K[v'])$ is true iff $"eq"(v, v')$ is.
+  - *Injectivity.* By @tf-ass-t (T4), `K` is injective, so $"eq"(K[v], K[v'])$ is true iff $"eq"(v, v')$ is.
 ]
 
 #thm([Lemma], [runs agree], [
@@ -235,9 +234,9 @@ The symbolic side's extra positions do occur, and their conjuncts do become `Tru
     - The ground call runs to completion by hypothesis.
     - If the symbolic call closes off, (N2) gives agreement after it.
     - If it returns by [App], its body's steps are (N1) steps in the callee's frame. The calls they make are parts of the ground call's run, which completes, so the same argument applies to them, by induction on the depth of the run. Agreement after the call follows.
-  - *Termination.* F has no loops, a match on data is never part of `t` (F4), and a match on a proof takes its one arm or is never run. So the ground run of `t` visits each subterm of `t` at most once. In addition it performs finitely many [End]s at each [Access] and [Drop], since each removes a borrow (`endBorrow_nb_lt`), and it makes the calls, which end by hypothesis. So it terminates.
+  - *Termination.* F has no loops, a match on data is never part of `t` (F4), and a match on a proof takes its one arm or is never run. So the ground run of `t` visits each subterm of `t` at most once. In addition it performs finitely many [End]s at each [Access] and [Drop], since each replaces a borrow by `⊥`, and it makes the calls, which end by hypothesis. So it terminates.
 
-  What is assumed about a call is its safety at the arguments it actually receives. That is weaker than safety of every call at every argument list, which is the premise of the mechanised `exec_total`.
+  What is assumed about a call is its safety at the arguments it actually receives. That is weaker than safety of every call at every argument list.
 ]
 
 #thm([Lemma], [modes], [
@@ -307,7 +306,7 @@ The symbolic side's extra positions do occur, and their conjuncts do become `Tru
 
 This theorem reduces soundness of F to @tf-ass-n and @tf-ass-t; it is not a proof of soundness outright.
 - *What is proved.* The case analysis at tail matches and [Rec]'s decrease under α. Termination at the level of calls. The truth bookkeeping, footprints, call types and generalisation.
-- *What is assumed.* That each step of a symbolic run and the corresponding ground step agree, with agreement including what each live borrow holds (A5). And that the earlier rule set's well-formedness and frame property hold for F.
+- *What is assumed.* That each step of a symbolic run and the corresponding ground step agree, with agreement including what each live borrow holds (A5). And the four invariants of the machine (@tf-ass-t): preservation of well-formedness, the frame property, order-independence of [End] and injectivity of contexts.
 
 === Corollaries <tf-cors>
 
@@ -374,13 +373,11 @@ The reborrow-and-replace idiom is in F, and it is accepted. `Trav(x : &Nat) : Un
 
 === What would remove the assumptions <tf-remains>
 
-+ *Prove @tf-ass-n for F.* This is a simulation, rule by rule, between the typing judgement's symbolic run and the ground machine, with agreement (A1)–(A5) as the relation. It uses order-independence at every [End], the `close_*` equations at every [Close], and the frame property at every call. The risks are:
++ *Prove @tf-ass-n for F.* This is a simulation, rule by rule, between the typing judgement's symbolic run and the ground machine, with agreement (A1)–(A5) as the relation. It uses order-independence at every [End], the equations of [Close] (property 3 of @fig-claims) at every [Close], invariance of the machine under renaming of loans for (A2), and the frame property at every call. The risks are:
   - the preservation of (A3) (early ends are deep), (A4) and (A5);
   - agreement after a drop;
   - (N3) through [Seal] with inert loans.
-
-  We estimate it at 3–5k lines of Lean.
-+ *Prove @tf-ass-t,* by porting `exec_wf` and the frame lemma to moving reads and to the current [Close].
++ *Prove @tf-ass-t* for the current rules, restricted to F.
 + *Widen F.* Each addition brings back a decision of @lem-stable:
   - moves through borrows (F6): resolution over a moved-out `⊥`;
   - stuck blocks (F4): captures and modes;

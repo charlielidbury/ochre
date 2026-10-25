@@ -2,7 +2,7 @@
 
 ## 5-line summary
 
-1. **Verdict:** v1 closes the five round-1 findings in the model (C1 at function types, C2, C3's entry-value guard, C4, C5), and it makes the metatheory *simpler*. With loans as variables and [End] as plain substitution, T1(a) is just commutation of substitutions, and T5 holds on the nose (equal environments up to renaming of loans), not merely "up to resolution" as in v0. v1 as issued was unsound in two places, both exploiting P5. v1.1, which landed mid-round, fixes R2. **R1 is still open in v1.1.** A third hole (R4) opens under one reading of the stuck-block rule. *Superseded: false as stated, see lean-meta F3 and paper meta.typ Theorem 7.*
+1. **Verdict:** v1 closes the five round-1 findings in the model (C1 at function types, C2, C3's entry-value guard, C4, C5), and it makes the metatheory *simpler*. With loans as variables and [End] as plain substitution, T1(a) is just commutation of substitutions, and T5 holds on the nose (equal environments up to renaming of loans), not merely "up to resolution" as in v0. v1 as issued was unsound in two places, both exploiting P5. v1.1, which landed mid-round, fixes R2. **R1 is still open in v1.1.** A third hole (R4) opens under one reading of the stuck-block rule. *Superseded: false as stated, see the `Pick` example before the naturality conjecture in paper meta.typ.*
 2. **Most important finding:** (R1) P5 is keyed on *calls*, while D15 and the observation rule turn a stuck Prop-typed *block* into a call. So a Prop-typed match that writes has no effect while its scrutinee is abstract, and its full effect once the scrutinee is refined. That is a failure of naturality, and it gives a closed proof of `Eq Nat (S Z) Z` (§1.1). (R2) [Rec] constrains recursive *calls* only, so `fix f (n) := Apply(f, n)` passes. Because P5 means Prop-valued calls are never run, the checker now accepts `Boom(Z) : Eq Nat Z (S Z)` without diverging. This is breaker-close A4, which P5 turns from a divergence into a closed proof; v1.1's escape clause fixes it (§1.2). R1 was found independently by breaker-close-v1 (N1) and deriver-e346-v1 (N12). (R4) Closing off a stuck match on a *sealed program*, whose arms [Split] never checked, has no model; it gives deriver-e346-v1's `Knot3` (§1.4).
 3. **RULES must change (v1.1):**
    - P5 becomes "a *term* whose type is a proposition, argument evaluation included, runs on a private copy". Merged with P2 this is one rule: whatever the runtime erases (types and proofs), the machine runs on a private copy.
@@ -31,7 +31,7 @@ Notation as in v1. v1 has no `⊥` in its syntax, so "a closed proof of false" b
 | [End] without side condition, loans as variables (D11) | **validated**; [End] *is* the model's substitution `h_ℓ := ⟦v⟧`, and End steps commute given acyclicity | §1.4, T1 |
 | [Access] ends loans on the path and inside the content (D19) | **validated**; provides W4 (loan-free arguments), which T2 needs | §1.4 |
 | [Close] port table (D11) | **validated** (three rows); implicit gap: a neutral head (`σ_f(…)`, `⌈t⌉(…)`) must be stuck at once | §1.4 |
-| [Seal] head-call guard (D9) | **validated** and natural; it is what makes T5 hold on the nose. *Superseded: false as stated, see lean-meta F3 and paper meta.typ Theorem 7.* | §1.4, T5 |
+| [Seal] head-call guard (D9) | **validated** and natural; it is what makes T5 hold on the nose. *Superseded: false as stated, see the `Pick` example before the naturality conjecture in paper meta.typ.* | §1.4, T5 |
 | stuck non-tail matches closed off (D15) | **natural**, being [Close] of a definable anonymous function, **except** Prop-typed blocks under call-keyed P5 (R1) | §1.1, §1.4 |
 | [Def] at the generic call + [Call-type] (D12, D13) | **validated**, given owner sets and the injective subset for abstract returned-borrow functions | §1.4, T2c |
 | P5, proofs not run (D14) | avoids C1 cleanly **at function types**: a Prop-valued Π over borrows is a CIC `Prop`. But call-keyed P5 is **not natural** (R1) | §1.1 |
@@ -115,7 +115,7 @@ The checker computes `H(σ) ⇓ Z`, so it proves `Π(x : Nat). Id Nat (H(x)) Z` 
 
 ### 1.4 The rules the model validates, and what each costs or buys
 
-- **[End] without side condition (D11).** In the model a loan was already a variable `h_ℓ` and ending was already a substitution. v1 now makes the syntax say so. Consequences: (i) two [End] steps commute as substitutions whenever "`loan_ℓ` occurs in the content of `borrow_m`" is acyclic, which every reachable environment satisfies (a loan enters a borrow's content only by reborrowing a sub-place of that content, and reading never copies a loan, by [Access]); so T1(a) needs no enabling condition. (ii) Pending anonymous bindings disappear: at [Pop], a parameter borrow whose content holds the returned borrow's loan simply ends, and the loan travels into the caller's owner. The concrete machine and the refined symbolic machine then end in *the same shape*, which is why T5 now holds on the nose (§2.5). *Superseded: false as stated, see lean-meta F3 and paper meta.typ Theorem 7.*
+- **[End] without side condition (D11).** In the model a loan was already a variable `h_ℓ` and ending was already a substitution. v1 now makes the syntax say so. Consequences: (i) two [End] steps commute as substitutions whenever "`loan_ℓ` occurs in the content of `borrow_m`" is acyclic, which every reachable environment satisfies (a loan enters a borrow's content only by reborrowing a sub-place of that content, and reading never copies a loan, by [Access]); so T1(a) needs no enabling condition. (ii) Pending anonymous bindings disappear: at [Pop], a parameter borrow whose content holds the returned borrow's loan simply ends, and the loan travels into the caller's owner. The concrete machine and the refined symbolic machine then end in *the same shape*, which is why T5 now holds on the nose (§2.5). *Superseded: false as stated, see the `Pick` example before the naturality conjecture in paper meta.typ.*
 - **[Access] (D19).** Supplies invariant W4: every value that is read, moved, borrowed or passed is loan-free. T2's locality and [Close]'s claim that `L = let cᵢ = uᵢ` is closed both need it. Eager ending on value arguments of a closed-off block can make the checker end a borrow that a concrete run of the chosen arm would not have ended. That changes *definedness* only (a later use of that borrow errors), never a value (T1), so it costs completeness, not soundness.
 - **[Close] port table.** Each row is the model's call clause: `()` / `⌈L; C⌉` / `borrow_k ⌈L; let r = C; *r⌉` denote the forward result, `⌈L; C; cᵢ⌉` denotes `f_backᵢ ū w̄`, and `⌈L; let r = C; *r := loan_k; cᵢ⌉` denotes `f_backᵢ ū w̄ h_k`, by δβζ only. The Unit row is η on `Unit`. There is no Prop row, correctly: with P5, Prop-typed computations never reach [Close]. One implicit gap: [Call] is stated for `f = fix …`; a call whose head is a neutral (`σ_f`, or a sealed program of function type) must be declared stuck at once, so that [Close] applies.
 - **[Seal]'s head-call guard (D9).** The head call unfolds and is not re-closed; inner calls may close. This is exactly what makes re-normalisation after a refinement do the same work as running the refined program directly (T5's [Close] case). It is also CIC's fixpoint guard, as D9 says.
@@ -234,7 +234,7 @@ A **refinement** `α` of `Ω` is a type-respecting substitution on atoms: an abs
 
 **Theorem 5 (naturality).** If `Ω` is well formed, `Ω ⊢ t ⇓ v ⊣ Ω'` by the symbolic machine, and `α` refines `Ω`, then `(Ωα)↓ ⊢ tα ⇓ v'' ⊣ Ω''` with `(Ω'', v'') ≈ ((Ω'α)↓, (vα)↓)`.
 
-*Superseded: false as stated, see lean-meta F3 and paper meta.typ Theorem 7.*
+*Superseded: false as stated, see the `Pick` example before the naturality conjecture in paper meta.typ.*
 
 **Corollary 6 (adequacy).** If `α` is ground, the run of `tα` uses no [Close]: it is a concrete run, it terminates (Lemma 1), and it computes the instantiated symbolic result. In particular every observation, and so every `Id`, computed on abstract inputs is the observation the program makes on every concrete input.
 
@@ -257,7 +257,7 @@ Consequently `obs_W(Ω, t)` does not depend on when loans are ended, and `Id` is
 
 *Hardest case:* a loan inside a sealed program, where [End] is followed by re-normalisation. The order of two ends then matters syntactically unless re-normalising commutes with later substitutions, which is Theorem 5. Canonicity, which the design notes single out as the most important theorem of the design, is in this sense a corollary of naturality.
 
-*Superseded: false as stated, see lean-meta F3 and paper meta.typ Theorem 7.*
+*Superseded: false as stated, see the `Pick` example before the naturality conjecture in paper meta.typ.*
 
 ### 2.7 Soundness of the model (T3)
 
@@ -316,7 +316,7 @@ Pédrot and Tabareau's fire triangle says that substitution, dependent eliminati
 | `OchrCore/Sim.lean` | `Inst` (ground instantiation: sealed programs by concrete runs), the [Close] equations, T0-FO |
 | `OchrCore/Canon.lean` | T1 |
 | `OchrCore/Inj.lean` | `BackSem`, Lemma 4, `Ctx`, Lemma 3, `obs`, T2c |
-| `OchrCore/Natural.lean` | T5(a), on the nose up to `≈` (stretch goal). *Superseded: false as stated, see lean-meta F3 and paper meta.typ Theorem 7.* |
+| `OchrCore/Natural.lean` | T5(a), on the nose up to `≈` (stretch goal). *Superseded: false as stated, see the `Pick` example before the naturality conjecture in paper meta.typ.* |
 | `OchrCore/Tests/*.lean` | §3.4 |
 
 ### 3.3 The theorems, in the order to prove them
@@ -396,7 +396,7 @@ theorem call_type_atom (hopq : OpaqueInj P) (ht : GenericObs P f t gT) (hu : Gen
       ↔ gT = gU
 ```
 
-**Phase 5 (stretch): T5(a) on the nose.** *Superseded: false as stated, see lean-meta F3 and paper meta.typ Theorem 7.*
+**Phase 5 (stretch): T5(a) on the nose.** *Superseded: false as stated, see the `Pick` example before the naturality conjecture in paper meta.typ.*
 
 ```lean
 theorem natural (hα : Refines α Ω) (h : Eval P Ω t (.ok Ω' v)) :
@@ -411,7 +411,7 @@ theorem natural (hα : Refines α Ω) (h : Eval P Ω t (.ok Ω' v)) :
 |---|---|---|
 | `e1e2_runs` | `AddM`, `Add`, `TailM`, `AddM'` on inputs `0..5`: concrete results are the expected numerals | E1, E2 |
 | `close_eqs` | for `AddM`, `TailM`, `Pick` on ground arguments `0..4`: each [Close] fill normalises to the concrete run's final content, and each hole fill with `w ∈ 0..4` to `back w` | T0, `close_fill` |
-| `natural_prop` | for `Add x 0`, `AddM'(x, y)`, `TailM(x)` with `x ↦ σ`, `α ∈ {σ := Z, σ := S σ', σ := k for k ≤ 4}`: `canon (norm (run t)·α) = canon (run (t·α))` *Superseded: false as stated, see lean-meta F3 and paper meta.typ Theorem 7.* | T5 |
+| `natural_prop` | for `Add x 0`, `AddM'(x, y)`, `TailM(x)` with `x ↦ σ`, `α ∈ {σ := Z, σ := S σ', σ := k for k ≤ 4}`: `canon (norm (run t)·α) = canon (run (t·α))` *Superseded: false as stated, see the `Pick` example before the naturality conjecture in paper meta.typ.* | T5 |
 | `canon_sched` | for the three-borrow program `let b = &a; let r = &(*b).1; …` and for `Pick`'s result: every order of [End] steps yields the same `resolve` | T1 |
 | `owners_pick` | after `let r = Pick(n, &a, &b)` with `n ↦ σ`, `owners Ω k = {a, b}` | C2, D18 |
 | `back_inj_small` | `BackSem` of `TailM` and `Pick(σ := Z)`, `Pick(σ := S Z)` injective on `0..6` | Lemma 4 |
@@ -444,6 +444,6 @@ theorem natural (hα : Refines α Ω) (h : Eval P Ω t (.ok Ω' v)) :
 3. **M2 (1–2 weeks).** `Inst`, `close_fill`, `ground_no_close`, `sim`, starting with the returned-borrow [Close] then `end k` case; the tests `close_eqs`, `natural_prop` (ground α). Commit. *This milestone is the mechanical validation of the paper's central claim: sealed programs are backward functions.*
 4. **M3 (1 week).** `end_comm`, `schedule_indep`, `canon_sched`. Commit.
 5. **M4 (1–2 weeks).** `Guard` with Lemma 1 for FO, `back_inj`, `ctx_inj`, `call_obs`, `call_type_atom`, the injectivity tests. Commit.
-6. **M5 (stretch).** `natural` (T5(a) on the nose), and `natural_prop` for non-ground α. *Superseded: false as stated, see lean-meta F3 and paper meta.typ Theorem 7.*
+6. **M5 (stretch).** `natural` (T5(a) on the nose), and `natural_prop` for non-ground α. *Superseded: false as stated, see the `Pick` example before the naturality conjecture in paper meta.typ.*
 
 Estimated size, as in round 1: roughly 3–5k lines for M0–M4. Working practice that has held up in this repo: write at most about 120 lines per edit, build the narrowest target after each chunk, and commit at each milestone. The dependent layer (Π over `Id`, universes, [Split]'s motive, Corollary 9) stays on paper. It would need a universe of codes for Ochr types inside Lean, which is a separate project; a middle road covering a fixed stock of types (`Nat`, `Unit`, `×`, `Eq` at first-order types, one `Prop` layer) would take 1–2 more months after M4.

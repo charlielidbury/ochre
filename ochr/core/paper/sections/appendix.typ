@@ -471,7 +471,7 @@ A state (Ω, Δ, Σ) is _well formed_ when the following hold. They are the four
 + *Arguments are exclusive.* At every call point, each argument is loan-free or is $"borrow"_ell u$ with `u` loan-free. This is [Close]’s precondition, and [Access] maintains it.
 + *Values have their types.* For each binding `x : A ↦ v`: $v = bot$ (moved out or ended), or $v = "loan"_ell$ and the content of $"borrow"_ell$ has type `A`, or `v` has type `A` (a neutral having the type recorded for it). Every σ occurring in Ω, in a stored type or in the goal has a type in Δ, and every top-level name has an entry in Σ.
 
-That the machine preserves conditions 1 to 5 is property 1 of @fig-claims, mechanised for the first-order fragment of @sec-meta-mech.
+That the machine preserves conditions 1 to 5 is property 1 of @fig-claims; it is not proved, and @sec-tf assumes it for its fragment (@tf-ass-t).
 
 == The model <app-model>
 
@@ -502,7 +502,7 @@ $R$ is forced: by [Call-type], Ochr proves of every abstract `g : Π(x : &Nat). 
 
 *Terms.* Abstract values become variables, and a loan $ell$ becomes a variable $h_ell$, a _hole_ for the final content of its borrow. The _view_ $dg(Omega)$ reads a borrow as its current content and a loan as its hole; the _resolution_ $rho_Omega$ substitutes each hole by its borrow's content, that is, it ends every borrow. A term translates to a state-passing function on views (@fig-model); a sealed program denotes the result of running it from the empty view; a definition is a well-founded recursion on the entry value of its decreasing parameter; and `Id` is the equation between the tuples of result and resolved footprint. A symbolic and a concrete run of one term can place their borrows differently (@sec-meta-nat), so runs are related through their resolutions.
 
-Four invariants of the machine make this well defined (@app-wf): each borrow is held once, every loan is bound by a held borrow or lies inside a sealed program (the only place a loan may occur twice), loans nest in borrows acyclically, and every value read, moved or passed is loan-free. That machine steps preserve them is property 1 of @fig-claims, which is mechanised.
+Four invariants of the machine make this well defined (@app-wf): each borrow is held once, every loan is bound by a held borrow or lies inside a sealed program (the only place a loan may occur twice), loans nest in borrows acyclically, and every value read, moved or passed is loan-free. That machine steps preserve them is property 1 of @fig-claims, which is assumed, not proved.
 
 
 The translation of terms follows the clauses of @fig-model.
@@ -609,7 +609,7 @@ Notes 1–11 explain the side conditions of @fig-why that are finest-grained in 
   ```
   `Π(X : Type₀)(a : X). X` lives in `Type₁`, but through the borrow it would live in `Type₀`, which becomes impredicative: with the impredicative `Prop` below it, the rules contain Girard's System U⁻, in which Hurkens' paradox is a closed term, and no set model exists. And if a codomain could compute to a borrow type, as in `F(n : Nat, x : &Nat) : (match n { Z => &Nat, S _ => Nat })`, [Close] would read the data row at the generic call, where the match is stuck, while `F(0, &a)` returns a live borrow at the instance; `G(n, a) := let r = F(n, &a); let b = a; let r2 = r; ()` is accepted at the generic call and, at `n = 0`, reads `r` after reading `a` has ended it. A type variable is borrowable exactly when it is declared in `Type₀`: `SwapT(A : Type₀, x : &A, y : &A)` is well formed, and `SwapT1(A : Type₁, x : &A, y : &A)` is not, since there `A` could be `Type₀` itself.
 + *Proofs are not run.* A proof call's arguments are evaluated and its [Call-type] and [Rec] checked, on a private copy; its body is never run ([T-Call-proof]), and the machine skips proofs altogether ([Erase-proof]). Running and skipping agree, since erased terms run on a private copy.
-+ *The order of [Access].* Loans are ended from the root of the place outward, then left to right inside its content. The resolution does not depend on the order (property 4 of @fig-claims, mechanised for the first-order fragment).
++ *The order of [Access].* Loans are ended from the root of the place outward, then left to right inside its content. The resolution does not depend on the order (property 4 of @fig-claims, assumed, not proved).
 + *A match on a constructor checks only the arm taken*, in typing as in the machine ([T-Match]).
 + *[Close]’s row is chosen by the declared codomain* (`&T`, or anything else), as @lem-stable (4) requires. An earlier version had a third row, returning `()` for a codomain written `Unit`; a codomain that computed to `Unit` without being written so then got the data row, and a statement such as `Id(Unit, let c = *x; G(&c, Z), ())`, where `G`'s codomain `UU(n)` has `UU(Z) = Unit`, needed induction on `*x`. With η for `Unit` the row is unnecessary, and that statement holds by `refl`.
 + *A discarded value* (`t; u`) holding a live loan is an error, like a dying owned binding.

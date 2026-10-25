@@ -378,7 +378,7 @@ Fix: a binding carries a flag, set from syntax: a `let` from its right-hand side
 
 ## 13. Not done
 
-A proof that the implementation matches the rules (the traces and the ledger are the evidence); universe checking beyond C15; `Nat` and `Unit` as ordinary declarations (they stay builtin); indexed families (`Eq` stays primitive); loops, shared borrows, borrows in data (D8); the separate meta-lean development (`ochr/core/meta-lean/`, another agent's).
+A proof that the implementation matches the rules (the traces and the ledger are the evidence); universe checking beyond C15; `Nat` and `Unit` as ordinary declarations (they stay builtin); indexed families (`Eq` stays primitive); loops, shared borrows, borrows in data (D8).
 
 ## 14. Rules v2.0 (D45–D47): the connectives are inductive definitions
 

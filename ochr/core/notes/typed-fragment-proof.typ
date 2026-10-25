@@ -1,3 +1,4 @@
+// 2026-10-25: superseded by paper/sections/tf.typ. `ochr/core/meta-lean` was deleted (git history: 63ea0c9a), so the Lean lemmas this draft cites no longer exist.
 #import "../paper/style.typ": *
 // Standalone compile, from ochr/core: typst compile --root . notes/typed-fragment-proof.typ. Drop the next line when included in the paper, which numbers headings itself.
 #set heading(numbering: "1.1")
