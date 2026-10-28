@@ -226,6 +226,7 @@ end Ochr.Registry
 
 def Ochr.Registry.expectedTotal : Nat := 1519
 /-- The total number of verdict assertions; a truncated example file changes it. -/
+def Ochr.Registry.expectedTotal : Nat := 1527
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal

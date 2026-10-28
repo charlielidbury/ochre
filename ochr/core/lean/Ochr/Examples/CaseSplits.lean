@@ -272,6 +272,20 @@ ochr ScrutineeTypes {
 
   reject def g (x : Nat) : Nat := f(1, x)
 
+  -- twin of f: the match is on `x` at the type `T(n)` refined by splitting `n` first, so `x : L` in the arm
+  def fOk (n : Nat) (x : T(n)) : Nat := (
+    match n {
+      Z => match x {
+        LNil => 0,
+        LCons(h, t) => 0,
+      },
+      S _ => 0,
+    }
+  )
+
+  -- twin of g: the argument is an `L`, passed at `T(0)`
+  def gOk (x : L) : Nat := fOk(0, x)
+
   -- At `T(0)`, which is `L`, the match is fine.
   def f0 (x : T(0)) : Nat := (
     match x {
@@ -291,6 +305,15 @@ ochr ScrutineeTypes {
   reject def NatTNT (A : Type) (x : A) : Nat := (let r = match x { Z => 0, S _ => 1 }; r)
   reject def M2 (n : Nat) (h : Π(n : Nat). TG(n)) : Nat := (let x = h(n); match x { Z => 0, S _ => 1 })
   reject def M2Run : Nat := M2(1, HB)
+
+  -- twin of NatT: `x` is a `Nat`, not a type variable
+  def NatTOk (x : Nat) : Nat := (match x { Z => 0, S _ => 1 })
+  -- twin of NatTUse: calls `NatTOk` at a `Nat`
+  def NatTUseOk (b : Nat) : Nat := NatTOk(b)
+  -- twin of NatTNT: `x` is a `Nat`, not a type variable
+  def NatTNTOk (x : Nat) : Nat := (let r = match x { Z => 0, S _ => 1 }; r)
+  -- twin of M2: `h` returns `Nat` instead of the stuck family `TG(n)`
+  def M2Ok (n : Nat) (h : Π(n : Nat). Nat) : Nat := (let x = h(n); match x { Z => 0, S _ => 1 })
 
   -- Where the family computes to `Nat`, the match is fine.
   def M2Zero (h : Π(n : Nat). TG(n)) : Nat := (let x = h(0); match x { Z => 0, S _ => 1 })
@@ -326,6 +349,20 @@ ochr GlobalRecords {
   )
 
   reject def Bad5 : Eq(Nat, 1, 0) := Esc(1, MkBox(0))
+
+  -- twin of Esc: both sides are the same sealed program, so the (true) statement does not tie a split of `Double(n)` to the field `x`
+  def EscOk (n : Nat) (m : Box) :
+      Id(Nat, (let b = Double(n); match b { Z => 0, S _ => 1 }), (let c = Double(n); match c { Z => 0, S _ => 1 })) := (
+    match m {
+      MkBox(x) => match x {
+        Z => refl,
+        S _ => refl,
+      },
+    }
+  )
+
+  -- twin of Bad5: instance of the true `EscOk`, at `n := 1`
+  def Bad5Ok : Id(Nat, (let b = Double(1); match b { Z => 0, S _ => 1 }), (let c = Double(1); match c { Z => 0, S _ => 1 })) := EscOk(1, MkBox(0))
 }
 
 
