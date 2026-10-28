@@ -144,10 +144,11 @@ end
 
 mutual
 /-- `paramNestable` with fuel: each step, into a field type, an argument or another
-declaration, spends one unit, and running out is an error (not an answer). -/
+declaration, spends one unit, and running out is exhaustion (`exhausted`, the checker does not
+know), never an answer. -/
 def paramNestableF (fuel : Nat) (d : IndDecl) (i : Nat) : M Bool :=
   match fuel with
-  | 0 => err "out of fuel"   -- FUEL-OUTCOME: the out-of-fuel outcome once no-fallbacks lands
+  | 0 => exhausted "out of fuel"
   | fuel + 1 => do
     let np := d.params.length
     d.ctors.allM fun (_, fields) =>
@@ -157,7 +158,7 @@ termination_by structural fuel
 /-- The walk of a field type of `d` for the parameter at index `v`. -/
 def paramNestableGo (fuel : Nat) (d : IndDecl) (v : Nat) (t : Term) : M Bool :=
   match fuel with
-  | 0 => err "out of fuel"   -- FUEL-OUTCOME
+  | 0 => exhausted "out of fuel"
   | fuel + 1 =>
     match t with
     | .place (.var _) => pure true
@@ -170,7 +171,7 @@ termination_by structural fuel
 def paramNestableArgs (fuel : Nat) (d : IndDecl) (v : Nat) (m : String) (idx : Nat) (as : List Term) :
     M Bool :=
   match fuel with
-  | 0 => err "out of fuel"   -- FUEL-OUTCOME
+  | 0 => exhausted "out of fuel"
   | fuel + 1 =>
     match as with
     | [] => pure true
@@ -191,10 +192,10 @@ type it stands for occurs positively in the simplest form: as a field type itsel
 argument of an inductive at one of that inductive's nestable parameters (the type itself
 counts as nestable at a uniform recursive use). A parameter passed to a type function
 (`Neg(A)`), or occurring anywhere else, is not nestable: a later declaration may not put
-the type it declares there, since the function may use it negatively. The walk spends from
-the checker's fuel budget (`paramNestableF`). -/
+the type it declares there, since the function may use it negatively. The walk is bounded by
+the fuel the checker has left (`paramNestableF`). -/
 def paramNestable (d : IndDecl) (i : Nat) : M Bool := do
-  paramNestableF (← get).fuel d i
+  paramNestableF (← getThe Fuel).left d i
 
 mutual
 /-- K4's nesting condition, for its message: an occurrence of the type being declared `n` at
@@ -362,7 +363,8 @@ is not built in (v2.1): it is the `Prelude` block (`Ochr/Prelude.lean`), whose
 declarations come first in every program (`Ochr.Test.libOf`). The result has one verdict
 per item, in order; `locsOf i` is where item `i`'s terms are written (the editor). -/
 def checkDefs (cfg : Config) (ds : List Item) (fuel : Nat := 2000000)
-    (locsOf : Nat → Locs := fun _ => {}) : List (String × Verdict × Array LogEntry) := Id.run do
+    (locsOf : Nat → Locs := fun _ => {}) (undecidedBefore : Nat → List String := fun _ => []) :
+    List (String × Verdict × Array LogEntry) := Id.run do
   let mut globals : List GDef := []
   let mut inds : List IndDecl := []
   let mut undecided : List String := []
@@ -370,8 +372,10 @@ def checkDefs (cfg : Config) (ds : List Item) (fuel : Nat := 2000000)
   for (d, i) in ds.zipIdx do
     -- an item that mentions an undecided one is undecided too: without the earlier item the
     -- checker cannot know its verdict (left out of Σ, it would be rejected for a missing name,
-    -- a decision made by exhaustion, which more fuel would change)
-    if let some n := undecided.find? (d.mentions ·) then
+    -- a decision made by exhaustion, which more fuel would change). `undecidedBefore i`: the
+    -- declarations before item `i` that are undecided before they became items (their
+    -- resolution ran out of fuel: `Ochr.Test.checkProgram`)
+    if let some n := (undecided ++ undecidedBefore i).find? (d.mentions ·) then
       undecided := d.name :: undecided
       out := out.push (d.name, .undecided s!"it mentions {n}, which is undecided", #[])
       continue

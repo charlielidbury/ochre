@@ -334,7 +334,13 @@ def RState.recordLoc (st : RState) (r : Term) (l : Loc) (args : Array (Option Lo
     let ls := { st.locs with table := st.locs.table.insert a l, keep := st.locs.keep.push r }
     { st with locs := if args.isEmpty then ls else { ls with args := ls.args.insert a args } }
 
-abbrev R := ReaderT Tables (ExceptT String (StateM RState))
+/-- The resolver's monad: an error (a rejection, with a message), or, in the layer below it,
+exhaustion (`Exhausted`: resolution ran out of fuel, so the checker does not know, as in the
+machine's `Ochr.M`). A `throw` or `onFail` in `R` sees only the error. -/
+abbrev R := ReaderT Tables (ExceptT String (ExceptT Exhausted (StateM RState)))
+
+/-- Resolution ran out of fuel: thrown below the error layer, so no handler in `R` sees it. -/
+def R.exhausted {α : Type} (msg : String) : R α := throwThe Exhausted ⟨msg⟩
 
 /-- The constructors and types a program declares. The library's (`Pair`, `False`,
 `True`, `And`) are among them: the `Prelude` block's declarations come first in every
@@ -496,10 +502,10 @@ def STerm.builtinCall : STerm → STerm
 mutual
 /-- Resolve a surface term against `ctx` (`ty`: in a type position). `fuel` bounds the
 recursion: each step, including re-resolving a desugared term (`*f(ā)` bound first, a match
-on a term that is not a place, a destructuring `let`), spends one unit, and running out is an
-error, not an answer. -/
+on a term that is not a place, a destructuring `let`), spends one unit, and running out is
+exhaustion (`R.exhausted`), never an answer. -/
 def resolveF (fuel : Nat) (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
-  let fuel' + 1 := fuel | throw "out of fuel"   -- FUEL-OUTCOME: the out-of-fuel outcome once no-fallbacks lands
+  let fuel' + 1 := fuel | R.exhausted "out of fuel (resolution)"
   match t.builtinCall with
   | .loc s e u =>
     let r ← onFail (resolveF fuel' ctx ty u)
@@ -672,7 +678,7 @@ def bindersF (fuel : Nat) (ctx : Ctx) (bs : List (String × STerm)) : R (Ctx × 
   match bs with
   | [] => pure (ctx, [], [])
   | (x, A) :: bs =>
-    let fuel' + 1 := fuel | throw "out of fuel"   -- FUEL-OUTCOME
+    let fuel' + 1 := fuel | R.exhausted "out of fuel (resolution)"
     let A' ← resolveF fuel' ctx true A
     let (ctx', hs, ds) ← bindersF fuel' (.bound x :: ctx) bs
     pure (ctx', ⟨x⟩ :: hs, A' :: ds)
@@ -716,13 +722,20 @@ def resolveDecl (d : SDecl) (fuel : Nat := 2000000) : R Item := do
   pure (.defn { name := d.name, hs := hs, doms := ds, cod := cod, dec := ← decIndex d.params d.dec, body := body,
                 implBy := d.implBy })
 
-/-- Resolve a whole program's declarations with its constructor table. -/
-def resolveProgram (p : List SDecl) (d : SDecl) (fuel : Nat := 2000000) : Except String Item :=
-  ((resolveDecl d fuel).run (Tables.ofProgram p)).run.run' {}
+/-- Resolve `d` against the whole program `p` (its constructor table), with the checker's
+`fuel`: the item or the resolution error, or exhaustion; and the resolver's final state (with
+`record`, where `d`'s terms are written, and on an error the innermost located term around it:
+the editor). -/
+def runResolve (p : List SDecl) (d : SDecl) (fuel : Nat) (record : Bool := false) :
+    Except Exhausted (Except String Item) × RState :=
+  ((((resolveDecl d fuel).run (Tables.ofProgram p)).run).run).run { record := record }
 
-/-- The editor: `resolveProgram`, recording where `d`'s terms are written (`RState.locs`),
-and, on a failure, the innermost located term around it (`RState.failAt`). -/
-def resolveLocated (p : List SDecl) (d : SDecl) (fuel : Nat := 2000000) : Except String Item × RState :=
-  ((resolveDecl d fuel).run (Tables.ofProgram p)).run.run { record := true }
+/-- Resolve a whole program's declarations with its constructor table, for the test harnesses
+and the fuzzer: exhaustion is an error saying so (as `Ochr.runM`). `checkProgram` uses
+`runResolve`, where exhaustion is the verdict `undecided`. -/
+def resolveProgram (p : List SDecl) (d : SDecl) (fuel : Nat := 2000000) : Except String Item :=
+  match (runResolve p d fuel).1 with
+  | .ok r => r
+  | .error e => .error s!"undecided: {e.msg}"
 
 end Ochr.Surface

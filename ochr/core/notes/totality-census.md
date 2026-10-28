@@ -15,13 +15,13 @@ Measured, not guessed: a Lean meta script (`#reach`, kept in the session scratch
 | Check | 5 | 6 (with `paramNestable.go`) | yes |
 | Surface | 9 | 6 | yes, all 9 (the parser: the theorem is stated over surface programs) |
 | Run | 2 | 0 | yes (`exportsWith`/`libWith` assemble a block's library; not reached from `checkProgram` itself) |
-| Loc | 3 | 3 (`termAddr`, its unsafe implementation, `Locs.relocate`) | yes; `termAddr` is the one exception below |
-| Machine | 166 | 129 | yes: Phase 2, after `no-fallbacks` lands |
+| Loc | 3 | 3 (`termAddr`, its unsafe implementation, `Locs.relocate`) | yes; `termAddr` is the sanctioned exception (below) |
+| Machine | 166 (169 after `no-fallbacks`) | 129 (133) | yes: Phase 2, after `no-switches` phase 2 lands |
 | Notation | 12 | 0 | no: the `ochr` command's macro elaborators (`MacroM`) and `evalBlock` (`unsafe`/`opaque`/`implemented_by`, evaluating a block constant at elaboration). They build `Program` values; the theorem quantifies over `Program` values, so how a value was elaborated is not checker code |
 | RuleGuard | 3 | 0 | no: a build-time scan of the paper's rule names |
 | Fuzz, Test, Examples | – | – | no: dev tooling and the harness |
 
-After Phase 1 (commit 5cd27efd) the same walk reaches 1991 constants, of which 131 are not total: Machine's 129, and `termAddr` with its unsafe implementation.
+After Phase 1, rebased onto `no-fallbacks` (main 0ea85bbb), the same walk reaches 2028 constants, of which 135 are not total: Machine's 133, and `termAddr` with its unsafe implementation. The rebase also made total the one partial definition `no-fallbacks` added outside Machine.lean, `Surface.isPlace` (structural).
 
 ## Phase 1: how each definition became total
 
@@ -40,19 +40,17 @@ No verdict changed: the full `lake build` (every verdict assertion, the asserted
 - `Loc.Locs.relocate`: `termination_by sizeOf old`, lemma `Term.sizeOf_lt_of_mem_children`.
 - `Run.exportsWith`/`libWith`: lexicographic `(libRank, sizeOf block, 0/1)`: the library block ranks lowest, and a used block is smaller (`Block.sizeOf_lt_of_mem_closure`, two mutual lemmas on `closureAdd`).
 
-**Fuel** (an explicit `Nat` that every recursive step decreases; running out is an error, never an answer), each marked `FUEL-OUTCOME`:
-- `Check.paramNestable` walks into other inductive declarations (`paramNestableF/Go/Args`); seeded with the checker's fuel from the state.
-- `Surface.resolve`/`binders` re-resolve desugared terms (`*f(ā)` bound first, a match on a non-place, a destructuring `let`); `resolveF`/`bindersF`, seeded by `resolveDecl`/`resolveProgram`/`resolveLocated`'s `fuel` (default 2000000); `checkProgram` passes its own fuel.
+**Fuel** (an explicit `Nat` that every recursive step decreases; running out is exhaustion, "the checker does not know", never an answer):
+- `Check.paramNestable` walks into other inductive declarations (`paramNestableF/Go/Args`); its bound is the machine fuel left (`getThe Fuel`), and running out throws `exhausted "out of fuel"`, the outcome `tick` throws, so the declaration is `undecided`.
+- `Surface.resolve`/`binders` re-resolve desugared terms (`*f(ā)` bound first, a match on a non-place, a destructuring `let`); `resolveF`/`bindersF`, seeded with `checkProgram`'s `fuel`. The resolver's monad `R` has an `Exhausted` layer below its error layer, as the machine's `M` does, so no `throw`/`onFail` in `R` sees exhaustion. `runResolve` returns it, and `checkProgram` reports such a declaration as `undecided`, and every later declaration that mentions it too (`checkDefs`'s `undecidedBefore`), so that exhaustion never becomes a rejection for a missing name. `resolveProgram` (the test harnesses and the fuzzer) turns it into an error saying `undecided`, as `runM` does.
 
-Where to switch when `no-fallbacks` lands: every `FUEL-OUTCOME` line (`err "out of fuel"` in Check.lean, `throw "out of fuel"` in Surface.lean) becomes its out-of-fuel outcome. Surface's resolution runs in `R` (`ExceptT String`), so today an exhausted resolution is a `(surface) out of fuel` rejection; with an `undecided` verdict, `checkProgram` must report it as that.
+## The sanctioned exception: `Loc.termAddr`
 
-## What cannot be made total without changing behaviour
-
-`Loc.termAddr` is `opaque` and `implemented_by` `ptrAddrUnsafe`: the editor keys source locations by a resolved node's address (identity, since `==` ignores binder names). A total version needs locations carried in the term itself, a change to `Term` and to every place that builds one. Until then, the argument that a proof never needs its value: the location table is empty unless `checkProgram`'s `located` is set; the consistency theorem's `Accepted` leaves it unset, and a lookup in an empty `HashMap` is `none` whatever the key.
+`Loc.termAddr` is `opaque` and `implemented_by` `ptrAddrUnsafe`: the editor keys source locations by a resolved node's address (identity, since `==` ignores binder names). The user allows it as a stated exception to "all checker code is total" (`ochr/core/CLAUDE.md`; its docstring says so), because it cannot reach a verdict the consistency statement covers: it keys only the editor's location table, which is empty unless `checkProgram`'s `located` is set; `Accepted` never sets it, and a lookup in an empty `HashMap` is `none` whatever the key. Making it total would mean carrying locations in `Term` itself, a change to every place that builds one.
 
 ## Phase 2 inventory: Machine.lean
 
-166 partial definitions: 7 before the mutual block (`isPropTerm?`, `headOnly`, `constHeadOnly`, `expandRefs`, `unifyParams`, `strictSubterms`, …) and 159 in one mutual block (lines 151–3519). Call-graph SCCs of the block (a regex call graph, so an over-approximation):
+166 partial definitions on 449b90d0 (169 after `no-fallbacks`): 7 before the mutual block (`isPropTerm?`, `headOnly`, `constHeadOnly`, `expandRefs`, `unifyParams`, `strictSubterms`, …) and 159 in one mutual block (lines 151–3519). Call-graph SCCs of the block (a regex call graph, so an over-approximation):
 - one SCC of 114 functions: the evaluator, typing, conversion, closing off, observation, [Def];
 - 6 self-recursive singletons (`placeDecl`, `hasDependent`, `loanPath`, `sealedHead`, `sealedIn`, …): candidates for structural recursion;
 - 39 non-recursive: they can leave the mutual block as ordinary definitions.
@@ -74,7 +72,7 @@ Evidence:
 
   Machine.lean elaborates in 14.3 s today.
 - **(B) also needs a tick on every cycle.** Structural sub-calls (`substV` on a sub-value) do not tick, so the runtime check `f < fuel` would fail there; adding ticks changes fuel consumption, and fuel restored by a catch (today's `tryCatch`) breaks it until `no-fallbacks` moves the counter out of the restored state.
-- **Runtime cost of (A), compiled.** The synthetic 40-function block, 300 runs of depth 10000, best of 3: partial 182 ms, structural fuel 209–214 ms (+15%). That is per-call overhead on calls doing almost nothing (a tick and a 3-element `mapM`); the checker's calls do far more work each, so the share on the examples should be much smaller. Phase 2 measures it: the tests executable (every example and case study, and the ledger's counterfactual runs) takes 832 s on Phase 1's commit (one run), the baseline to compare against.
+- **Runtime cost of (A), compiled.** The synthetic 40-function block, 300 runs of depth 10000, best of 3: partial 182 ms, structural fuel 209–214 ms (+15%). That is per-call overhead on calls doing almost nothing (a tick and a 3-element `mapM`); the checker's calls do far more work each, so the share on the examples should be much smaller. Phase 2 measures it: the tests executable (every example and case study, and the ledger's counterfactual runs) took 832 s and 791 s (two runs) on Phase 1 before the rebase onto `no-fallbacks`; Phase 2 re-measures the baseline on its own base first, since `no-switches` deletes the ledger's counterfactual runs.
 
 **Recommendation: (A).** Order of work in Phase 2:
 1. Move the 39 non-recursive functions out of the block; give the 6 self-recursive singletons structural recursion or fuel; the 7 functions before the block likewise.

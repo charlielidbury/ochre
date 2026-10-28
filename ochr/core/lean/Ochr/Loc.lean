@@ -24,7 +24,12 @@ private unsafe def termAddrImpl (t : Term) : USize := ptrAddrUnsafe t
 
 /-- The address of a term node: its identity, stable while the node is alive. Lean frees a node
 when its last reference goes and may reuse the address, so a table keyed by addresses holds a
-reference to every node it records (`Locs.keep`): an address in the table is always its node's. -/
+reference to every node it records (`Locs.keep`): an address in the table is always its node's.
+
+The sanctioned exception to "all checker code is total" (`ochr/core/CLAUDE.md`,
+`notes/totality-census.md`): it keys only the editor's location table, which is empty unless
+`checkProgram`'s `located` is set, and the consistency statement's `Accepted` never sets it, so
+no verdict it covers reads an address (a lookup in an empty table is `none` whatever the key). -/
 @[implemented_by termAddrImpl]
 opaque termAddr (t : Term) : USize
 

@@ -38,25 +38,34 @@ def Report.passed (r : Report) : Nat := (r.rows.filter Row.asExpected).length
 The verdict and trace of each, by position: the `i`-th entry is the `i`-th declaration's,
 so a declaration never reports another's verdict, even one with the same name (which
 [Def] and [Ind-decl] reject). The declarations whose positions `located` names are resolved
-and checked with their source locations (the editor), so their rejections say where. -/
+and checked with their source locations (the editor), so their rejections say where.
+Resolution is bounded by `fuel` too: a declaration whose resolution runs out of it is
+`undecided`, and so is every later one that mentions it (`checkDefs`). -/
 def checkProgram (p : Program) (cfg : Config) (fuel : Nat) (located : Nat → Bool := fun _ => false) :
     List (String × Verdict × Array LogEntry) := Id.run do
   let mut defs : List Item := []
   let mut locs : Array Locs := #[]                         -- per resolved declaration
-  let mut bad : Array (Option (String × Option Loc)) := #[]  -- per declaration: its resolution error
+  -- per declaration: its resolution error (a rejection) or exhaustion (undecided)
+  let mut bad : Array (Option Verdict) := #[]
+  let mut undecided : List String := []                    -- declarations undecided in resolution
+  let mut undecidedBefore : Array (List String) := #[]      -- per resolved declaration
   for (d, i) in p.zipIdx do
-    let (r, st) := if located i then resolveLocated p d fuel else (resolveProgram p d fuel, {})
+    let (r, st) := runResolve p d fuel (located i)
     match r with
-    | .ok df =>
+    | .ok (.ok df) =>
       defs := defs ++ [df]
       locs := locs.push st.locs
+      undecidedBefore := undecidedBefore.push undecided
       bad := bad.push none
-    | .error e => bad := bad.push (some (e, st.failAt))
-  let mut verdicts := checkDefs cfg defs fuel (fun j => locs[j]?.getD {})
+    | .ok (.error e) => bad := bad.push (some (.rejected s!"(surface) {e}" st.failAt))
+    | .error e =>
+      undecided := d.name :: undecided
+      bad := bad.push (some (.undecided e.msg))
+  let mut verdicts := checkDefs cfg defs fuel (fun j => locs[j]?.getD {}) (fun j => undecidedBefore[j]?.getD [])
   let mut out := #[]
   for (d, e) in p.zip bad.toList do
     match e with
-    | some (e, l) => out := out.push (d.name, Verdict.rejected s!"(surface) {e}" l, #[])
+    | some v => out := out.push (d.name, v, #[])
     | none => match verdicts with
       | (_, v, tr) :: rest => out := out.push (d.name, v, tr); verdicts := rest
       | [] => out := out.push (d.name, .rejected "not checked", #[])
