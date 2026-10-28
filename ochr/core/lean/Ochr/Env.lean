@@ -38,8 +38,6 @@ structure Binding where
   val : Value
   proof : Bool := false -- v1.7 (D35): its declared type has declared sort Prop (read off syntax)
   decl : DeclInfo := .other   -- what its declared type says (the erasure pre-pass)
-  blockRef : Bool := false    -- a stuck block's borrow parameter for a place it writes (a
-                              -- checker device: a closure in the block captures through it)
   cap : Bool := false         -- a closure's captured value (D53 (e): its body may not move it out)
 deriving Inhabited
 
@@ -125,94 +123,17 @@ structure RecCtx where
   uid : Nat                      -- identifies the frame across state restores
 deriving Inhabited
 
-/-- What a run records: `trace` and `derivation`, which never change a verdict. The other
-fields were rule switches for the counterfactual ledger; D70 removed the ledger and every run
-uses their defaults. They are still read by `Machine.lean`, always at those defaults, until it
-is collapsed to them, and then they are deleted. -/
+/-- What a run records: `trace` and `derivation`, which never change a verdict. The checker
+has no rule switches (D70): which rules it applies is internal, and a test says only whether a
+program is accepted, rejected or runs to a given result. -/
 structure Config where
-  p5 : Bool := true              -- D14: calls at a proposition are not run
-  multiOwner : Bool := true      -- D18: the footprint observes every owner of a hole
-  recGuard : Bool := true        -- D17: [Rec] entry-value guard
-  accessInside : Bool := true    -- D19: [Access] ends loans inside the accessed content
-  selfHeadOnly : Bool := true    -- this checker's fix L1: `f` occurs only as the head of a call in its body
-  argNotBot : Bool := true       -- this checker's fix L2: an argument must not be ⊥ at the call point
-  generalize : Bool := true      -- clarification C8: [Split] on a sealed program generalises it to a fresh σ first
-  blockMoves : Bool := true      -- clarification C5: a stuck block moves in a borrow variable that an arm moves
-  inferRecPos : Bool := false    -- v1 behaviour: infer the decreasing parameter instead of reading `by xⱼ`
-  eraseOnCopy : Bool := true     -- v1.3 P2 (D26): a term whose type is a proposition runs on a private copy
-  proofParamsStar : Bool := true -- v1.4 D27: a proof parameter is ⋆ at the generic call (not an abstract σ)
-  recNested : Bool := true       -- v1.3 (L3): [Rec] also checks recursive calls inside nested functions
-  erasureByDecl : Bool := true   -- v1.5 D28: erasure decided per definition / syntactically, not from values
-  matchEndsInside : Bool := true -- v1.5 D29: matching ends loans anywhere inside a neutral head
-  closureConv : Nat := 0         -- v1.5 D30: 0 = generic-call observation, 1 = syntactic, 2 = result only
-  unboundWithoutBy : Bool := true -- v1.5 D31: without `by`, f is not in scope in its body
-  patternWritesVisible : Bool := true -- v1.5 D32: writes through pattern variables are writes to the scrutinee
-  genConsistent : Bool := true   -- finding G1: a generalised neutral stays generalised when normalisation re-derives it
-  leafRule : Nat := 2            -- a place, constant or λ is a proof (erased): 2 = when declared of sort Prop (a
-                                 -- variable's flag, finding P3); 1 = when its value is ⋆ (finding P1, unstable);
-                                 -- 0 = never (v1.6)
-  positivity : Bool := true      -- v1.7 D36: constructor fields are first-order data
-  globalRecords : Bool := true   -- v1.8 D37: generalisation records and fresh names survive private copies
-  obsBorrow : Bool := true       -- v1.8 D38: a borrow result is observed through a fresh value written into it
-  headGuardNeutral : Bool := true -- v1.8 D39: [Seal]'s head guard covers neutral-headed calls
-  genPlaceType : Bool := true    -- v1.8: a generalised σ has the matched place's type
-  borrowParam : Bool := true     -- v1.9 D44: a function type returning `&T` has a borrow parameter
-  capTypes : Bool := true        -- captured neutral data and proofs keep their types (reviewer-2, lean-checker)
-  byType : Bool := true          -- v2.0 D45: a match on a proof (a Prop inductive) is by its type, not its content
-  subsingleton : Bool := true    -- v2.0 D45: a match on a proof returns a non-proof only from a subsingleton
-                                 -- (zero constructors, or one whose fields are all proofs)
-  propValues : Bool := true      -- v2.0 D42: a constructor application of a Prop inductive is a proof (⋆, erased)
-  disjoint : Bool := true        -- v2.0 D47: `Eq D (C ā) (C' b̄) ≡ False` for distinct constructors C ≠ C'
-  scrutTyped : Bool := true      -- finding (v2.0 round): a match's scrutinee must have the constructors' type
-  armsAgree : Bool := true       -- D63: a match whose arms disagree about being proofs has no declared type (off: the arm that runs decides)
-  typedObs : Bool := true        -- D63: [Id] observes with the typing judgement in untyped runs too (off: a stuck side is stuck)
-  blockRefCapture : Bool := false -- ON is the counterfactual: a closure in a stuck block captures through the block's
-                                  -- borrow parameter (fuzz-port R2 (ii)); D63 follows [Fix], which captures no borrow
-  refData : Bool := true         -- D48 (1), D66: `&A` only for `A : Type₀` (off: any A)
-  borrowUniverse : Bool := true  -- D66: that test is `A : Type₀` (off: D48 (1)'s old test, A is data)
-  propUp : Bool := true          -- D66: `Prop : Type₁`, beside `Type₀` (off: `Prop : Type₀`)
-  eqSidesApart : Bool := true    -- each side of `Eq` runs on its own private copy (off: both sides share one copy)
-  erasedMoves : Bool := true     -- D68 (one mental model): reads in statements move as at runtime (off: they copy)
-  movedStuck : Bool := true     -- D68: an equation over a moved place is stuck, and a moved binding stays observed (off: `Eq ⊥ ⊥ = ⊤`, moved bindings unobserved)
-  copyByType : Bool := true     -- D68 (a): a value is copied only when its type is a copy type (off: a function whose captures are copies is copied)
-  injective : Bool := true      -- D52: Eq on two values of one constructor is the conjunction over its fields
-  refTop : Bool := true          -- D48 (2): `&` only at the top of a declared type, never produced by computation
-  sortsSyntactic : Bool := true  -- D55: a term written where a type is expected has a declared type that is syntactically a sort
-  classInType : Bool := true     -- D54: a Π-type's erasure class and [Close] row are part of it (conversion compares them)
-  prePass : Bool := true         -- erasure is decided before evaluation, from declared types (the syntactic pre-pass)
-  jStuck : Bool := true          -- D56: J computes only when its endpoints are convertible, otherwise it is stuck
-  zeroArmStuck : Bool := true    -- D58: a zero-arm match outside a proof position is stuck, not ⋆
-  unitEta : Bool := true         -- D59 (refined): values are η-normal at Unit (the readback at Unit is `()`:
-                                 -- abstract values, stuck calls' results, fills), so `Eq Unit a b ≡ True`
-  abstractTypes : Bool := true   -- K3: an abstract type's constructors and matches only in erased positions and model code
-  unsizedTypes : Bool := true    -- K2: outside model code, a place of an unsized type is only borrowed at runtime
-  reborrowSurvives : Bool := true -- D67: [Access] before an assignment ends only the loans in the part of the
-                                 -- place's content it owns (a reborrow behind a held borrow survives)
-  repack : Bool := true          -- D64 [Repack]: a value of a dependent type is of its telescope again at
-                                 -- every whole-again point of the checked program
-  depInj : Bool := true          -- D64: `Eq` decomposes a dependent constructor only while its index fields
-                                 -- are convertible on both sides (D52 restricted)
-  k4 : Bool := true              -- K4: a field type may call an earlier type function (e.g. `Array(T, n)`)
-  k4Nest : Bool := true          -- K4's nesting condition: a parameter an inductive passes to a type function
-                                 -- is not nestable (the type being declared may not appear there)
-  dropEndsBound : Bool := true   -- D65 amended: [Drop] of a lent place ends only borrowers held in bindings; one in flight is an error (off: pure D65, it ends every borrower)
-  lentProofs : Bool := true      -- D64 amended (uninit-bot's finding): a proof field assigned while part of its value
-                                 -- is lent is checked with what each such borrow holds unknown ([Open]); off: with
-                                 -- its current content, which the live borrow can still change (DepFields.BoomLent)
-  fnRule : Bool := true          -- D53 (e): a call does not consume its function; a closure is copy iff its captures are, and its body may not move them out
-  unitNorm : Bool := false       -- counterfactual D50: the unit laws normalise stored types (v2.0 as first built)
-  piUnder : Bool := true         -- D48 (3): Π-types are compared under their binders, at generic values
-  proofDataFields : Bool := true -- D49 (3): a data field of a matched proof is a fresh abstract value (not ⋆)
   trace : Bool := false          -- record goals, splits and call types (for inspection)
   derivation : Bool := false     -- record every rule application, in the paper's names (`fire`, Rules.lean)
 deriving Inhabited, Repr, BEq
 
 /-- The universe a sort lives in: `Type_l : Type_{l+1}`, and `Prop : Type₁` beside `Type₀`
 (D66, Coq's arrangement: `Type₀` holds only runtime types). Level `0` is `Prop`, `1` is `Type₀`. -/
-def Config.sortSucc (_ : Config) (l : Nat) : Nat := if l == 0 then 2 else l + 1
-
-/-- The pre-pass is always checked against the after-the-fact classification. -/
-def Config.prePassAssert (_ : Config) : Bool := true
+def sortSucc (l : Nat) : Nat := if l == 0 then 2 else l + 1
 
 structure MState where
   env : Env := #[{}]
@@ -235,7 +156,6 @@ structure MState where
   depth : Nat := 0                        -- call depth (bounded, like fuel: the checker must terminate)
   placeLog : Array (Nat × Nat × Place × Bool) := #[]  -- D53: every move (true) and assignment (false), at its
                                           -- root binding's position (restored with the state)
-  preAssert : Option Bool := none         -- `cfg.prePassAssert`, computed once
   constDecls : List (String × DeclInfo) := []   -- what each global's declared type says (a pure cache)
   curDecl : Option DeclInfo := none        -- the pre-pass's reading of the term being evaluated
   tailDecl : Option DeclInfo := none       -- ... handed to its tail, whose reading it is (one-shot)
@@ -369,7 +289,6 @@ def onCopy {α : Type} (x : M α) : M α := do
   restoreKeep saved
   pure r
 
-def onCopyIf {α : Type} (b : Bool) (x : M α) : M α := if b then onCopy x else x
 
 def trace (msg : Unit → String) : M Unit := do
   if (← get).cfg.trace then modifyThe (Array LogEntry) (·.push (.line (msg ())))
@@ -423,9 +342,9 @@ def popFrameRaw : M Frame := do
   | none => err "internal: pop of empty environment"
 
 def pushBind (h : Hint) (ty : Option Value) (v : Value) (proof : Bool := false)
-    (decl : DeclInfo := .other) (blockRef : Bool := false) : M Unit := do
+    (decl : DeclInfo := .other) : M Unit := do
   modifyFrame (← topIdx) fun fr =>
-    { fr with binds := fr.binds.push { hint := h, ty, val := v, proof, decl, blockRef } }
+    { fr with binds := fr.binds.push { hint := h, ty, val := v, proof, decl } }
 
 /-- Run a declared-type reading whose free variables beyond its local scope are the
 current frame's bindings (read in place, not copied into a list). -/

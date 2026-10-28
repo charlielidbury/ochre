@@ -47,12 +47,6 @@ def andList : List Value → Value
   | [p] => p
   | p :: ps => mkAnd p (andList ps)
 
-/-- `D(ā)`, kept as written (D50); `norm` is the counterfactual normalising reading. -/
-def mkTInd (n : String) (as : List Value) (norm : Bool := false) : Value :=
-  match n, as, norm with
-  | "And", [p, q], true => mkAnd p q
-  | _, _, _ => .tInd n as
-
 /-- D47: two values headed by distinct constructors of the same type (`Z` and `S _`, or
 `C(…)` and `C'(…)` with `C ≠ C'`). Values of a proposition are `⋆`, never distinct. -/
 def distinctCtors : Value → Value → Bool
@@ -293,21 +287,6 @@ partial def Term.formsFn : Term → Bool
   | .prim _ as | .tind _ as => as.any (·.formsFn)
   | .matchInd _ _ as => as.any (·.2.formsFn)
   | _ => false
-
-/-- A place whose first step from its root goes through a borrow (`*x…`). -/
-def Place.derefsRoot : Place → Bool
-  | .deref (.var _) => true
-  | .deref p | .fst p | .snd p | .field _ p => p.derefsRoot
-  | .var _ => false
-
-/-- The same place with that first `*` removed. -/
-def Place.stripDeref : Place → Place
-  | .deref (.var i) => .var i
-  | .deref p => .deref p.stripDeref
-  | .fst p => .fst p.stripDeref
-  | .snd p => .snd p.stripDeref
-  | .field g p => .field g p.stripDeref
-  | .var i => .var i
 
 /-- Free occurrences, with the root expressed as an index into the enclosing frame. -/
 def Term.freeOccs (t : Term) : List (Nat × Place × PKind) :=

@@ -110,16 +110,14 @@ partial def owners (env : Env) (l : Nat) (seen : List Nat := []) : List Pos :=
 /-- The footprint `W(t, u)` (RULES §4). Free places of the terms that are borrowed,
 assigned, or rooted at a borrow-typed variable contribute their owners: `{x}` for a
 place rooted at an owned `x`, `owners(ℓ)` for one rooted at a variable holding
-`borrow_ℓ`; with `onlyWrites` (D68), only when the variable is passed whole, not when it is only read through. With `multi = false` only the first owner of a hole is kept (the
-single-owner reading refuted by meta-model C2; unused, to be removed).
+`borrow_ℓ`, only when the variable is passed whole, not when it is only read through (D68).
 
 The owners are listed in the order the terms first write or borrow them, then those only
 reached through a borrow-typed variable, not in Ω's order: closing off a match re-orders Ω (a
 sealed program binds its captures in its own order, and a borrow parameter's cell is not where
 the caller's is) and turns a captured place's reads into reads through a borrow, and `Id`'s
 conjunction must come out the same on every path (fuzz-port's R6). -/
-def footprint (env : Env) (ts : List Term) (multi : Bool := true) (onlyWrites : Bool := false)
-    (obsMoved : Bool := false) : List Pos := Id.run do
+def footprint (env : Env) (ts : List Term) : List Pos := Id.run do
   let f := env.size - 1
   let n := env[f]!.binds.size
   let mut out : List Pos := []
@@ -131,15 +129,15 @@ def footprint (env : Env) (ts : List Term) (multi : Bool := true) (onlyWrites : 
           let b := env[f]!.binds[n - 1 - o]!
           let isRefTy := match b.ty with | some (.tRef _) => true | _ => false
           let ownersOfRoot : List Pos := match b.val with
-            | .borrow m _ => let os := owners env m; if multi then os else os.take 1
+            | .borrow m _ => owners env m
             -- D68: a place moved out is still observed (its equation is stuck): whether a stuck
             -- block's arm moved it differs between an abstract and a ground run
-            | .bot => if onlyWrites && obsMoved && !isRefTy then [pos] else []
+            | .bot => if !isRefTy then [pos] else []
             | _ => [pos]
           -- D68: only places written or borrowed are observed: a borrow variable passed whole (its
           -- callee may write through it) counts; one only read through (`*x`) does not
           let counts := if writes then k == .borrow || k == .assign
-            else (isRefTy || b.val.isBorrow) && (!onlyWrites || (k == .read && q matches .var _))
+            else (isRefTy || b.val.isBorrow) && (k == .read && q matches .var _)
           if counts then
             for q in ownersOfRoot do
               unless out.contains q do out := out ++ [q]

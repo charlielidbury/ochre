@@ -66,7 +66,7 @@ def prepare (cfg : Config) (fuel : Nat) (decls : List SDecl) : Except String Pre
     -- type, D48 (2), D55 in every type position), as a definition of it would
     let static : M Unit := do
       if (d.cod :: d.doms).any (Term.mentionsConst d.name) then err s!"{d.name} occurs in its own type"
-      if (← get).cfg.refTop && !((d.cod :: d.doms).all Term.refTopOk && d.body.refsOk) then
+      if !((d.cod :: d.doms).all Term.refTopOk && d.body.refsOk) then
         err s!"[D48] & inside a declared type"
       discard (declOf true [] [] (.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body))
     match runSt static { globals := globals, inds := inds, cfg := cfg } fuel with
@@ -106,17 +106,16 @@ def setupParams (d : Def) : M (Array PInfo) := do
       let cell := (← get).env[0]!.binds.size
       modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
       -- η-normal at `Unit` (D59 refined), as `checkFix` binds it
-      let c := if (← get).cfg.unitEta && T == .tUnit then Value.unit else .abs σ
-      pushBind h (some A) (.borrow l c) p pd (dom matches .val (.tRef _))
+      let c := if T == .tUnit then Value.unit else .abs σ
+      pushBind h (some A) (.borrow l c) p pd
       out := out.push ⟨h.name, .borrow cell, σ, T⟩
     | _ =>
-      let cfg := (← get).cfg
-      if cfg.p5 && cfg.proofParamsStar && (← isPropV A) then
+      if ← isPropV A then
         pushBind h (some A) .proof p (← refineDecl pd (some A) .proof)
         out := out.push ⟨h.name, .proof, 0, A⟩
       else
         let σ ← freshAbs A
-        let c := if cfg.unitEta && A == .tUnit then Value.unit else .abs σ
+        let c := if A == .tUnit then Value.unit else .abs σ
         pushBind h (some A) c p (← refineDecl pd (some A) c)
         out := out.push ⟨h.name, .data, σ, A⟩
   pure out
@@ -154,14 +153,12 @@ def hypsHold (st : MState) (ps : Array PInfo) : Bool := Id.run do
     i := i + 1
   pure true
 
-/-- The bindings an observation compares. Before D68, every binding of Ω (the resolution
-observes all of them). Since D68 a statement's moves happen on its own copy and are undone
-with it, and `Id` observes only the places its sides write or borrow (`footprint`, with
-`onlyWrites`): a binding a side only reads may be moved on one path (a stuck block taking
-it by move) and untouched on the other, and neither path's `Id` looks at it. -/
-def obsPositions (env : Env) (ts : List Term) (cfg : Config) : List Pos :=
-  if cfg.erasedMoves then footprint env ts cfg.multiOwner true cfg.movedStuck
-  else (allPos env).filter fun | .bind .. => true | _ => false
+/-- The bindings an observation compares. Since D68 a statement's moves happen on its own copy
+and are undone with it, and `Id` observes only the places its sides write or borrow
+(`footprint`): a binding a side only reads may be moved on one path (a stuck block taking it
+by move) and untouched on the other, and neither path's `Id` looks at it. -/
+def obsPositions (env : Env) (ts : List Term) : List Pos :=
+  footprint env ts
 
 def compName : Nat → String
   | 0 => "lhs"

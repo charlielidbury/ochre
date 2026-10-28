@@ -324,7 +324,7 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
   let ((refs, rng, fns), st2) ← match runSt (buildRefinements ps o.nGround r) st1 o.fuel with
     | .ok x => pure x
     | .error e => return { status := s!"invalid: refinements: {e}" }
-  let W := obsPositions st2.env [t, u] o.cfg
+  let W := obsPositions st2.env [t, u]
   let pinned := List.range st2.nextAbs
   let G := [0, 1, 2].map fun k => obsRun st2 A t u W true k
   if G.all (!·.isOk) then return { status := "rejected", findings := convF, execAccepted := execN }
@@ -469,7 +469,7 @@ def debugCase (o : Opts) (c : Case) : List String := Id.run do
   let .id A t u := prep.stmt.body | return out
   let st0 : MState := { globals := prep.globals, inds := prep.inds, cfg := o.cfg }
   let .ok (_, st1) := runSt (setupParams prep.stmt) st0 o.fuel | return out ++ ["setup failed"]
-  let W := obsPositions st1.env [t, u] o.cfg
+  let W := obsPositions st1.env [t, u]
   for k in [0:3] do
     out := out ++ [s!"generic {compName k}: {showE ((obsRun st1 A t u W true k).map (·.1))}"]
   pure out
