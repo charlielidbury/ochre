@@ -28,6 +28,7 @@ import Ochr.Examples.HashMap
 import Ochr.Examples.DependentFields
 import Ochr.Examples.Sugar
 import Ochr.Examples.Units
+import Ochr.Examples.Fording
 
 /-! # Every example program, for the test runner
 
@@ -51,7 +52,8 @@ def programs : List (String × Block) :=
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
    ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("BorrowTypes", BorrowTypes), ("FnBorrows", FnBorrows),
    ("Abstraction", Abstraction), ("DepFields", DepFields), ("Sugar", Sugar),
-   ("SugarOwnBool", SugarOwnBool), ("SugarNoBool", SugarNoBool)]
+   ("SugarOwnBool", SugarOwnBool), ("SugarNoBool", SugarNoBool),
+   ("FordVec", FordVec), ("FordLe", FordLe), ("FordRel", FordRel), ("FordAttack", FordAttack)]
 
 /-- The arrays library and the case studies (`Array`, `ArrayBench`, `Quicksort`, `HashMap`,
 `DependentFields`' `DepVec`): checked and counted with the tour, and timed by `lake exe
@@ -70,7 +72,7 @@ def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1558
+def Ochr.Registry.expectedTotal : Nat := 1626
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal

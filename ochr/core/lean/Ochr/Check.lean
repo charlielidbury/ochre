@@ -354,6 +354,9 @@ def checkInd (d : IndDecl) : M Unit := do
   let mut ps := #[]
   for (h, PT) in d.params do
     let A ← evalType (← fuelLeft) PT
+    -- D71: a value parameter's argument is recorded in the type and in every constructor value,
+    -- so it may not be a borrow (no borrows inside data or types)
+    if A.typeHasRef then err s!"{n}: the parameter {h.name} has the borrow type {A}: no borrows inside data or types"
     let v ← genericValue (← fuelLeft) A
     pushBind h (some A) v
     ps := ps.push v
