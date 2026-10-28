@@ -157,8 +157,19 @@ ochr Erasure uses Nats {
   def LieP2 (x : &Nat) : Id(Nat, (let a = match *x { Z => refl, S p => (F5(&*x); refl) }; clone(*x)), clone(*x)) := refl
   reject def BoomP2Pair : False ∧ False := (let c = 1; LieP2(&c))
 
+  -- twin of BoomP2Pair: the pair is a pair of `⊤` (true), proved directly, instead of `False ∧ False` from `LieP2`
+  def BoomP2PairOk : ⊤ ∧ ⊤ := ⟨refl, refl⟩
+
   reject def BoomP2 : False := (
     let b = BoomP2Pair;
+    match b {
+      Intro(l, r) => l,
+    }
+  )
+
+  -- twin of BoomP2: projects the left half of a pair of `⊤` instead of `False ∧ False`
+  def BoomP2Ok : ⊤ := (
+    let b = BoomP2PairOk;
     match b {
       Intro(l, r) => l,
     }
@@ -176,6 +187,9 @@ ochr Erasure uses Nats {
 
   reject def N1Closed : Id(Nat, 1, 0) := N1T(0)
 
+  -- twin of N1Closed: states the true `0 = 0` that `N1T(0)` proves, not `1 = 0`
+  def N1ClosedOk : Id(Nat, 0, 0) := N1T(0)
+
   -- the same, observed by `Id`: the write to `a` is discarded with the proof's copy, so `Q`
   -- holds, and `QBoom` is rejected because `Q(0, 0)` is not an equation between `1` and `0`
   def Q (b : Nat) (a : Nat) :
@@ -184,6 +198,9 @@ ochr Erasure uses Nats {
   reject def QBoom : False := (
     J(Nat, S(Z), Z, λ(n : Nat) : Prop => match n { Z => False, S _ => ⊤ }, Q(0, 0), refl)
   )
+
+  -- twin of QBoom: `Q(0, 0)` is only offered as the equation it proves, a trivial `⊤` instead of a `False`-producing one
+  def QOk : Id(⊤, (match 0 { Z => (let a = 0; a := S(Z); refl), S _ => refl }), refl) := refl
 }
 
 
@@ -327,11 +344,16 @@ ochr ErasureBySyntax uses Fixtures {
 
   reject def BoomP : Eq(Nat, S(Z), Z) := LieP(Z)
 
+  -- twin of BoomP: states `Z = Z`, which `LieP(Z)` proves, instead of `S(Z) = Z`
+  def BoomPOk : Eq(Nat, Z, Z) := LieP(Z)
+
   -- Whether a variable is a proof is read from its declaration, not from its value: `g(0)`
   -- is `⋆` at an instance but a sealed program at the generic call (D42, switch `leafRule`;
   -- appendix note 3).
   -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
   reject def LieH (g : Π(y : Nat). V(Z)) : Id(Nat, let c = Z; let h = g(0); (c := S(Z); h); c, S(Z)) := refl
+  -- twin of LieH: `g` returns the declared proposition `⊤` instead of `V(Z)`; the erased sequence leaves `c` at `Z`
+  def LieHOk (g : Π(y : Nat). ⊤) : Id(Nat, let c = Z; let h = g(0); (c := S(Z); h); c, Z) := refl
   -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
   reject def BoomH : Eq(Nat, Z, S(Z)) := LieH(λ(y : Nat) : V(Z) => refl)
 
@@ -359,12 +381,20 @@ ochr ErasureBySyntax uses Fixtures {
   -- (the proof arm is a proof variable, so the conflict does not depend on D42's reading of
   -- `refl`; fuzz-port R9's originals used `refl`)
   reject def R9Arms (h : ⊤) : Nat := (let n = 0; let a = match n { Z => h, S _ => 0 }; n)
+  -- twin of R9Arms: both arms are proofs, so they agree on a class
+  def R9ArmsOk (h : ⊤) : Nat := (let n = 0; let a = match n { Z => h, S _ => h }; n)
   reject def R9Nested (n1 : Nat) (h : ⊤) : Nat := (let a = match n1 { Z => match n1 { Z => h, S p => 0 }, S p => h }; n1)
+  -- twin of R9Nested: the inner arms are both proofs
+  def R9NestedOk (n1 : Nat) (h : ⊤) : Nat := (let a = match n1 { Z => match n1 { Z => h, S p => h }, S p => h }; n1)
   reject def MixPos (h : ⊤) : Nat := (let n = 0; let x : (match n { Z => Nat, S _ => h }) = 5; x)
+  -- twin of MixPos: both arms are the type `Nat`
+  def MixPosOk (h : ⊤) : Nat := (let n = 0; let x : (match n { Z => Nat, S _ => Nat }) = 5; x)
   -- ... and where it is written, dead arms included: typing checks only the arm a known
   -- scrutinee takes, but the machine reads the declared type of every term it runs, so
   -- `MixDead(0)` would fail when run (fuzz-port's execution oracle, seed 1, case 28948)
   reject def MixDead (n : Nat) (h : ⊤) : Nat := (match n { Z => match n { Z => 0, S _ => h }, S _ => 0 })
+  -- twin of MixDead: the dead arm is data like the live one
+  def MixDeadOk (n : Nat) (h : ⊤) : Nat := (match n { Z => match n { Z => 0, S _ => 0 }, S _ => 0 })
 
   -- Arms that are proofs of different shapes (a proof variable, a λ into proofs) agree on a proof.
   def RunP (k : Π(x : &Nat). ⊤) (x : &Nat) : Unit := (k(x); ())
