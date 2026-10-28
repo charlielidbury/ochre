@@ -32,17 +32,33 @@ ochr Universes {
   -- paradox, a proof of `False`, and has no set-theoretic model. So only what is in `Type`
   -- may be borrowed, and `Type` itself is in `Type₁` (switch `refData`; see `BorrowTypes`).
   reject def Impred : Type := Π(x : &Type) (a : *x). *x
+  -- twin of Impred: the borrow is of a `Nat`, which is in `Type`, not of `Type` itself, so the dependent `*x` becomes `Nat`
+  def ImpredOk : Type := Π(x : &Nat) (a : Nat). Nat
   reject def PolyId (x : &Type) (a : *x) : *x := a
+  -- twin of PolyId: borrows a `Nat` instead of `Type`
+  def PolyIdOk (x : &Nat) (a : Nat) : Nat := a
 
   reject def SelfApp (u : Unit) : Impred := (
     let T = Impred;
     PolyId(&T, PolyId)
   )
 
+  -- twin of SelfApp: applies the twin identity to a borrowed `Nat`, no self-application at a borrowed `Type`
+  def SelfAppOk (u : Unit) : Nat := (
+    let c = 0;
+    PolyIdOk(&c, 3)
+  )
+
   reject def SelfAppEq (n : Nat) :
       Id(Nat, let T = Impred; let f = PolyId(&T, PolyId); let N = Nat; f(&N, n), n) := refl
 
+  -- twin of SelfAppEq: the twin identity applied to a borrowed `Nat` returns its argument
+  def SelfAppEqOk (n : Nat) :
+      Id(Nat, let f = PolyIdOk; let c = 0; f(&c, n), n) := refl
+
   reject def PolyTy : Type := Π(x : &Type) (a : Nat). Nat
+  -- twin of PolyTy: borrows a `Nat` instead of `Type`
+  def PolyTyOk : Type := Π(x : &Nat) (a : Nat). Nat
 }
 
 
@@ -64,7 +80,11 @@ ochr Sorts {
   def P (n : Nat) : Type₁ := match n { Z => Prop, S _ => Prop }
   def T (n : Nat) : P(n) := match n { Z => ⊤, S _ => ⊤ }
   reject def W (u : Unit) : T(Z) := refl
+  -- twin of W: the type is written `⊤`, whose declared type is a sort, instead of `T(Z)`
+  def WOk (u : Unit) : ⊤ := refl
   reject def f (x : &Nat) : T(Z) := (*x := S(Z); W(()))
+  -- twin of f: result type written `⊤` instead of `T(Z)`
+  def fOk (x : &Nat) : ⊤ := (*x := S(Z); WOk(()))
   def RunK (k : Π(x : &Nat). ⊤) (x : &Nat) : Unit := (k(x); ())
   def Stmt (k : Π(x : &Nat). ⊤) (x : &Nat) : Id(Unit, RunK(k, x), ()) := refl
   reject def Boom : False := (let c = 0; Stmt(f, &c))
@@ -79,9 +99,19 @@ ochr Sorts {
   reject def Boom4 : False := Lie4(0)
 
   reject def TT : Prop := Π(x : &Nat). T(Z)
+  -- twin of TT: `⊤` instead of `T(Z)`
+  def TTOk : Prop := Π(x : &Nat). ⊤
   reject def g2 (x : &Nat) : T(Z) := W(())
+  -- twin of g2: result type written `⊤` instead of `T(Z)`
+  def g2Ok (x : &Nat) : ⊤ := WOk(())
   reject def k (h : Π(x : &Nat). T(Z)) : Nat := (let c = Z; h(&c); c)
+  -- twin of k: the argument's result type is written `⊤` instead of `T(Z)`
+  def kOk (h : Π(x : &Nat). ⊤) : Nat := (let c = Z; h(&c); c)
   reject def K1 : Eq(Nat, k(f), 1) := refl
+  -- twin of K1: the `⊤`-typed `kOk` and `fOk`, whose call is erased, so the count stays 0 rather than 1
+  def K1Ok : Eq(Nat, kOk(fOk), 0) := refl
   reject def K2 : Eq(Nat, k(g2), 0) := refl
+  -- twin of K2: the `⊤`-typed `kOk` and `g2Ok`
+  def K2Ok : Eq(Nat, kOk(g2Ok), 0) := refl
 }
 
