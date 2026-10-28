@@ -127,6 +127,14 @@ ochr Recursion uses Nats, Fixtures {
     }
   )
 
+  -- twin of Loop2: no write to `x`, so the recursive call is on a strict part of the entry value
+  def Loop2Ok (x : Nat) : Unit by x := (
+    match x {
+      Z => (),
+      S p => Loop2Ok(p),
+    }
+  )
+
   -- ... or after it, through the pattern variable.
   reject def Spin (x : Nat) : False by x := (
     match x {
@@ -144,8 +152,19 @@ ochr Recursion uses Nats, Fixtures {
     }
   )
 
+  -- twin of Spin: no write to `x` after the match, so `y` is still a part of the entry value
+  def SpinOk (x : Nat) : Unit by x := (
+    match x {
+      Z => (),
+      S y => SpinOk(y),
+    }
+  )
+
   -- A local recursive function that calls itself on its own argument.
   reject def OuterBad (x : Nat) : Eq(Nat, 0, 1) := (fix go (y : Nat) : Eq(Nat, 0, 1) by y := go(y))(x)
+
+  -- twin of OuterBad: the local function calls itself on the predecessor, and states a true thing
+  def OuterBadOk (x : Nat) : Unit := (fix go (y : Nat) : Unit by y := match y { Z => (), S p => go(p) })(x)
 
   -- A recursive function may appear only as the head of a call. Passed as a value, it
   -- would escape the check on its arguments, and `Knot(0)` would be a closed proof of
@@ -153,6 +172,17 @@ ochr Recursion uses Nats, Fixtures {
   def Apply (f : Π(x : Nat). False) (x : Nat) : False := f(x)
   reject def Knot (x : Nat) : False by x := Apply(Knot, x)
   reject def KnotBoom : False := Knot(0)
+
+  -- twin of Knot: the function is only the head of a call, on a strict part, and the statement is true
+  def KnotOk (x : Nat) : Unit by x := (
+    match x {
+      Z => (),
+      S p => KnotOk(p),
+    }
+  )
+
+  -- twin of KnotBoom: the call is fine now that `KnotOk` is, and no longer proves `False`
+  def KnotBoomOk : Unit := KnotOk(0)
 
   -- Recursive calls inside a nested closure are checked against the enclosing function's
   -- entry value: `y` is a fresh argument of the closure, not a part of `x` (switch
@@ -164,9 +194,35 @@ ochr Recursion uses Nats, Fixtures {
 
   reject def KnotLBoom : False := KnotL(0)
 
+  -- twin of KnotL: inside the closure the recursive call is on `q`, a copy of `p`, a strict part of the entry value
+  def KnotLOk (x : Nat) : Eq(Nat, Z, Z) by x := (
+    match x {
+      Z => refl,
+      S p => (
+        let q = p;
+        let g = (λ(u : Unit) : Eq(Nat, Z, Z) => KnotLOk(q));
+        g(())
+      ),
+    }
+  )
+
+  -- twin of KnotLBoom: calls `KnotLOk`, which is sound and proves only `Eq(Nat, Z, Z)`
+  def KnotLBoomOk : Eq(Nat, Z, Z) := KnotLOk(0)
+
   -- Without `by`, the function is not in scope in its own body (D31).
   reject def LoopNoBy (x : Nat) : Eq(Nat, Z, S(Z)) := LoopNoBy(x)
   reject def LoopNoByBoom : Eq(Nat, Z, S(Z)) := LoopNoBy(Z)
+
+  -- twin of LoopNoBy: declares `by x`, recurses on the predecessor, and states the true `Eq(Nat, Z, Z)`
+  def LoopNoByOk (x : Nat) : Eq(Nat, Z, Z) by x := (
+    match x {
+      Z => refl,
+      S p => LoopNoByOk(p),
+    }
+  )
+
+  -- twin of LoopNoByBoom: the closed call is accepted, at the true statement
+  def LoopNoByBoomOk : Eq(Nat, Z, Z) := LoopNoByOk(Z)
 
   -- ## Regressions: typing a sealed program keeps the [Rec] state
   -- A place with no stored type (a pattern variable, a closure's capture) is typed from its
@@ -193,6 +249,19 @@ ochr Recursion uses Nats, Fixtures {
   )
 
   reject def Boom : False := Lie(0, ⟨refl, refl⟩)
+
+  -- twin of Lie: recurses on `p`, a strict part of `n`, and proves `Unit` rather than `False`
+  def LieOk (n : Nat) (h : Le(Z, 1) ∧ ⊤) : Unit by n := (
+    match h {
+      Intro(a, b) => match n {
+        Z => (),
+        S p => LieOk(p, h),
+      },
+    }
+  )
+
+  -- twin of Boom: the closed call to the sound `LieOk`
+  def BoomOk : Unit := LieOk(0, ⟨refl, refl⟩)
 
   -- ... and in the rest `n`, which `TailM`'s borrow left sealed, is captured by a closure
   -- that reads it in its type, in its body, or in an `Id`'s footprint.
