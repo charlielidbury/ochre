@@ -160,6 +160,9 @@ ochr Sugar uses Bools, WordType, Lists {
   -- The condition must be a `Bool`.
   reject def IfWord (n : Word) : Word := if n { Zero } else { n }
 
+  -- twin of IfWord: the condition is a `Bool`
+  def IfWordOk (n : Bool) : Word := if n { Zero } else { Succ(Zero) }
+
   -- Without `else` the branch must be `Unit`.
   reject def IfNoElse (b : Bool) : Word := if b { Zero }
 

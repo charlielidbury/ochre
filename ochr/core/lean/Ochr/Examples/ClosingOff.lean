@@ -158,6 +158,15 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
     AddM(x1, 2)
   )
 
+  -- twin of MovedByBlock: `x1` is not used after the block moved it
+  def MovedByBlockOk (b : Nat) (x1 : &Nat) (x2 : &Nat) : Unit := (
+    let r = match b {
+      Z => x1,
+      S _ => x2,
+    };
+    AddM(r, 1)
+  )
+
   -- A closure in an arm captures a copy, so its write `n0 := 0` is to that copy, not a
   -- write by the block: the block copies `n0` in, and the closure can capture it again when
   -- the block re-runs (fuzz-port R2 (i); counted as the block's write, `n0` went in by `&`,
@@ -166,6 +175,15 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
   -- `n0` is a use after a move.
   reject def LamWriteInBlock (n0 : Nat) :
       Id(Nat, (match n0 { Z => n0, S p2 => (let a5 = (λ(y6 : &Nat) : Unit => n0 := 0); n0) }), n0) := (
+    match n0 {
+      Z => refl,
+      S p => refl,
+    }
+  )
+
+  -- twin of LamWriteInBlock: the closure writes its own parameter, so it captures nothing and the arm's read of `n0` is fine
+  def LamWriteInBlockOk (n0 : Nat) :
+      Id(Nat, (match n0 { Z => n0, S p2 => (let a5 = (λ(y6 : &Nat) : Unit => *y6 := 0); n0) }), n0) := (
     match n0 {
       Z => refl,
       S p => refl,
@@ -338,9 +356,18 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
   -- lost, and `Boom5` would prove `1 = 2`.
   reject def Clear (x : &Nat) : Id(Unit, (match *x { Z => (), S p => p := Z }), ()) := refl
 
+  -- twin of Clear: the right-hand side is the same write, not `()`
+  def ClearOk (x : &Nat) : Id(Unit, (match *x { Z => (), S p => p := Z }), (match *x { Z => (), S p => p := Z })) := refl
+
   reject def Boom5 : Eq(Nat, S(Z), S(S(Z))) := (
     let c = S(S(Z));
     Clear(&c)
+  )
+
+  -- twin of Boom5: the claim is the true `1 = 1`, with the write to `c` seen
+  def Boom5Ok : Eq(Nat, S(Z), S(Z)) := (
+    let c = S(S(Z));
+    ClearOk(&c)
   )
 
   -- A sealed program whose head is a call of an abstract function stays as it is when it is
@@ -397,6 +424,15 @@ ochr Naturality uses Fixtures {
   reject def PickEarly (n : Nat) (a : Nat) (b : Nat) : Unit := (
     let r = Pick(clone(n), &a, &b);
     let z = b;
+    match n {
+      Z => *r := 5,
+      S _ => (),
+    }
+  )
+
+  -- twin of PickEarly: `b` is not read before the write through `r`
+  def PickEarlyOk (n : Nat) (a : Nat) (b : Nat) : Unit := (
+    let r = Pick(clone(n), &a, &b);
     match n {
       Z => *r := 5,
       S _ => (),
