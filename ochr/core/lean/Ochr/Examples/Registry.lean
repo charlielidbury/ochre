@@ -223,7 +223,6 @@ def rowClass : List (String × List String) :=
 
 
 end Ochr.Registry
-
 def Ochr.Registry.expectedTotal : Nat := 1519
 /-- The total number of verdict assertions; a truncated example file changes it. -/
 def Ochr.Registry.expectedTotal : Nat := 1527
