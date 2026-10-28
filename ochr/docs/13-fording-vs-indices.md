@@ -64,6 +64,7 @@ Recorded so they are not raised again:
 ## Evidence
 
 - `fording-probe` (2026-10-28; branch `fording-probe`, unmerged; write-up `ochr/core/notes/fording-probe.md`, probe `Ochr/Examples/Fording.lean`, 49 declarations). Recommends B with value parameters, the restriction that no part of an equation field mentions the declared type, and equations only over first-order data. Its checker lines predate the total checker and the branch also touches `Machine.lean`, so adopting B means redoing them on current main rather than merging the branch.
+- `fording` (2026-10-28; branch `fording`, unmerged; D71): option B implemented on the total checker with the probe's restrictions plus one the attack pass forced (no borrow-typed parameters); `Examples/Fording.lean`, 68 declarations, all earlier verdicts unchanged; the paper's [Ind-decl], A.1.1, §3.1, A.6 and Figure 16 updated. The attack pass also found a pre-existing [Repack] gap for stuck-block arms (D71).
 - Still to do before landing B: point the fuzzer at Forded declarations, matches and repacks; update the paper ([Ind-decl], A.1.1's type positions, §3.1's remark on `Eq`, the model's indexed fixed points).
 
 ## Where the discussion stands
