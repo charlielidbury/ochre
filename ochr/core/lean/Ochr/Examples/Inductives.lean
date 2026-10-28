@@ -454,6 +454,9 @@ ochr Positivity uses Fixtures {
 
   reject inductive Bad := MkBad(f : Π(x : Bad). Empty)
 
+  -- twin of Bad: the field is an `Empty` itself, not a function from `Bad` to `Empty`
+  inductive BadOk := MkBadOk(f : Empty)
+
   reject def L (b : Bad) : Empty := (
     match b {
       MkBad(f) => f(b),
@@ -463,6 +466,22 @@ ochr Positivity uses Fixtures {
   reject def K (b : Bad) : False := absurd(L(b))
   reject def bad : Bad := MkBad(λ(x : Bad) : Empty => L(x))
   reject def Boom : False := K(bad)
+
+  -- twin of L: the field is the `Empty` itself, so no self-application
+  def LOk (b : BadOk) : Empty := (
+    match b {
+      MkBadOk(f) => f,
+    }
+  )
+
+  -- twin of K: through `LOk`
+  def KOk (b : BadOk) : False := absurd(LOk(b))
+
+  -- twin of bad: builds a `BadOk` from a given `Empty`, not from a function
+  def badOk (e : Empty) : BadOk := MkBadOk(e)
+
+  -- twin of Boom: proves the true `Empty → False` rather than `False`
+  def BoomOk (e : Empty) : False := KOk(badOk(e))
   inductive Pairs := PNil | PCons(hd : Nat × Unit, tl : Pairs)
 }
 
@@ -481,6 +500,9 @@ ochr PositivityParams uses Logic, Lists, Boxes {
 
   reject inductive Bad := MkBad(f : Box(Π(x : Bad). Void))
 
+  -- twin of Bad: the boxed type is `Void`, not a function from `Bad`
+  inductive BadOk := MkBadOk(f : Box(Void))
+
   reject def L (b : Bad) : Void := (
     match b {
       MkBad(f) => match f {
@@ -493,6 +515,27 @@ ochr PositivityParams uses Logic, Lists, Boxes {
   reject def bad : Bad := MkBad(MkBox(λ(x : Bad) : Void => L(x)))
   reject def Boom : False := K(bad)
   reject inductive Neg (A : Type) := MkNeg(f : Π(x : A). Nat)
+
+  -- twin of L: unboxes the `Void` itself, no self-application
+  def LOk (b : BadOk) : Void := (
+    match b {
+      MkBadOk(f) => match f {
+        MkBox(g) => g,
+      },
+    }
+  )
+
+  -- twin of K: through `LOk`
+  def KOk (b : BadOk) : False := absurdV(LOk(b))
+
+  -- twin of bad: built from a given `Void`, not from a function
+  def badOk (v : Void) : BadOk := MkBadOk(MkBox(v))
+
+  -- twin of Boom: proves the true `Void → False` rather than `False`
+  def BoomOk (v : Void) : False := KOk(badOk(v))
+
+  -- twin of Neg: the field is first-order data (`A × Nat`), not a function type
+  inductive NegOk (A : Type) := MkNegOk(f : A × Nat)
   inductive Rose (A : Type) := Node(v : A, kids : List(Rose(A)))
   inductive Sig (P : Prop) := MkSig(n : Nat, h : P)
 
@@ -514,6 +557,9 @@ ochr PositivityParams uses Logic, Lists, Boxes {
 ochr PositivityPaper {
   reject inductive Bad := MkBad(f : Π(x : Bad). False)
 
+  -- twin of Bad: the field is `False` itself, not a function from `Bad` to `False`
+  inductive BadOk := MkBadOk(f : False)
+
   reject def L (b : Bad) : False := (
     match b {
       MkBad(f) => f(b),
@@ -521,5 +567,15 @@ ochr PositivityPaper {
   )
 
   reject def Bad4 : False := L(MkBad(λ(x : Bad) : False => L(x)))
+
+  -- twin of L: the field is the `False` itself
+  def LOk (b : BadOk) : False := (
+    match b {
+      MkBadOk(f) => f,
+    }
+  )
+
+  -- twin of Bad4: proves the true `False → False` rather than `False`
+  def Bad4Ok (h : False) : False := LOk(MkBadOk(h))
 }
 
