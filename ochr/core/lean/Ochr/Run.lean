@@ -31,32 +31,41 @@ def Report.passed (r : Report) : Nat := (r.rows.filter Row.asExpected).length
 
 /-- Check a list of declarations as one program: each is resolved against the whole list
 (a resolution failure is a rejection of that declaration), then they are checked in order.
-The verdict and trace of each, by name. The declarations `located` names are resolved and
-checked with their source locations (the editor), so their rejections say where. -/
-def checkProgram (p : Program) (cfg : Config) (fuel : Nat) (located : String → Bool := fun _ => false) :
+The verdict and trace of each, by position: the `i`-th entry is the `i`-th declaration's,
+so a declaration never reports another's verdict, even one with the same name (which
+[Def] and [Ind-decl] reject). The declarations whose positions `located` names are resolved
+and checked with their source locations (the editor), so their rejections say where. -/
+def checkProgram (p : Program) (cfg : Config) (fuel : Nat) (located : Nat → Bool := fun _ => false) :
     List (String × Verdict × Array LogEntry) := Id.run do
   let mut defs : List Item := []
-  let mut bad : List (String × String × Option Loc) := []
-  let mut locs : List (String × Locs) := []
-  for d in p do
-    let (r, st) := if located d.name then resolveLocated p d else (resolveProgram p d, {})
+  let mut locs : Array Locs := #[]                         -- per resolved declaration
+  let mut bad : Array (Option (String × Option Loc)) := #[]  -- per declaration: its resolution error
+  for (d, i) in p.zipIdx do
+    let (r, st) := if located i then resolveLocated p d else (resolveProgram p d, {})
     match r with
     | .ok df =>
       defs := defs ++ [df]
-      if located d.name then locs := (d.name, st.locs) :: locs
-    | .error e => bad := bad ++ [(d.name, e, st.failAt)]
-  let verdicts := checkDefs cfg defs fuel (fun n => (locs.lookup n).getD {})
-  pure (p.map fun d => match bad.lookup d.name with
-    | some (e, l) => (d.name, Verdict.rejected s!"(surface) {e}" l, #[])
-    | none => (d.name, (verdicts.lookup d.name).getD (.rejected "not checked", #[])))
+      locs := locs.push st.locs
+      bad := bad.push none
+    | .error e => bad := bad.push (some (e, st.failAt))
+  let mut verdicts := checkDefs cfg defs fuel (fun j => locs[j]?.getD {})
+  let mut out := #[]
+  for (d, e) in p.zip bad.toList do
+    match e with
+    | some (e, l) => out := out.push (d.name, Verdict.rejected s!"(surface) {e}" l, #[])
+    | none => match verdicts with
+      | (_, v, tr) :: rest => out := out.push (d.name, v, tr); verdicts := rest
+      | [] => out := out.push (d.name, .rejected "not checked", #[])
+  pure out.toList
 
 mutual
 /-- What a block exports under `cfg`: its own declarations that are expected to be accepted
 (`def`, not `reject def`) and are accepted, checked after its own library. A rejected or
 `reject` declaration is never visible to the block's users. -/
 partial def exportsWith (pre : Option Block) (cfg : Config) (fuel : Nat) (b : Block) : Program :=
-  let vs := checkProgram (libWith pre cfg fuel b ++ b.decls) cfg fuel
-  b.decls.filter fun d => d.expectAccept && ((vs.lookup d.name).map (·.1.ok)).getD false
+  let lib := libWith pre cfg fuel b
+  let vs := (checkProgram (lib ++ b.decls) cfg fuel).drop lib.length
+  (b.decls.zip vs).filterMap fun (d, _, v, _) => if d.expectAccept && v.ok then some d else none
 
 /-- A block's library under `cfg`, with `pre` the library block (`Prelude`, v2.1), used by
 every block, first: the exports of `pre` and of every block `b` uses, transitively, each
@@ -77,10 +86,9 @@ own declarations only; a library declaration is asserted in its home block. `loc
 own declarations' rejections say where (the editor). -/
 def runWith (pre : Option Block) (name : String) (b : Block) (cfg : Config := {}) (fuel : Nat := 2000000)
     (located : Bool := false) : Report :=
-  let own := b.decls.map (·.name)
-  let vs := checkProgram (libWith pre cfg fuel b ++ b.decls) cfg fuel (fun n => located && own.contains n)
-  let rows := b.decls.map fun d =>
-    let (v, tr) := (vs.lookup d.name).getD (.rejected "not checked", #[])
+  let lib := libWith pre cfg fuel b
+  let vs := (checkProgram (lib ++ b.decls) cfg fuel (fun i => located && lib.length ≤ i)).drop lib.length
+  let rows := (b.decls.zip vs).map fun (d, _, v, tr) =>
     { name := d.name, expectAccept := d.expectAccept, verdict := v, trace := tr }
   { program := name, rows := rows }
 

@@ -100,3 +100,64 @@ open Ochr.Surface in
 #guard (Block.mk "NoClash" [AttrLib] [{ name := "Hidden", expectAccept := true }]).clashes == []
 open Ochr.Surface in
 #guard (Block.mk "Twice" [AttrLib, AttrUser] []).closure.map (·.name) == ["AttrLib", "AttrUser"]
+
+/-! ## Σ's names are fresh ([Def], [Const], [Ind-decl]), and verdicts are positional
+
+The `ochr` command rejects a block that redeclares a name (`Block.clashes`), so these
+programs are put together here from separate blocks, as `checkProgram` takes any list. A
+definition or an inductive type, or a constructor, named like a declaration before it is
+rejected by the checker itself; and each declaration reports its own verdict, so a rejected
+`DupX : False` is not reported with the accepted `DupX : Nat` before it (as when verdicts
+were looked up by name). -/
+
+ochr DupA {
+  def DupX : Nat := 0
+  inductive DupTy := DupC
+}
+
+ochr DupB {
+  reject def DupX : False := refl
+}
+
+ochr DupD {
+  def DupX : Nat := 1
+  def DupTy : Nat := 0
+  def DupC : Nat := 0
+}
+
+ochr DupE {
+  inductive DupX := DupMk
+}
+
+ochr DupG {
+  inductive DupX3 := DupX
+}
+
+ochr DupF {
+  reject inductive DupSelf := DupSelf
+}
+
+namespace Ochr.Units
+open Ochr.Test
+
+/-- The verdicts of `bs`' declarations, checked as one program after the library: name,
+accepted, and the start of the rejection's message. -/
+def dupVerdicts (bs : List Ochr.Surface.Block) : List (String × Bool × String) :=
+  let own := bs.flatMap (·.decls)
+  (checkProgram (Prelude.decls ++ own) {} 2000000).drop Prelude.decls.length |>.map
+    fun (n, v, _) => (n, v.ok, match v with | .rejected m _ => (m.splitOn ",").headD "" | .accepted => "")
+
+#guard dupVerdicts [DupA, DupB] ==
+  [("DupX", true, ""), ("DupTy", true, ""), ("DupX", false, "DupX is already declared")]
+#guard dupVerdicts [DupA, DupD] ==
+  [("DupX", true, ""), ("DupTy", true, ""),
+   ("DupX", false, "DupX is already declared"),
+   ("DupTy", false, "DupTy is already declared"),
+   ("DupC", false, "DupC is already declared")]
+#guard dupVerdicts [DupA, DupE, DupG, DupF] ==
+  [("DupX", true, ""), ("DupTy", true, ""),
+   ("DupX", false, "DupX is already declared"),
+   ("DupX3", false, "DupX3: the constructor name DupX is already used (constructors are resolved by name)"),
+   ("DupSelf", false, "DupSelf: the constructor name DupSelf is already used (constructors are resolved by name)")]
+
+end Ochr.Units

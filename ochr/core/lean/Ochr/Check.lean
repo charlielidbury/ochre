@@ -45,8 +45,20 @@ partial def Term.mentionsConst (n : String) : Term → Bool
   | .matchInd _ _ as => as.any (·.2.mentionsConst n)
   | _ => false
 
+/-- [Def], [Const], [Ind-decl]: is `n` already a name of Σ? The declared types, their
+constructors and the definitions share one namespace: the one the surface resolves an
+identifier in (a type, then a constructor, then a definition: `Surface.resolve`), and the one
+`Block.clashes` enforces between the blocks of an `ochr` command. A definition named like a
+type or a constructor could never be called, and a second `def X` would be appended to Σ
+behind the first, which every lookup still finds. -/
+def declared (n : String) : M Bool := do
+  let s ← get
+  pure (s.globals.any (·.name == n) || s.inds.any fun e => e.name == n || e.ctors.any (·.1 == n))
+
 /-- Check one definition and add it to the globals. -/
 def checkDef (d : Def) : M Unit := do
+  -- [Def], [Const]: f ∉ Σ
+  if ← declared d.name then err s!"{d.name} is already declared"
   if (d.cod :: d.doms).any (Term.mentionsConst d.name) then
     err s!"{d.name} occurs in its own type"
   -- D48 (2): & only at the top of a declared type, never produced by computation
@@ -175,9 +187,10 @@ and the earlier fields only, checked at generic parameters and generic earlier f
 (`fieldTele`). -/
 def checkInd (d : IndDecl) : M Unit := do
   let n := d.name
-  if (← get).inds.any (·.name == n) then err s!"{n} is already declared"
+  -- [Ind-decl]: D, C₁, …, Cₘ ∉ Σ, pairwise distinct
+  if ← declared n then err s!"{n} is already declared"
   for (cn, _) in d.ctors do
-    if (← get).inds.any (·.ctors.any (·.1 == cn)) || (d.ctors.filter (·.1 == cn)).length > 1 then
+    if (← declared cn) || cn == n || (d.ctors.filter (·.1 == cn)).length > 1 then
       err s!"{n}: the constructor name {cn} is already used (constructors are resolved by name)"
   if d.sort > 1 then err s!"{n}: an inductive type is in Prop or Type"
   modify fun s => { s with env := #[{}], inds := s.inds ++ [{ d with ctors := [] }] }
@@ -247,14 +260,15 @@ def globalsAfterFrom (cfg : Config) (start : List GDef × List IndDecl) (ds : Li
 /-- Check a list of items in order, with a fresh state per item apart from the
 globals and inductive types accepted so far. The library (`Pair`, `False`, `True`, `And`)
 is not built in (v2.1): it is the `Prelude` block (`Ochr/Prelude.lean`), whose
-declarations come first in every program (`Ochr.Test.libOf`). -/
+declarations come first in every program (`Ochr.Test.libOf`). The result has one verdict
+per item, in order; `locsOf i` is where item `i`'s terms are written (the editor). -/
 def checkDefs (cfg : Config) (ds : List Item) (fuel : Nat := 2000000)
-    (locsOf : String → Locs := fun _ => {}) : List (String × Verdict × Array LogEntry) := Id.run do
+    (locsOf : Nat → Locs := fun _ => {}) : List (String × Verdict × Array LogEntry) := Id.run do
   let mut globals : List GDef := []
   let mut inds : List IndDecl := []
   let mut out := #[]
-  for d in ds do
-    let st : MState := { globals := globals, inds := inds, cfg := cfg, fuel := fuel, locs := locsOf d.name }
+  for (d, i) in ds.zipIdx do
+    let st : MState := { globals := globals, inds := inds, cfg := cfg, fuel := fuel, locs := locsOf i }
     let (r, tr) := ((checkItem d).run st).run.run #[]
     match r with
     | .ok ((), st') =>
