@@ -99,18 +99,27 @@ inductive Value where
 end
 
 mutual
-partial def Place.beq : Place → Place → Bool
+def Place.beq : Place → Place → Bool
   | .var i, .var j => i == j
   | .deref p, .deref q | .fst p, .fst q | .snd p, .snd q => p.beq q
   | .field f p, .field g q => f == g && p.beq q
   | _, _ => false
+termination_by structural p => p
 
-partial def Term.beqList : List Term → List Term → Bool
+def Term.beqList : List Term → List Term → Bool
   | [], [] => true
   | a :: as, b :: bs => a.beq b && Term.beqList as bs
   | _, _ => false
+termination_by structural as => as
 
-partial def Term.beq : Term → Term → Bool
+/-- The arms of two `matchInd`s, compared by their bodies (binder names are ignored). -/
+def Term.beqArms : List (Hint × Term) → List (Hint × Term) → Bool
+  | [], [] => true
+  | (_, a) :: as, (_, b) :: bs => a.beq b && Term.beqArms as bs
+  | _, _ => false
+termination_by structural as => as
+
+def Term.beq : Term → Term → Bool
   | .place p, .place q | .borrow p, .borrow q => p.beq q
   | .assign p t, .assign q u => p.beq q && t.beq u
   | .letIn _ t u, .letIn _ t' u' => t.beq t' && u.beq u'
@@ -129,15 +138,17 @@ partial def Term.beq : Term → Term → Bool
   | .prim n as, .prim m bs => n == m && Term.beqList as bs
   | .tind n as, .tind m bs => n == m && Term.beqList as bs
   | .ctor t c _ ps as, .ctor u d _ qs bs => t == u && c == d && Term.beqList ps qs && Term.beqList as bs
-  | .matchInd p t as, .matchInd q u bs => p.beq q && t == u && Term.beqList (as.map (·.2)) (bs.map (·.2))
+  | .matchInd p t as, .matchInd q u bs => p.beq q && t == u && Term.beqArms as bs
   | _, _ => false
+termination_by structural t => t
 
-partial def Value.beqList : List Value → List Value → Bool
+def Value.beqList : List Value → List Value → Bool
   | [], [] => true
   | a :: as, b :: bs => a.beq b && Value.beqList as bs
   | _, _ => false
+termination_by structural as => as
 
-partial def Value.beq : Value → Value → Bool
+def Value.beq : Value → Value → Bool
   | .zero, .zero | .unit, .unit | .bot, .bot | .proof, .proof
   | .tNat, .tNat | .tUnit, .tUnit => true
   | .succ v, .succ w | .tRef v, .tRef w => v.beq w
@@ -150,6 +161,7 @@ partial def Value.beq : Value → Value → Bool
   | .ind t c _ _ fs, .ind u d _ _ gs => t == u && c == d && Value.beqList fs gs
   | .tInd n as, .tInd m bs => n == m && Value.beqList as bs
   | _, _ => false
+termination_by structural v => v
 end
 
 instance : BEq Place := ⟨Place.beq⟩

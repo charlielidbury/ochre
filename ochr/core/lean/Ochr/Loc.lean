@@ -69,10 +69,28 @@ def Term.children : Term → List Term
   | .matchInd _ _ arms => arms.map (·.2)
   | _ => []
 
+/-- A child of a term is smaller (`Locs.relocate`'s measure). -/
+theorem Term.sizeOf_lt_of_mem_children {t o : Term} (h : o ∈ t.children) : sizeOf o < sizeOf t := by
+  cases t <;> simp only [Term.children, List.mem_cons, List.mem_append, List.not_mem_nil, or_false,
+    List.mem_map] at h <;> simp only [Term.assign.sizeOf_spec,
+    Term.letIn.sizeOf_spec, Term.seq.sizeOf_spec, Term.matchNat.sizeOf_spec, Term.pi.sizeOf_spec,
+    Term.fix.sizeOf_spec, Term.call.sizeOf_spec, Term.succ.sizeOf_spec, Term.fst.sizeOf_spec,
+    Term.snd.sizeOf_spec, Term.eq.sizeOf_spec, Term.cong.sizeOf_spec, Term.ref.sizeOf_spec,
+    Term.id.sizeOf_spec, Term.ascribe.sizeOf_spec, Term.prim.sizeOf_spec, Term.tind.sizeOf_spec,
+    Term.ctor.sizeOf_spec, Term.matchInd.sizeOf_spec]
+  all_goals first
+    | (subst h; omega)
+    | (have := List.sizeOf_lt_of_mem h; omega)
+    | (rcases h with h | h | h <;> first | (subst h; omega) | (have := List.sizeOf_lt_of_mem h; omega))
+    | (rcases h with h | h <;> first | (subst h; omega) | (have := List.sizeOf_lt_of_mem h; omega))
+    | (obtain ⟨⟨_, a⟩, ha, rfl⟩ := h
+       have := List.sizeOf_lt_of_mem ha
+       simp only [Prod.mk.sizeOf_spec] at this ⊢; omega)
+
 /-- The ranges of `old`'s nodes, recorded again for the corresponding nodes of `new`, a copy
 of `old` rebuilt with the same shape (`capture` renames a closure's free variables). Stops
 where the shapes differ. -/
-partial def Locs.relocate (ls : Locs) (old new : Term) : Locs :=
+def Locs.relocate (ls : Locs) (old new : Term) : Locs :=
   let a := termAddr old
   let b := termAddr new
   if a == b then ls else     -- the same node: its subtree is recorded already
@@ -84,8 +102,9 @@ partial def Locs.relocate (ls : Locs) (old new : Term) : Locs :=
     match ls.args.get? a with
     | some as => { ls with args := ls.args.insert b as }
     | none => ls
-  let (co, cn) := (old.children, new.children)
-  if co.length != cn.length then ls
-  else (co.zip cn).foldl (fun ls (o, n) => ls.relocate o n) ls
+  if old.children.length != new.children.length then ls
+  else (old.children.zip new.children).attach.foldl (fun ls ⟨(o, n), _⟩ => ls.relocate o n) ls
+termination_by sizeOf old
+decreasing_by exact Term.sizeOf_lt_of_mem_children (List.of_mem_zip ‹_›).1
 
 end Ochr

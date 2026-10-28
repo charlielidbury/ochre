@@ -45,7 +45,7 @@ def checkProgram (p : Program) (cfg : Config) (fuel : Nat) (located : Nat → Bo
   let mut locs : Array Locs := #[]                         -- per resolved declaration
   let mut bad : Array (Option (String × Option Loc)) := #[]  -- per declaration: its resolution error
   for (d, i) in p.zipIdx do
-    let (r, st) := if located i then resolveLocated p d else (resolveProgram p d, {})
+    let (r, st) := if located i then resolveLocated p d fuel else (resolveProgram p d fuel, {})
     match r with
     | .ok df =>
       defs := defs ++ [df]
@@ -62,28 +62,48 @@ def checkProgram (p : Program) (cfg : Config) (fuel : Nat) (located : Nat → Bo
       | [] => out := out.push (d.name, .rejected "not checked", #[])
   pure out.toList
 
+/-- The measure of `exportsWith`/`libWith`: the library block `pre` is checked first and has
+no library of its own, so it ranks below every other block. -/
+def libRank (pre : Option Block) (b : Block) : Nat :=
+  match pre with
+  | some p => if b.name == p.name then 0 else 1
+  | none => 1
+
 mutual
 /-- What a block exports under `cfg`: its own declarations that are expected to be accepted
 (`def`, not `reject def`) and are accepted, checked after its own library. A rejected or
 `reject` declaration is never visible to the block's users. An undecided one is exported, so
 that what its users write about it is undecided too (`checkDefs`), not rejected for a name
 that exhaustion removed. -/
-partial def exportsWith (pre : Option Block) (cfg : Config) (fuel : Nat) (b : Block) : Program :=
+def exportsWith (pre : Option Block) (cfg : Config) (fuel : Nat) (b : Block) : Program :=
   let lib := libWith pre cfg fuel b
   let vs := (checkProgram (lib ++ b.decls) cfg fuel).drop lib.length
   (b.decls.zip vs).filterMap fun (d, _, v, _) =>
     if d.expectAccept && (v matches .accepted | .undecided _) then some d else none
+termination_by (libRank pre b, sizeOf b, 1)
 
 /-- A block's library under `cfg`, with `pre` the library block (`Prelude`, v2.1), used by
 every block, first: the exports of `pre` and of every block `b` uses, transitively, each
-once, a block after the blocks it uses. It is checked again ahead of the block's own declarations: nothing is cached. `pre` itself has no library. -/
-partial def libWith (pre : Option Block) (cfg : Config) (fuel : Nat) (b : Block) : Program :=
+once, a block after the blocks it uses. It is checked again ahead of the block's own declarations: nothing is cached. `pre` itself has no library. Terminates: `pre` ranks lowest, and a used block is smaller (`Block.sizeOf_lt_of_mem_closure`). -/
+def libWith (pre : Option Block) (cfg : Config) (fuel : Nat) (b : Block) : Program :=
   match pre with
-  | none => b.closure.flatMap (exportsWith none cfg fuel)
+  | none => b.closure.attach.flatMap fun ⟨u, _⟩ => exportsWith none cfg fuel u
   | some p =>
-    if b.name == p.name then [] else
-    exportsWith pre cfg fuel p ++
-      (b.closure.filter (·.name != p.name)).flatMap (exportsWith pre cfg fuel)
+    if hb : b.name == p.name then [] else
+    exportsWith (some p) cfg fuel p ++
+      (b.closure.filter (·.name != p.name)).attach.flatMap fun ⟨u, _⟩ => exportsWith (some p) cfg fuel u
+termination_by (libRank pre b, sizeOf b, 0)
+decreasing_by
+  all_goals simp_wf
+  · apply Prod.Lex.right; apply Prod.Lex.left
+    exact Block.sizeOf_lt_of_mem_closure ‹_›
+  · apply Prod.Lex.left; simp [libRank, hb]
+  · rename_i h
+    have hu := List.mem_filter.mp h
+    have hun : (u.name == p.name) = false := by simpa using hu.2
+    have hr : libRank (some p) u = libRank (some p) b := by simp [libRank, hb, hun]
+    rw [hr]; apply Prod.Lex.right; apply Prod.Lex.left
+    exact Block.sizeOf_lt_of_mem_closure hu.1
 end
 
 /-- Check a block after its library (`libWith pre`). The report has a row for each of its

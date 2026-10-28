@@ -35,20 +35,33 @@ def Verdict.ok : Verdict → Bool
   | .accepted => true
   | .rejected .. | .undecided _ => false
 
-partial def Term.mentionsConst (n : String) : Term → Bool
+mutual
+def Term.mentionsConst (n : String) : Term → Bool
   | .const m => m == n
   | .assign _ t | .succ t | .fst t | .snd t | .ref t => t.mentionsConst n
   | .letIn _ t u | .seq t u | .cong t u
   | .ascribe t u => t.mentionsConst n || u.mentionsConst n
   | .matchNat _ z s => z.mentionsConst n || s.mentionsConst n
-  | .pi _ ds c => ds.any (·.mentionsConst n) || c.mentionsConst n
-  | .fix _ _ ds c _ b => ds.any (·.mentionsConst n) || c.mentionsConst n || b.mentionsConst n
-  | .call f as _ => f.mentionsConst n || as.any (·.mentionsConst n)
+  | .pi _ ds c => Term.mentionsConstList n ds || c.mentionsConst n
+  | .fix _ _ ds c _ b => Term.mentionsConstList n ds || c.mentionsConst n || b.mentionsConst n
+  | .call f as _ => f.mentionsConst n || Term.mentionsConstList n as
   | .eq a b c | .id a b c => a.mentionsConst n || b.mentionsConst n || c.mentionsConst n
-  | .ctor _ _ _ ps as => ps.any (·.mentionsConst n) || as.any (·.mentionsConst n)
-  | .prim _ as | .tind _ as => as.any (·.mentionsConst n)
-  | .matchInd _ _ as => as.any (·.2.mentionsConst n)
+  | .ctor _ _ _ ps as => Term.mentionsConstList n ps || Term.mentionsConstList n as
+  | .prim _ as | .tind _ as => Term.mentionsConstList n as
+  | .matchInd _ _ as => Term.mentionsConstArms n as
   | _ => false
+termination_by structural t => t
+
+def Term.mentionsConstList (n : String) : List Term → Bool
+  | [] => false
+  | t :: ts => t.mentionsConst n || Term.mentionsConstList n ts
+termination_by structural ts => ts
+
+def Term.mentionsConstArms (n : String) : List (Hint × Term) → Bool
+  | [] => false
+  | (_, t) :: ts => t.mentionsConst n || Term.mentionsConstArms n ts
+termination_by structural ts => ts
+end
 
 /-- [Def], [Const], [Ind-decl]: is `n` already a name of Σ? The declared types, their
 constructors and the definitions share one namespace: the one the surface resolves an
@@ -101,56 +114,112 @@ def Item.name : Item → String
   | .defn d => d.name
   | .ind d => d.name
 
+mutual
 /-- Does a term mention the inductive type `n` anywhere? -/
-partial def Term.mentionsType (n : String) : Term → Bool
-  | .tind m as => m == n || as.any (Term.mentionsType n)
+def Term.mentionsType (n : String) : Term → Bool
+  | .tind m as => m == n || Term.mentionsTypeList n as
   | .assign _ t | .succ t | .fst t | .snd t | .ref t => t.mentionsType n
   | .letIn _ t u | .seq t u | .cong t u | .ascribe t u => t.mentionsType n || u.mentionsType n
   | .matchNat _ z s => z.mentionsType n || s.mentionsType n
-  | .pi _ ds c => ds.any (·.mentionsType n) || c.mentionsType n
-  | .fix _ _ ds c _ b => ds.any (·.mentionsType n) || c.mentionsType n || b.mentionsType n
-  | .call f as _ => f.mentionsType n || as.any (·.mentionsType n)
+  | .pi _ ds c => Term.mentionsTypeList n ds || c.mentionsType n
+  | .fix _ _ ds c _ b => Term.mentionsTypeList n ds || c.mentionsType n || b.mentionsType n
+  | .call f as _ => f.mentionsType n || Term.mentionsTypeList n as
   | .eq a b c | .id a b c => a.mentionsType n || b.mentionsType n || c.mentionsType n
-  | .ctor t _ _ ps as => t == n || ps.any (·.mentionsType n) || as.any (·.mentionsType n)
-  | .prim _ as => as.any (·.mentionsType n)
-  | .matchInd _ t as => t == n || as.any (·.2.mentionsType n)
+  | .ctor t _ _ ps as => t == n || Term.mentionsTypeList n ps || Term.mentionsTypeList n as
+  | .prim _ as => Term.mentionsTypeList n as
+  | .matchInd _ t as => t == n || Term.mentionsTypeArms n as
   | _ => false
+termination_by structural t => t
+
+def Term.mentionsTypeList (n : String) : List Term → Bool
+  | [] => false
+  | t :: ts => t.mentionsType n || Term.mentionsTypeList n ts
+termination_by structural ts => ts
+
+def Term.mentionsTypeArms (n : String) : List (Hint × Term) → Bool
+  | [] => false
+  | (_, t) :: ts => t.mentionsType n || Term.mentionsTypeArms n ts
+termination_by structural ts => ts
+end
+
+mutual
+/-- `paramNestable` with fuel: each step, into a field type, an argument or another
+declaration, spends one unit, and running out is an error (not an answer). -/
+def paramNestableF (fuel : Nat) (d : IndDecl) (i : Nat) : M Bool :=
+  match fuel with
+  | 0 => err "out of fuel"   -- FUEL-OUTCOME: the out-of-fuel outcome once no-fallbacks lands
+  | fuel + 1 => do
+    let np := d.params.length
+    d.ctors.allM fun (_, fields) =>
+      fields.allM fun (_, FT) => paramNestableGo fuel d (np - 1 - i) FT
+termination_by structural fuel
+
+/-- The walk of a field type of `d` for the parameter at index `v`. -/
+def paramNestableGo (fuel : Nat) (d : IndDecl) (v : Nat) (t : Term) : M Bool :=
+  match fuel with
+  | 0 => err "out of fuel"   -- FUEL-OUTCOME
+  | fuel + 1 =>
+    match t with
+    | .place (.var _) => pure true
+    | .nat | .unit => pure true
+    | .tind m as => paramNestableArgs fuel d v m 0 as
+    | t => pure !(t.freeVars.contains v)
+termination_by structural fuel
+
+/-- The arguments of `m(…)` in a field type of `d`, the first at `m`'s parameter `idx`. -/
+def paramNestableArgs (fuel : Nat) (d : IndDecl) (v : Nat) (m : String) (idx : Nat) (as : List Term) :
+    M Bool :=
+  match fuel with
+  | 0 => err "out of fuel"   -- FUEL-OUTCOME
+  | fuel + 1 =>
+    match as with
+    | [] => pure true
+    | a :: as => do
+      let ok ← (do
+        if !(a.freeVars.contains v) then return true
+        if m == d.name then return (← paramNestableGo fuel d v a)
+        let dm ← lookupInd m
+        let r1 ← paramNestableF fuel dm idx
+        let r2 ← paramNestableGo fuel d v a
+        pure (r1 && r2) : M Bool)
+      if ok then paramNestableArgs fuel d v m (idx + 1) as else pure false
+termination_by structural fuel
+end
 
 /-- K4's nesting condition: parameter `i` of `d` occurs in `d`'s field types only where the
 type it stands for occurs positively in the simplest form: as a field type itself, or as an
 argument of an inductive at one of that inductive's nestable parameters (the type itself
 counts as nestable at a uniform recursive use). A parameter passed to a type function
 (`Neg(A)`), or occurring anywhere else, is not nestable: a later declaration may not put
-the type it declares there, since the function may use it negatively. -/
-partial def paramNestable (d : IndDecl) (i : Nat) : M Bool := do
-  let np := d.params.length
-  let posOnly (v : Nat) : Term → M Bool := fun t => go v t
-  d.ctors.allM fun (_, fields) =>
-    fields.allM fun (_, FT) => posOnly (np - 1 - i) FT
-where
-  go (v : Nat) : Term → M Bool
-    | .place (.var _) => pure true
-    | .nat | .unit => pure true
-    | .tind m as => as.zipIdx.allM fun (a, idx) => do
-        if !(a.freeVars.contains v) then return true
-        if m == d.name then return (← go v a)
-        let dm ← lookupInd m
-        pure ((← paramNestable dm idx) && (← go v a))
-    | t => pure !(t.freeVars.contains v)
+the type it declares there, since the function may use it negatively. The walk spends from
+the checker's fuel budget (`paramNestableF`). -/
+def paramNestable (d : IndDecl) (i : Nat) : M Bool := do
+  paramNestableF (← get).fuel d i
 
+mutual
 /-- K4's nesting condition, for its message: an occurrence of the type being declared `n` at
 a parameter of an inductive that is not nestable there (`paramNestable`), as the inner
 inductive and the parameter's name. -/
-partial def nestViolation (n : String) : Term → M (Option (String × String))
+def nestViolation (n : String) : Term → M (Option (String × String))
   | .tind m as => do
     let dm ← lookupInd m
-    for (a, i) in as.zipIdx do
-      if m != n && a.mentionsType n && !(← paramNestable dm i) then
-        return some (m, (dm.params[i]!).1.name)
-      if let some r ← nestViolation n a then return some r
-    pure none
+    nestViolationArgs n m dm 0 as
   | _ => pure none
+termination_by structural t => t
 
+/-- The arguments of `m(…)`, the first at `m`'s parameter `i`: the first violation. -/
+def nestViolationArgs (n m : String) (dm : IndDecl) (i : Nat) : List Term → M (Option (String × String))
+  | [] => pure none
+  | a :: as => do
+    let nestable ← paramNestable dm i
+    if m != n && a.mentionsType n && !nestable then
+      return some (m, (dm.params[i]!).1.name)
+    if let some r ← nestViolation n a then return some r
+    nestViolationArgs n m dm (i + 1) as
+termination_by structural as => as
+end
+
+mutual
 /-- D36 (v1.7), with parameters (v2.0, D46), K4 and dependent fields (D64): a field type of
 the inductive `n` (with `np` parameters and, in this constructor, `k` fields) is first-order
 data, read off its term: `Nat`, `Unit`, a parameter, a declared inductive type (the one being
@@ -162,26 +231,47 @@ types in a field, so a negative occurrence cannot hide behind one (`Box(Π(x : B
 rejected); and a type being declared may be nested only at a parameter the inner inductive
 does not pass to a type function (K4's nesting condition: `NBox(A) := MkNBox(f : Neg(A))`,
 then `Bad := MkBad(b : NBox(Bad))`, is the D36 attack again). -/
-partial def firstOrderTerm (n : String) (np k : Nat) : Term → M Bool
+def firstOrderTerm (n : String) (np k : Nat) : Term → M Bool
   | .nat | .unit => pure true
   | .place (.var j) => pure (j < np)
   | .tind m as => do
     let dm ← lookupInd m
-    as.zipIdx.allM fun (a, i) => do
-      unless ← firstOrderTerm n np k a do return false
-      -- K4's nesting condition
-      if m != n && a.mentionsType n then paramNestable dm i else pure true
+    firstOrderArgs n np k m dm 0 as
   | .call (.const f) as _ => do
     let some g := (← get).globals.find? (·.name == f) | return false
     let .tPi _ (.pi _ _ cod) := g.ty | return false
     unless cod matches .sort _ do return false
-    as.allM fun a => do
+    firstOrderCallArgs n np k as
+  | _ => pure false
+termination_by structural t => t
+
+/-- The arguments of an inductive `m(…)` in a field type, the first at `m`'s parameter `i`. -/
+def firstOrderArgs (n : String) (np k : Nat) (m : String) (dm : IndDecl) (i : Nat) :
+    List Term → M Bool
+  | [] => pure true
+  | a :: as => do
+    let ok ← (do
+      unless ← firstOrderTerm n np k a do return false
+      -- K4's nesting condition
+      if m != n && a.mentionsType n then paramNestable dm i else pure true
+      : M Bool)
+    if ok then firstOrderArgs n np k m dm (i + 1) as else pure false
+termination_by structural as => as
+
+/-- The arguments of a call of a type function in a field type (K4). -/
+def firstOrderCallArgs (n : String) (np k : Nat) : List Term → M Bool
+  | [] => pure true
+  | a :: as => do
+    let ok ← (do
       if a.mentionsType n then return false
       match a with
       | .place (.var j) => pure (j < np + k)      -- a parameter, or a field (data)
       | .zero | .succ _ => pure true
       | _ => firstOrderTerm n np k a
-  | _ => pure false
+      : M Bool)
+    if ok then firstOrderCallArgs n np k as else pure false
+termination_by structural as => as
+end
 
 /-- Declare an inductive type (v2.0, D45/D46): a sort (`Prop` or `Type₀`), uniform
 parameters, and zero or more constructors whose fields are first-order data or

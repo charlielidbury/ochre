@@ -55,24 +55,27 @@ def Value.updAt (f : Value → Value) : List Step → Value → Option Value
 
 /-- The value held at a position contains `borrow_ℓ` (borrows are never inside
 sealed programs: only their loans are). -/
-partial def Value.holdsBorrow (l : Nat) : Value → Bool
+def Value.holdsBorrow (l : Nat) : Value → Bool
   | .borrow m w => m == l || w.holdsBorrow l
   | .succ w => w.holdsBorrow l
   | _ => false
+termination_by structural v => v
 
 /-- Take `borrow_ℓ v` out of a value: returns `v` and the value with `⊥` in its place. -/
-partial def Value.takeBorrow (l : Nat) : Value → Option (Value × Value)
+def Value.takeBorrow (l : Nat) : Value → Option (Value × Value)
   | .borrow m w =>
       if m == l then some (w, .bot) else (w.takeBorrow l).map fun (c, w') => (c, .borrow m w')
   | .succ w => (w.takeBorrow l).map fun (c, w') => (c, .succ w')
   | _ => none
+termination_by structural v => v
 
 /-- D64 amended ([Open]): the value with the content of `borrow_ℓ` replaced by `c`. -/
-partial def Value.setBorrowContent (v : Value) (l : Nat) (c : Value) : Value :=
+def Value.setBorrowContent (v : Value) (l : Nat) (c : Value) : Value :=
   match v with
   | .borrow m w => if m == l then .borrow m c else .borrow m (w.setBorrowContent l c)
   | .succ w => .succ (w.setBorrowContent l c)
   | v => v
+termination_by structural v
 
 def findBorrow (env : Env) (l : Nat) : Option Pos :=
   (allPos env).find? fun p => (valAt env p).holdsBorrow l
@@ -94,18 +97,46 @@ def insertPos (p : Pos) : List Pos → List Pos
 
 def sortPos (ps : List Pos) : List Pos := ps.foldl (fun acc p => insertPos p acc) []
 
+/-- The labels of the borrows held in Ω (the measure of `owners`). -/
+def borrowLabels (env : Env) : List Nat :=
+  (allPos env).filterMap fun p => match valAt env p with
+    | .borrow m _ => some m
+    | _ => none
+
+theorem length_filter_notMem_cons_lt {L seen : List Nat} {l : Nat} (hl : l ∈ L) (hs : l ∉ seen) :
+    (L.filter (fun x => x ∉ l :: seen)).length < (L.filter (fun x => x ∉ seen)).length := by
+  have : L.filter (fun x => x ∉ l :: seen) = (L.filter (fun x => x ∉ seen)).filter (fun x => x ≠ l) := by
+    rw [List.filter_filter]; congr 1; funext x; simp [List.mem_cons, not_or]
+  rw [this, List.length_filter_lt_length_iff_exists]
+  exact ⟨l, List.mem_filter.mpr ⟨hl, by simpa using hs⟩, by simp⟩
+
+theorem length_filter_notMem_cons_le {L seen : List Nat} {l : Nat} :
+    (L.filter (fun x => x ∉ l :: seen)).length ≤ (L.filter (fun x => x ∉ seen)).length := by
+  have : L.filter (fun x => x ∉ l :: seen) = (L.filter (fun x => x ∉ seen)).filter (fun x => x ≠ l) := by
+    rw [List.filter_filter]; congr 1; funext x; simp [List.mem_cons, not_or]
+  rw [this]; exact List.length_filter_le _ _
+
 /-- `owners(ℓ)` (RULES §4): follow every occurrence of `loan_ℓ` outward. An occurrence
 inside the content of `borrow_m` contributes `owners(m)`; one inside an owned value
-contributes that binding. -/
-partial def owners (env : Env) (l : Nat) (seen : List Nat := []) : List Pos :=
-  if seen.contains l then [] else
-  sortPos <| (allPos env).flatMap fun p =>
-    let v := valAt env p
-    if v.hasLoan l then
-      match v with
-      | .borrow m _ => owners env m (l :: seen)
+contributes that binding. Terminates: each step follows a borrow of Ω not yet followed. -/
+def owners (env : Env) (l : Nat) (seen : List Nat := []) : List Pos :=
+  if hs : seen.contains l then [] else
+  sortPos <| (allPos env).attach.flatMap fun ⟨p, hp⟩ =>
+    if (valAt env p).hasLoan l then
+      match hv : valAt env p with
+      | .borrow m _ =>
+        have : m ∈ borrowLabels env := List.mem_filterMap.mpr ⟨p, hp, by simp [hv]⟩
+        owners env m (l :: seen)
       | _ => [p]
     else []
+termination_by ((borrowLabels env).filter (fun x => x ∉ seen)).length + (if l ∈ borrowLabels env then 0 else 1)
+decreasing_by
+  have hs' : l ∉ seen := by simpa using hs
+  by_cases hl : l ∈ borrowLabels env
+  · have := length_filter_notMem_cons_lt (seen := seen) hl hs'
+    simp only [hl, ‹m ∈ borrowLabels env›, if_true]; omega
+  · have := length_filter_notMem_cons_le (L := borrowLabels env) (seen := seen) (l := l)
+    simp only [hl, ‹m ∈ borrowLabels env›, if_true, if_false]; omega
 
 /-- The footprint `W(t, u)` (RULES §4). Free places of the terms that are borrowed,
 assigned, or rooted at a borrow-typed variable contribute their owners: `{x}` for a
