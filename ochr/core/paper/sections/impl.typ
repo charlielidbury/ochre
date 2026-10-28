@@ -4,22 +4,7 @@
 
 We implemented the calculus as an executable reference checker in Lean 4, about 7,000 lines with no dependencies, plus about 6,500 lines of examples and tests and 5,100 lines of case studies. Its purpose is fidelity, not performance: a hand derivation can be charitable where the rules are silent, and a program cannot. Programs are written in a concrete syntax close to the one used here, in named blocks of definitions. The checker runs inside Lean's editor, checking each definition as you type (@app-artifact). A `def` must be accepted and a `reject def` rejected. Each verdict is an assertion checked during the build, and each test file also asserts how many verdicts it contains, so a file that silently checks nothing fails the build. The checker's trace of `AddMZero` reproduces the derivation of @sec-overview symbol for symbol. The suite contains every program this paper prints (the artifact's notes map each to its test), every program that must be rejected, among them every counterexample of @fig-why, and every accepted program that went wrong while we designed the calculus. All 1,401 verdicts are as expected: 983 in the examples and tests, and 418 in the case studies. The compiled checker decides the examples in about 0.1 s and the case studies in about 3 s.
 
-*The counterfactual ledger.* Every rule the checker applies that is not the evident typing of a form has a switch that turns it off, and a row in the ledger. For each row, the build asserts exactly which verdicts flip when the rule is off, and the row's class, which follows from what flips (@fig-ledger); it also enforces that every row flips something and that every row outside completeness names its witnesses. Confinement backs up the reading of proofs by their declaration: with both off, a false lemma is accepted. The checker decides erasure as @sec-typing-two states it, in a pass over declared types before it runs a term; its earlier classification after the fact is kept as an internal assertion, which agrees on the whole suite, and the rows for four of its clauses were deleted as subsumed. The ledger shows that each rule is needed for some verdict, not that the rules suffice. Nor can it show that a rule is sound when on: switching off a rule that admits more programs can only make the checker reject some. Two side conditions have no switch: non-cumulative universes, and generalisation records that end with their arm.
-
-#figure(kind: image, supplement: [Figure], placement: auto,
-  block(breakable: false, { set text(size: 8.5pt); set par(justify: false); table(columns: (20%, 80%), stroke: none, inset: (x: 4pt, y: 2.2pt), align: (left, left),
-    table.hline(stroke: 0.5pt),
-    [*Class, rows*], [*With the rule off, the checker*],
-    table.hline(stroke: 0.4pt),
-    [Soundness, 23], [accepts a closed proof of `False`, or a program that goes wrong when run; the row names the witnesses],
-    [False lemma, 1], [accepts a false open statement, whose closed instances another rule rejects],
-    [Model, 4], [accepts definitions with no set-theoretic meaning, but no known proof of `False`],
-    [Policy, 9], [accepts only programs that are true under the other rules, or true in the model but not implementable by a compiled representation],
-    [Completeness, 24], [only rejects good programs],
-    table.hline(stroke: 0.5pt),
-  )}),
-  caption: [The counterfactual ledger, by class. One completeness row switches an extension _on_ instead, confining the bodies of functions that return proofs or types, to record what it would cost.],
-) <fig-ledger>
+*Why each rule is there.* The checker has no switches for turning its rules off. Which rules it applies is its own business: a test says only whether a program is accepted, rejected, or runs to a given result. Each side condition is justified instead by the counterexample that forced it (@fig-why). That counterexample is in the suite as a `reject def`, beside an accepted near-miss that differs only in the offending part, so the rejection is seen to come from that part. Whether a rule is still needed is checked when the question arises, by removing it on a throwaway branch and running the suite. That shows a rule is needed for some verdict, not that the rules suffice, and not that a rule is sound. The checker decides erasure as @sec-typing-two states it, in a pass over declared types before it runs a term; its earlier classification after the fact is kept as an internal assertion, which agrees on the whole suite.
 
 
 == A verified hash map, against Aeneas <sec-eval-hashmap>

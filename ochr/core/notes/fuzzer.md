@@ -42,13 +42,11 @@ The extended generator also re-finds the cold reviewers' attacks when their swit
 cd ochr/core/lean
 lake build fuzz
 lake exe fuzz --seed 1 --count 100000 --jobs 8                    # 10⁵ cases, about 70 s on 8 cores
-lake exe fuzz --seed 1 --count 20000 --jobs 8 --diff --switch D54   # attribute findings to one rule
 lake exe fuzz --seed 1 --show 1424                                 # one case, verbosely
 lake exe fuzz … --list                                             # also print `@FIND case key` per finding
 ```
 - Case `i` of seed `S` is a pure function of `(S, i)`.
-- `--switch X` names a ledger row: `D17`…`D59`, `P1`/`P2`/`P3`, `L1`–`L3`, `C5`, `C8`, `G1`, `capTypes`, `scrutTyped`, `confineBodies`, `D50on`, and D53's `ghosts` and `fnRule`. Since the copy system was deleted (ochr-core 042a06f7), D53's moves are the only read semantics: `Config.d53` and `Config.moves` no longer exist, and `--switch +D53`/`d53`/`moves`/`D53` no longer parse. Command lines below that pass `+D53` date from before the flip; drop it now. The D35 rows were deleted with the erasure pre-pass.
-- `--diff` keeps only the findings a case shows with the switches on and not with the default rules. With `--list` it also prints `@FLIP i base>switched` when the switch changes the statement's verdict, and `@XFLIP i m>n` when it changes how many of the statement's two sides the checker accepts as data functions (the execution oracle's `ExecL`/`ExecR`). A row such as `moves` changes acceptance without changing any value, and this is how it is measured.
+- `--switch X` and `--diff` were removed with the rule switches (D70, 2026-10-28): the fuzzer always runs the rules as they are. Command lines below that pass them, and the per-row results, are historical.
 - `--edep N` draws N percent of the cases from the E family with a dependent codomain. `--rules N` gives N percent of the cases one declaration that a rule forbids, `--drop N` gives them one Drop-family data function, `--audit N` gives them one of rule-audit's witness shapes, and `--dep N` gives them the dependent-fields family (§v2.2). Like `--a1`, each draws on its own stream, and the default is 0.
 - `--a1 N` draws N percent of the cases from reviewer-6's A1 family instead (§v2.2). Each case chooses on its own random stream, so every other case is the same as without the flag. The default is 0, so the headline numbers are unchanged.
 - `--runtime-refine` refines the generic observation at runtime depth instead of erased. It is a diagnostic for the RN class (§v2.6). The checker refines statements erased, so most of what it reports are artefacts.
