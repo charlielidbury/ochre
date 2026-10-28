@@ -249,6 +249,12 @@ def checkItem : Item → M Unit
   | .defn d => checkDef d
   | .ind d => checkInd d
 
+/-- Does the item mention the global or inductive type `n` (in a type, a field or a body)? -/
+def Item.mentions (n : String) : Item → Bool
+  | .defn d => (d.body :: d.cod :: d.doms).any fun t => t.mentionsConst n || t.mentionsType n
+  | .ind d => (d.params.map (·.2) ++ d.ctors.flatMap (·.2.map (·.2))).any fun t =>
+      t.mentionsConst n || t.mentionsType n
+
 /-- The globals and inductive types after checking a list of items, from a start. -/
 def globalsAfterFrom (cfg : Config) (start : List GDef × List IndDecl) (ds : List Item) :
     List GDef × List IndDecl := Id.run do
@@ -271,8 +277,16 @@ def checkDefs (cfg : Config) (ds : List Item) (fuel : Nat := 2000000)
     (locsOf : Nat → Locs := fun _ => {}) : List (String × Verdict × Array LogEntry) := Id.run do
   let mut globals : List GDef := []
   let mut inds : List IndDecl := []
+  let mut undecided : List String := []
   let mut out := #[]
   for (d, i) in ds.zipIdx do
+    -- an item that mentions an undecided one is undecided too: without the earlier item the
+    -- checker cannot know its verdict (left out of Σ, it would be rejected for a missing name,
+    -- a decision made by exhaustion, which more fuel would change)
+    if let some n := undecided.find? (d.mentions ·) then
+      undecided := d.name :: undecided
+      out := out.push (d.name, .undecided s!"it mentions {n}, which is undecided", #[])
+      continue
     let st : MState := { globals := globals, inds := inds, cfg := cfg, locs := locsOf i }
     -- the verdict boundary: the one place a failure becomes something else (a verdict)
     let (r, _, tr) := runMachine (checkItem d) st fuel
@@ -283,7 +297,9 @@ def checkDefs (cfg : Config) (ds : List Item) (fuel : Nat := 2000000)
       out := out.push (d.name, .accepted, tr)
     | .fail (.error m l) => out := out.push (d.name, .rejected m l, tr)
     | .fail (.stuck _) => out := out.push (d.name, .rejected "internal: stuck escaped to the top", tr)
-    | .exhausted m => out := out.push (d.name, .undecided m, tr)
+    | .exhausted m =>
+      undecided := d.name :: undecided
+      out := out.push (d.name, .undecided m, tr)
   pure out.toList
 
 /-- The globals and inductive types after checking a list of items (the library among

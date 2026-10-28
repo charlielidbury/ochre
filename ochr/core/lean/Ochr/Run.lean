@@ -65,11 +65,14 @@ def checkProgram (p : Program) (cfg : Config) (fuel : Nat) (located : Nat → Bo
 mutual
 /-- What a block exports under `cfg`: its own declarations that are expected to be accepted
 (`def`, not `reject def`) and are accepted, checked after its own library. A rejected or
-`reject` declaration is never visible to the block's users. -/
+`reject` declaration is never visible to the block's users. An undecided one is exported, so
+that what its users write about it is undecided too (`checkDefs`), not rejected for a name
+that exhaustion removed. -/
 partial def exportsWith (pre : Option Block) (cfg : Config) (fuel : Nat) (b : Block) : Program :=
   let lib := libWith pre cfg fuel b
   let vs := (checkProgram (lib ++ b.decls) cfg fuel).drop lib.length
-  (b.decls.zip vs).filterMap fun (d, _, v, _) => if d.expectAccept && v.ok then some d else none
+  (b.decls.zip vs).filterMap fun (d, _, v, _) =>
+    if d.expectAccept && (v matches .accepted | .undecided _) then some d else none
 
 /-- A block's library under `cfg`, with `pre` the library block (`Prelude`, v2.1), used by
 every block, first: the exports of `pre` and of every block `b` uses, transitively, each
