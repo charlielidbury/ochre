@@ -77,6 +77,12 @@ ochr DepFields uses Logic, WordType, Options {
       MkV(n, x) => n := Zero,
     }
   )
+  -- twin of LieV: `n := n` instead of `n := Zero`, so `x` still has its type
+  def LieVOk (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => n := n,
+    }
+  )
   -- used whole while broken
   reject def ReadBroken (v : &V) : Word := (
     match *v {
@@ -85,6 +91,18 @@ ochr DepFields uses Logic, WordType, Options {
         n := Zero;
         let k = VN(clone(*v));
         n := m;
+        k
+      ),
+    }
+  )
+  -- twin of ReadBroken: `n` restored before `*v` is read whole
+  def ReadBrokenOk (v : &V) : Word := (
+    match *v {
+      MkV(n, x) => (
+        let m = n;
+        n := Zero;
+        n := m;
+        let k = VN(clone(*v));
         k
       ),
     }
@@ -99,12 +117,29 @@ ochr DepFields uses Logic, WordType, Options {
       ),
     }
   )
+  -- twin of PassBroken: `n` restored before `*v` is borrowed whole
+  def PassBrokenOk (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => (
+        let m = n;
+        n := Zero;
+        n := m;
+        Nop(&*v)
+      ),
+    }
+  )
   reject def PassBrokenVar (v : &V) : Unit := (
     match *v {
       MkV(n, x) => (
         n := Zero;
         Nop(v)
       ),
+    }
+  )
+  -- twin of PassBrokenVar: no write to `n`, so `v` is packed when passed
+  def PassBrokenVarOk (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => Nop(v),
     }
   )
   reject def IdBroken (v : &V) : Unit := (
@@ -117,10 +152,31 @@ ochr DepFields uses Logic, WordType, Options {
       ),
     }
   )
+  -- twin of IdBroken: `n` restored before `*v` is observed by `Id`
+  def IdBrokenOk (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => (
+        let m = n;
+        n := Zero;
+        n := m;
+        let h : Id(Word, VN(clone(*v)), m) = refl;
+        ()
+      ),
+    }
+  )
   reject def IdMakesBroken (v : &V) : Unit := (
     match *v {
       MkV(n, x) => (
         let h : Id(Unit, n := Zero, n := Zero) = refl;
+        ()
+      ),
+    }
+  )
+  -- twin of IdMakesBroken: `n := n` in the `Id` sides, which breaks nothing
+  def IdMakesBrokenOk (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => (
+        let h : Id(Unit, n := n, n := n) = refl;
         ()
       ),
     }
@@ -140,7 +196,15 @@ ochr DepFields uses Logic, WordType, Options {
     LieV(&v);
     v
   )
+  -- twin of Broken: `Refill` (which repacks) instead of `LieV`
+  def BrokenOk : V := (
+    let v = MkV(Succ(Zero), O);
+    Refill(&v);
+    v
+  )
   reject def Boom : False := Absurd(Broken, refl)
+  -- twin of Boom: the true statement that the length is `Succ(Zero)`, not `Zero`
+  def BoomOk : Eq(Word, VN(BrokenOk), Succ(Zero)) := refl
   -- fuzz-port's --dep family: the dependent field assigned a value of another type (`O : One`,
   -- not a `Fin1(0)`), with the index written first or last, set to a parameter (a stuck
   -- `⌈Fin1(σ)⌉`), or written through a borrow of the index field
@@ -148,6 +212,15 @@ ochr DepFields uses Logic, WordType, Options {
     match *v {
       MkV(n, x) => (
         n := Zero;
+        x := O
+      ),
+    }
+  )
+  -- twin of LieZ: `n := Succ(Zero)`, so `x := O` has the right type
+  def LieZOk (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => (
+        n := Succ(Zero);
         x := O
       ),
     }
@@ -160,10 +233,28 @@ ochr DepFields uses Logic, WordType, Options {
       ),
     }
   )
+  -- twin of LieZRev: `n := Succ(Zero)`, so `x := O` has the right type
+  def LieZRevOk (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => (
+        x := O;
+        n := Succ(Zero)
+      ),
+    }
+  )
   reject def LieParam (v : &V) (k : Word) : Unit := (
     match *v {
       MkV(n, x) => (
         n := k;
+        x := O
+      ),
+    }
+  )
+  -- twin of LieParam: `n := Succ(k)`, so `Fin1(n)` is `One` for every `k`
+  def LieParamOk (v : &V) (k : Word) : Unit := (
+    match *v {
+      MkV(n, x) => (
+        n := Succ(k);
         x := O
       ),
     }
@@ -177,10 +268,28 @@ ochr DepFields uses Logic, WordType, Options {
       ),
     }
   )
+  -- twin of LieBorrow: the write through the borrow of `n` is `Succ(Zero)`
+  def LieBorrowOk (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => (
+        x := O;
+        let r = &n;
+        *r := Succ(Zero)
+      ),
+    }
+  )
   reject def BoomZ : False := Absurd((let v = MkV(Succ(Zero), O); LieZ(&v); v), refl)
+  -- twin of BoomZ: the true statement that the length is `Succ(Zero)`, using the repacking write
+  def BoomZOk : Eq(Word, VN((let v = MkV(Succ(Zero), O); LieZOk(&v); v)), Succ(Zero)) := refl
   reject def BoomZRev : False := Absurd((let v = MkV(Succ(Zero), O); LieZRev(&v); v), refl)
+  -- twin of BoomZRev: the true statement that the length is `Succ(Zero)`, using the repacking write
+  def BoomZRevOk : Eq(Word, VN((let v = MkV(Succ(Zero), O); LieZRevOk(&v); v)), Succ(Zero)) := refl
   reject def BoomParam : False := Absurd((let v = MkV(Succ(Zero), O); LieParam(&v, Zero); v), refl)
+  -- twin of BoomParam: the true statement that the length is `Succ(Zero)`, using the repacking write
+  def BoomParamOk : Eq(Word, VN((let v = MkV(Succ(Zero), O); LieParamOk(&v, Zero); v)), Succ(Zero)) := refl
   reject def BoomBorrow : False := Absurd((let v = MkV(Succ(Zero), O); LieBorrow(&v); v), refl)
+  -- twin of BoomBorrow: the true statement that the length is `Succ(Zero)`, using the repacking write
+  def BoomBorrowOk : Eq(Word, VN((let v = MkV(Succ(Zero), O); LieBorrowOk(&v); v)), Succ(Zero)) := refl
 
   -- injectivity, restricted: equal lengths are taken apart; unequal ones are not, since
   -- `Eq(Fin1(a), x, y)` would compare values of different types
@@ -189,6 +298,8 @@ ochr DepFields uses Logic, WordType, Options {
     let ⟨h1, h2⟩ = h;
     h1
   )
+  -- twin of InjLen: the two lengths are the same `a`, so the equation is taken apart (as `InjSame`, to the equation between the fields)
+  def InjLenOk (a : Word) (x : Fin1(a)) (y : Fin1(a)) (h : Eq(V, MkV(a, x), MkV(a, y))) : Eq(Fin1(a), x, y) := h
   def InjLenCong (a : Word) (b : Word) (x : Fin1(a)) (y : Fin1(b)) (h : Eq(V, MkV(a, x), MkV(b, y))) : Eq(Word, a, b) := cong(VN, h)
 
   -- a proof field: a write through the field its type mentions invalidates it
@@ -241,9 +352,26 @@ ochr DepFields uses Logic, WordType, Options {
       ),
     }
   )
+  -- twin of LieLent: no borrow of `n`, so the reassigned proof is about the same `n`
+  def LieLentOk (p : &Pos) : Unit := (
+    match *p {
+      MkPos(n, h) => (
+        let h0 = h;
+        h := h0
+      ),
+    }
+  )
   reject def BoomLent : False := (
     let p = MkPos(Succ(Zero), refl);
     LieLent(&p);
+    match p {
+      MkPos(n, h) => h,
+    }
+  )
+  -- twin of BoomLent: the proof read back is about the same `n`, here `Succ(Zero)`
+  def BoomLentOk : ⊤ := (
+    let p = MkPos(Succ(Zero), refl);
+    LieLentOk(&p);
     match p {
       MkPos(n, h) => h,
     }
@@ -274,6 +402,15 @@ ochr DepFields uses Logic, WordType, Options {
       MkPos(n, h) => (
         let r = &n;
         *r := Succ(Zero);
+        h := refl
+      ),
+    }
+  )
+  -- twin of RefillLentLive: the borrow ends (parenthesised) before the proof is assigned
+  def RefillLentLiveOk (p : &Pos) : Unit := (
+    match *p {
+      MkPos(n, h) => (
+        (let r = &n; *r := Succ(Zero));
         h := refl
       ),
     }
@@ -310,6 +447,31 @@ ochr DepFields uses Logic, WordType, Options {
           None => match h {},
         },
       }), Succ(Zero)) := refl
+  -- twin of GetLent: the invariant is `IsSome` of a cell (a `Cell`), which holds whatever the returned borrow writes
+  def GetLentOk (c : &Cell) : &Word := (
+    match *c {
+      MkCell(o, h) => match o {
+        Some(v) => (
+          let h0 = h;
+          let r = &v;
+          h := h0;
+          r
+        ),
+        None => match h {},
+      },
+    }
+  )
+  -- twin of BoomGetLent: the caller writes through a borrow whose invariant survives any write
+  def BoomGetLentOk : Id(Word, (
+      let c = MkCell(Some(Succ(Zero)), refl);
+      let r = GetLentOk(&c);
+      *r := Zero;
+      match c {
+        MkCell(o, h) => match o {
+          Some(v) => v,
+          None => match h {},
+        },
+      }), Zero) := refl
   -- in a proposition: the witness's proof is typed by the witness
   inductive ExSucc : Prop := WitS(w : Word, h : IsSucc(w))
   def ExOne : ExSucc := WitS(Succ(Zero), refl)
@@ -333,6 +495,8 @@ ochr DepFields uses Logic, WordType, Options {
   )
   inductive NBox (A : Type) := MkNBox(n : Word, f : NegIf(n, A), h : IsSucc(n))
   reject inductive Bad := MkBad(b : NBox(Bad))
+  -- twin of Bad: `NBox` is given `Word` rather than the type being declared
+  inductive BadOk := MkBadOk(b : NBox(Word))
   reject def L (x : Bad) : Void := (
     match x {
       MkBad(b) => match b {
@@ -343,12 +507,30 @@ ochr DepFields uses Logic, WordType, Options {
       },
     }
   )
+  -- twin of L: over `BadOk`, applying `f` to a `Word` rather than to `x`
+  def LOk (x : BadOk) : Void := (
+    match x {
+      MkBadOk(b) => match b {
+        MkNBox(n, f, h) => match n {
+          Zero => match h {},
+          Succ(m) => f(Zero),
+        },
+      },
+    }
+  )
   reject def K (x : Bad) : False := absurdV(L(x))
+  -- twin of K: over `BadOk` and `LOk`
+  def KOk (x : BadOk) : False := absurdV(LOk(x))
   reject def bad : Bad := MkBad(MkNBox[Bad](Succ(Zero), λ(y : Bad) : Void => L(y), refl))
   reject def Boom2 : False := K(bad)
+  -- twin of Boom2: over `BadOk`: from any `BadOk` (there is no closed one without a `Void`)
+  def Boom2Ok (x : BadOk) : False := KOk(x)
   -- a type function whose value is a Π at the generic telescope is not first-order data
   def Neg (A : Type) : Type := Π(x : A). Void
   reject inductive NegBox (A : Type) := MkNegBox(f : Neg(A))
+  -- twin of NegBox: the type function returns a pair `A × A` (first-order data), not a `Π`
+  def Dup (A : Type) : Type := A × A
+  inductive NegBoxOk (A : Type) := MkNegBoxOk(f : Dup(A))
 }
 
 -- each rejection for its reason
