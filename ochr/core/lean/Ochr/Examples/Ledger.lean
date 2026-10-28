@@ -41,10 +41,21 @@ keeps the two paths discarding the same effects. -/
 -- row was classed completeness until then)
 open Ochr.Registry in
 #guard rowOk { eraseOnCopy := false }
-  ["Functions.RunGGen:rejected", "Functions.RunIGen:rejected", "Functions.RunPowGen:rejected",
-   "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected", "Erasure.BoomP2Pair:accepted",
-   "Erasure.BoomP2:accepted", "Erasure.N1Closed:accepted", "Erasure.QBoom:accepted",
-   "ErasureBySyntax.BoomP:accepted"]
+  [
+   "Functions.RunGGen:rejected",
+   "Functions.RunIGen:rejected",
+   "Functions.RunPowGen:rejected",
+   "Functions.BoomPowOk:rejected",
+   "Erasure.LemmaMoves:rejected",
+   "Erasure.TypeErased:rejected",
+   "Erasure.BoomP2Pair:accepted",
+   "Erasure.BoomP2:accepted",
+   "Erasure.N1Closed:accepted",
+   "Erasure.N1ClosedOk:rejected",
+   "Erasure.QBoom:accepted",
+   "ErasureBySyntax.BoomP:accepted",
+   "ErasureBySyntax.BoomPOk:rejected",
+   "ErasureBySyntax.LieHOk:rejected"]
 open Ochr.Registry in
 #guard rowOk { multiOwner := false }
   ["Owners.BadD18:accepted", "Owners.ClosedD18:accepted", "Owners.GR:accepted", "Owners.BadR:accepted"]
@@ -60,9 +71,18 @@ open Ochr.Registry in
 -- original witness `BadA1` (a stuck `Unit` call's result is `()`, D59 refined)
 open Ochr.Registry in
 #guard rowOk { accessInside := false }
-  ["Borrows.BadA1:accepted", "Borrows.V:accepted", "Borrows.W:accepted", "Drops.D2:rejected",
-   "Drops.D2Run:rejected", "Reborrows.PassWhileReborrowed:accepted",
-   "Naturality.PickEarly:accepted", "DepFields.CellGet:rejected", "DepFields.CellGetRun:rejected"]
+  [
+   "Borrows.BadA1:accepted",
+   "Borrows.V:accepted",
+   "Borrows.W:accepted",
+   "Drops.D2:rejected",
+   "Drops.D2Run:rejected",
+   "Reborrows.PassWhileReborrowed:accepted",
+   "Naturality.PickEarly:accepted",
+   "DepFields.CellGet:rejected",
+   "DepFields.CellGetRun:rejected",
+   "DepFields.GetLentOk:rejected",
+   "DepFields.BoomGetLentOk:rejected"]
 open Ochr.Registry in
 #guard rowOk { selfHeadOnly := false }
   ["Recursion.Knot:accepted", "Recursion.KnotBoom:accepted"]
@@ -71,35 +91,90 @@ open Ochr.Registry in
   ["Borrows.Dead:accepted", "Borrows.DeadTwice:accepted"]
 open Ochr.Registry in
 #guard rowOk { generalize := false }
-  ["Words.ModS:rejected", "Words.ModLt:rejected", "Drops.Bad4:rejected", "Drops.Bad4Run:rejected", "Drops.Bad5:rejected", "Drops.Bad5Run:rejected",
-   "ClosingOff.UseDec:rejected", "Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected",
-   "GenType.GenL:rejected", "RenormPi.G:rejected", "RenormPi.Plain:rejected", "RenormPi.InPi:rejected",
-   "RenormPi.InConj:rejected", "Splitting.Pick:rejected", "Splitting.PickNotZero:rejected",
-   "Splitting.PickNotZeroCopy:rejected", "Splitting.Pick22:rejected", "Splitting.Pick22NotZero:rejected",
-   "Splitting.PickTwo:rejected", "Splitting.DoubleVal:rejected", "Splitting.WrapShort:rejected",
+  [
+   "Words.ModS:rejected",
+   "Words.ModLt:rejected",
+   "Drops.Bad4:rejected",
+   "Drops.Bad4Run:rejected",
+   "Drops.Bad5:rejected",
+   "Drops.Bad5Run:rejected",
+   "ReturnedBorrows.BadOk:rejected",
+   "ReturnedBorrows.MainOk:rejected",
+   "ClosingOff.UseDec:rejected",
+   "Equality.CastMatch:rejected",
+   "CaseSplits.MatchAfterOpaque:rejected",
+   "GenType.GenL:rejected",
+   "RenormPi.G:rejected",
+   "RenormPi.Plain:rejected",
+   "RenormPi.InPi:rejected",
+   "RenormPi.InConj:rejected",
+   "Splitting.Pick:rejected",
+   "Splitting.PickNotZero:rejected",
+   "Splitting.PickNotZeroCopy:rejected",
+   "Splitting.Pick22:rejected",
+   "Splitting.Pick22NotZero:rejected",
+   "Splitting.PickTwo:rejected",
+   "Splitting.DoubleVal:rejected",
+   "Splitting.WrapShort:rejected",
+   "ScrutineeTypes.M2Ok:rejected",
    "ScrutineeTypes.M2Zero:rejected",
-   "Trees.InsertM:rejected", "Trees.Insert:rejected", "Trees.InsertMEq:rejected",
-   "Trees.InsertMSwap:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.InsertM:rejected",
-   "InPlaceTrees.Insert:rejected", "InPlaceTrees.InsertMIsInsert:rejected",
-   "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected", "FnBorrows.GContains:rejected",
-   "FnBorrows.GFind:rejected", "FnBorrows.GHas:rejected", "FnBorrows.GGetMut:rejected",
-   "FnBorrows.RunGGetMut:rejected", "Sugar.Xor:rejected", "Sugar.XorRun:rejected",
-   "Sugar.AtLeastOne:rejected", "Sugar.AtLeastOneLet:rejected", "Sugar.AtLeastOneRun:rejected",
-   "Sugar.AtLeastOneNotZero:rejected", "Sugar.AtLeastOneNotZeroLet:rejected",
-   "Sugar.AtLeastOneIsLet:rejected", "Sugar.ClampIn:rejected", "Sugar.ClampInRun:rejected"]
+   "GlobalRecords.EscOk:rejected",
+   "GlobalRecords.Bad5Ok:rejected",
+   "Trees.InsertM:rejected",
+   "Trees.Insert:rejected",
+   "Trees.InsertMEq:rejected",
+   "Trees.InsertMSwap:rejected",
+   "Trees.SizeInsert:rejected",
+   "InPlaceTrees.InsertM:rejected",
+   "InPlaceTrees.Insert:rejected",
+   "InPlaceTrees.InsertMIsInsert:rejected",
+   "InPlaceTrees.SizeInsert:rejected",
+   "InPlaceTrees.SizeInsertRw:rejected",
+   "FnBorrows.GContains:rejected",
+   "FnBorrows.GFind:rejected",
+   "FnBorrows.GHas:rejected",
+   "FnBorrows.GGetMut:rejected",
+   "FnBorrows.RunGGetMut:rejected",
+   "Sugar.Xor:rejected",
+   "Sugar.XorRun:rejected",
+   "Sugar.AtLeastOne:rejected",
+   "Sugar.AtLeastOneLet:rejected",
+   "Sugar.AtLeastOneRun:rejected",
+   "Sugar.AtLeastOneNotZero:rejected",
+   "Sugar.AtLeastOneNotZeroLet:rejected",
+   "Sugar.AtLeastOneIsLet:rejected",
+   "Sugar.ClampIn:rejected",
+   "Sugar.ClampInRun:rejected"]
 open Ochr.Registry in
 #guard rowOk { blockMoves := false }
   ["ClosingOff.MovedByBlock:accepted"]
 open Ochr.Registry in
 #guard rowOk { proofParamsStar := false }
-  ["ArmLocal.AndL:rejected", "ArmLocal.Leak:rejected", "Propositions.AndTrue:rejected",
-   "Propositions.Swap:rejected", "Propositions.Fst:rejected", "Propositions.FstSwap:rejected",
-   "Propositions.AndL2:rejected", "Propositions.Snd:rejected", "Propositions.Twice:rejected",
-   "Propositions.SplitId:rejected", "Propositions.TwoOwners:rejected", "Propositions.TwoOwnersR:rejected",
-   "Propositions.ThreeOwners:rejected", "Destructuring.DAnd:rejected", "Destructuring.DAnd3:rejected",
-   "Destructuring.DNested:rejected", "Destructuring.DWild:rejected", "Destructuring.DCallField:rejected",
-   "Subsingletons.OrComm:rejected", "Subsingletons.OrElim:rejected", "Subsingletons.OrLet:rejected",
-   "CurrentState.ProofIrr:rejected", "Sugar.AndCtor:rejected"]
+  [
+   "ArmLocal.AndL:rejected",
+   "ArmLocal.Leak:rejected",
+   "Propositions.AndTrue:rejected",
+   "Propositions.Swap:rejected",
+   "Propositions.Fst:rejected",
+   "Propositions.FstSwap:rejected",
+   "Propositions.AndL2:rejected",
+   "Propositions.Snd:rejected",
+   "Propositions.Twice:rejected",
+   "Propositions.SplitId:rejected",
+   "Propositions.TwoOwners:rejected",
+   "Propositions.TwoOwnersR:rejected",
+   "Propositions.ThreeOwners:rejected",
+   "Destructuring.DAnd:rejected",
+   "Destructuring.DAnd3:rejected",
+   "Destructuring.DNested:rejected",
+   "Destructuring.DWild:rejected",
+   "Destructuring.DCallField:rejected",
+   "Subsingletons.OrComm:rejected",
+   "Subsingletons.OrElim:rejected",
+   "Subsingletons.OrLet:rejected",
+   "CurrentState.ProofIrr:rejected",
+   "BorrowTypes.PIrefOk:rejected",
+   "Sugar.AndCtor:rejected"]
 open Ochr.Registry in
 #guard rowOk { recNested := false }
   ["Recursion.KnotL:accepted", "Recursion.KnotLBoom:accepted"]
@@ -117,12 +192,26 @@ open Ochr.Registry in
   ["ClosingOff.Clear:accepted", "ClosingOff.Boom5:accepted"]
 open Ochr.Registry in
 #guard rowOk { genConsistent := false }
-  ["Words.ModLt:rejected", "RenormPi.Plain:rejected", "RenormPi.InPi:rejected", "RenormPi.InConj:rejected",
-   "Splitting.PickNotZero:rejected", "Splitting.PickNotZeroCopy:rejected",
-   "Splitting.Pick22NotZero:rejected", "Splitting.PickTwo:rejected", "Trees.InsertMEq:rejected",
-   "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected",
-   "FnBorrows.GGetMut:rejected", "FnBorrows.RunGGetMut:rejected", "Sugar.AtLeastOneNotZero:rejected",
-   "Sugar.AtLeastOneNotZeroLet:rejected", "Sugar.AtLeastOneIsLet:rejected"]
+  [
+   "Words.ModLt:rejected",
+   "RenormPi.Plain:rejected",
+   "RenormPi.InPi:rejected",
+   "RenormPi.InConj:rejected",
+   "Splitting.PickNotZero:rejected",
+   "Splitting.PickNotZeroCopy:rejected",
+   "Splitting.Pick22NotZero:rejected",
+   "Splitting.PickTwo:rejected",
+   "GlobalRecords.EscOk:rejected",
+   "GlobalRecords.Bad5Ok:rejected",
+   "Trees.InsertMEq:rejected",
+   "Trees.SizeInsert:rejected",
+   "InPlaceTrees.SizeInsert:rejected",
+   "InPlaceTrees.SizeInsertRw:rejected",
+   "FnBorrows.GGetMut:rejected",
+   "FnBorrows.RunGGetMut:rejected",
+   "Sugar.AtLeastOneNotZero:rejected",
+   "Sugar.AtLeastOneNotZeroLet:rejected",
+   "Sugar.AtLeastOneIsLet:rejected"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 0 }
   ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected",
@@ -147,8 +236,15 @@ open Ochr.Registry in
   ["Functions.ConvPick:accepted", "Functions.TY:accepted", "Functions.BoomX4:accepted"]
 open Ochr.Registry in
 #guard rowOk { headGuardNeutral := false }
-  ["ReturnedBorrows.Inj:rejected", "ClosingOff.P1:rejected", "Functions.BoxBorrowFn:rejected",
-   "BorrowTypes.HO:rejected", "FnBorrows.RefRetFn:rejected"]
+  [
+   "ReturnedBorrows.Inj:rejected",
+   "ReturnedBorrows.QOk:rejected",
+   "ReturnedBorrows.BoomOk:rejected",
+   "ReturnedBorrows.QFOk:rejected",
+   "ClosingOff.P1:rejected",
+   "Functions.BoxBorrowFn:rejected",
+   "BorrowTypes.HO:rejected",
+   "FnBorrows.RefRetFn:rejected"]
 open Ochr.Registry in
 #guard rowOk { borrowParam := false }
   ["ReturnedBorrows.LeakT:accepted", "ReturnedBorrows.Q:accepted", "ReturnedBorrows.Boom:accepted",
@@ -165,18 +261,56 @@ open Ochr.Registry in
 -- v2.0 D45 by type, switched off: a match on a proof inspects its content (⋆) like data: completeness only
 open Ochr.Registry in
 #guard rowOk { byType := false }
-  ["ArmLocal.AndL:rejected", "ArmLocal.Leak:rejected", "Propositions.AndTrue:rejected",
-   "Propositions.Swap:rejected", "Propositions.Fst:rejected", "Propositions.FstSwap:rejected",
-   "Propositions.AndL2:rejected", "Propositions.Snd:rejected", "Propositions.Twice:rejected",
-   "Propositions.SplitId:rejected", "Propositions.TwoOwners:rejected", "Propositions.TwoOwnersR:rejected",
-   "Propositions.ThreeOwners:rejected", "Propositions.FromTrue:rejected", "Propositions.FromTrueIs:rejected",
-   "Propositions.Two:rejected", "Propositions.TwoIs:rejected", "Propositions.WriteIf:rejected",
-   "Propositions.WriteIfId:rejected", "Propositions.WriteIfAt:rejected", "Propositions.TwoAt:rejected",
-   "Destructuring.DAnd:rejected", "Destructuring.DAnd3:rejected", "Destructuring.DNested:rejected",
-   "Destructuring.DWild:rejected", "Destructuring.DCallField:rejected", "Destructuring.DTerm:rejected",
-   "Subsingletons.OrComm:rejected", "Subsingletons.OrElim:rejected", "Subsingletons.OrLet:rejected",
-   "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected", "ErasureBySyntax.R8Field:rejected", "DepFields.UseEx:rejected",
-   "Sugar.AndCtor:rejected", "Sugar.PosNotZero:rejected"]
+  [
+   "Recursion.LieOk:rejected",
+   "Recursion.BoomOk:rejected",
+   "ArmLocal.AndL:rejected",
+   "ArmLocal.Leak:rejected",
+   "Propositions.AndTrue:rejected",
+   "Propositions.Swap:rejected",
+   "Propositions.Fst:rejected",
+   "Propositions.FstSwap:rejected",
+   "Propositions.AndL2:rejected",
+   "Propositions.Snd:rejected",
+   "Propositions.Twice:rejected",
+   "Propositions.SplitId:rejected",
+   "Propositions.TwoOwners:rejected",
+   "Propositions.TwoOwnersR:rejected",
+   "Propositions.ThreeOwners:rejected",
+   "Propositions.FromTrue:rejected",
+   "Propositions.FromTrueIs:rejected",
+   "Propositions.Two:rejected",
+   "Propositions.TwoIs:rejected",
+   "Propositions.WriteIf:rejected",
+   "Propositions.WriteIfId:rejected",
+   "Propositions.WriteIfAt:rejected",
+   "Propositions.TwoAt:rejected",
+   "Destructuring.DAnd:rejected",
+   "Destructuring.DAnd3:rejected",
+   "Destructuring.DNested:rejected",
+   "Destructuring.DWild:rejected",
+   "Destructuring.DCallField:rejected",
+   "Destructuring.DTerm:rejected",
+   "Subsingletons.OrComm:rejected",
+   "Subsingletons.OrElim:rejected",
+   "Subsingletons.OrLet:rejected",
+   "Subsingletons.SqTrue:rejected",
+   "Subsingletons.SqSplit:rejected",
+   "Subsingletons.EffLOk:rejected",
+   "Subsingletons.EffLNoopOk:rejected",
+   "Subsingletons.EffInlineOk:rejected",
+   "Subsingletons.IsLOk:rejected",
+   "Subsingletons.IrrOk:rejected",
+   "Subsingletons.BoomOk:rejected",
+   "Subsingletons.OrLieOk:rejected",
+   "Subsingletons.GetOk:rejected",
+   "Subsingletons.SqIrrOk:rejected",
+   "Subsingletons.SqBoomOk:rejected",
+   "Erasure.BoomP2Ok:rejected",
+   "ErasureBySyntax.R8Field:rejected",
+   "DepFields.UseEx:rejected",
+   "Sugar.AndCtor:rejected",
+   "Sugar.PosNotZero:rejected"]
 -- v2.0 D45 subsingleton elimination, switched off: large elimination from Or and Sq is accepted (IsL, Get have no
 -- model; OrLie is Eq Bool tt ff in the model), but no closed False: D42 erases the constructor it would inspect
 open Ochr.Registry in
@@ -189,22 +323,71 @@ open Ochr.Registry in
 -- `Words`' facts likewise)
 open Ochr.Registry in
 #guard rowOk { propValues := false }
-  ["Nats.AddMZero:rejected", "Nats.AddMS:rejected", "Nats.AddS:rejected", "Words.LeRefl:rejected", "Words.LeStep:rejected", "Words.LeTrans:rejected",
-   "Words.LeOfLt:rejected", "Words.LeAddL:rejected", "Words.AddRS:rejected", "Words.AddZeroR:rejected",
-   "Words.AddOneR:rejected", "Words.SubPos:rejected", "Words.SubOneLe:rejected",
-   "Words.LeAntisym:rejected", "Words.SubPosLt:rejected", "Words.EqBRefl:rejected",
-   "Words.LeNext:rejected", "Words.ModLt:rejected",
-   "ReturnedBorrows.AddMEq:rejected", "ReturnedBorrows.AddMEqOwned:rejected",
-   "ReturnedBorrows.AddM1:rejected", "ReturnedBorrows.TailNoop:rejected", "ClosingOff.RowIInd:rejected",
-   "Equality.AddMZeroLet:rejected", "Recursion.AddZeroCopy:rejected", "Recursion.AddZeroC:rejected",
-   "ArmLocal.Leak:rejected", "ArmLocalBoom.EmptyEq:rejected", "Functions.TwiceMZero:rejected",
-   "NatLists.AppendMNil:rejected", "NatLists.AppendMEq:rejected", "Trees.InsertMEq:rejected",
-   "PolyLists.AppendMNil:rejected", "PolyLists.AppendNil:rejected", "PolyLists.AppendNilL:rejected",
-   "PolyLists.Closed:rejected", "Subsingletons.OrComm:rejected", "Subsingletons.SqTrue:rejected",
-   "Subsingletons.SqSplit:rejected", "CurrentState.LeAdd:rejected", "CurrentState.AddSub:rejected",
-   "CurrentState.AddSubId:rejected", "CurrentState.PostCopy:rejected",
-   "CurrentState.AddSubIdReborrow:rejected", "Erasure.LieP2:rejected", "Erasure.N1T:rejected",
-   "Erasure.Q:rejected", "ErasureBySyntax.R8Field:rejected", "DepFields.UseEx:rejected",
+  [
+   "Nats.AddMZero:rejected",
+   "Nats.AddMS:rejected",
+   "Nats.AddS:rejected",
+   "Words.LeRefl:rejected",
+   "Words.LeStep:rejected",
+   "Words.LeTrans:rejected",
+   "Words.LeOfLt:rejected",
+   "Words.LeAddL:rejected",
+   "Words.AddRS:rejected",
+   "Words.AddZeroR:rejected",
+   "Words.AddOneR:rejected",
+   "Words.SubPos:rejected",
+   "Words.SubOneLe:rejected",
+   "Words.LeAntisym:rejected",
+   "Words.SubPosLt:rejected",
+   "Words.EqBRefl:rejected",
+   "Words.LeNext:rejected",
+   "Words.ModLt:rejected",
+   "ReturnedBorrows.AddMEq:rejected",
+   "ReturnedBorrows.AddMEqOwned:rejected",
+   "ReturnedBorrows.AddM1:rejected",
+   "ReturnedBorrows.TailNoop:rejected",
+   "ClosingOff.RowIInd:rejected",
+   "Equality.AddMZeroLet:rejected",
+   "Recursion.AddZeroCopy:rejected",
+   "Recursion.AddZeroC:rejected",
+   "Recursion.KnotLOk:rejected",
+   "Recursion.KnotLBoomOk:rejected",
+   "Recursion.LoopNoByOk:rejected",
+   "Recursion.LoopNoByBoomOk:rejected",
+   "ArmLocal.Leak:rejected",
+   "ArmLocalBoom.EmptyEq:rejected",
+   "Functions.TwiceMZero:rejected",
+   "NatLists.AppendMNil:rejected",
+   "NatLists.AppendMEq:rejected",
+   "Trees.InsertMEq:rejected",
+   "PolyLists.AppendMNil:rejected",
+   "PolyLists.AppendNil:rejected",
+   "PolyLists.AppendNilL:rejected",
+   "PolyLists.Closed:rejected",
+   "Subsingletons.OrComm:rejected",
+   "Subsingletons.SqTrue:rejected",
+   "Subsingletons.SqSplit:rejected",
+   "Subsingletons.EffLOk:rejected",
+   "Subsingletons.EffLNoopOk:rejected",
+   "Subsingletons.EffInlineOk:rejected",
+   "Subsingletons.IsLOk:rejected",
+   "Subsingletons.IrrOk:rejected",
+   "Subsingletons.BoomOk:rejected",
+   "Subsingletons.OrLieOk:rejected",
+   "Subsingletons.GetOk:rejected",
+   "Subsingletons.SqIrrOk:rejected",
+   "Subsingletons.SqBoomOk:rejected",
+   "CurrentState.LeAdd:rejected",
+   "CurrentState.AddSub:rejected",
+   "CurrentState.AddSubId:rejected",
+   "CurrentState.PostCopy:rejected",
+   "CurrentState.AddSubIdReborrow:rejected",
+   "Erasure.LieP2:rejected",
+   "Erasure.N1T:rejected",
+   "Erasure.N1ClosedOk:rejected",
+   "Erasure.Q:rejected",
+   "ErasureBySyntax.R8Field:rejected",
+   "DepFields.UseEx:rejected",
    "Sugar.PosNotZero:rejected"]
   ["Numbers.AddZero blocked by Nats.AddMZero", "Numbers.AddZero' blocked by Nats.AddMZero",
    "ClosingOff.AddToOneZero blocked by Nats.AddMZero",
@@ -217,23 +400,63 @@ open Ochr.Registry in
 -- both off: the closed proofs of False (Subsingletons.Boom, SqBoom) go through
 open Ochr.Registry in
 #guard rowOk { subsingleton := false, propValues := false }
-  ["Nats.AddMZero:rejected", "Nats.AddMS:rejected", "Nats.AddS:rejected", "Words.LeRefl:rejected", "Words.LeStep:rejected", "Words.LeTrans:rejected",
-   "Words.LeOfLt:rejected", "Words.LeAddL:rejected", "Words.AddRS:rejected", "Words.AddZeroR:rejected",
-   "Words.AddOneR:rejected", "Words.SubPos:rejected", "Words.SubOneLe:rejected",
-   "Words.LeAntisym:rejected", "Words.SubPosLt:rejected", "Words.EqBRefl:rejected",
-   "Words.LeNext:rejected", "Words.ModLt:rejected",
-   "ReturnedBorrows.AddMEq:rejected", "ReturnedBorrows.AddMEqOwned:rejected",
-   "ReturnedBorrows.AddM1:rejected", "ReturnedBorrows.TailNoop:rejected", "ClosingOff.RowIInd:rejected",
-   "Equality.AddMZeroLet:rejected", "Recursion.AddZeroCopy:rejected", "Recursion.AddZeroC:rejected",
-   "ArmLocal.Leak:rejected", "ArmLocalBoom.EmptyEq:rejected", "Functions.TwiceMZero:rejected",
-   "NatLists.AppendMNil:rejected", "NatLists.AppendMEq:rejected", "Trees.InsertMEq:rejected",
-   "PolyLists.AppendMNil:rejected", "PolyLists.AppendNil:rejected", "PolyLists.AppendNilL:rejected",
-   "PolyLists.Closed:rejected", "Subsingletons.IsL:accepted", "Subsingletons.Irr:accepted",
-   "Subsingletons.Boom:accepted", "Subsingletons.Get:accepted", "Subsingletons.SqIrr:accepted",
-   "Subsingletons.SqBoom:accepted", "CurrentState.LeAdd:rejected", "CurrentState.AddSub:rejected",
-   "CurrentState.AddSubId:rejected", "CurrentState.PostCopy:rejected",
-   "CurrentState.AddSubIdReborrow:rejected", "Erasure.LieP2:rejected", "Erasure.N1T:rejected",
-   "Erasure.Q:rejected", "ErasureBySyntax.R8Field:rejected"]
+  [
+   "Nats.AddMZero:rejected",
+   "Nats.AddMS:rejected",
+   "Nats.AddS:rejected",
+   "Words.LeRefl:rejected",
+   "Words.LeStep:rejected",
+   "Words.LeTrans:rejected",
+   "Words.LeOfLt:rejected",
+   "Words.LeAddL:rejected",
+   "Words.AddRS:rejected",
+   "Words.AddZeroR:rejected",
+   "Words.AddOneR:rejected",
+   "Words.SubPos:rejected",
+   "Words.SubOneLe:rejected",
+   "Words.LeAntisym:rejected",
+   "Words.SubPosLt:rejected",
+   "Words.EqBRefl:rejected",
+   "Words.LeNext:rejected",
+   "Words.ModLt:rejected",
+   "ReturnedBorrows.AddMEq:rejected",
+   "ReturnedBorrows.AddMEqOwned:rejected",
+   "ReturnedBorrows.AddM1:rejected",
+   "ReturnedBorrows.TailNoop:rejected",
+   "ClosingOff.RowIInd:rejected",
+   "Equality.AddMZeroLet:rejected",
+   "Recursion.AddZeroCopy:rejected",
+   "Recursion.AddZeroC:rejected",
+   "Recursion.KnotLOk:rejected",
+   "Recursion.KnotLBoomOk:rejected",
+   "Recursion.LoopNoByOk:rejected",
+   "Recursion.LoopNoByBoomOk:rejected",
+   "ArmLocal.Leak:rejected",
+   "ArmLocalBoom.EmptyEq:rejected",
+   "Functions.TwiceMZero:rejected",
+   "NatLists.AppendMNil:rejected",
+   "NatLists.AppendMEq:rejected",
+   "Trees.InsertMEq:rejected",
+   "PolyLists.AppendMNil:rejected",
+   "PolyLists.AppendNil:rejected",
+   "PolyLists.AppendNilL:rejected",
+   "PolyLists.Closed:rejected",
+   "Subsingletons.IsL:accepted",
+   "Subsingletons.Irr:accepted",
+   "Subsingletons.Boom:accepted",
+   "Subsingletons.Get:accepted",
+   "Subsingletons.SqIrr:accepted",
+   "Subsingletons.SqBoom:accepted",
+   "CurrentState.LeAdd:rejected",
+   "CurrentState.AddSub:rejected",
+   "CurrentState.AddSubId:rejected",
+   "CurrentState.PostCopy:rejected",
+   "CurrentState.AddSubIdReborrow:rejected",
+   "Erasure.LieP2:rejected",
+   "Erasure.N1T:rejected",
+   "Erasure.N1ClosedOk:rejected",
+   "Erasure.Q:rejected",
+   "ErasureBySyntax.R8Field:rejected"]
   ["Numbers.AddZero blocked by Nats.AddMZero", "Numbers.AddZero' blocked by Nats.AddMZero",
    "ClosingOff.AddToOneZero blocked by Nats.AddMZero",
    "ClosingOff.AddToOneZero' blocked by Nats.AddMZero",
@@ -245,20 +468,48 @@ open Ochr.Registry in
 -- v2.0 D47 switched off: Eq Nat Z (S Z) is irreducible again, so False and Eq Nat 0 1 part ways
 open Ochr.Registry in
 #guard rowOk { disjoint := false }
-  ["Words.LtNe:rejected", "Words.LeNext:rejected", "Words.ModLt:rejected", "ReturnedBorrows.L:rejected", "ReturnedBorrows.Inj:rejected", "ReturnedBorrows.PF:rejected",
-   "Equality.NotAdd01:rejected", "Equality.WriteNeq:rejected", "Equality.WriteDisj:rejected",
-   "Equality.NoConf:rejected", "Equality.NoConfS:rejected", "Equality.NoConfMatch:rejected",
-   "Equality.NoConfBack:rejected", "Equality.BoolDisj:rejected", "RenormPi.Plain:rejected",
-   "RenormPi.InPi:rejected", "RenormPi.InConj:rejected", "Splitting.PickTwo:rejected",
-   "ArmRecords.L2:rejected", "DepFields.Absurd:rejected", "Sugar.NoZeroSucc:rejected",
+  [
+   "Words.LtNe:rejected",
+   "Words.LeNext:rejected",
+   "Words.ModLt:rejected",
+   "ReturnedBorrows.L:rejected",
+   "ReturnedBorrows.Inj:rejected",
+   "ReturnedBorrows.PF:rejected",
+   "ReturnedBorrows.QFOk:rejected",
+   "Equality.NotAdd01:rejected",
+   "Equality.WriteNeq:rejected",
+   "Equality.WriteDisj:rejected",
+   "Equality.NoConf:rejected",
+   "Equality.NoConfS:rejected",
+   "Equality.NoConfMatch:rejected",
+   "Equality.NoConfBack:rejected",
+   "Equality.BoolDisj:rejected",
+   "RenormPi.Plain:rejected",
+   "RenormPi.InPi:rejected",
+   "RenormPi.InConj:rejected",
+   "Splitting.PickTwo:rejected",
+   "ArmRecords.L2:rejected",
+   "DepFields.Absurd:rejected",
+   "Sugar.NoZeroSucc:rejected",
    "Sugar.FromNoZeroSucc:rejected"]
 -- v2.1 D52 switched off: equal constructors are not taken apart in Eq, so programs that
 -- need an equation between successors or pairs taken apart are rejected (completeness)
 open Ochr.Registry in
 #guard rowOk { injective := false }
-  ["Words.AddRS:rejected", "Words.AddZeroR:rejected", "Words.AddOneR:rejected", "Words.LtNe:rejected",
-   "Words.LeAntisym:rejected", "Equality.Inj:rejected", "Equality.PairInj:rejected", "Recursion.AddZeroCopy:rejected",
-   "Recursion.InjStep:rejected", "ArmRecords.L2:rejected", "CurrentState.AddSubIdReborrow:rejected", "DepFields.InjSame:rejected"]
+  [
+   "Words.AddRS:rejected",
+   "Words.AddZeroR:rejected",
+   "Words.AddOneR:rejected",
+   "Words.LtNe:rejected",
+   "Words.LeAntisym:rejected",
+   "Equality.Inj:rejected",
+   "Equality.PairInj:rejected",
+   "Recursion.AddZeroCopy:rejected",
+   "Recursion.InjStep:rejected",
+   "ArmRecords.L2:rejected",
+   "CurrentState.AddSubIdReborrow:rejected",
+   "DepFields.InjSame:rejected",
+   "DepFields.InjLenOk:rejected"]
 -- finding (v2.0 round): v1.9 assumed a data match's scrutinee type from its arms; since D63
 -- a Nat match reads the stored type too (rule-audit item 2, fuzz-port's M2)
 open Ochr.Registry in
@@ -279,13 +530,32 @@ open Ochr.Registry in
 -- are not borrowed, so the function borrows and the generic swap and bucket are rejected
 open Ochr.Registry in
 #guard rowOk { borrowUniverse := false }
-  ["BorrowTypes.RefFun:rejected", "BorrowTypes.SwapT:rejected", "BorrowTypes.BorrowVar:rejected",
-   "BorrowTypes.BorrowFn:rejected", "BorrowTypes.BlockBorrowStuck:rejected", "FnBorrows.SetSucc:rejected",
-   "FnBorrows.SetAdder:rejected", "FnBorrows.CallThrough:rejected", "FnBorrows.RunSucc:rejected",
-   "FnBorrows.RunAdder:rejected", "FnBorrows.RunAdderGen:rejected", "FnBorrows.SetIf:rejected",
-   "FnBorrows.UseSetIf:rejected", "FnBorrows.UseSetIf0:rejected", "FnBorrows.UseSetIfS:rejected",
-   "FnBorrows.Swap:rejected", "FnBorrows.SwapNats:rejected", "FnBorrows.SwapFns:rejected",
-   "FnBorrows.GGetMut:rejected", "FnBorrows.RunGGetMut:rejected", "FnBorrows.RefProofFn:rejected",
+  [
+   "BorrowTypes.RefFun:rejected",
+   "BorrowTypes.SwapT:rejected",
+   "BorrowTypes.BorrowVar:rejected",
+   "BorrowTypes.BorrowFn:rejected",
+   "BorrowTypes.BlockBorrowStuck:rejected",
+   "BorrowTypes.BorrowStuckOk:rejected",
+   "FnBorrows.SetSucc:rejected",
+   "FnBorrows.SetAdder:rejected",
+   "FnBorrows.CallThrough:rejected",
+   "FnBorrows.RunSucc:rejected",
+   "FnBorrows.RunAdder:rejected",
+   "FnBorrows.RunAdderGen:rejected",
+   "FnBorrows.SetIf:rejected",
+   "FnBorrows.UseSetIf:rejected",
+   "FnBorrows.UseSetIf0:rejected",
+   "FnBorrows.UseSetIfS:rejected",
+   "FnBorrows.Swap:rejected",
+   "FnBorrows.SwapNats:rejected",
+   "FnBorrows.SwapFns:rejected",
+   "FnBorrows.GGetMut:rejected",
+   "FnBorrows.RunGGetMut:rejected",
+   "FnBorrows.SwapPropsOk:rejected",
+   "FnBorrows.SwapT1Ok:rejected",
+   "FnBorrows.RefPropFnOk:rejected",
+   "FnBorrows.RefProofFn:rejected",
    "FnBorrows.RefRetFn:rejected"]
 -- D66's `Prop : Type₁` switched off (`Prop : Type₀`, as before): code generic over `V : Type`
 -- can be applied to `Prop` and borrow propositions, which have no runtime representation
@@ -293,13 +563,32 @@ open Ochr.Registry in
 -- return `Prop` at a declared `Type₁` are rejected
 open Ochr.Registry in
 #guard rowOk { propUp := false }
-  ["Fixtures.U:rejected", "Fixtures.V:rejected", "Functions.Pow:rejected", "Functions.P1:rejected",
-   "Functions.UseP:rejected", "Functions.P3:rejected", "Functions.P0:rejected", "Functions.H:rejected",
-   "Functions.RefPred:rejected", "Functions.RunPow:rejected", "Functions.RunPowGen:rejected",
-   "Universes.PropInType1:rejected", "Universes.PropInType:accepted", "Sorts.P:rejected", "Sorts.T:rejected",
-   "BorrowTypes.PIref:accepted", "BorrowTypes.RefBoxProp:accepted", "BorrowTypes.BorrowProp:accepted",
-   "BorrowTypes.TP:rejected", "BorrowTypes.TPType:accepted", "FnBorrows.SwapProps:accepted",
-   "FnBorrows.IdAtProp:accepted", "FnBorrows.IdAtProp1:rejected", "FnBorrows.RefPropFn:accepted",
+  [
+   "Fixtures.U:rejected",
+   "Fixtures.V:rejected",
+   "Functions.Pow:rejected",
+   "Functions.P1:rejected",
+   "Functions.UseP:rejected",
+   "Functions.P3:rejected",
+   "Functions.P0:rejected",
+   "Functions.H:rejected",
+   "Functions.RefPred:rejected",
+   "Functions.RunPow:rejected",
+   "Functions.RunPowGen:rejected",
+   "Functions.BoomPowOk:rejected",
+   "Universes.PropInType1:rejected",
+   "Universes.PropInType:accepted",
+   "Sorts.P:rejected",
+   "Sorts.T:rejected",
+   "BorrowTypes.PIref:accepted",
+   "BorrowTypes.RefBoxProp:accepted",
+   "BorrowTypes.BorrowProp:accepted",
+   "BorrowTypes.TP:rejected",
+   "BorrowTypes.TPType:accepted",
+   "FnBorrows.SwapProps:accepted",
+   "FnBorrows.IdAtProp:accepted",
+   "FnBorrows.IdAtProp1:rejected",
+   "FnBorrows.RefPropFn:accepted",
    "FnBorrows.BoxPropFn:accepted"]
   -- blocked: the erasure examples that use `Fixtures.U`, which is declared in `Type₁`
   ["ErasureBySyntax.W blocked by Fixtures.U", "ErasureBySyntax.Lie blocked by Fixtures.U",
@@ -327,7 +616,11 @@ open Ochr.Registry in
 -- D50 switched off (normalising unit laws, as v2.0 was first built): True ∧ P loses its And
 open Ochr.Registry in
 #guard rowOk { unitNorm := true }
-  ["Propositions.AndTrue:rejected"]
+  [
+   "Recursion.LieOk:rejected",
+   "Recursion.BoomOk:rejected",
+   "Propositions.AndTrue:rejected",
+   "Erasure.BoomP2Ok:rejected"]
 -- v2.1 D54 switched off: a function type's class is not part of it, so `H`, which returns
 -- data, passes where a function returning types is expected. Before the erasure pre-pass,
 -- `Boom` and `BoomI` were closed proofs of False (reviewer-5); with it, `g(&c)` is erased by
@@ -370,12 +663,26 @@ open Ochr.Registry in
 -- function cannot be called twice
 open Ochr.Registry in
 #guard rowOk { fnRule := false }
-  ["Moves.CallTwice:rejected", "Moves.ClosureClones:rejected", "Equality.Om:rejected",
-   "Snapshots.CapAssign:rejected", "Snapshots.CapAssignRun:rejected", "Functions.Twice:rejected",
-   "Functions.TwiceNoop:rejected", "Functions.TwiceM:rejected", "Functions.TwiceMMove:rejected",
-   "Functions.TwiceMZero:rejected", "Functions.TwiceMZero':rejected", "Trees.Size:rejected",
-   "Trees.SizeInsert:rejected", "InPlaceTrees.Size:rejected", "InPlaceTrees.SizeInsert:rejected",
-   "InPlaceTrees.SizeInsertRw:rejected", "FnBorrows.CallThrough:rejected", "FnBorrows.RunSucc:rejected",
+  [
+   "Moves.CallTwice:rejected",
+   "Moves.ClosureClones:rejected",
+   "Moves.ClosureCopyOk:rejected",
+   "Equality.Om:rejected",
+   "Snapshots.CapAssign:rejected",
+   "Snapshots.CapAssignRun:rejected",
+   "Functions.Twice:rejected",
+   "Functions.TwiceNoop:rejected",
+   "Functions.TwiceM:rejected",
+   "Functions.TwiceMMove:rejected",
+   "Functions.TwiceMZero:rejected",
+   "Functions.TwiceMZero':rejected",
+   "Trees.Size:rejected",
+   "Trees.SizeInsert:rejected",
+   "InPlaceTrees.Size:rejected",
+   "InPlaceTrees.SizeInsert:rejected",
+   "InPlaceTrees.SizeInsertRw:rejected",
+   "FnBorrows.CallThrough:rejected",
+   "FnBorrows.RunSucc:rejected",
    "FnBorrows.RefRetFn:rejected"]
 -- D59 (refined) switched off: values are not η-normal at `Unit`. A call written to return
 -- `Unit` returns `()` (the old row), one that only computes to `Unit` its sealed program, and
@@ -430,12 +737,54 @@ open Ochr.Registry in
 -- K4 switched off: a field type may not call a type function, so no dependent field can be written
 open Ochr.Registry in
 #guard rowOk { k4 := false }
-  ["DepFields.V:rejected", "DepFields.VN:rejected", "DepFields.One1:rejected", "DepFields.Refill:rejected",
-   "DepFields.RefillRev:rejected", "DepFields.Nop:rejected", "DepFields.Absurd:rejected",
-   "DepFields.InjSame:rejected", "DepFields.InjLenCong:rejected", "DepFields.Pos:rejected",
-   "DepFields.Grow:rejected", "DepFields.RefillLent:rejected", "DepFields.Cell:rejected",
-   "DepFields.CellGet:rejected", "DepFields.CellGetRun:rejected", "DepFields.ExSucc:rejected",
-   "DepFields.ExOne:rejected", "DepFields.UseEx:rejected", "DepFields.NBox:rejected", "Sugar.Pos:rejected",
+  [
+   "DepFields.V:rejected",
+   "DepFields.VN:rejected",
+   "DepFields.One1:rejected",
+   "DepFields.Refill:rejected",
+   "DepFields.RefillRev:rejected",
+   "DepFields.Nop:rejected",
+   "DepFields.LieVOk:rejected",
+   "DepFields.ReadBrokenOk:rejected",
+   "DepFields.PassBrokenOk:rejected",
+   "DepFields.PassBrokenVarOk:rejected",
+   "DepFields.IdBrokenOk:rejected",
+   "DepFields.IdMakesBrokenOk:rejected",
+   "DepFields.Absurd:rejected",
+   "DepFields.BrokenOk:rejected",
+   "DepFields.BoomOk:rejected",
+   "DepFields.LieZOk:rejected",
+   "DepFields.LieZRevOk:rejected",
+   "DepFields.LieParamOk:rejected",
+   "DepFields.LieBorrowOk:rejected",
+   "DepFields.BoomZOk:rejected",
+   "DepFields.BoomZRevOk:rejected",
+   "DepFields.BoomParamOk:rejected",
+   "DepFields.BoomBorrowOk:rejected",
+   "DepFields.InjSame:rejected",
+   "DepFields.InjLenOk:rejected",
+   "DepFields.InjLenCong:rejected",
+   "DepFields.Pos:rejected",
+   "DepFields.Grow:rejected",
+   "DepFields.LieLentOk:rejected",
+   "DepFields.BoomLentOk:rejected",
+   "DepFields.RefillLentLiveOk:rejected",
+   "DepFields.RefillLent:rejected",
+   "DepFields.Cell:rejected",
+   "DepFields.CellGet:rejected",
+   "DepFields.CellGetRun:rejected",
+   "DepFields.GetLentOk:rejected",
+   "DepFields.BoomGetLentOk:rejected",
+   "DepFields.ExSucc:rejected",
+   "DepFields.ExOne:rejected",
+   "DepFields.UseEx:rejected",
+   "DepFields.NBox:rejected",
+   "DepFields.BadOk:rejected",
+   "DepFields.LOk:rejected",
+   "DepFields.KOk:rejected",
+   "DepFields.Boom2Ok:rejected",
+   "DepFields.NegBoxOk:rejected",
+   "Sugar.Pos:rejected",
    "Sugar.PosNotZero:rejected"]
 -- K4's nesting condition switched off: `Bad` nests itself in `NBox`, which passes its parameter to
 -- `NegIf`, a function type at 1, and the D36 attack goes through (`Boom2 : False`)
@@ -474,12 +823,26 @@ open Ochr.Registry in
 -- reads it back no longer matches the other side's view
 open Ochr.Registry in
 #guard rowOk { eqSidesApart := false }
-  ["Equality.IdIsConjSealed:rejected", "Equality.IdIsConj:rejected", "Equality.IdIsEq:rejected",
-   "Equality.EqIsId:rejected", "Equality.EffInSide:rejected", "Equality.AddMInSide:rejected",
-   "Equality.SideOld:rejected", "Equality.SideShared:accepted", "Rewriting.RwSealed:rejected",
-   "Snapshots.CapOf:rejected", "Snapshots.UseCapOf:rejected", "Recursion.SuccGoal:rejected",
-   "Recursion.InjStep:rejected", "Recursion.CallSite:rejected", "Splitting.DoubleVal:rejected",
-   "Propositions.WriteIfAt:rejected", "Destructuring.DCallField:rejected"]
+  [
+   "Equality.IdIsConjSealed:rejected",
+   "Equality.IdIsConj:rejected",
+   "Equality.IdIsEq:rejected",
+   "Equality.EqIsId:rejected",
+   "Equality.EffInSide:rejected",
+   "Equality.AddMInSide:rejected",
+   "Equality.SideOld:rejected",
+   "Equality.SideShared:accepted",
+   "Rewriting.RwSealed:rejected",
+   "Owners.GROk:rejected",
+   "Owners.BadROk:rejected",
+   "Snapshots.CapOf:rejected",
+   "Snapshots.UseCapOf:rejected",
+   "Recursion.SuccGoal:rejected",
+   "Recursion.InjStep:rejected",
+   "Recursion.CallSite:rejected",
+   "Splitting.DoubleVal:rejected",
+   "Propositions.WriteIfAt:rejected",
+   "Destructuring.DCallField:rejected"]
 -- D68 (a) switched off: a function value whose captures are copies is copied, so `ClosureCopy`
 -- calls one closure through two names; whether a read of an unknown function moves then
 -- depends on the function it turns out to be
