@@ -261,8 +261,12 @@ the inductive `n` (with `np` parameters and, in this constructor, `k` fields) is
 data, read off its term: `Nat`, `Unit`, a parameter, a declared inductive type (the one being
 declared among them) applied to first-order types, or (K4) a call of an earlier type function
 (its declared codomain is a sort) whose arguments are parameters, fields (data: D64's earlier
-fields), numerals or first-order types, none mentioning `n`. No `Π`, no `&`, no sort, no
-`Eq`: strict positivity in its simplest form. A parameter is instantiated only at first-order
+fields), numerals or first-order types, none mentioning `n`; or (D71, Fording) an equation
+`Eq(T, a, b)` with `T` first-order data and no part of it mentioning `n`, which is a proof
+field. An argument of an inductive at a value parameter is any erased term over the
+parameters and earlier fields not mentioning `n`, so a recursive occurrence may take other
+arguments than the declared parameters (`VecF(A, m)` inside `VecF(A, n)`). No `Π`, no `&`,
+no sort: strict positivity in its simplest form. A parameter is instantiated only at first-order
 types in a field, so a negative occurrence cannot hide behind one (`Box(Π(x : Bad). Void)` is
 rejected); and a type being declared may be nested only at a parameter the inner inductive
 does not pass to a type function (K4's nesting condition: `NBox(A) := MkNBox(f : Neg(A))`,
@@ -278,6 +282,10 @@ def firstOrderTerm (n : String) (np k : Nat) : Term → M Bool
     let .tPi _ (.pi _ _ cod) := g.ty | return false
     unless cod matches .sort _ do return false
     firstOrderCallArgs n np k as
+  -- D71: an equation field (a proof), over first-order data, none of whose parts mentions `n`
+  | .eq A a b => do
+    if A.mentionsType n || a.mentionsType n || b.mentionsType n then return false
+    firstOrderTerm n np k A
   | _ => pure false
 termination_by structural t => t
 
@@ -287,6 +295,9 @@ def firstOrderArgs (n : String) (np k : Nat) (m : String) (dm : IndDecl) (i : Na
   | [] => pure true
   | a :: as => do
     let ok ← (do
+      -- D71: at a value parameter, any erased term not mentioning `n` (a non-uniform occurrence
+      -- of `n` itself may take an earlier field here)
+      if !dm.paramIsType i then return !a.mentionsType n
       unless ← firstOrderTerm n np k a do return false
       -- K4's nesting condition
       if m != n && a.mentionsType n then paramNestable dm i else pure true
@@ -359,8 +370,9 @@ def checkInd (d : IndDecl) : M Unit := do
       -- D36, K4
       if !(← firstOrderTerm n np fields.length FT) then
         err s!"field {fname} of {cn} : {FT.pp names}: fields are first-order data (inductive types, Nat, Unit, ×, earlier type functions) or parameters, D36"
-      -- K4: a type function's result is first-order data too (at the generic telescope)
-      if (FT matches .call ..) && (T matches .tPi .. | .sort _ | .tEq .. | .tRef _) then
+      -- K4: a type function's result is first-order data too (at the generic telescope); D71: or
+      -- an equation, which makes the field a proof field like a written `Eq`
+      if (FT matches .call ..) && (T matches .tPi .. | .sort _ | .tRef _) then
         err s!"field {fname} of {cn} : {FT.pp names} computes to {T}, which is not first-order data, D36"
       -- D53: a type declared `copy` has copy fields (the type itself counts as one)
       let isSelf := match T with | .tInd m _ => m == n | _ => false

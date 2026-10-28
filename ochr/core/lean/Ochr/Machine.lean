@@ -226,6 +226,8 @@ def fieldTermIsProp (d : IndDecl) (FT : Term) : M Bool := do
   match FT with
   | .place (.var j) => pure (j < d.params.length && isPropSort (d.params[d.params.length - 1 - j]!).2)
   | .tind m _ => pure ((← lookupInd m).sort == 0)
+  -- D71: an equation field is a proof field
+  | .eq _ _ _ => pure true
   -- K4: a call of a function declared to return `Prop` (a proof field, `h : Sorted(xs)`)
   | .call (.const f) _ _ => match (← get).globals.find? (·.name == f) with
     | some g => pure (g.ty matches .tPi _ (.pi _ _ (.sort 0)))
@@ -1510,10 +1512,15 @@ def declOf (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (t 
   | .prim _ as => for a in as do sub a
                   pure .other
   | .tind n as => do
-    for a in as do discard (typePos fuel' chk sc ns a)
-    pure (.sort (← lookupInd n).sort)
+    -- D71: an argument at a value parameter is an erased position, not a type position
+    let d ← lookupInd n
+    for (a, i) in as.zipIdx do
+      if d.paramIsType i then discard (typePos fuel' chk sc ns a) else sub a
+    pure (.sort d.sort)
   | .ctor ty _ _ ps as => do
-    for p in ps do discard (typePos fuel' chk sc ns p)
+    let d ← lookupInd ty
+    for (p, i) in ps.zipIdx do
+      if d.paramIsType i then discard (typePos fuel' chk sc ns p) else sub p
     for a in as do sub a
     pure (if ← ctorIsProof ty then .prop else .other)
 termination_by structural fuel

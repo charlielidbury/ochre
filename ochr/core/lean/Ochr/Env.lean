@@ -93,6 +93,17 @@ structure IndDecl where
                             -- only borrowed (never read, moved, assigned or matched)
 deriving Inhabited
 
+/-- [Ind-decl] (D71, Fording): parameter `i` of `d` is a *type parameter* when its declared
+type is syntactically a sort (`A : Type`, `P : Prop`); any other parameter (`n : Word`,
+`a : A`) is a *value parameter*. In `D(ā)` and `C(ā; t̄)` an argument at a type parameter
+stands in a type position, and one at a value parameter in an erased position, as `Eq`'s
+sides do: it is any term, run on a private copy, whose declared type need not be a sort. -/
+def IndDecl.paramIsType (d : IndDecl) (i : Nat) : Bool :=
+  match d.params[i]? with
+  | some (_, .sort _) => true
+  | some _ => false
+  | none => true
+
 /-- D64: the fields of constructor `c` that the field type term `FT` mentions, as field
 indices (read off the declaration). -/
 def IndDecl.fieldRefs (d : IndDecl) (c : Nat) (FT : Term) : List Nat :=
