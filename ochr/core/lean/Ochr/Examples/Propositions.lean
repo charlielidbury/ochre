@@ -375,14 +375,46 @@ ochr Subsingletons uses Bools, Fixtures {
     }
   )
 
+  -- twin of EffL: the result type is `True`, a proper proposition, instead of the computed type `V(Z)`
+  def EffLOk (x : &Nat) (h : Or(⊤, ⊤)) : True := (
+    match h {
+      Inl(p) => (
+        *x := 1;
+        refl
+      ),
+      Inr(q) => (
+        *x := 2;
+        refl
+      ),
+    }
+  )
+
   -- Rejected since D55, with `EffL`.
   reject def EffLNoop (x : &Nat) (h : Or(⊤, ⊤)) : Id(Unit, let t = EffL(x, h); (), ()) := refl
+  -- twin of EffLNoop: calls `EffLOk` (result type `True`) instead of `EffL`
+  def EffLNoopOk (x : &Nat) (h : Or(⊤, ⊤)) : Id(Unit, let t = EffLOk(x, h); (), ()) := refl
+
   reject def EffLOne (x : &Nat) (h : Or(⊤, ⊤)) : Id(Unit, let t = EffL(x, h); (), *x := 1) := refl
 
   -- Inline, outside tail position, the arms are erased terms, each on its own copy (D68).
   -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
   reject def EffInline (x : &Nat) (h : Or(⊤, ⊤)) : Nat := (
     let t : V(Z) = match h {
+      Inl(p) => (
+        *x := 1;
+        refl
+      ),
+      Inr(q) => (
+        *x := 2;
+        refl
+      ),
+    };
+    0
+  )
+
+  -- twin of EffInline: the binding's type is `True` instead of the computed type `V(Z)`
+  def EffInlineOk (x : &Nat) (h : Or(⊤, ⊤)) : Nat := (
+    let t : True = match h {
       Inl(p) => (
         *x := 1;
         refl
@@ -409,9 +441,23 @@ ochr Subsingletons uses Bools, Fixtures {
     }
   )
 
+  -- twin of IsL: returns a proof (`True`) instead of data (`Bool`), so eliminating `Or` is allowed
+  def IsLOk (h : Or(True, True)) : True := (
+    match h {
+      Inl(p) => refl,
+      Inr(q) => refl,
+    }
+  )
+
   reject def Irr (h : Or(True, True)) (k : Or(True, True)) : Eq(Bool, IsL(h), IsL(k)) := refl
+  -- twin of Irr: compares the proofs `IsLOk(h)`, `IsLOk(k)` at `True` instead of data at `Bool`
+  def IrrOk (h : Or(True, True)) (k : Or(True, True)) : Eq(True, IsLOk(h), IsLOk(k)) := refl
   reject def Boom : False := Irr(Inl(refl), Inr(refl))
+  -- twin of Boom: proves the true `Eq(True, ..)` from `IrrOk` instead of the false `False` from `Irr`
+  def BoomOk : Eq(True, IsLOk(Inl(refl)), IsLOk(Inr(refl))) := IrrOk(Inl(refl), Inr(refl))
   reject def OrLie : Eq(Bool, IsL(Inl(refl)), IsL(Inr(refl))) := refl
+  -- twin of OrLie: the sides are proofs `IsLOk(..)` at `True` instead of data at `Bool`
+  def OrLieOk : Eq(True, IsLOk(Inl(refl)), IsLOk(Inr(refl))) := refl
 
   -- One constructor with a data field is not a subsingleton either: the field is not known.
   reject def Get (h : Sq) : Nat := (
@@ -420,7 +466,18 @@ ochr Subsingletons uses Bools, Fixtures {
     }
   )
 
+  -- twin of Get: the result is a proof that does not mention the field, instead of the field itself
+  def GetOk (h : Sq) : Eq(Nat, 0, 0) := (
+    match h {
+      MkSq(n) => refl,
+    }
+  )
+
   reject def SqIrr (h : Sq) (k : Sq) : Eq(Nat, Get(h), Get(k)) := refl
+  -- twin of SqIrr: compares the proofs `SqTrue(h)`, `SqTrue(k)` at `True` instead of the field extracted by `Get`
+  def SqIrrOk (h : Sq) (k : Sq) : Eq(True, SqTrue(h), SqTrue(k)) := refl
   reject def SqBoom : False := SqIrr(MkSq(0), MkSq(1))
+  -- twin of SqBoom: proves the true `Eq(True, ..)` from `SqIrrOk` instead of `False` from `SqIrr`
+  def SqBoomOk : Eq(True, SqTrue(MkSq(0)), SqTrue(MkSq(1))) := SqIrrOk(MkSq(0), MkSq(1))
 }
 
