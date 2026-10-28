@@ -125,7 +125,7 @@ ochr Functions uses Nats, Boxes, Fixtures {
   )
 
   -- ## What goes wrong without these rules
-  -- Compared by their results only (switch `closureConv`), `λx. ()` and `λx. (*x := 1)` would
+  -- Compared by their results only, `λx. ()` and `λx. (*x := 1)` would
   -- be equal, and `J` along that equation would prove `1 = 0` (D30).
   def P (h : Π(x : &Nat). Unit) : Prop := Id(Nat, let c = Z; h(&c); c, Z)
 
@@ -152,7 +152,7 @@ ochr Functions uses Nats, Boxes, Fixtures {
     refl
   )
 
-  -- Observing a returned borrow only through its current contents (switch `obsBorrow`) would
+  -- Observing a returned borrow only through its current contents would
   -- identify `PickX` and `PickY`, since neither writes anything, and transport would prove
   -- `0 = 1 ∧ 1 = 0` (D38).
   reject def ConvPick : Eq(Π(x : &Nat) (y : &Nat). &Nat, PickX, PickY) := refl
@@ -180,7 +180,7 @@ ochr Functions uses Nats, Boxes, Fixtures {
   -- A function's erasure class and [Close] row are part of its type (D54). `H` returns a
   -- `P0`, which is `Prop` but not written as a sort, so `H` returns data and its calls run,
   -- while calls of a `Π(x : &Nat). Prop` return types and are erased. Were the two types
-  -- convertible (switch `classInType`), `RunGGen`'s generic call would erase `g(&c)` and its
+  -- convertible, `RunGGen`'s generic call would erase `g(&c)` and its
   -- instance at `H` would run it, and `Boom` would be a closed proof of `False`, as would
   -- `BoomI` through an identity function.
   def P0 : Type₁ := Prop

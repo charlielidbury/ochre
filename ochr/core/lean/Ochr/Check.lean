@@ -67,7 +67,7 @@ def checkDef (d : Def) : M Unit := do
   if (d.cod :: d.doms).any (Term.mentionsConst d.name) then
     err s!"{d.name} occurs in its own type"
   -- D48 (2): & only at the top of a declared type, never produced by computation
-  if (← get).cfg.refTop && !((d.cod :: d.doms).all Term.refTopOk && d.body.refsOk) then
+  if !((d.cod :: d.doms).all Term.refTopOk && d.body.refsOk) then
     err s!"[D48] {d.name}: & appears only as the whole declared type of a parameter, result or annotated term, never inside a type or produced by computation"
   -- D55: every type position, in the types and in the body
   discard (declOf true [] [] (.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body))
@@ -79,7 +79,7 @@ def checkDef (d : Def) : M Unit := do
     located d.body <| unless (← match T with | some T => conv T goal | none => pure false) do
       err s!"the body of {d.name} has type {T.getD .bot}, but the goal is {goal}"
     repackCheck s!"{d.name} is defined as it" v goal
-    let v ← if (← get).cfg.p5 && (← isPropV goal) then pure .proof else pure v
+    let v ← if (← isPropV goal) then pure .proof else pure v
     modify fun s => { s with env := #[{}], globals := s.globals ++ [{ name := d.name, ty := goal, fn? := none, val := v }] }
   else
     let fixT := Term.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body
@@ -170,9 +170,8 @@ partial def firstOrderTerm (n : String) (np k : Nat) : Term → M Bool
     as.zipIdx.allM fun (a, i) => do
       unless ← firstOrderTerm n np k a do return false
       -- K4's nesting condition
-      if (← get).cfg.k4Nest && m != n && a.mentionsType n then paramNestable dm i else pure true
+      if m != n && a.mentionsType n then paramNestable dm i else pure true
   | .call (.const f) as _ => do
-    if !(← get).cfg.k4 then return false
     let some g := (← get).globals.find? (·.name == f) | return false
     let .tPi _ (.pi _ _ cod) := g.ty | return false
     unless cod matches .sort _ do return false
@@ -229,14 +228,13 @@ def checkInd (d : IndDecl) : M Unit := do
       if T.typeHasRef then err s!"field {fname} of {cn}: no borrows inside data"
       if (← sortOf T) > 1 then err s!"field {fname} of {cn}: its type must be in Prop or Type"
       -- K4's nesting condition
-      if (← get).cfg.positivity && (← get).cfg.k4Nest then
-        if let some (m, a) ← nestViolation n FT then
-          err s!"field {fname} of {cn} : {FT.pp names}: {n} occurs at the parameter {a} of {m}, which {m} passes to a type function (one may use its argument negatively): not strictly positive (K4, D36)"
+      if let some (m, a) ← nestViolation n FT then
+        err s!"field {fname} of {cn} : {FT.pp names}: {n} occurs at the parameter {a} of {m}, which {m} passes to a type function (one may use its argument negatively): not strictly positive (K4, D36)"
       -- D36, K4
-      if (← get).cfg.positivity && !(← firstOrderTerm n np fields.length FT) then
+      if !(← firstOrderTerm n np fields.length FT) then
         err s!"field {fname} of {cn} : {FT.pp names}: fields are first-order data (inductive types, Nat, Unit, ×, earlier type functions) or parameters, D36"
       -- K4: a type function's result is first-order data too (at the generic telescope)
-      if (← get).cfg.positivity && (FT matches .call ..) && (T matches .tPi .. | .sort _ | .tEq .. | .tRef _) then
+      if (FT matches .call ..) && (T matches .tPi .. | .sort _ | .tEq .. | .tRef _) then
         err s!"field {fname} of {cn} : {FT.pp names} computes to {T}, which is not first-order data, D36"
       -- D53: a type declared `copy` has copy fields (the type itself counts as one)
       let isSelf := match T with | .tInd m _ => m == n | _ => false

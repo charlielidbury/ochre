@@ -113,14 +113,9 @@ where shrinkCase' (c : Case) : List Case :=
         ++ (shrinkT g).map (fun g' => { c with conv := some (T, f, g') })
     | none => [])
 
-/-- Does the case still show a finding of this kind (and, with a baseline, is it absent
-under the baseline rules)? -/
+/-- Does the case still show a finding of this kind? -/
 def stillFails (o : Opts) (r : Rng) (key : String) (c : Case) : Option Finding :=
-  match (checkCase o c r).findings.find? (·.key == key) with
-  | none => none
-  | some f => match o.base with
-    | some b => if ((checkCase { o with cfg := b, base := none } c r).findings.any (·.key == key)) then none else some f
-    | none => some f
+  (checkCase o c r).findings.find? (·.key == key)
 
 /-- Shrink greedily; returns the smallest failing case found and its finding. -/
 partial def shrink (o : Opts) (r : Rng) (k : String) (c : Case) (f : Finding) (budget : Nat := 4000) :

@@ -3,9 +3,8 @@ import Ochr.Fuzz.Shrink
 /-!
 # Fuzzer: making case `i` of a run
 
-Phase 1 draws the templates and random functions; the library is then checked (always
-under the default rules, so a seed gives the same case whatever rule switch is being
-tested); phase 2 draws the statement over the accepted functions only.
+Phase 1 draws the templates and random functions; the library is then checked; phase 2
+draws the statement over the accepted functions only.
 -/
 
 namespace Ochr.Fuzz
@@ -422,7 +421,7 @@ def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 
   let ((lib, extras), g1) := phase1.run { rng := caseRng seed i }
   let ok := acceptedNames {} fuel ((Block.decls Prelude).map SDecl.strip ++ lib.filterMap libDecl ++ extras.map (·.1))
   let extras := extras.filter fun (d, _) => ok.contains d.name
-  -- attack templates are offered even when the default rules reject them (live with a switch off)
+  -- attack templates are offered even though the rules reject them
   let fns := libFns.filter (fun f => ok.contains f.name || (f.attack && lib.contains f.name)) ++ extras.map (·.2)
   let ((ps, A, lhs, rhs), g2) := (genStmt fns (indsOf lib)).run g1
   -- a quarter of the cases also carry a conversion pair

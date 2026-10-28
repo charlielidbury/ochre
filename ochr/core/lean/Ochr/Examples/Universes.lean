@@ -18,7 +18,7 @@ ochr Universes {
   def PropInType1 : Type₁ := Prop
   def TypeInType1 : Type₁ := Type
 
-  -- ... but neither is a `Type`: `Prop` is not in `Type` (D66; switch `propUp`) ...
+  -- ... but neither is a `Type`: `Prop` is not in `Type` (D66) ...
   reject def PropInType : Type := Prop
   reject def TypeInType : Type := Type
 
@@ -30,7 +30,7 @@ ochr Universes {
   -- of `Type` and is itself in `Type`, and `SelfApp` applies the polymorphic identity to
   -- itself. An impredicative `Type` with the impredicative `Prop` beside it admits Hurkens'
   -- paradox, a proof of `False`, and has no set-theoretic model. So only what is in `Type`
-  -- may be borrowed, and `Type` itself is in `Type₁` (switch `refData`; see `BorrowTypes`).
+  -- may be borrowed, and `Type` itself is in `Type₁` (see `BorrowTypes`).
   reject def Impred : Type := Π(x : &Type) (a : *x). *x
   -- twin of Impred: the borrow is of a `Nat`, which is in `Type`, not of `Type` itself, so the dependent `*x` becomes `Nat`
   def ImpredOk : Type := Π(x : &Nat) (a : Nat). Nat
@@ -71,7 +71,7 @@ type. Before D55 Ochr had two notions of "proposition", the declared sort (erasu
 computed one (conversion), and moving values between them gave closed proofs of `False`
 (reviewer-4 W1: `Boom`, `Boom2`, `Boom4`) and a proposition with two distinguishable proofs
 (W2: `TT`, `K1`, `K2`). The programs are reviewer-4's, verbatim except that `P` is declared in `Type₁`, where `Prop` lives since D66; with D55 each falls where
-`T(Z)` is written as a type (switch `sortsSyntactic`; D54 alone already rejects `Boom`,
+`T(Z)` is written as a type (D54 alone already rejects `Boom`,
 `Boom2`, `RunIs` and `Lie4` at their arguments).
 
 Defined in RULES P2 ("Sorts are syntactic"). -/

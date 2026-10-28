@@ -26,8 +26,7 @@ A field type may call an earlier type function (`Array(E, n)`, K4), provided the
 declared does not occur in its arguments, and is not nested at a parameter that an inductive
 passes to a type function (a type function may use its argument negatively).
 
-The first block is self-contained and is in the counterfactual ledger; `DepVec`, over the
-arrays library, is a case study. -/
+The first block is self-contained; `DepVec`, over the arrays library, is a case study. -/
 
 open Ochr.Test
 

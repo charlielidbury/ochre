@@ -82,10 +82,9 @@ ochr NatLists {
 /-! ## Binary search trees
 
 In `InsertM` a comparison decides which subtree is changed. The comparison `Lt(k, v)` is a
-sealed program, so a match on it first replaces it by a fresh value (switch `generalize`).
+sealed program, so a match on it first replaces it by a fresh value.
 That the in-place insert is the pure insert is then bare recursion, provided the
-replacement also reaches the copies of the comparison that the goal computes later (D34,
-switch `genConsistent`). The size theorem needs one arithmetic lemma, proved in place. -/
+replacement also reaches the copies of the comparison that the goal computes later (D34). The size theorem needs one arithmetic lemma, proved in place. -/
 
 ochr Trees uses Bools, Nats, WordType {
   inductive Tree := Leaf | Node(l : Tree, v : Word, r : Tree)
@@ -441,8 +440,7 @@ ochr PolyLists uses Lists {
 
 A field of function type can mention the type being declared negatively. Then `L(b)`
 applies `b`'s own field to `b`, which never terminates, but `K` is typed by [Call-type]
-alone and proofs are not run, so `Boom` is a closed proof of `False` (D36, switch
-`positivity`). Fields of first-order data are fine. `Empty` is in `Fixtures`. -/
+alone and proofs are not run, so `Boom` is a closed proof of `False` (D36). Fields of first-order data are fine. `Empty` is in `Fixtures`. -/
 
 ochr Positivity uses Fixtures {
   -- `Empty`'s own eliminator, by recursion (the attack is about `Empty`, not `Logic`'s `Void`).

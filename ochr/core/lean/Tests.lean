@@ -1,7 +1,7 @@
 import Ochr.Examples.Registry
 
 /-! `lake exe tests`: every example program's verdict table with per-declaration
-check times, then the counterfactual ledger. Exits 1 if any verdict is not the
+check times. Exits 1 if any verdict is not the
 expected one (the build already asserts all of this; the runner prints it). -/
 
 open Ochr Ochr.Test Ochr.Surface Ochr.Registry
@@ -73,11 +73,4 @@ def main : IO UInt32 := do
   IO.println s!"verdicts as expected: {passed}/{total} (expected total {expectedTotal}); total check time {fmtUs totalUs}"
   IO.println ""
   IO.println "reasons: see the tables printed by `lake build`, or (run name program).show"
-  IO.println ""
-  IO.println "counterfactual ledger (one rule switched off → verdicts that flip):"
-  for ((n, c), (k, ws)) in switches.zip rowClass do
-    let (fs, bl) := flipsDetail c
-    let wit := if ws.isEmpty then "" else s!" (witness: {", ".intercalate ws})"
-    let blk := if bl.isEmpty then "" else s!"; {", ".intercalate bl}"
-    IO.println s!"  [{k}{wit}] {n}: {if fs.isEmpty then "nothing" else ", ".intercalate fs}{blk}"
   return if passed == total && total == expectedTotal then 0 else 1

@@ -115,8 +115,8 @@ structure LibFn where
   ret : GTy
   famArg : Option Nat := none
   deps : List String := []
-  attack : Bool := false   -- offered to the generator even when the default rules reject it
-                           -- (a reviewer's attack shape, live only with a rule switched off)
+  attack : Bool := false   -- offered to the generator even though the rules reject it
+                           -- (a reviewer's attack shape)
   wrapper : Bool := false  -- an identity on functions (`IdFP(f)(&c)`: D54's wrapper variant)
 deriving Inhabited
 

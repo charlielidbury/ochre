@@ -52,9 +52,8 @@ def envD18 : Env := #[{ binds := #[{ hint := ⟨"a"⟩, ty := some .tNat, val :=
                                   { hint := ⟨"b"⟩, ty := some .tNat, val := .sealed (.val (.loan 5)) },
                                   { hint := ⟨"r"⟩, ty := some (.tRef .tNat), val := .borrow 5 .zero }] }]
 #guard owners envD18 5 == [.bind 0 0, .bind 0 1]
--- W(*r := 0, *r := 1) observes both owners; the single-owner reading keeps one
+-- W(*r := 0, *r := 1) observes both owners
 #guard footprint envD18 [.assign (.deref (.var 0)) .zero, .assign (.deref (.var 0)) (.succ .zero)] == [.bind 0 0, .bind 0 1]
-#guard footprint envD18 [.assign (.deref (.var 0)) .zero] false == [.bind 0 0]
 -- an occurrence inside another borrow's content contributes that borrow's owners
 def envChain : Env := #[{ binds := #[{ hint := ⟨"c"⟩, ty := some .tNat, val := .loan 0 }] },
                         { binds := #[{ hint := ⟨"x"⟩, ty := some (.tRef .tNat), val := .borrow 0 (.succ (.loan 1)) },
@@ -66,9 +65,7 @@ end Ochr.Units
 /-! ## Blocks that use other blocks
 
 `AttrUser` uses `AttrLib`. Only `AttrLib`'s accepted, non-`reject` declarations are visible
-to it; they are checked again in `AttrUser` under the same configuration. When a rule is
-switched off (here D45's matching by type) and `Swap` flips, the flip is attributed to its
-home block, and `UseSwap`, which fails only because `Swap` is gone, is reported as blocked. -/
+to it; they are checked again in `AttrUser`, ahead of its own declarations. -/
 
 ochr AttrLib {
   def Swap (P : Prop) (Q : Prop) (h : P ∧ Q) : Q ∧ P := match h { Intro(a, b) => ⟨b, a⟩ }
@@ -82,13 +79,9 @@ ochr AttrUser uses AttrLib {
   reject def SeesHidden : Nat := Hidden
 }
 
-open Ochr.Test in
 -- a block's report has rows for its own declarations only
 open Ochr.Test in
-open Ochr.Test in
-#guard blockFlips "AttrLib" AttrLib { byType := false } == (["AttrLib.Swap:rejected"], [])
-open Ochr.Test in
-#guard blockFlips "AttrUser" AttrUser { byType := false } == ([], ["AttrUser.UseSwap blocked by AttrLib.Swap"])
+#guard (run "AttrUser" AttrUser).rows.map (·.name) == ["UseSwap", "Alone", "SeesHidden"]
 
 -- one flat namespace: redeclaring a name a used block declares is a clash (the `ochr` command
 -- reports it when the block is elaborated), but a `reject` declaration of the used block is

@@ -128,7 +128,7 @@ ochr Equality uses Bools, Nats {
   -- ... and is otherwise a stuck cast. Under the false hypotheses that `Nat → Nat` and
   -- `(Nat → Nat) → Nat` are equal, `Om` applies a stuck cast instead of running forever, and
   -- `CastMatch` splits on the stuck cast of `5` instead of matching `5` against `Bool`'s
-  -- constructors. Returning `t` whatever the endpoints (switch `jStuck`) is equality
+  -- constructors. Returning `t` whatever the endpoints is equality
   -- reflection: checking `Om` would not terminate (the checker's depth bound stops it), and
   -- `CastMatch` would meet a number where a `Bool` is due.
   def C1 (h : Eq(Type, Nat → Nat, (Nat → Nat) → Nat)) (x : Nat → Nat) : ((Nat → Nat) → Nat) := (
@@ -176,7 +176,7 @@ ochr Equality uses Bools, Nats {
 
   -- Each side of `Eq` runs on its own private copy of the state, by the ordinary rules: a
   -- write in a side is seen by the rest of that side, and by nothing else; the other side
-  -- starts from the state as it was (switch `eqSidesApart`). So mutating `*x` inside a side
+  -- starts from the state as it was. So mutating `*x` inside a side
   -- states what the mutated value is ...
   def EffInSide (x : &Nat) : Eq(Nat, *x := S(*x); *x, S(*x)) := refl
   def AddMInSide (x : &Nat) : Eq(Nat, AddM(&*x, 1); *x, Add(*x, 1)) := refl
@@ -190,7 +190,7 @@ ochr Equality uses Bools, Nats {
   -- A place a side consumed has no content to compare: its equation is stuck, neither `⊤` nor
   -- `False` (D68). A stuck block takes a place by move if any arm moves it, so at an unknown `n`
   -- both sides below leave `x` moved, while at `n = 0` only the left one does. Were `⊥ = ⊥`
-  -- true, `refl` would prove the statement for every `n` (switch `movedStuck`; fuzz case 11014).
+  -- true, `refl` would prove the statement for every `n` (fuzz case 11014).
   reject def MovedBothSides (n : Nat) (x : Nat) :
       Id(Unit, (let r = &x; match n { Z => (let y = x; ()), S _ => () }), (let r = &x; match n { Z => (), S _ => (let y = x; ()) })) := refl
   -- twin of MovedBothSides: neither side moves `x` (the move is replaced by a clone), so there is content to compare
@@ -281,7 +281,7 @@ ochr Owners uses Fixtures {
   -- The annotated block below forms the type of `e` while the hole is in both `a` and `b`.
   -- In its `S` arm `r` points into `b`, so the equation about `a` holds by `refl`, but the
   -- one about `b` is `0 = 1`, and the arm is rejected. If only the first owner were observed
-  -- (switch `multiOwner`), `BadD18` would be accepted, and `ClosedD18` would be a closed
+  --, `BadD18` would be accepted, and `ClosedD18` would be a closed
   -- proof of `0 = 1`.
   def Pick3 (x : &Nat) (y : &Nat) (s : Nat) : &Nat := (
     match s {
@@ -389,15 +389,13 @@ ochr Owners uses Fixtures {
 }
 
 
-/-- The message rejecting `Owners.Use` under `cfg`: it states `Probe`'s parameter type. -/
-def useMessage (cfg : Ochr.Config) : String :=
-  match ((run "Owners" Owners cfg).rows.find? (·.name == "Use")).map (·.verdict) with
+/-- The message rejecting `Owners.Use`: it states `Probe`'s parameter type. -/
+def useMessage : String :=
+  match ((run "Owners" Owners).rows.find? (·.name == "Use")).map (·.verdict) with
   | some (Ochr.Verdict.rejected m _) => m
   | _ => ""
 
 -- all owners: the expected parameter type is a conjunction over a and b
-#guard ((useMessage {}).splitOn "∧").length == 2
--- a single owner (switch `multiOwner`): one equation only
-#guard ((useMessage { multiOwner := false }).splitOn "∧").length == 1
+#guard (useMessage.splitOn "∧").length == 2
 
-#eval IO.println (useMessage {})
+#eval IO.println useMessage

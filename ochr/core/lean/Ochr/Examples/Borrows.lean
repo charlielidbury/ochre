@@ -85,13 +85,13 @@ ochr Borrows uses Nats, WordType {
   )
 
   -- ## What goes wrong without these rules
-  -- Without the check that no argument is dead (switch `argNotBot`), `Dead` is accepted: an
+  -- Without the check that no argument is dead, `Dead` is accepted: an
   -- opaque callee receives a dead borrow, and a concrete run goes wrong as soon as it writes
   -- through it.
 
   -- [Access] ends every borrow of a place inside the content being passed, not only borrows
   -- of the place itself (D19). Here `r` borrows the predecessor inside `*b`; passing `b` to
-  -- `G1` must end `r` first. Without that (switch `accessInside`), the call's stuck result
+  -- `G1` must end `r` first. Without that, the call's stuck result
   -- would keep `r`'s loan inside `a`, and the later write through `r` would go to a place
   -- that no longer exists. (With the stuck `Unit` call's result `()`, its η-normal form,
   -- D59 refined, `BadA1` needs D19 again; for a while the result was a sealed program carrying
@@ -116,7 +116,7 @@ ochr Borrows uses Nats, WordType {
     a
   )
 
-  -- D19's witnesses since then (fuzz-port, `--diff --switch D19`). In `V` a stuck block
+  -- D19's witnesses since then (fuzz-port). In `V` a stuck block
   -- returns a borrow of `n0`, so `n0` holds a sealed program with that borrow's loan inside
   -- it; reading `n0` must end the borrow, and the write through `a0` then has no place.
   -- Without D19, `V` is accepted and `V(0)` goes wrong: the block runs, the read of `n0`

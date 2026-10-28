@@ -125,8 +125,10 @@ structure RecCtx where
   uid : Nat                      -- identifies the frame across state restores
 deriving Inhabited
 
-/-- Switches for counterfactual runs: each disables one rule of v1 (or one fix of
-this checker), so that the regression tests can show which rule blocks which attack. -/
+/-- What a run records: `trace` and `derivation`, which never change a verdict. The other
+fields were rule switches for the counterfactual ledger; D70 removed the ledger and every run
+uses their defaults. They are still read by `Machine.lean`, always at those defaults, until it
+is collapsed to them, and then they are deleted. -/
 structure Config where
   p5 : Bool := true              -- D14: calls at a proposition are not run
   multiOwner : Bool := true      -- D18: the footprint observes every owner of a hole
@@ -207,13 +209,10 @@ deriving Inhabited, Repr, BEq
 
 /-- The universe a sort lives in: `Type_l : Type_{l+1}`, and `Prop : Type₁` beside `Type₀`
 (D66, Coq's arrangement: `Type₀` holds only runtime types). Level `0` is `Prop`, `1` is `Type₀`. -/
-def Config.sortSucc (c : Config) (l : Nat) : Nat := if l == 0 && c.propUp then 2 else l + 1
+def Config.sortSucc (_ : Config) (l : Nat) : Nat := if l == 0 then 2 else l + 1
 
-/-- The pre-pass is checked against the after-the-fact classification under the rules as
-they stand; a counterfactual run switches a rule off and measures that alone. D53's switches
-do not change what is erased, so their counterfactual runs are checked too. -/
-def Config.prePassAssert (c : Config) : Bool :=
-  c.prePass && { c with trace := false, derivation := false, fnRule := true } == ({} : Config)
+/-- The pre-pass is always checked against the after-the-fact classification. -/
+def Config.prePassAssert (_ : Config) : Bool := true
 
 structure MState where
   env : Env := #[{}]
@@ -321,10 +320,8 @@ def restoreKeep (saved : MState) : M Unit :=
     -- the types of abstract values created by the nested run are kept: a refinement of an
     -- older one's type ([Split] substitutes into every stored type) is that run's alone, and
     -- must not reach a sibling arm (arrays-library's arm leak)
-    if cur.cfg.globalRecords then
-      { s with nextAbs := cur.nextAbs, nextLoan := cur.nextLoan, neutrals := cur.neutrals, etaRefs := cur.etaRefs,
-               absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size }
-    else s
+    { s with nextAbs := cur.nextAbs, nextLoan := cur.nextLoan, neutrals := cur.neutrals, etaRefs := cur.etaRefs,
+             absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size }
 
 /-- Restore after a [Split] arm: as `restoreKeep`, but the generalisation records the arm made
 are the arm's own and are dropped. Sibling arms are exclusive worlds in which the same program

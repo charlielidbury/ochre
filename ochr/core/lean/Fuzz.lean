@@ -4,7 +4,7 @@ import Ochr.Fuzz.Shrink
 /-!
 `lake exe fuzz`: the differential naturality fuzzer (see `ochr/core/notes/fuzzer.md`).
 
-    lake exe fuzz [--seed S] [--count N] [--start I] [--switch NAME]… [--show I] [--quiet]
+    lake exe fuzz [--seed S] [--count N] [--start I] [--show I] [--quiet]
 
 Case `i` of seed `S` is a pure function of `(S, i)`, so every run is reproducible and
 `--show I` re-runs a single case verbosely.
@@ -12,69 +12,10 @@ Case `i` of seed `S` is a pure function of `(S, i)`, so every run is reproducibl
 
 open Ochr Ochr.Fuzz
 
-/-- The rule switches of `Config` (each turns one rule off), by the names used in the
-counterfactual ledger. -/
-def switchCfg (c : Config) : String → Option Config
-  | "D26" | "P2" | "eraseOnCopy" => some { c with eraseOnCopy := false }
-  | "D18" | "multiOwner" => some { c with multiOwner := false }
-  | "D17" | "recGuard" => some { c with recGuard := false }
-  | "D19" | "accessInside" => some { c with accessInside := false }
-  | "L1" | "selfHeadOnly" => some { c with selfHeadOnly := false }
-  | "L2" | "argNotBot" => some { c with argNotBot := false }
-  | "D27" | "proofParamsStar" => some { c with proofParamsStar := false }
-  | "L3" | "recNested" => some { c with recNested := false }
-  | "D28" | "erasureByDecl" => some { c with erasureByDecl := false }
-  | "D29" | "matchEndsInside" => some { c with matchEndsInside := false }
-  | "D30" | "closureConv" => some { c with closureConv := 2 }
-  | "D31" | "unboundWithoutBy" => some { c with unboundWithoutBy := false }
-  | "D32" | "patternWritesVisible" => some { c with patternWritesVisible := false }
-  | "G1" | "genConsistent" => some { c with genConsistent := false }
-  | "P1" | "leafRule0" => some { c with leafRule := 0 }
-  | "P3" | "leafRule1" => some { c with leafRule := 1 }
-  | "D36" | "positivity" => some { c with positivity := false }
-  | "D37" | "globalRecords" => some { c with globalRecords := false }
-  | "D38" | "obsBorrow" => some { c with obsBorrow := false }
-  | "D39" | "headGuardNeutral" => some { c with headGuardNeutral := false }
-  | "D44" | "borrowParam" => some { c with borrowParam := false }
-  | "capTypes" | "D51" => some { c with capTypes := false }
-  | "D45" | "byType" => some { c with byType := false }
-  | "D45s" | "subsingleton" => some { c with subsingleton := false }
-  | "D42" | "propValues" => some { c with propValues := false }
-  | "D47" | "disjoint" => some { c with disjoint := false }
-  | "scrutTyped" => some { c with scrutTyped := false }
-  | "D48.1" | "refData" => some { c with refData := false }
-  | "D48.2" | "refTop" => some { c with refTop := false }
-  | "D48.3" | "piUnder" => some { c with piUnder := false }
-  | "D49.3" | "proofDataFields" => some { c with proofDataFields := false }
-  | "D52" | "injective" => some { c with injective := false }
-  | "fnRule" | "D53e" => some { c with fnRule := false }     -- D53 (e): calls do not consume their function
-  | "D54" | "classInType" => some { c with classInType := false }
-  | "D55" | "sortsSyntactic" => some { c with sortsSyntactic := false }
-  | "D56" | "jStuck" => some { c with jStuck := false }
-  | "D58" | "zeroArmStuck" => some { c with zeroArmStuck := false }
-  | "D59" | "unitEta" => some { c with unitEta := false }
-  | "K3" | "abstractTypes" => some { c with abstractTypes := false }
-  | "K2" | "unsizedTypes" => some { c with unsizedTypes := false }
-  | "borrowUniverse" => some { c with borrowUniverse := false }
-  | "propUp" => some { c with propUp := false }
-  | "eqSidesApart" => some { c with eqSidesApart := false }
-  | "copyByType" => some { c with copyByType := false }
-  | "movedStuck" => some { c with movedStuck := false }
-  | "D65" | "dropEndsBound" => some { c with dropEndsBound := false }
-  | "D64lent" | "lentProofs" => some { c with lentProofs := false }   -- D64 amended: a proof field assigned while lent
-  | "D50on" | "unitNorm" => some { c with unitNorm := true }          -- switched ON (a counterfactual)
-  | "C8" | "generalize" => some { c with generalize := false }
-  | "C5" | "blockMoves" => some { c with blockMoves := false }
-  | _ => none
-
 structure Args where
   seed : Nat := 1
   count : Nat := 100
   start : Nat := 0
-  cfg : Config := {}
-  base : Config := {}            -- the rules without the switches (a switch named `+X` would apply to both)
-  switches : List String := []
-  diff : Bool := false
   show? : Option Nat := none
   quiet : Bool := false
   maxShrink : Nat := 2          -- shrink and print this many findings of each kind
@@ -99,7 +40,6 @@ partial def parseArgs (a : Args) : List String → Except String Args
   | "--show" :: n :: r => do parseArgs { a with show? := some n.toNat! } r
   | "--quiet" :: r => do parseArgs { a with quiet := true } r
   | "--shrink" :: n :: r => do parseArgs { a with maxShrink := n.toNat! } r
-  | "--diff" :: r => do parseArgs { a with diff := true } r
   | "--jobs" :: n :: r => do parseArgs { a with jobs := n.toNat! } r
   | "--worker" :: r => do parseArgs { a with worker := true } r
   | "--print-only" :: r => do parseArgs { a with printOnly := true } r
@@ -111,12 +51,6 @@ partial def parseArgs (a : Args) : List String → Except String Args
   | "--drop" :: n :: r => do parseArgs { a with drop := n.toNat! } r
   | "--audit" :: n :: r => do parseArgs { a with audit := n.toNat! } r
   | "--dep" :: n :: r => do parseArgs { a with dep := n.toNat! } r
-  | "--switch" :: s :: r => do
-    match switchCfg a.cfg s, switchCfg a.base s with
-    | some c, some b =>
-      let b := if s.startsWith "+" then b else a.base
-      parseArgs { a with cfg := c, base := b, switches := a.switches ++ [s] } r
-    | _, _ => throw s!"unknown switch {s}"
   | x :: _ => throw s!"unknown argument {x}"
 
 def bump (xs : List (String × Nat)) (k : String) (d : Nat := 1) : List (String × Nat) :=
@@ -139,18 +73,7 @@ def runRange (a : Args) (o : Opts) : IO Unit := do
     let res := checkCase o c r
     let st := if res.status.startsWith "invalid" then "invalid" else res.status
     stats := bump stats st
-    let fs ← match o.base with
-      | some b => do
-        let bres := checkCase { o with cfg := b, base := none } c r
-        -- a verdict the switch changes (e.g. a program the switch-off accepts), for `--list`
-        let bst := if bres.status.startsWith "invalid" then "invalid" else bres.status
-        if a.list && bst != st then out.putStrLn s!"@FLIP {i} {bst}>{st}"
-        -- the statement's sides as data functions (the execution oracle): how many are accepted
-        if a.list && bres.execAccepted != res.execAccepted then
-          out.putStrLn s!"@XFLIP {i} {bres.execAccepted}>{res.execAccepted}"
-        let bk := bres.findings.map (Finding.key)
-        pure (res.findings.filter fun (f : Finding) => !bk.contains f.key)
-      | none => pure res.findings
+    let fs := res.findings
     let mut done : List String := []
     for f in fs do
       if done.contains f.key then continue
@@ -217,7 +140,7 @@ def main (argv : List String) : IO UInt32 := do
   let a ← match parseArgs {} argv with
     | .ok a => pure { a with raw := argv }
     | .error e => IO.eprintln e; return 2
-  let o : Opts := { cfg := a.cfg, base := if a.diff then some a.base else none, runtimeRefine := a.runtimeRefine }
+  let o : Opts := { runtimeRefine := a.runtimeRefine }
   if let some i := a.show? then
     let (c, r) := mkCase a.seed i o.fuel a.a1 a.edep a.rules a.drop a.audit a.dep
     IO.println (c.show s!"Case{i}")
@@ -232,7 +155,7 @@ def main (argv : List String) : IO UInt32 := do
     let t0 ← IO.monoMsNow
     runRange a o
     if !a.worker then
-      IO.println s!"seed {a.seed}, cases {a.start}..{a.start + a.count - 1}, switches {a.switches}, {(← IO.monoMsNow) - t0} ms"
+      IO.println s!"seed {a.seed}, cases {a.start}..{a.start + a.count - 1}, {(← IO.monoMsNow) - t0} ms"
     return 0
   -- supervisor: split the range into `jobs` chunks, one worker process each
   let exe := (← IO.appPath).toString
@@ -258,7 +181,7 @@ def main (argv : List String) : IO UInt32 := do
       first := first ++ f.filter (fun (x, _) => (first.lookup x).isNone)
       crashes := crashes ++ c
     | .error e => IO.eprintln s!"worker failed: {e}"
-  IO.println s!"seed {a.seed}, cases {a.start}..{a.start + a.count - 1}, switches {a.switches}, {j} jobs, {(← IO.monoMsNow) - t0} ms"
+  IO.println s!"seed {a.seed}, cases {a.start}..{a.start + a.count - 1}, {j} jobs, {(← IO.monoMsNow) - t0} ms"
   IO.println s!"status: {stats}"
   IO.println s!"findings (kind[: reason]: cases): {kinds}"
   IO.println s!"first case per kind: {first}"

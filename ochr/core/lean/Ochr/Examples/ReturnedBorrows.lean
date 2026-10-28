@@ -81,7 +81,7 @@ ochr ReturnedBorrows uses Nats, Fixtures {
   -- `g(5)` would give a borrow whose hole is in no place at all, so an `Id` about writes
   -- through it would observe nothing and be trivially true. `Q` would then refute
   -- `Π(n : Nat). &Nat`, which Rust inhabits with `Box::leak`: given such a function as an
-  -- opaque `leak`, `Boom` is a closed proof of `Empty` (switch `borrowParam`).
+  -- opaque `leak`, `Boom` is a closed proof of `Empty`.
   def M (n : Nat) : Type := (
     match n {
       Z => Unit,
@@ -112,7 +112,7 @@ ochr ReturnedBorrows uses Nats, Fixtures {
   -- Matching on a place ends every borrow whose hole is inside the sealed program the
   -- place holds (D29). Here `*x` holds `TailM`'s sealed program, with the hole of `t` inside
   -- it, so `match *x` ends `t`, as the concrete run does when `*x` is `Z`. Without that
-  -- (switch `matchEndsInside`), `Bad` is accepted, and `Main(0)` writes through an ended
+  --, `Bad` is accepted, and `Main(0)` writes through an ended
   -- borrow when run.
   reject def Bad (x : &Nat) : Unit := (
     let t = TailM(&*x);

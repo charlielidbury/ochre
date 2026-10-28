@@ -28,7 +28,7 @@ open Ochr.Test
 
 ochr Erasure uses Nats {
   -- ## Erased terms run on a private copy
-  -- Citing a lemma about `x`, argument included, does not move `x` (switch `eraseOnCopy`).
+  -- Citing a lemma about `x`, argument included, does not move `x`.
   def LemmaMoves (x : &Nat) : Unit := (
     let h = AddMZero(x);
     AddM(x, 0)
@@ -150,7 +150,7 @@ ochr Erasure uses Nats {
 
   -- ## What goes wrong without the private copy
   -- Confinement lets an erased term pass an outer place to an erased call, as a proof passes
-  -- `x` to a lemma. Without the private copy (switch `eraseOnCopy`) that call's writes persist
+  -- `x` to a lemma. Without the private copy that call's writes persist
   -- on the direct path: in the `S` arm, `F5(&*x)` writes `*x := 5`, while the closed-off
   -- block, being erased, skips it. So `LieP2`, true as checked, is false at `1`, and
   -- `BoomP2` is a closed proof of `False` (fuzz-port).
@@ -181,7 +181,7 @@ ochr Erasure uses Nats {
   -- directly gave `1`: `N1Closed` proved `1 = 0`. With the private copy both give `0`: the
   -- write lands on the proof's own copy and is discarded, so `N1T` holds (D41 rejected it
   -- until D68), and `N1Closed` is rejected because `N1T(0)` proves `0 = 0`, not `1 = 0`.
-  -- Switching the copy off accepts `N1Closed` and `QBoom` (switch `eraseOnCopy`).
+  -- Without the private copy, `N1Closed` and `QBoom` would be accepted.
   def N1T (n : Nat) :
       Id(Nat, (let a = 0; let h = match n { Z => (a := S(Z); refl), S _ => refl }; a), 0) := refl
 
@@ -213,13 +213,12 @@ term is erased, if that is decided from a computed value instead of the syntax. 
 `c` happens, and each `Boom…` its instance at `Z`. If the generic call and the instance
 disagreed about whether the write is erased, some `Boom…` would be a closed proof of a
 false equation. Under the rules the write happens on both paths, so each `Lie…` is either
-true, with a true instance, or rejected. The ledger names the switch each one depends on;
-since the erasure pre-pass decides erasure from declared types before a term runs, D35's
-after-the-fact clauses have no switches (they flipped nothing), and their witnesses stay as
-regressions. -/
+true, with a true instance, or rejected. Since the erasure pre-pass decides erasure from
+declared types before a term runs, D35's after-the-fact clauses are subsumed, and their
+witnesses stay as regressions. -/
 
 ochr ErasureBySyntax uses Fixtures {
-  -- A top-level function whose result type computes to a sort (D28, switch `erasureByDecl`).
+  -- A top-level function whose result type computes to a sort (D28).
   -- `W` returns data, by its declared result type `U(n)`, so its write runs at every
   -- instance; `MainW(0)` really is `1`, as compiled code computes.
   def W (x : &Nat) (n : Nat) : U(n) := (
@@ -240,8 +239,7 @@ ochr ErasureBySyntax uses Fixtures {
 
   -- A local function whose result type computes to a sort: its class is read from the
   -- result type as written, `U(n)`, so `h(&c)` runs on both paths (D35; appendix note 1).
-  -- The erasure pre-pass reads it before the call runs, so the old after-the-fact switch is
-  -- gone.
+  -- The erasure pre-pass reads it before the call runs.
   def LieL (n : Nat) :
       Id(Nat, let h = (λ(x : &Nat) : U(n) => (*x := S(Z); V(n))); let c = Z; h(&c); c, S(Z)) := refl
 
@@ -255,7 +253,7 @@ ochr ErasureBySyntax uses Fixtures {
 
   -- A match whose value is a type. Closed off, it looked like a call returning types and
   -- was erased; run directly, it was not. A closed-off match is erased only when each of
-  -- its arms is (D35, D40; appendix note 2; the pre-pass, no switch since). The true
+  -- its arms is (D35, D40; appendix note 2; now the pre-pass). The true
   -- statement is proved by splitting on `n`.
   reject def LieB (n : Nat) :
       Id(Nat, (let c = Z; let T = match n { Z => (c := S(Z); ⊤), S _ => (c := S(Z); ⊤) }; c), Z) := refl
@@ -325,7 +323,7 @@ ochr ErasureBySyntax uses Fixtures {
   )
 
   -- A sequence whose tail returns a type is not erased; only the call `F(&c)` runs on a
-  -- private copy (D35; the pre-pass, no switch since).
+  -- private copy (D35; now the pre-pass).
   def F (x : &Nat) : Prop := (
     *x := S(Z);
     ⊤
@@ -348,7 +346,7 @@ ochr ErasureBySyntax uses Fixtures {
   def BoomPOk : Eq(Nat, Z, Z) := LieP(Z)
 
   -- Whether a variable is a proof is read from its declaration, not from its value: `g(0)`
-  -- is `⋆` at an instance but a sealed program at the generic call (D42, switch `leafRule`;
+  -- is `⋆` at an instance but a sealed program at the generic call (D42;
   -- appendix note 3).
   -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
   reject def LieH (g : Π(y : Nat). V(Z)) : Id(Nat, let c = Z; let h = g(0); (c := S(Z); h); c, S(Z)) := refl
@@ -376,7 +374,7 @@ ochr ErasureBySyntax uses Fixtures {
   -- A match whose arms differ in class (a proof in one, data in another) has no declared type:
   -- a match's is each arm's, and they disagree. It is rejected wherever its declared type is
   -- read, in a type position ([Type-pos], `MixPos`) and by the erasure pre-pass (`R9Arms`,
-  -- `R9Nested`), D63. The earlier reading (fuzz-port R9, switch `armsAgree`) let the arm that
+  -- `R9Nested`), D63. The earlier reading (fuzz-port R9) let the arm that
   -- runs decide, which reads erasure off the scrutinee's value.
   -- (the proof arm is a proof variable, so the conflict does not depend on D42's reading of
   -- `refl`; fuzz-port R9's originals used `refl`)

@@ -76,9 +76,7 @@ partial def exportsWith (pre : Option Block) (cfg : Config) (fuel : Nat) (b : Bl
 
 /-- A block's library under `cfg`, with `pre` the library block (`Prelude`, v2.1), used by
 every block, first: the exports of `pre` and of every block `b` uses, transitively, each
-once, a block after the blocks it uses. It is checked again, under `cfg`, ahead of the
-block's own declarations: nothing is cached, so switching a rule off re-decides the library
-too. `pre` itself has no library. -/
+once, a block after the blocks it uses. It is checked again ahead of the block's own declarations: nothing is cached. `pre` itself has no library. -/
 partial def libWith (pre : Option Block) (cfg : Config) (fuel : Nat) (b : Block) : Program :=
   match pre with
   | none => b.closure.flatMap (exportsWith none cfg fuel)

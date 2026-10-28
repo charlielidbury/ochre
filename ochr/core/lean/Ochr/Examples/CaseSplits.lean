@@ -45,7 +45,7 @@ ochr CaseSplits {
   )
 
   -- After an opaque call, `*x` holds a sealed program. Matching on it first generalises it
-  -- to a fresh abstract value, then splits on that (switch `generalize`).
+  -- to a fresh abstract value, then splits on that.
   def MatchAfterOpaque (f : Π(_ : &Nat). Unit) (x : &Nat) : Unit := (
     f(&*x);
     match *x {
@@ -60,8 +60,7 @@ ochr CaseSplits {
 
 Here `l` holds the sealed program `⌈let c1 = σ; AppendM(&c1, Nil); c1⌉`. The fresh value that
 replaces it gets the type of the place `l`, `List`; its own head call says nothing about the
-type. The guards below read the checker's trace (switch `genPlaceType`: an earlier version
-gave it type `Nat`). -/
+type. The guard below reads the checker's trace (an earlier version gave it type `Nat`). -/
 
 ochr GenType {
   -- Its own list of numbers, not `Lists`' `List(A)`: the guards below read the type's name.
@@ -84,9 +83,8 @@ ochr GenType {
   )
 }
 
-def genTrace (cfg : Ochr.Config) : String := (run "GenType" GenType { cfg with trace := true }).showTrace "GenL"
-#guard ((genTrace {}).splitOn "c1⌉ to σ1 : List").length == 2
-#guard ((genTrace { genPlaceType := false }).splitOn "c1⌉ to σ1 : Nat").length == 2
+def genTrace : String := (run "GenType" GenType { trace := true }).showTrace "GenL"
+#guard (genTrace.splitOn "c1⌉ to σ1 : List").length == 2
 
 /-! A generalisation re-derived inside a Π-type. After splitting on `F(n)`'s result, a sealed
 program that computes `F(n)` inside, `⌈G(σ)⌉`, is re-normalised to use the split value
@@ -251,7 +249,7 @@ ochr Splitting uses Bools, Nats, Options {
 A match must be on a place whose type is the arms' inductive type, read from the place's
 stored type (not assumed from the arms). An earlier checker assumed it from the arms: it
 accepted `f` below by splitting `x : T(n)` with `L`'s constructors, and `g(5)` would then run
-`L`'s arms on the number 5 (switch `scrutTyped`). -/
+`L`'s arms on the number 5. -/
 
 ochr ScrutineeTypes {
   inductive L := LNil | LCons(h : Nat, t : L)
@@ -324,8 +322,7 @@ ochr ScrutineeTypes {
 private copy of the environment, and names it with a fresh abstract value. That record,
 and the counter of fresh names, must survive the copy. Otherwise the body's split issues
 the same name again, for the field `x`; `Esc` then proves that `Double(n)` is zero exactly
-when `x` is, for every `n` and `x`, and its instance `Bad5` is a closed proof of `1 = 0`
-(switch `globalRecords`). This is note 5 of the paper's appendix, as printed. -/
+when `x` is, for every `n` and `x`, and its instance `Bad5` is a closed proof of `1 = 0`. This is note 5 of the paper's appendix, as printed. -/
 
 ochr GlobalRecords {
   -- As printed in the paper, with its own `Box` of a number.

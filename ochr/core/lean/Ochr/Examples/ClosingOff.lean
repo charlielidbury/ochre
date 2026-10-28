@@ -137,7 +137,7 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
   )
 
   -- A borrow some arm moves (`x1`, in arm `Z`) is moved into the block, so using it
-  -- afterwards is a use after move. If the block only reborrowed it (switch `blockMoves`),
+  -- afterwards is a use after move. If the block only reborrowed it,
   -- `MovedByBlock` would be accepted, although in arm `Z` it uses `x1` after moving it into
   -- `r`.
   reject def AliasAfterBlock (b : Nat) (x1 : &Nat) (x2 : &Nat) : Unit := (
@@ -226,7 +226,7 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
   -- `&T` (`ReturnedBorrows`), and otherwise its sealed program, `Unit` included: any two
   -- values of `Unit` are equal (η for `Unit`, D59). So `RowUnit` and `RowI` both hold by
   -- `refl`, though `UU(n)` is `Unit` only by computation, and the induction of `RowIInd` is
-  -- no longer needed. Without η (switch `unitEta`), a call written to return `Unit` returned
+  -- no longer needed. Without η, a call written to return `Unit` returned
   -- `()`, `G`'s returned a sealed program, and `RowI` failed.
   def UU (n : Nat) : Type := (
     match n {
@@ -351,8 +351,7 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
 
   -- ## What goes wrong without these rules
   -- The closed-off block of `Clear` writes through the pattern variable `p`, which names
-  -- `(*x).0`: a write to `*x` (D32). If the block did not see that write (switch
-  -- `patternWritesVisible`), it would copy `*x` instead of borrowing it, the write would be
+  -- `(*x).0`: a write to `*x` (D32). If the block did not see that write, it would copy `*x` instead of borrowing it, the write would be
   -- lost, and `Boom5` would prove `1 = 2`.
   reject def Clear (x : &Nat) : Id(Unit, (match *x { Z => (), S p => p := Z }), ()) := refl
 
@@ -372,7 +371,7 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
 
   -- A sealed program whose head is a call of an abstract function stays as it is when it is
   -- normalised (D39): it is not closed off again, which would loop. `P1` only has to be
-  -- checked without looping (switch `headGuardNeutral`).
+  -- checked without looping.
   def P1 (h : Π(x : &Nat) (y : &Nat). &Nat) : Prop := (
     Id(Nat, let a = Z; let b = Z; (let r = h(&a, &b); ()); a, Z)
   )

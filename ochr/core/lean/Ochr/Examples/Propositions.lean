@@ -205,7 +205,7 @@ ochr Propositions uses Nats {
   -- refinement makes a hypothesis false: `GetZIs` splits `*x`, and in its `S` arm the sealed
   -- `GetZ(&*x, h)` is re-run with `*x` a successor. Outside a proof position such a match is
   -- stuck, not `⋆` (D58), so `*q` stays a sealed program and the arm, `match h {}`, checks.
-  -- As `⋆` (switch `zeroArmStuck`), `*q` would read through a `⋆`, a type error.
+  -- As `⋆`, `*q` would read through a `⋆`, a type error.
   def IsZ (n : Nat) : Prop := (
     match n {
       Z => ⊤,
@@ -431,8 +431,7 @@ ochr Subsingletons uses Bools, Fixtures {
   -- Data from `Or` would tell `Inl` from `Inr`, which proof irrelevance identifies. `Irr`
   -- holds at its generic call (`h` and `k` are both `⋆`), so `Irr(Inl(refl), Inr(refl))`
   -- would say `true = false`, which is `False` (D45). In this checker a proof is always `⋆`,
-  -- so the closed `Boom` needs both D45 and D42 switched off (switches `subsingleton` and
-  -- `propValues`); with D45 alone off, `OrLie` is accepted, whose meaning in the model is
+  -- so the closed `Boom` needs both D45 and D42 removed; with D45 alone removed, `OrLie` is accepted, whose meaning in the model is
   -- `true = false`: `IsL` has no set-theoretic meaning.
   reject def IsL (h : Or(True, True)) : Bool := (
     match h {

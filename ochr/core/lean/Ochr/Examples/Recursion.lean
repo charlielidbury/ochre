@@ -79,7 +79,7 @@ ochr Recursion uses Nats, Fixtures {
   -- ## What goes wrong without these rules
   -- Recursion is measured on entry values (D17): after `*x := S(*x)`, the predecessor of `*x`
   -- is the old `*x`, not a part of it, so `Loop` would never terminate, and `Bot'` would be a
-  -- closed proof of `False` (switch `recGuard`).
+  -- closed proof of `False`.
   reject def Loop (x : &Nat) (y : Nat) : False by x := (
     match y {
       Z => (
@@ -168,7 +168,7 @@ ochr Recursion uses Nats, Fixtures {
 
   -- A recursive function may appear only as the head of a call. Passed as a value, it
   -- would escape the check on its arguments, and `Knot(0)` would be a closed proof of
-  -- `False` (switch `selfHeadOnly`).
+  -- `False`.
   def Apply (f : Π(x : Nat). False) (x : Nat) : False := f(x)
   reject def Knot (x : Nat) : False by x := Apply(Knot, x)
   reject def KnotBoom : False := Knot(0)
@@ -185,8 +185,7 @@ ochr Recursion uses Nats, Fixtures {
   def KnotBoomOk : Unit := KnotOk(0)
 
   -- Recursive calls inside a nested closure are checked against the enclosing function's
-  -- entry value: `y` is a fresh argument of the closure, not a part of `x` (switch
-  -- `recNested`).
+  -- entry value: `y` is a fresh argument of the closure, not a part of `x`.
   reject def KnotL (x : Nat) : False by x := (
     let g = (λ(y : Nat) : False => KnotL(y));
     g(x)
@@ -229,7 +228,7 @@ ochr Recursion uses Nats, Fixtures {
   -- value, and a sealed program is typed by running it on a private copy, outside the
   -- enclosing functions. That run once wiped the positions that had survived the recursive
   -- calls so far, so no later recursive call was checked and each `Boom` below was a closed
-  -- proof of `False` (the recCands fix; an implementation bug, so no switch). Here the
+  -- proof of `False` (the recCands fix, an implementation bug). Here the
   -- sealed program is the parameter `Le(σ, 1)` of the conjunction matched on (`Le` on `Nat`,
   -- the witness's own) ...
   def Le (a : Nat) (b : Nat) : Prop by a := (

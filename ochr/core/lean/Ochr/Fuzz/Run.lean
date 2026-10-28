@@ -7,7 +7,6 @@ open Ochr Ochr.Surface
 
 structure Opts where
   cfg : Config := {}
-  base : Option Config := none   -- attribute findings: report only those absent under these rules
   fuel : Nat := 200000
   nGround : Nat := 6
   runtimeRefine : Bool := false  -- refine at runtime depth (D53: sealed re-runs move), not erased

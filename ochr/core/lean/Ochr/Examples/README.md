@@ -1,6 +1,6 @@
 # The examples
 
-Every file here is checked when `lake build` elaborates it: a `def` must be accepted, and a `reject def` rejected, or the build fails at the declaration. `Registry.lean` lists every block for the test runner and the counterfactual ledger, and asserts the total number of declarations.
+Every file here is checked when `lake build` elaborates it: a `def` must be accepted, and a `reject def` rejected, or the build fails at the declaration. `Registry.lean` lists every block for the test runner, and asserts the total number of declarations.
 
 ## Reading order
 
@@ -37,8 +37,7 @@ Every file here is checked when `lake build` elaborates it: a `def` must be acce
    - `DependentFields` covers dependent fields (`DepFields`), with the growable vector `DepVec`.
 
 **Infrastructure:**
-- `Registry` lists every block, and `Ledger` asserts the counterfactual ledger;
-- `CaseStudyLedger` is the case studies' ledger, run by hand;
+- `Registry` lists every block;
 - `Units` holds unit tests of machine functions;
 - `Editor` checks that errors are located;
 - `Playground` is the user's own, untracked file.

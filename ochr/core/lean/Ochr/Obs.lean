@@ -111,7 +111,7 @@ partial def owners (env : Env) (l : Nat) (seen : List Nat := []) : List Pos :=
 assigned, or rooted at a borrow-typed variable contribute their owners: `{x}` for a
 place rooted at an owned `x`, `owners(ℓ)` for one rooted at a variable holding
 `borrow_ℓ`; with `onlyWrites` (D68), only when the variable is passed whole, not when it is only read through. With `multi = false` only the first owner of a hole is kept (the
-single-owner reading refuted by meta-model C2; counterfactual runs only).
+single-owner reading refuted by meta-model C2; unused, to be removed).
 
 The owners are listed in the order the terms first write or borrow them, then those only
 reached through a borrow-typed variable, not in Ω's order: closing off a match re-orders Ω (a
