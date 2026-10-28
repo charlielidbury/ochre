@@ -23,8 +23,8 @@ deriving Inhabited
 
 /-- A declaration's verdict. `undecided`: the checker ran out of fuel or past a depth limit,
 so it does not know (neither accepted nor rejected; `Ochr/Catch.lean`). With more fuel an
-undecided verdict may become decided, and a decided one never changes (the fuel-monotonicity
-test, `Examples/FuelMonotone.lean`). -/
+undecided verdict may become decided, and a decided one never changes: exhaustion cannot be
+caught below the verdict boundary, so it never becomes a decision. -/
 inductive Verdict where
   | accepted
   | rejected (msg : String) (at? : Option Loc := none)   -- `at?`: where (the editor), if known
