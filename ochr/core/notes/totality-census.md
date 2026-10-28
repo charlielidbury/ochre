@@ -16,12 +16,14 @@ Measured, not guessed: a Lean meta script (`#reach`, kept in the session scratch
 | Surface | 9 | 6 | yes, all 9 (the parser: the theorem is stated over surface programs) |
 | Run | 2 | 0 | yes (`exportsWith`/`libWith` assemble a block's library; not reached from `checkProgram` itself) |
 | Loc | 3 | 3 (`termAddr`, its unsafe implementation, `Locs.relocate`) | yes; `termAddr` is the sanctioned exception (below) |
-| Machine | 166 (169 after `no-fallbacks`) | 129 (133) | yes: Phase 2, after `no-switches` phase 2 lands |
+| Machine | 166 (169 after `no-fallbacks`) | 129 (133) | yes: Phase 2 (below), done |
 | Notation | 12 | 0 | no: the `ochr` command's macro elaborators (`MacroM`) and `evalBlock` (`unsafe`/`opaque`/`implemented_by`, evaluating a block constant at elaboration). They build `Program` values; the theorem quantifies over `Program` values, so how a value was elaborated is not checker code |
 | RuleGuard | 3 | 0 | no: a build-time scan of the paper's rule names |
 | Fuzz, Test, Examples | – | – | no: dev tooling and the harness |
 
 After Phase 1, rebased onto `no-fallbacks` (main 0ea85bbb), the same walk reaches 2028 constants, of which 135 are not total: Machine's 133, and `termAddr` with its unsafe implementation. The rebase also made total the one partial definition `no-fallbacks` added outside Machine.lean, `Surface.isPlace` (structural).
+
+**After Phase 2** (on main 6de9bd17, after `no-switches`): the walk reaches 2100 constants, and the only ones not total are the sanctioned exception, `Loc.termAddr` and its unsafe implementation.
 
 ## Phase 1: how each definition became total
 
@@ -48,12 +50,20 @@ No verdict changed: the full `lake build` (every verdict assertion, the asserted
 
 `Loc.termAddr` is `opaque` and `implemented_by` `ptrAddrUnsafe`: the editor keys source locations by a resolved node's address (identity, since `==` ignores binder names). The user allows it as a stated exception to "all checker code is total" (`ochr/core/CLAUDE.md`; its docstring says so), because it cannot reach a verdict the consistency statement covers: it keys only the editor's location table, which is empty unless `checkProgram`'s `located` is set; `Accepted` never sets it, and a lookup in an empty `HashMap` is `none` whatever the key. Making it total would mean carrying locations in `Term` itself, a change to every place that builds one.
 
-## Phase 2 inventory: Machine.lean
+## Phase 2: Machine.lean
 
-166 partial definitions on 449b90d0 (169 after `no-fallbacks`): 7 before the mutual block (`isPropTerm?`, `headOnly`, `constHeadOnly`, `expandRefs`, `unifyParams`, `strictSubterms`, …) and 159 in one mutual block (lines 151–3519). Call-graph SCCs of the block (a regex call graph, so an over-approximation):
-- one SCC of 114 functions: the evaluator, typing, conversion, closing off, observation, [Def];
-- 6 self-recursive singletons (`placeDecl`, `hasDependent`, `loanPath`, `sealedHead`, `sealedIn`, …): candidates for structural recursion;
-- 39 non-recursive: they can leave the mutual block as ordinary definitions.
+On main 6de9bd17 (after `no-switches`), Machine.lean had 166 partial definitions: 6 before its `mutual` block and 160 in it. A call graph of the block (each body searched for the other functions' names) splits it into one cycle of 116 functions and 44 outside it.
+
+**Milestone 1 (380aae5b): everything outside the cycle.** The 44 left the block, 43 before it (in dependency order: they call nothing in the cycle) and 1 after it (`paramDecl`, unused, which calls into the cycle). Then:
+- no recursion, `partial` dropped: 37 functions;
+- structural recursion (list traversals as structurally recursive helpers): `isPropTerm?`, `headOnly`, `constHeadOnly`, `unifyParams`, `strictSubterms`, `placeDecl`, `hasDependent`, `loanPath`, `sealedHead`, `sealedIn`; the local `let rec`s of `openWrite` and `sealedSort?` were structural already;
+- fuel from the fuel left (`fuelLeft`), running out throws `exhausted`: `expandRefs` (a refinement may mention abstract values refined in turn; it became monadic), `unsizedTerm` (follows bodies looked up in the state; its `seen` check stays an error), `ctorFields` (a loan's borrow may hold another loan).
+
+**Milestone 2 (e4829fc1): the cycle**, 116 functions (the evaluator, conversion, typing, closing off, observation, [Def]), as recommended below and approved: an explicit fuel argument, decreasing structurally. Converted by a script, not by hand: each function takes `(fuel : Nat)` first, begins `let fuel' + 1 := fuel | exhausted "out of fuel"`, passes `fuel'` to every call into the cycle, and ends `termination_by structural fuel`; `convList`/`convTList` (equation style) by hand. The bound counts nesting depth (one unit per call into the cycle); the global step budget (`tick`) and the depth limits are unchanged. It is seeded with `fuelLeft` at every entry from outside the cycle: Check.lean, `paramDecl`, the unit tests in Examples/Units.lean and the fuzzer. Names are unchanged, so the paper's `#lean(...)` pointers still name the implementations.
+
+No verdict changed (the full `lake build`: every verdict assertion and the 1,558 total). Machine.lean elaborates in 24 s (14 s before).
+
+Performance, `lake exe tests` (each declaration checked 21 times, the median kept), same machine, one run each: main 6de9bd17 sums the per-declaration medians to 4208.5 ms in 1043.5 s wall; this branch (e4829fc1) to 4162.9 ms in 1030.3 s. The explicit fuel costs nothing measurable (the difference is noise). The earlier 791–832 s are not comparable: they included the ledger's counterfactual runs, which `no-switches` deleted, and predate the 21-run medians.
 
 ## Phase 1b: design probe for Machine.lean (Scratch/TotalProbe)
 
