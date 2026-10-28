@@ -63,6 +63,8 @@ ochr ReturnedBorrows uses Nats, Fixtures {
   def Keep (x : &Nat) (n : Nat) : &Nat := x
   def KeepT : Type := Π(x : &Nat) (n : Nat). &Nat
   reject def LeakT : Type := Π(n : Nat). &Nat
+  -- twin of LeakT: a borrow parameter added, which the returned borrow can come from
+  def LeakTOk : Type := Π(n : Nat) (x : &Nat). &Nat
 
   -- Every function of type `Π(x : &Nat). &Nat` returns a borrow into `*x`, so writing
   -- different numbers through its result leaves different numbers in `*x`.
@@ -89,10 +91,23 @@ ochr ReturnedBorrows uses Nats, Fixtures {
 
   def P (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : Empty := J(Nat, 0, 1, M, e, ())
   reject def Q (g : Π(n : Nat). &Nat) : Empty := P(g(5), refl)
+  -- twin of Q: `g` takes a borrow, and the hypothesis is the `Id` about writes through its result, not `refl`
+  def QOk (g : Π(x : &Nat). &Nat) (x : &Nat) (e : Id(Unit, let r = g(x); *r := 0, let r = g(x); *r := 1)) : Empty := (
+    let r = g(x);
+    P(r, e)
+  )
   reject def Boom (leak : Π(n : Nat). &Nat) : Empty := Q(leak)
+  -- twin of Boom: `leak` takes a borrow, so it is a borrow into `*x` and the contradiction needs the `Id` hypothesis
+  def BoomOk (leak : Π(x : &Nat). &Nat) (x : &Nat) (e : Id(Unit, let r = leak(x); *r := 0, let r = leak(x); *r := 1)) : Empty :=
+    QOk(leak, x, e)
   -- the same with the library's `False`
   def PF (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
   reject def QF (g : Π(n : Nat). &Nat) : False := PF(g(5), refl)
+  -- twin of QF: `g` takes a borrow, and the hypothesis is the `Id` about writes through its result, not `refl`
+  def QFOk (g : Π(x : &Nat). &Nat) (x : &Nat) (e : Id(Unit, let r = g(x); *r := 0, let r = g(x); *r := 1)) : False := (
+    let r = g(x);
+    PF(r, e)
+  )
 
   -- Matching on a place ends every borrow whose hole is inside the sealed program the
   -- place holds (D29). Here `*x` holds `TailM`'s sealed program, with the hole of `t` inside
@@ -111,9 +126,28 @@ ochr ReturnedBorrows uses Nats, Fixtures {
     }
   )
 
+  -- twin of Bad: `t` is not written through after `match *x` has ended it
+  def BadOk (x : &Nat) : Unit := (
+    let t = TailM(&*x);
+    match *x {
+      Z => (
+        let h : Id(Nat, clone(*x), Z) = refl;
+        ()
+      ),
+      S _ => (),
+    }
+  )
+
   reject def Main (n : Nat) : Nat := (
     let c = n;
     Bad(&c);
+    c
+  )
+
+  -- twin of Main: calls `BadOk`
+  def MainOk (n : Nat) : Nat := (
+    let c = n;
+    BadOk(&c);
     c
   )
 
@@ -204,6 +238,17 @@ ochr Reborrows uses WordType, Lists, Fixtures {
       S p => (
         let y = &p;
         Nop(x);
+        *y := 0
+      ),
+    }
+  )
+
+  -- twin of PassWhileReborrowed: `x` is not passed to a call while `y` is still wanted
+  def PassWhileReborrowedOk (x : &Nat) : Unit := (
+    match *x {
+      Z => (),
+      S p => (
+        let y = &p;
         *y := 0
       ),
     }
