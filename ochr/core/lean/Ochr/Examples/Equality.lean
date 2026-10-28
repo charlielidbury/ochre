@@ -159,6 +159,8 @@ ochr Equality uses Bools, Nats {
   -- `t` first and returned a stuck cast of its value, so `c` was already 5.
   def JF (a : Nat) (b : Nat) (h : Eq(Nat, a, b)) (x : &Nat) : Nat := J(Nat, a, b, λ(z : Nat) : Type => Nat, h, (*x := 5; 0))
   reject def JT (a : Nat) (b : Nat) (h : Eq(Nat, a, b)) : Id(Nat, let c = 0; JF(a, b, h, &c); c, 5) := refl
+  -- twin of JT: the endpoints are convertible (both `0`, proved by `refl`), so `J` runs `t` and `c` is 5
+  def JTOk : Id(Nat, let c = 0; JF(0, 0, refl, &c); c, 5) := refl
 
   -- `J`'s motive is erased: it runs on its own private copy, so a write to an outer place
   -- there lands on the copy and is discarded (D68; D41 made it an error, [Erase-err], until
@@ -182,6 +184,8 @@ ochr Equality uses Bools, Nats {
   def SideOld (x : &Nat) : Eq(Nat, let c = *x; *x := 7; c, *x) := refl
   -- ... so this is not provable: at `*x = 5` the left side is 1 and the right side is 6.
   reject def SideShared (x : &Nat) : Eq(Nat, *x := 0; 1, S(*x)) := refl
+  -- twin of SideShared: the right side no longer reads `*x`, so it cannot disagree with the left
+  def SideSharedOk (x : &Nat) : Eq(Nat, *x := 0; 1, S(Z)) := refl
 
   -- A place a side consumed has no content to compare: its equation is stuck, neither `⊤` nor
   -- `False` (D68). A stuck block takes a place by move if any arm moves it, so at an unknown `n`
@@ -189,6 +193,9 @@ ochr Equality uses Bools, Nats {
   -- true, `refl` would prove the statement for every `n` (switch `movedStuck`; fuzz case 11014).
   reject def MovedBothSides (n : Nat) (x : Nat) :
       Id(Unit, (let r = &x; match n { Z => (let y = x; ()), S _ => () }), (let r = &x; match n { Z => (), S _ => (let y = x; ()) })) := refl
+  -- twin of MovedBothSides: neither side moves `x` (the move is replaced by a clone), so there is content to compare
+  def MovedBothSidesOk (n : Nat) (x : Nat) :
+      Id(Unit, (let r = &x; match n { Z => (let y = clone(x); ()), S _ => () }), (let r = &x; match n { Z => (), S _ => (let y = clone(x); ()) })) := refl
 }
 
 
@@ -294,7 +301,21 @@ ochr Owners uses Fixtures {
     K(r, e)
   )
 
+  -- twin of BadD18: the two equations agree (`0 = 0`), so both owners hold by `refl` and the statement is true
+  def K0 (z : &Nat) (e : Id(Unit, *z := 0, *z := 0)) : Eq(Nat, 0, 0) := e
+
+  def BadD18Ok (s : Nat) (hs : Eq(Nat, s, 1)) (a : Nat) (b : Nat) : Eq(Nat, 0, 0) := (
+    let r = Pick3(&a, &b, clone(s));
+    let e : Id(Unit, *r := 0, *r := 0) = match s {
+      Z => refl,
+      S _ => refl,
+    };
+    K0(r, e)
+  )
+
   reject def ClosedD18 : Eq(Nat, 0, 1) := BadD18(1, refl, 0, 0)
+  -- twin of ClosedD18: calls the corrected `BadD18Ok`, proving the true `0 = 0`
+  def ClosedD18Ok : Eq(Nat, 0, 0) := BadD18Ok(1, refl, 0, 0)
 
   -- The same without an annotated block: the hypothesis `h` recomputes, with local copies,
   -- exactly the sealed program that `a1` holds after `Pick`.
@@ -307,7 +328,19 @@ ochr Owners uses Fixtures {
     Neq(r, h)
   )
 
+  -- twin of GR: both sides write the same value (`Z`), so the conjunction is provable and the claim is `Z = Z`
+  def Neq0 (y : &Nat) (h : Id(Unit, *y := Z, *y := Z)) : Eq(Nat, Z, Z) := h
+
+  def GROk (a1 : Nat) (a2 : Nat) (b : Nat)
+      (h : Eq(Nat, let c1 = a1; let c2 = a2; let r = Pick(b, &c1, &c2); *r := Z; c1, let c1 = a1; let c2 = a2; let r = Pick(b, &c1, &c2); *r := Z; c1)) :
+      Eq(Nat, Z, Z) := (
+    let r = Pick(b, &a1, &a2);
+    Neq0(r, h)
+  )
+
   reject def BadR : Eq(Nat, Z, S(Z)) := GR(0, 0, 1, refl)
+  -- twin of BadR: calls the corrected `GROk`, proving `Z = Z`
+  def BadROk : Eq(Nat, Z, Z) := GROk(0, 0, 1, refl)
 
   -- The curried form of the attack cannot even be stated: `G`'s result type is a Π-type
   -- that would capture the borrow `z`, and types capture values, never borrows (RULES §1).
