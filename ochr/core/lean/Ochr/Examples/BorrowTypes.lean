@@ -44,19 +44,35 @@ ochr BorrowTypes uses Nats, Lists, Boxes {
   -- `Type`. A box of propositions is not even a type: `Box`'s parameter is in `Type`, and
   -- `Prop` is not (it was data before D66).
   reject def PIref (x : &Prop) (h1 : *x) (h2 : *x) : Id(*x, h1, h2) := refl
+  -- twin of PIref: the proposition is a plain parameter, not borrowed
+  def PIrefOk (x : Prop) (h1 : x) (h2 : x) : Id(x, h1, h2) := refl
   reject def RefTrue (x : &True) : Nat := 0
+  -- twin of RefTrue: borrows data (`Nat`) instead of a proposition
+  def RefTrueOk (x : &Nat) : Nat := 0
   reject def RefType (x : &Type) : Nat := 0
+  -- twin of RefType: borrows data (`Nat`) instead of a universe
+  def RefTypeOk (x : &Nat) : Nat := 0
   reject def RefBoxProp (x : &Box(Prop)) : Unit := ()
+  -- twin of RefBoxProp: a box of data (`Nat`), not of propositions
+  def RefBoxPropOk (x : &Box(Nat)) : Unit := ()
 
   -- ... and the same holds for the borrow term `&p` (reviewer-6's A12: the check was made
   -- only for the type former): a proposition, a universe and a proof are not borrowed; an
   -- inhabitant of a type variable and a function are.
   reject def BorrowProp (x : Prop) : Unit := (let r = &x; ())
+  -- twin of BorrowProp: borrows a data place (`Nat`) instead of a proposition
+  def BorrowPropOk (x : Nat) : Unit := (let r = &x; ())
   def BorrowVar (A : Type) (x : A) : Unit := (let r = &x; ())
   reject def BorrowType (A : Type) : Unit := (let r = &A; *r := Nat)
+  -- twin of BorrowType: borrows and assigns a `Nat` place instead of the universe-valued `A`
+  def BorrowTypeOk (A : Type) (n : Nat) : Unit := (let r = &n; *r := 0)
   reject def BorrowTypeUse (A : Type) (a : A) : Nat := (let r = &A; *r := Nat; let b : *r = 5; b)
+  -- twin of BorrowTypeUse: the borrowed place is a `Nat`, so `*r` is data and the annotation is plain `Nat`
+  def BorrowTypeUseOk (A : Type) (a : A) (n : Nat) : Nat := (let r = &n; *r := 7; let b : Nat = 5; b)
   def BorrowFn (f : Π(n : Nat). Nat) : Nat := (let r = &f; *r := (λ(n : Nat) : Nat => 0); f(3))
   reject def BorrowProof (P : Prop) (h : P) : Unit := (let r = &h; ())
+  -- twin of BorrowProof: borrows a data place instead of the proof `h`
+  def BorrowProofOk (P : Prop) (h : P) (n : Nat) : Unit := (let r = &n; ())
 
   -- A place whose type is known only by computation is borrowed by its type's declared
   -- universe. `TP(n)` is declared in `Type₁` (it is `Prop` at `0`), so neither the arm nor
@@ -67,7 +83,11 @@ ochr BorrowTypes uses Nats, Lists, Boxes {
   reject def BorrowStuck (n : Nat) (x : TP(n)) : Nat := (match n { Z => (let r = &x; ()), S _ => () }; 0)
   def TN (n : Nat) : Type := match n { Z => Nat, S _ => Nat }
   def BlockBorrowStuck (n : Nat) (x : TN(n)) : Nat := (match n { Z => (x := 5), S _ => () }; 0)
+  -- twin of BorrowStuck: `x : TN(n)` with `TN` declared in `Type`, so the stuck match may borrow it
+  def BorrowStuckOk (n : Nat) (x : TN(n)) : Nat := (match n { Z => (let r = &x; ()), S _ => () }; 0)
   reject def TPType (n : Nat) : Type := match n { Z => Prop, S _ => Nat }
+  -- twin of TPType: the `Z` arm is `Unit`, which is in `Type`, instead of `Prop`
+  def TPTypeOk (n : Nat) : Type := match n { Z => Unit, S _ => Nat }
   def BorrowData (x : Nat × Nat) : Unit := (let r = &x; ())
 
   -- No `&` inside another type: not in a pair, in `Id`'s type, a list, or a field.
@@ -91,6 +111,14 @@ ochr BorrowTypes uses Nats, Lists, Boxes {
     }
   )
 
+  -- twin of F: the result is written `&Nat` (both arms return the borrow), not computed from `n`
+  def FOk (n : Nat) (x : &Nat) : &Nat by x := (
+    match n {
+      Z => x,
+      S _ => x,
+    }
+  )
+
   reject def G (n : Nat) (a : Nat) : Unit := (
     let r = F(n, &a);
     let b = a;
@@ -98,7 +126,17 @@ ochr BorrowTypes uses Nats, Lists, Boxes {
     ()
   )
 
+  -- twin of G: calls the honest `FOk`, and reads `r` before `a` ends the borrow
+  def GOk (n : Nat) (a : Nat) : Unit := (
+    let r = FOk(n, &a);
+    let r2 = r;
+    let b = a;
+    ()
+  )
+
   reject def UseG : Unit := G(0, 5)
+  -- twin of UseG: runs `GOk`
+  def UseGOk : Unit := GOk(0, 5)
 }
 
 
@@ -173,16 +211,26 @@ ochr FnBorrows uses Bools, Nats, Words, Boxes {
   -- Still not: a proposition, `Prop`, or a type variable in `Type₁`; and code generic over
   -- `A : Type` is not applied to `Prop`, which is in `Type₁`.
   reject def SwapProps (p : Prop) (q : Prop) : Unit := Swap(Prop, &p, &q)
+  -- twin of SwapProps: swaps data (`Nat`) instead of propositions
+  def SwapPropsOk (p : Nat) (q : Nat) : Unit := Swap(Nat, &p, &q)
   reject def SwapT1 (A : Type₁) (x : &A) (y : &A) : Unit := ()
+  -- twin of SwapT1: the type variable is declared in `Type`, not `Type₁`
+  def SwapT1Ok (A : Type) (x : &A) (y : &A) : Unit := ()
   def IdT (A : Type) (a : A) : A := a
   reject def IdAtProp (P : Prop) : Prop := IdT(Prop, P)
+  -- twin of IdAtProp: `IdT` (code in `Type`) applied at data (`Nat`), not at `Prop`
+  def IdAtPropOk (n : Nat) : Nat := IdT(Nat, n)
   def IdT1 (A : Type₁) (a : A) : A := a
   def IdAtProp1 (P : Prop) : Prop := IdT1(Prop, P)
 
   -- A function type's universe: a Π over a proposition is in `Type₁`, so neither borrowed
   -- nor boxed; a Π over a proof, or returning a borrow, is in `Type`.
   reject def RefPropFn (f : &(Π(P : Prop). Nat)) : Nat := 0
+  -- twin of RefPropFn: the Π ranges over data (`Nat`), not over a proposition
+  def RefPropFnOk (f : &(Π(n : Nat). Nat)) : Nat := 0
   reject def BoxPropFn : Box(Π(P : Prop). Nat) := MkBox(λ(P : Prop) : Nat => 0)
+  -- twin of BoxPropFn: the Π ranges over a proof (`⊤`), so it is in `Type` and boxable
+  def BoxPropFnOk : Box(Π(h : ⊤). Nat) := MkBox(λ(h : ⊤) : Nat => 0)
   def RefProofFn (f : &(Π(h : ⊤). Nat)) : Nat := 0
   def RefRetFn (f : &(Π(x : &Nat). &Nat)) (y : &Nat) : Unit := (let r = (*f)(y); *r := 1)
   def BoxFn : Box(Π(n : Nat). Nat) := MkBox(λ(n : Nat) : Nat => n)
@@ -213,11 +261,17 @@ ochr Abstraction {
   def GetIs (s : &View) : Id(Nat, Get(s), ViewVal(clone(*s))) := refl
   -- matching, building, reading or assigning a view at runtime is not allowed
   reject def Peek (s : &View) : Nat := match *s { MkView(v) => clone(v) }
+  -- twin of Peek: the same match, as the model body of a native (`implemented by`)
+  def PeekOk (s : &View) : Nat := (match *s { MkView(v) => clone(v) }) implemented by "view_peek"
   reject def Poke (s : &View) : Unit := *s := MkView(0)
   reject def Take (s : &View) : Nat := ViewVal(clone(*s))
+  -- twin of Take: the same read, as the model body of a native (`implemented by`)
+  def TakeOk (s : &View) : Nat := ViewVal(clone(*s)) implemented by "view_take"
   -- ... nor is reading one, moving one into a call, or assigning one view to another (the
   -- paper's "only ever borrowed, never read, moved, assigned, cloned or matched")
   reject def ReadV (s : &View) : Unit := (let w = *s; *s := w)
+  -- twin of ReadV: the same read and write-back, as the model body of a native (`implemented by`)
+  def ReadVOk (s : &View) : Unit := (let w = *s; *s := w) implemented by "view_readv"
   reject def PassV (s : &View) : Nat := ViewVal(*s)
   reject def AssignV (s : &View) (t : &View) : Unit := *s := *t
 }
