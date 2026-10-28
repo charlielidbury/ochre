@@ -59,7 +59,11 @@ ochr Borrows uses Nats, WordType {
   -- see. Reading `x` for the second argument ends the borrow `&x` made for the first, so
   -- the callee would receive a dead borrow.
   reject def Dead (f : Π(a : &Nat) (b : Nat). Unit) (x : Nat) : Unit := f(&x, x)
+  -- twin of Dead: the borrow is made last, after the read of `x`, so nothing ends it
+  def DeadOk (f : Π(a : Nat) (b : &Nat). Unit) (x : Nat) : Unit := f(clone(x), &x)
   reject def DeadTwice (f : Π(a : &Nat) (b : &Nat). Unit) (x : Nat) : Unit := f(&x, &x)
+  -- twin of DeadTwice: the two borrows are of different places
+  def DeadTwiceOk (f : Π(a : &Nat) (b : &Nat). Unit) (x : Nat) (y : Nat) : Unit := f(&x, &y)
 
   -- The other way round is fine when `x` is a copy (a `Word`, D53): it is copied first, then
   -- borrowed. A `Nat` is moved by the first argument, so it needs `clone(x)` there.
@@ -105,12 +109,21 @@ ochr Borrows uses Nats, WordType {
     a
   )
 
+  -- twin of BadA1: the write through `r` comes before `b` is passed to `G1`, so `r` is not used after the call ends it
+  def BadA1Ok (n : Nat) : Nat := (
+    let a = S(Z);
+    (let b = &a; let r = &(*b).0; *r := S(Z); G1(b, n));
+    a
+  )
+
   -- D19's witnesses since then (fuzz-port, `--diff --switch D19`). In `V` a stuck block
   -- returns a borrow of `n0`, so `n0` holds a sealed program with that borrow's loan inside
   -- it; reading `n0` must end the borrow, and the write through `a0` then has no place.
   -- Without D19, `V` is accepted and `V(0)` goes wrong: the block runs, the read of `n0`
   -- ends `a0`, and the write is to nothing.
   reject def V (n0 : Nat) : Unit := (let a0 = match n0 { Z => &n0, S _ => &n0 }; *a0 := n0)
+  -- twin of V: the value written is `0`, so `n0` is not read while `a0` is live
+  def VOk (n0 : Nat) : Unit := (let a0 = match n0 { Z => &n0, S _ => &n0 }; *a0 := 0)
   reject def VRun : Unit := V(0)
 
   -- [Close]'s precondition (a stuck call's arguments hold no live loans): `&a` holds `r`'s
@@ -120,6 +133,8 @@ ochr Borrows uses Nats, WordType {
   -- loan in it (bound after `r`, as in `BadA1`, [Drop] catches it even without D19).
   def G2 (x : &Nat) (n : Nat) : Nat := (match n { Z => 0, S _ => *x := 0; 0 })
   reject def W (n : Nat) : Nat := (let a = S(Z); let out = 0; (let r = &a.0; out := G2(&a, n); *r := S(Z)); out)
+  -- twin of W: the write through `r` comes before the call, so `&a` holds no live loan when passed
+  def WOk (n : Nat) : Nat := (let a = S(Z); let out = 0; (let r = &a.0; *r := S(Z); out := G2(&a, n)); out)
   reject def WRun : Nat := W(1)
 }
 
@@ -174,22 +189,41 @@ ochr Drops uses Nats, Fixtures {
   reject def UseEnded (c : Nat) : Unit := (let x = &c; (let a = 0; x := &a; ()); *x := 1)
   -- a borrower in flight: returning a borrow of a local (no separate result check)
   reject def RetLocal (x : &Nat) : &Nat := (let a = 0; &a)
+  -- twin of RetLocal: returns the borrow parameter instead of a borrow of the local
+  def RetLocalOk (x : &Nat) : &Nat := (let a = 0; x)
   -- a let-block's result borrows the block's own local (`Pick`'s hole sits in `a`'s fill)
   reject def E1 (n : Nat) (b : Nat) : Unit := (let q = (let a = 0; Pick(n, &a, &b)); ())
+  -- twin of E1: `a` is declared outside the `q` block, so it outlives the borrow
+  def E1Ok (n : Nat) (b : Nat) : Unit := (let a = 0; let q = Pick(n, &a, &b); ())
   -- a tail match whose arm returns a borrow of an arm-local
   reject def FR (n : Nat) (x : &Nat) : &Nat := (match n { Z => (let a = 0; &a), S _ => x })
+  -- twin of FR: the arm returns `x` rather than a borrow of its local
+  def FROk (n : Nat) (x : &Nat) : &Nat := (match n { Z => (let a = 0; x), S _ => x })
   -- the same inside a stuck block: [Split] discards arm values and [Close] gives the block a
   -- fresh live borrow, so ending the arm's borrow would pass generically and fail at `n = 0`
   reject def Blk (n : Nat) (b : Nat) : Unit := (
     let r : &Nat = match n { Z => (let q = 0; &q), S _ => &b };
     *r := 5
   )
+  -- twin of Blk: `q` is declared before the match, so the arm borrows a place that outlives it
+  def BlkOk (n : Nat) (b : Nat) : Unit := (
+    let q = 0;
+    let r : &Nat = match n { Z => &q, S _ => &b };
+    *r := 5
+  )
   reject def G (n : Nat) (b : &Nat) : &Nat := (
     let r : &Nat = match n { Z => (let q = 0; &q), S _ => &*b };
     r
   )
+  -- twin of G: both arms reborrow `b`, none borrows an arm-local
+  def GOk (n : Nat) (b : &Nat) : &Nat := (
+    let r : &Nat = match n { Z => &*b, S _ => &*b };
+    r
+  )
   -- a caller of `G`, which is rejected, so `G` is not in scope here
   reject def UseG (n : Nat) (c : Nat) : Unit := (let r = G(n, &c); *r := 7)
+  -- twin of UseG: calls `GOk`, which is accepted and so in scope
+  def UseGOk (n : Nat) (c : Nat) : Unit := (let r = GOk(n, &c); *r := 7)
 }
 
 
@@ -277,6 +311,11 @@ ochr Moves uses Nats, WordType {
     let f = (λ(u : Unit) : Word => w);
     let g = f;
     (f(()), g(()))
+  )
+  -- twin of ClosureCopy: the closure is called twice instead of being copied
+  def ClosureCopyOk (w : Word) : Word × Word := (
+    let f = (λ(u : Unit) : Word => w);
+    (f(()), f(()))
   )
 
   reject def ClosureMoved (n : Nat) : Nat := (
