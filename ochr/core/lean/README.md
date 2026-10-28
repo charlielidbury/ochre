@@ -101,7 +101,7 @@ Read in order (`Ochr/Examples/README.md`), the files teach the whole language: t
 | `DependentFields` | dependent fields (D64): a field's type from the earlier fields, writing them in place (open, then repacked), proof fields, restricted injectivity, type functions in field types (K4) and its nesting condition; and a case study, `DepVec`: `Vec(E)` as user code over a fixed-size array of `Opt(E)` cells (push growing it, pop, an element borrow, and lemmas about each) | §8 | 57 (+64) |
 | `Sugar` | surface sugar: a destructuring `let` for any one-constructor type, `if`, `match` on a term; their errors, and runs showing each computes as its match; `if` on a block's own `Bool`, and without one | §5 [Split] | 48 (+3, +1) |
 
-1401 declarations in all, the `Prelude`'s 4 and the case studies' 418 (the arrays library's 50 among them) included (the registry's `expectedTotal`). D53 (reads of non-copy data move) is the only read semantics: the old copy-on-read paths, `Config.d53`, `Test.preD53` and the `moves` switch are deleted (`notes/lean-checker.md` §47). `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+1558 declarations in all, the `Prelude`'s 4 and the case studies' 418 (the arrays library's 50 among them) included (the registry's `expectedTotal`). D53 (reads of non-copy data move) is the only read semantics: the old copy-on-read paths, `Config.d53`, `Test.preD53` and the `moves` switch are deleted (`notes/lean-checker.md` §47). `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 
