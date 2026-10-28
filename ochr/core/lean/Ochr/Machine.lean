@@ -20,6 +20,13 @@ normalises, and forming a type (`Id`) runs observations.
 
 namespace Ochr
 
+/-- The fuel the checker has left: the bound that the machine's mutually recursive functions
+(the evaluator, conversion, typing, closing off) and the other functions that recurse on fuel
+start from at each entry from outside (all checker code is total, `ochr/core/CLAUDE.md`). Each
+call into the cycle spends one unit of the bound, and running out is exhaustion, the outcome
+`tick` throws ("the checker does not know"), never an answer. -/
+def fuelLeft : M Nat := return (← getThe Fuel).left
+
 /-- Print a place with the names of the top frame's bindings. -/
 def ppPlace (p : Place) : M String := do
   let f ← topIdx
@@ -66,11 +73,12 @@ inductive Kind where
 deriving BEq, Inhabited
 
 /-- A syntactic guess at whether a type term denotes a proposition. -/
-partial def isPropTerm? : Term → Option Bool
+def isPropTerm? : Term → Option Bool
   | .id .. | .eq .. => some true
   | .nat | .unit | .ref _ | .tind "Pair" _ | .sort _ => some false
   | .pi _ _ c => isPropTerm? c
   | _ => none
+termination_by structural t => t
 
 def syntacticKind? : Term → Option Kind
   | .unit => some .unit
@@ -82,75 +90,600 @@ def isPropSort : Term → Bool
   | .sort 0 | .val (.sort 0) => true
   | _ => false
 
+mutual
 /-- Does `self` (tested by `isSelf depth term`) occur in `t` only as the head of a
 call? (Fix L1 of this checker; see notes/lean-checker.md.) -/
-partial def headOnly (isSelf : Nat → Place → Bool) (c : Nat) : Term → Bool
+def headOnly (isSelf : Nat → Place → Bool) (c : Nat) : Term → Bool
   | .call (.place p) as _ =>
-      ((isSelf c p && (p matches .var _)) || !isSelf c p) && as.all (headOnly isSelf c)
+      ((isSelf c p && (p matches .var _)) || !isSelf c p) && headOnlyList isSelf c as
   | .place p | .borrow p => !isSelf c p
   | .assign p t => !isSelf c p && headOnly isSelf c t
   | .letIn _ t u => headOnly isSelf c t && headOnly isSelf (c + 1) u
   | .matchNat p z s => !isSelf c p && headOnly isSelf c z && headOnly isSelf c s
-  | .pi _ ds cod => (ds.zipIdx.all fun (d, i) => headOnly isSelf (c + i) d)
-      && headOnly isSelf (c + ds.length) cod
-  | .fix _ _ ds cod _ b => (ds.zipIdx.all fun (d, i) => headOnly isSelf (c + i) d)
+  | .pi _ ds cod => headOnlyDoms isSelf c ds && headOnly isSelf (c + ds.length) cod
+  | .fix _ _ ds cod _ b => headOnlyDoms isSelf c ds
       && headOnly isSelf (c + ds.length) cod && headOnly isSelf (c + ds.length + 1) b
-  | .call f as _ => headOnly isSelf c f && as.all (headOnly isSelf c)
+  | .call f as _ => headOnly isSelf c f && headOnlyList isSelf c as
   | .seq t u | .cong t u | .ascribe t u =>
       headOnly isSelf c t && headOnly isSelf c u
   | .succ t | .fst t | .snd t | .ref t => headOnly isSelf c t
   | .eq a b d | .id a b d => headOnly isSelf c a && headOnly isSelf c b && headOnly isSelf c d
-  | .ctor _ _ _ ps as => (ps ++ as).all (headOnly isSelf c)
-  | .prim _ as | .tind _ as => as.all (headOnly isSelf c)
-  | .matchInd p _ as => !isSelf c p && as.all (headOnly isSelf c ·.2)
+  | .ctor _ _ _ ps as => headOnlyList isSelf c ps && headOnlyList isSelf c as
+  | .prim _ as | .tind _ as => headOnlyList isSelf c as
+  | .matchInd p _ as => !isSelf c p && headOnlyArms isSelf c as
   | _ => true
+termination_by structural t => t
 
+/-- `ts.all (headOnly isSelf c)`. -/
+def headOnlyList (isSelf : Nat → Place → Bool) (c : Nat) : List Term → Bool
+  | [] => true
+  | t :: ts => headOnly isSelf c t && headOnlyList isSelf c ts
+termination_by structural ts => ts
+
+/-- A match's arms. -/
+def headOnlyArms (isSelf : Nat → Place → Bool) (c : Nat) : List (Hint × Term) → Bool
+  | [] => true
+  | (_, t) :: ts => headOnly isSelf c t && headOnlyArms isSelf c ts
+termination_by structural ts => ts
+
+/-- A telescope's domains, the `i`-th at depth `c + i`. -/
+def headOnlyDoms (isSelf : Nat → Place → Bool) (c : Nat) : List Term → Bool
+  | [] => true
+  | d :: ds => headOnly isSelf c d && headOnlyDoms isSelf (c + 1) ds
+termination_by structural ds => ds
+end
+
+mutual
 /-- Same check for a top-level definition, whose self-reference is `const name`. -/
-partial def constHeadOnly (n : String) : Term → Bool
-  | .call (.const _) as _ => as.all (constHeadOnly n)
+def constHeadOnly (n : String) : Term → Bool
+  | .call (.const _) as _ => constHeadOnlyList n as
   | .const m => m != n
   | .assign _ t | .succ t | .fst t | .snd t | .ref t => constHeadOnly n t
   | .letIn _ t u | .seq t u | .cong t u
   | .ascribe t u => constHeadOnly n t && constHeadOnly n u
   | .matchNat _ z s => constHeadOnly n z && constHeadOnly n s
-  | .pi _ ds c => ds.all (constHeadOnly n) && constHeadOnly n c
-  | .fix _ _ ds c _ b => ds.all (constHeadOnly n) && constHeadOnly n c && constHeadOnly n b
-  | .call f as _ => constHeadOnly n f && as.all (constHeadOnly n)
+  | .pi _ ds c => constHeadOnlyList n ds && constHeadOnly n c
+  | .fix _ _ ds c _ b => constHeadOnlyList n ds && constHeadOnly n c && constHeadOnly n b
+  | .call f as _ => constHeadOnly n f && constHeadOnlyList n as
   | .eq a b d | .id a b d => constHeadOnly n a && constHeadOnly n b && constHeadOnly n d
-  | .ctor _ _ _ ps as => (ps ++ as).all (constHeadOnly n)
-  | .prim _ as | .tind _ as => as.all (constHeadOnly n)
-  | .matchInd _ _ as => as.all (constHeadOnly n ·.2)
+  | .ctor _ _ _ ps as => constHeadOnlyList n ps && constHeadOnlyList n as
+  | .prim _ as | .tind _ as => constHeadOnlyList n as
+  | .matchInd _ _ as => constHeadOnlyArms n as
   | _ => true
+termination_by structural t => t
+
+/-- `ts.all (constHeadOnly n)`. -/
+def constHeadOnlyList (n : String) : List Term → Bool
+  | [] => true
+  | t :: ts => constHeadOnly n t && constHeadOnlyList n ts
+termination_by structural ts => ts
+
+/-- A match's arms. -/
+def constHeadOnlyArms (n : String) : List (Hint × Term) → Bool
+  | [] => true
+  | (_, t) :: ts => constHeadOnly n t && constHeadOnlyArms n ts
+termination_by structural ts => ts
+end
+
+/-- `expandRefs` with an explicit bound: a refinement's value may mention abstract values
+refined in turn, and nothing in the types says the chain ends, so the walk is bounded, and
+running out is exhaustion, never an answer. -/
+def expandRefsF (refs : List (Nat × Value)) : Nat → Value → M Value
+  | 0, _ => exhausted "out of fuel"
+  | fuel + 1, .abs σ => match refs.lookup σ with
+      | some r => expandRefsF refs fuel r
+      | none => pure (.abs σ)
+  | fuel + 1, .succ v => return .succ (← expandRefsF refs fuel v)
+  | fuel + 1, .ind t c h ps fs => return .ind t c h ps (← fs.mapM (expandRefsF refs fuel))
+  | _ + 1, v => pure v
+termination_by structural fuel _ => fuel
 
 /-- The refined entry value of `σ`: `σ` with the [Split] refinements made so far
-substituted, recursively. -/
-partial def expandRefs (refs : List (Nat × Value)) : Value → Value
-  | .abs σ => match refs.lookup σ with
-      | some r => expandRefs refs r
-      | none => .abs σ
-  | .succ v => .succ (expandRefs refs v)
-  | .ind t c h ps fs => .ind t c h ps (fs.map (expandRefs refs))
-  | v => v
+substituted, recursively (bounded by the fuel left: `expandRefsF`). -/
+def expandRefs (refs : List (Nat × Value)) (v : Value) : M Value := do
+  expandRefsF refs (← fuelLeft) v
 
+mutual
 /-- v2.0 (D46): infer an inductive's parameters by matching a field's declared type
 term `FT` (in the scope of the `np` parameters) against the type `T` of the value given
 for it. Only unsolved parameters are filled; the field types are checked afterwards. -/
-partial def unifyParams (np : Nat) (FT : Term) (T : Value) (sol : Array (Option Value)) :
+def unifyParams (np : Nat) (FT : Term) (T : Value) (sol : Array (Option Value)) :
     Array (Option Value) :=
   match FT, T with
   | .place (.var j), _ =>
     if j < np && (sol[np - 1 - j]!).isNone then sol.set! (np - 1 - j) (some T) else sol
   | .tind m as, .tInd m' vs =>
-    if m == m' && as.length == vs.length then
-      (as.zip vs).foldl (fun s (a, v) => unifyParams np a v s) sol
+    if m == m' && as.length == vs.length then unifyParamsList np as vs sol
     else sol
   | _, _ => sol
+termination_by structural FT
 
+/-- `unifyParams` over the arguments of `m(…)` and of its type, left to right. -/
+def unifyParamsList (np : Nat) : List Term → List Value → Array (Option Value) → Array (Option Value)
+  | a :: as, v :: vs, sol => unifyParamsList np as vs (unifyParams np a v sol)
+  | _, _, sol => sol
+termination_by structural as => as
+end
+
+mutual
 /-- The strict subterms of a value built from `S`. -/
-partial def strictSubterms : Value → List Value
+def strictSubterms : Value → List Value
   | .succ v => v :: strictSubterms v
-  | .ind _ _ _ _ fs => fs.flatMap fun f => f :: strictSubterms f
+  | .ind _ _ _ _ fs => strictSubtermsList fs
   | _ => []
+termination_by structural v => v
+
+/-- `fs.flatMap fun f => f :: strictSubterms f`. -/
+def strictSubtermsList : List Value → List Value
+  | [] => []
+  | f :: fs => (f :: strictSubterms f) ++ strictSubtermsList fs
+termination_by structural fs => fs
+end
+
+/-- Is a declared field type a proposition, read off the declaration: a parameter
+declared `: Prop`, or a Prop inductive. -/
+def fieldTermIsProp (d : IndDecl) (FT : Term) : M Bool := do
+  match FT with
+  | .place (.var j) => pure (j < d.params.length && isPropSort (d.params[d.params.length - 1 - j]!).2)
+  | .tind m _ => pure ((← lookupInd m).sort == 0)
+  -- K4: a call of a function declared to return `Prop` (a proof field, `h : Sorted(xs)`)
+  | .call (.const f) _ _ => match (← get).globals.find? (·.name == f) with
+    | some g => pure (g.ty matches .tPi _ (.pi _ _ (.sort 0)))
+    | none => pure false
+  | _ => pure false
+
+/-- D64 [Open]: a write or borrow through an index field of a dependent constructor value
+invalidates the proof fields whose types mention that field: they become `⊥` until assigned
+again (a proof is `⋆` and carries no type, so a stale one could not be told apart at the
+repack; an assigned proof is checked against the telescope at the current contents). -/
+def openWrite (p : Place) : M Unit := do
+  let rec prefixes : Place → List (Place × FieldRef)
+    | .field g q => (q, g) :: prefixes q
+    | .deref q | .fst q | .snd q => prefixes q
+    | .var _ => []
+  for (q, g) in prefixes p do
+    let some d := (← get).inds.find? (·.name == g.ty) | continue
+    unless (d.indexFields g.ctor).contains g.idx do continue
+    for ((fname, FT), j) in ((d.ctors[g.ctor]!).2).zipIdx do
+      if j != g.idx && (d.fieldRefs g.ctor FT).contains g.idx && (← fieldTermIsProp d FT) then
+        let fp := Place.field ⟨g.ty, g.ctor, j, fname⟩ q
+        if (← content? fp).isSome then
+          fire .Open fun _ => s!"a write through {g.name} invalidates the proof field {fname}"
+          setPlace fp .bot
+
+/-- K2/K3: this point runs at runtime: not in an erased term, and not in model code (an
+`implemented by` body or a model function's, which never runs at runtime). -/
+def atRuntime : M Bool := do
+  pure ((← get).erasedDepth == 0 && (← get).modelDepth == 0)
+
+/-- K3: a match whose arms name the constructors of an abstract (or unsized) type, at runtime
+outside model code. -/
+def abstractMatchCheck (p : Place) (ty : String) : M Unit := do
+  if ty == "" then return
+  let d ← lookupInd ty
+  if (d.abstract || d.unsized) && (← atRuntime) then
+    err s!"[K3] a match on {← ppPlace p} with the constructors of the abstract type {ty} at runtime, outside model code"
+
+/-- A type headed by an `unsized` declaration (K2). -/
+def isUnsizedType (T : Value) : M Bool := do
+  match T with
+  | .tInd n _ => pure (← lookupInd n).unsized
+  | _ => pure false
+
+/-- K2: at runtime outside model code, a place whose content has an unsized type is only
+borrowed: never read, moved or assigned (matching it is K3's check). The type is read off
+the content (a constructor value, or an abstract value's type). -/
+def unsizedCheck (p : Place) (v : Value) (what : String) : M Unit := do
+  if !(← atRuntime) then return
+  let T? ← match v with
+    | .ind t _ _ ps _ => pure (some (Value.tInd t ps))
+    | .abs σ => some <$> absType σ
+    | _ => pure none
+  if let some T := T? then
+    if ← isUnsizedType T then
+      err s!"[K2] {← ppPlace p}, of the unsized type {T}, is {what} at runtime (outside model code a view is only borrowed)"
+
+/-- A type term headed by an unsized declaration, read off syntax: an inductive type, or a
+call of a type function whose body is one. The walk follows bodies of earlier definitions
+only (a definition's types never mention it, and an accepted body that is itself a call calls
+an earlier definition), so it ends; `seen` makes that an invariant checked here (a repeat is
+an error, never "not unsized"). Lean cannot see that it ends (the bodies are looked up in the
+state), so the walk is also bounded by the fuel left, and running out is exhaustion. -/
+def unsizedTerm (T : Term) (seen : List String) : M Bool := do
+  unsizedTermF (← fuelLeft) T seen
+where
+  unsizedTermF (fuel : Nat) (T : Term) (seen : List String) : M Bool := do
+    let fuel' + 1 := fuel | exhausted "out of fuel"
+    match T with
+    | .tind n _ => pure (← lookupInd n).unsized
+    | .val v => isUnsizedType v
+    | .call (.const f) _ _ =>
+      if seen.contains f then err s!"internal: the type functions unfolded from {f} call themselves"
+      match (← lookupGlobal f).fn? with
+      | some (.fix _ _ _ _ _ body) => unsizedTermF fuel' body (f :: seen)
+      | _ => pure false
+    | _ => pure false
+  termination_by structural fuel
+
+/-- K2/K3: a function is model code when it is `implemented by` native code, or a parameter
+or its result has an unsized type by value (runtime code can never hold such a value). Read
+from the declared types, syntactically (as D55 reads sorts): a type term headed by an unsized
+declaration, directly or through type functions whose bodies are (`Slice(E, n)`). -/
+def modelSignature (_hs : List Hint) (ds : List Term) (c : Term) : M Bool := do
+  (c :: ds).anyM (unsizedTerm · [])
+
+/-- Is `p` rooted in a closure's captured value? -/
+def isCapture (p : Place) : M Bool := do
+  match ← varPos p.root with
+  | .bind f i => pure (← get).env[f]!.binds[i]!.cap
+  | _ => pure false
+
+/-- A match's scrutinee: a match inspects its place in place (no move). -/
+def matchContent (p : Place) : M Value := do
+  match ← content p with
+  | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
+  | v => pure v
+
+/-- One step added to a place. -/
+def stepPlace (q : Place) : Step → Place
+  | .deref => .deref q | .fst => .fst q | .snd => .snd q | .field g => .field g q
+
+mutual
+/-- Where `loan_l` sits inside a value, as steps from it. -/
+def loanPath (v : Value) (l : Nat) : M (Option (List Step)) := do
+  match v with
+  | .loan m => pure (if m == l then some [] else none)
+  | .succ w => pure ((← loanPath w l).map (Step.fst :: ·))
+  | .borrow _ w => pure ((← loanPath w l).map (Step.deref :: ·))
+  | .ind t c _ _ fs =>
+    let d ← lookupInd t
+    let names := (d.ctors[c]?.map (·.2.map (·.1))).getD []
+    loanPathFields t c names l 0 fs
+  | _ => pure none
+termination_by structural v
+
+/-- The fields of constructor `c` of `t`, from field `i`: the first path to `loan_l`. -/
+def loanPathFields (t : String) (c : Nat) (names : List String) (l i : Nat) :
+    List Value → M (Option (List Step))
+  | [] => pure none
+  | w :: ws => do
+    if let some ss ← loanPath w l then
+      return some (Step.field ⟨t, c, i, names.getD i s!"f{i}"⟩ :: ss)
+    loanPathFields t c names l (i + 1) ws
+termination_by structural ws => ws
+end
+
+/-- A place `*r…` through a borrow variable `r` whose loan sits in an older binding of the
+same frame: that binding's index and the steps from it to the place (the owner's move). -/
+def throughLocalBorrow (f i : Nat) (p : Place) : M (Option (Nat × List Step)) := do
+  let (_, ss) := p.steps
+  let .deref :: rest := ss | return none
+  let .borrow l _ := (← get).env[f]!.binds[i]!.val | return none
+  let binds := (← get).env[f]!.binds
+  for j in [0:i] do
+    if let some path ← loanPath binds[j]!.val l then
+      return some (j, path ++ rest)
+  pure none
+
+/-- D53: record an assignment, borrow or move of `p` by its root position (a stuck block's captures, `armMoves`). -/
+def logEffect (p : Place) (kind : String) : M Unit := do
+  if let .bind f i ← varPos p.root then
+    -- D53: moves and assignments by place, from which a stuck block's effect on what it
+    -- captures is read (`armMoves`); a step through a local borrow is also the owner's
+    if kind == "moves" || kind == "assigns" then
+      let isMove := kind == "moves"
+      modify fun s => { s with placeLog := s.placeLog.push (f, i, p, isMove) }
+      if let some (i', ss) ← throughLocalBorrow f i p then
+        modify fun s => { s with placeLog := s.placeLog.push (f, i', ss.foldl stepPlace (Place.var 0), isMove) }
+
+/-- A statement position (a type, `J`'s endpoints and motive, an erased call's parameter): it
+runs on its own private copy of the state, which is thrown away (P2, D68). -/
+def stmtCopy {α : Type} (x : M α) : M α := onCopy <| withErased x
+
+/-- D64: the fields of the constructor value a place holds, as a constructor `g` names it:
+through a loan (a place lent out
+has its borrow's content). -/
+def ctorFields (v : Value) (g : FieldRef) : M (Option (List Value)) := do
+  ctorFieldsF (← fuelLeft) v g
+where
+  -- a loan's borrow may hold another loan: bounded by the fuel left, running out is exhaustion
+  ctorFieldsF (fuel : Nat) (v : Value) (g : FieldRef) : M (Option (List Value)) := do
+    let fuel' + 1 := fuel | exhausted "out of fuel"
+    match v with
+    | .ind t c _ _ fs => pure (if t == g.ty && c == g.ctor then some fs else none)
+    | .loan l =>
+      let env := (← get).env
+      match (findBorrow env l).bind fun p => (valAt env p).takeBorrow l with
+      | some (c, _) => ctorFieldsF fuel' c g
+      | none => pure none
+    | _ => pure none
+  termination_by structural fuel
+
+/-- A field place is a proof iff its declared type is a proposition (syntactic, D42). -/
+def fieldIsProof (g : FieldRef) : M Bool := do
+  let d ← lookupInd g.ty
+  match d.ctors[g.ctor]? with
+  | some (_, fields) => match fields[g.idx]? with
+    | some (_, FT) => fieldTermIsProp d FT
+    | none => pure false
+  | none => pure false
+
+/-- D64 [Open]: `p` is a data field whose declared type mentions earlier fields (its
+assignment is a strong update). -/
+def strongUpdate (p : Place) : M Bool := do
+  let .field g _ := p | return false
+  let some d := (← get).inds.find? (·.name == g.ty) | return false
+  pure (d.fieldDependent g.ctor g.idx && !(← fieldIsProof g))
+
+/-- D64: does a value hold a value of a dependent constructor (outside sealed programs and
+closures, which carry their types)? -/
+def hasDependent (v : Value) : M Bool := do
+  match v with
+  | .ind t c _ _ fs =>
+    if (← lookupInd t).dependent c then return true
+    anyList fs
+  | .borrow _ w | .succ w => hasDependent w
+  | _ => pure false
+termination_by structural v
+where
+  /-- `vs.anyM hasDependent`. -/
+  anyList : List Value → M Bool
+    | [] => pure false
+    | w :: ws => do if ← hasDependent w then return true else anyList ws
+  termination_by structural ws => ws
+
+/-- D42 (v2.0): a constructor application of a Prop inductive is a proof, erased. -/
+def ctorIsProof (ty : String) : M Bool := do
+  pure ((← lookupInd ty).sort == 0)
+
+/-- D45: large elimination (a match on a proof producing a non-proof) is allowed only
+from a subsingleton: zero constructors, or one whose fields are all propositions. -/
+def largeElim (d : IndDecl) : M Bool := do
+  match d.ctors with
+  | [] => pure true
+  | [(_, fields)] => fields.allM fun (_, FT) => fieldTermIsProp d FT
+  | _ => pure false
+
+/-- The error of a large elimination from a proof of a non-subsingleton (D45). -/
+def subsingletonMsg (d : IndDecl) : String :=
+  let why := if d.ctors.length ≥ 2 then s!"it has {d.ctors.length} constructors"
+    else "its constructor has a field that is not a proposition"
+  s!"[D45] a match on a proof of {d.name} returns a non-proof, but {d.name} is not a subsingleton ({why}): large elimination would tell apart proofs that proof irrelevance identifies"
+
+/-- D45: the match `match p { … }` on constructors of `ty` (or with no arms) is by type. -/
+def byTypeMatch (ty : String) (arms : List (Hint × Term)) : M Bool := do
+  if arms.isEmpty then return true
+  pure ((← lookupInd ty).sort == 0)
+
+/-- What the declared type of a place says: a variable's, through a borrow the borrowed
+type's, a constructor field's (a proof field is a proof). -/
+def placeDecl (sc : List DeclInfo) : Place → M DeclInfo
+  | .var i => do
+    if h : i < sc.length then return sc[i]
+    if (← get).liveScope then liveDecl (i - sc.length) else pure .other
+  | .deref q => do
+    match ← placeDecl sc q with
+    | .ref d => pure d
+    | _ => pure .other
+  | .field g _ => do pure (if ← fieldIsProof g then .prop else .other)
+  | _ => pure .other
+
+/-- Arms agree on what their declared type says (`any`, a zero-arm match, agrees with all).
+Arms that are all proofs agree on a proof, whatever their shapes (a proof variable in one
+arm, a function into proofs in another: applied, either is a proof). Arms of which some are
+proofs and some not have no common declared type (`conflict`, D63): the paper's "a match has
+each arm's" declared type is then undefined, and the match is rejected wherever its declared
+type is read ([Type-pos], the erasure pre-pass). -/
+def agreeDecl (ds : List DeclInfo) : DeclInfo :=
+  if ds.contains .conflict then .conflict else
+  match ds.filter (· != .any) with
+  | [] => .any
+  | d :: rest =>
+    if rest.all (· == d) then d
+    else if (d :: rest).all DeclInfo.isProof then .prop
+    else if (d :: rest).any DeclInfo.isProof then .conflict
+    else .other
+
+/-- The error for a term with no declared type (D63). -/
+def conflictMsg (t : Term) (ns : List String) : String :=
+  s!"[D63] the arms of a match in {t.pp ns} disagree about being proofs (some are, some are not), so it has no declared type"
+
+/-- The erasure pre-pass: whether a term is erased and whether it is a proof, decided
+before it runs, from declared types. A proof is a term whose declared type is a
+proposition; a call returning types is erased too (its context is not: D35). -/
+def preFlags (t : Term) (d : DeclInfo) : M (Option (Bool × Bool)) := do
+  if d == .conflict then err (conflictMsg t [])
+  if d == .any then return none
+  let p := d.isProof
+  -- a stuck block's function (codomain the match's type, `.val B`) is a match: erased iff
+  -- it is a proof, like any sequencing form (D35)
+  let block := match t with
+    | .call (.fix _ _ _ (.val _) _ _) _ _ | .call (.val (.clo _ (.fix _ _ _ (.val _) _ _))) _ _ => true
+    | _ => false
+  let e := p || (t matches .call ..) && !block && (d matches .sort _)
+  pure (some (e, p))
+
+/-- The sort of a sealed program that is a type (v1.4: "a sealed program of sort Prop is
+a type"), read off its head call: in result form `L; C`, when the callee's codomain is a
+sort. -/
+def sealedSort? (t : Term) : M (Option Nat) := do
+  let rec body : Term → Term
+    | .letIn _ _ u => body u
+    | u => u
+  match body t with
+  | .call (.val f) _ true =>
+    let piTy ← match f with
+      | .gfn n => pure (some (← lookupGlobal n).ty)
+      | .clo cs (.fix _ hs ds c _ _) => pure (some (Value.tPi cs (.pi hs ds c)))
+      | .abs σ => pure (some (← absType σ))
+      | _ => pure none
+    match piTy with
+    | some (.tPi _ (.pi _ _ (.sort l))) => pure (some l)
+    | some (.tPi _ (.pi _ _ (.val (.sort l)))) => pure (some l)
+    | _ => pure none
+  | _ => pure none
+
+/-- A fresh abstract value of type `T`, in η-normal form: at `Unit`, `()` (D59 refined: the
+readback at type `Unit` is `()`; a value of `Unit` carries nothing). -/
+def absOf (T : Value) : M Value := do
+  if T == .tUnit then return .unit
+  pure (.abs (← freshAbs T))
+
+/-- D44 (v1.9): a function type returning a borrow must take a borrow (no `'static`
+borrows: a returned borrow derives from a borrow argument). -/
+def borrowParamCheck (ds : List Term) (c : Term) : M Unit := do
+  if (c matches .ref _) && !(ds.any (· matches .ref _)) then
+    err s!"[D44] a function type returning a borrow ({c.pp []}) must have a borrow parameter"
+
+/-- No borrows inside data (RULES §1), also through a parameter: `List(&Nat)` is not a type. -/
+def noBorrowParam (n : String) (v : Value) : M Unit := do
+  if v.typeHasRef then err s!"{n} at {v}: no borrows inside data (a parameter may not be a borrow type)"
+
+/-- A statement position (an argument of a statement, a side of `Eq`): it runs on its own private
+copy of the state, by the ordinary rules. An argument whose value holds a borrow cannot: the
+borrow must be the real one (a copy's borrow would alias the place it borrows), so it runs in
+place. -/
+def stmtArgIf (b : Bool) (x : M (Value × Option Value)) : M (Value × Option Value) := do
+  if !b then return ← x
+  let r ← onCopy x
+  if r.1.anyAtom (fun | .borrow .. | .loan _ => true | _ => false) then x else pure r
+
+def fixOf (fv : Value) : M (List Value × Term) := do
+  match fv with
+  | .gfn n => match (← lookupGlobal n).fn? with
+    | some t => pure ([], t)
+    | none => err s!"{n} is not a function"
+  | .clo cs t => pure (cs, t)
+  | _ => err s!"{fv} is not a function"
+
+/-- D53 (fuzz-port shape (c)): a returned borrow's content must be whole, as when a borrow
+ends: a function may not hand back a borrow of a place it moved out of. -/
+def wholeReturned (v : Value) : M Unit := do
+  if let .borrow _ c := v then
+    if c.hasHole then
+      err s!"[D53] a returned borrow's content is partly moved out ({c})"
+
+/-- D53 (fuzz-port P): a borrow passed at runtime to a call that closes off, or to an erased
+call, must be whole. [Close] seals the borrowed place's content, which hides a hole, and an
+erased call's writes vanish at runtime, so neither can make it whole before the borrow ends. -/
+def wholeBorrowArgs (ws : Array Value) (what : String) : M Unit := do
+  -- D68: a statement follows the runtime rules too
+  for (w, i) in ws.toList.zipIdx do
+    if let .borrow _ u := w then
+      if u.hasHole then
+        err s!"[D53] argument {i + 1} of {what} is a borrow whose content is partly moved out ({u})"
+
+/-- [Rec]: at a recursive call, a parameter position survives if its argument (the
+content, through a borrow) is a strict subterm of that parameter's entry value as
+refined so far. The recursive position is any position that survives every call.
+Every enclosing function being checked is considered, so a recursive call inside a
+nested closure is checked against the outer function's entry values (fix L3). -/
+def recCheck (fv : Value) (ws : Array Value) : M Unit := do
+  let st ← get
+  let mut frames := #[]
+  for ctx in st.recStack do
+    if ctx.fn == fv then
+      let cands := ctx.cands
+      let cands' ← cands.filterM fun j => do
+        match ctx.entries[j]?.join, ws[j]? with
+        | some σ, some w =>
+          let u := match w with | .borrow _ u => u | u => u
+          return (strictSubterms (← expandRefs st.refs (.abs σ))).contains u
+        | _, _ => pure false
+      -- fail at the offending call, before it is run (running it may not terminate)
+      if cands.isEmpty then
+        err s!"[Rec] {fv} calls itself but declares no decreasing parameter (`by x`)"
+      if cands'.isEmpty then
+        err s!"[Rec] at {fv}({", ".intercalate (ws.toList.map toString)}): the argument in the decreasing position is not a strict subterm of that parameter's entry value as refined so far"
+      frames := frames.push { ctx with cands := cands' }
+    else frames := frames.push ctx
+  set { st with recStack := frames.toList }
+
+/-- Finding G1: a neutral that a [Split] generalised stays generalised when normalisation
+derives it again (it is a closed, deterministic computation, so every derivation of it
+denotes the same value). Returns its refined value if it is one. -/
+def canonNeutral (v : Value) : M Value := do
+  match v with
+  | .sealed _ => match (← get).neutrals.lookup v with
+    | some σ => expandRefs (← get).refs (.abs σ)
+    | none => pure v
+  | _ => pure v
+
+/-- Two steps name the same part: a pair's `.1`/`.2` are its constructor's fields `fst`/`snd`
+(the surface writes both; a Nat's `.1`, its predecessor, is never a pair's field). -/
+def stepEq : Step → Step → Bool
+  | .fst, .field g | .field g, .fst => g.ty == "Pair" && g.ctor == 0 && g.idx == 0
+  | .snd, .field g | .field g, .snd => g.ty == "Pair" && g.ctor == 0 && g.idx == 1
+  | a, b => a == b
+
+/-- Place `q` is a prefix of place `p` (both rooted in the same frame). -/
+def placePrefix (q p : Place) : Bool :=
+  let (i, qs) := q.steps
+  let (j, ps) := p.steps
+  i == j && qs.length ≤ ps.length && ((ps.take qs.length).zip qs).all fun (a, b) => stepEq a b
+
+/-- The same place (up to `stepEq`). -/
+def placeEq (q p : Place) : Bool :=
+  q.steps.2.length == p.steps.2.length && placePrefix q p
+
+/-- D53: what a run left moved out among the bindings `(f0, i < n0)`, from its log of moves
+and assignments in order: a move adds its place, an assignment restores every moved place it
+covers. Places are rooted at the frame index the bindings had when the run started. -/
+def armMoves (log : Array (Nat × Nat × Place × Bool)) (f0 n0 : Nat) : M (List Place) := do
+  let mut out : List Place := []
+  for (f, i, p, isMove) in log do
+    if f != f0 || i ≥ n0 then continue
+    let q := p.steps.2.foldl stepPlace (Place.var (n0 - 1 - i))
+    if isMove then
+      unless out.any (placeEq · q) do out := out ++ [q]
+    else
+      out := out.filter fun m => !placePrefix q m
+  pure out
+
+/-- D61 `split`: the name of a sealed program's head call (the call [Seal] marks as the
+head; one per sealed program), if it is a top-level function. -/
+def sealedHead : Term → Option String
+  | .call (.val (.gfn n)) _ true => some n
+  | .call f as _ => sealedHead f <|> firstOf as
+  | .letIn _ a b | .seq a b => sealedHead a <|> sealedHead b
+  | .assign _ a => sealedHead a
+  | _ => none
+termination_by structural t => t
+where
+  /-- `ts.findSome? sealedHead`. -/
+  firstOf : List Term → Option String
+    | [] => none
+    | t :: ts => sealedHead t <|> firstOf ts
+  termination_by structural ts => ts
+
+/-- D61: the sealed programs of a value, in pre-order, left to right. -/
+def sealedIn (v : Value) : List Term :=
+  match v with
+  | .sealed t => t :: termVals t
+  | .succ w | .borrow _ w | .tRef w => sealedIn w
+  | .tEq A a b => sealedIn A ++ sealedIn a ++ sealedIn b
+  | .clo cs _ | .tPi cs _ => valsIn cs
+  | .ind _ _ _ ps fs => valsIn ps ++ valsIn fs
+  | .tInd _ as => valsIn as
+  | _ => []
+termination_by structural v
+where
+  valsIn : List Value → List Term
+    | [] => []
+    | w :: ws => sealedIn w ++ valsIn ws
+  termination_by structural ws => ws
+  termVals : Term → List Term
+    | .val w => sealedIn w
+    | .call f as _ => termVals f ++ termsIn as
+    | .letIn _ a b | .seq a b => termVals a ++ termVals b
+    | .assign _ a => termVals a
+    | .prim _ as => termsIn as
+    | _ => []
+  termination_by structural t => t
+  termsIn : List Term → List Term
+    | [] => []
+    | t :: ts => termVals t ++ termsIn ts
+  termination_by structural ts => ts
 
 -- the machine is one `mutual` block, and compiling it (LCNF) outgrew the default heartbeats
 set_option maxHeartbeats 1000000 in
@@ -295,25 +828,6 @@ partial def repackAt (p : Place) (T : Value) (what : String) : M Unit := do
   if v matches .bot then return
   repackCheck s!"{← ppPlace p} is {what}" v T
 
-/-- D64 [Open]: a write or borrow through an index field of a dependent constructor value
-invalidates the proof fields whose types mention that field: they become `⊥` until assigned
-again (a proof is `⋆` and carries no type, so a stale one could not be told apart at the
-repack; an assigned proof is checked against the telescope at the current contents). -/
-partial def openWrite (p : Place) : M Unit := do
-  let rec prefixes : Place → List (Place × FieldRef)
-    | .field g q => (q, g) :: prefixes q
-    | .deref q | .fst q | .snd q => prefixes q
-    | .var _ => []
-  for (q, g) in prefixes p do
-    let some d := (← get).inds.find? (·.name == g.ty) | continue
-    unless (d.indexFields g.ctor).contains g.idx do continue
-    for ((fname, FT), j) in ((d.ctors[g.ctor]!).2).zipIdx do
-      if j != g.idx && (d.fieldRefs g.ctor FT).contains g.idx && (← fieldTermIsProp d FT) then
-        let fp := Place.field ⟨g.ty, g.ctor, j, fname⟩ q
-        if (← content? fp).isSome then
-          fire .Open fun _ => s!"a write through {g.name} invalidates the proof field {fname}"
-          setPlace fp .bot
-
 /-- End every borrow in Ω (for observations, §4). -/
 partial def endAll : M Unit := do
   let env := (← get).env
@@ -351,61 +865,6 @@ partial def accessNeutralHead (p : Place) : M Unit := do
     | l :: _ => endBorrow l; accessNeutralHead p
     | [] => pure ()
   | _ => pure ()
-
-/-- K2/K3: this point runs at runtime: not in an erased term, and not in model code (an
-`implemented by` body or a model function's, which never runs at runtime). -/
-partial def atRuntime : M Bool := do
-  pure ((← get).erasedDepth == 0 && (← get).modelDepth == 0)
-
-/-- K3: a match whose arms name the constructors of an abstract (or unsized) type, at runtime
-outside model code. -/
-partial def abstractMatchCheck (p : Place) (ty : String) : M Unit := do
-  if ty == "" then return
-  let d ← lookupInd ty
-  if (d.abstract || d.unsized) && (← atRuntime) then
-    err s!"[K3] a match on {← ppPlace p} with the constructors of the abstract type {ty} at runtime, outside model code"
-
-/-- A type headed by an `unsized` declaration (K2). -/
-partial def isUnsizedType (T : Value) : M Bool := do
-  match T with
-  | .tInd n _ => pure (← lookupInd n).unsized
-  | _ => pure false
-
-/-- K2: at runtime outside model code, a place whose content has an unsized type is only
-borrowed: never read, moved or assigned (matching it is K3's check). The type is read off
-the content (a constructor value, or an abstract value's type). -/
-partial def unsizedCheck (p : Place) (v : Value) (what : String) : M Unit := do
-  if !(← atRuntime) then return
-  let T? ← match v with
-    | .ind t _ _ ps _ => pure (some (Value.tInd t ps))
-    | .abs σ => some <$> absType σ
-    | _ => pure none
-  if let some T := T? then
-    if ← isUnsizedType T then
-      err s!"[K2] {← ppPlace p}, of the unsized type {T}, is {what} at runtime (outside model code a view is only borrowed)"
-
-/-- K2/K3: a function is model code when it is `implemented by` native code, or a parameter
-or its result has an unsized type by value (runtime code can never hold such a value). Read
-from the declared types, syntactically (as D55 reads sorts): a type term headed by an unsized
-declaration, directly or through type functions whose bodies are (`Slice(E, n)`). -/
-partial def modelSignature (_hs : List Hint) (ds : List Term) (c : Term) : M Bool := do
-  (c :: ds).anyM (unsizedTerm · [])
-
-/-- A type term headed by an unsized declaration, read off syntax: an inductive type, or a
-call of a type function whose body is one. The walk follows bodies of earlier definitions
-only (a definition's types never mention it, and an accepted body that is itself a call calls
-an earlier definition), so it ends; `seen` makes that an invariant checked here rather than a
-fuel that would answer "not unsized" when it ran out. -/
-partial def unsizedTerm (T : Term) (seen : List String) : M Bool := do
-  match T with
-  | .tind n _ => pure (← lookupInd n).unsized
-  | .val v => isUnsizedType v
-  | .call (.const f) _ _ =>
-    if seen.contains f then err s!"internal: the type functions unfolded from {f} call themselves"
-    match (← lookupGlobal f).fn? with
-    | some (.fix _ _ _ _ _ body) => unsizedTerm body (f :: seen)
-    | _ => pure false
-  | _ => pure false
 
 /-- [Read]: reading a place moves its content out (`p ↦ ⊥`), in any term: a statement runs on
 its own private copy, so its moves are undone with the copy (one mental model, D68). Content
@@ -456,64 +915,6 @@ partial def copyRead (p : Place) (v : Value) : M Bool := do
   -- Π-typed place moves it, whatever function it holds
   | some T => isCopyType T
   | none => pure false
-
-/-- Is `p` rooted in a closure's captured value? -/
-partial def isCapture (p : Place) : M Bool := do
-  match ← varPos p.root with
-  | .bind f i => pure (← get).env[f]!.binds[i]!.cap
-  | _ => pure false
-
-/-- A match's scrutinee: a match inspects its place in place (no move). -/
-partial def matchContent (p : Place) : M Value := do
-  match ← content p with
-  | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
-  | v => pure v
-
-/-- D53: record an assignment, borrow or move of `p` by its root position (a stuck block's captures, `armMoves`). -/
-partial def logEffect (p : Place) (kind : String) : M Unit := do
-  if let .bind f i ← varPos p.root then
-    -- D53: moves and assignments by place, from which a stuck block's effect on what it
-    -- captures is read (`armMoves`); a step through a local borrow is also the owner's
-    if kind == "moves" || kind == "assigns" then
-      let isMove := kind == "moves"
-      modify fun s => { s with placeLog := s.placeLog.push (f, i, p, isMove) }
-      if let some (i', ss) ← throughLocalBorrow f i p then
-        modify fun s => { s with placeLog := s.placeLog.push (f, i', ss.foldl stepPlace (Place.var 0), isMove) }
-
-/-- One step added to a place. -/
-partial def stepPlace (q : Place) : Step → Place
-  | .deref => .deref q | .fst => .fst q | .snd => .snd q | .field g => .field g q
-
-/-- Where `loan_l` sits inside a value, as steps from it. -/
-partial def loanPath (v : Value) (l : Nat) : M (Option (List Step)) := do
-  match v with
-  | .loan m => pure (if m == l then some [] else none)
-  | .succ w => pure ((← loanPath w l).map (Step.fst :: ·))
-  | .borrow _ w => pure ((← loanPath w l).map (Step.deref :: ·))
-  | .ind t c _ _ fs =>
-    let d ← lookupInd t
-    let names := (d.ctors[c]?.map (·.2.map (·.1))).getD []
-    for (w, i) in fs.zipIdx do
-      if let some ss ← loanPath w l then
-        return some (Step.field ⟨t, c, i, names.getD i s!"f{i}"⟩ :: ss)
-    pure none
-  | _ => pure none
-
-/-- A place `*r…` through a borrow variable `r` whose loan sits in an older binding of the
-same frame: that binding's index and the steps from it to the place (the owner's move). -/
-partial def throughLocalBorrow (f i : Nat) (p : Place) : M (Option (Nat × List Step)) := do
-  let (_, ss) := p.steps
-  let .deref :: rest := ss | return none
-  let .borrow l _ := (← get).env[f]!.binds[i]!.val | return none
-  let binds := (← get).env[f]!.binds
-  for j in [0:i] do
-    if let some path ← loanPath binds[j]!.val l then
-      return some (j, path ++ rest)
-  pure none
-
-/-- A statement position (a type, `J`'s endpoints and motive, an erased call's parameter): it
-runs on its own private copy of the state, which is thrown away (P2, D68). -/
-partial def stmtCopy {α : Type} (x : M α) : M α := onCopy <| withErased x
 
 /-- [Borrow] `&p ⇓ borrow_ℓ v` with `p ↦ loan_ℓ`. -/
 partial def borrowPlace (p : Place) : M Value := do
@@ -647,19 +1048,6 @@ partial def placeType (p : Place) : M Value := do
   | some T => pure T
   | none => err s!"cannot infer the type of the place {← ppPlace p}"
 
-/-- D64: the fields of the constructor value a place holds, as a constructor `g` names it:
-through a loan (a place lent out
-has its borrow's content). -/
-partial def ctorFields (v : Value) (g : FieldRef) : M (Option (List Value)) := do
-  match v with
-  | .ind t c _ _ fs => pure (if t == g.ty && c == g.ctor then some fs else none)
-  | .loan l =>
-    let env := (← get).env
-    match (findBorrow env l).bind fun p => (valAt env p).takeBorrow l with
-    | some (c, _) => ctorFields c g
-    | none => pure none
-  | _ => pure none
-
 /-- D64, rule 2 and [Open]: the type of field `g` of the value at `q`, of the dependent
 constructor `g.ctor` of `d` at parameters `ps`. Its type by the telescope is computed from
 the earlier fields' current contents. A field whose declared type mentions no earlier field
@@ -732,23 +1120,6 @@ partial def convVal (v : Value) (T : Value) : M Bool := do
   match ← valType? v with
   | some S => conv S T
   | none => pure false
-
-/-- D64 [Open]: `p` is a data field whose declared type mentions earlier fields (its
-assignment is a strong update). -/
-partial def strongUpdate (p : Place) : M Bool := do
-  let .field g _ := p | return false
-  let some d := (← get).inds.find? (·.name == g.ty) | return false
-  pure (d.fieldDependent g.ctor g.idx && !(← fieldIsProof g))
-
-/-- D64: does a value hold a value of a dependent constructor (outside sealed programs and
-closures, which carry their types)? -/
-partial def hasDependent (v : Value) : M Bool := do
-  match v with
-  | .ind t c _ _ fs =>
-    if (← lookupInd t).dependent c then return true
-    fs.anyM hasDependent
-  | .borrow _ w | .succ w => hasDependent w
-  | _ => pure false
 
 /-- The type of a value, for untyped bindings (captured values) and embedded values. A total
 query: `none` for a value that has no readable type of its own (`⊥`, `⋆`, an inert loan, a
@@ -896,39 +1267,6 @@ partial def indValType? (t : String) (c : Nat) (fs : List Value) : M (Option Val
     sol := unifyParams d.params.length FT T sol
   pure ((sol.toList.mapM id).map fun ps => .tInd t ps)
 
-/-- D42 (v2.0): a constructor application of a Prop inductive is a proof, erased. -/
-partial def ctorIsProof (ty : String) : M Bool := do
-  pure ((← lookupInd ty).sort == 0)
-
-/-- Is a declared field type a proposition, read off the declaration: a parameter
-declared `: Prop`, or a Prop inductive. -/
-partial def fieldTermIsProp (d : IndDecl) (FT : Term) : M Bool := do
-  match FT with
-  | .place (.var j) => pure (j < d.params.length && isPropSort (d.params[d.params.length - 1 - j]!).2)
-  | .tind m _ => pure ((← lookupInd m).sort == 0)
-  -- K4: a call of a function declared to return `Prop` (a proof field, `h : Sorted(xs)`)
-  | .call (.const f) _ _ => match (← get).globals.find? (·.name == f) with
-    | some g => pure (g.ty matches .tPi _ (.pi _ _ (.sort 0)))
-    | none => pure false
-  | _ => pure false
-
-/-- A field place is a proof iff its declared type is a proposition (syntactic, D42). -/
-partial def fieldIsProof (g : FieldRef) : M Bool := do
-  let d ← lookupInd g.ty
-  match d.ctors[g.ctor]? with
-  | some (_, fields) => match fields[g.idx]? with
-    | some (_, FT) => fieldTermIsProp d FT
-    | none => pure false
-  | none => pure false
-
-/-- D45: large elimination (a match on a proof producing a non-proof) is allowed only
-from a subsingleton: zero constructors, or one whose fields are all propositions. -/
-partial def largeElim (d : IndDecl) : M Bool := do
-  match d.ctors with
-  | [] => pure true
-  | [(_, fields)] => fields.allM fun (_, FT) => fieldTermIsProp d FT
-  | _ => pure false
-
 /-- D49 (3): in an arm of a match on a proof, a data field is bound to a fresh abstract
 value (as [Def] binds a parameter) and a proof field stays a place holding `⋆`. The arm
 becomes `let g = σ; …; arm'`, with the field's place (and places under it) replaced by
@@ -965,12 +1303,6 @@ partial def bindDataFields (p : Place) (d : IndDecl) (ps : List Value) (c : Nat)
     t := .letIn ⟨fname⟩ u t
   pure t
 
-/-- The error of a large elimination from a proof of a non-subsingleton (D45). -/
-partial def subsingletonMsg (d : IndDecl) : String :=
-  let why := if d.ctors.length ≥ 2 then s!"it has {d.ctors.length} constructors"
-    else "its constructor has a field that is not a proposition"
-  s!"[D45] a match on a proof of {d.name} returns a non-proof, but {d.name} is not a subsingleton ({why}): large elimination would tell apart proofs that proof irrelevance identifies"
-
 /-- D66: `&A` is well formed iff `A : Type₀`. With `Prop : Type₁`, everything in `Type₀` exists
 at runtime: data types, function types into data or functions, a type parameter declared in
 `Type₀`. Propositions (`P : Prop`), `Prop` and the universes are not in it. The sort is read off
@@ -979,11 +1311,6 @@ not known to be in `Type₀` (fail-safe), and neither is a borrow type (no borro
 partial def isBorrowable (T : Value) : M Bool := do
   if T.typeHasRef then return false
   pure ((← sortOf? T) == some 1)
-
-/-- D45: the match `match p { … }` on constructors of `ty` (or with no arms) is by type. -/
-partial def byTypeMatch (ty : String) (arms : List (Hint × Term)) : M Bool := do
-  if arms.isEmpty then return true
-  pure ((← lookupInd ty).sort == 0)
 
 /-- The universe level of a type value (`0` is `Prop`), or `none` when the value is not known
 to be a type: an abstract value whose type is not a sort, a sealed program whose head call's
@@ -1026,39 +1353,6 @@ partial def sortOf (T : Value) : M Nat := do
   | _ => err s!"{T} is not a type"
 
 -- ### Declared types (D55) and the erasure pre-pass
-
-/-- What the declared type of a place says: a variable's, through a borrow the borrowed
-type's, a constructor field's (a proof field is a proof). -/
-partial def placeDecl (sc : List DeclInfo) : Place → M DeclInfo
-  | .var i => do
-    if h : i < sc.length then return sc[i]
-    if (← get).liveScope then liveDecl (i - sc.length) else pure .other
-  | .deref q => do
-    match ← placeDecl sc q with
-    | .ref d => pure d
-    | _ => pure .other
-  | .field g _ => do pure (if ← fieldIsProof g then .prop else .other)
-  | _ => pure .other
-
-/-- Arms agree on what their declared type says (`any`, a zero-arm match, agrees with all).
-Arms that are all proofs agree on a proof, whatever their shapes (a proof variable in one
-arm, a function into proofs in another: applied, either is a proof). Arms of which some are
-proofs and some not have no common declared type (`conflict`, D63): the paper's "a match has
-each arm's" declared type is then undefined, and the match is rejected wherever its declared
-type is read ([Type-pos], the erasure pre-pass). -/
-partial def agreeDecl (ds : List DeclInfo) : DeclInfo :=
-  if ds.contains .conflict then .conflict else
-  match ds.filter (· != .any) with
-  | [] => .any
-  | d :: rest =>
-    if rest.all (· == d) then d
-    else if (d :: rest).all DeclInfo.isProof then .prop
-    else if (d :: rest).any DeclInfo.isProof then .conflict
-    else .other
-
-/-- The error for a term with no declared type (D63). -/
-partial def conflictMsg (t : Term) (ns : List String) : String :=
-  s!"[D63] the arms of a match in {t.pp ns} disagree about being proofs (some are, some are not), so it has no declared type"
 
 /-- The declared type of a term, read from the declared types of its heads without
 normalising (the D35 notion), in a scope saying what each variable's declared type says
@@ -1239,24 +1533,6 @@ partial def pushCaps (cs : List Value) : M Unit := do
     modifyFrame (← topIdx) fun fr =>
       { fr with binds := fr.binds.push { hint := ⟨"κ"⟩, ty := none, val := v, decl := d, cap := true } }
 
-/-- Push parameters with their declared-type readings (the earlier ones in scope). -/
-partial def paramDecl (d : Term) : M DeclInfo := withLive true (typeDecl false [] [] d)
-
-/-- The erasure pre-pass: whether a term is erased and whether it is a proof, decided
-before it runs, from declared types. A proof is a term whose declared type is a
-proposition; a call returning types is erased too (its context is not: D35). -/
-partial def preFlags (t : Term) (d : DeclInfo) : M (Option (Bool × Bool)) := do
-  if d == .conflict then err (conflictMsg t [])
-  if d == .any then return none
-  let p := d.isProof
-  -- a stuck block's function (codomain the match's type, `.val B`) is a match: erased iff
-  -- it is a proof, like any sequencing form (D35)
-  let block := match t with
-    | .call (.fix _ _ _ (.val _) _ _) _ _ | .call (.val (.clo _ (.fix _ _ _ (.val _) _ _))) _ _ => true
-    | _ => false
-  let e := p || (t matches .call ..) && !block && (d matches .sort _)
-  pure (some (e, p))
-
 /-- Is a type a proposition? (P5, and proof irrelevance: a value of a proposition is `⋆`.) -/
 partial def isPropV (T : Value) : M Bool := do
   match T with
@@ -1268,38 +1544,12 @@ partial def isPropV (T : Value) : M Bool := do
   | .sealed t => pure ((← sealedSort? t) == some 0)
   | _ => pure false
 
-/-- The sort of a sealed program that is a type (v1.4: "a sealed program of sort Prop is
-a type"), read off its head call: in result form `L; C`, when the callee's codomain is a
-sort. -/
-partial def sealedSort? (t : Term) : M (Option Nat) := do
-  let rec body : Term → Term
-    | .letIn _ _ u => body u
-    | u => u
-  match body t with
-  | .call (.val f) _ true =>
-    let piTy ← match f with
-      | .gfn n => pure (some (← lookupGlobal n).ty)
-      | .clo cs (.fix _ hs ds c _ _) => pure (some (Value.tPi cs (.pi hs ds c)))
-      | .abs σ => pure (some (← absType σ))
-      | _ => pure none
-    match piTy with
-    | some (.tPi _ (.pi _ _ (.sort l))) => pure (some l)
-    | some (.tPi _ (.pi _ _ (.val (.sort l)))) => pure (some l)
-    | _ => pure none
-  | _ => pure none
-
 /-- A value standing for an arbitrary inhabitant of `A`, used only to compute sorts. -/
 partial def genericValue (A : Value) : M Value := do
   if ← isPropV A then return .proof
   match A with
   | .tRef T => pure (.borrow (← freshLoan) (← absOf T))
   | _ => absOf A
-
-/-- A fresh abstract value of type `T`, in η-normal form: at `Unit`, `()` (D59 refined: the
-readback at type `Unit` is `()`; a value of `Unit` carries nothing). -/
-partial def absOf (T : Value) : M Value := do
-  if T == .tUnit then return .unit
-  pure (.abs (← freshAbs T))
 
 /-- Evaluate a type (P2: once, against the current Ω, on a private copy). -/
 partial def evalType (t : Term) : M Value := stmtCopy do
@@ -1356,12 +1606,6 @@ partial def capture (t : Term) : M (List Value × Term) := do
         t' := t'.inlineReads (m - 1 - k) (.ascribe (.val .proof) (.val T)) 0
   relocate t t'     -- the editor: the rebuilt body keeps its source ranges
   pure (vals.toList, t')
-
-/-- D44 (v1.9): a function type returning a borrow must take a borrow (no `'static`
-borrows: a returned borrow derives from a borrow argument). -/
-partial def borrowParamCheck (ds : List Term) (c : Term) : M Unit := do
-  if (c matches .ref _) && !(ds.any (· matches .ref _)) then
-    err s!"[D44] a function type returning a borrow ({c.pp []}) must have a borrow parameter"
 
 -- ### Conversion (P1, v1.5 D30)
 
@@ -2102,10 +2346,6 @@ partial def checkParams (d : IndDecl) (n : String) (vs : Array Value) (tys : Arr
       let pd' ← withLive true (typeDecl false [] [] PT)
       pushBind h (some A) v pd'.isProof pd'
 
-/-- No borrows inside data (RULES §1), also through a parameter: `List(&Nat)` is not a type. -/
-partial def noBorrowParam (n : String) (v : Value) : M Unit := do
-  if v.typeHasRef then err s!"{n} at {v}: no borrows inside data (a parameter may not be a borrow type)"
-
 /-- A constructor application `C(ā; t₁, …, tₖ)` of `D` (v2.0, D49 (4): the parameters `ā`
 lead, surface `C[ā](t̄)`, and may be omitted). Its value is `C(ā; v̄)`, recording the
 parameters when known, or `⋆` when `D` is a Prop inductive (D42). When typed, omitted
@@ -2167,15 +2407,6 @@ partial def stmtCallee (fv : Value) (fT : Option Value) (cls? : Option Nat) : M 
   -- a proof is only ever called at a proposition (P5): its calls return proofs. Any other value
   -- with no readable Π-type is not callable, and `callFn` rejects the call
   | none => pure (fv == .proof)
-
-/-- A statement position (an argument of a statement, a side of `Eq`): it runs on its own private
-copy of the state, by the ordinary rules. An argument whose value holds a borrow cannot: the
-borrow must be the real one (a copy's borrow would alias the place it borrows), so it runs in
-place. -/
-partial def stmtArgIf (b : Bool) (x : M (Value × Option Value)) : M (Value × Option Value) := do
-  if !b then return ← x
-  let r ← onCopy x
-  if r.1.anyAtom (fun | .borrow .. | .loan _ => true | _ => false) then x else pure r
 
 partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
     (cls? : Option Nat := none) : M (Value × Option Value) := do
@@ -2297,14 +2528,6 @@ partial def endBorrowArgs (ws : Array Value) : M Unit := do
       endBorrow l
       discard popTemp
 
-partial def fixOf (fv : Value) : M (List Value × Term) := do
-  match fv with
-  | .gfn n => match (← lookupGlobal n).fn? with
-    | some t => pure ([], t)
-    | none => err s!"{n} is not a function"
-  | .clo cs t => pure (cs, t)
-  | _ => err s!"{fv} is not a function"
-
 /-- [Call]: push a frame `[caps, self, x̄ ↦ w̄]`, run the body, pop the frame. -/
 partial def runBody (fv : Value) (cs : List Value) (t : Term) (ws : Array Value) : M Value := do
   let .fix self hs ds c _ body := t | err "internal: not a fix"
@@ -2351,13 +2574,6 @@ partial def runBodyCore (fv : Value) (cs : List Value) (t : Term) (ws : Array Va
   popFrame
   modify fun s => { s with depth := d }
   popTemp
-
-/-- D53 (fuzz-port shape (c)): a returned borrow's content must be whole, as when a borrow
-ends: a function may not hand back a borrow of a place it moved out of. -/
-partial def wholeReturned (v : Value) : M Unit := do
-  if let .borrow _ c := v then
-    if c.hasHole then
-      err s!"[D53] a returned borrow's content is partly moved out ({c})"
 
 partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array Value)
     (tys : Array (Option Value)) (head : Bool) (cls? : Option Nat := none) :
@@ -2407,16 +2623,6 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
   let r := if cls == 2 then Value.proof else r
   setFlags (cls != 0, cls == 2)
   pure (r, B)
-
-/-- D53 (fuzz-port P): a borrow passed at runtime to a call that closes off, or to an erased
-call, must be whole. [Close] seals the borrowed place's content, which hides a hole, and an
-erased call's writes vanish at runtime, so neither can make it whole before the borrow ends. -/
-partial def wholeBorrowArgs (ws : Array Value) (what : String) : M Unit := do
-  -- D68: a statement follows the runtime rules too
-  for (w, i) in ws.toList.zipIdx do
-    if let .borrow _ u := w then
-      if u.hasHole then
-        err s!"[D53] argument {i + 1} of {what} is a borrow whose content is partly moved out ({u})"
 
 /-- D59 refined: a stuck call's result has type `Unit`: its declared codomain says so, or its
 type as computed at the call (`B` in a typed run; otherwise computed here, when the declared
@@ -2472,32 +2678,6 @@ partial def closeCall (fv : Value) (ws : Array Value) (kind : Kind) (B : Option 
     -- are in the fills above
     if ← resultIsUnit fv ws kind B then return .unit
     canonNeutral (.sealed (wrapL (C 0)))
-
-/-- [Rec]: at a recursive call, a parameter position survives if its argument (the
-content, through a borrow) is a strict subterm of that parameter's entry value as
-refined so far. The recursive position is any position that survives every call.
-Every enclosing function being checked is considered, so a recursive call inside a
-nested closure is checked against the outer function's entry values (fix L3). -/
-partial def recCheck (fv : Value) (ws : Array Value) : M Unit := do
-  let st ← get
-  let mut frames := #[]
-  for ctx in st.recStack do
-    if ctx.fn == fv then
-      let cands := ctx.cands
-      let cands' := cands.filter fun j =>
-        match ctx.entries[j]?.join, ws[j]? with
-        | some σ, some w =>
-          let u := match w with | .borrow _ u => u | u => u
-          (strictSubterms (expandRefs st.refs (.abs σ))).contains u
-        | _, _ => false
-      -- fail at the offending call, before it is run (running it may not terminate)
-      if cands.isEmpty then
-        err s!"[Rec] {fv} calls itself but declares no decreasing parameter (`by x`)"
-      if cands'.isEmpty then
-        err s!"[Rec] at {fv}({", ".intercalate (ws.toList.map toString)}): the argument in the decreasing position is not a strict subterm of that parameter's entry value as refined so far"
-      frames := frames.push { ctx with cands := cands' }
-    else frames := frames.push ctx
-  set { st with recStack := frames.toList }
 
 -- ### Match: [Match], [Split], stuck blocks
 
@@ -2572,16 +2752,6 @@ partial def sealedResultType? (t : Term) : M (Option Value) := do
       | _ => pure none
     | _ => pure none
   | _ => pure none
-
-/-- Finding G1: a neutral that a [Split] generalised stays generalised when normalisation
-derives it again (it is a closed, deterministic computation, so every derivation of it
-denotes the same value). Returns its refined value if it is one. -/
-partial def canonNeutral (v : Value) : M Value := do
-  match v with
-  | .sealed _ => match (← get).neutrals.lookup v with
-    | some σ => pure (expandRefs (← get).refs (.abs σ))
-    | none => pure v
-  | _ => pure v
 
 /-- Re-normalise every sealed program in the state (after a generalised neutral has been
 refined, sealed programs whose runs derive it may now make progress). -/
@@ -2694,20 +2864,6 @@ partial def splitArmsThenClose (mt : Term) (σ : Nat) (arms : List (M Value × T
           err s!"the arms of a non-tail match have different types ({T0} and {T}); annotate it (let x : T = match …)"
       pure T0
   closeOffMatch mt B moved allProof
-
-/-- D53: what a run left moved out among the bindings `(f0, i < n0)`, from its log of moves
-and assignments in order: a move adds its place, an assignment restores every moved place it
-covers. Places are rooted at the frame index the bindings had when the run started. -/
-partial def armMoves (log : Array (Nat × Nat × Place × Bool)) (f0 n0 : Nat) : M (List Place) := do
-  let mut out : List Place := []
-  for (f, i, p, isMove) in log do
-    if f != f0 || i ≥ n0 then continue
-    let q := p.steps.2.foldl stepPlace (Place.var (n0 - 1 - i))
-    if isMove then
-      unless out.any (placeEq · q) do out := out ++ [q]
-    else
-      out := out.filter fun m => !placePrefix q m
-  pure out
 
 /-- The refinement of `σ` to constructor `c` of an inductive type at parameters `ps`:
 fresh abstract values for its fields, of the fields' types; a field that is a proof
@@ -2838,23 +2994,6 @@ partial def evalMatchInd (typed : Bool) (p : Place) (ty : String) (arms : List (
       splitArmsThenClose (.matchInd p ty arms) σ
         ((List.range d.ctors.length).zip (arms.map (·.2)) |>.map fun (c, a) => (ctorRefinement d ps c, a)) expected
   | _ => err s!"[Match] on {v}, which is not a value of {ty}"
-
-/-- Two steps name the same part: a pair's `.1`/`.2` are its constructor's fields `fst`/`snd`
-(the surface writes both; a Nat's `.1`, its predecessor, is never a pair's field). -/
-partial def stepEq : Step → Step → Bool
-  | .fst, .field g | .field g, .fst => g.ty == "Pair" && g.ctor == 0 && g.idx == 0
-  | .snd, .field g | .field g, .snd => g.ty == "Pair" && g.ctor == 0 && g.idx == 1
-  | a, b => a == b
-
-/-- Place `q` is a prefix of place `p` (both rooted in the same frame). -/
-partial def placePrefix (q p : Place) : Bool :=
-  let (i, qs) := q.steps
-  let (j, ps) := p.steps
-  i == j && qs.length ≤ ps.length && ((ps.take qs.length).zip qs).all fun (a, b) => stepEq a b
-
-/-- The same place (up to `stepEq`). -/
-partial def placeEq (q p : Place) : Bool :=
-  q.steps.2.length == p.steps.2.length && placePrefix q p
 
 /-- D53: a place an arm moved out, as it exists in the closed-off (unrefined) state. The
 arm's refinement may have exposed it (`q0.1` of an abstract pair, `n0`'s predecessor):
@@ -3116,15 +3255,6 @@ partial def idType (typed : Bool) (A t u : Term) : M Value := do
 
 -- ### Typing: [Def], [Split] in tail position
 
-/-- D61 `split`: the name of a sealed program's head call (the call [Seal] marks as the
-head; one per sealed program), if it is a top-level function. -/
-partial def sealedHead : Term → Option String
-  | .call (.val (.gfn n)) _ true => some n
-  | .call f as _ => (f :: as).findSome? sealedHead
-  | .letIn _ a b | .seq a b => sealedHead a <|> sealedHead b
-  | .assign _ a => sealedHead a
-  | _ => none
-
 /-- D61: the neutral that a run of the sealed program `t` is stuck on: re-run `t` as [Seal]
 does and report the content of the scrutinee of the match it stopped at, if any. -/
 partial def stuckScrutinee (t : Term) : M (Option Value) := do
@@ -3134,25 +3264,6 @@ partial def stuckScrutinee (t : Term) : M (Option Value) := do
   let r ← catchStuck (do discard (withErased (eval false t)); pure none) fun on => pure on
   restoreKeep saved
   pure r
-
-/-- D61: the sealed programs of a value, in pre-order, left to right. -/
-partial def sealedIn (v : Value) : List Term :=
-  match v with
-  | .sealed t => t :: termVals t
-  | .succ w | .borrow _ w | .tRef w => sealedIn w
-  | .tEq A a b => sealedIn A ++ sealedIn a ++ sealedIn b
-  | .clo cs _ | .tPi cs _ => cs.flatMap sealedIn
-  | .ind _ _ _ ps fs => ps.flatMap sealedIn ++ fs.flatMap sealedIn
-  | .tInd _ as => as.flatMap sealedIn
-  | _ => []
-where
-  termVals : Term → List Term
-    | .val w => sealedIn w
-    | .call f as _ => termVals f ++ as.flatMap termVals
-    | .letIn _ a b | .seq a b => termVals a ++ termVals b
-    | .assign _ a => termVals a
-    | .prim _ as => as.flatMap termVals
-    | _ => []
 
 /-- D61 `split f`: find the neutral to split. Walk the goal's sealed programs in pre-order,
 left to right; from each, follow the chain of scrutinees its run is stuck on (each link
@@ -3420,5 +3531,8 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
   restoreKeep saved
 
 end
+
+/-- Push parameters with their declared-type readings (the earlier ones in scope). -/
+def paramDecl (d : Term) : M DeclInfo := withLive true (typeDecl false [] [] d)
 
 end Ochr
