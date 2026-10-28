@@ -35,17 +35,17 @@ def B (v h : Value) : Value :=
 
 -- [Seal] (D9): refining σ0 := S σ1 re-runs N(σ0, 0); the inner call closes off, the
 -- head call does not, so the S surfaces (deriver-e1 lemma S2)
-#guard ok? (runM (substV (.abs 0) (.succ (.abs 1)) (N (.abs 0) .zero)) (st Nats 2)) == some (.succ (N (.abs 1) .zero))
+#guard ok? (runM (do substV (← fuelLeft) (.abs 0) (.succ (.abs 1)) (N (.abs 0) .zero)) (st Nats 2)) == some (.succ (N (.abs 1) .zero))
 -- deriver-e1 S1: N(0, 0) ≡ 0
-#guard ok? (runM (substV (.abs 0) .zero (N (.abs 0) .zero)) (st Nats 1)) == some .zero
+#guard ok? (runM (do substV (← fuelLeft) (.abs 0) .zero (N (.abs 0) .zero)) (st Nats 1)) == some .zero
 -- deriver-e1 S0: N(σ, 0) is normal (its own head call is not closed off again: no loop)
-#guard ok? (runM (substV (.abs 5) .zero (N (.abs 0) .zero)) (st Nats 6)) == some (N (.abs 0) .zero)
+#guard ok? (runM (do substV (← fuelLeft) (.abs 5) .zero (N (.abs 0) .zero)) (st Nats 6)) == some (N (.abs 0) .zero)
 -- deriver-e2 §3.4: B(S σ1)[τ] ≡ S B(σ1)[τ]
-#guard ok? (runM (substV (.abs 0) (.succ (.abs 1)) (B (.abs 0) (.abs 2))) (st Nats 3)) == some (.succ (B (.abs 1) (.abs 2)))
+#guard ok? (runM (do substV (← fuelLeft) (.abs 0) (.succ (.abs 1)) (B (.abs 0) (.abs 2))) (st Nats 3)) == some (.succ (B (.abs 1) (.abs 2)))
 -- deriver-e2 F3 / D11: a loan whose borrow is outside the [Seal] run is inert: B(0)[loan_9] ≡ loan_9
-#guard ok? (runM (substV (.abs 0) .zero (B (.abs 0) (.loan 9))) (st Nats 1)) == some (.loan 9)
+#guard ok? (runM (do substV (← fuelLeft) (.abs 0) .zero (B (.abs 0) (.loan 9))) (st Nats 1)) == some (.loan 9)
 -- ending the borrow fills the hole by substitution and re-normalises (D11)
-#guard ok? (runM (substV (.loan 9) (.abs 2) (B .zero (.loan 9))) (st Nats 3)) == some (.abs 2)
+#guard ok? (runM (do substV (← fuelLeft) (.loan 9) (.abs 2) (B .zero (.loan 9))) (st Nats 3)) == some (.abs 2)
 
 -- D18: owners(ℓ) is a set. Ω = [a ↦ S loan_5, b ↦ ⌈… loan_5 …⌉, r ↦ borrow_5 0]
 def envD18 : Env := #[{ binds := #[{ hint := ⟨"a"⟩, ty := some .tNat, val := .succ (.loan 5) },

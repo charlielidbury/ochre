@@ -68,7 +68,7 @@ def prepare (cfg : Config) (fuel : Nat) (decls : List SDecl) : Except String Pre
       if (d.cod :: d.doms).any (Term.mentionsConst d.name) then err s!"{d.name} occurs in its own type"
       if !((d.cod :: d.doms).all Term.refTopOk && d.body.refsOk) then
         err s!"[D48] & inside a declared type"
-      discard (declOf true [] [] (.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body))
+      discard (declOf (← fuelLeft) true [] [] (.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body))
     match runSt static { globals := globals, inds := inds, cfg := cfg } fuel with
     | .ok _ => pure { globals := globals, inds := inds, stmt := d, rejected := rej }
     | .error e => throw s!"rejected: {e}"
@@ -93,12 +93,12 @@ it: parameter types evaluated left to right, each binding carrying its declared 
 (`paramFlags`, D35/D42), proof parameters bound to `⋆` (D27). -/
 def setupParams (d : Def) : M (Array PInfo) := do
   modify fun s => { s with env := #[{}], goal := none }
-  let pf ← paramFlags [] d.doms
-  let (pds, _) ← paramDecls [] d.hs d.doms d.cod     -- the erasure pre-pass's reading of each parameter
+  let pf ← paramFlags (← fuelLeft) [] d.doms
+  let (pds, _) ← paramDecls (← fuelLeft) [] d.hs d.doms d.cod     -- the erasure pre-pass's reading of each parameter
   pushFrame
   let mut out := #[]
   for (((dom, h), p), pd) in ((d.doms.zip d.hs).zip pf).zip pds do
-    let A ← evalType dom
+    let A ← evalType (← fuelLeft) dom
     match A with
     | .tRef T =>
       let σ ← freshAbs T
@@ -110,13 +110,13 @@ def setupParams (d : Def) : M (Array PInfo) := do
       pushBind h (some A) (.borrow l c) p pd
       out := out.push ⟨h.name, .borrow cell, σ, T⟩
     | _ =>
-      if ← isPropV A then
-        pushBind h (some A) .proof p (← refineDecl pd (some A) .proof)
+      if ← isPropV (← fuelLeft) A then
+        pushBind h (some A) .proof p (← refineDecl (← fuelLeft) pd (some A) .proof)
         out := out.push ⟨h.name, .proof, 0, A⟩
       else
         let σ ← freshAbs A
         let c := if A == .tUnit then Value.unit else .abs σ
-        pushBind h (some A) c p (← refineDecl pd (some A) c)
+        pushBind h (some A) c p (← refineDecl (← fuelLeft) pd (some A) c)
         out := out.push ⟨h.name, .data, σ, A⟩
   pure out
 
@@ -176,17 +176,17 @@ def refineValS (st : MState) (gens : List (Value × Nat)) (α : List (Nat × Val
   let act : M Value := withErasedIf erased do
     modify fun s => { s with neutrals := [] }
     let mut v := v
-    for (n, σ) in gens do v ← substV (.abs σ) n v
+    for (n, σ) in gens do v ← substV (← fuelLeft) (.abs σ) n v
     let inst (v : Value) : M Value := do
       let mut v := v
-      for (σ, r) in α do v ← substV (.abs σ) r v
+      for (σ, r) in α do v ← substV (← fuelLeft) (.abs σ) r v
       -- D68: a one-constructor abstract value's η-refinement names its fields; refining the
       -- value refines them
       for (σ, r) in α do
         if let (some (.ind _ c _ _ fs), .ind _ c' _ _ gs) := (st.etaRefs.lookup σ, r) then
           if c == c' then
             for (f, g) in fs.zip gs do
-              if let .abs σf := f then v ← substV (.abs σf) g v
+              if let .abs σf := f then v ← substV (← fuelLeft) (.abs σf) g v
       pure v
     -- to a fixpoint: substituting one parameter can unseal a program that then generalises a
     -- stuck split on a parameter substituted later (seed 10, case 83896: `x0 := 0` runs
@@ -200,7 +200,7 @@ def refineValS (st : MState) (gens : List (Value × Nat)) (α : List (Nat × Val
       for (n, σ) in ns do
         done := σ :: done
         let n' ← inst n
-        if n' != n then v ← substV (.abs σ) n' v; changed := true
+        if n' != n then v ← substV (← fuelLeft) (.abs σ) n' v; changed := true
       if !changed then break
       v ← inst v
     pure v

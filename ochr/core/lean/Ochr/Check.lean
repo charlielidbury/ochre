@@ -83,16 +83,16 @@ def checkDef (d : Def) : M Unit := do
   if !((d.cod :: d.doms).all Term.refTopOk && d.body.refsOk) then
     err s!"[D48] {d.name}: & appears only as the whole declared type of a parameter, result or annotated term, never inside a type or produced by computation"
   -- D55: every type position, in the types and in the body
-  discard (declOf true [] [] (.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body))
+  discard (declOf (← fuelLeft) true [] [] (.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body))
   if d.doms.isEmpty then
     -- a constant
     modify fun s => { s with env := #[{}], goal := none, recStack := [], refs := [] }
-    let goal ← evalType d.cod
-    let (v, T) ← eval true d.body goal     -- the goal: a hint for a constructor's parameters
-    located d.body <| unless (← match T with | some T => conv T goal | none => pure false) do
+    let goal ← evalType (← fuelLeft) d.cod
+    let (v, T) ← eval (← fuelLeft) true d.body goal     -- the goal: a hint for a constructor's parameters
+    located d.body <| unless (← match T with | some T => do conv (← fuelLeft) T goal | none => pure false) do
       err s!"the body of {d.name} has type {T.getD .bot}, but the goal is {goal}"
-    repackCheck s!"{d.name} is defined as it" v goal
-    let v ← if (← isPropV goal) then pure .proof else pure v
+    repackCheck (← fuelLeft) s!"{d.name} is defined as it" v goal
+    let v ← if (← isPropV (← fuelLeft) goal) then pure .proof else pure v
     modify fun s => { s with env := #[{}], globals := s.globals ++ [{ name := d.name, ty := goal, fn? := none, val := v }] }
   else
     let fixT := Term.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body
@@ -101,7 +101,7 @@ def checkDef (d : Def) : M Unit := do
     let model ← if d.implBy.isSome then pure true else modelSignature d.hs d.doms d.cod
     modify fun s => { s with globals := s.globals ++ [{ name := d.name, ty := ty, fn? := some fixT, val := .gfn d.name, model }] }
     if model then modify fun s => { s with modelDepth := s.modelDepth + 1 }
-    checkFix (.gfn d.name) [] fixT
+    checkFix (← fuelLeft) (.gfn d.name) [] fixT
     if model then modify fun s => { s with modelDepth := s.modelDepth - 1 }
 
 /-- A program item: a definition, or an inductive type declaration. -/
@@ -300,24 +300,24 @@ def checkInd (d : IndDecl) : M Unit := do
         let names := late.map fun j => (fields[j]!).1
         err s!"[Ind] field {fname} of {cn}: its type mentions {", ".intercalate names}, which is not an earlier field (a field's type may mention the parameters and the fields before it)"
   -- D55: parameter and field types are type positions (the fields are in scope, as data)
-  let (sc, ns, _) ← telescope true [] [] (d.params.map (·.1)) (d.params.map (·.2))
+  let (sc, ns, _) ← telescope (← fuelLeft) true [] [] (d.params.map (·.1)) (d.params.map (·.2))
   for (_, fields) in d.ctors do
     let sc' := sc ++ fields.reverse.map fun _ => DeclInfo.other
     let ns' := ns ++ fields.reverse.map (·.1)
-    for (_, FT) in fields do discard (typePos true sc' ns' FT)
+    for (_, FT) in fields do discard (typePos (← fuelLeft) true sc' ns' FT)
   let mut ps := #[]
   for (h, PT) in d.params do
-    let A ← evalType PT
-    let v ← genericValue A
+    let A ← evalType (← fuelLeft) PT
+    let v ← genericValue (← fuelLeft) A
     pushBind h (some A) v
     ps := ps.push v
   for ((cn, fields), c) in d.ctors.zipIdx do
     let names := pnames ++ fields.reverse.map (·.1)
     -- the field types at generic parameters, each at generic values of the earlier fields
-    discard <| fieldTele d ps.toList c fun j T => do
+    discard <| fieldTele (← fuelLeft) d ps.toList c fun j T => do
       let (fname, FT) := fields[j]!
       if T.typeHasRef then err s!"field {fname} of {cn}: no borrows inside data"
-      if (← sortOf T) > 1 then err s!"field {fname} of {cn}: its type must be in Prop or Type"
+      if (← sortOf (← fuelLeft) T) > 1 then err s!"field {fname} of {cn}: its type must be in Prop or Type"
       -- K4's nesting condition
       if let some (m, a) ← nestViolation n FT then
         err s!"field {fname} of {cn} : {FT.pp names}: {n} occurs at the parameter {a} of {m}, which {m} passes to a type function (one may use its argument negatively): not strictly positive (K4, D36)"
@@ -329,9 +329,9 @@ def checkInd (d : IndDecl) : M Unit := do
         err s!"field {fname} of {cn} : {FT.pp names} computes to {T}, which is not first-order data, D36"
       -- D53: a type declared `copy` has copy fields (the type itself counts as one)
       let isSelf := match T with | .tInd m _ => m == n | _ => false
-      if d.copy && !isSelf && !(← isCopyType T) then
+      if d.copy && !isSelf && !(← isCopyType (← fuelLeft) T) then
         err s!"[D53] {n} is declared copy, but the field {fname} of {cn} has the type {T}, which is not a copy type"
-      genericValue T
+      genericValue (← fuelLeft) T
   modify fun s => { s with env := #[{}], inds := s.inds.map fun e => if e.name == n then d else e }
 
 def checkItem : Item → M Unit

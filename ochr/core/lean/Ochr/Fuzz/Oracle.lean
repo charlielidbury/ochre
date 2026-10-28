@@ -78,9 +78,9 @@ def obsRun (st : MState) (A t u : Term) (W : List Pos) (typed : Bool) (k : Nat) 
   -- the checker evaluates a goal: erased, on a private copy (`evalType`). Under D53 this
   -- matters: erased reads copy, so a side of `Id` never moves out of an owner.
   let act : M Value := match k with
-    | 0 => stmtCopy do let A' ← evalType A; let (r, ws) ← observe typed t A' W; pure (obsVal r ws)
-    | 1 => stmtCopy do let A' ← evalType A; let (r, ws) ← observe typed u A' W; pure (obsVal r ws)
-    | _ => stmtCopy do let (v, _) ← eval typed (.id A t u); pure v
+    | 0 => stmtCopy do let A' ← evalType (← fuelLeft) A; let (r, ws) ← observe (← fuelLeft) typed t A' W; pure (obsVal r ws)
+    | 1 => stmtCopy do let A' ← evalType (← fuelLeft) A; let (r, ws) ← observe (← fuelLeft) typed u A' W; pure (obsVal r ws)
+    | _ => stmtCopy do let (v, _) ← eval (← fuelLeft) typed (.id A t u); pure v
   runSt act st
 
 /-- D68: where the symbolic observation holds `⊥` (a place a stuck block took by move, which

@@ -59,14 +59,14 @@ def shapes (T : Value) : M (List Value) := do
   | .tInd n ps =>
     let d ← lookupInd n
     if d.sort == 0 then return []
-    (List.range d.ctors.length).mapM (ctorRefinement d ps)
+    (List.range d.ctors.length).mapM (ctorRefinement (← fuelLeft) d ps)
   | _ => pure []
 
 /-- The global functions of a function type: the instances of an abstract function. -/
 def fnInstances (T : Value) : M (List Value) := do
   let mut out := []
   for g in (← get).globals do
-    if g.fn?.isSome && (← conv g.ty T) then out := out ++ [g.val]
+    if g.fn?.isSome && (← conv (← fuelLeft) g.ty T) then out := out ++ [g.val]
   pure out
 
 /-- Every partial refinement of one parameter, and `nGround` instances (the first two

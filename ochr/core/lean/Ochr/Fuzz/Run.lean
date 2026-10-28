@@ -32,7 +32,7 @@ def callObs (fv T : Value) (inputs : List Value) : M Value := do
   for v in cs do pushBind ⟨"κ"⟩ none v
   let mut args := #[]
   for ((d, h), v) in (ds.zip hs).zip inputs do
-    let A ← evalType d
+    let A ← evalType (← fuelLeft) d
     let w ← match A with
       | .tRef T =>
         let l ← freshLoan
@@ -42,11 +42,11 @@ def callObs (fv T : Value) (inputs : List Value) : M Value := do
     pushBind h (some A) w
     args := args.push w
   discard popFrameRaw
-  let (r, _) ← callFn false fv none args (args.map fun _ => none) false
+  let (r, _) ← callFn (← fuelLeft) false fv none args (args.map fun _ => none) false
   let r ← match r with
     | .borrow k u => do pushTemp (.borrow k (Value.ofNat 7)); pure u
     | r => do pushTemp r; pure r
-  endAll
+  endAll (← fuelLeft)
   discard popTemp
   pure (obsVal r ((← get).env[0]!.binds.toList.map (·.val)))
 
@@ -76,7 +76,7 @@ def convOracle (o : Opts) (prep : Prepared) : Option Finding := Id.run do
       for v in cs do pushBind ⟨"κ"⟩ none v
       let mut out := #[]
       for (d, h) in ds.zip hs do
-        let A ← evalType d
+        let A ← evalType (← fuelLeft) d
         out := out.push (match A with | .tRef T => T | A => A)
         pushBind h (some A) (.abs 0)
       pure out.toList) st o.fuel with
@@ -127,17 +127,17 @@ def execOracle (o : Opts) (c : Case) (prep : Prepared) : List Finding × Nat := 
         for v in cs do pushBind ⟨"κ"⟩ none v
         let mut out := #[]
         for (d, h) in ds.zip hs do
-          let A ← evalType d
+          let A ← evalType (← fuelLeft) d
           -- a function parameter's inputs are the library functions of its type
-          let vs ← if ← isPropV A then pure (if unitTop A == vTrue then [Value.proof] else [])
+          let vs ← if ← isPropV (← fuelLeft) A then pure (if unitTop A == vTrue then [Value.proof] else [])
             else if A matches .tPi .. then pure ((← fnInstances A).take 3)
             -- D66: a borrowed function's inputs are the library functions of its type
             else if let .tRef T@(.tPi ..) := A then pure ((← fnInstances T).take 3)
             else pure ((groundVals prep.inds (match A with | .tRef T => T | A => A) 1).take 3)
           out := out.push vs
           pushBind h (some A) (.abs 0)
-        let B ← evalType cod
-        pure (if (← isPropV B) || (B matches .sort _) then none else some out.toList)) st o.fuel with
+        let B ← evalType (← fuelLeft) cod
+        pure (if (← isPropV (← fuelLeft) B) || (B matches .sort _) then none else some out.toList)) st o.fuel with
       | .ok (xs, _) => xs
       | .error _ => none
     let some doms := doms | continue
@@ -338,7 +338,7 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
     let mut out := []
     for (p, j) in ps.toList.zipIdx do
       if p.kind == .data && (p.ty matches .tPi ..) then
-        if let .ok (0, _) := runSt (sortOf p.ty) st2 o.fuel then
+        if let .ok (0, _) := runSt (do sortOf (← fuelLeft) p.ty) st2 o.fuel then
           if let some w := W.findIdx? (· == Pos.bind 1 j) then out := out ++ [(p.σ, w)]
     pure out
   let mut irrelObs : Array (Nat × String × List Value) := #[]
@@ -359,7 +359,7 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
       | .error e => Gx := Gx.push (.error e)
     | .error e => Gx := Gx.push (.error e)
   for α in refs do
-    let stα ← match runSt (α.subst.forM fun (σ, v) => refine σ v) st2 o.fuel with
+    let stα ← match runSt (α.subst.forM fun (σ, v) => do refine (← fuelLeft) σ v) st2 o.fuel with
       | .ok (_, s) => pure s
       | .error _ => continue
     -- a refinement at which some hypothesis is `False`: what it finds is vacuous
