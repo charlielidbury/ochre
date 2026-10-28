@@ -14,3 +14,4 @@ import Ochr.Run
 import Ochr.Notation
 import Ochr.Test
 import Ochr.RuleGuard
+import Ochr.Consistency
