@@ -85,6 +85,9 @@ ochr Functions uses Nats, Boxes, Fixtures {
   -- ... never as a field of its own (fields are first-order, D36).
   reject inductive FnBox := MkFnBox(f : Π(n : Nat). Nat)
 
+  -- twin of FnBox: the field is first-order data (`Nat`) instead of a function
+  inductive FnBoxOk := MkFnBoxOk(n : Nat)
+
   -- ... type abbreviations unfold under binders ...
   def Pow (X : Type) : Type₁ := Π(a : X). Prop
   def P1 : Pow(Nat) := λ(a : Nat) : Prop => ⊤
@@ -130,6 +133,11 @@ ochr Functions uses Nats, Boxes, Fixtures {
     J(Π(x : &Nat). Unit, λ(x : &Nat) : Unit => (), λ(x : &Nat) : Unit => *x := S(Z), P, refl, refl)
   )
 
+  -- twin of Boom3: `J` along the reflexive equation (both sides `λx. ()`), proving the true `0 = 0`
+  def Boom3Ok : Eq(Nat, Z, Z) := (
+    J(Π(x : &Nat). Unit, λ(x : &Nat) : Unit => (), λ(x : &Nat) : Unit => (), P, refl, refl)
+  )
+
   -- Equality of functions is the least relation closed under the rules: two closures that
   -- are stuck at their generic calls are not identified. Read coinductively, these two would
   -- be equal, and `J` would prove `1 = 0`.
@@ -138,16 +146,35 @@ ochr Functions uses Nats, Boxes, Fixtures {
     refl
   )
 
+  -- twin of CoInd: the two closures are the same one, so `refl` applies
+  def CoIndOk :
+      Eq(Π(x : &Nat). Unit, (λ(x : &Nat) : Unit => match *x { Z => (), S _ => *x := Z }), (λ(x : &Nat) : Unit => match *x { Z => (), S _ => *x := Z })) := (
+    refl
+  )
+
   -- Observing a returned borrow only through its current contents (switch `obsBorrow`) would
   -- identify `PickX` and `PickY`, since neither writes anything, and transport would prove
   -- `0 = 1 ∧ 1 = 0` (D38).
   reject def ConvPick : Eq(Π(x : &Nat) (y : &Nat). &Nat, PickX, PickY) := refl
+
+  -- twin of ConvPick: `PickX` against itself
+  def ConvPickOk : Eq(Π(x : &Nat) (y : &Nat). &Nat, PickX, PickX) := refl
   reject def TY : Q(PickY) := J(Π(x : &Nat) (y : &Nat). &Nat, PickX, PickY, Q, refl, TX)
+
+  -- twin of TY: transport along the reflexive `PickX = PickX`, concluding `Q(PickX)`
+  def TYOk : Q(PickX) := J(Π(x : &Nat) (y : &Nat). &Nat, PickX, PickX, Q, refl, TX)
 
   reject def BoomX4 : Eq(Nat, 0, 1) ∧ Eq(Nat, 1, 0) := (
     let c = Z;
     let d = Z;
     TY(&c, &d)
+  )
+
+  -- twin of BoomX4: uses `TYOk` and states the true `0 = 0 ∧ 1 = 1`
+  def BoomX4Ok : Eq(Nat, 0, 0) ∧ Eq(Nat, 1, 1) := (
+    let c = Z;
+    let d = Z;
+    TYOk(&c, &d)
   )
 
   -- A function's erasure class and [Close] row are part of its type (D54). `H` returns a
@@ -204,6 +231,10 @@ ochr Functions uses Nats, Boxes, Fixtures {
   def RunPowGen (p : RefPred(0)) : Id(Nat, RunPow(p), Z) := refl
   reject def BoomPow : False := RunPowGen(H)
 
+  -- twin of BoomPow: a function whose codomain is written `Prop` (same class as `RefPred(0)`'s), so the generic and instance runs agree
+  def HPure (x : &Nat) : Prop := ⊤
+  def BoomPowOk : Id(Nat, RunPow(HPure), Z) := RunPowGen(HPure)
+
   -- The same for the class "returns proofs", with a codomain `V(Z)` that computes to `⊤`.
   -- D54 alone rejects `BoomP` at the argument; since D55 the codomain cannot even be written
   -- (`V(Z)`'s declared type `U(Z)` is not a sort).
@@ -216,6 +247,9 @@ ochr Functions uses Nats, Boxes, Fixtures {
 
   def RunPGen (f : Π(x : &Nat). ⊤) : Id(Nat, RunP(f), Z) := refl
   reject def WV (u : Unit) : V(Z) := refl
+
+  -- twin of WV: the codomain is the sort-typed `⊤` rather than `V(Z)`
+  def WVOk (u : Unit) : ⊤ := refl
   reject def BoomP : False := RunPGen(λ(x : &Nat) : V(Z) => (*x := S(Z); WV(())))
 
   -- `UU(n)` is `Unit` only by computation, yet `H2` passes where a `Π(x : &Nat). Unit` is
