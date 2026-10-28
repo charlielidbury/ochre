@@ -145,7 +145,7 @@ accepted, and the start of the rejection's message. -/
 def dupVerdicts (bs : List Ochr.Surface.Block) : List (String × Bool × String) :=
   let own := bs.flatMap (·.decls)
   (checkProgram (Prelude.decls ++ own) {} 2000000).drop Prelude.decls.length |>.map
-    fun (n, v, _) => (n, v.ok, match v with | .rejected m _ => (m.splitOn ",").headD "" | .accepted => "")
+    fun (n, v, _) => (n, v.ok, match v with | .rejected m _ => (m.splitOn ",").headD "" | .accepted => "" | .undecided m => m)
 
 #guard dupVerdicts [DupA, DupB] ==
   [("DupX", true, ""), ("DupTy", true, ""), ("DupX", false, "DupX is already declared")]

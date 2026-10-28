@@ -1,5 +1,4 @@
-import Ochr.Pretty
-import Ochr.Loc
+import Ochr.Catch
 
 /-!
 # The environment Ω and the machine state
@@ -228,7 +227,6 @@ structure MState where
   goal : Option Value := none
   recStack : List RecCtx := []        -- the functions whose bodies enclose the current point (top first)
   nextRecUid : Nat := 0               -- fresh `RecCtx.uid`s (never reused)
-  fuel : Nat := 2000000
   cfg : Config := {}
   lastErased : Bool := false          -- set by `eval`: was the term just evaluated erased (D28)?
   lastProof : Bool := false           -- ... and is it a proof (its declared type has sort Prop, D35)?
@@ -254,15 +252,6 @@ structure MState where
   locs : Locs := {}                       -- the editor: where the declaration's terms are (`located`)
 deriving Inhabited
 
-inductive Fail where
-  -- `on`: the neutral a match was stuck on, if any. A diagnostic only (D61): no handler but
-  -- `split`'s search (`stuckScrutinee`) reads it, so it changes no result
-  | stuck (fuel : Nat) (on : Option Value)
-  -- `at?`: where in the source (the editor, `located`); `none` everywhere else
-  | error (msg : String) (at? : Option Loc := none)
-
-instance : Inhabited Fail := ⟨.error "?"⟩
-
 /-- What the editor shows on hover at a located term, for one check of it (`Located.note`). -/
 inductive Note where
   | value (v : Value) (T : Option Value) (pointsTo : List String)   -- its value and type; a borrow's lender
@@ -280,23 +269,44 @@ inductive LogEntry where
 /-- The machine monad. The inner `StateM` holds the log (the trace, and the editor's notes),
 which survives both state restores and errors (so a rejected definition still shows how far
 it got). -/
-abbrev M := StateT MState (ExceptT Fail (StateM (Array LogEntry)))
+abbrev M := StateT MState (ExceptT Fail (ExceptT Exhausted (StateT Fuel (StateM (Array LogEntry)))))
 
 def err {α : Type} (msg : String) : M α := throw (.error msg)
 
 /-- Stuck on a neutral (RULES §3 [Match]); the innermost enclosing call closes off. -/
-def stuckNow {α : Type} : M α := do throw (.stuck (← get).fuel none)
+def stuckNow {α : Type} : M α := throw (.stuck none)
 
 /-- Stuck on a match whose scrutinee's content is the neutral `v` (D61: `split` follows
 these to find what to split on). -/
-def stuckOn {α : Type} (v : Value) : M α := do throw (.stuck (← get).fuel (some v))
+def stuckOn {α : Type} (v : Value) : M α := throw (.stuck (some v))
+
+/-- Out of fuel, or past a depth limit: a failure no handler below the verdict boundary catches
+(`Ochr/Catch.lean`), so it is a rejection that says so, never a decision. -/
+def exhausted {α : Type} (msg : String) : M α := throwThe Exhausted ⟨msg⟩
 
 def tick : M Unit := do
-  let s ← get
-  if s.fuel == 0 then err "out of fuel"
-  set { s with fuel := s.fuel - 1 }
+  let f ← getThe Fuel
+  if f.left == 0 then exhausted "out of fuel"
+  modifyThe Fuel fun f => ⟨f.left - 1⟩
 
-/-- Restore a saved state, keeping the fuel spent and the [Rec] accumulators: each saved
+/-- How a run of the machine ended: a value (and the final state), a failure, or exhaustion
+(the checker does not know). -/
+inductive Outcome (α : Type) where
+  | ok (a : α) (st : MState)
+  | fail (f : Fail)
+  | exhausted (msg : String)
+
+/-- Run `x` from `st` with `fuel`: the outcome, the fuel left, and the log. The one place where
+the layers of `M` are taken apart (the verdict boundary and the test harnesses use it). -/
+def runMachine {α : Type} (x : M α) (st : MState) (fuel : Nat) : Outcome α × Nat × Array LogEntry :=
+  let ((r, fl), log) := (((((x.run st).run).run).run ⟨fuel⟩).run #[])
+  let o := match r with
+    | .error e => Outcome.exhausted e.msg
+    | .ok (.error f) => .fail f
+    | .ok (.ok (a, st')) => .ok a st'
+  (o, fl.left, log)
+
+/-- Restore a saved state, keeping the [Rec] accumulators: each saved
 [Rec] frame takes the candidates of the current frame with the same `uid`, if there is
 one (a computation that replaced the stack, e.g. `sealedType`, cannot wipe them). -/
 def restoreKeep (saved : MState) : M Unit :=
@@ -305,7 +315,7 @@ def restoreKeep (saved : MState) : M Unit :=
       match cur.recStack.find? (·.uid == fr.uid) with
       | some c => { fr with cands := c.cands }
       | none => fr
-    let s := { saved with fuel := cur.fuel, classCache := cur.classCache, constDecls := cur.constDecls,
+    let s := { saved with classCache := cur.classCache, constDecls := cur.constDecls,
                           recStack := saved.recStack.map keepCands, nextRecUid := cur.nextRecUid }
     -- D37 (v1.8): fresh names are never reused, and generalisation records are global. Only
     -- the types of abstract values created by the nested run are kept: a refinement of an
@@ -329,7 +339,7 @@ def restoreArm (saved : MState) : M Unit := do
 /-- D53: run `x` as an erased term, whose reads copy. -/
 def withErased {α : Type} (x : M α) : M α := do
   modify fun s => { s with erasedDepth := s.erasedDepth + 1 }
-  let r ← tryCatch x (fun e => do modify (fun s => { s with erasedDepth := s.erasedDepth - 1 }); throw e)
+  let r ← onFail x (modify fun s => { s with erasedDepth := s.erasedDepth - 1 })
   modify fun s => { s with erasedDepth := s.erasedDepth - 1 }
   pure r
 
@@ -340,7 +350,7 @@ def withRuntime {α : Type} (x : M α) : M α := do
   let d := (← get).erasedDepth
   let c := (← get).copying
   modify fun s => { s with erasedDepth := 0, copying := false }
-  let r ← tryCatch x (fun e => do modify (fun s => { s with erasedDepth := d, copying := c }); throw e)
+  let r ← onFail x (modify fun s => { s with erasedDepth := d, copying := c })
   modify fun s => { s with erasedDepth := d, copying := c }
   pure r
 
@@ -351,14 +361,14 @@ def withErasedIf {α : Type} (b : Bool) (x : M α) : M α := if b then withErase
 def withCopying {α : Type} (x : M α) : M α := do
   let c := (← get).copying
   modify fun s => { s with copying := true }
-  let r ← tryCatch x (fun e => do modify (fun s => { s with copying := c }); throw e)
+  let r ← onFail x (modify fun s => { s with copying := c })
   modify fun s => { s with copying := c }
   pure r
 
 /-- Run `x` on a private copy of the state (P2, P6): its effects are discarded. -/
 def onCopy {α : Type} (x : M α) : M α := do
   let saved ← get
-  let r ← tryCatch x (fun e => do restoreKeep saved; throw e)
+  let r ← onFail x (restoreKeep saved)
   restoreKeep saved
   pure r
 
@@ -425,7 +435,7 @@ current frame's bindings (read in place, not copied into a list). -/
 def withLive {α : Type} (live : Bool) (x : M α) : M α := do
   let old := (← get).liveScope
   modify fun s => { s with liveScope := live }
-  let r ← tryCatch x (fun e => do modify (fun s => { s with liveScope := old }); throw e)
+  let r ← onFail x (modify fun s => { s with liveScope := old })
   modify fun s => { s with liveScope := old }
   pure r
 

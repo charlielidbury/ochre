@@ -20,7 +20,7 @@ def acceptedNames (cfg : Config) (fuel : Nat) (decls : List SDecl) : List String
     match resolveProgram decls d with
     | .error _ => pure ()
     | .ok it =>
-      match runSt (checkItem it) { globals := globals, inds := inds, cfg := cfg, fuel := fuel } with
+      match runSt (checkItem it) { globals := globals, inds := inds, cfg := cfg } fuel with
       | .ok ((), st') => globals := st'.globals; inds := st'.inds; ok := ok ++ [d.name]
       | .error _ => pure ()
   pure ok

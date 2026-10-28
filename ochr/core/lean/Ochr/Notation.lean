@@ -504,7 +504,7 @@ def checkBlock (n : Name) (ref : Syntax) (decls : Array Syntax) (kw : Syntax := 
   let b ← evalBlock n
   -- every block implicitly uses the library, `Prelude` (v2.1), once it is declared
   let pre ← if b.name == "Prelude" then pure none else
-    try pure (some (← evalBlock `Prelude)) catch _ => pure none
+    if (← getEnv).contains `Prelude then pure (some (← evalBlock `Prelude)) else pure none
   let cs := b.clashes pre.toList
   unless cs.isEmpty do
     throwErrorAt ref m!"ochr {b.name}: {"; ".intercalate cs}"
@@ -560,6 +560,8 @@ def checkBlock (n : Name) (ref : Syntax) (decls : Array Syntax) (kw : Syntax := 
     | .accepted, false => logErrorAt at_ m!"{row.name}: expected rejection, but accepted"
     | .rejected m l, true => logErrorAt ((l.map locStx).getD at_) m!"{row.name}: {m}"
     | .rejected m _, false => addHover at_ s!"{row.name}: rejected, as expected: {m}"
+    | .undecided m, _ =>
+      logErrorAt at_ m!"{row.name}: undecided ({m}): the checker ran out of fuel or past a depth limit, so it neither accepts nor rejects"
 
 open Lean.Elab Lean.Elab.Command in
 elab_rules : command
@@ -587,7 +589,7 @@ elab_rules : command
   | `(#ochr_error_at $n:ident $d:ident $t:str) => do
     let b ← evalBlock (← liftCoreM (realizeGlobalConstNoOverload n))
     let pre ← if b.name == "Prelude" then pure none else
-      try pure (some (← evalBlock `Prelude)) catch _ => pure none
+      if (← getEnv).contains `Prelude then pure (some (← evalBlock `Prelude)) else pure none
     let r := Ochr.Test.runWith pre b.name b (located := true)
     match ((r.rows.find? (·.name == d.getId.toString)).map (·.verdict) : Option Verdict) with
     | some (.rejected m (some l)) =>
@@ -604,6 +606,7 @@ elab_rules : command
         throwErrorAt t m!"{d.getId} is rejected at `{got}` (in `{ctx}`), not as expected: {m}"
     | some (.rejected m none) => throwErrorAt d m!"{d.getId} is rejected at no located term: {m}"
     | some .accepted => throwErrorAt d m!"{d.getId} is accepted"
+    | some (.undecided m) => throwErrorAt d m!"{d.getId} is undecided: {m}"
     | none => throwErrorAt d m!"{b.name} has no declaration {d.getId}"
 
 end Ochr.Notation

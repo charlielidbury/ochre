@@ -347,7 +347,12 @@ def withCallRoot (t : STerm) (k : STerm → STerm) : Option STerm := do
   let (c, p) ← callRoot x t
   pure (.letIn x none c (k p))
 
-def isPlace (ctx : Ctx) (t : STerm) : Bool := (((toPlace ctx t).run {}).run.run' {}).toOption.isSome
+/-- `t` is written as a place (`toPlace` would accept it): a total, syntactic test. -/
+partial def isPlace (ctx : Ctx) : STerm → Bool
+  | .loc _ _ t => isPlace ctx t
+  | .ident x => (lookup ctx x).isSome
+  | .deref t | .proj 0 t | .proj 1 t => isPlace ctx t
+  | _ => false
 
 /-- The position of the parameter named by `by x`. -/
 def decIndex (bs : List (String × STerm)) : Option String → R (Option Nat)
@@ -377,9 +382,8 @@ mutual
 partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
   match t.builtinCall with
   | .loc s e u =>
-    let r ← tryCatch (resolve ctx ty u) fun msg => do
-      modify fun st => if st.failAt.isNone then { st with failAt := some ⟨s, e⟩ } else st
-      throw msg
+    let r ← onFail (resolve ctx ty u)
+      (modify fun st => if st.failAt.isNone then { st with failAt := some ⟨s, e⟩ } else st)
     let args := match u with
       | .call _ as => as.toArray.map STerm.loc?
       | _ => #[]

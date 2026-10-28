@@ -21,14 +21,19 @@ structure Def where
   implBy : Option String := none   -- `implemented by "sym"` (K3): the compiler calls `sym`
 deriving Inhabited
 
+/-- A declaration's verdict. `undecided`: the checker ran out of fuel or past a depth limit,
+so it does not know (neither accepted nor rejected; `Ochr/Catch.lean`). With more fuel an
+undecided verdict may become decided, and a decided one never changes (the fuel-monotonicity
+test, `Examples/FuelMonotone.lean`). -/
 inductive Verdict where
   | accepted
   | rejected (msg : String) (at? : Option Loc := none)   -- `at?`: where (the editor), if known
+  | undecided (msg : String)
 deriving Inhabited
 
 def Verdict.ok : Verdict → Bool
   | .accepted => true
-  | .rejected .. => false
+  | .rejected .. | .undecided _ => false
 
 partial def Term.mentionsConst (n : String) : Term → Bool
   | .const m => m == n
@@ -252,9 +257,9 @@ def globalsAfterFrom (cfg : Config) (start : List GDef × List IndDecl) (ds : Li
   let mut inds := i0
   for d in ds do
     let st : MState := { globals := globals, inds := inds, cfg := cfg }
-    match (((checkItem d).run st).run.run #[]).1 with
-    | .ok ((), st') => globals := st'.globals; inds := st'.inds
-    | .error _ => pure ()
+    -- the verdict boundary: an item not accepted adds nothing to Σ
+    if let .ok () st' := (runMachine (checkItem d) st 2000000).1 then
+      globals := st'.globals; inds := st'.inds
   pure (globals, inds)
 
 /-- Check a list of items in order, with a fresh state per item apart from the
@@ -268,15 +273,17 @@ def checkDefs (cfg : Config) (ds : List Item) (fuel : Nat := 2000000)
   let mut inds : List IndDecl := []
   let mut out := #[]
   for (d, i) in ds.zipIdx do
-    let st : MState := { globals := globals, inds := inds, cfg := cfg, fuel := fuel, locs := locsOf i }
-    let (r, tr) := ((checkItem d).run st).run.run #[]
+    let st : MState := { globals := globals, inds := inds, cfg := cfg, locs := locsOf i }
+    -- the verdict boundary: the one place a failure becomes something else (a verdict)
+    let (r, _, tr) := runMachine (checkItem d) st fuel
     match r with
-    | .ok ((), st') =>
+    | .ok () st' =>
       globals := st'.globals
       inds := st'.inds
       out := out.push (d.name, .accepted, tr)
-    | .error (.error m l) => out := out.push (d.name, .rejected m l, tr)
-    | .error (.stuck _ _) => out := out.push (d.name, .rejected "internal: stuck escaped to the top", tr)
+    | .fail (.error m l) => out := out.push (d.name, .rejected m l, tr)
+    | .fail (.stuck _) => out := out.push (d.name, .rejected "internal: stuck escaped to the top", tr)
+    | .exhausted m => out := out.push (d.name, .undecided m, tr)
   pure out.toList
 
 /-- The globals and inductive types after checking a list of items (the library among
@@ -285,10 +292,11 @@ def globalsAfter (cfg : Config) (ds : List Item) : List GDef × List IndDecl :=
   globalsAfterFrom cfg ([], []) ds
 
 /-- Run a machine computation from a given state (for unit tests). -/
-def runM {α : Type} (x : M α) (st : MState) : Except String α :=
-  match ((x.run st).run.run #[]).1 with
-  | .ok (a, _) => .ok a
-  | .error (.error m _) => .error m
-  | .error (.stuck _ _) => .error "stuck"
+def runM {α : Type} (x : M α) (st : MState) (fuel : Nat := 2000000) : Except String α :=
+  match (runMachine x st fuel).1 with
+  | .ok a _ => .ok a
+  | .fail (.error m _) => .error m
+  | .fail (.stuck _) => .error "stuck"
+  | .exhausted m => .error s!"undecided: {m}"
 
 end Ochr

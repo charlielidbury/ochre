@@ -190,9 +190,13 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
     Id(Nat, (match n0 { Z => (n0 := S(n0); 0), S _ => (let f = (λ(y : Nat) : Nat => n0); 0) }), 0)
 
   -- Comparing two blocks' functions observes them at a generic argument, where a pattern's
-  -- sub-place their arms read may not exist; that answers "not convertible", it is not an
-  -- error (fuzz-port R3).
-  def ConvBlocks (q0 : Nat × Nat) : Prop := (
+  -- sub-place their arms read may not exist (`q0.0` of the abstract pair `q0`). That error
+  -- answered "not convertible" (fuzz-port R3) until the checker stopped turning errors into
+  -- decisions (`notes/catch-census.md`): it is a type error again, a fail-safe incompleteness.
+  -- [Conv-fun] compares observations, and an observation exists unless the run has an error;
+  -- the true statement is rejected until the generic run can read a field of an abstract
+  -- value of a one-constructor type.
+  reject def ConvBlocks (q0 : Nat × Nat) : Prop := (
     match q0 {
       Mk(a, b) =>
         Id(Nat × Nat, (match q0 { Mk(p0, p1) => match p0 { Z => q0, S p7 => (q0 := Mk(clone(p1), p1); q0) } }), (match q0 { Mk(p15, p16) => match p16 { Z => (p16 := 0; (1, 0)), S _ => q0 } })),

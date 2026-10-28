@@ -26,8 +26,14 @@ def ppPlace (p : Place) : M String := do
   let names := (← get).env[f]!.binds.toList.reverse.map (·.hint.name)
   pure (p.pp names)
 
+/-- The content of a place, if its path exists in Ω (a total query: `none` is the answer "the
+place does not exist", never a caught error). -/
+def content? (p : Place) : M (Option Value) := do
+  let (i, ss) := p.steps
+  pure ((← getAt (← varPos i)).follow ss)
+
 /-- The content of a place (RULES §3: follow `x`, `*p` through `borrow_ℓ v` to `v`,
-`p.1` through `S v` to `v`). -/
+`p.1` through `S v` to `v`), which must exist. -/
 def content (p : Place) : M Value := do
   let (i, ss) := p.steps
   let v ← getAt (← varPos i)
@@ -228,14 +234,12 @@ partial def nfSealed (t : Term) : M Value := do
   let saved ← get
   -- bounded like calls, so that a normalisation loop (breaker-fresh-v16 X5 without D39)
   -- is an error rather than a stack overflow
-  if saved.depth ≥ 2000 then err "normalisation depth exceeded (a sealed program that re-closes itself)"
+  if saved.depth ≥ 2000 then exhausted "normalisation depth exceeded (a sealed program that re-closes itself)"
   modify fun s => { s with env := #[{}], depth := s.depth + 1 }
   -- D53: a sealed program re-runs with runtime semantics (moves, ⊥ checks); only its final
   -- read of a cell (`peek`, closeCall's `K`) is an observation, and copies
-  let r ← tryCatch (do let (v, _) ← eval false t; pure (some v)) fun e =>
-    match e with
-    | .stuck f _ => do modify (fun s => { s with fuel := f }); pure none
-    | e@(.error ..) => throw e
+  -- [Seal-stuck]: a stuck run leaves `⌈t⌉`; an error or exhaustion is rethrown ([Seal-err])
+  let r ← catchStuck (do let (v, _) ← eval false t; pure (some v)) fun _ => pure none
   restoreKeep saved
   match r with
   | some v => pure v
@@ -288,7 +292,7 @@ partial def repackCheck (what : String) (v : Value) (T : Value) : M Unit := do
 /-- D64 [Repack] at a whole use of the place `p` (of type `T`): read, moved, borrowed, passed
 or captured whole. A place moved out or ended is left to the machine's own error. -/
 partial def repackAt (p : Place) (T : Value) (what : String) : M Unit := do
-  let v ← tryCatch (content p) fun _ => pure .bot
+  let some v ← content? p | return
   if v matches .bot then return
   repackCheck s!"{← ppPlace p} is {what}" v T
 
@@ -307,7 +311,7 @@ partial def openWrite (p : Place) : M Unit := do
     for ((fname, FT), j) in ((d.ctors[g.ctor]!).2).zipIdx do
       if j != g.idx && (d.fieldRefs g.ctor FT).contains g.idx && (← fieldTermIsProp d FT) then
         let fp := Place.field ⟨g.ty, g.ctor, j, fname⟩ q
-        if ← tryCatch (do discard (content fp); pure true) (fun _ => pure false) then
+        if (← content? fp).isSome then
           fire .Open fun _ => s!"a write through {g.name} invalidates the proof field {fname}"
           setPlace fp .bot
 
@@ -367,7 +371,7 @@ partial def abstractMatchCheck (p : Place) (ty : String) : M Unit := do
 /-- A type headed by an `unsized` declaration (K2). -/
 partial def isUnsizedType (T : Value) : M Bool := do
   match T with
-  | .tInd n _ => tryCatch (do pure (← lookupInd n).unsized) (fun _ => pure false)
+  | .tInd n _ => pure (← lookupInd n).unsized
   | _ => pure false
 
 /-- K2: at runtime outside model code, a place whose content has an unsized type is only
@@ -377,7 +381,7 @@ partial def unsizedCheck (p : Place) (v : Value) (what : String) : M Unit := do
   if !(← get).cfg.unsizedTypes || !(← atRuntime) then return
   let T? ← match v with
     | .ind t _ _ ps _ => pure (some (Value.tInd t ps))
-    | .abs σ => tryCatch (some <$> absType σ) (fun _ => pure none)
+    | .abs σ => some <$> absType σ
     | _ => pure none
   if let some T := T? then
     if ← isUnsizedType T then
@@ -388,18 +392,21 @@ or its result has an unsized type by value (runtime code can never hold such a v
 from the declared types, syntactically (as D55 reads sorts): a type term headed by an unsized
 declaration, directly or through type functions whose bodies are (`Slice(E, n)`). -/
 partial def modelSignature (_hs : List Hint) (ds : List Term) (c : Term) : M Bool := do
-  (c :: ds).anyM (unsizedTerm · 8)
+  (c :: ds).anyM (unsizedTerm · [])
 
 /-- A type term headed by an unsized declaration, read off syntax: an inductive type, or a
-call of a type function whose body is one (`fuel` bounds the unfolding). -/
-partial def unsizedTerm (T : Term) (fuel : Nat) : M Bool := do
+call of a type function whose body is one. The walk follows bodies of earlier definitions
+only (a definition's types never mention it, and an accepted body that is itself a call calls
+an earlier definition), so it ends; `seen` makes that an invariant checked here rather than a
+fuel that would answer "not unsized" when it ran out. -/
+partial def unsizedTerm (T : Term) (seen : List String) : M Bool := do
   match T with
-  | .tind n _ => tryCatch (do pure (← lookupInd n).unsized) (fun _ => pure false)
+  | .tind n _ => pure (← lookupInd n).unsized
   | .val v => isUnsizedType v
   | .call (.const f) _ _ =>
-    if fuel == 0 then return false
-    match ← tryCatch (do pure (← lookupGlobal f).fn?) (fun _ => pure none) with
-    | some (.fix _ _ _ _ _ body) => unsizedTerm body (fuel - 1)
+    if seen.contains f then err s!"internal: the type functions unfolded from {f} call themselves"
+    match (← lookupGlobal f).fn? with
+    | some (.fix _ _ _ _ _ body) => unsizedTerm body (f :: seen)
     | _ => pure false
   | _ => pure false
 
@@ -445,8 +452,13 @@ whose captures are copies (the Fn rule). -/
 partial def copyRead (p : Place) (v : Value) : M Bool := do
   -- an untyped run (a called body) may not know a pattern variable's type: the value's own
   -- type, read off its constructor, is its type
-  let T ← tryCatch (placeType p) (fun _ => tryCatch (valType v) (fun _ => pure .bot))
-  isCopyValue T v
+  -- a type that cannot be read is not known to be a copy type (`isCopyType`): the read moves
+  let T? ← match ← placeType? p with
+    | some T => pure (some T)
+    | none => valType? v
+  match T? with
+  | some T => isCopyValue T v
+  | none => pure false
 
 partial def isCopyValue (T : Value) (v : Value) : M Bool := do
   -- D68: copy-ness is the type's, never the value's: a Π type is not a copy type, so reading a
@@ -460,7 +472,9 @@ partial def isCopyValue (T : Value) (v : Value) : M Bool := do
     cs.allM fun c => do
       match c with
       | .proof | .tNat | .tUnit | .tRef _ | .tInd .. | .tEq .. | .tPi .. | .sort _ => pure true
-      | _ => isCopyValue (← tryCatch (valType c) (fun _ => pure .bot)) c
+      | _ => match ← valType? c with
+        | some T => isCopyValue T c
+        | none => pure false
   | _, _ => isCopyType T
 
 /-- Is `p` rooted in a closure's captured value? -/
@@ -497,9 +511,8 @@ partial def loanPath (v : Value) (l : Nat) : M (Option (List Step)) := do
   | .succ w => pure ((← loanPath w l).map (Step.fst :: ·))
   | .borrow _ w => pure ((← loanPath w l).map (Step.deref :: ·))
   | .ind t c _ _ fs =>
-    let names ← tryCatch (do
-        let d ← lookupInd t
-        pure ((d.ctors[c]?.map (·.2.map (·.1))).getD [])) fun _ => pure []
+    let d ← lookupInd t
+    let names := (d.ctors[c]?.map (·.2.map (·.1))).getD []
     for (w, i) in fs.zipIdx do
       if let some ss ← loanPath w l then
         return some (Step.field ⟨t, c, i, names.getD i s!"f{i}"⟩ :: ss)
@@ -611,40 +624,52 @@ partial def popFrame : M Unit := do
 
 -- ### Types
 
-/-- The type of a place, read off the stored types (RULES §5; e1 F9). -/
-partial def placeType (p : Place) : M Value := do
+/-- The type of a place, read off the stored types (RULES §5; e1 F9). A total query: `none`
+when the type cannot be read (an untyped binding whose value has no readable type, `valType?`),
+an error when the place is ill-formed at the type it has. -/
+partial def placeType? (p : Place) : M (Option Value) := do
   match p with
   | .var i =>
     let pos ← varPos i
     match ← tyAt pos with
-    | some T => pure T
-    | none => valType (← getAt pos)
-  | .deref q => match ← placeType q with
-    | .tRef T => pure T
-    | T =>
+    | some T => pure (some T)
+    | none => valType? (← getAt pos)
+  | .deref q => match ← placeType? q with
+    | none => pure none
+    | some (.tRef T) => pure (some T)
+    | some T =>
       let q' ← ppPlace q
       -- the temporary of a dereferenced call (`*f(ā)`, a surface desugaring) is named `⋄*f(…)`
       if q'.startsWith "⋄*" then
         let call := (q'.drop 2).toString
         err s!"*{call}: {call} does not return a borrow (type {T}), so *{call} is not a place"
       err s!"*{q'}: not a borrow (type {T})"
-  | .fst q => match ← placeType q with
-    | .tNat => pure .tNat
-    | .tInd "Pair" [A, _] => pure A           -- field 1 of the library's Pair (D52)
-    | T => err s!"{← ppPlace q}.1: no sub-place at type {T}"
-  | .snd q => match ← placeType q with
-    | .tInd "Pair" [_, B] => pure B
-    | T => err s!"{← ppPlace q}.2: no sub-place at type {T}"
-  | .field g q => match ← placeType q with
-    | .tInd n ps =>
+  | .fst q => match ← placeType? q with
+    | none => pure none
+    | some .tNat => pure (some .tNat)
+    | some (.tInd "Pair" [A, _]) => pure (some A)           -- field 1 of the library's Pair (D52)
+    | some T => err s!"{← ppPlace q}.1: no sub-place at type {T}"
+  | .snd q => match ← placeType? q with
+    | none => pure none
+    | some (.tInd "Pair" [_, B]) => pure (some B)
+    | some T => err s!"{← ppPlace q}.2: no sub-place at type {T}"
+  | .field g q => match ← placeType? q with
+    | none => pure none
+    | some (.tInd n ps) =>
       -- the place names its constructor (v2.0), so a proof's field has a type too
       if n != g.ty then err s!"{← ppPlace q}.{g.name}: a field of {g.ty}, at type {n}"
       let d ← lookupInd n
-      if d.dependent g.ctor then return ← depFieldType d ps g q
+      if d.dependent g.ctor then return some (← depFieldType d ps g q)
       match (← fieldTypes d ps g.ctor)[g.idx]? with
-      | some (_, T) => pure T
+      | some (_, T) => pure (some T)
       | none => err s!"{← ppPlace q}.{g.name}: no such field"
-    | T => err s!"{← ppPlace q}.{g.name}: no field at type {T}"
+    | some T => err s!"{← ppPlace q}.{g.name}: no field at type {T}"
+
+/-- The type of a place, which must be readable (`placeType?`). -/
+partial def placeType (p : Place) : M Value := do
+  match ← placeType? p with
+  | some T => pure T
+  | none => err s!"cannot infer the type of the place {← ppPlace p}"
 
 /-- D64: the fields of the constructor value a place holds, as a constructor `g` names it:
 through a loan (a place lent out
@@ -681,7 +706,8 @@ partial def depFieldType (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Pla
   let c := fs.getD g.idx .bot
   if c == .bot || c == .proof then return T
   if (← packedErr c T).isNone then return T
-  let S ← tryCatch (valType c) fun _ => pure T
+  -- a content with no readable type of its own (a proof, an inert loan) keeps the field's type
+  let S := (← valType? c).getD T
   fire .Open fun _ => s!"{g.name} is open: typed by its content, {S}, not {T}"
   pure S
 
@@ -710,7 +736,7 @@ partial def packedErr (v : Value) (T : Value) : M (Option String) := do
     let cn := (d.ctors[c]!).1
     for (((f, Tf), fv), j) in (tel.zip fs).zipIdx do
       if let some m ← packedErr fv Tf then
-        let own ← tryCatch (valType fv) (fun _ => pure .bot)
+        let own := (← valType? fv).getD .bot
         -- name the field, and show both types: what it holds, and its type from the earlier fields
         return some (match fv with
           | .bot => s!"field {f} of {cn}: {m}"
@@ -726,8 +752,10 @@ partial def packedErr (v : Value) (T : Value) : M (Option String) := do
   | _ => pure (if ← convVal v T then none else some s!"{v} is not of type {T}")
 
 /-- The type of a leaf value converts to `T` (a value whose type cannot be read does not). -/
-partial def convVal (v : Value) (T : Value) : M Bool :=
-  tryCatch (do conv (← valType v) T) fun _ => pure false
+partial def convVal (v : Value) (T : Value) : M Bool := do
+  match ← valType? v with
+  | some S => conv S T
+  | none => pure false
 
 /-- D64 [Open]: `p` is a data field whose declared type mentions earlier fields (its
 assignment is a strong update). -/
@@ -746,38 +774,44 @@ partial def hasDependent (v : Value) : M Bool := do
   | .borrow _ w | .succ w => hasDependent w
   | _ => pure false
 
-/-- The type of a value, for untyped bindings (captured values) and embedded values. -/
-partial def valType (v : Value) : M Value := do
+/-- The type of a value, for untyped bindings (captured values) and embedded values. A total
+query: `none` for a value that has no readable type of its own (`⊥`, `⋆`, an inert loan, a
+constructor value whose parameters no field determines, a sealed program its typing run gives
+no type); an error only from a step that fails (an undeclared name, a failing typing run). -/
+partial def valType? (v : Value) : M (Option Value) := do
   match v with
-  | .zero | .succ _ => pure .tNat
-  | .unit => pure .tUnit
-  | .abs σ => absType σ
-  | .gfn n => pure (← lookupGlobal n).ty
-  | .clo cs (.fix _ hs ds c _ _) => pure (.tPi cs (.pi hs ds c))
-  | .borrow _ w => pure (.tRef (← valType w))
-  | .ind t c _ ps fs => if ps.isEmpty then indValType t c fs else pure (.tInd t ps)   -- D49 (4)
+  | .zero | .succ _ => pure (some .tNat)
+  | .unit => pure (some .tUnit)
+  | .abs σ => some <$> absType σ
+  | .gfn n => pure (some (← lookupGlobal n).ty)
+  | .clo cs (.fix _ hs ds c _ _) => pure (some (.tPi cs (.pi hs ds c)))
+  | .borrow _ w => pure ((← valType? w).map .tRef)
+  | .ind t c _ ps fs => if ps.isEmpty then indValType? t c fs else pure (some (.tInd t ps))   -- D49 (4)
   | .tNat | .tUnit | .tEq .. | .tRef _ | .tPi .. | .sort _ | .tInd .. =>
-    pure (.sort (← sortOf v))
+    pure (some (.sort (← sortOf v)))
   | .sealed t =>
-    if (← get).cfg.capTypes then sealedType t
-    else err s!"cannot infer the type of the value {v}"
+    if (← get).cfg.capTypes then sealedType? t else pure none
   | .loan l =>
     -- a live loan's value is its borrow's content: a place lent out has that content's type
     let env := (← get).env
     match (findBorrow env l).bind fun p => (valAt env p).takeBorrow l with
-    | some (c, _) => valType c
-    | none => err s!"cannot infer the type of the value {v}"
-  | _ => err s!"cannot infer the type of the value {v}"
+    | some (c, _) => valType? c
+    | none => pure none
+  | _ => pure none
+
+/-- The type of a value, which must be readable (`valType?`). -/
+partial def valType (v : Value) : M Value := do
+  match ← valType? v with
+  | some T => pure T
+  | none => err s!"cannot infer the type of the value {v}"
 
 /-- The type of a sealed program (neutral data, e.g. a captured one): its term typed as
 an ordinary term on a private copy, from the empty environment. Its head call is not
 marked, so a stuck body closes off; its [Call-type] is what gives the type. -/
-partial def sealedType (t : Term) : M Value := onCopy do
+partial def sealedType? (t : Term) : M (Option Value) := onCopy do
   modify fun s => { s with env := #[{}], recStack := [], goal := none }
   let (_, T) ← eval true t.unHead
-  match T with
-  | some T => pure T
-  | none => err s!"cannot infer the type of the sealed program ⌈{t.pp []}⌉"
+  pure T
 
 -- ### Inductive declarations (v2.0: D45–D47)
 
@@ -796,7 +830,7 @@ partial def fieldTele (d : IndDecl) (ps : List Value) (c : Nat) (val : Nat → V
   let fields := match upto with | some n => fields.take n | none => fields
   let k := (d.ctors[c]!).2.length
   pushFrame
-  let r ← tryCatch (do
+  let r ← onFail (do
       -- the fields first (`var np …`), then the parameters (`var 0 …`), as resolved
       for i in [0:k] do pushBind ⟨((d.ctors[c]!).2[i]!).1⟩ none .bot
       for ((h, PT), v) in d.params.zip ps do
@@ -811,7 +845,7 @@ partial def fieldTele (d : IndDecl) (ps : List Value) (c : Nat) (val : Nat → V
         let p ← fieldTermIsProp d FT
         modifyFrame top fun fr => { fr with binds := fr.binds.modify j fun b =>
           { b with val := v, ty := some T, proof := p, decl := if p then .prop else .other } }
-      pure out.toList) fun e => do discard popFrameRaw; throw e
+      pure out.toList) (discard popFrameRaw)
   discard popFrameRaw
   pure r
 
@@ -840,7 +874,7 @@ partial def fieldsGeneric (d : IndDecl) (ps : List Value) (c : Nat) :
 the parameters (`Bool`, a pair of copy types). Not `Nat`, not a recursive type, not a
 function type (a closure is a copy by its captures: `isCopyValue`), not a neutral. -/
 partial def isCopyType (T : Value) : M Bool := do
-  if ← tryCatch (isPropV T) (fun _ => pure false) then return true   -- a proposition
+  if ← isPropV T then return true   -- a proposition
   match T with
   | .tUnit | .sort _ | .tEq .. => pure true
   | .tInd n args =>
@@ -867,26 +901,25 @@ partial def fieldTypeAt (d : IndDecl) (sol : Array (Option Value)) (c i : Nat) (
   let k := fields.length
   unless FT.freeVars.all fun j => (j < np && (sol[np - 1 - j]!).isSome) ||
       (np ≤ j && j < np + k && np + k - 1 - j < earlier.length) do return none
-  tryCatch (onCopy do
-      pushFrame
-      for jj in [0:k] do pushBind ⟨(fields[jj]!).1⟩ none (earlier.getD jj .bot)
-      for ((h, PT), v) in d.params.zip sol.toList do
-        pushBind h none (v.getD .bot) false (← withLive true (typeDecl false [] [] PT))
-      some <$> evalType FT)
-    fun _ => pure none
+  onCopy do
+    pushFrame
+    for jj in [0:k] do pushBind ⟨(fields[jj]!).1⟩ none (earlier.getD jj .bot)
+    for ((h, PT), v) in d.params.zip sol.toList do
+      pushBind h none (v.getD .bot) false (← withLive true (typeDecl false [] [] PT))
+    some <$> evalType FT
 
 /-- The type of a constructor value (for untyped bindings): its parameters are inferred
 from its fields' types; a parameter no field determines (the `A` of `Nil`) is unknown. -/
-partial def indValType (t : String) (c : Nat) (fs : List Value) : M Value := do
+partial def indValType? (t : String) (c : Nat) (fs : List Value) : M (Option Value) := do
   let d ← lookupInd t
-  if d.params.isEmpty then return .tInd t []
-  let some (cn, fields) := d.ctors[c]? | err s!"{t} has no constructor {c}"
+  if d.params.isEmpty then return some (.tInd t [])
+  let some (_, fields) := d.ctors[c]? | err s!"{t} has no constructor {c}"
   let mut sol := Array.replicate d.params.length none
   for (v, (_, FT)) in fs.zip fields do
-    sol := unifyParams d.params.length FT (← valType v) sol
-  match sol.toList.mapM id with
-  | some ps => pure (mkTInd t ps (← get).cfg.unitNorm)
-  | none => err s!"cannot infer the parameters of the value {cn}(…) of {t}"
+    let some T ← valType? v | return none
+    sol := unifyParams d.params.length FT T sol
+  let unitNorm := (← get).cfg.unitNorm
+  pure ((sol.toList.mapM id).map fun ps => mkTInd t ps unitNorm)
 
 /-- D42 (v2.0): a constructor application of a Prop inductive is a proof, erased. -/
 partial def ctorIsProof (ty : String) : M Bool := do
@@ -983,12 +1016,24 @@ With `borrowUniverse` off, D48 (1)'s old test: only data. -/
 partial def isBorrowable (T : Value) : M Bool := do
   if T.typeHasRef then return false
   if !(← get).cfg.borrowUniverse then return ← isDataType T
-  tryCatch (do pure ((← sortOf T) == 1)) fun _ => pure false
+  pure ((← sortOf? T) == some 1)
 
 /-- D45: the match `match p { … }` on constructors of `ty` (or with no arms) is by type. -/
 partial def byTypeMatch (ty : String) (arms : List (Hint × Term)) : M Bool := do
   if arms.isEmpty then return true
   pure ((← get).cfg.byType && (← lookupInd ty).sort == 0)
+
+/-- The universe level of a type value (`0` is `Prop`), or `none` when the value is not known
+to be a type: an abstract value whose type is not a sort, a sealed program whose head call's
+codomain is not a sort, any other value. A total query. -/
+partial def sortOf? (T : Value) : M (Option Nat) := do
+  match T with
+  | .abs σ => match ← absType σ with
+    | .sort l => pure (some l)
+    | _ => pure none
+  | .sealed t => sealedSort? t
+  | .tNat | .tUnit | .tRef _ | .tInd .. | .tEq .. | .sort _ | .tPi .. => some <$> sortOf T
+  | _ => pure none
 
 /-- The universe level of a type value: `0` is `Prop`. -/
 partial def sortOf (T : Value) : M Nat := do
@@ -1030,7 +1075,7 @@ partial def placeDecl (sc : List DeclInfo) : Place → M DeclInfo
     match ← placeDecl sc q with
     | .ref d => pure d
     | _ => pure .other
-  | .field g _ => do pure (if ← tryCatch (fieldIsProof g) (fun _ => pure false) then .prop else .other)
+  | .field g _ => do pure (if ← fieldIsProof g then .prop else .other)
   | _ => pure .other
 
 /-- Arms agree on what their declared type says (`any`, a zero-arm match, agrees with all).
@@ -1082,10 +1127,10 @@ partial def declOf (chk : Bool) (sc : List DeclInfo) (ns : List String) (t : Ter
     pure d
   | .const n =>     -- an unknown name is the machine's error, reported where it is met
     if let some d := (← get).constDecls.lookup n then return d
-    tryCatch (do
-        let d ← valTypeDecl (← lookupGlobal n).ty
-        modify fun s => { s with constDecls := (n, d) :: s.constDecls }
-        pure d) fun _ => pure .any
+    let some g := (← get).globals.find? (·.name == n) | return .any
+    let d ← valTypeDecl g.ty
+    modify fun s => { s with constDecls := (n, d) :: s.constDecls }
+    pure d
   | .val v => valueDecl v
   | .sort l => pure (.sort ((← get).cfg.sortSucc l))
   | .nat | .unit => pure (.sort 1)
@@ -1132,11 +1177,11 @@ partial def declOf (chk : Bool) (sc : List DeclInfo) (ns : List String) (t : Ter
                   pure .other
   | .tind n as => do
     for a in as do discard (typePos chk sc ns a)
-    tryCatch (do pure (.sort (← lookupInd n).sort)) fun _ => pure (.sort 1)
+    pure (.sort (← lookupInd n).sort)
   | .ctor ty _ _ ps as => do
     for p in ps do discard (typePos chk sc ns p)
     for a in as do sub a
-    pure (if ← tryCatch (ctorIsProof ty) (fun _ => pure false) then .prop else .other)
+    pure (if ← ctorIsProof ty then .prop else .other)
 
 /-- What a type term says as a declared type: a sort, a Π-type, a borrow type, or a
 proposition when its own declared type is `Prop`. -/
@@ -1185,13 +1230,13 @@ partial def valueDecl (v : Value) : M DeclInfo := withLive false do
   | .proof => pure .prop
   | .sort l => pure (.sort ((← get).cfg.sortSucc l))
   | .tNat | .tUnit | .tRef _ | .tInd .. | .tEq .. | .tPi .. =>
-    pure (.sort (← tryCatch (sortOf v) (fun _ => pure 1)))
-  | .gfn n => tryCatch (do valTypeDecl (← lookupGlobal n).ty) fun _ => pure .other
+    pure (.sort (← sortOf v))
+  | .gfn n => valTypeDecl (← lookupGlobal n).ty
   | .clo cs (.fix _ hs ds c _ _) => do
     let capSc ← cs.reverse.mapM valueDecl
     let (sc', ns', _) ← telescope false capSc [] hs ds
     pure (.pi (← typeDecl false sc' ns' c))
-  | .abs σ => tryCatch (do valTypeDecl (← absType σ)) fun _ => pure .other
+  | .abs σ => valTypeDecl (← absType σ)
   | .sealed t => declOf false [] [] t
   | .borrow _ _ => pure (.ref .other)
   | _ => pure .other
@@ -1205,7 +1250,7 @@ partial def valTypeDecl (T : Value) : M DeclInfo := withLive false do
     let (sc', ns', _) ← telescope false capSc [] hs ds
     pure (.pi (← typeDecl false sc' ns' c))
   | .tRef A => pure (.ref (← valTypeDecl A))
-  | _ => pure (if ← tryCatch (isPropV T) (fun _ => pure false) then .prop else .other)
+  | _ => pure (if ← isPropV T then .prop else .other)
 
 /-- What each parameter's declared type says, each in the scope of the captured values
 and the earlier parameters, and what the codomain says. -/
@@ -1223,7 +1268,7 @@ partial def refineDecl (d : DeclInfo) (A? : Option Value) (v : Value) : M DeclIn
   if let some A@(.tPi ..) := A? then return ← valTypeDecl A
   match v with
   | .gfn _ | .clo _ _ => valueDecl v
-  | .abs σ => match ← tryCatch (absType σ) (fun _ => pure .bot) with
+  | .abs σ => match ← absType σ with
     | .tPi .. => valueDecl v
     | _ => pure d
   | _ => pure d
@@ -1409,7 +1454,8 @@ fresh generic values (a fresh owned place behind each borrow parameter, `⋆` fo
 as at [Def]), their domains and their codomains have the same normal forms. Captures
 and code are not compared: `Π(n : Nat). Nat where κ1 = σ0` is `Π(n : Nat). Nat`, and a
 lemma's statement is compared by what it computes to, as D30 compares functions. A
-comparison that errors, gets stuck, or needs itself answers "not convertible". -/
+comparison that needs itself answers "not convertible" (the relation is the least one); one
+that errors is an error (it used to answer "not convertible": `notes/catch-census.md`). -/
 partial def convPi (P Q : Value) : M Bool := do
   let .tPi cs (.pi hs ds c) := P | return false
   let .tPi cs' (.pi _ ds' c') := Q | return false
@@ -1420,7 +1466,7 @@ partial def convPi (P Q : Value) : M Bool := do
     unless (← fnClass P) == (← fnClass Q) && ((← declKind P) == .ref) == ((← declKind Q) == .ref) do
       return false
   if (← get).convStack.contains (P, Q) then return false
-  tryCatch (onCopy do
+  onCopy do
       modify fun s => { s with env := #[{}], convStack := (P, Q) :: s.convStack }
       pushFrame
       pushCaps cs
@@ -1449,8 +1495,7 @@ partial def convPi (P Q : Value) : M Bool := do
         let pd' ← refineDecl pd (some A') w
         pushBind h (some A') w pd'.isProof pd'
       let C' ← evalType c'
-      conv C C')
-    fun _ => pure false
+      conv C C'
 
 /-- Structural comparison of terms (inside sealed programs, closures and Π-types),
 comparing embedded values by `conv`. -/
@@ -1494,8 +1539,8 @@ partial def convFn (f g : Value) : M Bool := do
     unless ← convList (caps f) (caps g) do return false
   let .tPi cs (.pi hs ds c) := pf | return false
   -- a comparison that errors (e.g. a stuck block's function run at a generic argument where
-  -- a pattern's sub-place does not exist, fuzz-port R3) answers "not convertible", as `convPi`
-  tryCatch (convFnRun f g pf cs hs ds c) fun _ => pure false
+  -- a pattern's sub-place does not exist, fuzz-port R3) is an error, as in `convPi`
+  convFnRun f g pf cs hs ds c
 
 /-- `convFn`'s observation of both functions' generic calls. -/
 partial def convFnRun (f g pf : Value) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term) :
@@ -1663,13 +1708,13 @@ partial def evalAt (typed : Bool) (t : Term) (hint : Option Value := none) : M (
   let erasedHere := pre matches some (true, _)
   let ownCopy := erasedHere && (← get).cfg.erasedMoves && (← get).cfg.eraseOnCopy
   let run : M (Value × Option Value) := withErasedIf erasedHere (evalCore typed t hint)
-  let r ← tryCatch (if ownCopy then do
+  let r ← onFail (if ownCopy then do
         -- the classification flags the term set are its own, not the copy's
         let (r, fl) ← onCopy (do let r ← run; pure (r, ← getFlags))
         setFlags fl
         pure r
       else run)
-    fun e => do modify (fun s => { s with typing := typing0 }); throw e
+    (modify fun s => { s with typing := typing0 })
   modify fun s => { s with typing := typing0 }
   -- D28 (v1.5): whether this term is erased is decided syntactically and by declared
   -- classes, never from a normal form. Calls: the callee's class (set by `callFn`);
@@ -1844,11 +1889,11 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     -- the place's type is the type the context requires of a constructor's parameters and of an
     -- embedded value with no type of its own (an inert loan in a sealed program's `*r := loan`)
     let hint ← if typed && (u matches .ctor .. | .val _) then
-        tryCatch (some <$> placeType p) fun _ => pure none
+        placeType? p
       else pure none
     -- the place's type, read before the value is evaluated: evaluating it may move the place's
     -- content out (`*x := match *x {…}`, D68), and an untyped frame types a place by its content
-    let Tp0 ← if typed then tryCatch (some <$> placeType p) (fun _ => pure none) else pure none
+    let Tp0 ← if typed then placeType? p else pure none
     let (v, Tv) ← eval typed u hint
     -- D64 [Open]: a field whose declared type mentions earlier fields takes any value (a strong
     -- update: while its value is open it is typed by what it holds); [Repack] checks it later
@@ -1896,7 +1941,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     -- position it was embedded at: a parameter's or a field's declared type (the hint)
     match v, hint with
     | .proof, some T => if ← isPropV T then pure (v, some T) else pure (v, some (← valType v))
-    | .loan _, some T => tryCatch (do pure (v, some (← valType v))) fun _ => pure (v, some T)
+    | .loan _, some T => pure (v, some ((← valType? v).getD T))
     | _, _ => pure (v, some (← valType v))
   | .sort l => pure (.sort l, some (.sort ((← get).cfg.sortSucc l)))
   | .pi _ ds c =>
@@ -2059,7 +2104,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
   | .prim "clone" [u] =>
     -- K2: cloning a view at runtime copies it
     if let .place p := u then
-      if let some v ← tryCatch (some <$> content p) (fun _ => pure none) then unsizedCheck p v "cloned"
+      if let some v ← content? p then unsizedCheck p v "cloned"
     withCopying (withErased (eval typed u hint))
   | .prim "peek" [u] => withCopying (withErased (eval typed u hint))
   | .prim "inplace" [t] =>
@@ -2093,7 +2138,7 @@ partial def lentProofAssign (p : Place) (u : Term) : M (Option (Value × Option 
   let .field g q := p | return none
   let some d := (← get).inds.find? (·.name == g.ty) | return none
   unless d.dependent g.ctor && (← fieldIsProof g) do return none
-  let cv ← tryCatch (content q) fun _ => pure .bot
+  let cv := (← content? q).getD .bot
   let some fs ← ctorFields cv g | return none
   let env := (← get).env
   let ls := (fs.flatMap fun w => liveLoansIn env w).eraseDups
@@ -2104,8 +2149,8 @@ partial def lentProofAssign (p : Place) (u : Term) : M (Option (Value × Option 
       let env := (← get).env
       let some pos := findBorrow env l | continue
       let some (c, _) := (valAt env pos).takeBorrow l | continue
-      let T ← tryCatch (valType c) fun _ =>
-        err s!"[Open] the proof field {g.name} is assigned while its value is lent, and the type of what the borrow holds ({c}) is not known"
+      let some T ← valType? c
+        | err s!"[Open] the proof field {g.name} is assigned while its value is lent, and the type of what the borrow holds ({c}) is not known"
       let σ ← absOf T
       setAt pos ((valAt env pos).setBorrowContent l σ)
     let T ← placeType p
@@ -2178,7 +2223,7 @@ partial def evalCtor (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts : Li
   -- D64: a dependent field's hint is its type at the fields evaluated so far
   let dep := d.dependent c
   -- one mental model: a proof constructor's arguments are statement positions
-  let stmtC := (← get).cfg.erasedMoves && (← tryCatch (ctorIsProof ty) (fun _ => pure false))
+  let stmtC := (← get).cfg.erasedMoves && (← ctorIsProof ty)
   for ((a, (_, FT)), i) in (as.zip fields).zipIdx do
     let fh ← if typed && ((np > 0 && (a matches .ctor .. | .prim "rewrite" _ | .prim "rewriteR" _)) || (a matches .val _)
         || (dep && d.fieldDependent c i))
@@ -2210,7 +2255,11 @@ then statement positions. -/
 partial def stmtCallee (fv : Value) (fT : Option Value) (cls? : Option Nat) : M Bool := do
   if !(← get).cfg.erasedMoves then return false
   if let some k := cls? then return k != 0
-  tryCatch (do pure ((← fnClass (← funType fv fT)) != 0)) fun _ => pure false
+  match ← funType? fv fT with
+  | some T => pure ((← fnClass T) != 0)
+  -- a proof is only ever called at a proposition (P5): its calls return proofs. Any other value
+  -- with no readable Π-type is not callable, and `callFn` rejects the call
+  | none => pure (fv == .proof)
 
 /-- A statement position (an argument of a statement, a side of `Eq`): it runs on its own private
 copy of the state, by the ordinary rules. An argument whose value holds a borrow cannot: the
@@ -2249,33 +2298,40 @@ partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
 
 /-- The type of the next parameter of `fv`, with the earlier ones bound to the arguments
 evaluated so far (a hint for a constructor argument's parameters; `none` if unknown). -/
-partial def argHint (fv : Value) (fT : Option Value) (ws : Array Value) : M (Option Value) :=
-  tryCatch (do
-      let .tPi cs (.pi hs ds c) ← funType fv fT | return none
-      let some d := ds[ws.size]? | return none
-      onCopy do
-        pushFrame
-        pushCaps cs
-        let (pds, _) ← paramDecls cs hs ds c
-        for (((d', h), w), pd) in ((ds.zip hs).zip ws.toList).zip pds do
-          let A ← evalType d'
-          let pd' ← refineDecl pd (some A) w
-          pushBind h (some A) w pd'.isProof pd'
-        some <$> evalType d)
-    fun _ => pure none
+partial def argHint (fv : Value) (fT : Option Value) (ws : Array Value) : M (Option Value) := do
+  let some (.tPi cs (.pi hs ds c)) ← funType? fv fT | return none
+  let some d := ds[ws.size]? | return none
+  onCopy do
+    pushFrame
+    pushCaps cs
+    let (pds, _) ← paramDecls cs hs ds c
+    for (((d', h), w), pd) in ((ds.zip hs).zip ws.toList).zip pds do
+      let A ← evalType d'
+      let pd' ← refineDecl pd (some A) w
+      pushBind h (some A) w pd'.isProof pd'
+    some <$> evalType d
 
-/-- The Π-type of a function value. -/
-partial def funType (fv : Value) (fT : Option Value) : M Value := do
-  if let some T := fT then return T
+/-- The Π-type of a function value, or `none` when it has none that can be read: a sealed
+function whose program's typing gives no type, or a value that is not a function (`⋆` is
+called only as a proof, P5). A total query. -/
+partial def funType? (fv : Value) (fT : Option Value) : M (Option Value) := do
+  if let some T := fT then return some T
   match fv with
-  | .gfn n => pure (← lookupGlobal n).ty
-  | .clo cs (.fix _ hs ds c _ _) => pure (.tPi cs (.pi hs ds c))
-  | .abs σ => absType σ
-  | .sealed _ =>
-    -- D56: a stuck cast can be a function; its type is its program's (`sealedType`)
-    tryCatch (valType fv) fun _ =>
+  | .gfn n => pure (some (← lookupGlobal n).ty)
+  | .clo cs (.fix _ hs ds c _ _) => pure (some (.tPi cs (.pi hs ds c)))
+  | .abs σ => some <$> absType σ
+  -- D56: a stuck cast can be a function; its type is its program's (`sealedType?`)
+  | .sealed _ => valType? fv
+  | _ => pure none
+
+/-- The Π-type of a function value, which must be readable (`funType?`). -/
+partial def funType (fv : Value) (fT : Option Value) : M Value := do
+  match ← funType? fv fT with
+  | some T => pure T
+  | none => match fv with
+    | .sealed _ =>
       err s!"the type of the sealed function {fv} is not known here (a call of a sealed function in untyped code)"
-  | _ => err s!"{fv} is not a function"
+    | _ => err s!"{fv} is not a function"
 
 partial def kindOf (B : Value) : M Kind := do
   if ← isPropV B then return .prop
@@ -2350,16 +2406,15 @@ partial def runBody (fv : Value) (cs : List Value) (t : Term) (ws : Array Value)
     | .gfn n => do pure (← lookupGlobal n).model
     | _ => pure false
   if model then modify fun s => { s with modelDepth := s.modelDepth + 1 }
-  let r ← tryCatch (runBodyCore fv cs t ws self hs ds c body) fun e => do
-    if model then modify fun s => { s with modelDepth := s.modelDepth - 1 }
-    throw e
+  let r ← onFail (runBodyCore fv cs t ws self hs ds c body)
+    (if model then modify fun s => { s with modelDepth := s.modelDepth - 1 } else pure ())
   if model then modify fun s => { s with modelDepth := s.modelDepth - 1 }
   pure r
 
 partial def runBodyCore (fv : Value) (cs : List Value) (t : Term) (ws : Array Value) (self : Hint)
     (hs : List Hint) (ds : List Term) (c : Term) (body : Term) : M Value := do
   let d := (← get).depth
-  if d ≥ 2000 then err "call depth exceeded (a non-terminating recursion)"
+  if d ≥ 2000 then exhausted "call depth exceeded (a non-terminating recursion)"
   modify fun s => { s with depth := d + 1 }
   let pf ← paramFlags cs ds
   let (pds, cd) ← paramDecls cs hs ds c
@@ -2371,7 +2426,7 @@ partial def runBodyCore (fv : Value) (cs : List Value) (t : Term) (ws : Array Va
       pushCaps cs
       let mut out := #[]
       for ((((h, w), p), pd), d) in (((hs.zip ws.toList).zip pf).zip pds).zip ds do
-        let A? ← if p || pd.isProof then tryCatch (some <$> evalType d) (fun _ => pure none) else pure none
+        let A? ← if p || pd.isProof then some <$> evalType d else pure none
         out := out.push A?
         pushBind h A? w p pd
       pure out
@@ -2382,7 +2437,7 @@ partial def runBodyCore (fv : Value) (cs : List Value) (t : Term) (ws : Array Va
   for (((((h, w), p), pd), d), i) in ((((hs.zip ws.toList).zip pf).zip pds).zip ds).zipIdx do
     pushBind h (ptys[i]?.getD none) w p (← refineDecl pd none w) (d matches .val (.tRef _))
   -- D53: a body is code; a function whose calls are erased has an erased body (b)
-  let erasedFn ← tryCatch (do pure ((← fnClass (← funType fv none)) != 0)) (fun _ => pure false)
+  let erasedFn := (← fnClass (← funType fv none)) != 0
   let (v, _) ← withErasedIf erasedFn (eval false body)
   wholeReturned v
   pushTempAt ((← topIdx) - 1) v
@@ -2417,7 +2472,8 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
   -- D54: the class and [Close] row are those of the function value's own declared Π-type,
   -- on every path (conversion only lets a value stand at a Π-type of its class and row, so
   -- this is also the static type's); without D54, the static type's where there is one
-  let clsTy ← if (← get).cfg.classInType then tryCatch (funType fv none) (fun _ => pure piTy)
+  -- (a sealed function whose own type cannot be read here keeps the static one)
+  let clsTy ← if (← get).cfg.classInType then pure ((← funType? fv none).getD piTy)
     else pure piTy
   -- [Close]'s row: v1.7 (D35) from the declared codomain; v1.6 from the computed type
   let byDecl := (← get).cfg.erasureByDecl
@@ -2443,14 +2499,9 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
       if head && (← get).cfg.headGuardNeutral then stuckNow else closeCall fv ws kind B
     | .gfn _ | .clo _ _ =>
       let (cs, t) ← fixOf fv
-      tryCatch (runBody fv cs t ws) fun e =>
-        match e with
-        | .stuck fu _ =>
-          if head then throw e
-          else do
-            modify fun s => { s with fuel := fu }
-            closeCall fv ws kind B
-        | e@(.error ..) => throw e
+      -- [App-close]: a stuck body closes the call off; [App-head]: not a sealed program's head call
+      catchStuck (runBody fv cs t ws) fun on =>
+        if head then throw (.stuck on) else closeCall fv ws kind B
     | _ => err s!"call of {fv}, which is not a function"
   let r := if cls == 2 then Value.proof else r
   setFlags (byDecl && cls != 0, byDecl && cls == 2)
@@ -2473,9 +2524,9 @@ codomain does not say). -/
 partial def resultIsUnit (fv : Value) (ws : Array Value) (kind : Kind) (B : Option Value) : M Bool := do
   if kind == .unit then return true
   if let some B := B then return B == .tUnit
-  tryCatch (do
-      let piTy ← funType fv none
-      pure ((← resultKind piTy ws) == .unit)) fun _ => pure false
+  -- a callee whose Π-type cannot be read is not known to return `Unit`
+  let some piTy ← funType? fv none | return false
+  pure ((← resultKind piTy ws) == .unit)
 
 /-- [Close]: the call `f(w̄)` has a stuck body; the partial run has been discarded (the
 state is back at the call point). `L := let cᵢ = uᵢ`, `C := f(ā)` with `aᵢ = &cᵢ` for
@@ -2628,11 +2679,10 @@ partial def sealedResultType? (t : Term) : M (Option Value) := do
         let ws : Array (Option Value) := (as.map fun | .val v => some v | _ => none).toArray
         unless cs.isEmpty && ws.size == np && c.freeVars.all (fun j => j < np && (ws[np - 1 - j]!).isSome) do
           return none
-        tryCatch (onCopy do
-            pushFrame
-            for (h, w) in hs.zip ws.toList do pushBind h none (w.getD .bot)
-            some <$> evalType c)
-          fun _ => pure none
+        onCopy do
+          pushFrame
+          for (h, w) in hs.zip ws.toList do pushBind h none (w.getD .bot)
+          some <$> evalType c
       | _ => pure none
     | _ => pure none
   | _ => pure none
@@ -2933,7 +2983,7 @@ through a value of a single-constructor type the abstract value is refined to th
 constructor, a total refinement (as a split with one arm); through any other, the move is
 of the longest prefix that exists, since some arm moves a part of it (fuzz-port M1). -/
 partial def movedPlace (q : Place) : M Place := do
-  if ← tryCatch (do discard (content q); pure true) (fun _ => pure false) then return q
+  if (← content? q).isSome then return q
   let parent : Place → Option Place
     | .deref p | .fst p | .snd p | .field _ p => some p
     | .var _ => none
@@ -2974,7 +3024,11 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
       let mut mv := moved
       for (o, p) in mt.fnOccs 0 do
         let q := p.mapRoot fun _ => .var o
-        unless ← tryCatch (do isCopyType (← placeType q)) (fun _ => pure false) do
+        -- a place whose type cannot be read is not known to be a copy: the block moves it
+        let copy ← match ← placeType? q with
+          | some T => isCopyType T
+          | none => pure false
+        unless copy do
           unless mv.any (placeEq · q) do mv := mv ++ [q]
       pure mv
     else pure moved
@@ -3026,7 +3080,11 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
   -- arm's write through a pattern variable of a matched proof (a field, a fresh value by
   -- D49 (3), in a proof position by D45) is local to the block's own copy (R8, fuzz-port)
   caps ← caps.mapM fun (q, k) => do
-    if k == 1 && (← tryCatch (do isPropV (← placeType q)) (fun _ => pure false)) then pure (q, 0) else pure (q, k)
+    if k != 1 then return (q, k)
+    let isProof ← match ← placeType? q with
+      | some T => isPropV T
+      | none => pure false
+    pure (if isProof then (q, 0) else (q, k))
   -- D53 (fuzz-port shape (a), N3): the block's captures mirror the direct path's effects,
   -- per sub-place. A capture part of which some arm moves out is split into its fields,
   -- each captured by its own mode (moved, `&`, or read in place), so that `q1.1` can be
@@ -3043,9 +3101,8 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
     if wholeUses.any (fun (p, pk) => placeEq p q && pk != .scrut) then out := out.push (q, 2); continue
     let children : Option (Option Nat × List Place) ← match ← content q with
       | .ind t c _ _ fs => do
-        let names ← tryCatch (do
-            let d ← lookupInd t
-            pure ((d.ctors[c]?.map (·.2.map (·.1))).getD [])) fun _ => pure []
+        let d ← lookupInd t
+        let names := (d.ctors[c]?.map (·.2.map (·.1))).getD []
         pure (some (some c, fs.zipIdx.map fun (_, i) => Place.field ⟨t, c, i, names.getD i s!"f{i}"⟩ q))
       | .succ _ => pure (some (none, [Place.fst q]))
       | _ => pure none
@@ -3162,9 +3219,7 @@ every value in an untyped frame, which `⋆` and `⊥` do not have.) Off (`typed
 side makes the `Id` stuck. -/
 partial def observeTyping (typed : Bool) (t : Term) (A : Value) (W : List Pos) : M (Value × List Value) := do
   if typed || !(← get).cfg.typedObs then return ← observe typed t A W
-  tryCatch (observe false t A W) fun e => match e with
-    | .stuck fu _ => do modify (fun s => { s with fuel := fu }); observe true t A W
-    | e@(.error ..) => throw e
+  catchStuck (observe false t A W) fun _ => observe true t A W
 
 /-- `Id A t u ≡ And(Eq A r r', And(Eq T₁ w₁ w'₁, …))` over the result and the owners in
 `W = W(t, u)` (just `Eq A r r'` when `W` is empty), both sides from the same Ω on
@@ -3184,10 +3239,12 @@ partial def idType (typed : Bool) (A t u : Term) : M Value := do
     match ← tyAt p with
     | some T => pure T
     | none =>
-      tryCatch (valType (← getAt p)) fun e =>
-        tryCatch (valType as[i]!) fun _ => tryCatch (valType bs[i]!) fun _ =>
-          -- D68: an owner both sides consumed has no type to read; its equation is stuck
-          if as[i]!.hasHole || bs[i]!.hasHole then pure .tUnit else throw e
+      match ← [← getAt p, as[i]!, bs[i]!].findSomeM? valType? with
+      | some T => pure T
+      | none =>
+        -- D68: an owner both sides consumed has no type to read; its equation is stuck
+        if as[i]!.hasHole || bs[i]!.hasHole then pure .tUnit
+        else err s!"cannot infer the type of the value {← getAt p}"
   -- D64 [Repack]: `Id` observes its result and owners whole
   if typed then
     for (T, (x, y)) in (A', (a, b)) :: Ts.zip (as.zip bs) do
@@ -3212,10 +3269,8 @@ does and report the content of the scrutinee of the match it stopped at, if any.
 partial def stuckScrutinee (t : Term) : M (Option Value) := do
   let saved ← get
   modify fun s => { s with env := #[{}], depth := s.depth + 1 }
-  let r ← tryCatch (do discard (withErased (eval false t)); pure none) fun e =>
-    match e with
-    | .stuck f on => do modify (fun s => { s with fuel := f }); pure on
-    | .error .. => pure none
+  -- a re-run that errors is an error (as [Seal-err] makes it), not "stuck on nothing"
+  let r ← catchStuck (do discard (withErased (eval false t)); pure none) fun on => pure on
   restoreKeep saved
   pure r
 

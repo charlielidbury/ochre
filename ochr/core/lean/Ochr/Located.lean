@@ -15,9 +15,7 @@ namespace Ochr
 def atLoc {α : Type} (l : Option Loc) (x : M α) : M α :=
   match l with
   | none => x
-  | some l => tryCatch x fun e => match e with
-    | .error m none => throw (.error m (some l))
-    | e => throw e
+  | some l => locateErrors l x
 
 /-- The evaluation `x` of the term `t`, located: an error escaping it is reported at `t`'s
 source range, unless a term inside it already was (the innermost wins). Only in the checked

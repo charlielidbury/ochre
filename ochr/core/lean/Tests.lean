@@ -25,15 +25,15 @@ def timedRun (cfgRef : IO.Ref Config) (b : Block) : IO (List (String × Bool × 
       | .error _ => false
       | .ok df =>
         let st : MState := { globals := globals, inds := inds, cfg := cfg }
-        match (((checkItem df).run st).run.run #[]).1 with
-        | .ok _ => true
-        | .error _ => false
+        match (runMachine (checkItem df) st 2000000).1 with
+        | .ok .. => true
+        | _ => false
     sink.modify (· + (if ok then 1 else 0))
     let t1 ← IO.monoNanosNow
     if ok then
       if let .ok df := resolveProgram p d then
         let st : MState := { globals := globals, inds := inds, cfg := cfg }
-        if let .ok ((), st') := (((checkItem df).run st).run.run #[]).1 then
+        if let .ok () st' := (runMachine (checkItem df) st 2000000).1 then
           globals := st'.globals
           inds := st'.inds
     if i ≥ lib.length then

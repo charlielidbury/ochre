@@ -86,6 +86,7 @@ def Row.show (r : Row) : String :=
   let got := match r.verdict with
     | .accepted => "accepted"
     | .rejected m _ => s!"rejected: {m}"
+    | .undecided m => s!"undecided: {m}"
   let mark := if r.asExpected then "ok  " else "FAIL"
   s!"{mark} {r.name} (expect {exp}) {got}"
 

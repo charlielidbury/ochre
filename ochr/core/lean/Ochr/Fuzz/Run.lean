@@ -70,7 +70,7 @@ def convOracle (o : Opts) (prep : Prepared) : Option Finding := Id.run do
   let some f := prep.globals.find? (·.name == "ConvF") | return none
   let some g := prep.globals.find? (·.name == "ConvG") | return none
   let .tPi cs (.pi hs ds _) := f.ty | return none
-  let st : MState := { globals := prep.globals, inds := prep.inds, cfg := o.cfg, fuel := o.fuel }
+  let st : MState := { globals := prep.globals, inds := prep.inds, cfg := o.cfg }
   -- the domains, to draw ground inputs (non-dependent function types only)
   let doms : List Value := match runSt (do
       pushFrame
@@ -80,15 +80,15 @@ def convOracle (o : Opts) (prep : Prepared) : Option Finding := Id.run do
         let A ← evalType d
         out := out.push (match A with | .tRef T => T | A => A)
         pushBind h (some A) (.abs 0)
-      pure out.toList) st with
+      pure out.toList) st o.fuel with
     | .ok (xs, _) => xs
     | .error _ => []
   if doms.length != ds.length then return none
   let inputs := combos (doms.map fun T => (groundVals prep.inds T 1).take 3)
   for inp in inputs.take 12 do
     let lbl := ", ".intercalate (inp.map (·.pp))
-    let a := (runSt (callObs f.val f.ty inp) st).map (·.1)
-    let b := (runSt (callObs g.val f.ty inp) st).map (·.1)
+    let a := (runSt (callObs f.val f.ty inp) st o.fuel).map (·.1)
+    let b := (runSt (callObs g.val f.ty inp) st o.fuel).map (·.1)
     match a, b with
     | .ok x, .ok y =>
       if canon [] x != canon [] y then
@@ -106,14 +106,14 @@ where reads copy, observes. Checked for the random library functions and for the
 statement's two sides declared as data functions `ExecL`/`ExecR` over its parameters
 (when the checker accepts them). Returns the findings and how many sides were accepted. -/
 def execOracle (o : Opts) (c : Case) (prep : Prepared) : List Finding × Nat := Id.run do
-  let st0 : MState := { globals := prep.globals, inds := prep.inds, cfg := o.cfg, fuel := o.fuel }
+  let st0 : MState := { globals := prep.globals, inds := prep.inds, cfg := o.cfg }
   let sides : List SDecl := [("ExecL", c.lhs), ("ExecR", c.rhs)].map fun (n, b) =>
     { name := n, params := c.params, ret := c.ty, body := b, expectAccept := true }
   let mut globals := prep.globals
   let mut acc := 0
   for d in sides do
     let .ok it := resolveProgram (c.decls ++ sides) d | continue
-    if let .ok ((), st') := runSt (checkItem it) { st0 with globals := globals } then
+    if let .ok ((), st') := runSt (checkItem it) { st0 with globals := globals } o.fuel then
       globals := st'.globals; acc := acc + 1
   let st := { st0 with globals := globals }
   let names := c.extra.map (·.name) ++ ["ExecL", "ExecR"]
@@ -138,14 +138,14 @@ def execOracle (o : Opts) (c : Case) (prep : Prepared) : List Finding × Nat := 
           out := out.push vs
           pushBind h (some A) (.abs 0)
         let B ← evalType cod
-        pure (if (← isPropV B) || (B matches .sort _) then none else some out.toList)) st with
+        pure (if (← isPropV B) || (B matches .sort _) then none else some out.toList)) st o.fuel with
       | .ok (xs, _) => xs
       | .error _ => none
     let some doms := doms | continue
     for inp in (combos doms).take 12 do
       let lbl := s!"{g.name}({", ".intercalate (inp.map (·.pp))})"
-      let run := (runSt (callObs g.val g.ty inp) st).map (·.1)
-      let ers := (runSt (withErased (callObs g.val g.ty inp)) st).map (·.1)
+      let run := (runSt (callObs g.val g.ty inp) st o.fuel).map (·.1)
+      let ers := (runSt (withErased (callObs g.val g.ty inp)) st o.fuel).map (·.1)
       match run, ers with
       | .error e, .ok y => if !isResource e then
           fs := push fs .exec g.name lbl s!"runtime run errors: {e}" s!"erased run observes {y.pp}" (errKey e)
@@ -281,14 +281,14 @@ def acceptedProof (o : Opts) (c : Case) (prep : Prepared) : Option String := Id.
   let mut inds := prep.inds
   for d in lemma do
     if let .ok it := resolveProgram (c.decls ++ lemma) d then
-      if let .ok ((), st') := runSt (checkItem it) { globals := globals, inds := inds, cfg := o.cfg, fuel := o.fuel } then
+      if let .ok ((), st') := runSt (checkItem it) { globals := globals, inds := inds, cfg := o.cfg } o.fuel then
         globals := st'.globals; inds := st'.inds
   for (body, dec) in proofCands c do
     let d : SDecl := { name := "Lie", params := c.params, ret := .app "Id" [c.ty, c.lhs, c.rhs],
                        body := body, dec := dec, expectAccept := true }
     match resolveProgram (c.decls ++ lemma ++ [d]) d with
     | .ok it =>
-      match runSt (checkItem it) { globals := globals, inds := inds, cfg := o.cfg, fuel := o.fuel } with
+      match runSt (checkItem it) { globals := globals, inds := inds, cfg := o.cfg } o.fuel with
       | .ok _ => return some (ppDecl d)
       | .error _ => pure ()
     | .error _ => pure ()
@@ -318,11 +318,11 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
       s!"{b.name} {if rb then "rejected" else "accepted"}:\n  {ppDecl b}", s!"decided differently: {why}"⟩
   let convF := (convOracle o prep).toList ++ execF ++ ruleF ++ agreeF
   let .id A t u := prep.stmt.body | return { status := "invalid: not an Id statement", findings := convF, execAccepted := execN }
-  let st0 : MState := { globals := prep.globals, inds := prep.inds, cfg := o.cfg, fuel := o.fuel }
-  let (ps, st1) ← match runSt (setupParams prep.stmt) st0 with
+  let st0 : MState := { globals := prep.globals, inds := prep.inds, cfg := o.cfg }
+  let (ps, st1) ← match runSt (setupParams prep.stmt) st0 o.fuel with
     | .ok x => pure x
     | .error e => return { status := s!"invalid: parameters: {e}" }
-  let ((refs, rng, fns), st2) ← match runSt (buildRefinements ps o.nGround r) st1 with
+  let ((refs, rng, fns), st2) ← match runSt (buildRefinements ps o.nGround r) st1 o.fuel with
     | .ok x => pure x
     | .error e => return { status := s!"invalid: refinements: {e}" }
   let W := obsPositions st2.env [t, u] o.cfg
@@ -339,7 +339,7 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
     let mut out := []
     for (p, j) in ps.toList.zipIdx do
       if p.kind == .data && (p.ty matches .tPi ..) then
-        if let .ok (0, _) := runSt (sortOf p.ty) st2 then
+        if let .ok (0, _) := runSt (sortOf p.ty) st2 o.fuel then
           if let some w := W.findIdx? (· == Pos.bind 1 j) then out := out ++ [(p.σ, w)]
     pure out
   let mut irrelObs : Array (Nat × String × List Value) := #[]
@@ -360,7 +360,7 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
       | .error e => Gx := Gx.push (.error e)
     | .error e => Gx := Gx.push (.error e)
   for α in refs do
-    let stα ← match runSt (α.subst.forM fun (σ, v) => refine σ v) st2 with
+    let stα ← match runSt (α.subst.forM fun (σ, v) => refine σ v) st2 o.fuel with
       | .ok (_, s) => pure s
       | .error _ => continue
     -- a refinement at which some hypothesis is `False`: what it finds is vacuous
@@ -468,8 +468,8 @@ def debugCase (o : Opts) (c : Case) : List String := Id.run do
     | .error e => return [s!"prepare failed: {e}"]
   let mut out := prep.rejected.map fun (n, e) => s!"library {n} rejected: {e}"
   let .id A t u := prep.stmt.body | return out
-  let st0 : MState := { globals := prep.globals, inds := prep.inds, cfg := o.cfg, fuel := o.fuel }
-  let .ok (_, st1) := runSt (setupParams prep.stmt) st0 | return out ++ ["setup failed"]
+  let st0 : MState := { globals := prep.globals, inds := prep.inds, cfg := o.cfg }
+  let .ok (_, st1) := runSt (setupParams prep.stmt) st0 o.fuel | return out ++ ["setup failed"]
   let W := obsPositions st1.env [t, u] o.cfg
   for k in [0:3] do
     out := out ++ [s!"generic {compName k}: {showE ((obsRun st1 A t u W true k).map (·.1))}"]

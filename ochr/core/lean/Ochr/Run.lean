@@ -19,7 +19,11 @@ structure Row where
   verdict : Verdict
   trace : Array LogEntry := #[]     -- the trace (`Config.trace`) and the editor's notes
 
-def Row.asExpected (r : Row) : Bool := r.expectAccept == r.verdict.ok
+def Row.asExpected (r : Row) : Bool :=
+  match r.verdict with
+  | .accepted => r.expectAccept
+  | .rejected .. => !r.expectAccept
+  | .undecided _ => false     -- not knowing is never what a test expects
 
 structure Report where
   program : String

@@ -18,11 +18,15 @@ import Ochr.Fuzz.Canon
 namespace Ochr.Fuzz
 open Ochr Ochr.Surface
 
-def runSt {α : Type} (x : M α) (st : MState) : Except String (α × MState) :=
-  match ((x.run st).run.run #[]).1 with
-  | .ok r => .ok r
-  | .error (.error m _) => .error m
-  | .error (.stuck _ _) => .error "stuck (escaped to the top)"
+/-- Run `x` from `st` with `fuel` (the fuel left is not carried into the returned state: it is
+not part of `MState`, `Ochr/Catch.lean`). Exhaustion is reported with its message, which
+`isResource` recognises. -/
+def runSt {α : Type} (x : M α) (st : MState) (fuel : Nat := 200000) : Except String (α × MState) :=
+  match (runMachine x st fuel).1 with
+  | .ok a st' => .ok (a, st')
+  | .fail (.error m _) => .error m
+  | .fail (.stuck _) => .error "stuck (escaped to the top)"
+  | .exhausted m => .error m
 
 /-- Errors that only say the checker ran out of resources: never a disagreement. -/
 def isResource (e : String) : Bool :=
@@ -52,8 +56,8 @@ def prepare (cfg : Config) (fuel : Nat) (decls : List SDecl) : Except String Pre
     match resolveProgram decls d with
     | .error e => rej := rej ++ [(d.name, s!"(surface) {e}")]
     | .ok it =>
-      let st : MState := { globals := globals, inds := inds, cfg := cfg, fuel := fuel }
-      match runSt (checkItem it) st with
+      let st : MState := { globals := globals, inds := inds, cfg := cfg }
+      match runSt (checkItem it) st fuel with
       | .ok ((), st') => globals := st'.globals; inds := st'.inds
       | .error e => rej := rej ++ [(d.name, e)]
   match resolveProgram decls sd with
@@ -65,7 +69,7 @@ def prepare (cfg : Config) (fuel : Nat) (decls : List SDecl) : Except String Pre
       if (← get).cfg.refTop && !((d.cod :: d.doms).all Term.refTopOk && d.body.refsOk) then
         err s!"[D48] & inside a declared type"
       discard (declOf true [] [] (.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body))
-    match runSt static { globals := globals, inds := inds, cfg := cfg, fuel := fuel } with
+    match runSt static { globals := globals, inds := inds, cfg := cfg } fuel with
     | .ok _ => pure { globals := globals, inds := inds, stmt := d, rejected := rej }
     | .error e => throw s!"rejected: {e}"
   | .ok _ => throw "the statement is not a definition"

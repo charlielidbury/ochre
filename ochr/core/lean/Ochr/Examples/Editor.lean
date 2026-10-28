@@ -60,15 +60,12 @@ ochr EditorErrors uses Bools, Nats {
   -- a surface error (no such place): the term
   reject def NotAPlace (x : &Nat) : Unit := AddM(&q, 0)
 
-  -- an error inside a callee's body (call depth above 0): the call in this declaration
-  reject def Deep : Nat := Count(3000)
-
-  -- an error in a sealed program's re-run, when a split refines what it is stuck on: the
-  -- split that refined it (`G(b, 3000)` is stuck on `b`; `b := true` re-runs `Count(3000)`)
-  reject def ReRun (b : Bool) : Nat := (
-    let y = G(b, 3000);
-    match b { false => y, true => y }
-  )
+  -- `Deep : Nat := Count(3000)` and `ReRun`, a `G(b, 3000)` re-run when a split refines `b`,
+  -- were tests here of an error inside a callee's body or a sealed program's re-run (call depth
+  -- above 0), located at the call that started it. Their error was the call-depth limit, and
+  -- running past a limit is no longer an error: the checker does not know, and the verdict is
+  -- `undecided` (`Ochr/Catch.lean`, `notes/catch-census.md`), which has no source location. An
+  -- accepted callee's body has no other way to fail, so no test of that location remains.
 }
 
 
@@ -78,8 +75,6 @@ ochr EditorErrors uses Bools, Nats {
 #ochr_error_at EditorErrors ArmRefl "S p => ⟦refl⟧"
 #ochr_error_at EditorErrors InLambda "Add(z, ⟦()⟧)"
 #ochr_error_at EditorErrors NotAPlace "AddM(⟦&q⟧, 0)"
-#ochr_error_at EditorErrors Deep "Nat := ⟦Count(3000)⟧"
-#ochr_error_at EditorErrors ReRun "⟦match b { false => y, true => y }⟧"
 
 -- After the hash-map library, checked again as its library: these declarations are resolved
 -- before the library is checked and checked after it, so their table must survive that.
