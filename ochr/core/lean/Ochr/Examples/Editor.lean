@@ -96,3 +96,66 @@ ochr EditorAfterLibrary uses Nats, HashMap, HashMapLookup, HashMapLength, HashMa
 #ochr_error_at EditorAfterLibrary LateArg "AddM(x, ⟦()⟧)"
 #ochr_error_at EditorAfterLibrary LateLambda "Add(z, ⟦()⟧)"
 #ochr_error_at EditorAfterLibrary LateMoved "AddM(⟦x⟧, 2)"
+
+/-! ## Holes are axioms of Σ (docs/07)
+
+A hole `?` stands for a value of the type its context requires, so the rest is checked around
+it. At a proposition its value is `⋆`; at any other type it is a fresh abstract value, an
+axiom of that type. A constant defined by a hole keeps that value in Σ, so a later declaration
+must still know the abstract value's type and must never reuse its name for one of its own
+(`Check.seedHoles`). Without that, using `HE` below failed with "unknown abstract value σ0",
+and `HAll`, which says every number is `HN`, checked by `refl`, since its parameter `n` and
+`HN` were both `σ0`. The blocks are wrapped so that the build does not print each hole's
+goal view; their verdicts are asserted as everywhere else. -/
+
+#guard_msgs (drop warning) in
+ochr Holes uses Nats {
+  -- a constant by a hole, at an empty type, used by a later declaration
+  inductive HVoid : Type
+  def HE : HVoid := ?
+  def HAbsurd (e : HVoid) : False := match e {}
+  def HUseE : False := HAbsurd(HE)
+
+  -- a hole's value is one unknown: equal to itself, not to another hole's, and not to a
+  -- later declaration's own unknowns
+  def HN : Nat := ?
+  def HM : Nat := ?
+  def HSelf : Eq(Nat, HN, HN) := refl
+  reject def HSame : Eq(Nat, HN, HM) := refl
+  reject def HAll (n : Nat) : Eq(Nat, n, HN) := refl
+  -- ... also inside a sealed program
+  def HK : Nat := (let h : Nat = ?; Add(h, 1))
+  reject def HAllK (n : Nat) : Eq(Nat, Add(n, 1), HK) := refl
+  def HUseK : Eq(Nat, HK, HK) := refl
+
+  -- a hole in a function's body: a call to it is stuck, and closes off
+  def HG (x : Nat) : Nat := ?
+  def HUseG : Nat := HG(3)
+
+  -- a type by a hole, and a value of that type by another
+  def HT : Type := ?
+  def HX : HT := ?
+  def HY : HT := HX
+  def HXY : Eq(HT, HX, HY) := refl
+
+  -- a hole's value captured by a closure, and one taken apart by a later match
+  def HC : (Π(x : Nat). Nat) := (let h : Nat = ?; (λ(x : Nat) : Nat => clone(h)))
+  def HUseC : Nat := HC(0)
+  def HP : Nat × Nat := ?
+  def HUseP : Nat := match HP { Mk(a, b) => clone(a) }
+
+  -- in a later inductive declaration's use
+  inductive HWrap := HW(v : HVoid)
+  def HUseW : HWrap := HW(HE)
+}
+
+-- a hole in a block another block uses
+#guard_msgs (drop warning) in
+ochr HolesLib {
+  def HL : Nat := ?
+}
+
+ochr HolesUser uses HolesLib {
+  def HLSelf : Eq(Nat, HL, HL) := refl
+  reject def HLAll (n : Nat) : Eq(Nat, n, HL) := refl
+}

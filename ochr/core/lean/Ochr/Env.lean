@@ -71,6 +71,9 @@ structure GDef where
   val : Value           -- `gfn name` for functions, the value otherwise
   model : Bool := false -- model code (K2/K3): `implemented by` (native), or a parameter or result of an
                         -- unsized type by value, so it never runs at runtime
+  absTys : List (Nat × Value) := []  -- the abstract values `ty` and `val` mention, with their types:
+                        -- a hole's value (docs/07) is an axiom of Σ, so it outlives the declaration
+                        -- that made it (`Check.seedHoles`)
 
 /-- A declared inductive type (v2.0, D45/D46): uniform parameters (a telescope of type
 terms, each in the scope of the earlier parameters), a sort (`0` = `Prop`, `1` = `Type₀`),

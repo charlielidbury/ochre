@@ -73,6 +73,40 @@ def declared (n : String) : M Bool := do
   let s ← get
   pure (s.globals.any (·.name == n) || s.inds.any fun e => e.name == n || e.ctors.any (·.1 == n))
 
+/-- The abstract values that `roots` mention, closed under their types in `tys` (Δ), each
+with its type. Only a constant's value and type are recorded, and only a hole (docs/07) puts
+an abstract value there: a constant has no parameters, so nothing else is unknown. -/
+def holeAbs (tys : Array Value) (roots : List Value) : List (Nat × Value) := Id.run do
+  let n := tys.size
+  let mut inSet : Array Bool := Array.replicate n false
+  let mut frontier := roots
+  -- each round adds the abstract values the last round's values or types mention
+  for _ in [0:n + 1] do
+    let mut next : List Value := []
+    for i in [0:n] do
+      if !inSet[i]! && frontier.any (·.hasAbs i) then
+        inSet := inSet.set! i true
+        next := tys[i]! :: next
+    if next.isEmpty then break
+    frontier := next
+  pure ((List.range n).filterMap fun i => if inSet[i]! then some (i, tys[i]!) else none)
+
+/-- A hole's value is an axiom of Σ: before a declaration allocates any abstract value, Δ
+takes the abstract values the globals' values and types mention, with their types, and fresh
+names start above them. Without this, a later declaration either cannot type a hole's value
+("unknown abstract value") or reuses its name for one of its own, so that, after
+`def N : Nat := ?`, `F (n : Nat) : Eq(Nat, n, N) := refl` checked, since `n` and `N` were
+both `σ0`. The gaps hold `⊥`: they are names earlier declarations used for their own
+abstract values, which no global mentions, so nothing reads them. -/
+def seedHoles : M Unit := do
+  let s ← get
+  let recs := s.globals.flatMap (·.absTys)
+  if recs.isEmpty || s.nextAbs != 0 then return
+  let n := recs.foldl (fun m (i, _) => max m (i + 1)) 0
+  let mut tys : Array Value := Array.replicate n .bot
+  for (i, T) in recs do tys := tys.set! i T
+  set { s with absTy := tys, nextAbs := n }
+
 /-- Check one definition and add it to the globals. -/
 def checkDef (d : Def) : M Unit := do
   -- [Def], [Const]: f ∉ Σ
@@ -93,7 +127,8 @@ def checkDef (d : Def) : M Unit := do
       err s!"the body of {d.name} has type {T.getD .bot}, but the goal is {goal}"
     repackCheck (← fuelLeft) s!"{d.name} is defined as it" v goal
     let v ← if (← isPropV (← fuelLeft) goal) then pure .proof else pure v
-    modify fun s => { s with env := #[{}], globals := s.globals ++ [{ name := d.name, ty := goal, fn? := none, val := v }] }
+    let absTys := holeAbs (← get).absTy [goal, v]
+    modify fun s => { s with env := #[{}], globals := s.globals ++ [{ name := d.name, ty := goal, fn? := none, val := v, absTys }] }
   else
     let fixT := Term.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body
     let ty := Value.tPi [] (.pi d.hs d.doms d.cod)
@@ -335,8 +370,8 @@ def checkInd (d : IndDecl) : M Unit := do
   modify fun s => { s with env := #[{}], inds := s.inds.map fun e => if e.name == n then d else e }
 
 def checkItem : Item → M Unit
-  | .defn d => checkDef d
-  | .ind d => checkInd d
+  | .defn d => do seedHoles; checkDef d
+  | .ind d => do seedHoles; checkInd d
 
 /-- Does the item mention the global or inductive type `n` (in a type, a field or a body)? -/
 def Item.mentions (n : String) : Item → Bool
