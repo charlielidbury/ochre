@@ -497,8 +497,8 @@ D77 (`notes/stability.md`, site 7): this used to be completed from values, for a
 type that is a Π-type only after computing (`p : Pow(Nat)`): from the evaluated type, or from
 the value bound (a closure's own Π-type, an abstract value's type). A sealed function value
 at an instance has neither, so the instance read `other` (data) where the generic call read
-the evaluated Π-type's class, and the pre-pass and the run then disagreed (`Inst` in
-`Examples/Stability.lean`). `typeDecl` now reads a type function's Π-type off its body, which
+the evaluated Π-type's class, and the pre-pass and the run then disagreed (`InstPow` in
+`Examples/Functions.lean`). `typeDecl` now reads a type function's Π-type off its body, which
 makes the completion unnecessary. A type whose arms are Π-types erased differently has no
 class, and a binding of it is rejected. -/
 def refineDecl (d : DeclInfo) : M DeclInfo := do
