@@ -65,8 +65,8 @@ piece of state between arms.
 |---|---|---|
 | (S) substitute `σ` in Ω, stored types, unknown types, goal | `refine` → `substEnv … types:=true` (Ω, bindings' types, `absTy`, goal) | matches |
 | (S) re-normalise embedded sealed programs after refining a generalised neutral | `refine`: `if neutrals.any (·.2==σ) then renormAll`; `renormV`/`renormT` reach into sealed programs, closures and Π-types | matches |
-| (X) drop an arm's refinements on exit | `restoreArm`/`restoreKeep`: base is `saved`, so `refs`, `env`, `goal`, bindings restored | matches |
-| (G) drop an arm's generalisation records on exit | `restoreArm`: `neutrals := saved.neutrals` | matches |
+| (X) drop an arm's refinements on exit | `exitWorld` (was `restoreArm`/`restoreKeep`): base is the snapshot, so `refs`, `env`, `goal`, bindings restored | matches |
+| (G) drop an arm's generalisation records on exit | `exitWorld` (was `restoreArm`): `neutrals` not in its kept set | matches |
 | (X) old unknowns' refined types do not leak | `restoreKeep`: `absTy` for old σ restored to `saved`; only new σ's kept | matches |
 | fresh names never reused across worlds | `nextAbs`/`nextLoan` kept global | matches (a kept counter is not a kept *fact*) |
 | (B) continue from the unrefined state | `splitArmsThenClose`: `closeOffMatch … ` runs from `saved` restored | matches |
@@ -112,7 +112,18 @@ No new hole found by hand. The construction that would test (X) hardest — the 
 scrutinee-dependent text generalised at incompatible types in two arms — is reviewer-6 A1,
 which `restoreArm` closes; I could not rebuild it into an acceptance.
 
-## 5. Candidate choke point (not landed)
+## 5. Choke point: `enterWorld` / `inWorld` / `exitWorld` (landed)
+
+The first version of this note left this as a proposal, because `restoreKeep` is shared with `onCopy` and `nfSealed`, where the kept set differs. The coordinator's answer: do not share it. Landed on this branch:
+
+- `Env.lean`: `World` (the snapshot an arm starts from), `enterWorld`, `exitWorld`, `inWorld w x` (run `x`, then leave the world). `restoreArm` is deleted. `exitWorld` has its own body, not `restoreKeep`'s, and its docstring lists exactly what it keeps and why against (X): the name counters (`nextAbs`, `nextLoan`, `nextRecUid`), the types of abstract values created inside the arm, `etaRefs`, the [Rec] candidates and the pure caches. Everything else, `neutrals` included, is restored. A field added to `MState` is therefore restored by default, and keeping one is a claim that must be argued in that docstring.
+- `Machine.lean`: every arm of [Split] (`splitArmsThenClose`), the by-type match on a proof (`evalMatchByType`, both its untyped and typed loops), the tail splits of `checkTailAt` on `Nat` and on inductives, the by-type tail match, and `split f in t` run inside `inWorld w do …`, with `w ← enterWorld` taken once before the first arm. What an arm hands back to the split (its type, its moves, its end state for D72's check, its proof flag) is returned from the `inWorld` block, read before the world is left.
+- `onCopy`/`nfSealed`/`stuckScrutinee` keep `restoreKeep`, whose kept set is a private copy's (it keeps `neutrals`: a copy stays within its world, D37).
+- Not converted: [T-J-stuck]'s transported-term check, which uses `restoreKeep` and so keeps the term's generalisation records. It makes no refinement, so it opens no world, and a record it keeps is a renaming within the current world, which (G) allows. That site is reworked by D75/D76 on the unmerged `depfields-model` branch, so it is left alone here to avoid a conflict.
+
+Verdict-neutral: `lake build` green (97 jobs), every verdict assertion and the total guard unchanged. The only reorderings are a fresh name taken inside the second arm's world rather than between the arms, which the kept counter makes identical, and an arm's proof flag read into a local rather than straight into `allProof`.
+
+## 5b. The original proposal
 
 The components that must be restored per arm (`refs`, `neutrals`, `env`, `goal`, bindings'
 types, old `absTy`) and those that may be kept (`etaRefs`, new `absTy`, counters) are split

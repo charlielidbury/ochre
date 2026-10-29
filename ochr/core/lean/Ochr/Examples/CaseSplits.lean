@@ -476,7 +476,7 @@ program text `⌈g(())⌉`, whose type there is `T(S m) = Box(Bool)`. With the r
 was mapped to that `σ`, typed `Box(Unit)`: `Cmp2(y)` then compared `MkBox(true)` with
 `MkBox(false)` at `Unit`, which η made true, and `L2` returned `False`. Records survive a
 private copy (D37), which stays within one world, but sibling arms are different worlds, so
-a record an arm makes is dropped with the arm (`restoreArm`). `FLie` is the fuzzer's shape
+a record an arm makes is dropped with the arm (`exitWorld`). `FLie` is the fuzzer's shape
 (fuzz-port, `--a1`): the statement's arm does not call `g`, the proof's arm makes the record.
 (Since η at `Unit` is a property of values, D59 refined, the comparison is no longer true at a
 stale type either: `true` and `false` are distinct constructors whatever the type says.) -/

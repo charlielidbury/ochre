@@ -257,15 +257,61 @@ def restoreKeep (saved : MState) : M Unit :=
     { s with nextAbs := cur.nextAbs, nextLoan := cur.nextLoan, neutrals := cur.neutrals, etaRefs := cur.etaRefs,
              absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size }
 
-/-- Restore after a [Split] arm: as `restoreKeep`, but the generalisation records the arm made
-are the arm's own and are dropped. Sibling arms are exclusive worlds in which the same program
-text can have different types (it may mention a value the arm refined), so a record made in
-one must not name that text in another (reviewer-6's A1: `⌈g(())⌉ := σ3 : Box(Unit)` from the
-arm `n := Z`, reused in the arm `n := S m`, where `g(())` is a `Box(Bool)`). D37 keeps records
-across private copies, within one world, and that is unchanged. -/
-def restoreArm (saved : MState) : M Unit := do
-  restoreKeep saved
-  modify fun s => { s with neutrals := saved.neutrals }
+/-- A [Split] world (notes/split-model.md): the state an arm of a case split starts from.
+Each arm of a split on an unknown `σ` is checked in its own world, the one where `σ` is that
+arm's constructor; the worlds are exclusive (principle X), so nothing an arm establishes may
+be visible in a sibling. `enterWorld` takes the snapshot before the first arm, each arm runs
+inside `inWorld`, and `exitWorld` leaves it. Every arm of [Split], [Split-gen],
+[T-Split-goal], a by-type match on a proof and `split f` goes through these three, so what a
+world keeps is decided here, once. -/
+structure World where
+  saved : MState
+
+/-- Take the snapshot every arm of a split starts from. -/
+def enterWorld : M World := do pure ⟨← get⟩
+
+/-- Leave an arm's world: restore the snapshot, keeping only what is true in every world.
+
+Restored (world facts, principle X): Ω and the stored types, the goal, the refinements `refs`,
+the types of abstract values that existed before the split (an arm's refinement substituted
+into them), and the generalisation records `neutrals` the arm made. A record names a program
+text at the type it has in this world; the same text can have another type in a sibling, since
+it may mention the value the arm refined (principle G; reviewer-6's A1: `⌈g(())⌉ := σ3 :
+Box(Unit)` from the arm `n := Z`, reused in the arm `n := S m`, where `g(())` is a
+`Box(Bool)`).
+
+Kept (true in every world, or names only):
+- `nextAbs`, `nextLoan`, `nextRecUid`: name counters. Keeping them is what makes a fresh name
+  never reused (D37); a counter states no fact.
+- the types of abstract values created inside the arm: their names are fresh, so no sibling
+  can mention them.
+- `etaRefs`: an η-refinement `σ := C(σ̄)` of a one-constructor type is read off `σ`'s type
+  alone, so it holds in every world, unlike a case split's refinement or a generalisation
+  record (`neutrals`), which hold in one. Both are maps from values to abstract values; they
+  are scoped oppositely for that reason.
+- the [Rec] candidates (`recStack` frames by `uid`) and the pure caches (`classCache`,
+  `constDecls`): facts about declarations and calls, not about `σ`.
+
+A field added to `MState` is restored by default; keeping one here is a claim that it holds in
+every world, and needs the argument above. -/
+def exitWorld (w : World) : M Unit :=
+  modify fun cur =>
+    let saved := w.saved
+    let keepCands (fr : RecCtx) : RecCtx :=
+      match cur.recStack.find? (·.uid == fr.uid) with
+      | some c => { fr with cands := c.cands }
+      | none => fr
+    { saved with classCache := cur.classCache, constDecls := cur.constDecls,
+                 recStack := saved.recStack.map keepCands, nextRecUid := cur.nextRecUid,
+                 nextAbs := cur.nextAbs, nextLoan := cur.nextLoan, etaRefs := cur.etaRefs,
+                 absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size }
+
+/-- Check one arm in world `w`: run `x` (which makes the arm's refinement and checks the arm),
+then leave the world. The result is what `x` returns, read before the world is left. -/
+def inWorld {α : Type} (w : World) (x : M α) : M α := do
+  let a ← x
+  exitWorld w
+  pure a
 
 /-- D53: run `x` as an erased term, whose reads copy. -/
 def withErased {α : Type} (x : M α) : M α := do

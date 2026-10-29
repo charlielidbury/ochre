@@ -2687,24 +2687,25 @@ def evalMatchByType (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms 
   if !typed then
     -- not reached by checked programs (a subsingleton has at most one constructor): an
     -- erased match is ⋆, otherwise no arm can be chosen and the match is stuck
-    let saved ← get
-    discard (eval fuel' false arms[0]!.2)
-    let pf := (← getFlags).2
-    restoreArm saved
+    let pf ← inWorld (← enterWorld) do
+      discard (eval fuel' false arms[0]!.2)
+      pure (← getFlags).2
     if pf then setFlags (true, true); return (.proof, none)
     stuckNow
-  let saved ← get
+  let w ← enterWorld
   let mut tys := #[]
   let mut allProof := true
   for ((_, a0), c) in arms.zipIdx do
-    let a ← bindDataFields fuel' p d ps c a0
-    let (_, T) ← eval fuel' true a
-    allProof := allProof && (← getFlags).2
-    let some T := T | err "internal: untyped arm"
-    if let some E := expected then
-      unless ← conv fuel' T E do err s!"an arm of the annotated match has type {T}, but the annotation is {E}"
+    let (T, pf) ← inWorld w do
+      let a ← bindDataFields fuel' p d ps c a0
+      let (_, T) ← eval fuel' true a
+      let pf := (← getFlags).2
+      let some T := T | err "internal: untyped arm"
+      if let some E := expected then
+        unless ← conv fuel' T E do err s!"an arm of the annotated match has type {T}, but the annotation is {E}"
+      pure (T, pf)
+    allProof := allProof && pf
     tys := tys.push T
-    restoreArm saved
   let B ← match expected with
     | some E => pure E
     | none =>
@@ -2802,7 +2803,9 @@ whole is a move (reading a borrow moves it); assigning a borrow variable as a wh
 def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Value) :
     M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  let saved ← get
+  -- each arm runs in its own world (`enterWorld`/`inWorld`, split-model's (X)): a fact an arm
+  -- learns is never visible in a sibling arm or after the block
+  let w ← enterWorld
   let f0 := (← get).env.size - 1
   let n0 := (← get).env[f0]!.binds.size
   let mut tys : Array Value := #[]
@@ -2813,21 +2816,23 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
   -- each arm's end state, result and type: where the block returns (`bodyReturns`, below)
   let mut ends : Array (MState × Value × Value) := #[]
   for arm in arms do
-    let r ← arm.setup
-    let ls := (← get).placeLog.size
-    let (av, T) ← arm.body r
-    allProof := allProof && (← getFlags).2
-    -- the arm's effect on the places it captures, read from its log of moves and
-    -- assignments (D53: by place, at the granularity of the move, `q1.1`; an inner block's
-    -- moves are its arguments', so they compose; fuzz-port M1, N1)
-    let armMoved ← armMoves ((← get).placeLog.extract ls (← get).placeLog.size) f0 n0
+    let (av, T, pf, armMoved, armEnd) ← inWorld w do
+      let r ← arm.setup
+      let ls := (← get).placeLog.size
+      let (av, T) ← arm.body r
+      let pf := (← getFlags).2
+      -- the arm's effect on the places it captures, read from its log of moves and
+      -- assignments (D53: by place, at the granularity of the move, `q1.1`; an inner block's
+      -- moves are its arguments', so they compose; fuzz-port M1, N1)
+      let armMoved ← armMoves ((← get).placeLog.extract ls (← get).placeLog.size) f0 n0
+      -- the arm's result is held as a temporary there, so that a borrow it returns into a
+      -- lent place is still in Ω when that place is checked
+      pushTemp av
+      pure (av, T, pf, armMoved, ← get)
+    allProof := allProof && pf
     for q in armMoved do
       unless armMovedAll.any (placeEq · q) do armMovedAll := armMovedAll ++ [q]
-    -- the arm's result is held as a temporary there, so that a borrow it returns into a
-    -- lent place is still in Ω when that place is checked
-    pushTemp av
-    ends := ends.push ((← get), av, T)
-    restoreArm saved
+    ends := ends.push (armEnd, av, T)
     tys := tys.push T
   let B ← match B? with
     | some E => pure E
@@ -3171,26 +3176,26 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
   | .prim "split" [.const f, u] =>
     -- D61: `split f in u`: split the goal's stuck result of `f`, `u` in every arm
     let (σ, T) ← splitTarget fuel' f
-    let saved ← get
+    let w ← enterWorld
     match T with
     | .tNat =>
-      refine fuel' σ .zero
-      trace fun _ => s!"[Split] σ{σ} := 0"
-      checkTail fuel' u k
-      restoreArm saved
-      let σ' ← freshAbs .tNat
-      refine fuel' σ (.succ (.abs σ'))
-      trace fun _ => s!"[Split] σ{σ} := S σ{σ'}"
-      checkTail fuel' u k
-      restoreArm saved
+      inWorld w do
+        refine fuel' σ .zero
+        trace fun _ => s!"[Split] σ{σ} := 0"
+        checkTail fuel' u k
+      inWorld w do
+        let σ' ← freshAbs .tNat
+        refine fuel' σ (.succ (.abs σ'))
+        trace fun _ => s!"[Split] σ{σ} := S σ{σ'}"
+        checkTail fuel' u k
     | .tInd n ps =>
       let d ← lookupInd n
       for c in List.range d.ctors.length do
-        let r ← ctorRefinement fuel' d ps c
-        refine fuel' σ r
-        trace fun _ => s!"[Split] σ{σ} := {r}"
-        checkTail fuel' u k
-        restoreArm saved
+        inWorld w do
+          let r ← ctorRefinement fuel' d ps c
+          refine fuel' σ r
+          trace fun _ => s!"[Split] σ{σ} := {r}"
+          checkTail fuel' u k
     | _ => err s!"split {f}: its result type {T} is not an inductive type"
   | .prim "splitArms" [.const f, .letIn h _ w] =>
     -- D61: `split f { C(x̄) => u, … }`: the split value is bound to a hidden variable, and
@@ -3231,16 +3236,16 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
     | .zero => checkTail fuel' z k
     | .succ _ => checkTail fuel' s k
     | .abs σ =>
-      let saved ← get
-      refine fuel' σ .zero
-      trace fun _ => s!"[Split] σ{σ} := 0"
-      checkTail fuel' z k
-      restoreArm saved
-      let σ' ← freshAbs .tNat
-      refine fuel' σ (.succ (.abs σ'))
-      trace fun _ => s!"[Split] σ{σ} := S σ{σ'}"
-      checkTail fuel' s k
-      restoreArm saved
+      let w ← enterWorld
+      inWorld w do
+        refine fuel' σ .zero
+        trace fun _ => s!"[Split] σ{σ} := 0"
+        checkTail fuel' z k
+      inWorld w do
+        let σ' ← freshAbs .tNat
+        refine fuel' σ (.succ (.abs σ'))
+        trace fun _ => s!"[Split] σ{σ} := S σ{σ'}"
+        checkTail fuel' s k
     | v@(.sealed _) | v@(.loan _) =>
       discard (generalizeNeutral fuel' p v)
       checkTail fuel' t k
@@ -3265,10 +3270,10 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
       match v with
       | .ind _ c _ _ _ => checkTail fuel' (arms[c]!).2 k'     -- not reached: a Prop inductive's values are `⋆` (D42)
       | _ =>
-        let saved ← get
+        let w ← enterWorld
         for ((_, a), c) in arms.zipIdx do
-          checkTail fuel' (← bindDataFields fuel' p d ps c a) k'     -- D49 (3)
-          restoreArm saved
+          inWorld w do
+            checkTail fuel' (← bindDataFields fuel' p d ps c a) k'     -- D49 (3)
       return
     accessPath fuel' p
     accessNeutralHead fuel' p
@@ -3281,13 +3286,13 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
       | none => err s!"[Match] no arm for constructor {c}"
     | .abs σ =>
       let (d, ps) ← scrutType fuel' p ty
-      let saved ← get
+      let w ← enterWorld
       for (c, (_, a)) in (List.range d.ctors.length).zip arms do
-        let r ← ctorRefinement fuel' d ps c
-        refine fuel' σ r
-        trace fun _ => s!"[Split] σ{σ} := {r}"
-        checkTail fuel' a k
-        restoreArm saved
+        inWorld w do
+          let r ← ctorRefinement fuel' d ps c
+          refine fuel' σ r
+          trace fun _ => s!"[Split] σ{σ} := {r}"
+          checkTail fuel' a k
     | v@(.sealed _) | v@(.loan _) =>
       discard (generalizeNeutral fuel' p v)
       checkTail fuel' t k
