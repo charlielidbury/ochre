@@ -823,14 +823,36 @@ def endBorrow (fuel : Nat) (l : Nat) : M Unit := do
       substEnv fuel' (.loan l) c false
 termination_by structural fuel
 
+/-- D73 [Repack] with what is lent unknown: a live loan inside a value stands for whatever
+its borrow may still write, a fresh abstract value of the lent content's type, not the
+content the borrow holds now ([Open]'s reading of a lent part, at whole-again points). -/
+def lentUnknown (fuel : Nat) (v : Value) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match v with
+  | .loan l =>
+    let env := (← get).env
+    match (findBorrow env l).bind fun p => (valAt env p).takeBorrow l with
+    | some (c, _) =>
+      match ← valType? fuel' c with
+      | some T => pure (.abs (← freshAbs T))
+      | none => pure v
+    | none => pure v
+  | .succ w => pure (.succ (← lentUnknown fuel' w))
+  | .ind t c h ps fs => pure (.ind t c h ps (← fs.mapM (lentUnknown fuel')))
+  | _ => pure v
+termination_by structural fuel
+
 /-- D64 [Repack]: at a whole-again point, a value holding values of dependent types must be
-of its type `T` by their telescopes again (a borrow's content, for a borrow of `&A`). -/
+of its type `T` by their telescopes again (a borrow's content, for a borrow of `&A`). D73: a
+part that is still lent is checked as an unknown of its type (`lentUnknown`), since its
+borrow may still write any such value there. -/
 def repackCheck (fuel : Nat) (what : String) (v : Value) (T : Value) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let (v, T) := match v, T with
     | .borrow _ c, .tRef A => (c, A)
     | _, _ => (v, T)
   if !(← hasDependent v) then return
+  let v ← lentUnknown fuel' v
   fire .Repack fun _ => s!"{what}: {v} : {T}"
   if let some m ← packedErr fuel' v T then err s!"[Repack] {what}, but it is open: {m}"
 termination_by structural fuel

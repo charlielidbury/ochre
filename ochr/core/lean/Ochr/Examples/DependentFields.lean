@@ -728,8 +728,15 @@ ochr StuckBlocks uses DepFields {
     let r = match *v { MkV(n, x) => (n := Succ(Zero); &n), };
     ()
   )
-  -- twin of LieRet: the arm only returns the borrow
+  -- twin of LieRet: the arm returns a borrow of `x`, the field whose type depends, not of the
+  -- index field: whatever is written through it has `x`'s type
   def LieRetOk (v : &V) : Unit := (
+    let r = match *v { MkV(n, x) => &x, };
+    ()
+  )
+  -- an arm that only returns a borrow of the index field is rejected too (D73): the borrow
+  -- outlives the block's return, so the caller may write any `Word` through it (`LentIndex`)
+  reject def LendIndex (v : &V) : Unit := (
     let r = match *v { MkV(n, x) => &n, };
     ()
   )
@@ -760,9 +767,84 @@ ochr StuckBlocks uses DepFields {
   ("LieLend", "[Repack] *v is borrowed whole, but it is open"),
   ("LiePass", "[Repack] v is read whole, but it is open"),
   ("LieClosure", "[Repack] *w is lent to a stuck match, whose arm returns with it, but it is open"),
-  ("LieRet", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is One"),
+  ("LieRet", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is"),
+  ("LendIndex", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is"),
   ("RepairLater", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open"),
   ("LieDropped", "[Repack] w is lent to a stuck match, whose arm returns with it, but it is open")]
+
+/-! ## A lent part is unknown at a whole-again point (D73)
+
+[Repack] checked a value whose part was still lent against what the borrow held at that
+moment. A borrow of an index field that outlives a whole-again point lets its holder write
+any value of the field's type later, after the check: `GetN` returns `&n` from a value whose
+`x : Fin1(n)` depends on it, and its caller writes `Zero`. At a generic call `GetN` closes
+off, so the owner holds a sealed program that no later check can look into; at an instance
+the owner is `MkV(Zero, O)`, and a statement that never reads it whole computes to `False`
+there (`BoomI2` was a closed proof of `False`). So a part that is still lent is checked as an
+unknown of its type, as [Open] already checks a proof assigned while part of its value is
+lent. A borrow of a field nothing depends on is unaffected (`GetW`); a borrow of an index
+field whose dependents are proofs was already rejected, since the borrow sets them to ⊥. -/
+
+ochr LentIndex uses DepFields {
+  def Absurd1 (v : Void) : False := match v {}
+  reject def GetN (v : &V) : &Word := match *v { MkV(n, x) => &n, }
+  -- twin of GetN: a borrow of a field that no other field's type mentions
+  inductive VW := MkVW(n : Word, x : Fin1(n), w : Word)
+  def GetW (v : &VW) : &Word := match *v { MkVW(n, x, w) => &w, }
+  -- the attack, as accepted before D73: the caller writes `Zero` through the borrow
+  reject def A2e (v : &V) : Unit := (
+    let r = GetN(v);
+    *r := Zero;
+    ()
+  )
+  -- every `V` has a nonzero length, since `Fin1(Zero)` is `Void`
+  def NPos (v : V) : IsSucc(VN(v)) := (
+    match v {
+      MkV(n, x) => match n { Zero => match x {}, Succ(m) => refl, },
+    }
+  )
+  -- a statement that inspects the length field without reading `c` whole
+  reject def Boom2 (c0 : V) : Prop := (
+    let c = c0;
+    A2e(&c);
+    match c { MkV(n, x) => IsSucc(clone(n)), }
+  )
+  reject def Boom2Pf (c0 : V) : Boom2(c0) := (
+    let c = c0;
+    A2e(&c);
+    match c {
+      MkV(n, x) => match n { Zero => match x {}, Succ(m) => refl, },
+    }
+  )
+  reject def BoomI2 : False := Boom2Pf(One1)
+  -- the same lie with a block in place of `GetN`
+  reject def LendIndexWrite (v : &V) : Unit := (
+    let r = match *v { MkV(n, x) => &n, };
+    *r := Zero;
+    ()
+  )
+  -- twin of LendIndexWrite: through a borrow of the independent field
+  def LendFreeWrite (v : &VW) : Unit := (
+    let r = match *v { MkVW(n, x, w) => &w, };
+    *r := Zero;
+    ()
+  )
+  -- and in a statement, with no helper at all
+  reject def BoomB (c0 : V) : Prop := (
+    let c = c0;
+    (let r = match c { MkV(n, x) => &n, }; *r := Zero; ());
+    match c { MkV(n, x) => IsSucc(clone(n)), }
+  )
+}
+
+#guard (run "LentIndex" LentIndex).rejectedWith [
+  ("GetN", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is"),
+  ("A2e", "unknown constant GetN"),
+  ("Boom2", "unknown constant A2e"),
+  ("Boom2Pf", "unknown constant"),
+  ("BoomI2", "unknown constant Boom2Pf"),
+  ("LendIndexWrite", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open"),
+  ("BoomB", "[Repack] c is lent to a stuck match, whose arm returns with it, but it is open")]
 
 /-! ## A growable vector (a case study)
 
