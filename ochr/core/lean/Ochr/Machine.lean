@@ -399,14 +399,12 @@ def noBorrowParam (n : String) (v : Value) : M Unit := do
   if v.typeHasRef then err s!"{n} at {v}: no borrows inside data (a parameter may not be a borrow type)"
 
 /-- A statement position (an argument of a statement, a side of `Eq`): it runs on its own private
-copy of the state, by the ordinary rules. An argument whose value holds a borrow cannot: the
-borrow must be the real one (a copy's borrow would alias the place it borrows), so it runs in
-place. -/
--- Two paths, value-dependent by design (notes/two-paths-census.md, site 6): a value test, equal to a type test on every well-formed state: an argument is loan-free or a whole borrow (A.5 condition 5), and a borrow exactly when its type is a borrow type.
-def stmtArgIf (b : Bool) (x : M (Value × Option Value)) : M (Value × Option Value) := do
+copy of the state, by the ordinary rules. An argument of borrow type cannot: the borrow must be
+the real one (a copy's borrow would alias the place it borrows), so it runs in place. Which, is
+decided by the argument's declared type (`Decide.stmtArgInPlace`). -/
+def stmtArgIf (fuel : Nat) (b : Bool) (a : Term) (x : M (Value × Option Value)) : M (Value × Option Value) := do
   if !b then return ← x
-  let r ← onCopy x
-  if r.1.anyAtom (fun | .borrow .. | .loan _ => true | _ => false) then x else pure r
+  if ← stmtArgInPlace fuel a then x else onCopy x
 
 def fixOf (fv : Value) : M (List Value × Term) := do
   match fv with
@@ -1387,7 +1385,7 @@ def piSort (fuel : Nat) (T : Value) : M Nat := do
       let A ← evalType fuel' d
       l := max l (← sortOf fuel' A)
       let gv ← genericValue fuel' A
-      let pd' ← refineDecl fuel' pd (some A) gv
+      let pd' ← refineDecl pd
       pushBind h (some A) gv pd'.isProof pd'
     let lb ← sortOf fuel' (← evalType fuel' c)
     pure (if lb == 0 then 0 else max l lb)
@@ -1528,7 +1526,7 @@ def convPi (fuel : Nat) (P Q : Value) : M Bool := do
             modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
             pure (Value.borrow l c)
           | _ => genericValue fuel' A
-        let pd' ← refineDecl fuel' pd (some A) w
+        let pd' ← refineDecl pd
         pushBind h (some A) w pd'.isProof pd'
         ws := ws.push (w, A)
       let C ← evalType fuel' c
@@ -1539,7 +1537,7 @@ def convPi (fuel : Nat) (P Q : Value) : M Bool := do
       for (((d', h), (w, A)), pd) in ((ds'.zip hs).zip ws.toList).zip pds' do
         let A' ← evalType fuel' d'
         unless ← conv fuel' A A' do return false
-        let pd' ← refineDecl fuel' pd (some A') w
+        let pd' ← refineDecl pd
         pushBind h (some A') w pd'.isProof pd'
       let C' ← evalType fuel' c'
       conv fuel' C C'
@@ -1610,7 +1608,7 @@ def convFnRun (fuel : Nat) (f g pf : Value) (cs : List Value) (hs : List Hint) (
           modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
           pure (Value.borrow l c)
         | _ => if ← isPropV fuel' A then pure Value.proof else absOf A
-      let pd' ← refineDecl fuel' pd (some A) w
+      let pd' ← refineDecl pd
       pushBind h (some A) w pd'.isProof pd'
       args := args.push w
     discard popFrameRaw
@@ -1851,7 +1849,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     let myD := (← get).curDecl
     let du ← withLive true (declOf fuel' false [] [] u)
     let (v, T) ← eval fuel' typed u
-    let du' ← refineDecl fuel' du T v
+    let du' ← refineDecl du
     -- `h` is a proof iff `u` is, or its declared type is a proposition (P1; `u` may be an
     -- embedded value, `⋆` in a sealed program's bindings, which the pre-pass does not read)
     let p := (← getFlags).2 || du'.isProof
@@ -2188,7 +2186,7 @@ def evalCtor (fuel : Nat) (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts
     let fh ← if typed && ((np > 0 && (a matches .ctor .. | .prim "rewrite" _ | .prim "rewriteR" _)) || (a matches .val _)
         || (dep && d.fieldDependent c i))
       then fieldTypeAt fuel' d sol c i ws0.toList else pure none
-    let (w, T) ← stmtArgIf stmtC (eval fuel' typed a fh)
+    let (w, T) ← stmtArgIf fuel' stmtC a (eval fuel' typed a fh)
     if let some T := T then sol := unifyParams np FT T sol
     tys := tys.push T
     pushTemp w
@@ -2244,7 +2242,7 @@ def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Boo
   for a in as do
     -- v2.0: a constructor argument's parameters may come from the parameter's type
     let hint ← if typed && (a matches .ctor .. | .val _ | .prim "rewrite" _ | .prim "rewriteR" _ | .prim "hole" _) then argHint fuel' fv fT ws0 else pure none
-    let (w, T) ← stmtArgIf stmt (eval fuel' typed a hint)
+    let (w, T) ← stmtArgIf fuel' stmt a (eval fuel' typed a hint)
     pushTemp w
     ws0 := ws0.push w
     ender ← noteEnders ender ws0
@@ -2266,7 +2264,7 @@ def argHint (fuel : Nat) (fv : Value) (fT : Option Value) (ws : Array Value) : M
     let (pds, _) ← paramDecls fuel' cs hs ds c
     for (((d', h), w), pd) in ((ds.zip hs).zip ws.toList).zip pds do
       let A ← evalType fuel' d'
-      let pd' ← refineDecl fuel' pd (some A) w
+      let pd' ← refineDecl pd
       pushBind h (some A) w pd'.isProof pd'
     some <$> evalType fuel' d
 termination_by structural fuel
@@ -2328,7 +2326,7 @@ def callType (fuel : Nat) (piTy : Value) (ws : Array Value) (tys : Array (Option
       let A ← evalType fuel' d
       noteLoc argLocs[i]?.join (.expected A)
       atLoc argLocs[i]?.join <| expectTy fuel' s!"argument {i + 1} ({h.name})" tys[i]! A
-      pushBind h (some A) ws[i]! (pf.getD i false) (← refineDecl fuel' pd (some A) ws[i]!)
+      pushBind h (some A) ws[i]! (pf.getD i false) (← refineDecl pd)
     evalType fuel' c
 termination_by structural fuel
 
@@ -2382,7 +2380,7 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (ws : Arr
   pushCaps fuel' cs
   pushBind self none fv false (.pi cd)
   for ((((h, w), p), pd), i) in (((hs.zip ws.toList).zip pf).zip pds).zipIdx do
-    pushBind h (ptys[i]?.getD none) w p (← refineDecl fuel' pd none w)
+    pushBind h (ptys[i]?.getD none) w p (← refineDecl pd)
   -- D53: a body is code; a function whose calls are erased has an erased body (b)
   let erasedFn := (← fnClass fuel' (← funType fuel' fv none)) != 0
   let (v, _) ← withErasedIf erasedFn (eval fuel' false body)
@@ -3291,7 +3289,7 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
   | .letIn h u w =>
     let du ← withLive true (declOf fuel' false [] [] u)
     let (v, T) ← eval fuel' true u
-    pushBind h T v (← getFlags).2 (← refineDecl fuel' du T v)
+    pushBind h T v (← getFlags).2 (← refineDecl du)
     checkTail fuel' w fun r R => do
       let fl ← getFlags      -- the path's tail flags (dropping may normalise)
       pushTemp r
@@ -3421,11 +3419,11 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
         | _ => none)
     | _ =>
       if ← isPropV fuel' A then
-        pushBind h (some A) .proof p (← refineDecl fuel' pd (some A) .proof)
+        pushBind h (some A) .proof p (← refineDecl pd)
         entries := entries.push none
       else
         let c ← absOf A
-        pushBind h (some A) c p (← refineDecl fuel' pd (some A) c)
+        pushBind h (some A) c p (← refineDecl pd)
         entries := entries.push (match c with
           | .abs σ => if A == .tNat || (A matches .tInd ..) then some σ else none
           | _ => none)

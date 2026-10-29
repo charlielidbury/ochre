@@ -72,7 +72,7 @@ def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1691
+def Ochr.Registry.expectedTotal : Nat := 1702
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal

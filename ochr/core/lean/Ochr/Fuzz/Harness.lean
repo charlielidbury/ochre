@@ -111,12 +111,12 @@ def setupParams (d : Def) : M (Array PInfo) := do
       out := out.push ⟨h.name, .borrow cell, σ, T⟩
     | _ =>
       if ← isPropV (← fuelLeft) A then
-        pushBind h (some A) .proof p (← refineDecl (← fuelLeft) pd (some A) .proof)
+        pushBind h (some A) .proof p (← refineDecl pd)
         out := out.push ⟨h.name, .proof, 0, A⟩
       else
         let σ ← freshAbs A
         let c := if A == .tUnit then Value.unit else .abs σ
-        pushBind h (some A) c p (← refineDecl (← fuelLeft) pd (some A) c)
+        pushBind h (some A) c p (← refineDecl pd)
         out := out.push ⟨h.name, .data, σ, A⟩
   pure out
 

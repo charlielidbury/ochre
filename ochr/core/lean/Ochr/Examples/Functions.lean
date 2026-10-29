@@ -235,6 +235,27 @@ ochr Functions uses Nats, Boxes, Fixtures {
   def HPure (x : &Nat) : Prop := ⊤
   def BoomPowOk : Id(Nat, RunPow(HPure), Z) := RunPowGen(HPure)
 
+  -- D77 (`notes/stability.md`, site 7): a binding's class is read from its type's syntax, a
+  -- type function's Π-type off its body, so a function value that is stuck at an instance (a
+  -- sealed program, `PickP(n)`) is erased as at the generic call. Read from the value, it was
+  -- data at the instance and erased at the generic call, and these true statements were
+  -- rejected with an internal error
+  def PickP (n : Nat) : RefPred(0) := match n { Z => HPure, S _ => HPure, }
+  def InstPow (n : Nat) : Id(Nat, RunPow(PickP(n)), Z) := RunPowGen(PickP(n))
+  def InstPowZ : Id(Nat, RunPow(PickP(Z)), Z) := InstPow(Z)
+  def DirectPow (n : Nat) : Id(Nat, RunPow(PickP(n)), Z) := refl
+  -- a constant type reads as its value's Π-type
+  def T0 : Type₁ := Π(x : &Nat). Prop
+  def RunT0 (p : T0) : Nat := (let c = Z; p(&c); c)
+  def RunT0Gen (p : T0) : Id(Nat, RunT0(p), Z) := refl
+  -- a family whose arms are Π-types of different erasure classes has no class: which one a
+  -- binding of it takes would be decided by computation
+  def MixT (n : Nat) : Type₁ := match n { Z => Π(x : Type). Nat, S _ => Π(x : &Nat). Prop, }
+  reject def RunMix (n : Nat) (f : MixT(n)) : Nat := match n { Z => Z, S m => (let c = Z; f(&c); c), }
+  -- twin of RunMix: both arms return types
+  def SameT (n : Nat) : Type₁ := match n { Z => Π(x : &Nat). Prop, S _ => Π(x : &Nat). Prop, }
+  def RunSame (n : Nat) (f : SameT(n)) : Nat := match n { Z => Z, S m => (let c = Z; f(&c); c), }
+
   -- The same for the class "returns proofs", with a codomain `V(Z)` that computes to `⊤`.
   -- D54 alone rejects `BoomP` at the argument; since D55 the codomain cannot even be written
   -- (`V(Z)`'s declared type `U(Z)` is not a sort).

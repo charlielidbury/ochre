@@ -124,6 +124,22 @@ def agreeDecl (ds : List DeclInfo) : DeclInfo :=
     else if (d :: rest).any DeclInfo.isProof then .conflict
     else .other
 
+/-- D77: the arms of a match that computes a type agree on what that type says. Equal readings
+agree, and so do arms that are all proofs. Arms that differ while one of them is a Π-type do
+not: a binding of such a type would take its erasure class, or whether its calls return a
+borrow ([Close]'s row), from whichever arm a computation picks, which the two evaluation paths
+need not agree on (`notes/stability.md`, site 7). That is a `conflict`, rejected where a binding
+takes the type (`refineDecl`). Anything else is `other`. -/
+def agreeTypeDecl (ds : List DeclInfo) : DeclInfo :=
+  if ds.contains .conflict then .conflict else
+  match ds.filter (· != .any) with
+  | [] => .any
+  | d :: rest =>
+    if rest.all (· == d) then d
+    else if (d :: rest).all DeclInfo.isProof then .prop
+    else if (d :: rest).any (· matches .pi _) then .conflict
+    else .other
+
 /-- The error for a term with no declared type (D63). -/
 def conflictMsg (t : Term) (ns : List String) : String :=
   s!"[D63] the arms of a match in {t.pp ns} disagree about being proofs (some are, some are not), so it has no declared type"
@@ -331,20 +347,73 @@ def declOf (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (t 
 termination_by structural fuel
 
 /-- What a type term says as a declared type: a sort, a Π-type, a borrow type, or a
-proposition when its own declared type is `Prop`. -/
-def typeDecl (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (T : Term) : M DeclInfo := do
+proposition when its own declared type is `Prop`.
+
+D77: a call of a type function (a global whose declared codomain is a sort), `RefPred(0)`
+with `RefPred (n : Nat) : Type₁ := Π(x : &Nat). Prop`, says what its body says as a type,
+read from the body's syntax in the scope of the function's declared parameters: a Π-type
+term, through `let`s and the arms of a match, which must agree (`agreeTypeDecl`). It used to
+read `other`, and the binding's class was then recovered from the evaluated type or the
+value (`refineDecl`), which a sealed argument at an instance does not have (stability:
+`notes/stability.md`, site 7). The body is read, never run; `vis` stops the unfolding of a
+function inside its own body (a recursive type function reads `other` there). -/
+def typeDecl (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (T : Term)
+    (vis : List String := []) : M DeclInfo := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
+  -- the reading from the term's own declared type: a proposition if its declared sort is `Prop`
+  let fallback : M DeclInfo := do
+    match ← declOf fuel' false sc ns T with
+    | .sort 0 => pure .prop
+    | .any => pure .any
+    | _ => pure .other
   match T with
   | .sort l => pure (.sort l)
   | .pi hs ds c => do
     let (sc', ns', _) ← telescope fuel' false sc ns hs ds
-    pure (.pi (← typeDecl fuel' false sc' ns' c))
-  | .ref A => pure (.ref (← typeDecl fuel' false sc ns A))
+    pure (.pi (← typeDecl fuel' false sc' ns' c vis))
+  | .ref A => pure (.ref (← typeDecl fuel' false sc ns A vis))
   | .val v => valTypeDecl fuel' v
-  | _ => match ← declOf fuel' false sc ns T with
-    | .sort 0 => pure .prop
-    | .any => pure .any
-    | _ => pure .other
+  | .letIn h u w => do
+    let d ← declOf fuel' false sc ns u
+    typeDecl fuel' false (d :: sc) (h.name :: ns) w vis
+  | .seq _ w => typeDecl fuel' false sc ns w vis
+  | .matchNat _ z s =>
+    pure (agreeTypeDecl [← typeDecl fuel' false sc ns z vis, ← typeDecl fuel' false sc ns s vis])
+  | .matchInd _ _ arms =>
+    pure (agreeTypeDecl (← arms.mapM fun (_, a) => typeDecl fuel' false sc ns a vis))
+  | .call (.const F) _ _ => typeFnDecl fuel' F vis fallback
+  | .const F => do
+    -- a constant that is a type (`T0 : Type₁ := Π(x : &Nat). Prop`): its closed value's head,
+    -- the same on every path; only a Π-type is read through it, as for type functions
+    match (← get).globals.find? (·.name == F) with
+    | some g => match g.fn?, g.val with
+      | none, v@(.tPi ..) => valTypeDecl fuel' v
+      | _, _ => fallback
+    | none => fallback
+  | _ => fallback
+termination_by structural fuel
+
+/-- D77: what a call of the global `F` says as a type, when `F` is a type function: its body's
+reading as a type (`typeDecl`), in the scope of its declared parameters (and itself). `dflt`
+when `F` is not a type function or is being unfolded already. -/
+def typeFnDecl (fuel : Nat) (F : String) (vis : List String) (dflt : M DeclInfo) : M DeclInfo := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  -- inside its own body a recursive type function says nothing new: its reading is the
+  -- agreement of its other arms (`.any` agrees with every arm)
+  if vis.contains F then return .any
+  let some g := (← get).globals.find? (·.name == F) | return ← dflt
+  let some (.fix _ hs ds c _ body) := g.fn? | return ← dflt
+  unless c matches .sort _ do return ← dflt
+  let (sc', ns', _) ← telescope fuel' false [] [] hs ds
+  let k := ds.length
+  let d ← typeDecl fuel' false (sc'.take k ++ [DeclInfo.pi (.sort 0)]) (ns'.take k ++ [F]) body (F :: vis)
+  -- only a Π-type is read through the body: a body that computes to a sort or a proposition
+  -- keeps the call's declared reading (D35, D55: `U(n)` computing to `Prop` is not a sort, so a
+  -- function into `U(n)` returns data, `ErasureBySyntax.W`; `Fording.Sneak`), and a conflict
+  -- between the arms' erasure classes is the call's reading, rejected where it is used
+  match d with
+  | .pi _ | .conflict => pure d
+  | _ => dflt
 termination_by structural fuel
 
 /-- A term written where a type is expected: with `chk`, its declared type must be a sort
@@ -416,20 +485,30 @@ def paramDecls (fuel : Nat) (cs : List Value) (hs : List Hint) (ds : List Term) 
   let (sc', ns', _) ← telescope fuel' false capSc [] hs ds
   pure ((sc'.take ds.length).reverse, ← typeDecl fuel' false sc' ns' c)
 
-/-- A binding's declared reading, completed for a function: a declared type that is a
-Π-type only after computing it (`p : Pow(Nat)`) says what the Π-type value says, and a
-function value has the class of its own declared Π-type (D54 makes the two agree). -/
--- Two paths, value-dependent by design (notes/two-paths-census.md, site 7): whether an evaluated declared type is a Π-type; the generic call reads `other` only for a function it does not know (an abstract value or a sealed program), so it never erases what an instance runs, and a closure's class is its own codomain term's on both paths.
-def refineDecl (fuel : Nat) (d : DeclInfo) (A? : Option Value) (v : Value) : M DeclInfo := do
-  let fuel' + 1 := fuel | exhausted "out of fuel"
-  if d != .other then return d
-  if let some A@(.tPi ..) := A? then return ← valTypeDecl fuel' A
-  match v with
-  | .gfn _ | .clo _ _ => valueDecl fuel' v
-  | .abs σ => match ← absType σ with
-    | .tPi .. => valueDecl fuel' v
-    | _ => pure d
-  | _ => pure d
+/-- A binding's declared reading, which every decision about the binding reads (its erasure,
+whether a call through it is a statement). It is its declared type's reading as a type
+(`typeDecl`): read from syntax and declared types alone, the same on both evaluation paths.
+
+D77 (`notes/stability.md`, site 7): this used to be completed from values, for a declared
+type that is a Π-type only after computing (`p : Pow(Nat)`): from the evaluated type, or from
+the value bound (a closure's own Π-type, an abstract value's type). A sealed function value
+at an instance has neither, so the instance read `other` (data) where the generic call read
+the evaluated Π-type's class, and the pre-pass and the run then disagreed (`Inst` in
+`Examples/Stability.lean`). `typeDecl` now reads a type function's Π-type off its body, which
+makes the completion unnecessary. A type whose arms are Π-types erased differently has no
+class, and a binding of it is rejected. -/
+def refineDecl (d : DeclInfo) : M DeclInfo := do
+  if d == .conflict then
+    err "[D77] this binding's type is computed by a type function whose arms are Π-types whose calls are erased differently (some return types or proofs, some data): its erasure class would be decided by computation"
+  pure d
+
+/-- Whether a statement argument runs in place rather than on a private copy (`stmtArgIf`):
+exactly when its declared type is a borrow type. D77 (`notes/stability.md`, site 6): this used
+to be read off the argument's value (does it hold a borrow or a loan), which equals the type
+test only on well-formed states (A.5 condition 5, and no borrows in data), an invariant of the
+machine that is not proved. Read from the declared type, the two paths agree by construction. -/
+def stmtArgInPlace (fuel : Nat) (a : Term) : M Bool := do
+  pure ((← withLive true (declOf fuel false [] [] a)) matches .ref _)
 
 /-- Push captured values as bindings, each with what its declared type says. -/
 def pushCaps (fuel : Nat) (cs : List Value) : M Unit := do
