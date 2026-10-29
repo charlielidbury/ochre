@@ -55,6 +55,8 @@ Every statement is evaluated along two paths: at a definition's generic call, wh
 
 Each of these was once read from a normal form, and each time the result was a closed proof of `False` or an accepted program that goes wrong (@fig-why).
 
+In the checker, these decisions are made in one module from which the evaluator is not visible, so none can depend on a run: it reads syntax, declarations and the heads of values. The rules that depend on values by design ([Split], `Eq`, `J`, conversion, [Rec], footprints, copy-ness, matches on proofs) each come with an argument that refinement cannot change their outcome.
+
 *Erased terms leave no trace.* Every erased term, nested ones included, runs on its own private copy of the environment, which is then discarded, so running a proof and skipping it are indistinguishable, and the machine skips proofs, as a compiled program would. A write inside a statement lands on the statement's copy and is lost with it.
 
 == Types carry what the machine needs <sec-typing-types>

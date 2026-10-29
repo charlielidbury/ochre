@@ -11,7 +11,7 @@ The user's goal: Ochr is proven correct by construction, by a unifying theory fr
 - **Paper.** Consistency, stability (the two evaluation paths agree) and naturality are conjectures. Theorem 19 proves soundness for a first-order fragment, conditional on naturality and on invariants of the machine that are not proved. The set model (A.6) is a sketch.
 - **Lean.** Consistency is stated against the checker with the proof left `sorry` (branch `consistency-spec`). The checker is total; correctness is `lake build` (`ochr/core/CLAUDE.md`).
 - **The rules accrete by counterexample.** Figure 16 lists 27 side conditions, each with the program that forced it. Recent ones: D71 (no borrow-typed parameters, forced by the Fording attacks), D72 (a stuck block's arms are whole-again points), and D72's own attack pass immediately found the next gap (a caller writing through a returned borrow of an index field, `GetN`), which turned out to be a closed proof of `False` on main (`BoomI2`), closed the same day by D73 (a lent part is unknown at a whole-again point). The dependent-field rules ([Open], [Repack], whole-again points) are accreting fastest.
-- **The nearest thing to a unifying principle** is §6.3's "no decision that changes a result is read from a normal form". Every closed proof of `False` found so far broke it. It is applied by hand, case by case.
+- **The nearest thing to a unifying principle** is §6.3's "no decision that changes a result is read from a normal form". Many of the closed proofs of `False` found so far broke it (the others came from positivity, subsingleton elimination and the dependent-field rules, D73 among them). It is applied by hand, case by case.
 
 ## What "correct" should mean
 
@@ -83,9 +83,11 @@ The two items below are often discussed alongside the routes, but neither delive
 
 ### Supporting: enforce the two-paths principle in the code's types
 
+*Status:* done for the decisions read from declared types (branch `two-paths`, D74): they live in `Ochr/Decide.lean`, which cannot run the machine. Census: `ochr/core/notes/two-paths-census.md`.
+
 **What it is.** Not a correctness story itself, but a way of making one of Ochr's conjectures true by construction. The checker's decision functions (erasure, capture modes, footprints, [Close]'s row, whether a match is on a proof) take only syntax and declared types as arguments, never evaluated values, and Lean's type checker enforces it. Then the two evaluation paths cannot decide differently, because the decision functions cannot see what differs between them.
 
-- For: cheap; removes by construction the bug class behind every closed proof of `False` found so far; makes "the two paths make the same decisions" a corollary of the checker's structure rather than a conjecture, which every route above needs.
+- For: cheap; removes by construction the bug class behind many of the closed proofs of `False` found so far; makes "the two paths make the same decisions" a corollary of the checker's structure rather than a conjecture, which every route above needs.
 - Against: shows only that the two paths agree, not that what they agree on is right. Some steps legitimately depend on values ([Split] takes the arm the value names; `Eq` computes on values), so the boundary of "decision" must be drawn carefully. It does not touch the dependent-field gaps (`GetN`), which are about what a value is allowed to be, not about which path decides.
 - Learn more: this is the paper's §6.3 principle made mechanical; the general idea, using a type system to rule out a class of bugs, is "make illegal states unrepresentable" (Yaron Minsky).
 

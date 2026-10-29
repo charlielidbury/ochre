@@ -2,7 +2,7 @@
 
 Branch `two-paths`, off main `59b548aa`. Phase 1 of the two-paths enforcement (`ochr/docs/14`, "Supporting: enforce the two-paths principle in the code's types").
 
-The principle (paper §6.3): no decision that changes a result is read from a normal form. A statement is evaluated at a definition's generic call, where calls and matches on abstract values close off, and directly at each instance, where they run; a decision read from a normal form can differ between the two, and every closed proof of `False` found so far came from one. A *decision* here is any choice the checker makes that can change a result: whether a term is erased, how a stuck block takes a place, which places an observation reads, which row of [Close] applies, whether a match is on a proof, and so on.
+The principle (paper §6.3): no decision that changes a result is read from a normal form. A statement is evaluated at a definition's generic call, where calls and matches on abstract values close off, and directly at each instance, where they run; a decision read from a normal form can differ between the two, and many of the closed proofs of `False` found while designing Ochr came from one (Figure 16's "two paths agree" rows; others came from positivity, subsingleton elimination and the dependent-field rules). A *decision* here is any choice the checker makes that can change a result: whether a term is erased, how a stuck block takes a place, which places an observation reads, which row of [Close] applies, whether a match is on a proof, and so on.
 
 Classes:
 - **(a)** reads only syntax and declared types;
@@ -78,3 +78,11 @@ How each class fits:
 **Viability.** The cluster depends on the evaluator only through `sortOf`'s Π case; everything else it calls is state (`Env.lean`: `absType`, `lookupInd`, `lookupGlobal`, `liveDecl`, `varPos`, the caches). So the split is viable, at the cost of one semantic change (the syntactic sort of a Π-type value), which D55 says changes no accepted program. Phase 2 checks that against the build.
 
 **Not done: unforgeable decision tokens.** A stronger version would give each decision outcome (erasure flags, class, [Close] row, capture mode) a type with a constructor private to `Decide.lean`, so the evaluator could obtain one only from a decider. Lean's `private` is per file and the deciders and the evaluator are mutually recursive in part (`closeOffMatch` needs arm end states), so this needs the evaluator to hand facts to pure deciders rather than call into them. Left for later; the import-graph split already makes "a decision cannot run code" true by construction.
+
+## What landed (phase 2)
+
+- `Ochr/Decide.lean`: the declared-type readers and the decisions made from them, 531 lines moved out of `Machine.lean`, between `Located` and `Machine` in the import graph. It does not import the machine, so nothing in it can run a term.
+- `sortOf` of a Π-type value reads its parameter and codomain terms' declared sorts (`declSort`). That broke the only tie to the evaluator's cycle.
+- **A transient finding.** With only that change, `Universes.Impred` and `PolyTy` (`Π(x : &Type) …`) were accepted: computing the sort of a Π-type had been the only place [T-Pi] checked its parameter types, so `&Type` (D66) went unchecked. [T-Pi] now runs them in `Machine.piSort`, as typing must, and `evalCore` asserts that the run sort equals the declared one (D55). The assertion never fires on the suite.
+- The value-dependent sites are marked in the code with a comment beginning "Two paths, value-dependent by design" and their site number here: 6 `stmtArgIf`, 7 `refineDecl`, 9 `resultIsUnit`, 12 `scrutType`, 13 `closeOffMatch`, 14 `Obs.footprint`, 15 `recCheck`, 16 `copyRead`, 17 `mkEqM`, 21 `observeTyping`.
+- Verdicts: none changed. Class (b) sites 6 and 7 were kept, argued stable, rather than rewritten; neither is a known bug.
