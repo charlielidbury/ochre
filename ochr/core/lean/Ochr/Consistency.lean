@@ -28,7 +28,8 @@ library's `False` (`IsFalseConst`).
 * **Holes are the only axioms.** A surface `def` always has a body (`Notation.lean`'s
   `ochr_decl`), so there are no opaque or bodiless definitions to exclude. A hole (`?`, and
   `sorry`, which the notation reads as the same identifier `?`; `Surface.resolve` makes it
-  `.prim "hole" []`) is accepted at any type, with a warning: it is an axiom, and
+  `.prim "hole" []`) is accepted at any type, with a warning. It is a fresh unknown of that
+  type, which later declarations can use like any other constant, so it is an axiom:
   `holeFalse` below is an accepted closed proof of `False` built from one.
 * **Natives are not excluded.** A definition `implemented by "sym"` (K3) has an Ochr body,
   which the checker checks like any other (it only marks it as model code, `GDef.model`).
@@ -64,8 +65,7 @@ library's `False` (`IsFalseConst`).
   `match` with the one arm `Intro(l, r) => l` for `False ∧ ⊤` (`andFalse`); and an annotated
   zero-arm match for a user's zero-constructor type, in `Prop` (`voidFalse`) or in `Type`
   (`emptyFalse`). Each `#guard` below checks the reduction step, with a hole standing in for
-  the bad constant (for a type in `Type`, the step is checked as a function from it to
-  `False`; `emptyFalse` says why). The library's `False` is fixed as the target because `Eq` on distinct
+  the bad constant (a hole is a fresh unknown of its type, which later declarations can use). The library's `False` is fixed as the target because `Eq` on distinct
   constructors computes to it (`Machine.mkEqM`).
 * **Whole-program acceptance.** "Accepted" means every declaration is accepted, not just
   some. A rejected declaration is not added to the globals, so a later declaration that uses
@@ -120,6 +120,14 @@ library's `False` (`IsFalseConst`).
    by name (`Rules.lean`, `fire`), and that correspondence is tested, not proved. A proof of
    this statement also rules out implementation bugs, and so is stronger than Conjecture 1
    for the rules the checker implements.
+   A certifying checker (`ochr/docs/15-certifying-checker.md`, route R4 of
+   `ochr/docs/14-correct-by-construction.md`) would avoid proving this theorem at all. It
+   translates each accepted program into Lean, and Lean's kernel checks the translation. If a
+   program's certificate checks, its theorems are theorems of Lean, so the program contains no
+   closed proof of `False` unless Lean is inconsistent. That is this theorem's conclusion,
+   discharged from Lean's consistency one program at a time (form (c) of obstacle 3), not
+   proved once for every program. Its trusted base is the faithfulness of the translation
+   (docs/15's R5 and R6) instead of the checker.
 -/
 
 namespace Ochr.Consistency
@@ -127,8 +135,8 @@ open Ochr Ochr.Surface Ochr.Test
 
 /-- A surface term contains a hole: the identifier `?`, which is how the `ochr` notation reads
 both `?` and `sorry` (`Notation.lean`), and which `Surface.resolve` makes `.prim "hole" []`.
-No other identifier is spelled `?`. Total, unlike `STerm.idents`, so that the hypothesis
-built from it can be reasoned about. -/
+No other identifier is spelled `?`. Written out rather than read off `STerm.idents`, which
+also lists names that are not terms (a match arm's constructor, `split`'s function). -/
 def holeIn : STerm → Bool
   | .ident x => x == "?"
   | .num _ | .unitLit | .top | .sort _ => false
@@ -239,14 +247,11 @@ private def voidFalse : Program :=
    decl "B" F (.letIn "v" none (.ident "V") (.letIn "x" (some F) (.matchGen (.ident "v") []) (.ident "x")))]
 #guard accepts {} 2000000 (lib voidFalse)
 
-/-- A user's zero-constructor data type gives a literal `False` by a zero-arm match too, here
-as a function, `Absurd`, which `def B : False := Absurd(c)` would call. That last step is not
-checked: a constant defined by a hole at a data type is a fresh abstract value, whose type
-does not survive into the next declaration's state, so a later use of it is rejected
-("unknown abstract value"), whatever the use. -/
+/-- A user's zero-constructor data type gives a literal `False` the same way. -/
 private def emptyFalse : Program :=
   [{ name := "Empty", ind? := some [], expectAccept := true },
-   decl "Absurd" F (.matchGen (.ident "e") []) [("e", .ident "Empty")]]
+   decl "E" (.ident "Empty") (.ident "?"),
+   decl "B" F (.letIn "e" none (.ident "E") (.letIn "x" (some F) (.matchGen (.ident "e") []) (.ident "x")))]
 #guard accepts {} 2000000 (lib emptyFalse)
 
 end Ochr.Consistency
