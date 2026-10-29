@@ -45,9 +45,6 @@ def notRules : List String :=
 /-- The issues the guard currently finds, without line numbers. Remove a line when its issue
 is fixed; the build fails until the list matches. -/
 def expectedIssues : List String := [
-  -- deleted by rule-audit's items 10 and 5 (fc5cacb6, 79570f2d); the paper's pointers follow
-  "pointer `propDecl`: no declaration Ochr.propDecl",
-  "pointer `jValue`: no declaration Ochr.jValue",
   -- D64 (dep-fields): the checker's rules, until prop-paper prints them in the appendix
   "Rule [Open] is not printed by the paper",
   "Rule [Repack] is not printed by the paper"

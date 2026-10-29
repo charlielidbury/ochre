@@ -659,32 +659,24 @@ termination_by structural fuel
 
 /-- Substitute in every value of Ω; with `types`, also in the stored types, the types
 of abstract values and the goal ([Split]: "applied to Ω, the goal and all stored
-types"). -/
+types"). Without `types` (the fill of a loan, [End]): types hold no live loan, since a type
+is formed on a private copy, where reading a place ends every loan inside it. The
+positions are `mapState`'s, the same `renormAll` reaches. -/
 def substEnv (fuel : Nat) (x r : Value) (types : Bool) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  for p in allPos (← get).env do
-    setAt p (← substV fuel' x r (← getAt p))
-    if types then
-      if let .bind f i := p then
-        if let some T := (← get).env[f]!.binds[i]!.ty then
-          -- a type's sealed programs re-run as types: erased, reads copy (D53, fuzz-port RN)
-          let T' ← withErased (substV fuel' x r T)
-          modifyFrame f fun fr => { fr with binds := fr.binds.modify i ({ · with ty := some T' }) }
-  if types then
-    withErased do
-      let tys := (← get).absTy
-      let mut tys' := #[]
-      for T in tys do tys' := tys'.push (← substV fuel' x r T)
-      modify fun s => { s with absTy := tys' }
-      if let some g := (← get).goal then
-        let g' ← substV fuel' x r g
-        modify fun s => { s with goal := some g' }
+  -- a type's sealed programs re-run as types: erased, reads copy (D53, fuzz-port RN)
+  mapState (fun v => substV fuel' x r v) types
 termination_by structural fuel
 
 /-- [Seal] `nf(⌈t⌉)`: run `t` from the empty environment. Its head call is marked
 (`Term.call _ _ true`) and is not eligible for [Close]; loans whose borrow is outside
 the run are inert (they have no borrow in the run's Ω). If the run completes, the
-result is its value; if it is stuck, `⌈t⌉` (its embedded values are already normal). -/
+result is its value; if it is stuck, `⌈t⌉` (its embedded values are already normal).
+
+The only place a sealed program is re-run (`substV` after a substitution into it, `renormV`
+after a generalised neutral is refined, both at every position `mapState` reaches): closing
+off's (C4), a sealed program runs again exactly when something it depends on changes, wherever
+it occurs (`notes/closeoff-model.md`). -/
 def nfSealed (fuel : Nat) (t : Term) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let saved ← get
@@ -2454,7 +2446,17 @@ termination_by structural fuel
 
 /-- [Close]: the call `f(w̄)` has a stuck body; the partial run has been discarded (the
 state is back at the call point). `L := let cᵢ = uᵢ`, `C := f(ā)` with `aᵢ = &cᵢ` for
-the borrow arguments `wᵢ = borrow_ℓᵢ uᵢ`; the result and the loans follow the table. -/
+the borrow arguments `wᵢ = borrow_ℓᵢ uᵢ`; the result and the loans follow the table.
+
+This is the only place a sealed program is made (a stuck block or `J` is closed off through
+it too, `closeBlock`), and it keeps closing off's obligations (`notes/closeoff-model.md`):
+(C1) the text reconstructs the call exactly, the same function value, the other arguments as
+values, each borrowed content in a fresh cell, the head call marked so a re-run cannot close
+it again (C5); (C2) each output is its own projection, read by `peek`, which copies the
+discarded run's cell; (C3) a returned borrow's final content is a parameter of every fill, the
+inert loan `k`, filled when the borrow ends; (C8) the inputs are loan-free and whole
+(asserted below). Every sealed program enters the state through `canonNeutral`, so a text
+already generalised in this world is its `σ` (C6). -/
 def closeCall (fuel : Nat) (fv : Value) (ws : Array Value) (kind : Kind) (B : Option Value := none) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   wholeBorrowArgs ws "a call that closes off"
@@ -2584,22 +2586,11 @@ def sealedResultType? (fuel : Nat) (t : Term) : M (Option Value) := do
 termination_by structural fuel
 
 /-- Re-normalise every sealed program in the state (after a generalised neutral has been
-refined, sealed programs whose runs derive it may now make progress). -/
+refined, sealed programs whose runs derive it may now make progress), at every position a
+refinement reaches (`mapState`, with types; types re-normalise as types: erased, D53). -/
 def renormAll (fuel : Nat) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  for p in allPos (← get).env do
-    setAt p (← renormV fuel' (← getAt p))
-  -- types re-normalise as types: erased, reads copy (D53)
-  if let some g := (← get).goal then
-    let g' ← withErased (renormV fuel' g)
-    modify fun s => { s with goal := some g' }
-  let f := (← get).env.size
-  for fi in [0:f] do
-    let n := (← get).env[fi]!.binds.size
-    for i in [0:n] do
-      if let some T := (← get).env[fi]!.binds[i]!.ty then
-        let T' ← withErased (renormV fuel' T)
-        modifyFrame fi fun fr => { fr with binds := fr.binds.modify i ({ · with ty := some T' }) }
+  mapState (fun v => renormV fuel' v) true
 termination_by structural fuel
 
 def renormV (fuel : Nat) (v : Value) : M Value := do

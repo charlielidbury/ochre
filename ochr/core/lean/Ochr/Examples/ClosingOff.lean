@@ -505,3 +505,162 @@ ochr BlockCaptures uses Nats, Fixtures {
     x
   )
 }
+
+
+/-! ## Closing off computes what the call would have (notes/closeoff-model.md, (C))
+
+A closed-off call's sealed programs are the call delayed: run again once a refinement decides
+what the call was stuck on, each computes exactly what the call would have produced at those
+arguments, its result and the final content of each place it borrowed. A returned borrow's
+final content is a parameter of every fill (its hole), filled when the borrow ends. Each pair
+below is a true statement that needs this to hold, and the same statement made false at one
+instance, which must be rejected: the hole sitting in two fills (`Pick`), the last of two
+writes through a returned borrow, a reborrow through it passed to another stuck call, the
+returned borrow moved into a second call, the hole met as an inert loan by a re-run that a
+later split triggers, a closed-off call generalised by a split and derived again (refined
+once and twice), and a stuck block whose arms close off calls or return a borrow. -/
+
+ochr CloseOffModel uses Nats, Fixtures {
+  def CoPick (n : Nat) (a : &Nat) (b : &Nat) :
+      Id(Unit, (let r = Pick(n, a, b); *r := 5), (match n { Z => *a := 5, S _ => *b := 5, })) :=
+    match n { Z => refl, S _ => refl, }
+  reject def CoPickOnlyA (n : Nat) (a : &Nat) (b : &Nat) : Id(Unit, (let r = Pick(n, a, b); *r := 5), *a := 5) :=
+    match n { Z => refl, S _ => refl, }
+  reject def CoPickBoth (n : Nat) (a : &Nat) (b : &Nat) : Id(Unit, (let r = Pick(n, a, b); *r := 5), (*a := 5; *b := 5)) :=
+    match n { Z => refl, S _ => refl, }
+  reject def CoPickRefl (n : Nat) (a : &Nat) (b : &Nat) : Id(Unit, (let r = Pick(n, a, b); *r := 5), *a := 5) := refl
+
+  def CoTwice (x : &Nat) : Id(Unit, (let t = TailM(x); *t := 1; *t := 2), AddM(x, 2)) by x :=
+    match *x { Z => refl, S p => CoTwice(&p), }
+  reject def CoTwiceFirst (x : &Nat) : Id(Unit, (let t = TailM(x); *t := 1; *t := 2), AddM(x, 1)) by x :=
+    match *x { Z => refl, S p => CoTwiceFirst(&p), }
+
+  def CoReborrow (x : &Nat) (y : Nat) : Id(Unit, (let t = TailM(x); AddM(&*t, y)), AddM(x, y)) by x :=
+    match *x { Z => refl, S p => CoReborrow(&p, y), }
+  reject def CoReborrowOff (x : &Nat) (y : Nat) : Id(Unit, (let t = TailM(x); AddM(&*t, y)), AddM(x, S(y))) by x :=
+    match *x { Z => refl, S p => CoReborrowOff(&p, y), }
+
+  def CoMoved (x : &Nat) : Id(Unit, (let t = TailM(x); let u = TailM(t); *u := 3), AddM(x, 3)) by x :=
+    match *x { Z => refl, S p => CoMoved(&p), }
+  reject def CoMovedOff (x : &Nat) : Id(Unit, (let t = TailM(x); let u = TailM(t); *u := 3), AddM(x, 2)) by x :=
+    match *x { Z => refl, S p => CoMovedOff(&p), }
+
+  def CoInert (n : Nat) : Unit := (
+    let c = clone(n);
+    let t = TailM(&c);
+    match n {
+      Z => (*t := 7; let h : Id(Nat, clone(c), 7) = refl; ()),
+      S m => (),
+    }
+  )
+  reject def CoInertOff (n : Nat) : Unit := (
+    let c = clone(n);
+    let t = TailM(&c);
+    match n {
+      Z => (*t := 7; let h : Id(Nat, clone(c), 8) = refl; ()),
+      S m => (),
+    }
+  )
+  def CoWrittenFirst (n : Nat) : Unit := (
+    let c = clone(n);
+    let t = TailM(&c);
+    *t := 7;
+    match n {
+      Z => (let h : Id(Nat, clone(c), 7) = refl; ()),
+      S m => match m { Z => (let h : Id(Nat, clone(c), S(7)) = refl; ()), S k => (), },
+    }
+  )
+  reject def CoWrittenFirstOff (n : Nat) : Unit := (
+    let c = clone(n);
+    let t = TailM(&c);
+    *t := 7;
+    match n {
+      Z => (let h : Id(Nat, clone(c), 7) = refl; ()),
+      S m => match m { Z => (let h : Id(Nat, clone(c), 7) = refl; ()), S k => (), },
+    }
+  )
+  def CoPerArm (n : Nat) : Unit := (
+    let c = clone(n);
+    let t = TailM(&c);
+    match n {
+      Z => (*t := 1; let h : Id(Nat, clone(c), 1) = refl; ()),
+      S m => match m { Z => (*t := 2; let h : Id(Nat, clone(c), S(2)) = refl; ()), S k => (), },
+    }
+  )
+  reject def CoPerArmOff (n : Nat) : Unit := (
+    let c = clone(n);
+    let t = TailM(&c);
+    match n {
+      Z => (*t := 1; let h : Id(Nat, clone(c), 1) = refl; ()),
+      S m => match m { Z => (*t := 2; let h : Id(Nat, clone(c), S(1)) = refl; ()), S k => (), },
+    }
+  )
+
+  def CoGen (x : Nat) : Unit := (
+    let a = Add(clone(x), 0);
+    match a {
+      Z => (let h : Id(Nat, Add(clone(x), 0), Z) = refl; ()),
+      S q => (let h : Id(Nat, Add(clone(x), 0), S(q)) = refl; ()),
+    }
+  )
+  reject def CoGenOff (x : Nat) : Unit := (
+    let a = Add(clone(x), 0);
+    match a {
+      Z => (),
+      S q => (let h : Id(Nat, Add(clone(x), 0), Z) = refl; ()),
+    }
+  )
+  def CoGenTwice (x : Nat) : Unit := (
+    let a = Add(clone(x), 1);
+    match a {
+      Z => (),
+      S q => match q {
+        Z => (let h : Id(Nat, Add(clone(x), 1), S(Z)) = refl; ()),
+        S r => (let h : Id(Nat, Add(clone(x), 1), S(S(r))) = refl; ()),
+      },
+    }
+  )
+  reject def CoGenTwiceOff (x : Nat) : Unit := (
+    let a = Add(clone(x), 1);
+    match a {
+      Z => (),
+      S q => match q {
+        Z => (let h : Id(Nat, Add(clone(x), 1), Z) = refl; ()),
+        S r => (),
+      },
+    }
+  )
+
+  def CoBlockCalls (n : Nat) (x : &Nat) : Unit := (
+    let old = clone(*x);
+    match n { Z => AddM(&*x, 1), S _ => AddM(&*x, 2), };
+    match n {
+      Z => (let h : Id(Nat, clone(*x), Add(clone(old), 1)) = refl; ()),
+      S _ => (let h : Id(Nat, clone(*x), Add(clone(old), 2)) = refl; ()),
+    }
+  )
+  reject def CoBlockCallsOff (n : Nat) (x : &Nat) : Unit := (
+    let old = clone(*x);
+    match n { Z => AddM(&*x, 1), S _ => AddM(&*x, 2), };
+    match n {
+      Z => (let h : Id(Nat, clone(*x), Add(clone(old), 2)) = refl; ()),
+      S _ => (),
+    }
+  )
+  def CoBlockBorrow (n : Nat) (m : Nat) (a : &Nat) (b : &Nat) : Unit := (
+    let r = match m { Z => Pick(clone(n), &*a, &*b), S _ => Pick(clone(n), &*b, &*a), };
+    *r := 9;
+    match m {
+      Z => match n { Z => (let h : Id(Nat, clone(*a), 9) = refl; ()), S _ => (let h : Id(Nat, clone(*b), 9) = refl; ()), },
+      S _ => match n { Z => (let h : Id(Nat, clone(*b), 9) = refl; ()), S _ => (let h : Id(Nat, clone(*a), 9) = refl; ()), },
+    }
+  )
+  reject def CoBlockBorrowOff (n : Nat) (m : Nat) (a : &Nat) (b : &Nat) : Unit := (
+    let r = match m { Z => Pick(clone(n), &*a, &*b), S _ => Pick(clone(n), &*b, &*a), };
+    *r := 9;
+    match m {
+      Z => match n { Z => (let h : Id(Nat, clone(*b), 9) = refl; ()), S _ => (), },
+      S _ => (),
+    }
+  )
+}

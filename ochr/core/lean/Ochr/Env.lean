@@ -512,4 +512,32 @@ def valAt (env : Env) : Pos → Value
   | .bind f i => env[f]!.binds[i]!.val
   | .temp f i => env[f]!.temps[i]!
 
+/-- Apply `f` to every value position of the state, in one fixed order: each value of Ω and,
+with `types`, the stored type of its binding right after it; then, with `types`, the type of
+every abstract value and the goal. Types are values used as types, so they run erased.
+
+This is the one place that says what a change to the state must reach. A refinement
+(`substEnv` with `types`), the fill of a loan (`substEnv` without: types hold no live loan)
+and the re-normalisation after a generalised neutral is refined (`renormAll`) all go
+through it, so a sealed program cannot be left stale in one of them because a position was
+missed in another (closing off's obligation (S-all), `notes/closeoff-model.md`; before this,
+`renormAll` skipped the types of abstract values that `substEnv` reached). -/
+def mapState (f : Value → M Value) (types : Bool) : M Unit := do
+  for p in allPos (← get).env do
+    setAt p (← f (← getAt p))
+    if types then
+      if let .bind fi i := p then
+        if let some T := (← get).env[fi]!.binds[i]!.ty then
+          let T' ← withErased (f T)
+          modifyFrame fi fun fr => { fr with binds := fr.binds.modify i ({ · with ty := some T' }) }
+  if types then
+    withErased do
+      let n := (← get).absTy.size
+      for i in [0:n] do
+        let T' ← f (← get).absTy[i]!
+        modify fun s => { s with absTy := s.absTy.set! i T' }
+      if let some g := (← get).goal then
+        let g' ← f g
+        modify fun s => { s with goal := some g' }
+
 end Ochr
