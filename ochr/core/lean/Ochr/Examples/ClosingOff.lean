@@ -459,3 +459,49 @@ ochr Naturality uses Fixtures {
   )
 }
 
+
+/-! ## A stuck block's captures over-approximate every arm (notes/erasure-model.md, K1)
+
+A stuck block takes each outer place by the largest effect any arm has on it (copy ⊑ `&` ⊑
+move), at the granularity of the place an arm moves, net of an arm's own refills. So the code
+after the block sees, at the generic call, at least every effect the direct match has at any
+instance: a field an arm moves is gone after the block, a field an arm moves and refills is
+not, a field one arm lends while the other moves its sibling stays readable, and a statement
+inside an arm (run on its own private copy) affects nothing outside it. -/
+
+ochr BlockCaptures uses Nats, Fixtures {
+  def K (y : &Nat) : Unit := ()
+
+  -- an arm moves a field; the code after the block reads it (the direct path at `n = 0`
+  -- reads a moved field)
+  reject def MovedField (n : Nat) (q : Nat × Nat) : Nat := (
+    match q { Mk(a, b) => (match n { Z => (let t = a; ()), S _ => () }; a) }
+  )
+
+  -- twin of MovedField: the arm refills the field it moved, so its net effect is a write
+  def RefilledField (n : Nat) (q : Nat × Nat) : Nat := (
+    match q { Mk(a, b) => (match n { Z => (let t = a; a := Z; ()), S _ => () }; a) }
+  )
+
+  -- one arm lends a field to a call while the other moves its sibling: the lent field is
+  -- readable after the block
+  def LentSibling (n : Nat) (q : Nat × Nat) : Nat := (
+    match q { Mk(a, b) => (match n { Z => K(&a), S _ => (let t = b; ()) }; a) }
+  )
+
+  -- twin of LentSibling, reading the moved sibling instead
+  reject def MovedSibling (n : Nat) (q : Nat × Nat) : Nat := (
+    match q { Mk(a, b) => (match n { Z => K(&a), S _ => (let t = b; ()) }; b) }
+  )
+
+  -- a statement inside an arm reads `x` on its own private copy: `x` is unchanged after
+  def StmtInArm (n : Nat) (x : Nat) :
+      Id(Nat, (match n { Z => (let h : Eq(Nat, x, x) = refl; ()), S _ => () }; x), x) := refl
+
+  -- a proof inside an arm lends `x` to a lemma: in place, but within the proof's own copy
+  def TrueOf (x : &Nat) : True := I
+  def ProofLendsInArm (n : Nat) (x : Nat) : Nat := (
+    match n { Z => (let h : True = TrueOf(&x); ()), S _ => () };
+    x
+  )
+}
