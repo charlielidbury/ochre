@@ -433,17 +433,69 @@ def wholeBorrowArgs (ws : Array Value) (what : String) : M Unit := do
       if u.hasHole then
         err s!"[D53] argument {i + 1} of {what} is a borrow whose content is partly moved out ({u})"
 
+/-- D78 [Rec]: for each variable a closure formed from `t` captures, in `capture`'s order
+(oldest binding first), the mark of the binding it captures: whether it is some function's
+binding of itself, or a capture of one. Read from the bindings themselves, never from their
+values: capturing a function value that is not a copy moves it, leaving `⊥` behind, but the
+binding keeps its mark. -/
+def capMarks (t : Term) : M (Array (Option Nat)) := do
+  let fvs := (t.freeVars.toArray.qsort (· > ·)).toList
+  let top := (← get).env.back!
+  pure (fvs.toArray.map fun o => (top.binds[top.binds.size - 1 - o]?).bind (·.recUid))
+
+/-- D78: mark the top frame's capture bindings (the first `marks.size` bindings) with the
+marks `capMarks` read. -/
+def markCapRec (marks : Array (Option Nat)) : M Unit := do
+  let f ← topIdx
+  modifyFrame f fun fr => Id.run do
+    let mut bs := fr.binds
+    for (m, i) in marks.toList.zipIdx do
+      if let some u := m then
+        if i < bs.size then bs := bs.modify i ({ · with recUid := some u })
+    pure { fr with binds := bs }
+
+/-- D78: mark the top frame's last binding as the binding of itself of the function whose
+frame is `uid`. -/
+def markLastRec (uid : Nat) : M Unit := do
+  let f ← topIdx
+  modifyFrame f fun fr =>
+    if fr.binds.size == 0 then fr
+    else { fr with binds := fr.binds.modify (fr.binds.size - 1) ({ · with recUid := some uid }) }
+
+/-- D78 [Rec]: the frame mark of a call's head, when the head is a variable: the
+`Binding.recUid` of the binding it names (a function's binding of itself, or a closure's
+capture of it), else `none`. -/
+def callRecUid (f : Term) : M (Option Nat) := do
+  match f with
+  | .place (.var x) =>
+    match ← varPos x with
+    | .bind fr i => pure ((← get).env[fr]!.binds[i]!.recUid)
+    | .temp _ _ => pure none
+  | _ => pure none
+
+/-- D78 [Rec]: is a call of `fv`, made through a binding marked `uid?`, a recursive call of
+the function `ctx` is checking? The one place that decides it. It is read from syntax: the
+call's head is the name the function binds for itself, or a closure's capture of that name
+(`Binding.recUid`). Comparing function values cannot decide it: a refinement, an [End] or a
+re-normalisation substitutes inside a local function's captured values (its own binding of
+itself included) but not inside the frame, so after `match n {…}` on a captured `n` the
+refined closure no longer equals the one being checked and its recursive calls went
+unchecked (rec-model's `CapSplit`, a closed proof of `False`). Value equality is kept only
+as a fail-safe that can add a check, never remove one. -/
+def recFrameOf (ctx : RecCtx) (fv : Value) (uid? : Option Nat) : Bool :=
+  uid? == some ctx.uid || ctx.fn == fv
+
 /-- [Rec]: at a recursive call, a parameter position survives if its argument (the
 content, through a borrow) is a strict subterm of that parameter's entry value as
 refined so far. The recursive position is any position that survives every call.
 Every enclosing function being checked is considered, so a recursive call inside a
 nested closure is checked against the outer function's entry values (fix L3). -/
 -- Two paths, value-dependent by design (notes/two-paths-census.md, site 15): the entry value as refined so far; refinement only adds constructors, so a strict subterm found here is one at every instance.
-def recCheck (fv : Value) (ws : Array Value) : M Unit := do
+def recCheck (fv : Value) (ws : Array Value) (uid? : Option Nat := none) : M Unit := do
   let st ← get
   let mut frames := #[]
   for ctx in st.recStack do
-    if ctx.fn == fv then
+    if recFrameOf ctx fv uid? then
       let cands := ctx.cands
       let cands' ← cands.filterM fun j => do
         match ctx.entries[j]?.join, ws[j]? with
@@ -1853,12 +1905,14 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
   | .fix _ hs ds c _ _ =>
     borrowParamCheck ds c
     -- a closure whose calls are erased is itself erased by the pre-pass (its captures copy)
+    -- D78: the captured bindings' [Rec] marks, read before `capture` moves them
+    let capRec ← capMarks t
     let (cs, t') ← capture fuel' t
     let v := Value.clo cs t'
     let T := match t' with
       | .fix _ _ ds' c' _ _ => Value.tPi cs (.pi hs ds' c')
       | _ => Value.tPi cs (.pi hs ds c)
-    if typed then checkFix fuel' v cs t'
+    if typed then checkFix fuel' v cs t' capRec
     let v ← if ← isPropV fuel' T then pure .proof else pure v
     pure (v, some T)
   | .call f as hd => evalCall fuel' typed f as hd
@@ -2173,6 +2227,9 @@ def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Boo
     (cls? : Option Nat := none) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   modify fun s => { s with headEval := true }
+  -- D78 [Rec]: a call made through a function's binding of itself (or a capture of it) is
+  -- a recursive call of that function, read from the head's syntax (`recFrameOf`)
+  let recUid? ← callRecUid f
   -- D53 (e): a call does not consume the function it calls (read in place)
   if f matches .place _ then modify fun s => { s with inPlace := true }
   let (fv, fT) ← eval fuel' typed f
@@ -2194,7 +2251,7 @@ def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Boo
     tys := tys.push T
   let ws ← popTemps as.length
   let fv ← popTemp
-  atLoc (← enderLoc ender ws) <| callFn fuel' typed fv fT ws tys head cls?
+  atLoc (← enderLoc ender ws) <| callFn fuel' typed fv fT ws tys head cls? recUid?
 termination_by structural fuel
 
 /-- The type of the next parameter of `fv`, with the earlier ones bound to the arguments
@@ -2337,7 +2394,8 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (ws : Arr
 termination_by structural fuel
 
 def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array Value)
-    (tys : Array (Option Value)) (head : Bool) (cls? : Option Nat := none) :
+    (tys : Array (Option Value)) (head : Bool) (cls? : Option Nat := none)
+    (recUid? : Option Nat := none) :
     M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   if let some i := ws.findIdx? (· == .bot) then
@@ -2352,7 +2410,7 @@ def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Ar
   let B ← if typed then some <$> callType fuel' piTy ws tys else pure none
   if typed then
     trace fun _ => s!"[Call-type] {fv}({", ".intercalate (ws.toList.map toString)}) : {B.getD .bot}"
-    recCheck fv ws
+    recCheck fv ws recUid?
   -- D54: the class and [Close] row are those of the function value's own declared Π-type,
   -- on every path (conversion only lets a value stand at a Π-type of its class and row, so
   -- this is also the static type's; a sealed function whose own type cannot be read here
@@ -3327,7 +3385,8 @@ place `cᵢ ↦ σᵢ` for each borrow parameter `xᵢ : &Tᵢ` (frame 0); the c
 `f(ā)` with `aᵢ = &cᵢ` or `σᵢ`; the goal is the [Call-type] of that call; the body
 runs in a pushed frame and its result's type must convert to the goal as refined by
 splits. Afterwards the whole state is restored. -/
-def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) : M Unit := do
+def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
+    (capRec : Array (Option Nat) := #[]) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let .fix self hs ds c dec body := t | err "internal: not a fix"
   borrowParamCheck ds c
@@ -3374,9 +3433,16 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) : M Unit := 
   trace fun _ => s!"[Def] {self.name}: goal {goal}"
   let F1 ← popFrameRaw
   let piTy := Value.tPi cs (.pi hs ds c)
+  let uid := (← get).nextRecUid
+  modify fun s => { s with nextRecUid := s.nextRecUid + 1 }
   pushFrame
   pushCaps fuel' cs
+  -- D78: a capture of an enclosing function's binding of itself keeps its mark, so a
+  -- recursive call of that function from this closure's body is still recognised by name
+  markCapRec capRec
   pushBind self (some piTy) fv false (.pi cd)
+  -- D78: this function's binding of itself carries its frame's mark
+  markLastRec uid
   for b in F1.binds.extract cs.length F1.binds.size do pushBind b.hint b.ty b.val b.proof b.decl
   -- [Rec]: the decreasing parameter is the one named by `by xⱼ` (v1.2, D23); without
   -- `by` the function is not recursive (no candidate survives a recursive call)
@@ -3386,8 +3452,7 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) : M Unit := 
         err s!"`by {(hs.getD j ⟨"?"⟩).name}`: the decreasing parameter must have an inductive type (or be a borrow of one)"
       pure [j]
     | none => pure []
-  let fr : RecCtx := { fn := fv, entries, cands, uid := (← get).nextRecUid }
-  modify fun s => { s with nextRecUid := s.nextRecUid + 1 }
+  let fr : RecCtx := { fn := fv, entries, cands, uid }
   modify fun s => { s with goal := some goal, recStack := fr :: s.recStack }
   -- D53 (b): the body of a function whose calls are erased is an erased term
   -- (tracked with or without D53: K2/K3 read it too)

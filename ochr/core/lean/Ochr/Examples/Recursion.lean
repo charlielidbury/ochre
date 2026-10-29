@@ -193,6 +193,23 @@ ochr Recursion uses Nats, Fixtures {
 
   reject def KnotLBoom : False := KnotL(0)
 
+  -- D78: a recursive call is recognised by the name it is made through, not by comparing
+  -- function values. `go` captures `n`; splitting on `n` inside `go`'s body refines the
+  -- capture, so the refined closure no longer equals the one being checked, and its
+  -- recursive calls went unchecked: `CapSplit` was accepted and `BoomCapSplit` was a closed
+  -- proof of `False` (rec-model)
+  reject def CapSplit (n : Nat) (x : Nat) : False := (fix go (y : Nat) : False by y := match n { Z => go(y), S q => go(y) })(x)
+  reject def BoomCapSplit : False := CapSplit(0, 0)
+  -- the same through a closure formed in each arm: capturing `go` moves it (a closure over
+  -- non-copy data is not a copy), so the capture is recognised by the binding's mark, not its
+  -- value; `BoomCapLam` was a closed proof of `False` too
+  reject def CapSplitLam (n : Nat) (x : Nat) : False := (fix go (y : Nat) : False by y := match n { Z => (let h = (λ(u : Unit) : False => go(clone(y))); h(())), S q => (let h = (λ(u : Unit) : False => go(clone(y))); h(())) })(x)
+  reject def BoomCapLam : False := CapSplitLam(0, 0)
+  -- twin of CapSplit: the same split on the capture, with recursive calls on a strict part of `y`
+  def CapSplitOk (n : Nat) (x : Nat) : Unit := (fix go (y : Nat) : Unit by y := match n { Z => match y { Z => (), S p => go(p) }, S q => match y { Z => (), S p => go(p) } })(x)
+  -- twin of CapSplitLam: the closure formed in the arm recurses on a strict part
+  def CapSplitLamOk (n : Nat) (x : Nat) : Unit := (fix go (y : Nat) : Unit by y := match n { Z => match y { Z => (), S p => (let h = (λ(u : Unit) : Unit => go(clone(p))); h(())) }, S q => () })(x)
+
   -- twin of KnotL: inside the closure the recursive call is on `q`, a copy of `p`, a strict part of the entry value
   def KnotLOk (x : Nat) : Eq(Nat, Z, Z) by x := (
     match x {

@@ -39,6 +39,13 @@ structure Binding where
   proof : Bool := false -- v1.7 (D35): its declared type has declared sort Prop (read off syntax)
   decl : DeclInfo := .other   -- what its declared type says (the erasure pre-pass)
   cap : Bool := false         -- a closure's captured value (D53 (e): its body may not move it out)
+  /-- D78 [Rec]: this binding names a function whose body is being checked: the
+  `RecCtx.uid` of its frame. Set on the function's binding of itself, and on a closure's
+  capture of such a binding, so a recursive call is recognised by the name it is made
+  through (syntax), never by comparing function values, which a refinement, an [End] or
+  a re-normalisation inside a capture can change (§6.3: which calls recurse is read from
+  syntax). -/
+  recUid : Option Nat := none
 deriving Inhabited
 
 structure Frame where
