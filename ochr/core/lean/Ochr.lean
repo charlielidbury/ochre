@@ -6,6 +6,7 @@ import Ochr.Env
 import Ochr.Rules
 import Ochr.Obs
 import Ochr.Located
+import Ochr.Decide
 import Ochr.Machine
 import Ochr.Check
 import Ochr.Surface

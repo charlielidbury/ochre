@@ -148,6 +148,7 @@ reached through a borrow-typed variable, not in Ω's order: closing off a match 
 sealed program binds its captures in its own order, and a borrow parameter's cell is not where
 the caller's is) and turns a captured place's reads into reads through a borrow, and `Id`'s
 conjunction must come out the same on every path (fuzz-port's R6). -/
+-- Two paths, value-dependent by design (notes/two-paths-census.md, site 14): owners follow the environment's borrows and loans; the footprint at the generic call contains an instance's, and refinement turns the extra equations into ⊤ (Conjecture 2, item 6).
 def footprint (env : Env) (ts : List Term) : List Pos := Id.run do
   let f := env.size - 1
   let n := env[f]!.binds.size
