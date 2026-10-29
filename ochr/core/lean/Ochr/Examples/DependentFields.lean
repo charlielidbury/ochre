@@ -920,6 +920,51 @@ ochr JBlocks uses DepFields {
   ("LenPf", "unknown constant LenStmt"),
   ("BoomJ", "unknown constant LenPf")]
 
+-- ## The producer obligation (D76): every producer of a neutral of a dependent type
+-- A sealed program is treated as whole on the generic path, so whatever produced it must have
+-- checked whole what it stands for: a function at its body's return, a block at each arm's end
+-- (`closeBlock` runs the arms itself). These attacks aim at the producers one at a time: a
+-- closure's body (a block inside it, and its own return), an `Id` side, a `J` inside a closure,
+-- and a block arm's result. Each lie is rejected at a [Return] or a whole-again point, and its
+-- twin, which leaves the value whole, is accepted.
+ochr Producers uses DepFields {
+  reject def ClosLie (v : &V) : Unit := (
+    let f = (λ(w : &V) : Unit => (match *w { MkV(n, x) => n := Zero, }; ()));
+    f(v)
+  )
+  def ClosHonest (v : &V) : Unit := (
+    let f = (λ(w : &V) : Unit => (match *w { MkV(n, x) => n := n, }; ()));
+    f(v)
+  )
+  reject def ClosLieTail (v : &V) : Unit := (
+    let f = (λ(w : &V) : Unit => match *w { MkV(n, x) => n := Zero, });
+    f(v)
+  )
+  def ClosHonestTail (v : &V) : Unit := (
+    let f = (λ(w : &V) : Unit => match *w { MkV(n, x) => n := n, });
+    f(v)
+  )
+  reject def IdSideLie (c0 : V) : Prop := (let c = c0; Id(Unit, match c { MkV(n, x) => n := Zero, }, ()))
+  def IdSideOk (c0 : V) : Prop := (let c = c0; Id(Unit, match c { MkV(n, x) => n := n, }, ()))
+  reject def JInClos (a : Word) (b : Word) (h : Eq(Word, a, b)) (v : &V) : Unit := (
+    let f = (λ(w : &V) : Unit => J(Word, a, b, λ(z : Word) : Type => Unit, h, (match *w { MkV(n, x) => (n := Zero; ()), }; ())));
+    f(v)
+  )
+  def JInClosOk (a : Word) (b : Word) (h : Eq(Word, a, b)) (v : &V) : Unit := (
+    let f = (λ(w : &V) : Unit => J(Word, a, b, λ(z : Word) : Type => Unit, h, (match *w { MkV(n, x) => (n := n; ()), }; ())));
+    f(v)
+  )
+  reject def ArmResult (v : &V) : Word := (let y = match *v { MkV(n, x) => (n := Zero; clone(n)), }; y)
+  def ArmResultOk (v : &V) : Word := (let y = match *v { MkV(n, x) => clone(n), }; y)
+}
+
+#guard (run "Producers" Producers).rejectedWith [
+  ("ClosLie", "[Repack] *w is lent to a stuck match, whose arm returns with it, but it is open"),
+  ("ClosLieTail", "[Repack] a borrow of it ends, but it is open"),
+  ("IdSideLie", "[Repack] c is lent to a stuck match, whose arm returns with it, but it is open"),
+  ("JInClos", "[Repack] *w is lent to a stuck match, whose arm returns with it, but it is open"),
+  ("ArmResult", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open")]
+
 ochr DepVec uses ArrayLemmas, Options {
   -- ## The cells
   -- A cell is `Options`' `Opt(E)`: an element or nothing (`IsSome`, `IsNone`).

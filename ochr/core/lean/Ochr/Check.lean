@@ -125,7 +125,8 @@ def checkDef (d : Def) : M Unit := do
     let (v, T) ← eval (← fuelLeft) true d.body goal     -- the goal: a hint for a constructor's parameters
     located d.body <| unless (← match T with | some T => do conv (← fuelLeft) T goal | none => pure false) do
       err s!"the body of {d.name} has type {T.getD .bot}, but the goal is {goal}"
-    repackCheck (← fuelLeft) s!"{d.name} is defined as it" v goal
+    -- [Return] (D76): a constant's body is a checked body, and its value is what it returns
+    bodyReturns (← fuelLeft) s!"{d.name} is defined as it" v goal [] ""
     let v ← if (← isPropV (← fuelLeft) goal) then pure .proof else pure v
     let absTys := holeAbs (← get).absTy [goal, v]
     modify fun s => { s with env := #[{}], globals := s.globals ++ [{ name := d.name, ty := goal, fn? := none, val := v, absTys }] }

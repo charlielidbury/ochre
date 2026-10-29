@@ -168,6 +168,24 @@ ochr FordAttack uses Lists {
   reject def IdLie (r : &VS) : Prop := Id(Unit, match *r { MkVS(n, h) => n := Succ(Zero) }, ())
   -- the same lie in a match followed by more code (D72), and its honest twin
   reject def SeqLie (r : &VS) : Unit := (match *r { MkVS(n, h) => n := Succ(Zero) }; ())
+  -- D76: the producer obligation on a closed-off `J` over Forded values. The transported term
+  -- writes an index (the equation field becomes ⊥), or the length of a tail behind a
+  -- non-uniform recursive field; the block's return finds the value open. The twins rewrite the
+  -- equation after the index, and write a field nothing depends on.
+  reject def JLieF (a : Word) (b : Word) (h : Eq(Word, a, b)) (r : &VS) : Unit := (
+    match *r { MkVS(n0, h0) => J(Word, a, b, λ(z : Word) : Type => Unit, h, match *r { MkVS(n, h1) => (n := Succ(Zero); ()), }), }
+  )
+  def JHonestF (a : Word) (b : Word) (h : Eq(Word, a, b)) (r : &VS) : Unit := (
+    match *r { MkVS(n0, h0) => J(Word, a, b, λ(z : Word) : Type => Unit, h, match *r { MkVS(n, h1) => (n := Zero; h1 := refl; ()), }), }
+  )
+  reject def JLieV (a : Word) (b : Word) (h : Eq(Word, a, b)) (v : &VecF(Word, Succ(Zero))) : Unit := (
+    J(Word, a, b, λ(z : Word) : Type => Unit, h,
+      match *v { VNil(h0) => (), VCons(m, x, xs, h1) => (m := Succ(Zero); ()), })
+  )
+  def JHonestV (a : Word) (b : Word) (h : Eq(Word, a, b)) (v : &VecF(Word, Succ(Zero))) : Unit := (
+    J(Word, a, b, λ(z : Word) : Type => Unit, h,
+      match *v { VNil(h0) => (), VCons(m, x, xs, h1) => (x := Zero; ()), })
+  )
   def SeqHonest (r : &VS) : Unit := (match *r { MkVS(n, h) => (n := Zero; h := refl) }; ())
   -- A14: an impossible arm eliminated at an unknown index inside a statement's stuck block
   reject def BlockElim (n : Word) (v : VecF(Word, n)) : Prop := Id(Word, match v { VNil(h) => match h {}, VCons(m, x, xs, h) => x }, Zero)
@@ -207,4 +225,6 @@ ochr FordAttack uses Lists {
   ("BlockElim", "[Match] on v.h, whose type Eq(Word, σ0, Zero) is not an inductive type"),
   ("Sneak", "[D55] T is written where a type is expected, but its declared type is not a sort (it is a type only by computation)"),
   ("IdLie", "[Repack] *r is lent to a stuck match, whose arm returns with it, but it is open: field h of MkVS: it holds ⊥"),
-  ("SeqLie", "[Repack] *r is lent to a stuck match, whose arm returns with it, but it is open: field h of MkVS: it holds ⊥")]
+  ("SeqLie", "[Repack] *r is lent to a stuck match, whose arm returns with it, but it is open: field h of MkVS: it holds ⊥"),
+  ("JLieF", "[Repack] *r is lent to a stuck match, whose arm returns with it, but it is open: field h of MkVS: it holds ⊥"),
+  ("JLieV", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open: field xs of VCons")]
