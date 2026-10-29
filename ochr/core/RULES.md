@@ -150,7 +150,7 @@ Plus E3 (`AddToOne`, now accepted), E4 (`Twice`, `TwiceM`, `TwiceMZero`), E6 (mu
 - **[Repack].** At every whole-again point of the checked program, a value holding values of dependent constructors must have its type by their telescopes. Each such constructor value's fields are checked against their types computed from its own earlier fields, each leaf by its own type, and there must be no `⊥` inside. The points are:
   - a place read or moved whole, so also a borrow variable passed on;
   - a place borrowed whole;
-  - a borrow of the value ending, including a borrow parameter's when the function returns;
+  - a borrow of the value ending, including a borrow parameter's when the function returns, and a stuck block's borrow of a place at the end of each arm (the block is a call; checked in the state [Split] checks the arm in, with the arm's result held, D72);
   - the result of a function or a constant;
   - `Id`'s observed result and owners;
   - a stuck block's captures;
