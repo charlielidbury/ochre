@@ -71,7 +71,7 @@ All four declarations were accepted on main `4cc0beda`.
 
 ## 4. Other shapes checked against the model
 
-All are fail-safe: rejected, or accepted and sound. Each is argued here from the checker's rules and code; only the `J` chain was run.
+All are fail-safe: rejected, or accepted and sound. The first two were also run (a scratch probe, not committed): `CallTouch` is rejected with "[Repack] a borrow of it ends, but it is open … its type from the earlier fields is Void", and `LentX` with the same message against `One`; the rest are argued from the checker's rules and code.
 - **Changing the index while a dependent data field is lent**, e.g. `let r = &x; n := Succ(Zero)`. Rejected at the next boundary: by D73 the lent `x` is an unknown of its borrow's type `Fin1(σₙ)`, against `Fin1(S Z)`. This is incomplete when every reachable index gives the same type, which the generic path cannot see.
 - **A call that borrows two fields of one value and changes only the index**, e.g. `Touch(&n, &x)`, whose `x` parameter has type `&Fin1(*k)`, formed once. Rejected at the caller's boundary by telescope mismatch. If the call is stuck, the index is a fill, and `Fin1(⌈fill⌉)` is not convertible with `Fin1(σₙ)`, so it fails safe.
 - **A live loan inside a sealed program inside a value at a boundary.** `lentUnknown` does not look inside sealed programs, but a type that mentions such a sealed program is stuck. It is convertible only with a type mentioning the same sealed program, and an [End] substitutes into both consistently. So it fails safe; this is a model argument, not a check.
