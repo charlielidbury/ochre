@@ -190,7 +190,7 @@ end
 mutual
 /-- D53: take a match's arm when its scrutinee (a free place, re-rooted at the enclosing
 frame) is a place `sel` knows the constructor of (`some k` for an inductive's `k`, `none` for
-`S`): a stuck block's capture split into its fields (`closeOffMatch`). -/
+`S`): a stuck block's capture split into its fields (`closeBlock`). -/
 def Term.selectArms (sel : Place → Option (Option Nat)) (c : Nat) : Term → Term
   | .matchInd p t as =>
     match (if p.root < c then none else sel (p.mapRoot fun j => .var (j - c))) with

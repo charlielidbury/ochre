@@ -476,7 +476,7 @@ def fnClass (fuel : Nat) (piTy : Value) : M Nat := do
     | .tPi cs (.pi hs ds c) =>
       match c with
       | .sort _ => pure 1
-      | .val _ => pure 0     -- a stuck block's function (`closeOffMatch`): its class is given at its call
+      | .val _ => pure 0     -- a stuck block's function (`closeBlock`): its class is given at its call
       | _ =>
         -- read from the codomain term, never evaluated (D35), by the one reader of declared
         -- types (`typeDecl`, D63): proofs if the codomain's declared sort is `Prop`

@@ -11,7 +11,7 @@ on symbolic inputs, plus case splitting"). `eval typed t`:
   also computes types, checks arguments ([Call-type]), checks [Rec], and a match on an
   abstract `σ` is split ([Split]): in tail position each arm is checked to the end
   (`checkTail`); otherwise the arms are checked and the match is closed off as a stuck
-  block (`closeOffMatch`), and evaluation continues once from there.
+  block (`closeBlock`), and evaluation continues once from there.
 
 Everything that runs the machine is in one `mutual` block, because normalising a
 sealed program ([Seal]) runs the machine, substitution ([End], refinement)
@@ -546,6 +546,15 @@ where
     | t :: ts => termVals t ++ termsIn ts
   termination_by structural ts => ts
 
+/-- One arm of a stuck block (`closeBlock`): `setup` puts the state in the arm's world and
+returns what it did (a [Split] arm refines the scrutinee and returns the refinement; the
+transported term of a closed-off `J` has nothing to set up), and `body`, given that, checks the
+arm and returns its result and type. The block runs both itself, so that no block can be formed
+without its arms having been checked to their return (the producer obligation, D76). -/
+structure BlockArm where
+  setup : M Value
+  body : Value → M (Value × Value)
+
 -- the machine is one `mutual` block, and compiling it (LCNF) outgrew the default heartbeats
 set_option maxHeartbeats 1000000 in
 mutual
@@ -723,6 +732,25 @@ def repackAt (fuel : Nat) (p : Place) (T : Value) (what : String) : M Unit := do
   let some v ← content? p | return
   if v matches .bot then return
   repackCheck fuel' s!"{← ppPlace p} is {what}" v T
+termination_by structural fuel
+
+/-- [Return], the producer obligation's one check (D76). A checked body returns, so what it
+hands back must be whole: each place it holds by borrow, whose borrow ends here, and its result,
+each of its type by the telescopes of the dependent constructors inside it, a part still lent
+being unknown (`repackCheck`, D73). The generic path treats every sealed program as whole, and a
+sealed program is a call ([Close]) of a function value; every function value a checked program
+can call is either its caller's abstract value, or formed by a check that ends here: [Def] and
+[Fix] (`checkFix`) at their body's return, whose borrow parameters are real borrows that the
+frame's pop then ends ([End], which repacks them too), and a stuck block (`closeBlock`), an
+anonymous function of the places it captures, at the end of each arm, where its borrow
+parameters are the places it takes by `&`, given here as `lent`. -/
+def bodyReturns (fuel : Nat) (what : String) (v T : Value) (lent : List Place) (lentWhat : String) :
+    M Unit := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  for q in lent do
+    let Tq ← placeType fuel' q
+    repackAt fuel' q Tq lentWhat
+  repackCheck fuel' what v T
 termination_by structural fuel
 
 /-- End every borrow in Ω (for observations, §4). -/
@@ -1891,26 +1919,20 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
       -- private copy and closes the `J` off as a stuck block of type `P(b)`, as [Split] closes
       -- off a stuck match; its sealed programs run `t` once a refinement makes the endpoints
       -- convertible (D63, rule-audit item 5)
-      let saved ← get
-      let f0 := (← get).env.size - 1
-      let n0 := (← get).env[f0]!.binds.size
-      let ls := (← get).placeLog.size
-      let (tv, Tu) ← eval fuel' true u (some Pa)
-      expectTy fuel' "the transported term" Tu Pa
-      let moved ← armMoves ((← get).placeLog.extract ls (← get).placeLog.size) f0 n0
-      -- D75: the block is a call whose one "arm" is `t`, so its borrows end where `t` ends;
-      -- the places it takes by borrow are checked whole in that state, as D72 does for a stuck
-      -- match's arms. Without this, a `t` that writes an index field of a place the block takes
-      -- by `&` leaves the place open on the direct path, while the generic path holds a sealed
-      -- program of the place's type and splits it as whole (`DepFields.BoomJ`). The result is
-      -- held as a temporary, as for an arm.
-      pushTemp tv
-      let tEnd ← get
-      restoreKeep saved
       -- the endpoints, motive and equation are erased positions, formed once here: the block
-      -- embeds their values and captures only `t`'s places
+      -- embeds their values and captures only `t`'s places. Its one arm is `t`, so the block
+      -- returns where `t` ends, and `closeBlock` checks it there as it checks a match's arms
+      -- (D75, D76: a `t` that wrote an index field of a place the block takes by `&` left the
+      -- place open on the direct path while the generic path split the block's sealed
+      -- program as whole, `JBlocks.BoomJ`)
       let tJ := Term.prim "J" [.val A', .val av, .val bv, .val Pv, .ascribe (.val .proof) (.val hT), u]
-      return ← closeOffMatch fuel' tJ Pb moved false [tEnd]
+      let arm : BlockArm := ⟨pure .unit, fun _ => do
+        let (tv, Tu) ← eval fuel' true u (some Pa)
+        let fl ← getFlags
+        expectTy fuel' "the transported term" Tu Pa
+        setFlags fl
+        pure (tv, Pa)⟩
+      return ← closeBlock fuel' tJ [arm] (some Pb)
     let (v, Tu) ← eval fuel' true u
     let fl ← getFlags
     expectTy fuel' "the transported term" Tu Pa
@@ -2318,7 +2340,7 @@ def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Ar
   -- [Close]'s row: v1.7 (D35) from the declared codomain
   let kind ← declKind fuel' clsTy
   -- D28, D35: the callee's class, read off its declared codomain (a stuck block's is
-  -- given by `closeOffMatch`)
+  -- given by `closeBlock`)
   let cls ← match cls? with
     | some k => pure k
     | none => fnClass fuel' clsTy
@@ -2569,52 +2591,24 @@ def splitThenClose (fuel : Nat) (p : Place) (z s : Term) (σ : Nat) (expected : 
 termination_by structural fuel
 
 /-- The general form: one arm per constructor, each checked under the refinement its
-builder produces (fresh abstract values for the fields), then close off. -/
+builder produces (fresh abstract values for the fields), then close off (`closeBlock`, which
+runs the arms). -/
 def splitArmsThenClose (fuel : Nat) (mt : Term) (σ : Nat) (arms : List (M Value × Term))
     (expected : Option Value) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  let fvs := mt.freeVars
-  let saved ← get
-  let mut tys : Array Value := #[]
-  let mut moved : List Place := []
-  let mut allProof := true
-  let f0 := (← get).env.size - 1
-  let n0 := (← get).env[f0]!.binds.size
-  -- [Repack] at the block's returns: the state each arm ends in, kept so that the places the
-  -- block takes by borrow are checked whole there (`closeOffMatch`)
-  let mut ends : Array MState := #[]
-  for (mk, arm) in arms do
-    let r ← mk
-    refine fuel' σ r
-    let ls := (← get).placeLog.size
-    let (av, T) ← eval fuel' true arm
-    allProof := allProof && (← getFlags).2
-    let some T := T | err "internal: untyped arm"
-    if let some E := expected then
-      let E' ← substV fuel' (.abs σ) r E
-      unless ← conv fuel' T E' do
-        err s!"an arm of the annotated match has type {T}, but the annotation refined to this arm is {E'}"
-    -- the arm's effect on the places it captures, read from its log of moves and
-    -- assignments (D53: by place, at the granularity of the move, `q1.1`; an inner block's
-    -- moves are its arguments', so they compose; fuzz-port M1, N1)
-    let armMoved ← armMoves ((← get).placeLog.extract ls (← get).placeLog.size) f0 n0
-    for q in armMoved do
-      unless moved.any (placeEq · q) do moved := moved ++ [q]
-    -- the arm's result is held as a temporary there, so that a borrow it returns into a
-    -- lent place is still in Ω when that place is checked
-    pushTemp av
-    ends := ends.push (← get)
-    restoreArm saved
-    tys := tys.push T
-  let B ← match expected with
-    | some E => pure E
-    | none =>
-      let some T0 := tys[0]? | err "internal: a match with no arms"
-      for T in tys do
-        unless ← conv fuel' T T0 do
-          err s!"the arms of a non-tail match have different types ({T0} and {T}); annotate it (let x : T = match …)"
-      pure T0
-  closeOffMatch fuel' mt B moved allProof ends.toList
+  let blockArms := arms.map fun (mk, arm) => BlockArm.mk
+    (do let r ← mk; refine fuel' σ r; pure r)
+    (fun r => do
+      let (av, T) ← eval fuel' true arm
+      let fl ← getFlags
+      let some T := T | err "internal: untyped arm"
+      if let some E := expected then
+        let E' ← substV fuel' (.abs σ) r E
+        unless ← conv fuel' T E' do
+          err s!"an arm of the annotated match has type {T}, but the annotation refined to this arm is {E'}"
+      setFlags fl
+      pure (av, T))
+  closeBlock fuel' mt blockArms expected
 termination_by structural fuel
 
 /-- The refinement of `σ` to constructor `c` of an inductive type at parameters `ps`:
@@ -2666,7 +2660,7 @@ def evalMatchByType (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms 
     -- a value of the wrong type
     if !typed then stuckNow
     let B := expected.get!
-    unless ← isPropV fuel' B do return ← closeOffMatch fuel' (.matchInd p ty arms) B [] false
+    unless ← isPropV fuel' B do return ← closeBlock fuel' (.matchInd p ty arms) [] (some B)
     setFlags (true, true)
     return (.proof, expected)
   let d ← lookupInd ty
@@ -2789,22 +2783,65 @@ def movedPlace (fuel : Nat) (q : Place) : M Place := do
   | _ => pure p
 termination_by structural fuel
 
-/-- Stuck blocks (RULES §3, v1.3): close a stuck match off as a call to an anonymous
-function of its free places, captured as Rust infers closure captures, on maximal place
-prefixes: a place some arm moves out of is moved in; otherwise a place written or
-borrowed (under `&_` or left of `:=`) in some arm is passed as `&`; otherwise a place
-read is copied. A borrow variable read as a whole is a move (reading a borrow moves it);
-assigning a borrow variable as a whole moves it too (passing `&x` would be `&&T`). -/
+/-- [Block], the one place a stuck block is formed (D76). A stuck match ([Split]), a `J` whose
+endpoints are not convertible ([T-J-stuck]) and a zero-arm match outside a proof position are
+closed off here, as a call to an anonymous function of their free places. The block runs its
+arms itself (`BlockArm`): each from the unrefined state, under its own setup, and each is checked
+to its return by `bodyReturns`, the check every function body's return goes through. So a block
+cannot be formed without its arms having been checked whole where its borrows end: the
+producer obligation for the sealed programs a block leaves, of which D72 (a match's arms) and
+D75 (a `J`'s transported term) were two instances found missing.
+
+The places are captured as Rust infers closure captures, on maximal place prefixes: a place
+some arm moves out of is moved in; otherwise a place written or borrowed (under `&_` or left of
+`:=`) in some arm is passed as `&`; otherwise a place read is copied. A borrow variable read as a
+whole is a move (reading a borrow moves it); assigning a borrow variable as a whole moves it too
+(passing `&x` would be `&&T`). The block's type is `B?`, or else its arms' common type. -/
 -- Two paths, value-dependent by design (notes/two-paths-census.md, site 13): captures read copy-ness, the places an arm leaves ⊥, and a split capture's constructor; each is type-directed or survives refinement.
-def closeOffMatch (fuel : Nat) (mt : Term) (B : Value) (moved : List Place) (allProof : Bool)
-    (armEnds : List MState := []) : M (Value × Option Value) := do
+def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Value) :
+    M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
+  let saved ← get
+  let f0 := (← get).env.size - 1
+  let n0 := (← get).env[f0]!.binds.size
+  let mut tys : Array Value := #[]
+  let mut armMovedAll : List Place := []
+  -- v1.7 (D35): the block is erased exactly when its match would be, when every arm is a proof
+  -- (a block with no arms runs nothing and is not erased)
+  let mut allProof := !arms.isEmpty
+  -- each arm's end state, result and type: where the block returns (`bodyReturns`, below)
+  let mut ends : Array (MState × Value × Value) := #[]
+  for arm in arms do
+    let r ← arm.setup
+    let ls := (← get).placeLog.size
+    let (av, T) ← arm.body r
+    allProof := allProof && (← getFlags).2
+    -- the arm's effect on the places it captures, read from its log of moves and
+    -- assignments (D53: by place, at the granularity of the move, `q1.1`; an inner block's
+    -- moves are its arguments', so they compose; fuzz-port M1, N1)
+    let armMoved ← armMoves ((← get).placeLog.extract ls (← get).placeLog.size) f0 n0
+    for q in armMoved do
+      unless armMovedAll.any (placeEq · q) do armMovedAll := armMovedAll ++ [q]
+    -- the arm's result is held as a temporary there, so that a borrow it returns into a
+    -- lent place is still in Ω when that place is checked
+    pushTemp av
+    ends := ends.push ((← get), av, T)
+    restoreArm saved
+    tys := tys.push T
+  let B ← match B? with
+    | some E => pure E
+    | none =>
+      let some T0 := tys[0]? | err "internal: a match with no arms"
+      for T in tys do
+        unless ← conv fuel' T T0 do
+          err s!"the arms of a non-tail match have different types ({T0} and {T}); annotate it (let x : T = match …)"
+      pure T0
   -- D68: a closure or Π-type in an arm captures by move what it mentions (unless a copy), in a
   -- statement too, whether or not the run took that arm: the block takes the place by move on
   -- every path (fuzz case 14942: the abstract run's inner block moved it, the ground run's did
   -- not, and only the ground run found the closure capturing a borrowed place)
   let moved ← do
-    let mut mv := moved
+    let mut mv := armMovedAll
     for (o, p) in mt.fnOccs 0 do
       let q := p.mapRoot fun _ => .var o
       -- a place whose type cannot be read is not known to be a copy: the block moves it
@@ -2909,31 +2946,33 @@ def closeOffMatch (fuel : Nat) (mt : Term) (B : Value) (moved : List Place) (all
         err s!"[D53] a borrow ends while its content is partly moved out ({b.hint.name}: moved into a stuck match whose arm moves out through it)"
   -- order the captures by frame position (oldest binding first), then by path
   let capsS := caps.qsort fun (a, _) (b, _) => a.root > b.root || (a.root == b.root && (a.steps.2.length < b.steps.2.length))
-  -- D72 [Repack] at a stuck block's returns: the block is a call of an anonymous function, and
-  -- a place it takes by borrow is its borrow parameter, whose borrow ends when the block
-  -- returns, i.e. at the end of each arm; a borrow variable it moves in whole is ended by its
-  -- frame there too. So each such place must be of its type again in the state each arm
-  -- ([Split]) ends in. Without this an arm's lie about a dependent field is never re-checked:
-  -- the block closes off, the place receives a sealed program, and the direct path, which
-  -- runs the arm and checks nothing ([Repack] is not checked on instances), is left with a
-  -- value of the wrong type (`StuckBlocks.LieSeq`).
-  for e in armEnds do
+  -- [Return] at each arm's end (D76): the block is an anonymous function, so each arm ends
+  -- where the function returns, and `bodyReturns` checks there what every function body's
+  -- return is checked for. A place the block takes by borrow is its borrow parameter, whose
+  -- borrow ends at the return; a borrow variable it moves in whole is ended by its frame
+  -- there too. So each such place must be of its type again in the state the arm ends in, and
+  -- so must the arm's result. Without this an arm's lie about a dependent field is never
+  -- re-checked: the block closes off, the place receives a sealed program that the generic
+  -- path treats as whole, and the direct path, which runs the arm and checks nothing
+  -- ([Repack] is not checked on instances), is left with a value of the wrong type
+  -- (`StuckBlocks.LieSeq`, D72; `JBlocks.JLie`, D75).
+  for (e, av, T) in ends do
     let cur ← get
     onFail (do
       set e
       let fe ← topIdx
       let nbe := (← get).env[fe]!.binds.size
       unless nbe == nb do err "internal: an arm of a stuck match ended in a different frame shape"
+      let mut lent : List Place := []
       for (q, mode) in capsS do
-        let lent ← match mode, q with
+        let isLent ← match mode, q with
           | 1, _ => pure true
           | 2, .var o =>
             let b := (← get).env[fe]!.binds[nbe - 1 - o]!
             pure (b.val.isBorrow || (b.ty matches some (.tRef _)))
           | _, _ => pure false
-        if lent then
-          let T ← placeType fuel' q
-          repackAt fuel' q T "lent to a stuck match, whose arm returns with it")
+        if isLent then lent := lent ++ [q]
+      bodyReturns fuel' "a stuck match's arm returns it" av T lent "lent to a stuck match, whose arm returns with it")
       (set cur)
     set cur
   let n := capsS.size
@@ -3333,7 +3372,7 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) : M Unit := 
   let bodyCopies ← pure ((← fnClass fuel' piTy) != 0)
   withErasedIf bodyCopies <| checkTail fuel' body fun v T => do
     wholeReturned v
-    repackCheck fuel' s!"{self.name} returns it" v T
+    bodyReturns fuel' s!"{self.name} returns it" v T [] ""
     pushTempAt ((← topIdx) - 1) v
     popFrame fuel'
     discard popTemp
