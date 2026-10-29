@@ -116,3 +116,48 @@ So Conjecture 2 is not a separate problem from naturality: with the decisions ma
 ### Recommendation
 
 Do not attempt (P) against the current machine. If the project wants the stability proof in Lean, restructure the value layer around a heap with `view`/`alloc`/`fill` as effects first. (P) and fresh-name renaming then cost nothing, and the proof effort concentrates on (C), (Sp) and (M), which are the parts with real content. A sensible first step is a viability lane: port the evaluator's data slice (places, borrows, assignment, constructors, `let`/`seq`, calls that do not get stuck) to the heap representation behind a flag and compare verdicts on the suite, before committing to the whole rewrite.
+
+## 8. Viability lane: a heap-based value layer for the data slice
+
+Branch `stability`, commit `1c862e7a`. The restructure §7 recommended, tried on the data slice, behind a switch: a second evaluator (`Ochr/Heap/Slice.lean`) and a comparison executable (`lake exe heapslice`, `HeapSlice.lean`), neither imported by the checker. So the checker's path, and `lake build`, are untouched. The switch is a separate evaluator, not a `Config` flag, because rule switches were removed from `Config` (D70).
+
+### What was built
+
+- **The evaluator** runs the untyped machine's data slice over the real `Term` syntax: variables, field and predecessor places, constructors, `let`, `;`, matches on constructor values, `clone`, and calls of data functions that do not get stuck. Values are handles into a heap; the evaluator sees a node only by asking (`view`, `none` for an unknown) and creates one by `alloc`; a refinement fills a node in place (`Heap.set`). It is a reified computation (`Prog`). Reads copy: moves are not modelled, since an accepted program never reads what it moved, and §8's analysis shows moves fit the discipline anyway.
+- **The proof.** `exec_agree` (one induction on `Prog`) and `P_evalH`: a run of the slice evaluator that never asks about `σ` gives the same outcome whatever `σ` is refined to, and leaves the same heap apart from `σ`. Sorry-free, axioms `propext` and `Quot.sound`, and **no case of the evaluator is inspected**: `P_evalH` is `exec_agree` with `D = {σ}`.
+- **The comparison** covers every suite data function whose parameters and result are first-order data and whose body, transitively, stays in the slice: 48 functions (`Words`, `Numbers`, `Moves`, `Recursion`, `Splitting`, `Trees`, `Sugar` and others). Each runs at the generic call, at ground arguments (up to 27 combinations), and with one unknown and the rest ground, through both the heap evaluator and the real `eval` (untyped, as a called body runs).
+
+### Results
+
+- **251 runs:** 165 give the same value, 80 are stuck on both paths (the real machine closes off), 0 errors on both, 0 outside the slice, and **6 differences, all one kind, none a finding.** `Loop2Ok`, `SpinOk` and `KnotOk` return `Unit`; at the generic call the heap evaluator is stuck on the match, while the real machine closes the call off and normalises its result at `Unit` to `()` (D59). That is closing off and η at `Unit`, outside the slice, not a difference of representation.
+- **(P) on the real machine.** Where the heap run never asked about the one unknown, the real machine's run at a ground value was compared with its generic result with that value substituted (`substV`): **46 checks, 46 agree.** This is empirical support for (P) against the real checker, with the heap's `queries` deciding which runs (P) covers.
+- **The decisive measurement: whole-value walks.** With `walkOnRead`, every read views every node reachable from the value read, as the real machine's `hasHole` check on a read and its loan searches do. Of 94 runs with one unknown, the unknown is never asked about in **22** runs with reads that look only where they go, and in **3** if every read walks. Walks make (P) nearly vacuous: almost every run that so much as reads a value containing `σ` would count as inspecting it.
+
+### Which constructs keep (P) free, and which break it
+
+Fit the discipline, keeping (P) free:
+- reads, projections and matches: they `view` only where they go;
+- constructors, `let`, `;`, calls, copies: `alloc`;
+- moves and assignment: a `write` to a node. The same write happens on both heaps, so agreement outside `D` survives. `exec_agree` needs one more case, and a write to `σ` itself even restores agreement there;
+- [Split]: entering an arm fills `σ`, leaving it unfills. This replaces `substEnv`/`renormAll` and the 19 `substV` call sites outright; `split-model`'s worlds become node fills;
+- stored types: types are values in the heap, so filling `σ` refines every type that mentions it, with no substitution;
+- closing off: a sealed node is a thunk whose forcing is a run, whose queries count as the run's. Whether forcing agrees with the direct run is (C), which stays real work, but it is no longer tangled with substitution.
+
+Break it unless redesigned, in the current `Machine.lean` (3,342 lines):
+1. **Whole-value walks**, the decisive one (measured above): `hasHole` (9 sites), the loan searches `liveLoansIn`, `firstLiveLoanOnPath`, `findBorrow` (17), `owners`/`footprint`, `anyAtom`-based tests such as `typeHasRef`. Each walk views every node, unknowns included. **Fix:** keep these facts as metadata maintained when a node is written or allocated: a hole flag, and a loan index `ℓ ↦ holder`. A refinement never creates a hole or a loan (data holds no borrows), so the metadata stays right without anyone viewing `σ`.
+2. **Structural keys.** Generalisation records (`neutrals`, looked up by `==` on values), `convStack`, and `==` tests on values (about a dozen) compare contents, which is viewing. **Fix:** key by node identity. D34's "re-derivations of the same closed program are replaced too" needs a canonical sealed node per (head, argument handles), which is identity, not content. Hash-consing allocation must **not** be used: `alloc` would then depend on heap contents and break `exec_agree`'s "same fresh handle".
+3. **Copy-ness from a value's constructor in untyped runs** (`valType?`, 46 uses). That is a content view. **Fix:** a type per handle, set at `alloc` and unchanged by refinement (a refinement keeps the unknown's type).
+4. **Fresh names.** They agree automatically on runs (P) covers. Comparisons where the instance runs further than the generic call, which is (C) and (Sp), still need a renaming, but only there.
+
+Outside (P) by design, belonging to (C), (Sp) and conversion: `Eq` and conversion comparing `σ`'s content (comparing handle identity first makes `σ = σ` query-free), and [Split] or closing off on `σ`.
+
+### Effort and recommendation
+
+- **Full port.** The value layer of a 3,342-line machine: 39 value pattern matches become `view`s; substitution (`substV`, `substT`, `substEnv`, `renormAll`, `refine`) is deleted in favour of fills; the walks become metadata; generalisation is by identity; unknowns get a type per handle; the typed path's stored types move into the heap. My estimate is **4 to 8 weeks of focused agent work** to reach verdict parity on the 1,696 verdicts (the suite is the oracle, as here), plus a performance measurement. The proof side afterwards: `exec_agree` with a `write` case (small); (Sp) as fill/unfill (small); (C), a sealed thunk's forcing agreeing with the direct run (the real content); and (M).
+- **Recommendation: port, with changes, in this order.**
+  1. Replace the whole-value walks in the **current** machine by maintained metadata: a hole flag and a loan index. This is verdict-neutral and testable today on the suite. It is the prerequisite: without it (P) covers 3 of 94 runs instead of 22, so the port would buy almost nothing.
+  2. Key generalisation records and the other value-keyed tables by identity.
+  3. Give unknowns a type per handle and drop copy-ness by constructor.
+  4. Then port the value layer to the heap, slice by slice (this lane's data slice first, then borrows and writes, then [Split] as fills, then closing off as thunks), each step compared with the real machine on the suite, as `heapslice` does here.
+
+  Steps 1–3 are worth doing even if the port is not, since each removes a way for a run to depend on an unknown it has no business inspecting.
