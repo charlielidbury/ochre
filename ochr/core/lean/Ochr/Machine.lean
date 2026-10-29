@@ -1895,14 +1895,22 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
       let f0 := (← get).env.size - 1
       let n0 := (← get).env[f0]!.binds.size
       let ls := (← get).placeLog.size
-      let (_, Tu) ← eval fuel' true u (some Pa)
+      let (tv, Tu) ← eval fuel' true u (some Pa)
       expectTy fuel' "the transported term" Tu Pa
       let moved ← armMoves ((← get).placeLog.extract ls (← get).placeLog.size) f0 n0
+      -- D75: the block is a call whose one "arm" is `t`, so its borrows end where `t` ends;
+      -- the places it takes by borrow are checked whole in that state, as D72 does for a stuck
+      -- match's arms. Without this, a `t` that writes an index field of a place the block takes
+      -- by `&` leaves the place open on the direct path, while the generic path holds a sealed
+      -- program of the place's type and splits it as whole (`DepFields.BoomJ`). The result is
+      -- held as a temporary, as for an arm.
+      pushTemp tv
+      let tEnd ← get
       restoreKeep saved
       -- the endpoints, motive and equation are erased positions, formed once here: the block
       -- embeds their values and captures only `t`'s places
       let tJ := Term.prim "J" [.val A', .val av, .val bv, .val Pv, .ascribe (.val .proof) (.val hT), u]
-      return ← closeOffMatch fuel' tJ Pb moved false
+      return ← closeOffMatch fuel' tJ Pb moved false [tEnd]
     let (v, Tu) ← eval fuel' true u
     let fl ← getFlags
     expectTy fuel' "the transported term" Tu Pa

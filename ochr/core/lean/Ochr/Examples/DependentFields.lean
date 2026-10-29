@@ -864,6 +864,62 @@ The cell representation is interim: `Opt(E)` cells cost a tag each at runtime, a
 weighing a tag-free `Uninit(E)` cell type (possibly the ⊥ a move leaves, docs/10), with which
 "cells below `len` hold elements" could be a computed type rather than `VInv`. -/
 
+-- ## A `J` that closes off is a block too (D75)
+-- When `J`'s endpoints are not convertible, [T-J-stuck] checks the transported term `t` on a
+-- private copy and closes the `J` off as a stuck block, which takes `t`'s places. Before D75 the
+-- block's borrows were never checked where `t` ends (D72 checked only a stuck match's arms):
+-- `JLie`'s `t` writes the length of `*v`, the block takes `*v` by `&`, and `*v` became a sealed
+-- program of type `V`, which a later match splits as a whole `V` while the direct path, where the
+-- endpoints are equal and `t` runs, leaves `*v` with length zero. `BoomJ` was a closed proof of
+-- `False` (found by the dependent-fields model, notes/depfields-model.md).
+ochr JBlocks uses DepFields {
+  reject def JLie (a : Word) (b : Word) (h : Eq(Word, a, b)) (v : &V) : Unit := (
+    match *v {
+      MkV(n0, x0) => J(Word, a, b, λ(z : Word) : Type => Unit, h, match *v { MkV(n, x) => (n := Zero; ()), }),
+    }
+  )
+  reject def LenStmt (c0 : V) : Prop := (
+    let c = c0;
+    JLie(Zero, Zero, refl, &c);
+    match c { MkV(n, x) => IsSucc(clone(n)), }
+  )
+  reject def LenPf (c0 : V) : LenStmt(c0) := (
+    let c = c0;
+    JLie(Zero, Zero, refl, &c);
+    match c {
+      MkV(n, x) => match n { Zero => match x {}, Succ(m) => refl, },
+    }
+  )
+  reject def BoomJ : False := LenPf(One1)
+  -- twin of JLie: the transported term writes the length back unchanged, so `*v` is whole
+  -- where the block's borrow ends
+  def JSame (a : Word) (b : Word) (h : Eq(Word, a, b)) (v : &V) : Unit := (
+    match *v {
+      MkV(n0, x0) => J(Word, a, b, λ(z : Word) : Type => Unit, h, match *v { MkV(n, x) => (n := n; ()), }),
+    }
+  )
+  -- and the same chain over it states and proves a true statement
+  def LenStmtOk (c0 : V) : Prop := (
+    let c = c0;
+    JSame(Zero, Zero, refl, &c);
+    match c { MkV(n, x) => IsSucc(clone(n)), }
+  )
+  def LenPfOk (c0 : V) : LenStmtOk(c0) := (
+    let c = c0;
+    JSame(Zero, Zero, refl, &c);
+    match c {
+      MkV(n, x) => match n { Zero => match x {}, Succ(m) => refl, },
+    }
+  )
+  def PosOne : LenStmtOk(One1) := LenPfOk(One1)
+}
+
+#guard (run "JBlocks" JBlocks).rejectedWith [
+  ("JLie", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open"),
+  ("LenStmt", "unknown constant JLie"),
+  ("LenPf", "unknown constant LenStmt"),
+  ("BoomJ", "unknown constant LenPf")]
+
 ochr DepVec uses ArrayLemmas, Options {
   -- ## The cells
   -- A cell is `Options`' `Opt(E)`: an element or nothing (`IsSome`, `IsNone`).
