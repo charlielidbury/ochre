@@ -747,6 +747,7 @@ parameters are the places it takes by `&`, given here as `lent`. -/
 def bodyReturns (fuel : Nat) (what : String) (v T : Value) (lent : List Place) (lentWhat : String) :
     M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
+  fire .Return fun _ => s!"{what}: {v} : {T}, with {lent.length} place(s) held by borrow"
   for q in lent do
     let Tq ← placeType fuel' q
     repackAt fuel' q Tq lentWhat

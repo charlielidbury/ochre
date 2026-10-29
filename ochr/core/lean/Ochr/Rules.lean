@@ -46,7 +46,7 @@ inductive Rule where
   | TailSplit | TailGen | TailMatch | TailLet | TailSeq | TailEnd
   | TMatchProp | TMatchErased | TMatchNone | TailProp
   -- dependent fields (D64)
-  | Field | Open | Repack
+  | Field | Open | Repack | Return
   -- definitions
   | Def | IndDecl | Const
 deriving BEq, Repr, Inhabited
@@ -70,7 +70,7 @@ def Rule.all : List Rule :=
    .TMatch, .Split, .SplitGen, .TSplitGoal,
    .TailSplit, .TailGen, .TailMatch, .TailLet, .TailSeq, .TailEnd,
    .TMatchProp, .TMatchErased, .TMatchNone, .TailProp,
-   .Field, .Open, .Repack,
+   .Field, .Open, .Repack, .Return,
    .Def, .IndDecl, .Const]
 
 /-- The rule's name as the paper prints it: in an inference rule, or as the label of a rule the
@@ -106,7 +106,7 @@ def Rule.name : Rule → String
   | .TailLet => "Tail-let" | .TailSeq => "Tail-seq" | .TailEnd => "Tail-end"
   | .TMatchProp => "T-Match-prop" | .TMatchErased => "T-Match-erased" | .TMatchNone => "T-Match-none"
   | .TailProp => "Tail-prop"
-  | .Field => "Field" | .Open => "Open" | .Repack => "Repack"
+  | .Field => "Field" | .Open => "Open" | .Repack => "Repack" | .Return => "Return"
   | .Def => "Def" | .IndDecl => "Ind-decl" | .Const => "Const"
 
 /-- The rules the plain trace (`cfg.trace`) has always shown: goals, splits, call types. -/
