@@ -31,3 +31,8 @@ lean_exe tests where
 -- `lake exe fuzz`: the differential naturality fuzzer (Ochr/Fuzz/, notes/fuzzer.md).
 lean_exe fuzz where
   root := `Fuzz
+
+-- `lake exe heapslice`: the heap-based slice evaluator (`Ochr/Heap/Slice.lean`, not part of the
+-- checker) against the real machine, on the suite's data functions (notes/stability.md §8).
+lean_exe heapslice where
+  root := `HeapSlice
