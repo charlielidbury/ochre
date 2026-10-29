@@ -61,10 +61,14 @@ Each run with verdicts printed explicitly and a rejected control (`def Ctrl : Fa
 | `MovedSibling` | same; read `q.1` | rejected | K1 |
 | `StmtInArm` | a statement in an arm reads `x`; `Id` of `x` after | accepted | E1, K3 |
 
-## 5. Proposals (described, not implemented)
+## 5. Proposals
 
-- **P-a, one statement combinator.** Statement positions are entered in several ways (`stmtCopy`, bare `onCopy`, `onCopy <| withErased`, `stmtArgIf`). One function, `inStatement`, documented with E1–E5, used at every statement position, would make E1 a choke point in the way `closeBlock` is for blocks and `inWorld` for arms. It is verdict-neutral only if the `erasedDepth`-reading checks (K2/K3 model code, `atRuntime`) see the same depth at each site; that needs checking site by site.
-- **P-b, K1 as a function.** The capture computation in `closeBlock` grew by fuzz-port patches (M1, M2, N1, N3, Q, R8, shape (a)); each is one clause of K1. Extracting it as `blockCaptures`, with K1 as its docstring and the clauses in K1's order, would make the next patch a change to K1 rather than another special case.
+Landed (verdict-neutral):
+
+- **P-a, one statement combinator.** `Env.inStatement` (E1–E5 are its docstring) is the one place a statement position runs: `eval`'s erasure wrapper, `evalType`, a Π-type's captures, `Eq` and each of its sides, `J`'s endpoints and motive, an inductive's parameters, a statement call's arguments (`stmtArgIf`) and an `Id` side (`observe`). The checker's own scaffolding, which binds parameters, captures or field values to compute a type, a hint, a sealed program's type, an [Open] check or [Conv-fun]'s observation, runs through `Env.privately` instead, whose docstring says why none of it is a statement position. `onCopy` is now private to `Env.lean`, so every discarded run is one of the two, by name; `stmtCopy` is gone. What survives either is `restoreKeep` (E3). Two sites gained `withErased` (`stmtArgIf`, `observe`): an instrumented run of all 1,732 registered verdicts found both always already inside an erased term, so on the suite this is a no-op, and no verdict changed.
+- **P-b, K1 as a function.** `Machine.blockCaptures`, called by `closeBlock`, is the capture computation, moved verbatim; its docstring is K1, with clauses (a)–(g) marked in the code where each is computed and the fuzz-port findings they came from named beside them. It carries the two-paths marker for census site 13, as `closeBlock` does.
+
+Not landed (a rule change, for the user):
 - **P-c, incompleteness.** Three true shapes are rejected: (i) an `Id` side that reads a place it also writes observes `⊥` (E1); (ii) a closure inside a statement inside an arm moves its captures at the generic call (E4); (iii) the block takes a place by `&` because an *erased* term in an arm assigns it (E6), so the statement about it is stuck. (iii) could be lifted by counting only occurrences outside erased positions when computing modes, which the pre-pass decides syntactically (E2); it is a rule change and is left to the user.
 
 ## 6. Open

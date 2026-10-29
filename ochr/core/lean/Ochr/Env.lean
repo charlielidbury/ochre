@@ -349,12 +349,47 @@ def withCopying {α : Type} (x : M α) : M α := do
   modify fun s => { s with copying := c }
   pure r
 
-/-- Run `x` on a private copy of the state (P2, P6): its effects are discarded. -/
-def onCopy {α : Type} (x : M α) : M α := do
+/-- Run `x` on a private copy of the state (P2, P6): its effects are discarded, and what
+survives is decided by `restoreKeep`. Private to this file: the machine reaches it only
+through `inStatement` (a statement position of the program) or `privately` (the checker's own
+scaffolding), so that every discarded run is one of those two, by name. -/
+private def onCopy {α : Type} (x : M α) : M α := do
   let saved ← get
   let r ← onFail x (restoreKeep saved)
   restoreKeep saved
   pure r
+
+/-- A statement position of the program (`notes/erasure-model.md`, E1–E5): a type, a proof, an
+erased term and each argument of an erased call, a constructor argument of a proposition, `J`'s
+endpoints and motive, a side of `Eq`, a side of `Id` (`observe`), an inductive's parameters, a
+Π-type's captures. A statement has a value (⋆, or a type), never an effect: the compiled program
+does not run it. Every statement position runs here, and only here:
+- (E1) on a private copy of the state, which is thrown away: what it moves, writes, borrows or
+  allocates is undone with the copy, as at runtime, where it does not run at all. So running a
+  proof and skipping it are indistinguishable, and a statement's observation never depends on a
+  discarded copy;
+- (E5) as an erased term (`withErased`): its reads move as at runtime (D68), on the copy, and the
+  runtime-only checks (`atRuntime`: K2/K3; a closure's moves of its captures) do not apply;
+- (E3) what survives the copy is decided by `restoreKeep`, once: only facts that hold whatever
+  the copy did (name counters, the types of names it created, generalisation records of closed
+  program text, η-refinements, [Rec] obligations already checked, pure caches).
+
+Whether a term is in a statement position is decided from syntax and declared types (E2,
+`Decide.lean`), never here. A borrow-typed argument of a statement runs in place rather than on a
+copy of its own (E4, `stmtArgIf`): the statement call it belongs to is itself in a statement
+position, so in place means within that statement's copy. Nesting needs nothing: each nested
+statement gets its own copy. -/
+def inStatement {α : Type} (x : M α) : M α := onCopy (withErased x)
+
+/-- The checker's own private computation, not a position of the program: scaffolding that binds
+parameters, captures or field values in order to compute a type ([Call-type]'s codomain at the
+arguments, an inductive's parameter types, a field's type, a Π-type's sort, an argument's
+hint), a sealed program's type, an [Open] check with lent parts unknown, and [Conv-fun]'s
+observation of two functions' generic calls. Its effects are discarded as a statement's are
+(through `restoreKeep`), but it is not itself erased: the terms it runs keep their own status,
+and every statement among them (the types it evaluates, by `evalType`) runs through
+`inStatement`. -/
+def privately {α : Type} (x : M α) : M α := onCopy x
 
 
 def trace (msg : Unit → String) : M Unit := do

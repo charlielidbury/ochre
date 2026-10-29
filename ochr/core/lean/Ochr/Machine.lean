@@ -341,10 +341,6 @@ def logEffect (p : Place) (kind : String) : M Unit := do
       if let some (i', ss) ← throughLocalBorrow f i p then
         modify fun s => { s with placeLog := s.placeLog.push (f, i', ss.foldl stepPlace (Place.var 0), isMove) }
 
-/-- A statement position (a type, `J`'s endpoints and motive, an erased call's parameter): it
-runs on its own private copy of the state, which is thrown away (P2, D68). -/
-def stmtCopy {α : Type} (x : M α) : M α := onCopy <| withErased x
-
 /-- D64: the fields of the constructor value a place holds, as a constructor `g` names it:
 through a loan (a place lent out
 has its borrow's content). -/
@@ -404,7 +400,7 @@ the real one (a copy's borrow would alias the place it borrows), so it runs in p
 decided by the argument's declared type (`Decide.stmtArgInPlace`). -/
 def stmtArgIf (fuel : Nat) (b : Bool) (a : Term) (x : M (Value × Option Value)) : M (Value × Option Value) := do
   if !b then return ← x
-  if ← stmtArgInPlace fuel a then x else onCopy x
+  if ← stmtArgInPlace fuel a then x else inStatement x
 
 def fixOf (fv : Value) : M (List Value × Term) := do
   match fv with
@@ -1202,7 +1198,7 @@ termination_by structural fuel
 /-- The type of a sealed program (neutral data, e.g. a captured one): its term typed as
 an ordinary term on a private copy, from the empty environment. Its head call is not
 marked, so a stuck body closes off; its [Call-type] is what gives the type. -/
-def sealedType? (fuel : Nat) (t : Term) : M (Option Value) := onCopy do
+def sealedType? (fuel : Nat) (t : Term) : M (Option Value) := privately do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   modify fun s => { s with env := #[{}], recStack := [], goal := none }
   let (_, T) ← eval fuel' true t.unHead
@@ -1308,7 +1304,7 @@ def fieldTypeAt (fuel : Nat) (d : IndDecl) (sol : Array (Option Value)) (c i : N
   let k := fields.length
   unless FT.freeVars.all fun j => (j < np && (sol[np - 1 - j]!).isSome) ||
       (np ≤ j && j < np + k && np + k - 1 - j < earlier.length) do return none
-  onCopy do
+  privately do
     pushFrame
     for jj in [0:k] do pushBind ⟨(fields[jj]!).1⟩ none (earlier.getD jj .bot)
     for ((h, PT), v) in d.params.zip sol.toList do
@@ -1376,7 +1372,7 @@ sort off the terms instead (`Decide.sortOf`), and `evalCore` asserts the two agr
 def piSort (fuel : Nat) (T : Value) : M Nat := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let .tPi cs (.pi hs ds c) := T | err s!"{T} is not a Π-type"
-  onCopy do
+  privately do
     pushFrame
     pushCaps fuel' cs
     let (pds, _) ← paramDecls fuel' cs hs ds c
@@ -1392,7 +1388,7 @@ def piSort (fuel : Nat) (T : Value) : M Nat := do
 termination_by structural fuel
 
 /-- Evaluate a type (P2: once, against the current Ω, on a private copy). -/
-def evalType (fuel : Nat) (t : Term) : M Value := stmtCopy do
+def evalType (fuel : Nat) (t : Term) : M Value := inStatement do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let (v, T) ← eval fuel' true t
   match T with
@@ -1511,7 +1507,7 @@ def convPi (fuel : Nat) (P Q : Value) : M Bool := do
   unless (← fnClass fuel' P) == (← fnClass fuel' Q) && ((← declKind fuel' P) == .ref) == ((← declKind fuel' Q) == .ref) do
     return false
   if (← get).convStack.contains (P, Q) then return false
-  onCopy do
+  privately do
       modify fun s => { s with env := #[{}], convStack := (P, Q) :: s.convStack }
       pushFrame
       pushCaps fuel' cs
@@ -1593,7 +1589,7 @@ termination_by structural fuel
 def convFnRun (fuel : Nat) (f g pf : Value) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term) :
     M Bool := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  onCopy do
+  privately do
     modify fun s => { s with env := #[{}], convStack := (f, g) :: s.convStack }
     pushFrame
     pushCaps fuel' cs
@@ -1620,7 +1616,7 @@ def convFnRun (fuel : Nat) (f g pf : Value) (cs : List Value) (hs : List Hint) (
         | .tRef T => some <$> freshAbs T
         | _ => pure none
       | _ => pure none
-    let obs (fv : Value) : M (Value × List Value) := onCopy do
+    let obs (fv : Value) : M (Value × List Value) := privately do
       let (r, _) ← callFn fuel' false fv none args (args.map fun _ => none) false
       wholeReturned r
       -- [Conv-fun] keeps whatever `observing` its caller set (it never set it itself)
@@ -1748,14 +1744,14 @@ def evalAt (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) 
   -- D68: an erased term is a statement: it runs on its own private
   -- copy of the state, so what it moves, writes or borrows is undone with the copy, as at
   -- runtime, where it does not run at all
+  -- (E1, `inStatement`: the one place a statement position runs)
   let erasedHere := pre matches some (true, _)
-  let run : M (Value × Option Value) := withErasedIf erasedHere (evalCore fuel' typed t hint)
   let r ← onFail (if erasedHere then do
         -- the classification flags the term set are its own, not the copy's
-        let (r, fl) ← onCopy (do let r ← run; pure (r, ← getFlags))
+        let (r, fl) ← inStatement (do let r ← evalCore fuel' typed t hint; pure (r, ← getFlags))
         setFlags fl
         pure r
-      else run)
+      else evalCore fuel' typed t hint)
     (modify fun s => { s with typing := typing0 })
   modify fun s => { s with typing := typing0 }
   -- D28 (v1.5): whether this term is erased is decided syntactically and by declared
@@ -1888,7 +1884,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
   | .pi _ ds c =>
     borrowParamCheck ds c
     -- a type former is erased: even its captures (which access places) run on a copy
-    let (cs, t') ← onCopy (withErased (capture fuel' t))
+    let (cs, t') ← inStatement (capture fuel' t)
     let T := Value.tPi cs t'
     if !typed then return (T, none)
     -- [T-Pi] runs the parameter types and the codomain (typing); the decisions read the same
@@ -1934,12 +1930,12 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
       | some (.tInd "Pair" [A, B]) => some (if first then A else B)
       | _ => none
     pure (r, R)
-  | .eq A a b => onCopy <| withErased do
+  | .eq A a b => inStatement do
     -- each side is a statement position: it runs on its own private copy of the state, so
     -- its effects are visible to the rest of that side and to nothing else (one copy per side)
     let A' ← evalType fuel' A
-    let (va, Ta) ← onCopy (eval fuel' typed a)
-    let (vb, Tb) ← onCopy (eval fuel' typed b)
+    let (va, Ta) ← inStatement (eval fuel' typed a)
+    let (vb, Tb) ← inStatement (eval fuel' typed b)
     expectTy fuel' "the left side of Eq" Ta A'
     expectTy fuel' "the right side of Eq" Tb A'
     pure (← mkEqM fuel' A' va vb, some (.sort 0))
@@ -1969,19 +1965,19 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
       if !(← jErased fuel' P) then
         -- its endpoints are erased positions, on private copies; `A`, `P` and `h`
         -- are never run by the machine (A.191)
-        let (av, _) ← stmtCopy (eval fuel' false a)
-        let (bv, _) ← stmtCopy (eval fuel' false b)
+        let (av, _) ← inStatement (eval fuel' false a)
+        let (bv, _) ← inStatement (eval fuel' false b)
         -- [J]: the endpoints are convertible, `J` is `t`; [J-stuck]: otherwise the run is
         -- stuck, and `t` does not run (D56, D63, rule-audit item 5)
         if ← conv fuel' av bv then return ← eval fuel' false u
         stuckNow
       return (← eval fuel' false u)
     let A' ← evalType fuel' A
-    let (av, Ta) ← stmtCopy (eval fuel' true a)
-    let (bv, Tb) ← stmtCopy (eval fuel' true b)
+    let (av, Ta) ← inStatement (eval fuel' true a)
+    let (bv, Tb) ← inStatement (eval fuel' true b)
     expectTy fuel' "J's first endpoint" Ta A'
     expectTy fuel' "J's second endpoint" Tb A'
-    let (Pv, PT) ← stmtCopy (eval fuel' true P)
+    let (Pv, PT) ← inStatement (eval fuel' true P)
     let (_, Th) ← eval fuel' true h
     let hT ← mkEqM fuel' A' av bv
     expectTy fuel' "J's equation" Th hT
@@ -2098,7 +2094,7 @@ def lentProofAssign (fuel : Nat) (p : Place) (u : Term) : M (Option (Value × Op
   let ls := (fs.flatMap fun w => liveLoansIn env w).eraseDups
   if ls.isEmpty then return none
   fire .Open fun _ => s!"the proof field {g.name} is assigned while borrows {ls} lend part of its value: checked with what they hold unknown"
-  onCopy do
+  privately do
     for l in ls do
       let env := (← get).env
       let some pos := findBorrow env l | continue
@@ -2135,7 +2131,7 @@ def evalParams (fuel : Nat) (n : String) (as : List Term) (typed : Bool) :
   let mut vs := #[]
   let mut tys := #[]
   for a in as do
-    let (v, T) ← stmtCopy (eval fuel' typed a)
+    let (v, T) ← inStatement (eval fuel' typed a)
     vs := vs.push v
     tys := tys.push T
   pure (vs, tys)
@@ -2145,7 +2141,7 @@ termination_by structural fuel
 borrow types (no borrows inside data). -/
 def checkParams (fuel : Nat) (d : IndDecl) (n : String) (vs : Array Value) (tys : Array (Option Value)) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  onCopy do
+  privately do
     pushFrame
     for (((h, PT), v), T) in (d.params.zip vs.toList).zip tys.toList do
       let A ← evalType fuel' PT
@@ -2258,7 +2254,7 @@ def argHint (fuel : Nat) (fv : Value) (fT : Option Value) (ws : Array Value) : M
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let some (.tPi cs (.pi hs ds c)) ← funType? fuel' fv fT | return none
   let some d := ds[ws.size]? | return none
-  onCopy do
+  privately do
     pushFrame
     pushCaps fuel' cs
     let (pds, _) ← paramDecls fuel' cs hs ds c
@@ -2318,7 +2314,7 @@ def callType (fuel : Nat) (piTy : Value) (ws : Array Value) (tys : Array (Option
   if ds.length != ws.size then err s!"arity: {ds.length} parameters, {ws.size} arguments"
   let pf ← paramFlags fuel' cs ds
   let argLocs := (← get).locs.callArgs     -- the editor: the arguments' ranges
-  onCopy <| unlocated do     -- the callee's parameter types are not this point's code
+  privately <| unlocated do     -- the callee's parameter types are not this point's code
     pushFrame
     pushCaps fuel' cs
     let (pds, _) ← paramDecls fuel' cs hs ds c
@@ -2366,7 +2362,7 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (ws : Arr
   -- a proof parameter that a function or Π-type in the body may capture needs its type,
   -- which is all a captured proof records (`capture`): read it off the declared domain,
   -- at the arguments (arrays-library: a Π whose body uses a proof captured from outside it)
-  let ptys ← if body.formsFn && (pf.any id || pds.any (·.isProof)) then onCopy do
+  let ptys ← if body.formsFn && (pf.any id || pds.any (·.isProof)) then privately do
       pushFrame
       pushCaps fuel' cs
       let mut out := #[]
@@ -2578,7 +2574,7 @@ def sealedResultType? (fuel : Nat) (t : Term) : M (Option Value) := do
         let ws : Array (Option Value) := (as.map fun | .val v => some v | _ => none).toArray
         unless cs.isEmpty && ws.size == np && c.freeVars.all (fun j => j < np && (ws[np - 1 - j]!).isSome) do
           return none
-        onCopy do
+        privately do
           pushFrame
           for (h, w) in hs.zip ws.toList do pushBind h none (w.getD .bot)
           some <$> evalType fuel' c
@@ -2861,6 +2857,129 @@ def movedPlace (fuel : Nat) (q : Place) : M Place := do
   | _ => pure p
 termination_by structural fuel
 
+/-- K1 (`notes/erasure-model.md`): a stuck block's captures over-approximate every arm. For every
+outer place the match uses, the block's mode is at least each arm's effect on it, in the order
+copy (read in place, 0) ⊑ `&` (borrowed or assigned, 1) ⊑ move (2), and the captures are the
+maximal places used. The clauses, in the order computed:
+- (a) Moved places: a place an arm moves out, net of the arm's own refills (`armMoves` reads
+  the arm's log, so an inner block's moves are its arguments' and a statement's are discarded
+  with its copy), and every place a closure or Π-type in any arm mentions unless it is a copy,
+  whether or not the run took that arm (D68). Each is re-rooted where it lives (`movedPlace`).
+- (b) Modes by use: a borrow variable read or assigned whole is moved (its borrow ends with
+  the block's frame); a variable some arm moves whole is moved; a borrow or an assignment is
+  `&`; any other read is a copy.
+- (c) Maximal places: the used places with no used strict prefix, each at the largest mode
+  used under it.
+- (d) A place an arm moves whole that is a strict prefix of captures is captured whole, by move.
+- (e) A capture some arm moves out whole is moved, whatever its uses.
+- (f) A proof is never taken by `&` (D66): its value is ⋆, so a write through a matched proof's
+  pattern variable is local to the block's copy.
+- (g) Granularity: a capture part of which an arm moves out is split into its fields, each
+  captured by its own mode (`q.1` moved while `q.0` is lent), and the block's matches on the
+  split place take the arm of its constructor; a place used whole other than as a scrutinee is
+  moved whole instead.
+Over-approximating is safe (K2): a stricter generic call only removes options from the code
+after the block. Each clause began as a fuzz-port finding (14942, Q, M2, R8, shape (a), N3;
+the comments below name them); a new one should be stated here as a clause of K1 first.
+Returns the captures with their modes, the split places with each one's constructor, and the
+moved places. -/
+-- Two paths, value-dependent by design (notes/two-paths-census.md, site 13): captures read copy-ness, the places an arm leaves ⊥, and a split capture's constructor; each is type-directed or survives refinement.
+def blockCaptures (fuel : Nat) (mt : Term) (armMovedAll : List Place) :
+    M (Array (Place × Nat) × List (Place × Option Nat) × List Place) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  -- K1(a), moved places. D68: a closure or Π-type in an arm captures by move what it mentions (unless a copy), in a
+  -- statement too, whether or not the run took that arm: the block takes the place by move on
+  -- every path (fuzz case 14942: the abstract run's inner block moved it, the ground run's did
+  -- not, and only the ground run found the closure capturing a borrowed place)
+  let moved ← do
+    let mut mv := armMovedAll
+    for (o, p) in mt.fnOccs 0 do
+      let q := p.mapRoot fun _ => .var o
+      -- a place whose type cannot be read is not known to be a copy: the block moves it
+      let copy ← match ← placeType? fuel' q with
+        | some T => isCopyType fuel' T
+        | none => pure false
+      unless copy do
+        unless mv.any (placeEq · q) do mv := mv ++ [q]
+    pure mv
+  let moved ← moved.foldlM (fun acc q => do
+      let q' ← movedPlace fuel' q
+      pure (if acc.contains q' then acc else acc ++ [q'])) []
+  let f ← topIdx
+  let nb := (← get).env[f]!.binds.size
+  -- K1(b), modes by use: the free places used, re-rooted at the frame index, with their capture mode
+  -- (0 = copy, 1 = &, 2 = move)
+  let mut uses : Array (Place × Nat) := #[]
+  let mut wholeUses : Array (Place × PKind) := #[]   -- D53: how each place is used as a whole
+  for (o, p, k) in mt.freeOccsBlock do
+    let q := p.mapRoot fun _ => .var o
+    let b := (← get).env[f]!.binds[nb - 1 - o]!
+    let whole := q matches .var _
+    let isBorrowVar := b.val.isBorrow || (b.ty matches some (.tRef _))
+    let mode :=
+      if whole && isBorrowVar && (k == .read || k == .assign) then 2
+      else if whole && moved.any (· == .var o) then 2
+      else if k == .borrow || k == .assign then 1
+      else 0
+    uses := uses.push (q, mode)
+    wholeUses := wholeUses.push (q, k)
+  -- K1(c), maximal places: places with no strict prefix among the used places
+  let mut caps : Array (Place × Nat) := #[]
+  for (q, _) in uses do
+    let hasPrefix := uses.any fun (q', _) => placePrefix q' q && !(placeEq q' q)
+    if !hasPrefix && !(caps.any fun (c, _) => placeEq c q) then
+      let mode := (uses.filter fun (p, _) => placePrefix q p).foldl (fun m (_, k) => max m k) 0
+      caps := caps.push (q, mode)
+  -- K1(d). D53 (fuzz-port Q): a place some arm moved out whole that is a strict prefix of captures
+  -- (a closure in an arm capturing `q0` for its `q0.1`) is moved in whole, covering them
+  for m in moved do
+    if caps.any (fun (c, _) => placePrefix m c && !placeEq m c) then
+      caps := (caps.filter fun (c, _) => !placePrefix m c).push (m, 2)
+  -- K1(e). D53 (fuzz-port M2): a capture that some arm moves out whole is moved in, whatever it is
+  -- (`*x0`, `n1.1`), as the direct path moves it
+  caps := caps.map fun (q, k) => if moved.any (placeEq · q) then (q, 2) else (q, k)
+  -- K1(f). A proof is never taken by `&` (D66: its type is a proposition, not in Type₀): its value is `⋆`, so an
+  -- arm's write through a pattern variable of a matched proof (a field, a fresh value by
+  -- D49 (3), in a proof position by D45) is local to the block's own copy (R8, fuzz-port)
+  caps ← caps.mapM fun (q, k) => do
+    if k != 1 then return (q, k)
+    let isProof ← match ← placeType? fuel' q with
+      | some T => isPropV fuel' T
+      | none => pure false
+    pure (if isProof then (q, 0) else (q, k))
+  -- K1(g), granularity. D53 (fuzz-port shape (a), N3): the block's captures mirror the direct path's effects,
+  -- per sub-place. A capture part of which some arm moves out is split into its fields,
+  -- each captured by its own mode (moved, `&`, or read in place), so that `q1.1` can be
+  -- moved while `q1.2` is lent; the block's matches on the split place take the arm of its
+  -- constructor. A place used whole otherwise than as a scrutinee is moved in whole.
+  let mut split : List (Place × Option Nat) := []
+  let mut todo := caps.toList
+  let mut out : Array (Place × Nat) := #[]
+  while !todo.isEmpty do
+    let (q, k) := todo.head!
+    todo := todo.tail!
+    let inner := moved.filter fun m => placePrefix q m && !(placeEq m q)
+    if k == 2 || inner.isEmpty then out := out.push (q, k); continue
+    if wholeUses.any (fun (p, pk) => placeEq p q && pk != .scrut) then out := out.push (q, 2); continue
+    let children : Option (Option Nat × List Place) ← match ← content q with
+      | .ind t c _ _ fs => do
+        let d ← lookupInd t
+        let names := (d.ctors[c]?.map (·.2.map (·.1))).getD []
+        pure (some (some c, fs.zipIdx.map fun (_, i) => Place.field ⟨t, c, i, names.getD i s!"f{i}"⟩ q))
+      | .succ _ => pure (some (none, [Place.fst q]))
+      | _ => pure none
+    match children with
+    | none => out := out.push (q, 2)
+    | some (ctor, chs) =>
+      split := (q, ctor) :: split
+      for ch in chs do
+        let under := uses.filter fun (p, _) => placePrefix ch p
+        if under.isEmpty && !(moved.any fun m => placePrefix ch m) then continue
+        let m := under.foldl (fun m (_, k) => max m k) 0
+        todo := todo ++ [(ch, if moved.any (placeEq · ch) then 2 else m)]
+  pure (out, split, moved)
+termination_by structural fuel
+
 /-- [Block], the one place a stuck block is formed (D76). A stuck match ([Split]), a `J` whose
 endpoints are not convertible ([T-J-stuck]) and a zero-arm match outside a proof position are
 closed off here, as a call to an anonymous function of their free places. The block runs its
@@ -2870,7 +2989,7 @@ cannot be formed without its arms having been checked whole where its borrows en
 producer obligation for the sealed programs a block leaves, of which D72 (a match's arms) and
 D75 (a `J`'s transported term) were two instances found missing.
 
-The places are captured as Rust infers closure captures, on maximal place prefixes: a place
+The places are captured (`blockCaptures`, K1) as Rust infers closure captures, on maximal place prefixes: a place
 some arm moves out of is moved in; otherwise a place written or borrowed (under `&_` or left of
 `:=`) in some arm is passed as `&`; otherwise a place read is copied. A borrow variable read as a
 whole is a move (reading a borrow moves it); assigning a borrow variable as a whole moves it too
@@ -2918,97 +3037,10 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
         unless ← conv fuel' T T0 do
           err s!"the arms of a non-tail match have different types ({T0} and {T}); annotate it (let x : T = match …)"
       pure T0
-  -- D68: a closure or Π-type in an arm captures by move what it mentions (unless a copy), in a
-  -- statement too, whether or not the run took that arm: the block takes the place by move on
-  -- every path (fuzz case 14942: the abstract run's inner block moved it, the ground run's did
-  -- not, and only the ground run found the closure capturing a borrowed place)
-  let moved ← do
-    let mut mv := armMovedAll
-    for (o, p) in mt.fnOccs 0 do
-      let q := p.mapRoot fun _ => .var o
-      -- a place whose type cannot be read is not known to be a copy: the block moves it
-      let copy ← match ← placeType? fuel' q with
-        | some T => isCopyType fuel' T
-        | none => pure false
-      unless copy do
-        unless mv.any (placeEq · q) do mv := mv ++ [q]
-    pure mv
-  let moved ← moved.foldlM (fun acc q => do
-      let q' ← movedPlace fuel' q
-      pure (if acc.contains q' then acc else acc ++ [q'])) []
+  -- K1: the block takes each outer place by the largest effect any arm has on it (`blockCaptures`)
+  let (caps, split, moved) ← blockCaptures fuel' mt armMovedAll
   let f ← topIdx
   let nb := (← get).env[f]!.binds.size
-  -- the free places used, re-rooted at the frame index, with their capture mode
-  -- (0 = copy, 1 = &, 2 = move)
-  let mut uses : Array (Place × Nat) := #[]
-  let mut wholeUses : Array (Place × PKind) := #[]   -- D53: how each place is used as a whole
-  for (o, p, k) in mt.freeOccsBlock do
-    let q := p.mapRoot fun _ => .var o
-    let b := (← get).env[f]!.binds[nb - 1 - o]!
-    let whole := q matches .var _
-    let isBorrowVar := b.val.isBorrow || (b.ty matches some (.tRef _))
-    let mode :=
-      if whole && isBorrowVar && (k == .read || k == .assign) then 2
-      else if whole && moved.any (· == .var o) then 2
-      else if k == .borrow || k == .assign then 1
-      else 0
-    uses := uses.push (q, mode)
-    wholeUses := wholeUses.push (q, k)
-  -- maximal prefixes: places with no strict prefix among the used places
-  let mut caps : Array (Place × Nat) := #[]
-  for (q, _) in uses do
-    let hasPrefix := uses.any fun (q', _) => placePrefix q' q && !(placeEq q' q)
-    if !hasPrefix && !(caps.any fun (c, _) => placeEq c q) then
-      let mode := (uses.filter fun (p, _) => placePrefix q p).foldl (fun m (_, k) => max m k) 0
-      caps := caps.push (q, mode)
-  -- D53 (fuzz-port Q): a place some arm moved out whole that is a strict prefix of captures
-  -- (a closure in an arm capturing `q0` for its `q0.1`) is moved in whole, covering them
-  for m in moved do
-    if caps.any (fun (c, _) => placePrefix m c && !placeEq m c) then
-      caps := (caps.filter fun (c, _) => !placePrefix m c).push (m, 2)
-  -- D53 (fuzz-port M2): a capture that some arm moves out whole is moved in, whatever it is
-  -- (`*x0`, `n1.1`), as the direct path moves it
-  caps := caps.map fun (q, k) => if moved.any (placeEq · q) then (q, 2) else (q, k)
-  -- a proof is never taken by `&` (D66: its type is a proposition, not in Type₀): its value is `⋆`, so an
-  -- arm's write through a pattern variable of a matched proof (a field, a fresh value by
-  -- D49 (3), in a proof position by D45) is local to the block's own copy (R8, fuzz-port)
-  caps ← caps.mapM fun (q, k) => do
-    if k != 1 then return (q, k)
-    let isProof ← match ← placeType? fuel' q with
-      | some T => isPropV fuel' T
-      | none => pure false
-    pure (if isProof then (q, 0) else (q, k))
-  -- D53 (fuzz-port shape (a), N3): the block's captures mirror the direct path's effects,
-  -- per sub-place. A capture part of which some arm moves out is split into its fields,
-  -- each captured by its own mode (moved, `&`, or read in place), so that `q1.1` can be
-  -- moved while `q1.2` is lent; the block's matches on the split place take the arm of its
-  -- constructor. A place used whole otherwise than as a scrutinee is moved in whole.
-  let mut split : List (Place × Option Nat) := []
-  let mut todo := caps.toList
-  let mut out : Array (Place × Nat) := #[]
-  while !todo.isEmpty do
-    let (q, k) := todo.head!
-    todo := todo.tail!
-    let inner := moved.filter fun m => placePrefix q m && !(placeEq m q)
-    if k == 2 || inner.isEmpty then out := out.push (q, k); continue
-    if wholeUses.any (fun (p, pk) => placeEq p q && pk != .scrut) then out := out.push (q, 2); continue
-    let children : Option (Option Nat × List Place) ← match ← content q with
-      | .ind t c _ _ fs => do
-        let d ← lookupInd t
-        let names := (d.ctors[c]?.map (·.2.map (·.1))).getD []
-        pure (some (some c, fs.zipIdx.map fun (_, i) => Place.field ⟨t, c, i, names.getD i s!"f{i}"⟩ q))
-      | .succ _ => pure (some (none, [Place.fst q]))
-      | _ => pure none
-    match children with
-    | none => out := out.push (q, 2)
-    | some (ctor, chs) =>
-      split := (q, ctor) :: split
-      for ch in chs do
-        let under := uses.filter fun (p, _) => placePrefix ch p
-        if under.isEmpty && !(moved.any fun m => placePrefix ch m) then continue
-        let m := under.foldl (fun m (_, k) => max m k) 0
-        todo := todo ++ [(ch, if moved.any (placeEq · ch) then 2 else m)]
-  caps := out
   -- [Fix] captures no borrow (D63, rule-audit item 7): a closure or Π-type in an arm that
   -- mentions a place the block takes by `&` would capture the block's borrow parameter when
   -- the block re-runs, so the block is rejected where it is formed, alike on every path
@@ -3114,7 +3146,7 @@ termination_by structural fuel
 /-- `⟦t⟧^W`: on a private copy of Ω, run `t`, end every borrow, and return the result
 and the final contents of the owners in `W` (a tuple of the machine, not a `Pair` value,
 D52). -/
-def observe (fuel : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos) : M (Value × List Value) := onCopy do
+def observe (fuel : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos) : M (Value × List Value) := inStatement do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let (v, T) ← eval fuel' typed t A      -- A: a hint for a constructor's parameters
   expectTy fuel' "a side of Id" T A

@@ -196,7 +196,7 @@ In [Ind] the parameters are evaluated like arguments ([Args], below); a type $ty
   ir(name: "Erase-proof", $t "erased, a declared proof"$, $cfg(Omega, t) ev cfg(Omega, star)$),
   ir(name: "Erase-type", $t "erased, a type"$, $cfg(Omega, t) ev_0 cfg(Omega', T)$, $cfg(Omega, t) ev cfg(Omega, T)$),
 )
-Here $ev_0$ is the judgement in which the rule for `t`'s own form is applied at the root instead of [Erase-type]. Every erased occurrence, nested ones included, runs on its own copy, so whatever it assigns, borrows or moves changes only that copy. #lean("eval", "callFn", "fnClass", "paramFlags", "preFlags", "declOf", "stmtCopy", "onCopy (Env.lean)")
+Here $ev_0$ is the judgement in which the rule for `t`'s own form is applied at the root instead of [Erase-type]. Every erased occurrence, nested ones included, runs on its own copy, so whatever it assigns, borrows or moves changes only that copy. #lean("eval", "callFn", "fnClass", "paramFlags", "preFlags", "declOf", "inStatement (Env.lean)")
 
 === Calls
 
@@ -271,7 +271,7 @@ Let $m = kw("match") p {ty("C")_1 => t_1, dots, ty("C")_m => t_m}$ be stuck in �
 $ (z_i : U_i, a_i) = cases((z_i : \&"type"_Omega (q_i), thick \&q_i) & "if" q_i "is" "ref,", (z_i : "type"_Omega (q_i), thick q_i) & "otherwise (a move if its content is a borrow, a copy if not)".) $
 The body $m'$ is `m` with each place $q_i pi$ renamed to $(dr z_i) pi$ if $q_i$ is `ref`, and to $z_i pi$ otherwise. Then
 $ "block"(Omega, m, B, M) := F_m (a_1, dots, a_n) quad "where" F_m = chevron.l thin tack.r kw("fix") \_ (z_1 : U_1 dots z_n : U_n) : B := m' chevron.r, $
-a non-recursive closure with no captured values. Evaluating the block by [Call] gets stuck on the head of `m` inside $F_m$'s body and closes off by [App-close], with [Close]’s row chosen by `B`. A function or Π-type in an arm of a stuck match that mentions a place the block takes by `&` (because an arm writes it) is a type error where the block is formed, since the block's re-run would capture that borrow parameter. #lean("closeBlock", "splitThenClose", "Term.fnOccs (Basic.lean)")
+a non-recursive closure with no captured values. Evaluating the block by [Call] gets stuck on the head of `m` inside $F_m$'s body and closes off by [App-close], with [Close]’s row chosen by `B`. A function or Π-type in an arm of a stuck match that mentions a place the block takes by `&` (because an arm writes it) is a type error where the block is formed, since the block's re-run would capture that borrow parameter. #lean("closeBlock", "blockCaptures", "splitThenClose", "Term.fnOccs (Basic.lean)")
 
 == Observation, `Id` and conversion <app-conv>
 
@@ -324,7 +324,7 @@ A `let`, sequence or match that computes a type is not erased as a whole: its pa
 #rules(
   ir(name: "T-Erase", $t "erased"$, $Omega scripts(tack.r)_0 t ev v : A tack.l Omega'$, $Omega tack.r t ev v^bullet : A tack.l Omega$),
 )
-Here $v^bullet = star$ if `t` is a proof (clause 1) and $v^bullet = v$ otherwise, $scripts(tack.r)_0$ applies the rule for `t`'s own form at the root. So an erased term is typed like any other term, on its own private copy of the environment, and leaves no trace: whatever it writes, borrows or moves is undone with the copy, as at runtime, where it does not run. Erasure is decided from syntax alone, so the two evaluation paths agree on which terms are erased, and with every erased term on its own copy neither path keeps an effect the other discards. A proof may mutate its own locals, and may hand outer places to other erased calls, as `AddMZero`'s recursive call `AddMZero(&p)` does. #lean("eval", "fnClass", "preFlags", "declOf", "stmtCopy", "typeDecl", "typeClass", "jErased", "evalType", "onCopy (Env.lean)")
+Here $v^bullet = star$ if `t` is a proof (clause 1) and $v^bullet = v$ otherwise, $scripts(tack.r)_0$ applies the rule for `t`'s own form at the root. So an erased term is typed like any other term, on its own private copy of the environment, and leaves no trace: whatever it writes, borrows or moves is undone with the copy, as at runtime, where it does not run. Erasure is decided from syntax alone, so the two evaluation paths agree on which terms are erased, and with every erased term on its own copy neither path keeps an effect the other discards. A proof may mutate its own locals, and may hand outer places to other erased calls, as `AddMZero`'s recursive call `AddMZero(&p)` does. #lean("eval", "fnClass", "preFlags", "declOf", "typeDecl", "typeClass", "jErased", "evalType", "inStatement (Env.lean)")
 
 
 
