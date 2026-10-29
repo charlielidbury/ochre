@@ -51,7 +51,7 @@ def programs : List (String × Block) :=
    ("PositivityPaper", PositivityPaper), ("Propositions", Propositions), ("Destructuring", Destructuring),
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
    ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("BorrowTypes", BorrowTypes), ("FnBorrows", FnBorrows),
-   ("Abstraction", Abstraction), ("DepFields", DepFields), ("Sugar", Sugar),
+   ("Abstraction", Abstraction), ("DepFields", DepFields), ("StuckBlocks", StuckBlocks), ("Sugar", Sugar),
    ("SugarOwnBool", SugarOwnBool), ("SugarNoBool", SugarNoBool),
    ("FordVec", FordVec), ("FordLe", FordLe), ("FordRel", FordRel), ("FordAttack", FordAttack)]
 
@@ -72,7 +72,7 @@ def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1626
+def Ochr.Registry.expectedTotal : Nat := 1650
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal

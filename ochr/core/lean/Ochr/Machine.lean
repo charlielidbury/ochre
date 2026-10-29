@@ -3051,7 +3051,7 @@ def splitArmsThenClose (fuel : Nat) (mt : Term) (σ : Nat) (arms : List (M Value
     let r ← mk
     refine fuel' σ r
     let ls := (← get).placeLog.size
-    let (_, T) ← eval fuel' true arm
+    let (av, T) ← eval fuel' true arm
     allProof := allProof && (← getFlags).2
     let some T := T | err "internal: untyped arm"
     if let some E := expected then
@@ -3064,6 +3064,9 @@ def splitArmsThenClose (fuel : Nat) (mt : Term) (σ : Nat) (arms : List (M Value
     let armMoved ← armMoves ((← get).placeLog.extract ls (← get).placeLog.size) f0 n0
     for q in armMoved do
       unless moved.any (placeEq · q) do moved := moved ++ [q]
+    -- the arm's result is held as a temporary there, so that a borrow it returns into a
+    -- lent place is still in Ω when that place is checked
+    pushTemp av
     ends := ends.push (← get)
     restoreArm saved
     tys := tys.push T

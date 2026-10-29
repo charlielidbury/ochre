@@ -162,8 +162,13 @@ ochr FordAttack uses Lists {
   -- A12: a stale proof through a closure: `f` was formed at the old index, so after the write its
   -- result does not have the type the equation field now needs
   reject def StaleProof (r : VS) : Unit := match r { MkVS(n, h) => (let f = (λ(u : Unit) : Eq(Word, n, Zero) => h); n := Succ(Zero); h := f(())) }
-  -- A13: an honest write inside one side of an `Id` (the lying version is the stuck-block gap below)
+  -- A13: an honest write inside one side of an `Id`, and the lying version: the side's match is
+  -- closed off as a stuck block, whose borrow of `*r` ends at its arm's return (D72)
   def IdHonest (r : &VS) : Prop := Id(Unit, match *r { MkVS(n, h) => (n := Zero; h := refl) }, ())
+  reject def IdLie (r : &VS) : Prop := Id(Unit, match *r { MkVS(n, h) => n := Succ(Zero) }, ())
+  -- the same lie in a match followed by more code (D72), and its honest twin
+  reject def SeqLie (r : &VS) : Unit := (match *r { MkVS(n, h) => n := Succ(Zero) }; ())
+  def SeqHonest (r : &VS) : Unit := (match *r { MkVS(n, h) => (n := Zero; h := refl) }; ())
   -- A14: an impossible arm eliminated at an unknown index inside a statement's stuck block
   reject def BlockElim (n : Word) (v : VecF(Word, n)) : Prop := Id(Word, match v { VNil(h) => match h {}, VCons(m, x, xs, h) => x }, Zero)
   -- A15: a non-uniform recursive field reassigned at its own index is fine; at another index it is a lie
@@ -172,13 +177,10 @@ ochr FordAttack uses Lists {
   def U (n : Word) : Type₁ := match n { Zero => Type, Succ(p) => Type }
   reject inductive Sneak (T : U(Zero)) := MkSneak(x : T)
 
-  -- Not a Fording gap, recorded here because the attacks found it (D71, open): a length lie in
-  -- an arm of a match that is followed by more code is accepted, because the match is closed off
-  -- as a stuck block and its arms are not checked at a whole-again point. The same holds for
-  -- D64's dependent fields on main (`match *v { MkV(n, x) => n := Zero }; ()` over DepFields'
-  -- `V`). With an equation field every concrete call then fails when the borrow ends (the proof
-  -- field holds ⊥); with a data field the value has the wrong type. The same lie in tail
-  -- position is rejected (`LieVS`).
+  -- Not a Fording gap, but found by these attacks (D71): a length lie in an arm of a match
+  -- followed by more code was accepted, because the match is closed off as a stuck block and
+  -- its arms were not checked at a whole-again point. Closed by D72 (`IdLie`, `SeqLie` above;
+  -- DepFields' `StuckBlocks` for plain dependent fields).
 }
 
 -- each rejection for its reason
@@ -203,4 +205,6 @@ ochr FordAttack uses Lists {
   ("StaleProof", "the assigned value has type Eq(Word, σ1, Zero), expected False"),
   ("SwapTail", "[Repack] a borrow of it ends, but it is open: field xs of VCons holds a value of type VecF(Word, Zero), but its type from the earlier fields is VecF(Word, σ2)"),
   ("BlockElim", "[Match] on v.h, whose type Eq(Word, σ0, Zero) is not an inductive type"),
-  ("Sneak", "[D55] T is written where a type is expected, but its declared type is not a sort (it is a type only by computation)")]
+  ("Sneak", "[D55] T is written where a type is expected, but its declared type is not a sort (it is a type only by computation)"),
+  ("IdLie", "[Repack] *r is lent to a stuck match, whose arm returns with it, but it is open: field h of MkVS: it holds ⊥"),
+  ("SeqLie", "[Repack] *r is lent to a stuck match, whose arm returns with it, but it is open: field h of MkVS: it holds ⊥")]

@@ -563,6 +563,207 @@ ochr DepFields uses Logic, WordType, Options {
   ("Boom2", "unknown constant K"),
   ("NegBox", "field f of MkNegBox : Neg(A) computes to Π")]
 
+/-! ## Stuck blocks are calls (D72)
+
+A match on an abstract value that is followed by more code is closed off as a stuck block,
+a call of an anonymous function of the places it uses ([Block]). A place the block takes by
+borrow is its borrow parameter, whose borrow ends when the block returns: at the end of each
+arm. So that end is a whole-again point ([Repack]), as a function's return is. Before D72 an
+arm's lie about a dependent field was never re-checked there: the place received a sealed
+program, which the dependency check cannot see into, and the direct path, which runs the arm
+and checks nothing, kept a value of the wrong type (`LieSeq`) or a proof field ⊥ that fails
+when the caller's borrow ends (`LieSeqProof`). In tail position the arms are checked to the
+function's return, which caught the lie already (`LieV`). -/
+
+ochr StuckBlocks uses DepFields {
+  -- a data field: the arm lies, and code follows the match
+  reject def LieSeq (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => n := Zero,
+    };
+    ()
+  )
+  -- twin of LieSeq: `n := n`, so `x` keeps its type
+  def LieSeqOk (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => n := n,
+    };
+    ()
+  )
+  -- a proof field: the write invalidates `h`, which the block returns with
+  reject def LieSeqProof (p : &Pos) : Unit := (
+    match *p {
+      MkPos(n, h) => n := Zero,
+    };
+    ()
+  )
+  -- twin of LieSeqProof: the proof is re-established before the arm returns
+  def LieSeqProofOk (p : &Pos) : Unit := (
+    match *p {
+      MkPos(n, h) => (
+        n := Succ(n);
+        h := refl
+      ),
+    };
+    ()
+  )
+  -- nested: the lie is in a block inside an arm of another block
+  reject def LieNested (v : &V) (k : Word) : Unit := (
+    match k {
+      Zero => (
+        match *v {
+          MkV(n, x) => n := Zero,
+        };
+        ()
+      ),
+      Succ(j) => (),
+    };
+    ()
+  )
+  -- twin of LieNested: the inner arm writes `n := n`
+  def LieNestedOk (v : &V) (k : Word) : Unit := (
+    match k {
+      Zero => (
+        match *v {
+          MkV(n, x) => n := n,
+        };
+        ()
+      ),
+      Succ(j) => (),
+    };
+    ()
+  )
+  -- the outer block is on another scrutinee and reaches `*v` only through its arm's match
+  reject def LieOther (v : &V) (k : Word) : Unit := (
+    match k {
+      Zero => (
+        match *v {
+          MkV(n, x) => n := Zero,
+        }
+      ),
+      Succ(j) => (),
+    };
+    ()
+  )
+  -- twin of LieOther: the inner match writes `n := n`
+  def LieOtherOk (v : &V) (k : Word) : Unit := (
+    match k {
+      Zero => (
+        match *v {
+          MkV(n, x) => n := n,
+        }
+      ),
+      Succ(j) => (),
+    };
+    ()
+  )
+  -- an owned local, read whole after the block
+  reject def LieOwned (k : Word) : Word := (
+    let w = One1;
+    match k {
+      Zero => (
+        match w {
+          MkV(n, x) => n := Zero,
+        };
+        ()
+      ),
+      Succ(j) => (),
+    };
+    VN(w)
+  )
+  -- twin of LieOwned: the arm writes `n := Succ(Zero)`, which `x : One` still fits
+  def LieOwnedOk (k : Word) : Word := (
+    let w = One1;
+    match k {
+      Zero => (
+        match w {
+          MkV(n, x) => n := Succ(Zero),
+        };
+        ()
+      ),
+      Succ(j) => (),
+    };
+    VN(w)
+  )
+  -- an arm that lends the broken value whole, and one that passes it on (both were already
+  -- rejected inside the arm, by the whole use)
+  reject def LieLend (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => (n := Zero; Nop(&*v)),
+    };
+    ()
+  )
+  -- twin of LieLend: the lend comes first, while `*v` is whole
+  def LieLendOk (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => (Nop(&*v); ()),
+    };
+    ()
+  )
+  reject def LiePass (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => (n := Zero; Nop(v)),
+    };
+    ()
+  )
+  -- twin of LiePass: no write before `v` is passed on
+  def LiePassOk (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => Nop(v),
+    };
+    ()
+  )
+  -- the lie in a closure's body, a stuck block there too
+  reject def LieClosure (u : Unit) : Unit := (
+    let f = (λ(w : &V) : Unit => (match *w { MkV(n, x) => n := Zero, }; ()));
+    ()
+  )
+  -- twin of LieClosure: the closure's arm writes `n := n`
+  def LieClosureOk (u : Unit) : Unit := (
+    let f = (λ(w : &V) : Unit => (match *w { MkV(n, x) => n := n, }; ()));
+    ()
+  )
+  -- the arm writes the index and returns a borrow into the value
+  reject def LieRet (v : &V) : Unit := (
+    let r = match *v { MkV(n, x) => (n := Succ(Zero); &n), };
+    ()
+  )
+  -- twin of LieRet: the arm only returns the borrow
+  def LieRetOk (v : &V) : Unit := (
+    let r = match *v { MkV(n, x) => &n, };
+    ()
+  )
+  -- a fail-safe incompleteness, pinned: a lie repaired by a second block. The direct path
+  -- is whole again by the return, but the first block's borrow of `*v` ends with `*v` open
+  reject def RepairLater (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => n := Zero,
+    };
+    match *v {
+      MkV(n, x) => n := Succ(Zero),
+    }
+  )
+  -- a fail-safe incompleteness, pinned: in a statement the side runs on its own copy, and a
+  -- local it breaks is dropped broken on the direct path, harmlessly; the block's borrow of
+  -- `w` still ends at its return
+  reject def LieDropped (v : V) : Prop := Id(Unit, (let w = v; match w { MkV(n, x) => n := Zero, }; ()), ())
+  -- twin of LieDropped: the side's arm writes `n := n`
+  def LieDroppedOk (v : V) : Prop := Id(Unit, (let w = v; match w { MkV(n, x) => n := n, }; ()), ())
+}
+
+#guard (run "StuckBlocks" StuckBlocks).rejectedWith [
+  ("LieSeq", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is Void"),
+  ("LieSeqProof", "[Repack] *p is lent to a stuck match, whose arm returns with it, but it is open: field h of MkPos: it holds ⊥"),
+  ("LieNested", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open"),
+  ("LieOther", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open"),
+  ("LieOwned", "[Repack] w is lent to a stuck match, whose arm returns with it, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Void"),
+  ("LieLend", "[Repack] *v is borrowed whole, but it is open"),
+  ("LiePass", "[Repack] v is read whole, but it is open"),
+  ("LieClosure", "[Repack] *w is lent to a stuck match, whose arm returns with it, but it is open"),
+  ("LieRet", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is One"),
+  ("RepairLater", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open"),
+  ("LieDropped", "[Repack] w is lent to a stuck match, whose arm returns with it, but it is open")]
+
 /-! ## A growable vector (a case study)
 
 An array never changes its length, so a growable vector is user code over one (docs/09 §7).
