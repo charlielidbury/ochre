@@ -255,6 +255,20 @@ ochr Functions uses Nats, Boxes, Fixtures {
   -- twin of RunMix: both arms return types
   def SameT (n : Nat) : Type₁ := match n { Z => Π(x : &Nat). Prop, S _ => Π(x : &Nat). Prop, }
   def RunSame (n : Nat) (f : SameT(n)) : Nat := match n { Z => Z, S m => (let c = Z; f(&c); c), }
+  -- a recursive type function: a call of itself in its body says nothing new, so its class is
+  -- its Π arm's; mixing classes through the recursion is still a conflict
+  def RecP (n : Nat) : Type₁ by n := match n { Z => Π(x : &Nat). Prop, S m => RecP(m), }
+  def RunRec (n : Nat) (p : RecP(n)) : Nat := match n { Z => (let c = Z; p(&c); c), S m => Z, }
+  def RunRecGen (n : Nat) (p : RecP(n)) : Id(Nat, RunRec(n, p), Z) := match n { Z => refl, S m => refl, }
+  def MixR (n : Nat) : Type₁ by n := match n { Z => Π(x : &Nat). Prop, S m => match m { Z => Π(x : Type). Nat, S k => MixR(k), }, }
+  reject def UseMixR (n : Nat) (p : MixR(n)) : Nat := Z
+  -- a body that names its Π-type with a `let` reads as that Π-type
+  def LetP (n : Nat) : Type₁ := (let A = (Π(x : &Nat). Prop); A)
+  def RunLet (p : LetP(0)) : Nat := (let c = Z; p(&c); c)
+  -- a function into `Prop` is a statement, so its write is erased wherever a `RecP(0)` is
+  -- expected, at the instance as at the generic call
+  def WriteProp (x : &Nat) : Prop := (*x := S(Z); ⊤)
+  def AtRec : Id(Nat, RunRec(0, WriteProp), Z) := RunRecGen(0, WriteProp)
 
   -- The same for the class "returns proofs", with a codomain `V(Z)` that computes to `⊤`.
   -- D54 alone rejects `BoomP` at the argument; since D55 the codomain cannot even be written

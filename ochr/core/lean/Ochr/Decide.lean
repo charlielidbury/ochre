@@ -374,6 +374,8 @@ def typeDecl (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (
   | .ref A => pure (.ref (← typeDecl fuel' false sc ns A vis))
   | .val v => valTypeDecl fuel' v
   | .letIn h u w => do
+    -- a body that returns the type it names (`let A = Π(…). P; A`) says what that type says
+    if w matches .place (.var 0) then return ← typeDecl fuel' false sc ns u vis
     let d ← declOf fuel' false sc ns u
     typeDecl fuel' false (d :: sc) (h.name :: ns) w vis
   | .seq _ w => typeDecl fuel' false sc ns w vis
@@ -406,7 +408,9 @@ def typeFnDecl (fuel : Nat) (F : String) (vis : List String) (dflt : M DeclInfo)
   unless c matches .sort _ do return ← dflt
   let (sc', ns', _) ← telescope fuel' false [] [] hs ds
   let k := ds.length
-  let d ← typeDecl fuel' false (sc'.take k ++ [DeclInfo.pi (.sort 0)]) (ns'.take k ++ [F]) body (F :: vis)
+  -- the function itself (`by`): a call of it in its body says nothing new (`.any`), like a
+  -- call of `F` by name (`vis`)
+  let d ← typeDecl fuel' false (sc'.take k ++ [DeclInfo.any]) (ns'.take k ++ [F]) body (F :: vis)
   -- only a Π-type is read through the body: a body that computes to a sort or a proposition
   -- keeps the call's declared reading (D35, D55: `U(n)` computing to `Prop` is not a sort, so a
   -- function into `U(n)` returns data, `ErasureBySyntax.W`; `Fording.Sneak`), and a conflict
