@@ -82,5 +82,5 @@ So Conjecture 2 is not a separate problem from naturality: with the decisions ma
 ## 6. Open questions
 
 - **(P) in Lean.** The checker is total (D74-era), so (P) is stateable and provable in principle against `Machine.lean`: a mutual induction over the fuel-indexed cycle, with a "does not inspect σ" predicate on runs. It is large but uniform, and it is the step that would turn this decomposition into a proof.
-- **The incompleteness D77 keeps.** A type function returning a parameter used as a type (`F(A : Type₁) : Type₁ := A`) reads `other`. Making it exact needs the type arguments read through the body, i.e. a syntactic substitution of the call's argument terms; no program in the suite needs it.
+- **Closed: type parameters.** A type function returning its type parameter (`IdTy (A : Type₁) : Type₁ := A`) first still read `other`, and `RunIdTy` was an INTERNAL rejection. `typeDecl` now substitutes the call's argument readings for the body's type parameters (`tsc`), syntactically. What syntax still cannot read (a definition's own type variable, `UseTyVar`) reads `other` on both paths, and a value of it is not known to be a function at the generic call, so a call through it is rejected there.
 - **Footprint ⊤.** Site 14's second half (extra equations compute to ⊤) is N for the observation's runs; `id-model` P4 is one instance where it holds.

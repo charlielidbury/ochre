@@ -356,9 +356,15 @@ term, through `let`s and the arms of a match, which must agree (`agreeTypeDecl`)
 read `other`, and the binding's class was then recovered from the evaluated type or the
 value (`refineDecl`), which a sealed argument at an instance does not have (stability:
 `notes/stability.md`, site 7). The body is read, never run; `vis` stops the unfolding of a
-function inside its own body (a recursive type function reads `other` there). -/
+function inside its own body (a recursive type function reads `other` there).
+
+`tsc` says, for each variable in scope (de Bruijn, aligned with `sc`), what it stands for as a
+type, when that is known from syntax: a type function's type parameter stands for its call's
+argument read as a type, and a `let` naming a type for that type. So `F(Π(x : &Nat). Prop)`
+with `F (A : Type₁) : Type₁ := A` reads as the Π-type it is written with: the call's argument
+is substituted into the body's reading, never evaluated. -/
 def typeDecl (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (T : Term)
-    (vis : List String := []) : M DeclInfo := do
+    (vis : List String := []) (tsc : List (Option DeclInfo) := []) : M DeclInfo := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- the reading from the term's own declared type: a proposition if its declared sort is `Prop`
   let fallback : M DeclInfo := do
@@ -370,20 +376,23 @@ def typeDecl (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (
   | .sort l => pure (.sort l)
   | .pi hs ds c => do
     let (sc', ns', _) ← telescope fuel' false sc ns hs ds
-    pure (.pi (← typeDecl fuel' false sc' ns' c vis))
-  | .ref A => pure (.ref (← typeDecl fuel' false sc ns A vis))
+    pure (.pi (← typeDecl fuel' false sc' ns' c vis (List.replicate ds.length none ++ tsc)))
+  | .ref A => pure (.ref (← typeDecl fuel' false sc ns A vis tsc))
   | .val v => valTypeDecl fuel' v
+  | .place (.var i) => match tsc[i]? with
+    | some (some d) => pure d
+    | _ => fallback
   | .letIn h u w => do
-    -- a body that returns the type it names (`let A = Π(…). P; A`) says what that type says
-    if w matches .place (.var 0) then return ← typeDecl fuel' false sc ns u vis
+    -- a `let` naming a type (`let A = Π(…). P; A`) makes its variable stand for that type
     let d ← declOf fuel' false sc ns u
-    typeDecl fuel' false (d :: sc) (h.name :: ns) w vis
-  | .seq _ w => typeDecl fuel' false sc ns w vis
+    let td ← if d matches .sort _ then some <$> typeDecl fuel' false sc ns u vis tsc else pure none
+    typeDecl fuel' false (d :: sc) (h.name :: ns) w vis (td :: tsc)
+  | .seq _ w => typeDecl fuel' false sc ns w vis tsc
   | .matchNat _ z s =>
-    pure (agreeTypeDecl [← typeDecl fuel' false sc ns z vis, ← typeDecl fuel' false sc ns s vis])
+    pure (agreeTypeDecl [← typeDecl fuel' false sc ns z vis tsc, ← typeDecl fuel' false sc ns s vis tsc])
   | .matchInd _ _ arms =>
-    pure (agreeTypeDecl (← arms.mapM fun (_, a) => typeDecl fuel' false sc ns a vis))
-  | .call (.const F) _ _ => typeFnDecl fuel' F vis fallback
+    pure (agreeTypeDecl (← arms.mapM fun (_, a) => typeDecl fuel' false sc ns a vis tsc))
+  | .call (.const F) as _ => typeFnDecl fuel' F vis sc ns tsc as fallback
   | .const F => do
     -- a constant that is a type (`T0 : Type₁ := Π(x : &Nat). Prop`): its closed value's head,
     -- the same on every path; only a Π-type is read through it, as for type functions
@@ -396,9 +405,11 @@ def typeDecl (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (
 termination_by structural fuel
 
 /-- D77: what a call of the global `F` says as a type, when `F` is a type function: its body's
-reading as a type (`typeDecl`), in the scope of its declared parameters (and itself). `dflt`
-when `F` is not a type function or is being unfolded already. -/
-def typeFnDecl (fuel : Nat) (F : String) (vis : List String) (dflt : M DeclInfo) : M DeclInfo := do
+reading as a type (`typeDecl`), in the scope of its declared parameters (and itself), each type
+parameter standing for the call's argument at it read as a type in the caller's scope
+(`sc`, `ns`, `tsc`). `dflt` when `F` is not a type function or is being unfolded already. -/
+def typeFnDecl (fuel : Nat) (F : String) (vis : List String) (sc : List DeclInfo) (ns : List String)
+    (tsc : List (Option DeclInfo)) (as : List Term) (dflt : M DeclInfo) : M DeclInfo := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- inside its own body a recursive type function says nothing new: its reading is the
   -- agreement of its other arms (`.any` agrees with every arm)
@@ -408,9 +419,16 @@ def typeFnDecl (fuel : Nat) (F : String) (vis : List String) (dflt : M DeclInfo)
   unless c matches .sort _ do return ← dflt
   let (sc', ns', _) ← telescope fuel' false [] [] hs ds
   let k := ds.length
+  -- a type parameter (declared `: Prop` or `: Type_i`) stands for its argument read as a type
+  let mut args : List (Option DeclInfo) := []
+  for (d, a?) in ds.zip (as.map some ++ List.replicate (k - as.length) none) do
+    match d, a? with
+    | .sort _, some a => args := args ++ [some (← typeDecl fuel' false sc ns a vis tsc)]
+    | _, _ => args := args ++ [none]
   -- the function itself (`by`): a call of it in its body says nothing new (`.any`), like a
   -- call of `F` by name (`vis`)
   let d ← typeDecl fuel' false (sc'.take k ++ [DeclInfo.any]) (ns'.take k ++ [F]) body (F :: vis)
+    (args.reverse ++ [none])
   -- only a Π-type is read through the body: a body that computes to a sort or a proposition
   -- keeps the call's declared reading (D35, D55: `U(n)` computing to `Prop` is not a sort, so a
   -- function into `U(n)` returns data, `ErasureBySyntax.W`; `Fording.Sneak`), and a conflict

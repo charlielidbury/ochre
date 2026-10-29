@@ -269,6 +269,25 @@ ochr Functions uses Nats, Boxes, Fixtures {
   -- expected, at the instance as at the generic call
   def WriteProp (x : &Nat) : Prop := (*x := S(Z); ⊤)
   def AtRec : Id(Nat, RunRec(0, WriteProp), Z) := RunRecGen(0, WriteProp)
+  -- a type function that returns its type parameter reads as its argument: the call's
+  -- argument is substituted into the body's reading, never evaluated, so `p`'s calls are erased
+  -- on both paths, a sealed argument (`PickP(n)`) included
+  def IdTy (A : Type₁) : Type₁ := A
+  def RunIdTy (p : IdTy(Π(x : &Nat). Prop)) : Nat := (let c = Z; p(&c); c)
+  def RunIdTyGen (p : IdTy(Π(x : &Nat). Prop)) : Id(Nat, RunIdTy(p), Z) := refl
+  def AtIdTy : Id(Nat, RunIdTy(WriteProp), Z) := RunIdTyGen(WriteProp)
+  def AtIdTySealed (n : Nat) : Id(Nat, RunIdTy(PickP(n)), Z) := RunIdTyGen(PickP(n))
+  def IdTy2 (B : Type₁) : Type₁ := IdTy(B)
+  def RunIdTy2 (p : IdTy2(Π(x : &Nat). Prop)) : Nat := (let c = Z; p(&c); c)
+  def LetTy (B : Type₁) : Type₁ := (let C = B; C)
+  def RunLetTy (p : LetTy(Π(x : &Nat). Prop)) : Nat := (let c = Z; p(&c); c)
+  -- a type parameter in one arm and a Π-type in the other: they agree only at the same class
+  def MixArg (A : Type₁) (n : Nat) : Type₁ := match n { Z => A, S _ => Π(x : &Nat). Prop, }
+  reject def UseMixArg (n : Nat) (p : MixArg(Π(x : Type). Nat, n)) : Nat := Z
+  def UseSameArg (n : Nat) (p : MixArg(Π(y : &Nat). Prop, n)) : Nat := match n { Z => Z, S m => (let c = Z; p(&c); c), }
+  -- a type variable of the definition itself is unknown at the generic call: a value of it
+  -- is not known to be a function there, so it cannot be called
+  reject def UseTyVar (A : Type₁) (p : IdTy(A)) : Nat := (let c = Z; p(&c); c)
 
   -- The same for the class "returns proofs", with a codomain `V(Z)` that computes to `⊤`.
   -- D54 alone rejects `BoomP` at the argument; since D55 the codomain cannot even be written
