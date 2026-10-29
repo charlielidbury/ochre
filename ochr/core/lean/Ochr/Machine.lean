@@ -3044,6 +3044,9 @@ def splitArmsThenClose (fuel : Nat) (mt : Term) (σ : Nat) (arms : List (M Value
   let mut allProof := true
   let f0 := (← get).env.size - 1
   let n0 := (← get).env[f0]!.binds.size
+  -- [Repack] at the block's returns: the state each arm ends in, kept so that the places the
+  -- block takes by borrow are checked whole there (`closeOffMatch`)
+  let mut ends : Array MState := #[]
   for (mk, arm) in arms do
     let r ← mk
     refine fuel' σ r
@@ -3061,6 +3064,7 @@ def splitArmsThenClose (fuel : Nat) (mt : Term) (σ : Nat) (arms : List (M Value
     let armMoved ← armMoves ((← get).placeLog.extract ls (← get).placeLog.size) f0 n0
     for q in armMoved do
       unless moved.any (placeEq · q) do moved := moved ++ [q]
+    ends := ends.push (← get)
     restoreArm saved
     tys := tys.push T
   let B ← match expected with
@@ -3071,7 +3075,7 @@ def splitArmsThenClose (fuel : Nat) (mt : Term) (σ : Nat) (arms : List (M Value
         unless ← conv fuel' T T0 do
           err s!"the arms of a non-tail match have different types ({T0} and {T}); annotate it (let x : T = match …)"
       pure T0
-  closeOffMatch fuel' mt B moved allProof
+  closeOffMatch fuel' mt B moved allProof ends.toList
 termination_by structural fuel
 
 /-- The refinement of `σ` to constructor `c` of an inductive type at parameters `ps`:
@@ -3251,8 +3255,8 @@ prefixes: a place some arm moves out of is moved in; otherwise a place written o
 borrowed (under `&_` or left of `:=`) in some arm is passed as `&`; otherwise a place
 read is copied. A borrow variable read as a whole is a move (reading a borrow moves it);
 assigning a borrow variable as a whole moves it too (passing `&x` would be `&&T`). -/
-def closeOffMatch (fuel : Nat) (mt : Term) (B : Value) (moved : List Place) (allProof : Bool) :
-    M (Value × Option Value) := do
+def closeOffMatch (fuel : Nat) (mt : Term) (B : Value) (moved : List Place) (allProof : Bool)
+    (armEnds : List MState := []) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- D68: a closure or Π-type in an arm captures by move what it mentions (unless a copy), in a
   -- statement too, whether or not the run took that arm: the block takes the place by move on
@@ -3364,6 +3368,33 @@ def closeOffMatch (fuel : Nat) (mt : Term) (B : Value) (moved : List Place) (all
         err s!"[D53] a borrow ends while its content is partly moved out ({b.hint.name}: moved into a stuck match whose arm moves out through it)"
   -- order the captures by frame position (oldest binding first), then by path
   let capsS := caps.qsort fun (a, _) (b, _) => a.root > b.root || (a.root == b.root && (a.steps.2.length < b.steps.2.length))
+  -- D72 [Repack] at a stuck block's returns: the block is a call of an anonymous function, and
+  -- a place it takes by borrow is its borrow parameter, whose borrow ends when the block
+  -- returns, i.e. at the end of each arm; a borrow variable it moves in whole is ended by its
+  -- frame there too. So each such place must be of its type again in the state each arm
+  -- ([Split]) ends in. Without this an arm's lie about a dependent field is never re-checked:
+  -- the block closes off, the place receives a sealed program, and the direct path, which
+  -- runs the arm and checks nothing ([Repack] is not checked on instances), is left with a
+  -- value of the wrong type (`StuckBlocks.LieSeq`).
+  for e in armEnds do
+    let cur ← get
+    onFail (do
+      set e
+      let fe ← topIdx
+      let nbe := (← get).env[fe]!.binds.size
+      unless nbe == nb do err "internal: an arm of a stuck match ended in a different frame shape"
+      for (q, mode) in capsS do
+        let lent ← match mode, q with
+          | 1, _ => pure true
+          | 2, .var o =>
+            let b := (← get).env[fe]!.binds[nbe - 1 - o]!
+            pure (b.val.isBorrow || (b.ty matches some (.tRef _)))
+          | _, _ => pure false
+        if lent then
+          let T ← placeType fuel' q
+          repackAt fuel' q T "lent to a stuck match, whose arm returns with it")
+      (set cur)
+    set cur
   let n := capsS.size
   let mut hints := #[]
   let mut doms := #[]
