@@ -763,6 +763,36 @@ def endAll (fuel : Nat) : M Unit := do
   | none => pure ()
 termination_by structural fuel
 
+/-- [Obs] and [Obs-borrow] (notes/id-model.md): the one place a computation's result is
+observed. With the result `r` held as a temporary, end every remaining borrow, and return the
+result as it is then. A borrow-typed result `borrow_k u` given a fresh `σw` is observed by
+[Obs-borrow]: `σw` is written through the borrow first (`*r := σw`), so the owners of `loan_k`
+show where it pointed, and the observed result is `u`'s final content. `Id`'s sides
+(`observe`) and [Conv-fun]'s generic calls (`convFnRun`) both observe through here; they differ
+only in `observing`, which `Id` sets (D68: a borrow may end over a moved-out part, read as `⊥`)
+and [Conv-fun] leaves as its caller set it, so outside an `Id` such an end is an error, which
+fails safe. The flag is restored afterwards, so an observation nested in another's borrow ends
+leaves the outer one's flag as it was. -/
+def obsResult (fuel : Nat) (r : Value) (σw? : Option Nat) (observing : Bool) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let o := (← get).observing
+  match r, σw? with
+  | .borrow k u, some σw =>
+    pushTemp u
+    pushTemp (.borrow k (.abs σw))
+    modify fun s => { s with observing := observing }
+    endAll fuel'
+    modify fun s => { s with observing := o }
+    discard popTemp
+    popTemp
+  | _, _ =>
+    pushTemp r
+    modify fun s => { s with observing := observing }
+    endAll fuel'
+    modify fun s => { s with observing := o }
+    popTemp
+termination_by structural fuel
+
 /-- [Access], path part: end every borrow whose loan is on the path to `p`. -/
 def accessPath (fuel : Nat) (p : Place) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
@@ -1543,19 +1573,9 @@ def convFnRun (fuel : Nat) (f g pf : Value) (cs : List Value) (hs : List Hint) (
     let obs (fv : Value) : M (Value × List Value) := onCopy do
       let (r, _) ← callFn fuel' false fv none args (args.map fun _ => none) false
       wholeReturned r
-      match r, σw? with
-      | .borrow k u, some σw =>
-        pushTemp u
-        pushTemp (.borrow k (.abs σw))
-        endAll fuel'
-        discard popTemp
-        let u' ← popTemp
-        pure (u', (← get).env[0]!.binds.toList.map (·.val))
-      | _, _ =>
-        pushTemp r
-        endAll fuel'
-        let r ← popTemp
-        pure (r, (← get).env[0]!.binds.toList.map (·.val))
+      -- [Conv-fun] keeps whatever `observing` its caller set (it never set it itself)
+      let r' ← obsResult fuel' r σw? (← get).observing
+      pure (r', (← get).env[0]!.binds.toList.map (·.val))
     -- D53: functions are compared as code, with their moves (fuzz-port shape (c)), wherever
     -- the comparison is asked (a statement's is erased)
     let (rf, cf) ← withRuntime (obs f)
@@ -3042,11 +3062,7 @@ def observe (fuel : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos) : 
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let (v, T) ← eval fuel' typed t A      -- A: a hint for a constructor's parameters
   expectTy fuel' "a side of Id" T A
-  pushTemp v
-  modify fun s => { s with observing := true }
-  endAll fuel'
-  modify fun s => { s with observing := false }
-  let v ← popTemp
+  let v ← obsResult fuel' v none true
   let ws ← W.mapM getAt
   pure (v, ws)
 termination_by structural fuel
