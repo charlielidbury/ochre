@@ -11,7 +11,7 @@ Branch `stability`, off main `4cc0beda`. The theory lane toward full consistency
   - `DecisionsCommute`: each decision function, on refined inputs, gives the refinement of its answer on the originals: the erasure pre-pass (item 1), `byTypeMatch` (1), `fnClass` and `declKind` (4), `closeBlock`'s block (2; `closeOffMatch` before D76), `placeType` for an observed place up to conversion (5), and footprint containment (6).
   - `RunsCorrespond`: the instance run (`tα` at `Ωα`) does not fail where the generic run (`t` at `Ω`) succeeded, and when it finishes it agrees up to resolution with the generic result and final state refined by `α`. This is what puts related inputs in front of the decision functions at the subterms both runs reach; it gives item 3 (arms well typed on both or neither) and item 6's "the extra equations compute to ⊤".
 - **Up to resolution (`AgreeUpToρ`).** End every borrow (`endAll`), which leaves no loan to rename; then rename the unknowns either run created (at or above `Ω.nextAbs`) injectively, itself a refinement by unknowns; then compare the values and every position's content.
-- **Proved:** `byTypeMatch_arms` (site 11). `#print axioms stability`: propext, sorryAx, Classical.choice, Quot.sound.
+- **Proved:** see §9. `stability` now lives in `StabilitySig.lean` with the `byType` and `closeRow` fields proved and the rest `sorry`, each marked with what it needs. `#print axioms stability`: propext, sorryAx, Classical.choice, Quot.sound.
 
 ## 2. Per-site decomposition (the 25 census sites)
 
@@ -29,7 +29,7 @@ Each site needs: *if the two runs present α-related inputs, the decision agrees
 | 5 | Is a call a statement | p | The callee value's Π-type class: L-class (D54: Π-types of different class do not convert, so a refined value's type keeps its class). |
 | 6 | Statement argument in place | a | **Was (b).** Now the argument's declared type (D77, `stmtArgInPlace`). |
 | 7 | A binding's class | a | **Was (b), the weakest.** Now its declared type's syntax, type functions read through their bodies (D77). |
-| 8 | [Close]'s row | a | The declared codomain term; for a stuck block, `& ` is never produced by computation (D48(2)), so the codomain value is `&T` exactly when written so. |
+| 8 | [Close]'s row | a / o | **Corrected (§9).** For a function, the declared codomain term: proved (`decisionsCommute_closeRow`). For a stuck block, the codomain is the match's type, a value. Refining an unknown match type to `Unit` turns the row from data to `Unit` (η at `Unit`, D59, site 9), so the block row is value-dependent by design and carried by closing off (C). Data to `&` cannot happen: `&` is never an argument (D48 (2), tests `UseBlkRef`, `UseBlkBox`). |
 | 9 | η at `Unit` | p | D59: every value at `Unit` is `()`, so normalising one path's value and not the other's changes no `Eq`. Refinement only makes a type more concrete. |
 | 10 | Proof irrelevance (`isPropV`) | p | L-sort (D55: sorts are syntactic, evaluation and refinement preserve them). |
 | 11 | Match on a proof | a | Proved: `byTypeMatch_arms`. |
@@ -161,3 +161,41 @@ Outside (P) by design, belonging to (C), (Sp) and conversion: `Eq` and conversio
   4. Then port the value layer to the heap, slice by slice (this lane's data slice first, then borrows and writes, then [Split] as fills, then closing off as thunks), each step compared with the real machine on the suite, as `heapslice` does here.
 
   Steps 1–3 are worth doing even if the port is not, since each removes a way for a run to depend on an unknown it has no business inspecting.
+
+## 9. Mechanising `DecisionsCommute` against the checker (branch `decide-commute`)
+
+The half of Conjecture 2 that needs no heap port, in Lean against the real checker: `Ochr/StabilityDecide.lean` and `Ochr/StabilitySig.lean`, sorry-free except `stability` itself, standard axioms only (`propext`, `Classical.choice`, `Quot.sound`).
+
+### The statement, made precise
+
+- **`fnClass` and `closeRow` now quantify over Π-type values** and say that what the generic run decided, the instance decides (they were two-sided equalities over every value). As written they were false. Take an unknown `A : Type` refined to a Π-type. At the generic run `fnClass` reads `0` and `declKind` fails ("not a function type"), and at the refinement both read the Π-type's class and row. No accepted run reads either on a non-Π type: `callFn` rejects such a callee (`callType`, `declKind`) before reading a class, and `stmtCallee`'s earlier read is followed by that `callFn`. The order is pinned by comments at both sites and by the test `CallSort` (`Examples/Functions.lean`, block `CallUnknown`, with the accepted twin `CallPi`).
+- **`closeRow` excludes stuck blocks**, whose codomain is an embedded value (the match's type). Probed against the real `declKind` (`probe_blockRow_*`, with a function as control): refining the unknown match type `σ0 : Type` to `Unit` turns the row from data to `Unit`. This is η at `Unit` (D59), harmless, and the re-normalisation of the closed-off block at the refined type reads the refined row, so it belongs to (C). The other flip, data to `&`, would be Figure 16's hazard. It is unreachable: `.tRef` values come only from `.ref` terms, which D48 (2) (`checkDef`: `refTopOk`, `refsOk`) allows only as the whole declared type of a parameter, result or annotated term, never an argument. So no unknown type is refined or instantiated to a borrow type. Tests `UseBlkRef` (on the surface `&Nat` in an argument is a borrow of a place) and `UseBlkBox` (D48's rejection), block `BlockRow` in `Examples/BorrowTypes.lean`, with the accepted twin `UseBlkNat`.
+
+### Proved
+
+| Site | What | Theorem | Assumptions |
+|---|---|---|---|
+| 11 | match on a proof (field `byType`, whole) | `decisionsCommute_byType` | none |
+| 8 | [Close]'s row for functions (field `closeRow`, whole as restated) | `decisionsCommute_closeRow` (`closeRow_fn`) | none |
+| 3 | a function type's class, codomain a sort or an embedded value | `decisionsCommute_fnClass_shape` | class-cache soundness (A2) |
+| 1, 11 | constructor and field proof-ness (D42, D45, D71), large elimination, `byTypeMatch` at the refined state | `sigDecisions_commute` | none |
+| 7 | a binding's class: `refineDecl` reads only its argument | `readsSig_refineDecl` | none |
+| — | the erasure flags from a declared reading (`preFlags`) | `readsSig_preFlags` | none |
+| — | **refinement keeps the signature** (A1) | `onState_sig`, `sigPres_onValue`, `sigPres_onTerm` | none |
+
+`onState_sig` was the assumption every signature-reading decision rested on. A refinement re-runs sealed programs, compares values (conversion, `Eq`) and computes field types, so it reaches a large part of the machine. The proof is a fuel induction over what it reaches: the declared-type readers of `Decide.lean` (`DecSP`, 14 functions) and 22 functions of `Machine.lean` (`RefSP`: substitution, re-normalisation, `nfSealed`, conversion, `mkEqM`, field types, `refine`). Everything that runs arbitrary code (a sealed program's re-run, a private copy, a statement) restores the state it saved, signature included, so `eval` is never analysed (`EndsAt`, `sigPres_privately`). A tactic, `sp`, takes a `do` block apart (join points once each, induction hypotheses from scope, registered lemmas), and every function went through it except `nfSealed`, done by hand in five lines. The induction is sound for the checker as it is because nothing in the machine writes `inds` or `globals`; a `ReaderT` for the signature would make that true by type.
+
+### Left `sorry` in `stability`, and why
+
+- **`erasure`** (site 1): `declOf` in the live scope reads embedded values' declared readings (`valueDecl` on `.abs`/`.sealed`), which commute only if evaluation preserves declared types (D55), plus the live scope's binding readings and the `constDecls` cache, which a refinement must be shown to keep. The first is typing (M); the second is an invariant like `onState_sig` (not done).
+- **`fnClass`**, general case (site 3): the codomain is read in the scope of the captured values' declared readings (D55 again). The shape cases are proved, under class-cache soundness (A2: `fnClass` is the only writer of `classCache`, a machine invariant).
+- **`captures`** (site 13): `closeBlock` runs its arms at both states, so this needs `RunsCorrespond`.
+- **`observedType`** (site 5 of the field list, census 21): `placeType` reads values, so it needs `RunsCorrespond` and typing (M).
+- **`footprint`** (site 14): containment needs refinement to keep the environment's shape (frames, bindings, owners), an invariant of the same kind as `onState_sig`. It does not need `RunsCorrespond`. Not done in the time box.
+- **`RunsCorrespond`**: symbolic naturality (N) and typed/untyped agreement (M), §5.
+
+### Findings
+
+- Two statement fixes, above: `fnClass`/`closeRow` over Π-type values in the generic-to-instance direction, and `closeRow` without stuck blocks. Neither is a checker bug, and no verdict changed.
+- Census site 8 corrected (table, §2): for blocks it was argued only for `&`, and the `Unit` flip was missed.
+

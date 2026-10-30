@@ -139,6 +139,28 @@ ochr BorrowTypes uses Nats, Lists, Boxes {
   def UseGOk : Unit := GOk(0, 5)
 }
 
+/-! ## A stuck block's row cannot become `&` (D48 (2))
+
+A stuck block's [Close] row is read from its match's type, a value. If that type were an
+unknown `T : Type` that an instance makes a borrow type, the generic call would close the block
+off as data while the instance returned a live borrow (`F` above, through a type variable). It
+cannot happen: `&` is only ever the whole declared type of a parameter, result or annotated
+term, never an argument. On the surface `&Nat` in an argument is a borrow of a place named
+`Nat` (`UseBlkRef`), and a borrow type inside a type argument is D48's rejection (`UseBlkBox`).
+`Stability.DecisionsCommute` relies on this for blocks. -/
+
+ochr BlockRow uses Nats, Boxes {
+  def Blk (T : Type) (n : Nat) (a : T) (b : T) : T := (let r : T = match n { Z => a, S _ => b }; r)
+  -- the same block at a data type
+  def UseBlkNat (n : Nat) : Nat := Blk(Nat, n, 0, S(Z))
+  reject def UseBlkRef (n : Nat) (x : &Nat) (y : &Nat) : &Nat := Blk(&Nat, n, x, y)
+  reject def UseBlkBox (n : Nat) (x : Box(&Nat)) (y : Box(&Nat)) : Box(&Nat) := Blk(Box(&Nat), n, x, y)
+}
+
+#guard (run "BlockRow" BlockRow).rejectedWith [
+  ("UseBlkRef", "(surface) Nat is not a place (not a local variable)"),
+  ("UseBlkBox", "[D48] UseBlkBox: & appears only as the whole declared type")]
+
 
 /-! ## Borrowing functions and type variables (D66)
 

@@ -8,7 +8,8 @@ matches on abstract values close off, and directly at each instance, where they 
 [Call-type] and [Split] identify the results, so a proof checked on the first path is used on
 the second. The paper's Conjecture 2 says the two paths take the same decisions: refining and
 then running makes the same choices as running and then refining. This file states it against
-the checker, with the proof left `sorry`; `notes/stability.md` decomposes it site by site.
+the checker; `notes/stability.md` decomposes it site by site, and `StabilitySig.lean` proves the
+fields of `DecisionsCommute` that need neither `RunsCorrespond` nor typing (`stability`).
 
 ## What a refinement is
 
@@ -145,7 +146,17 @@ def erasureOf (fuel : Nat) (t : Term) : M (Option (Bool × Bool)) := do
 
 /-- **The decisions commute with refinement.** Each field is one of the paper's items, for the
 decision function the checker uses: on refined inputs it gives the refinement of what it gave on
-the originals (`Ωα` the refined state, `tα`, `Pα` the refined term or value). -/
+the originals (`Ωα` the refined state, `tα`, `Pα` the refined term or value). Each says that what
+the generic run decided, the instance decides too; where the generic run fails there is nothing
+to commute (the definition is rejected).
+
+A function type's class and [Close] row are stated for Π-type values only. For anything else
+they are not decisions of any run that goes on: `fnClass` reads `0` and `declKind` fails on an
+unknown `A : Type`, and a refinement of `A` to a Π-type would read a class and a row the generic
+run never decided. Every call reads them through `callFn`, which rejects a callee whose type is
+not a Π-type (`callType`, `declKind`) before reading the class; `stmtCallee`'s earlier read is
+followed by that `callFn`. The order is pinned by comments at both sites and by the test
+`CallSort` (`Examples/Functions.lean`, block `CallUnknown`). -/
 structure DecisionsCommute : Prop where
   /-- (1) Erasure: the pre-pass gives a term and its refinement the same flags. -/
   erasure : ∀ (Ω : MState) (α : Refinement) (t : Term) (fuel : Nat), Respects α Ω fuel →
@@ -158,15 +169,27 @@ structure DecisionsCommute : Prop where
     (run? (byTypeMatch ty (arms.map fun a => (a.1, g a.2))) Ω fuel).map (·.1) =
       (run? (byTypeMatch ty arms) Ω fuel).map (·.1)
   /-- (4) A function type's class (D54) survives refinement. -/
-  fnClass : ∀ (Ω : MState) (α : Refinement) (P Pα : Value) (fuel : Nat), Respects α Ω fuel →
-    (run? (α.onValue fuel P) Ω fuel).map (·.1) = some Pα →
+  fnClass : ∀ (Ω : MState) (α : Refinement) (cs : List Value) (t : Term) (Pα : Value) (fuel : Nat),
+    Respects α Ω fuel →
+    (run? (α.onValue fuel (.tPi cs t)) Ω fuel).map (·.1) = some Pα →
     ∀ Ωα, run? (α.onState fuel) Ω fuel = some ((), Ωα) →
-      (run? (fnClass fuel Pα) Ωα fuel).map (·.1) = (run? (fnClass fuel P) Ω fuel).map (·.1)
-  /-- (4) So does [Close]'s row, read from the declared codomain. -/
-  closeRow : ∀ (Ω : MState) (α : Refinement) (P Pα : Value) (fuel : Nat), Respects α Ω fuel →
-    (run? (α.onValue fuel P) Ω fuel).map (·.1) = some Pα →
+    ∀ k, (run? (fnClass fuel (.tPi cs t)) Ω fuel).map (·.1) = some k →
+      (run? (fnClass fuel Pα) Ωα fuel).map (·.1) = some k
+  /-- (4) So does [Close]'s row, read from the declared codomain, for a function. A stuck block's
+  function is excluded: its codomain is an embedded value (the match's type), and its row is
+  value-dependent by design, like `Eq`. An unknown match type refined to `Unit` turns the row
+  from data to `Unit` (η at `Unit`, D59), checked against the real `declKind` by
+  `probe_blockRow_generic`/`probe_blockRow_instance` in `StabilitySig.lean`. The re-normalisation
+  of the closed-off block at the refined type reads the refined row, which is `RunsCorrespond`'s
+  closing off (C). The other flip, data to `&`, would be unsound (Figure 16's row); it cannot
+  happen because `&` is never an argument, so no unknown type becomes a borrow type (D48 (2),
+  tests `UseBlkRef` and `UseBlkBox` in `Examples/BorrowTypes.lean`). -/
+  closeRow : ∀ (Ω : MState) (α : Refinement) (cs : List Value) (t : Term) (Pα : Value) (fuel : Nat),
+    (∀ hs ds B, t ≠ .pi hs ds (.val B)) → Respects α Ω fuel →
+    (run? (α.onValue fuel (.tPi cs t)) Ω fuel).map (·.1) = some Pα →
     ∀ Ωα, run? (α.onState fuel) Ω fuel = some ((), Ωα) →
-      (run? (declKind fuel Pα) Ωα fuel).map (·.1) = (run? (declKind fuel P) Ω fuel).map (·.1)
+    ∀ k, (run? (declKind fuel (.tPi cs t)) Ω fuel).map (·.1) = some k →
+      (run? (declKind fuel Pα) Ωα fuel).map (·.1) = some k
   /-- (2) A stuck block closed off at both states captures the same places in the same modes:
   the block (its anonymous function and arguments) at `Ωα` is the refinement of the one at `Ω`.
   Since D76 a block is formed only by `closeBlock`, which runs its arms itself; the arms are
@@ -212,8 +235,7 @@ def RunsCorrespond : Prop :=
 and the runs stay related, so at every subterm both runs reach they decide alike. -/
 def Conjecture2 : Prop := DecisionsCommute ∧ RunsCorrespond
 
-theorem stability : Conjecture2 := by
-  sorry
+-- The conjecture's proof, with the fields proved so far, is `stability` in `StabilitySig.lean`.
 
 /-- Site 11, by construction: whether a match is on a proof reads the arms' constructors (the
 hints) and the scrutinee's declaration, never the arms' bodies, so refining the bodies cannot

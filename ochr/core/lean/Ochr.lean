@@ -16,3 +16,5 @@ import Ochr.Test
 import Ochr.RuleGuard
 import Ochr.Consistency
 import Ochr.Stability
+import Ochr.StabilityDecide
+import Ochr.StabilitySig

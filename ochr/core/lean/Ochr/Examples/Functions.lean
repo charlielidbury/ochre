@@ -392,3 +392,18 @@ ochr ConvModel uses Nats, Fixtures {
   ("W5Eq", "the body of W5Eq has type ⊤, but the goal is Eq(Π(x : &Nat). &Nat, W5, Id0)"),
   ("IsZEq", "the body of IsZEq has type ⊤, but the goal is Eq(Π(n : Nat). Nat, IsZ, IsZ2)"),
   ("PassW1", "argument 1 (h) has type Π(x : &Nat). Id(Unit, *x := 0, ()), expected Π(x : &Nat). Id(Unit, (), ())")]
+
+/-! ## A call through an unknown whose type is a sort
+
+A parameter `f : A` with `A : Type` is a value of an unknown type, not a function: calling it is
+rejected at the generic call, before a class or [Close] row is read from its type (`callFn`).
+`Stability.lean`'s `DecisionsCommute` relies on this order: its class and row fields speak only
+of Π-type values, since an instance `A := Π(n : Nat). Nat` would read a class and a row the
+generic run never decided. `CallPi` is the same call through a Π-typed parameter. -/
+
+ochr CallUnknown uses Nats {
+  def CallPi (f : Π(n : Nat). Nat) : Nat := f(Z)
+  reject def CallSort (A : Type) (f : A) : Nat := f(Z)
+}
+
+#guard (run "CallUnknown" CallUnknown).rejectedWith [("CallSort", "not a function type: σ0")]

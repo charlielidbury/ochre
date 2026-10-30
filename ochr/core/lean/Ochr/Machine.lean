@@ -2226,6 +2226,11 @@ def stmtCallee (fuel : Nat) (fv : Value) (fT : Option Value) (cls? : Option Nat)
   let fuel' + 1 := fuel | exhausted "out of fuel"
   if let some k := cls? then return k != 0
   match ← funType? fuel' fv fT with
+  -- `T` need not be a Π-type here (`f : A` with `A : Type`), and `fnClass` of anything else is
+  -- `0`. That is never a decision of an accepted run: `evalCall` passes the same callee to
+  -- `callFn`, which rejects it ("not a function type") before reading a class or row. The
+  -- order is load-bearing for `Stability.DecisionsCommute`, whose `fnClass` and `closeRow`
+  -- fields speak of Π-type values only (test: `CallSort`, `Examples/Functions.lean`)
   | some T => pure ((← fnClass fuel' T) != 0)
   -- a proof is only ever called at a proposition (P5): its calls return proofs. Any other value
   -- with no readable Π-type is not callable, and `callFn` rejects the call
@@ -2425,7 +2430,12 @@ def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Ar
   -- this is also the static type's; a sealed function whose own type cannot be read here
   -- keeps the static one)
   let clsTy := (← funType? fuel' fv none).getD piTy
-  -- [Close]'s row: v1.7 (D35) from the declared codomain
+  -- [Close]'s row: v1.7 (D35) from the declared codomain. The order here is load-bearing for
+  -- `Stability.DecisionsCommute`: the row and the class are read only after `callType` (typed
+  -- runs) and `declKind` have rejected a callee whose type is not a Π-type, so every row and
+  -- class a run that goes on decides is a Π-type's, the only case the conjecture states (an
+  -- unknown `A : Type` refined to a Π-type would otherwise read a row and class the generic run
+  -- never decided; test: `CallSort`, `Examples/Functions.lean`)
   let kind ← declKind fuel' clsTy
   -- D28, D35: the callee's class, read off its declared codomain (a stuck block's is
   -- given by `closeBlock`)
