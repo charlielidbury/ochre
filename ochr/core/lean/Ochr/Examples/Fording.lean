@@ -228,3 +228,58 @@ ochr FordAttack uses Lists {
   ("SeqLie", "[Repack] *r is lent to a stuck match, whose arm returns with it, but it is open: field h of MkVS: it holds ⊥"),
   ("JLieF", "[Repack] *r is lent to a stuck match, whose arm returns with it, but it is open: field h of MkVS: it holds ⊥"),
   ("JLieV", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open: field xs of VCons")]
+
+/-! ## The inductive model's probes (notes/inductive-model.md)
+
+Each declaration exercises one condition the model of inductive declarations derives (a least
+fixed point per parameter value for a `Type₀` inductive, a subsingleton for a `Prop` one, `{•}` or
+`∅` for an equation field). The accepted ones are true or well-formed; the rejected ones are
+rejected for the reason given below. `TT0` is an incompleteness Lean shares: a proposition with two
+constructors never eliminates into data, even where one is impossible. -/
+ochr InductiveModel uses Lists {
+  -- (I1) a parameter's type cannot mention the type being declared (it would need all of its parameters)
+  reject inductive PD (A : Type) (x : PD(A)) := MkPD
+  -- (E3) an equation field over a type parameter of sort Type₁ is an equation between types; it holds only by conversion
+  inductive TEq (U : Type₁) (a : U) (b : U) := MkTEq(h : Eq(U, a, b))
+  def te : TEq(Type, Word, Word) := MkTEq[Type, Word, Word](refl)
+  reject def teBad : TEq(Type, Word, Unit) := MkTEq[Type, Word, Unit](refl)
+  -- (T1) the telescope order applies to an equation field's sides
+  reject inductive LateEq := MkLE(h : Eq(Word, x, Zero), x : Word)
+  -- (S1) a proposition with one constructor whose fields are equations is a subsingleton: it eliminates into data and types
+  inductive IsZ (n : Word) : Prop := MkZ(h : Eq(Word, n, Zero))
+  def UseIsZ (n : Word) (p : IsZ(n)) : Word := match p { MkZ(h) => Succ(Zero) }
+  def TOf (n : Word) (p : IsZ(n)) : Type := match p { MkZ(h) => Word }
+  -- (S2) a recursive subsingleton with no base case is empty: eliminating it is fine, building one needs a recursion [Rec] refuses
+  inductive Inf (n : Word) : Prop := MkInf(p : Inf(Succ(n)))
+  def FromInf (n : Word) (p : Inf(n)) : Word := match p { MkInf(q) => Zero }
+  reject def InfLoop (n : Word) : Inf(n) by n := MkInf[n](InfLoop(Succ(n)))
+  -- (S3) no large elimination from a proposition with two constructors (Forded or not)
+  inductive Two (n : Word) : Prop := TA(h : Eq(Word, n, Zero)) | TB(h : Eq(Word, n, Succ(Zero)))
+  reject def TT (n : Word) (p : Two(n)) : Type := match p { TA(h) => Word, TB(h) => Unit }
+  reject def TT0 (p : Two(Zero)) : Word := match p { TA(h) => Zero, TB(h) => match h {} }
+  -- (P2) a non-uniform occurrence may nest through a nestable parameter of another inductive
+  inductive NL (A : Type) := NLeaf(x : A) | NNode(ks : List(NL(Pair(A, A))))
+  def nl : NL(Word) := NNode[Word](Nil[NL(Pair(Word, Word))])
+  -- (P3) a value parameter of function type indexes the family but is never called in a field type,
+  -- and an argument at a value parameter may not mention the type being declared
+  inductive HL (f : Π(x : Word). Type) := MkHL(y : Word)
+  def hl : HL(λ(x : Word) : Type => Word) := MkHL[λ(x : Word) : Type => Word](Zero)
+  reject inductive HL2 (f : Π(x : Word). Type) := MkHL2(y : f(Zero))
+  inductive G (F : Π(X : Type). Type) := GB | GS(r : G(λ(X : Type) : Type => F(F(X))))
+  reject inductive NegV (F : Π(X : Type). Type) := MkNegV(r : NegV(λ(X : Type) : Type => Π(y : X). NegV(F)))
+  -- (E2) an equation field over a type parameter instantiated at a function type compares functions by conversion
+  inductive EqF (A : Type) (a : A) (b : A) := MkEqF(h : Eq(A, a, b))
+  def ef : EqF(Π(x : Word). Word, λ(x : Word) : Word => x, λ(y : Word) : Word => y) := MkEqF[Π(x : Word). Word, λ(x : Word) : Word => x, λ(y : Word) : Word => y](refl)
+  reject def efBad : EqF(Π(x : Word). Word, λ(x : Word) : Word => x, λ(y : Word) : Word => Zero) := MkEqF[Π(x : Word). Word, λ(x : Word) : Word => x, λ(y : Word) : Word => Zero](refl)
+}
+
+#guard (run "InductiveModel" InductiveModel).rejectedWith [
+  ("PD", "PD takes 2 parameters, given 1"),
+  ("teBad", "field h of MkTEq has type ⊤, expected Eq(Type, Word, Unit)"),
+  ("LateEq", "[Ind] field h of MkLE: its type mentions x, which is not an earlier field"),
+  ("InfLoop", "[Rec] at InfLoop(Succ(σ0)): the argument in the decreasing position is not a strict subterm"),
+  ("TT", "[D45] a match on a proof of Two returns a non-proof"),
+  ("TT0", "[D45] a match on a proof of Two returns a non-proof"),
+  ("HL2", "field y of MkHL2 : f(Zero): fields are first-order data"),
+  ("NegV", "field r of MkNegV"),
+  ("efBad", "field h of MkEqF has type ⊤, expected Eq(Π(x : Word). Word")]
