@@ -706,12 +706,14 @@ theorem probe_fnRow : (run? (declKind 5 (.tPi [] (.pi [] [] (.place (.var 0)))))
 /-- **Conjecture 2.** The fields of `DecisionsCommute` proved above are used; each `sorry` says
 what it needs (`notes/stability.md` §9). -/
 theorem stability : Conjecture2 :=
-  ⟨{ -- needs the declared readings of embedded values to commute (`valueDecl`, evaluation
-     -- preserves declared types, D55) and the live scope's readings to be kept: typing (M)
+  ⟨{ -- needs `ValueDeclCommutes` (embedded values' readings: evaluation preserves declared
+     -- readings, D55, typing M), and refinement to keep the live scope's binding readings and the
+     -- `constDecls` cache coherent (invariants of the kind of `onState_sig`, not done)
      erasure := sorry
      byType := decisionsCommute_byType
      -- proved for codomains whose shape fixes the class (`decisionsCommute_fnClass_shape`, given
-     -- class-cache soundness); the general case reads captured values' declared readings (D55)
+     -- class-cache soundness); the general case reads captured values' declared readings
+     -- (`ValueDeclCommutes`, typing M)
      fnClass := sorry
      closeRow := fun Ω α cs t Pα fuel hblock _ hP Ωα _ k hk =>
        decisionsCommute_closeRow Ω α cs t Pα fuel hblock hP Ωα k hk
@@ -719,8 +721,11 @@ theorem stability : Conjecture2 :=
      captures := sorry
      -- `placeType` reads the place's value: `RunsCorrespond` and typing (M)
      observedType := sorry
-     -- needs refinement to keep the environment's shape (as `onState_sig` keeps the signature);
-     -- not done
+     -- reduced to `ProfileLE` (`decisionsCommute_footprint`, `StabilityFootprint.lean`): the
+     -- refinement keeps the top frame and only shrinks each binding's borrow profile. Its shape
+     -- part is an invariant like `onState_sig`; its borrow part needs that sealed types never
+     -- compute to `&` and data never re-normalises to a borrow (D48 (2) and "no borrows in data"
+     -- as run invariants, typing M)
      footprint := sorry },
    -- symbolic naturality (N) and typed/untyped agreement (M)
    sorry⟩

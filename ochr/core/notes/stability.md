@@ -191,11 +191,29 @@ The half of Conjecture 2 that needs no heap port, in Lean against the real check
 - **`fnClass`**, general case (site 3): the codomain is read in the scope of the captured values' declared readings (D55 again). The shape cases are proved, under class-cache soundness (A2: `fnClass` is the only writer of `classCache`, a machine invariant).
 - **`captures`** (site 13): `closeBlock` runs its arms at both states, so this needs `RunsCorrespond`.
 - **`observedType`** (site 5 of the field list, census 21): `placeType` reads values, so it needs `RunsCorrespond` and typing (M).
-- **`footprint`** (site 14): containment needs refinement to keep the environment's shape (frames, bindings, owners), an invariant of the same kind as `onState_sig`. It does not need `RunsCorrespond`. Not done in the time box.
+- **`footprint`** (site 14): **corrected claim.** This used to say containment needs only refinement keeping the environment's shape. That was wrong: a footprint also reads each binding's borrow profile. See "Footprint and D55" below.
 - **`RunsCorrespond`**: symbolic naturality (N) and typed/untyped agreement (M), §5.
 
 ### Findings
 
 - Two statement fixes, above: `fnClass`/`closeRow` over Π-type values in the generic-to-instance direction, and `closeRow` without stuck blocks. Neither is a checker bug, and no verdict changed.
 - Census site 8 corrected (table, §2): for blocks it was argued only for `&`, and the `Unit` flip was missed.
+
+### Footprint and D55 (branch `decide-footprint`)
+
+**Footprint.** The field was false as stated. Refining `σ0 : Type` to `&Nat` makes a binding `x : σ0` borrow-typed, so a plain read of `x` then counts, and the footprint grows from `[]` to `[x]`. This is checked against the real checker by `decide +kernel` (`probe_footprint_*` in `StabilityFootprint.lean`); the value `&Nat` does check at `σ0`'s type, so `Respects` did not exclude it.
+- **Restatement.** `Respects` now asks every refinement value to be borrow-free (`borrowFree`: no borrow type, borrow or loan inside). This is the paper's refinements, not a weakening: they substitute constructor values, closures and ground values; a borrow parameter's generic value is `borrow_ℓ σ` with `σ` borrow-free; and no unknown type is ever given a borrow type, because `&` is never an argument (D48 (2), tests `UseBlkRef`/`UseBlkBox`).
+- **Proved** (`StabilityFootprint.lean`, sorry-free):
+  - substitution keeps every term's free places (`substT_occs`, `onTerm_occs`), since it rewrites embedded values and never places;
+  - the footprint is monotone in the borrow profile (`footprint_mono`): for terms with the same free places, a state whose top frame has the same size and whose bindings are borrows (by type or value) only where the other's are, with owners among the other's, has a footprint contained in the other's;
+  - so the field holds whenever the refined state's profile is below the original's (`decisionsCommute_footprint`, hypothesis `ProfileLE`).
+- **Left: `ProfileLE` for a refinement.** It has two parts:
+  - the shape part (same top frame, same binding count) is an invariant of the kind of `onState_sig`, provable the same way, though not done;
+  - the borrow part needs that a sealed type never re-normalises to `&` and that data never re-normalises to a borrow or gains a loan. These are D48 (2) and "no borrows in data" (A.5 condition 5) as invariants of runs: typing (M), not syntax.
+
+**D55 preservation** (`ValueDeclCommutes` in `Stability.lean`): an embedded value's declared reading (`valueDecl`) survives refinement. `erasure` and the general `fnClass` rest on it. It is **not provable from the checker's code alone**:
+- **A sealed program is re-run by the refinement**, and its normal form's reading must be the program's reading. That is subject reduction for the declared-type reader, and it fails at unchecked globals. With `F (n : Nat) : Nat := Nat`, the program `⌈F(σ0)⌉` reads `other`, and refining `σ0 := Z` re-runs it to `Nat`, which reads `sort 1` (`probe_d55_*`, `decide +kernel`). So it is an invariant of checked programs, an induction over the evaluator, the same scale as (P) and (M).
+- **An unknown refined to `r` reads `r`'s own reading** where it read `σ`'s type's. `Respects` gives only that the types convert, and conversion of Π-types compares generic calls, not syntax. So this needs conversion to respect declared readings, which reduces to the first case.
+
+Given `ValueDeclCommutes`, closing `erasure` still needs two invariants of the `onState_sig` kind: refinement keeps the live scope's binding readings (`mapState` never writes `decl`), and keeps the `constDecls` cache coherent (its entries are functions of the signature). Closing the general `fnClass` needs the class-cache soundness (A2). Neither field is closed on this branch.
 

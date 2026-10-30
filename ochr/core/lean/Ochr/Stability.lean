@@ -107,10 +107,23 @@ def onTerm (α : Refinement) (fuel : Nat) (t : Term) : M Term :=
 
 end Refinement
 
-/-- `α` respects `Ω`: each `σ` it refines is an unknown of `Ω`, and the value it gets checks at
-`Ω` with a type convertible with `σ`'s. -/
+/-- A value is borrow-free: no borrow type, borrow or loan anywhere inside it. -/
+def borrowFree (v : Value) : Bool :=
+  !(v.anyAtom fun | .tRef _ | .borrow _ _ | .loan _ => true | _ => false)
+
+/-- `α` respects `Ω`: each `σ` it refines is an unknown of `Ω`, and the value it gets is
+borrow-free and checks at `Ω` with a type convertible with `σ`'s.
+
+Borrow-free is the paper's refinements, not a weakening. They substitute constructor values,
+closures and ground values, never borrows: a borrow parameter's generic value is `borrow_ℓ σ`
+with `σ` itself borrow-free, and closures capture no borrows (RULES §1). Nor is any unknown type
+ever given a borrow type: `&` is only the whole declared type of a parameter, result or
+annotated term, never an argument (D48 (2), tests `UseBlkRef` and `UseBlkBox`, block `BlockRow`
+in `Examples/BorrowTypes.lean`). Without it, refining `σ0 : Type` to `&Nat` would make a
+binding of type `σ0` a borrow-typed one, and its footprint grow (`probe_footprint_*` in
+`StabilityFootprint.lean`). -/
 def Respects (α : Refinement) (Ω : MState) (fuel : Nat) : Prop :=
-  ∀ p ∈ α, p.1 < Ω.absTy.size ∧
+  ∀ p ∈ α, p.1 < Ω.absTy.size ∧ borrowFree p.2 = true ∧
     ∃ v T Ω₁ Ω₂, run? (eval fuel true (.val p.2)) Ω fuel = some ((v, some T), Ω₁) ∧
       run? (conv fuel T Ω.absTy[p.1]!) Ω₁ fuel = some (true, Ω₂)
 
@@ -215,6 +228,30 @@ structure DecisionsCommute : Prop where
     ∀ Ωα, run? (α.onState fuel) Ω fuel = some ((), Ωα) →
       (run? (ts.mapM (α.onTerm fuel)) Ω fuel).map (·.1) = some tsα →
       ∀ π ∈ footprint Ωα.env tsα, π ∈ footprint Ω.env ts
+
+/-- **D55 preservation for embedded values**: an embedded value's declared reading
+(`valueDecl`) survives refinement. The erasure pre-pass (`declOf` reads `.val v` by `valueDecl`)
+and a function type's class (its captured values' readings scope its codomain) rest on it.
+
+It is not provable from the checker's code alone. Its two cases are statements about evaluation:
+- a sealed program is re-run by the refinement (`nfSealed`), and the reading of its normal form
+  must be the reading of the program (`declOf`): evaluation preserves declared readings, subject
+  reduction for the declared-type reader. It is false at a state whose globals were not checked
+  (a function declared into `Nat` whose body returns a type), so it is an invariant of checked
+  programs, an induction over the evaluator;
+- an unknown `σ` refined to `r` reads `r`'s own reading where it read `σ`'s type's. `Respects`
+  gives only that `r`'s type converts with `σ`'s, and conversion of Π-types compares generic
+  calls, not syntax. So this needs conversion to respect declared readings, which reduces to the
+  first case (a type term's reading is its value's reading).
+So both are typing facts (M in `notes/stability.md` §5), not consequences of syntax and the
+signature. -/
+def ValueDeclCommutes : Prop :=
+  ∀ (Ω : MState) (α : Refinement) (v vα : Value) (fuel : Nat) (d : DeclInfo) (Ω₁ Ωα : MState),
+    Respects α Ω fuel →
+    run? (α.onState fuel) Ω fuel = some ((), Ωα) →
+    (run? (α.onValue fuel v) Ω fuel).map (·.1) = some vα →
+    run? (valueDecl fuel v) Ω fuel = some (d, Ω₁) →
+    (run? (valueDecl fuel vα) Ωα fuel).map (·.1) = some d
 
 /-- **The runs stay related** (symbolic naturality). Running `tα` at `Ωα` does not fail where
 running `t` at `Ω` succeeded, and when it finishes it agrees up to resolution with the generic
