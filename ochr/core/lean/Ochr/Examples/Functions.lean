@@ -327,3 +327,68 @@ ochr Functions uses Nats, Boxes, Fixtures {
   def RunUH (n : Nat) : ⊤ := RunU(H2, n)
 }
 
+
+/-! ## Conversion, modelled (`notes/conv-model.md`)
+
+Conversion is equality of meanings in the set model: two convertible values denote the same
+element, so `J` and transport preserve truth. A function value's meaning is fixed by its captured
+values and the observation of its generic call (result, what a returned borrow holds at the return,
+and the final contents of the generic owned places); a function that inspects an abstract argument
+is closed off there and is convertible only with itself. Each pair below is a true equation the
+checker proves, or a false or unprovable one it rejects, with the reason asserted. -/
+
+ochr ConvModel uses Nats, Fixtures {
+  -- reading a place and writing the same value back is the identity on it
+  def RW (x : &Nat) : Unit := (let v = clone(*x); *x := v)
+  def Noop (x : &Nat) : Unit := ()
+  def RWEq : Eq(Π(x : &Nat). Unit, RW, Noop) := refl
+  -- ... so transport along it keeps truth
+  def PW (h : Π(x : &Nat). Unit) : Prop := Id(Nat, let c = S(Z); h(&c); c, S(Z))
+  def PNoop : PW(Noop) := refl
+  def PRW : PW(RW) := J(Π(x : &Nat). Unit, Noop, RW, PW, refl, PNoop)
+  -- moving a borrowed number out and writing its successor back is writing the successor
+  def MvS (x : &Nat) : Unit := (let v = *x; *x := S(v))
+  def CpS (x : &Nat) : Unit := (*x := S(clone(*x)))
+  def MvCp : Eq(Π(x : &Nat). Unit, MvS, CpS) := refl
+  reject def MvNoop : Eq(Π(x : &Nat). Unit, MvS, Noop) := refl
+  -- a returned borrow is observed with what it holds at the return, not only where it points
+  def W5 (x : &Nat) : &Nat := (*x := S(Z); x)
+  def Id0 (x : &Nat) : &Nat := x
+  reject def W5Eq : Eq(Π(x : &Nat). &Nat, W5, Id0) := refl
+  def W5Self : Eq(Π(x : &Nat). &Nat, W5, W5) := refl
+  -- η at Unit: a Unit argument carries nothing
+  def UU (u : Unit) : Unit := u
+  def UK (u : Unit) : Unit := ()
+  def UUEq : Eq(Π(u : Unit). Unit, UU, UK) := refl
+  -- a function that inspects its argument is closed off at its generic call, so it is
+  -- convertible only with itself: a true equation between two copies is rejected (incomplete,
+  -- as conversion is the least relation)
+  def IsZ (n : Nat) : Nat := match n { Z => S(Z), S _ => Z }
+  def IsZ2 (n : Nat) : Nat := match n { Z => S(Z), S _ => Z }
+  reject def IsZEq : Eq(Π(n : Nat). Nat, IsZ, IsZ2) := refl
+  def IsZSelf : Eq(Π(n : Nat). Nat, IsZ, IsZ) := refl
+  -- two wrappers of one stuck call observe the same sealed program
+  def WrapA (n : Nat) : Nat := IsZ(n)
+  def WrapB (n : Nat) : Nat := IsZ(n)
+  def WrapEq : Eq(Π(n : Nat). Nat, WrapA, WrapB) := refl
+  -- returned closures are compared by their captures and their generic calls
+  def MkA (n : Nat) : (Π(m : Nat). Nat) := λ(m : Nat) : Nat => clone(n)
+  def MkB (n : Nat) : (Π(m : Nat). Nat) := λ(m : Nat) : Nat => clone(n)
+  def MkEq : Eq(Π(n : Nat). (Π(m : Nat). Nat), MkA, MkB) := refl
+  -- [Conv-pi]: statements are compared by what they compute to at generic arguments
+  def UseTriv (h : Π(x : &Nat). Id(Unit, (), ())) : Unit := ()
+  def PassW0 (h : Π(x : &Nat). Id(Unit, *x := 0, *x := 0)) : Unit := UseTriv(h)
+  reject def PassW1 (h : Π(x : &Nat). Id(Unit, *x := 0, ())) : Unit := UseTriv(h)
+  def UseTop (h : Π(n : Nat). ⊤) : Unit := ()
+  def PassAnd (h : Π(n : Nat). ⊤ ∧ Eq(Nat, n, n)) : Unit := UseTop(h)
+  -- transport across two convertible functions keeps truth
+  def PZ (h : Π(n : Nat). Nat) : Prop := Eq(Nat, h(Z), S(Z))
+  def PZA : PZ(WrapA) := refl
+  def PZB : PZ(WrapB) := J(Π(n : Nat). Nat, WrapA, WrapB, PZ, refl, PZA)
+}
+
+#guard (run "ConvModel" ConvModel).rejectedWith [
+  ("MvNoop", "the body of MvNoop has type ⊤, but the goal is Eq(Π(x : &Nat). Unit, MvS, Noop)"),
+  ("W5Eq", "the body of W5Eq has type ⊤, but the goal is Eq(Π(x : &Nat). &Nat, W5, Id0)"),
+  ("IsZEq", "the body of IsZEq has type ⊤, but the goal is Eq(Π(n : Nat). Nat, IsZ, IsZ2)"),
+  ("PassW1", "argument 1 (h) has type Π(x : &Nat). Id(Unit, *x := 0, ()), expected Π(x : &Nat). Id(Unit, (), ())")]
