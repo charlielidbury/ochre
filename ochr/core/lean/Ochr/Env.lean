@@ -183,6 +183,9 @@ structure MState where
   liveScope : Bool := false               -- declared-type reading: variables beyond the local scope are the top frame's
   headEval : Bool := false                -- the next `eval` is of a call's head (not classified by the pre-pass)
   erasedDepth : Nat := 0                  -- D53: > 0 while evaluating an erased term, whose reads copy
+  /-- > 0 inside a private copy (`inStatement`, `privately`): what the run does there is
+  discarded with the copy, so [Frame]'s F4 check (`Machine.endTopLoan`) does not apply. -/
+  privateDepth : Nat := 0
   inPlace : Bool := false                 -- D53: the next read is in place (a call's head, a block's read-only capture)
   modelDepth : Nat := 0                   -- K2/K3: > 0 inside model code, which never runs at runtime
   copying : Bool := false      -- inside `clone`/`peek`: reads copy (the explicit copy, not an erased-read mode)
@@ -355,6 +358,7 @@ through `inStatement` (a statement position of the program) or `privately` (the 
 scaffolding), so that every discarded run is one of those two, by name. -/
 private def onCopy {α : Type} (x : M α) : M α := do
   let saved ← get
+  modify fun s => { s with privateDepth := s.privateDepth + 1 }
   let r ← onFail x (restoreKeep saved)
   restoreKeep saved
   pure r

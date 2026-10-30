@@ -1,4 +1,4 @@
-import Ochr.Heap.Slice
+import Ochr.Heap.Frame
 import Ochr.Examples.Registry
 
 /-! `lake exe heapslice`: the heap-based slice evaluator (`Ochr/Heap/Slice.lean`) against the
@@ -19,6 +19,11 @@ partial def dataTy (inds : List IndDecl) : Term → Bool
     | none => false
   | _ => false
 
+/-- A parameter's type in the slice: data, or a borrow of data (`notes/frame-model.md`). -/
+partial def paramTy (inds : List IndDecl) : Term → Bool
+  | .ref T => dataTy inds T
+  | T => dataTy inds T
+
 /-- The slice, syntactically: `fns` are the functions it may call, `k` the arity of the
 function whose body this is (its `self` is variable `depth + k`). -/
 partial def inSlice (inds : List IndDecl) (consts : List String) (fns : List String) (k : Nat) :
@@ -26,13 +31,13 @@ partial def inSlice (inds : List IndDecl) (consts : List String) (fns : List Str
   | _, .zero | _, .tt => true
   | d, .succ u | d, .prim "clone" [u] => inSlice inds consts fns k d u
   | d, .ctor _ _ _ _ as => as.all (inSlice inds consts fns k d)
-  | _, .place p => !(p.steps.2.any (· matches .deref))
+  | _, .place _ | _, .borrow _ => true
+  | d, .assign _ u => inSlice inds consts fns k d u
   | _, .const n => consts.contains n
   | d, .letIn _ u w => inSlice inds consts fns k d u && inSlice inds consts fns k (d + 1) w
   | d, .seq u w => inSlice inds consts fns k d u && inSlice inds consts fns k d w
-  | d, .matchNat p z s => !(p.steps.2.any (· matches .deref)) &&
-      inSlice inds consts fns k d z && inSlice inds consts fns k d s
-  | d, .matchInd p ty arms => !(p.steps.2.any (· matches .deref)) &&
+  | d, .matchNat _ z s => inSlice inds consts fns k d z && inSlice inds consts fns k d s
+  | d, .matchInd _ ty arms =>
       (match inds.find? (·.name == ty) with | some dd => dd.sort != 0 | none => false) &&
       arms.all (inSlice inds consts fns k d ·.2)
   | d, .call (.const n) as _ => fns.contains n && as.all (inSlice inds consts fns k d)
@@ -108,6 +113,10 @@ structure Tally where
   notAskedNoWalk : Nat := 0
   notAskedWalk : Nat := 0
   sliceFns : Array String := #[]
+  borrowFns : Nat := 0
+  finalChecks : Nat := 0
+  capRuns : Nat := 0
+  capViolations : Array String := #[]
 
 def compareRun (T : Tally) (what : String) (r : Out) (h : Out) : Tally :=
   let T := { T with runs := T.runs + 1 }
@@ -125,6 +134,18 @@ def compareRun (T : Tally) (what : String) (r : Out) (h : Out) : Tally :=
   | .err _, .err _ => { T with bothErr := T.bothErr + 1 }
   | h, r => { T with mismatch := T.mismatch.push s!"{what}: heap {h.show}, real {r.show}" }
 
+/-- The frame property's capability discipline (`Ochr/Heap/Frame.lean`): run the same computation
+holding only the unknowns (a closed term starts with nothing else), and record a run the plain
+evaluator finishes but the capability run refuses, a computation reaching a handle it was not
+given. -/
+def capCheck (T : Tally) (what : String) (S : Sig) (k : Nat) (t : Term) : Tally :=
+  let H0 : Heap := { node := fun _ => none, next := k }
+  let p := evalH S 200000 t []
+  let T := { T with capRuns := T.capRuns + 1 }
+  match execR p H0 (List.range k) with
+  | some _ => T
+  | none => { T with capViolations := T.capViolations.push what }
+
 def main : IO UInt32 := do
   let mut T : Tally := {}
   let mut seen : List String := []
@@ -137,7 +158,7 @@ def main : IO UInt32 := do
     -- candidates: data parameters and codomain; then the fixpoint of "its body is in the slice"
     let cands := globals.filterMap fun g => match g.fn? with
       | some (.fix _ hs ds c _ body) =>
-        if ds.all (dataTy inds) && dataTy inds c then some (g.name, hs.length, ds, body) else none
+        if ds.all (paramTy inds) && dataTy inds c then some (g.name, hs.length, ds, body) else none
       | _ => none
     let mut fns := cands.map (·.1)
     let mut changed := true
@@ -153,14 +174,30 @@ def main : IO UInt32 := do
       unless fns.contains n && own.contains n && !seen.contains n do continue
       seen := n :: seen
       T := { T with fns := T.fns + 1, sliceFns := T.sliceFns.push s!"{bname}.{n}" }
-      -- the types of the unknowns: unknown `i` stands at parameter `i`
+      -- the types of the unknowns: unknown `i` stands at parameter `i`, or for the content of
+      -- the cell a borrow parameter `i` borrows
+      let content (d : Term) : Term := match d with | .ref A => A | A => A
+      let isRef := ds.map fun d => d matches .ref _
       let st0 : MState := { globals := globals, inds := inds }
-      let tys := ds.map fun d => match runM (evalType 10000 d) st0 with
+      let tys := ds.map fun d => match runM (evalType 10000 (content d)) st0 with
         | .ok v => v
         | .error _ => Value.bot
       let st : MState := { st0 with absTy := tys.toArray, nextAbs := k }
-      let grounds := ds.map (ground inds 2)
-      let call (args : List Value) : Term := .call (.const n) (args.map .val) false
+      let grounds := ds.map fun d => ground inds 2 (content d)
+      if isRef.any id then T := { T with borrowFns := T.borrowFns + 1 }
+      -- a borrow parameter is passed a borrow of a fresh cell: `let c = v; F(&c, …)`; with
+      -- `final? = some j`, the run reads the `j`-th such cell afterwards (its final content)
+      let refPos := (List.range k).filter fun i => isRef[i]!
+      let nr := refPos.length
+      let call (args : List Value) (final? : Option Nat := none) : Term :=
+        let argT (i : Nat) : Term := match refPos.findIdx? (· == i) with
+          | some j => .borrow (.var (nr - 1 - j))
+          | none => .val args[i]!
+        let callT : Term := .call (.const n) ((List.range k).map argT) false
+        let body := match final? with
+          | none => callT
+          | some j => .seq callT (.place (.var (nr - 1 - j)))
+        refPos.foldr (fun i acc => .letIn ⟨"c"⟩ (.val args[i]!) acc) body
       -- generic, every ground combination (capped), and one unknown with the rest ground
       let allGround := (grounds.foldr (fun vs acc => vs.flatMap fun v => acc.map (v :: ·)) [[]]).take 27
       let generic := (List.range k).map fun i => Value.abs i
@@ -173,6 +210,14 @@ def main : IO UInt32 := do
         let r := realRun st (call args)
         let (h, qs) := heapRun S k (call args)
         T := compareRun T s!"{bname}.{what}" r h
+        T := capCheck T s!"{bname}.{what}" S k (call args)
+        -- the final content of each borrowed cell
+        for j in List.range nr do
+          let rj := realRun st (call args (some j))
+          let (hj, _) := heapRun S k (call args (some j))
+          T := { T with finalChecks := T.finalChecks + 1 }
+          T := compareRun T s!"{bname}.{what}, final content of borrowed cell {j}" rj hj
+          T := capCheck T s!"{bname}.{what}, final {j}" S k (call args (some j))
         -- (P) on the real machine: one unknown, not asked about by the heap run
         let unknowns := (List.range k).filter fun i => args[i]? == some (.abs i)
         if unknowns.length == 1 && k > 0 then
@@ -185,7 +230,7 @@ def main : IO UInt32 := do
             T := { T with pSkippedQueried := T.pSkippedQueried + 1 }
           else if let .val vr := r then
             for v in (grounds[i]?.getD []).take 3 do
-              let inst := realRun st (call (args.set i v))
+              let inst := realRun st (call (args.set i v) none)
               let sub := match runM (substV 100000 (.abs i) v vr) st with
                 | .ok w => Out.val w
                 | .error m => .err m
@@ -199,8 +244,11 @@ def main : IO UInt32 := do
   IO.println s!"  {", ".intercalate T.sliceFns.toList}"
   IO.println s!"runs: {T.runs}; same value: {T.agree}; both stuck (real closed off): {T.bothStuck}; both errors: {T.bothErr}; real undecided: {T.realUndecided}; heap outside the slice: {T.heapOutside}"
   IO.println s!"differences: {T.mismatch.size}"
-  for m in T.mismatch.toList.take 40 do IO.println s!"  {m}"
+  for m in T.mismatch.toList do IO.println s!"  {m}"
   IO.println s!"(P) on the real machine, where the heap run did not ask about the unknown: {T.pChecks} checks, {T.pAgree} agree, {T.pMismatch.size} differ; runs skipped because the heap asked about the unknown: {T.pSkippedQueried}"
   for m in T.pMismatch.toList.take 40 do IO.println s!"  {m}"
   IO.println s!"runs with one unknown: {T.oneUnknownRuns}; the unknown never asked about: {T.notAskedNoWalk} with reads that look only where they go, {T.notAskedWalk} if every read walks the value read (as the real machine's hasHole and loan searches do)"
-  pure (if T.mismatch.isEmpty && T.pMismatch.isEmpty then 0 else 1)
+  IO.println s!"functions with a borrow parameter: {T.borrowFns}; final contents of borrowed cells compared: {T.finalChecks}"
+  IO.println s!"capability runs (the frame property's discipline): {T.capRuns}; refused: {T.capViolations.size}"
+  for m in T.capViolations.toList.take 40 do IO.println s!"  {m}"
+  pure (if T.mismatch.isEmpty && T.pMismatch.isEmpty && T.capViolations.isEmpty then 0 else 1)

@@ -831,13 +831,36 @@ def obsResult (fuel : Nat) (r : Value) (σw? : Option Nat) (observing : Bool) : 
     popTemp
 termination_by structural fuel
 
+/-- [Frame] F4 (`notes/frame-model.md`): in a run whose effects persist, a loan in the top frame
+is borrowed from the top frame.
+Nothing below the running code can hold a borrow of a place it owns: there are no borrows in data
+and no borrows of borrows, a closure captures no borrow, and a borrow of a local never outlives it
+([Drop]). So [Access] and [Drop], which start from a place of the top frame, only ever end a
+borrower of the top frame, and the frame property's one channel downward stays the borrows the
+frame holds (their [End] writes the lender's place). This is the single place they end such a
+borrow, and it asserts F4 rather than trusting it: a violation is an internal error, never a
+silent write below the frame. Inside a private copy (`privateDepth > 0`) F4 need not hold: the
+checker's scaffolding binds copies of field or captured values in a frame of its own (a field's
+type computed at the value's fields, `fieldTele`), and a copy may hold a live loan whose borrower
+is below (`DepFields.CellGet`); whatever [Access] ends there is discarded with the copy. -/
+def endTopLoan (fuel : Nat) (l : Nat) (site : String := "") : M Unit := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let env := (← get).env
+  match findBorrow env l with
+  | some (.bind f _) | some (.temp f _) =>
+    if f + 1 != env.size && (← get).privateDepth == 0 then
+      err s!"internal: [Frame] {site}: the loan {l} lies in the top frame but is borrowed from frame {f} below it (F4)"
+  | none => pure ()
+  endBorrow fuel' l
+termination_by structural fuel
+
 /-- [Access], path part: end every borrow whose loan is on the path to `p`. -/
 def accessPath (fuel : Nat) (p : Place) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let (i, ss) := p.steps
   let env := (← get).env
   match firstLiveLoanOnPath env (valAt env (← varPos i)) ss with
-  | some l => endBorrow fuel' l; accessPath fuel' p
+  | some l => endTopLoan fuel' l "accessPath"; accessPath fuel' p
   | none => pure ()
 termination_by structural fuel
 
@@ -850,7 +873,7 @@ def accessInside (fuel : Nat) (p : Place) (owned : Bool := false) : M Unit := do
   unless ls.isEmpty do
     fire .Access fun _ => s!"loans {ls} inside {v}{if owned then " (the part the place owns: before an assignment, D67)" else ""}"
   match ls with
-  | l :: _ => endBorrow fuel' l; accessInside fuel' p owned
+  | l :: _ => endTopLoan fuel' l "accessInside"; accessInside fuel' p owned
   | [] => pure ()
 termination_by structural fuel
 
@@ -863,7 +886,7 @@ def accessNeutralHead (fuel : Nat) (p : Place) : M Unit := do
   match v with
   | .sealed _ | .abs _ =>
     match liveLoansIn (← get).env v with
-    | l :: _ => endBorrow fuel' l; accessNeutralHead fuel' p
+    | l :: _ => endTopLoan fuel' l "neutralHead"; accessNeutralHead fuel' p
     | [] => pure ()
   | _ => pure ()
 termination_by structural fuel
@@ -983,7 +1006,7 @@ def endLoansOfTopBind (fuel : Nat) (f : Nat) : M Unit := do
   | l :: _ =>
     match findBorrow (← get).env l with
     | some (.temp _ _) => err s!"[Drop] {b.hint.name} dies while a value in flight borrows it"
-    | _ => endBorrow fuel' l; endLoansOfTopBind fuel' f
+    | _ => endTopLoan fuel' l "dropBind"; endLoansOfTopBind fuel' f
   | [] => pure ()
 termination_by structural fuel
 
@@ -1007,7 +1030,7 @@ def endLoansOfTopTemp (fuel : Nat) : M Unit := do
   | l :: _ =>
     match findBorrow (← get).env l with
     | some (.temp _ _) => err "[Drop] a discarded value dies while a value in flight borrows it"
-    | _ => endBorrow fuel' l; endLoansOfTopTemp fuel'
+    | _ => endTopLoan fuel' l "dropTemp"; endLoansOfTopTemp fuel'
   | [] => pure ()
 termination_by structural fuel
 

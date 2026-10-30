@@ -436,3 +436,28 @@ ochr Moves uses Nats, WordType {
     match n { Z => 0, S _ => 1 })
 }
 
+
+/-! ## The frame property (notes/frame-model.md)
+
+A run changes the state below its own frame only through the borrows its frame holds; so a
+borrow of a local can never reach a caller (F4), a closure writes only its own copy of what it
+captured (F1), and re-pointing a borrow parameter at a local cuts it off from the caller's place
+(F2). Each probe is a true statement, accepted, beside the false one, rejected. -/
+
+ochr FrameModel uses Nats, Fixtures, WordType {
+  -- F4: a borrow of a local escaping through a stuck call: at the generic call `TailM(&a)` closes
+  -- off, its hole sits in `a`'s fill, and `a` dies while the result in flight borrows it
+  reject def RetHole (x : &Nat) (n : Nat) : &Nat := (let a = n; TailM(&a))
+  -- twin of RetHole: the stuck call borrows the parameter, which outlives the call
+  def RetHoleOk (x : &Nat) (n : Nat) : &Nat := (let a = n; TailM(x))
+  -- F1: a closure that assigns its capture assigns its own copy
+  def ClosOwn (w : Word) : Id(Word, (let y = w; let f = (λ(u : Unit) : Unit => (y := Zero)); f(()); y), w) := refl
+  -- twin of ClosOwn: the false statement that the closure wrote the caller's place
+  reject def ClosOwnLie (w : Word) : Id(Word, (let y = w; let f = (λ(u : Unit) : Unit => (y := Zero)); f(()); y), Zero) := refl
+  -- F2: re-pointing a borrow parameter at a local ends the old borrow (its content goes back to
+  -- the caller) and writes after that land in the local, not in the caller's place
+  def ReassignParam (x : &Nat) : Unit := (let a = 5; x := &a; *x := 7)
+  def ReassignStmt (c0 : Nat) : Id(Nat, (let c = c0; ReassignParam(&c); c), c0) := refl
+  -- twin of ReassignStmt: the false statement that the write reached the caller
+  reject def ReassignLie (c0 : Nat) : Id(Nat, (let c = c0; ReassignParam(&c); c), 7) := refl
+}
