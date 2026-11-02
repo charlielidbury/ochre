@@ -34,7 +34,11 @@
 
 // Notation helpers.
 #let seal(t) = $lr(⌈ #t ⌉)$
-#let obs(t) = $lr(⟦ #t ⟧)$
+// The observation of t, optionally at footprint w from state s: its result and the final
+// contents of the places in w. Written Obs, since ⟦·⟧ is the denotation (deno below).
+#let obs(t, w: none, s: none) = $attach(upright("Obs"), tr: #w, br: #s) lr(( #t ))$
+// The denotation of x in the set model.
+#let deno(x) = $lr(⟦ #x ⟧)$
 
 // Inference rule: premises (any number) over a conclusion, optional name on the right.
 #let infer(name: none, ..args) = {

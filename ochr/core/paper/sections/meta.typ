@@ -5,7 +5,6 @@
 #show figure.where(kind: "ochr-thm"): it => block(width: 100%, above: 0.9em, below: 0.9em, breakable: true, align(left)[
   *#it.supplement #context it.counter.display(it.numbering) (#it.caption.body).* #it.body
 ])
-#let dg(x) = $#x^dagger$
 
 This section states the properties Ochr is designed to have and the evidence for each (@fig-claims). None of them is mechanised. Soundness is proved on paper for a first-order fragment, conditional on two stated assumptions (@sec-tf). Consistency, the agreement of the checker's two evaluation paths, and adequacy are conjectures; for them we sketch the model and the argument we expect. The rest of the evidence is the checker's regression suite (@sec-impl).
 

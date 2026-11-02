@@ -12,7 +12,7 @@ This section introduces Ochr through its running examples. Everything is informa
     [`⋆`], [the value of every proof],
     [`{ c ↦ v | x ↦ w }`], [an environment: bindings, with frames separated by `|`, oldest first],
     [generic call], [the most general call of a definition, at which it is checked (@sec-typing)],
-    [`⟦t⟧`], [the _observation_ of `t`: its result and the final contents of the places it may write],
+    [#obs(`t`)], [the _observation_ of `t`: its result and the final contents of the places it may write],
     table.hline(stroke: 0.5pt),
   )}),
   caption: [Notation used from @sec-overview on.],
@@ -50,8 +50,8 @@ Write `N(σ)` for #seal(`let c = σ; AddM(&c, 0); c`). It is a neutral value, li
 The type `Id(Unit, AddM(x, 0), ())` compares two computations. It is evaluated at the environment where it is formed. Each side runs on its own copy of that environment; the result and the final contents of the places the side may write form its _observation_; and `Id` computes to ordinary equality between the two observations. A definition taking `x : &Nat` is checked at its _generic call_, its most general call `AddMZero(&c)` from `{ c ↦ σ }`, where the fresh owned place `c` stands for whatever a caller lends. So the place that may be written is `c`, the owner of `x`'s loan:
 
 ```
-⟦AddM(x, 0)⟧  =  ((), N(σ))          // the call is stuck, so c receives the sealed program
-⟦()⟧          =  ((), σ)             // nothing happens; ending x's borrow returns σ to c
+Obs(AddM(x, 0))  =  ((), N(σ))       // the call is stuck, so c receives the sealed program
+Obs(())          =  ((), σ)          // nothing happens; ending x's borrow returns σ to c
 
 Id(Unit, AddM(x, 0), ())  ≡  Eq(Unit, (), ()) ∧ Eq(Nat, N(σ), σ)  ≡  Eq(Nat, N(σ), σ)
 ```
@@ -78,8 +78,8 @@ The recursive call is checked by the same rule that produced the goal: the calle
 because matching `S(p)` through the borrow and taking `&p` leaves the successor in place, around a loan for the predecessor. The owner of the argument's loan is found by following it outwards: `loan₁` sits inside `x`'s borrow, whose loan sits in `c`. So the recursive call's statement observes `c`, and running `AddM` on the argument fills `loan₁` with `N(σ')`, after which `c` holds `S(N(σ'))`:
 
 ```
-⟦AddM(x, 0)⟧, x := borrow₁ σ'  =  ((), S(N(σ')))
-⟦()⟧,          x := borrow₁ σ'  =  ((), S(σ'))
+Obs(AddM(x, 0)), x := borrow₁ σ'  =  ((), S(N(σ')))
+Obs(()),          x := borrow₁ σ'  =  ((), S(σ'))
 AddMZero(&p) : Eq(Nat, S(N(σ')), S(σ'))  ≡  Eq(Nat, N(σ'), σ')
 ```
 

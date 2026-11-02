@@ -14,7 +14,7 @@ The _footprint_ `W(t, u)` is the union of the owners of the places `t` or `u` ma
 
 The _observation_ of `t` at `Ω` on footprint `W` runs `t` on a private copy of `Ω`, ends every borrow that remains, and reads off the result and the contents of the footprint:
 
-$ ⟦t⟧_Omega^W = (v, Omega'(k)_(k in W)) quad "where" cfg(Omega, t) arrow.b.double cfg(Omega'', v) "and" Omega'' arrow.squiggly^* Omega' "with no borrows left" $
+$ obs(t, w: W, s: Omega) = (v, Omega'(k)_(k in W)) quad "where" cfg(Omega, t) arrow.b.double cfg(Omega'', v) "and" Omega'' arrow.squiggly^* Omega' "with no borrows left" $
 
 If `t` is itself stuck outside any call, it is first closed off as a stuck block, so an observation always exists. Ending every remaining borrow makes the observation independent of which borrows happened to be live when `t` finished; that the order in which they are ended does not matter is property 4 of @fig-claims, assumed rather than proved.
 
@@ -22,7 +22,7 @@ If `t` is itself stuck outside any call, it is first closed off as a stuck block
 
 #figure(kind: image, supplement: [Figure],
   block[
-    $ "Id" A space t space u quad equiv quad "Eq" A space r space r' and "Eq" T_1 space w_1 space w'_1 and dots and "Eq" T_k space w_k space w'_k quad quad "where" ⟦t⟧_Omega^W = (r, overline(w)), space ⟦u⟧_Omega^W = (r', overline(w')), space W = W(t, u) $
+    $ "Id" A space t space u quad equiv quad "Eq" A space r space r' and "Eq" T_1 space w_1 space w'_1 and dots and "Eq" T_k space w_k space w'_k quad quad "where" obs(t, w: W, s: Omega) = (r, overline(w)), space obs(u, w: W, s: Omega) = (r', overline(w')), space W = W(t, u) $
     #v(4pt)
     $ "Eq" ty("D")(overline(a)) space ty("C")(overline(v)) space ty("C")(overline(w)) equiv "Eq" B_1 space v_1 space w_1 and dots and "Eq" B_k space v_k space w_k quad quad "Eq" ty("D")(overline(a)) space ty("C")(overline(v)) space ty("C")'(overline(w)) equiv ty("False") "  if " ty("C") != ty("C")' $
     $ "Eq" A space a space b equiv top "  if " a equiv b quad quad top and P equiv P equiv P and top $
