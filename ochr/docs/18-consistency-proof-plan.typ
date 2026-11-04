@@ -6,8 +6,28 @@
 #import "@preview/fletcher:0.5.8" as fletcher: diagram, edge, node
 
 #set document(title: [A plan for proving Ochr consistent])
-#set text(font: "New Computer Modern", size: 10pt)
-#set page(paper: "us-letter", margin: (x: 2.2cm, y: 2.4cm), numbering: "1")
+
+
+#let dark-mode = false
+// Colours, named by role, for light and dark pages. Status fills are pastel in both modes,
+// so the text on them is always dark.
+#let ink = if dark-mode { white } else { black }
+#let muted-ink = if dark-mode { luma(170) } else { luma(80) }
+#let code-bg = if dark-mode { rgb("#2a2a2e") } else { luma(246) }
+#let oq-fill = if dark-mode { rgb("#2e2c1b") } else { rgb("#fbfbe9") }
+#let oq-rule = rgb("#b8a200")
+#let expl-fill = if dark-mode { rgb("#1d2733") } else { rgb("#eef3f8") }
+#let expl-rule = if dark-mode { rgb("#7fa3cc") } else { rgb("#5b7fa6") }
+#let status-ink = black
+#let rem-fill = if dark-mode { rgb("#262a24") } else { rgb("#f2f5ef") }
+#let rem-rule = if dark-mode { rgb("#8fb07a") } else { rgb("#6f8f5a") }
+#set text(font: "New Computer Modern", size: 10pt, fill: ink)
+#set page(
+  paper: "us-letter",
+  margin: (x: 2.2cm, y: 2.4cm),
+  fill: if dark-mode { rgb("#1e1e21") } else { white },
+  numbering: "1",
+)
 #set par(justify: true, leading: 0.62em, spacing: 0.9em)
 #set heading(numbering: "1.1")
 #show heading.where(level: 1): it => {
@@ -16,7 +36,8 @@
   v(0.3em)
 }
 #show raw: set text(font: "DejaVu Sans Mono", size: 8.6pt)
-#show raw.where(block: true): it => block(width: 100%, inset: (x: 8pt, y: 6pt), fill: luma(246), radius: 2pt, it)
+#show raw.where(block: true): it => block(width: 100%, inset: (x: 8pt, y: 6pt), fill: code-bg, radius: 2pt, it)
+
 
 // Notation (copied from the paper).
 #let kw(s) = math.bold(math.upright(s))
@@ -41,7 +62,12 @@
 #let proof(body) = block(width: 100%, above: 0.6em, below: 0.9em, [_Proof sketch._ #body #h(1fr) $square$])
 
 // Status tags.
-#let tagc(c, s) = box(inset: (x: 3pt, y: 1.5pt), radius: 2pt, fill: c, text(size: 7.5pt, weight: "bold", s))
+#let tagc(c, s) = box(inset: (x: 3pt, y: 1.5pt), radius: 2pt, fill: c, text(
+  size: 7.5pt,
+  weight: "bold",
+  fill: status-ink,
+  s,
+))
 #let s-lean = tagc(rgb("#c9e8c9"), [proved in Lean])
 #let s-heap = tagc(rgb("#cfe0f5"), [proved on the heap slice])
 #let s-red(x) = tagc(rgb("#fbe5c0"), [reduced to #x])
@@ -53,8 +79,8 @@
 #let oq(n, title, body) = block(
   width: 100%,
   inset: 7pt,
-  stroke: (left: 2pt + rgb("#b8a200")),
-  fill: rgb("#fbfbe9"),
+  stroke: (left: 2pt + oq-rule),
+  fill: oq-fill,
   above: 0.8em,
   below: 0.8em,
 )[*Open design question Q#n (#title).* #body]
@@ -64,19 +90,39 @@
 #let explainer(title, body) = block(
   width: 100%,
   inset: 7pt,
-  stroke: (left: 2pt + rgb("#5b7fa6")),
-  fill: rgb("#eef3f8"),
+  stroke: (left: 2pt + expl-rule),
+  fill: expl-fill,
   above: 0.8em,
   below: 0.8em,
   breakable: true,
 )[#set text(size: 9pt); *Quick explainer: #title.* #body]
+
+// Reminders: notation introduced earlier in this document, restated briefly where it is
+// next used heavily, with a reference to where it was defined.
+// Why: an intuition note inside an argument, like a comment in code. The formal text does
+// the work; a why-note says what a step means and why it is there.
+#let why(body) = block(above: 0.8em, below: 1em, inset: (left: 0.8em), text(
+  size: 9pt,
+  fill: muted-ink,
+  style: "italic",
+)[Why: #body])
+
+#let reminder(body) = block(
+  width: 100%,
+  inset: 7pt,
+  stroke: (left: 2pt + rem-rule),
+  fill: rem-fill,
+  above: 0.8em,
+  below: 0.8em,
+  breakable: true,
+)[#set text(size: 9pt); *Reminder.* #body]
 
 #align(center, text(size: 16pt, weight: "bold")[A plan for proving Ochr consistent])
 #align(center, text(size: 11pt)[The rough argument to be followed, the lemmas it needs, and where it could fail])
 #v(0.3em)
 #align(center, text(
   size: 9pt,
-  fill: luma(80),
+  fill: muted-ink,
 )[Draft for discussion · 2 November 2026 · a plan for a proof, not a proof])
 #v(0.6em)
 
@@ -108,43 +154,43 @@ Design questions that must be decided before an argument can be written are mark
 
 == Terms, values and neutrals
 
-Terms and types share one grammar: variables, the universes `Prop` and $ty("Type")_i$, n-ary Π-types, recursive functions $kw("fix") f (overline(x) : overline(A)) : B space kw("by") x_j := t$ (a `fix` without `by` is a λ), saturated calls, inductive types $ty("D")(overline(a))$ and constructors $ty("C")(overline(t))$, the primitive equality `Eq A t u`, transport $ty("J")(A, a, b, P, h, t)$ and `rewrite h in t`, borrow types `&A`, places $p ::= x | *p | p.g$, borrowing `&p`, assignment `p := t`, `let`, sequencing `t; u`, `match p { C₁(ȳ₁) ⇒ t₁, … }` with any number of arms, `split f in t`, and `Id A t u`, the equality of two computations.
+Terms and types share one grammar: variables, the universes `Prop` and $ty("Type")_i$, n-ary Π-types, recursive functions $kw("fix") f (overline(x) : overline(A)) : B kw("by") x_j := t$ (a `fix` without `by` is a λ), saturated calls, inductive types $ty("D")(overline(a))$ and constructors $ty("C")(overline(t))$, the primitive equality $ty("Eq") A space t space u$, transport $ty("J")(A, a, b, P, h, t)$ and $kw("rewrite") h kw("in") t$, borrow types $\&A$, places $p ::= x | *p | p.g$, borrowing $\&p$, assignment $p := t$, `let`, sequencing $t; u$, $kw("match") p space {ty("C")_1 (overline(y)_1) => t_1, dots}$ with any number of arms, $kw("split") f kw("in") t$, and $ty("Id") A space t space u$, the equality of two computations.
 
-Every type of data and every connective is an inductive declaration `inductive D (x̄ : X̄) : s := C₁(ḡ₁ : B̄₁) | …` with $s in {ty("Prop"), ty("Type")_0}$. The library declares `Nat`, `Unit`, `Pair`, `False` (no constructors), `True` (one constructor `I`, written `refl`) and `And`. A field's type may mention the type being declared, other declared types, parameters, earlier fields of the same constructor (the fields form a _telescope_), calls of earlier _type functions_ (definitions whose codomain is a sort), and equations between _first-order data_ (types built from inductive types and parameters, with no Π, no `&` and no sort); never `Π` or `&`. Parameters whose declared type is syntactically a sort are _type parameters_; the others are _value parameters_, and a recursive occurrence of `D` in a field may take any arguments at them (_non-uniform_ occurrences). A family indexed by values is written by fixing the index with an equation field (_Fording_): `Vec(A, n) := VNil(h : Eq(Nat, n, Z)) | VCons(m : Nat, x : A, xs : Vec(A, m), h : Eq(Nat, n, S(m)))`.
+Every type of data and every connective is an inductive declaration $kw("inductive") ty("D") (overline(x) : overline(X)) : s := ty("C")_1 (overline(g)_1 : overline(B)_1) | dots$ with $s in {ty("Prop"), ty("Type")_0}$. The library declares `Nat`, `Unit`, `Pair`, `False` (no constructors), `True` (one constructor `I`, written `refl`) and `And`. A field's type may mention the type being declared, other declared types, parameters, earlier fields of the same constructor (the fields form a _telescope_), calls of earlier _type functions_ (definitions whose codomain is a sort), and equations between _first-order data_ (types built from inductive types and parameters, with no Π, no `&` and no sort); never `Π` or `&`. Parameters whose declared type is syntactically a sort are _type parameters_; the others are _value parameters_, and a recursive occurrence of $ty("D")$ in a field may take any arguments at them (_non-uniform_ occurrences). A family indexed by values is written by fixing the index with an equation field (_Fording_): `Vec(A, n) := VNil(h : Eq(Nat, n, Z)) | VCons(m : Nat, x : A, xs : Vec(A, m), h : Eq(Nat, n, S(m)))`.
 
-`&A` requires $A : ty("Type")_0$, and `&` occurs only as the whole declared type of a parameter, result or annotated term: never inside another type and never as the result of computing a type. So there are no borrows inside data and no borrows of borrows. Universes are not cumulative, and `Prop : Type₁` beside `Type₀ : Type₁`.
+$\&A$ requires $A : ty("Type")_0$, and `&` occurs only as the whole declared type of a parameter, result or annotated term: never inside another type and never as the result of computing a type. So there are no borrows inside data and no borrows of borrows. Universes are not cumulative, and `Prop : Type₁` beside `Type₀ : Type₁`.
 
-*Values* are constructor values $ty("C")(overline(a); overline(v))$ (recording the inductive's parameters $overline(a)$), the proof value `⋆`, top-level function names, closures $chevron.l overline(kappa) tack.r kw("fix") dots chevron.r$ (code with captured values $overline(kappa)$), Π-closures $chevron.l overline(kappa) tack.r Pi(overline(x) : overline(A)). B chevron.r$ (types are values), type values, borrows $"borrow"_ell v$, loans $"loan"_ell$, the moved-out marker `⊥`, and _neutrals_. A neutral is an _abstract value_ σ (an unknown of a known type Δ(σ), introduced only by the checker) or a _sealed program_ #seal[$t$] (a closed program whose run is stuck). A value is _borrow-free_ if it contains no borrow and no live loan.
+*Values* are constructor values $ty("C")(overline(a); overline(v))$ (recording the inductive's parameters $overline(a)$), the proof value `⋆`, top-level function names, closures $chevron.l overline(kappa) tack.r kw("fix") dots chevron.r$ (code with captured values $overline(kappa)$), Π-closures $chevron.l overline(kappa) tack.r Pi(overline(x) : overline(A)). B chevron.r$ (types are values), type values, borrows $"borrow"_ell v$, loans $"loan"_ell$, the moved-out marker `⊥`, and _neutrals_. A neutral is an _abstract value_ σ (an unknown of a known type Δ(σ), introduced only by the checker) or a _sealed program_ #seal[$t$] (a program with no free variables whose run is stuck). A value is _borrow-free_ if it contains no borrow and no live loan. A value is _closed_ if it contains no free variables, no abstract values, no loans and no `⊥`: nothing whose meaning depends on an environment, on what the unknowns stand for, or on contents held elsewhere in the state. A closed value therefore means the same thing wherever it appears, which is what lets the model give it a meaning $deno(v)$ on its own (@sec-model). A sealed program has no free variables but is stuck on some abstract value, so it is not closed; nor is anything containing one.
 
 == States, borrows and resolution <sec-states>
 
-An environment Ω is a stack of frames, each binding variables (with declared types) to values, plus temporaries. A _state_ adds Δ (the types of abstract values), ρ (the refinements and generalisation records made so far), the goal while a definition is checked, and the recursion stack. $"content"_Omega (p)$ follows a place through variables, borrows (`*p` looks inside $"borrow"_ell v$ at `v`) and fields.
+An environment Ω is a stack of frames, each binding variables (with declared types) to values, plus temporaries. A _state_ adds Δ (the types of abstract values), ρ (the refinements and generalisation records made so far), the goal while a definition is checked, and the recursion stack. $"content"_Omega (p)$ follows a place through variables, borrows ($*p$ looks inside $"borrow"_ell v$ at $v$) and fields.
 
-*Borrows.* `&p` moves the content `v` of `p` into $"borrow"_ell v$ and leaves $"loan"_ell$ at `p`. _Ending_ the borrow ([End]) replaces it by `⊥` and substitutes its content for every occurrence of $"loan"_ell$: a loan is a variable bound by its borrow. Every access to a place is preceded by [Access], which ends every borrow whose loan lies on the path to the place or inside its content (for a match, which inspects only the head: on the path, at the head, or anywhere inside a neutral head). Reading non-copy data moves it out, leaving `⊥`; data of a _copy type_ (`Unit`, sorts, propositions, inductives declared `copy`, and non-recursive inductives whose fields are copy types) is copied, and `clone(p)` copies explicitly. The machine's rules for these steps are [Borrow], [Read] (moving data out), [Move] (moving a borrow), [Copy], [Clone] and [Assign]; [Ctor] builds a constructor value. A borrow must be whole (no `⊥` inside) when it ends, is returned, or is passed to a call that closes off.
+*Borrows.* $\&p$ moves the content $v$ of $p$ into $"borrow"_ell v$ and leaves $"loan"_ell$ at $p$. _Ending_ the borrow ([End]) replaces it by `⊥` and substitutes its content for every occurrence of $"loan"_ell$: a loan is a variable bound by its borrow. Every access to a place is preceded by [Access], which ends every borrow whose loan lies on the path to the place or inside its content (for a match, which inspects only the head: on the path, at the head, or anywhere inside a neutral head). Reading non-copy data moves it out, leaving `⊥`; data of a _copy type_ (`Unit`, sorts, propositions, inductives declared `copy`, and non-recursive inductives whose fields are copy types) is copied, and $kw("clone")(p)$ copies explicitly. The machine's rules for these steps are [Borrow], [Read] (moving data out), [Move] (moving a borrow), [Copy], [Clone] and [Assign]; [Ctor] builds a constructor value. A borrow must be whole (no `⊥` inside) when it ends, is returned, or is passed to a call that closes off.
 
 *Dropping.* When an owned value dies holding a live loan, [Drop] ends the borrower if the borrower is held in a binding, and fails if the borrower is a value in flight (a temporary such as a result being returned). So a local may die while a variable that borrowed it is never used again, but nothing may return a borrow of its own local.
 
-*Owners and resolution.* $"owners"_Omega (ell)$ follows each occurrence of $"loan"_ell$ outward: through the content of an enclosing $"borrow"_m$ to $"owners"_Omega (m)$, otherwise to the owned position holding it. The _resolution_ $res(Omega)$ ends every borrow; $res_Omega (w)$ is `w` with each live loan replaced by the resolved content of its borrow.
+*Owners and resolution.* $"owners"_Omega (ell)$ follows each occurrence of $"loan"_ell$ outward: through the content of an enclosing $"borrow"_m$ to $"owners"_Omega (m)$, otherwise to the owned position holding it. The _resolution_ $res(Omega)$ ends every borrow; $res_Omega (w)$ is $w$ with each live loan replaced by the resolved content of its borrow.
 
-*Well-formedness.* A state is well formed when (WF1) each label has at most one borrow, which is the whole value of a binding or temporary, never inside data, a sealed program, a closure or a type; (WF2) every loan's borrow is in Ω, except a loan inside a sealed program whose borrow is outside the run (an _inert_ loan); outside sealed programs a label occurs as a loan at most once, inside them any number of times; (WF3) the relation "a loan of ℓ occurs in the content of borrow m" is acyclic; (WF4) closures and Π-closures capture no borrow and no `⊥`, and sealed programs are closed; (WF5) at every call point each argument is loan-free or is $"borrow"_ell u$ with `u` loan-free; (WF6) each binding's value is `⊥`, or a loan whose borrow's content has the binding's type, or a value of the binding's type, and every σ has a type in Δ.
+*Well-formedness.* A state is well formed when (WF1) each label has at most one borrow, which is the whole value of a binding or temporary, never inside data, a sealed program, a closure or a type; (WF2) every loan's borrow is in Ω, except a loan inside a sealed program whose borrow is outside the run (an _inert_ loan); outside sealed programs a label occurs as a loan at most once, inside them any number of times; (WF3) the relation "a loan of ℓ occurs in the content of borrow m" is acyclic; (WF4) closures and Π-closures capture no borrow and no `⊥`, and sealed programs are closed; (WF5) at every call point each argument is loan-free or is $"borrow"_ell u$ with $u$ loan-free; (WF6) each binding's value is `⊥`, or a loan whose borrow's content has the binding's type, or a value of the binding's type, and every σ has a type in Δ.
 
 == The machine, closing off and sealed programs <sec-machine>
 
 The machine is big-step and deterministic: $cfg(Omega, t) ev cfg(Omega', v)$, or the run is _stuck_ (it must inspect a neutral), or it fails. Calls evaluate their arguments left to right into temporaries, push a frame binding the parameters, run the body, and pop the frame, dropping its bindings. Types and proofs are _erased_: an erased term runs on a private copy of the state, which is discarded (@sec-erasure).
 
-*Closing off* ([Close]). When a call $f(overline(w))$ is stuck, the call itself returns. Let the borrow arguments be $w_i = "borrow"_(ell_i) u_i$ ($i in I$) with each $u_i$ loan-free, let `L` be $"let" c_i = u_i$ for $i in I$, and `C` the call $f(overline(a))$ with $a_i = \&c_i$ for $i in I$ and $a_i = w_i$ otherwise. If `f`'s declared codomain is borrow-free, the call returns #seal[$L; C$] and each $"loan"_(ell_i)$ is filled with #seal[$L; C; c_i$]. If it is `&T`, the call returns $"borrow"_k seal(L"; let" r = C"; " *r)$ for a fresh `k`, and each $"loan"_(ell_i)$ is filled with #seal[$L; "let" r = C; *r := "loan"_k; c_i$]: the fills have a _hole_ $"loan"_k$ for the final content the caller will write through the returned borrow, which the caller's eventual [End] of $"borrow"_k$ supplies by substitution. A result at type `Unit` is `()`. A call whose head is a neutral is stuck at once and closed off the same way.
+*Closing off* ([Close]). When a call $f(overline(w))$ is stuck, the call itself returns. Let the borrow arguments be $w_i = "borrow"_(ell_i) u_i$ ($i in I$) with each $u_i$ loan-free, let $L$ be $"let" c_i = u_i$ for $i in I$, and $C$ the call $f(overline(a))$ with $a_i = \&c_i$ for $i in I$ and $a_i = w_i$ otherwise. If $f$'s declared codomain is borrow-free, the call returns #seal[$L; C$] and each $"loan"_(ell_i)$ is filled with #seal[$L; C; c_i$]. If it is $\&T$, the call returns $"borrow"_k seal(L"; let" r = C"; " *r)$ for a fresh $k$, and each $"loan"_(ell_i)$ is filled with #seal[$L; "let" r = C; *r := "loan"_k; c_i$]: the fills have a _hole_ $"loan"_k$ for the final content the caller will write through the returned borrow, which the caller's eventual [End] of $"borrow"_k$ supplies by substitution. A result at type `Unit` is `()`. A call whose head is a neutral is stuck at once and closed off the same way.
 
-*Sealed programs.* Values are kept in normal form. A sealed program's normal form is its run from the empty environment, except that its head call `C` may not itself close off ([Seal]'s head guard); so a sealed program either runs to a value or stays exactly as it is. A loan whose borrow lives outside the run is inert: the run treats it like an abstract value.
+*Sealed programs.* Values are kept in normal form. A sealed program's normal form is its run from the empty environment, except that its head call $C$ may not itself close off ([Seal]'s head guard); so a sealed program either runs to a value or stays exactly as it is. A loan whose borrow lives outside the run is inert: the run treats it like an abstract value.
 
 *Stuck blocks.* A stuck `match` that is not the body of a call is closed off as a call of an anonymous function of the places it uses. Pattern variables are first resolved to the places they denote; the block takes each maximal place by move if some arm moves it, by borrow if some arm writes or borrows it, and by copy otherwise. A stuck `J` is closed off the same way, with its transported term as the block's one arm.
 
 == Observation, footprints, `Id` and `Eq` <sec-obs>
 
-The _footprint_ $W_Omega (t, u)$ is the set of owners of the roots of the places that `t` or `u` borrows or assigns, and of the borrow variables they read whole, in a canonical order read off the syntax. A place that is only read contributes nothing. The owner of a variable holding a borrow is the owners of its loan; of an owned variable, the variable itself.
+The _footprint_ $W_Omega (t, u)$ is the set of owners of the roots of the places that $t$ or $u$ borrows or assigns, and of the borrow variables they read whole, in a canonical order read off the syntax. A place that is only read contributes nothing. The owner of a variable holding a borrow is the owners of its loan; of an owned variable, the variable itself.
 
-The _observation_ $obs(t, w: W, s: Omega)$ runs `t` on a private copy of Ω, ends every remaining borrow, and returns the tuple of the result and the contents of the positions of `W`. A borrow-typed result is observed after writing a given fresh $sigma_w$ through it, so that its owners show where it points ([Obs-borrow]); only conversion observes such results.
+The _observation_ $obs(t, w: W, s: Omega)$ runs $t$ on a private copy of Ω, ends every remaining borrow, and returns the tuple of the result and the contents of the positions of $W$. A borrow-typed result is observed after writing a given fresh $sigma_w$ through it, so that its owners show where it points ([Obs-borrow]); only conversion observes such results.
 
-`Id(A, t, u)` computes, at Ω, to $"and"("eq"(A, r, r'), "eq"(T_1, w_1, w'_1), dots)$, where $obs(t, w: W, s: Omega) = (r, overline(w))$, $obs(u, w: W, s: Omega) = (r', overline(w'))$ and $W = W_Omega (t, u)$; `A` must be borrow-free. `Eq` computes through the smart constructor `eq`: on two values of one constructor it is the conjunction of the fields' equations (injectivity; for a _dependent_ constructor, one some of whose fields' types mention earlier _index_ fields, only when the index fields are convertible), on values of different constructors of one inductive it is `False` (disjointness), on convertible values (equal by definitional equality, @sec-conv) it is `True`, and otherwise, or whenever `⊥` occurs in a side, it is the stuck type `Eq T v w`. `and` drops `True` conjuncts. `J(A, a, b, P, h, t)` computes to `t` only when $a equiv b$; otherwise it is stuck and closed off.
+$ty("Id")(A, t, u)$ computes, at Ω, to $"and"("eq"(A, r, r'), "eq"(T_1, w_1, w'_1), dots)$, where $obs(t, w: W, s: Omega) = (r, overline(w))$, $obs(u, w: W, s: Omega) = (r', overline(w'))$ and $W = W_Omega (t, u)$; $A$ must be borrow-free. `Eq` computes through the smart constructor `eq`: on two values of one constructor it is the conjunction of the fields' equations (injectivity; for a _dependent_ constructor, one some of whose fields' types mention earlier _index_ fields, only when the index fields are convertible), on values of different constructors of one inductive it is `False` (disjointness), on convertible values (equal by definitional equality, @sec-conv) it is `True`, and otherwise, or whenever `⊥` occurs in a side, it is the stuck type $ty("Eq") T space v space w$. `and` drops `True` conjuncts. $ty("J")(A, a, b, P, h, t)$ computes to $t$ only when $a equiv b$; otherwise it is stuck and closed off.
 
 == Erasure and private copies <sec-erasure>
 
@@ -156,14 +202,14 @@ The typing judgement $Omega tack.r t ev v : A tack.l Omega'$ is the machine run 
 
 - *[Call-type].* The type of a call is its callee's codomain evaluated, on a private copy, with the parameters bound to the arguments' values; each argument's type must convert to the corresponding parameter type, evaluated the same way.
 - *[T-Call].* The call's type is its [Call-type]; then the callee runs in the machine, where a stuck body closes off. For a proof-typed call ([T-Call-proof]) the body is never run.
-- *[Rec].* In the body of $kw("fix") f dots kw("by") x_j$, `f` occurs only as the head of a call (also inside nested functions and block arms), and every call of `f`, recognised by the name `f` binds for itself or a nested function's capture of that name, passes in position `j` a strict subterm (through any field, and through the borrow for `&D`) of the _entry value_ of $x_j$ (its value when the call started), as refined so far.
-- *[Split].* A match on a place whose content is an abstract value σ checks each arm `i` under the refinement $sigma := ty("C")_i (overline(sigma)_i)$ with fresh field values typed by the constructor's telescope; the refinement is applied to the environment, every stored type, Δ and the goal, with sealed programs re-normalised. Then the match is closed off as a stuck block, and checking continues once from the unrefined state.
-- *[Split-gen].* A match on a sealed program `n` first _generalises_ it: replace `n` everywhere by a fresh σ of the place's type, record $n := sigma$ (so a later derivation of `n` normalises to σ), then split σ. `split f in t` does the same for the first stuck call of `f` in the goal.
-- *Worlds.* Each arm of a split is checked in its own _world_. Leaving an arm discards everything it established except fresh-name counters, the types of abstract values it created, and _η-refinements_ (refining σ to $ty("C")(overline(sigma))$ because σ's type has only the one constructor `C`, which follows from the type alone). A generalisation record lives until the arm that made it ends.
-- *[Def].* A definition is checked at its _generic call_: each borrow parameter is bound to $"borrow"_(ell_i) sigma_i$ with a fresh owned cell $c_i |-> "loan"_(ell_i)$ in a bottom frame, each proof parameter to `⋆`, each other parameter to a fresh $sigma_i$. The goal `G` is the [Call-type] of that call. The body is checked in _tail position_ (where only trailing drops follow: the body itself, and the tails of `let`s, sequences and arms in tail position), producing a finite _case tree_ whose leaves $(Omega', v, A)$ are the states, values and types at the end of each path; on every leaf the frame's pop must succeed and $A equiv G'$, the goal refined along that path. The tail rules are [Tail-let] and [Tail-seq] (run a `let` or sequence, then continue), [Tail-match] (a match on a known constructor), [Tail-split] (a split on an abstract value, one subtree per arm), [Tail-gen] (generalise a sealed program, then split), [Tail-prop] (a match on a proof, one subtree per arm) and [Tail-end] (a leaf). Constants are checked from the empty state ([Const]); inductive declarations by [Ind-decl], which checks the conditions of @sec-model-conditions.
-- *Matches on proofs.* A match whose arms name constructors of an inductive in `Prop` is decided by the scrutinee's type, never its content (`⋆`). It may produce data or a type only if the inductive is a _subsingleton_ (no constructors, or one whose fields are all proofs). `match h {}` on `h : False` is ex falso; in tail position it contributes no leaves.
+- *[Rec].* In the body of $kw("fix") f dots kw("by") x_j$, $f$ occurs only as the head of a call (also inside nested functions and block arms), and every call of $f$, recognised by the name $f$ binds for itself or a nested function's capture of that name, passes in position $j$ a strict subterm (through any field, and through the borrow for $\&ty("D")$) of the _entry value_ of $x_j$ (its value when the call started), as refined so far.
+- *[Split].* A match on a place whose content is an abstract value σ checks each arm $i$ under the refinement $sigma := ty("C")_i (overline(sigma)_i)$ with fresh field values typed by the constructor's telescope; the refinement is applied to the environment, every stored type, Δ and the goal, with sealed programs re-normalised. Then the match is closed off as a stuck block, and checking continues once from the unrefined state.
+- *[Split-gen].* A match on a sealed program $n$ first _generalises_ it: replace $n$ everywhere by a fresh σ of the place's type, record $n := sigma$ (so a later derivation of $n$ normalises to σ), then split σ. $kw("split") f kw("in") t$ does the same for the first stuck call of $f$ in the goal.
+- *Worlds.* Each arm of a split is checked in its own _world_. Leaving an arm discards everything it established except fresh-name counters, the types of abstract values it created, and _η-refinements_ (refining σ to $ty("C")(overline(sigma))$ because σ's type has only the one constructor $ty("C")$, which follows from the type alone). A generalisation record lives until the arm that made it ends.
+- *[Def].* A definition is checked at its _generic call_: each borrow parameter is bound to $"borrow"_(ell_i) sigma_i$ with a fresh owned cell $c_i |-> "loan"_(ell_i)$ in a bottom frame, each proof parameter to `⋆`, each other parameter to a fresh $sigma_i$. The goal $G$ is the [Call-type] of that call. The body is checked in _tail position_ (where only trailing drops follow: the body itself, and the tails of `let`s, sequences and arms in tail position), producing a finite _case tree_ whose leaves $(Omega', v, A)$ are the states, values and types at the end of each path; on every leaf the frame's pop must succeed and $A equiv G'$, the goal refined along that path. The tail rules are [Tail-let] and [Tail-seq] (run a `let` or sequence, then continue), [Tail-match] (a match on a known constructor), [Tail-split] (a split on an abstract value, one subtree per arm), [Tail-gen] (generalise a sealed program, then split), [Tail-prop] (a match on a proof, one subtree per arm) and [Tail-end] (a leaf). Constants are checked from the empty state ([Const]); inductive declarations by [Ind-decl], which checks the conditions of @sec-model-conditions.
+- *Matches on proofs.* A match whose arms name constructors of an inductive in `Prop` is decided by the scrutinee's type, never its content (`⋆`). It may produce data or a type only if the inductive is a _subsingleton_ (no constructors, or one whose fields are all proofs). `match h {}` on $h : ty("False")$ is ex falso; in tail position it contributes no leaves.
 
-#explainer[large elimination and subsingletons][_Eliminating_ a value means taking it apart with a match. Matching on data is unrestricted. Matching on a proof to produce data or a type is called _large elimination_, and it needs care, because proofs are erased and every two proofs of one proposition count as equal (_proof irrelevance_). If the result could depend on which constructor the proof used, two "equal" proofs would give different results. For example, if `Or(P, Q)` could be matched to produce a `Bool`, the proofs `Inl(t)` and `Inr(t)` of `Or(True, True)` are equal yet would give `true` and `false`, so `true = false`. Large elimination is therefore allowed only from a _subsingleton_, a proposition with at most one possible proof: no constructors (`False`, where there is nothing to match) or one constructor whose fields are all proofs (`True`, `And`, an equation). Lean has the same rule.]
+#explainer[large elimination and subsingletons][_Eliminating_ a value means taking it apart with a match. Matching on data is unrestricted. Matching on a proof to produce data or a type is called _large elimination_, and it needs care, because proofs are erased and every two proofs of one proposition count as equal (_proof irrelevance_). If the result could depend on which constructor the proof used, two "equal" proofs would give different results. For example, if $ty("Or")(P, Q)$ could be matched to produce a `Bool`, the proofs $ty("Inl")(t)$ and $ty("Inr")(t)$ of `Or(True, True)` are equal yet would give `true` and `false`, so `true = false`. Large elimination is therefore allowed only from a _subsingleton_, a proposition with at most one possible proof: no constructors (`False`, where there is nothing to match) or one constructor whose fields are all proofs (`True`, `And`, an equation). Lean has the same rule.]
 
 *Dependent fields.* A field whose type mentions earlier fields makes its constructor _dependent_; the earlier fields it mentions are _index fields_. Writing, borrowing or moving a field of a dependent value _opens_ it ([Open]): while open, a data field is typed by its content, assigning it is a strong update, and a write or borrow through an index field sets the proof fields whose type mentions it to `⊥` (an error to read until reassigned). A value must be _whole_ again (every dependent constructor inside it at its telescope type, no `⊥` inside) wherever it passes to code that relies on its type ([Repack]); a part still lent at that point is checked as an unknown of its borrow's type, since the borrow may still write anything of that type there. Where a checked body returns, its result and every place it holds by borrow must be whole ([Return]); [Def] and closures check this at their body's return, and a stuck block at the end of each arm (it is an anonymous function, so its arms are its bodies).
 
@@ -174,14 +220,14 @@ Conversion $v equiv w$ is the _least_ relation closed under: [Conv-refl] identit
 == Refinements, valuations and the two paths <sec-two-paths>
 
 #thm([Definition], [refinement], [
-  A _refinement_ α assigns values to abstract values, $sigma |-> v$. It _respects_ a state Ω when each σ it refines is an abstract value of Ω and $alpha(sigma)$ is borrow-free and has a type convertible with Δ(σ). It is applied to a state, value or term by substituting and then restoring normal form: every sealed program that changed is re-run ([Seal]) and every `Eq` type rebuilt by `eq`. We write $Omega alpha$, $v alpha$, $t alpha$; α _covers_ Ω when it assigns a value to every abstract value of Ω. More generally, $Omega[w slash a]^+$ replaces every occurrence of an abstract value, loan or sealed program `a` by `w` in the values of Ω, its stored types, Δ and the goal, and then restores normal form; $"nf"(v)$ is the normal form of `v`. A refinement is _ground_ (a _valuation_) when every value it assigns contains no abstract value, no sealed program and no inert loan.
+  A _refinement_ α assigns values to abstract values, $sigma |-> v$. It _respects_ a state Ω when each σ it refines is an abstract value of Ω and $alpha(sigma)$ is borrow-free and has a type convertible with Δ(σ). It is applied to a state, value or term by substituting and then restoring normal form: every sealed program that changed is re-run ([Seal]) and every `Eq` type rebuilt by `eq`. We write $Omega alpha$, $v alpha$, $t alpha$; α _covers_ Ω when it assigns a value to every abstract value of Ω. More generally, $Omega[w slash a]^+$ replaces every occurrence of an abstract value, loan or sealed program $a$ by $w$ in the values of Ω, its stored types, Δ and the goal, and then restores normal form; $"nf"(v)$ is the normal form of $v$. A refinement is _ground_ (a _valuation_) when every value it assigns contains no abstract value, no sealed program and no inert loan.
 ]) <def-refinement>
 
 Refinements cover the three ways the checker instantiates an unknown: a case split ($sigma := ty("C")(overline(sigma)')$), a call site (a parameter's generic σ instantiated with the argument), and an abstract function instantiated with a closure. Borrow-freeness costs nothing: a borrow parameter's generic value is $"borrow"_ell sigma$ with σ borrow-free, and since `&` is never produced by computation and never an argument, no unknown type is ever refined to a borrow type.
 
 *The two paths.* Every statement is evaluated along two paths: at a definition's generic call, where calls and matches on abstract values close off, and directly at each instance, where they run. [Call-type] and [Split] identify the results, so a proof checked on the first path is used on the second. If the paths take any decision differently, and the decision changes a result, a statement proved on one path can be false on the other: a closed proof of `False`. The design principle is that _no decision that changes a result is read from a normal form_.
 
-*Ground instances.* A _ground instance_ of a definition `d` is a valuation β of its generic σ's; its state is the generic state under β; its _hypotheses_ are the proof parameters' types there, evaluated left to right; its _goal_ is the codomain there, which is also the [Call-type] of the call $d(overline(a) beta)$ from a caller whose frame holds the cells.
+*Ground instances.* A _ground instance_ of a definition $d$ is a valuation β of its generic σ's; its state is the generic state under β; its _hypotheses_ are the proof parameters' types there, evaluated left to right; its _goal_ is the codomain there, which is also the [Call-type] of the call $d(overline(a) beta)$ from a caller whose frame holds the cells.
 
 = The target <sec-target>
 
@@ -203,12 +249,12 @@ theorem consistency (q : Program) (fuel : Nat)
 
 *How the two statements relate.*
 - *Rules and checker.* @target is about the rules; the Lean statement is about the checker that implements them. Every step of this plan is phrased so that it can be stated against the checker's functions, so a completed plan would prove both, the Lean form being the stronger since it also excludes implementation errors.
-- *A literal `False` loses nothing.* If an accepted program had a parameterless `c` whose type merely computes to an empty type, one more fresh declaration turns it into a literal one: `def B : False := c` when the type computes to `False`; a one-arm match for `False ∧ ⊤`; an annotated zero-arm match for a user's empty inductive. The Lean statement quantifies over all programs, so it covers these.
+- *A literal `False` loses nothing.* If an accepted program had a parameterless $c$ whose type merely computes to an empty type, one more fresh declaration turns it into a literal one: `def B : False := c` when the type computes to `False`; a one-arm match for `False ∧ ⊤`; an annotated zero-arm match for a user's empty inductive. The Lean statement quantifies over all programs, so it covers these.
 - *Fuel.* Exhaustion is an outcome of its own that no rule below the verdict catches, and a caught failure cannot refund fuel, so a decided verdict is the same at every larger fuel. The Lean statement quantifies over every fuel and does not need this fact, but a proof may use it to fix a fuel large enough for a given run.
 - *Totality.* Every function the checker runs is total, with explicit fuel where recursion is not structural, so the kernel can unfold every step. The one exception, an opaque address used to key the editor's location table, is never consulted when locations are off, which `Accepted` ensures.
 - *Universes.* Lean's strength is ZFC with $n$ inaccessibles for every $n < omega$. If the set model for Ochr needs one inaccessible per level at once, the uniform Lean statement is unprovable in Lean (Gödel's second incompleteness theorem: a theory cannot prove the consistency of one at least as strong, @sec-sets), and must be weakened to bounded universe levels, made relative to an assumed model, or stated per program (@sec-oq, Q8).
 
-#explainer[Lean's kernel and its axioms][Lean's _kernel_ is the small trusted core that checks every proof; tactics and the elaborator only produce proof terms for it to check, so a Lean theorem is believed exactly as far as the kernel is. Beyond its core type theory, Lean has three standard axioms: `propext` (two propositions that imply each other are equal), `Quot.sound` (elements related by a relation are equal in its quotient) and `Classical.choice` (from a proof that something exists, pick one). All three hold in Lean's set model. `#print axioms t` lists the axioms a theorem `t` depends on; an unfinished proof shows up there as `sorryAx`. A `partial def` is opaque to the kernel: it can run, but a proof cannot unfold it, which is why a provable statement about the checker needs every function the checker runs to be total.]
+#explainer[Lean's kernel and its axioms][Lean's _kernel_ is the small trusted core that checks every proof; tactics and the elaborator only produce proof terms for it to check, so a Lean theorem is believed exactly as far as the kernel is. Beyond its core type theory, Lean has three standard axioms: `propext` (two propositions that imply each other are equal), `Quot.sound` (elements related by a relation are equal in its quotient) and `Classical.choice` (from a proof that something exists, pick one). All three hold in Lean's set model. `#print axioms t` lists the axioms a theorem $t$ depends on; an unfinished proof shows up there as `sorryAx`. A `partial def` is opaque to the kernel: it can run, but a proof cannot unfold it, which is why a provable statement about the checker needs every function the checker runs to be total.]
 
 = The shape of the argument <sec-shape>
 
@@ -240,43 +286,66 @@ The two conditions say that $kappa$ cannot be reached from below by the two ways
 
 If $kappa$ is inaccessible, $V_kappa$ is closed under every construction a type theory needs: for $A in V_kappa$ and a family $B(x) in V_kappa$ indexed by $x in A$, the set of subsets of $A$, the _dependent sum_ $Sigma(x in A) B(x)$ (the set of pairs $(x, y)$ with $x in A$ and $y in B(x)$; when $A$ is a set of tags this is a _disjoint union_, written $union.big.plus_(x in A) B(x)$) and the _dependent product_ $product_(x in A) B(x)$ (defined below) are again in $V_kappa$. So $V_kappa$ can serve as "the type of all small types". ZFC cannot prove that an inaccessible exists (with one, $V_kappa$ would be a model of ZFC, proving ZFC consistent), so the existence of inaccessibles is the extra axiom the target assumes.
 
-*Notation.* Throughout, $deno(T)$ is the set a type `T` is interpreted as, and $deno(v)$ the element a value `v` is interpreted as.
+*Notation.* Throughout, $deno(T)$ is the set a type $T$ is interpreted as, and $deno(v)$ the element a value $v$ is interpreted as.
 
 *Universes.* Fix inaccessibles $kappa_0 < kappa_1 < dots$, one for each universe level used. $ty("Type")_i$ is interpreted as $V_(kappa_i)$: a type in $ty("Type")_i$ is a set in $V_(kappa_i)$. Since $V_(kappa_i) in V_(kappa_(i+1))$, the rule $ty("Type")_i : ty("Type")_(i+1)$ holds in the model.
 
 *Propositions, proofs and proof irrelevance.* Fix an object •, "the proof". A proposition is interpreted as $emptyset$ (false) or ${bullet}$ (true), so `Prop` is interpreted as the two-element set ${emptyset, {bullet}}$, and every proof is interpreted as •. Any two proofs of one proposition therefore have the same meaning; this _proof irrelevance_ is what makes it sound for the calculus to represent every proof by the single value `⋆`. A _subsingleton_ is a set with at most one element; every proposition denotes one.
 
-*Dependent products.* A function type $Pi(x : A). B$ whose codomain is data or a type is interpreted as the dependent product $product_(x in deno(A)) deno(B)(x)$: the set of functions `f` with domain $deno(A)$ such that $f(x) in deno(B)(x)$ for every `x`.
+*Dependent products.* A function type $Pi(x : A). B$ whose codomain is data or a type is interpreted as the dependent product $product_(x in deno(A)) deno(B)(x)$: the set of functions $f$ with domain $deno(A)$ such that $f(x) in deno(B)(x)$ for every $x$.
 
-*Products of propositions, and impredicativity.* When `B` is a proposition the product cannot be used as it stands, because it is not a truth value, but it is always one step away from one. Each $deno(B)(x)$ is $emptyset$ or ${bullet}$, so there are two cases. If $deno(B)(x_0) = emptyset$ for some $x_0$, no function can choose a value at $x_0$, and the product is $emptyset$. If $deno(B)(x) = {bullet}$ for every `x`, each $f(x)$ is forced to be $bullet$, so exactly one function qualifies, the constant function $x |-> bullet$ (when $deno(A)$ is empty, it is the empty function), and the product is ${x |-> bullet}$. So the product always has at most one element: it is empty exactly when "$deno(B)(x)$ is true for every `x`" fails. But its one element, when there is one, is a function, not $bullet$, so the product is a singleton without being the set ${bullet}$. The model therefore interprets a Π into a proposition not as the product but as the truth value the product carries:
+*Products of propositions, and impredicativity.* When $B$ is a proposition the product cannot be used as it stands, because it is not a truth value, but it is always one step away from one. Each $deno(B)(x)$ is $emptyset$ or ${bullet}$, so there are two cases. If $deno(B)(x_0) = emptyset$ for some $x_0$, no function can choose a value at $x_0$, and the product is $emptyset$. If $deno(B)(x) = {bullet}$ for every $x$, each $f(x)$ is forced to be $bullet$, so exactly one function qualifies, the constant function $x |-> bullet$ (when $deno(A)$ is empty, it is the empty function), and the product is ${x |-> bullet}$. So the product always has at most one element: it is empty exactly when "$deno(B)(x)$ is true for every $x$" fails. But its one element, when there is one, is a function, not $bullet$, so the product is a singleton without being the set ${bullet}$. The model therefore interprets a Π into a proposition not as the product but as the truth value the product carries:
 $ deno(Pi(x : A). B) = { bullet | deno(B)(x) = {bullet} "for every" x in deno(A) }, $
-which is ${bullet}$ when the product is a singleton and $emptyset$ when it is empty. This collapse loses nothing, and it is forced by proof irrelevance: every proof denotes $bullet$, so a proof of `Π(x : A). B`, for instance a `λ`, must denote $bullet$ too rather than the function $x |-> bullet$, and applying such a proof to an argument denotes $bullet$, which is what $deno(B)(x)$'s one element is. Since no rule can look inside a proof, nothing can tell the collapsed meaning from the product it replaces. The result is always $emptyset$ or ${bullet}$, a member of `Prop`'s interpretation ${emptyset, {bullet}}$, _however large_ $deno(A)$ is, even when `A` is `Prop` itself or a universe. This is _impredicativity_: a proposition may quantify over all propositions, or over all types of a universe, without moving to a larger universe. The set model gets it for free because the size of the domain never reaches the result. The same move is unavailable for data: `Π(A : Type₀). A → A` is a set of functions on all of $V_(kappa_0)$, which is too large to be a member of $V_(kappa_0)$ again, so a Π over a universe into data must live in a larger universe.
+which is ${bullet}$ when the product is a singleton and $emptyset$ when it is empty. This collapse loses nothing, and it is forced by proof irrelevance: every proof denotes $bullet$, so a proof of $Pi(x : A). B$, for instance a `λ`, must denote $bullet$ too rather than the function $x |-> bullet$, and applying such a proof to an argument denotes $bullet$, which is what $deno(B)(x)$'s one element is. Since no rule can look inside a proof, nothing can tell the collapsed meaning from the product it replaces. The result is always $emptyset$ or ${bullet}$, a member of `Prop`'s interpretation ${emptyset, {bullet}}$, _however large_ $deno(A)$ is, even when $A$ is `Prop` itself or a universe. This is _impredicativity_: a proposition may quantify over all propositions, or over all types of a universe, without moving to a larger universe. The set model gets it for free because the size of the domain never reaches the result. The same move is unavailable for data: `Π(A : Type₀). A → A` is a set of functions on all of $V_(kappa_0)$, which is too large to be a member of $V_(kappa_0)$ again, so a Π over a universe into data must live in a larger universe.
 
-*Least fixed points.* An operator Φ on families of sets is _monotone_ if $X subset.eq Y$ (pointwise) implies $Phi(X) subset.eq Phi(Y)$. Its _least fixed point_ is the smallest family `X` with $Phi(X) subset.eq X$, the intersection of all such families, which exists for a monotone operator acting inside a fixed set such as $V_kappa$. An inductive type is interpreted as the least fixed point of the operator "one more layer of constructors". In Ochr no recursive occurrence of a type lies under a Π (fields are first-order), so every element is built by finitely many constructor applications, and the least fixed point is the union $union.big_(n < omega) Phi^n (emptyset)$, which stays inside $V_kappa$.
+*Least fixed points.* An operator Φ on families of sets is _monotone_ if $X subset.eq Y$ (pointwise) implies $Phi(X) subset.eq Phi(Y)$. Its _least fixed point_ is the smallest family $X$ with $Phi(X) subset.eq X$, the intersection of all such families, which exists for a monotone operator acting inside a fixed set such as $V_kappa$. An inductive type is interpreted as the least fixed point of the operator "one more layer of constructors". In Ochr no recursive occurrence of a type lies under a Π (fields are first-order), so every element is built by finitely many constructor applications, and the least fixed point is the union $union.big_(n < omega) Phi^n (emptyset)$, which stays inside $V_kappa$.
 
-*Why a model gives consistency.* A model assigns to each type `T` a set $deno(T)$ and to each well-typed term `t : T` an element $deno(t) in deno(T)$; that it does so for every derivable typing is the model's _soundness_. Since $deno(ty("False")) = emptyset$, no closed term of type `False` can exist, and since the model is built in ZFC with the inaccessibles, the conclusion is relative to that theory. For Ochr, "well-typed term" is replaced by "definition accepted by the checker", and the model's soundness is the soundness theorem of @sec-sound, which relates the checker's runs to meanings.
+*Why a model gives consistency.* A model assigns to each type $T$ a set $deno(T)$ and to each well-typed term $t : T$ an element $deno(t) in deno(T)$; that it does so for every derivable typing is the model's _soundness_. Since $deno(ty("False")) = emptyset$, no closed term of type `False` can exist, and since the model is built in ZFC with the inaccessibles, the conclusion is relative to that theory. For Ochr, "well-typed term" is replaced by "definition accepted by the checker", and the model's soundness is the soundness theorem of @sec-sound, which relates the checker's runs to meanings.
 
 === The interpretation
 
-Types are interpreted as sets in the way just described, adapting Werner's model of the calculus of inductive constructions (Coq's type theory) and Carneiro's of Lean. As above, $deno(T)$ is the meaning of a closed type value `T`, and $deno(v)$ of a closed value.
+Types are interpreted as sets in the way just described, adapting Werner's model of the calculus of inductive constructions (Coq's type theory) and Carneiro's of Lean. As above, $deno(T)$ is the meaning of a closed type value $T$, and $deno(v)$ of a closed value.
 
 #thm([Definition], [meaning of types], [
   - $deno(ty("Type")_i) = V_(kappa_i)$ and $deno(ty("Prop")) = {emptyset, {bullet}}$.
   - An inductive declaration in `Type₀` denotes, simultaneously for every value of its parameters, the least family of sets closed under its constructors: the least fixed point of the operator sending a family $X$ to $ā |-> union.big.plus_i {ty("C")_i} times Sigma(g_1 : B_1) dots Sigma(g_k : B_k)$, where each field type is read at the parameters $ā$ and the earlier fields, with every occurrence $ty("D")(overline(b))$ read as $X(overline(b))$. Non-uniform occurrences make the fixed point simultaneous over the whole family; it is still the least fixed point of a monotone operator on families.
+
+    _For example_, `inductive List (A : Type) := Nil | Cons(h : A, t : List(A))` has, at a parameter value $T$, the operator
+    $ Phi(X) = {ty("Nil")} union.plus ({ty("Cons")} times deno(T) times X), $
+    writing $ty("Cons")(a, l)$ for the triple $(ty("Cons"), a, l)$. Its iterates from $emptyset$ are $Phi^0(emptyset) = emptyset$; $Phi^1(emptyset) = {ty("Nil")}$, since `Nil` has no fields and a `Cons` needs an element of $X = emptyset$; $Phi^2(emptyset)$ adds the one-element lists $ty("Cons")(a, ty("Nil"))$ for $a in deno(T)$; and in general $Phi^(n+1)(emptyset)$ is exactly the lists of length at most $n$, each stage containing the one before (by induction, since Φ is monotone). Their union $L = union.big_(n < omega) Phi^n (emptyset)$ is therefore exactly the finite lists of elements of $deno(T)$: a list of length $n$ appears at stage $n + 1$, and every stage holds only finite lists. $L$ is a fixed point. An element of $Phi(L)$ is `Nil`, which is in $L$, or $ty("Cons")(a, l)$ with $l in L$, so $l$ is in some stage $Phi^n (emptyset)$ and $ty("Cons")(a, l)$ in the next. Conversely an element of $L$ lies in some $Phi^(n+1)(emptyset) = Phi(Phi^n (emptyset)) subset.eq Phi(L)$, by monotonicity. And $L$ is the least such set: if $Phi(Y) subset.eq Y$, as for any fixed point $Y$, then every stage is inside $Y$, by induction on the stage, since $emptyset subset.eq Y$, and $Phi^n (emptyset) subset.eq Y$ gives $Phi^(n+1)(emptyset) subset.eq Phi(Y) subset.eq Y$. So $L subset.eq Y$, and $deno(ty("List")(T)) = L$.
   - An inductive declaration in `Prop` denotes the same fixed point, truncated: ${bullet}$ if inhabited, $emptyset$ otherwise. So $deno(ty("False")) = emptyset$, $deno(ty("True")) = {bullet}$ and $deno(ty("And")(P, Q)) = deno(P) inter deno(Q)$.
   - $deno(ty("Eq")(A, a, b)) = {bullet}$ if $deno(a) = deno(b)$, and $emptyset$ otherwise. An equation field denotes the same.
-  - A function type with borrow parameters $x_i : \&T_i$ for $i in I$ denotes a subset $R$ (defined next, @def-inj) of $Pi(overline(d) : overline(D)). "Out"_B (overline(d))$, where $D_i = deno(T_i)$ for $i in I$ and $D_j = deno(A_j)$ otherwise, $"Fin" = product_(i in I) deno(T_i)$ is the tuple of final contents of the borrowed places, and $"Out"_B (overline(d))$ is $deno(B)(overline(d))$ if `B` is a proposition, $deno(B)(overline(d)) times "Fin"$ if `B` is borrow-free data, and $deno(T) times (deno(T) -> "Fin")$ if $B = \&T$. For $F$ in this set, $"fwd"_F$ and $"back"_F$ are the two components of $F(overline(d))$; $"back"_F (overline(d))$ is the _backward function_, mapping the value the caller leaves in the returned borrow to the final contents. A Π-type whose class is "returns proofs" is the exception: as argued in @sec-sets, it denotes not this set but the truth value it carries, ${bullet}$ if $deno(B)(overline(d)) = {bullet}$ for every $overline(d)$ and $emptyset$ otherwise (impredicativity). Its borrowed places need no final contents, since a proof's run is discarded.
+  - A function type with borrow parameters $x_i : \&T_i$ for $i in I$ denotes a subset $R$ (defined next, @def-inj) of $Pi(overline(d) : overline(D)). "Out"_B (overline(d))$, where $D_i = deno(T_i)$ for $i in I$ and $D_j = deno(A_j)$ otherwise, $"Fin" = product_(i in I) deno(T_i)$ is the tuple of final contents of the borrowed places, and $"Out"_B (overline(d))$ is $deno(B)(overline(d))$ if $B$ is a proposition, $deno(B)(overline(d)) times "Fin"$ if $B$ is borrow-free data, and $deno(T) times (deno(T) -> "Fin")$ if $B = \&T$. For $F$ in this set, $"fwd"_F$ and $"back"_F$ are the two components of $F(overline(d))$; $"back"_F (overline(d))$ is the _backward function_, mapping the value the caller leaves in the returned borrow to the final contents. A Π-type whose class is "returns proofs" is the exception: as argued in @sec-sets, it denotes not this set but the truth value it carries, ${bullet}$ if $deno(B)(overline(d)) = {bullet}$ for every $overline(d)$ and $emptyset$ otherwise (impredicativity). Its borrowed places need no final contents, since a proof's run is discarded.
+
+    _Example, a function that takes a borrow._ In-place addition, `def AddM (x : &Nat) (y : Nat) : Unit`, which walks down `*x` to its final `Z` and replaces it with `y`. Its one borrow parameter is `x`, so $I = {x}$, both domains are $deno(ty("Nat")) = NN$, and $"Fin" = NN$ is the final content of `*x`. The codomain `Unit` is borrow-free data, so a meaning is a function $NN times NN -> deno(ty("Unit")) times NN$, and `AddM` denotes $(n, m) |-> ((), n + m)$: started with `*x` holding $n$, it returns `()` and leaves $n + m$ in `*x`. The borrow is thus modelled as passing the place's starting content in and getting its final content back out.
+
+    _Example, a function that returns a borrow._ `def TailM (x : &Nat) : &Nat`, which returns a borrow of the final `Z` inside `*x`. Again $I = {x}$ and $"Fin" = NN$, but now $B = \&ty("Nat")$, so a meaning sends the starting content $n$ of `*x` to a pair in $NN times (NN -> NN)$, and `TailM` denotes $n |-> (0, v |-> n + v)$. The first component, $"fwd"(n) = 0$, is what the returned borrow holds when the call returns: the final `Z`. The second, $"back"(n) = (v |-> n + v)$, is the backward function: if the caller leaves $v$ in the returned borrow before it ends, `*x` finally holds $n$ with its final `Z` replaced by $v$, that is $n + v$. This backward function is injective (different $v$ give different final contents), which is what the injectivity relation defined next demands of every function returning a borrow.
   - $deno(ty("Id")(A, t, u)) = {bullet}$ iff the meanings of the two observations of @sec-obs are equal.
 ]) <def-meaning>
 
+*What $R$ is for.* For a function that returns a borrow, the backward function says how the final contents of the borrowed places depend on the value the caller leaves in the returned borrow. The plain product of functions contains every pair $("fwd", "back")$, including ones whose backward function ignores its argument entirely. The model must leave those out, because no Ochr function behaves that way and the checker accepts proofs that rely on it. $R$ is the condition that leaves them out: the backward function of every function returning a borrow, at every type, must be _injective_, so that different values left in the returned borrow give different final contents.
+
+*Why every Ochr function has an injective backward function.* A function type returning a borrow must have a borrow parameter, so Ochr has no `'static` borrows: a returned borrow is always derived from one of the function's borrow arguments, and points at some position inside the places they lend. When it ends, the value the caller left in it is put back at that position. So the final contents still hold that value at that position, and two different values give two different final contents. For `TailM` above, $"back"(n) = (v |-> n + v)$: the value left in the borrow becomes the final `Z`'s replacement, and can be read back off the result. A function returning a leaked borrow would be different: Rust allows a `fn(&mut u64) -> &mut u64` to return `Box::leak(Box::new(0))`, a borrow of a fresh place that nobody owns, whose backward function is constant because what is written through it never reaches the caller's places.
+
+*Why the model must build it in.* The checker relies on it, so a model without it would make an accepted program false. Take
+```
+def PF (x : &Nat) (e : Id(Unit, *x := 0, *x := 1)) : False := e
+```
+At its generic call the statement observes the owner of `x`, where the two sides leave `0` and `1`, so it computes to $ty("Eq")(ty("Nat"), 0, 1)$, which is `False`, and `PF` is accepted: writing `0` and writing `1` through a borrow can never be indistinguishable. Now call `PF` with a borrow returned by an unknown function $g : Pi(x : \&ty("Nat")). \&ty("Nat")$. Its hypothesis says that writing `0` and writing `1` through $g(x)$ leave the same contents, which in the model says $"back"_g (n)(0) = "back"_g (n)(1)$. If the meaning of that function type contained a $g$ with a constant backward function, this hypothesis would be true for that $g$, and `PF` would turn it into a proof of `False` that is true in the model, which no sound model allows. So the meaning of a function type returning a borrow must contain only functions with injective backward functions, which is $R$.
+
 #thm([Definition], [injectivity relation], [
-  $R_A subset.eq deno(A)$, by induction on `A`. For propositions and universes $R_A = deno(A)$. At an inductive type, $R$ holds of a constructor value when it holds of each field. $R_(\&T) = R_T$. For a function type, $F in R_(Pi(overline(x) : overline(A)). B)$ iff for all arguments in $R$, $"fwd"_F (overline(d)) in R_B$ and, if $B = \&T$, $"back"_F (overline(d))$ is injective.
+  For each type $A$, $R_A subset.eq deno(A)$ is the set of values of $A$ all of whose borrow-returning functions, however deeply nested, have injective backward functions. It is defined by induction on $A$. For propositions and universes $R_A = deno(A)$. At an inductive type, $R$ holds of a constructor value when it holds of each field. $R_(\&T) = R_T$. For a function type, $F in R_(Pi(overline(x) : overline(A)). B)$ iff for all arguments in $R$, $"fwd"_F (overline(d)) in R_B$ and, if $B = \&T$, $"back"_F (overline(d))$ is injective.
 ]) <def-inj>
 
-$R$ is forced: by [Call-type], Ochr proves of every abstract `g : Π(x : &Nat). &Nat` that writing `0` and writing `1` through `g(x)` leave different states, which fails for a function returning a leaked borrow whose backward function is constant.
+#oq(9, [a well-founded definition of the model])[
+  As written, the interpretation (@def-meaning) and $R$ (@def-inj) are not yet a valid definition, for two reasons.
+  - _They are circular at function types._ @def-meaning makes the meaning of a function type returning a borrow equal to the subset $R$ of a product, while @def-inj defines $R_A$ as a subset of the meaning of $A$. The intended order is: the plain product first, then $R$ as a condition on it, then the meaning as the part of the product satisfying $R$.
+  - _"By induction on $A$" has nothing smaller to recurse on._ A function type's codomain is computed by running code at each argument (a type function such as `Cells(E, n)` is defined by recursion on data), not a subterm of $A$; and a type variable, such as a parameter $A : ty("Type")_0$, has no structure at all, so $R$ is undefined there.
+  The likely repair is to define the two together, interpreting each type as a set _paired with_ its subset of good elements, and each universe as a set of such pairs, so that a type variable denotes a pair and $R$ at it is the pair's second component; the recursion through computed types then rests on a denotation of type-level code. That denotation is the same object the gap between truth in the model and the soundness walk over machine values needs (@sec-risks), so this question should be settled together with that one. This is a matter of stating the model precisely, not of whether it exists.
+]
 
 #thm([Definition], [truth], [
-  A closed proposition value `P` is _true_, $ok(P)$, when $deno(P) = {bullet}$.
+  A closed proposition value $P$ is _true_, $ok(P)$, when $deno(P) = {bullet}$.
 ]) <def-truth>
 
 In the paper's fragment, truth was defined syntactically on ground proposition values (`True`, `False`, `And` and stuck equations, the last counting as true). Beyond the fragment, propositions include Π-types (implication and universal quantification over data, functions and propositions), user inductives in `Prop`, and `Eq` at any type, so truth must be semantic. Whether a stuck equation still counts as true is Q3 (@sec-oq).
@@ -285,10 +354,10 @@ In the paper's fragment, truth was defined syntactically on ground proposition v
 
 #thm([Lemma], [the model is well defined], [
   If every inductive declaration satisfies (I1)–(I6) below, every match on a proof satisfies (I7), recursion satisfies (I8), `Eq` satisfies (I9), and borrows are only of `Type₀`, then @def-meaning assigns a set to every type value formed by an accepted program, in the universe of its sort.
-  - (I1) _Strict positivity._ The declared type `D` occurs in a field type only as the whole field type, or inside another inductive at a _nestable_ parameter (one occurring in that inductive's fields only as a whole field type or at a nestable parameter); never left of a Π, under `&`, or as the argument of a type function.
-  - (I2) The arguments of an occurrence of `D` never mention `D`.
+  - (I1) _Strict positivity._ The declared type $ty("D")$ occurs in a field type only as the whole field type, or inside another inductive at a _nestable_ parameter (one occurring in that inductive's fields only as a whole field type or at a nestable parameter); never left of a Π, under `&`, or as the argument of a type function.
+  - (I2) The arguments of an occurrence of $ty("D")$ never mention $ty("D")$.
   - (I3) A parameter is never called in a field type; only earlier global type functions are.
-  - (I4) Parameter types do not mention `D`.
+  - (I4) Parameter types do not mention $ty("D")$.
   - (I5) Fields form a telescope: a field's type mentions only parameters and earlier fields.
   - (I6) Every field of an inductive in `Type₀` or `Prop` lives in `Prop` or `Type₀`.
   - (I7) A match on a proof produces data or a type only from a subsingleton (no constructors, or one whose fields are all proofs).
@@ -297,14 +366,20 @@ In the paper's fragment, truth was defined syntactically on ground proposition v
 ]) <lem-model>
 #proof[(I1)–(I5) make the constructor operator monotone on families, so the least fixed point exists; (I6) keeps it in the sort's universe; (I7) is what makes a match on a proof well defined, since all proofs are $bullet$ and only a subsingleton's eliminator cannot tell them apart; (I8) because a proof has no structure to measure; (I9) because constructors are injective with disjoint images. Borrows only of `Type₀`: borrowing a universe would put `Π(x : &Type₀)(a : *x). *x` in `Type₀`, which would be impredicative and have no set model.]
 
-#explainer[strict positivity and W-types][An inductive declaration is read as "the least set closed under its constructors", and such a set exists only if the type being declared is used _positively_ in its fields. A field that is a function _out of_ the type breaks this: `Bad := MkBad(f : Π(b : Bad). False)` would let a value be applied to itself (`f(MkBad(f))`), which proves `False` directly, and no set fits the declaration. _Strict positivity_ is the syntactic rule that rules this out: the type being declared appears only as a whole field type, or nested inside another inductive that itself uses it positively, never left of an arrow. A _W-type_ is an inductive with a field that is a function _into_ the type, such as `Tree := Node(children : Π(n : Nat). Tree)`, an infinitely branching tree. That is strictly positive and Lean allows it, but its least fixed point is reached only after transfinitely many stages of the construction, which the model must have room for. Ochr forbids any function-typed field, so it has no W-types, and its fixed points are reached after ω stages (@sec-sets). This is one reason Ochr may be weaker than Lean (Q8).]
+#explainer[strict positivity and W-types][An inductive declaration is read as "the least set closed under its constructors", and such a set exists only if the type being declared is used _positively_ in its fields. A field that is a function _out of_ the type breaks this, and no set fits the declaration. In Ochr, with `inductive Bad := MkBad(f : Π(x : Bad). Empty)`:
+  ```
+  def L (b : Bad) : Empty := match b { MkBad(f) => f(b) }
+  def bad : Bad := MkBad(λ(x : Bad) : Empty => L(x))
+  def Boom : False := absurd(L(bad))
+  ```
+  `L` applies `b`'s own field to `b` itself; `L(bad)` would loop forever, but `Boom` is typed by its callee's statement alone and proofs are not run, so it would be a closed proof of `False`. (Before the positivity rule existed, the checker accepted exactly this.) Linearity does not stop it: `f` is used once, and `b` is consumed only once, by the call, because the match does not consume it (it names `f` as a sub-place of `b`). A language where a match consumes its scrutinee, such as Bend, must rebuild the value and write `f(MkBad(f))`, using `f` twice, which affinity rejects; Ochr's matches do not consume, so it needs positivity instead. _Strict positivity_ is the syntactic rule that rules this out: the type being declared appears only as a whole field type, or nested inside another inductive that itself uses it positively, never left of an arrow. A _W-type_ is an inductive with a field that is a function _into_ the type, such as `Tree := Node(children : Π(n : Nat). Tree)`, an infinitely branching tree. That is strictly positive and Lean allows it, but its least fixed point is reached only after transfinitely many stages of the construction, which the model must have room for. Ochr forbids any function-typed field, so it has no W-types, and its fixed points are reached after ω stages (@sec-sets). This is one reason Ochr may be weaker than Lean (Q8).]
 
 *Status.* #s-paper. Every condition is enforced by [Ind-decl], the match rules and [Rec]; a probe of each condition against the checker found none missing. One condition is enforced more strictly than (I9) needs: equation fields are required to be over first-order data, which a type parameter instantiated at a function type bypasses harmlessly.
 
 == Conversion is sound <sec-conv-sound>
 
 #thm([Lemma], [conversion respects meaning], [
-  If $v equiv w$ are closed values, then $deno(v) = deno(w)$. Consequently, at a ground state, convertible propositions are equally true.
+  If $v$ and $w$ are closed values (each with no free variables and no unknowns, @sec-prelim) and $v equiv w$ (definitionally equal), then $deno(v) = deno(w)$. Consequently, at a ground state, convertible propositions are equally true.
 ]) <lem-conv>
 
 The argument is one principle per conversion rule:
@@ -333,50 +408,72 @@ The paper proves the following for a first-order fragment F (@sec-frag), conditi
 
 Clause (iii) is new beyond F, where there are no function values. What "good" means for a ground function value is the first open design question.
 
-#explainer[logical relations][A _logical relation_ defines, for each type, which values "behave like" that type, by induction on the type: a value is good at `Nat` if it is a numeral; a function is good at `Π(x : A). B` if it sends every good argument to a good result; nothing is good at `False`. One then proves the _fundamental lemma_, that every program the checker accepts is good at its type, one typing rule at a time; consistency follows because nothing is good at `False`. It is called "logical" because each clause follows the type's logical shape (good inputs to good outputs). Impredicativity is the difficulty: the clause for `Π(P : Prop). B` needs "good at P" for every proposition P, including that Π-type itself, so the definition is no longer by induction on anything smaller. Girard's _reducibility candidates_ fix this by quantifying over every set of values that could be a proposition's meaning, instead of over the propositions themselves; the technique is standard but technical. A first worked example, for a tiny language, is the chapter "Norm" of _Software Foundations_, volume 2.]
+#explainer[logical relations][A _logical relation_ defines, for each type, which values "behave like" that type, by induction on the type: a value is good at `Nat` if it is a numeral; a function is good at $Pi(x : A). B$ if it sends every good argument to a good result; nothing is good at `False`. One then proves the _fundamental lemma_, that every program the checker accepts is good at its type, one typing rule at a time; consistency follows because nothing is good at `False`. It is called "logical" because each clause follows the type's logical shape (good inputs to good outputs). Impredicativity is the difficulty: the clause for $Pi(P : ty("Prop")). B$ needs "good at $P$" for every proposition $P$, including that Π-type itself, so the definition is no longer by induction on anything smaller. Girard's _reducibility candidates_ fix this by quantifying over every set of values that could be a proposition's meaning, instead of over the propositions themselves; the technique is standard but technical. A first worked example, for a tiny language, is the chapter "Norm" of _Software Foundations_, volume 2.]
 
 #oq(1, [good ground values])[
   In F every ground value is a numeral or `()`. Beyond F a ground instance can bind a parameter to a closure, and a hypothesis can be a Π-type over functions or propositions. @target-sound needs a notion of _good_ ground value that is (a) closed under what accepted code produces, (b) strong enough that calling a good closure at good arguments terminates without error and returns a good value (so (i) holds for calls through function parameters, whose bodies are not earlier definitions and are not covered by the induction), and (c) such that a good function value's meaning lies in $R$ (@def-inj). Two candidates:
   - _A logical relation_, defined by induction on types: a closure is good at $Pi(x : A). B$ when it maps good arguments to good results. Ochr's `Prop` is impredicative, so a type like `Π(P : Prop). P → P` quantifies over all propositions, and a definition by induction on types breaks down there; it would need reducibility candidates in Girard's style, interpreted in the set model.
   - _Definability_: quantify only over ground instances whose function values are closures formed by accepted code, and strengthen the induction to cover closures as anonymous definitions, ordered by where they were formed. Consistency only needs closed terms, whose instances are built this way, so this may suffice; it needs a measure under which a closure formed in $d_k$ and called from $d_j$ is smaller.
-  The plan cannot be written down beyond F until one is chosen.
+  Until one is chosen, every statement below that quantifies over function values (the soundness theorem's "good ground instances", agreement clause (A6), the walk's step for a call through a function value, and the recursion lemma) is written relative to an unspecified notion of "good", and is incomplete. The features beyond F that involve no function values (dependent fields, Fording, stuck blocks and `J` over data) do not depend on this choice.
 ]
 
 #thm([Corollary], [consistency, from soundness], [
   Under @target-sound and @lem-model, @target holds.
 ]) <cor-cons>
-#proof[Let `c : A` be an accepted parameterless definition. It is checked from the empty state, which is ground, by [Const]; @target-sound (ii) with the empty instance gives $ok(T)$ for the value `T` of `A`. By @lem-conv, a type convertible with `False` is false, since $deno(ty("False")) = emptyset$. So $T equiv.not ty("False")$.]
+#proof[Let $c : A$ be an accepted parameterless definition. It is checked from the empty state, which is ground, by [Const]; @target-sound (ii) with the empty instance gives $ok(T)$ for the value $T$ of $A$. By @lem-conv, a type convertible with `False` is false, since $deno(ty("False")) = emptyset$. So $T equiv.not ty("False")$.]
 
 #thm([Corollary], [adequacy of `Id`], [
-  Under @target-sound, if a lemma with codomain `Id(D, t, u)` is accepted, then at every good ground instance whose hypotheses are true, the observations of `t` and `u` have equal meanings: they return equal results and leave equal contents in every place either may write, except places one of them leaves moved out.
+  Under @target-sound, if a lemma with codomain $ty("Id")(D, t, u)$ is accepted, then at every good ground instance whose hypotheses are true, the observations of $t$ and $u$ have equal meanings: they return equal results and leave equal contents in every place either may write, except places one of them leaves moved out.
 ]) <cor-adeq>
 
 == How soundness is proved: the walk <sec-walk>
 
-The proof is by induction on the pairs $(k, |beta(sigma_j)|)$, ordered lexicographically, where $|v|$ is the size of the value in $d_k$'s decreasing position (read through the borrow for `&D`; 0 without `by`). For fixed `k` and β, it follows $d_k$'s case tree along β and maintains five things:
+#reminder[
+  - $cal(P) = d_1 dots d_m$ is the accepted program, and $d_k$ is its $k$-th definition, the one being proved; the induction may assume the theorem for every earlier $d_j$, $j < k$ (@target-sound).
+  - $d_k$ is checked at its _generic call_, where each parameter is bound to a fresh abstract value σ ([Def], @sec-typing). If $d_k$ is declared $kw("by") x_j$, $sigma_j$ is the abstract value bound to that decreasing parameter.
+  - β is a _ground instance_ of $d_k$: a valuation, giving each of those σ's a value with no unknowns in it (@sec-two-paths). So $beta(sigma_j)$ is the actual value of the decreasing parameter at that instance, and $|beta(sigma_j)|$ is its size.
+  - α is a _refinement_, an assignment of values to abstract values (@def-refinement); $alpha supset.eq beta$ means α agrees with β and also assigns the abstract values the check creates later, such as a split's fields.
+  - $d_k$'s _case tree_ is the tree its check builds: a node for each [Split] or [Split-gen] on an unknown, with one child per arm, and a leaf where a tail term ends ([Tail-end], @sec-typing).
+]
+
+*The idea.* The checker never ran a definition on real inputs: it checked each one once, at its generic call, on unknowns. To show that what it accepted is true, take any real instance β, run the definition on it for real, and walk the checker's case tree in step with that run. The tree is a finite record of every case the checker considered; the real run takes exactly one path through it, the one β selects. At every step the symbolic state and the real state are kept related, so whatever the checker concluded about the first holds of the second. At the leaf the real run reaches, the checker had established the goal for that branch, so the goal holds at β.
+
+The proof is by induction on the pairs $(k, |beta(sigma_j)|)$, ordered lexicographically, where $|v|$ is the size of the value in $d_k$'s decreasing position (read through the borrow for $\&ty("D")$; 0 without `by`). #why[a real run of $d_k$ makes calls, and each must already be known to be safe, and, for a lemma, true. There are only two kinds. A call to an earlier definition $d_j$, $j < k$, is covered by the first component: the theorem is already proved for everything earlier in the program, and a definition can only call earlier ones, so there are no cycles. A recursive call of $d_k$ itself is covered by the second: [Rec] checked that its decreasing argument is a strict part of the entry value, so it is the same theorem at a smaller input. Ordering the pairs lexicographically says exactly "assume the theorem for anything earlier in the program, and for this definition at any smaller input". It is the induction that follows the program's own call structure, and the same measure that makes accepted recursion terminate. Without `by`, a definition never calls itself, so the size plays no part.]
+
+For fixed $k$ and β, it follows $d_k$'s case tree along β and maintains five things:
 - a node of the tree with its symbolic state $Omega_s$;
 - a refinement $alpha supset.eq beta$ that covers and respects $Omega_s$;
 - the ground state $Omega_g$ the ground run of the body has reached;
 - _agreement_ $Omega_s agr(alpha) Omega_g$, the simulation relation between the two states (@def-agree);
-- for a lemma, the invariant (Inv): every _proof place_ of $Omega_s$ (a binding declared a proof, or a field place of one) has a type `T` with $ok(T alpha)$.
+- for a lemma, the invariant (Inv): every _proof place_ of $Omega_s$ (a binding declared a proof, or a field place of one) has a type $T$ with $ok(T alpha)$.
+#why[the node and $Omega_s$ say where the checker is; $Omega_g$ says where the real run is; α is the dictionary from the checker's unknowns to the real run's values, and it grows as the walk learns more (a split tells it what a value's fields are); agreement is the promise that the two states describe the same thing once translated by α; and (Inv) says every hypothesis the checker relied on is actually true at the instance, which is what makes using a proof sound.]
 
-At the root $Omega_s beta = Omega_g$, so agreement holds, and (Inv) holds because each hypothesis's type at the generic state is true under β iff it is true at the ground instance (@lem-types). The tail rules move down the tree:
+At the root $Omega_s beta = Omega_g$ (nothing has run yet, and the ground instance's state is by definition the generic state under β), so agreement holds, and (Inv) holds because each hypothesis's type at the generic state is true under β iff it is true at the ground instance (@lem-types). The tail rules move down the tree:
 - *[Tail-let], [Tail-seq].* The term run is not a match on data in tail position; @lem-runs gives a successful ground run and keeps agreement.
+  #why[these steps do not branch on an unknown, so both runs do the same thing; all the difficulty is inside @lem-runs, the lemma that the two paths agree.]
 - *[Tail-match].* After [Access], agreement makes the scrutinee's head constructor the same on both paths, so both take the same arm.
-- *[Tail-split] on σ.* The ground scrutinee's head is that of α(σ), say $ty("C")_i$; move to arm `i` and extend α to the arm's fresh field values by the fields of α(σ). α respects $sigma := ty("C")_i (overline(sigma))$ and $(Omega_s [sigma := ty("C")_i (overline(sigma))]) alpha = Omega_s alpha$, so agreement and (Inv) carry over.
-- *[Tail-gen] on a sealed program `n`.* Extend α by $alpha(sigma) := "nf"(n alpha)$ (@lem-gen) and continue as for [Tail-split].
+  #why[when the value matched on is already known to the checker, there is nothing to decide: both runs see the same constructor.]
+- *[Tail-split] on σ.* The ground scrutinee's head is that of α(σ), say $ty("C")_i$; move to arm $i$ and extend α to the arm's fresh field values by the fields of α(σ). α respects $sigma := ty("C")_i (overline(sigma))$ and $(Omega_s [sigma := ty("C")_i (overline(sigma))]) alpha = Omega_s alpha$, so agreement and (Inv) carry over.
+  #why[this is where the checker considered every case and the real run takes one. The walk follows the arm the real value selects, and α learns the values of its fields. The checker proved every arm, so in particular the one taken.]
+- *[Tail-gen] on a sealed program $n$.* Extend α by $alpha(sigma) := "nf"(n alpha)$ (@lem-gen) and continue as for [Tail-split].
+  #why[a sealed program stands for a computation that was stuck on unknowns; at the instance it computes to a definite value, and α records that the fresh σ the checker put in its place stands for that value.]
 - *[Tail-prop].* With one arm, its field places have the field types, which are true because the scrutinee's type is; extend (Inv). With no arms, the scrutinee's type is `False` and (Inv) would make it true, so no ground instance reaches the node: ex falso. *New beyond F:* a match on a proof of a several-constructor inductive in `Prop` is erased and every arm is a proof; the scrutinee's type is true, so its meaning is inhabited by some constructor, whose fields' types are therefore true, so that arm's claim applies.
+  #why[a proof carries no data, so matching on one cannot make the runs diverge; what it yields is the truth of its fields' types. A match on `False` marks a branch that cannot happen at any real instance, since reaching it would make `False` true.]
 - *[Tail-end] (a leaf).* @lem-runs gives a successful ground run of the tail term and, by agreement, a successful pop. The symbolic result is live (reading `⊥` is an error, a borrow made by [Borrow] is live, a closed-off call's borrow row is live, and [Drop] refuses to end a borrow in flight), so the ground result is a borrow by clause (A3) of agreement (@def-agree-F: the symbolic path has ended at least the borrows the ground path has). For a lemma, the claim below gives $ok(A alpha)$; [Def] gives $A equiv G'$; by @lem-conv, $ok(G' alpha)$; and $G' alpha = G beta$ because α respects the path's refinements and records (@lem-gen), so the goal is true at β by @lem-types.
+  #why[a leaf is where the checker accepted a result. Agreement turns "the checker computed this" into "the real run computed this", and, for a lemma, "the checker proved the goal on this branch" into "the goal is true at β".]
 
 *Which calls the walk needs, and why each is safe.* @lem-runs needs every call that the ground run makes to complete without error at the instance it is at.
+#why[these are the only points where the walk depends on code other than $d_k$'s own body; each is discharged by the induction order chosen above, except calls through function values, which need Q1.]
 - A call of an earlier definition $d_j$, $j < k$: by the induction hypothesis (i).
 - A recursive call of $d_k$: [Rec] made the symbolic decreasing argument a strict subterm of the entry value as refined; by @lem-runs the ground argument is the symbolic one under α, and α respects the refinements, so it is a strict subterm of $beta(sigma_j)$ and the pair is smaller.
 - A call made while evaluating a type: to an earlier definition, in erased mode, by (i) and @lem-modes.
 - *New beyond F:* a call through a function value. Its safety comes from the value being good (Q1), and, for a closure formed in $d_k$ that calls $d_k$, from [Rec] having checked that call against $d_k$'s entry value (principle R4, @sec-principles).
 
-*Claim: proof terms have true types.* At agreeing states with (Inv), if $Omega_s tack.r t ev star : A tack.l Omega'_s$ for a proof term `t`, then $ok(A alpha)$. By induction on the derivation: `refl` has type `True`; a constructor of a proposition has true field types by induction and @lem-conv; a proof place has a true type by (Inv); a proof constant by the theorem's induction hypothesis (ii); a `let` or sequence ending in a proof by @lem-runs in erased mode; a match on a proof as for [Tail-prop]; a lemma call $L_j (overline(u))$ because its arguments' types make the hypotheses of the ground instance it is at true (@lem-call), the pair is smaller, so its goal is true there by (ii), and @lem-call transports that truth back. *New beyond F:* `J` and `rewrite` (@sec-J) and proofs that are function values.
+*Claim: proof terms have true types.*
+#why[inside a lemma the checker accepted proof terms by typing them. This claim says typing never misrepresents truth at a real instance. It is where consistency lives: a closed proof of `False` would be a proof term whose type is false.]
+At agreeing states with (Inv), if $Omega_s tack.r t ev star : A tack.l Omega'_s$ for a proof term $t$, then $ok(A alpha)$. By induction on the derivation: `refl` has type `True`; a constructor of a proposition has true field types by induction and @lem-conv; a proof place has a true type by (Inv); a proof constant by the theorem's induction hypothesis (ii); a `let` or sequence ending in a proof by @lem-runs in erased mode; a match on a proof as for [Tail-prop]; a lemma call $L_j (overline(u))$ because its arguments' types make the hypotheses of the ground instance it is at true (@lem-call), the pair is smaller, so its goal is true there by (ii), and @lem-call transports that truth back. *New beyond F:* `J` and `rewrite` (@sec-J) and proofs that are function values.
 
-The lemmas the walk uses are @lem-gen, @lem-types, @lem-call, @lem-modes and, above all, @lem-runs, which is where the two paths meet. They are stated in @sec-dag; the next two sections give what they need.
+The lemmas the walk uses are @lem-gen (generalisation), @lem-types (types agree), @lem-call (call types), @lem-modes (modes) and, above all, @lem-runs (runs agree), which is where the two paths meet. They are stated in @sec-dag; the next two sections give what they need.
 
 = The principles the checker enforces <sec-principles>
 
@@ -387,7 +484,7 @@ The extended simulation is justified by a small number of principles, each deriv
 - (L1) _Names are local._ A running body names only places of its own frame. A closure's captures are copied into its own frame when it is called, and a closure captures no borrow. Global definitions are immutable.
 - (L2) _Writes stay in the frame._ A borrow carries its content, so a write through a borrow changes the content inside the borrow held in the running frame; the lender's place does not change until the borrow ends.
 - (L3) _Calls exchange only what is passed._ Arguments move into the callee's frame (an owned value is moved out of the caller; a borrow argument carries the caller's loan); the callee returns its result; popping its frame drops its bindings, ending its borrow parameters; [Close] fills only the loans of the call's borrow arguments.
-- (L4) _Borrowers sit at or above their loans_, in every run whose effects persist: a loan in frame `f` is borrowed from `f` or a frame above it. It follows from no borrows in data, no borrows of borrows, closures capturing no borrow, and [Drop] refusing to let a borrow of a local outlive it. So [Access] and [Drop], which start from a place of the top frame, end only borrowers of the top frame. (L4 fails inside the checker's own private copies, which compute a field's type by binding copies of fields in a scratch frame; those copies are discarded, so nothing leaks.)
+- (L4) _Borrowers sit at or above their loans_, in every run whose effects persist: a loan in frame $f$ is borrowed from $f$ or a frame above it. It follows from no borrows in data, no borrows of borrows, closures capturing no borrow, and [Drop] refusing to let a borrow of a local outlive it. So [Access] and [Drop], which start from a place of the top frame, end only borrowers of the top frame. (L4 fails inside the checker's own private copies, which compute a field's type by binding copies of fields in a scratch frame; those copies are discarded, so nothing leaks.)
 - (L5) _Ending is the one channel down._ [End] is how a lender below gets its content back; by (L4) the places a run can change below its frame are exactly the places its frame's borrows were lent from.
 - (L6) _Private runs leave no trace._ Statements, and the checker's own scaffolding, run on copies that are thrown away.
 - (L7) _Sealed programs are closed, and refinement is not a run._ A sealed program's re-run starts from the empty environment and reads no frame. Refinement substitutes across all frames, but that is the typing judgement acting on the whole state, never the effect of a run.
@@ -412,9 +509,9 @@ _Enforced:_ one function makes sealed programs and one re-runs them; substitutio
 
 Checking a match on an unknown σ of an inductive $ty("D")(overline(a))$ is elimination of a disjoint union: σ denotes an element of $deno(ty("D")(overline(a)))$, which is the union of its constructors' field tuples, and each arm is one summand.
 
-- (X1) _Worlds are exclusive._ No fact established while checking arm `i` that depends on σ being $ty("C")_i$ is visible while checking arm `j`: a refinement, a type refined by it, a generalisation record, a captured value.
+- (X1) _Worlds are exclusive._ No fact established while checking arm $i$ that depends on σ being $ty("C")_i$ is visible while checking arm $j$: a refinement, a type refined by it, a generalisation record, a captured value.
 - (X2) _Refinement is total substitution._ Entering a world substitutes σ everywhere it can occur (environment, stored types, types of abstract values, goal, values embedded in sealed programs and closures) and re-normalises. A component skipped keeps a stale, pre-refinement value in a refined world.
-- (X3) _Records are scoped._ A generalisation record $n := sigma$ is in force in the world that made it and its sub-worlds (private copies, nested splits), nowhere else: the same text `n` can denote values of different types in different arms, since it may mention the scrutinee.
+- (X3) _Records are scoped._ A generalisation record $n := sigma$ is in force in the world that made it and its sub-worlds (private copies, nested splits), nowhere else: the same text $n$ can denote values of different types in different arms, since it may mention the scrutinee.
 - (X4) _The block is checked unrefined._ What follows the match is checked once with σ unknown; its sealed programs resolve when a later split learns σ.
 
 What a world may keep is exactly what holds in every world: fresh-name counters (a counter states no fact), the types of abstract values created inside the arm (nobody outside can name them), and η-refinements of abstract values of one-constructor types (true in every world because they follow from the type alone). _Enforced:_ every arm of every split runs inside one combinator (`inWorld`), whose exit restores every component of the state except those listed, so a new component is restored by default.
@@ -435,7 +532,7 @@ _Enforced:_ one function forms every block, taking its arms as computations and 
 - (E2) _Decided by declaration._ Whether a term is erased is read from syntax and declared types. Since sorts are syntactic, "is a proof" is a property of the term itself, so a re-run of a sealed program erases exactly what the direct arm erases.
 - (E3) _Only copy-independent facts survive a copy:_ name counters, the types of names created in it, generalisation records (keyed by closed program texts, which mean the same in any state), η-refinements, checked recursion obligations, caches.
 - (E4) _In place means within the statement's copy._ A borrow-typed argument of a statement runs in place, not on its own copy, but the statement call is itself erased.
-- (E5) _Reads move inside statements as at runtime,_ on the copy only: a side that reads `x` and then observes `x` sees `⊥`, and its equation is stuck.
+- (E5) _Reads move inside statements as at runtime,_ on the copy only: a side that reads $x$ and then observes $x$ sees `⊥`, and its equation is stuck.
 - (K1) _Captures over-approximate._ For each outer place and each arm, a block's capture mode is at least the arm's effect on it, in the order none ⊑ copy ⊑ write or borrow ⊑ move, measured at the granularity of the place moved and net of the arm's own refills; a closure or Π-type in an arm moves what it mentions.
 - (K2) _Over-approximation is safe._ A stricter generic call only removes options for the code after the block: a read of a place the block moved is an error, and an equation over it is stuck.
 - (K3) _Effects are measured where they happen:_ a move inside a nested block is that block's, and a move inside a statement is discarded with its copy. By (E2) a block's re-run decides as the direct arm does.
@@ -444,11 +541,11 @@ _Enforced:_ statement positions run through one combinator (`inStatement`) and t
 
 == Recursion <sec-rec>
 
-A definition $kw("fix") f (overline(x) : overline(A)) : B space kw("by") x_j := b$ denotes the function defined by well-founded recursion on the size of the entry value of $x_j$.
+A definition $kw("fix") f (overline(x) : overline(A)) : B kw("by") x_j := b$ denotes the function defined by well-founded recursion on the size of the entry value of $x_j$.
 - (R1) _The measure is the entry value, as refined._ Each recursive call's argument (its content, through a borrow) is compared with the caller's entry value as refined so far, whatever the body did to the place since. Strict subterm implies smaller size. Refinement only adds constructors, so a strict subterm at the generic call is one at every instance.
-- (R2) _Recursive calls are named._ `f` is reached only through the name it binds for itself, or a nested function's capture of that name; which calls recurse is a fact about syntax, never decided by comparing function values, which refinement changes.
+- (R2) _Recursive calls are named._ $f$ is reached only through the name it binds for itself, or a nested function's capture of that name; which calls recurse is a fact about syntax, never decided by comparing function values, which refinement changes.
 - (R3) _Check before running._
-- (R4) _One order._ A definition sees only earlier definitions and itself, so every chain of calls is ordered lexicographically by (definition, entry size). A call through a function value is not a recursive call unless its head is the name; a closure formed in `f`'s body that calls `f` is checked against `f`'s entry value where it is formed.
+- (R4) _One order._ A definition sees only earlier definitions and itself, so every chain of calls is ordered lexicographically by (definition, entry size). A call through a function value is not a recursive call unless its head is the name; a closure formed in $f$'s body that calls $f$ is checked against $f$'s entry value where it is formed.
 - (R5) _Types recurse like terms_, and a statement never mentions the definition being checked.
 - (R6) _Runs only unfold._ Untyped runs unfold definitions without the check; they decide nothing about well-foundedness, and a run that does not terminate is exhaustion, never a decision.
 
@@ -471,7 +568,7 @@ _Enforced:_ one function decides whether a call belongs to a recursion entry, by
 The paper proves @target-sound for a fragment F defined by six restrictions:
 - (F1) _Data:_ only `Nat`, `Unit`, `False`, `True`, `And`; data types `Nat` and `Unit`; borrow types `&Nat`, `&Unit`. No pairs, no user inductives.
 - (F2) _First order:_ top-level definitions with bodies; parameter types data, borrow types or propositions; no `fix` or λ inside bodies, no Π-values, no function parameters, no type families, no `Prop`-valued functions; a definition mentions itself only as a call head in its body.
-- (F3) _Propositions:_ `True`, `False`, `And`, `Eq D a b`, `Id D t u` with $D in {ty("Nat"), ty("Unit")}$ and match-free terms.
+- (F3) _Propositions:_ `True`, `False`, `And`, $ty("Eq") D space a space b$, $ty("Id") D space t space u$ with $D in {ty("Nat"), ty("Unit")}$ and match-free terms.
 - (F4) _No stuck blocks:_ a match on data only in tail position, so only [Tail-split] and [Tail-gen] split.
 - (F5) _Proof forms:_ `refl`, pairs, proof places, lemma calls, `let`/sequence ending in a proof, matches on proofs of `And`/`True`, `match h {}` on `False`. No `J`, `rewrite` or `split`.
 - (F6) _No move out through a borrow:_ a read under `*` is written `clone(…)`.
@@ -563,7 +660,7 @@ The plan extends agreement clause by clause, one feature at a time (@sec-feature
 
 === Matches inside statements and stuck blocks (lifting F3, F4)
 
-*What changes.* A stuck match not in tail position is closed off as a block on the symbolic path, while the ground path runs the arm the value selects, in place. Generalisation records can now come from [Split-gen] inside statements and from `split f in t`, not only from [Tail-gen].
+*What changes.* A stuck match not in tail position is closed off as a block on the symbolic path, while the ground path runs the arm the value selects, in place. Generalisation records can now come from [Split-gen] inside statements and from $kw("split") f kw("in") t$, not only from [Tail-gen].
 *Clauses.* (A2#sub[⊑]): by (K1) a block takes each place in the strongest mode any arm needs, so the symbolic state can hold `⊥` where the ground arm left a value. By (K2) no later code reads such a place, and an equation over it is stuck. (A9) with (X1)–(X4): a record made in an arm is dropped when it ends, so α need respect only the records of the current world.
 *Principles.* (C9), (K1)–(K3), (X1)–(X4), (W1)–(W2), [Return].
 
@@ -594,12 +691,12 @@ The plan extends agreement clause by clause, one feature at a time (@sec-feature
 
 === `J` and `rewrite` (lifting F5) <sec-J>
 
-*What changes.* Transport `J(A, a, b, P, h, t)` computes to `t` only when $a equiv b$; otherwise it is closed off as a block whose one arm is `t`. `rewrite h in t` is `J` with the motive read off the goal.
+*What changes.* Transport $ty("J")(A, a, b, P, h, t)$ computes to $t$ only when $a equiv b$; otherwise it is closed off as a block whose one arm is $t$. $kw("rewrite") h kw("in") t$ is `J` with the motive read off the goal.
 *Clauses.* A `J` block is a block (N4).
 *Principles.* (V8), [Return] for the transported term.
 
 #oq(3, [stuck equations and `J` at ground instances])[
-  The fragment counts a stuck equation as true, which is safe there because a stuck equation arises at a ground state only from `⊥`, and no proof form eliminates it. Beyond F this is false: with congruence (`cong`), a hypothesis `Eq(Π(n : Nat). Nat, f, g)` between two extensionally different closures is stuck, and if it counted as true, `cong` would derive `Eq(Nat, f(0), g(0))`, which computes to `False` at a ground instance. So truth must be semantic (@def-truth), with only the `⊥` case of a stuck equation treated specially, or not at all. A second consequence: at a ground instance a hypothesis `Eq(A, a, b)` can be true while $a equiv.not b$ (two closures with equal meanings and different code), and then a `J` in a data function's body is stuck on the ground path. Then @target-sound (i) "runs to completion" fails. Either ground runs must be shown never to reach `J` at true-but-unconvertible endpoints (plausible for closed runs, whose hypotheses are closed proofs, which can only be `refl` at such a type), or (i) must be weakened to "does not go wrong".
+  The fragment counts a stuck equation as true, which is safe there because a stuck equation arises at a ground state only from `⊥`, and no proof form eliminates it. Beyond F this is false: with congruence (`cong`), a hypothesis $ty("Eq")(Pi(n : ty("Nat")). ty("Nat"), f, g)$ between two extensionally different closures is stuck, and if it counted as true, `cong` would derive $ty("Eq")(ty("Nat"), f(0), g(0))$, which computes to `False` at a ground instance. So truth must be semantic (@def-truth), with only the `⊥` case of a stuck equation treated specially, or not at all. A second consequence: at a ground instance a hypothesis $ty("Eq")(A, a, b)$ can be true while $a equiv.not b$ (two closures with equal meanings and different code), and then a `J` in a data function's body is stuck on the ground path. Then @target-sound (i) "runs to completion" fails. Either ground runs must be shown never to reach `J` at true-but-unconvertible endpoints (plausible for closed runs, whose hypotheses are closed proofs, which can only be `refl` at such a type), or (i) must be weakened to "does not go wrong".
 ]
 
 === Moves through borrows (lifting F6)
@@ -635,28 +732,28 @@ This section states every lemma the plan uses, with its status and what it depen
 #thm([Lemma], [generalisation], [
   Let a state $Omega_s$ be reached on the symbolic path, and let α cover and respect every abstract value of $Omega_s$ except those introduced by the generalisation records visible in the current world. Extend α by $alpha(sigma) := "nf"(n alpha)$ for each visible record $n := sigma$, in the order they were made. Then (a) the visible records are exactly those made on the path inside the current world; (b) $alpha(sigma)$ is a value of type $Delta(sigma) alpha$; (c) $(Omega_s [sigma slash n]^+) alpha = Omega_s alpha$, so generalising is invisible under α.
 ]) <lem-gen>
-_Argument._ (a) is (X3) with (E3): a record survives a private copy but not its arm. (b): `n` occurs in the state, so its normal form under α exists by (A1); it is a value of the type of the place it was generalised at, which is its sealed program's type in the current world. (c): every occurrence of `n` became σ and every re-derivation normalises to σ (C6); under α both become $"nf"(n alpha)$, which is what `n` becomes, by determinism.
+_Argument._ (a) is (X3) with (E3): a record survives a private copy but not its arm. (b): $n$ occurs in the state, so its normal form under α exists by (A1); it is a value of the type of the place it was generalised at, which is its sealed program's type in the current world. (c): every occurrence of $n$ became σ and every re-derivation normalises to σ (C6); under α both become $"nf"(n alpha)$, which is what $n$ becomes, by determinism.
 _Status._ #s-paper in F (records only from [Tail-gen]); beyond F #s-red[(X1)–(X4), (C6)].
 
 #thm([Lemma], [footprints], [
-  Let $Omega_s agr(alpha) Omega_g$ and let `t`, `u` be statement terms whose typed runs from $Omega_s$ succeed, with footprints $W_s$ and $W_g$ at the two states. Then (a) every position in $W_g$ but not $W_s$ is owned only through borrow variables that hold `⊥` at $Omega_s$, which `t` and `u` only assign as whole variables; (b) for each position in exactly one footprint, the ground runs of `t` and `u` leave its resolved content unchanged, or one of them moves it out, so its equation is stuck; (c) each observed place has convertible types on the two paths under α.
+  Let $Omega_s agr(alpha) Omega_g$ and let $t$, $u$ be statement terms whose typed runs from $Omega_s$ succeed, with footprints $W_s$ and $W_g$ at the two states. Then (a) every position in $W_g$ but not $W_s$ is owned only through borrow variables that hold `⊥` at $Omega_s$, which $t$ and $u$ only assign as whole variables; (b) for each position in exactly one footprint, the ground runs of $t$ and $u$ leave its resolved content unchanged, or one of them moves it out, so its equation is stuck; (c) each observed place has convertible types on the two paths under α.
 ]) <lem-fp>
 _Argument._ By (T2) and (O3), a run changes a position only by writing it or writing through a borrow it owns, which puts it in the footprint. (a) by (A4) and the error rules for a variable holding `⊥`; (b) by the frame fact; (c) by (A8). _Status._ #s-paper in F; beyond F #s-red[(T2), (A8), Q2].
 
 #thm([Lemma], [types agree], [
-  Let $Omega_s agr(alpha) Omega_g$ and let `A` be a proposition. If every call made in erased mode by the ground evaluation of `A` completes, and `A` evaluates to $T_s$ at $Omega_s$, then it evaluates to some $T_g$ at $Omega_g$ and $ok(T_s alpha)$ iff $ok(T_g)$.
+  Let $Omega_s agr(alpha) Omega_g$ and let $A$ be a proposition. If every call made in erased mode by the ground evaluation of $A$ completes, and $A$ evaluates to $T_s$ at $Omega_s$, then it evaluates to some $T_g$ at $Omega_g$ and $ok(T_s alpha)$ iff $ok(T_g)$.
 ]) <lem-types>
-_Argument._ By induction on `A`: connectives by induction; `Eq` because the sides' runs agree (@lem-runs) and loan-free values in flight are the symbolic ones under α; `Id` because each observation under α equals the ground one after resolution, position by position, and the conjuncts for positions in only one footprint are true or stuck (@lem-fp); Π-types and user inductives through @def-meaning. _Status._ #s-paper in F; beyond F #s-red[@lem-runs, @lem-fp, @lem-conv, Q3].
+_Argument._ By induction on $A$: connectives by induction; `Eq` because the sides' runs agree (@lem-runs) and loan-free values in flight are the symbolic ones under α; `Id` because each observation under α equals the ground one after resolution, position by position, and the conjuncts for positions in only one footprint are true or stuck (@lem-fp); Π-types and user inductives through @def-meaning. _Status._ #s-paper in F; beyond F #s-red[@lem-runs, @lem-fp, @lem-conv, Q3].
 
 #thm([Lemma], [call types], [
-  Let `L` be a lemma called at a ground call point with arguments $overline(w)$, and β the ground instance the call is at. Each parameter type of `L`, and its codomain, are true at the call site iff they are true at β.
+  Let $L$ be a lemma called at a ground call point with arguments $overline(w)$, and β the ground instance the call is at. Each parameter type of $L$, and its codomain, are true at the call site iff they are true at β.
 ]) <lem-call>
-_Argument._ Apply (T2) with the parameter frame as the core: each run made while evaluating a type at the call site is the run at the instance, with the final contents of the borrowed cells plugged into the caller's places. An `Id` conjunct over a borrow parameter's cell at the instance compares the final contents of the cell; at the call site, of the owners of the loan, which at a ground state is one owner, holding the borrow's final value in a context `K`; by (T4) `K` is injective, so the equations have the same truth. _Status._ #s-red[(T2), (T4)].
+_Argument._ Apply (T2) with the parameter frame as the core: each run made while evaluating a type at the call site is the run at the instance, with the final contents of the borrowed cells plugged into the caller's places. An `Id` conjunct over a borrow parameter's cell at the instance compares the final contents of the cell; at the call site, of the owners of the loan, which at a ground state is one owner, holding the borrow's final value in a context $K$; by (T4) $K$ is injective, so the equations have the same truth. _Status._ #s-red[(T2), (T4)].
 
 #thm([Lemma], [runs agree], [
-  Let $Omega_s agr(alpha) Omega_g$, and let `t` be a term, not a match in tail position, with $Omega_s tack.r t ev v_s : A tack.l Omega'_s$ in runtime or erased mode. Suppose every call the ground run of `t` makes completes without error at the instance it is at. Then the ground run of `t` terminates without error, the states agree at every call point (each ground argument being the symbolic one under α, its content for a borrow), and the final states, with the values as temporaries, agree.
+  Let $Omega_s agr(alpha) Omega_g$, and let $t$ be a term, not a match in tail position, with $Omega_s tack.r t ev v_s : A tack.l Omega'_s$ in runtime or erased mode. Suppose every call the ground run of $t$ makes completes without error at the instance it is at. Then the ground run of $t$ terminates without error, the states agree at every call point (each ground argument being the symbolic one under α, its content for a borrow), and the final states, with the values as temporaries, agree.
 ]) <lem-runs>
-_Argument._ By induction on `t`, one step at a time, using @lem-stepnat for each step. At a call, the arguments agree; if the symbolic call closes off, (N2); if it returns, its body's steps are (N1) steps in the callee's frame. At a stuck match or `J` not in tail position, (N4). Termination: the ground run visits each subterm finitely often (no loops; recursion only through calls, which complete by hypothesis), and performs finitely many [End]s at each access. _Status._ #s-paper in F, conditional on (N1)–(N3); beyond F #s-red[@lem-stepnat, Q1–Q6].
+_Argument._ By induction on $t$, one step at a time, using @lem-stepnat for each step. At a call, the arguments agree; if the symbolic call closes off, (N2); if it returns, its body's steps are (N1) steps in the callee's frame. At a stuck match or `J` not in tail position, (N4). Termination: the ground run visits each subterm finitely often (no loops; recursion only through calls, which complete by hypothesis), and performs finitely many [End]s at each access. _Status._ #s-paper in F, conditional on (N1)–(N3); beyond F #s-red[@lem-stepnat, Q1–Q6].
 
 #thm([Lemma], [modes], [
   If a data function's runtime-mode run from a ground instance completes without error, so does its erased-mode run, with the same result.
@@ -671,15 +768,15 @@ _Argument._ (R4) orders every call by (definition, entry size); (R1) and (R2) ma
 == Stability: the two paths agree
 
 #thm([Lemma], [stability], [
-  For every reachable state Ω, refinement α respecting Ω, and term `t`:
+  For every reachable state Ω, refinement α respecting Ω, and term $t$:
   (decisions) the checker's decision functions, given the refined state and term, decide what they decided on the originals (@lem-DC);
-  (runs) if `t` runs at Ω to $(v, Omega')$ on the symbolic path, the run of $t alpha$ at $Omega alpha$ does not fail, and if it finishes with $(v'', Omega'')$, then $(v alpha, Omega' alpha)$ and $(v'', Omega'')$ agree once every borrow is ended and the abstract values either run created are renamed injectively onto the other's.
+  (runs) if $t$ runs at Ω to $(v, Omega')$ on the symbolic path, the run of $t alpha$ at $Omega alpha$ does not fail, and if it finishes with $(v'', Omega'')$, then $(v alpha, Omega' alpha)$ and $(v'', Omega'')$ agree once every borrow is ended and the abstract values either run created are renamed injectively onto the other's.
 ]) <lem-stab>
 
 In Lean this is `Ochr.Stability.Conjecture2 := DecisionsCommute ∧ RunsCorrespond`; its proof, `stability`, has the decision fields of @lem-DC that are proved filled in and `sorry` elsewhere. The (runs) half is the whole-run form of what the walk uses step by step (@lem-stepnat); both reduce to the same lemmas, N = (P) + (C) + (Sp), and (M).
 
 #thm([Lemma], [decisions commute], [
-  For every decision function `d` of the checker, state Ω and refinement α respecting Ω, on α-refined inputs at $Omega alpha$ `d` decides what it decided on the original inputs at Ω. The decisions, with their status:
+  For every decision function $d$ of the checker, state Ω and refinement α respecting Ω, on α-refined inputs at $Omega alpha$ $d$ decides what it decided on the original inputs at Ω. The decisions, with their status:
   (d1) _erasure flags_ of a term: #s-red[@lem-vdc, and two invariants of the kind of (d0)];
   (d2) _whether a match is on a proof:_ #s-lean as `decisionsCommute_byType`; it reads the arms' constructor names, never their bodies (`byTypeMatch_arms`);
   (d3) _a function type's class,_ for Π-type values, generic to instance: #s-lean where the codomain's shape fixes the class (`decisionsCommute_fnClass_shape`), assuming the class cache is sound (the checker memoises each Π-type's class, and soundness means a memo always agrees with recomputing it); in general #s-red[@lem-vdc];
@@ -691,10 +788,10 @@ In Lean this is `Ochr.Stability.Conjecture2 := DecisionsCommute ∧ RunsCorrespo
   (d0) _refinement keeps the signature_ (the declared inductives and globals), so every decision reading only the signature is stable: #s-lean as `onState_sig`, with `sigDecisions_commute` (whether a constructor or field is a proof, large elimination, matches by type) and `readsSig_refineDecl`, `readsSig_preFlags` (a binding's class and the erasure flags read from a declared reading).
 ]) <lem-DC>
 
-Two of the fields hold only in the generic-to-instance direction and only for Π-type values: for an unknown `A : Type` that a refinement makes a Π-type, the generic run reads no class while the instance reads one. No accepted program reaches this, because every call checks that its callee's type is a Π-type before reading its class. The [Close] row of a stuck block is excluded from (d4): refining an unknown match type to `Unit` turns the row from data to `Unit`, which is harmless (a value at `Unit` is `()` on both paths) and belongs to (C).
+Two of the fields hold only in the generic-to-instance direction and only for Π-type values: for an unknown $A : ty("Type")$ that a refinement makes a Π-type, the generic run reads no class while the instance reads one. No accepted program reaches this, because every call checks that its callee's type is a Π-type before reading its class. The [Close] row of a stuck block is excluded from (d4): refining an unknown match type to `Unit` turns the row from data to `Unit`, which is harmless (a value at `Unit` is `()` on both paths) and belongs to (C).
 
 #thm([Lemma], [declared readings survive refinement], [
-  If an embedded value `v` has declared reading `d` at Ω, then $v alpha$ has declared reading `d` at $Omega alpha$.
+  If an embedded value $v$ has declared reading $d$ at Ω, then $v alpha$ has declared reading $d$ at $Omega alpha$.
 ]) <lem-vdc>
 This is the statement that evaluation preserves declared types (sorts are syntactic), applied to the values refinement re-runs. It is *false at unchecked globals*: with `F (n : Nat) : Nat := Nat` (not accepted, but constructible as a state), the sealed program #seal[`F(σ)`] reads as data, and after $sigma := ty("Z")$ it re-runs to `Nat`, which reads as a sort. So it is an invariant of states reachable by checked programs, proved by induction over the evaluator together with typing. Lean statement: `ValueDeclCommutes`, with the counterexample as the theorems `probe_d55_*`. _Status._ #s-open; needs Q7.
 
@@ -714,10 +811,10 @@ Given it, $W_(Omega alpha) subset.eq W_Omega$, because substitution keeps every 
   A run that completes without inspecting the abstract value σ (it never matches on it, compares it, or reads through it) computes, with $alpha(sigma)$ in σ's place, the same steps on the substituted values, and leaves the substituted state.
 ]) <lem-P>
 #explainer[reified computations and thunks][A _reified computation_ is a program written as data. Instead of a function that reads and writes the heap directly, it is a tree whose nodes are requests, such as "what does handle $h$ hold?" or "allocate a new handle", each followed by the rest of the computation as a function of the answer. An _interpreter_ walks the tree and answers the requests against a heap; this is the "free monad" pattern of functional programming. The point for a proof is that every access to the heap is a visible node: "this run never asked about σ" is a property of the tree, and the fact that such a run cannot depend on σ is proved once, by induction on trees, for every program at the same time. A _thunk_ is a suspended computation, a stored "run this call later, on these inputs". Closing off a stuck call becomes allocating a thunk, and re-normalising it after a refinement becomes _forcing_ it, that is, running it now.]
-_On the heap slice:_ #s-heap. The slice's evaluator is a _reified computation_ (a tree of requests, which an interpreter runs against a heap) over two effects, `view` (ask what a handle holds; an unknown answers nothing) and `alloc`. `exec_agree`: two heaps with the same allocation counter that differ only on a set `D` of existing handles give the same result, and final heaps differing only on `D`, for any computation that never asks about `D`; it is one induction on the computation tree, proved once. `P_evalH` is `exec_agree` with $D = {sigma}$, with no case of the evaluator inspected. _On the checker:_ #s-open. Measured on 193 runs, the checker's run at a ground value agreed with its generic result refined by that value in every case where the heap run never asked about the unknown. A direct proof against the current machine would need an invariant for every one of about 30 state components and a lemma per function of the 116-function evaluator cycle; the estimate recorded with that measurement is 10,000 to 20,000 lines of Lean, and it is not recommended.
+_On the heap slice:_ #s-heap. The slice's evaluator is a _reified computation_ (a tree of requests, which an interpreter runs against a heap) over two effects, `view` (ask what a handle holds; an unknown answers nothing) and `alloc`. `exec_agree`: two heaps with the same allocation counter that differ only on a set $D$ of existing handles give the same result, and final heaps differing only on $D$, for any computation that never asks about $D$; it is one induction on the computation tree, proved once. `P_evalH` is `exec_agree` with $D = {sigma}$, with no case of the evaluator inspected. _On the checker:_ #s-open. Measured on 193 runs, the checker's run at a ground value agreed with its generic result refined by that value in every case where the heap run never asked about the unknown. A direct proof against the current machine would need an invariant for every one of about 30 state components and a lemma per function of the 116-function evaluator cycle; the estimate recorded with that measurement is 10,000 to 20,000 lines of Lean, and it is not recommended.
 
 #thm([Lemma], [(C) closing off is correct], [
-  Let a call close off at Ω, leaving its fills in the lent places and its result `r`. For a refinement α under which the direct call at $Omega alpha$ runs to completion with final state $Omega''$ and value `v`: once the caller's [End] has supplied the hole and every borrow is ended, the refined, re-normalised closed-off state agrees with $Omega''$, and $r alpha$ with `v`, up to renaming of loans.
+  Let a call close off at Ω, leaving its fills in the lent places and its result $r$. For a refinement α under which the direct call at $Omega alpha$ runs to completion with final state $Omega''$ and value $v$: once the caller's [End] has supplied the hole and every borrow is ended, the refined, re-normalised closed-off state agrees with $Omega''$, and $r alpha$ with $v$, up to renaming of loans.
 ]) <lem-C>
 _Reduction._ By (C1) the sealed text rebuilds the call, so re-running it under α is running the call in isolation at the refined arguments; by (T2) that is the call in context; by (C3) and (P) supplying the hole afterwards equals running with it; and (C4)–(C8) say the checker re-runs every occurrence, never re-closes, identifies one text with one value, surfaces errors and starts from clean inputs. #s-red[(T2), @lem-P on holes]. _On the heap slice_, closing off is a _thunk_ (a heap node standing for a delayed call) over the call's input handles, and a re-normalisation is forcing it: `force_is_direct` (forcing a thunk takes exactly the direct call's outcome, given the same allocation counter and agreement on what the inputs reach) is #s-heap on branch `heap-close` (file `Ochr/Heap/Close.lean`), assuming that the outcome is invariant under renaming fresh handles and that no input is itself a thunk. On the suite, 579 of 579 forced thunks agree with the direct call.
 
@@ -749,9 +846,11 @@ _Status._ #s-open for the current rules. On the heap design a borrow is a refere
 #let st-paper = rgb("#e6dcf2")
 #let st-open = rgb("#f6cfcf")
 #let st-design = rgb("#f2f2c4")
+// A legend swatch for a status colour.
+#let swatch(fill, label) = box(fill: fill, inset: 2pt, text(fill: status-ink, label))
 #let dn(pos, label, fill, name) = node(
   pos,
-  text(size: 7.5pt, label),
+  text(size: 7.5pt, fill: status-ink, label),
   fill: fill,
   stroke: 0.5pt,
   corner-radius: 2pt,
@@ -765,7 +864,7 @@ _Status._ #s-open for the current rules. On the heap design a borrow is a refere
   placement: none,
   diagram(
     spacing: (6pt, 18pt),
-    edge-stroke: 0.6pt,
+    edge-stroke: 0.6pt + ink,
     dn((3, 0), [Consistency (@target)], st-red, <cons>),
     dn((0.6, 1), [Model (@lem-model)], st-paper, <model>),
     dn((3, 1), [Soundness (@target-sound)], st-red, <sound>),
@@ -817,7 +916,7 @@ _Status._ #s-open for the current rules. On the heap design a borrow is a refere
     edge(<q7>, <vdc>, "-|>"),
     edge(<t>, <prof>, "-|>"),
   ),
-  caption: [The lemmas and their dependencies; an arrow points from a lemma to one that uses it. Not drawn, to keep the figure readable: conversion soundness also uses (P), and the walk lemmas also use the frame property and (T4). Colours: #box(fill: st-lean, inset: 2pt)[proved in Lean], #box(fill: st-heap, inset: 2pt)[proved on the heap slice], #box(fill: st-red, inset: 2pt)[reduced], #box(fill: st-paper, inset: 2pt)[paper argument], #box(fill: st-open, inset: 2pt)[open], #box(fill: st-design, inset: 2pt)[open design question].],
+  caption: [The lemmas and their dependencies; an arrow points from a lemma to one that uses it. Not drawn, to keep the figure readable: conversion soundness also uses (P), and the walk lemmas also use the frame property and (T4). Colours: #swatch(st-lean, [proved in Lean]), #swatch(st-heap, [proved on the heap slice]), #swatch(st-red, [reduced]), #swatch(st-paper, [paper argument]), #swatch(st-open, [open]), #swatch(st-design, [open design question]).],
 ) <fig-dag>
 
 #figure(
@@ -832,9 +931,9 @@ _Status._ #s-open for the current rules. On the heap design a borrow is a refere
       stroke: none,
       inset: (x: 4pt, y: 2.5pt),
       align: (left, left, left),
-      table.hline(stroke: 0.5pt),
+      table.hline(stroke: 0.5pt + ink),
       [*Lemma*], [*Status*], [*Depends on; Lean names*],
-      table.hline(stroke: 0.4pt),
+      table.hline(stroke: 0.4pt + ink),
       [Consistency (@target)], [#s-red[soundness, model]], [Lean statement `Ochr.Consistency.consistency` (`sorry`)],
       [Soundness (@target-sound)],
       [#s-red[the walk]],
@@ -869,7 +968,7 @@ _Status._ #s-open for the current rules. On the heap design a borrow is a refere
       [#s-heap; #s-red[(L1)–(L7)] on checker],
       [`Ochr.Heap.frame`, `call_effect`, `cap_queries`, `untouched`],
       [(T1), (T3), (T4), (T5) (@lem-T)], [#s-open], [(T3) trivial on the heap design],
-      table.hline(stroke: 0.5pt),
+      table.hline(stroke: 0.5pt + ink),
     )
   }),
   caption: [Status of every lemma.],
@@ -893,7 +992,7 @@ Then (P) is one induction on the computation tree, proved once (`exec_agree`); f
 == What does not depend on the port
 
 - The set model and its conditions (@lem-model), and soundness of conversion (@lem-conv), on paper.
-- All of the design questions Q1–Q8, and the proposed agreement relation (@def-agree).
+- All of the design questions Q1–Q9, and the proposed agreement relation (@def-agree).
 - The extended walk (@sec-walk) and the reductions of @lem-runs, @lem-stepnat, @lem-gen, @lem-types, @lem-call, @lem-rec, written conditionally on N, (M) and (T1)–(T5): this is the fragment's theorem redone for the whole calculus, conditional.
 - In Lean against the checker: the port-independent parts of @lem-DC (the scope invariants (d1) needs, the shape part of @lem-profile).
 
@@ -905,7 +1004,7 @@ Then (P) is one induction on the computation tree, proved once (`exec_agree`); f
 
 Estimates below are those recorded with the measurement of each piece, in weeks of focused agent work; no estimate exists for the paper steps.
 
-+ *Settle Q1–Q8* (@sec-oq). Each decides the form of a definition everything later uses. Q1 (good values) and Q7 (the typing invariant) first, since they fix what the soundness theorem quantifies over and over which states stability is claimed.
++ *Settle Q1–Q9* (@sec-oq). Each decides the form of a definition everything later uses. Q1 (good values) and Q7 (the typing invariant) first, since they fix what the soundness theorem quantifies over and over which states stability is claimed.
 + *Write the model and conversion soundness on paper* (@lem-model, @lem-conv). They fix what "true" means, which Q1 and Q3 need.
 + *Write the conditional theorem on paper*: @target-sound for the whole calculus, conditional on @lem-stepnat, (M) and (T1)–(T5), with the agreement relation of @def-agree. This is the first milestone a reviewer can read: the fragment's argument, extended to every feature, with every remaining assumption named.
 + *Finish the port-independent Lean parts* of @lem-DC.
@@ -919,7 +1018,7 @@ Estimates below are those recorded with the measurement of each piece, in weeks 
 The risks below are places where a lemma might be _false_, not merely unproved.
 
 *Statements that turned out false as first written.* Mechanising the decision half of stability corrected four statements, none of them a checker bug:
-- the class and [Close] row of a function type commute with refinement only for Π-type values and only from the generic to the instance (an unknown `A : Type` refined to a Π-type reads no class generically);
+- the class and [Close] row of a function type commute with refinement only for Π-type values and only from the generic to the instance (an unknown $A : ty("Type")$ refined to a Π-type reads no class generically);
 - the [Close] row of a stuck block does not commute (an unknown match type refined to `Unit` flips it from data to `Unit`, harmlessly);
 - footprint containment fails for a refinement that makes an unknown type a borrow type (excluded by requiring borrow-free refinements, which is what refinements are);
 - declared readings survive refinement only at states of checked programs (@lem-vdc).
@@ -979,3 +1078,90 @@ Each was a missing producer or recognition obligation. The principles of @sec-pr
   8,
   [universes in Lean],
 )[Whether the Lean statement keeps one inaccessible per universe level for all levels at once (unprovable in Lean by Gödel if Ochr is as strong as Lean, which is unknown: Ochr has impredicative `Prop` and every $ty("Type")_i$, but no constructor field is a function, so it has no W-types), or is weakened to bounded universe levels (a family of theorems, one per bound, each at a fixed Lean universe), to a statement relative to an assumed model, or to a statement per program.]
+#oq(
+  9,
+  [a well-founded definition of the model],
+)[The interpretation and the injectivity relation $R$ are circular at function types, and "by induction on the type" has nothing smaller to recurse on: codomains are computed by running code, and type variables have no structure. Likely repair: define them together, each type as a set paired with its subset of good elements, and each universe as a set of such pairs; settle together with the gap between truth in the model and the soundness walk. @def-inj.]
+
+= Referee reports <sec-referees>
+
+*A snapshot.* Three independent referees attacked this plan as it stood on 2 November 2026: the first draft, before the set-theory background of @sec-sets, the explainer and reminder boxes, open design question Q9 and the notation changes were added. Each was a fresh, read-only agent with a different angle, asked for a statement of the form "this plan will never lead to a final proof of consistency because X", with X a real obstruction rather than a difficulty, and could run probe programs against the checker on main, printing verdicts beside a control that must be rejected. None showed consistency impossible; all three found that the plan _as written_ cannot be completed. Their reports are summarised here in the plan's notation, faithfully but condensed; the full texts are in `ochr/docs/reviews/2026-11-02-plan18-*.md`. Section references below are to the current text, which has since absorbed some findings (Q9, and the corrected positivity explainer).
+
+== Foundations and semantics
+
+*Statement.* The plan defines truth in the set model (@def-truth), which quantifies over arbitrary set-theoretic values, but its only argument for soundness, the walk (@sec-walk), and every lemma beneath it ((P), (C), (Sp), the frame property, stability) speak only of machine values. The checker accepts lemmas whose hypotheses are true in the set model but whose only witnesses are non-computable functions; on those the walk cannot keep its invariants. This blocks the plan's current definitions, not consistency itself, and not the operational strategy as a whole.
+
+*Argument.* Ochr can state "$f$ decides halting". With `Prog` a type of two-counter machines and `Halts(p)` "$p$ halts from zero", the proposition `ExW(Prog → Nat, Decides)` is true in the set model, because the characteristic function of the halting set witnesses it, but no machine value does: a good closure computes a computable function, and halting is undecidable. The accepted lemma
+```
+def L3 (e : ExW(Prog → Nat, Decides)) (p : Prog) : Or(Halts(clone(p)), Π(t : Halts(clone(p))). False) := (
+  match e { Wit(w, h) => (
+    let hp = h(clone(p));
+    match hp { Intro(l, r) => (
+      let n = w(clone(p));
+      match n { Z => Inl(l(refl)), S m => Inr(r) }) }) })
+```
+proves excluded middle for halting from that hypothesis. On it the walk breaks. Matching on $e$ binds the data field $w$ to a fresh $sigma_w$ and $h$ to type `Decides`$(sigma_w)$. The walk's invariant needs `Decides`$(alpha(sigma_w))$ true, which every machine closure for $alpha(sigma_w)$ makes false; leaving $sigma_w$ unrefined instead, the next step must split $n = seal(sigma_w (P_0))$, which is stuck under every machine α and has no head constructor, so the walk cannot choose an arm. The same happens in a closed program: `UseK := K(M)` is accepted, where `M` proves that every decider answers 0 on a program that halts at once, and `K` takes such a proof as its hypothesis. The walk's step for the lemma call needs `M`'s type true for every set-theoretic decider, but the induction hypothesis for `M` covers only machine instances, where no decider exists, so it is vacuous: it would hold equally for an `M` claiming the answer is 1. Filling the step needs (P), (C), (Sp), the frame property and stability under set-valued valuations, which amounts to a denotational soundness proof.
+
+*Evidence.* `run`, `Halts`, `Decides`, `ExW`, `M`, `L3`, `K` and `UseK` are all accepted, with every control rejected. A `J` along an equation that is true in the set model but not convertible, `Eq(Nat → Nat, f0, g0)` with `f0(n) := Id0(n)` structurally the identity and `g0(n) := n`, is accepted inside a data function, whose ground run then stops at `J`. Infinitely branching inductives are rejected, through a parameter and through a type function, as is large elimination from a proposition with a data field. No closed proof of `False` was found.
+
+*Rescue.* (1) Define truth over machine values: a realizability model, that is a logical relation, with Girard-style candidates for impredicative quantification over `Type`. Then `L3`'s hypothesis is false at every instance and `M`'s type holds vacuously; this replaces the set model, the injectivity relation as a set and the inaccessible cardinals, lets conversion soundness follow from the machine-level lemmas, and lives in one Lean universe, which disposes of Q8. (2) Prove the symbolic checker sound denotationally, under set-valued valuations, which makes the walk redundant for consistency. Confidence that the walk cannot prove soundness clause (ii) with set-theoretic truth: about 90%.
+
+*Secondary weaknesses.*
+- Conversion soundness (@lem-conv) has the same gap: at higher types a function's meaning ranges over all set functions, while (P) covers only machine refinements; and the meaning of a codomain at set arguments needs a semantics of code the plan never gives.
+- Q3 made concrete: at the instance above, soundness clause (i) is false as stated, since the ground run is stuck at `J`. What an equation's truth means decides it: conversion excludes the instance, extensional equality keeps the problem.
+- Q8: Ochr has a universe at every level, so the model needs infinitely many inaccessibles at once; but with no infinitely branching inductives and none above $ty("Type")_0$, Ochr is very plausibly far weaker than Lean, and Gödel blocks this model rather than a proof.
+- A cycle: soundness → Q7 → declared readings → decisions → naturality → runs agree → soundness, since a refinement re-runs code whose results keep their declared readings only by subject reduction, part of soundness (i). It is resolvable only as one simultaneous induction, with stability proved per index inside it.
+- Q1's impredicativity worry is misplaced for `Prop`, whose binders can range over the two truth values. The real problem is a Π over `Type` landing in `Prop`: `SelfT := SigP(NoInh)` has good values only if `NoInh := Π(A : Type)(a : A). False` is true, and `NoInh` quantifies over `SelfT`.
+- The injectivity relation's induction on types is not well founded (now Q9), and constructor values' recorded parameters are read by the checker as a fallback, harmlessly, contrary to principle (V2).
+
+== The simulation and stability
+
+*Statement.* The theorem the plan targets is false for the checker it targets, because one of the plan's own premises is false: the worlds rule (@sec-worlds) that leaving a split arm keeps the η-refinements of one-constructor unknowns, on the ground that they "follow from the type alone". The checker implements that rule and accepts a closed, hole-free proof of `False`.
+
+*Argument.* The checker η-expands an abstract σ of a one-constructor type to $ty("C")(sigma_1, dots, sigma_k)$, computing the fields' types from σ's type _in the current world_, records the expansion, and reuses it whenever it meets σ again; leaving an arm keeps the record and the types of the unknowns it created. If σ has type $ty("DP")(n)$ and a field's type depends on $n$, an expansion made in the arm $n := ty("Z")$ stores field unknowns typed at $ty("DP")(ty("Z"))$, and the sibling arm $n := ty("S")(m)$ reuses them. The field is dependent, so the dependent-field rules see that its content, of type `Void`, does not fit the telescope's `Nat`, treat the value as open, and type the field by its content; a zero-arm match on it proves anything. So the worlds principle (X1) is violated by the plan's own list of what a world keeps, and (Sp), reduced to (X1)–(X4), is false: at the instance $n = 1$, no refinement can respect the symbolic state, since the field unknown would need a value of `Void`.
+
+*Evidence.*
+```
+ochr EtaBoom {
+  inductive Void : Type
+  inductive Bool := false | true
+  def G (n : Nat) (b : Bool) : Type := ( match n { Z => Void, S(m) => Nat } )
+  inductive DP (n : Nat) := MkDP(x : Bool, y : G(n, x), z : Nat)
+  def Eat (k : Nat) : Unit := ()
+  def Bad1 (n : Nat) (d : DP(n)) : False := (
+    match n {
+      Z => ( let u : Unit = match d { MkDP(x, y, z) => Eat(z) };
+             match d { MkDP(x, y, z) => match y {} } ),
+      S(m) => ( let u : Unit = match d { MkDP(x, y, z) => Eat(z) };
+                match d { MkDP(x, y, z) => match y {} } ),
+    }
+  )
+  def Boom : False := Bad1(S(Z), MkDP(true, Z, Z))
+}
+```
+Every declaration is accepted, `Boom` included, and the control is rejected. The exact hypotheses of `Ochr.Consistency.consistency` hold for this program, and a scratch file proves the theorem's negation. The twin without the first block in the `S` arm, so that no expansion is reused, is rejected ("[Match] on d.y, whose type Nat is not an inductive type"). The coordinator confirmed the acceptance independently on main; the bug, `EtaBoom`, is recorded unfixed in `ochr/docs/17-consistency-status.md`. Confidence: very high.
+
+*Rescue.* The route survives. Restore the η-records when leaving an arm while still carrying them through private copies within one world, or recompute the field types per world when a record is reused; then prove (Sp) against the checker's actual keep lists item by item, under an explicit invariant that nothing a world keeps names a value created inside the arm or carries a type computed under the arm's refinement, and audit every other kept item (the types of unknowns created in the arm, which also escape through a stuck block's inferred type; the neutrals table; the class cache; the constant cache; the recursion candidates).
+
+*Secondary weaknesses.*
+- N = (P) + (C) + (Sp) is incomplete: some steps consult an unknown without getting stuck or splitting (copy or move decided from an abstract type, η at `Unit`, conversion answering no generically but yes at the instance), and (P) as stated is false: generically $x : T$ is moved, at $T := ty("Unit")$ copied. On the heap design every read in polymorphic code consults the type's unknown, and the heap slice's (P) was proved without moves. The decomposition needs a monotonicity argument with an ordering ⊑.
+- M holds only up to ⊑: typed runs decide copy or move from the stored type, untyped runs from the value.
+- The heap port's prerequisite that every unknown carries a type refinement never changes is false for field unknowns of value-parameterised types, whose types must change when their index is refined; fixing them at creation would build `EtaBoom` into the heap design.
+- (Sp)'s real content is the per-item claims of the keep lists, which the plan should list as open obligations.
+
+== The structure of the argument and its targets
+
+*Statement.* No strict impossibility, but the notion of truth and the soundness theorem do not meet, and fixing it changes the model. Truth is set-theoretic, soundness covers only the countably many machine-valued ground instances, and accepted programs prove propositions quantifying over `Type` and over functions, whose truth concerns every element of an uncountable set. The meaning of a function value or codomain at such an element is never defined, so "proof terms have true types" cannot be discharged. The pieces fail to compose; this is not a proof that Ochr is inconsistent.
+
+*Evidence.* `L (A : Type) (a : A) : Eq(A, a, a) := refl`, `M := L` at type $Pi(A : ty("Type"))(a : A). ty("Eq")(A, a, a)$, `H` taking such a function as hypothesis, `K := H(L)`, and their variants over functions $Pi(f : Pi(n : ty("Nat")). ty("Nat"))$ are all accepted. To check `K`, the walk must show `H`'s hypothesis true for every set $A$, which nothing supplies; Q1's two candidates for "good" are both defined by runs at definable arguments.
+
+*Rescue.* (A) Relativise truth to good, definable values (a term or realizability model); the walk survives, at the cost of a truth-value argument for `Prop` binders, an extensionality lemma that makes Q3 mandatory (a `J` at endpoints equal in meaning but not convertible computes on one and sticks on the other), and conversion soundness re-proved. (B) Give Ochr code a denotational semantics in the set model, borrows and closing off included, with adequacy against the machine: roughly a second soundness proof, and the object the model already silently presupposes. Confidence that the gap is real as written: high; that it cannot be rescued: low.
+
+*Secondary weaknesses.*
+- The target statement holds up, but about 80 unchecked array accesses in the checker, which return a default value when out of range, are a missing proof obligation.
+- Restricting stability to reachable states creates a cycle: a definition is added to the signature before its body is checked, and refinement re-runs its unchecked code (a probe shows an error raised in one arm by running another arm's unchecked body). Stability must be fused into the walk, relative to β, and soundness (i) must include type preservation.
+- The Lean `Conjecture2` is false as stated: at the reachable generic state of the accepted `G (n x : Nat) : Unit := ((match n { Z => (let y = x; ()), S _ => () }); ())`, refining the generic result leaves `x` moved out while the direct run at $n := 1$ keeps it, and no renaming turns `⊥` into 1. So `theorem stability` is a `sorry` proof of a false proposition, as recorded in `ochr/docs/17-consistency-status.md`; it must be restated with an ordering.
+- The heap-slice results put the substance in their hypotheses: locality is assumed, not proved, and measured on 1,166 runs; (P) needs renaming invariance as soon as a refinement allocates.
+- Two machines with no bridge: the agreement clauses and resolution are about moving borrows, while (P), the frame property and (C) are proved on the heap design, where neither exists; after the port the checker would no longer implement the paper's rules.
+- The recommended order never produces a Lean proof of `Ochr.Consistency.consistency`: nothing mechanises the model, conversion soundness or the walk, and nothing links acceptance to a derivation.
+- Inaccessible cardinals may be unnecessary, since Ochr has no W-types, which would make Q8 moot (unverified).

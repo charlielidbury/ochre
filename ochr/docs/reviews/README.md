@@ -1,5 +1,12 @@
 # Paper reviews
 
+## 2026-11-02: three referee reports on the consistency proof plan (docs/18)
+
+- **Reviewed:** `ochr/docs/18-consistency-proof-plan.typ`, the first 26-page draft of 2 November 2026, before the set-theory background, explainer boxes and notation changes were added.
+- **Referees:** three fresh, read-only Opus agents (`attack-foundations`, `attack-simulation`, `attack-structure`), each with a different angle, each asked for a statement of the form "this plan for consistency will never lead to a final proof of consistency because X", with X a real obstruction rather than a difficulty. They could run probe programs against the checker on main `f5b030d4`, printing verdicts with a control that must be rejected.
+- **Outcome:** none showed consistency impossible; all three found that the plan as written cannot be completed. Two independently found its main gap (truth in the set model against a soundness argument over machine values); one found a closed proof of `False` on main (`EtaBoom`).
+- **Files:** `2026-11-02-plan18-{foundations,simulation,structure}.md`, the reports lightly edited, with the probes that serve as evidence inline. The same reports, in the plan's notation, form the plan's last section, "Referee reports".
+
 ## 2026-10-25: three independent referee reviews
 
 - **Reviewed:** `ochr/core/paper/main.pdf` at commit `db541739668427f84f6dd83a9dc566139654467d` (branch `ochr-core`). The PDF there is byte-identical to the one last built at `eec447e3` (sha256 `c7f4c735…e168741`), 65 pages. The reviewers could also read the repository, as it stood at that commit, to check the paper's claims against it.
