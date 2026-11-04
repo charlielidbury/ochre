@@ -39,6 +39,9 @@
 #let obs(t, w: none, s: none) = $attach(upright("Obs"), tr: #w, br: #s) lr(( #t ))$
 // The denotation of x in the set model.
 #let deno(x) = $lr(⟦ #x ⟧)$
+// Big-step evaluation (the machine judgement), and dereference of a place.
+#let ev = math.scripts(sym.arrow.b.double)
+#let dr = $class("normal", *)$
 
 // Inference rule: premises (any number) over a conclusion, optional name on the right.
 #let infer(name: none, ..args) = {

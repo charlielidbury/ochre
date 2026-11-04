@@ -32,7 +32,7 @@ Two lines of work already use one language. Low\* @lowstar writes low-level code
 
 == Three ideas
 
-*Observational equality.* The type `Id(A, t, u)` compares two computations `t` and `u` of result type `A`, run from the current state. It holds when they return equal values and leave equal contents in every place they may write. `Id` is a derived proposition, with no introduction or elimination rules of its own: at a given environment it computes to a conjunction of ordinary equations between two _observations_, the tuples of result and final contents, and these compute further by the structure of the data, in the manner of observational type theory @ott. The places a computation may write are read off its syntax, so they are an output of the computation like its result. This is the sense in which Ochr has no pure/impure divide: any program may appear in a type, and what it does to its environment is part of what the type talks about.
+*Observational equality.* The type $ty("Id")(A, t, u)$ compares two computations $t$ and $u$ of result type $A$, run from the current state. It holds when they return equal values and leave equal contents in every place they may write. `Id` is a derived proposition, with no introduction or elimination rules of its own: at a given environment it computes to a conjunction of ordinary equations between two _observations_, the tuples of result and final contents, and these compute further by the structure of the data, in the manner of observational type theory @ott. The places a computation may write are read off its syntax, so they are an output of the computation like its result. This is the sense in which Ochr has no pure/impure divide: any program may appear in a type, and what it does to its environment is part of what the type talks about.
 
 *Closing off.* Definitional equality in Ochr is normalisation by a deterministic symbolic machine. On symbolic inputs the machine gets stuck, and a stuck effectful call, unlike Lean's stuck `Nat.add n 0`, cannot name itself, because part of what it produces lives in the places it borrowed. We _close off_ such a call: its result and the final content of each borrowed place become _sealed programs_, closed source programs such as #seal(`let c = σ; AddM(&c, 0); c`), the pure wrapper a programmer would write anyway, which run again when a case split refines `σ`. They play the role of Aeneas's backward functions for one call (@sec-eval).
 
@@ -66,7 +66,7 @@ Ochr is a core calculus, and it covers a small part of Rust (@fig-scope). Its bo
     [Loops], [No; structural recursion only.],
     [Borrows in data], [No: no `Option<&mut T>`, `iter_mut` or `split_at_mut`, and no pair of borrows as a result.],
     [Two-phase borrows], [No: an argument that reads a place an earlier argument borrows needs a temporary.],
-    [Generic `&A`], [Yes, for `A : Type₀`, function types included, so a generic `swap` checks (@sec-calculus).],
+    [Generic $\&A$], [Yes, for $A : ty("Type")_0$, function types included, so a generic `swap` checks (@sec-calculus).],
     [`'static` borrows], [No: a returned borrow derives from a borrow argument (@sec-discussion).],
     [Moves, `Copy`, `clone`], [Yes: runtime reads of non-copy data move, `clone` copies, and closures follow `Fn` (@sec-eval).],
     [Integers, arrays], [Peano numbers only; arrays as a library, borrowed in parts only through a continuation, and growable vectors as a user type with a dependent field (@sec-eval-qs).],
