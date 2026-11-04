@@ -501,3 +501,93 @@ ochr ArmRecords uses Bools, Boxes {
     J(Prop, ⊤, False, λ(P : Prop) : Prop => P, symm(h), refl))
 }
 
+
+
+/-! η-refinements belong to their arm too (EtaBoom, `docs/reviews/2026-11-02-plan18-simulation.md`,
+a closed proof of `False` in the default checker until then). Re-rooting a moved place through
+an abstract value `σ` of a one-constructor type η-refines it, `σ := MkDP(σx, σy, σz)`, and the
+record is reused so that every private copy names `σ`'s fields alike (D68). The fields' types
+are read at `σ`'s type in the world that made the record. In the arm `n := Z` that is
+`DP(Z)`, so `σy : G(Z, σx) = Void`; with the record kept across arms, the arm `n := S m`
+reused it, `d.y` held an unknown of type `Void` where the telescope gives `Nat`, the
+dependent-field rules typed the open field by its content, and `match y {}` proved `False`.
+The constructor of an η-refinement is the same in every world, but its field unknowns and
+their types are the world's, so a record an arm makes is dropped with the arm (`exitWorld`),
+like a generalisation record (`ArmRecords`). `NoReuse` is the referee's twin (no record to
+reuse); `UseY` is the same shape used as data, which the stale `Void` rejected; `OnlyZ` makes
+the `Z` arm's ex falso, which is legitimate there. The leak is not about dependent fields:
+`DQ`'s one constructor is not dependent, but its field's type `G1(n)` mentions the value
+parameter `n`, which the arm refines. A field place is typed by the telescope at `d`'s type, which is
+right, but a closure types what it captures through its value, so `CapY` saw the stale
+`Void` (`Boom5` was a second closed proof of `False`), and its true twin `CapUseY` was
+rejected. -/
+
+ochr ArmEta {
+  inductive Void : Type
+  inductive Bool := false | true
+  def G (n : Nat) (b : Bool) : Type := ( match n { Z => Void, S(m) => Nat } )
+  inductive DP (n : Nat) := MkDP(x : Bool, y : G(n, x), z : Nat)
+  def Eat (k : Nat) : Unit := ()
+  def H (n : Nat) : Prop := match n { Z => False, S _ => ⊤ }
+  reject def Bad1 (n : Nat) (d : DP(n)) : False := (
+    match n {
+      Z => ( let u : Unit = match d { MkDP(x, y, z) => Eat(z) };
+             match d { MkDP(x, y, z) => match y {} } ),
+      S(m) => ( let u : Unit = match d { MkDP(x, y, z) => Eat(z) };
+                match d { MkDP(x, y, z) => match y {} } ),
+    }
+  )
+  reject def Boom : False := Bad1(S(Z), MkDP(true, Z, Z))
+  -- the twin: the arm `n := S m` makes no record of its own to reuse
+  reject def NoReuse (n : Nat) (d : DP(n)) : False := (
+    match n {
+      Z => ( let u : Unit = match d { MkDP(x, y, z) => Eat(z) };
+             match d { MkDP(x, y, z) => match y {} } ),
+      S(m) => match d { MkDP(x, y, z) => match y {} },
+    }
+  )
+  -- the same shape, true: in the arm `n := S m` the field `y` is a `Nat`
+  def UseY (n : Nat) (d : DP(n)) : Unit := (
+    match n {
+      Z => ( let u : Unit = match d { MkDP(x, y, z) => Eat(z) }; () ),
+      S(m) => ( let u : Unit = match d { MkDP(x, y, z) => Eat(z) };
+                match d { MkDP(x, y, z) => Eat(y) } ),
+    }
+  )
+  -- and in the arm `n := Z` the field `y` is a `Void`, so ex falso is sound there
+  def OnlyZ (n : Nat) (d : DP(n)) : H(n) := (
+    match n {
+      Z => ( let u : Unit = match d { MkDP(x, y, z) => Eat(z) };
+             match d { MkDP(x, y, z) => match y {} } ),
+      S(m) => ( let u : Unit = match d { MkDP(x, y, z) => Eat(z) }; refl ),
+    }
+  )
+  -- not dependent: `y`'s type mentions only the value parameter
+  def G1 (n : Nat) : Type := ( match n { Z => Void, S(m) => Nat } )
+  inductive DQ (n : Nat) := MkDQ(y : G1(n), z : Nat)
+  reject def CapY (n : Nat) (d : DQ(n)) : False := (
+    match n {
+      Z => ( let u : Unit = match d { MkDQ(y, z) => Eat(z) };
+             match d { MkDQ(y, z) => match y {} } ),
+      S(m) => ( let u : Unit = match d { MkDQ(y, z) => Eat(z) };
+                let w = match d { MkDQ(y, z) => y };
+                (λ(u : Unit) : False => match w {})(()) ),
+    }
+  )
+  reject def Boom5 : False := CapY(S(Z), MkDQ(Z, Z))
+  def CapUseY (n : Nat) (d : DQ(n)) : Unit := (
+    match n {
+      Z => ( let u : Unit = match d { MkDQ(y, z) => Eat(z) }; () ),
+      S(m) => ( let u : Unit = match d { MkDQ(y, z) => Eat(z) };
+                let w = match d { MkDQ(y, z) => y };
+                (λ(u : Unit) : Unit => Eat(clone(w)))(()) ),
+    }
+  )
+}
+
+#guard (run "ArmEta" ArmEta).rejectedWith [
+  ("Bad1", "[Match] on d.y, whose type Nat is not an inductive type"),
+  ("Boom", "unknown constant Bad1"),
+  ("NoReuse", "[Match] on d.y, whose type Nat is not an inductive type"),
+  ("CapY", "[Match] on κ, whose type Nat is not an inductive type"),
+  ("Boom5", "unknown constant CapY")]

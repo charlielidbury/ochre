@@ -75,19 +75,40 @@ piece of state between arms.
 Every current rule corresponds to a derived one; I found no derived obligation the checker
 omits. The two historical holes are both closed and both are instances of (X): the closure
 capture leak (D-era) and the generalisation-record reuse (reviewer-6 A1, closed by
-`restoreArm` dropping `neutrals`).
+`restoreArm` dropping `neutrals`). *Correction (2026-11-04, D79):* that finding was wrong.
+The checker kept η-refinements across worlds, on the argument in the next section, which is
+false; EtaBoom was a third hole of the same kind, and is now closed the same way.
 
-### The one component kept across worlds that is not a counter
+### η-refinements are world facts too (corrected, D79)
 
-`etaRefs` (D68: `σ ↦ Cᵢ(σ̄)` for a *one-constructor* inductive) is kept global across arms
-(`restoreKeep` keeps `cur.etaRefs`), and `movedPlace` actually *refines* `σ` by it. This looks
-like it violates (X), since it is a refinement surviving across worlds. It is safe, and the
-model says why: an η-refinement is **world-independent**. It is derived from `σ`'s type alone
-(the type has one constructor, so `σ` must be it in *every* world), not from any sibling's
-case split. It is a fact about the union, not about a summand, so (X) does not forbid sharing
-it. The same argument licenses keeping `absTy` for *new* unknowns (never named in a sibling)
-and the name counters. This is worth stating in the paper as the precise reason `etaRefs` and
-`nextAbs` may be global while `refs` and `neutrals` may not.
+`etaRefs` (D68: `σ ↦ C(σ̄)` for a *one-constructor* inductive) records how `movedPlace` took
+`σ` apart, so that every private copy names `σ`'s fields alike. This note first argued that
+the record may be kept across arms because an η-refinement is "world-independent": `σ`'s type
+has one constructor, so `σ` is that constructor in every world. **That argument is false**
+(EtaBoom, `docs/reviews/2026-11-02-plan18-simulation.md`): only the *constructor* is
+world-independent. The record also fixes the field unknowns `σ̄`, and their types are read off
+`σ`'s type *in the world that made the record*, which can mention what that world refined:
+- a value parameter: `σ : DQ(n)` with `MkDQ(y : G1(n), z : Nat)`, where `G1(Z) = Void` and
+  `G1(S m) = Nat`, made in the arm `n := Z` has `σy : Void`;
+- an earlier field, through a dependent field: `σ : DP(n)` with `MkDP(x : Bool, y : G(n, x), …)`.
+
+With the record kept, the arm `n := S m` reused `σy : Void` where `y` is a `Nat`. Through the
+dependent field the open-field rules typed `d.y` by its content, and `match y {}` proved
+`False` (`Bad1`, `Boom`); through the value parameter a closure typed its capture of `y`
+through its value, with the same result (`CapY`, `Boom5`). Both are now rejected tests, with
+true twins that the stale `Void` used to reject (`UseY`, `CapUseY`; `CaseSplits.ArmEta`).
+
+The rule follows from (X): a record may outlive its world only if everything it states holds
+in every world, which for an η-record means the fields' types do not depend on anything the
+arm refined. Where they do not, a sibling that re-derives the record gets the same one up to
+fresh names, which nothing can tell apart, since no sibling names the arm's fresh unknowns. So
+keeping the records whose fields do not depend on the arm buys nothing, and `exitWorld`
+restores `etaRefs` like `neutrals`: both are maps from a value to abstract values typed in
+the world that made them. Private copies (`restoreKeep`) still keep both, since a copy stays
+within its world, which is the reason D68 recorded η-refinements at all. What remains
+world-independent among the kept components is only the name counters, the types of unknowns
+created in the arm (which, once the arm's records are dropped, nothing outside names), the
+[Rec] candidates and the pure caches.
 
 ## 4. Probes
 
@@ -116,7 +137,7 @@ which `restoreArm` closes; I could not rebuild it into an acceptance.
 
 The first version of this note left this as a proposal, because `restoreKeep` is shared with `onCopy` and `nfSealed`, where the kept set differs. The coordinator's answer: do not share it. Landed on this branch:
 
-- `Env.lean`: `World` (the snapshot an arm starts from), `enterWorld`, `exitWorld`, `inWorld w x` (run `x`, then leave the world). `restoreArm` is deleted. `exitWorld` has its own body, not `restoreKeep`'s, and its docstring lists exactly what it keeps and why against (X): the name counters (`nextAbs`, `nextLoan`, `nextRecUid`), the types of abstract values created inside the arm, `etaRefs`, the [Rec] candidates and the pure caches. Everything else, `neutrals` included, is restored. A field added to `MState` is therefore restored by default, and keeping one is a claim that must be argued in that docstring.
+- `Env.lean`: `World` (the snapshot an arm starts from), `enterWorld`, `exitWorld`, `inWorld w x` (run `x`, then leave the world). `restoreArm` is deleted. `exitWorld` has its own body, not `restoreKeep`'s, and its docstring lists exactly what it keeps and why against (X): the name counters (`nextAbs`, `nextLoan`, `nextRecUid`), the types of abstract values created inside the arm, the [Rec] candidates and the pure caches. Everything else, `neutrals` included, is restored. (It also kept `etaRefs` until D79, on the false argument corrected in §3.) A field added to `MState` is therefore restored by default, and keeping one is a claim that must be argued in that docstring.
 - `Machine.lean`: every arm of [Split] (`splitArmsThenClose`), the by-type match on a proof (`evalMatchByType`, both its untyped and typed loops), the tail splits of `checkTailAt` on `Nat` and on inductives, the by-type tail match, and `split f in t` run inside `inWorld w do …`, with `w ← enterWorld` taken once before the first arm. What an arm hands back to the split (its type, its moves, its end state for D72's check, its proof flag) is returned from the `inWorld` block, read before the world is left.
 - `onCopy`/`nfSealed`/`stuckScrutinee` keep `restoreKeep`, whose kept set is a private copy's (it keeps `neutrals`: a copy stays within its world, D37).
 - Not converted: [T-J-stuck]'s transported-term check, which uses `restoreKeep` and so keeps the term's generalisation records. It makes no refinement, so it opens no world, and a record it keeps is a renaming within the current world, which (G) allows. That site is reworked by D75/D76 on the unmerged `depfields-model` branch, so it is left alone here to avoid a conflict.
@@ -126,7 +147,8 @@ Verdict-neutral: `lake build` green (97 jobs), every verdict assertion and the t
 ## 5b. The original proposal
 
 The components that must be restored per arm (`refs`, `neutrals`, `env`, `goal`, bindings'
-types, old `absTy`) and those that may be kept (`etaRefs`, new `absTy`, counters) are split
+types, old `absTy`) and those that may be kept (`etaRefs`, new `absTy`, counters; `etaRefs`
+wrongly, D79) are split
 across `restoreKeep` and `restoreArm` by hand, with the correctness of the split argued in two
 code comments. (X) says the invariant exactly: **on arm exit, every component that a refinement
 could have written is restored, and only world-independent facts and fresh-name counters are
@@ -138,14 +160,12 @@ it: `restoreKeep` is also called by `onCopy` and `nfSealed`, where the kept set 
 (a private copy keeps more than a sibling arm), so unifying them needs care and a verdict-stable
 refactor, which is more than a probe. Flagged for a dedicated lane.
 
-## 6. Candidate simplification (not implemented)
+## 6. Candidate simplification (superseded by D79)
 
-`neutrals` (generalisation records, per world) and `etaRefs` (η-refinements, global) are two
-record lists with the same shape `Value ↦ σ` but opposite scoping. The model explains the
-difference (world-dependent vs world-independent), but a reader of the checker must know which
-is which. Document them side by side with the (X) argument, or, if a measure ever shows it
-pays, tag each record with the world depth at which it was made and let one restore routine
-drop the too-deep ones. Describing only; removing or merging rules needs the user.
+This section proposed documenting `neutrals` (per world) and `etaRefs` (then global) side by
+side, since they are two record lists with the same shape `Value ↦ σ` and opposite scoping.
+The opposite scoping was the bug (§3): both are now scoped to their world and kept across
+private copies, so they no longer differ.
 
 ## 7. Open questions
 

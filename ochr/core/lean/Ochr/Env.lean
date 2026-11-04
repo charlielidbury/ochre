@@ -164,7 +164,7 @@ structure MState where
   nextAbs : Nat := 0
   absTy : Array Value := #[]
   refs : List (Nat × Value) := []     -- [Split] refinements made so far: σ ↦ Z | S σ'
-  etaRefs : List (Nat × Value) := []  -- D68: η-refinements of one-constructor abstract values (σ ↦ C(σ₁, …)), global like fresh names, so every private copy names σ's fields alike
+  etaRefs : List (Nat × Value) := []  -- D68: η-refinements of one-constructor abstract values (σ ↦ C(σ₁, …)), kept across private copies, so every copy names σ's fields alike, and scoped to the world that made them (`exitWorld`), since the fields' types are that world's
   goal : Option Value := none
   recStack : List RecCtx := []        -- the functions whose bodies enclose the current point (top first)
   nextRecUid : Nat := 0               -- fresh `RecCtx.uid`s (never reused)
@@ -260,7 +260,8 @@ def restoreKeep (saved : MState) : M Unit :=
       | none => fr
     let s := { saved with classCache := cur.classCache, constDecls := cur.constDecls,
                           recStack := saved.recStack.map keepCands, nextRecUid := cur.nextRecUid }
-    -- D37 (v1.8): fresh names are never reused, and generalisation records are global. Only
+    -- D37 (v1.8): fresh names are never reused, and generalisation and η records survive a
+    -- private copy, which stays within one world (`exitWorld` scopes them to it). Only
     -- the types of abstract values created by the nested run are kept: a refinement of an
     -- older one's type ([Split] substitutes into every stored type) is that run's alone, and
     -- must not reach a sibling arm (arrays-library's arm leak)
@@ -284,21 +285,28 @@ def enterWorld : M World := do pure ⟨← get⟩
 
 Restored (world facts, principle X): Ω and the stored types, the goal, the refinements `refs`,
 the types of abstract values that existed before the split (an arm's refinement substituted
-into them), and the generalisation records `neutrals` the arm made. A record names a program
-text at the type it has in this world; the same text can have another type in a sibling, since
-it may mention the value the arm refined (principle G; reviewer-6's A1: `⌈g(())⌉ := σ3 :
-Box(Unit)` from the arm `n := Z`, reused in the arm `n := S m`, where `g(())` is a
-`Box(Bool)`).
+into them), the generalisation records `neutrals` and the η-refinements `etaRefs` the arm
+made. Both kinds of record map a value to abstract values typed in this world, so both are
+scoped to it:
+- A generalisation record names a program text at the type it has in this world; the same
+  text can have another type in a sibling, since it may mention the value the arm refined
+  (principle G; reviewer-6's A1: `⌈g(())⌉ := σ3 : Box(Unit)` from the arm `n := Z`, reused in
+  the arm `n := S m`, where `g(())` is a `Box(Bool)`).
+- An η-refinement `σ := C(σ̄)` of a one-constructor type has the same constructor in every
+  world, but its fields `σ̄` are fresh unknowns whose types are read off `σ`'s type in this
+  world, and that type can mention what the arm refined: a value parameter (`DQ(n)` with
+  `y : G(n)`) or, through a dependent field, an earlier field. EtaBoom (docs/17): `σ : DP(n)`
+  η-refined in the arm `n := Z` has `σy : G(Z, σx) = Void`; kept, the arm `n := S m` reused it
+  where `y` is a `Nat`, and `match y {}` proved `False` (`CaseSplits.ArmEta`). A sibling that
+  needs the fields derives its own record, with its own fresh names, which is what a kept
+  record would be wherever the fields' types do not depend on the arm. Within one world
+  private copies keep the record (`restoreKeep`), which is why it is recorded at all (D68).
 
 Kept (true in every world, or names only):
 - `nextAbs`, `nextLoan`, `nextRecUid`: name counters. Keeping them is what makes a fresh name
   never reused (D37); a counter states no fact.
-- the types of abstract values created inside the arm: their names are fresh, so no sibling
-  can mention them.
-- `etaRefs`: an η-refinement `σ := C(σ̄)` of a one-constructor type is read off `σ`'s type
-  alone, so it holds in every world, unlike a case split's refinement or a generalisation
-  record (`neutrals`), which hold in one. Both are maps from values to abstract values; they
-  are scoped oppositely for that reason.
+- the types of abstract values created inside the arm: their names are fresh, and once the
+  arm's records are dropped nothing outside the arm names them.
 - the [Rec] candidates (`recStack` frames by `uid`) and the pure caches (`classCache`,
   `constDecls`): facts about declarations and calls, not about `σ`.
 
@@ -313,7 +321,7 @@ def exitWorld (w : World) : M Unit :=
       | none => fr
     { saved with classCache := cur.classCache, constDecls := cur.constDecls,
                  recStack := saved.recStack.map keepCands, nextRecUid := cur.nextRecUid,
-                 nextAbs := cur.nextAbs, nextLoan := cur.nextLoan, etaRefs := cur.etaRefs,
+                 nextAbs := cur.nextAbs, nextLoan := cur.nextLoan,
                  absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size }
 
 /-- Check one arm in world `w`: run `x` (which makes the arm's refinement and checks the arm),

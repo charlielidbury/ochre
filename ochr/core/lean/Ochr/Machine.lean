@@ -2867,7 +2867,8 @@ def movedPlace (fuel : Nat) (q : Place) : M Place := do
     | .tInd n ps =>
       let d ← lookupInd n
       if d.ctors.length == 1 then
-        -- D68: the same fields in every private copy (a statement's sides each move out of `σ`)
+        -- D68: the same fields in every private copy (a statement's sides each move out of `σ`);
+        -- the record is this world's, since the fields' types are read here (`exitWorld`)
         let r ← match (← get).etaRefs.lookup σ with
           | some r => pure r
           | none => do
