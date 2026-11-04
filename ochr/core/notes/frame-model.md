@@ -75,7 +75,7 @@ No rule lets a run whose effects persist reach a place it neither owns nor was l
 - **A closed-off call** becomes a thunk, which must capture only its arguments' handles.
 - **[End]'s global substitution** has no counterpart: a reference to a place needs no ending. So F5 becomes trivial.
 - **The whole-value walks** of stability §8 affect (P), not locality.
-- **The semantic gap.** The heap design replaces Ochr's moving borrows and loans with references to places. Their agreement on accepted programs is measured above, not proved. A port would adopt references to places, so the frame property would then hold for the checker itself.
+- **The semantic gap.** The heap design replaces Ochr's moving borrows with references to places; a loan survives only as a per-place lent mark (no substitution, no resolution), which the slice omits because it runs only programs the checker accepted (correction, 2026-11-04, docs/20 §7). Their agreement on accepted programs is measured above, not proved. A port would adopt references to places, so the frame property would then hold for the checker itself.
 
 ## 4. What remains for N on the heap design
 

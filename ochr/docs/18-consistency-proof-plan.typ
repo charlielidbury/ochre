@@ -836,7 +836,7 @@ _On the heap slice:_ #s-heap. A _capability executor_ runs a computation that ma
 #thm([Lemma], [the other machine invariants], [
   (T1) the rules preserve (WF1)–(WF6); (T3) resolution exists and is independent of the order of [End]s; (T4) a context holding a loan is injective in the loan's final value, and every accepted function value's backward function is injective; (T5) no step produces `&` by computation, and no data value ever holds a borrow or a live loan.
 ]) <lem-T>
-_Status._ #s-open for the current rules. On the heap design a borrow is a reference to a place and needs no ending, so (T3) becomes trivial there.
+_Status._ #s-open for the current rules. On the heap design a borrow is a reference to a place: there is no resolution, and ending a borrow only clears the place's _lent_ mark (a heap checker still needs one per place, since otherwise a write through a borrow that today's checker has ended would go undetected), so (T3) becomes much simpler there, though not trivial.
 
 == The dependency graph
 
@@ -983,7 +983,7 @@ _Status._ #s-open for the current rules. On the heap design a borrow is a refere
 - the machine sees a node only by asking (`view`) and creates one only by `alloc`, and is written as a reified computation, so running it is interpreting a tree of `view` and `alloc` requests against a heap;
 - a refinement fills an unknown's node in place, instead of substituting through the environment, every stored type and every sealed program;
 - closing off allocates a thunk over the call's input handles, and re-normalisation is forcing it;
-- a borrow is a reference to a place, so ending a borrow has no counterpart.
+- a borrow is a reference to a place, so there is no resolution and no substitution of a loan's content; ending a borrow only clears the place's lent mark, which a heap checker still needs (the loan remains, minus the substitution).
 
 Then (P) is one induction on the computation tree, proved once (`exec_agree`); fresh names coincide on both paths, so no renaming is needed for runs (P) covers; locality and the frame property are one induction each for the capability executor (@lem-frame); and (C) reduces to the frame property, (P) on holes, and renaming invariance of fresh handles (@lem-C).
 
