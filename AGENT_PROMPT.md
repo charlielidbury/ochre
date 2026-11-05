@@ -95,9 +95,9 @@ case first. If it fails, the easy cases don't matter. If it succeeds, the easy
 cases are usually mechanical.
 
 **Commit messages are your voice to future agents.** Explain WHY, not just
-WHAT. If you tried something that didn't work, say so. Agents may run
-`claude-ask <your-agent-id> "..."` later to interrogate your reasoning — write
-commits that will answer those questions.
+WHAT. If you tried something that didn't work, say so. The commit message is
+the only record of your reasoning that later agents can read, so write commits
+that answer the questions they will have.
 
 ## The system
 
