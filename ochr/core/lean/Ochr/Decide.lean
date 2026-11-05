@@ -8,7 +8,8 @@ values close off, and each instance, where they run) must take the same decision
 decision that changes a result is read from a normal form. Every decision of that kind is
 made here, from syntax, declarations and declared types: whether a term is erased and
 whether it is a proof, a function type's class, which parameters are proofs, [Close]'s row,
-whether a match is on a proof, the sort of a type.
+whether a match is on a proof, the sort of a type, and (D80) whether a read copies and where a
+value is `()` (η at `Unit`).
 
 This module sits before `Ochr.Machine` in the import graph and does not import it: the
 evaluator is not in scope here, so nothing in this file can run a term. What it reads is
@@ -20,8 +21,8 @@ the generic call and at every instance, because evaluation preserves declared ty
 and refinement does not change a type's sort (`notes/two-paths-census.md`).
 
 The value-dependent rules that legitimately live in the machine ([Split], `Eq`, conversion,
-[Rec], footprints, copy-ness, the dependent-field checks) are listed with their stability
-arguments in `notes/two-paths-census.md`.
+[Rec], footprints, the dependent-field checks) are listed with their stability arguments in
+`notes/two-paths-census.md`.
 -/
 
 namespace Ochr
@@ -166,11 +167,25 @@ def sealedSort? (t : Term) : M (Option Nat) := do
     | _ => pure none
   | _ => pure none
 
-/-- A fresh abstract value of type `T`, in η-normal form: at `Unit`, `()` (D59 refined: the
-readback at type `Unit` is `()`; a value of `Unit` carries nothing). -/
+/-- A fresh abstract value of type `T`. D80: never `()` by `T`, which is a computed type; a fresh
+value made for a position whose declared type reads as `Unit` is `()` there (`etaUnit`). -/
 def absOf (T : Value) : M Value := do
-  if T == .tUnit then return .unit
   pure (.abs (← freshAbs T))
+
+/-- D80 (R2), η at `Unit`: a value at a position whose declared type reads as `Unit` is `()`. A
+value of `Unit` carries nothing, so this loses nothing; reading the declared type, never the
+value's computed type, makes the two evaluation paths normalise at the same positions. -/
+def etaUnit (d : DeclInfo) (v : Value) : Value := if d == .unit then .unit else v
+
+/-- D80: a fresh abstract value of type `T` for a position whose declared type reads `d`: `()`
+where `d` reads as `Unit` (`etaUnit`). -/
+def absAt (d : DeclInfo) (T : Value) : M Value :=
+  if d == .unit then pure .unit else absOf T
+
+/-- What a borrow type's reading says of the borrowed place (`other` for any other reading). -/
+def DeclInfo.deref : DeclInfo → DeclInfo
+  | .ref e => e
+  | _ => .other
 
 -- the declared-type readers are mutually recursive, on fuel (all checker code is total)
 mutual
@@ -369,7 +384,8 @@ def declOf (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (t 
   | .borrow p => pure (.ref (← placeDecl fuel' sc p))
   | .zero => pure .other
   | .tt => pure .unit
-  | .assign _ u | .succ u | .fst u | .snd u => sub u; pure .other
+  | .assign _ u => sub u; pure .unit     -- an assignment's value is `()`
+  | .succ u | .fst u | .snd u => sub u; pure .other
   | .letIn h u w => do
     let d ← declOf fuel' chk sc ns u
     declOf fuel' chk (d :: sc) (h.name :: ns) w
@@ -695,12 +711,13 @@ def isPropV (fuel : Nat) (T : Value) : M Bool := do
 termination_by structural fuel
 
 /-- A value standing for an arbitrary inhabitant of `A`, used only to compute sorts. -/
-def genericValue (fuel : Nat) (A : Value) : M Value := do
+def genericValue (fuel : Nat) (A : Value) (d : DeclInfo := .other) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   if ← isPropV fuel' A then return .proof
+  -- D80: `()` where the position's declared type `d` reads as `Unit`
   match A with
-  | .tRef T => pure (.borrow (← freshLoan) (← absOf T))
-  | _ => absOf A
+  | .tRef T => pure (.borrow (← freshLoan) (← absAt d.deref T))
+  | _ => absAt d A
 
 /-- The erasure class of a function type (D28, D35): 1 = it returns types, 2 = it
 returns proofs, 0 = it returns data. v1.7: read off the codomain *term*, for top-level

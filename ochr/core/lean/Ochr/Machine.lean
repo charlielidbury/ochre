@@ -1365,7 +1365,7 @@ def piSort (fuel : Nat) (T : Value) : M Nat := do
     for ((d, h), pd) in (ds.zip hs).zip pds do
       let A ← evalType fuel' d
       l := max l (← sortOf fuel' A)
-      let gv ← genericValue fuel' A
+      let gv ← genericValue fuel' A pd
       let pd' ← refineDecl pd
       pushBind h (some A) gv pd'.isProof pd'
     let lb ← sortOf fuel' (← evalType fuel' c)
@@ -1506,11 +1506,11 @@ def convPi (fuel : Nat) (P Q : Value) : M Bool := do
         let A ← evalType fuel' d
         let w ← match A with
           | .tRef T =>
-            let c ← absOf T
+            let c ← absAt pd.deref T
             let l ← freshLoan
             modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
             pure (Value.borrow l c)
-          | _ => genericValue fuel' A
+          | _ => genericValue fuel' A pd
         let pd' ← refineDecl pd
         pushBind h (some A) w pd'.isProof pd'
         ws := ws.push (w, A)
@@ -1582,17 +1582,17 @@ def convFnRun (fuel : Nat) (f g pf : Value) (cs : List Value) (hs : List Hint) (
     modify fun s => { s with env := #[{}], convStack := (f, g) :: s.convStack }
     pushFrame
     pushCaps fuel' cs (match pf with | .tPi _ _ rd => rd | _ => [])
-    let (pds, _) ← paramDecls fuel' cs hs ds c
+    let (pds, cd) ← paramDecls fuel' cs hs ds c
     let mut args := #[]
     for ((d, h), pd) in (ds.zip hs).zip pds do
       let A ← evalType fuel' d
       let w ← match A with
         | .tRef T =>
-          let c ← absOf T
+          let c ← absAt pd.deref T
           let l ← freshLoan
           modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
           pure (Value.borrow l c)
-        | _ => if ← isPropV fuel' A then pure Value.proof else absOf A
+        | _ => if ← isPropV fuel' A then pure Value.proof else absAt pd A
       let pd' ← refineDecl pd
       pushBind h (some A) w pd'.isProof pd'
       args := args.push w
@@ -1605,8 +1605,11 @@ def convFnRun (fuel : Nat) (f g pf : Value) (cs : List Value) (hs : List Hint) (
         | .tRef T => some <$> freshAbs T
         | _ => pure none
       | _ => pure none
+    -- D80: the generic call's static readings are `pf`'s: its codomain's, and its borrow
+    -- parameters' (for [Close]'s fills)
+    let fills := pds.toArray.map (· == .ref .unit)
     let obs (fv : Value) : M (Value × List Value) := privately do
-      let (r, _) ← callFn fuel' false fv none args (args.map fun _ => none) false
+      let (r, _) ← callFn fuel' false fv none args (args.map fun _ => none) false (res := cd) (fills := fills)
       wholeReturned r
       -- [Conv-fun] keeps whatever `observing` its caller set (it never set it itself)
       let r' ← obsResult fuel' r σw? (← get).observing
@@ -1935,8 +1938,12 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     match Th.map unitTop with
     | some (.tInd "True" []) => pure (.proof, some vTrue)
     | some (.tEq A a b) =>
-      let (fa, B) ← callFn fuel' true fv fT #[a] #[some A] false
-      let (fb, _) ← callFn fuel' true fv fT #[b] #[some A] false
+      -- D80: `f`'s declared codomain, as at any call of `f`
+      let res := match ← withLive true (declOf fuel' false [] [] f) with
+        | .pi r => r
+        | _ => .other
+      let (fa, B) ← callFn fuel' true fv fT #[a] #[some A] false (res := res)
+      let (fb, _) ← callFn fuel' true fv fT #[b] #[some A] false (res := res)
       pure (.proof, some (← mkEqM fuel' B.get! fa fb))
     | some T => err s!"cong: the proof has type {T}, which is not an equation"
     | none => err "cong: untyped proof"
@@ -2212,8 +2219,16 @@ def stmtCallee (fuel : Nat) (fv : Value) (fT : Option Value) (cls? : Option Nat)
 termination_by structural fuel
 
 def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Bool)
-    (cls? : Option Nat := none) : M (Value × Option Value) := do
+    (cls? : Option Nat := none) (res? : Option DeclInfo := none) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
+  -- D80: what the call's declared result type says (η at `Unit`, R2), and which borrow
+  -- arguments lend a place whose declared type reads as `Unit` ([Close]'s fill, R3), read off
+  -- the call as written, before it runs. A sealed program's head call keeps the decision its
+  -- call made when it closed off (no η: it returned this program, so it did not read `Unit`)
+  let res ← match res? with
+    | some r => pure r
+    | none => if head then pure DeclInfo.other else withLive true (declOf fuel' false [] [] (.call f as head))
+  let fills ← as.toArray.mapM fun a => do pure ((← withLive true (declOf fuel' false [] [] a)) == .ref .unit)
   modify fun s => { s with headEval := true }
   -- D78 [Rec]: a call made through a function's binding of itself (or a capture of it) is
   -- a recursive call of that function, read from the head's syntax (`recFrameOf`)
@@ -2239,7 +2254,7 @@ def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Boo
     tys := tys.push T
   let ws ← popTemps as.length
   let fv ← popTemp
-  atLoc (← enderLoc ender ws) <| callFn fuel' typed fv fT ws tys head cls? recUid?
+  atLoc (← enderLoc ender ws) <| callFn fuel' typed fv fT ws tys head cls? recUid? res fills
 termination_by structural fuel
 
 /-- The type of the next parameter of `fv`, with the earlier ones bound to the arguments
@@ -2255,7 +2270,7 @@ def argHint (fuel : Nat) (fv : Value) (fT : Option Value) (ws : Array Value) : M
     for (((d', h), w), pd) in ((ds.zip hs).zip ws.toList).zip pds do
       let A ← evalType fuel' d'
       let pd' ← refineDecl pd
-      pushBind h (some A) w pd'.isProof pd'
+      pushBind h (some A) (etaUnit pd w) pd'.isProof pd'
     some <$> evalType fuel' d
 termination_by structural fuel
 
@@ -2285,19 +2300,6 @@ def funType (fuel : Nat) (fv : Value) (fT : Option Value) : M Value := do
     | _ => err s!"{fv} is not a function"
 termination_by structural fuel
 
-/-- The row of [Close]'s table (and whether P5 applies), syntactically when possible. -/
-def resultKind (fuel : Nat) (piTy : Value) (ws : Array Value) : M Kind := do
-  let fuel' + 1 := fuel | exhausted "out of fuel"
-  match piTy with
-  | .tPi _ (.pi _ _ c) _ =>
-    match c with
-    | .val B => kindOf fuel' B
-    | _ => match syntacticKind? c with
-      | some k => pure k
-      | none => kindOf fuel' (← callType fuel' piTy ws (ws.map fun _ => none))
-  | _ => err s!"not a function type: {piTy}"
-termination_by structural fuel
-
 /-- [Call-type]: the result type is `B` evaluated at the call point (after the
 arguments are evaluated) with each parameter bound to its argument's value (a borrow
 argument moved into it). The other free variables of `B` were captured when the
@@ -2316,7 +2318,7 @@ def callType (fuel : Nat) (piTy : Value) (ws : Array Value) (tys : Array (Option
       let A ← evalType fuel' d
       noteLoc argLocs[i]?.join (.expected A)
       atLoc argLocs[i]?.join <| expectTy fuel' s!"argument {i + 1} ({h.name})" tys[i]! A
-      pushBind h (some A) ws[i]! (pf.getD i false) (← refineDecl pd)
+      pushBind h (some A) (etaUnit pd ws[i]!) (pf.getD i false) (← refineDecl pd)
     evalType fuel' c
 termination_by structural fuel
 
@@ -2366,14 +2368,16 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : Lis
       for ((((h, w), p), pd), d) in (((hs.zip ws.toList).zip pf).zip pds).zip ds do
         let A? ← if p || pd.isProof then some <$> evalType fuel' d else pure none
         out := out.push A?
-        pushBind h A? w p pd
+        pushBind h A? (etaUnit pd w) p pd
       pure out
     else pure #[]
   pushFrame
   pushCaps fuel' cs rd
   pushBind self none fv false (.pi cd)
+  -- D80 (R2): a parameter whose declared type reads as `Unit` is `()`, at every call as at the
+  -- generic one (`checkFix`)
   for ((((h, w), p), pd), i) in (((hs.zip ws.toList).zip pf).zip pds).zipIdx do
-    pushBind h (ptys[i]?.getD none) w p (← refineDecl pd)
+    pushBind h (ptys[i]?.getD none) (etaUnit pd w) p (← refineDecl pd)
   -- D53: a body is code; a function whose calls are erased has an erased body (b)
   let erasedFn := (← fnClass fuel' (← funType fuel' fv none)) != 0
   let (v, _) ← withErasedIf erasedFn (eval fuel' false body)
@@ -2386,7 +2390,7 @@ termination_by structural fuel
 
 def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array Value)
     (tys : Array (Option Value)) (head : Bool) (cls? : Option Nat := none)
-    (recUid? : Option Nat := none) :
+    (recUid? : Option Nat := none) (res : DeclInfo := .other) (fills : Array Bool := #[]) :
     M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   if let some i := ws.findIdx? (· == .bot) then
@@ -2429,29 +2433,18 @@ def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Ar
   let r ← match fv with
     | .abs _ | .sealed _ =>
       -- a neutral head closes off at once (v1.3), except as [Seal]'s head call (D39)
-      if head then stuckNow else closeCall fuel' fv ws kind B
+      if head then stuckNow else closeCall fuel' fv ws kind res fills
     | .gfn _ | .clo _ _ _ =>
       let (cs, t, rd) ← fixOf fv
       -- [App-close]: a stuck body closes the call off; [App-head]: not a sealed program's head call
       catchStuck (runBody fuel' fv cs t rd ws) fun on =>
-        if head then throw (.stuck on) else closeCall fuel' fv ws kind B
+        if head then throw (.stuck on) else closeCall fuel' fv ws kind res fills
     | _ => err s!"call of {fv}, which is not a function"
   let r := if cls == 2 then Value.proof else r
+  -- D80 (R2): the result of a call whose declared codomain reads as `Unit` is `()`, whether it
+  -- ran or closed off, so the generic call and an instance normalise it alike
   setFlags (cls != 0, cls == 2)
-  pure (r, B)
-termination_by structural fuel
-
-/-- D59 refined: a stuck call's result has type `Unit`: its declared codomain says so, or its
-type as computed at the call (`B` in a typed run; otherwise computed here, when the declared
-codomain does not say). -/
--- Two paths, value-dependent by design (notes/two-paths-census.md, site 9): η at `Unit` may read the computed result type; a path on which it is still neutral only keeps the value unnormalised (D59).
-def resultIsUnit (fuel : Nat) (fv : Value) (ws : Array Value) (kind : Kind) (B : Option Value) : M Bool := do
-  let fuel' + 1 := fuel | exhausted "out of fuel"
-  if kind == .unit then return true
-  if let some B := B then return B == .tUnit
-  -- a callee whose Π-type cannot be read is not known to return `Unit`
-  let some piTy ← funType? fuel' fv none | return false
-  pure ((← resultKind fuel' piTy ws) == .unit)
+  pure (etaUnit res r, B)
 termination_by structural fuel
 
 /-- [Close]: the call `f(w̄)` has a stuck body; the partial run has been discarded (the
@@ -2466,8 +2459,11 @@ it again (C5); (C2) each output is its own projection, read by `peek`, which cop
 discarded run's cell; (C3) a returned borrow's final content is a parameter of every fill, the
 inert loan `k`, filled when the borrow ends; (C8) the inputs are loan-free and whole
 (asserted below). Every sealed program enters the state through `canonNeutral`, so a text
-already generalised in this world is its `σ` (C6). -/
-def closeCall (fuel : Nat) (fv : Value) (ws : Array Value) (kind : Kind) (B : Option Value := none) : M Value := do
+already generalised in this world is its `σ` (C6). D80: whether the result is `()` (`res`, the
+call's declared result type) and which fills are (`fills`, the borrow arguments that lend a
+place declared `Unit`) are read off the call as written (`evalCall`), never off a value. -/
+def closeCall (fuel : Nat) (fv : Value) (ws : Array Value) (kind : Kind) (res : DeclInfo := .other)
+    (fills : Array Bool := #[]) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   wholeBorrowArgs ws "a call that closes off"
   -- Precondition (v1.1): every argument's content is loan-free (guaranteed by [Access]).
@@ -2500,14 +2496,16 @@ def closeCall (fuel : Nat) (fv : Value) (ws : Array Value) (kind : Kind) (B : Op
       substEnv fuel' (.loan l) (← canonNeutral (.sealed fill)) false
     pure (.borrow k (← canonNeutral (.sealed (wrapL (.letIn ⟨"r"⟩ (C 0) (peek (.place (.deref (.var 0)))))))))
   | _ =>
-    for ((_, l, u), j) in bs.zipIdx do
-      -- D59 refined: a borrowed place of type `Unit` (its content `()`) is filled with `()`
-      let fill ← if u == .unit then pure .unit
+    for ((i, l, _), j) in bs.zipIdx do
+      -- D80 (R3): the fill of a place whose declared type reads as `Unit` (read off the call's
+      -- argument as written, `&c` with `c : Unit`) is `()`, η-normal: never because its content
+      -- happens to be `()`, which an instance can know where the generic call does not
+      let fill ← if fills.getD i false then pure .unit
         else canonNeutral (.sealed (wrapL (.seq (C 0) (peek (cell 0 j)))))
       substEnv fuel' (.loan l) fill false
-    -- D59 refined: the readback at type `Unit` is `()` (η-normal form); the call's effects
+    -- D80 (R2): the readback at a declared `Unit` is `()` (η-normal form); the call's effects
     -- are in the fills above
-    if ← resultIsUnit fuel' fv ws kind B then return .unit
+    if res == .unit then return .unit
     canonNeutral (.sealed (wrapL (C 0)))
 termination_by structural fuel
 
@@ -2885,7 +2883,7 @@ after the block. Each clause began as a fuzz-port finding (14942, Q, M2, R8, sha
 the comments below name them); a new one should be stated here as a clause of K1 first.
 Returns the captures with their modes, the split places with each one's constructor, and the
 moved places. -/
--- Two paths, value-dependent by design (notes/two-paths-census.md, site 13): captures read copy-ness, the places an arm leaves ⊥, and a split capture's constructor; each is type-directed or survives refinement.
+-- Two paths, value-dependent by design (notes/two-paths-census.md, site 13): captures read the places an arm leaves ⊥ and a split capture's constructor, each type-directed or surviving refinement; copy-ness is read from declared types (D80, `copyRead`).
 def blockCaptures (fuel : Nat) (mt : Term) (armMovedAll : List Place) :
     M (Array (Place × Nat) × List (Place × Option Nat) × List Place) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
@@ -2993,7 +2991,7 @@ some arm moves out of is moved in; otherwise a place written or borrowed (under 
 `:=`) in some arm is passed as `&`; otherwise a place read is copied. A borrow variable read as a
 whole is a move (reading a borrow moves it); assigning a borrow variable as a whole moves it too
 (passing `&x` would be `&&T`). The block's type is `B?`, or else its arms' common type. -/
--- Two paths, value-dependent by design (notes/two-paths-census.md, site 13): captures read copy-ness, the places an arm leaves ⊥, and a split capture's constructor; each is type-directed or survives refinement.
+-- Two paths, value-dependent by design (notes/two-paths-census.md, site 13): captures read the places an arm leaves ⊥ and a split capture's constructor, each type-directed or surviving refinement; copy-ness is read from declared types (D80, `copyRead`).
 def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Value) :
     M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
@@ -3141,8 +3139,11 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
   let anon := Value.clo [] (.fix ⟨"_"⟩ hints.toList domTs (.val B) none body) rd.toList
   trace fun _ => s!"[Stuck block] {anon}({", ".intercalate (args.toList.map (·.pp []))})"
   -- v1.7 (D35): the block is erased exactly when its match would be, i.e. at every
-  -- instance: when every arm is a proof (finding P2: not read off the computed type B)
-  let (v, _) ← evalCall fuel' false (.val anon) args.toList false (some (if allProof then 2 else 0))
+  -- instance: when every arm is a proof (finding P2: not read off the computed type B).
+  -- D80: its result is `()` exactly when the match's declared type reads as `Unit` (every arm's
+  -- does), as the direct path's match is then `()` by its arms; never by `B`, which is computed
+  let res ← withLive true (declOf fuel' false [] [] mt)
+  let (v, _) ← evalCall fuel' false (.val anon) args.toList false (some (if allProof then 2 else 0)) (some res)
   pure (v, some B)
 termination_by structural fuel
 
@@ -3447,7 +3448,8 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
     let A ← evalType fuel' d
     match A with
     | .tRef T =>
-      let c ← absOf T
+      -- D80 (R2): a parameter whose declared type reads as `Unit` (here `&Unit`: the content) is `()`
+      let c ← absAt pd.deref T
       let l ← freshLoan
       modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
       pushBind h (some A) (.borrow l c) p pd
@@ -3459,7 +3461,7 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
         pushBind h (some A) .proof p (← refineDecl pd)
         entries := entries.push none
       else
-        let c ← absOf A
+        let c ← absAt pd A
         pushBind h (some A) c p (← refineDecl pd)
         entries := entries.push (match c with
           | .abs σ => if A == .tNat || (A matches .tInd ..) then some σ else none

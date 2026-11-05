@@ -1,6 +1,7 @@
 import Ochr.Examples.Logic
 import Ochr.Examples.Nat
 import Ochr.Examples.Fixtures
+import Ochr.Examples.Word
 
 /-! # 4. Closing off: what a stuck computation leaves behind
 
@@ -223,11 +224,12 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
 
   -- ## How a stuck call returns: the row of [Close]
   -- A stuck call returns a borrow with a hole when its declared result type is written
-  -- `&T` (`ReturnedBorrows`), and otherwise its sealed program, `Unit` included: any two
-  -- values of `Unit` are equal (η for `Unit`, D59). So `RowUnit` and `RowI` both hold by
-  -- `refl`, though `UU(n)` is `Unit` only by computation, and the induction of `RowIInd` is
-  -- no longer needed. Without η, a call written to return `Unit` returned
-  -- `()`, `G`'s returned a sealed program, and `RowI` failed.
+  -- `&T` (`ReturnedBorrows`), and otherwise its sealed program, which at a declared `Unit` is
+  -- `()` (η for `Unit`, D59, D80). `G`'s declared result type `UU(n)` reads as `Unit` for every
+  -- `n`, since both arms of `UU` are `Unit` (D80: read from `UU`'s body, never computed), so
+  -- `RowUnit` and `RowI` both hold by `refl` and the induction of `RowIInd` is not needed.
+  -- Without η, a call written to return `Unit` returned `()`, `G`'s returned a sealed program,
+  -- and `RowI` failed.
   def UU (n : Nat) : Type := (
     match n {
       Z => Unit,
@@ -262,11 +264,11 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
     }
   )
 
-  -- η for `Unit` (D59, refined): values are in η-normal form, and the readback at type `Unit`
-  -- is `()`. An abstract `u : Unit` is `()`, and a stuck call whose result has type `Unit`
-  -- (declared, or computed, as `UU(Z)`) returns `()`; its effects are in its borrowed
-  -- places' fills. `Eq` at `Unit` and comparing functions into `Unit` then need no rule of
-  -- their own: both sides are `()`.
+  -- η for `Unit` (D59, refined; D80): values are in η-normal form where their declared type
+  -- reads as `Unit`. A parameter `u : Unit` (or `UU(Z)`) is `()`, and a call whose declared
+  -- result type reads as `Unit` returns `()`; a stuck one's effects are in its borrowed places'
+  -- fills. `Eq` at `Unit` and comparing functions into `Unit` then need no rule of their own:
+  -- both sides are `()`.
   def UnitEta (u : Unit) (v : Unit) : Eq(Unit, u, v) := refl
   def UnitEtaUU (u : UU(Z)) (v : UU(Z)) : Eq(UU(Z), u, v) := refl
   def UnitNotConv (u : Unit) (P : Unit → Prop) (h : P(u)) : P(()) := h
@@ -281,11 +283,13 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
     refl
   )
 
-  -- The computed result type counts (`G(&c, Z)` has type `UU(Z) = Unit`), but a path on
-  -- which the type is still neutral (`UU(n)`) keeps the value as it is, the sealed program,
-  -- and is only more stuck (paper, appendix C).
+  -- D80: η reads the declared result type, never the computed one, so `G(&c, n)` is `()` at an
+  -- unknown `n` as at `Z`: `UU(n)` reads as `Unit` because both arms of `UU` do. `NeutralKept`
+  -- was rejected while η read the computed type, which is the neutral `UU(n)` there; it is true
+  -- (both arguments of `P` are `()`). A type that is `Unit` only at some arguments is not read
+  -- as `Unit` (`DeclaredReadings.ComputedMix`).
   def ComputedUnit (x : &Nat) (P : Unit → Prop) (h : P(())) : P(let c = *x; G(&c, Z)) := h
-  reject def NeutralKept (x : &Nat) (n : Nat) (P : UU(n) → Prop) (h : P(let c = *x; G(&c, n))) : P(let c = S(*x); G(&c, n)) := h
+  def NeutralKept (x : &Nat) (n : Nat) (P : UU(n) → Prop) (h : P(let c = *x; G(&c, n))) : P(let c = S(*x); G(&c, n)) := h
   def NeutralKeptZ (x : &Nat) (P : UU(Z) → Prop) (h : P(let c = *x; G(&c, Z))) : P(let c = S(*x); G(&c, Z)) := h
 
   -- ## Typing a sealed program
@@ -664,3 +668,86 @@ ochr CloseOffModel uses Nats, Fixtures {
     }
   )
 }
+
+
+/-! ## Copy or move, and η at `Unit`, read from declared types (D80)
+
+A read copies exactly when the place's declared type reads as a copy type, and a value is `()`
+exactly where its declared type reads as `Unit`: a parameter, a call's result, the fill of a
+lent place. Both are read by the one reader of declared types (D77's, which reads a type
+function's body and the arguments of a call as written), never from a value or a computed type,
+so a definition's generic call and each of its instances decide them alike. As in Rust, a type
+parameter is never a copy type, whatever an instance substitutes for it; and a type that is
+`Unit` only at some arguments, by computation, is not normalised. Each test has its twin. -/
+
+ochr DeclaredReadings uses Nats, Words, Fixtures {
+  -- R1, copy or move. `x : A` moves on every path, at `A := Word` as at the generic call
+  def IdF (A : Type) (x : A) : A := x
+  reject def Dup (A : Type) (x : A) : Pair(A, A) := Mk(x, x)
+  -- twin of Dup: `clone` copies, whatever the type
+  def DupC (A : Type) (x : A) : Pair(A, A) := Mk(clone(x), x)
+  def DupCAt (w : Word) : Id(Pair(Word, Word), DupC(Word, w), Mk(w, w)) := refl
+  -- a call's declared result type, with its type arguments as written: `IdF(Word, w)` is a `Word`
+  def LetW (w : Word) : Pair(Word, Word) := (let y = IdF(Word, w); Mk(y, y))
+  -- twin of LetW: at a type parameter it is not a copy type
+  reject def LetA (A : Type) (a : A) : Pair(A, A) := (let y = IdF(A, a); Mk(y, y))
+  -- a type function's call is a copy type when every arm of its body is one
+  def MixT (n : Nat) : Type := match n { Z => Unit, S _ => Nat }
+  def CopyT (n : Nat) : Type := match n { Z => Unit, S _ => Word }
+  reject def ReadMix (n : Nat) (u : MixT(n)) : Pair(MixT(n), MixT(n)) := Mk(u, u)
+  -- twin of ReadMix: both arms of `CopyT` are copy types
+  def ReadCopy (n : Nat) (u : CopyT(n)) : Pair(CopyT(n), CopyT(n)) := Mk(u, u)
+
+  -- R2, η at `Unit`. A type function every arm of whose body is `Unit` reads as `Unit`, so its
+  -- values are `()`, at an unknown argument too
+  def SameT (n : Nat) : Type := match n { Z => Unit, S _ => Unit }
+  def SameEta (n : Nat) (u : SameT(n)) (v : SameT(n)) : Eq(SameT(n), u, v) := refl
+  -- twin of SameEta: `MixT(n)` is `Unit` only at `Z`, so its values are not normalised
+  reject def MixEta (n : Nat) (u : MixT(n)) (v : MixT(n)) : Eq(MixT(n), u, v) := refl
+  -- a call whose declared result type reads as `Unit` returns `()`, stuck or not
+  def GS (x : &Nat) (n : Nat) : SameT(n) by x := (
+    match n {
+      Z => match *x { Z => (), S p => GS(&p, n) },
+      S _ => (),
+    }
+  )
+  def DeclaredUnit (x : &Nat) : Id(SameT(Z), let c = clone(*x); GS(&c, Z), ()) := refl
+  -- twin of DeclaredUnit: `MixT(Z)` computes to `Unit`, but `GM`'s declared result type
+  -- `MixT(n)` does not read as `Unit`, so its stuck call keeps its sealed program. True, and
+  -- rejected: no decision reads the computed type (D80); `ComputedMixInd` proves it by induction
+  def GM (x : &Nat) (n : Nat) : MixT(n) by x := (
+    match n {
+      Z => match *x { Z => (), S p => GM(&p, n) },
+      S _ => Z,
+    }
+  )
+  reject def ComputedMix (x : &Nat) : Id(MixT(Z), let c = clone(*x); GM(&c, Z), ()) := refl
+  def ComputedMixInd (x : &Nat) : Id(MixT(Z), let c = clone(*x); GM(&c, Z), ()) by x := (
+    match *x {
+      Z => refl,
+      S p => ComputedMixInd(&p),
+    }
+  )
+
+  -- R3, [Close]'s fill. `TouchA` is stuck on `n`, so `ExA` closes it off and fills `c`. `c` is
+  -- declared `A` (it is `x`), so its fill is the sealed program at every instance, `A := Unit`
+  -- with `x := ()` included, as at the generic call: never `()` because the content happens to
+  -- be `()`. The instance's fill is the generic call's at `x := ()` (the reason below)
+  def TouchA (A : Type) (a : &A) (n : Nat) : Unit := match n { Z => (), S(m) => () }
+  def ExA (A : Type) (x : A) (n : Nat) : Pair(A, Nat) := (let c = x; TouchA(A, &c, n); Mk(c, Z))
+  reject def ExAAt (n : Nat) : Id(Pair(Unit, Nat), ExA(Unit, (), n), Mk((), Z)) := refl
+  -- twin of ExAAt: a place declared `Unit` is filled with `()`, at an instance and at the
+  -- generic call alike
+  def TouchU (a : &Unit) (n : Nat) : Unit := match n { Z => (), S(m) => () }
+  def ExU (x : Unit) (n : Nat) : Pair(Unit, Nat) := (let c = x; TouchU(&c, n); Mk(c, Z))
+  def ExUAt (n : Nat) : Id(Pair(Unit, Nat), ExU((), n), Mk((), Z)) := refl
+  def ExUGen (x : Unit) (n : Nat) : Id(Pair(Unit, Nat), ExU(x, n), Mk(x, Z)) := refl
+}
+
+#guard (run "DeclaredReadings" DeclaredReadings).rejectedWith [
+  ("Dup", "[Read] x was moved out"),
+  ("LetA", "[Read] y was moved out"),
+  ("ReadMix", "[Read] u was moved out"),
+  ("MixEta", "the body of MixEta has type ⊤, but the goal is Eq(⌈MixT(σ0)⌉, σ1, σ2)"),
+  ("ComputedMix", "the body of ComputedMix has type ⊤, but the goal is Eq(Unit, ⌈let c1 = σ0; GM(&c1, 0)⌉, ())"),
+  ("ExAAt", "the body of ExAAt has type ⊤, but the goal is Eq(Unit, ⌈let c1 = (); TouchA(Unit, &c1, σ0); c1⌉, ())")]
