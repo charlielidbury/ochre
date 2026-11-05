@@ -325,7 +325,83 @@ ochr Functions uses Nats, Boxes, Fixtures {
 
   def RunU (f : Π(x : &Nat). Unit) (n : Nat) : Id(Unit, let c = n; f(&c), ()) := refl
   def RunUH (n : Nat) : ⊤ := RunU(H2, n)
+
+  -- ## Called bodies are typed by declaration (D82)
+  -- Every binding has its declared type in every run: a called body's parameters, a closure's
+  -- captures, a `let`, a sealed program's cells. Nothing reads a binding's type off its value.
+
+  -- A closure capturing data, run at an instance: its body projects the captured pair, which
+  -- needs the capture's type; the closure recorded its declared type when it was formed.
+  def ApplyAtUnit (f : Π(u : Unit). Nat) : Nat := f(())
+  def SndOf (p : Nat × Nat) : Nat := ApplyAtUnit(λ(u : Unit) : Nat => clone(p).1)
+  def SndOfRun : Id(Nat, SndOf((1, 2)), 2) := refl
+  reject def SndOfWrong : Id(Nat, SndOf((1, 2)), 1) := refl
+  def SndOfGen (a : Nat) (b : Nat) : Id(Nat, SndOf((a, clone(b))), b) := refl
+
+  -- A pattern variable whose value has a moved-out hole: when `a.1` is read, `a` holds `(⊥, y)`,
+  -- which has no type of its own; its declared type, the field type of `q`'s, says it is a pair.
+  def TakeBoth (q : (Nat × Nat) × Nat) : Nat := (
+    let Mk(a, b) = q;
+    let x = a.0;
+    let y = a.1;
+    Add(x, y)
+  )
+  def TakeBothRun : Id(Nat, TakeBoth(((1, 2), 3)), 3) := refl
+  reject def TakeBothWrong : Id(Nat, TakeBoth(((1, 2), 3)), 4) := refl
+
+  -- A stuck side of `Id` in a called body (a type function's): typed from the start, its match on
+  -- the unknown `*x` is split and closed off as a block, as when the `Id` is written directly.
+  def StuckIdSame (x : &Nat) : Prop := Id(Nat, match *x { Z => 0, S _ => 1 }, match *x { Z => 0, S _ => 1 })
+  def StuckIdSameHolds (x : &Nat) : StuckIdSame(x) := refl
+  def StuckIdDiff (x : &Nat) : Prop := Id(Nat, match *x { Z => 0, S _ => 1 }, match *x { Z => 1, S _ => 0 })
+  reject def StuckIdDiffHolds (x : &Nat) : StuckIdDiff(x) := refl
+
+  -- A value with no type of its own, read by a stuck side of `Id`: `MkT`'s body builds
+  -- `MkTag(n)` without writing its parameter, so the value records none, and only `t`'s declared
+  -- type (`MkT`'s codomain, `Tag(Nat)`) says what it is. Before D82, `t` had no stored type in the
+  -- machine, and typing the side read the value.
+  inductive Tag (A : Type) := MkTag(n : Nat)
+  def MkT (n : Nat) : Tag(Nat) := MkTag(n)
+  def TagSame (x : &Nat) : Prop := (
+    let t = MkT(clone(*x));
+    Id(Tag(Nat), match *x { Z => clone(t), S _ => clone(t) }, match *x { Z => clone(t), S _ => clone(t) })
+  )
+  def TagSameHolds (x : &Nat) : TagSame(x) := refl
+  def TagDiff (x : &Nat) : Prop := (
+    let t = MkT(clone(*x));
+    Id(Tag(Nat), match *x { Z => clone(t), S _ => clone(t) }, match *x { Z => clone(t), S _ => MkTag[Nat](0) })
+  )
+  reject def TagDiffHolds (x : &Nat) : TagDiff(x) := refl
+
+  -- The same value captured by a closure whose body is run by a call (`PropAtUnit`'s): the
+  -- closure records `t`'s declared type with it, and its body's stuck `Id` side reads `t` by it.
+  -- Before D82 the capture had no type and the definitions themselves were rejected ("cannot
+  -- infer the type of the place κ").
+  def PropAtUnit (P : Π(u : Unit). Prop) : Prop := P(())
+  def CapSame (n : Nat) : Prop := (
+    let t = MkT(clone(n));
+    PropAtUnit(λ(u : Unit) : Prop =>
+      Id(Tag(Nat), match n { Z => clone(t), S _ => clone(t) }, match n { Z => clone(t), S _ => clone(t) }))
+  )
+  def CapSameHolds (n : Nat) : CapSame(n) := refl
+  def CapSameAt : CapSame(3) := refl
+  def CapDiff (n : Nat) : Prop := (
+    let t = MkT(clone(n));
+    PropAtUnit(λ(u : Unit) : Prop =>
+      Id(Tag(Nat), match n { Z => clone(t), S _ => clone(t) }, match n { Z => clone(t), S _ => MkTag[Nat](0) }))
+  )
+  reject def CapDiffHolds (n : Nat) : CapDiff(n) := refl
+  def CapDiffAtZ : CapDiff(Z) := refl
 }
+
+-- D82: the twins are rejected because their statements are false, not because a type could not
+-- be read (before D82, `TagDiffHolds` failed with "cannot infer the type of the place t")
+#guard (run "Functions" Functions).rejectedWith [
+  ("SndOfWrong", "the body of SndOfWrong has type ⊤, but the goal is False"),
+  ("TakeBothWrong", "the body of TakeBothWrong has type ⊤, but the goal is False"),
+  ("StuckIdDiffHolds", "the body of StuckIdDiffHolds has type ⊤, but the goal is Eq(Nat, "),
+  ("TagDiffHolds", "the body of TagDiffHolds has type ⊤, but the goal is Eq(Tag(Nat), "),
+  ("CapDiffHolds", "the body of CapDiffHolds has type ⊤, but the goal is Eq(Tag(Nat), ")]
 
 
 /-! ## Conversion, modelled (`notes/conv-model.md`)

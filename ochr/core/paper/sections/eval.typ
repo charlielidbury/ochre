@@ -48,8 +48,8 @@ When the body of a call is stuck, the call itself is stuck. A pure type theory w
 
 #figure(kind: image, supplement: [Figure],
   block[
-    $ "the body of" f(w_1, ..., w_n) "is stuck," quad w_i = "borrow"_(ell_i) u_i " for " i in I, quad u_i "loan-free" $
-    $ L := "let" c_i = u_i quad (i in I) quad quad C := f(a_1, ..., a_n), quad a_i = cases(\&c_i & "if " i in I, w_i & "otherwise") $
+    $ "the body of" f(w_1, ..., w_n) "is stuck," quad w_i = "borrow"_(ell_i) u_i : \&T_i " for " i in I, quad u_i "loan-free" $
+    $ L := "let" c_i : T_i = u_i quad (i in I) quad quad C := f(a_1, ..., a_n), quad a_i = cases(\&c_i & "if " i in I, w_i & "otherwise") $
     #table(
       columns: 3, stroke: none, align: left, inset: 4pt,
       table.hline(stroke: 0.5pt),
