@@ -20,10 +20,8 @@ private def natLitT? : Term → Option Nat
 def Place.pp (ns : List String) : Place → String
   | .var i => nameAt ns i
   | .deref p => s!"*{p.pp ns}"
-  | .fst (.deref p) => s!"(*{p.pp ns}).0"
-  | .fst p => s!"{p.pp ns}.0"
-  | .snd (.deref p) => s!"(*{p.pp ns}).1"
-  | .snd p => s!"{p.pp ns}.1"
+  | .proj i (.deref p) => s!"(*{p.pp ns}).{i}"
+  | .proj i p => s!"{p.pp ns}.{i}"
   | .field g (.deref p) => s!"(*{p.pp ns}).{g.name}"
   | .field g p => s!"{p.pp ns}.{g.name}"
 
@@ -89,8 +87,6 @@ def Term.pp (ns : List String) : Term → String
   | .succ t => match natLitT? (.succ t) with
       | some n => toString n
       | none => s!"S({t.pp ns})"
-  | .fst t => s!"{t.argWrap (t.pp ns)}.0"
-  | .snd t => s!"{t.argWrap (t.pp ns)}.1"
   | .eq a b c => s!"Eq({a.pp ns}, {b.pp ns}, {c.pp ns})"
   | .id a b c => s!"Id({a.pp ns}, {b.pp ns}, {c.pp ns})"
   | .cong f h => s!"cong({f.pp ns}, {h.pp ns})"

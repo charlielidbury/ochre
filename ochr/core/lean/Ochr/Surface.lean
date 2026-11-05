@@ -26,7 +26,7 @@ inductive STerm where
   | call (f : STerm) (args : List STerm)        -- f(a₁, …, aₙ)
   | ctorP (c : String) (ps : List STerm) (args : List STerm)   -- C[ā](t̄): parameters written (core C(ā; t̄))
   | deref (t : STerm)
-  | proj (i : Nat) (t : STerm)                   -- t.1, t.2
+  | proj (i : Nat) (t : STerm)                   -- t.i, field i by position (D81)
   | amp (t : STerm)
   | assign (p t : STerm)
   | letIn (x : String) (ty : Option STerm) (t u : STerm)
@@ -428,8 +428,7 @@ def toPlace (ctx : Ctx) : STerm → R Place
     | some p => pure p
     | none => throw s!"{x} is not a place (not a local variable)"
   | .deref t => return .deref (← toPlace ctx t)
-  | .proj 0 t => return .fst (← toPlace ctx t)
-  | .proj 1 t => return .snd (← toPlace ctx t)
+  | .proj i t => return .proj i (← toPlace ctx t)
   | t => throw s!"{t.show} is not a place (a variable, *p, or a field of a place): bind it first, let v = {t.show}; …"
 termination_by structural t => t
 
@@ -471,7 +470,7 @@ def withCallRoot (t : STerm) (k : STerm → STerm) : Option STerm := do
 def isPlace (ctx : Ctx) : STerm → Bool
   | .loc _ _ t => isPlace ctx t
   | .ident x => (lookup ctx x).isSome
-  | .deref t | .proj 0 t | .proj 1 t => isPlace ctx t
+  | .deref t | .proj _ t => isPlace ctx t
   | _ => false
 termination_by structural t => t
 
@@ -582,7 +581,11 @@ def resolveF (fuel : Nat) (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
   | .proj i a =>
     if let some t' := withCallRoot t id then return ← resolveF fuel' ctx ty t'
     if isPlace ctx t then return .place (← toPlace ctx t)
-    else if i == 0 then return .fst (← resolveF fuel' ctx false a) else return .snd (← resolveF fuel' ctx false a)
+    -- D81: `e.i` of a term that is not a place is `let x = e; x.i`, with a fresh `x` (a surface
+    -- desugaring, as for `match e { … }`): the field of the temporary, which the machine runs as
+    -- the destructuring `let C(x₀, …, xₙ) = e; xᵢ`
+    let x := matchTemp a
+    return .letIn ⟨x⟩ (← resolveF fuel' ctx false a) (← resolveF fuel' (.bound x :: ctx) ty (.proj i (.ident x)))
   | .amp a =>
     if ty then return .ref (← resolveF fuel' ctx true a)
     if let some t' := withCallRoot a .amp then return ← resolveF fuel' ctx ty t'
@@ -616,7 +619,7 @@ def resolveF (fuel : Nat) (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     let p ← toPlace ctx sc
     match arms with
     | [("Z", [], z), ("S", [y], s)] =>
-      let ctxS := if y == "_" then ctx else .alias y (.fst p) :: ctx
+      let ctxS := if y == "_" then ctx else .alias y (.proj 0 p) :: ctx
       return .matchNat p (← resolveF fuel' ctx ty z) (← resolveF fuel' ctxS ty s)
     | [] => return .matchInd p "" []      -- no arms (v2.0): the scrutinee's type has no constructors
     | (c0, _, _) :: _ =>

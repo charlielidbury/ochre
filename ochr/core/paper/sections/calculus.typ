@@ -27,7 +27,7 @@ Ochr is a dependent type theory in the style of Lean's kernel @theory-of-lean, e
       grid.cell(colspan: 2, align: center, $kw("inductive") ty("And") (P : ty("Prop")) (Q : ty("Prop")) : ty("Prop") := ty("Intro")(l : P, r : Q)$),
     ))
   }),
-  caption: [Syntax of Ochr, and the library declarations. A declaration has sort $s in {ty("Type")_0, ty("Prop")}$ and $n >= 0$ constructors. $()$, $A times B$, $(a, b)$, $top$, $kw("refl")$, $P and Q$ and $chevron.l h, k chevron.r$ are notation for $ty("Tt")$, $ty("Pair")(A, B)$, $ty("Mk")(a, b)$, $ty("True")$, $ty("I")$, $ty("And")(P, Q)$ and $ty("Intro")(h, k)$, and $p.0$, $p.1$ name a place's first and second fields. A $kw("fix")$ without $kw("by")$ is an ordinary $lambda$.],
+  caption: [Syntax of Ochr, and the library declarations. A declaration has sort $s in {ty("Type")_0, ty("Prop")}$ and $n >= 0$ constructors. $()$, $A times B$, $(a, b)$, $top$, $kw("refl")$, $P and Q$ and $chevron.l h, k chevron.r$ are notation for $ty("Tt")$, $ty("Pair")(A, B)$, $ty("Mk")(a, b)$, $ty("True")$, $ty("I")$, $ty("And")(P, Q)$ and $ty("Intro")(h, k)$, and $t.i$ is field $i$ of a value of a type with one constructor, $p.0$ the predecessor of a number. A $kw("fix")$ without $kw("by")$ is an ordinary $lambda$.],
 ) <fig-syntax>
 
 @fig-syntax gives the syntax. Types and terms share one grammar, as in any pure type system. Functions are n-ary and calls are saturated: a partial application would be a closure capturing its arguments, and a closure capturing a borrow is outside the core (@sec-eval-closures). A recursive function names the parameter it recurses on.

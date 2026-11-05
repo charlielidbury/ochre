@@ -38,7 +38,7 @@ def Verdict.ok : Verdict → Bool
 mutual
 def Term.mentionsConst (n : String) : Term → Bool
   | .const m => m == n
-  | .assign _ t | .succ t | .fst t | .snd t | .ref t => t.mentionsConst n
+  | .assign _ t | .succ t | .ref t => t.mentionsConst n
   | .letIn _ t u | .seq t u | .cong t u
   | .ascribe t u => t.mentionsConst n || u.mentionsConst n
   | .matchNat _ z s => z.mentionsConst n || s.mentionsConst n
@@ -154,7 +154,7 @@ mutual
 /-- Does a term mention the inductive type `n` anywhere? -/
 def Term.mentionsType (n : String) : Term → Bool
   | .tind m as => m == n || Term.mentionsTypeList n as
-  | .assign _ t | .succ t | .fst t | .snd t | .ref t => t.mentionsType n
+  | .assign _ t | .succ t | .ref t => t.mentionsType n
   | .letIn _ t u | .seq t u | .cong t u | .ascribe t u => t.mentionsType n || u.mentionsType n
   | .matchNat _ z s => z.mentionsType n || s.mentionsType n
   | .pi _ ds c => Term.mentionsTypeList n ds || c.mentionsType n

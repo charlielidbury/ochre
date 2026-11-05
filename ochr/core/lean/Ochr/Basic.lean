@@ -66,14 +66,13 @@ def distinctCtors : Value → Value → Bool
 
 def Place.root : Place → Nat
   | .var i => i
-  | .deref p | .fst p | .snd p | .field _ p => p.root
+  | .deref p | .proj _ p | .field _ p => p.root
 
 /-- Replace the root variable of a place by a place. -/
 def Place.mapRoot (f : Nat → Place) : Place → Place
   | .var i => f i
   | .deref p => .deref (p.mapRoot f)
-  | .fst p => .fst (p.mapRoot f)
-  | .snd p => .snd (p.mapRoot f)
+  | .proj i p => .proj i (p.mapRoot f)
   | .field g p => .field g (p.mapRoot f)
 
 /-- How a place occurs in a term. -/
@@ -100,8 +99,6 @@ def Term.mapFree (f : Nat → Nat → Place) (c : Nat) : Term → Term
       .fix h hs (mapDoms f c ds) (cod.mapFree f (c + ds.length)) d (b.mapFree f (c + ds.length + 1))
   | .call g as hd => .call (g.mapFree f c) (Term.mapFreeList f c as) hd
   | .succ t => .succ (t.mapFree f c)
-  | .fst t => .fst (t.mapFree f c)
-  | .snd t => .snd (t.mapFree f c)
   | .ref t => .ref (t.mapFree f c)
   | .cong a b => .cong (a.mapFree f c) (b.mapFree f c)
   | .ascribe a b => .ascribe (a.mapFree f c) (b.mapFree f c)
@@ -156,8 +153,6 @@ def Term.mapFreePlace (f : Nat → Place → Place) (c : Nat) : Term → Term
         (b.mapFreePlace f (c + ds.length + 1))
   | .call g as hd => .call (g.mapFreePlace f c) (Term.mapFreePlaceList f c as) hd
   | .succ t => .succ (t.mapFreePlace f c)
-  | .fst t => .fst (t.mapFreePlace f c)
-  | .snd t => .snd (t.mapFreePlace f c)
   | .ref t => .ref (t.mapFreePlace f c)
   | .cong a b => .cong (a.mapFreePlace f c) (b.mapFreePlace f c)
   | .ascribe a b => .ascribe (a.mapFreePlace f c) (b.mapFreePlace f c)
@@ -212,8 +207,6 @@ def Term.selectArms (sel : Place → Option (Option Nat)) (c : Nat) : Term → T
         (b.selectArms sel (c + ds.length + 1))
   | .call g as hd => .call (g.selectArms sel c) (Term.selectArmsList sel c as) hd
   | .succ t => .succ (t.selectArms sel c)
-  | .fst t => .fst (t.selectArms sel c)
-  | .snd t => .snd (t.selectArms sel c)
   | .ref t => .ref (t.selectArms sel c)
   | .cong a b => .cong (a.selectArms sel c) (b.selectArms sel c)
   | .ascribe a b => .ascribe (a.selectArms sel c) (b.selectArms sel c)
@@ -267,8 +260,6 @@ def Term.inlineReads (t : Term) (o : Nat) (u : Term) (c : Nat) : Term :=
         (b.inlineReads o u (c + ds.length + 1))
   | .call g as hd => .call (g.inlineReads o u c) (Term.inlineReadsList o u c as) hd
   | .succ t => .succ (t.inlineReads o u c)
-  | .fst t => .fst (t.inlineReads o u c)
-  | .snd t => .snd (t.inlineReads o u c)
   | .ref t => .ref (t.inlineReads o u c)
   | .cong a b => .cong (a.inlineReads o u c) (b.inlineReads o u c)
   | .ascribe a b => .ascribe (a.inlineReads o u c) (b.inlineReads o u c)
@@ -321,7 +312,7 @@ def Term.placeOccs (c : Nat) : Term → List (Nat × Place × PKind)
       Term.placeOccsDoms c ds ++ cod.placeOccs (c + ds.length)
         ++ b.placeOccs (c + ds.length + 1)
   | .call g as _ => g.placeOccs c ++ Term.placeOccsList c as
-  | .succ t | .fst t | .snd t | .ref t => t.placeOccs c
+  | .succ t | .ref t => t.placeOccs c
   | .cong a b | .ascribe a b =>
       a.placeOccs c ++ b.placeOccs c
   | .eq a b d | .id a b d => a.placeOccs c ++ b.placeOccs c ++ d.placeOccs c
@@ -366,7 +357,7 @@ def Term.blockOccs (inFn : Bool) (c : Nat) : Term → List (Nat × Place × PKin
       Term.blockOccsDoms c ds ++ cod.blockOccs true (c + ds.length)
         ++ b.blockOccs true (c + ds.length + 1)
   | .call g as _ => g.blockOccs inFn c ++ Term.blockOccsList inFn c as
-  | .succ t | .fst t | .snd t | .ref t => t.blockOccs inFn c
+  | .succ t | .ref t => t.blockOccs inFn c
   | .cong a b | .ascribe a b => a.blockOccs inFn c ++ b.blockOccs inFn c
   | .eq a b d | .id a b d => a.blockOccs inFn c ++ b.blockOccs inFn c ++ d.blockOccs inFn c
   | .ctor _ _ _ ps as => Term.blockOccsList inFn c ps ++ Term.blockOccsList inFn c as
@@ -400,7 +391,7 @@ def Term.fnOccs (c : Nat) : Term → List (Nat × Place)
   | t@(.pi ..) | t@(.fix ..) =>
     (t.blockOccs true c).filterMap fun (c', p, _) => if p.root ≥ c' then some (p.root - c', p) else none
   | .letIn _ t u => t.fnOccs c ++ u.fnOccs (c + 1)
-  | .assign _ t | .succ t | .fst t | .snd t | .ref t => t.fnOccs c
+  | .assign _ t | .succ t | .ref t => t.fnOccs c
   | .seq t u | .cong t u | .ascribe t u | .matchNat _ t u => t.fnOccs c ++ u.fnOccs c
   | .call g as _ => g.fnOccs c ++ Term.fnOccsList c as
   | .eq a b d | .id a b d => a.fnOccs c ++ b.fnOccs c ++ d.fnOccs c
@@ -425,7 +416,7 @@ mutual
 /-- The term forms a function or Π-type somewhere (which may capture its free variables). -/
 def Term.formsFn : Term → Bool
   | .pi .. | .fix .. => true
-  | .assign _ t | .succ t | .fst t | .snd t | .ref t => t.formsFn
+  | .assign _ t | .succ t | .ref t => t.formsFn
   | .letIn _ t u | .seq t u | .cong t u | .ascribe t u => t.formsFn || u.formsFn
   | .matchNat _ z s => z.formsFn || s.formsFn
   | .call f as _ => f.formsFn || Term.formsFnList as
@@ -482,7 +473,7 @@ termination_by structural as => as
 
 def Term.anyAtom (P : Value → Bool) : Term → Bool
   | .val v => v.anyAtom P
-  | .assign _ t | .succ t | .fst t | .snd t | .ref t => t.anyAtom P
+  | .assign _ t | .succ t | .ref t => t.anyAtom P
   | .letIn _ t u | .seq t u
   | .cong t u | .ascribe t u => t.anyAtom P || u.anyAtom P
   | .matchNat _ z s => z.anyAtom P || s.anyAtom P
@@ -532,7 +523,7 @@ termination_by structural vs => vs
 
 def Term.loans : Term → List Nat
   | .val v => v.loans
-  | .assign _ t | .succ t | .fst t | .snd t | .ref t => t.loans
+  | .assign _ t | .succ t | .ref t => t.loans
   | .letIn _ t u | .seq t u
   | .cong t u | .ascribe t u => t.loans ++ u.loans
   | .matchNat _ z s => z.loans ++ s.loans
@@ -600,7 +591,7 @@ def Term.refsOkAt (top : Bool) : Term → Bool
   | .pi _ ds c => Term.refTopOkList ds && c.refsOkAt true
   | .fix _ _ ds c _ b => Term.refTopOkList ds && c.refsOkAt true && b.refsOkAt false
   | .ascribe t A => t.refsOkAt false && A.refsOkAt true
-  | .assign _ t | .succ t | .fst t | .snd t => t.refsOkAt false
+  | .assign _ t | .succ t => t.refsOkAt false
   | .letIn _ t u | .seq t u | .cong t u => t.refsOkAt false && u.refsOkAt false
   | .matchNat _ z s => z.refsOkAt false && s.refsOkAt false
   | .call f as _ => f.refsOkAt false && Term.refsOkList as

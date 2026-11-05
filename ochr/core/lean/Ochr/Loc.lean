@@ -62,7 +62,7 @@ deriving Inhabited
 /-- The immediate subterms of a term, in order (to walk a term and a rebuilt copy of it in
 parallel, `Located.relocate`). A constructor missing here only loses locations below it. -/
 def Term.children : Term → List Term
-  | .assign _ t | .succ t | .fst t | .snd t | .ref t => [t]
+  | .assign _ t | .succ t | .ref t => [t]
   | .letIn _ t u | .seq t u | .cong t u | .ascribe t u => [t, u]
   | .matchNat _ z s => [z, s]
   | .pi _ ds c => ds ++ [c]
@@ -79,8 +79,8 @@ theorem Term.sizeOf_lt_of_mem_children {t o : Term} (h : o ∈ t.children) : siz
   cases t <;> simp only [Term.children, List.mem_cons, List.mem_append, List.not_mem_nil, or_false,
     List.mem_map] at h <;> simp only [Term.assign.sizeOf_spec,
     Term.letIn.sizeOf_spec, Term.seq.sizeOf_spec, Term.matchNat.sizeOf_spec, Term.pi.sizeOf_spec,
-    Term.fix.sizeOf_spec, Term.call.sizeOf_spec, Term.succ.sizeOf_spec, Term.fst.sizeOf_spec,
-    Term.snd.sizeOf_spec, Term.eq.sizeOf_spec, Term.cong.sizeOf_spec, Term.ref.sizeOf_spec,
+    Term.fix.sizeOf_spec, Term.call.sizeOf_spec, Term.succ.sizeOf_spec,
+    Term.eq.sizeOf_spec, Term.cong.sizeOf_spec, Term.ref.sizeOf_spec,
     Term.id.sizeOf_spec, Term.ascribe.sizeOf_spec, Term.prim.sizeOf_spec, Term.tind.sizeOf_spec,
     Term.ctor.sizeOf_spec, Term.matchInd.sizeOf_spec]
   all_goals first

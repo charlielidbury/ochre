@@ -83,7 +83,7 @@ def headOnly (isSelf : Nat → Place → Bool) (c : Nat) : Term → Bool
   | .call f as _ => headOnly isSelf c f && headOnlyList isSelf c as
   | .seq t u | .cong t u | .ascribe t u =>
       headOnly isSelf c t && headOnly isSelf c u
-  | .succ t | .fst t | .snd t | .ref t => headOnly isSelf c t
+  | .succ t | .ref t => headOnly isSelf c t
   | .eq a b d | .id a b d => headOnly isSelf c a && headOnly isSelf c b && headOnly isSelf c d
   | .ctor _ _ _ ps as => headOnlyList isSelf c ps && headOnlyList isSelf c as
   | .prim _ as | .tind _ as => headOnlyList isSelf c as
@@ -115,7 +115,7 @@ mutual
 def constHeadOnly (n : String) : Term → Bool
   | .call (.const _) as _ => constHeadOnlyList n as
   | .const m => m != n
-  | .assign _ t | .succ t | .fst t | .snd t | .ref t => constHeadOnly n t
+  | .assign _ t | .succ t | .ref t => constHeadOnly n t
   | .letIn _ t u | .seq t u | .cong t u
   | .ascribe t u => constHeadOnly n t && constHeadOnly n u
   | .matchNat _ z s => constHeadOnly n z && constHeadOnly n s
@@ -204,7 +204,7 @@ repack; an assigned proof is checked against the telescope at the current conten
 def openWrite (p : Place) : M Unit := do
   let rec prefixes : Place → List (Place × FieldRef)
     | .field g q => (q, g) :: prefixes q
-    | .deref q | .fst q | .snd q => prefixes q
+    | .deref q | .proj _ q => prefixes q
     | .var _ => []
   for (q, g) in prefixes p do
     let some d := (← get).inds.find? (·.name == g.ty) | continue
@@ -289,16 +289,23 @@ def matchContent (p : Place) : M Value := do
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
   | v => pure v
 
+/-- D81: the place a term reads, borrows or assigns, and the term as a function of it. -/
+def Term.placeOperand? : Term → Option (Place × (Place → Term))
+  | .place p => some (p, .place)
+  | .borrow p => some (p, .borrow)
+  | .assign p u => some (p, (.assign · u))
+  | _ => none
+
 /-- One step added to a place. -/
 def stepPlace (q : Place) : Step → Place
-  | .deref => .deref q | .fst => .fst q | .snd => .snd q | .field g => .field g q
+  | .deref => .deref q | .proj i => .proj i q | .field g => .field g q
 
 mutual
 /-- Where `loan_l` sits inside a value, as steps from it. -/
 def loanPath (v : Value) (l : Nat) : M (Option (List Step)) := do
   match v with
   | .loan m => pure (if m == l then some [] else none)
-  | .succ w => pure ((← loanPath w l).map (Step.fst :: ·))
+  | .succ w => pure ((← loanPath w l).map (Step.proj 0 :: ·))
   | .borrow _ w => pure ((← loanPath w l).map (Step.deref :: ·))
   | .ind t c _ _ fs =>
     let d ← lookupInd t
@@ -516,11 +523,11 @@ def canonNeutral (v : Value) : M Value := do
     | none => pure v
   | _ => pure v
 
-/-- Two steps name the same part: a pair's `.1`/`.2` are its constructor's fields `fst`/`snd`
-(the surface writes both; a Nat's `.1`, its predecessor, is never a pair's field). -/
+/-- Two steps name the same part: `.i` of a value of a type with one constructor is that
+constructor's field `i` (D81: the surface writes both, `p.i` and a pattern variable; a Nat's
+`.0`, its predecessor, is never a constructor field). -/
 def stepEq : Step → Step → Bool
-  | .fst, .field g | .field g, .fst => g.ty == "Pair" && g.ctor == 0 && g.idx == 0
-  | .snd, .field g | .field g, .snd => g.ty == "Pair" && g.ctor == 0 && g.idx == 1
+  | .proj i, .field g | .field g, .proj i => g.ctor == 0 && g.idx == i
   | a, b => a == b
 
 /-- Place `q` is a prefix of place `p` (both rooted in the same frame). -/
@@ -643,8 +650,6 @@ def substT (fuel : Nat) (x r : Value) (t : Term) : M Term := do
   | .fix h hs ds c d b => return .fix h hs (← ds.mapM go) (← go c) d (← go b)
   | .call f as hd => return .call (← go f) (← as.mapM go) hd
   | .succ u => return .succ (← go u)
-  | .fst u => return .fst (← go u)
-  | .snd u => return .snd (← go u)
   | .ref u => return .ref (← go u)
   | .cong a b => return .cong (← go a) (← go b)
   | .ascribe a b => return .ascribe (← go a) (← go b)
@@ -1064,15 +1069,19 @@ def placeType? (fuel : Nat) (p : Place) : M (Option Value) := do
         let call := (q'.drop 2).toString
         err s!"*{call}: {call} does not return a borrow (type {T}), so *{call} is not a place"
       err s!"*{q'}: not a borrow (type {T})"
-  | .fst q => match ← placeType? fuel' q with
+  | .proj i q => match ← placeType? fuel' q with
     | none => pure none
-    | some .tNat => pure (some .tNat)
-    | some (.tInd "Pair" [A, _]) => pure (some A)           -- field 1 of the library's Pair (D52)
-    | some T => err s!"{← ppPlace q}.1: no sub-place at type {T}"
-  | .snd q => match ← placeType? fuel' q with
-    | none => pure none
-    | some (.tInd "Pair" [_, B]) => pure (some B)
-    | some T => err s!"{← ppPlace q}.2: no sub-place at type {T}"
+    | some .tNat =>     -- a Nat's `.0` is its predecessor (the built-in `S v`)
+      if i == 0 then pure (some .tNat) else err s!"{← ppPlace q}.{i}: a number has no field {i} (its `.0` is its predecessor)"
+    | some (.tInd n _) =>
+      -- D81: field `i` of the type's one constructor, the place its pattern variable names
+      let d ← lookupInd n
+      let [(_, fields)] := d.ctors
+        | err s!"{← ppPlace q}.{i}: {n} has {d.ctors.length} constructors, and `.{i}` names a field of a type with exactly one (use match)"
+      let some (fname, _) := fields[i]?
+        | err s!"{← ppPlace q}.{i}: the constructor of {n} has {fields.length} fields"
+      placeType? fuel' (.field ⟨n, 0, i, fname⟩ q)
+    | some T => err s!"{← ppPlace q}.{i}: no field {i} at type {T}"
   | .field g q => match ← placeType? fuel' q with
     | none => pure none
     | some (.tInd n ps) =>
@@ -1092,6 +1101,60 @@ def placeType (fuel : Nat) (p : Place) : M Value := do
   match ← placeType? fuel' p with
   | some T => pure T
   | none => err s!"cannot infer the type of the place {← ppPlace p}"
+termination_by structural fuel
+
+/-- Whether a place holds a number, by its type, else by its content (an untyped run). -/
+def natPlace (fuel : Nat) (q : Place) : M Bool := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match ← placeType? fuel' q with
+  | some T => pure (T == .tNat)
+  | none => pure ((← content? q) matches some .zero | some (.succ _))
+termination_by structural fuel
+
+/-- D81: the root-most step `q.i` of `p` whose parent `q` is not a number (a number's `.0` is
+its predecessor, a sub-place of the built-in `S v`), with `p` as a function of the place that
+replaces that step. -/
+def projIn (fuel : Nat) (p : Place) : M (Option (Place × Nat × (Place → Place))) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match p with
+  | .var _ => pure none
+  | .deref q => pure ((← projIn fuel' q).map fun (r, i, k) => (r, i, fun x => .deref (k x)))
+  | .field g q => pure ((← projIn fuel' q).map fun (r, i, k) => (r, i, fun x => .field g (k x)))
+  | .proj i q =>
+    if let some (r, j, k) ← projIn fuel' q then return some (r, j, fun x => .proj i (k x))
+    if ← natPlace fuel' q then return none
+    pure (some (q, i, id))
+termination_by structural fuel
+
+/-- D81 [Proj]: `q.i`, where `q`'s type is a declared inductive with one constructor `C`, is the
+pattern variable `yᵢ` of `match q { C(y₀, …, yₙ) => … }`. A term `k(q.i)` runs as that match, its
+one arm `k(q.g)` with `g` the constructor's field `i`: what the destructuring `let C(y₀, …, yₙ) = q`
+does, a match by type on a proof (D45), [Split] on an unknown, the constructor of a value. `q.i`
+has `q`'s class, a field of a proof being a proof and a field of data data, as the erasure pre-pass
+reads it (`placeDecl`). -/
+def projMatch (fuel : Nat) (q : Place) (i : Nat) (k : Place → Term) : M (Place × String × List (Hint × Term)) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let pq ← ppPlace q
+  -- the inductive: the head of `q`'s type, else of its content (an untyped run)
+  let n? ← match ← placeType? fuel' q with
+    | some (.tInd n _) => pure (some n)
+    | some _ => pure none
+    | none => match ← content? q with
+      | some (.ind n ..) => pure (some n)
+      | _ => pure none
+  let some n := n?
+    | err s!"{pq}.{i}: {pq} is not known to be of an inductive type (`.{i}` names a field of a type with one constructor)"
+  let d ← lookupInd n
+  let [(cn, fields)] := d.ctors
+    | err s!"{pq}.{i}: {n} has {d.ctors.length} constructors, and `.{i}` names a field of a type with exactly one (use match)"
+  let some (fname, FT) := fields[i]?
+    | err s!"{pq}.{i}: the constructor {cn} of {n} has {fields.length} fields"
+  let fieldProof ← fieldTermIsProp d FT
+  if d.sort == 0 && !fieldProof then err s!"{pq}.{i}: {subsingletonMsg d}"
+  if d.sort != 0 && fieldProof then
+    err s!"[D81] {pq}.{i}: field {fname} of {n} is a proof and {pq} is data, and `.{i}` takes a field of its parent's class: name it with a match, `let {cn}(…) = {pq}`"
+  fire .Proj fun _ => s!"{pq}.{i} is the field {fname} of {cn}"
+  pure (q, n, [(⟨cn⟩, k (.field ⟨n, 0, i, fname⟩ q))])
 termination_by structural fuel
 
 /-- D64, rule 2 and [Open]: the type of field `g` of the value at `q`, of the dependent
@@ -1344,7 +1407,7 @@ def bindDataFields (fuel : Nat) (p : Place) (d : IndDecl) (ps : List Value) (c :
       let (_, qs) := q.steps
       let (_, fs) := (fieldPlace i).steps
       (qs.drop fs.length).foldl (fun acc st => match st with
-        | .deref => .deref acc | .fst => .fst acc | .snd => .snd acc
+        | .deref => .deref acc | .proj i => .proj i acc
         | .field g => .field g acc) (Place.var (dep + k - 1 - j))
     | none => q.mapRoot fun r => .var (r + dep + k)) 0
   let mut t := body
@@ -1545,7 +1608,7 @@ def convT (fuel : Nat) (t u : Term) : M Bool := do
   | .assign p a, .assign q b => pure (p == q && (← convT fuel' a b))
   | .matchNat p z s, .matchNat q z' s' => pure (p == q && (← convT fuel' z z') && (← convT fuel' s s'))
   | .call f as h, .call g bs h' => pure (h == h' && (← convT fuel' f g) && (← convTList fuel' as bs))
-  | .succ a, .succ b | .fst a, .fst b | .snd a, .snd b | .ref a, .ref b => convT fuel' a b
+  | .succ a, .succ b | .ref a, .ref b => convT fuel' a b
   | .eq a b c, .eq d e f | .id a b c, .id d e f =>
     pure ((← convT fuel' a d) && (← convT fuel' b e) && (← convT fuel' c f))
   | .pi _ ds c, .pi _ ds' c' => pure ((← convTList fuel' ds ds') && (← convT fuel' c c'))
@@ -1799,6 +1862,11 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
   let fuel' + 1 := fuel | exhausted "out of fuel"
   tick
   let ty (T : Value) : Option Value := if typed then some T else none
+  -- D81 [Proj]: a place operand with a field step `q.i` runs as the match on `q` that names it
+  if let some (p, k) := t.placeOperand? then
+    if let some (q, i, rebuild) ← projIn fuel' p then
+      let (q, n, arms) ← projMatch fuel' q i (fun f => k (rebuild f))
+      return ← evalMatchInd fuel' typed q n arms
   match t with
   | .place p =>
     let T ← if typed then some <$> placeType fuel' p else pure none
@@ -1914,18 +1982,6 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     let (v, T) ← eval fuel' typed u
     expectTy fuel' "the argument of S" T .tNat
     pure (.succ v, ty .tNat)
-  | .fst u | .snd u =>
-    -- `t.1`, `t.2` of a term that is not a place: field 1 or 2 of a pair (D52)
-    let (v, T) ← eval fuel' typed u
-    let first := t matches .fst _
-    let r ← match v with
-      | .ind "Pair" 0 _ _ [a, b] => pure (if first then a else b)
-      | .abs _ | .sealed _ => if typed then err "projection of a neutral pair (no neutral projections in v1)" else stuckNow
-      | _ => err s!"projection of a non-pair {v}"
-    let R := match T with
-      | some (.tInd "Pair" [A, B]) => some (if first then A else B)
-      | _ => none
-    pure (r, R)
   | .eq A a b => inStatement do
     -- each side is a statement position: it runs on its own private copy of the state, so
     -- its effects are visible to the rest of that side and to nothing else (one copy per side)
@@ -2527,6 +2583,10 @@ termination_by structural fuel
 def evalMatch (fuel : Nat) (typed : Bool) (p : Place) (z s : Term) (expected : Option Value := none) :
     M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
+  -- D81 [Proj]: a scrutinee with a field step `q.i` is named by a match on `q` first
+  if let some (q, i, rebuild) ← projIn fuel' p then
+    let (q, n, arms) ← projMatch fuel' q i (fun f => .matchNat (rebuild f) z s)
+    return ← evalMatchInd fuel' typed q n arms expected
   if typed then natScrutinee fuel' p
   accessPath fuel' p
   accessNeutralHead fuel' p
@@ -2642,8 +2702,6 @@ def renormT (fuel : Nat) (t : Term) : M Term := do
   | .fix h hs ds c d b => return .fix h hs (← ds.mapM go) (← go c) d (← go b)
   | .call f as hd => return .call (← go f) (← as.mapM go) hd
   | .succ u => return .succ (← go u)
-  | .fst u => return .fst (← go u)
-  | .snd u => return .snd (← go u)
   | .ref u => return .ref (← go u)
   | .cong a b => return .cong (← go a) (← go b)
   | .ascribe a b => return .ascribe (← go a) (← go b)
@@ -2798,6 +2856,10 @@ termination_by structural fuel
 def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : List (Hint × Term))
     (expected : Option Value := none) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
+  -- D81 [Proj]: a scrutinee with a field step `q.i` is named by a match on `q` first
+  if let some (q, i, rebuild) ← projIn fuel' p then
+    let (q, n, arms') ← projMatch fuel' q i (fun f => .matchInd (rebuild f) ty arms)
+    return ← evalMatchInd fuel' typed q n arms' expected
   abstractMatchCheck p ty
   if ← byTypeMatch ty arms then return ← evalMatchByType fuel' typed p ty arms expected
   accessPath fuel' p
@@ -2837,7 +2899,7 @@ def movedPlace (fuel : Nat) (q : Place) : M Place := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   if (← content? q).isSome then return q
   let parent : Place → Option Place
-    | .deref p | .fst p | .snd p | .field _ p => some p
+    | .deref p | .proj _ p | .field _ p => some p
     | .var _ => none
   let some p := parent q | return q
   let p ← movedPlace fuel' p
@@ -2968,7 +3030,7 @@ def blockCaptures (fuel : Nat) (mt : Term) (armMovedAll : List Place) :
         let d ← lookupInd t
         let names := (d.ctors[c]?.map (·.2.map (·.1))).getD []
         pure (some (some c, fs.zipIdx.map fun (_, i) => Place.field ⟨t, c, i, names.getD i s!"f{i}"⟩ q))
-      | .succ _ => pure (some (none, [Place.fst q]))
+      | .succ _ => pure (some (none, [Place.proj 0 q]))
       | _ => pure none
     match children with
     | none => out := out.push (q, 2)
@@ -3136,7 +3198,7 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
       let (_, qs) := q.steps
       let (_, ps) := p.steps
       (ps.drop qs.length).foldl (fun acc st => match st with
-        | .deref => .deref acc | .fst => .fst acc | .snd => .snd acc
+        | .deref => .deref acc | .proj i => .proj i acc
         | .field g => .field g acc) base
     | none => p) 0
   let domTs := (doms.zip pflags).toList.map fun (T, p) =>

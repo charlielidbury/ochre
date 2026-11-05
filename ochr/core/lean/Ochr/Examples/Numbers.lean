@@ -119,9 +119,56 @@ ochr Numbers uses Nats {
     }
   )
 
-  -- ... and not by projection: until it is split, an abstract pair's components are not
-  -- known (there is no η rule), as for a field of any inductive value.
-  reject def SwapPairProj (p : Nat × Unit) : Unit × Nat := (p.1, p.0)
+  -- ... or by projection, which is the same match (D81): `p.i` of a type with one constructor
+  -- names that constructor's field `i`, as `let Mk(a, b) = p; b` would, so an abstract pair is
+  -- split to read it, as by the match above.
+  def SwapPairProj (p : Nat × Unit) : Unit × Nat := (p.1, p.0)
+
+  -- ## Projections (D81)
+  -- `t.i` is field `i` of the one constructor of `t`'s type, for every such inductive, `Pair`
+  -- being one of them: on a place it is the place that constructor's pattern variable names,
+  -- read, written or borrowed in place; on any other term it is `let x = t; x.i`.
+  inductive Trip := MkTrip(a : Nat, b : Unit, c : Nat)
+
+  def TripLast (t : Trip) : Nat := t.2
+  def TripLastIs (n : Nat) : Id(Nat, TripLast(MkTrip(0, (), n)), n) := refl
+  def TermProj (n : Nat) : Id(Nat, MkTrip(0, (), n).2, n) := refl
+  def CallProj (n : Nat) : Id(Nat, PairWrite(n).1, 5) := refl
+
+  def TripWrite (n : Nat) : Trip := (
+    let t = MkTrip(0, (), n);
+    t.2 := 5;
+    let r = &t.0;
+    *r := 7;
+    t
+  )
+
+  def TripWriteIs (n : Nat) : Id(Trip, TripWrite(n), MkTrip(7, (), 5)) := refl
+
+  -- the field of a field
+  def Nested (n : Nat) : Nat := (
+    let p = ((clone(n), ()), n);
+    (p.0).0
+  )
+
+  def NestedIs (n : Nat) : Id(Nat, Nested(n), n) := refl
+
+  -- an abstract value is split to name its field, as by a match; a field read whole is moved
+  -- out of it, and the other fields stay
+  def TripBoth (t : Trip) : Nat × Nat := (t.0, t.2)
+  def TripBothIs (n : Nat) (m : Nat) : Id(Nat × Nat, TripBoth(MkTrip(n, (), m)), (n, m)) := refl
+  reject def TripTwice (t : Trip) : Nat × Nat := (t.0, t.0)
+
+  -- `.i` names a field of a type with exactly one constructor, and an existing one
+  inductive LR := OnL(x : Nat) | OnR(y : Nat)
+  reject def LRProj (t : LR) : Nat := t.0
+  reject def TripOut (t : Trip) : Nat := t.3
+
+  -- `t.i` has `t`'s class: a proof field of data is named by a match
+  inductive Tagged := MkTagged(n : Nat, h : Eq(Nat, 0, 0))
+  def TaggedData (t : Tagged) : Nat := t.0
+  reject def TaggedProof (t : Tagged) : Eq(Nat, 0, 0) := t.1
+  def TaggedProofMatch (t : Tagged) : Eq(Nat, 0, 0) := (let MkTagged(n, h) = t; h)
 
   -- ## Calls and ascriptions
   -- Calls are saturated: every parameter gets an argument.

@@ -97,8 +97,12 @@ ochr Propositions uses Nats {
     }
   )
 
-  -- There is no projection on proofs, since a proof is `⋆`: match instead.
-  reject def Proj (P : Prop) (Q : Prop) (h : P ∧ Q) : P := h.0
+  -- A projection of a proof is the match on its type (D81): `h.0` is `let Intro(l, r) = h; l`.
+  def Proj (P : Prop) (Q : Prop) (h : P ∧ Q) : P := h.0
+  def ProjR (P : Prop) (Q : Prop) (h : P ∧ Q) : Q := h.1
+  reject def ProjWrong (P : Prop) (Q : Prop) (h : P ∧ Q) : Q := h.0
+  reject def ProjOut (P : Prop) (Q : Prop) (h : P ∧ Q) : Q := h.2
+  def SndProj (x : &Nat) (h : Eq(Nat, *x, 0) ∧ Id(Unit, AddM(x, 0), ())) : Id(Unit, AddM(x, 0), ()) := h.1
 
   -- A match on a proof outside tail position, then used.
   def Snd (x : &Nat) (h : Eq(Nat, *x, 0) ∧ Id(Unit, AddM(x, 0), ())) : Id(Unit, AddM(x, 0), ()) := (
@@ -335,6 +339,9 @@ ochr Subsingletons uses Bools, Fixtures {
   -- `Sq` has one constructor with a data field. Elimination into propositions is fine, and
   -- the data field is bound to a fresh abstract value, which can be split on (D49) ...
   inductive Sq : Prop := MkSq(n : Nat)
+
+  -- a projection takes a field of its parent's class, so not the data field of a proof (D81, D45)
+  reject def SqProj (h : Sq) : Nat := h.0
 
   def SqTrue (h : Sq) : True := (
     match h {

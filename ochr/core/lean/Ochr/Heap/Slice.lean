@@ -155,9 +155,10 @@ def stepH (s : Step) (h : Nat) : Prog Res :=
   .view h fun
     | none => pure (.err "no such place: its path goes into an unknown")
     | some n => match s, n with
-      | .fst, .succ a => pure (.ok a)
-      | .fst, .ind "Pair" 0 [a, _] => pure (.ok a)
-      | .snd, .ind "Pair" 0 [_, b] => pure (.ok b)
+      | .proj 0, .succ a => pure (.ok a)
+      | .proj i, .ind _ 0 fs => match fs[i]? with
+        | some a => pure (.ok a)
+        | none => pure (.err "no such field")
       | .field g, .ind t c fs =>
         if t == g.ty && c == g.ctor then
           match fs[g.idx]? with
@@ -227,15 +228,15 @@ def updH (a : Nat) : List Step → Nat → Prog Res
   | s :: ss, h => .view h fun
     | none => pure (.err "no such place: its path goes into an unknown")
     | some n => match s, n with
-      | .fst, .succ b => (updH a ss b).bind fun
+      | .proj 0, .succ b => (updH a ss b).bind fun
         | .ok b' => .alloc (.succ b') fun h' => pure (.ok h')
         | r => pure r
-      | .fst, .ind "Pair" 0 [x, y] => (updH a ss x).bind fun
-        | .ok x' => .alloc (.ind "Pair" 0 [x', y]) fun h' => pure (.ok h')
-        | r => pure r
-      | .snd, .ind "Pair" 0 [x, y] => (updH a ss y).bind fun
-        | .ok y' => .alloc (.ind "Pair" 0 [x, y']) fun h' => pure (.ok h')
-        | r => pure r
+      | .proj i, .ind t 0 fs =>
+          match fs[i]? with
+          | some x => (updH a ss x).bind fun
+            | .ok x' => .alloc (.ind t 0 (fs.set i x')) fun h' => pure (.ok h')
+            | r => pure r
+          | none => pure (.err "no such field")
       | .field g, .ind t c fs =>
         if t == g.ty && c == g.ctor then
           match fs[g.idx]? with

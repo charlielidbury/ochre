@@ -104,14 +104,14 @@ def DeclInfo.isProof : DeclInfo → Bool
   | _ => false
 
 mutual
-/-- Places `p ::= x | *p | p.1 | p.2 | p.g` (`.1` is the predecessor of `S v` or field 1 of
-a pair, `.2` field 2 of a pair: v2.1, D52, pairs are the library inductive `Pair`; `p.g`
-a constructor field). -/
+/-- Places `p ::= x | *p | p.i | p.g`. `p.i` (D81) is field `i` of the one constructor of `p`'s
+type, as written (`.0` of a `Nat` is its predecessor); `p.g` is a constructor field named with
+its constructor (a pattern variable). Where both name the same part, they are one place
+(`stepEq`). -/
 inductive Place where
   | var (i : Nat)
   | deref (p : Place)
-  | fst (p : Place)
-  | snd (p : Place)
+  | proj (i : Nat) (p : Place)               -- `p.i`, a field by position (D81)
   | field (f : FieldRef) (p : Place)         -- a field of a constructor value (a pattern variable)
 
 inductive Term where
@@ -129,7 +129,6 @@ inductive Term where
                                               -- `dec`: the parameter named by `by xⱼ` (none: non-recursive)
   | call (f : Term) (args : List Term) (head : Bool)   -- `head`: the head call of a sealed program ([Seal])
   | nat | zero | succ (t : Term) | unit | tt
-  | fst (t : Term) | snd (t : Term)          -- `t.1`, `t.2`: field 1 or 2 of a pair (D52)
   | eq (A t u : Term)                         -- `Eq A t u` (primitive, in Prop, §4)
   | cong (f h : Term)
   | ref (A : Term)                            -- the borrow type `&A`
@@ -173,7 +172,8 @@ end
 mutual
 def Place.beq : Place → Place → Bool
   | .var i, .var j => i == j
-  | .deref p, .deref q | .fst p, .fst q | .snd p, .snd q => p.beq q
+  | .deref p, .deref q => p.beq q
+  | .proj i p, .proj j q => i == j && p.beq q
   | .field f p, .field g q => f == g && p.beq q
   | _, _ => false
 termination_by structural p => p
@@ -204,7 +204,7 @@ def Term.beq : Term → Term → Bool
   | .fix _ _ ds c d b, .fix _ _ ds' c' d' b' => Term.beqList ds ds' && c.beq c' && d == d' && b.beq b'
   | .call f as h, .call g bs h' => f.beq g && Term.beqList as bs && h == h'
   | .nat, .nat | .zero, .zero | .unit, .unit | .tt, .tt => true
-  | .succ t, .succ u | .fst t, .fst u | .snd t, .snd u | .ref t, .ref u => t.beq u
+  | .succ t, .succ u | .ref t, .ref u => t.beq u
   | .cong a b, .cong c d | .ascribe a b, .ascribe c d => a.beq c && b.beq d
   | .eq a b c, .eq d e f | .id a b c, .id d e f => a.beq d && b.beq e && c.beq f
   | .prim n as, .prim m bs => n == m && Term.beqList as bs

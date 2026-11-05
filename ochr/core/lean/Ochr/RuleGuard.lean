@@ -36,7 +36,8 @@ def proseRules : List (String × String) :=
    ("Conv-pi", "- [Conv-pi]"), ("Conv-fun", "- [Conv-fun]"),
    ("Drop", "*Drop* ([Drop])"), ("Capture", "*Capture* ([Capture])"), ("Block", "*Block* ([Block])"),
    ("Eq-inj", "\"[Eq-inj]\""), ("Eq-refl", "\"[Eq-refl]\""), ("Eq-disj", "\"[Eq-disj]\""),
-   ("Eq-stuck", "\"[Eq-stuck]\""), ("Field", "cont(p.n))$ ([Field])"), ("Return", "*Return* ([Return])")]
+   ("Eq-stuck", "\"[Eq-stuck]\""), ("Field", "cont(p.n))$ ([Field])"), ("Return", "*Return* ([Return])"),
+   ("Proj", "*Projection* ([Proj])")]
 
 /-- Bracketed words of the paper's text that are content, not rule references. -/
 def notRules : List String :=
@@ -52,14 +53,14 @@ def expectedIssues : List String := [
 
 /-- Rules already tagged with a `fire` call. -/
 def fired : List Rule := [.Field, .Open, .Repack, .Return, .IndDecl, .EqInj, .EqStuck, .Access, .Copy, .Read,
-  .Close]
+  .Close, .Proj]
 
 /-- Rules and extensions not yet tagged with a `fire` call (the tagging is in progress). -/
 def notYetFired : List String :=
   (Rule.all.filter (!fired.contains ·)).map (·.name) ++
   ["ErasedReadMovesBorrow", "CaptureTypeFromValue", "TypeOfSealed",
    "FieldTypeFromPattern", "EmbeddedDecl", "CapturedPropFromValue",
-   "TermProjection", "TailRewrite", "ErasedCallWhole", "ErasedBodyCopies",
+   "TailRewrite", "ErasedCallWhole", "ErasedBodyCopies",
    "ZeroArmByType", "BlockMovesByPlace", "BlockEta", "BlockFieldSplit", "BlockMoveAnyShape",
    "BlockProofNotRef", "BlockBorrowPartlyMoved", "BlockNestedReads",
    "OwnerTypeFromObs", "ConvErrorFalse", "ConvCycleFalse"]
@@ -67,7 +68,7 @@ def notYetFired : List String :=
 /-- Every `Ext`, by name (the guard checks each is fired). -/
 def extNames : List String :=
   [Ext.ErasedReadMovesBorrow, .CaptureTypeFromValue, .TypeOfSealed,
-   .FieldTypeFromPattern, .EmbeddedDecl, .CapturedPropFromValue, .TermProjection,
+   .FieldTypeFromPattern, .EmbeddedDecl, .CapturedPropFromValue,
    .TailRewrite, .ErasedCallWhole, .ErasedBodyCopies, .ZeroArmByType,
    .BlockMovesByPlace, .BlockEta, .BlockFieldSplit, .BlockMoveAnyShape, .BlockProofNotRef,
    .BlockBorrowPartlyMoved, .BlockNestedReads, .OwnerTypeFromObs, .ConvErrorFalse,

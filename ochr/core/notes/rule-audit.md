@@ -197,7 +197,7 @@ Unqualified Lean locations are `Machine.lean`. "A." is `appendix.typ`; `eval.typ
 | S2 | `split f in t`, `split f { C(x̄) => t, … }` | A.50, A.409–411 | Surface.lean:301–304, `checkTail` 2827–2861 | MATCH | The arm form binds a hidden variable `⋄split` and matches it (2851). |
 | S3 | Destructuring `let ⟨x, y⟩ = p; u`, `let (x, y) = p; u` | impl.typ (named only) | Notation.lean:78–243 (`destructure`) | CHECKER-ONLY | No printed rule or desugaring: a one-arm match on `Intro` or `Mk`, nested patterns get fresh names `⋄k`, and a non-place right-hand side is first bound to `⋄0`. |
 | S4 | `clone(p)` | A.47, A.158 | Surface.lean:229 | DIVERGES | See E12; `clone` of a non-place is a parse error. |
-| S5 | Notation: `S t`, numerals, `()`, `A × B`, `(a, b)`, `⊤`, `refl`, `P ∧ Q`, `⟨h, k⟩`, `t.1`, `t.2`, pattern variables as places | A.66, A.70, calculus.typ:30 | Surface.lean:198–309 | MATCH | `t.1` of a term that is not a place is a projection (`Term.fst`, `evalCore` 1641), an error on a neutral pair in typed code: §2 C20. `S` unapplied is a `λ` (Surface.lean:194). |
+| S5 | Notation: `S t`, numerals, `()`, `A × B`, `(a, b)`, `⊤`, `refl`, `P ∧ Q`, `⟨h, k⟩`, pattern variables as places | A.66, A.70, calculus.typ:30 | Surface.lean:198–309 | MATCH | `S` unapplied is a `λ` (Surface.lean:194). `t.i` is no longer notation for `Pair`: it is the rule [Proj] (D81), for any type with one constructor; §2 C20 is closed. |
 | S6 | Conveniences `cong`, `trans`, `symm`, `(t : A)`, `λ`, `→` | A.612 (note 23) | Surface.lean:220–223, `evalCore` 1660, 1708–1727, 1746–1758 | CHECKER-ONLY (acknowledged) | No printed typing rules. `symm` and `trans` have cases for `True` and `False` (R7). |
 
 ### Witnesses
@@ -269,7 +269,7 @@ Every branch below decides something that no printed rule states. The guarantee 
 
 **Terms, calls, `J`, `rewrite`**
 
-- C20 `evalCore .fst/.snd` 1641–1652: projections of terms; on a neutral pair, an error in typed code and stuck in untyped code. **verdict**.
+- C20 (closed by D81) `evalCore .fst/.snd` 1641–1652: projections of terms; on a neutral pair, an error in typed code and stuck in untyped code. **verdict**. Now the printed rule [Proj]: a term is bound and its field named by a match (`projIn`, `projMatch`), for any type with one constructor; the `Ext` `TermProjection` is deleted.
 - C21 `evalCore` 1708–1727: `symm`/`trans` accept `True` and `False` (R7). Conveniences (A.612).
 - C22 `rewriteGoal` 1308: "does not mention" is an error; a proof of `True` rewrites nothing (1303). **verdict**: `RwNothing`.
 - C23 `.prim "peek"`, `.prim "inplace"` (1739–1744): internal primitives for observation reads and in-place reads.

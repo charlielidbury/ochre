@@ -10,7 +10,8 @@ machine, so they live in `Machine.lean`.
 namespace Ochr
 
 inductive Step where
-  | deref | fst | snd
+  | deref
+  | proj (i : Nat)
   | field (f : FieldRef)
 deriving BEq, Inhabited
 
@@ -18,22 +19,20 @@ deriving BEq, Inhabited
 def Place.steps : Place → Nat × List Step
   | .var i => (i, [])
   | .deref p => let (i, s) := p.steps; (i, s ++ [.deref])
-  | .fst p => let (i, s) := p.steps; (i, s ++ [.fst])
-  | .snd p => let (i, s) := p.steps; (i, s ++ [.snd])
+  | .proj j p => let (i, s) := p.steps; (i, s ++ [.proj j])
   | .field g p => let (i, s) := p.steps; (i, s ++ [.field g])
 
-/-- One step of a path: `*` goes into the content of a borrow, `.1` into the
-predecessor of `S v` or field 1 of a pair, `.2` into field 2 of a pair (D52: a pair is
-the library inductive `Pair`, so `.1`/`.2` are its fields by position), `.g` into a field
-of a value built by the field's constructor. Every field of a proof `⋆` is `⋆` (v2.0,
-D45: a match on a proof binds its fields as places holding `⋆`). -/
+/-- One step of a path: `*` goes into the content of a borrow, `.i` into field `i` of a value
+of a type with one constructor (D81: the checker admits `.i` only there, so the value's
+constructor is its type's first and only one) or into the predecessor of `S v` (`.0` of a
+`Nat`), `.g` into a field of a value built by the field's constructor. Every field of a proof
+`⋆` is `⋆` (v2.0, D45: a match on a proof binds its fields as places holding `⋆`). -/
 def stepV : Step → Value → Option Value
   | .deref, .borrow _ w => some w
-  | .fst, .succ w => some w
-  | .fst, .ind "Pair" 0 _ _ [a, _] => some a
-  | .snd, .ind "Pair" 0 _ _ [_, b] => some b
+  | .proj 0, .succ w => some w
+  | .proj i, .ind _ 0 _ _ fs => fs[i]?
   | .field g, .ind t c _ _ fs => if t == g.ty && c == g.ctor then fs[g.idx]? else none
-  | .field _, .proof => some .proof
+  | .proj _, .proof | .field _, .proof => some .proof
   | _, _ => none
 
 def Value.follow (v : Value) : List Step → Option Value
@@ -44,9 +43,10 @@ def Value.follow (v : Value) : List Step → Option Value
 def Value.updAt (f : Value → Value) : List Step → Value → Option Value
   | [], v => some (f v)
   | .deref :: ss, .borrow l w => (Value.updAt f ss w).map (.borrow l)
-  | .fst :: ss, .succ w => (Value.updAt f ss w).map .succ
-  | .fst :: ss, .ind "Pair" 0 h ps [a, b] => (Value.updAt f ss a).map fun a' => .ind "Pair" 0 h ps [a', b]
-  | .snd :: ss, .ind "Pair" 0 h ps [a, b] => (Value.updAt f ss b).map fun b' => .ind "Pair" 0 h ps [a, b']
+  | .proj 0 :: ss, .succ w => (Value.updAt f ss w).map .succ
+  | .proj i :: ss, .ind t 0 h ps fs => match fs[i]? with
+    | some v => (Value.updAt f ss v).map fun v' => .ind t 0 h ps (fs.set i v')
+    | none => none
   | .field g :: ss, .ind t c h ps fs =>
     match (if t == g.ty && c == g.ctor then fs[g.idx]? else none) with
     | some v => (Value.updAt f ss v).map fun v' => .ind t c h ps (fs.set g.idx v')

@@ -35,7 +35,7 @@ deriving BEq, Inhabited
 /-- A syntactic guess at whether a type term denotes a proposition. -/
 def isPropTerm? : Term → Option Bool
   | .id .. | .eq .. => some true
-  | .nat | .unit | .ref _ | .tind "Pair" _ | .sort _ => some false
+  | .nat | .unit | .ref _ | .sort _ => some false
   | .pi _ _ c => isPropTerm? c
   | _ => none
 termination_by structural t => t
@@ -192,8 +192,10 @@ mutual
 
 /-- What the declared type of a place says: a variable's, through a borrow the borrowed
 type's, a constructor field's (a proof field is a proof). D80: a data field's is its declared
-field type at the arguments its parent's declared type gives (`fieldDecl`), and so are a
-pair's `.1` and `.2`; a number's `.1` (its predecessor) is data the reader does not see into. -/
+field type at the arguments its parent's declared type gives (`fieldDecl`). D81: `q.i` has `q`'s
+class, so a field of a proof is a proof; of data it is field `i` of the one constructor of the
+inductive `q`'s declared type reads as; a number's `.0` (its predecessor) is data the reader does
+not see into. -/
 def placeDecl (fuel : Nat) (sc : List DeclInfo) (p : Place) : M DeclInfo := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   match p with
@@ -207,8 +209,18 @@ def placeDecl (fuel : Nat) (sc : List DeclInfo) (p : Place) : M DeclInfo := do
   | .field g q =>
     if ← fieldIsProof g then return .prop
     fieldAt fuel' (← placeDecl fuel' sc q) g.ty g.ctor g.idx
-  | .fst q | .snd q =>
-    fieldAt fuel' (← placeDecl fuel' sc q) "Pair" 0 (if p matches .fst _ then 0 else 1)
+  | .proj i q =>
+    let r ← placeDecl fuel' sc q
+    if r.isProof then return .prop
+    let alts : List DeclInfo := match r with | .alt ds => ds | r => [r]
+    let names : List String := alts.filterMap fun
+      | .ind n _ => some n
+      | _ => none
+    match names.eraseDups with
+    | [n] =>
+      let d ← lookupInd n
+      if d.ctors.length == 1 then fieldAt fuel' r n 0 i else pure .other
+    | _ => pure .other
 termination_by structural fuel
 
 /-- D80: what field `i` of constructor `c` of the inductive `n` says, in a value whose declared
@@ -385,7 +397,7 @@ def declOf (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (t 
   | .zero => pure .other
   | .tt => pure .unit
   | .assign _ u => sub u; pure .unit     -- an assignment's value is `()`
-  | .succ u | .fst u | .snd u => sub u; pure .other
+  | .succ u => sub u; pure .other
   | .letIn h u w => do
     let d ← declOf fuel' chk sc ns u
     declOf fuel' chk (d :: sc) (h.name :: ns) w
@@ -754,7 +766,7 @@ and [Call-type]. -/
 def paramFlags (fuel : Nat) (cs : List Value) (ds : List Term) : M (List Bool) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let quick : Term → Bool := fun
-    | .nat | .unit | .ref _ | .sort _ | .tind "Pair" _ => true
+    | .nat | .unit | .ref _ | .sort _ => true
     | _ => false
   if ds.all quick then return ds.map fun _ => false
   let capSc ← cs.reverse.mapM (valueDecl fuel')
@@ -772,6 +784,7 @@ def leafProof (fuel : Nat) (t : Term) (v : Value) : M Bool := do
     | .bind f j => pure (← get).env[f]!.binds[j]!.proof
     | _ => pure false
   | .place (.field g _) => fieldIsProof g      -- v2.0: a field declared of a proposition
+  | .place (.proj _ q) => leafProof fuel' (.place q) v   -- D81: its parent's class
   | .const n => pure (← valTypeDecl fuel' (← lookupGlobal n).ty).isProof
   | .fix .. => match v with
     | .proof => pure true

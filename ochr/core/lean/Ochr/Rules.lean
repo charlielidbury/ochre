@@ -31,7 +31,7 @@ inductive Rule where
   | ArgsNil | Args | Call | CallErr | App | AppClose | AppHead | AppNeutral | AppNeutralHead
   | Close
   -- matching
-  | Match | MatchStuck | MatchErr | MatchProp | MatchNone
+  | Match | MatchStuck | MatchErr | MatchProp | MatchNone | Proj
   -- sealed programs and stuck blocks
   | Seal | SealStuck | SealErr | Block
   -- observation, `Id`, conversion, `eq` (@app-conv)
@@ -59,7 +59,7 @@ def Rule.all : List Rule :=
    .EraseProof, .EraseType,
    .ArgsNil, .Args, .Call, .CallErr, .App, .AppClose, .AppHead, .AppNeutral, .AppNeutralHead,
    .Close,
-   .Match, .MatchStuck, .MatchErr, .MatchProp, .MatchNone,
+   .Match, .MatchStuck, .MatchErr, .MatchProp, .MatchNone, .Proj,
    .Seal, .SealStuck, .SealErr, .Block,
    .Obs, .ObsBorrow, .Id,
    .ConvRefl, .ConvCong, .ConvUnit, .ConvPi, .ConvFun,
@@ -87,7 +87,7 @@ def Rule.name : Rule → String
   | .App => "App" | .AppClose => "App-close" | .AppHead => "App-head"
   | .AppNeutral => "App-neutral" | .AppNeutralHead => "App-neutral-head" | .Close => "Close"
   | .Match => "Match" | .MatchStuck => "Match-stuck" | .MatchErr => "Match-err"
-  | .MatchProp => "Match-prop" | .MatchNone => "Match-none"
+  | .MatchProp => "Match-prop" | .MatchNone => "Match-none" | .Proj => "Proj"
   | .Seal => "Seal" | .SealStuck => "Seal-stuck" | .SealErr => "Seal-err" | .Block => "Block"
   | .Obs => "Obs" | .ObsBorrow => "Obs-borrow" | .Id => "Id"
   | .ConvRefl => "Conv-refl" | .ConvCong => "Conv-cong" | .ConvUnit => "Conv-unit"
@@ -124,7 +124,6 @@ inductive Ext where
   | FieldTypeFromPattern     -- C9: a field place's type from the pattern's constructor
   | EmbeddedDecl             -- C12: an embedded value's declared type read from the value
   | CapturedPropFromValue    -- C18: a captured variable is a proposition by its value's class
-  | TermProjection           -- C20: `t.1`/`t.2` of a term that is not a place
   | TailRewrite              -- C24: in tail position, the rewritten goal is the path's goal
   | ErasedCallWhole          -- C28: a borrow argument of an erased call must be whole
   | ErasedBodyCopies         -- C33: the body of a function whose calls are erased reads by copying
