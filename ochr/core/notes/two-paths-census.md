@@ -43,12 +43,13 @@ Almost every decision is made from a `DeclInfo` ("what a declared type says": a 
 | 18 | `J` computes | `evalCore` (`J`) | whether the endpoints are convertible | c (as 17) |
 | 19 | Conversion checks | `conv`, `convT`, `convPi`, `convFn` | values | c (a check, not a choice: success at the generic call implies success at every instance) |
 | 20 | [Split], [Split-gen], generalisation records | `evalMatch`, `splitArmsThenClose`, `generalizeNeutral` | the scrutinee's content | c (the rules themselves; records end with their arm, D37 and §6.4) |
-| 21 | An `Id` side stuck in an untyped run is observed again by typing | `observeTyping` | whether the machine's run is stuck | c (refinement only removes stuckness; when not stuck the machine and typing compute the same value) |
+| 21 | ~~An `Id` side stuck in an untyped run is observed again by typing~~ | deleted (D82): a side of `Id` runs with the typing judgement from the start, in every run | — | gone (was c: whether the machine's run got stuck) |
 | 22 | Is a hole a proof | `evalCore` (`hole`) | the evaluated hint type's sort | c (as 10); holes are outside the consistency statement anyway |
 | 23 | K2/K3 model-code checks | `abstractMatchCheck`, `unsizedCheck`, `atRuntime`, `modelSignature` | declarations' `abstract`/`unsized` flags; a content's type head | a / c (as 10) |
 | 24 | [Open], [Repack] and the whole-again points (D64, D72, D73) | `openWrite`, `repackCheck`, `lentUnknown`, `bodyReturns`, `closeBlock` | values against their telescope types | c (checks, and the generic call is the stricter path, D72/D73) |
 | 25 | `&A` is well formed only for `A : Type₀` (D66) | `isBorrowable` → `sortOf?` | the sort of the evaluated `A`, by its head | c (as 10) |
 | 26 | [Close]'s fill of a lent place: `()` or a sealed program (D59, D80) | `evalCall` → `closeCall` | the borrow argument's declared type as written (`&c` with `c` declared `Unit`) | a (D80; was b: the content, `u == ()`, not listed here before) |
+| 27 | A binding's type, wherever a decision or typing reads a place's type (D82) | `placeType?` (`.var`), and through it `natPlace`, `projMatch`, `idType`'s owners | the binding's stored type, its declared type, in every run | a (D82; was b, not listed here before: a binding the machine bound had no stored type, and its value's own type was read instead, `valType?`, `content?`, by a route a refinement switches) |
 
 ### The class (b) sites, one by one
 
@@ -85,9 +86,19 @@ How each class fits:
 - `Ochr/Decide.lean`: the declared-type readers and the decisions made from them, 531 lines moved out of `Machine.lean`, between `Located` and `Machine` in the import graph. It does not import the machine, so nothing in it can run a term.
 - `sortOf` of a Π-type value reads its parameter and codomain terms' declared sorts (`declSort`). That broke the only tie to the evaluator's cycle.
 - **A transient finding.** With only that change, `Universes.Impred` and `PolyTy` (`Π(x : &Type) …`) were accepted: computing the sort of a Π-type had been the only place [T-Pi] checked its parameter types, so `&Type` (D66) went unchecked. [T-Pi] now runs them in `Machine.piSort`, as typing must, and `evalCore` asserts that the run sort equals the declared one (D55). The assertion never fires on the suite.
-- The value-dependent sites are marked in the code with a comment beginning "Two paths, value-dependent by design" and their site number here: 6 `stmtArgIf`, 7 `refineDecl`, 9 `resultIsUnit`, 12 `scrutType`, 13 `closeBlock` and `blockCaptures`, 14 `Obs.footprint`, 15 `recCheck`, 16 `copyRead`, 17 `mkEqM`, 21 `observeTyping`.
+- The value-dependent sites are marked in the code with a comment beginning "Two paths, value-dependent by design" and their site number here: 6 `stmtArgIf`, 7 `refineDecl`, 9 `resultIsUnit`, 12 `scrutType`, 13 `closeBlock` and `blockCaptures`, 14 `Obs.footprint`, 15 `recCheck`, 16 `copyRead`, 17 `mkEqM`, 21 `observeTyping` (deleted by D82).
 - Verdicts: none changed. Class (b) sites 6 and 7 were kept, argued stable, rather than rewritten; neither is a known bug.
 
 ## D80: copy-or-move, η at `Unit` and the [Close] fill read from declared types (2026-11-05)
 
 Lane `declared-copy` (`ochr/docs/21`, DECISIONS D80). Sites 9 and 16, the copy-ness part of 13, and the [Close] fill (26, not listed before: it read the lent content, `u == ()`) read only syntax and declared types now, so their one-directional arguments ("generic stricter", "only more stuck") are no longer needed. The reader is D77's, extended to data (`Unit`, an inductive with its type arguments, the alternatives of a type function's arms, a global call's codomain at its type arguments as written); closures and Π-types record their captures' readings and a stuck block its parameters' (its places'), so no reading comes from a value. The one verdict that moved is `ClosingOff.NeutralKept` (rejected → accepted, true); decision counts are in D80.
+
+## D82: every binding has its declared type (2026-11-05)
+
+Lane `typed-bodies` (`ochr/docs/22`, DECISIONS D82). Every binding, in every run, has a stored type, its declared type: a called body's parameters (the callee's declared parameter types at the arguments, as at the generic call), `self`, a closure's or Π-type's captures (recorded when it is formed, with their readings: `Value.clo`/`tPi`'s `rd`), a `let` (its right-hand side's type, computed as typing computes it, a call's being its declared codomain at its arguments: `declCallType`), a sealed program's cells (`let cᵢ : Tᵢ = uᵢ`, `Tᵢ` the lent place's declared type), and the checker's internal frames (`fieldTele`, `fieldTypeAt`, `sealedResultType?`; an unknown slot of the last two is `⊥`, untyped, and never read). So site 27, a binding's type, is class (a), and site 21 is gone: an `Id` side is typed from the start everywhere, since every binding it reads has a type.
+
+**What still reads a value's own type** (`valType?`, `valType`, `convVal`, `indValType?`): values that are not bindings, kept as class (c), a later question (`ochr/docs/22`, out of scope):
+- *An embedded value* (a value inside a term: a sealed program's arguments, a stuck block's or `J`'s embedded endpoints, a captured proof) typed by the typing judgement, `evalCore`'s `.val` case: an abstract value by Δ, a constructor by its inductive at its recorded or inferred parameters, a sealed program by its program's typing. The machine uses the position's type (the hint) instead. Argument: declared-type preservation (D55); refinement substitutes into Δ and keeps a constructor's head. A constructor no field of which determines a parameter has no own type: the typing is rejected ("cannot infer the type of the value"), fail-safe.
+- *A sealed function's type* (`funType?` of `⌈t⌉`): its program's typing (`sealedType?`), as above.
+- *Contents checked against their telescope types*, part of site 24: [Repack] (`packedErr`, `convVal`), an open field typed by its content ([Open], `depFieldType`), and the lending checks (`lentUnknown`, `lentProofAssign`). Argument as site 24: checks, and the generic call is the stricter path (D72, D73).
+
