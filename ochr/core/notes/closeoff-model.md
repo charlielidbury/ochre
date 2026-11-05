@@ -16,7 +16,7 @@ The principles a sealed program must keep for (C) to hold:
 - **(C6) One text, one value.** In a world, a sealed program's text determines its value (C1, determinism), so two derivations of one text may be identified: a generalisation record maps the text to its `σ` (`canonNeutral`), for the world that made it (`split-model`'s (G)).
 - **(C7) Errors surface.** A re-run that errors is a type error at the point that triggered it ([Seal-err]); running out of fuel is undecided.
 - **(C8) Clean inputs.** The inputs are loan-free and whole when the text is made. A live loan copied into a text would outlive a borrow ending differently later; a `⊥` would be read by the callee. [Access] and `wholeBorrowArgs` guarantee both; `closeCall` asserts the first.
-- **(C9) η at `Unit`.** A `Unit`-typed output is `()`, its only value: a borrowed place holding `()`, a result whose type is `Unit`.
+- **(C9) η at `Unit`.** A `Unit`-typed output is `()`, its only value: a borrowed place declared `Unit`, a result whose declared type is `Unit` (D80: read off the call as written, never from the content or a computed type).
 - **(C10) Blocks are calls.** A stuck match or `J` is closed off as a call of an anonymous function of its captures (`closeBlock`, D76), so C1–C9 apply with the captures as arguments; `erasure-model`'s K1 makes each capture's mode at least what any arm does.
 
 ## 2. What lemma (C) says, and what it reduces to
@@ -45,7 +45,7 @@ So (C) adds no new kind of argument beyond (P) and the frame property: what it n
 | C6 one text, one value | `canonNeutral` on every sealed output (`closeCall`'s four, `nfSealed`'s stuck case, `renormV`) | holds |
 | C7 errors surface | `nfSealed` rethrows errors and exhaustion | holds |
 | C8 clean inputs | `wholeBorrowArgs`; the INTERNAL assertion on live loans | holds |
-| C9 η at `Unit` | `closeCall`'s `u == .unit` fill and `resultIsUnit` (two-paths site 9) | holds |
+| C9 η at `Unit` | `closeCall`'s `fills` and `res`, read by `evalCall` from declared types (D80; were the content `u == .unit` and `resultIsUnit`, two-paths sites 26 and 9) | holds |
 | C10 blocks are calls | `closeBlock` → `closeCall` over `blockCaptures` | holds |
 
 No checker rule turned out to be unneeded by the model.

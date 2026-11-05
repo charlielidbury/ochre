@@ -893,7 +893,8 @@ termination_by structural fuel
 
 /-- [Read]: reading a place moves its content out (`p ↦ ⊥`), in any term: a statement runs on
 its own private copy, so its moves are undone with the copy (one mental model, D68). Content
-is copied when its type is a copy type, and by `clone`. A place partly moved out cannot be read (D53 (h)). -/
+is copied ([Copy]) when the place's declared type is a copy type (`copyRead`, D80), and by
+`clone`. A place partly moved out cannot be read (D53 (h)). -/
 def readPlace (fuel : Nat) (p : Place) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   accessPath fuel' p; accessInside fuel' p
@@ -919,10 +920,13 @@ def readPlace (fuel : Nat) (p : Place) : M Value := do
       return v
     -- a copy-type value is read whole whatever it holds (a proposition whose stuck equation
     -- mentions a moved place, D68)
-    if ← copyRead fuel' p then return v
+    if ← copyRead fuel' p then
+      fire .Copy fun _ => "its declared type is a copy type (D80)"
+      return v
     if v.hasHole then err s!"[Read] {← ppPlace p} was partly moved out (D53)"
     if !erased && (← isCapture p) then
       err s!"[D53] a closure's body moves a captured value out ({← ppPlace p}); a closure may run again: clone it"
+    fire .Read fun _ => "its declared type is not a copy type: moved out"
     logEffect p "moves"
     setPlace p .bot
     pure v
@@ -2465,6 +2469,7 @@ place declared `Unit`) are read off the call as written (`evalCall`), never off 
 def closeCall (fuel : Nat) (fv : Value) (ws : Array Value) (kind : Kind) (res : DeclInfo := .other)
     (fills : Array Bool := #[]) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
+  fire .Close fun _ => s!"{fv}: {if kind == .ref then "a borrow result" else if res == .unit then "a declared `Unit` result, ()" else "a sealed result"}"
   wholeBorrowArgs ws "a call that closes off"
   -- Precondition (v1.1): every argument's content is loan-free (guaranteed by [Access]).
   -- An assertion: a violation is a bug of the rules or of this checker, never a user error.
