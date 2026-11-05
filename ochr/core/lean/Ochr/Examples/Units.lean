@@ -23,14 +23,15 @@ def ok? {α : Type} : Except String α → Option α
   | .ok a => some a
   | .error _ => none
 
-/-- `N(v, w) := ⌈let c1 = v; AddM(&c1, w); c1⌉`, what [Close] leaves in `AddM`'s borrowed place
-(the final read of `c1` is an observation, `peek`: it copies, D53). -/
+/-- `N(v, w) := ⌈let c1 : Nat = v; AddM(&c1, w); c1⌉`, what [Close] leaves in `AddM`'s borrowed
+place (the final read of `c1` is an observation, `peek`: it copies, D53; the cell has its
+declared type, D82). -/
 def N (v w : Value) : Value :=
-  .sealed (.letIn ⟨"c1"⟩ (.val v) (.seq (.call (.val (.gfn "AddM")) [.borrow (.var 0), .val w] true) (.prim "peek" [.place (.var 0)])))
+  .sealed (.letIn ⟨"c1"⟩ (.ascribe (.val v) (.val .tNat)) (.seq (.call (.val (.gfn "AddM")) [.borrow (.var 0), .val w] true) (.prim "peek" [.place (.var 0)])))
 
-/-- `B(v)[h] := ⌈let c1 = v; let r = TailM(&c1); *r := h; c1⌉`, `TailM`'s effect with its hole. -/
+/-- `B(v)[h] := ⌈let c1 : Nat = v; let r = TailM(&c1); *r := h; c1⌉`, `TailM`'s effect with its hole. -/
 def B (v h : Value) : Value :=
-  .sealed (.letIn ⟨"c1"⟩ (.val v) (.letIn ⟨"r"⟩ (.call (.val (.gfn "TailM")) [.borrow (.var 0)] true)
+  .sealed (.letIn ⟨"c1"⟩ (.ascribe (.val v) (.val .tNat)) (.letIn ⟨"r"⟩ (.call (.val (.gfn "TailM")) [.borrow (.var 0)] true)
     (.seq (.assign (.deref (.var 0)) (.val h)) (.prim "peek" [.place (.var 1)]))))
 
 -- [Seal] (D9): refining σ0 := S σ1 re-runs N(σ0, 0); the inner call closes off, the

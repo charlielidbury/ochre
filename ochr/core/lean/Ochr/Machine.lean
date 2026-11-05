@@ -409,7 +409,7 @@ def stmtArgIf (fuel : Nat) (b : Bool) (a : Term) (x : M (Value × Option Value))
   if !b then return ← x
   if ← stmtArgInPlace fuel a then x else inStatement x
 
-def fixOf (fv : Value) : M (List Value × Term × List DeclInfo) := do
+def fixOf (fv : Value) : M (List Value × Term × List (DeclInfo × Value)) := do
   match fv with
   | .gfn n => match (← lookupGlobal n).fn? with
     | some t => pure ([], t, [])
@@ -626,8 +626,12 @@ def substV (fuel : Nat) (x r : Value) (v : Value) : M Value := do
   | .abs _ | .loan _ => return (if v == x then r else v)
   | .succ w => return .succ (← substV fuel' x r w)
   | .borrow l w => return .borrow l (← substV fuel' x r w)
-  | .clo cs t rd => return .clo (← cs.mapM (substV fuel' x r)) (← substT fuel' x r t) rd
-  | .tPi cs t rd => return .tPi (← cs.mapM (substV fuel' x r)) (← substT fuel' x r t) rd
+  | .clo cs t rd =>
+    let rd' ← rd.mapM fun (d, T) => do pure (d, ← substV fuel' x r T)
+    return .clo (← cs.mapM (substV fuel' x r)) (← substT fuel' x r t) rd'
+  | .tPi cs t rd =>
+    let rd' ← rd.mapM fun (d, T) => do pure (d, ← substV fuel' x r T)
+    return .tPi (← cs.mapM (substV fuel' x r)) (← substT fuel' x r t) rd'
   | .sealed t => nfSealed fuel' (← substT fuel' x r t)
   | .tEq A a b => mkEqM fuel' (← substV fuel' x r A) (← substV fuel' x r a) (← substV fuel' x r b)
   | .tInd n as => return .tInd n (← as.mapM (substV fuel' x r))
@@ -1048,17 +1052,16 @@ termination_by structural fuel
 
 -- ### Types
 
-/-- The type of a place, read off the stored types (RULES §5; e1 F9). A total query: `none`
-when the type cannot be read (an untyped binding whose value has no readable type, `valType?`),
-an error when the place is ill-formed at the type it has. -/
+/-- The type of a place, read off the stored types (RULES §5; e1 F9), never off a value: every
+binding has its declared type (D82). A total query: `none` only for an unknown slot of a
+checker-internal frame (`⊥`, never read), an error when the place is ill-formed at the type it has. -/
 def placeType? (fuel : Nat) (p : Place) : M (Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   match p with
   | .var i =>
     let pos ← varPos i
-    match ← tyAt pos with
-    | some T => pure (some T)
-    | none => valType? fuel' (← getAt pos)
+    -- D82: a binding's type is its stored type, its declared type; never read off its value
+    tyAt pos
   | .deref q => match ← placeType? fuel' q with
     | none => pure none
     | some (.tRef T) => pure (some T)
@@ -1103,12 +1106,10 @@ def placeType (fuel : Nat) (p : Place) : M Value := do
   | none => err s!"cannot infer the type of the place {← ppPlace p}"
 termination_by structural fuel
 
-/-- Whether a place holds a number, by its type, else by its content (an untyped run). -/
+/-- Whether a place holds a number, by its type (D82: every binding has its declared type). -/
 def natPlace (fuel : Nat) (q : Place) : M Bool := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  match ← placeType? fuel' q with
-  | some T => pure (T == .tNat)
-  | none => pure ((← content? q) matches some .zero | some (.succ _))
+  pure ((← placeType? fuel' q) == some .tNat)
 termination_by structural fuel
 
 /-- D81: the root-most step `q.i` of `p` whose parent `q` is not a number (a number's `.0` is
@@ -1135,13 +1136,10 @@ reads it (`placeDecl`). -/
 def projMatch (fuel : Nat) (q : Place) (i : Nat) (k : Place → Term) : M (Place × String × List (Hint × Term)) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let pq ← ppPlace q
-  -- the inductive: the head of `q`'s type, else of its content (an untyped run)
+  -- the inductive: the head of `q`'s type (D82: every binding has its declared type)
   let n? ← match ← placeType? fuel' q with
     | some (.tInd n _) => pure (some n)
-    | some _ => pure none
-    | none => match ← content? q with
-      | some (.ind n ..) => pure (some n)
-      | _ => pure none
+    | _ => pure none
   let some n := n?
     | err s!"{pq}.{i}: {pq} is not known to be of an inductive type (`.{i}` names a field of a type with one constructor)"
   let d ← lookupInd n
@@ -1236,7 +1234,7 @@ def convVal (fuel : Nat) (v : Value) (T : Value) : M Bool := do
   | none => pure false
 termination_by structural fuel
 
-/-- The type of a value, for untyped bindings (captured values) and embedded values. A total
+/-- The type of an embedded value (D82: never a binding's; census class (c)). A total
 query: `none` for a value that has no readable type of its own (`⊥`, `⋆`, an inert loan, a
 constructor value whose parameters no field determines, a sealed program its typing run gives
 no type); an error only from a step that fails (an undeclared name, a failing typing run). -/
@@ -1304,7 +1302,8 @@ def fieldTele (fuel : Nat) (d : IndDecl) (ps : List Value) (c : Nat) (val : Nat 
       for i in [0:k] do pushBind ⟨((d.ctors[c]!).2[i]!).1⟩ none .bot
       for ((h, PT), v) in d.params.zip ps do
         let pd' ← withLive true (typeDecl fuel' false [] [] PT)
-        pushBind h none v pd'.isProof pd'
+        -- D82: each parameter at its declared type, evaluated with the earlier ones bound
+        pushBind h (some (← evalType fuel' PT)) v pd'.isProof pd'
       let top ← topIdx
       let mut out := #[]
       for ((f, FT), j) in fields.zipIdx do
@@ -1356,11 +1355,24 @@ def fieldTypeAt (fuel : Nat) (d : IndDecl) (sol : Array (Option Value)) (c i : N
   let k := fields.length
   unless FT.freeVars.all fun j => (j < np && (sol[np - 1 - j]!).isSome) ||
       (np ≤ j && j < np + k && np + k - 1 - j < earlier.length) do return none
+  -- D82: each known slot at its declared type, evaluated where the declaration wrote it; an
+  -- unknown slot is `⊥` with no type, and the guard above makes sure `FT` never reads one
+  let known (j : Nat) : Bool := (j < np && (sol[np - 1 - j]!).isSome) ||
+    (np ≤ j && j < np + k && np + k - 1 - j < earlier.length)
   privately do
     pushFrame
     for jj in [0:k] do pushBind ⟨(fields[jj]!).1⟩ none (earlier.getD jj .bot)
-    for ((h, PT), v) in d.params.zip sol.toList do
-      pushBind h none (v.getD .bot) false (← withLive true (typeDecl fuel' false [] [] PT))
+    for (((h, PT), v), i) in (d.params.zip sol.toList).zipIdx do
+      let A ← if v.isSome && PT.freeVars.all (fun j => j < i && (sol[i - 1 - j]!).isSome)
+        then some <$> evalType fuel' PT else pure none
+      pushBind h A (v.getD .bot) false (← withLive true (typeDecl fuel' false [] [] PT))
+    let top ← topIdx
+    for jj in [0:earlier.length] do
+      let some (_, FTj) := fields[jj]? | pure ()
+      -- field `jj`'s type mentions the parameters and the fields before it, in this frame
+      if FTj.freeVars.all known then
+        let A ← evalType fuel' FTj
+        modifyFrame top fun fr => { fr with binds := fr.binds.modify jj ({ · with ty := some A }) }
     some <$> evalType fuel' FT
 termination_by structural fuel
 
@@ -1452,8 +1464,10 @@ termination_by structural fuel
 /-- Close a `pi`/`fix` term over the current values of its free variables (P2: a
 Π-type is a closure over formation-time values, like a λ). Captured values are copied;
 closures capture no borrows (RULES §1). Each capture is recorded with what its binding's
-declared type says (D51, D80: the closure's body reads it so, as copy or not, on every path). -/
-def capture (fuel : Nat) (t : Term) : M (List Value × Term × List DeclInfo) := do
+declared type says (D51, D80: the closure's body reads it so, as copy or not, on every path),
+and with that declared type itself, its binding's stored type (D82: the closure's body runs with
+every binding typed by declaration). -/
+def capture (fuel : Nat) (t : Term) : M (List Value × Term × List (DeclInfo × Value)) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let fvs := (t.freeVars.toArray.qsort (· > ·)).toList   -- oldest binding first
   let m := fvs.length
@@ -1478,7 +1492,9 @@ def capture (fuel : Nat) (t : Term) : M (List Value × Term × List DeclInfo) :=
         if let some T := b0.ty then
           repackCheck fuel' s!"a closure or Π-type captures {b0.hint.name}" v T
       vals := vals.push v
-      rd := rd.push b0.decl
+      let some T := b0.ty
+        | err s!"INTERNAL [Capture] {b0.hint.name} has no stored type (D82: every binding has its declared type; please report)"
+      rd := rd.push (b0.decl, T)
       -- D53: a runtime closure moves the variables it captures whose types are not copies
       if !(v matches .proof) then
         if v.hasHole then err "[D53] a closure captures a place that was partly moved out"
@@ -1878,7 +1894,10 @@ constructor application that its fields do not determine (v2.0, D46). -/
 def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   tick
-  let ty (T : Value) : Option Value := if typed then some T else none
+  -- D82: the machine carries types as typing does (every binding has its declared type); it
+  -- differs from typing only where a run is stuck (it closes off where typing splits) and in
+  -- not re-checking the code it runs (the checks below are typing's)
+  let ty (T : Value) : Option Value := some T
   -- D81 [Proj]: a place operand with a field step `q.i` runs as the match on `q` that names it
   if let some (p, k) := t.placeOperand? then
     if let some (q, i, rebuild) ← projIn fuel' p then
@@ -1886,12 +1905,12 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
       return ← evalMatchInd fuel' typed q n arms
   match t with
   | .place p =>
-    let T ← if typed then some <$> placeType fuel' p else pure none
-    if let some T := T then repackAt fuel' p T "read whole"
+    let T ← if typed then some <$> placeType fuel' p else placeType? fuel' p
+    if typed then if let some T := T then repackAt fuel' p T "read whole"
     pure (← readPlace fuel' p, T)
   | .borrow p =>
-    let T ← if typed then some <$> placeType fuel' p else pure none
-    if let some T := T then
+    let T ← if typed then some <$> placeType fuel' p else placeType? fuel' p
+    if typed then if let some T := T then
       if T.typeHasRef then err s!"&{← ppPlace p}: a borrow of a borrow-typed place"
       -- D66 for terms ([T-Borrow]'s premise, reviewer-6's A12): the borrowed place's type
       -- is in Type₀, as for the type former `&A`
@@ -1910,7 +1929,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
         placeType? fuel' p
       else pure none
     -- the place's type, read before the value is evaluated: evaluating it may move the place's
-    -- content out (`*x := match *x {…}`, D68), and an untyped frame types a place by its content
+    -- content out (`*x := match *x {…}`, D68)
     let Tp0 ← if typed then placeType? fuel' p else pure none
     let (v, Tv) ← eval fuel' typed u hint
     -- D64 [Open]: a field whose declared type mentions earlier fields takes any value (a strong
@@ -1954,7 +1973,8 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     let v ← if ← isPropV fuel' g.ty then pure .proof else pure g.val
     pure (v, some g.ty)
   | .val v =>
-    if !typed then return (v, none)
+    -- an embedded value is typed by the position it was embedded at (the hint), as below
+    if !typed then return (v, hint)
     -- an embedded value with no type of its own (a proof, an inert loan) has the type of the
     -- position it was embedded at: a parameter's or a field's declared type (the hint)
     match v, hint with
@@ -1967,7 +1987,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     -- a type former is erased: even its captures (which access places) run on a copy
     let (cs, t', rd) ← inStatement (capture fuel' t)
     let T := Value.tPi cs t' rd
-    if !typed then return (T, none)
+    if !typed then return (T, some (.sort (← sortOf fuel' T)))
     -- [T-Pi] runs the parameter types and the codomain (typing); the decisions read the same
     -- sort off the terms (`Decide.sortOf`, D55: a type's declared sort is its computed sort).
     -- The two are asserted to agree, as the erasure pre-pass is against the after-the-fact
@@ -1997,7 +2017,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
   | .tt => pure (.unit, ty .tUnit)
   | .succ u =>
     let (v, T) ← eval fuel' typed u
-    expectTy fuel' "the argument of S" T .tNat
+    if typed then expectTy fuel' "the argument of S" T .tNat
     pure (.succ v, ty .tNat)
   | .eq A a b => inStatement do
     -- each side is a statement position: it runs on its own private copy of the state, so
@@ -2005,13 +2025,13 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     let A' ← evalType fuel' A
     let (va, Ta) ← inStatement (eval fuel' typed a)
     let (vb, Tb) ← inStatement (eval fuel' typed b)
-    expectTy fuel' "the left side of Eq" Ta A'
-    expectTy fuel' "the right side of Eq" Tb A'
+    if typed then
+      expectTy fuel' "the left side of Eq" Ta A'
+      expectTy fuel' "the right side of Eq" Tb A'
     pure (← mkEqM fuel' A' va vb, some (.sort 0))
   | .cong f h =>
     let (fv, fT) ← eval fuel' typed f
     let (_, Th) ← eval fuel' typed h
-    if !typed then return (.proof, none)
     match Th.map unitTop with
     | some (.tInd "True" []) => pure (.proof, some vTrue)
     | some (.tEq A a b) =>
@@ -2022,8 +2042,8 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
       let (fa, B) ← callFn fuel' true fv fT #[a] #[some A] false (res := res)
       let (fb, _) ← callFn fuel' true fv fT #[b] #[some A] false (res := res)
       pure (.proof, some (← mkEqM fuel' B.get! fa fb))
-    | some T => err s!"cong: the proof has type {T}, which is not an equation"
-    | none => err "cong: untyped proof"
+    | some T => if typed then err s!"cong: the proof has type {T}, which is not an equation" else pure (.proof, none)
+    | none => if typed then err "cong: untyped proof" else pure (.proof, none)
   | .ref A =>
     let A' ← evalType fuel' A
     if A'.typeHasRef then err "&A needs A borrow-free (RULES §1)"
@@ -2092,17 +2112,16 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
   | .prim "trans" [h, k] =>
     let (_, Th) ← eval fuel' typed h
     let (_, Tk) ← eval fuel' typed k
-    if !typed then return (.proof, none)
     match Th.map unitTop, Tk.map unitTop with
     | some (.tInd "True" []), some T | some T, some (.tInd "True" []) => pure (.proof, some T)
     | some (.tInd "False" []), _ | _, some (.tInd "False" []) => pure (.proof, some (.tInd "False" []))
     | some (.tEq A a b), some (.tEq A' b' c) =>
-      unless (← conv fuel' A A') && (← conv fuel' b b') do err s!"trans: {Th.get!} and {Tk.get!} do not compose{convBotNote b b'}"
-      pure (.proof, some (← mkEqM fuel' A a c))
-    | _, _ => err "trans: not equations"
+      if (← conv fuel' A A') && (← conv fuel' b b') then pure (.proof, some (← mkEqM fuel' A a c))
+      else if typed then err s!"trans: {Th.get!} and {Tk.get!} do not compose{convBotNote b b'}" else pure (.proof, none)
+    | _, _ => if typed then err "trans: not equations" else pure (.proof, none)
   | .prim "rewrite" [h, u] | .prim "rewriteR" [h, u] =>
     -- D60 [Rewrite]: checked against the type the context requires (`hint`)
-    if !typed then return (.proof, none)
+    if !typed then return (.proof, hint)
     let some G := hint
       | err "rewrite: the goal is not known here (use it in tail position, as a call's argument, or under an annotation `let x : T = …`)"
     let G' ← rewriteGoal fuel' (t matches .prim "rewriteR" _) h G
@@ -2135,10 +2154,11 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     pure r
   | .prim n _ => err s!"unknown primitive {n}"
   | .ascribe (.val .proof) A =>     -- a captured proof, inlined with its type (`capture`)
-    if typed then pure (.proof, some (← evalType fuel' A)) else pure (.proof, none)
+    pure (.proof, some (← evalType fuel' A))
   | .ascribe u A =>
-    if !typed then return (← eval fuel' false u)
     let A' ← evalType fuel' A
+    -- D82: an annotation is the term's declared type; the machine does not re-check it
+    if !typed then return ((← eval fuel' false u (some A')).1, some A')
     let (v, T) ← match u with
       | .matchNat p z s => evalMatch fuel' true p z s (some A')
       | .matchInd p ty arms => evalMatchInd fuel' true p ty arms (some A')
@@ -2194,7 +2214,7 @@ def evalTInd (fuel : Nat) (typed : Bool) (n : String) (as : List Term) : M (Valu
     err s!"{n} takes {d.params.length} parameters, given {as.length}"
   let (vs, tys) ← evalParams fuel' n as typed
   if typed then checkParams fuel' d n vs tys
-  pure (.tInd n vs.toList, if typed then some (.sort d.sort) else none)
+  pure (.tInd n vs.toList, some (.sort d.sort))
 termination_by structural fuel
 
 /-- Parameters are type positions: each on a private copy (P2). -/
@@ -2263,7 +2283,10 @@ def evalCtor (fuel : Nat) (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts
   let ws ← popTemps as.length
   let proof ← ctorIsProof ty
   if !typed then
-    return (if proof then .proof else .ind ty c h evs.toList ws.toList, none)
+    -- D82: its declared type, the inductive at its parameters, when they are written or follow
+    -- from the fields' types or the hint
+    let T := if sol.all (·.isSome) then some (Value.tInd ty (sol.toList.filterMap id)) else none
+    return (if proof then .proof else .ind ty c h evs.toList ws.toList, T)
   let mut ps := #[]
   for (s, (ph, _)) in sol.toList.zip d.params do
     match s with
@@ -2399,6 +2422,23 @@ def callType (fuel : Nat) (piTy : Value) (ws : Array Value) (tys : Array (Option
     evalType fuel' c
 termination_by structural fuel
 
+/-- D82: [Call-type]'s type without its argument checks: the declared codomain of `piTy` at the
+arguments, each parameter bound at its declared type. The machine's type of a call. -/
+def declCallType (fuel : Nat) (piTy : Value) (ws : Array Value) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let .tPi cs (.pi hs ds c) rd := piTy | err s!"not a function type: {piTy}"
+  if ds.length != ws.size then err s!"arity: {ds.length} parameters, {ws.size} arguments"
+  let pf ← paramFlags fuel' cs ds
+  privately <| unlocated do
+    pushFrame
+    pushCaps fuel' cs rd
+    let (pds, _) ← paramDecls fuel' cs hs ds c
+    for (((d, h), i), pd) in ((ds.zip hs).zipIdx).zip pds do
+      let A ← evalType fuel' d
+      pushBind h (some A) (etaUnit pd ws[i]!) (pf.getD i false) (← refineDecl pd)
+    evalType fuel' c
+termination_by structural fuel
+
 /-- P5: the borrow arguments of a call that is not run end unchanged. -/
 def endBorrowArgs (fuel : Nat) (ws : Array Value) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
@@ -2410,7 +2450,7 @@ def endBorrowArgs (fuel : Nat) (ws : Array Value) : M Unit := do
 termination_by structural fuel
 
 /-- [Call]: push a frame `[caps, self, x̄ ↦ w̄]`, run the body, pop the frame. -/
-def runBody (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : List DeclInfo) (ws : Array Value) :
+def runBody (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) :
     M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let .fix self hs ds c _ body := t | err "internal: not a fix"
@@ -2425,7 +2465,7 @@ def runBody (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : List De
   pure r
 termination_by structural fuel
 
-def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : List DeclInfo) (ws : Array Value)
+def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value)
     (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (body : Term) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let d := (← get).depth
@@ -2434,27 +2474,27 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : Lis
   let pf ← paramFlags fuel' cs ds
   let (pds, cd) ← paramDecls fuel' cs hs ds c
   -- D80: a stuck block records its parameters' readings, the places it takes (`closeBlock`)
-  let pds := if rd.length > cs.length then rd.drop cs.length else pds
-  -- a proof parameter that a function or Π-type in the body may capture needs its type,
-  -- which is all a captured proof records (`capture`): read it off the declared domain,
-  -- at the arguments (arrays-library: a Π whose body uses a proof captured from outside it)
-  let ptys ← if body.formsFn && (pf.any id || pds.any (·.isProof)) then privately do
-      pushFrame
-      pushCaps fuel' cs rd
-      let mut out := #[]
-      for ((((h, w), p), pd), d) in (((hs.zip ws.toList).zip pf).zip pds).zip ds do
-        let A? ← if p || pd.isProof then some <$> evalType fuel' d else pure none
-        out := out.push A?
-        pushBind h A? (etaUnit pd w) p pd
-      pure out
-    else pure #[]
+  let pds := if rd.length > cs.length then (rd.drop cs.length).map (·.1) else pds
+  -- D82: every binding has its declared type. Each parameter's declared type is evaluated left
+  -- to right in the frame of the captures and the earlier parameters, where it was written (no
+  -- `self`), as at the generic call ([Def], [Call-type])
+  let tys ← privately do
+    pushFrame
+    pushCaps fuel' cs rd
+    let mut out := #[]
+    for ((((h, w), p), pd), d) in (((hs.zip ws.toList).zip pf).zip pds).zip ds do
+      let A ← evalType fuel' d
+      out := out.push A
+      pushBind h (some A) (etaUnit pd w) p pd
+    pure out
   pushFrame
   pushCaps fuel' cs rd
-  pushBind self none fv false (.pi cd)
+  -- `self` has its Π-type
+  pushBind self (some (← funType fuel' fv none)) fv false (.pi cd)
   -- D80 (R2): a parameter whose declared type reads as `Unit` is `()`, at every call as at the
   -- generic one (`checkFix`)
-  for ((((h, w), p), pd), i) in (((hs.zip ws.toList).zip pf).zip pds).zipIdx do
-    pushBind h (ptys[i]?.getD none) (etaUnit pd w) p (← refineDecl pd)
+  for ((((h, w), p), pd), A) in (((hs.zip ws.toList).zip pf).zip pds).zip tys.toList do
+    pushBind h (some A) (etaUnit pd w) p (← refineDecl pd)
   -- D53: a body is code; a function whose calls are erased has an erased body (b)
   let erasedFn := (← fnClass fuel' (← funType fuel' fv none)) != 0
   let (v, _) ← withErasedIf erasedFn (eval fuel' false body)
@@ -2474,12 +2514,15 @@ def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Ar
     err s!"[Call] argument {i + 1} is ⊥ at the call point (a later argument ended its borrow): an argument not of the parameter's type"
   -- A proof value is only ever called at a proposition: P5, not run.
   if fv == .proof then
-    let B ← if typed then some <$> callType fuel' (← funType fuel' fv fT) ws tys else pure none
+    let B ← if typed then some <$> callType fuel' (← funType fuel' fv fT) ws tys
+      else some <$> declCallType fuel' (← funType fuel' fv fT) ws
     endBorrowArgs fuel' ws
     setFlags (true, true)
     return (.proof, B)
   let piTy ← funType fuel' fv fT
-  let B ← if typed then some <$> callType fuel' piTy ws tys else pure none
+  -- D82: the call's type is its declared codomain at the arguments; typing also checks the
+  -- arguments against the parameter types ([Call-type]), the machine does not re-check them
+  let B ← if typed then some <$> callType fuel' piTy ws tys else some <$> declCallType fuel' piTy ws
   if typed then
     trace fun _ => s!"[Call-type] {fv}({", ".intercalate (ws.toList.map toString)}) : {B.getD .bot}"
     recCheck fv ws recUid?
@@ -2510,12 +2553,12 @@ def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Ar
   let r ← match fv with
     | .abs _ | .sealed _ =>
       -- a neutral head closes off at once (v1.3), except as [Seal]'s head call (D39)
-      if head then stuckNow else closeCall fuel' fv ws kind res fills
+      if head then stuckNow else closeCall fuel' fv ws kind res fills tys
     | .gfn _ | .clo _ _ _ =>
       let (cs, t, rd) ← fixOf fv
       -- [App-close]: a stuck body closes the call off; [App-head]: not a sealed program's head call
       catchStuck (runBody fuel' fv cs t rd ws) fun on =>
-        if head then throw (.stuck on) else closeCall fuel' fv ws kind res fills
+        if head then throw (.stuck on) else closeCall fuel' fv ws kind res fills tys
     | _ => err s!"call of {fv}, which is not a function"
   let r := if cls == 2 then Value.proof else r
   -- D80 (R2): the result of a call whose declared codomain reads as `Unit` is `()`, whether it
@@ -2525,8 +2568,10 @@ def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Ar
 termination_by structural fuel
 
 /-- [Close]: the call `f(w̄)` has a stuck body; the partial run has been discarded (the
-state is back at the call point). `L := let cᵢ = uᵢ`, `C := f(ā)` with `aᵢ = &cᵢ` for
-the borrow arguments `wᵢ = borrow_ℓᵢ uᵢ`; the result and the loans follow the table.
+state is back at the call point). `L := let cᵢ : Tᵢ = uᵢ`, `C := f(ā)` with `aᵢ = &cᵢ` for
+the borrow arguments `wᵢ = borrow_ℓᵢ uᵢ` of type `&Tᵢ`; the result and the loans follow the
+table. D82: each cell has its declared type, the lent place's (`tys`, the arguments' types),
+so a re-run of the program is typed by declaration like any other run.
 
 This is the only place a sealed program is made (a stuck block or `J` is closed off through
 it too, `closeBlock`), and it keeps closing off's obligations (`notes/closeoff-model.md`):
@@ -2540,7 +2585,7 @@ already generalised in this world is its `σ` (C6). D80: whether the result is `
 call's declared result type) and which fills are (`fills`, the borrow arguments that lend a
 place declared `Unit`) are read off the call as written (`evalCall`), never off a value. -/
 def closeCall (fuel : Nat) (fv : Value) (ws : Array Value) (kind : Kind) (res : DeclInfo := .other)
-    (fills : Array Bool := #[]) : M Value := do
+    (fills : Array Bool := #[]) (tys : Array (Option Value) := #[]) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   fire .Close fun _ => s!"{fv}: {if kind == .ref then "a borrow result" else if res == .unit then "a declared `Unit` result, ()" else "a sealed result"}"
   wholeBorrowArgs ws "a call that closes off"
@@ -2560,8 +2605,11 @@ def closeCall (fuel : Nat) (fv : Value) (ws : Array Value) (kind : Kind) (res : 
     | some j => .borrow (.var (d + m - 1 - j))
     | none => .val ws[i]!
   let C (d : Nat) : Term := .call (.val fv) ((List.range ws.size).map (argT d)) true
+  let cellTerm (i : Nat) (u : Value) : Term := match tys[i]? with
+    | some (some (.tRef T)) => .ascribe (.val u) (.val T)
+    | _ => .val u
   let wrapL (body : Term) : Term :=
-    (bs.zipIdx).foldr (fun ((_, _, u), j) acc => .letIn ⟨s!"c{j + 1}"⟩ (.val u) acc) body
+    (bs.zipIdx).foldr (fun ((i, _, u), j) acc => .letIn ⟨s!"c{j + 1}"⟩ (cellTerm i u) acc) body
   let cell (d j : Nat) : Term := .place (.var (d + m - 1 - j))
   -- D53: the final read of a sealed program (its `K`) is an observation: it copies, while
   -- the program before it runs with runtime semantics
@@ -2668,7 +2716,12 @@ def sealedResultType? (fuel : Nat) (t : Term) : M (Option Value) := do
           return none
         privately do
           pushFrame
-          for (h, w) in hs.zip ws.toList do pushBind h none (w.getD .bot)
+          -- D82: each known parameter at its declared type; an unknown one is `⊥`, which `c`
+          -- does not read (the guard above)
+          for ((h, w), (d, i)) in (hs.zip ws.toList).zip ds.zipIdx do
+            let A ← if w.isSome && d.freeVars.all (fun j => j < i && (ws[i - 1 - j]!).isSome)
+              then some <$> evalType fuel' d else pure none
+            pushBind h A (w.getD .bot)
           some <$> evalType fuel' c
       | _ => pure none
     | _ => pure none
@@ -2698,8 +2751,12 @@ def renormV (fuel : Nat) (v : Value) : M Value := do
   | .tRef A => return .tRef (← renormV fuel' A)
   -- closures and Π-types too: their captures and embedded values (arrays-library: a goal
   -- `… ∧ Π(…). …` whose Π captured a sealed program stayed stale after a split)
-  | .clo cs t rd => return .clo (← cs.mapM (renormV fuel')) (← renormT fuel' t) rd
-  | .tPi cs t rd => return .tPi (← cs.mapM (renormV fuel')) (← renormT fuel' t) rd
+  | .clo cs t rd =>
+    let rd' ← rd.mapM fun (d, T) => do pure (d, ← renormV fuel' T)
+    return .clo (← cs.mapM (renormV fuel')) (← renormT fuel' t) rd'
+  | .tPi cs t rd =>
+    let rd' ← rd.mapM fun (d, T) => do pure (d, ← renormV fuel' T)
+    return .tPi (← cs.mapM (renormV fuel')) (← renormT fuel' t) rd'
   | _ => return v
 termination_by structural fuel
 
@@ -3182,7 +3239,7 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
     -- block's arguments): the block's run reads its parameters as the direct path reads the
     -- places, copy or not, whatever a refinement makes of `T`
     let dq ← withLive true (placeDecl fuel' [] q)
-    rd := rd.push (if mode == 1 then DeclInfo.ref dq else dq)
+    rd := rd.push (if mode == 1 then (DeclInfo.ref dq, Value.tRef T) else (dq, T))
     repackAt fuel' q T "captured whole by a stuck match"
     -- a captured proof variable stays a proof in the block: its parameter is declared
     -- `: T` with `T : Prop` (v1.7: the same flag on the direct and the block path)
@@ -3245,44 +3302,26 @@ def observe (fuel : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos) : 
   pure (v, ws)
 termination_by structural fuel
 
-/-- [Obs] is stated with the typing judgement wherever `Id` is evaluated (D63, rule-audit item
-9). In an untyped run (a callee's body, a sealed program's re-run) the side runs in the
-machine, which computes the same value as typing whenever it is not stuck; if it is stuck, it
-is observed again with the typing judgement, so its stuck match is split and closed off as a
-block, as when the same `Id` is formed directly. (Typing from the start would need the type of
-every value in an untyped frame, which `⋆` and `⊥` do not have.) -/
--- Two paths, value-dependent by design (notes/two-paths-census.md, site 21): re-observation when stuck; refinement only removes stuckness, and when not stuck the machine and typing compute the same value.
-def observeTyping (fuel : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos) : M (Value × List Value) := do
-  let fuel' + 1 := fuel | exhausted "out of fuel"
-  if typed then return ← observe fuel' typed t A W
-  catchStuck (observe fuel' false t A W) fun _ => observe fuel' true t A W
-termination_by structural fuel
-
 /-- `Id A t u ≡ And(Eq A r r', And(Eq T₁ w₁ w'₁, …))` over the result and the owners in
 `W = W(t, u)` (just `Eq A r r'` when `W` is empty), both sides from the same Ω on
 independent copies (v2.1, D52: directly, not through a pair, so `A` may be any borrow-free
-type, a proposition or a universe included). -/
+type, a proposition or a universe included). [Obs] runs each side with the typing judgement,
+wherever `Id` is evaluated (D63, rule-audit item 9), the machine included (a callee's body, a
+sealed program's re-run): every binding there has its declared type (D82), so a stuck match in
+a side is split and closed off as a block, as when the same `Id` is formed directly. -/
 def idType (fuel : Nat) (typed : Bool) (A t u : Term) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let A' ← evalType fuel' A
   if A'.typeHasRef then err s!"Id at {A'}: A must be borrow-free (RULES §4)"
   let st ← get
   let W := footprint st.env [t, u]
-  let (a, as) ← observeTyping fuel' typed t A' W
-  let (b, bs) ← observeTyping fuel' typed u A' W
-  -- an owner's type: its binding's, else its content's. An untyped owner that is lent out
-  -- now (a sealed program's re-run binding a cell that a returned borrow still holds: R1's
-  -- residual) is typed by what the observation read from it, once every borrow had ended
-  let Ts ← W.zipIdx.mapM fun (p, i) => do
-    match ← tyAt p with
-    | some T => pure T
-    | none =>
-      match ← [← getAt p, as[i]!, bs[i]!].findSomeM? (valType? fuel') with
-      | some T => pure T
-      | none =>
-        -- D68: an owner both sides consumed has no type to read; its equation is stuck
-        if as[i]!.hasHole || bs[i]!.hasHole then pure .tUnit
-        else err s!"cannot infer the type of the value {← getAt p}"
+  let (a, as) ← observe fuel' true t A' W
+  let (b, bs) ← observe fuel' true u A' W
+  -- an owner's type is its binding's, its declared type (D82)
+  let Ts ← W.mapM fun p => do
+    let some T ← tyAt p
+      | err s!"INTERNAL [Obs] the owner {← getAt p} has no stored type (D82: every binding has its declared type; please report)"
+    pure T
   -- D64 [Repack]: `Id` observes its result and owners whole
   if typed then
     for (T, (x, y)) in (A', (a, b)) :: Ts.zip (as.zip bs) do
@@ -3506,7 +3545,7 @@ place `cᵢ ↦ σᵢ` for each borrow parameter `xᵢ : &Tᵢ` (frame 0); the c
 runs in a pushed frame and its result's type must convert to the goal as refined by
 splits. Afterwards the whole state is restored. -/
 def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
-    (capRec : Array (Option Nat) := #[]) (rd : List DeclInfo := []) : M Unit := do
+    (capRec : Array (Option Nat) := #[]) (rd : List (DeclInfo × Value) := []) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let .fix self hs ds c dec body := t | err "internal: not a fix"
   borrowParamCheck ds c

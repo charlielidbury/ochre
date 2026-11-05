@@ -182,7 +182,7 @@ structure DecisionsCommute : Prop where
     (run? (byTypeMatch ty (arms.map fun a => (a.1, g a.2))) Ω fuel).map (·.1) =
       (run? (byTypeMatch ty arms) Ω fuel).map (·.1)
   /-- (4) A function type's class (D54) survives refinement. -/
-  fnClass : ∀ (Ω : MState) (α : Refinement) (cs : List Value) (t : Term) (rd : List DeclInfo) (Pα : Value)
+  fnClass : ∀ (Ω : MState) (α : Refinement) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (Pα : Value)
     (fuel : Nat), Respects α Ω fuel →
     (run? (α.onValue fuel (.tPi cs t rd)) Ω fuel).map (·.1) = some Pα →
     ∀ Ωα, run? (α.onState fuel) Ω fuel = some ((), Ωα) →
@@ -197,7 +197,7 @@ structure DecisionsCommute : Prop where
   closing off (C). The other flip, data to `&`, would be unsound (Figure 16's row); it cannot
   happen because `&` is never an argument, so no unknown type becomes a borrow type (D48 (2),
   tests `UseBlkRef` and `UseBlkBox` in `Examples/BorrowTypes.lean`). -/
-  closeRow : ∀ (Ω : MState) (α : Refinement) (cs : List Value) (t : Term) (rd : List DeclInfo) (Pα : Value)
+  closeRow : ∀ (Ω : MState) (α : Refinement) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (Pα : Value)
     (fuel : Nat), (∀ hs ds B, t ≠ .pi hs ds (.val B)) → Respects α Ω fuel →
     (run? (α.onValue fuel (.tPi cs t rd)) Ω fuel).map (·.1) = some Pα →
     ∀ Ωα, run? (α.onState fuel) Ω fuel = some ((), Ωα) →

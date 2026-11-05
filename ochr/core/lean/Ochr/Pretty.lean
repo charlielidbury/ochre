@@ -65,6 +65,8 @@ def Term.pp (ns : List String) : Term → String
   | .place p => p.pp ns
   | .borrow p => s!"&{p.pp ns}"
   | .assign p t => s!"{p.pp ns} := {t.pp ns}"
+  -- a sealed program's cell, `let cᵢ : Tᵢ = uᵢ` ([Close], D82), is printed without its type
+  | .letIn h (.ascribe (.val v) (.val _)) u => s!"let {h.name} = {(Term.val v).pp ns}; {u.pp (h.name :: ns)}"
   | .letIn h t u => s!"let {h.name} = {t.pp ns}; {u.pp (h.name :: ns)}"
   | .seq t u => s!"{t.pp ns}; {u.pp ns}"
   | .matchNat p z s => s!"match {p.pp ns} \{ Z => {z.pp ns}, S _ => {s.pp ns} }"

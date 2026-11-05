@@ -459,7 +459,7 @@ def Value.anyAtom (P : Value → Bool) (v : Value) : Bool :=
   P v || match v with
   | .succ w | .tRef w | .borrow _ w => w.anyAtom P
   | .tEq A a b => A.anyAtom P || a.anyAtom P || b.anyAtom P
-  | .clo cs t _ | .tPi cs t _ => Value.anyAtomList P cs || t.anyAtom P
+  | .clo cs t rd | .tPi cs t rd => Value.anyAtomList P cs || t.anyAtom P || Value.anyAtomRd P rd
   | .sealed t => t.anyAtom P
   | .ind _ _ _ ps fs => Value.anyAtomList P ps || Value.anyAtomList P fs
   | .tInd _ fs => Value.anyAtomList P fs
@@ -469,6 +469,12 @@ termination_by structural v
 def Value.anyAtomList (P : Value → Bool) : List Value → Bool
   | [] => false
   | a :: as => a.anyAtom P || Value.anyAtomList P as
+termination_by structural as => as
+
+/-- The declared types a closure or Π-type records for its captures (D82). -/
+def Value.anyAtomRd (P : Value → Bool) : List (DeclInfo × Value) → Bool
+  | [] => false
+  | (_, a) :: as => a.anyAtom P || Value.anyAtomRd P as
 termination_by structural as => as
 
 def Term.anyAtom (P : Value → Bool) : Term → Bool

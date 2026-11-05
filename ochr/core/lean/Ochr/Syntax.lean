@@ -145,11 +145,12 @@ inductive Term where
 inductive Value where
   | zero | succ (v : Value) | unit
   | gfn (n : String)                          -- a top-level function
-  | clo (caps : List Value) (t : Term) (rd : List DeclInfo)
+  | clo (caps : List Value) (t : Term) (rd : List (DeclInfo × Value))
                                               -- closure: a `fix` term closed over captured values;
-                                              -- `rd`, what the declared types of the frame slots its
-                                              -- code does not declare say (D80): each capture's, its
-                                              -- binding's; for a stuck block, each parameter's
+                                              -- `rd`, the declared types of the frame slots its code
+                                              -- does not declare, with their readings (D80, D82):
+                                              -- each capture's, its binding's; for a stuck block,
+                                              -- each parameter's, the place it takes
   | borrow (l : Nat) (v : Value)              -- `borrow_ℓ v`: the borrowed content lives in the borrow
   | loan (l : Nat)                            -- `loan_ℓ`: a variable bound by borrow ℓ
   | bot                                       -- `⊥`: moved out / ended
@@ -158,9 +159,10 @@ inductive Value where
   | proof                                     -- `⋆`: every value of a proposition (proof irrelevance)
   | tNat | tUnit | tEq (A a b : Value)
   | tRef (A : Value)
-  | tPi (caps : List Value) (t : Term) (rd : List DeclInfo)
+  | tPi (caps : List Value) (t : Term) (rd : List (DeclInfo × Value))
                                               -- Π-type: a closure over formation-time values (P2),
-                                              -- `rd` its captures' readings, as a closure's
+                                              -- `rd` its captures' declared types and readings, as a
+                                              -- closure's
   | sort (l : Nat)
   | ind (ty : String) (c : Nat) (h : Hint) (ps : List Value) (fs : List Value)
                                               -- a constructor value `C(ā; v̄)` of a data type, recording
@@ -220,13 +222,19 @@ def Value.beqList : List Value → List Value → Bool
   | _, _ => false
 termination_by structural as => as
 
+def Value.beqRd : List (DeclInfo × Value) → List (DeclInfo × Value) → Bool
+  | [], [] => true
+  | (d, a) :: as, (e, b) :: bs => d == e && a.beq b && Value.beqRd as bs
+  | _, _ => false
+termination_by structural as => as
+
 def Value.beq : Value → Value → Bool
   | .zero, .zero | .unit, .unit | .bot, .bot | .proof, .proof
   | .tNat, .tNat | .tUnit, .tUnit => true
   | .succ v, .succ w | .tRef v, .tRef w => v.beq w
   | .gfn n, .gfn m => n == m
-  | .clo cs t r, .clo ds u r' => Value.beqList cs ds && t.beq u && r == r'
-  | .tPi cs t r, .tPi ds u r' => Value.beqList cs ds && t.beq u && r == r'
+  | .clo cs t r, .clo ds u r' => Value.beqList cs ds && t.beq u && Value.beqRd r r'
+  | .tPi cs t r, .tPi ds u r' => Value.beqList cs ds && t.beq u && Value.beqRd r r'
   | .borrow l v, .borrow m w => l == m && v.beq w
   | .loan l, .loan m | .abs l, .abs m | .sort l, .sort m => l == m
   | .sealed t, .sealed u => t.beq u
