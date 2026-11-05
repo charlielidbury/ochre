@@ -654,7 +654,7 @@ theorem sigDecisions_commute {α : Refinement} {Ω Ωα : MState} {fuel : Nat}
     fun d FT => (readsSig_fieldTermIsProp d FT).commutes h fuel', fun d => (readsSig_largeElim d).commutes h fuel',
     fun ty arms => (readsSig_byTypeMatch ty arms).commutes h fuel'⟩
 
-theorem declKind_notPi (fuel : Nat) (cs : List Value) (t : Term) (rd : List DeclInfo)
+theorem declKind_notPi (fuel : Nat) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value))
     (ht : ∀ hs ds c, t ≠ .pi hs ds c)
     (Ω : MState) : (run? (declKind fuel (.tPi cs t rd)) Ω fuel).map (·.1) = none := by
   cases fuel with
@@ -666,7 +666,7 @@ theorem declKind_notPi (fuel : Nat) (cs : List Value) (t : Term) (rd : List Decl
 /-- Field `closeRow` (site 8) for every Π-type value but a stuck block's function, whose codomain
 is an embedded value (the match's type) and whose row reads that type's declared sort. -/
 theorem decisionsCommute_closeRow (Ω : MState) (α : Refinement) (cs : List Value) (t : Term)
-    (rd : List DeclInfo) (Pα : Value) (fuel : Nat) (hblock : ∀ hs ds B, t ≠ .pi hs ds (.val B))
+    (rd : List (DeclInfo × Value)) (Pα : Value) (fuel : Nat) (hblock : ∀ hs ds B, t ≠ .pi hs ds (.val B))
     (hP : (run? (α.onValue fuel (.tPi cs t rd)) Ω fuel).map (·.1) = some Pα)
     (Ωα : MState) (k : Kind) (hk : (run? (declKind fuel (.tPi cs t rd)) Ω fuel).map (·.1) = some k) :
     (run? (declKind fuel Pα) Ωα fuel).map (·.1) = some k := by
@@ -682,7 +682,7 @@ theorem decisionsCommute_closeRow (Ω : MState) (α : Refinement) (cs : List Val
 /-- Field `fnClass` (site 3) for the Π-types whose codomain's shape fixes the class (a sort; a
 stuck block's function), at states whose class caches are sound (`ClassCacheSound`). -/
 theorem decisionsCommute_fnClass_shape (Ω : MState) (α : Refinement) (cs : List Value) (hs : List Hint)
-    (ds : List Term) (c : Term) (rd : List DeclInfo) (K : Nat) (hK : shapeClass (rowOf c) = some K) (Pα : Value)
+    (ds : List Term) (c : Term) (rd : List (DeclInfo × Value)) (K : Nat) (hK : shapeClass (rowOf c) = some K) (Pα : Value)
     (fuel : Nat) (hP : (run? (α.onValue fuel (.tPi cs (.pi hs ds c) rd)) Ω fuel).map (·.1) = some Pα) (Ωα : MState)
     (hΩ : ClassCacheSound Ω (.tPi cs (.pi hs ds c) rd)) (hΩα : ClassCacheSound Ωα Pα) (k : Nat)
     (hk : (run? (fnClass fuel (.tPi cs (.pi hs ds c) rd)) Ω fuel).map (·.1) = some k) :

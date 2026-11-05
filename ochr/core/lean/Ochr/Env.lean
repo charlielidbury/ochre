@@ -13,7 +13,8 @@ namespace Ochr
 
 structure Binding where
   hint : Hint
-  ty : Option Value     -- `none` for bindings pushed by the untyped machine
+  ty : Option Value     -- its declared type (D82); `none` only for an unknown slot (`⊥`) of a
+                        -- checker-internal frame, which is never read
   val : Value
   proof : Bool := false -- v1.7 (D35): its declared type has declared sort Prop (read off syntax)
   decl : DeclInfo := .other   -- what its declared type says (the erasure pre-pass)

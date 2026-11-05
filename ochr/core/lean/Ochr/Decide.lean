@@ -697,17 +697,15 @@ machine that is not proved. Read from the declared type, the two paths agree by 
 def stmtArgInPlace (fuel : Nat) (a : Term) : M Bool := do
   pure ((← withLive true (declOf fuel false [] [] a)) matches .ref _)
 
-/-- Push captured values as bindings, each with what its declared type says: its binding's, as
-the closure recorded it (`rd`, D80), else read off the value (a Π-type's captures, which only
-types and erased terms read). -/
-def pushCaps (fuel : Nat) (cs : List Value) (rd : List DeclInfo := []) : M Unit := do
+/-- Push captured values as bindings, each with its binding's declared type and what that type
+says, as the closure or Π-type recorded them when it was formed (`rd`; D80, D82). -/
+def pushCaps (fuel : Nat) (cs : List Value) (rd : List (DeclInfo × Value) := []) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   for (v, i) in cs.zipIdx do
-    let d ← match rd[i]? with
-      | some d => pure d
-      | none => valueDecl fuel' v
+    let some (d, T) := rd[i]?
+      | err s!"INTERNAL [Capture] the captured value {v} has no recorded declared type (D82; please report)"
     modifyFrame (← topIdx) fun fr =>
-      { fr with binds := fr.binds.push { hint := ⟨"κ"⟩, ty := none, val := v, decl := d, cap := true } }
+      { fr with binds := fr.binds.push { hint := ⟨"κ"⟩, ty := some T, val := v, decl := d, cap := true } }
 
 /-- Is a type a proposition? (P5, and proof irrelevance: a value of a proposition is `⋆`.) -/
 def isPropV (fuel : Nat) (T : Value) : M Bool := do
