@@ -37,6 +37,72 @@ deriving Inhabited, Repr
 
 instance : BEq FieldRef := ⟨fun a b => a.ty == b.ty && a.ctor == b.ctor && a.idx == b.idx⟩
 
+/-- What a declared type says, read off its term without normalising (D55, and the
+syntactic erasure pre-pass): the sort `l` itself (whatever has it is a type), a
+proposition (whatever has it is a proof), a Π-type with what its codomain says, a borrow
+type, or anything else (data). `any` is the type of a zero-arm match, which agrees with
+every other.
+
+D80: data is read further, for copy-or-move and η at `Unit` (`Decide.declCopy`): `Unit`
+itself, a data inductive with what its type arguments say as types, or the alternatives a
+type function's or a match's arms give when they differ (the type is one of them). `other` is
+data the reader cannot see through (a type parameter, `Nat`, an unknown). These three are data
+to every other decision: no erasure class, row or proof flag reads them. -/
+inductive DeclInfo where
+  | sort (l : Nat)
+  | prop
+  | pi (cod : DeclInfo)
+  | ref (A : DeclInfo)
+  | unit
+  | ind (n : String) (args : List DeclInfo)
+  | alt (ds : List DeclInfo)
+  | other
+  | any
+  | conflict    -- a match whose arms disagree about being proofs: it has no declared type (D63)
+deriving Inhabited
+
+-- written out, not derived: a derived `BEq` of a nested inductive is `opaque` (all checker code
+-- is total)
+mutual
+def DeclInfo.beq : DeclInfo → DeclInfo → Bool
+  | .sort l, .sort m => l == m
+  | .prop, .prop | .unit, .unit | .other, .other | .any, .any | .conflict, .conflict => true
+  | .pi a, .pi b | .ref a, .ref b => a.beq b
+  | .ind n as, .ind m bs => n == m && DeclInfo.beqList as bs
+  | .alt as, .alt bs => DeclInfo.beqList as bs
+  | _, _ => false
+termination_by structural d => d
+
+def DeclInfo.beqList : List DeclInfo → List DeclInfo → Bool
+  | [], [] => true
+  | a :: as, b :: bs => a.beq b && DeclInfo.beqList as bs
+  | _, _ => false
+termination_by structural as => as
+end
+
+instance : BEq DeclInfo := ⟨DeclInfo.beq⟩
+
+/-- D80: a data reading the reader saw through (`Unit`, an inductive, alternatives), as opposed
+to the readings the erasure decisions read. -/
+def DeclInfo.isData : DeclInfo → Bool
+  | .unit | .ind .. | .alt _ => true
+  | _ => false
+
+/-- D80: arms whose readings `ds` agree only on data (`d`, their agreement, is `other`) read as
+their alternatives: a type function's call, or a match, whose arms are different data types
+has one of their types. -/
+def DeclInfo.joinAlt (ds : List DeclInfo) (d : DeclInfo) : DeclInfo :=
+  if d != .other then d else
+  let ds := ds.filter (· != .any)
+  if ds.isEmpty || !ds.all DeclInfo.isData then d else
+  .alt ((ds.flatMap fun | .alt es => es | e => [e]).foldl (fun acc e => if acc.contains e then acc else acc ++ [e]) [])
+
+/-- A proof: a value of a proposition, or a function into proofs (impredicative `Prop`). -/
+def DeclInfo.isProof : DeclInfo → Bool
+  | .prop => true
+  | .pi r => r.isProof
+  | _ => false
+
 mutual
 /-- Places `p ::= x | *p | p.1 | p.2 | p.g` (`.1` is the predecessor of `S v` or field 1 of
 a pair, `.2` field 2 of a pair: v2.1, D52, pairs are the library inductive `Pair`; `p.g`
@@ -80,7 +146,11 @@ inductive Term where
 inductive Value where
   | zero | succ (v : Value) | unit
   | gfn (n : String)                          -- a top-level function
-  | clo (caps : List Value) (t : Term)        -- closure: a `fix` term closed over captured values
+  | clo (caps : List Value) (t : Term) (rd : List DeclInfo)
+                                              -- closure: a `fix` term closed over captured values;
+                                              -- `rd`, what the declared types of the frame slots its
+                                              -- code does not declare say (D80): each capture's, its
+                                              -- binding's; for a stuck block, each parameter's
   | borrow (l : Nat) (v : Value)              -- `borrow_ℓ v`: the borrowed content lives in the borrow
   | loan (l : Nat)                            -- `loan_ℓ`: a variable bound by borrow ℓ
   | bot                                       -- `⊥`: moved out / ended
@@ -89,7 +159,9 @@ inductive Value where
   | proof                                     -- `⋆`: every value of a proposition (proof irrelevance)
   | tNat | tUnit | tEq (A a b : Value)
   | tRef (A : Value)
-  | tPi (caps : List Value) (t : Term)        -- Π-type: a closure over formation-time values (P2)
+  | tPi (caps : List Value) (t : Term) (rd : List DeclInfo)
+                                              -- Π-type: a closure over formation-time values (P2),
+                                              -- `rd` its captures' readings, as a closure's
   | sort (l : Nat)
   | ind (ty : String) (c : Nat) (h : Hint) (ps : List Value) (fs : List Value)
                                               -- a constructor value `C(ā; v̄)` of a data type, recording
@@ -153,7 +225,8 @@ def Value.beq : Value → Value → Bool
   | .tNat, .tNat | .tUnit, .tUnit => true
   | .succ v, .succ w | .tRef v, .tRef w => v.beq w
   | .gfn n, .gfn m => n == m
-  | .clo cs t, .clo ds u | .tPi cs t, .tPi ds u => Value.beqList cs ds && t.beq u
+  | .clo cs t r, .clo ds u r' => Value.beqList cs ds && t.beq u && r == r'
+  | .tPi cs t r, .tPi ds u r' => Value.beqList cs ds && t.beq u && r == r'
   | .borrow l v, .borrow m w => l == m && v.beq w
   | .loan l, .loan m | .abs l, .abs m | .sort l, .sort m => l == m
   | .sealed t, .sealed u => t.beq u

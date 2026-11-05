@@ -468,7 +468,7 @@ def Value.anyAtom (P : Value → Bool) (v : Value) : Bool :=
   P v || match v with
   | .succ w | .tRef w | .borrow _ w => w.anyAtom P
   | .tEq A a b => A.anyAtom P || a.anyAtom P || b.anyAtom P
-  | .clo cs t | .tPi cs t => Value.anyAtomList P cs || t.anyAtom P
+  | .clo cs t _ | .tPi cs t _ => Value.anyAtomList P cs || t.anyAtom P
   | .sealed t => t.anyAtom P
   | .ind _ _ _ ps fs => Value.anyAtomList P ps || Value.anyAtomList P fs
   | .tInd _ fs => Value.anyAtomList P fs
@@ -517,7 +517,7 @@ def Value.loans : Value → List Nat
   | .loan l => [l]
   | .succ w | .tRef w | .borrow _ w => w.loans
   | .tEq A a b => A.loans ++ a.loans ++ b.loans
-  | .clo cs t | .tPi cs t => Value.loansList cs ++ t.loans
+  | .clo cs t _ | .tPi cs t _ => Value.loansList cs ++ t.loans
   | .sealed t => t.loans
   | .ind _ _ _ ps fs => Value.loansList ps ++ Value.loansList fs
   | .tInd _ fs => Value.loansList fs

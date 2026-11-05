@@ -147,7 +147,7 @@ def Value.pp : Value → String
       | none => s!"S({v.pp})"
   | .unit => "()"
   | .gfn n => n
-  | .clo cs t | .tPi cs t =>
+  | .clo cs t _ | .tPi cs t _ =>
     -- a closure prints with its captured values named `κ₁ … κₘ` and listed after `where`
     let body := t.pp ((List.range cs.length).map (fun i => s!"κ{i+1}")).reverse
     if cs.isEmpty then body else body ++ " where " ++ ", ".intercalate (Value.ppCaps 0 cs)
@@ -197,7 +197,7 @@ def ppPi (ns : List String) (hs : List Hint) (ds : List Term) (c : Term) : Strin
   s!"Π{bs}. {c.pp ns'}"
 
 /-- A closure prints with its captured values named `κ₁ … κₘ` and listed after `where`. -/
-def ppClosure (_pre : String) (cs : List Value) (t : Term) : String := (Value.clo cs t).pp
+def ppClosure (_pre : String) (cs : List Value) (t : Term) : String := (Value.clo cs t []).pp
 
 instance : ToString Value := ⟨Value.pp⟩
 instance : ToString Term := ⟨Term.pp []⟩

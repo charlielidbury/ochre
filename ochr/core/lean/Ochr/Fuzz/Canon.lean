@@ -42,14 +42,14 @@ def canonLoan (l : Nat) : CanonM Nat := do
 mutual
 partial def canonV : Value → CanonM Value
   | .succ v => return .succ (← canonV v)
-  | .clo cs t => return .clo (← cs.mapM canonV) (← canonT t)
+  | .clo cs t rd => return .clo (← cs.mapM canonV) (← canonT t) rd
   | .borrow l v => return .borrow (← canonLoan l) (← canonV v)
   | .loan l => return .loan (← canonLoan l)
   | .abs s => return .abs (← canonAbs s)
   | .sealed t => return .sealed (← canonT t)
   | .tEq A a b => return .tEq (← canonV A) (← canonV a) (← canonV b)
   | .tRef a => return .tRef (← canonV a)
-  | .tPi cs t => return .tPi (← cs.mapM canonV) (← canonT t)
+  | .tPi cs t rd => return .tPi (← cs.mapM canonV) (← canonT t) rd
   | .ind t c h ps fs => return .ind t c h (← ps.mapM canonV) (← fs.mapM canonV)
   -- D50: the unit laws `And(True, P) ≡ P ≡ And(P, True)` are conversion, not normalisation,
   -- so a refined value may keep an `And(False, True)` that the direct path built as `False`

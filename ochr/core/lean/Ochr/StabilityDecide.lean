@@ -331,29 +331,31 @@ theorem substT_pi (fuel : Nat) (x r : Value) (hs : List Hint) (ds : List Term) (
 
 /-- Substituting a value for an abstract value inside a Π-type keeps it a Π-type, with a codomain
 of the same shape: its captures and embedded values change, its syntax does not. -/
-theorem substV_tPi (fuel : Nat) (σ : Nat) (r : Value) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term) :
-    Post (substV fuel (.abs σ) r (.tPi cs (.pi hs ds c)))
-      (fun v' => ∃ cs' ds' c', v' = .tPi cs' (.pi hs ds' c') ∧ rowOf c' = rowOf c) := by
+theorem substV_tPi (fuel : Nat) (σ : Nat) (r : Value) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term)
+    (rd : List DeclInfo) :
+    Post (substV fuel (.abs σ) r (.tPi cs (.pi hs ds c) rd))
+      (fun v' => ∃ cs' ds' c', v' = .tPi cs' (.pi hs ds' c') rd ∧ rowOf c' = rowOf c) := by
   cases fuel with
   | zero => unfold substV; exact Post.exhausted _
   | succ n =>
     unfold substV
     simp only []
     refine Post.ite _ (Post.pure ⟨cs, ds, c, rfl, rfl⟩) ?_
-    have hne : (Value.tPi cs (.pi hs ds c) == Value.abs σ) = false := rfl
+    have hne : (Value.tPi cs (.pi hs ds c) rd == Value.abs σ) = false := rfl
     simp only [hne, Bool.false_eq_true, ↓reduceIte]
     exact Post.bind_any fun cs' => Post.bind (substT_pi n _ r hs ds c) fun t' ⟨ds', c', ht, hc⟩ =>
       Post.pure ⟨cs', ds', c', by rw [ht], hc⟩
 
 /-- A refinement keeps a Π-type a Π-type, with a codomain of the same shape. -/
-theorem onValue_tPi (α : Refinement) (fuel : Nat) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term) :
-    Post (α.onValue fuel (.tPi cs (.pi hs ds c)))
-      (fun v' => ∃ cs' ds' c', v' = .tPi cs' (.pi hs ds' c') ∧ rowOf c' = rowOf c) := by
+theorem onValue_tPi (α : Refinement) (fuel : Nat) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term)
+    (rd : List DeclInfo) :
+    Post (α.onValue fuel (.tPi cs (.pi hs ds c) rd))
+      (fun v' => ∃ cs' ds' c', v' = .tPi cs' (.pi hs ds' c') rd ∧ rowOf c' = rowOf c) := by
   unfold Refinement.onValue
-  refine Post.foldlM _ (fun (v : Value) => ∃ cs' ds' c', v = .tPi cs' (.pi hs ds' c') ∧ rowOf c' = rowOf c)
+  refine Post.foldlM _ (fun (v : Value) => ∃ cs' ds' c', v = .tPi cs' (.pi hs ds' c') rd ∧ rowOf c' = rowOf c)
     (fun v p ⟨cs', ds', c', hv, hc⟩ => ?_) α _ ⟨cs, ds, c, rfl, rfl⟩
   subst hv
-  exact (substV_tPi fuel p.1 p.2 cs' hs ds' c').mono fun v' ⟨cs'', ds'', c'', h1, h2⟩ =>
+  exact (substV_tPi fuel p.1 p.2 cs' hs ds' c' rd).mono fun v' ⟨cs'', ds'', c'', h1, h2⟩ =>
     ⟨cs'', ds'', c'', h1, h2.trans hc⟩
 
 /-! ## [Close]'s row (site 8) and a function type's class (site 3), read off the codomain term -/
@@ -363,19 +365,19 @@ def rowKind (n : Nat) : Kind := if n == 1 then .unit else if n == 2 then .ref el
 
 /-- [Close]'s row of a function type whose codomain term is not an embedded value is read off
 the term alone: it reads no state and changes none. -/
-theorem step_declKind (n : Nat) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term)
+theorem step_declKind (n : Nat) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term) (rd : List DeclInfo)
     (hc : rowOf c ≠ 3) (Ω : MState) (fl : Fuel) (lg : Array LogEntry) :
-    step (declKind (n+1) (.tPi cs (.pi hs ds c))) Ω fl lg = ((.ok (.ok (rowKind (rowOf c), Ω)), fl), lg) := by
+    step (declKind (n+1) (.tPi cs (.pi hs ds c) rd)) Ω fl lg = ((.ok (.ok (rowKind (rowOf c), Ω)), fl), lg) := by
   unfold declKind
   cases c <;> simp_all [rowOf, rowKind] <;> rfl
 
-theorem run?_declKind (fuel : Nat) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term)
+theorem run?_declKind (fuel : Nat) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term) (rd : List DeclInfo)
     (hc : rowOf c ≠ 3) (Ω : MState) :
-    (run? (declKind fuel (.tPi cs (.pi hs ds c))) Ω fuel).map (·.1) =
+    (run? (declKind fuel (.tPi cs (.pi hs ds c) rd)) Ω fuel).map (·.1) =
       if fuel = 0 then none else some (rowKind (rowOf c)) := by
   cases fuel with
   | zero => rw [run?_eq]; unfold declKind; rfl
-  | succ n => rw [run?_eq, step_declKind n cs hs ds c hc]; rfl
+  | succ n => rw [run?_eq, step_declKind n cs hs ds c rd hc]; rfl
 
 /-- **Site 8, for functions (not stuck blocks): [Close]'s row commutes with refinement.** A
 refinement substitutes into a Π-type's captures and embedded values, never its syntax, so the
@@ -383,13 +385,13 @@ codomain term keeps its shape (`onValue_tPi`), and the row is read off that shap
 state. (A stuck block's codomain is an embedded value, the match's type, whose row reads that
 type's declared sort: not proved here, `notes/stability.md` §9.) -/
 theorem closeRow_fn (Ω : MState) (α : Refinement) (cs : List Value) (hs : List Hint) (ds : List Term)
-    (c : Term) (hc : rowOf c ≠ 3) (Pα : Value) (fuel : Nat)
-    (hP : (run? (α.onValue fuel (.tPi cs (.pi hs ds c))) Ω fuel).map (·.1) = some Pα) (Ωα : MState) :
-    (run? (declKind fuel Pα) Ωα fuel).map (·.1) = (run? (declKind fuel (.tPi cs (.pi hs ds c))) Ω fuel).map (·.1) := by
+    (c : Term) (rd : List DeclInfo) (hc : rowOf c ≠ 3) (Pα : Value) (fuel : Nat)
+    (hP : (run? (α.onValue fuel (.tPi cs (.pi hs ds c) rd)) Ω fuel).map (·.1) = some Pα) (Ωα : MState) :
+    (run? (declKind fuel Pα) Ωα fuel).map (·.1) = (run? (declKind fuel (.tPi cs (.pi hs ds c) rd)) Ω fuel).map (·.1) := by
   obtain ⟨⟨a, Ω'⟩, hrun, ha⟩ := Option.map_eq_some_iff.mp hP
   simp only at ha; subst ha
-  obtain ⟨cs', ds', c', rfl, hc'⟩ := (onValue_tPi α fuel cs hs ds c).run? hrun
-  rw [run?_declKind fuel cs' hs ds' c' (hc' ▸ hc), run?_declKind fuel cs hs ds c hc, hc']
+  obtain ⟨cs', ds', c', rfl, hc'⟩ := (onValue_tPi α fuel cs hs ds c rd).run? hrun
+  rw [run?_declKind fuel cs' hs ds' c' rd (hc' ▸ hc), run?_declKind fuel cs hs ds c rd hc, hc']
 
 /-- The erasure class a function type's codomain term fixes by its shape alone: a sort returns
 types (1); an embedded value (a stuck block's function) is given its class at its call (0). -/
@@ -399,7 +401,7 @@ def shapeClass (n : Nat) : Option Nat := if n == 4 then some 1 else if n == 3 th
 class `P`'s codomain shape fixes. `fnClass` is the only writer of the cache, so this holds of
 every state the machine reaches (an invariant of the machine, not proved here). -/
 def ClassCacheSound (Ω : MState) (P : Value) : Prop :=
-  ∀ cs hs ds c k K, P = .tPi cs (.pi hs ds c) → shapeClass (rowOf c) = some K →
+  ∀ cs hs ds c rd k K, P = .tPi cs (.pi hs ds c) rd → shapeClass (rowOf c) = some K →
     ∀ Q, (Q, k) ∈ Ω.classCache → (P == Q) = true → k = K
 
 theorem lookup_mem {α β} [BEq α] {a : α} {b : β} : ∀ {l : List (α × β)}, l.lookup a = some b →
@@ -413,28 +415,28 @@ theorem lookup_mem {α β} [BEq α] {a : α} {b : β} : ∀ {l : List (α × β)
 
 /-- A function type's class, when its codomain's shape fixes it, is that class, at any state
 whose class cache is sound for it. -/
-theorem step_fnClass_shape (n : Nat) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term) (K : Nat)
-    (hK : shapeClass (rowOf c) = some K) (Ω : MState) (hΩ : ClassCacheSound Ω (.tPi cs (.pi hs ds c)))
+theorem step_fnClass_shape (n : Nat) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term) (rd : List DeclInfo) (K : Nat)
+    (hK : shapeClass (rowOf c) = some K) (Ω : MState) (hΩ : ClassCacheSound Ω (.tPi cs (.pi hs ds c) rd))
     (fl : Fuel) (lg : Array LogEntry) :
-    ∃ Ω', step (fnClass (n+1) (.tPi cs (.pi hs ds c))) Ω fl lg = ((.ok (.ok (K, Ω')), fl), lg) := by
+    ∃ Ω', step (fnClass (n+1) (.tPi cs (.pi hs ds c) rd)) Ω fl lg = ((.ok (.ok (K, Ω')), fl), lg) := by
   unfold fnClass
   simp only [step_bind, step_get, cont]
-  cases hl : Ω.classCache.lookup (Value.tPi cs (.pi hs ds c)) with
+  cases hl : Ω.classCache.lookup (Value.tPi cs (.pi hs ds c) rd) with
   | some k =>
     obtain ⟨q, hq, hpq⟩ := lookup_mem hl
-    have := hΩ cs hs ds c k K rfl hK q hq hpq
+    have := hΩ cs hs ds c rd k K rfl hK q hq hpq
     subst this
     exact ⟨Ω, rfl⟩
   | none =>
     cases c <;> simp_all [shapeClass, rowOf] <;> (subst_vars; exact ⟨_, rfl⟩)
 
-theorem run?_fnClass_shape (fuel : Nat) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term) (K : Nat)
-    (hK : shapeClass (rowOf c) = some K) (Ω : MState) (hΩ : ClassCacheSound Ω (.tPi cs (.pi hs ds c))) :
-    (run? (fnClass fuel (.tPi cs (.pi hs ds c))) Ω fuel).map (·.1) = if fuel = 0 then none else some K := by
+theorem run?_fnClass_shape (fuel : Nat) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term) (rd : List DeclInfo) (K : Nat)
+    (hK : shapeClass (rowOf c) = some K) (Ω : MState) (hΩ : ClassCacheSound Ω (.tPi cs (.pi hs ds c) rd)) :
+    (run? (fnClass fuel (.tPi cs (.pi hs ds c) rd)) Ω fuel).map (·.1) = if fuel = 0 then none else some K := by
   cases fuel with
   | zero => rw [run?_eq]; unfold fnClass; rfl
   | succ n =>
-    obtain ⟨Ω', h⟩ := step_fnClass_shape n cs hs ds c K hK Ω hΩ ⟨n+1⟩ #[]
+    obtain ⟨Ω', h⟩ := step_fnClass_shape n cs hs ds c rd K hK Ω hΩ ⟨n+1⟩ #[]
     rw [run?_eq, h]; rfl
 
 /-- **Site 3, by shape: a function type's class commutes with refinement** when its codomain
@@ -443,13 +445,13 @@ call), at states whose class caches are sound. The general case reads the captur
 declared readings (`valueDecl`), which needs evaluation to preserve declared types (D55, not
 proved here, `notes/stability.md` §9). -/
 theorem fnClass_shape (Ω : MState) (α : Refinement) (cs : List Value) (hs : List Hint) (ds : List Term)
-    (c : Term) (K : Nat) (hK : shapeClass (rowOf c) = some K) (Pα : Value) (fuel : Nat)
-    (hP : (run? (α.onValue fuel (.tPi cs (.pi hs ds c))) Ω fuel).map (·.1) = some Pα) (Ωα : MState)
-    (hΩ : ClassCacheSound Ω (.tPi cs (.pi hs ds c))) (hΩα : ClassCacheSound Ωα Pα) :
-    (run? (fnClass fuel Pα) Ωα fuel).map (·.1) = (run? (fnClass fuel (.tPi cs (.pi hs ds c))) Ω fuel).map (·.1) := by
+    (c : Term) (rd : List DeclInfo) (K : Nat) (hK : shapeClass (rowOf c) = some K) (Pα : Value) (fuel : Nat)
+    (hP : (run? (α.onValue fuel (.tPi cs (.pi hs ds c) rd)) Ω fuel).map (·.1) = some Pα) (Ωα : MState)
+    (hΩ : ClassCacheSound Ω (.tPi cs (.pi hs ds c) rd)) (hΩα : ClassCacheSound Ωα Pα) :
+    (run? (fnClass fuel Pα) Ωα fuel).map (·.1) = (run? (fnClass fuel (.tPi cs (.pi hs ds c) rd)) Ω fuel).map (·.1) := by
   obtain ⟨⟨a, Ω'⟩, hrun, ha⟩ := Option.map_eq_some_iff.mp hP
   simp only at ha; subst ha
-  obtain ⟨cs', ds', c', rfl, hc'⟩ := (onValue_tPi α fuel cs hs ds c).run? hrun
-  rw [run?_fnClass_shape fuel cs' hs ds' c' K (hc' ▸ hK) Ωα hΩα, run?_fnClass_shape fuel cs hs ds c K hK Ω hΩ]
+  obtain ⟨cs', ds', c', rfl, hc'⟩ := (onValue_tPi α fuel cs hs ds c rd).run? hrun
+  rw [run?_fnClass_shape fuel cs' hs ds' c' rd K (hc' ▸ hK) Ωα hΩα, run?_fnClass_shape fuel cs hs ds c rd K hK Ω hΩ]
 
 end Ochr.Stability

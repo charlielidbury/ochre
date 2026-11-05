@@ -256,7 +256,7 @@ a sort. So `ValueDeclCommutes` is a property of checked programs: evaluation pre
 readings, which needs an induction over the evaluator. -/
 
 /-- `F (n : Nat) : Nat := Nat`, never checked. -/
-def probeBadF : GDef := GDef.mk "F" (.tPi [] (.pi [⟨"n"⟩] [.nat] .nat))
+def probeBadF : GDef := GDef.mk "F" (.tPi [] (.pi [⟨"n"⟩] [.nat] .nat) [])
   (some (.fix ⟨"F"⟩ [⟨"n"⟩] [.nat] .nat none .nat)) (.gfn "F") false []
 
 def probeD55Ω : MState := { (default : MState) with

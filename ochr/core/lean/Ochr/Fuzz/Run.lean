@@ -26,7 +26,7 @@ def push (fs : Array Finding) (k : Kind) (comp w s d : String) (reason : String 
 content, after which `7` is written through it, D38) and the final contents of the
 cells its borrow arguments point into, after ending every borrow. -/
 def callObs (fv T : Value) (inputs : List Value) : M Value := do
-  let .tPi cs (.pi hs ds _) := T | err s!"not a function type: {T}"
+  let .tPi cs (.pi hs ds _) _ := T | err s!"not a function type: {T}"
   modify fun s => { s with env := #[{}] }
   pushFrame
   for v in cs do pushBind ⟨"κ"⟩ none v
@@ -68,7 +68,7 @@ def convOracle (o : Opts) (prep : Prepared) : Option Finding := Id.run do
   if !(prep.globals.any (·.name == "ConvEq")) then return none
   let some f := prep.globals.find? (·.name == "ConvF") | return none
   let some g := prep.globals.find? (·.name == "ConvG") | return none
-  let .tPi cs (.pi hs ds _) := f.ty | return none
+  let .tPi cs (.pi hs ds _) _ := f.ty | return none
   let st : MState := { globals := prep.globals, inds := prep.inds, cfg := o.cfg }
   -- the domains, to draw ground inputs (non-dependent function types only)
   let doms : List Value := match runSt (do
@@ -119,7 +119,7 @@ def execOracle (o : Opts) (c : Case) (prep : Prepared) : List Finding × Nat := 
   let mut fs : Array Finding := #[]
   for g in globals do
     unless names.contains g.name do continue
-    let .tPi cs (.pi hs ds cod) := g.ty | continue
+    let .tPi cs (.pi hs ds cod) _ := g.ty | continue
     -- ground inputs (data from `groundVals`, `⋆` for a hypothesis that is `⊤`); a function
     -- whose result is a proof or a type is never run
     let doms : Option (List (List Value)) := match runSt (do

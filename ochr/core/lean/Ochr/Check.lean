@@ -132,7 +132,7 @@ def checkDef (d : Def) : M Unit := do
     modify fun s => { s with env := #[{}], globals := s.globals ++ [{ name := d.name, ty := goal, fn? := none, val := v, absTys }] }
   else
     let fixT := Term.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body
-    let ty := Value.tPi [] (.pi d.hs d.doms d.cod)
+    let ty := Value.tPi [] (.pi d.hs d.doms d.cod) []
     -- K2/K3: model code (native, or taking or returning an unsized value) never runs at runtime
     let model ← if d.implBy.isSome then pure true else modelSignature d.hs d.doms d.cod
     modify fun s => { s with globals := s.globals ++ [{ name := d.name, ty := ty, fn? := some fixT, val := .gfn d.name, model }] }
@@ -280,7 +280,7 @@ def firstOrderTerm (n : String) (np k : Nat) : Term → M Bool
     firstOrderArgs n np k m dm 0 as
   | .call (.const f) as _ => do
     let some g := (← get).globals.find? (·.name == f) | return false
-    let .tPi _ (.pi _ _ cod) := g.ty | return false
+    let .tPi _ (.pi _ _ cod) _ := g.ty | return false
     unless cod matches .sort _ do return false
     firstOrderCallArgs n np k as
   -- D71: an equation field (a proof), over first-order data, none of whose parts mentions `n`
@@ -378,10 +378,13 @@ def checkInd (d : IndDecl) : M Unit := do
       -- an equation, which makes the field a proof field like a written `Eq`
       if (FT matches .call ..) && (T matches .tPi .. | .sort _ | .tRef _) then
         err s!"field {fname} of {cn} : {FT.pp names} computes to {T}, which is not first-order data, D36"
-      -- D53: a type declared `copy` has copy fields (the type itself counts as one)
+      -- D53: a type declared `copy` has copy fields (the type itself counts as one), each
+      -- read as a declared type at the parameters (D80: a type parameter is not a copy type)
       let isSelf := match T with | .tInd m _ => m == n | _ => false
-      if d.copy && !isSelf && !(← isCopyType (← fuelLeft) T) then
-        err s!"[D53] {n} is declared copy, but the field {fname} of {cn} has the type {T}, which is not a copy type"
+      if d.copy && !isSelf then
+        let r ← fieldDecl (← fuelLeft) d (d.params.map fun _ => .other) c j
+        unless ← declCopy (← fuelLeft) r do
+          err s!"[D53] {n} is declared copy, but the field {fname} of {cn} has the type {T}, which is not a copy type"
       genericValue (← fuelLeft) T
   modify fun s => { s with env := #[{}], inds := s.inds.map fun e => if e.name == n then d else e }
 

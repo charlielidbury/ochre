@@ -59,7 +59,7 @@ def fieldTermIsProp (d : IndDecl) (FT : Term) : M Bool := do
   | .eq _ _ _ => pure true
   -- K4: a call of a function declared to return `Prop` (a proof field, `h : Sorted(xs)`)
   | .call (.const f) _ _ => match (← get).globals.find? (·.name == f) with
-    | some g => pure (g.ty matches .tPi _ (.pi _ _ (.sort 0)))
+    | some g => pure (g.ty matches .tPi _ (.pi _ _ (.sort 0)) _)
     | none => pure false
   | _ => pure false
 
@@ -94,19 +94,6 @@ def subsingletonMsg (d : IndDecl) : String :=
 def byTypeMatch (ty : String) (arms : List (Hint × Term)) : M Bool := do
   if arms.isEmpty then return true
   pure ((← lookupInd ty).sort == 0)
-
-/-- What the declared type of a place says: a variable's, through a borrow the borrowed
-type's, a constructor field's (a proof field is a proof). -/
-def placeDecl (sc : List DeclInfo) : Place → M DeclInfo
-  | .var i => do
-    if h : i < sc.length then return sc[i]
-    if (← get).liveScope then liveDecl (i - sc.length) else pure .other
-  | .deref q => do
-    match ← placeDecl sc q with
-    | .ref d => pure d
-    | _ => pure .other
-  | .field g _ => do pure (if ← fieldIsProof g then .prop else .other)
-  | _ => pure .other
 
 /-- Arms agree on what their declared type says (`any`, a zero-arm match, agrees with all).
 Arms that are all proofs agree on a proof, whatever their shapes (a proof variable in one
@@ -154,7 +141,7 @@ def preFlags (t : Term) (d : DeclInfo) : M (Option (Bool × Bool)) := do
   -- a stuck block's function (codomain the match's type, `.val B`) is a match: erased iff
   -- it is a proof, like any sequencing form (D35)
   let block := match t with
-    | .call (.fix _ _ _ (.val _) _ _) _ _ | .call (.val (.clo _ (.fix _ _ _ (.val _) _ _))) _ _ => true
+    | .call (.fix _ _ _ (.val _) _ _) _ _ | .call (.val (.clo _ (.fix _ _ _ (.val _) _ _) _)) _ _ => true
     | _ => false
   let e := p || (t matches .call ..) && !block && (d matches .sort _)
   pure (some (e, p))
@@ -170,12 +157,12 @@ def sealedSort? (t : Term) : M (Option Nat) := do
   | .call (.val f) _ true =>
     let piTy ← match f with
       | .gfn n => pure (some (← lookupGlobal n).ty)
-      | .clo cs (.fix _ hs ds c _ _) => pure (some (Value.tPi cs (.pi hs ds c)))
+      | .clo cs (.fix _ hs ds c _ _) rd => pure (some (Value.tPi cs (.pi hs ds c) rd))
       | .abs σ => pure (some (← absType σ))
       | _ => pure none
     match piTy with
-    | some (.tPi _ (.pi _ _ (.sort l))) => pure (some l)
-    | some (.tPi _ (.pi _ _ (.val (.sort l)))) => pure (some l)
+    | some (.tPi _ (.pi _ _ (.sort l)) _) => pure (some l)
+    | some (.tPi _ (.pi _ _ (.val (.sort l))) _) => pure (some l)
     | _ => pure none
   | _ => pure none
 
@@ -187,6 +174,120 @@ def absOf (T : Value) : M Value := do
 
 -- the declared-type readers are mutually recursive, on fuel (all checker code is total)
 mutual
+
+/-- What the declared type of a place says: a variable's, through a borrow the borrowed
+type's, a constructor field's (a proof field is a proof). D80: a data field's is its declared
+field type at the arguments its parent's declared type gives (`fieldDecl`), and so are a
+pair's `.1` and `.2`; a number's `.1` (its predecessor) is data the reader does not see into. -/
+def placeDecl (fuel : Nat) (sc : List DeclInfo) (p : Place) : M DeclInfo := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match p with
+  | .var i =>
+    if h : i < sc.length then return sc[i]
+    if (← get).liveScope then liveDecl (i - sc.length) else pure .other
+  | .deref q =>
+    match ← placeDecl fuel' sc q with
+    | .ref d => pure d
+    | _ => pure .other
+  | .field g q =>
+    if ← fieldIsProof g then return .prop
+    fieldAt fuel' (← placeDecl fuel' sc q) g.ty g.ctor g.idx
+  | .fst q | .snd q =>
+    fieldAt fuel' (← placeDecl fuel' sc q) "Pair" 0 (if p matches .fst _ then 0 else 1)
+termination_by structural fuel
+
+/-- D80: what field `i` of constructor `c` of the inductive `n` says, in a value whose declared
+type reads `r`: at `n`'s arguments when `r` is `n`, at each alternative that is `n` when `r`
+is alternatives (in a match on `n`'s constructor, the value's type is one of those), `other`
+when the reader cannot see `n` in `r`. -/
+def fieldAt (fuel : Nat) (r : DeclInfo) (n : String) (c i : Nat) : M DeclInfo := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let alts : List DeclInfo := match r with | .alt ds => ds | r => [r]
+  let rs := alts.filterMap fun
+    | .ind m args => if m == n then some args else none
+    | _ => none
+  if rs.isEmpty then return .other
+  let d ← lookupInd n
+  let fs ← rs.mapM fun args => fieldDecl fuel' d args c i
+  pure (DeclInfo.joinAlt fs (agreeDecl fs))
+termination_by structural fuel
+
+/-- D80: what field `i` of constructor `c` of the inductive `d` says, at type arguments that
+read `args`: its declared type term read as a type (`typeDecl`), in the scope of the parameters
+and the earlier fields, each type parameter standing for its argument. A proof field is a
+proof; any reading but data is `other` (fields are first-order data, D36). -/
+def fieldDecl (fuel : Nat) (d : IndDecl) (args : List DeclInfo) (c i : Nat) : M DeclInfo := withLive false do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let some (_, fields) := d.ctors[c]? | return .other
+  let some (_, FT) := fields[i]? | return .other
+  if ← fieldTermIsProp d FT then return .prop
+  -- the scope of a field type: the parameters (`var 0` the last), then the fields (`var np …`)
+  let (psc, pns, _) ← telescope fuel' false [] [] (d.params.map (·.1)) (d.params.map (·.2))
+  let sc := psc ++ fields.reverse.map fun _ => DeclInfo.other
+  let ns := pns ++ (fields.map (·.1)).reverse
+  let tps := (List.range d.params.length).map fun j =>
+    if d.paramIsType j then some (args.getD j .other) else none
+  let r ← typeDecl fuel' false sc ns FT [] (tps.reverse ++ fields.map fun _ => none)
+  pure (if r.isData then r else .other)
+termination_by structural fuel
+
+/-- D80, P3: a copy type, read off a declared type: `Unit`, a sort, a proposition, an inductive
+declared `copy`, a non-recursive inductive in `Type₀` with no dependent constructor whose fields
+read as copy types at its arguments as written, and alternatives (a type function's arms) each
+of which is one. Nothing else is one: a type parameter (Ochr has no `copy` bounds), `Nat`, a
+Π-type, a borrow, a type the reader cannot see through. Never read off a value or an evaluated
+type, so every evaluation path decides it alike. -/
+def declCopy (fuel : Nat) (r : DeclInfo) : M Bool := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match r with
+  | .unit | .sort _ | .prop => pure true
+  | .alt ds => ds.allM (declCopy fuel')
+  | .ind n args =>
+    let d ← lookupInd n
+    if d.copy || d.sort == 0 then return true
+    if d.ctors.any (fun (_, fs) => fs.any fun (_, FT) => FT.mentionsTInd n) then return false
+    -- D64: a type with a dependent constructor is a copy type only when declared `copy`
+    if (List.range d.ctors.length).any d.dependent then return false
+    for ((_, fs), c) in d.ctors.zipIdx do
+      for i in List.range fs.length do
+        unless ← declCopy fuel' (← fieldDecl fuel' d args c i) do return false
+    pure true
+  | _ => pure false
+termination_by structural fuel
+
+/-- D80: what the declared codomain of a call of the global function `F` says, each type
+parameter standing for its argument as written, read as a type in the caller's scope (`sc`,
+`ns`): `Id(Word, w)` with `Id (A : Type₀) (x : A) : A` reads as `Word`. `other` when `F` is not
+a global function. -/
+def callDecl (fuel : Nat) (F : String) (as : List Term) (sc : List DeclInfo) (ns : List String) :
+    M DeclInfo := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let some g := (← get).globals.find? (·.name == F) | return .other
+  let .tPi [] (.pi hs ds c) _ := g.ty | return .other
+  let mut args : List (Option DeclInfo) := []
+  for (d, a?) in ds.zip (as.map some ++ List.replicate (ds.length - as.length) none) do
+    match d, a? with
+    | .sort _, some a => args := args ++ [some (← typeDecl fuel' false sc ns a)]
+    | _, _ => args := args ++ [none]
+  withLive false do
+    let (sc', ns', _) ← telescope fuel' false [] [] hs ds
+    typeDecl fuel' false sc' ns' c [] args.reverse
+termination_by structural fuel
+
+/-- D80: what a closed type value says, data included: a global constant's declared type, or a
+type constant's value. Each is formed once, from the empty environment, when its declaration
+is checked, so no evaluation path changes it. -/
+def closedTypeDecl (fuel : Nat) (T : Value) : M DeclInfo := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match T with
+  | .tUnit => pure .unit
+  | .tInd n args =>
+    let d ← lookupInd n
+    if d.sort == 0 then return .prop
+    pure (.ind n (← args.zipIdx.mapM fun (a, i) =>
+      if d.paramIsType i then closedTypeDecl fuel' a else pure .other))
+  | _ => valTypeDecl fuel' T
+termination_by structural fuel
 
 /-- D66: `&A` is well formed iff `A : Type₀`. With `Prop : Type₁`, everything in `Type₀` exists
 at runtime: data types, function types into data or functions, a type parameter declared in
@@ -225,7 +326,7 @@ def sortOf (fuel : Nat) (T : Value) : M Nat := do
   | .sealed t => match ← sealedSort? t with
     | some l => pure l
     | none => err s!"{T} is not known to be a type"
-  | .tPi cs (.pi hs ds c) => do
+  | .tPi cs (.pi hs ds c) _ => do
     -- D55: a type's declared sort is its computed sort, so a Π-type's sort is read off its
     -- parameter and codomain terms, each in the scope of the captured values and the earlier
     -- parameters, never by evaluating them (nothing in this module can run a term)
@@ -264,28 +365,32 @@ def declOf (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (t 
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let sub (u : Term) : M Unit := if chk then discard (declOf fuel' chk sc ns u) else pure ()
   match t with
-  | .place p => placeDecl sc p
-  | .borrow p => pure (.ref (← placeDecl sc p))
-  | .zero | .tt => pure .other
+  | .place p => placeDecl fuel' sc p
+  | .borrow p => pure (.ref (← placeDecl fuel' sc p))
+  | .zero => pure .other
+  | .tt => pure .unit
   | .assign _ u | .succ u | .fst u | .snd u => sub u; pure .other
   | .letIn h u w => do
     let d ← declOf fuel' chk sc ns u
     declOf fuel' chk (d :: sc) (h.name :: ns) w
   | .seq u w => sub u; declOf fuel' chk sc ns w
   | .matchNat _ z s =>
-    let d := agreeDecl [← declOf fuel' chk sc ns z, ← declOf fuel' chk sc ns s]
+    let ds := [← declOf fuel' chk sc ns z, ← declOf fuel' chk sc ns s]
+    let d := agreeDecl ds
     -- D63: checked where it is written, so that no accepted definition meets it at runtime
     -- (a dead arm is not typed, but the machine reads every term's declared type)
     if chk && d == .conflict then err (conflictMsg t ns)
-    pure d
+    pure (DeclInfo.joinAlt ds d)
   | .matchInd _ _ arms =>
-    let d := agreeDecl (← arms.mapM fun (_, a) => declOf fuel' chk sc ns a)
+    let ds ← arms.mapM fun (_, a) => declOf fuel' chk sc ns a
+    let d := agreeDecl ds
     if chk && d == .conflict then err (conflictMsg t ns)
-    pure d
+    pure (DeclInfo.joinAlt ds d)
   | .const n =>     -- an unknown name is the machine's error, reported where it is met
     if let some d := (← get).constDecls.lookup n then return d
     let some g := (← get).globals.find? (·.name == n) | return .any
-    let d ← valTypeDecl fuel' g.ty
+    -- D80: a constant's declared type is closed, so its data is read too
+    let d ← closedTypeDecl fuel' g.ty
     modify fun s => { s with constDecls := (n, d) :: s.constDecls }
     pure d
   | .val v => valueDecl fuel' v
@@ -308,11 +413,23 @@ def declOf (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (t 
   | .call f as _ => do
     let df ← declOf fuel' chk sc ns f
     for a in as do sub a
-    pure (match df with
+    let r := match df with
       | .pi r => r
       | .prop => .prop      -- a proof applied is a proof (its type is a Π into a proposition)
       | .any => .any
-      | _ => .other)
+      | _ => .other
+    -- D80: a call of a global function with type parameters reads its codomain with each
+    -- standing for its argument as written. Only data, or a borrow of it, is read so (the
+    -- call's class and row are the callee's, D54), so no erasure decision changes
+    if let .const F := f then
+      if r == .other || r.isData || r matches .ref _ then
+        let some g := (← get).globals.find? (·.name == F) | return r
+        if let .tPi [] (.pi _ ds _) _ := g.ty then
+          if ds.any (· matches .sort _) then
+            let r' ← callDecl fuel' F as sc ns
+            if (r'.isData && !(r matches .ref _)) || (r' matches .ref _ && r matches .ref _) then
+              return r'
+    pure r
   | .eq A a b | .id A a b => do
     discard (typePos fuel' chk sc ns A); sub a; sub b; pure (.sort 0)
   | .cong f h => sub f; sub h; pure .prop
@@ -343,7 +460,12 @@ def declOf (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (t 
     for (p, i) in ps.zipIdx do
       if d.paramIsType i then discard (typePos fuel' chk sc ns p) else sub p
     for a in as do sub a
-    pure (if ← ctorIsProof ty then .prop else .other)
+    if ← ctorIsProof ty then return .prop
+    -- D80: its inductive at its parameters as written (unknown where they are inferred)
+    let args ← if ps.length == d.params.length then
+        ps.zipIdx.mapM fun (p, i) => if d.paramIsType i then typeDecl fuel' false sc ns p else pure .other
+      else pure (d.params.map fun _ => DeclInfo.other)
+    pure (.ind ty args)
 termination_by structural fuel
 
 /-- What a type term says as a declared type: a sort, a Π-type, a borrow type, or a
@@ -378,6 +500,13 @@ def typeDecl (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (
     let (sc', ns', _) ← telescope fuel' false sc ns hs ds
     pure (.pi (← typeDecl fuel' false sc' ns' c vis (List.replicate ds.length none ++ tsc)))
   | .ref A => pure (.ref (← typeDecl fuel' false sc ns A vis tsc))
+  -- D80: data, read further for copy-or-move and η at `Unit`
+  | .unit => pure .unit
+  | .tind n as => do
+    let d ← lookupInd n
+    if d.sort == 0 then return .prop
+    pure (.ind n (← as.zipIdx.mapM fun (a, i) =>
+      if d.paramIsType i then typeDecl fuel' false sc ns a vis tsc else pure .other))
   | .val v => valTypeDecl fuel' v
   | .place (.var i) => match tsc[i]? with
     | some (some d) => pure d
@@ -389,16 +518,22 @@ def typeDecl (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (
     typeDecl fuel' false (d :: sc) (h.name :: ns) w vis (td :: tsc)
   | .seq _ w => typeDecl fuel' false sc ns w vis tsc
   | .matchNat _ z s =>
-    pure (agreeTypeDecl [← typeDecl fuel' false sc ns z vis tsc, ← typeDecl fuel' false sc ns s vis tsc])
+    let ds := [← typeDecl fuel' false sc ns z vis tsc, ← typeDecl fuel' false sc ns s vis tsc]
+    pure (DeclInfo.joinAlt ds (agreeTypeDecl ds))
   | .matchInd _ _ arms =>
-    pure (agreeTypeDecl (← arms.mapM fun (_, a) => typeDecl fuel' false sc ns a vis tsc))
+    let ds ← arms.mapM fun (_, a) => typeDecl fuel' false sc ns a vis tsc
+    pure (DeclInfo.joinAlt ds (agreeTypeDecl ds))
   | .call (.const F) as _ => typeFnDecl fuel' F vis sc ns tsc as fallback
   | .const F => do
     -- a constant that is a type (`T0 : Type₁ := Π(x : &Nat). Prop`): its closed value's head,
-    -- the same on every path; only a Π-type is read through it, as for type functions
+    -- the same on every path; only a Π-type or data (D80) is read through it, as for type
+    -- functions
     match (← get).globals.find? (·.name == F) with
     | some g => match g.fn?, g.val with
       | none, v@(.tPi ..) => valTypeDecl fuel' v
+      | none, v@(.tUnit) | none, v@(.tInd ..) => do
+        let r ← closedTypeDecl fuel' v
+        if r.isData then pure r else fallback
       | _, _ => fallback
     | none => fallback
   | _ => fallback
@@ -432,10 +567,12 @@ def typeFnDecl (fuel : Nat) (F : String) (vis : List String) (sc : List DeclInfo
   -- only a Π-type is read through the body: a body that computes to a sort or a proposition
   -- keeps the call's declared reading (D35, D55: `U(n)` computing to `Prop` is not a sort, so a
   -- function into `U(n)` returns data, `ErasureBySyntax.W`; `Fording.Sneak`), and a conflict
-  -- between the arms' erasure classes is the call's reading, rejected where it is used
+  -- between the arms' erasure classes is the call's reading, rejected where it is used. D80:
+  -- so is data (`UU(n)` reads as `Unit` when every arm of `UU` does), which no erasure
+  -- decision reads
   match d with
   | .pi _ | .conflict => pure d
-  | _ => dflt
+  | _ => if d.isData then pure d else dflt
 termination_by structural fuel
 
 /-- A term written where a type is expected: with `chk`, its declared type must be a sort
@@ -475,7 +612,7 @@ def valueDecl (fuel : Nat) (v : Value) : M DeclInfo := withLive false do
   | .tNat | .tUnit | .tRef _ | .tInd .. | .tEq .. | .tPi .. =>
     pure (.sort (← sortOf fuel' v))
   | .gfn n => valTypeDecl fuel' (← lookupGlobal n).ty
-  | .clo cs (.fix _ hs ds c _ _) => do
+  | .clo cs (.fix _ hs ds c _ _) _ => do
     let capSc ← cs.reverse.mapM (valueDecl fuel')
     let (sc', ns', _) ← telescope fuel' false capSc [] hs ds
     pure (.pi (← typeDecl fuel' false sc' ns' c))
@@ -490,7 +627,7 @@ def valTypeDecl (fuel : Nat) (T : Value) : M DeclInfo := withLive false do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   match T with
   | .sort l => pure (.sort l)
-  | .tPi cs (.pi hs ds c) => do
+  | .tPi cs (.pi hs ds c) _ => do
     let capSc ← cs.reverse.mapM (valueDecl fuel')
     let (sc', ns', _) ← telescope fuel' false capSc [] hs ds
     pure (.pi (← typeDecl fuel' false sc' ns' c))
@@ -532,11 +669,15 @@ machine that is not proved. Read from the declared type, the two paths agree by 
 def stmtArgInPlace (fuel : Nat) (a : Term) : M Bool := do
   pure ((← withLive true (declOf fuel false [] [] a)) matches .ref _)
 
-/-- Push captured values as bindings, each with what its declared type says. -/
-def pushCaps (fuel : Nat) (cs : List Value) : M Unit := do
+/-- Push captured values as bindings, each with what its declared type says: its binding's, as
+the closure recorded it (`rd`, D80), else read off the value (a Π-type's captures, which only
+types and erased terms read). -/
+def pushCaps (fuel : Nat) (cs : List Value) (rd : List DeclInfo := []) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  for v in cs do
-    let d ← valueDecl fuel' v
+  for (v, i) in cs.zipIdx do
+    let d ← match rd[i]? with
+      | some d => pure d
+      | none => valueDecl fuel' v
     modifyFrame (← topIdx) fun fr =>
       { fr with binds := fr.binds.push { hint := ⟨"κ"⟩, ty := none, val := v, decl := d, cap := true } }
 
@@ -547,7 +688,7 @@ def isPropV (fuel : Nat) (T : Value) : M Bool := do
   | .tEq .. => pure true
   | .tInd n _ => pure ((← lookupInd n).sort == 0)
   | .tNat | .tUnit | .tRef _ | .sort _ => pure false
-  | .tPi _ _ => pure ((← fnClass fuel' T) == 2)
+  | .tPi .. => pure ((← fnClass fuel' T) == 2)
   | .abs σ => pure ((← absType σ) == .sort 0)
   | .sealed t => pure ((← sealedSort? t) == some 0)
   | _ => pure false
@@ -574,7 +715,7 @@ def fnClass (fuel : Nat) (piTy : Value) : M Nat := do
   | some k => return k
   | none => pure ()
   let k ← match piTy with
-    | .tPi cs (.pi hs ds c) =>
+    | .tPi cs (.pi hs ds c) _ =>
       match c with
       | .sort _ => pure 1
       | .val _ => pure 0     -- a stuck block's function (`closeBlock`): its class is given at its call
@@ -617,7 +758,7 @@ def leafProof (fuel : Nat) (t : Term) (v : Value) : M Bool := do
   | .const n => pure (← valTypeDecl fuel' (← lookupGlobal n).ty).isProof
   | .fix .. => match v with
     | .proof => pure true
-    | .clo cs (.fix _ hs ds c _ _) => pure ((← fnClass fuel' (.tPi cs (.pi hs ds c))) == 2)
+    | .clo cs (.fix _ hs ds c _ _) rd => pure ((← fnClass fuel' (.tPi cs (.pi hs ds c) rd)) == 2)
     | _ => pure false
   | _ => pure false
 
@@ -630,7 +771,7 @@ def typeClass (fuel : Nat) (T : Value) : M Nat := do
   | .sort _ => pure 1
   | .tEq .. => pure 2
   | .tInd n _ => pure (if (← lookupInd n).sort == 0 then 2 else 0)
-  | .tPi _ _ => pure (if (← fnClass fuel' T) == 2 then 2 else 0)
+  | .tPi .. => pure (if (← fnClass fuel' T) == 2 then 2 else 0)
   | .sealed t => pure (if (← sealedSort? t) == some 0 then 2 else 0)
   | .abs σ => match ← absType σ with
     | .sort 0 => pure 2
@@ -655,7 +796,7 @@ def kindOf (fuel : Nat) (B : Value) : M Kind := do
 def declKind (fuel : Nat) (piTy : Value) : M Kind := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   match piTy with
-  | .tPi _ (.pi _ _ c) => match c with
+  | .tPi _ (.pi _ _ c) _ => match c with
     | .unit => pure .unit
     | .ref _ => pure .ref
     | .val B => do let k ← kindOf fuel' B; pure (if k == .prop then .data else k)

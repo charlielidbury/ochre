@@ -402,12 +402,12 @@ def stmtArgIf (fuel : Nat) (b : Bool) (a : Term) (x : M (Value × Option Value))
   if !b then return ← x
   if ← stmtArgInPlace fuel a then x else inStatement x
 
-def fixOf (fv : Value) : M (List Value × Term) := do
+def fixOf (fv : Value) : M (List Value × Term × List DeclInfo) := do
   match fv with
   | .gfn n => match (← lookupGlobal n).fn? with
-    | some t => pure ([], t)
+    | some t => pure ([], t, [])
     | none => err s!"{n} is not a function"
-  | .clo cs t => pure (cs, t)
+  | .clo cs t rd => pure (cs, t, rd)
   | _ => err s!"{fv} is not a function"
 
 /-- D53 (fuzz-port shape (c)): a returned borrow's content must be whole, as when a borrow
@@ -569,7 +569,7 @@ def sealedIn (v : Value) : List Term :=
   | .sealed t => t :: termVals t
   | .succ w | .borrow _ w | .tRef w => sealedIn w
   | .tEq A a b => sealedIn A ++ sealedIn a ++ sealedIn b
-  | .clo cs _ | .tPi cs _ => valsIn cs
+  | .clo cs _ _ | .tPi cs _ _ => valsIn cs
   | .ind _ _ _ ps fs => valsIn ps ++ valsIn fs
   | .tInd _ as => valsIn as
   | _ => []
@@ -619,8 +619,8 @@ def substV (fuel : Nat) (x r : Value) (v : Value) : M Value := do
   | .abs _ | .loan _ => return (if v == x then r else v)
   | .succ w => return .succ (← substV fuel' x r w)
   | .borrow l w => return .borrow l (← substV fuel' x r w)
-  | .clo cs t => return .clo (← cs.mapM (substV fuel' x r)) (← substT fuel' x r t)
-  | .tPi cs t => return .tPi (← cs.mapM (substV fuel' x r)) (← substT fuel' x r t)
+  | .clo cs t rd => return .clo (← cs.mapM (substV fuel' x r)) (← substT fuel' x r t) rd
+  | .tPi cs t rd => return .tPi (← cs.mapM (substV fuel' x r)) (← substT fuel' x r t) rd
   | .sealed t => nfSealed fuel' (← substT fuel' x r t)
   | .tEq A a b => mkEqM fuel' (← substV fuel' x r A) (← substV fuel' x r a) (← substV fuel' x r b)
   | .tInd n as => return .tInd n (← as.mapM (substV fuel' x r))
@@ -919,7 +919,7 @@ def readPlace (fuel : Nat) (p : Place) : M Value := do
       return v
     -- a copy-type value is read whole whatever it holds (a proposition whose stuck equation
     -- mentions a moved place, D68)
-    if ← copyRead fuel' p v then return v
+    if ← copyRead fuel' p then return v
     if v.hasHole then err s!"[Read] {← ppPlace p} was partly moved out (D53)"
     if !erased && (← isCapture p) then
       err s!"[D53] a closure's body moves a captured value out ({← ppPlace p}); a closure may run again: clone it"
@@ -928,22 +928,16 @@ def readPlace (fuel : Nat) (p : Place) : M Value := do
     pure v
 termination_by structural fuel
 
-/-- D53: reading `p` (holding `v`) copies: its type is a copy type, or it holds a function
-whose captures are copies (the Fn rule). -/
--- Two paths, value-dependent by design (notes/two-paths-census.md, site 16): copy-ness of the stored type; an abstract or neutral type is never a copy type, so the generic call moves at least what an instance moves.
-def copyRead (fuel : Nat) (p : Place) (v : Value) : M Bool := do
+/-- D53, D80 [Read]: reading `p` copies exactly when its declared type reads as a copy type
+(`Decide.declCopy`), read by the one reader of declared types: a variable's binding's reading
+(a parameter's written type, a `let`'s annotation or right-hand side, a capture's binding's),
+a field's at its parent's (`Decide.placeDecl`). Never its stored (evaluated) type or its
+content's constructor, so the generic call and every instance decide it alike: a parameter
+`x : A` moves at an instance `A := Word` as at the generic call (a generic `T` in Rust is never
+`Copy`), and a Π-typed place moves whatever function it holds (D68). -/
+def copyRead (fuel : Nat) (p : Place) : M Bool := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  -- an untyped run (a called body) may not know a pattern variable's type: the value's own
-  -- type, read off its constructor, is its type
-  -- a type that cannot be read is not known to be a copy type (`isCopyType`): the read moves
-  let T? ← match ← placeType? fuel' p with
-    | some T => pure (some T)
-    | none => valType? fuel' v
-  match T? with
-  -- D68: copy-ness is the type's, never the value's: a Π type is not a copy type, so reading a
-  -- Π-typed place moves it, whatever function it holds
-  | some T => isCopyType fuel' T
-  | none => pure false
+  declCopy fuel' (← withLive true (placeDecl fuel' [] p))
 termination_by structural fuel
 
 /-- [Borrow] `&p ⇓ borrow_ℓ v` with `p ↦ loan_ℓ`. -/
@@ -1186,7 +1180,7 @@ def valType? (fuel : Nat) (v : Value) : M (Option Value) := do
   | .unit => pure (some .tUnit)
   | .abs σ => some <$> absType σ
   | .gfn n => pure (some (← lookupGlobal n).ty)
-  | .clo cs (.fix _ hs ds c _ _) => pure (some (.tPi cs (.pi hs ds c)))
+  | .clo cs (.fix _ hs ds c _ _) rd => pure (some (.tPi cs (.pi hs ds c) rd))
   | .borrow _ w => pure ((← valType? fuel' w).map .tRef)
   | .ind t c _ ps fs => if ps.isEmpty then indValType? fuel' t c fs else pure (some (.tInd t ps))   -- D49 (4)
   | .tNat | .tUnit | .tEq .. | .tRef _ | .tPi .. | .sort _ | .tInd .. =>
@@ -1283,30 +1277,6 @@ def fieldsGeneric (fuel : Nat) (d : IndDecl) (ps : List Value) (c : Nat) :
   fieldTele fuel' d ps c fun _ T => genericValue fuel' T
 termination_by structural fuel
 
-/-- D53: a copy type, read off a type; a type not fully known is not one: `Unit`, a sort
-(types are erased), a proposition (its values are `⋆`), an inductive declared `copy`
-(`Word`), and an inductive in `Type₀` whose fields do not mention it and are copy types at
-the parameters (`Bool`, a pair of copy types). Not `Nat`, not a recursive type, not a
-function type (D68: copy-ness is the type's, never the value's), not a neutral. -/
-def isCopyType (fuel : Nat) (T : Value) : M Bool := do
-  let fuel' + 1 := fuel | exhausted "out of fuel"
-  if ← isPropV fuel' T then return true   -- a proposition
-  match T with
-  | .tUnit | .sort _ | .tEq .. => pure true
-  | .tInd n args =>
-    let d ← lookupInd n
-    if d.copy || d.sort == 0 then return true
-    if d.ctors.any (fun (_, fs) => fs.any fun (_, FT) => FT.mentionsTInd n) then return false
-    -- D64: a type with a dependent field is a copy type only when declared `copy` (its field
-    -- types are not fixed by the parameters)
-    if (List.range d.ctors.length).any d.dependent then return false
-    for i in [0:d.ctors.length] do
-      for (_, FT) in ← fieldTypes fuel' d args i do
-        unless ← isCopyType fuel' FT do return false
-    pure true
-  | _ => pure false
-termination_by structural fuel
-
 /-- One declared field type, field `i` of constructor `c`, at partially known parameters and
 the values of the fields before it (for a hint; unknown parameters and fields are bound to
 `⊥`, which a field type not mentioning them never reads). -/
@@ -1386,10 +1356,10 @@ parameter types (and so checks them: `&Type` is not a type, D66); the decisions 
 sort off the terms instead (`Decide.sortOf`), and `evalCore` asserts the two agree. -/
 def piSort (fuel : Nat) (T : Value) : M Nat := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  let .tPi cs (.pi hs ds c) := T | err s!"{T} is not a Π-type"
+  let .tPi cs (.pi hs ds c) rd := T | err s!"{T} is not a Π-type"
   privately do
     pushFrame
-    pushCaps fuel' cs
+    pushCaps fuel' cs rd
     let (pds, _) ← paramDecls fuel' cs hs ds c
     let mut l := 0
     for ((d, h), pd) in (ds.zip hs).zip pds do
@@ -1414,12 +1384,14 @@ termination_by structural fuel
 
 /-- Close a `pi`/`fix` term over the current values of its free variables (P2: a
 Π-type is a closure over formation-time values, like a λ). Captured values are copied;
-closures capture no borrows (RULES §1). -/
-def capture (fuel : Nat) (t : Term) : M (List Value × Term) := do
+closures capture no borrows (RULES §1). Each capture is recorded with what its binding's
+declared type says (D51, D80: the closure's body reads it so, as copy or not, on every path). -/
+def capture (fuel : Nat) (t : Term) : M (List Value × Term × List DeclInfo) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let fvs := (t.freeVars.toArray.qsort (· > ·)).toList   -- oldest binding first
   let m := fvs.length
   let mut vals := #[]
+  let mut rd := #[]
   let top0 := (← get).env.back!
   for o in fvs do
     -- [Fix] captures no borrow, a stuck block's borrow parameter included (D63, rule-audit
@@ -1439,10 +1411,11 @@ def capture (fuel : Nat) (t : Term) : M (List Value × Term) := do
         if let some T := b0.ty then
           repackCheck fuel' s!"a closure or Π-type captures {b0.hint.name}" v T
       vals := vals.push v
+      rd := rd.push b0.decl
       -- D53: a runtime closure moves the variables it captures whose types are not copies
       if !(v matches .proof) then
         if v.hasHole then err "[D53] a closure captures a place that was partly moved out"
-        unless ← copyRead fuel' p v do
+        unless ← copyRead fuel' p do
           if (← get).erasedDepth == 0 && (← isCapture p) then
             err s!"[D53] a closure's body moves a captured value ({← ppPlace p}) into a closure; clone it"
           logEffect p "moves"
@@ -1459,7 +1432,7 @@ def capture (fuel : Nat) (t : Term) : M (List Value × Term) := do
       if let some T := b.ty then
         t' := t'.inlineReads (m - 1 - k) (.ascribe (.val .proof) (.val T)) 0
   relocate t t'     -- the editor: the rebuilt body keeps its source ranges
-  pure (vals.toList, t')
+  pure (vals.toList, t', rd.toList)
 termination_by structural fuel
 
 -- ### Conversion (P1, v1.5 D30)
@@ -1481,11 +1454,12 @@ def conv (fuel : Nat) (v w : Value) : M Bool := do
   | .borrow l a, .borrow m b => pure (l == m && (← conv fuel' a b))
   | .ind t c _ _ fs, .ind u d _ _ gs => pure (t == u && c == d && (← convList fuel' fs gs))
   | .sealed t, .sealed u => convT fuel' t u
-  | .tPi cs t, .tPi ds u =>
-    if (← convList fuel' cs ds) && (← convT fuel' t u) then return true   -- same captures and code
+  | .tPi cs t r, .tPi ds u r' =>
+    -- same captures, read alike, and code
+    if r == r' && (← convList fuel' cs ds) && (← convT fuel' t u) then return true
     convPi fuel' v w
   | f, g =>
-    let isFn : Value → Bool := fun | .gfn _ | .clo _ _ => true | _ => false
+    let isFn : Value → Bool := fun | .gfn _ | .clo _ _ _ => true | _ => false
     if isFn f && isFn g then convFn fuel' f g else pure false
 termination_by structural fuel
 
@@ -1514,8 +1488,8 @@ comparison that needs itself answers "not convertible" (the relation is the leas
 that errors is an error (it used to answer "not convertible": `notes/catch-census.md`). -/
 def convPi (fuel : Nat) (P Q : Value) : M Bool := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  let .tPi cs (.pi hs ds c) := P | return false
-  let .tPi cs' (.pi _ ds' c') := Q | return false
+  let .tPi cs (.pi hs ds c) rd := P | return false
+  let .tPi cs' (.pi _ ds' c') rd' := Q | return false
   if ds.length != ds'.length then return false
   -- D54: the erasure class, and whether it returns a borrow, are part of the Π-type (the
   -- `Unit` and data rows of [Close] may differ: `Unit` has one value, D54 refined)
@@ -1525,7 +1499,7 @@ def convPi (fuel : Nat) (P Q : Value) : M Bool := do
   privately do
       modify fun s => { s with env := #[{}], convStack := (P, Q) :: s.convStack }
       pushFrame
-      pushCaps fuel' cs
+      pushCaps fuel' cs rd
       let (pds, _) ← paramDecls fuel' cs hs ds c
       let mut ws : Array (Value × Value) := #[]
       for ((d, h), pd) in (ds.zip hs).zip pds do
@@ -1543,7 +1517,7 @@ def convPi (fuel : Nat) (P Q : Value) : M Bool := do
       let C ← evalType fuel' c
       discard popFrameRaw
       pushFrame
-      pushCaps fuel' cs'
+      pushCaps fuel' cs' rd'
       let (pds', _) ← paramDecls fuel' cs' hs ds' c'
       for (((d', h), (w, A)), pd) in ((ds'.zip hs).zip ws.toList).zip pds' do
         let A' ← evalType fuel' d'
@@ -1592,9 +1566,9 @@ def convFn (fuel : Nat) (f g : Value) : M Bool := do
   let pf ← funType fuel' f none
   let pg ← funType fuel' g none
   unless ← conv fuel' pf pg do return false
-  let caps : Value → List Value := fun | .clo cs _ => cs | _ => []
+  let caps : Value → List Value := fun | .clo cs _ _ => cs | _ => []
   unless ← convList fuel' (caps f) (caps g) do return false
-  let .tPi cs (.pi hs ds c) := pf | return false
+  let .tPi cs (.pi hs ds c) _ := pf | return false
   -- a comparison that errors (e.g. a stuck block's function run at a generic argument where
   -- a pattern's sub-place does not exist, fuzz-port R3) is an error, as in `convPi`
   convFnRun fuel' f g pf cs hs ds c
@@ -1607,7 +1581,7 @@ def convFnRun (fuel : Nat) (f g pf : Value) (cs : List Value) (hs : List Hint) (
   privately do
     modify fun s => { s with env := #[{}], convStack := (f, g) :: s.convStack }
     pushFrame
-    pushCaps fuel' cs
+    pushCaps fuel' cs (match pf with | .tPi _ _ rd => rd | _ => [])
     let (pds, _) ← paramDecls fuel' cs hs ds c
     let mut args := #[]
     for ((d, h), pd) in (ds.zip hs).zip pds do
@@ -1626,7 +1600,7 @@ def convFnRun (fuel : Nat) (f g pf : Value) (cs : List Value) (hs : List Hint) (
     -- D38 (v1.8): a borrow result is observed as its content, after one shared fresh
     -- value is written through it, so the owners show where it points
     let σw? ← match pf with
-      | .tPi _ (.pi _ _ (.ref _)) =>
+      | .tPi _ (.pi _ _ (.ref _)) _ =>
         match ← callType fuel' pf args (args.map fun _ => none) with
         | .tRef T => some <$> freshAbs T
         | _ => pure none
@@ -1899,8 +1873,8 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
   | .pi _ ds c =>
     borrowParamCheck ds c
     -- a type former is erased: even its captures (which access places) run on a copy
-    let (cs, t') ← inStatement (capture fuel' t)
-    let T := Value.tPi cs t'
+    let (cs, t', rd) ← inStatement (capture fuel' t)
+    let T := Value.tPi cs t' rd
     if !typed then return (T, none)
     -- [T-Pi] runs the parameter types and the codomain (typing); the decisions read the same
     -- sort off the terms (`Decide.sortOf`, D55: a type's declared sort is its computed sort).
@@ -1916,12 +1890,12 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     -- a closure whose calls are erased is itself erased by the pre-pass (its captures copy)
     -- D78: the captured bindings' [Rec] marks, read before `capture` moves them
     let capRec ← capMarks t
-    let (cs, t') ← capture fuel' t
-    let v := Value.clo cs t'
+    let (cs, t', rd) ← capture fuel' t
+    let v := Value.clo cs t' rd
     let T := match t' with
-      | .fix _ _ ds' c' _ _ => Value.tPi cs (.pi hs ds' c')
-      | _ => Value.tPi cs (.pi hs ds c)
-    if typed then checkFix fuel' v cs t' capRec
+      | .fix _ _ ds' c' _ _ => Value.tPi cs (.pi hs ds' c') rd
+      | _ => Value.tPi cs (.pi hs ds c) rd
+    if typed then checkFix fuel' v cs t' capRec rd
     let v ← if ← isPropV fuel' T then pure .proof else pure v
     pure (v, some T)
   | .call f as hd => evalCall fuel' typed f as hd
@@ -2272,11 +2246,11 @@ termination_by structural fuel
 evaluated so far (a hint for a constructor argument's parameters; `none` if unknown). -/
 def argHint (fuel : Nat) (fv : Value) (fT : Option Value) (ws : Array Value) : M (Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  let some (.tPi cs (.pi hs ds c)) ← funType? fuel' fv fT | return none
+  let some (.tPi cs (.pi hs ds c) rd) ← funType? fuel' fv fT | return none
   let some d := ds[ws.size]? | return none
   privately do
     pushFrame
-    pushCaps fuel' cs
+    pushCaps fuel' cs rd
     let (pds, _) ← paramDecls fuel' cs hs ds c
     for (((d', h), w), pd) in ((ds.zip hs).zip ws.toList).zip pds do
       let A ← evalType fuel' d'
@@ -2293,7 +2267,7 @@ def funType? (fuel : Nat) (fv : Value) (fT : Option Value) : M (Option Value) :=
   if let some T := fT then return some T
   match fv with
   | .gfn n => pure (some (← lookupGlobal n).ty)
-  | .clo cs (.fix _ hs ds c _ _) => pure (some (.tPi cs (.pi hs ds c)))
+  | .clo cs (.fix _ hs ds c _ _) rd => pure (some (.tPi cs (.pi hs ds c) rd))
   | .abs σ => some <$> absType σ
   -- D56: a stuck cast can be a function; its type is its program's (`sealedType?`)
   | .sealed _ => valType? fuel' fv
@@ -2315,7 +2289,7 @@ termination_by structural fuel
 def resultKind (fuel : Nat) (piTy : Value) (ws : Array Value) : M Kind := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   match piTy with
-  | .tPi _ (.pi _ _ c) =>
+  | .tPi _ (.pi _ _ c) _ =>
     match c with
     | .val B => kindOf fuel' B
     | _ => match syntacticKind? c with
@@ -2330,13 +2304,13 @@ argument moved into it). The other free variables of `B` were captured when the
 Π-type was formed. Each argument is checked against its parameter's type. -/
 def callType (fuel : Nat) (piTy : Value) (ws : Array Value) (tys : Array (Option Value)) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  let .tPi cs (.pi hs ds c) := piTy | err s!"not a function type: {piTy}"
+  let .tPi cs (.pi hs ds c) rd := piTy | err s!"not a function type: {piTy}"
   if ds.length != ws.size then err s!"arity: {ds.length} parameters, {ws.size} arguments"
   let pf ← paramFlags fuel' cs ds
   let argLocs := (← get).locs.callArgs     -- the editor: the arguments' ranges
   privately <| unlocated do     -- the callee's parameter types are not this point's code
     pushFrame
-    pushCaps fuel' cs
+    pushCaps fuel' cs rd
     let (pds, _) ← paramDecls fuel' cs hs ds c
     for (((d, h), i), pd) in ((ds.zip hs).zipIdx).zip pds do
       let A ← evalType fuel' d
@@ -2357,7 +2331,8 @@ def endBorrowArgs (fuel : Nat) (ws : Array Value) : M Unit := do
 termination_by structural fuel
 
 /-- [Call]: push a frame `[caps, self, x̄ ↦ w̄]`, run the body, pop the frame. -/
-def runBody (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (ws : Array Value) : M Value := do
+def runBody (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : List DeclInfo) (ws : Array Value) :
+    M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let .fix self hs ds c _ body := t | err "internal: not a fix"
   -- K2/K3: a model function's body never runs at runtime
@@ -2365,26 +2340,28 @@ def runBody (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (ws : Array V
     | .gfn n => do pure (← lookupGlobal n).model
     | _ => pure false
   if model then modify fun s => { s with modelDepth := s.modelDepth + 1 }
-  let r ← onFail (runBodyCore fuel' fv cs t ws self hs ds c body)
+  let r ← onFail (runBodyCore fuel' fv cs t rd ws self hs ds c body)
     (if model then modify fun s => { s with modelDepth := s.modelDepth - 1 } else pure ())
   if model then modify fun s => { s with modelDepth := s.modelDepth - 1 }
   pure r
 termination_by structural fuel
 
-def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (ws : Array Value) (self : Hint)
-    (hs : List Hint) (ds : List Term) (c : Term) (body : Term) : M Value := do
+def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : List DeclInfo) (ws : Array Value)
+    (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (body : Term) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let d := (← get).depth
   if d ≥ 2000 then exhausted "call depth exceeded (a non-terminating recursion)"
   modify fun s => { s with depth := d + 1 }
   let pf ← paramFlags fuel' cs ds
   let (pds, cd) ← paramDecls fuel' cs hs ds c
+  -- D80: a stuck block records its parameters' readings, the places it takes (`closeBlock`)
+  let pds := if rd.length > cs.length then rd.drop cs.length else pds
   -- a proof parameter that a function or Π-type in the body may capture needs its type,
   -- which is all a captured proof records (`capture`): read it off the declared domain,
   -- at the arguments (arrays-library: a Π whose body uses a proof captured from outside it)
   let ptys ← if body.formsFn && (pf.any id || pds.any (·.isProof)) then privately do
       pushFrame
-      pushCaps fuel' cs
+      pushCaps fuel' cs rd
       let mut out := #[]
       for ((((h, w), p), pd), d) in (((hs.zip ws.toList).zip pf).zip pds).zip ds do
         let A? ← if p || pd.isProof then some <$> evalType fuel' d else pure none
@@ -2393,7 +2370,7 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (ws : Arr
       pure out
     else pure #[]
   pushFrame
-  pushCaps fuel' cs
+  pushCaps fuel' cs rd
   pushBind self none fv false (.pi cd)
   for ((((h, w), p), pd), i) in (((hs.zip ws.toList).zip pf).zip pds).zipIdx do
     pushBind h (ptys[i]?.getD none) w p (← refineDecl pd)
@@ -2453,10 +2430,10 @@ def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Ar
     | .abs _ | .sealed _ =>
       -- a neutral head closes off at once (v1.3), except as [Seal]'s head call (D39)
       if head then stuckNow else closeCall fuel' fv ws kind B
-    | .gfn _ | .clo _ _ =>
-      let (cs, t) ← fixOf fv
+    | .gfn _ | .clo _ _ _ =>
+      let (cs, t, rd) ← fixOf fv
       -- [App-close]: a stuck body closes the call off; [App-head]: not a sealed program's head call
-      catchStuck (runBody fuel' fv cs t ws) fun on =>
+      catchStuck (runBody fuel' fv cs t rd ws) fun on =>
         if head then throw (.stuck on) else closeCall fuel' fv ws kind B
     | _ => err s!"call of {fv}, which is not a function"
   let r := if cls == 2 then Value.proof else r
@@ -2603,7 +2580,7 @@ def sealedResultType? (fuel : Nat) (t : Term) : M (Option Value) := do
   | .call (.val f) as true =>
     match f with
     | .gfn n => match (← lookupGlobal n).ty with
-      | .tPi cs (.pi hs ds c) =>
+      | .tPi cs (.pi hs ds c) _ =>
         if c.freeVars.isEmpty then pure (some (← evalType fuel' c)) else
         let np := ds.length
         let ws : Array (Option Value) := (as.map fun | .val v => some v | _ => none).toArray
@@ -2641,8 +2618,8 @@ def renormV (fuel : Nat) (v : Value) : M Value := do
   | .tRef A => return .tRef (← renormV fuel' A)
   -- closures and Π-types too: their captures and embedded values (arrays-library: a goal
   -- `… ∧ Π(…). …` whose Π captured a sealed program stayed stale after a split)
-  | .clo cs t => return .clo (← cs.mapM (renormV fuel')) (← renormT fuel' t)
-  | .tPi cs t => return .tPi (← cs.mapM (renormV fuel')) (← renormT fuel' t)
+  | .clo cs t rd => return .clo (← cs.mapM (renormV fuel')) (← renormT fuel' t) rd
+  | .tPi cs t rd => return .tPi (← cs.mapM (renormV fuel')) (← renormT fuel' t) rd
   | _ => return v
 termination_by structural fuel
 
@@ -2920,11 +2897,8 @@ def blockCaptures (fuel : Nat) (mt : Term) (armMovedAll : List Place) :
     let mut mv := armMovedAll
     for (o, p) in mt.fnOccs 0 do
       let q := p.mapRoot fun _ => .var o
-      -- a place whose type cannot be read is not known to be a copy: the block moves it
-      let copy ← match ← placeType? fuel' q with
-        | some T => isCopyType fuel' T
-        | none => pure false
-      unless copy do
+      -- D80: a place whose declared type does not read as a copy type: the block moves it
+      unless ← copyRead fuel' q do
         unless mv.any (placeEq · q) do mv := mv ++ [q]
     pure mv
   let moved ← moved.foldlM (fun acc q => do
@@ -3119,8 +3093,14 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
   let mut doms := #[]
   let mut args := #[]
   let mut pflags := #[]
+  let mut rd := #[]
   for (q, mode) in capsS do
     let T ← placeType fuel' q
+    -- D80: each parameter is declared as the place it takes (its type `T` is for typing the
+    -- block's arguments): the block's run reads its parameters as the direct path reads the
+    -- places, copy or not, whatever a refinement makes of `T`
+    let dq ← withLive true (placeDecl fuel' [] q)
+    rd := rd.push (if mode == 1 then DeclInfo.ref dq else dq)
     repackAt fuel' q T "captured whole by a stuck match"
     -- a captured proof variable stays a proof in the block: its parameter is declared
     -- `: T` with `T : Prop` (v1.7: the same flag on the direct and the block path)
@@ -3158,7 +3138,7 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
     | none => p) 0
   let domTs := (doms.zip pflags).toList.map fun (T, p) =>
     if p then Term.ascribe (.val T) (.sort 0) else .val T
-  let anon := Value.clo [] (.fix ⟨"_"⟩ hints.toList domTs (.val B) none body)
+  let anon := Value.clo [] (.fix ⟨"_"⟩ hints.toList domTs (.val B) none body) rd.toList
   trace fun _ => s!"[Stuck block] {anon}({", ".intercalate (args.toList.map (·.pp []))})"
   -- v1.7 (D35): the block is erased exactly when its match would be, i.e. at every
   -- instance: when every arm is a proof (finding P2: not read off the computed type B)
@@ -3441,7 +3421,7 @@ place `cᵢ ↦ σᵢ` for each borrow parameter `xᵢ : &Tᵢ` (frame 0); the c
 runs in a pushed frame and its result's type must convert to the goal as refined by
 splits. Afterwards the whole state is restored. -/
 def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
-    (capRec : Array (Option Nat) := #[]) : M Unit := do
+    (capRec : Array (Option Nat) := #[]) (rd : List DeclInfo := []) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let .fix self hs ds c dec body := t | err "internal: not a fix"
   borrowParamCheck ds c
@@ -3461,7 +3441,7 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
   let pf ← paramFlags fuel' cs ds
   let (pds, cd) ← paramDecls fuel' cs hs ds c
   pushFrame
-  pushCaps fuel' cs
+  pushCaps fuel' cs rd
   let mut entries := #[]
   for (((d, h), p), pd) in ((ds.zip hs).zip pf).zip pds do
     let A ← evalType fuel' d
@@ -3487,11 +3467,11 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
   let goal ← evalType fuel' c
   trace fun _ => s!"[Def] {self.name}: goal {goal}"
   let F1 ← popFrameRaw
-  let piTy := Value.tPi cs (.pi hs ds c)
+  let piTy := Value.tPi cs (.pi hs ds c) rd
   let uid := (← get).nextRecUid
   modify fun s => { s with nextRecUid := s.nextRecUid + 1 }
   pushFrame
-  pushCaps fuel' cs
+  pushCaps fuel' cs rd
   -- D78: a capture of an enclosing function's binding of itself keeps its mark, so a
   -- recursive call of that function from this closure's body is still recognised by name
   markCapRec capRec

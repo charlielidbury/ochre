@@ -363,14 +363,14 @@ macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_fieldI
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_fieldTermIsProp)
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_refineDecl)
 
-theorem sigPres_placeDecl (sc : List DeclInfo) : (p : Place) → SigPres (placeDecl sc p)
-  | .deref q => by unfold placeDecl; have := sigPres_placeDecl sc q; sp
-  | .var _ | .fst _ | .snd _ | .field _ _ => by unfold placeDecl; sp
-
-macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_placeDecl)
-
 /-- The declared-type readers keep the signature, at fuel `n`. -/
 structure DecSP (n : Nat) : Prop where
+  placeDecl : ∀ sc p, SigPres (placeDecl n sc p)
+  fieldDecl : ∀ d args c i, SigPres (fieldDecl n d args c i)
+  declCopy : ∀ r, SigPres (declCopy n r)
+  fieldAt : ∀ r m c i, SigPres (fieldAt n r m c i)
+  callDecl : ∀ F as sc ns, SigPres (callDecl n F as sc ns)
+  closedTypeDecl : ∀ T, SigPres (closedTypeDecl n T)
   sortOf? : ∀ T, SigPres (sortOf? n T)
   sortOf : ∀ T, SigPres (sortOf n T)
   declSort : ∀ sc ns T, SigPres (declSort n sc ns T)
@@ -389,14 +389,22 @@ structure DecSP (n : Nat) : Prop where
 theorem decSP_zero : DecSP 0 := by
   constructor <;> intros <;>
     first
+    | (unfold placeDecl; sp) | (unfold fieldDecl; sp) | (unfold declCopy; sp) | (unfold fieldAt; sp)
+    | (unfold callDecl; sp) | (unfold closedTypeDecl; sp)
     | (unfold sortOf?; sp) | (unfold sortOf; sp) | (unfold declSort; sp) | (unfold declOf; sp)
     | (unfold typeDecl; sp) | (unfold typeFnDecl; sp) | (unfold typePos; sp) | (unfold telescope; sp)
     | (unfold valueDecl; sp) | (unfold valTypeDecl; sp) | (unfold isPropV; sp) | (unfold fnClass; sp)
     | (unfold kindOf; sp) | (unfold declKind; sp)
 
 theorem decSP_succ (n : Nat) (ih : DecSP n) : DecSP (n + 1) := by
-  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14⟩ := ih
+  obtain ⟨h15, h16, h17, h18, h19, h20, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14⟩ := ih
   constructor
+  · intro sc p; unfold placeDecl; sp
+  · intro d args c i; unfold fieldDecl; sp
+  · intro r; unfold declCopy; sp
+  · intro r m c i; unfold fieldAt; sp
+  · intro F as sc ns; unfold callDecl; sp
+  · intro T; unfold closedTypeDecl; sp
   · intro T; unfold sortOf?; sp
   · intro T; unfold sortOf; sp
   · intro sc ns T; unfold declSort; sp
@@ -646,8 +654,9 @@ theorem sigDecisions_commute {α : Refinement} {Ω Ωα : MState} {fuel : Nat}
     fun d FT => (readsSig_fieldTermIsProp d FT).commutes h fuel', fun d => (readsSig_largeElim d).commutes h fuel',
     fun ty arms => (readsSig_byTypeMatch ty arms).commutes h fuel'⟩
 
-theorem declKind_notPi (fuel : Nat) (cs : List Value) (t : Term) (ht : ∀ hs ds c, t ≠ .pi hs ds c)
-    (Ω : MState) : (run? (declKind fuel (.tPi cs t)) Ω fuel).map (·.1) = none := by
+theorem declKind_notPi (fuel : Nat) (cs : List Value) (t : Term) (rd : List DeclInfo)
+    (ht : ∀ hs ds c, t ≠ .pi hs ds c)
+    (Ω : MState) : (run? (declKind fuel (.tPi cs t rd)) Ω fuel).map (·.1) = none := by
   cases fuel with
   | zero => rw [run?_eq]; unfold declKind; rfl
   | succ n =>
@@ -656,29 +665,29 @@ theorem declKind_notPi (fuel : Nat) (cs : List Value) (t : Term) (ht : ∀ hs ds
 
 /-- Field `closeRow` (site 8) for every Π-type value but a stuck block's function, whose codomain
 is an embedded value (the match's type) and whose row reads that type's declared sort. -/
-theorem decisionsCommute_closeRow (Ω : MState) (α : Refinement) (cs : List Value) (t : Term) (Pα : Value)
-    (fuel : Nat) (hblock : ∀ hs ds B, t ≠ .pi hs ds (.val B))
-    (hP : (run? (α.onValue fuel (.tPi cs t)) Ω fuel).map (·.1) = some Pα)
-    (Ωα : MState) (k : Kind) (hk : (run? (declKind fuel (.tPi cs t)) Ω fuel).map (·.1) = some k) :
+theorem decisionsCommute_closeRow (Ω : MState) (α : Refinement) (cs : List Value) (t : Term)
+    (rd : List DeclInfo) (Pα : Value) (fuel : Nat) (hblock : ∀ hs ds B, t ≠ .pi hs ds (.val B))
+    (hP : (run? (α.onValue fuel (.tPi cs t rd)) Ω fuel).map (·.1) = some Pα)
+    (Ωα : MState) (k : Kind) (hk : (run? (declKind fuel (.tPi cs t rd)) Ω fuel).map (·.1) = some k) :
     (run? (declKind fuel Pα) Ωα fuel).map (·.1) = some k := by
   by_cases ht : ∃ hs ds c, t = .pi hs ds c
   · obtain ⟨hs, ds, c, rfl⟩ := ht
     have hc : rowOf c ≠ 3 := by
       cases c <;> simp only [rowOf] <;> first | decide | exact absurd rfl (hblock hs ds _)
-    rw [closeRow_fn Ω α cs hs ds c hc Pα fuel hP Ωα]
+    rw [closeRow_fn Ω α cs hs ds c rd hc Pα fuel hP Ωα]
     exact hk
-  · rw [declKind_notPi fuel cs t (fun hs ds c h => ht ⟨hs, ds, c, h⟩) Ω] at hk
+  · rw [declKind_notPi fuel cs t rd (fun hs ds c h => ht ⟨hs, ds, c, h⟩) Ω] at hk
     cases hk
 
 /-- Field `fnClass` (site 3) for the Π-types whose codomain's shape fixes the class (a sort; a
 stuck block's function), at states whose class caches are sound (`ClassCacheSound`). -/
 theorem decisionsCommute_fnClass_shape (Ω : MState) (α : Refinement) (cs : List Value) (hs : List Hint)
-    (ds : List Term) (c : Term) (K : Nat) (hK : shapeClass (rowOf c) = some K) (Pα : Value) (fuel : Nat)
-    (hP : (run? (α.onValue fuel (.tPi cs (.pi hs ds c))) Ω fuel).map (·.1) = some Pα) (Ωα : MState)
-    (hΩ : ClassCacheSound Ω (.tPi cs (.pi hs ds c))) (hΩα : ClassCacheSound Ωα Pα) (k : Nat)
-    (hk : (run? (fnClass fuel (.tPi cs (.pi hs ds c))) Ω fuel).map (·.1) = some k) :
+    (ds : List Term) (c : Term) (rd : List DeclInfo) (K : Nat) (hK : shapeClass (rowOf c) = some K) (Pα : Value)
+    (fuel : Nat) (hP : (run? (α.onValue fuel (.tPi cs (.pi hs ds c) rd)) Ω fuel).map (·.1) = some Pα) (Ωα : MState)
+    (hΩ : ClassCacheSound Ω (.tPi cs (.pi hs ds c) rd)) (hΩα : ClassCacheSound Ωα Pα) (k : Nat)
+    (hk : (run? (fnClass fuel (.tPi cs (.pi hs ds c) rd)) Ω fuel).map (·.1) = some k) :
     (run? (fnClass fuel Pα) Ωα fuel).map (·.1) = some k := by
-  rw [fnClass_shape Ω α cs hs ds c K hK Pα fuel hP Ωα hΩ hΩα]
+  rw [fnClass_shape Ω α cs hs ds c rd K hK Pα fuel hP Ωα hΩ hΩα]
   exact hk
 
 /-! ### Why a stuck block's row is excluded
@@ -691,14 +700,14 @@ refining an unknown match type to `Unit` changes the row `declKind` reads from d
 def probeΩ : MState := { (default : MState) with absTy := #[.sort 1] }
 
 theorem probe_blockRow_refined :
-    (run? (Refinement.onValue [(0, .tUnit)] 5 (.tPi [] (.pi [] [] (.val (.abs 0))))) probeΩ 5).map (·.1) =
-      some (.tPi [] (.pi [] [] (.val .tUnit))) := by rfl
+    (run? (Refinement.onValue [(0, .tUnit)] 5 (.tPi [] (.pi [] [] (.val (.abs 0))) [])) probeΩ 5).map (·.1) =
+      some (.tPi [] (.pi [] [] (.val .tUnit)) []) := by rfl
 theorem probe_blockRow_generic :
-    (run? (declKind 5 (.tPi [] (.pi [] [] (.val (.abs 0))))) probeΩ 5).map (·.1) = some .data := by rfl
+    (run? (declKind 5 (.tPi [] (.pi [] [] (.val (.abs 0))) [])) probeΩ 5).map (·.1) = some .data := by rfl
 theorem probe_blockRow_instance :
-    (run? (declKind 5 (.tPi [] (.pi [] [] (.val .tUnit)))) probeΩ 5).map (·.1) = some .unit := by rfl
+    (run? (declKind 5 (.tPi [] (.pi [] [] (.val .tUnit)) [])) probeΩ 5).map (·.1) = some .unit := by rfl
 /-- Control: a function, whose codomain is a term, keeps its row. -/
-theorem probe_fnRow : (run? (declKind 5 (.tPi [] (.pi [] [] (.place (.var 0))))) probeΩ 5).map (·.1) =
+theorem probe_fnRow : (run? (declKind 5 (.tPi [] (.pi [] [] (.place (.var 0))) [])) probeΩ 5).map (·.1) =
     some .data := by rfl
 
 /-! ### Conjecture 2, as far as it is proved -/
@@ -715,8 +724,8 @@ theorem stability : Conjecture2 :=
      -- class-cache soundness); the general case reads captured values' declared readings
      -- (`ValueDeclCommutes`, typing M)
      fnClass := sorry
-     closeRow := fun Ω α cs t Pα fuel hblock _ hP Ωα _ k hk =>
-       decisionsCommute_closeRow Ω α cs t Pα fuel hblock hP Ωα k hk
+     closeRow := fun Ω α cs t rd Pα fuel hblock _ hP Ωα _ k hk =>
+       decisionsCommute_closeRow Ω α cs t rd Pα fuel hblock hP Ωα k hk
      -- `closeBlock` runs the arms at both states: `RunsCorrespond`
      captures := sorry
      -- `placeType` reads the place's value: `RunsCorrespond` and typing (M)

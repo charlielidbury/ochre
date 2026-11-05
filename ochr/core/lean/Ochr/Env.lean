@@ -11,27 +11,6 @@ popped). Temporaries are part of Ω so that [End] can find and substitute into t
 
 namespace Ochr
 
-/-- What a declared type says, read off its term without normalising (D55, and the
-syntactic erasure pre-pass): the sort `l` itself (whatever has it is a type), a
-proposition (whatever has it is a proof), a Π-type with what its codomain says, a borrow
-type, or anything else (data). `any` is the type of a zero-arm match, which agrees with
-every other. -/
-inductive DeclInfo where
-  | sort (l : Nat)
-  | prop
-  | pi (cod : DeclInfo)
-  | ref (A : DeclInfo)
-  | other
-  | any
-  | conflict    -- a match whose arms disagree about being proofs: it has no declared type (D63)
-deriving BEq, Inhabited, Repr
-
-/-- A proof: a value of a proposition, or a function into proofs (impredicative `Prop`). -/
-def DeclInfo.isProof : DeclInfo → Bool
-  | .prop => true
-  | .pi r => r.isProof
-  | _ => false
-
 structure Binding where
   hint : Hint
   ty : Option Value     -- `none` for bindings pushed by the untyped machine
