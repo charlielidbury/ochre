@@ -32,7 +32,7 @@ def sectionsDir : IO System.FilePath := do
 def proseRules : List (String × String) :=
   [("Access", "*[Access]*"), ("Close", "caption: [[Close]:"), ("Type-pos", "_Sorts are syntactic_ ([Type-pos])"),
    ("Rec", "*[Rec]*"), ("Call-type", "*[Call-type]*"), ("Def", "*[Def]*"),
-   ("Conv-refl", "- [Conv-refl]"), ("Conv-cong", "- [Conv-cong]"), ("Conv-unit", "- [Conv-unit]"),
+   ("Conv-bot", "- [Conv-bot]"), ("Conv-refl", "- [Conv-refl]"), ("Conv-cong", "- [Conv-cong]"), ("Conv-unit", "- [Conv-unit]"),
    ("Conv-pi", "- [Conv-pi]"), ("Conv-fun", "- [Conv-fun]"),
    ("Drop", "*Drop* ([Drop])"), ("Capture", "*Capture* ([Capture])"), ("Block", "*Block* ([Block])"),
    ("Eq-inj", "\"[Eq-inj]\""), ("Eq-refl", "\"[Eq-refl]\""), ("Eq-disj", "\"[Eq-disj]\""),
@@ -53,7 +53,7 @@ def expectedIssues : List String := [
 
 /-- Rules already tagged with a `fire` call. -/
 def fired : List Rule := [.Field, .Open, .Repack, .Return, .IndDecl, .EqInj, .EqStuck, .Access, .Copy, .Read,
-  .Close, .Proj]
+  .Close, .Proj, .ConvBot]
 
 /-- Rules and extensions not yet tagged with a `fire` call (the tagging is in progress). -/
 def notYetFired : List String :=

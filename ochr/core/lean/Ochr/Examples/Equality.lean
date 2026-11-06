@@ -198,6 +198,70 @@ ochr Equality uses Bools, Nats {
       Id(Unit, (let r = &x; match n { Z => (let y = clone(x); ()), S _ => () }), (let r = &x; match n { Z => (), S _ => (let y = clone(x); ()) })) := refl
 }
 
+/-! ## A value holding `⊥` is convertible with nothing
+
+`⊥` is a part the symbolic run lost track of (a moved-out place), which an instance may fill
+with anything. So no conversion may identify two values holding it, even two that print
+alike, and a value holding it is not convertible with itself ([Conv-bot], D83, docs/28). Each
+side of each `Id` below is a stuck block at an unknown `n` that takes `x` by move (its arm `Z`
+moves it), so every observation leaves `x` as `⊥`, and an equation over it is stuck (D68).
+At `n = 1` the arm `S` runs instead. -/
+
+ochr BotConv uses Nats {
+  -- Both types compute to the stuck `Eq(Nat, ⊥, ⊥)`, but at `n = 1` the hypothesis is
+  -- `5 = 5` and the goal `5 = 6`: identifying them proved `False` (`Boom`).
+  reject def Same (n : Nat) (x : Nat)
+      (h : Id(Unit, match n { Z => (let y = x; ()), S _ => (x := 5; ()) }, match n { Z => (let y = x; ()), S _ => (x := 5; ()) }))
+    : Id(Unit, match n { Z => (let y = x; ()), S _ => (x := 5; ()) }, match n { Z => (let y = x; ()), S _ => (x := 6; ()) }) := h
+  reject def Boom : False := Same(S(Z), Z, refl)
+  -- The incompleteness, "itself included": `P → P` is true, but its `P` holds `⊥`.
+  reject def SelfBot (n : Nat) (x : Nat)
+      (h : Id(Unit, match n { Z => (let y = x; ()), S _ => (x := 5; ()) }, (x := 5; ())))
+    : Id(Unit, match n { Z => (let y = x; ()), S _ => (x := 5; ()) }, (x := 5; ())) := h
+  -- twin of Same and SelfBot: arm `Z` clones `x`, so the block takes it by `&` (arm `S` writes
+  -- it) and leaves its sealed program there, not `⊥`: the stuck equation `Eq(Nat, ⌈…⌉, 5)` is
+  -- convertible with itself ([Conv-refl])
+  def SelfKept (n : Nat) (x : Nat)
+      (h : Id(Unit, match n { Z => (let y = clone(x); ()), S _ => (x := 5; ()) }, (x := 5; ())))
+    : Id(Unit, match n { Z => (let y = clone(x); ()), S _ => (x := 5; ()) }, (x := 5; ())) := h
+
+  -- `trans` composes at a middle point by conversion: `5 = ⊥` and `⊥ = 6` met at two
+  -- different `⊥`s and gave `5 = 6`, though at `n = 1` they are `5 = 5` and `6 = 6`.
+  reject def TrBot (n : Nat) (x : Nat)
+      (h : Id(Unit, (x := 5; ()), match n { Z => (let y = x; ()), S _ => (x := 5; ()) }))
+      (k : Id(Unit, match n { Z => (let y = x; ()), S _ => (x := 6; ()) }, (x := 6; ())))
+    : Id(Unit, (x := 5; ()), (x := 6; ())) := trans(h, k)
+  reject def TrBotBoom : False := TrBot(S(Z), Z, refl, refl)
+  -- twin of TrBot: with clones the middle points are the same sealed program, and compose
+  def TrKept (n : Nat) (x : Nat)
+      (h : Id(Unit, (x := 5; ()), match n { Z => (let y = clone(x); ()), S _ => (x := 5; ()) }))
+      (k : Id(Unit, match n { Z => (let y = clone(x); ()), S _ => (x := 5; ()) }, (x := 5; ())))
+    : Id(Unit, (x := 5; ()), (x := 5; ())) := trans(h, k)
+
+  -- [Rewrite] finds occurrences by identity, so a side holding `⊥` occurs nowhere: with
+  -- `h : Eq(Nat, ⊥, 5)`, `rewrite ← h` put `5` for the goal's `⊥`, another observation's,
+  -- which at `n = 1` is 6 (`RwBotBoom`). Now it rewrites nothing, and `refl` does not prove
+  -- the goal.
+  reject def RwBot (n : Nat) (x : Nat)
+      (h : Id(Unit, match n { Z => (let y = x; ()), S _ => (x := 5; ()) }, (x := 5; ())))
+    : Id(Unit, match n { Z => (let y = x; ()), S _ => (x := 6; ()) }, (x := 5; ())) := rewrite ← h in refl
+  reject def RwBotBoom : False := RwBot(S(Z), Z, refl)
+  -- twin of RwBot: with a clone, `h : Eq(Nat, ⌈…⌉, 5)` rewrites the goal's `⌈…⌉`, the same
+  -- sealed program, to 5
+  def RwKept (n : Nat) (x : Nat)
+      (h : Id(Unit, match n { Z => (let y = clone(x); ()), S _ => (x := 5; ()) }, (x := 5; ())))
+    : Id(Unit, match n { Z => (let y = clone(x); ()), S _ => (x := 5; ()) }, (x := 5; ())) := rewrite ← h in refl
+}
+
+#guard (run "BotConv" BotConv).rejectedWith [
+  ("Same", "the body of Same has type Eq(Nat, ⊥, ⊥), but the goal is Eq(Nat, ⊥, ⊥) (a value holding ⊥, a moved-out part, is convertible with nothing: [Conv-bot], D83)"),
+  ("Boom", "unknown constant Same"),
+  ("SelfBot", "the body of SelfBot has type Eq(Nat, ⊥, 5), but the goal is Eq(Nat, ⊥, 5) (a value holding ⊥"),
+  ("TrBot", "trans: Eq(Nat, 5, ⊥) and Eq(Nat, ⊥, 6) do not compose (a value holding ⊥"),
+  ("TrBotBoom", "unknown constant TrBot"),
+  ("RwBot", "the body of RwBot has type ⊤, but the goal is Eq(Nat, ⊥, 5) (a value holding ⊥"),
+  ("RwBotBoom", "unknown constant RwBot")]
+
 
 /-! ## Rewriting
 

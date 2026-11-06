@@ -36,7 +36,7 @@ inductive Rule where
   | Seal | SealStuck | SealErr | Block
   -- observation, `Id`, conversion, `eq` (@app-conv)
   | Obs | ObsBorrow | Id
-  | ConvRefl | ConvCong | ConvUnit | ConvPi | ConvFun
+  | ConvBot | ConvRefl | ConvCong | ConvUnit | ConvPi | ConvFun
   | EqInj | EqRefl | EqDisj | EqStuck
   -- typing (@app-typing)
   | TypePos | TErase | TRead | TBorrow | TAssign | TLet | TLetAnn | TSeq | TCtor
@@ -62,7 +62,7 @@ def Rule.all : List Rule :=
    .Match, .MatchStuck, .MatchErr, .MatchProp, .MatchNone, .Proj,
    .Seal, .SealStuck, .SealErr, .Block,
    .Obs, .ObsBorrow, .Id,
-   .ConvRefl, .ConvCong, .ConvUnit, .ConvPi, .ConvFun,
+   .ConvBot, .ConvRefl, .ConvCong, .ConvUnit, .ConvPi, .ConvFun,
    .EqInj, .EqRefl, .EqDisj, .EqStuck,
    .TypePos, .TErase, .TRead, .TBorrow, .TAssign, .TLet, .TLetAnn, .TSeq, .TCtor,
    .TSort, .TType, .TInd, .TRef, .TEq, .TPi, .TJ, .TRewrite,
@@ -90,7 +90,7 @@ def Rule.name : Rule → String
   | .MatchProp => "Match-prop" | .MatchNone => "Match-none" | .Proj => "Proj"
   | .Seal => "Seal" | .SealStuck => "Seal-stuck" | .SealErr => "Seal-err" | .Block => "Block"
   | .Obs => "Obs" | .ObsBorrow => "Obs-borrow" | .Id => "Id"
-  | .ConvRefl => "Conv-refl" | .ConvCong => "Conv-cong" | .ConvUnit => "Conv-unit"
+  | .ConvBot => "Conv-bot" | .ConvRefl => "Conv-refl" | .ConvCong => "Conv-cong" | .ConvUnit => "Conv-unit"
   | .ConvPi => "Conv-pi" | .ConvFun => "Conv-fun"
   | .EqInj => "Eq-inj" | .EqRefl => "Eq-refl" | .EqDisj => "Eq-disj"
   | .EqStuck => "Eq-stuck"

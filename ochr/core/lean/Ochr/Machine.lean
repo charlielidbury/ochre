@@ -1506,9 +1506,18 @@ termination_by structural fuel
 
 /-- Conversion: same normal form, where the normal form of a function value is the
 observation of its generic call (its result and the final contents of the generic
-owned places) plus its captured values (D30). Structural everywhere else. -/
+owned places) plus its captured values (D30). Structural everywhere else. Only values
+without `⊥` are convertible ([Conv-bot], D83). -/
 def conv (fuel : Nat) (v w : Value) : M Bool := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
+  -- D83 [Conv-bot]: `⊥` is a part the symbolic run lost track of, which an instance may fill
+  -- with anything, so a value holding it is convertible with nothing, itself included. Before
+  -- the identity test: two stuck `Eq(Nat, ⊥, ⊥)` from different observations are `==`, but
+  -- at an instance they can be `5 = 5` and `5 = 6` (docs/28). Every recursive comparison (the
+  -- components, a Π-type's instantiated codomains, a function's observations) comes back here
+  if v.hasHole || w.hasHole then
+    fire .ConvBot fun _ => s!"{v} and {w}: a side holds ⊥ (D83)"
+    return false
   if v == w then return true
   -- D50: the unit laws And(True, P) ≡ P ≡ And(P, True) are conversion rules
   let v := unitTop v
@@ -1743,7 +1752,8 @@ to the goal and not recorded), and `a` is substituted for `σ`, re-normalising w
 `rev` (`rewrite ← h in t`) swaps `a` and `b`. The term is `J(A, a, b, λz. G[z/b], h, t)`
 with the motive read off the goal. A rewrite that finds nothing to rewrite leaves the goal
 as it is (rule-audit C22), so a wrong direction shows as a goal `t` does not prove; an `h`
-whose type computes to `True` rewrites nothing either (its two sides are already equal). -/
+whose type computes to `True` rewrites nothing either (its two sides are already equal), and
+a `b` holding `⊥` occurs nowhere ([Conv-bot], D83). -/
 def rewriteGoal (fuel : Nat) (rev : Bool) (h : Term) (G : Value) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   unless (← typeClass fuel' G) == 2 do err s!"rewrite: the goal {G} is not a proposition"
@@ -1752,6 +1762,13 @@ def rewriteGoal (fuel : Nat) (rev : Bool) (h : Term) (G : Value) : M Value := do
   | some (.tInd "True" []) => pure G
   | some (.tEq A a b) =>
     let (src, dst) := if rev then (a, b) else (b, a)
+    -- D83 [Conv-bot]: finding an occurrence identifies two values, and a value holding `⊥`
+    -- is identical to nothing, so it occurs nowhere and the goal is left as it is (C22).
+    -- `rewrite ← h` with `h : Eq(Nat, ⊥, 5)` put `5` for the `⊥` of another observation in
+    -- the goal (docs/28). A `dst` holding `⊥` is substituted: the goal then knows less
+    if src.hasHole then
+      fire .ConvBot fun _ => s!"[Rewrite] {src} holds ⊥, so it occurs nowhere in the goal (D83)"
+      return G
     let σ ← freshAbs A
     let G1 ← substV fuel' src (.abs σ) G
     -- [T-Rewrite] has no premise that `b` occurs: a rewrite that finds nothing leaves the goal
@@ -1766,7 +1783,7 @@ termination_by structural fuel
 def expectTy (fuel : Nat) (what : String) (T : Option Value) (A : Value) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   if let some T := T then
-    unless ← conv fuel' T A do err s!"{what} has type {T}, expected {A}"
+    unless ← conv fuel' T A do err s!"{what} has type {T}, expected {A}{convBotNote T A}"
 termination_by structural fuel
 
 /-- P2 (v1.3, D26): erased terms leave no trace. A term whose type is a proposition is
@@ -2080,7 +2097,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     | some (.tInd "True" []), some T | some T, some (.tInd "True" []) => pure (.proof, some T)
     | some (.tInd "False" []), _ | _, some (.tInd "False" []) => pure (.proof, some (.tInd "False" []))
     | some (.tEq A a b), some (.tEq A' b' c) =>
-      unless (← conv fuel' A A') && (← conv fuel' b b') do err s!"trans: {Th.get!} and {Tk.get!} do not compose"
+      unless (← conv fuel' A A') && (← conv fuel' b b') do err s!"trans: {Th.get!} and {Tk.get!} do not compose{convBotNote b b'}"
       pure (.proof, some (← mkEqM fuel' A a c))
     | _, _ => err "trans: not equations"
   | .prim "rewrite" [h, u] | .prim "rewriteR" [h, u] =>
@@ -2740,7 +2757,7 @@ def splitArmsThenClose (fuel : Nat) (mt : Term) (σ : Nat) (arms : List (M Value
       if let some E := expected then
         let E' ← substV fuel' (.abs σ) r E
         unless ← conv fuel' T E' do
-          err s!"an arm of the annotated match has type {T}, but the annotation refined to this arm is {E'}"
+          err s!"an arm of the annotated match has type {T}, but the annotation refined to this arm is {E'}{convBotNote T E'}"
       setFlags fl
       pure (av, T))
   closeBlock fuel' mt blockArms expected
@@ -2836,7 +2853,7 @@ def evalMatchByType (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms 
       let pf := (← getFlags).2
       let some T := T | err "internal: untyped arm"
       if let some E := expected then
-        unless ← conv fuel' T E do err s!"an arm of the annotated match has type {T}, but the annotation is {E}"
+        unless ← conv fuel' T E do err s!"an arm of the annotated match has type {T}, but the annotation is {E}{convBotNote T E}"
       pure (T, pf)
     allProof := allProof && pf
     tys := tys.push T
@@ -3570,7 +3587,7 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
     let g := (← get).goal.getD .bot
     trace fun _ => s!"[Def] {self.name}: path ends with type {T} against goal {g}"
     unless ← conv fuel' T g do
-      err s!"the body of {self.name} has type {T}, but the goal is {g}"
+      err s!"the body of {self.name} has type {T}, but the goal is {g}{convBotNote T g}"
   restoreKeep saved
 termination_by structural fuel
 
