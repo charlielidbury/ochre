@@ -333,3 +333,127 @@ theorem semEnd_below (Mn : Mean) (r : Var) (k : Label) : Below (semEnd Mn r k) M
     by_cases hz : z = r
     · simp [hz] at h
     · simpa [hz] using h
+
+/-! ## §4. Runs
+
+### `σ_g`: the caller writes `v` through the returned borrow, then ends it
+
+`a` is variable 0 and holds σ₀. `t := &a` (label 0, `t` is variable 1). `r := σ_g(t)` closes off
+(label 1, `r` is variable 2). Then `*r := v`, then `r` ends. -/
+
+def obs0 : St := fun z => if z = 0 then .abs 0 else .bot
+def obs1 : St := stBorrow obs0 0 1 0
+def obs2 : St := stCloseG obs1 1 2 0 1 (.abs 0)
+def obs3 (v : Nat) : St := stWrite obs2 2 1 (.num v)
+def obs4 (v : Nat) : St := stEnd (obs3 v) 2 1 (.num v)
+
+/-- The run's meaning is the semantic steps applied to the start's meaning: computed from
+meanings and ρ alone, never from the symbolic representation. -/
+theorem obs_steps (ρ : Rho) (v : Nat) :
+    M ρ (obs4 v) = semEnd (semWrite (semCloseG ρ (semBorrow (M ρ obs0) 0 1 0) 1 2 0 1) 2
+      (fun _ => some v)) 2 1 := by
+  rw [obs4, step_end ρ (obs3 v) 2 1 (.num v) rfl (fun _ => ⟨v, rfl⟩), obs3,
+    step_write ρ obs2 2 1 (.num v), obs2,
+    step_closeG ρ obs1 1 2 0 1 (.abs 0) (ρ.σ 0) rfl (fun _ => rfl) (by decide), obs1,
+    step_borrow ρ obs0 0 1 0 (by decide)]
+  rfl
+
+/-- The observation: `a`'s final content is `back_{ρ(σ_g)}(ρ(σ₀))(v)`, under every future. -/
+theorem obs_final (ρ : Rho) (f : Future) (v : Nat) :
+    M ρ (obs4 v) f 0 = some ((ρ.g (ρ.σ 0)).val.2 v) := rfl
+
+/-- The same from the semantic steps alone. -/
+example (ρ : Rho) (f : Future) (v : Nat) :
+    semEnd (semWrite (semCloseG ρ (semBorrow (M ρ obs0) 0 1 0) 1 2 0 1) 2 (fun _ => some v)) 2 1
+      f 0 = some ((ρ.g (ρ.σ 0)).val.2 v) := rfl
+
+/-- docs/18's `PF`: writing `0` and writing `1` through the returned borrow leave different final
+contents in `a`, under every ρ. So `Id(Unit, *r := 0, *r := 1)` is false in the model, which is
+why the meaning of `Π(x : &Nat). &Nat` must hold only injective backward functions. -/
+theorem pf_distinct (ρ : Rho) (f : Future) : M ρ (obs4 0) f 0 ≠ M ρ (obs4 1) f 0 := by
+  rw [obs_final, obs_final]
+  intro h
+  exact Nat.zero_ne_one ((ρ.g (ρ.σ 0)).property 0 1 (Option.some.inj h))
+
+/-! ### `Pick`'s shape: two fills share one hole, and a read ends the returned borrow early
+
+`a` (0) holds σ₀ and `b` (1) holds σ₁. `t₁ := &a` (label 0, variable 2) and `t₂ := &b` (label 1,
+variable 3). `r := σ_p(t₁, t₂)` closes off (label 2, variable 4). Both fills hold the hole
+`loan_2`, so reading `b` ends `r` early. -/
+
+def pk0 : St := fun z => if z = 0 then .abs 0 else if z = 1 then .abs 1 else .bot
+def pk1 : St := stBorrow (stBorrow pk0 0 2 0) 1 3 1
+def pk2 : St := stCloseP pk1 2 3 4 0 1 2 (.abs 0) (.abs 1)
+/-- Reading `b` meets `loan_2` in its fill, so [Access] ends `r`, whose content is `pFwd σ₀ σ₁`. -/
+def pk3 : St := stEnd pk2 4 2 (.pFwd (.abs 0) (.abs 1))
+
+/-- Before the read, both lent places' final contents are the backward function at the hole. -/
+theorem pk2_a (ρ : Rho) (f : Future) :
+    M ρ pk2 f 0 = some ((ρ.p (ρ.σ 0) (ρ.σ 1)).val.2 (f 2)).1 := rfl
+theorem pk2_b (ρ : Rho) (f : Future) :
+    M ρ pk2 f 1 = some ((ρ.p (ρ.σ 0) (ρ.σ 1)).val.2 (f 2)).2 := rfl
+
+/-- An `Id`-style equation of the two final contents depends on the future only through the
+value finally written through `r`: it is a fixed predicate of `f 2`. -/
+theorem pk2_id (ρ : Rho) (f : Future) :
+    (M ρ pk2 f 0 = M ρ pk2 f 1)
+      ↔ ((ρ.p (ρ.σ 0) (ρ.σ 1)).val.2 (f 2)).1 = ((ρ.p (ρ.σ 0) (ρ.σ 1)).val.2 (f 2)).2 := by
+  rw [pk2_a, pk2_b]
+  exact ⟨Option.some.inj, congrArg some⟩
+
+theorem pk2_id_hole (ρ : Rho) (f f' : Future) (h : f 2 = f' 2) :
+    (M ρ pk2 f 0 = M ρ pk2 f 1) ↔ (M ρ pk2 f' 0 = M ρ pk2 f' 1) := by
+  rw [pk2_id, pk2_id, h]
+
+/-- The close-off step keeps the meaning on this run. -/
+theorem pk2_step (ρ : Rho) : M ρ pk2 = semCloseP ρ (M ρ pk1) 2 3 4 0 1 2 :=
+  step_closeP ρ pk1 2 3 4 0 1 2 (.abs 0) (.abs 1) (ρ.σ 0) (ρ.σ 1) rfl rfl (fun _ => rfl)
+    (fun _ => rfl) (by decide) (by decide) (by decide) (by decide)
+
+/-- The early end is an [End] step, so it keeps the meaning… -/
+theorem pk3_step (ρ : Rho) : M ρ pk3 = semEnd (M ρ pk2) 4 2 :=
+  step_end ρ pk2 4 2 (.pFwd (.abs 0) (.abs 1)) rfl (fun _ => ⟨_, rfl⟩)
+
+/-- …and loses only information: every reading after it is a reading before it, in some future. -/
+theorem pk3_below (ρ : Rho) : Below (M ρ pk3) (M ρ pk2) := by
+  rw [pk3_step]; exact semEnd_below _ _ _
+
+/-- After it, `b` reads the backward function at what `r` held (its forward value), under every
+future, and `r` reads nothing. -/
+theorem pk3_b (ρ : Rho) (f : Future) :
+    M ρ pk3 f 1
+      = some ((ρ.p (ρ.σ 0) (ρ.σ 1)).val.2 (ρ.p (ρ.σ 0) (ρ.σ 1)).val.1).2 := rfl
+theorem pk3_r (ρ : Rho) (f : Future) : M ρ pk3 f 4 = none := rfl
+
+/-- What the early end costs, at an instance where `Pick` returned `a`'s borrow: `σ_p`'s backward
+function leaves `b` alone, `v ↦ (v, d₂)`. There `b`'s final content never depended on the hole,
+so the early end lost nothing about `b`. It lost only `r`, which the checker then refuses to use.
+There is no second run to agree with, so the `n = 0` instance is just one ρ. -/
+def rhoX (σ : Nat → Nat) : Rho where
+  σ := σ
+  g := fun _ => ⟨(0, fun v => v), fun _ _ h => h⟩
+  p := fun d₁ d₂ => ⟨(d₁, fun v => (v, d₂)), fun _ _ h => congrArg Prod.fst h⟩
+
+theorem pk2_b_at_rhoX (σ : Nat → Nat) (f : Future) : M (rhoX σ) pk2 f 1 = some (σ 1) := rfl
+theorem pk3_b_at_rhoX (σ : Nat → Nat) (f : Future) : M (rhoX σ) pk3 f 1 = some (σ 1) := rfl
+
+end Ochr.Model.State
+
+#print axioms Ochr.Model.State.ev_subst
+#print axioms Ochr.Model.State.ev_congr
+#print axioms Ochr.Model.State.M_subst
+#print axioms Ochr.Model.State.step_borrow
+#print axioms Ochr.Model.State.step_write
+#print axioms Ochr.Model.State.step_closeG
+#print axioms Ochr.Model.State.step_closeP
+#print axioms Ochr.Model.State.step_end
+#print axioms Ochr.Model.State.semEnd_below
+#print axioms Ochr.Model.State.obs_steps
+#print axioms Ochr.Model.State.obs_final
+#print axioms Ochr.Model.State.pf_distinct
+#print axioms Ochr.Model.State.pk2_id
+#print axioms Ochr.Model.State.pk2_id_hole
+#print axioms Ochr.Model.State.pk2_step
+#print axioms Ochr.Model.State.pk3_below
+#print axioms Ochr.Model.State.pk3_b
+#print axioms Ochr.Model.State.pk2_b_at_rhoX
