@@ -492,3 +492,225 @@ theorem n4_shape :
 theorem n6_meaning (ρ : Rho) (f : Future) (v : Nat) :
     (n6 v).map (fun Ω => M ρ Ω f 4)
       = some (.num ((ρ.g (ρ.σ 0)).val.2 ((ρ.g (ρ.g (ρ.σ 0)).val.1).val.2 v))) := rfl
+
+/-- What the general lemma allows, and why WF5 still matters. If a call's argument held a live
+loan, the semantic step would read that loan's *final* content at the call: what `r` reads now
+would depend on what is written later. The lemma holds; the semantics it describes is acausal.
+`t` (3) holds `borrow_5 (loan_0)` while `y` (1) still holds `borrow_0`. -/
+def w0 : St := fun x =>
+  if x = 0 then .loan 0 else if x = 1 then .borrow 0 (.num 3)
+  else if x = 3 then .borrow 5 (.loan 0) else .bot
+
+/-- `σ_g` whose forward value is its argument. -/
+def rhoId : Rho := ⟨fun i => i, fun d => ⟨(d, fun v => v), fun _ _ h => h⟩⟩
+
+theorem w0_acausal :
+    M rhoId (closeG w0 3 4 5 6 (.loan 0)) (fun _ => .num 0) 4
+      ≠ M rhoId (closeG w0 3 4 5 6 (.loan 0)) (fun _ => .num 1) 4 := by decide
+
+/-- [Access] rules this out: borrowing a place whose content holds a live loan ends that loan's
+borrow first, so the argument is loan-free. Variable 2 holds `(loan_0, 1)`. -/
+def w1 : St := fun x => if x = 2 then .pair (.loan 0) (.num 1) else w0 x
+theorem w1_borrow_ends_first :
+    (opBorrow N₅ 10 w1 2 [] 3 7).map (fun Ω => (Ω 1, Ω 3))
+      = some (.bot, .borrow 7 (.pair (.num 3) (.num 1))) := by decide
+
+/-! ## §7. Residual 3: `⊥` inside a borrow's content
+
+`p` (0) holds `(σ₀, σ₁)`; `x := &p` (label 0, `x` is 1); `d := (*x).0` moves field 0 out through the
+borrow (`d` is 4). Every intermediate state means something, `⊥` meaning no information. -/
+
+def opMove (N fuel : Nat) (Ω : St) (x : Var) (ps : List Step) (dst : Var) : Option St := do
+  let Ω ← access N fuel Ω .read x ps
+  let v ← follow (Ω x) ps
+  match v with
+  | .bot => none
+  | _ =>
+    let Ω ← setPlace Ω x ps .bot
+    pure (upd Ω dst v)
+
+def m1 : Option St := opBorrow N₅ 10 q0 0 [] 1 0
+def m2 : Option St := m1.bind fun Ω => opMove N₅ 10 Ω 1 [.deref, .fst] 4
+
+/-- Moved out: `x` reads `(no information, σ₁)`, `p` reads label 0's final content, `d` reads σ₀. -/
+theorem m2_meaning (ρ : Rho) (f : Future) :
+    m2.map (fun Ω => (M ρ Ω f 0, M ρ Ω f 1, M ρ Ω f 4))
+      = some (f 0, .pair .bot (.num (ρ.σ 1)), .num (ρ.σ 0)) := rfl
+
+/-- Refilled, then `p` read: `p` reads `(5, σ₁)` under every future. -/
+def m3 : Option St := m2.bind fun Ω => opAssign N₅ 10 Ω 1 [.deref, .fst] (.num 5)
+def m4 : Option St := m3.bind fun Ω => opClone N₅ 10 Ω 0 [] 4
+theorem m4_meaning (ρ : Rho) (f : Future) :
+    m4.map (fun Ω => M ρ Ω f 0) = some (.pair (.num 5) (.num (ρ.σ 1))) := rfl
+
+/-- Whether a value is whole: no `⊥` inside. -/
+def wholeV : Val → Bool
+  | .bot => false
+  | .pair a b => wholeV a && wholeV b
+  | .borrow _ v => wholeV v
+  | .gFwd u => wholeV u
+  | .gBack u h => wholeV u && wholeV h
+  | _ => true
+
+/-- [End] as the checker runs it: a borrow ending while its content is partly moved out is an
+error, except inside an observation (`obs`, D68), where it ends and the moved part reads `⊥`. -/
+def endChecked (N : Nat) (Ω : St) (l : Label) (obs : Bool) : Option St :=
+  match findBorrow N Ω l with
+  | some r =>
+    match Ω r with
+    | .borrow _ c => if obs || wholeV c then some (endL N Ω l) else none
+    | _ => some Ω
+  | none => some Ω
+
+/-- Not refilled: ending `x` is an error outside an observation; inside one, `p` reads
+`(no information, σ₁)`. -/
+theorem m2_end_error : m2.map (fun Ω => (endChecked N₅ Ω 0 false).isNone) = some true := by decide
+theorem m2_end_observed (ρ : Rho) (f : Future) :
+    m2.bind (fun Ω => (endChecked N₅ Ω 0 true).map fun Ω => M ρ Ω f 0)
+      = some (.pair .bot (.num (ρ.σ 1))) := rfl
+
+/-- `Eq` over meanings: stuck (`none`) when either side has no information somewhere. It is
+monotone: on more information it never gives a different answer, which is (Mono) for `Eq`, the
+checker's `Eq` staying stuck over `⊥`. -/
+def hasBot : SV → Bool
+  | .bot => true
+  | .pair a b => hasBot a || hasBot b
+  | .num _ => false
+
+def eqSV (a b : SV) : Option Bool := if hasBot a || hasBot b then none else some (decide (a = b))
+
+theorem le_eq_of_noBot : ∀ {a a' : SV}, SV.le a a' → hasBot a = false → a = a'
+  | _, _, .bot _, h => by simp [hasBot] at h
+  | _, _, .num _, _ => rfl
+  | _, _, .pair h₁ h₂, h => by
+    simp only [hasBot, Bool.or_eq_false_iff] at h
+    rw [le_eq_of_noBot h₁ h.1, le_eq_of_noBot h₂ h.2]
+
+theorem eqSV_mono {a b a' b' : SV} (ha : SV.le a a') (hb : SV.le b b') {t : Bool}
+    (h : eqSV a b = some t) : eqSV a' b' = some t := by
+  unfold eqSV at h
+  split at h
+  · cases h
+  · next hn =>
+    simp only [Bool.or_eq_true, not_or, Bool.not_eq_true] at hn
+    rw [← le_eq_of_noBot ha hn.1, ← le_eq_of_noBot hb hn.2]
+    unfold eqSV
+    simp [hn.1, hn.2, h]
+
+/-! ## §8. Residual 4: [Drop]
+
+Dropping a binding: a borrow it holds ends; otherwise each live loan in its value ends that
+loan's borrower if the borrower is held in a binding, and is an error if the borrower is a value
+in flight (`temp`), D65 amended. Then the binding is gone (`⊥`). -/
+
+def dropLoop (N : Nat) (temp : Var → Bool) : Nat → St → Var → Option St
+  | 0, _, _ => none
+  | fuel + 1, Ω, x =>
+    match (loans (Ω x)).find? (live N Ω) with
+    | some l =>
+      match findBorrow N Ω l with
+      | some h => if temp h then none else dropLoop N temp fuel (endL N Ω l) x
+      | none => none
+    | none => some Ω
+
+def drop (N : Nat) (temp : Var → Bool) (fuel : Nat) (Ω : St) (x : Var) : Option St :=
+  match Ω x with
+  | .borrow l _ => some (upd (endL N Ω l) x .bot)
+  | _ => (dropLoop N temp fuel Ω x).map (upd · x .bot)
+
+/-- Forgetting a variable loses only information. -/
+theorem upd_bot_below (ρ : Rho) (Ω : St) (x : Var) : Below (M ρ (upd Ω x .bot)) (M ρ Ω) := by
+  intro f
+  refine ⟨f, fun z => ?_⟩
+  by_cases hz : z = x
+  · subst hz; simp only [M, upd, if_true, ev]; exact .bot _
+  · simp only [M, upd, hz, if_false]; exact SV.le_refl _
+
+theorem dropLoop_below (ρ : Rho) (N : Nat) (temp : Var → Bool) :
+    ∀ fuel Ω x Ω', dropLoop N temp fuel Ω x = some Ω' → Below (M ρ Ω') (M ρ Ω) := by
+  intro fuel
+  induction fuel with
+  | zero => intro _ _ _ h; simp [dropLoop] at h
+  | succ fuel ih =>
+    intro Ω x Ω' h
+    simp only [dropLoop] at h
+    split at h
+    · split at h
+      · split at h
+        · cases h
+        · exact (ih _ _ _ h).trans (endL_below ρ N Ω _)
+      · cases h
+    · cases h; exact Below.refl _
+
+/-- [Drop] keeps the meaning up to information: a sequence of [End]s, then forgetting the
+binding. -/
+theorem drop_below (ρ : Rho) (N : Nat) (temp : Var → Bool) (fuel : Nat) (Ω : St) (x : Var)
+    (Ω' : St) (h : drop N temp fuel Ω x = some Ω') : Below (M ρ Ω') (M ρ Ω) := by
+  unfold drop at h
+  split at h
+  · cases h; exact (upd_bot_below ρ _ x).trans (endL_below ρ N Ω _)
+  · cases hd : dropLoop N temp fuel Ω x with
+    | none => simp [hd] at h
+    | some Ω₁ =>
+      simp only [hd, Option.map_some, Option.some.injEq] at h
+      subst h
+      exact (upd_bot_below ρ Ω₁ x).trans (dropLoop_below ρ N temp fuel Ω x Ω₁ hd)
+
+/-- `p` (0) holds σ₀ and `x := &p` (label 0, `x` is 1). Dropping `p` ends `x` when `x` is a
+binding; it is an error when `x` is a value in flight. -/
+theorem drop_binding :
+    m1.bind (fun Ω => (drop N₅ (fun _ => false) 10 Ω 0).map fun Ω => (Ω 0, Ω 1)) = some (.bot, .bot) := by
+  decide
+theorem drop_in_flight : m1.map (fun Ω => (drop N₅ (· = 1) 10 Ω 0).isNone) = some true := by decide
+
+/-! ## §9. Matches (D29)
+
+A match inspects only the head. A loan inside a neutral head ends, since where it sits inside the
+neutral is unknown; a constructor head leaves its fields' loans alone. -/
+
+/-- After a match's access, a neutral head holds no live loan, so (with no dangling loans) the
+head means the same under every future. -/
+theorem match_post_live (N : Nat) (Ω : St) (x : Var) (ps : List Step) (v : Val)
+    (h : accessStep N Ω .matchHead x ps = none) (hv : follow (Ω x) ps = some v)
+    (hn : isNeutral v = true) : ∀ l, l ∈ loans v → live N Ω l = false := by
+  intro l hl
+  simp only [accessStep] at h
+  split at h
+  · simp at h
+  · simp only [hv, hn, if_true] at h
+    have := List.find?_eq_none.mp h l hl
+    simpa using this
+
+/-- Matching on `a`'s fill `gBack σ₀ (loan_1)` (state `n2`) ends `r`. -/
+theorem match_fill_ends :
+    n2.bind (fun Ω => (access N₅ 10 Ω .matchHead 0 []).map fun Ω => (Ω 0, Ω 2))
+      = some (.gBack (.abs 0) (.gFwd (.abs 0)), .bot) := by decide
+
+/-- Matching on `*x` (state `q4`, content `(loan_1, loan_2)`) ends neither reborrow. -/
+theorem match_ctor_keeps :
+    q4.bind (fun Ω => (access N₅ 10 Ω .matchHead 1 [.deref]).map fun Ω => (Ω 2, Ω 3))
+      = some (.borrow 1 (.num 7), .borrow 2 (.abs 1)) := by decide
+
+end Ochr.Model.State2
+
+#print axioms Ochr.Model.State2.ev_subst
+#print axioms Ochr.Model.State2.ev_congr
+#print axioms Ochr.Model.State2.step_end
+#print axioms Ochr.Model.State2.endL_below
+#print axioms Ochr.Model.State2.access_below
+#print axioms Ochr.Model.State2.access_post
+#print axioms Ochr.Model.State2.read_value_indep
+#print axioms Ochr.Model.State2.q6_shape
+#print axioms Ochr.Model.State2.q6_meaning
+#print axioms Ochr.Model.State2.r2_shape
+#print axioms Ochr.Model.State2.step_closeG
+#print axioms Ochr.Model.State2.n6_meaning
+#print axioms Ochr.Model.State2.w0_acausal
+#print axioms Ochr.Model.State2.w1_borrow_ends_first
+#print axioms Ochr.Model.State2.m2_meaning
+#print axioms Ochr.Model.State2.m2_end_error
+#print axioms Ochr.Model.State2.eqSV_mono
+#print axioms Ochr.Model.State2.drop_below
+#print axioms Ochr.Model.State2.drop_in_flight
+#print axioms Ochr.Model.State2.match_post_live
+#print axioms Ochr.Model.State2.match_fill_ends
