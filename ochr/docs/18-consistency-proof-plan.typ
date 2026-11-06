@@ -51,8 +51,10 @@
 #let agr(a) = $attach(approx, br: #a)$
 #let res = $rho$
 #let ok(x) = $tack.double #x$
-// The denotation of x in the set model.
-#let deno(x) = $lr(⟦ #x ⟧)$
+// The meaning of x in the set model; under an assignment `at` of the unknowns when given.
+#let deno(x, at: none) = if at == none { $lr(⟦ #x ⟧)$ } else { $lr(⟦ #x ⟧)_(#at)$ }
+// "Less informative than": the information order on meanings of states.
+#let lessinfo = $subset.sq.eq$
 
 // Numbered statements, one counter, as in the paper.
 #let thm(kind, name, body) = figure(kind: "plan-thm", supplement: kind, numbering: "1", caption: name, body)
@@ -74,6 +76,25 @@
 #let s-paper = tagc(rgb("#e6dcf2"), [paper argument])
 #let s-open = tagc(rgb("#f6cfcf"), [open])
 #let s-design = tagc(rgb("#f2f2c4"), [open design question])
+
+// Status colours, for figures and legends.
+#let st-lean = rgb("#c9e8c9")
+#let st-heap = rgb("#cfe0f5")
+#let st-red = rgb("#fbe5c0")
+#let st-paper = rgb("#e6dcf2")
+#let st-open = rgb("#f6cfcf")
+#let st-design = rgb("#f2f2c4")
+// A legend swatch for a status colour.
+#let swatch(fill, label) = box(fill: fill, inset: 2pt, text(fill: status-ink, label))
+#let dn(pos, label, fill, name) = node(
+  pos,
+  text(size: 7.5pt, fill: status-ink, label),
+  fill: fill,
+  stroke: 0.5pt,
+  corner-radius: 2pt,
+  inset: 4pt,
+  name: name,
+)
 
 // Open design questions, numbered.
 #let oq(n, title, body) = block(
@@ -118,16 +139,16 @@
 )[#set text(size: 9pt); *Reminder.* #body]
 
 #align(center, text(size: 16pt, weight: "bold")[A plan for proving Ochr consistent])
-#align(center, text(size: 11pt)[The rough argument to be followed, the lemmas it needs, and where it could fail])
+#align(center, text(size: 11pt)[The route to be followed, the lemmas it needs, and where it could fail])
 #v(0.3em)
 #align(center, text(
   size: 9pt,
   fill: muted-ink,
-)[Draft for discussion · 2 November 2026 · a plan for a proof, not a proof])
+)[Draft for discussion · revised 6 November 2026, route changed (first draft 2 November) · a plan for a proof, not a proof])
 #v(0.6em)
 
 #align(center, box(width: 90%, align(left)[
-  *Summary.* The plan proves consistency of Ochr the way the paper proves soundness of its first-order fragment, extended to the whole calculus. Types are given meanings in a set model, in which `False` denotes the empty set. A soundness theorem says that whatever an accepted program proves is true in the model at every concrete instance; it is proved by a simulation between the checker's symbolic run and the concrete machine, by induction on the program. Consistency is its corollary. The simulation rests on one family of lemmas, the agreement of the two evaluation paths (stability), which this document splits into named lemmas with dependencies and a status for each. Of the seven decisions in its decision half, two are proved in Lean against the checker, a third in part, and a fourth is reduced to a smaller lemma. The core lemmas of its run half, parametricity (a run cannot depend on an unknown it never inspects) and the frame property (a call affects only what it is passed), are proved on a re-engineered model of the machine (the heap slice), and the correctness of closing off (how the checker turns a call stuck on an unknown into a value) in part; none of the run half is proved for the checker as it stands. Eight design questions must be settled before the full simulation can be written down; they are marked where they arise and collected in @sec-oq.
+  *Summary.* The plan proves Ochr consistent by _meaning preservation_. Types are given meanings in a set model, in which `False` denotes the empty set. Every state the checker reaches while checking a definition is given a meaning too, as a function of what its unknowns stand for: an _assignment_ gives each unknown any element of its type's meaning, non-computable functions included. The central theorem has three parts, proved together by one ordinary induction: each step of the checker keeps the meaning of its state under every assignment, or loses only information; every value the checker stores lies in the meaning of its type, whatever the borrows still live may later write; and the state stays well formed. An accepted definition therefore means an element of its type, and a closed proof of `False` would be an element of the empty set. This route replaces the one the first draft followed, which compared the checker's run on unknowns with a second run at each concrete instance; three referees showed that route could not be completed as written (@sec-referees), and it is kept, marked superseded, in @sec-old. Two paper tests have already been run: every closed proof of `False` the checker once accepted is a step at which one of the theorem's three parts fails, and an audit of every decision the checker makes found two items to settle (@sec-tests). The main risk is shared by both routes: the set model must exist, including a meaning for the code that computes types (Q9, Q11).
 ]))
 #v(0.4em)
 
@@ -148,7 +169,7 @@ This is the plan we intend to follow to prove that Ochr is consistent: the shape
 - #s-open: no argument yet.
 Design questions that must be decided before an argument can be written are marked #s-design.
 
-*Route.* Of the routes to a correctness story we have compared, this plan follows the _operational simulation_ route (show that every step of the checker's symbolic run is matched by the concrete machine at every instance) combined with a _denotational model_ (assign every type a mathematical meaning): the model says what "true" means, and the simulation shows that the checker only accepts what is true. A different route, translating each accepted program into Lean and having Lean's kernel check it, gives consistency one program at a time; it is not part of this plan, though its results are used in @sec-risks as evidence.
+*Route.* The plan follows _meaning preservation_. Every type, value and checker state is given a mathematical meaning (a _denotational model_), and each step the checker takes is shown to keep the meaning of its state. Truth is defined in the model, so a step that keeps meaning cannot lead the checker from true premises to a false conclusion. This is the usual soundness argument for _symbolic execution_ (@sec-route), with set-theoretic meanings in place of concrete machine states. The first draft of this plan followed an _operational simulation_ route instead: show that every step of the checker's run on unknowns is matched by the concrete machine at every instance. Three referees found that it could not be completed as written, and the present route was agreed as its replacement on 6 November 2026, by the plan's author and a second session that proposed it. The superseded route is kept in @sec-old, with the reasons, because its principles, its proved lemmas and its fragment proof remain useful evidence, and because it targets runtime safety, which the present route does not. A third route, translating each accepted program into Lean and having Lean's kernel check it, gives consistency one program at a time; it is not part of this plan, though its results are used in @sec-risks as evidence.
 
 = The calculus, as far as the plan needs it <sec-prelim>
 
@@ -166,7 +187,7 @@ $\&A$ requires $A : ty("Type")_0$, and `&` occurs only as the whole declared typ
 
 An environment Ω is a stack of frames, each binding variables (with declared types) to values, plus temporaries. A _state_ adds Δ (the types of abstract values), ρ (the refinements and generalisation records made so far), the goal while a definition is checked, and the recursion stack. $"content"_Omega (p)$ follows a place through variables, borrows ($*p$ looks inside $"borrow"_ell v$ at $v$) and fields.
 
-*Borrows.* $\&p$ moves the content $v$ of $p$ into $"borrow"_ell v$ and leaves $"loan"_ell$ at $p$. _Ending_ the borrow ([End]) replaces it by `⊥` and substitutes its content for every occurrence of $"loan"_ell$: a loan is a variable bound by its borrow. Every access to a place is preceded by [Access], which ends every borrow whose loan lies on the path to the place or inside its content (for a match, which inspects only the head: on the path, at the head, or anywhere inside a neutral head). Reading non-copy data moves it out, leaving `⊥`; data of a _copy type_ (`Unit`, sorts, propositions, inductives declared `copy`, and non-recursive inductives whose fields are copy types) is copied, and $kw("clone")(p)$ copies explicitly. The machine's rules for these steps are [Borrow], [Read] (moving data out), [Move] (moving a borrow), [Copy], [Clone] and [Assign]; [Ctor] builds a constructor value. A borrow must be whole (no `⊥` inside) when it ends, is returned, or is passed to a call that closes off.
+*Borrows.* $\&p$ moves the content $v$ of $p$ into $"borrow"_ell v$ and leaves $"loan"_ell$ at $p$. _Ending_ the borrow ([End]) replaces it by `⊥` and substitutes its content for every occurrence of $"loan"_ell$: a loan is a variable bound by its borrow. Every access to a place is preceded by [Access], which ends every borrow whose loan lies on the path to the place or inside its content (for a match, which inspects only the head: on the path, at the head, or anywhere inside a neutral head). Reading non-copy data moves it out, leaving `⊥`; data of a _copy type_ (`Unit`, sorts, propositions, inductives declared `copy`, and non-recursive inductives whose fields are copy types) is copied, copy-ness being read from the place's declared type, in which a type parameter is never a copy type; and $kw("clone")(p)$ copies explicitly. The machine's rules for these steps are [Borrow], [Read] (moving data out), [Move] (moving a borrow), [Copy], [Clone] and [Assign]; [Ctor] builds a constructor value. A borrow must be whole (no `⊥` inside) when it ends, is returned, or is passed to a call that closes off.
 
 *Dropping.* When an owned value dies holding a live loan, [Drop] ends the borrower if the borrower is held in a binding, and fails if the borrower is a value in flight (a temporary such as a result being returned). So a local may die while a variable that borrowed it is never used again, but nothing may return a borrow of its own local.
 
@@ -178,7 +199,7 @@ An environment Ω is a stack of frames, each binding variables (with declared ty
 
 The machine is big-step and deterministic: $cfg(Omega, t) ev cfg(Omega', v)$, or the run is _stuck_ (it must inspect a neutral), or it fails. Calls evaluate their arguments left to right into temporaries, push a frame binding the parameters, run the body, and pop the frame, dropping its bindings. Types and proofs are _erased_: an erased term runs on a private copy of the state, which is discarded (@sec-erasure).
 
-*Closing off* ([Close]). When a call $f(overline(w))$ is stuck, the call itself returns. Let the borrow arguments be $w_i = "borrow"_(ell_i) u_i$ ($i in I$) with each $u_i$ loan-free, let $L$ be $"let" c_i = u_i$ for $i in I$, and $C$ the call $f(overline(a))$ with $a_i = \&c_i$ for $i in I$ and $a_i = w_i$ otherwise. If $f$'s declared codomain is borrow-free, the call returns #seal[$L; C$] and each $"loan"_(ell_i)$ is filled with #seal[$L; C; c_i$]. If it is $\&T$, the call returns $"borrow"_k seal(L"; let" r = C"; " *r)$ for a fresh $k$, and each $"loan"_(ell_i)$ is filled with #seal[$L; "let" r = C; *r := "loan"_k; c_i$]: the fills have a _hole_ $"loan"_k$ for the final content the caller will write through the returned borrow, which the caller's eventual [End] of $"borrow"_k$ supplies by substitution. A result at type `Unit` is `()`. A call whose head is a neutral is stuck at once and closed off the same way.
+*Closing off* ([Close]). When a call $f(overline(w))$ is stuck, the call itself returns. Let the borrow arguments be $w_i = "borrow"_(ell_i) u_i$ ($i in I$) with each $u_i$ loan-free, let $L$ be $"let" c_i = u_i$ for $i in I$, and $C$ the call $f(overline(a))$ with $a_i = \&c_i$ for $i in I$ and $a_i = w_i$ otherwise. If $f$'s declared codomain is borrow-free, the call returns #seal[$L; C$] and each $"loan"_(ell_i)$ is filled with #seal[$L; C; c_i$]. If it is $\&T$, the call returns $"borrow"_k seal(L"; let" r = C"; " *r)$ for a fresh $k$, and each $"loan"_(ell_i)$ is filled with #seal[$L; "let" r = C; *r := "loan"_k; c_i$]: the fills have a _hole_ $"loan"_k$ for the final content the caller will write through the returned borrow, which the caller's eventual [End] of $"borrow"_k$ supplies by substitution. A result whose declared type at the call reads as `Unit` is `()`, and so is the fill of a lent place whose declared type is `Unit`. A call whose head is a neutral is stuck at once and closed off the same way.
 
 *Sealed programs.* Values are kept in normal form. A sealed program's normal form is its run from the empty environment, except that its head call $C$ may not itself close off ([Seal]'s head guard); so a sealed program either runs to a value or stays exactly as it is. A loan whose borrow lives outside the run is inert: the run treats it like an abstract value.
 
@@ -215,7 +236,7 @@ The typing judgement $Omega tack.r t ev v : A tack.l Omega'$ is the machine run 
 
 == Conversion <sec-conv>
 
-Conversion $v equiv w$ is the _least_ relation closed under: [Conv-refl] identity up to bound-variable names; [Conv-cong] same outermost former with pairwise convertible components (a constructor value's recorded parameters ignored; sealed programs compared by their program text); [Conv-unit] $ty("And")(ty("True"), P) equiv P equiv ty("And")(P, ty("True"))$; [Conv-pi] two Π-closures with the same class and borrow flag whose parameter types and codomains, evaluated at the generic arguments of the first, are pairwise convertible; [Conv-fun] two function values whose Π-types are convertible, whose captured values are pairwise convertible, and whose generic calls have convertible observations (with one shared $sigma_w$ for a borrow result). There is no η-rule; values at `Unit` are `()` wherever their type is known to be `Unit`, and every proof is `⋆`.
+Conversion $v equiv w$ is the _least_ relation closed under: [Conv-refl] identity up to bound-variable names; [Conv-cong] same outermost former with pairwise convertible components (a constructor value's recorded parameters ignored; sealed programs compared by their program text); [Conv-unit] $ty("And")(ty("True"), P) equiv P equiv ty("And")(P, ty("True"))$; [Conv-pi] two Π-closures with the same class and borrow flag whose parameter types and codomains, evaluated at the generic arguments of the first, are pairwise convertible; [Conv-fun] two function values whose Π-types are convertible, whose captured values are pairwise convertible, and whose generic calls have convertible observations (with one shared $sigma_w$ for a borrow result). There is no η-rule; values are `()` wherever their declared type reads as `Unit`, and every proof is `⋆`.
 
 == Refinements, valuations and the two paths <sec-two-paths>
 
@@ -225,9 +246,9 @@ Conversion $v equiv w$ is the _least_ relation closed under: [Conv-refl] identit
 
 Refinements cover the three ways the checker instantiates an unknown: a case split ($sigma := ty("C")(overline(sigma)')$), a call site (a parameter's generic σ instantiated with the argument), and an abstract function instantiated with a closure. Borrow-freeness costs nothing: a borrow parameter's generic value is $"borrow"_ell sigma$ with σ borrow-free, and since `&` is never produced by computation and never an argument, no unknown type is ever refined to a borrow type.
 
-*The two paths.* Every statement is evaluated along two paths: at a definition's generic call, where calls and matches on abstract values close off, and directly at each instance, where they run. [Call-type] and [Split] identify the results, so a proof checked on the first path is used on the second. If the paths take any decision differently, and the decision changes a result, a statement proved on one path can be false on the other: a closed proof of `False`. The design principle is that _no decision that changes a result is read from a normal form_.
+*The two paths.* Every statement is evaluated along two paths: at a definition's generic call, where calls and matches on abstract values close off, and directly at each instance, where they run. [Call-type] and [Split] identify the results, so a proof checked on the first path is used on the second. If the paths take any decision differently, and the decision changes a result, a statement proved on one path can be false on the other: a closed proof of `False`. The design principle is that _no decision that changes a result is read from a normal form_. The present route needs less: a decision may read anything, provided its outcomes mean the same, are chosen by syntax the model reads the same way, or are ordered by information (@sec-wf).
 
-*Ground instances.* A _ground instance_ of a definition $d$ is a valuation β of its generic σ's; its state is the generic state under β; its _hypotheses_ are the proof parameters' types there, evaluated left to right; its _goal_ is the codomain there, which is also the [Call-type] of the call $d(overline(a) beta)$ from a caller whose frame holds the cells.
+*Ground instances.* (Used by the superseded route, @sec-old; the present route reads states under _assignments_, @def-assign, which give each unknown a mathematical element of its type's meaning rather than a machine value.) A _ground instance_ of a definition $d$ is a valuation β of its generic σ's; its state is the generic state under β; its _hypotheses_ are the proof parameters' types there, evaluated left to right; its _goal_ is the codomain there, which is also the [Call-type] of the call $d(overline(a) beta)$ from a caller whose frame holds the cells.
 
 = The target <sec-target>
 
@@ -258,7 +279,7 @@ theorem consistency (q : Program) (fuel : Nat)
 
 = The shape of the argument <sec-shape>
 
-The argument has three parts, as in the paper's proof for its fragment: a model that says what "true" means; a soundness theorem saying the checker accepts only what is true; and consistency as a corollary.
+The argument has three parts: a set model that says what "true" means (@sec-model); a meaning for every state the checker reaches, with a theorem that the checker's steps keep it (@sec-route); and consistency as a corollary (@cor-cons-route). The model and the soundness of conversion (@sec-conv-sound) are shared with the superseded route; the second part replaces its soundness theorem and its walk.
 
 == The set model <sec-model>
 
@@ -300,7 +321,7 @@ which is ${bullet}$ when the product is a singleton and $emptyset$ when it is em
 
 *Least fixed points.* An operator Φ on families of sets is _monotone_ if $X subset.eq Y$ (pointwise) implies $Phi(X) subset.eq Phi(Y)$. Its _least fixed point_ is the smallest family $X$ with $Phi(X) subset.eq X$, the intersection of all such families, which exists for a monotone operator acting inside a fixed set such as $V_kappa$. An inductive type is interpreted as the least fixed point of the operator "one more layer of constructors". In Ochr no recursive occurrence of a type lies under a Π (fields are first-order), so every element is built by finitely many constructor applications, and the least fixed point is the union $union.big_(n < omega) Phi^n (emptyset)$, which stays inside $V_kappa$.
 
-*Why a model gives consistency.* A model assigns to each type $T$ a set $deno(T)$ and to each well-typed term $t : T$ an element $deno(t) in deno(T)$; that it does so for every derivable typing is the model's _soundness_. Since $deno(ty("False")) = emptyset$, no closed term of type `False` can exist, and since the model is built in ZFC with the inaccessibles, the conclusion is relative to that theory. For Ochr, "well-typed term" is replaced by "definition accepted by the checker", and the model's soundness is the soundness theorem of @sec-sound, which relates the checker's runs to meanings.
+*Why a model gives consistency.* A model assigns to each type $T$ a set $deno(T)$ and to each well-typed term $t : T$ an element $deno(t) in deno(T)$; that it does so for every derivable typing is the model's _soundness_. Since $deno(ty("False")) = emptyset$, no closed term of type `False` can exist, and since the model is built in ZFC with the inaccessibles, the conclusion is relative to that theory. For Ochr, "well-typed term" is replaced by "definition accepted by the checker", and the model's soundness is @cor-mean, which follows from the theorem of @sec-route that the checker's steps keep meaning.
 
 === The interpretation
 
@@ -341,7 +362,7 @@ At its generic call the statement observes the owner of `x`, where the two sides
   As written, the interpretation (@def-meaning) and $R$ (@def-inj) are not yet a valid definition, for two reasons.
   - _They are circular at function types._ @def-meaning makes the meaning of a function type returning a borrow equal to the subset $R$ of a product, while @def-inj defines $R_A$ as a subset of the meaning of $A$. The intended order is: the plain product first, then $R$ as a condition on it, then the meaning as the part of the product satisfying $R$.
   - _"By induction on $A$" has nothing smaller to recurse on._ A function type's codomain is computed by running code at each argument (a type function such as `Cells(E, n)` is defined by recursion on data), not a subterm of $A$; and a type variable, such as a parameter $A : ty("Type")_0$, has no structure at all, so $R$ is undefined there.
-  The likely repair is to define the two together, interpreting each type as a set _paired with_ its subset of good elements, and each universe as a set of such pairs, so that a type variable denotes a pair and $R$ at it is the pair's second component; the recursion through computed types then rests on a denotation of type-level code. That denotation is the same object the gap between truth in the model and the soundness walk over machine values needs (@sec-risks), so this question should be settled together with that one. This is a matter of stating the model precisely, not of whether it exists.
+  The likely repair is to define the two together, interpreting each type as a set _paired with_ its subset of good elements, and each universe as a set of such pairs, so that a type variable denotes a pair and $R$ at it is the pair's second component; the recursion through computed types then rests on a denotation of type-level code. That denotation of code is Q11, which the meaning of a sealed program needs too (@def-state-meaning), so the two should be settled together. Whether a definition along these lines exists is what test 0 checks (@sec-test-model); both routes rest on it.
 ]
 
 #thm([Definition], [truth], [
@@ -379,105 +400,144 @@ In the paper's fragment, truth was defined syntactically on ground proposition v
 == Conversion is sound <sec-conv-sound>
 
 #thm([Lemma], [conversion respects meaning], [
-  If $v$ and $w$ are closed values (each with no free variables and no unknowns, @sec-prelim) and $v equiv w$ (definitionally equal), then $deno(v) = deno(w)$. Consequently, at a ground state, convertible propositions are equally true.
+  If $v equiv w$ (definitionally equal) at a state Ω reached by the checker, then $deno(v, at: gamma) = deno(w, at: gamma)$ for every assignment $gamma$ of Ω (@def-assign). In particular, convertible closed values (no free variables and no unknowns, @sec-prelim) have equal meanings, and convertible propositions are equally true.
 ]) <lem-conv>
 
-The argument is one principle per conversion rule:
+The argument is one principle per conversion rule. Every principle reads the values under an arbitrary assignment, so it speaks of every element of every type, not only of values the machine can build.
 - (V1) Normal forms are compared structurally; the meaning of a normal form is a function of its parts.
 - (V2) A constructor value means its tag and fields; the parameters it records are fixed by its type and never read, so ignoring them is sound.
-- (V3) A sealed program is a closed program, so two with the same text have the same meaning, and refinement re-normalises both alike.
-- (V4) A Π-type is fixed by its parameter types and codomain at its generic arguments, by (P), the lemma that a run cannot depend on an unknown it never inspects (@lem-P), and its class and borrow flag are part of its meaning: they decide which functions inhabit it and how their calls close off.
-- (V5) A function value is fixed by the observation of its generic call: result, what a returned borrow holds at return, the final contents after one fresh $sigma_w$ is written through it, and the final contents of the generic owned places. This is complete because a call's only effects are its result and its borrowed places (the frame property, @lem-frame), a backward function only ever puts the written value where the borrow points (holes are never inspected), a call that inspects a generic argument closes off there (so its observation is its own sealed call, convertible only with itself), and a call that does not behaves uniformly at every instance by (P).
+- (V3) A sealed program means the meaning of its program (@def-state-meaning), so two with the same text have the same meaning under every assignment, and refinement substitutes into both alike.
+- (V4) A Π-type means its family of parameter types and codomain over every argument. [Conv-pi] compares the two at the generic arguments of the first, which are fresh unknowns. An assignment extended to those unknowns can give them any element of the parameter types' meanings, so, by @thm-mp applied to the evaluation of the parameter types and the codomain, equal meanings at the generic arguments under every extension are equal meanings at every argument. The class and the borrow flag are part of the meaning: they decide which functions inhabit the type and how their calls close off.
+- (V5) A function value means a function on its annotated domain, with the backward functions of @def-meaning. [Conv-fun] compares the observations of the two generic calls, which run each function's body on fresh unknowns. By @thm-mp applied to those runs, the meaning of an observation under every extension of $gamma$ is the function's result and final contents at every argument, since the fresh unknowns range over every element of the domain, non-computable functions included. So convertible observations mean equal functions.
+  #why[the first draft argued (V4), (V5) and (V9) from (P), the lemma that a run which never inspects an unknown behaves uniformly at every instance, because it compared the generic call with runs at instances. Here nothing is compared with an instance: the generic call's own meaning, under every assignment, already covers every argument.]
 - (V6) Conversion is least: a comparison that needs itself answers "not convertible". Read coinductively, any two functions stuck at their generic calls would be identified, and `J` along that proves `Eq(Nat, S(Z), Z)`.
 - (V7) The unit laws and $eta$ at `Unit` are equalities of sets: $deno(ty("True") and P) = deno(P)$, and `Unit` has one element.
 - (V8) `Eq` computes by meanings: reflexivity by (V1)–(V7), injectivity and disjointness by (V2), and an equation over `⊥` stays stuck. `J` returns its argument only at convertible endpoints, where it is the identity on meanings.
-- (V9) Conversion is monotone under refinement in the safe direction: refinement maps normal forms to normal forms functionally, so convertible values stay convertible (the function case by (P)); in the other direction, every consumer of "not convertible" either fails, stays stuck, or re-checks later, so no consumer is more permissive on "not convertible" than on "convertible".
+The first draft's (V9), that conversion is stable under refinement, is not needed: conversion is a check made at one state, and @thm-mp carries its conclusion through every later step.
 
-*Status.* #s-paper, resting on (P) for (V4), (V5) and (V9). Every rule is enforced by the checker's conversion; 35 probes, among them transport along true equations between in-place programs, behave as predicted.
+*An induction shared with @thm-mp.* (V4) and (V5) use @thm-mp on runs that conversion makes, and @thm-mp uses this lemma at every leaf. Both are proved by one induction on the checker's derivation, which is finite because the checker accepted: the runs a conversion check makes are parts of that check's derivation.
 
-== The soundness theorem <sec-sound>
+*Status.* #s-paper, to be re-argued in this form; the first draft's argument rested on (P). Every rule is enforced by the checker's conversion; 35 probes, among them transport along true equations between in-place programs, behave as predicted.
 
-The paper proves the following for a first-order fragment F (@sec-frag), conditional on two assumptions restated in @sec-agree-F. The plan is to prove it for the whole calculus.
-
-#thm([Target], [soundness], [
-  Let $cal(P) = d_1 dots d_m$ be an accepted, hole-free program. For every $d_k$ and every ground instance β of $d_k$ whose values are _good_ (a notion still to be fixed; Q1 below):
-  (i) if $d_k$ is a _data function_ (its codomain is data or a borrow type), its body runs from the ground instance to completion without error, in runtime mode and in erased mode, and its frame's pop succeeds; if it returns a borrow, the result is live, not `⊥`;
-  (ii) if $d_k$ is a _lemma_ (its codomain is a proposition) and its hypotheses at β are true, its goal at β is true;
-  (iii) every function value that a run of (i) or (ii) produces is good.
-]) <target-sound>
-
-Clause (iii) is new beyond F, where there are no function values. What "good" means for a ground function value is the first open design question.
-
-#explainer[logical relations][A _logical relation_ defines, for each type, which values "behave like" that type, by induction on the type: a value is good at `Nat` if it is a numeral; a function is good at $Pi(x : A). B$ if it sends every good argument to a good result; nothing is good at `False`. One then proves the _fundamental lemma_, that every program the checker accepts is good at its type, one typing rule at a time; consistency follows because nothing is good at `False`. It is called "logical" because each clause follows the type's logical shape (good inputs to good outputs). Impredicativity is the difficulty: the clause for $Pi(P : ty("Prop")). B$ needs "good at $P$" for every proposition $P$, including that Π-type itself, so the definition is no longer by induction on anything smaller. Girard's _reducibility candidates_ fix this by quantifying over every set of values that could be a proposition's meaning, instead of over the propositions themselves; the technique is standard but technical. A first worked example, for a tiny language, is the chapter "Norm" of _Software Foundations_, volume 2.]
-
-#oq(1, [good ground values])[
-  In F every ground value is a numeral or `()`. Beyond F a ground instance can bind a parameter to a closure, and a hypothesis can be a Π-type over functions or propositions. @target-sound needs a notion of _good_ ground value that is (a) closed under what accepted code produces, (b) strong enough that calling a good closure at good arguments terminates without error and returns a good value (so (i) holds for calls through function parameters, whose bodies are not earlier definitions and are not covered by the induction), and (c) such that a good function value's meaning lies in $R$ (@def-inj). Two candidates:
-  - _A logical relation_, defined by induction on types: a closure is good at $Pi(x : A). B$ when it maps good arguments to good results. Ochr's `Prop` is impredicative, so a type like `Π(P : Prop). P → P` quantifies over all propositions, and a definition by induction on types breaks down there; it would need reducibility candidates in Girard's style, interpreted in the set model.
-  - _Definability_: quantify only over ground instances whose function values are closures formed by accepted code, and strengthen the induction to cover closures as anonymous definitions, ordered by where they were formed. Consistency only needs closed terms, whose instances are built this way, so this may suffice; it needs a measure under which a closure formed in $d_k$ and called from $d_j$ is smaller.
-  Until one is chosen, every statement below that quantifies over function values (the soundness theorem's "good ground instances", agreement clause (A6), the walk's step for a call through a function value, and the recursion lemma) is written relative to an unspecified notion of "good", and is incomplete. The features beyond F that involve no function values (dependent fields, Fording, stuck blocks and `J` over data) do not depend on this choice.
-]
-
-#thm([Corollary], [consistency, from soundness], [
-  Under @target-sound and @lem-model, @target holds.
-]) <cor-cons>
-#proof[Let $c : A$ be an accepted parameterless definition. It is checked from the empty state, which is ground, by [Const]; @target-sound (ii) with the empty instance gives $ok(T)$ for the value $T$ of $A$. By @lem-conv, a type convertible with `False` is false, since $deno(ty("False")) = emptyset$. So $T equiv.not ty("False")$.]
-
-#thm([Corollary], [adequacy of `Id`], [
-  Under @target-sound, if a lemma with codomain $ty("Id")(D, t, u)$ is accepted, then at every good ground instance whose hypotheses are true, the observations of $t$ and $u$ have equal meanings: they return equal results and leave equal contents in every place either may write, except places one of them leaves moved out.
-]) <cor-adeq>
-
-== How soundness is proved: the walk <sec-walk>
+== Meaning preservation <sec-route>
 
 #reminder[
-  - $cal(P) = d_1 dots d_m$ is the accepted program, and $d_k$ is its $k$-th definition, the one being proved; the induction may assume the theorem for every earlier $d_j$, $j < k$ (@target-sound).
-  - $d_k$ is checked at its _generic call_, where each parameter is bound to a fresh abstract value σ ([Def], @sec-typing). If $d_k$ is declared $kw("by") x_j$, $sigma_j$ is the abstract value bound to that decreasing parameter.
-  - β is a _ground instance_ of $d_k$: a valuation, giving each of those σ's a value with no unknowns in it (@sec-two-paths). So $beta(sigma_j)$ is the actual value of the decreasing parameter at that instance, and $|beta(sigma_j)|$ is its size.
-  - α is a _refinement_, an assignment of values to abstract values (@def-refinement); $alpha supset.eq beta$ means α agrees with β and also assigns the abstract values the check creates later, such as a split's fields.
-  - $d_k$'s _case tree_ is the tree its check builds: a node for each [Split] or [Split-gen] on an unknown, with one child per arm, and a leaf where a tail term ends ([Tail-end], @sec-typing).
+  - The checker checks a definition $d_k$ once, at its _generic call_, where each parameter is bound to a fresh abstract value ([Def], @sec-typing). A match on an unknown _splits_, checking each arm in its own _world_ ([Split], Worlds); a call that gets stuck on an unknown is _closed off_ into a sealed program #seal[$t$] ([Close], @sec-machine).
+  - $deno(T)$ is the set a closed type $T$ means in the model (@def-meaning), and $R$ the injectivity relation (@def-inj).
+  - The check of $d_k$ builds a finite _case tree_: a node for each split, with one child per arm, and a leaf where the body ends.
 ]
 
-*The idea.* The checker never ran a definition on real inputs: it checked each one once, at its generic call, on unknowns. To show that what it accepted is true, take any real instance β, run the definition on it for real, and walk the checker's case tree in step with that run. The tree is a finite record of every case the checker considered; the real run takes exactly one path through it, the one β selects. At every step the symbolic state and the real state are kept related, so whatever the checker concluded about the first holds of the second. At the leaf the real run reaches, the checker had established the goal for that branch, so the goal holds at β.
+=== The idea
 
-The proof is by induction on the pairs $(k, |beta(sigma_j)|)$, ordered lexicographically, where $|v|$ is the size of the value in $d_k$'s decreasing position (read through the borrow for $\&ty("D")$; 0 without `by`). #why[a real run of $d_k$ makes calls, and each must already be known to be safe, and, for a lemma, true. There are only two kinds. A call to an earlier definition $d_j$, $j < k$, is covered by the first component: the theorem is already proved for everything earlier in the program, and a definition can only call earlier ones, so there are no cycles. A recursive call of $d_k$ itself is covered by the second: [Rec] checked that its decreasing argument is a strict part of the entry value, so it is the same theorem at a smaller input. Ordering the pairs lexicographically says exactly "assume the theorem for anything earlier in the program, and for this definition at any smaller input". It is the induction that follows the program's own call structure, and the same measure that makes accepted recursion terminate. Without `by`, a definition never calls itself, so the size plays no part.]
+The checker never runs a definition on real inputs. It runs it once, on unknowns, and accepts it if every leaf of the case tree has the goal's type. The first draft of this plan then took each concrete instance, ran the definition on it for real, and walked the case tree in step with that run (@sec-old). The present route compares the checker's run with nothing. It gives each state of that run a meaning, as a function of what the unknowns stand for, and shows that every step keeps it. At a leaf the checker has established that the result has the goal's type, so under every choice of what the unknowns stand for, the result's meaning lies in the goal's. Since the unknowns range over every element of their types, that is exactly the statement that the definition means an element of its type.
 
-For fixed $k$ and β, it follows $d_k$'s case tree along β and maintains five things:
-- a node of the tree with its symbolic state $Omega_s$;
-- a refinement $alpha supset.eq beta$ that covers and respects $Omega_s$;
-- the ground state $Omega_g$ the ground run of the body has reached;
-- _agreement_ $Omega_s agr(alpha) Omega_g$, the simulation relation between the two states (@def-agree);
-- for a lemma, the invariant (Inv): every _proof place_ of $Omega_s$ (a binding declared a proof, or a field place of one) has a type $T$ with $ok(T alpha)$.
-#why[the node and $Omega_s$ say where the checker is; $Omega_g$ says where the real run is; α is the dictionary from the checker's unknowns to the real run's values, and it grows as the walk learns more (a split tells it what a value's fields are); agreement is the promise that the two states describe the same thing once translated by α; and (Inv) says every hypothesis the checker relied on is actually true at the instance, which is what makes using a proof sound.]
+#why[a second run needs a relation saying how its states correspond to the checker's, and most of the first draft's open questions lived in that relation (Q2, Q4–Q6). With one run and one meaning there is nothing to correspond: the "other side" is mathematics, which has no states.]
 
-At the root $Omega_s beta = Omega_g$ (nothing has run yet, and the ground instance's state is by definition the generic state under β), so agreement holds, and (Inv) holds because each hypothesis's type at the generic state is true under β iff it is true at the ground instance (@lem-types). The tail rules move down the tree:
-- *[Tail-let], [Tail-seq].* The term run is not a match on data in tail position; @lem-runs gives a successful ground run and keeps agreement.
-  #why[these steps do not branch on an unknown, so both runs do the same thing; all the difficulty is inside @lem-runs, the lemma that the two paths agree.]
-- *[Tail-match].* After [Access], agreement makes the scrutinee's head constructor the same on both paths, so both take the same arm.
-  #why[when the value matched on is already known to the checker, there is nothing to decide: both runs see the same constructor.]
-- *[Tail-split] on σ.* The ground scrutinee's head is that of α(σ), say $ty("C")_i$; move to arm $i$ and extend α to the arm's fresh field values by the fields of α(σ). α respects $sigma := ty("C")_i (overline(sigma))$ and $(Omega_s [sigma := ty("C")_i (overline(sigma))]) alpha = Omega_s alpha$, so agreement and (Inv) carry over.
-  #why[this is where the checker considered every case and the real run takes one. The walk follows the arm the real value selects, and α learns the values of its fields. The checker proved every arm, so in particular the one taken.]
-- *[Tail-gen] on a sealed program $n$.* Extend α by $alpha(sigma) := "nf"(n alpha)$ (@lem-gen) and continue as for [Tail-split].
-  #why[a sealed program stands for a computation that was stuck on unknowns; at the instance it computes to a definite value, and α records that the fresh σ the checker put in its place stands for that value.]
-- *[Tail-prop].* With one arm, its field places have the field types, which are true because the scrutinee's type is; extend (Inv). With no arms, the scrutinee's type is `False` and (Inv) would make it true, so no ground instance reaches the node: ex falso. *New beyond F:* a match on a proof of a several-constructor inductive in `Prop` is erased and every arm is a proof; the scrutinee's type is true, so its meaning is inhabited by some constructor, whose fields' types are therefore true, so that arm's claim applies.
-  #why[a proof carries no data, so matching on one cannot make the runs diverge; what it yields is the truth of its fields' types. A match on `False` marks a branch that cannot happen at any real instance, since reaching it would make `False` true.]
-- *[Tail-end] (a leaf).* @lem-runs gives a successful ground run of the tail term and, by agreement, a successful pop. The symbolic result is live (reading `⊥` is an error, a borrow made by [Borrow] is live, a closed-off call's borrow row is live, and [Drop] refuses to end a borrow in flight), so the ground result is a borrow by clause (A3) of agreement (@def-agree-F: the symbolic path has ended at least the borrows the ground path has). For a lemma, the claim below gives $ok(A alpha)$; [Def] gives $A equiv G'$; by @lem-conv, $ok(G' alpha)$; and $G' alpha = G beta$ because α respects the path's refinements and records (@lem-gen), so the goal is true at β by @lem-types.
-  #why[a leaf is where the checker accepted a result. Agreement turns "the checker computed this" into "the real run computed this", and, for a lemma, "the checker proved the goal on this branch" into "the goal is true at β".]
+#explainer[symbolic execution and its soundness][_Symbolic execution_ runs a program on unknowns instead of values. Where the program branches on an unknown, the executor follows every branch, recording on each what it learned (a _path condition_, such as "$sigma = 0$"). Each symbolic state stands for many concrete situations: one for each choice of values for its unknowns that satisfies its path condition. The executor is _sound_ if each symbolic step maps every situation its state stands for to one the next state stands for. The statement is one-sided: a symbolic state may stand for _more_ situations than can really arise (an _over-approximation_), which only makes the executor more cautious. No second run is involved; the comparison is between one step and what the step means. Aeneas, the Rust verification tool whose borrow model Ochr's machine follows, proves its symbolic semantics sound against its concrete one in this style. Here the situations are not machine states but set-theoretic meanings, which is what lets them include non-computable functions.]
 
-*Which calls the walk needs, and why each is safe.* @lem-runs needs every call that the ground run makes to complete without error at the instance it is at.
-#why[these are the only points where the walk depends on code other than $d_k$'s own body; each is discharged by the induction order chosen above, except calls through function values, which need Q1.]
-- A call of an earlier definition $d_j$, $j < k$: by the induction hypothesis (i).
-- A recursive call of $d_k$: [Rec] made the symbolic decreasing argument a strict subterm of the entry value as refined; by @lem-runs the ground argument is the symbolic one under α, and α respects the refinements, so it is a strict subterm of $beta(sigma_j)$ and the pair is smaller.
-- A call made while evaluating a type: to an earlier definition, in erased mode, by (i) and @lem-modes.
-- *New beyond F:* a call through a function value. Its safety comes from the value being good (Q1), and, for a closure formed in $d_k$ that calls $d_k$, from [Rec] having checked that call against $d_k$'s entry value (principle R4, @sec-principles).
+=== Assignments and the meaning of a state
 
-*Claim: proof terms have true types.*
-#why[inside a lemma the checker accepted proof terms by typing them. This claim says typing never misrepresents truth at a real instance. It is where consistency lives: a closed proof of `False` would be a proof term whose type is false.]
-At agreeing states with (Inv), if $Omega_s tack.r t ev star : A tack.l Omega'_s$ for a proof term $t$, then $ok(A alpha)$. By induction on the derivation: `refl` has type `True`; a constructor of a proposition has true field types by induction and @lem-conv; a proof place has a true type by (Inv); a proof constant by the theorem's induction hypothesis (ii); a `let` or sequence ending in a proof by @lem-runs in erased mode; a match on a proof as for [Tail-prop]; a lemma call $L_j (overline(u))$ because its arguments' types make the hypotheses of the ground instance it is at true (@lem-call), the pair is smaller, so its goal is true there by (ii), and @lem-call transports that truth back. *New beyond F:* `J` and `rewrite` (@sec-J) and proofs that are function values.
+#thm([Definition], [assignment], [
+  Let Ω be a state the checker reaches while checking a definition. An _assignment_ $gamma$ of Ω gives each abstract value $sigma$ of Ω an element $gamma(sigma) in deno(Delta(sigma), at: gamma)$, in the order the unknowns were created (a type in Δ may mention earlier unknowns, so its meaning depends on $gamma$ at them), with $gamma(sigma)$ in $R$ at $sigma$'s type. It must satisfy the _path condition_ of Ω: for each generalisation record $n := sigma$ in force in the current world, $gamma(sigma) = deno(n, at: gamma)$. Refinements made by a split or an η-expansion substitute a constructor value for $sigma$ throughout the state, so they need no condition. An assignment of $d_k$'s generic state is a choice of arguments for $d_k$: one element of each parameter's type, including the initial content of each borrowed cell.
+]) <def-assign>
 
-The lemmas the walk uses are @lem-gen (generalisation), @lem-types (types agree), @lem-call (call types), @lem-modes (modes) and, above all, @lem-runs (runs agree), which is where the two paths meet. They are stated in @sec-dag; the next two sections give what they need.
+Nothing requires $gamma(sigma)$ to be computable. For $sigma : Pi(n : ty("Nat")). ty("Nat")$ it ranges over all functions $NN -> NN$, the characteristic function of the halting problem included; for $sigma : ty("Type")_0$, over every set in $V_(kappa_0)$; for $sigma : ty("Prop")$, over $emptyset$ and ${bullet}$.
+#why[the generic call binds each parameter to a fresh unknown, and an assignment says what those unknowns stand for. Ranging over every element of the model's sets, not only over values the machine can build, is what makes the conclusion a statement about the model's Π, which quantifies over every set function. This closes the gap all three referees found in the first draft (@sec-referees).]
+
+#explainer[information orders][An _information order_ compares two descriptions of the same thing by how much they say. A description that leaves something open is _below_ one that fills it in, and nothing it does say may contradict the other. The least element says nothing at all, and is often written ⊥, which is why the moved-out marker can be read as it. A step is _monotone_ if more information in gives more information out, or the same: a monotone step never turns "unknown" into a definite answer that more information would contradict.]
+
+#thm([Definition], [meaning of a state], [
+  Under an assignment $gamma$:
+  - $sigma$ means $gamma(sigma)$; `⋆` means •; a constructor value means its tag and its fields' meanings; a type value means its set (@def-meaning), read at the meanings of what it embeds.
+  - A sealed program #seal[$t$] means $deno(t, at: gamma)$, the meaning of running its program (Q11).
+  - A closure means a function on its annotated domain: at each element of its parameter types' meanings, the meaning of its body with the parameters bound to that element. The function may be partial, taking an error value where the body goes wrong; no accepted derivation reaches such a point. A recursive closure, or a recursive global, has a meaning through well-founded recursion on its decreasing argument, which is why passing [Rec] is part of well-formedness (@sec-wf).
+  - A loan waiting for its borrow to end is a parameter. A state with live borrows means a function from the final contents $kappa$ of its live borrows (a _completion_ of its holes) to the contents of its positions, as a function returning a borrow means a backward function (@def-meaning). An inert loan, a hole in a fill, is the parameter of that fill. We write $deno(Omega, at: gamma)$ for the meaning of Ω under $gamma$, and $deno(Omega, at: gamma)(kappa)$ at a completion $kappa$.
+  - An open dependent value means the raw tuple of its fields' meanings, which need not lie in the set its telescope describes; [Repack] is where membership is restored.
+  - `⊥` means _no information_: the least element of the order of @def-lessinfo. The model ignores linearity otherwise: a move makes a place inaccessible to the program, but changes no mathematical value.
+  A _configuration_, a state together with a term still to run, means the meaning of running the term from that state (Q11).
+]) <def-state-meaning>
+
+#why[every position of a state the checker builds now has a meaning that depends only on $gamma$ and on the final contents of the borrows still live. The fills with holes, which made the first draft's agreement hold only "up to resolution" (the `Pick` example, @sec-agree-F), are ordinary functions of the hole here; reading a place whose meaning depends on a live hole ends that borrow, which fixes the hole at the borrow's current content.]
+
+*Why `⊥` means no information.* `⊥` could instead mean the value that was moved out, which would make moves invisible and need no order. Two tests ruled that reading out (@sec-tests). A stuck block takes a place by move when some arm moves it, even if another arm _writes_ it, so the block's `⊥` would have to mean a value the writing arm contradicts. And the checker's `⊥` does not record what was moved, so the meaning of a state would need ghost data that the state does not hold. Read as no information, both problems disappear, at the price of the order below.
+
+#thm([Definition], [less informative], [
+  $deno(Omega', at: gamma) lessinfo deno(Omega, at: gamma)$ when the two meanings agree except where Ω' holds `⊥` or ends a borrow earlier: a place a stuck block took by move where the arm the assignment selects would keep it, a capture split less finely, or a borrow ended before it needs to be. A step is _exact_ when it keeps the meaning, and _over-approximating_ when its result is less informative.
+]) <def-lessinfo>
+
+=== The theorem
+
+#thm([Theorem], [meaning preservation, membership and well-formedness], [
+  Let $cal(P) = d_1 dots d_m$ be accepted and hole-free, and let the checker, while checking $d_k$, take a step from a configuration with state Ω to one with state Ω'. Suppose Ω satisfies (b) and (c). For every assignment $gamma$ of Ω:
+  - (a) _Meaning preservation._ There are a successor (one arm, for a split) and an assignment $gamma'$ of its state, extending $gamma$ to the unknowns the step created and satisfying its path condition, such that the successor's meaning under $gamma'$ equals the configuration's meaning under $gamma$, or is less informative for an over-approximating step.
+  - (b) _Membership._ Every value stored in Ω', at a binding, a temporary or in Δ, has its meaning in the meaning of its stored type, at every completion of the live holes: $deno(v, at: gamma')(kappa) in deno(T, at: gamma')$ for every $kappa$, and in $R$ there.
+  - (c) _Well-formedness._ Ω' is well formed (@sec-wf).
+  (a), (b) and (c) are proved together, by induction on the checker's derivation for $d_k$, inside an outer induction on $d_k$'s position in $cal(P)$ and the size of its decreasing argument under the assignment.
+]) <thm-mp>
+
+#why[(a) says the checker never changes what its state means, only how it writes it down; (b) says it never stores a value in a slot its type does not describe, whatever the live borrows write there later; (c) says the borrow discipline and the recursion checks that give the state a meaning still hold. None of the three suffices alone, and the first test showed it: of five past proofs of `False`, part (a) alone catches one (@sec-tests).]
+
+*For a split, every assignment has an arm.* An assignment gives the scrutinee $sigma$ an element of $deno(ty("D")(overline(a)), at: gamma)$, which is a disjoint union of its constructors' field tuples (@def-meaning). So exactly one arm's constructor matches, and $gamma$ extends to that arm's fresh field unknowns by the element's fields; the arm's refinement $sigma := ty("C")_i (overline(sigma))$ is then a substitution that changes no meaning. A split on a sealed program $n$ first generalises it to a fresh $sigma$ with the path condition $gamma(sigma) = deno(n, at: gamma)$, which $gamma$ satisfies by taking that value. So the case tree covers every assignment, and no step needs a "real" value with a head constructor, which is where the first draft's walk broke on non-computable witnesses.
+
+*Where (a) needs (b).* Most steps keep meaning by computation alone. Two kinds replace a value by a canonical one: a value whose declared type is a proposition becomes `⋆`, and a value whose declared type reads as `Unit`, or as a one-constructor type (η), becomes `()` or that constructor. Those keep meaning only if the value lies in its type's meaning: $deno(v, at: gamma) in deno(P, at: gamma) subset.eq {bullet}$, or in the one-element set $deno(ty("Unit"))$. For a stuck call that becomes `()` at a declared `Unit`, that is $deno(f, at: gamma)(overline(a)) in deno(ty("Unit"))$, membership of $f$'s meaning in its Π-type. That comes from the outer induction for an earlier global; from the outer induction at a smaller argument for a recursive call, since [Rec] made its decreasing argument a strict part of the entry value, and the strict-part relation on a least fixed point is well founded (@sec-sets); from (b) at an earlier step for a closure built earlier in the run; and from $gamma$ itself for a function parameter.
+
+*Where (b) and (c) are earned.* (b) and (c) are not consequences of (a); they are established at particular steps, and the checker's _checks_ are where. Membership of a value that leaves an open dependent value is established by [Repack] at every whole-again point, for every completion of the holes still lent from it; membership of a block's or a `J`'s sealed result by the return check at the end of each arm; and (c)'s recursion clause by [Rec]. A check that fails produces no derivation, so only its accepting direction carries an obligation, and that obligation is exactly the part of (b) or (c) the check is there to establish.
+
+*Why this is ordinary induction.* Every appeal is to an earlier step of the same derivation or to the outer hypothesis. The first draft had a cycle: soundness needed stability, stability needed a typing invariant, and the invariant needed soundness (the foundations and structure referees, @sec-referees). Here the typing invariant is (b) itself, proved step by step alongside (a). The first draft's counterexample to "declared readings survive refinement", a sealed call of an unchecked global that re-runs to a type (@lem-vdc), cannot arise: while $d_k$ is checked, every global is $d_1, dots, d_(k-1)$, checked and covered by the outer induction, or $d_k$ itself at a smaller argument.
+
+#thm([Corollary], [an accepted definition means an element of its type], [
+  Under @thm-mp and @lem-conv, for every assignment $gamma$ of $d_k$'s generic state, the meaning of $d_k$'s body (its result and the final contents of its borrowed cells) lies in $deno(G, at: gamma)$, its goal. So $deno(d_k)$, the function sending each choice of arguments to that meaning, lies in the meaning of $d_k$'s declared Π-type, and in $R$.
+]) <cor-mean>
+#proof[Follow the case tree from the root under $gamma$, using (a) at each step: every assignment reaches one leaf $(Omega', v, A)$, with an extended assignment $gamma'$. By (b), $deno(v, at: gamma') in deno(A, at: gamma')$. [Def] checked $A equiv G'$, the goal refined along the path, so by @lem-conv $deno(A, at: gamma') = deno(G', at: gamma')$, which is $deno(G, at: gamma)$ because the path's refinements are substitutions and its records are $gamma'$'s path condition. Over-approximating steps on the way make the leaf's meaning less informative than the body's, but the result and the borrowed cells' final contents are whole at a leaf ([Return]), so on them "less informative" is equality.]
+
+#thm([Corollary], [consistency], [
+  Under @thm-mp, @lem-conv and @lem-model, @target holds.
+]) <cor-cons-route>
+#proof[A parameterless definition $c$ is checked from the empty state ([Const]), which has exactly one assignment, the empty one. By @cor-mean, $deno(c) in deno(T)$ for the value $T$ of its type. If $T$ computed to `False`, then by @lem-conv $deno(T) = deno(ty("False")) = emptyset$, which has no element.]
+
+=== What the checker must satisfy <sec-wf>
+
+The theorem asks four things of the checker. None asks that a run make progress or terminate; consistency needs neither.
+
+*Well-formedness, part (c).* Backward functions mean the right thing only under the borrow discipline, so @def-state-meaning is defined only for states satisfying (WF1)–(WF6) of @sec-states (each label has at most one borrow; loans only where closing off allows; no cycles among borrows; closures capture no borrow; arguments exclusive at call points; bindings hold values of their types) and
+- (WF7) every closure and global in the state has passed [Rec], so that it has a meaning (@def-state-meaning), and `&` is applied only to types in `Type₀`, so that a borrow means forward and backward functions on data.
+This is the first draft's (T1), extended by (WF7), and not yet proved for the current rules.
+
+*Monotone computing steps.* Steps that over-approximate (a stuck block's captures by move, a capture split less finely, an early end) are harmless only if no later step turns the missing information into a definite answer that the full information would contradict. So every step that _computes_ on a state must be monotone in the order of @def-lessinfo: `Eq` and `J` computing to `True`, `False` or a value, a match choosing an arm, and [Close] choosing its row. The checker already has the instances that matter: an equation with `⊥` on either side stays stuck rather than computing (a test, `MovedBothSides`, guards it), reading `⊥` is an error, and an observed owner holding `⊥` gives a stuck equation. This is a smaller form of the first draft's monotonicity requirement: it concerns computing steps only, not every decision.
+
+*Decisions, by kind.* The first draft required every decision to come out the same on the generic call and at every instance. Here each decision falls into one of four kinds, and the census of @sec-tests sorted every one:
+- _same_: every outcome keeps the meaning, possibly given (b). η at `Unit` and at one-constructor types (the type has one element); a proof's value being `⋆`; `Eq` and `J` computing; [Split], records and re-normalisation.
+- _aligned_: the outcomes differ in meaning, so the model must make the same choice, and it can because the decision reads only syntax and declared types, which the model's meaning of code reads the same way. Whether a term is erased (run in place, or on a private copy that is thrown away, discarding writes through borrows); a function type's class; whether a statement argument runs in place; [Close]'s row. A binding's class is the decision of this kind the first draft identified, read from syntax since D77.
+- _less informative_: copy or move, and a stuck block's captures by move and splits. Harmless given monotone computing steps.
+- _check_: only accepts or rejects, so only the accepting direction needs an argument (above). Some checks establish (b), some (c), and some only protect runtime safety, which consistency does not need: the requirements that a borrow be whole when it is returned or passed to a call that closes off.
+
+*Five lemmas behind "same".* The decisions of kind _same_ rest not on one argument per site but on five lemmas: membership, part (b); the soundness of the function that reads a value's own type (`valType?`: the meaning of a value lies in the meaning of the type it reads, under every assignment), used where a type is read off an embedded value; _footprint coverage_, that the places `Id` observes include every place either side may write, under every assignment, with the extra owners at a call site handled by the call-types lemma (@lem-call) and the injectivity of contexts (T4); conversion soundness (@lem-conv); and well-formedness, part (c).
+
+=== The lemmas each step uses
+
+The step lemmas, one per checker rule, are where the principles of @sec-principles are used, read as statements about meaning:
+- worlds (X1)–(X4): leaving an arm drops every fact that depends on the arm's path condition, so the assignment that held in the arm's world is never asked to hold elsewhere; keeping such a fact is how `EtaBoom` proved `False` (@sec-risks);
+- closing off (C1)–(C9): [Close] is exact by definition, because a sealed program means its program, and (C1) is what makes the text rebuild the call;
+- locality (L1)–(L7), read as the compositionality of the meaning of code: a call's meaning changes only its result and its borrowed places (@lem-frame);
+- observation (O1)–(O5): `Id`'s computation to a conjunction over the footprint is exact by footprint coverage;
+- erasure and captures (E1)–(E5), (K1)–(K3): erased runs keep meaning because their copies are discarded, and captures are over-approximations in the sense of @def-lessinfo;
+- wholeness (W1)–(W2): every point where a value passes to code relying on its type is a point where (b) is established for it;
+- recursion (R1)–(R6): (WF7) and the outer induction.
+
+=== What the route does not give
+
+- *Runtime safety at instances.* The first draft's soundness theorem also said that an accepted data function, run on concrete inputs, completes without error (@target-sound, clause (i)). Consistency does not need this, and the present route does not prove it. If it is wanted, the superseded route (@sec-old), or a separate progress argument, is where to start; the checks that protect only runtime safety belong to it.
+- *Adequacy.* The route never shows that the machine computes the meanings it assigns: that running a closed program gives a value whose meaning is the program's. Consistency does not need this either; the corollary that an accepted `Id` lemma makes two observations equal at runtime (@cor-adeq) would.
+
+=== How the route answers the referees
+
+- _Foundations._ In the halting example (@sec-referees), the unknown $sigma_w$ ranges over every function, the halting decider included, and the stuck $n = seal(sigma_w (P_0))$ is generalised to a fresh $sigma_n$ with the path condition $gamma(sigma_n) = gamma(sigma_w)(P_0)$; the split on it covers every assignment, since the value is `Z` or `S` of something. `M`'s type holds at every set-theoretic decider by the outer induction at `M`, not vacuously.
+- _The simulation and stability._ `EtaBoom` is a step at which part (a) fails: leaving the arm kept field unknowns whose types were read under that arm's path condition, so in the sibling arm no assignment exists at all, since one field would need an element of $deno(ty("Void")) = emptyset$. The other findings (that (P) is false as first stated, that N = (P) + (C) + (Sp) is incomplete, that `Conjecture2` is false without an order) concern lemmas this route does not use.
+- _Structure._ Truth and the proof meet by construction, the cycle is gone as described above, and conversion soundness is argued under assignments rather than from (P). The missing obligation on unchecked array accesses in the checker, and Q8, remain.
 
 = The principles the checker enforces <sec-principles>
 
-The extended simulation is justified by a small number of principles, each derived from a model of one part of the calculus (dependent fields, case splitting, observation, recursion, erasure, closing off, locality), and each enforced in the checker at a single place, so that a rule cannot be forgotten by one of several code paths. Every current checker rule corresponds to one of them, and in each area probes looked for a rule the principles demand and the checker lacks. Three such gaps were found on the checker of October 2026, each a closed proof of `False`; all are fixed (@sec-risks). The principles are stated here because the simulation uses them; none is proved.
+The step lemmas of @thm-mp use a small number of principles, each derived from a model of one part of the calculus (dependent fields, case splitting, observation, recursion, erasure, closing off, locality), and each enforced in the checker at a single place, so that a rule cannot be forgotten by one of several code paths; @sec-route says which step uses which. Every current checker rule corresponds to one of them, and in each area probes looked for a rule the principles demand and the checker lacks. Three such gaps were found on the checker of October 2026, each a closed proof of `False`, and a referee found a fourth, `EtaBoom`, in the worlds principle as first written; all are fixed (@sec-risks). The principles were first stated for the superseded route's simulation; none is proved.
 
 == Locality <sec-locality>
 
@@ -559,11 +619,324 @@ _Enforced:_ one function decides whether a call belongs to a recursion entry, by
 - (O4) _All owners._ A loan can sit in several owned positions (a hole in several fills); each is observed.
 - (O5) _One order._ The conjunction is ordered by syntax, the same on both paths, since `∧` is not commutative by conversion.
 
-*Footprints at two paths.* A footprint's roots are read off syntax, so they are the same on both paths; only the owners can differ. At the generic call a borrow parameter's loan sits in one fresh cell; at an instance it may sit in several owners (O4). Every extra owner's resolved content is a function of what was written through the borrow plus parts no side writes, so if the generic statement proves the written values equal, each extra owner's equation is true too. That conversion _computes_ those equations to `True` is part of stability (@lem-P).
+*Footprints at two paths.* A footprint's roots are read off syntax, so they are the same on both paths; only the owners can differ. At the generic call a borrow parameter's loan sits in one fresh cell; at an instance it may sit in several owners (O4). Every extra owner's resolved content is a function of what was written through the borrow plus parts no side writes, so if the generic statement proves the written values equal, each extra owner's equation is true too. In the present route that is footprint coverage, through the call-types lemma (@lem-call) and the injectivity of contexts (T4); the superseded route took it from stability (@lem-P).
 
-= The simulation relation, beyond the fragment <sec-sim>
+= Tests before mechanisation <sec-tests>
 
-== The fragment F <sec-frag>
+The route is checked on paper before anything is mechanised, hardest first, following the standing preference to attack first the part most likely to fail. Four tests were planned: tests 0 and 1 independent of each other, the census audit cheap, and test 2 after test 0. Each result is summarised here; the full write-ups are the documents named.
+
+== Test 0: the model exists, on a slice <sec-test-model>
+
+*What it checks.* That the set model, stratified by universe, can be defined without circularity (Q9) on a slice containing each feature that makes the definition hard: `Nat`; a type function defined by recursion on data (`Cells(E, n)`); a type variable $A : ty("Type")_0$ with $R$ at it; a function type returning a borrow, with injective backward functions; and a Π into `Prop` over `Type₀`.
+*What would fail it.* A clause with nothing smaller to recurse on, or a meaning that is not a set. Then both routes fail, since both rest on the model.
+*Result.* Pending (the session that proposed the route; `ochr/docs/24`).
+
+== Test 1: the known proofs of `False` are failed steps <sec-test-bugs>
+
+*What it checks.* For each closed proof of `False` the checker once accepted (@sec-risks), and for the moved-out equation the test `MovedBothSides` guards, whether a part of @thm-mp fails at the buggy step and holds once the fix is in. A bug that no part catches would mean the theorem is too weak.
+
+*Result: all five are explained, and none escapes* (`ochr/docs/25`, 6 November 2026; a paper analysis, the buggy behaviour taken from each fix's commit).
+- _A returned borrow of an index field_ (`BoomI2`). [Repack] at the function's return checked the owner whole with the lent field read at its current content. Its accepting direction owes (b) for the owner at _every_ completion of the returned borrow's hole, and the caller writes another value there, at which the record's dependent field no longer fits. (b) fails; the fix, checking the lent part as an unknown of its type, restores it.
+- _A stuck `J` closed off unchecked_ (`BoomJ`). The fill left in the borrowed place means exactly what running the `J` means, so (a) holds even before the fix. (b) fails for the fill: where the endpoints are equal, it means a record whose dependent field was typed at the old index. The fix, checking each arm of a block at its end, is (b) at a producer of a sealed value.
+- _A recursive closure capturing a value it splits on_ (`BoomCapSplit`). The split keeps meaning: the refined closure means the same function, so (a) holds. [Rec] identified recursive calls by comparing function values, which the split changed without changing their meaning, so a recursive call went unchecked, and (c)'s recursion clause fails: the closure's meaning is the empty partial function, and no membership can be proved of it. The fix, recognising recursive calls by name, is syntax, which refinement does not change.
+- _`EtaBoom`._ Leaving the arm $n := ty("Z")$ kept an η-refinement whose fields were typed in that arm. In the sibling arm the field of type `Void` forced every assignment to choose an element of $emptyset$, so the arm admitted no assignment at all and could prove anything. (a) fails in its coverage part, the case the route predicted. The fix drops the refinement with its arm.
+- _`MovedBothSides`._ At the generic call a stuck block on each side of an `Id` took the same place by move, so the equation between the two `⊥` computed to `True`, though at an instance only one side moves it and the equation is false. Reading `⊥` as no information, that step is not monotone: filling in the two `⊥` differently makes the equation false. The fix keeps an equation with `⊥` on either side stuck.
+Five further soundness guards found by ablating the checker fit the same way: a match on `Z`/`S` needs a `Nat` scrutinee (coverage, in (a)); a whole read repacks, a proof field assigned while part of its value is lent is checked for every completion, and each arm of a block is checked at its end (all (b)); a borrow is formed only at `Type₀` ((b) for types, and (c)).
+
+*What it shows.* Part (a) alone catches one of the five. Two are caught by (b), quantified over the completions of the live holes, and one by (c), and in all three the step's (a) holds even before the fix. So the route stands or falls with (b) and (c) as much as with (a), and must be presented, as @thm-mp is, as one induction over all three, never as "each step keeps meaning" alone. In the first draft each bug was a disagreement between two runs; here each is local to one step and one part of the theorem. The test also favours reading `⊥` as no information: the alternative, `⊥` as the moved-out value, needs the old value, which the checker's `⊥` does not record.
+
+== The census, under the new criterion <sec-test-census>
+
+*What it checks.* Every decision the checker makes, as listed by the two-paths census (`ochr/core/notes/two-paths-census.md`), with every edge case found by ablating the checker and every remaining site that reads a value's own type (`valType?`), sorted into the kinds of @sec-wf: same, aligned, less informative, or check.
+
+*Result: everything sorts, apart from two items* (`ochr/docs/26`, 6 November 2026; read-only, on main with D80 and D81).
+- _`⊥` must mean no information._ A stuck block takes a place by move when some arm moves it, even if another arm writes it, so `⊥` read as the moved-out value would contradict that arm. Read as no information, block captures, moves and splits are less informative, and the computing steps are already monotone over `⊥` (an equation over `⊥` stays stuck; reading `⊥` is an error; an observed owner holding `⊥` gives a stuck equation). This settles Q10.
+- _Same:_ the η family, a proof's `⋆`, `Eq` and `J` computing, splits and records, the fill of a lent `Unit`. _Aligned:_ erasure, a function type's class, a statement argument's place, [Close]'s row, all read from syntax since D77 and D80. _Less informative:_ copy or move, and a block's captures. _Checks:_ the rest, each establishing (b), establishing (c), or protecting only runtime safety (the requirements that borrows be whole when returned or passed to a call that closes off).
+- _The "same" kind rests on five lemmas, not one per site:_ membership; the soundness of `valType?`; footprint coverage; conversion soundness; and well-formedness (@sec-wf).
+- _Item 1: the lent-part check may read the wrong type._ When a value is checked whole while part of it is lent, the lent part should be checked as an unknown of the borrow's _declared_ type, since the borrow may still write anything of that type there. The checker instead uses the type read off the lent part's current content (`lentUnknown`), and when that type cannot be read, as for a `Nil` whose element type no field determines, it checks the current content itself. This is a candidate gap in (b), in either route; a later whole-again check may catch the same programs. The test: a dependent record whose lent part is `Nil(A)` at the repack point, written to a `Cons` through the live borrow afterwards. The fix, if needed: read the borrow's declared type.
+- _Item 2: the class of an embedded call head._ When a call's head is a value with no written type, such as a sealed function value, its class is read off the value's Π-type. That agrees with the declared position only because Π-types of different class are not convertible (D54), and no test exercises that check. The fix: a witness test, or carrying the class with the value, as D80 does for captures.
+- _Untested invariant checks:_ that a closure in a block arm captures nothing the block borrows, in the copy-type case, and that a recursive function occurs in its body only as a call's head. Each needs a test that it rejects something.
+
+== Test 2: a higher-order slice <sec-test-ho>
+
+*What it checks.* The route on a slice with the features the first-order fragment F leaves out: function parameters ranging over every set function, a closure built in a run and called later, [Conv-fun] (functions compared by their generic observations), and a function taking a function that returns a borrow. It asks whether the first draft's hard points (`Pick`, the preservation of (A3) after a [Drop], (N3) through inert loans) disappear, or move into the meaning of a state, and it checks the census's reading of `⊥` on higher-order code.
+*Why not F.* F is first-order: no closures, no function parameters, no type families. Redoing its proof this way is at most a warm-up, and its outcome says little about the whole calculus.
+*Result.* Pending (the session that proposed the route; `ochr/docs/27`).
+
+= The lemmas and their status <sec-route-dag>
+
+@fig-route-dag draws what the present route's lemmas depend on, and @fig-route-status lists their statuses. The lemmas of the superseded route, several of which this one reuses, are in @sec-dag.
+
+#figure(
+  kind: image,
+  supplement: [Figure],
+  placement: none,
+  diagram(
+    spacing: (6pt, 20pt),
+    edge-stroke: 0.6pt + ink,
+    dn((2.6, 0), [Consistency (@cor-cons-route)], st-red, <r-cons>),
+    dn((2.6, 1), [Definitions mean elements (@cor-mean)], st-red, <r-mean>),
+    dn((0.6, 2), [Model (@lem-model)], st-paper, <r-model>),
+    dn((2.6, 2), [Meaning preservation, membership, well-formedness (@thm-mp)], st-open, <r-mp>),
+    dn((4.7, 2), [Conversion (@lem-conv)], st-paper, <r-conv>),
+    dn((0.2, 3), [Q9 model well founded], st-design, <r-q9>),
+    dn((1.5, 3), [Meaning of code (Q11)], st-design, <r-code>),
+    dn((2.8, 3), [Monotone computing steps], st-paper, <r-mono>),
+    dn((4.1, 3), [Census: two items], st-open, <r-census>),
+    dn((5.3, 3), [valType? sound], st-open, <r-vt>),
+    dn((0.9, 4), [Principles (@sec-principles)], st-paper, <r-princ>),
+    dn((2.3, 4), [Frame (@lem-frame)], st-heap, <r-frame>),
+    dn((3.7, 4), [Footprint coverage, call types (@lem-call)], st-red, <r-call>),
+    dn((5.1, 4), [(WF1)–(WF7) preserved], st-open, <r-wf>),
+    edge(<r-mean>, <r-cons>, "-|>"),
+    edge(<r-model>, <r-cons>, "-|>"),
+    edge(<r-mp>, <r-mean>, "-|>"),
+    edge(<r-conv>, <r-mean>, "-|>"),
+    edge(<r-conv>, <r-mp>, "<|-|>"),
+    edge(<r-model>, <r-mp>, "-|>"),
+    edge(<r-q9>, <r-model>, "-|>"),
+    edge(<r-code>, <r-model>, "-|>"),
+    edge(<r-code>, <r-mp>, "-|>"),
+    edge(<r-mono>, <r-mp>, "-|>"),
+    edge(<r-census>, <r-mp>, "-|>"),
+    edge(<r-vt>, <r-mp>, "-|>"),
+    edge(<r-princ>, <r-mp>, "-|>"),
+    edge(<r-frame>, <r-mp>, "-|>"),
+    edge(<r-call>, <r-mp>, "-|>"),
+    edge(<r-wf>, <r-mp>, "-|>"),
+  ),
+  caption: [The present route's lemmas and their dependencies; an arrow points from a lemma to one that uses it, and the double arrow marks the induction conversion soundness shares with the main theorem. Colours: #swatch(st-heap, [proved on the heap slice]), #swatch(st-red, [reduced]), #swatch(st-paper, [paper argument]), #swatch(st-open, [open]), #swatch(st-design, [open design question]).],
+) <fig-route-dag>
+
+#figure(
+  kind: image,
+  supplement: [Figure],
+  placement: none,
+  block(breakable: true, {
+    set text(size: 8.3pt)
+    set par(justify: false)
+    table(
+      columns: (30%, 22%, 48%),
+      stroke: none,
+      inset: (x: 4pt, y: 2.5pt),
+      align: (left, left, left),
+      table.hline(stroke: 0.5pt + ink),
+      [*Lemma*], [*Status*], [*Depends on; notes*],
+      table.hline(stroke: 0.4pt + ink),
+      [Consistency (@cor-cons-route)], [#s-red[@cor-mean, the model]], [Lean statement `Ochr.Consistency.consistency` (`sorry`)],
+      [Definitions mean elements (@cor-mean)], [#s-red[@thm-mp, @lem-conv]], [],
+      [Meaning preservation, membership, well-formedness (@thm-mp)],
+      [#s-open],
+      [one step lemma per checker rule; test 1 found every past proof of `False` to be a step where one part fails],
+      [Model (@lem-model)], [#s-paper], [conditions (I1)–(I9), all enforced by the checker; Q9; test 0],
+      [Meaning of a state (@def-state-meaning)], [#s-design], [Q11 (the meaning of code); `⊥` settled as no information (Q10)],
+      [Conversion sound (@lem-conv)], [#s-paper], [(V1)–(V8), re-argued under assignments; shares @thm-mp's induction],
+      [Monotone computing steps], [#s-paper], [the census found the checker's computing steps monotone over `⊥`],
+      [Decisions sorted (census)], [#s-open], [two items: the lent-part check's type, and an embedded call head's class],
+      [`valType?` sound], [#s-open], [one lemma about one function; D82 removes its uses at bindings],
+      [Footprint coverage and call types (@lem-call)], [#s-red[(T2), (T4)]], [the extra owners at a call site; `Pick` and inert loans],
+      [Frame (@lem-frame)], [#s-heap; #s-red[(L1)–(L7)] on checker], [`Ochr.Heap.frame`, `call_effect`; here, compositionality of the meaning of code],
+      [Well-formedness, (WF1)–(WF7)], [#s-open], [the first draft's (T1), plus (WF7); two of its checks have no test],
+      table.hline(stroke: 0.5pt + ink),
+    )
+  }),
+  caption: [Status of every lemma the present route uses.],
+) <fig-route-status>
+
+= The order of work <sec-order>
+
++ *Tests 0 and 2* (@sec-tests). Test 0 decides whether the model exists, which both routes need; test 2 tries the route on higher-order code. Test 1 and the census are done.
++ *The census's two items*: a probe of the lent-part check, and a witness test for the class check on Π-types; then a rule change for whichever needs one. Also tests for the two invariant checks that have none.
++ *Q11, the meaning of code*, written on paper, since both the model and the meaning of a sealed program need it.
++ *The model, the meaning of states and conversion soundness, on paper* (@lem-model, @def-state-meaning, @lem-conv).
++ *The step lemmas, on paper*, one per checker rule, each stating which of (a), (b) and (c) the step must keep and which it establishes, with the five lemmas behind "same" (@sec-wf). Large but routine; the standing preference is that size costs nothing and risk is what counts.
++ *The Lean statement* (Q8), and mechanisation.
+
+*What is no longer on the critical path.* The heap port (@sec-port) was recommended to make (P) provable, and the present route does not use (P). Two checker changes made for the first draft's sake are not needed for consistency either: reading copy-or-move and η at `Unit` from declared types (D80, on main), and giving every binding its declared type (D82, in progress). They still simplify the checker. D82 may also make membership easier to state against the checker, since every binding then carries the type its membership is stated at, and it removes the uses of `valType?` at bindings.
+
+= Where the plan could fail <sec-risks>
+
+The risks below are places where a lemma might be _false_, not merely unproved.
+
+*The model may not exist as the route needs it* (Q9, Q11). The model must interpret code that computes types, type variables with the injectivity relation at them, and borrows as backward functions, stratified by universe. Both routes rest on it; if it fails, both fail. Test 0 (@sec-test-model).
+
+*A state's meaning may not be definable for every state the checker builds* (Q11). Fills with holes inside the captures of stuck blocks, open dependent values, and closures over higher-order arguments are the forms to watch. Test 2 (@sec-test-ho).
+
+*The lent-part check may be unsound* (the census's first item, @sec-test-census). When part of a value is lent at a whole-again point, the check reads the type of the lent part's current content rather than the borrow's declared type, and falls back to the content itself when that type cannot be read. If no later check catches it, a borrow could still write a value that breaks the record's telescope, a gap in (b) under either route. It is being probed.
+
+*A decision's class may come from a value* (the census's second item). The class of an embedded call head is read off its Π-type, and agrees with the declared position only through a check on Π-types that no test exercises.
+
+*The well-formedness invariant may not be preserved.* The first draft's question about early ends with pairs (Q4) reappears here: an early end of a borrow must not leave a reborrow alive and readable. Two of the invariant's checks have no test.
+
+*Statements that turned out false as first written.* Mechanising the decision half of the first draft's stability lemma corrected four statements, none of them a checker bug:
+- the class and [Close] row of a function type commute with refinement only for Π-type values and only from the generic to the instance (an unknown $A : ty("Type")$ refined to a Π-type reads no class generically);
+- the [Close] row of a stuck block does not commute (an unknown match type refined to `Unit` flips it from data to `Unit`, harmlessly);
+- footprint containment fails for a refinement that makes an unknown type a borrow type (excluded by requiring borrow-free refinements, which is what refinements are);
+- declared readings survive refinement only at states of checked programs (@lem-vdc).
+Each says that stability holds for states that checked programs reach, not for arbitrary states. The present route does not use stability; membership, proved inside the induction, plays the part of the typing invariant those corrections called for (Q7).
+
+*Closed proofs of `False` found while the principles were being derived.* On the checker of October 2026, three accepted programs proved `False`, and a referee of the first draft found a fourth on 2 November; all are fixed and are now rejected tests:
+- writing through a returned borrow of an index field, so that a value's length and its dependent field disagreed while the generic path trusted the value as whole (fixed: a part still lent at a whole-again point is an unknown of its type);
+- a stuck `J` closed off without checking its borrowed places at the end of its transported term (fixed: a `J` block is checked at its return, like any block);
+- a recursive local function capturing a value it splits on: the split rewrote the capture, the recursion check identified calls by comparing function values, and missed them (fixed: recursive calls are recognised by name);
+- `EtaBoom` (@sec-referees): leaving a split arm kept the η-refinement of a one-constructor unknown, whose fields' types had been read in the arm's world, so a sibling arm reused a field typed `Void` where a `Nat` was due (fixed: an η-refinement, like a generalisation record, lives until the arm that made it ends).
+Test 1 (@sec-test-bugs) found each to be a step at which one part of @thm-mp fails: (b) for the first two, (c) for the third, (a) for the fourth. The principles of @sec-principles name the obligations and single points in the checker enforce them, and probes of five further areas found nothing; but a list of principles can be incomplete, which is what the plan exists to rule out. Independent evidence: a route that translates each accepted program into Lean and has Lean's kernel check it refused, for the second and third programs, the certificates that a checker still accepting them produced, each for the actual reason the program was wrong.
+
+*Incompletenesses are not risks, but they shape the theorem.* Several true programs are rejected because the generic call is stricter than an instance: two copies of a function that inspects its argument are not convertible; a match on a generalised call is not convertible with the call; a block's capture over-approximation rejects a closure inside a statement inside an arm, and a block that takes a place by `&` because an erased term assigns it; changing an index while a dependent field is lent is rejected even when the field's type is the same at every index; large elimination from a Forded proposition is refused at an index where only one constructor is possible; an impossible arm is refused at an unknown index. Each confirms that some steps over-approximate, so @thm-mp must allow a less informative result (@def-lessinfo), not only an equal one.
+
+*Universes in Lean* (Q8). The uniform Lean statement may be unprovable in Lean.
+
+*Rules and checker.* The Lean statement is about the checker; its correspondence with the rules is tested, not proved. A proof against the checker makes this moot; a paper proof about the rules does not.
+
+The risks specific to the superseded route (equality only up to resolution, runs stuck at `J` at concrete instances, impredicative quantification over function values) are recorded with it, and in the re-triaged questions (@sec-oq).
+
+= Open design questions, re-triaged <sec-oq>
+
+The first draft raised Q1–Q9. On 6 November 2026 they were re-triaged for the present route: each says whether it goes away, moves into the meaning of a state (@def-state-meaning), changes form, or is unchanged. Q10 and Q11 are new, and Q10 is already settled.
+
+#oq(
+  1,
+  [good ground values],
+)[_Goes away._ The first draft needed a notion of "good" function value because its soundness theorem quantified over concrete instances, and a call through a function parameter had to terminate. Here unknowns range over every element of their types (@def-assign), function parameters mean set functions in $R$, and nothing needs to terminate. First raised in @sec-sound.]
+#oq(
+  2,
+  [agreement after a block],
+)[_Moves_ into the information order (@def-lessinfo) and the monotonicity of computing steps (@sec-wf). A stuck block's over-approximated captures make the state less informative; there is no second state to disagree with.]
+#oq(
+  3,
+  [stuck equations and `J`],
+)[_Goes away for consistency._ Truth is semantic: a stuck equation means $deno(ty("Eq")(A, a, b), at: gamma)$, which is $emptyset$ or ${bullet}$ under each assignment, and nothing counts it true by fiat. A stuck `J` is closed off as a block whose meaning is transport, the identity at endpoints with equal meanings, which membership of the equation's proof guarantees. The question of concrete runs stuck at `J` concerned runtime safety, which the present route does not target.]
+#oq(
+  4,
+  [early ends with pairs],
+)[_Moves_ into well-formedness (@sec-wf). Ending a borrow early fixes its hole at the borrow's current content, which keeps meaning when the borrow is not used afterwards; a later use is an error, which ends the derivation. What remains is an invariant to preserve: no reborrow is left alive and readable after its parent ended.]
+#oq(
+  5,
+  [dependent values in the relation],
+)[_Moves_ into the meaning of a state, and simplifies. An open value means the raw tuple of its fields (@def-state-meaning), and [Repack] restores membership, for every completion of the holes still lent from it. The question of how two paths type an open field disappears with the second path. The census found one candidate gap here (@sec-test-census, item 1).]
+#oq(
+  6,
+  [resolution with moved-out contents],
+)[_Goes away._ A state's meaning is a function of its live borrows' final contents, so no resolution is needed, and `⊥` inside a live borrow means no information (Q10).]
+#oq(
+  7,
+  [the typing invariant],
+)[_Changes form._ It splits into well-formedness, part (c) of @thm-mp, which is about the borrow discipline and recursion and needs no types, and membership, part (b), which is proved inside the induction rather than assumed. The four corrections of @sec-risks were evidence that the first draft needed it.]
+#oq(
+  8,
+  [universes in Lean],
+)[_Unchanged._ Whether the Lean statement keeps one inaccessible per universe level for all levels at once (unprovable in Lean by Gödel if Ochr is as strong as Lean, which is unknown: Ochr has impredicative `Prop` and every $ty("Type")_i$, but no constructor field is a function, so it has no W-types), or is weakened to bounded universe levels (a family of theorems, one per bound, each at a fixed Lean universe), to a statement relative to an assumed model, or to a statement per program. A referee notes that without W-types the inaccessibles may be unnecessary (unverified).]
+#oq(
+  9,
+  [a well-founded definition of the model],
+)[_Unchanged, and now the main risk._ The interpretation and the injectivity relation $R$ are circular at function types, and "by induction on the type" has nothing smaller to recurse on: codomains are computed by running code, and type variables have no structure. Likely repair: define them together, each type as a set paired with its subset of good elements and each universe as a set of such pairs, stratified by universe level as in Carneiro's model of Lean; Ochr's syntactic, non-cumulative sorts help. The recursion through computed types rests on the meaning of code (Q11). Both routes rest on it; test 0 checks it on a slice (@sec-test-model). @def-inj.]
+#oq(
+  10,
+  [what `⊥` means],
+)[_New, and settled: no information._ A moved-out place could mean the value that was moved out, making moves invisible, or no information, the least element of @def-lessinfo, making moves over-approximations. The census showed the first contradicts a stuck block that takes a place by move while another arm writes it, and test 1 that it needs the old value, which the checker's `⊥` does not record (@sec-tests). So `⊥` means no information, and every computing step must be monotone over it, which the checker's steps already are.]
+#oq(
+  11,
+  [the meaning of code],
+)[_New._ The meaning $deno(t, at: gamma)$ of running an arbitrary term: state-passing, with borrows read as backward functions, holes as parameters, closures as partial functions on their annotated domains, and recursion through [Rec]. Both the model, for code that computes types (Q9), and the meaning of a sealed program (@def-state-meaning) need it. The first draft's frame property (@lem-frame) becomes the statement that this meaning is compositional: a call's meaning changes only its result and its borrowed places.]
+
+= The superseded route: a two-run walk <sec-old>
+
+The first draft of this plan, of 2 November 2026, proved consistency as a corollary of a soundness theorem, itself proved by walking the checker's case tree in step with a concrete run at each instance. It is kept below, unchanged except for this introduction and its headings, as the record of what was tried, and because parts of it remain useful.
+
+*Why it is superseded.*
+- _Truth and the proof did not meet._ Truth is defined in the set model, which quantifies over every set function, but the walk compares the checker's run only with runs at instances built from machine values. Accepted lemmas quantify over functions no machine can compute, and on those the walk cannot keep its invariants (the foundations and structure referees, @sec-referees). Repairing that would either change the model (realizability over machine values) or add a denotational soundness proof, which is what the present route is.
+- _A second run needs a relation to the first._ Agreement held only up to resolution (`Pick`), had to be an inequality because the generic call over-approximates, and needed renaming of fresh names; most of the open questions (Q2, Q4–Q6) lived in it.
+- _Its central lemma was costly, and false as first stated._ (P), that a run which never inspects an unknown behaves uniformly at every instance, is false where copy-or-move or η read a type, and `Conjecture2` is false without an order; against the current machine (P) needed either a large direct proof or the heap port. The proof also had a cycle between soundness, stability and the typing invariant.
+
+*What it gives that the present route does not.* Runtime safety at instances: that accepted data functions, run on concrete inputs, complete without error (clause (i) of @target-sound). If that is wanted, this is where to start.
+
+*What remains useful.* The principles (@sec-principles), which the present route's step lemmas use; the Lean results on decisions ((d0)–(d4) of @lem-DC); the heap-slice proofs of (P), the frame property and closing off; and the paper's proof for the fragment F.
+
+*A caveat on F.* F is first-order: no closures, no function parameters, no type families. Its proof is evidence about first-order code only, and says little about the whole calculus.
+
+== The soundness theorem <sec-sound>
+
+The paper proves the following for a first-order fragment F (@sec-frag), conditional on two assumptions restated in @sec-agree-F. The plan is to prove it for the whole calculus.
+
+#thm([Target], [soundness], [
+  Let $cal(P) = d_1 dots d_m$ be an accepted, hole-free program. For every $d_k$ and every ground instance β of $d_k$ whose values are _good_ (a notion still to be fixed; Q1 below):
+  (i) if $d_k$ is a _data function_ (its codomain is data or a borrow type), its body runs from the ground instance to completion without error, in runtime mode and in erased mode, and its frame's pop succeeds; if it returns a borrow, the result is live, not `⊥`;
+  (ii) if $d_k$ is a _lemma_ (its codomain is a proposition) and its hypotheses at β are true, its goal at β is true;
+  (iii) every function value that a run of (i) or (ii) produces is good.
+]) <target-sound>
+
+Clause (iii) is new beyond F, where there are no function values. What "good" means for a ground function value is the first open design question.
+
+#explainer[logical relations][A _logical relation_ defines, for each type, which values "behave like" that type, by induction on the type: a value is good at `Nat` if it is a numeral; a function is good at $Pi(x : A). B$ if it sends every good argument to a good result; nothing is good at `False`. One then proves the _fundamental lemma_, that every program the checker accepts is good at its type, one typing rule at a time; consistency follows because nothing is good at `False`. It is called "logical" because each clause follows the type's logical shape (good inputs to good outputs). Impredicativity is the difficulty: the clause for $Pi(P : ty("Prop")). B$ needs "good at $P$" for every proposition $P$, including that Π-type itself, so the definition is no longer by induction on anything smaller. Girard's _reducibility candidates_ fix this by quantifying over every set of values that could be a proposition's meaning, instead of over the propositions themselves; the technique is standard but technical. A first worked example, for a tiny language, is the chapter "Norm" of _Software Foundations_, volume 2.]
+
+#oq(1, [good ground values])[
+  In F every ground value is a numeral or `()`. Beyond F a ground instance can bind a parameter to a closure, and a hypothesis can be a Π-type over functions or propositions. @target-sound needs a notion of _good_ ground value that is (a) closed under what accepted code produces, (b) strong enough that calling a good closure at good arguments terminates without error and returns a good value (so (i) holds for calls through function parameters, whose bodies are not earlier definitions and are not covered by the induction), and (c) such that a good function value's meaning lies in $R$ (@def-inj). Two candidates:
+  - _A logical relation_, defined by induction on types: a closure is good at $Pi(x : A). B$ when it maps good arguments to good results. Ochr's `Prop` is impredicative, so a type like `Π(P : Prop). P → P` quantifies over all propositions, and a definition by induction on types breaks down there; it would need reducibility candidates in Girard's style, interpreted in the set model.
+  - _Definability_: quantify only over ground instances whose function values are closures formed by accepted code, and strengthen the induction to cover closures as anonymous definitions, ordered by where they were formed. Consistency only needs closed terms, whose instances are built this way, so this may suffice; it needs a measure under which a closure formed in $d_k$ and called from $d_j$ is smaller.
+  Until one is chosen, every statement below that quantifies over function values (the soundness theorem's "good ground instances", agreement clause (A6), the walk's step for a call through a function value, and the recursion lemma) is written relative to an unspecified notion of "good", and is incomplete. The features beyond F that involve no function values (dependent fields, Fording, stuck blocks and `J` over data) do not depend on this choice.
+]
+
+#thm([Corollary], [consistency, from soundness], [
+  Under @target-sound and @lem-model, @target holds.
+]) <cor-cons>
+#proof[Let $c : A$ be an accepted parameterless definition. It is checked from the empty state, which is ground, by [Const]; @target-sound (ii) with the empty instance gives $ok(T)$ for the value $T$ of $A$. By @lem-conv, a type convertible with `False` is false, since $deno(ty("False")) = emptyset$. So $T equiv.not ty("False")$.]
+
+#thm([Corollary], [adequacy of `Id`], [
+  Under @target-sound, if a lemma with codomain $ty("Id")(D, t, u)$ is accepted, then at every good ground instance whose hypotheses are true, the observations of $t$ and $u$ have equal meanings: they return equal results and leave equal contents in every place either may write, except places one of them leaves moved out.
+]) <cor-adeq>
+
+== How soundness is proved: the walk <sec-walk>
+
+#reminder[
+  - $cal(P) = d_1 dots d_m$ is the accepted program, and $d_k$ is its $k$-th definition, the one being proved; the induction may assume the theorem for every earlier $d_j$, $j < k$ (@target-sound).
+  - $d_k$ is checked at its _generic call_, where each parameter is bound to a fresh abstract value σ ([Def], @sec-typing). If $d_k$ is declared $kw("by") x_j$, $sigma_j$ is the abstract value bound to that decreasing parameter.
+  - β is a _ground instance_ of $d_k$: a valuation, giving each of those σ's a value with no unknowns in it (@sec-two-paths). So $beta(sigma_j)$ is the actual value of the decreasing parameter at that instance, and $|beta(sigma_j)|$ is its size.
+  - α is a _refinement_, an assignment of values to abstract values (@def-refinement); $alpha supset.eq beta$ means α agrees with β and also assigns the abstract values the check creates later, such as a split's fields.
+  - $d_k$'s _case tree_ is the tree its check builds: a node for each [Split] or [Split-gen] on an unknown, with one child per arm, and a leaf where a tail term ends ([Tail-end], @sec-typing).
+]
+
+*The idea.* The checker never ran a definition on real inputs: it checked each one once, at its generic call, on unknowns. To show that what it accepted is true, take any real instance β, run the definition on it for real, and walk the checker's case tree in step with that run. The tree is a finite record of every case the checker considered; the real run takes exactly one path through it, the one β selects. At every step the symbolic state and the real state are kept related, so whatever the checker concluded about the first holds of the second. At the leaf the real run reaches, the checker had established the goal for that branch, so the goal holds at β.
+
+The proof is by induction on the pairs $(k, |beta(sigma_j)|)$, ordered lexicographically, where $|v|$ is the size of the value in $d_k$'s decreasing position (read through the borrow for $\&ty("D")$; 0 without `by`). #why[a real run of $d_k$ makes calls, and each must already be known to be safe, and, for a lemma, true. There are only two kinds. A call to an earlier definition $d_j$, $j < k$, is covered by the first component: the theorem is already proved for everything earlier in the program, and a definition can only call earlier ones, so there are no cycles. A recursive call of $d_k$ itself is covered by the second: [Rec] checked that its decreasing argument is a strict part of the entry value, so it is the same theorem at a smaller input. Ordering the pairs lexicographically says exactly "assume the theorem for anything earlier in the program, and for this definition at any smaller input". It is the induction that follows the program's own call structure, and the same measure that makes accepted recursion terminate. Without `by`, a definition never calls itself, so the size plays no part.]
+
+For fixed $k$ and β, it follows $d_k$'s case tree along β and maintains five things:
+- a node of the tree with its symbolic state $Omega_s$;
+- a refinement $alpha supset.eq beta$ that covers and respects $Omega_s$;
+- the ground state $Omega_g$ the ground run of the body has reached;
+- _agreement_ $Omega_s agr(alpha) Omega_g$, the simulation relation between the two states (@def-agree);
+- for a lemma, the invariant (Inv): every _proof place_ of $Omega_s$ (a binding declared a proof, or a field place of one) has a type $T$ with $ok(T alpha)$.
+#why[the node and $Omega_s$ say where the checker is; $Omega_g$ says where the real run is; α is the dictionary from the checker's unknowns to the real run's values, and it grows as the walk learns more (a split tells it what a value's fields are); agreement is the promise that the two states describe the same thing once translated by α; and (Inv) says every hypothesis the checker relied on is actually true at the instance, which is what makes using a proof sound.]
+
+At the root $Omega_s beta = Omega_g$ (nothing has run yet, and the ground instance's state is by definition the generic state under β), so agreement holds, and (Inv) holds because each hypothesis's type at the generic state is true under β iff it is true at the ground instance (@lem-types). The tail rules move down the tree:
+- *[Tail-let], [Tail-seq].* The term run is not a match on data in tail position; @lem-runs gives a successful ground run and keeps agreement.
+  #why[these steps do not branch on an unknown, so both runs do the same thing; all the difficulty is inside @lem-runs, the lemma that the two paths agree.]
+- *[Tail-match].* After [Access], agreement makes the scrutinee's head constructor the same on both paths, so both take the same arm.
+  #why[when the value matched on is already known to the checker, there is nothing to decide: both runs see the same constructor.]
+- *[Tail-split] on σ.* The ground scrutinee's head is that of α(σ), say $ty("C")_i$; move to arm $i$ and extend α to the arm's fresh field values by the fields of α(σ). α respects $sigma := ty("C")_i (overline(sigma))$ and $(Omega_s [sigma := ty("C")_i (overline(sigma))]) alpha = Omega_s alpha$, so agreement and (Inv) carry over.
+  #why[this is where the checker considered every case and the real run takes one. The walk follows the arm the real value selects, and α learns the values of its fields. The checker proved every arm, so in particular the one taken.]
+- *[Tail-gen] on a sealed program $n$.* Extend α by $alpha(sigma) := "nf"(n alpha)$ (@lem-gen) and continue as for [Tail-split].
+  #why[a sealed program stands for a computation that was stuck on unknowns; at the instance it computes to a definite value, and α records that the fresh σ the checker put in its place stands for that value.]
+- *[Tail-prop].* With one arm, its field places have the field types, which are true because the scrutinee's type is; extend (Inv). With no arms, the scrutinee's type is `False` and (Inv) would make it true, so no ground instance reaches the node: ex falso. *New beyond F:* a match on a proof of a several-constructor inductive in `Prop` is erased and every arm is a proof; the scrutinee's type is true, so its meaning is inhabited by some constructor, whose fields' types are therefore true, so that arm's claim applies.
+  #why[a proof carries no data, so matching on one cannot make the runs diverge; what it yields is the truth of its fields' types. A match on `False` marks a branch that cannot happen at any real instance, since reaching it would make `False` true.]
+- *[Tail-end] (a leaf).* @lem-runs gives a successful ground run of the tail term and, by agreement, a successful pop. The symbolic result is live (reading `⊥` is an error, a borrow made by [Borrow] is live, a closed-off call's borrow row is live, and [Drop] refuses to end a borrow in flight), so the ground result is a borrow by clause (A3) of agreement (@def-agree-F: the symbolic path has ended at least the borrows the ground path has). For a lemma, the claim below gives $ok(A alpha)$; [Def] gives $A equiv G'$; by @lem-conv, $ok(G' alpha)$; and $G' alpha = G beta$ because α respects the path's refinements and records (@lem-gen), so the goal is true at β by @lem-types.
+  #why[a leaf is where the checker accepted a result. Agreement turns "the checker computed this" into "the real run computed this", and, for a lemma, "the checker proved the goal on this branch" into "the goal is true at β".]
+
+*Which calls the walk needs, and why each is safe.* @lem-runs needs every call that the ground run makes to complete without error at the instance it is at.
+#why[these are the only points where the walk depends on code other than $d_k$'s own body; each is discharged by the induction order chosen above, except calls through function values, which need Q1.]
+- A call of an earlier definition $d_j$, $j < k$: by the induction hypothesis (i).
+- A recursive call of $d_k$: [Rec] made the symbolic decreasing argument a strict subterm of the entry value as refined; by @lem-runs the ground argument is the symbolic one under α, and α respects the refinements, so it is a strict subterm of $beta(sigma_j)$ and the pair is smaller.
+- A call made while evaluating a type: to an earlier definition, in erased mode, by (i) and @lem-modes.
+- *New beyond F:* a call through a function value. Its safety comes from the value being good (Q1), and, for a closure formed in $d_k$ that calls $d_k$, from [Rec] having checked that call against $d_k$'s entry value (principle R4, @sec-principles).
+
+*Claim: proof terms have true types.*
+#why[inside a lemma the checker accepted proof terms by typing them. This claim says typing never misrepresents truth at a real instance. It is where consistency lives: a closed proof of `False` would be a proof term whose type is false.]
+At agreeing states with (Inv), if $Omega_s tack.r t ev star : A tack.l Omega'_s$ for a proof term $t$, then $ok(A alpha)$. By induction on the derivation: `refl` has type `True`; a constructor of a proposition has true field types by induction and @lem-conv; a proof place has a true type by (Inv); a proof constant by the theorem's induction hypothesis (ii); a `let` or sequence ending in a proof by @lem-runs in erased mode; a match on a proof as for [Tail-prop]; a lemma call $L_j (overline(u))$ because its arguments' types make the hypotheses of the ground instance it is at true (@lem-call), the pair is smaller, so its goal is true there by (ii), and @lem-call transports that truth back. *New beyond F:* `J` and `rewrite` (@sec-J) and proofs that are function values.
+
+The lemmas the walk uses are @lem-gen (generalisation), @lem-types (types agree), @lem-call (call types), @lem-modes (modes) and, above all, @lem-runs (runs agree), which is where the two paths meet. They are stated in @sec-dag; the next two sections give what they need.
+
+== The simulation relation, beyond the fragment <sec-sim>
+
+=== The fragment F <sec-frag>
 
 The paper proves @target-sound for a fragment F defined by six restrictions:
 - (F1) _Data:_ only `Nat`, `Unit`, `False`, `True`, `And`; data types `Nat` and `Unit`; borrow types `&Nat`, `&Unit`. No pairs, no user inductives.
@@ -573,7 +946,7 @@ The paper proves @target-sound for a fragment F defined by six restrictions:
 - (F5) _Proof forms:_ `refl`, pairs, proof places, lemma calls, `let`/sequence ending in a proof, matches on proofs of `And`/`True`, `match h {}` on `False`. No `J`, `rewrite` or `split`.
 - (F6) _No move out through a borrow:_ a read under `*` is written `clone(…)`.
 
-== Agreement and its assumptions, in F <sec-agree-F>
+=== Agreement and its assumptions, in F <sec-agree-F>
 
 #thm([Definition], [agreement, in F], [
   Let $Omega_s$ be a state on the symbolic path, α a valuation that covers and respects it, and $Omega_g$ a ground state with the same frames, bindings and temporaries. $Omega_s agr(alpha) Omega_g$ holds when:
@@ -608,7 +981,7 @@ The fragment's proof assumes two things, which the plan must discharge for the w
 
 Under these, the paper proves @target-sound for F. Its known risks are the preservation of (A3) after a [Drop] (an early symbolic end must be _deep_: no reborrow outlives a borrow the symbolic path ended early), the preservation of (A5) by [Close], and (N3) through re-normalisation with inert loans.
 
-== Agreement for the whole calculus, proposed <sec-agree>
+=== Agreement for the whole calculus, proposed <sec-agree>
 
 The plan extends agreement clause by clause, one feature at a time (@sec-features). The proposal below is the target; each new clause is tied to an open design question where its exact form is not settled.
 
@@ -621,7 +994,7 @@ The plan extends agreement clause by clause, one feature at a time (@sec-feature
   (A9) α respects every refinement and every generalisation record visible in the current world.
 ]) <def-agree>
 
-== Naturality, generalised <sec-nat>
+=== Naturality, generalised <sec-nat>
 
 #thm([Lemma], [naturality, step by step], [
   Let $Omega_s agr(alpha) Omega_g$ (@def-agree). For one step of any rule that succeeds from $Omega_s$ on the symbolic path:
@@ -639,9 +1012,9 @@ The plan extends agreement clause by clause, one feature at a time (@sec-feature
 - (N4) is (C) for blocks by (C9), with (K1)–(K2) making the block's captures at least the arm's effects (so the symbolic state holds `⊥` only at places some arm moves, which (A2#sub[⊑]) allows), (W1)–(W2) making every borrowed capture whole at the arm's end, and (Sp) (@lem-Sp) making the arm the ground path takes the one checked in the world of its constructor.
 - (N5) is (E1)–(E5): each path discards the copy, and what survives a copy holds in every state.
 
-== Feature by feature <sec-features>
+=== Feature by feature <sec-features>
 
-=== User inductives, pairs and dependent constructors (lifting F1)
+==== User inductives, pairs and dependent constructors (lifting F1)
 
 *What changes.* Ground values are trees of constructors; `eq` uses injectivity and disjointness; field places reach into any constructor.
 *Clauses.* (A8) is needed because observed places now have types that refinement can change (a field type read at the scrutinee's parameters); the footprint lemma's clause that observed places have the same type on both paths becomes "convertible types under α".
@@ -651,14 +1024,14 @@ The plan extends agreement clause by clause, one feature at a time (@sec-feature
   In F, an early symbolic end of a borrow comes from a hole inside a fill: [Access] or [Drop] meets the loan inside a sealed program, the ended borrow's content (reborrows included) is substituted into that same fill, which stays stuck by (C3), so the same access keeps ending loans until none remains and ends the reborrows too. This argument preserves (A3). The paper notes that pairs break it: a shallow read of one field could leave a reborrow in the other field alive on the symbolic path while the ground path ends it later. The current rules include pairs and every user inductive, so the plan needs a new argument for (A3), or a weaker (A3) that the later steps tolerate. The rule that an assignment's [Access] ends only the loans in the part of the place's content that the place owns, and the rule that a match's [Access] ends every loan inside a neutral head, are the likely ingredients.
 ]
 
-=== Closures, λ and function parameters (lifting F2)
+==== Closures, λ and function parameters (lifting F2)
 
 *What changes.* Parameters can be functions (abstract functions σ of a Π-type, refined to closures); bodies form closures; conversion compares functions by their generic observations ([Conv-fun]); a call through a neutral head closes off at once.
 *Clauses.* (A6). A closure's captures are values with no borrow (WF4), so agreement of captures under α is ordinary value agreement.
 *Principles.* (L1), (C1) with the function value embedded, (V5), (R2), (R4).
 *What it needs.* The calls through function values in @sec-walk are safe only if the function value is good, which is Q1. The modes lemma (@lem-modes) in F used that runtime and erased runs differ only in the rule for a call through a place (a call does not consume its function), which concerns function values; beyond F that difference must be shown harmless.
 
-=== Matches inside statements and stuck blocks (lifting F3, F4)
+==== Matches inside statements and stuck blocks (lifting F3, F4)
 
 *What changes.* A stuck match not in tail position is closed off as a block on the symbolic path, while the ground path runs the arm the value selects, in place. Generalisation records can now come from [Split-gen] inside statements and from $kw("split") f kw("in") t$, not only from [Tail-gen].
 *Clauses.* (A2#sub[⊑]): by (K1) a block takes each place in the strongest mode any arm needs, so the symbolic state can hold `⊥` where the ground arm left a value. By (K2) no later code reads such a place, and an equation over it is stuck. (A9) with (X1)–(X4): a record made in an arm is dropped when it ends, so α need respect only the records of the current world.
@@ -668,13 +1041,13 @@ The plan extends agreement clause by clause, one feature at a time (@sec-feature
   (A2#sub[⊑]) weakens (A2) to an ordering in which a symbolic `⊥` matches any ground value. Every use of (A2) in the fragment's proof must be rechecked against the ordering: the footprint lemma (a ground footprint position whose symbolic owner was moved by the block must be one the statement only reassigns, or one whose equation is stuck), the types-agree lemma for `Id` (a stuck equation over `⊥` on the symbolic side, a computed equation on the ground side), and the consequence that readable places agree (a place `⊥` on the symbolic side is not readable there, so the walk never meets it). Whether the ordering must also cover a borrow that the block took by `&` and that the ground arm only read is part of the question.
 ]
 
-=== Returned borrows and holes, with blocks
+==== Returned borrows and holes, with blocks
 
 *What changes.* F already has returned borrows. Beyond F a block's arms can return borrows, a returned borrow can be moved into a second call or reborrowed into a stuck call, and a hole can sit in the fills of a block's captures.
 *Clauses.* (A4) and (A5) as in F; their preservation by [Close] is (C) together with (C3).
 *Principles.* (C3), (O4), and the injectivity relation $R$ (@def-inj), which (T4) generalises: a function value's backward function must be injective, and a context holding a loan must be injective in the loan's final value. For function values formed by accepted code, injectivity is a property their body must be shown to have; for abstract functions it is part of being good (Q1).
 
-=== Dependent fields
+==== Dependent fields
 
 *What changes.* Values can be open; [Repack] checks wholeness at the points of (W1); neutrals of dependent types are trusted to be whole (W2).
 *Clauses.* (A7).
@@ -683,13 +1056,13 @@ The plan extends agreement clause by clause, one feature at a time (@sec-feature
   (A7) asks that every neutral of a dependent type denote a whole value under α, which is (W2) read semantically, and that openness match across the paths. But the paths can differ in how an open field is typed: by its content on one path and by its telescope on the other, when the two types are convertible on one path and not the other. The clause must say what an open value means in the model (a tuple whose fields each lie in _some_ type, not necessarily the telescope's) and how the two paths' typings of it relate. A proposed simplification, typing an open data field always by its content, would remove one value-dependent decision and may make this clause simpler; it is a rule change and has not been adopted.
 ]
 
-=== Fording and value parameters
+==== Fording and value parameters
 
 *What changes.* Inductives can take value parameters, have equation fields, and recur at other arguments. A case that cannot arise receives an equation that computes to `False` once its index is split.
 *Clauses.* None new. Arguments at value parameters are erased positions (E1); equation fields are proof fields (`⋆`), so they never block `eq`; an impossible arm's `match h {}` is the [Tail-prop] zero-arm case, vacuous under (Inv).
 *Model.* @def-meaning's simultaneous least fixed point over the parameter family, and (I2).
 
-=== `J` and `rewrite` (lifting F5) <sec-J>
+==== `J` and `rewrite` (lifting F5) <sec-J>
 
 *What changes.* Transport $ty("J")(A, a, b, P, h, t)$ computes to $t$ only when $a equiv b$; otherwise it is closed off as a block whose one arm is $t$. $kw("rewrite") h kw("in") t$ is `J` with the motive read off the goal.
 *Clauses.* A `J` block is a block (N4).
@@ -699,7 +1072,7 @@ The plan extends agreement clause by clause, one feature at a time (@sec-feature
   The fragment counts a stuck equation as true, which is safe there because a stuck equation arises at a ground state only from `⊥`, and no proof form eliminates it. Beyond F this is false: with congruence (`cong`), a hypothesis $ty("Eq")(Pi(n : ty("Nat")). ty("Nat"), f, g)$ between two extensionally different closures is stuck, and if it counted as true, `cong` would derive $ty("Eq")(ty("Nat"), f(0), g(0))$, which computes to `False` at a ground instance. So truth must be semantic (@def-truth), with only the `⊥` case of a stuck equation treated specially, or not at all. A second consequence: at a ground instance a hypothesis $ty("Eq")(A, a, b)$ can be true while $a equiv.not b$ (two closures with equal meanings and different code), and then a `J` in a data function's body is stuck on the ground path. Then @target-sound (i) "runs to completion" fails. Either ground runs must be shown never to reach `J` at true-but-unconvertible endpoints (plausible for closed runs, whose hypotheses are closed proofs, which can only be `refl` at such a type), or (i) must be weakened to "does not go wrong".
 ]
 
-=== Moves through borrows (lifting F6)
+==== Moves through borrows (lifting F6)
 
 *What changes.* A read under `*` may move out (`let v = *x; *x := S(v)`), so a borrow's content can hold `⊥` until it is refilled; a borrow must be whole again when it ends.
 
@@ -707,27 +1080,27 @@ The plan extends agreement clause by clause, one feature at a time (@sec-feature
   The fragment's resolution lemma ("no borrow ever holds a moved-out `⊥`") is what makes resolution defined and (T3) applicable at every state the walk visits. Beyond F6 it becomes "every borrow is whole when it ends". Resolution is then not defined at a state where some borrow's content holds `⊥`, and the walk visits such states. Either resolution must be extended (a `⊥` resolves to `⊥`, and (A2#sub[⊑]) absorbs it), or agreement must be stated only at states where every live borrow is whole, with the walk's steps grouped so that it never stops between a move out and its refill.
 ]
 
-=== Universes, type families and large elimination
+==== Universes, type families and large elimination
 
 *What changes.* Types are values that runs compute, including types computed by recursion on data (`Cells(E, n)`); large elimination from subsingletons; `Prop : Type₁`.
 *Clauses.* (A8). The generalisation lemma (@lem-gen) now covers records made at any type, so the type of a generalised value is its sealed program's type in the current world, which (X3) keeps from leaking.
 *Model.* Inaccessibles per level; a type family computed by recursion denotes the corresponding function into a universe.
 
-=== Erased positions
+==== Erased positions
 
 *What changes.* Every statement position (types, proofs, erased calls and their arguments, `J`'s endpoints and motive, the sides of `Eq`, the observations of `Id`) runs on its own copy.
 *Lemma.* (N5) and the modes lemma (@lem-modes): a data function's erased run from a ground instance completes with the same result as its runtime run. Beyond F the only difference between the modes is the rule for calls through a place (a call does not consume its function, and a closure may not move its captures), which must be shown not to change a completing run.
 
-=== Recursion
+==== Recursion
 
 *What changes.* Recursion through closures, through nested functions and block arms, and on value parameters' data.
 *Principles.* (R1)–(R6). The walk's measure is (R4)'s. The induction needs, beyond F, that the symbolic case tree covers the path the ground run takes, which is (Sp) (@lem-Sp), and that a recursive call inside a closure called later is still checked against its own entry (R2), which is how the third closed proof of `False` (@sec-risks) arose before it was fixed.
 
-= The lemmas and how they depend on each other <sec-dag>
+== The lemmas and how they depend on each other <sec-dag>
 
 This section states every lemma the plan uses, with its status and what it depends on. @fig-dag draws the dependencies and @fig-status lists the statuses.
 
-== The walk's lemmas
+=== The walk's lemmas
 
 #thm([Lemma], [generalisation], [
   Let a state $Omega_s$ be reached on the symbolic path, and let α cover and respect every abstract value of $Omega_s$ except those introduced by the generalisation records visible in the current world. Extend α by $alpha(sigma) := "nf"(n alpha)$ for each visible record $n := sigma$, in the order they were made. Then (a) the visible records are exactly those made on the path inside the current world; (b) $alpha(sigma)$ is a value of type $Delta(sigma) alpha$; (c) $(Omega_s [sigma slash n]^+) alpha = Omega_s alpha$, so generalising is invisible under α.
@@ -765,7 +1138,7 @@ _Argument._ Reads in statements move as at runtime (E5), so the runs take the sa
 ]) <lem-rec>
 _Argument._ (R4) orders every call by (definition, entry size); (R1) and (R2) make each recursive call decrease it, provided the symbolic case tree covers the path the ground run takes, which is (Sp). Calls through function values are finite because good values terminate (Q1). _Status._ #s-red[(R1)–(R6), @lem-Sp, Q1].
 
-== Stability: the two paths agree
+=== Stability: the two paths agree
 
 #thm([Lemma], [stability], [
   For every reachable state Ω, refinement α respecting Ω, and term $t$:
@@ -838,25 +1211,8 @@ _On the heap slice:_ #s-heap. A _capability executor_ runs a computation that ma
 ]) <lem-T>
 _Status._ #s-open for the current rules. On the heap design a borrow is a reference to a place: there is no resolution, and ending a borrow only clears the place's _lent_ mark (a heap checker still needs one per place, since otherwise a write through a borrow that today's checker has ended would go undetected), so (T3) becomes much simpler there, though not trivial.
 
-== The dependency graph
+=== The dependency graph
 
-#let st-lean = rgb("#c9e8c9")
-#let st-heap = rgb("#cfe0f5")
-#let st-red = rgb("#fbe5c0")
-#let st-paper = rgb("#e6dcf2")
-#let st-open = rgb("#f6cfcf")
-#let st-design = rgb("#f2f2c4")
-// A legend swatch for a status colour.
-#let swatch(fill, label) = box(fill: fill, inset: 2pt, text(fill: status-ink, label))
-#let dn(pos, label, fill, name) = node(
-  pos,
-  text(size: 7.5pt, fill: status-ink, label),
-  fill: fill,
-  stroke: 0.5pt,
-  corner-radius: 2pt,
-  inset: 4pt,
-  name: name,
-)
 
 #figure(
   kind: image,
@@ -974,9 +1330,9 @@ _Status._ #s-open for the current rules. On the heap design a borrow is a refere
   caption: [Status of every lemma.],
 ) <fig-status>
 
-= The heap port, and the order of work <sec-port>
+== The heap port, and the order of work <sec-port>
 
-== Why a port is on the critical path
+=== Why a port is on the critical path
 
 (P) is the heart of N, and N is what every model of every area rests on. Against the checker as it stands, (P) is a statement about a 116-function evaluator cycle over a state with about 30 components, and the measured cost of proving it directly is prohibitive (@lem-P). The _heap design_ changes that:
 - values are handles into a heap of nodes, and an unknown is a node with no content yet;
@@ -989,18 +1345,18 @@ Then (P) is one induction on the computation tree, proved once (`exec_agree`); f
 
 *What blocks the port.* (P) covers only runs that never ask about the unknown. The current machine walks whole values in several places (checking for holes, searching for loans, computing owners, testing for borrow types), and a walk asks about every node it passes. Measured on the heap slice over 94 runs with one unknown: (P) applies to 22 runs if reads look only where they go, and to 3 if every read walks the value it reads. So the walks must go first. A first step (branch `port-step1`) replaced the 17 walks that scan the whole environment for a borrow or a live loan with an index from loan labels to holders, kept current on every write, verified against the old scans on the whole suite with no verdict changed; the other 33 walk inside a single value and need a summary on every node (a hole flag, a loan index), which is the port's value layer itself. Two further prerequisites: tables keyed by a value's contents (generalisation records, the conversion stack, about a dozen equality tests) must be keyed by node identity, and every unknown must carry a type that refinement never changes. The heap design also replaces moving borrows and loans with references to places; that the two agree on accepted programs is measured (1,166 runs over 98 functions, no difference), not proved.
 
-== What does not depend on the port
+=== What does not depend on the port
 
 - The set model and its conditions (@lem-model), and soundness of conversion (@lem-conv), on paper.
 - All of the design questions Q1–Q9, and the proposed agreement relation (@def-agree).
 - The extended walk (@sec-walk) and the reductions of @lem-runs, @lem-stepnat, @lem-gen, @lem-types, @lem-call, @lem-rec, written conditionally on N, (M) and (T1)–(T5): this is the fragment's theorem redone for the whole calculus, conditional.
 - In Lean against the checker: the port-independent parts of @lem-DC (the scope invariants (d1) needs, the shape part of @lem-profile).
 
-== What does
+=== What does
 
 (P), (C) and the frame property for the checker itself, and probably (M), which may become free if typing is the same reified computation with types as a second output. (T3) becomes trivial on the heap design.
 
-== Recommended order
+=== Recommended order
 
 Estimates below are those recorded with the measurement of each piece, in weeks of focused agent work; no estimate exists for the paper steps.
 
@@ -1012,77 +1368,6 @@ Estimates below are those recorded with the measurement of each piece, in weeks 
 + *On the heap design, in Lean:* (P) and the frame property come with the port; (C) needs renaming invariance of fresh handles (2 to 3 weeks; the port needs it anyway) and inputs that are themselves thunks (about 1 week); (Sp) as fill and unfill of the scrutinee's node (about 1 week); (M) by a simulation (2 to 4 weeks) or by construction.
 + *The machine invariants* (T1), (T4), (T5), and @lem-vdc under the typing invariant of Q7.
 + *Assemble:* discharge the conditions of the paper theorem, and state the Lean form.
-
-= Where the plan could fail <sec-risks>
-
-The risks below are places where a lemma might be _false_, not merely unproved.
-
-*Statements that turned out false as first written.* Mechanising the decision half of stability corrected four statements, none of them a checker bug:
-- the class and [Close] row of a function type commute with refinement only for Π-type values and only from the generic to the instance (an unknown $A : ty("Type")$ refined to a Π-type reads no class generically);
-- the [Close] row of a stuck block does not commute (an unknown match type refined to `Unit` flips it from data to `Unit`, harmlessly);
-- footprint containment fails for a refinement that makes an unknown type a borrow type (excluded by requiring borrow-free refinements, which is what refinements are);
-- declared readings survive refinement only at states of checked programs (@lem-vdc).
-Each says the same thing: stability holds for states that checked programs reach, not for arbitrary states. The plan must state it relative to a typing invariant (Q7). If that invariant cannot be stated so that refinement preserves it, stability as formulated is false and the decomposition must be redone.
-
-*Equality before resolution is false.* The `Pick` example (@sec-agree-F) shows the two paths agree only after every borrow is ended, so agreement must be stated up to resolution, and every step that inspects a borrow's position must be shown not to depend on it.
-
-*Early ends with pairs* (Q4). The fragment's argument for preserving (A3) explicitly fails for pairs.
-
-*Stuck equations and `J`* (Q3). Counting stuck equations as true is false beyond F; and a ground run may get stuck at `J`, which would falsify soundness clause (i) as stated.
-
-*Impredicative quantification over functions* (Q1). If good values are defined by a logical relation, impredicative `Prop` breaks a definition by induction on types.
-
-*Closed proofs of `False` found while the principles were being derived.* On the checker of October 2026, three accepted programs proved `False`, and a referee of this plan found a fourth on 2 November; all are fixed and are now rejected tests:
-- writing through a returned borrow of an index field, so that a value's length and its dependent field disagreed while the generic path trusted the value as whole (fixed: a part still lent at a whole-again point is an unknown of its type);
-- a stuck `J` closed off without checking its borrowed places at the end of its transported term (fixed: a `J` block is checked at its return, like any block);
-- a recursive local function capturing a value it splits on: the split rewrote the capture, the recursion check identified calls by comparing function values, and missed them (fixed: recursive calls are recognised by name);
-- `EtaBoom` (@sec-referees): leaving a split arm kept the η-refinement of a one-constructor unknown, whose fields' types had been read in the arm's world, so a sibling arm reused a field typed `Void` where a `Nat` was due (fixed: an η-refinement, like a generalisation record, lives until the arm that made it ends).
-The first three were missing producer or recognition obligations; the fourth was a fact kept beyond the world in which it held. The principles of @sec-principles now name the obligations and single points in the checker enforce them, and probes of five further areas found nothing; but a list of principles can be incomplete, which is what the plan exists to rule out. Independent evidence: a route that translates each accepted program into Lean and has Lean's kernel check it refused, for the second and third programs, the certificates that a checker still accepting them produced, each for the actual reason the program was wrong.
-
-*Incompletenesses are not risks, but they shape the relation.* Several true programs are rejected because the generic path is stricter than an instance: two copies of a function that inspects its argument are not convertible; a match on a generalised call is not convertible with the call; a block's capture over-approximation rejects a closure inside a statement inside an arm, and a block that takes a place by `&` because an erased term assigns it; changing an index while a dependent field is lent is rejected even when the field's type is the same at every index; large elimination from a Forded proposition is refused at an index where only one constructor is possible; an impossible arm is refused at an unknown index. Each confirms that agreement must be an inequality (generic below instance), as (A2#sub[⊑]) and (A3) are, not an equality.
-
-*Universes in Lean* (Q8). The uniform Lean statement may be unprovable in Lean.
-
-*Rules and checker.* The Lean statement is about the checker; its correspondence with the rules is tested, not proved. A proof against the checker makes this moot; a paper proof about the rules does not.
-
-= Open design questions, collected <sec-oq>
-
-#oq(
-  1,
-  [good ground values],
-)[Which ground function values the soundness theorem quantifies over, and what makes calling one safe: a logical relation (with candidates, because of impredicative `Prop`) or definability (closures built by accepted code, with an induction over where they were formed). @sec-sound.]
-#oq(
-  2,
-  [agreement after a block],
-)[The ordering (A2#sub[⊑]) in which a symbolic `⊥` left by an over-approximated capture matches any ground value, and its effect on footprints, observations and the consequence that readable places agree. @sec-features.]
-#oq(
-  3,
-  [stuck equations and `J`],
-)[Semantic truth for `Eq` at every type; what, if anything, a stuck equation over `⊥` asserts; whether ground runs can be stuck at `J`, and if so whether soundness (i) becomes "does not go wrong". @sec-J.]
-#oq(
-  4,
-  [early ends with pairs],
-)[A new argument that an early symbolic end of a borrow leaves no reborrow alive that the ground path ends later, now that values have several fields; or a weaker (A3). @sec-features.]
-#oq(
-  5,
-  [dependent values in the relation],
-)[The meaning of an open value in the model and how the two paths' typings of an open field relate, for clause (A7). @sec-features.]
-#oq(
-  6,
-  [resolution with moved-out contents],
-)[Resolution at states where a borrow transiently holds `⊥`, or a walk that only stops at states where every live borrow is whole. @sec-features.]
-#oq(
-  7,
-  [the typing invariant],
-)[An invariant $"Inv"_"typ"$ of states reachable by checked programs: (WF1)–(WF6); every embedded value's declared reading is the reading of its value; no type value is a borrow type produced by computation; the signature is checked. It must be preserved by every machine step and by refinement, and stability (@lem-stab) is then claimed only for states satisfying it. The four statement corrections of @sec-risks are evidence that this is needed and of what it must contain.]
-#oq(
-  8,
-  [universes in Lean],
-)[Whether the Lean statement keeps one inaccessible per universe level for all levels at once (unprovable in Lean by Gödel if Ochr is as strong as Lean, which is unknown: Ochr has impredicative `Prop` and every $ty("Type")_i$, but no constructor field is a function, so it has no W-types), or is weakened to bounded universe levels (a family of theorems, one per bound, each at a fixed Lean universe), to a statement relative to an assumed model, or to a statement per program.]
-#oq(
-  9,
-  [a well-founded definition of the model],
-)[The interpretation and the injectivity relation $R$ are circular at function types, and "by induction on the type" has nothing smaller to recurse on: codomains are computed by running code, and type variables have no structure. Likely repair: define them together, each type as a set paired with its subset of good elements, and each universe as a set of such pairs; settle together with the gap between truth in the model and the soundness walk. @def-inj.]
 
 = Referee reports <sec-referees>
 
