@@ -26,7 +26,7 @@ Written on 2026-11-06 by a fork of the session that wrote `docs/18`, at the user
 - *Buggy:* the check establishes membership at κ = n_now only. At κ = Zero (what `A2e` writes) and x = O : Fin1(One), MkV(Zero, O) ∉ ⟦V⟧. **Fails.**
 - *Fixed:* `lentUnknown` checks against a fresh unknown of the lent content's type, i.e. for all κ. `GetN` is then rejected. **Holds.**
 
-**Caught by:** (b), at a check's accepting direction. It is visible only because a state with live borrows means a function of its holes. (a) is not involved.
+**Caught by:** (b), at a check's accepting direction. It is visible only because a state with live borrows means a function of its holes. (a) is not involved. Test 2 (`docs/27`) sharpens the reading: the meaning of a state reads a lent place as its *final* content, the future's φ(ℓ), and the buggy [Repack] read it as its *current* content.
 
 ### 2. A stuck `J` closed off unchecked (D75; `JBlocks`, closed `False` `BoomJ`)
 
@@ -109,7 +109,7 @@ Written on 2026-11-06 by a fork of the session that wrote `docs/18`, at the user
 
 | Bug | Step at fault | Lemma | Buggy | Fixed | Caught by |
 |---|---|---|---|---|---|
-| D73 `BoomI2` | [Repack] at a return (`repackCheck`) | (b) for all holes κ | fails | holds | (b), check's accepting direction |
+| D73 `BoomI2` | [Repack] at a return (`repackCheck`) | (b) for all holes κ (it read a lent place as its current content, not its final one) | fails | holds | (b), check's accepting direction |
 | D75 `BoomJ` | closing off a stuck `J` | (b) at the producer; (a) holds even when buggy | fails | holds | (b) at a producer |
 | D78 `BoomCapSplit` | `recCheck`'s identification of recursive calls | [Rec]'s accepting direction, part of membership (the guard never fires); (a) holds | fails | holds | (b), through the guard (first classified under the invariant) |
 | D79 EtaBoom | `exitWorld` keeping an η-refinement | (a), coverage | fails | holds | (a), path conditions |

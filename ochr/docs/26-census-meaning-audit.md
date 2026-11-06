@@ -63,7 +63,8 @@ Census sites are numbered as in the census; rows marked "abl." are the items fou
 | abl.7 | Record η: an unknown of a one-constructor type is refined when a field is moved out (`movedPlace`) | refine, or not | **same** | every element of a one-constructor type's meaning is that constructor applied; the refinement belongs to its world (D79) |
 | abl.8 | K1(a): a closure in an arm takes the places it mentions by move | ⊥ or kept | (O) **neither**, as 13b; (N) **⊑** | as 13b |
 | abl.9 | K1(b): a borrow variable used whole is taken by move | as abl.8 | (N) **⊑** | as 13b |
-| abl.14, 15, 32 | A returned borrow must be whole; borrows passed to a closing-off or erased call must be whole; M2b | accept or reject | **check** (runtime) | under (N) a hole is "no information" (⊑) and a read of it is an error; not needed for consistency in a non-affine model |
+| abl.14 | A returned borrow must be whole | accept or reject | **check** (membership); first classed runtime here, corrected after test 2 (`docs/27`) | a returned borrow holding ⊥ has a forward value with no meaning, which lies in no type; the leaf also needs wholeness to turn ⊑ into equality |
+| abl.15, 32 | Borrows passed to a closing-off or erased call must be whole; M2b | accept or reject | **check** (runtime) | under (N) a hole is "no information" (⊑) and a read of it is an error; a partial argument makes the closed-off result say nothing, which is below and harmless |
 | abl.17 | `Eq` with ⊥ stays stuck | stuck or computed | **needed** under (N), as monotonicity (two sides each ⊥ on different arms can mean different values); under (O) it guards only the affine reading (`MovedBothSides` is true in a non-affine model) | (N) |
 | abl.18 | Injectivity blocked while index fields differ | stuck or a conjunction | **same** (the conjunction means the same as sets) | needed for membership: the conjunction's second equation would be ill-typed |
 | abl.19 | A `Z`/`S` match needs a `Nat` scrutinee | accept or reject | **check** (membership) | — |
@@ -94,7 +95,7 @@ Census sites are numbered as in the census; rows marked "abl." are the items fou
 ## Guards that leave the consistency argument
 
 In a non-affine model with ⊥ read as (N), these are needed for runtime safety, `docs/18`'s clause (i), but not for consistency:
-- the whole-borrow guards (abl.14, 15, 32);
+- the whole-borrow guards for arguments (abl.15, 32). Not abl.14, "a returned borrow must be whole", which this audit first listed here: test 2 (`docs/27`) showed it is needed for membership;
 - K1(d) and K1(e)'s "the generic path moves at least what an arm moves", as far as moves go: keeping a value an arm moved agrees with a non-affine model.
 
 They stay in the checker for the runtime claim; the consistency proof does not need lemmas about them.
