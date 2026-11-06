@@ -26,6 +26,12 @@ structure Binding where
   a re-normalisation inside a capture can change (§6.3: which calls recurse is read from
   syntax). -/
   recUid : Option Nat := none
+  /-- D82: a declared type evaluated only when it is read (lazily): `(Π, w̄, i)` says it is the
+  `i`-th parameter type of the Π-type `Π` at the arguments `w̄` as they were passed, or, for `i`
+  its number of parameters, its codomain there (a `let` bound to a call) (`Machine.bindTy?`). Its
+  `ty` is `none` until then. A refinement reaches it as it reaches stored types (`mapState`). A
+  borrow's type is never deferred: what decides on borrows reads `ty` directly. -/
+  lazyTy : Option (Value × List Value × Nat) := none
 deriving Inhabited
 
 structure Frame where
@@ -162,6 +168,15 @@ structure MState where
   tailDecl : Option DeclInfo := none       -- ... handed to its tail, whose reading it is (one-shot)
   liveScope : Bool := false               -- declared-type reading: variables beyond the local scope are the top frame's
   headEval : Bool := false                -- the next `eval` is of a call's head (not classified by the pre-pass)
+  /-- D82: the next `eval`'s context reads its type (one-shot, consumed by `evalAt`). An untyped
+  run computes a term's type only then; typing always does. -/
+  wantTy : Bool := false
+  wantHere : Bool := false                -- D82: whether the term being evaluated must give its type
+  /-- D82: the next call is a `let`'s right-hand side, whose binding takes its type lazily
+  (one-shot, consumed by `evalCall`) -/
+  deferCallTy : Bool := false
+  /-- D82: the Π-type and arguments of the call just made, when its `let` defers its type -/
+  callTyLater : Option (Value × List Value) := none
   erasedDepth : Nat := 0                  -- D53: > 0 while evaluating an erased term, whose reads copy
   /-- > 0 inside a private copy (`inStatement`, `privately`): what the run does there is
   discarded with the copy, so [Frame]'s F4 check (`Machine.endTopLoan`) does not apply. -/
@@ -397,6 +412,12 @@ def freshAbs (ty : Value) : M Nat := do
   set { s with nextAbs := s.nextAbs + 1, absTy := s.absTy.push ty }
   pure s.nextAbs
 
+/-- D82: the next `eval`'s context reads its type, or not (`MState.wantTy`). -/
+def demand (b : Bool) : M Unit := modify fun s => { s with wantTy := b }
+
+/-- D82: whether the term being evaluated must give its type (`MState.wantHere`). -/
+def wanted : M Bool := do pure (← get).wantHere
+
 /-- The erasure flags of the term just evaluated (`lastErased`, `lastProof`). -/
 def getFlags : M (Bool × Bool) := do
   let s ← get
@@ -522,6 +543,11 @@ def mapState (f : Value → M Value) (types : Bool) : M Unit := do
         if let some T := (← get).env[fi]!.binds[i]!.ty then
           let T' ← withErased (f T)
           modifyFrame fi fun fr => { fr with binds := fr.binds.modify i ({ · with ty := some T' }) }
+        -- D82: a deferred parameter type's inputs, as its type would be if it had been evaluated
+        if let some (P, ws, j) := (← get).env[fi]!.binds[i]!.lazyTy then
+          let P' ← withErased (f P)
+          let ws' ← withErased (ws.mapM f)
+          modifyFrame fi fun fr => { fr with binds := fr.binds.modify i ({ · with lazyTy := some (P', ws', j) }) }
   if types then
     withErased do
       let n := (← get).absTy.size
