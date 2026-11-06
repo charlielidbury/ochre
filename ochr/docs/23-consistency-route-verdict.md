@@ -16,7 +16,7 @@ Prove consistency by **meaning preservation in the set model**, not by `docs/18`
 
 ## Agreed costs
 
-- **The set model.** It is stratified by universe as in Carneiro's model of Lean; Ochr's syntactic, non-cumulative sorts (D55) help. Each type is a set with its relation R, and `&` is read as forward and injective backward functions. This is shared with `docs/18` and is the main risk. `docs/18`'s Q9 (a well-founded definition of the model) is unchanged.
+- **The set model.** It is stratified by universe as in Carneiro's model of Lean; Ochr's syntactic, non-cumulative sorts (D55) help. Each type is a set with its relation R (amended after test 0: a type means only its good elements, so R is the meaning itself and no separate relation is needed), and `&` is read as forward and injective backward functions. This is shared with `docs/18` and is the main risk. `docs/18`'s Q9 (a well-founded definition of the model) is unchanged.
 - **⟦Ω⟧ for symbolic states.**
   - Sealed fills with holes mean functions of the live holes, and inert loans are hole parameters.
   - Open dependent values are raw field tuples, and [Repack] restores membership.
@@ -26,7 +26,7 @@ Prove consistency by **meaning preservation in the set model**, not by `docs/18`
 - **A well-formedness invariant**, preserved by every step: preservation only, no progress.
   - No aliasing live borrows.
   - Loans only where closing off allows (A.5 condition 5, the paper's unproved Assumption 11).
-  - Every closure and global in the state has passed [Rec], since a `fix` means a function only through well-founded recursion.
+  - (Amended after test 0, `docs/24`.) This bullet first read "every closure and global in the state has passed [Rec], since a `fix` means a function only through well-founded recursion". A `fix` means a function by guarded recursion whether or not it passed [Rec]: a call whose decreasing argument does not drop in rank means the error value. So [Rec] belongs to membership (the guard never fires), not to the invariant.
 - **A smaller (Mono).** An information order ⊑ for steps that over-approximate: block captures and early ends, and ⊥ if it means "no information". Every step that computes on a state (`Eq`, `J`, match, [Close]'s rows) must be ⊑-monotone. `Eq` staying stuck over ⊥ is the existing instance.
 - **The two-paths census re-run under a new criterion.** A decision is harmless when all its outcomes mean the same, or are ⊑-related; it no longer has to be identical on both paths. The known non-free decision is a binding's class (a private copy discards writes), which D77 already makes syntactic. η, copy vs move, and erasure are free given membership.
 - **One one-sided step lemma per checker step, against the real checker.** Large but routine.

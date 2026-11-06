@@ -10,7 +10,7 @@ Written on 2026-11-06 by a fork of the session that wrote `docs/18`, at the user
 - **States.** ⟦Ω⟧_ρ maps places to meanings. A state with live borrows means a *function of the final contents κ of its live holes*: ⟦Ω⟧_{ρ,κ}. A sealed program means what its text means, ⟦⌈t⌉⟧_ρ := ⟦t⟧_ρ.
 - **(a) Meaning preservation.** A step Ω, t → Ω′, t′ keeps meaning: for every ρ′ admitted by Ω′ (restricted to Ω's unknowns, ρ), running t′ from ⟦Ω′⟧_{ρ′} means what running t from ⟦Ω⟧_ρ means. Its **coverage** part: the arms of a split, together, admit every ρ the state before the split admits.
 - **(b) Membership.** Every stored value's meaning lies in its stored type's meaning, *for every completion κ of the live holes*: ⟦v⟧_{ρ,κ} ∈ ⟦T⟧_ρ.
-- **The well-formedness invariant.** Among other things, every closure and global in the state passed [Rec], which is what makes a `fix` mean a total function.
+- **The well-formedness invariant.** The borrow discipline. (This analysis first also put "every closure and global passed [Rec]" here. Test 0, `docs/24`, showed a `fix` means a function by guarded recursion whether or not it passed [Rec], a non-decreasing call meaning the error value; so [Rec] belongs to membership, (b): the guard never fires. Case 3 is re-classified accordingly.)
 - **Checks.** A check that rejects produces no derivation, so only its accepting direction carries an obligation: whatever (b) or the invariant it is there to establish.
 - **⊥.** Two readings are open (`docs/23`): (i) ⊥ means the value the place held when it was moved (a non-affine model); (ii) ⊥ means "no information", with an order ⊑ and every computing step ⊑-monotone.
 
@@ -46,11 +46,11 @@ Written on 2026-11-06 by a fork of the session that wrote `docs/18`, at the user
 
 **Step at fault.** `recCheck`, which before `c7b31b65` identified a recursive call by comparing function values (`ctx.fn == fv`). The [Split] on the captured `n` substituted inside the closure's captures, its binding of itself included, but not inside the [Rec] entry. So after the split `go(y)` was not recognised as recursive and was never checked.
 
-**Lemma.** The split itself keeps meaning: the refined closure means the same function, which is (a), and it **holds**. What fails is the accepting direction of [Rec], which the well-formedness invariant needs: "every call whose head *means* the function being defined is at a strict subterm of the entry, for every ρ".
-- *Buggy:* the identification was by representation, which the split changed without changing the meaning, so a call meaning `go` went unchecked. **Fails.** And it has to fail: ⟦go⟧ is the empty partial function (the least solution of go(y) = go(y)), so membership of `go(y)` in `False` cannot be proved, because the well-founded induction has no smaller argument.
+**Lemma.** The split itself keeps meaning: the refined closure means the same function, which is (a), and it **holds**. What fails is the accepting direction of [Rec], which membership needs (first written here as part of the well-formedness invariant; see the amendment above): "every call whose head *means* the function being defined is at a strict subterm of the entry, for every ρ".
+- *Buggy:* the identification was by representation, which the split changed without changing the meaning, so a call meaning `go` went unchecked. **Fails.** And it has to fail: under guarded recursion (`docs/24`) the call `go(y)` does not decrease, so the guard fires and ⟦go⟧ is the error value there, which is in no type, so membership of `go(y)` in `False` cannot be proved.
 - *Fixed:* recognition by name, which is syntax and is invariant under refinement. **Holds.**
 
-**Caught by:** the invariant ([Rec]), not by (a) or (b) directly. It is also exactly what `docs/23`'s re-audit criterion flags: a decision read from representation whose two outcomes ("check the call" or "skip it") do not mean the same.
+**Caught by:** membership (b), through the guard: under guarded recursion (`docs/24`) the missed call's decreasing argument does not drop, so the closure's meaning at that call is the error value, which lies in no type. This analysis first classified it under the well-formedness invariant; test 0 moved [Rec] to membership. It is also exactly what `docs/23`'s re-audit criterion flags: a decision read from representation whose two outcomes ("check the call" or "skip it") do not mean the same.
 
 ### 4. EtaBoom (D79; `ArmEta`, closed `False` `Boom`)
 
@@ -99,12 +99,12 @@ Written on 2026-11-06 by a fork of the session that wrote `docs/18`, at the user
 |---|---|---|---|---|---|
 | D73 `BoomI2` | [Repack] at a return (`repackCheck`) | (b) for all holes κ | fails | holds | (b), check's accepting direction |
 | D75 `BoomJ` | closing off a stuck `J` | (b) at the producer; (a) holds even when buggy | fails | holds | (b) at a producer |
-| D78 `BoomCapSplit` | `recCheck`'s identification of recursive calls | [Rec]'s accepting direction, in the invariant; (a) holds | fails | holds | well-formedness invariant |
+| D78 `BoomCapSplit` | `recCheck`'s identification of recursive calls | [Rec]'s accepting direction, part of membership (the guard never fires); (a) holds | fails | holds | (b), through the guard (first classified under the invariant) |
 | D79 EtaBoom | `exitWorld` keeping an η-refinement | (a), coverage | fails | holds | (a), path conditions |
 | fuzz 11014 MovedBothSides | `mkEqM` on ⊥ | (a) under (i), (Mono) under (ii) | fails | holds | (a) or (Mono), depending on ⊥ |
 
 ## Verdict
 
-The route explains all five: in each case a lemma of the route fails at the buggy step and holds at the fixed one, and no bug escapes. But the explanation is spread across the route's parts. Meaning preservation (a) alone catches only EtaBoom, and MovedBothSides under reading (i). Two of the three October bugs are caught by membership (b) quantified over the live holes, and the third by the [Rec] obligation in the well-formedness invariant. In both, the step's (a) holds even before the fix. So the route stands or falls with (b) and the invariant as much as with (a), which agrees with `docs/23`'s point 5 that they must be proved together. It would be wrong to present the route as "each step keeps meaning" alone.
+The route explains all five: in each case a lemma of the route fails at the buggy step and holds at the fixed one, and no bug escapes. But the explanation is spread across the route's parts. Meaning preservation (a) alone catches only EtaBoom, and MovedBothSides under reading (i). All three October bugs are caught by membership (b): two quantified over the live holes, the third through the guard of a recursive function ([Rec] is membership's, since test 0; this analysis first put it in the well-formedness invariant). In all three, the step's (a) holds even before the fix. So the route stands or falls with (b) as much as with (a), which agrees with `docs/23`'s point 5 that they must be proved together. It would be wrong to present the route as "each step keeps meaning" alone.
 
 In the two-run walk each bug was a disagreement between two runs. Here each is local to one step and one lemma, with no instance run, which is the simplification `docs/23` claimed. The ⊥ question leans to reading (ii): reading (i) needs ghost old values that the checker's ⊥ does not carry. And the guards that protect holes and moves (#10, #11, #14, #15) are the ones still unexplained until that choice is made.
