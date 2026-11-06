@@ -835,9 +835,39 @@ ochr LentIndex uses DepFields {
     (let r = match c { MkV(n, x) => &n, }; *r := Zero; ());
     match c { MkV(n, x) => IsSucc(clone(n)), }
   )
+  -- The lent part is read as an unknown of its content's own type (docs/26, item 2). An index
+  -- field is first-order data, so its content's type is always readable: a constructor value
+  -- records its parameters (an unwritten one is an error, `None` here needs `None[Word]`), an
+  -- unknown has its stored type, a sealed program its head's codomain. Were it unreadable, the
+  -- loan would stay in the value and fail [Repack]'s leaf check, which reads the same type.
+  def OptIdxTy (o : Opt(Word)) : Type := match o { None => One, Some(w) => Void, }
+  inductive OptIdx := MkOI(o : Opt(Word), x : OptIdxTy(o))
+  def VoidFalse (v : Void) : False := match v {}
+  -- a concrete `None` in the lent index field
+  reject def GetO (v : &OptIdx) : &Opt(Word) := (
+    *v := MkOI(None[Word], O);
+    match *v { MkOI(o, x) => &o, }
+  )
+  -- a sealed program there, typed through its head's codomain
+  def OptOf (n : Word) : Opt(Word) := match n { Zero => None[Word], Succ(m) => Some(m), }
+  reject def GetS (n : Word) (x0 : OptIdxTy(OptOf(n))) (v : &OptIdx) : &Opt(Word) := (
+    *v := MkOI(OptOf(n), x0);
+    match *v { MkOI(o, x) => &o, }
+  )
+  -- the whole attack in one closed definition, through a nested borrow of a concrete value
+  reject def DirectFalse : False := (
+    let c = MkOI(None[Word], O);
+    let b = &c;
+    let s = match *b { MkOI(o, x) => &o, };
+    *s := Some(Zero);
+    match c { MkOI(o, x) => match o { None => VoidFalse(match x {}), Some(w) => match x {}, }, }
+  )
 }
 
 #guard (run "LentIndex" LentIndex).rejectedWith [
+  ("GetO", "[Repack] a borrow of it ends, but it is open: field x of MkOI holds a value of type One, but its type from the earlier fields is ⌈OptIdxTy(σ"),
+  ("GetS", "[Repack] a borrow of it ends, but it is open: field x of MkOI holds a value of type ⌈OptIdxTy(⌈OptOf(σ"),
+  ("DirectFalse", "[Repack] a borrow of it ends, but it is open: field x of MkOI holds a value of type One, but its type from the earlier fields is ⌈OptIdxTy(σ"),
   ("GetN", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is"),
   ("A2e", "unknown constant GetN"),
   ("Boom2", "unknown constant A2e"),
