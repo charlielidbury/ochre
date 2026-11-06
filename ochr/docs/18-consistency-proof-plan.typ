@@ -148,7 +148,7 @@
 #v(0.6em)
 
 #align(center, box(width: 90%, align(left)[
-  *Summary.* The plan proves Ochr consistent by _meaning preservation_. Types are given meanings in a set model, in which `False` denotes the empty set. Every state the checker reaches while checking a definition is given a meaning too, as a function of what its unknowns stand for: an _assignment_ gives each unknown any element of its type's meaning, non-computable functions included. The central theorem has three parts, proved together by one ordinary induction: each step of the checker keeps the meaning of its state under every assignment, or loses only information; every value the checker stores lies in the meaning of its type, whatever the borrows still live may later write; and the state stays well formed. An accepted definition therefore means an element of its type, and a closed proof of `False` would be an element of the empty set. This route replaces the one the first draft followed, which compared the checker's run on unknowns with a second run at each concrete instance; three referees showed that route could not be completed as written (@sec-referees), and it is kept, marked superseded, in @sec-old. Two paper tests have already been run: every closed proof of `False` the checker once accepted is a step at which one of the theorem's three parts fails, and an audit of every decision the checker makes found two items to settle (@sec-tests). The main risk is shared by both routes: the set model must exist, including a meaning for the code that computes types (Q9, Q11).
+  *Summary.* The plan proves Ochr consistent by _meaning preservation_. Types are given meanings in a set model, in which `False` denotes the empty set. Every state the checker reaches while checking a definition is given a meaning too, as a function of what its unknowns stand for: an _assignment_ gives each unknown any element of its type's meaning, non-computable functions included. The central theorem has three parts, proved together by one ordinary induction: each step of the checker keeps the meaning of its state under every assignment, or loses only information; every value the checker stores lies in the meaning of its type, whatever the borrows still live may later write; and the state stays well formed. An accepted definition therefore means an element of its type, and a closed proof of `False` would be an element of the empty set. This route replaces the one the first draft followed, which compared the checker's run on unknowns with a second run at each concrete instance; three referees showed that route could not be completed as written (@sec-referees), and it is kept, marked superseded, in @sec-old. Two paper tests have already been run: every closed proof of `False` the checker once accepted is a step at which one of the theorem's three parts fails, and an audit of every decision the checker makes left one item to settle (@sec-tests). The main risk is shared by both routes: the set model must exist, including a meaning for the code that computes types (Q9, Q11).
 ]))
 #v(0.4em)
 
@@ -649,12 +649,12 @@ Five further soundness guards found by ablating the checker fit the same way: a 
 
 *What it checks.* Every decision the checker makes, as listed by the two-paths census (`ochr/core/notes/two-paths-census.md`), with every edge case found by ablating the checker and every remaining site that reads a value's own type (`valType?`), sorted into the kinds of @sec-wf: same, aligned, less informative, or check.
 
-*Result: everything sorts, apart from two items* (`ochr/docs/26`, 6 November 2026; read-only, on main with D80 and D81).
+*Result: everything sorts, apart from one item* (`ochr/docs/26`, 6 November 2026; read-only, on main with D80 and D81). The audit raised two; a probe has since settled the first.
 - _`⊥` must mean no information._ A stuck block takes a place by move when some arm moves it, even if another arm writes it, so `⊥` read as the moved-out value would contradict that arm. Read as no information, block captures, moves and splits are less informative, and the computing steps are already monotone over `⊥` (an equation over `⊥` stays stuck; reading `⊥` is an error; an observed owner holding `⊥` gives a stuck equation). This settles Q10.
 - _Same:_ the η family, a proof's `⋆`, `Eq` and `J` computing, splits and records, the fill of a lent `Unit`. _Aligned:_ erasure, a function type's class, a statement argument's place, [Close]'s row, all read from syntax since D77 and D80. _Less informative:_ copy or move, and a block's captures. _Checks:_ the rest, each establishing (b), establishing (c), or protecting only runtime safety (the requirements that borrows be whole when returned or passed to a call that closes off).
 - _The "same" kind rests on five lemmas, not one per site:_ membership; the soundness of `valType?`; footprint coverage; conversion soundness; and well-formedness (@sec-wf).
-- _Item 1: the lent-part check may read the wrong type._ When a value is checked whole while part of it is lent, the lent part should be checked as an unknown of the borrow's _declared_ type, since the borrow may still write anything of that type there. The checker instead uses the type read off the lent part's current content (`lentUnknown`), and when that type cannot be read, as for a `Nil` whose element type no field determines, it checks the current content itself. This is a candidate gap in (b), in either route; a later whole-again check may catch the same programs. The test: a dependent record whose lent part is `Nil(A)` at the repack point, written to a `Cons` through the live borrow afterwards. The fix, if needed: read the borrow's declared type.
-- _Item 2: the class of an embedded call head._ When a call's head is a value with no written type, such as a sealed function value, its class is read off the value's Π-type. That agrees with the declared position only because Π-types of different class are not convertible (D54), and no test exercises that check. The fix: a witness test, or carrying the class with the value, as D80 does for captures.
+- _Item 1, settled by a probe: a simplification of the proof, not a gap._ When a value is checked whole while part of it is lent, the rule checks the lent part as an unknown of the borrow's _declared_ type, since the borrow may still write anything of that type there. The checker instead uses the type read off the lent part's current content (`lentUnknown`). The audit worried about the case where that type cannot be read. A probe found that this case rejects rather than accepts: the loan stays in the value, and [Repack]'s check reads the same unreadable type and reports that the part is not of its type. The case is also effectively unreachable, since a lent index field is first-order data, whose content's type can always be read (a constructor value records its parameters, an unknown has a stored type, a sealed program has its head's codomain); four attacks and an attempted closed proof of `False` were all rejected by [Repack]. Reading the borrow's declared type, as the rule says, would change no verdict. It would only remove this check's dependence on the soundness of `valType?`, one of the five lemmas behind "same".
+- _Item 2, open: the class of an embedded call head._ When a call's head is a value with no written type, such as a sealed function value, its class is read off the value's Π-type. That agrees with the declared position only because Π-types of different class are not convertible (D54), and no test exercises that check. The fix: a witness test, or carrying the class with the value, as D80 does for captures.
 - _Untested invariant checks:_ that a closure in a block arm captures nothing the block borrows, in the copy-type case, and that a recursive function occurs in its body only as a call's head. Each needs a test that it rejects something.
 
 == Test 2: a higher-order slice <sec-test-ho>
@@ -682,7 +682,7 @@ Five further soundness guards found by ablating the checker fit the same way: a 
     dn((0.2, 3), [Q9 model well founded], st-design, <r-q9>),
     dn((1.5, 3), [Meaning of code (Q11)], st-design, <r-code>),
     dn((2.8, 3), [Monotone computing steps], st-paper, <r-mono>),
-    dn((4.1, 3), [Census: two items], st-open, <r-census>),
+    dn((4.1, 3), [Census: one item], st-open, <r-census>),
     dn((5.3, 3), [valType? sound], st-open, <r-vt>),
     dn((0.9, 4), [Principles (@sec-principles)], st-paper, <r-princ>),
     dn((2.3, 4), [Frame (@lem-frame)], st-heap, <r-frame>),
@@ -732,7 +732,7 @@ Five further soundness guards found by ablating the checker fit the same way: a 
       [Meaning of a state (@def-state-meaning)], [#s-design], [Q11 (the meaning of code); `⊥` settled as no information (Q10)],
       [Conversion sound (@lem-conv)], [#s-paper], [(V1)–(V8), re-argued under assignments; shares @thm-mp's induction],
       [Monotone computing steps], [#s-paper], [the census found the checker's computing steps monotone over `⊥`],
-      [Decisions sorted (census)], [#s-open], [two items: the lent-part check's type, and an embedded call head's class],
+      [Decisions sorted (census)], [#s-open], [one item, an embedded call head's class; reading the lent-part check's type from the borrow's declaration would only simplify the proof],
       [`valType?` sound], [#s-open], [one lemma about one function; D82 removes its uses at bindings],
       [Footprint coverage and call types (@lem-call)], [#s-red[(T2), (T4)]], [the extra owners at a call site; `Pick` and inert loans],
       [Frame (@lem-frame)], [#s-heap; #s-red[(L1)–(L7)] on checker], [`Ochr.Heap.frame`, `call_effect`; here, compositionality of the meaning of code],
@@ -746,7 +746,7 @@ Five further soundness guards found by ablating the checker fit the same way: a 
 = The order of work <sec-order>
 
 + *Tests 0 and 2* (@sec-tests). Test 0 decides whether the model exists, which both routes need; test 2 tries the route on higher-order code. Test 1 and the census are done.
-+ *The census's two items*: a probe of the lent-part check, and a witness test for the class check on Π-types; then a rule change for whichever needs one. Also tests for the two invariant checks that have none.
++ *The census's open item*: a witness test for the class check on Π-types, and a rule change if it fails. Optionally, the lent-part check can read the borrow's declared type, which changes no verdict and removes one use of `valType?`. Also tests for the two invariant checks that have none.
 + *Q11, the meaning of code*, written on paper, since both the model and the meaning of a sealed program need it.
 + *The model, the meaning of states and conversion soundness, on paper* (@lem-model, @def-state-meaning, @lem-conv).
 + *The step lemmas, on paper*, one per checker rule, each stating which of (a), (b) and (c) the step must keep and which it establishes, with the five lemmas behind "same" (@sec-wf). Large but routine; the standing preference is that size costs nothing and risk is what counts.
@@ -761,8 +761,6 @@ The risks below are places where a lemma might be _false_, not merely unproved.
 *The model may not exist as the route needs it* (Q9, Q11). The model must interpret code that computes types, type variables with the injectivity relation at them, and borrows as backward functions, stratified by universe. Both routes rest on it; if it fails, both fail. Test 0 (@sec-test-model).
 
 *A state's meaning may not be definable for every state the checker builds* (Q11). Fills with holes inside the captures of stuck blocks, open dependent values, and closures over higher-order arguments are the forms to watch. Test 2 (@sec-test-ho).
-
-*The lent-part check may be unsound* (the census's first item, @sec-test-census). When part of a value is lent at a whole-again point, the check reads the type of the lent part's current content rather than the borrow's declared type, and falls back to the content itself when that type cannot be read. If no later check catches it, a borrow could still write a value that breaks the record's telescope, a gap in (b) under either route. It is being probed.
 
 *A decision's class may come from a value* (the census's second item). The class of an embedded call head is read off its Π-type, and agrees with the declared position only through a check on Π-types that no test exercises.
 
@@ -813,7 +811,7 @@ The first draft raised Q1–Q9. On 6 November 2026 they were re-triaged for the 
 #oq(
   5,
   [dependent values in the relation],
-)[_Moves_ into the meaning of a state, and simplifies. An open value means the raw tuple of its fields (@def-state-meaning), and [Repack] restores membership, for every completion of the holes still lent from it. The question of how two paths type an open field disappears with the second path. The census found one candidate gap here (@sec-test-census, item 1).]
+)[_Moves_ into the meaning of a state, and simplifies. An open value means the raw tuple of its fields (@def-state-meaning), and [Repack] restores membership, for every completion of the holes still lent from it. The question of how two paths type an open field disappears with the second path. The census raised a doubt about the lent-part check here; a probe settled it as a simplification of the proof, not a gap (@sec-test-census).]
 #oq(
   6,
   [resolution with moved-out contents],
