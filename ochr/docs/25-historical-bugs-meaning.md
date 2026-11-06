@@ -82,6 +82,18 @@ Written on 2026-11-06 by a fork of the session that wrote `docs/18`, at the user
 
 **A cost for test 2.** Under (i), ⟦Ω⟧ is not a function of Ω: the checker's ⊥ does not record the old value, so the model would need ghost data per ⊥. Reading (ii) needs nothing extra beyond monotonicity of every computing step over ⊥. This favours (ii).
 
+### 6. Conversion over ⊥ (found after this test; `docs/28`)
+
+**Program.** `Same (n x : Nat) (h : Id(Unit, B5, B5)) : Id(Unit, B5, B6) := h` with `Bc := match n { Z => (let y = x; ()), S _ => (x := c; ()) }`, and `Boom : False := Same(S(Z), Z, refl)`. Found on 2026-11-06 while `docs/27` was being written, after this analysis; reproduced natively at `6149ec32`.
+
+**Step at fault.** `conv`, whose first test `if v == w then return true` identifies equal representations. At the generic call each side is a stuck block taking `x` by move (arm `Z` moves it, K1), so every observation leaves `x` as ⊥, and the hypothesis and the goal both compute to the stuck `Eq(Nat, ⊥, ⊥)`. D68 (case 5) keeps that equation from computing to `True`, but conversion still identifies the two types.
+
+**Lemma.** Monotonicity of a computing step over ⊥ (reading (ii)): at `n = 1` the hypothesis is `5 = 5` and the goal `5 = 6`, so identifying the two ⊥-holding types is not ⊑-monotone. **Fails.** Not (a) or (b): every step keeps meaning up to ⊑, and nothing is stored at a wrong type; the leaf's conversion check accepts.
+
+**Fixed (lane `bot-conv`, D83, not merged):** [Conv-bot], a value containing ⊥ is convertible with nothing, itself included. **Holds.**
+
+**Caught by:** (Mono), for conversion.
+
 ## Other soundness guards, treated cheaply (from `ochr/core/notes/machine-ablation.md`)
 
 | Guard (row) | Witnesses | Lemma that fails without it | Caught by |
@@ -102,9 +114,10 @@ Written on 2026-11-06 by a fork of the session that wrote `docs/18`, at the user
 | D78 `BoomCapSplit` | `recCheck`'s identification of recursive calls | [Rec]'s accepting direction, part of membership (the guard never fires); (a) holds | fails | holds | (b), through the guard (first classified under the invariant) |
 | D79 EtaBoom | `exitWorld` keeping an η-refinement | (a), coverage | fails | holds | (a), path conditions |
 | fuzz 11014 MovedBothSides | `mkEqM` on ⊥ | (a) under (i), (Mono) under (ii) | fails | holds | (a) or (Mono), depending on ⊥ |
+| `Same`/`Boom`, the fifth closed `False` (found after this test, `docs/28`) | `conv`'s identity test on two values holding ⊥ | (Mono) for conversion: two `Eq(Nat, ⊥, ⊥)` may stand for `5 = 5` and `5 = 6` | fails (open on main) | holds under [Conv-bot] (D83, branch `bot-conv`, not merged) | (Mono), not (a) or (b) |
 
 ## Verdict
 
-The route explains all five: in each case a lemma of the route fails at the buggy step and holds at the fixed one, and no bug escapes. But the explanation is spread across the route's parts. Meaning preservation (a) alone catches only EtaBoom, and MovedBothSides under reading (i). All three October bugs are caught by membership (b): two quantified over the live holes, the third through the guard of a recursive function ([Rec] is membership's, since test 0; this analysis first put it in the well-formedness invariant). In all three, the step's (a) holds even before the fix. So the route stands or falls with (b) as much as with (a), which agrees with `docs/23`'s point 5 that they must be proved together. It would be wrong to present the route as "each step keeps meaning" alone.
+The route explains all five: in each case a lemma of the route fails at the buggy step and holds at the fixed one, and no bug escapes. But the explanation is spread across the route's parts. Meaning preservation (a) alone catches only EtaBoom, and MovedBothSides under reading (i). All three October bugs are caught by membership (b): two quantified over the live holes, the third through the guard of a recursive function ([Rec] is membership's, since test 0; this analysis first put it in the well-formedness invariant). In all three, the step's (a) holds even before the fix. So the route stands or falls with (b) as much as with (a), which agrees with `docs/23`'s point 5 that they must be proved together. It would be wrong to present the route as "each step keeps meaning" alone. A fifth closed proof of `False`, found after this test (case 6), adds the remaining part: it is caught by monotonicity of a computing step, conversion, and by neither (a) nor (b).
 
 In the two-run walk each bug was a disagreement between two runs. Here each is local to one step and one lemma, with no instance run, which is the simplification `docs/23` claimed. The ⊥ question leans to reading (ii): reading (i) needs ghost old values that the checker's ⊥ does not carry. And the guards that protect holes and moves (#10, #11, #14, #15) are the ones still unexplained until that choice is made.
