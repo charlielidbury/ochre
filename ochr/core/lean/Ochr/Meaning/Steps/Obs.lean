@@ -19,11 +19,11 @@ namespace Ochr.Meaning.Steps
 open Ochr.Meaning
 
 section
-variable (K : RunCtx) (ρ : Assignment)
+variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- The reference observation of a side, if its run succeeds. -/
-noncomputable def refObs (hint : TyM) (t : Term) (s : SState) : Option (List Sem) :=
-  (run K ρ hint t s).map fun (r, s') => observation r s'
+noncomputable def refObs (hint : TyS) (t : Term) (s : SState) : Option (List Sem) :=
+  (run K ρ φ hint t s).map fun (r, s') => observation φ r s'
 
 /-- `observe` (a side on a private copy, every borrow ended, the result and the owners read): the
 result and each observed owner mean their components of the reference observation at the
@@ -33,10 +33,10 @@ theorem observe_step (st st' : MState) (fuel : Nat) (typed : Bool) (t : Term) (A
     (hg : Good K.dm K.C K.Γ ρ st)
     (h : Runs (Ochr.observe fuel typed t A W) st fuel (r, ws) st') :
     st'.core = st.core ∧
-    ∃ o, refObs K ρ (meanV K ρ noFuture .err A).asTy t (SM' K ρ st) = some o ∧
-      (∀ φ, o[0]? = some (meanV K ρ φ (meanV K ρ noFuture .err A).asTy r)) ∧
-      ∀ (φ : Future) (i j : Nat) (p : Pos), W[i]? = some p → (SM' K ρ st).positions[j]? = some p →
-        ws[i]?.map (meanV K ρ φ .err) = o.tail[j]? := by
+    ∃ o, refObs K ρ φ (.plain (meanV K ρ noFuture (.plain .err) A).asTy) t (SM' K ρ st) = some o ∧
+      o[0]? = some (meanV K ρ φ (.plain (meanV K ρ noFuture (.plain .err) A).asTy) r) ∧
+      ∀ (i j : Nat) (p : Pos), W[i]? = some p → (SM' K ρ st).positions[j]? = some p →
+        ws[i]?.map (meanV K ρ φ (.plain .err)) = o.tail[j]? := by
   sorry
 
 /-- Footprint coverage (docs/18 "Footprint coverage", the third of the five lemmas): a position
@@ -44,8 +44,8 @@ outside the footprint of the two sides means the same after either side. -/
 theorem footprint_coverage (st : MState) (A t u : Term) (p : Pos) (o₁ o₂ : List Sem) (j : Nat)
     (hg : Good K.dm K.C K.Γ ρ st)
     (hp : p ∉ footprint st.env [t, u]) (hj : (SM' K ρ st).positions[j]? = some p)
-    (h₁ : refObs K ρ (meanV K ρ noFuture .err (.sealed A)).asTy t (SM' K ρ st) = some o₁)
-    (h₂ : refObs K ρ (meanV K ρ noFuture .err (.sealed A)).asTy u (SM' K ρ st) = some o₂) :
+    (h₁ : refObs K ρ φ (.plain (meanV K ρ noFuture (.plain .err) (.sealed A)).asTy) t (SM' K ρ st) = some o₁)
+    (h₂ : refObs K ρ φ (.plain (meanV K ρ noFuture (.plain .err) (.sealed A)).asTy) u (SM' K ρ st) = some o₂) :
     o₁.tail[j]? = o₂.tail[j]? := by
   sorry
 
@@ -56,8 +56,8 @@ theorem idType_step (st st' : MState) (fuel : Nat) (typed : Bool) (A t u : Term)
     (hg : Good K.dm K.C K.Γ ρ st)
     (h : Runs (Ochr.idType fuel typed A t u) st fuel P st') :
     st'.core = st.core ∧
-    ∃ r s', run K ρ .err (.id A t u) (SM' K ρ st) = some (r, s') ∧
-      ∀ φ, ((meanV K ρ φ .err P).asTy).true ↔ ((r.1 φ).asTy).true := by
+    ∃ r s', run K ρ φ (.plain .err) (.id A t u) (SM' K ρ st) = some (r, s') ∧
+      ((meanV K ρ φ (.plain .err) P).asTy).true ↔ (r.1.asTy).true := by
   sorry
 
 /-- Owners (RULES §4): every position `owners env l` lists holds, directly or through the content

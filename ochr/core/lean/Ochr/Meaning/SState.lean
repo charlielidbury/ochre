@@ -24,7 +24,7 @@ abbrev SVal : Type 3 := Future → Sem
 (D78), the recursion it may make: the decreasing parameter and the rank its argument must stay
 below (docs/24 §4, guarded recursion: a call that does not decrease means the error value). -/
 structure SBinding : Type 3 where
-  ty : TyM
+  ty : TyS
   val : SVal
   /-- its declared-type reading (`Binding.decl`), an input of the aligned decisions -/
   decl : DeclInfo := .other
@@ -49,11 +49,11 @@ def valAt (s : SState) : Pos → SVal
     | some v => v
     | none => fun _ => .err
 
-def tyAt (s : SState) : Pos → TyM
+def tyAt (s : SState) : Pos → TyS
   | .bind f i => match s.env[f]?.bind (·.binds[i]?) with
     | some b => b.ty
-    | none => .err
-  | .temp _ _ => .err
+    | none => .plain .err
+  | .temp _ _ => .plain .err
 
 def setAt (s : SState) (p : Pos) (v : SVal) : SState :=
   match p with

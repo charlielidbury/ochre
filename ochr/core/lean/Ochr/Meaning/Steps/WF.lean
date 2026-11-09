@@ -28,7 +28,7 @@ namespace Ochr.Meaning.Steps
 open Ochr.Meaning
 
 section
-variable (K : RunCtx) (ρ : Assignment)
+variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- [Borrow] keeps (WF1)–(WF3): the fresh label is held once, at the destination; the lent
 place's content holds no live loan (after [Access]), so the borrow relation stays acyclic. -/

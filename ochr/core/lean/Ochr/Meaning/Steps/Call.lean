@@ -20,21 +20,24 @@ namespace Ochr.Meaning.Steps
 open Ochr.Meaning
 
 section
-variable (K : RunCtx) (ρ : Assignment)
+variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- The callee as the run sees it: its meaning and its type value's shape. The shape is read
 through the run of the type value (the `.pi` clause of `run`); a callee whose type is not a
 Π-type has none. -/
 noncomputable def calleeRes (fv : Value) (fT : Value) : Res :=
-  (fun φ => meanV K ρ φ .err fv,
-    match run K ρ .err (.val fT) emptyState with
-    | some ((_, T), _) => T
-    | none => ⟨.err, none, none⟩)
+  (meanV K ρ φ (.plain .err) fv,
+    match fT with
+    | .tPi caps t rd =>
+      match piShapeOf K ρ φ (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) t with
+      | some sh => ⟨(meanV K ρ φ (.plain .err) fT).asTy, some (sh.ps, sh.out), none, none⟩
+      | none => .plain .err
+    | _ => .plain .err)
 
 /-- The arguments as the run sees them, with each borrow argument's label. -/
 noncomputable def argsRes (ws : Array Value) : List Res :=
-  ws.toList.map fun w => (fun φ => meanV K ρ φ .err w,
-    ⟨.err, none, match w with | .borrow l _ => some l | _ => none⟩)
+  ws.toList.map fun w => (meanV K ρ φ (.plain .err) w,
+    ⟨.err, none, (match w with | .borrow l _ => some l | _ => none), none⟩)
 
 /-- A direct call (`callFn`, untyped or typed): below the reference's `callOf` on the callee's
 meaning, and `Good` kept. The arguments are loan-free (WF5, `ArgsLoanFree`). -/
@@ -42,8 +45,8 @@ theorem callFn_step (st st' : MState) (fuel : Nat) (typed : Bool) (fv : Value) (
     (ws : Array Value) (tys : Array (Option Value)) (hd : Bool) (v : Value) (T? : Option Value)
     (hg : Good K.dm K.C K.Γ ρ st) (hargs : ArgsLoanFree st.env ws)
     (h : Runs (Ochr.callFn fuel typed fv (some fT) ws tys hd) st fuel (v, T?) st') :
-    ∃ r s', callOf (calleeRes K ρ fv fT) (argsRes K ρ ws) (SM' K ρ st) = some (r, s') ∧
-      (∀ φ, meanV K ρ φ r.2.m v ⊑ r.1 φ) ∧
+    ∃ r s', callOf (calleeRes K ρ φ fv fT) (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
+      meanV K ρ φ r.2 v ⊑ r.1 ∧
       Below (MState.mean K.dm K.C K.Γ ρ st') s'.toMean ∧ Good K.dm K.C K.Γ ρ st' := by
   sorry
 
@@ -54,8 +57,8 @@ theorem runBody_step (st st' : MState) (fuel : Nat) (fv : Value) (cs : List Valu
     (hg : Good K.dm K.C K.Γ ρ st) (hargs : ArgsLoanFree st.env ws)
     (hfv : fv = .clo cs t rd ∨ ∃ n, fv = .gfn n)
     (h : Runs (Ochr.runBody fuel fv cs t rd ws) st fuel v st') :
-    ∃ r s', callOf (calleeRes K ρ fv fT) (argsRes K ρ ws) (SM' K ρ st) = some (r, s') ∧
-      (∀ φ, meanV K ρ φ r.2.m v ⊑ r.1 φ) ∧
+    ∃ r s', callOf (calleeRes K ρ φ fv fT) (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
+      meanV K ρ φ r.2 v ⊑ r.1 ∧
       Below (MState.mean K.dm K.C K.Γ ρ st') s'.toMean ∧ Good K.dm K.C K.Γ ρ st' := by
   sorry
 
@@ -66,8 +69,8 @@ theorem closeCall_step (st st' : MState) (fuel : Nat) (fv : Value) (fT : Value) 
     (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)) (v : Value)
     (hg : Good K.dm K.C K.Γ ρ st) (hargs : ArgsLoanFree st.env ws)
     (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st fuel v st') :
-    ∃ r s', callOf (calleeRes K ρ fv fT) (argsRes K ρ ws) (SM' K ρ st) = some (r, s') ∧
-      (∀ φ, meanV K ρ φ r.2.m v = r.1 φ) ∧
+    ∃ r s', callOf (calleeRes K ρ φ fv fT) (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
+      meanV K ρ φ r.2 v = r.1 ∧
       Exact (MState.mean K.dm K.C K.Γ ρ st') s'.toMean ∧ Good K.dm K.C K.Γ ρ st' := by
   sorry
 
@@ -77,11 +80,11 @@ theorem callType_step (st st' : MState) (fuel : Nat) (piTy : Value) (ws : Array 
     (tys : Array (Option Value)) (B : Value)
     (hg : Good K.dm K.C K.Γ ρ st)
     (h : Runs (Ochr.callType fuel piTy ws tys) st fuel B st') :
-    ∀ ps out, (calleeRes K ρ .proof piTy).2.shape = some (ps, out) →
-      (meanV K ρ noFuture .err B).asTy =
+    ∀ ps out, (calleeRes K ρ φ .proof piTy).2.shape = some (ps, out) →
+      (meanV K ρ noFuture (.plain .err) B).asTy =
         (match out with
-          | .data B' => B' ((argsRes K ρ ws).map (·.1 noFuture))
-          | .ref U => U ((argsRes K ρ ws).map (·.1 noFuture))) := by
+          | .data B' => B' ((argsRes K ρ φ ws).map (·.1))
+          | .ref U => U ((argsRes K ρ φ ws).map (·.1))) := by
   sorry
 
 /-- [Rec]'s accepting direction (`recCheck`), semantically: for a recursive function whose every
@@ -92,7 +95,7 @@ meaning is a member of its Π-type. -/
 theorem recCheck_sound (st : MState) (fv : Value) (fT : Value)
     (hg : Good K.dm K.C K.Γ ρ st)
     (hacc : ∃ fuel st', Runs (Ochr.checkFix fuel fv [] (match fv with | .clo _ t _ => t | _ => .tt)) st fuel () st') :
-    ∀ φ, meanV K ρ φ .err fv ∈ₛ (meanV K ρ φ .err fT).asTy := by
+    meanV K ρ φ (.plain .err) fv ∈ₛ (meanV K ρ φ (.plain .err) fT).asTy := by
   sorry
 
 end
