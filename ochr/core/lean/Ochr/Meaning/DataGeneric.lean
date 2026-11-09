@@ -962,3 +962,532 @@ theorem Tele.directed {X : Fam} (PX : ∀ {ps Z}, LPred Z → X ps Z → Prop)
         (fun k t ht => hm k _ n _ t ht) (Nat.le_max_right _ _) k h₂
 
 end teleLaws
+
+/-! ## Laws of stages, by induction on the stage -/
+
+section stageLaws
+variable (S : Sig) (M : Nat → NModel)
+
+theorem sraw_emb : ∀ (k : Nat) {ps : List Sem} {Z : Nat → TyM} (r : LRaw Z) (y : stage S M k ps Z),
+    sraw S M (k + 1) r (emb S M k y) = sraw S M k r y
+  | 0, _, _, _, y => y.elim
+  | k + 1, _, _, r, ⟨c, t⟩ => by
+    simp only [emb, sraw]
+    congr 1
+    refine (Tele.raw_mapX S M _ _ r _ _ _ t).trans ?_
+    exact Tele.raw_congr S M _ _ (fun _ _ r y => sraw_emb k r y) r _ _ _ t
+
+theorem sraw_rel : ∀ (k₁ k₂ : Nat) {ps : List Sem} {Z₁ Z₂ : Nat → TyM} (r₁ r₁' : LRaw Z₁)
+    (r₂ r₂' : LRaw Z₂) (y₁ : stage S M k₁ ps Z₁) (y₂ : stage S M k₂ ps Z₂),
+    LRel r₁ r₁' r₂ r₂' → sraw S M k₁ r₁ y₁ = sraw S M k₂ r₂ y₂ →
+      sraw S M k₁ r₁' y₁ = sraw S M k₂ r₂' y₂
+  | 0, _, _, _, _, _, _, _, _, y₁, _, _, _ => y₁.elim
+  | _ + 1, 0, _, _, _, _, _, _, _, _, y₂, _, _ => y₂.elim
+  | k₁ + 1, k₂ + 1, _, _, _, r₁, r₁', r₂, r₂', ⟨c₁, t₁⟩, ⟨c₂, t₂⟩, hr, h => by
+    simp only [sraw, Sem.ctor.injEq, true_and] at h ⊢
+    obtain ⟨hc, ht⟩ := h
+    obtain rfl : c₁ = c₂ := Fin.ext hc
+    refine ⟨rfl, Tele.raw_rel S M _ _ ?_ r₁ r₁' r₂ r₂' hr _ _ _ t₁ t₂ ht⟩
+    intro ps Za Zb ra ra' rb rb' ya yb hab hy
+    exact sraw_rel k₁ k₂ ra ra' rb rb' ya yb hab hy
+
+theorem sraw_inj : ∀ (k : Nat) {ps : List Sem} {Z : Nat → TyM} (r : LRaw Z),
+    (∀ j, Function.Injective (r j)) → Function.Injective (sraw S M k (ps := ps) r)
+  | 0, _, _, _, _, y, _, _ => y.elim
+  | k + 1, _, _, r, hr, ⟨c₁, t₁⟩, ⟨c₂, t₂⟩, h => by
+    simp only [sraw, Sem.ctor.injEq, true_and] at h
+    obtain ⟨hc, ht⟩ := h
+    obtain rfl : c₁ = c₂ := Fin.ext hc
+    obtain rfl := Tele.raw_inj S M (X := stage S M k) (fun r y => sraw S M k r y)
+      (fun _ _ r hr => sraw_inj k r hr) r hr _ _ _ t₁ t₂ ht
+    rfl
+
+theorem sraw_smap : ∀ (k : Nat) {ps : List Sem} {Z Z' : Nat → TyM} (f : LMap Z Z') (r : LRaw Z')
+    (y : stage S M k ps Z), sraw S M k r (smap S M k f y) = sraw S M k (fun j => r j ∘ f j) y
+  | 0, _, _, _, _, _, y => y.elim
+  | k + 1, _, _, _, f, r, ⟨c, t⟩ => by
+    simp only [smap, sraw]
+    congr 1
+    exact Tele.raw_mapZ S M (X := stage S M k) (fun f y => smap S M k f y) (fun r y => sraw S M k r y)
+      (fun _ _ _ f r y => sraw_smap k f r y) f r _ _ _ t
+
+theorem smap_id : ∀ (k : Nat) {ps : List Sem} {Z : Nat → TyM} (f : LMap Z Z),
+    (∀ j a, f j a = a) → ∀ y : stage S M k ps Z, smap S M k f y = y
+  | 0, _, _, _, _, y => y.elim
+  | k + 1, _, _, f, hf, ⟨c, t⟩ => by
+    simp only [smap]
+    congr 1
+    exact Tele.mapZ_id S M (X := stage S M k) (fun f y => smap S M k f y)
+      (fun _ _ f y hf => smap_id k f hf y) f hf _ _ _ t
+
+theorem smap_comp : ∀ (k : Nat) {ps : List Sem} {Z Z' Z'' : Nat → TyM} (f : LMap Z Z')
+    (g : LMap Z' Z'') (y : stage S M k ps Z),
+    smap S M k g (smap S M k f y) = smap S M k (fun j => g j ∘ f j) y
+  | 0, _, _, _, _, _, _, y => y.elim
+  | k + 1, _, _, _, _, f, g, ⟨c, t⟩ => by
+    simp only [smap]
+    congr 1
+    exact Tele.mapZ_comp S M (X := stage S M k) (fun f y => smap S M k f y)
+      (fun _ _ _ _ f g y => smap_comp k f g y) f g _ _ _ t
+
+theorem sallL_mono : ∀ (k : Nat) {ps : List Sem} {Z : Nat → TyM} (P Q : LPred Z)
+    (y : stage S M k ps Z), (∀ j a, P j a → Q j a) → sallL S M k P y → sallL S M k Q y
+  | 0, _, _, _, _, y, _, _ => y.elim
+  | k + 1, _, _, P, Q, ⟨_, t⟩, hPQ, h =>
+    Tele.allL_mono S M (X := stage S M k) (fun P y => sallL S M k P y)
+      (fun _ _ P Q y hPQ => sallL_mono k P Q y hPQ) P Q hPQ _ _ _ t h
+
+theorem sallL_true : ∀ (k : Nat) {ps : List Sem} {Z : Nat → TyM} (y : stage S M k ps Z),
+    sallL S M k (fun _ _ => True) y
+  | 0, _, _, y => y.elim
+  | k + 1, _, _, ⟨_, t⟩ =>
+    Tele.allL_true S M (X := stage S M k) (fun P y => sallL S M k P y)
+      (fun _ _ P Q y hPQ => sallL_mono S M k P Q y hPQ) (fun _ _ y => sallL_true k y) _ _ _ t
+
+theorem slift : ∀ (k : Nat) {ps : List Sem} {Z Z' : Nat → TyM} (f : LMap Z Z')
+    (y : stage S M k ps Z'), sallL S M k (fun j b => ∃ a, f j a = b) y → ∃ x, smap S M k f x = y
+  | 0, _, _, _, _, y, _ => y.elim
+  | k + 1, _, _, _, f, ⟨c, t⟩, h => by
+    obtain ⟨t₀, rfl⟩ := Tele.lift S M (X := stage S M k) (fun f y => smap S M k f y)
+      (fun P y => sallL S M k P y) (fun _ _ P Q y hPQ => sallL_mono S M k P Q y hPQ)
+      (fun _ _ _ f y hy => slift k f y hy) f _ _ _ t h
+    exact ⟨⟨c, t₀⟩, rfl⟩
+
+theorem sdirected : ∀ (k : Nat) {ps : List Sem} {Z : Nat → TyM} (P : Nat → LPred Z)
+    (y : stage S M k ps Z), (∀ m j a, P m j a → P (m + 1) j a) →
+    sallL S M k (fun j a => ∃ m, P m j a) y → ∃ m, sallL S M k (P m) y
+  | 0, _, _, _, y, _, _ => y.elim
+  | k + 1, _, _, P, ⟨_, t⟩, hP, h =>
+    Tele.directed S M (X := stage S M k) (fun P y => sallL S M k P y)
+      (fun _ _ P Q y hPQ => sallL_mono S M k P Q y hPQ)
+      (fun _ _ P y hP hy => sdirected k P y hP hy) P hP _ _ _ t h
+
+end stageLaws
+
+/-! ## The colimit -/
+
+section colimit
+variable (S : Sig) (M : Nat → NModel)
+
+/-- Two stage members are one member of the colimit when their raw meanings agree. -/
+def rel (ps : List Sem) (Z : Nat → TyM) : Setoid (Σ k, stage S M k ps Z) where
+  r a b := sraw S M a.1 (canon Z) a.2 = sraw S M b.1 (canon Z) b.2
+  iseqv := ⟨fun _ => rfl, fun h => h.symm, fun h₁ h₂ => h₁.trans h₂⟩
+
+/-- The carrier: the colimit of the stages. -/
+def car (ps : List Sem) (Z : Nat → TyM) : Type := Quotient (rel S M ps Z)
+
+/-- A stage member as a member of the colimit. -/
+def ι (k : Nat) {ps : List Sem} {Z : Nat → TyM} (y : stage S M k ps Z) : car S M ps Z :=
+  Quotient.mk _ ⟨k, y⟩
+
+theorem canon_rel (Z : Nat → TyM) (r r' : LRaw Z) (hr : ∀ j, Function.Injective (r j)) :
+    LRel r r' r r' := fun j _ _ h => by rw [hr j h]
+
+theorem ι_emb (k : Nat) {ps : List Sem} {Z : Nat → TyM} (y : stage S M k ps Z) :
+    ι S M (k + 1) (emb S M k y) = ι S M k y :=
+  Quotient.sound (sraw_emb S M k (canon Z) y)
+
+theorem ι_surj {ps : List Sem} {Z : Nat → TyM} (x : car S M ps Z) : ∃ k y, ι S M k y = x := by
+  obtain ⟨⟨k, y⟩, h⟩ := Quotient.exists_rep x
+  exact ⟨k, y, h⟩
+
+/-- The raw meaning of a colimit member, the leaves read by `r`. -/
+def cRaw {ps : List Sem} {Z : Nat → TyM} (r : LRaw Z) : car S M ps Z → Sem :=
+  Quotient.lift (fun a => sraw S M a.1 r a.2) fun a b h =>
+    sraw_rel S M a.1 b.1 (canon Z) r (canon Z) r a.2 b.2 (canon_rel Z _ r (canon_inj Z)) h
+
+theorem cRaw_ι (k : Nat) {ps : List Sem} {Z : Nat → TyM} (r : LRaw Z) (y : stage S M k ps Z) :
+    cRaw S M r (ι S M k y) = sraw S M k r y := rfl
+
+theorem cRaw_inj {ps : List Sem} {Z : Nat → TyM} (r : LRaw Z) (hr : ∀ j, Function.Injective (r j)) :
+    Function.Injective (cRaw S M (ps := ps) r) := by
+  intro x x' h
+  obtain ⟨k, y, rfl⟩ := ι_surj S M x
+  obtain ⟨k', y', rfl⟩ := ι_surj S M x'
+  exact Quotient.sound (sraw_rel S M k k' r (canon Z) r (canon Z) y y'
+    (canon_rel Z r _ hr) h)
+
+/-- The colimit is functorial in the leaves. -/
+def cMap {ps : List Sem} {Z Z' : Nat → TyM} (f : LMap Z Z') : car S M ps Z → car S M ps Z' :=
+  Quotient.lift (fun a => ι S M a.1 (smap S M a.1 f a.2)) fun a b h => by
+    apply Quotient.sound
+    show sraw S M a.1 (canon Z') (smap S M a.1 f a.2) = sraw S M b.1 (canon Z') (smap S M b.1 f b.2)
+    rw [sraw_smap, sraw_smap]
+    exact sraw_rel S M a.1 b.1 (canon Z) _ (canon Z) _ a.2 b.2 (canon_rel Z _ _ (canon_inj Z)) h
+
+theorem cMap_ι (k : Nat) {ps : List Sem} {Z Z' : Nat → TyM} (f : LMap Z Z') (y : stage S M k ps Z) :
+    cMap S M f (ι S M k y) = ι S M k (smap S M k f y) := rfl
+
+/-- A predicate on the leaves of a colimit member: of some representative. -/
+def cAllL {ps : List Sem} {Z : Nat → TyM} (P : LPred Z) (x : car S M ps Z) : Prop :=
+  ∃ k y, ι S M k y = x ∧ sallL S M k P y
+
+/-- The declaration's model, for later declarations to nest into. -/
+def nmodel : NModel where
+  isProp := S.isProp
+  car := car S M
+  map := cMap S M
+  raw := cRaw S M
+  allL := cAllL S M
+  map_id x := by
+    obtain ⟨k, y, rfl⟩ := ι_surj S M x
+    exact congrArg (ι S M k) (smap_id S M k _ (fun _ _ => rfl) y)
+  map_comp f g x := by
+    obtain ⟨k, y, rfl⟩ := ι_surj S M x
+    exact congrArg (ι S M k) (smap_comp S M k f g y)
+  raw_map f r x := by
+    obtain ⟨k, y, rfl⟩ := ι_surj S M x
+    exact sraw_smap S M k f r y
+  raw_rel r₁ r₁' r₂ r₂' x₁ x₂ hr h := by
+    obtain ⟨k₁, y₁, rfl⟩ := ι_surj S M x₁
+    obtain ⟨k₂, y₂, rfl⟩ := ι_surj S M x₂
+    exact sraw_rel S M k₁ k₂ r₁ r₁' r₂ r₂' y₁ y₂ hr h
+  raw_inj r x y hr h := cRaw_inj S M r hr h
+  allL_mono P Q x hPQ h := by
+    obtain ⟨k, y, rfl, hy⟩ := h
+    exact ⟨k, y, rfl, sallL_mono S M k P Q y hPQ hy⟩
+  allL_true x := by
+    obtain ⟨k, y, rfl⟩ := ι_surj S M x
+    exact ⟨k, y, rfl, sallL_true S M k y⟩
+  lift f y h := by
+    obtain ⟨k, y₀, rfl, hy⟩ := h
+    obtain ⟨x, rfl⟩ := slift S M k f y₀ hy
+    exact ⟨ι S M k x, rfl⟩
+  directed P x hP h := by
+    obtain ⟨k, y, rfl, hy⟩ := h
+    obtain ⟨m, hm⟩ := sdirected S M k P y hP hy
+    exact ⟨m, k, y, rfl, hm⟩
+
+end colimit
+
+/-! ## The colimit is a fixed point
+
+A member of the colimit is a constructor with a telescope of fields read at the colimit
+(`view`), and every such pair is one (`unview`): the fields of a colimit telescope each come
+from some stage (`cmapX_surj`), so all of them from one. -/
+
+section view
+variable (S : Sig) (M : Nat → NModel)
+
+/-- A constructor and its fields, read at the colimit. -/
+abbrev Fix (ps : List Sem) (Z : Nat → TyM) : Type :=
+  Σ c : Fin S.ar.length, Tele S M (car S M) Z ps c 0 S.ar[c] []
+
+/-- A stage's telescope read at the colimit. -/
+abbrev teleι (k : Nat) {Z : Nat → TyM} {ps : List Sem} {c : Nat} {i n : Nat} {e : List Sem}
+    (t : Tele S M (stage S M k) Z ps c i n e) : Tele S M (car S M) Z ps c i n e :=
+  Tele.mapX S M (X := stage S M k) (Y := car S M) (fun y => ι S M k y) i n e t
+
+theorem sraw_succ (k : Nat) {ps : List Sem} {Z : Nat → TyM} (r : LRaw Z) (c : Fin S.ar.length)
+    (t : Tele S M (stage S M k) Z ps c 0 S.ar[c] []) :
+    sraw S M (k + 1) r ⟨c, t⟩ =
+      .ctor "" c.val (Tele.raw S M (X := car S M) (fun r x => cRaw S M r x) r 0 _ [] (teleι S M k t)) := by
+  simp only [sraw]
+  congr 1
+  exact (Tele.raw_mapX S M (X := stage S M k) (Y := car S M) (fun y => ι S M k y)
+    (fun r x => cRaw S M r x) r _ _ _ t).symm
+
+/-- The fields of a stage member, read at the colimit. -/
+def viewS {ps : List Sem} {Z : Nat → TyM} : (Σ k, stage S M k ps Z) → Fix S M ps Z
+  | ⟨0, y⟩ => y.elim
+  | ⟨k + 1, ⟨c, t⟩⟩ => ⟨c, teleι S M k t⟩
+
+theorem viewS_wd {ps : List Sem} {Z : Nat → TyM} (a b : Σ k, stage S M k ps Z)
+    (h : sraw S M a.1 (canon Z) a.2 = sraw S M b.1 (canon Z) b.2) : viewS S M a = viewS S M b := by
+  obtain ⟨_ | k₁, y₁⟩ := a
+  · exact y₁.elim
+  obtain ⟨_ | k₂, y₂⟩ := b
+  · exact y₂.elim
+  obtain ⟨c₁, t₁⟩ := y₁
+  obtain ⟨c₂, t₂⟩ := y₂
+  simp only [sraw_succ, Sem.ctor.injEq, true_and] at h
+  obtain ⟨hc, ht⟩ := h
+  obtain rfl : c₁ = c₂ := Fin.ext hc
+  have := Tele.raw_inj S M (X := car S M) (fun r x => cRaw S M r x)
+    (fun _ _ r hr => cRaw_inj S M r hr) (canon Z) (canon_inj Z) _ _ _ _ _ ht
+  simp only [viewS, this]
+
+/-- A member of the colimit as a constructor and its fields. -/
+def view {ps : List Sem} {Z : Nat → TyM} : car S M ps Z → Fix S M ps Z :=
+  Quotient.lift (viewS S M) (viewS_wd S M)
+
+theorem view_ι (k : Nat) {ps : List Sem} {Z : Nat → TyM} (c : Fin S.ar.length)
+    (t : Tele S M (stage S M k) Z ps c 0 S.ar[c] []) :
+    view S M (ι S M (k + 1) ⟨c, t⟩) = ⟨c, teleι S M k t⟩ := rfl
+
+theorem teleι_up (k : Nat) {Z : Nat → TyM} {ps : List Sem} {c i n : Nat} {e : List Sem}
+    (t₀ : Tele S M (stage S M k) Z ps c i n e) :
+    teleι S M (k + 1) (Tele.mapX S M (X := stage S M k) (Y := stage S M (k + 1))
+      (fun y => emb S M k y) i n e t₀) = teleι S M k t₀ := by
+  simp only [teleι]
+  rw [Tele.mapX_comp]
+  exact Tele.mapX_congr S M _ _ (fun _ _ y => ι_emb S M k y) _ _ _ t₀
+
+theorem le_prop {Q : Nat → Prop} (hQ : ∀ k, Q k → Q (k + 1)) {a b : Nat} (hab : a ≤ b) (h : Q a) :
+    Q b := le_family (P := fun k (_ : Unit) => Q k) (fun k _ => hQ k) hab () h
+
+theorem cmapX_ι_up (k : Nat) {Z : Nat → TyM} (τ : PCode)
+    (v₀ : El (interp M S.isProp (stage S M k) Z τ)) :
+    cmapX M S.isProp (X := stage S M (k + 1)) (Y := car S M) (fun y => ι S M (k + 1) y) τ
+      (cmapX M S.isProp (X := stage S M k) (Y := stage S M (k + 1)) (fun y => emb S M k y) τ v₀) =
+    cmapX M S.isProp (X := stage S M k) (Y := car S M) (fun y => ι S M k y) τ v₀ := by
+  rw [cmapX_comp]
+  exact cmapX_congr M S.isProp _ _ (fun _ _ y => ι_emb S M k y) τ v₀
+
+theorem Step.surjι {Z : Nat → TyM} {K : Nat → Sem → Type} {K' : Sem → Type}
+    (g : ∀ k s, K k s → K' s) (hrest : ∀ s (t' : K' s), ∃ k t₀, g k s t₀ = t')
+    (hmono : ∀ k s (t₀ : K k s), ∃ t₁, g (k + 1) s t₁ = g k s t₀)
+    (τ : PCode) (st : Step S M (car S M) Z τ K') :
+    ∃ k, ∃ st₀ : Step S M (stage S M k) Z τ (K k),
+      Step.mapX S M (X := stage S M k) (Y := car S M) (fun y => ι S M k y) (g k) τ st₀ = st := by
+  obtain ⟨v, t'⟩ := st
+  have up : ∀ k₁ k (hk : k₁ ≤ k) (s : Sem) (t₀ : K k₁ s), ∃ t₁ : K k s, g k s t₁ = g k₁ s t₀ :=
+    fun k₁ k hk s t₀ => le_prop (Q := fun k => ∃ t₁ : K k s, g k s t₁ = g k₁ s t₀)
+      (fun k ⟨t₁, h₁⟩ => (hmono k s t₁).imp fun _ h => h.trans h₁) hk ⟨t₀, rfl⟩
+  cases τ
+  case ext =>
+    obtain ⟨k, t₀, rfl⟩ := hrest _ t'
+    exact ⟨k, ⟨v, t₀⟩, rfl⟩
+  case par =>
+    obtain ⟨k, t₀, rfl⟩ := hrest _ t'
+    exact ⟨k, ⟨v, t₀⟩, rfl⟩
+  all_goals
+    obtain ⟨k₁, v₀, hv⟩ := cmapX_surj M S.isProp (Xs := stage S M) (Y := car S M)
+      (fun k {_ _} y => ι S M k y) (fun k {_ _} y => emb S M k y) (fun k _ _ y => ι_emb S M k y)
+      (fun _ _ y => ι_surj S M y) _ v
+    obtain ⟨k₂, t₀, rfl⟩ := hrest _ t'
+    obtain ⟨v₁, hv₁⟩ := le_prop (Q := fun k => ∃ v₁ : El (interp M S.isProp (stage S M k) Z _),
+        cmapX M S.isProp (X := stage S M k) (Y := car S M) (fun y => ι S M k y) _ v₁ = v)
+      (fun k ⟨v₁, h₁⟩ => ⟨_, (cmapX_ι_up S M k _ v₁).trans h₁⟩) (Nat.le_max_left k₁ k₂) ⟨v₀, hv⟩
+    obtain ⟨t₁, ht₁⟩ := up k₂ (max k₁ k₂) (Nat.le_max_right _ _) _ t₀
+    exact ⟨max k₁ k₂, ⟨v₁, t₁⟩, Sigma.ext hv₁ (heq_of_eq ht₁)⟩
+
+theorem Tele.surjι {Z : Nat → TyM} {ps : List Sem} {c : Nat} :
+    ∀ (n i : Nat) (e : List Sem) (t : Tele S M (car S M) Z ps c i n e),
+      ∃ k, ∃ t₀ : Tele S M (stage S M k) Z ps c i n e, teleι S M k t₀ = t
+  | 0, _, _, _ => ⟨0, PUnit.unit, rfl⟩
+  | n + 1, i, e, t =>
+    Step.surjι S M (K := fun k s => Tele S M (stage S M k) Z ps c (i + 1) n (e ++ [s]))
+      (fun k _ t₀ => teleι S M k t₀) (fun s t' => Tele.surjι n (i + 1) (e ++ [s]) t')
+      (fun k _ t₀ => ⟨_, teleι_up S M k t₀⟩) _ t
+
+/-- A constructor and its fields as a member of the colimit (classically: the fields are
+lifted to a common stage). -/
+noncomputable def unview {ps : List Sem} {Z : Nat → TyM} (w : Fix S M ps Z) : car S M ps Z :=
+  have h := Tele.surjι S M _ _ _ w.2
+  ι S M (Classical.choose h + 1)
+    (show stage S M (Classical.choose h + 1) ps Z from ⟨w.1, Classical.choose (Classical.choose_spec h)⟩)
+
+theorem view_unview {ps : List Sem} {Z : Nat → TyM} (w : Fix S M ps Z) :
+    view S M (unview S M w) = w := by
+  obtain ⟨c, t⟩ := w
+  have h := Tele.surjι S M _ _ _ t
+  exact Sigma.ext rfl (heq_of_eq (Classical.choose_spec (Classical.choose_spec h)))
+
+theorem unview_view {ps : List Sem} {Z : Nat → TyM} (x : car S M ps Z) :
+    unview S M (view S M x) = x := by
+  obtain ⟨_ | k, y, rfl⟩ := ι_surj S M x
+  · exact y.elim
+  obtain ⟨c, t⟩ := y
+  have h := Tele.surjι S M _ _ _ (teleι S M k t)
+  have hs := Classical.choose_spec (Classical.choose_spec h)
+  apply Quotient.sound
+  change sraw S M (Classical.choose h + 1) (canon Z) ⟨c, Classical.choose (Classical.choose_spec h)⟩ =
+    sraw S M (k + 1) (canon Z) ⟨c, t⟩
+  rw [sraw_succ, sraw_succ]
+  exact congrArg _ (congrArg _ hs)
+
+end view
+
+/-! ## Fields and packing -/
+
+section decode
+variable (S : Sig) (M : Nat → NModel)
+
+/-- The meanings of a telescope's fields. -/
+def Tele.fields {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat} :
+    (i n : Nat) → (e : List Sem) → Tele S M X Z ps c i n e → List Sem
+  | _, 0, _, _ => []
+  | i, n + 1, e, ⟨v, k⟩ => enc _ v :: Tele.fields (i + 1) n (e ++ [_]) k
+
+/-- Read a list of meanings as a telescope: each a member of its field type, read at the
+masked meanings of the earlier ones. -/
+noncomputable def Tele.decode {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat} :
+    (i n : Nat) → (e : List Sem) → List Sem → Option (Tele S M X Z ps c i n e)
+  | _, 0, _, [] => some PUnit.unit
+  | _, 0, _, _ :: _ => none
+  | _, _ + 1, _, [] => none
+  | i, n + 1, e, f :: fs => (dec _ f).bind fun v =>
+    (Tele.decode (i + 1) n (e ++ [mask M S.isProp X Z _ v]) fs).map fun k => ⟨v, k⟩
+
+theorem Tele.decode_fields {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat} :
+    ∀ (i n : Nat) (e : List Sem) (t : Tele S M X Z ps c i n e),
+      Tele.decode S M i n e (Tele.fields S M i n e t) = some t
+  | _, 0, _, _ => rfl
+  | i, n + 1, e, ⟨v, k⟩ => by
+    simp only [Tele.fields, Tele.decode, dec_enc, Option.bind_some, Tele.decode_fields]
+    rfl
+
+theorem Tele.fields_decode {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat} :
+    ∀ (i n : Nat) (e : List Sem) (fs : List Sem) (t : Tele S M X Z ps c i n e),
+      Tele.decode S M i n e fs = some t → Tele.fields S M i n e t = fs
+  | _, 0, _, [], _, _ => rfl
+  | _, 0, _, _ :: _, _, h => by simp [Tele.decode] at h
+  | _, _ + 1, _, [], _, h => by simp [Tele.decode] at h
+  | i, n + 1, e, f :: fs, t, h => by
+    simp only [Tele.decode] at h
+    cases hv : dec _ f with
+    | none => rw [hv] at h; cases h
+    | some v =>
+      rw [hv, Option.bind_some] at h
+      cases hk : Tele.decode S M (i + 1) n (e ++ [mask M S.isProp X Z _ v]) fs with
+      | none => rw [hk] at h; cases h
+      | some k =>
+        rw [hk] at h
+        obtain rfl : (⟨v, k⟩ : Tele S M X Z ps c i (n + 1) e) = t := Option.some.inj h
+        simp only [Tele.fields, enc_of_dec hv, Tele.fields_decode _ _ _ fs k hk]
+
+/-- The masked meanings of a list of fields, after `e`, from field `i` on. -/
+def Sig.maskList (ps : List Sem) (c : Nat) : Nat → List Sem → List Sem → List Sem
+  | _, e, [] => e
+  | i, e, f :: fs => Sig.maskList ps c (i + 1) (e ++ [maskSem (S.code (S.blank ps) c i e) f]) fs
+
+theorem isSome_map_eq {α β : Type} (g : α → β) (o : Option α) : (o.map g).isSome = o.isSome := by
+  cases o <;> rfl
+
+theorem Tele.decode_isSome {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat} :
+    ∀ (n i : Nat) (e : List Sem) (fs : List Sem),
+      (Tele.decode S M (X := X) (Z := Z) (ps := ps) (c := c) i n e fs).isSome ↔
+        fs.length = n ∧ ∀ j (h : j < fs.length), fs[j] ∈ₛ
+          small (interp M S.isProp X Z (S.code (S.blank ps) c (i + j) (Sig.maskList S ps c i e (fs.take j))))
+  | 0, _, _, [] => by simp [Tele.decode]; rfl
+  | 0, _, _, _ :: _ => by simp [Tele.decode]
+  | n + 1, _, _, [] => by simp [Tele.decode]
+  | n + 1, i, e, f :: fs => by
+    simp only [Tele.decode, List.length_cons, Nat.add_right_cancel_iff]
+    have hf := dec_isSome_iff (interp M S.isProp X Z (S.code (S.blank ps) c i e)) f
+    cases hv : dec _ f with
+    | none =>
+      simp only [Option.bind_none, Option.isSome_none, Bool.false_eq_true, false_iff]
+      rw [hv] at hf
+      rintro ⟨_, h⟩
+      exact absurd (hf.2 (h 0 (Nat.zero_lt_succ _))) (by simp)
+    | some v =>
+      rw [Option.bind_some]
+      refine (iff_of_eq (congrArg (fun b => b = true) (isSome_map_eq _ _))).trans ?_
+      have hm : mask M S.isProp X Z _ v = maskSem (S.code (S.blank ps) c i e) f := by
+        rw [mask_eq, enc_of_dec hv]
+      rw [hm, Tele.decode_isSome n (i + 1) _ fs]
+      rw [hv] at hf
+      have h0 := hf.1 rfl
+      constructor
+      · rintro ⟨hl, h⟩
+        refine ⟨hl, fun j hj => ?_⟩
+        cases j with
+        | zero => exact h0
+        | succ j =>
+          have := h j (Nat.lt_of_succ_lt_succ hj)
+          rw [show i + (j + 1) = i + 1 + j by omega]
+          exact this
+      · rintro ⟨hl, h⟩
+        refine ⟨hl, fun j hj => ?_⟩
+        have := h (j + 1) (Nat.succ_lt_succ hj)
+        rw [show i + (j + 1) = i + 1 + j by omega] at this
+        exact this
+
+end decode
+
+/-! ## One declaration's data model
+
+At parameters `ps` and leaves `Z` (the data model takes `Z = envOf ps`): the tag and fields of a
+member are those of its view, packing decodes the fields into a colimit telescope and unviews
+it, and a field's type is its code read at the colimit, at the masked earlier fields. -/
+
+section decl
+variable (S : Sig) (M : Nat → NModel)
+
+def fixTag {ps : List Sem} {Z : Nat → TyM} : Fix S M ps Z → Nat
+  | ⟨c, _⟩ => c.val
+
+def fixFields {ps : List Sem} {Z : Nat → TyM} : Fix S M ps Z → List Sem
+  | ⟨_, t⟩ => Tele.fields S M 0 _ [] t
+
+def gTag {ps : List Sem} {Z : Nat → TyM} (x : car S M ps Z) : Nat := fixTag S M (view S M x)
+
+def gFields {ps : List Sem} {Z : Nat → TyM} (x : car S M ps Z) : List Sem :=
+  fixFields S M (view S M x)
+
+noncomputable def gPack (ps : List Sem) (Z : Nat → TyM) (c : Nat) (fs : List Sem) :
+    Option (car S M ps Z) :=
+  if h : c < S.ar.length then
+    (Tele.decode S M (X := car S M) (Z := Z) (ps := ps) (c := c) 0 S.ar[c] [] fs).map
+      fun t => unview S M ⟨⟨c, h⟩, t⟩
+  else none
+
+/-- The type of field `i` of constructor `c` at the meanings `earlier` of the fields before it. -/
+def gFieldTy (ps : List Sem) (Z : Nat → TyM) (c i : Nat) (earlier : List Sem) : TyM :=
+  small (interp M S.isProp (car S M) Z (S.code (S.blank ps) c i (Sig.maskList S ps c 0 [] earlier)))
+
+theorem gPack_some {ps : List Sem} {Z : Nat → TyM} {c : Nat} {fs : List Sem} {x : car S M ps Z}
+    (h : gPack S M ps Z c fs = some x) : ∃ (hc : c < S.ar.length)
+      (t : Tele S M (car S M) Z ps c 0 S.ar[c] []),
+      Tele.decode S M 0 S.ar[c] [] fs = some t ∧ x = unview S M ⟨⟨c, hc⟩, t⟩ := by
+  unfold gPack at h
+  split at h
+  · rename_i hc
+    cases ht : Tele.decode S M (X := car S M) (Z := Z) (ps := ps) (c := c) 0 S.ar[c] [] fs with
+    | none => rw [ht] at h; cases h
+    | some t =>
+      rw [ht] at h
+      exact ⟨hc, t, ht, (Option.some.inj h).symm⟩
+  · cases h
+
+theorem gTag_pack {ps : List Sem} {Z : Nat → TyM} {c : Nat} {fs : List Sem} (x : car S M ps Z)
+    (h : gPack S M ps Z c fs = some x) : gTag S M x = c := by
+  obtain ⟨hc, t, _, rfl⟩ := gPack_some S M h
+  unfold gTag
+  rw [view_unview]
+  rfl
+
+theorem gFields_pack {ps : List Sem} {Z : Nat → TyM} {c : Nat} {fs : List Sem} (x : car S M ps Z)
+    (h : gPack S M ps Z c fs = some x) : gFields S M x = fs := by
+  obtain ⟨hc, t, ht, rfl⟩ := gPack_some S M h
+  unfold gFields
+  rw [view_unview]
+  exact Tele.fields_decode S M _ _ _ fs t ht
+
+theorem gPack_fin {ps : List Sem} {Z : Nat → TyM} (c : Fin S.ar.length) (fs : List Sem) :
+    gPack S M ps Z c.val fs =
+      (Tele.decode S M (X := car S M) (Z := Z) (ps := ps) (c := c) 0 S.ar[c] [] fs).map
+        fun t => unview S M ⟨c, t⟩ := by
+  unfold gPack
+  rw [dif_pos c.isLt]
+  rfl
+
+theorem gPack_fix {ps : List Sem} {Z : Nat → TyM} (w : Fix S M ps Z) :
+    gPack S M ps Z (fixTag S M w) (fixFields S M w) = some (unview S M w) := by
+  obtain ⟨c, t⟩ := w
+  show gPack S M ps Z c.val (Tele.fields S M 0 _ [] t) = _
+  rw [gPack_fin, Tele.decode_fields]
+  rfl
+
+theorem gPack_fields {ps : List Sem} {Z : Nat → TyM} (x : car S M ps Z) :
+    gPack S M ps Z (gTag S M x) (gFields S M x) = some x := by
+  unfold gTag gFields
+  rw [gPack_fix, unview_view]
+
+theorem gPack_isSome (ps : List Sem) (Z : Nat → TyM) (c : Nat) (fs : List Sem) :
+    (gPack S M ps Z c fs).isSome ↔
+      ∃ n, S.ar[c]? = some n ∧ fs.length = n ∧
+        ∀ i (h : i < fs.length), fs[i] ∈ₛ gFieldTy S M ps Z c i (fs.take i) := by
+  unfold gPack
+  split
+  · rename_i hc
+    rw [isSome_map_eq, Tele.decode_isSome, List.getElem?_eq_getElem hc]
+    simp only [Option.some.injEq, exists_eq_left', Nat.zero_add, gFieldTy]
+  · rename_i hc
+    rw [List.getElem?_eq_none (Nat.le_of_not_lt hc)]
+    simp
+
+end decl
