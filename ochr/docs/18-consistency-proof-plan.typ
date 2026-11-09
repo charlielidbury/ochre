@@ -62,6 +62,11 @@
 #show figure.where(kind: "plan-thm"): it => block(width: 100%, above: 0.9em, below: 0.9em, breakable: true, align(left)[
   *#it.supplement #context it.counter.display(it.numbering) (#it.caption.body).* #it.body
 ])
+// The headline targets, lettered on a counter of their own: Target A, B, C.
+#let target(name, body) = figure(kind: "plan-target", supplement: [Target], numbering: "A", caption: name, body)
+#show figure.where(kind: "plan-target"): it => block(width: 100%, above: 0.9em, below: 0.9em, breakable: true, align(left)[
+  *#it.supplement #context it.counter.display(it.numbering) (#it.caption.body).* #it.body
+])
 #let proof(body) = block(width: 100%, above: 0.6em, below: 0.9em, [_Proof sketch._ #body #h(1fr) $square$])
 
 // Status tags.
@@ -147,7 +152,7 @@
 #v(0.6em)
 
 #align(center, box(width: 90%, align(left)[
-  *Summary.* The claim this plan serves is that a language like Ochr makes a good general-purpose language. That needs two guarantees: _consistency_, so that its proofs can be trusted, and _type safety_, so that accepted programs never crash or go wrong when run. The plan proves both by _meaning preservation_. Types are given meanings in a set model, in which `False` denotes the empty set. Every state the checker reaches while checking a definition is given a meaning too, as a function of what its unknowns stand for: an _assignment_ gives each unknown any element of its type's meaning, non-computable functions included. The central theorem has three parts, proved together by one ordinary induction: each step of the checker keeps the meaning of its state under every assignment, or loses only information; every value the checker stores lies in the meaning of its type, whatever the borrows still live may later write; and the state stays well formed. An accepted definition therefore means an element of its type, and a closed proof of `False` would be an element of the empty set. This route replaces the one the first draft followed, which compared the checker's run on unknowns with a second run at each concrete instance; three referees showed that route could not be completed as written (@sec-referees), and it is preserved on a branch (@sec-old). All four planned paper tests have passed (@sec-tests): the set model exists on a slice chosen to contain everything that made its definition doubtful; states with live borrows have a meaning, as functions of their borrows' final contents, and the step lemmas hold on a higher-order slice, much of both checked in Lean; each of the four closed proofs of `False` the checker once accepted and has since fixed is a step at which one of the theorem's three parts fails; and an audit of every decision the checker makes left one item to settle. The one failure found is a fifth closed proof of `False`, conversion identifying two values that hold a moved-out place, which fails the monotonicity the theorem requires of computing steps; it is fixed on main by D83. Type safety reuses the same meanings: a closed run of an accepted function means what the reference run of its call says, and that reference run never goes wrong; what remains is to show that the machine goes wrong only where the reference run does, a runtime rule for `J`, erasure and termination (@sec-safety). The rest is a short list of residual lemmas (@sec-order).
+  *Summary.* The claim this plan serves is that a language like Ochr makes a good general-purpose language. That needs two guarantees, _consistency_, so that its proofs can be trusted, and _type safety_, so that accepted programs never crash or go wrong when run, and Ochr promises a third, _`Id` adequacy_: programs it proves equal can be swapped in any context. The plan proves the first two by _meaning preservation_, and the third from the same meanings with a context lemma. Types are given meanings in a set model, in which `False` denotes the empty set. Every state the checker reaches while checking a definition is given a meaning too, as a function of what its unknowns stand for: an _assignment_ gives each unknown any element of its type's meaning, non-computable functions included. The central theorem has three parts, proved together by one ordinary induction: each step of the checker keeps the meaning of its state under every assignment, or loses only information; every value the checker stores lies in the meaning of its type, whatever the borrows still live may later write; and the state stays well formed. An accepted definition therefore means an element of its type, and a closed proof of `False` would be an element of the empty set. This route replaces the one the first draft followed, which compared the checker's run on unknowns with a second run at each concrete instance; three referees showed that route could not be completed as written (@sec-referees), and it is preserved on a branch (@sec-old). All four planned paper tests have passed (@sec-tests): the set model exists on a slice chosen to contain everything that made its definition doubtful; states with live borrows have a meaning, as functions of their borrows' final contents, and the step lemmas hold on a higher-order slice, much of both checked in Lean; each of the four closed proofs of `False` the checker once accepted and has since fixed is a step at which one of the theorem's three parts fails; and an audit of every decision the checker makes left one item to settle. The one failure found is a fifth closed proof of `False`, conversion identifying two values that hold a moved-out place, which fails the monotonicity the theorem requires of computing steps; it is fixed on main by D83. Type safety reuses the same meanings: a closed run of an accepted function means what the reference run of its call says, and that reference run never goes wrong; what remains is to show that the machine goes wrong only where the reference run does, a runtime rule for `J`, erasure and termination (@sec-safety). The rest is a short list of residual lemmas (@sec-order).
 ]))
 #v(0.4em)
 
@@ -156,7 +161,7 @@
 
 = What this document is <sec-intro>
 
-This is the plan we intend to follow to prove that Ochr is consistent and type safe: the shape of the argument, the definitions it needs, the lemmas it reduces to, which of those are already proved and where, and where the plan could fail. It is written as a section of theory work would be, so the statements are precise where they can be, and where they cannot be yet, that is said.
+This is the plan we intend to follow to prove that Ochr is consistent and type safe, and that programs it proves equal can be swapped: the shape of the argument, the definitions it needs, the lemmas it reduces to, which of those are already proved and where, and where the plan could fail. It is written as a section of theory work would be, so the statements are precise where they can be, and where they cannot be yet, that is said.
 
 *The object of study.* The calculus is the one implemented by the Lean checker in `ochr/core/lean/Ochr/` (chiefly `Syntax.lean`, `Basic.lean`, `Env.lean`, `Machine.lean`, `Decide.lean`, `Obs.lean`, `Check.lean` and `Run.lean`) and laid out rule by rule in the appendix of the Ochr paper. @sec-prelim restates every part of it that the plan relies on, so that the plan can be followed without either.
 
@@ -254,19 +259,23 @@ The superseded route compared the first path with runs at _ground instances_, re
   A _program_ is a finite list of inductive declarations and definitions, read in order. It is _accepted_ when each item is accepted by [Ind-decl], [Def] or [Const] against the signature of the items before it, the library's declarations (`Pair`, `False`, `True`, `And`, with `Nat` and `Unit` built in) coming first. It is _hole-free_ when no term in it is a hole (`?`, also written `sorry`). Every definition has a body, so holes are the only axioms.
 ]) <def-accepted>
 
-#thm([Target], [consistency of the calculus], [
+#target([consistency of the calculus], [
   Assume ZFC with one inaccessible cardinal per universe level used (both defined in @sec-sets). For every accepted, hole-free program, no definition without parameters has a type that evaluates to `False`. Equivalently, no closed term has type `False`, nor any type, such as `Eq(Nat, Z, S(Z))`, that computes to it.
 ]) <target>
 
-#thm([Target], [type safety], [
+#target([type safety], [
   For every accepted, hole-free program, and every _closed run_ of an accepted data function (a definition whose codomain is data or a borrow type, called with every parameter a concrete value and every proof parameter's type true), the run of the _erased_ program, with proofs and types removed, terminates without error; any borrow it returns is live; and its result, with the final contents of its borrowed places, means what the reference run of the call says (@def-refrun).
 ]) <target-safe>
 
-*Why both.* The plan serves the claim that a language like Ochr makes a good general-purpose language. Its proofs must be trustworthy, which is @target, and its programs must not crash or go wrong when run, which is @target-safe. No Lean statement of @target-safe is fixed yet.
+#target([`Id` adequacy], [
+  If an accepted, hole-free lemma proves $ty("Id")(A, t, u)$, then at every instance where its hypotheses hold, $t$ and $u$ are _contextually equivalent_: at every accepted program position holding $t$, replacing $t$ by $u$ gives a run with the same result, the same final state and the same errors.
+]) <target-adeq>
+
+*Why three.* The plan serves the claim that a language like Ochr makes a good general-purpose language. Its proofs must be trustworthy, which is @target, and its programs must not crash or go wrong when run, which is @target-safe: what any verified language owes its users. @target-adeq is Ochr's distinctive promise: programs proved equal can be swapped, the substitution principle behind D84 (drop at the join). Neither of the first two implies it (@sec-adeq). The statement of @target-adeq is a draft, to be sharpened, and no Lean statement of @target-safe or @target-adeq is fixed yet.
 
 *Termination.* Ochr stays total for now: every recursion passes [Rec], so type safety includes termination. General recursion is desirable, but is deferred until a pure, consistent and sound core exists.
 
-The Lean statement against the checker is `Ochr.Consistency.consistency`:
+The Lean statement of @target against the checker is `Ochr.Consistency.consistency`:
 ```
 theorem consistency (q : Program) (fuel : Nat)
     (holes : NoHoles q) (acc : Accepted (Prelude.decls ++ q) fuel) :
@@ -285,7 +294,7 @@ theorem consistency (q : Program) (fuel : Nat)
 
 = The shape of the argument <sec-shape>
 
-The argument has three parts: a set model that says what "true" means (@sec-model); a meaning for every state the checker reaches, with a theorem that the checker's steps keep it (@sec-route); and consistency as a corollary (@cor-cons-route). Type safety follows from the same theorem and four further lemmas (@sec-safety). The model and the soundness of conversion (@sec-conv-sound) are shared with the superseded route; the second part replaces its soundness theorem and its walk.
+The argument has three parts: a set model that says what "true" means (@sec-model); a meaning for every state the checker reaches, with a theorem that the checker's steps keep it (@sec-route); and consistency as a corollary (@cor-cons-route). Type safety follows from the same theorem and four further lemmas (@sec-safety), and `Id` adequacy from it and a context lemma (@sec-adeq). The model and the soundness of conversion (@sec-conv-sound) are shared with the superseded route; the second part replaces its soundness theorem and its walk.
 
 == The set model <sec-model>
 
@@ -556,7 +565,17 @@ Type safety (@target-safe) reuses the route. The step lemmas of @thm-mp are unty
 
 *The frame property is a lemma, not a target.* Both targets use it: for consistency it is the compositionality of the meaning of code (a call's meaning changes only its result and its borrowed places), and for type safety the fact that a call's effect at runtime is its isolated run, plugged back into the caller.
 
-*Adequacy* is the last clause of @target-safe: a closed run's result means what the reference run says. With it, an accepted `Id` lemma makes its two observations equal at runtime.
+*Adequacy* in the narrow sense is the last clause of @target-safe: a closed run's result means what the reference run says. With it, an accepted `Id` lemma makes its two observations equal at runtime. That the two terms can then be swapped in every context is more, and is @target-adeq.
+
+=== `Id` adequacy <sec-adeq>
+
+@target-adeq says that terms proved equal by `Id` are interchangeable. Neither of the other targets implies it. @target needs only that the checker computes `Id`'s meaning soundly, and that meaning can be weaker than substitution: `Id` compares the results and the observed owners, not everything a later context could notice. @target-safe does not look at `Id`'s meaning at all.
+
+*The new piece is a context lemma*: what a context can observe of a term is exactly what `Id` compares. Given it, a proved `Id` makes the two terms indistinguishable to every continuation, and @target-adeq follows from @thm-mp and @target-safe. The audit of @sec-test-adeq lists every channel through which a context can observe a term and compares the list with `Id`'s footprint.
+
+*Two known gaps.* Neither is a proof of `False`: in both, `Id`'s meaning in the model is computed soundly, and what fails is substitution.
+- _Moves._ `Id` does not compare a place that either side leaves moved, so two terms that move different places, such as `F(x)` and `F(y)`, can be proved equal while a continuation that reads `x` tells them apart. D84 (drop at the join), not yet merged, closes this.
+- _Where a borrow points_ (`RePoint`, accepted on main at `a2861cbf`). `def RePoint (x z : Nat) (y : &Nat) : Id(Unit, (y := &x; ()), (y := &z; ())) := refl`. The resolved owners are unchanged on both sides, so `Id` holds; but a continuation `*y := 7` writes `x` after one side and `z` after the other. So the observation principle that where a borrow points does not matter, only resolved contents (O2), is false under substitution. The likely fix is to observe each borrow variable a side assigns by writing a fresh $sigma_w$ through it, as [Obs-borrow] already does for a borrow-typed result.
 
 === How the route answers the referees <sec-referees>
 
@@ -644,8 +663,8 @@ _Enforced:_ one function decides whether a call belongs to a recursion entry, by
 == Observation <sec-obs-principles>
 
 - (O1) _Independence._ The two sides of `Id` run from the same state on independent copies, in the same world.
-- (O2) _Resolved, not represented._ Observations compare resolved values, so where a borrow sits does not matter; owners are observed, not borrows.
-- (O3) _Footprint sufficiency._ A position whose resolved content cannot differ between the sides need not be observed. It can differ only if a side writes it, directly or through a borrow, so the owners of every place written or borrowed, and of every borrow variable handed on whole, are observed; a place only read is not (a read that moves leaves `⊥`, which must be refilled before the borrow over it ends, and refilling is a write).
+- (O2) _Resolved, not represented._ Observations compare resolved values, so where a borrow sits does not matter; owners are observed, not borrows. This is sound for `Id`'s meaning (@target), but false under substitution (@target-adeq): a borrow variable that a side reassigns points elsewhere afterwards, and a continuation can write through it (`RePoint`, @sec-adeq).
+- (O3) _Footprint sufficiency._ A position whose resolved content cannot differ between the sides need not be observed. It can differ only if a side writes it, directly or through a borrow, so the owners of every place written or borrowed, and of every borrow variable handed on whole, are observed; a place only read is not (a read that moves leaves `⊥`, which must be refilled before the borrow over it ends, and refilling is a write). Sufficient for `Id`'s meaning; for @target-adeq the footprint must also cover what a continuation can observe: where an assigned borrow variable points, and, until D84, places moved by one side only (@sec-adeq).
 - (O4) _All owners._ A loan can sit in several owned positions (a hole in several fills); each is observed.
 - (O5) _One order._ The conjunction is ordered by syntax, the same on both paths, since `∧` is not commutative by conversion.
 
@@ -721,6 +740,14 @@ Five further soundness guards found by ablating the checker fit the same way: a 
 
 *Result.* Pending (the session that proposed the route; `ochr/docs/29-type-safety-slice.typ` and `Ochr/Model/Safety.lean`). It is stated against D84's drop-at-the-join semantics, which is not yet merged.
 
+== Audit: what a context can observe <sec-test-adeq>
+
+*What it checks.* For @target-adeq: every channel through which a context can observe a term (its result, the places it writes or moves, where a borrow it assigns points, and any other), compared with `Id`'s footprint, on main and under D84.
+
+*What would fail it.* A channel `Id` does not observe, as `RePoint` is for where a borrow points.
+
+*Result.* Pending (the session that proposed the route; lane `id-audit`, `ochr/docs/30-id-adequacy-audit.md`).
+
 = The lemmas and their status <sec-route-dag>
 
 @fig-route-dag draws what the present route's lemmas depend on, and @fig-route-status lists their statuses. The superseded route's own lemma graph is preserved with it (@sec-old).
@@ -733,6 +760,8 @@ Five further soundness guards found by ablating the checker fit the same way: a 
     spacing: (6pt, 20pt),
     edge-stroke: 0.6pt + ink,
     dn((2.6, 0), [Consistency (@cor-cons-route)], st-red, <r-cons>),
+    dn((0.5, 0), [Id adequacy (@target-adeq)], st-open, <r-adeq>),
+    dn((0.5, 1), [Context lemma (@sec-adeq)], st-open, <r-ctx>),
     dn((4.5, 0), [Type safety (@target-safe)], st-red, <r-safe>),
     dn((4.7, 1), [Safety lemmas (@sec-safety)], st-open, <r-pieces>),
     dn((2.6, 1), [Definitions mean elements (@cor-mean)], st-red, <r-mean>),
@@ -750,6 +779,8 @@ Five further soundness guards found by ablating the checker fit the same way: a 
     dn((2.6, 5), [[Open], [Repack] beyond the lent index; erased runs], st-open, <r-res>),
     dn((5.1, 4), [(WF1)–(WF7) preserved], st-open, <r-wf>),
     edge(<r-mean>, <r-cons>, "-|>"),
+    edge(<r-ctx>, <r-adeq>, "-|>"),
+    edge(<r-mp>, <r-adeq>, "-|>"),
     edge(<r-mp>, <r-safe>, "-|>"),
     edge(<r-pieces>, <r-safe>, "-|>"),
     edge(<r-model>, <r-cons>, "-|>"),
@@ -804,6 +835,8 @@ Five further soundness guards found by ablating the checker fit the same way: a 
       [Footprint coverage], [#s-open], [assumed by test 2; the extra owners at a call site by the injectivity of contexts and (O4)],
       [Frame property], [#s-heap; #s-red[(L1)–(L7)] on checker], [a lemma both targets use, not a target: a call's meaning changes only its result and borrowed places; `Ochr.Heap.frame`, `call_effect` (heap slice, history)],
       [Type safety (@target-safe)], [#s-red[the reference run; (a)–(e) of @sec-safety]], [test 3 pending],
+      [`Id` adequacy (@target-adeq)], [#s-red[@thm-mp, @target-safe, the context lemma]], [a draft statement; neither other target implies it],
+      [Context lemma], [#s-open], [what a context can observe of a term is what `Id` compares; the audit of @sec-test-adeq pending; known gaps: moves (D84, not merged) and `RePoint` (observe assigned borrow variables)],
       [Error reflection], [#s-open], [the machine errs only where the reference run errs],
       [Runtime `J`], [#s-design], [Q3: at runtime `J` returns its transported term],
       [Erasure], [#s-open], [the first draft proved it for its first-order fragment only],
@@ -820,9 +853,10 @@ Five further soundness guards found by ablating the checker fit the same way: a 
 + *The residual lemmas*, which test 2 assumed or argued without checking: footprint coverage; the soundness of `valType?` (D82, on main, removed its uses at bindings); the preservation of well-formedness, where (WF2) needs (WF3); [Open] and [Repack] beyond the lent-index case; and erased runs inside the reference run.
 + *The census's open item*: a witness test for the class check on Π-types, and a rule change if it fails; tests for the two invariant checks that have none. Optionally, the lent-part check can read the borrow's declared type, which changes no verdict and removes one use of `valType?`.
 + *Type safety*: test 3 (@sec-test-safety); error reflection; the runtime rule for `J` (Q3); erasure beyond the first-order fragment; termination from guarded recursion; and well-formedness at runtime, shared with consistency (@sec-safety).
++ *`Id` adequacy*: the audit of what a context can observe (@sec-test-adeq); the context lemma; observing each assigned borrow variable by writing a fresh $sigma_w$ through it, which closes `RePoint`; and D84 for moves (@sec-adeq).
 + *The model and the meaning of states, on paper, for the whole calculus*: what the slices covered only on paper or not at all (user inductives and dependent constructors in Lean, inductives declared `abstract` or `implemented by`, `split f in t`, `rewrite`, records), with conversion soundness (@lem-model, @def-state-meaning, @def-refrun, @lem-conv).
 + *The step lemmas, on paper*, one per checker rule, against the reference run, each stating which of (a), (b) and (c) the step must keep and which it establishes, with the five lemmas behind "same" (@sec-wf). Large but routine; the standing preference is that size costs nothing and risk is what counts.
-+ *The Lean statements* of both targets (Q8 for consistency), and mechanisation, with meaning and membership built together, as both Lean encodings already do.
++ *The Lean statements* of the three targets (Q8 for consistency), and mechanisation, with meaning and membership built together, as both Lean encodings already do.
 
 *Abandoned: the heap port.* The first draft proposed porting the checker's value layer to a heap design, to make (P) cheaper to prove. (P) is off the present route's path, so the port is abandoned, and its branches (`heap-close`, `port-step1`) are not to be merged; the heap slice's proved results remain as history where they are cited, for the frame property.
 
@@ -831,6 +865,8 @@ Five further soundness guards found by ablating the checker fit the same way: a 
 = Where the plan could fail <sec-risks>
 
 The risks below are places where a lemma might be _false_, not merely unproved.
+
+*`Id` adequacy needs rule changes* (@sec-adeq). `RePoint` shows that `Id`'s footprint misses where an assigned borrow variable points, moves by one side need D84, and the audit of @sec-test-adeq may find further channels. These are gaps in substitution, not proofs of `False`.
 
 *Type safety's missing pieces may fail* (@sec-safety). Error reflection may have exceptions where the machine's representation goes wrong but the meaning does not; runtime `J` needs a rule change (Q3); and erasure is proved only for a first-order fragment. Test 3 is stated against D84's drop-at-the-join semantics, which is not merged.
 
