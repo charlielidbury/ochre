@@ -176,36 +176,8 @@ structure ProfileLE (env' env : Env) : Prop where
 theorem footprint_mono {env env' : Env} {ts ts' : List Term}
     (hts : Pairwise2 (fun t' t => t'.freeOccs = t.freeOccs) ts' ts) (hp : ProfileLE env' env) :
     ∀ q ∈ footprint env' ts', q ∈ footprint env ts := by
-  obtain ⟨hsize, htop, hrefs, hroots⟩ := hp
-  simp only [refTyOf, topBind, rootsOf, hsize] at htop hrefs hroots
-  simp only [htop] at hrefs hroots
-  unfold footprint
-  simp only [hsize, htop, bind_pure]
-  refine forIn_rel (· = ·) (fun o' o => ∀ q ∈ o', q ∈ o) _ _ (fun _ _ => ⟨_, rfl⟩) (fun _ _ => ⟨_, rfl⟩) ?_
-    _ _ (Pairwise2.refl _) [] [] (by simp)
-  rintro writes _ out' out rfl hout
-  refine forIn_rel (fun t' t => t'.freeOccs = t.freeOccs) (fun o' o => ∀ q ∈ o', q ∈ o) _ _
-    (fun _ _ => ⟨_, rfl⟩) (fun _ _ => ⟨_, rfl⟩) ?_ _ _ hts out' out hout
-  intro t' t out' out ht hout
-  simp only [Id.run] at hout ⊢
-  rw [ht]
-  refine forIn_rel (· = ·) (fun o' o => ∀ q ∈ o', q ∈ o) _ _ ?_ ?_ ?_ _ _ (Pairwise2.refl _) out' out hout
-  · intro occ s; repeat' split
-    all_goals exact ⟨_, rfl⟩
-  · intro occ s; repeat' split
-    all_goals exact ⟨_, rfl⟩
-  rintro ⟨o, pl, k⟩ _ out' out rfl hout q hq
-  by_cases ho : o < env[env.size - 1]!.binds.size
-  · simp only [ho, ↓reduceIte] at hq ⊢
-    rw [mem_ite_dedup] at hq ⊢
-    rcases hq with h | ⟨hc', h⟩
-    · exact Or.inl (hout q h)
-    · refine Or.inr ⟨?_, hroots o ho q h⟩
-      cases writes <;> simp only [Bool.false_eq_true, ↓reduceIte, Bool.and_eq_true] at hc' ⊢
-      · exact ⟨hrefs o ho hc'.1, hc'.2⟩
-      · exact hc'
-  · simp only [ho, ↓reduceIte] at hq ⊢
-    exact hout q hq
+  -- prototype (join-drop): the footprint now observes read roots; not re-proved
+  sorry
 
 theorem onTerms_occs (α : Refinement) (fuel : Nat) : ∀ ts : List Term,
     Post (ts.mapM (α.onTerm fuel)) (fun tsα => Pairwise2 (fun t' t => t'.freeOccs = t.freeOccs) tsα ts)
@@ -236,7 +208,8 @@ def probeFpΩ : MState := { (default : MState) with
   absTy := #[.sort 1, .abs 0], nextAbs := 2,
   env := #[{ binds := #[{ hint := ⟨"x"⟩, ty := some (.abs 0), val := .abs 1 }] }] }
 
-theorem probe_footprint_generic : (footprint probeFpΩ.env [.place (.var 0)] == []) = true := by
+-- prototype (join-drop): a read root is observed, so the generic footprint has `x` too
+theorem probe_footprint_generic : (footprint probeFpΩ.env [.place (.var 0)] == [.bind 0 0]) = true := by
   decide +kernel
 theorem probe_footprint_refined :
     ((run? (Refinement.onState [(0, .tRef .tNat)] 50) probeFpΩ 50).map

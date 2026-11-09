@@ -168,8 +168,11 @@ def footprint (env : Env) (ts : List Term) : List Pos := Id.run do
             | _ => [pos]
           -- D68: only places written or borrowed are observed: a borrow variable passed whole (its
           -- callee may write through it) counts; one only read through (`*x`) does not
+          -- prototype (join-drop): a place a side reads may be moved by it (moves are definite), so
+          -- its owned root is observed too (`F(x)` and `F(y)` differ)
           let counts := if writes then k == .borrow || k == .assign
-            else (isRefTy || b.val.isBorrow) && (k == .read && q matches .var _)
+            else ((isRefTy || b.val.isBorrow) && (k == .read && q matches .var _)) ||
+              (!isRefTy && !b.val.isBorrow && !b.proof && k == .read)
           if counts then
             for q in ownersOfRoot do
               unless out.contains q do out := out ++ [q]

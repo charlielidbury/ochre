@@ -504,8 +504,8 @@ def Value.hasHole (v : Value) : Bool := v.anyAtom fun a => a == .bot
 /-- D83: why two values that may print alike are not convertible, when one holds `⊥`
 ([Conv-bot]); empty otherwise. For error messages only. -/
 def convBotNote (v w : Value) : String :=
-  if v.hasHole || w.hasHole then " (a value holding ⊥, a moved-out part, is convertible with nothing: [Conv-bot], D83)"
-  else ""
+  -- prototype (join-drop): [Conv-bot] is gone
+  let _ := (v, w); ""
 
 
 mutual

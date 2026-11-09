@@ -1515,9 +1515,7 @@ def conv (fuel : Nat) (v w : Value) : M Bool := do
   -- the identity test: two stuck `Eq(Nat, ⊥, ⊥)` from different observations are `==`, but
   -- at an instance they can be `5 = 5` and `5 = 6` (docs/28). Every recursive comparison (the
   -- components, a Π-type's instantiated codomains, a function's observations) comes back here
-  if v.hasHole || w.hasHole then
-    fire .ConvBot fun _ => s!"{v} and {w}: a side holds ⊥ (D83)"
-    return false
+  -- prototype (join-drop): ⊥ is definite ("moved on every path"), so [Conv-bot] is gone
   if v == w then return true
   -- D50: the unit laws And(True, P) ≡ P ≡ And(P, True) are conversion rules
   let v := unitTop v
@@ -1708,9 +1706,12 @@ def mkEqM (fuel : Nat) (A a b : Value) : M Value := do
   -- D68: a moved place (`⊥` inside) has no content to compare: the equation is stuck, neither
   -- `⊤` nor `False`. Whether a stuck block's arm moved the place differs between an abstract and
   -- a ground run, so either answer could be wrong at some instance
-  if a.hasHole || b.hasHole then
-    fire .EqStuck fun _ => s!"{a} and {b}: a side holds ⊥ (D68)"
-    return .tEq A a b
+  -- prototype (join-drop): ⊥ is definite, "moved": equal to itself and to nothing else (a value,
+  -- an abstract value or a sealed program stands for a value, never for a moved place); inside
+  -- constructors, injectivity reaches it
+  if a == .bot || b == .bot then
+    fire .EqDisj fun _ => s!"{a} and {b}: ⊥ against ⊥ or a value"
+    return (if a == .bot && b == .bot then vTrue else vFalse)
   if ← conv fuel' a b then return vTrue
   match a, b with
   | .succ a', .succ b' => return ← mkEqM fuel' .tNat a' b'
@@ -1766,9 +1767,6 @@ def rewriteGoal (fuel : Nat) (rev : Bool) (h : Term) (G : Value) : M Value := do
     -- is identical to nothing, so it occurs nowhere and the goal is left as it is (C22).
     -- `rewrite ← h` with `h : Eq(Nat, ⊥, 5)` put `5` for the `⊥` of another observation in
     -- the goal (docs/28). A `dst` holding `⊥` is substituted: the goal then knows less
-    if src.hasHole then
-      fire .ConvBot fun _ => s!"[Rewrite] {src} holds ⊥, so it occurs nowhere in the goal (D83)"
-      return G
     let σ ← freshAbs A
     let G1 ← substV fuel' src (.abs σ) G
     -- [T-Rewrite] has no premise that `b` occurs: a rewrite that finds nothing leaves the goal
@@ -2609,8 +2607,8 @@ def evalMatch (fuel : Nat) (typed : Bool) (p : Place) (z s : Term) (expected : O
   accessNeutralHead fuel' p
   let v ← matchContent p
   match v with
-  | .zero => eval fuel' typed z
-  | .succ _ => eval fuel' typed s
+  | .zero => joinDrop fuel' (.matchNat p z s) (eval fuel' typed z)
+  | .succ _ => joinDrop fuel' (.matchNat p z s) (eval fuel' typed s)
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
   | .abs σ => if typed then splitThenClose fuel' p z s σ expected else stuckOn v
   | .sealed _ | .loan _ =>
@@ -2887,7 +2885,7 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
     if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
     if typed then discard (scrutType fuel' p ty)
     match arms[c]? with
-    | some (_, a) => eval fuel' typed a
+    | some (_, a) => joinDrop fuel' (.matchInd p ty arms) (eval fuel' typed a)
     | none => err s!"[Match] no arm for constructor {c}"
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
   | .abs σ =>
@@ -2935,6 +2933,16 @@ def movedPlace (fuel : Nat) (q : Place) : M Place := do
             modify fun s => { s with etaRefs := (σ, r) :: s.etaRefs }
             pure r
         refine fuel' σ r
+        movedPlace fuel' q
+      else pure p
+    | _ => pure p
+  | n@(.sealed _) =>
+    -- prototype (join-drop): a sealed value of a type with one constructor is generalised
+    -- (D34), then η-refined as above, so that its fields are named on every path
+    match ← placeType? fuel' p with
+    | some (.tInd tn _) =>
+      if (← lookupInd tn).ctors.length == 1 then
+        discard (generalizeNeutral fuel' p n)
         movedPlace fuel' q
       else pure p
     | _ => pure p
@@ -3061,6 +3069,35 @@ def blockCaptures (fuel : Nat) (mt : Term) (armMovedAll : List Place) :
   pure (out, split, moved)
 termination_by structural fuel
 
+/-- Prototype (join-drop): a match run directly, on a constructor, leaves moved what it would
+leave moved as a stuck block: the static join (`Decide.jdMoves`), which K1 also takes by move,
+rather than the arms' runs, which the direct run cannot make; the ones the run's arm did
+not move are dropped at its end ([Drop]: their borrowers end, then they hold `⊥`), as Rust's
+type state is "moved" after a conditional move. The arm's result is held as a temporary meanwhile. -/
+def joinDrop (fuel : Nat) (mt : Term) (run : M (Value × Option Value)) : M (Value × Option Value) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let st ← withLive true (jdMoves fuel' [] mt [])
+  let (v, T) ← run
+  if st.isEmpty then return (v, T)
+  pushTemp v
+  for q in st do dropAtJoin fuel' (← movedPlace fuel' q)
+  pure (← popTemp, T)
+termination_by structural fuel
+
+/-- Prototype (join-drop): drop `q` at a join as a stuck block's by-move argument would take it
+(`readPlace`): a borrow is ended, a copy or a proof stays, anything else is moved out. -/
+def dropAtJoin (fuel : Nat) (q : Place) : M Unit := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match ← content? q with
+  | none | some .bot | some .proof => pure ()
+  | some (.borrow l _) => logEffect q "moves"; endBorrow fuel' l
+  | some _ =>
+    if ← copyRead fuel' q then return
+    accessPath fuel' q; accessInside fuel' q
+    logEffect q "moves"
+    setPlace q .bot
+termination_by structural fuel
+
 /-- [Block], the one place a stuck block is formed (D76). A stuck match ([Split]), a `J` whose
 endpoints are not convertible ([T-J-stuck]) and a zero-arm match outside a proof position are
 closed off here, as a call to an anonymous function of their free places. The block runs its
@@ -3119,7 +3156,13 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
           err s!"the arms of a non-tail match have different types ({T0} and {T}); annotate it (let x : T = match …)"
       pure T0
   -- K1: the block takes each outer place by the largest effect any arm has on it (`blockCaptures`)
-  let (caps, split, moved) ← blockCaptures fuel' mt armMovedAll
+  -- prototype (join-drop): with the static join's places, which the direct run drops
+  let st ← withLive true (jdMoves fuel' [] mt [])
+  for q in armMovedAll do
+    unless st.any (placePrefix · q) do
+      dbgTrace s!"JDMISS {← ppPlace q} moved by an arm of {mt.pp []}, static join {st.length}" fun _ => pure ()
+  let movedIn := st.foldl (fun acc q => if acc.any (placeEq · q) then acc else acc ++ [q]) armMovedAll
+  let (caps, split, moved) ← blockCaptures fuel' mt movedIn
   let f ← topIdx
   let nb := (← get).env[f]!.binds.size
   -- [Fix] captures no borrow (D63, rule-audit item 7): a closure or Π-type in an arm that
