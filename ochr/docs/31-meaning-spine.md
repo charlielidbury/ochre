@@ -205,7 +205,7 @@ Done: `Steps/Borrow.lean` (8), `Steps/Subst.lean` (8), `Steps/Eq.lean` (6), `Ste
 ### Implementer ledger (2026-11-09)
 
 - `spine-data-generic` (data-generic): owns `Data.lean`, `DataGeneric.lean`. Adding `fieldData`, `paramData`, `recArgs`; `rank_lt` restated; `pack_congr` dropped; `covers` = the library's declarations; libModel's laws; the generic construction by stages.
-- `spine-mono-lemmas` (mono-lemmas): owns `Mono.lean`: access_below, endLabel_below, order-independence of ends under WF3, joinDrop_below.
+- `spine-mono-lemmas` (mono-lemmas): owned `Mono.lean`; LANDED at 5f541f86 (endLabel/access/foldl_endLabel below, semEnd/endLabel commutation under acyclicity with the cycle counterexample, `LoanDeps`/`SWF3`, joinDrop_below at root places, the field-place counterexample). Proposed follow-ups: access_post, observation future-independent after its ends, a shape-below-nextLoan invariant.
 - `spine-m2-proofs` (m2-proofs): owns `meanV_eq_mean`'s proof (Run.lean, helpers next to it), `Lemmas.lean`'s proofs, `TyM.dec0_enc0` (Apply.lean). Found the four counterexamples that led to D10 (scratchpad `CE.lean`).
 - `spine-prog-decisions` (prog-decisions): owns `Program.lean` (globals by program order, each with its `TyS`) and `DecisionsInst.lean` (`Decisions` from `Decide.lean`; `joinMoves` a parameter until d84 lands; piSort's scope mismatch recorded there as a lemma obligation).
 - Landing: each pushes its branch rebased onto `origin/spine`; the spine lead reviews and fast-forwards. Definitions and statements stay the spine lead's.
