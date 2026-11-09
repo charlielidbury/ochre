@@ -25,7 +25,15 @@ noncomputable def TyM.dec0 : (T : TyM) → Sem → Option T.el0
   | _, _ => none
 
 theorem TyM.dec0_enc0 (T : TyM) (a : T.el0) : T.dec0 (T.enc0 a) = some a := by
-  sorry
+  cases T with
+  | ty0 A =>
+    show (open Classical in if h : A = A then some (h ▸ a) else none) = some a
+    rw [dif_pos rfl]
+  | prop P =>
+    show (if h : P then some (⟨h⟩ : PLift P) else none) = some a
+    rw [dif_pos a.down]
+    rfl
+  | ty1 _ | ty2 _ | univ _ | err => exact a.elim
 
 /-- Decode a meaning as an element of a level-1 carrier. -/
 noncomputable def TyM.dec1 : (T : TyM) → Sem → Option T.el1
