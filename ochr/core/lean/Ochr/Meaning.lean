@@ -1,5 +1,6 @@
 import Ochr.Meaning.Sem
 import Ochr.Meaning.Data
+import Ochr.Meaning.DataGeneric
 import Ochr.Meaning.Future
 import Ochr.Meaning.Value
 import Ochr.Meaning.Pi
