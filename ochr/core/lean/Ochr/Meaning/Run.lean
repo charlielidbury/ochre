@@ -83,6 +83,16 @@ closure's parameters at formation). -/
 def extendBy (s : SState) (acc : List Sem) : SState :=
   acc.foldl (fun s a => s.pushBind { ty := .err, val := fun _ => a }) s
 
+/-- The empty state with one empty frame (a sealed program's run starts here). -/
+def emptyState : SState := { env := [{}], shape := fun _ => none, nextLoan := 0 }
+
+/-- A closure's frame: its captured values at their recorded types. -/
+def capsState (vs : List Sem) (tys : List (DeclInfo × TyM)) : List SBinding :=
+  (vs.zip tys).map fun (v, (d, T)) => { ty := T, val := fun _ => v, decl := d }
+
+/-- The state with one frame holding the given bindings (a closure's code runs in it). -/
+def stateOf (bs : List SBinding) : SState := { env := [{ binds := bs }], shape := fun _ => none, nextLoan := 0 }
+
 /-- Resolve a place to its root position and path. -/
 def resolve (s : SState) (p : Place) : Option (Pos × List Step) :=
   let (i, steps) := p.steps
@@ -255,7 +265,7 @@ noncomputable def run (hint : TyM) : Term → SM Res
       | none => SM.fail
     | none => SM.fail
   | .const n => pure (fun _ => K.C.global n, ⟨.err, none, none⟩)
-  | .val v => pure (fun φ => Value.mean K.dm K.C K.Γ ρ φ hint v, ⟨hint, none, none⟩)
+  | .val v => pure (fun φ => meanV φ hint v, ⟨hint, none, none⟩)
   | .sort l => pure (fun _ => .ty (.univ l), ⟨.univ (sortSucc l), none, none⟩)
   | .pi hs ds c => fun s =>
     -- [T-Pi]: each parameter type is a function of the earlier parameters' meanings, read by
@@ -448,7 +458,104 @@ noncomputable def runArgs (shape : Option (List PiParam × PiOut)) (i : Nat) (ea
     let rest ← runArgs shape (i + 1) (earlier ++ [r.1 noFuture]) as
     pure (r :: rest)
 termination_by structural as => as
+
+/-- The meaning of a value, with the code-dependent forms given by the run itself (the knot of
+`Value.mean`'s `CodeMeaning`): a sealed program is its program run from the empty state at the
+hint, read under the future; a closure or Π-closure is its `fix`/`pi` term run in a frame
+holding its captures at their recorded types (D51); a global is `K.C.global`. The other clauses
+are `Value.mean`'s (`meanV_eq_mean`). -/
+noncomputable def meanV (φ : Future) (hint : TyM) : Value → Sem
+  | .zero => .el0 Nat 0
+  | .succ v => (meanV φ (.ty0 Nat) v).succ
+  | .unit => .el0 Unit ()
+  | .gfn n => K.C.global n
+  | .clo caps t rd => match run .err t (stateOf (capsState (capsVals φ caps) (capsTys φ rd))) with
+    | some ((v, _), _) => v noFuture
+    | none => .err
+  | .borrow _ w => meanV φ hint w
+  | .loan l => φ l
+  | .bot => .moved
+  | .abs σ => ρ σ
+  | .sealed t => match run hint t emptyState with
+    | some ((v, _), _) => v φ
+    | none => .err
+  | .proof => .proof
+  | .tNat => .ty (.ty0 Nat)
+  | .tUnit => .ty (.ty0 Unit)
+  | .tEq A a b =>
+    let T := (meanV φ .err A).asTy
+    .ty (.prop (meanV φ T a = meanV φ T b))
+  | .tRef A => meanV φ .err A
+  | .tPi caps t rd => match run .err t (stateOf (capsState (capsVals φ caps) (capsTys φ rd))) with
+    | some ((v, _), _) => v noFuture
+    | none => .err
+  | .sort l => .ty (.univ l)
+  | .ind ty c _ ps fs =>
+    match K.Γ.find? (·.name == ty) with
+    | some d =>
+      let ps? := if ps.isEmpty && !d.params.isEmpty then K.dm.paramsOf d hint
+        else some (meanParams φ d 0 [] ps)
+      match ps? with
+      | some ps' => K.dm.ctorM d ps' c (meanFields φ d ps' c 0 [] fs)
+      | none => .err
+    | none => .err
+  | .tInd n args =>
+    match K.Γ.find? (·.name == n) with
+    | some d => .ty (K.dm.tyM d (meanParams φ d 0 [] args))
+    | none => .ty .err
+termination_by structural v => v
+
+noncomputable def meanFields (φ : Future) (d : IndDecl) (ps : List Sem) (c i : Nat)
+    (earlier : List Sem) : List Value → List Sem
+  | [] => []
+  | v :: vs =>
+    let s := meanV φ (K.dm.fieldTy d ps c i earlier) v
+    s :: meanFields φ d ps c (i + 1) (earlier ++ [s]) vs
+termination_by structural vs => vs
+
+noncomputable def meanParams (φ : Future) (d : IndDecl) (i : Nat)
+    (earlier : List Sem) : List Value → List Sem
+  | [] => []
+  | v :: vs =>
+    let s := meanV φ (K.dm.paramTy d i earlier) v
+    s :: meanParams φ d (i + 1) (earlier ++ [s]) vs
+termination_by structural vs => vs
+
+/-- A closure's or Π-closure's captured values, each read as a value (D51). -/
+noncomputable def capsVals (φ : Future) : List Value → List Sem
+  | [] => []
+  | v :: vs => meanV φ .err v :: capsVals φ vs
+termination_by structural vs => vs
+
+/-- The captures' recorded declared types, each read as a type (D82). -/
+noncomputable def capsTys (φ : Future) : List (DeclInfo × Value) → List (DeclInfo × TyM)
+  | [] => []
+  | (d, T) :: rest => (d, (meanV φ .err T).asTy) :: capsTys φ rest
+termination_by structural rest => rest
 end
+
+/-- The code meaning the run induces, at the assignment `ρ` (the knot of `Value.mean`). Its
+assignment argument is ignored: `Value.mean` is only ever read at the one assignment of the
+state, which is this `ρ`. -/
+noncomputable def codeMeaning : CodeMeaning where
+  global := K.C.global
+  sealed _ φ hint t := meanV K ρ φ hint (.sealed t)
+  clo _ φ caps t rd := meanV K ρ φ .err (.clo caps t rd)
+  pi _ φ caps t rd := (meanV K ρ φ .err (.tPi caps t rd)).asTy
+  paramTy _ P ws j := match run K ρ .err (.val P) emptyState with
+    | some ((_, T), _) => match T.shape with
+      | some (ps, out) =>
+        let acc := ws.map (meanV K ρ noFuture .err)
+        if j < ps.length then (ps[j]?.map (·.dom (acc.take j))).getD .err
+        else match out with | .data B => B acc | .ref U => U acc
+      | none => .err
+    | none => .err
+
+/-- The knot ties: `Value.mean` at the induced code meaning is `meanV`. By induction on the
+value; every clause but the code-dependent ones is the same text. -/
+theorem meanV_eq_mean (ρ : Assignment) (φ : Future) (hint : TyM) (v : Value) :
+    Value.mean K.dm (codeMeaning K ρ) K.Γ ρ φ hint v = meanV K ρ φ hint v := by
+  sorry
 
 end
 
