@@ -76,14 +76,12 @@
   fill: status-ink,
   s,
 ))
-#let s-heap = tagc(rgb("#cfe0f5"), [proved on the heap slice])
 #let s-red(x) = tagc(rgb("#fbe5c0"), [reduced to #x])
 #let s-paper = tagc(rgb("#e6dcf2"), [paper argument])
 #let s-open = tagc(rgb("#f6cfcf"), [open])
 #let s-design = tagc(rgb("#f2f2c4"), [open design question])
 
 // Status colours, for figures and legends.
-#let st-heap = rgb("#cfe0f5")
 #let st-red = rgb("#fbe5c0")
 #let st-paper = rgb("#e6dcf2")
 #let st-open = rgb("#f6cfcf")
@@ -165,8 +163,7 @@ This is the plan we intend to follow to prove that Ochr is consistent and type s
 
 *The object of study.* The calculus is the one implemented by the Lean checker in `ochr/core/lean/Ochr/` (chiefly `Syntax.lean`, `Basic.lean`, `Env.lean`, `Machine.lean`, `Decide.lean`, `Obs.lean`, `Check.lean` and `Run.lean`) and laid out rule by rule in the appendix of the Ochr paper. @sec-prelim restates every part of it that the plan relies on, so that the plan can be followed without either.
 
-*Status labels.* Each lemma carries one of four labels.
-- #s-heap: proved, without `sorry`, in Lean for the _heap slice_ (`ochr/core/lean/Ochr/Heap/`), a second evaluator for part of the calculus, in a heap-based style. Not a statement about the checker.
+*Status labels.* Each lemma carries one of three labels.
 - #s-red[X]: shown to follow from the named lemmas X by an argument given here.
 - #s-paper: an argument exists at the level of detail of this document, not checked in Lean.
 - #s-open: no argument yet.
@@ -545,7 +542,7 @@ The preservation of (WF1)–(WF6) is not yet proved; test 2 assumed it, and foun
 The step lemmas, one per checker rule, are where the principles of @sec-principles are used, read as statements about meaning:
 - worlds (X1)–(X4): leaving an arm drops every fact that depends on the arm's path condition, so the assignment that held in the arm's world is never asked to hold elsewhere; keeping such a fact is how `EtaBoom` proved `False` (@sec-risks);
 - closing off (C1)–(C9): [Close] is exact by definition, because a sealed program means its program, and (C1) is what makes the text rebuild the call;
-- locality (L1)–(L7), read as the compositionality of the meaning of code: a call's meaning changes only its result and its borrowed places (the frame property, proved on the heap slice as `Ochr.Heap.frame` and `call_effect`);
+- locality (L1)–(L7), read as the compositionality of the meaning of code: a call's meaning changes only its result and its borrowed places (the frame property);
 - observation (O1)–(O5): `Id`'s computation to a conjunction over the footprint is exact by footprint coverage;
 - erasure and captures (E1)–(E5), (K1)–(K3): erased runs keep meaning because their copies are discarded, and captures are over-approximations in the sense of @def-lessinfo;
 - wholeness (W1)–(W2): every point where a value passes to code relying on its type is a point where (b) is established for it;
@@ -784,7 +781,7 @@ Five further soundness guards found by ablating the checker fit the same way: a 
     dn((4.1, 3), [Census: one item], st-open, <r-census>),
     dn((5.3, 3), [valType? sound], st-open, <r-vt>),
     dn((0.9, 4), [Principles (@sec-principles)], st-paper, <r-princ>),
-    dn((2.3, 4), [Frame property], st-heap, <r-frame>),
+    dn((2.3, 4), [Frame property], st-red, <r-frame>),
     dn((3.7, 4), [Footprint coverage (assumed)], st-open, <r-call>),
     dn((2.6, 5), [[Open], [Repack] beyond the lent index; erased runs], st-open, <r-res>),
     dn((5.1, 4), [(WF1)–(WF7) preserved], st-open, <r-wf>),
@@ -810,7 +807,7 @@ Five further soundness guards found by ablating the checker fit the same way: a 
     edge(<r-wf>, <r-mp>, "-|>"),
     edge(<r-res>, <r-mp>, "-|>"),
   ),
-  caption: [The plan's lemmas and their dependencies; an arrow points from a lemma to one that uses it, and the double arrow marks the induction conversion soundness shares with the main theorem. Colours: #swatch(st-heap, [proved on the heap slice]), #swatch(st-red, [reduced]), #swatch(st-paper, [paper argument]), #swatch(st-open, [open]), #swatch(st-design, [open design question]).],
+  caption: [The plan's lemmas and their dependencies; an arrow points from a lemma to one that uses it, and the double arrow marks the induction conversion soundness shares with the main theorem. Colours: #swatch(st-red, [reduced]), #swatch(st-paper, [paper argument]), #swatch(st-open, [open]), #swatch(st-design, [open design question]).],
 ) <fig-route-dag>
 
 #figure(
@@ -843,7 +840,7 @@ Five further soundness guards found by ablating the checker fit the same way: a 
       [Decisions sorted (census)], [#s-open], [one item, an embedded call head's class; reading the lent-part check's type from the borrow's declaration would only simplify the proof],
       [`valType?` sound], [#s-open], [one lemma about one function; D82 (on main) removed its uses at bindings],
       [Footprint coverage], [#s-open], [assumed by test 2; the extra owners at a call site by the injectivity of contexts and (O4)],
-      [Frame property], [#s-heap; #s-red[(L1)–(L7)] on checker], [a lemma both targets use, not a target: a call's meaning changes only its result and borrowed places; `Ochr.Heap.frame`, `call_effect` (heap slice)],
+      [Frame property], [#s-red[(L1)–(L7)]], [a lemma both targets use, not a target: a call's meaning changes only its result and borrowed places; argued from the locality principles, which are not proved],
       [Type safety (@target-safe)], [#s-red[the reference run; (a)–(e) of @sec-safety]], [test 3 passed on the slice, no checker bug; open lemmas in @sec-safety],
       [`Id` adequacy (@target-adeq)], [#s-red[@thm-mp, @target-safe, the context lemma]], [a draft statement; neither other target implies it],
       [Context lemma], [#s-open], [what a context can observe of a term is what `Id` compares; the audit of @sec-test-adeq pending; known gaps: moves (D84, not merged) and `RePoint` (observe assigned borrow variables)],
@@ -870,8 +867,6 @@ Five further soundness guards found by ablating the checker fit the same way: a 
 + *The model and the meaning of states, on paper, for the whole calculus* (Q2): what the slices covered only on paper or not at all (user inductives and dependent constructors in Lean, inductives declared `abstract` or `implemented by`, `split f in t`, `rewrite`, records), with conversion soundness (@lem-model, @def-state-meaning, @def-refrun, @lem-conv).
 + *The step lemmas, on paper*, one per checker rule, against the reference run, each stating which of (a), (b) and (c) the step must keep and which it establishes, with the five lemmas behind "same" (@sec-wf). Large but routine; the standing preference is that size costs nothing and risk is what counts.
 + *The Lean statements* of the three targets (Q1 for consistency), and mechanisation, with meaning and membership built together, as both Lean encodings already do.
-
-*Not planned: a heap port.* The checker's value layer is not to be ported to the heap design, and the branches `heap-close` and `port-step1` are not to be merged. The heap slice stays as a Lean artefact, cited for the frame property.
 
 = Where the plan could fail <sec-risks>
 
