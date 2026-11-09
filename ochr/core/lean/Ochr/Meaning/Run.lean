@@ -1,4 +1,5 @@
 import Ochr.Meaning.Places
+import Ochr.Meaning.Apply1
 
 /-!
 # The reference run (docs/18 Def. "reference run", the meaning of code [Q2]; docs/31 D9, D10)
@@ -168,37 +169,45 @@ noncomputable def borrowPlace (p : Place) : SM Res := fun s => do
   let s := s.pushTempShaped (fun _ => v) l
   some ((v, { T with label := some l }), s)
 
+/-- A call at level `L` (`Apply1.lean`): unpack the callee at its carrier and apply it along its
+shape (`applyFnL`); otherwise as `callOf`. -/
+noncomputable def callOfL.{u} (L : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : Sem) (args : List Res) :
+    SM Res := fun s =>
+  let argSems := args.map (·.1)
+  let labels := args.filterMap (·.2.label)
+  -- the borrow arguments' holders (parked temporaries) are consumed by the call
+  let s := labels.foldl SState.takeLabel s
+  match applyFnL L ps out fv argSems with
+  | some (.data r finals) =>
+    let s := s.mapVals fun _ v φ' => v (φ'.updList (labels.zip finals))
+    let B := match out with | .data B => B argSems | .ref U => U argSems
+    some ((r, .plain B), s)
+  | some (.ref U fwd back) =>
+    let (k, s) := s.freshLoan
+    let s := s.mapVals fun _ v φ' =>
+      match L.dec U (φ' k) with
+      | some x => v (φ'.updList (labels.zip (back x)))
+      | none => .err
+    let s := s.pushTempShaped (fun _ => L.enc U fwd) k
+    some ((L.enc U fwd, ⟨U, none, some k, none⟩), s)
+  | none => none
+
 /-- A call, on the evaluated callee and arguments (docs/18 Def. "reference run", first clause):
 apply the callee's meaning along its shape. For a borrow-free result each lent place's final
 content is fixed to its component of the finals (the future at the argument's label); for a
 result `&U`, a fresh label `k`, the result holds the forward value, and each lent place reads
 its component of the backward function at the final content of `k`. A callee without a shape,
 or an ill-typed application, is an error. The guard of a recursive call and a statement call's
-copy are the caller's (`run`'s `.call` clause). -/
+copy are the caller's (`run`'s `.call` clause). The callee's level is read off its tag
+(`Apply1.lean`: one construction for `Type₀`, `Type₁`, `Type₂`). -/
 noncomputable def callOf (fv : Res) (args : List Res) : SM Res := fun s =>
   match fv.2.shape with
   | some (ps, out) =>
-    match fv.1.as (piCar0 ps [] PUnit out) with
-    | some F =>
-      let argSems := args.map (·.1)
-      let labels := args.filterMap (·.2.label)
-      -- the borrow arguments' holders (parked temporaries) are consumed by the call
-      let s := labels.foldl SState.takeLabel s
-      match applyTele ps [] PUnit (fun _ => []) out F argSems with
-      | some (.data r finals) =>
-        let s := s.mapVals fun _ v φ' => v (φ'.updList (labels.zip finals))
-        let B := match out with | .data B => B argSems | .ref U => U argSems
-        some ((r, .plain B), s)
-      | some (.ref U fwd back) =>
-        let (k, s) := s.freshLoan
-        let s := s.mapVals fun _ v φ' =>
-          match U.dec0 (φ' k) with
-          | some x => v (φ'.updList (labels.zip (back x)))
-          | none => .err
-        let s := s.pushTempShaped (fun _ => U.enc0 fwd) k
-        some ((U.enc0 fwd, ⟨U, none, some k, none⟩), s)
-      | none => none
-    | none => none
+    match fv.1 with
+    | .el0 .. => callOfL lvl0 ps out fv.1 args s
+    | .el1 .. => callOfL lvl1 ps out fv.1 args s
+    | .el2 .. => callOfL lvl2 ps out fv.1 args s
+    | _ => none
   | none => none
 
 /-- D84, the drop at the join, as `Machine.dropAtJoin` does it (mono-lemmas' review): every place
@@ -342,13 +351,7 @@ noncomputable def run (hint : TyS) : Term → SM Res
         | some ((v, _), _) => v.asTy
         | none => .err
     let l := K.D.piSort (scopeOf s) (.pi hs ds c)
-    let T : TyM := match l with
-      | 0 => .prop (piProp ps [] fun acc => match out with | .data B => (B acc).true | .ref _ => False)
-      | 1 => .ty0 (piCar0 ps [] PUnit out)
-      | 2 => .ty1 (piCar1 ps [] fun acc => match out with | .data B => B acc | .ref U => U acc)
-      | 3 => .ty2 (piCar2 ps [] fun acc => match out with | .data B => B acc | .ref U => U acc)
-      | _ => .err
-    some ((.ty T, ⟨.univ l, some (ps, out), none, none⟩), s)
+    some ((.ty (piTyAt l ps out), ⟨.univ l, some (ps, out), none, none⟩), s)
   | .fix self hs ds c dec body => fun s =>
     -- [Closure] (D51, D53, D80): a closure means a function on its annotated domain, read off
     -- the reference run of its body in the forming frame extended by `self` and the parameters
@@ -365,11 +368,13 @@ noncomputable def run (hint : TyS) : Term → SM Res
       | c => .data fun acc => match run (.plain .err) c (extendBy s acc) with
         | some ((v, _), _) => v.asTy
         | none => .err
-    let piT := piCar0 ps [] PUnit out
+    -- the carrier at the declared sort (D55, D12): `piTyAt`/`closureAt` (`Apply1.lean`)
+    let l := K.D.piSort (scopeOf s) (.pi hs ds c)
+    let piT := piTyAt l ps out
     let start := s.nextLoan
     let base := ((s.env.getLast?).map (·.binds.length)).getD 0 + 1
     let bodyAt (selfM : Sem) (args : List Sem) : Option BodyOut :=
-      let s₁ := s.pushBind { ty := ⟨.ty0 piT, some (ps, out), none, none⟩, val := fun _ => selfM }
+      let s₁ := s.pushBind { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM }
       let s₂ := ((args.zip ps).foldl (fun (sa : SState × List Sem) (ap : Sem × PiParam) =>
         (sa.1.pushBind { ty := .plain (ap.2.dom sa.2), val := fun _ => ap.1 }, sa.2 ++ [ap.1])) (s₁, [])).1
       let codT := match out with | .data B => B args | .ref U => U args
@@ -382,10 +387,7 @@ noncomputable def run (hint : TyS) : Term → SM Res
           if ((ps[i]?).map (·.isRef)).getD false then some (s₄.valAt (.bind s₄.topIdx (base + i))) else none
         some ⟨r, finals, R.label⟩
       | none => none
-    let closureOf (g : List Sem → Option BodyOut) : Sem :=
-      match mkTele φ ps [] PUnit (fun fs => some ((), fs)) out g with
-      | some F => .el0 piT F
-      | none => .err
+    let closureOf (g : List Sem → Option BodyOut) : Sem := closureAt l φ ps out g
     let stage : Nat → List Sem → Option BodyOut :=
       Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none)
         (fun _ gk => bodyAt (closureOf gk))
@@ -407,22 +409,7 @@ noncomputable def run (hint : TyS) : Term → SM Res
       else match s.varPos i with
         | some pos => s.setAt pos fun _ => .moved
         | none => s) s
-    -- the carrier at the declared sort (D55): a proof-valued function is a proof, `⋆` (its
-    -- type the proposition `piProp`); a function in `Type₀` is an element of `piCar0`; a
-    -- function in a higher universe (a type parameter) needs a level-1 `mkTele`, not yet
-    -- written: it means `err` (docs/31 D12, an open gap)
-    let l := K.D.piSort (scopeOf s) (.pi hs ds c)
-    let T : TyM := match l with
-      | 0 => .prop (piProp ps [] fun acc => match out with | .data B => (B acc).true | .ref _ => False)
-      | 1 => .ty0 piT
-      | 2 => .ty1 (piCar1 ps [] fun acc => match out with | .data B => B acc | .ref U => U acc)
-      | 3 => .ty2 (piCar2 ps [] fun acc => match out with | .data B => B acc | .ref U => U acc)
-      | _ => .err
-    let v : Sem := match l with
-      | 0 => .proof
-      | 1 => closureOf g
-      | _ => .err
-    some ((v, ⟨T, some (ps, out), none, none⟩), s')
+    some ((closureOf g, ⟨piT, some (ps, out), none, none⟩), s')
   | .call f args hd => fun s =>
     let fl := K.D.flags (scopeOf s) (.call f args hd)
     let body : SM Res := do
