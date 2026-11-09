@@ -71,7 +71,6 @@ On literal `MState`s with a `Nat` binding: [Borrow] is exact (`borrow_exact`); [
 ### What could not be defined in milestone 1
 
 - The generic data carrier (D4) and the code meanings (D5): parametrised, built in milestone 2.
-- `Sem.le_trans` and `Sem.le_eq_of_whole` are stated with `sorry` (routine inductions over the mutual `le`/`leList`).
 - `libModel`'s operations and laws are `sorry` (routine).
 
 ## Plan for milestones 2–4

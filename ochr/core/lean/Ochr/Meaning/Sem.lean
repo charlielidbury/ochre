@@ -96,12 +96,33 @@ scoped infix:50 " ⊑ " => Sem.le
 
 theorem Sem.le_refl (s : Sem) : s ⊑ s := .refl s
 
+mutual
 /-- A whole meaning below another equals it: on whole values the order is equality. -/
-theorem Sem.le_eq_of_whole : ∀ {s t : Sem}, s ⊑ t → s.whole → s = t := by
-  sorry
+theorem Sem.le_eq_of_whole : ∀ {s t : Sem}, s ⊑ t → s.whole → s = t
+  | _, _, .moved _, hw => by simp [Sem.whole] at hw
+  | _, _, .refl _, _ => rfl
+  | _, _, .ctor h, hw => by
+    simp only [Sem.whole] at hw
+    exact congrArg _ (Sem.leList_eq_of_whole h hw)
 
-theorem Sem.le_trans : ∀ {a b c : Sem}, a ⊑ b → b ⊑ c → a ⊑ c := by
-  sorry
+theorem Sem.leList_eq_of_whole : ∀ {fs gs : List Sem}, Sem.leList fs gs → (∀ f ∈ fs, f.whole) → fs = gs
+  | _, _, .nil, _ => rfl
+  | _, _, .cons h hs, hw => by
+    rw [Sem.le_eq_of_whole h (hw _ (List.mem_cons_self ..)),
+      Sem.leList_eq_of_whole hs fun f hf => hw f (List.mem_cons_of_mem _ hf)]
+end
+
+mutual
+theorem Sem.le_trans : ∀ {a b c : Sem}, a ⊑ b → b ⊑ c → a ⊑ c
+  | _, _, _, .moved _, _ => .moved _
+  | _, _, _, .refl _, h => h
+  | _, _, _, .ctor h₁, .refl _ => .ctor h₁
+  | _, _, _, .ctor h₁, .ctor h₂ => .ctor (Sem.leList_trans h₁ h₂)
+
+theorem Sem.leList_trans : ∀ {a b c : List Sem}, Sem.leList a b → Sem.leList b c → Sem.leList a c
+  | _, _, _, .nil, h => h
+  | _, _, _, .cons h₁ hs₁, .cons h₂ hs₂ => .cons (Sem.le_trans h₁ h₂) (Sem.leList_trans hs₁ hs₂)
+end
 
 /-- Membership: a meaning lies in a type's meaning. An element is a member of the carrier it is
 tagged with; the proof `•` of every true proposition; a type value of the universe of its level.
