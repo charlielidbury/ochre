@@ -5,6 +5,8 @@ import Ochr.Meaning.Value
 import Ochr.Meaning.Pi
 import Ochr.Meaning.SState
 import Ochr.Meaning.Apply
+import Ochr.Meaning.Places
+import Ochr.Meaning.Run
 import Ochr.Meaning.State
 import Ochr.Meaning.WF
 import Ochr.Meaning.Sanity

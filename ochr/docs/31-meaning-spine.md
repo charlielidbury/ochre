@@ -2,7 +2,7 @@
 
 The design note of the consistency spine (`ochr/core/lean/Ochr/Meaning/`, lean_lib `OchrMeaning`): the Lean definitions and lemma statements of docs/18's main theorem against the real checker types (`Value`, `Term`, `MState`), for a swarm of provers to fill. Kept short and current; decisions in the order they were made. Questions of docs/18 are cited by name with their number in brackets, since the numbers have moved before.
 
-Status (2026-11-09): milestone 1 (the meaning of a state) done; milestones 2–4 (the reference run, the step-lemma skeleton, the assembly) not started.
+Status (2026-11-09): milestone 1 (the meaning of a state) done and reviewed by the lead; milestone 2 (the reference run) in progress: its state, Π-carriers, application/construction and place operations are defined, and `run` is defined for the first-order term forms with eight named holes (below); milestones 3–4 not started.
 
 ## Milestone 1: the meaning of a state
 
@@ -83,9 +83,25 @@ On literal `MState`s with a `Nat` binding: [Borrow] is exact (`borrow_exact`); [
 
 ## Plan for milestones 2–4
 
-### Milestone 2: the reference run (`Run.lean`, the meaning of code [Q2])
+### Milestone 2: the reference run (`Run.lean`, the meaning of code [Q2]) — in progress
 
-One mutual structural recursion over `Term`/`Value` defining `run : SState → Term → Option (Sem × SState)` on semantic states (`Mean` plus a frame stack) and `Value.mean` together, with `CodeMeaning` instantiated by the fixpoint. Clauses for every `Term` form `evalCore` handles: places (D81 projections as one-arm matches), borrow, assign (D67's owned access), let/seq (drops), `matchNat`/`matchInd` (an arm chosen by the tag; D84's drop at the join), `const`, `val`, sorts, `pi`/`fix` (closure formation: captures by value, at their declared types), `call` (apply the callee's meaning; borrow parameters via cells; closing off is exact by definition), `nat`/`zero`/`succ`/`unit`/`tt`, `eq` (equality in `Sem`), `cong`, `ref`, `id` (both sides on copies, end every borrow, compare every position: `Id` observes moves under D84), `J`/`symm`/`trans`/`rewrite` (the transported term), `hole` (excluded), `clone`/`peek`/`inplace`, `ascribe`; statements on discarded copies. Plus the Π-carrier construction by cases on the declared sorts (D55) with `brw`/`brwRet` for borrow parameters, the guarded fixpoint for `fix`, and the generic `DataModel`. Deliverable: the knot-tying lemma, the substitution lemma for sealed programs (`sealed ρ φ (t[loan ℓ := w]) = sealed ρ (φ.upd ℓ ⟦w⟧) t`), and the stage construction's laws.
+Done (all building, structurally recursive, no `partial`):
+- `Pi.lean`: per-level carriers `el0/el1/el2` with encodings; `PiParam`/`PiOut`; `piCar0` (telescope with final contents of borrow parameters; output data × finals or `Back` with an injective backward function), `piProp` (impredicative), `piCar1`/`piCar2`. Three `rfl` examples against `Slice.lean`'s shapes.
+- `SState.lean`: the run's state, a Value-free `Env` (bindings with type, meaning as a function of the future, declared reading, and the guarded-recursion bound for a function's binding of itself; temporaries; shape; label counter); `endLabel` (lifted `semEnd`), `access` (ends, iterated in label order, exactly the labels the position's meaning depends on), `MState.sstate`.
+- `Apply.lean`: `dec0`/`dec1`; `applyTele` (apply a Π-carrier element along its telescope); `mkTele` (build one from a body's run at every argument, `none` where the body is undefined or ill-typed, or the backward function is not injective: such closures mean `err`). `BodyOut` is what a body's run yields: result and finals as functions of the future, and the returned label.
+- `Places.lean`: `Decisions`, the interface to `Decide.lean` (flags, placeDecl, declOf, copy, piSort, joinMoves): the *aligned* decisions the run must make exactly as the checker does; the step lemmas prove the fields equal the checker's functions. `Sem.step/follow/updAt` on meanings at a type (`*` is the identity; fields through `DataModel.paramsOf`/`fieldsOf`/`fieldTy`; re-packing through `ctorM`).
+- `Run.lean`: `SM`, `RunCtx`, results `SVal × TyM` (a result carries its type, since projections and hints need it), `readPlace` (access, copy or move by the declared reading), `borrowPlace`, `setContent`, and `run` for place, borrow, assign, let (binding at the rhs's type; drop = forget), seq, const, val, sort, nat/unit/zero/tt/succ, eq (both sides on copies; equality in `Sem`), the proof primitives (`⋆`), ref, clone/peek/inplace, ascribe.
+
+Holes, each a `noncomputable def … := sorry` in `Run.lean`, to fill next (the order is the dependency order):
+1. `ctorHole`, `tindHole`: constructor values through `DataModel.ctorM` with field hints (`Value.meanFields`' logic on run results), `D(ā)` through `tyM`.
+2. `piHole`: Π-type formation. Run each domain term in a frame of the captures and the earlier parameters' meanings to get `PiParam`s, the codomain for `PiOut`; pick `piCar0`/`piProp`/`piCar1`/`piCar2` by `Decisions.piSort` (D55) and borrow-ness of the codomain term (`.ref`).
+3. `callHole`: read the callee's meaning and its Π-type value (a `tPi`, or a global's type), compute its shape as in 2, evaluate the arguments into temporaries (each with access), `applyTele`; for a data result fill each borrow argument's lender with its final content (fix the future, `Future.upd`); for a returned borrow, a fresh label `k`, the result `fun φ => fwd`, and each lender `fun φ => back (φ k)`; a call through the function's own binding checks the rank bound (`SBinding.recBound`) and errs when it does not drop (docs/24 §4). Statement calls (`Decisions.flags`) run on a copy.
+4. `fixHole`: closure formation: the meaning is `el0 (piCar0 …) (mkTele …)` with the body run in a fresh frame (captures by value at their readings, parameters, cells behind borrow parameters), popping the frame ending the parameters' borrows; recursive `fix` by `WellFounded.fix` on `DataModel.rank` of the decreasing argument, the self binding carrying the bound.
+5. `matchHole`: access the scrutinee (match mode), read the tag (`DataModel.fieldsOf`), bind the fields as places (they are sub-places, D32: nothing to bind), run the arm, then D84's drop at the join: set every place in `Decisions.joinMoves` to `moved`. A `⊥` or non-constructor scrutinee is an error. Matches on proofs by type (D45): the arm named by the type's constructor.
+6. `jHole`: the transported term (`J`'s last argument) run in place; endpoints, motive and proof are statements on copies.
+7. `idHole`: run each side on a copy of the state, end every live borrow of the copy, read the result and every position under the constant future, compare: `.ty (.prop (obs t = obs u))`.
+
+Then: the knot-tying `CodeMeaning` (`global` from the program, `sealed` = `run` from the empty state at the hint, `clo` = `fixHole`'s meaning, `pi` = `piHole`'s, `paramTy` from the Π shape), the lemma that `Value.mean` at that `CodeMeaning` is what `run` gives for `.val`, the sealed-program substitution lemma (`sealed ρ φ h (t[loan ℓ := w]) = sealed ρ (φ.upd ℓ ⟦w⟧) h t`), the generic `DataModel` by stages with its laws and `pack_congr`, and the program meaning (globals by recursion on the program).
 
 ### Milestone 3: the step-lemma skeleton (`Steps/*.lean`)
 
