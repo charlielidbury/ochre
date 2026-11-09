@@ -26,6 +26,7 @@ import Ochr.Meaning.Sanity
 import Ochr.Meaning.Bounded
 import Ochr.Meaning.Mono
 import Ochr.Meaning.Program
+import Ochr.Meaning.DecisionsInst
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
