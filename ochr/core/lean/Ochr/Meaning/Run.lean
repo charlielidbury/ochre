@@ -185,17 +185,25 @@ noncomputable def callOf (fv : Res) (args : List Res) : SM Res := fun s =>
     | none => none
   | none => none
 
-/-- D84, the drop at the join: every place some arm of the match moves (`Decisions.joinMoves`,
-static, given the places already moved at entry) is set to `moved` after the match. -/
+/-- D84, the drop at the join, as `Machine.dropAtJoin` does it (mono-lemmas' review): every place
+some arm of the match moves (`Decisions.joinMoves`, static, given the places already moved at
+entry) is accessed, then set to `moved`; a place whose declared reading is copy, a proof, or a
+place already `⊥` is left alone; a borrow held at a dropped root ends (`endLabel`). At a root
+this is below the state before; at a field place it is a real change, so the match step lemma
+is stated exact against the checker's drop, not below its input. -/
 noncomputable def joinDrop (t : Term) (s : SState) : SState :=
   (K.D.joinMoves (scopeOf s) (movedPlaces φ s) t).foldl (fun s q =>
+    if K.D.copy (K.D.placeDecl (scopeOf s) q) then s else
     match resolve s q with
     | some (pos, steps) =>
-      let T := (s.tyAt pos).m
-      let old := s.valAt pos
-      match Sem.updAt K.dm K.Γ T (fun _ => .moved) steps (old φ) with
-      | some _ => s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T (fun _ => .moved) steps (old φ')).getD .err
-      | none => s
+      let s := s.access pos
+      match Sem.follow K.dm K.Γ (s.tyAt pos).m (s.valAt pos φ) steps with
+      | some (.proof, _) | some (.moved, _) | none => s
+      | some _ =>
+        let s := if steps.isEmpty then (match s.shape pos with | some l => s.endLabel l | none => s) else s
+        let T := (s.tyAt pos).m
+        let old := s.valAt pos
+        s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T (fun _ => .moved) steps (old φ')).getD .err
     | none => s) s
 
 /-- An observation for `Id` (docs/27 Def. 5): the side's result and, after ending every live
@@ -278,8 +286,14 @@ noncomputable def run (hint : TyS) : Term → SM Res
         else some psM
       match ps' with
       | some ps' =>
-        let fs ← runFields d ps' c 0 [] args
-        pure (K.dm.ctorM d ps' c fs, ⟨K.dm.tyM d ps', none, none, some (ty, ps')⟩)
+        -- a constructor of a Prop-sorted inductive is a proof, `⋆` (D42); its arguments are
+        -- statements
+        if d.sort == 0 then
+          let _ ← SM.onCopy (runFields d ps' c 0 [] args)
+          pure (.proof, ⟨K.dm.tyM d ps', none, none, some (ty, ps')⟩)
+        else
+          let fs ← runFields d ps' c 0 [] args
+          pure (K.dm.ctorM d ps' c fs, ⟨K.dm.tyM d ps', none, none, some (ty, ps')⟩)
       | none => SM.fail
     | none => SM.fail
   | .const n => pure (K.C.global n)
@@ -526,7 +540,7 @@ noncomputable def meanV (hint : TyS) : Value → Sem
           (match hint.data with | some (n, ps') => if n = ty then some ps' else none | none => none)
         else some (meanParams d 0 [] ps)
       match ps? with
-      | some ps' => K.dm.ctorM d ps' c (meanFields d ps' c 0 [] fs)
+      | some ps' => if d.sort == 0 then .proof else K.dm.ctorM d ps' c (meanFields d ps' c 0 [] fs)
       | none => .err
     | none => .err
   | .tInd n args =>
