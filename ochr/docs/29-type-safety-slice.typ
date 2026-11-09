@@ -184,7 +184,7 @@
   *Summary.* Type safety holds on the slice, given three changes and two lemmas still to prove.
   - *The changes.*
     - The target must say which function values may be passed: those built by accepted code (@sec-target).
-    - At runtime, `J` must return its transported term, which is what erasing it means (@sec-j).
+    - At runtime, `J` returns its transported term, which is what erasing it means (@sec-j); adopted as D85.
     - The erased run must skip statements instead of running them on copies (@sec-erasure).
   - *Error reflection splits in two.*
     - _Value errors_ reflect to the reference run, which an accepted definition never sends wrong. These are a constructor no arm matches, a path through a value of the wrong shape, and a call of something that is not a function. They reflect because at a closed state every value means itself.
@@ -193,7 +193,7 @@
     - D84 makes that lemma's half about moved places exact. Two probes aimed at its likeliest failure (`Unit` lenders) are rejected by the checker, as the lemma predicts.
   - *The rest.*
     - Erasure holds by construction (P2, D68).
-    - Recursion by name terminates by [Rec] and guarded recursion. A call through a function value needs a realizability relation, which is the first draft's Q1 returning, but only its predicative part, since proofs are erased.
+    - Recursion by name terminates by [Rec] and guarded recursion. A call through a function value needs a realizability relation (docs/18's Q6), which brings back the old question of good ground values, but only its predicative part, since proofs are erased.
     - Well-formedness at runtime is simpler than at checking time: there are no sealed programs, so there are no inert loans.
 ]))
 #v(0.4em)
@@ -218,7 +218,7 @@ docs/18 states type safety as the second of its two targets. Consistency says pr
 ]) <target-safe>
 
 *What changed from docs/18's statement, and why.*
-- *"Built by accepted code".* docs/18 said "every parameter a concrete value". A closure value is code, and a closure from outside the program could loop or go wrong. Termination needs function arguments that behave as their meanings say (@sec-term), which closures and globals of an accepted program do. The first draft's Q1 asked the same question ("definability") for consistency. Consistency no longer needs it, since docs/23's assignments range over every set function; type safety does.
+- *"Built by accepted code".* docs/18 said "every parameter a concrete value". A closure value is code, and a closure from outside the program could loop or go wrong. Termination needs function arguments that behave as their meanings say (@sec-term), which closures and globals of an accepted program do. The old question of good ground values asked the same ("definability") for consistency. Consistency no longer needs it, since docs/23's assignments range over every set function; type safety does.
 - *"Never gets stuck".* A closed run can stop without an error, at a `J` or a match on a proof. @sec-errors lists both.
 - *"True in the set model".* The proof parameters need not have closed proofs. This is the stronger statement: it covers a caller that obtains its hypotheses outside Ochr. It is also what makes a runtime `J` reachable at endpoints that are not convertible (@sec-j).
 
@@ -350,8 +350,8 @@ The motive returns a data type, so this `J` is not a proof and the erased progra
 
 *Can a closed program reach it?* Only if a closed proof of $ty("Eq")(Pi(n : ty("Nat")). ty("Nat"), f, g)$ exists for non-convertible $f$ and $g$. `refl` proves only convertible equations. A lemma proving the equation at its generic call, where the two sides were convertible, would need them to stop being convertible at a closed argument. That would break docs/18's (V9), that conversion survives refinement, which no one has seen fail. So probably not. But @target-safe quantifies over proof parameters that are true, not proved, so it does reach it.
 
-*The recommendation: at runtime `J` is its transported term.* In the erased program $ty("J")(A, a, b, P, h, t)$ is $t$. The checker keeps [J] and [J-stuck] for typing, and for its own untyped runs.
-- *It is what erasure means.* $A$, $a$, $b$, $P$ and $h$ are statements (type slots, endpoints, motive, proof). The erased program does not have them, so it cannot compare the endpoints. `J` is a cast, and an erased cast is the identity. RULES §3 should say so.
+*Adopted (D85, lane `runtime-j`): at runtime `J` is its transported term.* In the erased program $ty("J")(A, a, b, P, h, t)$ is $t$. The checker keeps [J] and [J-stuck] for typing, and for its own untyped runs.
+- *It is what erasure means.* $A$, $a$, $b$, $P$ and $h$ are statements (type slots, endpoints, motive, proof). The erased program does not have them, so it cannot compare the endpoints. `J` is a cast, and an erased cast is the identity. D85 records it as the erased runtime's rule.
 - *It is sound given membership* (Lean: `castRT_safe`). The run is at a closed call whose proof parameters are true, and the reference run never errs. So at every `J` the run reaches, $h$ means an element of $deno(ty("Eq")(A, a, b))$, and $a$ and $b$ have equal meanings. Then $P(a)$ and $P(b)$ have equal meanings, and $t$, a value of $P(a)$, is a value of $P(b)$. Without true proof parameters it would not be sound: `J(Nat, 0, 1, λz. Vec(z), h, v)` under a false `h : Eq(Nat, 0, 1)` would return a `Vec(0)` as a `Vec(1)`. That is why the target requires them.
 - *It does not break "decisions never read a run".* At runtime the rule is unconditional: it reads nothing. Whether a position is at runtime or in a statement is decided from syntax (P2). The checker's [J], which reads conversion, stays where it is, value-dependent by design (census site 18).
 - *It needs the modes lemma, in one clause.* The erased run and the machine's untyped run differ at `J`. Where the machine computes `J`, both give $t$. Where the machine is stuck, the erased run gives $t$, and so does the meaning (docs/24, choice C9: `J` means its transported term). So the erased run is the more defined of the two and agrees with the meaning everywhere (@sec-erasure).
@@ -400,7 +400,7 @@ So the erased run is at least as defined as the machine's, and @target-safe is s
 
 With it, every call in a closed run terminates. A recursive call does so by induction on rank. A call of an earlier global, a closure, or a function parameter does so by @lem-real. That is why @target-safe asks for arguments built by accepted code: they realize their meanings, and arbitrary closures need not.
 
-*Status.* Recursion by name: #s-paper, from [Rec] and docs/24. Higher-order calls: reduced to @lem-real, which is the classic Tait–Girard argument and is not done. It is the first draft's Q1 ("good values"), returning only for type safety and only in its predicative part. Runtime erases proofs, so impredicative `Prop` never enters the relation. Types computed by code (`Cells(E, n)`) are handled as docs/24 handles them, by recursion on terms, not on types. docs/24 showed the model needs no pairs. Realizability does, at universes: the pairs return here, but as a relation on runtime values, not as a second notion of "good".
+*Status.* Recursion by name: #s-paper, from [Rec] and docs/24. Higher-order calls: reduced to @lem-real, which is the classic Tait–Girard argument and is not done. It is docs/18's Q6 (realizability for calls through function values): the old question of good ground values, returning only for type safety and only in its predicative part. Runtime erases proofs, so impredicative `Prop` never enters the relation. Types computed by code (`Cells(E, n)`) are handled as docs/24 handles them, by recursion on terms, not on types. docs/24 showed the model needs no pairs. Realizability does, at universes: the pairs return here, but as a relation on runtime values, not as a second notion of "good".
 
 = Well-formedness at runtime <sec-wf>
 
@@ -446,7 +446,7 @@ The frame property is the lemma that a call's run touches only its own frame and
 = What fails, and what changes <sec-fails>
 
 - *No checker bug found.* The likeliest failure of @lem-shape, η at `Unit` in a closed-off call's fills, does not occur: R3 applies only to the borrow-free row (probes `UseU` and `LeakU`, both rejected).
-- *A needed rule change, at runtime only: `J` is its transported term* (@sec-j). The checker is unchanged.
+- *A rule change, at runtime only: `J` is its transported term* (@sec-j), adopted as D85. The checker is unchanged.
 - *A needed sharpening of the target.* Function arguments must be built by accepted code (@sec-target). Without it termination is false: a closure from outside the program can loop.
 - *A weaker form of error reflection.* "The machine errs implies the reference run errs" is false as a lemma at one-element types (`UseDirect`). Elsewhere it holds, given (T4) injectivity (Lean, per operation). At one-element types, borrow errors reflect to the checker's derivation (@lem-shape), the one comparison of two runs that type safety needs.
 - *(T4) is needed for type safety*, not only for consistency: [Drop]'s reflection rests on meanings being injective in their loans.
@@ -464,6 +464,6 @@ The frame property is the lemma that a call's run touches only its own frame and
 
 + *Type safety is sharpened.* The erased run, which skips statements and makes `J` its transported term, terminates, never errs or sticks, returns live borrows, and means what the reference run says, at every closed call whose function arguments are built by accepted code and whose proof parameters are true.
 + *Error reflection splits.* The machine's 140 error sites fall into four families. Value errors reflect to the reference run, since at a closed state values mean themselves. Borrow errors reflect to it too, operation by operation, using (T4) injectivity (Lean), except at one-element types, where a loan sits that no meaning depends on. There they reflect to the checker's derivation, which is at least as strict as the closed run on borrow structure (@lem-shape). Static and typing errors are unreachable, and internal assertions are invariants.
-+ *At runtime `J` returns its transported term*, which is what erasure means. It is sound by membership, reads nothing, and is the one clause erasure adds to the modes lemma. Erasure otherwise holds by construction (P2, D55, D68).
-+ *Termination.* Recursion by name terminates by [Rec] and guarded recursion. Calls through function values need a realizability relation, the first draft's Q1 returning for type safety only, and predicative because proofs are erased. Not done.
++ *At runtime `J` returns its transported term* (D85, docs/18's Q5), which is what erasure means. It is sound by membership, reads nothing, and is the one clause erasure adds to the modes lemma. Erasure otherwise holds by construction (P2, D55, D68).
++ *Termination.* Recursion by name terminates by [Rec] and guarded recursion. Calls through function values need a realizability relation (docs/18's Q6), for type safety only, and predicative because proofs are erased. Not done.
 + *Well-formedness at runtime* is (WF1)–(WF7), with no inert loans. D84 makes moves exact between the generic call and the closed run. Probes of the likeliest gap (`Unit` lenders) are rejected as predicted.

@@ -461,7 +461,7 @@ docs/18's superseded route compared the checker's run with a run at each concret
 - *The checker can be the more precise one.* When `Pick` runs directly on a known $n$, the checker's own state leaves $b$ with no loan. The reference, which ends only what a meaning depends on, agrees.
 The point moves into @def-state as an ordinary fact: a fill is a function of its hole.
 
-*A3 after a drop, and early ends with pairs (Q4): they disappear.* Clause (A3) of the superseded route said the symbolic run had ended at least the borrows the instance run had. Its risk was a shallow early end leaving a reborrow alive on one run and not the other. Here an early end, at [Access] or [Drop], is @def-semend whatever the shape of the ended borrow's content.
+*A3 after a drop, and early ends with pairs: they disappear.* Clause (A3) of the superseded route said the symbolic run had ended at least the borrows the instance run had. Its risk was a shallow early end leaving a reborrow alive on one run and not the other. Here an early end, at [Access] or [Drop], is @def-semend whatever the shape of the ended borrow's content.
 - *Reborrows.* If the content holds a loan of a reborrow, or a pair with one in either component, the loan travels with it into the lender, and @lem-subst reads it from the same future.
 - *No second borrow set.* There is no other run whose live borrows must agree. The only requirement is that the checker does not use a borrow it ended, which is its own error rule.
 
@@ -530,7 +530,7 @@ Two standalone files, each importing Lean core only, not imported by `Ochr.lean`
 
 *`Ochr/Model/State2.lean`* (commits `434f5268`, `8147a3f5`).
 - *[Access] derived the checker's way*: the path, then the content; an assignment's access stops at the part the place owns; a match also looks inside a neutral head. It is below (`access_below`, `endL_below`), and a read after it does not depend on the future (`read_post_live`, `read_value_indep`).
-- *Ending one borrow reaches every reborrow, and shallow ends are sound* (`q4_*`, `q5_*`, `q6_*`): Q4 dissolves, as @sec-hard argues.
+- *Ending one borrow reaches every reborrow, and shallow ends are sound* (`q4_*`, `q5_*`, `q6_*`): the question of early ends with pairs dissolves, as @sec-hard argues.
 - *Nested holes.* [Close] holds for any argument (`step_closeG`), a returned borrow passed to a second call included (`n4_shape`, `n6_meaning`).
 - *(WF5) is about causality.* With a live loan in an argument, a current read would depend on a later write (`w0_acausal`). [Access] ends such a loan first (`w1_borrow_ends_first`). This is the reason [Close]'s precondition (C8) is needed for @def-state to make sense, not only for runtime safety.
 - *`⊥` inside a borrow's content* means no information (`m2_*`, `m4_*`; [End] of a partial content is an error, `m2_end_error`). `Eq` over meanings is monotone in the information order (`eqSV_mono`).
@@ -559,7 +559,7 @@ Two standalone files, each importing Lean core only, not imported by `Ochr.lean`
 The four hardest remaining points the coordinator named:
 - *`⊥` inside a borrow's content.* Covered on paper (@sec-mono) and in Lean (`State2.lean`).
 - *Reborrows, and a returned borrow passed into a second call* (nested holes). Covered on paper: @lem-subst reads nested loans from one future, and [Close]'s arguments are hole-free by (C8), so the arguments' contents never depend on the future. Covered in Lean (`n4_shape`, `n6_meaning`).
-- *Early ends with pairs (Q4).* Covered on paper (@sec-hard) and in Lean (`q4_*` to `q6_*`).
+- *Early ends with pairs.* Covered on paper (@sec-hard) and in Lean (`q4_*` to `q6_*`).
 - *[Access] deriving which borrows a read ends.* Covered on paper as a sequence of ends, each below, ending at least what the read depends on (@sec-ref). Lean derives it the checker's way (`access_below`, `read_value_indep`).
 
 Not covered here:
@@ -583,6 +583,6 @@ I tried the one-line fix in the scratch worktree (`ochre-probe-bot`, at `10c22fd
 
 + *The meaning of a state.* A state means a function of a _future_, the final contents of its live borrows. A lent place means its final content and a borrow's holder its current content. [End] fixes the future at the current content, and loses only information. A fill means its program with the hole read from the future. Checked in Lean (`Model/State.lean`, `Model/State2.lean`).
 + *Both obligations hold, with no new rule.* Stored types never hold a live loan, and the one type computed over a lent field quantifies over the hole (D64, D73). Every accepted borrow-returning function's backward function is injective, by an invariant that [Access], D67, D65 and (C8) keep, with called functions good by C1.
-+ *`Pick`, A3 after a drop (Q4), and N3 through inert loans all disappear.* They were statements about two runs agreeing. Here they are a definition (a fill is a function of its hole), a step that loses information (an early end), and meaning preservation for a fill's re-run (the hole as one more unknown).
++ *`Pick`, A3 after a drop with early ends with pairs, and N3 through inert loans all disappear.* They were statements about two runs agreeing. Here they are a definition (a fill is a function of its hole), a step that loses information (an early end), and meaning preservation for a fill's re-run (the hole as one more unknown).
 + *Monotonicity.* `Eq`, `J`, `match` and [Close]'s rows are monotone over `⊥`. Conversion is not: `⊥ ≡ ⊥` gives a fifth closed proof of `False` on main (`Same`, `Boom`), fixed by docs/28 (nothing holding `⊥` is convertible).
 + *A whole returned borrow* is a membership requirement, not only a runtime one, which corrects docs/26.
