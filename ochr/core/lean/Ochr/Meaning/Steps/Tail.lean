@@ -20,7 +20,7 @@ namespace Ochr.Meaning.Steps
 open Ochr.Meaning
 
 section
-variable (K : RunCtx) (ρ : Assignment)
+variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- The generic state of a `fix` is `Good` for every assignment that gives each parameter's
 unknown an element of its type (and the goal is a type). -/
@@ -36,13 +36,13 @@ theorem generic_good (st st' : MState) (fuel : Nat) (fv : Value) (cs : List Valu
 leaf (coverage along splits), where the continuation's hypotheses hold for the leaf's value and
 type, and the leaf's value means the reference run's result at the start. -/
 theorem checkTail_step (st st' : MState) (fuel : Nat) (t : Term) (k : Value → Value → M Unit)
-    (hint : TyM)
+    (hint : TyS)
     (hg : Good K.dm K.C K.Γ ρ st)
     (h : Runs (Ochr.checkTail fuel t k) st fuel () st') :
     ∃ ρ' v T stl stl', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ Good K.dm K.C K.Γ ρ' stl ∧
       Runs (k v T) stl fuel () stl' ∧
-      ∃ r s', run K ρ' hint t (SM' K ρ' st) = some (r, s') ∧
-        (∀ φ, meanV K ρ' φ r.2.m v ⊑ r.1 φ) ∧ (meanV K ρ' noFuture .err T).asTy = r.2.m := by
+      ∃ r s', run K ρ' φ hint t (SM' K ρ' st) = some (r, s') ∧
+        meanV K ρ' φ r.2 v ⊑ r.1 ∧ (meanV K ρ' noFuture (.plain .err) T).asTy = r.2.m := by
   sorry
 
 /-- [Def]/[Fix] (`checkFix`): an accepted `fix` means an element of its Π-type (docs/18
@@ -53,7 +53,7 @@ theorem checkFix_sound (st st' : MState) (fuel : Nat) (fv : Value) (cs : List Va
     (hg : Good K.dm K.C K.Γ ρ st)
     (hT : ∃ hs ds c, t = .fix ⟨""⟩ hs ds c none .tt ∨ fT = .tPi cs (.pi hs ds c) rd)
     (h : Runs (Ochr.checkFix fuel fv cs t capRec rd) st fuel () st') :
-    ∀ φ, meanV K ρ φ .err (.clo cs t rd) ∈ₛ (meanV K ρ φ .err fT).asTy := by
+    meanV K ρ φ (.plain .err) (.clo cs t rd) ∈ₛ (meanV K ρ φ (.plain .err) fT).asTy := by
   sorry
 
 /-- [Const]: an accepted constant's value is a member of its goal, under the empty assignment. -/
@@ -61,7 +61,7 @@ theorem checkConst_sound (st st' : MState) (d : Ochr.Def) (goal v : Value)
     (hg : Good K.dm K.C K.Γ ρ st) (hd : d.doms = [])
     (h : Runs (Ochr.checkDef d) st 2000000 () st')
     (hgl : ∃ g ∈ st'.globals, g.name = d.name ∧ g.ty = goal ∧ g.val = v) :
-    ∀ φ, meanV K ρ φ (meanV K ρ noFuture .err goal).asTy v ∈ₛ (meanV K ρ noFuture .err goal).asTy := by
+    meanV K ρ φ (Value.tyS K.dm K.C K.Γ ρ goal) v ∈ₛ (meanV K ρ noFuture (.plain .err) goal).asTy := by
   sorry
 
 /-- [Ind-decl] (`checkInd`): an accepted declaration satisfies (I1)–(I9), so the data model covers

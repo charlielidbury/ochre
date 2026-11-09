@@ -136,9 +136,9 @@ and each η-refinement `σ := C(σ̄)` says the same of its constructor value. -
 structure TypedAssignment (ρ : Assignment) (st : MState) : Prop where
   mem : ∀ σ, σ < st.absTy.size → ρ σ ∈ₛ MState.absTyM dm C Γ ρ st σ
   neutral : ∀ n σ, (n, σ) ∈ st.neutrals →
-    ρ σ = Value.mean dm C Γ ρ (fun _ => .err) (MState.absTyM dm C Γ ρ st σ) n
+    ρ σ = Value.mean dm C Γ ρ (fun _ => .err) (.plain (MState.absTyM dm C Γ ρ st σ)) n
   eta : ∀ σ v, (σ, v) ∈ st.etaRefs →
-    ρ σ = Value.mean dm C Γ ρ (fun _ => .err) (MState.absTyM dm C Γ ρ st σ) v
+    ρ σ = Value.mean dm C Γ ρ (fun _ => .err) (.plain (MState.absTyM dm C Γ ρ st σ)) v
 
 /-- Membership, part (b) of the main theorem: under every typed future, every position with a
 stored type holds a (possibly partly moved) member of it; Δ's types and the goal are types. -/

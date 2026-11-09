@@ -42,8 +42,9 @@ structure Decisions : Type where
   copy : DeclInfo → Bool
   /-- The sort of a Π-term (`Machine.piSort` / `Decide.sortOf`): 0 for `Prop`, `l + 1` for `Type_l`. -/
   piSort : List DeclInfo → Term → Nat
-  /-- D84: the places a match drops at its join (`Decide.jdMoves`). -/
-  joinMoves : List DeclInfo → Term → List Place
+  /-- D84: the places a match drops at its join (`Decide.jdMoves`), given the places already
+  moved when the match starts (its `entry` argument). -/
+  joinMoves : List DeclInfo → List Place → Term → List Place
 
 section
 variable (dm : DataModel) (Γ : List IndDecl)
