@@ -514,33 +514,52 @@ Incompleteness: a type holding `⊥` is not convertible with itself (`SelfBot`: 
 Evidence: a before/after dump of all 1,893 rows with their reasons: identical but for `Equality.MovedBothSides`'s message, which gains the reason. New block `Equality.BotConv` (reasons asserted): `Same`, `Boom`, `SelfBot`, `TrBot`, `TrBotBoom`, `RwBot`, `RwBotBoom` rejected, all seven accepted by main's checker; twins `SelfKept`, `TrKept`, `RwKept` accepted (the moves replaced by clones, so the block takes `x` by `&` and leaves a sealed program, not `⊥`). Total 1,893 → 1,903. Paper: the appendix's [Conv-bot], [Conv-refl] "for `v` without `⊥`", and [T-Rewrite]'s prose; the body is unchanged. RULES P1, [Rewrite]; census site 19 corrected; D78's audit sentence annotated.
 
 
-## D84. Moves are definite: drop at the join; `Id` observes moves (user, 2026-11-09) [lane: d84]
-Decision (Charlie, after the viability check on branch `join-drop`, f8b5bd06, reference only). `⊥` conflated two things: "definitely moved" and "maybe moved". A stuck block took a place by move when any arm moved it (K1), while at an instance a match on a known constructor ran only its arm and left the place whole. That conflation made D83's `Boom` possible, and D83 patched it by making `⊥` convertible with nothing. Charlie's guiding principle is substitution: equal programs are freely substitutable. Yet `Id(Unit, F(x), F(y))` with `F (n : Nat) : Unit := ()` was provable, since a place a side only reads was not observed (D68), while a continuation that reads `y` runs after one side and not the other. Supersedes D68's stuck `Eq` over `⊥` and D83 ([Conv-bot] and the [Rewrite] guard).
+## D84. Moves are definite: drop at the join; `Id` relates sides that leave one type-state (user, 2026-11-09) [lane: d84]
+Decision (Charlie, after the viability check on branch `join-drop`, f8b5bd06, reference only; revised the same day after the `Id` adequacy audit, `ochr/docs/30`). `⊥` conflated two things: "definitely moved" and "maybe moved". A stuck block took a place by move when any arm moved it (K1), while at an instance a match on a known constructor ran only its arm and left the place whole. That conflation made D83's `Boom` possible, and D83 patched it by making `⊥` convertible with nothing. Charlie's guiding principle is substitution: equal programs are freely substitutable. Yet `Id(Unit, F(x), F(y))` with `F (n : Nat) : Unit := ()` was provable, while a continuation that reads `y` runs after one side and not the other. The first version of this decision made `Id` observe every owned place a side reads (docs/30's F2). The revision drops that and makes `Id` well formed only between sides that leave the same type-state ([Id-typestate]), with docs/30's F4 as its no-ending clause, and adds docs/30's F1 ([Obs-ref]). Supersedes D68's stuck `Eq` over `⊥` and D83 ([Conv-bot] and the [Rewrite] guard).
 - **[Join].** A match leaves moved, on every path, what any of its arms moves: the moved places after it are the lattice join of the arms' end states (moved ⊔ whole = moved), each arm's net of its own refills. They are read from syntax and declared types, never from a run (`Decide.jdMoves`, §6.3).
   - An arm's moves are the places it reads whose declared type is not a copy type, the borrow variables it reads whole, and the borrowed place for a read through a local borrow `let r = &q` (by syntax; the one miss of the viability check, `Moves.ThroughLocal`).
   - Whether or not its run reaches them, they also include every variable a function or Π-type in the arm captures (K1(a), whole variables) and every borrow variable it names whole (K1(b)), as the block takes them.
   - A statement moves nothing outside its own copy (D68).
   - The direct run drops, at the arm's end, what the arm left whole. It does this as a by-move argument is read: [Access] ends the place's borrowers, a borrow is ended, a copy stays. The drop comes after the arm's own drops and before the match's value is used, which is held as a temporary.
   - Dropping a place that the arm's result borrows is an error, D65's [Drop] rule at the join. `ClosingOff.MoveBorrowSplit` and `MoveBorrowCode` now give that reason.
-  - The join applies to a match on a known constructor (`evalMatch`, `evalMatchInd`), in tail position (`checkTailAt`), and to `J`'s transported term, its one arm, when `J` computes, typed or not. A stuck block's by-move captures (K1) are the same static set, and the arms' logged moves (`armMoves`) are kept only as an assertion that the two agree (`INTERNAL [D84]`; it never fires in the suite).
+  - The join applies to a match on a known constructor (`evalMatch`, `evalMatchInd`), in tail position (`checkTailAt`), and to `J`'s transported term, its one arm, when `J` computes, typed or not, at runtime included (D85). A stuck block's by-move captures (K1) are the same static set, and the arms' logged moves (`armMoves`) are kept only as an assertion that the two agree (`INTERNAL [D84]`; it never fires in the suite).
 - **Grain**, the decision this needed: with moves observable, whether a move is of a field or of a value whole must agree between the generic call and every instance.
   - The viability prototype took the grain from what the generic call knew (`movedPlace`: an unknown of a stuck type, a sealed program or a lent value made it coarsen). It had a closed proof of `False` through `TF (n) : Type := match n { Z => Pr, S _ => Pr }`: `Moves84.G`/`Boom`.
   - The rule: a field step is kept only through a value whose declared type reads as an inductive with one constructor, not computed by a match. Through anything else (several constructors, a type computed by a match, a type parameter, a number's predecessor) the move is of the value whole (`jdGrain`).
-  - A place the match uses whole, other than as its scrutinee, part of which an arm moves, is moved whole, as K1(g) takes it. An adversarial pass on this branch found a closed proof of `False` without this rule: `Moves84.WholeUse`/`WholeUseField`.
-  - The generic path names the field wherever the grain keeps it. An unknown is η-refined (D68). A sealed program is generalised (D34) and then η-refined (new). A lent value is reached by ending its borrowers, as the arm that moves out of it reaches it (new). An adversarial pass found a closed proof of `False` without the last one: `Moves84.LentField`/`LentWhole`.
+  - A place the match uses whole, other than as its scrutinee, part of which an arm moves, is moved whole, as K1(g) takes it. An adversarial pass found a closed proof of `False` without this rule: `Moves84.WholeUse`/`WholeUseField`.
+  - The generic path names the field wherever the grain keeps it. An unknown is η-refined (D68). A sealed program is generalised (D34) and then η-refined (new), reusing the record when a side generalised it already (D34/D37: one sealed value, one name; `recordedNeutral`), so that two sides that each project a field of it agree (`Moves84.StTrue`). A lent value is reached by ending its borrowers, as the arm that moves out of it reaches it (new). An adversarial pass found a closed proof of `False` without the last one: `Moves84.LentField`/`LentWhole`.
   - The provenance "computed by a match" is `DeclInfo.throughMatch`. The reader keeps a type-level match's one-inductive reading as a one-element `alt`. Every other decision reads `alt [d]` as `d` (copy, fields, data), and the verdict dump shows no other change.
 - **Why option (i), not (ii).** Option (ii) would keep the field wherever the reading is a one-constructor type, η-refining an unknown of a stuck type with that reading's fields first.
   - It needs the fields' types at the stuck type's parameters. The reader gives readings, not values, so this is feasible only for an inductive without parameters.
   - Its η-refinements would be of unknowns whose type depends on what a world refines, the class of EtaBoom (D79). They would be scoped to their world (D79 already scopes every η-refinement), but not world-independent.
   - Option (i) costs only fields reached through a type-level match whose arms agree. No suite program has one.
-- **`Id` observes moves.** The footprint gains every owned, non-proof variable a side reads (`Obs.footprint`). `Eq(A, ⊥, ⊥)` is `True` ([Eq-refl], `⊥ ≡ ⊥`), and `Eq(A, ⊥, v)` is `False` for any other `v` ([Eq-disj], now fired): an abstract value or a sealed program stands for a value, never for a moved place. Injectivity reaches `⊥` inside constructors.
+- **`⊥` is a value of its own.** `Eq(A, ⊥, ⊥)` is `True` ([Eq-refl], `⊥ ≡ ⊥`), and `Eq(A, ⊥, v)` is `False` for any other `v` ([Eq-disj], now fired): an abstract value or a sealed program stands for a value, never for a moved place. Injectivity reaches `⊥` inside constructors.
   - Retired: [Conv-bot] (`Rule.ConvBot` removed, with the paper's item), the [Rewrite] guard, D68's stuck case and `convBotNote`. A new rule, [Join], is printed and fired.
-  - Their tests are kept, with these verdicts (`Equality.BotConv`, reasons asserted):
-    - `Same`, `SelfBot` and `TrBot` are accepted, now true. `TrBot` holds because its hypothesis says `5 = ⊥`, which is `False`.
-    - `Boom` and `TrBotBoom` are rejected: their statements at `n = 1` are `⊤` and `False`.
-    - `RwBot` is rejected: `h : False` is not an equation, so this is true but rejected. Its twin `ExFalsoRw` proves the same by `match h {}`.
-    - `RwBotBoom` is rejected. The clone twins are unchanged.
-    - `Equality.MovedBothSides` is accepted: both sides move `x` on every path.
+  - Their tests are kept (`Equality.BotConv`, reasons asserted). `Same` is accepted, now true: both sides of both `Id`s move `x` on every path. `Boom` is rejected, as `Same`'s type at `n = 1` is `⊤`. `SelfBot`, `TrBot` and `RwBot` are rejected as ill-formed: one side of an `Id` moves `x` and the other writes it ([Id-typestate]), so `TrBotBoom` and `RwBotBoom` cite unknown constants. Their clone twins (`SelfKept`, `TrKept`, `RwKept`) are unchanged. The first version's `ExFalsoRw` is gone with `RwBot`'s hypothesis. `Equality.MovedBothSides` is accepted: both sides move `x` on every path.
+- **[Id-typestate]** (RULES §4, which states it exactly). `Id(A, t, u)` is well formed only if `TS(t) = TS(u)`, read from the sides' syntax and the declared types of the bindings outside them (`Decide.typeState`), at the frame where the `Id` is formed. Its four components are sets of places at [Join]'s grain, compared as sets:
+  - *moved* owned places (docs/30's G1): the join's analysis of the side as a whole;
+  - *consumed* borrow bindings (G3): moved whole, passed whole to a call, bound by a `let`, returned, captured, or taken by a match (K1(b)); a reborrow `&*y` consumes nothing;
+  - *re-pointed* borrow bindings (G2): assigned whole (`y := …`) and not consumed;
+  - *left open* places behind a borrow (G5): moved through `*y`, not refilled.
+  - The error names the component and the place, with a hint: `[Id-typestate] the left side of Id consumes the borrow x, the right side does not (pass a reborrow, &*x)`.
+  - *Departure from the brief.* The brief put "assigned over" under consumption. Here it is a component of its own, since a re-pointed binding still holds a borrow afterwards, which the rest of the frame may use, and [Obs-ref] (below) needs it unconsumed. So a one-sided re-pointing is ill-formed (`Moves84.RePointOne`, `SwapB`), and a two-sided one is well formed and observed. A borrow binding assigned inside a match's arm is consumed, since the block takes it (K1(b)), on the generic call and at an instance alike.
+  - *No ending* (docs/30's F4, G4). While a side runs, ending a borrow that a binding or a temporary of the frame held when the `Id` was formed is an error, whether by [Access] or by [Drop]. Assigning over the binding re-points it instead. The temporaries were added by the adversarial pass: `Put(&x, (let h : Id(Unit, (let a = clone(x); ()), ()) = refl; ()))` formed the `Id` while `&x`, an argument evaluated before it, was in flight, and its left side ended that borrow (`Moves84.KillTemp`). This flips no suite verdict.
+  - *No static reading found* for the no-ending clause. Which borrows the frame holds when the `Id` is formed is the machine's loan state, and `Decide` sees only the sides and declared types. An `Id` can be formed inside a type at any point a computation reaches, so the code that made the loans is not syntax available to the decision. Making it static would mean a loan analysis of the enclosing body in `Decide`, a borrow checker, which the checker does not have. The check only rejects and is judged on the checked run (census site 28).
+- **[Obs-ref]** (docs/30's F1). For each borrow binding in the re-pointed set, both observations write one fresh abstract value of its declared referent type through it after the side runs. So `Id(Unit, (y := &x; ()), (y := &z; ()))` computes to `Eq(Nat, σ3, σ0) ∧ Eq(Nat, σ1, σ3)` (`Moves84.RePoint`, rejected) and the same target on both sides to `⊤` (`SameTarget`). The set is read from syntax and declared types. Docs/30's F1 read "holds a borrow after both sides" from the run, but here it follows statically: a re-pointed binding is not consumed (the type-state), and the no-ending clause keeps its borrow from ending.
+- **Why the read footprint was dropped.** Under Target C over typed contexts (docs/30's F0), a move of an owned place shows only as a rejection, so observing it is not needed for adequacy. It was also incomplete there: `Id(Unit, F(x), F(y))` was `False` although the two are equivalent in typed contexts. [Id-typestate] makes the same pair ill-formed instead, a static error with a hint, and it also closes the consumed, re-pointed and left-open channels. I looked for a reason to keep the read clause and found none. Every place a side moves is moved by the other side too (the type-state), so it is `⊥` on both. A place only read is unchanged on both. The join and the grain are still needed. A place in the footprint (written or borrowed in one arm, moved in another: `Moves84.MovesAt`, D83's `Same`) must be moved at every instance where the generic call moves it, or `⊥ = v` would be `False` at an instance and `True` at the generic call. And each run must move exactly the static set, or the resource lemma below would compare a static set that no run has. `Obs.lean` and `footprint_mono` are main's, with no `sorry`.
+- **Target C and the resource lemma.**
+  - *Target C* (docs/30, typed): if `L : Id(A, t, u)` (or an in-body `Id`) is used at the hole of a context `C` under `θ`, and `C[tθ]` and `C[uθ]` are both accepted, then every closed run of them has the same outcome.
+  - *The resource lemma*, which makes "both accepted" the usual case. Suppose `Id(A, t, u)` is well formed and proved at the use: the hole's state is an instance of the generic call, and for a lemma that includes its loans, so no loan of a parameter's place is held at the hole except through the parameters (docs/30's separation, extended from the parameters to the context). Then, if `C[t]` is accepted, `C[u]` is accepted or rejected only because `u`'s values are not convertible with `t`'s. Every error the type-state compares is the same for both fillings: a place moved after one side and not the other, a borrow binding consumed, re-pointed elsewhere or left open by one side, and a borrow held outside the hole ended inside it. Running out of fuel or depth is "I don't know", as everywhere.
+  - *Why.* Checking `C[u]` runs the same prefix as `C[t]` to the hole. By D48 a borrow is held only by a borrow binding or a temporary, never inside data, and `A` is borrow-free, so these are all the ways a side changes what the rest of the frame may use:
+    - the moved places, the consumed, re-pointed and left-open bindings: equal by `TS(t) = TS(u)`, and the join makes every run move exactly that set;
+    - borrows held outside the side: never ended, by the no-ending clause;
+    - where each re-pointed binding points: the same, because the proof says the footprint's owners, written through by [Obs-ref], are equal;
+    - the result and the footprint's contents: equal by the proof, and convertible when `refl` proves it.
+  - *Counterexamples, each checked on this branch* (probes in the session's scratchpad, not committed):
+    - (1) The form with equal type-states alone is false. `RePoint`'s sides both re-point `y`, to `x` and to `z`, and `□; let w = clone(z); *y := 5` is accepted after the first and rejected after the second (reading `z` ends `y`). This is why the lemma assumes a proof, and [Obs-ref] is what makes `RePoint` unprovable. The static alternative would add re-pointing targets to the type-state, where they are syntactic.
+    - (2) `KillTemp`, above: fixed by extending the no-ending clause to temporaries.
+    - (3) A proved `Id` that is not by conversion can still differ by a borrow error, so "only through conversion" must be read as "only because the values are not convertible". `AddOne (n : Nat) : Id(Nat, Add(n, 1), S(n))`, proved by induction, with `PickS (k) (a b : &Nat) : &Nat := match k { Z => b, S _ => a }` and the context `let k = □; let r = PickS(k, &a, &b); let w = clone(b); *r := 1`. With `S(n)` the call runs and `r` borrows `a`. With `Add(n, 1)` the call is stuck and `r` borrows both, so `clone(b)` ends `r` and `*r := 1` is an error. A stuck run's loans over-approximate, which is the same incompleteness as conversion's.
+  - *Under Target C* these one-sided differences are harmless: the theorem speaks only where both fillings are accepted. The theorem is typed contextual equivalence plus this lemma.
 - **The sources of `⊥`** (viability report, checked on this implementation):
   - **Definite with the join:**
     - [Read] of a place that is not a copy type;
@@ -556,36 +575,49 @@ Decision (Charlie, after the viability check on branch `join-drop`, f8b5bd06, re
     - an erased statement's moves (its own copy);
     - a tail-position split (no join: each arm ends the function).
   - **Made definite by the lattice join** (the viability report's only "maybe and observable" candidate): a place moved before a match and refilled by only some arms. It is moved after the match; a stuck block that would refill it is rejected (it cannot borrow `⊥`).
-- **Stability.** `ProfileLE` gains `refsBack` (a binding that was a borrow stays one) and `proofs` (the proof flag is kept). Both hold of a refinement that substitutes borrow-free values (`Respects`). `footprint_mono` is re-proved, with no `sorry`, by a Boolean lemma (`counts_mono`). The probe shows the generic footprint of a read root.
-- **Census:** sites 13 (K1's moved places are now read from syntax and declared types, (a)), 14, 17 and 19.
+- **Census:** sites 13 (K1's moved places are read from syntax and declared types, (a)), 14 (unchanged), 17, 19, and a new site 28 ([Id-typestate] and [Obs-ref]'s set, (a); the no-ending clause, (c)).
 - **Evidence.** A verdict dump of every declaration with its message, main c364faeb against this branch:
-  - **Verdicts:** 1,942 → 1,970. Four verdicts change, the D83 tests above. Five rejections change their message, with the same verdict: D83's `Boom`, `TrBotBoom` and `RwBot` to the reasons above, and `ClosingOff.MoveBorrowSplit`/`MoveBorrowCode` to the [Join] message. There are 28 new tests: `Equality.Moves84` and `BotConv.ExFalsoRw`.
-  - **Rejected tests:** fifteen were still rejected, but for a new reason: an extra `False` conjunct from an observed read masked the failure each was written for. They are restated the same way, on a copy, and each is again rejected with its message on main, verbatim (`notes/d84-restatements.md`).
-  - **Restated statements:** 43, and 2 more that failed with their lemma, false by design because one side consumes a place the other leaves. Each is restated on a copy (`clone`) or with the same consumption on both sides, and none was weakened; the table is in `notes/d84-restatements.md`. Case studies: `ArrayBench.B1Join` and nine `HashMap` lemmas.
-  - **`Moves84`'s tests:**
-    - `FxFy`/`FxFx`/`FxFyLet`/`FxFyLocal` (a side's locals die with it, so `FxFyLocal` holds);
-    - the direct-run join (`AtOneTrue` rejected, `AtOneFalse`);
-    - the lattice join (`RefillOne`/`RefillBoth`);
-    - the grain (`G` true, `Boom` rejected, `GPr`/`GPrWhole`, the sealed `St`, the several-constructor `Gc`, the lent `LentField`/`LentWhole`, and K1(g)'s `WholeUse`/`WholeUseField`).
-  - **Adversarial pass:** no closed proof of `False` remains. Attacked:
+  - **Verdicts:** 1,942 → 1,980. Two verdicts change, both to accepted: `BotConv.Same` and `Equality.MovedBothSides`.
+  - **Messages:** seven rejections change their message with the same verdict:
+    - `BotConv.Boom`, `SelfBot`, `TrBot` and `RwBot`, to the reasons above;
+    - `ClosingOff.MoveBorrowSplit` and `MoveBorrowCode`, to the [Join] message;
+    - `Functions.PassWrong`, whose message prints its restated statement.
+  - **New tests:** 38, all in `Equality.Moves84`.
+  - **Rejected tests:** 27 `reject def`s are restated. Twelve are the twins of restated statements, restated with them. Fifteen would otherwise have been rejected by [Id-typestate] before reaching the failure each was written for. Each is again rejected with its message on main, verbatim, `PassWrong` apart (above). The table is in `notes/d84-restatements.md`.
+  - **Restated statements:** the first version's 45 are kept. Each was restated because one side consumed a place the other left, which is a type-state difference too (argued from their reasons, not re-measured). The revision restates 49 accepted statements:
+    - 39 with an explicit reborrow, `AddM(&*x, 0)` for `AddM(x, 0)`: `AddMZero`, the paper's first lemma, and every lemma that runs an in-place function on a borrow parameter;
+    - 6 with a clone or the same move on both sides;
+    - 4 in-body statements that end a borrow before the `Id` instead of inside it (docs/30's measured F4 cost).
+  - **Intent:** none was weakened, and no proof changed. A reborrow lends `*x` to the call for its duration, so the statement says what it said about `*x` and also that `x` is still a borrow afterwards. The table is in `notes/d84-restatements.md`.
+  - **Case studies:** `Array`'s `GetMutSet`, `GetMutRead`, `SwapLtIsSwapS` and `SwapIsSwapS`, which `Quicksort`'s `QSCorrect` cites (its own text is unchanged), and `ArrayBench`'s `B1Join`, `ReadIsNth` and `SwapIsSwapSRefl`. `HashMap` needed nothing beyond the first version's clones.
+  - **The paper's body** still states `AddMZero` as `Id(Unit, AddM(x, 0), ())` (`intro.typ`, `overview.typ` §2), and `obs.typ`'s "Unobserved moves are harmless" says the sides may consume different borrow variables. Both are now ill-formed or false, and left for the paper's owner.
+  - **`Moves84`'s tests** (twin pairs, reasons asserted):
+    - type-state: `FxFy`/`FxFx`, `FxFyLet`/`FxFyLocal`, `Consumes`/`Reborrows`, `LeftOpen`/`LeftOpenBoth`, `RePointOne`, `RePoint`/`SameTarget`, `SwapB`, `KillRead`/`KillReadAfter`, `KillTemp`/`KillTempBefore`;
+    - the join at a direct run: `MovesAt`, `AtOneTrue`, `GenTrue`;
+    - the lattice join: `RefillOne`/`RefillBoth`;
+    - the grain: `G` true and `Boom` rejected, `GPr`/`GPrWhole`, the sealed `St`/`StTrue`, the several-constructor `Gc`, the lent `LentField`/`LentWhole`, and K1(g)'s `WholeUse`/`WholeUseField`.
+  - **Adversarial pass:** no closed proof of `False` remains. The first version's attacks were re-run on this one:
     - a lent place at the join;
     - a borrow returned out of the match;
     - nested blocks, including K1(g) in an inner arm;
-    - `J`'s term, including inside an arm over a type a match computes;
-    - a dependent constructor (D64) with a field type computed by a type function (rejected at the generic call by [Repack], below);
-    - drop order across a reborrow chain (D67);
-    - sealed values with one and with several constructors;
-    - D81 projections of a sealed value;
-    - the lattice join at a direct match;
-    - fields moved in different arms;
-    - a closure in a statement;
-    - tail-position drops.
+    - `J`'s term inside an arm over a type a match computes;
+    - a dependent constructor with a field type computed by a type function;
+    - drop order across a reborrow chain;
+    - sealed values.
+  - **Type-state attacks**, all rejected or consistent:
+    - a borrow consumed in one arm only, or by a closure never called;
+    - re-pointing to different targets per arm;
+    - a swap of two borrows on both sides (accepted, and true);
+    - the no-ending clause inside a stuck block, through a fresh borrow, and through a temporary;
+    - an outer binding consumed or re-pointed by one side.
+  - **Resource-lemma pairs** `C[t]`/`C[u]`, for every well-formed `Id` above (moves, reborrows, left-open, the join at the generic call and at a direct run, swaps, K1(g), lent fields, the grain, a binder that moves nothing): the two verdicts agree, with the same message, in every pair.
 - **Incomplete, fail-safe, no suite program affected:**
   - (1) `Id` observing a dependent value with a moved field hits [Repack] ("open: field y holds ⊥"), where `⊥` is now a definite state.
-  - (2) Two sides that each project or match a field of the same sealed value generalise it afresh, so their fields get different names and the equation is stuck: `generalizeNeutral` does not reuse a record.
-  - (3) A borrow variable named whole only in a statement inside an arm is dropped at the join (K1(b)), as the block takes it.
-  - (4) A field reached through a type-level match is moved whole.
-  - (5) A stuck block whose arm refills a place moved before it is rejected.
+  - (2) A borrow variable named whole only in a statement inside an arm is dropped at the join (K1(b)), as the block takes it.
+  - (3) A field reached through a type-level match is moved whole.
+  - (4) A stuck block whose arm refills a place moved before it is rejected.
+  - (5) The type-state compares places exactly: a side that moves `x.0` and `x.1` and one that moves `x` are not well formed together.
+  - (6) A one-sided re-pointing is ill-formed even when the target is the same place the binding pointed at.
 
 ## D85. At runtime `J` is its transported term; the checker keeps its rule (2026-11-09) [lane: runtime-j]
 User's go-ahead (2026-11-09) on docs/18's Q5, from test 3 of docs/23 (type safety on the higher-order slice, docs/29). The machine computes `J(A, a, b, P, h, t)` to `t` only when `a` and `b` are convertible ([J], D56) and is otherwise stuck ([J-stuck]). Conversion compares functions by their generic calls, so two functions with one graph and different code are not convertible, and a closed run of a well-typed program can stop at a `J` whose equation is true: `CastFn(IdA, IdB, ⋆, MkFnBox(0))` below, with `IdA (n) := n` and `IdB (n) := match n { Z => Z, S m => S(m) }`, both the identity on `Nat`. docs/18's type-safety target quantifies over proof parameters that are true in the set model, not proved, so it reaches such a `J` (Lean, on docs/27's toy machine: `Model.Safety.cast_fn_counterexample`, `n + 0` against `0 + n`).

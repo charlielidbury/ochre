@@ -271,7 +271,7 @@ ochr Moves uses Nats, WordType {
   -- read it (it runs on its own copy of the state, which has `n` moved out too).
   reject def GhostRead (n : Nat) : Nat := (
     let m = n;
-    let h : Id(Nat, n, m) = refl;
+    let h : Id(Nat, clone(n), clone(m)) = refl;
     m
   )
 

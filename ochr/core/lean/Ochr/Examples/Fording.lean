@@ -133,7 +133,7 @@ ochr FordAttack uses Lists {
 
   -- A4: transport along an equation field computes only at convertible endpoints
   def CastV (n : Word) (m : Word) (h : Eq(Word, n, m)) (v : VecF(Word, n)) : VecF(Word, m) := J(Word, n, m, λ(z : Word) : Type => VecF(Word, z), h, v)
-  def CastRefl (v : VecF(Word, Zero)) : Prop := Id(VecF(Word, Zero), CastV(Zero, Zero, refl, clone(v)), v)
+  def CastRefl (v : VecF(Word, Zero)) : Prop := Id(VecF(Word, Zero), CastV(Zero, Zero, refl, clone(v)), clone(v))
 
   -- A5: injectivity at a Forded constructor waits for its index fields
   def InjV (m : Word) (x : Word) (y : Word) (xs : VecF(Word, m)) (ys : VecF(Word, m)) (h1 : Eq(Word, Succ(m), Succ(m))) (h2 : Eq(Word, Succ(m), Succ(m)))

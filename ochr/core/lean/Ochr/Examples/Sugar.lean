@@ -63,7 +63,7 @@ ochr Sugar uses Bools, WordType, Lists {
   def BumpRun : Id(Map, (let m = MkMap(Zero, Zero, Nil[Word]); Bump(&m); m), MkMap(Zero, Succ(Zero), Nil[Word])) := refl
 
   -- Same effect as the match, at an unknown map.
-  def BumpIsMatch (m : &Map) : Id(Unit, Bump(&*m), BumpMatch(m)) := (
+  def BumpIsMatch (m : &Map) : Id(Unit, Bump(&*m), BumpMatch(&*m)) := (
     match *m {
       MkMap(n, len, keys) => refl,
     }

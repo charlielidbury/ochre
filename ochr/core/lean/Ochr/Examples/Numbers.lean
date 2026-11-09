@@ -36,7 +36,7 @@ ochr Numbers uses Nats {
 
   -- A function's type is formed when it is called, before its body runs. Writing `5` into
   -- `*x` does not make `Id(Nat, *x, 5)` true of the number `*x` held on entry.
-  reject def WriteThenRefl (x : &Nat) : Id(Nat, *x, 5) := (
+  reject def WriteThenRefl (x : &Nat) : Id(Nat, clone(*x), 5) := (
     *x := 5;
     refl
   )

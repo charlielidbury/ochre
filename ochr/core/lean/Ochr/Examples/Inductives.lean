@@ -38,7 +38,7 @@ ochr NatLists {
     }
   )
 
-  def AppendMNil (xs : &List) : Id(Unit, AppendM(xs, Nil), ()) by xs := (
+  def AppendMNil (xs : &List) : Id(Unit, AppendM(&*xs, Nil), ()) by xs := (
     match *xs {
       Nil => refl,
       Cons(h, t) => AppendMNil(&t),
@@ -46,7 +46,7 @@ ochr NatLists {
   )
 
   -- Appending a one-element list does something.
-  reject def AppendMOne (xs : &List) : Id(Unit, AppendM(xs, Cons(0, Nil)), ()) by xs := (
+  reject def AppendMOne (xs : &List) : Id(Unit, AppendM(&*xs, Cons(0, Nil)), ()) by xs := (
     match *xs {
       Nil => refl,
       Cons(h, t) => AppendMOne(&t),
@@ -133,7 +133,7 @@ ochr Trees uses Bools, Nats, WordType {
   )
 
   -- The in-place insert is the pure insert.
-  def InsertMEq (t : &Tree) (k : Word) : Id(Unit, InsertM(t, k), *t := Insert(*t, k)) by t := (
+  def InsertMEq (t : &Tree) (k : Word) : Id(Unit, InsertM(&*t, k), *t := Insert(*t, k)) by t := (
     match *t {
       Leaf => refl,
       Node(l, v, r) => (
@@ -160,7 +160,7 @@ ochr Trees uses Bools, Nats, WordType {
     }
   )
 
-  reject def InsertMSwapEq (t : &Tree) (k : Word) : Id(Unit, InsertMSwap(t, k), *t := Insert(*t, k)) by t := (
+  reject def InsertMSwapEq (t : &Tree) (k : Word) : Id(Unit, InsertMSwap(&*t, k), *t := Insert(*t, k)) by t := (
     match *t {
       Leaf => refl,
       Node(l, v, r) => (
@@ -295,7 +295,7 @@ ochr InPlaceTrees uses Bools, Nats, WordType {
                                 match b { true => InsertM(&l, k), false => InsertM(&r, k) } }
   def Insert (t : Tree) (k : Word) : Tree := InsertM(&t, k); t
 
-  def InsertMIsInsert (t : &Tree) (k : Word) : Id(Unit, InsertM(t, k), *t := Insert(*t, k)) := refl
+  def InsertMIsInsert (t : &Tree) (k : Word) : Id(Unit, InsertM(&*t, k), *t := Insert(*t, k)) := refl
 
   def Size (t : Tree) : Nat by t := (
     match t {
@@ -356,7 +356,7 @@ ochr PolyLists uses Lists {
     }
   )
 
-  def AppendMNil (A : Type) (xs : &List(A)) : Id(Unit, AppendM(A, xs, Nil), ()) by xs := (
+  def AppendMNil (A : Type) (xs : &List(A)) : Id(Unit, AppendM(A, &*xs, Nil), ()) by xs := (
     match *xs {
       Nil => refl,
       Cons(h, t) => AppendMNil(A, &t),
@@ -364,7 +364,7 @@ ochr PolyLists uses Lists {
   )
 
   reject def AppendMOne (A : Type) (a : A) (xs : &List(A)) :
-      Id(Unit, AppendM(A, xs, Cons(clone(a), Nil)), ()) by xs := (
+      Id(Unit, AppendM(A, &*xs, Cons(clone(a), Nil)), ()) by xs := (
     match *xs {
       Nil => refl,
       Cons(h, t) => AppendMOne(A, a, &t),

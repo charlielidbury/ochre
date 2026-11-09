@@ -529,6 +529,15 @@ def recCheck (fv : Value) (ws : Array Value) (uid? : Option Nat := none) : M Uni
     else frames := frames.push ctx
   set { st with recStack := frames.toList }
 
+/-- D84: the value a sealed program stands for in this world, when a [Split] here generalised it
+(on any private copy: records survive copies, D37), as `canonNeutral` gives it. -/
+def recordedNeutral (v : Value) : M (Option Value) := do
+  match v with
+  | .sealed _ => match (← get).neutrals.lookup v with
+    | some σ => pure (some (← expandRefs (← get).refs (.abs σ)))
+    | none => pure none
+  | _ => pure none
+
 /-- Finding G1: a neutral that a [Split] generalised stays generalised when normalisation
 derives it again (it is a closed, deterministic computation, so every derivation of it
 denotes the same value). Returns its refined value if it is one. -/
@@ -708,7 +717,7 @@ def nfSealed (fuel : Nat) (t : Term) : M Value := do
   -- bounded like calls, so that a normalisation loop (breaker-fresh-v16 X5 without D39)
   -- is an error rather than a stack overflow
   if saved.depth ≥ 2000 then exhausted "normalisation depth exceeded (a sealed program that re-closes itself)"
-  modify fun s => { s with env := #[{}], depth := s.depth + 1 }
+  modify fun s => { s with env := #[{}], obsFrame := none, depth := s.depth + 1 }
   -- D53: a sealed program re-runs with runtime semantics (moves, ⊥ checks); only its final
   -- read of a cell (`peek`, closeCall's `K`) is an observation, and copies
   -- [Seal-stuck]: a stuck run leaves `⌈t⌉`; an error or exhaustion is rethrown ([Seal-err])
@@ -729,6 +738,23 @@ def endBorrow (fuel : Nat) (l : Nat) : M Unit := do
   match findBorrow env l with
   | none => pure ()
   | some p =>
+    -- D84 [Id-typestate], ending a borrow: a side of `Id` may not end a borrow that a binding
+    -- or a temporary outside it holds ([Access] of what it borrows, [Drop] of what it points
+    -- to): a continuation could use the borrow after the other side and not after this one.
+    -- Assigning over the binding re-points it (`assignPlace`), which the type-state compares
+    -- Two paths, value-dependent by design (notes/two-paths-census.md, site 28): the frame's loans at formation are the run's; the check only rejects, a borrow the checked run has already ended is one the program cannot use after the `Id`, and a side's access at an instance is an access on the checked run (a stuck block takes every place any arm uses).
+    if let some (f0, n0, t0) := (← get).obsFrame then
+      match p with
+      | .bind f i =>
+        if f == f0 && i < n0 then
+          let y := env[f]!.binds[i]!.hint.name
+          fire .IdTypestate fun _ => s!"a side ends the borrow {y}"
+          err s!"[Id-typestate] a side of Id ends the borrow {y}, which a binding outside the Id holds (the side uses or drops what {y} borrows): end it before the Id"
+      | .temp f i =>
+        -- a borrow in flight around the `Id`: an argument evaluated before it, a scrutinee
+        if f == f0 && i < t0 then
+          fire .IdTypestate fun _ => s!"a side ends a borrow in flight"
+          err s!"[Id-typestate] a side of Id ends a borrow that a value in flight around the Id holds (an argument evaluated before it): form the Id outside that expression"
     match (valAt env p).takeBorrow l with
     | none => pure ()
     | some (c, rest) =>
@@ -997,7 +1023,13 @@ def assignPlace (fuel : Nat) (p : Place) (v : Value) : M Unit := do
   let old ← content p
   unsizedCheck p old "assigned"
   match old with
-  | .borrow l _ => endBorrow fuel' l
+  | .borrow l _ =>
+    -- D84: re-pointing a borrow binding ends its old borrow; inside a side of `Id` that is a
+    -- re-pointing ([Id-typestate] compares it, [Obs-ref] observes it), not an ending
+    let o := (← get).obsFrame
+    modify fun s => { s with obsFrame := none }
+    endBorrow fuel' l
+    modify fun s => { s with obsFrame := o }
   | _ =>
     if !(liveLoansIn (← get).env old).isEmpty then
       err s!"[Drop] the old content of {← ppPlace p} is overwritten while borrowed"
@@ -1290,7 +1322,7 @@ an ordinary term on a private copy, from the empty environment. Its head call is
 marked, so a stuck body closes off; its [Call-type] is what gives the type. -/
 def sealedType? (fuel : Nat) (t : Term) : M (Option Value) := privately do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  modify fun s => { s with env := #[{}], recStack := [], goal := none }
+  modify fun s => { s with env := #[{}], obsFrame := none, recStack := [], goal := none }
   let (_, T) ← eval fuel' true t.unHead
   pure T
 termination_by structural fuel
@@ -1599,7 +1631,7 @@ def convPi (fuel : Nat) (P Q : Value) : M Bool := do
     return false
   if (← get).convStack.contains (P, Q) then return false
   privately do
-      modify fun s => { s with env := #[{}], convStack := (P, Q) :: s.convStack }
+      modify fun s => { s with env := #[{}], obsFrame := none, convStack := (P, Q) :: s.convStack }
       pushFrame
       pushCaps fuel' cs rd
       let (pds, _) ← paramDecls fuel' cs hs ds c
@@ -1681,7 +1713,7 @@ def convFnRun (fuel : Nat) (f g pf : Value) (cs : List Value) (hs : List Hint) (
     M Bool := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   privately do
-    modify fun s => { s with env := #[{}], convStack := (f, g) :: s.convStack }
+    modify fun s => { s with env := #[{}], obsFrame := none, convStack := (f, g) :: s.convStack }
     pushFrame
     pushCaps fuel' cs (match pf with | .tPi _ _ rd => rd | _ => [])
     let (pds, cd) ← paramDecls fuel' cs hs ds c
@@ -2770,6 +2802,12 @@ def evalMatch (fuel : Nat) (typed : Bool) (p : Place) (z s : Term) (expected : O
   | .sealed _ | .loan _ =>
     if !typed then stuckOn v
     else
+      -- D84: a sealed program this world already generalised (on another private copy, kept
+      -- by D37) is its record's value, so both sides of an `Id` name its parts alike
+      if let some r ← recordedNeutral v then
+        substEnv fuel' v r true
+        let expected ← expected.mapM (substV fuel' v r)
+        return ← evalMatch fuel' typed p z s expected
       let σ ← generalizeNeutral fuel' p v
       let expected ← expected.mapM (substV fuel' v (.abs σ))
       splitThenClose fuel' p z s σ expected
@@ -3063,6 +3101,11 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
   | .sealed _ | .loan _ =>
     if !typed then stuckOn v
     else
+      -- D84: a sealed program this world already generalised is its record's value (above)
+      if let some r ← recordedNeutral v then
+        substEnv fuel' v r true
+        let expected ← expected.mapM (substV fuel' v r)
+        return ← evalMatchInd fuel' typed p ty arms expected
       let (d, ps) ← scrutType fuel' p ty
       let σ ← generalizeNeutral fuel' p v
       let expected ← expected.mapM (substV fuel' v (.abs σ))
@@ -3109,7 +3152,9 @@ def movedPlace (fuel : Nat) (q : Place) : M Place := do
     match ← placeType? fuel' p with
     | some (.tInd tn _) =>
       if (← lookupInd tn).ctors.length == 1 then
-        discard (generalizeNeutral fuel' p n)
+        match ← recordedNeutral n with
+        | some r => substEnv fuel' n r true
+        | none => discard (generalizeNeutral fuel' p n)
         movedPlace fuel' q
       else pure p
     | _ => pure p
@@ -3135,13 +3180,11 @@ def staticJoin (fuel : Nat) (mt : Term) : M (List Place × List Place) := do
   let u ← withLive true (jdMoves fuel' [] [] mt entry)
   let net := u.filter fun q => !entry.any (jdCovers · q)
   pure (u, net)
-termination_by structural fuel
 
 /-- D84: what an arm's log may say a static join's place moved: the place, and, for a move
 through a borrow a local variable of this frame holds, the lender's part (`logEffect` records
 both, `throughLocalBorrow`), which the move reaches through the borrow. -/
-def joinLogged (fuel : Nat) (st : List Place) : M (List Place) := do
-  let fuel' + 1 := fuel | exhausted "out of fuel"
+def joinLogged (st : List Place) : M (List Place) := do
   let f ← topIdx
   let nb := (← get).env[f]!.binds.size
   let mut out := st
@@ -3150,7 +3193,6 @@ def joinLogged (fuel : Nat) (st : List Place) : M (List Place) := do
       if let some (j, ss) ← throughLocalBorrow f' i q then
         out := jdAdd out (ss.foldl stepPlace (.var (nb - 1 - j)))
   pure out
-termination_by structural fuel
 
 /-- D84 [Join]: run an arm of a match on a known constructor, then drop what the join says is
 moved and the arm left whole (`dropAtJoin`), the arm's result held as a temporary meanwhile. Its
@@ -3386,7 +3428,7 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
   -- D84: the places it moves are the static join's, which the direct run drops; what the arms'
   -- runs moved is kept as an assertion that the two agree
   let (_, st) ← staticJoin fuel' mt
-  let logged ← joinLogged fuel' st
+  let logged ← joinLogged st
   for q in armMovedAll do
     unless logged.any (jdCovers · q) do
       err s!"INTERNAL [D84] an arm of a stuck match moves {← ppPlace q}, which the static join misses (please report)"
@@ -3509,10 +3551,27 @@ termination_by structural fuel
 /-- `⟦t⟧^W`: on a private copy of Ω, run `t`, end every borrow, and return the result
 and the final contents of the owners in `W` (a tuple of the machine, not a `Pair` value,
 D52). -/
-def observe (fuel : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos) : M (Value × List Value) := inStatement do
+def observe (fuel : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos)
+    (refs : List (Place × Value) := []) : M (Value × List Value) := inStatement do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  let (v, T) ← eval fuel' typed t A      -- A: a hint for a constructor's parameters
+  -- D84 [Id-typestate]: while the side runs, a borrow held outside it (by a binding or a
+  -- temporary of this frame) may not end
+  let o := (← get).obsFrame
+  let f ← topIdx
+  let fr := (← get).env[f]!
+  modify fun s => { s with obsFrame := some (f, fr.binds.size, fr.temps.size) }
+  let (v, T) ← onFail (eval fuel' typed t A) (modify fun s => { s with obsFrame := o })      -- A: a hint for a constructor's parameters
+  -- the observation itself (writing through re-pointed borrows, ending every borrow) is not the
+  -- side: no frame is watched until the copy is discarded (`inStatement` restores the outer one)
+  modify fun s => { s with obsFrame := none }
   expectTy fuel' "a side of Id" T A
+  -- D84 [Obs-ref]: each re-pointed borrow binding is observed by where it points, a fresh value
+  -- written through it (the same for both sides), as [Obs-borrow] observes a borrow result
+  pushTemp v
+  for (y, σ) in refs do
+    fire .ObsRef fun _ => s!"{σ} written through a re-pointed borrow"
+    assignPlace fuel' (.deref y) σ
+  let v ← popTemp
   let v ← obsResult fuel' v none true
   let ws ← W.mapM getAt
   pure (v, ws)
@@ -3529,10 +3588,31 @@ def idType (fuel : Nat) (typed : Bool) (A t u : Term) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let A' ← evalType fuel' A
   if A'.typeHasRef then err s!"Id at {A'}: A must be borrow-free (RULES §4)"
+  -- D84 [Id-typestate]: both sides leave the same type-state, read from syntax and declared types
+  let tsT ← withLive true (typeState fuel' t)
+  let tsU ← withLive true (typeState fuel' u)
+  for (what, hint, l, r) in [("moves", "clone it, or move it on both sides", tsT.moved, tsU.moved),
+      ("consumes the borrow", "pass a reborrow, &*", tsT.consumed, tsU.consumed),
+      ("re-points the borrow", "re-point it on both sides", tsT.repointed, tsU.repointed),
+      ("leaves moved, through a borrow,", "refill it, or move it on both sides", tsT.leftOpen, tsU.leftOpen)] do
+    for (side, other, a, b) in [("left", "right", l, r), ("right", "left", r, l)] do
+      if let some q := jdMissing a b then
+        let qs ← ppPlace q
+        fire .IdTypestate fun _ => s!"the {side} side {what} {qs}"
+        let hint := if hint.endsWith "&*" then hint ++ qs else hint
+        err s!"[Id-typestate] the {side} side of Id {what} {qs}, the {other} side does not ({hint})"
+  -- D84 [Obs-ref]: the borrow bindings both sides re-point (and do not consume), each observed
+  -- through one fresh value of its borrowed type
+  let mut refs : List (Place × Value) := []
+  for y in tsT.repointed do
+    let T ← placeType fuel' y
+    let .tRef T' := T | err s!"INTERNAL [Obs-ref] {← ppPlace y} : {T} is not a borrow type (please report)"
+    let d ← withLive true (placeDecl fuel' [] y)
+    refs := refs ++ [(y, ← absAt d.deref T')]
   let st ← get
   let W := footprint st.env [t, u]
-  let (a, as) ← observe fuel' true t A' W
-  let (b, bs) ← observe fuel' true u A' W
+  let (a, as) ← observe fuel' true t A' W refs
+  let (b, bs) ← observe fuel' true u A' W refs
   -- an owner's type is its binding's, its declared type (D82)
   let Ts ← W.mapM fun p => do
     let some T ← bindTy? fuel' p
@@ -3554,7 +3634,7 @@ does and report the content of the scrutinee of the match it stopped at, if any.
 def stuckScrutinee (fuel : Nat) (t : Term) : M (Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let saved ← get
-  modify fun s => { s with env := #[{}], depth := s.depth + 1 }
+  modify fun s => { s with env := #[{}], obsFrame := none, depth := s.depth + 1 }
   -- a re-run that errors is an error (as [Seal-err] makes it), not "stuck on nothing"
   let r ← catchStuck (do discard (withErased (eval fuel' false t)); pure none) fun on => pure on
   restoreKeep saved
@@ -3777,7 +3857,7 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
     err s!"[Rec] {self.name} occurs in its own body other than as the head of a call (fix L1)"
   -- keep `refs` (refinements made on the way to a nested fix still hold) and the
   -- enclosing functions' [Rec] contexts
-  modify fun s => { s with env := #[{}], goal := none }
+  modify fun s => { s with env := #[{}], obsFrame := none, goal := none }
   let pf ← paramFlags fuel' cs ds
   let (pds, cd) ← paramDecls fuel' cs hs ds c
   pushFrame

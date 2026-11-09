@@ -38,7 +38,8 @@ def proseRules : List (String × String) :=
    ("Drop", "*Drop* ([Drop])"), ("Capture", "*Capture* ([Capture])"), ("Block", "*Block* ([Block])"),
    ("Eq-inj", "\"[Eq-inj]\""), ("Eq-refl", "\"[Eq-refl]\""), ("Eq-disj", "\"[Eq-disj]\""),
    ("Eq-stuck", "\"[Eq-stuck]\""), ("Field", "cont(p.n))$ ([Field])"), ("Return", "*Return* ([Return])"),
-   ("Proj", "*Projection* ([Proj])"), ("Join", "*Join* ([Join])")]
+   ("Proj", "*Projection* ([Proj])"), ("Join", "*Join* ([Join])"),
+   ("Id-typestate", "*Type-state* ([Id-typestate])"), ("Obs-ref", "*Re-pointed borrows* ([Obs-ref])")]
 
 /-- Bracketed words of the paper's text that are content, not rule references. -/
 def notRules : List String :=
@@ -54,7 +55,7 @@ def expectedIssues : List String := [
 
 /-- Rules already tagged with a `fire` call. -/
 def fired : List Rule := [.Field, .Open, .Repack, .Return, .IndDecl, .EqInj, .EqStuck, .Access, .Copy, .Read,
-  .Close, .Proj, .JRun, .Join, .EqDisj]
+  .Close, .Proj, .JRun, .Join, .EqDisj, .IdTypestate, .ObsRef]
 
 /-- Rules and extensions not yet tagged with a `fire` call (the tagging is in progress). -/
 def notYetFired : List String :=

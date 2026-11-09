@@ -46,7 +46,7 @@ ochr ReturnedBorrows uses Nats, Fixtures {
     }
   )
 
-  def TailNoop (x : &Nat) : Id(Unit, let t = TailM(x); (), ()) by x := (
+  def TailNoop (x : &Nat) : Id(Unit, let t = TailM(&*x); (), ()) by x := (
     match *x {
       Z => refl,
       S p => TailNoop(&p),

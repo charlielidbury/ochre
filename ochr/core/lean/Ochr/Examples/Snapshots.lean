@@ -22,9 +22,9 @@ ochr Snapshots uses Nats {
   -- ## Types are formed once
   -- The result type is formed on entry, so writing `5` first does not prove it; ascribing
   -- the type again after the write does not help, since the goal is still the entry one.
-  reject def WriteThenRefl' (x : &Nat) : Id(Nat, *x, 5) := (
+  reject def WriteThenRefl' (x : &Nat) : Id(Nat, clone(*x), 5) := (
     *x := 5;
-    (refl : Id(Nat, *x, 5))
+    (refl : Id(Nat, clone(*x), 5))
   )
 
   -- A proof formed before a mutation is still about the value it saw: `h` says `x = x` for
@@ -39,16 +39,16 @@ ochr Snapshots uses Nats {
   reject def SnapshotLie (x : Nat) : False := (
     match x {
       Z => (
-        let h = (refl : Id(Nat, x, 0));
+        let h = (refl : Id(Nat, clone(x), 0));
         x := S(x);
-        (h : Id(Nat, x, 0))
+        (h : Id(Nat, clone(x), 0))
       ),
       S _ => Snapshot(0),
     }
   )
 
   -- A closure's type is formed at its generic call, before its body writes.
-  reject def LamWrite : (Π(x : &Nat). Id(Nat, *x, 5)) := λ(x : &Nat) : Id(Nat, *x, 5) => (*x := 5; refl)
+  reject def LamWrite : (Π(x : &Nat). Id(Nat, clone(*x), 5)) := λ(x : &Nat) : Id(Nat, clone(*x), 5) => (*x := 5; refl)
 
   -- ## What a closure captures
   -- A closure captures the value of `n` when it is formed ...
@@ -98,13 +98,13 @@ ochr Snapshots uses Nats {
 
   def PiCopy (x : &Nat) : Prop := (
     let m = clone(*x);
-    Π(n : Nat). Id(Nat, n, m)
+    Π(n : Nat). Id(Nat, clone(n), clone(m))
   )
 
   def CapPi (x : &Nat) : Prop := (
     AddM(&*x, 1);
     let n = clone(*x);
-    Π(y : Nat). Id(Nat, n, y)
+    Π(y : Nat). Id(Nat, clone(n), clone(y))
   )
 
   -- Capturing `a` reads it, which ends the borrow `r` of `a`, so the later write through `r`

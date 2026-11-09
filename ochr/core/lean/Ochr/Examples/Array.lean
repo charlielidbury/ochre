@@ -511,7 +511,7 @@ ochr ArrayLemmas uses Arrays {
   -- is known by these two lemmas, by the same bare recursion as `AddMEq`. Writing through it is
   -- the model's write `SetS` (in place is functional).
   def GetMutSet (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (w : E) (h : Lt(i, n)) :
-      Id(Unit, (*GetMut(E, n, s, i, h) := w), (*s := SetS(E, n, *s, i, w))) by i := (
+      Id(Unit, (*GetMut(E, n, &*s, i, h) := w), (*s := SetS(E, n, *s, i, w))) by i := (
     match n {
       Zero => match h {},
       Succ(m) => match *s {
@@ -529,7 +529,7 @@ ochr ArrayLemmas uses Arrays {
   -- computes to the two facts, `let ⟨hv, hp⟩ = GetMutRead(…)`: the value read is `Nth(…)`, and
   -- the view afterwards, a put-back program, is `*s`.)
   def GetMutRead (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (h : Lt(i, n)) :
-      Id(E, clone(*GetMut(E, n, s, i, h)), Nth(E, n, clone(*s), i, h)) by i := (
+      Id(E, clone(*GetMut(E, n, &*s, i, h)), Nth(E, n, clone(*s), i, h)) by i := (
     match n {
       Zero => match h {},
       Succ(m) => match *s {
@@ -684,7 +684,7 @@ ochr ArrayLemmas uses Arrays {
   -- `SwapLt` leaves the split's two pieces written through the element borrows, each with what
   -- was read through the other, and joins them.
   def SwapLtIsSwapS (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (j : Word) (hij : Lt(i, j)) (hi : Lt(i, n)) (hj : Lt(j, n)) :
-      Id(Unit, SwapLt(E, n, s, i, j, hij, hj), (*s := SwapS(E, n, clone(*s), i, j, hi, hj))) := (
+      Id(Unit, SwapLt(E, n, &*s, i, j, hij, hj), (*s := SwapS(E, n, clone(*s), i, j, hi, hj))) := (
     let hk : Le(j, n) = LeTrans(j, Succ(j), n, LeStep(j, j, LeRefl(j)), hj);
     let h0 : Lt(Zero, Sub(n, j)) = SubPosLt(n, j, hj);
     let tk = TakeS(E, n, j, clone(*s), hk);
@@ -703,7 +703,7 @@ ochr ArrayLemmas uses Arrays {
   )
 
   def SwapIsSwapS (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (j : Word) (hi : Lt(i, n)) (hj : Lt(j, n)) :
-      Id(Unit, Swap(E, n, s, i, j, hi, hj), (*s := SwapS(E, n, *s, i, j, hi, hj))) := (
+      Id(Unit, Swap(E, n, &*s, i, j, hi, hj), (*s := SwapS(E, n, *s, i, j, hi, hj))) := (
     let d = LtDec(i, j);
     match d {
       Yes(hij) => SwapLtIsSwapS(E, n, s, i, j, hij, hi, hj),

@@ -753,9 +753,9 @@ ochr StuckBlocks uses DepFields {
   -- a fail-safe incompleteness, pinned: in a statement the side runs on its own copy, and a
   -- local it breaks is dropped broken on the direct path, harmlessly; the block's borrow of
   -- `w` still ends at its return
-  reject def LieDropped (v : V) : Prop := Id(Unit, (let w = v; match w { MkV(n, x) => n := Zero, }; ()), ())
+  reject def LieDropped (v : V) : Prop := Id(Unit, (let w = v; match w { MkV(n, x) => n := Zero, }; ()), (let w = v; ()))
   -- twin of LieDropped: the side's arm writes `n := n`
-  def LieDroppedOk (v : V) : Prop := Id(Unit, (let w = v; match w { MkV(n, x) => n := n, }; ()), ())
+  def LieDroppedOk (v : V) : Prop := Id(Unit, (let w = v; match w { MkV(n, x) => n := n, }; ()), (let w = v; ()))
 }
 
 #guard (run "StuckBlocks" StuckBlocks).rejectedWith [

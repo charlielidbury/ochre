@@ -102,10 +102,10 @@ ochr Propositions uses Nats {
   def ProjR (P : Prop) (Q : Prop) (h : P ∧ Q) : Q := h.1
   reject def ProjWrong (P : Prop) (Q : Prop) (h : P ∧ Q) : Q := h.0
   reject def ProjOut (P : Prop) (Q : Prop) (h : P ∧ Q) : Q := h.2
-  def SndProj (x : &Nat) (h : Eq(Nat, *x, 0) ∧ Id(Unit, AddM(x, 0), ())) : Id(Unit, AddM(x, 0), ()) := h.1
+  def SndProj (x : &Nat) (h : Eq(Nat, *x, 0) ∧ Id(Unit, AddM(&*x, 0), ())) : Id(Unit, AddM(&*x, 0), ()) := h.1
 
   -- A match on a proof outside tail position, then used.
-  def Snd (x : &Nat) (h : Eq(Nat, *x, 0) ∧ Id(Unit, AddM(x, 0), ())) : Id(Unit, AddM(x, 0), ()) := (
+  def Snd (x : &Nat) (h : Eq(Nat, *x, 0) ∧ Id(Unit, AddM(&*x, 0), ())) : Id(Unit, AddM(&*x, 0), ()) := (
     let k = match h {
       Intro(a, b) => b,
     };
@@ -179,30 +179,30 @@ ochr Propositions uses Nats {
     }
   )
 
-  def WriteIfId (x : &Nat) (P : Prop) (Q : Prop) (h : P ∧ Q) : Id(Unit, WriteIf(x, P, Q, h), *x := 7) := refl
+  def WriteIfId (x : &Nat) (P : Prop) (Q : Prop) (h : P ∧ Q) : Id(Unit, WriteIf(&*x, P, Q, h), *x := 7) := refl
 
   reject def WriteIfLie (x : &Nat) (P : Prop) (Q : Prop) (h : P ∧ Q) :
-      Id(Unit, WriteIf(x, P, Q, h), ()) := refl
+      Id(Unit, WriteIf(&*x, P, Q, h), ()) := refl
 
   -- The lemmas above were checked at `h = ⋆`, their generic call. Here they are used at
   -- propositions about a mutated place, where the statements are computed by running
   -- `WriteIf` and `Two` directly: the two ways of computing them agree.
-  def WriteIfAt (x : &Nat) (y : &Nat) (e : Id(Unit, AddM(y, 0), ())) :
-      Id(Unit, WriteIf(x, Id(Unit, AddM(y, 0), ()), Eq(Nat, *y, *y), ⟨e, refl⟩), *x := 7) := (
-    WriteIfId(x, Id(Unit, AddM(y, 0), ()), Eq(Nat, *y, *y), ⟨e, refl⟩)
+  def WriteIfAt (x : &Nat) (y : &Nat) (e : Id(Unit, AddM(&*y, 0), ())) :
+      Id(Unit, WriteIf(&*x, Id(Unit, AddM(&*y, 0), ()), Eq(Nat, *y, *y), ⟨e, refl⟩), *x := 7) := (
+    WriteIfId(x, Id(Unit, AddM(&*y, 0), ()), Eq(Nat, *y, *y), ⟨e, refl⟩)
   )
 
-  reject def WriteIfAtLie (x : &Nat) (y : &Nat) (e : Id(Unit, AddM(y, 0), ())) :
-      Id(Unit, WriteIf(x, Id(Unit, AddM(y, 0), ()), Eq(Nat, *y, *y), ⟨e, refl⟩), *x := 8) := (
-    WriteIfId(x, Id(Unit, AddM(y, 0), ()), Eq(Nat, *y, *y), ⟨e, refl⟩)
+  reject def WriteIfAtLie (x : &Nat) (y : &Nat) (e : Id(Unit, AddM(&*y, 0), ())) :
+      Id(Unit, WriteIf(&*x, Id(Unit, AddM(&*y, 0), ()), Eq(Nat, *y, *y), ⟨e, refl⟩), *x := 8) := (
+    WriteIfId(x, Id(Unit, AddM(&*y, 0), ()), Eq(Nat, *y, *y), ⟨e, refl⟩)
   )
 
-  def TwoAt (y : &Nat) : Eq(Nat, Two(Id(Unit, AddM(y, 0), ()), ⊤, ⟨AddMZero(y), refl⟩), 2) := (
-    TwoIs(Id(Unit, AddM(y, 0), ()), ⊤, ⟨AddMZero(y), refl⟩)
+  def TwoAt (y : &Nat) : Eq(Nat, Two(Id(Unit, AddM(&*y, 0), ()), ⊤, ⟨AddMZero(y), refl⟩), 2) := (
+    TwoIs(Id(Unit, AddM(&*y, 0), ()), ⊤, ⟨AddMZero(y), refl⟩)
   )
 
-  reject def TwoAtLie (y : &Nat) : Eq(Nat, Two(Id(Unit, AddM(y, 0), ()), ⊤, ⟨AddMZero(y), refl⟩), 3) := (
-    TwoIs(Id(Unit, AddM(y, 0), ()), ⊤, ⟨AddMZero(y), refl⟩)
+  reject def TwoAtLie (y : &Nat) : Eq(Nat, Two(Id(Unit, AddM(&*y, 0), ()), ⊤, ⟨AddMZero(y), refl⟩), 3) := (
+    TwoIs(Id(Unit, AddM(&*y, 0), ()), ⊤, ⟨AddMZero(y), refl⟩)
   )
 
   -- A match with no arms is unreachable in a closed run, but an open one reaches it when a
@@ -397,11 +397,11 @@ ochr Subsingletons uses Bools, Fixtures {
   )
 
   -- Rejected since D55, with `EffL`.
-  reject def EffLNoop (x : &Nat) (h : Or(⊤, ⊤)) : Id(Unit, let t = EffL(x, h); (), ()) := refl
+  reject def EffLNoop (x : &Nat) (h : Or(⊤, ⊤)) : Id(Unit, let t = EffL(&*x, h); (), ()) := refl
   -- twin of EffLNoop: calls `EffLOk` (result type `True`) instead of `EffL`
-  def EffLNoopOk (x : &Nat) (h : Or(⊤, ⊤)) : Id(Unit, let t = EffLOk(x, h); (), ()) := refl
+  def EffLNoopOk (x : &Nat) (h : Or(⊤, ⊤)) : Id(Unit, let t = EffLOk(&*x, h); (), ()) := refl
 
-  reject def EffLOne (x : &Nat) (h : Or(⊤, ⊤)) : Id(Unit, let t = EffL(x, h); (), *x := 1) := refl
+  reject def EffLOne (x : &Nat) (h : Or(⊤, ⊤)) : Id(Unit, let t = EffL(&*x, h); (), *x := 1) := refl
 
   -- Inline, outside tail position, the arms are erased terms, each on its own copy (D68).
   -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).

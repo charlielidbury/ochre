@@ -26,24 +26,24 @@ open Ochr.Test
 ochr Equality uses Bools, Nats {
   -- The footprint is read from the syntax, so an unrelated `let` does not change what is
   -- compared, and the proof is the same as `AddMZero`'s.
-  def AddMZeroLet (x : &Nat) : Id(Unit, let n = 0; AddM(x, n), ()) by x := (
+  def AddMZeroLet (x : &Nat) : Id(Unit, let n = 0; AddM(&*x, n), ()) by x := (
     match *x {
       Z => refl,
       S p => AddMZeroLet(&p),
     }
   )
 
-  -- The paper's first `Id` (§2): at a definition taking `x : &Nat`, `Id(Unit, AddM(x, 0), ())`
+  -- The paper's first `Id` (§2): at a definition taking `x : &Nat`, `Id(Unit, AddM(&*x, 0), ())`
   -- is `Eq(Unit, ⌈…⌉, ()) ∧ Eq(Nat, N(σ), σ)`. The stuck call returns its sealed program `⌈…⌉`,
   -- which is also what `let c = *x; AddM(&c, 0)` returns, and leaves `N(σ)` in `x`'s owner,
   -- which is also what `Add(*x, 0)` computes. An equation at `Unit` is `⊤` (η for `Unit`,
   -- D59), whatever its sides, so the whole is the single equation `Eq(Nat, N(σ), σ)`, in both
   -- directions.
-  def IdIsConjSealed (x : &Nat) (h : Id(Unit, AddM(x, 0), ())) : Eq(Unit, let c = *x; AddM(&c, 0), ()) ∧ Eq(Nat, Add(*x, 0), *x) := h
-  def IdIsConj (x : &Nat) (h : Id(Unit, AddM(x, 0), ())) : Eq(Unit, (), ()) ∧ Eq(Nat, Add(*x, 0), *x) := h
-  def IdIsEq (x : &Nat) (h : Id(Unit, AddM(x, 0), ())) : Eq(Nat, Add(*x, 0), *x) := h
-  def EqIsId (x : &Nat) (h : Eq(Nat, Add(*x, 0), *x)) : Id(Unit, AddM(x, 0), ()) := h
-  reject def IdIsWrong (x : &Nat) (h : Id(Unit, AddM(x, 0), ())) : Eq(Nat, Add(*x, 1), *x) := h
+  def IdIsConjSealed (x : &Nat) (h : Id(Unit, AddM(&*x, 0), ())) : Eq(Unit, let c = *x; AddM(&c, 0), ()) ∧ Eq(Nat, Add(*x, 0), *x) := h
+  def IdIsConj (x : &Nat) (h : Id(Unit, AddM(&*x, 0), ())) : Eq(Unit, (), ()) ∧ Eq(Nat, Add(*x, 0), *x) := h
+  def IdIsEq (x : &Nat) (h : Id(Unit, AddM(&*x, 0), ())) : Eq(Nat, Add(*x, 0), *x) := h
+  def EqIsId (x : &Nat) (h : Eq(Nat, Add(*x, 0), *x)) : Id(Unit, AddM(&*x, 0), ()) := h
+  reject def IdIsWrong (x : &Nat) (h : Id(Unit, AddM(&*x, 0), ())) : Eq(Nat, Add(*x, 1), *x) := h
 
   -- Owned locals are observed too: `x := 6` and `()` differ in what they leave in `x` ...
   reject def OwnedLocal (x : Nat) : Id(Unit, x := 6, ()) := refl
@@ -206,32 +206,32 @@ D83 made a value holding `⊥` convertible with nothing, because `⊥` meant "lo
 stuck block took a place by move if any arm moved it, while at an instance only the taken arm
 ran. D84 drops at a match's join what any arm moves, so `⊥` means "moved on every path", on the
 generic call and at every instance alike: it is a value of its own, `⊥ = ⊥` is `⊤` and `⊥ = v`
-is `False` for every other `v`, and [Conv-bot] is retired. Each side of each `Id` below that
-matches on `n` leaves `x` moved at every `n` (its arm `Z` moves it). -/
+is `False` for every other `v`, and [Conv-bot] is retired. And an `Id` is well formed only when
+its sides leave the same type-state ([Id-typestate]): here, the same places moved. Each side
+below that matches on `n` moves `x` at every `n` (its arm `Z` moves it). -/
 
 ochr BotConv uses Nats {
-  -- True now: both sides of both `Id`s leave `x` moved on every path, so both types are `⊤`.
+  -- True now: both sides of both `Id`s move `x` on every path, so both types are `⊤`.
   def Same (n : Nat) (x : Nat)
       (h : Id(Unit, match n { Z => (let y = x; ()), S _ => (x := 5; ()) }, match n { Z => (let y = x; ()), S _ => (x := 5; ()) }))
     : Id(Unit, match n { Z => (let y = x; ()), S _ => (x := 5; ()) }, match n { Z => (let y = x; ()), S _ => (x := 6; ()) }) := h
   -- ... and at `n = 1` its type is `⊤` too (arm `S` writes `x`, and the join drops it), not `False`
   reject def Boom : False := Same(S(Z), Z, refl)
-  -- `P → P`, true (D83 rejected it: its `P` held `⊥`)
-  def SelfBot (n : Nat) (x : Nat)
+  -- ill-formed now: one side moves `x`, the other writes it ([Id-typestate])
+  reject def SelfBot (n : Nat) (x : Nat)
       (h : Id(Unit, match n { Z => (let y = x; ()), S _ => (x := 5; ()) }, (x := 5; ())))
     : Id(Unit, match n { Z => (let y = x; ()), S _ => (x := 5; ()) }, (x := 5; ())) := h
-  -- twin of SelfBot: arm `Z` clones `x`, so nothing moves it, and the block takes it by `&` (arm
-  -- `S` writes it): the stuck equation `Eq(Nat, ⌈…⌉, 5)` is convertible with itself ([Conv-refl])
+  -- twin of SelfBot: arm `Z` clones `x`, so neither side moves it, and the block takes it by `&`
+  -- (arm `S` writes it): the stuck equation `Eq(Nat, ⌈…⌉, 5)` is convertible with itself
   def SelfKept (n : Nat) (x : Nat)
       (h : Id(Unit, match n { Z => (let y = clone(x); ()), S _ => (x := 5; ()) }, (x := 5; ())))
     : Id(Unit, match n { Z => (let y = clone(x); ()), S _ => (x := 5; ()) }, (x := 5; ())) := h
 
-  -- True now: `h` says `5 = ⊥`, which is `False`, so anything follows from it ...
-  def TrBot (n : Nat) (x : Nat)
+  -- ill-formed now, for the same reason: `h`'s right side moves `x`, its left side does not
+  reject def TrBot (n : Nat) (x : Nat)
       (h : Id(Unit, (x := 5; ()), match n { Z => (let y = x; ()), S _ => (x := 5; ()) }))
       (k : Id(Unit, match n { Z => (let y = x; ()), S _ => (x := 6; ()) }, (x := 6; ())))
     : Id(Unit, (x := 5; ()), (x := 6; ())) := trans(h, k)
-  -- ... and at `n = 1` it is still `False`, which `refl` does not prove
   reject def TrBotBoom : False := TrBot(S(Z), Z, refl, refl)
   -- twin of TrBot: with clones the middle points are the same sealed program, and compose
   def TrKept (n : Nat) (x : Nat)
@@ -239,14 +239,10 @@ ochr BotConv uses Nats {
       (k : Id(Unit, match n { Z => (let y = clone(x); ()), S _ => (x := 5; ()) }, (x := 5; ())))
     : Id(Unit, (x := 5; ()), (x := 5; ())) := trans(h, k)
 
-  -- True, and rejected: `h` says `⊥ = 5`, which is `False`, so it is not an equation to rewrite
-  -- with (the goal is `False` too; `match h {}` proves it, `ExFalsoRw`)
+  -- ill-formed now: `h`'s left side moves `x`
   reject def RwBot (n : Nat) (x : Nat)
       (h : Id(Unit, match n { Z => (let y = x; ()), S _ => (x := 5; ()) }, (x := 5; ())))
     : Id(Unit, match n { Z => (let y = x; ()), S _ => (x := 6; ()) }, (x := 5; ())) := rewrite ← h in refl
-  def ExFalsoRw (n : Nat) (x : Nat)
-      (h : Id(Unit, match n { Z => (let y = x; ()), S _ => (x := 5; ()) }, (x := 5; ())))
-    : Id(Unit, match n { Z => (let y = x; ()), S _ => (x := 6; ()) }, (x := 5; ())) := match h {}
   reject def RwBotBoom : False := RwBot(S(Z), Z, refl)
   -- twin of RwBot: with a clone, `h : Eq(Nat, ⌈…⌉, 5)` rewrites the goal's `⌈…⌉`, the same
   -- sealed program, to 5
@@ -257,11 +253,13 @@ ochr BotConv uses Nats {
 
 #guard (run "BotConv" BotConv).rejectedWith [
   ("Boom", "the body of Boom has type ⊤, but the goal is False"),
-  ("TrBotBoom", "argument 3 (h) has type ⊤, expected False"),
-  ("RwBot", "rewrite: the proof has type False, which is not an equation"),
+  ("SelfBot", "[Id-typestate] the left side of Id moves x, the right side does not"),
+  ("TrBot", "[Id-typestate] the right side of Id moves x, the left side does not"),
+  ("TrBotBoom", "unknown constant TrBot"),
+  ("RwBot", "[Id-typestate] the left side of Id moves x, the right side does not"),
   ("RwBotBoom", "unknown constant RwBot")]
 
-/-! ## Moves are definite (D84)
+/-! ## Moves are definite; `Id` compares computations that leave the same type-state (D84)
 
 A read of a place whose declared type is not a copy type moves it, and a match leaves moved,
 on every path, what any of its arms moves: the arms that do not move it drop it at their end
@@ -269,9 +267,13 @@ on every path, what any of its arms moves: the arms that do not move it drop it 
 from the match's syntax and declared types, so the generic call (a stuck block takes them by
 move) and every instance (one arm runs, the join drops the rest) agree, each at the grain the
 declared types give: a field is named only through a value whose declared type is an inductive
-with one constructor, not one computed by a match. And `Id` observes every owned place a side
-reads, so two computations that consume different places differ: a continuation that reads the
-place one of them consumed runs after the other only. -/
+with one constructor, not one computed by a match.
+
+`Id(A, t, u)` is well formed only where `t` and `u` leave the same type-state
+([Id-typestate]): the same places moved, the same borrows consumed, re-pointed and left moved
+through. So a context that accepts one can accept the other as far as moves and borrows go. A
+side may not end a borrow that a binding or a value in flight outside it holds. A borrow both
+sides re-point is observed by where it points ([Obs-ref]). -/
 
 ochr Moves84 uses Nats {
   def F (n : Nat) : Unit := ()
@@ -284,12 +286,31 @@ ochr Moves84 uses Nats {
   -- ... and inside each side, where each side's `x` and `y` die with it: nothing can tell them apart
   def FxFyLocal : Id(Unit, (let x = 5; let y = 5; F(x)), (let x = 5; let y = 5; F(y))) := refl
 
+  -- A borrow passed whole is consumed; a reborrow is not
+  reject def Consumes (x : &Nat) : Id(Unit, AddM(x, 0), ()) := AddMZero(x)
+  def Reborrows (x : &Nat) : Id(Unit, AddM(&*x, 0), ()) := AddMZero(x)
+  -- a side that moves out through a borrow and does not refill it leaves it open
+  reject def LeftOpen (y : &Nat) : Id(Unit, (let a = *y; ()), ()) := refl
+  def LeftOpenBoth (y : &Nat) : Id(Unit, (let a = *y; ()), (let b = *y; ())) := refl
+  -- re-pointing a borrow binding: on one side only, ill-formed; on both, observed by where it
+  -- points ([Obs-ref]), so different targets are told apart and the same target is not
+  reject def RePointOne (x : Nat) (y : &Nat) : Id(Unit, (y := &x; ()), ()) := refl
+  reject def RePoint (x : Nat) (z : Nat) (y : &Nat) : Id(Unit, (y := &x; ()), (y := &z; ())) := refl
+  def SameTarget (x : Nat) (y : &Nat) : Id(Unit, (y := &x; ()), (y := &x; ())) := refl
+  reject def SwapB (y1 : &Nat) (y2 : &Nat) : Id(Unit, (let t = y1; y1 := y2; y2 := t), ()) := refl
+  -- a side may not end a borrow a binding outside it holds: reading `x` ends `y`
+  reject def KillRead (x : Nat) : Unit := (let y = &x; let h : Id(Unit, (let a = clone(x); ()), ()) = refl; *y := 5)
+  def KillReadAfter (x : Nat) : Unit := (let h : Id(Unit, (let a = clone(x); ()), ()) = refl; let y = &x; *y := 5)
+  -- ... nor one a value in flight holds: `&x`, `Put`'s first argument, is evaluated before the `Id`
+  def Put (r : &Nat) (u : Unit) : Unit := (*r := 5; ())
+  reject def KillTemp (x : Nat) : Unit := Put(&x, (let h : Id(Unit, (let a = clone(x); ()), ()) = refl; ()))
+  def KillTempBefore (x : Nat) : Unit := (let h : Id(Unit, (let a = clone(x); ()), ()) = refl; Put(&x, ()))
+
   -- The join in a direct run: at `n = 1` arm `S` runs, and the join drops `x`, which arm `Z`
   -- moves, so the left side leaves `x` moved there as at the generic call
-  def MovesAt (n : Nat) (x : Nat) : Prop := Id(Unit, (let r = &x; match n { Z => (let y = x; ()), S _ => () }), (let r = &x; ()))
-  reject def AtOneTrue (x : Nat) : MovesAt(S(Z), x) := refl
-  def AtOneFalse (x : Nat) (h : MovesAt(S(Z), x)) : False := match h {}
-  def GenFalse (n : Nat) (x : Nat) (h : MovesAt(n, x)) : False := match h {}
+  def MovesAt (n : Nat) (x : Nat) : Prop := Id(Unit, (let r = &x; match n { Z => (let y = x; ()), S _ => () }), (let r = &x; let y = x; ()))
+  def AtOneTrue (x : Nat) : MovesAt(S(Z), x) := refl
+  def GenTrue (n : Nat) (x : Nat) : MovesAt(n, x) := refl
 
   -- The lattice join: `x` is moved before the match and refilled by one arm only, so it is
   -- moved after it on every path ...
@@ -299,47 +320,52 @@ ochr Moves84 uses Nats {
 
   -- The grain of a move, from declared types. `TF`'s arms agree on `Pr`, but its value is a
   -- stuck program at an unknown `k` (the generic call cannot name `x.a`) and `Pr` at an instance,
-  -- so a move of `x.a` is a move of `x` at the join, on every path: `G` is true, and `Boom` (a
-  -- closed proof of `False` on D84's viability prototype, which kept `x.a` at the instance) has
-  -- type `⊤`
+  -- so a move of `x.a` is a move of `x` at the join, on every path: `G` is well formed and true,
+  -- and `Boom` (a closed proof of `False` on D84's viability prototype, which kept `x.a` at the
+  -- instance) has type `⊤`. `&x` puts `x` in the footprint
   inductive Pr := MkPr(a : Nat, b : Nat)
   def TF (n : Nat) : Type := match n { Z => Pr, S _ => Pr }
   def G (k : Nat) (x : TF(k)) :
-      Id(Unit, (match k { Z => match x { MkPr(a, b) => (let y = a; ()) }, S _ => () }), (let z = x; ())) := refl
+      Id(Unit, (let r = &x; match k { Z => match x { MkPr(a, b) => (let y = a; ()) }, S _ => () }), (let r = &x; let z = x; ())) := refl
   reject def Boom : False := G(Z, MkPr(1, 2))
   -- twin of G: declared `Pr`, `x`'s fields are named on every path, so only `x.a` is moved
   def GPr (k : Nat) (x : Pr) :
-      Id(Unit, (match k { Z => match x { MkPr(a, b) => (let y = a; ()) }, S _ => () }), (let z = x.0; ())) := refl
+      Id(Unit, (let r = &x; match k { Z => match x { MkPr(a, b) => (let y = a; ()) }, S _ => () }), (let r = &x; let z = x.0; ())) := refl
   reject def GPrWhole (k : Nat) (x : Pr) :
-      Id(Unit, (match k { Z => match x { MkPr(a, b) => (let y = a; ()) }, S _ => () }), (let z = x; ())) := refl
+      Id(Unit, (let r = &x; match k { Z => match x { MkPr(a, b) => (let y = a; ()) }, S _ => () }), (let r = &x; let z = x; ())) := refl
   -- a sealed value of a type with one constructor: generalised and refined, its fields named
   def MkPrF (n : Nat) : Pr := match n { Z => MkPr(0, 0), S _ => MkPr(1, 1) }
   def St (k : Nat) (n : Nat) : Prop :=
-    (let x = MkPrF(n); Id(Unit, (match k { Z => match x { MkPr(a, b) => (let y = a; ()) }, S _ => () }), (let z = x; ())))
-  reject def StTrue (k : Nat) (n : Nat) : St(k, n) := refl
-  def StFalse (k : Nat) (n : Nat) (h : St(k, n)) : False := match h {}
+    (let x = MkPrF(n); Id(Unit, (let r = &x; match k { Z => match x { MkPr(a, b) => (let y = a; ()) }, S _ => () }), (let r = &x; let z = x.0; ())))
+  def StTrue (k : Nat) (n : Nat) : St(k, n) := refl
   -- a field of an unknown constructor: the scrutinee is moved whole
   inductive Ch := L(u : Nat) | R(v : Nat)
-  def Gc (k : Nat) (c : Ch) : Id(Unit, (match k { Z => match c { L(u) => (let y = u; ()), R(v) => () }, S _ => () }), (let z = c; ())) := refl
+  def Gc (k : Nat) (c : Ch) : Id(Unit, (let r = &c; match k { Z => match c { L(u) => (let y = u; ()), R(v) => () }, S _ => () }), (let r = &c; let z = c; ())) := refl
   -- a place lent at the join: its field is named as the arm that moves it names it (its borrow
   -- ended first), on the generic call as at an instance where the borrow is still live
-  def LentField (k : Nat) (q : Pr) : Id(Unit, (let r = &q; match k { Z => (let y = q.0; ()), S _ => () }; ()), (let y = q.0; ())) := refl
-  reject def LentWhole (k : Nat) (q : Pr) : Id(Unit, (let r = &q; match k { Z => (let y = q.0; ()), S _ => () }; ()), (let y = q; ())) := refl
+  def LentField (k : Nat) (q : Pr) : Id(Unit, (let r = &q; match k { Z => (let y = q.0; ()), S _ => () }; ()), (let r = &q; let y = q.0; ())) := refl
+  reject def LentWhole (k : Nat) (q : Pr) : Id(Unit, (let r = &q; match k { Z => (let y = q.0; ()), S _ => () }; ()), (let r = &q; let y = q; ())) := refl
   -- K1(g): a place one arm uses whole (here borrows) and another moves part of is moved whole
-  def WholeUse (k : Nat) (q : Pr) : Id(Unit, (match k { Z => (let y = q.0; ()), S _ => (let r = &q; ()) }), (let y = q; ())) := refl
-  reject def WholeUseField (k : Nat) (q : Pr) : Id(Unit, (match k { Z => (let y = q.0; ()), S _ => (let r = &q; ()) }), (let y = q.0; ())) := refl
+  def WholeUse (k : Nat) (q : Pr) : Id(Unit, (match k { Z => (let y = q.0; ()), S _ => (let r = &q; ()) }), (let r = &q; let y = q; ())) := refl
+  reject def WholeUseField (k : Nat) (q : Pr) : Id(Unit, (match k { Z => (let y = q.0; ()), S _ => (let r = &q; ()) }), (let r = &q; let y = q.0; ())) := refl
 }
 
 #guard (run "Moves84" Moves84).rejectedWith [
-  ("FxFy", "the body of FxFy has type ⊤, but the goal is False ∧ False"),
-  ("FxFyLet", "the body of FxFyLet has type ⊤, but the goal is False ∧ False"),
-  ("AtOneTrue", "the body of AtOneTrue has type ⊤, but the goal is False"),
+  ("FxFy", "[Id-typestate] the left side of Id moves x, the right side does not"),
+  ("FxFyLet", "[Id-typestate] the left side of Id moves x, the right side does not"),
+  ("Consumes", "[Id-typestate] the left side of Id consumes the borrow x, the right side does not (pass a reborrow, &*x)"),
+  ("LeftOpen", "[Id-typestate] the left side of Id leaves moved, through a borrow, *y, the right side does not"),
+  ("RePointOne", "[Id-typestate] the left side of Id re-points the borrow y, the right side does not"),
+  ("RePoint", "the body of RePoint has type ⊤, but the goal is Eq(Nat, σ3, σ0) ∧ Eq(Nat, σ1, σ3)"),
+  ("SwapB", "[Id-typestate] the left side of Id re-points the borrow y1, the right side does not"),
+  ("KillRead", "[Id-typestate] a side of Id ends the borrow y"),
+  ("KillTemp", "[Id-typestate] a side of Id ends a borrow that a value in flight around the Id holds"),
   ("RefillOne", "[Read] x was moved out or its borrow ended (reading ⊥)"),
   ("Boom", "the body of Boom has type ⊤, but the goal is False"),
-  ("GPrWhole", "the body of GPrWhole has type ⊤, but the goal is False"),
-  ("StTrue", "the body of StTrue has type ⊤, but the goal is False"),
-  ("LentWhole", "the body of LentWhole has type ⊤, but the goal is False"),
-  ("WholeUseField", "the body of WholeUseField has type ⊤, but the goal is False")]
+  ("GPrWhole", "[Id-typestate] the left side of Id moves x.a, the right side does not"),
+  ("LentWhole", "[Id-typestate] the left side of Id moves q.0, the right side does not"),
+  ("WholeUseField", "[Id-typestate] the left side of Id moves q, the right side does not")]
+
 /-! ## `J` at runtime (D85)
 
 The checker computes `J(A, a, b, P, h, t)` to `t` only when `a` and `b` are convertible ([J]),
@@ -557,7 +583,7 @@ ochr Owners uses Fixtures {
     λ(e : Id(Unit, *z := 0, *z := 1)) : False => e
   )
 
-  reject def BadC2 (n : Nat) (a : Nat) (b : Nat) : Id(Nat, n, 0) := (
+  reject def BadC2 (n : Nat) (a : Nat) (b : Nat) : Id(Nat, clone(n), 0) := (
     let r = Pick(n, &a, &b);
     let h = G(r);
     match n {

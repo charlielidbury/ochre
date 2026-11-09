@@ -69,7 +69,7 @@ ochr ArrayBench uses ArrayLemmas {
   -- By definition, for any `g`: after the split, the view is `g`'s result on the old first
   -- `k` elements, joined to the old rest.
   def B1Join (E : Type) (n : Word) (k : Word) (g : Π(x : &Slice(E, k)). Unit) (s : &Slice(E, n)) (h : Le(k, n)) :
-      Id(Unit, (let g2 = clone(g); WithSplit(E, Unit, n, k, s, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => g2(l))), *s := JoinS(E, n, k, (let c = TakeS(E, n, k, clone(*s), h); g(&c); c), DropS(E, n, k, clone(*s)))) := refl
+      Id(Unit, (let g2 = clone(g); WithSplit(E, Unit, n, k, &*s, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => g2(l))), *s := JoinS(E, n, k, (let c = TakeS(E, n, k, clone(*s), h); g(&c); c), DropS(E, n, k, clone(*s)))) := refl
 
   -- Stated about the rest alone, it takes one lemma, for any `g`: `g`'s result has length `k`
   -- by its type, so the rest starts where it did.
@@ -84,7 +84,7 @@ ochr ArrayBench uses ArrayLemmas {
 
   -- Nor is splitting and doing nothing the identity by definition; it is `JoinTakeDrop`.
   reject def SplitNoopRefl (E : Type) (n : Word) (k : Word) (s : &Slice(E, n)) (h : Le(k, n)) :
-      Id(Unit, WithSplit(E, Unit, n, k, s, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => ()), ()) := refl
+      Id(Unit, WithSplit(E, Unit, n, k, &*s, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => ()), ()) := refl
 
   def SplitNoop (E : Type) (n : Word) (k : Word) (s : &Slice(E, n)) (h : Le(k, n)) :
       Eq(Slice(E, n), let c = *s; WithSplit(E, Unit, n, k, &c, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => ()); c, *s) := (
@@ -125,7 +125,7 @@ ochr ArrayBench uses ArrayLemmas {
   -- A read leaves the view as it was, but not by definition: at an unknown index the view
   -- afterwards is a put-back program ...
   reject def ReadNoopRefl (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (h : Lt(i, n)) :
-      Id(Unit, (let x = clone(*GetMut(E, n, s, i, h)); ()), ()) := refl
+      Id(Unit, (let x = clone(*GetMut(E, n, &*s, i, h)); ()), ()) := refl
 
   -- ... which is the view by `GetMutRead`.
   def ReadNoop (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (h : Lt(i, n)) :
@@ -193,7 +193,7 @@ ochr ArrayBench uses ArrayLemmas {
       W(4)) := refl
   -- By definition `Swap` is not its model's write: that is the lemma `SwapIsSwapS`.
   reject def SwapIsSwapSRefl (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (j : Word) (hi : Lt(i, n)) (hj : Lt(j, n)) :
-      Id(Unit, Swap(E, n, s, i, j, hi, hj), (*s := SwapS(E, n, *s, i, j, hi, hj))) := refl
+      Id(Unit, Swap(E, n, &*s, i, j, hi, hj), (*s := SwapS(E, n, *s, i, j, hi, hj))) := refl
 
   -- ## B4: a bounds proof from a runtime comparison
   def GetOr (E : Type) (n : Word) (s : &Slice(E, n)) (i : Word) (d : E) : E := (
@@ -240,7 +240,7 @@ ochr ArrayBench uses ArrayLemmas {
   reject def ReadModel (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) : Word := Nth(Word, n, *s, i, h)
   -- In a statement, the model is unrestricted.
   def ReadIsNth (n : Word) (s : &Slice(Word, n)) (i : Word) (h : Lt(i, n)) :
-      Id(Word, *GetMut(Word, n, s, i, h), Nth(Word, n, clone(*s), i, h)) := GetMutRead(Word, n, s, i, h)
+      Id(Word, *GetMut(Word, n, &*s, i, h), Nth(Word, n, clone(*s), i, h)) := GetMutRead(Word, n, s, i, h)
 }
 
 #guard (run "ArrayBench" ArrayBench).rejectedWith [

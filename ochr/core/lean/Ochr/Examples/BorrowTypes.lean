@@ -280,7 +280,7 @@ ochr Abstraction {
   -- runtime code goes through the natives ...
   def Bump (s : &View) : Unit := (let n = Get(&*s); Put(s, S(n)))
   -- ... and statements see the model
-  def GetIs (s : &View) : Id(Nat, Get(s), ViewVal(clone(*s))) := refl
+  def GetIs (s : &View) : Id(Nat, Get(&*s), ViewVal(clone(*s))) := refl
   -- matching, building, reading or assigning a view at runtime is not allowed
   reject def Peek (s : &View) : Nat := match *s { MkView(v) => clone(v) }
   -- twin of Peek: the same match, as the model body of a native (`implemented by`)

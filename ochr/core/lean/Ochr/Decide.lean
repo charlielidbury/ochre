@@ -1020,4 +1020,80 @@ def jdMatch (fuel : Nat) (sc : List DeclInfo) (al : List (Option Place)) (t : Te
 termination_by structural fuel
 end
 
+/-! ## D84: the type-state of a side of `Id` ([Id-typestate])
+
+`Id(A, t, u)` is well formed only where `t` and `u` leave the same type-state: the same outer
+places moved, the same borrow bindings consumed, re-pointed and left open. Then swapping `u` for
+`t` in a typed context can never cause a move or borrow error. Read from syntax and declared
+types, as the join is (`jdMoves`), never from a run. -/
+
+/-- What a side of `Id` leaves of the bindings outside it, in the frame's indices. -/
+structure TypeState where
+  /-- owned places it leaves moved, at the join's grain -/
+  moved : List Place := []
+  /-- borrow bindings it consumes: moved whole (passed to a call, into a `let`, returned) -/
+  consumed : List Place := []
+  /-- borrow bindings it assigns whole (re-points), and does not then consume -/
+  repointed : List Place := []
+  /-- places it leaves moved through a borrow binding (`*y`), not refilled -/
+  leftOpen : List Place := []
+
+mutual
+/-- The outer borrow bindings a run of `t` assigns whole (`y := …`), outside what runs on its
+own copy (an erased term) and what a function forms (closures capture no borrows). -/
+def jdAssigns (fuel : Nat) (sc : List DeclInfo) (t : Term) (acc : List Place) : M (List Place) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let c := sc.length
+  if !(t matches .val _) then
+    if let some (true, _) ← preFlags t (← declOf fuel' false sc [] t) then return acc
+  match t with
+  | .assign p u =>
+    let acc ← jdAssigns fuel' sc u acc
+    if let .var i := p then
+      if i ≥ c then
+        if (← placeDecl fuel' sc p) matches .ref _ then return jdAdd acc (.var (i - c))
+    pure acc
+  | .letIn _ u w =>
+    let acc ← jdAssigns fuel' sc u acc
+    jdAssigns fuel' ((← declOf fuel' false sc [] u) :: sc) w acc
+  | .seq u w => jdAssigns fuel' sc w (← jdAssigns fuel' sc u acc)
+  | .succ u | .ascribe u _ => jdAssigns fuel' sc u acc
+  | .call f as _ => jdAssignsList fuel' sc as (← jdAssigns fuel' sc f acc)
+  | .ctor _ _ _ ps as => jdAssignsList fuel' sc as (← jdAssignsList fuel' sc ps acc)
+  | .prim "J" [_, _, _, _, _, u] => jdAssigns fuel' sc u acc
+  | .prim _ as => jdAssignsList fuel' sc as acc
+  | .matchNat _ z s => jdAssigns fuel' sc s (← jdAssigns fuel' sc z acc)
+  | .matchInd _ _ arms => jdAssignsList fuel' sc (arms.map (·.2)) acc
+  | _ => pure acc
+termination_by structural fuel
+
+def jdAssignsList (fuel : Nat) (sc : List DeclInfo) : List Term → List Place → M (List Place)
+  | [], acc => pure acc
+  | t :: ts, acc => do
+    let fuel' + 1 := fuel | exhausted "out of fuel"
+    jdAssignsList fuel' sc ts (← jdAssigns fuel' sc t acc)
+termination_by structural fuel
+end
+
+/-- D84 [Id-typestate]: the type-state a side `t` leaves, at the frame where the `Id` is formed:
+its moves (`jdMoves`, net of its refills, joins and closures included) sorted into owned places,
+borrow bindings consumed and places left open through a borrow, and the borrow bindings it
+re-points and does not consume. -/
+def typeState (fuel : Nat) (t : Term) : M TypeState := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let ms ← jdMoves fuel' [] [] t []
+  let mut ts : TypeState := {}
+  for m in ms do
+    if m.steps.2.contains .deref then ts := { ts with leftOpen := ts.leftOpen ++ [m] }
+    else if (m matches .var _) && ((← placeDecl fuel' [] m) matches .ref _) then
+      ts := { ts with consumed := ts.consumed ++ [m] }
+    else ts := { ts with moved := ts.moved ++ [m] }
+  for y in ← jdAssigns fuel' [] t [] do
+    unless ts.consumed.any (jdCovers · y) do ts := { ts with repointed := ts.repointed ++ [y] }
+  pure ts
+
+/-- The first place of `a` that `b` does not have (equal places: each a prefix of the other). -/
+def jdMissing (a b : List Place) : Option Place :=
+  a.find? fun p => !b.any fun q => jdPrefix p q && jdPrefix q p
+
 end Ochr

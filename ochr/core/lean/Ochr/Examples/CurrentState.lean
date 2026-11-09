@@ -59,7 +59,7 @@ ochr CurrentState uses Nats {
 
   -- Adding `y` and then subtracting the old `*x` leaves `y` in `*x`. The induction hypothesis
   -- is about a copy of the predecessor.
-  def AddSubId (x : &Nat) (y : Nat) : Id(Unit, AddSub(x, y), *x := y) by x := (
+  def AddSubId (x : &Nat) (y : Nat) : Id(Unit, AddSub(&*x, y), *x := y) by x := (
     match *x {
       Z => refl,
       S p => (
@@ -100,7 +100,7 @@ ochr CurrentState uses Nats {
   -- The induction hypothesis may also be about the predecessor in place (a borrow into
   -- `*x`): it is then an equation between two successors, while `SubM` has already removed
   -- the `S` from the goal, and `Eq` takes the successors apart (injectivity, D52).
-  def AddSubIdReborrow (x : &Nat) (y : Nat) : Id(Unit, AddSub(x, y), *x := y) by x := (
+  def AddSubIdReborrow (x : &Nat) (y : Nat) : Id(Unit, AddSub(&*x, y), *x := y) by x := (
     match *x {
       Z => refl,
       S p => AddSubId(&p, y),

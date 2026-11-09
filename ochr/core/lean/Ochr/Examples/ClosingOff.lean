@@ -49,21 +49,21 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
 
   -- Adding zero through the chosen borrow does nothing, in all three versions. For the
   -- first, the stuck match inside the goal is closed off the same way.
-  def AddToOneZero (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id(Unit, AddToOne(clone(b), x1, x2, 0), ()) := (
+  def AddToOneZero (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id(Unit, AddToOne(clone(b), &*x1, &*x2, 0), ()) := (
     match b {
       Z => AddMZero(x1),
       S _ => AddMZero(x2),
     }
   )
 
-  def AddToOneZero' (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id(Unit, AddToOne'(clone(b), x1, x2, 0), ()) := (
+  def AddToOneZero' (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id(Unit, AddToOne'(clone(b), &*x1, &*x2, 0), ()) := (
     match b {
       Z => AddMZero(x1),
       S _ => AddMZero(x2),
     }
   )
 
-  def AddToOneZero'' (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id(Unit, AddToOne''(clone(b), x1, x2, 0), ()) := (
+  def AddToOneZero'' (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id(Unit, AddToOne''(clone(b), &*x1, &*x2, 0), ()) := (
     match b {
       Z => AddMZero(x1),
       S _ => AddMZero(x2),
@@ -206,7 +206,7 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
   -- takes `n0` by move, not by borrow, and the closure captures the moved value (fuzz-port,
   -- seed 1, case 182, was rejected for capturing a borrow)
   def LamReadOtherArm (n0 : Nat) : Prop :=
-    Id(Nat, (match n0 { Z => (n0 := S(n0); 0), S _ => (let f = (λ(y : Nat) : Nat => n0); 0) }), 0)
+    Id(Nat, (match n0 { Z => (n0 := S(n0); 0), S _ => (let f = (λ(y : Nat) : Nat => n0); 0) }), (let m = n0; 0))
 
   -- Comparing two blocks' functions observes them at a generic argument, where a pattern's
   -- sub-place their arms read may not exist (`q0.0` of the abstract pair `q0`). That error
@@ -404,7 +404,7 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
   -- sealed program). Candidate rule change: a capture-mode rule for a place one arm moves and
   -- another borrows (notes/lean-checker.md §57)
   def MoveBorrowBlk (x0 : &Nat) (n1 : Nat) (n2 : Nat) : Prop :=
-    Id(Unit, (let r = match n2 { Z => (*x0 := n1; &*x0), S _ => &n1 }; ()), ())
+    Id(Unit, (let r = match n2 { Z => (*x0 := n1; &*x0), S _ => &n1 }; ()), (let m = n1; ()))
   reject def MoveBorrowSplit (x0 : &Nat) (n1 : Nat) (n2 : Nat) (h : MoveBorrowBlk(x0, n1, n2)) : Unit :=
     match n2 { Z => (), S _ => () }
   reject def MoveBorrowCode (x0 : &Nat) (n1 : Nat) (n2 : Nat) : Unit := (
@@ -526,13 +526,13 @@ once and twice), and a stuck block whose arms close off calls or return a borrow
 
 ochr CloseOffModel uses Nats, Fixtures {
   def CoPick (n : Nat) (a : &Nat) (b : &Nat) :
-      Id(Unit, (let r = Pick(clone(n), a, b); *r := 5), (match n { Z => *a := 5, S _ => *b := 5, })) :=
+      Id(Unit, (let r = Pick(clone(n), &*a, &*b); *r := 5), (match n { Z => *a := 5, S _ => *b := 5, })) :=
     match n { Z => refl, S _ => refl, }
-  reject def CoPickOnlyA (n : Nat) (a : &Nat) (b : &Nat) : Id(Unit, (let r = Pick(clone(n), a, b); *r := 5), *a := 5) :=
+  reject def CoPickOnlyA (n : Nat) (a : &Nat) (b : &Nat) : Id(Unit, (let r = Pick(clone(n), &*a, &*b); *r := 5), *a := 5) :=
     match n { Z => refl, S _ => refl, }
-  reject def CoPickBoth (n : Nat) (a : &Nat) (b : &Nat) : Id(Unit, (let r = Pick(clone(n), a, b); *r := 5), (*a := 5; *b := 5)) :=
+  reject def CoPickBoth (n : Nat) (a : &Nat) (b : &Nat) : Id(Unit, (let r = Pick(clone(n), &*a, &*b); *r := 5), (*a := 5; *b := 5)) :=
     match n { Z => refl, S _ => refl, }
-  reject def CoPickRefl (n : Nat) (a : &Nat) (b : &Nat) : Id(Unit, (let r = Pick(clone(n), a, b); *r := 5), *a := 5) := refl
+  reject def CoPickRefl (n : Nat) (a : &Nat) (b : &Nat) : Id(Unit, (let r = Pick(clone(n), &*a, &*b); *r := 5), *a := 5) := refl
 
   def CoTwice (x : &Nat) : Id(Unit, (let t = TailM(x); *t := 1; *t := 2), AddM(x, 2)) by x :=
     match *x { Z => refl, S p => CoTwice(&p), }
@@ -553,7 +553,7 @@ ochr CloseOffModel uses Nats, Fixtures {
     let c = clone(n);
     let t = TailM(&c);
     match n {
-      Z => (*t := 7; let h : Id(Nat, clone(c), 7) = refl; ()),
+      Z => (*t := 7; (let u = t; ()); let h : Id(Nat, clone(c), 7) = refl; ()),
       S m => (),
     }
   )
@@ -561,7 +561,7 @@ ochr CloseOffModel uses Nats, Fixtures {
     let c = clone(n);
     let t = TailM(&c);
     match n {
-      Z => (*t := 7; let h : Id(Nat, clone(c), 8) = refl; ()),
+      Z => (*t := 7; (let u = t; ()); let h : Id(Nat, clone(c), 8) = refl; ()),
       S m => (),
     }
   )
@@ -569,6 +569,7 @@ ochr CloseOffModel uses Nats, Fixtures {
     let c = clone(n);
     let t = TailM(&c);
     *t := 7;
+    (let u = t; ());
     match n {
       Z => (let h : Id(Nat, clone(c), 7) = refl; ()),
       S m => match m { Z => (let h : Id(Nat, clone(c), S(7)) = refl; ()), S k => (), },
@@ -578,6 +579,7 @@ ochr CloseOffModel uses Nats, Fixtures {
     let c = clone(n);
     let t = TailM(&c);
     *t := 7;
+    (let u = t; ());
     match n {
       Z => (let h : Id(Nat, clone(c), 7) = refl; ()),
       S m => match m { Z => (let h : Id(Nat, clone(c), 7) = refl; ()), S k => (), },
@@ -587,16 +589,16 @@ ochr CloseOffModel uses Nats, Fixtures {
     let c = clone(n);
     let t = TailM(&c);
     match n {
-      Z => (*t := 1; let h : Id(Nat, clone(c), 1) = refl; ()),
-      S m => match m { Z => (*t := 2; let h : Id(Nat, clone(c), S(2)) = refl; ()), S k => (), },
+      Z => (*t := 1; (let u = t; ()); let h : Id(Nat, clone(c), 1) = refl; ()),
+      S m => match m { Z => (*t := 2; (let u = t; ()); let h : Id(Nat, clone(c), S(2)) = refl; ()), S k => (), },
     }
   )
   reject def CoPerArmOff (n : Nat) : Unit := (
     let c = clone(n);
     let t = TailM(&c);
     match n {
-      Z => (*t := 1; let h : Id(Nat, clone(c), 1) = refl; ()),
-      S m => match m { Z => (*t := 2; let h : Id(Nat, clone(c), S(1)) = refl; ()), S k => (), },
+      Z => (*t := 1; (let u = t; ()); let h : Id(Nat, clone(c), 1) = refl; ()),
+      S m => match m { Z => (*t := 2; (let u = t; ()); let h : Id(Nat, clone(c), S(1)) = refl; ()), S k => (), },
     }
   )
 
@@ -654,6 +656,7 @@ ochr CloseOffModel uses Nats, Fixtures {
   def CoBlockBorrow (n : Nat) (m : Nat) (a : &Nat) (b : &Nat) : Unit := (
     let r = match m { Z => Pick(clone(n), &*a, &*b), S _ => Pick(clone(n), &*b, &*a), };
     *r := 9;
+    (let u = r; ());
     match m {
       Z => match n { Z => (let h : Id(Nat, clone(*a), 9) = refl; ()), S _ => (let h : Id(Nat, clone(*b), 9) = refl; ()), },
       S _ => match n { Z => (let h : Id(Nat, clone(*b), 9) = refl; ()), S _ => (let h : Id(Nat, clone(*a), 9) = refl; ()), },
@@ -662,6 +665,7 @@ ochr CloseOffModel uses Nats, Fixtures {
   reject def CoBlockBorrowOff (n : Nat) (m : Nat) (a : &Nat) (b : &Nat) : Unit := (
     let r = match m { Z => Pick(clone(n), &*a, &*b), S _ => Pick(clone(n), &*b, &*a), };
     *r := 9;
+    (let u = r; ());
     match m {
       Z => match n { Z => (let h : Id(Nat, clone(*b), 9) = refl; ()), S _ => (), },
       S _ => (),

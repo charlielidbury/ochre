@@ -40,7 +40,7 @@ ochr Functions uses Nats, Boxes, Fixtures {
   def TwiceMMove (f : Π(_ : &Nat). Unit) (x : &Nat) : Id(Unit, TwiceM(clone(f), x), f(&*x); f(x)) := refl
 
   -- Instantiated with a function that adds zero, `TwiceM` does nothing, by induction ...
-  def TwiceMZero (x : &Nat) : Id(Unit, TwiceM(λ(z : &Nat) : Unit => AddM(z, 0), x), ()) by x := (
+  def TwiceMZero (x : &Nat) : Id(Unit, TwiceM(λ(z : &Nat) : Unit => AddM(z, 0), &*x), ()) by x := (
     match *x {
       Z => refl,
       S p => TwiceMZero(&p),
@@ -50,7 +50,7 @@ ochr Functions uses Nats, Boxes, Fixtures {
   -- ... or by citing the lemma twice. A cited lemma runs on a private copy, so it leaves `*x`
   -- alone; `J` composes the two instances. `Add(s, 0)` closes off into the same sealed program
   -- as `AddM(&*x, 0)`.
-  def TwiceMZero' (x : &Nat) : Id(Unit, TwiceM(λ(z : &Nat) : Unit => AddM(z, 0), x), ()) := (
+  def TwiceMZero' (x : &Nat) : Id(Unit, TwiceM(λ(z : &Nat) : Unit => AddM(z, 0), &*x), ()) := (
     let s = clone(*x);
     let h1 = AddMZero(&*x);
     AddM(&*x, 0);
@@ -100,12 +100,12 @@ ochr Functions uses Nats, Boxes, Fixtures {
   def PassZeroAdd (u : Unit) : Unit := UseRefl(ZeroAdd)
 
   -- Under a borrow binder, one generic place serves both sides.
-  def UseA (h : Π(x : &Nat). Id(Unit, AddM(x, 0), ())) : Unit := ()
-  def PassA (h : Π(y : &Nat). Id(Unit, let t = 0; AddM(y, t), ())) : Unit := UseA(h)
+  def UseA (h : Π(x : &Nat). Id(Unit, AddM(&*x, 0), ())) : Unit := ()
+  def PassA (h : Π(y : &Nat). Id(Unit, let t = 0; AddM(&*y, t), ())) : Unit := UseA(h)
 
   -- Statements that differ at the generic arguments stay different.
   reject def PassStuck (h : Π(n : Nat). Id(Nat, Add(n, 0), n)) : Unit := UseRefl(h)
-  reject def PassWrong (h : Π(n : Nat). Id(Nat, n, 0)) : Unit := UseRefl(h)
+  reject def PassWrong (h : Π(n : Nat). Id(Nat, clone(n), 0)) : Unit := UseRefl(h)
   def UseW (h : Π(x : &Nat). Id(Unit, *x := 0, *x := 0)) : Unit := ()
   reject def PassW (h : Π(x : &Nat). Id(Unit, *x := 0, *x := 1)) : Unit := UseW(h)
   reject def PassDom (f : Π(n : Unit). Nat) : Nat := Apply(f, 0)
@@ -116,12 +116,12 @@ ochr Functions uses Nats, Boxes, Fixtures {
 
   -- ... and a property that tells them apart: writing through the result changes `*x`.
   def Q (h : Π(x : &Nat) (y : &Nat). &Nat) : Prop := (
-    Π(x : &Nat) (y : &Nat). Id(Unit, let r = h(x, y); *r := S(Z), *x := S(Z))
+    Π(x : &Nat) (y : &Nat). Id(Unit, let r = h(&*x, &*y); *r := S(Z), *x := S(Z))
   )
 
   def TX : Q(PickX) := (
     let h = PickX;
-    λ(x : &Nat) (y : &Nat) : Id(Unit, let r = h(x, y); *r := S(Z), *x := S(Z)) => refl
+    λ(x : &Nat) (y : &Nat) : Id(Unit, let r = h(&*x, &*y); *r := S(Z), *x := S(Z)) => refl
   )
 
   -- ## What goes wrong without these rules

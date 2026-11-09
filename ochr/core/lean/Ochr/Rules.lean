@@ -35,7 +35,7 @@ inductive Rule where
   -- sealed programs and stuck blocks
   | Seal | SealStuck | SealErr | Block
   -- observation, `Id`, conversion, `eq` (@app-conv)
-  | Obs | ObsBorrow | Id
+  | Obs | ObsBorrow | ObsRef | Id | IdTypestate
   | ConvRefl | ConvCong | ConvUnit | ConvPi | ConvFun
   | EqInj | EqRefl | EqDisj | EqStuck
   -- typing (@app-typing)
@@ -61,7 +61,7 @@ def Rule.all : List Rule :=
    .Close,
    .Match, .MatchStuck, .MatchErr, .MatchProp, .MatchNone, .Proj, .Join,
    .Seal, .SealStuck, .SealErr, .Block,
-   .Obs, .ObsBorrow, .Id,
+   .Obs, .ObsBorrow, .ObsRef, .Id, .IdTypestate,
    .ConvRefl, .ConvCong, .ConvUnit, .ConvPi, .ConvFun,
    .EqInj, .EqRefl, .EqDisj, .EqStuck,
    .TypePos, .TErase, .TRead, .TBorrow, .TAssign, .TLet, .TLetAnn, .TSeq, .TCtor,
@@ -90,7 +90,8 @@ def Rule.name : Rule → String
   | .Match => "Match" | .MatchStuck => "Match-stuck" | .MatchErr => "Match-err"
   | .MatchProp => "Match-prop" | .MatchNone => "Match-none" | .Proj => "Proj" | .Join => "Join"
   | .Seal => "Seal" | .SealStuck => "Seal-stuck" | .SealErr => "Seal-err" | .Block => "Block"
-  | .Obs => "Obs" | .ObsBorrow => "Obs-borrow" | .Id => "Id"
+  | .Obs => "Obs" | .ObsBorrow => "Obs-borrow" | .ObsRef => "Obs-ref" | .Id => "Id"
+  | .IdTypestate => "Id-typestate"
   | .ConvRefl => "Conv-refl" | .ConvCong => "Conv-cong" | .ConvUnit => "Conv-unit"
   | .ConvPi => "Conv-pi" | .ConvFun => "Conv-fun"
   | .EqInj => "Eq-inj" | .EqRefl => "Eq-refl" | .EqDisj => "Eq-disj"

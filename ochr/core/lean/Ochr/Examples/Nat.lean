@@ -36,7 +36,7 @@ ochr Nats {
   -- An effect as a statement: adding zero in place leaves `*x` as it was. The proof is by
   -- recursion on `*x`: in the `S(p)` arm, the recursive call about `&p` proves the goal about
   -- the whole of `*x`, because the borrow of `p` sits inside `*x`.
-  def AddMZero (x : &Nat) : Id(Unit, AddM(x, 0), ()) by x := (
+  def AddMZero (x : &Nat) : Id(Unit, AddM(&*x, 0), ()) by x := (
     match *x {
       Z => refl,
       S p => AddMZero(&p),
@@ -45,7 +45,7 @@ ochr Nats {
 
   -- `x + S(y) = S(x + y)`, proved in place by the same bare recursion, and transferred to
   -- `Add` by lending it the local `x` (the trees of `Inductives` use it).
-  def AddMS (x : &Nat) (y : Nat) : Id(Unit, AddM(x, S(y)), AddM(&*x, y); *x := S(*x)) by x := (
+  def AddMS (x : &Nat) (y : Nat) : Id(Unit, AddM(&*x, S(y)), AddM(&*x, y); *x := S(*x)) by x := (
     match *x {
       Z => refl,
       S p => AddMS(&p, y),

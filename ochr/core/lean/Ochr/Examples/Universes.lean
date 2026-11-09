@@ -86,7 +86,7 @@ ochr Sorts {
   -- twin of f: result type written `⊤` instead of `T(Z)`
   def fOk (x : &Nat) : ⊤ := (*x := S(Z); WOk(()))
   def RunK (k : Π(x : &Nat). ⊤) (x : &Nat) : Unit := (k(x); ())
-  def Stmt (k : Π(x : &Nat). ⊤) (x : &Nat) : Id(Unit, RunK(k, x), ()) := refl
+  def Stmt (k : Π(x : &Nat). ⊤) (x : &Nat) : Id(Unit, RunK(k, &*x), ()) := refl
   reject def Boom : False := (let c = 0; Stmt(f, &c))
 
   def RunGen (k : Π(x : &Nat). ⊤) : Id(Nat, let c = 0; RunK(k, &c); c, 0) := refl

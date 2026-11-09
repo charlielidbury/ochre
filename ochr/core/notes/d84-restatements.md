@@ -1,13 +1,17 @@
 # D84: the statements restated
 
-D84 makes `Id` observe every owned, non-proof place a side reads, since a read may move it and moves are definite (`DECISIONS.md`, D84). So a statement whose sides consume different places became false: a continuation that reads a place one side consumed runs after the other side only (`F(x)` against `F(y)`). The suite had 43 such statements, plus 2 whose own statement read a place on one side only and that failed with their lemma (`InstPow`, `AtIdTySealed`). Each is restated in one of two ways, so that it says what it was there to say:
+D84 went through two versions (`DECISIONS.md`, D84). The first made `Id` observe every owned, non-proof place a side reads, since a read may move it and moves are definite: a statement whose sides consume different places became false (`F(x)` against `F(y)`). The revision drops that and makes `Id(A, t, u)` well formed only where `t` and `u` leave the same type-state ([Id-typestate]): the same places moved, the same borrow bindings consumed, re-pointed and left open, and no borrow held outside a side ended inside it. The first version's restatements are kept (the first table below): each was restated because one side consumed a place the other left, which is a type-state difference too. The revision's own restatements follow it.
+
+## The first version (kept)
+
+The suite had 43 such statements, plus 2 whose own statement read a place on one side only and that failed with their lemma (`InstPow`, `AtIdTySealed`). Each is restated in one of two ways, so that it says what it was there to say:
 
 - **On a copy** (`clone`): the side that consumed an argument consumes a copy of it instead. A clone denotes the same value, so the results and the effects on written places are the old statement's, and the statement now also says that the argument is left alone (trivially). The proof is unchanged in every case.
 - **The same consumption on both sides**: where the tested side's text is the point of the test, the other side consumes the same place (`let m = n; …`).
 
 None was weakened: every restated statement proves what it proved before about results and written places, and no proof changed. In none of them was the consumption itself the point of the statement.
 
-**Case studies** (marked ★ below; Charlie may want to review them before the merge): `ArrayBench.B1Join` and nine `HashMap` lemmas. Their restatements are of the first kind: the statement runs `MoveBucket`, `MoveFrom`, `Insert` or `InsertNoResize` on `clone(m)`, or inserts `clone(v)`, `clone(b)`, `clone(s)`, where it consumed `m`, `v`, `b`, `s` on one side only. `Quicksort` and `Array` are unaffected.
+**Case studies** (marked ★ below; Charlie may want to review them before the merge): `ArrayBench.B1Join` and nine `HashMap` lemmas. Their restatements are of the first kind: the statement runs `MoveBucket`, `MoveFrom`, `Insert` or `InsertNoResize` on `clone(m)`, or inserts `clone(v)`, `clone(b)`, `clone(s)`, where it consumed `m`, `v`, `b`, `s` on one side only. `Quicksort` and `Array` are unaffected by this version.
 
 | Statement | Old | New | Meaning |
 |---|---|---|---|
@@ -56,7 +60,7 @@ None was weakened: every restated statement proves what it proved before about r
 
 The cascades (`BoomPowOk`, `InstPowZ`, `AtRec`, `AtIdTy`, `RunUH`, `ResizeLen`, `ResizeN`, `InsertNotOver`) needed no change: their statements consume the same places on both sides, and they failed only through the lemmas above.
 
-## Rejected tests restated to keep their reason
+### Rejected tests restated to keep their reason
 
 Fifteen `reject def`s stayed rejected, but for a new reason: one side consumed a place the other left, so their goal gained a `False` conjunct, which masked the failure each was written for (`StuckGoalWrong` was meant to fail at `b ≥ 2`, and now failed at `b = 0` on `b`'s consumption). Each is restated the same way, on a copy, and each is again rejected with its message on main, verbatim:
 
@@ -75,3 +79,79 @@ Fifteen `reject def`s stayed rejected, but for a new reason: one side consumed a
 | Subsingletons.SqZero | `(refl : Id(Nat, n, 0))` | `Id(Nat, clone(n), 0)` |
 | ErasureBySyntax.P3d | `let h : Id(Nat, c, Z) = refl` | `Id(Nat, clone(c), Z)` |
 | FnBorrows.UseSetIfWrong | `Id(Nat, UseSetIf(n), 3)` | `UseSetIf(clone(n))` |
+
+## The revision: borrows passed whole become explicit reborrows
+
+A borrow binding passed whole to a call is consumed: the call takes the borrow, and the binding is `⊥` after it. So `Id(Unit, AddM(x, 0), ())` relates a side that consumes `x` to one that leaves it, and is ill-formed (`Moves84.Consumes`). In every statement below the call was meant to act on `*x`, not to take `x`, and the restatement passes an explicit reborrow, `&*x`: the call borrows `*x` for its duration and `x` holds its borrow again afterwards, on both sides. The statement says what it said about `*x` (the owner of `x`'s loan is observed as before), and also that `x` is still a borrow afterwards. No proof changed: a proof that cites the lemma at `x` (`AddMZero(x)`) still does. `Moves84.Reborrows` is the restated `Consumes`.
+
+| Statement | Old | New |
+|---|---|---|
+| Nats.AddMZero (the paper's first lemma) | `Id(Unit, AddM(x, 0), ())` | `AddM(&*x, 0)` |
+| Nats.AddMS | `AddM(x, S(y))` | `AddM(&*x, S(y))` |
+| Equality.AddMZeroLet | `let n = 0; AddM(x, n)` | `AddM(&*x, n)` |
+| Equality.IdIsConjSealed, IdIsConj, IdIsEq, EqIsId (and the reject twin IdIsWrong) | `h : Id(Unit, AddM(x, 0), ())` | `AddM(&*x, 0)` |
+| Sorts.Stmt | `RunK(k, x)` | `RunK(k, &*x)` |
+| CurrentState.AddSubId, AddSubIdReborrow | `AddSub(x, y)` | `AddSub(&*x, y)` |
+| Propositions.SndProj, Snd | `Id(Unit, AddM(x, 0), ())` | `AddM(&*x, 0)` |
+| Propositions.WriteIfId, WriteIfAt (and the reject twin WriteIfAtLie) | `WriteIf(x, P, Q, h)`; `AddM(y, 0)` | `WriteIf(&*x, …)`; `AddM(&*y, 0)` |
+| Propositions.TwoAt (and the reject twin TwoAtLie) | `Id(Unit, AddM(y, 0), ())` | `AddM(&*y, 0)` |
+| Subsingletons.EffLNoopOk | `EffLOk(x, h)` | `EffLOk(&*x, h)` (the twin of `EffLNoop`, restated below; `EffLOk`'s call is a proof, so `x` was not consumed either way) |
+| ReturnedBorrows.TailNoop | `let t = TailM(x); ()` | `TailM(&*x)` |
+| Functions.TwiceMZero, TwiceMZero' | `TwiceM(λ(z) => AddM(z, 0), x)` | `…, &*x)` |
+| Functions.UseA, PassA | `Π(x : &Nat). Id(Unit, AddM(x, 0), ())` | `AddM(&*x, 0)` (`PassA`: `AddM(&*y, t)`) |
+| Functions.Q, TX | `let r = h(x, y); *r := S(Z)` | `h(&*x, &*y)` |
+| Sugar.BumpIsMatch | `Id(Unit, Bump(&*m), BumpMatch(m))` | `BumpMatch(&*m)`: both sides now reborrow, as the left side already did |
+| Abstraction.GetIs | `Get(s)` | `Get(&*s)` |
+| NatLists.AppendMNil, PolyLists.AppendMNil | `AppendM(xs, Nil)` | `AppendM(&*xs, Nil)` |
+| Trees.InsertMEq, InPlaceTrees.InsertMIsInsert | `InsertM(t, k)` | `InsertM(&*t, k)` |
+| ClosingOff.AddToOneZero, ', '' | `AddToOne(clone(b), x1, x2, 0)` | `AddToOne(clone(b), &*x1, &*x2, 0)` |
+| CloseOffModel.CoPick (and the reject twins CoPickOnlyA, CoPickBoth, CoPickRefl) | `Pick(clone(n), a, b)` | `Pick(clone(n), &*a, &*b)` |
+| ★ ArrayLemmas.GetMutSet | `*GetMut(E, n, s, i, h) := w` | `GetMut(E, n, &*s, i, h)` |
+| ★ ArrayLemmas.GetMutRead | `clone(*GetMut(E, n, s, i, h))` | `GetMut(E, n, &*s, i, h)` |
+| ★ ArrayLemmas.SwapLtIsSwapS | `SwapLt(E, n, s, i, j, …)` | `SwapLt(E, n, &*s, …)` |
+| ★ ArrayLemmas.SwapIsSwapS | `Swap(E, n, s, i, j, …)` | `Swap(E, n, &*s, …)` |
+| ★ ArrayBench.B1Join | `WithSplit(E, Unit, n, k, s, h, …)` | `WithSplit(…, &*s, h, …)` (on top of the first version's `clone(g)`) |
+| ★ ArrayBench.ReadIsNth | `*GetMut(Word, n, s, i, h)` | `GetMut(Word, n, &*s, i, h)` |
+| ★ ArrayBench.SwapIsSwapSRefl (reject) | `Swap(E, n, s, …)` | `Swap(E, n, &*s, …)` |
+
+**Case studies.** `Quicksort`'s `QSCorrect` cites `SwapIsSwapS` and `GetMutRead` (by `rewrite`), whose statements changed. `Quicksort`'s own text is unchanged and still accepted: the rewrites find the restated equations' sides in its goals as before. `HashMap` needed nothing beyond the first version, since its statements already pass `&*hm`.
+
+## The revision: owned places moved on one side
+
+| Statement | Old | New | Intent |
+|---|---|---|---|
+| Snapshots.PiCopy | `Π(n : Nat). Id(Nat, n, m)` | `Id(Nat, clone(n), clone(m))` | kept: the Π-type captures `m`, a copy of `*x`, not the borrow |
+| Snapshots.CapPi | `Π(y : Nat). Id(Nat, n, y)` | `Id(Nat, clone(n), clone(y))` | kept: the Π-type captures `n`, the copy made after the write |
+| FordAttack.CastRefl | `Id(VecF(Word, Zero), CastV(…, clone(v)), v)` | right side `clone(v)` | kept: the cast of a copy is the copy |
+| ClosingOff.LamReadOtherArm | right side `0` | `(let m = n0; 0)` | kept: the tested left side (its block takes `n0` by move) is unchanged |
+| ClosingOff.MoveBorrowBlk | right side `()` | `(let m = n1; ())` | kept: the tested left side is unchanged, and `MoveBorrowSplit` still fails on it with the [Join] reason |
+| StuckBlocks.LieDroppedOk (and the reject twin LieDropped) | right side `()` | `(let w = v; ())` | kept: the left side moves `v` into `w` |
+
+## The revision: a borrow ended before the `Id`, not inside it
+
+`CloseOffModel.CoInert`, `CoWrittenFirst`, `CoPerArm` and `CoBlockBorrow`, and their reject twins `…Off`, form `Id(Nat, clone(c), 7)` (or similar) in a body while `t = TailM(&c)` (in `CoBlockBorrow`, `r`) holds a borrow into `c`. The side `clone(c)` reads `c`, which ends `t`'s borrow, and the side `7` does not: the no-ending clause rejects it (docs/30 measured these four as F4's cost). Each now ends the borrow first, `(let u = t; ());` before the `Id`. Intent kept: the statement is about `c`'s content after the write through `t`, and nothing uses `t` afterwards. The twins are again rejected with their messages on main.
+
+## The revision: rejected tests restated to keep their reason
+
+Fifteen `reject def`s would otherwise have been rejected by [Id-typestate] before reaching the failure each was written for. Each is restated the same way as the statements above, and each is again rejected with its message on main, verbatim (`PassWrong`'s message prints its statement, now with `clone(n)`):
+
+| Test | Old | New |
+|---|---|---|
+| Numbers.WriteThenRefl | `Id(Nat, *x, 5)` | `Id(Nat, clone(*x), 5)` |
+| Snapshots.WriteThenRefl', LamWrite | `Id(Nat, *x, 5)` | `Id(Nat, clone(*x), 5)` |
+| Snapshots.SnapshotLie | `Id(Nat, x, 0)` | `Id(Nat, clone(x), 0)` |
+| Moves.GhostRead | `Id(Nat, n, m)` | `Id(Nat, clone(n), clone(m))`: the statement still reads the moved `n` (`[Read]`) |
+| Owners.BadC2 | `Id(Nat, n, 0)` | `Id(Nat, clone(n), 0)`: still rejected because `G` is |
+| Functions.PassWrong | `Π(n : Nat). Id(Nat, n, 0)` | `Id(Nat, clone(n), 0)` |
+| NatLists.AppendMOne, PolyLists.AppendMOne | `AppendM(xs, …)` | `AppendM(&*xs, …)` |
+| Trees.InsertMSwapEq | `InsertMSwap(t, k)` | `InsertMSwap(&*t, k)` |
+| Propositions.WriteIfLie | `WriteIf(x, P, Q, h)` | `WriteIf(&*x, …)` |
+| Subsingletons.EffLNoop, EffLOne | `EffL(x, h)` | `EffL(&*x, h)`: still rejected because `EffL` is |
+| ArrayBench.SplitNoopRefl | `WithSplit(…, s, h, …)` | `WithSplit(…, &*s, h, …)` |
+| ArrayBench.ReadNoopRefl | `GetMut(E, n, s, i, h)` | `GetMut(E, n, &*s, i, h)` |
+
+The twelve reject twins restated with their statements above (`IdIsWrong`, `WriteIfAtLie`, `TwoAtLie`, `CoPickOnlyA`, `CoPickBoth`, `CoPickRefl`, `SwapIsSwapSRefl`, `LieDropped` and the four `…Off`) keep their messages on main too.
+
+## The paper's body
+
+`intro.typ` and `overview.typ` §2 state `AddMZero(x : &Nat) : Id(Unit, AddM(x, 0), ())`, which is now ill-formed (the checked `Nats.AddMZero` says `AddM(&*x, 0)`). `obs.typ`'s "Unobserved moves are harmless" says the two sides may consume different borrow variables, and that `Id(Nat, let z = a; Z, Z)` holds; both are now ill-formed. Not changed in this landing: they are paper claims.
