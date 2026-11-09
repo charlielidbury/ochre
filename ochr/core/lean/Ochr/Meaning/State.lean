@@ -65,19 +65,31 @@ structure Mean : Type 3 where
 section
 variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl)
 
+/-- A stored type value as the run knows it: its meaning, and for `D(ā)` its declaration and
+parameters' meanings (the structured hint, D8 revised); shapes of stored Π-types are the
+run's business (`piShapeOf`). Read under the constant future (docs/27 Lemma 5). -/
+noncomputable def _root_.Ochr.Value.tyS (ρ : Assignment) (T : Value) : TyS :=
+  { m := (Value.mean dm C Γ ρ (fun _ => .err) (.plain .err) T).asTy,
+    data := match T with
+      | .tInd n args =>
+        match Γ.find? (·.name == n) with
+        | some d => some (n, Value.meanParams dm C Γ ρ (fun _ => .err) d 0 [] args)
+        | none => none
+      | _ => none }
+
 /-- The type a position's value is read at (docs/31 D8): the binding's stored type, or `err` for
 a temporary or an untyped slot. Types are read under the constant future, since no stored type
 holds a live loan (docs/27 Lemma 5). -/
-noncomputable def _root_.Ochr.Env.hintAt (ρ : Assignment) (env : Env) : Pos → TyM
+noncomputable def _root_.Ochr.Env.hintAt (ρ : Assignment) (env : Env) : Pos → TyS
   | .bind f i =>
     match env[f]?.bind (·.binds[i]?) with
     | some b =>
       match b.ty, b.lazyTy with
-      | some T, _ => (Value.mean dm C Γ ρ (fun _ => .err) .err T).asTy
+      | some T, _ => Value.tyS dm C Γ ρ T
       | none, some (P, ws, j) => C.paramTy ρ P ws j
-      | none, none => .err
-    | none => .err
-  | .temp _ _ => .err
+      | none, none => .plain .err
+    | none => .plain .err
+  | .temp _ _ => .plain .err
 
 /-- The meaning of an environment under `ρ` and `φ`, position by position. -/
 noncomputable def _root_.Ochr.Env.mean (ρ : Assignment) (φ : Future) (env : Env) (p : Pos) : Sem :=
@@ -122,20 +134,20 @@ noncomputable def MState.posTyM (ρ : Assignment) (st : MState) : Pos → Option
     | some b =>
       match b.ty, b.lazyTy with
       | some T, _ => some (Value.tyM dm C Γ ρ (fun _ => .err) T)
-      | none, some (P, ws, j) => some (C.paramTy ρ P ws j)
+      | none, some (P, ws, j) => some (C.paramTy ρ P ws j).m
       | none, none => none
     | none => none
   | .temp _ _ => none
 
 /-- The hint is the stored type where there is one. -/
 theorem MState.hintAt_posTyM (ρ : Assignment) (st : MState) (p : Pos) (T : TyM)
-    (h : MState.posTyM dm C Γ ρ st p = some T) : Env.hintAt dm C Γ ρ st.env p = T := by
+    (h : MState.posTyM dm C Γ ρ st p = some T) : (Env.hintAt dm C Γ ρ st.env p).m = T := by
   cases p with
   | bind f i =>
     simp only [MState.posTyM] at h
     simp only [Env.hintAt]
     split at h
-    · split at h <;> simp_all [Value.tyM]
+    · split at h <;> simp_all [Value.tyM, Value.tyS]
     · cases h
   | temp _ _ => cases h
 

@@ -27,7 +27,7 @@ namespace Ochr.Meaning.Steps
 open Ochr.Meaning
 
 section
-variable (K : RunCtx) (ρ : Assignment)
+variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- `f` run from `st` succeeds with `a` and `st'`. -/
 def Runs {α : Type} (f : M α) (st : MState) (fuel : Nat) (a : α) (st' : MState) : Prop :=
@@ -74,8 +74,8 @@ theorem readPlace_step (st st' : MState) (fuel : Nat) (p : Place) (v : Value) (c
     (hg : Good K.dm K.C K.Γ ρ st)
     (hcopy : K.D.copy (K.D.placeDecl (scopeOf (SM' K ρ st)) p) = copy)
     (h : Runs (Ochr.readPlace fuel p) st fuel v st') :
-    ∃ r s', Ochr.Meaning.readPlace K p copy (SM' K ρ st) = some (r, s') ∧
-      (∀ φ, meanV K ρ φ r.2.m v = r.1 φ) ∧
+    ∃ r s', Ochr.Meaning.readPlace K φ p copy (SM' K ρ st) = some (r, s') ∧
+      meanV K ρ φ r.2 v = r.1 ∧
       Below (MState.mean K.dm K.C K.Γ ρ st') s'.toMean ∧ Good K.dm K.C K.Γ ρ st' := by
   sorry
 
@@ -84,8 +84,8 @@ theorem readPlace_step (st st' : MState) (fuel : Nat) (p : Place) (v : Value) (c
 theorem borrowPlace_step (st st' : MState) (fuel : Nat) (p : Place) (v : Value)
     (hg : Good K.dm K.C K.Γ ρ st)
     (h : Runs (Ochr.borrowPlace fuel p) st fuel v st') :
-    ∃ r s', Ochr.Meaning.borrowPlace K p (SM' K ρ st) = some (r, s') ∧
-      (∀ φ, meanV K ρ φ r.2.m v = r.1 φ) ∧
+    ∃ r s', Ochr.Meaning.borrowPlace K φ p (SM' K ρ st) = some (r, s') ∧
+      meanV K ρ φ r.2 v = r.1 ∧
       Below (MState.mean K.dm K.C K.Γ ρ st') s'.toMean ∧ Good K.dm K.C K.Γ ρ st' := by
   sorry
 
@@ -94,9 +94,8 @@ theorem borrowPlace_step (st st' : MState) (fuel : Nat) (p : Place) (v : Value)
 `access`. The written value's meaning is given. -/
 theorem assignPlace_step (st st' : MState) (fuel : Nat) (p : Place) (v : Value) (pos : Pos)
     (hg : Good K.dm K.C K.Γ ρ st) (hpos : resolve (SM' K ρ st) p = some (pos, (p.steps).2))
-    (hv : ∀ φ φ', meanV K ρ φ .err v = meanV K ρ φ' .err v)
     (h : Runs (Ochr.assignPlace fuel p v) st fuel () st') :
-    ∃ s', setContent K pos (p.steps).2 (meanV K ρ noFuture .err v) ((SM' K ρ st).access pos) = some (⟨⟩, s') ∧
+    ∃ s', setContent K φ pos (p.steps).2 (meanV K ρ φ (.plain .err) v) ((SM' K ρ st).access pos) = some (⟨⟩, s') ∧
       Below (MState.mean K.dm K.C K.Γ ρ st') s'.toMean ∧ Good K.dm K.C K.Γ ρ st' := by
   sorry
 

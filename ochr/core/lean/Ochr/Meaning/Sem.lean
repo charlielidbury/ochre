@@ -147,6 +147,11 @@ def Sem.pmem (s : Sem) (T : TyM) : Prop :=
 theorem Sem.pmem_of_mem {s : Sem} {T : TyM} (hw : s.whole) (h : s ∈ₛ T) : s.pmem T :=
   .inr ⟨s, hw, .refl s, h⟩
 
+/-- Read a meaning as a type. -/
+def Sem.asTy : Sem → TyM
+  | .ty T => T
+  | _ => .err
+
 /-- A proposition's meaning is true. -/
 def TyM.true : TyM → Prop
   | .prop P => P
