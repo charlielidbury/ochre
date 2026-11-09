@@ -36,3 +36,12 @@ lean_exe fuzz where
 -- checker) against the real machine, on the suite's data functions (notes/stability.md §8).
 lean_exe heapslice where
   root := `HeapSlice
+
+-- The meaning of states and the consistency spine (`Ochr.Meaning.*`, docs/18, docs/31): the
+-- set model of types and values over the checker's own `Value`/`MState`, the reference run, and
+-- the step-lemma skeleton. Not precompiled: its definitions are noncomputable. A default target,
+-- so `lake build` checks it. Its one root, `Ochr/Meaning.lean`, imports every module of it.
+@[default_target]
+lean_lib OchrMeaning where
+  srcDir := "."
+  roots := #[`Ochr.Meaning]
