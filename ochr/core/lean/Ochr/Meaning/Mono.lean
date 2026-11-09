@@ -803,4 +803,306 @@ theorem access_post (s : SState) (p : Pos) :
 
 end SState
 
+/-! ## Ending every live borrow: what an observation reads -/
+
+theorem Future.upd_upd_same (φ : Future) (l : Nat) (a b : Sem) : (φ.upd l a).upd l b = φ.upd l b := by
+  funext l'
+  by_cases h : l' = l <;> simp [Future.upd, h]
+
+/-- After ending `k`, nothing depends on `k` unless `k`'s holder did (a borrow holding its own
+loan). -/
+theorem Mean.semEnd_dependsOn_self {m : Mean} {r p : Pos} {k : Nat}
+    (h : (m.semEnd r k).dependsOn p k) : m.dependsOn r k := by
+  refine Classical.byContradiction fun hr => ?_
+  obtain ⟨φ, x, hne⟩ := h
+  apply hne
+  simp only [Mean.semEnd]
+  split
+  · rfl
+  · rw [Mean.not_dependsOn hr, Future.upd_upd_same]
+
+/-- After ending `k` at `r`, a dependence on another label `l` was there before, directly or
+through `k`: `p` read `k`, and `k`'s final content, `r`'s content, read `l`. -/
+theorem Mean.semEnd_dependsOn {m : Mean} {r p : Pos} {k l : Nat} (hl : l ≠ k)
+    (h : (m.semEnd r k).dependsOn p l) : m.dependsOn p l ∨ (m.dependsOn p k ∧ m.dependsOn r l) := by
+  refine Classical.byContradiction fun hn => ?_
+  have hpl : ¬ m.dependsOn p l := fun h' => hn (.inl h')
+  obtain ⟨φ, x, hne⟩ := h
+  apply hne
+  simp only [Mean.semEnd]
+  split
+  · rfl
+  · by_cases hrl : m.dependsOn r l
+    · have hpk : ¬ m.dependsOn p k := fun h' => hn (.inr ⟨h', hrl⟩)
+      rw [Mean.not_dependsOn hpk, Mean.not_dependsOn hpk, Mean.not_dependsOn hpl]
+    · rw [Mean.not_dependsOn hrl, Future.upd_comm φ hl, Mean.not_dependsOn hpl]
+
+namespace SState
+
+/-- [End] on the semantic state depends as `semEnd` does (a position that does not exist means
+`err` under every future, so it depends on nothing). -/
+theorem endLabel_dependsOn {s : SState} {k : Nat} {r : Pos}
+    (h : s.positions.find? (fun p => decide (s.shape p = some k)) = some r) {p : Pos} {l : Nat}
+    (hd : (s.endLabel k).dependsOn p l) : (s.toMean.semEnd r k).dependsOn p l := by
+  obtain ⟨φ, x, hne⟩ := hd
+  by_cases hv : s.Valid p
+  · refine ⟨φ, x, ?_⟩
+    rw [← endLabel_val s k r h φ p (.inl hv), ← endLabel_val s k r h _ p (.inl hv)]
+    exact hne
+  · have e : (s.endLabel k).valAt p = fun _ => .err := by
+      rw [endLabel_of_find s k r h, valAt_mapVals, valid_withShape, if_neg hv]
+    exfalso
+    apply hne
+    show (s.endLabel k).valAt p φ = (s.endLabel k).valAt p (φ.upd l x)
+    rw [e]
+
+end SState
+
+namespace SState
+
+/-- The invariant of ending the labels `E` of `s₀` one after another (`foldl_endLabel_indep`):
+the positions are kept; a shape entry is kept or was a holder of an ended label; every
+dependence was there in `s₀`, or reaches a label `s₀`'s state depended on along (WF3)'s relation;
+and nothing depends on an ended label. -/
+private structure EndsInv (s₀ t : SState) (E : List Nat) : Prop where
+  pos : t.positions = s₀.positions
+  shape : ∀ p, t.shape p = s₀.shape p ∨ (t.shape p = none ∧ ∃ k ∈ E, s₀.shape p = some k)
+  dep : ∀ p l, t.dependsOn p l →
+    s₀.dependsOn p l ∨ ∃ l₀, s₀.dependsOn p l₀ ∧ Relation.TransGen s₀.LoanDeps l l₀
+  ended : ∀ p, ∀ l ∈ E, ¬ t.dependsOn p l
+
+/-- A holder's dependence is a path to its own label. -/
+private theorem EndsInv.holder {s₀ t : SState} {E : List Nat} (I : EndsInv s₀ t E) {r : Pos}
+    {k l : Nat} (hr : s₀.shape r = some k) (hd : t.dependsOn r l) : Relation.TransGen s₀.LoanDeps l k := by
+  rcases I.dep r l hd with h | ⟨l₀, h₀, htg⟩
+  · exact .single ⟨r, hr, h⟩
+  · exact .tail htg ⟨r, hr, h₀⟩
+
+private theorem EndsInv.extend {s₀ t : SState} {E : List Nat} (I : EndsInv s₀ t E) (k : Nat) (p : Pos) :
+    t.shape p = s₀.shape p ∨ (t.shape p = none ∧ ∃ k' ∈ E ++ [k], s₀.shape p = some k') :=
+  (I.shape p).imp_right fun ⟨h1, k', hk', h2⟩ => ⟨h1, k', List.mem_append_left _ hk', h2⟩
+
+private theorem endsInv_step {s₀ t : SState} {E : List Nat} (hwf : s₀.SWF3) (I : EndsInv s₀ t E)
+    {k : Nat} (hk : k ∈ s₀.liveLabels) : EndsInv s₀ (t.endLabel k) (E ++ [k]) := by
+  have irr : ¬ Relation.TransGen s₀.LoanDeps k k := fun h => hwf.transGen.no_two_cycle k k h h
+  cases hf : t.positions.find? (fun p => decide (t.shape p = some k)) with
+  | none =>
+    rw [endLabel_of_find_none t k hf]
+    have hkE : k ∈ E := by
+      obtain ⟨q, hq, hqk⟩ := (mem_liveLabels s₀ k).mp hk
+      rcases I.shape q with e | ⟨_, k', hk', hqk'⟩
+      · exact absurd (List.find?_eq_none.mp hf q (I.pos ▸ hq)) (by simp [e, hqk])
+      · rw [hqk] at hqk'; cases hqk'; exact hk'
+    refine ⟨I.pos, I.extend k, I.dep, fun p l hl => ?_⟩
+    rcases List.mem_append.mp hl with h | h
+    · exact I.ended p l h
+    · rw [List.mem_singleton.mp h]; exact I.ended p k hkE
+  | some r =>
+    have htr : t.shape r = some k := shape_of_find hf
+    have hsr : s₀.shape r = some k := by
+      rcases I.shape r with e | ⟨e, _⟩
+      · rw [← e]; exact htr
+      · rw [e] at htr; cases htr
+    have self : ¬ t.dependsOn r k := fun h => irr (I.holder hsr h)
+    refine ⟨?_, ?_, ?_, ?_⟩
+    · rw [positions_endLabel, I.pos]
+    · intro p
+      rw [endLabel_shape t k r hf]
+      by_cases hp : p = r
+      · subst hp; exact .inr ⟨by simp, k, by simp, hsr⟩
+      · simpa [hp] using I.extend k p
+    · intro p l hd
+      have hd' := endLabel_dependsOn hf hd
+      by_cases hlk : l = k
+      · subst hlk; exact absurd (Mean.semEnd_dependsOn_self hd') self
+      · rcases Mean.semEnd_dependsOn hlk hd' with h | ⟨hpk, hrl⟩
+        · exact I.dep p l h
+        · have h1 := I.holder hsr hrl
+          rcases I.dep p k hpk with h2 | ⟨l₁, h₁, h3⟩
+          · exact .inr ⟨k, h2, h1⟩
+          · exact .inr ⟨l₁, h₁, h1.trans h3⟩
+    · intro p l hl hd
+      have hd' := endLabel_dependsOn hf hd
+      by_cases hlk : l = k
+      · subst hlk; exact self (Mean.semEnd_dependsOn_self hd')
+      · have hlE : l ∈ E := by simpa [hlk] using hl
+        rcases Mean.semEnd_dependsOn hlk hd' with h | ⟨_, hrl⟩
+        · exact I.ended p l hlE h
+        · exact I.ended r l hlE hrl
+
+private theorem endsInv_foldl {s₀ : SState} (hwf : s₀.SWF3) :
+    ∀ (ls : List Nat) (t : SState) (E : List Nat),
+      (∀ k ∈ ls, k ∈ s₀.liveLabels) → EndsInv s₀ t E → EndsInv s₀ (ls.foldl endLabel t) (E ++ ls)
+  | [], t, E, _, I => by simpa using I
+  | k :: ls, t, E, hls, I => by
+    rw [List.foldl_cons, show E ++ k :: ls = (E ++ [k]) ++ ls by simp]
+    exact endsInv_foldl hwf ls _ _ (fun k' h => hls k' (List.mem_cons_of_mem _ h))
+      (endsInv_step hwf I (hls k (List.mem_cons_self ..)))
+
+/-- **Ending live labels in turn leaves nothing depending on them**, under (WF3) in its semantic
+form, in any order and with repetitions. Ending `k` fixes `k` to its holder's content, so nothing
+depends on `k` afterwards unless that content did, which would be a cycle through `k`; and a
+later end makes a position depend only on what it or the ended holder already depended on.
+Without (WF3) it is false (`ObservationCounterexamples.not_indep_without_SWF3`). Milestone 3: `Steps/Obs.lean`'s
+`observe_step` and `idType_step`, through `observation_upd_live`. -/
+theorem foldl_endLabel_indep (s : SState) (hwf : s.SWF3) (ls : List Nat)
+    (hls : ∀ k ∈ ls, k ∈ s.liveLabels) : ∀ p, ∀ l ∈ ls, ¬ (ls.foldl endLabel s).dependsOn p l := by
+  have I := endsInv_foldl hwf ls s [] hls
+    ⟨rfl, fun _ => .inl rfl, fun _ _ h => .inl h, fun _ _ h => nomatch h⟩
+  intro p l hl
+  exact I.ended p l (by simpa using hl)
+
+end SState
+
+/-- **An observation reads no live label** (under (WF3)): changing the final content of a label
+live in the observed state changes neither the result nor any compared position (the result is
+the caller's, so only the positions are at stake). This is the form that holds of every state;
+`observation_const` is the strong form. Milestone 3: `Steps/Obs.lean`'s `observe_step` and
+`idType_step` (the checker reads the owners after ending every borrow; the reference's
+observation must not see the live labels the checker's ends forget). -/
+theorem observation_upd_live (φ : Future) (r : Res) (s : SState) (hwf : s.SWF3) {l : Nat}
+    (hl : l ∈ s.liveLabels) (x : Sem) : observation (φ.upd l x) r s = observation φ r s := by
+  simp only [observation]
+  congr 1
+  apply List.map_congr_left
+  intro p _
+  exact Mean.not_dependsOn (SState.foldl_endLabel_indep s hwf _ (fun _ h => h) p l hl) φ x
+
+namespace SState
+
+/-- Every position's meaning reads the future only at the labels `L`: futures agreeing on `L`
+give it the same meaning. The semantic form of (WF2) on the reference state (every loan has its
+borrow in the state) is `s.LocalTo s.liveLabels`; a sealed program holding an inert loan (a hole
+whose borrow is outside the run) breaks it. -/
+def LocalTo (s : SState) (L : List Nat) : Prop :=
+  ∀ p (φ φ' : Future), (∀ l ∈ L, φ l = φ' l) → s.valAt p φ = s.valAt p φ'
+
+/-- [End] keeps locality: the ended label is fixed to the holder's content, which is local too. -/
+theorem endLabel_localTo {s : SState} {L : List Nat} (h : s.LocalTo L) (k : Nat) :
+    (s.endLabel k).LocalTo L := by
+  cases hf : s.positions.find? (fun p => decide (s.shape p = some k)) with
+  | none => rw [endLabel_of_find_none s k hf]; exact h
+  | some r =>
+    intro p φ φ' hφ
+    rw [endLabel_of_find s k r hf, valAt_mapVals, valid_withShape]
+    split
+    · simp only [Mean.semEnd, toMean]
+      split
+      · rfl
+      · apply h p
+        intro l hl
+        simp only [Future.upd]
+        split
+        · exact h r φ φ' hφ
+        · exact hφ l hl
+    · rfl
+
+theorem foldl_endLabel_localTo {s : SState} {L : List Nat} (h : s.LocalTo L) :
+    ∀ ls : List Nat, (ls.foldl endLabel s).LocalTo L := by
+  intro ls
+  induction ls generalizing s with
+  | nil => exact h
+  | cons k ls ih => exact ih (endLabel_localTo h k)
+
+end SState
+
+/-- A meaning that reads the future only at the finitely many labels `L`, and changes with none
+of them, is constant. (Without the locality it need not be: reading infinitely many labels, a
+meaning can be unmoved by each one.) -/
+theorem const_of_local (f : Future → Sem) : ∀ L : List Nat,
+    (∀ φ φ', (∀ l ∈ L, φ l = φ' l) → f φ = f φ') → (∀ l ∈ L, ∀ φ x, f (φ.upd l x) = f φ) →
+    ∀ φ φ', f φ = f φ'
+  | [], hloc, _ => fun φ φ' => hloc φ φ' (by simp)
+  | l :: L, hloc, hind => by
+    have hloc' : ∀ φ φ', (∀ l' ∈ L, φ l' = φ' l') → f φ = f φ' := by
+      intro φ φ' h
+      rw [← hind l (List.mem_cons_self ..) φ (φ' l)]
+      apply hloc
+      intro l' hl'
+      by_cases e : l' = l
+      · simp [Future.upd, e]
+      · have hl'' : l' ∈ L := (List.mem_cons.mp hl').resolve_left e
+        simp [Future.upd, e, h l' hl'']
+    exact const_of_local f L hloc' fun l' hl' => hind l' (List.mem_cons_of_mem _ hl')
+
+/-- **An observation means the same under every future** when the observed state reads the
+future only at its live labels (`LocalTo`, the semantic (WF2)) and (WF3) holds: after ending
+every live borrow, each position is local to the live labels and depends on none of them, so it
+is constant (`const_of_local`). This is what makes `Id`'s meaning a plain proposition. Both
+hypotheses are needed (`ObservationCounterexamples`). Milestone 3: `Steps/Obs.lean`'s
+`idType_step`. -/
+theorem observation_const (r : Res) (s : SState) (hwf : s.SWF3) (hloc : s.LocalTo s.liveLabels)
+    (φ φ' : Future) : observation φ r s = observation φ' r s := by
+  simp only [observation]
+  congr 1
+  apply List.map_congr_left
+  intro p _
+  exact const_of_local (fun ψ => (s.liveLabels.foldl SState.endLabel s).valAt p ψ) s.liveLabels
+    (fun ψ ψ' h => SState.foldl_endLabel_localTo hloc _ p ψ ψ' h)
+    (fun l hl ψ x => Mean.not_dependsOn (SState.foldl_endLabel_indep s hwf _ (fun _ h => h) p l hl) ψ x)
+    φ φ'
+
+namespace ObservationCounterexamples
+
+/-- Without (WF3): borrow `0` held at `x₀` holds a loan of `1`, borrow `1` held at `x₁` a loan of
+`0`, and `x₂` holds a pair of both loans. -/
+def cyc : SState :=
+  { env := [{ binds := [{ ty := .plain .err, val := fun φ => φ 1 }, { ty := .plain .err, val := fun φ => φ 0 },
+      { ty := .plain .err, val := fun φ => .ctor "x" 0 [φ 0, φ 1] }] }],
+    shape := fun p => if p = .bind 0 0 then some 0 else if p = .bind 0 1 then some 1 else none,
+    nextLoan := 2 }
+
+theorem cyc_positions : cyc.positions = [.bind 0 0, .bind 0 1, .bind 0 2] := by
+  simp [SState.positions, cyc, Std.Legacy.Range.forIn_eq_forIn_range', Std.Legacy.Range.size,
+    List.range'_succ]
+
+/-- After ending `0` and then `1`, `x₂` reads `(φ 1, φ 1)`: it still depends on the live label `1`. -/
+theorem cyc_ends (φ : Future) :
+    ([0, 1].foldl SState.endLabel cyc).valAt (.bind 0 2) φ = .ctor "x" 0 [φ 1, φ 1] := by
+  have h0 : cyc.positions.find? (fun p => decide (cyc.shape p = some 0)) = some (.bind 0 0) := by
+    rw [cyc_positions]; rfl
+  have h1 : (cyc.endLabel 0).positions.find? (fun p => decide ((cyc.endLabel 0).shape p = some 1)) =
+      some (.bind 0 1) :=
+    (SState.find_endLabel cyc (by decide)).trans (by rw [cyc_positions]; rfl)
+  have e1 : ∀ q ψ, q ≠ .bind 0 0 → (cyc.endLabel 0).valAt q ψ = cyc.valAt q (ψ.upd 0 (ψ 1)) := by
+    intro q ψ hq
+    rw [SState.endLabel_val cyc 0 _ h0 ψ q (.inr hq)]
+    simp only [Mean.semEnd, SState.toMean, if_neg hq]
+    rfl
+  show ((cyc.endLabel 0).endLabel 1).valAt (.bind 0 2) φ = _
+  rw [SState.endLabel_val _ 1 _ h1 φ _ (.inr (by decide))]
+  simp only [Mean.semEnd, SState.toMean, if_neg (by decide : Pos.bind 0 2 ≠ .bind 0 1)]
+  rw [e1 _ _ (by decide), e1 _ _ (by decide)]
+  simp [cyc, SState.valAt, Future.upd]
+
+theorem not_indep_without_SWF3 :
+    0 ∈ cyc.liveLabels ∧ 1 ∈ cyc.liveLabels ∧ ([0, 1].foldl SState.endLabel cyc).dependsOn (.bind 0 2) 1 := by
+  refine ⟨(SState.mem_liveLabels _ _).mpr ⟨.bind 0 0, by simp [cyc_positions], rfl⟩,
+    (SState.mem_liveLabels _ _).mpr ⟨.bind 0 1, by simp [cyc_positions], rfl⟩,
+    ⟨fun _ => .moved, .proof, ?_⟩⟩
+  show ([0, 1].foldl SState.endLabel cyc).valAt (.bind 0 2) (fun _ => .moved) ≠
+    ([0, 1].foldl SState.endLabel cyc).valAt (.bind 0 2) (Future.upd (fun _ => .moved) 1 .proof)
+  rw [cyc_ends, cyc_ends]
+  simp [Future.upd]
+
+/-- Without locality: `x₀` holds an inert loan of `0` (no borrow of `0` is held), so no label is
+live, (WF3) holds vacuously, and the observation is `[r, φ 0]`. -/
+def inert : SState :=
+  { env := [{ binds := [{ ty := .plain .err, val := fun φ => φ 0 }] }], shape := fun _ => none,
+    nextLoan := 1 }
+
+theorem inert_SWF3 : inert.SWF3 :=
+  ⟨fun a => ⟨a, fun _ ⟨_, h, _⟩ => nomatch h⟩⟩
+
+theorem observation_not_const (r : Res) :
+    observation (fun _ => .moved) r inert ≠ observation (fun _ => .proof) r inert := by
+  have h0 : inert.positions.filterMap inert.shape = [] := List.filterMap_eq_nil_iff.mpr fun _ _ => rfl
+  have hl : inert.liveLabels = [] := by simp only [SState.liveLabels, h0, List.mergeSort_nil]
+  have hp : inert.positions = [.bind 0 0] := by
+    simp [SState.positions, inert, Std.Legacy.Range.forIn_eq_forIn_range', Std.Legacy.Range.size]
+  simp only [observation, hl, List.foldl_nil, hp]
+  simp [inert, SState.valAt]
+
+end ObservationCounterexamples
+
 end Ochr.Meaning
