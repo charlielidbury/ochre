@@ -22,20 +22,20 @@ namespace Ochr.Meaning.Steps
 open Ochr.Meaning
 
 section
-variable (K : RunCtx) (ρ : Assignment)
+variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- `substV` of a loan: the result means the value read under the future fixed at `ℓ` to the
 filling value's meaning (the pure lemma plus re-normalisation). -/
-theorem substV_loan_step (st st' : MState) (fuel l : Nat) (w v v' : Value) (hint : TyM)
-    (hg : Good K.dm K.C K.Γ ρ st) (hw : ¬ w.hasLoan l) (hf : HintFree K ρ noFuture w)
+theorem substV_loan_step (st st' : MState) (fuel l : Nat) (w v v' : Value) (hint : TyS)
+    (hg : Good K.dm K.C K.Γ ρ st) (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w)
     (h : Runs (Ochr.substV fuel (.loan l) w v) st fuel v' st') :
-    (∀ φ, meanV K ρ φ hint v' = meanV K ρ (φ.upd l (meanV K ρ φ .err w)) hint v) ∧ st'.core = st.core := by
+    meanV K ρ φ hint v' = meanV K ρ (φ.upd l (meanV K ρ φ (.plain .err) w)) hint v ∧ st'.core = st.core := by
   sorry
 
 /-- `substV` of an abstract value by a refinement `r` it means: exact. -/
-theorem substV_abs_step (st st' : MState) (fuel σ : Nat) (r v v' : Value) (hint : TyM)
+theorem substV_abs_step (st st' : MState) (fuel σ : Nat) (r v v' : Value) (hint : TyS)
     (hg : Good K.dm K.C K.Γ ρ st)
-    (hσ : ∀ φ, ρ σ = meanV K ρ φ (MState.absTyM K.dm K.C K.Γ ρ st σ) r)
+    (hσ : ρ σ = meanV K ρ φ (.plain (MState.absTyM K.dm K.C K.Γ ρ st σ)) r)
     (h : Runs (Ochr.substV fuel (.abs σ) r v) st fuel v' st') :
     (∀ φ, meanV K ρ φ hint v' = meanV K ρ φ hint v) ∧ st'.core = st.core := by
   sorry
@@ -43,10 +43,10 @@ theorem substV_abs_step (st st' : MState) (fuel σ : Nat) (r v v' : Value) (hint
 /-- `substEnv` of a loan (the state-wide half of [End] and of [Close]'s fills): every position
 reads the fixed future; stored types are untouched (`types = false`: no type holds a loan). -/
 theorem substEnv_loan_step (st st' : MState) (fuel l : Nat) (w : Value)
-    (hg : Good K.dm K.C K.Γ ρ st) (hw : ¬ w.hasLoan l) (hf : HintFree K ρ noFuture w)
+    (hg : Good K.dm K.C K.Γ ρ st) (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w)
     (h : Runs (Ochr.substEnv fuel (.loan l) w false) st fuel () st') :
-    (∀ φ p, (MState.mean K.dm K.C K.Γ ρ st').val φ p =
-        (MState.mean K.dm K.C K.Γ ρ st).val (φ.upd l (meanV K ρ φ .err w)) p) ∧
+    (∀ p, (MState.mean K.dm K.C K.Γ ρ st').val φ p =
+        (MState.mean K.dm K.C K.Γ ρ st).val (φ.upd l (meanV K ρ φ (.plain .err) w)) p) ∧
     (∀ p, Env.shape st'.env p = Env.shape st.env p) := by
   sorry
 
@@ -54,7 +54,7 @@ theorem substEnv_loan_step (st st' : MState) (fuel l : Nat) (w : Value)
 and the goal are refined too): exact, and `Good` is kept. -/
 theorem substEnv_abs_step (st st' : MState) (fuel σ : Nat) (r : Value)
     (hg : Good K.dm K.C K.Γ ρ st)
-    (hσ : ∀ φ, ρ σ = meanV K ρ φ (MState.absTyM K.dm K.C K.Γ ρ st σ) r)
+    (hσ : ρ σ = meanV K ρ φ (.plain (MState.absTyM K.dm K.C K.Γ ρ st σ)) r)
     (h : Runs (Ochr.substEnv fuel (.abs σ) r true) st fuel () st') :
     Exact (MState.mean K.dm K.C K.Γ ρ st') (MState.mean K.dm K.C K.Γ ρ st) ∧
     Good K.dm K.C K.Γ ρ st' := by
@@ -62,14 +62,14 @@ theorem substEnv_abs_step (st st' : MState) (fuel σ : Nat) (r : Value)
 
 /-- [Seal]: a re-run of a sealed program means the sealed program (its run), and changes nothing
 of the state's core (it runs on a private copy). -/
-theorem nfSealed_step (st st' : MState) (fuel : Nat) (t : Term) (v : Value) (hint : TyM)
+theorem nfSealed_step (st st' : MState) (fuel : Nat) (t : Term) (v : Value) (hint : TyS)
     (hg : Good K.dm K.C K.Γ ρ st) (h : Runs (Ochr.nfSealed fuel t) st fuel v st') :
     (∀ φ, meanV K ρ φ hint v = meanV K ρ φ hint (.sealed t)) ∧ st'.core = st.core := by
   sorry
 
 /-- `canonNeutral`: a sealed program already generalised in this world is its `σ`, which the
 path condition makes mean the same. -/
-theorem canonNeutral_step (st st' : MState) (v v' : Value) (hint : TyM)
+theorem canonNeutral_step (st st' : MState) (v v' : Value) (hint : TyS)
     (hg : Good K.dm K.C K.Γ ρ st) (h : Runs (Ochr.canonNeutral v) st 0 v' st') :
     (∀ φ, meanV K ρ φ hint v' = meanV K ρ φ hint v) ∧ st'.core = st.core := by
   sorry
@@ -86,7 +86,7 @@ theorem renormAll_step (st st' : MState) (fuel : Nat)
 `Good` is kept; the record in `refs` states no fact. -/
 theorem refine_step (st st' : MState) (fuel σ : Nat) (r : Value)
     (hg : Good K.dm K.C K.Γ ρ st)
-    (hσ : ∀ φ, ρ σ = meanV K ρ φ (MState.absTyM K.dm K.C K.Γ ρ st σ) r)
+    (hσ : ρ σ = meanV K ρ φ (.plain (MState.absTyM K.dm K.C K.Γ ρ st σ)) r)
     (h : Runs (Ochr.refine fuel σ r) st fuel () st') :
     Exact (MState.mean K.dm K.C K.Γ ρ st') (MState.mean K.dm K.C K.Γ ρ st) ∧
     Good K.dm K.C K.Γ ρ st' := by

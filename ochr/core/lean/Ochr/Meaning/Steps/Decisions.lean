@@ -19,7 +19,7 @@ namespace Ochr.Meaning.Steps
 open Ochr.Meaning
 
 section
-variable (K : RunCtx) (ρ : Assignment)
+variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- The scope of readings the checker uses at `st`'s top frame is `scopeOf` of its semantic
 state (each binding's `decl`, innermost first). -/
@@ -65,8 +65,8 @@ theorem piSort_aligned' (st st' : MState) (fuel : Nat) (caps : List Value) (hs :
 
 /-- D84's join set is static: a function of the match term and the scope only. (To be stated
 against `Decide.jdMoves` when branch `d84` lands.) -/
-theorem joinMoves_static (sc : List DeclInfo) (t : Term) :
-    ∀ sc', sc' = sc → K.D.joinMoves sc' t = K.D.joinMoves sc t := by
+theorem joinMoves_static (sc : List DeclInfo) (entry : List Place) (t : Term) :
+    ∀ sc', sc' = sc → K.D.joinMoves sc' entry t = K.D.joinMoves sc entry t := by
   intro sc' h; rw [h]
 
 end

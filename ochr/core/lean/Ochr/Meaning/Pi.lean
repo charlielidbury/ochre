@@ -1,4 +1,4 @@
-import Ochr.Meaning.Value
+import Ochr.Meaning.Sem
 
 /-!
 # Carriers of Π-types (docs/18 Def. "meaning of types", function types; `Slice.lean` §1)
@@ -115,6 +115,21 @@ def piCar1 : List PiParam → List Sem → (List Sem → TyM) → Type 1
 def piCar2 : List PiParam → List Sem → (List Sem → TyM) → Type 2
   | [], acc, B => (B acc).el2
   | p :: ps, acc, B => (a : (p.dom acc).el2) → piCar2 ps (acc ++ [(p.dom acc).enc2 a]) B
+
+/-- A type as the reference run knows it (docs/31 D9, D8 revised): its meaning; for a Π-type its
+shape (parameters and output), which applying a function value needs and which neither the
+opaque carrier nor the value can give back; for a borrow-typed result the label of the borrow;
+and for a data type `D(ps)` its declaration's name and its parameters' meanings, which a
+constructor value that records no parameters reads (a carrier does not determine them:
+`Pair(True, B)` and `Pair(PLift True, B)` have one carrier). -/
+structure TyS : Type 3 where
+  m : TyM
+  shape : Option (List PiParam × PiOut) := none
+  label : Option Nat := none
+  data : Option (String × List Sem) := none
+
+/-- A plain type, with no structure. -/
+def TyS.plain (T : TyM) : TyS := ⟨T, none, none, none⟩
 
 /-- `TailM (x : &Nat) : &Nat` as a level-0 Π-carrier: `Slice.lean`'s `TailMTy`, up to the
 accumulated `PUnit`. -/
