@@ -2,7 +2,7 @@
 
 The design note of the consistency spine (`ochr/core/lean/Ochr/Meaning/`, lean_lib `OchrMeaning`): the Lean definitions and lemma statements of docs/18's main theorem against the real checker types (`Value`, `Term`, `MState`), for a swarm of provers to fill. Kept short and current; decisions in the order they were made. Questions of docs/18 are cited by name with their number in brackets, since the numbers have moved before.
 
-Status (2026-11-09): milestone 1 (the meaning of a state) done and reviewed by the lead; milestone 2 (the reference run) in progress: its state, Π-carriers, application/construction and place operations are defined, and `run` is defined for every term form except four named holes (`fix`, `match`, `J`, `Id`; below); milestones 3–4 not started.
+Status (2026-11-09): milestone 1 (the meaning of a state) done and reviewed by the lead; milestone 2 (the reference run) in progress: its state, Π-carriers, application/construction and place operations are defined, and `run` is defined for every term form except closure formation (`fixHole`; below); milestones 3–4 not started.
 
 ## Milestone 1: the meaning of a state
 
@@ -100,11 +100,10 @@ Filled so far: constructor values (`ctorOf` + the `.ctor` clause, parameters rea
 
 Known gaps in what is filled, for milestone 3 to state or for a later pass: (i) a recursive call's guard (`SBinding.recBound`) is not yet checked in the `.call` clause (it belongs with `fixHole`, which sets the bound); (ii) a call whose result is itself a function gets no shape (`PiOut` carries only the output's `TyM`; extend `PiOut.data` with an optional shape when a higher-order-returning example needs it); (iii) `runDoms` binds the earlier parameters with type `err` and no declared reading, so a domain term that reads a parameter's declared type (copy-or-move inside a type-level match) reads `other`.
 
-Holes still open, each a `noncomputable def … := sorry` in `Run.lean` (dependency order):
+Also filled: matches (`.matchNat`/`.matchInd`: the arm by the tag of the accessed scrutinee's meaning, a proof scrutinee by its type's one constructor (D45), then D84's `joinDrop` setting every place in `Decisions.joinMoves` to `moved`; `runArm` keeps the recursion structural); `J` (the transported term, the other arguments statements on copies); `Id` (`observation`: each side run on a copy at `A`, every live borrow of the copy ended, the result and every position compared, all under the constant future). Known gap: the match's access uses read mode where the checker's uses match mode (ends only loans at a neutral head, D29); the reference ends only what the tag depends on, which is at most that, so the step lemma is unaffected, but `contentOf` should take a mode when the step lemmas are written.
+
+Hole still open, a `noncomputable def … := sorry` in `Run.lean`:
 4. `fixHole`: closure formation: the meaning is `el0 (piCar0 …) (mkTele …)` with the body run in a fresh frame (captures by value at their readings, parameters, cells behind borrow parameters), popping the frame ending the parameters' borrows; recursive `fix` by `WellFounded.fix` on `DataModel.rank` of the decreasing argument, the self binding carrying the bound.
-5. `matchHole`: access the scrutinee (match mode), read the tag (`DataModel.fieldsOf`), bind the fields as places (they are sub-places, D32: nothing to bind), run the arm, then D84's drop at the join: set every place in `Decisions.joinMoves` to `moved`. A `⊥` or non-constructor scrutinee is an error. Matches on proofs by type (D45): the arm named by the type's constructor.
-6. `jHole`: the transported term (`J`'s last argument) run in place; endpoints, motive and proof are statements on copies.
-7. `idHole`: run each side on a copy of the state, end every live borrow of the copy, read the result and every position under the constant future, compare: `.ty (.prop (obs t = obs u))`.
 
 Then: the knot-tying `CodeMeaning` (`global` from the program, `sealed` = `run` from the empty state at the hint, `clo` = `fixHole`'s meaning, `pi` = `piHole`'s, `paramTy` from the Π shape), the lemma that `Value.mean` at that `CodeMeaning` is what `run` gives for `.val`, the sealed-program substitution lemma (`sealed ρ φ h (t[loan ℓ := w]) = sealed ρ (φ.upd ℓ ⟦w⟧) h t`), the generic `DataModel` by stages with its laws and `pack_congr`, and the program meaning (globals by recursion on the program).
 
