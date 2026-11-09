@@ -124,6 +124,35 @@ def pushTemp (s : SState) (v : SVal) : SState :=
 
 def freshLoan (s : SState) : Nat × SState := (s.nextLoan, { s with nextLoan := s.nextLoan + 1 })
 
+/-- The position holding the borrow of label `l`, if any. -/
+noncomputable def holderOf (s : SState) (l : Nat) : Option Pos :=
+  open Classical in s.positions.find? fun p => decide (s.shape p = some l)
+
+/-- Take the holder of `l` away (the borrow moves elsewhere): the old holder is forgotten and no
+longer in the shape. The caller records the new holder. -/
+noncomputable def takeLabel (s : SState) (l : Nat) : SState :=
+  match s.holderOf l with
+  | some r => { (s.setAt r fun _ => .moved) with shape := fun p => if p = r then none else s.shape p }
+  | none => s
+
+/-- Park a borrow in a fresh temporary of the top frame, which becomes its holder (D14: a label
+always has a holder, from its creation to its end). -/
+noncomputable def pushTempShaped (s : SState) (v : SVal) (l : Nat) : SState :=
+  let s' := s.pushTemp v
+  match s'.env.getLast? with
+  | some fr => { s' with shape := fun p => if p = .temp s'.topIdx (fr.temps.length - 1) then some l else s'.shape p }
+  | none => s'
+
+/-- The state's closed future: `φ` with every live label fixed to its holder's current content,
+iterated as `access` iterates (a holder may itself read a live label). A read that skips
+[Access] reads at it, so it depends on `φ` only at labels the state does not hold (D14). -/
+noncomputable def closedFuture (s : SState) (φ : Future) : Future :=
+  (List.range s.liveLabels.length).foldl (fun ψ _ =>
+    s.liveLabels.foldl (fun ψ l =>
+      match s.holderOf l with
+      | some r => ψ.upd l (s.valAt r ψ)
+      | none => ψ) ψ) φ
+
 /-- Drop the last binding of the top frame ([Let]'s drop; its borrows, if any, are ended by the
 reads that depend on them). -/
 def dropLast (s : SState) : SState :=

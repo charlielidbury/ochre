@@ -88,11 +88,12 @@ theorem run_congr (φ φ' : Future) (hint : TyS) (t : Term) (s : SState) (L : Na
 
 /-- The run's result does not depend on the starting label counter, as long as it is above every
 loan of the term and of the state (m2-proofs' D): fresh labels are names. Needed because a
-sealed program's counter, `emptyState (t.loans.foldl max 0 + 1)`, changes under substitution. -/
+sealed program's counter, `emptyState (t.loans.foldl max 0 + 1)`, changes under substitution. Only the
+result's meaning is compared: a returned borrow's label and the state's labels are the counter. -/
 theorem run_counter_indep (φ : Future) (hint : TyS) (t : Term) (s : SState) (n n' : Nat)
     (hn : ∀ l ∈ t.loans, l < n) (hn' : ∀ l ∈ t.loans, l < n') (hs : ∀ l ∈ s.positions.filterMap s.shape, l < min n n') :
-    (run K ρ φ hint t { s with nextLoan := n }).map (·.1)
-      = (run K ρ φ hint t { s with nextLoan := n' }).map (·.1) := by
+    (run K ρ φ hint t { s with nextLoan := n }).map (·.1.1)
+      = (run K ρ φ hint t { s with nextLoan := n' }).map (·.1.1) := by
   sorry
 
 end
