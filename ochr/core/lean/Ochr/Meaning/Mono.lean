@@ -544,7 +544,7 @@ theorem joinDrop_below (K : RunCtx) (φ : Future) (t : Term) (s : SState)
         refine Below.trans ?_ (SState.access_below s pos)
         dsimp only
         generalize s.access pos = s₁
-        rcases hf : Sem.follow K.dm K.Γ (s₁.tyAt pos).m (s₁.valAt pos φ) steps with _ | ⟨v, T⟩
+        rcases hf : Sem.follow K.dm K.Γ (s₁.tyAt pos).m (s₁.valAt pos (s₁.closedFuture φ)) steps with _ | ⟨v, T⟩
         · exact Below.refl _
         · cases v <;> first
             | exact Below.refl _
