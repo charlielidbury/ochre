@@ -29,6 +29,9 @@ structure DataModel where
   /-- The carrier of `D(ps)`: a small Lean type. -/
   car : IndDecl → List Sem → Type
   fieldTy : IndDecl → List Sem → Nat → Nat → List Sem → TyM
+  /-- The meaning of the declared type of parameter `i` at the earlier parameters (a type
+  parameter's is its sort; a value parameter's, D71, a data type). -/
+  paramTy : IndDecl → Nat → List Sem → TyM
   /-- Pack a constructor's fields, given as meanings, into an element; `none` if some field is
   not a member of its field type (the fields are read in telescope order). -/
   pack : (d : IndDecl) → (ps : List Sem) → Nat → List Sem → Option (car d ps)
@@ -58,6 +61,24 @@ variable (dm : DataModel)
 the truncation of the same fixed point, true when it is inhabited. -/
 def tyM (d : IndDecl) (ps : List Sem) : TyM :=
   if d.sort == 0 then .prop (Nonempty (dm.car d ps)) else .ty0 (dm.car d ps)
+
+/-- Parameters whose carrier is the type `T` (docs/31 D8): for a constructor value that records
+no parameters, read at the type of its position. Chosen classically; any choice with that
+carrier gives an element tagged `T`'s carrier (`paramsOf_car`). -/
+noncomputable def paramsOf (d : IndDecl) : TyM → Option (List Sem)
+  | .ty0 A => open Classical in
+    if h : ∃ ps, dm.car d ps = A then some (Classical.choose h) else none
+  | _ => none
+
+theorem paramsOf_car (d : IndDecl) (A : Type) (ps : List Sem) (h : dm.paramsOf d (.ty0 A) = some ps) :
+    dm.car d ps = A := by
+  by_cases hex : ∃ ps, dm.car d ps = A
+  · have : dm.paramsOf d (.ty0 A) = some (Classical.choose hex) := by
+      simp [paramsOf, hex]
+    rw [this] at h
+    cases h
+    exact Classical.choose_spec hex
+  · simp [paramsOf, hex] at h
 
 /-- The meaning of a constructor value `C(ps; fs)` of a data type whose fields already mean
 `fs`: packed into the carrier when every field is whole, kept as an untyped tuple when some
@@ -104,6 +125,7 @@ noncomputable def libModel : DataModel where
   fieldTy d ps _ i _ := match d.name, ps with
     | "Pair", [.ty A, .ty B] | "And", [.ty A, .ty B] => if i = 0 then A else B
     | _, _ => .err
+  paramTy d _ _ := if d.name = "Pair" then .univ 1 else if d.name = "And" then .univ 0 else .err
   pack := sorry
   tag := sorry
   fields := sorry
