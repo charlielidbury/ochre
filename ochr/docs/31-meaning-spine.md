@@ -1,0 +1,89 @@
+# 31. The meaning spine: design decisions and open choices
+
+The design note of the consistency spine (`ochr/core/lean/Ochr/Meaning/`, lean_lib `OchrMeaning`): the Lean definitions and lemma statements of docs/18's main theorem against the real checker types (`Value`, `Term`, `MState`), for a swarm of provers to fill. Kept short and current; decisions in the order they were made. Questions of docs/18 are cited by name with their number in brackets, since the numbers have moved before.
+
+Status (2026-11-09): milestone 1 (the meaning of a state) done; milestones 2–4 (the reference run, the step-lemma skeleton, the assembly) not started.
+
+## Milestone 1: the meaning of a state
+
+### D1. Typed elements, not ZFC's untyped tuples (`Sem.lean`)
+
+docs/18's model is ZFC: a constructor value means a tagged tuple, a function a set of pairs, all in one `V_κ`. Lean has no analogue of a small universe closed under its own function space: an inductive type cannot hold functions on itself (Cantor, or simply positivity), and a universe of first-order trees whose leaves are elements of arbitrary small types is one Lean level too big to be its own leaf type. Both were tried on paper before writing (`Sem.lean`'s header records the argument). The one encoding that keeps `Π` small is the typed one of `Ochr/Model/Slice.lean`: a type means a Lean type holding only its good elements, and a function value means a Lean function on the carriers of its domain and codomain.
+
+So the semantic domain is:
+
+- `TyM`, the meaning of a type value: a proposition (`prop P`), a carrier at Lean level 0, 1 or 2 (`ty0`, `ty1`, `ty2`), a universe `univ l` (`⟦sort l⟧`, kept symbolic so its elements, type values, are recognised by their level), or `err`.
+- `Sem`, the meaning of a value, *tagged by its carrier*: `el0 (A : Type) (a : A)`, `el1`, `el2`; `ty T` (a type used as a value); `proof` (`•`); `moved` (`⊥`); `ctor ty c fs` (see D3); `err`.
+- Membership `s ∈ₛ T` is the tag's equality with `T`'s carrier (`Sem.mem`): `el0 A a ∈ₛ ty0 B` iff `A = B`; `proof ∈ₛ prop P` iff `P`; `ty T ∈ₛ univ l` iff `T.level = l`.
+
+Consequences, each a departure from docs/18 the provers must know:
+
+- **Convertible types must have equal Lean carriers.** Conversion soundness for types says `⟦T⟧ = ⟦T'⟧` as `TyM`, i.e. Lean type equality of carriers. It is provable where the plan's (V1)–(V9) say conversion holds: the meaning is a function of the components (Π by `funext` + congruence, `And(True, P) ≡ P` by `propext`, a type function's call by the stabilisation lemma of `Slice.lean` §4). It is *not* decidable, and the semantics uses it classically (`Sem.as` decodes an element by comparing tags with `Classical.propDecidable`), so everything in `Ochr.Meaning` is `noncomputable`.
+- **Constructor values' recorded parameters are read** (`Value.mean` at `.ind`), since the carrier of `D(ā)` depends on `ā`. docs/18's (V2), that parameters are never read, does not hold of this model; conversion soundness for constructor values is stated for two values that are members of one type, whose parameters then mean the same. The checker's `ps = []` (parameters not yet inferred) means `err`: a well-formedness clause will say that stored constructor values of parameterised types record their parameters (to add to `WF.lean` when the step lemmas for `evalCtor` are written; the typed path always fills them).
+- **A borrow type means its content type** (`⟦&A⟧ = ⟦A⟧`): a place holding `borrow_ℓ w` means `⟦w⟧` and its declared type is `&T`, so membership needs the content's carrier. The model therefore validates `Eq(Type₀, &A, A)`, which the checker never proves (the equation is stuck). Harmless for consistency, which is one-directional (accepted ⇒ true); recorded because a reader of the model will notice it.
+
+Rejected alternatives: (i) a `fn` constructor storing the domain and codomain as `TyM`s with the function on their carriers: needs `El : TyM → Type` inside the constructor of `Sem`, induction–recursion; (ii) a universe of codes with `El`: the same, or a syntactic universe, which is not the set model; (iii) Mathlib's `ZFSet`: faithful to ZFC and extensional, but a new dependency on a project that imports Lean core only, and without inaccessibles `Type₀` has no set to mean. (iii) is the one to revisit if type-equality casts make the step lemmas unbearable.
+
+### D2. Levels: bounded at `Type₁` (universes in Lean [Q1], `Bounded.lean`)
+
+Lean's universes cannot be indexed by a number, so the model fixes the levels a program may write. The statement to mechanise is `Ochr.Consistency.consistencyBounded`: `consistency` with the extra hypothesis `LevelsBelow 2 q`, no `sort l` with `l > 2` written in `q` (`Prop`, `Type₀`, `Type₁`). Types the checker *computes* reach one level higher (`Type₂`, the type of `Type₁` and of `Π(A : Type₁). Type₁`), which `TyM.univ 3` supports as a universe whose elements are only type values; nothing quantifies over it, so it needs no carrier. Carriers: `ty0 : Type` for `Type₀`, `ty1 : Type 1` for `Type₁` (`Prop` and `Type₀` themselves, Π over them), `ty2 : Type 2` for `Type₂`-sorted Π-types that a parameter can have without `Type₂` being written (`f : Π(A : Type₁). Type₁`). `Sem : Type 3`.
+
+Every example in the suite satisfies the bound (`Prelude.decls` by `#guard`; no example writes `Type₂`), and `Type₁` is used (`Functions.lean`: `Pow (X : Type) : Type₁ := Π(a : X). Prop`), so the bound cannot be 1. Raising it is one constructor in each of `TyM`, `Sem` and the carrier functions; the uniform `consistency` is not a target of the mechanisation.
+
+### D3. `⊥` is `moved`, a definite value; partly moved data is an untyped tuple (D84)
+
+Under D84, `⊥` means "definitely moved", the same at the generic call and at every instance; `eq(⊥, ⊥)` is `True` and `eq(⊥, v)` is `False`. In the model `Sem.moved` is a constructor equal only to itself (`Sanity.moved_definite`), and `Eq`'s meaning is equality in `Sem`.
+
+A constructor value some field of which was moved out (`Pair(⊥, 5)`, allowed by D53 inside a borrow) lies in no carrier, so it cannot be `el0`; it means `ctor ty c fs`, an untyped tuple, with the invariant that a whole constructor value is always `el0` of its carrier (`DataModel.ctorM` decides by wholeness). Equality then agrees with the checker's injectivity and disjointness rules in every case: two partly moved tuples are equal iff their fields are; a whole and a partly moved value are never equal (`eq(⊥, v) = False`).
+
+The order `⊑` (`Sem.le`): `moved` below everything, `ctor` componentwise, equality otherwise. Under D84 it is **not** an information order on observations (`moved` is definite); it is the proof device the main theorem needs: the checker's state after an early end (`Pick`) has the holder `⊥` where the reference keeps the borrow, and at a whole leaf `⊑` is equality (`Sem.le_eq_of_whole`). The lead's note that the information order "remains only for borrows ended early and similar over-approximations that are never observed" is recorded as an obligation on the step lemmas: no observation reads a position an early end forgot (borrow holders are never owners, so `Obs.footprint` never lists them).
+
+Membership for a possibly partly moved binding is `Sem.pmem`: `moved`, or below some whole member.
+
+### D4. The data model is an interface (`Data.lean`); the construction is milestone 2's
+
+User inductive types need a generic small carrier per declaration and parameter tuple, with dependent fields (telescopes), Fording equations, type-function fields and nesting (`Rose(A) := Node(v : A, kids : List(Rose(A)))` is in the suite). The spine fixes the interface the step lemmas use, `DataModel`: `car`, `pack`, `tag`, `fields`, `rank`, and the least-fixed-point laws (`tag_pack`, `fields_pack`, `pack_fields`: every element is a constructor applied to its fields; `pack_isSome`: packing succeeds iff each field is a member of its field type at the earlier fields; `rank_lt`: recursive fields have smaller rank, for guarded recursion). `fieldTy`, the meaning of a field's declared type at parameters and earlier fields, is part of the interface because the laws are stated with it; the assembly must show it agrees with the reference run's reading of the declaration.
+
+Planned construction (milestone 2, the model beyond the slices [Q2]): the stage construction of `Slice.lean` §4 on carriers, `stage (k+1) ps := Σ c, telescope of field carriers with recursive occurrences at stage k`, by recursion on `k` *as a function of the parameters*, so that non-uniform parameters (D71) cost nothing, and the carrier as the colimit (`Σ k, stage k ps` modulo the stage embeddings, a `Quot`). Nesting needs the nested earlier inductive's stages to be re-run at the new parameter; whether to translate nesting to mutual recursion (as Lean's kernel does) or to interleave the stages is the one open choice. `Prop`-sorted declarations are the truncation `Nonempty (car d ps)` of the same fixed point, so `False`, `True` and `And` need no separate clause.
+
+The library's `Pair`, `False`, `True`, `And` are modelled by hand (`libModel`; its laws are left to provers). `Nat` and `Unit` are not declarations and mean `Nat` and `Unit` directly.
+
+### D5. Code-dependent meanings go through `CodeMeaning` (`Value.lean`)
+
+Globals, closures, Π-closures, sealed programs and deferred D82 types mean "what running code means", which is milestone 2's reference run (the meaning of code, part of [Q2]). `Value.mean` takes a `CodeMeaning` (`global`, `sealed`, `clo`, `pi`, `paramTy`), so the first-order meaning is fixed and checked now, and the reference run will define `Value.mean` and the run in one mutual structural recursion over `Term`/`Value` and prove it agrees with `Value.mean C` at its own `C` (the knot-tying lemma). The run never re-runs a callee's body (it applies the callee's meaning), so it is structural; a recursive `fix` means its guarded fixpoint by well-founded recursion on `DataModel.rank`.
+
+### D6. The meaning of a state and its shape (`State.lean`)
+
+`MState.mean ρ st : Mean` is `(positions, future ↦ position ↦ Sem, shape)`, as docs/27 Def. 2: a lent place means its final content `φ ℓ`, a holder its current content, `⊥` means `moved`. The shape (which position holds the borrow of which label) is a partial map thanks to (WF1). `Mean.semEnd r l` is [End] on meanings and is below (`semEnd_below`, proved); `Mean.forget` is a drop or a capture by move (proved below); `Mean.dependsOn m p l` is what the reference run's [Access] ends.
+
+The reference run's [Access] will end exactly the labels a place's meaning depends on, where the checker ends every label whose loan *occurs* in the content; the step lemma is that the checker's extra ends are below and commute (by WF3's acyclicity).
+
+**The relevance table** (which `MState` fields `⟦Ω⟧` reads) is `State.lean`'s module docstring, with `MState.Core` the relevant projection and `mean_core` the theorem that the rest is irrelevant: read are `env` (values, frame structure; stored types for membership), `inds`, `absTy`, `goal`, `neutrals` and `etaRefs` (conditions on `ρ`), and `globals` through `CodeMeaning.global`. Irrelevant: counters and bounds (`nextLoan`, `nextAbs`, `nextRecUid`, `depth`), caches and logs (`classCache`, `constDecls`, `cfg`, `locs`), and inputs of decisions (`refs`, `recStack`, `convStack`, the declared-type reader's flags, the run-mode flags, `placeLog`). `placeLog` deserves a flag for the lead: D84's drop at the join reads `armMoves`, which reads the log of what the arms' *runs* moved; if the redesigned D84 decides the join from the log rather than from syntax, the reference run must decide it the same way, which makes the log an input of an *aligned* decision and so semantically relevant to the step (not to `⟦Ω⟧`).
+
+### D7. Well-formedness and membership (`WF.lean`)
+
+(WF1)–(WF4) and (WF7) are stated on `MState` as the plan has them; (WF5) is `ArgsLoanFree env ws`, a property of a call's argument array, not of a state; (WF6) is split: its naming half (every `σ` in Ω, Δ or the goal has a type in Δ; labels and `σ`s are below their counters) is `WF6`, its typing half is membership. `TypedFuture`: each live borrow's final content lies in its holder's declared content type. `TypedAssignment`: `ρ σ ∈ₛ ⟦Δ(σ)⟧_ρ`, plus the path condition for `neutrals` (`ρ σ = ⟦n⟧_ρ`) and `etaRefs`. `Membership`: under every typed future, every position with a stored type holds a `pmem` of it; Δ's types and the goal are types. `Good ρ st` is the hypothesis of the main theorem. Stored types are read under the constant future `err`, since no stored type holds a live loan (docs/27 Lemma 5; to be a WF clause or a lemma of the skeleton).
+
+### Sanity theorems (`Sanity.lean`), all without `sorry`
+
+On literal `MState`s with a `Nat` binding: [Borrow] is exact (`borrow_exact`); [End] is `semEnd` at the state's positions (`end_is_semEnd`) and below (`end_below`); a `#guard` runs the checker's `endBorrow` on the pre-state and checks that it yields the post-state the theorem is about; `⊥` is definite (`moved_definite`); `Pick`'s early end is an end and nothing else (`pick_early_end`: after reading `b`, `a` and `b` mean their fills at the hole fixed to `r`'s current content, under every future, and `r` is forgotten), with the sealed programs' meanings taken from `CodeMeaning`.
+
+### What could not be defined in milestone 1
+
+- The generic data carrier (D4) and the code meanings (D5): parametrised, built in milestone 2.
+- `Sem.le_trans` and `Sem.le_eq_of_whole` are stated with `sorry` (routine inductions over the mutual `le`/`leList`).
+- `libModel`'s operations and laws are `sorry` (routine).
+
+## Plan for milestones 2–4
+
+### Milestone 2: the reference run (`Run.lean`, the meaning of code [Q2])
+
+One mutual structural recursion over `Term`/`Value` defining `run : SState → Term → Option (Sem × SState)` on semantic states (`Mean` plus a frame stack) and `Value.mean` together, with `CodeMeaning` instantiated by the fixpoint. Clauses for every `Term` form `evalCore` handles: places (D81 projections as one-arm matches), borrow, assign (D67's owned access), let/seq (drops), `matchNat`/`matchInd` (an arm chosen by the tag; D84's drop at the join), `const`, `val`, sorts, `pi`/`fix` (closure formation: captures by value, at their declared types), `call` (apply the callee's meaning; borrow parameters via cells; closing off is exact by definition), `nat`/`zero`/`succ`/`unit`/`tt`, `eq` (equality in `Sem`), `cong`, `ref`, `id` (both sides on copies, end every borrow, compare every position: `Id` observes moves under D84), `J`/`symm`/`trans`/`rewrite` (the transported term), `hole` (excluded), `clone`/`peek`/`inplace`, `ascribe`; statements on discarded copies. Plus the Π-carrier construction by cases on the declared sorts (D55) with `brw`/`brwRet` for borrow parameters, the guarded fixpoint for `fix`, and the generic `DataModel`. Deliverable: the knot-tying lemma, the substitution lemma for sealed programs (`sealed ρ φ (t[loan ℓ := w]) = sealed ρ (φ.upd ℓ ⟦w⟧) t`), and the stage construction's laws.
+
+### Milestone 3: the step-lemma skeleton (`Steps/*.lean`)
+
+One file per checker area, one lemma per rule, each of the form "if `runMachine (f …) st fuel = ok a st'` and `Good ρ st`, then for every typed future the result and `st'` are below the reference step on `st.mean ρ`, and `Good ρ' st'` for the extended assignment". Rough partition and counts, by `Machine.lean`'s sections: `Steps/Borrow.lean` (End, Access ×3, Read, Copy, Borrow, Assign, Drop ×3, popFrame: 12), `Steps/Subst.lean` (substV, substEnv, nfSealed, canonNeutral, renormAll, refine: 6), `Steps/Call.lean` (callFn, runBody, closeCall ×3 rows, callType/declCallType, paramTypes, recCheck's accepting direction: 9), `Steps/Match.lean` (evalMatch, evalMatchInd, evalMatchByType, splitThenClose, generalizeNeutral, blockCaptures, closeBlock, enter/exitWorld: 8), `Steps/Eq.lean` (mkEqM, conv, convPi, convFn, rewriteGoal, cong/symm/trans: 7), `Steps/Obs.lean` (observe, idType, footprint coverage, owners: 4), `Steps/Types.lean` (evalType, piSort, capture, evalTInd, evalCtor, fieldTypes, repackCheck, lentUnknown, valType? soundness: 9), `Steps/Eval.lean` (evalCore's remaining forms, letIn, seq, ascribe, prim: 8), `Steps/Tail.lean` (checkTail, checkFix, checkDef, checkInd, Ind-decl conditions (I1)–(I9): 6), `Steps/WF.lean` (preservation of each WF clause per step family: 7). About 75 statements, each owned by the spine; provers own private auxiliaries. The five supporting lemmas of docs/26 (membership, `valType?` soundness, footprint coverage, conversion soundness, WF preservation) are spine statements in `Types`, `Obs`, `Eq` and `WF`.
+
+### Milestone 4: assembly (`Consistency.lean` under `Ochr/Meaning`)
+
+`consistencyBounded` from: the program meaning (globals by recursion on the program), Corollary "an accepted definition means an element of its type" from the step lemmas by induction on `checkTail`'s case tree, conversion soundness at the leaf, and `⟦False⟧ = prop False`. `#print axioms` must show `sorryAx` plus the standard three. Then sketches for Target B (error reflection and the borrow-structure lemma against `Model/Safety.lean`'s shape; realizability [Q4] stated, not proved) and Target C (the context lemma stated).

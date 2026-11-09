@@ -49,7 +49,7 @@ namespace Ochr.Meaning
 deriving instance DecidableEq for Pos
 
 /-- The shape of an environment: the label of the borrow held at a position, if any. -/
-def Env.shape (env : Env) (p : Pos) : Option Nat :=
+def _root_.Ochr.Env.shape (env : Env) (p : Pos) : Option Nat :=
   match valAt env p with
   | .borrow l _ => some l
   | _ => none
@@ -64,7 +64,7 @@ section
 variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl)
 
 /-- The meaning of an environment under `ρ` and `φ`, position by position. -/
-noncomputable def Env.mean (ρ : Assignment) (φ : Future) (env : Env) (p : Pos) : Sem :=
+noncomputable def _root_.Ochr.Env.mean (ρ : Assignment) (φ : Future) (env : Env) (p : Pos) : Sem :=
   Value.mean dm C Γ ρ φ (valAt env p)
 
 /-- `⟦Ω⟧_ρ`: the meaning of a state, as a function of the future. -/
