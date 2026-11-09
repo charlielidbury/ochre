@@ -79,11 +79,12 @@ noncomputable def applyTele : (ps : List PiParam) → (acc : List Sem) → (Fin 
     | none => none
   | _, _, _, _, _, _, _ => none
 
-/-- What a body's run gives at a tuple of arguments: the result and the final contents of the
-borrow parameters as functions of the future, and, for a returned borrow, its label (the future
-at that label is what the caller leaves in it). -/
+/-- What a body's run gives at a tuple of arguments: the result (at the run's future), the final
+contents of the borrow parameters as functions of the future (they may depend on a returned
+borrow's label), and, for a returned borrow, its label (the future at that label is what the
+caller leaves in it). -/
 structure BodyOut : Type 3 where
-  result : SVal
+  result : Sem
   finals : List SVal
   retLabel : Option Nat := none
 
@@ -93,28 +94,28 @@ def noFuture : Future := fun _ => .err
 /-- The leaf of `mkTele` for a data codomain: the result decoded at `B acc`, the final contents
 built from the body's finals, all read under the constant future (every borrow of the frame
 has ended when the body returns). -/
-noncomputable def mkLeafData (acc : List Sem) (Fin : Type) (mkFin : List Sem → Option (Fin × List Sem))
+noncomputable def mkLeafData (φ : Future) (acc : List Sem) (Fin : Type) (mkFin : List Sem → Option (Fin × List Sem))
     (B : List Sem → TyM) (o : BodyOut) : Option ((B acc).el0 × Fin) :=
-  match (B acc).dec0 (o.result noFuture), mkFin (o.finals.map (· noFuture)) with
+  match (B acc).dec0 o.result, mkFin (o.finals.map (· φ)) with
   | some r, some (fin, []) => some (r, fin)
   | _, _ => none
 
 /-- The backward function of a borrow-returning body at the value `v` the caller leaves in the
 returned borrow: the finals read in the future that fixes the returned label to `v`. -/
-noncomputable def mkBackAt (Fin : Type) (mkFin : List Sem → Option (Fin × List Sem)) (U : TyM)
+noncomputable def mkBackAt (φ : Future) (Fin : Type) (mkFin : List Sem → Option (Fin × List Sem)) (U : TyM)
     (o : BodyOut) (k : Nat) (v : U.el0) : Option Fin :=
-  match mkFin (o.finals.map (· (noFuture.upd k (U.enc0 v)))) with
+  match mkFin (o.finals.map (· (φ.upd k (U.enc0 v)))) with
   | some (fin, []) => some fin
   | _ => none
 
 /-- The leaf of `mkTele` for a returned borrow: the forward value and the backward function,
 which must be total and injective (`Back`). -/
-noncomputable def mkLeafRef (acc : List Sem) (Fin : Type) (mkFin : List Sem → Option (Fin × List Sem))
+noncomputable def mkLeafRef (φ : Future) (acc : List Sem) (Fin : Type) (mkFin : List Sem → Option (Fin × List Sem))
     (U : List Sem → TyM) (o : BodyOut) : Option (Back Fin (U acc).el0) :=
-  match o.retLabel, (U acc).dec0 (o.result noFuture) with
+  match o.retLabel, (U acc).dec0 o.result with
   | some k, some fwd =>
-    if h : ∀ v, (mkBackAt Fin mkFin (U acc) o k v).isSome then
-      let back := fun v => (mkBackAt Fin mkFin (U acc) o k v).get (h v)
+    if h : ∀ v, (mkBackAt φ Fin mkFin (U acc) o k v).isSome then
+      let back := fun v => (mkBackAt φ Fin mkFin (U acc) o k v).get (h v)
       if hi : ∀ v w, back v = back w → v = w then some ⟨(fwd, back), hi⟩ else none
     else none
   | _, _ => none
@@ -123,16 +124,16 @@ noncomputable def mkLeafRef (acc : List Sem) (Fin : Type) (mkFin : List Sem → 
 telescope and deciding classically at each argument; `none` if the body is undefined somewhere,
 its result or a final content is not of its type, or (a returned borrow) the backward function
 is not injective. -/
-noncomputable def mkTele : (ps : List PiParam) → (acc : List Sem) → (Fin : Type) →
+noncomputable def mkTele (φ : Future) : (ps : List PiParam) → (acc : List Sem) → (Fin : Type) →
     (List Sem → Option (Fin × List Sem)) → (out : PiOut) → (List Sem → Option BodyOut) →
     Option (piCar0 ps acc Fin out)
-  | [], acc, Fin, mkFin, .data B, g => (g acc).bind (mkLeafData acc Fin mkFin B)
-  | [], acc, Fin, mkFin, .ref U, g => (g acc).bind (mkLeafRef acc Fin mkFin U)
+  | [], acc, Fin, mkFin, .data B, g => (g acc).bind (mkLeafData φ acc Fin mkFin B)
+  | [], acc, Fin, mkFin, .ref U, g => (g acc).bind (mkLeafRef φ acc Fin mkFin U)
   | p :: ps, acc, Fin, mkFin, out, g =>
     if h : ∀ x : (p.dom acc).el0,
-        (mkTele ps (acc ++ [(p.dom acc).enc0 x]) (extFin p.isRef Fin (p.dom acc).el0)
+        (mkTele φ ps (acc ++ [(p.dom acc).enc0 x]) (extFin p.isRef Fin (p.dom acc).el0)
           (extMk p.isRef Fin (p.dom acc).el0 mkFin (p.dom acc).dec0) out g).isSome then
-      some fun x => (mkTele ps (acc ++ [(p.dom acc).enc0 x]) (extFin p.isRef Fin (p.dom acc).el0)
+      some fun x => (mkTele φ ps (acc ++ [(p.dom acc).enc0 x]) (extFin p.isRef Fin (p.dom acc).el0)
           (extMk p.isRef Fin (p.dom acc).el0 mkFin (p.dom acc).dec0) out g).get (h x)
     else none
 

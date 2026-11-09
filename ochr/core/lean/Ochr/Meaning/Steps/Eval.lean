@@ -17,11 +17,11 @@ namespace Ochr.Meaning.Steps
 open Ochr.Meaning
 
 section
-variable (K : RunCtx) (ρ : Assignment)
+variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- The type the context gives, as a `TyM` (`err` when none). -/
-noncomputable def hintM (hint : Option Value) : TyM :=
-  ((hint.map (meanV K ρ noFuture .err)).map Sem.asTy).getD .err
+noncomputable def hintM (hint : Option Value) : TyS :=
+  (hint.map (Value.tyS K.dm K.C K.Γ ρ)).getD (.plain .err)
 
 /-- The induction step. For every `Good` assignment `ρ`, following at each split the arm it
 selects, the run of `t` reaches a value below the reference's result, a state below the
@@ -32,9 +32,9 @@ theorem evalCore_step (st st' : MState) (fuel : Nat) (typed : Bool) (t : Term) (
     (hg : Good K.dm K.C K.Γ ρ st)
     (h : Runs (Ochr.evalCore fuel typed t hint) st fuel (v, T?) st') :
     ∃ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧
-      ∃ r s', run K ρ' (hintM K ρ hint) t (SM' K ρ' st) = some (r, s') ∧
-        (∀ φ, meanV K ρ' φ r.2.m v ⊑ r.1 φ) ∧
-        (∀ T, T? = some T → (meanV K ρ' noFuture .err T).asTy = r.2.m) ∧
+      ∃ r s', run K ρ' φ (hintM K ρ hint) t (SM' K ρ' st) = some (r, s') ∧
+        meanV K ρ' φ r.2 v ⊑ r.1 ∧
+        (∀ T, T? = some T → (meanV K ρ' noFuture (.plain .err) T).asTy = r.2.m) ∧
         Below (MState.mean K.dm K.C K.Γ ρ' st') s'.toMean ∧ Good K.dm K.C K.Γ ρ' st' := by
   sorry
 
@@ -45,8 +45,8 @@ theorem letIn_step (st st' : MState) (fuel : Nat) (typed : Bool) (h0 : Hint) (u 
     (hg : Good K.dm K.C K.Γ ρ st)
     (h : Runs (Ochr.evalCore fuel typed (.letIn h0 u w) hint) st fuel (v, T?) st') :
     ∃ ρ' r s', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧
-      run K ρ' (hintM K ρ hint) (.letIn h0 u w) (SM' K ρ' st) = some (r, s') ∧
-      (∀ φ, meanV K ρ' φ r.2.m v ⊑ r.1 φ) ∧
+      run K ρ' φ (hintM K ρ hint) (.letIn h0 u w) (SM' K ρ' st) = some (r, s') ∧
+      meanV K ρ' φ r.2 v ⊑ r.1 ∧
       Below (MState.mean K.dm K.C K.Γ ρ' st') s'.toMean ∧ Good K.dm K.C K.Γ ρ' st' := by
   sorry
 
@@ -57,8 +57,8 @@ theorem eq_step (st st' : MState) (fuel : Nat) (typed : Bool) (A a b : Term) (hi
     (hg : Good K.dm K.C K.Γ ρ st)
     (h : Runs (Ochr.evalCore fuel typed (.eq A a b) hint) st fuel (v, T?) st') :
     st'.core = st.core ∧
-    ∃ r s', run K ρ .err (.eq A a b) (SM' K ρ st) = some (r, s') ∧
-      ∀ φ, ((meanV K ρ φ .err v).asTy).true ↔ ((r.1 φ).asTy).true := by
+    ∃ r s', run K ρ φ (.plain .err) (.eq A a b) (SM' K ρ st) = some (r, s') ∧
+      ((meanV K ρ φ (.plain .err) v).asTy).true ↔ (r.1.asTy).true := by
   sorry
 
 /-- `J`, both outcomes: computed at convertible endpoints (the transported term runs in place)
@@ -69,8 +69,8 @@ theorem J_step (st st' : MState) (fuel : Nat) (typed : Bool) (A a b P hh u : Ter
     (hg : Good K.dm K.C K.Γ ρ st)
     (h : Runs (Ochr.evalCore fuel typed (.prim "J" [A, a, b, P, hh, u]) hint) st fuel (v, T?) st') :
     ∃ ρ' r s', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧
-      run K ρ' (hintM K ρ hint) (.prim "J" [A, a, b, P, hh, u]) (SM' K ρ' st) = some (r, s') ∧
-      (∀ φ, meanV K ρ' φ r.2.m v ⊑ r.1 φ) ∧
+      run K ρ' φ (hintM K ρ hint) (.prim "J" [A, a, b, P, hh, u]) (SM' K ρ' st) = some (r, s') ∧
+      meanV K ρ' φ r.2 v ⊑ r.1 ∧
       Below (MState.mean K.dm K.C K.Γ ρ' st') s'.toMean ∧ Good K.dm K.C K.Γ ρ' st' := by
   sorry
 
@@ -83,15 +83,15 @@ theorem proof_step (st st' : MState) (fuel : Nat) (typed : Bool) (t : Term) (hin
     (hg : Good K.dm K.C K.Γ ρ st)
     (hp : (K.D.flags (scopeOf (SM' K ρ st)) t).2 = true)
     (h : Runs (Ochr.evalCore fuel typed t hint) st fuel (.proof, some T) st') :
-    st'.core = st.core ∧ ∀ φ, Sem.proof ∈ₛ (meanV K ρ φ .err T).asTy := by
+    st'.core = st.core ∧ Sem.proof ∈ₛ (meanV K ρ φ (.plain .err) T).asTy := by
   sorry
 
 /-- η at `Unit` (D80): where a position's declared reading is `Unit`, the value is `()`, and
 `()` is the one element of `⟦Unit⟧`, so the normalisation keeps meaning given membership. -/
-theorem etaUnit_step (st : MState) (d : DeclInfo) (v : Value) (hint : TyM)
+theorem etaUnit_step (st : MState) (d : DeclInfo) (v : Value) (hint : TyS)
     (hg : Good K.dm K.C K.Γ ρ st) (hd : d = .unit)
-    (hv : ∀ φ, meanV K ρ φ hint v ∈ₛ .ty0 Unit) :
-    ∀ φ, meanV K ρ φ hint (Ochr.etaUnit d v) = meanV K ρ φ hint v := by
+    (hv : meanV K ρ φ hint v ∈ₛ .ty0 Unit) :
+    meanV K ρ φ hint (Ochr.etaUnit d v) = meanV K ρ φ hint v := by
   sorry
 
 end
