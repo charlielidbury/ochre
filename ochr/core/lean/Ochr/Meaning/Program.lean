@@ -78,12 +78,11 @@ the kernel runs out of memory on the prelude's inductive declarations (`checkInd
 
 ## Gaps (reported to the spine)
 
-A function means the closure `run`'s `.fix` clause builds, an element of `piCar0` (level 0),
-whatever its sort. Its type, `globalTyS` of `GDef.ty`, is read through the `.pi` clause, which
-picks the carrier by `Decisions.piSort`. So a function whose Π-type is not in `Type₀` means an
-element outside its type's meaning, and milestone 4's corollary fails for it as the run stands.
-That covers a proof-valued function (sort `Prop`, `.prop`) and a function with a type parameter
-(`id (A : Type) (x : A) : A` is in `Type₁`, `.ty1`).
+Since D12 (4ea4b9e0) the `.fix` clause reads `Decisions.piSort`. A proof-valued function means
+`•` and a `Type₀` one an element of `piCar0`, each in its type's meaning. A function in `Type₁` or
+`Type₂`, such as `id (A : Type) (x : A) : A`, means `err` until the level-1/2 construction
+(`Apply1.lean`'s `closureAt`/`piTyAt`) is wired into the `.fix`, `.pi` and call clauses. Until
+then, milestone 4's corollary fails for polymorphic definitions.
 -/
 
 namespace Ochr.Meaning
