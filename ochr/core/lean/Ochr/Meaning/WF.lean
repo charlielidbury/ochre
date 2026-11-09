@@ -104,9 +104,23 @@ def WF7 (ρ : Assignment) (st : MState) : Prop :=
     ∀ f i b, p = .bind f i → st.env[f]?.bind (·.binds[i]?) = some b →
       ∀ A, b.ty = some (.tRef A) → (Value.tyM dm C Γ ρ (fun _ => .err) A).level = some 1
 
+/-- (WF8) `&` occurs only at the top of a declared type (RULES §1, D48 (2)): a borrow type `&A`
+is the whole stored type of a binding, the whole type of an abstract value or the whole goal,
+with `A` borrow-free, and no `tRef` occurs inside any value of Ω, inside a type, or inside the
+parameters a constructor value records. In particular no state holds the type value
+`Eq(Type₀, &A, A)`, so the model's `⟦&A⟧ = ⟦A⟧` (Value.lean) can refute nothing the checker
+proves (docs/31 D1). -/
+def WF8 (st : MState) : Prop :=
+  (∀ v ∈ Env.values st.env, ¬ v.typeHasRef) ∧
+  (∀ (f i : Nat) (b : Binding), st.env[f]?.bind (fun fr => fr.binds[i]?) = some b →
+    ∀ T : Value, b.ty = some T →
+    match T with | .tRef A => ¬ A.typeHasRef | T => ¬ T.typeHasRef) ∧
+  (∀ T ∈ st.absTy.toList, match T with | .tRef A => ¬ A.typeHasRef | T => ¬ T.typeHasRef) ∧
+  (∀ G, st.goal = some G → match G with | .tRef A => ¬ A.typeHasRef | G => ¬ G.typeHasRef)
+
 /-- Well-formedness, part (c) of the main theorem. -/
 def WF (ρ : Assignment) (st : MState) : Prop :=
-  WF1 st.env ∧ WF2 st.env ∧ WF3 st.env ∧ WF4 st.env ∧ WF6 st ∧ WF7 dm C Γ ρ st
+  WF1 st.env ∧ WF2 st.env ∧ WF3 st.env ∧ WF4 st.env ∧ WF6 st ∧ WF7 dm C Γ ρ st ∧ WF8 st
 
 /-! ## Typed assignments, typed futures, membership -/
 
@@ -121,8 +135,10 @@ generalised program is hole-free, docs/27 Lemma 5, so its meaning does not read 
 and each η-refinement `σ := C(σ̄)` says the same of its constructor value. -/
 structure TypedAssignment (ρ : Assignment) (st : MState) : Prop where
   mem : ∀ σ, σ < st.absTy.size → ρ σ ∈ₛ MState.absTyM dm C Γ ρ st σ
-  neutral : ∀ n σ, (n, σ) ∈ st.neutrals → ρ σ = Value.mean dm C Γ ρ (fun _ => .err) n
-  eta : ∀ σ v, (σ, v) ∈ st.etaRefs → ρ σ = Value.mean dm C Γ ρ (fun _ => .err) v
+  neutral : ∀ n σ, (n, σ) ∈ st.neutrals →
+    ρ σ = Value.mean dm C Γ ρ (fun _ => .err) (MState.absTyM dm C Γ ρ st σ) n
+  eta : ∀ σ v, (σ, v) ∈ st.etaRefs →
+    ρ σ = Value.mean dm C Γ ρ (fun _ => .err) (MState.absTyM dm C Γ ρ st σ) v
 
 /-- Membership, part (b) of the main theorem: under every typed future, every position with a
 stored type holds a (possibly partly moved) member of it; Δ's types and the goal are types. -/
