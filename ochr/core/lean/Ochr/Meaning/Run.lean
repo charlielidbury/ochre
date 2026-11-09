@@ -383,14 +383,36 @@ noncomputable def run (hint : TyS) : Term → SM Res
       else match s.varPos i with
         | some pos => s.setAt pos fun _ => .moved
         | none => s) s
-    some ((closureOf g, ⟨.ty0 piT, some (ps, out), none, none⟩), s')
+    -- the carrier at the declared sort (D55): a proof-valued function is a proof, `⋆` (its
+    -- type the proposition `piProp`); a function in `Type₀` is an element of `piCar0`; a
+    -- function in a higher universe (a type parameter) needs a level-1 `mkTele`, not yet
+    -- written: it means `err` (docs/31 D12, an open gap)
+    let l := K.D.piSort (scopeOf s) (.pi hs ds c)
+    let T : TyM := match l with
+      | 0 => .prop (piProp ps [] fun acc => match out with | .data B => (B acc).true | .ref _ => False)
+      | 1 => .ty0 piT
+      | 2 => .ty1 (piCar1 ps [] fun acc => match out with | .data B => B acc | .ref U => U acc)
+      | 3 => .ty2 (piCar2 ps [] fun acc => match out with | .data B => B acc | .ref U => U acc)
+      | _ => .err
+    let v : Sem := match l with
+      | 0 => .proof
+      | 1 => closureOf g
+      | _ => .err
+    some ((v, ⟨T, some (ps, out), none, none⟩), s')
   | .call f args hd => fun s =>
+    let fl := K.D.flags (scopeOf s) (.call f args hd)
     let body : SM Res := do
       let fv ← run (.plain .err) f
       let as ← runArgs fv.2.shape 0 [] args
-      callOf fv as
+      -- a proof call is never applied: its value is `⋆` (P5; `Machine.callFn` at class 2); its
+      -- type, the proposition, is the codomain at the arguments
+      if fl.2 then
+        pure (.proof, match fv.2.shape with
+          | some (ps, .data B) => if as.length = ps.length then .plain (B (as.map (·.1))) else .plain .err
+          | _ => .plain .err)
+      else callOf fv as
     -- a statement call runs on a copy that is thrown away (E1; `Decisions.flags`, aligned)
-    if (K.D.flags (scopeOf s) (.call f args hd)).1 then SM.onCopy body s else body s
+    if fl.1 then SM.onCopy body s else body s
   | .nat => pure (.ty (.ty0 Nat), .plain (.univ 1))
   | .unit => pure (.ty (.ty0 Unit), .plain (.univ 1))
   | .zero => pure (.el0 Nat 0, .plain (.ty0 Nat))
