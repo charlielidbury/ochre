@@ -487,3 +487,379 @@ theorem cAccess_err (ρ : Rho) (N : Nat) :
         subst hee
         exact Or.inr ⟨he, Ω, l, r, Below.refl _, hf, hbot⟩
     · cases h
+
+/-! ## §4. Error reflection
+
+The reference errs where the meaning says it must: a read whose place means no information
+somewhere (`ReadErr`), an end whose holder's content does (`EndErr`), and a drop of a place whose
+meaning depends on a borrow in flight (`DropErr`, below). For each runtime operation, an error is
+out of fuel (undecided), an ill-typed path (excluded by typing, part of well-formedness), or a
+reference error at a state below the start. -/
+
+def ReadErr (Mn : Mean) (x : Var) (ps : List Step) : Prop :=
+  ∀ f, ∃ s, placeSV (Mn f x) ps = some s ∧ hasBot s = true
+def EndErr (Mn : Mean) : Prop := ∃ r, ∀ f, hasBot (Mn f r) = true
+
+theorem cFollow_err_cases : ∀ ps v e, cFollow v ps = .error e →
+    e = .endedBorrow ∨ e = .readBot ∨ e = .illTyped := by
+  intro ps
+  induction ps with
+  | nil => intro v e h; simp [cFollow] at h
+  | cons s ss ih =>
+    intro v e h
+    cases s <;> cases v <;> simp only [cFollow] at h
+    all_goals first
+      | exact ih _ _ h
+      | (cases h; simp)
+
+theorem cFollow_follow : ∀ ps v w, cFollow v ps = .ok w → follow v ps = some w := by
+  intro ps
+  induction ps with
+  | nil => intro v w h; simp only [cFollow] at h; cases h; rfl
+  | cons s ss ih =>
+    intro v w h
+    cases s <;> cases v <;> simp only [cFollow] at h
+    all_goals first
+      | (simp only [follow, stepV, Option.bind_some]; exact ih _ _ h)
+      | cases h
+
+/-- A read that copies: `dst := clone(p)`. -/
+def cClone (ρ : Rho) (N fuel : Nat) (Ω : St) (x : Var) (ps : List Step) (dst : Var) : Except Err St :=
+  match cAccess ρ N fuel Ω .read x ps with
+  | .error e => .error e
+  | .ok Ω₁ =>
+    match cFollow (Ω₁ x) ps with
+    | .error e => .error e
+    | .ok v => if wholeV v then .ok (upd Ω₁ dst v) else .error .readBot
+
+/-- Error reflection for a read. -/
+theorem cClone_reflect (ρ : Rho) (N fuel : Nat) (Ω : St) (x : Var) (ps : List Step) (dst : Var)
+    (e : Err) (h : cClone ρ N fuel Ω x ps dst = .error e) :
+    e = .outOfFuel ∨ e = .illTyped ∨
+      ∃ Ω₁, Below (M ρ Ω₁) (M ρ Ω) ∧ (EndErr (M ρ Ω₁) ∨ ReadErr (M ρ Ω₁) x ps) := by
+  unfold cClone at h
+  split at h
+  · next e' ha =>
+    have hee : e' = e := by injection h
+    subst hee
+    rcases cAccess_err ρ N fuel Ω .read x ps e' ha with h' | ⟨_, Ω₁, _, r, hb, _, hbot⟩
+    · exact Or.inl h'
+    · exact Or.inr (Or.inr ⟨Ω₁, hb, Or.inl ⟨r, hbot⟩⟩)
+  · next Ω₁ ha =>
+    have hb := (cAccess_ok ρ N fuel Ω .read x ps Ω₁ ha).1
+    split at h
+    · next e' hf =>
+      have hee : e' = e := by injection h
+      subst hee
+      rcases cFollow_err_cases ps _ e' hf with h' | h' | h'
+      · subst h'
+        exact Or.inr (Or.inr ⟨Ω₁, hb, Or.inr fun f =>
+          ⟨.bot, cFollow_err ρ f ps _ (Or.inl hf), rfl⟩⟩)
+      · subst h'
+        exact Or.inr (Or.inr ⟨Ω₁, hb, Or.inr fun f =>
+          ⟨.bot, cFollow_err ρ f ps _ (Or.inr hf), rfl⟩⟩)
+      · exact Or.inr (Or.inl h')
+    · next v hf =>
+      split at h
+      · cases h
+      · next hw =>
+        have hee : Err.readBot = e := by injection h
+        subst hee
+        exact Or.inr (Or.inr ⟨Ω₁, hb, Or.inr fun f =>
+          ⟨ev ρ f v, cFollow_ok ρ f ps _ v hf, notWhole_hasBot ρ f v (by simpa using hw)⟩⟩)
+
+/-- …and when it succeeds, `dst` means what the place meant, after an access that lost only
+information. -/
+theorem cClone_ok (ρ : Rho) (N fuel : Nat) (Ω Ω' : St) (x : Var) (ps : List Step) (dst : Var)
+    (h : cClone ρ N fuel Ω x ps dst = .ok Ω') :
+    ∃ Ω₁, Below (M ρ Ω₁) (M ρ Ω) ∧ Ω' = upd Ω₁ dst (Ω' dst) ∧
+      ∀ f, placeSV (M ρ Ω₁ f x) ps = some (M ρ Ω' f dst) := by
+  unfold cClone at h
+  split at h
+  · cases h
+  · next Ω₁ ha =>
+    split at h
+    · cases h
+    · next v hf =>
+      split at h
+      · cases h
+        refine ⟨Ω₁, (cAccess_ok ρ N fuel Ω .read x ps Ω₁ ha).1, ?_, fun f => ?_⟩
+        · funext y; simp [upd]
+        · simp only [M, upd, if_true]; exact cFollow_ok ρ f ps _ v hf
+      · cases h
+
+/-! ### Assignment: overwriting a lent value is unreachable
+
+After an assignment's (owned) access, the old content holds no live loan in the part it owns.
+With no borrow inside data (WF1), that part is all of it, so the runtime's "assigning over
+outer loans" error can only fire at a state that violates well-formedness. -/
+
+def noBorrow : Val → Bool
+  | .borrow _ _ => false
+  | .pair a b => noBorrow a && noBorrow b
+  | .gFwd u => noBorrow u
+  | .gBack u h => noBorrow u && noBorrow h
+  | _ => true
+
+theorem ownedLoans_noBorrow : ∀ v, noBorrow v = true → ownedLoans v = loans v := by
+  intro v
+  induction v with
+  | pair a b iha ihb =>
+    intro h
+    simp only [noBorrow, Bool.and_eq_true] at h
+    simp only [ownedLoans, loans, iha h.1, ihb h.2]
+  | borrow _ _ _ => intro h; simp [noBorrow] at h
+  | _ => intro _; rfl
+
+def updAt (w : Val) : List Step → Val → Option Val
+  | [], _ => some w
+  | .deref :: ss, .borrow l v => (updAt w ss v).map (.borrow l)
+  | .fst :: ss, .pair a b => (updAt w ss a).map (.pair · b)
+  | .snd :: ss, .pair a b => (updAt w ss b).map (.pair a ·)
+  | _, _ => none
+
+def setPlace (Ω : St) (x : Var) (ps : List Step) (w : Val) : Except Err St :=
+  match updAt w ps (Ω x) with
+  | some v' => .ok (upd Ω x v')
+  | none => .error .illTyped
+
+def cAssign (ρ : Rho) (N fuel : Nat) (Ω : St) (x : Var) (ps : List Step) (w : Val) : Except Err St :=
+  match cAccess ρ N fuel Ω .assign x ps with
+  | .error e => .error e
+  | .ok Ω₁ =>
+    match cFollow (Ω₁ x) ps with
+    | .error e => .error e
+    | .ok old =>
+      match old with
+      | .borrow l _ =>
+        match cEndL ρ N Ω₁ l with
+        | .ok Ω₂ => setPlace Ω₂ x ps w
+        | .error e => .error e
+      | _ => if (loans old).any (live N Ω₁) then .error .assignOverLoans else setPlace Ω₁ x ps w
+
+theorem setPlace_err (Ω : St) (x : Var) (ps : List Step) (w : Val) (e : Err)
+    (h : setPlace Ω x ps w = .error e) : e = .illTyped := by
+  unfold setPlace at h
+  split at h
+  · cases h
+  · injection h with h; exact h.symm
+
+theorem cAssign_overLoans (ρ : Rho) (N fuel : Nat) (Ω : St) (x : Var) (ps : List Step) (w : Val)
+    (h : cAssign ρ N fuel Ω x ps w = .error .assignOverLoans) :
+    ∃ (Ω₁ : St) (old : Val), cFollow (Ω₁ x) ps = .ok old ∧ noBorrow old = false := by
+  unfold cAssign at h
+  split at h
+  · next e ha =>
+    have hee : e = .assignOverLoans := by injection h
+    subst hee
+    rcases cAccess_err ρ N fuel Ω .assign x ps _ ha with h' | ⟨h', _⟩ <;> cases h'
+  · next Ω₁ ha =>
+    have hpost := (cAccess_ok ρ N fuel Ω .assign x ps Ω₁ ha).2
+    split at h
+    · next e hf =>
+      have hee : e = .assignOverLoans := by injection h
+      subst hee
+      rcases cFollow_err_cases ps _ _ hf with h' | h' | h' <;> cases h'
+    · next old hf =>
+      split at h
+      · split at h
+        · have := setPlace_err _ _ _ _ _ h; cases this
+        · next e he =>
+          have hee : e = .assignOverLoans := by injection h
+          subst hee
+          have := (cEndL_err ρ N Ω₁ _ _ he).1; cases this
+      · next hnb =>
+        split at h
+        · next hany =>
+          refine ⟨Ω₁, old, hf, ?_⟩
+          cases hnb' : noBorrow old
+          · rfl
+          · exfalso
+            have hfo := cFollow_follow ps _ old hf
+            simp only [accessStep] at hpost
+            split at hpost
+            · cases hpost
+            · simp only [hfo] at hpost
+              rw [ownedLoans_noBorrow old hnb'] at hpost
+              have hnone := List.find?_eq_none.mp hpost
+              obtain ⟨l, hl, hlive⟩ := List.any_eq_true.mp hany
+              exact hnone l hl hlive
+        · have := setPlace_err _ _ _ _ _ h; cases this
+
+/-! ### [Drop]: a borrower in flight, and why reflection needs injectivity
+
+The runtime refuses a drop when a live loan in the dropped value is held by a value in flight. The
+reference sees no loans, only meanings: it refuses a drop of a place whose meaning *depends* on a
+label held in flight. These agree because a loan always sits where the meaning depends on it:
+in pairs, behind a borrow, or as the hole of a chain of backward computations, each injective.
+With a constant backward function, a fill's meaning would ignore its hole while the runtime still
+saw the loan, and the reflection would fail. So the reflection uses R. -/
+
+/-- Where a hole may sit: a chain of backward computations over numerals. -/
+inductive Hole : Val → Prop
+  | loan (l : Label) : Hole (.loan l)
+  | num (n : Nat) : Hole (.num n)
+  | gBack (d : Nat) {h : Val} : Hole h → Hole (.gBack (.num d) h)
+
+/-- The runtime shape of values (part of well-formedness). -/
+inductive Shaped : Val → Prop
+  | num (n : Nat) : Shaped (.num n)
+  | bot : Shaped .bot
+  | loan (l : Label) : Shaped (.loan l)
+  | pair {a b : Val} : Shaped a → Shaped b → Shaped (.pair a b)
+  | borrow (l : Label) {v : Val} : Shaped v → Shaped (.borrow l v)
+  | gBack (d : Nat) {h : Val} : Hole h → Shaped (.gBack (.num d) h)
+
+theorem hole_inj (ρ : Rho) (l : Label) : ∀ {h : Val}, Hole h → l ∈ loans h → ∀ f,
+    ∃ φ : Nat → Nat, (∀ a b, φ a = φ b → a = b) ∧ ∀ n, ev ρ (fupd f l (.num n)) h = .num (φ n) := by
+  intro h hh
+  induction hh with
+  | loan l' =>
+    intro hl f
+    have : l = l' := by simpa [loans] using hl
+    subst this
+    exact ⟨id, fun _ _ e => e, fun n => by simp [ev, fupd]⟩
+  | num _ => intro hl; simp [loans] at hl
+  | gBack d _ ih =>
+    intro hl f
+    obtain ⟨φ, hφ, hev⟩ := ih (by simpa [loans] using hl) f
+    refine ⟨fun n => (ρ.g d).val.2 (φ n), fun a b e => hφ a b ((ρ.g d).property _ _ e), fun n => ?_⟩
+    simp only [ev, hev, backSV]
+
+/-- In a shaped value, the meaning is injective in every loan it holds. -/
+theorem shaped_dep (ρ : Rho) (l : Label) : ∀ {v : Val}, Shaped v → l ∈ loans v → ∀ f,
+    ∀ a b : Nat, ev ρ (fupd f l (.num a)) v = ev ρ (fupd f l (.num b)) v → a = b := by
+  intro v hv
+  induction hv with
+  | num _ => intro hl; simp [loans] at hl
+  | bot => intro hl; simp [loans] at hl
+  | loan l' =>
+    intro hl f a b e
+    have : l = l' := by simpa [loans] using hl
+    subst this
+    simpa [ev, fupd] using e
+  | pair _ _ iha ihb =>
+    intro hl f a b e
+    simp only [ev, SV.pair.injEq] at e
+    rcases List.mem_append.mp hl with hl | hl
+    · exact iha hl f a b e.1
+    · exact ihb hl f a b e.2
+  | borrow _ _ ih => intro hl f a b e; exact ih hl f a b e
+  | gBack d hh =>
+    intro hl f a b e
+    obtain ⟨φ, hφ, hev⟩ := hole_inj ρ l hh (by simpa [loans] using hl) f
+    simp only [ev, hev, backSV, SV.num.injEq] at e
+    exact hφ a b ((ρ.g d).property _ _ e)
+
+/-- The reference refuses to drop `x` while its meaning depends on label `l`. -/
+def DropErr (Mn : Mean) (x : Var) (l : Label) : Prop :=
+  ∀ f, ∀ a b : Nat, Mn (fupd f l (.num a)) x = Mn (fupd f l (.num b)) x → a = b
+
+def cDropLoop (ρ : Rho) (N : Nat) (temp : Var → Bool) : Nat → St → Var → Except Err St
+  | 0, _, _ => .error .outOfFuel
+  | fuel + 1, Ω, x =>
+    match (loans (Ω x)).find? (live N Ω) with
+    | some l =>
+      match findBorrow N Ω l with
+      | some hv =>
+        if temp hv then .error .dropInFlight else
+        match cEndL ρ N Ω l with
+        | .ok Ω' => cDropLoop ρ N temp fuel Ω' x
+        | .error e => .error e
+      | none => .ok Ω
+    | none => .ok Ω
+
+/-- Error reflection for a drop meeting a borrower in flight: at a state below the start, the
+dropped place holds a live loan held in flight; if that state is shaped there, the reference
+refuses the drop too. -/
+theorem cDropLoop_inFlight (ρ : Rho) (N : Nat) (temp : Var → Bool) :
+    ∀ fuel Ω x, cDropLoop ρ N temp fuel Ω x = .error .dropInFlight →
+      ∃ Ω₁ l hv, Below (M ρ Ω₁) (M ρ Ω) ∧ l ∈ loans (Ω₁ x) ∧ findBorrow N Ω₁ l = some hv ∧
+        temp hv = true ∧ (Shaped (Ω₁ x) → DropErr (M ρ Ω₁) x l) := by
+  intro fuel
+  induction fuel with
+  | zero => intro _ _ h; simp only [cDropLoop] at h; cases h
+  | succ fuel ih =>
+    intro Ω x h
+    simp only [cDropLoop] at h
+    split at h
+    · next l hl =>
+      split at h
+      · next hv hf =>
+        split at h
+        · next ht =>
+          exact ⟨Ω, l, hv, Below.refl _, List.mem_of_find?_eq_some hl, hf, ht,
+            fun hs f a b e => shaped_dep ρ l hs (List.mem_of_find?_eq_some hl) f a b e⟩
+        · split at h
+          · next Ω' h₁ =>
+            obtain ⟨Ω₁, l', hv', hb, h1, h2, h3, h4⟩ := ih _ _ h
+            exact ⟨Ω₁, l', hv', hb.trans (cEndL_ok ρ N Ω Ω' _ h₁), h1, h2, h3, h4⟩
+          · next e he =>
+            have hee : e = .dropInFlight := by injection h
+            subst hee
+            have := (cEndL_err ρ N Ω _ _ he).1; cases this
+      · cases h
+    · cases h
+
+/-! ### A call of the concrete `σ_g`
+
+`r := g(t)`, `t` holding `borrow_l u`: at runtime `u` must be a numeral `d`. The forward value is
+computed at once, and the lent place gets the pending backward computation over the hole `k`. -/
+
+def cCall (ρ : Rho) (Ω : St) (t r : Var) (l k : Label) : Except Err St :=
+  match Ω t with
+  | .borrow l' (.num d) =>
+    if l' = l then
+      .ok (upd (upd (substSt Ω l (.gBack (.num d) (.loan k))) t .bot) r (.borrow k (.num (ρ.g d).val.1)))
+    else .error .illTyped
+  | .borrow _ u => if wholeV u then .error .illTyped else .error .readBot
+  | _ => .error .illTyped
+
+/-- The reference call: apply `σ_g`'s meaning at what `t` reads. -/
+def semCall (ρ : Rho) (Mn : Mean) (t r : Var) (l k : Label) : Mean := fun f =>
+  oupd (oupd (Mn (fupd f l (backSV ρ (Mn f t) (f k)))) t .bot) r (fwdSV ρ (Mn f t))
+
+/-- A successful call means the reference call. -/
+theorem cCall_ok (ρ : Rho) (Ω Ω' : St) (t r : Var) (l k : Label) (htr : t ≠ r)
+    (h : cCall ρ Ω t r l k = .ok Ω') : M ρ Ω' = semCall ρ (M ρ Ω) t r l k := by
+  unfold cCall at h
+  split at h
+  · next l' d ht =>
+    split at h
+    · next hl =>
+      subst hl
+      cases h
+      funext f z
+      have hMt : M ρ Ω f t = .num d := by simp [M, ht, ev]
+      simp only [semCall, hMt, oupd]
+      by_cases hr : z = r
+      · subst hr; simp [M, upd, ev, fwdSV]
+      · by_cases hzt : z = t
+        · subst hzt; simp [M, upd, ev, hr]
+        · simp only [hr, hzt, if_false, M, upd, substSt]
+          rw [ev_subst ρ f l' _ (Ω z)]
+          rfl
+    · cases h
+  · split at h <;> cases h
+  · cases h
+
+/-- Error reflection for a call: a moved-out argument means no information, so the reference
+call errs too; otherwise the error is ill-typed. -/
+theorem cCall_err (ρ : Rho) (Ω : St) (t r : Var) (l k : Label) (e : Err)
+    (h : cCall ρ Ω t r l k = .error e) :
+    e = .illTyped ∨ (e = .readBot ∧ ∀ f, hasBot (M ρ Ω f t) = true) := by
+  unfold cCall at h
+  split at h
+  · split at h
+    · cases h
+    · injection h with h; exact Or.inl h.symm
+  · next l' u _ _ =>
+    have ht : Ω t = .borrow l' u := by assumption
+    split at h
+    · injection h with h; exact Or.inl h.symm
+    · next hw =>
+      injection h with h
+      refine Or.inr ⟨h.symm, fun f => ?_⟩
+      simp only [M, ht, ev]
+      exact notWhole_hasBot ρ f u (by simpa using hw)
+  · injection h with h; exact Or.inl h.symm
