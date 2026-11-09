@@ -177,7 +177,6 @@ noncomputable def observation (r : Res) (s : SState) : List Sem :=
   let s := s.liveLabels.foldl SState.endLabel s
   r.1 noFuture :: s.positions.map fun p => s.valAt p noFuture
 
-noncomputable def fixHole (_ : RunCtx) (_ : Assignment) (t : Term) : SM Res := sorry
 
 /-- A constructor value from its parameters' and fields' meanings (`DataModel.ctorM`); with no
 parameters written, they are read off the expected type (D8). -/
@@ -280,7 +279,69 @@ noncomputable def run (hint : TyM) : Term → SM Res
       | 3 => .ty2 (piCar2 ps [] fun acc => match out with | .data B => B acc | .ref U => U acc)
       | _ => .err
     some ((fun _ => .ty T, ⟨.univ l, some (ps, out), none⟩), s)
-  | .fix f hs ds c d b => fixHole K ρ (.fix f hs ds c d b)
+  | .fix self hs ds c dec body => fun s =>
+    -- [Closure] (D51, D53, D80): a closure means a function on its annotated domain, read off
+    -- the reference run of its body in the forming frame extended by `self` and the parameters
+    -- (the body's layout `[caps…, self, x̄]`; the captures are the forming frame's bindings, read
+    -- in place). A recursive `fix` means its guarded fixpoint by stages (docs/24 §4): stage 0
+    -- binds `self` to `err`, stage `k + 1` to stage `k`'s closure, and the function at arguments
+    -- whose decreasing argument has rank `r` is stage `r + 1`; so a call that does not decrease
+    -- reaches stage 0 and means `err`, and `mkTele` then makes the closure mean `err`.
+    let ps := runDoms s ds
+    let out : PiOut := match c with
+      | .ref U => .ref fun acc =>
+        match run .err U (extendBy s acc) with
+        | some ((v, _), _) => (v noFuture).asTy
+        | none => .err
+      | c => .data fun acc =>
+        match run .err c (extendBy s acc) with
+        | some ((v, _), _) => (v noFuture).asTy
+        | none => .err
+    let piT := piCar0 ps [] PUnit out
+    let start := s.nextLoan
+    let base := ((s.env.getLast?).map (·.binds.length)).getD 0 + 1
+    -- the body at arguments, with `self` meaning `selfM`
+    let bodyAt (selfM : Sem) (args : List Sem) : Option BodyOut :=
+      let s₁ := s.pushBind { ty := .ty0 piT, val := fun _ => selfM }
+      let s₂ := ((args.zip ps).foldl (fun (sa : SState × List Sem) (ap : Sem × PiParam) =>
+        (sa.1.pushBind { ty := ap.2.dom sa.2, val := fun _ => ap.1 }, sa.2 ++ [ap.1])) (s₁, [])).1
+      let codT := match out with | .data B => B args | .ref U => U args
+      match run codT body s₂ with
+      | some ((r, R), s₃) =>
+        -- popping the frame ends the borrows the body made; a borrow parameter's final content
+        -- is what its holder then holds (writes through it changed the holder's content)
+        let s₄ := (s₃.liveLabels.filter (· ≥ start)).foldl SState.endLabel s₃
+        let finals := (List.range ds.length).filterMap fun i =>
+          if ((ps[i]?).map (·.isRef)).getD false then some (s₄.valAt (.bind s₄.topIdx (base + i))) else none
+        some ⟨r, finals, R.label⟩
+      | none => none
+    let closureOf (g : List Sem → Option BodyOut) : Sem :=
+      match mkTele ps [] PUnit (fun fs => some ((), fs)) out g with
+      | some F => .el0 piT F
+      | none => .err
+    let stage : Nat → List Sem → Option BodyOut :=
+      Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none)
+        (fun _ gk => bodyAt (closureOf gk))
+    -- the rank of the decreasing argument (`by xⱼ`), through its data carrier
+    let rankOf (args : List Sem) : Nat := match dec with
+      | some j =>
+        match args[j]?, (ps[j]?).map (·.dom (args.take j)) with
+        | some a, some T =>
+          match T.dataOf K.dm K.Γ with
+          | some (d, ps') => match a.as (K.dm.car d ps') with | some x => K.dm.rank x | none => 0
+          | none => match a.asNat with | some n => n | none => 0
+        | _, _ => 0
+      | none => 0
+    let g : List Sem → Option BodyOut := match dec with
+      | some _ => fun args => stage (rankOf args + 1) args
+      | none => bodyAt .err
+    -- forming the closure moves the captured places whose declared readings are not copy (D80)
+    let s' := (Term.freeVars (.fix self hs ds c dec body)).foldl (fun s i =>
+      if K.D.copy (K.D.placeDecl (scopeOf s) (.var i)) then s
+      else match s.varPos i with
+        | some pos => s.setAt pos fun _ => .moved
+        | none => s) s
+    some ((fun _ => closureOf g, ⟨.ty0 piT, some (ps, out), none⟩), s')
   | .call f args hd => fun s =>
     let body : SM Res := do
       let fv ← run .err f
