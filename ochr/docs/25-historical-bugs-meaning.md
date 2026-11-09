@@ -90,7 +90,7 @@ Written on 2026-11-06 by a fork of the session that wrote `docs/18`, at the user
 
 **Lemma.** Monotonicity of a computing step over ⊥ (reading (ii)): at `n = 1` the hypothesis is `5 = 5` and the goal `5 = 6`, so identifying the two ⊥-holding types is not ⊑-monotone. **Fails.** Not (a) or (b): every step keeps meaning up to ⊑, and nothing is stored at a wrong type; the leaf's conversion check accepts.
 
-**Fixed (lane `bot-conv`, D83, not merged):** [Conv-bot], a value containing ⊥ is convertible with nothing, itself included. **Holds.**
+**Fixed (D83, on main at `98e711ed`):** [Conv-bot], a value containing ⊥ is convertible with nothing, itself included. **Holds.**
 
 **Caught by:** (Mono), for conversion.
 
@@ -98,7 +98,7 @@ Written on 2026-11-06 by a fork of the session that wrote `docs/18`, at the user
 - `TrBotBoom`, through `trans`: it composes `5 = ⊥` and `⊥ = 6` into `5 = 6`, because conversion at the middle point treats the two ⊥ as equal. [Conv-bot] covers it.
 - `RwBotBoom`, through `rewrite`, independent of conversion: [Rewrite] finds the occurrences of a side with `==` (`substV`), so `rewrite ← h` with `h : Eq(Nat, ⊥, 5)` put `5` in place of another observation's ⊥. The fix makes a side holding ⊥ occur nowhere.
 
-So (Mono) has to cover [Rewrite]'s occurrence search as well as conversion: it is a separate code path. The audit also argues that the generalisation records, which compare sealed programs by text, are safe, since ⊥ reaches a data-valued sealed program only inside an erased statement. The fix is D83 on branch `bot-conv`, not merged, awaiting the user; the bug is open on main.
+So (Mono) has to cover [Rewrite]'s occurrence search as well as conversion: it is a separate code path. The audit also argues that the generalisation records, which compare sealed programs by text, are safe, since ⊥ reaches a data-valued sealed program only inside an erased statement. The fix, D83, is on main at `98e711ed`, approved by the user: [Conv-bot], and [Rewrite] finds no occurrence of a value holding ⊥. Its known incompleteness: a type holding ⊥ is not convertible with itself (`SelfBot`).
 
 ## Other soundness guards, treated cheaply (from `ochr/core/notes/machine-ablation.md`)
 
@@ -120,7 +120,7 @@ So (Mono) has to cover [Rewrite]'s occurrence search as well as conversion: it i
 | D78 `BoomCapSplit` | `recCheck`'s identification of recursive calls | [Rec]'s accepting direction, part of membership (the guard never fires); (a) holds | fails | holds | (b), through the guard (first classified under the invariant) |
 | D79 EtaBoom | `exitWorld` keeping an η-refinement | (a), coverage | fails | holds | (a), path conditions |
 | fuzz 11014 MovedBothSides | `mkEqM` on ⊥ | (a) under (i), (Mono) under (ii) | fails | holds | (a) or (Mono), depending on ⊥ |
-| `Same`/`Boom`, the fifth closed `False`, by three routes: conversion, `trans` (`TrBotBoom`), `rewrite` (`RwBotBoom`) (found after this test, `docs/28`) | `conv`'s identity test, and [Rewrite]'s occurrence search, on values holding ⊥ | (Mono) for conversion and for [Rewrite]: two ⊥ may stand for different values | fails (open on main) | holds under D83 (branch `bot-conv`, `688e712d`, not merged): [Conv-bot], and no occurrence of a side holding ⊥ | (Mono), not (a) or (b) |
+| `Same`/`Boom`, the fifth closed `False`, by three routes: conversion, `trans` (`TrBotBoom`), `rewrite` (`RwBotBoom`) (found after this test, `docs/28`) | `conv`'s identity test, and [Rewrite]'s occurrence search, on values holding ⊥ | (Mono) for conversion and for [Rewrite]: two ⊥ may stand for different values | fails (before D83) | holds under D83 (`98e711ed`): [Conv-bot], and no occurrence of a value holding ⊥ | (Mono), not (a) or (b) |
 
 ## Verdict
 
