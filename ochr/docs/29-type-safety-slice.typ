@@ -193,7 +193,7 @@
     - D84 makes that lemma's half about moved places exact. Two probes aimed at its likeliest failure (`Unit` lenders) are rejected by the checker, as the lemma predicts.
   - *The rest.*
     - Erasure holds by construction (P2, D68).
-    - Recursion by name terminates by [Rec] and guarded recursion. A call through a function value needs a realizability relation (docs/18's Q6), which brings back the old question of good ground values, but only its predicative part, since proofs are erased.
+    - Recursion by name terminates by [Rec] and guarded recursion. A call through a function value needs a realizability relation (realizability for calls through function values, docs/18 Q4), which brings back the old question of good ground values, but only its predicative part, since proofs are erased.
     - Well-formedness at runtime is simpler than at checking time: there are no sealed programs, so there are no inert loans.
 ]))
 #v(0.4em)
@@ -400,7 +400,7 @@ So the erased run is at least as defined as the machine's, and @target-safe is s
 
 With it, every call in a closed run terminates. A recursive call does so by induction on rank. A call of an earlier global, a closure, or a function parameter does so by @lem-real. That is why @target-safe asks for arguments built by accepted code: they realize their meanings, and arbitrary closures need not.
 
-*Status.* Recursion by name: #s-paper, from [Rec] and docs/24. Higher-order calls: reduced to @lem-real, which is the classic Tait–Girard argument and is not done. It is docs/18's Q6 (realizability for calls through function values): the old question of good ground values, returning only for type safety and only in its predicative part. Runtime erases proofs, so impredicative `Prop` never enters the relation. Types computed by code (`Cells(E, n)`) are handled as docs/24 handles them, by recursion on terms, not on types. docs/24 showed the model needs no pairs. Realizability does, at universes: the pairs return here, but as a relation on runtime values, not as a second notion of "good".
+*Status.* Recursion by name: #s-paper, from [Rec] and docs/24. Higher-order calls: reduced to @lem-real, which is the classic Tait–Girard argument and is not done. It is realizability for calls through function values (docs/18 Q4): the old question of good ground values, returning only for type safety and only in its predicative part. Runtime erases proofs, so impredicative `Prop` never enters the relation. Types computed by code (`Cells(E, n)`) are handled as docs/24 handles them, by recursion on terms, not on types. docs/24 showed the model needs no pairs. Realizability does, at universes: the pairs return here, but as a relation on runtime values, not as a second notion of "good".
 
 = Well-formedness at runtime <sec-wf>
 
@@ -464,6 +464,6 @@ The frame property is the lemma that a call's run touches only its own frame and
 
 + *Type safety is sharpened.* The erased run, which skips statements and makes `J` its transported term, terminates, never errs or sticks, returns live borrows, and means what the reference run says, at every closed call whose function arguments are built by accepted code and whose proof parameters are true.
 + *Error reflection splits.* The machine's 140 error sites fall into four families. Value errors reflect to the reference run, since at a closed state values mean themselves. Borrow errors reflect to it too, operation by operation, using (T4) injectivity (Lean), except at one-element types, where a loan sits that no meaning depends on. There they reflect to the checker's derivation, which is at least as strict as the closed run on borrow structure (@lem-shape). Static and typing errors are unreachable, and internal assertions are invariants.
-+ *At runtime `J` returns its transported term* (D85, docs/18's Q5), which is what erasure means. It is sound by membership, reads nothing, and is the one clause erasure adds to the modes lemma. Erasure otherwise holds by construction (P2, D55, D68).
-+ *Termination.* Recursion by name terminates by [Rec] and guarded recursion. Calls through function values need a realizability relation (docs/18's Q6), for type safety only, and predicative because proofs are erased. Not done.
++ *At runtime `J` returns its transported term* (D85, docs/18 §4.3.6), which is what erasure means. It is sound by membership, reads nothing, and is the one clause erasure adds to the modes lemma. Erasure otherwise holds by construction (P2, D55, D68).
++ *Termination.* Recursion by name terminates by [Rec] and guarded recursion. Calls through function values need a realizability relation (realizability, docs/18 Q4), for type safety only, and predicative because proofs are erased. Not done.
 + *Well-formedness at runtime* is (WF1)–(WF7), with no inert loans. D84 makes moves exact between the generic call and the closed run. Probes of the likeliest gap (`Unit` lenders) are rejected as predicted.
