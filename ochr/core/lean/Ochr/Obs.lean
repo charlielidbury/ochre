@@ -142,7 +142,6 @@ decreasing_by
 assigned, or rooted at a borrow-typed variable contribute their owners: `{x}` for a
 place rooted at an owned `x`, `owners(ℓ)` for one rooted at a variable holding
 `borrow_ℓ`, only when the variable is passed whole, not when it is only read through (D68).
-D84: also every owned, non-proof variable a term reads (the read may move it), last.
 
 The owners are listed in the order the terms first write or borrow them, then those only
 reached through a borrow-typed variable, not in Ω's order: closing off a match re-orders Ω (a
@@ -163,17 +162,14 @@ def footprint (env : Env) (ts : List Term) : List Pos := Id.run do
           let isRefTy := match b.ty with | some (.tRef _) => true | _ => false
           let ownersOfRoot : List Pos := match b.val with
             | .borrow m _ => owners env m
-            -- a place moved out is still observed (D84: ⊥ against ⊥ or a value)
+            -- D68: a place moved out is still observed (its equation is stuck): whether a stuck
+            -- block's arm moved it differs between an abstract and a ground run
             | .bot => if !isRefTy then [pos] else []
             | _ => [pos]
-          -- D68: places written or borrowed are observed: a borrow variable passed whole (its
-          -- callee may write through it) counts; one only read through (`*x`) does not. D84: so is
-          -- an owned place a side reads, which the read may move (moves are definite, so `F(x)`
-          -- and `F(y)` differ: a continuation reading `y` runs after one and not the other); a
-          -- proof is never moved
+          -- D68: only places written or borrowed are observed: a borrow variable passed whole (its
+          -- callee may write through it) counts; one only read through (`*x`) does not
           let counts := if writes then k == .borrow || k == .assign
-            else ((isRefTy || b.val.isBorrow) && (k == .read && q matches .var _)) ||
-              (!isRefTy && !b.val.isBorrow && !b.proof && k == .read)
+            else (isRefTy || b.val.isBorrow) && (k == .read && q matches .var _)
           if counts then
             for q in ownersOfRoot do
               unless out.contains q do out := out ++ [q]
