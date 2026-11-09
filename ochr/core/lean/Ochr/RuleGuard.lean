@@ -1,5 +1,6 @@
 import Ochr.Notation
 import Ochr.Rules
+import Ochr.Runtime
 
 /-!
 # The rule guard: the paper's rule names against the checker's
@@ -53,7 +54,7 @@ def expectedIssues : List String := [
 
 /-- Rules already tagged with a `fire` call. -/
 def fired : List Rule := [.Field, .Open, .Repack, .Return, .IndDecl, .EqInj, .EqStuck, .Access, .Copy, .Read,
-  .Close, .Proj, .ConvBot]
+  .Close, .Proj, .ConvBot, .JRun]
 
 /-- Rules and extensions not yet tagged with a `fire` call (the tagging is in progress). -/
 def notYetFired : List String :=

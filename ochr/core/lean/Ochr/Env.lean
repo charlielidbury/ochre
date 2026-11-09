@@ -188,6 +188,12 @@ structure MState where
   typing : Bool := false                  -- the term being evaluated is part of the checked program (`eval true`),
                                           -- where D64's [Repack] points are checked
   locs : Locs := {}                       -- the editor: where the declaration's terms are (`located`)
+  /-- D85: the run is the erased program's, a closed call of accepted code (`Ochr/Runtime.lean`,
+  `runCall`, the one place that sets it), where `J` is its transported term ([J-run]). The checker
+  never sets it: every state it starts from (`checkDefs`, `globalsAfterFrom`) has it off, so its
+  runs, its untyped ones included (callee bodies, [Seal]'s re-runs, private copies), keep [J] and
+  [J-stuck]. -/
+  runtime : Bool := false
 deriving Inhabited
 
 /-- What the editor shows on hover at a located term, for one check of it (`Located.note`). -/

@@ -63,6 +63,7 @@ The checker has no rule switches (D70): which rules it applies is internal, and 
 | `Ochr/Surface.lean`, `Ochr/Notation.lean` | named surface terms, their resolution, blocks (`Block`, `uses`, name clashes), the `ochr` command, which checks the block when it is elaborated (`checkBlock`) |
 | `Ochr/Run.lean` | running a block after its library (`libWith`, `runWith`), with the library block `Prelude` a parameter, so the `ochr` command can run it |
 | `Ochr/Test.lean` | the same with `Prelude` (`libOf`, `run`), verdict tables, traces |
+| `Ochr/Runtime.lean` | the runtime (D85), not part of the checker: `runCall` runs a closed call of an accepted global in runtime mode, where `J` is its transported term ([J-run]); no module the checker depends on imports it |
 | `Ochr/Examples/Bool.lean` … `Fixtures.lean`, `Array.lean` | the library, one block per topic, each using only what it needs (`Ochr/Examples/README.md`) |
 | `Ochr/Examples/Numbers.lean` … `BorrowTypes.lean` | the example programs, as a tour of the language (next section) |
 | `Ochr/Examples/ArrayBench.lean`, `Quicksort.lean` | the arrays library explained, with its benchmarks (`ArrayBench`; the hash-map benchmark is the case study `HashMap`); in-place quicksort proved sorted and a permutation (`notes/arrays-library.md`) |
@@ -119,6 +120,7 @@ Read in order (`Ochr/Examples/README.md`), the files teach the whole language: t
 | §3 [Close] | `closeCall` (asserts the precondition), `declKind` (the table's row, from the declared codomain, v1.7) |
 | §3 [Seal] | `nfSealed` (the head call is `Term.call _ _ true` and is not eligible for [Close], a neutral-headed one included, D39); `substV` re-normalises after refinement or [End] |
 | §3 stuck blocks | `splitArmsThenClose` (arms, annotation, whether every arm is a proof), `closeOffMatch` (Rust-style captures on maximal place prefixes; erased iff every arm is a proof, v1.7) |
+| §3 runtime, [J-run] | `runCall`, `closedCall` (`Ochr/Runtime.lean`) set `MState.runtime`; `eval` (`.prim "J"`) reads it in an untyped run (D85) |
 | §4 owners, footprint | `owners`, `footprint` (`Ochr/Obs.lean`) |
 | §4 observation, `Id` | `observe`, `idType` (the conjunction over the result and the observed places, `andList`, D52); a borrow result in `convFn` is observed through a fresh value (D38) |
 | §4 `Eq` computes | `mkEqM` (reflexivity to `True`; the same constructor to the `And` of the equations between its fields at their instantiated types, D52; distinct constructors to `False`, D47), `mkAnd`/`mkTInd` (`And(True, P) ≡ P ≡ And(P, True)`, `Ochr/Basic.lean`), re-applied by `substV` |

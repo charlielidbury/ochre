@@ -1,6 +1,7 @@
 import Ochr.Examples.Bool
 import Ochr.Examples.Nat
 import Ochr.Examples.Fixtures
+import Ochr.Runtime
 
 /-! # 5. Observational equality: `Id` and `Eq`
 
@@ -261,6 +262,73 @@ ochr BotConv uses Nats {
   ("TrBotBoom", "unknown constant TrBot"),
   ("RwBot", "the body of RwBot has type ⊤, but the goal is Eq(Nat, ⊥, 5) (a value holding ⊥"),
   ("RwBotBoom", "unknown constant RwBot")]
+
+/-! ## `J` at runtime (D85)
+
+The checker computes `J(A, a, b, P, h, t)` to `t` only when `a` and `b` are convertible ([J]),
+and is otherwise stuck ([J-stuck]), in all its runs. Functions are convertible when their generic
+calls are, so two functions with one graph and different code are not: `IdA` and `IdB` both mean
+the identity on `Nat`, but at an unknown `σ` one returns `σ` and the other is stuck,
+`⌈IdB(σ)⌉`. `CastFn` is accepted (its generic call closes the `J` off, [T-J-stuck]), and at the
+closed call `CastFn(IdA, IdB, ⋆, MkFnBox(0))`, whose equation is true though not provable, the
+checker's rule is stuck. The runtime (`Ochr/Runtime.lean`) runs the erased program, where `J` is
+`t` unconditionally ([J-run]): its endpoints, motive and proof are statements, which the erased
+program does not have. That is sound because the proof parameters' types are true, so the
+endpoints mean the same (docs/29, Lean: `Model.Safety.castRT_safe`). The checker never runs in
+runtime mode, so its verdicts here are those of [J] and [J-stuck]. -/
+
+ochr RuntimeJ {
+  inductive FnBox (k : Π(n : Nat). Nat) := MkFnBox(x : Nat)
+  def IdA (n : Nat) : Nat := n
+  def IdB (n : Nat) : Nat := match n { Z => Z, S m => S(m) }
+  -- the two encodings are not convertible, so `refl` does not prove them equal
+  reject def IdAB : Eq(Π(n : Nat). Nat, IdA, IdB) := refl
+  -- a cast along an equation between functions
+  def CastFn (f : Π(n : Nat). Nat) (g : Π(n : Nat). Nat) (h : Eq(Π(n : Nat). Nat, f, g)) (b : FnBox(f)) : FnBox(g) :=
+    J(Π(n : Nat). Nat, f, g, λ(k : Π(n : Nat). Nat) : Type => FnBox(k), h, b)
+  -- the checker runs `CastFn`'s body with its own rule: at endpoints that are not convertible
+  -- the `J` is stuck and the call closes off, so `refl` does not prove the cast is `t` ...
+  reject def CastFnRuns (h : Eq(Π(n : Nat). Nat, IdA, IdB)) :
+      Id(FnBox(IdB), CastFn(IdA, IdB, h, MkFnBox[IdA](0)), MkFnBox[IdB](0)) := refl
+  -- ... and at convertible endpoints it computes ([J])
+  def CastFnSame : Id(FnBox(IdA), CastFn(IdA, IdA, refl, MkFnBox[IdA](0)), MkFnBox[IdA](0)) := refl
+}
+
+#guard (run "RuntimeJ" RuntimeJ).rejectedWith [
+  ("IdAB", "the body of IdAB has type ⊤, but the goal is Eq(Π(n : Nat). Nat, IdA, IdB)"),
+  ("CastFnRuns", "the body of CastFnRuns has type ⊤, but the goal is")]
+
+namespace Ochr.RuntimeJTest
+open Ochr Ochr.Surface
+
+/-- `RuntimeJ`'s globals and inductive types, after checking it (its library first). -/
+def sig : List GDef × List IndDecl :=
+  let p := Ochr.Test.libOf {} 2000000 RuntimeJ ++ RuntimeJ.decls
+  globalsAfter {} (p.filterMap fun d => (resolveProgram p d).toOption)
+
+def box (f : String) : Value := .ind "FnBox" 0 ⟨"MkFnBox"⟩ [.gfn f] [.zero]
+
+def result? : Outcome Value → Option Value
+  | .ok v _ => some v
+  | _ => none
+
+/-- `CastFn(f, g, ⋆, MkFnBox(0))`, the proof erased, by the runtime (`runtime`) or by the
+checker's own untyped run. -/
+def castFn (runtime : Bool) (f g : String) : Outcome Value :=
+  closedCall sig.1 sig.2 "CastFn" [.gfn f, .gfn g, .proof, box f] runtime
+
+-- the runtime's entry point: `J` returns the transported term ([J-run])
+#guard result? (runCall sig.1 sig.2 "CastFn" [.gfn "IdA", .gfn "IdB", .proof, box "IdA"]) == some (box "IdA")
+-- twin: the same call under the checker's rule is stuck at `J` ([J-stuck]), so it closes off
+-- ([Close]): its result is the sealed program of the call
+#guard match result? (castFn false "IdA" "IdB") with
+  | some (.sealed (.call (.val (.gfn "CastFn")) _ _)) => true
+  | _ => false
+-- at convertible endpoints the two rules agree ([J])
+#guard result? (castFn false "IdA" "IdA") == some (box "IdA")
+#guard result? (castFn true "IdA" "IdA") == some (box "IdA")
+
+end Ochr.RuntimeJTest
 
 
 /-! ## Rewriting

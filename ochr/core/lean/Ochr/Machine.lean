@@ -2079,6 +2079,14 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
   | .prim "J" [A, a, b, P, h, u] =>
     -- J(A, a, b, P, h, t) : P(b) for h : Eq A a b and t : P(a) (endpoints explicit, D23)
     if !typed then
+      -- D85 [J-run]: in the erased program `J` is `t`, unconditionally. Its endpoints, motive
+      -- and proof are statements, which the erased program does not have, so nothing is run or
+      -- compared. A mode of the run (`MState.runtime`), set only by the runtime's entry point
+      -- (`Ochr/Runtime.lean`), never by the checker, whose untyped runs keep [J] and [J-stuck]
+      if (← get).runtime then
+        fire .JRun
+        demand want
+        return ← eval fuel' false u
       if !(← jErased fuel' P) then
         -- its endpoints are erased positions, on private copies; `A`, `P` and `h`
         -- are never run by the machine (A.191)

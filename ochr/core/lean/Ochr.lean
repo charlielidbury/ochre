@@ -9,6 +9,7 @@ import Ochr.Located
 import Ochr.Decide
 import Ochr.Machine
 import Ochr.Check
+import Ochr.Runtime
 import Ochr.Surface
 import Ochr.Run
 import Ochr.Notation
