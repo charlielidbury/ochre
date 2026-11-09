@@ -660,5 +660,147 @@ theorem joinDrop_not_below (φ : Future) (t : Term) : ¬ Below (joinDrop K φ t 
 
 end JoinDropCounterexample
 
-end Ochr.Meaning
+/-! ## [Access] leaves nothing it depends on (`access_post`) -/
 
+private theorem filterMap_length_le {α β : Type _} (L : List α) (f g : α → Option β)
+    (h : ∀ x, g x = none ∨ g x = f x) : (L.filterMap g).length ≤ (L.filterMap f).length := by
+  induction L with
+  | nil => simp
+  | cons a L ih =>
+    rcases h a with ha | ha
+    · rw [List.filterMap_cons_none ha]
+      cases hf : f a <;> simp [hf] <;> omega
+    · simp only [List.filterMap_cons, ha]
+      cases f a <;> simp <;> omega
+
+private theorem filterMap_length_lt {α β : Type _} (L : List α) (f g : α → Option β)
+    (h : ∀ x, g x = none ∨ g x = f x) (x : α) (hx : x ∈ L) (hg : g x = none) (hf : f x ≠ none) :
+    (L.filterMap g).length < (L.filterMap f).length := by
+  induction L with
+  | nil => cases hx
+  | cons a L ih =>
+    have hle := filterMap_length_le L f g h
+    rcases List.mem_cons.mp hx with rfl | hx'
+    · rw [List.filterMap_cons_none hg]
+      obtain ⟨b, hb⟩ := Option.ne_none_iff_exists'.mp hf
+      rw [List.filterMap_cons_some hb]; simp; omega
+    · have := ih hx'
+      rcases h a with ha | ha
+      · rw [List.filterMap_cons_none ha]
+        cases hfa : f a <;> simp [hfa] <;> omega
+      · simp only [List.filterMap_cons, ha]
+        cases f a <;> simp <;> omega
+
+namespace SState
+
+theorem positions_endLabel (s : SState) (l : Nat) : (s.endLabel l).positions = s.positions := by
+  cases h : s.positions.find? (fun p => decide (s.shape p = some l)) with
+  | none => rw [endLabel_of_find_none s l h]
+  | some r => rw [endLabel_of_find s l r h, positions_mapVals, positions_withShape]
+
+theorem mem_liveLabels (s : SState) (l : Nat) : l ∈ s.liveLabels ↔ ∃ p ∈ s.positions, s.shape p = some l := by
+  simp [liveLabels, List.mem_filterMap]
+
+/-- A live label has a holder for [End] to find. -/
+theorem find_of_mem_liveLabels {s : SState} {l : Nat} (h : l ∈ s.liveLabels) :
+    ∃ r, s.positions.find? (fun p => decide (s.shape p = some l)) = some r := by
+  obtain ⟨q, hq, hql⟩ := (mem_liveLabels s l).mp h
+  cases hf : s.positions.find? (fun p => decide (s.shape p = some l)) with
+  | none => exact absurd (List.find?_eq_none.mp hf q hq) (by simp [hql])
+  | some r => exact ⟨r, rfl⟩
+
+/-- [End] never makes a label live. -/
+theorem liveLabels_endLabel_le (s : SState) (l : Nat) :
+    (s.endLabel l).liveLabels.length ≤ s.liveLabels.length := by
+  cases h : s.positions.find? (fun p => decide (s.shape p = some l)) with
+  | none => rw [endLabel_of_find_none s l h]; exact Nat.le_refl _
+  | some r =>
+    simp only [liveLabels, List.length_mergeSort, positions_endLabel, endLabel_shape s l r h]
+    exact filterMap_length_le _ _ _ fun p => by by_cases hp : p = r <;> simp [hp]
+
+/-- [End] of a live label leaves one live label fewer. -/
+theorem liveLabels_endLabel_lt (s : SState) (l : Nat) (hl : l ∈ s.liveLabels) :
+    (s.endLabel l).liveLabels.length < s.liveLabels.length := by
+  obtain ⟨r, h⟩ := find_of_mem_liveLabels hl
+  simp only [liveLabels, List.length_mergeSort, positions_endLabel, endLabel_shape s l r h]
+  exact filterMap_length_lt _ _ _ (fun p => by by_cases hp : p = r <;> simp [hp]) r
+    (List.mem_of_find?_eq_some h) (by simp) (by simp [shape_of_find h])
+
+theorem liveLabels_foldl_endLabel_le (ls : List Nat) (s : SState) :
+    (ls.foldl endLabel s).liveLabels.length ≤ s.liveLabels.length := by
+  induction ls generalizing s with
+  | nil => exact Nat.le_refl _
+  | cons l ls ih => exact Nat.le_trans (ih _) (liveLabels_endLabel_le s l)
+
+end SState
+
+namespace SState
+
+/-- One round of [Access] at `p`: end, in label order, every live label `p` depends on. -/
+noncomputable def accessRound (p : Pos) (s : SState) : SState :=
+  (s.liveLabels.filter fun l => decide (s.dependsOn p l)).foldl endLabel s
+
+theorem access_eq_rounds (s : SState) (p : Pos) :
+    s.access p = (List.range s.liveLabels.length).foldl (fun t _ => accessRound p t) s := rfl
+
+/-- A round either finds nothing to end, and then `p` depends on no live label, or ends at least
+one live label. -/
+theorem accessRound_cases (s : SState) (p : Pos) :
+    (accessRound p s = s ∧ ∀ l ∈ s.liveLabels, ¬ s.dependsOn p l) ∨
+      (accessRound p s).liveLabels.length < s.liveLabels.length := by
+  unfold accessRound
+  cases hF : s.liveLabels.filter (fun l => decide (s.dependsOn p l)) with
+  | nil =>
+    left
+    refine ⟨rfl, fun l hl hd => ?_⟩
+    have := List.filter_eq_nil_iff.mp hF l hl
+    simp [hd] at this
+  | cons l ls =>
+    right
+    have hl : l ∈ s.liveLabels := (List.mem_filter.mp (hF ▸ List.mem_cons_self ..)).1
+    exact Nat.lt_of_le_of_lt (liveLabels_foldl_endLabel_le ls _) (liveLabels_endLabel_lt s l hl)
+
+private theorem rounds_fixed (p : Pos) (t : SState) (ht : accessRound p t = t) :
+    ∀ ns : List Nat, ns.foldl (fun t _ => accessRound p t) t = t := by
+  intro ns
+  induction ns with
+  | nil => rfl
+  | cons _ ns ih => rw [List.foldl_cons, ht, ih]
+
+private theorem rounds_post (p : Pos) :
+    ∀ (ns : List Nat) (t : SState), t.liveLabels.length ≤ ns.length →
+      ∀ l ∈ (ns.foldl (fun t _ => accessRound p t) t).liveLabels,
+        ¬ (ns.foldl (fun t _ => accessRound p t) t).dependsOn p l := by
+  intro ns
+  induction ns with
+  | nil =>
+    intro t ht l hl
+    simp only [List.length_nil, Nat.le_zero, List.length_eq_zero_iff] at ht
+    simp [ht] at hl
+  | cons _ ns ih =>
+    intro t ht
+    rw [List.foldl_cons]
+    rcases accessRound_cases t p with ⟨hfix, hpost⟩ | hlt
+    · rw [hfix, rounds_fixed p t hfix]; exact hpost
+    · exact ih _ (by simp only [List.length_cons] at ht; omega)
+
+/-- **After [Access] at `p`, `p` depends on no live label** (the spine's form of the toy
+`access_post` and `read_post_live`, `Ochr/Model/State2.lean`). Each round ends every live label
+`p` depends on; a round that ends something leaves fewer live labels, and there are as many
+rounds as live labels at the start, so the last round finds nothing to end. Unconditional: no
+(WF1)–(WF3) is needed. Milestone 3: `Steps/Borrow.lean`'s `accessPath_step`/`accessInside_step`
+(their second conjunct: the accessed content no longer depends on a live label) and, through
+them, `readPlace_step` and `borrowPlace_step`.
+
+"Depends" is `Mean.dependsOn`, a change of one label's final content. That the content is then
+the same under *every* future needs, in addition, that it reads the future only at live labels
+(`SState.LocalTo`, as in `observation_const` below): a meaning can be unmoved by each single
+label and still read infinitely many. -/
+theorem access_post (s : SState) (p : Pos) :
+    ∀ l ∈ (s.access p).liveLabels, ¬ (s.access p).dependsOn p l := by
+  rw [access_eq_rounds]
+  exact rounds_post p _ s (by simp)
+
+end SState
+
+end Ochr.Meaning
