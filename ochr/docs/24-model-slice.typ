@@ -161,7 +161,7 @@
 #let guard(f, d) = $#f harpoon.tr_(#d)$
 
 #align(center, text(size: 16pt, weight: "bold")[The set model on a slice])
-#align(center, text(size: 11pt)[Test 0 of docs/23: the two circularities of Q9, and a well-founded model for a slice of Ochr])
+#align(center, text(size: 11pt)[Test 0 of docs/23: the two circularities of Q2, and a well-founded model for a slice of Ochr])
 #v(0.3em)
 #align(center, text(
   size: 9pt,
@@ -170,7 +170,7 @@
 #v(0.6em)
 
 #align(center, box(width: 90%, align(left)[
-  *Summary.* The set model exists on the slice. The slice is `Nat`; a type function defined by recursion (`Cells`); a type variable $A : ty("Type")_0$ with the injectivity relation $R$ at it; a function type returning a borrow; and a Π into `Prop` over `Type₀`. docs/18's Q9 gave two reasons why the model as written was not yet a definition, and neither is an obstacle. First, the meaning of a type and $R$ were defined in terms of each other. If the meaning of a function type is taken to be its _good_ functions only, $R$ at every type is the meaning itself. No pairing of a type with a set of good elements is needed, and the Lean encoding shows that pairing would in fact break conversion of functions. Second, "induction on the type" had nothing smaller to recurse on. The meaning is instead defined on _terms_, by recursion on the position of an item in the program, the structure of the term, and, inside a recursive function, the rank of its decreasing argument. A type computed by code then means what its code computes, and a type variable means what the environment gives it. Universe levels matter only for sizes, not for well-foundedness. One consequence changes docs/23 and docs/18: a recursive function has a meaning whether or not it passed [Rec], so [Rec] belongs to membership, not to well-formedness. Not covered: the meaning of the state (borrows, loans, holes, moved-out places) and therefore of `Id`, which test 2 must add (@sec-inherit).
+  *Summary.* The set model exists on the slice. The slice is `Nat`; a type function defined by recursion (`Cells`); a type variable $A : ty("Type")_0$ with the injectivity relation $R$ at it; a function type returning a borrow; and a Π into `Prop` over `Type₀`. docs/18's Q2 gave two reasons why the model as written was not yet a definition, and neither is an obstacle. First, the meaning of a type and $R$ were defined in terms of each other. If the meaning of a function type is taken to be its _good_ functions only, $R$ at every type is the meaning itself. No pairing of a type with a set of good elements is needed, and the Lean encoding shows that pairing would in fact break conversion of functions. Second, "induction on the type" had nothing smaller to recurse on. The meaning is instead defined on _terms_, by recursion on the position of an item in the program, the structure of the term, and, inside a recursive function, the rank of its decreasing argument. A type computed by code then means what its code computes, and a type variable means what the environment gives it. Universe levels matter only for sizes, not for well-foundedness. One consequence changes docs/23 and docs/18: a recursive function has a meaning whether or not it passed [Rec], so [Rec] belongs to membership, not to well-formedness. Not covered: the meaning of the state (borrows, loans, holes, moved-out places) and therefore of `Id`, which test 2 must add (@sec-inherit).
 ]))
 #v(0.4em)
 
@@ -179,7 +179,7 @@
 
 = What this test is <sec-intro>
 
-docs/23 chose to prove Ochr consistent by meaning preservation in the set model, and named the model itself as the main risk, shared with the superseded route. docs/18's open question Q9 says that the model as first written was not a valid definition, for two reasons, restated in @sec-circ. Test 0 asks whether a well-founded definition exists, on a slice chosen to contain each feature Q9 worries about:
+docs/23 chose to prove Ochr consistent by meaning preservation in the set model, and named the model itself as the main risk, shared with the superseded route. docs/18's open question Q2 says that the model as first written was not a valid definition, for two reasons, restated in @sec-circ. Test 0 asks whether a well-founded definition exists, on a slice chosen to contain each feature Q2 worries about:
 - `Nat`;
 - a type function defined by recursion on data, `Cells`;
 - a type variable $A : ty("Type")_0$, with the injectivity relation $R$ at it;
@@ -408,7 +408,7 @@ The third historical closed proof of `False` (docs/18, the recursive local funct
     stroke: none,
     inset: (x: 4pt, y: 3pt),
     table.hline(stroke: 0.5pt + ink),
-    [*docs/18's reason (Q9)*], [*where it went*],
+    [*docs/18's reason (Q2)*], [*where it went*],
     table.hline(stroke: 0.4pt + ink),
     [The meaning and $R$ are defined in terms of each other.], [One definition: a function type means its good functions (@sec-circ-r). $R_A = deno(A)$.],
     [$R$ is undefined at a type variable.], [A type variable means a set, and $R$ at it is that whole set (@sec-circ-r).],
@@ -523,7 +523,7 @@ A remark on RULES.md. P2 says "the sort of a Π-type is read from its codomain's
 - *Recursion.* Lean recurses by stages, on `Nat` only. The paper uses guarded recursion on set rank, for any inductive. Both define the meaning unconditionally and put [Rec] in a lemma about the defining equation (`Decreasing` with `tfun_eq`; @lem-rec-eq). They differ only at a call that does not decrease: Lean answers with a lower stage, the paper with $err$.
 - *Errors.* Lean reads an ill-formed type as the empty type, and an ill-formed numeral as 0; the paper keeps $err$ distinct. Accepted programs never reach either, but a membership proof against the Lean encoding could succeed vacuously, for instance under a hypothesis whose ill-formed type reads as empty. A mechanised membership proof should keep an explicit error.
 - *Environments.* Lean tags each environment entry with its syntactic sort, so that it knows the entry's Lean type; the paper's environments are untyped sets. This makes no difference to the meanings.
-- *Levels.* Lean is bounded at levels 0 and 1 (docs/18 Q8, bounded option). The paper fixes $kappa_0, dots, kappa_N$ per program.
+- *Levels.* Lean is bounded at levels 0 and 1 (docs/18 Q1, bounded option). The paper fixes $kappa_0, dots, kappa_N$ per program.
 - *Coverage.* The Lean slice is narrower than the paper's (@sec-open).
 
 = The choices <sec-choices>
@@ -555,7 +555,7 @@ A remark on RULES.md. P2 says "the sort of a Π-type is read from its codomain's
   - dependent constructors (telescopes and Fording);
   - type functions of arbitrary signature (Lean has $(A : ty("Type")_0)(n : ty("Nat"))$, recursive on $n$);
   - `Eq` beyond `Nat`.
-- *Universes in the uniform statement.* The model needs one inaccessible per level the program uses. The uniform statement over all programs needs one for every level, which is docs/18's Q8, unchanged.
+- *Universes in the uniform statement.* The model needs one inaccessible per level the program uses. The uniform statement over all programs needs one for every level, which is docs/18's Q1, unchanged.
 - *Outside the slice.* Inductives declared `abstract` or `implemented by` (the array library) need a clause of their own.
 
 = What test 2 inherits <sec-inherit>
@@ -578,7 +578,7 @@ A remark on RULES.md. P2 says "the sort of a Π-type is read from its codomain's
 = Summary for docs/18 <sec-summary>
 
 + Test 0 passes on the slice: on paper, and for most of the slice in Lean (`Ochr/Model/Slice.lean`, `e90f0cf8`: no `sorry`; axioms `propext` and `Quot.sound`).
-+ Q9's first circularity goes by letting a function type mean only its good functions, so $R$ at every type is the meaning. Pairing $R$ in is not needed at type variables, and would make conversion of functions unsound (Lean: `Paired.differ`).
-+ Q9's second circularity goes by defining meanings on terms, by recursion on program position, term structure and, inside a `fix`, the rank of the decreasing argument. $ty("Type")_i$ means $univ(i)$ outright, so there is no universe of codes, and levels matter only for sizes.
++ Q2's first circularity goes by letting a function type mean only its good functions, so $R$ at every type is the meaning. Pairing $R$ in is not needed at type variables, and would make conversion of functions unsound (Lean: `Paired.differ`).
++ Q2's second circularity goes by defining meanings on terms, by recursion on program position, term structure and, inside a `fix`, the rank of the decreasing argument. $ty("Type")_i$ means $univ(i)$ outright, so there is no universe of codes, and levels matter only for sizes.
 + A `fix` means a function, by guarded recursion, whether or not it passed [Rec]. So [Rec] moves from well-formedness to membership (the guard never fires), and an assignment's "in $R$" condition is redundant.
 + The next hardest piece is the meaning of the state (borrows, holes, `⊥`) and so of `Id` inside types. It adds clauses to the same recursion, and in a typed mechanisation meaning and membership must be built together.
