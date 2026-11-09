@@ -7,6 +7,8 @@ import Ochr.Meaning.SState
 import Ochr.Meaning.Apply
 import Ochr.Meaning.Places
 import Ochr.Meaning.Run
+import Ochr.Meaning.Subst
+import Ochr.Meaning.Lemmas
 import Ochr.Meaning.State
 import Ochr.Meaning.WF
 import Ochr.Meaning.Sanity
