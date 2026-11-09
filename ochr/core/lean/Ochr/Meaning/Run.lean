@@ -639,11 +639,101 @@ noncomputable def codeMeaning : CodeMeaning where
       | none => .plain .err
     | _ => .plain .err
 
+/-- The Π-closure clause of the knot: `meanV` of a Π-closure is already a type value. -/
+theorem meanV_tPi_ty (hint : TyS) (caps : List Value) (t : Term) (rd : List (DeclInfo × Value)) :
+    meanV K ρ φ hint (.tPi caps t rd) = .ty (meanV K ρ φ (.plain .err) (.tPi caps t rd)).asTy := by
+  show (match run K ρ φ (.plain .err) t (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) with
+      | some ((v, _), _) => Sem.ty v.asTy
+      | none => .ty .err)
+    = .ty (match run K ρ φ (.plain .err) t (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) with
+      | some ((v, _), _) => Sem.ty v.asTy
+      | none => .ty .err).asTy
+  cases run K ρ φ (.plain .err) t (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) <;> rfl
+
+mutual
+/-- The knot, by induction on the value: each clause is the same text, the code-dependent ones
+through `codeMeaning`, the Π-closure's by `meanV_tPi_ty`. -/
+theorem meanV_eq_mean_aux (hint : TyS) : (v : Value) →
+    Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ hint v = meanV K ρ φ hint v
+  | .zero => rfl
+  | .succ v => by
+    show (Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ (.plain (.ty0 Nat)) v).succ
+      = (meanV K ρ φ (.plain (.ty0 Nat)) v).succ
+    rw [meanV_eq_mean_aux (.plain (.ty0 Nat)) v]
+  | .unit => rfl
+  | .gfn _ => rfl
+  | .clo _ _ _ => rfl
+  | .borrow _ w => meanV_eq_mean_aux hint w
+  | .loan _ => rfl
+  | .bot => rfl
+  | .abs _ => rfl
+  | .sealed _ => rfl
+  | .proof => rfl
+  | .tNat => rfl
+  | .tUnit => rfl
+  | .tEq A a b => by
+    show Sem.ty (.prop (Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ
+          (.plain (Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ (.plain .err) A).asTy) a
+        = Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ
+          (.plain (Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ (.plain .err) A).asTy) b))
+      = Sem.ty (.prop (meanV K ρ φ (.plain (meanV K ρ φ (.plain .err) A).asTy) a
+        = meanV K ρ φ (.plain (meanV K ρ φ (.plain .err) A).asTy) b))
+    rw [meanV_eq_mean_aux (.plain .err) A, meanV_eq_mean_aux _ a, meanV_eq_mean_aux _ b]
+  | .tRef A => meanV_eq_mean_aux (.plain .err) A
+  | .tPi caps t rd => (meanV_tPi_ty K ρ φ hint caps t rd).symm
+  | .sort _ => rfl
+  | .ind ty c h ps fs => by
+    have hP : ∀ d, Value.meanParams K.dm (codeMeaning K ρ φ) K.Γ ρ φ d 0 [] ps = meanParams K ρ φ d 0 [] ps :=
+      fun d => meanParams_eq_mean d 0 [] ps
+    have hF : ∀ d ps', Value.meanFields K.dm (codeMeaning K ρ φ) K.Γ ρ φ d ps' c 0 [] fs
+        = meanFields K ρ φ d ps' c 0 [] fs :=
+      fun d ps' => meanFields_eq_mean d ps' c 0 [] fs
+    simp only [Value.mean, meanV, hP, hF]
+    cases List.find? (fun x => x.name == ty) K.Γ with
+    | none => rfl
+    | some d =>
+      cases (if (ps.isEmpty && !d.params.isEmpty) = true then
+          (match hint.data with | some (n, ps') => if n = ty then some ps' else none | none => none)
+        else some (meanParams K ρ φ d 0 [] ps)) <;> rfl
+  | .tInd n args => by
+    have hP : ∀ d, Value.meanParams K.dm (codeMeaning K ρ φ) K.Γ ρ φ d 0 [] args = meanParams K ρ φ d 0 [] args :=
+      fun d => meanParams_eq_mean d 0 [] args
+    simp only [Value.mean, meanV, hP]
+    cases List.find? (fun x => x.name == n) K.Γ <;> rfl
+termination_by structural v => v
+
+theorem meanFields_eq_mean (d : IndDecl) (ps : List Sem) (c : Nat) :
+    (i : Nat) → (earlier : List Sem) → (vs : List Value) →
+    Value.meanFields K.dm (codeMeaning K ρ φ) K.Γ ρ φ d ps c i earlier vs = meanFields K ρ φ d ps c i earlier vs
+  | _, _, [] => rfl
+  | i, earlier, v :: vs => by
+    show Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ (.plain (K.dm.fieldTy d ps c i earlier)) v
+        :: Value.meanFields K.dm (codeMeaning K ρ φ) K.Γ ρ φ d ps c (i + 1)
+          (earlier ++ [Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ (.plain (K.dm.fieldTy d ps c i earlier)) v]) vs
+      = meanV K ρ φ (.plain (K.dm.fieldTy d ps c i earlier)) v
+        :: meanFields K ρ φ d ps c (i + 1) (earlier ++ [meanV K ρ φ (.plain (K.dm.fieldTy d ps c i earlier)) v]) vs
+    rw [meanV_eq_mean_aux _ v, meanFields_eq_mean d ps c (i + 1) _ vs]
+termination_by structural _ _ vs => vs
+
+theorem meanParams_eq_mean (d : IndDecl) :
+    (i : Nat) → (earlier : List Sem) → (vs : List Value) →
+    Value.meanParams K.dm (codeMeaning K ρ φ) K.Γ ρ φ d i earlier vs = meanParams K ρ φ d i earlier vs
+  | _, _, [] => rfl
+  | i, earlier, v :: vs => by
+    show Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ (.plain (K.dm.paramTy d i earlier)) v
+        :: Value.meanParams K.dm (codeMeaning K ρ φ) K.Γ ρ φ d (i + 1)
+          (earlier ++ [Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ (.plain (K.dm.paramTy d i earlier)) v]) vs
+      = meanV K ρ φ (.plain (K.dm.paramTy d i earlier)) v
+        :: meanParams K ρ φ d (i + 1) (earlier ++ [meanV K ρ φ (.plain (K.dm.paramTy d i earlier)) v]) vs
+    rw [meanV_eq_mean_aux _ v, meanParams_eq_mean d (i + 1) _ vs]
+termination_by structural _ _ vs => vs
+end
+
 /-- The knot ties: `Value.mean` at the induced code meaning is `meanV`, at the run's future. By
 induction on the value; every clause but the code-dependent ones is the same text. -/
 theorem meanV_eq_mean (hint : TyS) (v : Value) :
-    Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ hint v = meanV K ρ φ hint v := by
-  sorry
+    Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ hint v = meanV K ρ φ hint v :=
+  meanV_eq_mean_aux K ρ φ hint v
 
 end
 
