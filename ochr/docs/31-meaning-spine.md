@@ -2,7 +2,7 @@
 
 The design note of the consistency spine (`ochr/core/lean/Ochr/Meaning/`, lean_lib `OchrMeaning`): the Lean definitions and lemma statements of docs/18's main theorem against the real checker types (`Value`, `Term`, `MState`), for a swarm of provers to fill. Kept short and current; decisions in the order they were made. Questions of docs/18 are cited by name with their number in brackets, since the numbers have moved before.
 
-Status (2026-11-09): milestone 1 (the meaning of a state) done and reviewed by the lead; milestone 2 (the reference run) in progress: its state, Π-carriers, application/construction and place operations are defined, and `run` is defined for every term form the checker runs (no hole left in `Run.lean`); milestones 3–4 not started.
+Status (2026-11-09): milestone 1 (the meaning of a state) done and reviewed by the lead; milestone 2 (the reference run) built: `run` covers every term form the checker runs, the knot with `Value.mean` is tied (`codeMeaning`, `meanV_eq_mean` stated), and the sealed-substitution and congruence lemmas are stated (`Lemmas.lean`); what remains of it is the generic `DataModel` and the program meaning, plus the proofs of its three stated lemmas; milestones 3–4 not started.
 
 ## Milestone 1: the meaning of a state
 
@@ -106,7 +106,11 @@ Closure formation (`.fix` clause) is filled: the closure means `el0 (piCar0 …)
 
 Known gaps of the `.fix` clause: (i) a borrow parameter whose holder the body moved (passed on whole) reads `moved` as its final content where the checker's pop would end the borrow wherever its holder went; (ii) the parameter bindings carry no declared readings (`SBinding.decl`), as in `runDoms`; (iii) `self`'s binding is not marked with `recBound`, since the guard is realised by the stages instead.
 
-Then: the knot-tying `CodeMeaning` (`global` from the program, `sealed` = `run` from the empty state at the hint, `clo` = `fixHole`'s meaning, `pi` = `piHole`'s, `paramTy` from the Π shape), the lemma that `Value.mean` at that `CodeMeaning` is what `run` gives for `.val`, the sealed-program substitution lemma (`sealed ρ φ h (t[loan ℓ := w]) = sealed ρ (φ.upd ℓ ⟦w⟧) h t`), the generic `DataModel` by stages with its laws and `pack_congr`, and the program meaning (globals by recursion on the program).
+**The knot** (`Run.lean`, after the mutual block). `meanV K ρ φ hint : Value → Sem` is `Value.mean` with the code-dependent forms given by the run itself: a sealed program is its program run from `emptyState` at the hint, read under the future; a closure or Π-closure is its `fix`/`pi` term run in a frame of its captures at their recorded types (`capsVals`, `capsTys`, `capsState`; D51/D82); a global is `CodeMeaning.global`. `run`'s `.val` clause uses `meanV`, so the whole thing is one structural recursion over `Term`/`Value`. `codeMeaning K ρ : CodeMeaning` packages `meanV` for `Value.mean`; its assignment argument is ignored (a state's meaning is only read at the state's own assignment), and `paramTy` reads the shape of the Π-type value through `run`. `meanV_eq_mean` (stated, `sorry`): `Value.mean K.dm (codeMeaning K ρ) K.Γ ρ φ hint v = meanV K ρ φ hint v`, by induction on `v`; every clause but the code-dependent ones is the same text.
+
+**Pure substitution** (`Subst.lean`): `Value.substLoan`/`Term.substLoan`, replacing `loan ℓ` by a value everywhere (inside sealed programs, closures and types), the pure half of the checker's `substV`; re-normalisation is the run's own clause.
+
+**Statements closing milestone 2** (`Lemmas.lean`, `sorry`): `meanV_substLoan` and `run_substLoan` (filling a loan is fixing the future, for values and for a term's run from a state; hypotheses: `w` does not mention `ℓ`, and `w`'s meaning is hint-free), `meanV_congr` (a meaning reads the future only at the value's loans). Still to write for milestone 2: the generic `DataModel` by stages (D4) and the program meaning (globals by recursion on the program, instantiating `CodeMeaning.global`), and `Decisions` instantiated by the checker's `Decide` functions (the latter is where "aligned" is discharged, so it may be milestone 3's).
 
 ### Milestone 3: the step-lemma skeleton (`Steps/*.lean`)
 
