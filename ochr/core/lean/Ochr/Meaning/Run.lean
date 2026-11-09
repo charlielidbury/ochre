@@ -136,12 +136,18 @@ noncomputable def setContent (pos : Pos) (steps : List Step) (v : Sem) : SM PUni
 
 /-- [Read]: the content; a copy leaves the place, a move leaves `moved` (D80: by the declared
 reading). Reading `⊥`, or a value holding it, is an error. -/
-noncomputable def readPlace (p : Place) (copy : Bool) : SM Res := do
-  let (v, T, pos, steps) ← contentOf K φ p
-  if ¬ v.whole then SM.fail else
-  if copy then pure (v, T) else do
-    setContent K φ pos steps .moved
-    pure (v, T)
+noncomputable def readPlace (p : Place) (copy : Bool) : SM Res := fun s => do
+  let ((v, T, pos, steps), s) ← contentOf K φ p s
+  if ¬ v.whole then none else
+  if copy then some ((v, T), s) else do
+    -- a move of a whole position holding a borrow carries the borrow: the position is no
+    -- longer its holder, the result's type names the label (whoever binds it becomes the holder)
+    let lab := if steps.isEmpty then s.shape pos else none
+    let s := match lab with
+      | some _ => { s with shape := fun q => if q = pos then none else s.shape q }
+      | none => s
+    let (⟨⟩, s) ← setContent K φ pos steps .moved s
+    some ((v, { T with label := lab }), s)
 
 /-- [Borrow] `&p` with a fresh label `l`: the place now reads `l`'s final content at its path, and
 the result is the old content, whole, with the label in its type (the holder's position records
@@ -223,11 +229,17 @@ mutual
 noncomputable def run (hint : TyS) : Term → SM Res
   | .place p => fun s => readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p)) s
   | .borrow p => borrowPlace K φ p
-  | .assign p u => do
-    let (_, T, pos, steps) ← contentOf K φ p
-    let (v, _) ← run T u
-    setContent K φ pos steps v
-    pure (.el0 Unit (), .plain (.ty0 Unit))
+  | .assign p u => fun s => do
+    let ((_, T, pos, steps), s) ← contentOf K φ p s
+    let ((v, R), s) ← run T u s
+    -- the old content's borrow, if the place held one, ends ([Drop]); a borrow written at a
+    -- root makes the place its holder (WF1: a borrow is the whole value of a position)
+    let s := if steps.isEmpty then (match s.shape pos with | some l => s.endLabel l | none => s) else s
+    let (⟨⟩, s) ← setContent K φ pos steps v s
+    let s := match R.label, steps with
+      | some l, [] => { s with shape := fun q => if q = pos then some l else s.shape q }
+      | _, _ => s
+    some ((.el0 Unit (), .plain (.ty0 Unit)), s)
   | .letIn _ u w => fun s => do
     let ((v, T), s) ← run (.plain .err) u s
     let s := pushBindShaped s { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u }
@@ -235,9 +247,13 @@ noncomputable def run (hint : TyS) : Term → SM Res
     -- [Drop] of the binding: a borrow it holds ends, then it is forgotten
     let s := match T.label with | some l => s.endLabel l | none => s
     some ((r, R), s.dropLast)
-  | .seq u w => do
-    let _ ← run (.plain .err) u
-    run hint w
+  | .seq u w => fun s => do
+    -- a discarded result holding a borrow ends it: its label's final content is what it holds
+    let ((r, R), s) ← run (.plain .err) u s
+    let s := match R.label with
+      | some l => s.mapVals fun _ v ψ => v (ψ.upd l r)
+      | none => s
+    run hint w s
   | .matchNat p z u => fun s => do
     -- [Match]: the arm by the tag of the scrutinee's meaning (after [Access]); `⊥` is an error;
     -- then D84's drop at the join
@@ -455,8 +471,8 @@ noncomputable def run (hint : TyS) : Term → SM Res
   | .ascribe u A => do
     let (TA, _) ← SM.onCopy (run (.plain .err) A)
     let T := TyS.plain TA.asTy
-    let (v, _) ← run T u
-    pure (v, T)
+    let (v, R) ← run T u
+    pure (v, { T with label := R.label })
 termination_by structural t => t
 
 /-- Arm `c` of a match, run at the match's expected type. -/
