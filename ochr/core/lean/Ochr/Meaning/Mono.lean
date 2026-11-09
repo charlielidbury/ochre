@@ -7,18 +7,20 @@ The step lemmas of milestone 3 compare the checker's state with the reference ru
 reference run's own borrow primitives are steps that may only *narrow* what a state means:
 [End] (`SState.endLabel`) fixes a final content and forgets the holder, [Access]
 (`SState.access`) is a fold of [End]s, and D84's drop at the join (`joinDrop`) sets places to
-`⊥`. This file proves each is `Below` its input, at the level `State.lean` states
-`Mean.semEnd_below`: the `Mean` a semantic state forgets its types to (`SState.toMean`).
+`⊥`. This file proves the first two `Below` their input, and the third when it drops only
+roots, at the level `State.lean` states `Mean.semEnd_below`: the `Mean` a semantic state forgets
+its types to (`SState.toMean`).
 
 * `SState.endLabel_below`: [End] loses only information.
-* `SState.access_below`: so does [Access], a fold of [End]s.
+* `SState.access_below`: so does [Access], a fold of [End]s (`foldl_endLabel_below`).
 * `Mean.semEnd_comm`, `SState.endLabel_comm`: two [End]s commute when one holder's meaning does
   not depend on the other's label, which (WF3)'s acyclicity guarantees for every pair
-  (`SWF3`, its semantic form); plain equality, not only `Below` both ways.
+  (`SState.SWF3`, its semantic form, `endLabel_comm_of_SWF3`); plain equality, not only `Below`
+  both ways. Without the hypothesis it is false (`Mean.semEnd_comm_cycle`).
 * `joinDrop_below`: the drop at the join loses only information *when every dropped place is a
-  root* (its path is `*`s only). With a field in the path it is false (`joinDrop_not_below`):
-  a partial move turns a whole value into an untyped tuple, which `⊑` puts below nothing but
-  itself.
+  root* (its path is `*`s only). With a field in the path it is false
+  (`JoinDropCounterexample.joinDrop_not_below`): a partial move turns a whole value into an
+  untyped tuple, which `⊑` puts below no element of a carrier (`Sem.updAt_field_not_le`).
 
 Analogues on the toy model: `Ochr/Model/State2.lean` (`semEnd_below`, `endL_below`,
 `access_below`, `drop_below`).
@@ -123,8 +125,8 @@ theorem endLabel_of_find_none (s : SState) (l : Nat)
   unfold endLabel; rw [h]
 
 /-- After [End] at `l` with holder `r`, every position that exists, and every position but `r`,
-means what `Mean.semEnd` says. (A holder that is not a position of the state is never found by
-`endLabel`, but nothing here needs that.) -/
+means what `Mean.semEnd` says. (`endLabel` finds its holder among the state's positions, so `r`
+exists too, but nothing here needs that.) -/
 theorem endLabel_val (s : SState) (l : Nat) (r : Pos)
     (h : s.positions.find? (fun p => decide (s.shape p = some l)) = some r)
     (φ : Future) (q : Pos) (hq : s.Valid q ∨ q ≠ r) :
@@ -378,4 +380,285 @@ theorem endLabel_comm_of_SWF3 (s : SState) (hwf : s.SWF3) {l₁ l₂ : Nat} (hl 
 
 end SState
 
+/-! ## D84's drop at the join -/
+
+namespace SState
+
+theorem shape_setAt (s : SState) (p : Pos) (v : SVal) : (s.setAt p v).shape = s.shape := by
+  cases p <;> rfl
+
+/-- `setAt` changes the meaning at its own position, and nowhere else. -/
+theorem valAt_setAt (s : SState) (p : Pos) (v : SVal) (q : Pos) :
+    (s.setAt p v).valAt q = s.valAt q ∨ (s.setAt p v).valAt q = v := by
+  cases p with
+  | bind f i =>
+    cases q with
+    | bind f' i' =>
+      by_cases h : f' = f ∧ i' = i
+      · obtain ⟨rfl, rfl⟩ := h
+        simp only [setAt, valAt, List.getElem?_modify]
+        cases s.env[f']? with
+        | none => left; rfl
+        | some fr =>
+          simp only [if_true, Option.bind_some]
+          cases hb : fr.binds[i']? <;> simp [hb]
+      · left
+        simp only [setAt, valAt, List.getElem?_modify]
+        by_cases hf : f = f'
+        · subst hf
+          have hi : i ≠ i' := fun e => h ⟨rfl, e.symm⟩
+          cases s.env[f]? <;> simp [hi]
+        · cases s.env[f']? <;> simp [hf]
+    | temp f' i' =>
+      left
+      simp only [setAt, valAt, List.getElem?_modify]
+      by_cases hf : f = f' <;> cases s.env[f']? <;> simp [hf]
+  | temp f i =>
+    cases q with
+    | bind f' i' =>
+      left
+      simp only [setAt, valAt, List.getElem?_modify]
+      by_cases hf : f = f' <;> cases s.env[f']? <;> simp [hf]
+    | temp f' i' =>
+      by_cases h : f' = f ∧ i' = i
+      · obtain ⟨rfl, rfl⟩ := h
+        simp only [setAt, valAt, List.getElem?_modify]
+        cases s.env[f']? with
+        | none => left; rfl
+        | some fr =>
+          simp only [if_true, Option.bind_some]
+          by_cases hl : i' < fr.temps.length <;> simp [hl]
+      · left
+        simp only [setAt, valAt, List.getElem?_modify]
+        by_cases hf : f = f'
+        · subst hf
+          have hi : i ≠ i' := fun e => h ⟨rfl, e.symm⟩
+          cases s.env[f]? <;> simp [hi]
+        · cases s.env[f']? <;> simp [hf]
+
+/-- Setting a position to `⊥` loses only information. -/
+theorem setAt_moved_below (s : SState) (p : Pos) : Below (s.setAt p fun _ => .moved).toMean s.toMean := by
+  intro φ
+  refine ⟨φ, fun q => ?_, fun q l h => by rwa [toMean, shape_setAt] at h⟩
+  show (s.setAt p _).valAt q φ ⊑ s.valAt q φ
+  rcases valAt_setAt s p (fun _ => .moved) q with e | e
+  · rw [e]; exact Sem.le_refl _
+  · rw [e]; exact .moved _
+
+end SState
+
+/-- Updating through `*`s only is updating the whole value (`*` is the identity on meanings). -/
+theorem Sem.updAt_derefs (dm : DataModel) (Γ : List IndDecl) (T : TyM) (f : Sem → Sem) :
+    ∀ (steps : List Step) (v : Sem), (∀ st ∈ steps, st = .deref) → Sem.updAt dm Γ T f steps v = some (f v)
+  | [], _, _ => rfl
+  | .deref :: sts, v, h => by
+    show Sem.updAt dm Γ T f sts v = _
+    exact Sem.updAt_derefs dm Γ T f sts v fun st hs => h st (List.mem_cons_of_mem _ hs)
+  | .proj _ :: _, _, h => nomatch h _ (List.mem_cons_self ..)
+  | .field _ :: _, _, h => nomatch h _ (List.mem_cons_self ..)
+
+theorem resolve_steps {s : SState} {q : Place} {pos : Pos} {steps : List Step}
+    (h : resolve s q = some (pos, steps)) : steps = q.steps.2 := by
+  rcases hq : q.steps with ⟨i, st⟩
+  simp only [resolve, hq, Option.map_eq_some_iff] at h
+  obtain ⟨_, _, h⟩ := h
+  cases h
+  rfl
+
+/-- An untyped tuple is below no element of a carrier. -/
+theorem Sem.ctor_not_le_el0 {ty : String} {c : Nat} {fs : List Sem} {A : Type} {a : A} :
+    ¬ (Sem.ctor ty c fs ⊑ Sem.el0 A a) := fun h => nomatch h
+
+/-- Dropping a field of a whole constructor value (an element `el0` of a carrier, as every whole
+data value is, D3) yields an untyped tuple, so it is not below the value, for every data model:
+the mechanism of `joinDrop_not_below`. (The same holds for a named field `.field g`.) -/
+theorem Sem.updAt_field_not_le (dm : DataModel) (Γ : List IndDecl) (T : TyM) (i : Nat) (A : Type)
+    (x : A) (w : Sem) (hT : T ≠ .ty0 Nat)
+    (hw : Sem.updAt dm Γ T (fun _ => .moved) [.proj i] (.el0 A x) = some w) : ¬ w ⊑ .el0 A x := by
+  rw [Sem.updAt.eq_def] at hw
+  simp only [if_neg hT] at hw
+  split at hw
+  · next d ps _ =>
+    split at hw
+    · next c fs _ =>
+      split at hw
+      · next fi hfi =>
+        have e0 : Sem.updAt dm Γ (dm.fieldTy d ps c i (List.take i fs)) (fun _ => .moved) [] fi =
+            some .moved := rfl
+        rw [e0, Option.map_some, Option.some.injEq] at hw
+        subst hw
+        have hi : i < fs.length := (List.getElem?_eq_some_iff.mp hfi).1
+        have hmem : Sem.moved ∈ fs.set i .moved :=
+          List.mem_of_getElem? (by simp [hi] : (fs.set i .moved)[i]? = some .moved)
+        have hnw : ¬ ∀ f ∈ fs.set i .moved, f.whole := fun h => by simpa [Sem.whole] using h _ hmem
+        simp only [DataModel.ctorM, if_neg hnw]
+        exact Sem.ctor_not_le_el0
+      · cases hw
+    · cases hw
+  · cases hw
+
+/-- Setting a place reached through `*`s only to `⊥`, as `joinDrop` does, loses only information. -/
+theorem setAt_derefs_below (K : RunCtx) (s : SState) (pos : Pos) (steps : List Step)
+    (hd : ∀ st ∈ steps, st = .deref) :
+    Below (s.setAt pos fun φ' =>
+      (Sem.updAt K.dm K.Γ (s.tyAt pos).m (fun _ => .moved) steps (s.valAt pos φ')).getD .err).toMean
+      s.toMean := by
+  have e : (fun φ' => (Sem.updAt K.dm K.Γ (s.tyAt pos).m (fun _ => .moved) steps (s.valAt pos φ')).getD .err) =
+      fun _ => .moved := by
+    funext φ'
+    rw [Sem.updAt_derefs _ _ _ _ steps _ hd]
+    rfl
+  rw [e]
+  exact SState.setAt_moved_below s pos
+
+/-- **The drop at the join loses only information, when every dropped place is a root** (a
+variable under `*`s only; milestone 3: `Steps/Match.lean`'s `evalMatch`/`evalMatchInd`, the
+reference half of D84's [Join]). Each step of the drop is below: a copy place, a proof, a place
+already `⊥` and an unresolved place are left alone, the place is accessed (`access_below`), a
+borrow held at a dropped variable is ended (`endLabel_below`), and the place is set to `⊥`
+(`setAt_derefs_below`).
+
+The hypothesis cannot be dropped (`JoinDropCounterexample.joinDrop_not_below`): `Decide.jdMoves`
+keeps a field step through a one-constructor type (`jdGrain`), so `x.0` of a pair can be in
+`joinMoves`, and the drop turns a whole `x`, an `el0` of its carrier, into the untyped tuple
+`ctor P 0 [⊥, b]`, which `⊑` puts below no `el0` (`Sem.updAt_field_not_le`). Under D84 that drop
+is a definite change, not a loss of information, which is why the match statements compare the
+checker's post-state with the reference's post-state rather than asking the drop to be `Below`
+its input. -/
+theorem joinDrop_below (K : RunCtx) (φ : Future) (t : Term) (s : SState)
+    (hroot : ∀ q ∈ K.D.joinMoves (scopeOf s) (movedPlaces φ s) t, ∀ st ∈ q.steps.2, st = .deref) :
+    Below (joinDrop K φ t s).toMean s.toMean := by
+  unfold joinDrop
+  generalize K.D.joinMoves (scopeOf s) (movedPlaces φ s) t = qs at hroot ⊢
+  induction qs generalizing s with
+  | nil => exact Below.refl _
+  | cons q qs ih =>
+    rw [List.foldl_cons]
+    refine (ih _ fun q' hq' => hroot q' (List.mem_cons_of_mem _ hq')).trans ?_
+    split
+    · exact Below.refl _
+    · split
+      · next pos steps hres =>
+        have hd : ∀ st ∈ steps, st = .deref := by
+          rw [resolve_steps hres]; exact hroot q (List.mem_cons_self ..)
+        refine Below.trans ?_ (SState.access_below s pos)
+        dsimp only
+        generalize s.access pos = s₁
+        rcases hf : Sem.follow K.dm K.Γ (s₁.tyAt pos).m (s₁.valAt pos φ) steps with _ | ⟨v, T⟩
+        · exact Below.refl _
+        · cases v <;> first
+            | exact Below.refl _
+            | refine (setAt_derefs_below K _ pos steps hd).trans ?_
+              split
+              · split
+                · exact SState.endLabel_below _ _
+                · exact Below.refl _
+              · exact Below.refl _
+      · exact Below.refl _
+
+/-! ### The counterexample: a partial move at the join -/
+
+namespace JoinDropCounterexample
+
+/-- One declaration `P` with one constructor of two fields: every element is `()`, with fields
+`()` and `()`. It covers no declaration, so its laws hold vacuously; the failure does not depend
+on them (`Sem.updAt_field_not_le` holds for every data model). -/
+noncomputable def dm : DataModel where
+  covers _ := False
+  car _ _ := Unit
+  fieldTy _ _ _ _ _ := .ty0 Unit
+  paramTy _ _ _ := .err
+  pack _ _ _ _ := some ()
+  tag _ := 0
+  fields _ := [.el0 Unit (), .el0 Unit ()]
+  rank _ := 0
+  tag_pack _ h := h.elim
+  fields_pack _ h := h.elim
+  pack_fields _ h := h.elim
+  pack_isSome h := h.elim
+  rank_lt _ _ h := h.elim
+
+def decl : IndDecl := { name := "P" }
+
+/-- The decisions: the join drops `x.0`, field `0` of variable `x` (what `Decide.jdGrain` keeps
+for a one-constructor type: one arm moved `x.0`, the other did not). -/
+def D : Decisions where
+  flags _ _ := (false, false)
+  placeDecl _ _ := .other
+  declOf _ _ := .other
+  copy _ := false
+  piSort _ _ := 1
+  joinMoves _ _ _ := [.proj 0 (.var 0)]
+
+noncomputable def K : RunCtx where
+  dm := dm
+  Γ := [decl]
+  C := { global := fun _ => (.err, .plain .err), sealed := fun _ _ _ _ => .err,
+         clo := fun _ _ _ _ _ => .err, pi := fun _ _ _ _ _ => .err, paramTy := fun _ _ _ _ => .plain .err }
+  D := D
+
+/-- One frame, one binding `x : P` holding the whole value `P((), ())`. -/
+def s : SState :=
+  { env := [{ binds := [{ ty := .plain (.ty0 Unit), val := fun _ => .el0 Unit () }] }], shape := fun _ => none,
+    nextLoan := 0 }
+
+theorem unit_ne_nat : TyM.ty0 Unit ≠ .ty0 Nat := fun h => by
+  have e : Unit = Nat := TyM.ty0.inj h
+  have : cast e.symm (0 : Nat) = cast e.symm 1 := Subsingleton.elim _ _
+  have h2 := congrArg (cast e) this
+  simp only [cast_cast, cast_eq] at h2
+  exact absurd h2 (by decide)
+
+theorem params_isSome : ∃ ps, dm.paramsOf decl (.ty0 Unit) = some ps := ⟨_, dif_pos ⟨[], rfl⟩⟩
+
+theorem dataOf_eq (ps : List Sem) (hps : dm.paramsOf decl (.ty0 Unit) = some ps) :
+    TyM.dataOf dm [decl] (.ty0 Unit) = some (decl, ps) := by
+  simp [TyM.dataOf, hps]
+
+theorem fieldsOf_eq (ps : List Sem) :
+    dm.fieldsOf decl ps (.el0 Unit ()) = some (0, [.el0 Unit (), .el0 Unit ()]) := dif_pos rfl
+
+theorem drop_isSome : ∃ w, Sem.updAt dm [decl] (.ty0 Unit) (fun _ => .moved) [.proj 0] (.el0 Unit ()) = some w := by
+  obtain ⟨ps, hps⟩ := params_isSome
+  rw [Sem.updAt.eq_def]
+  simp only [if_neg unit_ne_nat, dataOf_eq ps hps, fieldsOf_eq ps]
+  exact ⟨_, rfl⟩
+
+/-- Following `x.0` reaches the whole field `()`: the drop is not skipped. -/
+theorem follow_eq : Sem.follow dm [decl] (.ty0 Unit) (.el0 Unit ()) [.proj 0] = some (.el0 Unit (), .ty0 Unit) := by
+  obtain ⟨ps, hps⟩ := params_isSome
+  simp only [Sem.follow, Sem.step.eq_def, if_neg unit_ne_nat, Sem.stepField, dataOf_eq ps hps, fieldsOf_eq ps]
+  rfl
+
+/-- No label is live in `s`, so [Access] does nothing. -/
+theorem access_eq (p : Pos) : s.access p = s := by
+  have h0 : s.positions.filterMap s.shape = [] := List.filterMap_eq_nil_iff.mpr fun _ _ => rfl
+  have h : s.liveLabels = [] := by simp only [SState.liveLabels, h0, List.mergeSort_nil]
+  unfold SState.access
+  rw [h]
+  rfl
+
+/-- **The drop at the join is not `Below` its input in general.** `x : P` holds `P((), ())`; the
+join drops `x.0` (after [Access], which ends nothing, and reading `x.0`, which is whole); then `x`
+means `ctor "P" 0 [⊥, ()]`, which is below no element of `P`'s carrier, so no future makes the
+state after the drop below the state before. -/
+theorem joinDrop_not_below (φ : Future) (t : Term) : ¬ Below (joinDrop K φ t s).toMean s.toMean := by
+  obtain ⟨w, hw⟩ := drop_isSome
+  have hres : resolve s (.proj 0 (.var 0)) = some (.bind 0 0, [.proj 0]) := rfl
+  have hj : joinDrop K φ t s = s.setAt (.bind 0 0) fun _ => w := by
+    unfold joinDrop
+    simp only [K, D, List.foldl_cons, List.foldl_nil, Bool.false_eq_true, if_false, hres, access_eq]
+    have e1 : (s.tyAt (.bind 0 0)).m = .ty0 Unit := rfl
+    have e2 : s.valAt (.bind 0 0) = fun _ => .el0 Unit () := rfl
+    have e3 : [Step.proj 0].isEmpty = false := rfl
+    simp only [e1, e2, e3, follow_eq, Bool.false_eq_true, if_false, hw, Option.getD_some]
+  intro h
+  obtain ⟨φ, hle, _⟩ := h noFuture
+  have hx := hle (.bind 0 0)
+  rw [hj] at hx
+  exact Sem.updAt_field_not_le dm [decl] (.ty0 Unit) 0 Unit () w unit_ne_nat hw hx
+
+end JoinDropCounterexample
+
 end Ochr.Meaning
+
