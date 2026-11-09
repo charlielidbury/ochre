@@ -20,6 +20,7 @@ import Ochr.Meaning.Steps.WF
 import Ochr.Meaning.Steps.Eval
 import Ochr.Meaning.Steps.Tail
 import Ochr.Meaning.Steps.Decisions
+import Ochr.Meaning.Consistency
 import Ochr.Meaning.State
 import Ochr.Meaning.WF
 import Ochr.Meaning.Sanity
