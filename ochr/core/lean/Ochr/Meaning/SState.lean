@@ -26,6 +26,8 @@ below (docs/24 §4, guarded recursion: a call that does not decrease means the e
 structure SBinding : Type 3 where
   ty : TyM
   val : SVal
+  /-- its declared-type reading (`Binding.decl`), an input of the aligned decisions -/
+  decl : DeclInfo := .other
   recBound : Option (Nat × Nat) := none
 
 structure SFrame : Type 3 where
@@ -122,6 +124,11 @@ def pushTemp (s : SState) (v : SVal) : SState :=
 
 def freshLoan (s : SState) : Nat × SState := (s.nextLoan, { s with nextLoan := s.nextLoan + 1 })
 
+/-- Drop the last binding of the top frame ([Let]'s drop; its borrows, if any, are ended by the
+reads that depend on them). -/
+def dropLast (s : SState) : SState :=
+  { s with env := s.env.modify s.topIdx fun fr => { fr with binds := fr.binds.dropLast } }
+
 end SState
 
 section
@@ -133,8 +140,9 @@ function of itself carries no recursion mark here (the checker's `RecCtx` is a c
 the reference run sets it when it pushes a frame. -/
 noncomputable def _root_.Ochr.MState.sstate (ρ : Assignment) (st : MState) : SState :=
   { env := st.env.toList.zipIdx.map fun (fr, f) =>
-      { binds := fr.binds.toList.zipIdx.map fun (_, i) =>
-          { ty := Env.hintAt dm C Γ ρ st.env (.bind f i), val := fun φ => Env.mean dm C Γ ρ φ st.env (.bind f i) },
+      { binds := fr.binds.toList.zipIdx.map fun (b, i) =>
+          { ty := Env.hintAt dm C Γ ρ st.env (.bind f i), val := fun φ => Env.mean dm C Γ ρ φ st.env (.bind f i),
+            decl := b.decl },
         temps := fr.temps.toList.zipIdx.map fun (_, i) => fun φ => Env.mean dm C Γ ρ φ st.env (.temp f i) },
     shape := Env.shape st.env,
     nextLoan := st.nextLoan }
