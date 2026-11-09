@@ -1305,11 +1305,15 @@ end view
 section decode
 variable (S : Sig) (M : Nat → NModel)
 
+def Step.fields {X : Fam} {Z : Nat → TyM} {K : Sem → Type} (rest : ∀ s, K s → List Sem)
+    (τ : PCode) : Step S M X Z τ K → List Sem
+  | ⟨v, k⟩ => enc _ v :: rest _ k
+
 /-- The meanings of a telescope's fields. -/
 def Tele.fields {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat} :
     (i n : Nat) → (e : List Sem) → Tele S M X Z ps c i n e → List Sem
   | _, 0, _, _ => []
-  | i, n + 1, e, ⟨v, k⟩ => enc _ v :: Tele.fields (i + 1) n (e ++ [_]) k
+  | i, n + 1, e, t => Step.fields S M (fun s => Tele.fields (i + 1) n (e ++ [s])) _ t
 
 /-- Read a list of meanings as a telescope: each a member of its field type, read at the
 masked meanings of the earlier ones. -/
@@ -1326,7 +1330,7 @@ theorem Tele.decode_fields {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat}
       Tele.decode S M i n e (Tele.fields S M i n e t) = some t
   | _, 0, _, _ => rfl
   | i, n + 1, e, ⟨v, k⟩ => by
-    simp only [Tele.fields, Tele.decode, dec_enc, Option.bind_some, Tele.decode_fields]
+    simp only [Tele.fields, Step.fields, Tele.decode, dec_enc, Option.bind_some, Tele.decode_fields]
     rfl
 
 theorem Tele.fields_decode {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat} :
@@ -1346,7 +1350,7 @@ theorem Tele.fields_decode {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat}
       | some k =>
         rw [hk] at h
         obtain rfl : (⟨v, k⟩ : Tele S M X Z ps c i (n + 1) e) = t := Option.some.inj h
-        simp only [Tele.fields, enc_of_dec hv, Tele.fields_decode _ _ _ fs k hk]
+        simp only [Tele.fields, Step.fields, enc_of_dec hv, Tele.fields_decode _ _ _ fs k hk]
 
 /-- The masked meanings of a list of fields, after `e`, from field `i` on. -/
 def Sig.maskList (ps : List Sem) (c : Nat) : Nat → List Sem → List Sem → List Sem
@@ -1491,3 +1495,31 @@ theorem gPack_isSome (ps : List Sem) (Z : Nat → TyM) (c : Nat) (fs : List Sem)
     simp
 
 end decl
+
+/-! ## The program: declarations in order
+
+Declaration `i` is modelled at the environment of the models of the declarations before it
+(`progEnv`), so a `nest e` code of declaration `i` reads declaration `e < i`'s own model. -/
+
+instance : Inhabited Sig := ⟨⟨[], false, fun _ => false, fun _ _ _ _ => .ext .err⟩⟩
+
+/-- The model of declaration `i` of the program `sigs`. -/
+def progModel (sigs : List Sig) (i : Nat) : NModel :=
+  nmodel (sigs.getD i default) fun e => if e < i then progModel sigs e else NModel.empty
+termination_by i
+decreasing_by assumption
+
+/-- The models declaration `i` may nest into. -/
+def progEnv (sigs : List Sig) (i : Nat) : Nat → NModel :=
+  fun e => if e < i then progModel sigs e else NModel.empty
+
+theorem progModel_eq (sigs : List Sig) (i : Nat) :
+    progModel sigs i = nmodel (sigs.getD i default) (progEnv sigs i) := by
+  rw [progModel]
+  rfl
+
+/-- What a later declaration's `nest i` reads is declaration `i`'s own carrier. -/
+theorem progEnv_car (sigs : List Sig) {i j : Nat} (h : i < j) :
+    (progEnv sigs j i).car = car (sigs.getD i default) (progEnv sigs i) := by
+  simp only [progEnv, h, if_true, progModel_eq]
+  rfl
