@@ -2,6 +2,7 @@ import Ochr.Meaning.Sem
 import Ochr.Meaning.Data
 import Ochr.Meaning.Future
 import Ochr.Meaning.Value
+import Ochr.Meaning.Pi
 import Ochr.Meaning.State
 import Ochr.Meaning.WF
 import Ochr.Meaning.Sanity
