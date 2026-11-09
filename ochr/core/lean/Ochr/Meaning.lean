@@ -12,6 +12,7 @@ import Ochr.Meaning.Lemmas
 import Ochr.Meaning.Steps.Borrow
 import Ochr.Meaning.Steps.Subst
 import Ochr.Meaning.Steps.Eq
+import Ochr.Meaning.Steps.Call
 import Ochr.Meaning.State
 import Ochr.Meaning.WF
 import Ochr.Meaning.Sanity
