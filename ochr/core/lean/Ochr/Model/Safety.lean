@@ -863,3 +863,316 @@ theorem cCall_err (ρ : Rho) (Ω : St) (t r : Var) (l k : Label) (e : Err)
       simp only [M, ht, ev]
       exact notWhole_hasBot ρ f u (by simpa using hw)
   · injection h with h; exact Or.inl h.symm
+
+/-! ## §5. Well-formedness preservation
+
+(WF2) no dangling loans: every loan's borrow is held. (WF3) a borrow's content holds only loans
+of later labels: no loan of itself, and no cycle. (WFc) a borrow's content holds no borrow (no
+borrows inside data, the part of WF1 the proofs use). [End] preserves all three, and (WF2) needs
+(WF3): without it, a borrow's content could hold its own loan, which [End] would leave
+dangling. -/
+
+def WF2 (N : Nat) (Ω : St) : Prop := ∀ z, z < N → ∀ l, l ∈ loans (Ω z) → live N Ω l = true
+def WF3 (N : Nat) (Ω : St) : Prop := ∀ r, r < N → ∀ m c, Ω r = .borrow m c → ∀ l, l ∈ loans c → m < l
+def WFc (N : Nat) (Ω : St) : Prop := ∀ r, r < N → ∀ m c, Ω r = .borrow m c → noBorrow c = true
+
+theorem live_iff (N : Nat) (Ω : St) (l : Label) :
+    live N Ω l = true ↔ ∃ x, x < N ∧ holds l (Ω x) = true := by
+  unfold live findBorrow
+  rw [List.find?_isSome]
+  simp [List.mem_range]
+
+theorem findBorrow_lt {N : Nat} {Ω : St} {l : Label} {r : Var} (h : findBorrow N Ω l = some r) :
+    r < N :=
+  List.mem_range.mp (List.mem_of_find?_eq_some (show (List.range N).find? (fun x => holds l (Ω x)) = some r from h))
+
+theorem loans_normV (ρ : Rho) : ∀ v l, l ∈ loans (normV ρ v) → l ∈ loans v := by
+  intro v
+  induction v with
+  | pair a b iha ihb =>
+    intro l h
+    simp only [normV, loans, List.mem_append] at h ⊢
+    exact h.imp (iha l) (ihb l)
+  | borrow _ v ih => intro l h; exact ih l h
+  | gFwd u ih =>
+    intro l h
+    simp only [normV] at h
+    split at h
+    · simp [loans] at h
+    · exact ih l h
+  | gBack u k ihu ihk =>
+    intro l h
+    simp only [normV] at h
+    split at h
+    · simp [loans] at h
+    · simp only [loans, List.mem_append] at h ⊢
+      exact h.imp (ihu l) (ihk l)
+  | _ => intro l h; exact h
+
+theorem loans_subst (l : Label) (c : Val) : ∀ t l', l' ∈ loans (substV l c t) →
+    (l' ∈ loans t ∧ l' ≠ l) ∨ (l ∈ loans t ∧ l' ∈ loans c) := by
+  intro t
+  induction t with
+  | loan l'' =>
+    intro l' h
+    by_cases e : l'' = l
+    · subst e; simp only [substV, if_true] at h; exact Or.inr ⟨by simp [loans], h⟩
+    · simp only [substV, e, if_false, loans, List.mem_singleton] at h
+      subst h; exact Or.inl ⟨by simp [loans], e⟩
+  | pair a b iha ihb =>
+    intro l' h
+    simp only [substV, loans, List.mem_append] at h ⊢
+    rcases h with h | h
+    · rcases iha l' h with ⟨h1, h2⟩ | ⟨h1, h2⟩
+      · exact Or.inl ⟨Or.inl h1, h2⟩
+      · exact Or.inr ⟨Or.inl h1, h2⟩
+    · rcases ihb l' h with ⟨h1, h2⟩ | ⟨h1, h2⟩
+      · exact Or.inl ⟨Or.inr h1, h2⟩
+      · exact Or.inr ⟨Or.inr h1, h2⟩
+  | borrow _ v ih => intro l' h; exact ih l' h
+  | gFwd u ih => intro l' h; exact ih l' h
+  | gBack u k ihu ihk =>
+    intro l' h
+    simp only [substV, loans, List.mem_append] at h ⊢
+    rcases h with h | h
+    · rcases ihu l' h with ⟨h1, h2⟩ | ⟨h1, h2⟩
+      · exact Or.inl ⟨Or.inl h1, h2⟩
+      · exact Or.inr ⟨Or.inl h1, h2⟩
+    · rcases ihk l' h with ⟨h1, h2⟩ | ⟨h1, h2⟩
+      · exact Or.inl ⟨Or.inr h1, h2⟩
+      · exact Or.inr ⟨Or.inr h1, h2⟩
+  | _ => intro l' h; simp [substV, loans] at h
+
+theorem normV_borrow (ρ : Rho) : ∀ v m c', normV ρ v = .borrow m c' →
+    ∃ c₀, v = .borrow m c₀ ∧ c' = normV ρ c₀ := by
+  intro v m c' h
+  cases v with
+  | borrow l v => simp only [normV, Val.borrow.injEq] at h; exact ⟨v, by rw [h.1], h.2.symm⟩
+  | pair _ _ => simp [normV] at h
+  | gFwd u => simp only [normV] at h; split at h <;> cases h
+  | gBack u k => simp only [normV] at h; split at h <;> cases h
+  | _ => simp [normV] at h
+
+theorem substV_borrow (l : Label) (c : Val) (hc : noBorrow c = true) : ∀ v m c',
+    substV l c v = .borrow m c' → ∃ c₀, v = .borrow m c₀ ∧ c' = substV l c c₀ := by
+  intro v m c' h
+  cases v with
+  | loan l'' =>
+    by_cases e : l'' = l
+    · simp only [substV, e, if_true] at h; subst h; simp [noBorrow] at hc
+    · simp [substV, e] at h
+  | borrow l'' v => simp only [substV, Val.borrow.injEq] at h; exact ⟨v, by rw [h.1], h.2.symm⟩
+  | _ => simp [substV] at h
+
+theorem noBorrow_subst (l : Label) (c : Val) (hc : noBorrow c = true) :
+    ∀ t, noBorrow t = true → noBorrow (substV l c t) = true := by
+  intro t
+  induction t with
+  | loan l'' => intro _; by_cases e : l'' = l <;> simp [substV, e, hc, noBorrow]
+  | pair a b iha ihb =>
+    intro h; simp only [noBorrow, Bool.and_eq_true] at h; simp [substV, noBorrow, iha h.1, ihb h.2]
+  | borrow _ _ _ => intro h; simp [noBorrow] at h
+  | gFwd u ih => intro h; simp only [substV, noBorrow]; exact ih h
+  | gBack u k ihu ihk =>
+    intro h; simp only [noBorrow, Bool.and_eq_true] at h; simp [substV, noBorrow, ihu h.1, ihk h.2]
+  | _ => intro h; exact h
+
+theorem noBorrow_normV (ρ : Rho) : ∀ t, noBorrow t = true → noBorrow (normV ρ t) = true := by
+  intro t
+  induction t with
+  | pair a b iha ihb =>
+    intro h; simp only [noBorrow, Bool.and_eq_true] at h; simp [normV, noBorrow, iha h.1, ihb h.2]
+  | borrow _ _ _ => intro h; simp [noBorrow] at h
+  | gFwd u ih =>
+    intro h
+    have := ih h
+    simp only [normV]
+    split <;> simp_all [noBorrow]
+  | gBack u k ihu ihk =>
+    intro h; simp only [noBorrow, Bool.and_eq_true] at h
+    have h1 := ihu h.1
+    have h2 := ihk h.2
+    simp only [normV]
+    split <;> simp_all [noBorrow]
+  | _ => intro h; exact h
+
+theorem holds_iff (l : Label) (v : Val) : holds l v = true ↔ ∃ c, v = .borrow l c := by
+  cases v <;> simp [holds]
+
+/-- [End] preserves (WF2), (WF3) and (WFc). -/
+theorem cEndL_wf (ρ : Rho) (N : Nat) (Ω Ω' : St) (l : Label)
+    (h2 : WF2 N Ω) (h3 : WF3 N Ω) (hc : WFc N Ω) (h : cEndL ρ N Ω l = .ok Ω') :
+    WF2 N Ω' ∧ WF3 N Ω' ∧ WFc N Ω' := by
+  unfold cEndL at h
+  split at h
+  · next r hf =>
+    have hrN := findBorrow_lt hf
+    split at h
+    · next l' c hr =>
+      have hl : l' = l := by simpa [holds, hr] using holds_find hf
+      subst hl
+      split at h
+      · cases h
+        have hcr : noBorrow c = true := hc r hrN l' c hr
+        -- the state after, variable by variable
+        have hz : ∀ z, normSt ρ (upd (substSt Ω l' c) r .bot) z
+            = if z = r then .bot else normV ρ (substV l' c (Ω z)) := by
+          intro z; by_cases e : z = r <;> simp [normSt, upd, substSt, e, normV]
+        -- a borrow held elsewhere is still held
+        have hkeep : ∀ x, x < N → x ≠ r → ∀ m c'', Ω x = .borrow m c'' →
+            live N (normSt ρ (upd (substSt Ω l' c) r .bot)) m = true := by
+          intro x hx hxr m c'' hxe
+          rw [live_iff]
+          exact ⟨x, hx, by rw [hz, if_neg hxr, hxe]; simp [substV, normV, holds]⟩
+        -- the holder of a live label other than l' is not r
+        have hother : ∀ l'', live N Ω l'' = true → l'' ≠ l' →
+            live N (normSt ρ (upd (substSt Ω l' c) r .bot)) l'' = true := by
+          intro l'' hlive hne
+          obtain ⟨x, hx, hxh⟩ := (live_iff N Ω l'').mp hlive
+          obtain ⟨c'', hxe⟩ := (holds_iff l'' (Ω x)).mp hxh
+          have hxr : x ≠ r := by intro e; subst e; rw [hr] at hxe; cases hxe; exact hne rfl
+          exact hkeep x hx hxr l'' c'' hxe
+        refine ⟨?_, ?_, ?_⟩
+        · intro z hzN l'' hl''
+          rw [hz] at hl''
+          by_cases e : z = r
+          · simp [e, loans] at hl''
+          · simp only [e, if_false] at hl''
+            rcases loans_subst l' c (Ω z) l'' (loans_normV ρ _ l'' hl'') with ⟨h1, h2'⟩ | ⟨_, h1⟩
+            · exact hother l'' (h2 z hzN l'' h1) h2'
+            · have hlt := h3 r hrN l' c hr l'' h1
+              exact hother l'' (h2 r hrN l'' (by rw [hr]; exact h1)) (Nat.ne_of_gt hlt)
+        · intro r'' hr''N m c' he l'' hl''
+          rw [hz] at he
+          by_cases e : r'' = r
+          · simp [e] at he
+          · simp only [e, if_false] at he
+            obtain ⟨c₀, he₀, hc'⟩ := normV_borrow ρ _ m c' he
+            obtain ⟨c₁, he₁, hc₀⟩ := substV_borrow l' c hcr _ m c₀ he₀
+            subst hc' hc₀
+            rcases loans_subst l' c c₁ l'' (loans_normV ρ _ l'' hl'') with ⟨h1, _⟩ | ⟨h1, h1'⟩
+            · exact h3 r'' hr''N m c₁ he₁ l'' h1
+            · exact Nat.lt_trans (h3 r'' hr''N m c₁ he₁ l' h1) (h3 r hrN l' c hr l'' h1')
+        · intro r'' hr''N m c' he
+          rw [hz] at he
+          by_cases e : r'' = r
+          · simp [e] at he
+          · simp only [e, if_false] at he
+            obtain ⟨c₀, he₀, hc'⟩ := normV_borrow ρ _ m c' he
+            obtain ⟨c₁, he₁, hc₀⟩ := substV_borrow l' c hcr _ m c₀ he₀
+            subst hc' hc₀
+            exact noBorrow_normV ρ _ (noBorrow_subst l' c hcr c₁ (hc r'' hr''N m c₁ he₁))
+      · cases h
+    · cases h; exact ⟨h2, h3, hc⟩
+  · cases h; exact ⟨h2, h3, hc⟩
+
+/-- An access preserves well-formedness: it is a sequence of [End]s. -/
+theorem cAccess_wf (ρ : Rho) (N : Nat) :
+    ∀ fuel Ω m x ps Ω', WF2 N Ω → WF3 N Ω → WFc N Ω → cAccess ρ N fuel Ω m x ps = .ok Ω' →
+      WF2 N Ω' ∧ WF3 N Ω' ∧ WFc N Ω' := by
+  intro fuel
+  induction fuel with
+  | zero => intro _ _ _ _ _ _ _ _ h; simp [cAccess] at h
+  | succ fuel ih =>
+    intro Ω m x ps Ω' h2 h3 hc h
+    simp only [cAccess] at h
+    split at h
+    · split at h
+      · next Ω₁ h₁ =>
+        obtain ⟨a, b, c⟩ := cEndL_wf ρ N Ω Ω₁ _ h2 h3 hc h₁
+        exact ih _ _ _ _ _ a b c h
+      · cases h
+    · cases h; exact ⟨h2, h3, hc⟩
+
+/-- A drop's loop preserves well-formedness too. -/
+theorem cDropLoop_wf (ρ : Rho) (N : Nat) (temp : Var → Bool) :
+    ∀ fuel Ω x Ω', WF2 N Ω → WF3 N Ω → WFc N Ω → cDropLoop ρ N temp fuel Ω x = .ok Ω' →
+      WF2 N Ω' ∧ WF3 N Ω' ∧ WFc N Ω' := by
+  intro fuel
+  induction fuel with
+  | zero => intro _ _ _ _ _ _ h; simp [cDropLoop] at h
+  | succ fuel ih =>
+    intro Ω x Ω' h2 h3 hc h
+    simp only [cDropLoop] at h
+    split at h
+    · split at h
+      · split at h
+        · cases h
+        · split at h
+          · next Ω₁ h₁ =>
+            obtain ⟨a, b, c⟩ := cEndL_wf ρ N Ω Ω₁ _ h2 h3 hc h₁
+            exact ih _ _ _ a b c h
+          · cases h
+      · cases h; exact ⟨h2, h3, hc⟩
+    · cases h; exact ⟨h2, h3, hc⟩
+
+/-- A call preserves well-formedness, given a fresh label `k` (greater than every label held,
+and in no loan) and an empty destination. -/
+theorem cCall_wf (ρ : Rho) (N : Nat) (Ω Ω' : St) (t r : Var) (l k : Label)
+    (htN : t < N) (hrN : r < N) (htr : t ≠ r) (hrbot : Ω r = .bot)
+    (hk₁ : ∀ z, z < N → ∀ m c, Ω z = .borrow m c → m < k)
+    (h2 : WF2 N Ω) (h3 : WF3 N Ω) (hc : WFc N Ω) (h : cCall ρ Ω t r l k = .ok Ω') :
+    WF2 N Ω' ∧ WF3 N Ω' ∧ WFc N Ω' := by
+  unfold cCall at h
+  split at h
+  · next l' d ht =>
+    split at h
+    · next hl =>
+      subst hl
+      cases h
+      have hfill : noBorrow (.gBack (.num d) (.loan k)) = true := rfl
+      have hz : ∀ z, upd (upd (substSt Ω l' (.gBack (.num d) (.loan k))) t .bot) r
+          (.borrow k (.num (ρ.g d).val.1)) z
+          = if z = r then .borrow k (.num (ρ.g d).val.1) else if z = t then .bot
+            else substV l' (.gBack (.num d) (.loan k)) (Ω z) := by
+        intro z; by_cases e : z = r <;> by_cases e' : z = t <;> simp [upd, substSt, e, e']
+      have hother : ∀ l'', live N Ω l'' = true → l'' ≠ l' → live N (upd (upd (substSt Ω l'
+          (.gBack (.num d) (.loan k))) t .bot) r (.borrow k (.num (ρ.g d).val.1))) l'' = true := by
+        intro l'' hlive hne
+        obtain ⟨x, hx, hxh⟩ := (live_iff N Ω l'').mp hlive
+        obtain ⟨c'', hxe⟩ := (holds_iff l'' (Ω x)).mp hxh
+        have hxt : x ≠ t := by intro e; subst e; rw [ht] at hxe; cases hxe; exact hne rfl
+        have hxr : x ≠ r := by intro e; subst e; rw [hrbot] at hxe; cases hxe
+        rw [live_iff]
+        exact ⟨x, hx, by rw [hz, if_neg hxr, if_neg hxt, hxe]; simp [substV, holds]⟩
+      have hklive : live N (upd (upd (substSt Ω l' (.gBack (.num d) (.loan k))) t .bot) r
+          (.borrow k (.num (ρ.g d).val.1))) k = true := by
+        rw [live_iff]; exact ⟨r, hrN, by rw [hz]; simp [holds]⟩
+      refine ⟨?_, ?_, ?_⟩
+      · intro z hzN l'' hl''
+        rw [hz] at hl''
+        by_cases e : z = r
+        · subst e; simp [loans] at hl''
+        · by_cases e' : z = t
+          · subst e'; simp [e, loans] at hl''
+          · simp only [e, e', if_false] at hl''
+            rcases loans_subst l' _ (Ω z) l'' hl'' with ⟨h1, h1'⟩ | ⟨_, h1⟩
+            · exact hother l'' (h2 z hzN l'' h1) h1'
+            · have : l'' = k := by simpa [loans] using h1
+              subst this; exact hklive
+      · intro r'' hr''N m c' he l'' hl''
+        rw [hz] at he
+        by_cases e : r'' = r
+        · subst e; simp only [if_true, Val.borrow.injEq] at he; rw [← he.2] at hl''; simp [loans] at hl''
+        · by_cases e' : r'' = t
+          · subst e'; simp [e] at he
+          · simp only [e, e', if_false] at he
+            obtain ⟨c₁, he₁, hc₀⟩ := substV_borrow l' _ hfill _ m c' he
+            subst hc₀
+            rcases loans_subst l' _ c₁ l'' hl'' with ⟨h1, _⟩ | ⟨_, h1⟩
+            · exact h3 r'' hr''N m c₁ he₁ l'' h1
+            · have : l'' = k := by simpa [loans] using h1
+              subst this; exact hk₁ r'' hr''N m c₁ he₁
+      · intro r'' hr''N m c' he
+        rw [hz] at he
+        by_cases e : r'' = r
+        · subst e; simp only [if_true, Val.borrow.injEq] at he; rw [← he.2]; rfl
+        · by_cases e' : r'' = t
+          · subst e'; simp [e] at he
+          · simp only [e, e', if_false] at he
+            obtain ⟨c₁, he₁, hc₀⟩ := substV_borrow l' _ hfill _ m c' he
+            subst hc₀
+            exact noBorrow_subst l' _ hfill c₁ (hc r'' hr''N m c₁ he₁)
+    · cases h
+  · split at h <;> cases h
+  · cases h
