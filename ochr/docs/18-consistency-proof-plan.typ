@@ -1,11 +1,11 @@
-// A plan for proving Ochr consistent. Standalone: compile with
+// A plan for proving Ochr consistent and type safe. Standalone: compile with
 //   typst compile ochr/docs/18-consistency-proof-plan.typ
 // The notation macros below are copied from the paper's style file
 // (ochr/core/paper/style.typ) and its appendix, because Typst does not let a
 // document import files outside its own directory. Only the few used here are copied.
 #import "@preview/fletcher:0.5.8" as fletcher: diagram, edge, node
 
-#set document(title: [A plan for proving Ochr consistent])
+#set document(title: [A plan for proving Ochr consistent and type safe])
 
 
 #let dark-mode = false
@@ -137,7 +137,7 @@
   breakable: true,
 )[#set text(size: 9pt); *Reminder.* #body]
 
-#align(center, text(size: 16pt, weight: "bold")[A plan for proving Ochr consistent])
+#align(center, text(size: 16pt, weight: "bold")[A plan for proving Ochr consistent and type safe])
 #align(center, text(size: 11pt)[The route to be followed, the lemmas it needs, and where it could fail])
 #v(0.3em)
 #align(center, text(
@@ -147,7 +147,7 @@
 #v(0.6em)
 
 #align(center, box(width: 90%, align(left)[
-  *Summary.* The plan proves Ochr consistent by _meaning preservation_. Types are given meanings in a set model, in which `False` denotes the empty set. Every state the checker reaches while checking a definition is given a meaning too, as a function of what its unknowns stand for: an _assignment_ gives each unknown any element of its type's meaning, non-computable functions included. The central theorem has three parts, proved together by one ordinary induction: each step of the checker keeps the meaning of its state under every assignment, or loses only information; every value the checker stores lies in the meaning of its type, whatever the borrows still live may later write; and the state stays well formed. An accepted definition therefore means an element of its type, and a closed proof of `False` would be an element of the empty set. This route replaces the one the first draft followed, which compared the checker's run on unknowns with a second run at each concrete instance; three referees showed that route could not be completed as written (@sec-referees), and it is preserved on a branch (@sec-old). All four planned paper tests have passed (@sec-tests): the set model exists on a slice chosen to contain everything that made its definition doubtful; states with live borrows have a meaning, as functions of their borrows' final contents, and the step lemmas hold on a higher-order slice, much of both checked in Lean; each of the four closed proofs of `False` the checker once accepted and has since fixed is a step at which one of the theorem's three parts fails; and an audit of every decision the checker makes left one item to settle. The one failure found is a fifth closed proof of `False`, conversion identifying two values that hold a moved-out place, which fails the monotonicity the theorem requires of computing steps; it is fixed on main by D83. What remains is a short list of residual lemmas (@sec-order).
+  *Summary.* The claim this plan serves is that a language like Ochr makes a good general-purpose language. That needs two guarantees: _consistency_, so that its proofs can be trusted, and _type safety_, so that accepted programs never crash or go wrong when run. The plan proves both by _meaning preservation_. Types are given meanings in a set model, in which `False` denotes the empty set. Every state the checker reaches while checking a definition is given a meaning too, as a function of what its unknowns stand for: an _assignment_ gives each unknown any element of its type's meaning, non-computable functions included. The central theorem has three parts, proved together by one ordinary induction: each step of the checker keeps the meaning of its state under every assignment, or loses only information; every value the checker stores lies in the meaning of its type, whatever the borrows still live may later write; and the state stays well formed. An accepted definition therefore means an element of its type, and a closed proof of `False` would be an element of the empty set. This route replaces the one the first draft followed, which compared the checker's run on unknowns with a second run at each concrete instance; three referees showed that route could not be completed as written (@sec-referees), and it is preserved on a branch (@sec-old). All four planned paper tests have passed (@sec-tests): the set model exists on a slice chosen to contain everything that made its definition doubtful; states with live borrows have a meaning, as functions of their borrows' final contents, and the step lemmas hold on a higher-order slice, much of both checked in Lean; each of the four closed proofs of `False` the checker once accepted and has since fixed is a step at which one of the theorem's three parts fails; and an audit of every decision the checker makes left one item to settle. The one failure found is a fifth closed proof of `False`, conversion identifying two values that hold a moved-out place, which fails the monotonicity the theorem requires of computing steps; it is fixed on main by D83. Type safety reuses the same meanings: a closed run of an accepted function means what the reference run of its call says, and that reference run never goes wrong; what remains is to show that the machine goes wrong only where the reference run does, a runtime rule for `J`, erasure and termination (@sec-safety). The rest is a short list of residual lemmas (@sec-order).
 ]))
 #v(0.4em)
 
@@ -156,18 +156,18 @@
 
 = What this document is <sec-intro>
 
-This is the plan we intend to follow to prove that Ochr is consistent: the shape of the argument, the definitions it needs, the lemmas it reduces to, which of those are already proved and where, and where the plan could fail. It is written as a section of theory work would be, so the statements are precise where they can be, and where they cannot be yet, that is said.
+This is the plan we intend to follow to prove that Ochr is consistent and type safe: the shape of the argument, the definitions it needs, the lemmas it reduces to, which of those are already proved and where, and where the plan could fail. It is written as a section of theory work would be, so the statements are precise where they can be, and where they cannot be yet, that is said.
 
 *The object of study.* The calculus is the one implemented by the Lean checker in `ochr/core/lean/Ochr/` (chiefly `Syntax.lean`, `Basic.lean`, `Env.lean`, `Machine.lean`, `Decide.lean`, `Obs.lean`, `Check.lean` and `Run.lean`) and laid out rule by rule in the appendix of the Ochr paper. @sec-prelim restates every part of it that the plan relies on, so that the plan can be followed without either.
 
 *Status labels.* Each lemma carries one of four labels.
-- #s-heap: proved, without `sorry`, in Lean for the _heap slice_, a second evaluator for part of the calculus built in the style of a heap-based design that the first draft proposed porting the checker to. Not yet a statement about the checker.
+- #s-heap: proved, without `sorry`, in Lean for the _heap slice_, a second evaluator for part of the calculus built in the style of a heap-based design that the first draft proposed porting the checker to. The port is abandoned (@sec-order); the slice's proved results are kept as history where they are cited. Not a statement about the checker.
 - #s-red[X]: shown to follow from the named lemmas X by an argument given here.
 - #s-paper: an argument exists at the level of detail of this document, not checked in Lean.
 - #s-open: no argument yet.
 Design questions that must be decided before an argument can be written are marked #s-design.
 
-*Route.* The plan follows _meaning preservation_. Every type, value and checker state is given a mathematical meaning (a _denotational model_), and each step the checker takes is shown to keep the meaning of its state. Truth is defined in the model, so a step that keeps meaning cannot lead the checker from true premises to a false conclusion. This is the usual soundness argument for _symbolic execution_ (@sec-route), with set-theoretic meanings in place of concrete machine states. The first draft of this plan followed an _operational simulation_ route instead: show that every step of the checker's run on unknowns is matched by the concrete machine at every instance. Three referees found that it could not be completed as written, and the present route was agreed as its replacement on 6 November 2026, by the plan's author and a second session that proposed it. The superseded route is preserved on a branch; @sec-old says why it was superseded, and that runtime safety is the one thing it offered that the present route does not. A third route, translating each accepted program into Lean and having Lean's kernel check it, gives consistency one program at a time; it is not part of this plan, though its results are used in @sec-risks as evidence.
+*Route.* The plan follows _meaning preservation_. Every type, value and checker state is given a mathematical meaning (a _denotational model_), and each step the checker takes is shown to keep the meaning of its state. Truth is defined in the model, so a step that keeps meaning cannot lead the checker from true premises to a false conclusion. This is the usual soundness argument for _symbolic execution_ (@sec-route), with set-theoretic meanings in place of concrete machine states. The first draft of this plan followed an _operational simulation_ route instead: show that every step of the checker's run on unknowns is matched by the concrete machine at every instance. Three referees found that it could not be completed as written, and the present route was agreed as its replacement on 6 November 2026, by the plan's author and a second session that proposed it. The superseded route is preserved on a branch, and @sec-old says why it was superseded. A third route, translating each accepted program into Lean and having Lean's kernel check it, gives consistency one program at a time; it is not part of this plan, though its results are used in @sec-risks as evidence.
 
 = The calculus, as far as the plan needs it <sec-prelim>
 
@@ -258,6 +258,14 @@ The superseded route compared the first path with runs at _ground instances_, re
   Assume ZFC with one inaccessible cardinal per universe level used (both defined in @sec-sets). For every accepted, hole-free program, no definition without parameters has a type that evaluates to `False`. Equivalently, no closed term has type `False`, nor any type, such as `Eq(Nat, Z, S(Z))`, that computes to it.
 ]) <target>
 
+#thm([Target], [type safety], [
+  For every accepted, hole-free program, and every _closed run_ of an accepted data function (a definition whose codomain is data or a borrow type, called with every parameter a concrete value and every proof parameter's type true), the run of the _erased_ program, with proofs and types removed, terminates without error; any borrow it returns is live; and its result, with the final contents of its borrowed places, means what the reference run of the call says (@def-refrun).
+]) <target-safe>
+
+*Why both.* The plan serves the claim that a language like Ochr makes a good general-purpose language. Its proofs must be trustworthy, which is @target, and its programs must not crash or go wrong when run, which is @target-safe. No Lean statement of @target-safe is fixed yet.
+
+*Termination.* Ochr stays total for now: every recursion passes [Rec], so type safety includes termination. General recursion is desirable, but is deferred until a pure, consistent and sound core exists.
+
 The Lean statement against the checker is `Ochr.Consistency.consistency`:
 ```
 theorem consistency (q : Program) (fuel : Nat)
@@ -277,7 +285,7 @@ theorem consistency (q : Program) (fuel : Nat)
 
 = The shape of the argument <sec-shape>
 
-The argument has three parts: a set model that says what "true" means (@sec-model); a meaning for every state the checker reaches, with a theorem that the checker's steps keep it (@sec-route); and consistency as a corollary (@cor-cons-route). The model and the soundness of conversion (@sec-conv-sound) are shared with the superseded route; the second part replaces its soundness theorem and its walk.
+The argument has three parts: a set model that says what "true" means (@sec-model); a meaning for every state the checker reaches, with a theorem that the checker's steps keep it (@sec-route); and consistency as a corollary (@cor-cons-route). Type safety follows from the same theorem and four further lemmas (@sec-safety). The model and the soundness of conversion (@sec-conv-sound) are shared with the superseded route; the second part replaces its soundness theorem and its walk.
 
 == The set model <sec-model>
 
@@ -522,7 +530,7 @@ The first draft assumed the preservation of (WF1)–(WF6) without proof, and it 
 - _same_: every outcome keeps the meaning, possibly given (b). η at `Unit` and at one-constructor types (the type has one element); a proof's value being `⋆`; `Eq` and `J` computing; [Split], records and re-normalisation.
 - _aligned_: the outcomes differ in meaning, so the model must make the same choice, and it can because the decision reads only syntax and declared types, which the model's meaning of code reads the same way. Whether a term is erased (run in place, or on a private copy that is thrown away, discarding writes through borrows); a function type's class; whether a statement argument runs in place; [Close]'s row. A binding's class is the decision of this kind the first draft identified, read from syntax since D77.
 - _less informative_: copy or move, and a stuck block's captures by move and splits. Harmless given monotone computing steps.
-- _check_: only accepts or rejects, so only the accepting direction needs an argument (above). Some checks establish (b), some (c), and some only protect runtime safety, which consistency does not need: the requirement that a borrow be whole when it is passed to a call that closes off. (That a returned borrow be whole is membership: a returned borrow holding `⊥` has a forward value with no meaning.)
+- _check_: only accepts or rejects, so only the accepting direction needs an argument (above). Some checks establish (b), some (c), and some protect only runtime safety, which consistency does not need but type safety (@target-safe) does: the requirement that a borrow be whole when it is passed to a call that closes off. (That a returned borrow be whole is membership: a returned borrow holding `⊥` has a forward value with no meaning.)
 
 *Five lemmas behind "same".* The decisions of kind _same_ rest not on one argument per site but on five lemmas: membership, part (b); the soundness of the function that reads a value's own type (`valType?`: the meaning of a value lies in the meaning of the type it reads, under every assignment), used where a type is read off an embedded value; _footprint coverage_, that the places `Id` observes include every place either side may write, under every assignment, with the extra owners at a call site handled by the injectivity of contexts (a context holding a loan is injective in the loan's final value, which test 2's invariant that holes are placed injectively provides); conversion soundness (@lem-conv); and well-formedness, part (c).
 
@@ -537,10 +545,18 @@ The step lemmas, one per checker rule, are where the principles of @sec-principl
 - wholeness (W1)–(W2): every point where a value passes to code relying on its type is a point where (b) is established for it;
 - recursion (R1)–(R6): membership of recursive functions (the guard never fires) and the outer induction.
 
-=== What the route does not give
+=== From meanings to type safety <sec-safety>
 
-- *Runtime safety at instances.* The first draft's soundness theorem also said that an accepted data function, run on concrete inputs, completes without error. Consistency does not need this, and the present route does not prove it. If it is wanted, the superseded walk (@sec-old), or a separate progress argument, is where to start; the checks that protect only runtime safety belong to it.
-- *Adequacy.* The route never shows that the machine computes the meanings it assigns: that running a closed program gives a value whose meaning is the program's. Consistency does not need this either; the first draft's corollary that an accepted `Id` lemma makes two observations equal at runtime would.
+Type safety (@target-safe) reuses the route. The step lemmas of @thm-mp are untyped: they speak of every state the checker reaches, and a closed run is such a state with no unknowns, so they cover concrete runs as well. And the reference run of an accepted definition never goes wrong (@thm-mp, part (a)). What remains is to connect the machine's run of the erased program with the reference run:
+- (a) _Error reflection._ If the machine goes wrong at a concrete input, the reference run goes wrong there too. Since the reference run of an accepted definition never does, the machine never does. #s-open.
+- (b) _Runtime `J`._ The checker computes `J` only at convertible endpoints. In a closed run a hypothesis $ty("Eq")(A, a, b)$ can be true while $a$ and $b$ are not convertible (two closures with equal meanings and different code), and the run would stop at `J`. The likely fix is that at runtime `J` returns its transported term, erasing the cast, while the checker keeps its rule. An open design question (Q3).
+- (c) _Erasure._ Running with proofs and types erased gives the same result as running them: a statement runs on a private copy that is thrown away, so skipping it changes nothing. The first draft proved this only for its first-order fragment. #s-open.
+- (d) _Termination._ Every recursion passed [Rec], so the guard of guarded recursion never fires (part (b) of @thm-mp): each recursive call is at a smaller rank, and the run terminates. #s-red[@thm-mp (b)].
+- (e) _Well-formedness_ at runtime, shared with consistency (@sec-wf).
+
+*The frame property is a lemma, not a target.* Both targets use it: for consistency it is the compositionality of the meaning of code (a call's meaning changes only its result and its borrowed places), and for type safety the fact that a call's effect at runtime is its isolated run, plugged back into the caller.
+
+*Adequacy* is the last clause of @target-safe: a closed run's result means what the reference run says. With it, an accepted `Id` lemma makes its two observations equal at runtime.
 
 === How the route answers the referees <sec-referees>
 
@@ -637,7 +653,7 @@ _Enforced:_ one function decides whether a call belongs to a recursion entry, by
 
 = Tests before mechanisation <sec-tests>
 
-The route is checked on paper before anything is mechanised, hardest first, following the standing preference to attack first the part most likely to fail. Four tests were planned: tests 0 and 1 independent of each other, the census audit cheap, and test 2 after test 0. Each result is summarised here; the full write-ups are the documents named. All four have passed. The one failure they found is a fifth closed proof of `False`, conversion over `⊥` (@sec-risks), since fixed on main by D83.
+The route is checked on paper before anything is mechanised, hardest first, following the standing preference to attack first the part most likely to fail. Four tests were planned: tests 0 and 1 independent of each other, the census audit cheap, and test 2 after test 0. Each result is summarised here; the full write-ups are the documents named. All four have passed. The one failure they found is a fifth closed proof of `False`, conversion over `⊥` (@sec-risks), since fixed on main by D83. A fifth test, test 3, checks type safety (@target-safe).
 
 == Test 0: the model exists, on a slice <sec-test-model>
 
@@ -697,6 +713,14 @@ Five further soundness guards found by ablating the checker fit the same way: a 
 
 *What it leaves.* The lemmas this test assumed or argued without checking: footprint coverage; the soundness of `valType?`; the preservation of well-formedness, where (WF2) needs (WF3); [Open] and [Repack] beyond the lent-index case; and erased runs inside the reference run. These are the residuals of @sec-order.
 
+== Test 3: type safety on the higher-order slice <sec-test-safety>
+
+*What it checks.* @target-safe on test 2's higher-order slice: error reflection, runtime `J`, erasure and termination, for closed runs of accepted data functions.
+
+*What would fail it.* A closed run of an accepted function that goes wrong where the reference run does not, or whose result differs from the reference run's.
+
+*Result.* Pending (the session that proposed the route; `ochr/docs/29-type-safety-slice.typ` and `Ochr/Model/Safety.lean`). It is stated against D84's drop-at-the-join semantics, which is not yet merged.
+
 = The lemmas and their status <sec-route-dag>
 
 @fig-route-dag draws what the present route's lemmas depend on, and @fig-route-status lists their statuses. The superseded route's own lemma graph is preserved with it (@sec-old).
@@ -709,6 +733,8 @@ Five further soundness guards found by ablating the checker fit the same way: a 
     spacing: (6pt, 20pt),
     edge-stroke: 0.6pt + ink,
     dn((2.6, 0), [Consistency (@cor-cons-route)], st-red, <r-cons>),
+    dn((4.5, 0), [Type safety (@target-safe)], st-red, <r-safe>),
+    dn((4.7, 1), [Safety lemmas (@sec-safety)], st-open, <r-pieces>),
     dn((2.6, 1), [Definitions mean elements (@cor-mean)], st-red, <r-mean>),
     dn((0.6, 2), [Model (@lem-model)], st-paper, <r-model>),
     dn((2.6, 2), [Meaning preservation, membership, well-formedness (@thm-mp)], st-open, <r-mp>),
@@ -724,6 +750,8 @@ Five further soundness guards found by ablating the checker fit the same way: a 
     dn((2.6, 5), [[Open], [Repack] beyond the lent index; erased runs], st-open, <r-res>),
     dn((5.1, 4), [(WF1)–(WF7) preserved], st-open, <r-wf>),
     edge(<r-mean>, <r-cons>, "-|>"),
+    edge(<r-mp>, <r-safe>, "-|>"),
+    edge(<r-pieces>, <r-safe>, "-|>"),
     edge(<r-model>, <r-cons>, "-|>"),
     edge(<r-mp>, <r-mean>, "-|>"),
     edge(<r-conv>, <r-mean>, "-|>"),
@@ -772,9 +800,14 @@ Five further soundness guards found by ablating the checker fit the same way: a 
       [Conversion sound (@lem-conv)], [#s-paper], [(V1)–(V8) and (V10), re-argued under assignments; shares @thm-mp's induction; (V10) is [Conv-bot], on main since D83; known incompleteness `SelfBot`],
       [Monotone computing steps], [#s-paper], [`Eq`, `J`, matches and [Close]'s rows are monotone over `⊥` (test 2); conversion and [Rewrite]'s occurrence search since D83 ([Conv-bot]), which closed the fifth proof of `False`],
       [Decisions sorted (census)], [#s-open], [one item, an embedded call head's class; reading the lent-part check's type from the borrow's declaration would only simplify the proof],
-      [`valType?` sound], [#s-open], [one lemma about one function; D82 removes its uses at bindings],
+      [`valType?` sound], [#s-open], [one lemma about one function; D82 (on main) removed its uses at bindings],
       [Footprint coverage], [#s-open], [assumed by test 2; the extra owners at a call site by the injectivity of contexts and (O4)],
-      [Frame property], [#s-heap; #s-red[(L1)–(L7)] on checker], [a call's meaning changes only its result and borrowed places; `Ochr.Heap.frame`, `call_effect`],
+      [Frame property], [#s-heap; #s-red[(L1)–(L7)] on checker], [a lemma both targets use, not a target: a call's meaning changes only its result and borrowed places; `Ochr.Heap.frame`, `call_effect` (heap slice, history)],
+      [Type safety (@target-safe)], [#s-red[the reference run; (a)–(e) of @sec-safety]], [test 3 pending],
+      [Error reflection], [#s-open], [the machine errs only where the reference run errs],
+      [Runtime `J`], [#s-design], [Q3: at runtime `J` returns its transported term],
+      [Erasure], [#s-open], [the first draft proved it for its first-order fragment only],
+      [Termination], [#s-red[@thm-mp (b)]], [the guard never fires; Ochr stays total],
       [Well-formedness, (WF1)–(WF7)], [#s-open], [(WF2) needs (WF3), assumed by test 2 and in Lean; (WF5) is about causality; two of its checks have no test],
       table.hline(stroke: 0.5pt + ink),
     )
@@ -784,17 +817,22 @@ Five further soundness guards found by ablating the checker fit the same way: a 
 
 = The order of work <sec-order>
 
-+ *The residual lemmas*, which test 2 assumed or argued without checking: footprint coverage; the soundness of `valType?` (D82 removes its uses at bindings); the preservation of well-formedness, where (WF2) needs (WF3); [Open] and [Repack] beyond the lent-index case; and erased runs inside the reference run.
++ *The residual lemmas*, which test 2 assumed or argued without checking: footprint coverage; the soundness of `valType?` (D82, on main, removed its uses at bindings); the preservation of well-formedness, where (WF2) needs (WF3); [Open] and [Repack] beyond the lent-index case; and erased runs inside the reference run.
 + *The census's open item*: a witness test for the class check on Π-types, and a rule change if it fails; tests for the two invariant checks that have none. Optionally, the lent-part check can read the borrow's declared type, which changes no verdict and removes one use of `valType?`.
++ *Type safety*: test 3 (@sec-test-safety); error reflection; the runtime rule for `J` (Q3); erasure beyond the first-order fragment; termination from guarded recursion; and well-formedness at runtime, shared with consistency (@sec-safety).
 + *The model and the meaning of states, on paper, for the whole calculus*: what the slices covered only on paper or not at all (user inductives and dependent constructors in Lean, inductives declared `abstract` or `implemented by`, `split f in t`, `rewrite`, records), with conversion soundness (@lem-model, @def-state-meaning, @def-refrun, @lem-conv).
 + *The step lemmas, on paper*, one per checker rule, against the reference run, each stating which of (a), (b) and (c) the step must keep and which it establishes, with the five lemmas behind "same" (@sec-wf). Large but routine; the standing preference is that size costs nothing and risk is what counts.
-+ *The Lean statement* (Q8), and mechanisation, with meaning and membership built together, as both Lean encodings already do.
++ *The Lean statements* of both targets (Q8 for consistency), and mechanisation, with meaning and membership built together, as both Lean encodings already do.
 
-*What is no longer on the critical path.* The first draft recommended porting the checker's value layer to a heap design, to make (P) provable; the present route does not use (P). Two checker changes made for the first draft's sake are not needed for consistency either: reading copy-or-move and η at `Unit` from declared types (D80, on main), and giving every binding its declared type (D82, in progress). They still simplify the checker. D82 may also make membership easier to state against the checker, since every binding then carries the type its membership is stated at, and it removes the uses of `valType?` at bindings.
+*Abandoned: the heap port.* The first draft proposed porting the checker's value layer to a heap design, to make (P) cheaper to prove. (P) is off the present route's path, so the port is abandoned, and its branches (`heap-close`, `port-step1`) are not to be merged; the heap slice's proved results remain as history where they are cited, for the frame property.
+
+*Not needed for consistency.* Two checker changes made for the first draft's sake: reading copy-or-move and η at `Unit` from declared types (D80) and giving every binding its declared type (D82), both on main. They still simplify the checker, and D82 removed the uses of `valType?` at bindings.
 
 = Where the plan could fail <sec-risks>
 
 The risks below are places where a lemma might be _false_, not merely unproved.
+
+*Type safety's missing pieces may fail* (@sec-safety). Error reflection may have exceptions where the machine's representation goes wrong but the meaning does not; runtime `J` needs a rule change (Q3); and erasure is proved only for a first-order fragment. Test 3 is stated against D84's drop-at-the-join semantics, which is not merged.
 
 *The residual lemmas may be false.* Test 2 assumed footprint coverage, the soundness of `valType?` and the preservation of well-formedness, and covered [Open] and [Repack] only for a lent index field and erased runs only by argument (@sec-test-ho). Each is a place a lemma could fail; [Repack] is where one of the October proofs of `False` was. On the slices, the model (test 0) and the meaning of states (test 2) held.
 
@@ -840,7 +878,7 @@ The first draft raised Q1–Q9. On 6 November 2026 they were re-triaged for the 
 #oq(
   3,
   [stuck equations and `J`],
-)[_Goes away for consistency._ Truth is semantic, so nothing counts a stuck equation as true by fiat, and a stuck `J` means transport, the identity at endpoints with equal meanings, which membership of the equation's proof guarantees. Runs stuck at `J` concern runtime safety only.]
+)[_Gone for consistency; open for type safety._ Truth is semantic, so nothing counts a stuck equation as true by fiat, and a stuck `J` means transport, the identity at endpoints with equal meanings, which membership of the equation's proof guarantees. For type safety (@target-safe) a closed run must not stop at `J`, yet a hypothesis can be true while its endpoints are not convertible (two closures with equal meanings and different code). The likely fix: at runtime `J` returns its transported term, erasing the cast, while the checker keeps its rule.]
 #oq(
   4,
   [early ends with pairs],
@@ -878,6 +916,6 @@ The first draft raised Q1–Q9. On 6 November 2026 they were re-triaged for the 
 
 The first draft of this plan, of 2 November 2026, proved consistency as a corollary of a soundness theorem, by walking the checker's case tree in step with a concrete run at each instance. Three referees showed that it could not be completed as written. Truth is defined in the set model, which quantifies over every set function, while the walk compared the checker's run only with runs built from machine values; the second run needed an agreement relation that held only up to resolution and renaming of fresh names; and its central lemma, that a run which never inspects an unknown behaves uniformly at every instance, was costly to prove against the current machine and false as first stated. The present route removes all three by comparing the checker's run with its meaning instead of with a second run.
 
-What the walk offered that the present route does not is _runtime safety at instances_: that an accepted data function, run on concrete inputs, completes without error. Consistency does not need it; if it is wanted, the walk, or a separate progress argument, is where to start.
+The walk also targeted runtime safety at instances. The present route now targets it too, as type safety (@target-safe), through the same meanings rather than a second run (@sec-safety).
 
 The first draft, with its walk, simulation relation, lemma graph, Lean results on decisions and heap-port plan, is preserved on the git branch `checkpoint/before-meaning-route` (`da8b260b`). The three referee reports are in `ochr/docs/reviews/` (`2026-11-02-plan18-foundations.md`, `2026-11-02-plan18-simulation.md` and `2026-11-02-plan18-structure.md`); @sec-referees summarises what each found and how the present route answers it.
