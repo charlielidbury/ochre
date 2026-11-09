@@ -226,7 +226,7 @@ ochr ErasureBySyntax uses Fixtures {
     V(n)
   )
 
-  def Lie (n : Nat) : Id(Nat, let c = Z; W(&c, n); c, S(Z)) := refl
+  def Lie (n : Nat) : Id(Nat, let c = Z; W(&c, clone(n)); c, S(Z)) := refl
   reject def Boom : Eq(Nat, Z, S(Z)) := Lie(Z)
 
   def MainW (n : Nat) : Nat := (
@@ -241,13 +241,13 @@ ochr ErasureBySyntax uses Fixtures {
   -- result type as written, `U(n)`, so `h(&c)` runs on both paths (D35; appendix note 1).
   -- The erasure pre-pass reads it before the call runs.
   def LieL (n : Nat) :
-      Id(Nat, let h = (λ(x : &Nat) : U(n) => (*x := S(Z); V(n))); let c = Z; h(&c); c, S(Z)) := refl
+      Id(Nat, let h = (λ(x : &Nat) : U(n) => (*x := S(Z); V(n))); let c = Z; h(&c); c, (let m = n; S(Z))) := refl
 
   reject def BoomL : Eq(Nat, Z, S(Z)) := LieL(Z)
 
   -- The same, with the closure made by a top-level function.
   def MkClosure (n : Nat) : (Π(x : &Nat). U(n)) := λ(x : &Nat) : U(n) => (*x := S(Z); V(clone(n)))
-  def Lie8 (n : Nat) : Id(Nat, let c = Z; let g = MkClosure(n); g(&c); c, S(Z)) := refl
+  def Lie8 (n : Nat) : Id(Nat, let c = Z; let g = MkClosure(clone(n)); g(&c); c, S(Z)) := refl
   reject def Boom8 : Eq(Nat, Z, S(Z)) := Lie8(Z)
   reject def Direct8 : Id(Nat, let c = Z; let g = MkClosure(0); g(&c); c, Z) := refl
 
@@ -287,7 +287,7 @@ ochr ErasureBySyntax uses Fixtures {
         0
       ),
     };
-    let h : Id(Nat, c, Z) = refl;
+    let h : Id(Nat, clone(c), Z) = refl;
     c
   )
 

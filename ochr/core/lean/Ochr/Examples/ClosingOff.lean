@@ -49,21 +49,21 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
 
   -- Adding zero through the chosen borrow does nothing, in all three versions. For the
   -- first, the stuck match inside the goal is closed off the same way.
-  def AddToOneZero (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id(Unit, AddToOne(b, x1, x2, 0), ()) := (
+  def AddToOneZero (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id(Unit, AddToOne(clone(b), x1, x2, 0), ()) := (
     match b {
       Z => AddMZero(x1),
       S _ => AddMZero(x2),
     }
   )
 
-  def AddToOneZero' (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id(Unit, AddToOne'(b, x1, x2, 0), ()) := (
+  def AddToOneZero' (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id(Unit, AddToOne'(clone(b), x1, x2, 0), ()) := (
     match b {
       Z => AddMZero(x1),
       S _ => AddMZero(x2),
     }
   )
 
-  def AddToOneZero'' (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id(Unit, AddToOne''(b, x1, x2, 0), ()) := (
+  def AddToOneZero'' (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id(Unit, AddToOne''(clone(b), x1, x2, 0), ()) := (
     match b {
       Z => AddMZero(x1),
       S _ => AddMZero(x2),
@@ -100,7 +100,7 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
   )
 
   -- A false statement stays unprovable (it fails when `b` is 2 or more).
-  reject def StuckGoalWrong (b : Nat) : Id(Nat, (match b { Z => 0, S _ => 1 }), b) := (
+  reject def StuckGoalWrong (b : Nat) : Id(Nat, (match b { Z => 0, S _ => 1 }), clone(b)) := (
     match b {
       Z => refl,
       S _ => refl,
@@ -196,7 +196,7 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
   -- keeps the value it captured before `c` is overwritten. (D63 rejected this: the block took
   -- the place by `&`, and [Fix] captures no borrow.)
   def LamReadInWrittenBlock (q2 : Nat × Nat) :
-      Id(Nat, let c = q2; let a0 = match c { Mk(p5, p6) => (let f = (λ(y7 : Nat) : Nat => p5); c := (1, 1); f) }; a0(0), match q2 { Mk(p5, p6) => p5 }) := (
+      Id(Nat, let c = q2; let a0 = match c { Mk(p5, p6) => (let f = (λ(y7 : Nat) : Nat => p5); c := (1, 1); f) }; a0(0), (let d = q2; match d { Mk(p5, p6) => p5 })) := (
     match q2 {
       Mk(a, b) => refl,
     }
@@ -384,7 +384,7 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
   -- types from its arms, so after `match b` the hypothesis `h : Id(Nat, b, 0)` could get the
   -- `S` arm's type, `False`. Closing the match off instead continues from the state before
   -- the split, where `h` still says `Id(Nat, b, 0)` (D15).
-  reject def Bad (b : Nat) (h : Id(Nat, b, 0)) : False := (
+  reject def Bad (b : Nat) (h : Id(Nat, clone(b), 0)) : False := (
     match b {
       Z => (),
       S _ => (),
@@ -526,13 +526,13 @@ once and twice), and a stuck block whose arms close off calls or return a borrow
 
 ochr CloseOffModel uses Nats, Fixtures {
   def CoPick (n : Nat) (a : &Nat) (b : &Nat) :
-      Id(Unit, (let r = Pick(n, a, b); *r := 5), (match n { Z => *a := 5, S _ => *b := 5, })) :=
+      Id(Unit, (let r = Pick(clone(n), a, b); *r := 5), (match n { Z => *a := 5, S _ => *b := 5, })) :=
     match n { Z => refl, S _ => refl, }
-  reject def CoPickOnlyA (n : Nat) (a : &Nat) (b : &Nat) : Id(Unit, (let r = Pick(n, a, b); *r := 5), *a := 5) :=
+  reject def CoPickOnlyA (n : Nat) (a : &Nat) (b : &Nat) : Id(Unit, (let r = Pick(clone(n), a, b); *r := 5), *a := 5) :=
     match n { Z => refl, S _ => refl, }
-  reject def CoPickBoth (n : Nat) (a : &Nat) (b : &Nat) : Id(Unit, (let r = Pick(n, a, b); *r := 5), (*a := 5; *b := 5)) :=
+  reject def CoPickBoth (n : Nat) (a : &Nat) (b : &Nat) : Id(Unit, (let r = Pick(clone(n), a, b); *r := 5), (*a := 5; *b := 5)) :=
     match n { Z => refl, S _ => refl, }
-  reject def CoPickRefl (n : Nat) (a : &Nat) (b : &Nat) : Id(Unit, (let r = Pick(n, a, b); *r := 5), *a := 5) := refl
+  reject def CoPickRefl (n : Nat) (a : &Nat) (b : &Nat) : Id(Unit, (let r = Pick(clone(n), a, b); *r := 5), *a := 5) := refl
 
   def CoTwice (x : &Nat) : Id(Unit, (let t = TailM(x); *t := 1; *t := 2), AddM(x, 2)) by x :=
     match *x { Z => refl, S p => CoTwice(&p), }
@@ -604,7 +604,7 @@ ochr CloseOffModel uses Nats, Fixtures {
     let a = Add(clone(x), 0);
     match a {
       Z => (let h : Id(Nat, Add(clone(x), 0), Z) = refl; ()),
-      S q => (let h : Id(Nat, Add(clone(x), 0), S(q)) = refl; ()),
+      S q => (let h : Id(Nat, Add(clone(x), 0), S(clone(q))) = refl; ()),
     }
   )
   reject def CoGenOff (x : Nat) : Unit := (
@@ -620,7 +620,7 @@ ochr CloseOffModel uses Nats, Fixtures {
       Z => (),
       S q => match q {
         Z => (let h : Id(Nat, Add(clone(x), 1), S(Z)) = refl; ()),
-        S r => (let h : Id(Nat, Add(clone(x), 1), S(S(r))) = refl; ()),
+        S r => (let h : Id(Nat, Add(clone(x), 1), S(S(clone(r)))) = refl; ()),
       },
     }
   )
@@ -735,13 +735,13 @@ ochr DeclaredReadings uses Nats, Words, Fixtures {
   -- be `()`. The instance's fill is the generic call's at `x := ()` (the reason below)
   def TouchA (A : Type) (a : &A) (n : Nat) : Unit := match n { Z => (), S(m) => () }
   def ExA (A : Type) (x : A) (n : Nat) : Pair(A, Nat) := (let c = x; TouchA(A, &c, n); Mk(c, Z))
-  reject def ExAAt (n : Nat) : Id(Pair(Unit, Nat), ExA(Unit, (), n), Mk((), Z)) := refl
+  reject def ExAAt (n : Nat) : Id(Pair(Unit, Nat), ExA(Unit, (), clone(n)), Mk((), Z)) := refl
   -- twin of ExAAt: a place declared `Unit` is filled with `()`, at an instance and at the
   -- generic call alike
   def TouchU (a : &Unit) (n : Nat) : Unit := match n { Z => (), S(m) => () }
   def ExU (x : Unit) (n : Nat) : Pair(Unit, Nat) := (let c = x; TouchU(&c, n); Mk(c, Z))
-  def ExUAt (n : Nat) : Id(Pair(Unit, Nat), ExU((), n), Mk((), Z)) := refl
-  def ExUGen (x : Unit) (n : Nat) : Id(Pair(Unit, Nat), ExU(x, n), Mk(x, Z)) := refl
+  def ExUAt (n : Nat) : Id(Pair(Unit, Nat), ExU((), clone(n)), Mk((), Z)) := refl
+  def ExUGen (x : Unit) (n : Nat) : Id(Pair(Unit, Nat), ExU(x, clone(n)), Mk(x, Z)) := refl
 }
 
 #guard (run "DeclaredReadings" DeclaredReadings).rejectedWith [

@@ -161,7 +161,7 @@ ochr Snapshots uses Nats {
   -- If a Π-type were read again at each call, `h(())` here would say `Id(Nat, S(x), 0)`,
   -- which is `False`. It captured `x` when it was formed, so it still says `Id(Nat, x, 0)`
   -- about the `x` on entry (D13).
-  reject def Oops2 (x : Nat) (h : Π(_ : Unit). Id(Nat, x, 0)) : False := (
+  reject def Oops2 (x : Nat) (h : Π(_ : Unit). Id(Nat, clone(x), 0)) : False := (
     x := S(x);
     h(())
   )

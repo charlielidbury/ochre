@@ -336,7 +336,7 @@ ochr GlobalRecords {
   )
 
   reject def Esc (n : Nat) (m : Box) :
-      Id(Nat, (let b = Double(n); match b { Z => 0, S _ => 1 }), (match m { MkBox(x) => match x { Z => 0, S _ => 1 } })) := (
+      Id(Nat, (let b = Double(clone(n)); match b { Z => 0, S _ => 1 }), (match m { MkBox(x) => match x { Z => 0, S _ => 1 } })) := (
     match m {
       MkBox(x) => match x {
         Z => refl,

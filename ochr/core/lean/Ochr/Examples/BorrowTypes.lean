@@ -188,8 +188,8 @@ ochr FnBorrows uses Bools, Nats, Words, Boxes {
   def SetIf (n : Nat) (f : &(Π(m : Nat). Nat)) : Unit := match n { Z => (), S _ => *f := (λ(m : Nat) : Nat => S(m)) }
   def UseSetIf (n : Nat) : Nat := (let g = (λ(m : Nat) : Nat => m); SetIf(n, &g); g(3))
   def UseSetIf0 : Id(Nat, UseSetIf(0), 3) := refl
-  def UseSetIfS (n : Nat) : Id(Nat, UseSetIf(S(n)), 4) := refl
-  reject def UseSetIfWrong (n : Nat) : Id(Nat, UseSetIf(n), 3) := refl
+  def UseSetIfS (n : Nat) : Id(Nat, UseSetIf(S(clone(n))), 4) := refl
+  reject def UseSetIfWrong (n : Nat) : Id(Nat, UseSetIf(clone(n)), 3) := refl
 
   -- A generic swap, at data and at functions.
   def Swap (V : Type) (a : &V) (b : &V) : Unit := (let t = *a; *a := *b; *b := t)

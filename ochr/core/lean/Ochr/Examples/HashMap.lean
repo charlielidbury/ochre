@@ -1861,7 +1861,7 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
 
   -- Moving a bucket of fresh, distinct keys adds its length.
   def MoveBucketLen (V : Type) (b : Bucket(V)) (m : HashMap(V)) (hf : Fresh(V, b, m)) (hu : Unique(V, b)) :
-      Id(Word, (let c = m; MoveBucket(V, b, &c); Len(V, c)), WAdd(Len(V, clone(m)), BLen(V, b))) by b := (
+      Id(Word, (let c = clone(m); MoveBucket(V, b, &c); Len(V, c)), WAdd(Len(V, clone(m)), BLen(V, b))) by b := (
     match b {
       Nil => rewrite ← AddZeroR(Len(V, m)) in refl,
       Cons(e, t) => (
@@ -1912,7 +1912,7 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
   -- Moving the buckets from `i` on adds their entries, if their keys are fresh and distinct.
   def MoveFromLen (V : Type) (n : Word) (s : Slice(Bucket(V), n)) (i : Word) (rem : Word) (hr : Eq(Word, WAdd(rem, i), n))
       (m : HashMap(V)) (hf : FreshL(V, Rest(V, n, s, i, rem, hr), m)) (hg : GUniqueL(V, Rest(V, n, s, i, rem, hr))) :
-      Id(Word, (let c = m; let o = s; MoveFrom(V, n, &o, i, rem, hr, &c); Len(V, c)),
+      Id(Word, (let c = clone(m); let o = s; MoveFrom(V, n, &o, i, rem, hr, &c); Len(V, c)),
         WAdd(Len(V, clone(m)), CountL(V, Rest(V, n, s, i, rem, hr)))) by rem := (
     match rem {
       Zero => rewrite ← AddZeroR(Len(V, m)) in refl,
@@ -2091,7 +2091,7 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
   -- invariant, which `InsertInv` gives for the map before the resize. The load factor is
   -- last.
   def InsertFindR (V : Type) (m : HashMap(V)) (k : Word) (v : V) (h : Inv(V, m)) :
-      Id(Opt(V), (let c = m; Insert(V, &c, k, v); Find(V, c, k)), Some(v)) := (
+      Id(Opt(V), (let c = clone(m); Insert(V, &c, k, v); Find(V, c, k)), Some(v)) := (
     let HM(_, _, MkArray(_)) = m;
     let mc = clone(m);
     let m2 = clone(m);
@@ -2103,7 +2103,7 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
   )
 
   def InsertFindOtherR (V : Type) (m : HashMap(V)) (k : Word) (v : V) (k2 : Word) (ne : Eq(Bool, EqB(k, k2), false)) (h : Inv(V, m)) :
-      Id(Opt(V), (let c = m; Insert(V, &c, k, v); Find(V, c, k2)), Find(V, m, k2)) := (
+      Id(Opt(V), (let c = m; Insert(V, &c, k, clone(v)); Find(V, c, k2)), Find(V, m, k2)) := (
     let HM(_, _, MkArray(_)) = m;
     let mc = clone(m);
     let m2 = clone(m);
@@ -2116,7 +2116,7 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
 
   -- The value returned: the resize happens after the bucket insert, so it changes nothing.
   def InsertResultR (V : Type) (m : HashMap(V)) (k : Word) (v : V) :
-      Id(Opt(V), (let c = m; Insert(V, &c, k, v)), Find(V, m, k)) := (
+      Id(Opt(V), (let c = m; Insert(V, &c, k, clone(v))), Find(V, m, k)) := (
     let HM(_, _, MkArray(_)) = m;
     let mc = clone(m);
     split BInsert in split LtB {
@@ -2138,7 +2138,7 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
 
   -- The length grows by one exactly when the key was absent.
   def InsertLenR (V : Type) (m : HashMap(V)) (k : Word) (v : V) (h : Inv(V, m)) :
-      Id(Word, (let c = m; Insert(V, &c, k, v); Len(V, c)), IfNew(V, Find(V, clone(m), k), Len(V, m))) := (
+      Id(Word, (let c = m; Insert(V, &c, k, clone(v)); Len(V, c)), IfNew(V, Find(V, clone(m), k), Len(V, m))) := (
     let HM(_, _, MkArray(_)) = m;
     let mc = clone(m);
     let m2 = clone(m);
@@ -2191,12 +2191,12 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
   )
 
   -- Inserting and moving entries does not change the number of buckets; resizing sets it.
-  def InsertN (V : Type) (m : HashMap(V)) (k : Word) (v : V) : Id(Word, (let c = m; InsertNoResize(V, &c, k, v); NOf(V, c)), NOf(V, m)) := (
+  def InsertN (V : Type) (m : HashMap(V)) (k : Word) (v : V) : Id(Word, (let c = m; InsertNoResize(V, &c, k, clone(v)); NOf(V, c)), NOf(V, m)) := (
     let HM(_, _, _) = m;
     split BInsert in refl
   )
 
-  def MoveBucketN (V : Type) (b : Bucket(V)) (m : HashMap(V)) : Id(Word, (let c = m; MoveBucket(V, b, &c); NOf(V, c)), NOf(V, m)) by b := (
+  def MoveBucketN (V : Type) (b : Bucket(V)) (m : HashMap(V)) : Id(Word, (let c = m; MoveBucket(V, clone(b), &c); NOf(V, c)), NOf(V, m)) by b := (
     match b {
       Nil => refl,
       Cons(e, t) => (
@@ -2209,7 +2209,7 @@ ochr HashMapResizeTests uses Bools, Words, Options, Lists, Arrays, ArrayLemmas, 
   )
 
   def MoveFromN (V : Type) (n : Word) (s : Slice(Bucket(V), n)) (i : Word) (rem : Word) (hr : Eq(Word, WAdd(rem, i), n))
-      (m : HashMap(V)) : Id(Word, (let c = m; let o = s; MoveFrom(V, n, &o, i, rem, hr, &c); NOf(V, c)), NOf(V, m)) by rem := (
+      (m : HashMap(V)) : Id(Word, (let c = m; let o = clone(s); MoveFrom(V, n, &o, i, rem, hr, &c); NOf(V, c)), NOf(V, m)) by rem := (
     match rem {
       Zero => refl,
       Succ(r) => (

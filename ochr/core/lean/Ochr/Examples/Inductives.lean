@@ -203,13 +203,13 @@ ochr Trees uses Bools, Nats, WordType {
               Nat,
               Add(Size(l), S(Size(r))),
               S(Add(Size(l), Size(r))),
-              λ(z : Nat) : Prop => Id(Nat, S(z), S(Add(Size(l), Size(Insert(r, k))))),
+              λ(z : Nat) : Prop => Id(Nat, S(clone(z)), S(Add(Size(clone(l)), Size(Insert(clone(r), k))))),
               AddS(Size(l), Size(r)),
               J(
                 Nat,
                 S(Size(r)),
                 Size(Insert(r, k)),
-                λ(z : Nat) : Prop => Id(Nat, S(Add(Size(l), S(Size(r)))), S(Add(Size(l), z))),
+                λ(z : Nat) : Prop => Id(Nat, S(Add(Size(clone(l)), S(Size(clone(r))))), S(Add(Size(clone(l)), clone(z)))),
                 SizeInsert(r, k),
                 refl
               )
@@ -219,7 +219,7 @@ ochr Trees uses Bools, Nats, WordType {
               Nat,
               S(Size(l)),
               Size(Insert(l, k)),
-              λ(z : Nat) : Prop => Id(Nat, S(S(Add(Size(l), Size(r)))), S(Add(z, Size(r)))),
+              λ(z : Nat) : Prop => Id(Nat, S(S(Add(Size(clone(l)), Size(clone(r))))), S(Add(clone(z), Size(clone(r))))),
               SizeInsert(l, k),
               refl
             ),
@@ -240,7 +240,7 @@ ochr Trees uses Bools, Nats, WordType {
               Nat,
               S(Size(r)),
               Size(Insert(r, k)),
-              λ(z : Nat) : Prop => Id(Nat, S(S(Add(Size(l), Size(r)))), S(Add(Size(l), z))),
+              λ(z : Nat) : Prop => Id(Nat, S(S(Add(Size(clone(l)), Size(clone(r))))), S(Add(Size(clone(l)), clone(z)))),
               SizeInsertNoLemma(r, k),
               refl
             ),
@@ -249,7 +249,7 @@ ochr Trees uses Bools, Nats, WordType {
               Nat,
               S(Size(l)),
               Size(Insert(l, k)),
-              λ(z : Nat) : Prop => Id(Nat, S(S(Add(Size(l), Size(r)))), S(Add(z, Size(r)))),
+              λ(z : Nat) : Prop => Id(Nat, S(S(Add(Size(clone(l)), Size(clone(r))))), S(Add(clone(z), Size(clone(r))))),
               SizeInsertNoLemma(l, k),
               refl
             ),
@@ -308,13 +308,13 @@ ochr InPlaceTrees uses Bools, Nats, WordType {
     match t { Leaf => refl,
               Node(l, v, r) => let b = Lt(k, v); match b {
                 true  => J(Nat, S(Size(l)), Size(Insert(l, k)),
-                           λ(z : Nat) : Prop => Id(Nat, S(S(Add(Size(l), Size(r)))), S(Add(z, Size(r)))),
+                           λ(z : Nat) : Prop => Id(Nat, S(S(Add(Size(clone(l)), Size(clone(r))))), S(Add(clone(z), Size(clone(r))))),
                            SizeInsert(l, k), refl),
                 false => J(Nat, Add(Size(l), S(Size(r))), S(Add(Size(l), Size(r))),
-                           λ(z : Nat) : Prop => Id(Nat, S(z), S(Add(Size(l), Size(Insert(r, k))))),
+                           λ(z : Nat) : Prop => Id(Nat, S(clone(z)), S(Add(Size(clone(l)), Size(Insert(clone(r), k))))),
                            AddS(Size(l), Size(r)),
                            J(Nat, S(Size(r)), Size(Insert(r, k)),
-                             λ(z : Nat) : Prop => Id(Nat, S(Add(Size(l), S(Size(r)))), S(Add(Size(l), z))),
+                             λ(z : Nat) : Prop => Id(Nat, S(Add(Size(clone(l)), S(Size(clone(r))))), S(Add(Size(clone(l)), clone(z)))),
                              SizeInsert(r, k), refl)) } }
 
   -- The same theorem with D60's `rewrite` instead of `J`, in the paper's layout.
@@ -364,7 +364,7 @@ ochr PolyLists uses Lists {
   )
 
   reject def AppendMOne (A : Type) (a : A) (xs : &List(A)) :
-      Id(Unit, AppendM(A, xs, Cons(a, Nil)), ()) by xs := (
+      Id(Unit, AppendM(A, xs, Cons(clone(a), Nil)), ()) by xs := (
     match *xs {
       Nil => refl,
       Cons(h, t) => AppendMOne(A, a, &t),

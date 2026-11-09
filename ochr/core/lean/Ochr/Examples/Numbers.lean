@@ -52,7 +52,7 @@ ochr Numbers uses Nats {
   -- The pattern variable `y` in `S(y)` is not a copy: it names the place `x.0`, the
   -- predecessor inside `x`. After `m := S(S(0))`, reading `y` gives the new predecessor.
   def AliasRead (x : Nat) :
-      Id(Nat, (let m = x; match m { Z => 0, S y => (m := S(S(0)); y) }), (match x { Z => 0, S _ => 1 })) := (
+      Id(Nat, (let m = clone(x); match m { Z => 0, S y => (m := S(S(0)); y) }), (match x { Z => 0, S _ => 1 })) := (
     match x {
       Z => refl,
       S _ => refl,
@@ -106,7 +106,7 @@ ochr Numbers uses Nats {
     p.1
   )
 
-  def PairBorrowIs (n : Nat) : Id(Nat, PairBorrow(n), 7) := refl
+  def PairBorrowIs (n : Nat) : Id(Nat, PairBorrow(clone(n)), 7) := refl
 
   -- A number has no second component.
   reject def ProjNat (x : Nat) : Nat := x.1
@@ -133,7 +133,7 @@ ochr Numbers uses Nats {
   def TripLast (t : Trip) : Nat := t.2
   def TripLastIs (n : Nat) : Id(Nat, TripLast(MkTrip(0, (), n)), n) := refl
   def TermProj (n : Nat) : Id(Nat, MkTrip(0, (), n).2, n) := refl
-  def CallProj (n : Nat) : Id(Nat, PairWrite(n).1, 5) := refl
+  def CallProj (n : Nat) : Id(Nat, PairWrite(clone(n)).1, 5) := refl
 
   def TripWrite (n : Nat) : Trip := (
     let t = MkTrip(0, (), n);
@@ -143,7 +143,7 @@ ochr Numbers uses Nats {
     t
   )
 
-  def TripWriteIs (n : Nat) : Id(Trip, TripWrite(n), MkTrip(7, (), 5)) := refl
+  def TripWriteIs (n : Nat) : Id(Trip, TripWrite(clone(n)), MkTrip(7, (), 5)) := refl
 
   -- the field of a field
   def Nested (n : Nat) : Nat := (

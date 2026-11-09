@@ -361,7 +361,7 @@ ochr Subsingletons uses Bools, Fixtures {
   -- ... but nothing is known about it.
   reject def SqZero (h : Sq) : Id(Nat, 0, 0) := (
     match h {
-      MkSq(n) => (refl : Id(Nat, n, 0)),
+      MkSq(n) => (refl : Id(Nat, clone(n), 0)),
     }
   )
 

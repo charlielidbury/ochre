@@ -69,7 +69,7 @@ ochr ArrayBench uses ArrayLemmas {
   -- By definition, for any `g`: after the split, the view is `g`'s result on the old first
   -- `k` elements, joined to the old rest.
   def B1Join (E : Type) (n : Word) (k : Word) (g : Π(x : &Slice(E, k)). Unit) (s : &Slice(E, n)) (h : Le(k, n)) :
-      Id(Unit, WithSplit(E, Unit, n, k, s, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => g(l)), *s := JoinS(E, n, k, (let c = TakeS(E, n, k, clone(*s), h); g(&c); c), DropS(E, n, k, clone(*s)))) := refl
+      Id(Unit, (let g2 = clone(g); WithSplit(E, Unit, n, k, s, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => g2(l))), *s := JoinS(E, n, k, (let c = TakeS(E, n, k, clone(*s), h); g(&c); c), DropS(E, n, k, clone(*s)))) := refl
 
   -- Stated about the rest alone, it takes one lemma, for any `g`: `g`'s result has length `k`
   -- by its type, so the rest starts where it did.

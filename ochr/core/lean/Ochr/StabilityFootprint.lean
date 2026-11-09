@@ -8,8 +8,10 @@ of the top frame such a place is rooted at, its *borrow profile*: whether its st
 borrow type, whether its value is a borrow (and then the owners of that borrow's loan) or `⊥`.
 This file proves that a refinement keeps the free places (it substitutes into embedded values,
 never into places), and that the footprint is monotone in the borrow profile
-(`footprint_mono`). So the field reduces to one invariant, that a refinement can only shrink a
-binding's borrow profile (`ProfileLE`), which is not proved here (`notes/stability.md` §9).
+(`footprint_mono`). So the field reduces to one invariant, that a refinement keeps a binding's
+borrow profile and its proof flag and can only shrink its owners (`ProfileLE`), which is not
+proved here (`notes/stability.md` §9). D84: a read of an owned, non-proof place counts too, which
+is why the profile must be kept both ways (`refsBack`) and the proof flag kept (`proofs`).
 
 The last part shows, against the real checker, why `Respects` asks for borrow-free values and why
 `ValueDeclCommutes` (D55 preservation) is a property of checked programs only.
@@ -162,23 +164,39 @@ def rootsOf (env : Env) (o : Nat) : List Pos :=
   | .bot => if !refTyOf (topBind env o) then [.bind (env.size - 1) (env[env.size - 1]!.binds.size - 1 - o)] else []
   | _ => [.bind (env.size - 1) (env[env.size - 1]!.binds.size - 1 - o)]
 
-/-- `env'`'s borrow profile is below `env`'s: the same top frame, and each of its bindings is a
-borrow (by type or value) only if it was, with owners among the old ones. -/
+/-- `env'`'s borrow profile is below `env`'s: the same top frame, each of its bindings is a
+borrow (by type or value) exactly when it was (a refinement substitutes borrow-free values,
+which neither make nor unmake a borrow type or a borrow), with owners among the old ones, and
+each is declared a proof exactly when it was (a declared flag, D35). -/
 structure ProfileLE (env' env : Env) : Prop where
   size : env'.size = env.size
   top : env'[env'.size - 1]!.binds.size = env[env.size - 1]!.binds.size
   refs : ∀ o, o < env[env.size - 1]!.binds.size →
     (refTyOf (topBind env' o) || (topBind env' o).val.isBorrow) = true →
       (refTyOf (topBind env o) || (topBind env o).val.isBorrow) = true
+  /-- D84: a read of an owned place is observed, so a binding that was a borrow stays one. -/
+  refsBack : ∀ o, o < env[env.size - 1]!.binds.size →
+    (refTyOf (topBind env o) || (topBind env o).val.isBorrow) = true →
+      (refTyOf (topBind env' o) || (topBind env' o).val.isBorrow) = true
+  /-- D84: a proof is never observed by a read. -/
+  proofs : ∀ o, o < env[env.size - 1]!.binds.size → (topBind env' o).proof = (topBind env o).proof
   roots : ∀ o, o < env[env.size - 1]!.binds.size → ∀ q ∈ rootsOf env' o, q ∈ rootsOf env o
+
+/-- D84: a read occurrence counts on the refined side only if it counts on the original one: a
+whole read of a borrow (by type or value), or a read of an owned non-proof place, with the borrow
+profile kept both ways and the proof flag kept. -/
+theorem counts_mono {a b a' b' p c w : Bool} (h : ((a' || b') && c || !a' && !b' && !p && w) = true)
+    (hr : (a' || b') = true → (a || b) = true) (hb : (a || b) = true → (a' || b') = true) :
+    ((a || b) && c || !a && !b && !p && w) = true := by
+  cases a <;> cases b <;> cases a' <;> cases b' <;> cases p <;> cases c <;> cases w <;> simp_all
 
 /-- **The footprint is monotone in the borrow profile**, for terms with the same free places. -/
 theorem footprint_mono {env env' : Env} {ts ts' : List Term}
     (hts : Pairwise2 (fun t' t => t'.freeOccs = t.freeOccs) ts' ts) (hp : ProfileLE env' env) :
     ∀ q ∈ footprint env' ts', q ∈ footprint env ts := by
-  obtain ⟨hsize, htop, hrefs, hroots⟩ := hp
-  simp only [refTyOf, topBind, rootsOf, hsize] at htop hrefs hroots
-  simp only [htop] at hrefs hroots
+  obtain ⟨hsize, htop, hrefs, hback, hproofs, hroots⟩ := hp
+  simp only [refTyOf, topBind, rootsOf, hsize] at htop hrefs hback hproofs hroots
+  simp only [htop] at hrefs hback hproofs hroots
   unfold footprint
   simp only [hsize, htop, bind_pure]
   refine forIn_rel (· = ·) (fun o' o => ∀ q ∈ o', q ∈ o) _ _ (fun _ _ => ⟨_, rfl⟩) (fun _ _ => ⟨_, rfl⟩) ?_
@@ -201,8 +219,9 @@ theorem footprint_mono {env env' : Env} {ts ts' : List Term}
     rcases hq with h | ⟨hc', h⟩
     · exact Or.inl (hout q h)
     · refine Or.inr ⟨?_, hroots o ho q h⟩
-      cases writes <;> simp only [Bool.false_eq_true, ↓reduceIte, Bool.and_eq_true] at hc' ⊢
-      · exact ⟨hrefs o ho hc'.1, hc'.2⟩
+      cases writes <;> simp only [Bool.false_eq_true, ↓reduceIte] at hc' ⊢
+      · rw [hproofs o ho] at hc'
+        exact counts_mono hc' (hrefs o ho) (hback o ho)
       · exact hc'
   · simp only [ho, ↓reduceIte] at hq ⊢
     exact hout q hq
@@ -227,16 +246,18 @@ theorem decisionsCommute_footprint (Ω : MState) (α : Refinement) (ts tsα : Li
 
 /-! ## Why `Respects` asks for borrow-free values
 
-Without it, refining `σ0 : Type` to `&Nat` makes a binding of type `σ0` borrow-typed, and a plain
-read of it then counts toward the footprint, which grows. Checked against the real checker; the
-value `&Nat` checks at `σ0`'s type, so only borrow-freeness excludes it. -/
+Without it, refining `σ0 : Type` to `&Nat` makes a binding of type `σ0` borrow-typed, which
+`ProfileLE` forbids (`refs`: it was not borrow-typed). Before D84 a plain read of it then counted
+toward the footprint, which grew; since D84 a read of an owned place counts too, so here the
+footprint is `x` on both sides, but the borrow profile still changed. Checked against the real
+checker; the value `&Nat` checks at `σ0`'s type, so only borrow-freeness excludes it. -/
 
 /-- `σ0 : Type`, `σ1 : σ0`, and a binding `x : σ0` holding `σ1`. -/
 def probeFpΩ : MState := { (default : MState) with
   absTy := #[.sort 1, .abs 0], nextAbs := 2,
   env := #[{ binds := #[{ hint := ⟨"x"⟩, ty := some (.abs 0), val := .abs 1 }] }] }
 
-theorem probe_footprint_generic : (footprint probeFpΩ.env [.place (.var 0)] == []) = true := by
+theorem probe_footprint_generic : (footprint probeFpΩ.env [.place (.var 0)] == [.bind 0 0]) = true := by
   decide +kernel
 theorem probe_footprint_refined :
     ((run? (Refinement.onState [(0, .tRef .tNat)] 50) probeFpΩ 50).map

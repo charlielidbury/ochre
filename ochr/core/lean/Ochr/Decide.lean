@@ -187,6 +187,15 @@ def DeclInfo.deref : DeclInfo → DeclInfo
   | .ref e => e
   | _ => .other
 
+/-- D84: a type a match computes (a type function's arms, a match written where a type is
+expected) is one of its arms' types, even where they all read as the same inductive: on the
+generic call its value can be a stuck program and at an instance that inductive, so the reader
+keeps it an alternative (`alt`), which every other decision reads as the inductive itself (copy,
+fields, data) and the grain of a move does not see through (`jdGrain`). -/
+def DeclInfo.throughMatch : DeclInfo → DeclInfo
+  | d@(.ind ..) => .alt [d]
+  | d => d
+
 -- the declared-type readers are mutually recursive, on fuel (all checker code is total)
 mutual
 
@@ -547,10 +556,10 @@ def typeDecl (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (
   | .seq _ w => typeDecl fuel' false sc ns w vis tsc
   | .matchNat _ z s =>
     let ds := [← typeDecl fuel' false sc ns z vis tsc, ← typeDecl fuel' false sc ns s vis tsc]
-    pure (DeclInfo.joinAlt ds (agreeTypeDecl ds))
+    pure (DeclInfo.joinAlt ds (agreeTypeDecl ds)).throughMatch
   | .matchInd _ _ arms =>
     let ds ← arms.mapM fun (_, a) => typeDecl fuel' false sc ns a vis tsc
-    pure (DeclInfo.joinAlt ds (agreeTypeDecl ds))
+    pure (DeclInfo.joinAlt ds (agreeTypeDecl ds)).throughMatch
   | .call (.const F) as _ => typeFnDecl fuel' F vis sc ns tsc as fallback
   | .const F => do
     -- a constant that is a type (`T0 : Type₁ := Π(x : &Nat). Prop`): its closed value's head,
@@ -831,6 +840,184 @@ def declKind (fuel : Nat) (piTy : Value) : M Kind := do
     | _ => pure .data
   | _ => err s!"not a function type: {piTy}"
 
+end
+
+/-! ## D84: the join of a match, read from syntax and declared types
+
+Which outer places a match leaves moved, read from the match's syntax and declared types and
+never from a run (§6.3), so that the generic call, where a match on an unknown closes off as a
+stuck block that takes them by move (K1), and every instance, where one arm runs and the others'
+moves are dropped at its end (`Machine.joinDrop`), leave the same places moved, each at the same
+grain. -/
+
+/-- `stepEq` (Machine): `.i` of a type with one constructor is that constructor's field `i`. -/
+def jdStepEq : Step → Step → Bool
+  | .proj i, .field g | .field g, .proj i => g.ctor == 0 && g.idx == i
+  | a, b => a == b
+
+/-- `q` is a prefix of `p` (`Machine.placePrefix`). -/
+def jdPrefix (q p : Place) : Bool :=
+  let (i, qs) := q.steps
+  let (j, ps) := p.steps
+  i == j && qs.length ≤ ps.length && ((ps.take qs.length).zip qs).all fun (a, b) => jdStepEq a b
+
+/-- A move of `m` moves `p` too: `p` is `m` or a part of it, not reached through a borrow (moving
+a borrow variable moves the borrow, not its lender's content). -/
+def jdCovers (m p : Place) : Bool :=
+  jdPrefix m p && !((p.steps.2.drop m.steps.2.length).contains .deref)
+
+/-- Add a moved place: one already covered adds nothing; one that covers others replaces them. -/
+def jdAdd (acc : List Place) (p : Place) : List Place :=
+  if acc.any (jdCovers · p) then acc else (acc.filter fun m => !jdCovers p m) ++ [p]
+
+/-- The places under `p` are whole again ([Assign] refills them). -/
+def jdRefill (acc : List Place) (p : Place) : List Place :=
+  acc.filter fun m => !jdPrefix p m
+
+/-- A place after `steps`, appended in order. -/
+def jdExtend (q : Place) : List Step → Place
+  | [] => q
+  | .deref :: ss => jdExtend (.deref q) ss
+  | .proj i :: ss => jdExtend (.proj i q) ss
+  | .field g :: ss => jdExtend (.field g q) ss
+
+/-- The grain of a move, decided from declared types: a field step (`p.g`, `p.i`) is kept only
+through a value whose declared type reads as an inductive with one constructor, read without a
+type-level match (`DeclInfo.throughMatch`). Such a value is that inductive on every path, so the
+generic call names its fields (`Machine.movedPlace` η-refines an unknown or a sealed program to
+the constructor). Through anything else (a type with several constructors, a type a match
+computes, a type parameter, a number's predecessor) the generic call cannot name the field, and
+the move is of the value whole on every path. `m` is in the frame's indices. -/
+def jdGrain (fuel : Nat) (m : Place) : M Place := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let (r, ss) := m.steps
+  let mut cur : Place := .var r
+  for st in ss do
+    let ok ← match st with
+      | .deref => pure true
+      | .proj _ | .field _ =>
+        match ← placeDecl fuel' [] cur with
+        | .ind n _ => pure ((← lookupInd n).ctors.length == 1)
+        | _ => pure false
+    unless ok do return cur
+    cur := jdExtend cur [st]
+  pure cur
+
+/-- A place written at `c` binders, in the frame's indices: an outer place, or a place through a
+local borrow `r` (`let r = &q`, `al`) that is the borrowed place's (`throughLocalBorrow`'s rule,
+by syntax); `none` for a place local to the term. -/
+def jdResolve (al : List (Option Place)) (p : Place) : Option Place :=
+  let c := al.length
+  let (r, ss) := p.steps
+  if r ≥ c then some (jdExtend (.var (r - c)) ss)
+  else match al[r]?, ss with
+    | some (some q), .deref :: rest => some (jdExtend q rest)
+    | _, _ => none
+
+/-- K1(a): every variable a function or Π-type in `t` mentions is moved (a closure captures whole
+variables by move, unless their declared type is a copy type), whether or not a run forms it. -/
+def jdFns (fuel : Nat) (sc : List DeclInfo) (t : Term) (acc : List Place) : M (List Place) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let c := sc.length
+  let mut acc := acc
+  for (o, _) in t.fnOccs 0 do
+    if o < c then continue
+    unless ← declCopy fuel' (← placeDecl fuel' sc (.var o)) do acc := jdAdd acc (.var (o - c))
+  pure acc
+
+mutual
+/-- The outer places moved after a run of `t` from a state whose moved places are `acc`, as the
+machine moves them: [Read] of a place whose declared type is not a copy type, a borrow variable
+read whole, a closure's capture (`jdFns`); an assignment refills what it covers. Skipped: what
+runs on its own copy (an erased term, by the pre-pass, D68), and what reads in place (a call's
+head, `clone`, `peek`, a block's read-only capture). `sc` and `al`: the binders crossed so far,
+their readings and, for a borrow of a place (`let r = &q`), that place. A match is the join of
+its arms (`jdMatch`). Places are in the frame's indices. -/
+def jdMoves (fuel : Nat) (sc : List DeclInfo) (al : List (Option Place)) (t : Term) (acc : List Place) :
+    M (List Place) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  if !(t matches .val _) then
+    if let some (true, _) ← preFlags t (← declOf fuel' false sc [] t) then return acc
+  match t with
+  | .place p =>
+    let some q := jdResolve al p | return acc
+    let d ← placeDecl fuel' sc p
+    if (p matches .var _) && (d matches .ref _) then return jdAdd acc q
+    if ← declCopy fuel' d then return acc
+    pure (jdAdd acc q)
+  | .assign p u =>
+    let acc ← jdMoves fuel' sc al u acc
+    pure (match jdResolve al p with
+      | some q => jdRefill acc q
+      | none => acc)
+  | .letIn _ u w =>
+    let acc ← jdMoves fuel' sc al u acc
+    let a := match u with
+      | .borrow q => jdResolve al q
+      | _ => none
+    jdMoves fuel' ((← declOf fuel' false sc [] u) :: sc) (a :: al) w acc
+  | .seq u w => jdMoves fuel' sc al w (← jdMoves fuel' sc al u acc)
+  | .succ u | .ascribe u _ => jdMoves fuel' sc al u acc
+  | .call f as _ =>
+    let acc ← match f with
+      | .place _ | .const _ | .val _ => pure acc
+      | _ => jdMoves fuel' sc al f acc
+    jdMovesList fuel' sc al as acc
+  | .ctor _ _ _ ps as => jdMovesList fuel' sc al as (← jdMovesList fuel' sc al ps acc)
+  | .prim "J" [_, _, _, _, _, u] => jdMoves fuel' sc al u acc
+  | .prim "clone" _ | .prim "peek" _ | .prim "inplace" _ => pure acc
+  | .prim _ as => jdMovesList fuel' sc al as acc
+  | .fix .. | .pi .. => jdFns fuel' sc t acc
+  | .matchNat _ z s => jdMatch fuel' sc al t [z, s] acc
+  | .matchInd _ _ arms => jdMatch fuel' sc al t (arms.map (·.2)) acc
+  | _ => pure acc
+termination_by structural fuel
+
+def jdMovesList (fuel : Nat) (sc : List DeclInfo) (al : List (Option Place)) :
+    List Term → List Place → M (List Place)
+  | [], acc => pure acc
+  | t :: ts, acc => do
+    let fuel' + 1 := fuel | exhausted "out of fuel"
+    jdMovesList fuel' sc al ts (← jdMoves fuel' sc al t acc)
+termination_by structural fuel
+
+/-- D84 [Join]: the moved places after a match are the lattice join of its arms' end states
+(moved ⊔ whole = moved): a place is moved after it if some arm, run from `acc`, leaves it moved
+net of that arm's refills. So is every variable a function in any arm captures (K1(a)) and
+every borrow variable an arm reads or assigns whole (K1(b)), as the block takes them. Each is
+taken at its grain (`jdGrain`): a move under the fields of an unknown constructor is a move of
+the scrutinee whole, Rust's "maybe partly moved"; and a place the match uses whole, part of which
+is moved, is moved whole (K1(g)). So the join is exactly what the block takes by move. -/
+def jdMatch (fuel : Nat) (sc : List DeclInfo) (al : List (Option Place)) (t : Term) (arms : List Term)
+    (acc : List Place) : M (List Place) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let c := sc.length
+  let mut u : List Place := []
+  for a in arms do
+    for m in ← jdMoves fuel' sc al a acc do u := jdAdd u m
+  u ← jdFns fuel' sc t u
+  for (c', q, k) in t.blockOccs false 0 do
+    if let .var i := q then
+      if i ≥ c' + c && (k == .read || k == .assign) then
+        let o := i - c'
+        if (← placeDecl fuel' sc (.var o)) matches .ref _ then u := jdAdd u (.var (o - c))
+  let mut grained : List Place := []
+  for m in u do grained := jdAdd grained (← jdGrain fuel' m)
+  -- K1(g): a place the match uses whole (not as a scrutinee), part of which some arm moves, is
+  -- taken whole by the block, so it is moved whole: the shortest such prefix of each moved place
+  let mut wholes : List Place := []
+  for (c', q, k) in t.blockOccs false 0 do
+    if k != .scrut && q.root ≥ c' + c then wholes := wholes ++ [q.mapRoot fun r => .var (r - c' - c)]
+  let mut out : List Place := []
+  for m in grained do
+    let under := wholes.filter fun w => jdCovers w m && w.steps.2.length < m.steps.2.length
+    match under.foldl (fun (b : Option Place) w => match b with
+        | some b' => if w.steps.2.length < b'.steps.2.length then some w else some b'
+        | none => some w) none with
+    | some w => out := jdAdd out w
+    | none => out := jdAdd out m
+  pure out
+termination_by structural fuel
 end
 
 end Ochr

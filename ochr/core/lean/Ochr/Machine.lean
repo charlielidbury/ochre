@@ -301,6 +301,22 @@ def stepPlace (q : Place) : Step → Place
   | .deref => .deref q | .proj i => .proj i q | .field g => .field g q
 
 mutual
+/-- D84: the places under `q` whose content in its value `v` is `⊥` (moved out). -/
+def botPlaces : Value → Place → List Place
+  | .bot, q => [q]
+  | .succ w, q => botPlaces w (.proj 0 q)
+  | .borrow _ w, q => botPlaces w (.deref q)
+  | .ind t c _ _ fs, q => botPlacesFields t c q 0 fs
+  | _, _ => []
+termination_by structural v => v
+
+def botPlacesFields (t : String) (c : Nat) (q : Place) (i : Nat) : List Value → List Place
+  | [] => []
+  | w :: ws => botPlaces w (.field ⟨t, c, i, s!"f{i}"⟩ q) ++ botPlacesFields t c q (i + 1) ws
+termination_by structural ws => ws
+end
+
+mutual
 /-- Where `loan_l` sits inside a value, as steps from it. -/
 def loanPath (v : Value) (l : Nat) : M (Option (List Step)) := do
   match v with
@@ -1524,18 +1540,10 @@ termination_by structural fuel
 
 /-- Conversion: same normal form, where the normal form of a function value is the
 observation of its generic call (its result and the final contents of the generic
-owned places) plus its captured values (D30). Structural everywhere else. Only values
-without `⊥` are convertible ([Conv-bot], D83). -/
+owned places) plus its captured values (D30). Structural everywhere else. `⊥` is a value of its
+own, "moved on every path" (D84): it is convertible with itself only. -/
 def conv (fuel : Nat) (v w : Value) : M Bool := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  -- D83 [Conv-bot]: `⊥` is a part the symbolic run lost track of, which an instance may fill
-  -- with anything, so a value holding it is convertible with nothing, itself included. Before
-  -- the identity test: two stuck `Eq(Nat, ⊥, ⊥)` from different observations are `==`, but
-  -- at an instance they can be `5 = 5` and `5 = 6` (docs/28). Every recursive comparison (the
-  -- components, a Π-type's instantiated codomains, a function's observations) comes back here
-  if v.hasHole || w.hasHole then
-    fire .ConvBot fun _ => s!"{v} and {w}: a side holds ⊥ (D83)"
-    return false
   if v == w then return true
   -- D50: the unit laws And(True, P) ≡ P ≡ And(P, True) are conversion rules
   let v := unitTop v
@@ -1719,16 +1727,18 @@ termination_by structural fuel
 the same constructor give the conjunction of the equations between their fields, at the
 field types instantiated at the parameters (v2.1, D52: injectivity; `S` is `Nat`'s
 constructor with one field; no fields: `True`); distinct constructors of one type are
-`False` (v2.0, D47). Proofs are all `⋆`, so an equation between proofs is reflexive. -/
--- Two paths, value-dependent by design (notes/two-paths-census.md, site 17): `Eq` computes on values: reflexive by conversion (closed under refinement), injective and disjoint on constructor heads (which refinement keeps), stuck otherwise.
+`False` (v2.0, D47), and so are `⊥` and a value (D84). Proofs are all `⋆`, so an equation
+between proofs is reflexive. -/
+-- Two paths, value-dependent by design (notes/two-paths-census.md, site 17): `Eq` computes on values: reflexive by conversion (closed under refinement), injective and disjoint on constructor heads and `⊥` (which refinement keeps; D84: `⊥` is definite), stuck otherwise.
 def mkEqM (fuel : Nat) (A a b : Value) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  -- D68: a moved place (`⊥` inside) has no content to compare: the equation is stuck, neither
-  -- `⊤` nor `False`. Whether a stuck block's arm moved the place differs between an abstract and
-  -- a ground run, so either answer could be wrong at some instance
-  if a.hasHole || b.hasHole then
-    fire .EqStuck fun _ => s!"{a} and {b}: a side holds ⊥ (D68)"
-    return .tEq A a b
+  -- D84: `⊥` means moved on every path (a match drops at its join what any arm moves), so it is a
+  -- value of its own: equal to itself ([Eq-refl]) and distinct from every other value
+  -- ([Eq-disj]): an abstract value or a sealed program stands for a value, never for a moved
+  -- place. Inside a constructor, injectivity reaches it
+  if (a == .bot) != (b == .bot) then
+    fire .EqDisj fun _ => s!"{a} and {b}: ⊥ against a value"
+    return vFalse
   if ← conv fuel' a b then return vTrue
   match a, b with
   | .succ a', .succ b' => return ← mkEqM fuel' .tNat a' b'
@@ -1770,8 +1780,7 @@ to the goal and not recorded), and `a` is substituted for `σ`, re-normalising w
 `rev` (`rewrite ← h in t`) swaps `a` and `b`. The term is `J(A, a, b, λz. G[z/b], h, t)`
 with the motive read off the goal. A rewrite that finds nothing to rewrite leaves the goal
 as it is (rule-audit C22), so a wrong direction shows as a goal `t` does not prove; an `h`
-whose type computes to `True` rewrites nothing either (its two sides are already equal), and
-a `b` holding `⊥` occurs nowhere ([Conv-bot], D83). -/
+whose type computes to `True` rewrites nothing either (its two sides are already equal). -/
 def rewriteGoal (fuel : Nat) (rev : Bool) (h : Term) (G : Value) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   unless (← typeClass fuel' G) == 2 do err s!"rewrite: the goal {G} is not a proposition"
@@ -1780,13 +1789,6 @@ def rewriteGoal (fuel : Nat) (rev : Bool) (h : Term) (G : Value) : M Value := do
   | some (.tInd "True" []) => pure G
   | some (.tEq A a b) =>
     let (src, dst) := if rev then (a, b) else (b, a)
-    -- D83 [Conv-bot]: finding an occurrence identifies two values, and a value holding `⊥`
-    -- is identical to nothing, so it occurs nowhere and the goal is left as it is (C22).
-    -- `rewrite ← h` with `h : Eq(Nat, ⊥, 5)` put `5` for the `⊥` of another observation in
-    -- the goal (docs/28). A `dst` holding `⊥` is substituted: the goal then knows less
-    if src.hasHole then
-      fire .ConvBot fun _ => s!"[Rewrite] {src} holds ⊥, so it occurs nowhere in the goal (D83)"
-      return G
     let σ ← freshAbs A
     let G1 ← substV fuel' src (.abs σ) G
     -- [T-Rewrite] has no premise that `b` occurs: a rewrite that finds nothing leaves the goal
@@ -1801,7 +1803,7 @@ termination_by structural fuel
 def expectTy (fuel : Nat) (what : String) (T : Option Value) (A : Value) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   if let some T := T then
-    unless ← conv fuel' T A do err s!"{what} has type {T}, expected {A}{convBotNote T A}"
+    unless ← conv fuel' T A do err s!"{what} has type {T}, expected {A}"
 termination_by structural fuel
 
 /-- P2 (v1.3, D26): erased terms leave no trace. A term whose type is a proposition is
@@ -2085,8 +2087,8 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
       -- (`Ochr/Runtime.lean`), never by the checker, whose untyped runs keep [J] and [J-stuck]
       if (← get).runtime then
         fire .JRun
-        demand want
-        return ← eval fuel' false u
+        -- D84 [Join]: `t` is the one arm, at the join's grain, as at every other run of `J`
+        return ← joinDrop fuel' t (do demand want; eval fuel' false u)
       if !(← jErased fuel' P) then
         -- its endpoints are erased positions, on private copies; `A`, `P` and `h`
         -- are never run by the machine (A.191)
@@ -2094,7 +2096,8 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
         let (bv, _) ← inStatement (eval fuel' false b)
         -- [J]: the endpoints are convertible, `J` is `t`; [J-stuck]: otherwise the run is
         -- stuck, and `t` does not run (D56, D63, rule-audit item 5)
-        if ← conv fuel' av bv then demand want; return ← eval fuel' false u
+        -- D84 [Join]: `t` is the one arm, so its moves are taken at the join's grain
+        if ← conv fuel' av bv then return ← joinDrop fuel' t (do demand want; eval fuel' false u)
         stuckNow
       demand want
       return (← eval fuel' false u)
@@ -2128,7 +2131,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
         setFlags fl
         pure (tv, Pa)⟩
       return ← closeBlock fuel' tJ [arm] (some Pb)
-    let (v, Tu) ← eval fuel' true u
+    let (v, Tu) ← joinDrop fuel' t (eval fuel' true u)
     let fl ← getFlags
     expectTy fuel' "the transported term" Tu Pa
     setFlags fl    -- t's flags (J is t)
@@ -2153,7 +2156,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     | some (.tInd "False" []), _ | _, some (.tInd "False" []) => pure (.proof, some (.tInd "False" []))
     | some (.tEq A a b), some (.tEq A' b' c) =>
       if (← conv fuel' A A') && (← conv fuel' b b') then pure (.proof, some (← mkEqM fuel' A a c))
-      else if typed then err s!"trans: {Th.get!} and {Tk.get!} do not compose{convBotNote b b'}" else pure (.proof, none)
+      else if typed then err s!"trans: {Th.get!} and {Tk.get!} do not compose" else pure (.proof, none)
     | _, _ => if typed then err "trans: not equations" else pure (.proof, none)
   | .prim "rewrite" [h, u] | .prim "rewriteR" [h, u] =>
     -- D60 [Rewrite]: checked against the type the context requires (`hint`)
@@ -2759,8 +2762,9 @@ def evalMatch (fuel : Nat) (typed : Bool) (p : Place) (z s : Term) (expected : O
   accessNeutralHead fuel' p
   let v ← matchContent p
   match v with
-  | .zero => do demand (← wanted); eval fuel' typed z     -- D82: an arm is the match's tail
-  | .succ _ => do demand (← wanted); eval fuel' typed s
+  -- D84 [Join]: what another arm moves is dropped at this arm's end
+  | .zero => do let w ← wanted; joinDrop fuel' (.matchNat p z s) (do demand w; eval fuel' typed z)     -- D82: an arm is the match's tail
+  | .succ _ => do let w ← wanted; joinDrop fuel' (.matchNat p z s) (do demand w; eval fuel' typed s)
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
   | .abs σ => if typed then splitThenClose fuel' p z s σ expected else stuckOn v
   | .sealed _ | .loan _ =>
@@ -2916,7 +2920,7 @@ def splitArmsThenClose (fuel : Nat) (mt : Term) (σ : Nat) (arms : List (M Value
       if let some E := expected then
         let E' ← substV fuel' (.abs σ) r E
         unless ← conv fuel' T E' do
-          err s!"an arm of the annotated match has type {T}, but the annotation refined to this arm is {E'}{convBotNote T E'}"
+          err s!"an arm of the annotated match has type {T}, but the annotation refined to this arm is {E'}"
       setFlags fl
       pure (av, T))
   closeBlock fuel' mt blockArms expected
@@ -3013,7 +3017,7 @@ def evalMatchByType (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms 
       let pf := (← getFlags).2
       let some T := T | err "internal: untyped arm"
       if let some E := expected then
-        unless ← conv fuel' T E do err s!"an arm of the annotated match has type {T}, but the annotation is {E}{convBotNote T E}"
+        unless ← conv fuel' T E do err s!"an arm of the annotated match has type {T}, but the annotation is {E}"
       pure (T, pf)
     allProof := allProof && pf
     tys := tys.push T
@@ -3047,7 +3051,7 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
     if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
     if typed then discard (scrutType fuel' p ty)
     match arms[c]? with
-    | some (_, a) => do demand (← wanted); eval fuel' typed a
+    | some (_, a) => do let w ← wanted; joinDrop fuel' (.matchInd p ty arms) (do demand w; eval fuel' typed a)
     | none => err s!"[Match] no arm for constructor {c}"
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
   | .abs σ =>
@@ -3098,17 +3102,117 @@ def movedPlace (fuel : Nat) (q : Place) : M Place := do
         movedPlace fuel' q
       else pure p
     | _ => pure p
+  | n@(.sealed _) =>
+    -- D84: a sealed program of a type with one constructor is generalised (D34) and then
+    -- η-refined, so its fields are named here as at an instance, where it is that constructor
+    -- (the grain is the declared type's, `Decide.jdGrain`)
+    match ← placeType? fuel' p with
+    | some (.tInd tn _) =>
+      if (← lookupInd tn).ctors.length == 1 then
+        discard (generalizeNeutral fuel' p n)
+        movedPlace fuel' q
+      else pure p
+    | _ => pure p
+  | .loan _ =>
+    -- D84: a place lent out is reached as the arm that moves out of it reaches it ([Access]
+    -- ends its borrowers, which gives it its content back), so its fields are named on every
+    -- path: where a borrow of it is live at the join, and where the arm already ended it
+    accessPath fuel' p; accessInside fuel' p
+    if (← content p) matches .loan _ then pure p else movedPlace fuel' q
   | _ => pure p
+termination_by structural fuel
+
+/-- D84 [Join]: the places a match leaves moved, read from its syntax and declared types
+(`Decide.jdMoves`), never from a run: the lattice join of its arms' end states, at the grain of
+the declared types. Returns the places moved after it (the direct run's drops) and the ones of
+them not moved before it (a stuck block's by-move captures, K1). -/
+def staticJoin (fuel : Nat) (mt : Term) : M (List Place × List Place) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let f ← topIdx
+  let binds := (← get).env[f]!.binds
+  let nb := binds.size
+  let entry := (List.range nb).flatMap fun o => botPlaces binds[nb - 1 - o]!.val (.var o)
+  let u ← withLive true (jdMoves fuel' [] [] mt entry)
+  let net := u.filter fun q => !entry.any (jdCovers · q)
+  pure (u, net)
+termination_by structural fuel
+
+/-- D84: what an arm's log may say a static join's place moved: the place, and, for a move
+through a borrow a local variable of this frame holds, the lender's part (`logEffect` records
+both, `throughLocalBorrow`), which the move reaches through the borrow. -/
+def joinLogged (fuel : Nat) (st : List Place) : M (List Place) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let f ← topIdx
+  let nb := (← get).env[f]!.binds.size
+  let mut out := st
+  for q in st do
+    if let .bind f' i ← varPos q.root then
+      if let some (j, ss) ← throughLocalBorrow f' i q then
+        out := jdAdd out (ss.foldl stepPlace (.var (nb - 1 - j)))
+  pure out
+termination_by structural fuel
+
+/-- D84 [Join]: run an arm of a match on a known constructor, then drop what the join says is
+moved and the arm left whole (`dropAtJoin`), the arm's result held as a temporary meanwhile. Its
+flags are the arm's. -/
+def joinDrop (fuel : Nat) (mt : Term) (run : M (Value × Option Value)) : M (Value × Option Value) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let (drops, _) ← staticJoin fuel' mt
+  let (v, T) ← run
+  if drops.isEmpty then return (v, T)
+  let fl ← getFlags
+  pushTemp v
+  for q in drops do dropAtJoin fuel' (← movedPlace fuel' q)
+  let v ← popTemp
+  setFlags fl
+  pure (v, T)
+termination_by structural fuel
+
+/-- D84 [Join] in tail position: the continuation of the arm drops what the join says first. -/
+def joinCont (fuel : Nat) (mt : Term) (k : Value → Value → M Unit) : M (Value → Value → M Unit) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let (drops, _) ← staticJoin fuel' mt
+  if drops.isEmpty then return k
+  pure fun r R => do
+    let fl ← getFlags
+    pushTemp r
+    for q in drops do dropAtJoin fuel' (← movedPlace fuel' q)
+    let r ← popTemp
+    setFlags fl
+    k r R
+termination_by structural fuel
+
+/-- D84 [Join]: drop `q` as a stuck block's by-move argument takes it (`readPlace`): a borrow is
+ended, a copy or a proof stays, a place already moved stays, anything else is moved out, its
+borrowers ended first ([Access]). -/
+def dropAtJoin (fuel : Nat) (q : Place) : M Unit := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match ← content? q with
+  | none | some .bot | some .proof => pure ()
+  | some (.borrow l _) => fire .Join fun _ => s!"a borrow ended"; logEffect q "moves"; endBorrow fuel' l
+  | some v =>
+    if ← copyRead fuel' q then return
+    -- [Drop] (D65 amended): a place dies while a value in flight borrows it, here the arm's
+    -- result, which the match is about to return
+    for l in liveLoansIn (← get).env v do
+      if let some (.temp _ _) := findBorrow (← get).env l then
+        err s!"[Join] {← ppPlace q} is moved by another arm of the match, so it is dropped at the end of this one, while the arm's result borrows it"
+    let qs ← ppPlace q
+    fire .Join fun _ => s!"{qs} dropped"
+    accessPath fuel' q; accessInside fuel' q
+    logEffect q "moves"
+    setPlace q .bot
 termination_by structural fuel
 
 /-- K1 (`notes/erasure-model.md`): a stuck block's captures over-approximate every arm. For every
 outer place the match uses, the block's mode is at least each arm's effect on it, in the order
 copy (read in place, 0) ⊑ `&` (borrowed or assigned, 1) ⊑ move (2), and the captures are the
 maximal places used. The clauses, in the order computed:
-- (a) Moved places: a place an arm moves out, net of the arm's own refills (`armMoves` reads
-  the arm's log, so an inner block's moves are its arguments' and a statement's are discarded
-  with its copy), and every place a closure or Π-type in any arm mentions unless it is a copy,
-  whether or not the run took that arm (D68). Each is re-rooted where it lives (`movedPlace`).
+- (a) Moved places: D84, the match's join (`staticJoin`, `Decide.jdMoves`), read from syntax and
+  declared types and at their grain, which the direct run drops too: a place an arm moves out,
+  net of the arm's own refills, and every variable a closure or Π-type in any arm captures
+  unless it is a copy, whether or not the run took that arm (D68). The arms' logs (`armMoves`)
+  are an assertion in `closeBlock`. Each is re-rooted where it lives (`movedPlace`).
 - (b) Modes by use: a borrow variable read or assigned whole is moved (its borrow ends with
   the block's frame); a variable some arm moves whole is moved; a borrow or an assignment is
   `&`; any other read is a copy.
@@ -3127,7 +3231,7 @@ after the block. Each clause began as a fuzz-port finding (14942, Q, M2, R8, sha
 the comments below name them); a new one should be stated here as a clause of K1 first.
 Returns the captures with their modes, the split places with each one's constructor, and the
 moved places. -/
--- Two paths, value-dependent by design (notes/two-paths-census.md, site 13): captures read the places an arm leaves ⊥ and a split capture's constructor, each type-directed or surviving refinement; copy-ness is read from declared types (D80, `copyRead`).
+-- Two paths, value-dependent by design (notes/two-paths-census.md, site 13): captures read a split capture's constructor, type-directed or surviving refinement; the moved places and their grain (D84, `staticJoin`) and copy-ness (D80, `copyRead`) are read from syntax and declared types.
 def blockCaptures (fuel : Nat) (mt : Term) (armMovedAll : List Place) :
     M (Array (Place × Nat) × List (Place × Option Nat) × List Place) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
@@ -3235,7 +3339,7 @@ some arm moves out of is moved in; otherwise a place written or borrowed (under 
 `:=`) in some arm is passed as `&`; otherwise a place read is copied. A borrow variable read as a
 whole is a move (reading a borrow moves it); assigning a borrow variable as a whole moves it too
 (passing `&x` would be `&&T`). The block's type is `B?`, or else its arms' common type. -/
--- Two paths, value-dependent by design (notes/two-paths-census.md, site 13): captures read the places an arm leaves ⊥ and a split capture's constructor, each type-directed or surviving refinement; copy-ness is read from declared types (D80, `copyRead`).
+-- Two paths, value-dependent by design (notes/two-paths-census.md, site 13): captures read a split capture's constructor, type-directed or surviving refinement; the moved places and their grain (D84, `staticJoin`) and copy-ness (D80, `copyRead`) are read from syntax and declared types.
 def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Value) :
     M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
@@ -3278,8 +3382,15 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
         unless ← conv fuel' T T0 do
           err s!"the arms of a non-tail match have different types ({T0} and {T}); annotate it (let x : T = match …)"
       pure T0
-  -- K1: the block takes each outer place by the largest effect any arm has on it (`blockCaptures`)
-  let (caps, split, moved) ← blockCaptures fuel' mt armMovedAll
+  -- K1: the block takes each outer place by the largest effect any arm has on it (`blockCaptures`);
+  -- D84: the places it moves are the static join's, which the direct run drops; what the arms'
+  -- runs moved is kept as an assertion that the two agree
+  let (_, st) ← staticJoin fuel' mt
+  let logged ← joinLogged fuel' st
+  for q in armMovedAll do
+    unless logged.any (jdCovers · q) do
+      err s!"INTERNAL [D84] an arm of a stuck match moves {← ppPlace q}, which the static join misses (please report)"
+  let (caps, split, moved) ← blockCaptures fuel' mt st
   let f ← topIdx
   let nb := (← get).env[f]!.binds.size
   -- [Fix] captures no borrow (D63, rule-audit item 7): a closure or Π-type in an arm that
@@ -3571,8 +3682,8 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
     accessPath fuel' p
     accessNeutralHead fuel' p
     match ← matchContent p with
-    | .zero => checkTail fuel' z k
-    | .succ _ => checkTail fuel' s k
+    | .zero => checkTail fuel' z (← joinCont fuel' t k)
+    | .succ _ => checkTail fuel' s (← joinCont fuel' t k)
     | .abs σ =>
       let w ← enterWorld
       inWorld w do
@@ -3620,7 +3731,7 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
       if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
       discard (scrutType fuel' p ty)
       match arms[c]? with
-      | some (_, a) => checkTail fuel' a k
+      | some (_, a) => checkTail fuel' a (← joinCont fuel' (.matchInd p ty arms) k)
       | none => err s!"[Match] no arm for constructor {c}"
     | .abs σ =>
       let (d, ps) ← scrutType fuel' p ty
@@ -3731,7 +3842,7 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
     let g := (← get).goal.getD .bot
     trace fun _ => s!"[Def] {self.name}: path ends with type {T} against goal {g}"
     unless ← conv fuel' T g do
-      err s!"the body of {self.name} has type {T}, but the goal is {g}{convBotNote T g}"
+      err s!"the body of {self.name} has type {T}, but the goal is {g}"
   restoreKeep saved
 termination_by structural fuel
 

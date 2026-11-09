@@ -39,7 +39,7 @@ ochr Borrows uses Nats, WordType {
   -- A borrow of a local writes to the local: after `*y := 2` through `y = &x`, `x` is `2`.
   def LetZ (x : Nat) : Nat := (
     let z = (let y = &x; *y := 2; x);
-    let h : Id(Nat, z, 2) = refl;
+    let h : Id(Nat, clone(z), 2) = refl;
     z
   )
 
@@ -459,5 +459,5 @@ ochr FrameModel uses Nats, Fixtures, WordType {
   def ReassignParam (x : &Nat) : Unit := (let a = 5; x := &a; *x := 7)
   def ReassignStmt (c0 : Nat) : Id(Nat, (let c = c0; ReassignParam(&c); c), c0) := refl
   -- twin of ReassignStmt: the false statement that the write reached the caller
-  reject def ReassignLie (c0 : Nat) : Id(Nat, (let c = c0; ReassignParam(&c); c), 7) := refl
+  reject def ReassignLie (c0 : Nat) : Id(Nat, (let c = clone(c0); ReassignParam(&c); c), 7) := refl
 }

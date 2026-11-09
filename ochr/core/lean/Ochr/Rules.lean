@@ -31,12 +31,12 @@ inductive Rule where
   | ArgsNil | Args | Call | CallErr | App | AppClose | AppHead | AppNeutral | AppNeutralHead
   | Close
   -- matching
-  | Match | MatchStuck | MatchErr | MatchProp | MatchNone | Proj
+  | Match | MatchStuck | MatchErr | MatchProp | MatchNone | Proj | Join
   -- sealed programs and stuck blocks
   | Seal | SealStuck | SealErr | Block
   -- observation, `Id`, conversion, `eq` (@app-conv)
   | Obs | ObsBorrow | Id
-  | ConvBot | ConvRefl | ConvCong | ConvUnit | ConvPi | ConvFun
+  | ConvRefl | ConvCong | ConvUnit | ConvPi | ConvFun
   | EqInj | EqRefl | EqDisj | EqStuck
   -- typing (@app-typing)
   | TypePos | TErase | TRead | TBorrow | TAssign | TLet | TLetAnn | TSeq | TCtor
@@ -59,10 +59,10 @@ def Rule.all : List Rule :=
    .EraseProof, .EraseType,
    .ArgsNil, .Args, .Call, .CallErr, .App, .AppClose, .AppHead, .AppNeutral, .AppNeutralHead,
    .Close,
-   .Match, .MatchStuck, .MatchErr, .MatchProp, .MatchNone, .Proj,
+   .Match, .MatchStuck, .MatchErr, .MatchProp, .MatchNone, .Proj, .Join,
    .Seal, .SealStuck, .SealErr, .Block,
    .Obs, .ObsBorrow, .Id,
-   .ConvBot, .ConvRefl, .ConvCong, .ConvUnit, .ConvPi, .ConvFun,
+   .ConvRefl, .ConvCong, .ConvUnit, .ConvPi, .ConvFun,
    .EqInj, .EqRefl, .EqDisj, .EqStuck,
    .TypePos, .TErase, .TRead, .TBorrow, .TAssign, .TLet, .TLetAnn, .TSeq, .TCtor,
    .TSort, .TType, .TInd, .TRef, .TEq, .TPi, .TJ, .TRewrite,
@@ -88,10 +88,10 @@ def Rule.name : Rule → String
   | .App => "App" | .AppClose => "App-close" | .AppHead => "App-head"
   | .AppNeutral => "App-neutral" | .AppNeutralHead => "App-neutral-head" | .Close => "Close"
   | .Match => "Match" | .MatchStuck => "Match-stuck" | .MatchErr => "Match-err"
-  | .MatchProp => "Match-prop" | .MatchNone => "Match-none" | .Proj => "Proj"
+  | .MatchProp => "Match-prop" | .MatchNone => "Match-none" | .Proj => "Proj" | .Join => "Join"
   | .Seal => "Seal" | .SealStuck => "Seal-stuck" | .SealErr => "Seal-err" | .Block => "Block"
   | .Obs => "Obs" | .ObsBorrow => "Obs-borrow" | .Id => "Id"
-  | .ConvBot => "Conv-bot" | .ConvRefl => "Conv-refl" | .ConvCong => "Conv-cong" | .ConvUnit => "Conv-unit"
+  | .ConvRefl => "Conv-refl" | .ConvCong => "Conv-cong" | .ConvUnit => "Conv-unit"
   | .ConvPi => "Conv-pi" | .ConvFun => "Conv-fun"
   | .EqInj => "Eq-inj" | .EqRefl => "Eq-refl" | .EqDisj => "Eq-disj"
   | .EqStuck => "Eq-stuck"

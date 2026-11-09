@@ -28,7 +28,7 @@ ochr Functions uses Nats, Boxes, Fixtures {
     f(())
   )
 
-  def TwiceNoop (f : Π(_ : Unit). Unit) : Id(Unit, Twice(f), ()) := refl
+  def TwiceNoop (f : Π(_ : Unit). Unit) : Id(Unit, Twice(clone(f)), ()) := refl
 
   -- With a borrow argument, `f` may write, and what it leaves is a sealed program. Moving
   -- `x` into the second call instead of reborrowing it makes no difference.
@@ -37,7 +37,7 @@ ochr Functions uses Nats, Boxes, Fixtures {
     f(&*x)
   )
 
-  def TwiceMMove (f : Π(_ : &Nat). Unit) (x : &Nat) : Id(Unit, TwiceM(f, x), f(&*x); f(x)) := refl
+  def TwiceMMove (f : Π(_ : &Nat). Unit) (x : &Nat) : Id(Unit, TwiceM(clone(f), x), f(&*x); f(x)) := refl
 
   -- Instantiated with a function that adds zero, `TwiceM` does nothing, by induction ...
   def TwiceMZero (x : &Nat) : Id(Unit, TwiceM(λ(z : &Nat) : Unit => AddM(z, 0), x), ()) by x := (
@@ -55,7 +55,7 @@ ochr Functions uses Nats, Boxes, Fixtures {
     let h1 = AddMZero(&*x);
     AddM(&*x, 0);
     let h2 = AddMZero(&*x);
-    J(Nat, Add(s, 0), s, λ(z : Nat) : Prop => Id(Nat, Add(Add(s, 0), 0), z), h1, h2)
+    J(Nat, Add(s, 0), s, λ(z : Nat) : Prop => Id(Nat, Add(Add(clone(s), 0), 0), clone(z)), h1, h2)
   )
 
   -- `A → B` is a Π-type with an unnamed parameter.
@@ -197,7 +197,7 @@ ochr Functions uses Nats, Boxes, Fixtures {
     c
   )
 
-  def RunGGen (f : Π(x : &Nat). Prop) : Id(Nat, RunG(f), Z) := refl
+  def RunGGen (f : Π(x : &Nat). Prop) : Id(Nat, RunG(clone(f)), Z) := refl
   reject def Boom : False := RunGGen(H)
   reject def RunGH : Id(Nat, RunG(H), 1) := refl
 
@@ -209,7 +209,7 @@ ochr Functions uses Nats, Boxes, Fixtures {
     c
   )
 
-  def RunIGen (f : Π(x : &Nat). Prop) : Id(Nat, RunI(f), Z) := refl
+  def RunIGen (f : Π(x : &Nat). Prop) : Id(Nat, RunI(clone(f)), Z) := refl
   reject def BoomI : False := RunIGen(H)
 
   -- The pre-pass reads `f`'s class above from its declared type, which is a Π-type as
@@ -228,7 +228,7 @@ ochr Functions uses Nats, Boxes, Fixtures {
     c
   )
 
-  def RunPowGen (p : RefPred(0)) : Id(Nat, RunPow(p), Z) := refl
+  def RunPowGen (p : RefPred(0)) : Id(Nat, RunPow(clone(p)), Z) := refl
   reject def BoomPow : False := RunPowGen(H)
 
   -- twin of BoomPow: a function whose codomain is written `Prop` (same class as `RefPred(0)`'s), so the generic and instance runs agree
@@ -241,13 +241,13 @@ ochr Functions uses Nats, Boxes, Fixtures {
   -- data at the instance and erased at the generic call, and these true statements were
   -- rejected with an internal error
   def PickP (n : Nat) : RefPred(0) := match n { Z => HPure, S _ => HPure, }
-  def InstPow (n : Nat) : Id(Nat, RunPow(PickP(n)), Z) := RunPowGen(PickP(n))
+  def InstPow (n : Nat) : Id(Nat, RunPow(PickP(clone(n))), Z) := RunPowGen(PickP(n))
   def InstPowZ : Id(Nat, RunPow(PickP(Z)), Z) := InstPow(Z)
-  def DirectPow (n : Nat) : Id(Nat, RunPow(PickP(n)), Z) := refl
+  def DirectPow (n : Nat) : Id(Nat, RunPow(PickP(clone(n))), Z) := refl
   -- a constant type reads as its value's Π-type
   def T0 : Type₁ := Π(x : &Nat). Prop
   def RunT0 (p : T0) : Nat := (let c = Z; p(&c); c)
-  def RunT0Gen (p : T0) : Id(Nat, RunT0(p), Z) := refl
+  def RunT0Gen (p : T0) : Id(Nat, RunT0(clone(p)), Z) := refl
   -- a family whose arms are Π-types of different erasure classes has no class: which one a
   -- binding of it takes would be decided by computation
   def MixT (n : Nat) : Type₁ := match n { Z => Π(x : Type). Nat, S _ => Π(x : &Nat). Prop, }
@@ -259,7 +259,7 @@ ochr Functions uses Nats, Boxes, Fixtures {
   -- its Π arm's; mixing classes through the recursion is still a conflict
   def RecP (n : Nat) : Type₁ by n := match n { Z => Π(x : &Nat). Prop, S m => RecP(m), }
   def RunRec (n : Nat) (p : RecP(n)) : Nat := match n { Z => (let c = Z; p(&c); c), S m => Z, }
-  def RunRecGen (n : Nat) (p : RecP(n)) : Id(Nat, RunRec(n, p), Z) := match n { Z => refl, S m => refl, }
+  def RunRecGen (n : Nat) (p : RecP(n)) : Id(Nat, RunRec(clone(n), clone(p)), Z) := match n { Z => refl, S m => refl, }
   def MixR (n : Nat) : Type₁ by n := match n { Z => Π(x : &Nat). Prop, S m => match m { Z => Π(x : Type). Nat, S k => MixR(k), }, }
   reject def UseMixR (n : Nat) (p : MixR(n)) : Nat := Z
   -- a body that names its Π-type with a `let` reads as that Π-type
@@ -274,9 +274,9 @@ ochr Functions uses Nats, Boxes, Fixtures {
   -- on both paths, a sealed argument (`PickP(n)`) included
   def IdTy (A : Type₁) : Type₁ := A
   def RunIdTy (p : IdTy(Π(x : &Nat). Prop)) : Nat := (let c = Z; p(&c); c)
-  def RunIdTyGen (p : IdTy(Π(x : &Nat). Prop)) : Id(Nat, RunIdTy(p), Z) := refl
+  def RunIdTyGen (p : IdTy(Π(x : &Nat). Prop)) : Id(Nat, RunIdTy(clone(p)), Z) := refl
   def AtIdTy : Id(Nat, RunIdTy(WriteProp), Z) := RunIdTyGen(WriteProp)
-  def AtIdTySealed (n : Nat) : Id(Nat, RunIdTy(PickP(n)), Z) := RunIdTyGen(PickP(n))
+  def AtIdTySealed (n : Nat) : Id(Nat, RunIdTy(PickP(clone(n))), Z) := RunIdTyGen(PickP(n))
   def IdTy2 (B : Type₁) : Type₁ := IdTy(B)
   def RunIdTy2 (p : IdTy2(Π(x : &Nat). Prop)) : Nat := (let c = Z; p(&c); c)
   def LetTy (B : Type₁) : Type₁ := (let C = B; C)
@@ -323,7 +323,7 @@ ochr Functions uses Nats, Boxes, Fixtures {
     ()
   )
 
-  def RunU (f : Π(x : &Nat). Unit) (n : Nat) : Id(Unit, let c = n; f(&c), ()) := refl
+  def RunU (f : Π(x : &Nat). Unit) (n : Nat) : Id(Unit, let c = clone(n); f(&c), ()) := refl
   def RunUH (n : Nat) : ⊤ := RunU(H2, n)
 
   -- ## Called bodies are typed by declaration (D82)
@@ -336,7 +336,7 @@ ochr Functions uses Nats, Boxes, Fixtures {
   def SndOf (p : Nat × Nat) : Nat := ApplyAtUnit(λ(u : Unit) : Nat => clone(p).1)
   def SndOfRun : Id(Nat, SndOf((1, 2)), 2) := refl
   reject def SndOfWrong : Id(Nat, SndOf((1, 2)), 1) := refl
-  def SndOfGen (a : Nat) (b : Nat) : Id(Nat, SndOf((a, clone(b))), b) := refl
+  def SndOfGen (a : Nat) (b : Nat) : Id(Nat, SndOf((clone(a), clone(b))), clone(b)) := refl
 
   -- A pattern variable whose value has a moved-out hole: when `a.1` is read, `a` holds `(⊥, y)`,
   -- which has no type of its own; its declared type, the field type of `q`'s, says it is a pair.
