@@ -224,4 +224,158 @@ theorem Mean.semEnd_comm (m : Mean) {r₁ r₂ : Pos} {l₁ l₂ : Nat} (hr : r�
     · rw [Mean.not_dependsOn h, Mean.not_dependsOn h, Future.upd_comm φ hl]
   · by_cases hp₁ : p = r₁ <;> by_cases hp₂ : p = r₂ <;> simp [hp₁, hp₂]
 
+/-- **Without (WF3) two ends need not commute.** Borrow `0` held at `r₁` holds a loan of `1`,
+borrow `1` held at `r₂` a loan of `0` (a cycle `loanUnder` forbids), and a third position reads
+both loans. Ending `0` first fixes it to `φ 1`, so the third position reads `(φ 1, φ 1)`; ending
+`1` first gives `(φ 0, φ 0)`. -/
+theorem Mean.semEnd_comm_cycle : ∃ (m : Mean) (r₁ r₂ : Pos) (l₁ l₂ : Nat), r₁ ≠ r₂ ∧ l₁ ≠ l₂ ∧
+    m.dependsOn r₁ l₂ ∧ m.dependsOn r₂ l₁ ∧
+    (m.semEnd r₁ l₁).semEnd r₂ l₂ ≠ (m.semEnd r₂ l₂).semEnd r₁ l₁ := by
+  let m : Mean := ⟨[], fun φ p => if p = .bind 0 0 then φ 1 else if p = .bind 0 1 then φ 0
+      else .ctor "x" 0 [φ 0, φ 1], fun _ => none⟩
+  refine ⟨m, .bind 0 0, .bind 0 1, 0, 1, by decide, by decide,
+    ⟨fun _ => .moved, .proof, ?_⟩, ⟨fun _ => .moved, .proof, ?_⟩, fun h => ?_⟩
+  · simp [m, Future.upd]
+  · simp [m, Future.upd]
+  · have := congrArg (fun m : Mean => m.val (fun l => if l = 0 then .proof else .moved) (.bind 0 2)) h
+    simp [m, Mean.semEnd, Future.upd] at this
+
+/-- `semEnd` at `p` reads its input only at `p` and at the holder. -/
+theorem Mean.semEnd_val_congr {m m' : Mean} {r p : Pos} (l : Nat)
+    (hp : ∀ φ, m.val φ p = m'.val φ p) (hr : ∀ φ, m.val φ r = m'.val φ r) (φ : Future) :
+    (m.semEnd r l).val φ p = (m'.semEnd r l).val φ p := by
+  simp only [Mean.semEnd]
+  rw [hr, hp]
+
+namespace SState
+
+private theorem zipIdx_zipIdx {α : Type _} (l : List α) :
+    l.zipIdx.zipIdx = l.zipIdx.map fun x => (x, x.2) := by
+  apply List.ext_getElem <;> simp [List.getElem_zipIdx]
+
+theorem mapVals_mapVals (s : SState) (g h : Pos → SVal → SVal) :
+    (s.mapVals g).mapVals h = s.mapVals fun p v => h p (g p v) := by
+  simp [mapVals, List.zipIdx_map, List.map_map, Function.comp_def, zipIdx_zipIdx]
+
+theorem mapVals_congr (s : SState) {g g' : Pos → SVal → SVal}
+    (h : ∀ p, s.Valid p → g p (s.valAt p) = g' p (s.valAt p)) : s.mapVals g = s.mapVals g' := by
+  unfold mapVals
+  congr 1
+  apply List.map_congr_left
+  rintro ⟨fr, fi⟩ hmem
+  have hf : s.env[fi]? = some fr := List.mem_zipIdx_iff_getElem?.mp hmem
+  dsimp only
+  congr 1
+  · apply List.map_congr_left
+    rintro ⟨b, i⟩ hb
+    have hbi : fr.binds[i]? = some b := List.mem_zipIdx_iff_getElem?.mp hb
+    have hv : s.Valid (.bind fi i) := by simp [Valid, bindAt?, hf, hbi]
+    have hval : s.valAt (.bind fi i) = b.val := by simp [valAt, hf, hbi]
+    have := h _ hv
+    rw [hval] at this
+    simp only [this]
+  · apply List.map_congr_left
+    rintro ⟨v, i⟩ hvm
+    have hti : fr.temps[i]? = some v := List.mem_zipIdx_iff_getElem?.mp hvm
+    have hv : s.Valid (.temp fi i) := by simp [Valid, tempAt?, hf, hti]
+    have hval : s.valAt (.temp fi i) = v := by simp [valAt, hf, hti]
+    have := h _ hv
+    rw [hval] at this
+    simp only [this]
+
+theorem shape_of_find {s : SState} {l : Nat} {r : Pos}
+    (h : s.positions.find? (fun p => decide (s.shape p = some l)) = some r) : s.shape r = some l := by
+  simpa using List.find?_some h
+
+/-- Ending `l` does not move the holder of another label `l'`. -/
+theorem find_endLabel (s : SState) {l l' : Nat} (hl : l ≠ l') :
+    (s.endLabel l).positions.find? (fun p => decide ((s.endLabel l).shape p = some l')) =
+      s.positions.find? (fun p => decide (s.shape p = some l')) := by
+  cases h : s.positions.find? (fun p => decide (s.shape p = some l)) with
+  | none => rw [endLabel_of_find_none s l h]
+  | some r =>
+    have hr := shape_of_find h
+    rw [endLabel_shape s l r h, endLabel_of_find s l r h, positions_mapVals, positions_withShape]
+    congr 1
+    funext p
+    by_cases hp : p = r
+    · subst hp; simp [hr, hl]
+    · simp [hp]
+
+/-- Two [End]s in a row, unfolded: the state means `semEnd` twice. -/
+theorem endLabel_endLabel (s : SState) {l₁ l₂ : Nat} {r₁ r₂ : Pos}
+    (h₁ : s.positions.find? (fun p => decide (s.shape p = some l₁)) = some r₁)
+    (h₂ : (s.endLabel l₁).positions.find? (fun p => decide ((s.endLabel l₁).shape p = some l₂)) = some r₂)
+    (hr : r₂ ≠ r₁) :
+    (s.endLabel l₁).endLabel l₂ =
+      ({ s with shape := ((s.toMean.semEnd r₁ l₁).semEnd r₂ l₂).shape }).mapVals
+        fun p _ => (((s.toMean.semEnd r₁ l₁).semEnd r₂ l₂).val · p) := by
+  rw [endLabel_of_find _ l₂ r₂ h₂]
+  have e : ({ s.endLabel l₁ with shape := ((s.endLabel l₁).toMean.semEnd r₂ l₂).shape } : SState) =
+      ({ s with shape := ((s.toMean.semEnd r₁ l₁).semEnd r₂ l₂).shape } : SState).mapVals
+        fun p _ => ((s.toMean.semEnd r₁ l₁).val · p) := by
+    rw [endLabel_of_find s l₁ r₁ h₁]; rfl
+  rw [e, mapVals_mapVals]
+  apply mapVals_congr
+  intro p hp
+  funext φ
+  exact Mean.semEnd_val_congr l₂ (fun ψ => endLabel_val s l₁ r₁ h₁ ψ p (.inl hp))
+    (fun ψ => endLabel_val s l₁ r₁ h₁ ψ r₂ (.inr hr)) φ
+
+/-- (WF3)'s relation on the semantic state: the content of borrow `k` depends on label `l`
+(the meaning at `k`'s holder changes with `l`'s final content). This is the semantic shadow of
+`loanUnder env l k` ("a loan of `l` occurs in the content of borrow `k`"): on `MState.sstate` it
+is contained in `loanUnder` once a value's meaning is shown to read the future only at the loans
+occurring in it, which needs that of `CodeMeaning.sealed`/`clo`/`pi` as a law. -/
+def LoanDeps (s : SState) (l k : Nat) : Prop := ∃ r, s.shape r = some k ∧ s.dependsOn r l
+
+/-- **Two [End]s commute** under (WF3): if the contents of `l₁` and `l₂` do not depend on each
+other both ways, ending them in either order gives the *same* semantic state (not only states
+`Below` each other both ways). Either label may be held nowhere. Milestone 3: the [Access] step
+lemma (the checker ends every borrow whose loan occurs, in its own order; the reference ends, in
+label order, those the meaning depends on), and `observation`'s end of every live borrow. -/
+theorem endLabel_comm (s : SState) {l₁ l₂ : Nat} (hl : l₁ ≠ l₂)
+    (hacyc : ¬ (s.LoanDeps l₂ l₁ ∧ s.LoanDeps l₁ l₂)) :
+    (s.endLabel l₁).endLabel l₂ = (s.endLabel l₂).endLabel l₁ := by
+  cases h₁ : s.positions.find? (fun p => decide (s.shape p = some l₁)) with
+  | none =>
+    have h₁' := (find_endLabel s hl.symm).trans h₁
+    rw [endLabel_of_find_none s l₁ h₁, endLabel_of_find_none _ l₁ h₁']
+  | some r₁ =>
+  cases h₂ : s.positions.find? (fun p => decide (s.shape p = some l₂)) with
+  | none =>
+    have h₂' := (find_endLabel s hl).trans h₂
+    rw [endLabel_of_find_none s l₂ h₂, endLabel_of_find_none _ l₂ h₂']
+  | some r₂ =>
+    have hs₁ := shape_of_find h₁
+    have hs₂ := shape_of_find h₂
+    have hr : r₁ ≠ r₂ := fun e => hl (Option.some.inj (hs₁.symm.trans (e ▸ hs₂)))
+    have hind : ¬ s.toMean.dependsOn r₁ l₂ ∨ ¬ s.toMean.dependsOn r₂ l₁ := by
+      by_cases a : s.toMean.dependsOn r₁ l₂
+      · exact .inr fun b => hacyc ⟨⟨r₁, hs₁, a⟩, ⟨r₂, hs₂, b⟩⟩
+      · exact .inl a
+    rw [endLabel_endLabel s h₁ ((find_endLabel s hl).trans h₂) hr.symm,
+      endLabel_endLabel s h₂ ((find_endLabel s hl.symm).trans h₁) hr,
+      Mean.semEnd_comm _ hr hl hind]
+
+/-- A well-founded relation has no cycle of length two. -/
+theorem _root_.WellFounded.no_two_cycle {α : Sort _} {r : α → α → Prop} (h : WellFounded r) (a b : α)
+    (hab : r a b) (hba : r b a) : False := by
+  have key : ∀ x, Acc r x → ∀ y, r x y → r y x → False := by
+    intro x hx
+    induction hx with
+    | intro x _ ih => intro y hxy hyx; exact ih y hyx x hyx hxy
+  exact key a (h.apply a) b hab hba
+
+/-- (WF3) in semantic form: ending borrows in the order of `LoanDeps` fixes each final content
+once (docs/27 §3.3). -/
+def SWF3 (s : SState) : Prop := WellFounded s.LoanDeps
+
+/-- Under (WF3), any two distinct labels' ends commute. -/
+theorem endLabel_comm_of_SWF3 (s : SState) (hwf : s.SWF3) {l₁ l₂ : Nat} (hl : l₁ ≠ l₂) :
+    (s.endLabel l₁).endLabel l₂ = (s.endLabel l₂).endLabel l₁ :=
+  endLabel_comm s hl fun ⟨a, b⟩ => hwf.no_two_cycle l₂ l₁ a b
+
+end SState
+
 end Ochr.Meaning
