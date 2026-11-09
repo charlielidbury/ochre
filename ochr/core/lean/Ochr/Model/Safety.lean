@@ -256,7 +256,7 @@ inductive Err where
   deriving DecidableEq
 
 def holds (l : Label) : Val → Bool
-  | .borrow l' _ => l' == l
+  | .borrow l' _ => decide (l' = l)
   | _ => false
 
 def findBorrow (N : Nat) (Ω : St) (l : Label) : Option Var := (List.range N).find? fun x => holds l (Ω x)
@@ -1176,3 +1176,142 @@ theorem cCall_wf (ρ : Rho) (N : Nat) (Ω Ω' : St) (t r : Var) (l k : Label)
     · cases h
   · split at h <;> cases h
   · cases h
+
+/-! ## §6. Runtime `J`
+
+`J(A, a, b, P, h, t)` transports `t` along `h : Eq(A, a, b)`. The runtime rule returns `t` when the
+endpoints mean the same; the checker's rule returns it only when they are convertible, here
+syntactically equal, and is otherwise stuck. -/
+
+inductive JRes where
+  | ok (v : Val)
+  | stuck
+  deriving DecidableEq
+
+/-- The runtime rule: compare meanings. -/
+def castRT (ρ : Rho) (f : Future) (a b t : Val) : JRes :=
+  if ev ρ f a = ev ρ f b then .ok t else .stuck
+
+/-- The checker's rule, used at runtime: compare syntax. -/
+def castChk (a b t : Val) : JRes := if a = b then .ok t else .stuck
+
+/-- The runtime rule is safe whenever the equation's meaning holds: no error, and the result
+means what `t` means (transport at equal endpoints is the identity). -/
+theorem castRT_safe (ρ : Rho) (f : Future) (a b t : Val) (heq : ev ρ f a = ev ρ f b) :
+    castRT ρ f a b t = .ok t := by
+  simp [castRT, heq]
+
+/-- The checker's rule gets stuck on endpoints with equal meanings and different syntax: a
+pending backward computation and its result. -/
+def rhoC : Rho := ⟨fun _ => 0, fun d => ⟨(d, fun v => v + d), fun _ _ h => Nat.add_right_cancel h⟩⟩
+
+theorem cast_counterexample :
+    ev rhoC (fun _ => .bot) (.gBack (.num 2) (.num 3)) = ev rhoC (fun _ => .bot) (.num 5) ∧
+    castChk (.gBack (.num 2) (.num 3)) (.num 5) (.num 7) = .stuck ∧
+    castRT rhoC (fun _ => .bot) (.gBack (.num 2) (.num 3)) (.num 5) (.num 7) = .ok (.num 7) := by
+  decide
+
+/-- At runtime, first-order values are normalised (`normV`), so this first-order case does not
+arise there. Functions are where it does: two encodings of the same function, with different
+code and equal graphs, are not syntactically equal. -/
+inductive Code where
+  | addZeroR | addZeroL
+  deriving DecidableEq
+
+def Code.mean : Code → Nat → Nat
+  | .addZeroR => fun n => n + 0
+  | .addZeroL => fun n => 0 + n
+
+theorem code_same_meaning : Code.mean .addZeroR = Code.mean .addZeroL :=
+  funext fun n => (Nat.add_zero n).trans (Nat.zero_add n).symm
+
+/-- At runtime the proof `h` is erased, so runtime `J` compares nothing: it returns `t`, which is
+safe because `h` holds. The checker's rule on function endpoints is stuck, although they mean
+the same. -/
+def castChkFn (a b : Code) (t : Val) : JRes := if a = b then .ok t else .stuck
+def castRTFn (_a _b : Code) (t : Val) : JRes := .ok t
+
+theorem cast_fn_counterexample (t : Val) :
+    Code.mean .addZeroR = Code.mean .addZeroL ∧
+    castChkFn .addZeroR .addZeroL t = .stuck ∧ castRTFn .addZeroR .addZeroL t = .ok t :=
+  ⟨code_same_meaning, by simp [castChkFn], rfl⟩
+
+/-! ## §7. The drop at the join (D84)
+
+A two-armed match on `s`: arm `Z` moves `p` into `q` and drops `q`; arm `S` leaves `p` alone. The
+checker reads the match as a block that takes `p` by move, so after it `p` is `⊥`. With the drop
+at the join, arm `S` drops `p` at the join, because another arm moved it, and the concrete run
+agrees with the block on every arm: `⊥` means *definitely moved*. Without it, arm `S` keeps `p`,
+and the block is only below the run (`⊥` as no information). Here `p` is lent to a binding `y`,
+and both the move and the drop at the join end `y`. -/
+
+def cMove (ρ : Rho) (N fuel : Nat) (Ω : St) (x : Var) (ps : List Step) (dst : Var) : Except Err St :=
+  match cAccess ρ N fuel Ω .read x ps with
+  | .error e => .error e
+  | .ok Ω₁ =>
+    match cFollow (Ω₁ x) ps with
+    | .error e => .error e
+    | .ok v => if wholeV v then (setPlace Ω₁ x ps .bot).map (upd · dst v) else .error .readBot
+
+def cDrop (ρ : Rho) (N : Nat) (temp : Var → Bool) (fuel : Nat) (Ω : St) (x : Var) : Except Err St :=
+  match Ω x with
+  | .borrow l _ => (cEndL ρ N Ω l).map (upd · x .bot)
+  | _ => (cDropLoop ρ N temp fuel Ω x).map (upd · x .bot)
+
+/-- `p` is 0, `q` is 1, `s` is 2, `y` is 3. -/
+def runMatch (ρ : Rho) (Ω : St) (joinDrop : Bool) : Except Err St :=
+  match Ω 2 with
+  | .num 0 =>
+    match cMove ρ 4 10 Ω 0 [] 1 with
+    | .ok Ω₁ => cDrop ρ 4 (fun _ => false) 10 Ω₁ 1
+    | .error e => .error e
+  | _ => if joinDrop then cDrop ρ 4 (fun _ => false) 10 Ω 0 else .ok Ω
+
+/-- `p` lent to `y`, which holds `borrow_0 5`; the scrutinee `s` is `n`. -/
+def j0 (n : Nat) : St := fun x =>
+  if x = 0 then .loan 0 else if x = 2 then .num n else if x = 3 then .borrow 0 (.num 5) else .bot
+
+/-- With the drop at the join, both arms leave `p`, `q` and `y` empty: the block's result. -/
+theorem join_armZ : (runMatch rhoC (j0 0) true).toOption.map (fun Ω => (Ω 0, Ω 1, Ω 3))
+    = some (.bot, .bot, .bot) := by decide
+theorem join_armS : (runMatch rhoC (j0 1) true).toOption.map (fun Ω => (Ω 0, Ω 1, Ω 3))
+    = some (.bot, .bot, .bot) := by decide
+
+/-- Without it, arm `S` keeps `p` lent to `y`: the run holds more than the block says. -/
+theorem nojoin_armS : (runMatch rhoC (j0 1) false).toOption.map (fun Ω => (Ω 0, Ω 1, Ω 3))
+    = some (.loan 0, .bot, .borrow 0 (.num 5)) := by decide
+
+/-- So the block's reading, `⊥` at `p`, `q` and `y`, is exactly each arm's meaning with the drop
+at the join, under every future… -/
+theorem join_meaning (n : Nat) (hn : n = 0 ∨ n = 1) (f : Future) :
+    (runMatch rhoC (j0 n) true).toOption.map (fun Ω => (M rhoC Ω f 0, M rhoC Ω f 1, M rhoC Ω f 3))
+      = some (.bot, .bot, .bot) := by
+  rcases hn with h | h <;> subst h <;> rfl
+
+/-- …and without it, only below arm `S`'s meaning: `p` means `5` there, `y` means `5`. -/
+theorem nojoin_meaning (f : Future) :
+    (runMatch rhoC (j0 1) false).toOption.map (fun Ω => (M rhoC Ω f 0, M rhoC Ω f 3))
+      = some (f 0, .num 5) := rfl
+
+end Ochr.Model.Safety
+
+#print axioms Ochr.Model.Safety.notWhole_hasBot
+#print axioms Ochr.Model.Safety.cFollow_err
+#print axioms Ochr.Model.Safety.cEndL_err
+#print axioms Ochr.Model.Safety.cAccess_err
+#print axioms Ochr.Model.Safety.cClone_reflect
+#print axioms Ochr.Model.Safety.cClone_ok
+#print axioms Ochr.Model.Safety.cAssign_overLoans
+#print axioms Ochr.Model.Safety.shaped_dep
+#print axioms Ochr.Model.Safety.cDropLoop_inFlight
+#print axioms Ochr.Model.Safety.cCall_ok
+#print axioms Ochr.Model.Safety.cCall_err
+#print axioms Ochr.Model.Safety.cEndL_wf
+#print axioms Ochr.Model.Safety.cAccess_wf
+#print axioms Ochr.Model.Safety.cDropLoop_wf
+#print axioms Ochr.Model.Safety.cCall_wf
+#print axioms Ochr.Model.Safety.castRT_safe
+#print axioms Ochr.Model.Safety.cast_counterexample
+#print axioms Ochr.Model.Safety.cast_fn_counterexample
+#print axioms Ochr.Model.Safety.join_armS
+#print axioms Ochr.Model.Safety.join_meaning
