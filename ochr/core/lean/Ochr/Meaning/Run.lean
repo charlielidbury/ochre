@@ -94,11 +94,15 @@ def resolve (s : SState) (p : Place) : Option (Pos × List Step) :=
 
 /-- Push a binding, recording in the shape the borrow label its type carries (the binding
 holds that borrow). -/
-def pushBindShaped (s : SState) (b : SBinding) : SState :=
-  let s' := s.pushBind b
-  match b.ty.label, s'.env.getLast? with
-  | some l, some fr => { s' with shape := fun p => if p = .bind s'.topIdx (fr.binds.length - 1) then some l else s'.shape p }
-  | _, _ => s'
+noncomputable def pushBindShaped (s : SState) (b : SBinding) : SState :=
+  match b.ty.label with
+  | some l =>
+    let s := s.takeLabel l
+    let s' := s.pushBind b
+    match s'.env.getLast? with
+    | some fr => { s' with shape := fun p => if p = .bind s'.topIdx (fr.binds.length - 1) then some l else s'.shape p }
+    | none => s'
+  | none => s.pushBind b
 
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
@@ -108,7 +112,7 @@ noncomputable def movedPlaces (s : SState) : List Place :=
   match s.env.getLast? with
   | some fr => (List.range fr.binds.length).filterMap fun i =>
       match s.varPos i with
-      | some pos => if s.valAt pos φ = .moved then some (.var i) else none
+      | some pos => if s.valAt pos (s.closedFuture φ) = .moved then some (.var i) else none
       | none => none
   | none => []
 
@@ -130,7 +134,7 @@ caller has done it). -/
 noncomputable def setContent (pos : Pos) (steps : List Step) (v : Sem) : SM PUnit := fun s =>
   let T := (s.tyAt pos).m
   let old := s.valAt pos
-  match Sem.updAt K.dm K.Γ T (fun _ => v) steps (old φ) with
+  match Sem.updAt K.dm K.Γ T (fun _ => v) steps (old (s.closedFuture φ)) with
   | some _ => some (⟨⟩, s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T (fun _ => v) steps (old φ')).getD .err)
   | none => none
 
@@ -141,12 +145,13 @@ noncomputable def readPlace (p : Place) (copy : Bool) : SM Res := fun s => do
   if ¬ v.whole then none else
   if copy then some ((v, T), s) else do
     -- a move of a whole position holding a borrow carries the borrow: the position is no
-    -- longer its holder, the result's type names the label (whoever binds it becomes the holder)
+    -- longer its holder; the borrow is parked in a temporary, which holds it until the result
+    -- is bound (D14), and the result's type names the label
     let lab := if steps.isEmpty then s.shape pos else none
-    let s := match lab with
-      | some _ => { s with shape := fun q => if q = pos then none else s.shape q }
-      | none => s
     let (⟨⟩, s) ← setContent K φ pos steps .moved s
+    let s := match lab with
+      | some l => (s.takeLabel l).pushTempShaped (fun _ => v) l
+      | none => s
     some ((v, { T with label := lab }), s)
 
 /-- [Borrow] `&p` with a fresh label `l`: the place now reads `l`'s final content at its path, and
@@ -159,6 +164,8 @@ noncomputable def borrowPlace (p : Place) : SM Res := fun s => do
   let T0 := (s.tyAt pos).m
   let old := s.valAt pos
   let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .err
+  -- the borrow is parked in a temporary, its holder until it is bound (D14)
+  let s := s.pushTempShaped (fun _ => v) l
   some ((v, { T with label := some l }), s)
 
 /-- A call, on the evaluated callee and arguments (docs/18 Def. "reference run", first clause):
@@ -175,6 +182,8 @@ noncomputable def callOf (fv : Res) (args : List Res) : SM Res := fun s =>
     | some F =>
       let argSems := args.map (·.1)
       let labels := args.filterMap (·.2.label)
+      -- the borrow arguments' holders (parked temporaries) are consumed by the call
+      let s := labels.foldl SState.takeLabel s
       match applyTele ps [] PUnit (fun _ => []) out F argSems with
       | some (.data r finals) =>
         let s := s.mapVals fun _ v φ' => v (φ'.updList (labels.zip finals))
@@ -186,6 +195,7 @@ noncomputable def callOf (fv : Res) (args : List Res) : SM Res := fun s =>
           match U.dec0 (φ' k) with
           | some x => v (φ'.updList (labels.zip (back x)))
           | none => .err
+        let s := s.pushTempShaped (fun _ => U.enc0 fwd) k
         some ((U.enc0 fwd, ⟨U, none, some k, none⟩), s)
       | none => none
     | none => none
@@ -203,7 +213,7 @@ noncomputable def joinDrop (t : Term) (s : SState) : SState :=
     match resolve s q with
     | some (pos, steps) =>
       let s := s.access pos
-      match Sem.follow K.dm K.Γ (s.tyAt pos).m (s.valAt pos φ) steps with
+      match Sem.follow K.dm K.Γ (s.tyAt pos).m (s.valAt pos (s.closedFuture φ)) steps with
       | some (.proof, _) | some (.moved, _) | none => s
       | some _ =>
         let s := if steps.isEmpty then (match s.shape pos with | some l => s.endLabel l | none => s) else s
@@ -237,7 +247,7 @@ noncomputable def run (hint : TyS) : Term → SM Res
     let s := if steps.isEmpty then (match s.shape pos with | some l => s.endLabel l | none => s) else s
     let (⟨⟩, s) ← setContent K φ pos steps v s
     let s := match R.label, steps with
-      | some l, [] => { s with shape := fun q => if q = pos then some l else s.shape q }
+      | some l, [] => let s := s.takeLabel l; { s with shape := fun q => if q = pos then some l else s.shape q }
       | _, _ => s
     some ((.el0 Unit (), .plain (.ty0 Unit)), s)
   | .letIn _ u w => fun s => do
@@ -247,13 +257,11 @@ noncomputable def run (hint : TyS) : Term → SM Res
     -- [Drop] of the binding: a borrow it holds ends, then it is forgotten
     let s := match T.label with | some l => s.endLabel l | none => s
     some ((r, R), s.dropLast)
-  | .seq u w => fun s => do
-    -- a discarded result holding a borrow ends it: its label's final content is what it holds
-    let ((r, R), s) ← run (.plain .err) u s
-    let s := match R.label with
-      | some l => s.mapVals fun _ v ψ => v (ψ.upd l r)
-      | none => s
-    run hint w s
+  | .seq u w => do
+    -- a discarded result holding a borrow stays parked in its temporary (D14): the borrow is
+    -- ended by the access that next depends on it, or by the frame's pop
+    let _ ← run (.plain .err) u
+    run hint w
   | .matchNat p z u => fun s => do
     -- [Match]: the arm by the tag of the scrutinee's meaning (after [Access]); `⊥` is an error;
     -- then D84's drop at the join
