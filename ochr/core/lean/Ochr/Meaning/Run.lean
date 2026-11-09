@@ -63,6 +63,8 @@ value can give back (docs/31 D9). -/
 structure TyS : Type 3 where
   m : TyM
   shape : Option (List PiParam × PiOut) := none
+  /-- a borrow-typed result's label: what a call fills when it returns -/
+  label : Option Nat := none
 
 /-- A result: a meaning as a function of the future, with its type. -/
 abbrev Res : Type 3 := SVal × TyS
@@ -75,6 +77,11 @@ def scopeOf (s : SState) : List DeclInfo :=
   match s.env.getLast? with
   | some fr => (fr.binds.map (·.decl)).reverse
   | none => []
+
+/-- The state's top frame extended by bindings holding the given meanings (a Π's or a
+closure's parameters at formation). -/
+def extendBy (s : SState) (acc : List Sem) : SState :=
+  acc.foldl (fun s a => s.pushBind { ty := .err, val := fun _ => a }) s
 
 /-- Resolve a place to its root position and path. -/
 def resolve (s : SState) (p : Place) : Option (Pos × List Step) :=
@@ -103,9 +110,9 @@ reading). Reading `⊥`, or a value holding it, is an error. -/
 noncomputable def readPlace (p : Place) (copy : Bool) : SM Res := do
   let (v, T, pos, steps) ← contentOf K p
   if ¬ v.whole then SM.fail else
-  if copy then pure (fun _ => v, ⟨T, none⟩) else do
+  if copy then pure (fun _ => v, ⟨T, none, none⟩) else do
     setContent K pos steps .moved
-    pure (fun _ => v, ⟨T, none⟩)
+    pure (fun _ => v, ⟨T, none, none⟩)
 
 /-- [Borrow] `&p` with a fresh label `l`: the place now means `l`'s final content (at the path,
 inside its value), and the borrow its old content, whole. -/
@@ -116,12 +123,44 @@ noncomputable def borrowPlace (p : Place) : SM Res := fun s => do
   let T0 := s.tyAt pos
   let old := s.valAt pos
   let s := s.setAt pos fun φ => (Sem.updAt K.dm K.Γ T0 (fun _ => φ l) steps (old φ)).getD .err
-  some (((fun _ => v), ⟨T, none⟩), s)
+  some (((fun _ => v), ⟨T, none, some l⟩), s)
 
-/-- The holes of milestone 2 (see the module docstring). -/
-noncomputable def callHole (_ : RunCtx) (_ : Assignment) (f : Res) (args : List Res) : SM Res := sorry
+/-- The future updated at several labels. -/
+def Future.updList (φ : Future) : List (Nat × Sem) → Future
+  | [] => φ
+  | (l, e) :: rest => (φ.upd l e).updList rest
+
+/-- A call, on the evaluated callee and arguments (docs/18 Def. "reference run", first clause):
+apply the callee's meaning along its shape. For a borrow-free result each lent place's final
+content is fixed to its component of the finals (the future at the argument's label); for a
+result `&U`, a fresh label `k`, the result holds the forward value, and each lent place reads
+its component of the backward function at the final content of `k`. A callee without a shape,
+or an ill-typed application, is an error. The guard of a recursive call (`SBinding.recBound`)
+and a statement call's copy are the caller's (`run`'s `.call` clause). -/
+noncomputable def callOf (fv : Res) (args : List Res) : SM Res := fun s =>
+  match fv.2.shape with
+  | some (ps, out) =>
+    match (fv.1 noFuture).as (piCar0 ps [] PUnit out) with
+    | some F =>
+      let argSems := args.map (·.1 noFuture)
+      let labels := args.filterMap (·.2.label)
+      match applyTele ps [] PUnit (fun _ => []) out F argSems with
+      | some (.data r finals) =>
+        let s := s.mapVals fun _ v φ => v (φ.updList (labels.zip finals))
+        let B := match out with | .data B => B argSems | .ref U => U argSems
+        some ((fun _ => r, ⟨B, none, none⟩), s)
+      | some (.ref U fwd back) =>
+        let (k, s) := s.freshLoan
+        let s := s.mapVals fun _ v φ =>
+          match U.dec0 (φ k) with
+          | some x => v (φ.updList (labels.zip (back x)))
+          | none => .err
+        some ((fun _ => U.enc0 fwd, ⟨U, none, some k⟩), s)
+      | none => none
+    | none => none
+  | none => none
+
 noncomputable def fixHole (_ : RunCtx) (_ : Assignment) (t : Term) : SM Res := sorry
-noncomputable def piHole (_ : RunCtx) (_ : Assignment) (t : Term) : SM Res := sorry
 noncomputable def matchHole (_ : RunCtx) (_ : Assignment) (t : Term) : SM Res := sorry
 noncomputable def idHole (_ : RunCtx) (_ : Assignment) (A t u : Term) : SM Res := sorry
 noncomputable def jHole (_ : RunCtx) (_ : Assignment) (args : List Term) : SM Res := sorry
@@ -130,7 +169,7 @@ noncomputable def jHole (_ : RunCtx) (_ : Assignment) (args : List Term) : SM Re
 parameters written, they are read off the expected type (D8). -/
 noncomputable def ctorOf (d : IndDecl) (hint : TyM) (ps fs : List Sem) (c : Nat) : Option Res :=
   let ps? := if ps.isEmpty && !d.params.isEmpty then K.dm.paramsOf d hint else some ps
-  ps?.map fun ps => (fun _ => K.dm.ctorM d ps c fs, ⟨K.dm.tyM d ps, none⟩)
+  ps?.map fun ps => (fun _ => K.dm.ctorM d ps c fs, ⟨K.dm.tyM d ps, none, none⟩)
 
 mutual
 /-- The reference run of a term, at the type `hint` its context expects (`err` for none). -/
@@ -142,7 +181,7 @@ noncomputable def run (hint : TyM) : Term → SM Res
     let (_, T, pos, steps) ← contentOf K p
     let (v, _) ← run T u
     setContent K pos steps (v noFuture)
-    pure (fun _ => .el0 Unit (), ⟨.ty0 Unit, none⟩)
+    pure (fun _ => .el0 Unit (), ⟨.ty0 Unit, none, none⟩)
   | .letIn _ u w => fun s => do
     let ((v, T), s) ← run .err u s
     let s := s.pushBind { ty := T.m, val := v, decl := K.D.declOf (scopeOf s) u }
@@ -159,7 +198,7 @@ noncomputable def run (hint : TyM) : Term → SM Res
     match K.Γ.find? (·.name == n) with
     | some d =>
       let psM ← runParams d 0 [] args
-      pure (fun _ => .ty (K.dm.tyM d psM), ⟨.univ d.sort, none⟩)
+      pure (fun _ => .ty (K.dm.tyM d psM), ⟨.univ d.sort, none, none⟩)
     | none => SM.fail
   | .ctor ty c _ ps args => do
     match K.Γ.find? (·.name == ty) with
@@ -174,33 +213,57 @@ noncomputable def run (hint : TyM) : Term → SM Res
         | none => SM.fail
       | none => SM.fail
     | none => SM.fail
-  | .const n => pure (fun _ => K.C.global n, ⟨.err, none⟩)
-  | .val v => pure (fun φ => Value.mean K.dm K.C K.Γ ρ φ hint v, ⟨hint, none⟩)
-  | .sort l => pure (fun _ => .ty (.univ l), ⟨.univ (sortSucc l), none⟩)
-  | .pi hs ds c => piHole K ρ (.pi hs ds c)
+  | .const n => pure (fun _ => K.C.global n, ⟨.err, none, none⟩)
+  | .val v => pure (fun φ => Value.mean K.dm K.C K.Γ ρ φ hint v, ⟨hint, none, none⟩)
+  | .sort l => pure (fun _ => .ty (.univ l), ⟨.univ (sortSucc l), none, none⟩)
+  | .pi hs ds c => fun s =>
+    -- [T-Pi]: each parameter type is a function of the earlier parameters' meanings, read by
+    -- running it in the current frame extended by them (`runDoms`); the output likewise; the
+    -- carrier at the declared sort (D55, `Decisions.piSort`)
+    let ps := runDoms s ds
+    let out : PiOut := match c with
+      | .ref U => .ref fun acc =>
+        match run .err U (extendBy s acc) with
+        | some ((v, _), _) => (v noFuture).asTy
+        | none => .err
+      | c => .data fun acc =>
+        match run .err c (extendBy s acc) with
+        | some ((v, _), _) => (v noFuture).asTy
+        | none => .err
+    let l := K.D.piSort (scopeOf s) (.pi hs ds c)
+    let T : TyM := match l with
+      | 0 => .prop (piProp ps [] fun acc => match out with | .data B => (B acc).true | .ref _ => False)
+      | 1 => .ty0 (piCar0 ps [] PUnit out)
+      | 2 => .ty1 (piCar1 ps [] fun acc => match out with | .data B => B acc | .ref U => U acc)
+      | 3 => .ty2 (piCar2 ps [] fun acc => match out with | .data B => B acc | .ref U => U acc)
+      | _ => .err
+    some ((fun _ => .ty T, ⟨.univ l, some (ps, out), none⟩), s)
   | .fix f hs ds c d b => fixHole K ρ (.fix f hs ds c d b)
-  | .call f args _ => do
-    let fv ← run .err f
-    let as ← runArgs fv.2.shape 0 [] args
-    callHole K ρ fv as
-  | .nat => pure (fun _ => .ty (.ty0 Nat), ⟨.univ 1, none⟩)
-  | .unit => pure (fun _ => .ty (.ty0 Unit), ⟨.univ 1, none⟩)
-  | .zero => pure (fun _ => .el0 Nat 0, ⟨.ty0 Nat, none⟩)
-  | .tt => pure (fun _ => .el0 Unit (), ⟨.ty0 Unit, none⟩)
+  | .call f args hd => fun s =>
+    let body : SM Res := do
+      let fv ← run .err f
+      let as ← runArgs fv.2.shape 0 [] args
+      callOf fv as
+    -- a statement call runs on a copy that is thrown away (E1; `Decisions.flags`, aligned)
+    if (K.D.flags (scopeOf s) (.call f args hd)).1 then SM.onCopy body s else body s
+  | .nat => pure (fun _ => .ty (.ty0 Nat), ⟨.univ 1, none, none⟩)
+  | .unit => pure (fun _ => .ty (.ty0 Unit), ⟨.univ 1, none, none⟩)
+  | .zero => pure (fun _ => .el0 Nat 0, ⟨.ty0 Nat, none, none⟩)
+  | .tt => pure (fun _ => .el0 Unit (), ⟨.ty0 Unit, none, none⟩)
   | .succ u => do
     let (v, _) ← run (.ty0 Nat) u
-    pure (fun φ => (v φ).succ, ⟨.ty0 Nat, none⟩)
+    pure (fun φ => (v φ).succ, ⟨.ty0 Nat, none, none⟩)
   | .eq A a b => SM.onCopy do
     let (TA, _) ← run .err A
     let T := (TA noFuture).asTy
     let (va, _) ← SM.onCopy (run T a)
     let (vb, _) ← SM.onCopy (run T b)
-    pure (fun φ => .ty (.prop (va φ = vb φ)), ⟨.univ 0, none⟩)
+    pure (fun φ => .ty (.prop (va φ = vb φ)), ⟨.univ 0, none, none⟩)
   | .cong _ _ | .prim "symm" _ | .prim "trans" _ | .prim "rewrite" _ | .prim "rewriteR" _ =>
-    pure (fun _ => .proof, ⟨.err, none⟩)
+    pure (fun _ => .proof, ⟨.err, none, none⟩)
   | .ref A => do
     let (TA, _) ← run .err A
-    pure (TA, ⟨.univ 1, none⟩)
+    pure (TA, ⟨.univ 1, none, none⟩)
   | .id A t u => idHole K ρ A t u
   | .prim "J" args => jHole K ρ args
   | .prim "clone" [u] | .prim "peek" [u] => match u with
@@ -212,8 +275,23 @@ noncomputable def run (hint : TyM) : Term → SM Res
     let (TA, _) ← SM.onCopy (run .err A)
     let T := (TA noFuture).asTy
     let (v, _) ← run T u
-    pure (v, ⟨T, none⟩)
+    pure (v, ⟨T, none, none⟩)
 termination_by structural t => t
+
+/-- The parameters of a Π-term as the model reads them: each domain term's meaning as a function
+of the earlier parameters' meanings, run in the forming state extended by them; `&A` marks a
+borrow parameter with content type `A`. -/
+noncomputable def runDoms (s : SState) : List Term → List PiParam
+  | [] => []
+  | .ref A :: ds =>
+    ⟨true, fun acc => match run .err A (extendBy s acc) with
+      | some ((v, _), _) => (v noFuture).asTy
+      | none => .err⟩ :: runDoms s ds
+  | d :: ds =>
+    ⟨false, fun acc => match run .err d (extendBy s acc) with
+      | some ((v, _), _) => (v noFuture).asTy
+      | none => .err⟩ :: runDoms s ds
+termination_by structural ds => ds
 
 /-- An inductive's parameters, each at its parameter type (a statement position, on a copy). -/
 noncomputable def runParams (d : IndDecl) (i : Nat) (earlier : List Sem) : List Term → SM (List Sem)
