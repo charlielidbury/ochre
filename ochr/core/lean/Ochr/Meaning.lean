@@ -17,6 +17,9 @@ import Ochr.Meaning.Steps.Match
 import Ochr.Meaning.Steps.Obs
 import Ochr.Meaning.Steps.Types
 import Ochr.Meaning.Steps.WF
+import Ochr.Meaning.Steps.Eval
+import Ochr.Meaning.Steps.Tail
+import Ochr.Meaning.Steps.Decisions
 import Ochr.Meaning.State
 import Ochr.Meaning.WF
 import Ochr.Meaning.Sanity
