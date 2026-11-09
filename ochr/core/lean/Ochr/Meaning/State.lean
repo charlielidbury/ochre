@@ -37,8 +37,10 @@ reasons (`MState.Core` below is the relevant part, and `mean_core` the statement
   reader's plumbing: inputs to *aligned* decisions, D77/D80, which the model reads from the same
   syntax), `erasedDepth`, `privateDepth`, `inPlace`, `modelDepth`, `copying`, `observing`,
   `typing` (run modes selecting which rule applies; `observing` relaxes [End]'s wholeness check
-  inside an observation, D68), and `placeLog` (D53's log of moves and writes at root positions,
-  read by `armMoves` to compute a block's captures: an input of D84's drop at the join).
+  inside an observation, D68), and `placeLog` (D53's log of moves and writes at root positions;
+  under D84 the drop at the join and a block's captures are decided statically, from syntax and
+  declared types (`Decide.jdMoves` on branch `d84`), and the log is kept only for an internal
+  assertion that never fires, so it feeds no decision).
 
 So a step lemma may change any of those freely without changing `⟦Ω⟧`; what it must then show
 is that the *decision* the field feeds is of a harmless kind (docs/18 §"Decisions, by kind").
@@ -63,9 +65,23 @@ structure Mean : Type 3 where
 section
 variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl)
 
+/-- The type a position's value is read at (docs/31 D8): the binding's stored type, or `err` for
+a temporary or an untyped slot. Types are read under the constant future, since no stored type
+holds a live loan (docs/27 Lemma 5). -/
+noncomputable def _root_.Ochr.Env.hintAt (ρ : Assignment) (env : Env) : Pos → TyM
+  | .bind f i =>
+    match env[f]?.bind (·.binds[i]?) with
+    | some b =>
+      match b.ty, b.lazyTy with
+      | some T, _ => (Value.mean dm C Γ ρ (fun _ => .err) .err T).asTy
+      | none, some (P, ws, j) => C.paramTy ρ P ws j
+      | none, none => .err
+    | none => .err
+  | .temp _ _ => .err
+
 /-- The meaning of an environment under `ρ` and `φ`, position by position. -/
 noncomputable def _root_.Ochr.Env.mean (ρ : Assignment) (φ : Future) (env : Env) (p : Pos) : Sem :=
-  Value.mean dm C Γ ρ φ (valAt env p)
+  Value.mean dm C Γ ρ φ (Env.hintAt dm C Γ ρ env p) (valAt env p)
 
 /-- `⟦Ω⟧_ρ`: the meaning of a state, as a function of the future. -/
 noncomputable def MState.mean (ρ : Assignment) (st : MState) : Mean :=
@@ -110,6 +126,18 @@ noncomputable def MState.posTyM (ρ : Assignment) (st : MState) : Pos → Option
       | none, none => none
     | none => none
   | .temp _ _ => none
+
+/-- The hint is the stored type where there is one. -/
+theorem MState.hintAt_posTyM (ρ : Assignment) (st : MState) (p : Pos) (T : TyM)
+    (h : MState.posTyM dm C Γ ρ st p = some T) : Env.hintAt dm C Γ ρ st.env p = T := by
+  cases p with
+  | bind f i =>
+    simp only [MState.posTyM] at h
+    simp only [Env.hintAt]
+    split at h
+    · split at h <;> simp_all [Value.tyM]
+    · cases h
+  | temp _ _ => cases h
 
 /-- The meaning of the goal, as a type. -/
 noncomputable def MState.goalM (ρ : Assignment) (st : MState) : Option TyM :=
