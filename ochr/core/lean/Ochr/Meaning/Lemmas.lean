@@ -73,6 +73,19 @@ theorem meanV_congr (φ φ' : Future) (hint : TyS) (v : Value)
     (h : ∀ l, v.hasLoan l → φ l = φ' l) : meanV K ρ φ hint v = meanV K ρ φ' hint v := by
   sorry
 
+/-- Future-locality of the run (m2-proofs' form): if the future changes only at labels outside
+`L`, where `L` holds of every loan of the term and the state factors through `L` (each position's
+meaning depends only on the future restricted to `L`), the run is unchanged. "Factors through"
+rather than pointwise `dependsOn`: a value can change when infinitely many labels change together
+while depending on no single one. No live-label clause is needed, since `access` fixes the
+future only at live labels; it holds because every borrow the run makes is ended before it is
+read or when it is discarded (D13). -/
+theorem run_congr (φ φ' : Future) (hint : TyS) (t : Term) (s : SState) (L : Nat → Prop)
+    (hφ : ∀ l, L l → φ l = φ' l) (ht : ∀ l, t.anyAtom (· == .loan l) → L l)
+    (hs : ∀ p ψ ψ', (∀ l, L l → ψ l = ψ' l) → s.valAt p ψ = s.valAt p ψ') :
+    run K ρ φ hint t s = run K ρ φ' hint t s := by
+  sorry
+
 /-- The run's result does not depend on the starting label counter, as long as it is above every
 loan of the term and of the state (m2-proofs' D): fresh labels are names. Needed because a
 sealed program's counter, `emptyState (t.loans.foldl max 0 + 1)`, changes under substitution. -/
