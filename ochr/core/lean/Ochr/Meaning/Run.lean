@@ -160,10 +160,24 @@ noncomputable def callOf (fv : Res) (args : List Res) : SM Res := fun s =>
     | none => none
   | none => none
 
+/-- D84, the drop at the join: every place some arm of the match moves (`Decisions.joinMoves`,
+static) is set to `moved` after the match, on every path. -/
+noncomputable def joinDrop (t : Term) (s : SState) : SState :=
+  (K.D.joinMoves (scopeOf s) t).foldl (fun s q =>
+    match resolve s q with
+    | some (pos, steps) =>
+      match Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => .moved) steps (s.valAt pos noFuture) with
+      | some w => s.setAt pos fun _ => w
+      | none => s
+    | none => s) s
+
+/-- An observation for `Id` (docs/27 Def. 5): the side's result and, after ending every live
+borrow of its copy, the meaning of every position, all future-independent. -/
+noncomputable def observation (r : Res) (s : SState) : List Sem :=
+  let s := s.liveLabels.foldl SState.endLabel s
+  r.1 noFuture :: s.positions.map fun p => s.valAt p noFuture
+
 noncomputable def fixHole (_ : RunCtx) (_ : Assignment) (t : Term) : SM Res := sorry
-noncomputable def matchHole (_ : RunCtx) (_ : Assignment) (t : Term) : SM Res := sorry
-noncomputable def idHole (_ : RunCtx) (_ : Assignment) (A t u : Term) : SM Res := sorry
-noncomputable def jHole (_ : RunCtx) (_ : Assignment) (args : List Term) : SM Res := sorry
 
 /-- A constructor value from its parameters' and fields' meanings (`DataModel.ctorM`); with no
 parameters written, they are read off the expected type (D8). -/
@@ -192,8 +206,36 @@ noncomputable def run (hint : TyM) : Term → SM Res
   | .seq u w => do
     let _ ← run .err u
     run hint w
-  | .matchNat p z u => matchHole K ρ (.matchNat p z u)
-  | .matchInd p n arms => matchHole K ρ (.matchInd p n arms)
+  | .matchNat p z u => fun s => do
+    -- [Match]: the arm by the tag of the scrutinee's meaning (after [Access]); `⊥` is an error;
+    -- then D84's drop at the join
+    let ((v, _, _, _), s) ← contentOf K p s
+    let arm? : Option Term := match v.asNat with
+      | some 0 => some z
+      | some (_ + 1) => some u
+      | none => match v with
+        | .ctor "Nat" 0 [] => some z
+        | .ctor "Nat" 1 _ => some u
+        | _ => none
+    match arm? with
+    | some z' => do
+      let ((r, R), s) ← (if z' == z then run hint z s else run hint u s)
+      some ((r, R), joinDrop K (.matchNat p z u) s)
+    | none => none
+  | .matchInd p n arms => fun s => do
+    let ((v, T, _, _), s) ← contentOf K p s
+    -- a proof scrutinee is matched by its type (D45): the one arm of a one-constructor
+    -- proposition; a data scrutinee by the tag of its meaning
+    let c? : Option Nat := match v with
+      | .proof => if arms.length = 1 then some 0 else none
+      | _ => match T.dataOf K.dm K.Γ with
+        | some (d, ps) => (K.dm.fieldsOf d ps v).map (·.1)
+        | none => none
+    match c? with
+    | some c => do
+      let ((r, R), s) ← runArm hint c arms s
+      some ((r, R), joinDrop K (.matchInd p n arms) s)
+    | none => none
   | .tind n args => do
     match K.Γ.find? (·.name == n) with
     | some d =>
@@ -264,8 +306,22 @@ noncomputable def run (hint : TyM) : Term → SM Res
   | .ref A => do
     let (TA, _) ← run .err A
     pure (TA, ⟨.univ 1, none, none⟩)
-  | .id A t u => idHole K ρ A t u
-  | .prim "J" args => jHole K ρ args
+  | .id A t u => fun s => do
+    -- `Id` observes: each side on a copy of the state, every borrow ended, the result and every
+    -- position compared (D84: moved places are definite values, so they compare too)
+    let ((TA, _), _) ← SM.onCopy (run .err A) s
+    let T := (TA noFuture).asTy
+    let o₁ ← (run T t s).map fun (r, s') => observation r s'
+    let o₂ ← (run T u s).map fun (r, s') => observation r s'
+    some ((fun _ => .ty (.prop (o₁ = o₂)), ⟨.univ 0, none, none⟩), s)
+  | .prim "J" [A, a, b, P, h, t] => do
+    -- `J` means its transported term; its endpoints, motive and proof are statements on copies
+    let _ ← SM.onCopy (run .err A)
+    let _ ← SM.onCopy (run .err a)
+    let _ ← SM.onCopy (run .err b)
+    let _ ← SM.onCopy (run .err P)
+    let _ ← SM.onCopy (run .err h)
+    run hint t
   | .prim "clone" [u] | .prim "peek" [u] => match u with
     | .place p => readPlace K p true
     | _ => run hint u
@@ -277,6 +333,12 @@ noncomputable def run (hint : TyM) : Term → SM Res
     let (v, _) ← run T u
     pure (v, ⟨T, none, none⟩)
 termination_by structural t => t
+
+/-- Arm `c` of a match, run at the match's expected type. -/
+noncomputable def runArm (hint : TyM) (c : Nat) : List (Hint × Term) → SM Res
+  | [] => SM.fail
+  | (_, t) :: rest => if c = 0 then run hint t else runArm hint (c - 1) rest
+termination_by structural arms => arms
 
 /-- The parameters of a Π-term as the model reads them: each domain term's meaning as a function
 of the earlier parameters' meanings, run in the forming state extended by them; `&A` marks a
