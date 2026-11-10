@@ -372,19 +372,31 @@ noncomputable def run (hint : TyS) : Term → SM Res
     let l := K.D.piSort (scopeOf s) (.pi hs ds c)
     let piT := piTyAt l ps out
     let start := s.nextLoan
-    let base := ((s.env.getLast?).map (·.binds.length)).getD 0 + 1
     let bodyAt (selfM : Sem) (args : List Sem) : Option BodyOut :=
+      -- the frame: `self`, then the parameters. A borrow parameter is set up as the generic call
+      -- is ([Def]): a fresh label `lᵢ`, a *cell* (a temporary of the frame: temporaries do not
+      -- shift de Bruijn indices) reading `lᵢ`'s final content, and the parameter holding the
+      -- content as the borrow's holder (D14). Returning the parameter returns its label.
       let s₁ := s.pushBind { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM }
-      let s₂ := ((args.zip ps).foldl (fun (sa : SState × List Sem) (ap : Sem × PiParam) =>
-        (sa.1.pushBind { ty := .plain (ap.2.dom sa.2), val := fun _ => ap.1 }, sa.2 ++ [ap.1])) (s₁, [])).1
+      let step (sa : SState × List Sem × List Pos) (ap : Sem × PiParam) : SState × List Sem × List Pos :=
+        let (s, acc, cells) := sa
+        if ap.2.isRef then
+          let (l, s) := s.freshLoan
+          let s := s.pushTemp fun ψ => ψ l
+          let cell : Pos := .temp s.topIdx (((s.env.getLast?).map (·.temps.length)).getD 1 - 1)
+          let s := pushBindShaped s { ty := ⟨ap.2.dom acc, none, some l, none⟩, val := fun _ => ap.1 }
+          (s, acc ++ [ap.1], cells ++ [cell])
+        else
+          (s.pushBind { ty := .plain (ap.2.dom acc), val := fun _ => ap.1 }, acc ++ [ap.1], cells)
+      let (s₂, _, cells) := (args.zip ps).foldl step (s₁, [], [])
       let codT := match out with | .data B => B args | .ref U => U args
       match run (.plain codT) body s₂ with
       | some ((r, R), s₃) =>
-        -- the frame pop ends the borrows the body made; a borrow parameter's final content is
-        -- what its holder then holds
-        let s₄ := (s₃.liveLabels.filter (· ≥ start)).foldl SState.endLabel s₃
-        let finals := (List.range ds.length).filterMap fun i =>
-          if ((ps[i]?).map (·.isRef)).getD false then some (s₄.valAt (.bind s₄.topIdx (base + i))) else none
+        -- the frame pop ends the borrows the body made and the parameters' (their cells then
+        -- read the holders' contents), except the returned borrow's, whose holder is the
+        -- caller's; a borrow parameter's final content is its cell's
+        let s₄ := (s₃.liveLabels.filter fun l => l ≥ start ∧ some l ≠ R.label).foldl SState.endLabel s₃
+        let finals := cells.map fun c => s₄.valAt c
         some ⟨r, finals, R.label⟩
       | none => none
     let closureOf (g : List Sem → Option BodyOut) : Sem := closureAt l φ ps out g
