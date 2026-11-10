@@ -27,10 +27,11 @@ its types to (`SState.toMean`).
   `observation_const`: with locality too (`SState.LocalTo`, the semantic (WF2)), it means the
   same under every future. Each hypothesis is needed (`ObservationCounterexamples`).
 * `SState.ShapeBelow` (every held label is below the counter) and `SState.ReadsBelow` (no meaning
-  depends on a label at or above it): kept by [End], [Access], [Read], the drop at the join
-  (`ShapeSub`: they only forget), and by [Borrow] and [Call], whose fresh label is held nowhere
-  and read only where the borrow puts it (`borrowPlace_fresh`, `callOf_fresh`,
-  `borrowPlace_readsBelow`).
+  depends on a label at or above it): kept by [End], [Access], the drop at the join (`ShapeSub`:
+  they only forget), by [Read] (`readPlace_shapeBelow`: a moved borrow is parked under its own
+  label), and by [Borrow] and [Call], whose fresh label was held nowhere, has exactly one holder
+  afterwards (the temporary it is parked in, D14) and is read only where the borrow puts it
+  (`borrowPlace_fresh`, `callOf_fresh`, `borrowPlace_readsBelow`).
 
 Analogues on the toy model: `Ochr/Model/State2.lean` (`semEnd_below`, `endL_below`,
 `access_below`, `drop_below`).
@@ -980,15 +981,16 @@ theorem observation_upd_live (φ : Future) (r : Res) (s : SState) (hwf : s.SWF3)
 
 namespace SState
 
-/-- Every position's meaning reads the future only at the labels `L`: futures agreeing on `L`
-give it the same meaning. The semantic form of (WF2) on the reference state (every loan has its
-borrow in the state) is `s.LocalTo s.liveLabels`; a sealed program holding an inert loan (a hole
-whose borrow is outside the run) breaks it. -/
-def LocalTo (s : SState) (L : List Nat) : Prop :=
-  ∀ p (φ φ' : Future), (∀ l ∈ L, φ l = φ' l) → s.valAt p φ = s.valAt p φ'
+/-- The state factors through the labels `L`: futures agreeing on `L` give every position the
+same meaning (the form of `run_congr`'s hypothesis `hs`, `Lemmas.lean`). The semantic form of
+(WF2) on the reference state (every loan has its borrow in the state) is
+`s.LocalTo (· ∈ s.liveLabels)`; a sealed program holding an inert loan (a hole whose borrow is
+outside the run) breaks it. -/
+def LocalTo (s : SState) (L : Nat → Prop) : Prop :=
+  ∀ p (φ φ' : Future), (∀ l, L l → φ l = φ' l) → s.valAt p φ = s.valAt p φ'
 
 /-- [End] keeps locality: the ended label is fixed to the holder's content, which is local too. -/
-theorem endLabel_localTo {s : SState} {L : List Nat} (h : s.LocalTo L) (k : Nat) :
+theorem endLabel_localTo {s : SState} {L : Nat → Prop} (h : s.LocalTo L) (k : Nat) :
     (s.endLabel k).LocalTo L := by
   cases hf : s.positions.find? (fun p => decide (s.shape p = some k)) with
   | none => rw [endLabel_of_find_none s k hf]; exact h
@@ -1007,7 +1009,7 @@ theorem endLabel_localTo {s : SState} {L : List Nat} (h : s.LocalTo L) (k : Nat)
         · exact hφ l hl
     · rfl
 
-theorem foldl_endLabel_localTo {s : SState} {L : List Nat} (h : s.LocalTo L) :
+theorem foldl_endLabel_localTo {s : SState} {L : Nat → Prop} (h : s.LocalTo L) :
     ∀ ls : List Nat, (ls.foldl endLabel s).LocalTo L := by
   intro ls
   induction ls generalizing s with
@@ -1041,14 +1043,14 @@ every live borrow, each position is local to the live labels and depends on none
 is constant (`const_of_local`). This is what makes `Id`'s meaning a plain proposition. Both
 hypotheses are needed (`ObservationCounterexamples`). Milestone 3: `Steps/Obs.lean`'s
 `idType_step`. -/
-theorem observation_const (r : Res) (s : SState) (hwf : s.SWF3) (hloc : s.LocalTo s.liveLabels)
+theorem observation_const (r : Res) (s : SState) (hwf : s.SWF3) (hloc : s.LocalTo (· ∈ s.liveLabels))
     (φ φ' : Future) : observation φ r s = observation φ' r s := by
   simp only [observation]
   congr 1
   apply List.map_congr_left
   intro p _
   exact const_of_local (fun ψ => (s.liveLabels.foldl SState.endLabel s).valAt p ψ) s.liveLabels
-    (fun ψ ψ' h => SState.foldl_endLabel_localTo hloc _ p ψ ψ' h)
+    (fun ψ ψ' h => SState.foldl_endLabel_localTo hloc _ p ψ ψ' fun l hl => h l hl)
     (fun l hl ψ x => Mean.not_dependsOn (SState.foldl_endLabel_indep s hwf _ (fun _ h => h) p l hl) ψ x)
     φ φ'
 
@@ -1127,7 +1129,7 @@ def ShapeBelow (s : SState) : Prop := ∀ p l, s.shape p = some l → l < s.next
 
 /-- `s'` holds only borrows `s` holds, at the same positions, and has the same counter: what every
 step that forgets or rewrites meanings leaves (`endLabel`, `access`, `setAt`, `mapVals`,
-`joinDrop`). -/
+`takeLabel`, `joinDrop`). -/
 def ShapeSub (s' s : SState) : Prop :=
   (∀ p l, s'.shape p = some l → s.shape p = some l) ∧ s'.nextLoan = s.nextLoan
 
@@ -1169,9 +1171,8 @@ theorem shapeSub_access (s : SState) (p : Pos) : ShapeSub (s.access p) s := by
 
 end SState
 
-/-- D84's drop at the join holds no new borrow and keeps the counter (with `shapeSub_access` and
-`readPlace_shapeSub`, the forgetting steps of `Steps/Match.lean`'s and `Steps/Borrow.lean`'s
-lemmas keep `ShapeBelow`). -/
+/-- D84's drop at the join holds no new borrow and keeps the counter (with `shapeSub_access`, the
+forgetting steps of `Steps/Match.lean`'s and `Steps/Borrow.lean`'s lemmas keep `ShapeBelow`). -/
 theorem shapeSub_joinDrop (K : RunCtx) (φ : Future) (t : Term) (s : SState) :
     SState.ShapeSub (joinDrop K φ t s) s := by
   unfold joinDrop
@@ -1188,7 +1189,7 @@ theorem shapeSub_joinDrop (K : RunCtx) (φ : Future) (t : Term) (s : SState) :
         refine SState.ShapeSub.trans ?_ (SState.shapeSub_access s pos)
         dsimp only
         generalize s.access pos = s₁
-        rcases Sem.follow K.dm K.Γ (s₁.tyAt pos).m (s₁.valAt pos φ) steps with _ | ⟨v, T⟩
+        rcases Sem.follow K.dm K.Γ (s₁.tyAt pos).m (s₁.valAt pos (s₁.closedFuture φ)) steps with _ | ⟨v, T⟩
         · exact SState.ShapeSub.refl _
         · cases v <;> first
             | exact SState.ShapeSub.refl _
@@ -1217,6 +1218,72 @@ theorem shapeSub_pushTemp (s : SState) (v : SVal) : ShapeSub (s.pushTemp v) s :=
 theorem shapeSub_pushFrame (s : SState) : ShapeSub s.pushFrame s := ShapeSub.refl s
 theorem shapeSub_dropLast (s : SState) : ShapeSub s.dropLast s := ShapeSub.refl s
 
+theorem nextLoan_setAt (s : SState) (p : Pos) (v : SVal) : (s.setAt p v).nextLoan = s.nextLoan := by
+  cases p <;> rfl
+
+/-- Taking a borrow from its holder (D14) holds no new borrow. -/
+theorem shapeSub_takeLabel (s : SState) (l : Nat) : ShapeSub (s.takeLabel l) s := by
+  unfold takeLabel
+  split
+  · next r _ =>
+    refine ⟨fun p k hp => ?_, nextLoan_setAt s r _⟩
+    by_cases hpr : p = r
+    · simp [hpr] at hp
+    · simpa [hpr] using hp
+  · exact ShapeSub.refl s
+
+theorem shapeSub_foldl_takeLabel (ls : List Nat) (s : SState) : ShapeSub (ls.foldl takeLabel s) s := by
+  induction ls generalizing s with
+  | nil => exact ShapeSub.refl s
+  | cons l ls ih => exact (ih _).trans (shapeSub_takeLabel s l)
+
+/-- Parking a borrow (D14) makes one new position, if any, the holder of `l`. -/
+theorem pushTempShaped_shape (s : SState) (v : SVal) (l : Nat) :
+    ∃ T : Option Pos, ∀ q, (s.pushTempShaped v l).shape q = if some q = T then some l else s.shape q := by
+  unfold pushTempShaped
+  dsimp only
+  split
+  · next fr _ =>
+    refine ⟨some (.temp (s.pushTemp v).topIdx (fr.temps.length - 1)), fun q => ?_⟩
+    simp only [Option.some.injEq]
+    rfl
+  · exact ⟨none, fun q => by simp only [reduceCtorEq, if_false]; rfl⟩
+
+theorem nextLoan_pushTempShaped (s : SState) (v : SVal) (l : Nat) :
+    (s.pushTempShaped v l).nextLoan = s.nextLoan := by
+  unfold pushTempShaped; dsimp only; split <;> rfl
+
+theorem shapeBelow_pushTempShaped {s : SState} (hs : s.ShapeBelow) (v : SVal) {l : Nat}
+    (hl : l < s.nextLoan) : (s.pushTempShaped v l).ShapeBelow := by
+  obtain ⟨T, hT⟩ := pushTempShaped_shape s v l
+  intro q k hq
+  rw [nextLoan_pushTempShaped]
+  rw [hT] at hq
+  split at hq
+  · cases hq; exact hl
+  · exact hs q k hq
+
+/-- A label held nowhere is held at most once after it is parked. -/
+theorem pushTempShaped_unique (s : SState) (v : SVal) {l : Nat} (hl : ∀ q, s.shape q ≠ some l) :
+    ∀ q q', (s.pushTempShaped v l).shape q = some l → (s.pushTempShaped v l).shape q' = some l → q = q' := by
+  obtain ⟨T, hT⟩ := pushTempShaped_shape s v l
+  intro q q' hq hq'
+  rw [hT] at hq hq'
+  split at hq
+  · split at hq'
+    · next h₁ h₂ => exact Option.some.inj (h₁.trans h₂.symm)
+    · exact absurd hq' (hl q')
+  · exact absurd hq (hl q)
+
+
+/-- A fresh label, parked: the invariant is kept, the label is below the counter, and it has at
+most one holder. -/
+theorem fresh_park {s : SState} (hs : s.ShapeBelow) {k : Nat} (hk : k < s.nextLoan)
+    (hfree : ∀ q, s.shape q ≠ some k) (v : SVal) :
+    (s.pushTempShaped v k).ShapeBelow ∧ k < (s.pushTempShaped v k).nextLoan ∧
+      ∀ q q', (s.pushTempShaped v k).shape q = some k → (s.pushTempShaped v k).shape q' = some k → q = q' :=
+  ⟨shapeBelow_pushTempShaped hs v hk, by rw [nextLoan_pushTempShaped]; exact hk,
+    pushTempShaped_unique s v hfree⟩
 end SState
 
 /-- Binding a borrow records its label in the shape; the invariant is kept when the label is
@@ -1224,14 +1291,18 @@ below the counter, which every result label is (`borrowPlace_fresh`, `callOf_fre
 theorem pushBindShaped_shapeBelow (s : SState) (b : SBinding) (hs : s.ShapeBelow)
     (hl : ∀ l, b.ty.label = some l → l < s.nextLoan) : (pushBindShaped s b).ShapeBelow := by
   unfold pushBindShaped
-  dsimp only
   split
-  · next l fr hb _ =>
-    intro p l' h
-    dsimp only at h ⊢
-    split at h
-    · cases h; exact hl l hb
-    · exact hs p l' h
+  · next l hb =>
+    have h₁ : (s.takeLabel l).ShapeBelow := SState.ShapeBelow.of_sub (SState.shapeSub_takeLabel s l) hs
+    have hn : (s.takeLabel l).nextLoan = s.nextLoan := (SState.shapeSub_takeLabel s l).2
+    dsimp only
+    split
+    · intro p l' h
+      dsimp only at h ⊢
+      split at h
+      · cases h; show l < (s.takeLabel l).nextLoan; rw [hn]; exact hl l hb
+      · exact h₁ p l' h
+    · exact h₁
   · exact hs
 
 theorem contentOf_shapeSub (K : RunCtx) (φ : Future) (p : Place) (s : SState)
@@ -1255,78 +1326,109 @@ theorem setContent_shapeSub (K : RunCtx) (φ : Future) (pos : Pos) (steps : List
   · cases h; exact SState.shapeSub_setAt _ _ _
   · cases h
 
-/-- **[Borrow] keeps the shape invariant, and its label is fresh**: the result's label is below
-the new counter and held nowhere in the state after the borrow (the holder records it when the
-result is bound, `pushBindShaped_shapeBelow`). Milestone 3: `Steps/Borrow.lean`'s
-`borrowPlace_step`. -/
+/-- **[Borrow] keeps the shape invariant, and its label is fresh**: the result's label was held
+nowhere before, is below the new counter, and has exactly one holder after the borrow, the
+temporary it is parked in (D14; the binder takes it over, `pushBindShaped_shapeBelow`).
+Milestone 3: `Steps/Borrow.lean`'s `borrowPlace_step`. -/
 theorem borrowPlace_fresh (K : RunCtx) (φ : Future) (p : Place) (s : SState) (hs : s.ShapeBelow)
     {v : Sem} {T : TyS} {s' : SState} (h : borrowPlace K φ p s = some ((v, T), s')) :
-    s'.ShapeBelow ∧ ∃ l, T.label = some l ∧ l < s'.nextLoan ∧ ∀ q, s'.shape q ≠ some l := by
+    s'.ShapeBelow ∧ ∃ l, T.label = some l ∧ l < s'.nextLoan ∧ (∀ q, s.shape q ≠ some l) ∧
+      ∀ q q', s'.shape q = some l → s'.shape q' = some l → q = q' := by
   unfold borrowPlace at h
   cases hc : contentOf K φ p s with
   | none => simp [hc] at h
   | some x =>
     obtain ⟨⟨v₀, T₀, pos, steps⟩, s₁⟩ := x
-    have h₁ : s₁.ShapeBelow := SState.ShapeBelow.of_sub (contentOf_shapeSub K φ p s hc) hs
+    have hsub := contentOf_shapeSub K φ p s hc
+    have h₁ : s₁.ShapeBelow := SState.ShapeBelow.of_sub hsub hs
     obtain ⟨_, hlt, hfresh, hb⟩ := SState.freshLoan_fresh s₁ h₁
     simp only [hc, Option.bind_eq_bind, Option.bind_some] at h
     split at h
     · cases h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨⟨_, rfl⟩, rfl⟩ := h
-      refine ⟨SState.ShapeBelow.of_sub (SState.shapeSub_setAt _ _ _) hb, s₁.nextLoan, rfl, ?_, ?_⟩
-      · rw [(SState.shapeSub_setAt _ _ _).2]; exact hlt
-      · intro q hq
-        exact hfresh q ((SState.shapeSub_setAt _ _ _).1 q _ hq)
+      refine ⟨SState.shapeBelow_pushTempShaped (SState.ShapeBelow.of_sub (SState.shapeSub_setAt _ _ _) hb) _
+          (by rw [SState.nextLoan_setAt]; exact hlt), s₁.freshLoan.1, rfl,
+        by rw [SState.nextLoan_pushTempShaped, SState.nextLoan_setAt]; exact hlt, fun q hq => ?_,
+        SState.pushTempShaped_unique _ _ fun q hq => hfresh q ((SState.shapeSub_setAt _ _ _).1 q _ hq)⟩
+      have := hs q _ hq
+      rw [← hsub.2] at this
+      exact Nat.lt_irrefl _ this
 
-/-- **A call keeps the shape invariant, and a borrow it returns has a fresh label** (the
-borrow-returning case takes `freshLoan`, the borrow-free one only rewrites meanings). Milestone
-3: `Steps/Call.lean`'s `closeCall_step`. -/
+/-- **A call keeps the shape invariant, and a borrow it returns has a fresh label**: the
+arguments' parked borrows are taken (`takeLabel`); the borrow-returning case takes `freshLoan`
+and parks the result, so its label was held nowhere before, is below the new counter, and has
+one holder. Milestone 3: `Steps/Call.lean`'s `closeCall_step`. -/
 theorem callOf_fresh (fv : Res) (args : List Res) (s : SState)
     (hs : s.ShapeBelow) {r : Sem} {T : TyS} {s' : SState} (h : callOf fv args s = some ((r, T), s')) :
-    s'.ShapeBelow ∧ ∀ l, T.label = some l → l < s'.nextLoan ∧ ∀ q, s'.shape q ≠ some l := by
+    s'.ShapeBelow ∧ ∀ l, T.label = some l → l < s'.nextLoan ∧ (∀ q, s.shape q ≠ some l) ∧
+      ∀ q q', s'.shape q = some l → s'.shape q' = some l → q = q' := by
   unfold callOf at h
   split at h
   · split at h
     · dsimp only at h
+      have hsub := SState.shapeSub_foldl_takeLabel (args.filterMap (·.2.label)) s
+      have hs₀ := SState.ShapeBelow.of_sub hsub hs
       split at h
       · simp only [Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨⟨_, rfl⟩, rfl⟩ := h
-        exact ⟨SState.ShapeBelow.of_sub (SState.shapeSub_mapVals _ _) hs, fun l hl => by
+        exact ⟨SState.ShapeBelow.of_sub (SState.shapeSub_mapVals _ _) hs₀, fun l hl => by
           simp [TyS.plain] at hl⟩
       · simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨⟨_, rfl⟩, rfl⟩ := h
-        obtain ⟨_, hlt, hfresh, hb⟩ := SState.freshLoan_fresh s hs
-        refine ⟨SState.ShapeBelow.of_sub (SState.shapeSub_mapVals _ _) hb, fun l hl => ?_⟩
+        obtain ⟨_, _, hfresh, hb⟩ := SState.freshLoan_fresh _ hs₀
+        obtain ⟨hb', hlt', huniq⟩ := SState.fresh_park
+          (SState.ShapeBelow.of_sub (SState.shapeSub_mapVals _ _) hb) (Nat.lt_succ_self _)
+          (fun q hq => hfresh q hq) _
+        refine ⟨hb', fun l hl => ?_⟩
         simp only [Option.some.injEq] at hl
         subst hl
-        exact ⟨hlt, fun q hq => hfresh q hq⟩
+        refine ⟨hlt', fun q hq => ?_, huniq⟩
+        have := hs q _ hq
+        rw [← hsub.2] at this
+        exact Nat.lt_irrefl _ this
       · cases h
     · cases h
   · cases h
 
-/-- [Read] holds no new borrow and keeps the counter (its access and its move only forget). -/
-theorem readPlace_shapeSub (K : RunCtx) (φ : Future) (p : Place) (copy : Bool) (s : SState)
-    {x : Res} {s' : SState} (h : readPlace K φ p copy s = some (x, s')) : SState.ShapeSub s' s := by
+/-- [Read] keeps the shape invariant and the counter: its access and its move only forget, and a
+moved borrow is parked under the label it already had (D14). Milestone 3: `Steps/Borrow.lean`'s
+`readPlace_step`. -/
+theorem readPlace_shapeBelow (K : RunCtx) (φ : Future) (p : Place) (copy : Bool) (s : SState)
+    (hs : s.ShapeBelow) {x : Res} {s' : SState} (h : readPlace K φ p copy s = some (x, s')) :
+    s'.ShapeBelow ∧ s'.nextLoan = s.nextLoan := by
   unfold readPlace at h
-  simp only [bind] at h
   cases hc : contentOf K φ p s with
   | none => simp [hc] at h
   | some y =>
     obtain ⟨⟨v, T, pos, steps⟩, s₁⟩ := y
-    have h₁ := contentOf_shapeSub K φ p s hc
-    simp only [hc] at h
+    have hsub := contentOf_shapeSub K φ p s hc
+    have h₁ := SState.ShapeBelow.of_sub hsub hs
+    simp only [hc, Option.bind_eq_bind, Option.bind_some] at h
     split at h
     · cases h
     · split at h
-      · cases h; exact h₁
-      · cases hs : setContent K φ pos steps .moved s₁ with
-        | none => simp [hs] at h
+      · cases h; exact ⟨h₁, hsub.2⟩
+      · cases hs2 : setContent K φ pos steps .moved s₁ with
+        | none => simp [hs2] at h
         | some z =>
           obtain ⟨u, s₂⟩ := z
-          simp only [hs] at h
-          cases h
-          exact (setContent_shapeSub K φ pos steps .moved s₁ hs).trans h₁
+          have hsub2 := setContent_shapeSub K φ pos steps .moved s₁ hs2
+          have h₂ := SState.ShapeBelow.of_sub hsub2 h₁
+          simp only [hs2, Option.bind_some, Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨_, rfl⟩ := h
+          split
+          · next l hl =>
+            have hpos : s₁.shape pos = some l := by
+              split at hl
+              · exact hl
+              · cases hl
+            have h₃ := SState.ShapeBelow.of_sub (SState.shapeSub_takeLabel s₂ l) h₂
+            have hn : (s₂.takeLabel l).nextLoan = s.nextLoan :=
+              (SState.shapeSub_takeLabel s₂ l).2.trans (hsub2.2.trans hsub.2)
+            refine ⟨SState.shapeBelow_pushTempShaped h₃ _ (by rw [hn, ← hsub.2]; exact h₁ pos l hpos), ?_⟩
+            rw [SState.nextLoan_pushTempShaped, hn]
+          · exact ⟨h₂, hsub2.2.trans hsub.2⟩
 
 /-! ### Its semantic companion: no meaning reads a label not yet handed out
 
@@ -1398,6 +1500,43 @@ theorem readsBelow_setAt {s : SState} (hs : s.ReadsBelow) (p : Pos) (v : SVal)
   · exact hs q l ⟨φ, x, by simpa [toMean, e] using hne⟩
   · exact hv l ⟨φ, x, by simpa [toMean, e] using hne⟩
 
+
+theorem valAt_pushTemp (s : SState) (v : SVal) (q : Pos) :
+    (s.pushTemp v).valAt q = s.valAt q ∨ (s.pushTemp v).valAt q = v := by
+  cases q with
+  | bind f i =>
+    left
+    simp only [pushTemp, valAt, List.getElem?_modify]
+    by_cases hf : s.topIdx = f <;> cases s.env[f]? <;> simp [hf]
+  | temp f i =>
+    simp only [pushTemp, valAt, List.getElem?_modify]
+    by_cases hf : s.topIdx = f
+    · cases hfr : s.env[f]? with
+      | none => left; simp
+      | some fr =>
+        by_cases hi : i < fr.temps.length
+        · left; simp [hf, List.getElem?_append_left hi]
+        · by_cases hie : i = fr.temps.length
+          · right; subst hie; simp [hf]
+          · left
+            have e1 : fr.temps[i]? = none := List.getElem?_eq_none (by omega)
+            have e2 : (fr.temps ++ [v])[i]? = none := List.getElem?_eq_none (by simp; omega)
+            simp [hf, e1, e2]
+    · left; cases s.env[f]? <;> simp [hf]
+
+theorem valAt_pushTempShaped (s : SState) (v : SVal) (l : Nat) (q : Pos) :
+    (s.pushTempShaped v l).valAt q = (s.pushTemp v).valAt q := by
+  unfold pushTempShaped; dsimp only; split <;> rfl
+
+/-- Parking a meaning that reads only labels below the counter keeps the invariant. -/
+theorem readsBelow_pushTempShaped {s : SState} (hs : s.ReadsBelow) (v : SVal) (l : Nat)
+    (hv : ∀ l, v.DependsOn l → l < s.nextLoan) : (s.pushTempShaped v l).ReadsBelow := by
+  intro q k ⟨φ, x, hne⟩
+  rw [nextLoan_pushTempShaped]
+  have e₀ := valAt_pushTempShaped s v l q
+  rcases valAt_pushTemp s v q with e | e
+  · exact hs q k ⟨φ, x, by simpa [toMean, e₀, e] using hne⟩
+  · exact hv k ⟨φ, x, by simpa [toMean, e₀, e] using hne⟩
 end SState
 
 theorem contentOf_readsBelow (K : RunCtx) (φ : Future) (p : Place) (s : SState) (hs : s.ReadsBelow)
@@ -1428,6 +1567,7 @@ theorem borrowPlace_readsBelow (K : RunCtx) (φ : Future) (p : Place) (s : SStat
     · cases h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨_, rfl⟩ := h
+      refine SState.readsBelow_pushTempShaped ?_ _ _ fun _ ⟨_, _, hne⟩ => absurd rfl hne
       apply SState.readsBelow_setAt (SState.readsBelow_freshLoan h₁)
       intro l hl
       show l < s₁.nextLoan + 1
@@ -1458,7 +1598,7 @@ theorem joinDrop_readsBelow (K : RunCtx) (φ : Future) (t : Term) (s : SState) (
         have h₁ := SState.readsBelow_access hs pos
         dsimp only
         generalize s.access pos = s₁ at h₁
-        rcases Sem.follow K.dm K.Γ (s₁.tyAt pos).m (s₁.valAt pos φ) steps with _ | ⟨v, T⟩
+        rcases Sem.follow K.dm K.Γ (s₁.tyAt pos).m (s₁.valAt pos (s₁.closedFuture φ)) steps with _ | ⟨v, T⟩
         · exact h₁
         · have h₂ : (if steps.isEmpty then (match s₁.shape pos with
               | some l => s₁.endLabel l | none => s₁) else s₁).ReadsBelow := by
