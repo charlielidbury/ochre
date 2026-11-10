@@ -287,6 +287,14 @@ Since $G$ is good, $b$ is injective. Nothing here is a second run, and nothing i
 
 If the program then writes `*r := v` and $r$ ends, @def-semend fixes $phi(k) := v$, and $a$ means $b(v)$ under every future (Lean: `obs_final`). docs/18's `PF` example asks whether writing 0 and writing 1 can leave the same content in $a$. They cannot, because $b(0) != b(1)$ by injectivity (Lean: `pf_distinct`).
 
+#explainer("Lean formalisation: [Close] on this shape", [
+The statement is `closeCall_step_stmt` (`Ochr/Meaning/Steps/Statements.lean`): a closed-off call's state is _exact_ against `callOf` of the callee's meaning on the arguments, since a sealed program means its run. It is attacked on exactly the shape above in `Ochr/Meaning/Attack/CloseCall.lean`, instantiated on the checker's output at 5dc7710b (result `borrow_1 ⌈let c1 = σ0; let r = σ1(&c1); *r⌉`, lender `a ↦ ⌈…; *r := loan_1; c1⌉`):
+- `res_means_fwd`: the result program means $f$, the forward value of $G(u)$;
+- `fill_means_back`: the fill means $b(phi(k))$'s component for $a$, and `err` when the hole holds no number.
+
+Both are stated against the real `meanV`/`run` (not the heap slice) and are open. Unfolding the run is mechanical as far as the call (`ascribe`, `letIn`, `borrow` all reduce; `callOf` dispatches at level 0 to `applyFnL` on the carrier $(d : ty("Nat")) -> "Back"(1 times ty("Nat"), ty("Nat"))$, which is the type `GCar` by `rfl`). Two obstacles found: `Sem.updAt` (`Places.lean`) has no equation lemmas (Lean fails to generate them, so `simp [Sem.updAt]` is unusable and every write through a place, the fill's `*r := loan_k` included, must be reduced by hand), and the nested `meanV` at the ascription's hint does not reduce under `simp` without `meanV` itself in the set.
+])
+
 *`Pick`'s shape.* With $sigma_p : Pi(x, y : \& ty("Nat")). \& ty("Nat")$ and two lent places $a$ and $b$, [Close] leaves fills in both, sharing one hole $k$. Under φ, $(a, b)$ means $b_P (phi(k))$, where $b_P$ is the injective backward function of $gamma(sigma_p)$ into pairs (Lean: `pk2_a`, `pk2_b`).
 
 == `Id` over such a state <sec-id>
