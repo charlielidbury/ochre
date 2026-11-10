@@ -276,7 +276,7 @@ def LibKind.fieldTy : LibKind → List Sem → Nat → TyM
   | _, _, _ => .err
 
 noncomputable def LibKind.pack : (k : LibKind) → (ps : List Sem) → Nat → List Sem → Option (k.car ps)
-  | .pair, ps, c, fs | .and, ps, c, fs =>
+  | .pair, _, c, fs | .and, _, c, fs =>
     if c = 0 then
       match fs with
       | [f, g] => (dec _ f).bind fun a => (dec _ g).map fun b => (a, b)

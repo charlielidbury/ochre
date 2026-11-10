@@ -19,17 +19,43 @@ induction-recursion, as `Ochr/Model/Slice.lean` §4 builds type functions:
 * **The carrier** (`car`) is the colimit of the stages, a `Quotient` of `Σ k, stage k ps` by
   equality of a stage-independent *raw* meaning (`rawStage`).
 
-Nesting (`Rose(A) := Node(v : A, kids : List(Rose(A)))`) is read through the earlier
-declaration's own carrier, `car List [Rose(A)]`, as the reference run reads the field type. That
-needs the earlier carrier to be functorial in its nestable parameters and finitary (an element
-over a colimit comes from a stage): the interface `NModel`, which this construction also
-*produces* for every declaration, so the program's declarations are modelled in order. The
-choice is recorded in docs/31, "data-generic: choices".
+## Choices (also docs/31, "data-generic: choices")
 
-Parameters at nestable positions are *blanked* (`blank`) before the codes read them: a code sees
-a nestable parameter only as `par j`, so the carrier is functorial in it. The parameters'
-types themselves come in as a leaf environment `Z : Nat → TyM`; the data model reads it off the
-parameters (`envOf`).
+* **Input.** One signature per declaration in program order (`Sig`, `Prog`): arities, sort,
+  nestable positions, and a code per field as a function of the parameters and the masked
+  earlier fields. The assembly reads codes off the field-type terms and must show that a code
+  read at the colimit (`interp`) is the run's reading. That needs docs/18 (I1)–(I6) and three
+  well-formedness facts: type codes only at nestable positions, `ext (tyOf s)` at positions
+  taking a fixed parameter `s`, and field types reading only earlier closed fields.
+* **Masking.** A field's code sees an earlier field's meaning only if that field is closed
+  (`mask`); a recursive, nested or parameter-typed field shows `err`. So the telescope is the
+  same at every stage. It is sound because no accepted field type reads such a field ((I1),
+  (I2), nestability).
+* **Nesting** is read through the earlier declaration's own carrier, as the run reads
+  `List(Rose(A))`, not translated to mutual recursion. A mutual translation yields an
+  auxiliary type only isomorphic to `List`'s carrier at `Rose`'s, and identifying the two would
+  mean recovering parameters from a carrier, which is D8's problem. This needs the earlier
+  carrier to be functorial and finitary in its leaves: the interface `NModel`, which every
+  declaration also produces (`nmodel`). Declarations are modelled in order (`progModel`,
+  `progEnv`, `progEnv_car`).
+* **Leaf environments and blanking.** The core carrier `car S M ps Z` is built at parameters as
+  the codes see them and a leaf environment `Z` (the nestable parameters' types). The data
+  model passes the parameters blanked at the nestable positions and `Z = envOf ps`, so a
+  carrier depends on a nestable parameter only through its `par` leaves.
+* **Equality in the colimit** is equality of raw meanings (`sraw`: constructor and fields'
+  raw meanings), read relative to a raw meaning of the leaves. `sraw_rel` (relational
+  invariance) makes this well defined on the quotient and coherent under nesting.
+* **`Prop`-sorted declarations** are the same fixed point. Their occurrences store
+  `PLift (Nonempty _)` (a field means `•`), and leaves of hidden witnesses are reached
+  existentially (`allLB`).
+* **Field types are cut to `small`** (`Type₀` carriers and propositions), so packing succeeds
+  exactly on members. This agrees with the run under (I6).
+* **The rank is the first stage** (`crank`). `crank_self` is the law on the core carrier;
+  `gRank_lt` is the interface's, through `recArgs` (`gRecArgs`). `recArgs` is returned only
+  when the interface carrier is literally the core one, and `gRecArgs_wf` shows that it is for
+  a well-formed occurrence. Nested paths (`Rose` → `List` → `Rose`) are not covered.
+* **`fieldData`, `paramData` and `paramTy`** (the structured hints' data, D8) are passed
+  through from the signature; the construction does not use them.
 -/
 
 namespace Ochr.Meaning
@@ -565,6 +591,12 @@ structure Sig where
   isProp : Bool
   nestable : Nat → Bool
   code : List Sem → Nat → Nat → List Sem → PCode
+  /-- The readings the construction does not use, passed through to the data model: a
+  parameter's type at the earlier parameters, and the structured hints' data (docs/31 D8) of a
+  field's type (at the parameters and earlier fields) and of a parameter's type. -/
+  paramTy : Nat → List Sem → TyM := fun _ _ => .err
+  fieldData : List Sem → Nat → Nat → List Sem → Option (String × List Sem) := fun _ _ _ _ => none
+  paramData : Nat → List Sem → Option (String × List Sem) := fun _ _ => none
 
 /-- The parameters with the nestable positions, from `j` on, replaced by `err`. -/
 def blankFrom (nb : Nat → Bool) : Nat → List Sem → List Sem
@@ -1501,7 +1533,12 @@ end decl
 Declaration `i` is modelled at the environment of the models of the declarations before it
 (`progEnv`), so a `nest e` code of declaration `i` reads declaration `e < i`'s own model. -/
 
-instance : Inhabited Sig := ⟨⟨[], false, fun _ => false, fun _ _ _ _ => .ext .err⟩⟩
+instance : Inhabited Sig where
+  default :=
+    { ar := []
+      isProp := false
+      nestable := fun _ => false
+      code := fun _ _ _ _ => .ext .err }
 
 /-- The model of declaration `i` of the program `sigs`. -/
 def progModel (sigs : List Sig) (i : Nat) : NModel :=
@@ -1523,3 +1560,316 @@ theorem progEnv_car (sigs : List Sig) {i j : Nat} (h : i < j) :
     (progEnv sigs j i).car = car (sigs.getD i default) (progEnv sigs i) := by
   simp only [progEnv, h, if_true, progModel_eq]
   rfl
+
+/-! ## The rank: the first stage
+
+A member's rank is the first stage it appears at. A recursive field of a member of rank
+`k + 1` is the image of a stage-`k` member, so it has a smaller rank (`crank_self`). -/
+
+theorem exists_min (P : Nat → Prop) (h : ∃ n, P n) : ∃ n, P n ∧ ∀ m, P m → n ≤ m := by
+  obtain ⟨n, hn⟩ := h
+  induction n using Nat.strongRecOn with
+  | _ n ih =>
+    by_cases h' : ∃ m, m < n ∧ P m
+    · obtain ⟨m, hm, hPm⟩ := h'
+      exact ih m hm hPm
+    · exact ⟨n, hn, fun m hm => Nat.le_of_not_lt fun hlt => h' ⟨m, hlt, hm⟩⟩
+
+theorem enc_mapB_el0 (b : Bool) {A B : Type} (f : A → B) (v : El (tyB b A)) (y : B)
+    (h : enc (tyB b B) (mapB b f v) = .el0 B y) : ∃ a, f a = y := by
+  cases b
+  · cases h; exact ⟨v, rfl⟩
+  · cases h
+
+section rank
+variable (S : Sig) (M : Nat → NModel)
+
+/-- The rank of a colimit member: the first stage it comes from. -/
+noncomputable def crank {ps : List Sem} {Z : Nat → TyM} (x : car S M ps Z) : Nat :=
+  Classical.choose (exists_min (fun k => ∃ y, ι S M k y = x) (let ⟨k, y, h⟩ := ι_surj S M x; ⟨k, y, h⟩))
+
+theorem crank_spec {ps : List Sem} {Z : Nat → TyM} (x : car S M ps Z) :
+    ∃ y, ι S M (crank S M x) y = x :=
+  (Classical.choose_spec (exists_min (fun k => ∃ y, ι S M k y = x)
+    (let ⟨k, y, h⟩ := ι_surj S M x; ⟨k, y, h⟩))).1
+
+theorem crank_le {ps : List Sem} {Z : Nat → TyM} (x : car S M ps Z) (k : Nat)
+    (y : stage S M k ps Z) (h : ι S M k y = x) : crank S M x ≤ k :=
+  (Classical.choose_spec (exists_min (fun k => ∃ y, ι S M k y = x)
+    (let ⟨k, y, h⟩ := ι_surj S M x; ⟨k, y, h⟩))).2 k ⟨y, h⟩
+
+/-- The leaf environment of a recursive occurrence `self fx tys`, at the leaves `Z`. -/
+abbrev occEnv (Z : Nat → TyM) (tys : Nat → PCode) : Nat → TyM :=
+  fun j => interp M S.isProp X₀ Z (tys j)
+
+theorem Step.fields_self_head (k : Nat) {Z : Nat → TyM} {K K' : Sem → Type} (g : ∀ s, K s → K' s)
+    (rest : ∀ s, K' s → List Sem) (τ : PCode) (fx : List Sem) (tys : Nat → PCode)
+    (hτ : τ = .self fx tys) (st₀ : Step S M (stage S M k) Z τ K) (y : car S M fx (occEnv S M Z tys))
+    (h : (Step.fields S M rest τ (Step.mapX S M (X := stage S M k) (Y := car S M)
+      (fun y => ι S M k y) g τ st₀))[0]? = some (.el0 _ y)) :
+    ∃ y₀, ι S M k y₀ = y := by
+  subst hτ
+  obtain ⟨v₀, t⟩ := st₀
+  simp only [Step.mapX, Step.fields, List.getElem?_cons_zero, Option.some.injEq] at h
+  exact enc_mapB_el0 S.isProp _ v₀ y h
+
+/-- A recursive field of a stage-`k` telescope read at the colimit is the image of a stage-`k`
+member. -/
+theorem Tele.fields_self (k : Nat) {Z : Nat → TyM} {ps : List Sem} {c : Nat} :
+    ∀ (n i : Nat) (e : List Sem) (t₀ : Tele S M (stage S M k) Z ps c i n e) (j : Nat)
+      (fx : List Sem) (tys : Nat → PCode) (y : car S M fx (occEnv S M Z tys)),
+      S.code ps c (i + j) (Sig.maskList S ps c i e
+        ((Tele.fields S M i n e (teleι S M k t₀)).take j)) = .self fx tys →
+      (Tele.fields S M i n e (teleι S M k t₀))[j]? = some (.el0 _ y) →
+      ∃ y₀, ι S M k y₀ = y
+  | 0, _, _, _, _, _, _, _, _, h => by simp [Tele.fields] at h
+  | n + 1, i, e, t₀, j, fx, tys, y, h₁, h₂ => by
+    have key : ∀ (τ : PCode) (hτ : S.code ps c i e = τ)
+        (st₀ : Step S M (stage S M k) Z τ fun s => Tele S M (stage S M k) Z ps c (i + 1) n (e ++ [s])),
+        S.code ps c (i + j) (Sig.maskList S ps c i e ((Step.fields S M
+          (fun s => Tele.fields S M (i + 1) n (e ++ [s])) τ (Step.mapX S M (X := stage S M k)
+            (Y := car S M) (fun y => ι S M k y) (fun _ t => teleι S M k t) τ st₀)).take j)) =
+          .self fx tys →
+        (Step.fields S M (fun s => Tele.fields S M (i + 1) n (e ++ [s])) τ (Step.mapX S M
+          (X := stage S M k) (Y := car S M) (fun y => ι S M k y) (fun _ t => teleι S M k t) τ
+            st₀))[j]? = some (.el0 _ y) →
+        ∃ y₀, ι S M k y₀ = y := by
+      intro τ hτ st₀ h₁ h₂
+      cases j with
+      | zero => exact Step.fields_self_head S M k _ _ τ fx tys (hτ.symm.trans h₁) st₀ y h₂
+      | succ j =>
+        obtain ⟨v₀, t'⟩ := st₀
+        rw [show i + (j + 1) = i + 1 + j by omega] at h₁
+        cases τ <;>
+          simp only [Step.mapX, Step.fields, List.take_succ_cons, List.getElem?_cons_succ,
+            Sig.maskList, hτ, maskSem, mask] at h₁ h₂ <;>
+          exact Tele.fields_self k n (i + 1) _ t' j fx tys y h₁ h₂
+    exact key _ rfl t₀ h₁ h₂
+
+/-- **The rank law, on the core carrier.** A field whose code is a recursive occurrence
+`self fx tys`, read at that occurrence, has a smaller rank. -/
+theorem crank_self {ps : List Sem} {Z : Nat → TyM} (x : car S M ps Z) (i : Nat)
+    (fx : List Sem) (tys : Nat → PCode) (y : car S M fx (occEnv S M Z tys))
+    (hcode : S.code ps (gTag S M x) i (Sig.maskList S ps (gTag S M x) 0 [] ((gFields S M x).take i)) =
+      .self fx tys)
+    (hy : (gFields S M x)[i]? = some (.el0 _ y)) : crank S M y < crank S M x := by
+  obtain ⟨y₀, hx⟩ := crank_spec S M x
+  revert y₀ hx
+  generalize crank S M x = r
+  intro y₀ hx
+  subst hx
+  obtain _ | k := r
+  · exact y₀.elim
+  obtain ⟨c, t₀⟩ := y₀
+  simp only [gTag, gFields, view_ι, fixTag, fixFields] at hcode hy
+  obtain ⟨y₁, rfl⟩ := Tele.fields_self S M k S.ar[c] 0 [] t₀ i fx tys y
+    (by rw [Nat.zero_add]; exact hcode) hy
+  exact Nat.lt_succ_of_le (crank_le S M _ k y₁ rfl)
+
+end rank
+
+/-! ## The data model
+
+A declaration's data model at parameters `ps` is the core construction at the blanked
+parameters and the parameters' leaf environment, `car (blank ps) (envOf ps)`. A recursive
+field's parameters (`recArgs`) are the occurrence's fixed parameters with its type codes at the
+nestable positions (`occParams`), returned when the interface carrier there is the core
+carrier the field lives in; `gRecArgs_wf` says it is whenever the code is well formed, which
+the assembly shows from the checker's [Ind-decl]. -/
+
+/-- An occurrence's parameters: its fixed parameters, its leaf types at the nestable
+positions. -/
+def occFrom (nb : Nat → Bool) (Zo : Nat → TyM) : Nat → List Sem → List Sem
+  | _, [] => []
+  | j, s :: ss => (if nb j then .ty (Zo j) else s) :: occFrom nb Zo (j + 1) ss
+
+section model
+variable (S : Sig) (M : Nat → NModel)
+
+noncomputable def gRecArgs (ps : List Sem) (c i : Nat) (earlier : List Sem) : Option (List Sem) :=
+  match S.code (S.blank ps) c i (Sig.maskList S (S.blank ps) c 0 [] earlier) with
+  | .self fx tys =>
+    open Classical in
+    if S.blank (occFrom S.nestable (occEnv S M (envOf ps) tys) 0 fx) = fx ∧
+        envOf (occFrom S.nestable (occEnv S M (envOf ps) tys) 0 fx) = occEnv S M (envOf ps) tys then
+      some (occFrom S.nestable (occEnv S M (envOf ps) tys) 0 fx)
+    else none
+  | _ => none
+
+theorem crank_self' {ps : List Sem} {Z : Nat → TyM} (x : car S M ps Z) (i : Nat)
+    (fx : List Sem) (tys : Nat → PCode)
+    (hcode : S.code ps (gTag S M x) i (Sig.maskList S ps (gTag S M x) 0 [] ((gFields S M x).take i)) =
+      .self fx tys)
+    (bps : List Sem) (Z' : Nat → TyM) (hb : bps = fx) (hz : Z' = occEnv S M Z tys)
+    (y : car S M bps Z') (hy : (gFields S M x)[i]? = some (.el0 (car S M bps Z') y)) :
+    crank S M y < crank S M x := by
+  subst hb hz
+  exact crank_self S M x i _ tys y hcode hy
+
+/-- The interface's rank law for one declaration. -/
+theorem gRank_lt {ps ps' : List Sem} (x : car S M (S.blank ps) (envOf ps))
+    (y : car S M (S.blank ps') (envOf ps')) (i : Nat)
+    (h : gRecArgs S M ps (gTag S M x) i ((gFields S M x).take i) = some ps')
+    (hy : (gFields S M x)[i]? = some (.el0 (car S M (S.blank ps') (envOf ps')) y)) :
+    crank S M y < crank S M x := by
+  unfold gRecArgs at h
+  split at h
+  · rename_i fx tys hcode
+    split at h
+    · rename_i hg
+      obtain rfl := Option.some.inj h
+      exact crank_self' S M x i fx tys hcode _ _ hg.1 hg.2 y hy
+    · cases h
+  · cases h
+
+end model
+
+theorem blankFrom_occFrom (nb : Nat → Bool) (Zo : Nat → TyM) :
+    ∀ (j : Nat) (fx : List Sem), blankFrom nb j (occFrom nb Zo j fx) = blankFrom nb j fx
+  | _, [] => rfl
+  | j, s :: ss => by
+    simp only [occFrom, blankFrom, blankFrom_occFrom nb Zo (j + 1) ss]
+    cases nb j <;> rfl
+
+theorem getD_occFrom (nb : Nat → Bool) (Zo : Nat → TyM) :
+    ∀ (j : Nat) (fx : List Sem) (m : Nat), (occFrom nb Zo j fx).getD m .err =
+      if h : m < fx.length then (if nb (j + m) then .ty (Zo (j + m)) else fx[m]) else .err
+  | _, [], _ => rfl
+  | j, s :: ss, 0 => by simp [occFrom]
+  | j, s :: ss, m + 1 => by
+    simp only [occFrom, List.getD_cons_succ, getD_occFrom nb Zo (j + 1) ss m, List.length_cons,
+      Nat.add_lt_add_iff_right, List.getElem_cons_succ]
+    rw [show j + 1 + m = j + (m + 1) by omega]
+
+/-- **Bridge.** For a well-formed recursive occurrence (its fixed parameters blank at the
+nestable positions, its type codes at the other positions those parameters' types), `recArgs`
+is the occurrence's parameters, so the interface's rank law speaks of every recursive field. -/
+theorem gRecArgs_wf (S : Sig) (M : Nat → NModel) (ps : List Sem) (c i : Nat) (earlier : List Sem)
+    (fx : List Sem) (tys : Nat → PCode)
+    (hcode : S.code (S.blank ps) c i (Sig.maskList S (S.blank ps) c 0 [] earlier) = .self fx tys)
+    (hb : S.blank fx = fx)
+    (hz : ∀ j, (S.nestable j = false ∨ fx.length ≤ j) →
+      occEnv S M (envOf ps) tys j = tyOf (fx.getD j .err)) :
+    gRecArgs S M ps c i earlier = some (occFrom S.nestable (occEnv S M (envOf ps) tys) 0 fx) := by
+  have h₁ : S.blank (occFrom S.nestable (occEnv S M (envOf ps) tys) 0 fx) = fx := by
+    rw [Sig.blank, blankFrom_occFrom]
+    exact hb
+  have h₂ : envOf (occFrom S.nestable (occEnv S M (envOf ps) tys) 0 fx) = occEnv S M (envOf ps) tys := by
+    funext j
+    simp only [envOf, getD_occFrom, Nat.zero_add]
+    split
+    · rename_i hj
+      cases hn : S.nestable j
+      · simp only [Bool.false_eq_true, if_false]
+        rw [hz j (.inl hn), ← List.getElem_eq_getD]
+      · rfl
+    · rename_i hj
+      rw [hz j (.inr (Nat.le_of_not_lt hj)), List.getD_eq_getElem?_getD,
+        List.getElem?_eq_none (Nat.le_of_not_lt hj)]
+      rfl
+  unfold gRecArgs
+  rw [hcode]
+  exact if_pos ⟨h₁, h₂⟩
+
+/-- One declaration's data model at every parameter tuple, with the laws of `DataModel`. -/
+structure DM where
+  car : List Sem → Type
+  ar : List Nat
+  fieldTy : List Sem → Nat → Nat → List Sem → TyM
+  paramTy : Nat → List Sem → TyM
+  fieldData : List Sem → Nat → Nat → List Sem → Option (String × List Sem)
+  paramData : Nat → List Sem → Option (String × List Sem)
+  recArgs : List Sem → Nat → Nat → List Sem → Option (List Sem)
+  pack : (ps : List Sem) → Nat → List Sem → Option (car ps)
+  tag : {ps : List Sem} → car ps → Nat
+  fields : {ps : List Sem} → car ps → List Sem
+  rank : {ps : List Sem} → car ps → Nat
+  tag_pack : ∀ {ps c fs} (x : car ps), pack ps c fs = some x → tag x = c
+  fields_pack : ∀ {ps c fs} (x : car ps), pack ps c fs = some x → fields x = fs
+  pack_fields : ∀ {ps} (x : car ps), pack ps (tag x) (fields x) = some x
+  pack_isSome : ∀ ps c fs, (pack ps c fs).isSome ↔
+    ∃ n, ar[c]? = some n ∧ fs.length = n ∧ ∀ i (h : i < fs.length), fs[i] ∈ₛ fieldTy ps c i (fs.take i)
+  rank_lt : ∀ {ps ps'} (x : car ps) (y : car ps') i, recArgs ps (tag x) i ((fields x).take i) = some ps' →
+    (fields x)[i]? = some (.el0 (car ps') y) → rank y < rank x
+
+/-- A declaration's data model: the core construction at the blanked parameters and their leaf
+environment. -/
+noncomputable def declDM (S : Sig) (M : Nat → NModel) : DM where
+  car ps := car S M (S.blank ps) (envOf ps)
+  ar := S.ar
+  fieldTy ps := gFieldTy S M (S.blank ps) (envOf ps)
+  paramTy := S.paramTy
+  fieldData := S.fieldData
+  paramData := S.paramData
+  recArgs := gRecArgs S M
+  pack ps := gPack S M (S.blank ps) (envOf ps)
+  tag := gTag S M
+  fields := gFields S M
+  rank := crank S M
+  tag_pack x h := gTag_pack S M x h
+  fields_pack x h := gFields_pack S M x h
+  pack_fields x := gPack_fields S M x
+  pack_isSome ps := gPack_isSome S M (S.blank ps) (envOf ps)
+  rank_lt x y i h hy := gRank_lt S M x y i h hy
+
+/-- The model of an undeclared name. -/
+def DM.empty : DM where
+  car _ := PEmpty
+  ar := []
+  fieldTy _ _ _ _ := .err
+  paramTy _ _ := .err
+  fieldData _ _ _ _ := none
+  paramData _ _ := none
+  recArgs _ _ _ _ := none
+  pack _ _ _ := none
+  tag x := x.elim
+  fields x := x.elim
+  rank x := x.elim
+  tag_pack x _ := x.elim
+  fields_pack x _ := x.elim
+  pack_fields x := x.elim
+  pack_isSome _ _ _ := by simp
+  rank_lt x _ _ _ _ := x.elim
+
+/-- The program's declarations with their signatures, in order. -/
+abbrev Prog := List (IndDecl × Sig)
+
+/-- The index of a declaration in the program, by name. -/
+def Prog.index (Γ : Prog) (d : IndDecl) : Option Nat := Γ.findIdx? fun p => p.1.name == d.name
+
+/-- The data model of a declaration: its signature's, at the models of the declarations
+before it. -/
+noncomputable def Prog.dm (Γ : Prog) (d : IndDecl) : DM :=
+  match Γ.index d with
+  | some i => declDM ((Γ.map (·.2)).getD i default) (progEnv (Γ.map (·.2)) i)
+  | none => DM.empty
+
+/-- **The generic data model** of a program: every declaration by stages, in order. It covers a
+declaration that is the program's declaration of its name, with the signature's arities and
+sort. -/
+noncomputable def genericModel (Γ : Prog) : DataModel where
+  covers d := ∃ i, Γ.index d = some i ∧ (Γ[i]?).map (·.1) = some d ∧
+    arities d = ((Γ.map (fun p : IndDecl × Sig => p.2)).getD i default).ar ∧
+    (d.sort == 0) = ((Γ.map (fun p : IndDecl × Sig => p.2)).getD i default).isProp
+  car d := (Γ.dm d).car
+  fieldTy d := (Γ.dm d).fieldTy
+  paramTy d := (Γ.dm d).paramTy
+  fieldData d := (Γ.dm d).fieldData
+  paramData d := (Γ.dm d).paramData
+  recArgs d := (Γ.dm d).recArgs
+  pack d := (Γ.dm d).pack
+  tag := (Γ.dm _).tag
+  fields := (Γ.dm _).fields
+  rank := (Γ.dm _).rank
+  tag_pack x _ h := (Γ.dm _).tag_pack x h
+  fields_pack x _ h := (Γ.dm _).fields_pack x h
+  pack_fields x _ := (Γ.dm _).pack_fields x
+  pack_isSome {d ps c fs} hd := by
+    obtain ⟨i, hi, _, har, _⟩ := hd
+    rw [ctor_iff_arity d c (fun n => fs.length = n ∧ _), (Γ.dm d).pack_isSome]
+    have : (Γ.dm d).ar = arities d := by simp only [Prog.dm, hi, har]; rfl
+    rw [this]
+  rank_lt x y _ i h hy := (Γ.dm _).rank_lt x y i h hy
+
+end DataGeneric
+end Ochr.Meaning
