@@ -795,4 +795,118 @@ theorem closedFuture_read {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) {φ φ' :
 
 end SState
 
+/-! ## The call clause (start of the induction for `run_congr`)
+
+`callOfL` reads no future: it applies the callee's meaning to the arguments' meanings and
+rewrites the state structurally. So the call clause of `run_congr` is the induction hypotheses
+for the callee and the arguments, and what remains is that the rewriting keeps the invariant. Its
+one future-dependent operation is the fix of the borrow arguments' labels to their finals,
+`v (ψ.updList fixes)`: a meaning composed with it no longer reads the fixed labels, and reads the
+others as `v` did. -/
+
+theorem Future.updList_of_not_mem : ∀ (fx : List (Nat × Sem)) (ψ : Future) (l : Nat), l ∉ fx.map (·.1) →
+    ψ.updList fx l = ψ l
+  | [], _, _, _ => rfl
+  | (k, e) :: fx, ψ, l, h => by
+    simp only [List.map_cons, List.mem_cons, not_or] at h
+    show (ψ.upd k e).updList fx l = ψ l
+    rw [Future.updList_of_not_mem fx _ l h.2, Future.upd_other _ _ h.1]
+
+theorem Future.updList_agree_mem : ∀ (fx : List (Nat × Sem)) (ψ ψ' : Future) (l : Nat), l ∈ fx.map (·.1) →
+    ψ.updList fx l = ψ'.updList fx l
+  | [], _, _, _, h => absurd h List.not_mem_nil
+  | (k, e) :: fx, ψ, ψ', l, h => by
+    show (ψ.upd k e).updList fx l = (ψ'.upd k e).updList fx l
+    by_cases hl : l ∈ fx.map (·.1)
+    · exact Future.updList_agree_mem fx _ _ l hl
+    · rw [Future.updList_of_not_mem fx _ l hl, Future.updList_of_not_mem fx _ l hl]
+      simp only [List.map_cons, List.mem_cons] at h
+      rcases h with rfl | h
+      · simp [Future.upd]
+      · exact absurd h hl
+
+/-- Fixing labels to constants: the composed meaning reads only the labels `v` read, less the
+fixed ones. -/
+theorem FT.updList {S : Nat → Prop} {v : SVal} (hv : FT S v) (fx : List (Nat × Sem)) :
+    FT (fun y => S y ∧ y ∉ fx.map (·.1)) (fun ψ => v (ψ.updList fx)) := fun ψ ψ' hψ => by
+  apply hv
+  intro y hy
+  by_cases hm : y ∈ fx.map (·.1)
+  · exact Future.updList_agree_mem fx ψ ψ' y hm
+  · rw [Future.updList_of_not_mem fx _ y hm, Future.updList_of_not_mem fx _ y hm]
+    exact hψ y ⟨hy, hm⟩
+
+namespace SState
+
+variable {L : Nat → Prop}
+
+theorem positions_setAt (s : SState) (p : Pos) (v : SVal) : (s.setAt p v).positions = s.positions := by
+  apply positions_congr
+  · cases p <;> simp [setAt]
+  · intro f
+    cases p with
+    | bind f' i =>
+      simp only [setAt, List.getElem?_modify]
+      by_cases h : f' = f
+      · subst h; cases s.env[f']? <;> simp [framePos]
+      · simp [h]
+    | temp f' i =>
+      simp only [setAt, List.getElem?_modify]
+      by_cases h : f' = f
+      · subst h; cases s.env[f']? <;> simp [framePos]
+      · simp [h]
+
+/-- Taking the holder of `l` keeps the positions; every meaning is the old one or `moved`. -/
+theorem takeLabel_positions (s : SState) (l : Nat) : (s.takeLabel l).positions = s.positions := by
+  unfold takeLabel
+  cases s.holderOf l with
+  | none => rfl
+  | some r => exact positions_setAt s r _
+
+theorem takeLabel_valAt (s : SState) (l : Nat) (q : Pos) :
+    (s.takeLabel l).valAt q = s.valAt q ∨ (s.takeLabel l).valAt q = fun _ => .moved := by
+  unfold takeLabel
+  cases s.holderOf l with
+  | none => exact .inl rfl
+  | some r => exact valAt_setAt s r _ q
+
+theorem takeLabel_live {s : SState} {l y : Nat} (hy : s.Live y) (hne : y ≠ l) : (s.takeLabel l).Live y := by
+  unfold takeLabel
+  cases e : s.holderOf l with
+  | none => exact hy
+  | some r =>
+    have hr := (holderOf_spec e).2
+    rw [live_iff] at hy ⊢
+    obtain ⟨p, hp, hs⟩ := hy
+    refine ⟨p, (positions_setAt s r _).symm ▸ hp, ?_⟩
+    show (if p = r then none else s.shape p) = some y
+    split
+    · subst_vars; rw [hr] at hs; cases hs; exact absurd rfl hne
+    · exact hs
+
+/-- (I1) through a call's taking of a borrow argument's holder and fixing its label: what read
+the taken label now reads its fixed final instead. -/
+theorem take_fix_inv1 {s : SState} (h1 : Inv1 L s) {l : Nat} (fx : List (Nat × Sem)) (hl : l ∈ fx.map (·.1)) :
+    Inv1 L ((s.takeLabel l).mapVals fun _ v ψ => v (ψ.updList fx)) := by
+  intro p
+  by_cases hp : p ∈ (s.takeLabel l).positions
+  · rw [valAt_mapVals_of_mem _ _ _ hp]
+    have hv : FT (fun y => L y ∨ s.Live y) ((s.takeLabel l).valAt p) := by
+      rcases takeLabel_valAt s l p with e | e
+      · rw [e]; exact h1 p
+      · rw [e]; exact FT.const _ _
+    refine (hv.updList fx).mono fun y ⟨hy, hn⟩ => ?_
+    rcases hy with hL | hy
+    · exact .inl hL
+    · have hne : y ≠ l := fun e => hn (e ▸ hl)
+      refine .inr ?_
+      have := takeLabel_live hy hne
+      rw [live_iff] at this ⊢
+      obtain ⟨q, hq, hs⟩ := this
+      exact ⟨q, by rw [positions_mapVals]; exact hq, hs⟩
+  · rw [valAt_mapVals_of_not_mem _ _ _ hp]
+    exact FT.const _ _
+
+end SState
+
 end Ochr.Meaning
