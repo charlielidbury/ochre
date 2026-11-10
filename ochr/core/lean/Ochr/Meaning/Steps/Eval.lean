@@ -1,4 +1,4 @@
-import Ochr.Meaning.Steps.Borrow
+import Ochr.Meaning.Steps.IH
 
 /-!
 # Step lemmas, `evalCore` (milestone 3): the run of a term is below the reference run
@@ -19,79 +19,39 @@ open Ochr.Meaning
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- The type the context gives, as a `TyM` (`err` when none). -/
-noncomputable def hintM (hint : Option Value) : TyS :=
-  (hint.map (Value.tyS K.dm K.C K.Γ ρ)).getD (.plain .err)
-
 /-- The induction step. For every `Good` assignment `ρ`, following at each split the arm it
 selects, the run of `t` reaches a value below the reference's result, a state below the
 reference's, for an assignment `ρ'` extending `ρ` to the unknowns created, and `Good` is kept;
 the reference run does not fail. -/
-theorem evalCore_step (st st' : MState) (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value)
-    (v : Value) (T? : Option Value)
-    (hg : Good K.dm K.C K.Γ ρ st)
-    (h : Runs (Ochr.evalCore fuel typed t hint) st fuel (v, T?) st') :
-    ∃ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧
-      ∃ r s', run K ρ' φ (hintM K ρ hint) t (SM' K ρ' st) = some (r, s') ∧
-        meanV K ρ' φ r.2 v ⊑ r.1 ∧
-        (∀ T, T? = some T → (meanV K ρ' noFuture (.plain .err) T).asTy = r.2.m) ∧
-        Below (MState.mean K.dm K.C K.Γ ρ' st') s'.toMean ∧ Good K.dm K.C K.Γ ρ' st' := by
+theorem evalCore_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : evalCore_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- [Let]: the binding is pushed at the right-hand side's type and dropped after the tail
 (`dropTopBind`); the run's `.letIn` clause. -/
-theorem letIn_step (st st' : MState) (fuel : Nat) (typed : Bool) (h0 : Hint) (u w : Term)
-    (hint : Option Value) (v : Value) (T? : Option Value)
-    (hg : Good K.dm K.C K.Γ ρ st)
-    (h : Runs (Ochr.evalCore fuel typed (.letIn h0 u w) hint) st fuel (v, T?) st') :
-    ∃ ρ' r s', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧
-      run K ρ' φ (hintM K ρ hint) (.letIn h0 u w) (SM' K ρ' st) = some (r, s') ∧
-      meanV K ρ' φ r.2 v ⊑ r.1 ∧
-      Below (MState.mean K.dm K.C K.Γ ρ' st') s'.toMean ∧ Good K.dm K.C K.Γ ρ' st' := by
+theorem letIn_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : letIn_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- `Eq` (the `.eq` form): both sides on private copies, the type a statement; the result means
 `⟦a⟧ = ⟦b⟧` (`Steps/Eq.mkEqM_step`), and the state's core is unchanged. -/
-theorem eq_step (st st' : MState) (fuel : Nat) (typed : Bool) (A a b : Term) (hint : Option Value)
-    (v : Value) (T? : Option Value)
-    (hg : Good K.dm K.C K.Γ ρ st)
-    (h : Runs (Ochr.evalCore fuel typed (.eq A a b) hint) st fuel (v, T?) st') :
-    st'.core = st.core ∧
-    ∃ r s', run K ρ φ (.plain .err) (.eq A a b) (SM' K ρ st) = some (r, s') ∧
-      ((meanV K ρ φ (.plain .err) v).asTy).true ↔ (r.1.asTy).true := by
+theorem eq_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : eq_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- `J`, both outcomes: computed at convertible endpoints (the transported term runs in place)
 or closed off as a stuck block whose one arm is the transported term ([T-J-stuck]); each means
 the transported term (docs/24 C9). -/
-theorem J_step (st st' : MState) (fuel : Nat) (typed : Bool) (A a b P hh u : Term) (hint : Option Value)
-    (v : Value) (T? : Option Value)
-    (hg : Good K.dm K.C K.Γ ρ st)
-    (h : Runs (Ochr.evalCore fuel typed (.prim "J" [A, a, b, P, hh, u]) hint) st fuel (v, T?) st') :
-    ∃ ρ' r s', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧
-      run K ρ' φ (hintM K ρ hint) (.prim "J" [A, a, b, P, hh, u]) (SM' K ρ' st) = some (r, s') ∧
-      meanV K ρ' φ r.2 v ⊑ r.1 ∧
-      Below (MState.mean K.dm K.C K.Γ ρ' st') s'.toMean ∧ Good K.dm K.C K.Γ ρ' st' := by
+theorem J_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : J_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- A proof position (a proof-returning call, a proof primitive, a proof `let`): its value is
 `⋆`, which is a member of its proposition exactly when the proposition is true; the state is
 unchanged (a statement runs on a copy). Membership here is where "a proof's value is `⋆`"
 (docs/26 row 1, *same* given membership) is discharged. -/
-theorem proof_step (st st' : MState) (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value)
-    (T : Value)
-    (hg : Good K.dm K.C K.Γ ρ st)
-    (hp : (K.D.flags (scopeOf (SM' K ρ st)) t).2 = true)
-    (h : Runs (Ochr.evalCore fuel typed t hint) st fuel (.proof, some T) st') :
-    st'.core = st.core ∧ Sem.proof ∈ₛ (meanV K ρ φ (.plain .err) T).asTy := by
+theorem proof_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : proof_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- η at `Unit` (D80): where a position's declared reading is `Unit`, the value is `()`, and
 `()` is the one element of `⟦Unit⟧`, so the normalisation keeps meaning given membership. -/
-theorem etaUnit_step (st : MState) (d : DeclInfo) (v : Value) (hint : TyS)
-    (hg : Good K.dm K.C K.Γ ρ st) (hd : d = .unit)
-    (hv : meanV K ρ φ hint v ∈ₛ .ty0 Unit) :
-    meanV K ρ φ hint (Ochr.etaUnit d v) = meanV K ρ φ hint v := by
+theorem etaUnit_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : etaUnit_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 end
