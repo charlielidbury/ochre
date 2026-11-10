@@ -62,3 +62,28 @@ theorem resolve_var0_one (k : Nat) (b : SBinding) :
   simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps]
 
 end Ochr.Meaning.Attack
+
+namespace Ochr.Meaning.Attack
+
+open Ochr.Meaning
+
+/-- No live label, no access: `access` is the identity on a state whose shape is empty. -/
+theorem access_noShape (s : SState) (hs : s.shape = fun _ => none) (p : Pos) : s.access p = s := by
+  have h0 : ∀ l : List Pos, List.filterMap (fun _ : Pos => (none : Option Nat)) l = [] := by
+    intro l; induction l with
+    | nil => rfl
+    | cons _ _ ih => simpa [List.filterMap_cons] using ih
+  have h : s.liveLabels = [] := by
+    simp [SState.liveLabels, hs, h0]
+  simp [SState.access, h]
+
+/-- `contentOf (var 0)` on the one-binding shape-free state: the binding's value at `φ`, its
+type, position `bind 0 0`, no steps; the state unchanged. -/
+theorem contentOf_var0_one (K : RunCtx) (φ : Future) (k : Nat) (b : SBinding) :
+    contentOf K φ (.var 0) { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k }
+      = some ((b.val φ, b.ty, .bind 0 0, []), { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k }) := by
+  have ha := access_noShape { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k } rfl (.bind 0 0)
+  simp only [contentOf, resolve_var0_one, ha, SState.tyAt, SState.valAt, Sem.follow]
+  rfl
+
+end Ochr.Meaning.Attack
