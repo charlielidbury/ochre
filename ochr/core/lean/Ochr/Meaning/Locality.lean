@@ -946,6 +946,71 @@ theorem take_fix_inv2 {s : SState} (h2 : Inv2 L s) {l : Nat} (fx : List (Nat × 
   · have hne : y ≠ l := fun e => hn (e ▸ hl)
     exact .inr ⟨live_mapVals.mpr (takeLabel_live hy hne), hlt⟩
 
+/-! ### Several borrow arguments: all holders taken, then all labels fixed at once (`callOfL`) -/
+
+theorem takeAll_positions (s : SState) : ∀ ls : List Nat, (ls.foldl takeLabel s).positions = s.positions
+  | [] => rfl
+  | l :: ls => by rw [List.foldl_cons, takeAll_positions _ ls, takeLabel_positions]
+
+theorem takeAll_valAt (q : Pos) : ∀ (ls : List Nat) (s : SState),
+    (ls.foldl takeLabel s).valAt q = s.valAt q ∨ (ls.foldl takeLabel s).valAt q = fun _ => .moved
+  | [], _ => .inl rfl
+  | l :: ls, s => by
+    rw [List.foldl_cons]
+    rcases takeAll_valAt q ls (s.takeLabel l) with e | e
+    · rw [e]; exact takeLabel_valAt s l q
+    · exact .inr e
+
+theorem takeAll_live_rev {y : Nat} : ∀ (ls : List Nat) {s : SState}, (ls.foldl takeLabel s).Live y → s.Live y
+  | [], _, h => h
+  | l :: ls, _, h => takeLabel_live_rev (takeAll_live_rev ls h)
+
+theorem takeAll_live {y : Nat} : ∀ (ls : List Nat) {s : SState}, s.Live y → y ∉ ls → (ls.foldl takeLabel s).Live y
+  | [], _, h, _ => h
+  | l :: ls, _, h, hn => by
+    rw [List.foldl_cons]
+    exact takeAll_live ls (takeLabel_live h fun e => hn (e ▸ List.mem_cons_self ..))
+      fun hm => hn (List.mem_cons_of_mem _ hm)
+
+theorem takeAll_shape_some {x : Nat} {h : Pos} : ∀ (ls : List Nat) {s : SState},
+    (ls.foldl takeLabel s).shape h = some x → s.shape h = some x
+  | [], _, e => e
+  | l :: ls, _, e => takeLabel_shape_some (takeAll_shape_some ls e)
+
+/-- (I1) and (I2) through `callOfL`'s data case: the borrow arguments' holders taken, then their
+labels fixed to their finals; every taken label is fixed. -/
+theorem takeAll_fix_inv {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (ls : List Nat) (fx : List (Nat × Sem))
+    (hl : ∀ l ∈ ls, l ∈ fx.map (·.1)) :
+    Inv1 L ((ls.foldl takeLabel s).mapVals fun _ v ψ => v (ψ.updList fx)) ∧
+      Inv2 L ((ls.foldl takeLabel s).mapVals fun _ v ψ => v (ψ.updList fx)) := by
+  constructor
+  · intro p
+    by_cases hp : p ∈ (ls.foldl takeLabel s).positions
+    · rw [valAt_mapVals_of_mem _ _ _ hp]
+      have hv : FT (fun y => L y ∨ s.Live y) ((ls.foldl takeLabel s).valAt p) := by
+        rcases takeAll_valAt p ls s with e | e
+        · rw [e]; exact h1 p
+        · rw [e]; exact FT.const _ _
+      refine (hv.updList fx).mono fun y ⟨hy, hn⟩ => ?_
+      rcases hy with hL | hy
+      · exact .inl hL
+      · exact .inr (live_mapVals.mpr (takeAll_live ls hy fun hm => hn (hl y hm)))
+    · rw [valAt_mapVals_of_not_mem _ _ _ hp]
+      exact FT.const _ _
+  · intro h x hh hsx
+    rw [positions_mapVals] at hh
+    have hsx' : (ls.foldl takeLabel s).shape h = some x := hsx
+    rw [valAt_mapVals_of_mem _ _ _ hh]
+    have hhs : h ∈ s.positions := by rw [← takeAll_positions s ls]; exact hh
+    have hv : FT (fun y => (L y ∧ ¬ s.Live y) ∨ (s.Live y ∧ x < y)) ((ls.foldl takeLabel s).valAt h) := by
+      rcases takeAll_valAt h ls s with e | e
+      · rw [e]; exact h2 h x hhs (takeAll_shape_some ls hsx')
+      · rw [e]; exact FT.const _ _
+    refine (hv.updList fx).mono fun y ⟨hy, hn⟩ => ?_
+    rcases hy with ⟨hL, hnl⟩ | ⟨hy, hlt⟩
+    · exact .inl ⟨hL, fun h' => hnl (takeAll_live_rev ls (live_mapVals.mp h'))⟩
+    · exact .inr ⟨live_mapVals.mpr (takeAll_live ls hy fun hm => hn (hl y hm)), hlt⟩
+
 end SState
 
 end Ochr.Meaning
