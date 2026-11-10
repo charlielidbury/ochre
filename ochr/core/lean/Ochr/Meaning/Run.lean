@@ -507,7 +507,7 @@ termination_by structural ds => ds
 noncomputable def runParams (d : IndDecl) (i : Nat) (earlier : List Sem) : List Term → SM (List Sem)
   | [] => pure []
   | a :: as => do
-    let (v, _) ← SM.onCopy (run (.plain (K.dm.paramTy d i earlier)) a)
+    let (v, _) ← SM.onCopy (run ⟨K.dm.paramTy d i earlier, none, none, K.dm.paramData d i earlier⟩ a)
     let rest ← runParams d (i + 1) (earlier ++ [v]) as
     pure (v :: rest)
 termination_by structural as => as
@@ -516,7 +516,7 @@ termination_by structural as => as
 noncomputable def runFields (d : IndDecl) (ps : List Sem) (c i : Nat) (earlier : List Sem) : List Term → SM (List Sem)
   | [] => pure []
   | a :: as => do
-    let (v, _) ← run (.plain (K.dm.fieldTy d ps c i earlier)) a
+    let (v, _) ← run ⟨K.dm.fieldTy d ps c i earlier, none, none, K.dm.fieldData d ps c i earlier⟩ a
     let rest ← runFields d ps c (i + 1) (earlier ++ [v]) as
     pure (v :: rest)
 termination_by structural as => as
@@ -597,14 +597,14 @@ termination_by structural v => v
 noncomputable def meanFields (d : IndDecl) (ps : List Sem) (c i : Nat) (earlier : List Sem) : List Value → List Sem
   | [] => []
   | v :: vs =>
-    let s := meanV (.plain (K.dm.fieldTy d ps c i earlier)) v
+    let s := meanV ⟨K.dm.fieldTy d ps c i earlier, none, none, K.dm.fieldData d ps c i earlier⟩ v
     s :: meanFields d ps c (i + 1) (earlier ++ [s]) vs
 termination_by structural vs => vs
 
 noncomputable def meanParams (d : IndDecl) (i : Nat) (earlier : List Sem) : List Value → List Sem
   | [] => []
   | v :: vs =>
-    let s := meanV (.plain (K.dm.paramTy d i earlier)) v
+    let s := meanV ⟨K.dm.paramTy d i earlier, none, none, K.dm.paramData d i earlier⟩ v
     s :: meanParams d (i + 1) (earlier ++ [s]) vs
 termination_by structural vs => vs
 
@@ -707,11 +707,11 @@ theorem meanFields_eq_mean (d : IndDecl) (ps : List Sem) (c : Nat) :
     Value.meanFields K.dm (codeMeaning K ρ φ) K.Γ ρ φ d ps c i earlier vs = meanFields K ρ φ d ps c i earlier vs
   | _, _, [] => rfl
   | i, earlier, v :: vs => by
-    show Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ (.plain (K.dm.fieldTy d ps c i earlier)) v
+    show Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ ⟨K.dm.fieldTy d ps c i earlier, none, none, K.dm.fieldData d ps c i earlier⟩ v
         :: Value.meanFields K.dm (codeMeaning K ρ φ) K.Γ ρ φ d ps c (i + 1)
-          (earlier ++ [Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ (.plain (K.dm.fieldTy d ps c i earlier)) v]) vs
-      = meanV K ρ φ (.plain (K.dm.fieldTy d ps c i earlier)) v
-        :: meanFields K ρ φ d ps c (i + 1) (earlier ++ [meanV K ρ φ (.plain (K.dm.fieldTy d ps c i earlier)) v]) vs
+          (earlier ++ [Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ ⟨K.dm.fieldTy d ps c i earlier, none, none, K.dm.fieldData d ps c i earlier⟩ v]) vs
+      = meanV K ρ φ ⟨K.dm.fieldTy d ps c i earlier, none, none, K.dm.fieldData d ps c i earlier⟩ v
+        :: meanFields K ρ φ d ps c (i + 1) (earlier ++ [meanV K ρ φ ⟨K.dm.fieldTy d ps c i earlier, none, none, K.dm.fieldData d ps c i earlier⟩ v]) vs
     rw [meanV_eq_mean_aux _ v, meanFields_eq_mean d ps c (i + 1) _ vs]
 termination_by structural _ _ vs => vs
 
@@ -720,11 +720,11 @@ theorem meanParams_eq_mean (d : IndDecl) :
     Value.meanParams K.dm (codeMeaning K ρ φ) K.Γ ρ φ d i earlier vs = meanParams K ρ φ d i earlier vs
   | _, _, [] => rfl
   | i, earlier, v :: vs => by
-    show Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ (.plain (K.dm.paramTy d i earlier)) v
+    show Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ ⟨K.dm.paramTy d i earlier, none, none, K.dm.paramData d i earlier⟩ v
         :: Value.meanParams K.dm (codeMeaning K ρ φ) K.Γ ρ φ d (i + 1)
-          (earlier ++ [Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ (.plain (K.dm.paramTy d i earlier)) v]) vs
-      = meanV K ρ φ (.plain (K.dm.paramTy d i earlier)) v
-        :: meanParams K ρ φ d (i + 1) (earlier ++ [meanV K ρ φ (.plain (K.dm.paramTy d i earlier)) v]) vs
+          (earlier ++ [Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ ⟨K.dm.paramTy d i earlier, none, none, K.dm.paramData d i earlier⟩ v]) vs
+      = meanV K ρ φ ⟨K.dm.paramTy d i earlier, none, none, K.dm.paramData d i earlier⟩ v
+        :: meanParams K ρ φ d (i + 1) (earlier ++ [meanV K ρ φ ⟨K.dm.paramTy d i earlier, none, none, K.dm.paramData d i earlier⟩ v]) vs
     rw [meanV_eq_mean_aux _ v, meanParams_eq_mean d (i + 1) _ vs]
 termination_by structural _ _ vs => vs
 end
