@@ -1,6 +1,6 @@
 #import "../style.typ": *
 
-$ty("Id")(A, t, u)$ states that the computations $t$ and $u$, both of result type $A$, are indistinguishable from where the statement is made: run from the current environment, they return equal values and leave equal contents in every place either of them may write. This section defines that notion precisely and shows that it reduces to ordinary propositional equality.
+$ty("Id")(A, t, u)$ states that the computations $t$ and $u$, both of result type $A$ and both leaving the same places moved and the same borrows consumed, are indistinguishable from where the statement is made: run from the current environment, they return equal values and leave equal contents in every place either of them may write. This section defines that notion precisely and shows that it reduces to ordinary propositional equality.
 
 == Footprints and observations
 
@@ -38,4 +38,4 @@ Two consequences are worth drawing out.
 
 *Owned locals are observed.* The footprint includes places the current function owns, not only the places behind its borrow parameters. This is forced. A context such as `(□; x)`, which reads `x` afterwards, distinguishes `x := 6` from `()`; if `Id` ignored owned locals it would equate them, and transport along that equation would prove `Eq(Nat, 6, 5)`.
 
-*Unobserved moves are harmless.* The two sides of an `Id` may consume different borrow variables, but borrow variables are never in the footprint, their owners are, and ending the remaining borrows puts every borrowed content back in its owner. They may also consume different owned data, `Id(Nat, let z = a; Z, Z)` holds: a place only read is not observed, and code that reads it after the side that moved it is rejected, so no accepted context tells the sides apart by it.
+*Moves are typed, not observed.* `Id(A, t, u)` is formed only when $t$ and $u$ leave the same _type-state_: the same places moved, and the same borrow variables consumed, re-pointed and left partly moved, all read from their syntax and declared types ([Id-typestate]); neither side may end a borrow held outside it. A match drops at its join whatever any arm moves ([Join]), so a moved place is `⊥` on every path, and both sides leave it `⊥`: it needs no observing, and `⊥` equals only itself. So `Id(Nat, let z = a; Z, Z)` is not formed, and `AddMZero` lends `*x` by `&*x` rather than consuming `x`. A borrow variable that both sides re-point is observed by writing a fresh value through it ([Obs-ref]), which tells apart two sides that point it at different places.

@@ -570,10 +570,10 @@ Notes 1–11 explain the side conditions of @fig-why that are finest-grained in 
   ```
   U(n : Nat) : Type₁ := match n { Z => Prop, S _ => Prop }
   V(n : Nat) : U(n) := match n { Z => ⊤, S _ => ⊤ }
-  LieL(n : Nat) : Id(Nat, (let h = λ(x : &Nat) : U(n) => (*x := S(Z); V(n)); let c = Z; h(&c); c), S(Z)) := refl
+  LieL(n : Nat) : Id(Nat, (let h = λ(x : &Nat) : U(n) => (*x := S(Z); V(n)); let c = Z; h(&c); c), (let m = n; S(Z))) := refl
   BoomL : Eq(Nat, Z, S(Z)) := LieL(Z)
   ```
-  At the generic `n` the codomain is ⌈`U(σ)`⌉, not a sort, so `h(&c)` runs and the statement is `⊤`. At `n = Z` the codomain is `U(Z) = Prop`, a sort, so `h(&c)` would be erased, `c` would stay `Z`, and `LieL(Z) : Eq(Nat, Z, S(Z))`. Read from the term, `U(n)` is not syntactically a sort and has declared sort `Type₀`, so `h(&c)` runs on both paths.
+  The right side moves `n`, as the closure's capture does, so both sides leave the same type-state ([Id-typestate]). At the generic `n` the codomain is ⌈`U(σ)`⌉, not a sort, so `h(&c)` runs and the statement is `⊤`. At `n = Z` the codomain is `U(Z) = Prop`, a sort, so `h(&c)` would be erased, `c` would stay `Z`, and `LieL(Z) : Eq(Nat, Z, S(Z))`. Read from the term, `U(n)` is not syntactically a sort and has declared sort `Type₀`, so `h(&c)` runs on both paths.
 + *A stuck block is erased only when it is a proof.* Treating the block as a call, whose codomain is the match's type, erases a block that computes a type, while the same match run directly is not a call and is not erased:
   ```
   LieB(n : Nat) : Id(Nat, (let c = Z; let T = match n { Z => (c := S(Z); ⊤), S _ => (c := S(Z); ⊤) }; c), Z) := refl
@@ -597,7 +597,7 @@ Notes 1–11 explain the side conditions of @fig-why that are finest-grained in 
   ```
   inductive Box := MkBox(x : Nat)
   Double(n : Nat) : Nat by n := match n { Z => Z, S p => S(S(Double(p))) }
-  Esc(n : Nat, m : Box) : Id(Nat, (let b = Double(n); match b { Z => 0, S _ => 1 }), (match m { MkBox(x) => match x { Z => 0, S _ => 1 } })) :=
+  Esc(n : Nat, m : Box) : Id(Nat, (let b = Double(clone(n)); match b { Z => 0, S _ => 1 }), (match m { MkBox(x) => match x { Z => 0, S _ => 1 } })) :=
     match m { MkBox(x) => match x { Z => refl, S _ => refl } }
   Bad5 : Eq(Nat, 1, 0) := Esc(1, MkBox(0))
   ```

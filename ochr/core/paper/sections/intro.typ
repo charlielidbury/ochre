@@ -10,11 +10,11 @@ AddM(x : &Nat, y : Nat) : Unit by x :=
 `&Nat` is a mutable borrow in the sense of Rust: a unique, temporary right to read and write a `Nat` owned by someone else. In the successor case the pattern variable `p` names the predecessor field in place, and `&p` reborrows it for the recursive call; `by x` says that the recursion is structural on `x`. Here is a theorem about `AddM`, stated and proved in the same language:
 
 ```
-AddMZero(x : &Nat) : Id(Unit, AddM(x, 0), ()) by x :=
+AddMZero(x : &Nat) : Id(Unit, AddM(&*x, 0), ()) by x :=
   match *x { Z => refl, S p => AddMZero(&p) }
 ```
 
-The statement says that running `AddM(x, 0)` is indistinguishable from doing nothing: both return `()`, and both leave the number behind `x` as it was. The proof is structural recursion and nothing else. There is no pure model of `AddM`, no refinement relation, no loop invariant, no separation-logic assertion and no translation into another language. The checker accepts the recursive call as a proof of the successor case by running both sides of the equation on a symbolic input and comparing what they leave behind.
+The statement says that running `AddM(&*x, 0)`, which lends the number behind `x` to the call and so leaves `x` usable afterwards, is indistinguishable from doing nothing: both return `()`, and both leave the number behind `x` as it was. The proof is structural recursion and nothing else. There is no pure model of `AddM`, no refinement relation, no loop invariant, no separation-logic assertion and no translation into another language. The checker accepts the recursive call as a proof of the successor case by running both sides of the equation on a symbolic input and comparing what they leave behind.
 
 This paper is about the type theory that makes that possible.
 
