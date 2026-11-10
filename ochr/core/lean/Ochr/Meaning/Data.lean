@@ -32,6 +32,20 @@ structure DataModel where
   /-- The meaning of the declared type of parameter `i` at the earlier parameters (a type
   parameter's is its sort; a value parameter's, D71, a data type). -/
   paramTy : IndDecl → Nat → List Sem → TyM
+  /-- The declaration's name and parameter meanings of field `i`'s declared type, at the
+  parameters and the earlier fields, when that type is an inductive: the `data` of the field's
+  structured hint (docs/31 D8), so that a field holding a constructor value that records no
+  parameters is read at its declared parameters. Read by the same reading as `fieldTy`. -/
+  fieldData : IndDecl → List Sem → Nat → Nat → List Sem → Option (String × List Sem) :=
+    fun _ _ _ _ _ => none
+  /-- The same for parameter `i`'s declared type at the earlier parameters (a value parameter
+  of inductive type, D71). -/
+  paramData : IndDecl → Nat → List Sem → Option (String × List Sem) := fun _ _ _ => none
+  /-- The parameters of field `i`'s declared type when it is an occurrence of the declaration
+  itself (a recursive field), at the parameters and the earlier fields: what guarded recursion
+  reads (`rank_lt`). -/
+  recArgs : IndDecl → List Sem → Nat → Nat → List Sem → Option (List Sem) :=
+    fun _ _ _ _ _ => none
   /-- Pack a constructor's fields, given as meanings, into an element; `none` if some field is
   not a member of its field type (the fields are read in telescope order). -/
   pack : (d : IndDecl) → (ps : List Sem) → Nat → List Sem → Option (car d ps)
@@ -49,9 +63,15 @@ structure DataModel where
     ((pack d ps c fs).isSome ↔
       ∃ ctor, d.ctors[c]? = some ctor ∧ fs.length = ctor.2.length ∧
         ∀ i (h : i < fs.length), fs[i] ∈ₛ fieldTy d ps c i (fs.take i))
-  /-- A recursive field, an element of the same inductive at any parameters, has smaller rank. -/
-  rank_lt : ∀ {d ps ps'} (x : car d ps) (y : car d ps'), covers d →
-    Sem.el0 (car d ps') y ∈ fields x → rank y < rank x
+  /-- A recursive field, read at the parameters of its declared occurrence (`recArgs`), has
+  smaller rank. The law is stated through the declared type, not through carriers: carriers do
+  not determine parameters, and the form "every field whose carrier is the declaration's" is
+  false (in `Pair(Pair(Unit, Unit), Unit)` the inner pair's meaning is definitionally
+  `el0 (car Pair [Unit, Unit]) _`, a field of the outer one at the same rank; with `Nat = Nat × Unit`,
+  consistent with Lean, no rank function satisfies it; docs/31, data-generic). -/
+  rank_lt : ∀ {d ps ps'} (x : car d ps) (y : car d ps'), covers d → ∀ i,
+    recArgs d ps (tag x) i ((fields x).take i) = some ps' →
+    (fields x)[i]? = some (Sem.el0 (car d ps') y) → rank y < rank x
 
 namespace DataModel
 
@@ -62,9 +82,10 @@ the truncation of the same fixed point, true when it is inhabited. -/
 def tyM (d : IndDecl) (ps : List Sem) : TyM :=
   if d.sort == 0 then .prop (Nonempty (dm.car d ps)) else .ty0 (dm.car d ps)
 
-/-- Parameters whose carrier is the type `T` (docs/31 D8): for a constructor value that records
-no parameters, read at the type of its position. Chosen classically; any choice with that
-carrier gives an element tagged `T`'s carrier (`paramsOf_car`). -/
+/-- Parameters whose carrier is the type `T`, chosen classically (`paramsOf_car`). A fallback
+only: since carriers do not determine parameters, no definition relies on this choice; a
+constructor value that records no parameters reads them off its structured hint (docs/31 D8),
+`fieldData` and `paramData` supplying the hints of fields and parameters. -/
 noncomputable def paramsOf (d : IndDecl) : TyM → Option (List Sem)
   | .ty0 A => open Classical in
     if h : ∃ ps, dm.car d ps = A then some (Classical.choose h) else none
@@ -348,7 +369,9 @@ theorem LibKind.pack_isSome (k : LibKind) (ps : List Sem) (c : Nat) (fs : List S
   all_goals simp [LibKind.pack, LibKind.arities]
 
 /-- The library model (`Prelude.decls`: `Pair`, `False`, `True`, `And`). Every constructor is
-constructor `0`; the rank is `0`, since no library declaration is recursive. -/
+constructor `0`; no library declaration is recursive (`recArgs` is `none`), so the rank is `0`;
+no field's declared type is an inductive (`fieldData` is `none`: `Pair`'s and `And`'s fields
+have the parameters' types). -/
 noncomputable def libModel : DataModel where
   covers d := libKind d ≠ .other
   car := libCar
@@ -364,7 +387,7 @@ noncomputable def libModel : DataModel where
   pack_isSome {d ps c fs} hd := by
     rw [ctor_iff_arity d c (fun n => fs.length = n ∧ _), arities_libKind d hd]
     exact (libKind d).pack_isSome ps c fs
-  rank_lt := sorry
+  rank_lt _ _ _ _ h := by cases h
 
 end DataModel
 
