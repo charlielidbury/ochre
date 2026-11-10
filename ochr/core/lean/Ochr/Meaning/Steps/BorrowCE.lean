@@ -117,4 +117,107 @@ theorem popFrame_step_false (K : RunCtx) (ρ : Assignment) (φ : Future)
   obtain ⟨_, hgood⟩ := hstep Ωp _ (good_Ωp ..) hΔ (runs_out _ _ _ (by decide +kernel))
   exact (not_wf2_of _ (by decide +kernel)) hgood.2.2.2.1
 
+/-! ## `borrowPlace_step_stmt`: a borrow in flight leaves its lender untyped
+
+`TypedFuture` types the future only at labels held at a *typed* position. The borrow
+`borrowPlace` returns is counted as an untyped temporary (`withTemp`), so in
+`st'.withTemp v` the future at the fresh label is unconstrained, and the lender, a typed
+binding reading `φ ℓ`, holds `err` under the typed future `fun _ => err`: membership fails, so
+`Good (st'.withTemp v)` is false whenever a typed place is borrowed. -/
+
+def natB (x : String) (v : Value) : Binding := { hint := ⟨x⟩, ty := some .tNat, val := v }
+/-- `a : Nat ↦ 0`. -/
+def S1 : MState := { env := #[{ binds := #[natB "a" .zero] }] }
+
+theorem err_not_pmem (T : TyM) : ¬ Sem.err.pmem T := by
+  rintro (h | ⟨t, hw, hle, _⟩)
+  · cases h
+  · cases hle; simp [Sem.whole] at hw
+
+end Ochr.Meaning.Steps.BorrowCE
+
+namespace Ochr.Meaning.Steps.BorrowCE
+open Ochr Ochr.Meaning Ochr.Meaning.Steps
+
+abbrev Sb : MState := (outSt (Ochr.borrowPlace 10 (.var 0)) S1 10).withTemp (outVal (Ochr.borrowPlace 10 (.var 0)) S1 10)
+
+theorem shape_Sb (p : Pos) (l : Nat) (h : Env.shape Sb.env p = some l) : p = .temp 0 0 := by
+  cases p with
+  | bind f i => rcases f with _ | f <;> rcases i with _ | i <;> cases h
+  | temp f i => rcases f with _ | f <;> rcases i with _ | i <;> first | rfl | cases h
+
+theorem not_good_Sb (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) :
+    ¬ Good dm C Γ ρ Sb := by
+  rintro ⟨_, hmem, _⟩
+  have htf : TypedFuture dm C Γ ρ Sb (fun _ => .err) := by
+    intro p l hp T hT
+    rw [shape_Sb p l hp] at hT; cases hT
+  have := hmem.pos _ htf (.bind 0 0) (.ty0 Nat) rfl
+  exact err_not_pmem _ this
+
+
+section
+variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment)
+
+theorem posTyM_S1 (p : Pos) (T : TyM) (h : MState.posTyM dm C Γ ρ S1 p = some T) :
+    p = .bind 0 0 ∧ T = .ty0 Nat := by
+  cases p with
+  | temp f i => simp [MState.posTyM] at h
+  | bind f i =>
+    rcases f with _ | f <;> rcases i with _ | i
+    · simp [MState.posTyM, S1, natB, Value.tyM, Value.mean, Sem.asTy] at h
+      exact ⟨rfl, h.symm⟩
+    all_goals simp [MState.posTyM, S1] at h
+
+theorem bindAt_S1 (f i : Nat) (b : Binding) (h : S1.env[f]?.bind (fun fr => fr.binds[i]?) = some b) :
+    f = 0 ∧ i = 0 ∧ b = natB "a" .zero := by
+  rcases f with _ | f <;> rcases i with _ | i
+  · simp [S1] at h; exact ⟨rfl, rfl, h.symm⟩
+  all_goals simp [S1] at h
+
+theorem good_S1 : Good dm C Γ ρ S1 := by
+  have hA : allPos S1.env = [.bind 0 0] := by decide +kernel
+  have hV : Env.values S1.env = [.zero] := by rw [Env.values, hA]; rfl
+  refine ⟨⟨fun σ h => by simp [S1] at h, fun n σ h => by simp [S1] at h, fun σ v h => by simp [S1] at h⟩,
+    ⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · intro φ _ p T hp
+    obtain ⟨rfl, rfl⟩ := posTyM_S1 dm C Γ ρ p T hp
+    have e : Env.mean dm C Γ ρ φ S1.env (.bind 0 0) = .el0 Nat 0 := rfl
+    rw [e]; exact Sem.pmem_of_mem (by simp [Sem.whole]) rfl
+  · intro σ h; simp [S1] at h
+  · intro G h; simp [MState.goalM, S1] at h
+  · refine ⟨?_, ?_⟩
+    · rw [hA]; intro p hp; simp at hp; subst hp; show ¬ (Value.zero.hasBorrow = true); decide
+    · rw [hA]; intro p hp q hq _ _ _; simp at hp hq; rw [hp, hq]
+  · unfold WF2; rw [hV]; refine ⟨?_, ?_⟩
+    · intro v hv l hl; simp at hv; subst hv; simp [Value.outerLoans] at hl
+    · intro l; simp [Value.outerLoans]
+  · apply wf3_of_empty; rintro l m ⟨p, hp, w, hw, _⟩; rw [hA] at hp; simp at hp; subst hp; cases hw
+  · unfold WF4; rw [hV]; intro v hv; simp at hv; subst hv; decide
+  · unfold WF6; rw [hV]; refine ⟨?_, ?_, ?_, ?_, ?_⟩
+    · intro v hv σ h; simp at hv; subst hv; simp [Value.hasAbs, Value.anyAtom, BEq.beq, Value.beq] at h
+    · intro T hT; simp [S1] at hT
+    · intro G hG; simp [S1] at hG
+    · simp [S1]
+    · intro v hv l hl; simp at hv; subst hv; simp [Value.loans] at hl
+  · intro p T _ f i b _ hb A hA'
+    obtain ⟨_, _, rfl⟩ := bindAt_S1 f i b hb
+    simp [natB] at hA'
+  · unfold WF8; rw [hV]; refine ⟨?_, ?_, ?_, ?_⟩
+    · intro v hv; simp at hv; subst hv; decide
+    · intro f i b hb T hT
+      obtain ⟨_, _, rfl⟩ := bindAt_S1 f i b hb
+      simp [natB] at hT; subst hT; decide
+    · intro T hT; simp [S1] at hT
+    · intro G hG; simp [S1] at hG
+end
+
+/-- `borrowPlace_step_stmt` is false at fuel 10, for every run context, assignment and future:
+borrowing `a : Nat ↦ 0` gives a state `st'.withTemp v` that is not `Good`. -/
+theorem borrowPlace_step_false (K : RunCtx) (ρ : Assignment) (φ : Future)
+    (hΔ : K.Δ = deltaOf K ρ φ S1) : ¬ borrowPlace_step_stmt K ρ φ 10 := by
+  intro hstep
+  obtain ⟨_, _, _, _, _, hgood⟩ := hstep S1 _ (.var 0) _ (good_S1 ..) hΔ (runs_out _ _ _ (by decide +kernel))
+  exact not_good_Sb _ _ _ _ hgood
+
 end Ochr.Meaning.Steps.BorrowCE
