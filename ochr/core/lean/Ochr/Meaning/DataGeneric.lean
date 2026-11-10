@@ -1871,5 +1871,68 @@ noncomputable def genericModel (Γ : Prog) : DataModel where
     rw [this]
   rank_lt x y _ i h hy := (Γ.dm _).rank_lt x y i h hy
 
+/-! ## The assembly's obligation: codes are the run's reading of the field types
+
+`FieldsFaithful dm d readTy readData` is what the assembly owes for a covered declaration `d`:
+`readTy ps c i earlier` and `readData ps c i earlier` are the reference run's reading of field
+`i`'s declared type term (its `TyS`'s `m` and `data`) at the parameters' and earlier fields'
+meanings. Then `Value.meanFields` reads every field at the type and hint the run gives it.
+
+Status (data-generic, 2026-11-10), by kind of field code:
+* `ext T` (closed types, including type-function fields like `Cells`' `G(n, x)`): the run's
+  reading is a function of the parameters' and earlier closed fields' meanings, so the type
+  part holds when the assembly takes `T` to be that reading, and the data part holds with
+  `Sig.fieldData` equal to the run's data (a function of the same meanings).
+* `self` / `nest` (an inductive written at arguments, `Cell (R) := MkC(h : Nat, t : SliceOf(R))`):
+  the data is the declaration's name and the arguments' meanings, a function of `ps`. It
+  holds under the well-formedness of `gRecArgs_wf`.
+* **`par j` (a field whose declared type is a parameter, `Pair`'s `fst : A`, `Box(A) :=
+  MkBox(x : A)`): the type part holds (`libModel_fieldTy_pair`), the data part is
+  unprovable.** At `A := List(Nat)` the run's hint for `x` carries `("List", [⟦Nat⟧])`, read
+  off the *parameter's* structured type. But `fieldData d ps` sees only
+  `ps = [ty (ty0 (car List [⟦Nat⟧]))]`, and recovering a declaration and parameters from a
+  carrier is D8's problem: no choice is provably the run's. With two declarations of equal
+  carrier the obligation fails outright, and Lean can neither prove nor refute such equalities.
+  So `MkBox(Nil)` (or `(Nil, 0)` at `List(Nat) × Nat`), with `Nil` recording no parameters
+  (an untyped run), means `err` in the field under any data model with a pass-through
+  `fieldData`, and a well-typed value means junk. Fix (for the lead): parameters must carry
+  their structured hint too. Either `TyS.data : Option (String × List TyS)`, so a parameter's
+  own data travels, with `fieldData` at a `par j` field returning parameter `j`'s; or D8's
+  option (c) (the checker records inferred parameters), which removes `ps = []` values.
+-/
+
+/-- The assembly's obligation for one covered declaration (see the section docstring). -/
+def FieldsFaithful (dm : DataModel) (d : IndDecl)
+    (readTy : List Sem → Nat → Nat → List Sem → TyM)
+    (readData : List Sem → Nat → Nat → List Sem → Option (String × List Sem)) : Prop :=
+  ∀ ps c i earlier, dm.fieldTy d ps c i earlier = small (readTy ps c i earlier) ∧
+    dm.fieldData d ps c i earlier = readData ps c i earlier
+
+/-- The library's type part: `Pair`'s fields have the parameters' types (cut to `small`), as
+the run reads the field type terms `A` and `B`. -/
+theorem libModel_fieldTy_pair (d : IndDecl) (h : DataModel.libKind d = .pair) (A B : TyM)
+    (c i : Nat) (e : List Sem) :
+    DataModel.libModel.fieldTy d [.ty A, .ty B] c i e = small (if i = 0 then A else B) := by
+  show (DataModel.libKind d).fieldTy _ i = _
+  rw [h]
+  by_cases hi : i = 0 <;> simp [DataModel.LibKind.fieldTy, DataModel.libPar, hi, List.getD]
+
+/-! ## Nested recursion (`Rose → List → Rose`): the statement the semantic [Rec] needs
+
+`rank_lt` covers direct recursive fields only. For [Rec]'s path through a nested field
+(`x : Rose(A)`, `x.kids : List(Rose(A))`, `h` a member of `kids`), the statement that holds by
+construction is: **every leaf of a nested field of `x` at a position whose type code is a
+recursive occurrence has a smaller rank than `x`**. In `NModel` terms, for a field `v` with code
+`nest e fx tys` at the view of `x`, `(M e).allL (fun j l => tys j = .self … → crank l < crank x) v`.
+It holds because `x` of first stage `k + 1` has its nested fields at `E`'s carrier over stage `k`
+(`view_ι`), whose leaves are `ι k` of stage-`k` members (`crank_le`). The proof needs one more
+`NModel` law, `allL_map : (∀ j a, P j a → Q j (f j a)) → allL P x → allL Q (map f x)`, which
+holds for `nmodel` (by `sallL` along `smap`) but is not yet in the interface. On the
+interface side the guard must then read ranks along the declared path: `List`'s `fields` at
+`Rose`'s carrier give `Rose` members whose rank the statement bounds, so a semantic [Rec]
+stated with "reachable through nested fields at declared types" is provable from it. Not
+written here (out of time, 2026-11-10).
+-/
+
 end DataGeneric
 end Ochr.Meaning
