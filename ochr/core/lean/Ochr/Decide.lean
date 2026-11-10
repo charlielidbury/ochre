@@ -396,7 +396,8 @@ termination_by structural fuel
 normalising (the D35 notion), in a scope saying what each variable's declared type says
 (de Bruijn order; `ns` names them, for messages). With `chk`, every type position inside
 the term is checked to have a sort as its declared type (D55); without, only the spine
-that decides the result is read (the pre-pass at evaluation). -/
+that decides the result is read (the pre-pass at evaluation), the sorts of a Π-type's
+components included (D86). The result is the same either way. -/
 def declOf (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (t : Term) : M DeclInfo := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let sub (u : Term) : M Unit := if chk then discard (declOf fuel' chk sc ns u) else pure ()
@@ -612,16 +613,24 @@ def typeFnDecl (fuel : Nat) (F : String) (vis : List String) (sc : List DeclInfo
   | _ => if d.isData then pure d else dflt
 termination_by structural fuel
 
-/-- A term written where a type is expected: with `chk`, its declared type must be a sort
-(D55). Returns the sort (`1` when not known). -/
+/-- A term written where a type is expected: its sort, read off its declared type (`1` when not
+known). With `chk`, its declared type must be a sort (D55).
+
+D86: the sort is read in both modes, so `declOf`'s answer does not depend on `chk`. It used to
+be `1` without `chk`, and every decision reads `declOf` without it, so every Π-type term read
+as `Type₀`: `Π(x : Nat). Prop`, in `Type₁`, and `Π(y : Nat). Eq(Nat, y, y)`, a proposition.
+`sortOf` then put `Π(f : Π(x : Nat). Prop). Nat` in `Type₀` (typing rejected it with its
+INTERNAL [D55] assertion), a `let` of a proposition so written did not bind a proposition
+(INTERNAL [pre-pass]), and the type of a function, which no assertion checks, let D66 borrow a
+function in `Type₁` or a proof. -/
 def typePos (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (T : Term) : M Nat := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  if !chk then return 1
   match ← declOf fuel' chk sc ns T with
   | .sort l => pure l
   | .any => pure 1
-  | .conflict => err (conflictMsg T ns)
+  | .conflict => if chk then err (conflictMsg T ns) else pure 1
   | _ =>
+    if !chk then return 1
     err s!"[D55] {T.pp ns} is written where a type is expected, but its declared type is not a sort (it is a type only by computation)"
 termination_by structural fuel
 
