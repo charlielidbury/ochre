@@ -120,7 +120,7 @@ noncomputable def Value.meanFields (ρ : Assignment) (φ : Future) (d : IndDecl)
     (earlier : List Sem) : List Value → List Sem
   | [] => []
   | v :: vs =>
-    let s := Value.mean ρ φ (.plain (dm.fieldTy d ps c i earlier)) v
+    let s := Value.mean ρ φ ⟨dm.fieldTy d ps c i earlier, none, none, dm.fieldData d ps c i earlier⟩ v
     s :: Value.meanFields ρ φ d ps c (i + 1) (earlier ++ [s]) vs
 termination_by structural vs => vs
 
@@ -129,7 +129,7 @@ noncomputable def Value.meanParams (ρ : Assignment) (φ : Future) (d : IndDecl)
     (earlier : List Sem) : List Value → List Sem
   | [] => []
   | v :: vs =>
-    let s := Value.mean ρ φ (.plain (dm.paramTy d i earlier)) v
+    let s := Value.mean ρ φ ⟨dm.paramTy d i earlier, none, none, dm.paramData d i earlier⟩ v
     s :: Value.meanParams ρ φ d (i + 1) (earlier ++ [s]) vs
 termination_by structural vs => vs
 end
