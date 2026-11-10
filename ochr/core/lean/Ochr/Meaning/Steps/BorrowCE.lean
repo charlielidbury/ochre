@@ -220,4 +220,152 @@ theorem borrowPlace_step_false (K : RunCtx) (ρ : Assignment) (φ : Future)
   obtain ⟨_, _, _, _, _, hgood⟩ := hstep S1 _ (.var 0) _ (good_S1 ..) hΔ (runs_out _ _ _ (by decide +kernel))
   exact not_good_Sb _ _ _ _ hgood
 
+
+/-! ## `readPlace_step_stmt`: the same gap when a borrow is moved out of a typed holder -/
+
+def refB (x : String) (v : Value) : Binding := { hint := ⟨x⟩, ty := some (.tRef .tNat), val := v }
+
+/-- `a : Nat ↦ va`, `t : &Nat ↦ borrow_0 0`. -/
+def S23 (va : Value) : MState :=
+  { env := #[{ binds := #[natB "a" va, refB "t" (.borrow 0 .zero)] }], nextLoan := 1 }
+
+section
+variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (va : Value)
+
+theorem bindAt_S23 (f i : Nat) (b : Binding)
+    (h : (S23 va).env[f]?.bind (fun fr => fr.binds[i]?) = some b) :
+    f = 0 ∧ ((i = 0 ∧ b = natB "a" va) ∨ (i = 1 ∧ b = refB "t" (.borrow 0 .zero))) := by
+  rcases f with _ | f <;> rcases i with _ | _ | i
+  · simp [S23] at h; exact ⟨rfl, .inl ⟨rfl, h.symm⟩⟩
+  · simp [S23] at h; exact ⟨rfl, .inr ⟨rfl, h.symm⟩⟩
+  all_goals simp [S23] at h
+
+theorem posTyM_S23 (p : Pos) (T : TyM) (h : MState.posTyM dm C Γ ρ (S23 va) p = some T) :
+    (p = .bind 0 0 ∨ p = .bind 0 1) ∧ T = .ty0 Nat := by
+  cases p with
+  | temp f i => simp [MState.posTyM] at h
+  | bind f i =>
+    simp only [MState.posTyM] at h
+    split at h
+    · rename_i b hb
+      obtain ⟨rfl, (⟨rfl, rfl⟩ | ⟨rfl, rfl⟩)⟩ := bindAt_S23 va f i b hb
+      · simp [natB, Value.tyM, Value.mean, Sem.asTy] at h; exact ⟨.inl rfl, h.symm⟩
+      · simp [refB, Value.tyM, Value.mean, Sem.asTy] at h; exact ⟨.inr rfl, h.symm⟩
+    · cases h
+
+theorem shape_S23 (hb : ∀ l w, va ≠ .borrow l w)
+    (p : Pos) (l : Nat) (h : Env.shape (S23 va).env p = some l) : p = .bind 0 1 ∧ l = 0 := by
+  cases p with
+  | temp f i =>
+    rcases f with _ | f <;> cases h
+  | bind f i =>
+    rcases f with _ | f <;> rcases i with _ | _ | i
+    · simp only [Env.shape] at h; split at h
+      · rename_i l' w e; exact absurd e (hb l' w)
+      · cases h
+    · simp [Env.shape, valAt, S23, refB] at h; exact ⟨rfl, h.symm⟩
+    all_goals cases h
+
+theorem good_S23 (hA : allPos (S23 va).env = [.bind 0 0, .bind 0 1])
+    (hlive : liveLoan (S23 va).env 0 = true)
+    (hnb : ∀ l w, va ≠ .borrow l w) (hb : va.hasBorrow = false)
+    (hol : va.outerLoans = [] ∨ va.outerLoans = [0]) (habs : ∀ σ, va.hasAbs σ = false)
+    (hl : ∀ l ∈ va.loans, l < 1) (hbad : va.anyAtom Value.badCapture = false)
+    (href : va.typeHasRef = false)
+    (hmem : ∀ φ, φ 0 ∈ₛ .ty0 Nat →
+      (Env.mean dm C Γ ρ φ (S23 va).env (.bind 0 0)).pmem (.ty0 Nat)) :
+    Good dm C Γ ρ (S23 va) := by
+  have hV : Env.values (S23 va).env = [va, .borrow 0 .zero] := by rw [Env.values, hA]; rfl
+  have hpt : MState.posTyM dm C Γ ρ (S23 va) (.bind 0 1) = some (.ty0 Nat) := rfl
+  refine ⟨⟨fun σ h => by simp [S23] at h, fun n σ h => by simp [S23] at h, fun σ v h => by simp [S23] at h⟩, ⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · intro φ hφ p T hp
+    obtain ⟨rfl | rfl, rfl⟩ := posTyM_S23 dm C Γ ρ va p T hp
+    · exact hmem φ (hφ (.bind 0 1) 0 rfl _ hpt)
+    · have e : Env.mean dm C Γ ρ φ (S23 va).env (.bind 0 1) = .el0 Nat 0 := rfl
+      rw [e]; exact Sem.pmem_of_mem (by simp [Sem.whole]) rfl
+  · intro σ h; simp [S23] at h
+  · intro G h; simp [MState.goalM, S23] at h
+  · refine ⟨?_, ?_⟩
+    · rw [hA]; intro p hp; simp at hp
+      rcases hp with rfl | rfl
+      · have e : valAt (S23 va).env (.bind 0 0) = va := rfl
+        rw [e]; split
+        · rename_i l w; exact absurd rfl (hnb l w)
+        · simp [hb]
+      · show ¬ (Value.zero.hasBorrow = true); decide
+    · intro p _ q _ l hp hq
+      rw [(shape_S23 va hnb p l hp).1, (shape_S23 va hnb q l hq).1]
+  · unfold WF2; rw [hV]; refine ⟨?_, ?_⟩
+    · intro v hv l hl'; simp at hv
+      rcases hv with rfl | rfl
+      · rcases hol with h | h <;> rw [h] at hl' <;> simp at hl'; subst hl'; exact hlive
+      · simp [Value.outerLoans] at hl'
+    · intro l; rcases hol with h | h <;>
+        simp [Value.outerLoans, h, List.count_cons] <;> split <;> simp
+  · apply wf3_of_empty; rintro l m ⟨p, hp, w, hw, hl'⟩; rw [hA] at hp; simp at hp
+    rcases hp with rfl | rfl
+    · exact hnb m w hw
+    · cases hw; simp [Value.loans] at hl'
+  · unfold WF4; rw [hV]; intro v hv; simp at hv
+    rcases hv with rfl | rfl
+    · simp [hbad]
+    · decide
+  · unfold WF6; rw [hV]; refine ⟨?_, ?_, ?_, ?_, ?_⟩
+    · intro v hv σ h; simp at hv
+      rcases hv with rfl | rfl
+      · simp [habs] at h
+      · simp [Value.hasAbs, Value.anyAtom, BEq.beq, Value.beq] at h
+    · intro T hT; simp [S23] at hT
+    · intro G hG; simp [S23] at hG
+    · simp [S23]
+    · intro v hv l hl'; simp at hv
+      rcases hv with rfl | rfl
+      · exact hl l hl'
+      · simp [Value.loans] at hl'
+  · intro p T _ f i b _ hb' A hA'
+    obtain ⟨_, (⟨_, rfl⟩ | ⟨_, rfl⟩)⟩ := bindAt_S23 va f i b hb'
+    · simp [natB] at hA'
+    · simp [refB] at hA'; subst hA'; rfl
+  · unfold WF8; rw [hV]; refine ⟨?_, ?_, ?_, ?_⟩
+    · intro v hv; simp at hv
+      rcases hv with rfl | rfl
+      · simp [href]
+      · decide
+    · intro f i b hb' T hT
+      obtain ⟨_, (⟨_, rfl⟩ | ⟨_, rfl⟩)⟩ := bindAt_S23 va f i b hb'
+      · simp [natB] at hT; subst hT; decide
+      · simp [refB] at hT; subst hT; decide
+    · intro T hT; simp [S23] at hT
+    · intro G hG; simp [S23] at hG
+end
+
+
+theorem mem_nat_pmem (s : Sem) (h : s ∈ₛ .ty0 Nat) : s.pmem (.ty0 Nat) := by
+  cases s <;> simp [Sem.mem] at h
+  exact Sem.pmem_of_mem (by simp [Sem.whole]) (by simp [Sem.mem, h])
+
+abbrev Sr : MState := (outSt (Ochr.readPlace 10 (.var 0)) (S23 (.loan 0)) 10).withTemp
+  (outVal (Ochr.readPlace 10 (.var 0)) (S23 (.loan 0)) 10)
+
+theorem shape_Sr (p : Pos) (l : Nat) (h : Env.shape Sr.env p = some l) : p = .temp 0 0 := by
+  cases p with
+  | bind f i => rcases f with _ | f <;> rcases i with _ | _ | i <;> cases h
+  | temp f i => rcases f with _ | f <;> rcases i with _ | i <;> first | rfl | cases h
+
+/-- `readPlace_step_stmt` is false at fuel 10: reading `t : &Nat ↦ borrow_0 0` moves the borrow
+into an untyped temporary, and the lender `a : Nat ↦ loan_0` is no longer typed. -/
+theorem readPlace_step_false (K : RunCtx) (ρ : Assignment) (φ : Future)
+    (hΔ : K.Δ = deltaOf K ρ φ (S23 (.loan 0))) : ¬ readPlace_step_stmt K ρ φ 10 := by
+  intro hstep
+  have hg : Good K.dm K.C K.Γ ρ (S23 (.loan 0)) :=
+    good_S23 _ _ _ _ _ (by decide +kernel) (by decide +kernel) (fun _ _ h => by cases h) rfl
+      (.inr rfl) (fun _ => rfl) (by simp [Value.loans]) rfl rfl (fun φ h => mem_nat_pmem _ h)
+  obtain ⟨_, _, _, _, _, hgood⟩ := hstep (S23 (.loan 0)) _ (.var 0) _ _ hg hΔ rfl
+    (runs_out _ _ _ (by decide +kernel))
+  obtain ⟨_, hmem, _⟩ := hgood
+  have htf : TypedFuture K.dm K.C K.Γ ρ Sr (fun _ => .err) := by
+    intro p l hp T hT
+    rw [shape_Sr p l hp] at hT; cases hT
+  exact err_not_pmem _ (hmem.pos _ htf (.bind 0 0) (.ty0 Nat) rfl)
+
 end Ochr.Meaning.Steps.BorrowCE
