@@ -12,6 +12,9 @@ import Ochr.Meaning.Mono
   resurrects it as a holder of a borrow it never made.
 * `WF6Borrow`, `shapeBelow_sstate`: the clause (WF6) lacks, every borrow's own label below the
   counter, and `ShapeBelow` of the checker's state from it.
+* `callOf_readsBelow`: a call reads no label at or above the counter (the item `Mono.lean` left
+  open): taking the arguments' holders only forgets, `updList` adds no dependence
+  (`updList_indep`), and a returned borrow reads only its own fresh label besides.
 -/
 
 namespace Ochr.Meaning
@@ -77,5 +80,95 @@ theorem shapeBelow_sstate (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl)
   · rename_i l' w hv
     cases hp; exact h p _ w hv
   · cases hp
+
+/-! ## `ReadsBelow` for a call -/
+
+/-- Updating the future at a list of labels does not make a meaning depend on a label it did not. -/
+theorem updList_indep {v : SVal} {l : Nat} (hv : ¬ v.DependsOn l) :
+    ∀ (L : List (Nat × Sem)) (φ : Future) (x : Sem), v ((φ.upd l x).updList L) = v (φ.updList L)
+  | [], φ, x => SVal.not_dependsOn hv φ x
+  | (l', e) :: rest, φ, x => by
+    simp only [Future.updList]
+    by_cases h : l = l'
+    · subst h; rw [Future.upd_upd_same]
+    · rw [Future.upd_comm φ h]; exact updList_indep hv rest _ x
+
+namespace SState
+
+theorem readsBelow_takeLabel {s : SState} (hs : s.ReadsBelow) (l : Nat) : (s.takeLabel l).ReadsBelow := by
+  unfold takeLabel
+  split
+  · next r _ =>
+    have h := readsBelow_setAt hs r (fun _ => .moved) fun _ ⟨_, _, hne⟩ => absurd rfl hne
+    intro p k hd
+    exact h p k hd
+  · exact hs
+
+theorem readsBelow_foldl_takeLabel {s : SState} (hs : s.ReadsBelow) :
+    ∀ ls : List Nat, (ls.foldl takeLabel s).ReadsBelow := by
+  intro ls
+  induction ls generalizing s with
+  | nil => exact hs
+  | cons l ls ih => exact ih (readsBelow_takeLabel hs l)
+
+/-- Rewriting each meaning as itself at an updated future keeps the invariant. -/
+theorem readsBelow_mapVals_updList {s : SState} (hs : s.ReadsBelow) (L : List (Nat × Sem)) :
+    (s.mapVals fun _ v φ' => v (φ'.updList L)).ReadsBelow := by
+  intro p l ⟨φ, x, hne⟩
+  refine Classical.byContradiction fun hl => hne ?_
+  have hlt : ¬ (s.valAt p).DependsOn l := fun hd => hl (hs p l hd)
+  show (s.mapVals _).valAt p φ = (s.mapVals _).valAt p (φ.upd l x)
+  rw [valAt_mapVals]
+  split
+  · exact (updList_indep hlt L φ x).symm
+  · rfl
+
+end SState
+
+/-- **A call reads no label not yet handed out**: taking the arguments' holders only forgets; a
+borrow-free result fixes the arguments' labels; a borrow result reads its own fresh label `k`
+and otherwise what each meaning read before. Milestone 3: `Steps/Call.lean`'s `closeCall_step`
+(with `callOf_fresh`). -/
+theorem callOfL_readsBelow.{u} (L : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : Sem)
+    (args : List Res) (s : SState) (hs : s.ReadsBelow) {r : Sem} {T : TyS} {s' : SState}
+    (h : callOfL L ps out fv args s = some ((r, T), s')) : s'.ReadsBelow := by
+  unfold callOfL at h
+  try dsimp only at h
+  have hs₀ := SState.readsBelow_foldl_takeLabel hs (args.filterMap (·.2.label))
+  split at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨_, rfl⟩ := h
+    exact SState.readsBelow_mapVals_updList hs₀ _
+  · simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨_, rfl⟩ := h
+    generalize (args.filterMap fun a : Res => a.2.label).foldl SState.takeLabel s = s₀ at hs₀ ⊢
+    refine SState.readsBelow_pushTempShaped ?_ _ _ fun _ ⟨_, _, hne⟩ => absurd rfl hne
+    intro p l ⟨φ, x, hne⟩
+    show l < s₀.nextLoan + 1
+    by_cases hlk : l = s₀.nextLoan
+    · omega
+    · refine Nat.lt_succ_of_lt (Classical.byContradiction fun hl => hne ?_)
+      have hlt : ¬ (s₀.valAt p).DependsOn l := fun hd => hl (hs₀ p l hd)
+      show (SState.mapVals _ _).valAt p φ = (SState.mapVals _ _).valAt p (φ.upd l x)
+      rw [SState.valAt_mapVals]
+      split
+      · dsimp only
+        rw [Future.upd_other φ x (Ne.symm hlk)]
+        cases hd : L.dec _ (φ s₀.nextLoan) with
+        | none => rfl
+        | some y => exact (updList_indep hlt _ φ x).symm
+      · rfl
+  · cases h
+
+theorem callOf_readsBelow (fv : Res) (args : List Res) (s : SState) (hs : s.ReadsBelow)
+    {r : Sem} {T : TyS} {s' : SState} (h : callOf fv args s = some ((r, T), s')) : s'.ReadsBelow := by
+  unfold callOf at h
+  split at h
+  · split at h
+    · exact callOfL_readsBelow _ _ _ _ _ _ hs h
+    · exact callOfL_readsBelow _ _ _ _ _ _ hs h
+    · exact callOfL_readsBelow _ _ _ _ _ _ hs h
+    · cases h
+  · cases h
 
 end Ochr.Meaning
