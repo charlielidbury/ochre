@@ -1,4 +1,4 @@
-import Ochr.Meaning.Steps.Borrow
+import Ochr.Meaning.Steps.IH
 
 /-!
 # Step lemmas, observation and `Id`: `observe`, `idType`, footprint coverage (milestone 3;
@@ -21,53 +21,29 @@ open Ochr.Meaning
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- The reference observation of a side, if its run succeeds. -/
-noncomputable def refObs (reps : List Place) (ws : List Sem) (hint : TyS) (t : Term) (s : SState) : Option (List Sem) :=
-  (run K ρ φ hint t s).map fun (r, s') => observation φ reps ws r s'
-
 /-- `observe` (a side on a private copy, a fresh `σ` written through each re-pointed binding
 ([Obs-ref]), every borrow ended, the result and the owners read): for the written values `ws`
 the fresh unknowns mean under the extended assignment, the result and each observed owner mean
 their components of the reference observation at the owners' positions; the state is unchanged
 (a copy). -/
-theorem observe_step (st st' : MState) (fuel : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos)
-    (r : Value) (ws : List Value)
-    (hg : Good K.dm K.C K.Γ ρ st)
-    (h : Runs (Ochr.observe fuel typed t A W) st fuel (r, ws) st') :
-    st'.core = st.core ∧
-    ∃ o, ∃ wsS, refObs K ρ φ (K.D.rePointed (scopeOf (SM' K ρ st)) t) wsS (.plain (meanV K ρ noFuture (.plain .err) A).asTy) t (SM' K ρ st) = some o ∧
-      o[0]? = some (meanV K ρ φ (.plain (meanV K ρ noFuture (.plain .err) A).asTy) r) ∧
-      ∀ (i j : Nat) (p : Pos), W[i]? = some p → (SM' K ρ st).positions[j]? = some p →
-        ws[i]?.map (meanV K ρ φ (.plain .err)) = o.tail[j]? := by
+theorem observe_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : observe_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- Footprint coverage (docs/18 "Footprint coverage", the third of the five lemmas): a position
 outside the footprint of the two sides means the same after either side. -/
-theorem footprint_coverage (st : MState) (A t u : Term) (p : Pos) (o₁ o₂ : List Sem) (j : Nat) (reps : List Place) (ws : List Sem)
-    (hg : Good K.dm K.C K.Γ ρ st)
-    (hp : p ∉ footprint st.env [t, u]) (hj : (SM' K ρ st).positions[j]? = some p)
-    (h₁ : refObs K ρ φ reps ws (.plain (meanV K ρ noFuture (.plain .err) (.sealed A)).asTy) t (SM' K ρ st) = some o₁)
-    (h₂ : refObs K ρ φ reps ws (.plain (meanV K ρ noFuture (.plain .err) (.sealed A)).asTy) u (SM' K ρ st) = some o₂) :
-    o₁.tail[j]? = o₂.tail[j]? := by
+theorem footprint_coverage (fuel : Nat) (ih : StepsIH K ρ φ fuel) : footprint_coverage_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- `Id` computes (`idType`): the conjunction over the result and the footprint's owners means
 the reference's `Id`, the equality of the two observations; exact, and the state's core is
 unchanged. -/
-theorem idType_step (st st' : MState) (fuel : Nat) (typed : Bool) (A t u : Term) (P : Value)
-    (hg : Good K.dm K.C K.Γ ρ st)
-    (h : Runs (Ochr.idType fuel typed A t u) st fuel P st') :
-    st'.core = st.core ∧
-    ∃ r s', run K ρ φ (.plain .err) (.id A t u) (SM' K ρ st) = some (r, s') ∧
-      ((meanV K ρ φ (.plain .err) P).asTy).true ↔ (r.1.asTy).true := by
+theorem idType_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : idType_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- Owners (RULES §4): every position `owners env l` lists holds, directly or through the content
 of a borrow it holds, a loan of `l`; and conversely every position whose meaning depends on `l`
 is among them (`Mean.dependsOn`). -/
-theorem owners_sound (st : MState) (l : Nat) (p : Pos)
-    (hg : Good K.dm K.C K.Γ ρ st) (hl : liveLoan st.env l = true) :
-    (MState.mean K.dm K.C K.Γ ρ st).dependsOn p l → p ∈ owners st.env l := by
+theorem owners_sound (fuel : Nat) (ih : StepsIH K ρ φ fuel) : owners_sound_stmt K ρ φ (fuel + 1) := by
   sorry
 
 end

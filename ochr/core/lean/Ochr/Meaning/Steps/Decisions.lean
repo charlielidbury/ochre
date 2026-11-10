@@ -1,4 +1,4 @@
-import Ochr.Meaning.Steps.Borrow
+import Ochr.Meaning.Steps.IH
 
 /-!
 # The aligned decisions equal the checker's (milestone 3; docs/18 "Decisions, by kind",
@@ -23,60 +23,37 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- The scope of readings the checker uses at `st`'s top frame is `scopeOf` of its semantic
 state (each binding's `decl`, innermost first). -/
-theorem scopeOf_sstate (st : MState) :
-    scopeOf (SM' K ρ st) = ((st.env.back?.map (·.binds.toList.map (·.decl))).getD []).reverse := by
+theorem scopeOf_sstate (fuel : Nat) (ih : StepsIH K ρ φ fuel) : scopeOf_sstate_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- `Decisions.flags` is `Decide.preFlags` where the latter answers. -/
-theorem flags_aligned (st st' : MState) (t : Term) (d : DeclInfo) (fl : Bool × Bool)
-    (hg : Good K.dm K.C K.Γ ρ st)
-    (h : Runs (Ochr.preFlags t d) st 2000000 (some fl) st') :
-    K.D.flags (scopeOf (SM' K ρ st)) t = fl := by
+theorem flags_aligned (fuel : Nat) (ih : StepsIH K ρ φ fuel) : flags_aligned_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- `Decisions.placeDecl` is `Decide.placeDecl`. -/
-theorem placeDecl_aligned (st st' : MState) (fuel : Nat) (p : Place) (d : DeclInfo)
-    (hg : Good K.dm K.C K.Γ ρ st)
-    (h : Runs (Ochr.placeDecl fuel (scopeOf (SM' K ρ st)) p) st fuel d st') :
-    K.D.placeDecl (scopeOf (SM' K ρ st)) p = d := by
+theorem placeDecl_aligned (fuel : Nat) (ih : StepsIH K ρ φ fuel) : placeDecl_aligned_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- `Decisions.declOf` is `Decide.declOf` (unchecked mode). -/
-theorem declOf_aligned (st st' : MState) (fuel : Nat) (t : Term) (d : DeclInfo)
-    (hg : Good K.dm K.C K.Γ ρ st)
-    (h : Runs (Ochr.declOf fuel false (scopeOf (SM' K ρ st)) [] t) st fuel d st') :
-    K.D.declOf (scopeOf (SM' K ρ st)) t = d := by
+theorem declOf_aligned (fuel : Nat) (ih : StepsIH K ρ φ fuel) : declOf_aligned_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- `Decisions.copy` is `Decide.declCopy`. -/
-theorem copy_aligned (st st' : MState) (fuel : Nat) (d : DeclInfo) (b : Bool)
-    (hg : Good K.dm K.C K.Γ ρ st)
-    (h : Runs (Ochr.declCopy fuel d) st fuel b st') :
-    K.D.copy d = b := by
+theorem copy_aligned (fuel : Nat) (ih : StepsIH K ρ φ fuel) : copy_aligned_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- `Decisions.piSort` is `Decide.sortOf` of the Π-type value (D55: declared sort = computed). -/
-theorem piSort_aligned' (st st' : MState) (fuel : Nat) (caps : List Value) (hs : List Hint)
-    (ds : List Term) (c : Term) (rd : List (DeclInfo × Value)) (l : Nat)
-    (hg : Good K.dm K.C K.Γ ρ st)
-    (h : Runs (Ochr.sortOf fuel (.tPi caps (.pi hs ds c) rd)) st fuel l st') :
-    K.D.piSort (scopeOf (SM' K ρ st)) (.pi hs ds c) = l := by
+theorem piSort_aligned' (fuel : Nat) (ih : StepsIH K ρ φ fuel) : piSort_aligned'_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- D84 [Join]: `Decisions.joinMoves` is `Decide.jdMoves` as `Machine.staticJoin` calls it (the
 places already `⊥` at the match as its `entry`). -/
-theorem joinMoves_aligned (st st' : MState) (fuel : Nat) (entry ms : List Place) (t : Term)
-    (hg : Good K.dm K.C K.Γ ρ st)
-    (h : Runs (Ochr.jdMoves fuel [] [] t entry) st fuel ms st') :
-    K.D.joinMoves (scopeOf (SM' K ρ st)) entry t = ms := by
+theorem joinMoves_aligned (fuel : Nat) (ih : StepsIH K ρ φ fuel) : joinMoves_aligned_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- D84 [Id-typestate]/[Obs-ref]: `Decisions.rePointed` is the `repointed` component of
 `Decide.typeState`, as `Machine.idType` reads it. -/
-theorem rePointed_aligned (st st' : MState) (fuel : Nat) (t : Term) (ts : TypeState)
-    (hg : Good K.dm K.C K.Γ ρ st)
-    (h : Runs (Ochr.typeState fuel t) st fuel ts st') :
-    K.D.rePointed (scopeOf (SM' K ρ st)) t = ts.repointed := by
+theorem rePointed_aligned (fuel : Nat) (ih : StepsIH K ρ φ fuel) : rePointed_aligned_stmt K ρ φ (fuel + 1) := by
   sorry
 
 end
