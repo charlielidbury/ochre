@@ -40,6 +40,7 @@ import Ochr.Meaning.Program
 import Ochr.Meaning.DecisionsInst
 import Ochr.Meaning.DecideScope
 import Ochr.Meaning.Regress.CE5_flipped
+import Ochr.Meaning.Regress.CE4_flipped
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
