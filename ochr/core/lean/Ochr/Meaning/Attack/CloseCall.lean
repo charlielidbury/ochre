@@ -11,10 +11,13 @@ lender `a ↦ ⌈let c1 = σ0; let r = σ1(&c1); *r := loan_1; c1⌉`, counter `
 can of it, or refutes it. Every piece of the run's borrow bookkeeping (D10–D15), `RunCtx.Δ`
 (D17), `piCarL`/`applyFnL` and the knot is exercised end to end.
 
-Status (2026-11-10): (A') is proved (`CloseCallFwd.lean`), by stepping the run through the
+Status (2026-11-10): both proved. (A') in `CloseCallFwd.lean`, by stepping the run through the
 concrete-state normal forms of `RunEqs.lean` (binding, borrow `S₂`, call `S₃`, `r` bound `S₄`,
-`peek(*r)`); (A) is open and follows the same chain with `setContent` at the hole. Probe findings
-that shaped `RunEqs.lean` (a throwaway `simp` unfolding of `res_means_fwd`): `unfold meanV` then
+`peek(*r)`); (A) in `CloseCallBack.lean`, the same chain then the write through `r` (`S₅`) and
+the read of `c1`, whose [Access] ends `r`'s borrow and fixes the returned label's final content
+to the hole's (`S₆`). So on this shape [Close] is exact against the reference's call: the
+checker's sealed programs mean the forward value and the backward function, as `callOf` gives
+them. Probe findings that shaped `RunEqs.lean` (a throwaway `simp` unfolding of `res_means_fwd`): `unfold meanV` then
 `simp [run, emptyState, pushBindShaped, contentOf, readPlace, borrowPlace, runArgs, callOf,
 callOfL, applyFnL, …]` reduces the `ascribe`/`letIn`/`borrow` prefix and reaches `callOf` with
 `fv.2.shape = (Δ₀ 1).shape = some (psG, outG)` and `fv.1 = meanV … (.abs 1)`, as intended. Two
@@ -82,15 +85,9 @@ def resR : Term :=
     (.letIn ⟨"r"⟩ (.call (.val (.abs 1)) [.borrow (.var 0)] true)
       (.prim "peek" [.place (.deref (.var 0))]))
 
-/-- **(A) The fill means the backward function at the hole**: `⟦⌈…; *r := loan_1; c1⌉⟧_φ` is
-`(back_F(n))(φ 1)`'s final content of the lent place, when the hole holds a number; `err`
-otherwise. -/
-theorem fill_means_back (dm : DataModel) (C : CodeMeaning) (n : Nat) (F : GCar) (φ : Future) (hint : TyS) :
-    meanV (K₀ dm C) (ρ₀ n F) φ hint (.sealed fillA)
-      = match (φ 1).asNat with
-        | some v => .el0 Nat ((F n).val.2 v).2
-        | none => .err := by
-  sorry
+/- **(A) The fill means the backward function at the hole**: stated and proved in
+`CloseCallBack.lean` (`fill_means_back`): `⟦⌈…; *r := loan_1; c1⌉⟧_φ` is `(back_F(n))(φ 1)`'s
+final content of the lent place when the hole holds a number, `err` otherwise. -/
 
 /- **(A') The result program means the forward value**: stated and proved in `CloseCallFwd.lean`
 (`res_means_fwd`), through the run-layer normal forms of `RunEqs.lean`. -/
