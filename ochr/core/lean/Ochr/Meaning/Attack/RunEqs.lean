@@ -87,3 +87,21 @@ theorem contentOf_var0_one (K : RunCtx) (φ : Future) (k : Nat) (b : SBinding) :
   rfl
 
 end Ochr.Meaning.Attack
+
+namespace Ochr.Meaning.Attack
+
+open Ochr.Meaning
+
+/-- `&(var 0)` on the one-binding shape-free state, the content whole: label `k` (the state's
+counter), the binding now reads `k`'s final content, the old content parked in temp `0` holding
+`k`; the result is the old content at `φ` with `k` in its type. -/
+theorem borrowPlace_var0_one (K : RunCtx) (φ : Future) (k : Nat) (b : SBinding) (hw : (b.val φ).whole) :
+    borrowPlace K φ (.var 0) { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k }
+      = some ((b.val φ, { b.ty with label := some k }),
+          { env := [{ binds := [{ b with val := fun φ' => φ' k }], temps := [fun _ => b.val φ] }],
+            shape := fun p => if p = .temp 0 0 then some k else none, nextLoan := k + 1 }) := by
+  simp only [borrowPlace, contentOf_var0_one, bind, Option.bind]
+  simp [hw, SState.freshLoan, SState.pushTempShaped, SState.pushTemp, SState.setAt, SState.topIdx,
+    SState.tyAt, SState.valAt, updAt_nil]
+
+end Ochr.Meaning.Attack
