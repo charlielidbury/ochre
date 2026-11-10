@@ -231,9 +231,17 @@ noncomputable def joinDrop (t : Term) (s : SState) : SState :=
         s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T (fun _ => .moved) steps (old φ')).getD .err
     | none => s) s
 
-/-- An observation for `Id` (docs/27 Def. 5): the side's result and, after ending every live
-borrow of its copy, the meaning of every position, at the run's future. -/
-noncomputable def observation (r : Res) (s : SState) : List Sem :=
+/-- An observation for `Id` (docs/27 Def. 5, D84 [Obs-ref]): after the side's run, each borrow
+binding the side re-points (`rePointed`, static) has a fresh value written through it, the
+`i`-th of `ws` for the `i`-th re-pointed binding, so that where it points is observed through
+its owners; then every live borrow of the copy ends, and the result and the meaning of every
+position are read at the run's future. A fresh abstract value under every assignment is every
+value, so `Id` quantifies over `ws` (`run`'s `.id` clause). -/
+noncomputable def observation (reps : List Place) (ws : List Sem) (r : Res) (s : SState) : List Sem :=
+  let s := (reps.zipIdx).foldl (fun s (q, i) =>
+    match resolve s q, ws[i]? with
+    | some (pos, []), some w => s.setAt pos fun _ => w
+    | _, _ => s) s
   let s := s.liveLabels.foldl SState.endLabel s
   r.1 :: s.positions.map fun p => s.valAt p φ
 
@@ -455,13 +463,17 @@ noncomputable def run (hint : TyS) : Term → SM Res
     let (TA, _) ← run (.plain .err) A
     pure (TA, .plain (.univ 1))
   | .id A t u => fun s => do
-    -- `Id` observes: each side on a copy of the state, every borrow ended, the result and every
-    -- position compared (D84: moved places are definite values, so they compare too)
+    -- `Id` observes: each side on a copy of the state, a fresh value written through each
+    -- re-pointed borrow binding ([Obs-ref]), every borrow ended, the result and every position
+    -- compared (D84: moved places are definite values, so they compare too); the proposition
+    -- holds for every choice of the written values
     let ((TA, _), _) ← SM.onCopy (run (.plain .err) A) s
     let T := TyS.plain TA.asTy
-    let o₁ ← (run T t s).map fun (r, s') => observation φ r s'
-    let o₂ ← (run T u s).map fun (r, s') => observation φ r s'
-    some ((.ty (.prop (o₁ = o₂)), .plain (.univ 0)), s)
+    let reps := K.D.rePointed (scopeOf s) t
+    let o₁ ← run T t s
+    let o₂ ← run T u s
+    some ((.ty (.prop (∀ ws : List Sem,
+      observation φ reps ws o₁.1 o₁.2 = observation φ reps ws o₂.1 o₂.2)), .plain (.univ 0)), s)
   | .prim "J" [A, a, b, P, h, t] => do
     -- `J` means its transported term; its endpoints, motive and proof are statements on copies
     let _ ← SM.onCopy (run (.plain .err) A)

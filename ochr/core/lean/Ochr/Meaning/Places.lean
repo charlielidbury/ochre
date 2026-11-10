@@ -45,6 +45,9 @@ structure Decisions : Type where
   /-- D84: the places a match drops at its join (`Decide.jdMoves`), given the places already
   moved when the match starts (its `entry` argument). -/
   joinMoves : List DeclInfo → List Place → Term → List Place
+  /-- D84 [Id-typestate]/[Obs-ref]: the borrow bindings a side re-points (assigns whole and does
+  not consume), read from syntax and declared types (`Decide.typeState`'s `repointed`). -/
+  rePointed : List DeclInfo → Term → List Place
 
 section
 variable (dm : DataModel) (Γ : List IndDecl)
