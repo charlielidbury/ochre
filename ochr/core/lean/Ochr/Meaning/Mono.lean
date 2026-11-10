@@ -1367,7 +1367,7 @@ theorem callOfL_fresh.{u} (L : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : 
       ∀ q q', s'.shape q = some l → s'.shape q' = some l → q = q' := by
   unfold callOfL at h
   try dsimp only at h
-  have hsub := SState.shapeSub_foldl_takeLabel (args.filterMap (·.2.label)) s
+  have hsub := SState.shapeSub_foldl_takeLabel ((((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).filterMap id) s
   have hs₀ := SState.ShapeBelow.of_sub hsub hs
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
