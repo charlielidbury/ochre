@@ -35,6 +35,7 @@ import Ochr.Meaning.WF
 import Ochr.Meaning.Sanity
 import Ochr.Meaning.Bounded
 import Ochr.Meaning.Mono
+import Ochr.Meaning.MonoHolders
 import Ochr.Meaning.Program
 import Ochr.Meaning.DecisionsInst
 import Ochr.Meaning.DecideScope
