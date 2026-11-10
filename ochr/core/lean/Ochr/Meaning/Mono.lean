@@ -1359,6 +1359,35 @@ theorem borrowPlace_fresh (K : RunCtx) (φ : Future) (p : Place) (s : SState) (h
 arguments' parked borrows are taken (`takeLabel`); the borrow-returning case takes `freshLoan`
 and parks the result, so its label was held nowhere before, is below the new counter, and has
 one holder. Milestone 3: `Steps/Call.lean`'s `closeCall_step`. -/
+theorem callOfL_fresh.{u} (L : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : Sem) (args : List Res) (s : SState)
+    (hs : s.ShapeBelow) {r : Sem} {T : TyS} {s' : SState}
+    (h : callOfL L ps out fv args s = some ((r, T), s')) :
+    s'.ShapeBelow ∧ ∀ l, T.label = some l → l < s'.nextLoan ∧ (∀ q, s.shape q ≠ some l) ∧
+      ∀ q q', s'.shape q = some l → s'.shape q' = some l → q = q' := by
+  unfold callOfL at h
+  try dsimp only at h
+  have hsub := SState.shapeSub_foldl_takeLabel (args.filterMap (·.2.label)) s
+  have hs₀ := SState.ShapeBelow.of_sub hsub hs
+  split at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨⟨_, rfl⟩, rfl⟩ := h
+    exact ⟨SState.ShapeBelow.of_sub (SState.shapeSub_mapVals _ _) hs₀, fun l hl => by
+      simp [TyS.plain] at hl⟩
+  · simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨⟨_, rfl⟩, rfl⟩ := h
+    obtain ⟨_, _, hfresh, hb⟩ := SState.freshLoan_fresh _ hs₀
+    obtain ⟨hb', hlt', huniq⟩ := SState.fresh_park
+      (SState.ShapeBelow.of_sub (SState.shapeSub_mapVals _ _) hb) (Nat.lt_succ_self _)
+      (fun q hq => hfresh q hq) _
+    refine ⟨hb', fun l hl => ?_⟩
+    simp only [Option.some.injEq] at hl
+    subst hl
+    refine ⟨hlt', fun q hq => ?_, huniq⟩
+    have := hs q _ hq
+    rw [← hsub.2] at this
+    exact Nat.lt_irrefl _ this
+  · cases h
+
 theorem callOf_fresh (fv : Res) (args : List Res) (s : SState)
     (hs : s.ShapeBelow) {r : Sem} {T : TyS} {s' : SState} (h : callOf fv args s = some ((r, T), s')) :
     s'.ShapeBelow ∧ ∀ l, T.label = some l → l < s'.nextLoan ∧ (∀ q, s.shape q ≠ some l) ∧
@@ -1366,28 +1395,9 @@ theorem callOf_fresh (fv : Res) (args : List Res) (s : SState)
   unfold callOf at h
   split at h
   · split at h
-    · dsimp only at h
-      have hsub := SState.shapeSub_foldl_takeLabel (args.filterMap (·.2.label)) s
-      have hs₀ := SState.ShapeBelow.of_sub hsub hs
-      split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨⟨_, rfl⟩, rfl⟩ := h
-        exact ⟨SState.ShapeBelow.of_sub (SState.shapeSub_mapVals _ _) hs₀, fun l hl => by
-          simp [TyS.plain] at hl⟩
-      · simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨⟨_, rfl⟩, rfl⟩ := h
-        obtain ⟨_, _, hfresh, hb⟩ := SState.freshLoan_fresh _ hs₀
-        obtain ⟨hb', hlt', huniq⟩ := SState.fresh_park
-          (SState.ShapeBelow.of_sub (SState.shapeSub_mapVals _ _) hb) (Nat.lt_succ_self _)
-          (fun q hq => hfresh q hq) _
-        refine ⟨hb', fun l hl => ?_⟩
-        simp only [Option.some.injEq] at hl
-        subst hl
-        refine ⟨hlt', fun q hq => ?_, huniq⟩
-        have := hs q _ hq
-        rw [← hsub.2] at this
-        exact Nat.lt_irrefl _ this
-      · cases h
+    · exact callOfL_fresh _ _ _ _ _ _ hs h
+    · exact callOfL_fresh _ _ _ _ _ _ hs h
+    · exact callOfL_fresh _ _ _ _ _ _ hs h
     · cases h
   · cases h
 
