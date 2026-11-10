@@ -907,6 +907,45 @@ theorem take_fix_inv1 {s : SState} (h1 : Inv1 L s) {l : Nat} (fx : List (Nat × 
   · rw [valAt_mapVals_of_not_mem _ _ _ hp]
     exact FT.const _ _
 
+theorem takeLabel_shape_some {s : SState} {l x : Nat} {h : Pos} (hs : (s.takeLabel l).shape h = some x) :
+    s.shape h = some x := by
+  unfold takeLabel at hs
+  cases e : s.holderOf l with
+  | none => rw [e] at hs; exact hs
+  | some r =>
+    rw [e] at hs
+    change (if h = r then none else s.shape h) = some x at hs
+    split at hs
+    · cases hs
+    · exact hs
+
+theorem takeLabel_live_rev {s : SState} {l y : Nat} (hy : (s.takeLabel l).Live y) : s.Live y := by
+  rw [live_iff, takeLabel_positions] at hy
+  obtain ⟨p, hp, hs⟩ := hy
+  exact (live_iff s y).mpr ⟨p, hp, takeLabel_shape_some hs⟩
+
+theorem live_mapVals {s : SState} {g : Pos → SVal → SVal} {y : Nat} : (s.mapVals g).Live y ↔ s.Live y := by
+  rw [live_iff, live_iff, positions_mapVals]; rfl
+
+/-- (I2) through a call's taking of a borrow argument's holder and fixing its label: a holder that
+read the taken label (a reborrow chain) reads the fixed final instead. -/
+theorem take_fix_inv2 {s : SState} (h2 : Inv2 L s) {l : Nat} (fx : List (Nat × Sem)) (hl : l ∈ fx.map (·.1)) :
+    Inv2 L ((s.takeLabel l).mapVals fun _ v ψ => v (ψ.updList fx)) := by
+  intro h x hh hsx
+  rw [positions_mapVals] at hh
+  have hsx' : (s.takeLabel l).shape h = some x := hsx
+  rw [valAt_mapVals_of_mem _ _ _ hh]
+  have hhs : h ∈ s.positions := by rw [← takeLabel_positions s l]; exact hh
+  have hv : FT (fun y => (L y ∧ ¬ s.Live y) ∨ (s.Live y ∧ x < y)) ((s.takeLabel l).valAt h) := by
+    rcases takeLabel_valAt s l h with e | e
+    · rw [e]; exact h2 h x hhs (takeLabel_shape_some hsx')
+    · rw [e]; exact FT.const _ _
+  refine (hv.updList fx).mono fun y ⟨hy, hn⟩ => ?_
+  rcases hy with ⟨hL, hnl⟩ | ⟨hy, hlt⟩
+  · exact .inl ⟨hL, fun h' => hnl (takeLabel_live_rev (live_mapVals.mp h'))⟩
+  · have hne : y ≠ l := fun e => hn (e ▸ hl)
+    exact .inr ⟨live_mapVals.mpr (takeLabel_live hy hne), hlt⟩
+
 end SState
 
 end Ochr.Meaning
