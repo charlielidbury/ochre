@@ -619,6 +619,28 @@ Decision (Charlie, after the viability check on branch `join-drop`, f8b5bd06, re
   - (5) The type-state compares places exactly: a side that moves `x.0` and `x.1` and one that moves `x` are not well formed together.
   - (6) A one-sided re-pointing is ill-formed even when the target is the same place the binding pointed at.
 
+- **Amendment (lane ts-erased, 2026-11-10): a constructor's parameters move nothing.** An adversarial pass on main found that `jdMoves` and `jdAssigns` folded over a constructor's parameters (`MkNBox[n](0)`'s `n`), which the machine evaluates as types on a copy and never moves. So `Id(Unit, (let b = MkNBox[n](0); ()), (let z = n; ()))` was well formed and proved by `refl`, and the context `□; n` was accepted with the left filling and rejected with the right (`[Read] n was moved out`). That broke the resource lemma's premise that every run moves exactly the static set. Consistency was not at stake: neither path moved `n`, and inside a match the join dropped it on both. Both folds now skip the parameters. The other positions that the run evaluates as a statement or on a copy were audited and are already skipped by both the folds and the run:
+  - `let x : T` annotations and ascribed types;
+  - the type slots of `Eq`, `Id` and `J` (only `J`'s transported term is folded);
+  - Π-types' domains and codomains (only their captures count, K1(a));
+  - erased calls and erased arguments (`preFlags`);
+  - values inside type arguments (probe `A6`).
+  - *Tests* (`Moves84`): `CP` is rejected by [Id-typestate]; its twin `CPok` and the context `CL` are accepted; `CR` is rejected by [Read]. `C1`, the same pair with `n` in the footprint, was well formed and `False`, and is now ill-formed.
+  - *Evidence:* the verdict dump against main 6b7316cc changes nothing but the six new rows (1,980 → 1,986). The probes are in `ochr/core/probes/d84/`.
+- **Known gap of the resource lemma (found 2026-11-10, not fixed): [Obs-ref] cannot see where a borrow of `Unit` points.** Every content of a `Unit` owner is `()`, so the fresh value written through a re-pointed binding marks no owner:
+  ```
+  def RU (x1 : Unit) (x2 : Unit) (y : &Unit) : Id(Unit, (y := &x1; ()), (y := &x2; ())) := refl   -- accepted
+  def RUL (x1 : Unit) (x2 : Unit) (y : &Unit) : Unit := ((y := &x1; ()); let w = clone(x2); *y := ())   -- accepted
+  def RUR (x1 : Unit) (x2 : Unit) (y : &Unit) : Unit := ((y := &x2; ()); let w = clone(x2); *y := ())   -- rejected: no such place *y
+  reject def RN (x1 : Nat) (x2 : Nat) (y : &Nat) : Id(Unit, (y := &x1; ()), (y := &x2; ())) := refl   -- the control at Nat: rejected
+  ```
+  The same holds through a type that reads as `Unit` (`y : &UU(n)`).
+  - *Error-only:* the two fillings differ only by a borrow error. Consistency and Target C over typed contexts are unaffected.
+  - *Fix options, to be decided:*
+    - (a) Add the syntactic re-point targets to the type-state, so a re-pointing to a different target is ill-formed.
+    - (b) Observe a re-pointed binding's target as a position rather than through contents.
+  - Probe: `ochr/core/probes/d84/A4.lean`.
+
 ## D85. At runtime `J` is its transported term; the checker keeps its rule (2026-11-09) [lane: runtime-j]
 User's go-ahead (2026-11-09) on docs/18's Q5, from test 3 of docs/23 (type safety on the higher-order slice, docs/29). The machine computes `J(A, a, b, P, h, t)` to `t` only when `a` and `b` are convertible ([J], D56) and is otherwise stuck ([J-stuck]). Conversion compares functions by their generic calls, so two functions with one graph and different code are not convertible, and a closed run of a well-typed program can stop at a `J` whose equation is true: `CastFn(IdA, IdB, ⋆, MkFnBox(0))` below, with `IdA (n) := n` and `IdB (n) := match n { Z => Z, S m => S(m) }`, both the identity on `Nat`. docs/18's type-safety target quantifies over proof parameters that are true in the set model, not proved, so it reaches such a `J` (Lean, on docs/27's toy machine: `Model.Safety.cast_fn_counterexample`, `n + 0` against `0 + n`).
 Rule [J-run] (RULES §3, "Runtime: the erased program"): in the erased program, the runtime's run of a closed call of an accepted global with its proof arguments `⋆`, `J(A, a, b, P, h, t)` evaluates to `t`, unconditionally. Why: (1) it is what erasure means: `A`, `a`, `b`, `P` and `h` are statements, which the erased program does not have, so it can compare nothing, and an erased cast is the identity; (2) it is sound given membership: at a closed call whose proof parameters are true, `h` means a proof of `Eq(A, a, b)`, so the endpoints mean the same and `t ∈ P(a)` is in `P(b)` (`Model.Safety.castRT_safe`; under a false `h`, `J(Nat, 0, 1, λz. Vec(z), h, v)` would return a `Vec(0)` as a `Vec(1)`, which is why the target asks for true parameters); (3) it reads nothing, so it is not a decision read from a run; (4) it adds one clause to docs/29's erasure lemma: where the machine computes `J` both give `t`, and where it is stuck the erased run gives `t`, which is also the meaning (docs/24, C9).

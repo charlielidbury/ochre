@@ -963,7 +963,8 @@ def jdMoves (fuel : Nat) (sc : List DeclInfo) (al : List (Option Place)) (t : Te
       | .place _ | .const _ | .val _ => pure acc
       | _ => jdMoves fuel' sc al f acc
     jdMovesList fuel' sc al as acc
-  | .ctor _ _ _ ps as => jdMovesList fuel' sc al as (← jdMovesList fuel' sc al ps acc)
+  -- a constructor's parameters are types, evaluated on a copy: they move nothing (D84 amendment)
+  | .ctor _ _ _ _ as => jdMovesList fuel' sc al as acc
   | .prim "J" [_, _, _, _, _, u] => jdMoves fuel' sc al u acc
   | .prim "clone" _ | .prim "peek" _ | .prim "inplace" _ => pure acc
   | .prim _ as => jdMovesList fuel' sc al as acc
@@ -1059,7 +1060,7 @@ def jdAssigns (fuel : Nat) (sc : List DeclInfo) (t : Term) (acc : List Place) : 
   | .seq u w => jdAssigns fuel' sc w (← jdAssigns fuel' sc u acc)
   | .succ u | .ascribe u _ => jdAssigns fuel' sc u acc
   | .call f as _ => jdAssignsList fuel' sc as (← jdAssigns fuel' sc f acc)
-  | .ctor _ _ _ ps as => jdAssignsList fuel' sc as (← jdAssignsList fuel' sc ps acc)
+  | .ctor _ _ _ _ as => jdAssignsList fuel' sc as acc
   | .prim "J" [_, _, _, _, _, u] => jdAssigns fuel' sc u acc
   | .prim _ as => jdAssignsList fuel' sc as acc
   | .matchNat _ z s => jdAssigns fuel' sc s (← jdAssigns fuel' sc z acc)

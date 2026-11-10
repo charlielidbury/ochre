@@ -1,0 +1,3 @@
+# D84 adversarial probes (2026-11-10)
+
+Scratch Ochr programs from the adversarial pass on D84, kept because the session scratchpad is not permanent. They are not part of the build. Run one from `ochr/core/lean` with `lake env lean ../probes/d84/A2.lean`; each prints every declaration's verdict. `A2.lean` is the constructor-parameter hit (fixed by the D84 amendment), and `A4.lean` is the [Obs-ref]-at-`Unit` known gap (`DECISIONS.md`, D84). The others are the probes that held. A `reject def` is the sound expectation, and a few of those expectations predate the findings (see each file's comments).

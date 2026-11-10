@@ -305,6 +305,16 @@ ochr Moves84 uses Nats {
   def Put (r : &Nat) (u : Unit) : Unit := (*r := 5; ())
   reject def KillTemp (x : Nat) : Unit := Put(&x, (let h : Id(Unit, (let a = clone(x); ()), ()) = refl; ()))
   def KillTempBefore (x : Nat) : Unit := (let h : Id(Unit, (let a = clone(x); ()), ()) = refl; Put(&x, ()))
+  -- a constructor's parameters are types, evaluated on a copy: `MkNBox[n](0)` does not move `n`,
+  -- so it and a side that moves `n` are not substitutable (D84 amendment)
+  inductive NBox (k : Nat) := MkNBox(v : Nat)
+  reject def CP (n : Nat) : Id(Unit, (let b = MkNBox[n](0); ()), (let z = n; ())) := refl
+  -- twin of CP: both sides move `n`
+  def CPok (n : Nat) : Id(Unit, (let b = MkNBox[clone(n)](0); let z = n; ()), (let z = n; ())) := refl
+  def CL (n : Nat) : Nat := ((let b = MkNBox[n](0); ()); n)
+  reject def CR (n : Nat) : Nat := ((let z = n; ()); n)
+  -- with `n` in the footprint: was well formed and `False`, now ill-formed
+  reject def C1 (n : Nat) : Id(Unit, (let r = &n; let b = MkNBox[n](0); ()), (let r = &n; let z = n; ())) := refl
 
   -- The join in a direct run: at `n = 1` arm `S` runs, and the join drops `x`, which arm `Z`
   -- moves, so the left side leaves `x` moved there as at the generic call
@@ -360,6 +370,9 @@ ochr Moves84 uses Nats {
   ("SwapB", "[Id-typestate] the left side of Id re-points the borrow y1, the right side does not"),
   ("KillRead", "[Id-typestate] a side of Id ends the borrow y"),
   ("KillTemp", "[Id-typestate] a side of Id ends a borrow that a value in flight around the Id holds"),
+  ("CP", "[Id-typestate] the right side of Id moves n, the left side does not"),
+  ("CR", "[Read] n was moved out or its borrow ended (reading ⊥)"),
+  ("C1", "[Id-typestate] the right side of Id moves n, the left side does not"),
   ("RefillOne", "[Read] x was moved out or its borrow ended (reading ⊥)"),
   ("Boom", "the body of Boom has type ⊤, but the goal is False"),
   ("GPrWhole", "[Id-typestate] the left side of Id moves x.a, the right side does not"),
