@@ -175,8 +175,8 @@ noncomputable def S₃ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) : SState :=
     shape := fun p => if p = .temp 0 1 then some (k+1) else none, nextLoan := k + 2 }
 
 set_option maxHeartbeats 1000000 in
-theorem callOf_S₂ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
-    callOf (Sem.el0 GCar F, (⟨.ty0 GCar, some (psG, outG), none, none⟩ : TyS))
+theorem callOf_S₂ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) (m : TyM) :
+    callOf (Sem.el0 GCar F, (⟨m, some (psG, outG), none, none⟩ : TyS))
         [(Sem.el0 Nat n, { b.ty with label := some k })] (S₂ b k c)
       = some ((lvl0.enc (.ty0 Nat) (F n).val.1, (⟨.ty0 Nat, none, some (k+1), none⟩ : TyS)), S₃ F n b k) := by
   simp only [callOf, callOfL, List.map, List.filterMap, List.foldl]
@@ -200,5 +200,91 @@ theorem callOf_S₂ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
 /-- Level 0's encoding and decoding at `Nat`, by definition. -/
 theorem lvl0_enc_nat (m : Nat) : lvl0.enc (.ty0 Nat) m = .el0 Nat m := rfl
 theorem lvl0_dec_nat' (s : Sem) : lvl0.dec (.ty0 Nat) s = s.as Nat := rfl
+
+end Ochr.Meaning.Attack
+
+namespace Ochr.Meaning.Attack
+
+open Ochr.Meaning
+
+/-- The result's binding: `r : &Nat` holding the returned borrow `k+1`. -/
+noncomputable def rBind (F : GCar) (n : Nat) (k : Nat) : SBinding :=
+  { ty := ⟨.ty0 Nat, none, some (k+1), none⟩, val := fun _ => lvl0.enc (.ty0 Nat) (F n).val.1 }
+
+/-- The state after `let r = σ1(&c1)`: `r` bound, holding `k+1` (its temp consumed). -/
+noncomputable def S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) : SState :=
+  { env := [{ binds := [{ b with val := fun φ' => match lvl0.dec (.ty0 Nat) (φ' (k+1)) with
+                                                  | some x => .el0 Nat ((F n).val.2 x).2
+                                                  | none => .err },
+                        { ty := ⟨.ty0 Nat, none, some (k+1), none⟩, val := fun _ => .el0 Nat (F n).val.1 }],
+              temps := [fun φ' => match lvl0.dec (.ty0 Nat) (φ' (k+1)) with | some _ => .moved | none => .err,
+                        fun _ => .moved] }],
+    shape := fun p => if p = .bind 0 1 then some (k+1) else none, nextLoan := k + 2 }
+
+theorem positions_S₃ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
+    (S₃ F n b k).positions = [.bind 0 0, .temp 0 0, .temp 0 1] := by
+  simp [S₃, SState.positions, List.range', List.map]
+
+theorem holderOf_S₃ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
+    (S₃ F n b k).holderOf (k+1) = some (.temp 0 1) := by
+  unfold SState.holderOf
+  rw [positions_S₃]
+  simp [S₃]
+
+theorem pushBindShaped_S₃ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
+    pushBindShaped (S₃ F n b k) (rBind F n k) = S₄ F n b k := by
+  simp only [pushBindShaped, rBind, SState.takeLabel, holderOf_S₃]
+  simp only [S₃, S₄, SState.setAt, SState.pushBind, SState.topIdx, List.modify, List.modifyTailIdx,
+    List.modifyTailIdx.go, List.modifyHead, List.length_cons, List.length_nil, List.getLast?, List.getLast,
+    List.cons_append, List.nil_append, Nat.zero_add, Nat.reduceAdd, Nat.reduceSub]
+  congr 1
+  funext p; by_cases h : p = .bind 0 1 <;> by_cases h2 : p = .temp 0 1 <;> simp [h, h2]
+
+end Ochr.Meaning.Attack
+
+namespace Ochr.Meaning.Attack
+
+open Ochr.Meaning
+
+theorem positions_S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
+    (S₄ F n b k).positions = [.bind 0 0, .bind 0 1, .temp 0 0, .temp 0 1] := by
+  simp [S₄, SState.positions, List.range', List.map]
+
+theorem liveLabels_S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
+    (S₄ F n b k).liveLabels = [k+1] := by
+  unfold SState.liveLabels
+  rw [positions_S₄]
+  simp [S₄]
+
+/-- `r`'s meaning is constant, so it depends on no label. -/
+theorem not_dependsOn_r (F : GCar) (n : Nat) (b : SBinding) (k l : Nat) :
+    ¬ (S₄ F n b k).dependsOn (.bind 0 1) l := by
+  simp [SState.dependsOn, Mean.dependsOn, SState.toMean, SState.valAt, S₄]
+
+/-- [Access] of `r` ends nothing: `r` holds `k+1` but does not read it. -/
+theorem access_S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
+    (S₄ F n b k).access (.bind 0 1) = S₄ F n b k := by
+  simp [SState.access, liveLabels_S₄, not_dependsOn_r]
+
+/-- `peek(*r)` on `S₄`: the forward value, at `Nat`, the state unchanged. -/
+theorem readPlace_deref_r (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
+    readPlace K φ (.deref (.var 0)) true (S₄ F n b k)
+      = some ((.el0 Nat (F n).val.1, .plain (.ty0 Nat)), S₄ F n b k) := by
+  have hr : resolve (S₄ F n b k) (.deref (.var 0)) = some (.bind 0 1, [.deref]) := by
+    simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, S₄]
+  have hw : (Sem.el0 Nat (F n).val.1).whole := by simp [Sem.whole]
+  simp only [readPlace, contentOf, hr, access_S₄, bind, Option.bind]
+  simp [S₄, SState.tyAt, SState.valAt, Sem.follow, Sem.step, hw]
+
+end Ochr.Meaning.Attack
+
+namespace Ochr.Meaning.Attack
+
+open Ochr.Meaning
+
+/-- A binding whose type carries no label is pushed plainly. -/
+theorem pushBindShaped_noLabel (s : SState) (b : SBinding) (h : b.ty.label = none) :
+    pushBindShaped s b = s.pushBind b := by
+  simp [pushBindShaped, h]
 
 end Ochr.Meaning.Attack
