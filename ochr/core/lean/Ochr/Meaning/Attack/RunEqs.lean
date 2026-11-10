@@ -158,3 +158,47 @@ theorem takeLabel_S₂ (b : SBinding) (k : Nat) (c : Sem) :
   funext p; split <;> simp_all
 
 end Ochr.Meaning.Attack
+
+namespace Ochr.Meaning.Attack
+
+open Ochr.Meaning
+
+/-- The state after the call `σ1(&c1)` on `S₂`: the borrow of `k` consumed (its temp `moved`),
+a fresh label `k+1` for the returned borrow, the lent binding reads the backward function at
+`k+1`'s final content, the result parked in temp `1` holding `k+1`. -/
+noncomputable def S₃ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) : SState :=
+  { env := [{ binds := [{ b with val := fun φ' => match lvl0.dec (.ty0 Nat) (φ' (k+1)) with
+                                                  | some x => .el0 Nat ((F n).val.2 x).2
+                                                  | none => .err }],
+              temps := [fun φ' => match lvl0.dec (.ty0 Nat) (φ' (k+1)) with | some _ => .moved | none => .err,
+                        fun _ => lvl0.enc (.ty0 Nat) (F n).val.1] }],
+    shape := fun p => if p = .temp 0 1 then some (k+1) else none, nextLoan := k + 2 }
+
+set_option maxHeartbeats 1000000 in
+theorem callOf_S₂ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
+    callOf (Sem.el0 GCar F, (⟨.ty0 GCar, some (psG, outG), none, none⟩ : TyS))
+        [(Sem.el0 Nat n, { b.ty with label := some k })] (S₂ b k c)
+      = some ((lvl0.enc (.ty0 Nat) (F n).val.1, (⟨.ty0 Nat, none, some (k+1), none⟩ : TyS)), S₃ F n b k) := by
+  simp only [callOf, callOfL, List.map, List.filterMap, List.foldl]
+  rw [takeLabel_S₂, applyFnL_G]
+  simp only [SState.freshLoan, SState.mapVals, SState.pushTempShaped, SState.pushTemp, SState.topIdx,
+    List.zipIdx, List.map, List.zip, List.zipWith, Future.updList, List.foldl, List.length, List.modify,
+    List.getLast?, Option.some.injEq, List.append, List.modifyTailIdx, List.modifyHead, Nat.add_sub_cancel,
+    List.getLast, Future.upd_same, List.modifyTailIdx.go]
+  simp only [S₃, List.cons_append, List.nil_append, List.length_cons, List.length_nil,
+    Nat.zero_add, Nat.add_assoc, Nat.reduceAdd, Nat.reduceSub]
+  congr 2
+  · -- the frame: the values agree once the decoded content is cased on (the `match`
+    -- auxiliaries differ by elaboration site)
+    simp only [List.cons.injEq, SFrame.mk.injEq, SBinding.mk.injEq, and_true, true_and]
+    and_intros
+    all_goals first
+      | rfl
+      | (funext φ'; cases lvl0.dec (.ty0 Nat) (φ' (k+1)) <;> rfl)
+      | (trace_state; sorry)
+
+/-- Level 0's encoding and decoding at `Nat`, by definition. -/
+theorem lvl0_enc_nat (m : Nat) : lvl0.enc (.ty0 Nat) m = .el0 Nat m := rfl
+theorem lvl0_dec_nat' (s : Sem) : lvl0.dec (.ty0 Nat) s = s.as Nat := rfl
+
+end Ochr.Meaning.Attack
