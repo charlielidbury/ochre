@@ -11,6 +11,8 @@ import Ochr.Meaning.Places
 import Ochr.Meaning.Run
 import Ochr.Meaning.Subst
 import Ochr.Meaning.Lemmas
+import Ochr.Meaning.Steps.Statements
+import Ochr.Meaning.Steps.IH
 import Ochr.Meaning.Steps.Borrow
 import Ochr.Meaning.Steps.Subst
 import Ochr.Meaning.Steps.Eq
@@ -22,6 +24,8 @@ import Ochr.Meaning.Steps.WF
 import Ochr.Meaning.Steps.Eval
 import Ochr.Meaning.Steps.Tail
 import Ochr.Meaning.Steps.Decisions
+import Ochr.Meaning.Steps.Knot
+import Ochr.Meaning.Attack.CloseCall
 import Ochr.Meaning.Consistency
 import Ochr.Meaning.State
 import Ochr.Meaning.WF
