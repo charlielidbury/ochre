@@ -45,3 +45,20 @@ theorem meanV_loan (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (l 
     meanV K ρ φ hint (.loan l) = φ l := rfl
 
 end Ochr.Meaning.Attack
+
+namespace Ochr.Meaning.Attack
+
+open Ochr.Meaning
+
+/-- A binding pushed onto the one empty frame of `emptyState`: the frame holds just it. -/
+theorem pushBind_emptyState (k : Nat) (b : SBinding) :
+    (emptyState k).pushBind b = { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k } := by
+  simp [emptyState, SState.pushBind, SState.topIdx]
+
+/-- `var 0` in that state resolves to the binding, with no steps. -/
+theorem resolve_var0_one (k : Nat) (b : SBinding) :
+    resolve { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k } (.var 0)
+      = some (.bind 0 0, []) := by
+  simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps]
+
+end Ochr.Meaning.Attack
