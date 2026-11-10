@@ -382,3 +382,29 @@ theorem endLabel_S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
     | (trace_state; sorry)
 
 end Ochr.Meaning.Attack
+
+namespace Ochr.Meaning.Attack
+
+open Ochr.Meaning
+
+/-- [Access] of `c1` on `S₅`: the one live label `k+1` is read by `c1`, so it ends. -/
+theorem access_S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
+    (S₅ F n b k w).access (.bind 0 0) = S₆ F n b k w := by
+  have hd := dependsOn_c1 F n b k w
+  simp [SState.access, liveLabels_S₅, hd, endLabel_S₅]
+
+/-- `peek(c1)` on `S₅`: the backward function's component for `c1` at the written value, when it
+is a number; `err` (not whole, so the read fails) otherwise. -/
+theorem readPlace_c1 (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem)
+    (hb : b.ty = .plain (.ty0 Nat)) :
+    readPlace K φ (.var 1) true (S₅ F n b k w)
+      = match w.as Nat with
+        | some x => some ((.el0 Nat ((F n).val.2 x).2, .plain (.ty0 Nat)), S₆ F n b k w)
+        | none => none := by
+  have hr : resolve (S₅ F n b k w) (.var 1) = some (.bind 0 0, []) := by
+    simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, S₅]
+  simp only [readPlace, contentOf, hr, access_S₅, bind, Option.bind]
+  simp only [S₆, SState.tyAt, SState.valAt, Sem.follow, lvl0_dec_nat', hb]
+  cases w.as Nat <;> simp [Sem.whole]
+
+end Ochr.Meaning.Attack
