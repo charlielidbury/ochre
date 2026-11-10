@@ -63,11 +63,21 @@ theorem piSort_aligned' (st st' : MState) (fuel : Nat) (caps : List Value) (hs :
     K.D.piSort (scopeOf (SM' K ρ st)) (.pi hs ds c) = l := by
   sorry
 
-/-- D84's join set is static: a function of the match term and the scope only. (To be stated
-against `Decide.jdMoves` when branch `d84` lands.) -/
-theorem joinMoves_static (sc : List DeclInfo) (entry : List Place) (t : Term) :
-    ∀ sc', sc' = sc → K.D.joinMoves sc' entry t = K.D.joinMoves sc entry t := by
-  intro sc' h; rw [h]
+/-- D84 [Join]: `Decisions.joinMoves` is `Decide.jdMoves` as `Machine.staticJoin` calls it (the
+places already `⊥` at the match as its `entry`). -/
+theorem joinMoves_aligned (st st' : MState) (fuel : Nat) (entry ms : List Place) (t : Term)
+    (hg : Good K.dm K.C K.Γ ρ st)
+    (h : Runs (Ochr.jdMoves fuel [] [] t entry) st fuel ms st') :
+    K.D.joinMoves (scopeOf (SM' K ρ st)) entry t = ms := by
+  sorry
+
+/-- D84 [Id-typestate]/[Obs-ref]: `Decisions.rePointed` is the `repointed` component of
+`Decide.typeState`, as `Machine.idType` reads it. -/
+theorem rePointed_aligned (st st' : MState) (fuel : Nat) (t : Term) (ts : TypeState)
+    (hg : Good K.dm K.C K.Γ ρ st)
+    (h : Runs (Ochr.typeState fuel t) st fuel ts st') :
+    K.D.rePointed (scopeOf (SM' K ρ st)) t = ts.repointed := by
+  sorry
 
 end
 

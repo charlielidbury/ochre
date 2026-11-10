@@ -87,12 +87,10 @@ def readDecision {α : Type} (st : MState) (fuel : Nat) (dflt : α) (x : M α) :
   | .ok a _ => a
   | _ => dflt
 
-/-- The checker's decisions at the tables of `st`, each read as `Machine.lean` calls it. D84's
-`joinMoves` (scope, places already `⊥`, match term) is a parameter until `Decide.jdMoves` (branch
-`d84`) lands. See the module docstring for the one mismatch (`piSort`). -/
-def checkerDecisions (st : MState) (fuel : Nat)
-    (joinMoves : List DeclInfo → List Place → Term → List Place) :
-    Decisions where
+/-- The checker's decisions at the tables of `st`, each read as `Machine.lean` calls it; D84's
+`joinMoves` is `Decide.jdMoves` as `staticJoin` calls it, and `rePointed` is `Decide.typeState`'s
+`repointed` as `idType` reads it. See the module docstring for the one mismatch (`piSort`). -/
+def checkerDecisions (st : MState) (fuel : Nat) : Decisions where
   -- `Machine.evalAt`: `withLive true (declOf … t)`, then `preFlags`; `none` is "not erased"
   flags sc t := readDecision (scopeState st sc) fuel (false, false) do
     let d ← withLive true (Ochr.declOf fuel false [] [] t)
@@ -105,7 +103,10 @@ def checkerDecisions (st : MState) (fuel : Nat)
   copy r := readDecision (scopeState st []) fuel false (declCopy fuel r)
   -- `Decide.sortOf` on the uncaptured Π-term, the scope the bindings' readings (the mismatch)
   piSort sc t := readDecision (scopeState st sc) fuel 1 (withLive true (sortOf fuel (.tPi [] t [])))
-  joinMoves := joinMoves
+  -- `Machine.staticJoin`: D84's [Join] set, from the match term and the places already `⊥`
+  joinMoves sc entry t := readDecision (scopeState st sc) fuel entry (withLive true (jdMoves fuel [] [] t entry))
+  -- `Machine.idType`: [Id-typestate]'s re-pointed component ([Obs-ref]'s set)
+  rePointed sc t := readDecision (scopeState st sc) fuel [] (do pure (← withLive true (typeState fuel t)).repointed)
 
 /-! ## Sanity: the fields compute (by the kernel, at any tables `st`) -/
 
@@ -114,42 +115,42 @@ namespace DecisionsSanity
 variable (st : MState) (jm : List DeclInfo → List Place → Term → List Place)
 
 /-- `Unit` is a copy type (D80, P3). -/
-theorem copy_unit : (checkerDecisions st 10 jm).copy .unit = true := rfl
+theorem copy_unit : (checkerDecisions st 10).copy .unit = true := rfl
 
 /-- A variable reads its binding's reading, innermost first; a variable beyond the scope reads
 `other`, as `liveDecl` does beyond the frame. -/
-theorem placeDecl_var : (checkerDecisions st 10 jm).placeDecl [.unit, .other] (.var 0) = .unit := rfl
+theorem placeDecl_var : (checkerDecisions st 10).placeDecl [.unit, .other] (.var 0) = .unit := rfl
 
-theorem placeDecl_var_outer : (checkerDecisions st 10 jm).placeDecl [.unit, .ind "Pair" []] (.var 1) =
+theorem placeDecl_var_outer : (checkerDecisions st 10).placeDecl [.unit, .ind "Pair" []] (.var 1) =
     .ind "Pair" [] := rfl
 
-theorem placeDecl_beyond : (checkerDecisions st 10 jm).placeDecl [.unit, .other] (.var 5) = .other := rfl
+theorem placeDecl_beyond : (checkerDecisions st 10).placeDecl [.unit, .other] (.var 5) = .other := rfl
 
-theorem declOf_var : (checkerDecisions st 10 jm).declOf [.unit] (.place (.var 0)) = .unit := rfl
+theorem declOf_var : (checkerDecisions st 10).declOf [.unit] (.place (.var 0)) = .unit := rfl
 
 /-- A call through a variable whose reading returns types is erased and not a proof (D35). -/
 theorem flags_typeCall :
-    (checkerDecisions st 10 jm).flags [.pi (.sort 1)] (.call (.place (.var 0)) [.zero] false) = (true, false) :=
+    (checkerDecisions st 10).flags [.pi (.sort 1)] (.call (.place (.var 0)) [.zero] false) = (true, false) :=
   rfl
 
 /-- A call through a variable whose reading returns data runs. -/
 theorem flags_dataCall :
-    (checkerDecisions st 10 jm).flags [.pi .other] (.call (.place (.var 0)) [.zero] false) = (false, false) :=
+    (checkerDecisions st 10).flags [.pi .other] (.call (.place (.var 0)) [.zero] false) = (false, false) :=
   rfl
 
 /-- `Π(x : Nat). Eq(Nat, x, x)` is a proposition (impredicative `Prop`). -/
 theorem piSort_prop :
-    (checkerDecisions st 10 jm).piSort [] (.pi [⟨"x"⟩] [.nat] (.eq .nat (.place (.var 0)) (.place (.var 0)))) = 0 :=
+    (checkerDecisions st 10).piSort [] (.pi [⟨"x"⟩] [.nat] (.eq .nat (.place (.var 0)) (.place (.var 0)))) = 0 :=
   rfl
 
 /-- `Π(x : Nat). Nat` is in `Type₀`. -/
-theorem piSort_data : (checkerDecisions st 10 jm).piSort [] (.pi [⟨"x"⟩] [.nat] .nat) = 1 := rfl
+theorem piSort_data : (checkerDecisions st 10).piSort [] (.pi [⟨"x"⟩] [.nat] .nat) = 1 := rfl
 
 /-- `Π(x : Nat). Prop` is in `Type₁` (`Pow`'s sort). -/
-theorem piSort_pow : (checkerDecisions st 10 jm).piSort [] (.pi [⟨"x"⟩] [.nat] (.sort 0)) = 2 := rfl
+theorem piSort_pow : (checkerDecisions st 10).piSort [] (.pi [⟨"x"⟩] [.nat] (.sort 0)) = 2 := rfl
 
 /-- A domain read off the scope: `Π(y : A). Nat` with `A : Type₁` in scope is in `Type₁`. -/
-theorem piSort_scope : (checkerDecisions st 10 jm).piSort [.sort 2] (.pi [⟨"y"⟩] [.place (.var 0)] .nat) = 2 :=
+theorem piSort_scope : (checkerDecisions st 10).piSort [.sort 2] (.pi [⟨"y"⟩] [.place (.var 0)] .nat) = 2 :=
   rfl
 
 /-- The checker bug the instance reproduces: `Π(f : Π(x : Nat). Prop). Nat` has a domain in
@@ -157,7 +158,7 @@ theorem piSort_scope : (checkerDecisions st 10 jm).piSort [.sort 2] (.pi [⟨"y"
 says `Type₀`. Its `declSort` reads the Π-term domain through `declOf false`, where `typePos`
 answers 1. -/
 theorem piSort_nested :
-    (checkerDecisions st 10 jm).piSort [] (.pi [⟨"f"⟩] [.pi [⟨"x"⟩] [.nat] (.sort 0)] .nat) = 1 := rfl
+    (checkerDecisions st 10).piSort [] (.pi [⟨"f"⟩] [.pi [⟨"x"⟩] [.nat] (.sort 0)] .nat) = 1 := rfl
 
 end DecisionsSanity
 
