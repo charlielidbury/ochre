@@ -243,3 +243,61 @@ Ranked by cost: F0 (0), F1 (0 measured), F3 (0 measured), F1′ (1), F4 (4 measu
 **What changes in `docs/18`'s principles.**
 - O2 becomes: a borrow binding left live by both sides and assigned by one is observed by writing through it; one consumed or ended by a side is invisible, because a typed continuation cannot use it.
 - O3's parenthesis is right only under the typed statement, and should say so.
+
+## After D84 (2026-11-10)
+
+Re-run on main at `7ae8cf00`, where D84 has landed: [Join], `⊥` as a value of its own, [Id-typestate] with its no-ending clause, and [Obs-ref]. D84's DECISIONS entry states Target C as typed contextual equivalence plus a *resource lemma*: if `Id(A, t, u)` is well formed and proved at the use, and `C[t]` is accepted, then `C[u]` is accepted or is rejected only because `u`'s values are not convertible with `t`'s. The same probes were run, unchanged, against a fresh build of `Ochr.Examples.Nat`, `Fixtures` and `Word`, and two new probes attack the resource lemma (`R01_DeclCopy.lean`, `R02_DeclGrain.lean`, in the same scratchpad folder).
+
+**Counterexample to the resource lemma.** A proof by `refl` between convertible values, where one filling is accepted and the other is rejected by a move error. It is not a proof of `False`: Target C, over contexts where both fillings are accepted, is untouched.
+
+```
+ochr R01DeclCopy uses WordType {
+  def TT (n : Nat) : Type := match n { Z => Word, S _ => Nat }
+  def g (u : Unit) : TT(0) := Zero
+  def IdG : Id(Word, Zero, g(())) := refl                                   -- accepted (FlipIdG fires)
+  def CT (u : Unit) : Word := (let v = Zero; let a = v; v)                  -- accepted (FlipCT fires)
+  reject def CU (u : Unit) : Word := (let v = g(()); let a = v; v)          -- rejected: [Read] v was moved out
+  reject def CU2 (u : Unit) : Word := (let v = g(()); let f = (λ(w : Unit) : Word => v); f(()))
+                                                                            -- rejected: [D53] a closure's body moves a captured value out
+}
+```
+
+Both sides of `IdG` move nothing and leave the same type-state, and both evaluate to `Zero`, so `refl` proves it. The context `let v = □; let a = v; v` is accepted with `t = Zero` and rejected with `u = g(())`. The reason is that copy-or-move is read from a `let`'s right-hand side's *declared* type (P3, D80). `Zero` reads as `Word`, a copy type. `g(())` reads as `TT(0)`, a type function's call, which the reader takes as its arms `Word | Nat`, not a copy type, although `TT(0)` computes to `Word`. The twin with arms that are both `Word` (`TW`, `gw`, `CUW`) is accepted with either filling.
+
+The same cause reaches [Join]'s grain (`R02_DeclGrain.lean`). A field step is kept only through a declared type that reads as a one-constructor inductive, not computed by a match (D84's `jdGrain`):
+
+```
+def TP (n : Nat) : Type := match n { Z => Nat × Nat, S _ => Nat × Nat }
+def gp (u : Unit) : TP(0) := (Z, Z)
+def IdP : Id(Nat × Nat, (Z, Z), gp(())) := refl                             -- accepted
+def PT (u : Unit) : Nat := (let v = (Z, Z); let a = v.0; v.1)               -- accepted
+reject def PU (u : Unit) : Nat := (let v = gp(()); let a = v.0; v.1)        -- rejected: [Match] on v, which was moved out
+```
+
+D84 notes that option (i) costs "only fields reached through a type-level match whose arms agree". `PU` shows that this cost is a resource-lemma counterexample, not only incompleteness.
+
+**What the type-state misses.** A side's *declared reading*: what the one reader of declared types (P2, D80) makes of the side's own type. That reading decides how the rest of the frame may use the result: copy or move, η at `Unit`, a closure's Fn rule over a capture, and the grain of later moves. `Id` asks only that both sides have type `A` up to conversion. Two candidate fixes, both read from syntax and declared types, neither measured (no time before the deadline):
+- **[Id-typestate], fifth component.** Each side's declared reading must equal the other's: `IdG` and `IdP` become ill-formed, with a hint to ascribe the side (`(g(()) : Word)`), if an ascription is read as the declared type.
+- **Weaken the lemma.** Add "or because `u`'s declared type reads differently from `t`'s" to the resource lemma's escape clause, beside non-convertible values.
+
+The first keeps the lemma's promise. Its cost is the suite's `Id`s whose sides read differently but are provable. None is known; `Moves84`'s grain tests are the likeliest.
+
+**The channel table, re-run.** Every gap of § The channels is now closed, either as a static [Id-typestate] error naming the component and the place, or (for a two-sided re-point) as an unprovable [Obs-ref] equation.
+
+| Gap | Probe | On `7ae8cf00` |
+|---|---|---|
+| G1, owned moves | `T`, `TF`, `TC` | ill-formed: "the left side of Id moves x" (and `p.0`, `m`) |
+| G2, where a borrow points | `RePoint` | well formed, and computes to `Eq(Nat, σ3, σ0) ∧ Eq(Nat, σ1, σ3)`: not provable |
+| G2 | `SwapB`, `CursorSite`, `SwapCtxT` | ill-formed: "the left side re-points the borrow y1" (`y`) and the right does not |
+| G2 | `RePointCtx` | ill-formed: no-ending clause (`clone(x)` ends `y`) |
+| G3, consumption | `MoveB`, `MoveL`, `AddMZero2`, `AddMZeroSym`, `RPB0` | ill-formed: "consumes the borrow" |
+| G3 | `AddMZeroRe` (a reborrow) | accepted, as intended |
+| G4, ending inside a side | `KillRead`, `KillRe` | ill-formed: no-ending clause |
+| G4 | `KillDrop` | ill-formed: one-sided re-point |
+| G5, left partly moved | `MoveThru`, `MoveThruR` | ill-formed: "leaves moved, through a borrow, *y" |
+| G6, aliasing at a use | `KR`, `KV` | accepted (true in the lemma's frame); the aliased context still shows the difference only as one filling's rejection |
+| Function values | P07 | unchanged, covered |
+| Stuck re-pointing | P09 | `RPB0` is now ill-formed (the block consumes `y`); otherwise unchanged and fail-safe |
+| [Obs-ref] controls | `SameTargetFix`, `AddMZeroReFix` | accepted |
+
+No closed proof of `False` was found. The resource lemma's counterexample (3) in D84's entry, which differs by conversion, is consistent with what is found here. `R01` and `R02` are new: they differ with *convertible* values.
