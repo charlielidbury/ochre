@@ -178,19 +178,23 @@ shape (`applyFnL`); otherwise as `callOf`. -/
 noncomputable def callOfL.{u} (L : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : Sem) (args : List Res) :
     SM Res := fun s =>
   let argSems := args.map (·.1)
-  let labels := args.filterMap (·.2.label)
+  -- PROPOSAL (m2-proofs, CE4): the arguments at borrow parameters, in parameter order, one per
+  -- final content; only their labels are consumed and fixed. A labelled argument at a non-borrow
+  -- parameter keeps its holder (parked), so the next access ends it.
+  let refLabels : List (Option Nat) := ((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)
+  let fixes (fs : List Sem) : List (Nat × Sem) := (refLabels.zip fs).filterMap fun (l?, f) => l?.map (·, f)
   -- the borrow arguments' holders (parked temporaries) are consumed by the call
-  let s := labels.foldl SState.takeLabel s
+  let s := (refLabels.filterMap id).foldl SState.takeLabel s
   match applyFnL L ps out fv argSems with
   | some (.data r finals) =>
-    let s := s.mapVals fun _ v φ' => v (φ'.updList (labels.zip finals))
+    let s := s.mapVals fun _ v φ' => v (φ'.updList (fixes finals))
     let B := match out with | .data B => B argSems | .ref U => U argSems
     some ((r, .plain B), s)
   | some (.ref U fwd back) =>
     let (k, s) := s.freshLoan
     let s := s.mapVals fun _ v φ' =>
       match L.dec U (φ' k) with
-      | some x => v (φ'.updList (labels.zip (back x)))
+      | some x => v (φ'.updList (fixes (back x)))
       | none => .err
     let s := s.pushTempShaped (fun _ => L.enc U fwd) k
     some ((L.enc U fwd, ⟨U, none, some k, none⟩), s)
@@ -275,8 +279,13 @@ noncomputable def run (hint : TyS) : Term → SM Res
     let ((v, T), s) ← run (.plain .err) u s
     let s := pushBindShaped s { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u }
     let ((r, R), s) ← run hint w s
-    -- [Drop] of the binding: a borrow it holds ends, then it is forgotten
-    let s := match T.label with | some l => s.endLabel l | none => s
+    -- [Drop] of the binding: the borrow it holds *now* ends, then it is forgotten (PROPOSAL,
+    -- m2-proofs, CE5: not the label its type carried when it was bound, which it may have moved
+    -- out, while an assignment may have made it the holder of another)
+    let held : Option Nat := match s.env.getLast? with
+      | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
+      | none => none
+    let s := match held with | some l => s.endLabel l | none => s
     some ((r, R), s.dropLast)
   | .seq u w => do
     -- a discarded result holding a borrow stays parked in its temporary (D14): the borrow is

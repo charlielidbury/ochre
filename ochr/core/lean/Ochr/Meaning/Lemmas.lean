@@ -83,7 +83,14 @@ future only at live labels; it holds because every borrow the run makes is ended
 read or when it is discarded (D13). -/
 theorem run_congr (φ φ' : Future) (hint : TyS) (t : Term) (s : SState) (L : Nat → Prop)
     (hφ : ∀ l, L l → φ l = φ' l) (ht : ∀ l, t.anyAtom (· == .loan l) → L l)
-    (hs : ∀ p ψ ψ', (∀ l, L l → ψ l = ψ' l) → s.valAt p ψ = s.valAt p ψ') :
+    (hs : ∀ p ψ ψ', (∀ l, L l → ψ l = ψ' l) → s.valAt p ψ = s.valAt p ψ')
+    -- PROPOSAL (m2-proofs): the starting state's holders are acyclic and label-ordered (I2 of
+    -- `Locality.lean`), so ending a label removes every dependence on it and the closed future
+    -- converges; and every shape entry is a real position with a label below the counter, so
+    -- fresh labels never collide with the state's and a pushed position never inherits an entry
+    (hord : ∀ r x, r ∈ s.positions → s.shape r = some x →
+      FT (fun y => (L y ∧ ¬ s.Live y) ∨ (s.Live y ∧ x < y)) (s.valAt r))
+    (hsh : ∀ p x, s.shape p = some x → p ∈ s.positions ∧ x < s.nextLoan) :
     run K ρ φ hint t s = run K ρ φ' hint t s := by
   sorry
 
