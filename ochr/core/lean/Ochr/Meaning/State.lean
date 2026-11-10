@@ -93,11 +93,27 @@ noncomputable def _root_.Ochr.Env.hintAt (ρ : Assignment) (env : Env) : Pos →
 
 /-- The meaning of an environment under `ρ` and `φ`, position by position. -/
 noncomputable def _root_.Ochr.Env.mean (ρ : Assignment) (φ : Future) (env : Env) (p : Pos) : Sem :=
-  Value.mean dm C Γ ρ φ (Env.hintAt dm C Γ ρ env p) (valAt env p)
+  -- a position outside the environment means `err`, as it does in the run's state (`valAt`'s
+  -- out-of-range default is `()`, which would make a dropped position compare `()` with `err`:
+  -- the pilot prover's finding)
+  match p with
+  | .bind f i => match env[f]?.bind (·.binds[i]?) with
+    | some b => Value.mean dm C Γ ρ φ (Env.hintAt dm C Γ ρ env p) b.val
+    | none => .err
+  | .temp f i => match env[f]?.bind (·.temps[i]?) with
+    | some v => Value.mean dm C Γ ρ φ (Env.hintAt dm C Γ ρ env p) v
+    | none => .err
 
 /-- `⟦Ω⟧_ρ`: the meaning of a state, as a function of the future. -/
 noncomputable def MState.mean (ρ : Assignment) (st : MState) : Mean :=
   ⟨allPos st.env, fun φ => Env.mean dm C Γ ρ φ st.env, Env.shape st.env⟩
+
+/-- The state with a value in flight counted: `v` pushed as a temporary of the top frame. A
+step's result is read through it (`Good (st.withTemp v)`), since a value the checker returns in
+its monad is part of the state its rules see (the pilot prover's finding: a borrow in flight
+is a borrow in Ω for (WF2)). -/
+def _root_.Ochr.MState.withTemp (st : MState) (v : Value) : MState :=
+  { st with env := st.env.modify (st.env.size - 1) fun fr => { fr with temps := fr.temps.push v } }
 
 /-- The components of `MState` that `⟦Ω⟧_ρ` and its typed form read (the module docstring). -/
 structure MState.Core where
