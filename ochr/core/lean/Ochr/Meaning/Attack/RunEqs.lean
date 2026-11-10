@@ -105,3 +105,27 @@ theorem borrowPlace_var0_one (K : RunCtx) (φ : Future) (k : Nat) (b : SBinding)
     SState.tyAt, SState.valAt, updAt_nil]
 
 end Ochr.Meaning.Attack
+
+namespace Ochr.Meaning.Attack
+
+open Ochr.Meaning
+
+/-- `lvl0.dec (ty0 Nat)` on a number is the number (`TyM.dec0_enc0` at `Nat`). -/
+theorem lvl0_dec_nat (n : Nat) : lvl0.dec (.ty0 Nat) (.el0 Nat n) = some n :=
+  TyM.dec0_enc0 (.ty0 Nat) n
+
+/-- Applying `σ_g`'s meaning `F` (tagged at its carrier) to a number: the borrow-returning result
+at `Nat`, forward value `(F n).val.1`, and the backward function reads the one lent place from
+the final content. -/
+theorem applyFnL_G (F : GCar) (n : Nat) :
+    applyFnL lvl0 psG outG (.el0 GCar F) [.el0 Nat n]
+      = some (.ref (.ty0 Nat) (F n).val.1 fun v => [.el0 Nat ((F n).val.2 v).2]) := by
+  have hu : lvl0.unpack GCar (.el0 GCar F) = some F := lvl0_unpack_pack GCar F
+  simp only [applyFnL, psG, outG, GCar] at hu ⊢
+  rw [hu]
+  simp only [applyTeleL, extReadL, lvl0, Option.bind_some]
+  have hd : (TyM.ty0 Nat).dec0 (.el0 Nat n) = some n := TyM.dec0_enc0 (.ty0 Nat) n
+  rw [hd]
+  rfl
+
+end Ochr.Meaning.Attack
