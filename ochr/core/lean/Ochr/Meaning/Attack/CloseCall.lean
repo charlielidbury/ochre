@@ -11,8 +11,10 @@ lender `a ↦ ⌈let c1 = σ0; let r = σ1(&c1); *r := loan_1; c1⌉`, counter `
 can of it, or refutes it. Every piece of the run's borrow bookkeeping (D10–D15), `RunCtx.Δ`
 (D17), `piCarL`/`applyFnL` and the knot is exercised end to end.
 
-Status (2026-11-10, first attack): both statements compile against the real `meanV`/`run` and are
-open. Probe findings (a throwaway `simp` unfolding of `res_means_fwd`): `unfold meanV` then
+Status (2026-11-10): (A') is proved (`CloseCallFwd.lean`), by stepping the run through the
+concrete-state normal forms of `RunEqs.lean` (binding, borrow `S₂`, call `S₃`, `r` bound `S₄`,
+`peek(*r)`); (A) is open and follows the same chain with `setContent` at the hole. Probe findings
+that shaped `RunEqs.lean` (a throwaway `simp` unfolding of `res_means_fwd`): `unfold meanV` then
 `simp [run, emptyState, pushBindShaped, contentOf, readPlace, borrowPlace, runArgs, callOf,
 callOfL, applyFnL, …]` reduces the `ascribe`/`letIn`/`borrow` prefix and reaches `callOf` with
 `fv.2.shape = (Δ₀ 1).shape = some (psG, outG)` and `fv.1 = meanV … (.abs 1)`, as intended. Two
@@ -22,8 +24,9 @@ obstacles: (1) `simp [Sem.updAt]` fails outright ("failed to generate equational
 steps; (2) the ascription's hint becomes `plain (meanV … .tNat).asTy`, which only reduces with
 `meanV` itself in the simp set (its `.sealed`/`.clo` clauses then unfold the knot everywhere, so
 the set must be restricted to the clauses used: `.abs`, `.tNat`, `.loan`). Neither is a
-refutation; both are proof-engineering debt of the run layer. Next: a `run_letIn`/`run_ascribe`
-/`run_borrowVar` equation-lemma file for the run layer, then (A') by rewriting, then (A).
+refutation; both are proof-engineering debt of the run layer, discharged for this shape by
+`RunEqs.lean` (equations by `rfl`, normal forms per state, `simp only [h]` to rewrite under the
+run's `match`es where `rw` fails on the motive).
 -/
 
 namespace Ochr.Meaning.Attack
@@ -89,9 +92,7 @@ theorem fill_means_back (dm : DataModel) (C : CodeMeaning) (n : Nat) (F : GCar) 
         | none => .err := by
   sorry
 
-/-- **(A') The result program means the forward value.** -/
-theorem res_means_fwd (dm : DataModel) (C : CodeMeaning) (n : Nat) (F : GCar) (φ : Future) (hint : TyS) :
-    meanV (K₀ dm C) (ρ₀ n F) φ hint (.sealed resR) = .el0 Nat (F n).val.1 := by
-  sorry
+/- **(A') The result program means the forward value**: stated and proved in `CloseCallFwd.lean`
+(`res_means_fwd`), through the run-layer normal forms of `RunEqs.lean`. -/
 
 end Ochr.Meaning.Attack
