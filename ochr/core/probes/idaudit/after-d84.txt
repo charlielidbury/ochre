@@ -1,0 +1,43 @@
+# Output of the docs/30 audit probes (P01-P09, R01, R02) on main 7ae8cf00 (after D84), 2026-11-10.
+# P01-P09 live only in the session scratchpad; their texts are reproduced in ochr/docs/30. R01 and R02 are in this folder.
+=== P01_Moves.lean
+P01_Moves.lean:8:30: error: T: [Id-typestate] the left side of Id moves x, the right side does not (clone it, or move it on both sides)
+P01_Moves.lean:14:27: error: TF: [Id-typestate] the left side of Id moves p.0, the right side does not (clone it, or move it on both sides)
+P01_Moves.lean:19:21: error: TC: [Id-typestate] the left side of Id moves m, the right side does not (clone it, or move it on both sides)
+=== P02_RePoint.lean
+P02_RePoint.lean:7:89: error: RePoint: the body of RePoint has type ⊤, but the goal is Eq(Nat, σ3, σ0) ∧ Eq(Nat, σ1, σ3)
+P02_RePoint.lean:10:38: error: SwapB: [Id-typestate] the left side of Id re-points the borrow y1, the right side does not (re-point it on both sides)
+P02_RePoint.lean:18:41: error: SwapCtxT: [Id-typestate] the left side of Id re-points the borrow y1, the right side does not (re-point it on both sides)
+P02_RePoint.lean:24:12: error: CursorSite: [Id-typestate] the left side of Id re-points the borrow y, the right side does not (re-point it on both sides)
+P02_RePoint.lean:38:92: error: RePointCtx: [Id-typestate] a side of Id ends the borrow y, which a binding outside the Id holds (the side uses or drops what y borrows): end it before the Id
+=== P03_BorrowEnds.lean
+P03_BorrowEnds.lean:8:25: error: MoveB: [Id-typestate] the left side of Id consumes the borrow y, the right side does not (pass a reborrow, &*y)
+P03_BorrowEnds.lean:13:25: error: MoveL: [Id-typestate] the left side of Id consumes the borrow y, the right side does not (pass a reborrow, &*y)
+P03_BorrowEnds.lean:18:28: error: KillDrop: [Id-typestate] the left side of Id re-points the borrow y, the right side does not (re-point it on both sides)
+P03_BorrowEnds.lean:25:36: error: KillRead: [Id-typestate] a side of Id ends the borrow y, which a binding outside the Id holds (the side uses or drops what y borrows): end it before the Id
+P03_BorrowEnds.lean:39:21: error: KillRe: [Id-typestate] a side of Id ends the borrow v, which a binding outside the Id holds (the side uses or drops what v borrows): end it before the Id
+=== P04_MoveThrough.lean
+P04_MoveThrough.lean:6:28: error: MoveThru: [Id-typestate] the left side of Id leaves moved, through a borrow, *y, the right side does not (refill it, or move it on both sides)
+P04_MoveThrough.lean:8:29: error: MoveThruR: [Id-typestate] the left side of Id leaves moved, through a borrow, *y, the right side does not (refill it, or move it on both sides)
+=== P05_Consume.lean
+P05_Consume.lean:7:29: error: AddMZero2: [Id-typestate] the left side of Id consumes the borrow x, the right side does not (pass a reborrow, &*x)
+P05_Consume.lean:14:13: error: FlipAddMZeroRe: expected rejection, but accepted
+P05_Consume.lean:23:31: error: AddMZeroSym: [Id-typestate] the right side of Id consumes the borrow x, the left side does not (pass a reborrow, &*x)
+=== P06_Aliasing.lean
+P06_Aliasing.lean:9:13: error: FlipKR: expected rejection, but accepted
+P06_Aliasing.lean:14:13: error: FlipKV: expected rejection, but accepted
+=== P07_Functions.lean
+P07_Functions.lean:10:13: error: FlipFnRePoint: expected rejection, but accepted
+=== P08_FixSim.lean
+P08_FixSim.lean:20:13: error: FlipSameTargetFix: expected rejection, but accepted
+P08_FixSim.lean:21:13: error: FlipAddMZeroReFix: expected rejection, but accepted
+=== P09_StuckRePoint.lean
+P09_StuckRePoint.lean:11:44: error: RPB0: [Id-typestate] the left side of Id consumes the borrow y, the right side does not (pass a reborrow, &*y)
+=== R01_DeclCopy.lean
+R01_DeclCopy.lean:12:13: error: FlipIdG: expected rejection, but accepted
+R01_DeclCopy.lean:17:13: error: FlipCT: expected rejection, but accepted
+R01_DeclCopy.lean:18:61: error: FlipCU: [Read] v was moved out or its borrow ended (reading ⊥)
+=== R02_DeclGrain.lean
+R02_DeclGrain.lean:10:13: error: FlipIdP: expected rejection, but accepted
+R02_DeclGrain.lean:14:13: error: FlipPT: expected rejection, but accepted
+R02_DeclGrain.lean:15:63: error: FlipPU: [Match] on v, which was moved out
