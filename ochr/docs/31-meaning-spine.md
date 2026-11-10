@@ -135,6 +135,21 @@ On literal `MState`s with a `Nat` binding: [Borrow] is exact (`borrow_exact`); [
 
 ## Plan for milestones 2–4
 
+### Status at 5e38f3d1 (2026-11-10, end of window) and the next window's plan
+
+Landed this window on `spine`: D17's restructure (5dc7710b); the [Close] attack on docs/27 §3.2's shape, both halves proved against the real `meanV`/`run` (`Attack/CloseCall*.lean`, `Attack/RunEqs.lean`; 54d99889, 27e061a4); decide-scope (`DecideScope.lean`); data-generic (`genericModel`, the rank, `FieldsFaithful`); mono-lemmas (`MonoHolders.lean`); m2-proofs' `Locality.lean`; the counterexample records `Steps/BorrowCE.lean` (not imported) and `Regress/CE4_5dc7710b`, `CE5_5dc7710b` (unbuilt).
+
+Risk list, ranked, each with its known fix — the next window takes them in this order:
+1. **Two label leaks in the reference run** (CE4: `callOfL` consumes every labelled argument's holder but fixes only the borrow parameters' finals; CE5: `.letIn`'s drop ends the label the binding's *type* carried, not the one its position holds now; both Lean-checked, refuting `run_congr`/`meanV_congr`/`*_substLoan`). Fix: m2-proofs' PROPOSAL 77375728 (pair arguments with parameters; the drop ends the position's current label) plus mono-lemmas' addition (clear the shape entry of every position `dropLast`/`popFrame` removes); `run_congr` gains `hord`/`hsh` on the starting state. Cost: `Attack/RunEqs.lean`'s `callOf_S₂` unfolds `callOfL` and must be redone; re-run (A)/(A'). Then land the flipped CE4/CE5 checks and the call-clause lemmas (fa335f7f, fcc0a932, 63653e43).
+2. **`TypedFuture` with untyped temporaries** (`borrowPlace_step_stmt`, `readPlace_step_stmt` refuted: `withTemp` parks the in-flight value untyped, so `fun _ => err` is a typed future and the typed lender means `err`; definition fault in `Good`). Fix: type the in-flight temporary as its holder's `&T` (`withTemp v T`) or type each label by its lender's type at the loan's path. Then flip `BorrowCE` into positive checks.
+3. **`popFrame_step_stmt`** (refuted: the pop drops temporaries without ending their borrows). Fix: hypothesis that the popped frame's temporaries hold no borrow (true at both call sites, which move the result below first).
+4. **The shared position library** every prover needs before the swarm: `allPos`/`positions`/`sstate`, `Env.mean` and `valAt` after `setAt`/`modifyFrame`/push/pop, a "Good of a small literal state" tactic. The normal-form method of `RunEqs.lean` (one lemma per state, `simp only [h]` under the run's matches) is the template.
+5. **General `closeCall_step`** (all rows, arbitrary states), built on 4 and the §3.2 proof.
+6. **Decisions alignment**: restate `*_aligned` in live form (`Runs (withLive true (Ochr.placeDecl fuel [] p)) st fuel d st'` with `K.D = checkerDecisions st fuel`), then the proofs are decide-scope's corollaries; `copy` reads at `scopeState st []` (one-line instance change); `jdMoves`/`typeState` need their own conjuncts. Cross-state Δ: `valueDecl (.abs σ)` reading a sealed type differently after a refinement — prog-decisions' probe found the flip unreachable (typing rejects consumers of a stuck type; refinement keeps concrete heads); ranked low, probe with a control only if 1–5 are done.
+7. **data-generic's gaps**: `rank_lt` does not cover nested recursion paths (`Rose → List → Rose`; needs the `NModel` law `allL_map`); `FieldsFaithful`'s data part at parameter-typed fields needs the structured parameter hints (decision above, D4).
+8. **Adequacy notes** (differences from the checker, not leaks): closure capture-by-move leaves the captured holder's shape entry, so the later end gives the lent place `moved`.
+
+
 ### Milestone 2: the reference run (`Run.lean`, the meaning of code [Q2]) — in progress
 
 Done (all building, structurally recursive, no `partial`):
