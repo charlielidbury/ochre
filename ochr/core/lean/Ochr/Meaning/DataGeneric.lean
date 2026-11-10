@@ -584,7 +584,7 @@ def Step (X : Fam) (Z : Nat → TyM) (τ : PCode) (K : Sem → Type) : Type :=
 /-- The telescope of fields `i, …, i + n - 1` of constructor `c`, after the masked fields `e`. -/
 def Tele (X : Fam) (Z : Nat → TyM) (ps : List Sem) (c : Nat) : Nat → Nat → List Sem → Type
   | _, 0, _ => PUnit
-  | i, n + 1, e => Step S M X Z (S.code (S.blank ps) c i e) fun s => Tele X Z ps c (i + 1) n (e ++ [s])
+  | i, n + 1, e => Step S M X Z (S.code ps c i e) fun s => Tele X Z ps c (i + 1) n (e ++ [s])
 
 def Step.mapX {X Y : Fam} (fX : ∀ {ps Z}, X ps Z → Y ps Z) {Z : Nat → TyM} {K K' : Sem → Type}
     (g : ∀ s, K s → K' s) : (τ : PCode) → Step S M X Z τ K → Step S M Y Z τ K'
@@ -1355,7 +1355,7 @@ theorem Tele.fields_decode {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat}
 /-- The masked meanings of a list of fields, after `e`, from field `i` on. -/
 def Sig.maskList (ps : List Sem) (c : Nat) : Nat → List Sem → List Sem → List Sem
   | _, e, [] => e
-  | i, e, f :: fs => Sig.maskList ps c (i + 1) (e ++ [maskSem (S.code (S.blank ps) c i e) f]) fs
+  | i, e, f :: fs => Sig.maskList ps c (i + 1) (e ++ [maskSem (S.code ps c i e) f]) fs
 
 theorem isSome_map_eq {α β : Type} (g : α → β) (o : Option α) : (o.map g).isSome = o.isSome := by
   cases o <;> rfl
@@ -1364,13 +1364,13 @@ theorem Tele.decode_isSome {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat}
     ∀ (n i : Nat) (e : List Sem) (fs : List Sem),
       (Tele.decode S M (X := X) (Z := Z) (ps := ps) (c := c) i n e fs).isSome ↔
         fs.length = n ∧ ∀ j (h : j < fs.length), fs[j] ∈ₛ
-          small (interp M S.isProp X Z (S.code (S.blank ps) c (i + j) (Sig.maskList S ps c i e (fs.take j))))
+          small (interp M S.isProp X Z (S.code ps c (i + j) (Sig.maskList S ps c i e (fs.take j))))
   | 0, _, _, [] => by simp [Tele.decode]; rfl
   | 0, _, _, _ :: _ => by simp [Tele.decode]
   | n + 1, _, _, [] => by simp [Tele.decode]
   | n + 1, i, e, f :: fs => by
     simp only [Tele.decode, List.length_cons, Nat.add_right_cancel_iff]
-    have hf := dec_isSome_iff (interp M S.isProp X Z (S.code (S.blank ps) c i e)) f
+    have hf := dec_isSome_iff (interp M S.isProp X Z (S.code ps c i e)) f
     cases hv : dec _ f with
     | none =>
       simp only [Option.bind_none, Option.isSome_none, Bool.false_eq_true, false_iff]
@@ -1380,7 +1380,7 @@ theorem Tele.decode_isSome {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat}
     | some v =>
       rw [Option.bind_some]
       refine (iff_of_eq (congrArg (fun b => b = true) (isSome_map_eq _ _))).trans ?_
-      have hm : mask M S.isProp X Z _ v = maskSem (S.code (S.blank ps) c i e) f := by
+      have hm : mask M S.isProp X Z _ v = maskSem (S.code ps c i e) f := by
         rw [mask_eq, enc_of_dec hv]
       rw [hm, Tele.decode_isSome n (i + 1) _ fs]
       rw [hv] at hf
@@ -1431,7 +1431,7 @@ noncomputable def gPack (ps : List Sem) (Z : Nat → TyM) (c : Nat) (fs : List S
 
 /-- The type of field `i` of constructor `c` at the meanings `earlier` of the fields before it. -/
 def gFieldTy (ps : List Sem) (Z : Nat → TyM) (c i : Nat) (earlier : List Sem) : TyM :=
-  small (interp M S.isProp (car S M) Z (S.code (S.blank ps) c i (Sig.maskList S ps c 0 [] earlier)))
+  small (interp M S.isProp (car S M) Z (S.code ps c i (Sig.maskList S ps c 0 [] earlier)))
 
 theorem gPack_some {ps : List Sem} {Z : Nat → TyM} {c : Nat} {fs : List Sem} {x : car S M ps Z}
     (h : gPack S M ps Z c fs = some x) : ∃ (hc : c < S.ar.length)
