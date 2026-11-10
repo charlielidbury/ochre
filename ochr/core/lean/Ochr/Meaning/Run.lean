@@ -56,6 +56,10 @@ structure RunCtx : Type 3 where
   Γ : List IndDecl
   C : CodeMeaning
   D : Decisions
+  /-- the types of the abstract values (Δ) as the run knows them, with Π-shapes: a call through
+  an abstract function `σ_f` applies `ρ σ_f` along the shape of `Δ(σ_f)`. Fixed per checker
+  state (`deltaOf`): the reference run creates no unknowns. -/
+  Δ : Nat → TyS := fun _ => .plain .err
 
 /-- A result: the meaning at the run's future, with its type. -/
 abbrev Res : Type 3 := Sem × TyS
@@ -344,6 +348,7 @@ noncomputable def run (hint : TyS) : Term → SM Res
       | .clo caps t rd | .tPi caps t rd =>
         { hint with shape := (piShapeOf (stateOf 0 (capsState (capsVals caps) (capsTys rd))) t).map fun sh => (sh.ps, sh.out) }
       | .gfn n => (K.C.global n).2
+      | .abs σ => { hint with shape := (K.Δ σ).shape, data := (K.Δ σ).data }
       | _ => hint
     some ((meanV hint v, T), s)
   | .sort l => pure (.ty (.univ l), .plain (.univ (sortSucc l)))
@@ -632,6 +637,18 @@ noncomputable def capsTys : List (DeclInfo × Value) → List (DeclInfo × TyS)
   | (d, T) :: rest => (d, .plain (meanV (.plain .err) T).asTy) :: capsTys rest
 termination_by structural rest => rest
 end
+
+/-- Δ as the run knows it, from a checker state: each abstract value's stored type with its data
+component (`Value.tyS`) and, for a Π-type, its shape from its term (`piShapeOf`). The step lemmas
+assume `K.Δ = deltaOf K ρ φ st`. -/
+noncomputable def deltaOf (st : MState) : Nat → TyS := fun σ =>
+  match st.absTy[σ]? with
+  | some (.tPi caps t rd) =>
+    { Value.tyS K.dm K.C K.Γ ρ (.tPi caps t rd) with
+      shape := (piShapeOf K ρ φ (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) t).map
+        fun sh => (sh.ps, sh.out) }
+  | some T => Value.tyS K.dm K.C K.Γ ρ T
+  | none => .plain .err
 
 /-- The code meaning the run induces at `ρ` and `φ` (the knot of `Value.mean`). Its assignment
 and future arguments are ignored: `Value.mean` is only ever read at the one assignment and
