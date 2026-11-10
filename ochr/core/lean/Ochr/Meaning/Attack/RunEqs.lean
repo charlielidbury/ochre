@@ -288,3 +288,97 @@ theorem pushBindShaped_noLabel (s : SState) (b : SBinding) (h : b.ty.label = non
   simp [pushBindShaped, h]
 
 end Ochr.Meaning.Attack
+
+namespace Ochr.Meaning.Attack
+
+open Ochr.Meaning
+
+/-- `*r`'s content on `S₄`: the forward value at `Nat`, position `bind 0 1`, one `deref` step. -/
+theorem contentOf_deref_r (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
+    contentOf K φ (.deref (.var 0)) (S₄ F n b k)
+      = some ((.el0 Nat (F n).val.1, .plain (.ty0 Nat), .bind 0 1, [.deref]), S₄ F n b k) := by
+  have hr : resolve (S₄ F n b k) (.deref (.var 0)) = some (.bind 0 1, [.deref]) := by
+    simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, S₄]
+  simp only [contentOf, hr, access_S₄]
+  simp [S₄, SState.tyAt, SState.valAt, Sem.follow, Sem.step]
+
+/-- The state after `*r := w` on `S₄`: `r` holds `w`. -/
+noncomputable def S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) : SState :=
+  { env := [{ binds := [{ b with val := fun φ' => match lvl0.dec (.ty0 Nat) (φ' (k+1)) with
+                                                  | some x => .el0 Nat ((F n).val.2 x).2
+                                                  | none => .err },
+                        { ty := ⟨.ty0 Nat, none, some (k+1), none⟩, val := fun _ => w }],
+              temps := [fun φ' => match lvl0.dec (.ty0 Nat) (φ' (k+1)) with | some _ => .moved | none => .err,
+                        fun _ => .moved] }],
+    shape := fun p => if p = .bind 0 1 then some (k+1) else none, nextLoan := k + 2 }
+
+theorem setContent_deref_r (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
+    setContent K φ (.bind 0 1) [.deref] w (S₄ F n b k) = some (⟨⟩, S₅ F n b k w) := by
+  simp only [setContent, updAt_deref, updAt_nil]
+  simp [S₄, S₅, SState.setAt, SState.tyAt, SState.valAt, List.modify, List.modifyTailIdx, List.modifyTailIdx.go,
+    List.modifyHead]
+
+end Ochr.Meaning.Attack
+
+namespace Ochr.Meaning.Attack
+
+open Ochr.Meaning
+
+theorem positions_S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
+    (S₅ F n b k w).positions = [.bind 0 0, .bind 0 1, .temp 0 0, .temp 0 1] := by
+  simp [S₅, SState.positions, List.range', List.map]
+
+theorem liveLabels_S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
+    (S₅ F n b k w).liveLabels = [k+1] := by
+  unfold SState.liveLabels
+  rw [positions_S₅]
+  simp [S₅]
+
+/-- `c1` reads `k+1`'s final content (a number against `err` tells the futures apart). -/
+theorem dependsOn_c1 (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
+    (S₅ F n b k w).dependsOn (.bind 0 0) (k+1) := by
+  refine ⟨fun _ => .el0 Nat 0, .err, ?_⟩
+  simp [SState.toMean, SState.valAt, S₅, Future.upd, lvl0_dec_nat', Sem.as]
+
+end Ochr.Meaning.Attack
+
+namespace Ochr.Meaning.Attack
+
+open Ochr.Meaning
+
+/-- The state after [Access] of `c1` on `S₅`: `r`'s borrow ends, fixing `k+1`'s final content to
+`w`; `c1` now reads the backward function at `w`, `r` is forgotten, nothing is live. -/
+noncomputable def S₆ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) : SState :=
+  { env := [{ binds := [{ b with val := fun _ => match lvl0.dec (.ty0 Nat) w with
+                                                  | some x => .el0 Nat ((F n).val.2 x).2
+                                                  | none => .err },
+                        { ty := ⟨.ty0 Nat, none, some (k+1), none⟩, val := fun _ => .moved }],
+              temps := [fun _ => match lvl0.dec (.ty0 Nat) w with | some _ => .moved | none => .err,
+                        fun _ => .moved] }],
+    shape := fun _ => none, nextLoan := k + 2 }
+
+theorem endLabel_S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
+    (S₅ F n b k w).endLabel (k+1) = S₆ F n b k w := by
+  unfold SState.endLabel
+  rw [positions_S₅]
+  simp only [S₅, S₆, Mean.semEnd, SState.toMean, SState.mapVals, SState.valAt, List.zipIdx, List.map,
+    List.find?, Future.upd_same, reduceCtorEq, if_true, if_false, decide_eq_true_eq, decide_true, decide_false,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, List.getElem?_nil, Option.bind_some, Option.bind_none,
+    Pos.bind.injEq, Pos.temp.injEq, Nat.reduceEqDiff, and_false, false_and, and_true, true_and, Option.some.injEq,
+    decide_eq_false_iff_not, not_false_eq_true, ite_true, ite_false, Nat.zero_ne_one, Nat.one_ne_zero]
+  first
+    | (simp [Future.upd]; done)
+    | (congr 1; all_goals first
+        | rfl
+        | (simp only [List.cons.injEq, SFrame.mk.injEq, SBinding.mk.injEq, and_true, true_and]
+           and_intros
+           all_goals first
+             | rfl
+             | (funext φ'; simp [Future.upd]; cases lvl0.dec (.ty0 Nat) w <;> rfl)
+             | (funext φ'; simp [Future.upd])
+             | (trace_state; sorry))
+        | (funext p; simp)
+        | (trace_state; sorry))
+    | (trace_state; sorry)
+
+end Ochr.Meaning.Attack
