@@ -129,3 +129,32 @@ theorem applyFnL_G (F : GCar) (n : Nat) :
   rfl
 
 end Ochr.Meaning.Attack
+
+namespace Ochr.Meaning.Attack
+
+open Ochr.Meaning
+
+/-- The state after `&(var 0)` on the one-binding state (`borrowPlace_var0_one`'s output). -/
+def S₂ (b : SBinding) (k : Nat) (c : Sem) : SState :=
+  { env := [{ binds := [{ b with val := fun φ' => φ' k }], temps := [fun _ => c] }],
+    shape := fun p => if p = .temp 0 0 then some k else none, nextLoan := k + 1 }
+
+theorem positions_S₂ (b : SBinding) (k : Nat) (c : Sem) :
+    (S₂ b k c).positions = [.bind 0 0, .temp 0 0] := by
+  simp [S₂, SState.positions]
+
+theorem holderOf_S₂ (b : SBinding) (k : Nat) (c : Sem) : (S₂ b k c).holderOf k = some (.temp 0 0) := by
+  unfold SState.holderOf
+  rw [positions_S₂]
+  simp [S₂]
+
+/-- Consuming the borrow's holder: the temp is `moved`, nothing is in the shape. -/
+theorem takeLabel_S₂ (b : SBinding) (k : Nat) (c : Sem) :
+    (S₂ b k c).takeLabel k
+      = { env := [{ binds := [{ b with val := fun φ' => φ' k }], temps := [fun _ => .moved] }],
+          shape := fun _ => none, nextLoan := k + 1 } := by
+  simp only [SState.takeLabel, holderOf_S₂]
+  simp [S₂, SState.setAt]
+  funext p; split <;> simp_all
+
+end Ochr.Meaning.Attack
