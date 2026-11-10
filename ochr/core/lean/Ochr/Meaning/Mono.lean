@@ -600,6 +600,7 @@ def D : Decisions where
   copy _ := false
   piSort _ _ := 1
   joinMoves _ _ _ := [.proj 0 (.var 0)]
+  rePointed _ _ := []
 
 noncomputable def K : RunCtx where
   dm := dm
@@ -972,7 +973,7 @@ the caller's, so only the positions are at stake). This is the form that holds o
 `idType_step` (the checker reads the owners after ending every borrow; the reference's
 observation must not see the live labels the checker's ends forget). -/
 theorem observation_upd_live (φ : Future) (r : Res) (s : SState) (hwf : s.SWF3) {l : Nat}
-    (hl : l ∈ s.liveLabels) (x : Sem) : observation (φ.upd l x) r s = observation φ r s := by
+    (hl : l ∈ s.liveLabels) (x : Sem) : observation (φ.upd l x) [] [] r s = observation φ [] [] r s := by
   simp only [observation]
   congr 1
   apply List.map_congr_left
@@ -1044,7 +1045,7 @@ is constant (`const_of_local`). This is what makes `Id`'s meaning a plain propos
 hypotheses are needed (`ObservationCounterexamples`). Milestone 3: `Steps/Obs.lean`'s
 `idType_step`. -/
 theorem observation_const (r : Res) (s : SState) (hwf : s.SWF3) (hloc : s.LocalTo (· ∈ s.liveLabels))
-    (φ φ' : Future) : observation φ r s = observation φ' r s := by
+    (φ φ' : Future) : observation φ [] [] r s = observation φ' [] [] r s := by
   simp only [observation]
   congr 1
   apply List.map_congr_left
@@ -1107,12 +1108,12 @@ theorem inert_SWF3 : inert.SWF3 :=
   ⟨fun a => ⟨a, fun _ ⟨_, h, _⟩ => nomatch h⟩⟩
 
 theorem observation_not_const (r : Res) :
-    observation (fun _ => .moved) r inert ≠ observation (fun _ => .proof) r inert := by
+    observation (fun _ => .moved) [] [] r inert ≠ observation (fun _ => .proof) [] [] r inert := by
   have h0 : inert.positions.filterMap inert.shape = [] := List.filterMap_eq_nil_iff.mpr fun _ _ => rfl
   have hl : inert.liveLabels = [] := by simp only [SState.liveLabels, h0, List.mergeSort_nil]
   have hp : inert.positions = [.bind 0 0] := by
     simp [SState.positions, inert, Std.Legacy.Range.forIn_eq_forIn_range', Std.Legacy.Range.size]
-  simp only [observation, hl, List.foldl_nil, hp]
+  simp only [observation, List.zipIdx_nil, hl, List.foldl_nil, hp]
   simp [inert, SState.valAt]
 
 end ObservationCounterexamples
