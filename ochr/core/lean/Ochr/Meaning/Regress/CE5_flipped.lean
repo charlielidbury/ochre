@@ -178,10 +178,15 @@ theorem env_b6 (n : Nat) : (b6 K n).env = [{ binds := [yB' K n], temps := [fun _
   rfl
 
 theorem shape_b6 (n : Nat) (p : Pos) (hp : p ≠ .bind 0 1) : (b6 K n).shape p = none := by
-  unfold b6 b5
-  simp only [take_b3]
-  show (if p = .bind 0 1 then some n else if p = .temp 0 0 then none else if p = .temp 0 0 then some n else none) = none
-  simp [hp]
+  -- `dropLast` clears the removed position's entry (spine ae3a1e1c); elsewhere it is `b5`'s
+  unfold b6
+  simp only [SState.dropLast]
+  split <;> split
+  all_goals first
+    | rfl
+    | (unfold b5; simp only [take_b3]
+       show (if p = .bind 0 1 then some n else if p = .temp 0 0 then none else if p = .temp 0 0 then some n else none) = none
+       simp [hp])
 
 theorem positions_b6 (n : Nat) : (b6 K n).positions = [.bind 0 0, .temp 0 0] := by
   rw [SState.positions_eq, env_b6]
@@ -241,8 +246,13 @@ theorem b7_val_y (n : Nat) (ψ : Future) : (b7 K n).valAt (.bind 0 0) ψ = .el0 
 
 theorem b7_shape (n : Nat) : (b7 K n).shape = fun _ => none := by
   funext p
-  show (if p = .bind 0 1 then none else (b5 K n).shape p) = none
-  rw [shape_b5]; split <;> simp_all
+  unfold b7
+  simp only [SState.dropLast]
+  split <;> split
+  all_goals first
+    | rfl
+    | (show (if p = .bind 0 1 then none else (b5 K n).shape p) = none
+       rw [shape_b5]; split <;> simp_all)
 
 theorem content_b7 (n : Nat) : ∃ T, contentOf K φ (.var 0) (b7 K n) = some ((.el0 Nat 0, T, .bind 0 0, []), b7 K n) := by
   have hr : resolve (b7 K n) (.var 0) = some (.bind 0 0, []) := by
