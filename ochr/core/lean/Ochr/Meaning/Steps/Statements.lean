@@ -302,8 +302,10 @@ def callFn_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) :
   ∀ (st st' : MState)  (typed : Bool) (fv : Value) (fT : Value)
     (ws : Array Value) (tys : Array (Option Value)) (hd : Bool) (v : Value) (T? : Option Value)
     (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st) (hargs : ArgsLoanFree st.env ws)
+    -- the callee as the run reads it (`closeCall_step_stmt`); `fT` is the checker's input only
+    (fres : Res) (hf : run K ρ φ (.plain .err) (.val fv) (SM' K ρ st) = some (fres, SM' K ρ st))
     (h : Runs (Ochr.callFn fuel typed fv (some fT) ws tys hd) st fuel (v, T?) st'),
-    ∃ r s', callOf (calleeRes K ρ φ fv fT) (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
+    ∃ r s', callOf fres (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v ⊑ r.1 ∧
       Below (MState.mean K.dm K.C K.Γ ρ st') s'.toMean ∧ Good K.dm K.C K.Γ ρ st'
 
@@ -311,11 +313,13 @@ def callFn_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) :
 the frame popped: below the function's meaning applied (the induction hypothesis on the body). -/
 def runBody_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (fv : Value) (cs : List Value) (t : Term)
-    (rd : List (DeclInfo × Value)) (ws : Array Value) (v : Value) (fT : Value)
+    (rd : List (DeclInfo × Value)) (ws : Array Value) (v : Value)
     (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st) (hargs : ArgsLoanFree st.env ws)
     (hfv : fv = .clo cs t rd ∨ ∃ n, fv = .gfn n)
+    -- the callee as the run reads it (the pilot form took `fT` free: `Regress/CloseCallStmt.lean`)
+    (fres : Res) (hf : run K ρ φ (.plain .err) (.val fv) (SM' K ρ st) = some (fres, SM' K ρ st))
     (h : Runs (Ochr.runBody fuel fv cs t rd ws) st fuel v st'),
-    ∃ r s', callOf (calleeRes K ρ φ fv fT) (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
+    ∃ r s', callOf fres (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v ⊑ r.1 ∧
       Below (MState.mean K.dm K.C K.Γ ρ st') s'.toMean ∧ Good K.dm K.C K.Γ ρ st'
 
