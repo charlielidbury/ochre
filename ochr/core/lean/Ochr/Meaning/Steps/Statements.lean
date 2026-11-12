@@ -321,13 +321,32 @@ def runBody_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
 
 /-- [Close] (`closeCall`), every row: exact against `callOf`. The result is a sealed program (or
 `()` at a declared `Unit`, or a borrow of one), and each lent place a fill: both mean what the
-reference's call gives them, since a sealed program means its run. -/
+reference's call gives them, since a sealed program means its run.
+
+The callee's meaning and shape are the run's reading of the value (`run (.val fv)`: a closure's
+or Π-closure's shape from its term, a global's from `K.C`, an abstract value's from `Δ`; a sealed
+callee has no shape yet, docs/31 item 3), not a separately quantified type (the pilot form took
+`fT` free, so `fT := .zero` refuted it at once: `Regress/CloseCallStmt.lean`). The row and the
+declared-`Unit` readings `kind`, `res`, `fills` and the cells' types `tys` are read off the call
+as written (`evalCall`) and trusted; typing makes them agree with the callee's shape, which the
+hypotheses `hkind`, `hres`, `hfills`, `htys` state (without them a `res := .unit` at a `Nat`
+codomain, or a `fills` entry at a `Nat` cell, made the checker return `()` where the reference
+returns the value: the same file). -/
 def closeCall_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st st' : MState)  (fv : Value) (fT : Value) (ws : Array Value)
+  ∀ (st st' : MState) (fv : Value) (ws : Array Value)
     (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)) (v : Value)
     (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st) (hargs : ArgsLoanFree st.env ws)
+    (fres : Res) (hf : run K ρ φ (.plain .err) (.val fv) (SM' K ρ st) = some (fres, SM' K ρ st))
+    (ps : List PiParam) (out : PiOut) (hsh : fres.2.shape = some (ps, out))
+    (hkind : kind = .ref ↔ ∃ U, out = .ref U)
+    (hres : res = .unit → ∀ B, out = .data B → B ((argsRes K ρ φ ws).map (·.1)) = .ty0 Unit)
+    (hfills : ∀ i : Nat, fills.getD i false = true → ∀ p : PiParam, ps[i]? = some p →
+      p.dom (((argsRes K ρ φ ws).map (·.1)).take i) = .ty0 Unit)
+    (htys : ∀ (i l : Nat) (w : Value), ws[i]? = some (Value.borrow l w) → ∀ p : PiParam, ps[i]? = some p →
+      ∃ T : Value, tys[i]? = some (some (Value.tRef T)) ∧
+        (Value.tyS K.dm K.C K.Γ ρ T).m = p.dom (((argsRes K ρ φ ws).map (·.1)).take i))
     (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st fuel v st'),
-    ∃ r s', callOf (calleeRes K ρ φ fv fT) (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
+    ∃ r s', callOf fres (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v = r.1 ∧
       Exact (MState.mean K.dm K.C K.Γ ρ st') s'.toMean ∧ Good K.dm K.C K.Γ ρ st'
 
