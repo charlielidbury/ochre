@@ -111,6 +111,15 @@ def access_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) :
     Below (MState.mean K.dm K.C K.Γ ρ st') ((SM' K ρ st).access pos).toMean ∧
     Good K.dm K.C K.Γ ρ st'
 
+/-- The flight of a result: its label, typed at its content type (the reference's result type
+carries both). The in-flight value is typed by this where `MState.withTemp` holds it untyped
+(`GoodF`, the pilot's refutations in `BorrowCE.lean`). -/
+def flightOf (T : TyS) : Flight := match T.label with | some l => [(l, T.m)] | none => []
+
+/-- The flight of a value about to be written at a place of content type `T`: a borrow's label,
+typed at `T`. -/
+def flightOfWrite (v : Value) (T : TyM) : Flight := match v with | .borrow l _ => [(l, T)] | _ => []
+
 /-- [Read] (`readPlace`): after its access, the result is the place's meaning (future-free), and
 the place is unchanged (a copy, by the declared reading, D80) or `moved` (a move); exact against
 the run's `readPlace` with the same copy decision (`Decisions.copy`, aligned). -/
@@ -121,7 +130,8 @@ def readPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
     (h : Runs (Ochr.readPlace fuel p) st fuel v st'),
     ∃ r s', Ochr.Meaning.readPlace K φ p copy (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v = r.1 ∧
-      Below (MState.mean K.dm K.C K.Γ ρ (st'.withTemp v)) s'.toMean ∧ Good K.dm K.C K.Γ ρ (st'.withTemp v)
+      Below (MState.mean K.dm K.C K.Γ ρ (st'.withTemp v)) s'.toMean ∧
+      GoodF K.dm K.C K.Γ ρ (st'.withTemp v) (flightOf r.2)
 
 /-- [Borrow] (`borrowPlace`): exact against the run's `borrowPlace` with the same fresh label
 (`nextLoan`): the place means the label's final content and the borrow the old content. -/
@@ -131,14 +141,16 @@ def borrowPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : N
     (h : Runs (Ochr.borrowPlace fuel p) st fuel v st'),
     ∃ r s', Ochr.Meaning.borrowPlace K φ p (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v = r.1 ∧
-      Below (MState.mean K.dm K.C K.Γ ρ (st'.withTemp v)) s'.toMean ∧ Good K.dm K.C K.Γ ρ (st'.withTemp v)
+      Below (MState.mean K.dm K.C K.Γ ρ (st'.withTemp v)) s'.toMean ∧
+      GoodF K.dm K.C K.Γ ρ (st'.withTemp v) (flightOf r.2)
 
 /-- [Assign] (`assignPlace`): the owned access (D67, ends), the old content's borrows end
 ([Drop], ends), then the place means the new value: below the run's `setContent` after
 `access`. The written value's meaning is given. -/
 def assignPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (p : Place) (v : Value) (pos : Pos)
-    (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st) (hgv : Good K.dm K.C K.Γ ρ (st.withTemp v)) (hpos : resolve (SM' K ρ st) p = some (pos, (p.steps).2))
+    (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st) (hpos : resolve (SM' K ρ st) p = some (pos, (p.steps).2))
+    (hgv : GoodF K.dm K.C K.Γ ρ (st.withTemp v) (flightOfWrite v (Env.hintAt K.dm K.C K.Γ ρ st.env pos).m))
     (h : Runs (Ochr.assignPlace fuel p v) st fuel () st'),
     ∃ s', setContent K φ pos (p.steps).2 (meanV K ρ φ (.plain .err) v) ((SM' K ρ st).access pos) = some (⟨⟩, s') ∧
       Below (MState.mean K.dm K.C K.Γ ρ st') s'.toMean ∧ Good K.dm K.C K.Γ ρ st'
@@ -155,7 +167,11 @@ def dropTopBind_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : N
 /-- Popping a frame (`popFrame`): each binding dropped in turn; below. -/
 def popFrame_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)
-    (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st) (h : Runs (Ochr.popFrame fuel) st fuel () st'),
+    (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st)
+    -- the popped frame's temporaries hold no borrow (the pilot's refutation: a pop discards
+    -- temporaries without ending them; both call sites move the result below first)
+    (htemps : ∀ fr, st.env[st.env.size - 1]? = some fr → ∀ v ∈ fr.temps, v.hasBorrow = false)
+    (h : Runs (Ochr.popFrame fuel) st fuel () st'),
     Below (MState.mean K.dm K.C K.Γ ρ st') (MState.mean K.dm K.C K.Γ ρ st) ∧
     Good K.dm K.C K.Γ ρ st'
 

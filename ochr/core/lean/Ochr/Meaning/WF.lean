@@ -152,6 +152,45 @@ structure Membership (ρ : Assignment) (st : MState) : Prop where
 def Good (ρ : Assignment) (st : MState) : Prop :=
   TypedAssignment dm C Γ ρ st ∧ Membership dm C Γ ρ st ∧ WF dm C Γ ρ st
 
+/-! ## Values in flight: the future typed at their labels too
+
+`TypedFuture` types a label only at a *typed* holder. A borrow the checker holds in its monad
+(the result of [Borrow], or of a [Read] that moves a borrow out) is counted as an untyped
+temporary (`MState.withTemp`), so its label is left untyped and the typed lender, which reads
+that label, has no member (the pilot's refutations of `borrowPlace_step_stmt` and
+`readPlace_step_stmt`, `Steps/BorrowCE.lean`). The in-flight value is typed by the step's
+statement instead: a `Flight` lists the labels in flight with their content types (the
+reference run's result type gives both), and `GoodF` is `Good` with the future typed at them. -/
+
+/-- Labels in flight with their content types. -/
+abbrev Flight : Type 3 := List (Nat × TyM)
+
+/-- `TypedFuture`, and typed at the labels in flight. -/
+def TypedFutureF (ρ : Assignment) (st : MState) (fl : Flight) (φ : Future) : Prop :=
+  TypedFuture dm C Γ ρ st φ ∧ ∀ l T, (l, T) ∈ fl → φ l ∈ₛ T
+
+/-- `Membership` under futures typed at the flight too. -/
+structure MembershipF (ρ : Assignment) (st : MState) (fl : Flight) : Prop where
+  pos : ∀ φ, TypedFutureF dm C Γ ρ st fl φ →
+    ∀ p T, MState.posTyM dm C Γ ρ st p = some T → (Env.mean dm C Γ ρ φ st.env p).pmem T
+  absTy : ∀ σ, σ < st.absTy.size → (MState.absTyM dm C Γ ρ st σ).level.isSome
+  goal : ∀ G, MState.goalM dm C Γ ρ st = some G → G.level.isSome
+
+/-- `Good`, with the values in flight typed. `GoodF ρ st [] ↔ Good ρ st` (`goodF_nil`). -/
+def GoodF (ρ : Assignment) (st : MState) (fl : Flight) : Prop :=
+  TypedAssignment dm C Γ ρ st ∧ MembershipF dm C Γ ρ st fl ∧ WF dm C Γ ρ st
+
+theorem typedFutureF_nil (ρ : Assignment) (st : MState) (φ : Future) :
+    TypedFutureF dm C Γ ρ st [] φ ↔ TypedFuture dm C Γ ρ st φ :=
+  ⟨fun h => h.1, fun h => ⟨h, fun _ _ h => by cases h⟩⟩
+
+theorem goodF_nil (ρ : Assignment) (st : MState) : GoodF dm C Γ ρ st [] ↔ Good dm C Γ ρ st := by
+  constructor
+  · rintro ⟨ha, hm, hw⟩
+    exact ⟨ha, ⟨fun φ hφ => hm.pos φ ((typedFutureF_nil ..).mpr hφ), hm.absTy, hm.goal⟩, hw⟩
+  · rintro ⟨ha, hm, hw⟩
+    exact ⟨ha, ⟨fun φ hφ => hm.pos φ ((typedFutureF_nil ..).mp hφ), hm.absTy, hm.goal⟩, hw⟩
+
 end
 
 end Ochr.Meaning

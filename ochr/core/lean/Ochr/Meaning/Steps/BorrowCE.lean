@@ -18,6 +18,37 @@ may never have; the missing fact is a reachable-state invariant, see the report.
 
 namespace Ochr.Meaning.Steps.BorrowCE
 
+/-! ## The statements as they stood at 5dc7710b
+
+The three refutations below are against these forms. The spine's fix (the commit after
+ae5daec9): the in-flight value is typed by the result's flight (`GoodF`, `flightOf` in
+`Statements.lean`, `WF.lean`), and `popFrame_step_stmt` takes `htemps` (the popped frame's
+temporaries hold no borrow). The refutations are kept as the record of why. -/
+
+def readPlace_step_stmt_old (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState)  (p : Place) (v : Value) (copy : Bool)
+    (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st)
+    (hcopy : K.D.copy (K.D.placeDecl (scopeOf (SM' K ρ st)) p) = copy)
+    (h : Runs (Ochr.readPlace fuel p) st fuel v st'),
+    ∃ r s', Ochr.Meaning.readPlace K φ p copy (SM' K ρ st) = some (r, s') ∧
+      meanV K ρ φ r.2 v = r.1 ∧
+      Below (MState.mean K.dm K.C K.Γ ρ (st'.withTemp v)) s'.toMean ∧ Good K.dm K.C K.Γ ρ (st'.withTemp v)
+
+def borrowPlace_step_stmt_old (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState)  (p : Place) (v : Value)
+    (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st)
+    (h : Runs (Ochr.borrowPlace fuel p) st fuel v st'),
+    ∃ r s', Ochr.Meaning.borrowPlace K φ p (SM' K ρ st) = some (r, s') ∧
+      meanV K ρ φ r.2 v = r.1 ∧
+      Below (MState.mean K.dm K.C K.Γ ρ (st'.withTemp v)) s'.toMean ∧ Good K.dm K.C K.Γ ρ (st'.withTemp v)
+
+def popFrame_step_stmt_old (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState)
+    (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st) (h : Runs (Ochr.popFrame fuel) st fuel () st'),
+    Below (MState.mean K.dm K.C K.Γ ρ st') (MState.mean K.dm K.C K.Γ ρ st) ∧
+    Good K.dm K.C K.Γ ρ st'
+
+
 open Ochr Ochr.Meaning Ochr.Meaning.Steps
 
 def outSt {α : Type} (f : M α) (st : MState) (fuel : Nat) : MState :=
@@ -112,7 +143,7 @@ end
 (with `K.Δ` read off `Ωp`, as the statement assumes): popping frame 1 discards `borrow_0`
 without ending it. -/
 theorem popFrame_step_false (K : RunCtx) (ρ : Assignment) (φ : Future)
-    (hΔ : K.Δ = deltaOf K ρ φ Ωp) : ¬ popFrame_step_stmt K ρ φ 10 := by
+    (hΔ : K.Δ = deltaOf K ρ φ Ωp) : ¬ popFrame_step_stmt_old K ρ φ 10 := by
   intro hstep
   obtain ⟨_, hgood⟩ := hstep Ωp _ (good_Ωp ..) hΔ (runs_out _ _ _ (by decide +kernel))
   exact (not_wf2_of _ (by decide +kernel)) hgood.2.2.2.1
@@ -215,7 +246,7 @@ end
 /-- `borrowPlace_step_stmt` is false at fuel 10, for every run context, assignment and future:
 borrowing `a : Nat ↦ 0` gives a state `st'.withTemp v` that is not `Good`. -/
 theorem borrowPlace_step_false (K : RunCtx) (ρ : Assignment) (φ : Future)
-    (hΔ : K.Δ = deltaOf K ρ φ S1) : ¬ borrowPlace_step_stmt K ρ φ 10 := by
+    (hΔ : K.Δ = deltaOf K ρ φ S1) : ¬ borrowPlace_step_stmt_old K ρ φ 10 := by
   intro hstep
   obtain ⟨_, _, _, _, _, hgood⟩ := hstep S1 _ (.var 0) _ (good_S1 ..) hΔ (runs_out _ _ _ (by decide +kernel))
   exact not_good_Sb _ _ _ _ hgood
@@ -355,7 +386,7 @@ theorem shape_Sr (p : Pos) (l : Nat) (h : Env.shape Sr.env p = some l) : p = .te
 /-- `readPlace_step_stmt` is false at fuel 10: reading `t : &Nat ↦ borrow_0 0` moves the borrow
 into an untyped temporary, and the lender `a : Nat ↦ loan_0` is no longer typed. -/
 theorem readPlace_step_false (K : RunCtx) (ρ : Assignment) (φ : Future)
-    (hΔ : K.Δ = deltaOf K ρ φ (S23 (.loan 0))) : ¬ readPlace_step_stmt K ρ φ 10 := by
+    (hΔ : K.Δ = deltaOf K ρ φ (S23 (.loan 0))) : ¬ readPlace_step_stmt_old K ρ φ 10 := by
   intro hstep
   have hg : Good K.dm K.C K.Γ ρ (S23 (.loan 0)) :=
     good_S23 _ _ _ _ _ (by decide +kernel) (by decide +kernel) (fun _ _ h => by cases h) rfl
