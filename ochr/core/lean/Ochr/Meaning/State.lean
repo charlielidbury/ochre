@@ -65,17 +65,24 @@ structure Mean : Type 3 where
 section
 variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl)
 
+/-- The structured hint of `D(ā)`, and of `&D(ā)` (a borrow's content is read at the content
+type's hint: a holder `t : &List(Nat) ↦ borrow_ℓ Nil` reads `Nil` with `List`'s parameters;
+without this the holder meant `err`, no state holding such a borrow was `Good`, and [End]'s
+statement was vacuous there — the spine's finding while attacking `endBorrow_step`). -/
+noncomputable def _root_.Ochr.Value.tyData (ρ : Assignment) : Value → Option (String × List Sem)
+  | .tInd n args =>
+    match Γ.find? (·.name == n) with
+    | some d => some (n, Value.meanParams dm C Γ ρ (fun _ => .err) d 0 [] args)
+    | none => none
+  | .tRef T => Value.tyData ρ T
+  | _ => none
+
 /-- A stored type value as the run knows it: its meaning, and for `D(ā)` its declaration and
 parameters' meanings (the structured hint, D8 revised); shapes of stored Π-types are the
 run's business (`piShapeOf`). Read under the constant future (docs/27 Lemma 5). -/
 noncomputable def _root_.Ochr.Value.tyS (ρ : Assignment) (T : Value) : TyS :=
   { m := (Value.mean dm C Γ ρ (fun _ => .err) (.plain .err) T).asTy,
-    data := match T with
-      | .tInd n args =>
-        match Γ.find? (·.name == n) with
-        | some d => some (n, Value.meanParams dm C Γ ρ (fun _ => .err) d 0 [] args)
-        | none => none
-      | _ => none }
+    data := Value.tyData dm C Γ ρ T }
 
 /-- The type a position's value is read at (docs/31 D8): the binding's stored type, or `err` for
 a temporary or an untyped slot. Types are read under the constant future, since no stored type
