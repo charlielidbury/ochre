@@ -1217,7 +1217,11 @@ theorem freshLoan_fresh (s : SState) (hs : s.ShapeBelow) :
 theorem shapeSub_pushBind (s : SState) (b : SBinding) : ShapeSub (s.pushBind b) s := ShapeSub.refl s
 theorem shapeSub_pushTemp (s : SState) (v : SVal) : ShapeSub (s.pushTemp v) s := ShapeSub.refl s
 theorem shapeSub_pushFrame (s : SState) : ShapeSub s.pushFrame s := ShapeSub.refl s
-theorem shapeSub_dropLast (s : SState) : ShapeSub s.dropLast s := ShapeSub.refl s
+theorem shapeSub_dropLast (s : SState) : ShapeSub s.dropLast s :=
+  ⟨fun p l h => by
+    simp only [SState.dropLast] at h
+    split at h <;> split at h <;> simp_all,
+   rfl⟩
 
 theorem nextLoan_setAt (s : SState) (p : Pos) (v : SVal) : (s.setAt p v).nextLoan = s.nextLoan := by
   cases p <;> rfl

@@ -4,7 +4,9 @@ import Ochr.Meaning.Mono
 # D14's holder invariant, and the missing half of (WF6)
 
 * `DropHolderCounterexample`: D14's "every live label has exactly one holder, from creation to
-  its end" is not kept by `run`'s `.letIn` clause. Its [Drop] ends `T.label`, the label of the
+  its end" was not kept by `run`'s `.letIn` clause at 5dc7710b (fixed since: the drop ends the
+  label the position holds, and `dropLast` clears the entry; `dropped_no_resurrect` is the
+  positive check). Its [Drop] ends `T.label`, the label of the
   bound *type*; when the body re-pointed the binding (`x := &b` at a root makes `x` the holder of
   `b`'s label, D13), the label `x` holds at the drop is a different one, which is not ended, and
   `dropLast` removes the position without clearing its shape entry. The label then has no live
@@ -43,23 +45,28 @@ theorem positions_dropped : dropped.positions = [] := by
   simp [SState.dropLast, SState.positions, s₀, SState.topIdx,
     Std.Legacy.Range.forIn_eq_forIn_range', Std.Legacy.Range.size]
 
-/-- **Label `1` leaves the live set without being ended** (nothing fixed `b`'s final content),
-and **a fresh binding at the same position resurrects it**: the new binding holds `1`, a borrow it
-never made. So "every live label has exactly one holder, from creation to its end" fails across
-`.letIn`. Fix: end the label the position holds at the drop (`s.shape pos`), not `T.label`, and
-clear the shape entry of every position `dropLast`/`popFrame` removes. -/
-theorem dropped_resurrects (b : SBinding) :
-    1 ∉ dropped.liveLabels ∧ 1 ∈ (dropped.pushBind b).liveLabels := by
-  refine ⟨fun h => ?_, ?_⟩
+/-- **At 5dc7710b this was a counterexample**: label `1` left the live set without being ended
+(nothing fixed `b`'s final content), and a fresh binding at the same position resurrected it as a
+holder of a borrow it never made, so "every live label has exactly one holder, from creation to
+its end" failed across `.letIn`. **With the fix** (the drop ends the label the position holds,
+`run`'s `.letIn`, and `dropLast` clears the removed position's shape entry) the second half is
+now the positive check: nothing is resurrected. (The first half is unchanged: this file's
+`dropped` still applies the *old* drop, ending `0`, to exhibit the state the fix must handle.) -/
+theorem dropped_no_resurrect (b : SBinding) :
+    1 ∉ dropped.liveLabels ∧ 1 ∉ (dropped.pushBind b).liveLabels := by
+  refine ⟨fun h => ?_, fun h => ?_⟩
   · obtain ⟨p, hp, _⟩ := (SState.mem_liveLabels _ _).mp h
     rw [positions_dropped] at hp
     cases hp
-  · refine (SState.mem_liveLabels _ _).mpr ⟨.bind 0 0, ?_, by rw [dropped, endLabel_s₀]; rfl⟩
+  · obtain ⟨p, hp, hs⟩ := (SState.mem_liveLabels _ _).mp h
     have : (dropped.pushBind b).positions = [.bind 0 0] := by
       rw [dropped, endLabel_s₀]
       simp [SState.dropLast, SState.pushBind, SState.positions, s₀,
         SState.topIdx, Std.Legacy.Range.forIn_eq_forIn_range', Std.Legacy.Range.size]
-    rw [this]; simp
+    rw [this] at hp
+    simp at hp; subst hp
+    rw [dropped, endLabel_s₀] at hs
+    simp [SState.dropLast, SState.pushBind, s₀, SState.topIdx] at hs
 
 end DropHolderCounterexample
 
@@ -134,14 +141,14 @@ theorem callOfL_readsBelow.{u} (L : Lvl.{u}) (ps : List PiParam) (out : PiOut) (
     (h : callOfL L ps out fv args s = some ((r, T), s')) : s'.ReadsBelow := by
   unfold callOfL at h
   try dsimp only at h
-  have hs₀ := SState.readsBelow_foldl_takeLabel hs (args.filterMap (·.2.label))
+  have hs₀ := SState.readsBelow_foldl_takeLabel hs ((((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).filterMap id)
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨_, rfl⟩ := h
     exact SState.readsBelow_mapVals_updList hs₀ _
   · simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨_, rfl⟩ := h
-    generalize (args.filterMap fun a : Res => a.2.label).foldl SState.takeLabel s = s₀ at hs₀ ⊢
+    generalize ((((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).filterMap id).foldl SState.takeLabel s = s₀ at hs₀ ⊢
     refine SState.readsBelow_pushTempShaped ?_ _ _ fun _ ⟨_, _, hne⟩ => absurd rfl hne
     intro p l ⟨φ, x, hne⟩
     show l < s₀.nextLoan + 1
