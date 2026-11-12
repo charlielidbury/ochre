@@ -118,9 +118,19 @@ def WF8 (st : MState) : Prop :=
   (∀ T ∈ st.absTy.toList, match T with | .tRef A => ¬ A.typeHasRef | T => ¬ T.typeHasRef) ∧
   (∀ G, st.goal = some G → match G with | .tRef A => ¬ A.typeHasRef | G => ¬ G.typeHasRef)
 
+/-- (WF9) A loan outside a sealed program sits at a typed position. A lender's value is read
+at its position's hint; a hint-dependent content written back by [End] (a constructor with
+unrecorded parameters, `Nil`) means `err` at an untyped position but its value at the holder's
+`&D(ā)`, so `endBorrow_step` would fail there (the spine's finding, item 3 of docs/31's plan).
+Temporaries hold values in flight, which a read's [Access] has made loan-free, and every lender
+is a binding with a stored type; provers show the clause is kept, and a step that cannot keep
+it is a checker finding. -/
+def WF9 (ρ : Assignment) (st : MState) : Prop :=
+  ∀ p ∈ allPos st.env, (valAt st.env p).outerLoans ≠ [] → ∃ T, MState.posTyM dm C Γ ρ st p = some T
+
 /-- Well-formedness, part (c) of the main theorem. -/
 def WF (ρ : Assignment) (st : MState) : Prop :=
-  WF1 st.env ∧ WF2 st.env ∧ WF3 st.env ∧ WF4 st.env ∧ WF6 st ∧ WF7 dm C Γ ρ st ∧ WF8 st
+  WF1 st.env ∧ WF2 st.env ∧ WF3 st.env ∧ WF4 st.env ∧ WF6 st ∧ WF7 dm C Γ ρ st ∧ WF8 st ∧ WF9 dm C Γ ρ st
 
 /-! ## Typed assignments, typed futures, membership -/
 
