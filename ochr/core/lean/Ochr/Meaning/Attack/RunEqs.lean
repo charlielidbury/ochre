@@ -32,7 +32,10 @@ theorem run_letIn (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (x :
         let ((v, T), s) ← run K ρ φ (.plain .err) u s
         let s := pushBindShaped s { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u }
         let ((r, R), s) ← run K ρ φ hint w s
-        let s := match T.label with | some l => s.endLabel l | none => s
+        let held : Option Nat := match s.env.getLast? with
+          | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
+          | none => none
+        let s := match held with | some l => s.endLabel l | none => s
         some ((r, R), s.dropLast)) := rfl
 
 theorem meanV_abs (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (σ : Nat) :
@@ -179,8 +182,11 @@ theorem callOf_S₂ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) (m :
     callOf (Sem.el0 GCar F, (⟨m, some (psG, outG), none, none⟩ : TyS))
         [(Sem.el0 Nat n, { b.ty with label := some k })] (S₂ b k c)
       = some ((lvl0.enc (.ty0 Nat) (F n).val.1, (⟨.ty0 Nat, none, some (k+1), none⟩ : TyS)), S₃ F n b k) := by
-  simp only [callOf, callOfL, List.map, List.filterMap, List.foldl]
-  rw [takeLabel_S₂, applyFnL_G]
+  simp only [callOf, callOfL, List.map, List.filterMap, List.foldl, List.zip, List.zipWith, List.filter, psG,
+    id, Option.map, List.filter_cons_of_pos]
+  have hA := applyFnL_G F n
+  simp only [psG] at hA
+  rw [takeLabel_S₂, hA]
   simp only [SState.freshLoan, SState.mapVals, SState.pushTempShaped, SState.pushTemp, SState.topIdx,
     List.zipIdx, List.map, List.zip, List.zipWith, Future.updList, List.foldl, List.length, List.modify,
     List.getLast?, Option.some.injEq, List.append, List.modifyTailIdx, List.modifyHead, Nat.add_sub_cancel,
@@ -195,6 +201,7 @@ theorem callOf_S₂ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) (m :
     all_goals first
       | rfl
       | (funext φ'; cases lvl0.dec (.ty0 Nat) (φ' (k+1)) <;> rfl)
+      | (funext φ'; cases lvl0.dec (.ty0 Nat) (φ' (k+1)) <;> simp [Future.updList, Future.upd_same])
       | (trace_state; sorry)
 
 /-- Level 0's encoding and decoding at `Nat`, by definition. -/

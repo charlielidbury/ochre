@@ -153,10 +153,16 @@ noncomputable def closedFuture (s : SState) (φ : Future) : Future :=
       | some r => ψ.upd l (s.valAt r ψ)
       | none => ψ) ψ) φ
 
-/-- Drop the last binding of the top frame ([Let]'s drop; its borrows, if any, are ended by the
-reads that depend on them). -/
+/-- Drop the last binding of the top frame ([Let]'s drop; the borrow it holds is ended by the
+drop, `run`'s `.letIn`). Its shape entry is cleared with it (mono-lemmas'
+`DropHolderCounterexample`: a stale entry would make the next binding at that position a holder of a
+borrow it never made). -/
 def dropLast (s : SState) : SState :=
-  { s with env := s.env.modify s.topIdx fun fr => { fr with binds := fr.binds.dropLast } }
+  let removed : Option Pos := match s.env.getLast? with
+    | some fr => some (.bind s.topIdx (fr.binds.length - 1))
+    | none => none
+  { s with env := s.env.modify s.topIdx fun fr => { fr with binds := fr.binds.dropLast },
+           shape := fun p => if some p = removed then none else s.shape p }
 
 end SState
 
