@@ -40,6 +40,7 @@ import Ochr.Meaning.Program
 import Ochr.Meaning.DecisionsInst
 import Ochr.Meaning.DecideScope
 import Ochr.Meaning.Regress.CE5_flipped
+import Ochr.Meaning.Regress.CloseCallStmt
 import Ochr.Meaning.Regress.CE4_flipped
 
 /-!
