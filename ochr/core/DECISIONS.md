@@ -688,3 +688,18 @@ On main the same block gives:
 - the rest the same.
 
 A before/after dump of every row with its reason (main 7ae8cf00 against the fix): all 1,980 earlier rows identical, reasons included; the 43 new rows are `PiSorts`', all as expected; no row anywhere has an INTERNAL message. Rebased onto acc144e6 (D84 amendment, `jdMoves`' constructor clause): the full build is green, and a before/after dump of the blocks that commit touches and of those near this fix (`Moves`, `Equality`, `Moves84` with its 6 new rows, `Universes`, `Sorts`, `BorrowTypes`, `FnBorrows`) is identical outside `PiSorts`, whose 43 rows are as above. So no existing verdict changed: the suite has no Π-type term over or into anything but `Type₀`. Total 1,986 → 2,029 (1,980 → 2,023 on 7ae8cf00). Census: site 25 and a D86 section.
+
+## D87. A stuck block's arm may not return a borrow of a place the block takes by move (2026-11-13) [lane: joinmv]
+Found by the runtime-j lane (probe `ochr/core/probes/runtime/JoinHitRepro.lean`, Target B). Consider `JoinMv (n p q : Nat) : Nat := (let r = match n { Z => (let z = p; &q), S _ => &p }; *r := 1; q)`.
+- *At the generic call* the non-tail match closes off as a block that takes `p` by move, since arm `Z` moves it (K1, D84's join). Arm `S` returns `&p`, a borrow of the block's own by-value parameter. The block's [Return] checked only that its result and lent places were whole (D76), not D65's in-flight rule, so it accepted the borrow.
+- *At a known constructor* the direct run's [Join] drops `p` at the end of arm `S` while the arm's result borrows it, which is an error.
+- So `JoinMv` was accepted, while `AtS : Nat := JoinMv(1, 0, 0)` was rejected, and the closed run of the accepted definition at `n = 1` errs. That breaks the corollary that an accepted definition means an element of its type (`ochr/docs/18`), and the lemma that the derivation is at least as strict as the run (docs/29).
+
+**Rule.** At each arm's end, a stuck block's [Return] also rejects an arm whose result borrows a place the block takes by move (`closeBlock`). The check is `dropAtJoin`'s own: a live loan in the place whose borrow is held by a temporary, the arm's result. It skips copies, proofs, places already moved and borrow variables, whose reborrows land in the owner (D67). Its message is the direct path's, "[Join] p is moved by another arm of the match, so it is dropped at the end of this one, while the arm's result borrows it", so the two paths reject alike. It is a real function's return check (D65) applied to the block's by-value parameters. RULES §3 (stuck blocks) and the paper appendix ([Block]) say so.
+
+**Evidence.** A full lake build and a before/after dump of every row with its reason, main f84669ea against this change:
+- **New tests** (`Equality.Moves84`): `JoinMv` is rejected with the message above. Its twin `JoinLent` (arm `Z` clones `p`, so the block takes `p` by `&`) is accepted.
+- **One suite program changes verdict:** `ClosingOff.MoveBorrowBlk`, accepted before and rejected now with the [Join] message. It is the hole's exact shape: its `Id`'s side is `match n2 { Z => (*x0 := n1; &*x0), S _ => &n1 }`. Its comment called it a fail-safe incompleteness ("every instance is fine"), which stopped being true with D84, where the direct run at `n2 = 1` drops `n1` under the borrow. It is now a `reject def`.
+- **Its dependant** `MoveBorrowSplit` now cites an unknown constant. `MoveBorrowCode` keeps its verdict and message.
+- **The probe** asserts the new verdicts. It is silent: `JoinMv` is rejected with the message, and `JoinLent`'s closed runs return at `n = 0` and `n = 1`, directly, through a caller, and in the checker's untyped run.
+

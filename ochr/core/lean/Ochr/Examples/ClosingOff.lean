@@ -392,18 +392,14 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
     h
   )
 
-  -- Known incompleteness, fail-safe (seed 10 case 8706). A stuck block takes a place by move
-  -- if any arm moves it, so the block over `n2` takes `n1` by move (arm `Z` moves it into `*x0`),
-  -- and arm `S`'s `&n1` then returns a borrow of the block's own parameter. Re-running the
-  -- sealed program after the split on `n2` errors ([Drop] of `n1` while the result borrows
-  -- it), so `MoveBorrowSplit` is rejected although every instance is fine. Since D68 a
-  -- statement's read moves, so statements reach it too (with `erasedMoves` off it is
-  -- accepted); `MoveBorrowCode` is its runtime-code twin, rejected the same way before and
-  -- after D68. In a statement only `Id`'s typed observation (D63) closes the side's match off,
-  -- so with `typedObs` off it is accepted too (an `Eq` side or a call argument re-runs as one
-  -- sealed program). Candidate rule change: a capture-mode rule for a place one arm moves and
-  -- another borrows (notes/lean-checker.md §57)
-  def MoveBorrowBlk (x0 : &Nat) (n1 : Nat) (n2 : Nat) : Prop :=
+  -- Seed 10 case 8706. A stuck block takes a place by move if any arm moves it, so the block
+  -- over `n2` takes `n1` by move (arm `Z` moves it into `*x0`), and arm `S`'s `&n1` would return
+  -- a borrow of the block's own parameter, which dies where the arm returns. Until D87 the
+  -- block's [Return] let that borrow out: `MoveBorrowBlk` was accepted, and only the split
+  -- (`MoveBorrowSplit`) or a direct run at `n2 = 1` met the [Join] drop of `n1` (D84). D87
+  -- rejects it where the block forms, with the same message as the direct path, so both paths
+  -- agree; `MoveBorrowCode` is its runtime-code twin
+  reject def MoveBorrowBlk (x0 : &Nat) (n1 : Nat) (n2 : Nat) : Prop :=
     Id(Unit, (let r = match n2 { Z => (*x0 := n1; &*x0), S _ => &n1 }; ()), (let m = n1; ()))
   reject def MoveBorrowSplit (x0 : &Nat) (n1 : Nat) (n2 : Nat) (h : MoveBorrowBlk(x0, n1, n2)) : Unit :=
     match n2 { Z => (), S _ => () }

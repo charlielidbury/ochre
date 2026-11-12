@@ -355,6 +355,12 @@ ochr Moves84 uses Nats {
   -- ended first), on the generic call as at an instance where the borrow is still live
   def LentField (k : Nat) (q : Pr) : Id(Unit, (let r = &q; match k { Z => (let y = q.0; ()), S _ => () }; ()), (let r = &q; let y = q.0; ())) := refl
   reject def LentWhole (k : Nat) (q : Pr) : Id(Unit, (let r = &q; match k { Z => (let y = q.0; ()), S _ => () }; ()), (let r = &q; let y = q; ())) := refl
+  -- A stuck block takes `p` by move (arm `Z` moves it), so arm `S` may not return a borrow of
+  -- it: the block's parameter dies where the arm returns, as a function's does (D65), and at a
+  -- known constructor the join drops `p` at the end of arm `S` (D87)
+  reject def JoinMv (n : Nat) (p : Nat) (q : Nat) : Nat := (let r = match n { Z => (let z = p; &q), S _ => &p }; *r := 1; q)
+  -- twin of JoinMv: no arm moves `p`, so the block takes it by `&`, and a borrow of it may leave
+  def JoinLent (n : Nat) (p : Nat) (q : Nat) : Nat := (let r = match n { Z => (let z = clone(p); &q), S _ => &p }; *r := 1; q)
   -- K1(g): a place one arm uses whole (here borrows) and another moves part of is moved whole
   def WholeUse (k : Nat) (q : Pr) : Id(Unit, (match k { Z => (let y = q.0; ()), S _ => (let r = &q; ()) }), (let r = &q; let y = q; ())) := refl
   reject def WholeUseField (k : Nat) (q : Pr) : Id(Unit, (match k { Z => (let y = q.0; ()), S _ => (let r = &q; ()) }), (let r = &q; let y = q.0; ())) := refl
@@ -371,6 +377,7 @@ ochr Moves84 uses Nats {
   ("KillRead", "[Id-typestate] a side of Id ends the borrow y"),
   ("KillTemp", "[Id-typestate] a side of Id ends a borrow that a value in flight around the Id holds"),
   ("CP", "[Id-typestate] the right side of Id moves n, the left side does not"),
+  ("JoinMv", "[Join] p is moved by another arm of the match, so it is dropped at the end of this one, while the arm's result borrows it"),
   ("CR", "[Read] n was moved out or its borrow ended (reading ⊥)"),
   ("C1", "[Id-typestate] the right side of Id moves n, the left side does not"),
   ("RefillOne", "[Read] x was moved out or its borrow ended (reading ⊥)"),

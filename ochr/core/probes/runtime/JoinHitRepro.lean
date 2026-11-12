@@ -27,35 +27,39 @@ Mechanism (from `cfg.derivation`'s trace of `JoinMv`):
   `n`) is accepted, while the instance `AtS : Nat := JoinMv(1, 0, 0)` is rejected with that same
   message.
 So docs/29's lemma that the derivation is at least as strict as the run fails here, and not at a
-one-element type: these are `Nat` places. The fix (not made here) would make `closeBlock` reject an
-arm whose result borrows a place the block takes by move.
+one-element type: these are `Nat` places. **Fixed by D87.** `closeBlock` now rejects an arm whose result borrows a place the block takes by
+move, with the direct path's [Join] message, so `JoinMv` is rejected where its block forms and
+both paths agree. The twin `JoinLent`, where no arm moves `p` (so the block takes it by `&`),
+is accepted, and its closed runs return at both `n`.
 
 Run: `lake env lean ../probes/runtime/JoinHitRepro.lean` from `ochr/core/lean`, after
-`lake build Ochr`. Expected output: none (silent). The `ochr` block asserts the three verdicts
-(`JoinMv`, `Caller` accepted, `AtS` rejected) and the `#guard`s assert the runtime's results; any
-output means the behaviour changed (a fix makes `JoinMv` rejected, so the block reports it).
+`lake build Ochr`. Expected output: none (silent). The `ochr` block asserts the verdicts and the
+`#guard`s assert the rejection's message and the runtime's results; any output means the
+behaviour changed.
 -/
 
 ochr JoinHit {
-  def JoinMv (n : Nat) (p : Nat) (q : Nat) : Nat := (let r = match n { Z => (let z = p; &q), S _ => &p }; *r := 1; q)
-  def Caller (n : Nat) : Nat := JoinMv(n, 0, 0)
-  reject def AtS : Nat := JoinMv(1, 0, 0)
+  reject def JoinMv (n : Nat) (p : Nat) (q : Nat) : Nat := (let r = match n { Z => (let z = p; &q), S _ => &p }; *r := 1; q)
+  def JoinLent (n : Nat) (p : Nat) (q : Nat) : Nat := (let r = match n { Z => (let z = clone(p); &q), S _ => &p }; *r := 1; q)
+  def Caller (n : Nat) : Nat := JoinLent(n, 0, 0)
+  def AtS : Nat := JoinLent(1, 0, 0)
 }
+
+-- JoinMv is rejected where its block forms, with the direct path's [Join] message (D87)
+#guard (run "JoinHit" JoinHit).rejectedWith [
+  ("JoinMv", "[Join] p is moved by another arm of the match, so it is dropped at the end of this one, while the arm's result borrows it")]
 
 def sig : List GDef × List IndDecl :=
   let p := libOf {} 2000000 JoinHit ++ JoinHit.decls
   globalsAfter {} (p.filterMap fun d => (resolveProgram p d).toOption)
 
-def errs : Outcome Value → Bool
-  | .fail (.error m _) => "[Join] p is moved by another arm".isPrefixOf m
+def returns (k : Nat) : Outcome Value → Bool
+  | .ok v _ => v == (List.range k).foldl (fun v _ => .succ v) .zero
   | _ => false
 
--- the checker accepts JoinMv (the `ochr` block above asserts it, with Caller and AtS) ...
-#guard ((run "JoinHit" JoinHit).rows.find? (·.name == "JoinMv")).any (·.verdict matches .accepted)
--- ... and the runtime errs at n = 1, directly and through Caller
-#guard errs (runCall sig.1 sig.2 "JoinMv" [.succ .zero, .zero, .zero])
-#guard errs (runCall sig.1 sig.2 "Caller" [.succ .zero])
--- so does the checker's own untyped run of the same call
-#guard errs (closedCall sig.1 sig.2 "JoinMv" [.succ .zero, .zero, .zero] false)
--- at n = 0 it runs to 1
-#guard match runCall sig.1 sig.2 "JoinMv" [.zero, .zero, .zero] with | .ok v _ => v == .succ .zero | _ => false
+-- the twin's closed runs return: at n = 1 arm S writes 1 into p and returns q = 0, at n = 0 it
+-- writes 1 into q
+#guard returns 0 (runCall sig.1 sig.2 "JoinLent" [.succ .zero, .zero, .zero])
+#guard returns 1 (runCall sig.1 sig.2 "JoinLent" [.zero, .zero, .zero])
+#guard returns 0 (runCall sig.1 sig.2 "Caller" [.succ .zero])
+#guard returns 0 (closedCall sig.1 sig.2 "JoinLent" [.succ .zero, .zero, .zero] false)

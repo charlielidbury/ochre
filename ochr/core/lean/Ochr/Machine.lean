@@ -3480,6 +3480,19 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
             pure (b.val.isBorrow || (b.ty matches some (.tRef _)))
           | _, _ => pure false
         if isLent then lent := lent ++ [q]
+      -- D87: a place the block takes by move is its by-value parameter, which dies where the
+      -- arm returns, so the arm's result (held as a temporary) may not borrow it: D65's
+      -- in-flight check at a function's return, and what [Join] checks when the match runs
+      -- directly (`dropAtJoin`), with the same message, so both paths reject alike
+      for (q, mode) in capsS do
+        if mode == 2 then
+          match ← content? q with
+          | none | some .bot | some .proof | some (.borrow _ _) => pure ()
+          | some v =>
+            unless ← copyRead fuel' q do
+              for l in liveLoansIn (← get).env v do
+                if let some (.temp _ _) := findBorrow (← get).env l then
+                  err s!"[Join] {← ppPlace q} is moved by another arm of the match, so it is dropped at the end of this one, while the arm's result borrows it"
       bodyReturns fuel' "a stuck match's arm returns it" av T lent "lent to a stuck match, whose arm returns with it")
       (set cur)
     set cur
