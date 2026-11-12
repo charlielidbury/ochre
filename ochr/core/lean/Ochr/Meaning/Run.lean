@@ -358,6 +358,12 @@ noncomputable def run (hint : TyS) : Term → SM Res
         { hint with shape := (piShapeOf (stateOf 0 (capsState (capsVals caps) (capsTys rd))) t).map fun sh => (sh.ps, sh.out) }
       | .gfn n => (K.C.global n).2
       | .abs σ => { hint with shape := (K.Δ σ).shape, data := (K.Δ σ).data }
+      -- a sealed callee (D39: the checker calls a sealed function value) carries the shape of
+      -- its program's result (the spine's finding at the general closeCall_step, docs/31 item
+      -- 3); its labels are its own, so only the shape is taken
+      | .sealed t => match run hint t (emptyState (t.loans.foldl max 0 + 1)) with
+        | some ((_, R), _) => { hint with shape := R.shape }
+        | none => hint
       | _ => hint
     some ((meanV hint v, T), s)
   | .sort l => pure (.ty (.univ l), .plain (.univ (sortSucc l)))
