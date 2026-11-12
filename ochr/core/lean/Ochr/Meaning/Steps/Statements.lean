@@ -375,16 +375,21 @@ meaning is a member of its Π-type. -/
 def recCheck_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st : MState) (fv : Value) (fT : Value)
     (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st)
+    -- `fT` is the value's own declared Π-type, as the checker reads it (the pilot form took it
+    -- free: `fT := .zero` refuted it, the defect class of `Regress/CloseCallStmt.lean`)
+    (hfT : ∃ st', Runs (Ochr.funType? fuel fv none) st fuel (some fT) st')
     (hacc : ∃ fuel st', Runs (Ochr.checkFix fuel fv [] (match fv with | .clo _ t _ => t | _ => .tt)) st fuel () st'),
     meanV K ρ φ (.plain .err) fv ∈ₛ (meanV K ρ φ (.plain .err) fT).asTy
 
 /-- [Match] on `Nat` with a known constructor (`evalMatch`): below the run's `.matchNat` clause. -/
 def evalMatch_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (p : Place) (z s : Term)
-    (expected : Option Value) (v : Value) (T? : Option Value) (hint : TyS)
+    (expected : Option Value) (v : Value) (T? : Option Value)
     (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st)
     (h : Runs (Ochr.evalMatch fuel typed p z s expected) st fuel (v, T?) st'),
-    ∃ r s', run K ρ φ hint (.matchNat p z s) (SM' K ρ st) = some (r, s') ∧
+    -- the run's hint is the checker's expected type (a free hint against `expected` was refutable
+    -- on a hint-dependent arm value)
+    ∃ r s', run K ρ φ (hintM K ρ expected) (.matchNat p z s) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v ⊑ r.1 ∧
       Below (MState.mean K.dm K.C K.Γ ρ st') s'.toMean ∧ Good K.dm K.C K.Γ ρ st'
 
@@ -428,10 +433,12 @@ def split_coverage_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
 with the record `n := σ`; under `ρ` extended at `σ` by `⟦n⟧`, the state means the same and the
 assignment is typed (the path condition). -/
 def generalizeNeutral_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st st' : MState)  (p : Place) (n : Value) (σ : Nat) (hint : TyS)
+  ∀ (st st' : MState)  (p : Place) (n : Value) (σ : Nat)
     (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st)
     (h : Runs (Ochr.generalizeNeutral fuel p n) st fuel σ st'),
-    let ρ' := ρ.ext σ (meanV K ρ φ hint n)
+    -- `n` is read at the type the checker gives `σ` (as `refine_step_stmt`'s `hσ`; a free hint
+    -- was refutable: the place read `n` at its own hint, `σ` at the free one)
+    let ρ' := ρ.ext σ (meanV K ρ φ (.plain (MState.absTyM K.dm K.C K.Γ ρ st' σ)) n)
     Exact (MState.mean K.dm K.C K.Γ ρ' st') (MState.mean K.dm K.C K.Γ ρ st) ∧
     Good K.dm K.C K.Γ ρ' st'
 
@@ -442,11 +449,11 @@ split less fine than the arm's own is an over-approximation). The arms are given
 match term `mt`; `B?` is the match's annotated type. -/
 def closeBlock_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (mt : Term) (arms : List BlockArm)
-    (B? : Option Value) (v : Value) (T? : Option Value) (hint : TyS)
+    (B? : Option Value) (v : Value) (T? : Option Value)
     (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st)
     (hmt : mt matches .matchNat .. | .matchInd .. | .prim "J" _)
     (h : Runs (Ochr.closeBlock fuel mt arms B?) st fuel (v, T?) st'),
-    ∃ r s', run K ρ φ hint mt (SM' K ρ st) = some (r, s') ∧
+    ∃ r s', run K ρ φ (hintM K ρ B?) mt (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v ⊑ r.1 ∧
       Below (MState.mean K.dm K.C K.Γ ρ st') s'.toMean ∧ Good K.dm K.C K.Γ ρ st'
 
