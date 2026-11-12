@@ -139,6 +139,15 @@ theorem good_Ωp : Good dm C Γ ρ Ωp := by
     · intro G hG; simp [Ωp] at hG
 end
 
+/-- **The fixed statement excludes `Ωp`**: its popped frame's temporary holds a borrow, so
+`htemps` fails. (`popFrame_step_stmt` at a state whose top temporaries are borrow-free is a
+positive obligation for the provers, not a counterexample.) -/
+theorem popFrame_htemps_fails_Ωp :
+    ¬ ∀ fr, Ωp.env[Ωp.env.size - 1]? = some fr → ∀ v ∈ fr.temps, v.hasBorrow = false := by
+  intro h
+  have := h _ rfl (.borrow 0 .zero) (by simp [Ωp])
+  simp [Value.hasBorrow, Value.anyAtom] at this
+
 /-- `popFrame_step_stmt` is false at fuel 10, for every run context, assignment and future
 (with `K.Δ` read off `Ωp`, as the statement assumes): popping frame 1 discards `borrow_0`
 without ending it. -/
