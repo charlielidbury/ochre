@@ -703,3 +703,28 @@ Found by the runtime-j lane (probe `ochr/core/probes/runtime/JoinHitRepro.lean`,
 - **Its dependant** `MoveBorrowSplit` now cites an unknown constant. `MoveBorrowCode` keeps its verdict and message.
 - **The probe** asserts the new verdicts. It is silent: `JoinMv` is rejected with the message, and `JoinLent`'s closed runs return at `n = 0` and `n = 1`, directly, through a caller, and in the checker's untyped run.
 
+## D88. A constructor value built by an untyped run records its inferred parameters (2026-11-13) [lane: ctor-params]
+Decided by the lead, as step 1 of (B): make values self-describing, for the consistency route.
+- **Before.** A constructor term whose parameters are not written (`Some(n)`, `Cons(h, t)`) was given them by the typed check, which inferred them from the fields' types or the expected type, but only in the type it returned. An untyped run (a called body, a sealed program's re-run, the runtime) inferred them only when its context read the type (D82), and even then it kept them in the type, not the value. Its value was `Some(n)` with no parameters, which means different things at different types. Constructor values recorded their parameters (D49) only when they were typed or written.
+- **Rule.** In an untyped run, a constructor whose parameters are not written reads its fields' types (D82's inference, now always on there) and records the parameters in the value when the fields determine them all (`Machine.evalCtor`). Where they do not, the value records only the parameters written, as before.
+
+**Measured** over the full verdict dump (main ce6b5e97), counting every untyped build of a parameterised inductive's constructor with no parameters written:
+- 17,542 such builds. Before, 17,513 of them had no hint and inferred nothing.
+- With the rule, 17,263 (98.4%) record their parameters. By constructor: SliceOf.MkSlice 8,859, Cell.MkC 7,002, ArrayOf.MkArray 569, Opt.Some 544, List.Cons 147, Pair.Mk 141, Box.MkBox 1.
+- Statically, 143 constructor terms in the suite omit their parameters, against 49 that write them.
+- Verdicts: 0 changes. Messages: 0 changes. The 2,031 earlier rows are identical with their reasons; the 3 new rows are `OptionRuns`' tests.
+- Cost: the full dump took 58–62 s on main and 62–64 s with the rule, under 10% more.
+
+**The residual.** These are the classes whose parameters only the context gives, as typed checking gets them from the expected type:
+- `Dec.Yes`/`Dec.No`, whose fields are proofs, which untyped runs never evaluate: 269 builds. `Yes(refl)` would give only `P := True` anyway. There are 49 source sites, mostly `Word`'s `LeDec`, which `Array` and `Quicksort` use.
+- Phantom parameters: `Functions.Tag` and `Fording.Tag`, 10 builds.
+- Constructors with no fields: `None`, `Nil`, `GBucket`'s empty case. No untyped run in the suite builds one bare, but programs can.
+- Dependent pairs whose function-valued parameter the field types do not determine: `Sig`, `DP`, `DQ`.
+
+Option (2a), giving untyped runs the typed run's hints, is the follow-up prototype.
+
+**Tests** (`Option.lean`, `OptionRuns`):
+- The checker's untyped run and the runtime both build `WrapSome(0)` as `Some[Nat](0)`, where main built `Some(0)` with no parameters.
+- `WrittenNone`'s `None[Nat]` records `Nat` as before.
+- Its twin `BareNone`, a bare `None`, records nothing: the residual, pinned by a `#guard`.
+

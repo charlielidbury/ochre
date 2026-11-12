@@ -2346,10 +2346,10 @@ def evalCtor (fuel : Nat) (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts
   let dep := d.dependent c
   -- one mental model: a proof constructor's arguments are statement positions
   let stmtC ← ctorIsProof ty
-  -- D82: an untyped run reads the fields' types only to infer the parameters of a type its
-  -- context reads
+  -- D82: an untyped run reads the fields' types to infer the parameters of a type its context
+  -- reads; D88: and whenever the parameters are not written, so the value records them
   let want ← wanted
-  let wantFields := typed || (want && pts.isEmpty && np > 0)
+  let wantFields := typed || (pts.isEmpty && np > 0)
   for ((a, (_, FT)), i) in (as.zip fields).zipIdx do
     let fh ← if typed && ((np > 0 && (a matches .ctor .. | .prim "rewrite" _ | .prim "rewriteR" _)) || (a matches .val _)
         || (dep && d.fieldDependent c i))
@@ -2366,7 +2366,11 @@ def evalCtor (fuel : Nat) (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts
     -- D82: its declared type, the inductive at its parameters, when they are written or follow
     -- from the fields' types or the hint
     let T := if want && sol.all (·.isSome) then some (Value.tInd ty (sol.toList.filterMap id)) else none
-    return (if proof then .proof else .ind ty c h evs.toList ws.toList, T)
+    -- D88: the value records the parameters it inferred, so that it is self-describing; where
+    -- its fields do not determine them (a proof field, a phantom parameter, no fields) it
+    -- records the ones written, as before
+    let ps := if pts.isEmpty && sol.all (·.isSome) then sol.toList.filterMap id else evs.toList
+    return (if proof then .proof else .ind ty c h ps ws.toList, T)
   let mut ps := #[]
   for (s, (ph, _)) in sol.toList.zip d.params do
     match s with
