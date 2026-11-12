@@ -95,48 +95,15 @@ theorem posTyM_Ωp (p : Pos) : MState.posTyM dm C Γ ρ Ωp p = none := by
   | temp f i => rfl
   | bind f i => rcases f with _ | _ | f <;> rfl
 
-theorem good_Ωp : Good dm C Γ ρ Ωp := by
+/-- **(WF9) excludes `Ωp`**: its loan sits in an untyped temporary. At 5dc7710b `Ωp` was `Good`
+(`good_Ωp`, since removed) and refuted `popFrame_step_stmt_old`: popping frame 1 discarded
+`borrow_0` without ending it. The fixed statement takes `htemps` (`popFrame_htemps_fails_Ωp`),
+and (WF9) forbids the state outright. -/
+theorem not_wf9_Ωp : ¬ WF9 dm C Γ ρ Ωp := by
+  intro h
   have hA : allPos Ωp.env = [.temp 0 0, .temp 1 0] := by decide +kernel
-  have hV : Env.values Ωp.env = [.loan 0, .borrow 0 .zero] := by rw [Env.values, hA]; rfl
-  refine ⟨⟨fun σ h => by simp [Ωp] at h, fun n σ h => by simp [Ωp] at h, fun σ v h => by simp [Ωp] at h⟩,
-    ⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-  · intro φ _ p T hp; rw [posTyM_Ωp] at hp; cases hp
-  · intro σ h; simp [Ωp] at h
-  · intro G h; simp [MState.goalM, Ωp] at h
-  · refine ⟨?_, ?_⟩
-    · rw [hA]; intro p hp; simp at hp
-      rcases hp with rfl | rfl
-      · show ¬ ((Value.loan 0).hasBorrow = true); decide
-      · show ¬ (Value.zero.hasBorrow = true); decide
-    · rw [hA]; intro p hp q hq l h1 h2; simp at hp hq
-      rcases hp with rfl | rfl <;> rcases hq with rfl | rfl <;> first | rfl | (cases h1 <;> cases h2)
-  · unfold WF2; rw [hV]; refine ⟨?_, ?_⟩
-    · intro v hv l hl; simp at hv
-      rcases hv with rfl | rfl
-      · simp [Value.outerLoans] at hl; subst hl; decide +kernel
-      · simp [Value.outerLoans] at hl
-    · intro l; simp [Value.outerLoans, List.count_cons]; split <;> simp
-  · apply wf3_of_empty; rintro l m ⟨p, hp, w, hw, hl⟩; rw [hA] at hp; simp at hp
-    rcases hp with rfl | rfl
-    · cases hw
-    · cases hw; simp [Value.loans] at hl
-  · unfold WF4; rw [hV]; intro v hv; simp at hv
-    rcases hv with rfl | rfl <;> decide
-  · unfold WF6; rw [hV]; refine ⟨?_, ?_, ?_, ?_, ?_⟩
-    · intro v hv σ h; simp at hv
-      rcases hv with rfl | rfl <;> simp [Value.hasAbs, Value.anyAtom, BEq.beq, Value.beq] at h
-    · intro T hT; simp [Ωp] at hT
-    · intro G hG; simp [Ωp] at hG
-    · simp [Ωp]
-    · intro v hv l hl; simp at hv
-      rcases hv with rfl | rfl <;> simp [Value.loans] at hl <;> simp [hl, Ωp]
-  · intro p T hp; rw [posTyM_Ωp] at hp; cases hp
-  · unfold WF8; rw [hV]; refine ⟨?_, ?_, ?_, ?_⟩
-    · intro v hv; simp at hv
-      rcases hv with rfl | rfl <;> decide
-    · intro f i b hb; rcases f with _ | _ | f <;> simp [Ωp] at hb
-    · intro T hT; simp [Ωp] at hT
-    · intro G hG; simp [Ωp] at hG
+  obtain ⟨T, hT⟩ := h (.temp 0 0) (by rw [hA]; simp) (by decide +kernel)
+  rw [posTyM_Ωp] at hT; cases hT
 end
 
 /-- **The fixed statement excludes `Ωp`**: its popped frame's temporary holds a borrow, so
@@ -148,14 +115,8 @@ theorem popFrame_htemps_fails_Ωp :
   have := h _ rfl (.borrow 0 .zero) (by simp [Ωp])
   simp [Value.hasBorrow, Value.anyAtom] at this
 
-/-- `popFrame_step_stmt` is false at fuel 10, for every run context, assignment and future
-(with `K.Δ` read off `Ωp`, as the statement assumes): popping frame 1 discards `borrow_0`
-without ending it. -/
-theorem popFrame_step_false (K : RunCtx) (ρ : Assignment) (φ : Future)
-    (hΔ : K.Δ = deltaOf K ρ φ Ωp) : ¬ popFrame_step_stmt_old K ρ φ 10 := by
-  intro hstep
-  obtain ⟨_, hgood⟩ := hstep Ωp _ (good_Ωp ..) hΔ (runs_out _ _ _ (by decide +kernel))
-  exact (not_wf2_of _ (by decide +kernel)) hgood.2.2.2.1
+/- `popFrame_step_false` (at 5dc7710b: `¬ popFrame_step_stmt_old K ρ φ 10` from `good_Ωp`) is
+retired with `good_Ωp`: (WF9) excludes `Ωp`. -/
 
 /-! ## `borrowPlace_step_stmt`: a borrow in flight leaves its lender untyped
 
@@ -219,7 +180,7 @@ theorem good_S1 : Good dm C Γ ρ S1 := by
   have hA : allPos S1.env = [.bind 0 0] := by decide +kernel
   have hV : Env.values S1.env = [.zero] := by rw [Env.values, hA]; rfl
   refine ⟨⟨fun σ h => by simp [S1] at h, fun n σ h => by simp [S1] at h, fun σ v h => by simp [S1] at h⟩,
-    ⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    ⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro φ _ p T hp
     obtain ⟨rfl, rfl⟩ := posTyM_S1 dm C Γ ρ p T hp
     have e : Env.mean dm C Γ ρ φ S1.env (.bind 0 0) = .el0 Nat 0 := rfl
@@ -250,6 +211,7 @@ theorem good_S1 : Good dm C Γ ρ S1 := by
       simp [natB] at hT; subst hT; decide
     · intro T hT; simp [S1] at hT
     · intro G hG; simp [S1] at hG
+  · intro p hp _; rw [hA] at hp; simp at hp; subst hp; exact ⟨_, rfl⟩
 end
 
 /-- `borrowPlace_step_stmt` is false at fuel 10, for every run context, assignment and future:
@@ -317,7 +279,7 @@ theorem good_S23 (hA : allPos (S23 va).env = [.bind 0 0, .bind 0 1])
     Good dm C Γ ρ (S23 va) := by
   have hV : Env.values (S23 va).env = [va, .borrow 0 .zero] := by rw [Env.values, hA]; rfl
   have hpt : MState.posTyM dm C Γ ρ (S23 va) (.bind 0 1) = some (.ty0 Nat) := rfl
-  refine ⟨⟨fun σ h => by simp [S23] at h, fun n σ h => by simp [S23] at h, fun σ v h => by simp [S23] at h⟩, ⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨⟨fun σ h => by simp [S23] at h, fun n σ h => by simp [S23] at h, fun σ v h => by simp [S23] at h⟩, ⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro φ hφ p T hp
     obtain ⟨rfl | rfl, rfl⟩ := posTyM_S23 dm C Γ ρ va p T hp
     · exact hmem φ (hφ (.bind 0 1) 0 rfl _ hpt)
@@ -377,6 +339,8 @@ theorem good_S23 (hA : allPos (S23 va).env = [.bind 0 0, .bind 0 1])
       · simp [refB] at hT; subst hT; decide
     · intro T hT; simp [S23] at hT
     · intro G hG; simp [S23] at hG
+  · intro p hp _; rw [hA] at hp; simp at hp
+    rcases hp with rfl | rfl <;> exact ⟨_, rfl⟩
 end
 
 
