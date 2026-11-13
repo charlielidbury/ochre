@@ -1,4 +1,5 @@
 import Ochr.Meaning.Steps.Statements
+import Ochr.Meaning.PosLib
 
 /-!
 # Runs of the machine, compositionally
@@ -83,5 +84,95 @@ theorem runMachineL_forIn_cons {β : Type} (p : Pos) (ps : List Pos) (body : Pos
     | ok r st' => cases r <;> rfl
     | fail f => rfl
     | exhausted m => rfl
+
+/-! ## `mapState` without types: the loop over the positions -/
+
+theorem runMachineL_getAt (p : Pos) (st : MState) (fuel : Nat) (L : Array LogEntry) :
+    runMachineL (getAt p) st fuel L = (.ok (valAt st.env p) st, fuel, L) := by
+  cases p <;> rfl
+
+theorem runMachineL_setAt (p : Pos) (v : Value) (st : MState) (fuel : Nat) (L : Array LogEntry) :
+    runMachineL (Ochr.setAt p v) st fuel L = (.ok () { st with env := Env.setAtE st.env p v }, fuel, L) := by
+  cases p <;> rfl
+
+/-- The body of `mapState`'s loop at a position, without types. -/
+def mapBody (f : Value → M Value) (p : Pos) (_ : PUnit) : M (ForInStep PUnit) := do
+  Ochr.setAt p (← f (← getAt p))
+  pure (ForInStep.yield ⟨⟩)
+
+/-- Loops whose bodies run the same run the same. -/
+theorem forIn_congr_run {β : Type} (body₁ body₂ : Pos → β → M (ForInStep β))
+    (h : ∀ p b st fuel L, runMachineL (body₁ p b) st fuel L = runMachineL (body₂ p b) st fuel L) :
+    ∀ (l : List Pos) (b : β) (st : MState) (fuel : Nat) (L : Array LogEntry),
+      runMachineL (forIn l b body₁) st fuel L = runMachineL (forIn l b body₂) st fuel L
+  | [], b, st, fuel, L => rfl
+  | p :: l, b, st, fuel, L => by
+    rw [runMachineL_forIn_cons, runMachineL_forIn_cons, h]
+    cases runMachineL (body₂ p b) st fuel L with
+    | mk o rest =>
+      obtain ⟨left, log⟩ := rest
+      cases o with
+      | ok r st' => cases r <;> simp only [forIn_congr_run body₁ body₂ h l]
+      | fail e => rfl
+      | exhausted m => rfl
+
+/-- A `Bool` test that is `false` runs its else branch. -/
+theorem runMachineL_ite_false {α : Type} (A B : M α) (st : MState) (fuel : Nat) (L : Array LogEntry) :
+    runMachineL (if false = true then A else B) st fuel L = runMachineL B st fuel L := by
+  simp
+
+/-- One position of the walk: `f` on the position's value, then the position set to its result. -/
+theorem runMachineL_mapBody (f : Value → M Value) (p : Pos) (st : MState) (fuel : Nat) (L : Array LogEntry) :
+    runMachineL (mapBody f p ⟨⟩) st fuel L =
+      match runMachineL (f (valAt st.env p)) st fuel L with
+      | (.ok v' s', left, log) => (.ok (.yield ⟨⟩) { s' with env := Env.setAtE s'.env p v' }, left, log)
+      | (.fail e, left, log) => (.fail e, left, log)
+      | (.exhausted m, left, log) => (.exhausted m, left, log) := by
+  simp only [mapBody]
+  rw [runMachineL_bind, runMachineL_getAt]
+  simp only
+  rw [runMachineL_bind]
+  cases runMachineL (f (valAt st.env p)) st fuel L with
+  | mk o rest =>
+    obtain ⟨left, log⟩ := rest
+    cases o with
+    | ok v' s' => dsimp only; rw [runMachineL_bind, runMachineL_setAt]; rfl
+    | fail e => rfl
+    | exhausted m => rfl
+
+/-- `mapState f false` runs as the loop over the positions with `mapBody` (the `types` branches
+are off). -/
+theorem runMachineL_mapState_false (f : Value → M Value) (st : MState) (fuel : Nat) (L : Array LogEntry) :
+    runMachineL (mapState f false) st fuel L = runMachineL (forIn (allPos st.env) ⟨⟩ (mapBody f)) st fuel L := by
+  unfold mapState
+  rw [runMachineL_bind, runMachineL_get]
+  dsimp only
+  rw [runMachineL_bind]
+  rw [forIn_congr_run _ (mapBody f) ?hb]
+  · cases runMachineL (forIn (allPos st.env) ⟨⟩ (mapBody f)) st fuel L with
+    | mk o rest =>
+      obtain ⟨left, log⟩ := rest
+      cases o with
+      | ok r s' => cases r; dsimp only; rw [runMachineL_ite_false, runMachineL_pure]
+      | fail e => rfl
+      | exhausted m => rfl
+  · -- the actual loop body runs as `mapBody`: its `types` branches are off
+    intro p b st fuel L
+    cases b
+    simp only [mapBody]
+    rw [runMachineL_bind, runMachineL_bind, runMachineL_getAt]
+    dsimp only
+    rw [runMachineL_bind, runMachineL_bind]
+    cases runMachineL (f (valAt st.env p)) st fuel L with
+    | mk o rest =>
+      obtain ⟨left, log⟩ := rest
+      cases o with
+      | ok y s' =>
+        dsimp only
+        rw [runMachineL_bind, runMachineL_bind, runMachineL_setAt]
+        dsimp only
+        rw [runMachineL_ite_false]
+      | fail e => rfl
+      | exhausted m => rfl
 
 end Ochr.Meaning.Steps
