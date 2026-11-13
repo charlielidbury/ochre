@@ -63,23 +63,17 @@ theorem run_congr (φ φ' : Future) (hint : TyS) (t : Term) (s : SState) (L : Na
     run K ρ φ hint t s = run K ρ φ' hint t s :=
   run_congrE K ρ φ φ' hK t hint s L hφ ht ⟨fun p => FT.mono (fun _ hy => .inl hy) (hs p), hord, hsh⟩
 
-/-- The run's result does not depend on the starting label counter, as long as it is above every
-loan of the term and of the state (m2-proofs' D): fresh labels are names. Needed because a
-sealed program's counter, `emptyState (t.loans.foldl max 0 + 1)`, changes under substitution. Only the
-result's meaning and shape are compared: a returned borrow's label and the state's labels are the
-counter. (PROPOSAL, m2-proofs, statement: the shape is compared too; the run of an embedded sealed
-program reads its result's shape, `valT`.) -/
-theorem run_counter_indep (φ : Future) (hint : TyS) (t : Term) (s : SState) (n n' : Nat)
-    (hn : ∀ l ∈ t.loans, l < n) (hn' : ∀ l ∈ t.loans, l < n') (hs : ∀ l ∈ s.positions.filterMap s.shape, l < min n n') :
-    (run K ρ φ hint t { s with nextLoan := n }).map (fun r => (r.1.1, r.1.2.shape))
-      = (run K ρ φ hint t { s with nextLoan := n' }).map (fun r => (r.1.1, r.1.2.shape)) := by
+/-- The run's result does not depend on the starting label counter (m2-proofs' D): fresh labels
+are names. As first stated (any state whose shape labels are below both counters) this is false,
+finding 7: a position may read a label at or above a counter, which one run issues and the other
+does not. Restated for the empty state, and compared on the result's meaning and shape. Not used:
+with a sealed program run from the counter 0 (PROPOSAL 8) the substitution lemmas need no counter
+lemma; kept as the statement of the renaming lemma, should a counter-dependent run return. -/
+theorem run_counter_indep (φ : Future) (hint : TyS) (t : Term) (n n' : Nat)
+    (hn : ∀ l ∈ t.loans, l < n) (hn' : ∀ l ∈ t.loans, l < n') :
+    (run K ρ φ hint t (emptyState n)).map (fun r => (r.1.1, r.1.2.shape))
+      = (run K ρ φ hint t (emptyState n')).map (fun r => (r.1.1, r.1.2.shape)) := by
   sorry
-
-theorem sealedCounterIndep (φ : Future) : SealedCounterIndep K ρ φ := by
-  intro t hint n n' hn hn'
-  have h := run_counter_indep K ρ φ hint t (emptyState 0) n n' hn hn' (fun l hl => by
-    simp [SState.positions, emptyState] at hl)
-  exact h
 
 /-- The filler, at the fixed future `φ[ℓ ↦ ⟦w⟧]`, means the loan and has its type. -/
 theorem fillOK_upd (φ : Future) (l : Nat) (w : Value) (hK : ∀ n, (K.C.global n).2.label = none)
@@ -88,7 +82,7 @@ theorem fillOK_upd (φ : Future) (l : Nat) (w : Value) (hK : ∀ n, (K.C.global 
   have hw' : ∀ y, w.anyAtom (· == .loan y) = true → y ≠ l := fun y hy e => hw (by subst e; exact hy)
   have hagree : ∀ y, y ≠ l → (φ.upd l (meanV K ρ φ (.plain .err) w)) y = φ y :=
     fun y hy => Future.upd_other _ _ hy
-  refine ⟨fun hint => ?_, fun hint s => ?_, hD, sealedCounterIndep K ρ _⟩
+  refine ⟨fun hint => ?_, fun hint s => ?_, hD⟩
   · rw [meanV_congr K ρ _ φ hint w hK (fun y hy => hagree y (hw' y hy)), hf hint (.plain .err), Future.upd_same]
   · have h0 := hc hint (emptyState 0)
     have hr := run_congrE K ρ φ (φ.upd l (meanV K ρ φ (.plain .err) w)) hK (.val w) hint (emptyState 0)
