@@ -256,6 +256,62 @@ Keeps `PiParam` as it is (no nested inductive), so `Pi.lean` and `Apply1.lean` d
 
 Lemmas to restate: `runDoms_congrE`, `runDoms_substSame`, `rinv_extendBy`, `piShapeOf_*`, `fixOut_*`, `run_pi_def`, `run_fix_def`, and the fix helpers of `RunCongr` (`fixStep` takes `bs`).
 
+### Run against evalCore: audit (second lead, 2026-11-13)
+
+Every case of `Machine.evalAt`/`evalCore` (Machine.lean, line numbers of 75248901) and the helpers it calls, against the matching clause of `run` as it stands after D19 and D21. "Agree" means the same effects, order and result under the aligned decisions; "below" means the checker also ends or drops something the run leaves, which the order `Below` allows. The checker's side of each program is asserted by the build of `Regress/AdequacyProbes.lean` (`AdequacyProbes2`, the accepted program beside a rejected control where one can be written). The run's side is **read off the clause, not kernel-checked**, for every row below; rows fixed earlier (D19, D21) have their kernel-checked records there.
+
+| | checker case | what the checker does | what `run` does | agree? | program |
+|---|---|---|---|---|---|
+| 1 | `evalAt` (1897): classification | `preFlags`; an erased term on a private copy, `env` restored | `SM.stmtIf` at `Decisions.flags` | agree (since D19 R1) | `ErasedLet` |
+| 2 | `evalCore` head (1990), `projIn` (1212), `projMatch` (1230): `q.i` | runs `k(q.i)` as the one-arm match on `q` | follows the step `.proj i` directly | agree but for A1 | |
+| 3 | `.place`, `readPlace` (995) | `accessPath`, `accessInside` of the PLACE; copy by declared reading; a borrow is moved; a proof is never moved; `⊥` or a hole is an error | `contentOf`: access of the whole POSITION, then the same | **A1** | `Disjoint` |
+| 4 | `.borrow`, `borrowPlace` (1045) | access of the place; fresh loan; `openWrite` (204) invalidates the proof fields that mention a written index field | access of the position; no `openWrite` | **A1**, **A13** | `Disjoint` |
+| 5 | `.assign` (2011), `assignPlace` (1062) | right-hand side first; then `accessPath` and `accessInside … owned` (D67: at a borrow variable nothing inside its content is ended); the old borrow ends; `openWrite` | right-hand side first (since D19 R5); then a full access of the position, which ends what a borrow variable's content lends | **A2**, **A1**, **A13** | `Walk` |
+| 6 | `.letIn` (2037) | binds at the right-hand side's type and reading; after the tail `dropTopBind` (1091): the held borrow ends, and the borrowers of a lent binding end (D65) | binds likewise; ends the label the binding holds; drops it | agree, below (D65's ends) | |
+| 7 | `.seq` (2063) | `dropValue` (1115) ends a discarded borrow | the borrow stays parked | agree, below | |
+| 8 | `.matchNat`, `evalMatch` (2842), known constructor | `accessPath`, `accessNeutralHead` (980): only what the TAG needs; the arm; `joinDrop` (3257) with the join's set read BEFORE the arm | access of the whole position; the arm; the join's set read AFTER the arm | **A1**, **A6** | `Disjoint`'s shape |
+| 9 | `.matchInd`, `evalMatchInd` (3132), known constructor | as 8 | as 8 | **A1**, **A6** | |
+| 10 | match on a proof, `evalMatchByType` (3057) | one arm of a subsingleton: the arm, NO join; otherwise (two arms, a non-subsingleton) the match is `⋆` and no arm runs | a proof scrutinee with one arm: the arm, then `joinDrop`; with any other number of arms: FAILS | **A3**, **A4** | `UseOrInline` |
+| 11 | match on an unknown (`splitThenClose`, `closeBlock`) | splits, closes off | reads the tag of the meaning | the statements' business (`closeBlock_step`, `split_coverage`) | |
+| 12 | `.tind`, `evalTInd` (2334) | each parameter on a copy | each parameter on a copy; result type has no `data` | agree (data: A7) | |
+| 13 | `.ctor`, `evalCtor` (2377) | written parameters on copies; fields in order, in place (a proof constructor's each on a copy); unwritten parameters from the hint, then from the fields' types (`unifyParams`) | the same order; unwritten parameters from `hint.data` ONLY, and the hint has no data at a call argument, a function's result or an annotation | **A8**, **A9** | `NilArg`, `NilRes`, `PairLet`, `ConsLet` |
+| 14 | `.const` | the global's value (`⋆` at a proposition) | `K.C.global` | agree (given `GlobalsOk`) | |
+| 15 | `.val` | the value, typed by the hint | `meanV` at the hint | agree | |
+| 16 | `.sort`, `.nat`, `.unit`, `.zero`, `.tt`, `.succ` | | | agree | |
+| 17 | `.pi` (2086) | `capture` on a copy | no effect | agree | |
+| 18 | `.fix` (2101), `capture` (1564) | access of each captured place; a non-copy capture is moved; `⋆` at a proposition | no access; a non-copy capture is moved; `⋆` at a proposition | agree, below (the access) | |
+| 19 | a closure VALUE in a state (`.clo cs t rd`) | its captures have their recorded types | `capsTys` reads each recorded type as `.plain _`: a captured function has no Π-shape, a captured `D(ā)` no data | **A10** | `Compose` |
+| 20 | `.call`, `evalCall` (2454): head | read in place | `SM.headOf` | agree (since D19 R2) | `Twice` |
+| 21 | arguments | left to right; a statement call's each on its own copy unless borrow-typed | the same (`runArgs`) | agree (since D19 R4); hints **A8** | `StmtArgs` |
+| 22 | `callFn` (2695): a proof call, a proof callee | `⋆`, the body not run | `⋆` at `flags.2` | agree | |
+| 23 | `callFn`: the body or `closeCall` (2781) | runs the body or closes off; `etaUnit` | applies the callee's meaning along its shape; the result is typed `.plain B`: no Π-shape, no data | the [Close] and `runBody` step lemmas; result **A11** | `UseAdder` |
+| 24 | `runBodyCore` (2655): the frame | captures at their recorded readings, `self` at `.pi cd`, parameters at their readings and deferred types | the `.fix` clause's frame | agree (since D19 R3, D21) | `CopyParam`, `Twice` |
+| 25 | `.eq` (2132) | type and each side on a copy | the same | agree | |
+| 26 | `.cong`, `symm`, `trans`, `rewrite` | `⋆`, typed by the proposition | `⋆`, typed `.plain .err` | agree on the value; the statements' type conjunct should not speak of proofs | |
+| 27 | `.ref` (2163) | `evalType` | runs `A` under `SM.stmtIf` | agree | |
+| 28 | `.id`, `idType` (3657), `observe` (3624), `obsResult` (911) | each side on a copy; writes through the re-pointed borrows; ends every borrow; compares the result and the footprint's owners | each side from the same state; the same writes and ends; compares the result and EVERY position of each side's end state, the temporaries the side parked included | **A5** | `IdBorrow` |
+| 29 | `J` (2166) | endpoints, motive, proof on copies; at convertible endpoints the transported term, then `joinDrop`; otherwise a stuck block | the same copies; the transported term; no join | agree, below (the join); stuck `J` is `closeBlock_step`'s | |
+| 30 | `clone`, `peek` (2263) | reads copy (`withCopying`); a partly moved place is read as it is | `readPlace … true`, which fails on a partly moved place | **A14** (no program) | |
+| 31 | `inplace` (2270) | read in place | `SM.headOf` | agree (since D19) | |
+| 32 | `hole`, `split` | | fail | excluded (`NoHoles`), errors | |
+| 33 | `.ascribe` (2277) | the type on a copy; the term at it as hint | the same, but the term's hint and the result type are `.plain _`: no Π-shape, no data | **A7** | `AnnFn`, `NilAnn` |
+| 34 | a field read (`Sem.follow`) | a field has its declared type at the parameters | the field's type is a `TyM`: a function in a field has no shape, a `D(ā)` field no data | **A12** | `UseBoxFn` |
+| 35 | [Open], [Repack] (`openWrite`, strong update, `repackCheck`) | a dependent value is open between writes: typed by its content | `ctorM` gives `err` for whole fields that do not pack, and the next step into it fails | **A13** | `Refill2` |
+| 36 | private copies (`restoreKeep`) | the label counter survives a copy (D37) | `SM.onCopy`/`SM.stmtIf` restore it | **A15**: no meaning differs, but the run's next fresh label is not the checker's (matters when steps are composed) | |
+
+**Summary: 36 cases. 19 agree (5 of them only since D19/D21, 4 up to "below"); 3 are the statements' business; 14 carry one or more of fifteen divergences A1–A15.** In the order of how much accepted code each breaks:
+
+- **A9, A8** (rows 13, 21, 23): an unannotated pair or `Cons`, a bare `Nil` as an argument or a result: the run fails. Nearly every program over a parameterised type.
+- **A1** (rows 3, 4, 5, 8, 9): [Access] ends what the whole variable's meaning depends on, where the checker ends what the place read (or, for a match, the tag) depends on. The run ends a borrow the checker keeps, and a later write through it is lost.
+- **A3** (row 10): a match on a proof with other than one arm fails; it should be `⋆` unrun, as every proof is.
+- **A5** (row 28): `Id` is false in the run whenever its sides park different numbers of temporaries, which is whenever one borrows and the other does not.
+- **A7, A10, A11, A12** (rows 33, 19, 23, 34): a function or a `D(ā)` loses its structure through an annotation, a closure value's captures, a call's result, a field.
+- **A2** (row 5): D67's owned access. D19's R5 put the right-hand side first, which is right, and exposed this: the full access then ends the reborrow the right-hand side just made.
+- **A13** (rows 4, 5, 35): open dependent values have no meaning in the model.
+- **A4, A6, A14, A15**: a join after a by-type match, the join's entry set read after the arm, `clone`/`peek` of a partly moved place, the label counter. No accepted program found that shows them; A6 and A4 change which places are `moved`, which `Id` and `Eq` observe.
+
+**Plan.** One definitions batch for A1–A10 (the join's entry set, the proof skip, the observation, access by observation, D67's owned access, structure through annotations, parameters, results of `fix` and captures, parameter inference in `runFields`), then one repair of the four core lemmas. A11, A12 (structure of a call's result and of a field: `PiOut` and the data model's field types carry a `TyM` only) and A13 (open values: `Sem`, `ctorM` and `Membership` together) are not in the batch; each is its own redesign and stays a row here until done.
+
 ### D20. What the step skeleton still lacks to compose (second lead, 2026-11-13; open, ranked)
 
 Found while trying to derive `nfSealed_step` from the hypothesis at `fuel`. No step proof exists yet, so none of this was visible. Each item is a fault of the statements (not of the checker), with its fix. They are read off the statements and the checker's code; none is kernel-checked, and each should be before its fix is taken as settled:
