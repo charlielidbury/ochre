@@ -327,11 +327,9 @@ theorem shape_eq_shapeOf (env : Env) (q : Pos) : Env.shape env q = shapeOf (valA
   generalize valAt env q = w
   cases w <;> rfl
 
-/-- Another position's shape is untouched by `setAt`. -/
-theorem shape_setAtE_other (env : Env) (p q : Pos) (v : Value) (hne : q ≠ p) :
-    Env.shape (Env.setAtE env p v) q = Env.shape env q := by
-  rw [shape_eq_shapeOf, shape_eq_shapeOf]
-  congr 1
+/-- Another position's value is untouched by `setAt`. -/
+theorem valAt_setAtE_other (env : Env) (p q : Pos) (v : Value) (hne : q ≠ p) :
+    valAt (Env.setAtE env p v) q = valAt env q := by
   cases q with
   | bind f' i' =>
     rw [valAt_bind_eq, valAt_bind_eq]
@@ -377,6 +375,11 @@ theorem shape_setAtE_other (env : Env) (p q : Pos) (v : Value) (hne : q ≠ p) :
           have hii : i ≠ i' := fun h => hne (by subst h; rfl)
           rw [Array.set!, Array.getElem?_setIfInBounds]; simp only [hii, if_false]
       · rw [Array.getElem?_modify]; simp only [hff, if_false]
+
+/-- Another position's shape is untouched by `setAt`. -/
+theorem shape_setAtE_other (env : Env) (p q : Pos) (v : Value) (hne : q ≠ p) :
+    Env.shape (Env.setAtE env p v) q = Env.shape env q := by
+  rw [shape_eq_shapeOf, shape_eq_shapeOf, valAt_setAtE_other env p q v hne]
 
 /-- The written binding's shape is the written value's. -/
 theorem shape_setAtE_bind (env : Env) (f i : Nat) (v : Value) (fr : Frame) (b : Binding)

@@ -175,4 +175,63 @@ theorem runMachineL_mapState_false (f : Value → M Value) (st : MState) (fuel :
       | fail e => rfl
       | exhausted m => rfl
 
+/-! ## The walk's specification: a fold of per-position outputs -/
+
+theorem foldl_congr_mem {α β : Type _} (g g' : β → α → β) :
+    ∀ (l : List α) (b : β), (∀ x ∈ l, ∀ b, g b x = g' b x) → l.foldl g b = l.foldl g' b
+  | [], _, _ => rfl
+  | x :: l, b, h => by
+    simp only [List.foldl_cons]
+    rw [h x (List.mem_cons_self ..) b]
+    exact foldl_congr_mem g g' l _ fun y hy => h y (List.mem_cons_of_mem _ hy)
+
+/-- **The walk as a fold.** Over distinct positions, with `f` leaving the environment as it
+found it, a successful loop writes at each position an output of `f` on that position's
+original value (run from some intermediate state), and nothing else: the final environment is
+the fold of the outputs. -/
+theorem loop_spec (f : Value → M Value)
+    (hf : ∀ (v : Value) (s s' : MState) (fuel left : Nat) (L log : Array LogEntry) (v' : Value),
+      runMachineL (f v) s fuel L = (.ok v' s', left, log) → s'.env = s.env) :
+    ∀ (ps : List Pos) (st st' : MState) (fuel left : Nat) (L log : Array LogEntry),
+      ps.Nodup →
+      runMachineL (forIn ps ⟨⟩ (mapBody f)) st fuel L = (.ok ⟨⟩ st', left, log) →
+      ∃ out : Pos → Value,
+        st'.env = ps.foldl (fun e p => Env.setAtE e p (out p)) st.env ∧
+        ∀ p ∈ ps, ∃ (s s' : MState) (fuel' left' : Nat) (L' log' : Array LogEntry),
+          runMachineL (f (valAt st.env p)) s fuel' L' = (.ok (out p) s', left', log')
+  | [], st, st', fuel, left, L, log, _, h => by
+    rw [runMachineL_forIn_nil] at h
+    simp only [Prod.mk.injEq, Outcome.ok.injEq] at h
+    exact ⟨fun _ => .zero, by simp [← h.1.2], fun p hp => by cases hp⟩
+  | p :: ps, st, st', fuel, left, L, log, hnd, h => by
+    rw [runMachineL_forIn_cons, runMachineL_mapBody] at h
+    revert h
+    cases hr : runMachineL (f (valAt st.env p)) st fuel L with
+    | mk o rest =>
+      obtain ⟨left₁, log₁⟩ := rest
+      cases o with
+      | fail e => intro h; simp at h
+      | exhausted m => intro h; simp at h
+      | ok v' s₁ =>
+        intro h
+        dsimp only at h
+        have henv := hf _ _ _ _ _ _ _ _ hr
+        have hnd' := List.nodup_cons.mp hnd
+        obtain ⟨out', hfold, hpos⟩ := loop_spec f hf ps { s₁ with env := Env.setAtE s₁.env p v' } st' left₁ left log₁ log hnd'.2 h
+        refine ⟨fun q => if q = p then v' else out' q, ?_, ?_⟩
+        · rw [hfold]
+          simp only [List.foldl_cons, if_true, henv]
+          apply foldl_congr_mem
+          intro q hq e
+          have : q ≠ p := fun h => hnd'.1 (h ▸ hq)
+          simp [this]
+        · intro q hq
+          rcases List.mem_cons.mp hq with rfl | hq'
+          · exact ⟨st, s₁, fuel, left₁, L, log₁, by simp [hr]⟩
+          · have hqp : q ≠ p := fun h => hnd'.1 (h ▸ hq')
+            obtain ⟨s, s', fuel', left', L', log', hrun⟩ := hpos q hq'
+            refine ⟨s, s', fuel', left', L', log', ?_⟩
+            simp only [henv, valAt_setAtE_other _ _ _ _ hqp] at hrun
+            simpa [hqp] using hrun
+
 end Ochr.Meaning.Steps
