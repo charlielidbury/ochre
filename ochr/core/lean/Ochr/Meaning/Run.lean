@@ -58,7 +58,7 @@ structure RunCtx : Type 3 where
   D : Decisions
   /-- the types of the abstract values (Δ) as the run knows them, with Π-shapes: a call through
   an abstract function `σ_f` applies `ρ σ_f` along the shape of `Δ(σ_f)`. Fixed per checker
-  state (`deltaOf`): the reference run creates no unknowns. -/
+  state (`DeltaOk`): the reference run creates no unknowns. -/
   Δ : Nat → TyS := fun _ => .plain .err
   /-- the declared types of the loans as the run knows them (P1, PROPOSAL m2-proofs): a borrowed
   function value (`&f`) is real, so an embedded `loan_ℓ` carries the Π-shape of its position's
@@ -679,35 +679,56 @@ noncomputable def capsTys : List (DeclInfo × Value) → List (DeclInfo × TyS)
 termination_by structural rest => rest
 end
 
-/-- Δ as the run knows it, from a checker state: each abstract value's stored type with its data
-component (`Value.tyS`) and, for a Π-type, its shape from its term (`piShapeOf`). The step lemmas
-assume `K.Δ = deltaOf K ρ φ st`. -/
-noncomputable def deltaOf (st : MState) : Nat → TyS := fun σ =>
-  match st.absTy[σ]? with
-  | some (.tPi caps t rd) =>
-    { Value.tyS K.dm K.C K.Γ ρ (.tPi caps t rd) with
-      shape := (piShapeOf K ρ φ (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) t).map
-        fun sh => (sh.ps, sh.out) }
-  | some T => Value.tyS K.dm K.C K.Γ ρ T
-  | none => .plain .err
-
-/-- The code meaning the run induces at `ρ` and `φ` (the knot of `Value.mean`). Its assignment
-and future arguments are ignored: `Value.mean` is only ever read at the one assignment and
-future of the state, which are these. -/
-noncomputable def codeMeaning : CodeMeaning where
+/-- The code meaning the run induces (the knot of `Value.mean`): each code-dependent form read by
+the run **at the assignment and future it is asked at**. As first written it ignored both and read
+at one fixed pair, so a state's meaning read every sealed program at the knot's future whatever
+future it was asked at (`Regress/Knot_dcdd0a34.lean`: `⟦⌈loan ℓ⌉⟧` at `φ` was `φ₀ ℓ`), while
+`Below`, `Mean.semEnd` and `Membership` read a state at other futures, and a step's extended
+assignment `ρ'` was never the knot's. A deferred type (`paramTy`) is read under the constant
+future, as every stored type is (docs/27 Lemma 5). It depends on `K.C` only through `K.C.global`. -/
+noncomputable def codeMeaning (K : RunCtx) : CodeMeaning where
   global := K.C.global
-  sealed _ _ hint t := meanV K ρ φ hint (.sealed t)
-  clo _ _ caps t rd := meanV K ρ φ (.plain .err) (.clo caps t rd)
-  pi _ _ caps t rd := (meanV K ρ φ (.plain .err) (.tPi caps t rd)).asTy
-  paramTy _ P ws j := match P with
+  sealed ρ φ hint t := meanV K ρ φ hint (.sealed t)
+  clo ρ φ caps t rd := meanV K ρ φ (.plain .err) (.clo caps t rd)
+  pi ρ φ caps t rd := (meanV K ρ φ (.plain .err) (.tPi caps t rd)).asTy
+  paramTy ρ P ws j := match P with
     | .tPi caps t rd =>
-      match piShapeOf K ρ φ (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) t with
+      match piShapeOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) t with
       | some sh =>
-        let acc := ws.map (meanV K ρ φ (.plain .err))
+        let acc := ws.map (meanV K ρ noFuture (.plain .err))
         if j < sh.ps.length then .plain ((sh.ps[j]?.map (·.dom (acc.take j))).getD .err)
         else .plain (match sh.out with | .data B => B acc | .ref U => U acc)
       | none => .plain .err
     | _ => .plain .err
+
+/-- The code meaning of a run context, as the step statements read a state: `MState.mean K.dm K.M
+K.Γ ρ st`. There is no knot hypothesis `K.C = …`: `K.C` supplies the globals and nothing else. -/
+noncomputable abbrev RunCtx.M (K : RunCtx) : CodeMeaning := codeMeaning K
+
+/-- Δ as the run knows it, from a checker state: each abstract value's stored type with its data
+component (`Value.tyS`) and, for a Π-type, its shape from its term (`piShapeOf`), read under the
+constant future as every stored type is. -/
+noncomputable def deltaOf (K : RunCtx) (ρ : Assignment) (st : MState) : Nat → TyS := fun σ =>
+  match st.absTy[σ]? with
+  | some (.tPi caps t rd) =>
+    { Value.tyS K.dm (codeMeaning K) K.Γ ρ (.tPi caps t rd) with
+      shape := (piShapeOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) t).map
+        fun sh => (sh.ps, sh.out) }
+  | some T => Value.tyS K.dm (codeMeaning K) K.Γ ρ T
+  | none => .plain .err
+
+/-- The run context knows the types of the state's unknowns: `K.Δ` is `deltaOf` at every unknown
+the state has. Beyond them `K.Δ` is free, so a step that creates unknowns extends it (as it
+extends the assignment) and leaves what the earlier ones read unchanged. -/
+def DeltaOk (K : RunCtx) (ρ : Assignment) (st : MState) : Prop :=
+  ∀ σ, σ < st.absTy.size → K.Δ σ = deltaOf K ρ st σ
+
+/-- The knot at the future asked: a sealed program in a state is read at the state's future (the
+positive form of `Regress/Knot_dcdd0a34.lean`). -/
+theorem mean_sealed_at_future (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (l : Nat) :
+    Value.mean K.dm K.M K.Γ ρ φ hint (.sealed (.val (.loan l))) = φ l := by
+  show meanV K ρ φ hint (.sealed (.val (.loan l))) = φ l
+  simp [meanV, run]
 
 /-- The Π-closure clause of the knot: `meanV` of a Π-closure is already a type value. -/
 theorem meanV_tPi_ty (hint : TyS) (caps : List Value) (t : Term) (rd : List (DeclInfo × Value)) :
@@ -724,10 +745,10 @@ mutual
 /-- The knot, by induction on the value: each clause is the same text, the code-dependent ones
 through `codeMeaning`, the Π-closure's by `meanV_tPi_ty`. -/
 theorem meanV_eq_mean_aux (hint : TyS) : (v : Value) →
-    Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ hint v = meanV K ρ φ hint v
+    Value.mean K.dm (codeMeaning K) K.Γ ρ φ hint v = meanV K ρ φ hint v
   | .zero => rfl
   | .succ v => by
-    show (Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ (.plain (.ty0 Nat)) v).succ
+    show (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain (.ty0 Nat)) v).succ
       = (meanV K ρ φ (.plain (.ty0 Nat)) v).succ
     rw [meanV_eq_mean_aux (.plain (.ty0 Nat)) v]
   | .unit => rfl
@@ -742,10 +763,10 @@ theorem meanV_eq_mean_aux (hint : TyS) : (v : Value) →
   | .tNat => rfl
   | .tUnit => rfl
   | .tEq A a b => by
-    show Sem.ty (.prop (Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ
-          (.plain (Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ (.plain .err) A).asTy) a
-        = Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ
-          (.plain (Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ (.plain .err) A).asTy) b))
+    show Sem.ty (.prop (Value.mean K.dm (codeMeaning K) K.Γ ρ φ
+          (.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain .err) A).asTy) a
+        = Value.mean K.dm (codeMeaning K) K.Γ ρ φ
+          (.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain .err) A).asTy) b))
       = Sem.ty (.prop (meanV K ρ φ (.plain (meanV K ρ φ (.plain .err) A).asTy) a
         = meanV K ρ φ (.plain (meanV K ρ φ (.plain .err) A).asTy) b))
     rw [meanV_eq_mean_aux (.plain .err) A, meanV_eq_mean_aux _ a, meanV_eq_mean_aux _ b]
@@ -753,9 +774,9 @@ theorem meanV_eq_mean_aux (hint : TyS) : (v : Value) →
   | .tPi caps t rd => (meanV_tPi_ty K ρ φ hint caps t rd).symm
   | .sort _ => rfl
   | .ind ty c h ps fs => by
-    have hP : ∀ d, Value.meanParams K.dm (codeMeaning K ρ φ) K.Γ ρ φ d 0 [] ps = meanParams K ρ φ d 0 [] ps :=
+    have hP : ∀ d, Value.meanParams K.dm (codeMeaning K) K.Γ ρ φ d 0 [] ps = meanParams K ρ φ d 0 [] ps :=
       fun d => meanParams_eq_mean d 0 [] ps
-    have hF : ∀ d ps', Value.meanFields K.dm (codeMeaning K ρ φ) K.Γ ρ φ d ps' c 0 [] fs
+    have hF : ∀ d ps', Value.meanFields K.dm (codeMeaning K) K.Γ ρ φ d ps' c 0 [] fs
         = meanFields K ρ φ d ps' c 0 [] fs :=
       fun d ps' => meanFields_eq_mean d ps' c 0 [] fs
     simp only [Value.mean, meanV, hP, hF]
@@ -766,7 +787,7 @@ theorem meanV_eq_mean_aux (hint : TyS) : (v : Value) →
           (match hint.data with | some (n, ps') => if n = ty then some ps' else none | none => none)
         else some (meanParams K ρ φ d 0 [] ps)) <;> rfl
   | .tInd n args => by
-    have hP : ∀ d, Value.meanParams K.dm (codeMeaning K ρ φ) K.Γ ρ φ d 0 [] args = meanParams K ρ φ d 0 [] args :=
+    have hP : ∀ d, Value.meanParams K.dm (codeMeaning K) K.Γ ρ φ d 0 [] args = meanParams K ρ φ d 0 [] args :=
       fun d => meanParams_eq_mean d 0 [] args
     simp only [Value.mean, meanV, hP]
     cases List.find? (fun x => x.name == n) K.Γ <;> rfl
@@ -774,12 +795,12 @@ termination_by structural v => v
 
 theorem meanFields_eq_mean (d : IndDecl) (ps : List Sem) (c : Nat) :
     (i : Nat) → (earlier : List Sem) → (vs : List Value) →
-    Value.meanFields K.dm (codeMeaning K ρ φ) K.Γ ρ φ d ps c i earlier vs = meanFields K ρ φ d ps c i earlier vs
+    Value.meanFields K.dm (codeMeaning K) K.Γ ρ φ d ps c i earlier vs = meanFields K ρ φ d ps c i earlier vs
   | _, _, [] => rfl
   | i, earlier, v :: vs => by
-    show Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ ⟨K.dm.fieldTy d ps c i earlier, none, none, K.dm.fieldData d ps c i earlier⟩ v
-        :: Value.meanFields K.dm (codeMeaning K ρ φ) K.Γ ρ φ d ps c (i + 1)
-          (earlier ++ [Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ ⟨K.dm.fieldTy d ps c i earlier, none, none, K.dm.fieldData d ps c i earlier⟩ v]) vs
+    show Value.mean K.dm (codeMeaning K) K.Γ ρ φ ⟨K.dm.fieldTy d ps c i earlier, none, none, K.dm.fieldData d ps c i earlier⟩ v
+        :: Value.meanFields K.dm (codeMeaning K) K.Γ ρ φ d ps c (i + 1)
+          (earlier ++ [Value.mean K.dm (codeMeaning K) K.Γ ρ φ ⟨K.dm.fieldTy d ps c i earlier, none, none, K.dm.fieldData d ps c i earlier⟩ v]) vs
       = meanV K ρ φ ⟨K.dm.fieldTy d ps c i earlier, none, none, K.dm.fieldData d ps c i earlier⟩ v
         :: meanFields K ρ φ d ps c (i + 1) (earlier ++ [meanV K ρ φ ⟨K.dm.fieldTy d ps c i earlier, none, none, K.dm.fieldData d ps c i earlier⟩ v]) vs
     rw [meanV_eq_mean_aux _ v, meanFields_eq_mean d ps c (i + 1) _ vs]
@@ -787,12 +808,12 @@ termination_by structural _ _ vs => vs
 
 theorem meanParams_eq_mean (d : IndDecl) :
     (i : Nat) → (earlier : List Sem) → (vs : List Value) →
-    Value.meanParams K.dm (codeMeaning K ρ φ) K.Γ ρ φ d i earlier vs = meanParams K ρ φ d i earlier vs
+    Value.meanParams K.dm (codeMeaning K) K.Γ ρ φ d i earlier vs = meanParams K ρ φ d i earlier vs
   | _, _, [] => rfl
   | i, earlier, v :: vs => by
-    show Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ ⟨K.dm.paramTy d i earlier, none, none, K.dm.paramData d i earlier⟩ v
-        :: Value.meanParams K.dm (codeMeaning K ρ φ) K.Γ ρ φ d (i + 1)
-          (earlier ++ [Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ ⟨K.dm.paramTy d i earlier, none, none, K.dm.paramData d i earlier⟩ v]) vs
+    show Value.mean K.dm (codeMeaning K) K.Γ ρ φ ⟨K.dm.paramTy d i earlier, none, none, K.dm.paramData d i earlier⟩ v
+        :: Value.meanParams K.dm (codeMeaning K) K.Γ ρ φ d (i + 1)
+          (earlier ++ [Value.mean K.dm (codeMeaning K) K.Γ ρ φ ⟨K.dm.paramTy d i earlier, none, none, K.dm.paramData d i earlier⟩ v]) vs
       = meanV K ρ φ ⟨K.dm.paramTy d i earlier, none, none, K.dm.paramData d i earlier⟩ v
         :: meanParams K ρ φ d (i + 1) (earlier ++ [meanV K ρ φ ⟨K.dm.paramTy d i earlier, none, none, K.dm.paramData d i earlier⟩ v]) vs
     rw [meanV_eq_mean_aux _ v, meanParams_eq_mean d (i + 1) _ vs]
@@ -802,7 +823,7 @@ end
 /-- The knot ties: `Value.mean` at the induced code meaning is `meanV`, at the run's future. By
 induction on the value; every clause but the code-dependent ones is the same text. -/
 theorem meanV_eq_mean (hint : TyS) (v : Value) :
-    Value.mean K.dm (codeMeaning K ρ φ) K.Γ ρ φ hint v = meanV K ρ φ hint v :=
+    Value.mean K.dm (codeMeaning K) K.Γ ρ φ hint v = meanV K ρ φ hint v :=
   meanV_eq_mean_aux K ρ φ hint v
 
 end

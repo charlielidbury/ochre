@@ -26,41 +26,41 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- `substV` of a loan: the result means the value read under the future fixed at `ℓ` to the
 filling value's meaning (the pure lemma plus re-normalisation). -/
-theorem substV_loan_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : substV_loan_step_stmt K ρ φ (fuel + 1) := by
+theorem substV_loan_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : substV_loan_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- `substV` of an abstract value by a refinement `r` it means: exact. -/
-theorem substV_abs_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : substV_abs_step_stmt K ρ φ (fuel + 1) := by
+theorem substV_abs_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : substV_abs_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- `substEnv` of a loan (the state-wide half of [End] and of [Close]'s fills): every position
 reads the fixed future; stored types are untouched (`types = false`: no type holds a loan). -/
-theorem substEnv_loan_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : substEnv_loan_step_stmt K ρ φ (fuel + 1) := by
+theorem substEnv_loan_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : substEnv_loan_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- `substEnv` of an abstract value by a refinement it means (`types = true`: stored types, Δ
 and the goal are refined too): exact, and `Good` is kept. -/
-theorem substEnv_abs_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : substEnv_abs_step_stmt K ρ φ (fuel + 1) := by
+theorem substEnv_abs_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : substEnv_abs_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- [Seal]: a re-run of a sealed program means the sealed program (its run), and changes nothing
 of the state's core (it runs on a private copy). -/
-theorem nfSealed_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : nfSealed_step_stmt K ρ φ (fuel + 1) := by
+theorem nfSealed_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : nfSealed_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- `canonNeutral`: a sealed program already generalised in this world is its `σ`, which the
 path condition makes mean the same. -/
-theorem canonNeutral_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : canonNeutral_step_stmt K ρ φ (fuel + 1) := by
+theorem canonNeutral_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : canonNeutral_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- `renormAll`: re-running every sealed program of the state keeps every meaning. -/
-theorem renormAll_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : renormAll_step_stmt K ρ φ (fuel + 1) := by
+theorem renormAll_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : renormAll_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- [Split]'s refinement `σ := r` (`refine`): under an assignment that gives `σ` the meaning of
 `r` (the arm the assignment selects, with its fields assigned), the substitution is exact and
 `Good` is kept; the record in `refs` states no fact. -/
-theorem refine_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : refine_step_stmt K ρ φ (fuel + 1) := by
+theorem refine_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : refine_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 end
