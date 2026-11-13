@@ -128,9 +128,15 @@ it is a checker finding. -/
 def WF9 (ρ : Assignment) (st : MState) : Prop :=
   ∀ p ∈ allPos st.env, (valAt st.env p).outerLoans ≠ [] → ∃ T, MState.posTyM dm C Γ ρ st p = some T
 
+/-- (WF10) D88/D89: every constructor value in Ω records its parameters. A value's meaning then
+reads the hint only through a sealed program (`Lemmas.hintFree_of_recorded`), which is what the
+substitution lemmas' `HintFree` needs of a borrow's content at [End]. -/
+def WF10 (st : MState) : Prop := ∀ v ∈ Env.values st.env, v.anyAtom (Value.bareCtor Γ) = false
+
 /-- Well-formedness, part (c) of the main theorem. -/
 def WF (ρ : Assignment) (st : MState) : Prop :=
-  WF1 st.env ∧ WF2 st.env ∧ WF3 st.env ∧ WF4 st.env ∧ WF6 st ∧ WF7 dm C Γ ρ st ∧ WF8 st ∧ WF9 dm C Γ ρ st
+  WF1 st.env ∧ WF2 st.env ∧ WF3 st.env ∧ WF4 st.env ∧ WF6 st ∧ WF7 dm C Γ ρ st ∧ WF8 st ∧ WF9 dm C Γ ρ st ∧
+  WF10 Γ st
 
 /-! ## Typed assignments, typed futures, membership -/
 
