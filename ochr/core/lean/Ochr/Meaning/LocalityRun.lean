@@ -366,9 +366,11 @@ theorem pushBind_topIdx (s : SState) (b : SBinding) : (s.pushBind b).topIdx = s.
   simp [pushBind, topIdx]
 
 /-- **A binding pushed as a holder** (`pushBindShaped`): a constant meaning; its label `l` is taken
-from its old holder (a move) or is fresh, above every held label (a borrow parameter). -/
+from its old holder (a move), is fresh, above every held label (a borrow parameter), or is read by
+no position (a result whose borrow has ended). -/
 theorem pushBindShaped_rinv {s : SState} (h : RInv L s) (b : SBinding) (c : Sem) (hb : b.val = fun _ => c)
-    (hl : ∀ l, b.ty.label = some l → (s.Live l ∨ ∀ q x, s.shape q = some x → x < l) ∧ l < s.nextLoan) :
+    (hl : ∀ l, b.ty.label = some l →
+      (s.Live l ∨ (∀ q x, s.shape q = some x → x < l) ∨ ∀ q, Indep l (s.valAt q)) ∧ l < s.nextLoan) :
     RInv L (pushBindShaped s b) := by
   unfold pushBindShaped
   cases hlab : b.ty.label with
@@ -464,16 +466,32 @@ theorem pushBindShaped_rinv {s : SState} (h : RInv L s) (b : SBinding) (c : Sem)
           have hrs : r ∈ s.positions := by rw [← takeLabel_positions s l]; exact (hsat r x hs).1
           rcases hv r with e | e | e
           · rw [e]
-            exact (h2 r x hrs hs').mono fun y hy => by
-              rcases hy with ⟨hL, hn⟩ | ⟨hy, hxy⟩
-              · by_cases hF' : F.Live y
-                · rcases (hliveF y).mp hF' with h' | rfl
-                  · exact absurd h' hn
-                  · rcases hlo with hlv | hfresh
-                    · exact absurd hlv hn
-                    · exact .inr ⟨hF', hfresh r x hs'⟩
-                · exact .inl ⟨hL, hF'⟩
-              · exact .inr ⟨(hliveF y).mpr (.inl hy), hxy⟩
+            rcases hlo with hlo | hlo | hun
+            · exact (h2 r x hrs hs').mono fun y hy => by
+                rcases hy with ⟨hL, hn⟩ | ⟨hy, hxy⟩
+                · by_cases hF' : F.Live y
+                  · rcases (hliveF y).mp hF' with h' | rfl
+                    · exact absurd h' hn
+                    · exact absurd hlo hn
+                  · exact .inl ⟨hL, hF'⟩
+                · exact .inr ⟨(hliveF y).mpr (.inl hy), hxy⟩
+            · exact (h2 r x hrs hs').mono fun y hy => by
+                rcases hy with ⟨hL, hn⟩ | ⟨hy, hxy⟩
+                · by_cases hF' : F.Live y
+                  · rcases (hliveF y).mp hF' with h' | rfl
+                    · exact absurd h' hn
+                    · exact .inr ⟨hF', hlo r x hs'⟩
+                  · exact .inl ⟨hL, hF'⟩
+                · exact .inr ⟨(hliveF y).mpr (.inl hy), hxy⟩
+            · -- `l` is read by no position, so the holder's reading of it can be dropped
+              exact ((h2 r x hrs hs').remove (hun r)).mono fun y ⟨hy, hne⟩ => by
+                rcases hy with ⟨hL, hn⟩ | ⟨hy, hxy⟩
+                · by_cases hF' : F.Live y
+                  · rcases (hliveF y).mp hF' with h' | h'
+                    · exact absurd h' hn
+                    · exact absurd h' hne
+                  · exact .inl ⟨hL, hF'⟩
+                · exact .inr ⟨(hliveF y).mpr (.inl hy), hxy⟩
           · rw [e]; exact FT.const _ _
           · rw [e]; exact FT.const _ _
       · rw [hshape] at hq
