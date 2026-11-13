@@ -15,7 +15,7 @@ reading of the variable is not a copy type (every function type, and `List(Nat)`
   program is `let h : True = (let y = x; refl); x`: the same mechanism under an annotation.)
 
 Both are definition faults of the reference run, fixed after 1d94e4eb (docs/31 D19); the flipped,
-positive checks are to be built once the fixes land.
+positive checks are `Regress/Adequacy_flipped.lean` (built).
 -/
 open Ochr Ochr.Meaning Ochr.Meaning.Attack Ochr.Meaning.Regress.CE4flip
 
