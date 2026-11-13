@@ -45,6 +45,7 @@ import Ochr.Meaning.DecideScope
 import Ochr.Meaning.Regress.CE5_flipped
 import Ochr.Meaning.Regress.CloseCallStmt
 import Ochr.Meaning.Regress.CE4_flipped
+import Ochr.Meaning.Regress.AdequacyProbes
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
