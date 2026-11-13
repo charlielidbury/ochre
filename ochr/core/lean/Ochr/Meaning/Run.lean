@@ -198,8 +198,44 @@ def _root_.Ochr.Term.isRefTy : Term → Bool
 /-- The parameters of a Π-term as `PiParam`s, from their binders and domain terms: `&A` marks a
 borrow parameter; the type is the binder's, without its shape. -/
 def psOf : List PBind → List Term → List PiParam
-  | b :: bs, d :: ds => ⟨d.isRefTy, fun acc => (b.1 acc).m⟩ :: psOf bs ds
+  | b :: bs, d :: ds => ⟨d.isRefTy, fun acc => (b.1 acc).m, fun acc => (b.1 acc).data⟩ :: psOf bs ds
   | _, _ => []
+
+/-- Fill parameter variable `j` (of `np`) of a constructor's solution, if it is not solved yet
+(`Machine.unifyParams`' variable case: in a field's type, parameter `i` is `var (np - 1 - i)`). -/
+def fillParam (np j : Nat) (v : Sem) (sol : List (Option Sem)) : List (Option Sem) :=
+  if j < np ∧ (sol.getD (np - 1 - j) none).isNone then sol.set (np - 1 - j) (some v) else sol
+
+/-- Infer a constructor's unwritten parameters from a field's declared type term `FT` and the
+type `R` the field's run returned (`Machine.unifyParams`, D46; the audit's A9): where `FT` is a
+parameter variable, the parameter is `R` itself; where it is `D(x̄)` and `R` records its data
+`D(v̄)`, each parameter variable among `x̄` is its `v`. Only unsolved parameters are filled. A
+type the run does not know (`err`: an untyped proof) solves nothing, as the checker's field with
+no type. Not covered: a parameter nested deeper (`List(Pair(A, B))`), and a field whose run loses
+its data (a call's result, a field read: the audit's A11, A12). -/
+def unifyTyS (np : Nat) (FT : Term) (R : TyS) (sol : List (Option Sem)) : List (Option Sem) :=
+  match R.m with
+  | .err => sol
+  | _ =>
+    match FT with
+    | .place (.var j) => fillParam np j (.ty R.m) sol
+    | .tind m as =>
+      match R.data with
+      | some (m', vs) =>
+        if m = m' ∧ as.length = vs.length then
+          (as.zip vs).foldl (fun sol av => match av.1 with
+            | .place (.var j) => fillParam np j av.2 sol
+            | _ => sol) sol
+        else sol
+      | none => sol
+    | _ => sol
+
+/-- A solution read as parameters: an unsolved one is `err` (read by no field type that is asked). -/
+def solved (sol : List (Option Sem)) : List Sem := sol.map fun o => o.getD .err
+
+/-- Field `i` of constructor `c`: its declared type term. -/
+def fieldTerm (d : IndDecl) (c i : Nat) : Option Term :=
+  ((d.ctors[c]?).bind (·.2[i]?)).map (·.2)
 
 /-- Resolve a place to its root position and path. -/
 def resolve (s : SState) (p : Place) : Option (Pos × List Step) :=
@@ -475,20 +511,22 @@ noncomputable def run (hint : TyS) : Term → SM Res
     match K.Γ.find? (·.name == ty) with
     | some d =>
       let psM ← runParams d 0 [] ps
-      let ps' := if ps.isEmpty && !d.params.isEmpty then
-          (match hint.data with | some (n, ps') => if n = ty then some ps' else none | none => none)
-        else some psM
-      match ps' with
-      | some ps' =>
-        -- a constructor of a Prop-sorted inductive is a proof, `⋆` (D42); its arguments are
-        -- statement positions, each on its own copy (`stmtArgIf`; D19, R4)
+      -- the parameters known before the fields: the written ones, or the hint's (`evalCtor`'s
+      -- `sol`); the fields' types then solve the rest (`runFields`; the audit's A9)
+      let sol₀ : List (Option Sem) := if !ps.isEmpty then psM.map some else
+        match hint.data with
+        | some (n, ps') => if n = ty ∧ ps'.length = d.params.length then ps'.map some else List.replicate d.params.length none
+        | none => List.replicate d.params.length none
+      -- a constructor of a Prop-sorted inductive is a proof, `⋆` (D42); its arguments are
+      -- statement positions, each on its own copy (`stmtArgIf`; D19, R4)
+      let (fs, sol) ← runFields (d.sort == 0) d c 0 sol₀ [] args
+      if sol.all (·.isSome) then
+        let ps' := solved sol
         if d.sort == 0 then
-          let _ ← runFields true d ps' c 0 [] args
           pure (.proof, ⟨K.dm.tyM d ps', none, none, some (ty, ps')⟩)
         else
-          let fs ← runFields false d ps' c 0 [] args
           pure (K.dm.ctorM d ps' c fs, ⟨K.dm.tyM d ps', none, none, some (ty, ps')⟩)
-      | none => SM.fail
+      else SM.fail
     | none => SM.fail) s
   | .const n => pure (K.C.global n)
   | .val v => fun s =>
@@ -544,6 +582,15 @@ noncomputable def run (hint : TyS) : Term → SM Res
       | c => .data fun acc => match run (.plain .err) c (extendBy s bs acc) with
         | some ((v, _), _) => v.asTy
         | none => .err
+    -- the codomain with its structure: the body's hint (the audit's A8: at `.plain _`, a body
+    -- that is a bare `Nil` had no parameters to read)
+    let cod : List Sem → TyS := match c with
+      | .ref U => fun acc => match run (.plain .err) U (extendBy s bs acc) with
+        | some ((v, R), _) => ⟨v.asTy, R.shape, none, R.data⟩
+        | none => .plain .err
+      | c => fun acc => match run (.plain .err) c (extendBy s bs acc) with
+        | some ((v, R), _) => ⟨v.asTy, R.shape, none, R.data⟩
+        | none => .plain .err
     -- the carrier at the declared sort (D55, D12): `piTyAt`/`closureAt` (`Apply1.lean`)
     let l := K.D.piSort (scopeOf s) (.pi hs ds c)
     let piT := piTyAt l ps out
@@ -574,8 +621,7 @@ noncomputable def run (hint : TyS) : Term → SM Res
         else
           (s.pushBind { ty := { T with label := none }, val := fun _ => ap.1, decl := d }, acc ++ [ap.1], cells)
       let (s₂, _, cells) := (args.zip ps).foldl step (s₁, [], [])
-      let codT := match out with | .data B => B args | .ref U => U args
-      match run (.plain codT) body s₂ with
+      match run (cod args) body s₂ with
       | some ((r, R), s₃) =>
         -- the frame pop ends the borrows the body made and the parameters' (their cells then
         -- read the holders' contents), except the returned borrow's, whose holder is the
@@ -714,14 +760,29 @@ termination_by structural as => as
 
 /-- A constructor's fields, each at its field type at the earlier fields. With `stmt` (a proof
 constructor's, D42) each field is a statement position, on its own copy (`stmtArgIf`), unless its
-declared type is a borrow type (`Decide.stmtArgInPlace`, read through `Decisions.declOf`). -/
-noncomputable def runFields (stmt : Bool) (d : IndDecl) (ps : List Sem) (c i : Nat) (earlier : List Sem) : List Term → SM (List Sem)
-  | [] => pure []
+declared type is a borrow type (`Decide.stmtArgInPlace`, read through `Decisions.declOf`).
+
+`sol` is the parameters solved so far (`Machine.evalCtor`'s `sol`): the written ones or the
+hint's, then what each field's type gives the unsolved ones (`unifyTyS`; the audit's A9: before,
+an unannotated `Pair(a, b)` or `Cons(x, xs)` with no hint had no parameters and failed). A field
+is run at its declared type as hint once every parameter that type reads is solved
+(`Machine.fieldTypeAt`'s guard), and at no hint before. -/
+noncomputable def runFields (stmt : Bool) (d : IndDecl) (c i : Nat) (sol : List (Option Sem)) (earlier : List Sem) :
+    List Term → SM (List Sem × List (Option Sem))
+  | [] => pure ([], sol)
   | a :: as => fun s => (do
-    let (v, _) ← SM.stmtIf (stmt && !(K.D.declOf (scopeOf s) a matches .ref _))
-      (run ⟨K.dm.fieldTy d ps c i earlier, none, none, K.dm.fieldData d ps c i earlier⟩ a)
-    let rest ← runFields stmt d ps c (i + 1) (earlier ++ [v]) as
-    pure (v :: rest)) s
+    let T : TyS := match fieldTerm d c i with
+      | some FT =>
+        if FT.freeVars.all (fun j => d.params.length ≤ j || (sol.getD (d.params.length - 1 - j) none).isSome) then
+          ⟨K.dm.fieldTy d (solved sol) c i earlier, none, none, K.dm.fieldData d (solved sol) c i earlier⟩
+        else .plain .err
+      | none => .plain .err
+    let (v, R) ← SM.stmtIf (stmt && !(K.D.declOf (scopeOf s) a matches .ref _)) (run T a)
+    let sol₁ := match fieldTerm d c i with
+      | some FT => unifyTyS d.params.length FT R sol
+      | none => sol
+    let (rest, sol₂) ← runFields stmt d c (i + 1) sol₁ (earlier ++ [v]) as
+    pure (v :: rest, sol₂)) s
 termination_by structural as => as
 
 /-- A call's arguments, each at its parameter type from the callee's shape (D82, [Call-type]).
@@ -733,7 +794,7 @@ noncomputable def runArgs (stmt : Bool) (shape : Option (List PiParam × PiOut))
   | [] => pure []
   | a :: as => fun s => (do
     let T : TyS := match shape with
-      | some (ps, _) => match ps[i]? with | some p => .plain (p.dom earlier) | none => .plain .err
+      | some (ps, _) => match ps[i]? with | some p => ⟨p.dom earlier, none, none, p.data earlier⟩ | none => .plain .err
       | none => .plain .err
     let r ← SM.stmtIf (stmt && !(K.D.declOf (scopeOf s) a matches .ref _)) (run T a)
     let rest ← runArgs stmt shape (i + 1) (earlier ++ [r.1]) as
