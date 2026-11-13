@@ -543,6 +543,119 @@ theorem mean_fold_setAtE (out : Pos → Value) :
 
 end
 
+/-- The written binding's value. -/
+theorem valAt_setAtE_bind (env : Env) (f i : Nat) (v : Value) (fr : Frame) (b : Binding)
+    (hf : env[f]? = some fr) (hi : fr.binds[i]? = some b) :
+    valAt (Env.setAtE env (.bind f i) v) (.bind f i) = v := by
+  rw [valAt_bind_eq]
+  simp only [Env.setAtE]
+  rw [Array.getElem?_modify]; simp only [if_true, hf, Option.map_some, Option.getD_some]
+  rw [Array.getElem?_modify]; simp only [if_true, hi, Option.map_some, Option.getD_some]
+
+/-- The written temporary's value. -/
+theorem valAt_setAtE_temp (env : Env) (f i : Nat) (v : Value) (fr : Frame)
+    (hf : env[f]? = some fr) (hi : i < fr.temps.size) :
+    valAt (Env.setAtE env (.temp f i) v) (.temp f i) = v := by
+  rw [valAt_temp_eq]
+  simp only [Env.setAtE]
+  rw [Array.getElem?_modify]; simp only [if_true, hf, Option.map_some, Option.getD_some]
+  rw [Array.set!, Array.getElem?_setIfInBounds]; simp [hi]
+
+/-- The values after a fold of writes at distinct positions of the environment. -/
+theorem valAt_fold_setAtE (out : Pos → Value) :
+    ∀ (ps : List Pos) (env : Env), ps.Nodup → (∀ q ∈ ps, q ∈ allPos env) →
+      (∀ q ∈ ps, valAt (ps.foldl (fun e q => Env.setAtE e q (out q)) env) q = out q) ∧
+      (∀ q, q ∉ ps → valAt (ps.foldl (fun e q => Env.setAtE e q (out q)) env) q = valAt env q)
+  | [], env, _, _ => ⟨(fun _ h => nomatch h), (fun _ _ => rfl)⟩
+  | p :: ps, env, hnd, hin => by
+    simp only [List.foldl_cons]
+    have hnd' := List.nodup_cons.mp hnd
+    have hin' : ∀ q ∈ ps, q ∈ allPos (Env.setAtE env p (out p)) := fun q hq => by
+      rw [allPos_setAtE]; exact hin q (List.mem_cons_of_mem _ hq)
+    obtain ⟨ih1, ih2⟩ := valAt_fold_setAtE out ps (Env.setAtE env p (out p)) hnd'.2 hin'
+    refine ⟨fun q hq => ?_, fun q hq => ?_⟩
+    · rcases List.mem_cons.mp hq with rfl | hq'
+      · rw [ih2 q hnd'.1]
+        have hp := hin q (List.mem_cons_self ..)
+        cases q with
+        | bind f i =>
+          obtain ⟨fr, b, hf, hi⟩ := mem_allPos_bind env f i hp
+          exact valAt_setAtE_bind env f i (out _) fr b hf hi
+        | temp f i =>
+          obtain ⟨fr, hf, hi⟩ := mem_allPos_temp env f i hp
+          exact valAt_setAtE_temp env f i (out _) fr hf hi
+      · exact ih1 q hq'
+    · have hqp : q ≠ p := fun h => hq (h ▸ List.mem_cons_self ..)
+      have hqs : q ∉ ps := fun h => hq (List.mem_cons_of_mem _ h)
+      rw [ih2 q hqs, valAt_setAtE_other env p q (out p) hqp]
+
+section
+variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (φ : Future)
+
+/-- A position of the environment means its value at its hint. -/
+theorem mean_eq_valAt (env : Env) (q : Pos) (hq : q ∈ allPos env) :
+    Env.mean dm C Γ ρ φ env q = Value.mean dm C Γ ρ φ (Env.hintAt dm C Γ ρ env q) (valAt env q) := by
+  cases q with
+  | bind f i =>
+    obtain ⟨fr, b, hf, hi⟩ := mem_allPos_bind env f i hq
+    rw [Env.mean, valAt_bind_eq]
+    simp [hf, hi]
+  | temp f i =>
+    obtain ⟨fr, hf, hi⟩ := mem_allPos_temp env f i hq
+    rw [Env.mean, valAt_temp_eq]
+    simp [hf, Array.getElem?_eq_getElem hi]
+
+end
+
+/-- A binding of the environment is a position. -/
+theorem bind_mem_allPos (env : Env) (f i : Nat) (fr : Frame) (b : Binding)
+    (hf : env[f]? = some fr) (hi : fr.binds[i]? = some b) : Pos.bind f i ∈ allPos env := by
+  rw [allPos_eq]
+  simp only [List.mem_flatMap, List.mem_range]
+  refine ⟨f, ?_, ?_⟩
+  · exact (Array.getElem?_eq_some_iff.mp hf).1
+  · simp only [hf, Option.map_some, Option.getD_some, frameAllPos, List.mem_append, List.mem_map, List.mem_range]
+    exact Or.inl ⟨i, (Array.getElem?_eq_some_iff.mp hi).1, rfl⟩
+
+/-- A temporary of the environment is a position. -/
+theorem temp_mem_allPos (env : Env) (f i : Nat) (fr : Frame) (v : Value)
+    (hf : env[f]? = some fr) (hi : fr.temps[i]? = some v) : Pos.temp f i ∈ allPos env := by
+  rw [allPos_eq]
+  simp only [List.mem_flatMap, List.mem_range]
+  refine ⟨f, ?_, ?_⟩
+  · exact (Array.getElem?_eq_some_iff.mp hf).1
+  · simp only [hf, Option.map_some, Option.getD_some, frameAllPos, List.mem_append, List.mem_map, List.mem_range]
+    exact Or.inr ⟨i, (Array.getElem?_eq_some_iff.mp hi).1, rfl⟩
+
+section
+variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (φ : Future)
+
+/-- A position outside the environment means `err`. -/
+theorem mean_eq_err (env : Env) (q : Pos) (hq : q ∉ allPos env) : Env.mean dm C Γ ρ φ env q = .err := by
+  cases q with
+  | bind f i =>
+    rw [Env.mean]
+    cases hf : env[f]? with
+    | none => rfl
+    | some fr =>
+      cases hi : fr.binds[i]? with
+      | none => simp [hf, hi]
+      | some b => exact absurd (bind_mem_allPos env f i fr b hf hi) hq
+  | temp f i =>
+    rw [Env.mean]
+    cases hf : env[f]? with
+    | none => rfl
+    | some fr =>
+      cases hi : fr.temps[i]? with
+      | none => simp [hf, hi]
+      | some v => exact absurd (temp_mem_allPos env f i fr v hf hi) hq
+
+end
+
+/-- The holder a label's borrow is found at is a position. -/
+theorem mem_allPos_of_find (env : Env) (l : Nat) (p : Pos) (h : findBorrow env l = some p) : p ∈ allPos env :=
+  List.mem_of_find?_eq_some h
+
 /-! ## Part C: the bridge -/
 
 section
