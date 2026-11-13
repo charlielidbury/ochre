@@ -153,12 +153,12 @@ theorem piSort_pow : (checkerDecisions st 10).piSort [] (.pi [⟨"x"⟩] [.nat] 
 theorem piSort_scope : (checkerDecisions st 10).piSort [.sort 2] (.pi [⟨"y"⟩] [.place (.var 0)] .nat) = 2 :=
   rfl
 
-/-- The checker bug the instance reproduces: `Π(f : Π(x : Nat). Prop). Nat` has a domain in
-`Type₁`, so it is in `Type₁` (`Machine.piSort`, which runs the types, says 2), but `Decide.sortOf`
-says `Type₀`. Its `declSort` reads the Π-term domain through `declOf false`, where `typePos`
-answers 1. -/
+/-- `Π(f : Π(x : Nat). Prop). Nat` has a domain in `Type₁`, so it is in `Type₁` (the instance used
+to reproduce a checker bug here: `Decide.sortOf` said `Type₀`, its `declSort` reading the Π-term
+domain through `declOf false`; D86 on main reads a Π-term's declared sort in every mode, so the
+instance now agrees with `Machine.piSort`). -/
 theorem piSort_nested :
-    (checkerDecisions st 10).piSort [] (.pi [⟨"f"⟩] [.pi [⟨"x"⟩] [.nat] (.sort 0)] .nat) = 1 := rfl
+    (checkerDecisions st 10).piSort [] (.pi [⟨"f"⟩] [.pi [⟨"x"⟩] [.nat] (.sort 0)] .nat) = 2 := rfl
 
 end DecisionsSanity
 
