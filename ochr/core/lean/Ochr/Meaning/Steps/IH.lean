@@ -67,6 +67,7 @@ structure StepsIH (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Pr
   eval_wf78 : eval_wf78_stmt K ρ φ fuel
   types_holeFree : types_holeFree_stmt K ρ φ fuel
   evalCore_step : evalCore_step_stmt K ρ φ fuel
+  eval_step : eval_step_stmt K ρ φ fuel
   letIn_step : letIn_step_stmt K ρ φ fuel
   eq_step : eq_step_stmt K ρ φ fuel
   J_step : J_step_stmt K ρ φ fuel

@@ -84,6 +84,17 @@ theorem run_counter_indep (φ : Future) (hint : TyS) (t : Term) (bs : List SBind
       = (run K ρ φ hint t (stateOf n' bs)).map (fun r => (r.1.1, r.1.2.shape)) := by
   sorry
 
+/-- **Locality in the unknowns** (open, believed true; the twin of `run_congr` for the assignment
+and Δ). The run reads the assignment and `K.Δ` only at the unknowns that occur in its term (a
+state holds meanings, not values, so only the term matters). A step that creates unknowns hands on
+an extended assignment, and its run context needs Δ at the new unknowns (docs/31 D20, item 7):
+this lemma is what carries a run established before the step to the extended pair. Its proof is
+the induction of `run_congrE` without the state invariant. -/
+theorem run_abs_congr (Δ' : Nat → TyS) (ρ' : Assignment) (φ : Future) (hint : TyS) (t : Term) (s : SState)
+    (h : ∀ σ, t.anyAtom (· == .abs σ) = true → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) :
+    run { K with Δ := Δ' } ρ' φ hint t s = run K ρ φ hint t s := by
+  sorry
+
 /-- The filler, at the fixed future `φ[ℓ ↦ ⟦w⟧]`, means the loan and has its type. -/
 theorem fillOK_upd (φ : Future) (l : Nat) (w : Value) (hK : ∀ n, (K.C.global n).2.label = none)
     (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w) (hD : DecInvariant K.D l w) (hc : FillShape K ρ φ l w) :

@@ -738,7 +738,27 @@ def evalCore_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
   ∀ (st st' : MState)  (typed : Bool) (t : Term) (hint : Option Value)
     (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    -- `evalCore` does not erase (`evalAt` does), and the run of a statement is on a copy
+    -- (`SM.stmtIf`): the two agree where the term is not a statement; `eval_step_stmt` is the
+    -- statement for every term
+    (hns : (K.D.flags (scopeOf (SM' K ρ st)) t).1 = false)
     (h : Runs (Ochr.evalCore fuel typed t hint) st fuel (v, T?) st'),
+    ∃ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧
+      ∃ r s', run K ρ' φ (hintM K ρ hint) t (SM' K ρ' st) = some (r, s') ∧
+        meanV K ρ' φ r.2 v ⊑ r.1 ∧
+        (∀ T, T? = some T → (meanV K ρ' noFuture (.plain .err) T).asTy = r.2.m) ∧
+        Below (MState.mean K.dm K.M K.Γ ρ' st') s'.toMean ∧ Good K.dm K.M K.Γ ρ' st'
+
+/-- **The induction step as the checker recurses** (docs/31 D20, item 5): every recursive
+position of the checker calls `Machine.eval`, which is `evalAt`: it classifies the term
+(`preFlags`), runs an erased one on a private copy and restores the environment. The run does
+the same at `Decisions.flags` (`SM.stmtIf`, D19), so this statement has no side condition, where
+`evalCore_step_stmt` has `hns`. Same conclusion. -/
+def eval_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState)  (typed : Bool) (t : Term) (hint : Option Value)
+    (v : Value) (T? : Option Value)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (h : Runs (Ochr.eval fuel typed t hint) st fuel (v, T?) st'),
     ∃ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧
       ∃ r s', run K ρ' φ (hintM K ρ hint) t (SM' K ρ' st) = some (r, s') ∧
         meanV K ρ' φ r.2 v ⊑ r.1 ∧
@@ -751,6 +771,7 @@ def letIn_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : 
   ∀ (st st' : MState)  (typed : Bool) (h0 : Hint) (u w : Term)
     (hint : Option Value) (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hns : (K.D.flags (scopeOf (SM' K ρ st)) (.letIn h0 u w)).1 = false)
     (h : Runs (Ochr.evalCore fuel typed (.letIn h0 u w) hint) st fuel (v, T?) st'),
     ∃ ρ' r s', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧
       run K ρ' φ (hintM K ρ hint) (.letIn h0 u w) (SM' K ρ' st) = some (r, s') ∧
@@ -775,6 +796,7 @@ def J_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop
   ∀ (st st' : MState)  (typed : Bool) (A a b P hh u : Term) (hint : Option Value)
     (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hns : (K.D.flags (scopeOf (SM' K ρ st)) (.prim "J" [A, a, b, P, hh, u])).1 = false)
     (h : Runs (Ochr.evalCore fuel typed (.prim "J" [A, a, b, P, hh, u]) hint) st fuel (v, T?) st'),
     ∃ ρ' r s', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧
       run K ρ' φ (hintM K ρ hint) (.prim "J" [A, a, b, P, hh, u]) (SM' K ρ' st) = some (r, s') ∧
@@ -790,7 +812,9 @@ def proof_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : 
     (T : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hp : (K.D.flags (scopeOf (SM' K ρ st)) t).2 = true)
-    (h : Runs (Ochr.evalCore fuel typed t hint) st fuel (.proof, some T) st'),
+    -- `eval`, not `evalCore`: it is `evalAt` that runs a proof on a copy (as stated for `evalCore`
+    -- a proof-valued `let` whose right-hand side moves a place refuted "the state is unchanged")
+    (h : Runs (Ochr.eval fuel typed t hint) st fuel (.proof, some T) st'),
     st'.core = st.core ∧ Sem.proof ∈ₛ (meanV K ρ φ (.plain .err) T).asTy
 
 /-- η at `Unit` (D80): where a position's declared reading is `Unit`, the value is `()`, and

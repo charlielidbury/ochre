@@ -26,6 +26,11 @@ the reference run does not fail. -/
 theorem evalCore_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : evalCore_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
+/-- The induction step as the checker recurses: `Machine.eval` (`evalAt`: the term classified, an
+erased one on a private copy) against the run, which does the same at `Decisions.flags`. -/
+theorem eval_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : eval_step_stmt K ρ φ (fuel + 1) := by
+  sorry
+
 /-- [Let]: the binding is pushed at the right-hand side's type and dropped after the tail
 (`dropTopBind`); the run's `.letIn` clause. -/
 theorem letIn_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : letIn_step_stmt K ρ φ (fuel + 1) := by
