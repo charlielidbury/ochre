@@ -18,25 +18,25 @@ theorem updAt_nil (dm : DataModel) (Γ : List IndDecl) (T : TyM) (f : Sem → Se
 theorem updAt_deref (dm : DataModel) (Γ : List IndDecl) (T : TyM) (f : Sem → Sem) (sts : List Step) (s : Sem) :
     Sem.updAt dm Γ T f (.deref :: sts) s = Sem.updAt dm Γ T f sts s := rfl
 
-/-- Where the decisions classify no term as a statement (`hfl`; true of `K₀` by `rfl`),
-`SM.stmtIf` is the run itself (D19: every clause that can change the state runs under
+/-- Where the decisions classify no term as a statement or as erased (`hfl`; true of `K₀` by
+`rfl`), `SM.erasedIf` is the run itself (D19: every clause that can change the state runs under
 `Decisions.flags`). -/
-theorem stmtIf_noStmt (K : RunCtx) (hfl : ∀ sc t, (K.D.flags sc t).1 = false) (t : Term) (x : SM Res) (s : SState) :
-    SM.stmtIf (K.D.flags (scopeOf s) t).1 x s = x s := by
+theorem stmtIf_noStmt (K : RunCtx) (hfl : ∀ sc t, K.D.flags sc t = (false, false)) (t : Term) (x : SM Res) (s : SState) :
+    SM.erasedIf (K.D.flags (scopeOf s) t) x s = x s := by
   rw [hfl]; rfl
 
 theorem run_ascribe (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (u A : Term) (s : SState)
-    (hfl : ∀ sc t, (K.D.flags sc t).1 = false) :
+    (hfl : ∀ sc t, K.D.flags sc t = (false, false)) :
     run K ρ φ hint (.ascribe u A) s =
       (do
-        let (TA, _) ← SM.onCopy (run K ρ φ (.plain .err) A)
-        let T := TyS.plain TA.asTy
+        let (TA, RA) ← SM.onCopy (run K ρ φ (.plain .err) A)
+        let T : TyS := ⟨TA.asTy, RA.shape, none, RA.data⟩
         let (v, R) ← run K ρ φ T u
         pure (v, { T with label := R.label })) s := by
   rw [run]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem run_letIn (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (x : Hint) (u w : Term) (s : SState)
-    (hfl : ∀ sc t, (K.D.flags sc t).1 = false) :
+    (hfl : ∀ sc t, K.D.flags sc t = (false, false)) :
     run K ρ φ hint (.letIn x u w) s =
       (do
         let ((v, T), s) ← run K ρ φ (.plain .err) u s
@@ -320,6 +320,10 @@ theorem contentOf_deref_r (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : S
     simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, S₄]
   simp only [contentOf, hr, access_S₄]
   simp [S₄, SState.tyAt, SState.valAt, Sem.follow, Sem.step]
+
+theorem resolve_deref_r (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
+    resolve (S₄ F n b k) (.deref (.var 0)) = some (.bind 0 1, [.deref]) := by
+  simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, S₄]
 
 /-- The state after `*r := w` on `S₄`: `r` holds `w`. -/
 noncomputable def S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) : SState :=
