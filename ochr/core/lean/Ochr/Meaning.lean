@@ -28,6 +28,7 @@ import Ochr.Meaning.Steps.Eval
 import Ochr.Meaning.Steps.Tail
 import Ochr.Meaning.Steps.Decisions
 import Ochr.Meaning.Steps.Knot
+import Ochr.Meaning.Steps.Sim
 import Ochr.Meaning.Attack.CloseCall
 import Ochr.Meaning.Attack.RunEqs
 import Ochr.Meaning.Attack.CloseCallFwd
@@ -49,6 +50,7 @@ import Ochr.Meaning.Regress.AdequacyProbes
 import Ochr.Meaning.Regress.Adequacy_flipped
 import Ochr.Meaning.Regress.ExitWorld_flipped
 import Ochr.Meaning.Regress.ConstFree_flipped
+import Ochr.Meaning.Regress.StaleTemp
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
