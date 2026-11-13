@@ -601,6 +601,7 @@ def D : Decisions where
   piSort _ _ := 1
   joinMoves _ _ _ := [.proj 0 (.var 0)]
   rePointed _ _ := []
+  typeDecl _ _ := .other
 
 noncomputable def K : RunCtx where
   dm := dm

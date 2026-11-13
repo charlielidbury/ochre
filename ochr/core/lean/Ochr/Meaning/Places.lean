@@ -48,6 +48,21 @@ structure Decisions : Type where
   /-- D84 [Id-typestate]/[Obs-ref]: the borrow bindings a side re-points (assigns whole and does
   not consume), read from syntax and declared types (`Decide.typeState`'s `repointed`). -/
   rePointed : List DeclInfo → Term → List Place
+  /-- The reading of a type term, as a type (`Decide.typeDecl`): what a binding declared at it
+  reads (D19, R3: a parameter's reading is its domain term's, `Decide.paramDecls`). -/
+  typeDecl : List DeclInfo → Term → DeclInfo
+
+/-- The scope after a telescope of parameter types: each parameter's reading, read in the scope
+of the earlier ones, innermost first (`Decide.telescope`). -/
+def Decisions.teleDecls (D : Decisions) (sc : List DeclInfo) : List Term → List DeclInfo
+  | [] => sc
+  | d :: ds => D.teleDecls (D.typeDecl sc d :: sc) ds
+
+/-- The declared readings of a function's parameters, in order, and of its codomain, read in the
+scope `sc` where the function is formed (`Decide.paramDecls`): what the closure's frame binds its
+parameters at, and (`.pi cd`) `self`. -/
+def Decisions.fixDecls (D : Decisions) (sc : List DeclInfo) (ds : List Term) (c : Term) : List DeclInfo × DeclInfo :=
+  (((D.teleDecls sc ds).take ds.length).reverse, D.typeDecl (D.teleDecls sc ds) c)
 
 section
 variable (dm : DataModel) (Γ : List IndDecl)

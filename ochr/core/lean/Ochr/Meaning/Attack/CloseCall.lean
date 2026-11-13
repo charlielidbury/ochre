@@ -56,6 +56,7 @@ def D₀ : Decisions where
   piSort _ _ := 1
   joinMoves _ _ _ := []
   rePointed _ _ := []
+  typeDecl _ _ := .other
 
 /-- Δ: `σ0 : Nat`, `σ1 : Π(x : &Nat). &Nat` with its shape. -/
 def Δ₀ : Nat → TyS

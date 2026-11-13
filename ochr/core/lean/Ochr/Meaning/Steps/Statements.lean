@@ -882,6 +882,15 @@ def rePointed_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
     (h : Runs (Ochr.typeState fuel t) st fuel ts st'),
     K.D.rePointed (scopeOf (SM' K ρ st)) t = ts.repointed
 
+/-- `Decisions.typeDecl` is `Decide.typeDecl`, the reading of a type term (D19, R3: a closure's
+frame binds its parameters at their domain terms' readings, `Decide.paramDecls`). -/
+def typeDecl_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState) (T : Term) (d : DeclInfo)
+    (hg : Good K.dm K.M K.Γ ρ st) (hΔ : DeltaOk K ρ st)
+    (hD : K.D = checkerDecisions st fuel)
+    (h : Runs (withLive true (Ochr.typeDecl fuel false [] [] T)) st fuel d st'),
+    K.D.typeDecl (scopeOf (SM' K ρ st)) T = d
+
 end
 
 end Ochr.Meaning.Steps
