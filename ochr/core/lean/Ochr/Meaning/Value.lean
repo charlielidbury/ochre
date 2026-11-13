@@ -57,6 +57,11 @@ structure CodeMeaning where
   /-- The meaning of a deferred type (D82 `Binding.lazyTy`): parameter `i` of the Π-type `P` at
   the arguments `ws` as passed, or `P`'s codomain there for `i` the number of parameters. -/
   paramTy : Assignment → Value → List Value → Nat → TyS
+  /-- The Π-shape of a stored type value (a Π-closure's parameters and output), which a call
+  through a binding of that type is applied along (`Value.tyS`; the audit's A16: without it a
+  checker binding of function type had no shape in the reference state, and a call through it
+  failed). The run's `tyShape`, at the constant future. -/
+  tyShape : Assignment → Value → Option (List PiParam × PiOut) := fun _ _ => none
 
 /-- Read a meaning as an element of the Lean type `A` (classically, by the tag). -/
 noncomputable def Sem.as (A : Type) : Sem → Option A

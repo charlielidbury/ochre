@@ -262,15 +262,6 @@ noncomputable def fixOut (s : SState) (bs : List PBind) (c : Term) : PiOut := ma
     | some ((v, _), _) => v.asTy
     | none => .err
 
-/-- A closure's codomain with its structure, as a function of the parameters: its body's hint. -/
-noncomputable def fixCod (s : SState) (bs : List PBind) (c : Term) : List Sem → TyS := match c with
-  | .ref U => fun acc => match run K ρ φ (.plain .err) U (extendBy s bs acc) with
-    | some ((v, R), _) => ⟨v.asTy, R.shape, none, R.data⟩
-    | none => .plain .err
-  | c => fun acc => match run K ρ φ (.plain .err) c (extendBy s bs acc) with
-    | some ((v, R), _) => ⟨v.asTy, R.shape, none, R.data⟩
-    | none => .plain .err
-
 /-- The decreasing argument's rank (φ-free). -/
 noncomputable def fixRank (ps : List PiParam) (dec : Option Nat) (args : List Sem) : Nat := match dec with
   | some j =>
@@ -1100,7 +1091,39 @@ theorem capsTys_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (rd : L
   | (d, T) :: rest, hv => by
     simp only [capsTys]
     rw [meanV_congrE hK T _ (fun l h => hv l (by simp [Value.hasLoan] at h; simp [Value.anyAtomRd, h])),
+      tyShape_congrE hK T (fun l h => hv l (by simp [Value.hasLoan] at h; simp [Value.anyAtomRd, h])),
+      tyDataV_congrE hK T (fun l h => hv l (by simp [Value.hasLoan] at h; simp [Value.anyAtomRd, h])),
       capsTys_congrE hK rest (fun l h => hv l (by simp [Value.anyAtomRd, h]))]
+
+theorem tyShape_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (T : Value),
+    (∀ l, T.hasLoan l = true → φ l = φ' l) → tyShape K ρ φ T = tyShape K ρ φ' T
+  | .tPi caps t rd, hv => by
+    rw [tyShape, tyShape]
+    rw [capsVals_congrE hK caps fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h]),
+      capsTys_congrE hK rd fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h]),
+      piShapeOf_congrE hK t _ (fun l => φ l = φ' l) (fun _ h => h)
+        (fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h])) (rinv_stateOf _ _ _)]
+  | .tRef A, hv => by
+    rw [tyShape, tyShape]
+    exact tyShape_congrE hK A fun l h => hv l (by simp [Value.hasLoan] at h ⊢; simp [Value.anyAtom, h])
+  | .zero, _ | .succ _, _ | .unit, _ | .gfn _, _ | .clo _ _ _, _ | .borrow _ _, _ | .loan _, _ | .bot, _ | .abs _, _
+  | .sealed _, _ | .proof, _ | .tNat, _ | .tUnit, _ | .tEq _ _ _, _ | .sort _, _ | .ind _ _ _ _ _, _ | .tInd _ _, _ => by
+    simp only [tyShape]
+
+theorem tyDataV_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (T : Value),
+    (∀ l, T.hasLoan l = true → φ l = φ' l) → tyDataV K ρ φ T = tyDataV K ρ φ' T
+  | .tInd n args, hv => by
+    rw [tyDataV, tyDataV]
+    split
+    · rename_i d _
+      rw [meanParams_congrE hK d args _ _ fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h])]
+    · rfl
+  | .tRef A, hv => by
+    rw [tyDataV, tyDataV]
+    exact tyDataV_congrE hK A fun l h => hv l (by simp [Value.hasLoan] at h ⊢; simp [Value.anyAtom, h])
+  | .zero, _ | .succ _, _ | .unit, _ | .gfn _, _ | .clo _ _ _, _ | .borrow _ _, _ | .loan _, _ | .bot, _ | .abs _, _
+  | .sealed _, _ | .proof, _ | .tNat, _ | .tUnit, _ | .tEq _ _ _, _ | .sort _, _ | .ind _ _ _ _ _, _ | .tPi _ _ _, _ => by
+    simp only [tyDataV]
 
 theorem meanFields_congrE (hK : ∀ n, (K.C.global n).2.label = none) (d : IndDecl) (ps : List Sem) (c : Nat) :
     ∀ (vs : List Value) (i : Nat) (earlier : List Sem),

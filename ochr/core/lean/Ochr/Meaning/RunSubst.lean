@@ -301,7 +301,7 @@ theorem run_substSame (hF : FillOK K ρ ψ l w) : ∀ (t : Term) (hint : TyS),
       | loan l' =>
         by_cases e : l' = l
         · subst e
-          have h := hF.shape hint s
+          have h := hF.shape.1 hint s
           rw [run_val_def, run_val_def] at h
           simp only [Option.map_some, Option.some.injEq] at h
           simp only [Value.substLoan, if_true]
@@ -549,7 +549,42 @@ theorem capsVals_substSame (hF : FillOK K ρ ψ l w) : ∀ (vs : List Value),
 theorem capsTys_substSame (hF : FillOK K ρ ψ l w) : ∀ (rd : List (DeclInfo × Value)),
     capsTys K ρ ψ (Value.substLoanRd l w rd) = capsTys K ρ ψ rd
   | [] => rfl
-  | (d, T) :: rest => by simp only [Value.substLoanRd, capsTys, meanV_substSame hF T, capsTys_substSame hF rest]
+  | (d, T) :: rest => by
+    simp only [Value.substLoanRd, capsTys, meanV_substSame hF T, tyShape_substSame hF T, tyDataV_substSame hF T,
+      capsTys_substSame hF rest]
+
+theorem tyShape_substSame (hF : FillOK K ρ ψ l w) : ∀ (T : Value),
+    tyShape K ρ ψ (Value.substLoan l w T) = tyShape K ρ ψ T
+  | .loan l' => by
+    by_cases e : l' = l
+    · subst e; simp only [Value.substLoan, if_true]; rw [hF.shape.2.1]; simp only [tyShape]
+    · simp only [Value.substLoan, e, if_false]
+  | .tPi caps t rd => by
+    show tyShape K ρ ψ (.tPi (Value.substLoanList l w caps) (Term.substLoan l w t) (Value.substLoanRd l w rd)) = _
+    rw [tyShape, tyShape, capsVals_substSame hF caps, capsTys_substSame hF rd, piShapeOf_substSame hF t]
+  | .tRef A => by
+    show tyShape K ρ ψ (.tRef (Value.substLoan l w A)) = _
+    rw [tyShape, tyShape, tyShape_substSame hF A]
+  | .zero | .succ _ | .unit | .gfn _ | .clo _ _ _ | .borrow _ _ | .bot | .abs _
+  | .sealed _ | .proof | .tNat | .tUnit | .tEq _ _ _ | .sort _ | .ind _ _ _ _ _ | .tInd _ _ => by
+    simp only [Value.substLoan, tyShape]
+
+theorem tyDataV_substSame (hF : FillOK K ρ ψ l w) : ∀ (T : Value),
+    tyDataV K ρ ψ (Value.substLoan l w T) = tyDataV K ρ ψ T
+  | .loan l' => by
+    by_cases e : l' = l
+    · subst e; simp only [Value.substLoan, if_true]; rw [hF.shape.2.2]; simp only [tyDataV]
+    · simp only [Value.substLoan, e, if_false]
+  | .tInd n args => by
+    show tyDataV K ρ ψ (.tInd n (Value.substLoanList l w args)) = _
+    rw [tyDataV, tyDataV]
+    simp only [meanParams_substSame hF]
+  | .tRef A => by
+    show tyDataV K ρ ψ (.tRef (Value.substLoan l w A)) = _
+    rw [tyDataV, tyDataV, tyDataV_substSame hF A]
+  | .zero | .succ _ | .unit | .gfn _ | .clo _ _ _ | .borrow _ _ | .bot | .abs _
+  | .sealed _ | .proof | .tNat | .tUnit | .tEq _ _ _ | .sort _ | .ind _ _ _ _ _ | .tPi _ _ _ => by
+    simp only [Value.substLoan, tyDataV]
 
 theorem meanFields_substSame (hF : FillOK K ρ ψ l w) (d : IndDecl) (ps : List Sem) (c : Nat) :
     ∀ (vs : List Value) (i : Nat) (earlier : List Sem),
