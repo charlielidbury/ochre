@@ -95,14 +95,26 @@ noncomputable def endLabel (s : SState) (l : Nat) : SState :=
 def liveLabels (s : SState) : List Nat :=
   (s.positions.filterMap s.shape).mergeSort (· ≤ ·)
 
-/-- [Access] of `p` for the reference run: end, in label order, every live borrow whose final
-content the meaning at `p` depends on, and nothing else (docs/27 §5). Ending a borrow may make
-`p` depend on another (a reborrow's loan travels back), so this is iterated as many times as
-there are live labels. -/
-noncomputable def access (s : SState) (p : Pos) : SState :=
+/-- The observation `o` of the meaning at `p` depends on label `l`: some change of `l`'s final
+content changes what `o` sees of it. At `o = id` this is `dependsOn`. -/
+def obsDep (s : SState) (p : Pos) (o : Sem → Sem) (l : Nat) : Prop :=
+  ∃ φ x, o (s.valAt p φ) ≠ o (s.valAt p (φ.upd l x))
+
+/-- [Access] of `p` for the reference run, for an observation `o` of its meaning (the content at
+a path, a tag): end, in label order, every live borrow whose final content what `o` observes
+depends on, and nothing else (docs/27 §5). Ending a borrow may make the observation depend on
+another (a reborrow's loan travels back), so this is iterated as many times as there are live
+labels.
+
+The observation is the audit's A1 (second lead): accessing for the whole position's meaning ended
+every borrow of every field of a variable when one field was read, and every borrow inside a
+scrutinee when only its tag was matched, where `Machine.accessInside` ends what the PLACE read
+depends on and `accessNeutralHead` what the tag does. A borrow the run ended and the checker kept
+loses the writes later made through it, which is not `Below`. -/
+noncomputable def access (s : SState) (p : Pos) (o : Sem → Sem) : SState :=
   open Classical in
   let step (s : SState) : SState :=
-    (s.liveLabels.filter fun l => decide (s.dependsOn p l)).foldl endLabel s
+    (s.liveLabels.filter fun l => decide (s.obsDep p o l)).foldl endLabel s
   (List.range s.liveLabels.length).foldl (fun s _ => step s) s
 
 /-- The top frame's index. -/

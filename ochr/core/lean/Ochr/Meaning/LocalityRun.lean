@@ -44,16 +44,17 @@ theorem foldl_endLabel_rinv : ∀ (ls : List Nat) {s : SState}, RInv L s → RIn
   | [], _, h => h
   | l :: ls, _, h => foldl_endLabel_rinv ls (endLabel_rinv h l)
 
-theorem accStep_rinv {s : SState} (h : RInv L s) (p : Pos) : RInv L (accStep p s) :=
+theorem accStep_rinv {s : SState} (h : RInv L s) (p : Pos) (o : Sem → Sem) : RInv L (accStep p o s) :=
   foldl_endLabel_rinv _ h
 
-theorem iterR_accStep_rinv (p : Pos) : ∀ (k : Nat) {s : SState}, RInv L s → RInv L (iterR (accStep p) k s)
+theorem iterR_accStep_rinv (p : Pos) (o : Sem → Sem) : ∀ (k : Nat) {s : SState}, RInv L s →
+    RInv L (iterR (accStep p o) k s)
   | 0, _, h => h
-  | k + 1, _, h => accStep_rinv (iterR_accStep_rinv p k h) p
+  | k + 1, _, h => accStep_rinv (iterR_accStep_rinv p o k h) p o
 
-theorem access_rinv {s : SState} (h : RInv L s) (p : Pos) : RInv L (s.access p) := by
+theorem access_rinv {s : SState} (h : RInv L s) (p : Pos) (o : Sem → Sem) : RInv L (s.access p o) := by
   rw [access_eq, foldl_range_iterR]
-  exact iterR_accStep_rinv p _ h
+  exact iterR_accStep_rinv p o _ h
 
 /-! ## Writes, a fresh label -/
 

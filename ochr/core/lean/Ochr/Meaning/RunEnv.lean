@@ -83,7 +83,7 @@ theorem envLe_foldl_endLabel : ∀ (ls : List Nat) (s : SState), EnvLe s (ls.fol
   | [], s => EnvLe.refl s
   | l :: ls, s => (envLe_endLabel s l).trans (envLe_foldl_endLabel ls _)
 
-theorem envLe_access (s : SState) (p : Pos) : EnvLe s (s.access p) := by
+theorem envLe_access (s : SState) (p : Pos) (o : Sem → Sem) : EnvLe s (s.access p o) := by
   rw [access_eq, foldl_range_iterR]
   generalize s.liveLabels.length = k
   induction k with
@@ -132,7 +132,7 @@ theorem contentOf_envLe {p : Place} {s s' : SState} {x : Sem × TyS × Pos × Li
     dsimp only at h
     split at h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      rw [← h.2]; exact envLe_access s _
+      rw [← h.2]; exact envLe_access s _ _
     · cases h
 
 theorem setContent_envLe {pos : Pos} {steps : List Step} {v : Sem} {s s' : SState}
@@ -200,22 +200,22 @@ theorem joinDrop_envLe (entry : List Place) (t : Term) (s : SState) : EnvLe s (j
     · exact EnvLe.refl s
     · split
       · rename_i pos steps hr
-        have ea := envLe_access s pos
+        have ea := envLe_access s pos (obsAt K (s.tyAt pos).m steps wholeOb)
         split
         · exact ea
         · exact ea
         · exact ea
         · have ee : EnvLe s (if steps.isEmpty = true then
-              (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-              else s.access pos) := by
+              (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+              else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) := by
             split
             · split
               · exact ea.trans (envLe_endLabel _ _)
               · exact ea
             · exact ea
           generalize (if steps.isEmpty = true then
-              (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-              else s.access pos) = s₂ at ee ⊢
+              (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+              else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) = s₂ at ee ⊢
           exact ee.trans (envLe_setAt _ _ _)
       · exact EnvLe.refl s
 
