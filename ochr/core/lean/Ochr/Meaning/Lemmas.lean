@@ -30,23 +30,6 @@ namespace Ochr.Meaning
 section
 variable (K : RunCtx) (ρ : Assignment)
 
-/-- Filling a loan is fixing the future, for values. The hypotheses are m2-proofs' C and (P1) the
-filler's declared shape. -/
-theorem meanV_substLoan (φ : Future) (hint : TyS) (l : Nat) (w v : Value)
-    (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w) (hD : DecInvariant K.D l w) (hc : FillShape K ρ φ l w) :
-    meanV K ρ φ hint (Value.substLoan l w v) = meanV K ρ (φ.upd l (meanV K ρ φ (.plain .err) w)) hint v := by
-  sorry
-
-/-- Filling a loan is fixing the future, for a term's run: the run at `φ` of the substituted term
-from a state is the run at the fixed future of the term from the same state (hypotheses B, C and
-(P1) the filler's declared shape). -/
-theorem run_substLoan (φ : Future) (hint : TyS) (l : Nat) (w : Value) (t : Term) (s : SState)
-    (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w) (hD : DecInvariant K.D l w) (hc : FillShape K ρ φ l w)
-    (hs : StateFreeOf s l) :
-    run K ρ φ hint (Term.substLoan l w t) s
-      = run K ρ (φ.upd l (meanV K ρ φ (.plain .err) w)) hint t s := by
-  sorry
-
 /-- A value's meaning depends on the future only at the loans it holds anywhere, its closures'
 recorded capture types included. (With D13's fixes every borrow the run makes is ended before
 it is read or when it is discarded, so no fresh label leaks into a meaning.) -/
@@ -83,12 +66,85 @@ theorem run_congr (φ φ' : Future) (hint : TyS) (t : Term) (s : SState) (L : Na
 /-- The run's result does not depend on the starting label counter, as long as it is above every
 loan of the term and of the state (m2-proofs' D): fresh labels are names. Needed because a
 sealed program's counter, `emptyState (t.loans.foldl max 0 + 1)`, changes under substitution. Only the
-result's meaning is compared: a returned borrow's label and the state's labels are the counter. -/
+result's meaning and shape are compared: a returned borrow's label and the state's labels are the
+counter. (PROPOSAL, m2-proofs, statement: the shape is compared too; the run of an embedded sealed
+program reads its result's shape, `valT`.) -/
 theorem run_counter_indep (φ : Future) (hint : TyS) (t : Term) (s : SState) (n n' : Nat)
     (hn : ∀ l ∈ t.loans, l < n) (hn' : ∀ l ∈ t.loans, l < n') (hs : ∀ l ∈ s.positions.filterMap s.shape, l < min n n') :
-    (run K ρ φ hint t { s with nextLoan := n }).map (·.1.1)
-      = (run K ρ φ hint t { s with nextLoan := n' }).map (·.1.1) := by
+    (run K ρ φ hint t { s with nextLoan := n }).map (fun r => (r.1.1, r.1.2.shape))
+      = (run K ρ φ hint t { s with nextLoan := n' }).map (fun r => (r.1.1, r.1.2.shape)) := by
   sorry
+
+theorem sealedCounterIndep (φ : Future) : SealedCounterIndep K ρ φ := by
+  intro t hint n n' hn hn'
+  have h := run_counter_indep K ρ φ hint t (emptyState 0) n n' hn hn' (fun l hl => by
+    simp [SState.positions, emptyState] at hl)
+  exact h
+
+/-- The filler, at the fixed future `φ[ℓ ↦ ⟦w⟧]`, means the loan and has its type. -/
+theorem fillOK_upd (φ : Future) (l : Nat) (w : Value) (hK : ∀ n, (K.C.global n).2.label = none)
+    (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w) (hD : DecInvariant K.D l w) (hc : FillShape K ρ φ l w) :
+    FillOK K ρ (φ.upd l (meanV K ρ φ (.plain .err) w)) l w := by
+  have hw' : ∀ y, w.anyAtom (· == .loan y) = true → y ≠ l := fun y hy e => hw (by subst e; exact hy)
+  have hagree : ∀ y, y ≠ l → (φ.upd l (meanV K ρ φ (.plain .err) w)) y = φ y :=
+    fun y hy => Future.upd_other _ _ hy
+  refine ⟨fun hint => ?_, fun hint s => ?_, hD, sealedCounterIndep K ρ _⟩
+  · rw [meanV_congr K ρ _ φ hint w hK (fun y hy => hagree y (hw' y hy)), hf hint (.plain .err), Future.upd_same]
+  · have h0 := hc hint (emptyState 0)
+    have hr := run_congrE K ρ φ (φ.upd l (meanV K ρ φ (.plain .err) w)) hK (.val w) hint (emptyState 0)
+      (fun y => y ≠ l) (fun y hy => (hagree y hy).symm) (fun y hy => hw' y hy) (rinv_emptyState _)
+    rw [run_val_def, run_val_def] at h0 hr ⊢
+    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h0 hr ⊢
+    rw [← hr.1.2]
+    exact h0
+
+/-- Filling a loan is fixing the future, for values. The hypotheses are m2-proofs' C and (P1) the
+filler's declared shape. -/
+theorem meanV_substLoan (φ : Future) (hint : TyS) (l : Nat) (w v : Value)
+    (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w) (hD : DecInvariant K.D l w) (hc : FillShape K ρ φ l w)
+    -- PROPOSAL (m2-proofs, statement): a global carries no borrow label (as `meanV_congr`)
+    (hK : ∀ n, (K.C.global n).2.label = none) :
+    meanV K ρ φ hint (Value.substLoan l w v) = meanV K ρ (φ.upd l (meanV K ρ φ (.plain .err) w)) hint v := by
+  have hw0 : w.anyAtom (· == .loan l) = false := by
+    cases h : w.anyAtom (· == .loan l)
+    · rfl
+    · exact absurd h hw
+  rw [meanV_congr K ρ φ (φ.upd l (meanV K ρ φ (.plain .err) w)) hint _ hK (fun y hy => by
+      have hyl : y ≠ l := fun e => by subst e; simp [Value.hasLoan, noLoan_substLoanV y w hw0 v] at hy
+      exact (Future.upd_other _ _ hyl).symm)]
+  exact meanV_substSame K ρ _ l w (fillOK_upd K ρ φ l w hK hw hf hD hc) v hint
+
+/-- Filling a loan is fixing the future, for a term's run: the run at `φ` of the substituted term
+from a state is the run at the fixed future of the term from the same state (hypotheses B, C and
+(P1) the filler's declared shape). -/
+theorem run_substLoan (φ : Future) (hint : TyS) (l : Nat) (w : Value) (t : Term) (s : SState)
+    (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w) (hD : DecInvariant K.D l w) (hc : FillShape K ρ φ l w)
+    (hs : StateFreeOf s l)
+    -- PROPOSAL (m2-proofs, statement): `run_congr`'s state hypotheses, at `L = (· ≠ ℓ)`: the
+    -- holders are label-ordered and every shape entry is a real position below the counter; and a
+    -- global carries no borrow label
+    (hord : ∀ r x, r ∈ s.positions → s.shape r = some x →
+      FT (fun y => (y ≠ l ∧ ¬ s.Live y) ∨ (s.Live y ∧ x < y)) (s.valAt r))
+    (hsh : ∀ p x, s.shape p = some x → p ∈ s.positions ∧ x < s.nextLoan)
+    (hK : ∀ n, (K.C.global n).2.label = none) :
+    run K ρ φ hint (Term.substLoan l w t) s
+      = run K ρ (φ.upd l (meanV K ρ φ (.plain .err) w)) hint t s := by
+  have hw0 : w.anyAtom (· == .loan l) = false := by
+    cases h : w.anyAtom (· == .loan l)
+    · rfl
+    · exact absurd h hw
+  have hfree : ∀ p ψ₁ ψ₂, (∀ y, y ≠ l → ψ₁ y = ψ₂ y) → s.valAt p ψ₁ = s.valAt p ψ₂ := by
+    intro p ψ₁ ψ₂ h
+    rw [← hs.1 p ψ₁ (ψ₂ l)]
+    congr 1
+    funext y
+    by_cases e : y = l
+    · subst e; exact Future.upd_same _ _ _
+    · rw [Future.upd_other _ _ e]; exact h y e
+  rw [run_congr K ρ φ (φ.upd l (meanV K ρ φ (.plain .err) w)) hint _ s (fun y => y ≠ l)
+      (fun y hy => (Future.upd_other _ _ hy).symm)
+      (fun y hy e => by subst e; simp [noLoan_substLoanT y w hw0 t] at hy) hfree hord hsh hK]
+  exact congrFun (run_substSame K ρ _ l w (fillOK_upd K ρ φ l w hK hw hf hD hc) t hint) s
 
 end
 
