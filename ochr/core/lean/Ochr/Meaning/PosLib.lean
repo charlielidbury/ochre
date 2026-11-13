@@ -1,0 +1,224 @@
+import Ochr.Meaning.Steps.Statements
+
+/-!
+# The position library: the checker's state operations as the step lemmas see them
+
+Every prover meets the same three things (the pilot's finding, docs/31 item 5): the checker's
+primitive state operations as runs (`Runs (setAt p v) st fuel () st'` fixes `st'`), the
+environment's positions and values after them, and the bridge from a checker state to the
+semantic state it means (`MState.sstate`, `MState.mean`). This file collects them.
+
+* Part A: `Runs` of the primitives (`modify`, `setAt`, `pushTemp`, `pushBind`, `modifyFrame`), each
+  the one state it reaches, by `rfl` on `runMachine`; determinism (`Runs.unique`).
+* Part B: the environment after them (`allPos`, `valAt`, `Env.mean`, `Env.shape`, `Env.hintAt`).
+* Part C: the bridge (`sstate`'s `valAt`, `tyAt`, `shape`, `positions` against `Env.mean`,
+  `Env.hintAt`, `Env.shape`, `allPos`).
+-/
+
+namespace Ochr.Meaning.Steps
+
+open Ochr
+
+/-! ## Part A: runs of the primitives -/
+
+/-- A run is deterministic: `runMachine` is a function. -/
+theorem Runs.unique {α : Type} {x : M α} {st : MState} {fuel : Nat} {a b : α} {st' st'' : MState}
+    (h₁ : Runs x st fuel a st') (h₂ : Runs x st fuel b st'') : a = b ∧ st' = st'' := by
+  obtain ⟨l₁, g₁, e₁⟩ := h₁
+  obtain ⟨l₂, g₂, e₂⟩ := h₂
+  rw [e₁] at e₂
+  simp only [Prod.mk.injEq] at e₂
+  cases e₂.1
+  exact ⟨rfl, rfl⟩
+
+theorem runs_modify (g : MState → MState) (st : MState) (fuel : Nat) :
+    Runs (modify g : M Unit) st fuel () (g st) := ⟨fuel, #[], rfl⟩
+
+theorem runs_modifyFrame (f : Nat) (g : Frame → Frame) (st : MState) (fuel : Nat) :
+    Runs (Ochr.modifyFrame f g) st fuel () { st with env := st.env.modify f g } := ⟨fuel, #[], rfl⟩
+
+/-- The environment after `setAt`. -/
+def Env.setAtE (env : Env) : Pos → Value → Env
+  | .bind f i, v => env.modify f fun fr => { fr with binds := fr.binds.modify i ({ · with val := v }) }
+  | .temp f i, v => env.modify f fun fr => { fr with temps := fr.temps.set! i v }
+
+theorem runs_setAt (p : Pos) (v : Value) (st : MState) (fuel : Nat) :
+    Runs (Ochr.setAt p v) st fuel () { st with env := Env.setAtE st.env p v } := by
+  cases p <;> exact ⟨fuel, #[], rfl⟩
+
+/-- The environment after `pushTemp` (a temporary of the top frame). -/
+def Env.pushTempE (env : Env) (v : Value) : Env :=
+  env.modify (env.size - 1) fun fr => { fr with temps := fr.temps.push v }
+
+theorem runs_pushTemp (v : Value) (st : MState) (fuel : Nat) :
+    Runs (Ochr.pushTemp v) st fuel () { st with env := Env.pushTempE st.env v } := ⟨fuel, #[], rfl⟩
+
+/-- The environment after `pushBind`. -/
+def Env.pushBindE (env : Env) (h : Hint) (ty : Option Value) (v : Value) (proof : Bool) (decl : DeclInfo) : Env :=
+  env.modify (env.size - 1) fun fr => { fr with binds := fr.binds.push { hint := h, ty, val := v, proof, decl } }
+
+theorem runs_pushBind (h : Hint) (ty : Option Value) (v : Value) (proof : Bool) (decl : DeclInfo)
+    (st : MState) (fuel : Nat) :
+    Runs (Ochr.pushBind h ty v proof decl) st fuel () { st with env := Env.pushBindE st.env h ty v proof decl } :=
+  ⟨fuel, #[], rfl⟩
+
+/-- `withTemp` is `pushTemp`'s environment. -/
+theorem withTemp_eq (st : MState) (v : Value) : st.withTemp v = { st with env := Env.pushTempE st.env v } := rfl
+
+/-! ## Part B: the environment's positions -/
+
+/-- The positions of a checker frame, bindings then temporaries. -/
+def frameAllPos (f : Nat) (fr : Frame) : List Pos :=
+  (List.range fr.binds.size).map (Pos.bind f) ++ (List.range fr.temps.size).map (Pos.temp f)
+
+/-- `allPos` as a list expression (the checker's `Id.run` loops unfolded; `SState.positions_eq`'s
+twin). -/
+theorem allPos_eq (env : Env) :
+    allPos env = (List.range env.size).flatMap fun f => (env[f]?.map (frameAllPos f)).getD [] := by
+  simp [allPos]
+  rw [foldl_push_toList]
+  simp only [List.nil_append]
+  have key : ∀ (l : List Nat) (hl : ∀ x ∈ l, x < env.size),
+      (l.attach.flatMap fun x => List.map (Pos.bind x.val) (List.range' 0 (env[x.val]'(hl x.val x.property)).binds.size) ++
+          List.map (Pos.temp x.val) (List.range' 0 (env[x.val]'(hl x.val x.property)).temps.size))
+        = l.flatMap fun f => (Option.map (frameAllPos f) env[f]?).getD [] := by
+    intro l hl
+    induction l with
+    | nil => simp
+    | cons a l ih =>
+      simp only [List.attach_cons, List.flatMap_cons, List.flatMap_map]
+      rw [show env[a]? = some (env[a]'(hl a (List.mem_cons_self ..))) from Array.getElem?_eq_getElem _]
+      simp only [Option.map_some, Option.getD_some, frameAllPos, List.range_eq_range']
+      congr 1
+      exact ih fun x hx => hl x (List.mem_cons_of_mem _ hx)
+  rw [List.range_eq_range']
+  exact key (List.range' 0 env.size) (fun x hx => by simp [List.mem_range'] at hx; omega)
+
+/-- `setAt` keeps the frames' sizes, so the positions. -/
+theorem allPos_setAtE (env : Env) (p : Pos) (v : Value) : allPos (Env.setAtE env p v) = allPos env := by
+  rw [allPos_eq, allPos_eq]
+  cases p with
+  | bind f i =>
+    simp only [Env.setAtE, Array.size_modify]
+    congr 1; funext f'
+    by_cases hff : f = f'
+    · subst hff
+      rw [Array.getElem?_modify]; simp only [if_true]
+      cases env[f]? with
+      | none => rfl
+      | some fr => simp [frameAllPos, Array.size_modify]
+    · rw [Array.getElem?_modify]; simp only [hff, if_false]
+  | temp f i =>
+    simp only [Env.setAtE, Array.size_modify]
+    congr 1; funext f'
+    by_cases hff : f = f'
+    · subst hff
+      rw [Array.getElem?_modify]; simp only [if_true]
+      cases env[f]? with
+      | none => rfl
+      | some fr => simp [frameAllPos, Array.size_set!]
+    · rw [Array.getElem?_modify]; simp only [hff, if_false]
+
+/-- `pushTemp` adds one position, the new temporary of the top frame, after the others. -/
+theorem allPos_pushTempE (env : Env) (v : Value) (hne : 0 < env.size) :
+    allPos (Env.pushTempE env v) = allPos env ++ [.temp (env.size - 1) (env[env.size - 1]'(by omega)).temps.size] := by
+  sorry
+
+/-- A stored type is untouched by `setAt`. -/
+theorem hintAt_setAtE (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment)
+    (env : Env) (p q : Pos) (v : Value) :
+    Env.hintAt dm C Γ ρ (Env.setAtE env p v) q = Env.hintAt dm C Γ ρ env q := by
+  cases q with
+  | temp _ _ => rfl
+  | bind f' i' =>
+    cases p with
+    | bind f i =>
+      simp only [Env.hintAt, Env.setAtE]
+      by_cases hff : f = f'
+      · subst hff
+        rw [Array.getElem?_modify]; simp only [if_true]
+        cases env[f]? with
+        | none => rfl
+        | some fr =>
+          simp only [Option.map_some, Option.bind_some]
+          by_cases hii : i = i'
+          · subst hii
+            rw [Array.getElem?_modify]; simp only [if_true]
+            cases fr.binds[i]? <;> rfl
+          · rw [Array.getElem?_modify]; simp only [hii, if_false]
+      · rw [Array.getElem?_modify]; simp only [hff, if_false]
+    | temp f i =>
+      simp only [Env.hintAt, Env.setAtE]
+      by_cases hff : f = f'
+      · subst hff
+        rw [Array.getElem?_modify]; simp only [if_true]
+        cases env[f]? <;> rfl
+      · rw [Array.getElem?_modify]; simp only [hff, if_false]
+
+/-! ## Part C: the bridge -/
+
+section
+variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment)
+
+theorem sstate_shape (st : MState) : (MState.sstate dm C Γ ρ st).shape = Env.shape st.env := rfl
+theorem sstate_nextLoan (st : MState) : (MState.sstate dm C Γ ρ st).nextLoan = st.nextLoan := rfl
+
+/-- A position's meaning in the semantic state is the environment's, at every position
+(outside the environment both are `err`). -/
+theorem sstate_valAt (st : MState) (p : Pos) (φ : Future) :
+    (MState.sstate dm C Γ ρ st).valAt p φ = Env.mean dm C Γ ρ φ st.env p := by
+  cases p with
+  | bind f i =>
+    simp only [SState.valAt, MState.sstate, Env.mean, List.getElem?_map, List.getElem?_zipIdx,
+      Array.getElem?_toList, Option.map_map, Option.bind_map]
+    cases hf : st.env[f]? with
+    | none => rfl
+    | some fr =>
+      simp only [Option.map_some, Option.bind_some, Function.comp, List.getElem?_map, List.getElem?_zipIdx,
+        Array.getElem?_toList]
+      cases hi : fr.binds[i]? with
+      | none => rfl
+      | some b => simp [Nat.zero_add, hf, hi, Env.mean]
+  | temp f i =>
+    simp only [SState.valAt, MState.sstate, Env.mean, List.getElem?_map, List.getElem?_zipIdx,
+      Array.getElem?_toList, Option.map_map, Option.bind_map]
+    cases hf : st.env[f]? with
+    | none => rfl
+    | some fr =>
+      simp only [Option.map_some, Option.bind_some, Function.comp, List.getElem?_map, List.getElem?_zipIdx,
+        Array.getElem?_toList]
+      cases hi : fr.temps[i]? with
+      | none => rfl
+      | some v => simp [Nat.zero_add, hf, hi, Env.mean]
+
+/-- A binding's type in the semantic state is its hint. -/
+theorem sstate_tyAt (st : MState) (p : Pos) :
+    (MState.sstate dm C Γ ρ st).tyAt p = Env.hintAt dm C Γ ρ st.env p := by
+  cases p with
+  | bind f i =>
+    simp only [SState.tyAt, MState.sstate, List.getElem?_map, List.getElem?_zipIdx,
+      Array.getElem?_toList, Option.map_map, Option.bind_map]
+    cases hf : st.env[f]? with
+    | none => simp [Env.hintAt, hf]
+    | some fr =>
+      simp only [Option.map_some, Option.bind_some, Function.comp, List.getElem?_map, List.getElem?_zipIdx,
+        Array.getElem?_toList]
+      cases hi : fr.binds[i]? with
+      | none => simp [Env.hintAt, hf, hi]
+      | some b => simp [Nat.zero_add]
+  | temp f i => rfl
+
+/-- The semantic state's positions are the environment's. -/
+theorem sstate_positions (st : MState) : (MState.sstate dm C Γ ρ st).positions = allPos st.env := by
+  rw [SState.positions_eq, allPos_eq]
+  simp only [MState.sstate, List.length_map, List.length_zipIdx, Array.length_toList]
+  congr 1
+  funext f
+  simp only [List.getElem?_map, List.getElem?_zipIdx, Array.getElem?_toList]
+  cases hf : st.env[f]? with
+  | none => rfl
+  | some fr => simp [framePos, frameAllPos, Nat.zero_add]
+
+end
+
+end Ochr.Meaning.Steps
