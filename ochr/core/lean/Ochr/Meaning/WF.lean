@@ -145,12 +145,35 @@ holder's declared borrow type (`⟦&T⟧ = ⟦T⟧`). -/
 def TypedFuture (ρ : Assignment) (st : MState) (φ : Future) : Prop :=
   ∀ p l, Env.shape st.env p = some l → ∀ T, MState.posTyM dm C Γ ρ st p = some T → φ l ∈ₛ T
 
-/-- An assignment of Ω (docs/18 Def. "assignment"): each `σ` means an element of `⟦Δ(σ)⟧_ρ`, and
+/-- `σ` is *referenced* by the state: it occurs in a value of Ω, in a stored or deferred type, in
+the goal, in a generalisation or η record in force, or in the type of a referenced unknown.
+
+An assignment owes an element only to a referenced unknown (docs/18 Def. "assignment": "each
+abstract value σ **of Ω**"). The types of the unknowns an arm of a split created are kept when the
+arm is left (`exitWorld`, D37), but nothing kept names them, and such a type can be empty in the
+world an assignment selects (a field of an arm the assignment does not take). Asked of every
+`σ < absTy.size`, as `TypedAssignment.mem` first was, no assignment of the state after a split
+would be typed, and `exitWorld_step_stmt` was false outright
+(`Regress/ExitWorld_f32a7048.lean`, kernel-checked). -/
+inductive _root_.Ochr.MState.Refd (st : MState) : Nat → Prop
+  | val {σ : Nat} (v : Value) (hv : v ∈ Env.values st.env) (h : v.hasAbs σ = true) : Refd st σ
+  | ty {σ : Nat} (f i : Nat) (b : Binding) (T : Value) (hb : st.env[f]?.bind (fun fr => fr.binds[i]?) = some b)
+      (hT : b.ty = some T) (h : T.hasAbs σ = true) : Refd st σ
+  | lazyTy {σ : Nat} (f i : Nat) (b : Binding) (P : Value) (ws : List Value) (j : Nat)
+      (hb : st.env[f]?.bind (fun fr => fr.binds[i]?) = some b) (hT : b.lazyTy = some (P, ws, j))
+      (h : P.hasAbs σ = true ∨ ∃ w ∈ ws, w.hasAbs σ = true) : Refd st σ
+  | goal {σ : Nat} (G : Value) (hG : st.goal = some G) (h : G.hasAbs σ = true) : Refd st σ
+  | neutral {σ : Nat} (n : Value) (σ' : Nat) (hn : (n, σ') ∈ st.neutrals) (h : σ = σ' ∨ n.hasAbs σ = true) : Refd st σ
+  | eta {σ : Nat} (σ' : Nat) (v : Value) (he : (σ', v) ∈ st.etaRefs) (h : σ = σ' ∨ v.hasAbs σ = true) : Refd st σ
+  | dep {σ : Nat} (σ' : Nat) (T : Value) (hσ' : Refd st σ') (hT : st.absTy[σ']? = some T) (h : T.hasAbs σ = true) :
+      Refd st σ
+
+/-- An assignment of Ω (docs/18 Def. "assignment"): each referenced `σ` means an element of `⟦Δ(σ)⟧_ρ`, and
 the path condition holds: each generalisation record `n := σ` in force says `ρ σ = ⟦n⟧_ρ` (a
 generalised program is hole-free, docs/27 Lemma 5, so its meaning does not read the future),
 and each η-refinement `σ := C(σ̄)` says the same of its constructor value. -/
 structure TypedAssignment (ρ : Assignment) (st : MState) : Prop where
-  mem : ∀ σ, σ < st.absTy.size → ρ σ ∈ₛ MState.absTyM dm C Γ ρ st σ
+  mem : ∀ σ, st.Refd σ → σ < st.absTy.size → ρ σ ∈ₛ MState.absTyM dm C Γ ρ st σ
   neutral : ∀ n σ, (n, σ) ∈ st.neutrals →
     ρ σ = Value.mean dm C Γ ρ (fun _ => .err) (.plain (MState.absTyM dm C Γ ρ st σ)) n
   eta : ∀ σ v, (σ, v) ∈ st.etaRefs →
@@ -161,7 +184,7 @@ stored type holds a (possibly partly moved) member of it; Δ's types and the goa
 structure Membership (ρ : Assignment) (st : MState) : Prop where
   pos : ∀ φ, TypedFuture dm C Γ ρ st φ →
     ∀ p T, MState.posTyM dm C Γ ρ st p = some T → (Env.mean dm C Γ ρ φ st.env p).pmem T
-  absTy : ∀ σ, σ < st.absTy.size → (MState.absTyM dm C Γ ρ st σ).level.isSome
+  absTy : ∀ σ, st.Refd σ → σ < st.absTy.size → (MState.absTyM dm C Γ ρ st σ).level.isSome
   goal : ∀ G, MState.goalM dm C Γ ρ st = some G → G.level.isSome
 
 /-- The hypothesis of the main theorem at a state: (b) and (c) under an assignment of it. -/
@@ -189,7 +212,7 @@ def TypedFutureF (ρ : Assignment) (st : MState) (fl : Flight) (φ : Future) : P
 structure MembershipF (ρ : Assignment) (st : MState) (fl : Flight) : Prop where
   pos : ∀ φ, TypedFutureF dm C Γ ρ st fl φ →
     ∀ p T, MState.posTyM dm C Γ ρ st p = some T → (Env.mean dm C Γ ρ φ st.env p).pmem T
-  absTy : ∀ σ, σ < st.absTy.size → (MState.absTyM dm C Γ ρ st σ).level.isSome
+  absTy : ∀ σ, st.Refd σ → σ < st.absTy.size → (MState.absTyM dm C Γ ρ st σ).level.isSome
   goal : ∀ G, MState.goalM dm C Γ ρ st = some G → G.level.isSome
 
 /-- `Good`, with the values in flight typed. `GoodF ρ st [] ↔ Good ρ st` (`goodF_nil`). -/
