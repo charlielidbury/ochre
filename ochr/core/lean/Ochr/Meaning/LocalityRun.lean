@@ -604,6 +604,95 @@ theorem dropLast_rinv {s : SState} (h : RInv L s)
       obtain ⟨hq1, hq2⟩ := hsa q x hq
       exact ⟨mem_positions_dropLast' hq1 hqd, hq2⟩
 
+/-! ## A write that reads a fresh label, then the label parked (`borrowPlace`, a cell) -/
+
+/-- **A write that reads a fresh label `l`, then `l` parked**: `borrowPlace` writes, at the lent
+position, the final content of `l` into its old meaning, then parks the borrow. The new meaning
+reads what the old did and `l`; `l` is above every held label, so holders stay ordered. -/
+theorem writeFresh_park_rinv {s : SState} (h : RInv L s) (p : Pos) (v : SVal) (l : Nat) (c : Sem)
+    (hne : s.env ≠ []) (hfresh : ∀ q x, s.shape q = some x → x < l) (hln : l < s.nextLoan)
+    (hv1 : FT (fun y => L y ∨ s.Live y ∨ y = l) v)
+    (hv2 : ∀ x, s.shape p = some x → FT (fun y => (L y ∧ ¬ s.Live y) ∨ (s.Live y ∧ x < y) ∨ y = l) v) :
+    RInv L ((s.setAt p v).pushTempShaped (fun _ => c) l) := by
+  obtain ⟨h1, h2, hsa⟩ := h
+  have hsa₁ : ShapeAt (s.setAt p v) := fun q x hq => by
+    rw [shape_setAt'] at hq
+    rw [positions_setAt, nextLoan_setAt']; exact hsa q x hq
+  have hne₁ : (s.setAt p v).env ≠ [] := by cases p <;> simpa [setAt] using hne
+  have hl₁ : ∀ y, (s.setAt p v).Live y ↔ s.Live y := live_setAt s p v
+  -- the live labels after parking
+  have hlive : ∀ y, ((s.setAt p v).pushTempShaped (fun _ => c) l).Live y ↔ s.Live y ∨ y = l := by
+    intro y
+    constructor
+    · intro hy
+      rcases live_pushTempShaped_new hsa₁ hy with h' | rfl
+      · exact .inl ((hl₁ y).mp h')
+      · exact .inr rfl
+    · rintro (hy | rfl)
+      · exact live_pushTempShaped_old ((hl₁ y).mpr hy)
+      · exact live_pushTempShaped_self _ _ _ hne₁
+  have hv : ∀ q, ((s.setAt p v).pushTempShaped (fun _ => c) l).valAt q = s.valAt q ∨
+      (q = p ∧ ((s.setAt p v).pushTempShaped (fun _ => c) l).valAt q = v) ∨
+      ((s.setAt p v).pushTempShaped (fun _ => c) l).valAt q = fun _ => c := by
+    intro q
+    rw [valAt_pushTempShaped]
+    rcases valAt_pushTemp (s.setAt p v) (fun _ => c) q with e | e
+    · rw [e]
+      by_cases hpq : p = q
+      · subst hpq
+        rcases valAt_setAt s p v p with e' | e'
+        · exact .inl e'
+        · exact .inr (.inl ⟨rfl, e'⟩)
+      · exact .inl (valAt_setAt_ne s p v q hpq)
+    · exact .inr (.inr e)
+  refine ⟨fun q => ?_, fun r x hr hs => ?_, fun q x hq => ?_⟩
+  · rcases hv q with e | ⟨_, e⟩ | e
+    · rw [e]; exact (h1 q).mono fun y hy => hy.imp_right fun h' => (hlive y).mpr (.inl h')
+    · rw [e]; exact hv1.mono fun y hy => by
+        rcases hy with hL | hy | rfl
+        · exact .inl hL
+        · exact .inr ((hlive y).mpr (.inl hy))
+        · exact .inr ((hlive y).mpr (.inr rfl))
+    · rw [e]; exact FT.const _ _
+  · by_cases hold : r ∈ (s.setAt p v).positions
+    · rw [pushTempShaped_shape_old _ _ l hold, shape_setAt'] at hs
+      have hrs : r ∈ s.positions := by rw [← positions_setAt s p v]; exact hold
+      have hxl : x < l := hfresh r x hs
+      have hS : ∀ y, ((L y ∧ ¬ s.Live y) ∨ (s.Live y ∧ x < y) ∨ y = l) →
+          (L y ∧ ¬ ((s.setAt p v).pushTempShaped (fun _ => c) l).Live y) ∨
+          (((s.setAt p v).pushTempShaped (fun _ => c) l).Live y ∧ x < y) := by
+        intro y hy
+        rcases hy with ⟨hL, hn⟩ | ⟨hy, hxy⟩ | rfl
+        · by_cases hF : ((s.setAt p v).pushTempShaped (fun _ => c) l).Live y
+          · rcases (hlive y).mp hF with h' | rfl
+            · exact absurd h' hn
+            · exact .inr ⟨hF, hxl⟩
+          · exact .inl ⟨hL, hF⟩
+        · exact .inr ⟨(hlive y).mpr (.inl hy), hxy⟩
+        · exact .inr ⟨(hlive y).mpr (.inr rfl), hxl⟩
+      rcases hv r with e | ⟨hrp, e⟩ | e
+      · rw [e]; exact (h2 r x hrs hs).mono fun y hy => hS y (by
+          rcases hy with h' | h'
+          · exact .inl h'
+          · exact .inr (.inl h'))
+      · rw [e]; subst hrp
+        exact (hv2 x hs).mono fun y hy => hS y hy
+      · rw [e]; exact FT.const _ _
+    · rcases hv r with e | ⟨hrp, e⟩ | e
+      · have hrs : r ∉ s.positions := by rw [← positions_setAt s p v]; exact hold
+        rw [e, valAt_of_not_mem _ _ hrs]; exact FT.const _ _
+      · -- r = p is not a position: the write did nothing there
+        subst hrp
+        have hrs : r ∉ s.positions := by rw [← positions_setAt s r v]; exact hold
+        rw [valAt_pushTempShaped]
+        rcases valAt_pushTemp (s.setAt r v) (fun _ => c) r with e' | e'
+        · rw [e']
+          have : (s.setAt r v).valAt r = fun _ => .err := valAt_of_not_mem _ _ hold
+          rw [this]; exact FT.const _ _
+        · rw [e']; exact FT.const _ _
+      · rw [e]; exact FT.const _ _
+  · exact pushTempShaped_shapeAt hsa₁ hne₁ _ l (by rw [nextLoan_setAt']; exact hln) q x hq
+
 end SState
 
 end Ochr.Meaning
