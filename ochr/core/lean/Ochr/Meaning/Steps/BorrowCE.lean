@@ -180,7 +180,7 @@ theorem good_S1 : Good dm C Γ ρ S1 := by
   have hA : allPos S1.env = [.bind 0 0] := by decide +kernel
   have hV : Env.values S1.env = [.zero] := by rw [Env.values, hA]; rfl
   refine ⟨⟨fun σ h => by simp [S1] at h, fun n σ h => by simp [S1] at h, fun σ v h => by simp [S1] at h⟩,
-    ⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    ⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro φ _ p T hp
     obtain ⟨rfl, rfl⟩ := posTyM_S1 dm C Γ ρ p T hp
     have e : Env.mean dm C Γ ρ φ S1.env (.bind 0 0) = .el0 Nat 0 := rfl
@@ -212,6 +212,7 @@ theorem good_S1 : Good dm C Γ ρ S1 := by
     · intro T hT; simp [S1] at hT
     · intro G hG; simp [S1] at hG
   · intro p hp _; rw [hA] at hp; simp at hp; subst hp; exact ⟨_, rfl⟩
+  · intro v hv; rw [hV] at hv; simp at hv; subst hv; rfl
 end
 
 /-- `borrowPlace_step_stmt` is false at fuel 10, for every run context, assignment and future:
@@ -273,13 +274,14 @@ theorem good_S23 (hA : allPos (S23 va).env = [.bind 0 0, .bind 0 1])
     (hnb : ∀ l w, va ≠ .borrow l w) (hb : va.hasBorrow = false)
     (hol : va.outerLoans = [] ∨ va.outerLoans = [0]) (habs : ∀ σ, va.hasAbs σ = false)
     (hl : ∀ l ∈ va.loans, l < 1) (hbad : va.anyAtom Value.badCapture = false)
+    (hrec : va.anyAtom (Value.bareCtor Γ) = false)
     (href : va.typeHasRef = false)
     (hmem : ∀ φ, φ 0 ∈ₛ .ty0 Nat →
       (Env.mean dm C Γ ρ φ (S23 va).env (.bind 0 0)).pmem (.ty0 Nat)) :
     Good dm C Γ ρ (S23 va) := by
   have hV : Env.values (S23 va).env = [va, .borrow 0 .zero] := by rw [Env.values, hA]; rfl
   have hpt : MState.posTyM dm C Γ ρ (S23 va) (.bind 0 1) = some (.ty0 Nat) := rfl
-  refine ⟨⟨fun σ h => by simp [S23] at h, fun n σ h => by simp [S23] at h, fun σ v h => by simp [S23] at h⟩, ⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨⟨fun σ h => by simp [S23] at h, fun n σ h => by simp [S23] at h, fun σ v h => by simp [S23] at h⟩, ⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro φ hφ p T hp
     obtain ⟨rfl | rfl, rfl⟩ := posTyM_S23 dm C Γ ρ va p T hp
     · exact hmem φ (hφ (.bind 0 1) 0 rfl _ hpt)
@@ -341,6 +343,10 @@ theorem good_S23 (hA : allPos (S23 va).env = [.bind 0 0, .bind 0 1])
     · intro G hG; simp [S23] at hG
   · intro p hp _; rw [hA] at hp; simp at hp
     rcases hp with rfl | rfl <;> exact ⟨_, rfl⟩
+  · intro v hv; rw [hV] at hv; simp at hv
+    rcases hv with rfl | rfl
+    · exact hrec
+    · rfl
 end
 
 
@@ -363,7 +369,7 @@ theorem readPlace_step_false (K : RunCtx) (ρ : Assignment) (φ : Future)
   intro hstep
   have hg : Good K.dm K.C K.Γ ρ (S23 (.loan 0)) :=
     good_S23 _ _ _ _ _ (by decide +kernel) (by decide +kernel) (fun _ _ h => by cases h) rfl
-      (.inr rfl) (fun _ => rfl) (by simp [Value.loans]) rfl rfl (fun φ h => mem_nat_pmem _ h)
+      (.inr rfl) (fun _ => rfl) (by simp [Value.loans]) rfl rfl rfl (fun φ h => mem_nat_pmem _ h)
   obtain ⟨_, _, _, _, _, hgood⟩ := hstep (S23 (.loan 0)) _ (.var 0) _ _ hg hΔ rfl
     (runs_out _ _ _ (by decide +kernel))
   obtain ⟨_, hmem, _⟩ := hgood

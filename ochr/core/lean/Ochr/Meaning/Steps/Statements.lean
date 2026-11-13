@@ -53,6 +53,18 @@ def Exact (m m' : Mean) : Prop := (∀ φ p, m.val φ p = m'.val φ p) ∧ ∀ p
 /-- The truth of a type value read as a proposition. -/
 noncomputable def propOf (P : Value) : Prop := ((meanV K ρ φ (.plain .err) P).asTy).true
 
+/-! ### Helpers from `Steps/Borrow.lean` -/
+
+/-- The content of a borrow in a (WF10) state is hint-free when it holds no sealed program: what
+[End]'s substitution needs (`substV_loan_step_stmt`'s `hf`), discharged from the clause. -/
+theorem hintFree_of_wf10 (st : MState) (hwf : WF10 K.Γ st) (v : Value)
+    (hv : v ∈ Env.values st.env) (l : Nat) (w : Value) (hvw : v = .borrow l w)
+    (hs : w.anyAtom Value.isSealed = false) : HintFree K ρ φ w := by
+  have hb := hwf v hv
+  subst hvw
+  simp only [Value.anyAtom, Value.bareCtor, Bool.false_or] at hb
+  exact hintFree_of_recorded K ρ φ w hb hs
+
 /-! ### Helpers from `Steps/Call.lean` -/
 
 /-- The callee as the run sees it: its meaning and its type value's shape. The shape is read
