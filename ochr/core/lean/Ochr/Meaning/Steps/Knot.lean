@@ -90,6 +90,7 @@ theorem stepsIH : ∀ (fuel : Nat) (ρ : Assignment) (φ : Future), StepsIH K ρ
       eval_wf78 := eval_wf78 K ρ φ fuel ih
       types_holeFree := types_holeFree K ρ φ fuel ih
       evalCore_step := evalCore_step K ρ φ fuel ih
+      eval_step := eval_step K ρ φ fuel ih
       letIn_step := letIn_step K ρ φ fuel ih
       eq_step := eq_step K ρ φ fuel ih
       J_step := J_step K ρ φ fuel ih
