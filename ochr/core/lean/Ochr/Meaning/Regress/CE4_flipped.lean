@@ -30,7 +30,7 @@ theorem SM.bind_apply {α β : Type 3} (x : SM α) (f : α → SM β) (s : SStat
     (x >>= f) s = match x s with | some (a, s') => f a s' | none => none := rfl
 
 /-- `f : Π(x : Nat). Nat`, the identity, as a global with its shape. -/
-abbrev psF : List PiParam := [⟨false, fun _ => .ty0 Nat⟩]
+abbrev psF : List PiParam := [⟨false, fun _ => .ty0 Nat, fun _ => none⟩]
 abbrev outF : PiOut := .data fun _ => .ty0 Nat
 def Fid : piCarL lvl0 psF [] PUnit outF := fun a => (a, ⟨⟩)
 
