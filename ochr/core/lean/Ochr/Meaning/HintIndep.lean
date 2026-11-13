@@ -221,9 +221,9 @@ theorem meanV_hintIndep : ∀ (v : Value), Value.topHintFree K.Γ v = true → �
     simp only [Value.topHintFree] at hv
     show (match run K ρ φ h t (emptyState _) with | some ((v, _), _) => v | none => .err)
       = (match run K ρ φ h' t (emptyState _) with | some ((v, _), _) => v | none => .err)
-    have := run_hintIndep t hv h h' (emptyState (t.loans.foldl max 0 + 1))
-    cases hr : run K ρ φ h t (emptyState (t.loans.foldl max 0 + 1)) <;>
-      cases hr' : run K ρ φ h' t (emptyState (t.loans.foldl max 0 + 1)) <;>
+    have := run_hintIndep t hv h h' (emptyState 0)
+    cases hr : run K ρ φ h t (emptyState 0) <;>
+      cases hr' : run K ρ φ h' t (emptyState 0) <;>
       simp [hr, hr', resVS] at this ⊢
     · exact this.1
   | .ind ty c hd ps fs, hv, h, h' => by

@@ -617,7 +617,7 @@ noncomputable def valT (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS)
   | .loan l => match (K.Λ l).shape with
     | some sh => { hint with shape := some sh }
     | none => hint
-  | .sealed t => match run K ρ φ hint t (emptyState (t.loans.foldl max 0 + 1)) with
+  | .sealed t => match run K ρ φ hint t (emptyState 0) with
     | some ((_, R), _) => { hint with shape := R.shape }
     | none => hint
   | _ => hint
