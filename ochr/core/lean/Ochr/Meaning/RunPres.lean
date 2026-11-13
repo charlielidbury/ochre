@@ -20,9 +20,17 @@ open SState
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future) (L : Nat → Prop)
 
-/-- The label of a result is live, or no position reads it. -/
+/-- The label of a result is live, or no position reads it; either way it is below the counter (it
+was issued). -/
 def LoU (s : SState) (lab : Option Nat) : Prop :=
-  ∀ l, lab = some l → s.Live l ∨ ∀ q, Indep l (s.valAt q)
+  ∀ l, lab = some l → (s.Live l ∨ ∀ q, Indep l (s.valAt q)) ∧ l < s.nextLoan
+
+/-- A live label is below `nextLoan`. -/
+theorem lou_live {s : SState} (hsa : ShapeAt s) {l : Nat} (h : s.Live l) :
+    (s.Live l ∨ ∀ q, Indep l (s.valAt q)) ∧ l < s.nextLoan := by
+  refine ⟨.inl h, ?_⟩
+  obtain ⟨q, _, hs⟩ := (live_iff s l).mp h
+  exact (hsa q l hs).2
 
 theorem SM.bind_some {α β : Type 3} {x : SM α} {f : α → SM β} {s : SState} {r : β × SState}
     (h : (x >>= f) s = some r) : ∃ a s₁, x s = some (a, s₁) ∧ f a s₁ = some r := by
@@ -157,7 +165,7 @@ theorem readPlace_rinv {p : Place} {copy : Bool} {s s' : SState} {r : Res}
             refine ⟨transfer_rinv hi₂ l hlive v, fun l' hl' => ?_⟩
             simp only [Option.some.injEq] at hl'
             subst hl'
-            left
+            apply lou_live (transfer_rinv hi₂ l hlive v).2.2
             have hne : (s₂.takeLabel l).env ≠ [] := by
               intro he
               obtain ⟨q, hq, _⟩ := (live_iff s₂ l).mp hlive
@@ -213,9 +221,11 @@ theorem borrowPlace_rinv {p : Place} {s s' : SState} {r : Res}
     · intro l hl
       simp only [Option.some.injEq] at hl
       subst hl
-      left
-      apply live_pushTempShaped_self
-      cases pos <;> simpa [SState.setAt] using hne
+      refine ⟨.inl ?_, ?_⟩
+      · apply live_pushTempShaped_self
+        cases pos <;> simpa [SState.setAt] using hne
+      · rw [nextLoan_pushTempShaped, nextLoan_setAt']
+        exact Nat.lt_succ_self _
 
 /-- **D84's drop at the join** keeps the invariant: each dropped place is accessed, its root's borrow
 ended, its content rewritten to `moved` at its path. -/
@@ -315,14 +325,162 @@ theorem callOfL_rinv.{u} (Lv : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : 
           rw [pushTemp_getLast, hne]; rfl
         rw [hfin] at i1 i2 ⊢
         have hnil : (S.pushTemp (fun _ => Lv.enc U fwd)).env = [] := by simp [SState.pushTemp, hne]
-        refine ⟨⟨i1, i2, fun p x hp => ?_⟩, fun l _ => .inr fun q => indep_of_nil hnil l q⟩
+        refine ⟨⟨i1, i2, fun p x hp => ?_⟩, fun l hl => ⟨.inr fun q => indep_of_nil hnil l q, ?nl⟩⟩
+        case nl =>
+          simp only [Option.some.injEq] at hl
+          subst hl
+          show _ < (SState.pushTemp _ _).nextLoan
+          rw [show (SState.pushTemp S _).nextLoan = S.nextLoan from rfl, hnlS]
+          exact Nat.lt_succ_self _
         obtain ⟨hp1, _⟩ := hsaS p x hp
         rw [positions_eq, hne] at hp1; simp at hp1
       · refine ⟨⟨i1, i2, pushTempShaped_shapeAt hsaS hne _ _ (by rw [hnlS]; exact Nat.lt_succ_self _)⟩, ?_⟩
         intro l hl
         simp only [Option.some.injEq] at hl
         subst hl
-        exact .inl (live_pushTempShaped_self _ _ _ hne)
+        exact lou_live (pushTempShaped_shapeAt hsaS hne _ _ (by rw [hnlS]; exact Nat.lt_succ_self _))
+          (live_pushTempShaped_self _ _ _ hne)
+
+/-! ## A result's label stays live or unread
+
+What runs after a sub-run inside a clause (a `let`'s drop, a match's drop at the join) keeps the
+sub-result's label live or unread: ending the label itself leaves it read by no one (`endAt_indep`),
+ending another or rewriting a meaning keeps both alternatives. -/
+
+/-- The per-label part of `LoU`. -/
+abbrev LoU1 (s : SState) (l : Nat) : Prop := (s.Live l ∨ ∀ q, Indep l (s.valAt q)) ∧ l < s.nextLoan
+
+theorem lou_endLabel {s : SState} (h2 : Inv2 L s) {y : Nat} (hy : LoU1 s y) (x : Nat) : LoU1 (s.endLabel x) y := by
+  cases e : s.holderOf x with
+  | none => rw [endLabel_of_none e]; exact hy
+  | some r =>
+    rw [endLabel_eq e]
+    obtain ⟨hr, hs⟩ := holderOf_spec e
+    refine ⟨?_, hy.2⟩
+    rcases hy.1 with hl | hu
+    · by_cases hyx : y = x
+      · subst hyx; exact .inr (endAt_indep h2 hr hs)
+      · exact .inl (live_endAt hs hl hyx)
+    · right
+      intro q
+      by_cases hq : q ∈ s.positions
+      · rw [endAt_valAt _ _ _ _ hq]
+        intro ψ c
+        by_cases e' : q = r
+        · simp [e']
+        · simp only [e', if_false]
+          rw [hu r ψ c]
+          by_cases hyx : y = x
+          · subst hyx; rw [Future.upd_upd_same]
+          · rw [Future.upd_comm _ hyx]; exact hu q _ c
+      · rw [endAt_valAt_not_mem _ _ _ _ hq]; exact hu q
+
+theorem lou_foldl_endLabel {y : Nat} : ∀ (ls : List Nat) {s : SState}, RInv L s → LoU1 s y →
+    LoU1 (ls.foldl endLabel s) y
+  | [], _, _, hy => hy
+  | l :: ls, _, hi, hy => lou_foldl_endLabel ls (endLabel_rinv hi l) (lou_endLabel L hi.2.1 hy l)
+
+theorem lou_access {s : SState} (hi : RInv L s) {y : Nat} (hy : LoU1 s y) (p : Pos) : LoU1 (s.access p) y := by
+  rw [access_eq, foldl_range_iterR]
+  generalize s.liveLabels.length = k
+  induction k with
+  | zero => exact hy
+  | succ k ih =>
+    exact lou_foldl_endLabel L _ (iterR_accStep_rinv p k hi) ih
+
+theorem lou_setAt {s : SState} {y : Nat} (hy : LoU1 s y) (p : Pos) (v : SVal)
+    (hv : (∀ q, Indep y (s.valAt q)) → Indep y v) : LoU1 (s.setAt p v) y := by
+  refine ⟨?_, by rw [nextLoan_setAt']; exact hy.2⟩
+  rcases hy.1 with hl | hu
+  · exact .inl ((live_setAt s p v y).mpr hl)
+  · right
+    intro q
+    rcases valAt_setAt s p v q with e | e
+    · rw [e]; exact hu q
+    · rw [e]; exact hv hu
+
+theorem indep_dropLast {s : SState} {y : Nat} (h : ∀ p, Indep y (s.valAt p)) (q : Pos) :
+    Indep y (s.dropLast.valAt q) := by
+  by_cases hq : q ∈ s.dropLast.positions
+  · rw [valAt_dropLast s q (mem_positions_dropLast hq).2]; exact h q
+  · rw [valAt_of_not_mem _ _ hq]; intro _ _; rfl
+
+theorem lou_dropLast {s : SState} {y : Nat} (hy : LoU1 s y)
+    (hind : ∀ r x, s.dropped = some r → s.shape r = some x → ∀ p, Indep x (s.valAt p)) :
+    LoU1 s.dropLast y := by
+  refine ⟨?_, hy.2⟩
+  rcases hy.1 with hl | hu
+  · obtain ⟨q, hq, hs⟩ := (live_iff s y).mp hl
+    by_cases hqd : some q = s.dropped
+    · exact .inr (indep_dropLast (hind q y hqd.symm hs))
+    · refine .inl ((live_iff _ y).mpr ⟨q, mem_positions_dropLast' hq hqd, ?_⟩)
+      rw [dropLast_shape, if_neg hqd]; exact hs
+  · exact .inr (indep_dropLast hu)
+
+/-- **D84's drop at the join** keeps a result's label live or unread (with the invariant). -/
+theorem joinDrop_lou (t : Term) {s : SState} (hi : RInv L s) {y : Nat} (hy : LoU1 s y) :
+    LoU1 (joinDrop K φ t s) y := by
+  unfold joinDrop
+  generalize K.D.joinMoves (scopeOf s) (movedPlaces φ s) t = qs
+  induction qs generalizing s with
+  | nil => exact hy
+  | cons q qs ih =>
+    simp only [List.foldl_cons]
+    apply ih
+    · split
+      · exact hi
+      · split
+        · rename_i pos steps hr
+          have hia := access_rinv hi pos
+          split
+          · exact hia
+          · exact hia
+          · exact hia
+          · have hie : RInv L (if steps.isEmpty = true then
+                (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
+                else s.access pos) := by
+              split
+              · split
+                · exact endLabel_rinv hia _
+                · exact hia
+              · exact hia
+            generalize (if steps.isEmpty = true then
+                (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
+                else s.access pos) = s₂ at hie ⊢
+            exact setAt_rinv hie pos _
+              ((hie.1 pos).comp (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps x).getD .err))
+              (fun x hx => by
+                by_cases hp : pos ∈ s₂.positions
+                · exact (hie.2.1 pos x hp hx).comp
+                    (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps x).getD .err)
+                · exact absurd (hie.2.2 pos x hx).1 hp)
+        · exact hi
+    · split
+      · exact hy
+      · split
+        · rename_i pos steps hr
+          have hia := access_rinv hi pos
+          have hya := lou_access L hi hy pos
+          split
+          · exact hya
+          · exact hya
+          · exact hya
+          · have hye : LoU1 (if steps.isEmpty = true then
+                (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
+                else s.access pos) y := by
+              split
+              · split
+                · exact lou_endLabel L hia.2.1 hya _
+                · exact hya
+              · exact hya
+            generalize (if steps.isEmpty = true then
+                (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
+                else s.access pos) = s₂ at hye ⊢
+            exact lou_setAt hye pos _ fun hu ψ c => by
+              show (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps (s₂.valAt pos (ψ.upd y c))).getD .err
+                = (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps (s₂.valAt pos ψ)).getD .err
+              rw [hu pos ψ c]
+        · exact hy
 
 end
 
