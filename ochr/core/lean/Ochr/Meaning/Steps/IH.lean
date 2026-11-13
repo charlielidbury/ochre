@@ -3,15 +3,15 @@ import Ochr.Meaning.Steps.Statements
 /-!
 # The bundled induction hypothesis (milestone 3)
 
-`StepsIH K ρ φ fuel`: the knot (`K.C` is the code meaning the run induces) and every step
-statement at `fuel`. An area file proves its statements at `fuel + 1` from `StepsIH fuel`;
-`Steps/Knot.lean` closes the induction.
+`StepsIH K ρ φ fuel`: every step statement at `fuel`. An area file proves its statements at
+`fuel + 1` from the hypothesis at `fuel` **at every assignment and future** (`∀ ρ φ, StepsIH K ρ φ
+fuel`); `Steps/Knot.lean` closes the induction. There is no knot field: a state is read through
+`K.M = codeMeaning K` (docs/31 D18).
 -/
 
 namespace Ochr.Meaning.Steps
 
 structure StepsIH (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop where
-  knot : K.C = codeMeaning K ρ φ
   endBorrow_step : endBorrow_step_stmt K ρ φ fuel
   access_step : access_step_stmt K ρ φ fuel
   readPlace_step : readPlace_step_stmt K ρ φ fuel

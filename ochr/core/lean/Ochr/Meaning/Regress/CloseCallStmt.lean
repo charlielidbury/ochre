@@ -24,11 +24,11 @@ open Ochr.Meaning Ochr.Meaning.Steps
 def closeCall_step_stmt_old (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (fv : Value) (fT : Value) (ws : Array Value)
     (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)) (v : Value)
-    (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st) (hargs : ArgsLoanFree st.env ws)
+    (hg : Good K.dm K.M K.Γ ρ st) (hΔ : DeltaOk K ρ st) (hargs : ArgsLoanFree st.env ws)
     (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st fuel v st'),
     ∃ r s', callOf (calleeRes K ρ φ fv fT) (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v = r.1 ∧
-      Exact (MState.mean K.dm K.C K.Γ ρ st') s'.toMean ∧ Good K.dm K.C K.Γ ρ st'
+      Exact (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
 
 /-- A callee typed by `.zero` has no shape. -/
 theorem calleeRes_zero_shape (K : RunCtx) (ρ : Assignment) (φ : Future) (fv : Value) :
@@ -44,7 +44,7 @@ theorem callOf_none_of_noShape (fv : Res) (args : List Res) (s : SState) (h : fv
 theorem old_false_of_run (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (st st' : MState) (fv : Value) (ws : Array Value) (kind : Kind) (res : DeclInfo)
     (fills : Array Bool) (tys : Array (Option Value)) (v : Value)
-    (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st) (hargs : ArgsLoanFree st.env ws)
+    (hg : Good K.dm K.M K.Γ ρ st) (hΔ : DeltaOk K ρ st) (hargs : ArgsLoanFree st.env ws)
     (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st fuel v st') :
     ¬ closeCall_step_stmt_old K ρ φ fuel := by
   intro hstmt
@@ -56,12 +56,12 @@ theorem old_false_of_run (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Na
 def runBody_step_stmt_old (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (fv : Value) (cs : List Value) (t : Term)
     (rd : List (DeclInfo × Value)) (ws : Array Value) (v : Value) (fT : Value)
-    (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st) (hargs : ArgsLoanFree st.env ws)
+    (hg : Good K.dm K.M K.Γ ρ st) (hΔ : DeltaOk K ρ st) (hargs : ArgsLoanFree st.env ws)
     (hfv : fv = .clo cs t rd ∨ ∃ n, fv = .gfn n)
     (h : Runs (Ochr.runBody fuel fv cs t rd ws) st fuel v st'),
     ∃ r s', callOf (calleeRes K ρ φ fv fT) (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v ⊑ r.1 ∧
-      Below (MState.mean K.dm K.C K.Γ ρ st') s'.toMean ∧ Good K.dm K.C K.Γ ρ st'
+      Below (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
 
 /-- **The pilot's `runBody` form is false** whenever the checker runs any body from a `Good`
 state: take `fT := .zero`. (`callFn_step_stmt` had the weaker version of the same defect: its
@@ -70,7 +70,7 @@ the callee through the run.) -/
 theorem runBody_old_false_of_run (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (st st' : MState) (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value))
     (ws : Array Value) (v : Value)
-    (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st) (hargs : ArgsLoanFree st.env ws)
+    (hg : Good K.dm K.M K.Γ ρ st) (hΔ : DeltaOk K ρ st) (hargs : ArgsLoanFree st.env ws)
     (hfv : fv = .clo cs t rd ∨ ∃ n, fv = .gfn n)
     (h : Runs (Ochr.runBody fuel fv cs t rd ws) st fuel v st') :
     ¬ runBody_step_stmt_old K ρ φ fuel := by

@@ -13,8 +13,9 @@ import Ochr.Meaning.Steps.Decisions
 /-!
 # The knot of the step lemmas (milestone 3): induction on fuel
 
-`stepsIH`: every step statement holds at every fuel, given the knot. The successor case is the
-area files' theorems applied to the hypothesis at `fuel`. The base case: a checker function at
+`stepsIH`: every step statement holds at every fuel, assignment and future (no knot hypothesis:
+docs/31 D18). The successor case is the area files' theorems applied to the hypothesis at `fuel`,
+which they get at every assignment and future. The base case: a checker function at
 fuel `0` is `exhausted`, so every `Runs … 0 …` hypothesis is false and the fuel-indexed
 statements hold vacuously; the statements without a fuel-indexed run must be proved outright
 (`stepsIH_zero`).
@@ -23,19 +24,18 @@ statements hold vacuously; the statements without a fuel-indexed run must be pro
 namespace Ochr.Meaning.Steps
 
 section
-variable (K : RunCtx) (ρ : Assignment) (φ : Future)
+variable (K : RunCtx)
 
 /-- The base of the induction. -/
-theorem stepsIH_zero (hK : K.C = codeMeaning K ρ φ) : StepsIH K ρ φ 0 := by
+theorem stepsIH_zero (ρ : Assignment) (φ : Future) : StepsIH K ρ φ 0 := by
   sorry
 
-/-- Every step statement, at every fuel. -/
-theorem stepsIH (hK : K.C = codeMeaning K ρ φ) : ∀ fuel, StepsIH K ρ φ fuel
-  | 0 => stepsIH_zero K ρ φ hK
-  | fuel + 1 =>
-    let ih := stepsIH hK fuel
-    { knot := hK
-      endBorrow_step := endBorrow_step K ρ φ fuel ih
+/-- Every step statement, at every fuel, assignment and future. -/
+theorem stepsIH : ∀ (fuel : Nat) (ρ : Assignment) (φ : Future), StepsIH K ρ φ fuel
+  | 0, ρ, φ => stepsIH_zero K ρ φ
+  | fuel + 1, ρ, φ =>
+    let ih := stepsIH fuel
+    { endBorrow_step := endBorrow_step K ρ φ fuel ih
       access_step := access_step K ρ φ fuel ih
       readPlace_step := readPlace_step K ρ φ fuel ih
       borrowPlace_step := borrowPlace_step K ρ φ fuel ih

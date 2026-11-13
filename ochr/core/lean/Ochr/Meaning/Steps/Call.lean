@@ -24,23 +24,23 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- A direct call (`callFn`, untyped or typed): below the reference's `callOf` on the callee's
 meaning, and `Good` kept. The arguments are loan-free (WF5, `ArgsLoanFree`). -/
-theorem callFn_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : callFn_step_stmt K ρ φ (fuel + 1) := by
+theorem callFn_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : callFn_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- Running a body (`runBody`): the frame pushed with the captures and parameters, the body run,
 the frame popped: below the function's meaning applied (the induction hypothesis on the body). -/
-theorem runBody_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : runBody_step_stmt K ρ φ (fuel + 1) := by
+theorem runBody_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : runBody_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- [Close] (`closeCall`), every row: exact against `callOf`. The result is a sealed program (or
 `()` at a declared `Unit`, or a borrow of one), and each lent place a fill: both mean what the
 reference's call gives them, since a sealed program means its run. -/
-theorem closeCall_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : closeCall_step_stmt K ρ φ (fuel + 1) := by
+theorem closeCall_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : closeCall_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- [Call-type] (`callType`, `declCallType`): the codomain at the arguments is the reference's
 result type. -/
-theorem callType_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : callType_step_stmt K ρ φ (fuel + 1) := by
+theorem callType_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : callType_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- [Rec]'s accepting direction (`recCheck`), semantically: for a recursive function whose every
@@ -48,7 +48,7 @@ recursive call passes a strict subterm of the entry value, the stages of the `fi
 stabilise, so the closure's meaning is not `err` and the guard never fires (docs/24 §4, the
 semantic form of [Rec]; `Slice.stage_stable` generalised). Stated on the closure value: its
 meaning is a member of its Π-type. -/
-theorem recCheck_sound (fuel : Nat) (ih : StepsIH K ρ φ fuel) : recCheck_sound_stmt K ρ φ (fuel + 1) := by
+theorem recCheck_sound (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : recCheck_sound_stmt K ρ φ (fuel + 1) := by
   sorry
 
 end

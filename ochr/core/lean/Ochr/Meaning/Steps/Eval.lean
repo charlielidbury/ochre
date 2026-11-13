@@ -23,35 +23,35 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 selects, the run of `t` reaches a value below the reference's result, a state below the
 reference's, for an assignment `ρ'` extending `ρ` to the unknowns created, and `Good` is kept;
 the reference run does not fail. -/
-theorem evalCore_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : evalCore_step_stmt K ρ φ (fuel + 1) := by
+theorem evalCore_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : evalCore_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- [Let]: the binding is pushed at the right-hand side's type and dropped after the tail
 (`dropTopBind`); the run's `.letIn` clause. -/
-theorem letIn_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : letIn_step_stmt K ρ φ (fuel + 1) := by
+theorem letIn_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : letIn_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- `Eq` (the `.eq` form): both sides on private copies, the type a statement; the result means
 `⟦a⟧ = ⟦b⟧` (`Steps/Eq.mkEqM_step`), and the state's core is unchanged. -/
-theorem eq_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : eq_step_stmt K ρ φ (fuel + 1) := by
+theorem eq_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : eq_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- `J`, both outcomes: computed at convertible endpoints (the transported term runs in place)
 or closed off as a stuck block whose one arm is the transported term ([T-J-stuck]); each means
 the transported term (docs/24 C9). -/
-theorem J_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : J_step_stmt K ρ φ (fuel + 1) := by
+theorem J_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : J_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- A proof position (a proof-returning call, a proof primitive, a proof `let`): its value is
 `⋆`, which is a member of its proposition exactly when the proposition is true; the state is
 unchanged (a statement runs on a copy). Membership here is where "a proof's value is `⋆`"
 (docs/26 row 1, *same* given membership) is discharged. -/
-theorem proof_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : proof_step_stmt K ρ φ (fuel + 1) := by
+theorem proof_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : proof_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- η at `Unit` (D80): where a position's declared reading is `Unit`, the value is `()`, and
 `()` is the one element of `⟦Unit⟧`, so the normalisation keeps meaning given membership. -/
-theorem etaUnit_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : etaUnit_step_stmt K ρ φ (fuel + 1) := by
+theorem etaUnit_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : etaUnit_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 end
