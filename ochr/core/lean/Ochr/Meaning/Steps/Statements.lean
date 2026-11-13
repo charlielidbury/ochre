@@ -139,9 +139,10 @@ def Extends (st : MState) (ρ ρ' : Assignment) : Prop := ∀ σ, σ < st.absTy.
 
 /-! ### Helpers from `Steps/Obs.lean` -/
 
-/-- The reference observation of a side, if its run succeeds. -/
+/-- The reference observation of a side, if its run succeeds: the result and the positions the side
+started with (the audit's A5), as `run`'s `.id` clause reads it. -/
 noncomputable def refObs (reps : List Place) (ws : List Sem) (hint : TyS) (t : Term) (s : SState) : Option (List Sem) :=
-  (run K ρ φ hint t s).map fun (r, s') => observation φ reps ws r s'
+  (run K ρ φ hint t s).map fun (r, s') => observation φ reps ws s.positions r s'
 
 /-! ### Helpers from `Steps/Eval.lean` -/
 

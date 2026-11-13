@@ -437,9 +437,9 @@ theorem ordKeep_foldl_moves (g : SState → Nat → SState)
 section
 variable (K : RunCtx) (φ : Future)
 
-theorem joinDrop_ordKeep (t : Term) {s : SState} (hi : RInv L s) : OrdKeep L s (joinDrop K φ t s) := by
+theorem joinDrop_ordKeep (entry : List Place) (t : Term) {s : SState} (hi : RInv L s) : OrdKeep L s (joinDrop K φ entry t s) := by
   unfold joinDrop
-  generalize K.D.joinMoves (scopeOf s) (movedPlaces φ s) t = qs
+  generalize K.D.joinMoves (scopeOf s) entry t = qs
   induction qs generalizing s with
   | nil => exact OrdKeep.refl s
   | cons q qs ih =>

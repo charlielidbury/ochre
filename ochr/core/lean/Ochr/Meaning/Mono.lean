@@ -536,11 +536,11 @@ keeps a field step through a one-constructor type (`jdGrain`), so `x.0` of a pai
 is a definite change, not a loss of information, which is why the match statements compare the
 checker's post-state with the reference's post-state rather than asking the drop to be `Below`
 its input. -/
-theorem joinDrop_below (K : RunCtx) (φ : Future) (t : Term) (s : SState)
-    (hroot : ∀ q ∈ K.D.joinMoves (scopeOf s) (movedPlaces φ s) t, ∀ st ∈ q.steps.2, st = .deref) :
-    Below (joinDrop K φ t s).toMean s.toMean := by
+theorem joinDrop_below (K : RunCtx) (φ : Future) (entry : List Place) (t : Term) (s : SState)
+    (hroot : ∀ q ∈ K.D.joinMoves (scopeOf s) entry t, ∀ st ∈ q.steps.2, st = .deref) :
+    Below (joinDrop K φ entry t s).toMean s.toMean := by
   unfold joinDrop
-  generalize K.D.joinMoves (scopeOf s) (movedPlaces φ s) t = qs at hroot ⊢
+  generalize K.D.joinMoves (scopeOf s) entry t = qs at hroot ⊢
   induction qs generalizing s with
   | nil => exact Below.refl _
   | cons q qs ih =>
@@ -655,10 +655,11 @@ theorem access_eq (p : Pos) : s.access p = s := by
 join drops `x.0` (after [Access], which ends nothing, and reading `x.0`, which is whole); then `x`
 means `ctor "P" 0 [⊥, ()]`, which is below no element of `P`'s carrier, so no future makes the
 state after the drop below the state before. -/
-theorem joinDrop_not_below (φ : Future) (t : Term) : ¬ Below (joinDrop K φ t s).toMean s.toMean := by
+theorem joinDrop_not_below (φ : Future) (entry : List Place) (t : Term) :
+    ¬ Below (joinDrop K φ entry t s).toMean s.toMean := by
   obtain ⟨w, hw⟩ := drop_isSome
   have hres : resolve s (.proj 0 (.var 0)) = some (.bind 0 0, [.proj 0]) := rfl
-  have hj : joinDrop K φ t s = s.setAt (.bind 0 0) fun _ => w := by
+  have hj : joinDrop K φ entry t s = s.setAt (.bind 0 0) fun _ => w := by
     unfold joinDrop
     simp only [K, D, List.foldl_cons, List.foldl_nil, Bool.false_eq_true, if_false, hres, access_eq]
     have e1 : (s.tyAt (.bind 0 0)).m = .ty0 Unit := rfl
@@ -974,7 +975,8 @@ the caller's, so only the positions are at stake). This is the form that holds o
 `idType_step` (the checker reads the owners after ending every borrow; the reference's
 observation must not see the live labels the checker's ends forget). -/
 theorem observation_upd_live (φ : Future) (r : Res) (s : SState) (hwf : s.SWF3) {l : Nat}
-    (hl : l ∈ s.liveLabels) (x : Sem) : observation (φ.upd l x) [] [] r s = observation φ [] [] r s := by
+    (hl : l ∈ s.liveLabels) (x : Sem) (ps₀ : List Pos) :
+    observation (φ.upd l x) [] [] ps₀ r s = observation φ [] [] ps₀ r s := by
   simp only [observation]
   congr 1
   apply List.map_congr_left
@@ -1046,7 +1048,7 @@ is constant (`const_of_local`). This is what makes `Id`'s meaning a plain propos
 hypotheses are needed (`ObservationCounterexamples`). Milestone 3: `Steps/Obs.lean`'s
 `idType_step`. -/
 theorem observation_const (r : Res) (s : SState) (hwf : s.SWF3) (hloc : s.LocalTo (· ∈ s.liveLabels))
-    (φ φ' : Future) : observation φ [] [] r s = observation φ' [] [] r s := by
+    (φ φ' : Future) (ps₀ : List Pos) : observation φ [] [] ps₀ r s = observation φ' [] [] ps₀ r s := by
   simp only [observation]
   congr 1
   apply List.map_congr_left
@@ -1109,7 +1111,8 @@ theorem inert_SWF3 : inert.SWF3 :=
   ⟨fun a => ⟨a, fun _ ⟨_, h, _⟩ => nomatch h⟩⟩
 
 theorem observation_not_const (r : Res) :
-    observation (fun _ => .moved) [] [] r inert ≠ observation (fun _ => .proof) [] [] r inert := by
+    observation (fun _ => .moved) [] [] inert.positions r inert
+      ≠ observation (fun _ => .proof) [] [] inert.positions r inert := by
   have h0 : inert.positions.filterMap inert.shape = [] := List.filterMap_eq_nil_iff.mpr fun _ _ => rfl
   have hl : inert.liveLabels = [] := by simp only [SState.liveLabels, h0, List.mergeSort_nil]
   have hp : inert.positions = [.bind 0 0] := by
@@ -1175,10 +1178,10 @@ end SState
 
 /-- D84's drop at the join holds no new borrow and keeps the counter (with `shapeSub_access`, the
 forgetting steps of `Steps/Match.lean`'s and `Steps/Borrow.lean`'s lemmas keep `ShapeBelow`). -/
-theorem shapeSub_joinDrop (K : RunCtx) (φ : Future) (t : Term) (s : SState) :
-    SState.ShapeSub (joinDrop K φ t s) s := by
+theorem shapeSub_joinDrop (K : RunCtx) (φ : Future) (entry : List Place) (t : Term) (s : SState) :
+    SState.ShapeSub (joinDrop K φ entry t s) s := by
   unfold joinDrop
-  generalize K.D.joinMoves (scopeOf s) (movedPlaces φ s) t = qs
+  generalize K.D.joinMoves (scopeOf s) entry t = qs
   induction qs generalizing s with
   | nil => exact SState.ShapeSub.refl s
   | cons q qs ih =>
@@ -1598,10 +1601,10 @@ theorem borrowPlace_readsBelow (K : RunCtx) (φ : Future) (p : Place) (s : SStat
         exact Nat.lt_succ_of_lt (h₁ pos l hold)
 
 /-- D84's drop at the join reads no new label. -/
-theorem joinDrop_readsBelow (K : RunCtx) (φ : Future) (t : Term) (s : SState) (hs : s.ReadsBelow) :
-    (joinDrop K φ t s).ReadsBelow := by
+theorem joinDrop_readsBelow (K : RunCtx) (φ : Future) (entry : List Place) (t : Term) (s : SState) (hs : s.ReadsBelow) :
+    (joinDrop K φ entry t s).ReadsBelow := by
   unfold joinDrop
-  generalize K.D.joinMoves (scopeOf s) (movedPlaces φ s) t = qs
+  generalize K.D.joinMoves (scopeOf s) entry t = qs
   induction qs generalizing s with
   | nil => exact hs
   | cons q qs ih =>

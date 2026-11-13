@@ -40,9 +40,20 @@ theorem stmt_keeps (t : Term) (hint : TyS) (s : SState) (hfl : (K.D.flags (scope
     s' = s ∧ r.2.label = none := by
   cases t <;> simp at ht <;>
     (rw [run] at h
-     obtain ⟨hb, -⟩ | ⟨-, e, hl, -⟩ := SM.stmtIf_some h
-     · rw [hfl] at hb; cases hb
-     · exact ⟨e, hl⟩)
+     simp only [SM.erasedIf] at h
+     split at h
+     · obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h); exact ⟨rfl, rfl⟩
+     · obtain ⟨hb, -⟩ | ⟨-, e, hl, -⟩ := SM.stmtIf_some h
+       · rw [hfl] at hb; cases hb
+       · exact ⟨e, hl⟩)
+
+/-- The audit's A3: an erased term (`Machine.evalAt`'s second flag: a proof) is `•` unrun, the
+state as it was, whatever its clause would do. In particular a match on a proof with two arms, or
+none, no longer fails. -/
+theorem erased_unrun (t : Term) (hint : TyS) (s : SState) (hfl : (K.D.flags (scopeOf s) t).2 = true)
+    (ht : t matches .letIn .. | .seq .. | .matchNat .. | .matchInd .. | .assign .. | .place .. | .call .. | .ctor .. | .fix ..) :
+    run K ρ φ hint t s = some ((.proof, .plain .err), s) := by
+  cases t <;> simp at ht <;> (rw [run]; simp only [SM.erasedIf, hfl, if_true])
 
 end Ochr.Meaning.Regress.AdequacyFlip
 

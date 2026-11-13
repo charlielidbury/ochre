@@ -81,6 +81,31 @@ theorem SM.stmtIf_some {b : Bool} {x : SM (Sem × TyS)} {s s' : SState} {r : Sem
       obtain ⟨rfl, rfl⟩ := h
       exact .inr ⟨rfl, rfl, rfl, rs.1, rs.2, rfl, rfl⟩
 
+/-- An erased term (`Machine.evalAt`): a proof is not run, its value is `⋆` (docs/18: every proof
+is `⋆`, and no step reads a statement's value otherwise; the audit's A3: a match on a proof of a
+proposition with two constructors, into a proposition, has no arm to run); any other statement
+(a type) runs on a copy (`SM.stmtIf`). `fl` is the aligned decision `Decisions.flags` of the term:
+(erased, proof). -/
+def SM.erasedIf (fl : Bool × Bool) (x : SM (Sem × TyS)) : SM (Sem × TyS) := fun s =>
+  if fl.2 then some ((.proof, .plain .err), s) else SM.stmtIf fl.1 x s
+
+theorem SM.erasedIf_congr {fl : Bool × Bool} {x x' : SM (Sem × TyS)} {s : SState} (h : x s = x' s) :
+    SM.erasedIf fl x s = SM.erasedIf fl x' s := by
+  simp only [SM.erasedIf, SM.stmtIf, h]
+
+/-- An erased term's run, taken apart: the run itself, or the state unchanged and the result
+label-free. -/
+theorem SM.erasedIf_some {fl : Bool × Bool} {x : SM (Sem × TyS)} {s s' : SState} {r : Sem × TyS}
+    (h : SM.erasedIf fl x s = some (r, s')) : x s = some (r, s') ∨ (s' = s ∧ r.2.label = none) := by
+  unfold SM.erasedIf at h
+  split at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    exact .inr ⟨rfl, rfl⟩
+  · rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, e, hl, -⟩
+    · exact .inl h
+    · exact .inr ⟨e, hl⟩
+
 /-- A term read as a call reads its head, and as `clone`, `peek` and `inplace` read their
 operand: a place in place (`rd`: not consumed, D53 (e)), anything else by its run (`rn`). -/
 def SM.headOf (f : Term) (rd : Place → SM (Sem × TyS)) (rn : SM (Sem × TyS)) : SM (Sem × TyS) :=
@@ -162,7 +187,7 @@ type's meaning with the Π-shape the run returns, and the reading `dcs` gives pa
 `pre.length`. -/
 def mkBind (dcs : List DeclInfo) (pre : List PBind) (r : List Sem → Option ((Sem × TyS) × SState)) : PBind :=
   (fun acc => match r acc with
-    | some ((v, R), _) => ⟨v.asTy, R.shape, none, none⟩
+    | some ((v, R), _) => ⟨v.asTy, R.shape, none, R.data⟩
     | none => .plain .err, dcs.getD pre.length .other)
 
 /-- A domain term `&A`: a borrow parameter. -/
@@ -307,11 +332,14 @@ noncomputable def callOf (fv : Res) (args : List Res) : SM Res := fun s =>
 /-- D84, the drop at the join, as `Machine.dropAtJoin` does it (mono-lemmas' review): every place
 some arm of the match moves (`Decisions.joinMoves`, static, given the places already moved at
 entry) is accessed, then set to `moved`; a place whose declared reading is copy, a proof, or a
-place already `⊥` is left alone; a borrow held at a dropped root ends (`endLabel`). At a root
+place already `⊥` is left alone; a borrow held at a dropped root ends (`endLabel`). `entry` is
+the set of places already moved when the match STARTED (`Machine.joinDrop` reads `staticJoin`
+before the arm runs: the audit's A6; read after it, a place moved before the match and refilled by
+the arm taken would not be dropped, though the join says it is moved). At a root
 this is below the state before; at a field place it is a real change, so the match step lemma
 is stated exact against the checker's drop, not below its input. -/
-noncomputable def joinDrop (t : Term) (s : SState) : SState :=
-  (K.D.joinMoves (scopeOf s) (movedPlaces φ s) t).foldl (fun s q =>
+noncomputable def joinDrop (entry : List Place) (t : Term) (s : SState) : SState :=
+  (K.D.joinMoves (scopeOf s) entry t).foldl (fun s q =>
     if K.D.copy (K.D.placeDecl (scopeOf s) q) then s else
     match resolve s q with
     | some (pos, steps) =>
@@ -329,15 +357,17 @@ noncomputable def joinDrop (t : Term) (s : SState) : SState :=
 binding the side re-points (`rePointed`, static) has a fresh value written through it, the
 `i`-th of `ws` for the `i`-th re-pointed binding, so that where it points is observed through
 its owners; then every live borrow of the copy ends, and the result and the meaning of every
-position are read at the run's future. A fresh abstract value under every assignment is every
+position that was there when the side STARTED (`ps₀`) are read at the run's future (the audit's
+A5: read at every position of the side's end state, two sides that park different numbers of
+temporaries, one borrowing and the other not, were never equal). A fresh abstract value under every assignment is every
 value, so `Id` quantifies over `ws` (`run`'s `.id` clause). -/
-noncomputable def observation (reps : List Place) (ws : List Sem) (r : Res) (s : SState) : List Sem :=
+noncomputable def observation (reps : List Place) (ws : List Sem) (ps₀ : List Pos) (r : Res) (s : SState) : List Sem :=
   let s := (reps.zipIdx).foldl (fun s (q, i) =>
     match resolve s q, ws[i]? with
     | some (pos, []), some w => s.setAt pos fun _ => w
     | _, _ => s) s
   let s := s.liveLabels.foldl SState.endLabel s
-  r.1 :: s.positions.map fun p => s.valAt p φ
+  r.1 :: ps₀.map fun p => s.valAt p φ
 
 /-- The shape of a Π-term: its parameters' and output's meanings as functions of the earlier
 parameters, read in a state. Used by `.pi`, `.fix`, `.val` of a closure, and `codeMeaning`. -/
@@ -348,10 +378,10 @@ structure PiShape : Type 3 where
 mutual
 /-- The reference run of a term at the future `φ`, at the type `hint` its context expects. -/
 noncomputable def run (hint : TyS) : Term → SM Res
-  | .place p => fun s => SM.stmtIf (K.D.flags (scopeOf s) (.place p)).1
+  | .place p => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.place p))
       (readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p))) s
-  | .borrow p => fun s => SM.stmtIf (K.D.flags (scopeOf s) (.borrow p)).1 (borrowPlace K φ p) s
-  | .assign p u => fun s => SM.stmtIf (K.D.flags (scopeOf s) (.assign p u)).1 (fun s => do
+  | .borrow p => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.borrow p)) (borrowPlace K φ p) s
+  | .assign p u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.assign p u)) (fun s => do
     -- the right-hand side runs BEFORE the place is accessed (`evalCore`'s `.assign`, then
     -- `assignPlace`; D19, R5: accessing first ended the borrows the right-hand side reads
     -- through, `y := clone(*r)` with `r` borrowing `y`). The place's type, the hint of the
@@ -360,16 +390,25 @@ noncomputable def run (hint : TyS) : Term → SM Res
       | some ((_, T, _, _), _) => T
       | none => .plain .err
     let ((v, R), s) ← run T u s
-    let ((_, _, pos, steps), s) ← contentOf K φ p s
-    -- the old content's borrow, if the place held one, ends ([Drop]); a borrow written at a
-    -- root makes the place its holder (WF1: a borrow is the whole value of a position)
-    let s := if steps.isEmpty then (match s.shape pos with | some l => s.endLabel l | none => s) else s
-    let (⟨⟩, s) ← setContent K φ pos steps v s
-    let s := match R.label, steps with
-      | some l, [] => let s := s.takeLabel l; { s with shape := fun q => if q = pos then some l else s.shape q }
-      | _, _ => s
-    some ((.el0 Unit (), .plain (.ty0 Unit)), s)) s
-  | .letIn x u w => fun s => SM.stmtIf (K.D.flags (scopeOf s) (.letIn x u w)).1 (fun s => do
+    match resolve s p with
+    | none => none
+    | some (pos, steps) =>
+      -- [Access] before the write is of the part the place OWNS (D67, `accessInside … owned`): a
+      -- borrow variable assigned whole owns nothing of its content, so nothing its content
+      -- lends is ended (the audit's A2: `c := &(*c).tail` keeps the reborrow it just made); the
+      -- old borrow's end carries its content, loans and all, back to its lender
+      let s := if steps.isEmpty && (s.shape pos).isSome then s else s.access pos
+      -- the old content's borrow, if the place held one, ends ([Drop]); a borrow written at a
+      -- root makes the place its holder (WF1: a borrow is the whole value of a position)
+      let s := if steps.isEmpty then (match s.shape pos with | some l => s.endLabel l | none => s) else s
+      match setContent K φ pos steps v s with
+      | none => none
+      | some (⟨⟩, s) =>
+        let s := match R.label, steps with
+          | some l, [] => let s := s.takeLabel l; { s with shape := fun q => if q = pos then some l else s.shape q }
+          | _, _ => s
+        some ((.el0 Unit (), .plain (.ty0 Unit)), s)) s
+  | .letIn x u w => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.letIn x u w)) (fun s => do
     let ((v, T), s) ← run (.plain .err) u s
     let s := pushBindShaped s { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u }
     let ((r, R), s) ← run hint w s
@@ -381,15 +420,16 @@ noncomputable def run (hint : TyS) : Term → SM Res
       | none => none
     let s := match held with | some l => s.endLabel l | none => s
     some ((r, R), s.dropLast)) s
-  | .seq u w => fun s => SM.stmtIf (K.D.flags (scopeOf s) (.seq u w)).1 (do
+  | .seq u w => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.seq u w)) (do
     -- a discarded result holding a borrow stays parked in its temporary (D14): the borrow is
     -- ended by the access that next depends on it, or by the frame's pop
     let _ ← run (.plain .err) u
     run hint w) s
-  | .matchNat p z u => fun s => SM.stmtIf (K.D.flags (scopeOf s) (.matchNat p z u)).1 (fun s => do
+  | .matchNat p z u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.matchNat p z u)) (fun s => do
     -- [Match]: the arm by the tag of the scrutinee's meaning (after [Access]); `⊥` is an error;
     -- then D84's drop at the join
     let ((v, _, _, _), s) ← contentOf K φ p s
+    let entry := movedPlaces φ s
     let arm? : Option Bool := match v.asNat with
       | some 0 => some true
       | some (_ + 1) => some false
@@ -400,13 +440,14 @@ noncomputable def run (hint : TyS) : Term → SM Res
     match arm? with
     | some true => do
       let ((r, R), s) ← run hint z s
-      some ((r, R), joinDrop K φ (.matchNat p z u) s)
+      some ((r, R), joinDrop K φ entry (.matchNat p z u) s)
     | some false => do
       let ((r, R), s) ← run hint u s
-      some ((r, R), joinDrop K φ (.matchNat p z u) s)
+      some ((r, R), joinDrop K φ entry (.matchNat p z u) s)
     | none => none) s
-  | .matchInd p n arms => fun s => SM.stmtIf (K.D.flags (scopeOf s) (.matchInd p n arms)).1 (fun s => do
+  | .matchInd p n arms => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.matchInd p n arms)) (fun s => do
     let ((v, T, _, _), s) ← contentOf K φ p s
+    let entry := movedPlaces φ s
     -- a proof scrutinee is matched by its type (D45): the one arm of a one-constructor
     -- proposition; a data scrutinee by the tag of its meaning
     let c? : Option Nat := match v with
@@ -417,15 +458,20 @@ noncomputable def run (hint : TyS) : Term → SM Res
     match c? with
     | some c => do
       let ((r, R), s) ← runArm hint c arms s
-      some ((r, R), joinDrop K φ (.matchInd p n arms) s)
+      -- a match on a proof has no join (`Machine.evalMatchByType`: its one arm runs on every
+      -- path; the audit's A4)
+      some ((r, R), match v with | .proof => s | _ => joinDrop K φ entry (.matchInd p n arms) s)
     | none => none) s
   | .tind n args => do
     match K.Γ.find? (·.name == n) with
     | some d =>
       let psM ← runParams d 0 [] args
-      pure (.ty (K.dm.tyM d psM), .plain (.univ d.sort))
+      -- the type value's own type carries the structure of the type it denotes, as a Π-term's
+      -- does its shape: here the declaration and its parameters (read by an annotation, a
+      -- parameter's binder, a codomain)
+      pure (.ty (K.dm.tyM d psM), ⟨.univ d.sort, none, none, some (n, psM)⟩)
     | none => SM.fail
-  | .ctor ty c x ps args => fun s => SM.stmtIf (K.D.flags (scopeOf s) (.ctor ty c x ps args)).1 (do
+  | .ctor ty c x ps args => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.ctor ty c x ps args)) (do
     match K.Γ.find? (·.name == ty) with
     | some d =>
       let psM ← runParams d 0 [] ps
@@ -481,7 +527,7 @@ noncomputable def run (hint : TyS) : Term → SM Res
         | none => .err
     let l := K.D.piSort (scopeOf s) (.pi hs ds c)
     some ((.ty (piTyAt l ps out), ⟨.univ l, some (ps, out), none, none⟩), s)
-  | .fix self hs ds c dec body => fun s => SM.stmtIf (K.D.flags (scopeOf s) (.fix self hs ds c dec body)).1 (fun s =>
+  | .fix self hs ds c dec body => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.fix self hs ds c dec body)) (fun s =>
     -- [Closure] (D51, D53, D80): a closure means a function on its annotated domain, read off
     -- the reference run of its body in the forming frame extended by `self` and the parameters
     -- (the body's layout `[caps…, self, x̄]`). A recursive `fix` means its guarded fixpoint by
@@ -569,36 +615,32 @@ noncomputable def run (hint : TyS) : Term → SM Res
     let fl := K.D.flags (scopeOf s) (.call f args hd)
     -- a statement call runs on a copy that is thrown away (E1; `Decisions.flags`, aligned), and
     -- its result carries no label (m2-proofs' finding 6): `SM.stmtIf`, as every clause
-    SM.stmtIf fl.1 (do
+    -- a proof call is never applied: its value is `⋆` (P5; `Machine.callFn` at class 2), as
+    -- every proof's is (`SM.erasedIf`)
+    SM.erasedIf fl (do
       -- a call reads its head in place: it does not consume the function it calls (D53 (e),
       -- `evalCall`'s `inPlace`; D19, R2: `run f` moved a function variable out, so `f(f(n))`
       -- failed)
       let fv ← SM.headOf f (fun p => readPlace K φ p true) (run (.plain .err) f)
       -- a statement call's arguments are statement positions, each on its own copy (R4)
       let as ← runArgs fl.1 fv.2.shape 0 [] args
-      -- a proof call is never applied: its value is `⋆` (P5; `Machine.callFn` at class 2); its
-      -- type, the proposition, is the codomain at the arguments
-      if fl.2 then
-        pure (.proof, match fv.2.shape with
-          | some (ps, .data B) => if as.length = ps.length then .plain (B (as.map (·.1))) else .plain .err
-          | _ => .plain .err)
-      else callOf fv as) s
+      callOf fv as) s
   | .nat => pure (.ty (.ty0 Nat), .plain (.univ 1))
   | .unit => pure (.ty (.ty0 Unit), .plain (.univ 1))
   | .zero => pure (.el0 Nat 0, .plain (.ty0 Nat))
   | .tt => pure (.el0 Unit (), .plain (.ty0 Unit))
-  | .succ u => fun s => SM.stmtIf (K.D.flags (scopeOf s) (.succ u)).1 (do
+  | .succ u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.succ u)) (do
     let (v, _) ← run (.plain (.ty0 Nat)) u
     pure (v.succ, .plain (.ty0 Nat))) s
   | .eq A a b => SM.onCopy do
-    let (TA, _) ← run (.plain .err) A
-    let T := TyS.plain TA.asTy
+    let (TA, RA) ← run (.plain .err) A
+    let T : TyS := ⟨TA.asTy, RA.shape, none, RA.data⟩
     let (va, _) ← SM.onCopy (run T a)
     let (vb, _) ← SM.onCopy (run T b)
     pure (.ty (.prop (va = vb)), .plain (.univ 0))
   | .cong _ _ | .prim "symm" _ | .prim "trans" _ | .prim "rewrite" _ | .prim "rewriteR" _ =>
     pure (.proof, .plain .err)
-  | .ref A => fun s => SM.stmtIf (K.D.flags (scopeOf s) (.ref A)).1 (do
+  | .ref A => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.ref A)) (do
     let (TA, _) ← run (.plain .err) A
     pure (TA, .plain (.univ 1))) s
   | .id A t u => fun s => do
@@ -606,14 +648,14 @@ noncomputable def run (hint : TyS) : Term → SM Res
     -- re-pointed borrow binding ([Obs-ref]), every borrow ended, the result and every position
     -- compared (D84: moved places are definite values, so they compare too); the proposition
     -- holds for every choice of the written values
-    let ((TA, _), _) ← SM.onCopy (run (.plain .err) A) s
-    let T := TyS.plain TA.asTy
+    let ((TA, RA), _) ← SM.onCopy (run (.plain .err) A) s
+    let T : TyS := ⟨TA.asTy, RA.shape, none, RA.data⟩
     let reps := K.D.rePointed (scopeOf s) t
     let o₁ ← run T t s
     let o₂ ← run T u s
     some ((.ty (.prop (∀ ws : List Sem,
-      observation φ reps ws o₁.1 o₁.2 = observation φ reps ws o₂.1 o₂.2)), .plain (.univ 0)), s)
-  | .prim "J" [A, a, b, P, h, t] => fun s => SM.stmtIf (K.D.flags (scopeOf s) (.prim "J" [A, a, b, P, h, t])).1 (do
+      observation φ reps ws s.positions o₁.1 o₁.2 = observation φ reps ws s.positions o₂.1 o₂.2)), .plain (.univ 0)), s)
+  | .prim "J" [A, a, b, P, h, t] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "J" [A, a, b, P, h, t])) (do
     -- `J` means its transported term; its endpoints, motive and proof are statements on copies
     let _ ← SM.onCopy (run (.plain .err) A)
     let _ ← SM.onCopy (run (.plain .err) a)
@@ -623,16 +665,19 @@ noncomputable def run (hint : TyS) : Term → SM Res
     run hint t) s
   -- `clone`, `peek` and `inplace` of a place read it in place: not consumed (`inplace` is a stuck
   -- block's read-only capture; it used to be `run hint u`, a move: D19)
-  | .prim "clone" [u] => fun s => SM.stmtIf (K.D.flags (scopeOf s) (.prim "clone" [u])).1
+  | .prim "clone" [u] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "clone" [u]))
       (SM.headOf u (fun p => readPlace K φ p true) (run hint u)) s
-  | .prim "peek" [u] => fun s => SM.stmtIf (K.D.flags (scopeOf s) (.prim "peek" [u])).1
+  | .prim "peek" [u] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "peek" [u]))
       (SM.headOf u (fun p => readPlace K φ p true) (run hint u)) s
-  | .prim "inplace" [u] => fun s => SM.stmtIf (K.D.flags (scopeOf s) (.prim "inplace" [u])).1
+  | .prim "inplace" [u] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "inplace" [u]))
       (SM.headOf u (fun p => readPlace K φ p true) (run hint u)) s
   | .prim _ _ => SM.fail
-  | .ascribe u A => fun s => SM.stmtIf (K.D.flags (scopeOf s) (.ascribe u A)).1 (do
-    let (TA, _) ← SM.onCopy (run (.plain .err) A)
-    let T := TyS.plain TA.asTy
+  | .ascribe u A => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.ascribe u A)) (do
+    -- the annotation is the term's type WITH its structure: the Π-shape and the `D(ā)` data the
+    -- run of the type term returns (the audit's A7: at `.plain _`, an annotated function could
+    -- not be called and an annotated bare constructor had no parameters)
+    let (TA, RA) ← SM.onCopy (run (.plain .err) A)
+    let T : TyS := ⟨TA.asTy, RA.shape, none, RA.data⟩
     let (v, R) ← run T u
     pure (v, { T with label := R.label })) s
 termination_by structural t => t

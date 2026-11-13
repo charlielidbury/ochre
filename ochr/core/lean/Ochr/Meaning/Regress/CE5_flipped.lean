@@ -33,12 +33,12 @@ theorem SM.bind_apply {α β : Type 3} (x : SM α) (f : α → SM β) (s : SStat
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- The decisions classify no term as a statement, so `SM.stmtIf` is the run itself (D19: every
-clause that can change the state runs under `Decisions.flags`). -/
-def NoStmt (K : RunCtx) : Prop := ∀ sc t, (K.D.flags sc t).1 = false
+/-- The decisions classify no term as a statement or as erased, so `SM.erasedIf` is the run itself
+(D19: every clause that can change the state runs under `Decisions.flags`). -/
+def NoStmt (K : RunCtx) : Prop := ∀ sc t, K.D.flags sc t = (false, false)
 
 theorem stmtIf_noStmt (hfl : NoStmt K) (t : Term) (x : SM Res) (s : SState) :
-    SM.stmtIf (K.D.flags (scopeOf s) t).1 x s = x s := by
+    SM.erasedIf (K.D.flags (scopeOf s) t) x s = x s := by
   rw [hfl]; rfl
 
 /-- [Access] of a position whose meaning reads no label ends nothing. -/
@@ -125,13 +125,18 @@ theorem run_assign (hfl : NoStmt K) (p : Place) (u : Term) (hint : TyS) (s : SSt
       let ((v, R), s) ← run K ρ φ (match contentOf K φ p s with
         | some ((_, T, _, _), _) => T
         | none => .plain .err) u s
-      let ((_, _, pos, steps), s) ← contentOf K φ p s
-      let s := if steps.isEmpty then (match s.shape pos with | some l => s.endLabel l | none => s) else s
-      let (⟨⟩, s) ← setContent K φ pos steps v s
-      let s := match R.label, steps with
-        | some l, [] => let s := s.takeLabel l; { s with shape := fun q => if q = pos then some l else s.shape q }
-        | _, _ => s
-      some ((.el0 Unit (), .plain (.ty0 Unit)), s)) := by
+      match resolve s p with
+      | none => none
+      | some (pos, steps) =>
+        let s := if steps.isEmpty && (s.shape pos).isSome then s else s.access pos
+        let s := if steps.isEmpty then (match s.shape pos with | some l => s.endLabel l | none => s) else s
+        match setContent K φ pos steps v s with
+        | none => none
+        | some (⟨⟩, s) =>
+          let s := match R.label, steps with
+            | some l, [] => let s := s.takeLabel l; { s with shape := fun q => if q = pos then some l else s.shape q }
+            | _, _ => s
+          some ((.el0 Unit (), .plain (.ty0 Unit)), s)) := by
   rw [run]; exact stmtIf_noStmt K hfl _ _ s
 
 /-- After `&y`: `y` reads label `n`, the borrow parked in temporary `0`. -/
@@ -190,7 +195,12 @@ theorem assign_b1 (hfl : NoStmt K) (n : Nat) (hint : TyS) :
   show (run K ρ φ (.plain (.ty0 Nat)) (.borrow (.var 1)) (b1 K n) >>= _) = _
   rw [run_borrow K ρ φ hfl, borrow_b1]
   dsimp only [Bind.bind, Option.bind]
-  rw [content_b2_x]
+  have hr : resolve (b2 K n) (.var 0) = some (.bind 0 1, []) := rfl
+  have ha : (b2 K n).access (.bind 0 1) = b2 K n := access_const _ _ (fun _ _ => rfl)
+  rw [hr]
+  dsimp only
+  rw [show (b2 K n).shape (.bind 0 1) = none from rfl]
+  simp only [Option.isSome_none, Bool.and_false, Bool.false_eq_true, if_false, ha]
   rfl
 
 theorem positions_b3 (n : Nat) : (b3 K n).positions = [.bind 0 0, .bind 0 1, .temp 0 0] := by

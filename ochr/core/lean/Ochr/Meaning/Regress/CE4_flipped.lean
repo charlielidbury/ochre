@@ -61,10 +61,10 @@ variable (K : RunCtx)
 
 /-- The decisions classify no term as a statement, so `SM.stmtIf` is the run itself (D19: every
 clause that can change the state runs under `Decisions.flags`). True of `KF` by `rfl`. -/
-def NoStmt (K : RunCtx) : Prop := ∀ sc t, (K.D.flags sc t).1 = false
+def NoStmt (K : RunCtx) : Prop := ∀ sc t, K.D.flags sc t = (false, false)
 
 theorem stmtIf_noStmt (hfl : NoStmt K) (t : Term) (x : SM Res) (s : SState) :
-    SM.stmtIf (K.D.flags (scopeOf s) t).1 x s = x s := by
+    SM.erasedIf (K.D.flags (scopeOf s) t) x s = x s := by
   rw [hfl]; rfl
 
 theorem run_letIn (hfl : NoStmt K) (h : Hint) (u w : Term) (hint : TyS) (s : SState) :

@@ -188,9 +188,9 @@ theorem borrowPlace_envLe {p : Place} {s s' : SState} {r : Res}
     exact e₁.trans ((EnvLe.of_env (s' := { s₁ with nextLoan := s₁.nextLoan + 1 }) rfl).trans
       ((envLe_setAt _ _ _).trans (envLe_pushTempShaped _ _ _)))
 
-theorem joinDrop_envLe (t : Term) (s : SState) : EnvLe s (joinDrop K φ t s) := by
+theorem joinDrop_envLe (entry : List Place) (t : Term) (s : SState) : EnvLe s (joinDrop K φ entry t s) := by
   unfold joinDrop
-  generalize K.D.joinMoves (scopeOf s) (movedPlaces φ s) t = qs
+  generalize K.D.joinMoves (scopeOf s) entry t = qs
   induction qs generalizing s with
   | nil => exact EnvLe.refl s
   | cons q qs ih =>
