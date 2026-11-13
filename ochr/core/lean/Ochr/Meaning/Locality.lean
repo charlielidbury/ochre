@@ -1317,4 +1317,331 @@ theorem callOfL_data_inv {L : Nat → Prop} (Lv : Lvl.{u}) (ps : List PiParam) (
     exact absurd happ (hdata U fwd back)
   · cases h
 
+/-! ## Parking: a fresh label's new holder keeps the invariant -/
+
+namespace SState
+
+variable {L : Nat → Prop}
+
+/-- Every shape entry is at a real position, with a label below the counter (`run_congr`'s `hsh`). -/
+def ShapeAt (s : SState) : Prop := ∀ p x, s.shape p = some x → p ∈ s.positions ∧ x < s.nextLoan
+
+theorem lookup_pushTemp_old (s : SState) (v : SVal) (q : Pos) (h : (s.lookup q).isSome) :
+    (s.pushTemp v).lookup q = s.lookup q := by
+  cases q with
+  | bind f i =>
+    simp only [lookup, pushTemp, List.getElem?_modify]
+    split <;> cases s.env[f]? <;> simp
+  | temp f i =>
+    simp only [lookup, pushTemp, List.getElem?_modify] at h ⊢
+    split
+    · cases e : s.env[f]? with
+      | none => simp
+      | some fr =>
+        rw [e] at h
+        simp only [Option.bind_some] at h
+        have hi : i < fr.temps.length := by
+          cases ei : fr.temps[i]? with
+          | none => rw [ei] at h; cases h
+          | some _ => exact (List.getElem?_eq_some_iff.mp ei).1
+        simp [List.getElem?_append_left hi]
+    · cases s.env[f]? <;> rfl
+
+theorem mem_positions_pushTemp (s : SState) (v : SVal) {q : Pos} (h : q ∈ s.positions) :
+    q ∈ (s.pushTemp v).positions := by
+  rw [mem_positions] at h ⊢
+  rw [lookup_pushTemp_old s v q h]; exact h
+
+theorem pushTemp_topIdx (s : SState) (v : SVal) : (s.pushTemp v).topIdx = s.topIdx := by
+  simp [pushTemp, topIdx]
+
+/-- The parked holder's position is new. -/
+theorem pushTempShaped_shape_old (s : SState) (v : SVal) (l : Nat) {q : Pos} (hq : q ∈ s.positions) :
+    (s.pushTempShaped v l).shape q = s.shape q := by
+  unfold pushTempShaped
+  dsimp only
+  split
+  · rename_i fr hfr
+    show (if q = .temp (s.pushTemp v).topIdx (fr.temps.length - 1) then some l else s.shape q) = s.shape q
+    rw [if_neg]
+    rintro rfl
+    rw [mem_positions] at hq
+    simp only [lookup, pushTemp_topIdx] at hq
+    -- the last frame after the push is the top frame with `v` appended
+    have hlast : (s.pushTemp v).env.getLast? = (s.env.getLast?).map fun fr => { fr with temps := fr.temps ++ [v] } := by
+      simp only [pushTemp, topIdx]
+      rw [List.getLast?_eq_getElem?, List.getLast?_eq_getElem?, List.length_modify, List.getElem?_modify]
+      simp
+    rw [hlast] at hfr
+    cases e : s.env.getLast? with
+    | none => rw [e] at hfr; cases hfr
+    | some fr0 =>
+      rw [e] at hfr
+      simp only [Option.map_some, Option.some.injEq] at hfr
+      subst hfr
+      have e2 : s.env[s.topIdx]? = some fr0 := by
+        rw [List.getLast?_eq_getElem?] at e; simpa [topIdx] using e
+      rw [e2] at hq
+      simp at hq
+  · rfl
+
+theorem positions_pushTempShaped (s : SState) (v : SVal) (l : Nat) :
+    (s.pushTempShaped v l).positions = (s.pushTemp v).positions := by
+  unfold pushTempShaped; dsimp only; split <;> rfl
+
+theorem live_pushTempShaped_old {s : SState} {v : SVal} {l y : Nat} (hy : s.Live y) :
+    (s.pushTempShaped v l).Live y := by
+  rw [live_iff] at hy ⊢
+  obtain ⟨q, hq, hs⟩ := hy
+  exact ⟨q, by rw [positions_pushTempShaped]; exact mem_positions_pushTemp s v hq,
+    by rw [pushTempShaped_shape_old s v l hq]; exact hs⟩
+
+theorem live_pushTempShaped_new {s : SState} (hsa : ShapeAt s) {v : SVal} {l y : Nat}
+    (hy : (s.pushTempShaped v l).Live y) : s.Live y ∨ y = l := by
+  rw [live_iff] at hy
+  obtain ⟨q, _, hs⟩ := hy
+  obtain ⟨T, hT⟩ := pushTempShaped_shape s v l
+  rw [hT] at hs
+  split at hs
+  · cases hs; exact .inr rfl
+  · exact .inl ((live_iff s y).mpr ⟨q, (hsa q y hs).1, hs⟩)
+
+/-- **Parking a constant meaning as the holder of a label above every held one keeps (I1), (I2).** -/
+theorem pushTempShaped_inv {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (hsa : ShapeAt s) (c : Sem) (l : Nat)
+    (hlt : ∀ q x, s.shape q = some x → x < l) :
+    Inv1 L (s.pushTempShaped (fun _ => c) l) ∧ Inv2 L (s.pushTempShaped (fun _ => c) l) := by
+  have hv : ∀ q, (s.pushTempShaped (fun _ => c) l).valAt q = s.valAt q ∨
+      (s.pushTempShaped (fun _ => c) l).valAt q = fun _ => c := by
+    intro q; rw [valAt_pushTempShaped]; exact valAt_pushTemp s _ q
+  constructor
+  · intro q
+    rcases hv q with e | e
+    · rw [e]; exact (h1 q).mono fun y hy => hy.imp_right live_pushTempShaped_old
+    · rw [e]; exact FT.const _ _
+  · intro h x hh hsx
+    by_cases hold : h ∈ s.positions
+    · rcases hv h with e | e
+      · rw [e]
+        rw [pushTempShaped_shape_old s _ l hold] at hsx
+        refine (h2 h x hold hsx).mono fun y hy => ?_
+        rcases hy with ⟨hL, hn⟩ | ⟨hy, hxy⟩
+        · by_cases hl' : (s.pushTempShaped (fun _ => c) l).Live y
+          · rcases live_pushTempShaped_new hsa hl' with h' | rfl
+            · exact absurd h' hn
+            · exact .inr ⟨hl', hlt h x hsx⟩
+          · exact .inl ⟨hL, hl'⟩
+        · exact .inr ⟨live_pushTempShaped_old hy, hxy⟩
+      · rw [e]; exact FT.const _ _
+    · rcases hv h with e | e
+      · rw [e, valAt_of_not_mem _ _ hold]; exact FT.const _ _
+      · rw [e]; exact FT.const _ _
+
+theorem pushTemp_getLast (s : SState) (v : SVal) :
+    (s.pushTemp v).env.getLast? = (s.env.getLast?).map fun fr => { fr with temps := fr.temps ++ [v] } := by
+  simp only [pushTemp, topIdx]
+  rw [List.getLast?_eq_getElem?, List.getLast?_eq_getElem?, List.length_modify, List.getElem?_modify]
+  simp
+
+/-- With a frame to park in, the parked label is live. -/
+theorem live_pushTempShaped_self (s : SState) (v : SVal) (l : Nat) (hne : s.env ≠ []) :
+    (s.pushTempShaped v l).Live l := by
+  obtain ⟨fr0, e⟩ : ∃ fr0, s.env.getLast? = some fr0 := by
+    cases h : s.env.getLast? with
+    | none => exact absurd (List.getLast?_eq_none_iff.mp h) hne
+    | some fr0 => exact ⟨fr0, rfl⟩
+  have e2 : s.env[s.topIdx]? = some fr0 := by
+    rw [List.getLast?_eq_getElem?] at e; simpa [topIdx] using e
+  rw [live_iff]
+  unfold pushTempShaped
+  dsimp only
+  rw [pushTemp_getLast, e]
+  simp only [Option.map_some]
+  refine ⟨.temp s.topIdx fr0.temps.length, ?_, ?_⟩
+  · rw [mem_positions]
+    simp only [lookup, pushTemp, List.getElem?_modify, e2]
+    simp
+  · simp [pushTemp_topIdx]
+
+end SState
+
+/-! ## The call clause: a returned borrow -/
+
+/-- A future fixed at a list of labels by a choice read off the future at `k`: two futures that
+agree at `k` and on `S` give futures that agree on `S`. -/
+theorem updList_dec_agree {S : Nat → Prop} {ψ ψ' : Future} (fx : List (Nat × Sem)) (hS : ∀ y, S y → y ∉ fx.map (·.1) → ψ y = ψ' y) :
+    ∀ y, S y → ψ.updList fx y = ψ'.updList fx y := by
+  intro y hy
+  by_cases hm : y ∈ fx.map (·.1)
+  · exact Future.updList_agree_mem fx ψ ψ' y hm
+  · rw [Future.updList_of_not_mem fx _ y hm, Future.updList_of_not_mem fx _ y hm]
+    exact hS y hy hm
+
+namespace SState
+
+/-- The state after a call that returns a borrow, abstractly: the taken labels `ls`; every
+position reads the fresh label `k`'s final content, decodes it (`dec`) and fixes the taken labels
+(`fx x` covers them all); `k` is parked with a constant. Keeps (I1) and (I2). -/
+theorem park_fix_inv {L : Nat → Prop} {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (hsa : ShapeAt s)
+    {X : Type u} (ls : List Nat) (dec : Sem → Option X) (fx : X → List (Nat × Sem))
+    (hcov : ∀ x, ∀ l ∈ ls, l ∈ (fx x).map (·.1)) (c : Sem) (g : Pos → SVal → SVal)
+    (hg : ∀ p v ψ, (∃ x, dec (ψ (ls.foldl takeLabel s).nextLoan) = some x ∧ g p v ψ = v (ψ.updList (fx x))) ∨
+      (dec (ψ (ls.foldl takeLabel s).nextLoan) = none ∧ g p v ψ = .err)) :
+    Inv1 L (((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape ((ls.foldl takeLabel s).nextLoan + 1)).mapVals
+        g).pushTempShaped (fun _ => c) (ls.foldl takeLabel s).nextLoan) ∧
+    Inv2 L (((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape ((ls.foldl takeLabel s).nextLoan + 1)).mapVals
+        g).pushTempShaped (fun _ => c) (ls.foldl takeLabel s).nextLoan) := by
+  -- names for the stages
+  generalize hs₁ : ls.foldl takeLabel s = s₁
+  generalize hk : s₁.nextLoan = k
+  have hpos₁ : s₁.positions = s.positions := by rw [← hs₁]; exact takeAll_positions s ls
+  have hk' : k = s.nextLoan := by
+    rw [← hk, ← hs₁]; exact (shapeSub_foldl_takeLabel ls s).2
+  rw [hs₁, hk] at hg
+  generalize hs₂ : (SState.mk s₁.env s₁.shape (k + 1)).mapVals g = s₃
+  have hpos₃ : s₃.positions = s.positions := by
+    rw [← hs₂, positions_mapVals]; exact hpos₁
+  have hlive₃ : ∀ y, s₃.Live y ↔ s₁.Live y := by
+    intro y; rw [← hs₂, live_mapVals]; rfl
+  have hshape₃ : s₃.shape = s₁.shape := by rw [← hs₂]; rfl
+  -- what a position of s₃ means
+  have hval₃ : ∀ q ∈ s.positions, s₃.valAt q = g q (s₁.valAt q) := by
+    intro q hq
+    rw [← hs₂]
+    exact valAt_mapVals_of_mem _ _ q (by show q ∈ s₁.positions; rw [hpos₁]; exact hq)
+  -- s₃'s shape: labels below k, at real positions
+  have hsa₃ : ShapeAt s₃ := by
+    intro p x hp
+    rw [hshape₃] at hp
+    have hp' := takeAll_shape_some ls (by rw [hs₁]; exact hp)
+    refine ⟨by rw [hpos₃]; exact (hsa p x hp').1, ?_⟩
+    rw [← hs₂]; show x < k + 1
+    have := (hsa p x hp').2; omega
+  -- the live labels of the end state
+  have hne : ∀ q ∈ s.positions, s₃.env ≠ [] := by
+    intro q hq he
+    have : q ∈ s₃.positions := by rw [hpos₃]; exact hq
+    rw [positions_eq, he] at this
+    simp at this
+  have hliveK : ∀ q ∈ s.positions, (s₃.pushTempShaped (fun _ => c) k).Live k :=
+    fun q hq => live_pushTempShaped_self s₃ _ k (hne q hq)
+  have hold : ∀ y, s.Live y → y ∉ ls → (s₃.pushTempShaped (fun _ => c) k).Live y := by
+    intro y hy hn
+    apply live_pushTempShaped_old
+    rw [hlive₃, ← hs₁]
+    exact takeAll_live ls hy hn
+  have hnew : ∀ y, (s₃.pushTempShaped (fun _ => c) k).Live y → s.Live y ∨ y = k := by
+    intro y hy
+    rcases live_pushTempShaped_new hsa₃ hy with h | h
+    · rw [hlive₃, ← hs₁] at h; exact .inl (takeAll_live_rev ls h)
+    · exact .inr h
+  have hv : ∀ q, (s₃.pushTempShaped (fun _ => c) k).valAt q = s₃.valAt q ∨
+      (s₃.pushTempShaped (fun _ => c) k).valAt q = fun _ => c := by
+    intro q; rw [valAt_pushTempShaped]; exact valAt_pushTemp s₃ _ q
+  -- a position of s₃, through the decode and the fix
+  have key : ∀ q ∈ s.positions, ∀ (S S' : Nat → Prop), FT S (s.valAt q) → S' k →
+      (∀ y, S y → y ∉ ls → S' y) → FT S' (s₃.valAt q) := by
+    intro q hq S S' hf hk' hS
+    rw [hval₃ q hq]
+    intro ψ ψ' hψ
+    have hkk : ψ k = ψ' k := hψ k hk'
+    rcases hg q (s₁.valAt q) ψ with ⟨x, hx, ex⟩ | ⟨hx, ex⟩ <;>
+      rcases hg q (s₁.valAt q) ψ' with ⟨x', hx', ex'⟩ | ⟨hx', ex'⟩ <;> rw [hkk] at hx
+    · rw [hx] at hx'; cases hx'
+      rw [ex, ex']
+      have hv₁ : s₁.valAt q = s.valAt q ∨ s₁.valAt q = fun _ => .moved := by
+        rw [← hs₁]; exact takeAll_valAt q ls s
+      rcases hv₁ with e | e
+      · rw [e]
+        apply hf
+        apply updList_dec_agree (fx x)
+        intro y hy hm
+        exact hψ y (hS y hy fun hl => hm (hcov x y hl))
+      · rw [e]
+    · rw [hx] at hx'; cases hx'
+    · rw [hx] at hx'; cases hx'
+    · rw [ex, ex']
+  constructor
+  · intro q
+    by_cases hq : q ∈ s.positions
+    · rcases hv q with e | e
+      · rw [e]
+        apply key q hq _ _ (h1 q) (.inr (hliveK q hq))
+        intro y hy hn
+        rcases hy with hL | hy
+        · exact .inl hL
+        · exact .inr (hold y hy hn)
+      · rw [e]; exact FT.const _ _
+    · rcases hv q with e | e
+      · rw [e]
+        have : q ∉ s₃.positions := by rw [hpos₃]; exact hq
+        rw [valAt_of_not_mem _ _ this]; exact FT.const _ _
+      · rw [e]; exact FT.const _ _
+  · intro h x hh hsx
+    by_cases hq : h ∈ s.positions
+    · have hq₃ : h ∈ s₃.positions := by rw [hpos₃]; exact hq
+      rw [pushTempShaped_shape_old s₃ _ k hq₃, hshape₃] at hsx
+      have hsx' : s.shape h = some x := takeAll_shape_some ls (by rw [hs₁]; exact hsx)
+      have hxk : x < k := by rw [hk']; exact (hsa h x hsx').2
+      rcases hv h with e | e
+      · rw [e]
+        apply key h hq _ _ (h2 h x hq hsx') (.inr ⟨hliveK h hq, hxk⟩)
+        intro y hy hn
+        rcases hy with ⟨hL, hnl⟩ | ⟨hy, hxy⟩
+        · by_cases hl' : (s₃.pushTempShaped (fun _ => c) k).Live y
+          · rcases hnew y hl' with h' | rfl
+            · exact absurd h' hnl
+            · exact .inr ⟨hl', hxk⟩
+          · exact .inl ⟨hL, hl'⟩
+        · exact .inr ⟨hold y hy hn, hxy⟩
+      · rw [e]; exact FT.const _ _
+    · rcases hv h with e | e
+      · rw [e]
+        have : h ∉ s₃.positions := by rw [hpos₃]; exact hq
+        rw [valAt_of_not_mem _ _ this]; exact FT.const _ _
+      · rw [e]; exact FT.const _ _
+
+end SState
+
+/-- **The call clause, returned borrow**: `callOfL` keeps (I1) and (I2). The borrow arguments'
+holders are taken; every position then reads the fresh label `k`'s final content, decodes the
+backward function's finals from it, and fixes every taken label to them; `k` is parked, a fresh
+label above every held one, so the holders' order is kept. -/
+theorem callOfL_ref_inv {L : Nat → Prop} (Lv : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : Sem)
+    (args : List Res) {s s' : SState} (h1 : SState.Inv1 L s) (h2 : SState.Inv2 L s) (hsa : SState.ShapeAt s)
+    {res : Res} (h : callOfL Lv ps out fv args s = some (res, s'))
+    {U : TyM} {fwd : Lv.el U} {back : Lv.el U → List Sem}
+    (happ : applyFnL Lv ps out fv (args.map (·.1)) = some (.ref U fwd back)) :
+    SState.Inv1 L s' ∧ SState.Inv2 L s' := by
+  unfold callOfL at h
+  dsimp only at h
+  rw [happ] at h
+  simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
+  obtain ⟨_, rfl⟩ := h
+  -- the lengths: every taken label is fixed, whatever the backward function's argument
+  unfold applyFnL at happ
+  obtain ⟨F, hu, happ'⟩ : ∃ F, Lv.unpack (piCarL Lv ps [] PUnit out) fv = some F ∧
+      applyTeleL Lv ps [] PUnit (fun _ => []) out F (args.map (·.1)) = some (.ref U fwd back) := by
+    cases hu : Lv.unpack (piCarL Lv ps [] PUnit out) fv with
+    | none => rw [hu] at happ; cases happ
+    | some F => rw [hu] at happ; exact ⟨F, rfl, happ⟩
+  obtain ⟨hlen, hfin⟩ := applyTeleL_len Lv ps [] PUnit (fun _ => []) out F _ 0 (fun _ => rfl) _ happ'
+  simp only [List.length_map] at hlen
+  simp only [Nat.zero_add] at hfin
+  have hcover : ∀ x, ∀ l ∈ (((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).filterMap id,
+      l ∈ (((((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).zip (back x)).filterMap
+        fun (y : Option Nat × Sem) => y.1.map (·, y.2)).map (·.1) := by
+    intro x
+    have hfx : (fun (y : Option Nat × Sem) => y.1.map (·, y.2)) = (fun (l?, f) => l?.map (·, f)) :=
+      funext fun ⟨_, _⟩ => rfl
+    rw [hfx]
+    apply fixes_cover
+    rw [List.length_map, zip_filter_len args ps hlen, hfin x]
+    exact Nat.le_refl _
+  apply SState.park_fix_inv h1 h2 hsa _ (Lv.dec U) _ hcover (Lv.enc U fwd)
+  intro p v ψ
+  cases hd : Lv.dec U (ψ ((((((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).filterMap id)).foldl
+      SState.takeLabel s).nextLoan) with
+  | none => exact .inr ⟨rfl, by simp only [hd]⟩
+  | some x => exact .inl ⟨x, rfl, by simp only [hd]⟩
+
 end Ochr.Meaning
