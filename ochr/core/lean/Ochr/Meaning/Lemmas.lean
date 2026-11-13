@@ -2,7 +2,7 @@ import Ochr.Meaning.Run
 import Ochr.Meaning.Subst
 import Ochr.Meaning.Locality
 import Ochr.Meaning.LocalityRun
-import Ochr.Meaning.RunPresInd
+import Ochr.Meaning.RunCongr
 
 /-!
 # The two lemmas that close milestone 2 (statements; docs/27 Lemma 3, docs/31 §Milestone 2)
@@ -112,8 +112,12 @@ theorem run_substLoan (φ : Future) (hint : TyS) (l : Nat) (w : Value) (t : Term
 recorded capture types included. (With D13's fixes every borrow the run makes is ended before
 it is read or when it is discarded, so no fresh label leaks into a meaning.) -/
 theorem meanV_congr (φ φ' : Future) (hint : TyS) (v : Value)
-    (h : ∀ l, v.hasLoan l → φ l = φ' l) : meanV K ρ φ hint v = meanV K ρ φ' hint v := by
-  sorry
+    -- PROPOSAL (m2-proofs, statement): a global carries no borrow label (part (P) of the locality
+    -- induction, `run_rinv`'s `.const` clause: a labelled global bound by a `let` would make the
+    -- binding hold a label the state never issued)
+    (hK : ∀ n, (K.C.global n).2.label = none)
+    (h : ∀ l, v.hasLoan l → φ l = φ' l) : meanV K ρ φ hint v = meanV K ρ φ' hint v :=
+  meanV_congrE K ρ φ φ' hK v hint h
 
 /-- Future-locality of the run (m2-proofs' form): if the future changes only at labels outside
 `L`, where `L` holds of every loan of the term and the state factors through `L` (each position's
@@ -131,9 +135,11 @@ theorem run_congr (φ φ' : Future) (hint : TyS) (t : Term) (s : SState) (L : Na
     -- fresh labels never collide with the state's and a pushed position never inherits an entry
     (hord : ∀ r x, r ∈ s.positions → s.shape r = some x →
       FT (fun y => (L y ∧ ¬ s.Live y) ∨ (s.Live y ∧ x < y)) (s.valAt r))
-    (hsh : ∀ p x, s.shape p = some x → p ∈ s.positions ∧ x < s.nextLoan) :
-    run K ρ φ hint t s = run K ρ φ' hint t s := by
-  sorry
+    (hsh : ∀ p x, s.shape p = some x → p ∈ s.positions ∧ x < s.nextLoan)
+    -- PROPOSAL (m2-proofs, statement): a global carries no borrow label (as `meanV_congr`)
+    (hK : ∀ n, (K.C.global n).2.label = none) :
+    run K ρ φ hint t s = run K ρ φ' hint t s :=
+  run_congrE K ρ φ φ' hK t hint s L hφ ht ⟨fun p => FT.mono (fun _ hy => .inl hy) (hs p), hord, hsh⟩
 
 /-- The run's result does not depend on the starting label counter, as long as it is above every
 loan of the term and of the state (m2-proofs' D): fresh labels are names. Needed because a
