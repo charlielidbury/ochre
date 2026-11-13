@@ -153,7 +153,9 @@ reading). Reading `⊥`, or a value holding it, is an error. -/
 noncomputable def readPlace (p : Place) (copy : Bool) : SM Res := fun s => do
   let ((v, T, pos, steps), s) ← contentOf K φ p s
   if ¬ v.whole then none else
-  if copy then some ((v, T), s) else do
+  -- PROPOSAL (m2-proofs): a copy carries no holdership: the place's stored type may name a label
+  -- it held when bound (or no longer holds); only a move carries the label it holds now
+  if copy then some ((v, { T with label := none }), s) else do
     -- a move of a whole position holding a borrow carries the borrow: the position is no
     -- longer its holder; the borrow is parked in a temporary, which holds it until the result
     -- is bound (D14), and the result's type names the label
@@ -374,7 +376,9 @@ noncomputable def run (hint : TyS) : Term → SM Res
         | some ((_, R), _) => { hint with shape := R.shape }
         | none => hint
       | _ => hint
-    some ((meanV hint v, T), s)
+    -- PROPOSAL (m2-proofs): an embedded value holds no borrow the run made, so its result carries
+    -- no label, whatever label the hint (a place's stored type, at an assignment) records
+    some ((meanV hint v, { T with label := none }), s)
   | .sort l => pure (.ty (.univ l), .plain (.univ (sortSucc l)))
   | .pi hs ds c => fun s =>
     -- [T-Pi]: the parameters' and output's meanings as functions of the earlier parameters
