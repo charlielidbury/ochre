@@ -256,4 +256,82 @@ theorem substEnv_loan_spec (fuel : Nat) (l : Nat) (w : Value) (st st' : MState) 
   rw [substEnv_succ, runMachineL_mapState_false] at h
   exact loop_spec _ hf (allPos st.env) st st' fuel₀ left L log hnd h
 
+/-! ## [End]'s run: the holder emptied, then the substitution walk -/
+
+/-- `endBorrow` with fuel, its body. -/
+theorem endBorrow_succ (n l : Nat) :
+    Ochr.endBorrow (n + 1) l = (do
+      let env := (← get).env
+      match findBorrow env l with
+      | none => pure ()
+      | some p =>
+        if let some (f0, n0, t0) := (← get).obsFrame then
+          match p with
+          | .bind f i =>
+            if f == f0 && i < n0 then
+              let y := env[f]!.binds[i]!.hint.name
+              fire .IdTypestate fun _ => s!"a side ends the borrow {y}"
+              err s!"[Id-typestate] a side of Id ends the borrow {y}, which a binding outside the Id holds (the side uses or drops what {y} borrows): end it before the Id"
+          | .temp f i =>
+            if f == f0 && i < t0 then
+              fire .IdTypestate fun _ => s!"a side ends a borrow in flight"
+              err s!"[Id-typestate] a side of Id ends a borrow that a value in flight around the Id holds (an argument evaluated before it): form the Id outside that expression"
+        match (valAt env p).takeBorrow l with
+        | none => pure ()
+        | some (c, rest) =>
+          if (← get).typing then
+            if let (.borrow _ _, some (.tRef A)) := (valAt env p, ← tyAt p) then
+              repackCheck n "a borrow of it ends" c A
+          if c.hasHole && !(← get).observing then
+            match p with
+            | .bind f i =>
+              let x := env[f]!.binds[i]!.hint.name
+              if x.startsWith "⋄*" then
+                let call := (x.drop 2).toString
+                err s!"[D53] reading *{call} moves its content out through the borrow {call} returns, which then ends with it moved out ({c}): copy it with clone(*{call}), or write it back first"
+            | _ => pure ()
+            err s!"[D53] a borrow ends while its content is partly moved out ({c})"
+          Ochr.setAt p rest
+          Ochr.substEnv n (.loan l) c false) := by
+  rfl
+
+/-- **[End]'s run, untyped and outside an observation**: the holder `p` of `ℓ` is found, its
+content `c` taken (the holder left with `rest`, `⊥` for a whole borrow), then every position
+receives `substV (loan ℓ) c` of its value and nothing else. The typed run adds `repackCheck`
+and an observation the type-state check; both only reject, and are the typed form's extra
+hypotheses. -/
+theorem endBorrow_spec (m l : Nat) (st st' : MState) (fuel₀ left : Nat) (L log : Array LogEntry)
+    (p : Pos) (c rest : Value)
+    (hfind : findBorrow st.env l = some p) (htake : (valAt st.env p).takeBorrow l = some (c, rest))
+    (hobs : st.obsFrame = none) (htyping : st.typing = false) (hhole : c.hasHole = false)
+    (hf : ∀ (v : Value) (s s' : MState) (fuel₁ left : Nat) (L log : Array LogEntry) (v' : Value),
+      runMachineL (Ochr.substV m (.loan l) c v) s fuel₁ L = (.ok v' s', left, log) → s'.env = s.env)
+    (h : runMachineL (Ochr.endBorrow (m + 2) l) st fuel₀ L = (.ok () st', left, log)) :
+    ∃ out : Pos → Value,
+      st'.env = (allPos (Env.setAtE st.env p rest)).foldl (fun e q => Env.setAtE e q (out q)) (Env.setAtE st.env p rest) ∧
+      ∀ q ∈ allPos (Env.setAtE st.env p rest), ∃ (s s' : MState) (fuel' left' : Nat) (L' log' : Array LogEntry),
+        runMachineL (Ochr.substV m (.loan l) c (valAt (Env.setAtE st.env p rest) q)) s fuel' L'
+          = (.ok (out q) s', left', log') := by
+  rw [endBorrow_succ, runMachineL_bind, runMachineL_get] at h
+  dsimp only at h
+  rw [hfind] at h
+  dsimp only at h
+  rw [runMachineL_bind, runMachineL_get] at h
+  dsimp only at h
+  rw [hobs] at h
+  dsimp only at h
+  rw [htake] at h
+  dsimp only at h
+  rw [runMachineL_bind, runMachineL_get] at h
+  dsimp only at h
+  rw [htyping] at h
+  simp only [Bool.false_eq_true, if_false] at h
+  rw [runMachineL_bind, runMachineL_get] at h
+  dsimp only at h
+  rw [hhole] at h
+  simp only [Bool.false_and, Bool.false_eq_true, if_false] at h
+  rw [runMachineL_bind, runMachineL_setAt] at h
+  dsimp only at h
+  exact substEnv_loan_spec m l c _ st' fuel₀ left L log hf (allPos_nodup _) h
+
 end Ochr.Meaning.Steps
