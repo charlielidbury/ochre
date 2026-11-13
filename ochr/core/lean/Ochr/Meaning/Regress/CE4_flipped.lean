@@ -77,14 +77,14 @@ theorem run_borrow (p : Place) (hint : TyS) (s : SState) : run K ρ φ hint (.bo
 
 theorem readPlace_of (p : Place) (b : Bool) (s : SState) (v : Sem) (T : TyS) (pos : Pos) (st : List Step)
     (s' : SState) (h : contentOf K φ p s = some ((v, T, pos, st), s')) :
-    readPlace K φ p b s = (if ¬ v.whole then none else
-      if b then some ((v, T), s') else do
+    readPlace K φ p b s = ((if ¬ v.whole then none else
+      if b then some ((v, { T with label := none }), s') else do
         let lab := if st.isEmpty then s'.shape pos else none
         let (⟨⟩, s) ← setContent K φ pos st .moved s'
         let s := match lab with
           | some l => (s.takeLabel l).pushTempShaped (fun _ => v) l
           | none => s
-        some ((v, { T with label := lab }), s)) := by
+        some ((v, { T with label := lab }), s)) : Option (Res × SState)) := by
   show (contentOf K φ p s >>= _) = _
   rw [h]
   rfl

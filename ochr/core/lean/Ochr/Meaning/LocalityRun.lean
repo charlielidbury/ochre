@@ -693,6 +693,28 @@ theorem writeFresh_park_rinv {s : SState} (h : RInv L s) (p : Pos) (v : SVal) (l
       · rw [e]; exact FT.const _ _
   · exact pushTempShaped_shapeAt hsa₁ hne₁ _ l (by rw [nextLoan_setAt']; exact hln) q x hq
 
+/-! ## Ordered temporaries (the fix frame's cells) through the state operations -/
+
+/-- **An untouched meaning stays ordered** when the live labels change only by labels at least the
+bound coming in and unread labels going out. Every state operation of the run other than an end
+or a call leaves a cell's meaning untouched and changes the live labels so. -/
+theorem ordered_of_live_change {s s' : SState} (b : Nat) (f : SVal)
+    (hadd : ∀ y, s'.Live y → ¬ s.Live y → b ≤ y)
+    (hrem : ∀ y, s.Live y → ¬ s'.Live y → Indep y f)
+    (ho : Ordered L s b f) : Ordered L s' b f := by
+  open Classical in
+  refine FT.removeList (s.liveLabels.filter fun y => decide (¬ s'.Live y))
+    (ho.mono fun y hy => ?_) (fun y hy => ?_)
+  · rcases hy with ⟨hL, hn⟩ | ⟨hy, hby⟩
+    · by_cases h' : s'.Live y
+      · exact .inl (.inr ⟨h', hadd y h' hn⟩)
+      · exact .inl (.inl ⟨hL, h'⟩)
+    · by_cases h' : s'.Live y
+      · exact .inl (.inr ⟨h', hby⟩)
+      · exact .inr (List.mem_filter.mpr ⟨hy, by simpa using h'⟩)
+  · obtain ⟨hl, hn⟩ := List.mem_filter.mp hy
+    exact hrem y hl (by simpa using hn)
+
 end SState
 
 end Ochr.Meaning
