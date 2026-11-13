@@ -1,4 +1,5 @@
 import Ochr.Meaning.Lemmas
+import Ochr.Meaning.HintIndep
 import Ochr.Meaning.WF
 import Ochr.Machine
 import Ochr.Check
@@ -64,6 +65,12 @@ theorem hintFree_of_wf10 (st : MState) (hwf : WF10 K.Γ st) (v : Value)
   subst hvw
   simp only [Value.anyAtom, Value.bareCtor, Bool.false_or] at hb
   exact hintFree_of_recorded K ρ φ w hb hs
+
+/-- A top-hint-free value (its parameters recorded, its sealed programs with hint-free tails:
+[Close]'s results and fills) is `HintFree`: the substitution lemmas' hypothesis at [End] on a
+borrow of a closed-off call's result, `HintIndep.lean`. -/
+theorem hintFree_of_topHintFree (w : Value) (hw : Value.topHintFree K.Γ w = true) : HintFree K ρ φ w :=
+  fun h h' => meanV_hintIndep K ρ φ w hw h h'
 
 /-! ### Helpers from `Steps/Call.lean` -/
 

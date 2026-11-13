@@ -11,6 +11,7 @@ import Ochr.Meaning.Places
 import Ochr.Meaning.Run
 import Ochr.Meaning.Subst
 import Ochr.Meaning.Lemmas
+import Ochr.Meaning.HintIndep
 import Ochr.Meaning.Steps.Statements
 import Ochr.Meaning.Steps.IH
 import Ochr.Meaning.Steps.Borrow
