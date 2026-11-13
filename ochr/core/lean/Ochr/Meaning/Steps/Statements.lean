@@ -783,7 +783,9 @@ def checkFix_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
   ∀ (st st' : MState)  (fv : Value) (cs : List Value) (t : Term)
     (capRec : Array (Option Nat)) (rd : List (DeclInfo × Value)) (fT : Value)
     (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st)
-    (hT : ∃ hs ds c, t = .fix ⟨""⟩ hs ds c none .tt ∨ fT = .tPi cs (.pi hs ds c) rd)
+    -- `fT` is the fix's own Π-type (the pilot form's `∨` left `fT` free on one side; the defect
+    -- class of `Regress/CloseCallStmt.lean`)
+    (hT : ∃ self hs ds c r body, t = .fix self hs ds c r body ∧ fT = .tPi cs (.pi hs ds c) rd)
     (h : Runs (Ochr.checkFix fuel fv cs t capRec rd) st fuel () st'),
     meanV K ρ φ (.plain .err) (.clo cs t rd) ∈ₛ (meanV K ρ φ (.plain .err) fT).asTy
 
