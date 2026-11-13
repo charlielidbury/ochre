@@ -280,12 +280,12 @@ noncomputable def fixMoves (t : Term) (s : SState) : SState :=
 theorem run_fix_def (hint : TyS) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat)
     (body : Term) (s : SState) :
     run K ρ φ hint (.fix self hs ds c dec body) s =
-      some ((closureAt (K.D.piSort (scopeOf s) (.pi hs ds c)) φ (runDoms K ρ φ s ds) (fixOut K ρ φ s c)
+      SM.stmtIf (K.D.flags (scopeOf s) (.fix self hs ds c dec body)).1 (fun _ => some ((closureAt (K.D.piSort (scopeOf s) (.pi hs ds c)) φ (runDoms K ρ φ s ds) (fixOut K ρ φ s c)
           (fixG K ρ φ (K.D.piSort (scopeOf s) (.pi hs ds c)) s (runDoms K ρ φ s ds) (fixOut K ρ φ s c)
             (piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ s ds) (fixOut K ρ φ s c)) s.nextLoan dec body),
         ⟨piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ s ds) (fixOut K ρ φ s c),
           some (runDoms K ρ φ s ds, fixOut K ρ φ s c), none, none⟩),
-        fixMoves K (.fix self hs ds c dec body) s) := by
+        fixMoves K (.fix self hs ds c dec body) s)) s := by
   rw [run]
   rfl
 
@@ -640,21 +640,24 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     (L : Nat → Prop), (∀ l, L l → φ l = φ' l) → (∀ l, t.anyAtom (· == .loan l) = true → L l) → RInv L s →
     run K ρ φ hint t s = run K ρ φ' hint t s
   | .place p, hint, s, L, hφ, ht, hi => by
-    rw [run, run]; exact readPlace_congr K hφ hi p _
+    rw [run, run]; exact SM.stmtIf_congr (readPlace_congr K hφ hi p _)
   | .borrow p, hint, s, L, hφ, ht, hi => by
-    rw [run, run]; exact borrowPlace_congr K hφ hi p
+    rw [run, run]; exact SM.stmtIf_congr (borrowPlace_congr K hφ hi p)
   | .seq u w, hint, s, L, hφ, ht, hi => by
     rw [run, run]
+    refine SM.stmtIf_congr ?_
     apply SM.bind_congr (run_congrE hK u _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
     intro a s₁ h1
     exact run_congrE hK w hint s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h]))
       (run_rinv K ρ φ L hK u _ s s₁ a hi h1).1
   | .succ u, hint, s, L, hφ, ht, hi => by
     rw [run, run]
+    refine SM.stmtIf_congr ?_
     apply SM.bind_congr (run_congrE hK u _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
     intro a s₁ _; rfl
   | .ref A, hint, s, L, hφ, ht, hi => by
     rw [run, run]
+    refine SM.stmtIf_congr ?_
     apply SM.bind_congr (run_congrE hK A _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
     intro a s₁ _; rfl
   | .const n, hint, s, L, hφ, ht, hi => by rw [run, run]
@@ -687,6 +690,7 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     | _ => rfl
   | .ascribe u A, hint, s, L, hφ, ht, hi => by
     rw [run, run]
+    refine SM.stmtIf_congr ?_
     apply SM.bind_congr (SM.onCopy_congr (run_congrE hK A _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi))
     rintro ⟨TA, _⟩ s₁ h1
     have e := SM.onCopy_state h1
@@ -726,21 +730,23 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
   | .call f args hd, hint, s, L, hφ, ht, hi => by
     rw [run, run]
     dsimp only
-    split
-    · apply SM.onCopy_congr
-      refine SM.bind_congr ?_ (fun _ _ _ => rfl)
-      apply SM.bind_congr (run_congrE hK f _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
-      intro fv s₁ h1
-      apply SM.bind_congr (runArgs_congrE hK _ args 0 [] s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h]))
-        (run_rinv K ρ φ L hK f _ s s₁ fv hi h1).1)
-      intro _ _ _; rfl
-    · apply SM.bind_congr (run_congrE hK f _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
-      intro fv s₁ h1
-      apply SM.bind_congr (runArgs_congrE hK _ args 0 [] s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h]))
-        (run_rinv K ρ φ L hK f _ s s₁ fv hi h1).1)
-      intro _ _ _; rfl
+    refine SM.stmtIf_congr ?_
+    -- the head: a place in place, anything else by its run
+    have hhead : SM.headOf f (fun p => readPlace K φ p true) (run K ρ φ (.plain .err) f) s
+        = SM.headOf f (fun p => readPlace K φ' p true) (run K ρ φ' (.plain .err) f) s :=
+      SM.headOf_congr (fun p => readPlace_congr K hφ hi p true)
+        (run_congrE hK f _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
+    apply SM.bind_congr hhead
+    intro fv s₁ h1
+    have hi₁ : RInv L s₁ := by
+      rcases SM.headOf_some h1 with ⟨p, h1⟩ | h1
+      · exact (readPlace_rinv K φ L h1 hi).1
+      · exact (run_rinv K ρ φ L hK f _ s s₁ fv hi h1).1
+    apply SM.bind_congr (runArgs_congrE hK _ _ args 0 [] s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁)
+    intro _ _ _; rfl
   | .matchNat p z u, hint, s, L, hφ, ht, hi => by
     rw [run, run]
+    refine SM.stmtIf_congr ?_
     dsimp only
     rw [contentOf_congr K hφ hi p]
     apply Option.bind_congr' rfl
@@ -757,6 +763,7 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     · rfl
   | .matchInd p n arms, hint, s, L, hφ, ht, hi => by
     rw [run, run]
+    refine SM.stmtIf_congr ?_
     dsimp only
     rw [contentOf_congr K hφ hi p]
     apply Option.bind_congr' rfl
@@ -771,6 +778,7 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     · rfl
   | .letIn x u w, hint, s, L, hφ, ht, hi => by
     rw [run, run]
+    refine SM.stmtIf_congr ?_
     apply Option.bind_congr' (run_congrE hK u _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
     rintro ⟨⟨v, T⟩, s₁⟩ h1
     obtain ⟨hi₁, hy₁, -, -⟩ := run_rinv K ρ φ L hK u _ s s₁ (v, T) hi h1
@@ -784,15 +792,17 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     intro _ _; rfl
   | .assign p u, hint, s, L, hφ, ht, hi => by
     rw [run, run]
-    dsimp only
+    refine SM.stmtIf_congr ?_
+    -- the place's type (read on a discarded copy), then the right-hand side, then the access
     rw [contentOf_congr K hφ hi p]
-    apply Option.bind_congr' rfl
-    rintro ⟨⟨w, T, pos, steps⟩, s₁⟩ h1
-    have hi₁ := (contentOf_rinv K φ' L h1 hi).1
+    apply Option.bind_congr' (run_congrE hK u _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
+    rintro ⟨⟨v, R⟩, s₁⟩ h2
+    have hi₁ := (run_rinv K ρ φ L hK u _ s s₁ _ hi h2).1
     dsimp only
-    apply Option.bind_congr' (run_congrE hK u T s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₁)
-    rintro ⟨⟨v, R⟩, s₂⟩ h2
-    have hi₂ := (run_rinv K ρ φ L hK u T s₁ s₂ _ hi₁ h2).1
+    rw [contentOf_congr K hφ hi₁ p]
+    apply Option.bind_congr' rfl
+    rintro ⟨⟨w, T, pos, steps⟩, s₂⟩ h1
+    have hi₂ := (contentOf_rinv K φ' L h1 hi₁).1
     dsimp only
     refine Option.bind_congr' (setContent_congr K hφ ?_ pos steps v) (fun _ _ => rfl)
     split
@@ -815,6 +825,7 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     | _ => simp only [hc]
   | .ctor ty c hh ps args, hint, s, L, hφ, ht, hi => by
     rw [run, run]
+    refine SM.stmtIf_congr ?_
     cases hd : K.Γ.find? (·.name == ty) with
     | none => rfl
     | some d =>
@@ -823,24 +834,24 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
       have e := runParams_state K ρ φ d ps 0 [] s s₁ psM h1
       subst e
       have cont : ∀ ps' : List Sem, (if d.sort == 0 then
-            (do let _ ← SM.onCopy (runFields K ρ φ d ps' c 0 [] args)
+            (do let _ ← runFields K ρ φ true d ps' c 0 [] args
                 pure ((.proof, ⟨K.dm.tyM d ps', none, none, some (ty, ps')⟩) : Res))
           else
-            (do let fs ← runFields K ρ φ d ps' c 0 [] args
+            (do let fs ← runFields K ρ φ false d ps' c 0 [] args
                 pure ((K.dm.ctorM d ps' c fs, ⟨K.dm.tyM d ps', none, none, some (ty, ps')⟩) : Res))) s₁
           = (if d.sort == 0 then
-            (do let _ ← SM.onCopy (runFields K ρ φ' d ps' c 0 [] args)
+            (do let _ ← runFields K ρ φ' true d ps' c 0 [] args
                 pure ((.proof, ⟨K.dm.tyM d ps', none, none, some (ty, ps')⟩) : Res))
           else
-            (do let fs ← runFields K ρ φ' d ps' c 0 [] args
+            (do let fs ← runFields K ρ φ' false d ps' c 0 [] args
                 pure ((K.dm.ctorM d ps' c fs, ⟨K.dm.tyM d ps', none, none, some (ty, ps')⟩) : Res))) s₁ := by
         intro ps'
-        have hF := runFields_congrE hK d ps' c args 0 [] s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi
+        have hF := fun b => runFields_congrE hK b d ps' c args 0 [] s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi
         by_cases hs0 : (d.sort == 0) = true
         · rw [if_pos hs0, if_pos hs0]
-          exact SM.bind_congr (SM.onCopy_congr hF) (fun _ _ _ => rfl)
+          exact SM.bind_congr (hF true) (fun _ _ _ => rfl)
         · rw [if_neg hs0, if_neg hs0]
-          exact SM.bind_congr hF (fun _ _ _ => rfl)
+          exact SM.bind_congr (hF false) (fun _ _ _ => rfl)
       by_cases hc : (ps.isEmpty && !d.params.isEmpty) = true
       · rw [if_pos hc]
         cases hdata : hint.data with
@@ -870,6 +881,7 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     · obtain ⟨A, a, b, P, h', t, rfl, hargs⟩ := hJ
       have hm : ∀ x, x ∈ [A, a, b, P, h', t] → x ∈ args := fun x hx => by rw [hargs]; exact hx
       rw [hargs, run, run]
+      refine SM.stmtIf_congr ?_
       apply SM.bind_congr (SM.onCopy_congr (hall A (hm A (by simp)) _ s hi))
       intro _ s₁ e1; have e := SM.onCopy_state e1; subst e
       apply SM.bind_congr (SM.onCopy_congr (hall a (hm a (by simp)) _ _ hi))
@@ -884,25 +896,16 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     by_cases hc : ∃ u, (n = "clone" ∨ n = "peek" ∨ n = "inplace") ∧ args = [u]
     · obtain ⟨u, hn, hargs⟩ := hc
       have hu : u ∈ args := by rw [hargs]; simp
-      rcases hn with rfl | rfl | rfl
-      · by_cases hp : ∃ p, u = .place p
-        · obtain ⟨p, rfl⟩ := hp
-          rw [hargs, run, run]; exact readPlace_congr K hφ hi p true
-        · rw [hargs, run.eq_37 _ _ _ _ _ (fun p e => hp ⟨p, e⟩), run.eq_37 _ _ _ _ _ (fun p e => hp ⟨p, e⟩)]
-          exact hall u hu _ _ hi
-      · by_cases hp : ∃ p, u = .place p
-        · obtain ⟨p, rfl⟩ := hp
-          rw [hargs, run, run]; exact readPlace_congr K hφ hi p true
-        · rw [hargs, run.eq_39 _ _ _ _ _ (fun p e => hp ⟨p, e⟩), run.eq_39 _ _ _ _ _ (fun p e => hp ⟨p, e⟩)]
-          exact hall u hu _ _ hi
-      · rw [hargs, run, run]; exact hall u hu _ _ hi
+      rcases hn with rfl | rfl | rfl <;>
+        (rw [hargs, run, run]
+         exact SM.stmtIf_congr (SM.headOf_congr (fun p => readPlace_congr K hφ hi p true) (hall u hu _ _ hi)))
     have hJ' : ∀ (A a b P h t : Term), n = "J" → args = [A, a, b, P, h, t] → False :=
       fun A a b P h t e1 e2 => hJ ⟨A, a, b, P, h, t, e1, e2⟩
     have hc1 : ∀ u, n = "clone" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inl e1, e2⟩
     have hc2 : ∀ u, n = "peek" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inr (.inl e1), e2⟩
     have hc3 : ∀ u, n = "inplace" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inr (.inr e1), e2⟩
-    rw [run.eq_41 K ρ φ hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3,
-      run.eq_41 K ρ φ' hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3]
+    rw [run.eq_39 K ρ φ hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3,
+      run.eq_39 K ρ φ' hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3]
   | .fix self hs ds c dec body, hint, s, L, hφ, ht, hi => by
     have hds := runDoms_congrE hK s L hφ hi ds (fun l h => ht l (by simp [Term.anyAtom, h]))
     have hc : ∀ acc, run K ρ φ (.plain .err) c (extendBy s acc) = run K ρ φ' (.plain .err) c (extendBy s acc) :=
@@ -1011,30 +1014,36 @@ theorem runDoms_congrE (hK : ∀ n, (K.C.global n).2.label = none) (s : SState) 
       simp only [runDoms, hA, hds]
     | _ => simp only [runDoms, hd, hds]
 
-theorem runArgs_congrE (hK : ∀ n, (K.C.global n).2.label = none) (shape : Option (List PiParam × PiOut)) :
+theorem runArgs_congrE (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool) (shape : Option (List PiParam × PiOut)) :
     ∀ (args : List Term) (i : Nat) (earlier : List Sem) (s : SState) (L : Nat → Prop), (∀ l, L l → φ l = φ' l) →
     (∀ l, Term.anyAtomList (· == .loan l) args = true → L l) → RInv L s →
-    runArgs K ρ φ shape i earlier args s = runArgs K ρ φ' shape i earlier args s
+    runArgs K ρ φ stmt shape i earlier args s = runArgs K ρ φ' stmt shape i earlier args s
   | [], _, _, _, _, _, _, _ => rfl
   | a :: as, i, earlier, s, L, hφ, ht, hi => by
     simp only [runArgs]
-    apply SM.bind_congr (run_congrE hK a _ s L hφ (fun l h => ht l (by simp [Term.anyAtomList, h])) hi)
+    apply SM.bind_congr (SM.stmtIf_congr (run_congrE hK a _ s L hφ (fun l h => ht l (by simp [Term.anyAtomList, h])) hi))
     intro r s₁ h1
-    apply SM.bind_congr (runArgs_congrE hK shape as _ _ s₁ L hφ (fun l h => ht l (by simp [Term.anyAtomList, h]))
-      (run_rinv K ρ φ L hK a _ s s₁ r hi h1).1)
+    have hi₁ : RInv L s₁ := by
+      rcases SM.stmtIf_some h1 with ⟨-, h1⟩ | ⟨-, rfl, -, -⟩
+      · exact (run_rinv K ρ φ L hK a _ s s₁ r hi h1).1
+      · exact hi
+    apply SM.bind_congr (runArgs_congrE hK stmt shape as _ _ s₁ L hφ (fun l h => ht l (by simp [Term.anyAtomList, h])) hi₁)
     intro _ _ _; rfl
 
-theorem runFields_congrE (hK : ∀ n, (K.C.global n).2.label = none) (d : IndDecl) (ps : List Sem) (c : Nat) :
+theorem runFields_congrE (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool) (d : IndDecl) (ps : List Sem) (c : Nat) :
     ∀ (args : List Term) (i : Nat) (earlier : List Sem) (s : SState) (L : Nat → Prop), (∀ l, L l → φ l = φ' l) →
     (∀ l, Term.anyAtomList (· == .loan l) args = true → L l) → RInv L s →
-    runFields K ρ φ d ps c i earlier args s = runFields K ρ φ' d ps c i earlier args s
+    runFields K ρ φ stmt d ps c i earlier args s = runFields K ρ φ' stmt d ps c i earlier args s
   | [], _, _, _, _, _, _, _ => rfl
   | a :: as, i, earlier, s, L, hφ, ht, hi => by
     simp only [runFields]
-    apply SM.bind_congr (run_congrE hK a _ s L hφ (fun l h => ht l (by simp [Term.anyAtomList, h])) hi)
+    apply SM.bind_congr (SM.stmtIf_congr (run_congrE hK a _ s L hφ (fun l h => ht l (by simp [Term.anyAtomList, h])) hi))
     intro r s₁ h1
-    apply SM.bind_congr (runFields_congrE hK d ps c as _ _ s₁ L hφ (fun l h => ht l (by simp [Term.anyAtomList, h]))
-      (run_rinv K ρ φ L hK a _ s s₁ r hi h1).1)
+    have hi₁ : RInv L s₁ := by
+      rcases SM.stmtIf_some h1 with ⟨-, h1⟩ | ⟨-, rfl, -, -⟩
+      · exact (run_rinv K ρ φ L hK a _ s s₁ r hi h1).1
+      · exact hi
+    apply SM.bind_congr (runFields_congrE hK stmt d ps c as _ _ s₁ L hφ (fun l h => ht l (by simp [Term.anyAtomList, h])) hi₁)
     intro _ _ _; rfl
 
 theorem runParams_congrE (hK : ∀ n, (K.C.global n).2.label = none) (d : IndDecl) :

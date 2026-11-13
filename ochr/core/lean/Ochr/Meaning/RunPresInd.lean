@@ -86,11 +86,14 @@ theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {hint : TyS}
       (hc : ∀ u, n = "clone" → args = [u] → False) (hp : ∀ u, n = "peek" → args = [u] → False)
       (hi : ∀ u, n = "inplace" → args = [u] → False), False := by
     intro hJ hc hp hi
-    rw [run.eq_41 K ρ φ hint n args h1 h2 h3 h4 hJ hc hp hi] at h
+    rw [run.eq_39 K ρ φ hint n args h1 h2 h3 h4 hJ hc hp hi] at h
     cases h
   by_cases hJ : ∃ A a b P h t, n = "J" ∧ args = [A, a, b, P, h, t]
   · obtain ⟨A, a, b, P, h', t, rfl, rfl⟩ := hJ
     rw [run] at h
+    rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, rfl, hl, -⟩
+    rotate_left
+    · exact .inl ⟨rfl, hl⟩
     obtain ⟨_, s₁, e1, h⟩ := SM.bind_some h
     obtain ⟨_, s₂, e2, h⟩ := SM.bind_some h
     obtain ⟨_, s₃, e3, h⟩ := SM.bind_some h
@@ -101,18 +104,22 @@ theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {hint : TyS}
     exact .inr (.inl ⟨t, by simp, h⟩)
   by_cases hc : ∃ u, (n = "clone" ∨ n = "peek" ∨ n = "inplace") ∧ args = [u]
   · obtain ⟨u, hn, rfl⟩ := hc
-    rcases hn with rfl | rfl | rfl
-    · cases u
-      case place p => rw [run] at h; exact .inr (.inr ⟨p, h⟩)
-      all_goals (rw [run.eq_37 _ _ _ _ _ (fun _ e => by cases e)] at h; exact .inr (.inl ⟨_, by simp, h⟩))
-    · cases u
-      case place p => rw [run] at h; exact .inr (.inr ⟨p, h⟩)
-      all_goals (rw [run.eq_39 _ _ _ _ _ (fun _ e => by cases e)] at h; exact .inr (.inl ⟨_, by simp, h⟩))
-    · rw [run] at h; exact .inr (.inl ⟨u, by simp, h⟩)
+    have key : ∀ b : Bool, SM.stmtIf b (SM.headOf u (fun p => readPlace K φ p true) (run K ρ φ hint u)) s = some (r, s') →
+        (s' = s ∧ r.2.label = none) ∨ (∃ t, t ∈ [u] ∧ run K ρ φ hint t s = some (r, s')) ∨
+        (∃ p, readPlace K φ p true s = some (r, s')) := by
+      intro b h
+      rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, rfl, hl, -⟩
+      · rcases SM.headOf_some h with ⟨p, h⟩ | h
+        · exact .inr (.inr ⟨p, h⟩)
+        · exact .inr (.inl ⟨u, by simp, h⟩)
+      · exact .inl ⟨rfl, hl⟩
+    rcases hn with rfl | rfl | rfl <;> (rw [run] at h; exact key _ h)
   exfalso
   exact fail (fun A a b P h t e1 e2 => hJ ⟨A, a, b, P, h, t, e1, e2⟩)
     (fun u e1 e2 => hc ⟨u, .inl e1, e2⟩) (fun u e1 e2 => hc ⟨u, .inr (.inl e1), e2⟩)
     (fun u e1 e2 => hc ⟨u, .inr (.inr e1), e2⟩)
+
+/-- The position a `let`'s drop removes is the same after a pointwise change of the values. -/
 theorem dropped_mapVals (s : SState) (g : Pos → SVal → SVal) : (s.mapVals g).dropped = s.dropped := by
   unfold dropped
   simp only [SState.mapVals, topIdx, List.length_map, List.length_zipIdx, List.getLast?_eq_getElem?,
@@ -320,6 +327,23 @@ theorem assign_mid {s₂ s₄ : SState} (hi₂ : RInv L s₂) {pos : Pos} (hpos�
     obtain ⟨hi₄, e₄, o₄, hpos₄, hy₄, -, -, -⟩ := gen s₂ hi₂ (EnvLe.refl _) (OrdKeep.refl _) hpos₂ hy₂ h3
     exact ⟨hi₄, e₄, o₄, hpos₄, hy₄, fun hn => absurd (by rw [hn]; rfl) hst⟩
 
+/-- [Access] keeps a label live or unread (`lou_access`): for the right-hand side's label across the
+access an assignment makes after it (the run evaluates the right-hand side first, D19 R5). -/
+theorem contentOf_lou {p : Place} {s s' : SState} {x : Sem × TyS × Pos × List Step}
+    (h : contentOf K φ p s = some (x, s')) (hi : RInv L s) {lab : Option Nat} (hy : LoU s lab) : LoU s' lab := by
+  unfold contentOf at h
+  cases hr : resolve s p with
+  | none => rw [hr] at h; cases h
+  | some ps =>
+    obtain ⟨pos, steps⟩ := ps
+    rw [hr] at h
+    dsimp only at h
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      exact fun l hl => lou_access L hi (hy l hl) pos
+    · cases h
+
 mutual
 /-- **Part (P)**: the run keeps `RInv L`, its result's label is live or unread, and it keeps the
 frames' bindings, only adding temporaries (`EnvLe`). -/
@@ -327,10 +351,16 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
     run K ρ φ hint t s = some (r, s') → RInv L s' ∧ LoU s' r.2.label ∧ EnvLe s s' ∧ OrdKeep L s s'
   | .place p, hint, s, s', r, hi, h => by
     rw [run] at h
+    rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, rfl, hl, -⟩
+    rotate_left
+    · exact rinv_pure L hi hl
     exact ⟨(readPlace_rinv K φ L h hi).1, (readPlace_rinv K φ L h hi).2, readPlace_envLe K φ h,
       readPlace_ordKeep K φ h hi⟩
   | .borrow p, hint, s, s', r, hi, h => by
     rw [run] at h
+    rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, rfl, hl, -⟩
+    rotate_left
+    · exact rinv_pure L hi hl
     exact ⟨(borrowPlace_rinv K φ L h hi).1, (borrowPlace_rinv K φ L h hi).2, borrowPlace_envLe K φ h,
       borrowPlace_ordKeep K φ h hi⟩
   | .val v, hint, s, s', r, hi, h => by
@@ -369,18 +399,27 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
     exact rinv_pure L hi rfl
   | .seq u w, hint, s, s', r, hi, h => by
     rw [run] at h
+    rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, rfl, hl, -⟩
+    rotate_left
+    · exact rinv_pure L hi hl
     obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some h
     obtain ⟨hi₁, _, e₁, o₁⟩ := run_rinv hK u _ s s₁ x hi h1
     obtain ⟨hi₂, hy₂, e₂, o₂⟩ := run_rinv hK w hint s₁ s' r hi₁ h2
     exact ⟨hi₂, hy₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
   | .succ u, hint, s, s', r, hi, h => by
     rw [run] at h
+    rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, rfl, hl, -⟩
+    rotate_left
+    · exact rinv_pure L hi hl
     obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some h
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h2)
     obtain ⟨hi₁, _, e₁, o₁⟩ := run_rinv hK u _ s _ x hi h1
     exact rinv_ret L hi₁ e₁ o₁ rfl
   | .ref A, hint, s, s', r, hi, h => by
     rw [run] at h
+    rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, rfl, hl, -⟩
+    rotate_left
+    · exact rinv_pure L hi hl
     obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some h
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h2)
     obtain ⟨hi₁, _, e₁, o₁⟩ := run_rinv hK A _ s _ x hi h1
@@ -404,6 +443,9 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
     exact rinv_pure L hi rfl
   | .ascribe u A, hint, s, s', r, hi, h => by
     rw [run] at h
+    rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, rfl, hl, -⟩
+    rotate_left
+    · exact rinv_pure L hi hl
     obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some h
     have e := SM.onCopy_state h1
     subst e
@@ -412,6 +454,9 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
     exact run_rinv hK u _ _ _ y hi h3
   | .letIn x u w, hint, s, s', r, hi, h => by
     rw [run] at h
+    rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, rfl, hl, -⟩
+    rotate_left
+    · exact rinv_pure L hi hl
     simp only [Bind.bind, Option.bind_eq_some_iff] at h
     obtain ⟨⟨⟨v, T⟩, s₁⟩, h1, ⟨⟨r', R⟩, s₃⟩, h2, h3⟩ := h
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h3)
@@ -431,6 +476,9 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
     all_goals (unfold dropped; cases s₃.env.getLast? <;> rfl)
   | .matchNat p z u, hint, s, s', r, hi, h => by
     rw [run] at h
+    rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, rfl, hl, -⟩
+    rotate_left
+    · exact rinv_pure L hi hl
     simp only [Bind.bind, Option.bind_eq_some_iff] at h
     obtain ⟨⟨⟨v, T, pos, steps⟩, s₁⟩, h1, h⟩ := h
     obtain ⟨hi₁, _⟩ := contentOf_rinv K φ L h1 hi
@@ -462,6 +510,9 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
     · cases h
   | .matchInd p n arms, hint, s, s', r, hi, h => by
     rw [run] at h
+    rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, rfl, hl, -⟩
+    rotate_left
+    · exact rinv_pure L hi hl
     simp only [Bind.bind, Option.bind_eq_some_iff] at h
     obtain ⟨⟨⟨v, T, pos, steps⟩, s₁⟩, h1, h⟩ := h
     obtain ⟨hi₁, _⟩ := contentOf_rinv K φ L h1 hi
@@ -484,38 +535,39 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
   | .call f args hd, hint, s, s', r, hi, h => by
     rw [run] at h
     dsimp only at h
-    split at h
-    · have e := SM.onCopy_state h
-      subst e
-      obtain ⟨s₁, h1⟩ := SM.onCopy_result h
-      obtain ⟨⟨v, R⟩, s₂, _, h2⟩ := SM.bind_some h1
-      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h2)
-      exact rinv_pure L hi rfl
-    · obtain ⟨fv, s₁, h1, h2⟩ := SM.bind_some h
-      obtain ⟨as, s₂, h3, h4⟩ := SM.bind_some h2
-      obtain ⟨hi₁, _, e₁, o₁⟩ := run_rinv hK f _ s s₁ fv hi h1
-      obtain ⟨hi₂, e₂, o₂⟩ := runArgs_rinv hK _ args 0 [] s₁ s₂ as hi₁ h3
+    rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, rfl, hl, -⟩
+    rotate_left
+    · exact rinv_pure L hi hl
+    obtain ⟨fv, s₁, h1, h2⟩ := SM.bind_some h
+    obtain ⟨as, s₂, h3, h4⟩ := SM.bind_some h2
+    have hf : RInv L s₁ ∧ EnvLe s s₁ ∧ OrdKeep L s s₁ := by
+      rcases SM.headOf_some h1 with ⟨p, h1⟩ | h1
+      · exact ⟨(readPlace_rinv K φ L h1 hi).1, readPlace_envLe K φ h1, readPlace_ordKeep K φ h1 hi⟩
+      · obtain ⟨hi₁, _, e₁, o₁⟩ := run_rinv hK f _ s s₁ fv hi h1
+        exact ⟨hi₁, e₁, o₁⟩
+    obtain ⟨hi₁, e₁, o₁⟩ := hf
+    obtain ⟨hi₂, e₂, o₂⟩ := runArgs_rinv hK _ _ args 0 [] s₁ s₂ as hi₁ h3
+    split at h4
+    · obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
+      refine rinv_ret L hi₂ (e₁.trans e₂) (o₁.trans e₁ o₂) ?_
+      dsimp only
+      split
+      · split <;> rfl
+      · rfl
+    · unfold callOf at h4
       split at h4
-      · obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
-        refine rinv_ret L hi₂ (e₁.trans e₂) (o₁.trans e₁ o₂) ?_
-        dsimp only
-        split
-        · split <;> rfl
-        · rfl
-      · unfold callOf at h4
-        split at h4
-        · split at h4
-          · exact ⟨(callOfL_rinv L _ _ _ _ _ hi₂ h4).1, (callOfL_rinv L _ _ _ _ _ hi₂ h4).2,
-              e₁.trans (e₂.trans (callOfL_envLe _ _ _ _ _ h4)),
-              o₁.trans e₁ (o₂.trans e₂ (callOfL_ordKeep _ _ _ _ _ hi₂ h4))⟩
-          · exact ⟨(callOfL_rinv L _ _ _ _ _ hi₂ h4).1, (callOfL_rinv L _ _ _ _ _ hi₂ h4).2,
-              e₁.trans (e₂.trans (callOfL_envLe _ _ _ _ _ h4)),
-              o₁.trans e₁ (o₂.trans e₂ (callOfL_ordKeep _ _ _ _ _ hi₂ h4))⟩
-          · exact ⟨(callOfL_rinv L _ _ _ _ _ hi₂ h4).1, (callOfL_rinv L _ _ _ _ _ hi₂ h4).2,
-              e₁.trans (e₂.trans (callOfL_envLe _ _ _ _ _ h4)),
-              o₁.trans e₁ (o₂.trans e₂ (callOfL_ordKeep _ _ _ _ _ hi₂ h4))⟩
-          · cases h4
+      · split at h4
+        · exact ⟨(callOfL_rinv L _ _ _ _ _ hi₂ h4).1, (callOfL_rinv L _ _ _ _ _ hi₂ h4).2,
+            e₁.trans (e₂.trans (callOfL_envLe _ _ _ _ _ h4)),
+            o₁.trans e₁ (o₂.trans e₂ (callOfL_ordKeep _ _ _ _ _ hi₂ h4))⟩
+        · exact ⟨(callOfL_rinv L _ _ _ _ _ hi₂ h4).1, (callOfL_rinv L _ _ _ _ _ hi₂ h4).2,
+            e₁.trans (e₂.trans (callOfL_envLe _ _ _ _ _ h4)),
+            o₁.trans e₁ (o₂.trans e₂ (callOfL_ordKeep _ _ _ _ _ hi₂ h4))⟩
+        · exact ⟨(callOfL_rinv L _ _ _ _ _ hi₂ h4).1, (callOfL_rinv L _ _ _ _ _ hi₂ h4).2,
+            e₁.trans (e₂.trans (callOfL_envLe _ _ _ _ _ h4)),
+            o₁.trans e₁ (o₂.trans e₂ (callOfL_ordKeep _ _ _ _ _ hi₂ h4))⟩
         · cases h4
+      · cases h4
   | .pi hs ds c, hint, s, s', r, hi, h => by
     rw [run] at h
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
@@ -533,6 +585,9 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
       exact rinv_pure L hi rfl
   | .ctor ty c hh ps args, hint, s, s', r, hi, h => by
     rw [run] at h
+    rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, rfl, hl, -⟩
+    rotate_left
+    · exact rinv_pure L hi hl
     cases hd : K.Γ.find? (·.name == ty) with
     | none => rw [hd] at h; cases h
     | some d =>
@@ -541,24 +596,23 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
       have e := runParams_state K ρ φ d ps 0 [] s s₁ psM h1
       subst e
       have cont : ∀ ps' : List Sem, (if d.sort == 0 then
-            (do let _ ← SM.onCopy (runFields K ρ φ d ps' c 0 [] args)
+            (do let _ ← runFields K ρ φ true d ps' c 0 [] args
                 pure ((.proof, ⟨K.dm.tyM d ps', none, none, some (ty, ps')⟩) : Res))
           else
-            (do let fs ← runFields K ρ φ d ps' c 0 [] args
+            (do let fs ← runFields K ρ φ false d ps' c 0 [] args
                 pure ((K.dm.ctorM d ps' c fs, ⟨K.dm.tyM d ps', none, none, some (ty, ps')⟩) : Res))) s₁
             = some (r, s') → RInv L s' ∧ LoU s' r.2.label ∧ EnvLe s₁ s' ∧ OrdKeep L s₁ s' := by
         intro ps' h2
         by_cases hs0 : (d.sort == 0) = true
         · rw [if_pos hs0] at h2
-          obtain ⟨x, s₂, h3, h4⟩ := SM.bind_some h2
-          have e := SM.onCopy_state h3
-          subst e
+          obtain ⟨fs, s₂, h3, h4⟩ := SM.bind_some h2
           obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
-          exact rinv_pure L hi rfl
+          obtain ⟨hi₂, e₂, o₂⟩ := runFields_rinv hK _ d _ c args 0 [] _ _ fs hi h3
+          exact rinv_ret L hi₂ e₂ o₂ rfl
         · rw [if_neg hs0] at h2
           obtain ⟨fs, s₂, h3, h4⟩ := SM.bind_some h2
           obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
-          obtain ⟨hi₂, e₂, o₂⟩ := runFields_rinv hK d _ c args 0 [] _ _ fs hi h3
+          obtain ⟨hi₂, e₂, o₂⟩ := runFields_rinv hK _ d _ c args 0 [] _ _ fs hi h3
           exact rinv_ret L hi₂ e₂ o₂ rfl
       by_cases hc : (ps.isEmpty && !d.params.isEmpty) = true
       · rw [if_pos hc] at h2
@@ -575,6 +629,9 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
         exact cont psM h2
   | .fix self hs ds c dec body, hint, s, s', r, hi, h => by
     rw [run] at h
+    rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, rfl, hl, -⟩
+    rotate_left
+    · exact rinv_pure L hi hl
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
     refine ⟨?_, (fun l hl => by cases hl), ?_, ?_⟩
     · apply fixMoves_rinv L _ _ _ hi
@@ -606,15 +663,20 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
         readPlace_ordKeep K φ h' hi⟩
   | .assign p u, hint, s, s', r, hi, h => by
     rw [run] at h
+    rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, rfl, hl, -⟩
+    rotate_left
+    · exact rinv_pure L hi hl
     simp only [Bind.bind, Option.bind_eq_some_iff] at h
-    obtain ⟨⟨⟨w, T, pos, steps⟩, s₁⟩, h1, ⟨⟨v, R⟩, s₂⟩, h2, ⟨⟨⟩, s₄⟩, h3, h4⟩ := h
+    obtain ⟨⟨⟨v, R⟩, s₁⟩, h2, ⟨⟨w, T, pos, steps⟩, s₂⟩, h1, ⟨⟨⟩, s₄⟩, h3, h4⟩ := h
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h4)
-    dsimp only at h2 h3 ⊢
-    obtain ⟨hi₁, hpos₁⟩ := contentOf_rinv K φ L h1 hi
-    have e₁ := contentOf_envLe K φ h1
-    obtain ⟨o₁, hpb⟩ := contentOf_ordKeep K φ hi h1
-    obtain ⟨hi₂, hy₂, e₂, o₂⟩ := run_rinv hK u T s₁ s₂ (v, R) hi₁ h2
-    obtain ⟨hi₄, e₄, o₄, hpos₄, hy₄, hroot⟩ := assign_mid K φ L hi₂ (e₂.mem hpos₁) hpb hy₂ h3
+    dsimp only at h1 h2 h3 ⊢
+    -- the right-hand side runs first, then the place is accessed
+    obtain ⟨hi₁, hy₁, e₁, o₁⟩ := run_rinv hK u _ s s₁ (v, R) hi h2
+    obtain ⟨hi₂, hpos₂⟩ := contentOf_rinv K φ L h1 hi₁
+    have e₂ := contentOf_envLe K φ h1
+    obtain ⟨o₂, hpb⟩ := contentOf_ordKeep K φ hi₁ h1
+    have hy₂ : LoU s₂ R.label := contentOf_lou K φ L h1 hi₁ hy₁
+    obtain ⟨hi₄, e₄, o₄, hpos₄, hy₄, hroot⟩ := assign_mid K φ L hi₂ hpos₂ hpb hy₂ h3
     split
     · rename_i _ _ l hR
       obtain ⟨hc, hold⟩ := hroot rfl
@@ -633,9 +695,9 @@ theorem runAll_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (ts : List
     · rw [e] at h; exact run_rinv hK a hint s s' r hi h
     · exact runAll_rinv hK as t ht' hint s s' r hi h
 
-theorem runArgs_rinv (hK : ∀ n, (K.C.global n).2.label = none) (shape : Option (List PiParam × PiOut)) :
+theorem runArgs_rinv (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool) (shape : Option (List PiParam × PiOut)) :
     ∀ (args : List Term) (i : Nat) (earlier : List Sem) (s s' : SState) (rs : List Res), RInv L s →
-      runArgs K ρ φ shape i earlier args s = some (rs, s') → RInv L s' ∧ EnvLe s s' ∧ OrdKeep L s s'
+      runArgs K ρ φ stmt shape i earlier args s = some (rs, s') → RInv L s' ∧ EnvLe s s' ∧ OrdKeep L s s'
   | [], i, earlier, s, s', rs, hi, h => by
     simp only [runArgs] at h
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h)
@@ -645,13 +707,19 @@ theorem runArgs_rinv (hK : ∀ n, (K.C.global n).2.label = none) (shape : Option
     obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some h
     obtain ⟨y, s₂, h3, h4⟩ := SM.bind_some h2
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
-    obtain ⟨hi₁, _, e₁, o₁⟩ := run_rinv hK a _ s s₁ x hi h1
-    obtain ⟨hi₂, e₂, o₂⟩ := runArgs_rinv hK shape as _ _ s₁ _ y hi₁ h3
+    -- a statement argument runs on its own copy: the state is as it was
+    have hx : RInv L s₁ ∧ EnvLe s s₁ ∧ OrdKeep L s s₁ := by
+      rcases SM.stmtIf_some h1 with ⟨-, h1⟩ | ⟨-, rfl, -, -⟩
+      · obtain ⟨hi₁, _, e₁, o₁⟩ := run_rinv hK a _ s s₁ x hi h1
+        exact ⟨hi₁, e₁, o₁⟩
+      · exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
+    obtain ⟨hi₁, e₁, o₁⟩ := hx
+    obtain ⟨hi₂, e₂, o₂⟩ := runArgs_rinv hK stmt shape as _ _ s₁ _ y hi₁ h3
     exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
 
-theorem runFields_rinv (hK : ∀ n, (K.C.global n).2.label = none) (d : IndDecl) (ps : List Sem) (c : Nat) :
+theorem runFields_rinv (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool) (d : IndDecl) (ps : List Sem) (c : Nat) :
     ∀ (args : List Term) (i : Nat) (earlier : List Sem) (s s' : SState) (fs : List Sem), RInv L s →
-      runFields K ρ φ d ps c i earlier args s = some (fs, s') → RInv L s' ∧ EnvLe s s' ∧ OrdKeep L s s'
+      runFields K ρ φ stmt d ps c i earlier args s = some (fs, s') → RInv L s' ∧ EnvLe s s' ∧ OrdKeep L s s'
   | [], i, earlier, s, s', fs, hi, h => by
     simp only [runFields] at h
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h)
@@ -661,8 +729,13 @@ theorem runFields_rinv (hK : ∀ n, (K.C.global n).2.label = none) (d : IndDecl)
     obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some h
     obtain ⟨y, s₂, h3, h4⟩ := SM.bind_some h2
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
-    obtain ⟨hi₁, _, e₁, o₁⟩ := run_rinv hK a _ s s₁ x hi h1
-    obtain ⟨hi₂, e₂, o₂⟩ := runFields_rinv hK d ps c as _ _ s₁ _ y hi₁ h3
+    have hx : RInv L s₁ ∧ EnvLe s s₁ ∧ OrdKeep L s s₁ := by
+      rcases SM.stmtIf_some h1 with ⟨-, h1⟩ | ⟨-, rfl, -, -⟩
+      · obtain ⟨hi₁, _, e₁, o₁⟩ := run_rinv hK a _ s s₁ x hi h1
+        exact ⟨hi₁, e₁, o₁⟩
+      · exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
+    obtain ⟨hi₁, e₁, o₁⟩ := hx
+    obtain ⟨hi₂, e₂, o₂⟩ := runFields_rinv hK stmt d ps c as _ _ s₁ _ y hi₁ h3
     exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
 
 theorem runArm_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (arms : List (Hint × Term)) (hint : TyS) (c : Nat)

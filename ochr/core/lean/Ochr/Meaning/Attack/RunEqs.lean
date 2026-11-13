@@ -18,15 +18,25 @@ theorem updAt_nil (dm : DataModel) (Γ : List IndDecl) (T : TyM) (f : Sem → Se
 theorem updAt_deref (dm : DataModel) (Γ : List IndDecl) (T : TyM) (f : Sem → Sem) (sts : List Step) (s : Sem) :
     Sem.updAt dm Γ T f (.deref :: sts) s = Sem.updAt dm Γ T f sts s := rfl
 
-theorem run_ascribe (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (u A : Term) (s : SState) :
+/-- Where the decisions classify no term as a statement (`hfl`; true of `K₀` by `rfl`),
+`SM.stmtIf` is the run itself (D19: every clause that can change the state runs under
+`Decisions.flags`). -/
+theorem stmtIf_noStmt (K : RunCtx) (hfl : ∀ sc t, (K.D.flags sc t).1 = false) (t : Term) (x : SM Res) (s : SState) :
+    SM.stmtIf (K.D.flags (scopeOf s) t).1 x s = x s := by
+  rw [hfl]; rfl
+
+theorem run_ascribe (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (u A : Term) (s : SState)
+    (hfl : ∀ sc t, (K.D.flags sc t).1 = false) :
     run K ρ φ hint (.ascribe u A) s =
       (do
         let (TA, _) ← SM.onCopy (run K ρ φ (.plain .err) A)
         let T := TyS.plain TA.asTy
         let (v, R) ← run K ρ φ T u
-        pure (v, { T with label := R.label })) s := rfl
+        pure (v, { T with label := R.label })) s := by
+  rw [run]; exact stmtIf_noStmt K hfl _ _ s
 
-theorem run_letIn (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (x : Hint) (u w : Term) (s : SState) :
+theorem run_letIn (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (x : Hint) (u w : Term) (s : SState)
+    (hfl : ∀ sc t, (K.D.flags sc t).1 = false) :
     run K ρ φ hint (.letIn x u w) s =
       (do
         let ((v, T), s) ← run K ρ φ (.plain .err) u s
@@ -36,7 +46,8 @@ theorem run_letIn (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (x :
           | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
           | none => none
         let s := match held with | some l => s.endLabel l | none => s
-        some ((r, R), s.dropLast)) := rfl
+        some ((r, R), s.dropLast)) := by
+  rw [run]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem meanV_abs (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (σ : Nat) :
     meanV K ρ φ hint (.abs σ) = ρ σ := rfl

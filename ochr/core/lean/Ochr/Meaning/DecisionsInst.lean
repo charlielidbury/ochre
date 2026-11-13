@@ -37,11 +37,14 @@ as the machine makes it (`withLive true (… [] …)`) in that state.
 ## Fields, and where they do not match (reported to the spine)
 
 * `flags`: `Machine.evalAt`'s pre-pass, `preFlags t (declOf … t)` (`none`, the reading `any`, is
-  "not erased"). Exact for a call the machine classifies itself. Two notes on the run's side. A
-  `let`'s or `seq`'s tail is classified by its parent's reading (`tailDecl`), which equals its own
-  reading by `declOf`'s `letIn`/`seq` clauses whenever `refineDecl` is the identity. A call's head
-  is not classified by the machine (`headEval`), but `run`'s `.call` clause asks `flags` of every
-  call, including a curried head.
+  "not erased"). Exact for a term the machine classifies itself. Since D19 the run asks `flags`
+  of every term whose clause can change the state or return a label (`SM.stmtIf`), as `evalAt`
+  classifies every term but an embedded value. Two notes on the run's side. A `let`'s or `seq`'s
+  tail is classified by its parent's reading (`tailDecl`), which equals its own reading by
+  `declOf`'s `letIn`/`seq` clauses whenever `refineDecl` is the identity. A call's head is not
+  classified by the machine (`headEval`); the run reads a place head in place (`SM.headOf`) and
+  asks `flags` of any other head, which agrees wherever a head that is a statement makes its call
+  one.
 * `placeDecl`, `declOf`: `withLive true (placeDecl fuel [] p)` (`Machine.copyRead`) and
   `withLive true (declOf fuel false [] [] u)` (`evalAt`, `letIn`). Exact.
 * `copy`: `declCopy fuel r` (`copyRead`). Exact.
