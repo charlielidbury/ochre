@@ -633,6 +633,52 @@ structure BlockArm where
   setup : M Value
   body : Value → M (Value × Value)
 
+/-- D89: the variables a field type determines when matched against a value's type: the
+type itself, and the arguments of an inductive type former, not what a type function or a
+Π-type does with its arguments. -/
+def Term.rigidVars : Term → List Nat
+  | .place (.var j) => [j]
+  | .tind _ as => (as.attach.map fun ⟨a, _⟩ => a.rigidVars).flatten
+  | .ref A => A.rigidVars
+  | _ => []
+
+/-- D89: an untyped run cannot infer the parameters of `d`'s constructor `c` from its fields
+(D88's inference) when some parameter is determined by no field whose type is not a
+proposition (`Term.rigidVars`): it has no fields, a phantom parameter, only proof fields
+(`Dec`'s `Yes(h : P)`, which untyped runs do not evaluate), or only fields whose types a type
+function computes from it (`DP`'s `y : G(n, x)`). -/
+def ctorNeedsCtx (d : IndDecl) (c : Nat) : Bool :=
+  let np := d.params.length
+  match d.ctors[c]? with
+  | none => false
+  | some (_, fields) =>
+    let isProp (i : Nat) (FT : Term) : Bool := match FT with
+      | .eq .. | .id .. => true
+      | .place (.var j) => j ≥ i && (match d.params[np - 1 - (j - i)]? with
+          | some (_, .sort 0) => true
+          | _ => false)
+      | _ => false
+    (List.range np).any fun k =>
+      !(fields.zipIdx.any fun ((_, FT), i) => !isProp i FT && FT.rigidVars.contains (i + (np - 1 - k)))
+
+/-- D89: does a tail of `t` (through `let`, `;` and match arms) build a constructor whose
+parameters are not written and that its fields do not determine (`ctorNeedsCtx`), or one of
+whose fields is such a constructor (`Some(None)`)? Read from
+syntax and declarations; an untyped run then gives `t` the type its context declares, as
+typing does. -/
+def needsCtx (fuel : Nat) (t : Term) : M Bool := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match t with
+  | .ctor ty c _ [] as =>
+    -- or a field needs it, which then takes its type from this constructor's parameters
+    if ctorNeedsCtx (← lookupInd ty) c then return true
+    as.anyM fun a => needsCtx fuel' a
+  | .letIn _ _ w | .seq _ w => needsCtx fuel' w
+  | .matchNat _ z s => pure ((← needsCtx fuel' z) || (← needsCtx fuel' s))
+  | .matchInd _ _ arms => arms.anyM fun (_, a) => needsCtx fuel' a
+  | _ => pure false
+termination_by structural fuel
+
 -- the machine is one `mutual` block, and compiling it (LCNF) outgrew the default heartbeats
 set_option maxHeartbeats 1000000 in
 mutual
@@ -2006,7 +2052,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     -- the tail's reading is this let's (read with `h`'s declared type, unless refined)
     if du' == du then modify fun s => { s with tailDecl := myD }
     demand want
-    let (r, R) ← eval fuel' typed w
+    let (r, R) ← eval fuel' typed w (if typed then none else hint)     -- D89: the tail's hint
     let fl ← getFlags     -- the body's erasure flags (dropping may normalise)
     pushTemp r
     dropTopBind fuel'
@@ -2018,9 +2064,9 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     dropValue fuel' v
     modify fun s => { s with tailDecl := myD }     -- the tail's reading is this sequence's
     demand want
-    eval fuel' typed w
-  | .matchNat p z s => evalMatch fuel' typed p z s
-  | .matchInd p ty arms => evalMatchInd fuel' typed p ty arms
+    eval fuel' typed w (if typed then none else hint)
+  | .matchNat p z s => evalMatch fuel' typed p z s (if typed then none else hint)
+  | .matchInd p ty arms => evalMatchInd fuel' typed p ty arms (if typed then none else hint)
   | .tind n as => evalTInd fuel' typed n as
   | .ctor ty c h ps as => evalCtor fuel' typed ty c h ps as hint
   | .const n =>
@@ -2231,7 +2277,10 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     pure (.proof, some (← evalType fuel' A))
   | .ascribe u A =>
     -- D82: an annotation is the term's declared type; the machine does not re-check it
-    if !typed && !want then return ((← eval fuel' false u).1, none)
+    if !typed && !want then
+      -- D89: the annotation is the hint of a constructor its fields do not determine
+      let h ← if ← needsCtx fuel' u then some <$> evalType fuel' A else pure none
+      return ((← eval fuel' false u h).1, none)
     let A' ← evalType fuel' A
     if !typed then return ((← eval fuel' false u (some A')).1, some A')
     let (v, T) ← match u with
@@ -2351,8 +2400,8 @@ def evalCtor (fuel : Nat) (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts
   let want ← wanted
   let wantFields := typed || (pts.isEmpty && np > 0)
   for ((a, (_, FT)), i) in (as.zip fields).zipIdx do
-    let fh ← if typed && ((np > 0 && (a matches .ctor .. | .prim "rewrite" _ | .prim "rewriteR" _)) || (a matches .val _)
-        || (dep && d.fieldDependent c i))
+    let fh ← if (typed && ((np > 0 && (a matches .ctor .. | .prim "rewrite" _ | .prim "rewriteR" _)) || (a matches .val _)
+        || (dep && d.fieldDependent c i))) || (!typed && sol.all (·.isSome) && (← needsCtx fuel' a))     -- D89
       then fieldTypeAt fuel' d sol c i ws0.toList else pure none
     demand wantFields
     let (w, T) ← stmtArgIf fuel' stmtC a (eval fuel' typed a fh)
@@ -2367,8 +2416,8 @@ def evalCtor (fuel : Nat) (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts
     -- from the fields' types or the hint
     let T := if want && sol.all (·.isSome) then some (Value.tInd ty (sol.toList.filterMap id)) else none
     -- D88: the value records the parameters it inferred, so that it is self-describing; where
-    -- its fields do not determine them (a proof field, a phantom parameter, no fields) it
-    -- records the ones written, as before
+    -- its fields do not determine them (a proof field, a phantom parameter, no fields) the
+    -- context's declared type does (D89: the hint, as typing has it)
     let ps := if pts.isEmpty && sol.all (·.isSome) then sol.toList.filterMap id else evs.toList
     return (if proof then .proof else .ind ty c h ps ws.toList, T)
   let mut ps := #[]
@@ -2436,7 +2485,8 @@ def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Boo
   let mut ender := #[]     -- the editor: which argument ended each argument's borrow
   for (a, ad) in as.zip argDecls.toList do
     -- v2.0: a constructor argument's parameters may come from the parameter's type
-    let hint ← if typed && (a matches .ctor .. | .val _ | .prim "rewrite" _ | .prim "rewriteR" _ | .prim "hole" _) then argHint fuel' fv fT ws0 else pure none
+    let hint ← if (typed && (a matches .ctor .. | .val _ | .prim "rewrite" _ | .prim "rewriteR" _ | .prim "hole" _))
+        || (!typed && (← needsCtx fuel' a)) then argHint fuel' fv fT ws0 else pure none     -- D89
     -- D82: a borrow argument's type is a cell's if the call closes off ([Close]); an argument is a
     -- borrow exactly when its declared type is (D48)
     demand (ad matches .ref _)
@@ -2631,7 +2681,10 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : Lis
         { fr with binds := fr.binds.modify (fr.binds.size - 1) ({ · with lazyTy := some (piTy, ws.toList, i) }) }
   -- D53: a body is code; a function whose calls are erased has an erased body (b)
   let erasedFn := (← fnClass fuel' (← funType fuel' fv none)) != 0
-  let (v, _) ← withErasedIf erasedFn (eval fuel' false body)
+  -- D89: a tail constructor whose fields do not determine its parameters gets the declared
+  -- codomain at the arguments, as typing's tail check gives it
+  let hint ← if ← needsCtx fuel' body then some <$> declCallType fuel' piTy ws else pure none
+  let (v, _) ← withErasedIf erasedFn (eval fuel' false body hint)
   wholeReturned v
   pushTempAt ((← topIdx) - 1) v
   popFrame fuel'
@@ -2799,8 +2852,8 @@ def evalMatch (fuel : Nat) (typed : Bool) (p : Place) (z s : Term) (expected : O
   let v ← matchContent p
   match v with
   -- D84 [Join]: what another arm moves is dropped at this arm's end
-  | .zero => do let w ← wanted; joinDrop fuel' (.matchNat p z s) (do demand w; eval fuel' typed z)     -- D82: an arm is the match's tail
-  | .succ _ => do let w ← wanted; joinDrop fuel' (.matchNat p z s) (do demand w; eval fuel' typed s)
+  | .zero => do let w ← wanted; joinDrop fuel' (.matchNat p z s) (do demand w; eval fuel' typed z (if typed then none else expected))     -- D82: an arm is the match's tail
+  | .succ _ => do let w ← wanted; joinDrop fuel' (.matchNat p z s) (do demand w; eval fuel' typed s (if typed then none else expected))
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
   | .abs σ => if typed then splitThenClose fuel' p z s σ expected else stuckOn v
   | .sealed _ | .loan _ =>
@@ -3093,7 +3146,7 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
     if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
     if typed then discard (scrutType fuel' p ty)
     match arms[c]? with
-    | some (_, a) => do let w ← wanted; joinDrop fuel' (.matchInd p ty arms) (do demand w; eval fuel' typed a)
+    | some (_, a) => do let w ← wanted; joinDrop fuel' (.matchInd p ty arms) (do demand w; eval fuel' typed a (if typed then none else expected))
     | none => err s!"[Match] no arm for constructor {c}"
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
   | .abs σ =>

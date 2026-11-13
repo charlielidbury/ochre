@@ -728,3 +728,27 @@ Option (2a), giving untyped runs the typed run's hints, is the follow-up prototy
 - `WrittenNone`'s `None[Nat]` records `Nat` as before.
 - Its twin `BareNone`, a bare `None`, records nothing: the residual, pinned by a `#guard`.
 
+## D89. An untyped run gives a constructor the type its context declares (2026-11-13) [lane: ctx-hints]
+Decided by the lead as step (2a) of (B), after D88. This closes D88's residual, so that every constructor value an accepted program builds records its parameters.
+- **Rule.** An untyped run gives a constructor term the hint that typing gives it, where the constructor needs one: its parameters are not written, and its fields do not determine them (`ctorNeedsCtx`).
+  - That covers a constructor with no fields, a phantom parameter, only proof fields (`Dec`'s `Yes(h : P)`), and a parameter that only a type function reads (`DP`'s `y : G(n, x)`).
+  - A parameter is determined only where it appears as a field's type itself or as an argument of an inductive type former (`Term.rigidVars`).
+  - A constructor also needs one when one of its fields does (`Some(None)`).
+- **Where the hint comes from.** Whether a term needs one is read from syntax and declarations (`needsCtx`, along the tail spine). It comes from:
+  - a called body's declared codomain at the arguments (`declCallType`), for its tail, passed through `let`, `;` and the arms of a match that runs directly (`runBodyCore`, and blocks and sealed re-runs through it);
+  - a `let` annotation or ascription (`.ascribe`);
+  - a call's parameter type at the earlier arguments (`argHint`);
+  - an enclosing constructor's field type (`fieldTypeAt`).
+- **Typed runs are unchanged.** The forwarding through `let`, `;` and direct arms happens in untyped runs only. Eval's interface is unchanged: the existing optional hint carries it.
+
+**Measured** over the full verdict dump (main 42fd5a7b, D88):
+- Untyped builds of a parameterised inductive's constructor with no parameters written: 17,543. All of them now record their parameters, 15,637 through a hint. Under D88 alone, 279 did not: 269 for `Dec.Yes`/`No` and 10 for `Tag.MkTag`.
+- Verdicts: 0 changes. Messages: 0 changes. The 2,034 earlier rows are identical with their reasons; the 13 new rows are `OptionRuns`' tests.
+- Cost: the full dump takes 72.5 s, against 61 s under D88 (two alternating runs each), 19% more.
+- **Remainder:** none found among positions typing accepts. A bare constructor in a position where typing has no hint either (an arm of a non-tail match, `J`'s transported term) is rejected by typing ("cannot infer the parameter …"), so it never runs.
+
+**Tests** (`Option.lean`, `OptionRuns`; untyped runs, and the runtime for two of them):
+- A bare `None` records `Nat` as a body's tail, a call argument, a `let` annotation, a closure's tail and a tail arm. `BareNone` recorded nothing under D88 alone.
+- In `Some(None)` both constructors record their parameters.
+- A phantom parameter (`TagO`), a parameter only a proof field has (`SigO`), and one only a type function reads (`DPO`) are each recorded.
+
