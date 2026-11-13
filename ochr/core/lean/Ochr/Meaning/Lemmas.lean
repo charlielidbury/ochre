@@ -63,16 +63,25 @@ theorem run_congr (φ φ' : Future) (hint : TyS) (t : Term) (s : SState) (L : Na
     run K ρ φ hint t s = run K ρ φ' hint t s :=
   run_congrE K ρ φ φ' hK t hint s L hφ ht ⟨fun p => FT.mono (fun _ hy => .inl hy) (hs p), hord, hsh⟩
 
-/-- The run's result does not depend on the starting label counter (m2-proofs' D): fresh labels
-are names. As first stated (any state whose shape labels are below both counters) this is false,
-finding 7: a position may read a label at or above a counter, which one run issues and the other
-does not. Restated for the empty state, and compared on the result's meaning and shape. Not used:
-with a sealed program run from the counter 0 (PROPOSAL 8) the substitution lemmas need no counter
-lemma; kept as the statement of the renaming lemma, should a counter-dependent run return. -/
-theorem run_counter_indep (φ : Future) (hint : TyS) (t : Term) (n n' : Nat)
-    (hn : ∀ l ∈ t.loans, l < n) (hn' : ∀ l ∈ t.loans, l < n') :
-    (run K ρ φ hint t (emptyState n)).map (fun r => (r.1.1, r.1.2.shape))
-      = (run K ρ φ hint t (emptyState n')).map (fun r => (r.1.1, r.1.2.shape)) := by
+/-- **The renaming lemma** (m2-proofs' D; open, believed true). The run's result does not depend
+on the starting label counter: fresh labels are names. As first stated (any state whose shape
+labels are below both counters) this is false, finding 7: a position may read a label at or above
+a counter, which one run issues and the other does not. Stated for the states code runs from: one
+frame of future-free bindings and no holder (`emptyState` for a sealed program, `capsState` for a
+closure's code), at any two counters, with no condition on the term's loans (a fresh label meeting
+one of them is harmless: a loan is read by the value's meaning, never through the state), and
+compared on the result's meaning and shape.
+
+Not used by the substitution pair (a sealed program runs from the counter 0, PROPOSAL 8, as a
+closure's code always did). It IS needed by the step lemmas that compare the checker's run of
+such code with the model's: the checker re-runs a sealed program (`nfSealed`) and runs a callee's
+body (`runBody`) at its global, never-reused counter (D37), so `evalCore_step` gives the run from
+`stateOf st.nextLoan _` where the meaning reads the run from `stateOf 0 _`. Its proof is a
+simulation of the two runs up to the shift of the labels, an induction of the size of part (E). -/
+theorem run_counter_indep (φ : Future) (hint : TyS) (t : Term) (bs : List SBinding) (n n' : Nat)
+    (hbs : ∀ b ∈ bs, ∀ ψ ψ', b.val ψ = b.val ψ') :
+    (run K ρ φ hint t (stateOf n bs)).map (fun r => (r.1.1, r.1.2.shape))
+      = (run K ρ φ hint t (stateOf n' bs)).map (fun r => (r.1.1, r.1.2.shape)) := by
   sorry
 
 /-- The filler, at the fixed future `φ[ℓ ↦ ⟦w⟧]`, means the loan and has its type. -/
