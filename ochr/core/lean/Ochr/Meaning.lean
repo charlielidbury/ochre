@@ -48,6 +48,7 @@ import Ochr.Meaning.Regress.CE4_flipped
 import Ochr.Meaning.Regress.AdequacyProbes
 import Ochr.Meaning.Regress.Adequacy_flipped
 import Ochr.Meaning.Regress.ExitWorld_flipped
+import Ochr.Meaning.Regress.ConstFree_flipped
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
