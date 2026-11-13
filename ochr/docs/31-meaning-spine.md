@@ -223,6 +223,19 @@ Smaller differences found on the same read, not yet probed: `inplace(p)` is a re
 
 The smaller differences listed above are also open. And the adequacy of every clause is still only read, not proved: the step lemmas are where it is proved. A cheaper guard than waiting for them would be one kernel-checked run per form on a small real program, in the style of `Attack/CloseCallFwd.lean`; the five probes are the first candidates.
 
+### D21. Plan for R6: a parameter is bound at its full type (second lead, 2026-11-13; in progress)
+
+Keeps `PiParam` as it is (no nested inductive), so `Pi.lean` and `Apply1.lean` do not change. In `Run.lean`:
+
+- `PBind := (List Sem → TyS) × DeclInfo`: a parameter as a frame binds it, its type with its Π-shape as a function of the earlier arguments, and its declared reading.
+- `extendBy s bs acc` binds argument `i` at `bs[i].1 (acc.take i)` and reading `bs[i].2` (it bound every argument at `.plain .err` and `other`).
+- `runBinds s dcs pre : List Term → List PBind` replaces `runDoms` in the mutual block: each domain term is run in `extendBy s pre acc`, the forming state extended by the earlier parameters *at their types*, and gives `⟨v.asTy, R.shape, none, none⟩` (the run of a Π-term already returns the Π's shape in its result type). `dcs` are the telescope's readings (`Decisions.fixDecls`).
+- `psOf bs ds : List PiParam` is derived outside the block: `isRef` from the domain term, `dom acc := (b.1 acc).m`.
+- The `.pi` and `.fix` clauses and `piShapeOf` use `psOf (runBinds …)` and read the codomain in `extendBy s bs acc`; the `.fix` clause's frame binds parameter `i` at `bs[i].1 acc` (with its label for a borrow parameter) and `bs[i].2`.
+- Not covered: a parameter whose type is a Π-type only after computing (a type alias, a type function's call), which has no shape here as it has no class in the checker without D77's reading; and a call that returns a function (`PiOut` carries no shape: the old gap (ii)).
+
+Lemmas to restate: `runDoms_congrE`, `runDoms_substSame`, `rinv_extendBy`, `piShapeOf_*`, `fixOut_*`, `run_pi_def`, `run_fix_def`, and the fix helpers of `RunCongr` (`fixStep` takes `bs`).
+
 ### D20. What the step skeleton still lacks to compose (second lead, 2026-11-13; open, ranked)
 
 Found while trying to derive `nfSealed_step` from the hypothesis at `fuel`. No step proof exists yet, so none of this was visible. Each item is a fault of the statements (not of the checker), with its fix. They are read off the statements and the checker's code; none is kernel-checked, and each should be before its fix is taken as settled:
