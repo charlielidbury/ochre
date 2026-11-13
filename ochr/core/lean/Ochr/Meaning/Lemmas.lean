@@ -71,29 +71,36 @@ def DecInvariant (D : Decisions) (l : Nat) (w : Value) : Prop :=
   (∀ sc t, D.flags sc (Term.substLoan l w t) = D.flags sc t) ∧
   (∀ sc t, D.declOf sc (Term.substLoan l w t) = D.declOf sc t) ∧
   (∀ sc t, D.piSort sc (Term.substLoan l w t) = D.piSort sc t) ∧
-  (∀ sc e t, D.joinMoves sc e (Term.substLoan l w t) = D.joinMoves sc e t)
+  (∀ sc e t, D.joinMoves sc e (Term.substLoan l w t) = D.joinMoves sc e t) ∧
+  -- m2-proofs' 5a: `Id` reads the re-pointed bindings off its first side's text
+  (∀ sc t, D.rePointed sc (Term.substLoan l w t) = D.rePointed sc t)
 
-/-- `w` is not code: not a closure, a Π-closure or a global (m2-proofs' E: an embedded one
-carries a shape that an embedded loan does not). -/
-def NotCode : Value → Prop
-  | .clo .. | .tPi .. | .gfn _ => False
-  | _ => True
+/-- The filler's type, as the run reads an embedded value, is the loan's (P1, replacing m2-proofs'
+`NotCode`: a borrowed function value is real). At every hint, `.val w` and `.val (loan ℓ)` give
+the same `TyS`: for a data filler and a loan with no declared shape both are the hint; for a
+closure or Π-closure filler the loan's declared shape (`K.Λ ℓ`) is the filler's, which typing
+gives. (A global or abstract filler carries its own `TyS` rather than the hint's, so it satisfies
+this only when the loan's declared type is that `TyS`: a residual, should one be met.) -/
+def FillShape (φ : Future) (l : Nat) (w : Value) : Prop :=
+  ∀ hint s, (run K ρ φ hint (.val w) s).map (·.1.2) = (run K ρ φ hint (.val (.loan l)) s).map (·.1.2)
 
 /-- The state does not read label `l`, and `l` is below its label counter (m2-proofs' B: fresh
 labels never collide with `l`). -/
 def StateFreeOf (s : SState) (l : Nat) : Prop :=
   (∀ p ψ x, s.valAt p (ψ.upd l x) = s.valAt p ψ) ∧ l < s.nextLoan
 
-/-- Filling a loan is fixing the future, for values. The hypotheses are m2-proofs' C and E. -/
+/-- Filling a loan is fixing the future, for values. The hypotheses are m2-proofs' C and (P1) the
+filler's declared shape. -/
 theorem meanV_substLoan (φ : Future) (hint : TyS) (l : Nat) (w v : Value)
-    (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w) (hD : DecInvariant K.D l w) (hc : NotCode w) :
+    (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w) (hD : DecInvariant K.D l w) (hc : FillShape K ρ φ l w) :
     meanV K ρ φ hint (Value.substLoan l w v) = meanV K ρ (φ.upd l (meanV K ρ φ (.plain .err) w)) hint v := by
   sorry
 
 /-- Filling a loan is fixing the future, for a term's run: the run at `φ` of the substituted term
-from a state is the run at the fixed future of the term from the same state (hypotheses B, C, E). -/
+from a state is the run at the fixed future of the term from the same state (hypotheses B, C and
+(P1) the filler's declared shape). -/
 theorem run_substLoan (φ : Future) (hint : TyS) (l : Nat) (w : Value) (t : Term) (s : SState)
-    (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w) (hD : DecInvariant K.D l w) (hc : NotCode w)
+    (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w) (hD : DecInvariant K.D l w) (hc : FillShape K ρ φ l w)
     (hs : StateFreeOf s l) :
     run K ρ φ hint (Term.substLoan l w t) s
       = run K ρ (φ.upd l (meanV K ρ φ (.plain .err) w)) hint t s := by
