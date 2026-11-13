@@ -140,10 +140,41 @@ def scopeOf (s : SState) : List DeclInfo :=
   | some fr => (fr.binds.map (·.decl)).reverse
   | none => []
 
-/-- The state's top frame extended by bindings holding the given meanings (a Π's or a
-closure's parameters at formation). -/
-def extendBy (s : SState) (acc : List Sem) : SState :=
-  acc.foldl (fun s a => s.pushBind { ty := .plain .err, val := fun _ => a }) s
+/-- A parameter as a frame binds it: its type, with its Π-shape, as a function of the earlier
+arguments, and its declared reading (D19, R6: `PiParam` carries the type as a `TyM` only, so a
+function parameter was bound at a type with no shape and could not be called). -/
+abbrev PBind : Type 3 := (List Sem → TyS) × DeclInfo
+
+/-- The bindings `extendBy` pushes: argument `i` at parameter `i`'s type at the earlier arguments
+and at its declared reading (`.plain .err` and `other` beyond `bs`). -/
+def extendBinds (bs : List PBind) (acc : List Sem) : List SBinding :=
+  acc.zipIdx.map fun ai =>
+    { ty := match bs[ai.2]? with | some b => { b.1 (acc.take ai.2) with label := none } | none => .plain .err, val := fun _ => ai.1, decl := match bs[ai.2]? with | some b => b.2 | none => .other }
+
+/-- The state's top frame extended by bindings holding the given meanings (a Π's or a closure's
+parameters at formation), each at its parameter's type and reading (`bs`): a later domain term or
+the codomain may call an earlier parameter, and reads its declared type for copy or move. -/
+def extendBy (s : SState) (bs : List PBind) (acc : List Sem) : SState :=
+  (extendBinds bs acc).foldl (fun s b => s.pushBind b) s
+
+/-- A parameter's binder from the run of its domain term at each prefix of arguments (`r`): the
+type's meaning with the Π-shape the run returns, and the reading `dcs` gives parameter
+`pre.length`. -/
+def mkBind (dcs : List DeclInfo) (pre : List PBind) (r : List Sem → Option ((Sem × TyS) × SState)) : PBind :=
+  (fun acc => match r acc with
+    | some ((v, R), _) => ⟨v.asTy, R.shape, none, none⟩
+    | none => .plain .err, dcs.getD pre.length .other)
+
+/-- A domain term `&A`: a borrow parameter. -/
+def _root_.Ochr.Term.isRefTy : Term → Bool
+  | .ref _ => true
+  | _ => false
+
+/-- The parameters of a Π-term as `PiParam`s, from their binders and domain terms: `&A` marks a
+borrow parameter; the type is the binder's, without its shape. -/
+def psOf : List PBind → List Term → List PiParam
+  | b :: bs, d :: ds => ⟨d.isRefTy, fun acc => (b.1 acc).m⟩ :: psOf bs ds
+  | _, _ => []
 
 /-- Resolve a place to its root position and path. -/
 def resolve (s : SState) (p : Place) : Option (Pos × List Step) :=
@@ -438,13 +469,14 @@ noncomputable def run (hint : TyS) : Term → SM Res
   | .sort l => pure (.ty (.univ l), .plain (.univ (sortSucc l)))
   | .pi hs ds c => fun s =>
     -- [T-Pi]: the parameters' and output's meanings as functions of the earlier parameters
-    -- (`runDoms`), the carrier at the declared sort (D55, `Decisions.piSort`)
-    let ps := runDoms s ds
+    -- (`runBinds`), the carrier at the declared sort (D55, `Decisions.piSort`)
+    let bs := runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds
+    let ps := psOf bs ds
     let out : PiOut := match c with
-      | .ref U => .ref fun acc => match run (.plain .err) U (extendBy s acc) with
+      | .ref U => .ref fun acc => match run (.plain .err) U (extendBy s bs acc) with
         | some ((v, _), _) => v.asTy
         | none => .err
-      | c => .data fun acc => match run (.plain .err) c (extendBy s acc) with
+      | c => .data fun acc => match run (.plain .err) c (extendBy s bs acc) with
         | some ((v, _), _) => v.asTy
         | none => .err
     let l := K.D.piSort (scopeOf s) (.pi hs ds c)
@@ -457,12 +489,13 @@ noncomputable def run (hint : TyS) : Term → SM Res
     -- and the function at arguments whose decreasing argument has rank `r` is stage `r + 1`; so
     -- a call that does not decrease reaches stage 0 and means `err`, and `mkTele` then makes
     -- the closure mean `err`.
-    let ps := runDoms s ds
+    let bs := runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds
+    let ps := psOf bs ds
     let out : PiOut := match c with
-      | .ref U => .ref fun acc => match run (.plain .err) U (extendBy s acc) with
+      | .ref U => .ref fun acc => match run (.plain .err) U (extendBy s bs acc) with
         | some ((v, _), _) => v.asTy
         | none => .err
-      | c => .data fun acc => match run (.plain .err) c (extendBy s acc) with
+      | c => .data fun acc => match run (.plain .err) c (extendBy s bs acc) with
         | some ((v, _), _) => v.asTy
         | none => .err
     -- the carrier at the declared sort (D55, D12): `piTyAt`/`closureAt` (`Apply1.lean`)
@@ -473,23 +506,27 @@ noncomputable def run (hint : TyS) : Term → SM Res
     -- frame binds the parameters at, and `self` (D19, R3: bound at `other`, a parameter of a copy
     -- type was moved by its first read, and a call through `self` or a function parameter was
     -- never classified as a statement or a proof)
-    let dc := K.D.fixDecls (scopeOf s) ds c
+    let cd := K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c
     let bodyAt (selfM : Sem) (args : List Sem) : Option BodyOut :=
       -- the frame: `self`, then the parameters. A borrow parameter is set up as the generic call
       -- is ([Def]): a fresh label `lᵢ`, a *cell* (a temporary of the frame: temporaries do not
       -- shift de Bruijn indices) reading `lᵢ`'s final content, and the parameter holding the
       -- content as the borrow's holder (D14). Returning the parameter returns its label.
-      let s₁ := s.pushBind { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM, decl := .pi dc.2 }
+      let s₁ := s.pushBind { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM, decl := .pi cd }
+      -- each parameter is bound at its type WITH its Π-shape and at its declared reading (`bs`;
+      -- D19, R6: bound at `.plain (dom …)`, a function parameter had no shape to be called along)
       let step (sa : SState × List Sem × List Pos) (ap : Sem × PiParam) : SState × List Sem × List Pos :=
         let (s, acc, cells) := sa
+        let T : TyS := match bs[acc.length]? with | some b => b.1 acc | none => .plain (ap.2.dom acc)
+        let d : DeclInfo := match bs[acc.length]? with | some b => b.2 | none => .other
         if ap.2.isRef then
           let (l, s) := s.freshLoan
           let s := s.pushTemp fun ψ => ψ l
           let cell : Pos := .temp s.topIdx (((s.env.getLast?).map (·.temps.length)).getD 1 - 1)
-          let s := pushBindShaped s { ty := ⟨ap.2.dom acc, none, some l, none⟩, val := fun _ => ap.1, decl := dc.1.getD acc.length .other }
+          let s := pushBindShaped s { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
           (s, acc ++ [ap.1], cells ++ [cell])
         else
-          (s.pushBind { ty := .plain (ap.2.dom acc), val := fun _ => ap.1, decl := dc.1.getD acc.length .other }, acc ++ [ap.1], cells)
+          (s.pushBind { ty := { T with label := none }, val := fun _ => ap.1, decl := d }, acc ++ [ap.1], cells)
       let (s₂, _, cells) := (args.zip ps).foldl step (s₁, [], [])
       let codT := match out with | .data B => B args | .ref U => U args
       match run (.plain codT) body s₂ with
@@ -606,19 +643,19 @@ noncomputable def runArm (hint : TyS) (c : Nat) : List (Hint × Term) → SM Res
   | (_, t) :: rest => if c = 0 then run hint t else runArm hint (c - 1) rest
 termination_by structural arms => arms
 
-/-- The parameters of a Π-term as the model reads them: each domain term's meaning as a function
-of the earlier parameters' meanings, run in the forming state extended by them; `&A` marks a
-borrow parameter with content type `A`. -/
-noncomputable def runDoms (s : SState) : List Term → List PiParam
+/-- The parameters of a Π-term as a frame binds them (`PBind`): each domain term run in the
+forming state extended by the earlier parameters at THEIR types and readings (`pre`), giving the
+parameter's type with its Π-shape (the run of a Π-term returns the Π's shape in its result type)
+as a function of the earlier arguments; `dcs` are the telescope's declared readings. For `&A` the
+content type `A` is run. (D19, R6; `psOf` reads the `PiParam`s off the result.) -/
+noncomputable def runBinds (s : SState) (dcs : List DeclInfo) (pre : List PBind) : List Term → List PBind
   | [] => []
   | .ref A :: ds =>
-    ⟨true, fun acc => match run (.plain .err) A (extendBy s acc) with
-      | some ((v, _), _) => v.asTy
-      | none => .err⟩ :: runDoms s ds
+    mkBind dcs pre (fun acc => run (.plain .err) A (extendBy s pre acc)) ::
+      runBinds s dcs (pre ++ [mkBind dcs pre (fun acc => run (.plain .err) A (extendBy s pre acc))]) ds
   | d :: ds =>
-    ⟨false, fun acc => match run (.plain .err) d (extendBy s acc) with
-      | some ((v, _), _) => v.asTy
-      | none => .err⟩ :: runDoms s ds
+    mkBind dcs pre (fun acc => run (.plain .err) d (extendBy s pre acc)) ::
+      runBinds s dcs (pre ++ [mkBind dcs pre (fun acc => run (.plain .err) d (extendBy s pre acc))]) ds
 termination_by structural ds => ds
 
 /-- An inductive's parameters, each at its parameter type (a statement position, on a copy). -/
@@ -661,11 +698,13 @@ termination_by structural as => as
 /-- The shape of a closure's or Π-closure's type, from its term, in the frame of its captures. -/
 noncomputable def piShapeOf (s : SState) : Term → Option PiShape
   | .pi _ ds (.ref U) | .fix _ _ ds (.ref U) _ _ =>
-    some ⟨runDoms s ds, .ref fun acc => match run (.plain .err) U (extendBy s acc) with
+    some ⟨psOf (runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds) ds,
+      .ref fun acc => match run (.plain .err) U (extendBy s (runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds) acc) with
       | some ((v, _), _) => v.asTy
       | none => .err⟩
   | .pi _ ds c | .fix _ _ ds c _ _ =>
-    some ⟨runDoms s ds, .data fun acc => match run (.plain .err) c (extendBy s acc) with
+    some ⟨psOf (runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds) ds,
+      .data fun acc => match run (.plain .err) c (extendBy s (runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds) acc) with
       | some ((v, _), _) => v.asTy
       | none => .err⟩
   | _ => none
@@ -749,6 +788,13 @@ noncomputable def capsTys : List (DeclInfo × Value) → List (DeclInfo × TyS)
   | (d, T) :: rest => (d, .plain (meanV (.plain .err) T).asTy) :: capsTys rest
 termination_by structural rest => rest
 end
+
+/-- The binders of a telescope formed in `s`: `runBinds` at the telescope's declared readings. -/
+noncomputable def bindsOf (s : SState) (ds : List Term) : List PBind :=
+  runBinds K ρ φ s (K.D.paramDecls (scopeOf s) ds) [] ds
+
+/-- The parameters of a Π-term formed in `s`, as the `.pi` and `.fix` clauses read them. -/
+noncomputable def runDoms (s : SState) (ds : List Term) : List PiParam := psOf (bindsOf K ρ φ s ds) ds
 
 /-- The code meaning the run induces (the knot of `Value.mean`): each code-dependent form read by
 the run **at the assignment and future it is asked at**. As first written it ignored both and read
