@@ -282,6 +282,7 @@ theorem readPlace_deref_r (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : S
   have hw : (Sem.el0 Nat (F n).val.1).whole := by simp [Sem.whole]
   simp only [readPlace, contentOf, hr, access_S₄, bind, Option.bind]
   simp [S₄, SState.tyAt, SState.valAt, Sem.follow, Sem.step, hw]
+  rfl
 
 end Ochr.Meaning.Attack
 
@@ -412,6 +413,6 @@ theorem readPlace_c1 (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBindi
     simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, S₅]
   simp only [readPlace, contentOf, hr, access_S₅, bind, Option.bind]
   simp only [S₆, SState.tyAt, SState.valAt, Sem.follow, lvl0_dec_nat', hb]
-  cases w.as Nat <;> simp [Sem.whole]
+  cases w.as Nat <;> simp [Sem.whole] <;> rfl
 
 end Ochr.Meaning.Attack
