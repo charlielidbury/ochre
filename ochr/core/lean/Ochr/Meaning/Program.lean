@@ -152,17 +152,12 @@ def constMean (T : TyM) (v : Sem) : Sem :=
   | _ => v
 
 /-- The type of a global as the run knows it, from the type value the checker stores
-(`GDef.ty`): `Value.tyS` (its meaning at the constant future, and for `D(ā)` the parameters'
-meanings, D8), and for a Π-type its shape read off its Π-term in the frame of its captures
-(`piShapeOf`), as `run`'s `.val` clause gives a Π-type value's. A function's stored type is
-`tPi [] (pi x̄ Ā B) []`, whose shape is that of its `fix` term (same binders and codomain). -/
+(`GDef.ty`): `Value.tyS` (its meaning at the constant future, for `D(ā)` the parameters'
+meanings, D8, and for a Π-type its shape read off its Π-term in the frame of its captures,
+`CodeMeaning.tyShape`), as `run`'s `.val` clause gives a Π-type value's. A function's stored type
+is `tPi [] (pi x̄ Ā B) []`, whose shape is that of its `fix` term (same binders and codomain). -/
 noncomputable def globalTyS (K : RunCtx) (T : Value) : TyS :=
-  { Value.tyS K.dm (codeMeaning K) K.Γ ρ T with
-    shape := match T with
-      | .tPi caps t rd =>
-        (piShapeOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) t).map
-          fun sh => (sh.ps, sh.out)
-      | _ => none }
+  Value.tyS K.dm (codeMeaning K) K.Γ ρ T
 
 /-- The meaning of a definition whose stored type is `T` (`GDef.ty`), with its type
 (`globalTyS`), under the run context `K` (`ProgState.ctx`); `none` where the reference run is
