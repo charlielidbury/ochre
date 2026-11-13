@@ -33,21 +33,51 @@ theorem SM.bind_apply {α β : Type 3} (x : SM α) (f : α → SM β) (s : SStat
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-theorem run_letIn (h : Hint) (u w : Term) (hint : TyS) (s : SState) :
+/-- The decisions classify no term as a statement, so `SM.stmtIf` is the run itself (D19: every
+clause that can change the state runs under `Decisions.flags`). -/
+def NoStmt (K : RunCtx) : Prop := ∀ sc t, (K.D.flags sc t).1 = false
+
+theorem stmtIf_noStmt (hfl : NoStmt K) (t : Term) (x : SM Res) (s : SState) :
+    SM.stmtIf (K.D.flags (scopeOf s) t).1 x s = x s := by
+  rw [hfl]; rfl
+
+/-- [Access] of a position whose meaning reads no label ends nothing. -/
+theorem access_const (s : SState) (p : Pos) (h : ∀ ψ ψ', s.valAt p ψ = s.valAt p ψ') : s.access p = s := by
+  have hround : SState.accessRound p s = s := by
+    have hf : (s.liveLabels.filter fun l => decide (s.dependsOn p l)) = [] := by
+      apply List.filter_eq_nil_iff.mpr
+      intro l _
+      simp only [decide_eq_true_eq]
+      rintro ⟨ψ, x, hne⟩
+      exact hne (h _ _)
+    unfold SState.accessRound
+    rw [hf]; rfl
+  rw [SState.access_eq_rounds]
+  generalize List.range s.liveLabels.length = ns
+  induction ns with
+  | nil => rfl
+  | cons _ ns ih => rw [List.foldl_cons, hround]; exact ih
+
+theorem run_letIn (hfl : NoStmt K) (h : Hint) (u w : Term) (hint : TyS) (s : SState) :
     run K ρ φ hint (.letIn h u w) s = (run K ρ φ (.plain .err) u s).bind (fun x =>
       (run K ρ φ hint w (pushBindShaped x.2 { ty := x.1.2, val := fun _ => x.1.1, decl := K.D.declOf (scopeOf x.2) u })).bind
         fun y => some (y.1, (match (match y.2.env.getLast? with
             | some fr => y.2.shape (.bind y.2.topIdx (fr.binds.length - 1))
             | none => none) with
-          | some l => y.2.endLabel l | none => y.2).dropLast)) := rfl
+          | some l => y.2.endLabel l | none => y.2).dropLast)) := by
+  rw [run]; exact stmtIf_noStmt K hfl _ _ s
 
-theorem run_seq (u w : Term) (hint : TyS) (s : SState) :
-    run K ρ φ hint (.seq u w) s = (run K ρ φ (.plain .err) u >>= fun _ => run K ρ φ hint w) s := rfl
+theorem run_seq (hfl : NoStmt K) (u w : Term) (hint : TyS) (s : SState) :
+    run K ρ φ hint (.seq u w) s = (run K ρ φ (.plain .err) u >>= fun _ => run K ρ φ hint w) s := by
+  rw [run]; exact stmtIf_noStmt K hfl _ _ s
 
-theorem run_place (p : Place) (hint : TyS) (s : SState) :
-    run K ρ φ hint (.place p) s = readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p)) s := rfl
+theorem run_place (hfl : NoStmt K) (p : Place) (hint : TyS) (s : SState) :
+    run K ρ φ hint (.place p) s = readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p)) s := by
+  rw [run]; exact stmtIf_noStmt K hfl _ _ s
 
-theorem run_borrow (p : Place) (hint : TyS) (s : SState) : run K ρ φ hint (.borrow p) s = borrowPlace K φ p s := rfl
+theorem run_borrow (hfl : NoStmt K) (p : Place) (hint : TyS) (s : SState) :
+    run K ρ φ hint (.borrow p) s = borrowPlace K φ p s := by
+  rw [run]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem readPlace_of (p : Place) (b : Bool) (s : SState) (v : Sem) (T : TyS) (pos : Pos) (st : List Step)
     (s' : SState) (h : contentOf K φ p s = some ((v, T, pos, st), s')) :
@@ -89,16 +119,20 @@ theorem content_b1_x (n : Nat) : contentOf K φ (.var 0) (b1 K n) = some ((.el0 
   simp only [contentOf, hr, access_noshape _ _ (rfl : (b1 K n).shape = _)]
   rfl
 
-theorem run_assign (p : Place) (u : Term) (hint : TyS) (s : SState) :
+theorem run_assign (hfl : NoStmt K) (p : Place) (u : Term) (hint : TyS) (s : SState) :
     run K ρ φ hint (.assign p u) s = (do
-      let ((_, T, pos, steps), s) ← contentOf K φ p s
-      let ((v, R), s) ← run K ρ φ T u s
+      -- the right-hand side first, at the place's type read on a discarded copy; then the access
+      let ((v, R), s) ← run K ρ φ (match contentOf K φ p s with
+        | some ((_, T, _, _), _) => T
+        | none => .plain .err) u s
+      let ((_, _, pos, steps), s) ← contentOf K φ p s
       let s := if steps.isEmpty then (match s.shape pos with | some l => s.endLabel l | none => s) else s
       let (⟨⟩, s) ← setContent K φ pos steps v s
       let s := match R.label, steps with
         | some l, [] => let s := s.takeLabel l; { s with shape := fun q => if q = pos then some l else s.shape q }
         | _, _ => s
-      some ((.el0 Unit (), .plain (.ty0 Unit)), s)) := rfl
+      some ((.el0 Unit (), .plain (.ty0 Unit)), s)) := by
+  rw [run]; exact stmtIf_noStmt K hfl _ _ s
 
 /-- After `&y`: `y` reads label `n`, the borrow parked in temporary `0`. -/
 noncomputable def b2 (n : Nat) : SState :=
@@ -143,13 +177,20 @@ noncomputable def b5 (n : Nat) : SState :=
   let b4 := (b3 K n).takeLabel n
   { b4 with shape := fun q => if q = .bind 0 1 then some n else b4.shape q }
 
-theorem assign_b1 (n : Nat) (hint : TyS) :
+/-- After `&y`, the access of `x` ends nothing: `x` reads no label. -/
+theorem content_b2_x (n : Nat) : contentOf K φ (.var 0) (b2 K n) = some ((.el0 Nat 0, .plain (.ty0 Nat), .bind 0 1, []), b2 K n) := by
+  have hr : resolve (b2 K n) (.var 0) = some (.bind 0 1, []) := rfl
+  have ha : (b2 K n).access (.bind 0 1) = b2 K n := access_const _ _ (fun _ _ => rfl)
+  simp only [contentOf, hr, ha]
+  rfl
+
+theorem assign_b1 (hfl : NoStmt K) (n : Nat) (hint : TyS) :
     run K ρ φ hint (.assign (.var 0) (.borrow (.var 1))) (b1 K n) = some ((.el0 Unit (), .plain (.ty0 Unit)), b5 K n) := by
-  rw [run_assign]
-  show (contentOf K φ (.var 0) (b1 K n) >>= _) = _
-  rw [content_b1_x]
+  rw [run_assign K ρ φ hfl, content_b1_x]
   show (run K ρ φ (.plain (.ty0 Nat)) (.borrow (.var 1)) (b1 K n) >>= _) = _
-  rw [run_borrow, borrow_b1]
+  rw [run_borrow K ρ φ hfl, borrow_b1]
+  dsimp only [Bind.bind, Option.bind]
+  rw [content_b2_x]
   rfl
 
 theorem positions_b3 (n : Nat) : (b3 K n).positions = [.bind 0 0, .bind 0 1, .temp 0 0] := by
@@ -277,20 +318,21 @@ theorem drop_b5 (n : Nat) :
 
 /-- With the proposed drop, `let y = Z; (let x = Z; x := &y); y` reads `Z` at every future: the
 drop ends `x`'s borrow, so `y` gets `x`'s content back (CE5, flipped). -/
-theorem tA_reads_zero (n : Nat) (hint : TyS) : ∃ T s', run K ρ φ hint tA (emptyState n) = some ((.el0 Nat 0, T), s') := by
-  rw [tA, run_letIn]
+theorem tA_reads_zero (hfl : NoStmt K) (n : Nat) (hint : TyS) :
+    ∃ T s', run K ρ φ hint tA (emptyState n) = some ((.el0 Nat 0, T), s') := by
+  rw [tA, run_letIn K ρ φ hfl]
   have h0 : run K ρ φ (.plain .err) .zero (emptyState n) = some ((.el0 Nat 0, .plain (.ty0 Nat)), emptyState n) := rfl
   rw [h0]
   simp only [Option.bind]
-  rw [show pushBindShaped (emptyState n) _ = (emptyState n).pushBind (yB K n) from rfl, run_seq, SM.bind_apply,
-    run_letIn]
+  rw [show pushBindShaped (emptyState n) _ = (emptyState n).pushBind (yB K n) from rfl, run_seq K ρ φ hfl, SM.bind_apply,
+    run_letIn K ρ φ hfl]
   have h1 : run K ρ φ (.plain .err) .zero ((emptyState n).pushBind (yB K n))
       = some ((.el0 Nat 0, .plain (.ty0 Nat)), (emptyState n).pushBind (yB K n)) := rfl
   rw [h1]
   simp only [Option.bind]
-  rw [show pushBindShaped ((emptyState n).pushBind (yB K n)) _ = b1 K n from rfl, assign_b1]
+  rw [show pushBindShaped ((emptyState n).pushBind (yB K n)) _ = b1 K n from rfl, assign_b1 K ρ φ hfl]
   simp only
-  rw [drop_b5, run_place]
+  rw [drop_b5, run_place K ρ φ hfl]
   obtain ⟨T, hc⟩ := content_b7 K φ n
   rw [readPlace_of K φ _ _ _ _ _ _ _ _ hc]
   simp only [Sem.whole, not_true_eq_false, ite_false]

@@ -254,7 +254,12 @@ theorem run_const (K : RunCtx) (ρ : Assignment) (φ : Future) (h : TyS) (n : St
     run K ρ φ h (.const n) s = some (K.C.global n, s) := rfl
 
 theorem run_succ_zero (K : RunCtx) (ρ : Assignment) (φ : Future) (h : TyS) (s : SState) :
-    run K ρ φ h (.succ .zero) s = some (((Sem.el0 Nat 0).succ, .plain (.ty0 Nat)), s) := rfl
+    run K ρ φ h (.succ .zero) s = some (((Sem.el0 Nat 0).succ, .plain (.ty0 Nat)), s) := by
+  -- statement or not (`SM.stmtIf`), the value and the state are the same
+  rw [run]
+  show SM.stmtIf (K.D.flags (scopeOf s) (.succ .zero)).1 _ s = _
+  generalize (K.D.flags (scopeOf s) (.succ .zero)).1 = b
+  cases b <;> rfl
 
 /-- `Nat`'s stored type value means the carrier `Nat`, with no shape. -/
 theorem globalTyS_nat (K : RunCtx) (ρ : Assignment) : globalTyS ρ K .tNat = .plain (.ty0 Nat) := rfl

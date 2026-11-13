@@ -104,6 +104,16 @@ theorem SM_bind_congr {α : Type 3} (c : SM α) (k k' : α → SM Res) (s : SSta
   | none => rfl
   | some x => exact hk x.1 x.2
 
+/-- A statement position keeps the equality of runs up to the result's type. -/
+theorem stmtIf_resVS_congr (b : Bool) {x x' : SM Res} {s : SState} (h : (x s).map resVS = (x' s).map resVS) :
+    (SM.stmtIf b x s).map resVS = (SM.stmtIf b x' s).map resVS := by
+  cases b with
+  | false => exact h
+  | true =>
+    simp only [SM.stmtIf, if_true]
+    cases hx : x s <;> cases hx' : x' s <;> simp [hx, hx', resVS] at h ⊢
+    exact h.1
+
 mutual
 /-- **A run with a hint-free tail reads no hint**: same value, same state at every hint. -/
 theorem run_hintIndep : ∀ (t : Term), Term.tailHintFree K.Γ t = true → ∀ (h h' : TyS) (s : SState),
@@ -111,6 +121,7 @@ theorem run_hintIndep : ∀ (t : Term), Term.tailHintFree K.Γ t = true → ∀ 
   | .letIn x u w, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     rw [run, run]
+    refine stmtIf_resVS_congr _ ?_
     cases hu : run K ρ φ (.plain .err) u s with
     | none => simp only [Bind.bind, hu, Option.bind_none', Option.map_none]
     | some x =>
@@ -120,6 +131,7 @@ theorem run_hintIndep : ∀ (t : Term), Term.tailHintFree K.Γ t = true → ∀ 
   | .seq u w, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     rw [run, run]
+    refine stmtIf_resVS_congr _ ?_
     cases hu : run K ρ φ (.plain .err) u s with
     | none => simp only [Bind.bind, Monad.toBind, instMonadSM, hu]
     | some x =>
@@ -128,6 +140,7 @@ theorem run_hintIndep : ∀ (t : Term), Term.tailHintFree K.Γ t = true → ∀ 
   | .matchNat p z u, ht, h, h', s => by
     simp only [Term.tailHintFree, Bool.and_eq_true] at ht
     rw [run, run]
+    refine stmtIf_resVS_congr _ ?_
     cases hc : contentOf K φ p s with
     | none => simp only [Bind.bind, hc, Option.bind_none', Option.map_none]
     | some x =>
@@ -141,6 +154,7 @@ theorem run_hintIndep : ∀ (t : Term), Term.tailHintFree K.Γ t = true → ∀ 
   | .matchInd p ty arms, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     rw [run, run]
+    refine stmtIf_resVS_congr _ ?_
     cases hc : contentOf K φ p s with
     | none => simp only [Bind.bind, hc, Option.bind_none', Option.map_none]
     | some x =>
@@ -153,6 +167,7 @@ theorem run_hintIndep : ∀ (t : Term), Term.tailHintFree K.Γ t = true → ∀ 
   | .ctor ty c hd ps args, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     rw [run, run]
+    refine stmtIf_resVS_congr _ ?_
     cases hfind : K.Γ.find? (·.name == ty) with
     | none => simp only [hfind]
     | some d =>
