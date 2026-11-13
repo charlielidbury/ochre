@@ -140,4 +140,16 @@ noncomputable def Value.tyM (ρ : Assignment) (φ : Future) (T : Value) : TyM :=
 
 end
 
+
+/-- A constructor value of a parameterised declaration with no parameters recorded (D88/D89:
+the checker never builds one; its meaning would read the hint's data). -/
+def _root_.Ochr.Value.bareCtor (Γ : List IndDecl) : Value → Bool
+  | .ind ty _ _ [] _ => match Γ.find? (·.name == ty) with | some d => !d.params.isEmpty | none => false
+  | _ => false
+
+/-- A sealed program (its meaning is its run at the hint: hint-dependent by design, D89). -/
+def _root_.Ochr.Value.isSealed : Value → Bool
+  | .sealed _ => true
+  | _ => false
+
 end Ochr.Meaning
