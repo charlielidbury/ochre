@@ -185,12 +185,22 @@ theorem rinv_stateOf (n : Nat) (vs : List Sem) (tys : List (DeclInfo × TyS)) :
         | some x => rw [hz] at hb; cases hb; exact ⟨x.1, rfl⟩
     · exact ⟨.err, rfl⟩
 
-theorem rinv_extendBy {s : SState} (hi : RInv L s) : ∀ acc : List Sem, RInv L (extendBy s acc)
-  | [] => hi
-  | a :: acc => by
-    unfold extendBy
+theorem rinv_foldl_pushBind : ∀ (bl : List SBinding), (∀ b ∈ bl, ∃ c, b.val = fun _ => c) → ∀ {s : SState},
+    RInv L s → RInv L (bl.foldl (fun s b => s.pushBind b) s)
+  | [], _, _, hi => hi
+  | b :: bl, hb, _, hi => by
+    obtain ⟨c, hc⟩ := hb b (List.mem_cons_self ..)
     simp only [List.foldl_cons]
-    exact rinv_extendBy (pushBind_rinv hi _ a rfl) acc
+    exact rinv_foldl_pushBind bl (fun b' hb' => hb b' (List.mem_cons_of_mem _ hb')) (pushBind_rinv hi b c hc)
+
+/-- A frame extended by parameters, at whatever types and readings (`bs`), keeps the invariant:
+the bindings hold constants. -/
+theorem rinv_extendBy {s : SState} (hi : RInv L s) (bs : List PBind) (acc : List Sem) : RInv L (extendBy s bs acc) := by
+  unfold extendBy
+  refine rinv_foldl_pushBind _ (fun b hb => ?_) hi
+  simp only [extendBinds, List.mem_map] at hb
+  obtain ⟨ai, -, rfl⟩ := hb
+  exact ⟨ai.1, rfl⟩
 
 end
 
@@ -209,25 +219,27 @@ theorem anyAtomList_of_mem {P : Value → Bool} {t : Term} : ∀ {ts : List Term
 outside the mutual induction, with the body's congruence as a hypothesis. -/
 
 section FixDefs
-variable (K : RunCtx) (ρ : Assignment) (φ : Future) (dc : List DeclInfo × DeclInfo)
+variable (K : RunCtx) (ρ : Assignment) (φ : Future) (fb : List PBind × DeclInfo)
 
 /-- A borrow parameter's or a plain parameter's push into the closure's frame. -/
 noncomputable def fixStep (sa : SState × List Sem × List Pos) (ap : Sem × PiParam) : SState × List Sem × List Pos :=
   let (s, acc, cells) := sa
+  let T : TyS := match fb.1[acc.length]? with | some b => b.1 acc | none => .plain (ap.2.dom acc)
+  let d : DeclInfo := match fb.1[acc.length]? with | some b => b.2 | none => .other
   if ap.2.isRef then
     let (l, s) := s.freshLoan
     let s := s.pushTemp fun ψ => ψ l
     let cell : Pos := .temp s.topIdx (((s.env.getLast?).map (·.temps.length)).getD 1 - 1)
-    let s := pushBindShaped s { ty := ⟨ap.2.dom acc, none, some l, none⟩, val := fun _ => ap.1, decl := dc.1.getD acc.length .other }
+    let s := pushBindShaped s { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
     (s, acc ++ [ap.1], cells ++ [cell])
   else
-    (s.pushBind { ty := .plain (ap.2.dom acc), val := fun _ => ap.1, decl := dc.1.getD acc.length .other }, acc ++ [ap.1], cells)
+    (s.pushBind { ty := { T with label := none }, val := fun _ => ap.1, decl := d }, acc ++ [ap.1], cells)
 
 /-- The closure's body run, at a meaning of `self` and arguments (`bodyAt`). -/
 noncomputable def fixBodyAt (s : SState) (ps : List PiParam) (out : PiOut) (piT : TyM) (start : Nat) (body : Term)
     (selfM : Sem) (args : List Sem) : Option BodyOut :=
-  let s₁ := s.pushBind { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM, decl := .pi dc.2 }
-  let (s₂, _, cells) := (args.zip ps).foldl (fixStep dc) (s₁, [], [])
+  let s₁ := s.pushBind { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM, decl := .pi fb.2 }
+  let (s₂, _, cells) := (args.zip ps).foldl (fixStep fb) (s₁, [], [])
   let codT := match out with | .data B => B args | .ref U => U args
   match run K ρ φ (.plain codT) body s₂ with
   | some ((r, R), s₃) =>
@@ -241,14 +253,14 @@ noncomputable def fixBodyAt (s : SState) (ps : List PiParam) (out : PiOut) (piT 
 noncomputable def fixStage (l : Nat) (s : SState) (ps : List PiParam) (out : PiOut) (piT : TyM) (start : Nat)
     (body : Term) : Nat → List Sem → Option BodyOut :=
   Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none)
-    (fun _ gk => fixBodyAt K ρ φ dc s ps out piT start body (closureAt l φ ps out gk))
+    (fun _ gk => fixBodyAt K ρ φ fb s ps out piT start body (closureAt l φ ps out gk))
 
 /-- A Π-term's or closure's output type, as a function of the parameters. -/
-noncomputable def fixOut (s : SState) (c : Term) : PiOut := match c with
-  | .ref U => .ref fun acc => match run K ρ φ (.plain .err) U (extendBy s acc) with
+noncomputable def fixOut (s : SState) (bs : List PBind) (c : Term) : PiOut := match c with
+  | .ref U => .ref fun acc => match run K ρ φ (.plain .err) U (extendBy s bs acc) with
     | some ((v, _), _) => v.asTy
     | none => .err
-  | c => .data fun acc => match run K ρ φ (.plain .err) c (extendBy s acc) with
+  | c => .data fun acc => match run K ρ φ (.plain .err) c (extendBy s bs acc) with
     | some ((v, _), _) => v.asTy
     | none => .err
 
@@ -266,8 +278,8 @@ noncomputable def fixRank (ps : List PiParam) (dec : Option Nat) (args : List Se
 /-- The closure's function: the guarded fixpoint by stages, or the body with `self` erroneous. -/
 noncomputable def fixG (l : Nat) (s : SState) (ps : List PiParam) (out : PiOut) (piT : TyM) (start : Nat)
     (dec : Option Nat) (body : Term) : List Sem → Option BodyOut := match dec with
-  | some _ => fun args => fixStage K ρ φ dc l s ps out piT start body (fixRank K ps dec args + 1) args
-  | none => fixBodyAt K ρ φ dc s ps out piT start body .err
+  | some _ => fun args => fixStage K ρ φ fb l s ps out piT start body (fixRank K ps dec args + 1) args
+  | none => fixBodyAt K ρ φ fb s ps out piT start body .err
 
 /-- Forming the closure moves its non-copy captures. -/
 noncomputable def fixMoves (t : Term) (s : SState) : SState :=
@@ -280,11 +292,11 @@ noncomputable def fixMoves (t : Term) (s : SState) : SState :=
 theorem run_fix_def (hint : TyS) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat)
     (body : Term) (s : SState) :
     run K ρ φ hint (.fix self hs ds c dec body) s =
-      SM.stmtIf (K.D.flags (scopeOf s) (.fix self hs ds c dec body)).1 (fun _ => some ((closureAt (K.D.piSort (scopeOf s) (.pi hs ds c)) φ (runDoms K ρ φ s ds) (fixOut K ρ φ s c)
-          (fixG K ρ φ (K.D.fixDecls (scopeOf s) ds c) (K.D.piSort (scopeOf s) (.pi hs ds c)) s (runDoms K ρ φ s ds) (fixOut K ρ φ s c)
-            (piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ s ds) (fixOut K ρ φ s c)) s.nextLoan dec body),
-        ⟨piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ s ds) (fixOut K ρ φ s c),
-          some (runDoms K ρ φ s ds, fixOut K ρ φ s c), none, none⟩),
+      SM.stmtIf (K.D.flags (scopeOf s) (.fix self hs ds c dec body)).1 (fun _ => some ((closureAt (K.D.piSort (scopeOf s) (.pi hs ds c)) φ (runDoms K ρ φ s ds) (fixOut K ρ φ s (bindsOf K ρ φ s ds) c)
+          (fixG K ρ φ (bindsOf K ρ φ s ds, K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c) (K.D.piSort (scopeOf s) (.pi hs ds c)) s (runDoms K ρ φ s ds) (fixOut K ρ φ s (bindsOf K ρ φ s ds) c)
+            (piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ s ds) (fixOut K ρ φ s (bindsOf K ρ φ s ds) c)) s.nextLoan dec body),
+        ⟨piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ s ds) (fixOut K ρ φ s (bindsOf K ρ φ s ds) c),
+          some (runDoms K ρ φ s ds, fixOut K ρ φ s (bindsOf K ρ φ s ds) c), none, none⟩),
         fixMoves K (.fix self hs ds c dec body) s)) s := by
   rw [run]
   rfl
@@ -294,7 +306,7 @@ end FixDefs
 /-! ## Forming the closure's frame: the cells are ordered at the start -/
 
 section FixProps
-variable {L : Nat → Prop} {dc : List DeclInfo × DeclInfo}
+variable {L : Nat → Prop} {fb : List PBind × DeclInfo}
 
 /-- A label added to `L` can be dropped again when it is live or read by no one. -/
 theorem rinv_drop_one {s : SState} {n : Nat} (h : RInv (fun y => L y ∨ y = n) s)
@@ -388,7 +400,7 @@ theorem indep_of_env_nil {s : SState} (he : s.env = []) (y : Nat) (q : Pos) : In
   rw [valAt_of_not_mem _ _ this]; intro _ _; rfl
 
 theorem fixStep_inv {start : Nat} {sa : SState × List Sem × List Pos} (h : FormInv L start sa) (ap : Sem × PiParam) :
-    FormInv L start (fixStep dc sa ap) := by
+    FormInv L start (fixStep fb sa ap) := by
   obtain ⟨s, acc, cells⟩ := sa
   obtain ⟨hi, hst, hcells⟩ := h
   dsimp only at hi hst hcells
@@ -410,7 +422,7 @@ theorem fixStep_inv {start : Nat} {sa : SState × List Sem × List Pos} (h : For
       intro y; rw [← hT, live_pushTemp hi₀.2.2, hlive₀]
     have hshapeT : T.shape = s.shape := by rw [← hT, ← hshape₀]; rfl
     have hnlT : T.nextLoan = s.nextLoan + 1 := by rw [← hT, ← hnl₀]; rfl
-    generalize hb : ({ ty := ⟨ap.2.dom acc, none, some s.nextLoan, none⟩, val := fun _ => ap.1, decl := dc.1.getD acc.length .other } : SBinding) = b
+    generalize hb : ({ ty := { (match fb.1[acc.length]? with | some b => b.1 acc | none => TyS.plain (ap.2.dom acc)) with label := some s.nextLoan }, val := fun _ => ap.1, decl := (match fb.1[acc.length]? with | some b => b.2 | none => DeclInfo.other) } : SBinding) = b
     have hbl : b.ty.label = some s.nextLoan := by rw [← hb]
     have hi'' : RInv (fun y => L y ∨ y = s.nextLoan) (pushBindShaped T b) :=
       pushBindShaped_rinv hiT b ap.1 (by rw [← hb]) fun l hl => by
@@ -481,7 +493,7 @@ theorem fixStep_inv {start : Nat} {sa : SState × List Sem × List Pos} (h : For
     · exact .inr (by simp [SState.pushBind, he])
 
 theorem foldl_fixStep_inv {start : Nat} : ∀ (xs : List (Sem × PiParam)) (sa : SState × List Sem × List Pos),
-    FormInv L start sa → FormInv L start (xs.foldl (fixStep dc) sa)
+    FormInv L start sa → FormInv L start (xs.foldl (fixStep fb) sa)
   | [], _, h => h
   | x :: xs, sa, h => foldl_fixStep_inv xs _ (fixStep_inv h x)
 
@@ -490,7 +502,7 @@ end FixProps
 /-! ## The closure's body at two futures, and its finals -/
 
 section FixCongr
-variable (K : RunCtx) (ρ : Assignment) {φ φ' : Future} {L : Nat → Prop} {dc : List DeclInfo × DeclInfo}
+variable (K : RunCtx) (ρ : Assignment) {φ φ' : Future} {L : Nat → Prop} {fb : List PBind × DeclInfo}
 
 theorem formInv_init {s : SState} (hi : RInv L s) (b : SBinding) (c : Sem) (hb : b.val = fun _ => c) :
     FormInv L s.nextLoan (s.pushBind b, [], []) :=
@@ -498,12 +510,12 @@ theorem formInv_init {s : SState} (hi : RInv L s) (b : SBinding) (c : Sem) (hb :
 
 theorem fixBodyAt_congr {body : Term} (hb : ∀ hint s₂, RInv L s₂ → run K ρ φ hint body s₂ = run K ρ φ' hint body s₂)
     {s : SState} (hi : RInv L s) (ps : List PiParam) (out : PiOut) (piT : TyM) (selfM : Sem) (args : List Sem) :
-    fixBodyAt K ρ φ dc s ps out piT s.nextLoan body selfM args = fixBodyAt K ρ φ' dc s ps out piT s.nextLoan body selfM args := by
+    fixBodyAt K ρ φ fb s ps out piT s.nextLoan body selfM args = fixBodyAt K ρ φ' fb s ps out piT s.nextLoan body selfM args := by
   unfold fixBodyAt
   dsimp only
-  have hF := foldl_fixStep_inv (dc := dc) (args.zip ps) _
-    (formInv_init (L := L) hi { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM, decl := .pi dc.2 } selfM rfl)
-  generalize (args.zip ps).foldl (fixStep dc) (s.pushBind { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM, decl := .pi dc.2 }, [], []) = F at hF ⊢
+  have hF := foldl_fixStep_inv (fb := fb) (args.zip ps) _
+    (formInv_init (L := L) hi { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM, decl := .pi fb.2 } selfM rfl)
+  generalize (args.zip ps).foldl (fixStep fb) (s.pushBind { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM, decl := .pi fb.2 }, [], []) = F at hF ⊢
   obtain ⟨s₂, acc, cells⟩ := F
   dsimp only
   rw [hb _ s₂ hF.1]
@@ -527,14 +539,14 @@ theorem finals_of_pop {s₂ s₃ : SState} {start : Nat} (hi₃ : RInv L s₃) (
 
 theorem fixBodyAt_finals (hK : ∀ n, (K.C.global n).2.label = none) {s : SState} (hi : RInv L s)
     (ps : List PiParam) (out : PiOut) (piT : TyM) (body : Term) (selfM : Sem) (args : List Sem) (o : BodyOut)
-    (h : fixBodyAt K ρ φ dc s ps out piT s.nextLoan body selfM args = some o) : FinalsIn L out o := by
-  have hF := foldl_fixStep_inv (dc := dc) (args.zip ps) _
-    (formInv_init (L := L) hi { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM, decl := .pi dc.2 } selfM rfl)
+    (h : fixBodyAt K ρ φ fb s ps out piT s.nextLoan body selfM args = some o) : FinalsIn L out o := by
+  have hF := foldl_fixStep_inv (fb := fb) (args.zip ps) _
+    (formInv_init (L := L) hi { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM, decl := .pi fb.2 } selfM rfl)
   cases out with
   | data B =>
     unfold fixBodyAt at h
     dsimp only at h
-    generalize hFF : (args.zip ps).foldl (fixStep dc) (s.pushBind { ty := ⟨piT, some (ps, PiOut.data B), none, none⟩, val := fun _ => selfM, decl := .pi dc.2 }, [], []) = F at hF h
+    generalize hFF : (args.zip ps).foldl (fixStep fb) (s.pushBind { ty := ⟨piT, some (ps, PiOut.data B), none, none⟩, val := fun _ => selfM, decl := .pi fb.2 }, [], []) = F at hF h
     obtain ⟨s₂, acc, cells⟩ := F
     obtain ⟨hi₂, hst₂, hcells⟩ := hF
     dsimp only at h hi₂ hst₂ hcells
@@ -552,7 +564,7 @@ theorem fixBodyAt_finals (hK : ∀ n, (K.C.global n).2.label = none) {s : SState
   | ref U =>
     unfold fixBodyAt at h
     dsimp only at h
-    generalize hFF : (args.zip ps).foldl (fixStep dc) (s.pushBind { ty := ⟨piT, some (ps, PiOut.ref U), none, none⟩, val := fun _ => selfM, decl := .pi dc.2 }, [], []) = F at hF h
+    generalize hFF : (args.zip ps).foldl (fixStep fb) (s.pushBind { ty := ⟨piT, some (ps, PiOut.ref U), none, none⟩, val := fun _ => selfM, decl := .pi fb.2 }, [], []) = F at hF h
     obtain ⟨s₂, acc, cells⟩ := F
     obtain ⟨hi₂, hst₂, hcells⟩ := hF
     dsimp only at h hi₂ hst₂ hcells
@@ -574,17 +586,17 @@ only `L` and the returned label: by induction on the stage, with `closureAt_cong
 theorem fixStage_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (hφ : ∀ l, L l → φ l = φ' l)
     (hb : ∀ hint s₂, RInv L s₂ → run K ρ φ hint body s₂ = run K ρ φ' hint body s₂)
     {s : SState} (hi : RInv L s) (l : Nat) (ps : List PiParam) (out : PiOut) (piT : TyM) :
-    ∀ k, fixStage K ρ φ dc l s ps out piT s.nextLoan body k = fixStage K ρ φ' dc l s ps out piT s.nextLoan body k ∧
-      ∀ args o, fixStage K ρ φ dc l s ps out piT s.nextLoan body k args = some o → FinalsIn L out o
+    ∀ k, fixStage K ρ φ fb l s ps out piT s.nextLoan body k = fixStage K ρ φ' fb l s ps out piT s.nextLoan body k ∧
+      ∀ args o, fixStage K ρ φ fb l s ps out piT s.nextLoan body k args = some o → FinalsIn L out o
   | 0 => ⟨rfl, fun _ _ h => by cases h⟩
   | k + 1 => by
     obtain ⟨ih1, ih2⟩ := fixStage_congr hK hφ hb hi l ps out piT k
-    have hcl : closureAt l φ ps out (fixStage K ρ φ dc l s ps out piT s.nextLoan body k)
-        = closureAt l φ' ps out (fixStage K ρ φ' dc l s ps out piT s.nextLoan body k) := by
+    have hcl : closureAt l φ ps out (fixStage K ρ φ fb l s ps out piT s.nextLoan body k)
+        = closureAt l φ' ps out (fixStage K ρ φ' fb l s ps out piT s.nextLoan body k) := by
       rw [← ih1]; exact closureAt_congr hφ l ps out _ ih2
     refine ⟨?_, fun args o h => ?_⟩
-    · show fixBodyAt K ρ φ dc s ps out piT s.nextLoan body (closureAt l φ ps out (fixStage K ρ φ dc l s ps out piT s.nextLoan body k))
-        = fixBodyAt K ρ φ' dc s ps out piT s.nextLoan body (closureAt l φ' ps out (fixStage K ρ φ' dc l s ps out piT s.nextLoan body k))
+    · show fixBodyAt K ρ φ fb s ps out piT s.nextLoan body (closureAt l φ ps out (fixStage K ρ φ fb l s ps out piT s.nextLoan body k))
+        = fixBodyAt K ρ φ' fb s ps out piT s.nextLoan body (closureAt l φ' ps out (fixStage K ρ φ' fb l s ps out piT s.nextLoan body k))
       rw [hcl]
       funext args
       exact fixBodyAt_congr K ρ hb hi ps out piT _ args
@@ -593,8 +605,8 @@ theorem fixStage_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none)
 theorem fixG_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (hφ : ∀ l, L l → φ l = φ' l)
     (hb : ∀ hint s₂, RInv L s₂ → run K ρ φ hint body s₂ = run K ρ φ' hint body s₂)
     {s : SState} (hi : RInv L s) (l : Nat) (ps : List PiParam) (out : PiOut) (piT : TyM) (dec : Option Nat) :
-    fixG K ρ φ dc l s ps out piT s.nextLoan dec body = fixG K ρ φ' dc l s ps out piT s.nextLoan dec body ∧
-      ∀ args o, fixG K ρ φ dc l s ps out piT s.nextLoan dec body args = some o → FinalsIn L out o := by
+    fixG K ρ φ fb l s ps out piT s.nextLoan dec body = fixG K ρ φ' fb l s ps out piT s.nextLoan dec body ∧
+      ∀ args o, fixG K ρ φ fb l s ps out piT s.nextLoan dec body args = some o → FinalsIn L out o := by
   cases dec with
   | none =>
     refine ⟨funext fun args => fixBodyAt_congr K ρ hb hi ps out piT _ args, fun args o h => ?_⟩
@@ -812,15 +824,16 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     · exact hi₂
   | .pi hs ds c, hint, s, L, hφ, ht, hi => by
     rw [run, run]
-    have hds := runDoms_congrE hK s L hφ hi ds (fun l h => ht l (by simp [Term.anyAtom, h]))
-    have hc : ∀ acc, run K ρ φ (.plain .err) c (extendBy s acc) = run K ρ φ' (.plain .err) c (extendBy s acc) :=
-      fun acc => run_congrE hK c _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi acc)
+    have hbs := runBinds_congrE hK s L hφ hi (K.D.paramDecls (scopeOf s) ds) ds []
+      (fun l h => ht l (by simp [Term.anyAtom, h]))
+    have hc : ∀ bs acc, run K ρ φ (.plain .err) c (extendBy s bs acc) = run K ρ φ' (.plain .err) c (extendBy s bs acc) :=
+      fun bs acc => run_congrE hK c _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi bs acc)
     dsimp only
-    rw [hds]
+    rw [hbs]
     cases c with
     | ref U =>
-      have hU : ∀ acc, run K ρ φ (.plain .err) U (extendBy s acc) = run K ρ φ' (.plain .err) U (extendBy s acc) :=
-        fun acc => run_congrE hK U _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi acc)
+      have hU : ∀ bs acc, run K ρ φ (.plain .err) U (extendBy s bs acc) = run K ρ φ' (.plain .err) U (extendBy s bs acc) :=
+        fun bs acc => run_congrE hK U _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi bs acc)
       simp only [hU]
     | _ => simp only [hc]
   | .ctor ty c hh ps args, hint, s, L, hφ, ht, hi => by
@@ -907,21 +920,25 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     rw [run.eq_39 K ρ φ hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3,
       run.eq_39 K ρ φ' hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3]
   | .fix self hs ds c dec body, hint, s, L, hφ, ht, hi => by
-    have hds := runDoms_congrE hK s L hφ hi ds (fun l h => ht l (by simp [Term.anyAtom, h]))
-    have hc : ∀ acc, run K ρ φ (.plain .err) c (extendBy s acc) = run K ρ φ' (.plain .err) c (extendBy s acc) :=
-      fun acc => run_congrE hK c _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi acc)
+    have hbs : bindsOf K ρ φ s ds = bindsOf K ρ φ' s ds :=
+      runBinds_congrE hK s L hφ hi (K.D.paramDecls (scopeOf s) ds) ds [] (fun l h => ht l (by simp [Term.anyAtom, h]))
+    have hds : runDoms K ρ φ s ds = runDoms K ρ φ' s ds := by unfold runDoms; rw [hbs]
+    have hc : ∀ bs acc, run K ρ φ (.plain .err) c (extendBy s bs acc) = run K ρ φ' (.plain .err) c (extendBy s bs acc) :=
+      fun bs acc => run_congrE hK c _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi bs acc)
     have hb : ∀ (hint : TyS) (s₂ : SState), RInv L s₂ → run K ρ φ hint body s₂ = run K ρ φ' hint body s₂ :=
       fun hint s₂ hi₂ => run_congrE hK body hint s₂ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₂
-    have hout : fixOut K ρ φ s c = fixOut K ρ φ' s c := by
+    have hout : ∀ bs, fixOut K ρ φ s bs c = fixOut K ρ φ' s bs c := by
+      intro bs
       cases c with
       | ref U =>
-        have hU : ∀ acc, run K ρ φ (.plain .err) U (extendBy s acc) = run K ρ φ' (.plain .err) U (extendBy s acc) :=
-          fun acc => run_congrE hK U _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi acc)
+        have hU : ∀ bs acc, run K ρ φ (.plain .err) U (extendBy s bs acc) = run K ρ φ' (.plain .err) U (extendBy s bs acc) :=
+          fun bs acc => run_congrE hK U _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi bs acc)
         simp only [fixOut, hU]
       | _ => simp only [fixOut, hc]
-    rw [run_fix_def, run_fix_def, hds, hout]
+    rw [run_fix_def, run_fix_def, hds, hbs, hout]
     obtain ⟨hg1, hg2⟩ := fixG_congr K ρ hK hφ hb hi (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ' s ds)
-      (fixOut K ρ φ' s c) (piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ' s ds) (fixOut K ρ φ' s c)) dec
+      (fixOut K ρ φ' s (bindsOf K ρ φ' s ds) c)
+      (piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ' s ds) (fixOut K ρ φ' s (bindsOf K ρ φ' s ds) c)) dec
     rw [← hg1, closureAt_congr hφ _ _ _ _ hg2]
 
 theorem meanV_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (v : Value) (hint : TyS),
@@ -998,21 +1015,24 @@ theorem runAll_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (ts : Li
     · rw [e] at ht ⊢; exact run_congrE hK a hint s L hφ ht hi
     · exact runAll_congrE hK as t h hint s L hφ ht hi
 
-theorem runDoms_congrE (hK : ∀ n, (K.C.global n).2.label = none) (s : SState) (L : Nat → Prop)
-    (hφ : ∀ l, L l → φ l = φ' l) (hi : RInv L s) : ∀ (ds : List Term),
-    (∀ l, Term.anyAtomList (· == .loan l) ds = true → L l) → runDoms K ρ φ s ds = runDoms K ρ φ' s ds
-  | [], _ => rfl
-  | d :: ds, ht => by
-    have hds := runDoms_congrE hK s L hφ hi ds (fun l h => ht l (by simp [Term.anyAtomList, h]))
-    have hd : ∀ acc, run K ρ φ (.plain .err) d (extendBy s acc) = run K ρ φ' (.plain .err) d (extendBy s acc) :=
-      fun acc => run_congrE hK d _ _ L hφ (fun l h => ht l (by simp [Term.anyAtomList, h])) (rinv_extendBy hi acc)
+theorem runBinds_congrE (hK : ∀ n, (K.C.global n).2.label = none) (s : SState) (L : Nat → Prop)
+    (hφ : ∀ l, L l → φ l = φ' l) (hi : RInv L s) (dcs : List DeclInfo) : ∀ (ds : List Term) (pre : List PBind),
+    (∀ l, Term.anyAtomList (· == .loan l) ds = true → L l) →
+    runBinds K ρ φ s dcs pre ds = runBinds K ρ φ' s dcs pre ds
+  | [], _, _ => rfl
+  | d :: ds, pre, ht => by
+    have hds := fun pre' => runBinds_congrE hK s L hφ hi dcs ds pre' (fun l h => ht l (by simp [Term.anyAtomList, h]))
+    have hd : (fun acc => run K ρ φ (.plain .err) d (extendBy s pre acc))
+        = (fun acc => run K ρ φ' (.plain .err) d (extendBy s pre acc)) :=
+      funext fun acc => run_congrE hK d _ _ L hφ (fun l h => ht l (by simp [Term.anyAtomList, h])) (rinv_extendBy hi pre acc)
     cases d with
     | ref A =>
-      have hA : ∀ acc, run K ρ φ (.plain .err) A (extendBy s acc) = run K ρ φ' (.plain .err) A (extendBy s acc) :=
-        fun acc => run_congrE hK A _ _ L hφ (fun l h => ht l (by simp [Term.anyAtomList, Term.anyAtom, h]))
-          (rinv_extendBy hi acc)
-      simp only [runDoms, hA, hds]
-    | _ => simp only [runDoms, hd, hds]
+      have hA : (fun acc => run K ρ φ (.plain .err) A (extendBy s pre acc))
+          = (fun acc => run K ρ φ' (.plain .err) A (extendBy s pre acc)) :=
+        funext fun acc => run_congrE hK A _ _ L hφ (fun l h => ht l (by simp [Term.anyAtomList, Term.anyAtom, h]))
+          (rinv_extendBy hi pre acc)
+      simp only [runBinds, hA, hds]
+    | _ => simp only [runBinds, hd, hds]
 
 theorem runArgs_congrE (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool) (shape : Option (List PiParam × PiOut)) :
     ∀ (args : List Term) (i : Nat) (earlier : List Sem) (s : SState) (L : Nat → Prop), (∀ l, L l → φ l = φ' l) →
@@ -1114,25 +1134,27 @@ theorem piShapeOf_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : 
   | t, s, L, hφ, ht, hi => by
     cases t with
     | pi hs ds c =>
-      have hds := runDoms_congrE hK s L hφ hi ds (fun l h => ht l (by simp [Term.anyAtom, h]))
-      have hc : ∀ acc, run K ρ φ (.plain .err) c (extendBy s acc) = run K ρ φ' (.plain .err) c (extendBy s acc) :=
-        fun acc => run_congrE hK c _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi acc)
+      have hbs := runBinds_congrE hK s L hφ hi (K.D.paramDecls (scopeOf s) ds) ds []
+        (fun l h => ht l (by simp [Term.anyAtom, h]))
+      have hc : ∀ bs acc, run K ρ φ (.plain .err) c (extendBy s bs acc) = run K ρ φ' (.plain .err) c (extendBy s bs acc) :=
+        fun bs acc => run_congrE hK c _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi bs acc)
       cases c with
       | ref U =>
-        have hU : ∀ acc, run K ρ φ (.plain .err) U (extendBy s acc) = run K ρ φ' (.plain .err) U (extendBy s acc) :=
-          fun acc => run_congrE hK U _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi acc)
-        simp only [piShapeOf, hU, hds]
-      | _ => simp only [piShapeOf, hc, hds]
+        have hU : ∀ bs acc, run K ρ φ (.plain .err) U (extendBy s bs acc) = run K ρ φ' (.plain .err) U (extendBy s bs acc) :=
+          fun bs acc => run_congrE hK U _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi bs acc)
+        simp only [piShapeOf, hU, hbs]
+      | _ => simp only [piShapeOf, hc, hbs]
     | fix self hs ds c dec body =>
-      have hds := runDoms_congrE hK s L hφ hi ds (fun l h => ht l (by simp [Term.anyAtom, h]))
-      have hc : ∀ acc, run K ρ φ (.plain .err) c (extendBy s acc) = run K ρ φ' (.plain .err) c (extendBy s acc) :=
-        fun acc => run_congrE hK c _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi acc)
+      have hbs := runBinds_congrE hK s L hφ hi (K.D.paramDecls (scopeOf s) ds) ds []
+        (fun l h => ht l (by simp [Term.anyAtom, h]))
+      have hc : ∀ bs acc, run K ρ φ (.plain .err) c (extendBy s bs acc) = run K ρ φ' (.plain .err) c (extendBy s bs acc) :=
+        fun bs acc => run_congrE hK c _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi bs acc)
       cases c with
       | ref U =>
-        have hU : ∀ acc, run K ρ φ (.plain .err) U (extendBy s acc) = run K ρ φ' (.plain .err) U (extendBy s acc) :=
-          fun acc => run_congrE hK U _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi acc)
-        simp only [piShapeOf, hU, hds]
-      | _ => simp only [piShapeOf, hc, hds]
+        have hU : ∀ bs acc, run K ρ φ (.plain .err) U (extendBy s bs acc) = run K ρ φ' (.plain .err) U (extendBy s bs acc) :=
+          fun bs acc => run_congrE hK U _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi bs acc)
+        simp only [piShapeOf, hU, hbs]
+      | _ => simp only [piShapeOf, hc, hbs]
     | _ => simp only [piShapeOf]
 
 end

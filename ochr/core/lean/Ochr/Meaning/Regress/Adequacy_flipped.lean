@@ -45,3 +45,26 @@ theorem stmt_keeps (t : Term) (hint : TyS) (s : SState) (hfl : (K.D.flags (scope
      · exact ⟨e, hl⟩)
 
 end Ochr.Meaning.Regress.AdequacyFlip
+
+namespace Ochr.Meaning.Regress.AdequacyFlip
+open Ochr Ochr.Meaning
+
+variable (K : RunCtx) (ρ : Assignment) (φ : Future)
+
+/-- R6: a parameter whose domain term is a Π-type is bound with that Π's shape, so it can be
+called (`Regress/NoShape_R6.lean` records the failure before: a parameter was bound at `.plain _`).
+The `.fix` clause's frame binds parameter `i` at `(runBinds …)[i].1 acc`. -/
+theorem pi_param_has_shape (s : SState) (dcs : List DeclInfo) (pre : List PBind) (hs : List Hint)
+    (ds : List Term) (c : Term) (acc : List Sem) :
+    ((mkBind dcs pre fun acc => run K ρ φ (.plain .err) (.pi hs ds c) (extendBy s pre acc)).1 acc).shape.isSome = true := by
+  simp only [mkBind, run]
+  rfl
+
+/-- ... and that binder is the one `runBinds` gives a Π-typed parameter. -/
+theorem runBinds_pi (s : SState) (dcs : List DeclInfo) (pre : List PBind) (hs : List Hint)
+    (ds : List Term) (c : Term) (rest : List Term) :
+    (runBinds K ρ φ s dcs pre (.pi hs ds c :: rest)).head?
+      = some (mkBind dcs pre fun acc => run K ρ φ (.plain .err) (.pi hs ds c) (extendBy s pre acc)) := by
+  simp only [runBinds, List.head?_cons]
+
+end Ochr.Meaning.Regress.AdequacyFlip
