@@ -171,6 +171,24 @@ Risk list, ranked, each with its known fix — the next window takes them in thi
 8. **Adequacy notes** (differences from the checker, not leaks): closure capture-by-move leaves the captured holder's shape entry, so the later end gives the lent place `moved`.
 
 
+### Second lead (2026-11-13, from dcdd0a34): the four core lemmas landed; review of m2-proofs' proposals
+
+`spine-m2-proofs` (head dcdd0a34) is landed by fast-forward. `meanV_substLoan`, `run_substLoan`, `meanV_congr` and `run_congr` (`Lemmas.lean`, through `Locality`, `LocalityRun`, `RunPres`, `RunPresInd`, `RunOrd`, `RunCongr`, `SubstDefs`, `RunSubst`) are proved with no `sorry`; `#print axioms` on each gives `propext`, `Classical.choice`, `Quot.sound` (re-checked by this lead). The definition and statement proposals it carried are all ACCEPTED; none is a model fault:
+
+- **P1's declared loan shape** (266fbd18): `RunCtx.Λ : Nat → TyS`, read by the `.val (.loan l)` clause for the loan's Π-shape; `FillShape` (at every hint, `.val w` and `.val (loan ℓ)` give one `TyS`) replaces `NotCode` in the substitution pair. A data loan reads as before.
+- **`rePointed` joins `DecInvariant`** (266fbd18): `Id` reads the re-pointed bindings off its first side's text, so the substitution must not change them.
+- **The `.fix` pop keeps the returned label only at a `&` codomain** (266fbd18): a labelled result at a data codomain is ended with the rest.
+- **A copy, an embedded value and a statement call's result carry no label** (33549adb, 48a197e3): a result's label names only a borrow the run holds for that result.
+- **`hK`, `hord`, `hsh`** (dc786e0a, d92a418b): a global carries no label (`∀ n, (K.C.global n).2.label = none`; true of `Program.lean`'s `globalTyS` by construction); `run_congr`/`run_substLoan` assume the starting state's holders label-ordered and its shape entries real positions below the counter. The step lemmas use `meanV_substLoan`, which has no state hypothesis; the empty state satisfies both (`rinv_emptyState`).
+- **PROPOSAL 8** (dcdd0a34): a sealed program runs from `emptyState 0`, as a closure's code already ran from `stateOf 0`.
+
+Obligations these leave, each owned by the step statement that will use the lemma (none is discharged yet; `substV_loan_step_stmt` and `substEnv_loan_step_stmt` do not yet assume them):
+- `hD : DecInvariant K.D ℓ w` at the checker's decisions for a data fill (decide-scope's lane);
+- `hc : FillShape K ρ φ ℓ w`, from `K.Λ ℓ` being the Π-shape of the loan's position's declared type and typing; no statement ties `K.Λ` to the state yet (the same per-state question as `K.Δ = deltaOf …`);
+- `hK`, a hypothesis on the program meaning.
+
+**The counter concern (recorded, as the team lead asked).** The CHECKER re-runs a sealed program (`nfSealed`: `env := #[{}]`, the state's other fields kept) and runs a callee's body at its global, never-reused label counter (D37); the model runs both from the counter 0. So `nfSealed_step`, `closeCall_step` and `runBody_step` get from `evalCore_step` the run from `stateOf st.nextLoan _` and must compare it with the run from `stateOf 0 _`. That is `run_counter_indep`, the renaming lemma, which is therefore KEPT, and restated in the form those steps need: any two counters, a frame of future-free bindings, no condition on the term's loans (the old form required the loans below both counters, which the counter 0 never satisfies), compared on the result's meaning and shape. It is open (`sorry`), believed true (a fresh label never reaches a meaning: `run_congr` at `L :=` the term's loans; a loan is read as a constant of the ambient future, never through the state), and its proof is a simulation up to the shift of the labels, of the size of part (E). Not new with PROPOSAL 8: closures' code always ran from `stateOf 0`.
+
 ### Milestone 2: the reference run (`Run.lean`, the meaning of code [Q2]) — in progress
 
 Done (all building, structurally recursive, no `partial`):
