@@ -1,5 +1,6 @@
 import Ochr.Meaning.Lemmas
 import Ochr.Meaning.HintIndep
+import Ochr.Meaning.DecisionsInst
 import Ochr.Meaning.WF
 import Ochr.Machine
 import Ochr.Check
@@ -819,23 +820,30 @@ def scopeOf_sstate_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
 
 /-- `Decisions.flags` is `Decide.preFlags` where the latter answers. -/
 def flags_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st st' : MState) (t : Term) (d : DeclInfo) (fl : Bool × Bool)
+  ∀ (st st' : MState) (t : Term) (fl : Bool × Bool)
     (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st)
-    (h : Runs (Ochr.preFlags t d) st 2000000 (some fl) st'),
+    -- the decisions are the checker's own at `st` (`DecisionsInst.checkerDecisions`); the call
+    -- is the live form `Machine.evalAt` makes (decide-scope's `checkerDecisions_flags`)
+    (hD : K.D = checkerDecisions st fuel)
+    (h : Runs (do
+      let d ← withLive true (Ochr.declOf fuel false [] [] t)
+      pure ((← Ochr.preFlags t d).getD (false, false))) st fuel fl st'),
     K.D.flags (scopeOf (SM' K ρ st)) t = fl
 
 /-- `Decisions.placeDecl` is `Decide.placeDecl`. -/
 def placeDecl_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (p : Place) (d : DeclInfo)
     (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st)
-    (h : Runs (Ochr.placeDecl fuel (scopeOf (SM' K ρ st)) p) st fuel d st'),
+    (hD : K.D = checkerDecisions st fuel)
+    (h : Runs (withLive true (Ochr.placeDecl fuel [] p)) st fuel d st'),
     K.D.placeDecl (scopeOf (SM' K ρ st)) p = d
 
 /-- `Decisions.declOf` is `Decide.declOf` (unchecked mode). -/
 def declOf_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (t : Term) (d : DeclInfo)
     (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st)
-    (h : Runs (Ochr.declOf fuel false (scopeOf (SM' K ρ st)) [] t) st fuel d st'),
+    (hD : K.D = checkerDecisions st fuel)
+    (h : Runs (withLive true (Ochr.declOf fuel false [] [] t)) st fuel d st'),
     K.D.declOf (scopeOf (SM' K ρ st)) t = d
 
 /-- `Decisions.copy` is `Decide.declCopy`. -/
@@ -847,10 +855,10 @@ def copy_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
 
 /-- `Decisions.piSort` is `Decide.sortOf` of the Π-type value (D55: declared sort = computed). -/
 def piSort_aligned'_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st st' : MState)  (caps : List Value) (hs : List Hint)
-    (ds : List Term) (c : Term) (rd : List (DeclInfo × Value)) (l : Nat)
+  ∀ (st st' : MState) (hs : List Hint) (ds : List Term) (c : Term) (l : Nat)
     (hg : Good K.dm K.C K.Γ ρ st) (hΔ : K.Δ = deltaOf K ρ φ st)
-    (h : Runs (Ochr.sortOf fuel (.tPi caps (.pi hs ds c) rd)) st fuel l st'),
+    (hD : K.D = checkerDecisions st fuel)
+    (h : Runs (withLive true (Ochr.sortOf fuel (.tPi [] (.pi hs ds c) []))) st fuel l st'),
     K.D.piSort (scopeOf (SM' K ρ st)) (.pi hs ds c) = l
 
 /-- D84 [Join]: `Decisions.joinMoves` is `Decide.jdMoves` as `Machine.staticJoin` calls it (the
