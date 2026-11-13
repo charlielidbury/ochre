@@ -594,38 +594,17 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
       obtain ⟨psM, s₁, h1, h2⟩ := SM.bind_some h
       have e := runParams_state K ρ φ d ps 0 [] s s₁ psM h1
       subst e
-      have cont : ∀ ps' : List Sem, (if d.sort == 0 then
-            (do let _ ← runFields K ρ φ true d ps' c 0 [] args
-                pure ((.proof, ⟨K.dm.tyM d ps', none, none, some (ty, ps')⟩) : Res))
-          else
-            (do let fs ← runFields K ρ φ false d ps' c 0 [] args
-                pure ((K.dm.ctorM d ps' c fs, ⟨K.dm.tyM d ps', none, none, some (ty, ps')⟩) : Res))) s₁
-            = some (r, s') → RInv L s' ∧ LoU s' r.2.label ∧ EnvLe s₁ s' ∧ OrdKeep L s₁ s' := by
-        intro ps' h2
-        by_cases hs0 : (d.sort == 0) = true
-        · rw [if_pos hs0] at h2
-          obtain ⟨fs, s₂, h3, h4⟩ := SM.bind_some h2
-          obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
-          obtain ⟨hi₂, e₂, o₂⟩ := runFields_rinv hK _ d _ c args 0 [] _ _ fs hi h3
+      dsimp only at h2
+      obtain ⟨⟨fs, sol⟩, s₂, h3, h4⟩ := SM.bind_some h2
+      obtain ⟨hi₂, e₂, o₂⟩ := runFields_rinv hK _ d c args 0 _ [] _ _ _ hi h3
+      dsimp only at h4
+      split at h4
+      · split at h4
+        · obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
           exact rinv_ret L hi₂ e₂ o₂ rfl
-        · rw [if_neg hs0] at h2
-          obtain ⟨fs, s₂, h3, h4⟩ := SM.bind_some h2
-          obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
-          obtain ⟨hi₂, e₂, o₂⟩ := runFields_rinv hK _ d _ c args 0 [] _ _ fs hi h3
+        · obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
           exact rinv_ret L hi₂ e₂ o₂ rfl
-      by_cases hc : (ps.isEmpty && !d.params.isEmpty) = true
-      · rw [if_pos hc] at h2
-        cases hdata : hint.data with
-        | none => rw [hdata] at h2; cases h2
-        | some np =>
-          obtain ⟨n', ps''⟩ := np
-          rw [hdata] at h2
-          dsimp only at h2
-          by_cases hn : n' = ty
-          · rw [if_pos hn] at h2; exact cont ps'' h2
-          · rw [if_neg hn] at h2; cases h2
-      · rw [if_neg hc] at h2
-        exact cont psM h2
+      · cases h4
   | .fix self hs ds c dec body, hint, s, s', r, hi, h => by
     rw [run] at h
     rcases SM.erasedIf_some h with h | ⟨rfl, hl⟩
@@ -731,14 +710,15 @@ theorem runArgs_rinv (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool) (
     obtain ⟨hi₂, e₂, o₂⟩ := runArgs_rinv hK stmt shape as _ _ s₁ _ y hi₁ h3
     exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
 
-theorem runFields_rinv (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool) (d : IndDecl) (ps : List Sem) (c : Nat) :
-    ∀ (args : List Term) (i : Nat) (earlier : List Sem) (s s' : SState) (fs : List Sem), RInv L s →
-      runFields K ρ φ stmt d ps c i earlier args s = some (fs, s') → RInv L s' ∧ EnvLe s s' ∧ OrdKeep L s s'
-  | [], i, earlier, s, s', fs, hi, h => by
+theorem runFields_rinv (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool) (d : IndDecl) (c : Nat) :
+    ∀ (args : List Term) (i : Nat) (sol : List (Option Sem)) (earlier : List Sem) (s s' : SState)
+      (fs : List Sem × List (Option Sem)), RInv L s →
+      runFields K ρ φ stmt d c i sol earlier args s = some (fs, s') → RInv L s' ∧ EnvLe s s' ∧ OrdKeep L s s'
+  | [], i, sol, earlier, s, s', fs, hi, h => by
     simp only [runFields] at h
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h)
     exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
-  | a :: as, i, earlier, s, s', fs, hi, h => by
+  | a :: as, i, sol, earlier, s, s', fs, hi, h => by
     simp only [runFields] at h
     obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some h
     obtain ⟨y, s₂, h3, h4⟩ := SM.bind_some h2
@@ -749,7 +729,7 @@ theorem runFields_rinv (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool)
         exact ⟨hi₁, e₁, o₁⟩
       · exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
     obtain ⟨hi₁, e₁, o₁⟩ := hx
-    obtain ⟨hi₂, e₂, o₂⟩ := runFields_rinv hK stmt d ps c as _ _ s₁ _ y hi₁ h3
+    obtain ⟨hi₂, e₂, o₂⟩ := runFields_rinv hK stmt d c as _ _ _ s₁ _ y hi₁ h3
     exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
 
 theorem runArm_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (arms : List (Hint × Term)) (hint : TyS) (c : Nat)

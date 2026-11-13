@@ -73,6 +73,9 @@ type as a function of the meanings of the earlier parameters. -/
 structure PiParam : Type 3 where
   isRef : Bool
   dom : List Sem → TyM
+  /-- for a data type `D(ps)`, its declaration's name and parameters (`TyS.data`): the hint a
+  constructor argument with unwritten parameters reads (the audit's A8) -/
+  data : List Sem → Option (String × List Sem)
 
 /-- What a call returning `&U` from borrowed places with final contents `Fin` gives back: the
 returned borrow's content at return, and an injective backward function from the value the
@@ -133,16 +136,16 @@ def TyS.plain (T : TyM) : TyS := ⟨T, none, none, none⟩
 
 /-- `TailM (x : &Nat) : &Nat` as a level-0 Π-carrier: `Slice.lean`'s `TailMTy`, up to the
 accumulated `PUnit`. -/
-example : piCar0 [⟨true, fun _ => .ty0 Nat⟩] [] PUnit (.ref fun _ => .ty0 Nat)
+example : piCar0 [⟨true, fun _ => .ty0 Nat, fun _ => none⟩] [] PUnit (.ref fun _ => .ty0 Nat)
     = ((d : Nat) → Back (PUnit × Nat) Nat) := rfl
 
 /-- `AddM (x : &Nat) (y : Nat) : Unit`: from the starting content and `y` to `()` and the
 final content. -/
-example : piCar0 [⟨true, fun _ => .ty0 Nat⟩, ⟨false, fun _ => .ty0 Nat⟩] [] PUnit (.data fun _ => .ty0 Unit)
+example : piCar0 [⟨true, fun _ => .ty0 Nat, fun _ => none⟩, ⟨false, fun _ => .ty0 Nat, fun _ => none⟩] [] PUnit (.data fun _ => .ty0 Unit)
     = ((d : Nat) → (y : Nat) → Unit × (PUnit × Nat)) := rfl
 
 /-- `Π(A : Type₀). Π(x : A). A` at level 1: the polymorphic identity's type. -/
-example : piCar1 [⟨false, fun _ => .univ 1⟩, ⟨false, fun acc => (acc.getD 0 .err).asTy⟩] []
+example : piCar1 [⟨false, fun _ => .univ 1, fun _ => none⟩, ⟨false, fun acc => (acc.getD 0 .err).asTy, fun _ => none⟩] []
       (fun acc => (acc.getD 0 .err).asTy)
     = ((A : Type) → (x : ULift.{1} A) → ULift.{1} A) := rfl
 

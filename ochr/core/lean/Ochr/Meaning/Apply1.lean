@@ -668,7 +668,7 @@ namespace Apply1Sanity
 
 /-- The polymorphic identity's shape, `Π(A : Type₀). Π(x : A). A`. -/
 def idShape : List PiParam × PiOut :=
-  ([⟨false, fun _ => .univ 1⟩, ⟨false, fun acc => (acc.getD 0 .err).asTy⟩],
+  ([⟨false, fun _ => .univ 1, fun _ => none⟩, ⟨false, fun acc => (acc.getD 0 .err).asTy, fun _ => none⟩],
    .data fun acc => (acc.getD 0 .err).asTy)
 
 /-- `id (A : Type) (x : A) : A` at level 1: from a type and an element of it to that element
@@ -678,13 +678,13 @@ example : piCarL lvl1 idShape.1 [] PUnit.{2} idShape.2 = ((A : Type) → (x : UL
 
 /-- `Swap (V : Type) (a : &V) (b : &V) : Unit` (the suite's `BorrowTypes.lean`) at level 1: the
 two borrowed places' final contents, lifted, which `piCar1` cannot hold. -/
-example : piCarL lvl1 [⟨false, fun _ => .univ 1⟩, ⟨true, fun acc => (acc.getD 0 .err).asTy⟩,
-      ⟨true, fun acc => (acc.getD 0 .err).asTy⟩] [] PUnit.{2} (.data fun _ => .ty0 Unit)
+example : piCarL lvl1 [⟨false, fun _ => .univ 1, fun _ => none⟩, ⟨true, fun acc => (acc.getD 0 .err).asTy, fun _ => none⟩,
+      ⟨true, fun acc => (acc.getD 0 .err).asTy, fun _ => none⟩] [] PUnit.{2} (.data fun _ => .ty0 Unit)
     = ((V : Type) → (a : ULift.{1} V) → (b : ULift.{1} V) → ULift.{1} Unit × ((PUnit.{2} × ULift.{1} V) × ULift.{1} V)) :=
   rfl
 
 /-- `F (A : Type₁) : Type₁` at level 2: from a level-1 type to one. -/
-example : piCarL lvl2 [⟨false, fun _ => .univ 2⟩] [] PUnit.{3} (.data fun _ => .univ 2)
+example : piCarL lvl2 [⟨false, fun _ => .univ 2, fun _ => none⟩] [] PUnit.{3} (.data fun _ => .univ 2)
     = ((A : Type 1) → Type 1 × PUnit.{3}) :=
   rfl
 

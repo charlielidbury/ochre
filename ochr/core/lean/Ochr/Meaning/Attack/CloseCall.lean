@@ -37,7 +37,7 @@ namespace Ochr.Meaning.Attack
 open Ochr.Meaning Ochr.Meaning.Steps
 
 /-- `σ_g`'s shape: one borrow parameter of content type `Nat`, a borrow result of type `Nat`. -/
-def psG : List PiParam := [⟨true, fun _ => .ty0 Nat⟩]
+def psG : List PiParam := [⟨true, fun _ => .ty0 Nat, fun _ => none⟩]
 def outG : PiOut := .ref fun _ => .ty0 Nat
 
 /-- The carrier of `Π(x : &Nat). &Nat` at level 0: from a starting content to a forward value
