@@ -57,13 +57,13 @@ theorem foldl_endLabel_positions : ∀ (ls : List Nat) (s : SState), (ls.foldl S
   | [], _ => rfl
   | l :: ls, s => by rw [List.foldl_cons, foldl_endLabel_positions ls, endLabel_positions]
 
-theorem iterR_accStep_positions (p : Pos) : ∀ (k : Nat) (s : SState), (iterR (accStep p) k s).positions = s.positions
+theorem iterR_accStep_positions (p : Pos) (o : Sem → Sem) : ∀ (k : Nat) (s : SState), (iterR (accStep p o) k s).positions = s.positions
   | 0, _ => rfl
   | k + 1, s => by
-    show (accStep p (iterR (accStep p) k s)).positions = _
-    rw [accStep, foldl_endLabel_positions, iterR_accStep_positions p k]
+    show (accStep p o (iterR (accStep p o) k s)).positions = _
+    rw [accStep, foldl_endLabel_positions, iterR_accStep_positions p o k]
 
-theorem access_positions (s : SState) (p : Pos) : (s.access p).positions = s.positions := by
+theorem access_positions (s : SState) (p : Pos) (o : Sem → Sem) : (s.access p o).positions = s.positions := by
   rw [access_eq, foldl_range_iterR, iterR_accStep_positions]
 
 theorem varPos_mem {s : SState} {i : Nat} {pos : Pos} (h : s.varPos i = some pos) : pos ∈ s.positions := by
@@ -106,8 +106,8 @@ theorem contentOf_rinv {p : Place} {s s' : SState} {x : Sem × TyS × Pos × Lis
     split at h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
-      refine ⟨access_rinv hi pos, ?_⟩
-      show pos ∈ (s.access pos).positions
+      refine ⟨access_rinv hi pos _, ?_⟩
+      show pos ∈ (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).positions
       rw [access_positions]; exact resolve_mem hr
     · cases h
 
@@ -241,22 +241,22 @@ theorem joinDrop_rinv (entry : List Place) (t : Term) {s : SState} (hi : RInv L 
     · exact hi
     · split
       · rename_i pos steps hr
-        have hia := access_rinv hi pos
+        have hia := access_rinv hi pos (obsAt K (s.tyAt pos).m steps wholeOb)
         split
         · exact hia
         · exact hia
         · exact hia
         · have hie : RInv L (if steps.isEmpty = true then
-              (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-              else s.access pos) := by
+              (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+              else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) := by
             split
             · split
               · exact endLabel_rinv hia _
               · exact hia
             · exact hia
           generalize (if steps.isEmpty = true then
-              (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-              else s.access pos) = s₂ at hie ⊢
+              (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+              else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) = s₂ at hie ⊢
           exact setAt_rinv hie pos _
             ((hie.1 pos).comp (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps x).getD .err))
             (fun x hx => by
@@ -380,13 +380,13 @@ theorem lou_foldl_endLabel {y : Nat} : ∀ (ls : List Nat) {s : SState}, RInv L 
   | [], _, _, hy => hy
   | l :: ls, _, hi, hy => lou_foldl_endLabel ls (endLabel_rinv hi l) (lou_endLabel L hi.2.1 hy l)
 
-theorem lou_access {s : SState} (hi : RInv L s) {y : Nat} (hy : LoU1 s y) (p : Pos) : LoU1 (s.access p) y := by
+theorem lou_access {s : SState} (hi : RInv L s) {y : Nat} (hy : LoU1 s y) (p : Pos) (o : Sem → Sem) : LoU1 (s.access p o) y := by
   rw [access_eq, foldl_range_iterR]
   generalize s.liveLabels.length = k
   induction k with
   | zero => exact hy
   | succ k ih =>
-    exact lou_foldl_endLabel L _ (iterR_accStep_rinv p k hi) ih
+    exact lou_foldl_endLabel L _ (iterR_accStep_rinv p o k hi) ih
 
 theorem lou_setAt {s : SState} {y : Nat} (hy : LoU1 s y) (p : Pos) (v : SVal)
     (hv : (∀ q, Indep y (s.valAt q)) → Indep y v) : LoU1 (s.setAt p v) y := by
@@ -431,22 +431,22 @@ theorem joinDrop_lou (entry : List Place) (t : Term) {s : SState} (hi : RInv L s
       · exact hi
       · split
         · rename_i pos steps hr
-          have hia := access_rinv hi pos
+          have hia := access_rinv hi pos (obsAt K (s.tyAt pos).m steps wholeOb)
           split
           · exact hia
           · exact hia
           · exact hia
           · have hie : RInv L (if steps.isEmpty = true then
-                (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-                else s.access pos) := by
+                (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+                else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) := by
               split
               · split
                 · exact endLabel_rinv hia _
                 · exact hia
               · exact hia
             generalize (if steps.isEmpty = true then
-                (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-                else s.access pos) = s₂ at hie ⊢
+                (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+                else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) = s₂ at hie ⊢
             exact setAt_rinv hie pos _
               ((hie.1 pos).comp (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps x).getD .err))
               (fun x hx => by
@@ -459,23 +459,23 @@ theorem joinDrop_lou (entry : List Place) (t : Term) {s : SState} (hi : RInv L s
       · exact hy
       · split
         · rename_i pos steps hr
-          have hia := access_rinv hi pos
-          have hya := lou_access L hi hy pos
+          have hia := access_rinv hi pos (obsAt K (s.tyAt pos).m steps wholeOb)
+          have hya := lou_access L hi hy pos (obsAt K (s.tyAt pos).m steps wholeOb)
           split
           · exact hya
           · exact hya
           · exact hya
           · have hye : LoU1 (if steps.isEmpty = true then
-                (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-                else s.access pos) y := by
+                (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+                else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) y := by
               split
               · split
                 · exact lou_endLabel L hia.2.1 hya _
                 · exact hya
               · exact hya
             generalize (if steps.isEmpty = true then
-                (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-                else s.access pos) = s₂ at hye ⊢
+                (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+                else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) = s₂ at hye ⊢
             exact lou_setAt hye pos _ fun hu ψ c => by
               show (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps (s₂.valAt pos (ψ.upd y c))).getD .err
                 = (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps (s₂.valAt pos ψ)).getD .err
