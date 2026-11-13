@@ -253,21 +253,26 @@ def oneDef : Def := { name := "one", hs := [], doms := [], cod := .nat, body := 
 theorem run_const (K : RunCtx) (ρ : Assignment) (φ : Future) (h : TyS) (n : String) (s : SState) :
     run K ρ φ h (.const n) s = some (K.C.global n, s) := rfl
 
-theorem run_succ_zero (K : RunCtx) (ρ : Assignment) (φ : Future) (h : TyS) (s : SState) :
+theorem run_succ_zero (K : RunCtx) (ρ : Assignment) (φ : Future) (h : TyS) (s : SState)
+    (hne : (K.D.flags (scopeOf s) (.succ .zero)).2 = false) :
     run K ρ φ h (.succ .zero) s = some (((Sem.el0 Nat 0).succ, .plain (.ty0 Nat)), s) := by
-  -- statement or not (`SM.stmtIf`), the value and the state are the same
+  -- not erased (`hne`); statement or not (`SM.stmtIf`), the value and the state are the same
   rw [run]
-  show SM.stmtIf (K.D.flags (scopeOf s) (.succ .zero)).1 _ s = _
-  generalize (K.D.flags (scopeOf s) (.succ .zero)).1 = b
+  show SM.erasedIf (K.D.flags (scopeOf s) (.succ .zero)) _ s = _
+  generalize K.D.flags (scopeOf s) (.succ .zero) = fl at hne
+  obtain ⟨b, e⟩ := fl
+  cases hne
   cases b <;> rfl
 
 /-- `Nat`'s stored type value means the carrier `Nat`, with no shape. -/
 theorem globalTyS_nat (K : RunCtx) (ρ : Assignment) : globalTyS ρ K .tNat = .plain (.ty0 Nat) := rfl
 
-/-- `one` means the number `1` at type `Nat`, under every run context. -/
-theorem defMeaning_one (K : RunCtx) (ρ : Assignment) :
+/-- `one` means the number `1` at type `Nat`, under every run context whose decisions do not
+erase `S(Z)` (it is data, not a proof; since the audit's A3 an erased term's run is `•`). -/
+theorem defMeaning_one (K : RunCtx) (ρ : Assignment) (hne : ∀ sc, (K.D.flags sc (.succ .zero)).2 = false) :
     defMeaning ρ K oneDef .tNat = some (.el0 Nat 1, .plain (.ty0 Nat)) := by
-  simp only [defMeaning, globalTyS_nat, oneDef, List.isEmpty_nil, if_true, run_succ_zero]
+  simp only [defMeaning, globalTyS_nat, oneDef, List.isEmpty_nil, if_true]
+  rw [run_succ_zero (hne := hne _)]
   simp [TyS.plain, constMean, Sem.succ, Sem.asNat, Sem.as]
 
 /-- A stored type that is `Nat`. -/
@@ -298,7 +303,8 @@ theorem one_accepted :
 
 /-- The program `def one : Nat := S(Z)` records `one` with the meaning `1` at type `Nat`, whatever
 the data model, decisions and assignment: the checker accepts it, so its meaning is recorded. -/
-theorem progMeaning_one (dm : DataModel) (D : MState → Decisions) (ρ : Assignment) :
+theorem progMeaning_one (dm : DataModel) (D : MState → Decisions) (ρ : Assignment)
+    (hD : ∀ st sc, ((D st).flags sc (.succ .zero)).2 = false) :
     (progMeaning dm D ρ {} 2000000 [.defn oneDef]).means = [("one", .el0 Nat 1, .plain (.ty0 Nat))] := by
   obtain ⟨st', h, hT⟩ := one_accepted
   simp only [progMeaning, progMeaningFrom, List.foldl_cons, List.foldl_nil, ProgState.step]
@@ -307,16 +313,16 @@ theorem progMeaning_one (dm : DataModel) (D : MState → Decisions) (ρ : Assign
   dsimp only
   rw [show oneDef.name = "one" from rfl, hT]
   simp only [Option.getD_some]
-  rw [defMeaning_one]
+  rw [defMeaning_one (hne := fun sc => hD _ sc)]
   rfl
 
 /-- ... and a later term reads it: the run of `one` in any state of the program's context. -/
 theorem run_const_one (dm : DataModel) (D : MState → Decisions) (ρ : Assignment) (st : MState)
-    (φ : Future) (h : TyS) (s : SState) :
+    (φ : Future) (h : TyS) (s : SState) (hD : ∀ st sc, ((D st).flags sc (.succ .zero)).2 = false) :
     run ((progMeaning dm D ρ {} 2000000 [.defn oneDef]).ctx dm D st) ρ φ h (.const "one") s =
       some ((.el0 Nat 1, .plain (.ty0 Nat)), s) := by
   rw [run_const]
-  simp only [ProgState.ctx, ProgState.baseC, ProgState.globalMean, ProgState.globalTy, progMeaning_one]
+  simp only [ProgState.ctx, ProgState.baseC, ProgState.globalMean, ProgState.globalTy, progMeaning_one (hD := hD)]
   rfl
 
 end ProgSanity

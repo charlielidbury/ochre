@@ -182,6 +182,8 @@ Risk list, ranked, each with its known fix — the next window takes them in thi
 
 **No checker bug was found.** Every refutation was a fault of the model's definitions or of a statement.
 
+**After the window: the audit and its batch.** The clause-by-clause audit of `run` against `Machine.evalCore` is the section "Run against evalCore: audit" (36 rows, fifteen divergences A1–A15, a sixteenth found while planning). Its fix is in four stages; the section's "Batch status" says which are done. The batch comes before D20.
+
 **Open, in the order to take them** (risk first):
 1. **Sequencing** (D20, item 1): no statement or lemma lets a second step's reference run start from the first step's reference state. Decide between a simulation relation in every statement and one monotonicity lemma for `run`; the second is not obviously true (the join's drop set and `Id` read the whole state). Nothing composes until this is settled, so it comes before any step proof.
 2. **`Below` at other futures and inert loans in nested runs** (D20, items 2 and 3): needed for any sealed program with a hole, so for [Close]'s `&T` row, [End] on a fill and `nfSealed_step`.
@@ -309,6 +311,13 @@ Every case of `Machine.evalAt`/`evalCore` (Machine.lean, line numbers of 7524890
 - **A2** (row 5): D67's owned access. D19's R5 put the right-hand side first, which is right, and exposed this: the full access then ends the reborrow the right-hand side just made.
 - **A13** (rows 4, 5, 35): open dependent values have no meaning in the model.
 - **A4, A6, A14, A15**: a join after a by-type match, the join's entry set read after the arm, `clone`/`peek` of a partly moved place, the label counter. No accepted program found that shows them; A6 and A4 change which places are `moved`, which `Id` and `Eq` observe.
+
+**Batch status (kept current at every commit).** The batch goes in four stages, the core lemmas re-proved after each (`#print axioms`: the standard three).
+
+- Stage 1, DONE: **A2** (`.assign` skips the access at a holder root written whole; the old borrow's end carries the content back), **A3** (`SM.erasedIf`: every wrapped clause is `•` unrun at `flags.2`, as `evalAt` erases; kernel-checked `Regress/Adequacy_flipped.erased_unrun`), **A4** (no join after a match on a proof), **A5** (`observation` reads the positions the side STARTED with), **A6** (`joinDrop` takes the entry's moved places, read before the arm), **A7** (`.ascribe`, `.eq`, `.id` hand on the annotation's shape and data; `.tind` records its data; a parameter binding keeps its domain's data). A cost of A3: a term's run now depends on the erasure flag, so `Program.lean`'s sanity lemmas (`defMeaning_one` …) assume the decisions do not erase `S(Z)`.
+- Stage 2, open: A8, A9 (hints with data at arguments and at a function's body; parameter inference from the fields).
+- Stage 3, open: A10, and a new row found while planning, **A16**: `MState.sstate` binds each checker binding at `Value.tyS` of its stored type, which has no Π-shape, so from `SM' K ρ st` a call through a function-typed binding fails. Fix planned with A10: the code meaning gives a stored type's shape.
+- Stage 4, open: A1 (access by observation).
 
 **Plan.** One definitions batch for A1–A10 (the join's entry set, the proof skip, the observation, access by observation, D67's owned access, structure through annotations, parameters, results of `fix` and captures, parameter inference in `runFields`), then one repair of the four core lemmas. A11, A12 (structure of a call's result and of a field: `PiOut` and the data model's field types carry a `TyM` only) and A13 (open values: `Sem`, `ctorM` and `Membership` together) are not in the batch; each is its own redesign and stays a row here until done.
 

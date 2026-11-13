@@ -108,8 +108,8 @@ theorem psOf_substLoan : ∀ (bs : List PBind) (ds : List Term), psOf bs (Term.s
     have hd : (Term.substLoan l w d).isRefTy = d.isRefTy := by cases d <;> rfl
     simp only [Term.substLoanList, psOf, hd, psOf_substLoan bs ds]
 
-theorem joinDrop_substLoan (hD : DecInvariant K.D l w) (φ : Future) (t : Term) (s : SState) :
-    joinDrop K φ (Term.substLoan l w t) s = joinDrop K φ t s := by
+theorem joinDrop_substLoan (hD : DecInvariant K.D l w) (φ : Future) (t : Term) (entry : List Place) (s : SState) :
+    joinDrop K φ entry (Term.substLoan l w t) s = joinDrop K φ entry t s := by
   unfold joinDrop; rw [hD.2.2.2.1]
 
 theorem fixBodyAt_bodyEq {body body' : Term} (hb : ∀ hint, run K ρ ψ hint body' = run K ρ ψ hint body)
@@ -322,8 +322,8 @@ theorem run_substSame (hF : FillOK K ρ ψ l w) : ∀ (t : Term) (hint : TyS),
     | matchNat p z u =>
       have hz := run_substSame hF z
       have hu := run_substSame hF u
-      have hj : ∀ s, joinDrop K ψ (.matchNat p (Term.substLoan l w z) (Term.substLoan l w u)) s
-          = joinDrop K ψ (.matchNat p z u) s := joinDrop_substLoan K l w hF.dec ψ (.matchNat p z u)
+      have hj : ∀ e s, joinDrop K ψ e (.matchNat p (Term.substLoan l w z) (Term.substLoan l w u)) s
+          = joinDrop K ψ e (.matchNat p z u) s := joinDrop_substLoan K l w hF.dec ψ (.matchNat p z u)
       funext s
       show run K ρ ψ hint (.matchNat p (Term.substLoan l w z) (Term.substLoan l w u)) s = _
       have hfl : ∀ sc, K.D.flags sc (.matchNat p (Term.substLoan l w z) (Term.substLoan l w u)) = K.D.flags sc (.matchNat p z u) :=
@@ -331,8 +331,8 @@ theorem run_substSame (hF : FillOK K ρ ψ l w) : ∀ (t : Term) (hint : TyS),
       rw [run, run]; simp only [hz, hu, hj, hfl]
     | matchInd p n arms =>
       have ha := runArm_substSame hF arms
-      have hj : ∀ s, joinDrop K ψ (.matchInd p n (Term.substLoanArms l w arms)) s
-          = joinDrop K ψ (.matchInd p n arms) s := joinDrop_substLoan K l w hF.dec ψ (.matchInd p n arms)
+      have hj : ∀ e s, joinDrop K ψ e (.matchInd p n (Term.substLoanArms l w arms)) s
+          = joinDrop K ψ e (.matchInd p n arms) s := joinDrop_substLoan K l w hF.dec ψ (.matchInd p n arms)
       funext s
       show run K ρ ψ hint (.matchInd p n (Term.substLoanArms l w arms)) s = _
       have hfl : ∀ sc, K.D.flags sc (.matchInd p n (Term.substLoanArms l w arms)) = K.D.flags sc (.matchInd p n arms) :=

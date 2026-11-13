@@ -229,9 +229,9 @@ theorem borrowPlace_rinv {p : Place} {s s' : SState} {r : Res}
 
 /-- **D84's drop at the join** keeps the invariant: each dropped place is accessed, its root's borrow
 ended, its content rewritten to `moved` at its path. -/
-theorem joinDrop_rinv (t : Term) {s : SState} (hi : RInv L s) : RInv L (joinDrop K φ t s) := by
+theorem joinDrop_rinv (entry : List Place) (t : Term) {s : SState} (hi : RInv L s) : RInv L (joinDrop K φ entry t s) := by
   unfold joinDrop
-  generalize K.D.joinMoves (scopeOf s) (movedPlaces φ s) t = qs
+  generalize K.D.joinMoves (scopeOf s) entry t = qs
   induction qs generalizing s with
   | nil => exact hi
   | cons q qs ih =>
@@ -418,10 +418,10 @@ theorem lou_dropLast {s : SState} {y : Nat} (hy : LoU1 s y)
   · exact .inr (indep_dropLast hu)
 
 /-- **D84's drop at the join** keeps a result's label live or unread (with the invariant). -/
-theorem joinDrop_lou (t : Term) {s : SState} (hi : RInv L s) {y : Nat} (hy : LoU1 s y) :
-    LoU1 (joinDrop K φ t s) y := by
+theorem joinDrop_lou (entry : List Place) (t : Term) {s : SState} (hi : RInv L s) {y : Nat} (hy : LoU1 s y) :
+    LoU1 (joinDrop K φ entry t s) y := by
   unfold joinDrop
-  generalize K.D.joinMoves (scopeOf s) (movedPlaces φ s) t = qs
+  generalize K.D.joinMoves (scopeOf s) entry t = qs
   induction qs generalizing s with
   | nil => exact hy
   | cons q qs ih =>
