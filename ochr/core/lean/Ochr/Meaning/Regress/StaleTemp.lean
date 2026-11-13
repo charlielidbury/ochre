@@ -25,10 +25,11 @@ state where `y = Z` is bound:
 * `let_borrow_run`: the reference run ends in `aF`, whose temporary `0` reads `⊥` (`aF_temp`);
 * `not_below_stale_temp`: so no state with no temporary there is `Below` it.
 
-Consequence: `letIn_step_stmt`, `eval_step_stmt` and `evalCore_step_stmt` are false as stated
-(their `Below` conjunct), on the simplest program that holds a borrow. The relation the
-statements need compares bindings position by position and borrows in flight by LABEL
-(`Steps/Sim.lean`, `Sim`), which does hold here (`sim_stale_temp`).
+Consequence: `letIn_step_stmt`, `eval_step_stmt` and `evalCore_step_stmt` were false as first
+stated (their `Below` conjunct), on the simplest program that holds a borrow; they are restated
+in the simulation form (`Steps/Statements.lean`, `Rel`). The relation the statements need
+compares bindings position by position and borrows in flight by LABEL (`Sim`), which does hold
+here (`sim_stale_temp`).
 -/
 
 namespace Ochr.Meaning.Regress.StaleTemp
