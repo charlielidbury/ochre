@@ -39,7 +39,7 @@ theorem fill_means_back (dm : DataModel) (C : CodeMeaning) (n : Nat) (F : GCar) 
   simp only [hp, contentOf_deref_r, List.isEmpty_cons, Bool.false_eq_true, reduceIte, setContent_deref_r]
   simp only [TyS.plain]
   have hc := readPlace_c1 (K₀ dm C) φ F n ⟨{ m := .ty0 Nat }, fun _ => .el0 Nat n, .other, none⟩ 2 (φ 1) rfl
-  simp only [K₀, D₀] at hc
+  simp only [K₀, D₀, TyS.plain] at hc
   first
     | (simp only [hc, Sem.asNat]; cases (φ 1).as Nat <;> simp)
     | (trace_state; sorry)

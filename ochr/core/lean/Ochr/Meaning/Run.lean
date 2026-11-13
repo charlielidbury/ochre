@@ -60,6 +60,11 @@ structure RunCtx : Type 3 where
   an abstract function `σ_f` applies `ρ σ_f` along the shape of `Δ(σ_f)`. Fixed per checker
   state (`deltaOf`): the reference run creates no unknowns. -/
   Δ : Nat → TyS := fun _ => .plain .err
+  /-- the declared types of the loans as the run knows them (P1, PROPOSAL m2-proofs): a borrowed
+  function value (`&f`) is real, so an embedded `loan_ℓ` carries the Π-shape of its position's
+  declared type (by (WF9) every loan outside a sealed program sits at a typed position), as the
+  value that fills it will. A loan with no shape here reads as the hint (data). -/
+  Λ : Nat → TyS := fun _ => .plain .err
 
 /-- A result: the meaning at the run's future, with its type. -/
 abbrev Res : Type 3 := Sem × TyS
@@ -358,6 +363,10 @@ noncomputable def run (hint : TyS) : Term → SM Res
         { hint with shape := (piShapeOf (stateOf 0 (capsState (capsVals caps) (capsTys rd))) t).map fun sh => (sh.ps, sh.out) }
       | .gfn n => (K.C.global n).2
       | .abs σ => { hint with shape := (K.Δ σ).shape, data := (K.Δ σ).data }
+      -- P1 (PROPOSAL, m2-proofs): a loan carries its declared Π-shape (`K.Λ`), as its filler will
+      | .loan l => match (K.Λ l).shape with
+        | some sh => { hint with shape := some sh }
+        | none => hint
       -- a sealed callee (D39: the checker calls a sealed function value) carries the shape of
       -- its program's result (the spine's finding at the general closeCall_step, docs/31 item
       -- 3); its labels are its own, so only the shape is taken
@@ -423,7 +432,11 @@ noncomputable def run (hint : TyS) : Term → SM Res
         -- the frame pop ends the borrows the body made and the parameters' (their cells then
         -- read the holders' contents), except the returned borrow's, whose holder is the
         -- caller's; a borrow parameter's final content is its cell's
-        let s₄ := (s₃.liveLabels.filter fun l => l ≥ start ∧ some l ≠ R.label).foldl SState.endLabel s₃
+        -- PROPOSAL (m2-proofs, 5b): the returned borrow survives only when the codomain is a
+        -- borrow; a labelled result at a data codomain (ill-typed) is ended with the rest, else
+        -- its cell reads the future at the run's own label in `mkLeafData`
+        let keep : Option Nat := match out with | .ref _ => R.label | .data _ => none
+        let s₄ := (s₃.liveLabels.filter fun l => l ≥ start ∧ some l ≠ keep).foldl SState.endLabel s₃
         let finals := cells.map fun c => s₄.valAt c
         some ⟨r, finals, R.label⟩
       | none => none
