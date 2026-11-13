@@ -82,7 +82,7 @@ end Syntax
 /-! ## Support: the pieces that read the term -/
 
 section SubstSame
-variable (K : RunCtx) (ρ : Assignment) (ψ : Future) (l : Nat) (w : Value) {fb : List PBind × DeclInfo}
+variable (K : RunCtx) (ρ : Assignment) (ψ : Future) (l : Nat) (w : Value) {fb : List PBind × PBind}
 
 /-- The decisions do not see the fill in a telescope's readings (D19, R3). -/
 theorem teleDecls_substLoan (hD : DecInvariant K.D l w) : ∀ (ds : List Term) (sc : List DeclInfo),
@@ -178,6 +178,25 @@ theorem fixOut_subst_of {c : Term} (hc : ∀ hint, run K ρ ψ hint (Term.substL
     simp only [Term.substLoan, fixOut, hU U rfl]
   · have h' : ∀ U, c ≠ .ref U := fun U e => h ⟨U, e⟩
     rw [fixOut_data K ρ ψ (substLoan_not_ref l w h') s bs, fixOut_data K ρ ψ h' s bs]
+    simp only [hc]
+
+theorem fixCod_data {c : Term} (h : ∀ U, c ≠ .ref U) (s : SState) (bs : List PBind) :
+    fixCod K ρ ψ s bs c = fun acc => match run K ρ ψ (.plain .err) c (extendBy s bs acc) with
+      | some ((v, R), _) => ⟨v.asTy, R.shape, none, R.data⟩
+      | none => .plain .err := by
+  unfold fixCod; split
+  · exact absurd rfl (h _)
+  · rfl
+
+theorem fixCod_subst_of {c : Term} (hc : ∀ hint, run K ρ ψ hint (Term.substLoan l w c) = run K ρ ψ hint c)
+    (hU : ∀ U, c = .ref U → ∀ hint, run K ρ ψ hint (Term.substLoan l w U) = run K ρ ψ hint U) (s : SState)
+    (bs : List PBind) :
+    fixCod K ρ ψ s bs (Term.substLoan l w c) = fixCod K ρ ψ s bs c := by
+  by_cases h : ∃ U, c = .ref U
+  · obtain ⟨U, rfl⟩ := h
+    simp only [Term.substLoan, fixCod, hU U rfl]
+  · have h' : ∀ U, c ≠ .ref U := fun U e => h ⟨U, e⟩
+    rw [fixCod_data K ρ ψ (substLoan_not_ref l w h') s bs, fixCod_data K ρ ψ h' s bs]
     simp only [hc]
 
 /-- What the substitution at a fixed future needs: the filler means the loan, has its type, and
@@ -377,7 +396,7 @@ theorem run_substSame (hF : FillOK K ρ ψ l w) : ∀ (t : Term) (hint : TyS),
       rw [run, run]; simp only [hp]
     | ctor ty c h ps args =>
       have hp := fun d => runParams_substSame hF d ps
-      have hf := fun st d ps' => runFields_substSame hF st d ps' c args
+      have hf := fun st d => runFields_substSame hF st d c args
       show run K ρ ψ hint (.ctor ty c h (Term.substLoanList l w ps) (Term.substLoanList l w args)) = _
       have hfl : ∀ sc, K.D.flags sc (.ctor ty c h (Term.substLoanList l w ps) (Term.substLoanList l w args))
           = K.D.flags sc (.ctor ty c h ps args) := fun sc => hF.dec.1 sc (.ctor ty c h ps args)
@@ -427,7 +446,7 @@ theorem run_substSame (hF : FillOK K ρ ψ l w) : ∀ (t : Term) (hint : TyS),
       have hfl : ∀ sc, K.D.flags sc (.fix self hs (Term.substLoanList l w ds) (Term.substLoan l w c) dec
           (Term.substLoan l w body)) = K.D.flags sc (.fix self hs ds c dec body) :=
         fun sc => hF.dec.1 sc (.fix self hs ds c dec body)
-      rw [run_fix_def, run_fix_def, hfl, hps, hds, hbs, fixOut_subst_of K ρ ψ l w hc hU, hmv,
+      rw [run_fix_def, run_fix_def, hfl, hps, hds, hbs, fixOut_subst_of K ρ ψ l w hc hU, fixCod_subst_of K ρ ψ l w hc hU, hmv,
         teleDecls_substLoan K l w hF.dec, hF.dec.2.2.2.2.2, fixG_bodyEq K ρ ψ hb]
     | prim n args =>
       have hall : ∀ t ∈ args, ∀ hint, run K ρ ψ hint (Term.substLoan l w t) = run K ρ ψ hint t :=
@@ -496,12 +515,12 @@ theorem runArgs_substSame (hF : FillOK K ρ ψ l w) (stmt : Bool) (shape : Optio
   | a :: as, i, earlier => by
     simp only [Term.substLoanList, runArgs, run_substSame hF a, runArgs_substSame hF stmt shape as, hF.dec.2.1]
 
-theorem runFields_substSame (hF : FillOK K ρ ψ l w) (stmt : Bool) (d : IndDecl) (ps : List Sem) (c : Nat) :
-    ∀ (args : List Term) (i : Nat) (earlier : List Sem),
-    runFields K ρ ψ stmt d ps c i earlier (Term.substLoanList l w args) = runFields K ρ ψ stmt d ps c i earlier args
-  | [], _, _ => rfl
-  | a :: as, i, earlier => by
-    simp only [Term.substLoanList, runFields, run_substSame hF a, runFields_substSame hF stmt d ps c as, hF.dec.2.1]
+theorem runFields_substSame (hF : FillOK K ρ ψ l w) (stmt : Bool) (d : IndDecl) (c : Nat) :
+    ∀ (args : List Term) (i : Nat) (sol : List (Option Sem)) (earlier : List Sem),
+    runFields K ρ ψ stmt d c i sol earlier (Term.substLoanList l w args) = runFields K ρ ψ stmt d c i sol earlier args
+  | [], _, _, _ => rfl
+  | a :: as, i, sol, earlier => by
+    simp only [Term.substLoanList, runFields, run_substSame hF a, runFields_substSame hF stmt d c as, hF.dec.2.1]
 
 theorem runParams_substSame (hF : FillOK K ρ ψ l w) (d : IndDecl) :
     ∀ (args : List Term) (i : Nat) (earlier : List Sem),

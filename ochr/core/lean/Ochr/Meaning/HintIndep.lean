@@ -180,11 +180,19 @@ theorem run_hintIndep : ∀ (t : Term), Term.tailHintFree K.Γ t = true → ∀ 
     | none => simp only [hfind]
     | some d =>
       rw [hfind] at ht
-      have hc : (ps.isEmpty && !d.params.isEmpty) = false := by
-        cases hp : ps.isEmpty <;> cases hq : d.params.isEmpty <;> simp_all
-      first
-        | (simp only [hfind, hc, Bool.false_eq_true, if_false])
-        | (simp only [hfind, hc]; rfl)
+      -- the parameters known before the fields do not read the hint: they are written, or there
+      -- are none
+      cases hp : ps.isEmpty with
+      | false => simp only [hfind, Bool.not_false, if_true]
+      | true =>
+        have hq : d.params.length = 0 := by rw [hp] at ht; simpa using ht
+        have hz : ∀ (ps' : List Sem) (n : String),
+            (if n = ty ∧ ps'.length = 0 then ps'.map some else ([] : List (Option Sem))) = [] := by
+          intro ps' n; split
+          · rename_i hx; rw [List.length_eq_zero_iff.mp hx.2]; rfl
+          · rfl
+        simp only [hfind, Bool.not_true, Bool.false_eq_true, if_false, hq, List.replicate_zero]
+        cases h.data <;> cases h'.data <;> simp only [hz]
   | .val v, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     have e := meanV_hintIndep v ht h h'
