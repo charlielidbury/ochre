@@ -399,6 +399,81 @@ theorem shape_setAtE_temp (env : Env) (f i : Nat) (v : Value) (fr : Frame)
   rw [Array.getElem?_modify]; simp only [if_true, hf, Option.map_some, Option.getD_some]
   rw [Array.set!, Array.getElem?_setIfInBounds]; simp [hi]
 
+/-- A flat map of distinct, pairwise disjoint lists is distinct. -/
+theorem nodup_flatMap_of {α β : Type _} (F : α → List β) :
+    ∀ (l : List α), l.Nodup → (∀ x ∈ l, (F x).Nodup) →
+      (∀ x ∈ l, ∀ y ∈ l, x ≠ y → ∀ a ∈ F x, a ∉ F y) → (l.flatMap F).Nodup
+  | [], _, _, _ => List.nodup_nil
+  | x :: l, hnd, hF, hdisj => by
+    show (F x ++ l.flatMap F).Nodup
+    have hnd' := List.nodup_cons.mp hnd
+    rw [List.nodup_append]
+    refine ⟨hF x (List.mem_cons_self ..), nodup_flatMap_of F l hnd'.2
+      (fun y hy => hF y (List.mem_cons_of_mem _ hy))
+      (fun y hy z hz => hdisj y (List.mem_cons_of_mem _ hy) z (List.mem_cons_of_mem _ hz)), ?_⟩
+    intro a ha b hb hab
+    subst hab
+    simp only [List.mem_flatMap] at hb
+    obtain ⟨y, hy, hay⟩ := hb
+    have hxy : x ≠ y := fun h => hnd'.1 (h ▸ hy)
+    exact hdisj x (List.mem_cons_self ..) y (List.mem_cons_of_mem _ hy) hxy a ha hay
+
+theorem nodup_map_of_inj {α β : Type _} (g : α → β) (hg : ∀ a b, g a = g b → a = b) :
+    ∀ (l : List α), l.Nodup → (l.map g).Nodup
+  | [], _ => List.nodup_nil
+  | x :: l, hnd => by
+    have hnd' := List.nodup_cons.mp hnd
+    simp only [List.map_cons]
+    rw [List.nodup_cons]
+    refine ⟨fun h => ?_, nodup_map_of_inj g hg l hnd'.2⟩
+    simp only [List.mem_map] at h
+    obtain ⟨y, hy, hxy⟩ := h
+    exact hnd'.1 (hg _ _ hxy ▸ hy)
+
+/-- The frame of a position. -/
+def Pos.frame : Pos → Nat
+  | .bind f _ => f
+  | .temp f _ => f
+
+/-- The positions of a frame are distinct. -/
+theorem frameAllPos_nodup (f : Nat) (fr : Frame) : (frameAllPos f fr).Nodup := by
+  simp only [frameAllPos]
+  rw [List.nodup_append]
+  refine ⟨nodup_map_of_inj _ (fun a b h => by cases h; rfl) _ List.nodup_range,
+    nodup_map_of_inj _ (fun a b h => by cases h; rfl) _ List.nodup_range, ?_⟩
+  intro a ha b hb hab
+  subst hab
+  simp only [List.mem_map, List.mem_range] at ha hb
+  obtain ⟨i, _, rfl⟩ := ha
+  obtain ⟨j, _, hj⟩ := hb
+  cases hj
+
+/-- A position of frame `f`'s list is in frame `f`. -/
+theorem frame_of_mem_frameAllPos (f : Nat) (fr : Frame) (p : Pos) (hp : p ∈ frameAllPos f fr) :
+    Pos.frame p = f := by
+  simp only [frameAllPos, List.mem_append, List.mem_map, List.mem_range] at hp
+  rcases hp with ⟨i, _, rfl⟩ | ⟨i, _, rfl⟩ <;> rfl
+
+/-- The environment's positions are distinct. -/
+theorem allPos_nodup (env : Env) : (allPos env).Nodup := by
+  rw [allPos_eq]
+  apply nodup_flatMap_of _ _ List.nodup_range
+  · intro f _
+    cases env[f]? with
+    | none => exact List.nodup_nil
+    | some fr => exact frameAllPos_nodup f fr
+  · intro f _ g _ hfg a ha hb
+    cases hf : env[f]? with
+    | none => simp [hf] at ha
+    | some fr =>
+      cases hg : env[g]? with
+      | none => simp [hg] at hb
+      | some gr =>
+        simp only [hf, hg, Option.map_some, Option.getD_some] at ha hb
+        have h1 := frame_of_mem_frameAllPos f fr a ha
+        have h2 := frame_of_mem_frameAllPos g gr a hb
+        exact hfg (h1.symm.trans h2)
+
 /-! ## Part C: the bridge -/
 
 section
