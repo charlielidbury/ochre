@@ -1117,4 +1117,96 @@ theorem ordered_after_pop {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (start : 
 
 end SState
 
+/-! ## The fix clause: a closure's meaning reads its finals only where they read -/
+
+/-- What a body's output must satisfy for its closure to mean the same at two futures that agree
+on `L`: at a data codomain the finals read only `L`; at a returned borrow they read only `L` and
+the returned label (which the backward function fixes). -/
+def FinalsIn (L : Nat → Prop) (out : PiOut) (o : BodyOut) : Prop :=
+  ∀ c ∈ o.finals, match out with
+    | .data _ => FT L c
+    | .ref _ => ∀ k, o.retLabel = some k → FT (fun y => L y ∨ y = k) c
+
+theorem finals_map_eq {fs : List SVal} {φ φ' : Future} {S : Nat → Prop}
+    (hφ : ∀ l, S l → φ l = φ' l) (h : ∀ c ∈ fs, FT S c) : fs.map (· φ) = fs.map (· φ') :=
+  List.map_congr_left fun c hc => h c hc φ φ' hφ
+
+universe u
+
+theorem upd_agree {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l) (k : Nat) (a : Sem) :
+    ∀ y, (L y ∨ y = k) → (φ.upd k a) y = (φ'.upd k a) y := by
+  intro y hy
+  by_cases e : y = k
+  · subst e; simp [Future.upd]
+  · simp only [Future.upd, e, if_false]
+    exact hφ y (hy.resolve_right e)
+
+open Classical in
+theorem dite_isSome_congr {X : Type u} {Y : X → Type u} (M M' : (x : X) → Option (Y x)) (h : M = M') :
+    (if h : ∀ x, (M x).isSome then some fun x => (M x).get (h x) else none)
+      = (if h : ∀ x, (M' x).isSome then some fun x => (M' x).get (h x) else none) := by
+  subst h; rfl
+
+theorem mkLeafRefL_congr (Lv : Lvl.{u}) {φ φ' : Future} (acc : List Sem) (Fin : Type u)
+    (mkFin : List Sem → Option (Fin × List Sem)) (U : List Sem → TyM) (o : BodyOut)
+    (hb : ∀ k, o.retLabel = some k → ∀ v, mkBackAtL Lv φ Fin mkFin (U acc) o k v = mkBackAtL Lv φ' Fin mkFin (U acc) o k v) :
+    mkLeafRefL Lv φ acc Fin mkFin U o = mkLeafRefL Lv φ' acc Fin mkFin U o := by
+  unfold mkLeafRefL
+  cases hk : o.retLabel with
+  | none => rfl
+  | some k =>
+    have hfun : mkBackAtL Lv φ Fin mkFin (U acc) o k = mkBackAtL Lv φ' Fin mkFin (U acc) o k := funext (hb k hk)
+    cases hd : Lv.dec (U acc) o.result with
+    | none => rfl
+    | some fwd =>
+      dsimp only
+      rw [hfun]
+
+/-- **A closure's telescope is the same at two futures agreeing on `L`** when every body output
+reads its finals only there (`FinalsIn`). -/
+theorem mkTeleL_congr (Lv : Lvl.{u}) {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l)
+    (out : PiOut) (g : List Sem → Option BodyOut) (hg : ∀ args o, g args = some o → FinalsIn L out o) :
+    ∀ (ps : List PiParam) (acc : List Sem) (Fin : Type u) (mkFin : List Sem → Option (Fin × List Sem)),
+      mkTeleL Lv φ ps acc Fin mkFin out g = mkTeleL Lv φ' ps acc Fin mkFin out g
+  | [], acc, Fin, mkFin => by
+    cases out with
+    | data B =>
+      simp only [mkTeleL]
+      cases e : g acc with
+      | none => rfl
+      | some o =>
+        simp only [Option.bind, mkLeafDataL]
+        have hf := hg acc o e
+        rw [finals_map_eq hφ fun c hc => (hf c hc : FT L c)]
+    | ref U =>
+      simp only [mkTeleL]
+      cases e : g acc with
+      | none => rfl
+      | some o =>
+        simp only [Option.bind]
+        have hf := hg acc o e
+        have hb : ∀ k, o.retLabel = some k → ∀ v, mkBackAtL Lv φ Fin mkFin (U acc) o k v
+            = mkBackAtL Lv φ' Fin mkFin (U acc) o k v := by
+          intro k hk v
+          simp only [mkBackAtL]
+          rw [finals_map_eq (S := fun y => L y ∨ y = k) (upd_agree hφ k _) fun c hc => (hf c hc) k hk]
+        exact mkLeafRefL_congr Lv acc Fin mkFin U o hb
+  | p :: ps, acc, Fin, mkFin => by
+    simp only [mkTeleL]
+    exact dite_isSome_congr _ _ (funext fun x => mkTeleL_congr Lv hφ out g hg ps (acc ++ [Lv.enc (p.dom acc) x])
+      (extFinL p.isRef Fin (Lv.el (p.dom acc))) (extMkL p.isRef Fin (Lv.el (p.dom acc)) mkFin (Lv.dec (p.dom acc))))
+
+/-- The closure meaning at its sort, the same at two futures agreeing on `L` under `FinalsIn`. -/
+theorem closureAt_congr {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l) (l : Nat)
+    (ps : List PiParam) (out : PiOut) (g : List Sem → Option BodyOut)
+    (hg : ∀ args o, g args = some o → FinalsIn L out o) :
+    closureAt l φ ps out g = closureAt l φ' ps out g := by
+  unfold closureAt
+  rcases l with _ | _ | _ | _ | l
+  · rfl
+  · simp only [closureL, mkTeleL_congr lvl0 hφ out g hg]
+  · simp only [closureL, mkTeleL_congr lvl1 hφ out g hg]
+  · simp only [closureL, mkTeleL_congr lvl2 hφ out g hg]
+  · rfl
+
 end Ochr.Meaning
