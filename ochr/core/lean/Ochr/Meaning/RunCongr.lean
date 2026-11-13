@@ -202,6 +202,410 @@ theorem anyAtomList_of_mem {P : Value → Bool} {t : Term} : ∀ {ts : List Term
     · subst e; simp [Term.anyAtomList, h]
     · simp [Term.anyAtomList, anyAtomList_of_mem hm h]
 
+/-! ## The fix clause, named
+
+`run`'s `.fix` clause is a block of `let`s; these definitions name its pieces (copied from it,
+`run_fix_def` checks they are the same), so the clause's congruence can be stated and proved
+outside the mutual induction, with the body's congruence as a hypothesis. -/
+
+section FixDefs
+variable (K : RunCtx) (ρ : Assignment) (φ : Future)
+
+/-- A borrow parameter's or a plain parameter's push into the closure's frame. -/
+noncomputable def fixStep (sa : SState × List Sem × List Pos) (ap : Sem × PiParam) : SState × List Sem × List Pos :=
+  let (s, acc, cells) := sa
+  if ap.2.isRef then
+    let (l, s) := s.freshLoan
+    let s := s.pushTemp fun ψ => ψ l
+    let cell : Pos := .temp s.topIdx (((s.env.getLast?).map (·.temps.length)).getD 1 - 1)
+    let s := pushBindShaped s { ty := ⟨ap.2.dom acc, none, some l, none⟩, val := fun _ => ap.1 }
+    (s, acc ++ [ap.1], cells ++ [cell])
+  else
+    (s.pushBind { ty := .plain (ap.2.dom acc), val := fun _ => ap.1 }, acc ++ [ap.1], cells)
+
+/-- The closure's body run, at a meaning of `self` and arguments (`bodyAt`). -/
+noncomputable def fixBodyAt (s : SState) (ps : List PiParam) (out : PiOut) (piT : TyM) (start : Nat) (body : Term)
+    (selfM : Sem) (args : List Sem) : Option BodyOut :=
+  let s₁ := s.pushBind { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM }
+  let (s₂, _, cells) := (args.zip ps).foldl fixStep (s₁, [], [])
+  let codT := match out with | .data B => B args | .ref U => U args
+  match run K ρ φ (.plain codT) body s₂ with
+  | some ((r, R), s₃) =>
+    let keep : Option Nat := match out with | .ref _ => R.label | .data _ => none
+    let s₄ := (s₃.liveLabels.filter fun l => l ≥ start ∧ some l ≠ keep).foldl SState.endLabel s₃
+    let finals := cells.map fun c => s₄.valAt c
+    some ⟨r, finals, R.label⟩
+  | none => none
+
+/-- The stages of a recursive closure. -/
+noncomputable def fixStage (l : Nat) (s : SState) (ps : List PiParam) (out : PiOut) (piT : TyM) (start : Nat)
+    (body : Term) : Nat → List Sem → Option BodyOut :=
+  Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none)
+    (fun _ gk => fixBodyAt K ρ φ s ps out piT start body (closureAt l φ ps out gk))
+
+/-- A Π-term's or closure's output type, as a function of the parameters. -/
+noncomputable def fixOut (s : SState) (c : Term) : PiOut := match c with
+  | .ref U => .ref fun acc => match run K ρ φ (.plain .err) U (extendBy s acc) with
+    | some ((v, _), _) => v.asTy
+    | none => .err
+  | c => .data fun acc => match run K ρ φ (.plain .err) c (extendBy s acc) with
+    | some ((v, _), _) => v.asTy
+    | none => .err
+
+/-- The decreasing argument's rank (φ-free). -/
+noncomputable def fixRank (ps : List PiParam) (dec : Option Nat) (args : List Sem) : Nat := match dec with
+  | some j =>
+    match args[j]?, (ps[j]?).map (·.dom (args.take j)) with
+    | some a, some T =>
+      match T.dataOf K.dm K.Γ with
+      | some (d, ps') => match a.as (K.dm.car d ps') with | some x => K.dm.rank x | none => 0
+      | none => match a.asNat with | some n => n | none => 0
+    | _, _ => 0
+  | none => 0
+
+/-- The closure's function: the guarded fixpoint by stages, or the body with `self` erroneous. -/
+noncomputable def fixG (l : Nat) (s : SState) (ps : List PiParam) (out : PiOut) (piT : TyM) (start : Nat)
+    (dec : Option Nat) (body : Term) : List Sem → Option BodyOut := match dec with
+  | some _ => fun args => fixStage K ρ φ l s ps out piT start body (fixRank K ps dec args + 1) args
+  | none => fixBodyAt K ρ φ s ps out piT start body .err
+
+/-- Forming the closure moves its non-copy captures. -/
+noncomputable def fixMoves (t : Term) (s : SState) : SState :=
+  (Term.freeVars t).foldl (fun s i =>
+    if K.D.copy (K.D.placeDecl (scopeOf s) (.var i)) then s
+    else match s.varPos i with
+      | some pos => s.setAt pos fun _ => .moved
+      | none => s) s
+
+theorem run_fix_def (hint : TyS) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat)
+    (body : Term) (s : SState) :
+    run K ρ φ hint (.fix self hs ds c dec body) s =
+      some ((closureAt (K.D.piSort (scopeOf s) (.pi hs ds c)) φ (runDoms K ρ φ s ds) (fixOut K ρ φ s c)
+          (fixG K ρ φ (K.D.piSort (scopeOf s) (.pi hs ds c)) s (runDoms K ρ φ s ds) (fixOut K ρ φ s c)
+            (piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ s ds) (fixOut K ρ φ s c)) s.nextLoan dec body),
+        ⟨piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ s ds) (fixOut K ρ φ s c),
+          some (runDoms K ρ φ s ds, fixOut K ρ φ s c), none, none⟩),
+        fixMoves K (.fix self hs ds c dec body) s) := by
+  rw [run]
+  rfl
+
+end FixDefs
+
+/-! ## Forming the closure's frame: the cells are ordered at the start -/
+
+section FixProps
+variable {L : Nat → Prop}
+
+/-- A label added to `L` can be dropped again when it is live or read by no one. -/
+theorem rinv_drop_one {s : SState} {n : Nat} (h : RInv (fun y => L y ∨ y = n) s)
+    (hn : s.Live n ∨ ∀ q, Indep n (s.valAt q)) : RInv L s := by
+  obtain ⟨h1, h2, hsa⟩ := h
+  rcases hn with hn | hn
+  · refine ⟨fun p => (h1 p).mono fun y hy => ?_, fun r x hr hs => (h2 r x hr hs).mono fun y hy => ?_, hsa⟩
+    · rcases hy with (hy | rfl) | hy
+      · exact .inl hy
+      · exact .inr hn
+      · exact .inr hy
+    · rcases hy with ⟨hy | rfl, hl⟩ | hy
+      · exact .inl ⟨hy, hl⟩
+      · exact absurd hn hl
+      · exact .inr hy
+  · refine ⟨fun p => ((h1 p).remove (hn p)).mono fun y ⟨hy, hne⟩ => ?_,
+      fun r x hr hs => ((h2 r x hr hs).remove (hn r)).mono fun y ⟨hy, hne⟩ => ?_, hsa⟩
+    · rcases hy with (hy | hy) | hy
+      · exact .inl hy
+      · exact absurd hy hne
+      · exact .inr hy
+    · rcases hy with ⟨hy | hy, hl⟩ | hy
+      · exact .inl ⟨hy, hl⟩
+      · exact absurd hy hne
+      · exact .inr hy
+
+theorem live_pushTemp {s : SState} (hsa : ShapeAt s) (v : SVal) (y : Nat) : (s.pushTemp v).Live y ↔ s.Live y := by
+  rw [live_iff, live_iff]
+  constructor
+  · rintro ⟨q, _, hs⟩; exact ⟨q, (hsa q y hs).1, hs⟩
+  · rintro ⟨q, hq, hs⟩; exact ⟨q, mem_positions_pushTemp s v hq, hs⟩
+
+/-- A cell pushed: it reads `l`, so the invariant holds with `l` added to `L`. -/
+theorem rinv_pushTemp_read {s : SState} (hi : RInv L s) (l : Nat) :
+    RInv (fun y => L y ∨ y = l) (s.pushTemp fun ψ => ψ l) := by
+  obtain ⟨h1, h2, hsa⟩ := hi
+  have hlive := live_pushTemp hsa (fun ψ => ψ l)
+  refine ⟨fun q => ?_, fun r x _ hs => ?_, fun q x hq => ?_⟩
+  · rcases valAt_pushTemp s (fun ψ => ψ l) q with e | e
+    · rw [e]; exact (h1 q).mono fun y hy => hy.elim (fun h => .inl (.inl h)) (fun h => .inr ((hlive y).mpr h))
+    · rw [e]; intro ψ ψ' hψ; exact hψ l (.inl (.inr rfl))
+  · have hs' : s.shape r = some x := hs
+    have hr' := (hsa r x hs').1
+    rw [valAt_pushTemp_old s _ hr']
+    exact (h2 r x hr' hs').mono fun y hy => by
+      rcases hy with ⟨hL, hn⟩ | ⟨hy, hxy⟩
+      · exact .inl ⟨.inl hL, fun h => hn ((hlive y).mp h)⟩
+      · exact .inr ⟨(hlive y).mpr hy, hxy⟩
+  · have hq' : s.shape q = some x := hq
+    exact ⟨mem_positions_pushTemp s _ (hsa q x hq').1, (hsa q x hq').2⟩
+
+theorem pushTemp_last (s : SState) (v : SVal) (hne : s.env ≠ []) :
+    Pos.temp (s.pushTemp v).topIdx ((((s.pushTemp v).env.getLast?).map (·.temps.length)).getD 1 - 1)
+      ∈ (s.pushTemp v).positions ∧
+    (s.pushTemp v).valAt (Pos.temp (s.pushTemp v).topIdx ((((s.pushTemp v).env.getLast?).map (·.temps.length)).getD 1 - 1)) = v := by
+  obtain ⟨fr0, e⟩ : ∃ fr0, s.env.getLast? = some fr0 := by
+    cases h : s.env.getLast? with
+    | none => exact absurd (List.getLast?_eq_none_iff.mp h) hne
+    | some fr0 => exact ⟨fr0, rfl⟩
+  have e2 : s.env[s.topIdx]? = some fr0 := by
+    rw [List.getLast?_eq_getElem?] at e; simpa [SState.topIdx] using e
+  rw [pushTemp_getLast, e, pushTemp_topIdx]
+  simp only [Option.map_some, Option.getD_some, List.length_append, List.length_singleton, Nat.add_sub_cancel]
+  constructor
+  · rw [mem_positions]
+    simp only [lookup, SState.pushTemp, List.getElem?_modify, e2]
+    simp
+  · simp [SState.valAt, SState.pushTemp, List.getElem?_modify, e2]
+
+/-- The forming invariant: the frame's state has the invariant, the counter is past the start, and
+every cell is a temporary ordered at the start (or the state has no frame at all). -/
+def FormInv (L : Nat → Prop) (start : Nat) (sa : SState × List Sem × List Pos) : Prop :=
+  RInv L sa.1 ∧ start ≤ sa.1.nextLoan ∧
+    ∀ c ∈ sa.2.2, IsTemp c ∧ ((c ∈ sa.1.positions ∧ Ordered L sa.1 start (sa.1.valAt c)) ∨ sa.1.env = [])
+
+theorem valAt_pushBind_old (s : SState) (b : SBinding) {q : Pos} (hq : q ∈ s.positions) :
+    (s.pushBind b).valAt q = s.valAt q := by
+  rw [valAt_eq, valAt_eq, lookup_pushBind_old s b q ((mem_positions s q).mp hq)]
+
+theorem nextLoan_pushBindShaped (s : SState) (b : SBinding) : (pushBindShaped s b).nextLoan = s.nextLoan := by
+  unfold pushBindShaped
+  split
+  · dsimp only; split <;> exact (shapeSub_takeLabel s _).2
+  · rfl
+
+theorem env_nil_of_envLe {s s' : SState} (h : EnvLe s s') (he : s.env = []) : s'.env = [] :=
+  List.eq_nil_of_length_eq_zero (by rw [h.1, he]; rfl)
+
+theorem indep_of_env_nil {s : SState} (he : s.env = []) (y : Nat) (q : Pos) : Indep y (s.valAt q) := by
+  have : q ∉ s.positions := by rw [positions_eq, he]; simp
+  rw [valAt_of_not_mem _ _ this]; intro _ _; rfl
+
+theorem fixStep_inv {start : Nat} {sa : SState × List Sem × List Pos} (h : FormInv L start sa) (ap : Sem × PiParam) :
+    FormInv L start (fixStep sa ap) := by
+  obtain ⟨s, acc, cells⟩ := sa
+  obtain ⟨hi, hst, hcells⟩ := h
+  dsimp only at hi hst hcells
+  unfold fixStep
+  dsimp only
+  split
+  · simp only [SState.freshLoan]
+    generalize hs₀ : ({ s with nextLoan := s.nextLoan + 1 } : SState) = s₀
+    have hi₀ : RInv L s₀ := by rw [← hs₀]; exact freshLoan_rinv hi
+    have hpos₀ : s₀.positions = s.positions := by rw [← hs₀]; rfl
+    have hval₀ : ∀ q, s₀.valAt q = s.valAt q := by intro q; rw [← hs₀]; rfl
+    have hlive₀ : ∀ y, s₀.Live y ↔ s.Live y := by intro y; rw [← hs₀]; rfl
+    have hshape₀ : s₀.shape = s.shape := by rw [← hs₀]
+    have hnl₀ : s₀.nextLoan = s.nextLoan + 1 := by rw [← hs₀]
+    have henv₀ : s₀.env = s.env := by rw [← hs₀]
+    generalize hT : (s₀.pushTemp fun ψ => ψ s.nextLoan) = T
+    have hiT : RInv (fun y => L y ∨ y = s.nextLoan) T := by rw [← hT]; exact rinv_pushTemp_read hi₀ _
+    have hliveT : ∀ y, T.Live y ↔ s.Live y := by
+      intro y; rw [← hT, live_pushTemp hi₀.2.2, hlive₀]
+    have hshapeT : T.shape = s.shape := by rw [← hT, ← hshape₀]; rfl
+    have hnlT : T.nextLoan = s.nextLoan + 1 := by rw [← hT, ← hnl₀]; rfl
+    generalize hb : ({ ty := ⟨ap.2.dom acc, none, some s.nextLoan, none⟩, val := fun _ => ap.1 } : SBinding) = b
+    have hbl : b.ty.label = some s.nextLoan := by rw [← hb]
+    have hi'' : RInv (fun y => L y ∨ y = s.nextLoan) (pushBindShaped T b) :=
+      pushBindShaped_rinv hiT b ap.1 (by rw [← hb]) fun l hl => by
+        rw [hbl] at hl; cases hl
+        refine ⟨.inr (.inl fun q x hq => ?_), by rw [hnlT]; exact Nat.lt_succ_self _⟩
+        rw [hshapeT] at hq; exact (hi.2.2 q x hq).2
+    have henvT : T.env.length = s.env.length := by rw [← hT, (envLe_pushTemp _ _).1, henv₀]
+    have henv' : (pushBindShaped T b).env.length = s.env.length := by
+      rw [(envPush_pushBindShaped T b).1, henvT]
+    by_cases he : s.env = []
+    · have he' : (pushBindShaped T b).env = [] := List.eq_nil_of_length_eq_zero (by rw [henv', he]; rfl)
+      refine ⟨rinv_drop_one hi'' (.inr (indep_of_env_nil he' _)), ?_, fun c hc => ?_⟩
+      · rw [nextLoan_pushBindShaped, hnlT]; exact Nat.le_succ_of_le hst
+      · rcases List.mem_append.mp hc with hc | hc
+        · exact ⟨(hcells c hc).1, .inr he'⟩
+        · simp only [List.mem_singleton] at hc; subst hc; exact ⟨trivial, .inr he'⟩
+    · have hneT : T.env ≠ [] := fun h => he (List.eq_nil_of_length_eq_zero (by rw [← henvT, h]; rfl))
+      have hlive' : ∀ y, (pushBindShaped T b).Live y ↔ s.Live y ∨ y = s.nextLoan := by
+        intro y
+        rw [live_pushBindShaped hiT.2.2 b hneT y, hliveT, hbl]
+        constructor
+        · rintro (h | h)
+          · exact .inl h
+          · exact .inr (Option.some.inj h).symm
+        · rintro (h | h)
+          · exact .inl h
+          · exact .inr (by rw [h])
+      refine ⟨rinv_drop_one hi'' (.inl ((hlive' _).mpr (.inr rfl))), ?_, fun c hc => ?_⟩
+      · rw [nextLoan_pushBindShaped, hnlT]; exact Nat.le_succ_of_le hst
+      · have hmemT : ∀ q ∈ s.positions, q ∈ T.positions := fun q hq => by
+          rw [← hT]; exact mem_positions_pushTemp _ _ (by rw [hpos₀]; exact hq)
+        have hvalT : ∀ q ∈ s.positions, T.valAt q = s.valAt q := fun q hq => by
+          rw [← hT, valAt_pushTemp_old _ _ (by rw [hpos₀]; exact hq), hval₀]
+        rcases List.mem_append.mp hc with hc | hc
+        · obtain ⟨ht, hc'⟩ := hcells c hc
+          rcases hc' with ⟨hcm, ho⟩ | he''
+          · refine ⟨ht, .inl ⟨mem_positions_pushBindShaped b (hmemT c hcm), ?_⟩⟩
+            refine ordered_step ho ?_ (fun y h1 h2 => ?_) (fun y h1 h2 => ?_)
+            · rcases valAt_pushBindShaped_old b (hmemT c hcm) with e | e
+              · exact .inl (by rw [e, hvalT c hcm])
+              · exact .inr ⟨_, e⟩
+            · rcases (hlive' y).mp h1 with h | rfl
+              · exact absurd h h2
+              · exact .inl hst
+            · exact absurd ((hlive' y).mpr (.inl h1)) h2
+          · exact absurd he'' he
+        · simp only [List.mem_singleton] at hc
+          subst hc
+          rw [← hT] at hneT ⊢
+          have hne₀ : s₀.env ≠ [] := by rw [henv₀]; exact he
+          obtain ⟨hm, hv⟩ := pushTemp_last s₀ (fun ψ => ψ s.nextLoan) hne₀
+          refine ⟨trivial, .inl ⟨mem_positions_pushBindShaped b hm, ?_⟩⟩
+          rw [hT] at hm hv ⊢
+          rcases valAt_pushBindShaped_old b hm with e | e
+          · rw [e, hv]
+            intro ψ ψ' hψ
+            exact hψ s.nextLoan (.inr ⟨(hlive' _).mpr (.inr rfl), hst⟩)
+          · rw [e]; exact FT.const _ _
+  · refine ⟨pushBind_rinv hi _ ap.1 rfl, hst, fun c hc => ?_⟩
+    obtain ⟨ht, hc'⟩ := hcells c hc
+    refine ⟨ht, ?_⟩
+    rcases hc' with ⟨hcm, ho⟩ | he
+    · refine .inl ⟨mem_positions_pushBind _ _ hcm, ?_⟩
+      rw [valAt_pushBind_old _ _ hcm]
+      exact ordered_step ho (.inl rfl)
+        (fun y h1 h2 => absurd ((live_pushBind hi.2.2 _ y).mp h1) h2)
+        (fun y h1 h2 => absurd ((live_pushBind hi.2.2 _ y).mpr h1) h2)
+    · exact .inr (by simp [SState.pushBind, he])
+
+theorem foldl_fixStep_inv {start : Nat} : ∀ (xs : List (Sem × PiParam)) (sa : SState × List Sem × List Pos),
+    FormInv L start sa → FormInv L start (xs.foldl fixStep sa)
+  | [], _, h => h
+  | x :: xs, sa, h => foldl_fixStep_inv xs _ (fixStep_inv h x)
+
+end FixProps
+
+/-! ## The closure's body at two futures, and its finals -/
+
+section FixCongr
+variable (K : RunCtx) (ρ : Assignment) {φ φ' : Future} {L : Nat → Prop}
+
+theorem formInv_init {s : SState} (hi : RInv L s) (b : SBinding) (c : Sem) (hb : b.val = fun _ => c) :
+    FormInv L s.nextLoan (s.pushBind b, [], []) :=
+  ⟨pushBind_rinv hi b c hb, Nat.le_refl _, fun _ hc => by cases hc⟩
+
+theorem fixBodyAt_congr {body : Term} (hb : ∀ hint s₂, RInv L s₂ → run K ρ φ hint body s₂ = run K ρ φ' hint body s₂)
+    {s : SState} (hi : RInv L s) (ps : List PiParam) (out : PiOut) (piT : TyM) (selfM : Sem) (args : List Sem) :
+    fixBodyAt K ρ φ s ps out piT s.nextLoan body selfM args = fixBodyAt K ρ φ' s ps out piT s.nextLoan body selfM args := by
+  unfold fixBodyAt
+  dsimp only
+  have hF := foldl_fixStep_inv (args.zip ps) _
+    (formInv_init (L := L) hi { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM } selfM rfl)
+  generalize (args.zip ps).foldl fixStep (s.pushBind { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM }, [], []) = F at hF ⊢
+  obtain ⟨s₂, acc, cells⟩ := F
+  dsimp only
+  rw [hb _ s₂ hF.1]
+
+/-- After the pop, a cell reads `L` and the kept label (`ordered_after_pop`; a state with no frame
+has no positions). -/
+theorem finals_of_pop {s₂ s₃ : SState} {start : Nat} (hi₃ : RInv L s₃) (e₃ : EnvLe s₂ s₃) (o₃ : OrdKeep L s₂ s₃)
+    (hst₂ : start ≤ s₂.nextLoan) {cells : List Pos}
+    (hcells : ∀ c ∈ cells, IsTemp c ∧ ((c ∈ s₂.positions ∧ Ordered L s₂ start (s₂.valAt c)) ∨ s₂.env = []))
+    (keep : Option Nat) : ∀ c ∈ cells, FT (fun y => L y ∨ some y = keep)
+      (((s₃.liveLabels.filter fun l => decide (l ≥ start ∧ some l ≠ keep)).foldl endLabel s₃).valAt c) := by
+  intro c hc
+  obtain ⟨ht, hc'⟩ := hcells c hc
+  rcases hc' with ⟨hcm, ho⟩ | he
+  · exact ordered_after_pop hi₃.1 hi₃.2.1 _ _ (o₃.2 _ c hst₂ ht hcm ho)
+  · have he₄ := env_nil_of_envLe (envLe_foldl_endLabel
+      (s₃.liveLabels.filter fun l => decide (l ≥ start ∧ some l ≠ keep)) s₃) (env_nil_of_envLe e₃ he)
+    have : c ∉ ((s₃.liveLabels.filter fun l => decide (l ≥ start ∧ some l ≠ keep)).foldl endLabel s₃).positions := by
+      rw [positions_eq, he₄]; simp
+    rw [valAt_of_not_mem _ _ this]; exact FT.const _ _
+
+theorem fixBodyAt_finals (hK : ∀ n, (K.C.global n).2.label = none) {s : SState} (hi : RInv L s)
+    (ps : List PiParam) (out : PiOut) (piT : TyM) (body : Term) (selfM : Sem) (args : List Sem) (o : BodyOut)
+    (h : fixBodyAt K ρ φ s ps out piT s.nextLoan body selfM args = some o) : FinalsIn L out o := by
+  have hF := foldl_fixStep_inv (args.zip ps) _
+    (formInv_init (L := L) hi { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM } selfM rfl)
+  cases out with
+  | data B =>
+    unfold fixBodyAt at h
+    dsimp only at h
+    generalize hFF : (args.zip ps).foldl fixStep (s.pushBind { ty := ⟨piT, some (ps, PiOut.data B), none, none⟩, val := fun _ => selfM }, [], []) = F at hF h
+    obtain ⟨s₂, acc, cells⟩ := F
+    obtain ⟨hi₂, hst₂, hcells⟩ := hF
+    dsimp only at h hi₂ hst₂ hcells
+    split at h
+    · rename_i r R s₃ hrun
+      simp only [Option.some.injEq] at h
+      subst h
+      obtain ⟨hi₃, -, e₃, o₃⟩ := run_rinv K ρ φ L hK body _ s₂ s₃ (r, R) hi₂ hrun
+      have hcell := finals_of_pop hi₃ e₃ o₃ hst₂ hcells none
+      intro c hc
+      simp only [List.mem_map] at hc
+      obtain ⟨c₀, hc₀, rfl⟩ := hc
+      exact (hcell c₀ hc₀).mono fun y hy => hy.resolve_right (by simp)
+    · cases h
+  | ref U =>
+    unfold fixBodyAt at h
+    dsimp only at h
+    generalize hFF : (args.zip ps).foldl fixStep (s.pushBind { ty := ⟨piT, some (ps, PiOut.ref U), none, none⟩, val := fun _ => selfM }, [], []) = F at hF h
+    obtain ⟨s₂, acc, cells⟩ := F
+    obtain ⟨hi₂, hst₂, hcells⟩ := hF
+    dsimp only at h hi₂ hst₂ hcells
+    split at h
+    · rename_i r R s₃ hrun
+      simp only [Option.some.injEq] at h
+      subst h
+      obtain ⟨hi₃, -, e₃, o₃⟩ := run_rinv K ρ φ L hK body _ s₂ s₃ (r, R) hi₂ hrun
+      have hcell := finals_of_pop hi₃ e₃ o₃ hst₂ hcells R.label
+      intro c hc k hk
+      simp only [List.mem_map] at hc
+      obtain ⟨c₀, hc₀, rfl⟩ := hc
+      exact (hcell c₀ hc₀).mono fun y hy => hy.imp_right fun e => by
+        simp only at hk; rw [hk] at e; exact Option.some.inj e
+    · cases h
+
+/-- **The stages of a recursive closure** agree at the two futures, and every stage's finals read
+only `L` and the returned label: by induction on the stage, with `closureAt_congr` for `self`. -/
+theorem fixStage_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (hφ : ∀ l, L l → φ l = φ' l)
+    (hb : ∀ hint s₂, RInv L s₂ → run K ρ φ hint body s₂ = run K ρ φ' hint body s₂)
+    {s : SState} (hi : RInv L s) (l : Nat) (ps : List PiParam) (out : PiOut) (piT : TyM) :
+    ∀ k, fixStage K ρ φ l s ps out piT s.nextLoan body k = fixStage K ρ φ' l s ps out piT s.nextLoan body k ∧
+      ∀ args o, fixStage K ρ φ l s ps out piT s.nextLoan body k args = some o → FinalsIn L out o
+  | 0 => ⟨rfl, fun _ _ h => by cases h⟩
+  | k + 1 => by
+    obtain ⟨ih1, ih2⟩ := fixStage_congr hK hφ hb hi l ps out piT k
+    have hcl : closureAt l φ ps out (fixStage K ρ φ l s ps out piT s.nextLoan body k)
+        = closureAt l φ' ps out (fixStage K ρ φ' l s ps out piT s.nextLoan body k) := by
+      rw [← ih1]; exact closureAt_congr hφ l ps out _ ih2
+    refine ⟨?_, fun args o h => ?_⟩
+    · show fixBodyAt K ρ φ s ps out piT s.nextLoan body (closureAt l φ ps out (fixStage K ρ φ l s ps out piT s.nextLoan body k))
+        = fixBodyAt K ρ φ' s ps out piT s.nextLoan body (closureAt l φ' ps out (fixStage K ρ φ' l s ps out piT s.nextLoan body k))
+      rw [hcl]
+      funext args
+      exact fixBodyAt_congr K ρ hb hi ps out piT _ args
+    · exact fixBodyAt_finals K ρ hK hi ps out piT body _ args o h
+
+theorem fixG_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (hφ : ∀ l, L l → φ l = φ' l)
+    (hb : ∀ hint s₂, RInv L s₂ → run K ρ φ hint body s₂ = run K ρ φ' hint body s₂)
+    {s : SState} (hi : RInv L s) (l : Nat) (ps : List PiParam) (out : PiOut) (piT : TyM) (dec : Option Nat) :
+    fixG K ρ φ l s ps out piT s.nextLoan dec body = fixG K ρ φ' l s ps out piT s.nextLoan dec body ∧
+      ∀ args o, fixG K ρ φ l s ps out piT s.nextLoan dec body args = some o → FinalsIn L out o := by
+  cases dec with
+  | none =>
+    refine ⟨funext fun args => fixBodyAt_congr K ρ hb hi ps out piT _ args, fun args o h => ?_⟩
+    exact fixBodyAt_finals K ρ hK hi ps out piT body _ args o h
+  | some j =>
+    refine ⟨funext fun args => ?_, fun args o h => ?_⟩
+    · exact congrFun (fixStage_congr K ρ hK hφ hb hi l ps out piT (fixRank K ps (some j) args + 1)).1 args
+    · exact (fixStage_congr K ρ hK hφ hb hi l ps out piT (fixRank K ps (some j) args + 1)).2 args o h
+
+end FixCongr
+
 /-- The type an embedded value's run carries (`run`'s `.val` clause). -/
 noncomputable def valT (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) : Value → TyS
   | .clo caps t rd => { hint with shape := ((piShapeOf K ρ φ (stateOf 0 (capsState (capsVals K ρ φ caps)
@@ -499,7 +903,23 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     have hc3 : ∀ u, n = "inplace" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inr (.inr e1), e2⟩
     rw [run.eq_41 K ρ φ hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3,
       run.eq_41 K ρ φ' hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3]
-  | _, _, _, _, _, _, _ => sorry
+  | .fix self hs ds c dec body, hint, s, L, hφ, ht, hi => by
+    have hds := runDoms_congrE hK s L hφ hi ds (fun l h => ht l (by simp [Term.anyAtom, h]))
+    have hc : ∀ acc, run K ρ φ (.plain .err) c (extendBy s acc) = run K ρ φ' (.plain .err) c (extendBy s acc) :=
+      fun acc => run_congrE hK c _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi acc)
+    have hb : ∀ (hint : TyS) (s₂ : SState), RInv L s₂ → run K ρ φ hint body s₂ = run K ρ φ' hint body s₂ :=
+      fun hint s₂ hi₂ => run_congrE hK body hint s₂ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi₂
+    have hout : fixOut K ρ φ s c = fixOut K ρ φ' s c := by
+      cases c with
+      | ref U =>
+        have hU : ∀ acc, run K ρ φ (.plain .err) U (extendBy s acc) = run K ρ φ' (.plain .err) U (extendBy s acc) :=
+          fun acc => run_congrE hK U _ _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) (rinv_extendBy hi acc)
+        simp only [fixOut, hU]
+      | _ => simp only [fixOut, hc]
+    rw [run_fix_def, run_fix_def, hds, hout]
+    obtain ⟨hg1, hg2⟩ := fixG_congr K ρ hK hφ hb hi (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ' s ds)
+      (fixOut K ρ φ' s c) (piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ' s ds) (fixOut K ρ φ' s c)) dec
+    rw [← hg1, closureAt_congr hφ _ _ _ _ hg2]
 
 theorem meanV_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (v : Value) (hint : TyS),
     (∀ l, v.hasLoan l = true → φ l = φ' l) → meanV K ρ φ hint v = meanV K ρ φ' hint v
