@@ -60,7 +60,9 @@ def DecInvariant (D : Decisions) (l : Nat) (w : Value) : Prop :=
   (∀ sc t, D.piSort sc (Term.substLoan l w t) = D.piSort sc t) ∧
   (∀ sc e t, D.joinMoves sc e (Term.substLoan l w t) = D.joinMoves sc e t) ∧
   -- m2-proofs' 5a: `Id` reads the re-pointed bindings off its first side's text
-  (∀ sc t, D.rePointed sc (Term.substLoan l w t) = D.rePointed sc t)
+  (∀ sc t, D.rePointed sc (Term.substLoan l w t) = D.rePointed sc t) ∧
+  -- D19, R3: a closure's frame binds its parameters at their domain terms' readings
+  (∀ sc t, D.typeDecl sc (Term.substLoan l w t) = D.typeDecl sc t)
 
 /-- The filler's type, as the run reads an embedded value, is the loan's (P1, replacing m2-proofs'
 `NotCode`: a borrowed function value is real). At every hint, `.val w` and `.val (loan ℓ)` give

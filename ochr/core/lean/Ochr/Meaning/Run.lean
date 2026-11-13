@@ -469,22 +469,27 @@ noncomputable def run (hint : TyS) : Term → SM Res
     let l := K.D.piSort (scopeOf s) (.pi hs ds c)
     let piT := piTyAt l ps out
     let start := s.nextLoan
+    -- the declared readings of the parameters and the codomain (`Decide.paramDecls`): what the
+    -- frame binds the parameters at, and `self` (D19, R3: bound at `other`, a parameter of a copy
+    -- type was moved by its first read, and a call through `self` or a function parameter was
+    -- never classified as a statement or a proof)
+    let dc := K.D.fixDecls (scopeOf s) ds c
     let bodyAt (selfM : Sem) (args : List Sem) : Option BodyOut :=
       -- the frame: `self`, then the parameters. A borrow parameter is set up as the generic call
       -- is ([Def]): a fresh label `lᵢ`, a *cell* (a temporary of the frame: temporaries do not
       -- shift de Bruijn indices) reading `lᵢ`'s final content, and the parameter holding the
       -- content as the borrow's holder (D14). Returning the parameter returns its label.
-      let s₁ := s.pushBind { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM }
+      let s₁ := s.pushBind { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM, decl := .pi dc.2 }
       let step (sa : SState × List Sem × List Pos) (ap : Sem × PiParam) : SState × List Sem × List Pos :=
         let (s, acc, cells) := sa
         if ap.2.isRef then
           let (l, s) := s.freshLoan
           let s := s.pushTemp fun ψ => ψ l
           let cell : Pos := .temp s.topIdx (((s.env.getLast?).map (·.temps.length)).getD 1 - 1)
-          let s := pushBindShaped s { ty := ⟨ap.2.dom acc, none, some l, none⟩, val := fun _ => ap.1 }
+          let s := pushBindShaped s { ty := ⟨ap.2.dom acc, none, some l, none⟩, val := fun _ => ap.1, decl := dc.1.getD acc.length .other }
           (s, acc ++ [ap.1], cells ++ [cell])
         else
-          (s.pushBind { ty := .plain (ap.2.dom acc), val := fun _ => ap.1 }, acc ++ [ap.1], cells)
+          (s.pushBind { ty := .plain (ap.2.dom acc), val := fun _ => ap.1, decl := dc.1.getD acc.length .other }, acc ++ [ap.1], cells)
       let (s₂, _, cells) := (args.zip ps).foldl step (s₁, [], [])
       let codT := match out with | .data B => B args | .ref U => U args
       match run (.plain codT) body s₂ with

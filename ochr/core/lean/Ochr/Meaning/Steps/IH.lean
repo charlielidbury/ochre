@@ -85,5 +85,6 @@ structure StepsIH (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Pr
   piSort_aligned' : piSort_aligned'_stmt K ρ φ fuel
   joinMoves_aligned : joinMoves_aligned_stmt K ρ φ fuel
   rePointed_aligned : rePointed_aligned_stmt K ρ φ fuel
+  typeDecl_aligned : typeDecl_aligned_stmt K ρ φ fuel
 
 end Ochr.Meaning.Steps
