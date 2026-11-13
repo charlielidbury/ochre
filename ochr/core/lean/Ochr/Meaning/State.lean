@@ -77,11 +77,13 @@ noncomputable def _root_.Ochr.Value.tyData (ρ : Assignment) : Value → Option 
   | .tRef T => Value.tyData ρ T
   | _ => none
 
-/-- A stored type value as the run knows it: its meaning, and for `D(ā)` its declaration and
-parameters' meanings (the structured hint, D8 revised); shapes of stored Π-types are the
-run's business (`piShapeOf`). Read under the constant future (docs/27 Lemma 5). -/
+/-- A stored type value as the run knows it: its meaning, for `D(ā)` its declaration and
+parameters' meanings (the structured hint, D8 revised), and for a Π-type its shape, which is the
+run's business (`CodeMeaning.tyShape`, the run's `piShapeOf`; the audit's A16). Read under the
+constant future (docs/27 Lemma 5). -/
 noncomputable def _root_.Ochr.Value.tyS (ρ : Assignment) (T : Value) : TyS :=
   { m := (Value.mean dm C Γ ρ (fun _ => .err) (.plain .err) T).asTy,
+    shape := C.tyShape ρ T,
     data := Value.tyData dm C Γ ρ T }
 
 /-- The type a position's value is read at (docs/31 D8): the binding's stored type, or `err` for

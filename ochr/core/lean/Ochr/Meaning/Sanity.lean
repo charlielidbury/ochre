@@ -102,8 +102,10 @@ on the hole, so the reference run would not have ended `r` (docs/27: `pk2_b_at_r
 checker's state is below it by `Mean.semEnd_below`. -/
 theorem pick_early_end (fA fB fR : Term) (φ : Future) :
     let m := MState.mean dm C [] ρ (Ωpick fA fB fR)
-    (m.semEnd r 2).val φ a = C.sealed ρ (φ.upd 2 (C.sealed ρ φ (.plain (.ty0 Nat)) fR)) (.plain (.ty0 Nat)) fA ∧
-    (m.semEnd r 2).val φ b = C.sealed ρ (φ.upd 2 (C.sealed ρ φ (.plain (.ty0 Nat)) fR)) (.plain (.ty0 Nat)) fB ∧
+    let T := Value.tyS dm C [] ρ .tNat
+    let Tr := Value.tyS dm C [] ρ (.tRef .tNat)
+    (m.semEnd r 2).val φ a = C.sealed ρ (φ.upd 2 (C.sealed ρ φ Tr fR)) T fA ∧
+    (m.semEnd r 2).val φ b = C.sealed ρ (φ.upd 2 (C.sealed ρ φ Tr fR)) T fB ∧
     (m.semEnd r 2).val φ r = .moved := by
   refine ⟨?_, ?_, ?_⟩
   · have h : (a = r) = False := eq_false (by decide)

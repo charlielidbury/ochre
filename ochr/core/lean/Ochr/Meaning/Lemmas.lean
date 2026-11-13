@@ -102,9 +102,14 @@ theorem fillOK_upd (φ : Future) (l : Nat) (w : Value) (hK : ∀ n, (K.C.global 
   have hw' : ∀ y, w.anyAtom (· == .loan y) = true → y ≠ l := fun y hy e => hw (by subst e; exact hy)
   have hagree : ∀ y, y ≠ l → (φ.upd l (meanV K ρ φ (.plain .err) w)) y = φ y :=
     fun y hy => Future.upd_other _ _ hy
-  refine ⟨fun hint => ?_, fun hint s => ?_, hD⟩
+  refine ⟨fun hint => ?_, ⟨fun hint s => ?_, ?_, ?_⟩, hD⟩
+  rotate_left 2
+  · rw [← tyShape_congrE K ρ φ (φ.upd l (meanV K ρ φ (.plain .err) w)) hK w (fun y hy => (hagree y (hw' y hy)).symm)]
+    exact hc.2.1
+  · rw [← tyDataV_congrE K ρ φ (φ.upd l (meanV K ρ φ (.plain .err) w)) hK w (fun y hy => (hagree y (hw' y hy)).symm)]
+    exact hc.2.2
   · rw [meanV_congr K ρ _ φ hint w hK (fun y hy => hagree y (hw' y hy)), hf hint (.plain .err), Future.upd_same]
-  · have h0 := hc hint (emptyState 0)
+  · have h0 := hc.1 hint (emptyState 0)
     have hr := run_congrE K ρ φ (φ.upd l (meanV K ρ φ (.plain .err) w)) hK (.val w) hint (emptyState 0)
       (fun y => y ≠ l) (fun y hy => (hagree y hy).symm) (fun y hy => hw' y hy) (rinv_emptyState _)
     rw [run_val_def, run_val_def] at h0 hr ⊢
