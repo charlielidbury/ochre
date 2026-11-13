@@ -110,6 +110,9 @@ def checkerDecisions (st : MState) (fuel : Nat) : Decisions where
   joinMoves sc entry t := readDecision (scopeState st sc) fuel entry (withLive true (jdMoves fuel [] [] t entry))
   -- `Machine.idType`: [Id-typestate]'s re-pointed component ([Obs-ref]'s set)
   rePointed sc t := readDecision (scopeState st sc) fuel [] (do pure (← withLive true (typeState fuel t)).repointed)
+  -- `Decide.typeDecl`, the reading of a type term, with the scope as the live frame (as
+  -- `Decide.telescope` reads a parameter's type in the scope of the earlier ones)
+  typeDecl sc T := readDecision (scopeState st sc) fuel .other (withLive true (Ochr.typeDecl fuel false [] [] T))
 
 /-! ## Sanity: the fields compute (by the kernel, at any tables `st`) -/
 
@@ -162,6 +165,22 @@ domain through `declOf false`; D86 on main reads a Π-term's declared sort in ev
 instance now agrees with `Machine.piSort`). -/
 theorem piSort_nested :
     (checkerDecisions st 10).piSort [] (.pi [⟨"f"⟩] [.pi [⟨"x"⟩] [.nat] (.sort 0)] .nat) = 2 := rfl
+
+/-- D19, R3: a parameter declared `Unit` reads as `Unit`, a copy type; a function's parameters
+and codomain read their type terms (`Decide.paramDecls`), each in the scope of the earlier ones. -/
+theorem typeDecl_unit : (checkerDecisions st 10).typeDecl [] .unit = .unit := rfl
+
+theorem fixDecls_unit_unit : (checkerDecisions st 10).fixDecls [] [.unit] .unit = ([.unit], .unit) := rfl
+
+/-- So a read of a `Unit` parameter is a copy (`CopyParam (u : Unit) : Unit × Unit := (u, u)`). -/
+theorem copy_unit_param :
+    (checkerDecisions st 10).copy ((checkerDecisions st 10).placeDecl
+      (((checkerDecisions st 10).fixDecls [] [.unit] .unit).1.getD 0 .other :: []) (.var 0)) = true := rfl
+
+/-- A parameter that is a function into `Prop` reads as one, so a call through it is a proof. -/
+theorem fixDecls_lemma_param :
+    ((checkerDecisions st 10).fixDecls [] [.pi [⟨"n"⟩] [.nat] (.eq .nat (.place (.var 0)) (.place (.var 0)))] .unit).1
+      = [.pi .prop] := rfl
 
 end DecisionsSanity
 

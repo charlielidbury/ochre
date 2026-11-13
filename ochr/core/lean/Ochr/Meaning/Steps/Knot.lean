@@ -108,6 +108,7 @@ theorem stepsIH : ∀ (fuel : Nat) (ρ : Assignment) (φ : Future), StepsIH K ρ
       piSort_aligned' := piSort_aligned' K ρ φ fuel ih
       joinMoves_aligned := joinMoves_aligned K ρ φ fuel ih
       rePointed_aligned := rePointed_aligned K ρ φ fuel ih
+      typeDecl_aligned := typeDecl_aligned K ρ φ fuel ih
     }
 
 end

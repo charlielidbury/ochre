@@ -56,6 +56,10 @@ theorem joinMoves_aligned (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : 
 theorem rePointed_aligned (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : rePointed_aligned_stmt K ρ φ (fuel + 1) := by
   sorry
 
+/-- `Decisions.typeDecl` is `Decide.typeDecl`, the reading of a type term (D19, R3). -/
+theorem typeDecl_aligned (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : typeDecl_aligned_stmt K ρ φ (fuel + 1) := by
+  sorry
+
 end
 
 end Ochr.Meaning.Steps
