@@ -82,7 +82,18 @@ end Syntax
 /-! ## Support: the pieces that read the term -/
 
 section SubstSame
-variable (K : RunCtx) (ρ : Assignment) (ψ : Future) (l : Nat) (w : Value)
+variable (K : RunCtx) (ρ : Assignment) (ψ : Future) (l : Nat) (w : Value) {dc : List DeclInfo × DeclInfo}
+
+/-- The decisions do not see the fill in a telescope's readings (D19, R3). -/
+theorem teleDecls_substLoan (hD : DecInvariant K.D l w) : ∀ (ds : List Term) (sc : List DeclInfo),
+    K.D.teleDecls sc (Term.substLoanList l w ds) = K.D.teleDecls sc ds
+  | [], _ => rfl
+  | d :: ds, sc => by
+    simp only [Term.substLoanList, Decisions.teleDecls, hD.2.2.2.2.2, teleDecls_substLoan hD ds]
+
+theorem fixDecls_substLoan (hD : DecInvariant K.D l w) (sc : List DeclInfo) (ds : List Term) (c : Term) :
+    K.D.fixDecls sc (Term.substLoanList l w ds) (Term.substLoan l w c) = K.D.fixDecls sc ds c := by
+  simp only [Decisions.fixDecls, teleDecls_substLoan K l w hD, hD.2.2.2.2.2, length_substLoanList]
 
 theorem joinDrop_substLoan (hD : DecInvariant K.D l w) (φ : Future) (t : Term) (s : SState) :
     joinDrop K φ (Term.substLoan l w t) s = joinDrop K φ t s := by
@@ -90,23 +101,23 @@ theorem joinDrop_substLoan (hD : DecInvariant K.D l w) (φ : Future) (t : Term) 
 
 theorem fixBodyAt_bodyEq {body body' : Term} (hb : ∀ hint, run K ρ ψ hint body' = run K ρ ψ hint body)
     (s : SState) (ps : List PiParam) (out : PiOut) (piT : TyM) (start : Nat) :
-    fixBodyAt K ρ ψ s ps out piT start body' = fixBodyAt K ρ ψ s ps out piT start body := by
+    fixBodyAt K ρ ψ dc s ps out piT start body' = fixBodyAt K ρ ψ dc s ps out piT start body := by
   funext selfM args
   unfold fixBodyAt
   simp only [hb]
 
 theorem fixStage_bodyEq {body body' : Term} (hb : ∀ hint, run K ρ ψ hint body' = run K ρ ψ hint body)
     (lv : Nat) (s : SState) (ps : List PiParam) (out : PiOut) (piT : TyM) (start : Nat) :
-    ∀ k, fixStage K ρ ψ lv s ps out piT start body' k = fixStage K ρ ψ lv s ps out piT start body k
+    ∀ k, fixStage K ρ ψ dc lv s ps out piT start body' k = fixStage K ρ ψ dc lv s ps out piT start body k
   | 0 => rfl
   | k + 1 => by
-    show fixBodyAt K ρ ψ s ps out piT start body' (closureAt lv ψ ps out (fixStage K ρ ψ lv s ps out piT start body' k))
-      = fixBodyAt K ρ ψ s ps out piT start body (closureAt lv ψ ps out (fixStage K ρ ψ lv s ps out piT start body k))
+    show fixBodyAt K ρ ψ dc s ps out piT start body' (closureAt lv ψ ps out (fixStage K ρ ψ dc lv s ps out piT start body' k))
+      = fixBodyAt K ρ ψ dc s ps out piT start body (closureAt lv ψ ps out (fixStage K ρ ψ dc lv s ps out piT start body k))
     rw [fixStage_bodyEq hb lv s ps out piT start k, fixBodyAt_bodyEq K ρ ψ hb]
 
 theorem fixG_bodyEq {body body' : Term} (hb : ∀ hint, run K ρ ψ hint body' = run K ρ ψ hint body)
     (lv : Nat) (s : SState) (ps : List PiParam) (out : PiOut) (piT : TyM) (start : Nat) (dec : Option Nat) :
-    fixG K ρ ψ lv s ps out piT start dec body' = fixG K ρ ψ lv s ps out piT start dec body := by
+    fixG K ρ ψ dc lv s ps out piT start dec body' = fixG K ρ ψ dc lv s ps out piT start dec body := by
   cases dec with
   | none => exact congrFun (fixBodyAt_bodyEq K ρ ψ hb s ps out piT start) _
   | some j =>
@@ -345,7 +356,7 @@ theorem run_substSame (hF : FillOK K ρ ψ l w) : ∀ (t : Term) (hint : TyS),
       have hb := run_substSame hF b
       funext s
       show run K ρ ψ hint (.id (Term.substLoan l w A) (Term.substLoan l w a) (Term.substLoan l w b)) s = _
-      rw [run, run]; simp only [hA, ha, hb, hF.dec.2.2.2.2]
+      rw [run, run]; simp only [hA, ha, hb, hF.dec.2.2.2.2.1]
     | tind n args =>
       have hp := fun d => runParams_substSame hF d args
       show run K ρ ψ hint (.tind n (Term.substLoanList l w args)) = _
@@ -397,7 +408,7 @@ theorem run_substSame (hF : FillOK K ρ ψ l w) : ∀ (t : Term) (hint : TyS),
           (Term.substLoan l w body)) = K.D.flags sc (.fix self hs ds c dec body) :=
         fun sc => hF.dec.1 sc (.fix self hs ds c dec body)
       rw [run_fix_def, run_fix_def, hfl, hps, hds, fixOut_subst_of K ρ ψ l w hc hU, hmv,
-        fixG_bodyEq K ρ ψ hb]
+        fixDecls_substLoan K l w hF.dec, fixG_bodyEq K ρ ψ hb]
     | prim n args =>
       have hall : ∀ t ∈ args, ∀ hint, run K ρ ψ hint (Term.substLoan l w t) = run K ρ ψ hint t :=
         fun t hm hint => runAll_substSame hF args t hm hint
