@@ -92,6 +92,38 @@ open Ochr Ochr.Meaning
 
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
+open Classical in
+/-- The audit's A1: [Access] for an observation that reads no live label ends nothing, whatever
+the rest of the position's meaning reads. So reading `x.b` leaves a borrow of `x.a` live (the
+content at `.b` does not depend on `x.a`'s final content), and matching a scrutinee leaves the
+borrows inside its fields live (its tag does not depend on them); before, [Access] ended every
+label the whole position's meaning read (`o = id`). -/
+theorem access_ends_nothing (s : SState) (p : Pos) (o : Sem → Sem) (h : ∀ l, ¬ s.obsDep p o l) :
+    s.access p o = s := by
+  have hround : SState.accessRound p o s = s := by
+    have hf : (s.liveLabels.filter fun l => decide (s.obsDep p o l)) = [] := by
+      apply List.filter_eq_nil_iff.mpr
+      intro l _
+      simp only [decide_eq_true_eq]
+      exact h l
+    unfold SState.accessRound
+    rw [hf]; rfl
+  rw [SState.access_eq_rounds]
+  generalize List.range s.liveLabels.length = ns
+  induction ns with
+  | nil => rfl
+  | cons _ ns ih => rw [List.foldl_cons, hround]; exact ih
+
+/-- A1, the instance: a position holding a pair-like tuple whose first component reads label `l`
+and whose second is a constant. Observing the second component ends nothing; observing the whole
+meaning depends on `l`. -/
+theorem access_other_field (s : SState) (p : Pos) (l : Nat) (c : Sem)
+    (hv : ∀ ψ, s.valAt p ψ = .ctor "P" 0 [ψ l, c]) :
+    s.access p (fun x => match x with | .ctor _ _ [_, b] => b | _ => .err) = s ∧ s.obsDep p id l := by
+  refine ⟨access_ends_nothing s p _ fun l' ⟨ψ, x, hne⟩ => hne (by simp only [hv]), ?_⟩
+  refine ⟨fun _ => .err, .proof, ?_⟩
+  simp [hv, Future.upd]
+
 /-- The audit's A16: a checker binding whose stored type is a Π-type has that Π's shape in the
 reference state, so it can be called (`Value.tyS` reads `CodeMeaning.tyShape`, the run's
 `tyShape`; before, `Value.tyS` had no shape and `callOf` failed). -/

@@ -20,6 +20,26 @@ open SState
 section
 variable (K : RunCtx) {φ φ' : Future} {L : Nat → Prop}
 
+/-- The whole-content observation determines the content at the path and its type. -/
+theorem follow_of_wholeOb {T : TyM} {steps : List Step} {x y : Sem}
+    (h : obsAt K T steps wholeOb x = obsAt K T steps wholeOb y) :
+    Sem.follow K.dm K.Γ T x steps = Sem.follow K.dm K.Γ T y steps := by
+  unfold obsAt wholeOb at h
+  cases hx : Sem.follow K.dm K.Γ T x steps with
+  | none =>
+    cases hy : Sem.follow K.dm K.Γ T y steps with
+    | none => rfl
+    | some b => rw [hx, hy] at h; cases h
+  | some a =>
+    cases hy : Sem.follow K.dm K.Γ T y steps with
+    | none => rw [hx, hy] at h; cases h
+    | some b =>
+      rw [hx, hy] at h
+      obtain ⟨v, T'⟩ := a
+      obtain ⟨w, T''⟩ := b
+      simp only [Sem.ctor.injEq, List.cons.injEq, Sem.ty.injEq, and_true, true_and] at h
+      rw [h.1, h.2]
+
 theorem contentOf_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Place) :
     contentOf K φ p s = contentOf K φ' p s := by
   unfold contentOf
@@ -28,7 +48,20 @@ theorem contentOf_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : R
   | some ps =>
     obtain ⟨pos, steps⟩ := ps
     dsimp only
-    rw [access_FT hi.1 hi.2.1 pos φ φ' hφ]
+    rw [follow_of_wholeOb K (access_FT hi.1 hi.2.1 pos (obsAt K (s.tyAt pos).m steps wholeOb) φ φ' hφ)]
+
+/-- A match's tag is the same at both futures: [Access] for the tag settles it (R1). -/
+theorem tagOf_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Place) (tag : Sem → TyM → Sem) :
+    tagOf K φ p tag s = tagOf K φ' p tag s := by
+  unfold tagOf
+  cases resolve s p with
+  | none => rfl
+  | some ps =>
+    obtain ⟨pos, steps⟩ := ps
+    dsimp only
+    have h := access_FT hi.1 hi.2.1 pos (obsAt K (s.tyAt pos).m steps tag) φ φ' hφ
+    dsimp only at h
+    rw [h]
 
 theorem setContent_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (pos : Pos)
     (steps : List Step) (v : Sem) : setContent K φ pos steps v s = setContent K φ' pos steps v s := by
@@ -90,29 +123,29 @@ theorem joinDrop_congr (hφ : ∀ l, L l → φ l = φ' l) (entry : List Place) 
     · rfl
     · split
       · rename_i pos steps _
-        rw [closedFuture_read (access_rinv hi pos).1 (access_rinv hi pos).2.1 hφ pos]
+        rw [closedFuture_read (access_rinv hi pos _).1 (access_rinv hi pos _).2.1 hφ pos]
       · rfl
   · dsimp only
     split
     · exact hi
     · split
       · rename_i pos steps hr
-        have hia := access_rinv hi pos
+        have hia := access_rinv hi pos (obsAt K (s.tyAt pos).m steps wholeOb)
         split
         · exact hia
         · exact hia
         · exact hia
         · have hie : RInv L (if steps.isEmpty = true then
-              (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-              else s.access pos) := by
+              (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+              else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) := by
             split
             · split
               · exact endLabel_rinv hia _
               · exact hia
             · exact hia
           generalize (if steps.isEmpty = true then
-              (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-              else s.access pos) = s₂ at hie ⊢
+              (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+              else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) = s₂ at hie ⊢
           exact setAt_rinv hie pos _
             ((hie.1 pos).comp (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps x).getD .err))
             (fun x hx => by
@@ -758,10 +791,10 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     rw [run, run]
     refine SM.erasedIf_congr ?_
     dsimp only
-    rw [contentOf_congr K hφ hi p]
+    rw [tagOf_congr K hφ hi p]
     apply Option.bind_congr' rfl
-    rintro ⟨⟨v, T, pos, steps⟩, s₁⟩ h1
-    have hi₁ := (contentOf_rinv K φ' L h1 hi).1
+    rintro ⟨tg, s₁⟩ h1
+    have hi₁ := (tagOf_rinv K φ' L h1 hi).1
     dsimp only
     rw [movedPlaces_congr hφ hi₁]
     split
@@ -776,10 +809,10 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     rw [run, run]
     refine SM.erasedIf_congr ?_
     dsimp only
-    rw [contentOf_congr K hφ hi p]
+    rw [tagOf_congr K hφ hi p]
     apply Option.bind_congr' rfl
-    rintro ⟨⟨v, T, pos, steps⟩, s₁⟩ h1
-    have hi₁ := (contentOf_rinv K φ' L h1 hi).1
+    rintro ⟨tg, s₁⟩ h1
+    have hi₁ := (tagOf_rinv K φ' L h1 hi).1
     dsimp only
     rw [movedPlaces_congr hφ hi₁]
     split
@@ -811,16 +844,19 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     rintro ⟨⟨v, R⟩, s₁⟩ h2
     have hi₁ := (run_rinv K ρ φ L hK u _ s s₁ _ hi h2).1
     dsimp only
+    unfold assignAt
     cases hr : resolve s₁ p with
     | none => rfl
     | some ps =>
     obtain ⟨pos, steps⟩ := ps
     dsimp only
-    have hi₂ : RInv L (if (steps.isEmpty && (s₁.shape pos).isSome) = true then s₁ else s₁.access pos) := by
+    have hi₂ : RInv L (if (steps.isEmpty && (s₁.shape pos).isSome) = true then s₁
+        else s₁.access pos (obsAt K (s₁.tyAt pos).m steps wholeOb)) := by
       split
       · exact hi₁
-      · exact access_rinv hi₁ pos
-    generalize (if (steps.isEmpty && (s₁.shape pos).isSome) = true then s₁ else s₁.access pos) = s₂ at hi₂ ⊢
+      · exact access_rinv hi₁ pos _
+    generalize (if (steps.isEmpty && (s₁.shape pos).isSome) = true then s₁
+        else s₁.access pos (obsAt K (s₁.tyAt pos).m steps wholeOb)) = s₂ at hi₂ ⊢
     rw [setContent_congr K hφ ?_ pos steps v]
     split
     · split

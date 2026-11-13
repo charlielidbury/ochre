@@ -96,16 +96,16 @@ theorem ordKeep_foldl_endLabel : ∀ (ls : List Nat) {s : SState}, RInv L s → 
   | l :: ls, _, hi => (ordKeep_endLabel hi.2.1 l).trans (envLe_endLabel _ _)
       (ordKeep_foldl_endLabel ls (endLabel_rinv hi l))
 
-theorem envLe_iterR (p : Pos) : ∀ (k : Nat) (s : SState), EnvLe s (iterR (accStep p) k s)
+theorem envLe_iterR (p : Pos) (o : Sem → Sem) : ∀ (k : Nat) (s : SState), EnvLe s (iterR (accStep p o) k s)
   | 0, s => EnvLe.refl s
-  | k + 1, s => (envLe_iterR p k s).trans (envLe_foldl_endLabel _ _)
+  | k + 1, s => (envLe_iterR p o k s).trans (envLe_foldl_endLabel _ _)
 
-theorem ordKeep_access {s : SState} (hi : RInv L s) (p : Pos) : OrdKeep L s (s.access p) := by
+theorem ordKeep_access {s : SState} (hi : RInv L s) (p : Pos) (o : Sem → Sem) : OrdKeep L s (s.access p o) := by
   rw [access_eq, foldl_range_iterR]
   generalize s.liveLabels.length = k
   induction k with
   | zero => exact OrdKeep.refl s
-  | succ k ih => exact ih.trans (envLe_iterR p k s) (ordKeep_foldl_endLabel _ (iterR_accStep_rinv p k hi))
+  | succ k ih => exact ih.trans (envLe_iterR p o k s) (ordKeep_foldl_endLabel _ (iterR_accStep_rinv p o k hi))
 
 /-! ## Writes at a binding, and the place primitives -/
 
@@ -159,7 +159,7 @@ theorem contentOf_ordKeep {p : Place} {s s' : SState} {x : Sem × TyS × Pos × 
     split at h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
-      exact ⟨ordKeep_access hi pos, resolve_bind hr⟩
+      exact ⟨ordKeep_access hi pos _, resolve_bind hr⟩
     · cases h
 
 theorem setContent_ordKeep {pos : Pos} (hp : ¬ IsTemp pos) {steps : List Step} {v : Sem} {s s' : SState}
@@ -450,22 +450,22 @@ theorem joinDrop_ordKeep (entry : List Place) (t : Term) {s : SState} (hi : RInv
       · exact hi
       · split
         · rename_i pos steps hr
-          have hia := access_rinv hi pos
+          have hia := access_rinv hi pos (obsAt K (s.tyAt pos).m steps wholeOb)
           split
           · exact hia
           · exact hia
           · exact hia
           · have hie : RInv L (if steps.isEmpty = true then
-                (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-                else s.access pos) := by
+                (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+                else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) := by
               split
               · split
                 · exact endLabel_rinv hia _
                 · exact hia
               · exact hia
             generalize (if steps.isEmpty = true then
-                (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-                else s.access pos) = s₂ at hie ⊢
+                (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+                else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) = s₂ at hie ⊢
             exact setAt_rinv hie pos _
               ((hie.1 pos).comp (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps x).getD .err))
               (fun x hx => by
@@ -479,22 +479,22 @@ theorem joinDrop_ordKeep (entry : List Place) (t : Term) {s : SState} (hi : RInv
       · exact EnvLe.refl s
       · split
         · rename_i pos steps hr
-          have ea := envLe_access s pos
+          have ea := envLe_access s pos (obsAt K (s.tyAt pos).m steps wholeOb)
           split
           · exact ea
           · exact ea
           · exact ea
           · have ee : EnvLe s (if steps.isEmpty = true then
-                (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-                else s.access pos) := by
+                (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+                else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) := by
               split
               · split
                 · exact ea.trans (envLe_endLabel _ _)
                 · exact ea
               · exact ea
             generalize (if steps.isEmpty = true then
-                (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-                else s.access pos) = s₂ at ee ⊢
+                (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+                else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) = s₂ at ee ⊢
             exact ee.trans (envLe_setAt _ _ _)
         · exact EnvLe.refl s
     case o =>
@@ -502,26 +502,26 @@ theorem joinDrop_ordKeep (entry : List Place) (t : Term) {s : SState} (hi : RInv
       · exact OrdKeep.refl s
       · split
         · rename_i pos steps hr
-          have hia := access_rinv hi pos
-          have oa := ordKeep_access hi pos
-          have ea := envLe_access s pos
+          have hia := access_rinv hi pos (obsAt K (s.tyAt pos).m steps wholeOb)
+          have oa := ordKeep_access hi pos (obsAt K (s.tyAt pos).m steps wholeOb)
+          have ea := envLe_access s pos (obsAt K (s.tyAt pos).m steps wholeOb)
           split
           · exact oa
           · exact oa
           · exact oa
           · have hoe : OrdKeep L s (if steps.isEmpty = true then
-                (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-                else s.access pos) ∧ EnvLe s (if steps.isEmpty = true then
-                (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-                else s.access pos) := by
+                (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+                else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) ∧ EnvLe s (if steps.isEmpty = true then
+                (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+                else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) := by
               split
               · split
                 · exact ⟨oa.trans ea (ordKeep_endLabel hia.2.1 _), ea.trans (envLe_endLabel _ _)⟩
                 · exact ⟨oa, ea⟩
               · exact ⟨oa, ea⟩
             generalize (if steps.isEmpty = true then
-                (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
-                else s.access pos) = s₂ at hoe ⊢
+                (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
+                else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) = s₂ at hoe ⊢
             exact hoe.1.trans hoe.2 (ordKeep_setAt (resolve_bind hr) _)
         · exact OrdKeep.refl s
 
