@@ -245,6 +245,365 @@ theorem transfer_rinv {s : SState} (h : RInv L s) (l : Nat) (hl : s.Live l) (c :
     obtain ⟨q', _, hs'⟩ := (live_iff s l).mp hl
     exact pushTempShaped_shapeAt hsat hne _ l (by rw [hnl]; exact (hsa q' l hs').2) q x hq
 
+/-! ## Pushing a binding -/
+
+theorem lookup_pushBind_old (s : SState) (b : SBinding) (q : Pos) (h : (s.lookup q).isSome) :
+    (s.pushBind b).lookup q = s.lookup q := by
+  cases q with
+  | temp f i =>
+    simp only [lookup, pushBind, List.getElem?_modify]
+    split <;> cases s.env[f]? <;> simp
+  | bind f i =>
+    simp only [lookup, pushBind, List.getElem?_modify] at h ⊢
+    split
+    · cases e : s.env[f]? with
+      | none => simp
+      | some fr =>
+        rw [e] at h
+        simp only [Option.bind_some, Option.isSome_map] at h
+        have hi : i < fr.binds.length := by
+          cases ei : fr.binds[i]? with
+          | none => rw [ei] at h; cases h
+          | some _ => exact (List.getElem?_eq_some_iff.mp ei).1
+        simp [List.getElem?_append_left hi]
+    · cases s.env[f]? <;> simp
+
+theorem mem_positions_pushBind (s : SState) (b : SBinding) {q : Pos} (h : q ∈ s.positions) :
+    q ∈ (s.pushBind b).positions := by
+  rw [mem_positions] at h ⊢
+  rw [lookup_pushBind_old s b q h]; exact h
+
+theorem lookup_pushBind_new (s : SState) (b : SBinding) (q : Pos) (hq : (s.lookup q).isSome = false)
+    {w : SVal} (e : (s.pushBind b).lookup q = some w) : w = b.val := by
+  cases q with
+  | temp f i =>
+    exfalso
+    simp only [lookup, pushBind, List.getElem?_modify] at e hq
+    split at e
+    · cases h : s.env[f]? with
+      | none => rw [h] at e; simp at e
+      | some fr =>
+        rw [h] at e hq
+        simp only [Functor.map, Option.map_some, Option.bind_some] at e hq
+        rw [e] at hq; simp at hq
+    · have e' : ((fun a => a) <$> s.env[f]?) = s.env[f]? := by cases s.env[f]? <;> rfl
+      rw [e'] at e; rw [e] at hq; simp at hq
+  | bind f i =>
+    simp only [lookup, pushBind, List.getElem?_modify] at e hq
+    split at e
+    · cases h : s.env[f]? with
+      | none => rw [h] at e; simp at e
+      | some fr =>
+        rw [h] at e hq
+        simp only [Option.bind_some, Option.isSome_map, Option.isSome_eq_false_iff, Option.isNone_iff_eq_none] at hq
+        have hi : ¬ i < fr.binds.length := fun hi => by
+          rw [List.getElem?_eq_getElem hi] at hq; cases hq
+        simp only [Functor.map, Option.map_some, Option.bind_some, Option.map_eq_some_iff] at e
+        obtain ⟨b', hb', rfl⟩ := e
+        rw [List.getElem?_append_right (by omega)] at hb'
+        cases hk : i - fr.binds.length with
+        | zero => rw [hk] at hb'; simp at hb'; rw [hb']
+        | succ k => rw [hk] at hb'; simp at hb'
+    · have e' : ((fun a => a) <$> s.env[f]?) = s.env[f]? := by cases s.env[f]? <;> rfl
+      rw [e'] at e; rw [e] at hq; simp at hq
+
+theorem valAt_pushBind (s : SState) (b : SBinding) (q : Pos) :
+    (s.pushBind b).valAt q = s.valAt q ∨ (s.pushBind b).valAt q = b.val := by
+  by_cases hq : q ∈ s.positions
+  · left
+    rw [valAt_eq, valAt_eq, lookup_pushBind_old s b q ((mem_positions s q).mp hq)]
+  · have hq' : (s.lookup q).isSome = false := by
+      rw [mem_positions] at hq; cases h : (s.lookup q).isSome <;> simp_all
+    rw [valAt_eq]
+    cases e : (s.pushBind b).lookup q with
+    | none => left; rw [valAt_of_not_mem s q hq]; rfl
+    | some w => right; exact lookup_pushBind_new s b q hq' e
+
+theorem live_pushBind {s : SState} (hsa : ShapeAt s) (b : SBinding) (y : Nat) :
+    (s.pushBind b).Live y ↔ s.Live y := by
+  rw [live_iff, live_iff]
+  constructor
+  · rintro ⟨q, _, hs⟩
+    exact ⟨q, (hsa q y hs).1, hs⟩
+  · rintro ⟨q, hq, hs⟩
+    exact ⟨q, mem_positions_pushBind s b hq, hs⟩
+
+/-- Pushing a binding with a constant meaning and no borrow keeps the invariant. -/
+theorem pushBind_rinv {s : SState} (h : RInv L s) (b : SBinding) (c : Sem) (hb : b.val = fun _ => c) :
+    RInv L (s.pushBind b) := by
+  obtain ⟨h1, h2, hsa⟩ := h
+  have hl := live_pushBind hsa b
+  refine ⟨fun q => ?_, fun r x hr hs => ?_, fun q x hq => ?_⟩
+  · rcases valAt_pushBind s b q with e | e
+    · rw [e]; exact (h1 q).mono fun y hy => hy.imp_right (hl y).mpr
+    · rw [e, hb]; exact FT.const _ _
+  · have hs' : s.shape r = some x := hs
+    have hrs := (hsa r x hs').1
+    rcases valAt_pushBind s b r with e | e
+    · rw [e]
+      exact (h2 r x hrs hs').mono fun y hy => by
+        rcases hy with ⟨hL, hn⟩ | ⟨hy, hxy⟩
+        · exact .inl ⟨hL, fun h' => hn ((hl y).mp h')⟩
+        · exact .inr ⟨(hl y).mpr hy, hxy⟩
+    · rw [e, hb]; exact FT.const _ _
+  · have hq' : s.shape q = some x := hq
+    exact ⟨mem_positions_pushBind s b (hsa q x hq').1, (hsa q x hq').2⟩
+
+/-- A binding pushed as the holder of `l`: the new position holds `l`, every other entry is kept. -/
+theorem pushBindLabeled_shape (s : SState) (b : SBinding) (l : Nat) (fr : SFrame)
+    (hfr : (s.pushBind b).env.getLast? = some fr) (q : Pos) :
+    ({ s.pushBind b with shape := fun p => if p = .bind (s.pushBind b).topIdx (fr.binds.length - 1) then some l
+        else (s.pushBind b).shape p } : SState).shape q
+      = if q = .bind (s.pushBind b).topIdx (fr.binds.length - 1) then some l else s.shape q := rfl
+
+theorem pushBind_getLast (s : SState) (b : SBinding) :
+    (s.pushBind b).env.getLast? = (s.env.getLast?).map fun fr => { fr with binds := fr.binds ++ [b] } := by
+  simp only [pushBind, topIdx]
+  rw [List.getLast?_eq_getElem?, List.getLast?_eq_getElem?, List.length_modify, List.getElem?_modify]
+  simp
+
+theorem pushBind_topIdx (s : SState) (b : SBinding) : (s.pushBind b).topIdx = s.topIdx := by
+  simp [pushBind, topIdx]
+
+/-- **A binding pushed as a holder** (`pushBindShaped`): a constant meaning; its label `l` is taken
+from its old holder (a move) or is fresh, above every held label (a borrow parameter). -/
+theorem pushBindShaped_rinv {s : SState} (h : RInv L s) (b : SBinding) (c : Sem) (hb : b.val = fun _ => c)
+    (hl : ∀ l, b.ty.label = some l → (s.Live l ∨ ∀ q x, s.shape q = some x → x < l) ∧ l < s.nextLoan) :
+    RInv L (pushBindShaped s b) := by
+  unfold pushBindShaped
+  cases hlab : b.ty.label with
+  | none => exact pushBind_rinv h b c hb
+  | some l =>
+    obtain ⟨hlo, hln⟩ := hl l hlab
+    obtain ⟨h1, h2, hsa⟩ := h
+    have hsat := takeLabel_shapeAt hsa l
+    have htl : (s.takeLabel l).nextLoan = s.nextLoan := (shapeSub_takeLabel s l).2
+    dsimp only
+    rw [pushBind_getLast]
+    cases e : (s.takeLabel l).env.getLast? with
+    | none =>
+      -- no frame: nothing is pushed, and there are no positions
+      have hnil : (s.takeLabel l).env = [] := List.getLast?_eq_none_iff.mp e
+      have hpos : ((s.takeLabel l).pushBind b).positions = [] := by
+        rw [positions_eq]; simp [pushBind, hnil]
+      simp only [Option.map_none]
+      refine ⟨?_, ?_, ?_⟩
+      · intro q
+        rw [valAt_of_not_mem _ _ (by rw [hpos]; exact List.not_mem_nil)]; exact FT.const _ _
+      · intro r x hr _
+        rw [hpos] at hr; cases hr
+      · intro q x hq
+        obtain ⟨hq1, hq2⟩ := hsat q x hq
+        rw [positions_eq, hnil] at hq1; simp at hq1
+    | some fr0 =>
+      simp only [Option.map_some]
+      have e2 : (s.takeLabel l).env[(s.takeLabel l).topIdx]? = some fr0 := by
+        rw [List.getLast?_eq_getElem?] at e; simpa [topIdx] using e
+      -- the new position
+      have hnewpos : Pos.bind ((s.takeLabel l).pushBind b).topIdx ((fr0.binds ++ [b]).length - 1)
+          ∈ ((s.takeLabel l).pushBind b).positions := by
+        rw [pushBind_topIdx, mem_positions]
+        simp only [lookup, pushBind, List.getElem?_modify, e2]
+        simp
+      have hnewold : Pos.bind ((s.takeLabel l).pushBind b).topIdx ((fr0.binds ++ [b]).length - 1)
+          ∉ (s.takeLabel l).positions := by
+        rw [pushBind_topIdx, mem_positions]
+        simp [lookup, e2]
+      generalize hN : Pos.bind ((s.takeLabel l).pushBind b).topIdx ((fr0.binds ++ [b]).length - 1) = N at hnewpos hnewold
+      have hshape : ∀ q, ({ (s.takeLabel l).pushBind b with
+          shape := fun p => if p = N then some l else ((s.takeLabel l).pushBind b).shape p } : SState).shape q
+          = if q = N then some l else (s.takeLabel l).shape q := fun q => rfl
+      generalize hF : ({ (s.takeLabel l).pushBind b with
+          shape := fun p => if p = N then some l else ((s.takeLabel l).pushBind b).shape p } : SState) = F
+        at hshape
+      have hposF : F.positions = ((s.takeLabel l).pushBind b).positions := by rw [← hF]; rfl
+      have hvalF : ∀ q, F.valAt q = ((s.takeLabel l).pushBind b).valAt q := by intro q; rw [← hF]; rfl
+      have hnlF : F.nextLoan = s.nextLoan := by rw [← hF, ← htl]; rfl
+      have hliveF : ∀ y, F.Live y ↔ s.Live y ∨ y = l := by
+        intro y
+        rw [live_iff]
+        constructor
+        · rintro ⟨q, _, hs⟩
+          rw [hshape] at hs
+          split at hs
+          · cases hs; exact .inr rfl
+          · exact .inl (takeLabel_live_rev ((live_iff _ y).mpr ⟨q, (hsat q y hs).1, hs⟩))
+        · intro hy
+          by_cases hyl : y = l
+          · subst hyl; exact ⟨N, by rw [hposF]; exact hnewpos, by rw [hshape]; simp⟩
+          · have hyt := takeLabel_live (hy.resolve_right hyl) hyl
+            obtain ⟨q, hq, hs⟩ := (live_iff _ y).mp hyt
+            refine ⟨q, by rw [hposF]; exact mem_positions_pushBind _ b hq, ?_⟩
+            have hqN : q ≠ N := by intro e'; rw [e'] at hq; exact hnewold hq
+            rw [hshape, if_neg hqN]; exact hs
+      have hv : ∀ q, F.valAt q = s.valAt q ∨ F.valAt q = (fun _ => .moved) ∨ F.valAt q = fun _ => c := by
+        intro q
+        rw [hvalF]
+        rcases valAt_pushBind (s.takeLabel l) b q with e | e
+        · rw [e]
+          rcases takeLabel_valAt s l q with e' | e'
+          · exact .inl e'
+          · exact .inr (.inl e')
+        · rw [e, hb]; exact .inr (.inr rfl)
+      refine ⟨fun q => ?_, fun r x hr hs => ?_, fun q x hq => ?_⟩
+      · rcases hv q with e | e | e
+        · rw [e]; exact (h1 q).mono fun y hy => hy.imp_right fun h' => (hliveF y).mpr (.inl h')
+        · rw [e]; exact FT.const _ _
+        · rw [e]; exact FT.const _ _
+      · rw [hshape] at hs
+        split at hs
+        · rcases hv r with e | e | e
+          · -- r is the new position: not a position of s, so its old meaning is constant
+            rename_i hrN
+            have hrs : r ∉ s.positions := by
+              rw [← takeLabel_positions s l, hrN]; exact hnewold
+            rw [e, valAt_of_not_mem _ _ hrs]; exact FT.const _ _
+          · rw [e]; exact FT.const _ _
+          · rw [e]; exact FT.const _ _
+        · have hs' := takeLabel_shape_some hs
+          have hrs : r ∈ s.positions := by rw [← takeLabel_positions s l]; exact (hsat r x hs).1
+          rcases hv r with e | e | e
+          · rw [e]
+            exact (h2 r x hrs hs').mono fun y hy => by
+              rcases hy with ⟨hL, hn⟩ | ⟨hy, hxy⟩
+              · by_cases hF' : F.Live y
+                · rcases (hliveF y).mp hF' with h' | rfl
+                  · exact absurd h' hn
+                  · rcases hlo with hlv | hfresh
+                    · exact absurd hlv hn
+                    · exact .inr ⟨hF', hfresh r x hs'⟩
+                · exact .inl ⟨hL, hF'⟩
+              · exact .inr ⟨(hliveF y).mpr (.inl hy), hxy⟩
+          · rw [e]; exact FT.const _ _
+          · rw [e]; exact FT.const _ _
+      · rw [hshape] at hq
+        rw [hposF, hnlF]
+        split at hq
+        · rename_i hqN
+          cases hq; exact ⟨by rw [hqN]; exact hnewpos, hln⟩
+        · obtain ⟨hq1, hq2⟩ := hsat q x hq
+          exact ⟨mem_positions_pushBind _ b hq1, by rw [← htl]; exact hq2⟩
+
+/-! ## Dropping the last binding -/
+
+/-- The position `dropLast` removes. -/
+def dropped (s : SState) : Option Pos := match s.env.getLast? with
+  | some fr => some (.bind s.topIdx (fr.binds.length - 1))
+  | none => none
+
+theorem dropLast_shape (s : SState) (q : Pos) :
+    s.dropLast.shape q = if some q = s.dropped then none else s.shape q := rfl
+
+theorem lookup_dropLast (s : SState) (q : Pos) (hq : some q ≠ s.dropped) :
+    s.dropLast.lookup q = s.lookup q := by
+  cases q with
+  | temp f i =>
+    simp only [lookup, dropLast, List.getElem?_modify]
+    split <;> cases s.env[f]? <;> simp
+  | bind f i =>
+    simp only [lookup, dropLast, List.getElem?_modify]
+    split
+    · rename_i hf
+      cases e : s.env[f]? with
+      | none => simp
+      | some fr =>
+        simp only [Functor.map, Option.map_some, Option.bind_some]
+        have hlast : s.env.getLast? = some fr := by
+          rw [List.getLast?_eq_getElem?]; rw [← hf] at e; simpa [topIdx] using e
+        have hi : i ≠ fr.binds.length - 1 := by
+          intro hi; apply hq; simp [dropped, hlast, hf, hi]
+        by_cases hlt : i < fr.binds.length - 1
+        · rw [List.getElem?_dropLast]; simp [hlt]
+        · have h1 : fr.binds.dropLast[i]? = none := List.getElem?_eq_none (by simp; omega)
+          have h2 : fr.binds[i]? = none := List.getElem?_eq_none (by omega)
+          rw [h1, h2]
+    · cases s.env[f]? <;> simp
+
+theorem mem_positions_dropLast {s : SState} {q : Pos} (h : q ∈ s.dropLast.positions) :
+    q ∈ s.positions ∧ some q ≠ s.dropped := by
+  have hq : some q ≠ s.dropped := by
+    intro e
+    rw [mem_positions] at h
+    unfold dropped at e
+    cases el : s.env.getLast? with
+    | none => rw [el] at e; cases e
+    | some fr =>
+      rw [el] at e
+      simp only [Option.some.injEq] at e
+      subst e
+      have e2 : s.env[s.topIdx]? = some fr := by
+        rw [List.getLast?_eq_getElem?] at el; simpa [topIdx] using el
+      simp only [lookup, dropLast, List.getElem?_modify, e2] at h
+      simp at h
+  exact ⟨by rw [mem_positions, ← lookup_dropLast s q hq]; rw [mem_positions] at h; exact h, hq⟩
+
+theorem mem_positions_dropLast' {s : SState} {q : Pos} (h : q ∈ s.positions) (hq : some q ≠ s.dropped) :
+    q ∈ s.dropLast.positions := by
+  rw [mem_positions] at h ⊢; rw [lookup_dropLast s q hq]; exact h
+
+theorem valAt_dropLast (s : SState) (q : Pos) (hq : some q ≠ s.dropped) : s.dropLast.valAt q = s.valAt q := by
+  rw [valAt_eq, valAt_eq, lookup_dropLast s q hq]
+
+/-- **Dropping the last binding** keeps the invariant when no meaning reads the label it may hold
+(the `let`'s drop ends that label first). -/
+theorem dropLast_rinv {s : SState} (h : RInv L s)
+    (hind : ∀ r x, s.dropped = some r → s.shape r = some x → ∀ p, Indep x (s.valAt p)) :
+    RInv L s.dropLast := by
+  obtain ⟨h1, h2, hsa⟩ := h
+  have hlive : ∀ y, s.dropLast.Live y → s.Live y := by
+    intro y hy
+    rw [live_iff] at hy ⊢
+    obtain ⟨q, hq, hs⟩ := hy
+    obtain ⟨hq1, hq2⟩ := mem_positions_dropLast hq
+    rw [dropLast_shape, if_neg hq2] at hs
+    exact ⟨q, hq1, hs⟩
+  -- a live label of s not live after the drop was held at the dropped position, so nobody reads it
+  have hgone : ∀ y, s.Live y → ¬ s.dropLast.Live y → ∀ p, Indep y (s.valAt p) := by
+    intro y hy hn p
+    obtain ⟨q, hq, hs⟩ := (live_iff s y).mp hy
+    by_cases hqd : some q = s.dropped
+    · exact hind q y hqd.symm hs p
+    · exact absurd ((live_iff _ y).mpr ⟨q, mem_positions_dropLast' hq hqd, by rw [dropLast_shape, if_neg hqd]; exact hs⟩) hn
+  -- the labels the drop makes non-live are finitely many and unread: remove them
+  have hD : ∀ (f : SVal) (S S' : Nat → Prop), FT S f →
+      (∀ y, s.Live y → ¬ s.dropLast.Live y → Indep y f) →
+      (∀ y, S y → S' y ∨ (s.Live y ∧ ¬ s.dropLast.Live y)) → FT S' f := by
+    intro f S S' hf hind' hS
+    open Classical in
+    exact FT.removeList (S := S') (s.liveLabels.filter fun y => decide (¬ s.dropLast.Live y))
+      (hf.mono fun y hy => by
+        rcases hS y hy with h' | ⟨hl, hn⟩
+        · exact .inl h'
+        · exact .inr (List.mem_filter.mpr ⟨hl, by simpa using hn⟩))
+      (fun y hy => by
+        obtain ⟨hl, hn⟩ := List.mem_filter.mp hy
+        exact hind' y hl (by simpa using hn))
+  refine ⟨fun q => ?_, fun r x hr hs => ?_, fun q x hq => ?_⟩
+  · by_cases hq : q ∈ s.dropLast.positions
+    · rw [valAt_dropLast s q (mem_positions_dropLast hq).2]
+      exact hD _ _ _ (h1 q) (fun y hl hn => hgone y hl hn q) fun y hy => by
+        rcases hy with hL | hl
+        · exact .inl (.inl hL)
+        · by_cases hn : s.dropLast.Live y
+          · exact .inl (.inr hn)
+          · exact .inr ⟨hl, hn⟩
+    · rw [valAt_of_not_mem _ _ hq]; exact FT.const _ _
+  · obtain ⟨hr1, hr2⟩ := mem_positions_dropLast hr
+    rw [dropLast_shape, if_neg hr2] at hs
+    rw [valAt_dropLast s r hr2]
+    exact hD _ _ _ (h2 r x hr1 hs) (fun y hl hn => hgone y hl hn r) fun y hy => by
+      rcases hy with ⟨hL, hn⟩ | ⟨hy, hxy⟩
+      · exact .inl (.inl ⟨hL, fun h' => hn (hlive y h')⟩)
+      · by_cases hn : s.dropLast.Live y
+        · exact .inl (.inr ⟨hn, hxy⟩)
+        · exact .inr ⟨hy, hn⟩
+  · rw [dropLast_shape] at hq
+    split at hq
+    · cases hq
+    · rename_i hqd
+      obtain ⟨hq1, hq2⟩ := hsa q x hq
+      exact ⟨mem_positions_dropLast' hq1 hqd, hq2⟩
+
 end SState
 
 end Ochr.Meaning
