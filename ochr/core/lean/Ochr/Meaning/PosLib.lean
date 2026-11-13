@@ -317,6 +317,85 @@ theorem valAt_temp_eq (env : Env) (f i : Nat) :
     | (simp only [valAt, Array.getElem!_eq_getD, Array.getD_eq_getD_getElem?])
     | (simp [valAt, Array.getElem!_eq_getD, Array.getD_eq_getD_getElem?])
 
+/-- The shape a value gives its position. -/
+def shapeOf : Value → Option Nat
+  | .borrow l _ => some l
+  | _ => none
+
+theorem shape_eq_shapeOf (env : Env) (q : Pos) : Env.shape env q = shapeOf (valAt env q) := by
+  simp only [Env.shape, shapeOf]
+  generalize valAt env q = w
+  cases w <;> rfl
+
+/-- Another position's shape is untouched by `setAt`. -/
+theorem shape_setAtE_other (env : Env) (p q : Pos) (v : Value) (hne : q ≠ p) :
+    Env.shape (Env.setAtE env p v) q = Env.shape env q := by
+  rw [shape_eq_shapeOf, shape_eq_shapeOf]
+  congr 1
+  cases q with
+  | bind f' i' =>
+    rw [valAt_bind_eq, valAt_bind_eq]
+    cases p with
+    | bind f i =>
+      simp only [Env.setAtE]
+      by_cases hff : f = f'
+      · subst hff
+        rw [Array.getElem?_modify]; simp only [if_true]
+        cases env[f]? with
+        | none => rfl
+        | some fr =>
+          simp only [Option.map_some, Option.getD_some]
+          have hii : i ≠ i' := fun h => hne (by subst h; rfl)
+          rw [Array.getElem?_modify]; simp only [hii, if_false]
+      · rw [Array.getElem?_modify]; simp only [hff, if_false]
+    | temp f i =>
+      simp only [Env.setAtE]
+      by_cases hff : f = f'
+      · subst hff
+        rw [Array.getElem?_modify]; simp only [if_true]
+        cases env[f]? <;> rfl
+      · rw [Array.getElem?_modify]; simp only [hff, if_false]
+  | temp f' i' =>
+    rw [valAt_temp_eq, valAt_temp_eq]
+    cases p with
+    | bind f i =>
+      simp only [Env.setAtE]
+      by_cases hff : f = f'
+      · subst hff
+        rw [Array.getElem?_modify]; simp only [if_true]
+        cases env[f]? <;> rfl
+      · rw [Array.getElem?_modify]; simp only [hff, if_false]
+    | temp f i =>
+      simp only [Env.setAtE]
+      by_cases hff : f = f'
+      · subst hff
+        rw [Array.getElem?_modify]; simp only [if_true]
+        cases env[f]? with
+        | none => rfl
+        | some fr =>
+          simp only [Option.map_some, Option.getD_some]
+          have hii : i ≠ i' := fun h => hne (by subst h; rfl)
+          rw [Array.set!, Array.getElem?_setIfInBounds]; simp only [hii, if_false]
+      · rw [Array.getElem?_modify]; simp only [hff, if_false]
+
+/-- The written binding's shape is the written value's. -/
+theorem shape_setAtE_bind (env : Env) (f i : Nat) (v : Value) (fr : Frame) (b : Binding)
+    (hf : env[f]? = some fr) (hi : fr.binds[i]? = some b) :
+    Env.shape (Env.setAtE env (.bind f i) v) (.bind f i) = shapeOf v := by
+  rw [shape_eq_shapeOf, valAt_bind_eq]
+  simp only [Env.setAtE]
+  rw [Array.getElem?_modify]; simp only [if_true, hf, Option.map_some, Option.getD_some]
+  rw [Array.getElem?_modify]; simp only [if_true, hi, Option.map_some, Option.getD_some]
+
+/-- The written temporary's shape is the written value's. -/
+theorem shape_setAtE_temp (env : Env) (f i : Nat) (v : Value) (fr : Frame)
+    (hf : env[f]? = some fr) (hi : i < fr.temps.size) :
+    Env.shape (Env.setAtE env (.temp f i) v) (.temp f i) = shapeOf v := by
+  rw [shape_eq_shapeOf, valAt_temp_eq]
+  simp only [Env.setAtE]
+  rw [Array.getElem?_modify]; simp only [if_true, hf, Option.map_some, Option.getD_some]
+  rw [Array.set!, Array.getElem?_setIfInBounds]; simp [hi]
+
 /-! ## Part C: the bridge -/
 
 section
