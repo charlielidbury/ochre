@@ -1209,4 +1209,112 @@ theorem closureAt_congr {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l �
   · simp only [closureL, mkTeleL_congr lvl2 hφ out g hg]
   · rfl
 
+/-! ## The call clause: the finals match the borrow parameters
+
+`callOfL` takes the holders of the borrow arguments and fixes their labels to the finals, pairing
+them in parameter order. Every taken label is fixed because a successful application consumes
+exactly one argument per parameter and returns exactly one final per borrow parameter. -/
+
+theorem extReadL_len (b : Bool) (Fin T : Type u) (readFin : Fin → List Sem) (enc : T → Sem) (n : Nat)
+    (hn : ∀ x, (readFin x).length = n) :
+    ∀ y : extFinL b Fin T, (extReadL b Fin T readFin enc y).length = n + if b then 1 else 0 := by
+  cases b <;> intro y <;> simp [extReadL, hn]
+
+/-- The finals of a successful application: as many arguments as parameters, and one final per
+borrow parameter after what the accumulator already read. -/
+theorem applyTeleL_len (Lv : Lvl.{u}) : ∀ (ps : List PiParam) (acc : List Sem) (Fin : Type u)
+    (readFin : Fin → List Sem) (out : PiOut) (F : piCarL Lv ps acc Fin out) (args : List Sem) (n : Nat),
+    (∀ x, (readFin x).length = n) → ∀ res, applyTeleL Lv ps acc Fin readFin out F args = some res →
+    args.length = ps.length ∧
+      (match res with
+       | .data _ finals => finals.length = n + (ps.filter (·.isRef)).length
+       | .ref _ _ back => ∀ v, (back v).length = n + (ps.filter (·.isRef)).length)
+  | [], acc, Fin, readFin, out, F, args, n, hn, res, h => by
+    cases args with
+    | cons _ _ => cases out <;> simp [applyTeleL] at h
+    | nil =>
+      cases out with
+      | data B =>
+        simp only [applyTeleL, Option.some.injEq] at h
+        subst h
+        simp [hn]
+      | ref U =>
+        simp only [applyTeleL, Option.some.injEq] at h
+        subst h
+        simp [hn]
+  | p :: ps, acc, Fin, readFin, out, F, args, n, hn, res, h => by
+    cases args with
+    | nil => simp [applyTeleL] at h
+    | cons a as =>
+      simp only [applyTeleL] at h
+      split at h
+      · rename_i x _
+        obtain ⟨ha, hr⟩ := applyTeleL_len Lv ps _ _ _ out (F x) as _
+          (extReadL_len p.isRef Fin (Lv.el (p.dom acc)) readFin (Lv.enc (p.dom acc)) n hn) res h
+        refine ⟨by simp [ha], ?_⟩
+        have hf : ((p :: ps).filter (·.isRef)).length = (if p.isRef then 1 else 0) + (ps.filter (·.isRef)).length := by
+          by_cases hp : p.isRef = true <;> simp [List.filter_cons, hp] <;> omega
+        rw [hf]
+        cases res with
+        | data r finals => simp only at hr ⊢; omega
+        | ref U fwd back => intro v; have := hr v; omega
+      · cases h
+
+/-- The arguments at borrow parameters, as many as the borrow parameters when the arity is right. -/
+theorem zip_filter_len {α : Type _} : ∀ (args : List α) (ps : List PiParam), args.length = ps.length →
+    ((args.zip ps).filter (·.2.isRef)).length = (ps.filter (·.isRef)).length
+  | [], [], _ => rfl
+  | a :: as, p :: ps, h => by
+    have ih := zip_filter_len as ps (by simpa using h)
+    by_cases hp : p.isRef = true <;> simp [List.filter_cons, hp, ih]
+  | [], _ :: _, h => by simp at h
+  | _ :: _, [], h => by simp at h
+
+/-- Pairing labels with finals covers every label when there are enough finals. -/
+theorem fixes_cover : ∀ (ls : List (Option Nat)) (fs : List Sem), ls.length ≤ fs.length →
+    ∀ l ∈ ls.filterMap id, l ∈ ((ls.zip fs).filterMap fun (l?, f) => l?.map (·, f)).map (·.1)
+  | [], _, _, l, hl => by simp at hl
+  | l? :: ls, [], h, l, hl => by simp at h
+  | l? :: ls, f :: fs, h, l, hl => by
+    have ih := fixes_cover ls fs (by simp at h; omega)
+    cases l? with
+    | none => simp only [List.filterMap_cons, id] at hl; simp only [List.zip_cons_cons, List.filterMap_cons,
+        Option.map_none]; exact ih l hl
+    | some k =>
+      simp only [List.filterMap_cons, id, List.mem_cons] at hl
+      simp only [List.zip_cons_cons, List.filterMap_cons, Option.map_some, List.map_cons, List.mem_cons]
+      rcases hl with rfl | hl
+      · exact .inl rfl
+      · exact .inr (ih l hl)
+
+/-- **The call clause, data result**: `callOfL` keeps (I1) and (I2). Its borrow arguments' holders
+are taken and every taken label is fixed to its final, since a successful application has one
+argument per parameter and one final per borrow parameter. -/
+theorem callOfL_data_inv {L : Nat → Prop} (Lv : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : Sem)
+    (args : List Res) {s s' : SState} (h1 : SState.Inv1 L s) (h2 : SState.Inv2 L s) {r : Sem} {B : TyM}
+    (h : callOfL Lv ps out fv args s = some ((r, .plain B), s'))
+    (hdata : ∀ U fwd back, applyFnL Lv ps out fv (args.map (·.1)) ≠ some (.ref U fwd back)) :
+    SState.Inv1 L s' ∧ SState.Inv2 L s' := by
+  unfold callOfL at h
+  dsimp only at h
+  split at h
+  · rename_i r' finals happ
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨_, rfl⟩ := h
+    unfold applyFnL at happ
+    cases hu : Lv.unpack (piCarL Lv ps [] PUnit out) fv with
+    | none => rw [hu] at happ; cases happ
+    | some F =>
+      rw [hu] at happ
+      obtain ⟨hlen, hfin⟩ := applyTeleL_len Lv ps [] PUnit (fun _ => []) out F _ 0 (fun _ => rfl) _ happ
+      simp only [List.length_map] at hlen
+      simp only [Nat.zero_add] at hfin
+      apply SState.takeAll_fix_inv h1 h2
+      apply fixes_cover
+      rw [List.length_map, zip_filter_len args ps hlen, hfin]
+      exact Nat.le_refl _
+  · rename_i U fwd back happ
+    exact absurd happ (hdata U fwd back)
+  · cases h
+
 end Ochr.Meaning
