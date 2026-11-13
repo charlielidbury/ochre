@@ -58,11 +58,16 @@ def Decisions.teleDecls (D : Decisions) (sc : List DeclInfo) : List Term → Lis
   | [] => sc
   | d :: ds => D.teleDecls (D.typeDecl sc d :: sc) ds
 
+/-- The declared readings of a telescope's parameters, in order (`Decide.paramDecls`'s first
+component): what a frame binds them at. -/
+def Decisions.paramDecls (D : Decisions) (sc : List DeclInfo) (ds : List Term) : List DeclInfo :=
+  ((D.teleDecls sc ds).take ds.length).reverse
+
 /-- The declared readings of a function's parameters, in order, and of its codomain, read in the
 scope `sc` where the function is formed (`Decide.paramDecls`): what the closure's frame binds its
 parameters at, and (`.pi cd`) `self`. -/
 def Decisions.fixDecls (D : Decisions) (sc : List DeclInfo) (ds : List Term) (c : Term) : List DeclInfo × DeclInfo :=
-  (((D.teleDecls sc ds).take ds.length).reverse, D.typeDecl (D.teleDecls sc ds) c)
+  (D.paramDecls sc ds, D.typeDecl (D.teleDecls sc ds) c)
 
 section
 variable (dm : DataModel) (Γ : List IndDecl)

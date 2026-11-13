@@ -1,7 +1,7 @@
 import Ochr.Meaning.Regress.Adequacy_flipped
 /-!
-# A function parameter cannot be called (archived record; NOT built: kernel-checked against the
-# commit that fixed D19's R3, axioms propext, Classical.choice, Quot.sound)
+# A function parameter could not be called (archived record; NOT built: kernel-checked against
+# spine f013653b, axioms propext, Classical.choice, Quot.sound; FIXED after it, docs/31 D21)
 
 `call_param_no_shape`: a call whose head is a variable bound at a type with no Π-shape, and which
 is not a proof call, fails in the reference run, since `callOf` has no shape to apply the callee
@@ -11,9 +11,11 @@ along. The `.fix` clause binds every parameter at `.plain (dom …)` (a borrow p
 reference run. `Twice (f : Π(n : Nat). Nat) (n : Nat) : Nat := f(f(n))` is accepted by the checker
 (`Regress/AdequacyProbes.lean`).
 
-A definition fault of the reference run (docs/31 D19, R6), open: `PiParam` needs the parameter's
-Π-shape as a function of the earlier parameters, read off its domain term's run, and `extendBy`
-must bind the earlier parameters at their types and shapes for the later domain terms.
+A definition fault of the reference run (docs/31 D19, R6). Fixed after f013653b (D21): the `.fix`
+clause binds each parameter at its binder's type with its Π-shape (`runBinds`), and `extendBy`
+binds the earlier parameters at their types for the later domain terms. The lemma below still
+holds of a binding with no shape; what changed is that a Π-typed parameter is no longer one
+(`Regress/Adequacy_flipped.lean`: `pi_param_has_shape`).
 -/
 open Ochr Ochr.Meaning Ochr.Meaning.Attack Ochr.Meaning.Regress.CE4flip Ochr.Meaning.Regress.AdequacyFlip
 
