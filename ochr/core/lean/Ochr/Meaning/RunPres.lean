@@ -217,6 +217,113 @@ theorem borrowPlace_rinv {p : Place} {s s' : SState} {r : Res}
       apply live_pushTempShaped_self
       cases pos <;> simpa [SState.setAt] using hne
 
+/-- **D84's drop at the join** keeps the invariant: each dropped place is accessed, its root's borrow
+ended, its content rewritten to `moved` at its path. -/
+theorem joinDrop_rinv (t : Term) {s : SState} (hi : RInv L s) : RInv L (joinDrop K φ t s) := by
+  unfold joinDrop
+  generalize K.D.joinMoves (scopeOf s) (movedPlaces φ s) t = qs
+  induction qs generalizing s with
+  | nil => exact hi
+  | cons q qs ih =>
+    simp only [List.foldl_cons]
+    apply ih
+    split
+    · exact hi
+    · split
+      · rename_i pos steps hr
+        have hia := access_rinv hi pos
+        split
+        · exact hia
+        · exact hia
+        · exact hia
+        · have hie : RInv L (if steps.isEmpty = true then
+              (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
+              else s.access pos) := by
+            split
+            · split
+              · exact endLabel_rinv hia _
+              · exact hia
+            · exact hia
+          generalize (if steps.isEmpty = true then
+              (match (s.access pos).shape pos with | some l => (s.access pos).endLabel l | none => s.access pos)
+              else s.access pos) = s₂ at hie ⊢
+          exact setAt_rinv hie pos _
+            ((hie.1 pos).comp (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps x).getD .err))
+            (fun x hx => by
+              by_cases hp : pos ∈ s₂.positions
+              · exact (hie.2.1 pos x hp hx).comp
+                  (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps x).getD .err)
+              · exact absurd (hie.2.2 pos x hx).1 hp)
+      · exact hi
+
+theorem positions_mapVals' (s : SState) (g : Pos → SVal → SVal) : (s.mapVals g).positions = s.positions :=
+  SState.positions_mapVals s g
+
+theorem shapeAt_mapVals {s : SState} (hsa : ShapeAt s) (g : Pos → SVal → SVal) : ShapeAt (s.mapVals g) := by
+  intro p x hp
+  rw [positions_mapVals']
+  exact hsa p x hp
+
+theorem shapeAt_takeAll : ∀ (ls : List Nat) {s : SState}, ShapeAt s → ShapeAt (ls.foldl SState.takeLabel s)
+  | [], _, h => h
+  | l :: ls, _, h => shapeAt_takeAll ls (takeLabel_shapeAt h l)
+
+/-- A state with no frame has no positions: every meaning reads nothing. -/
+theorem indep_of_nil {s : SState} (he : s.env = []) (l : Nat) (q : Pos) : Indep l (s.valAt q) := by
+  have : q ∉ s.positions := by rw [positions_eq, he]; simp
+  rw [valAt_of_not_mem _ _ this]; intro _ _; rfl
+
+/-- **A call** keeps the invariant; a returned borrow's fresh label is live (parked). -/
+theorem callOfL_rinv.{u} (Lv : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : Sem) (args : List Res)
+    {s s' : SState} {r : Res} (hi : RInv L s) (h : callOfL Lv ps out fv args s = some (r, s')) :
+    RInv L s' ∧ LoU s' r.2.label := by
+  obtain ⟨h1, h2, hsa⟩ := hi
+  cases happ : applyFnL Lv ps out fv (args.map (·.1)) with
+  | none =>
+    unfold callOfL at h; dsimp only at h; rw [happ] at h; cases h
+  | some res =>
+    cases res with
+    | data r' finals =>
+      have h' := h
+      unfold callOfL at h'; dsimp only at h'; rw [happ] at h'
+      simp only [Option.some.injEq, Prod.mk.injEq] at h'
+      obtain ⟨rfl, rfl⟩ := h'
+      obtain ⟨i1, i2⟩ := callOfL_data_inv Lv ps out fv args h1 h2 h (fun U fwd back e => by rw [happ] at e; cases e)
+      exact ⟨⟨i1, i2, shapeAt_mapVals (shapeAt_takeAll _ hsa) _⟩, fun l hl => by simp [TyS.plain] at hl⟩
+    | ref U fwd back =>
+      obtain ⟨i1, i2⟩ := callOfL_ref_inv Lv ps out fv args h1 h2 hsa h happ
+      have h' := h
+      unfold callOfL at h'; dsimp only at h'; rw [happ] at h'
+      simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h'
+      obtain ⟨rfl, rfl⟩ := h'
+      generalize hS : (SState.mapVals _ _ : SState) = S at i1 i2 ⊢
+      have hsaS : ShapeAt S := by
+        rw [← hS]
+        apply shapeAt_mapVals
+        intro p x hp
+        obtain ⟨h1', h2'⟩ := shapeAt_takeAll _ hsa p x hp
+        exact ⟨h1', Nat.lt_succ_of_lt h2'⟩
+      have hnlS : S.nextLoan = (List.foldl SState.takeLabel s
+          (List.filterMap id (List.map (fun x => x.1.2.label) (List.filter (fun x => x.2.isRef) (args.zip ps))))).nextLoan + 1 := by
+        rw [← hS]; rfl
+      by_cases hne : S.env = []
+      · have hfin : S.pushTempShaped (fun _ => Lv.enc U fwd) (List.foldl SState.takeLabel s
+            (List.filterMap id (List.map (fun x => x.1.2.label) (List.filter (fun x => x.2.isRef) (args.zip ps))))).nextLoan
+            = S.pushTemp (fun _ => Lv.enc U fwd) := by
+          unfold SState.pushTempShaped
+          dsimp only
+          rw [pushTemp_getLast, hne]; rfl
+        rw [hfin] at i1 i2 ⊢
+        have hnil : (S.pushTemp (fun _ => Lv.enc U fwd)).env = [] := by simp [SState.pushTemp, hne]
+        refine ⟨⟨i1, i2, fun p x hp => ?_⟩, fun l _ => .inr fun q => indep_of_nil hnil l q⟩
+        obtain ⟨hp1, _⟩ := hsaS p x hp
+        rw [positions_eq, hne] at hp1; simp at hp1
+      · refine ⟨⟨i1, i2, pushTempShaped_shapeAt hsaS hne _ _ (by rw [hnlS]; exact Nat.lt_succ_self _)⟩, ?_⟩
+        intro l hl
+        simp only [Option.some.injEq] at hl
+        subst hl
+        exact .inl (live_pushTempShaped_self _ _ _ hne)
+
 end
 
 end Ochr.Meaning
