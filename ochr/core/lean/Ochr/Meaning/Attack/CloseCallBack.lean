@@ -32,13 +32,13 @@ theorem fill_means_back (dm : DataModel) (C : CodeMeaning) (n : Nat) (F : GCar) 
   dsimp only
   simp only [List.nil_append, List.cons_append, List.foldl_cons, List.foldl_nil, Nat.zero_max,
     Nat.reduceAdd, Bool.false_eq_true, reduceIte]
-  erw [callOf_S₂ F n ⟨.plain (.ty0 Nat), fun _ => .el0 Nat n, .other, none⟩ 2 (.el0 Nat n) .err]
+  erw [callOf_S₂ F n ⟨.plain (.ty0 Nat), fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n) .err]
   dsimp only
-  have hp := pushBindShaped_S₃ F n ⟨.plain (.ty0 Nat), fun _ => .el0 Nat n, .other, none⟩ 2
+  have hp := pushBindShaped_S₃ F n ⟨.plain (.ty0 Nat), fun _ => .el0 Nat n, .other, none⟩ 0
   simp only [rBind] at hp
   simp only [hp, contentOf_deref_r, List.isEmpty_cons, Bool.false_eq_true, reduceIte, setContent_deref_r]
   simp only [TyS.plain]
-  have hc := readPlace_c1 (K₀ dm C) φ F n ⟨{ m := .ty0 Nat }, fun _ => .el0 Nat n, .other, none⟩ 2 (φ 1) rfl
+  have hc := readPlace_c1 (K₀ dm C) φ F n ⟨{ m := .ty0 Nat }, fun _ => .el0 Nat n, .other, none⟩ 0 (φ 1) rfl
   simp only [K₀, D₀, TyS.plain] at hc
   first
     | (simp only [hc, Sem.asNat]; cases (φ 1).as Nat <;> simp)

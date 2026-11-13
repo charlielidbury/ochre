@@ -28,9 +28,9 @@ theorem res_means_fwd (dm : DataModel) (C : CodeMeaning) (n : Nat) (F : GCar) (�
   rw [borrowPlace_var0_one _ _ _ _ (by simp [Sem.whole])]
   dsimp only
   simp only [List.nil_append, List.foldl_nil, Nat.zero_add, Bool.false_eq_true, reduceIte]
-  erw [callOf_S₂ F n ⟨.plain (.ty0 Nat), fun _ => .el0 Nat n, .other, none⟩ 1 (.el0 Nat n) .err]
+  erw [callOf_S₂ F n ⟨.plain (.ty0 Nat), fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n) .err]
   dsimp only
-  have hp := pushBindShaped_S₃ F n ⟨.plain (.ty0 Nat), fun _ => .el0 Nat n, .other, none⟩ 1
+  have hp := pushBindShaped_S₃ F n ⟨.plain (.ty0 Nat), fun _ => .el0 Nat n, .other, none⟩ 0
   simp only [rBind] at hp
   simp only [hp, readPlace_deref_r]
 

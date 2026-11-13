@@ -8,8 +8,8 @@ import Ochr.Meaning.SubstDefs
 At a future `ψ` where `loan ℓ` and the filler `w` mean the same (`ψ ℓ = ⟦w⟧` at every hint) and
 the run gives them the same type (`FillShape`), and where the decisions do not see the
 substitution (`DecInvariant`), the run of `t[loan ℓ := w]` is the run of `t`, clause by clause:
-the substitution changes only embedded values, never a place. A sealed program's counter is the
-one exception (its loans change), handled by the counter's independence (`SealedCounterIndep`).
+the substitution changes only embedded values, never a place. A sealed program runs from the counter
+0 (PROPOSAL 8), so the substitution does not change its starting state either.
 -/
 
 namespace Ochr.Meaning
@@ -79,43 +79,10 @@ theorem freeVars_substLoan (t : Term) : (Term.substLoan l w t).freeVars = t.free
 
 end Syntax
 
-/-! ## Support: a sealed program's counter, and the pieces that read the term -/
-
-theorem lt_foldl_max_succ : ∀ (xs : List Nat) (a m : Nat), (m ∈ xs ∨ m ≤ a) → m < xs.foldl max a + 1
-  | [], a, m, h => by
-    rcases h with h | h
-    · cases h
-    · simp only [List.foldl_nil]; omega
-  | x :: xs, a, m, h => by
-    simp only [List.foldl_cons]
-    apply lt_foldl_max_succ xs (max a x) m
-    rcases h with h | h
-    · rcases List.mem_cons.mp h with rfl | h
-      · exact .inr (Nat.le_max_right _ _)
-      · exact .inl h
-    · exact .inr (Nat.le_trans h (Nat.le_max_left _ _))
+/-! ## Support: the pieces that read the term -/
 
 section SubstSame
 variable (K : RunCtx) (ρ : Assignment) (ψ : Future) (l : Nat) (w : Value)
-
-/-- A sealed program's run does not depend on its label counter, as far as its result's meaning
-and shape go (`run_counter_indep`, strengthened by the shape). -/
-def SealedCounterIndep : Prop :=
-  ∀ (t : Term) (hint : TyS) (n n' : Nat), (∀ m ∈ t.loans, m < n) → (∀ m ∈ t.loans, m < n') →
-    (run K ρ ψ hint t (emptyState n)).map (fun r => (r.1.1, r.1.2.shape)) =
-      (run K ρ ψ hint t (emptyState n')).map (fun r => (r.1.1, r.1.2.shape))
-
-/-- Two terms with equal runs, each from its own counter: the meanings and shapes agree. -/
-theorem sealed_counter_chain (hcnt : SealedCounterIndep K ρ ψ) (t t' : Term) (hint : TyS)
-    (heq : run K ρ ψ hint t' = run K ρ ψ hint t) :
-    (run K ρ ψ hint t' (emptyState (t'.loans.foldl max 0 + 1))).map (fun r => (r.1.1, r.1.2.shape)) =
-      (run K ρ ψ hint t (emptyState (t.loans.foldl max 0 + 1))).map (fun r => (r.1.1, r.1.2.shape)) := by
-  have h1 : ∀ m ∈ t'.loans, m < max (t'.loans.foldl max 0 + 1) (t.loans.foldl max 0 + 1) := fun m hm =>
-    Nat.lt_of_lt_of_le (lt_foldl_max_succ _ _ _ (.inl hm)) (Nat.le_max_left _ _)
-  have h2 : ∀ m ∈ t.loans, m < max (t'.loans.foldl max 0 + 1) (t.loans.foldl max 0 + 1) := fun m hm =>
-    Nat.lt_of_lt_of_le (lt_foldl_max_succ _ _ _ (.inl hm)) (Nat.le_max_right _ _)
-  rw [hcnt t' hint _ _ (fun m hm => lt_foldl_max_succ _ _ _ (.inl hm)) h1, heq,
-    hcnt t hint _ _ h2 (fun m hm => lt_foldl_max_succ _ _ _ (.inl hm))]
 
 theorem joinDrop_substLoan (hD : DecInvariant K.D l w) (φ : Future) (t : Term) (s : SState) :
     joinDrop K φ (Term.substLoan l w t) s = joinDrop K φ t s := by
@@ -188,13 +155,12 @@ theorem fixOut_subst_of {c : Term} (hc : ∀ hint, run K ρ ψ hint (Term.substL
     rw [fixOut_data K ρ ψ (substLoan_not_ref l w h') s, fixOut_data K ρ ψ h' s]
     simp only [hc]
 
-/-- What the substitution at a fixed future needs: the filler means the loan, has its type, the
-decisions do not see it, and a sealed program's counter is a name. -/
+/-- What the substitution at a fixed future needs: the filler means the loan, has its type, and
+the decisions do not see it. -/
 structure FillOK : Prop where
   mean : ∀ hint, meanV K ρ ψ hint w = ψ l
   shape : FillShape K ρ ψ l w
   dec : DecInvariant K.D l w
-  cnt : SealedCounterIndep K ρ ψ
 
 end SubstSame2
 
@@ -308,11 +274,7 @@ theorem run_substSame (hF : FillOK K ρ ψ l w) : ∀ (t : Term) (hint : TyS),
         simp only [Value.substLoan, valT, capsVals_substSame hF caps, capsTys_substSame hF rd,
           piShapeOf_substSame hF t]
       | sealed t =>
-        have hm := sealed_counter_chain K ρ ψ hF.cnt t (Term.substLoan l w t) hint (run_substSame hF t hint)
-        simp only [Value.substLoan, valT]
-        generalize run K ρ ψ hint (Term.substLoan l w t) (emptyState ((Term.substLoan l w t).loans.foldl max 0 + 1)) = A at hm ⊢
-        generalize run K ρ ψ hint t (emptyState (t.loans.foldl max 0 + 1)) = B at hm ⊢
-        rcases A with _ | ⟨⟨a1, R1⟩, s1⟩ <;> rcases B with _ | ⟨⟨a2, R2⟩, s2⟩ <;> simp_all
+        simp only [Value.substLoan, valT, run_substSame hF t hint]
       | _ => rfl
     | assign p u =>
       have hu := run_substSame hF u
@@ -452,12 +414,8 @@ theorem meanV_substSame (hF : FillOK K ρ ψ l w) : ∀ (v : Value) (hint : TyS)
       show meanV K ρ ψ hint (.tPi (Value.substLoanList l w caps) (Term.substLoan l w t) (Value.substLoanRd l w rd)) = _
       rw [meanV, meanV, capsVals_substSame hF caps, capsTys_substSame hF rd, run_substSame hF t]
     | sealed t =>
-      have hm := sealed_counter_chain K ρ ψ hF.cnt t (Term.substLoan l w t) hint (run_substSame hF t hint)
       show meanV K ρ ψ hint (.sealed (Term.substLoan l w t)) = _
-      rw [meanV, meanV]
-      generalize run K ρ ψ hint (Term.substLoan l w t) (emptyState ((Term.substLoan l w t).loans.foldl max 0 + 1)) = A at hm ⊢
-      generalize run K ρ ψ hint t (emptyState (t.loans.foldl max 0 + 1)) = B at hm ⊢
-      rcases A with _ | ⟨⟨a1, R1⟩, s1⟩ <;> rcases B with _ | ⟨⟨a2, R2⟩, s2⟩ <;> simp_all
+      rw [meanV, meanV, run_substSame hF t hint]
     | ind ty c h ps fs =>
       show meanV K ρ ψ hint (.ind ty c h (Value.substLoanList l w ps) (Value.substLoanList l w fs)) = _
       rw [meanV, meanV]
