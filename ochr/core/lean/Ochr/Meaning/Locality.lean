@@ -1013,4 +1013,108 @@ theorem takeAll_fix_inv {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (ls : List 
 
 end SState
 
+/-! ## The fix clause: ordered meanings, and the cells after the frame pop
+
+A closure's meaning reads its body's finals, the borrow parameters' *cells*, at the future
+(`closureAt`'s `mkLeafData`, and `mkBackAt` at the future fixed at the returned label). For
+`run_congr` the finals must not read where two futures differ. A cell starts as `fun ψ => ψ lᵢ`
+with `lᵢ` a fresh label at least the frame's start, and only [End]s at labels it reads ever
+change it, each replacing the label by its holder's content, which reads only higher live labels
+(I2). So a cell stays *ordered at the start*: it reads the non-live labels of `L` and live labels
+at least the start (`Ordered`); after the pop has ended every live label at least the start but
+the returned one, it reads only `L` and the returned label (`ordered_after_pop`). -/
+
+namespace SState
+
+variable {L : Nat → Prop}
+
+/-- `f` reads only the non-live labels of `L` and the live labels at least `b` (I2 is
+`Ordered (x + 1)` for the holder of `x`). -/
+def Ordered (L : Nat → Prop) (s : SState) (b : Nat) (f : SVal) : Prop :=
+  FT (fun y => (L y ∧ ¬ s.Live y) ∨ (s.Live y ∧ b ≤ y)) f
+
+/-- [End] keeps a position ordered at any bound. -/
+theorem endAt_ordered {s : SState} (h2 : Inv2 L s) {l : Nat} {r : Pos} (hr : r ∈ s.positions)
+    (hs : s.shape r = some l) {b : Nat} {p : Pos} (hp : Ordered L s b (s.valAt p)) :
+    Ordered L (s.endAt l r) b ((s.endAt l r).valAt p) := by
+  by_cases hpm : p ∈ s.positions
+  · rw [endAt_valAt _ _ _ _ hpm]
+    intro ψ ψ' hψ
+    by_cases e : p = r
+    · simp [e]
+    simp only [e, if_false]
+    apply hp
+    intro y hy
+    have hlive : s.Live l := (live_iff s l).mpr ⟨r, hr, hs⟩
+    by_cases ey : y = l
+    · subst ey
+      have hbl : b ≤ y := by
+        rcases hy with ⟨_, hn⟩ | ⟨_, hle⟩
+        · exact absurd hlive hn
+        · exact hle
+      simp only [Future.upd, if_true]
+      apply h2 r y hr hs
+      intro z hz
+      rcases hz with ⟨hL, hn⟩ | ⟨hz, hlt⟩
+      · exact hψ z (.inl ⟨hL, fun h' => hn (endAt_live h')⟩)
+      · exact hψ z (.inr ⟨live_endAt hs hz (Nat.ne_of_gt hlt), Nat.le_trans hbl (Nat.le_of_lt hlt)⟩)
+    · simp only [Future.upd, ey, if_false]
+      rcases hy with ⟨hL, hn⟩ | ⟨hy, hle⟩
+      · exact hψ y (.inl ⟨hL, fun h' => hn (endAt_live h')⟩)
+      · exact hψ y (.inr ⟨live_endAt hs hy ey, hle⟩)
+  · rw [endAt_valAt_not_mem _ _ _ _ hpm, valAt_of_not_mem _ _ hpm]
+    exact FT.const _ _
+
+theorem endLabel_ordered {s : SState} (h2 : Inv2 L s) (l : Nat) {b : Nat} {p : Pos}
+    (hp : Ordered L s b (s.valAt p)) : Ordered L (s.endLabel l) b ((s.endLabel l).valAt p) := by
+  cases e : s.holderOf l with
+  | none => rw [endLabel_of_none e]; exact hp
+  | some r =>
+    obtain ⟨hr, hs⟩ := holderOf_spec e
+    rw [endLabel_eq e]
+    exact endAt_ordered h2 hr hs hp
+
+theorem foldl_endLabel_ordered {b : Nat} {p : Pos} : ∀ (ls : List Nat) {s : SState}, Inv1 L s → Inv2 L s →
+    Ordered L s b (s.valAt p) → Ordered L (ls.foldl endLabel s) b ((ls.foldl endLabel s).valAt p)
+  | [], _, _, _, hp => hp
+  | l :: ls, _, h1, h2, hp => by
+    obtain ⟨h1', h2'⟩ := endLabel_inv h1 h2 l
+    exact foldl_endLabel_ordered ls h1' h2' (endLabel_ordered h2 l hp)
+
+theorem count_filter_of {P : Nat → Bool} {z : Nat} (hz : P z = true) :
+    ∀ ls : List Nat, (ls.filter P).count z = ls.count z
+  | [] => rfl
+  | a :: ls => by
+    have ih := count_filter_of hz ls
+    by_cases e : a = z
+    · subst e; simp [List.filter_cons, hz, ih]
+    · by_cases hp : P a
+      · simp [List.filter_cons, hp, List.count_cons, e, ih]
+      · simp [List.filter_cons, hp, List.count_cons, e, ih]
+
+/-- The frame pop leaves no live label at least the start but the kept one. -/
+theorem not_live_after_pop (s : SState) (start : Nat) (keep : Option Nat) (z : Nat) (hz : start ≤ z)
+    (hk : some z ≠ keep) :
+    ¬ ((s.liveLabels.filter fun l => decide (l ≥ start ∧ some l ≠ keep)).foldl endLabel s).Live z := by
+  rw [live_iff_holders]
+  have h := holders_foldl_endLabel z (s.liveLabels.filter fun l => decide (l ≥ start ∧ some l ≠ keep)) s
+  rw [count_filter_of (by simp [hz, hk]), count_liveLabels] at h
+  omega
+
+/-- **The cells after the pop**: a meaning ordered at the start reads, once the pop has ended
+every live label at least the start but the kept one, only `L` and the kept label. -/
+theorem ordered_after_pop {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (start : Nat) (keep : Option Nat)
+    {p : Pos} (hp : Ordered L s start (s.valAt p)) :
+    FT (fun y => L y ∨ some y = keep)
+      (((s.liveLabels.filter fun l => decide (l ≥ start ∧ some l ≠ keep)).foldl endLabel s).valAt p) := by
+  have ho := foldl_endLabel_ordered (s.liveLabels.filter fun l => decide (l ≥ start ∧ some l ≠ keep)) h1 h2 hp
+  refine ho.mono fun y hy => ?_
+  rcases hy with ⟨hL, _⟩ | ⟨hy, hle⟩
+  · exact .inl hL
+  · by_cases hk : some y = keep
+    · exact .inr hk
+    · exact absurd hy (not_live_after_pop s start keep y hle hk)
+
+end SState
+
 end Ochr.Meaning
