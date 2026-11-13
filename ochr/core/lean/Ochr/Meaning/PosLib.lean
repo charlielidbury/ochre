@@ -474,6 +474,75 @@ theorem allPos_nodup (env : Env) : (allPos env).Nodup := by
         have h2 := frame_of_mem_frameAllPos g gr a hb
         exact hfg (h1.symm.trans h2)
 
+/-- A binding position of the environment names a binding. -/
+theorem mem_allPos_bind (env : Env) (f i : Nat) (h : Pos.bind f i ∈ allPos env) :
+    ∃ fr b, env[f]? = some fr ∧ fr.binds[i]? = some b := by
+  rw [allPos_eq] at h
+  simp only [List.mem_flatMap, List.mem_range] at h
+  obtain ⟨g, _, hm⟩ := h
+  cases hf : env[g]? with
+  | none => simp [hf] at hm
+  | some fr =>
+    simp only [hf, Option.map_some, Option.getD_some, frameAllPos, List.mem_append, List.mem_map,
+      List.mem_range] at hm
+    rcases hm with ⟨i', hi', hij⟩ | ⟨i', _, hij⟩
+    · cases hij
+      exact ⟨fr, _, hf, Array.getElem?_eq_getElem hi'⟩
+    · cases hij
+
+/-- A temporary position of the environment names a temporary. -/
+theorem mem_allPos_temp (env : Env) (f i : Nat) (h : Pos.temp f i ∈ allPos env) :
+    ∃ fr, env[f]? = some fr ∧ i < fr.temps.size := by
+  rw [allPos_eq] at h
+  simp only [List.mem_flatMap, List.mem_range] at h
+  obtain ⟨g, _, hm⟩ := h
+  cases hf : env[g]? with
+  | none => simp [hf] at hm
+  | some fr =>
+    simp only [hf, Option.map_some, Option.getD_some, frameAllPos, List.mem_append, List.mem_map,
+      List.mem_range] at hm
+    rcases hm with ⟨i', _, hij⟩ | ⟨i', hi', hij⟩
+    · cases hij
+    · cases hij
+      exact ⟨fr, hf, hi'⟩
+
+section
+variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (φ : Future)
+
+/-- The meaning after a fold of writes at distinct positions of the environment: each written
+position means its written value at its (unchanged) hint; the others are unchanged. -/
+theorem mean_fold_setAtE (out : Pos → Value) :
+    ∀ (ps : List Pos) (env : Env), ps.Nodup → (∀ q ∈ ps, q ∈ allPos env) →
+      (∀ q ∈ ps, Env.mean dm C Γ ρ φ (ps.foldl (fun e q => Env.setAtE e q (out q)) env) q
+          = Value.mean dm C Γ ρ φ (Env.hintAt dm C Γ ρ env q) (out q)) ∧
+      (∀ q, q ∉ ps → Env.mean dm C Γ ρ φ (ps.foldl (fun e q => Env.setAtE e q (out q)) env) q
+          = Env.mean dm C Γ ρ φ env q)
+  | [], env, _, _ => ⟨(fun _ h => nomatch h), (fun _ _ => rfl)⟩
+  | p :: ps, env, hnd, hin => by
+    simp only [List.foldl_cons]
+    have hnd' := List.nodup_cons.mp hnd
+    have hin' : ∀ q ∈ ps, q ∈ allPos (Env.setAtE env p (out p)) := fun q hq => by
+      rw [allPos_setAtE]; exact hin q (List.mem_cons_of_mem _ hq)
+    obtain ⟨ih1, ih2⟩ := mean_fold_setAtE out ps (Env.setAtE env p (out p)) hnd'.2 hin'
+    refine ⟨fun q hq => ?_, fun q hq => ?_⟩
+    · rcases List.mem_cons.mp hq with rfl | hq'
+      · rw [ih2 q hnd'.1]
+        have hp := hin q (List.mem_cons_self ..)
+        cases q with
+        | bind f i =>
+          obtain ⟨fr, b, hf, hi⟩ := mem_allPos_bind env f i hp
+          exact mean_setAtE_bind dm C Γ ρ env f i (out _) φ fr b hf hi
+        | temp f i =>
+          obtain ⟨fr, hf, hi⟩ := mem_allPos_temp env f i hp
+          rw [mean_setAtE_temp dm C Γ ρ env f i (out _) φ fr hf hi]
+          rfl
+      · rw [ih1 q hq', hintAt_setAtE]
+    · have hqp : q ≠ p := fun h => hq (h ▸ List.mem_cons_self ..)
+      have hqs : q ∉ ps := fun h => hq (List.mem_cons_of_mem _ h)
+      rw [ih2 q hqs, mean_setAtE_other dm C Γ ρ env p q (out p) φ hqp]
+
+end
+
 /-! ## Part C: the bridge -/
 
 section
