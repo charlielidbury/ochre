@@ -92,6 +92,25 @@ open Ochr Ochr.Meaning
 
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
+/-- The audit's A16: a checker binding whose stored type is a Π-type has that Π's shape in the
+reference state, so it can be called (`Value.tyS` reads `CodeMeaning.tyShape`, the run's
+`tyShape`; before, `Value.tyS` had no shape and `callOf` failed). -/
+theorem stored_pi_has_shape (caps : List Value) (hs : List Hint) (ds : List Term) (c : Term) (rd : List (DeclInfo × Value)) :
+    (Value.tyS K.dm K.M K.Γ ρ (.tPi caps (.pi hs ds c) rd)).shape.isSome = true := by
+  show (tyShape K ρ noFuture (.tPi caps (.pi hs ds c) rd)).isSome = true
+  rw [tyShape]
+  cases c <;> simp [piShapeOf]
+
+/-- The audit's A10: a closure's capture whose recorded type is a Π-type is bound with that Π's
+shape (before, `capsTys` read every recorded type as `.plain _`). -/
+theorem captured_pi_has_shape (d : DeclInfo) (caps : List Value) (hs : List Hint) (ds : List Term) (c : Term)
+    (rd rest : List (DeclInfo × Value)) :
+    ((capsTys K ρ φ ((d, .tPi caps (.pi hs ds c) rd) :: rest)).head?.map (·.2.shape.isSome)) = some true := by
+  rw [capsTys]
+  simp only [List.head?_cons, Option.map_some, Option.some.injEq]
+  rw [tyShape]
+  cases c <;> simp [piShapeOf]
+
 /-- R6: a parameter whose domain term is a Π-type is bound with that Π's shape, so it can be
 called (`Regress/NoShape_R6.lean` records the failure before: a parameter was bound at `.plain _`).
 The `.fix` clause's frame binds parameter `i` at `(runBinds …)[i].1 acc`. -/

@@ -888,11 +888,31 @@ noncomputable def capsVals : List Value → List Sem
   | v :: vs => meanV (.plain .err) v :: capsVals vs
 termination_by structural vs => vs
 
-/-- The captures' recorded declared types, each read as a type (D82; a type is future-free). -/
+/-- The captures' recorded declared types, each read as a type (D82; a type is future-free) WITH
+its structure: a captured function's Π-shape, a captured `D(ā)`'s data (the audit's A10: read as
+`.plain _`, a call through a captured function failed in the closure's body). -/
 noncomputable def capsTys : List (DeclInfo × Value) → List (DeclInfo × TyS)
   | [] => []
-  | (d, T) :: rest => (d, .plain (meanV (.plain .err) T).asTy) :: capsTys rest
+  | (d, T) :: rest => (d, ⟨(meanV (.plain .err) T).asTy, tyShape T, none, tyDataV T⟩) :: capsTys rest
 termination_by structural rest => rest
+
+/-- The Π-shape of a recorded type value: a Π-closure's is its term's, in its captures' frame; a
+borrow type's is its content's (as a borrow parameter is bound at its content's type). -/
+noncomputable def tyShape : Value → Option (List PiParam × PiOut)
+  | .tPi caps t rd => (piShapeOf (stateOf 0 (capsState (capsVals caps) (capsTys rd))) t).map fun sh => (sh.ps, sh.out)
+  | .tRef T => tyShape T
+  | _ => none
+termination_by structural v => v
+
+/-- The data of a recorded type value `D(ā)` or `&D(ā)`: `Value.tyData`, by the run. -/
+noncomputable def tyDataV : Value → Option (String × List Sem)
+  | .tInd n args =>
+    match K.Γ.find? (·.name == n) with
+    | some d => some (n, meanParams d 0 [] args)
+    | none => none
+  | .tRef T => tyDataV T
+  | _ => none
+termination_by structural v => v
 end
 
 /-- The binders of a telescope formed in `s`: `runBinds` at the telescope's declared readings. -/
@@ -901,6 +921,15 @@ noncomputable def bindsOf (s : SState) (ds : List Term) : List PBind :=
 
 /-- The parameters of a Π-term formed in `s`, as the `.pi` and `.fix` clauses read them. -/
 noncomputable def runDoms (s : SState) (ds : List Term) : List PiParam := psOf (bindsOf K ρ φ s ds) ds
+
+/-- A closure's codomain with its structure, as a function of the parameters: its body's hint. -/
+noncomputable def fixCod (s : SState) (bs : List PBind) (c : Term) : List Sem → TyS := match c with
+  | .ref U => fun acc => match run K ρ φ (.plain .err) U (extendBy s bs acc) with
+    | some ((v, R), _) => ⟨v.asTy, R.shape, none, R.data⟩
+    | none => .plain .err
+  | c => fun acc => match run K ρ φ (.plain .err) c (extendBy s bs acc) with
+    | some ((v, R), _) => ⟨v.asTy, R.shape, none, R.data⟩
+    | none => .plain .err
 
 /-- The code meaning the run induces (the knot of `Value.mean`): each code-dependent form read by
 the run **at the assignment and future it is asked at**. As first written it ignored both and read
@@ -914,29 +943,30 @@ noncomputable def codeMeaning (K : RunCtx) : CodeMeaning where
   sealed ρ φ hint t := meanV K ρ φ hint (.sealed t)
   clo ρ φ caps t rd := meanV K ρ φ (.plain .err) (.clo caps t rd)
   pi ρ φ caps t rd := (meanV K ρ φ (.plain .err) (.tPi caps t rd)).asTy
+  -- a deferred type is the parameter's binder WITH its structure (a function parameter's
+  -- Π-shape, a `D(ā)` parameter's data), or the codomain's: as the `.fix` clause's frame binds it
   paramTy ρ P ws j := match P with
     | .tPi caps t rd =>
-      match piShapeOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) t with
-      | some sh =>
+      match t with
+      | .pi _ ds c | .fix _ _ ds c _ _ =>
+        let s₀ := stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))
         let acc := ws.map (meanV K ρ noFuture (.plain .err))
-        if j < sh.ps.length then .plain ((sh.ps[j]?.map (·.dom (acc.take j))).getD .err)
-        else .plain (match sh.out with | .data B => B acc | .ref U => U acc)
-      | none => .plain .err
+        match (bindsOf K ρ noFuture s₀ ds)[j]? with
+        | some b => b.1 (acc.take j)
+        | none => fixCod K ρ noFuture s₀ (bindsOf K ρ noFuture s₀ ds) c acc
+      | _ => .plain .err
     | _ => .plain .err
+  tyShape ρ T := tyShape K ρ noFuture T
 
 /-- The code meaning of a run context, as the step statements read a state: `MState.mean K.dm K.M
 K.Γ ρ st`. There is no knot hypothesis `K.C = …`: `K.C` supplies the globals and nothing else. -/
 noncomputable abbrev RunCtx.M (K : RunCtx) : CodeMeaning := codeMeaning K
 
-/-- Δ as the run knows it, from a checker state: each abstract value's stored type with its data
-component (`Value.tyS`) and, for a Π-type, its shape from its term (`piShapeOf`), read under the
-constant future as every stored type is. -/
+/-- Δ as the run knows it, from a checker state: each abstract value's stored type with its
+structure (`Value.tyS`: its data, and for a Π-type its shape from its term through
+`CodeMeaning.tyShape`), read under the constant future as every stored type is. -/
 noncomputable def deltaOf (K : RunCtx) (ρ : Assignment) (st : MState) : Nat → TyS := fun σ =>
   match st.absTy[σ]? with
-  | some (.tPi caps t rd) =>
-    { Value.tyS K.dm (codeMeaning K) K.Γ ρ (.tPi caps t rd) with
-      shape := (piShapeOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) t).map
-        fun sh => (sh.ps, sh.out) }
   | some T => Value.tyS K.dm (codeMeaning K) K.Γ ρ T
   | none => .plain .err
 
