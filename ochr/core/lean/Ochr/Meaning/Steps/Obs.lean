@@ -26,24 +26,24 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 the fresh unknowns mean under the extended assignment, the result and each observed owner mean
 their components of the reference observation at the owners' positions; the state is unchanged
 (a copy). -/
-theorem observe_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : observe_step_stmt K ρ φ (fuel + 1) := by
+theorem observe_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : observe_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- Footprint coverage (docs/18 "Footprint coverage", the third of the five lemmas): a position
 outside the footprint of the two sides means the same after either side. -/
-theorem footprint_coverage (fuel : Nat) (ih : StepsIH K ρ φ fuel) : footprint_coverage_stmt K ρ φ (fuel + 1) := by
+theorem footprint_coverage (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : footprint_coverage_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- `Id` computes (`idType`): the conjunction over the result and the footprint's owners means
 the reference's `Id`, the equality of the two observations; exact, and the state's core is
 unchanged. -/
-theorem idType_step (fuel : Nat) (ih : StepsIH K ρ φ fuel) : idType_step_stmt K ρ φ (fuel + 1) := by
+theorem idType_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : idType_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- Owners (RULES §4): every position `owners env l` lists holds, directly or through the content
 of a borrow it holds, a loan of `l`; and conversely every position whose meaning depends on `l`
 is among them (`Mean.dependsOn`). -/
-theorem owners_sound (fuel : Nat) (ih : StepsIH K ρ φ fuel) : owners_sound_stmt K ρ φ (fuel + 1) := by
+theorem owners_sound (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : owners_sound_stmt K ρ φ (fuel + 1) := by
   sorry
 
 end

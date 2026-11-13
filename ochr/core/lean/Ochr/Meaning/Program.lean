@@ -157,7 +157,7 @@ meanings, D8), and for a Π-type its shape read off its Π-term in the frame of 
 (`piShapeOf`), as `run`'s `.val` clause gives a Π-type value's. A function's stored type is
 `tPi [] (pi x̄ Ā B) []`, whose shape is that of its `fix` term (same binders and codomain). -/
 noncomputable def globalTyS (K : RunCtx) (T : Value) : TyS :=
-  { Value.tyS K.dm (codeMeaning K ρ noFuture) K.Γ ρ T with
+  { Value.tyS K.dm (codeMeaning K) K.Γ ρ T with
     shape := match T with
       | .tPi caps t rd =>
         (piShapeOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) t).map
@@ -216,10 +216,10 @@ noncomputable def progMeaning (cfg : Config) (fuel : Nat) (items : List Item) : 
   progMeaningFrom dm D ρ cfg fuel {} items
 
 /-- The code meaning of the program's globals for a state the checker reaches at `st` after the
-items of `P`, at the future `φ` (the knot, `Run.lean`'s `codeMeaning`): what `Value.mean` reads for globals,
-sealed programs, closures, Π-closures and deferred types. -/
-noncomputable def ProgState.codeMeaning (P : ProgState) (st : MState) (φ : Future) : CodeMeaning :=
-  Ochr.Meaning.codeMeaning (P.ctx dm D st) ρ φ
+items of `P` (`Run.lean`'s `codeMeaning`, read at the assignment and future it is asked at): what
+`Value.mean` reads for globals, sealed programs, closures, Π-closures and deferred types. -/
+noncomputable def ProgState.codeMeaning (P : ProgState) (st : MState) : CodeMeaning :=
+  Ochr.Meaning.codeMeaning (P.ctx dm D st)
 
 /-- The Σ the program meaning carries is the checker's: from any start, it is
 `globalsAfterFrom` at the same items (at the fuel `globalsAfterFrom` fixes). -/
