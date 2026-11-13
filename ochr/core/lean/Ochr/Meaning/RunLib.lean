@@ -234,4 +234,26 @@ theorem loop_spec (f : Value → M Value)
             simp only [henv, valAt_setAtE_other _ _ _ _ hqp] at hrun
             simpa [hqp] using hrun
 
+/-! ## `substEnv` of a loan: the walk's specification on the checker's positions -/
+
+/-- `substEnv` with fuel is `mapState` of `substV`. -/
+theorem substEnv_succ (fuel : Nat) (x r : Value) (types : Bool) :
+    Ochr.substEnv (fuel + 1) x r types = mapState (Ochr.substV fuel x r) types := rfl
+
+/-- The specification of `substEnv (loan ℓ) w false`: if `substV` leaves the environment as it
+finds it (its step statement's `st'.core = st.core`), a successful substitution writes at every
+position an output of `substV` on the position's original value, and nothing else. -/
+theorem substEnv_loan_spec (fuel : Nat) (l : Nat) (w : Value) (st st' : MState) (fuel₀ left : Nat)
+    (L log : Array LogEntry)
+    (hf : ∀ (v : Value) (s s' : MState) (fuel₁ left : Nat) (L log : Array LogEntry) (v' : Value),
+      runMachineL (Ochr.substV fuel (.loan l) w v) s fuel₁ L = (.ok v' s', left, log) → s'.env = s.env)
+    (hnd : (allPos st.env).Nodup)
+    (h : runMachineL (Ochr.substEnv (fuel + 1) (.loan l) w false) st fuel₀ L = (.ok () st', left, log)) :
+    ∃ out : Pos → Value,
+      st'.env = (allPos st.env).foldl (fun e p => Env.setAtE e p (out p)) st.env ∧
+      ∀ p ∈ allPos st.env, ∃ (s s' : MState) (fuel' left' : Nat) (L' log' : Array LogEntry),
+        runMachineL (Ochr.substV fuel (.loan l) w (valAt st.env p)) s fuel' L' = (.ok (out p) s', left', log') := by
+  rw [substEnv_succ, runMachineL_mapState_false] at h
+  exact loop_spec _ hf (allPos st.env) st st' fuel₀ left L log hnd h
+
 end Ochr.Meaning.Steps
