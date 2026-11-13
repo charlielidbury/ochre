@@ -119,10 +119,31 @@ theorem allPos_setAtE (env : Env) (p : Pos) (v : Value) : allPos (Env.setAtE env
       | some fr => simp [frameAllPos, Array.size_set!]
     · rw [Array.getElem?_modify]; simp only [hff, if_false]
 
+theorem flatMap_congr_mem {α β : Type _} {f g : α → List β} :
+    ∀ (l : List α), (∀ x ∈ l, f x = g x) → l.flatMap f = l.flatMap g
+  | [], _ => rfl
+  | x :: l, h => by
+    simp only [List.flatMap_cons]
+    rw [h x (List.mem_cons_self ..), flatMap_congr_mem l fun y hy => h y (List.mem_cons_of_mem _ hy)]
+
 /-- `pushTemp` adds one position, the new temporary of the top frame, after the others. -/
-theorem allPos_pushTempE (env : Env) (v : Value) (hne : 0 < env.size) :
-    allPos (Env.pushTempE env v) = allPos env ++ [.temp (env.size - 1) (env[env.size - 1]'(by omega)).temps.size] := by
-  sorry
+theorem allPos_pushTempE (env : Env) (v : Value) (fr : Frame) (hfr : env[env.size - 1]? = some fr)
+    (hne : 0 < env.size) :
+    allPos (Env.pushTempE env v) = allPos env ++ [.temp (env.size - 1) fr.temps.size] := by
+  rw [allPos_eq, allPos_eq]
+  simp only [Env.pushTempE, Array.size_modify]
+  generalize hm : env.size - 1 = m at hfr ⊢
+  have hsz : env.size = m + 1 := by omega
+  rw [hsz, List.range_succ, List.flatMap_append, List.flatMap_append, List.flatMap_singleton,
+    List.flatMap_singleton, List.append_assoc]
+  congr 1
+  · apply flatMap_congr_mem
+    intro f' hf'
+    have : m ≠ f' := by simp [List.mem_range] at hf'; omega
+    rw [Array.getElem?_modify]; simp only [this, if_false]
+  · rw [Array.getElem?_modify]; simp only [if_true, hfr, Option.map_some, Option.getD_some]
+    simp only [frameAllPos, Array.size_push, List.range_succ, List.map_append, List.map_cons, List.map_nil,
+      List.append_assoc]
 
 /-- A stored type is untouched by `setAt`. -/
 theorem hintAt_setAtE (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment)
@@ -154,6 +175,84 @@ theorem hintAt_setAtE (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ
         rw [Array.getElem?_modify]; simp only [if_true]
         cases env[f]? <;> rfl
       · rw [Array.getElem?_modify]; simp only [hff, if_false]
+
+section
+variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment)
+
+/-- Another position's meaning is untouched by `setAt`. -/
+theorem mean_setAtE_other (env : Env) (p q : Pos) (v : Value) (φ : Future) (hne : q ≠ p) :
+    Env.mean dm C Γ ρ φ (Env.setAtE env p v) q = Env.mean dm C Γ ρ φ env q := by
+  cases q with
+  | bind f' i' =>
+    simp only [Env.mean, hintAt_setAtE]
+    cases p with
+    | bind f i =>
+      simp only [Env.setAtE]
+      by_cases hff : f = f'
+      · subst hff
+        rw [Array.getElem?_modify]; simp only [if_true]
+        cases env[f]? with
+        | none => rfl
+        | some fr =>
+          simp only [Option.map_some, Option.bind_some]
+          have hii : i ≠ i' := fun h => hne (by subst h; rfl)
+          rw [Array.getElem?_modify]; simp only [hii, if_false]
+      · rw [Array.getElem?_modify]; simp only [hff, if_false]
+    | temp f i =>
+      simp only [Env.setAtE]
+      by_cases hff : f = f'
+      · subst hff
+        rw [Array.getElem?_modify]; simp only [if_true]
+        cases env[f]? <;> rfl
+      · rw [Array.getElem?_modify]; simp only [hff, if_false]
+  | temp f' i' =>
+    simp only [Env.mean, hintAt_setAtE]
+    cases p with
+    | bind f i =>
+      simp only [Env.setAtE]
+      by_cases hff : f = f'
+      · subst hff
+        rw [Array.getElem?_modify]; simp only [if_true]
+        cases env[f]? <;> rfl
+      · rw [Array.getElem?_modify]; simp only [hff, if_false]
+    | temp f i =>
+      simp only [Env.setAtE]
+      by_cases hff : f = f'
+      · subst hff
+        rw [Array.getElem?_modify]; simp only [if_true]
+        cases env[f]? with
+        | none => rfl
+        | some fr =>
+          simp only [Option.map_some, Option.bind_some]
+          have hii : i ≠ i' := fun h => hne (by subst h; rfl)
+          first
+            | (rw [Array.set!, Array.getElem?_setIfInBounds]; simp only [hii, if_false])
+            | (simp [Array.set!, Array.getElem?_setIfInBounds, hii])
+      · rw [Array.getElem?_modify]; simp only [hff, if_false]
+
+/-- The written binding means the written value at the binding's hint. -/
+theorem mean_setAtE_bind (env : Env) (f i : Nat) (v : Value) (φ : Future) (fr : Frame) (b : Binding)
+    (hf : env[f]? = some fr) (hi : fr.binds[i]? = some b) :
+    Env.mean dm C Γ ρ φ (Env.setAtE env (.bind f i) v) (.bind f i)
+      = Value.mean dm C Γ ρ φ (Env.hintAt dm C Γ ρ env (.bind f i)) v := by
+  rw [Env.mean, hintAt_setAtE]
+  simp only [Env.setAtE]
+  rw [Array.getElem?_modify]; simp only [if_true, hf, Option.map_some, Option.bind_some]
+  rw [Array.getElem?_modify]; simp only [if_true, hi, Option.map_some]
+
+/-- The written temporary means the written value (at the untyped hint). -/
+theorem mean_setAtE_temp (env : Env) (f i : Nat) (v : Value) (φ : Future) (fr : Frame)
+    (hf : env[f]? = some fr) (hi : i < fr.temps.size) :
+    Env.mean dm C Γ ρ φ (Env.setAtE env (.temp f i) v) (.temp f i)
+      = Value.mean dm C Γ ρ φ (.plain .err) v := by
+  rw [Env.mean]
+  simp only [Env.setAtE]
+  rw [Array.getElem?_modify]; simp only [if_true, hf, Option.map_some, Option.bind_some]
+  first
+    | (rw [Array.set!, Array.getElem?_setIfInBounds]; simp [hi, Env.hintAt])
+    | (simp [Array.set!, Array.getElem?_setIfInBounds, hi, Env.hintAt])
+
+end
 
 /-! ## Part C: the bridge -/
 
