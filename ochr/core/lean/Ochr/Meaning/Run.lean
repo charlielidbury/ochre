@@ -480,7 +480,11 @@ noncomputable def run (hint : TyS) : Term → SM Res
           | _ => .plain .err)
       else callOf fv as
     -- a statement call runs on a copy that is thrown away (E1; `Decisions.flags`, aligned)
-    if fl.1 then SM.onCopy body s else body s
+    -- PROPOSAL (m2-proofs, 6): its result carries no label. A borrow it returns is the copy's,
+    -- under a label the counter has not issued yet; carried out, a `let` would hold that label,
+    -- the next fresh borrow would be issued it again, and ending one holder would substitute its
+    -- content into the other's readers
+    if fl.1 then SM.onCopy (do let (v, R) ← body; pure (v, { R with label := none })) s else body s
   | .nat => pure (.ty (.ty0 Nat), .plain (.univ 1))
   | .unit => pure (.ty (.ty0 Unit), .plain (.univ 1))
   | .zero => pure (.el0 Nat 0, .plain (.ty0 Nat))
