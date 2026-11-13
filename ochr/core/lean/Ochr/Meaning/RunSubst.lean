@@ -565,4 +565,144 @@ end
 
 end SubstMut
 
+/-! ## After filling `ℓ` with a value free of `ℓ`, no `loan ℓ` is left -/
+
+section NoLoan
+variable (l : Nat) (w : Value)
+
+mutual
+theorem noLoan_substLoanV (hw : w.anyAtom (· == .loan l) = false) : ∀ v : Value,
+    (Value.substLoan l w v).anyAtom (· == .loan l) = false
+  | .loan l' => by
+    by_cases e : l' = l
+    · subst e; simp only [Value.substLoan, if_true]; exact hw
+    · simp only [Value.substLoan, e, if_false]
+      show (Value.beq (.loan l') (.loan l) || false) = false
+      simp [Value.beq, e]
+  | .succ u => by
+    show (_ || (Value.substLoan l w u).anyAtom (· == .loan l)) = false
+    rw [noLoan_substLoanV hw u]; rfl
+  | .tRef u => by
+    show (_ || (Value.substLoan l w u).anyAtom (· == .loan l)) = false
+    rw [noLoan_substLoanV hw u]; rfl
+  | .borrow m u => by
+    show (_ || (Value.substLoan l w u).anyAtom (· == .loan l)) = false
+    rw [noLoan_substLoanV hw u]; rfl
+  | .tEq A a b => by
+    show (_ || ((Value.substLoan l w A).anyAtom (· == .loan l) || (Value.substLoan l w a).anyAtom (· == .loan l)
+      || (Value.substLoan l w b).anyAtom (· == .loan l))) = false
+    rw [noLoan_substLoanV hw A, noLoan_substLoanV hw a, noLoan_substLoanV hw b]; rfl
+  | .clo cs t rd => by
+    show (_ || (Value.anyAtomList (· == .loan l) (Value.substLoanList l w cs)
+      || (Term.substLoan l w t).anyAtom (· == .loan l) || Value.anyAtomRd (· == .loan l) (Value.substLoanRd l w rd))) = false
+    rw [noLoan_substLoanVL hw cs, noLoan_substLoanT hw t, noLoan_substLoanRd hw rd]; rfl
+  | .tPi cs t rd => by
+    show (_ || (Value.anyAtomList (· == .loan l) (Value.substLoanList l w cs)
+      || (Term.substLoan l w t).anyAtom (· == .loan l) || Value.anyAtomRd (· == .loan l) (Value.substLoanRd l w rd))) = false
+    rw [noLoan_substLoanVL hw cs, noLoan_substLoanT hw t, noLoan_substLoanRd hw rd]; rfl
+  | .sealed t => by
+    show (_ || (Term.substLoan l w t).anyAtom (· == .loan l)) = false
+    rw [noLoan_substLoanT hw t]; rfl
+  | .ind ty c h ps fs => by
+    show (_ || (Value.anyAtomList (· == .loan l) (Value.substLoanList l w ps)
+      || Value.anyAtomList (· == .loan l) (Value.substLoanList l w fs))) = false
+    rw [noLoan_substLoanVL hw ps, noLoan_substLoanVL hw fs]; rfl
+  | .tInd n fs => by
+    show (_ || Value.anyAtomList (· == .loan l) (Value.substLoanList l w fs)) = false
+    rw [noLoan_substLoanVL hw fs]; rfl
+  | .zero => rfl
+  | .unit => rfl
+  | .gfn _ => rfl
+  | .bot => rfl
+  | .abs _ => rfl
+  | .proof => rfl
+  | .tNat => rfl
+  | .tUnit => rfl
+  | .sort _ => rfl
+
+theorem noLoan_substLoanVL (hw : w.anyAtom (· == .loan l) = false) : ∀ vs : List Value,
+    Value.anyAtomList (· == .loan l) (Value.substLoanList l w vs) = false
+  | [] => rfl
+  | v :: vs => by
+    show ((Value.substLoan l w v).anyAtom (· == .loan l) || Value.anyAtomList (· == .loan l) (Value.substLoanList l w vs)) = false
+    rw [noLoan_substLoanV hw v, noLoan_substLoanVL hw vs]; rfl
+
+theorem noLoan_substLoanRd (hw : w.anyAtom (· == .loan l) = false) : ∀ rd : List (DeclInfo × Value),
+    Value.anyAtomRd (· == .loan l) (Value.substLoanRd l w rd) = false
+  | [] => rfl
+  | (d, v) :: rd => by
+    show ((Value.substLoan l w v).anyAtom (· == .loan l) || Value.anyAtomRd (· == .loan l) (Value.substLoanRd l w rd)) = false
+    rw [noLoan_substLoanV hw v, noLoan_substLoanRd hw rd]; rfl
+
+theorem noLoan_substLoanT (hw : w.anyAtom (· == .loan l) = false) : ∀ t : Term,
+    (Term.substLoan l w t).anyAtom (· == .loan l) = false
+  | .val v => noLoan_substLoanV hw v
+  | .assign p u => noLoan_substLoanT hw u
+  | .succ u => noLoan_substLoanT hw u
+  | .ref u => noLoan_substLoanT hw u
+  | .letIn h a b => by
+    show ((Term.substLoan l w a).anyAtom _ || (Term.substLoan l w b).anyAtom _) = false
+    rw [noLoan_substLoanT hw a, noLoan_substLoanT hw b]; rfl
+  | .seq a b => by
+    show ((Term.substLoan l w a).anyAtom _ || (Term.substLoan l w b).anyAtom _) = false
+    rw [noLoan_substLoanT hw a, noLoan_substLoanT hw b]; rfl
+  | .cong a b => by
+    show ((Term.substLoan l w a).anyAtom _ || (Term.substLoan l w b).anyAtom _) = false
+    rw [noLoan_substLoanT hw a, noLoan_substLoanT hw b]; rfl
+  | .ascribe a b => by
+    show ((Term.substLoan l w a).anyAtom _ || (Term.substLoan l w b).anyAtom _) = false
+    rw [noLoan_substLoanT hw a, noLoan_substLoanT hw b]; rfl
+  | .matchNat p a b => by
+    show ((Term.substLoan l w a).anyAtom _ || (Term.substLoan l w b).anyAtom _) = false
+    rw [noLoan_substLoanT hw a, noLoan_substLoanT hw b]; rfl
+  | .pi hs ds c => by
+    show (Term.anyAtomList _ (Term.substLoanList l w ds) || (Term.substLoan l w c).anyAtom _) = false
+    rw [noLoan_substLoanTL hw ds, noLoan_substLoanT hw c]; rfl
+  | .fix f hs ds c d b => by
+    show (Term.anyAtomList _ (Term.substLoanList l w ds) || (Term.substLoan l w c).anyAtom _
+      || (Term.substLoan l w b).anyAtom _) = false
+    rw [noLoan_substLoanTL hw ds, noLoan_substLoanT hw c, noLoan_substLoanT hw b]; rfl
+  | .call f as h => by
+    show ((Term.substLoan l w f).anyAtom _ || Term.anyAtomList _ (Term.substLoanList l w as)) = false
+    rw [noLoan_substLoanT hw f, noLoan_substLoanTL hw as]; rfl
+  | .eq a b c => by
+    show ((Term.substLoan l w a).anyAtom _ || (Term.substLoan l w b).anyAtom _
+      || (Term.substLoan l w c).anyAtom _) = false
+    rw [noLoan_substLoanT hw a, noLoan_substLoanT hw b, noLoan_substLoanT hw c]; rfl
+  | .id a b c => by
+    show ((Term.substLoan l w a).anyAtom _ || (Term.substLoan l w b).anyAtom _
+      || (Term.substLoan l w c).anyAtom _) = false
+    rw [noLoan_substLoanT hw a, noLoan_substLoanT hw b, noLoan_substLoanT hw c]; rfl
+  | .ctor ty k h ps as => by
+    show (Term.anyAtomList _ (Term.substLoanList l w ps) || Term.anyAtomList _ (Term.substLoanList l w as)) = false
+    rw [noLoan_substLoanTL hw ps, noLoan_substLoanTL hw as]; rfl
+  | .prim n as => noLoan_substLoanTL hw as
+  | .tind n as => noLoan_substLoanTL hw as
+  | .matchInd p ty as => noLoan_substLoanArms hw as
+  | .place _ => rfl
+  | .borrow _ => rfl
+  | .const _ => rfl
+  | .sort _ => rfl
+  | .nat => rfl
+  | .unit => rfl
+  | .zero => rfl
+  | .tt => rfl
+
+theorem noLoan_substLoanTL (hw : w.anyAtom (· == .loan l) = false) : ∀ ts : List Term,
+    Term.anyAtomList (· == .loan l) (Term.substLoanList l w ts) = false
+  | [] => rfl
+  | t :: ts => by
+    show ((Term.substLoan l w t).anyAtom _ || Term.anyAtomList _ (Term.substLoanList l w ts)) = false
+    rw [noLoan_substLoanT hw t, noLoan_substLoanTL hw ts]; rfl
+
+theorem noLoan_substLoanArms (hw : w.anyAtom (· == .loan l) = false) : ∀ ts : List (Hint × Term),
+    Term.anyAtomArms (· == .loan l) (Term.substLoanArms l w ts) = false
+  | [] => rfl
+  | (h, t) :: ts => by
+    show ((Term.substLoan l w t).anyAtom _ || Term.anyAtomArms _ (Term.substLoanArms l w ts)) = false
+    rw [noLoan_substLoanT hw t, noLoan_substLoanArms hw ts]; rfl
+end
+
+end NoLoan
+
 end Ochr.Meaning
