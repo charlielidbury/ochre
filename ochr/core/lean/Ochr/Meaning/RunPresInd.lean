@@ -341,8 +341,26 @@ theorem contentOf_lou {p : Place} {s s' : SState} {x : Sem × TyS × Pos × List
     split at h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨-, rfl⟩ := h
-      exact fun l hl => lou_access L hi (hy l hl) pos
+      exact fun l hl => lou_access L hi (hy l hl) pos _
     · cases h
+
+/-- A match's [Access] for the tag: the state after is the accessed one. -/
+theorem tagOf_some {p : Place} {tag : Sem → TyM → Sem} {s s' : SState} {tg : Sem}
+    (h : tagOf K φ p tag s = some (tg, s')) :
+    ∃ pos steps, resolve s p = some (pos, steps) ∧ s' = s.access pos (obsAt K (s.tyAt pos).m steps tag) := by
+  unfold tagOf at h
+  cases hr : resolve s p with
+  | none => rw [hr] at h; cases h
+  | some ps =>
+    obtain ⟨pos, steps⟩ := ps
+    rw [hr] at h
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    exact ⟨pos, steps, rfl, h.2.symm⟩
+
+theorem tagOf_rinv {p : Place} {tag : Sem → TyM → Sem} {s s' : SState} {tg : Sem}
+    (h : tagOf K φ p tag s = some (tg, s')) (hi : RInv L s) : RInv L s' ∧ EnvLe s s' ∧ OrdKeep L s s' := by
+  obtain ⟨pos, steps, -, rfl⟩ := tagOf_some K φ h
+  exact ⟨access_rinv hi pos _, envLe_access s pos _, ordKeep_access hi pos _⟩
 
 mutual
 /-- **Part (P)**: the run keeps `RInv L`, its result's label is live or unread, and it keeps the
@@ -480,10 +498,8 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
     rotate_left
     · exact rinv_pure L hi hl
     simp only [Bind.bind, Option.bind_eq_some_iff] at h
-    obtain ⟨⟨⟨v, T, pos, steps⟩, s₁⟩, h1, h⟩ := h
-    obtain ⟨hi₁, _⟩ := contentOf_rinv K φ L h1 hi
-    have e₁ := contentOf_envLe K φ h1
-    have o₁ := (contentOf_ordKeep K φ hi h1).1
+    obtain ⟨⟨tg, s₁⟩, h1, h⟩ := h
+    obtain ⟨hi₁, e₁, o₁⟩ := tagOf_rinv K φ L h1 hi
     split at h
     · dsimp only at h
       cases h2 : run K ρ φ hint z s₁ with
@@ -514,10 +530,8 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
     rotate_left
     · exact rinv_pure L hi hl
     simp only [Bind.bind, Option.bind_eq_some_iff] at h
-    obtain ⟨⟨⟨v, T, pos, steps⟩, s₁⟩, h1, h⟩ := h
-    obtain ⟨hi₁, _⟩ := contentOf_rinv K φ L h1 hi
-    have e₁ := contentOf_envLe K φ h1
-    have o₁ := (contentOf_ordKeep K φ hi h1).1
+    obtain ⟨⟨tg, s₁⟩, h1, h⟩ := h
+    obtain ⟨hi₁, e₁, o₁⟩ := tagOf_rinv K φ L h1 hi
     split at h
     · rename_i c _
       dsimp only at h
@@ -536,7 +550,7 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
               o₁.trans e₁ (o₂.trans e₂ (joinDrop_ordKeep K φ _ _ hi₂))⟩
           · exact ⟨hi₂, hy₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
         refine hj _ ?_
-        cases v <;> first | exact .inl rfl | exact .inr rfl
+        cases tg <;> first | exact .inl rfl | exact .inr rfl
     · cases h
   | .call f args hd, hint, s, s', r, hi, h => by
     rw [run] at h
@@ -647,6 +661,7 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
     simp only [Bind.bind, Option.bind_eq_some_iff] at h
     obtain ⟨⟨⟨v, R⟩, s₁⟩, h2, h⟩ := h
     dsimp only at h
+    unfold assignAt at h
     -- the right-hand side runs first, then the place is accessed (not at a holder root)
     obtain ⟨hi₁, hy₁, e₁, o₁⟩ := run_rinv hK u _ s s₁ (v, R) hi h2
     cases hr : resolve s₁ p with
@@ -655,13 +670,14 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
     obtain ⟨pos, steps⟩ := ps
     rw [hr] at h
     dsimp only at h
-    have mid : ∀ s₂ : SState, s₂ = s₁ ∨ s₂ = s₁.access pos →
+    have mid : ∀ s₂ : SState, s₂ = s₁ ∨ s₂ = s₁.access pos (obsAt K (s₁.tyAt pos).m steps wholeOb) →
         RInv L s₂ ∧ pos ∈ s₂.positions ∧ EnvLe s₁ s₂ ∧ OrdKeep L s₁ s₂ ∧ LoU s₂ R.label := by
       rintro s₂ (rfl | rfl)
       · exact ⟨hi₁, resolve_mem hr, EnvLe.refl _, OrdKeep.refl _, hy₁⟩
-      · exact ⟨access_rinv hi₁ pos, by rw [access_positions]; exact resolve_mem hr, envLe_access _ _,
-          ordKeep_access hi₁ pos, fun l hl => lou_access L hi₁ (hy₁ l hl) pos⟩
-    generalize hs₂ : (if (steps.isEmpty && (s₁.shape pos).isSome) = true then s₁ else s₁.access pos) = s₂ at h
+      · exact ⟨access_rinv hi₁ pos _, by rw [access_positions]; exact resolve_mem hr, envLe_access _ _ _,
+          ordKeep_access hi₁ pos _, fun l hl => lou_access L hi₁ (hy₁ l hl) pos _⟩
+    generalize hs₂ : (if (steps.isEmpty && (s₁.shape pos).isSome) = true then s₁
+      else s₁.access pos (obsAt K (s₁.tyAt pos).m steps wholeOb)) = s₂ at h
     obtain ⟨hi₂, hpos₂, e₂, o₂, hy₂⟩ := mid s₂ (by rw [← hs₂]; split <;> simp)
     have hpb : ¬ IsTemp pos := resolve_bind hr
     split at h

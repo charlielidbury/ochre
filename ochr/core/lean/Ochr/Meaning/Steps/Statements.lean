@@ -161,15 +161,24 @@ def endBorrow_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
     Good K.dm K.M K.Γ ρ st'
 
 /-- [Access] as the checker performs it before a read (`accessPath` then `accessInside`): a
-sequence of [End]s, each below; the ended labels include every label the accessed position's
-meaning depends on, so the result is below the reference's `SState.access`, and the accessed
-content no longer depends on the future (`Lemmas.meanV_congr`). (`accessPath` alone ends only
-the path: the pilot prover's finding, so it is not stated on its own.) -/
+sequence of [End]s, each below; the ended labels include every label the content at the PLACE
+depends on (the checker ends every loan that occurs on the path or inside the content; the
+reference ends those the content's meaning depends on: `SState.access` for the whole-content
+observation `obsAt … wholeOb`, the audit's A1), so the result is below the reference's access, and
+the accessed content no longer depends on the future (`Lemmas.meanV_congr`). (`accessPath` alone
+ends only the path: the pilot prover's finding, so it is not stated on its own.)
+
+With `owned` (before an assignment, D67) the checker ends only the loans inside the part the
+place owns: none at a borrow variable written whole, where the reference's assignment does no
+access either (`assignAt`; the audit's A2. As first stated, against the full access for every
+`owned`, this was false there: the checker's state kept a borrow the reference's had ended). -/
 def access_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (p : Place) (pos : Pos)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (owned : Bool) (hpos : resolve (SM' K ρ st) p = some (pos, (p.steps).2))
     (h : Runs (do Ochr.accessPath fuel p; Ochr.accessInside fuel p owned) st fuel () st'),
-    Below (MState.mean K.dm K.M K.Γ ρ st') ((SM' K ρ st).access pos).toMean ∧
+    Below (MState.mean K.dm K.M K.Γ ρ st')
+      (if owned && (p.steps).2.isEmpty && ((SM' K ρ st).shape pos).isSome then SM' K ρ st
+        else (SM' K ρ st).access pos (obsAt K ((SM' K ρ st).tyAt pos).m (p.steps).2 wholeOb)).toMean ∧
     Good K.dm K.M K.Γ ρ st'
 
 /-- The flight of a result: its label, typed at its content type (the reference's result type
@@ -206,14 +215,18 @@ def borrowPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : N
       GoodF K.dm K.M K.Γ ρ (st'.withTemp v) (flightOf r.2)
 
 /-- [Assign] (`assignPlace`): the owned access (D67, ends), the old content's borrows end
-([Drop], ends), then the place means the new value: below the run's `setContent` after
-`access`. The written value's meaning is given. -/
+([Drop], ends), then the place means the new value and, at a root, holds the borrow written:
+below the run's `assignAt` (the `.assign` clause's tail, `Run.lean`). The written value's meaning
+is given, and its label is the borrow's. (As first stated, against `setContent` after a full
+`access`, it missed the old borrow's end and the new one's hold, and was false at a borrow
+variable written whole: the audit's A2.) -/
 def assignPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (p : Place) (v : Value) (pos : Pos)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hpos : resolve (SM' K ρ st) p = some (pos, (p.steps).2))
     (hgv : GoodF K.dm K.M K.Γ ρ (st.withTemp v) (flightOfWrite v (Env.hintAt K.dm K.M K.Γ ρ st.env pos).m))
     (h : Runs (Ochr.assignPlace fuel p v) st fuel () st'),
-    ∃ s', setContent K φ pos (p.steps).2 (meanV K ρ φ (.plain .err) v) ((SM' K ρ st).access pos) = some (⟨⟩, s') ∧
+    ∃ r s', assignAt K φ p (meanV K ρ φ (.plain .err) v) (match v with | .borrow l _ => some l | _ => none)
+        (SM' K ρ st) = some (r, s') ∧
       Below (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
 
 /-- [Drop] of the top binding (`dropTopBind`): its borrows end, each live loan in it ends its

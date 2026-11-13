@@ -266,17 +266,62 @@ noncomputable def movedPlaces (s : SState) : List Place :=
       | none => none
   | none => []
 
-/-- The content of a place after [Access]: its meaning at `φ` (the labels it depended on that
-the run holds have been ended; what remains is read from `φ`) and its type. A projected field's
-type carries no data component (`Sem.follow` yields a `TyM`): a documented gap for nested
-`ps = []` values under projections. -/
+/-- What [Access] of a place observes of its position's meaning: `ob` of the content at the path
+and of its type, `err` where the path does not resolve (the audit's A1; `SState.access`). -/
+noncomputable def obsAt (T : TyM) (steps : List Step) (ob : Sem → TyM → Sem) (x : Sem) : Sem :=
+  match Sem.follow K.dm K.Γ T x steps with
+  | some (v, T') => ob v T'
+  | none => .err
+
+/-- The whole content with its type: what a read, a borrow, an assignment and a drop observe
+(`Machine.accessInside` of the place). -/
+def wholeOb (v : Sem) (T : TyM) : Sem := .ctor "" 0 [v, .ty T]
+
+/-- The tag of a number, `Z` or `S`: what a `match` on a number observes
+(`Machine.accessNeutralHead`). -/
+noncomputable def natTag (v : Sem) (_ : TyM) : Sem :=
+  match v.asNat with
+  | some 0 => .el0 Nat 0
+  | some (_ + 1) => .el0 Nat 1
+  | none => match v with
+    | .ctor "Nat" 0 [] => .el0 Nat 0
+    | .ctor "Nat" 1 _ => .el0 Nat 1
+    | _ => .err
+
+/-- The tag of a data value, its constructor's index, or `•` for a proof: what a `match` on it
+observes. -/
+noncomputable def indTag (v : Sem) (T : TyM) : Sem :=
+  match v with
+  | .proof => .proof
+  | _ => match T.dataOf K.dm K.Γ with
+    | some (d, ps) => match (K.dm.fieldsOf d ps v).map (·.1) with
+      | some c => .el0 Nat c
+      | none => .err
+    | none => .err
+
+/-- The content of a place after [Access] for it: its meaning at `φ` (the labels the content at
+the path depended on that the run holds have been ended; what remains is read from `φ`) and its
+type. A projected field's type carries no data component (`Sem.follow` yields a `TyM`): a
+documented gap for nested `ps = []` values under projections. -/
 noncomputable def contentOf (p : Place) : SM (Sem × TyS × Pos × List Step) := fun s =>
   match resolve s p with
   | some (pos, steps) =>
-    let s := s.access pos
-    match Sem.follow K.dm K.Γ (s.tyAt pos).m (s.valAt pos φ) steps with
+    let T₀ := (s.tyAt pos).m
+    let s := s.access pos (obsAt K T₀ steps wholeOb)
+    match Sem.follow K.dm K.Γ T₀ (s.valAt pos φ) steps with
     | some (v, T) => some ((v, if steps.isEmpty then s.tyAt pos else .plain T, pos, steps), s)
     | none => none
+  | none => none
+
+/-- The scrutinee of a match after [Access] for its tag only (`tag`: `natTag`, `indTag`): the
+tag at `φ`, `err` where the place has none. Borrows inside the scrutinee's fields stay live, as
+in the checker; an arm that reads a field accesses it then. -/
+noncomputable def tagOf (p : Place) (tag : Sem → TyM → Sem) : SM Sem := fun s =>
+  match resolve s p with
+  | some (pos, steps) =>
+    let o := obsAt K (s.tyAt pos).m steps tag
+    let s := s.access pos o
+    some (o (s.valAt pos φ), s)
   | none => none
 
 /-- Set the content of a place to a constant meaning, pointwise in the future (no access: the
@@ -287,6 +332,27 @@ noncomputable def setContent (pos : Pos) (steps : List Step) (v : Sem) : SM PUni
   match Sem.updAt K.dm K.Γ T (fun _ => v) steps (old (s.closedFuture φ)) with
   | some _ => some (⟨⟩, s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T (fun _ => v) steps (old φ')).getD .err)
   | none => none
+
+/-- [Assign]'s write, after the right-hand side ran (the `.assign` clause's tail; the step
+statement `assignPlace_step_stmt` is stated against it): [Access] of the part the place OWNS
+(D67, `accessInside … owned`: a borrow variable assigned whole owns nothing of its content, so
+nothing its content lends is ended; the audit's A2: `c := &(*c).tail` keeps the reborrow it just
+made, and the old borrow's end carries its content, loans and all, back to its lender), the old
+borrow's end at a root ([Drop]), the write, and at a root the written borrow's hold (`lab`, the
+written value's label; WF1: a borrow is the whole value of a position). -/
+noncomputable def assignAt (p : Place) (v : Sem) (lab : Option Nat) : SM Res := fun s =>
+  match resolve s p with
+  | none => none
+  | some (pos, steps) =>
+    let s := if steps.isEmpty && (s.shape pos).isSome then s else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)
+    let s := if steps.isEmpty then (match s.shape pos with | some l => s.endLabel l | none => s) else s
+    match setContent K φ pos steps v s with
+    | none => none
+    | some (⟨⟩, s) =>
+      let s := match lab, steps with
+        | some l, [] => let s := s.takeLabel l; { s with shape := fun q => if q = pos then some l else s.shape q }
+        | _, _ => s
+      some ((.el0 Unit (), .plain (.ty0 Unit)), s)
 
 /-- [Read]: the content; a copy leaves the place, a move leaves `moved` (D80: by the declared
 reading). Reading `⊥`, or a value holding it, is an error. -/
@@ -379,7 +445,7 @@ noncomputable def joinDrop (entry : List Place) (t : Term) (s : SState) : SState
     if K.D.copy (K.D.placeDecl (scopeOf s) q) then s else
     match resolve s q with
     | some (pos, steps) =>
-      let s := s.access pos
+      let s := s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)
       match Sem.follow K.dm K.Γ (s.tyAt pos).m (s.valAt pos (s.closedFuture φ)) steps with
       | some (.proof, _) | some (.moved, _) | none => s
       | some _ =>
@@ -426,24 +492,7 @@ noncomputable def run (hint : TyS) : Term → SM Res
       | some ((_, T, _, _), _) => T
       | none => .plain .err
     let ((v, R), s) ← run T u s
-    match resolve s p with
-    | none => none
-    | some (pos, steps) =>
-      -- [Access] before the write is of the part the place OWNS (D67, `accessInside … owned`): a
-      -- borrow variable assigned whole owns nothing of its content, so nothing its content
-      -- lends is ended (the audit's A2: `c := &(*c).tail` keeps the reborrow it just made); the
-      -- old borrow's end carries its content, loans and all, back to its lender
-      let s := if steps.isEmpty && (s.shape pos).isSome then s else s.access pos
-      -- the old content's borrow, if the place held one, ends ([Drop]); a borrow written at a
-      -- root makes the place its holder (WF1: a borrow is the whole value of a position)
-      let s := if steps.isEmpty then (match s.shape pos with | some l => s.endLabel l | none => s) else s
-      match setContent K φ pos steps v s with
-      | none => none
-      | some (⟨⟩, s) =>
-        let s := match R.label, steps with
-          | some l, [] => let s := s.takeLabel l; { s with shape := fun q => if q = pos then some l else s.shape q }
-          | _, _ => s
-        some ((.el0 Unit (), .plain (.ty0 Unit)), s)) s
+    assignAt K φ p v R.label s) s
   | .letIn x u w => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.letIn x u w)) (fun s => do
     let ((v, T), s) ← run (.plain .err) u s
     let s := pushBindShaped s { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u }
@@ -462,41 +511,32 @@ noncomputable def run (hint : TyS) : Term → SM Res
     let _ ← run (.plain .err) u
     run hint w) s
   | .matchNat p z u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.matchNat p z u)) (fun s => do
-    -- [Match]: the arm by the tag of the scrutinee's meaning (after [Access]); `⊥` is an error;
-    -- then D84's drop at the join
-    let ((v, _, _, _), s) ← contentOf K φ p s
+    -- [Match]: the arm by the tag of the scrutinee's meaning (after [Access] for the tag: the
+    -- audit's A1); `⊥` is an error; then D84's drop at the join
+    let (tg, s) ← tagOf K φ p natTag s
     let entry := movedPlaces φ s
-    let arm? : Option Bool := match v.asNat with
-      | some 0 => some true
-      | some (_ + 1) => some false
-      | none => match v with
-        | .ctor "Nat" 0 [] => some true
-        | .ctor "Nat" 1 _ => some false
-        | _ => none
-    match arm? with
-    | some true => do
+    match tg.asNat with
+    | some 0 => do
       let ((r, R), s) ← run hint z s
       some ((r, R), joinDrop K φ entry (.matchNat p z u) s)
-    | some false => do
+    | some (_ + 1) => do
       let ((r, R), s) ← run hint u s
       some ((r, R), joinDrop K φ entry (.matchNat p z u) s)
     | none => none) s
   | .matchInd p n arms => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.matchInd p n arms)) (fun s => do
-    let ((v, T, _, _), s) ← contentOf K φ p s
+    let (tg, s) ← tagOf K φ p (indTag K) s
     let entry := movedPlaces φ s
     -- a proof scrutinee is matched by its type (D45): the one arm of a one-constructor
     -- proposition; a data scrutinee by the tag of its meaning
-    let c? : Option Nat := match v with
+    let c? : Option Nat := match tg with
       | .proof => if arms.length = 1 then some 0 else none
-      | _ => match T.m.dataOf K.dm K.Γ with
-        | some (d, ps) => (K.dm.fieldsOf d ps v).map (·.1)
-        | none => none
+      | _ => tg.asNat
     match c? with
     | some c => do
       let ((r, R), s) ← runArm hint c arms s
       -- a match on a proof has no join (`Machine.evalMatchByType`: its one arm runs on every
       -- path; the audit's A4)
-      some ((r, R), match v with | .proof => s | _ => joinDrop K φ entry (.matchInd p n arms) s)
+      some ((r, R), match tg with | .proof => s | _ => joinDrop K φ entry (.matchInd p n arms) s)
     | none => none) s
   | .tind n args => do
     match K.Γ.find? (·.name == n) with

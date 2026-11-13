@@ -82,7 +82,7 @@ namespace Ochr.Meaning.Attack
 open Ochr.Meaning
 
 /-- No live label, no access: `access` is the identity on a state whose shape is empty. -/
-theorem access_noShape (s : SState) (hs : s.shape = fun _ => none) (p : Pos) : s.access p = s := by
+theorem access_noShape (s : SState) (hs : s.shape = fun _ => none) (p : Pos) (o : Sem → Sem) : s.access p o = s := by
   have h0 : ∀ l : List Pos, List.filterMap (fun _ : Pos => (none : Option Nat)) l = [] := by
     intro l; induction l with
     | nil => rfl
@@ -96,7 +96,7 @@ type, position `bind 0 0`, no steps; the state unchanged. -/
 theorem contentOf_var0_one (K : RunCtx) (φ : Future) (k : Nat) (b : SBinding) :
     contentOf K φ (.var 0) { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k }
       = some ((b.val φ, b.ty, .bind 0 0, []), { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k }) := by
-  have ha := access_noShape { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k } rfl (.bind 0 0)
+  have ha := fun o => access_noShape { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k } rfl (.bind 0 0) o
   simp only [contentOf, resolve_var0_one, ha, SState.tyAt, SState.valAt, Sem.follow]
   rfl
 
@@ -275,13 +275,13 @@ theorem liveLabels_S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
   simp [S₄]
 
 /-- `r`'s meaning is constant, so it depends on no label. -/
-theorem not_dependsOn_r (F : GCar) (n : Nat) (b : SBinding) (k l : Nat) :
-    ¬ (S₄ F n b k).dependsOn (.bind 0 1) l := by
-  simp [SState.dependsOn, Mean.dependsOn, SState.toMean, SState.valAt, S₄]
+theorem not_dependsOn_r (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (o : Sem → Sem) (l : Nat) :
+    ¬ (S₄ F n b k).obsDep (.bind 0 1) o l := by
+  simp [SState.obsDep, SState.valAt, S₄]
 
 /-- [Access] of `r` ends nothing: `r` holds `k+1` but does not read it. -/
-theorem access_S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
-    (S₄ F n b k).access (.bind 0 1) = S₄ F n b k := by
+theorem access_S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (o : Sem → Sem) :
+    (S₄ F n b k).access (.bind 0 1) o = S₄ F n b k := by
   simp [SState.access, liveLabels_S₄, not_dependsOn_r]
 
 /-- `peek(*r)` on `S₄`: the forward value, at `Nat`, the state unchanged. -/
@@ -358,10 +358,20 @@ theorem liveLabels_S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) 
   simp [S₅]
 
 /-- `c1` reads `k+1`'s final content (a number against `err` tells the futures apart). -/
-theorem dependsOn_c1 (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
-    (S₅ F n b k w).dependsOn (.bind 0 0) (k+1) := by
+theorem dependsOn_c1 (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) (o : Sem → Sem)
+    (ho : ∀ a : Nat, o (.el0 Nat a) ≠ o .err) :
+    (S₅ F n b k w).obsDep (.bind 0 0) o (k+1) := by
   refine ⟨fun _ => .el0 Nat 0, .err, ?_⟩
-  simp [SState.toMean, SState.valAt, S₅, Future.upd, lvl0_dec_nat', Sem.as]
+  have h2 : (S₅ F n b k w).valAt (.bind 0 0) (Future.upd (fun _ => .el0 Nat 0) (k+1) .err) = .err := by
+    simp [SState.valAt, S₅, Future.upd, lvl0_dec_nat', Sem.as]
+  rw [h2]
+  simp only [SState.valAt, S₅, lvl0_dec_nat', Sem.as]
+  simpa using ho _
+
+/-- The whole-content observation of a root tells a number from `err`. -/
+theorem wholeOb_root_ne (K : RunCtx) (T : TyM) (a : Nat) :
+    obsAt K T [] wholeOb (.el0 Nat a) ≠ obsAt K T [] wholeOb .err := by
+  simp [obsAt, Sem.follow, wholeOb]
 
 end Ochr.Meaning.Attack
 
@@ -411,9 +421,10 @@ namespace Ochr.Meaning.Attack
 open Ochr.Meaning
 
 /-- [Access] of `c1` on `S₅`: the one live label `k+1` is read by `c1`, so it ends. -/
-theorem access_S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
-    (S₅ F n b k w).access (.bind 0 0) = S₆ F n b k w := by
-  have hd := dependsOn_c1 F n b k w
+theorem access_S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) (o : Sem → Sem)
+    (ho : ∀ a : Nat, o (.el0 Nat a) ≠ o .err) :
+    (S₅ F n b k w).access (.bind 0 0) o = S₆ F n b k w := by
+  have hd := dependsOn_c1 F n b k w o ho
   simp [SState.access, liveLabels_S₅, hd, endLabel_S₅]
 
 /-- `peek(c1)` on `S₅`: the backward function's component for `c1` at the written value, when it
@@ -426,7 +437,7 @@ theorem readPlace_c1 (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBindi
         | none => none := by
   have hr : resolve (S₅ F n b k w) (.var 1) = some (.bind 0 0, []) := by
     simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, S₅]
-  simp only [readPlace, contentOf, hr, access_S₅, bind, Option.bind]
+  simp only [readPlace, contentOf, hr, access_S₅ F n b k w _ (wholeOb_root_ne K _), bind, Option.bind]
   simp only [S₆, SState.tyAt, SState.valAt, Sem.follow, lvl0_dec_nat', hb]
   cases w.as Nat <;> simp [Sem.whole] <;> rfl
 

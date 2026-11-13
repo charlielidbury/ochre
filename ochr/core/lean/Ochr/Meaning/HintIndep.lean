@@ -149,10 +149,10 @@ theorem run_hintIndep : ∀ (t : Term), Term.tailHintFree K.Γ t = true → ∀ 
     simp only [Term.tailHintFree, Bool.and_eq_true] at ht
     rw [run, run]
     refine erasedIf_resVS_congr _ ?_
-    cases hc : contentOf K φ p s with
+    cases hc : tagOf K φ p natTag s with
     | none => simp only [Bind.bind, hc, Option.bind_none', Option.map_none]
     | some x =>
-      obtain ⟨⟨v, T, pos, steps⟩, s₁⟩ := x
+      obtain ⟨tg, s₁⟩ := x
       simp only [Bind.bind, hc, Option.bind_some']
       split <;> rename_i heq <;> (try simp only [heq])
       all_goals first
@@ -163,10 +163,10 @@ theorem run_hintIndep : ∀ (t : Term), Term.tailHintFree K.Γ t = true → ∀ 
     simp only [Term.tailHintFree] at ht
     rw [run, run]
     refine erasedIf_resVS_congr _ ?_
-    cases hc : contentOf K φ p s with
+    cases hc : tagOf K φ p (indTag K) s with
     | none => simp only [Bind.bind, hc, Option.bind_none', Option.map_none]
     | some x =>
-      obtain ⟨⟨v, T, pos, steps⟩, s₁⟩ := x
+      obtain ⟨tg, s₁⟩ := x
       simp only [Bind.bind, hc, Option.bind_some']
       split <;> rename_i heq <;> (try simp only [heq])
       all_goals first

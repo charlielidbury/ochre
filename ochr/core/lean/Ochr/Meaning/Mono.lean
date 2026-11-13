@@ -193,9 +193,9 @@ theorem foldl_endLabel_below (ls : List Nat) (s : SState) : Below (ls.foldl endL
 and every reference step that reads, borrows or matches a place through `contentOf`). The
 reference's access is a fold of [End]s, iterated, so it is `Below` its input by
 `endLabel_below`; which labels it picks does not matter here. -/
-theorem access_below (s : SState) (p : Pos) : Below (s.access p).toMean s.toMean := by
+theorem access_below (s : SState) (p : Pos) (o : Sem → Sem) : Below (s.access p o).toMean s.toMean := by
   have iter : ∀ (ns : List Nat) (t : SState), Below (ns.foldl (fun t _ =>
-      (t.liveLabels.filter fun l => decide (t.dependsOn p l)).foldl endLabel t) t).toMean t.toMean := by
+      (t.liveLabels.filter fun l => decide (t.obsDep p o l)).foldl endLabel t) t).toMean t.toMean := by
     intro ns
     induction ns with
     | nil => intro t; exact Below.refl _
@@ -552,9 +552,9 @@ theorem joinDrop_below (K : RunCtx) (φ : Future) (entry : List Place) (t : Term
       · next pos steps hres =>
         have hd : ∀ st ∈ steps, st = .deref := by
           rw [resolve_steps hres]; exact hroot q (List.mem_cons_self ..)
-        refine Below.trans ?_ (SState.access_below s pos)
+        refine Below.trans ?_ (SState.access_below s pos (obsAt K (s.tyAt pos).m steps wholeOb))
         dsimp only
-        generalize s.access pos = s₁
+        generalize s.access pos (obsAt K (s.tyAt pos).m steps wholeOb) = s₁
         rcases hf : Sem.follow K.dm K.Γ (s₁.tyAt pos).m (s₁.valAt pos (s₁.closedFuture φ)) steps with _ | ⟨v, T⟩
         · exact Below.refl _
         · cases v <;> first
@@ -644,7 +644,7 @@ theorem follow_eq : Sem.follow dm [decl] (.ty0 Unit) (.el0 Unit ()) [.proj 0] = 
   rfl
 
 /-- No label is live in `s`, so [Access] does nothing. -/
-theorem access_eq (p : Pos) : s.access p = s := by
+theorem access_eq (p : Pos) (o : Sem → Sem) : s.access p o = s := by
   have h0 : s.positions.filterMap s.shape = [] := List.filterMap_eq_nil_iff.mpr fun _ _ => rfl
   have h : s.liveLabels = [] := by simp only [SState.liveLabels, h0, List.mergeSort_nil]
   unfold SState.access
@@ -751,19 +751,19 @@ end SState
 namespace SState
 
 /-- One round of [Access] at `p`: end, in label order, every live label `p` depends on. -/
-noncomputable def accessRound (p : Pos) (s : SState) : SState :=
-  (s.liveLabels.filter fun l => decide (s.dependsOn p l)).foldl endLabel s
+noncomputable def accessRound (p : Pos) (o : Sem → Sem) (s : SState) : SState :=
+  (s.liveLabels.filter fun l => decide (s.obsDep p o l)).foldl endLabel s
 
-theorem access_eq_rounds (s : SState) (p : Pos) :
-    s.access p = (List.range s.liveLabels.length).foldl (fun t _ => accessRound p t) s := rfl
+theorem access_eq_rounds (s : SState) (p : Pos) (o : Sem → Sem) :
+    s.access p o = (List.range s.liveLabels.length).foldl (fun t _ => accessRound p o t) s := rfl
 
 /-- A round either finds nothing to end, and then `p` depends on no live label, or ends at least
 one live label. -/
-theorem accessRound_cases (s : SState) (p : Pos) :
-    (accessRound p s = s ∧ ∀ l ∈ s.liveLabels, ¬ s.dependsOn p l) ∨
-      (accessRound p s).liveLabels.length < s.liveLabels.length := by
+theorem accessRound_cases (s : SState) (p : Pos) (o : Sem → Sem) :
+    (accessRound p o s = s ∧ ∀ l ∈ s.liveLabels, ¬ s.obsDep p o l) ∨
+      (accessRound p o s).liveLabels.length < s.liveLabels.length := by
   unfold accessRound
-  cases hF : s.liveLabels.filter (fun l => decide (s.dependsOn p l)) with
+  cases hF : s.liveLabels.filter (fun l => decide (s.obsDep p o l)) with
   | nil =>
     left
     refine ⟨rfl, fun l hl hd => ?_⟩
@@ -774,17 +774,17 @@ theorem accessRound_cases (s : SState) (p : Pos) :
     have hl : l ∈ s.liveLabels := (List.mem_filter.mp (hF ▸ List.mem_cons_self ..)).1
     exact Nat.lt_of_le_of_lt (liveLabels_foldl_endLabel_le ls _) (liveLabels_endLabel_lt s l hl)
 
-private theorem rounds_fixed (p : Pos) (t : SState) (ht : accessRound p t = t) :
-    ∀ ns : List Nat, ns.foldl (fun t _ => accessRound p t) t = t := by
+private theorem rounds_fixed (p : Pos) (o : Sem → Sem) (t : SState) (ht : accessRound p o t = t) :
+    ∀ ns : List Nat, ns.foldl (fun t _ => accessRound p o t) t = t := by
   intro ns
   induction ns with
   | nil => rfl
   | cons _ ns ih => rw [List.foldl_cons, ht, ih]
 
-private theorem rounds_post (p : Pos) :
+private theorem rounds_post (p : Pos) (o : Sem → Sem) :
     ∀ (ns : List Nat) (t : SState), t.liveLabels.length ≤ ns.length →
-      ∀ l ∈ (ns.foldl (fun t _ => accessRound p t) t).liveLabels,
-        ¬ (ns.foldl (fun t _ => accessRound p t) t).dependsOn p l := by
+      ∀ l ∈ (ns.foldl (fun t _ => accessRound p o t) t).liveLabels,
+        ¬ (ns.foldl (fun t _ => accessRound p o t) t).obsDep p o l := by
   intro ns
   induction ns with
   | nil =>
@@ -794,8 +794,8 @@ private theorem rounds_post (p : Pos) :
   | cons _ ns ih =>
     intro t ht
     rw [List.foldl_cons]
-    rcases accessRound_cases t p with ⟨hfix, hpost⟩ | hlt
-    · rw [hfix, rounds_fixed p t hfix]; exact hpost
+    rcases accessRound_cases t p o with ⟨hfix, hpost⟩ | hlt
+    · rw [hfix, rounds_fixed p o t hfix]; exact hpost
     · exact ih _ (by simp only [List.length_cons] at ht; omega)
 
 /-- **After [Access] at `p`, `p` depends on no live label** (the spine's form of the toy
@@ -810,10 +810,10 @@ them, `readPlace_step` and `borrowPlace_step`.
 the same under *every* future needs, in addition, that it reads the future only at live labels
 (`SState.LocalTo`, as in `observation_const` below): a meaning can be unmoved by each single
 label and still read infinitely many. -/
-theorem access_post (s : SState) (p : Pos) :
-    ∀ l ∈ (s.access p).liveLabels, ¬ (s.access p).dependsOn p l := by
+theorem access_post (s : SState) (p : Pos) (o : Sem → Sem) :
+    ∀ l ∈ (s.access p o).liveLabels, ¬ (s.access p o).obsDep p o l := by
   rw [access_eq_rounds]
-  exact rounds_post p _ s (by simp)
+  exact rounds_post p o _ s (by simp)
 
 end SState
 
@@ -1167,7 +1167,7 @@ theorem shapeSub_foldl_endLabel (ls : List Nat) (s : SState) : ShapeSub (ls.fold
   | nil => exact ShapeSub.refl s
   | cons l ls ih => exact (ih _).trans (shapeSub_endLabel s l)
 
-theorem shapeSub_access (s : SState) (p : Pos) : ShapeSub (s.access p) s := by
+theorem shapeSub_access (s : SState) (p : Pos) (o : Sem → Sem) : ShapeSub (s.access p o) s := by
   rw [access_eq_rounds]
   generalize List.range s.liveLabels.length = ns
   induction ns generalizing s with
@@ -1191,9 +1191,9 @@ theorem shapeSub_joinDrop (K : RunCtx) (φ : Future) (entry : List Place) (t : T
     · exact SState.ShapeSub.refl s
     · split
       · next pos steps _ =>
-        refine SState.ShapeSub.trans ?_ (SState.shapeSub_access s pos)
+        refine SState.ShapeSub.trans ?_ (SState.shapeSub_access s pos (obsAt K (s.tyAt pos).m steps wholeOb))
         dsimp only
-        generalize s.access pos = s₁
+        generalize s.access pos (obsAt K (s.tyAt pos).m steps wholeOb) = s₁
         rcases Sem.follow K.dm K.Γ (s₁.tyAt pos).m (s₁.valAt pos (s₁.closedFuture φ)) steps with _ | ⟨v, T⟩
         · exact SState.ShapeSub.refl _
         · cases v <;> first
@@ -1322,7 +1322,7 @@ theorem contentOf_shapeSub (K : RunCtx) (φ : Future) (p : Place) (s : SState)
   · next pos steps _ =>
     dsimp only at h
     split at h
-    · cases h; exact SState.shapeSub_access s pos
+    · cases h; exact SState.shapeSub_access s pos _
     · cases h
   · cases h
 
@@ -1500,7 +1500,7 @@ theorem readsBelow_foldl_endLabel {s : SState} (hs : s.ReadsBelow) :
   | nil => exact hs
   | cons k ls ih => exact ih (readsBelow_endLabel hs k)
 
-theorem readsBelow_access {s : SState} (hs : s.ReadsBelow) (p : Pos) : (s.access p).ReadsBelow := by
+theorem readsBelow_access {s : SState} (hs : s.ReadsBelow) (p : Pos) (o : Sem → Sem) : (s.access p o).ReadsBelow := by
   rw [access_eq_rounds]
   generalize List.range s.liveLabels.length = ns
   induction ns generalizing s with
@@ -1566,7 +1566,7 @@ theorem contentOf_readsBelow (K : RunCtx) (φ : Future) (p : Place) (s : SState)
   · next pos steps _ =>
     dsimp only at h
     split at h
-    · cases h; exact SState.readsBelow_access hs pos
+    · cases h; exact SState.readsBelow_access hs pos _
     · cases h
   · cases h
 
@@ -1614,9 +1614,9 @@ theorem joinDrop_readsBelow (K : RunCtx) (φ : Future) (entry : List Place) (t :
     · exact hs
     · split
       · next pos steps _ =>
-        have h₁ := SState.readsBelow_access hs pos
+        have h₁ := SState.readsBelow_access hs pos (obsAt K (s.tyAt pos).m steps wholeOb)
         dsimp only
-        generalize s.access pos = s₁ at h₁
+        generalize s.access pos (obsAt K (s.tyAt pos).m steps wholeOb) = s₁ at h₁
         rcases Sem.follow K.dm K.Γ (s₁.tyAt pos).m (s₁.valAt pos (s₁.closedFuture φ)) steps with _ | ⟨v, T⟩
         · exact h₁
         · have h₂ : (if steps.isEmpty then (match s₁.shape pos with

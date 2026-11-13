@@ -23,7 +23,7 @@ theorem filterMap_none {α β} (l : List α) : List.filterMap (fun _ => (none : 
 theorem liveLabels_noshape (s : SState) (h : s.shape = fun _ => none) : s.liveLabels = [] := by
   simp only [SState.liveLabels, h, filterMap_none, List.mergeSort_nil]
 
-theorem access_noshape (s : SState) (p : Pos) (h : s.shape = fun _ => none) : s.access p = s := by
+theorem access_noshape (s : SState) (p : Pos) (h : s.shape = fun _ => none) (o : Sem → Sem := id) : s.access p o = s := by
   simp [SState.access, liveLabels_noshape s h]
 
 theorem SM.bind_apply {α β : Type 3} (x : SM α) (f : α → SM β) (s : SState) :
@@ -108,7 +108,7 @@ noncomputable def a1 (n : Nat) : SState :=
 
 theorem content_a1 (n : Nat) : contentOf K φ (.var 0) (a1 K n) = some ((.el0 Nat 0, .plain (.ty0 Nat), .bind 0 0, []), a1 K n) := by
   have hr : resolve (a1 K n) (.var 0) = some (.bind 0 0, []) := rfl
-  simp only [contentOf, hr, access_noshape _ _ (rfl : (a1 K n).shape = _)]
+  simp only [contentOf, hr, access_noshape _ _ (rfl : (a1 K n).shape = _) _]
   rfl
 
 /-- After `&y` at counter `n`: `y` reads label `n`, and the borrow is parked in temporary `0`. -/
@@ -187,15 +187,21 @@ theorem holder_a4 (n : Nat) : (a4 n).holderOf n = some (.temp 0 0) := by
 theorem a4_y (n : Nat) (ψ : Future) : (a4 n).valAt (.bind 0 0) ψ = ψ n := rfl
 theorem a4_t (n : Nat) (ψ : Future) : (a4 n).valAt (.temp 0 0) ψ = .el0 Nat 0 := rfl
 
-theorem access_a4 (n : Nat) : (a4 n).access (.bind 0 0) = (a4 n).endAt n (.temp 0 0) := by
-  have hd : (a4 n).dependsOn (.bind 0 0) n := by
-    rw [SState.dependsOn_iff]
+/-- The whole-content observation of a root tells `Z` from `err`. -/
+theorem wholeOb_root_ne (K : RunCtx) (T : TyM) : obsAt K T [] wholeOb (.el0 Nat 0) ≠ obsAt K T [] wholeOb .err := by
+  simp [obsAt, Sem.follow, wholeOb]
+
+theorem access_a4 (n : Nat) (o : Sem → Sem) (ho : o (.el0 Nat 0) ≠ o .err) :
+    (a4 n).access (.bind 0 0) o = (a4 n).endAt n (.temp 0 0) := by
+  have hd : (a4 n).obsDep (.bind 0 0) o n := by
+    rw [SState.obsDep_iff]
     intro hi
     have := hi (fun _ => .el0 Nat 0) .err
-    rw [a4_y, a4_y] at this
+    simp only [a4_y] at this
     simp [Future.upd] at this
+    exact ho this.symm
   rw [SState.access_eq, liveLabels_a4]
-  show SState.accStep (.bind 0 0) (a4 n) = _
+  show SState.accStep (.bind 0 0) o (a4 n) = _
   unfold SState.accStep
   rw [liveLabels_a4]
   simp only [List.filter_cons, List.filter_nil, decide_eq_true hd, if_true, List.foldl_cons, List.foldl_nil]
@@ -204,7 +210,7 @@ theorem access_a4 (n : Nat) : (a4 n).access (.bind 0 0) = (a4 n).endAt n (.temp 
 theorem content_a4 (n : Nat) : ∃ T, contentOf KF φ (.var 0) (a4 n)
     = some ((.el0 Nat 0, T, .bind 0 0, []), (a4 n).endAt n (.temp 0 0)) := by
   have hr : resolve (a4 n) (.var 0) = some (.bind 0 0, []) := rfl
-  simp only [contentOf, hr, access_a4]
+  simp only [contentOf, hr, access_a4 n _ (wholeOb_root_ne KF _)]
   rw [SState.endAt_valAt _ _ _ _ (by rw [positions_a4]; simp)]
   simp only [show (Pos.bind 0 0 = Pos.temp 0 0) = False from by simp, if_false, a4_t, a4_y, Future.upd, if_true]
   exact ⟨_, rfl⟩

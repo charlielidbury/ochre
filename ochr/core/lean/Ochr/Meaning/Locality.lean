@@ -560,11 +560,11 @@ theorem total_foldl_endLabel_le : ∀ (ls : List Nat) (s : SState), (ls.foldl en
   | l :: ls, s => Nat.le_trans (total_foldl_endLabel_le ls _) (total_endLabel_le s l)
 
 /-- One round of [Access] of `p` (`SState.access`'s `step`). -/
-noncomputable def accStep (p : Pos) (s : SState) : SState :=
-  open Classical in (s.liveLabels.filter fun l => decide (s.dependsOn p l)).foldl endLabel s
+noncomputable def accStep (p : Pos) (o : Sem → Sem) (s : SState) : SState :=
+  open Classical in (s.liveLabels.filter fun l => decide (s.obsDep p o l)).foldl endLabel s
 
-theorem access_eq (s : SState) (p : Pos) :
-    s.access p = (List.range s.liveLabels.length).foldl (fun s _ => accStep p s) s := rfl
+theorem access_eq (s : SState) (p : Pos) (o : Sem → Sem) :
+    s.access p o = (List.range s.liveLabels.length).foldl (fun s _ => accStep p o s) s := rfl
 
 /-- `g` applied `k` times, outermost last. -/
 def iterR {α} (g : α → α) : Nat → α → α
@@ -597,16 +597,33 @@ theorem dependsOn_iff (s : SState) (p : Pos) (l : Nat) : s.dependsOn p l ↔ ¬ 
     intro hn
     exact h fun ψ x => Classical.byContradiction fun hne => hn ⟨ψ, x, fun e => hne e.symm⟩
 
-theorem accStep_inv {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (p : Pos) :
-    Inv1 L (accStep p s) ∧ Inv2 L (accStep p s) := foldl_endLabel_inv h1 h2 _
+theorem obsDep_iff (s : SState) (p : Pos) (o : Sem → Sem) (l : Nat) :
+    s.obsDep p o l ↔ ¬ Indep l (fun ψ => o (s.valAt p ψ)) := by
+  simp only [obsDep, Indep]
+  constructor
+  · rintro ⟨φ, x, h⟩ hi; exact h (hi φ x).symm
+  · intro h
+    apply Classical.byContradiction
+    intro hn
+    exact h fun ψ x => Classical.byContradiction fun hne => hn ⟨ψ, x, fun e => hne e.symm⟩
+
+/-- What an observation depends on, the meaning does. -/
+theorem dependsOn_of_obsDep {s : SState} {p : Pos} {o : Sem → Sem} {l : Nat} (h : s.obsDep p o l) :
+    s.dependsOn p l := by
+  obtain ⟨φ, x, h⟩ := h
+  exact ⟨φ, x, fun e => h (congrArg o e)⟩
+
+theorem accStep_inv {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (p : Pos) (o : Sem → Sem) :
+    Inv1 L (accStep p o s) ∧ Inv2 L (accStep p o s) := foldl_endLabel_inv h1 h2 _
 
 open Classical in
-theorem accStep_fix (s : SState) (p : Pos) (h : ∀ y, s.Live y → Indep y (s.valAt p)) : accStep p s = s := by
+theorem accStep_fix (s : SState) (p : Pos) (o : Sem → Sem) (h : ∀ y, s.Live y → Indep y (fun ψ => o (s.valAt p ψ))) :
+    accStep p o s = s := by
   unfold accStep
   rw [List.filter_eq_nil_iff.mpr]
   · rfl
   · intro y hy
-    simp only [decide_eq_true_eq, dependsOn_iff, Classical.not_not]
+    simp only [decide_eq_true_eq, obsDep_iff, Classical.not_not]
     exact h y hy
 
 theorem live_endLabel {s : SState} {l y : Nat} (hy : s.Live y) (hne : y ≠ l) : (s.endLabel l).Live y := by
@@ -629,50 +646,54 @@ theorem total_foldl_lt (y : Nat) : ∀ (ls : List Nat) (s : SState), y ∈ ls �
       exact Nat.lt_of_lt_of_le (total_foldl_lt y ls _ hm' (live_endLabel hy (Ne.symm e))) (total_endLabel_le s l)
 
 open Classical in
-theorem accStep_lt (s : SState) (p : Pos) (y : Nat) (hy : s.Live y) (hd : ¬ Indep y (s.valAt p)) :
-    (accStep p s).total < s.total := by
+theorem accStep_lt (s : SState) (p : Pos) (o : Sem → Sem) (y : Nat) (hy : s.Live y)
+    (hd : ¬ Indep y (fun ψ => o (s.valAt p ψ))) : (accStep p o s).total < s.total := by
   unfold accStep
-  have hm : y ∈ s.liveLabels.filter fun l => decide (s.dependsOn p l) := by
-    rw [List.mem_filter]; exact ⟨hy, by simpa [dependsOn_iff] using hd⟩
+  have hm : y ∈ s.liveLabels.filter fun l => decide (s.obsDep p o l) := by
+    rw [List.mem_filter]; exact ⟨hy, by simpa [obsDep_iff] using hd⟩
   exact total_foldl_lt y _ s hm hy
 
-theorem access_settles (p : Pos) : ∀ (k : Nat) (s : SState), s.total ≤ k →
-    ∀ y, (iterR (accStep p) k s).Live y → Indep y ((iterR (accStep p) k s).valAt p)
+theorem access_settles (p : Pos) (o : Sem → Sem) : ∀ (k : Nat) (s : SState), s.total ≤ k →
+    ∀ y, (iterR (accStep p o) k s).Live y → Indep y (fun ψ => o ((iterR (accStep p o) k s).valAt p ψ))
   | 0, s, hk, y, hy => by
     have : s.liveLabels = [] := List.eq_nil_of_length_eq_zero (Nat.eq_zero_of_le_zero hk)
     exact absurd (show y ∈ s.liveLabels from hy) (by rw [this]; exact List.not_mem_nil)
   | k + 1, s, hk, y, hy => by
     rw [iterR_succ'] at hy ⊢
-    by_cases h : ∀ y, s.Live y → Indep y (s.valAt p)
-    · rw [accStep_fix s p h, iterR_fix _ s (accStep_fix s p h)] at hy ⊢
+    by_cases h : ∀ y, s.Live y → Indep y (fun ψ => o (s.valAt p ψ))
+    · rw [accStep_fix s p o h, iterR_fix _ s (accStep_fix s p o h)] at hy ⊢
       exact h y hy
-    · have ⟨z, hz⟩ : ∃ z, s.Live z ∧ ¬ Indep z (s.valAt p) := by
+    · have ⟨z, hz⟩ : ∃ z, s.Live z ∧ ¬ Indep z (fun ψ => o (s.valAt p ψ)) := by
         apply Classical.byContradiction
         intro hn
         exact h fun z hz => Classical.byContradiction fun hi => hn ⟨z, hz, hi⟩
-      have hlt := accStep_lt s p z hz.1 hz.2
-      exact access_settles p k _ (by omega) y hy
+      have hlt := accStep_lt s p o z hz.1 hz.2
+      exact access_settles p o k _ (by omega) y hy
 
-theorem iterR_accStep_inv (p : Pos) : ∀ (k : Nat) {s : SState}, Inv1 L s → Inv2 L s →
-    Inv1 L (iterR (accStep p) k s) ∧ Inv2 L (iterR (accStep p) k s)
+theorem iterR_accStep_inv (p : Pos) (o : Sem → Sem) : ∀ (k : Nat) {s : SState}, Inv1 L s → Inv2 L s →
+    Inv1 L (iterR (accStep p o) k s) ∧ Inv2 L (iterR (accStep p o) k s)
   | 0, _, h1, h2 => ⟨h1, h2⟩
   | k + 1, _, h1, h2 => by
-    obtain ⟨h1', h2'⟩ := iterR_accStep_inv p k h1 h2
-    exact accStep_inv h1' h2' p
+    obtain ⟨h1', h2'⟩ := iterR_accStep_inv p o k h1 h2
+    exact accStep_inv h1' h2' p o
 
 /-- [Access] keeps the invariant. -/
-theorem access_inv {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (p : Pos) :
-    Inv1 L (s.access p) ∧ Inv2 L (s.access p) := by
+theorem access_inv {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (p : Pos) (o : Sem → Sem) :
+    Inv1 L (s.access p o) ∧ Inv2 L (s.access p o) := by
   rw [access_eq, foldl_range_iterR]
-  exact iterR_accStep_inv p _ h1 h2
+  exact iterR_accStep_inv p o _ h1 h2
 
-/-- (R1) After [Access] of `p`, the meaning at `p` factors through `L`: every live label it read
-has been ended, and what is left are the labels the two futures agree on. -/
-theorem access_FT {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (p : Pos) : FT L ((s.access p).valAt p) := by
-  have hset := access_settles p s.total s (Nat.le_refl _)
-  rw [← foldl_range_iterR, show (List.range s.total).foldl (fun a _ => accStep p a) s = s.access p from rfl] at hset
-  have hI := (access_inv h1 h2 p).1 p
-  exact FT.removeList (s.access p).liveLabels hI fun y hy => hset y hy
+/-- (R1) After [Access] of `p` for the observation `o`, what `o` observes of the meaning at `p`
+factors through `L`: every live label it read has been ended, and what is left are the labels the
+two futures agree on. (The rest of the meaning at `p` may still read live labels: the borrows of
+the fields not read.) -/
+theorem access_FT {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (p : Pos) (o : Sem → Sem) :
+    FT L (fun ψ => o ((s.access p o).valAt p ψ)) := by
+  have hset := access_settles p o s.total s (Nat.le_refl _)
+  rw [← foldl_range_iterR, show (List.range s.total).foldl (fun a _ => accStep p o a) s = s.access p o from rfl] at hset
+  have hI : FT (fun y => L y ∨ (s.access p o).Live y) (fun ψ => o ((s.access p o).valAt p ψ)) :=
+    fun ψ ψ' hψ => congrArg o ((access_inv h1 h2 p o).1 p ψ ψ' hψ)
+  exact FT.removeList (s.access p o).liveLabels hI fun y hy => hset y hy
 
 /-! ## The closed future -/
 

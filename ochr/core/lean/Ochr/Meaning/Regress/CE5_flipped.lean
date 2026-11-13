@@ -23,7 +23,7 @@ theorem filterMap_none {α β} (l : List α) : List.filterMap (fun _ => (none : 
 theorem liveLabels_noshape (s : SState) (h : s.shape = fun _ => none) : s.liveLabels = [] := by
   simp only [SState.liveLabels, h, filterMap_none, List.mergeSort_nil]
 
-theorem access_noshape (s : SState) (p : Pos) (h : s.shape = fun _ => none) : s.access p = s := by
+theorem access_noshape (s : SState) (p : Pos) (h : s.shape = fun _ => none) (o : Sem → Sem := id) : s.access p o = s := by
   simp [SState.access, liveLabels_noshape s h]
 
 theorem SM.bind_apply {α β : Type 3} (x : SM α) (f : α → SM β) (s : SState) :
@@ -42,14 +42,15 @@ theorem stmtIf_noStmt (hfl : NoStmt K) (t : Term) (x : SM Res) (s : SState) :
   rw [hfl]; rfl
 
 /-- [Access] of a position whose meaning reads no label ends nothing. -/
-theorem access_const (s : SState) (p : Pos) (h : ∀ ψ ψ', s.valAt p ψ = s.valAt p ψ') : s.access p = s := by
-  have hround : SState.accessRound p s = s := by
-    have hf : (s.liveLabels.filter fun l => decide (s.dependsOn p l)) = [] := by
+theorem access_const (s : SState) (p : Pos) (h : ∀ ψ ψ', s.valAt p ψ = s.valAt p ψ') (o : Sem → Sem := id) :
+    s.access p o = s := by
+  have hround : SState.accessRound p o s = s := by
+    have hf : (s.liveLabels.filter fun l => decide (s.obsDep p o l)) = [] := by
       apply List.filter_eq_nil_iff.mpr
       intro l _
       simp only [decide_eq_true_eq]
       rintro ⟨ψ, x, hne⟩
-      exact hne (h _ _)
+      exact hne (congrArg o (h _ _))
     unfold SState.accessRound
     rw [hf]; rfl
   rw [SState.access_eq_rounds]
@@ -111,12 +112,12 @@ noncomputable def b1 (n : Nat) : SState := ((emptyState n).pushBind (yB K n)).pu
 
 theorem content_b1_y (n : Nat) : contentOf K φ (.var 1) (b1 K n) = some ((.el0 Nat 0, .plain (.ty0 Nat), .bind 0 0, []), b1 K n) := by
   have hr : resolve (b1 K n) (.var 1) = some (.bind 0 0, []) := rfl
-  simp only [contentOf, hr, access_noshape _ _ (rfl : (b1 K n).shape = _)]
+  simp only [contentOf, hr, access_noshape _ _ (rfl : (b1 K n).shape = _) _]
   rfl
 
 theorem content_b1_x (n : Nat) : contentOf K φ (.var 0) (b1 K n) = some ((.el0 Nat 0, .plain (.ty0 Nat), .bind 0 1, []), b1 K n) := by
   have hr : resolve (b1 K n) (.var 0) = some (.bind 0 1, []) := rfl
-  simp only [contentOf, hr, access_noshape _ _ (rfl : (b1 K n).shape = _)]
+  simp only [contentOf, hr, access_noshape _ _ (rfl : (b1 K n).shape = _) _]
   rfl
 
 theorem run_assign (hfl : NoStmt K) (p : Place) (u : Term) (hint : TyS) (s : SState) :
@@ -128,7 +129,7 @@ theorem run_assign (hfl : NoStmt K) (p : Place) (u : Term) (hint : TyS) (s : SSt
       match resolve s p with
       | none => none
       | some (pos, steps) =>
-        let s := if steps.isEmpty && (s.shape pos).isSome then s else s.access pos
+        let s := if steps.isEmpty && (s.shape pos).isSome then s else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)
         let s := if steps.isEmpty then (match s.shape pos with | some l => s.endLabel l | none => s) else s
         match setContent K φ pos steps v s with
         | none => none
@@ -185,7 +186,7 @@ noncomputable def b5 (n : Nat) : SState :=
 /-- After `&y`, the access of `x` ends nothing: `x` reads no label. -/
 theorem content_b2_x (n : Nat) : contentOf K φ (.var 0) (b2 K n) = some ((.el0 Nat 0, .plain (.ty0 Nat), .bind 0 1, []), b2 K n) := by
   have hr : resolve (b2 K n) (.var 0) = some (.bind 0 1, []) := rfl
-  have ha : (b2 K n).access (.bind 0 1) = b2 K n := access_const _ _ (fun _ _ => rfl)
+  have ha : ∀ o, (b2 K n).access (.bind 0 1) o = b2 K n := fun o => access_const _ _ (fun _ _ => rfl) o
   simp only [contentOf, hr, ha]
   rfl
 
@@ -196,7 +197,7 @@ theorem assign_b1 (hfl : NoStmt K) (n : Nat) (hint : TyS) :
   rw [run_borrow K ρ φ hfl, borrow_b1]
   dsimp only [Bind.bind, Option.bind]
   have hr : resolve (b2 K n) (.var 0) = some (.bind 0 1, []) := rfl
-  have ha : (b2 K n).access (.bind 0 1) = b2 K n := access_const _ _ (fun _ _ => rfl)
+  have ha : ∀ o, (b2 K n).access (.bind 0 1) o = b2 K n := fun o => access_const _ _ (fun _ _ => rfl) o
   rw [hr]
   dsimp only
   rw [show (b2 K n).shape (.bind 0 1) = none from rfl]
@@ -251,8 +252,8 @@ theorem liveLabels_b6 (n : Nat) : (b6 K n).liveLabels = [] := by
 theorem content_b6 (n : Nat) : contentOf K φ (.var 0) (b6 K n) = some ((φ n, (yB K n).ty, .bind 0 0, []), b6 K n) := by
   have hr : resolve (b6 K n) (.var 0) = some (.bind 0 0, []) := by
     simp [resolve, Place.steps, SState.varPos, env_b6, SState.topIdx]
-  have ha : (b6 K n).access (.bind 0 0) = b6 K n := by
-    simp [SState.access, liveLabels_b6]
+  have ha : ∀ o, (b6 K n).access (.bind 0 0) o = b6 K n := by
+    intro o; simp [SState.access, liveLabels_b6]
   simp only [contentOf, hr, ha]
   have hv : (b6 K n).valAt (.bind 0 0) = (yB' K n).val := by simp [SState.valAt, env_b6]
   have ht : (b6 K n).tyAt (.bind 0 0) = (yB K n).ty := by simp [SState.tyAt, env_b6, yB']
@@ -308,7 +309,7 @@ theorem b7_shape (n : Nat) : (b7 K n).shape = fun _ => none := by
 theorem content_b7 (n : Nat) : ∃ T, contentOf K φ (.var 0) (b7 K n) = some ((.el0 Nat 0, T, .bind 0 0, []), b7 K n) := by
   have hr : resolve (b7 K n) (.var 0) = some (.bind 0 0, []) := by
     unfold b7 b5; simp only [take_b3]; rfl
-  simp only [contentOf, hr, access_noshape _ _ (b7_shape K n)]
+  simp only [contentOf, hr, access_noshape _ _ (b7_shape K n) _]
   rw [b7_val_y]
   exact ⟨_, rfl⟩
 
