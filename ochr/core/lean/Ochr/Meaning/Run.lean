@@ -372,7 +372,7 @@ noncomputable def run (hint : TyS) : Term → SM Res
       -- a sealed callee (D39: the checker calls a sealed function value) carries the shape of
       -- its program's result (the spine's finding at the general closeCall_step, docs/31 item
       -- 3); its labels are its own, so only the shape is taken
-      | .sealed t => match run hint t (emptyState (t.loans.foldl max 0 + 1)) with
+      | .sealed t => match run hint t (emptyState 0) with
         | some ((_, R), _) => { hint with shape := R.shape }
         | none => hint
       | _ => hint
@@ -617,7 +617,12 @@ noncomputable def meanV (hint : TyS) : Value → Sem
   | .loan l => φ l
   | .bot => .moved
   | .abs σ => ρ σ
-  | .sealed t => match run hint t (emptyState (t.loans.foldl max 0 + 1)) with
+  -- PROPOSAL (m2-proofs, 8): a sealed program runs from the label counter 0, not from above its
+  -- loans. Its fresh labels never leave its run (only the result's meaning and shape are read),
+  -- and meeting one of its loans is harmless (a loan is read by the value's meaning, never through
+  -- the state). A counter fixed by the term changes under substitution, which then needs the
+  -- counter's independence (the renaming lemma, false as first stated: finding 7)
+  | .sealed t => match run hint t (emptyState 0) with
     | some ((v, _), _) => v
     | none => .err
   | .proof => .proof
