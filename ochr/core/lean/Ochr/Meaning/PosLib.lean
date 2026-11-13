@@ -254,6 +254,69 @@ theorem mean_setAtE_temp (env : Env) (f i : Nat) (v : Value) (φ : Future) (fr :
 
 end
 
+section
+variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment)
+
+/-- A stored type is untouched by `pushTemp`. -/
+theorem hintAt_pushTempE (env : Env) (v : Value) (q : Pos) :
+    Env.hintAt dm C Γ ρ (Env.pushTempE env v) q = Env.hintAt dm C Γ ρ env q := by
+  cases q with
+  | temp _ _ => rfl
+  | bind f' i' =>
+    simp only [Env.hintAt, Env.pushTempE]
+    by_cases hff : env.size - 1 = f'
+    · rw [Array.getElem?_modify]; simp only [hff, if_true]
+      cases env[f']? <;> rfl
+    · rw [Array.getElem?_modify]; simp only [hff, if_false]
+
+/-- Every position but the new temporary means the same after `pushTemp`. -/
+theorem mean_pushTempE_other (env : Env) (v : Value) (fr : Frame) (hfr : env[env.size - 1]? = some fr)
+    (q : Pos) (φ : Future) (hq : q ≠ .temp (env.size - 1) fr.temps.size) :
+    Env.mean dm C Γ ρ φ (Env.pushTempE env v) q = Env.mean dm C Γ ρ φ env q := by
+  cases q with
+  | bind f' i' =>
+    simp only [Env.mean]
+    rw [hintAt_pushTempE]
+    simp only [Env.pushTempE]
+    by_cases hff : env.size - 1 = f'
+    · rw [Array.getElem?_modify]; simp only [hff, if_true]
+      cases env[f']? <;> rfl
+    · rw [Array.getElem?_modify]; simp only [hff, if_false]
+  | temp f' i' =>
+    simp only [Env.mean]
+    rw [hintAt_pushTempE]
+    simp only [Env.pushTempE]
+    by_cases hff : env.size - 1 = f'
+    · subst hff
+      rw [Array.getElem?_modify]; simp only [if_true, hfr, Option.map_some, Option.bind_some]
+      have hii : i' ≠ fr.temps.size := fun h => hq (by subst h; rfl)
+      rw [Array.getElem?_push]; simp only [hii, if_false]
+    · rw [Array.getElem?_modify]; simp only [hff, if_false]
+
+/-- The new temporary means the pushed value (at the untyped hint). -/
+theorem mean_pushTempE_new (env : Env) (v : Value) (fr : Frame) (hfr : env[env.size - 1]? = some fr)
+    (φ : Future) :
+    Env.mean dm C Γ ρ φ (Env.pushTempE env v) (.temp (env.size - 1) fr.temps.size)
+      = Value.mean dm C Γ ρ φ (.plain .err) v := by
+  simp only [Env.mean, Env.pushTempE]
+  rw [Array.getElem?_modify]; simp only [if_true, hfr, Option.map_some, Option.bind_some]
+  rw [Array.getElem?_push]; simp [Env.hintAt]
+
+end
+
+/-- `valAt` through the total lookups. -/
+theorem valAt_bind_eq (env : Env) (f i : Nat) :
+    valAt env (.bind f i) = (((env[f]?).getD default).binds[i]?.getD default).val := by
+  first
+    | (simp only [valAt, Array.getElem!_eq_getD, Array.getD_eq_getD_getElem?])
+    | (simp [valAt, Array.getElem!_eq_getD, Array.getD_eq_getD_getElem?])
+
+theorem valAt_temp_eq (env : Env) (f i : Nat) :
+    valAt env (.temp f i) = ((env[f]?).getD default).temps[i]?.getD default := by
+  first
+    | (simp only [valAt, Array.getElem!_eq_getD, Array.getD_eq_getD_getElem?])
+    | (simp [valAt, Array.getElem!_eq_getD, Array.getD_eq_getD_getElem?])
+
 /-! ## Part C: the bridge -/
 
 section
