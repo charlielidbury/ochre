@@ -453,6 +453,13 @@ noncomputable def callOf (fv : Res) (args : List Res) : SM Res := fun s =>
     | _ => none
   | none => none
 
+/-- [Drop] of a discarded value (`Machine.dropValue`): a borrow the result holds (its label) ends;
+a value that is not a borrow holds no loan in the reference (a read accessed it). -/
+noncomputable def discardEnd (R : TyS) (s : SState) : SState :=
+  match R.label with
+  | some l => s.endLabel l
+  | none => s
+
 /-- The shortest strict prefix of `steps` at which a live label has a site at `pos`: where the
 checker's path stops at a lent part (`Machine.movedPlace`: a place under a loan or a sealed fill
 does not exist, and its longest existing prefix, a fill, is accessed whole). -/
@@ -562,9 +569,11 @@ noncomputable def run (hint : TyS) : Term → SM Res
     let s := match held with | some l => s.endLabel l | none => s
     some ((r, R), s.dropLast)) s
   | .seq u w => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.seq u w)) (do
-    -- a discarded result holding a borrow stays parked in its temporary (D14): the borrow is
-    -- ended by the access that next depends on it, or by the frame's pop
-    let _ ← run (.plain .err) u
+    -- [Drop] of a discarded value (`Machine.dropValue`): a borrow it holds ends now, as the
+    -- checker ends it (docs/31 D29: the two hold the same live borrows at every point; it used
+    -- to stay parked until an access depended on it, an early end of the checker's)
+    let r ← run (.plain .err) u
+    SM.modify (discardEnd r.2)
     run hint w) s
   | .matchNat p z u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.matchNat p z u)) (fun s => do
     -- [Match]: the arm by the tag of the scrutinee's meaning (after [Access] for the tag: the
