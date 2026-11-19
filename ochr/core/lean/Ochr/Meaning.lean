@@ -41,6 +41,7 @@ import Ochr.Meaning.Sanity
 import Ochr.Meaning.Bounded
 import Ochr.Meaning.Mono
 import Ochr.Meaning.BotWrite
+import Ochr.Meaning.SitesWrite
 import Ochr.Meaning.MonoHolders
 import Ochr.Meaning.Program
 import Ochr.Meaning.DecisionsInst
