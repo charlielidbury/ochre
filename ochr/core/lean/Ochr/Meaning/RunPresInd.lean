@@ -63,6 +63,19 @@ theorem rinv_ret {s s₁ : SState} (hi : RInv L s₁) (he : EnvLe s s₁) (ho : 
     (hl : r.2.label = none) : RInv L s₁ ∧ LoU s₁ r.2.label ∧ EnvLe s s₁ ∧ OrdKeep L s s₁ :=
   ⟨hi, (fun l h' => by rw [hl] at h'; cases h'), he, ho⟩
 
+/-- The [Drop] of a discarded value keeps the invariant, the environment's order and the
+temporaries' order. -/
+theorem discardEnd_props {s : SState} (hi : RInv L s) (R : TyS) :
+    RInv L (discardEnd R s) ∧ EnvLe s (discardEnd R s) ∧ OrdKeep L s (discardEnd R s) := by
+  unfold discardEnd
+  split
+  · exact ⟨endLabel_rinv hi _, envLe_endLabel _ _, ordKeep_endLabel hi.2.1 _⟩
+  · exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
+
+theorem SM.modify_some {f : SState → SState} {s : SState} {r : PUnit × SState} (h : SM.modify f s = some r) :
+    r.2 = f s := by
+  cases h; rfl
+
 theorem rinv_pure {s : SState} (hi : RInv L s) {r : Res} (hl : r.2.label = none) :
     RInv L s ∧ LoU s r.2.label ∧ EnvLe s s ∧ OrdKeep L s s :=
   rinv_ret L hi (EnvLe.refl s) (OrdKeep.refl s) hl
@@ -422,8 +435,12 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
     · exact rinv_pure L hi hl
     obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some h
     obtain ⟨hi₁, _, e₁, o₁⟩ := run_rinv hK u _ s s₁ x hi h1
-    obtain ⟨hi₂, hy₂, e₂, o₂⟩ := run_rinv hK w hint s₁ s' r hi₁ h2
-    exact ⟨hi₂, hy₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
+    obtain ⟨u', s₂, h2a, h2⟩ := SM.bind_some h2
+    have es : s₂ = discardEnd x.2 s₁ := SM.modify_some h2a
+    subst es
+    obtain ⟨hi₁', e₁', o₁'⟩ := discardEnd_props L hi₁ x.2
+    obtain ⟨hi₂, hy₂, e₂, o₂⟩ := run_rinv hK w hint _ s' r hi₁' h2
+    exact ⟨hi₂, hy₂, e₁.trans (e₁'.trans e₂), o₁.trans e₁ (o₁'.trans e₁' o₂)⟩
   | .succ u, hint, s, s', r, hi, h => by
     rw [run] at h
     rcases SM.erasedIf_some h with h | ⟨rfl, hl⟩

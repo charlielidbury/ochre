@@ -658,8 +658,12 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     refine SM.erasedIf_congr ?_
     apply SM.bind_congr (run_congrE hK u _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
     intro a s₁ h1
-    exact run_congrE hK w hint s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h]))
-      (run_rinv K ρ φ L hK u _ s s₁ a hi h1).1
+    apply SM.bind_congr rfl
+    intro _ s₂ h2
+    have es : s₂ = discardEnd a.2 s₁ := SM.modify_some h2
+    subst es
+    exact run_congrE hK w hint _ L hφ (fun l h => ht l (by simp [Term.anyAtom, h]))
+      (discardEnd_props L (run_rinv K ρ φ L hK u _ s s₁ a hi h1).1 a.2).1
   | .succ u, hint, s, L, hφ, ht, hi => by
     rw [run, run]
     refine SM.erasedIf_congr ?_

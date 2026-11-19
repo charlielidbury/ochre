@@ -51,8 +51,13 @@ theorem run_letIn (hfl : NoStmt K) (h : Hint) (u w : Term) (hint : TyS) (s : SSt
           | some l => y.2.endLabel l | none => y.2).dropLast)) := by
   rw [run]; exact stmtIf_noStmt K hfl _ _ s
 
+/-- The [Drop] of a discarded value that holds no borrow does nothing. -/
+theorem seq_discard_plain (T : TyM) (k : SM Res) (s : SState) :
+    (SM.modify (discardEnd (TyS.plain T)) >>= fun _ => k) s = k s := rfl
+
 theorem run_seq (hfl : NoStmt K) (u w : Term) (hint : TyS) (s : SState) :
-    run K ρ φ hint (.seq u w) s = (run K ρ φ (.plain .err) u >>= fun _ => run K ρ φ hint w) s := by
+    run K ρ φ hint (.seq u w) s =
+      (run K ρ φ (.plain .err) u >>= fun r => SM.modify (discardEnd r.2) >>= fun _ => run K ρ φ hint w) s := by
   rw [run]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem run_place (hfl : NoStmt K) (p : Place) (hint : TyS) (s : SState) :
@@ -330,7 +335,7 @@ theorem tA_reads_zero (hfl : NoStmt K) (n : Nat) (hint : TyS) :
   simp only [Option.bind]
   rw [show pushBindShaped ((emptyState n).pushBind (yB K n)) _ = b1 K n from rfl, assign_b1 K ρ φ hfl]
   simp only
-  rw [drop_b5, run_place K ρ φ hfl]
+  rw [drop_b5, seq_discard_plain, run_place K ρ φ hfl]
   obtain ⟨T, hc⟩ := content_b7 K φ n
   rw [readPlace_of K φ _ _ _ _ _ _ _ _ hc]
   simp only [Sem.whole, not_true_eq_false, ite_false]
