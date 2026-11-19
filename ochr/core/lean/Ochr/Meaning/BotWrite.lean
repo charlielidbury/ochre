@@ -271,6 +271,20 @@ theorem Sem.updAt_data' (T : TyS) (f : Sem → Sem) (st : Step) (sts : List Step
     simp only [Step.fieldIdx] at hi ⊢
     simp only [hi]
 
+/-- The fields before the one the path steps into are whole, at every constructor value on the
+path ((WF13) constrains a field only after whole earlier fields: a later field's declared type may
+read a moved earlier one, D29's row-4 residual). -/
+def WholeAlong : List Step → Value → Prop
+  | [], _ => True
+  | .deref :: ss, .borrow _ w => WholeAlong ss w
+  | st :: ss, .gloan _ w => WholeAlong (st :: ss) w
+  | .proj 0 :: ss, .succ w => WholeAlong ss w
+  | st :: ss, .ind ty c _ ps fs => ∀ d, Γ.find? (·.name == ty) = some d →
+      (∀ e ∈ (Value.meanFields dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c 0 [] fs).take st.fieldIdx,
+        e.whole) ∧ ∀ w, fs[st.fieldIdx]? = some w → WholeAlong ss w
+  | _, _ => True
+termination_by ss v => (ss.length, sizeOf v)
+
 /-- **L2: writing `⊥` at a path commutes with the meaning** (docs/31 D28, D29 point 5 e, D31): the
 meaning of the checker's written value is the reference's written meaning, for a value that records
 its parameters and holds no sealed program, read at a hint that decodes it along the path. -/
