@@ -24,7 +24,7 @@ def after : MState := { saved with absTy := #[.tNat], nextAbs := 1 }
 theorem allPos_after : allPos after.env = [] := by
   rw [allPos_eq]; rfl
 
-theorem runs_exit : Runs (exitWorld ⟨saved⟩) cur 0 () after := ⟨_, _, rfl⟩
+theorem runs_exit : Runs (exitWorld ⟨saved⟩) cur 0 () after := ⟨#[], _, _, rfl⟩
 
 theorem noBind (f i : Nat) : (after.env[f]?.bind fun fr => fr.binds[i]?) = none := by
   cases f with

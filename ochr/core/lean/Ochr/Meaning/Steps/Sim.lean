@@ -97,8 +97,13 @@ snapshot's, and the records and types that survive hold no loan at all ((WF11)).
 theorem restoreKeep_spec (saved cur st' : MState) (fuel : Nat) (h : Runs (restoreKeep saved) cur fuel () st') :
     st'.env = saved.env ∧ st'.goal = saved.goal ∧ st'.inds = saved.inds ∧
     st'.nextLoan = cur.nextLoan ∧ st'.neutrals = cur.neutrals ∧ st'.etaRefs = cur.etaRefs := by
+  obtain ⟨L, left, log, h⟩ := h
   unfold restoreKeep at h
-  obtain ⟨-, rfl⟩ := Runs.unique h (runs_modify _ cur fuel)
+  have e : ∀ (g : MState → MState), runMachineL (modify g : M Unit) cur fuel L = (.ok () (g cur), fuel, L) :=
+    fun _ => rfl
+  rw [e] at h
+  simp only [Prod.mk.injEq, Outcome.ok.injEq] at h
+  obtain ⟨⟨-, rfl⟩, -, -⟩ := h
   exact ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 /-- A label occurs in a state through its Ω alone. -/

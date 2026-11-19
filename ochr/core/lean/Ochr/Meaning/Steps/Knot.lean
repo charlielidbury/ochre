@@ -15,7 +15,7 @@ import Ochr.Meaning.Steps.Decisions
 
 `stepsIH`: every step statement holds at every fuel, assignment and future (no knot hypothesis:
 docs/31 D18). The successor case is the area files' theorems applied to the hypothesis at `fuel`,
-which they get at every assignment and future. The base case: a checker function at
+which they get at every run context, assignment and future. The base case: a checker function at
 fuel `0` is `exhausted`, so every `Runs … 0 …` hypothesis is false and the fuel-indexed
 statements hold vacuously; the statements without a fuel-indexed run must be proved outright
 (`stepsIH_zero`).
@@ -30,10 +30,14 @@ variable (K : RunCtx)
 theorem stepsIH_zero (ρ : Assignment) (φ : Future) : StepsIH K ρ φ 0 := by
   sorry
 
-/-- Every step statement, at every fuel, assignment and future. -/
-theorem stepsIH : ∀ (fuel : Nat) (ρ : Assignment) (φ : Future), StepsIH K ρ φ fuel
-  | 0, ρ, φ => stepsIH_zero K ρ φ
-  | fuel + 1, ρ, φ =>
+end
+
+/-- Every step statement, at every fuel, run context, assignment and future (the hypothesis an
+area file gets is at every context too: a step that creates unknowns continues under a context
+whose `Δ` is extended, docs/31 D20 item 7, D29 task C). -/
+theorem stepsIH : ∀ (fuel : Nat) (K : RunCtx) (ρ : Assignment) (φ : Future), StepsIH K ρ φ fuel
+  | 0, K, ρ, φ => stepsIH_zero K ρ φ
+  | fuel + 1, K, ρ, φ =>
     let ih := stepsIH fuel
     { endBorrow_step := endBorrow_step K ρ φ fuel ih
       access_step := access_step K ρ φ fuel ih
@@ -62,6 +66,7 @@ theorem stepsIH : ∀ (fuel : Nat) (ρ : Assignment) (φ : Future), StepsIH K ρ
       callType_step := callType_step K ρ φ fuel ih
       recCheck_sound := recCheck_sound K ρ φ fuel ih
       joinEntry := joinEntry K ρ φ fuel ih
+      dropOne_step := dropOne_step K ρ φ fuel ih
       joinDrop_step := joinDrop_step K ρ φ fuel ih
       evalMatch_step := evalMatch_step K ρ φ fuel ih
       evalMatchInd_step := evalMatchInd_step K ρ φ fuel ih
@@ -114,8 +119,6 @@ theorem stepsIH : ∀ (fuel : Nat) (ρ : Assignment) (φ : Future), StepsIH K ρ
       rePointed_aligned := rePointed_aligned K ρ φ fuel ih
       typeDecl_aligned := typeDecl_aligned K ρ φ fuel ih
     }
-
-end
 
 end Ochr.Meaning.Steps
 

@@ -29,6 +29,7 @@ import Ochr.Meaning.Steps.Tail
 import Ochr.Meaning.Steps.Decisions
 import Ochr.Meaning.Steps.Knot
 import Ochr.Meaning.Steps.Sim
+import Ochr.Meaning.Steps.JoinDropLib
 import Ochr.Meaning.Attack.CloseCall
 import Ochr.Meaning.Attack.RunEqs
 import Ochr.Meaning.Attack.CloseCallFwd
