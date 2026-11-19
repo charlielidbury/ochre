@@ -91,6 +91,123 @@ theorem Rel.start (st : MState) (hw : Wit K id [] st.env (SM' K ρ st)) : Rel K 
       show _ = (MState.sstate K.dm K.M K.Γ ρ st).valAt (.temp f i) ψ
       rw [sstate_valAt]; rfl⟩⟩, hw⟩
 
+/-! ### Where the relation starts: the witness from the state's shape
+
+`Rel.start` assumes the loan witness with no early end. At a state whose every value is loan-free
+or a bare loan, it holds outright (`wit_start`, from `meanV_congr`): a loan-free value means a
+constant, and a bare loan reads its own label, whose end reads its holder's loan-free content. The
+three places a run starts are of that shape:
+
+* the generic state of a definition's check: each parameter an unknown, a proof `⋆`, a borrow of
+  an unknown, each borrowed cell a bare loan;
+* the empty state a sealed program re-runs from (`emptyState`): no value at all;
+* a callee's frame (`runBodyCore`): its parameters bound to the arguments, loan-free or a borrow of
+  loan-free content ((WF5), asserted where a call closes off), and its captures, which hold no loan
+  ([Access] ends what a capture reads).
+
+Beyond them the witness at the start is the path-local congruence of the state's meaning, which
+fails exactly where a later field's type, or a sealed field's hint, reads an earlier field that is
+lent (open dependent values, the audit's A13; docs/31 D27). -/
+
+/-- A value of a state where a run starts: loan-free, or a bare loan. -/
+def StartVal (v : Value) : Prop := (∀ l, v.hasLoan l = false) ∨ ∃ l, v = .loan l
+
+/-- A position of a state's reading reads the future through its value's loans alone. -/
+theorem sm_valAt_const (st : MState) (hK : ∀ n, (K.C.global n).2.label = none) (p : Pos)
+    (hlf : ∀ l, (valAt st.env p).hasLoan l = false) (ψ ψ' : Future) :
+    (SM' K ρ st).valAt p ψ = (SM' K ρ st).valAt p ψ' := by
+  show (MState.sstate K.dm K.M K.Γ ρ st).valAt p ψ = (MState.sstate K.dm K.M K.Γ ρ st).valAt p ψ'
+  rw [sstate_valAt, sstate_valAt]
+  by_cases hp : p ∈ allPos st.env
+  · rw [mean_eq_valAt _ _ _ _ _ _ p hp, mean_eq_valAt _ _ _ _ _ _ p hp, meanV_eq_mean, meanV_eq_mean]
+    exact meanV_congr K ρ ψ ψ' _ _ hK fun l h => absurd h (by simp [hlf l])
+  · rw [mean_eq_err _ _ _ _ _ _ p hp, mean_eq_err _ _ _ _ _ _ p hp]
+
+/-- **The witness at the start**, for a state whose values are loan-free or bare loans. -/
+theorem wit_start (st : MState) (hK : ∀ n, (K.C.global n).2.label = none)
+    (hv : ∀ p, StartVal (valAt st.env p)) : Wit K id [] st.env (SM' K ρ st) := by
+  intro q pos steps _ _ m hr _
+  have noReach : ∀ {s : SState} {o : Sem → Sem} {m : Nat}, (∀ ψ ψ', s.valAt pos ψ = s.valAt pos ψ') →
+      ¬ ReachDep s pos o m := by
+    intro s o m hc hr
+    have hd : ∀ {l : Nat}, ¬ s.obsDep pos o l := by
+      rintro l ⟨ψ, x, hne⟩; exact hne (by rw [hc ψ (ψ.upd l x)])
+    cases hr with
+    | direct _ hd' => exact hd hd'
+    | via _ hd' _ => exact hd hd'
+  rcases hv pos with hlf | ⟨l, hl⟩
+  · exact absurd hr (noReach (sm_valAt_const K ρ st hK pos hlf))
+  · have hp : pos ∈ allPos st.env := by
+      refine Classical.byContradiction fun hp => ?_
+      refine noReach (fun ψ ψ' => ?_) hr
+      show (MState.sstate K.dm K.M K.Γ ρ st).valAt pos ψ = (MState.sstate K.dm K.M K.Γ ρ st).valAt pos ψ'
+      rw [sstate_valAt, sstate_valAt, mean_eq_err _ _ _ _ _ _ pos hp, mean_eq_err _ _ _ _ _ _ pos hp]
+    have hS : ∀ ψ, (SM' K ρ st).valAt pos ψ = ψ l := by
+      intro ψ
+      show (MState.sstate K.dm K.M K.Γ ρ st).valAt pos ψ = ψ l
+      rw [sstate_valAt, mean_eq_valAt _ _ _ _ _ _ pos hp, hl]; rfl
+    -- what the access reaches is `l`, live
+    have key : m = l ∧ (SM' K ρ st).Live l := by
+      cases hr with
+      | direct hlive hd =>
+        obtain ⟨ψ, x, hne⟩ := hd
+        refine ⟨Classical.byContradiction fun hml => hne ?_, ?_⟩
+        · rw [hS, hS, Future.upd_other _ _ (Ne.symm hml)]
+        · by_cases hml : m = l
+          · exact hml ▸ hlive
+          · exact absurd (by rw [hS, hS, Future.upd_other _ _ (Ne.symm hml)]) hne
+      | via hlive hd hr' =>
+        rename_i l₂
+        obtain ⟨ψ, x, hne⟩ := hd
+        have hl₂ : l₂ = l := Classical.byContradiction fun h =>
+          hne (by rw [hS, hS, Future.upd_other _ _ (Ne.symm h)])
+        subst hl₂
+        exfalso
+        obtain ⟨r, hr⟩ := SState.holderOf_of_live hlive
+        obtain ⟨hrpos, hrsh⟩ := SState.holderOf_spec hr
+        refine noReach (fun ψ ψ' => ?_) hr'
+        have hposm : pos ∈ (SM' K ρ st).positions := by
+          show pos ∈ (MState.sstate K.dm K.M K.Γ ρ st).positions; rw [sstate_positions]; exact hp
+        have hrp : pos ≠ r := by
+          intro e; subst e
+          have : Env.shape st.env pos = some l₂ := hrsh
+          simp [Env.shape, hl] at this
+        rw [SState.endLabel_eq hr, SState.endAt_valAt _ _ _ _ hposm]
+        simp only [hrp, if_false, hS, Future.upd_same]
+        -- the holder's value is a borrow, so loan-free: its content reads no future
+        rcases hv r with hlf | ⟨l', hl'⟩
+        · exact sm_valAt_const K ρ st hK r hlf ψ ψ'
+        · have : Env.shape st.env r = some l₂ := hrsh
+          simp [Env.shape, hl'] at this
+    obtain ⟨rfl, hlive⟩ := key
+    refine ⟨m, rfl, ?_⟩
+    -- the checker's access of the place ends `m`: the loan is the first thing on the path
+    have hll : liveLoan st.env m = true := by
+      obtain ⟨r, hr⟩ := SState.holderOf_of_live hlive
+      obtain ⟨hrpos, hrsh⟩ := SState.holderOf_spec hr
+      have hrpos' : r ∈ allPos st.env := by
+        have := hrpos; rwa [show (SM' K ρ st).positions = allPos st.env from sstate_positions _ _ _ _ _] at this
+      have hsh : Env.shape st.env r = some m := hrsh
+      unfold liveLoan findBorrow
+      rw [Option.isSome_iff_exists]
+      cases hval : valAt st.env r with
+      | borrow l' w =>
+        have : l' = m := by simp [Env.shape, hval] at hsh; exact hsh
+        subst this
+        exact List.find?_isSome.mpr ⟨r, hrpos', by simp [hval, Value.holdsBorrow]⟩ |> Option.isSome_iff_exists.mp
+      | _ => simp [Env.shape, hval] at hsh
+    rw [hl]
+    rcases steps with _ | ⟨st₀, ss⟩
+    · simp [accLoans, loanOnPath, hll]
+    · simp [accLoans, loanOnPath, hll]
+
+/-- **The relation holds at the start of a run**: at a state whose values are loan-free or bare
+loans (the generic state of a definition, the empty state of a sealed program's re-run, a callee's
+frame), the checker's state read as a reference state simulates it. -/
+theorem Rel.start_simple (st : MState) (hK : ∀ n, (K.C.global n).2.label = none)
+    (hv : ∀ p, StartVal (valAt st.env p)) : Rel K ρ φ id st (SM' K ρ st) :=
+  Rel.start K ρ φ st (wit_start K ρ st hK hv)
+
 /-! ### A private copy (docs/31 D23; prerequisite (b) of the migration)
 
 The checker runs a statement (a type, a proof, an erased term) on a private copy of its state and

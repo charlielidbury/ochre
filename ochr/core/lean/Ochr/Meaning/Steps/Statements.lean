@@ -226,6 +226,20 @@ def accLoans (env : Env) : Nat → Value → List Step → List Nat
       | some w => insideLoans env n w
       | none => []
 
+/-- The checker's path to a place reaches content, as its [Access] follows it: through each live
+loan met on the path into its holder's content (which [End] substitutes there), to a value the
+rest of the path exists in. A path into a neutral (a sealed program, an unknown) or a `⊥` does
+not reach: the checker's read fails there, or a split or an η-refinement first rewrites the state
+(a step of its own). -/
+def pathReaches (env : Env) : Nat → Value → List Step → Bool
+  | 0, _, _ => false
+  | n + 1, v, steps =>
+    match loanOnPath env v steps with
+    | some (l, rest) => match holderContent env l with
+      | some c => pathReaches env n c rest
+      | none => false
+    | none => (v.follow steps).isSome
+
 /-- `m` is a label the reference's [Access] of the observation `o` at `p` ends (`SState.access`):
 the observation depends on it while it is live, or depends on a live label whose end makes it so
 (the access iterates). -/
@@ -237,9 +251,13 @@ inductive ReachDep : SState → Pos → (Sem → Sem) → Nat → Prop where
 
 /-- **The loan witness**: every label the reference's access of a place ends, other than an
 early-ended one, is (renamed) a label the checker's access of the same place ends. Read off the
-checker's Ω (`env`) only. -/
+checker's Ω (`env`) only. Only for places whose path reaches content in Ω (`pathReaches`): as
+first written it ranged over every place, and was false at a reachable state, a place into a
+sealed fill, whose meaning the reference follows and the checker cannot (`Regress/WitNonVacuity`,
+found by checking the clause on the reachable form of D27's example). -/
 def Wit (π : Nat → Nat) (E : List Nat) (env : Env) (s : SState) : Prop :=
   ∀ (q : Place) (pos : Pos) (steps : List Step), resolve s q = some (pos, steps) →
+    pathReaches env ((allPos env).length + 1) (valAt env pos) steps = true →
     ∀ m, ReachDep s pos (obsAt K (s.tyAt pos).m steps wholeOb) m → m ∉ E →
       ∃ l, π l = m ∧ l ∈ accLoans env ((allPos env).length + 1) (valAt env pos) steps
 
@@ -247,7 +265,7 @@ def Wit (π : Nat → Nat) (E : List Nat) (env : Env) (s : SState) : Prop :=
 access of it ends anything. -/
 theorem wit_of_const (π : Nat → Nat) (E : List Nat) (env : Env) (s : SState)
     (h : ∀ p ψ ψ', s.valAt p ψ = s.valAt p ψ') : Wit K π E env s := by
-  intro q pos steps _ m hm
+  intro q pos steps _ _ m hm
   exfalso
   have hd : ∀ {o : Sem → Sem} {l : Nat}, ¬ s.obsDep pos o l := by
     rintro o l ⟨ψ, x, hne⟩
@@ -255,6 +273,39 @@ theorem wit_of_const (π : Nat → Nat) (E : List Nat) (env : Env) (s : SState)
   cases hm with
   | direct _ hd' => exact hd hd'
   | via _ hd' _ => exact hd hd'
+
+/-- Ending a label keeps every position reading the future only at `S`, if every position did
+(the holder's content, read at the future, is what the label is fixed to). -/
+theorem endLabel_FT {S : Nat → Prop} {s : SState} (h : ∀ p, FT S (s.valAt p)) (l : Nat) :
+    ∀ p, FT S ((s.endLabel l).valAt p) := by
+  intro p
+  cases e : s.holderOf l with
+  | none => rw [SState.endLabel_of_none e]; exact h p
+  | some r =>
+    rw [SState.endLabel_eq e]
+    by_cases hp : p ∈ s.positions
+    · rw [SState.endAt_valAt s l r p hp]
+      intro ψ ψ' hψ
+      by_cases hpr : p = r
+      · simp [hpr]
+      · simp only [hpr, if_false]
+        apply h p
+        intro y hy
+        by_cases hyl : y = l
+        · subst hyl; rw [Future.upd_same, Future.upd_same]; exact h r ψ ψ' hψ
+        · rw [Future.upd_other _ _ hyl, Future.upd_other _ _ hyl]; exact hψ y hy
+    · rw [SState.endAt_valAt_not_mem s l r p hp]; exact h p
+
+/-- What the reference's access can end is among the labels its positions read: if every position
+reads the future only at `S`, so does every label `ReachDep` reaches. -/
+theorem reachDep_FT {S : Nat → Prop} {s : SState} {p : Pos} {o : Sem → Sem} {m : Nat}
+    (h : ∀ q, FT S (s.valAt q)) (hr : ReachDep s p o m) : S m := by
+  induction hr with
+  | @direct s p o m _ hd =>
+    refine Classical.byContradiction fun hm => ?_
+    obtain ⟨ψ, x, hne⟩ := hd
+    exact hne (by rw [(h p).indep hm ψ x])
+  | via _ _ _ ih => exact ih (endLabel_FT h _)
 
 /-- **The reference state `s` simulates the checker's state `st`**, for a reference run at the
 future `φ`, with the checker's labels renamed by `π` (the module docstring). -/
@@ -444,6 +495,33 @@ def substV_loan_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : N
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w)
     (bh : Nat) (h : Runs (Ochr.substV fuel (.loan l) w v) st bh v' st'),
     meanV K ρ φ hint v' ⊑ meanV K ρ (φ.upd l (meanV K ρ φ (.plain .err) w)) hint v ∧ st'.core = st.core
+
+/-- **Machine fact (a) of the loan witness** (docs/31 D27): substituting a loan keeps every other
+loan. A sealed program holds a loan only as the value written through its returned borrow, after
+its stuck head call, which cannot read it (`closeCall`), so re-normalising it after the
+substitution leaves it stuck, holding the rest. `htypes` excludes the one value a substitution
+makes recompute, a type value holding a loan (`mkEqM` decides `Eq` on the substituted sides),
+which no reachable state holds (an erased run, which builds type values, ends the loans it reads).
+The re-normalisation that does drop loans is a refinement's, where the reference reads the same
+arm (`Regress/RenormHoles.lean`). -/
+def substV_loan_keeps_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState) (l : Nat) (w v v' : Value)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hv : v ∈ Env.values st.env)
+    (htypes : ∀ A a b, v.anyAtom (· == .tEq A a b) = true → ∀ m, (Value.tEq A a b).hasLoan m = false)
+    (bh : Nat) (h : Runs (Ochr.substV fuel (.loan l) w v) st bh v' st'),
+    ∀ m, m ≠ l → v.hasLoan m = true → v'.hasLoan m = true
+
+/-- **Machine fact (b) of the loan witness** (docs/31 D27): a call closed off with a borrow result
+`k` leaves, at every position that held the loan of a borrow argument, a fill holding the loan of
+`k`; the reference's lent place newly reads `k` there (its component of the callee's backward
+function at `k`'s final content). Read off `closeCall`. (Where the callee's body runs instead, the
+reborrow it returns sits in the lent place's final content: that half is `runBody_step_stmt`'s.) -/
+def closeCall_hole_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState) (fv : Value) (ws : Array Value) (res : DeclInfo) (fills : Array Bool)
+    (tys : Array (Option Value)) (v : Value)
+    (bh : Nat) (h : Runs (Ochr.closeCall fuel fv ws .ref res fills tys) st bh v st'),
+    ∃ k w, v = .borrow k w ∧ ∀ (i l : Nat) (u : Value), ws[i]? = some (.borrow l u) →
+      ∀ p, (valAt st.env p).hasLoan l = true → (valAt st'.env p).hasLoan k = true
 
 /-- `substV` of an abstract value by a refinement `r` it means: exact. -/
 def substV_abs_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
