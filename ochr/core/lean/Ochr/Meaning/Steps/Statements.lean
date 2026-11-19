@@ -39,8 +39,10 @@ form to state a step in is the simulation form: from ANY reference state `s` wit
 `Rel` compares a binding's Π-shape and asks a renaming only of the labels that occur (docs/31 D22,
 D23: both were first left out, and both omissions made the migrated statements false).
 `Rel` compares meanings by EQUALITY after the early-ended borrows are ended (D24: `⊑` admitted
-states from which a match's join and `Id` differ). OPEN (D25): `Rel` does not pin the reference
-state at other values of an early-ended label, and [Access] reads them.
+states from which a match's join and `Id` differ). `Rel` asks the loan witness (D27, `Wit`):
+every label the reference's access of a place ends, outside the early-ended ones, the checker's
+access ends too; without it the reference state was unpinned at other values of an early-ended
+label, which [Access] reads (D25).
 MIGRATED: `evalCore_step_stmt`, `eval_step_stmt`, `letIn_step_stmt` (the three refuted); the match
 area (`evalMatch`, `evalMatchInd`, `evalMatchByType`, `closeBlock`, and the join's `joinEntry_stmt`,
 `joinDrop_step_stmt`); the observation area (`observe`, `footprint_coverage`, `idType`) and `eq`
@@ -175,6 +177,85 @@ type conjunct of `evalCore_step_stmt` (`StrAgree`), which rests on `piShape_step
 def bindSkel (b : SBinding) : TyM × Option (List PiParam × PiOut) × Option (String × List Sem) × DeclInfo :=
   (b.ty.m, b.ty.shape, b.ty.data, b.decl)
 
+/-! ### The loan witness (docs/31 D27; fourth lead)
+
+`early` compares the checker's state with the reference's only once the early-ended labels `E`
+are ended in the latter, so it reads the reference's meanings only where each label of `E` has
+its holder's content. [Access] in the reference ranges over every future, so a statement over
+every related state was false at a reference state that reads a label only at other values of an
+early-ended one (`Regress/EarlyUnpinned.lean`, D25). What [Access] needs is that every label the
+reference's access of a place ends, outside `E`, is one the checker's access of that place ends.
+`wit` says exactly that: the reference's side is semantic (`ReachDep`: the observation depends
+on it at some future, after ending labels it depends on, as `SState.access` iterates), the
+checker's side syntactic (`accLoans`: the live loans on the path and inside the content, each
+followed into its holder's content, as `accessPath` and `accessInside` iterate).
+
+Two ties to a checker-form preimage were tried first and are refuted (D27): equality plus "the
+reference state reads a `Good` checker-form state" does not pin a dependence that an unknown
+callee's backward function makes conditional on an early-ended label (`Regress/CondDep.lean`);
+and "the checker's loans are the preimage's" is false after a split re-normalises a fill. -/
+
+/-- The first live loan met on the path `steps` from `v` (at `v` itself included), with the steps
+left after it: `Machine.firstLiveLoanOnPath`, keeping the rest of the path. -/
+def loanOnPath (env : Env) : Value → List Step → Option (Nat × List Step)
+  | .loan l, ss => if liveLoan env l then some (l, ss) else none
+  | v, s :: ss => (stepV s v).bind (loanOnPath env · ss)
+  | _, [] => none
+
+/-- The content of the borrow labelled `l` in Ω, if it is held. -/
+def holderContent (env : Env) (l : Nat) : Option Value :=
+  (findBorrow env l).bind fun p => ((valAt env p).takeBorrow l).map (·.1)
+
+/-- The labels `accessInside` ends in a content `w`: its live loans, each followed into its
+holder's content (ending a borrow substitutes its content where the loan was). `n` bounds the
+chain; (WF3) makes every chain shorter than the number of positions. -/
+def insideLoans (env : Env) : Nat → Value → List Nat
+  | 0, _ => []
+  | n + 1, w => (liveLoansIn env w).flatMap fun l =>
+      l :: ((holderContent env l).map (insideLoans env n)).getD []
+
+/-- The labels the checker's [Access] of a place ends (`accessPath` then `accessInside`), read off
+the root value `v` and the path: the live loans met on the path, each followed into its holder's
+content along the rest of the path, then the live loans inside the content reached. -/
+def accLoans (env : Env) : Nat → Value → List Step → List Nat
+  | 0, _, _ => []
+  | n + 1, v, steps =>
+    match loanOnPath env v steps with
+    | some (l, rest) => l :: ((holderContent env l).map fun c => accLoans env n c rest).getD []
+    | none => match v.follow steps with
+      | some w => insideLoans env n w
+      | none => []
+
+/-- `m` is a label the reference's [Access] of the observation `o` at `p` ends (`SState.access`):
+the observation depends on it while it is live, or depends on a live label whose end makes it so
+(the access iterates). -/
+inductive ReachDep : SState → Pos → (Sem → Sem) → Nat → Prop where
+  | direct {s : SState} {p : Pos} {o : Sem → Sem} {m : Nat} :
+      s.Live m → s.obsDep p o m → ReachDep s p o m
+  | via {s : SState} {p : Pos} {o : Sem → Sem} {l m : Nat} :
+      s.Live l → s.obsDep p o l → ReachDep (s.endLabel l) p o m → ReachDep s p o m
+
+/-- **The loan witness**: every label the reference's access of a place ends, other than an
+early-ended one, is (renamed) a label the checker's access of the same place ends. Read off the
+checker's Ω (`env`) only. -/
+def Wit (π : Nat → Nat) (E : List Nat) (env : Env) (s : SState) : Prop :=
+  ∀ (q : Place) (pos : Pos) (steps : List Step), resolve s q = some (pos, steps) →
+    ∀ m, ReachDep s pos (obsAt K (s.tyAt pos).m steps wholeOb) m → m ∉ E →
+      ∃ l, π l = m ∧ l ∈ accLoans env ((allPos env).length + 1) (valAt env pos) steps
+
+/-- A reference state none of whose positions reads the future has the witness for free: no
+access of it ends anything. -/
+theorem wit_of_const (π : Nat → Nat) (E : List Nat) (env : Env) (s : SState)
+    (h : ∀ p ψ ψ', s.valAt p ψ = s.valAt p ψ') : Wit K π E env s := by
+  intro q pos steps _ m hm
+  exfalso
+  have hd : ∀ {o : Sem → Sem} {l : Nat}, ¬ s.obsDep pos o l := by
+    rintro o l ⟨ψ, x, hne⟩
+    exact hne (by rw [h pos ψ (ψ.upd l x)])
+  cases hm with
+  | direct _ hd' => exact hd hd'
+  | via _ hd' _ => exact hd hd'
+
 /-- **The reference state `s` simulates the checker's state `st`**, for a reference run at the
 future `φ`, with the checker's labels renamed by `π` (the module docstring). -/
 structure Rel (π : Nat → Nat) (st : MState) (s : SState) : Prop where
@@ -189,10 +270,13 @@ structure Rel (π : Nat → Nat) (st : MState) (s : SState) : Prop where
   inside a copy occurs nowhere after it (docs/31 D23, (WF11)). -/
   fresh : ∀ l, l < st.nextLoan → st.Occurs l → π l < s.nextLoan
   /-- the checker's state is the reference's after the borrows of `E` ended early, at every future
-  that agrees with the run's off the labels then live -/
+  that agrees with the run's off the labels then live; and every label the reference's access of
+  a place would end, outside `E`, the checker's access of it ends too (`Wit`, docs/31 D27: without
+  it the reference state was unpinned where an early-ended label has another value, D25) -/
   early : ∃ E : List Nat,
     SimEq π (fun ψ => ∀ l, ¬ (E.foldl SState.endLabel s).Live l → ψ l = φ l)
-      (MState.mean K.dm K.M K.Γ ρ st) (E.foldl SState.endLabel s)
+      (MState.mean K.dm K.M K.Γ ρ st) (E.foldl SState.endLabel s) ∧
+    Wit K π E st.env s
 
 /-! ### Helpers from `Steps/Eq.lean` -/
 
@@ -591,9 +675,9 @@ adds such a variable to what it returns and changes nothing else (a move of a bo
 covers only itself, `jdCovers`), and the checker's drop of it does nothing (`dropAtJoin` at `⊥`).
 
 As first written the reference's set held whole variables only, and the statement was false at
-any partly moved binding (`Regress/JoinProbes.lean`). OPEN beyond that: it reads the reference
-state at a future that gives the early-ended labels `err`, which `Rel` does not pin
-(`Regress/EarlyUnpinned.lean`, D25). -/
+any partly moved binding (`Regress/JoinProbes.lean`). It reads the reference state at a future
+that gives the early-ended labels `err`, which `Rel`'s equality does not pin (D25); what the proof
+needs of the early-ended holders there is the fourth lead's business (C). -/
 def joinEntry_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st : MState) (s : SState) (π : Nat → Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s),
