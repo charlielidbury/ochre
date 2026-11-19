@@ -29,10 +29,6 @@ filling value's meaning (the pure lemma plus re-normalisation). -/
 theorem substV_loan_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : substV_loan_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
-/-- Machine fact (a) of the loan witness (docs/31 D27): a loan's substitution keeps the other loans. -/
-theorem substV_loan_keeps (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : substV_loan_keeps_stmt K ρ φ (fuel + 1) := by
-  sorry
-
 /-- `substV` of an abstract value by a refinement `r` it means: exact. -/
 theorem substV_abs_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : substV_abs_step_stmt K ρ φ (fuel + 1) := by
   sorry

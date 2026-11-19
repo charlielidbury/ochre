@@ -82,7 +82,7 @@ namespace Ochr.Meaning.Attack
 open Ochr.Meaning
 
 /-- No live label, no access: `access` is the identity on a state whose shape is empty. -/
-theorem access_noShape (s : SState) (hs : s.shape = fun _ => none) (p : Pos) (o : Sem → Sem) : s.access p o = s := by
+theorem access_noShape (s : SState) (hs : s.shape = fun _ => none) (p : Pos) (hit : List Step → Bool) : s.access p hit = s := by
   have h0 : ∀ l : List Pos, List.filterMap (fun _ : Pos => (none : Option Nat)) l = [] := by
     intro l; induction l with
     | nil => rfl
@@ -96,8 +96,14 @@ type, position `bind 0 0`, no steps; the state unchanged. -/
 theorem contentOf_var0_one (K : RunCtx) (φ : Future) (k : Nat) (b : SBinding) :
     contentOf K φ (.var 0) { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k }
       = some ((b.val φ, b.ty, .bind 0 0, []), { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k }) := by
-  have ha := fun o => access_noShape { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k } rfl (.bind 0 0) o
-  simp only [contentOf, resolve_var0_one, ha, SState.tyAt, SState.valAt, Sem.follow]
+  have ha := fun hit => access_noShape { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k } rfl (.bind 0 0) hit
+  have hcf : SState.closedFuture { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k } φ = φ := by
+    have h0 : ∀ l : List Pos, List.filterMap (fun _ : Pos => (none : Option Nat)) l = [] := by
+      intro l; induction l with
+      | nil => rfl
+      | cons _ _ ih => simpa [List.filterMap_cons] using ih
+    simp [SState.closedFuture, SState.liveLabels, h0]
+  simp only [contentOf, resolve_var0_one, ha, hcf, SState.tyAt, SState.valAt, Sem.follow]
   rfl
 
 end Ochr.Meaning.Attack
@@ -113,10 +119,11 @@ theorem borrowPlace_var0_one (K : RunCtx) (φ : Future) (k : Nat) (b : SBinding)
     borrowPlace K φ (.var 0) { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k }
       = some ((b.val φ, { b.ty with label := some k }),
           { env := [{ binds := [{ b with val := fun φ' => φ' k }], temps := [fun _ => b.val φ] }],
-            shape := fun p => if p = .temp 0 0 then some k else none, nextLoan := k + 1 }) := by
+            shape := fun p => if p = .temp 0 0 then some k else none, nextLoan := k + 1,
+            lent := fun m => if m = k then [⟨.bind 0 0, [], false⟩] else [] }) := by
   simp only [borrowPlace, contentOf_var0_one, bind, Option.bind]
   simp [hw, SState.freshLoan, SState.pushTempShaped, SState.pushTemp, SState.setAt, SState.topIdx,
-    SState.tyAt, SState.valAt, updAt_nil]
+    SState.tyAt, SState.valAt, updAt_nil, SState.setLent]
 
 end Ochr.Meaning.Attack
 
@@ -151,7 +158,13 @@ open Ochr.Meaning
 /-- The state after `&(var 0)` on the one-binding state (`borrowPlace_var0_one`'s output). -/
 def S₂ (b : SBinding) (k : Nat) (c : Sem) : SState :=
   { env := [{ binds := [{ b with val := fun φ' => φ' k }], temps := [fun _ => c] }],
-    shape := fun p => if p = .temp 0 0 then some k else none, nextLoan := k + 1 }
+    shape := fun p => if p = .temp 0 0 then some k else none, nextLoan := k + 1,
+    lent := fun m => if m = k then [⟨.bind 0 0, [], false⟩] else [] }
+
+/-- Where the call's states lend: `k`, the plain borrow of `c1`; `k+1`, the returned borrow, a fill
+over `c1` (the call's [Lend], docs/31 D29). -/
+def lentA (k : Nat) : Nat → List Site := fun m =>
+  if m = k + 1 then [⟨.bind 0 0, [], true⟩] else if m = k then [⟨.bind 0 0, [], false⟩] else []
 
 theorem positions_S₂ (b : SBinding) (k : Nat) (c : Sem) :
     (S₂ b k c).positions = [.bind 0 0, .temp 0 0] := by
@@ -166,7 +179,8 @@ theorem holderOf_S₂ (b : SBinding) (k : Nat) (c : Sem) : (S₂ b k c).holderOf
 theorem takeLabel_S₂ (b : SBinding) (k : Nat) (c : Sem) :
     (S₂ b k c).takeLabel k
       = { env := [{ binds := [{ b with val := fun φ' => φ' k }], temps := [fun _ => .moved] }],
-          shape := fun _ => none, nextLoan := k + 1 } := by
+          shape := fun _ => none, nextLoan := k + 1,
+          lent := fun m => if m = k then [⟨.bind 0 0, [], false⟩] else [] } := by
   simp only [SState.takeLabel, holderOf_S₂]
   simp [S₂, SState.setAt]
   funext p; split <;> simp_all
@@ -186,7 +200,7 @@ noncomputable def S₃ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) : SState :=
                                                   | none => .err }],
               temps := [fun φ' => match lvl0.dec (.ty0 Nat) (φ' (k+1)) with | some _ => .moved | none => .err,
                         fun _ => lvl0.enc (.ty0 Nat) (F n).val.1] }],
-    shape := fun p => if p = .temp 0 1 then some (k+1) else none, nextLoan := k + 2 }
+    shape := fun p => if p = .temp 0 1 then some (k+1) else none, nextLoan := k + 2, lent := lentA k }
 
 set_option maxHeartbeats 1000000 in
 theorem callOf_S₂ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) (m : TyM) :
@@ -202,18 +216,19 @@ theorem callOf_S₂ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) (m :
     List.zipIdx, List.map, List.zip, List.zipWith, Future.updList, List.foldl, List.length, List.modify,
     List.getLast?, Option.some.injEq, List.append, List.modifyTailIdx, List.modifyHead, Nat.add_sub_cancel,
     List.getLast, Future.upd_same, List.modifyTailIdx.go]
-  simp only [S₃, List.cons_append, List.nil_append, List.length_cons, List.length_nil,
+  simp only [S₃, SState.setLent, List.cons_append, List.nil_append, List.length_cons, List.length_nil,
     Nat.zero_add, Nat.add_assoc, Nat.reduceAdd, Nat.reduceSub]
   congr 2
   · -- the frame: the values agree once the decoded content is cased on (the `match`
     -- auxiliaries differ by elaboration site)
-    simp only [List.cons.injEq, SFrame.mk.injEq, SBinding.mk.injEq, and_true, true_and]
+    simp only [SState.mk.injEq, List.cons.injEq, SFrame.mk.injEq, SBinding.mk.injEq, and_true, true_and]
     and_intros
     all_goals first
       | rfl
       | (funext φ'; cases lvl0.dec (.ty0 Nat) (φ' (k+1)) <;> rfl)
       | (funext φ'; cases lvl0.dec (.ty0 Nat) (φ' (k+1)) <;> simp [Future.updList, Future.upd_same])
       | (trace_state; sorry)
+  · funext m'; simp [lentA]
 
 /-- Level 0's encoding and decoding at `Nat`, by definition. -/
 theorem lvl0_enc_nat (m : Nat) : lvl0.enc (.ty0 Nat) m = .el0 Nat m := rfl
@@ -237,7 +252,7 @@ noncomputable def S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) : SState :=
                         { ty := ⟨.ty0 Nat, none, some (k+1), none⟩, val := fun _ => .el0 Nat (F n).val.1 }],
               temps := [fun φ' => match lvl0.dec (.ty0 Nat) (φ' (k+1)) with | some _ => .moved | none => .err,
                         fun _ => .moved] }],
-    shape := fun p => if p = .bind 0 1 then some (k+1) else none, nextLoan := k + 2 }
+    shape := fun p => if p = .bind 0 1 then some (k+1) else none, nextLoan := k + 2, lent := lentA k }
 
 theorem positions_S₃ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
     (S₃ F n b k).positions = [.bind 0 0, .temp 0 0, .temp 0 1] := by
@@ -274,15 +289,16 @@ theorem liveLabels_S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
   rw [positions_S₄]
   simp [S₄]
 
-/-- `r`'s meaning is constant, so it depends on no label. -/
-theorem not_dependsOn_r (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (o : Sem → Sem) (l : Nat) :
-    ¬ (S₄ F n b k).obsDep (.bind 0 1) o l := by
-  simp [SState.obsDep, SState.valAt, S₄]
+/-- No borrow is lent at `r` (the returned borrow `k+1` is lent at `c1`). -/
+theorem not_reached_r (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (hit : List Step → Bool) (l : Nat) :
+    (S₄ F n b k).reached (.bind 0 1) hit l = false := by
+  simp only [SState.reached, S₄, lentA]
+  split <;> (try split) <;> simp
 
-/-- [Access] of `r` ends nothing: `r` holds `k+1` but does not read it. -/
-theorem access_S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (o : Sem → Sem) :
-    (S₄ F n b k).access (.bind 0 1) o = S₄ F n b k := by
-  simp [SState.access, liveLabels_S₄, not_dependsOn_r]
+/-- [Access] of `r` ends nothing: `r` holds `k+1`, which is lent at `c1`. -/
+theorem access_S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (hit : List Step → Bool) :
+    (S₄ F n b k).access (.bind 0 1) hit = S₄ F n b k := by
+  simp [SState.access, liveLabels_S₄, not_reached_r]
 
 /-- `peek(*r)` on `S₄`: the forward value, at `Nat`, the state unchanged. -/
 theorem readPlace_deref_r (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
@@ -333,7 +349,7 @@ noncomputable def S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
                         { ty := ⟨.ty0 Nat, none, some (k+1), none⟩, val := fun _ => w }],
               temps := [fun φ' => match lvl0.dec (.ty0 Nat) (φ' (k+1)) with | some _ => .moved | none => .err,
                         fun _ => .moved] }],
-    shape := fun p => if p = .bind 0 1 then some (k+1) else none, nextLoan := k + 2 }
+    shape := fun p => if p = .bind 0 1 then some (k+1) else none, nextLoan := k + 2, lent := lentA k }
 
 theorem setContent_deref_r (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
     setContent K φ (.bind 0 1) [.deref] w (S₄ F n b k) = some (⟨⟩, S₅ F n b k w) := by
@@ -357,21 +373,10 @@ theorem liveLabels_S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) 
   rw [positions_S₅]
   simp [S₅]
 
-/-- `c1` reads `k+1`'s final content (a number against `err` tells the futures apart). -/
-theorem dependsOn_c1 (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) (o : Sem → Sem)
-    (ho : ∀ a : Nat, o (.el0 Nat a) ≠ o .err) :
-    (S₅ F n b k w).obsDep (.bind 0 0) o (k+1) := by
-  refine ⟨fun _ => .el0 Nat 0, .err, ?_⟩
-  have h2 : (S₅ F n b k w).valAt (.bind 0 0) (Future.upd (fun _ => .el0 Nat 0) (k+1) .err) = .err := by
-    simp [SState.valAt, S₅, Future.upd, lvl0_dec_nat', Sem.as]
-  rw [h2]
-  simp only [SState.valAt, S₅, lvl0_dec_nat', Sem.as]
-  simpa using ho _
-
-/-- The whole-content observation of a root tells a number from `err`. -/
-theorem wholeOb_root_ne (K : RunCtx) (T : TyM) (a : Nat) :
-    obsAt K T [] wholeOb (.el0 Nat a) ≠ obsAt K T [] wholeOb .err := by
-  simp [obsAt, Sem.follow, wholeOb]
+/-- `c1` is lent to `k+1`, the returned borrow: a fill at `c1` (the call's [Lend]). -/
+theorem reached_c1 (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) (hit : List Step → Bool) (hh : hit [] = true) :
+    (S₅ F n b k w).reached (.bind 0 0) hit (k+1) = true := by
+  simp [SState.reached, S₅, lentA, hh]
 
 end Ochr.Meaning.Attack
 
@@ -388,7 +393,7 @@ noncomputable def S₆ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
                         { ty := ⟨.ty0 Nat, none, some (k+1), none⟩, val := fun _ => .moved }],
               temps := [fun _ => match lvl0.dec (.ty0 Nat) w with | some _ => .moved | none => .err,
                         fun _ => .moved] }],
-    shape := fun _ => none, nextLoan := k + 2 }
+    shape := fun _ => none, nextLoan := k + 2, lent := (S₅ F n b k w).relend (k+1) (.bind 0 1) }
 
 theorem endLabel_S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
     (S₅ F n b k w).endLabel (k+1) = S₆ F n b k w := by
@@ -421,11 +426,17 @@ namespace Ochr.Meaning.Attack
 open Ochr.Meaning
 
 /-- [Access] of `c1` on `S₅`: the one live label `k+1` is read by `c1`, so it ends. -/
-theorem access_S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) (o : Sem → Sem)
-    (ho : ∀ a : Nat, o (.el0 Nat a) ≠ o .err) :
-    (S₅ F n b k w).access (.bind 0 0) o = S₆ F n b k w := by
-  have hd := dependsOn_c1 F n b k w o ho
-  simp [SState.access, liveLabels_S₅, hd, endLabel_S₅]
+theorem access_S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) (hit : List Step → Bool)
+    (hh : hit [] = true) :
+    (S₅ F n b k w).access (.bind 0 0) hit = S₆ F n b k w := by
+  have hd := reached_c1 F n b k w hit hh
+  have h6 : (S₆ F n b k w).liveLabels = [] := by
+    have h0 : ∀ l : List Pos, List.filterMap (fun _ : Pos => (none : Option Nat)) l = [] := by
+      intro l; induction l with
+      | nil => rfl
+      | cons _ _ ih => simpa [List.filterMap_cons] using ih
+    simp [SState.liveLabels, S₆, h0]
+  simp [SState.access, liveLabels_S₅, hd, endLabel_S₅, h6]
 
 /-- `peek(c1)` on `S₅`: the backward function's component for `c1` at the written value, when it
 is a number; `err` (not whole, so the read fails) otherwise. -/
@@ -437,7 +448,13 @@ theorem readPlace_c1 (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBindi
         | none => none := by
   have hr : resolve (S₅ F n b k w) (.var 1) = some (.bind 0 0, []) := by
     simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, S₅]
-  simp only [readPlace, contentOf, hr, access_S₅ F n b k w _ (wholeOb_root_ne K _), bind, Option.bind]
+  have h6 : (S₆ F n b k w).closedFuture φ = φ := by
+    have h0 : ∀ l : List Pos, List.filterMap (fun _ : Pos => (none : Option Nat)) l = [] := by
+      intro l; induction l with
+      | nil => rfl
+      | cons _ _ ih => simpa [List.filterMap_cons] using ih
+    simp [SState.closedFuture, SState.liveLabels, S₆, h0]
+  simp only [readPlace, contentOf, hr, access_S₅ F n b k w (dataHit []) rfl, h6, bind, Option.bind]
   simp only [S₆, SState.tyAt, SState.valAt, Sem.follow, lvl0_dec_nat', hb]
   cases w.as Nat <;> simp [Sem.whole] <;> rfl
 

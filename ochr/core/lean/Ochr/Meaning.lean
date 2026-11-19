@@ -57,11 +57,8 @@ import Ochr.Meaning.Regress.CopyLabels
 import Ochr.Meaning.Regress.PartlyMoved
 import Ochr.Meaning.Regress.JoinProbes
 import Ochr.Meaning.Regress.SiblingAccess
-import Ochr.Meaning.Regress.EarlyUnpinned
 import Ochr.Meaning.Regress.IdUnitWrite
-import Ochr.Meaning.Regress.CondDep
 import Ochr.Meaning.Regress.JoinBorrowRoot
-import Ochr.Meaning.Regress.WitNonVacuity
 import Ochr.Meaning.Regress.RenormHoles
 
 /-!

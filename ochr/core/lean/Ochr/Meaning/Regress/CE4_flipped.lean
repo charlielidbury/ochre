@@ -23,7 +23,8 @@ theorem filterMap_none {α β} (l : List α) : List.filterMap (fun _ => (none : 
 theorem liveLabels_noshape (s : SState) (h : s.shape = fun _ => none) : s.liveLabels = [] := by
   simp only [SState.liveLabels, h, filterMap_none, List.mergeSort_nil]
 
-theorem access_noshape (s : SState) (p : Pos) (h : s.shape = fun _ => none) (o : Sem → Sem := id) : s.access p o = s := by
+theorem access_noshape (s : SState) (p : Pos) (h : s.shape = fun _ => none) (hit : List Step → Bool := fun _ => true) :
+    s.access p hit = s := by
   simp [SState.access, liveLabels_noshape s h]
 
 theorem SM.bind_apply {α β : Type 3} (x : SM α) (f : α → SM β) (s : SState) :
@@ -118,7 +119,8 @@ noncomputable def a2 (n : Nat) : SState :=
                           decl := K.D.declOf (scopeOf (emptyState n)) .zero }],
               temps := [fun _ => .el0 Nat 0] }],
     shape := fun p => if p = .temp 0 0 then some n else none,
-    nextLoan := n + 1 }
+    nextLoan := n + 1,
+    lent := fun m => if m = n then [⟨.bind 0 0, [], false⟩] else [] }
 
 theorem borrow_a1 (n : Nat) : borrowPlace K φ (.var 0) (a1 K n) = some ((.el0 Nat 0, { TyS.plain (.ty0 Nat) with label := some n }), a2 K n) := by
   show (match contentOf K φ (.var 0) (a1 K n) with
@@ -129,7 +131,7 @@ theorem borrow_a1 (n : Nat) : borrowPlace K φ (.var 0) (a1 K n) = some ((.el0 N
         let old := s.valAt pos
         let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .err
         let s := s.pushTempShaped (fun _ => v) l
-        some ((v, { T with label := some l }), s)
+        some ((v, { T with label := some l }), s.setLent l [⟨pos, steps, false⟩])
       | none => none) = _
   rw [content_a1]
   simp only [Sem.whole, not_true_eq_false, ite_false]
@@ -187,30 +189,21 @@ theorem holder_a4 (n : Nat) : (a4 n).holderOf n = some (.temp 0 0) := by
 theorem a4_y (n : Nat) (ψ : Future) : (a4 n).valAt (.bind 0 0) ψ = ψ n := rfl
 theorem a4_t (n : Nat) (ψ : Future) : (a4 n).valAt (.temp 0 0) ψ = .el0 Nat 0 := rfl
 
-/-- The whole-content observation of a root tells `Z` from `err`. -/
-theorem wholeOb_root_ne (K : RunCtx) (T : TyM) : obsAt K T [] wholeOb (.el0 Nat 0) ≠ obsAt K T [] wholeOb .err := by
-  simp [obsAt, Sem.follow, wholeOb]
-
-theorem access_a4 (n : Nat) (o : Sem → Sem) (ho : o (.el0 Nat 0) ≠ o .err) :
-    (a4 n).access (.bind 0 0) o = (a4 n).endAt n (.temp 0 0) := by
-  have hd : (a4 n).obsDep (.bind 0 0) o n := by
-    rw [SState.obsDep_iff]
-    intro hi
-    have := hi (fun _ => .el0 Nat 0) .err
-    simp only [a4_y] at this
-    simp [Future.upd] at this
-    exact ho this.symm
+theorem access_a4 (n : Nat) (hit : List Step → Bool) (ho : hit [] = true) :
+    (a4 n).access (.bind 0 0) hit = (a4 n).endAt n (.temp 0 0) := by
+  have hd : (a4 n).reached (.bind 0 0) hit n = true := by
+    simp [SState.reached, a4, SState.mapVals, a2, ho]
   rw [SState.access_eq, liveLabels_a4]
-  show SState.accStep (.bind 0 0) o (a4 n) = _
+  show SState.accStep (.bind 0 0) hit (a4 n) = _
   unfold SState.accStep
   rw [liveLabels_a4]
-  simp only [List.filter_cons, List.filter_nil, decide_eq_true hd, if_true, List.foldl_cons, List.foldl_nil]
+  simp only [List.filter_cons, List.filter_nil, hd, if_true, List.foldl_cons, List.foldl_nil]
   exact SState.endLabel_eq (holder_a4 n)
 
 theorem content_a4 (n : Nat) : ∃ T, contentOf KF φ (.var 0) (a4 n)
     = some ((.el0 Nat 0, T, .bind 0 0, []), (a4 n).endAt n (.temp 0 0)) := by
   have hr : resolve (a4 n) (.var 0) = some (.bind 0 0, []) := rfl
-  simp only [contentOf, hr, access_a4 n _ (wholeOb_root_ne KF _)]
+  simp only [contentOf, hr, access_a4 n (dataHit []) rfl]
   rw [SState.endAt_valAt _ _ _ _ (by rw [positions_a4]; simp)]
   simp only [show (Pos.bind 0 0 = Pos.temp 0 0) = False from by simp, if_false, a4_t, a4_y, Future.upd, if_true]
   exact ⟨_, rfl⟩

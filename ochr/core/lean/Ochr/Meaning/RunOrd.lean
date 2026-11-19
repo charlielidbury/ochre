@@ -40,6 +40,9 @@ variable {L}
 
 theorem OrdKeep.refl (s : SState) : OrdKeep L s s := ⟨Nat.le_refl _, fun _ _ _ _ _ h => h⟩
 
+theorem ordKeep_setLent_iff {s t : SState} {l : Nat} {xs : List Site} :
+    OrdKeep L s (t.setLent l xs) ↔ OrdKeep L s t := Iff.rfl
+
 theorem OrdKeep.trans' {a b c : SState} (h₁ : OrdKeep L a b) (e : ∀ q ∈ a.positions, q ∈ b.positions)
     (h₂ : OrdKeep L b c) : OrdKeep L a c :=
   ⟨Nat.le_trans h₁.1 h₂.1, fun x p hx ht hp ho =>
@@ -96,16 +99,16 @@ theorem ordKeep_foldl_endLabel : ∀ (ls : List Nat) {s : SState}, RInv L s → 
   | l :: ls, _, hi => (ordKeep_endLabel hi.2.1 l).trans (envLe_endLabel _ _)
       (ordKeep_foldl_endLabel ls (endLabel_rinv hi l))
 
-theorem envLe_iterR (p : Pos) (o : Sem → Sem) : ∀ (k : Nat) (s : SState), EnvLe s (iterR (accStep p o) k s)
+theorem envLe_iterR (p : Pos) (hit : List Step → Bool) : ∀ (k : Nat) (s : SState), EnvLe s (iterR (accStep p hit) k s)
   | 0, s => EnvLe.refl s
-  | k + 1, s => (envLe_iterR p o k s).trans (envLe_foldl_endLabel _ _)
+  | k + 1, s => (envLe_iterR p hit k s).trans (envLe_foldl_endLabel _ _)
 
-theorem ordKeep_access {s : SState} (hi : RInv L s) (p : Pos) (o : Sem → Sem) : OrdKeep L s (s.access p o) := by
+theorem ordKeep_access {s : SState} (hi : RInv L s) (p : Pos) (hit : List Step → Bool) : OrdKeep L s (s.access p hit) := by
   rw [access_eq, foldl_range_iterR]
   generalize s.liveLabels.length = k
   induction k with
   | zero => exact OrdKeep.refl s
-  | succ k ih => exact ih.trans (envLe_iterR p o k s) (ordKeep_foldl_endLabel _ (iterR_accStep_rinv p o k hi))
+  | succ k ih => exact ih.trans (envLe_iterR p hit k s) (ordKeep_foldl_endLabel _ (iterR_accStep_rinv p hit k hi))
 
 /-! ## Writes at a binding, and the place primitives -/
 
@@ -253,6 +256,7 @@ theorem borrowPlace_ordKeep {p : Place} {s s' : SState} {r : Res}
     · cases h
     simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
+    rw [ordKeep_setLent_iff]
     refine o₁.trans e₁ (ordKeep_of ?_ ?_ ?_ ?_)
     · rw [nextLoan_pushTempShaped, nextLoan_setAt']; exact Nat.le_succ _
     · intro c hct hcm
@@ -437,6 +441,25 @@ theorem ordKeep_foldl_moves (g : SState → Nat → SState)
 section
 variable (K : RunCtx) (φ : Future)
 
+theorem accessLentPrefix_ordKeep {pos : Pos} {steps : List Step} {s : SState} (hi : RInv L s) :
+    OrdKeep L s (accessLentPrefix pos steps s) := by
+  unfold accessLentPrefix
+  split
+  · exact ordKeep_access hi pos _
+  · exact OrdKeep.refl s
+
+theorem dropAt_ordKeep (q : Place) {pos : Pos} (steps : List Step) (hp : ¬ IsTemp pos) {s : SState} (hi : RInv L s) :
+    OrdKeep L s (dropAt K φ q pos steps s) := by
+  unfold dropAt
+  split
+  all_goals first
+    | exact OrdKeep.refl s
+    | (split
+       · exact ordKeep_endLabel hi.2.1 _
+       · split
+         · exact OrdKeep.refl s
+         · exact (ordKeep_access hi pos _).trans (envLe_access s pos _) (ordKeep_setAt hp _))
+
 theorem joinDrop_ordKeep (entry : List Place) (t : Term) {s : SState} (hi : RInv L s) : OrdKeep L s (joinDrop K φ entry t s) := by
   unfold joinDrop
   generalize K.D.joinMoves (scopeOf s) entry t = qs
@@ -447,93 +470,18 @@ theorem joinDrop_ordKeep (entry : List Place) (t : Term) {s : SState} (hi : RInv
     refine OrdKeep.trans ?o ?e (ih ?r)
     case r =>
       split
+      · exact dropAt_rinv K φ L q _ _ (accessLentPrefix_rinv L hi)
       · exact hi
-      · split
-        · rename_i pos steps hr
-          have hia : RInv L (joinAccess K s pos steps) := by
-            rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
-            all_goals first | exact hi | exact access_rinv hi pos _
-          split
-          · exact hia
-          · exact hia
-          · exact hia
-          · have hie : RInv L (if steps.isEmpty = true then
-                (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
-                else joinAccess K s pos steps) := by
-              split
-              · split
-                · exact endLabel_rinv hia _
-                · exact hia
-              · exact hia
-            generalize (if steps.isEmpty = true then
-                (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
-                else joinAccess K s pos steps) = s₂ at hie ⊢
-            exact setAt_rinv hie pos _
-              ((hie.1 pos).comp (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps x).getD .err))
-              (fun x hx => by
-                by_cases hp : pos ∈ s₂.positions
-                · exact (hie.2.1 pos x hp hx).comp
-                    (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps x).getD .err)
-                · exact absurd (hie.2.2 pos x hx).1 hp)
-        · exact hi
     case e =>
       split
+      · exact (accessLentPrefix_envLe _ _ s).trans (dropAt_envLe K φ q _ _ _)
       · exact EnvLe.refl s
-      · split
-        · rename_i pos steps hr
-          have ea : EnvLe s (joinAccess K s pos steps) := by
-            rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
-            all_goals first | exact EnvLe.refl s | exact envLe_access s pos _
-          split
-          · exact ea
-          · exact ea
-          · exact ea
-          · have ee : EnvLe s (if steps.isEmpty = true then
-                (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
-                else joinAccess K s pos steps) := by
-              split
-              · split
-                · exact ea.trans (envLe_endLabel _ _)
-                · exact ea
-              · exact ea
-            generalize (if steps.isEmpty = true then
-                (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
-                else joinAccess K s pos steps) = s₂ at ee ⊢
-            exact ee.trans (envLe_setAt _ _ _)
-        · exact EnvLe.refl s
     case o =>
       split
+      · rename_i pos steps hr
+        exact (accessLentPrefix_ordKeep hi).trans (accessLentPrefix_envLe _ _ s)
+          (dropAt_ordKeep K φ q steps (resolve_bind hr) (accessLentPrefix_rinv L hi))
       · exact OrdKeep.refl s
-      · split
-        · rename_i pos steps hr
-          have hia : RInv L (joinAccess K s pos steps) := by
-            rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
-            all_goals first | exact hi | exact access_rinv hi pos _
-          have oa : OrdKeep L s (joinAccess K s pos steps) := by
-            rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
-            all_goals first | exact OrdKeep.refl s | exact ordKeep_access hi pos _
-          have ea : EnvLe s (joinAccess K s pos steps) := by
-            rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
-            all_goals first | exact EnvLe.refl s | exact envLe_access s pos _
-          split
-          · exact oa
-          · exact oa
-          · exact oa
-          · have hoe : OrdKeep L s (if steps.isEmpty = true then
-                (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
-                else joinAccess K s pos steps) ∧ EnvLe s (if steps.isEmpty = true then
-                (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
-                else joinAccess K s pos steps) := by
-              split
-              · split
-                · exact ⟨oa.trans ea (ordKeep_endLabel hia.2.1 _), ea.trans (envLe_endLabel _ _)⟩
-                · exact ⟨oa, ea⟩
-              · exact ⟨oa, ea⟩
-            generalize (if steps.isEmpty = true then
-                (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
-                else joinAccess K s pos steps) = s₂ at hoe ⊢
-            exact hoe.1.trans hoe.2 (ordKeep_setAt (resolve_bind hr) _)
-        · exact OrdKeep.refl s
 
 end
 
@@ -554,17 +502,18 @@ theorem takeAll_fix_ordKeep {s : SState} (ls : List Nat) (fx : List (Nat × Sem)
   · exact .inr ⟨live_mapVals.mpr (takeAll_live ls hy fun hm => hn (hl y hm)), hby⟩
 
 theorem park_fix_ordKeep {s : SState} (hsa : ShapeAt s) {X : Type u} (ls : List Nat) (dec : Sem → Option X)
-    (fx : X → List (Nat × Sem)) (hcov : ∀ x, ∀ l ∈ ls, l ∈ (fx x).map (·.1)) (c : Sem) (g : Pos → SVal → SVal)
+    (fx : X → List (Nat × Sem)) (le : Nat → List Site) (hcov : ∀ x, ∀ l ∈ ls, l ∈ (fx x).map (·.1)) (c : Sem)
+    (g : Pos → SVal → SVal)
     (hg : ∀ p v ψ, (∃ x, dec (ψ (ls.foldl takeLabel s).nextLoan) = some x ∧ g p v ψ = v (ψ.updList (fx x))) ∨
       (dec (ψ (ls.foldl takeLabel s).nextLoan) = none ∧ g p v ψ = .err)) :
     OrdKeep L s (((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape
-      ((ls.foldl takeLabel s).nextLoan + 1)).mapVals g).pushTempShaped (fun _ => c) (ls.foldl takeLabel s).nextLoan) := by
+      ((ls.foldl takeLabel s).nextLoan + 1) le).mapVals g).pushTempShaped (fun _ => c) (ls.foldl takeLabel s).nextLoan) := by
   generalize hs₁ : ls.foldl takeLabel s = s₁
   generalize hk : s₁.nextLoan = k
   have hpos₁ : s₁.positions = s.positions := by rw [← hs₁]; exact takeAll_positions s ls
   have hk' : k = s.nextLoan := by rw [← hk, ← hs₁]; exact (shapeSub_foldl_takeLabel ls s).2
   rw [hs₁, hk] at hg
-  generalize hs₃ : (SState.mk s₁.env s₁.shape (k + 1)).mapVals g = s₃
+  generalize hs₃ : (SState.mk s₁.env s₁.shape (k + 1) le).mapVals g = s₃
   have hpos₃ : s₃.positions = s.positions := by rw [← hs₃, positions_mapVals]; exact hpos₁
   have hlive₃ : ∀ y, s₃.Live y ↔ s₁.Live y := by intro y; rw [← hs₃, live_mapVals]; rfl
   have hsa₃ : ShapeAt s₃ := by
@@ -644,6 +593,7 @@ theorem callOfL_ordKeep.{v} (Lv : Lvl.{v}) (ps : List PiParam) (out : PiOut) (fv
       unfold callOfL at h; dsimp only at h; rw [happ2] at h
       simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨_, rfl⟩ := h
+      rw [ordKeep_setLent_iff]
       have hcover : ∀ x, ∀ l ∈ (((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).filterMap id,
           l ∈ (((((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).zip (back x)).filterMap
             fun (y : Option Nat × Sem) => y.1.map (·, y.2)).map (·.1) := by
@@ -654,7 +604,7 @@ theorem callOfL_ordKeep.{v} (Lv : Lvl.{v}) (ps : List PiParam) (out : PiOut) (fv
         apply fixes_cover
         rw [List.length_map, zip_filter_len args ps hlen, hfin x]
         exact Nat.le_refl _
-      apply park_fix_ordKeep hi.2.2 _ (Lv.dec U) _ hcover (Lv.enc U fwd)
+      apply park_fix_ordKeep hi.2.2 _ (Lv.dec U) _ _ hcover (Lv.enc U fwd)
       intro p v ψ
       cases hd : Lv.dec U (ψ ((((((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).filterMap id)).foldl
           SState.takeLabel s).nextLoan) with

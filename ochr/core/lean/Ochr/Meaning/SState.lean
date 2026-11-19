@@ -34,10 +34,41 @@ structure SFrame : Type 3 where
   binds : List SBinding := []
   temps : List SVal := []
 
+/-- A place a borrow is lent at (docs/31 D29, main's D90): a position, the path below it, and
+whether the borrow has a FILL there (a returned borrow's: a sealed program over its hole, or the
+mark `lent_k v`) or its one LOAN (a plain borrow's, `&p`). The reference's [Access] reads these and
+nothing else; the relation makes them the checker's (`Env.sitesOf`). -/
+structure Site where
+  pos : Pos
+  path : List Step
+  fill : Bool
+
+/-- A step's field: `.proj i` and `.field g` name the same field of a constructor value when they
+agree on the constructor and the index (`Machine.stepV` follows both); `*` is none. -/
+def _root_.Ochr.Step.key : Step → Option (Nat × Nat)
+  | .deref => none
+  | .proj i => some (0, i)
+  | .field g => some (g.ctor, g.idx)
+
+/-- A path compared by fields. -/
+def pathKey (ψ : List Step) : List (Option (Nat × Nat)) := ψ.map Step.key
+
+/-- [Access] of a place at `steps` reaches a site at the path `ψ` of the same position when the
+site is on the path, at the place or inside its content (`accessPath`, then `accessInside`): one
+path is a prefix of the other. -/
+def dataHit (steps ψ : List Step) : Bool :=
+  (pathKey ψ).isPrefixOf (pathKey steps) || (pathKey steps).isPrefixOf (pathKey ψ)
+
+/-- [Access] for a match reaches the sites on the path and at the place, not inside its content
+(`accessPath`, then `accessNeutralHead`: a sealed program at the place is a fill there). -/
+def tagHit (steps ψ : List Step) : Bool := (pathKey ψ).isPrefixOf (pathKey steps)
+
 structure SState : Type 3 where
   env : List SFrame
   shape : Pos → Option Nat
   nextLoan : Nat
+  /-- where each borrow is lent (docs/31 D29); read only for the labels the state holds -/
+  lent : Nat → List Site := fun _ => []
 
 namespace SState
 
@@ -81,41 +112,66 @@ def mapVals (s : SState) (f : Pos → SVal → SVal) : SState :=
       { binds := fr.binds.zipIdx.map fun (b, i) => { b with val := f (.bind fi i) b.val },
         temps := fr.temps.zipIdx.map fun (v, i) => f (.temp fi i) v } }
 
+/-- [End l] on sites (docs/31 D29; main's `lendV (.ended l …)` with the substitution): each site of
+any label lying under `l`'s holder `r`, at the path `*::π`, is replaced, for each site of `l`, by
+that site whole if it is a fill (a fill over `l` becomes a fill over every borrow of `l`'s final
+content) and by the path `π` below it, keeping its own kind, if it is `l`'s loan (the content
+replaces the loan, so a reborrow's loan lands at its own path); `l` keeps no site. -/
+def relend (s : SState) (l : Nat) (r : Pos) : Nat → List Site := fun m =>
+  if m = l then [] else (s.lent m).flatMap fun x =>
+    match x.path with
+    | .deref :: π =>
+      if x.pos = r then (s.lent l).map fun y => if y.fill then y else { y with path := y.path ++ π, fill := x.fill }
+      else [x]
+    | _ => [x]
+
 /-- [End l] (docs/27 Def. 4): the holder `r` of `l` is forgotten and every meaning reads `l`'s
-final content as what `r` holds now. A label held nowhere is inert: nothing happens. -/
+final content as what `r` holds now; the places `l` was lent pass to the borrows of that content
+(`relend`). A label held nowhere is inert: nothing happens. -/
 noncomputable def endLabel (s : SState) (l : Nat) : SState :=
   open Classical in
   match (s.positions.find? fun p => decide (s.shape p = some l)) with
   | some r =>
     let m := s.toMean.semEnd r l
-    ({ s with shape := m.shape }).mapVals fun p _ => (m.val · p)
+    ({ s with shape := m.shape, lent := s.relend l r }).mapVals fun p _ => (m.val · p)
   | none => s
 
 /-- The live labels, in label order. -/
 def liveLabels (s : SState) : List Nat :=
   (s.positions.filterMap s.shape).mergeSort (· ≤ ·)
 
-/-- The observation `o` of the meaning at `p` depends on label `l`: some change of `l`'s final
-content changes what `o` sees of it. At `o = id` this is `dependsOn`. -/
-def obsDep (s : SState) (p : Pos) (o : Sem → Sem) (l : Nat) : Prop :=
-  ∃ φ x, o (s.valAt p φ) ≠ o (s.valAt p (φ.upd l x))
+/-- The label `l` has a site at `p` whose path `hit` accepts (`dataHit`, `tagHit`). -/
+def reached (s : SState) (p : Pos) (hit : List Step → Bool) (l : Nat) : Bool :=
+  (s.lent l).any fun x => decide (x.pos = p) && hit x.path
 
-/-- [Access] of `p` for the reference run, for an observation `o` of its meaning (the content at
-a path, a tag): end, in label order, every live borrow whose final content what `o` observes
-depends on, and nothing else (docs/27 §5). Ending a borrow may make the observation depend on
-another (a reborrow's loan travels back), so this is iterated as many times as there are live
-labels.
+/-- [Access] of the position `p` (docs/31 D29, main's D90): end, in label order and to a fixpoint,
+every live label with a site at `p` that `hit` accepts: `dataHit steps` for a read, a borrow, an
+assignment and a drop of the place at `steps`, `tagHit steps` for a match. Ending one label passes
+its sites to the borrows of its content (`relend`), which may then be reached in turn; there are
+at most as many rounds as live labels. It reads sites only, never a meaning: the reference ends
+a borrow as the checker does, from where it is lent, whatever the place's meaning depends on.
 
-The observation is the audit's A1 (second lead): accessing for the whole position's meaning ended
-every borrow of every field of a variable when one field was read, and every borrow inside a
-scrutinee when only its tag was matched, where `Machine.accessInside` ends what the PLACE read
-depends on and `accessNeutralHead` what the tag does. A borrow the run ended and the checker kept
-loses the writes later made through it, which is not `Below`. -/
-noncomputable def access (s : SState) (p : Pos) (o : Sem → Sem) : SState :=
-  open Classical in
-  let step (s : SState) : SState :=
-    (s.liveLabels.filter fun l => decide (s.obsDep p o l)).foldl endLabel s
+As first written (docs/27 §5) it ended the labels the observed meaning depends on (`obsDep`), and
+the relation then had to carry the borrows the checker ended early (docs/31 D25, D27, D28). Main's
+D90 made the checker's ends static; D29 made the reference's the same. -/
+noncomputable def access (s : SState) (p : Pos) (hit : List Step → Bool) : SState :=
+  let step (s : SState) : SState := (s.liveLabels.filter (s.reached p hit)).foldl endLabel s
   (List.range s.liveLabels.length).foldl (fun s _ => step s) s
+
+/-- The label `l` is now lent at the sites `xs` (a fresh borrow's, or a borrow-returning call's). -/
+def setLent (s : SState) (l : Nat) (xs : List Site) : SState :=
+  { s with lent := fun m => if m = l then xs else s.lent m }
+
+@[simp] theorem setLent_env (s : SState) (l : Nat) (xs : List Site) : (s.setLent l xs).env = s.env := rfl
+@[simp] theorem setLent_shape (s : SState) (l : Nat) (xs : List Site) : (s.setLent l xs).shape = s.shape := rfl
+@[simp] theorem setLent_nextLoan (s : SState) (l : Nat) (xs : List Site) :
+    (s.setLent l xs).nextLoan = s.nextLoan := rfl
+@[simp] theorem setLent_valAt (s : SState) (l : Nat) (xs : List Site) (p : Pos) :
+    (s.setLent l xs).valAt p = s.valAt p := rfl
+@[simp] theorem setLent_tyAt (s : SState) (l : Nat) (xs : List Site) (p : Pos) :
+    (s.setLent l xs).tyAt p = s.tyAt p := rfl
+@[simp] theorem setLent_positions (s : SState) (l : Nat) (xs : List Site) :
+    (s.setLent l xs).positions = s.positions := rfl
 
 /-- The top frame's index. -/
 def topIdx (s : SState) : Nat := s.env.length - 1
@@ -178,6 +234,30 @@ def dropLast (s : SState) : SState :=
 
 end SState
 
+mutual
+/-- The sites of the borrow `l` in a value held at `pos`, the value lying at `path` (docs/31 D29):
+`l`'s loan where it is not inside a fill over `l`, each mark `lent_l` and each sealed program among
+whose loans `l` is, read as a fill at its own place (a path goes through a mark, `Machine.stepV`,
+and does not go into a sealed program). -/
+def _root_.Ochr.Value.sitesOf (l : Nat) (pos : Pos) (path : List Step) : Value → List Site
+  | .loan m => if m = l then [⟨pos, path, false⟩] else []
+  | .gloan m w => if m = l then [⟨pos, path, true⟩] else Value.sitesOf l pos path w
+  | .sealed t => if (Value.sealed t).hasLoan l then [⟨pos, path, true⟩] else []
+  | .borrow _ w => Value.sitesOf l pos (path ++ [.deref]) w
+  | .succ w => Value.sitesOf l pos (path ++ [.proj 0]) w
+  | .ind ty c _ _ fs => Value.sitesOfFields l pos path ty c 0 fs
+  | _ => []
+
+def _root_.Ochr.Value.sitesOfFields (l : Nat) (pos : Pos) (path : List Step) (ty : String) (c : Nat) :
+    Nat → List Value → List Site
+  | _, [] => []
+  | i, w :: ws => Value.sitesOf l pos (path ++ [.field ⟨ty, c, i, ""⟩]) w ++ Value.sitesOfFields l pos path ty c (i + 1) ws
+end
+
+/-- The sites of the borrow `l` in Ω: where the checker's [Access] finds it (docs/31 D29). -/
+def _root_.Ochr.Env.sitesOf (env : Env) (l : Nat) : List Site :=
+  (allPos env).flatMap fun p => (valAt env p).sitesOf l p []
+
 section
 variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl)
 
@@ -195,7 +275,8 @@ noncomputable def _root_.Ochr.MState.sstate (ρ : Assignment) (st : MState) : SS
             decl := b.decl },
         temps := fr.temps.toList.zipIdx.map fun (_, i) => fun φ => Env.mean dm C Γ ρ φ st.env (.temp f i) },
     shape := Env.shape st.env,
-    nextLoan := st.nextLoan }
+    nextLoan := st.nextLoan,
+    lent := Env.sitesOf st.env }
 
 end
 

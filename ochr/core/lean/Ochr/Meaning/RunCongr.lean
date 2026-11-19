@@ -4,8 +4,8 @@ import Ochr.Meaning.RunPresInd
 # Part (E) of the locality induction: the run at two futures
 
 Two futures `φ`, `φ'` that agree on `L`; a state with `RInv L` (part (P), `RunPresInd.lean`). The
-run reads the future only through [Access] (after which the accessed position factors through
-`L`, `access_FT`), through the closed future (fixed at every live label, `closedFuture_read`),
+run reads a place's content at the closed future (fixed at every live label, `closedFuture_read`;
+[Access] reads sites only, docs/31 D29),
 after ending every borrow (`endAll_FT`), at a loan of the term (in `L`), and through a closure's
 finals (`closureAt_congr`, with `FinalsIn` from the cells' order, `RunOrd.lean`). So the run at
 `φ` is the run at `φ'`.
@@ -20,26 +20,6 @@ open SState
 section
 variable (K : RunCtx) {φ φ' : Future} {L : Nat → Prop}
 
-/-- The whole-content observation determines the content at the path and its type. -/
-theorem follow_of_wholeOb {T : TyM} {steps : List Step} {x y : Sem}
-    (h : obsAt K T steps wholeOb x = obsAt K T steps wholeOb y) :
-    Sem.follow K.dm K.Γ T x steps = Sem.follow K.dm K.Γ T y steps := by
-  unfold obsAt wholeOb at h
-  cases hx : Sem.follow K.dm K.Γ T x steps with
-  | none =>
-    cases hy : Sem.follow K.dm K.Γ T y steps with
-    | none => rfl
-    | some b => rw [hx, hy] at h; cases h
-  | some a =>
-    cases hy : Sem.follow K.dm K.Γ T y steps with
-    | none => rw [hx, hy] at h; cases h
-    | some b =>
-      rw [hx, hy] at h
-      obtain ⟨v, T'⟩ := a
-      obtain ⟨w, T''⟩ := b
-      simp only [Sem.ctor.injEq, List.cons.injEq, Sem.ty.injEq, and_true, true_and] at h
-      rw [h.1, h.2]
-
 theorem contentOf_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Place) :
     contentOf K φ p s = contentOf K φ' p s := by
   unfold contentOf
@@ -48,9 +28,10 @@ theorem contentOf_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : R
   | some ps =>
     obtain ⟨pos, steps⟩ := ps
     dsimp only
-    rw [follow_of_wholeOb K (access_FT hi.1 hi.2.1 pos (obsAt K (s.tyAt pos).m steps wholeOb) φ φ' hφ)]
+    have hi' := access_rinv hi pos (dataHit steps)
+    rw [closedFuture_read hi'.1 hi'.2.1 hφ pos]
 
-/-- A match's tag is the same at both futures: [Access] for the tag settles it (R1). -/
+/-- A match's tag is the same at both futures: it is read at the closed future. -/
 theorem tagOf_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Place) (tag : Sem → TyM → Sem) :
     tagOf K φ p tag s = tagOf K φ' p tag s := by
   unfold tagOf
@@ -59,9 +40,8 @@ theorem tagOf_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv 
   | some ps =>
     obtain ⟨pos, steps⟩ := ps
     dsimp only
-    have h := access_FT hi.1 hi.2.1 pos (obsAt K (s.tyAt pos).m steps tag) φ φ' hφ
-    dsimp only at h
-    rw [h]
+    have hi' := access_rinv hi pos (tagHit steps)
+    rw [closedFuture_read hi'.1 hi'.2.1 hφ pos]
 
 theorem setContent_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (pos : Pos)
     (steps : List Step) (v : Sem) : setContent K φ pos steps v s = setContent K φ' pos steps v s := by
@@ -120,6 +100,14 @@ theorem foldl_congr_inv {α : Type} (P : SState → Prop) (F F' : SState → α 
     rw [← (h s q hs).1]
     exact foldl_congr_inv P F F' h qs _ (h s q hs).2
 
+theorem accessLentPrefix_congr (pos : Pos) (steps : List Step) (s : SState) :
+    accessLentPrefix pos steps s = accessLentPrefix pos steps s := rfl
+
+theorem dropAt_congr (hφ : ∀ l, L l → φ l = φ' l) (q : Place) (pos : Pos) (steps : List Step) {s : SState}
+    (hi : RInv L s) : dropAt K φ q pos steps s = dropAt K φ' q pos steps s := by
+  unfold dropAt
+  rw [closedFuture_read hi.1 hi.2.1 hφ pos]
+
 /-- The join's drop is the same at both futures. -/
 theorem joinDrop_congr (hφ : ∀ l, L l → φ l = φ' l) (entry : List Place) (t : Term) {s : SState} (hi : RInv L s) :
     joinDrop K φ entry t s = joinDrop K φ' entry t s := by
@@ -127,46 +115,12 @@ theorem joinDrop_congr (hφ : ∀ l, L l → φ l = φ' l) (entry : List Place) 
   apply foldl_congr_inv (RInv L) _ _ _ _ s hi
   intro s q hi
   refine ⟨?_, ?_⟩
-  · dsimp only
-    split
+  · split
+    · exact dropAt_congr K hφ q _ _ (accessLentPrefix_rinv L hi)
     · rfl
-    · split
-      · rename_i pos steps _
-        rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
-        · rw [closedFuture_read hi.1 hi.2.1 hφ pos]
-        · rw [closedFuture_read (access_rinv hi pos _).1 (access_rinv hi pos _).2.1 hφ pos]
-      · rfl
-  · dsimp only
-    split
+  · split
+    · exact dropAt_rinv K φ L q _ _ (accessLentPrefix_rinv L hi)
     · exact hi
-    · split
-      · rename_i pos steps hr
-        have hia : RInv L (joinAccess K s pos steps) := by
-          rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
-          all_goals first | exact hi | exact access_rinv hi pos _
-        split
-        · exact hia
-        · exact hia
-        · exact hia
-        · have hie : RInv L (if steps.isEmpty = true then
-              (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
-              else joinAccess K s pos steps) := by
-            split
-            · split
-              · exact endLabel_rinv hia _
-              · exact hia
-            · exact hia
-          generalize (if steps.isEmpty = true then
-              (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
-              else joinAccess K s pos steps) = s₂ at hie ⊢
-          exact setAt_rinv hie pos _
-            ((hie.1 pos).comp (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps x).getD .err))
-            (fun x hx => by
-              by_cases hp : pos ∈ s₂.positions
-              · exact (hie.2.1 pos x hp hx).comp
-                  (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps x).getD .err)
-              · exact absurd (hie.2.2 pos x hx).1 hp)
-      · exact hi
 
 /-- An `Id`'s observation is the same at both futures: after every borrow ends, every position
 factors through `L` (R3). -/
@@ -864,12 +818,12 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     obtain ⟨pos, steps⟩ := ps
     dsimp only
     have hi₂ : RInv L (if (steps.isEmpty && (s₁.shape pos).isSome) = true then s₁
-        else s₁.access pos (obsAt K (s₁.tyAt pos).m steps wholeOb)) := by
+        else s₁.access pos (dataHit steps)) := by
       split
       · exact hi₁
       · exact access_rinv hi₁ pos _
     generalize (if (steps.isEmpty && (s₁.shape pos).isSome) = true then s₁
-        else s₁.access pos (obsAt K (s₁.tyAt pos).m steps wholeOb)) = s₂ at hi₂ ⊢
+        else s₁.access pos (dataHit steps)) = s₂ at hi₂ ⊢
     rw [setContent_congr K hφ ?_ pos steps v]
     split
     · split

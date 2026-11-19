@@ -230,7 +230,7 @@ theorem holderOf_of_live {s : SState} {l : Nat} (h : s.Live l) : ∃ r, s.holder
 
 /-- The state after ending `l` at its holder `r`. -/
 noncomputable def endAt (s : SState) (l : Nat) (r : Pos) : SState :=
-  ({ s with shape := fun p => if p = r then none else s.shape p }).mapVals fun p _ ψ =>
+  ({ s with shape := fun p => if p = r then none else s.shape p, lent := s.relend l r }).mapVals fun p _ ψ =>
     if p = r then .moved else s.valAt p (ψ.upd l (s.valAt r ψ))
 
 theorem endLabel_eq {s : SState} {l : Nat} {r : Pos} (h : s.holderOf l = some r) : s.endLabel l = s.endAt l r := by
@@ -251,13 +251,13 @@ theorem endAt_shape (s : SState) (l : Nat) (r : Pos) :
 theorem endAt_valAt (s : SState) (l : Nat) (r p : Pos) (hp : p ∈ s.positions) :
     (s.endAt l r).valAt p = fun ψ => if p = r then .moved else s.valAt p (ψ.upd l (s.valAt r ψ)) := by
   unfold endAt
-  have hp' : p ∈ ({ s with shape := fun p => if p = r then none else s.shape p } : SState).positions := hp
+  have hp' : p ∈ ({ s with shape := fun p => if p = r then none else s.shape p, lent := s.relend l r } : SState).positions := hp
   rw [valAt_mapVals_of_mem _ _ _ hp']
 
 theorem endAt_valAt_not_mem (s : SState) (l : Nat) (r p : Pos) (hp : p ∉ s.positions) :
     (s.endAt l r).valAt p = s.valAt p := by
   unfold endAt
-  have hp' : p ∉ ({ s with shape := fun p => if p = r then none else s.shape p } : SState).positions := hp
+  have hp' : p ∉ ({ s with shape := fun p => if p = r then none else s.shape p, lent := s.relend l r } : SState).positions := hp
   rw [valAt_mapVals_of_not_mem _ _ _ hp', valAt_of_not_mem _ _ hp]
 
 theorem endAt_live {s : SState} {l y : Nat} {r : Pos} (h : (s.endAt l r).Live y) : s.Live y := by
@@ -292,6 +292,9 @@ def Inv2 (s : SState) : Prop := ∀ r x, r ∈ s.positions → s.shape r = some 
   FT (fun y => (L y ∧ ¬ s.Live y) ∨ (s.Live y ∧ x < y)) (s.valAt r)
 
 variable {L}
+
+theorem inv1_setLent {s : SState} {l : Nat} {xs : List Site} : Inv1 L (s.setLent l xs) ↔ Inv1 L s := Iff.rfl
+theorem inv2_setLent {s : SState} {l : Nat} {xs : List Site} : Inv2 L (s.setLent l xs) ↔ Inv2 L s := Iff.rfl
 
 theorem holder_indep {s : SState} (h2 : Inv2 L s) {r : Pos} {x : Nat} (hr : r ∈ s.positions)
     (hs : s.shape r = some x) : Indep x (s.valAt r) :=
@@ -559,12 +562,12 @@ theorem total_foldl_endLabel_le : ∀ (ls : List Nat) (s : SState), (ls.foldl en
   | [], _ => Nat.le_refl _
   | l :: ls, s => Nat.le_trans (total_foldl_endLabel_le ls _) (total_endLabel_le s l)
 
-/-- One round of [Access] of `p` (`SState.access`'s `step`). -/
-noncomputable def accStep (p : Pos) (o : Sem → Sem) (s : SState) : SState :=
-  open Classical in (s.liveLabels.filter fun l => decide (s.obsDep p o l)).foldl endLabel s
+/-- One round of [Access] of `p` (`SState.access`'s `step`): end every live label reached. -/
+noncomputable def accStep (p : Pos) (hit : List Step → Bool) (s : SState) : SState :=
+  (s.liveLabels.filter (s.reached p hit)).foldl endLabel s
 
-theorem access_eq (s : SState) (p : Pos) (o : Sem → Sem) :
-    s.access p o = (List.range s.liveLabels.length).foldl (fun s _ => accStep p o s) s := rfl
+theorem access_eq (s : SState) (p : Pos) (hit : List Step → Bool) :
+    s.access p hit = (List.range s.liveLabels.length).foldl (fun s _ => accStep p hit s) s := rfl
 
 /-- `g` applied `k` times, outermost last. -/
 def iterR {α} (g : α → α) : Nat → α → α
@@ -597,34 +600,15 @@ theorem dependsOn_iff (s : SState) (p : Pos) (l : Nat) : s.dependsOn p l ↔ ¬ 
     intro hn
     exact h fun ψ x => Classical.byContradiction fun hne => hn ⟨ψ, x, fun e => hne e.symm⟩
 
-theorem obsDep_iff (s : SState) (p : Pos) (o : Sem → Sem) (l : Nat) :
-    s.obsDep p o l ↔ ¬ Indep l (fun ψ => o (s.valAt p ψ)) := by
-  simp only [obsDep, Indep]
-  constructor
-  · rintro ⟨φ, x, h⟩ hi; exact h (hi φ x).symm
-  · intro h
-    apply Classical.byContradiction
-    intro hn
-    exact h fun ψ x => Classical.byContradiction fun hne => hn ⟨ψ, x, fun e => hne e.symm⟩
+theorem accStep_inv {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (p : Pos) (hit : List Step → Bool) :
+    Inv1 L (accStep p hit s) ∧ Inv2 L (accStep p hit s) := foldl_endLabel_inv h1 h2 _
 
-/-- What an observation depends on, the meaning does. -/
-theorem dependsOn_of_obsDep {s : SState} {p : Pos} {o : Sem → Sem} {l : Nat} (h : s.obsDep p o l) :
-    s.dependsOn p l := by
-  obtain ⟨φ, x, h⟩ := h
-  exact ⟨φ, x, fun e => h (congrArg o e)⟩
-
-theorem accStep_inv {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (p : Pos) (o : Sem → Sem) :
-    Inv1 L (accStep p o s) ∧ Inv2 L (accStep p o s) := foldl_endLabel_inv h1 h2 _
-
-open Classical in
-theorem accStep_fix (s : SState) (p : Pos) (o : Sem → Sem) (h : ∀ y, s.Live y → Indep y (fun ψ => o (s.valAt p ψ))) :
-    accStep p o s = s := by
+theorem accStep_fix (s : SState) (p : Pos) (hit : List Step → Bool)
+    (h : ∀ y, s.Live y → s.reached p hit y = false) : accStep p hit s = s := by
   unfold accStep
   rw [List.filter_eq_nil_iff.mpr]
   · rfl
-  · intro y hy
-    simp only [decide_eq_true_eq, obsDep_iff, Classical.not_not]
-    exact h y hy
+  · intro y hy; simp [h y hy]
 
 theorem live_endLabel {s : SState} {l y : Nat} (hy : s.Live y) (hne : y ≠ l) : (s.endLabel l).Live y := by
   cases e : s.holderOf l with
@@ -645,55 +629,57 @@ theorem total_foldl_lt (y : Nat) : ∀ (ls : List Nat) (s : SState), y ∈ ls �
         · exact h
       exact Nat.lt_of_lt_of_le (total_foldl_lt y ls _ hm' (live_endLabel hy (Ne.symm e))) (total_endLabel_le s l)
 
-open Classical in
-theorem accStep_lt (s : SState) (p : Pos) (o : Sem → Sem) (y : Nat) (hy : s.Live y)
-    (hd : ¬ Indep y (fun ψ => o (s.valAt p ψ))) : (accStep p o s).total < s.total := by
+theorem accStep_lt (s : SState) (p : Pos) (hit : List Step → Bool) (y : Nat) (hy : s.Live y)
+    (hd : s.reached p hit y = true) : (accStep p hit s).total < s.total := by
   unfold accStep
-  have hm : y ∈ s.liveLabels.filter fun l => decide (s.obsDep p o l) := by
-    rw [List.mem_filter]; exact ⟨hy, by simpa [obsDep_iff] using hd⟩
+  have hm : y ∈ s.liveLabels.filter (s.reached p hit) := List.mem_filter.mpr ⟨hy, hd⟩
   exact total_foldl_lt y _ s hm hy
 
-theorem access_settles (p : Pos) (o : Sem → Sem) : ∀ (k : Nat) (s : SState), s.total ≤ k →
-    ∀ y, (iterR (accStep p o) k s).Live y → Indep y (fun ψ => o ((iterR (accStep p o) k s).valAt p ψ))
+/-- **After [Access] of `p`, no live label is reached at `p`** (it settles within as many rounds
+as there are live labels). -/
+theorem access_settles (p : Pos) (hit : List Step → Bool) : ∀ (k : Nat) (s : SState), s.total ≤ k →
+    ∀ y, (iterR (accStep p hit) k s).Live y → (iterR (accStep p hit) k s).reached p hit y = false
   | 0, s, hk, y, hy => by
     have : s.liveLabels = [] := List.eq_nil_of_length_eq_zero (Nat.eq_zero_of_le_zero hk)
     exact absurd (show y ∈ s.liveLabels from hy) (by rw [this]; exact List.not_mem_nil)
   | k + 1, s, hk, y, hy => by
     rw [iterR_succ'] at hy ⊢
-    by_cases h : ∀ y, s.Live y → Indep y (fun ψ => o (s.valAt p ψ))
-    · rw [accStep_fix s p o h, iterR_fix _ s (accStep_fix s p o h)] at hy ⊢
+    by_cases h : ∀ y, s.Live y → s.reached p hit y = false
+    · rw [accStep_fix s p hit h, iterR_fix _ s (accStep_fix s p hit h)] at hy ⊢
       exact h y hy
-    · have ⟨z, hz⟩ : ∃ z, s.Live z ∧ ¬ Indep z (fun ψ => o (s.valAt p ψ)) := by
+    · have ⟨z, hz⟩ : ∃ z, s.Live z ∧ s.reached p hit z = true := by
         apply Classical.byContradiction
         intro hn
-        exact h fun z hz => Classical.byContradiction fun hi => hn ⟨z, hz, hi⟩
-      have hlt := accStep_lt s p o z hz.1 hz.2
-      exact access_settles p o k _ (by omega) y hy
+        exact h fun z hz => by
+          cases e : s.reached p hit z
+          · rfl
+          · exact absurd ⟨z, hz, e⟩ hn
+      have hlt := accStep_lt s p hit z hz.1 hz.2
+      exact access_settles p hit k _ (by omega) y hy
 
-theorem iterR_accStep_inv (p : Pos) (o : Sem → Sem) : ∀ (k : Nat) {s : SState}, Inv1 L s → Inv2 L s →
-    Inv1 L (iterR (accStep p o) k s) ∧ Inv2 L (iterR (accStep p o) k s)
+theorem iterR_accStep_inv (p : Pos) (hit : List Step → Bool) : ∀ (k : Nat) {s : SState}, Inv1 L s → Inv2 L s →
+    Inv1 L (iterR (accStep p hit) k s) ∧ Inv2 L (iterR (accStep p hit) k s)
   | 0, _, h1, h2 => ⟨h1, h2⟩
   | k + 1, _, h1, h2 => by
-    obtain ⟨h1', h2'⟩ := iterR_accStep_inv p o k h1 h2
-    exact accStep_inv h1' h2' p o
+    obtain ⟨h1', h2'⟩ := iterR_accStep_inv p hit k h1 h2
+    exact accStep_inv h1' h2' p hit
 
 /-- [Access] keeps the invariant. -/
-theorem access_inv {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (p : Pos) (o : Sem → Sem) :
-    Inv1 L (s.access p o) ∧ Inv2 L (s.access p o) := by
+theorem access_inv {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (p : Pos) (hit : List Step → Bool) :
+    Inv1 L (s.access p hit) ∧ Inv2 L (s.access p hit) := by
   rw [access_eq, foldl_range_iterR]
-  exact iterR_accStep_inv p o _ h1 h2
+  exact iterR_accStep_inv p hit _ h1 h2
 
-/-- (R1) After [Access] of `p` for the observation `o`, what `o` observes of the meaning at `p`
-factors through `L`: every live label it read has been ended, and what is left are the labels the
-two futures agree on. (The rest of the meaning at `p` may still read live labels: the borrows of
-the fields not read.) -/
-theorem access_FT {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (p : Pos) (o : Sem → Sem) :
-    FT L (fun ψ => o ((s.access p o).valAt p ψ)) := by
-  have hset := access_settles p o s.total s (Nat.le_refl _)
-  rw [← foldl_range_iterR, show (List.range s.total).foldl (fun a _ => accStep p o a) s = s.access p o from rfl] at hset
-  have hI : FT (fun y => L y ∨ (s.access p o).Live y) (fun ψ => o ((s.access p o).valAt p ψ)) :=
-    fun ψ ψ' hψ => congrArg o ((access_inv h1 h2 p o).1 p ψ ψ' hψ)
-  exact FT.removeList (s.access p o).liveLabels hI fun y hy => hset y hy
+/-- [Access] of `p` ends nothing when no live label is reached at `p`. -/
+theorem access_of_unreached (s : SState) (p : Pos) (hit : List Step → Bool)
+    (h : ∀ y, s.Live y → s.reached p hit y = false) : s.access p hit = s := by
+  rw [access_eq, foldl_range_iterR, iterR_fix _ s (accStep_fix s p hit h)]
+
+/-- After [Access] of `p`, no live label has a site at `p` that it reaches. -/
+theorem access_post (s : SState) (p : Pos) (hit : List Step → Bool) :
+    ∀ y, (s.access p hit).Live y → (s.access p hit).reached p hit y = false := by
+  have hset := access_settles p hit s.total s (Nat.le_refl _)
+  rwa [← foldl_range_iterR] at hset
 
 /-! ## The closed future -/
 
@@ -1503,13 +1489,13 @@ namespace SState
 position reads the fresh label `k`'s final content, decodes it (`dec`) and fixes the taken labels
 (`fx x` covers them all); `k` is parked with a constant. Keeps (I1) and (I2). -/
 theorem park_fix_inv {L : Nat → Prop} {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (hsa : ShapeAt s)
-    {X : Type u} (ls : List Nat) (dec : Sem → Option X) (fx : X → List (Nat × Sem))
+    {X : Type u} (ls : List Nat) (dec : Sem → Option X) (fx : X → List (Nat × Sem)) (le : Nat → List Site)
     (hcov : ∀ x, ∀ l ∈ ls, l ∈ (fx x).map (·.1)) (c : Sem) (g : Pos → SVal → SVal)
     (hg : ∀ p v ψ, (∃ x, dec (ψ (ls.foldl takeLabel s).nextLoan) = some x ∧ g p v ψ = v (ψ.updList (fx x))) ∨
       (dec (ψ (ls.foldl takeLabel s).nextLoan) = none ∧ g p v ψ = .err)) :
-    Inv1 L (((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape ((ls.foldl takeLabel s).nextLoan + 1)).mapVals
+    Inv1 L (((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape ((ls.foldl takeLabel s).nextLoan + 1) le).mapVals
         g).pushTempShaped (fun _ => c) (ls.foldl takeLabel s).nextLoan) ∧
-    Inv2 L (((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape ((ls.foldl takeLabel s).nextLoan + 1)).mapVals
+    Inv2 L (((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape ((ls.foldl takeLabel s).nextLoan + 1) le).mapVals
         g).pushTempShaped (fun _ => c) (ls.foldl takeLabel s).nextLoan) := by
   -- names for the stages
   generalize hs₁ : ls.foldl takeLabel s = s₁
@@ -1518,7 +1504,7 @@ theorem park_fix_inv {L : Nat → Prop} {s : SState} (h1 : Inv1 L s) (h2 : Inv2 
   have hk' : k = s.nextLoan := by
     rw [← hk, ← hs₁]; exact (shapeSub_foldl_takeLabel ls s).2
   rw [hs₁, hk] at hg
-  generalize hs₂ : (SState.mk s₁.env s₁.shape (k + 1)).mapVals g = s₃
+  generalize hs₂ : (SState.mk s₁.env s₁.shape (k + 1) le).mapVals g = s₃
   have hpos₃ : s₃.positions = s.positions := by
     rw [← hs₂, positions_mapVals]; exact hpos₁
   have hlive₃ : ∀ y, s₃.Live y ↔ s₁.Live y := by
@@ -1638,6 +1624,7 @@ theorem callOfL_ref_inv {L : Nat → Prop} (Lv : Lvl.{u}) (ps : List PiParam) (o
   rw [happ] at h
   simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
   obtain ⟨_, rfl⟩ := h
+  rw [SState.inv1_setLent, SState.inv2_setLent]
   -- the lengths: every taken label is fixed, whatever the backward function's argument
   unfold applyFnL at happ
   obtain ⟨F, hu, happ'⟩ : ∃ F, Lv.unpack (piCarL Lv ps [] PUnit out) fv = some F ∧
@@ -1658,7 +1645,7 @@ theorem callOfL_ref_inv {L : Nat → Prop} (Lv : Lvl.{u}) (ps : List PiParam) (o
     apply fixes_cover
     rw [List.length_map, zip_filter_len args ps hlen, hfin x]
     exact Nat.le_refl _
-  apply SState.park_fix_inv h1 h2 hsa _ (Lv.dec U) _ hcover (Lv.enc U fwd)
+  apply SState.park_fix_inv h1 h2 hsa _ (Lv.dec U) _ _ hcover (Lv.enc U fwd)
   intro p v ψ
   cases hd : Lv.dec U (ψ ((((((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).filterMap id)).foldl
       SState.takeLabel s).nextLoan) with
