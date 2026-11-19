@@ -59,6 +59,7 @@ import Ochr.Meaning.Regress.JoinProbes
 import Ochr.Meaning.Regress.SiblingAccess
 import Ochr.Meaning.Regress.EarlyUnpinned
 import Ochr.Meaning.Regress.IdUnitWrite
+import Ochr.Meaning.Regress.CondDep
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
