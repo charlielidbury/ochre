@@ -453,6 +453,13 @@ noncomputable def callOf (fv : Res) (args : List Res) : SM Res := fun s =>
     | _ => none
   | none => none
 
+/-- [Drop] of the top frame's last binding when it holds no borrow (`Machine.endLoansOfTopBind`,
+D65 amended): the borrows lent at it end, as [Access] of it whole would end them. -/
+noncomputable def letLenders (s : SState) : SState :=
+  match s.env.getLast? with
+  | some fr => s.access (.bind s.topIdx (fr.binds.length - 1)) (dataHit [])
+  | none => s
+
 /-- [Drop] of a discarded value (`Machine.dropValue`): a borrow the result holds (its label) ends;
 a value that is not a borrow holds no loan in the reference (a read accessed it). -/
 noncomputable def discardEnd (R : TyS) (s : SState) : SState :=
@@ -566,7 +573,9 @@ noncomputable def run (hint : TyS) : Term → SM Res
     let held : Option Nat := match s.env.getLast? with
       | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
       | none => none
-    let s := match held with | some l => s.endLabel l | none => s
+    -- a binding holding no borrow ends the borrows lent at it (D65, `endLoansOfTopBind`: the
+    -- non-lexical reading; docs/31 D29: the checker ends them, so the reference must)
+    let s := match held with | some l => s.endLabel l | none => letLenders s
     some ((r, R), s.dropLast)) s
   | .seq u w => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.seq u w)) (do
     -- [Drop] of a discarded value (`Machine.dropValue`): a borrow it holds ends now, as the

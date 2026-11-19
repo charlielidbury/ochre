@@ -146,19 +146,44 @@ theorem dropped_endLabel (s : SState) (l : Nat) : (s.endLabel l).dropped = s.dro
 
 /-- **The `let`'s drop**: the borrow the binding holds now ends, then the binding is forgotten;
 the invariant is kept and the body's result label stays live or unread. -/
+theorem dropped_foldl_endLabel : ∀ (ls : List Nat) (s : SState), (ls.foldl endLabel s).dropped = s.dropped
+  | [], _ => rfl
+  | l :: ls, s => by rw [List.foldl_cons, dropped_foldl_endLabel ls, dropped_endLabel]
+
+theorem dropped_access (s : SState) (p : Pos) (hit : List Step → Bool) : (s.access p hit).dropped = s.dropped := by
+  rw [access_eq, foldl_range_iterR]
+  generalize s.liveLabels.length = k
+  induction k with
+  | zero => rfl
+  | succ k ih => exact (dropped_foldl_endLabel _ _).trans ih
+
+/-- The D65 ends at a `let`'s drop keep the invariant, results' labels live or unread, the
+temporaries' order and the frames; they end only (the position dropped and the holders stay). -/
+theorem letLenders_props {s : SState} (hi : RInv L s) :
+    RInv L (letLenders s) ∧ (∀ lab, LoU s lab → LoU (letLenders s) lab) ∧ OrdKeep L s (letLenders s) ∧
+      EnvLe s (letLenders s) ∧ (letLenders s).dropped = s.dropped ∧
+      ∀ p x, (letLenders s).shape p = some x → s.shape p = some x := by
+  unfold letLenders
+  split
+  · exact ⟨access_rinv hi _ _, fun lab hy y hl => lou_access L hi (hy y hl) _ _, ordKeep_access hi _ _,
+      envLe_access _ _ _, dropped_access _ _ _, fun p x h => (SState.shapeSub_access s _ _).1 p x h⟩
+  · exact ⟨hi, fun _ h => h, OrdKeep.refl s, EnvLe.refl s, rfl, fun _ _ h => h⟩
+
 theorem letDrop_rinv {s : SState} (hi : RInv L s) {lab : Option Nat} (hy : LoU s lab) (held : Option Nat)
     (hheld : held = match s.dropped with | some r => s.shape r | none => none) :
-    RInv L (match held with | some l => s.endLabel l | none => s).dropLast ∧
-    LoU (match held with | some l => s.endLabel l | none => s).dropLast lab ∧
-    OrdKeep L s (match held with | some l => s.endLabel l | none => s).dropLast := by
-  have hind : ∀ r x, (match held with | some l => s.endLabel l | none => s).dropped = some r →
-      (match held with | some l => s.endLabel l | none => s).shape r = some x →
-      ∀ p, Indep x ((match held with | some l => s.endLabel l | none => s).valAt p) := by
+    RInv L (match held with | some l => s.endLabel l | none => letLenders s).dropLast ∧
+    LoU (match held with | some l => s.endLabel l | none => letLenders s).dropLast lab ∧
+    OrdKeep L s (match held with | some l => s.endLabel l | none => letLenders s).dropLast := by
+  have hind : ∀ r x, (match held with | some l => s.endLabel l | none => letLenders s).dropped = some r →
+      (match held with | some l => s.endLabel l | none => letLenders s).shape r = some x →
+      ∀ p, Indep x ((match held with | some l => s.endLabel l | none => letLenders s).valAt p) := by
     intro r x hr hx
     cases held with
     | none =>
       simp only at hr hx ⊢
-      rw [hr] at hheld; simp only at hheld; rw [hx] at hheld; cases hheld
+      rw [(letLenders_props L hi).2.2.2.2.1] at hr
+      rw [hr] at hheld; simp only at hheld
+      rw [(letLenders_props L hi).2.2.2.2.2 r x hx] at hheld; cases hheld
     | some l =>
       simp only at hr hx ⊢
       rw [dropped_endLabel] at hr
@@ -173,19 +198,19 @@ theorem letDrop_rinv {s : SState} (hi : RInv L s) {lab : Option Nat} (hy : LoU s
       · cases hx
       · rw [← hheld] at hx; cases hx
         exact endAt_indep hi.2.1 hr'pos hr'shape
-  have hi₄ : RInv L (match held with | some l => s.endLabel l | none => s) := by
+  have hi₄ : RInv L (match held with | some l => s.endLabel l | none => letLenders s) := by
     cases held with
-    | none => exact hi
+    | none => exact (letLenders_props L hi).1
     | some l => exact endLabel_rinv hi l
-  have hy₄ : LoU (match held with | some l => s.endLabel l | none => s) lab := by
+  have hy₄ : LoU (match held with | some l => s.endLabel l | none => letLenders s) lab := by
     intro y hl
     cases held with
-    | none => exact hy y hl
+    | none => exact (letLenders_props L hi).2.1 lab hy y hl
     | some l => exact lou_endLabel L hi.2.1 (hy y hl) l
-  have ho₄ : OrdKeep L s (match held with | some l => s.endLabel l | none => s) ∧
-      EnvLe s (match held with | some l => s.endLabel l | none => s) := by
+  have ho₄ : OrdKeep L s (match held with | some l => s.endLabel l | none => letLenders s) ∧
+      EnvLe s (match held with | some l => s.endLabel l | none => letLenders s) := by
     cases held with
-    | none => exact ⟨OrdKeep.refl s, EnvLe.refl s⟩
+    | none => exact ⟨(letLenders_props L hi).2.2.1, (letLenders_props L hi).2.2.2.1⟩
     | some l => exact ⟨ordKeep_endLabel hi.2.1 l, envLe_endLabel s l⟩
   exact ⟨dropLast_rinv hi₄ hind, fun y hl => lou_dropLast (hy₄ y hl) hind,
     ho₄.1.trans ho₄.2 (ordKeep_dropLast hind)⟩
