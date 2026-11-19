@@ -18,3 +18,5 @@ they are checked by every build.
 | `Fields.lean` | `F1`–`F4`, disjoint field borrows | `F1`–`F3` rejected (abstract `x`), `F4` accepted (known `x`) | all rejected: D90's known gap F4 (Rust accepts all four) |
 | `Snapshot.lean` | `EK` | `EK` and its closed calls accepted | `EK` rejected (asserted): D90's known gap EK (Rust accepts) |
 | `Sealed.lean` | `SF`, `SF0` | both accepted | both rejected: a place below a sealed fill has the fill's holes on its path |
+| `Reborrow.lean` | `RB`: a reborrow of a part of `*r` outlives the returned borrow `r` | all accepted | all accepted; the place `r` points into stays marked (`lent_r loan_r`), so the whole of it is handed to the reborrow when `r` ends |
+| `CloneProj.lean` | `CL`, `CLg`, `CLrun` | `CLg` accepted, `CLrun` rejected | the same: **not a D90 probe**, a fault on main found while writing D90 (`clone(x.0)` moves `x.0` at the projection match's join) |

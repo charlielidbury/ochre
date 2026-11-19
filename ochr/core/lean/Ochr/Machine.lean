@@ -381,17 +381,19 @@ inductive LendOp where
   (a reborrow of `*l` that outlives `l` keeps them lent), or free -/
   | ended (l : Nat) (to : List Nat)
 
-/-- `w` is already a fill over the borrow `m` at its top: its hole `loan_m` (the place the
-borrow points into), a sealed program over the hole (a stuck call's fill), or marked. -/
+/-- `w` is already a fill over the borrow `m` at its top: a sealed program over the hole `loan_m`
+(a stuck call's fill, an unknown function of the hole), or marked `lent_m` (a known one). A bare
+`loan_m` is not: the place a returned borrow points into is marked too, `lent_m loan_m` (the
+identity), so that when `m` ends and a reborrow of `*m` outlives it, the whole place, not only the
+reborrowed part, stays lent to the reborrow, as a sealed fill does at the generic call. -/
 def carriesHole (m : Nat) : Value → Bool
-  | .loan l => l == m
   | .gloan l w => l == m || carriesHole m w
   | .sealed t => t.loans.contains m
   | _ => false
 
 /-- Make `w` a fill over each of `to`: marked `lent_m w`, unless it already is one (a lent place
-holds one fill per borrow it is lent to, in one of three forms: the hole itself, a sealed program
-over the hole, or a known function of the hole, `lent_m v`). -/
+holds one fill per borrow it is lent to, in one of two forms: a sealed program over the hole, or a
+known function of the hole, `lent_m v`, the identity `lent_m loan_m` included). -/
 def lentTo (to : List Nat) (w : Value) : Value :=
   to.foldr (fun m acc => if carriesHole m acc then acc else .gloan m acc) w
 
