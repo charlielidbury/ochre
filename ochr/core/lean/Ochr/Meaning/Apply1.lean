@@ -90,6 +90,7 @@ noncomputable def TyM.dec2 : (T : TyM) → Sem → Option T.el2
   | .univ (_ + 3), _ => none
   | .ty0 A, s => ((TyM.ty0 A).dec1 s).map ULift.up
   | .prop P, s => ((TyM.prop P).dec1 s).map ULift.up
+  | .data n ps A unpk, s => ((TyM.data n ps A unpk).dec1 s).map ULift.up
   | .err, _ => none
 
 /-- Decoding an encoded level-1 element gives it back. -/
@@ -110,6 +111,10 @@ theorem TyM.dec1_enc1 (T : TyM) (a : T.el1) : T.dec1 (T.enc1 a) = some a := by
   | prop P =>
     show ((if h : P then some (⟨h⟩ : PLift P) else none).map ULift.up) = some a
     rw [dif_pos a.down.down]
+    rfl
+  | data n ps A unpk =>
+    show ((TyM.data n ps A unpk).dec0 ((TyM.data n ps A unpk).enc0 a.down)).map ULift.up = some a
+    rw [TyM.dec0_enc0]
     rfl
   | ty2 _ | err => exact a.down.elim
 
@@ -137,6 +142,10 @@ theorem TyM.dec2_enc2 (T : TyM) (a : T.el2) : T.dec2 (T.enc2 a) = some a := by
     show (((if h : P then some (⟨h⟩ : PLift P) else none).map ULift.up).map ULift.up) = some a
     rw [dif_pos a.down.down.down]
     rfl
+  | data n ps A unpk =>
+    show (((TyM.data n ps A unpk).dec0 ((TyM.data n ps A unpk).enc0 a.down.down)).map ULift.up).map ULift.up = some a
+    rw [TyM.dec0_enc0]
+    rfl
   | err => exact a.down.down.elim
 
 theorem map_up_eq_some.{v, w} {α : Type v} {x : Option α} {a : ULift.{w} α} (h : x.map ULift.up = some a) :
@@ -159,6 +168,22 @@ theorem TyM.enc0_of_dec0 (T : TyM) (s : Sem) (a : T.el0) (h : T.dec0 s = some a)
   | prop P =>
     cases s with
     | proof => rfl
+    | _ => cases h
+  | data n ps A unpk =>
+    cases s with
+    | dat n' ps' c fs el =>
+      rcases el with _ | ⟨B, b⟩
+      · cases h
+      · have h' : (if h : n' = n ∧ ps' = ps ∧ ∃ e : B = A, unpk (cast e b) = (c, fs)
+            then some (cast h.2.2.choose b) else none) = some a := h
+        split at h'
+        · rename_i hc
+          obtain ⟨rfl, rfl, e, he⟩ := hc
+          cases e
+          obtain rfl : b = a := Option.some.inj h'
+          simp only [TyM.enc0, cast_eq] at he ⊢
+          rw [he]
+        · cases h'
     | _ => cases h
   | ty1 _ | ty2 _ | univ _ | err => exact a.elim
 
@@ -190,6 +215,7 @@ theorem TyM.enc1_of_dec1 (T : TyM) (s : Sem) (a : T.el1) (h : T.dec1 s = some a)
     | _ + 2 => exact a.down.elim
   | ty0 A => exact TyM.enc0_of_dec0 (.ty0 A) s a.down (map_up_eq_some h)
   | prop P => exact TyM.enc0_of_dec0 (.prop P) s a.down (map_up_eq_some h)
+  | data n ps A unpk => exact TyM.enc0_of_dec0 (.data n ps A unpk) s a.down (map_up_eq_some h)
   | ty2 _ | err => exact a.down.elim
 
 /-- What decodes at level 2 is the encoding of what it decodes to. -/
@@ -217,6 +243,7 @@ theorem TyM.enc2_of_dec2 (T : TyM) (s : Sem) (a : T.el2) (h : T.dec2 s = some a)
   | ty1 A => exact TyM.enc1_of_dec1 (.ty1 A) s a.down (map_up_eq_some h)
   | ty0 A => exact TyM.enc1_of_dec1 (.ty0 A) s a.down (map_up_eq_some h)
   | prop P => exact TyM.enc1_of_dec1 (.prop P) s a.down (map_up_eq_some h)
+  | data n ps A unpk => exact TyM.enc1_of_dec1 (.data n ps A unpk) s a.down (map_up_eq_some h)
   | err => exact a.down.down.elim
 
 /-! ## Levels -/

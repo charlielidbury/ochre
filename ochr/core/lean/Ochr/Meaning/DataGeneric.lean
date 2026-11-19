@@ -686,8 +686,8 @@ def smap : (k : Nat) → ∀ {ps Z Z'}, LMap Z Z' → stage S M k ps Z → stage
 leaves read by `r`. It does not depend on the stage. -/
 def sraw : (k : Nat) → ∀ {ps Z}, LRaw Z → stage S M k ps Z → Sem
   | 0, _, _, _, y => y.elim
-  | k + 1, _, _, r, ⟨c, t⟩ => .ctor "" c.val (Tele.raw S M (X := stage S M k)
-      (fun r y => sraw k r y) r _ _ _ t)
+  | k + 1, _, _, r, ⟨c, t⟩ => .dat "" [] c.val (Tele.raw S M (X := stage S M k)
+      (fun r y => sraw k r y) r _ _ _ t) none
 
 /-- A predicate on the leaves of a stage member. -/
 def sallL : (k : Nat) → ∀ {ps Z}, LPred Z → stage S M k ps Z → Prop
@@ -1016,7 +1016,7 @@ theorem sraw_rel : ∀ (k₁ k₂ : Nat) {ps : List Sem} {Z₁ Z₂ : Nat → Ty
   | 0, _, _, _, _, _, _, _, _, y₁, _, _, _ => y₁.elim
   | _ + 1, 0, _, _, _, _, _, _, _, _, y₂, _, _ => y₂.elim
   | k₁ + 1, k₂ + 1, _, _, _, r₁, r₁', r₂, r₂', ⟨c₁, t₁⟩, ⟨c₂, t₂⟩, hr, h => by
-    simp only [sraw, Sem.ctor.injEq, true_and] at h ⊢
+    simp only [sraw, Sem.dat.injEq, true_and, and_true] at h ⊢
     obtain ⟨hc, ht⟩ := h
     obtain rfl : c₁ = c₂ := Fin.ext hc
     refine ⟨rfl, Tele.raw_rel S M _ _ ?_ r₁ r₁' r₂ r₂' hr _ _ _ t₁ t₂ ht⟩
@@ -1027,7 +1027,7 @@ theorem sraw_inj : ∀ (k : Nat) {ps : List Sem} {Z : Nat → TyM} (r : LRaw Z),
     (∀ j, Function.Injective (r j)) → Function.Injective (sraw S M k (ps := ps) r)
   | 0, _, _, _, _, y, _, _ => y.elim
   | k + 1, _, _, r, hr, ⟨c₁, t₁⟩, ⟨c₂, t₂⟩, h => by
-    simp only [sraw, Sem.ctor.injEq, true_and] at h
+    simp only [sraw, Sem.dat.injEq, true_and, and_true] at h
     obtain ⟨hc, ht⟩ := h
     obtain rfl : c₁ = c₂ := Fin.ext hc
     obtain rfl := Tele.raw_inj S M (X := stage S M k) (fun r y => sraw S M k r y)
@@ -1214,7 +1214,7 @@ abbrev teleι (k : Nat) {Z : Nat → TyM} {ps : List Sem} {c : Nat} {i n : Nat} 
 theorem sraw_succ (k : Nat) {ps : List Sem} {Z : Nat → TyM} (r : LRaw Z) (c : Fin S.ar.length)
     (t : Tele S M (stage S M k) Z ps c 0 S.ar[c] []) :
     sraw S M (k + 1) r ⟨c, t⟩ =
-      .ctor "" c.val (Tele.raw S M (X := car S M) (fun r x => cRaw S M r x) r 0 _ [] (teleι S M k t)) := by
+      .dat "" [] c.val (Tele.raw S M (X := car S M) (fun r x => cRaw S M r x) r 0 _ [] (teleι S M k t)) none := by
   simp only [sraw]
   congr 1
   exact (Tele.raw_mapX S M (X := stage S M k) (Y := car S M) (fun y => ι S M k y)
@@ -1233,7 +1233,7 @@ theorem viewS_wd {ps : List Sem} {Z : Nat → TyM} (a b : Σ k, stage S M k ps Z
   · exact y₂.elim
   obtain ⟨c₁, t₁⟩ := y₁
   obtain ⟨c₂, t₂⟩ := y₂
-  simp only [sraw_succ, Sem.ctor.injEq, true_and] at h
+  simp only [sraw_succ, Sem.dat.injEq, true_and, and_true] at h
   obtain ⟨hc, ht⟩ := h
   obtain rfl : c₁ = c₂ := Fin.ext hc
   have := Tele.raw_inj S M (X := car S M) (fun r x => cRaw S M r x)
@@ -1328,7 +1328,7 @@ theorem unview_view {ps : List Sem} {Z : Nat → TyM} (x : car S M ps Z) :
   change sraw S M (Classical.choose h + 1) (canon Z) ⟨c, Classical.choose (Classical.choose_spec h)⟩ =
     sraw S M (k + 1) (canon Z) ⟨c, t⟩
   rw [sraw_succ, sraw_succ]
-  exact congrArg _ (congrArg _ hs)
+  exact congrArg (fun x => Sem.dat "" [] c.val x none) (congrArg _ hs)
 
 end view
 

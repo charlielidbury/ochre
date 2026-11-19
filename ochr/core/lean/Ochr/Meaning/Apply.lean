@@ -22,6 +22,8 @@ open Classical
 noncomputable def TyM.dec0 : (T : TyM) → Sem → Option T.el0
   | .ty0 A, s => s.as A
   | .prop P, .proof => if h : P then some ⟨h⟩ else none
+  | .data n ps A unpk, .dat n' ps' c fs (some ⟨B, b⟩) =>
+    if h : n' = n ∧ ps' = ps ∧ ∃ e : B = A, unpk (cast e b) = (c, fs) then some (cast h.2.2.choose b) else none
   | _, _ => none
 
 theorem TyM.dec0_enc0 (T : TyM) (a : T.el0) : T.dec0 (T.enc0 a) = some a := by
@@ -33,6 +35,12 @@ theorem TyM.dec0_enc0 (T : TyM) (a : T.el0) : T.dec0 (T.enc0 a) = some a := by
     show (if h : P then some (⟨h⟩ : PLift P) else none) = some a
     rw [dif_pos a.down]
     rfl
+  | data n ps A unpk =>
+    have h : n = n ∧ ps = ps ∧ ∃ e : A = A, unpk (cast e a) = ((unpk a).1, (unpk a).2) := ⟨rfl, rfl, rfl, rfl⟩
+    show (if h : n = n ∧ ps = ps ∧ ∃ e : A = A, unpk (cast e a) = ((unpk a).1, (unpk a).2)
+      then some (cast h.2.2.choose a) else none) = some a
+    rw [dif_pos h]
+    rfl
   | ty1 _ | ty2 _ | univ _ | err => exact a.elim
 
 /-- Decode a meaning as an element of a level-1 carrier. -/
@@ -42,6 +50,7 @@ noncomputable def TyM.dec1 : (T : TyM) → Sem → Option T.el1
   | .univ 1, .ty (.ty0 A) => some A
   | .ty0 A, s => (s.as A).map ULift.up
   | .prop P, s => ((TyM.prop P).dec0 s).map ULift.up
+  | .data n ps A unpk, s => ((TyM.data n ps A unpk).dec0 s).map ULift.up
   | _, _ => none
 
 /-- The type of accumulated final contents after a parameter (`piCar0`'s accumulator step). -/

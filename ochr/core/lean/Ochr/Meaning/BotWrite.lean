@@ -8,16 +8,17 @@ The checker's [Drop] and [Move] write `⊥` at a path of a value (`Value.updAt (
 reference writes `moved` at the same path of the value's meaning (`Sem.updAt … (fun _ => moved)`).
 `mean_updAt_bot` says the two agree: the meaning of the written value is the written meaning.
 
-It needs three things of the value, each a fact about reachable states:
+Since docs/31 D32 the reference reads a constructor value off its meaning alone, so nothing is
+asked of the hint the value is read at (as first proved, it needed the hint to name the value's
+own declaration and parameters along the path, D31's (WF13), which an accepted program refuted
+after a write of an earlier field). It needs two things of the value, each a fact about reachable
+states:
 - it records its parameters and holds no sealed program (`RecPlain`: (WF10), and what a drop or a
   move writes into, which the access before it has made a plain value), so a field after the
   written one means the same though the earlier fields it is typed at have changed (the audit's
   A13 closed by D29's point 5 e: no value in Ω reads a hint but its own);
-- the hint names, at each constructor value on the path, the value's own declaration at its
-  recorded parameters' meanings (`DataOn`: docs/31 D31, the data agreement a binding's type and
-  the fields' hints have with the values they hold), the declaration being data, not `Prop`;
-- at each `S` on the path, the predecessor means a number (a write below a partly moved number has
-  no meaning in the reference: `Sem.updAt` steps into a number only).
+- the path is one the value has (`NatAlong`): data declarations of `Γ` on the way, and at each `S`
+  a predecessor that means a number.
 -/
 
 namespace Ochr.Meaning
@@ -147,15 +148,6 @@ theorem Sem.asNat_el0 (n : Nat) : (Sem.el0 Nat n).asNat = some n := by simp [Sem
 theorem Sem.succ_el0 (n : Nat) : (Sem.el0 Nat n).succ = .el0 Nat (n + 1) := by
   simp [Sem.succ, Sem.asNat_el0]
 
-/-- The field a step names, as `Sem.updAt` reads it. -/
-def _root_.Ochr.Step.fieldIdx : Step → Nat
-  | .proj i => i
-  | .field g => g.idx
-  | .deref => 0
-
-theorem _root_.Ochr.Step.fieldIdx_eq (st : Step) :
-    (match st with | .proj i => i | .field g => g.idx | .deref => 0) = st.fieldIdx := by cases st <;> rfl
-
 /-- Writing at a path of a constructor value writes one field. -/
 theorem updAt_ind_inv {f : Value → Value} {st : Step} {ss : List Step} {ty : String} {c : Nat} {hh : Hint}
     {ps fs : List Value} {v' : Value} (h : Value.updAt f (st :: ss) (.ind ty c hh ps fs) = some v') :
@@ -199,27 +191,22 @@ theorem mean_ind {H : TyS} {ty : String} {c : Nat} {hh : Hint} {ps fs : List Val
   have hs' : (d.sort == 0) = false := by simpa using hs
   simp only [Value.mean, hf, hbare, Bool.false_eq_true, ↓reduceIte, hs']
 
-/-- **The hint decodes the value along the path as the value is built** (docs/31 D31): at each
-constructor value on the path, `H` names the value's own declaration (data, not `Prop`, covered by
-the model) at its recorded parameters' meanings, and the field stepped into is decoded at its own
-hint; at each `S`, `H` is `Nat` and the predecessor means a number. Marks and `*` are transparent.
-This is the data agreement a binding's type and the fields' hints have with the values they hold
-(a typing fact of the checker, to be a clause of `Good`), read along one path. -/
-def DataOn : TyS → List Step → Value → Prop
-  | _, [], _ => True
-  | H, .deref :: ss, .borrow _ w => DataOn H ss w
-  | H, st :: ss, .gloan _ w => DataOn H (st :: ss) w
-  | H, .proj 0 :: ss, .succ w =>
-    H.isNat Γ ∧ (∃ n, (Value.mean dm C Γ ρ φ (.plain (.ty0 Nat)) w).asNat = some n) ∧
-      DataOn (.plain (.ty0 Nat)) ss w
-  | H, st :: ss, .ind ty c _ ps fs =>
-    ∃ d, Γ.find? (·.name == ty) = some d ∧ dm.covers d ∧ d.sort ≠ 0 ∧
-      H.dataDecl Γ = some (d, Value.meanParams dm C Γ ρ φ d 0 [] ps) ∧
-      ∀ w, fs[st.fieldIdx]? = some w →
-        DataOn (fieldHint dm d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c st.fieldIdx
-          ((Value.meanFields dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c 0 [] fs).take st.fieldIdx)) ss w
-  | _, _, _ => False
-termination_by _ ss v => (ss.length, sizeOf v)
+/-- **The path is one the value has** (docs/31 D32): at each constructor value on the path its
+declaration is a data declaration of `Γ` other than the number type's name, and at each `S` the
+predecessor means a number (a write below a partly moved number goes through the predecessor's
+own form, `Sem.updAt`'s second case; this is the case of a whole one). Nothing is asked of a
+type: the reference reads the value only. Marks and `*` are transparent. -/
+def NatAlong : List Step → Value → Prop
+  | [], _ => True
+  | .deref :: ss, .borrow _ w => NatAlong ss w
+  | st :: ss, .gloan _ w => NatAlong (st :: ss) w
+  | .proj 0 :: ss, .succ w =>
+    (∃ n, (Value.mean dm C Γ ρ φ (.plain (.ty0 Nat)) w).asNat = some n) ∧ NatAlong ss w
+  | st :: ss, .ind ty _ _ _ fs =>
+    ∃ d, Γ.find? (·.name == ty) = some d ∧ d.sort ≠ 0 ∧ d.name ≠ "Nat" ∧
+      ∀ w, fs[st.fieldIdx]? = some w → NatAlong ss w
+  | _, _ => False
+termination_by ss v => (ss.length, sizeOf v)
 
 theorem recPlain_of_mark {l : Nat} {w : Value} (h : RecPlain Γ (.gloan l w)) : RecPlain Γ w := by
   obtain ⟨hb, hs⟩ := h
@@ -244,74 +231,39 @@ theorem Sem.updAt_deref' (T : TyS) (f : Sem → Sem) (sts : List Step) (s : Sem)
   rw [Sem.updAt.eq_def]
 
 theorem Sem.updAt_nat' (T : TyS) (f : Sem → Sem) (sts : List Step) (s : Sem) (n : Nat)
-    (hT : T.isNat Γ) (hs : s.asNat = some (n + 1)) :
+    (hs : s.asNat = some (n + 1)) :
     Sem.updAt dm Γ T f (.proj 0 :: sts) s = (Sem.updAt dm Γ (.plain (.ty0 Nat)) f sts (.el0 Nat n)).map Sem.succ := by
   rw [Sem.updAt.eq_def]
-  simp only [hT, ↓reduceIte, hs]
-
-theorem Sem.updAt_data' (T : TyS) (f : Sem → Sem) (st : Step) (sts : List Step) (s : Sem) {d : IndDecl}
-    {ps : List Sem} {c : Nat} {fs : List Sem} {fi : Sem}
-    (hst : st ≠ .deref) (hd : T.dataDecl Γ = some (d, ps))
-    (hf : dm.fieldsOf d ps s = some (c, fs)) (hi : fs[st.fieldIdx]? = some fi) :
-    Sem.updAt dm Γ T f (st :: sts) s =
-      (Sem.updAt dm Γ (fieldHint dm d ps c st.fieldIdx (fs.take st.fieldIdx)) f sts fi).map fun fi' =>
-        dm.ctorM d ps c (fs.set st.fieldIdx fi') := by
-  cases st with
-  | deref => exact absurd rfl hst
-  | proj i =>
-    have hT : ¬ T.isNat Γ := fun h => by rw [h.1] at hd; cases hd
-    rw [Sem.updAt.eq_def]
-    simp only [hT, ↓reduceIte, hd, hf]
-    simp only [Step.fieldIdx] at hi ⊢
-    simp only [hi]
-  | field g =>
-    have hT : ¬ T.isNat Γ := fun h => by rw [h.1] at hd; cases hd
-    rw [Sem.updAt.eq_def]
-    simp only [hT, ↓reduceIte, hd, hf]
-    simp only [Step.fieldIdx] at hi ⊢
-    simp only [hi]
-
-/-- The fields before the one the path steps into are whole, at every constructor value on the
-path ((WF13) constrains a field only after whole earlier fields: a later field's declared type may
-read a moved earlier one, D29's row-4 residual). -/
-def WholeAlong : List Step → Value → Prop
-  | [], _ => True
-  | .deref :: ss, .borrow _ w => WholeAlong ss w
-  | st :: ss, .gloan _ w => WholeAlong (st :: ss) w
-  | .proj 0 :: ss, .succ w => WholeAlong ss w
-  | st :: ss, .ind ty c _ ps fs => ∀ d, Γ.find? (·.name == ty) = some d →
-      (∀ e ∈ (Value.meanFields dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c 0 [] fs).take st.fieldIdx,
-        e.whole) ∧ ∀ w, fs[st.fieldIdx]? = some w → WholeAlong ss w
-  | _, _ => True
-termination_by ss v => (ss.length, sizeOf v)
+  simp only [hs]
 
 /-- **L2: writing `⊥` at a path commutes with the meaning** (docs/31 D28, D29 point 5 e, D31): the
 meaning of the checker's written value is the reference's written meaning, for a value that records
-its parameters and holds no sealed program, read at a hint that decodes it along the path. -/
-theorem mean_updAt_bot : ∀ (steps : List Step) (H : TyS) (v v' : Value),
-    Value.updAt (fun _ => .bot) steps v = some v' → RecPlain Γ v → DataOn dm C Γ ρ φ H steps v →
-    Sem.updAt dm Γ H (fun _ => .moved) steps (Value.mean dm C Γ ρ φ H v) =
+its parameters and holds no sealed program, along a path it has (`NatAlong`). Since D32 the
+reference reads the value only: no hint agreement is needed. -/
+theorem mean_updAt_bot : ∀ (steps : List Step) (H T : TyS) (v v' : Value),
+    Value.updAt (fun _ => .bot) steps v = some v' → RecPlain Γ v → NatAlong dm C Γ ρ φ steps v →
+    Sem.updAt dm Γ T (fun _ => .moved) steps (Value.mean dm C Γ ρ φ H v) =
       some (Value.mean dm C Γ ρ φ H v')
-  | [], H, v, v', h, _, _ => by
+  | [], H, T, v, v', h, _, _ => by
     simp only [Value.updAt, Option.some.injEq] at h
     subst h
     simp only [Sem.updAt_nil', Value.mean]
-  | st :: ss, H, v, v', h, hv, hd => by
+  | st :: ss, H, T, v, v', h, hv, hd => by
     cases v with
     | gloan l w =>
       simp only [Value.updAt] at h
       obtain ⟨w', hw', rfl⟩ := Option.map_eq_some_iff.mp h
-      have hd' : DataOn dm C Γ ρ φ H (st :: ss) w := by cases st <;> simpa [DataOn] using hd
+      have hd' : NatAlong dm C Γ ρ φ (st :: ss) w := by cases st <;> simpa [NatAlong] using hd
       simp only [Value.mean]
-      exact mean_updAt_bot (st :: ss) H w w' hw' (recPlain_of_mark Γ hv) hd'
+      exact mean_updAt_bot (st :: ss) H T w w' hw' (recPlain_of_mark Γ hv) hd'
     | borrow l w =>
       cases st with
       | deref =>
         simp only [Value.updAt] at h
         obtain ⟨w', hw', rfl⟩ := Option.map_eq_some_iff.mp h
-        have hd' : DataOn dm C Γ ρ φ H ss w := by simpa [DataOn] using hd
+        have hd' : NatAlong dm C Γ ρ φ ss w := by simpa [NatAlong] using hd
         simp only [Value.mean, Sem.updAt_deref']
-        exact mean_updAt_bot ss H w w' hw' (recPlain_of_borrow Γ hv) hd'
+        exact mean_updAt_bot ss H T w w' hw' (recPlain_of_borrow Γ hv) hd'
       | proj i => simp [Value.updAt] at h
       | field g => simp [Value.updAt] at h
     | succ w =>
@@ -321,26 +273,23 @@ theorem mean_updAt_bot : ∀ (steps : List Step) (H : TyS) (v v' : Value),
         | zero =>
           simp only [Value.updAt] at h
           obtain ⟨w', hw', rfl⟩ := Option.map_eq_some_iff.mp h
-          obtain ⟨hH, ⟨n, hn⟩, hd'⟩ : H.isNat Γ ∧ (∃ n, (Value.mean dm C Γ ρ φ (.plain (.ty0 Nat)) w).asNat = some n) ∧
-              DataOn dm C Γ ρ φ (.plain (.ty0 Nat)) ss w := by simpa [DataOn] using hd
-          have IH := mean_updAt_bot ss (.plain (.ty0 Nat)) w w' hw' (recPlain_of_succ Γ hv) hd'
+          obtain ⟨⟨n, hn⟩, hd'⟩ : (∃ n, (Value.mean dm C Γ ρ φ (.plain (.ty0 Nat)) w).asNat = some n) ∧
+              NatAlong dm C Γ ρ φ ss w := by simpa [NatAlong] using hd
+          have IH := mean_updAt_bot ss (.plain (.ty0 Nat)) (.plain (.ty0 Nat)) w w' hw' (recPlain_of_succ Γ hv) hd'
           rw [Sem.asNat_some hn] at IH
           simp only [Value.mean, Sem.asNat_some hn, Sem.succ_el0]
-          rw [Sem.updAt_nat' dm Γ H _ ss _ n hH (Sem.asNat_el0 (n + 1)), IH, Option.map_some]
+          rw [Sem.updAt_nat' dm Γ T _ ss _ n (Sem.asNat_el0 (n + 1)), IH, Option.map_some]
         | succ i => simp [Value.updAt] at h
       | deref => simp [Value.updAt] at h
       | field g => simp [Value.updAt] at h
     | ind ty c hh ps fs =>
       obtain ⟨hst, w, w', hw, hw', rfl⟩ := updAt_ind_inv h
-      obtain ⟨d, hf, hcov, hsort, hdata, hrec⟩ : ∃ d, Γ.find? (·.name == ty) = some d ∧ dm.covers d ∧
-          d.sort ≠ 0 ∧ H.dataDecl Γ = some (d, Value.meanParams dm C Γ ρ φ d 0 [] ps) ∧
-          ∀ w, fs[st.fieldIdx]? = some w →
-            DataOn dm C Γ ρ φ (fieldHint dm d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c st.fieldIdx
-              ((Value.meanFields dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c 0 [] fs).take st.fieldIdx)) ss w := by
+      obtain ⟨d, hf, hsort, hnat, hrec⟩ : ∃ d, Γ.find? (·.name == ty) = some d ∧ d.sort ≠ 0 ∧ d.name ≠ "Nat" ∧
+          ∀ w, fs[st.fieldIdx]? = some w → NatAlong dm C Γ ρ φ ss w := by
         cases st with
         | deref => exact absurd rfl hst
-        | proj i => simpa only [DataOn] using hd
-        | field g => simpa only [DataOn] using hd
+        | proj i => simpa only [NatAlong] using hd
+        | field g => simpa only [NatAlong] using hd
       obtain ⟨hbare, hfs⟩ := recPlain_ind Γ hv
       have hbare' : Value.bareCtor Γ (.ind ty c hh ps (fs.set st.fieldIdx w')) = false := by
         cases ps <;> simp only [Value.bareCtor] at hbare ⊢ <;> exact hbare
@@ -348,11 +297,15 @@ theorem mean_updAt_bot : ∀ (steps : List Step) (H : TyS) (v v' : Value),
       have hget := meanFields_getElem? dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c fs 0 [] st.fieldIdx w hw
       have hset := meanFields_set dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c fs 0 [] st.fieldIdx w' hi hfs
       simp only [Nat.zero_add, List.nil_append] at hget hset
-      have IH := mean_updAt_bot ss _ w w' hw' (hfs w (List.mem_of_getElem? hw)) (hrec w hw)
-      rw [mean_ind dm C Γ ρ φ hf hbare hsort, mean_ind dm C Γ ρ φ hf hbare' hsort, hset,
-        Sem.updAt_data' dm Γ H _ st ss _ hst hdata (dm.fieldsOf_ctorM c _ hcov) hget, IH, Option.map_some]
+      have IH := mean_updAt_bot ss (fieldHint dm d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c st.fieldIdx
+        ((Value.meanFields dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c 0 [] fs).take st.fieldIdx))
+        T w w' hw' (hfs w (List.mem_of_getElem? hw)) (hrec w hw)
+      rw [mean_ind dm C Γ ρ φ hf hbare hsort, mean_ind dm C Γ ρ φ hf hbare' hsort, hset]
+      obtain ⟨el, hel⟩ := ctorM_dat dm d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c
+        (Value.meanFields dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c 0 [] fs)
+      rw [hel, Sem.updAt_dat' dm Γ T _ st ss hst hnat hget, IH, Option.map_some, reDat_eq dm Γ hf]
     | _ => simp [Value.updAt] at h
-termination_by steps _ v => (steps.length, sizeOf v)
+termination_by steps _ _ v => (steps.length, sizeOf v)
 
 end
 

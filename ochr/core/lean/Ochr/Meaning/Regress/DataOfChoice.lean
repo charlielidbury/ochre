@@ -2,7 +2,7 @@ import Ochr.Meaning.Run
 import Ochr.Examples.Nat
 
 /-!
-# The reference read a constructor value through another declaration of the same carrier (built; fixed)
+# The reference read a constructor value through another declaration of the same carrier (built; fixed by D32)
 
 docs/31 D31 (fifth lead, 2026-11-19; found attacking L2, the drop's write of `⊥` at a path). The
 reference navigates data by its TYPE MEANING: a match's tag (`indTag`), a field read
@@ -29,9 +29,11 @@ which for two carriers of the same size Lean cannot do). The fix (D31): decode b
 structured data (`TyS.data`: the declaration's NAME and the parameters' meanings, which every
 binding's type and every field's hint already carry, D8), never by its carrier.
 
-Fixed: `TyS.dataDecl`; the reference's match now reads `T2` as constructor `1` (`tag_right`). The
-counterexample against the old definitions is kept, unbuilt, in `DataOfChoice_189132fd.lean`;
-`carrier_names_B1` keeps the fact it rested on (the carrier names `B1` first).
+Fixed, first by decoding through the type's declaration name (D31), then for good by D32: a
+constructor value describes itself (`Sem.dat`: name, parameters, constructor, fields, element), so
+the match reads `T2`'s constructor off the value at any type (`tag_right`), and the value is a member
+of `B2`'s code (`T2_mem`). The counterexample against the old definitions is kept, unbuilt, in
+`DataOfChoice_189132fd.lean`.
 -/
 
 open Ochr.Test
@@ -133,43 +135,31 @@ noncomputable def K : RunCtx where
 
 variable (ρ : Assignment) (φ : Future) (H : TyS)
 
-/-- The checker's `T2`, constructor `1` of `B2`, means `true`. -/
-theorem mean_T2 : Value.mean K.dm K.C K.Γ ρ φ H (.ind "B2" 1 ⟨"T2"⟩ [] []) = .el0 Bool true := by
+/-- The checker's `T2` means constructor `1` of `B2`, describing itself (docs/31 D32): its
+declaration's name, no parameters, constructor `1`, no fields, and its element `true` of `Bool`. -/
+theorem mean_T2 : Value.mean K.dm K.C K.Γ ρ φ H (.ind "B2" 1 ⟨"T2"⟩ [] []) =
+    .dat "B2" [] 1 [] (some ⟨Bool, true⟩) := by
   simp [Value.mean, K, B1, B2, Value.meanParams, Value.meanFields, DataModel.ctorM, dm, enc]
 
-/-- The type `B2` means `ty0 Bool`, the carrier of `B1` too. -/
-theorem mean_B2 : Value.mean K.dm K.C K.Γ ρ φ H (.tInd "B2" []) = .ty (.ty0 Bool) := by
+/-- The type `B2` is a code naming `B2`, decoding to `Bool`, the carrier of `B1` too. -/
+theorem mean_B2 : ∃ unpk, Value.mean K.dm K.C K.Γ ρ φ H (.tInd "B2" []) = .ty (.data "B2" [] Bool unpk) := by
+  refine ⟨fun x => (dec B2 x, []), ?_⟩
   simp [Value.mean, K, B1, B2, Value.meanParams, DataModel.tyM, dm]
 
-/-- Decoded through its own declaration, `true` is constructor `1` of `B2`. -/
-theorem fieldsOf_B2 (ps : List Sem) : dm.fieldsOf B2 ps (.el0 Bool true) = some (1, []) := by
-  simp [DataModel.fieldsOf, dm, dec, B2]
+/-- **The reference's match reads constructor `1`** at any type the value is held at: the value is
+read, not decoded through a declaration found by its carrier (`DataOfChoice_189132fd`: the match
+took the arm `F2`) or through its type at all. -/
+theorem tag_right (T : TyS) : indTag (Value.mean K.dm K.C K.Γ ρ φ H (.ind "B2" 1 ⟨"T2"⟩ [] [])) T = .el0 Nat 1 := by
+  rw [mean_T2]; rfl
 
-/-- The type's carrier names `B1` first: decoding by the carrier (`TyM.dataOf`, which the
-reference used until D31) reads `true` through `B1`, as constructor `0` (`DataOfChoice_189132fd`:
-the match took the arm `F2`). -/
-theorem carrier_names_B1 : ∃ ps, TyM.dataOf K.dm K.Γ (.ty0 Bool) = some (B1, ps) ∧
-    dm.fieldsOf B1 ps (.el0 Bool true) = some (0, []) := by
-  have hp : ∃ ps, dm.paramsOf B1 (.ty0 Bool) = some ps := ⟨_, dif_pos ⟨[], rfl⟩⟩
-  obtain ⟨ps, hps⟩ := hp
-  refine ⟨ps, by simp [TyM.dataOf, K, hps], ?_⟩
-  simp [DataModel.fieldsOf, dm, dec, B1]
+/-- The value is a member of its type: its name and parameters are the code's and its element reads
+back as its constructor and fields. -/
+theorem T2_mem : Value.mean K.dm K.C K.Γ ρ φ H (.ind "B2" 1 ⟨"T2"⟩ [] []) ∈ₛ dm.tyM B2 [] := by
+  rw [mean_T2]
+  exact ⟨rfl, rfl, rfl, rfl⟩
 
-/-- The structured type of a position of type `B2` names `B2` (`Value.tyData`, D8). -/
-theorem tyData_B2 : Value.tyData K.dm K.C K.Γ ρ (.tInd "B2" []) = some ("B2", []) := by
-  simp [Value.tyData, K, B1, B2, Value.meanParams]
-
-/-- **Fixed (D31): the reference's match reads constructor `1`**, decoding by the type's name. -/
-theorem tag_right : indTag K (.el0 Bool true) ⟨.ty0 Bool, none, none, some ("B2", [])⟩ = .el0 Nat 1 := by
-  simp [indTag, TyS.dataDecl, K, B1, B2, DataModel.fieldsOf, dm, dec]
-
-/-- **Decoding by the type's name needs the type's data** (D32): at a type that names no
-declaration (`.plain`, what a data call's result is typed at, `callOfL`'s `.data` branch), the
-match reads no tag. So since D31 a match or a field read on a `let`-bound result of a call that
-returns data fails in the reference unless the call's result carries its data (D22's call-result
-redesign). -/
-theorem indTag_plain (K' : RunCtx) (v : Sem) (T : TyM) (hv : v ≠ .proof) :
-    indTag K' v (.plain T) = .err := by
-  cases v <;> simp_all [indTag, TyS.dataDecl, TyS.plain]
+/-- A value held at a type that names no declaration (as a call's result was typed, `.plain`) is
+still read: since D32 nothing is decoded through a type. -/
+theorem indTag_plain (T : TyM) : indTag (.dat "B2" [] 1 [] (some ⟨Bool, true⟩)) (.plain T) = .el0 Nat 1 := rfl
 
 end Ochr.Meaning.Regress.DataOfChoice

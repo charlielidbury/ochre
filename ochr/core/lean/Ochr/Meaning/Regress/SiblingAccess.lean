@@ -20,8 +20,8 @@ borrow of `p.1`, a later write through it was lost, and on the accepted `Disjoin
 the checker's. A fault of the model.
 
 Fixed: an ill-typed constructor value means the tuple of its fields, never `err` (`ctorM`). A
-constructor value's fields are then read whatever the others hold (`DataModel.fieldsOf_ctorM`,
-`sibling_read`).
+constructor value's fields are then read whatever the others hold (`DataModel.parts_ctorM`,
+`sibling_read`; since docs/31 D32 a constructor value describes itself, its element aside).
 -/
 
 namespace Ochr.Meaning.Regress.SiblingAccess
@@ -36,7 +36,7 @@ noncomputable def ctorMOld (d : IndDecl) (ps : List Sem) (c : Nat) (fs : List Se
     match dm.pack d ps c fs with
     | some x => .el0 (dm.car d ps) x
     | none => .err
-  else .ctor d.name c fs
+  else .dat d.name ps c fs none
 
 /-- With whole fields that do not pack, the old meaning is `err`. -/
 theorem old_collapse (d : IndDecl) (ps : List Sem) (c : Nat) (fs : List Sem)
@@ -46,14 +46,7 @@ theorem old_collapse (d : IndDecl) (ps : List Sem) (c : Nat) (fs : List Sem)
 
 /-- No field of `err` can be read, at any type. -/
 theorem follow_err_field (T : TyS) (g : FieldRef) (sts : List Step) :
-    Sem.follow dm Γ T .err (.field g :: sts) = none := by
-  have h : Sem.step dm Γ T (.field g) .err = none := by
-    unfold Sem.step Sem.stepField
-    cases T.dataDecl Γ with
-    | none => rfl
-    | some dp => rfl
-  unfold Sem.follow
-  rw [h]; rfl
+    Sem.follow dm Γ T .err (.field g :: sts) = none := rfl
 
 /-- **The old dependence.** If a read of a field succeeds at one future, and some whole value of
 the label `l` does not pack, then the content read depended on `l` under the old meaning, whatever
@@ -70,14 +63,12 @@ theorem old_sibling_dep (T : TyS) (g : FieldRef) (sts : List Step) (d : IndDecl)
   cases hgood
 
 /-- **The positive form.** A field of a constructor value is its field, whatever the other fields
-hold: lent, moved, or outside their types. -/
-theorem sibling_read (T : TyS) (d : IndDecl) (ps : List Sem) (c i : Nat) (fs : List Sem)
-    (hd : dm.covers d) (hT : T.dataDecl Γ = some (d, ps)) (hne : dm.ctorM d ps c fs ≠ .proof) :
-    Sem.stepField dm Γ T c i (dm.ctorM d ps c fs)
-      = (fs[i]?).map fun f => (f, fieldHint dm d ps c i (fs.take i)) := by
-  unfold Sem.stepField
-  split
-  · rename_i h; exact absurd h hne
-  · simp only [hT, dm.fieldsOf_ctorM c fs hd, if_true]
+hold: lent, moved, or outside their types (since docs/31 D32 read off the value itself). -/
+theorem sibling_read (d : IndDecl) (ps : List Sem) (c i : Nat) (fs : List Sem) :
+    Sem.stepField dm Γ c i (dm.ctorM d ps c fs)
+      = (fs[i]?).map fun f => (f, contentTyS dm Γ d.name ps c i (fs.take i) f) := by
+  obtain ⟨el, hel⟩ := ctorM_dat dm d ps c fs
+  rw [hel]
+  simp [Sem.stepField]
 
 end Ochr.Meaning.Regress.SiblingAccess

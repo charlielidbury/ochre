@@ -1299,7 +1299,7 @@ are taken and every taken label is fixed to its final, since a successful applic
 argument per parameter and one final per borrow parameter. -/
 theorem callOfL_data_inv {L : Nat → Prop} (Lv : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : Sem)
     (args : List Res) {s s' : SState} (h1 : SState.Inv1 L s) (h2 : SState.Inv2 L s) {r : Sem} {B : TyM}
-    (h : callOfL Lv ps out fv args s = some ((r, .plain B), s'))
+    (h : callOfL Lv ps out fv args s = some ((r, TyS.ofTyM B), s'))
     (hdata : ∀ U fwd back, applyFnL Lv ps out fv (args.map (·.1)) ≠ some (.ref U fwd back)) :
     SState.Inv1 L s' ∧ SState.Inv2 L s' := by
   unfold callOfL at h

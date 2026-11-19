@@ -254,7 +254,7 @@ theorem Mean.semEnd_comm_cycle : ∃ (m : Mean) (r₁ r₂ : Pos) (l₁ l₂ : N
     m.dependsOn r₁ l₂ ∧ m.dependsOn r₂ l₁ ∧
     (m.semEnd r₁ l₁).semEnd r₂ l₂ ≠ (m.semEnd r₂ l₂).semEnd r₁ l₁ := by
   let m : Mean := ⟨[], fun φ p => if p = .bind 0 0 then φ 1 else if p = .bind 0 1 then φ 0
-      else .ctor "x" 0 [φ 0, φ 1], fun _ => none⟩
+      else .dat "x" [] 0 [φ 0, φ 1] none, fun _ => none⟩
   refine ⟨m, .bind 0 0, .bind 0 1, 0, 1, by decide, by decide,
     ⟨fun _ => .moved, .proof, ?_⟩, ⟨fun _ => .moved, .proof, ?_⟩, fun h => ?_⟩
   · simp [m, Future.upd]
@@ -487,37 +487,37 @@ theorem resolve_steps {s : SState} {q : Place} {pos : Pos} {steps : List Step}
   cases h
   rfl
 
-/-- An untyped tuple is below no element of a carrier. -/
-theorem Sem.ctor_not_le_el0 {ty : String} {c : Nat} {fs : List Sem} {A : Type} {a : A} :
-    ¬ (Sem.ctor ty c fs ⊑ Sem.el0 A a) := fun h => nomatch h
+/-- A partly moved constructor value is below no whole one with an element of its carrier. -/
+theorem Sem.dat_none_not_le_some {n : String} {ps : List Sem} {c : Nat} {fs gs : List Sem}
+    {e : (A : Type) × A} : ¬ (Sem.dat n ps c fs none ⊑ Sem.dat n ps c gs (some e)) := fun h => by
+  cases h
 
-/-- Dropping a field of a whole constructor value (an element `el0` of a carrier, as every whole
-data value is, D3) yields an untyped tuple, so it is not below the value, for every data model:
-the mechanism of `joinDrop_not_below`. (The same holds for a named field `.field g`.) -/
-theorem Sem.updAt_field_not_le (dm : DataModel) (Γ : List IndDecl) (T : TyS) (i : Nat) (A : Type)
-    (x : A) (w : Sem) (hT : ¬ T.isNat Γ)
-    (hw : Sem.updAt dm Γ T (fun _ => .moved) [.proj i] (.el0 A x) = some w) : ¬ w ⊑ .el0 A x := by
-  rw [Sem.updAt.eq_def] at hw
-  simp only [if_neg hT] at hw
-  split at hw
-  · next d ps _ =>
+/-- Dropping a field of a whole constructor value (one with an element of its carrier) yields a
+partly moved value, which is not below it, for every data model: the mechanism of
+`joinDrop_not_below`. (The same holds for a named field `.field g`.) -/
+theorem Sem.updAt_field_not_le (dm : DataModel) (Γ : List IndDecl) (T : TyS) (i : Nat) {n : String}
+    {ps : List Sem} {c : Nat} {fs : List Sem} {e : (A : Type) × A} (hn : n ≠ "Nat") (w : Sem)
+    (hw : Sem.updAt dm Γ T (fun _ => .moved) [.proj i] (.dat n ps c fs (some e)) = some w) :
+    ¬ w ⊑ .dat n ps c fs (some e) := by
+  rcases hfi : fs[i]? with _ | fi
+  · rw [Sem.updAt.eq_def] at hw
+    simp only [Sem.asNat_dat] at hw
     split at hw
-    · next c fs _ =>
-      split at hw
-      · next fi hfi =>
-        have e0 : Sem.updAt dm Γ (fieldHint dm d ps c i (List.take i fs)) (fun _ => .moved) [] fi =
-            some .moved := rfl
-        rw [e0, Option.map_some, Option.some.injEq] at hw
-        subst hw
-        have hi : i < fs.length := (List.getElem?_eq_some_iff.mp hfi).1
-        have hmem : Sem.moved ∈ fs.set i .moved :=
-          List.mem_of_getElem? (by simp [hi] : (fs.set i .moved)[i]? = some .moved)
-        have hnw : ¬ ∀ f ∈ fs.set i .moved, f.whole := fun h => by simpa [Sem.whole] using h _ hmem
-        simp only [DataModel.ctorM, if_neg hnw]
-        exact Sem.ctor_not_le_el0
-      · cases hw
-    · cases hw
-  · cases hw
+    · rename_i heq; simp only [Sem.dat.injEq] at heq; exact absurd heq.1 hn
+    · rename_i heq
+      simp only [Sem.dat.injEq] at heq
+      obtain ⟨rfl, rfl, rfl, rfl, rfl⟩ := heq
+      simp [hfi] at hw
+    · rename_i hne; exact absurd rfl (hne _ _ _ _ _)
+  · rw [Sem.updAt_dat' dm Γ T _ (.proj i) [] (by simp) hn (by simpa [Step.fieldIdx] using hfi)] at hw
+    have e0 : Sem.updAt dm Γ T (fun _ => .moved) [] fi = some .moved := by rw [Sem.updAt.eq_def]
+    rw [e0, Option.map_some, Option.some.injEq] at hw
+    subst hw
+    have hi : i < fs.length := (List.getElem?_eq_some_iff.mp hfi).1
+    have hmem : Sem.moved ∈ fs.set (Step.proj i).fieldIdx .moved :=
+      List.mem_of_getElem? (by simp [Step.fieldIdx, hi] : (fs.set (Step.proj i).fieldIdx .moved)[i]? = some .moved)
+    rw [reDat_moved dm Γ n ps c _ hmem]
+    exact Sem.dat_none_not_le_some
 
 /-- Setting a place reached through `*`s only to `⊥`, as `joinDrop` does, loses only information. -/
 theorem setAt_derefs_below (K : RunCtx) (s : SState) (pos : Pos) (steps : List Step)
@@ -626,40 +626,23 @@ noncomputable def K : RunCtx where
          clo := fun _ _ _ _ _ => .err, pi := fun _ _ _ _ _ => .err, paramTy := fun _ _ _ _ => .plain .err }
   D := D
 
-/-- The type `P`: carrier `Unit`, named `P` (its structured data, D8, by which a value is
-decoded, docs/31 D31). -/
+/-- The type `P`. (No value is read through it: since docs/31 D32 a value describes itself.) -/
 def tP : TyS := ⟨.ty0 Unit, none, none, some ("P", [])⟩
+
+/-- The whole value `P((), ())`: constructor `0` of `P`, its fields `()` and `()`, its element `()`. -/
+def pv : Sem := .dat "P" [] 0 [.el0 Unit (), .el0 Unit ()] (some ⟨Unit, ()⟩)
 
 /-- One frame, one binding `x : P` holding the whole value `P((), ())`. -/
 def s : SState :=
-  { env := [{ binds := [{ ty := tP, val := fun _ => .el0 Unit () }] }], shape := fun _ => none,
+  { env := [{ binds := [{ ty := tP, val := fun _ => pv }] }], shape := fun _ => none,
     nextLoan := 0 }
 
-theorem unit_ne_nat : TyM.ty0 Unit ≠ .ty0 Nat := fun h => by
-  have e : Unit = Nat := TyM.ty0.inj h
-  have : cast e.symm (0 : Nat) = cast e.symm 1 := Subsingleton.elim _ _
-  have h2 := congrArg (cast e) this
-  simp only [cast_cast, cast_eq] at h2
-  exact absurd h2 (by decide)
-
-theorem dataDecl_eq : TyS.dataDecl [decl] tP = some (decl, []) := rfl
-
-theorem tP_not_nat : ¬ tP.isNat [decl] := fun h => by have h1 := h.1; rw [dataDecl_eq] at h1; cases h1
-
-theorem fieldsOf_eq (ps : List Sem) :
-    dm.fieldsOf decl ps (.el0 Unit ()) = some (0, [.el0 Unit (), .el0 Unit ()]) := dif_pos rfl
-
-theorem drop_isSome : ∃ w, Sem.updAt dm [decl] tP (fun _ => .moved) [.proj 0] (.el0 Unit ()) = some w := by
-  rw [Sem.updAt.eq_def]
-  simp only [if_neg tP_not_nat, dataDecl_eq, fieldsOf_eq]
+theorem drop_isSome : ∃ w, Sem.updAt dm [decl] tP (fun _ => .moved) [.proj 0] pv = some w := by
+  rw [pv, Sem.updAt_dat' dm [decl] tP _ (.proj 0) [] (by simp) (by decide) (fi := .el0 Unit ()) rfl]
   exact ⟨_, rfl⟩
 
 /-- Following `x.0` reaches the whole field `()`: the drop is not skipped. -/
-theorem follow_eq : Sem.follow dm [decl] tP (.el0 Unit ()) [.proj 0] =
-    some (.el0 Unit (), fieldHint dm decl [] 0 0 []) := by
-  simp only [Sem.follow, Sem.step.eq_def, if_neg tP_not_nat, Sem.stepField,
-    dataDecl_eq, fieldsOf_eq]
-  rfl
+theorem follow_eq : ∃ T, Sem.follow dm [decl] tP pv [.proj 0] = some (.el0 Unit (), T) := ⟨_, rfl⟩
 
 /-- No label is live in `s`, so [Access] does nothing. -/
 theorem access_eq (p : Pos) (hit : List Step → Bool) : s.access p hit = s := by
@@ -671,8 +654,8 @@ theorem access_eq (p : Pos) (hit : List Step → Bool) : s.access p hit = s := b
 
 /-- **The drop at the join is not `Below` its input in general.** `x : P` holds `P((), ())`; the
 join drops `x.0` (after [Access], which ends nothing, and reading `x.0`, which is whole); then `x`
-means `ctor "P" 0 [⊥, ()]`, which is below no element of `P`'s carrier, so no future makes the
-state after the drop below the state before. -/
+means the partly moved `P(⊥, ())`, which is below no whole value, so no future makes the state
+after the drop below the state before. -/
 theorem joinDrop_not_below (φ : Future) (entry : List Place) (t : Term) :
     ¬ Below (joinDrop K φ entry t s).toMean s.toMean := by
   obtain ⟨w, hw⟩ := drop_isSome
@@ -686,14 +669,15 @@ theorem joinDrop_not_below (φ : Future) (entry : List Place) (t : Term) :
     simp only [K, D, List.foldl_cons, List.foldl_nil, Bool.false_eq_true, if_false, hres, accessLentPrefix, hlp, dropAt,
       access_eq]
     have e1 : s.tyAt (.bind 0 0) = tP := rfl
-    have e2 : s.valAt (.bind 0 0) = fun _ => .el0 Unit () := rfl
+    have e2 : s.valAt (.bind 0 0) = fun _ => pv := rfl
     have e3 : [Step.proj 0].isEmpty = false := rfl
-    simp only [e1, e2, e3, follow_eq, Bool.false_eq_true, if_false, hw, Option.getD_some]
+    obtain ⟨T, hT⟩ := follow_eq
+    simp only [e1, e2, e3, hT, Bool.false_eq_true, if_false, hw, Option.getD_some]
   intro h
   obtain ⟨φ, hle, _⟩ := h noFuture
   have hx := hle (.bind 0 0)
   rw [hj] at hx
-  exact Sem.updAt_field_not_le dm [decl] tP 0 Unit () w tP_not_nat hw hx
+  exact Sem.updAt_field_not_le dm [decl] tP 0 (by decide) w hw hx
 
 end JoinDropCounterexample
 
@@ -1019,7 +1003,7 @@ namespace ObservationCounterexamples
 `0`, and `x₂` holds a pair of both loans. -/
 def cyc : SState :=
   { env := [{ binds := [{ ty := .plain .err, val := fun φ => φ 1 }, { ty := .plain .err, val := fun φ => φ 0 },
-      { ty := .plain .err, val := fun φ => .ctor "x" 0 [φ 0, φ 1] }] }],
+      { ty := .plain .err, val := fun φ => .dat "x" [] 0 [φ 0, φ 1] none }] }],
     shape := fun p => if p = .bind 0 0 then some 0 else if p = .bind 0 1 then some 1 else none,
     nextLoan := 2 }
 
@@ -1029,7 +1013,7 @@ theorem cyc_positions : cyc.positions = [.bind 0 0, .bind 0 1, .bind 0 2] := by
 
 /-- After ending `0` and then `1`, `x₂` reads `(φ 1, φ 1)`: it still depends on the live label `1`. -/
 theorem cyc_ends (φ : Future) :
-    ([0, 1].foldl SState.endLabel cyc).valAt (.bind 0 2) φ = .ctor "x" 0 [φ 1, φ 1] := by
+    ([0, 1].foldl SState.endLabel cyc).valAt (.bind 0 2) φ = .dat "x" [] 0 [φ 1, φ 1] none := by
   have h0 : cyc.positions.find? (fun p => decide (cyc.shape p = some 0)) = some (.bind 0 0) := by
     rw [cyc_positions]; rfl
   have h1 : (cyc.endLabel 0).positions.find? (fun p => decide ((cyc.endLabel 0).shape p = some 1)) =
@@ -1349,7 +1333,7 @@ theorem callOfL_fresh.{u} (L : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : 
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨⟨_, rfl⟩, rfl⟩ := h
     exact ⟨SState.ShapeBelow.of_sub (SState.shapeSub_mapVals _ _) hs₀, fun l hl => by
-      simp [TyS.plain] at hl⟩
+      simp [TyS.ofTyM] at hl⟩
   · simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨⟨_, rfl⟩, rfl⟩ := h
     obtain ⟨_, _, hfresh, hb⟩ := SState.freshLoan_fresh _ hs₀

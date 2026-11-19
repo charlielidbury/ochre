@@ -27,6 +27,7 @@ universe u
 def TyM.el0 : TyM → Type
   | .ty0 A => A
   | .prop P => PLift P
+  | .data _ _ A _ => A
   | _ => PEmpty
 
 /-- The level-1 carrier: level-1 types, the universes `Prop` and `Type₀`, lower levels lifted. -/
@@ -46,6 +47,7 @@ def TyM.el2 : TyM → Type 2
 def TyM.enc0 : (T : TyM) → T.el0 → Sem
   | .ty0 A, a => .el0 A a
   | .prop _, _ => .proof
+  | .data n ps A unpk, a => .dat n ps (unpk a).1 (unpk a).2 (some ⟨A, a⟩)
   | .ty1 _, x | .ty2 _, x | .univ _, x | .err, x => x.elim
 
 /-- Encode an element of a level-1 carrier. -/
@@ -55,6 +57,7 @@ def TyM.enc1 : (T : TyM) → T.el1 → Sem
   | .univ 1, A => .ty (.ty0 A)
   | .ty0 A, a => .el0 A a.down
   | .prop _, _ => .proof
+  | .data n ps A unpk, a => .dat n ps (unpk a.down).1 (unpk a.down).2 (some ⟨A, a.down⟩)
   | .univ (_ + 2), x | .ty2 _, x | .err, x => x.down.elim
 
 /-- Encode an element of a level-2 carrier. -/
@@ -66,6 +69,7 @@ def TyM.enc2 : (T : TyM) → T.el2 → Sem
   | .univ 1, A => .ty (.ty0 A.down)
   | .ty0 A, a => .el0 A a.down.down
   | .prop _, _ => .proof
+  | .data n ps A unpk, a => .dat n ps (unpk a.down.down).1 (unpk a.down.down).2 (some ⟨A, a.down.down⟩)
   | .univ (_ + 3), x | .err, x => x.down.down.elim
 
 /-- A parameter of a Π-type as the model reads it: whether it is a borrow, and its (content)
@@ -133,6 +137,15 @@ structure TyS : Type 3 where
 
 /-- A plain type, with no structure. -/
 def TyS.plain (T : TyM) : TyS := ⟨T, none, none, none⟩
+
+/-- The declaration name and parameters a data type's code carries (docs/31 D32). -/
+def TyM.dataName? : TyM → Option (String × List Sem)
+  | .data n ps _ _ => some (n, ps)
+  | _ => none
+
+/-- A type meaning with the data its code carries: what a call's result is typed at (docs/31 D32,
+the data half of D22's call-result redesign: the result's data from the codomain's code). -/
+def TyS.ofTyM (T : TyM) : TyS := ⟨T, none, none, T.dataName?⟩
 
 /-- `TailM (x : &Nat) : &Nat` as a level-0 Π-carrier: `Slice.lean`'s `TailMTy`, up to the
 accumulated `PUnit`. -/
