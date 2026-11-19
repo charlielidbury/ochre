@@ -724,25 +724,25 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
   | .tt, hint, s, L, hφ, ht, hi => by rw [run, run]
   | .cong f g, hint, s, L, hφ, ht, hi => by rw [run, run]
   | .val v, hint, s, L, hφ, ht, hi => by
-    have hv : ∀ l, v.hasLoan l = true → φ l = φ' l := fun l h => hφ l (ht l h)
+    have hv : ∀ l, v.hasLoanM l = true → φ l = φ' l := fun l h => hφ l (ht l h)
     rw [run_val_def, run_val_def, meanV_congrE hK v hint hv]
     cases v with
     | clo caps t rd =>
       simp only [valT]
-      rw [capsVals_congrE hK caps fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h]),
-        capsTys_congrE hK rd fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h]),
+      rw [capsVals_congrE hK caps fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h]),
+        capsTys_congrE hK rd fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h]),
         piShapeOf_congrE hK t _ (fun l => φ l = φ' l) (fun _ h => h)
-          (fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h])) (rinv_stateOf _ _ _)]
+          (fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])) (rinv_stateOf _ _ _)]
     | tPi caps t rd =>
       simp only [valT]
-      rw [capsVals_congrE hK caps fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h]),
-        capsTys_congrE hK rd fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h]),
+      rw [capsVals_congrE hK caps fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h]),
+        capsTys_congrE hK rd fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h]),
         piShapeOf_congrE hK t _ (fun l => φ l = φ' l) (fun _ h => h)
-          (fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h])) (rinv_stateOf _ _ _)]
+          (fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])) (rinv_stateOf _ _ _)]
     | sealed t =>
       simp only [valT]
       rw [run_congrE hK t hint _ (fun l => φ l = φ' l) (fun _ h => h)
-        (fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h])) (rinv_emptyState _)]
+        (fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])) (rinv_emptyState _)]
     | _ => rfl
   | .ascribe u A, hint, s, L, hφ, ht, hi => by
     rw [run, run]
@@ -976,7 +976,7 @@ theorem run_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) 
     rw [← hg1, closureAt_congr hφ _ _ _ _ hg2]
 
 theorem meanV_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (v : Value) (hint : TyS),
-    (∀ l, v.hasLoan l = true → φ l = φ' l) → meanV K ρ φ hint v = meanV K ρ φ' hint v
+    (∀ l, v.hasLoanM l = true → φ l = φ' l) → meanV K ρ φ hint v = meanV K ρ φ' hint v
   | .loan l, hint, hv => hv l (by
       show (Value.loan l).anyAtom (· == .loan l) = true
       unfold Value.anyAtom
@@ -984,50 +984,53 @@ theorem meanV_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (v : Valu
       simp [Value.beq])
   | .succ w, hint, hv => by
     show (meanV K ρ φ _ w).succ = (meanV K ρ φ' _ w).succ
-    rw [meanV_congrE hK w _ fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom] at h ⊢; simp [h])]
+    rw [meanV_congrE hK w _ fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom] at h ⊢; simp [h])]
   | .borrow _ w, hint, hv => by
     show meanV K ρ φ hint w = meanV K ρ φ' hint w
-    exact meanV_congrE hK w hint fun l h => hv l (by simp [Value.hasLoan] at h ⊢; simp [Value.anyAtom, h])
+    exact meanV_congrE hK w hint fun l h => hv l (by simp [Value.hasLoanM] at h ⊢; simp [Value.anyAtom, h])
+  | .gloan _ w, hint, hv => by
+    show meanV K ρ φ hint w = meanV K ρ φ' hint w
+    exact meanV_congrE hK w hint fun l h => hv l (by simp [Value.hasLoanM] at h ⊢; simp [Value.anyAtom, h])
   | .tRef A, hint, hv => by
     show meanV K ρ φ _ A = meanV K ρ φ' _ A
-    exact meanV_congrE hK A _ fun l h => hv l (by simp [Value.hasLoan] at h ⊢; simp [Value.anyAtom, h])
+    exact meanV_congrE hK A _ fun l h => hv l (by simp [Value.hasLoanM] at h ⊢; simp [Value.anyAtom, h])
   | .tEq A a b, hint, hv => by
     rw [meanV, meanV]
-    rw [meanV_congrE hK A _ fun l h => hv l (by simp [Value.hasLoan] at h ⊢; simp [Value.anyAtom, h]),
-      meanV_congrE hK a _ fun l h => hv l (by simp [Value.hasLoan] at h ⊢; simp [Value.anyAtom, h]),
-      meanV_congrE hK b _ fun l h => hv l (by simp [Value.hasLoan] at h ⊢; simp [Value.anyAtom, h])]
+    rw [meanV_congrE hK A _ fun l h => hv l (by simp [Value.hasLoanM] at h ⊢; simp [Value.anyAtom, h]),
+      meanV_congrE hK a _ fun l h => hv l (by simp [Value.hasLoanM] at h ⊢; simp [Value.anyAtom, h]),
+      meanV_congrE hK b _ fun l h => hv l (by simp [Value.hasLoanM] at h ⊢; simp [Value.anyAtom, h])]
   | .clo caps t rd, hint, hv => by
     rw [meanV, meanV]
-    rw [capsVals_congrE hK caps fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h]),
-      capsTys_congrE hK rd fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h]),
+    rw [capsVals_congrE hK caps fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h]),
+      capsTys_congrE hK rd fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h]),
       run_congrE hK t _ _ (fun l => φ l = φ' l) (fun _ h => h)
-        (fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h])) (rinv_stateOf _ _ _)]
+        (fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])) (rinv_stateOf _ _ _)]
   | .tPi caps t rd, hint, hv => by
     rw [meanV, meanV]
-    rw [capsVals_congrE hK caps fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h]),
-      capsTys_congrE hK rd fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h]),
+    rw [capsVals_congrE hK caps fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h]),
+      capsTys_congrE hK rd fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h]),
       run_congrE hK t _ _ (fun l => φ l = φ' l) (fun _ h => h)
-        (fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h])) (rinv_stateOf _ _ _)]
+        (fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])) (rinv_stateOf _ _ _)]
   | .sealed t, hint, hv => by
     rw [meanV, meanV]
     rw [run_congrE hK t _ _ (fun l => φ l = φ' l) (fun _ h => h)
-        (fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h])) (rinv_emptyState _)]
+        (fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])) (rinv_emptyState _)]
   | .ind ty c h ps fs, hint, hv => by
     rw [meanV, meanV]
     split
     · rename_i d _
       dsimp only
-      rw [meanParams_congrE hK d ps _ _ fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h])]
+      rw [meanParams_congrE hK d ps _ _ fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])]
       split
       · rename_i ps' _
-        rw [meanFields_congrE hK d ps' c fs _ _ fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h])]
+        rw [meanFields_congrE hK d ps' c fs _ _ fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])]
       · rfl
     · rfl
   | .tInd n args, hint, hv => by
     rw [meanV, meanV]
     split
     · rename_i d _
-      rw [meanParams_congrE hK d args _ _ fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h])]
+      rw [meanParams_congrE hK d args _ _ fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])]
     · rfl
   | .zero, _, _ => rfl
   | .unit, _, _ => rfl
@@ -1131,7 +1134,7 @@ theorem capsVals_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (vs : 
   | [], _ => rfl
   | v :: vs, hv => by
     simp only [capsVals]
-    rw [meanV_congrE hK v _ (fun l h => hv l (by simp [Value.hasLoan] at h; simp [Value.anyAtomList, h])),
+    rw [meanV_congrE hK v _ (fun l h => hv l (by simp [Value.hasLoanM] at h; simp [Value.anyAtomList, h])),
       capsVals_congrE hK vs (fun l h => hv l (by simp [Value.anyAtomList, h]))]
 
 theorem capsTys_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (rd : List (DeclInfo × Value)),
@@ -1139,38 +1142,38 @@ theorem capsTys_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (rd : L
   | [], _ => rfl
   | (d, T) :: rest, hv => by
     simp only [capsTys]
-    rw [meanV_congrE hK T _ (fun l h => hv l (by simp [Value.hasLoan] at h; simp [Value.anyAtomRd, h])),
-      tyShape_congrE hK T (fun l h => hv l (by simp [Value.hasLoan] at h; simp [Value.anyAtomRd, h])),
-      tyDataV_congrE hK T (fun l h => hv l (by simp [Value.hasLoan] at h; simp [Value.anyAtomRd, h])),
+    rw [meanV_congrE hK T _ (fun l h => hv l (by simp [Value.hasLoanM] at h; simp [Value.anyAtomRd, h])),
+      tyShape_congrE hK T (fun l h => hv l (by simp [Value.hasLoanM] at h; simp [Value.anyAtomRd, h])),
+      tyDataV_congrE hK T (fun l h => hv l (by simp [Value.hasLoanM] at h; simp [Value.anyAtomRd, h])),
       capsTys_congrE hK rest (fun l h => hv l (by simp [Value.anyAtomRd, h]))]
 
 theorem tyShape_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (T : Value),
-    (∀ l, T.hasLoan l = true → φ l = φ' l) → tyShape K ρ φ T = tyShape K ρ φ' T
+    (∀ l, T.hasLoanM l = true → φ l = φ' l) → tyShape K ρ φ T = tyShape K ρ φ' T
   | .tPi caps t rd, hv => by
     rw [tyShape, tyShape]
-    rw [capsVals_congrE hK caps fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h]),
-      capsTys_congrE hK rd fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h]),
+    rw [capsVals_congrE hK caps fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h]),
+      capsTys_congrE hK rd fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h]),
       piShapeOf_congrE hK t _ (fun l => φ l = φ' l) (fun _ h => h)
-        (fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h])) (rinv_stateOf _ _ _)]
+        (fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])) (rinv_stateOf _ _ _)]
   | .tRef A, hv => by
     rw [tyShape, tyShape]
-    exact tyShape_congrE hK A fun l h => hv l (by simp [Value.hasLoan] at h ⊢; simp [Value.anyAtom, h])
-  | .zero, _ | .succ _, _ | .unit, _ | .gfn _, _ | .clo _ _ _, _ | .borrow _ _, _ | .loan _, _ | .bot, _ | .abs _, _
+    exact tyShape_congrE hK A fun l h => hv l (by simp [Value.hasLoanM] at h ⊢; simp [Value.anyAtom, h])
+  | .zero, _ | .succ _, _ | .unit, _ | .gfn _, _ | .clo _ _ _, _ | .borrow _ _, _ | .gloan _ _, _ | .loan _, _ | .bot, _ | .abs _, _
   | .sealed _, _ | .proof, _ | .tNat, _ | .tUnit, _ | .tEq _ _ _, _ | .sort _, _ | .ind _ _ _ _ _, _ | .tInd _ _, _ => by
     simp only [tyShape]
 
 theorem tyDataV_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (T : Value),
-    (∀ l, T.hasLoan l = true → φ l = φ' l) → tyDataV K ρ φ T = tyDataV K ρ φ' T
+    (∀ l, T.hasLoanM l = true → φ l = φ' l) → tyDataV K ρ φ T = tyDataV K ρ φ' T
   | .tInd n args, hv => by
     rw [tyDataV, tyDataV]
     split
     · rename_i d _
-      rw [meanParams_congrE hK d args _ _ fun l h => hv l (by simp [Value.hasLoan, Value.anyAtom, h])]
+      rw [meanParams_congrE hK d args _ _ fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])]
     · rfl
   | .tRef A, hv => by
     rw [tyDataV, tyDataV]
-    exact tyDataV_congrE hK A fun l h => hv l (by simp [Value.hasLoan] at h ⊢; simp [Value.anyAtom, h])
-  | .zero, _ | .succ _, _ | .unit, _ | .gfn _, _ | .clo _ _ _, _ | .borrow _ _, _ | .loan _, _ | .bot, _ | .abs _, _
+    exact tyDataV_congrE hK A fun l h => hv l (by simp [Value.hasLoanM] at h ⊢; simp [Value.anyAtom, h])
+  | .zero, _ | .succ _, _ | .unit, _ | .gfn _, _ | .clo _ _ _, _ | .borrow _ _, _ | .gloan _ _, _ | .loan _, _ | .bot, _ | .abs _, _
   | .sealed _, _ | .proof, _ | .tNat, _ | .tUnit, _ | .tEq _ _ _, _ | .sort _, _ | .ind _ _ _ _ _, _ | .tPi _ _ _, _ => by
     simp only [tyDataV]
 
@@ -1181,7 +1184,7 @@ theorem meanFields_congrE (hK : ∀ n, (K.C.global n).2.label = none) (d : IndDe
   | [], _, _, _ => rfl
   | v :: vs, i, earlier, hv => by
     simp only [meanFields]
-    rw [meanV_congrE hK v _ (fun l h => hv l (by simp [Value.hasLoan] at h; simp [Value.anyAtomList, h])),
+    rw [meanV_congrE hK v _ (fun l h => hv l (by simp [Value.hasLoanM] at h; simp [Value.anyAtomList, h])),
       meanFields_congrE hK d ps c vs _ _ (fun l h => hv l (by simp [Value.anyAtomList, h]))]
 
 theorem meanParams_congrE (hK : ∀ n, (K.C.global n).2.label = none) (d : IndDecl) :
@@ -1191,7 +1194,7 @@ theorem meanParams_congrE (hK : ∀ n, (K.C.global n).2.label = none) (d : IndDe
   | [], _, _, _ => rfl
   | v :: vs, i, earlier, hv => by
     simp only [meanParams]
-    rw [meanV_congrE hK v _ (fun l h => hv l (by simp [Value.hasLoan] at h; simp [Value.anyAtomList, h])),
+    rw [meanV_congrE hK v _ (fun l h => hv l (by simp [Value.hasLoanM] at h; simp [Value.anyAtomList, h])),
       meanParams_congrE hK d vs _ _ (fun l h => hv l (by simp [Value.anyAtomList, h]))]
 
 

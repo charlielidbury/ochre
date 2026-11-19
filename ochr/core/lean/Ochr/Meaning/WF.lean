@@ -27,7 +27,7 @@ sealed program whose borrow is outside the run is inert and may occur any number
 closure's or Π-closure's code embeds no live loan (WF4), so only their captures are read. -/
 def _root_.Ochr.Value.outerLoans : Value → List Nat
   | .loan l => [l]
-  | .succ w | .tRef w | .borrow _ w => w.outerLoans
+  | .succ w | .tRef w | .borrow _ w | .gloan _ w => w.outerLoans
   | .tEq A a b => A.outerLoans ++ a.outerLoans ++ b.outerLoans
   | .clo cs _ _ | .tPi cs _ _ => Value.outerLoansList cs
   | .ind _ _ _ ps fs => Value.outerLoansList ps ++ Value.outerLoansList fs

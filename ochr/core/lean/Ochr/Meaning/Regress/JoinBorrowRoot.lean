@@ -28,7 +28,11 @@ label (`old_access_depends`); `joinAccess`, the fix, accesses nothing at a root 
 open Ochr.Test
 
 ochr JoinBorrowRoot uses Nats {
-  def RJ (a : Nat) (b : Nat) : Nat := (
+  -- REJECTED since main's D90: the match is not in tail position, and its entry accesses what the
+  -- stuck block would capture, `r` by move (arm `Z` reads it whole), which ends `s` before the
+  -- arm runs, on every path (D90's known gap `EK` against Rust). The finding it carried stands:
+  -- the join's drop of a borrow root ends that borrow only (`joinAccess_borrow_root`).
+  reject def RJ (a : Nat) (b : Nat) : Nat := (
     let x = (a, b);
     let r = &x;
     let s = &(*r).0;
