@@ -43,7 +43,8 @@ states from which a match's join and `Id` differ). OPEN (D25): `Rel` does not pi
 state at other values of an early-ended label, and [Access] reads them.
 MIGRATED: `evalCore_step_stmt`, `eval_step_stmt`, `letIn_step_stmt` (the three refuted); the match
 area (`evalMatch`, `evalMatchInd`, `evalMatchByType`, `closeBlock`, and the join's `joinEntry_stmt`,
-`joinDrop_step_stmt`). NOT YET:
+`joinDrop_step_stmt`); the observation area (`observe`, `footprint_coverage`, `idType`) and `eq`
+(D26). NOT YET:
 every other statement here with a `Below (MState.mean … st') s'.toMean` conjunct against a run
 from `SM'` (the leaves: read, borrow, assign, access, drop, pop; matches, calls, `J`, [Close], the
 tail forms). Do not start a step proof against a `Below` conjunct.
@@ -708,42 +709,76 @@ def exitWorld_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
     st'.neutrals = w.saved.neutrals ∧ st'.etaRefs = w.saved.etaRefs ∧ st'.goal = w.saved.goal ∧
     Good K.dm K.M K.Γ ρ st'
 
-/-- `observe` (a side on a private copy, a fresh `σ` written through each re-pointed binding
-([Obs-ref]), every borrow ended, the result and the owners read): for the written values `ws`
-the fresh unknowns mean under the extended assignment, the result and each observed owner mean
-their components of the reference observation at the owners' positions; the state is unchanged
-(a copy). -/
+/-! ### The observation area, in the simulation form (docs/31 D26; third lead)
+
+`observe` and `idType` run their sides on private copies, so the checker's Ω is unchanged
+(`st'.env = st.env`; the counters, the records and the types of the unknowns created inside
+survive, D23, so the core is not) and the reference state is untouched. The values the checker
+returns are read under an assignment extended at the unknowns created inside, among them the
+fresh values [Obs-ref] writes through the re-pointed bindings. -/
+
+/-- `observe` (a side on a private copy, the fresh values `refs` written through the re-pointed
+bindings ([Obs-ref]), every borrow ended, the result and the owners read), from a related state:
+the reference's side run does not fail, and the checker's result and each observed owner mean
+their components of the reference observation, for the written values the fresh unknowns mean.
+The side is run at the hint `A`, as the checker runs it. -/
 def observe_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (t : Term) (A : Value) (W : List Pos)
-    (r : Value) (ws : List Value)
+    (refs : List (Place × Value)) (r : Value) (ws : List Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.observe fuel typed t A W) st fuel (r, ws) st'),
-    st'.core = st.core ∧
-    ∃ o, ∃ wsS, refObs K ρ φ (K.D.rePointed (scopeOf (SM' K ρ st)) t) wsS (.plain (meanV K ρ noFuture (.plain .err) A).asTy) t (SM' K ρ st) = some o ∧
-      o[0]? = some (meanV K ρ φ (.plain (meanV K ρ noFuture (.plain .err) A).asTy) r) ∧
-      ∀ (i j : Nat) (p : Pos), W[i]? = some p → (SM' K ρ st).positions[j]? = some p →
-        ws[i]?.map (meanV K ρ φ (.plain .err)) = o.tail[j]?
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (h : Runs (Ochr.observe fuel typed t A W refs) st fuel (r, ws) st'),
+    st'.env = st.env ∧
+    ∀ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) → TypedAssignment K.dm K.M K.Γ ρ' st' →
+      ∃ o, refObs K ρ' φ (refs.map (·.1)) (refs.map fun x => meanV K ρ' noFuture (.plain .err) x.2)
+          (Value.tyS K.dm K.M K.Γ ρ A) t s = some o ∧
+        o[0]? = some (meanV K ρ' (fun l => φ (π l)) (Value.tyS K.dm K.M K.Γ ρ A) r) ∧
+        ∀ (i j : Nat) (p : Pos), W[i]? = some p → s.positions[j]? = some p →
+          ws[i]?.map (meanV K ρ' (fun l => φ (π l)) (Env.hintAt K.dm K.M K.Γ ρ st.env p)) = o.tail[j]?
 
-/-- Footprint coverage (docs/18 "Footprint coverage", the third of the five lemmas): a position
-outside the footprint of the two sides means the same after either side. -/
+/-- Footprint coverage (docs/18 "Footprint coverage", the third of the five lemmas), from a
+related state: a position that was there when the sides started and is outside the footprint of
+the two means the same after either side, GIVEN that the two leave the same type-state
+([Id-typestate]: the same places moved, the same borrow bindings consumed, re-pointed and left
+open). Without that hypothesis it was false: the footprint lists what the sides write or borrow,
+not what they move, and a place one side moves and the other does not is outside it. -/
 def footprint_coverage_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st : MState) (A t u : Term) (p : Pos) (o₁ o₂ : List Sem) (j : Nat) (reps : List Place) (ws : List Sem)
+  ∀ (st st₁ st₂ : MState) (A t u : Term) (p : Pos) (o₁ o₂ : List Sem) (j : Nat) (reps : List Place) (ws : List Sem)
+    (hint : TyS) (tsT tsU : TypeState)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hp : p ∉ footprint st.env [t, u]) (hj : (SM' K ρ st).positions[j]? = some p)
-    (h₁ : refObs K ρ φ reps ws (.plain (meanV K ρ noFuture (.plain .err) (.sealed A)).asTy) t (SM' K ρ st) = some o₁)
-    (h₂ : refObs K ρ φ reps ws (.plain (meanV K ρ noFuture (.plain .err) (.sealed A)).asTy) u (SM' K ρ st) = some o₂),
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (htT : Runs (withLive true (Ochr.typeState fuel t)) st fuel tsT st₁)
+    (htU : Runs (withLive true (Ochr.typeState fuel u)) st fuel tsU st₂)
+    (hmv : jdMissing tsT.moved tsU.moved = none ∧ jdMissing tsU.moved tsT.moved = none)
+    (hcs : jdMissing tsT.consumed tsU.consumed = none ∧ jdMissing tsU.consumed tsT.consumed = none)
+    (hrp : jdMissing tsT.repointed tsU.repointed = none ∧ jdMissing tsU.repointed tsT.repointed = none)
+    (hlo : jdMissing tsT.leftOpen tsU.leftOpen = none ∧ jdMissing tsU.leftOpen tsT.leftOpen = none)
+    (hp : p ∉ footprint st.env [t, u]) (hj : s.positions[j]? = some p)
+    (h₁ : refObs K ρ φ reps ws hint t s = some o₁)
+    (h₂ : refObs K ρ φ reps ws hint u s = some o₂),
     o₁.tail[j]? = o₂.tail[j]?
 
-/-- `Id` computes (`idType`): the conjunction over the result and the footprint's owners means
-the reference's `Id`, the equality of the two observations; exact, and the state's core is
-unchanged. -/
+/-- `Id` computes (`idType`), from a related state: the checker's Ω is unchanged, the reference's
+run of `Id` does not fail and leaves its state, and under SOME assignment of the unknowns created
+(the fresh values [Obs-ref] wrote: a member of the borrowed type at which the two sides differ,
+where there is one) the checker's conjunction over the result and the footprint's owners is true
+exactly when the reference's `Id` is, and it is true under EVERY such assignment when the
+reference's is.
+
+As first stated the last conjunct read `(run … = some (r, s') ∧ ⟦P⟧ true) ↔ ⟦r⟧ true` under
+`∃ r s'` (`∧` binds tighter than `↔`), which any `r` that is not the run's result satisfies: it
+said nothing (`Regress/IdUnitWrite.old_stmt_vacuous`). -/
 def idType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (A t u : Term) (P : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (h : Runs (Ochr.idType fuel typed A t u) st fuel P st'),
-    st'.core = st.core ∧
-    ∃ r s', run K ρ φ (.plain .err) (.id A t u) (SM' K ρ st) = some (r, s') ∧
-      ((meanV K ρ φ (.plain .err) P).asTy).true ↔ (r.1.asTy).true
+    st'.env = st.env ∧
+    ∃ r, run K ρ φ (.plain .err) (.id A t u) s = some (r, s) ∧
+      (∃ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ Good K.dm K.M K.Γ ρ' st' ∧
+        (((meanV K ρ' (fun l => φ (π l)) (.plain .err) P).asTy).true ↔ (r.1.asTy).true)) ∧
+      ((r.1.asTy).true → ∀ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) → TypedAssignment K.dm K.M K.Γ ρ' st' →
+        ((meanV K ρ' (fun l => φ (π l)) (.plain .err) P).asTy).true)
 
 /-- Owners (RULES §4): every position `owners env l` lists holds, directly or through the content
 of a borrow it holds, a loan of `l`; and conversely every position whose meaning depends on `l`
@@ -1005,15 +1040,20 @@ def letIn_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : 
       Rel K ρ' φ π' st' s' ∧ Good K.dm K.M K.Γ ρ' st'
 
 /-- `Eq` (the `.eq` form): both sides on private copies, the type a statement; the result means
-`⟦a⟧ = ⟦b⟧` (`Steps/Eq.mkEqM_step`), and the state's core is unchanged. -/
+`⟦a⟧ = ⟦b⟧` (`Steps/Eq.mkEqM_step`), the checker's Ω is unchanged and the reference state is
+untouched. From a related state. (As first stated the last conjunct was
+`(run … = some (r, s') ∧ ⟦v⟧ true) ↔ ⟦r⟧ true` under `∃ r s'`, which said nothing:
+`Regress/IdUnitWrite.old_stmt_vacuous`.) -/
 def eq_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (A a b : Term) (hint : Option Value)
     (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (h : Runs (Ochr.evalCore fuel typed (.eq A a b) hint) st fuel (v, T?) st'),
-    st'.core = st.core ∧
-    ∃ r s', run K ρ φ (.plain .err) (.eq A a b) (SM' K ρ st) = some (r, s') ∧
-      ((meanV K ρ φ (.plain .err) v).asTy).true ↔ (r.1.asTy).true
+    st'.env = st.env ∧
+    ∃ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ Good K.dm K.M K.Γ ρ' st' ∧
+      ∃ r, run K ρ' φ (.plain .err) (.eq A a b) s = some (r, s) ∧
+        (((meanV K ρ' (fun l => φ (π l)) (.plain .err) v).asTy).true ↔ (r.1.asTy).true)
 
 /-- `J`, both outcomes: computed at convertible endpoints (the transported term runs in place)
 or closed off as a stuck block whose one arm is the transported term ([T-J-stuck]); each means

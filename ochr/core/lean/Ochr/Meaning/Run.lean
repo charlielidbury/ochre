@@ -487,6 +487,19 @@ noncomputable def observation (reps : List Place) (ws : List Sem) (ps₀ : List 
   let s := s.liveLabels.foldl SState.endLabel s
   r.1 :: ps₀.map fun p => s.valAt p φ
 
+/-- The values [Obs-ref] writes are of the re-pointed bindings' content types: one for each, a
+member of the type its binding is declared at (a borrow binding's type is its content's). The
+checker writes a fresh unknown of the borrowed type (`Machine.idType`: `absAt … T'`), which under
+every assignment is every MEMBER of it. As first written `Id` ranged over every meaning, typed or
+not, and was false where the checker's is true: two sides that re-point a borrow of a `Unit` at
+different places (docs/31 D26, `Regress/IdUnitWrite.lean`). -/
+def obsTyped (reps : List Place) (ws : List Sem) (s : SState) : Prop :=
+  ws.length = reps.length ∧
+  ∀ (i : Nat) (q : Place) (w : Sem), reps[i]? = some q → ws[i]? = some w →
+    match resolve s q with
+    | some (pos, _) => w ∈ₛ (s.tyAt pos).m
+    | none => True
+
 /-- The shape of a Π-term: its parameters' and output's meanings as functions of the earlier
 parameters, read in a state. Used by `.pi`, `.fix`, `.val` of a closure, and `codeMeaning`. -/
 structure PiShape : Type 3 where
@@ -749,13 +762,13 @@ noncomputable def run (hint : TyS) : Term → SM Res
     -- `Id` observes: each side on a copy of the state, a fresh value written through each
     -- re-pointed borrow binding ([Obs-ref]), every borrow ended, the result and every position
     -- compared (D84: moved places are definite values, so they compare too); the proposition
-    -- holds for every choice of the written values
+    -- holds for every choice of the written values among the members of the borrowed types
     let ((TA, RA), _) ← SM.onCopy (run (.plain .err) A) s
     let T : TyS := ⟨TA.asTy, RA.shape, none, RA.data⟩
     let reps := K.D.rePointed (scopeOf s) t
     let o₁ ← run T t s
     let o₂ ← run T u s
-    some ((.ty (.prop (∀ ws : List Sem,
+    some ((.ty (.prop (∀ ws : List Sem, obsTyped reps ws s →
       observation φ reps ws s.positions o₁.1 o₁.2 = observation φ reps ws s.positions o₂.1 o₂.2)), .plain (.univ 0)), s)
   | .prim "J" [A, a, b, P, h, t] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "J" [A, a, b, P, h, t])) (do
     -- `J` means its transported term; its endpoints, motive and proof are statements on copies
