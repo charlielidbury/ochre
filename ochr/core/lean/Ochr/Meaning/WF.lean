@@ -178,31 +178,27 @@ def WF12 (env : Env) : Prop :=
       (pathKey x.path).isPrefixOf (pathKey y.path) = true → pathKey y.path ≠ pathKey x.path →
       ∃ z ∈ Env.sitesOf env l, z.pos = x.pos ∧ (pathKey z.path).isPrefixOf (pathKey x.path) = true
 
-/-- A value agrees with the structured type it is read at, on every path (docs/31 D31): at a
-constructor value the type names the value's own declaration (data, not `Prop`) at its recorded
-parameters' meanings, and each field after whole earlier fields agrees with the hint its
-declaration reads it at; at `S` the type is the number type; marks and borrows are transparent.
-A field after a moved one is not constrained: its declared type may read the moved field, so its
-hint names junk parameters (the checker types such a field by its content, `valType?`); the
-reference's way into it is D29's row-4 residual, not this clause's. -/
+/-- A value agrees with the structured type it is read at, at its top constructor (docs/31 D31):
+at a constructor value the type names the value's own declaration (data, not `Prop`) at its
+recorded parameters' meanings; at `S` the type is the number type; marks and borrows are
+transparent. Its fields are NOT constrained: a field's declared hint is computed from the earlier
+fields' current contents, which a write or a move can change while the field keeps its value (an
+open value, D64): as first stated, every field agreeing with its declared hint, it was false after
+an ordinary move of an earlier field (`MkDep(n, v : Vec(n))`), and as then restricted (fields after
+whole earlier fields) false after a write of an earlier field (`Regress/OpenWriteDep.lean`, `OWK`).
+Navigation below the top constructor is D32's question. -/
 def DataAll (ρ : Assignment) (φ : Future) : TyS → Value → Prop
   | H, .borrow _ w => DataAll ρ φ H w
   | H, .gloan _ w => DataAll ρ φ H w
   | H, .succ w => H.isNat Γ ∧ DataAll ρ φ (.plain (.ty0 Nat)) w
-  | H, .ind ty c _ ps fs =>
+  | H, .ind ty _ _ ps _ =>
     ∃ d, Γ.find? (·.name == ty) = some d ∧ d.sort ≠ 0 ∧
-      H.dataDecl Γ = some (d, Value.meanParams dm C Γ ρ φ d 0 [] ps) ∧
-      ∀ i w, fs[i]? = some w →
-        (∀ e ∈ (Value.meanFields dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c 0 [] fs).take i, e.whole) →
-        DataAll ρ φ (fieldHint dm d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c i
-          ((Value.meanFields dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c 0 [] fs).take i)) w
+      H.dataDecl Γ = some (d, Value.meanParams dm C Γ ρ φ d 0 [] ps)
   | _, _ => True
-termination_by _ v => sizeOf v
-decreasing_by all_goals (simp_wf; try (have := List.sizeOf_lt_of_mem (List.mem_of_getElem? ‹_›); omega)) <;> omega
 
-/-- (WF13) Every binding's value agrees with its stored type (docs/31 D31: the reference decodes a
-constructor value by its type's declaration name and parameters, which is the value's own decoding
-exactly when they agree). A typing fact of the checker (it converts a constructor's type to the
+/-- (WF13) Every binding's value agrees with its stored type at its top constructor (docs/31 D31:
+the reference decodes a constructor value by its type's declaration name and parameters, which is
+the value's own decoding exactly when they agree). A typing fact of the checker (it converts a constructor's type to the
 position's, parameter by parameter, and types each field by its declared type), read off it, NOT
 proved preserved. Parameter-typed fields rest on D8's open item (`fieldData` at a `par j` field). -/
 def WF13 (ρ : Assignment) (st : MState) : Prop :=
