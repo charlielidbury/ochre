@@ -20,6 +20,8 @@ structure StepsIH (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Pr
   dropTopBind_step : dropTopBind_step_stmt K ρ φ fuel
   popFrame_step : popFrame_step_stmt K ρ φ fuel
   substV_loan_step : substV_loan_step_stmt K ρ φ fuel
+  substV_loan_keeps : substV_loan_keeps_stmt K ρ φ fuel
+  closeCall_hole : closeCall_hole_stmt K ρ φ fuel
   substV_abs_step : substV_abs_step_stmt K ρ φ fuel
   substEnv_loan_step : substEnv_loan_step_stmt K ρ φ fuel
   substEnv_abs_step : substEnv_abs_step_stmt K ρ φ fuel
