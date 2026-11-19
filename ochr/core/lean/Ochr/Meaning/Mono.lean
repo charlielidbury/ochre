@@ -119,6 +119,15 @@ theorem valAt_mapVals (s : SState) (g : Pos → SVal → SVal) (p : Pos) :
 @[simp] theorem positions_withShape (s : SState) (sh : Pos → Option Nat) :
     ({ s with shape := sh } : SState).positions = s.positions := rfl
 
+@[simp] theorem valid_withShapeLent (s : SState) (sh : Pos → Option Nat) (le : Nat → List Site) (p : Pos) :
+    ({ s with shape := sh, lent := le } : SState).Valid p = s.Valid p := rfl
+
+@[simp] theorem valAt_withShapeLent (s : SState) (sh : Pos → Option Nat) (le : Nat → List Site) (p : Pos) :
+    ({ s with shape := sh, lent := le } : SState).valAt p = s.valAt p := rfl
+
+@[simp] theorem positions_withShapeLent (s : SState) (sh : Pos → Option Nat) (le : Nat → List Site) :
+    ({ s with shape := sh, lent := le } : SState).positions = s.positions := rfl
+
 theorem positions_mapVals (s : SState) (g : Pos → SVal → SVal) : (s.mapVals g).positions = s.positions := by
   simp [positions, mapVals, Std.Legacy.Range.forIn'_eq_forIn'_range',
     Std.Legacy.Range.forIn_eq_forIn_range', Std.Legacy.Range.size]
@@ -126,7 +135,7 @@ theorem positions_mapVals (s : SState) (g : Pos → SVal → SVal) : (s.mapVals 
 /-- [End] at a label with a holder `r`, unfolded. -/
 theorem endLabel_of_find (s : SState) (l : Nat) (r : Pos)
     (h : s.positions.find? (fun p => decide (s.shape p = some l)) = some r) :
-    s.endLabel l = ({ s with shape := (s.toMean.semEnd r l).shape }).mapVals
+    s.endLabel l = ({ s with shape := (s.toMean.semEnd r l).shape, lent := s.relend l r }).mapVals
       fun p _ => ((s.toMean.semEnd r l).val · p) := by
   unfold endLabel; rw [h]
 
@@ -142,7 +151,7 @@ theorem endLabel_val (s : SState) (l : Nat) (r : Pos)
     (h : s.positions.find? (fun p => decide (s.shape p = some l)) = some r)
     (φ : Future) (q : Pos) (hq : s.Valid q ∨ q ≠ r) :
     (s.endLabel l).valAt q φ = (s.toMean.semEnd r l).val φ q := by
-  rw [endLabel_of_find s l r h, valAt_mapVals, valid_withShape]
+  rw [endLabel_of_find s l r h, valAt_mapVals, valid_withShapeLent]
   by_cases hv : s.Valid q
   · rw [if_pos hv]
   · rw [if_neg hv]
@@ -173,7 +182,7 @@ theorem endLabel_below (s : SState) (l : Nat) : Below (s.endLabel l).toMean s.to
         · exact .moved _
         · exact Sem.le_refl _
       · have e : (s.endLabel l).valAt p = fun _ => .err := by
-          rw [endLabel_of_find s l r h, valAt_mapVals, valid_withShape, if_neg hv]
+          rw [endLabel_of_find s l r h, valAt_mapVals, valid_withShapeLent, if_neg hv]
         rw [e, valAt_of_not_valid s p hv]
         exact Sem.le_refl _
     · change (s.endLabel l).shape p = some l' at hp
@@ -193,9 +202,9 @@ theorem foldl_endLabel_below (ls : List Nat) (s : SState) : Below (ls.foldl endL
 and every reference step that reads, borrows or matches a place through `contentOf`). The
 reference's access is a fold of [End]s, iterated, so it is `Below` its input by
 `endLabel_below`; which labels it picks does not matter here. -/
-theorem access_below (s : SState) (p : Pos) (o : Sem → Sem) : Below (s.access p o).toMean s.toMean := by
+theorem access_below (s : SState) (p : Pos) (hit : List Step → Bool) : Below (s.access p hit).toMean s.toMean := by
   have iter : ∀ (ns : List Nat) (t : SState), Below (ns.foldl (fun t _ =>
-      (t.liveLabels.filter fun l => decide (t.obsDep p o l)).foldl endLabel t) t).toMean t.toMean := by
+      (t.liveLabels.filter (t.reached p hit)).foldl endLabel t) t).toMean t.toMean := by
     intro ns
     induction ns with
     | nil => intro t; exact Below.refl _
@@ -308,7 +317,7 @@ theorem find_endLabel (s : SState) {l l' : Nat} (hl : l ≠ l') :
   | none => rw [endLabel_of_find_none s l h]
   | some r =>
     have hr := shape_of_find h
-    rw [endLabel_shape s l r h, endLabel_of_find s l r h, positions_mapVals, positions_withShape]
+    rw [endLabel_shape s l r h, endLabel_of_find s l r h, positions_mapVals, positions_withShapeLent]
     congr 1
     funext p
     by_cases hp : p = r
@@ -321,12 +330,13 @@ theorem endLabel_endLabel (s : SState) {l₁ l₂ : Nat} {r₁ r₂ : Pos}
     (h₂ : (s.endLabel l₁).positions.find? (fun p => decide ((s.endLabel l₁).shape p = some l₂)) = some r₂)
     (hr : r₂ ≠ r₁) :
     (s.endLabel l₁).endLabel l₂ =
-      ({ s with shape := ((s.toMean.semEnd r₁ l₁).semEnd r₂ l₂).shape }).mapVals
+      ({ s with shape := ((s.toMean.semEnd r₁ l₁).semEnd r₂ l₂).shape, lent := (s.endLabel l₁).relend l₂ r₂ }).mapVals
         fun p _ => (((s.toMean.semEnd r₁ l₁).semEnd r₂ l₂).val · p) := by
   rw [endLabel_of_find _ l₂ r₂ h₂]
-  have e : ({ s.endLabel l₁ with shape := ((s.endLabel l₁).toMean.semEnd r₂ l₂).shape } : SState) =
-      ({ s with shape := ((s.toMean.semEnd r₁ l₁).semEnd r₂ l₂).shape } : SState).mapVals
+  have e : ({ env := (s.endLabel l₁).env, shape := ((s.endLabel l₁).toMean.semEnd r₂ l₂).shape, nextLoan := (s.endLabel l₁).nextLoan, lent := (s.endLabel l₁).relend l₂ r₂ } : SState) =
+      ({ s with shape := ((s.toMean.semEnd r₁ l₁).semEnd r₂ l₂).shape, lent := (s.endLabel l₁).relend l₂ r₂ } : SState).mapVals
         fun p _ => ((s.toMean.semEnd r₁ l₁).val · p) := by
+    generalize (s.endLabel l₁).relend l₂ r₂ = L₂
     rw [endLabel_of_find s l₁ r₁ h₁]; rfl
   rw [e, mapVals_mapVals]
   apply mapVals_congr
@@ -343,13 +353,13 @@ occurring in it, which needs that of `CodeMeaning.sealed`/`clo`/`pi` as a law. -
 def LoanDeps (s : SState) (l k : Nat) : Prop := ∃ r, s.shape r = some k ∧ s.dependsOn r l
 
 /-- **Two [End]s commute** under (WF3): if the contents of `l₁` and `l₂` do not depend on each
-other both ways, ending them in either order gives the *same* semantic state (not only states
-`Below` each other both ways). Either label may be held nowhere. Milestone 3: the [Access] step
+other both ways, ending them in either order gives the *same* meaning (not only meanings `Below`
+each other both ways; the sites agree too, as sets, which is not stated here). Either label may be held nowhere. Milestone 3: the [Access] step
 lemma (the checker ends every borrow whose loan occurs, in its own order; the reference ends, in
 label order, those the meaning depends on), and `observation`'s end of every live borrow. -/
 theorem endLabel_comm (s : SState) {l₁ l₂ : Nat} (hl : l₁ ≠ l₂)
     (hacyc : ¬ (s.LoanDeps l₂ l₁ ∧ s.LoanDeps l₁ l₂)) :
-    (s.endLabel l₁).endLabel l₂ = (s.endLabel l₂).endLabel l₁ := by
+    ((s.endLabel l₁).endLabel l₂).toMean = ((s.endLabel l₂).endLabel l₁).toMean := by
   cases h₁ : s.positions.find? (fun p => decide (s.shape p = some l₁)) with
   | none =>
     have h₁' := (find_endLabel s hl.symm).trans h₁
@@ -370,6 +380,7 @@ theorem endLabel_comm (s : SState) {l₁ l₂ : Nat} (hl : l₁ ≠ l₂)
     rw [endLabel_endLabel s h₁ ((find_endLabel s hl).trans h₂) hr.symm,
       endLabel_endLabel s h₂ ((find_endLabel s hl.symm).trans h₁) hr,
       Mean.semEnd_comm _ hr hl hind]
+    rfl
 
 /-- A well-founded relation has no cycle of length two. -/
 theorem _root_.WellFounded.no_two_cycle {α : Sort _} {r : α → α → Prop} (h : WellFounded r) (a b : α)
@@ -386,7 +397,7 @@ def SWF3 (s : SState) : Prop := WellFounded s.LoanDeps
 
 /-- Under (WF3), any two distinct labels' ends commute. -/
 theorem endLabel_comm_of_SWF3 (s : SState) (hwf : s.SWF3) {l₁ l₂ : Nat} (hl : l₁ ≠ l₂) :
-    (s.endLabel l₁).endLabel l₂ = (s.endLabel l₂).endLabel l₁ :=
+    ((s.endLabel l₁).endLabel l₂).toMean = ((s.endLabel l₂).endLabel l₁).toMean :=
   endLabel_comm s hl fun ⟨a, b⟩ => hwf.no_two_cycle l₂ l₁ a b
 
 end SState
@@ -536,6 +547,25 @@ keeps a field step through a one-constructor type (`jdGrain`), so `x.0` of a pai
 is a definite change, not a loss of information, which is why the match statements compare the
 checker's post-state with the reference's post-state rather than asking the drop to be `Below`
 its input. -/
+theorem accessLentPrefix_below (K : RunCtx) (pos : Pos) (steps : List Step) (s : SState) :
+    Below (accessLentPrefix pos steps s).toMean s.toMean := by
+  unfold accessLentPrefix
+  split
+  · exact SState.access_below s pos _
+  · exact Below.refl _
+
+theorem dropAt_below (K : RunCtx) (φ : Future) (q : Place) (pos : Pos) (steps : List Step) (s : SState)
+    (hd : ∀ st ∈ steps, st = .deref) : Below (dropAt K φ q pos steps s).toMean s.toMean := by
+  unfold dropAt
+  split
+  all_goals first
+    | exact Below.refl _
+    | (split
+       · exact SState.endLabel_below _ _
+       · split
+         · exact Below.refl _
+         · exact (setAt_derefs_below K _ pos _ hd).trans (SState.access_below _ _ _))
+
 theorem joinDrop_below (K : RunCtx) (φ : Future) (entry : List Place) (t : Term) (s : SState)
     (hroot : ∀ q ∈ K.D.joinMoves (scopeOf s) entry t, ∀ st ∈ q.steps.2, st = .deref) :
     Below (joinDrop K φ entry t s).toMean s.toMean := by
@@ -547,27 +577,11 @@ theorem joinDrop_below (K : RunCtx) (φ : Future) (entry : List Place) (t : Term
     rw [List.foldl_cons]
     refine (ih _ fun q' hq' => hroot q' (List.mem_cons_of_mem _ hq')).trans ?_
     split
+    · next pos steps hres =>
+      have hd : ∀ st ∈ steps, st = .deref := by
+        rw [resolve_steps hres]; exact hroot q (List.mem_cons_self ..)
+      exact (dropAt_below K φ q pos steps _ hd).trans (accessLentPrefix_below K pos steps s)
     · exact Below.refl _
-    · split
-      · next pos steps hres =>
-        have hd : ∀ st ∈ steps, st = .deref := by
-          rw [resolve_steps hres]; exact hroot q (List.mem_cons_self ..)
-        refine Below.trans ?_ (show Below (joinAccess K s pos steps).toMean s.toMean by
-          rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
-          all_goals first | exact Below.refl _ | exact SState.access_below s pos _)
-        dsimp only
-        generalize joinAccess K s pos steps = s₁
-        rcases hf : Sem.follow K.dm K.Γ (s₁.tyAt pos).m (s₁.valAt pos (s₁.closedFuture φ)) steps with _ | ⟨v, T⟩
-        · exact Below.refl _
-        · cases v <;> first
-            | exact Below.refl _
-            | refine (setAt_derefs_below K _ pos steps hd).trans ?_
-              split
-              · split
-                · exact SState.endLabel_below _ _
-                · exact Below.refl _
-              · exact Below.refl _
-      · exact Below.refl _
 
 /-! ### The counterexample: a partial move at the join -/
 
@@ -646,7 +660,7 @@ theorem follow_eq : Sem.follow dm [decl] (.ty0 Unit) (.el0 Unit ()) [.proj 0] = 
   rfl
 
 /-- No label is live in `s`, so [Access] does nothing. -/
-theorem access_eq (p : Pos) (o : Sem → Sem) : s.access p o = s := by
+theorem access_eq (p : Pos) (hit : List Step → Bool) : s.access p hit = s := by
   have h0 : s.positions.filterMap s.shape = [] := List.filterMap_eq_nil_iff.mpr fun _ _ => rfl
   have h : s.liveLabels = [] := by simp only [SState.liveLabels, h0, List.mergeSort_nil]
   unfold SState.access
@@ -663,8 +677,12 @@ theorem joinDrop_not_below (φ : Future) (entry : List Place) (t : Term) :
   have hres : resolve s (.proj 0 (.var 0)) = some (.bind 0 0, [.proj 0]) := rfl
   have hj : joinDrop K φ entry t s = s.setAt (.bind 0 0) fun _ => w := by
     unfold joinDrop
-    simp only [K, D, List.foldl_cons, List.foldl_nil, Bool.false_eq_true, if_false, hres, joinAccess,
-      List.isEmpty_cons, Bool.false_and, access_eq]
+    have hlp : lentPrefix s (.bind 0 0) [.proj 0] = none := by
+      have h0 : s.positions.filterMap s.shape = [] := List.filterMap_eq_nil_iff.mpr fun _ _ => rfl
+      have h : s.liveLabels = [] := by simp only [SState.liveLabels, h0, List.mergeSort_nil]
+      simp [lentPrefix, h]
+    simp only [K, D, List.foldl_cons, List.foldl_nil, Bool.false_eq_true, if_false, hres, accessLentPrefix, hlp, dropAt,
+      access_eq]
     have e1 : (s.tyAt (.bind 0 0)).m = .ty0 Unit := rfl
     have e2 : s.valAt (.bind 0 0) = fun _ => .el0 Unit () := rfl
     have e3 : [Step.proj 0].isEmpty = false := rfl
@@ -713,7 +731,7 @@ namespace SState
 theorem positions_endLabel (s : SState) (l : Nat) : (s.endLabel l).positions = s.positions := by
   cases h : s.positions.find? (fun p => decide (s.shape p = some l)) with
   | none => rw [endLabel_of_find_none s l h]
-  | some r => rw [endLabel_of_find s l r h, positions_mapVals, positions_withShape]
+  | some r => rw [endLabel_of_find s l r h, positions_mapVals, positions_withShapeLent]
 
 theorem mem_liveLabels (s : SState) (l : Nat) : l ∈ s.liveLabels ↔ ∃ p ∈ s.positions, s.shape p = some l := by
   simp [liveLabels, List.mem_filterMap]
@@ -751,74 +769,6 @@ theorem liveLabels_foldl_endLabel_le (ls : List Nat) (s : SState) :
 
 end SState
 
-namespace SState
-
-/-- One round of [Access] at `p`: end, in label order, every live label `p` depends on. -/
-noncomputable def accessRound (p : Pos) (o : Sem → Sem) (s : SState) : SState :=
-  (s.liveLabels.filter fun l => decide (s.obsDep p o l)).foldl endLabel s
-
-theorem access_eq_rounds (s : SState) (p : Pos) (o : Sem → Sem) :
-    s.access p o = (List.range s.liveLabels.length).foldl (fun t _ => accessRound p o t) s := rfl
-
-/-- A round either finds nothing to end, and then `p` depends on no live label, or ends at least
-one live label. -/
-theorem accessRound_cases (s : SState) (p : Pos) (o : Sem → Sem) :
-    (accessRound p o s = s ∧ ∀ l ∈ s.liveLabels, ¬ s.obsDep p o l) ∨
-      (accessRound p o s).liveLabels.length < s.liveLabels.length := by
-  unfold accessRound
-  cases hF : s.liveLabels.filter (fun l => decide (s.obsDep p o l)) with
-  | nil =>
-    left
-    refine ⟨rfl, fun l hl hd => ?_⟩
-    have := List.filter_eq_nil_iff.mp hF l hl
-    simp [hd] at this
-  | cons l ls =>
-    right
-    have hl : l ∈ s.liveLabels := (List.mem_filter.mp (hF ▸ List.mem_cons_self ..)).1
-    exact Nat.lt_of_le_of_lt (liveLabels_foldl_endLabel_le ls _) (liveLabels_endLabel_lt s l hl)
-
-private theorem rounds_fixed (p : Pos) (o : Sem → Sem) (t : SState) (ht : accessRound p o t = t) :
-    ∀ ns : List Nat, ns.foldl (fun t _ => accessRound p o t) t = t := by
-  intro ns
-  induction ns with
-  | nil => rfl
-  | cons _ ns ih => rw [List.foldl_cons, ht, ih]
-
-private theorem rounds_post (p : Pos) (o : Sem → Sem) :
-    ∀ (ns : List Nat) (t : SState), t.liveLabels.length ≤ ns.length →
-      ∀ l ∈ (ns.foldl (fun t _ => accessRound p o t) t).liveLabels,
-        ¬ (ns.foldl (fun t _ => accessRound p o t) t).obsDep p o l := by
-  intro ns
-  induction ns with
-  | nil =>
-    intro t ht l hl
-    simp only [List.length_nil, Nat.le_zero, List.length_eq_zero_iff] at ht
-    simp [ht] at hl
-  | cons _ ns ih =>
-    intro t ht
-    rw [List.foldl_cons]
-    rcases accessRound_cases t p o with ⟨hfix, hpost⟩ | hlt
-    · rw [hfix, rounds_fixed p o t hfix]; exact hpost
-    · exact ih _ (by simp only [List.length_cons] at ht; omega)
-
-/-- **After [Access] at `p`, `p` depends on no live label** (the spine's form of the toy
-`access_post` and `read_post_live`, `Ochr/Model/State2.lean`). Each round ends every live label
-`p` depends on; a round that ends something leaves fewer live labels, and there are as many
-rounds as live labels at the start, so the last round finds nothing to end. Unconditional: no
-(WF1)–(WF3) is needed. Milestone 3: `Steps/Borrow.lean`'s `accessPath_step`/`accessInside_step`
-(their second conjunct: the accessed content no longer depends on a live label) and, through
-them, `readPlace_step` and `borrowPlace_step`.
-
-"Depends" is `Mean.dependsOn`, a change of one label's final content. That the content is then
-the same under *every* future needs, in addition, that it reads the future only at live labels
-(`SState.LocalTo`, as in `observation_const` below): a meaning can be unmoved by each single
-label and still read infinitely many. -/
-theorem access_post (s : SState) (p : Pos) (o : Sem → Sem) :
-    ∀ l ∈ (s.access p o).liveLabels, ¬ (s.access p o).obsDep p o l := by
-  rw [access_eq_rounds]
-  exact rounds_post p o _ s (by simp)
-
-end SState
 
 /-! ## Ending every live borrow: what an observation reads -/
 
@@ -867,7 +817,7 @@ theorem endLabel_dependsOn {s : SState} {k : Nat} {r : Pos}
     rw [← endLabel_val s k r h φ p (.inl hv), ← endLabel_val s k r h _ p (.inl hv)]
     exact hne
   · have e : (s.endLabel k).valAt p = fun _ => .err := by
-      rw [endLabel_of_find s k r h, valAt_mapVals, valid_withShape, if_neg hv]
+      rw [endLabel_of_find s k r h, valAt_mapVals, valid_withShapeLent, if_neg hv]
     exfalso
     apply hne
     show (s.endLabel k).valAt p φ = (s.endLabel k).valAt p (φ.upd l x)
@@ -1003,7 +953,7 @@ theorem endLabel_localTo {s : SState} {L : Nat → Prop} (h : s.LocalTo L) (k : 
   | none => rw [endLabel_of_find_none s k hf]; exact h
   | some r =>
     intro p φ φ' hφ
-    rw [endLabel_of_find s k r hf, valAt_mapVals, valid_withShape]
+    rw [endLabel_of_find s k r hf, valAt_mapVals, valid_withShapeLent]
     split
     · simp only [Mean.semEnd, toMean]
       split
@@ -1135,6 +1085,9 @@ is held nowhere (`freshLoan_fresh`). On `MState.sstate` this is the freshness ha
 `borrow ℓ w` is not among a value's loans (`Value.loans (.borrow _ w) = w.loans`). -/
 def ShapeBelow (s : SState) : Prop := ∀ p l, s.shape p = some l → l < s.nextLoan
 
+theorem shapeBelow_setLent {s : SState} {l : Nat} {xs : List Site} : (s.setLent l xs).ShapeBelow ↔ s.ShapeBelow :=
+  Iff.rfl
+
 /-- `s'` holds only borrows `s` holds, at the same positions, and has the same counter: what every
 step that forgets or rewrites meanings leaves (`endLabel`, `access`, `setAt`, `mapVals`,
 `takeLabel`, `joinDrop`). -/
@@ -1170,8 +1123,12 @@ theorem shapeSub_foldl_endLabel (ls : List Nat) (s : SState) : ShapeSub (ls.fold
   | nil => exact ShapeSub.refl s
   | cons l ls ih => exact (ih _).trans (shapeSub_endLabel s l)
 
-theorem shapeSub_access (s : SState) (p : Pos) (o : Sem → Sem) : ShapeSub (s.access p o) s := by
-  rw [access_eq_rounds]
+theorem shapeSub_setLent (s : SState) (l : Nat) (xs : List Site) : ShapeSub (s.setLent l xs) s :=
+  ShapeSub.refl s
+
+theorem shapeSub_access (s : SState) (p : Pos) (hit : List Step → Bool) : ShapeSub (s.access p hit) s := by
+  show ShapeSub ((List.range s.liveLabels.length).foldl (fun s _ =>
+    (s.liveLabels.filter (s.reached p hit)).foldl endLabel s) s) s
   generalize List.range s.liveLabels.length = ns
   induction ns generalizing s with
   | nil => exact ShapeSub.refl s
@@ -1181,6 +1138,25 @@ end SState
 
 /-- D84's drop at the join holds no new borrow and keeps the counter (with `shapeSub_access`, the
 forgetting steps of `Steps/Match.lean`'s and `Steps/Borrow.lean`'s lemmas keep `ShapeBelow`). -/
+theorem shapeSub_accessLentPrefix (pos : Pos) (steps : List Step) (s : SState) :
+    SState.ShapeSub (accessLentPrefix pos steps s) s := by
+  unfold accessLentPrefix
+  split
+  · exact SState.shapeSub_access s pos _
+  · exact SState.ShapeSub.refl s
+
+theorem shapeSub_dropAt (K : RunCtx) (φ : Future) (q : Place) (pos : Pos) (steps : List Step) (s : SState) :
+    SState.ShapeSub (dropAt K φ q pos steps s) s := by
+  unfold dropAt
+  split
+  all_goals first
+    | exact SState.ShapeSub.refl _
+    | (split
+       · exact SState.shapeSub_endLabel _ _
+       · split
+         · exact SState.ShapeSub.refl _
+         · exact (SState.shapeSub_setAt _ pos _).trans (SState.shapeSub_access _ _ _))
+
 theorem shapeSub_joinDrop (K : RunCtx) (φ : Future) (entry : List Place) (t : Term) (s : SState) :
     SState.ShapeSub (joinDrop K φ entry t s) s := by
   unfold joinDrop
@@ -1191,25 +1167,8 @@ theorem shapeSub_joinDrop (K : RunCtx) (φ : Future) (entry : List Place) (t : T
     rw [List.foldl_cons]
     refine (ih _).trans ?_
     split
+    · exact (shapeSub_dropAt K φ q _ _ _).trans (shapeSub_accessLentPrefix _ _ s)
     · exact SState.ShapeSub.refl s
-    · split
-      · next pos steps _ =>
-        refine SState.ShapeSub.trans ?_ (show SState.ShapeSub (joinAccess K s pos steps) s by
-          rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
-          all_goals first | exact SState.ShapeSub.refl _ | exact SState.shapeSub_access s pos _)
-        dsimp only
-        generalize joinAccess K s pos steps = s₁
-        rcases Sem.follow K.dm K.Γ (s₁.tyAt pos).m (s₁.valAt pos (s₁.closedFuture φ)) steps with _ | ⟨v, T⟩
-        · exact SState.ShapeSub.refl _
-        · cases v <;> first
-            | exact SState.ShapeSub.refl _
-            | refine (SState.shapeSub_setAt _ pos _).trans ?_
-              split
-              · split
-                · exact SState.shapeSub_endLabel _ _
-                · exact SState.ShapeSub.refl _
-              · exact SState.ShapeSub.refl _
-      · exact SState.ShapeSub.refl s
 
 namespace SState
 
@@ -1361,9 +1320,11 @@ theorem borrowPlace_fresh (K : RunCtx) (φ : Future) (p : Place) (s : SState) (h
     · cases h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨⟨_, rfl⟩, rfl⟩ := h
+      simp only [SState.shapeBelow_setLent, SState.setLent_shape, SState.setLent_nextLoan]
       refine ⟨SState.shapeBelow_pushTempShaped (SState.ShapeBelow.of_sub (SState.shapeSub_setAt _ _ _) hb) _
           (by rw [SState.nextLoan_setAt]; exact hlt), s₁.freshLoan.1, rfl,
-        by rw [SState.nextLoan_pushTempShaped, SState.nextLoan_setAt]; exact hlt, fun q hq => ?_,
+        by rw [SState.nextLoan_pushTempShaped, SState.nextLoan_setAt]; exact hlt,
+        fun q hq => ?_,
         SState.pushTempShaped_unique _ _ fun q hq => hfresh q ((SState.shapeSub_setAt _ _ _).1 q _ hq)⟩
       have := hs q _ hq
       rw [← hsub.2] at this
@@ -1390,6 +1351,7 @@ theorem callOfL_fresh.{u} (L : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : 
   · simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨⟨_, rfl⟩, rfl⟩ := h
     obtain ⟨_, _, hfresh, hb⟩ := SState.freshLoan_fresh _ hs₀
+    simp only [SState.shapeBelow_setLent, SState.setLent_shape, SState.setLent_nextLoan]
     obtain ⟨hb', hlt', huniq⟩ := SState.fresh_park
       (SState.ShapeBelow.of_sub (SState.shapeSub_mapVals _ _) hb) (Nat.lt_succ_self _)
       (fun q hq => hfresh q hq) _
@@ -1505,8 +1467,10 @@ theorem readsBelow_foldl_endLabel {s : SState} (hs : s.ReadsBelow) :
   | nil => exact hs
   | cons k ls ih => exact ih (readsBelow_endLabel hs k)
 
-theorem readsBelow_access {s : SState} (hs : s.ReadsBelow) (p : Pos) (o : Sem → Sem) : (s.access p o).ReadsBelow := by
-  rw [access_eq_rounds]
+theorem readsBelow_access {s : SState} (hs : s.ReadsBelow) (p : Pos) (hit : List Step → Bool) :
+    (s.access p hit).ReadsBelow := by
+  show ((List.range s.liveLabels.length).foldl (fun s _ =>
+    (s.liveLabels.filter (s.reached p hit)).foldl endLabel s) s).ReadsBelow
   generalize List.range s.liveLabels.length = ns
   induction ns generalizing s with
   | nil => exact hs
@@ -1616,26 +1580,24 @@ theorem joinDrop_readsBelow (K : RunCtx) (φ : Future) (entry : List Place) (t :
     rw [List.foldl_cons]
     apply ih
     split
+    · next pos steps _ =>
+      have h₁ : (accessLentPrefix pos steps s).ReadsBelow := by
+        unfold accessLentPrefix
+        split
+        · exact SState.readsBelow_access hs pos _
+        · exact hs
+      generalize accessLentPrefix pos steps s = s₁ at h₁
+      unfold dropAt
+      split
+      all_goals first
+        | exact h₁
+        | (split
+           · exact SState.readsBelow_endLabel h₁ _
+           · split
+             · exact h₁
+             · refine SState.readsBelow_setAt ?_ pos _ fun l hl => ?_
+               · exact SState.readsBelow_access h₁ pos _
+               · exact SState.readsBelow_access h₁ pos _ pos l (SVal.dependsOn_updAt hl))
     · exact hs
-    · split
-      · next pos steps _ =>
-        have h₁ : (joinAccess K s pos steps).ReadsBelow := by
-          rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
-          all_goals first | exact hs | exact SState.readsBelow_access hs pos _
-        dsimp only
-        generalize joinAccess K s pos steps = s₁ at h₁
-        rcases Sem.follow K.dm K.Γ (s₁.tyAt pos).m (s₁.valAt pos (s₁.closedFuture φ)) steps with _ | ⟨v, T⟩
-        · exact h₁
-        · have h₂ : (if steps.isEmpty then (match s₁.shape pos with
-              | some l => s₁.endLabel l | none => s₁) else s₁).ReadsBelow := by
-            split
-            · split
-              · exact SState.readsBelow_endLabel h₁ _
-              · exact h₁
-            · exact h₁
-          cases v <;> first
-            | exact h₁
-            | exact SState.readsBelow_setAt h₂ pos _ fun l hl => h₂ pos l (SVal.dependsOn_updAt hl)
-      · exact hs
 
 end Ochr.Meaning

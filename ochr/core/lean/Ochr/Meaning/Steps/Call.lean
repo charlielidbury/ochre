@@ -38,11 +38,6 @@ reference's call gives them, since a sealed program means its run. -/
 theorem closeCall_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : closeCall_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
-/-- Machine fact (b) of the loan witness (docs/31 D27): a call closed off with a borrow result
-fills each lent place with a program holding the result's loan. -/
-theorem closeCall_hole (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : closeCall_hole_stmt K ρ φ (fuel + 1) := by
-  sorry
-
 /-- [Call-type] (`callType`, `declCallType`): the codomain at the arguments is the reference's
 result type. -/
 theorem callType_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : callType_step_stmt K ρ φ (fuel + 1) := by

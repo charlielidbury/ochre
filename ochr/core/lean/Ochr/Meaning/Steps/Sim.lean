@@ -24,7 +24,7 @@ ends-generated relation it needs the run to fail on a forgotten holder, which a 
 `*r` does not (`Sem.updAt` at a `deref` of `⊥`). In the simulation form the checker's own run is
 a hypothesis, and the checker never uses a holder it has ended.
 
-`Rel` has three parts, each forced by a counterexample (docs/31, D20 item 1):
+`Rel` (rebuilt on main's D90/D91, docs/31 D29) has five parts, each forced by a counterexample:
 
 * `skel`: the same frames and, in each, the same bindings with the same types (meaning, Π-shape,
   data) and readings. `Below` relates meanings only; two states with the same meanings and
@@ -38,32 +38,24 @@ a hypothesis, and the checker never uses a holder it has ended.
   futures are compared through `π`, and a step extends `π` at the labels it issues. The clause
   ranges over the labels that OCCUR in the checker's state: over every label below its counter
   it had no renaming after a statement that borrows (docs/31 D23, `Regress/CopyLabels.lean`).
-  (The audit's A15, the counter after a private copy, is absorbed: `Rel.private_copy`.)
-* `early`: the checker's state is the reference's after some of its borrows ended early (`E`),
-  compared at the SAME future (`SimEq`), with bindings position by position and a borrow in
-  flight by its label, the meanings EQUAL (with `⊑` the relation admitted a reference state with
-  a value where the checker's has `⊥` inside a tuple, from which a match's join and `Id` differ:
-  docs/31 D24). The futures range over those that agree with the run's off the labels
-  live after the ends, which is D20 item 2's repair (a binding of an inert loan is the constant
-  `φ ℓ` in the reference and `φ' ℓ` in the checker's state). With it, the loan witness (`Wit`,
-  docs/31 D27): every label the reference's [Access] of a place ends, outside `E`, is one the
-  checker's [Access] of that place ends. Equality after the ends reads the reference state only
-  where each label of `E` has its holder's content, and [Access] reads every future: without the
-  witness a reference state that reads a label only at other values of an early-ended one was
-  related, and a read from it ended a label the checker kept (D25, `Regress/EarlyUnpinned.lean`).
-  A tie to a `Good` checker-form preimage does not repair that (`Regress/CondDep.lean`: an unknown
-  callee's backward function makes one label's dependence conditional on another's content).
+* `sim`: the same meanings (EQUAL: docs/31 D24), the same holders both ways, the same borrows in
+  flight, at every future that agrees with the run's off the live labels (a binding of an inert
+  loan is the constant `φ ℓ` in the reference and `ψ ℓ` in the checker's state, D20 item 2).
+* `inj`: `π` is one to one on the live labels, so the two have the same live borrows.
+* `sites`: each live borrow is lent at the same places, as a fill or as a loan, on both sides
+  (docs/31 D29): what the reference's [Access] reads, as the checker's reads its values.
 
-**Status.** The relation (`SimEq`, `Sim`, `Rel`) is defined in `Statements.lean`, where the
-three statements refuted by `Regress/StaleTemp.lean` (`eval_step_stmt`, `evalCore_step_stmt`,
-`letIn_step_stmt`) are now in the simulation form. Proved here: `Rel.start` (the relation holds
-at the start) and `sim_seq` (steps in this form compose); in `Statements.lean`: `Sim.of_below`,
-`Sim.of_simEq_below` (nothing true under the old order is lost); and `Rel.private_copy` (the
-relation survives a private copy of the checker's, reference state and renaming unchanged). NOT done: the other statements
-of `Statements.lean` that run the reference from `SM' K ρ st` still have the `Below` form;
-migrating them is the next batch (each `Below (MState.mean … st') s'.toMean` conjunct becomes
-`Rel`, each `SM' K ρ st` a universally quantified `s` with `Rel`, the returned value read at the
-future pulled back along the renaming).
+Until main's D90 the checker could end a borrow early, at the generic call, where an instance did
+not, and the relation carried the list of such borrows and a loan witness pinning the reference
+state where an early-ended label had another value (D25, D27; deleted, D29). Since D90 when a
+borrow ends is a decision every run shares, and the reference reads lending statically as the
+checker does; every read the reference run makes of its state is at a future the relation
+compares, so the relation determines the run.
+
+**Status.** Proved here, on the relation of D29: `Rel.start` (the checker's state read as a
+reference state simulates it, with no hypothesis), `sim_seq` (steps in this form compose) and
+`Rel.private_copy` (the relation survives a private copy, reference state and renaming
+unchanged). The statements in the simulation form are in `Statements.lean`.
 -/
 
 namespace Ochr.Meaning.Steps
@@ -73,140 +65,23 @@ section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- **The relation holds at the start**: the checker's state read as a reference state simulates
-it, with no renaming and no early end, given the loan witness with no early end (`hw`): each place
-of the state reads the future only through the loans the checker's access of it ends. That holds
-at the generic state of a definition, whose values are unknowns, borrows of unknowns and loans;
-it is FALSE where a later field's type or a sealed field's hint reads an earlier field that is
-lent, the audit's A13 (open dependent values), where the reference's access ends a borrow the
-checker's keeps. (If this failed the relation would be unusable: every top-level statement starts
-here.) -/
-theorem Rel.start (st : MState) (hw : Wit K id [] st.env (SM' K ρ st)) : Rel K ρ φ id st (SM' K ρ st) where
+it, with no renaming. (Until D29 this needed the loan witness at the state as a hypothesis, which
+failed at open dependent values; with static lending the sites of the state read as a reference
+state are the checker's by definition, `MState.sstate`'s `lent`.) -/
+theorem Rel.start (st : MState) : Rel K ρ φ id st (SM' K ρ st) where
   skel := rfl
   fresh := fun _ h _ => h
-  early := ⟨[], ⟨fun ψ _ p _ => by
+  sim := ⟨fun ψ _ p _ => by
       show _ = (MState.sstate K.dm K.M K.Γ ρ st).valAt p ψ
       rw [sstate_valAt]; rfl,
     fun _ _ _ h => h,
+    fun _ l' _ h => ⟨l', h, rfl⟩,
     fun f i l h => ⟨i, h, fun ψ _ => by
       show _ = (MState.sstate K.dm K.M K.Γ ρ st).valAt (.temp f i) ψ
-      rw [sstate_valAt]; rfl⟩⟩, hw⟩
-
-/-! ### Where the relation starts: the witness from the state's shape
-
-`Rel.start` assumes the loan witness with no early end. At a state whose every value is loan-free
-or a bare loan, it holds outright (`wit_start`, from `meanV_congr`): a loan-free value means a
-constant, and a bare loan reads its own label, whose end reads its holder's loan-free content. The
-three places a run starts are of that shape:
-
-* the generic state of a definition's check: each parameter an unknown, a proof `⋆`, a borrow of
-  an unknown, each borrowed cell a bare loan;
-* the empty state a sealed program re-runs from (`emptyState`): no value at all;
-* a callee's frame (`runBodyCore`): its parameters bound to the arguments, loan-free or a borrow of
-  loan-free content ((WF5), asserted where a call closes off), and its captures, which hold no loan
-  ([Access] ends what a capture reads).
-
-Beyond them the witness at the start is the path-local congruence of the state's meaning, which
-fails exactly where a later field's type, or a sealed field's hint, reads an earlier field that is
-lent (open dependent values, the audit's A13; docs/31 D27). -/
-
-/-- A value of a state where a run starts: loan-free, or a bare loan. -/
-def StartVal (v : Value) : Prop := (∀ l, v.hasLoanM l = false) ∨ ∃ l, v = .loan l
-
-/-- A position of a state's reading reads the future through its value's loans alone. -/
-theorem sm_valAt_const (st : MState) (hK : ∀ n, (K.C.global n).2.label = none) (p : Pos)
-    (hlf : ∀ l, (valAt st.env p).hasLoanM l = false) (ψ ψ' : Future) :
-    (SM' K ρ st).valAt p ψ = (SM' K ρ st).valAt p ψ' := by
-  show (MState.sstate K.dm K.M K.Γ ρ st).valAt p ψ = (MState.sstate K.dm K.M K.Γ ρ st).valAt p ψ'
-  rw [sstate_valAt, sstate_valAt]
-  by_cases hp : p ∈ allPos st.env
-  · rw [mean_eq_valAt _ _ _ _ _ _ p hp, mean_eq_valAt _ _ _ _ _ _ p hp, meanV_eq_mean, meanV_eq_mean]
-    exact meanV_congr K ρ ψ ψ' _ _ hK fun l h => absurd h (by simp [hlf l])
-  · rw [mean_eq_err _ _ _ _ _ _ p hp, mean_eq_err _ _ _ _ _ _ p hp]
-
-/-- **The witness at the start**, for a state whose values are loan-free or bare loans. -/
-theorem wit_start (st : MState) (hK : ∀ n, (K.C.global n).2.label = none)
-    (hv : ∀ p, StartVal (valAt st.env p)) : Wit K id [] st.env (SM' K ρ st) := by
-  intro q pos steps _ _ m hr _
-  have noReach : ∀ {s : SState} {o : Sem → Sem} {m : Nat}, (∀ ψ ψ', s.valAt pos ψ = s.valAt pos ψ') →
-      ¬ ReachDep s pos o m := by
-    intro s o m hc hr
-    have hd : ∀ {l : Nat}, ¬ s.obsDep pos o l := by
-      rintro l ⟨ψ, x, hne⟩; exact hne (by rw [hc ψ (ψ.upd l x)])
-    cases hr with
-    | direct _ hd' => exact hd hd'
-    | via _ hd' _ => exact hd hd'
-  rcases hv pos with hlf | ⟨l, hl⟩
-  · exact absurd hr (noReach (sm_valAt_const K ρ st hK pos hlf))
-  · have hp : pos ∈ allPos st.env := by
-      refine Classical.byContradiction fun hp => ?_
-      refine noReach (fun ψ ψ' => ?_) hr
-      show (MState.sstate K.dm K.M K.Γ ρ st).valAt pos ψ = (MState.sstate K.dm K.M K.Γ ρ st).valAt pos ψ'
-      rw [sstate_valAt, sstate_valAt, mean_eq_err _ _ _ _ _ _ pos hp, mean_eq_err _ _ _ _ _ _ pos hp]
-    have hS : ∀ ψ, (SM' K ρ st).valAt pos ψ = ψ l := by
-      intro ψ
-      show (MState.sstate K.dm K.M K.Γ ρ st).valAt pos ψ = ψ l
-      rw [sstate_valAt, mean_eq_valAt _ _ _ _ _ _ pos hp, hl]; rfl
-    -- what the access reaches is `l`, live
-    have key : m = l ∧ (SM' K ρ st).Live l := by
-      cases hr with
-      | direct hlive hd =>
-        obtain ⟨ψ, x, hne⟩ := hd
-        refine ⟨Classical.byContradiction fun hml => hne ?_, ?_⟩
-        · rw [hS, hS, Future.upd_other _ _ (Ne.symm hml)]
-        · by_cases hml : m = l
-          · exact hml ▸ hlive
-          · exact absurd (by rw [hS, hS, Future.upd_other _ _ (Ne.symm hml)]) hne
-      | via hlive hd hr' =>
-        rename_i l₂
-        obtain ⟨ψ, x, hne⟩ := hd
-        have hl₂ : l₂ = l := Classical.byContradiction fun h =>
-          hne (by rw [hS, hS, Future.upd_other _ _ (Ne.symm h)])
-        subst hl₂
-        exfalso
-        obtain ⟨r, hr⟩ := SState.holderOf_of_live hlive
-        obtain ⟨hrpos, hrsh⟩ := SState.holderOf_spec hr
-        refine noReach (fun ψ ψ' => ?_) hr'
-        have hposm : pos ∈ (SM' K ρ st).positions := by
-          show pos ∈ (MState.sstate K.dm K.M K.Γ ρ st).positions; rw [sstate_positions]; exact hp
-        have hrp : pos ≠ r := by
-          intro e; subst e
-          have : Env.shape st.env pos = some l₂ := hrsh
-          simp [Env.shape, hl] at this
-        rw [SState.endLabel_eq hr, SState.endAt_valAt _ _ _ _ hposm]
-        simp only [hrp, if_false, hS, Future.upd_same]
-        -- the holder's value is a borrow, so loan-free: its content reads no future
-        rcases hv r with hlf | ⟨l', hl'⟩
-        · exact sm_valAt_const K ρ st hK r hlf ψ ψ'
-        · have : Env.shape st.env r = some l₂ := hrsh
-          simp [Env.shape, hl'] at this
-    obtain ⟨rfl, hlive⟩ := key
-    refine ⟨m, rfl, ?_⟩
-    -- the checker's access of the place ends `m`: the loan is the first thing on the path
-    have hll : liveLoan st.env m = true := by
-      obtain ⟨r, hr⟩ := SState.holderOf_of_live hlive
-      obtain ⟨hrpos, hrsh⟩ := SState.holderOf_spec hr
-      have hrpos' : r ∈ allPos st.env := by
-        have := hrpos; rwa [show (SM' K ρ st).positions = allPos st.env from sstate_positions _ _ _ _ _] at this
-      have hsh : Env.shape st.env r = some m := hrsh
-      unfold liveLoan findBorrow
-      rw [Option.isSome_iff_exists]
-      cases hval : valAt st.env r with
-      | borrow l' w =>
-        have : l' = m := by simp [Env.shape, hval] at hsh; exact hsh
-        subst this
-        exact List.find?_isSome.mpr ⟨r, hrpos', by simp [hval, Value.holdsBorrow]⟩ |> Option.isSome_iff_exists.mp
-      | _ => simp [Env.shape, hval] at hsh
-    rw [hl]
-    rcases steps with _ | ⟨st₀, ss⟩
-    · simp [accLoans, loanOnPath, hll]
-    · simp [accLoans, loanOnPath, hll]
-
-/-- **The relation holds at the start of a run**: at a state whose values are loan-free or bare
-loans (the generic state of a definition, the empty state of a sealed program's re-run, a callee's
-frame), the checker's state read as a reference state simulates it. -/
-theorem Rel.start_simple (st : MState) (hK : ∀ n, (K.C.global n).2.label = none)
-    (hv : ∀ p, StartVal (valAt st.env p)) : Rel K ρ φ id st (SM' K ρ st) :=
-  Rel.start K ρ φ st (wit_start K ρ st hK hv)
+      rw [sstate_valAt]; rfl⟩,
+    fun f j l' h => ⟨j, l', h, rfl⟩⟩
+  inj := fun _ _ _ _ h => h
+  sites := fun _ _ _ => Iff.rfl
 
 /-! ### A private copy (docs/31 D23; prerequisite (b) of the migration)
 
@@ -249,10 +124,12 @@ theorem Rel.private_copy {π : Nat → Nat} {saved st' : MState} {s : SState} (h
       simp only [SM', MState.sstate, henv]
     rw [e]; exact hr.skel
   fresh := fun l _ ho => hr.fresh l (h6 l ((occurs_of_env henv l).mp ho)) ((occurs_of_env henv l).mp ho)
-  early := by
+  sim := by
     have e : MState.mean K.dm K.M K.Γ ρ st' = MState.mean K.dm K.M K.Γ ρ saved := by
       simp only [MState.mean, henv]
-    rw [e, henv]; exact hr.early
+    rw [e]; exact hr.sim
+  inj := by rw [henv]; exact hr.inj
+  sites := by rw [henv]; exact hr.sites
 
 /-- Steps stated in the simulation form compose: if the first runs from any reference state
 related to `st` into one related to `st₁`, and the second from any related to `st₁` into one

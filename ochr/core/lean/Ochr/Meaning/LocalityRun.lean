@@ -29,7 +29,7 @@ theorem endAt_shapeAt {s : SState} (hsa : ShapeAt s) (l : Nat) (r : Pos) : Shape
   · cases hp
   · obtain ⟨h1, h2⟩ := hsa p x hp
     refine ⟨by rw [endAt_positions]; exact h1, ?_⟩
-    show x < (({ s with shape := fun p => if p = r then none else s.shape p } : SState).mapVals _).nextLoan
+    show x < (({ s with shape := fun p => if p = r then none else s.shape p, lent := s.relend l r } : SState).mapVals _).nextLoan
     exact h2
 
 theorem endLabel_rinv {s : SState} (h : RInv L s) (l : Nat) : RInv L (s.endLabel l) := by
@@ -44,17 +44,17 @@ theorem foldl_endLabel_rinv : ∀ (ls : List Nat) {s : SState}, RInv L s → RIn
   | [], _, h => h
   | l :: ls, _, h => foldl_endLabel_rinv ls (endLabel_rinv h l)
 
-theorem accStep_rinv {s : SState} (h : RInv L s) (p : Pos) (o : Sem → Sem) : RInv L (accStep p o s) :=
+theorem accStep_rinv {s : SState} (h : RInv L s) (p : Pos) (hit : List Step → Bool) : RInv L (accStep p hit s) :=
   foldl_endLabel_rinv _ h
 
-theorem iterR_accStep_rinv (p : Pos) (o : Sem → Sem) : ∀ (k : Nat) {s : SState}, RInv L s →
-    RInv L (iterR (accStep p o) k s)
+theorem iterR_accStep_rinv (p : Pos) (hit : List Step → Bool) : ∀ (k : Nat) {s : SState}, RInv L s →
+    RInv L (iterR (accStep p hit) k s)
   | 0, _, h => h
-  | k + 1, _, h => accStep_rinv (iterR_accStep_rinv p o k h) p o
+  | k + 1, _, h => accStep_rinv (iterR_accStep_rinv p hit k h) p hit
 
-theorem access_rinv {s : SState} (h : RInv L s) (p : Pos) (o : Sem → Sem) : RInv L (s.access p o) := by
+theorem access_rinv {s : SState} (h : RInv L s) (p : Pos) (hit : List Step → Bool) : RInv L (s.access p hit) := by
   rw [access_eq, foldl_range_iterR]
-  exact iterR_accStep_rinv p o _ h
+  exact iterR_accStep_rinv p hit _ h
 
 /-! ## Writes, a fresh label -/
 

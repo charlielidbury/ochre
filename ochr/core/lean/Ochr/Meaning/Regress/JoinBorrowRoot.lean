@@ -20,9 +20,8 @@ model made false a proposition the checker proves.
 * `RJGen` (rejected): at an unknown scrutinee the match is a stuck block taking `r` by move, as a
   read; the write through `s` is an error there too.
 
-Kernel-checked: a position reading a label directly makes the old access of it depend on that
-label (`old_access_depends`); `joinAccess`, the fix, accesses nothing at a root holding a borrow
-(`joinAccess_borrow_root`).
+Kernel-checked: the drop at a root holding a borrow ends that borrow and accesses nothing it lends
+(`dropAt_borrow_root`).
 -/
 
 open Ochr.Test
@@ -31,7 +30,7 @@ ochr JoinBorrowRoot uses Nats {
   -- REJECTED since main's D90: the match is not in tail position, and its entry accesses what the
   -- stuck block would capture, `r` by move (arm `Z` reads it whole), which ends `s` before the
   -- arm runs, on every path (D90's known gap `EK` against Rust). The finding it carried stands:
-  -- the join's drop of a borrow root ends that borrow only (`joinAccess_borrow_root`).
+  -- the join's drop of a borrow root ends that borrow only (`dropAt_borrow_root`).
   reject def RJ (a : Nat) (b : Nat) : Nat := (
     let x = (a, b);
     let r = &x;
@@ -67,22 +66,20 @@ ochr JoinBorrowRoot uses Nats {
 namespace Ochr.Meaning.Regress.JoinBorrowRoot
 open Ochr Ochr.Meaning
 
-variable (K : RunCtx)
+variable (K : RunCtx) (φ : Future)
 
-/-- The access as first written, at a root position whose meaning reads the label `l` (as a
-borrow variable's content does where it holds a reborrow's loan), depends on `l`. -/
-theorem old_access_depends (s : SState) (pos : Pos) (l : Nat) (hv : s.valAt pos = fun ψ => ψ l) :
-    s.obsDep pos (obsAt K (s.tyAt pos).m [] wholeOb) l := by
-  refine ⟨fun _ => .proof, .moved, ?_⟩
-  simp only [hv, obsAt, Sem.follow, wholeOb, Future.upd_same]
-  intro h
-  injection h with _ _ h
-  injection h with h
-  cases h
-
-/-- The fix: at a root holding a borrow, the drop accesses nothing. -/
-theorem joinAccess_borrow_root (s : SState) (pos : Pos) (l : Nat) (hs : s.shape pos = some l) :
-    joinAccess K s pos [] = s := by
-  simp [joinAccess, hs]
+/-- The fix, in the static form (docs/31 D29): at a root holding a borrow, the drop ends that
+borrow and accesses nothing it lends, as `Machine.dropAtJoin` does. (The first form of the fix,
+`joinAccess`, skipped the reference's access by dependence at such a root; the access by
+dependence went with the early ends, and with it the record `old_access_depends` that the old
+access of a root reading a reborrow's label depended on that label.) -/
+theorem dropAt_borrow_root (q : Place) (s : SState) (pos : Pos) (l : Nat) (hs : s.shape pos = some l)
+    (v : Sem) (T : TyM) (hv : v ≠ .proof ∧ v ≠ .moved)
+    (hf : Sem.follow K.dm K.Γ (s.tyAt pos).m (s.valAt pos (s.closedFuture φ)) [] = some (v, T)) :
+    dropAt K φ q pos [] s = s.endLabel l := by
+  unfold dropAt
+  rw [hf]
+  rcases hv with ⟨h1, h2⟩
+  cases v <;> simp_all
 
 end Ochr.Meaning.Regress.JoinBorrowRoot

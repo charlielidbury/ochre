@@ -347,7 +347,7 @@ theorem contentOf_lou {p : Place} {s s' : SState} {x : Sem × TyS × Pos × List
 /-- A match's [Access] for the tag: the state after is the accessed one. -/
 theorem tagOf_some {p : Place} {tag : Sem → TyM → Sem} {s s' : SState} {tg : Sem}
     (h : tagOf K φ p tag s = some (tg, s')) :
-    ∃ pos steps, resolve s p = some (pos, steps) ∧ s' = s.access pos (obsAt K (s.tyAt pos).m steps tag) := by
+    ∃ pos steps, resolve s p = some (pos, steps) ∧ s' = s.access pos (tagHit steps) := by
   unfold tagOf at h
   cases hr : resolve s p with
   | none => rw [hr] at h; cases h
@@ -670,14 +670,14 @@ theorem run_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (t : Term) (h
     obtain ⟨pos, steps⟩ := ps
     rw [hr] at h
     dsimp only at h
-    have mid : ∀ s₂ : SState, s₂ = s₁ ∨ s₂ = s₁.access pos (obsAt K (s₁.tyAt pos).m steps wholeOb) →
+    have mid : ∀ s₂ : SState, s₂ = s₁ ∨ s₂ = s₁.access pos (dataHit steps) →
         RInv L s₂ ∧ pos ∈ s₂.positions ∧ EnvLe s₁ s₂ ∧ OrdKeep L s₁ s₂ ∧ LoU s₂ R.label := by
       rintro s₂ (rfl | rfl)
       · exact ⟨hi₁, resolve_mem hr, EnvLe.refl _, OrdKeep.refl _, hy₁⟩
       · exact ⟨access_rinv hi₁ pos _, by rw [access_positions]; exact resolve_mem hr, envLe_access _ _ _,
           ordKeep_access hi₁ pos _, fun l hl => lou_access L hi₁ (hy₁ l hl) pos _⟩
     generalize hs₂ : (if (steps.isEmpty && (s₁.shape pos).isSome) = true then s₁
-      else s₁.access pos (obsAt K (s₁.tyAt pos).m steps wholeOb)) = s₂ at h
+      else s₁.access pos (dataHit steps)) = s₂ at h
     obtain ⟨hi₂, hpos₂, e₂, o₂, hy₂⟩ := mid s₂ (by rw [← hs₂]; split <;> simp)
     have hpb : ¬ IsTemp pos := resolve_bind hr
     split at h

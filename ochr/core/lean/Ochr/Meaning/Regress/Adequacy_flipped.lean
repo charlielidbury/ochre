@@ -92,40 +92,18 @@ open Ochr Ochr.Meaning
 
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-open Classical in
-/-- The audit's A1: [Access] for an observation that reads no live label ends nothing, whatever
-the rest of the position's meaning reads. So reading `x.b` leaves a borrow of `x.a` live (the
-content at `.b` does not depend on `x.a`'s final content), and matching a scrutinee leaves the
-borrows inside its fields live (its tag does not depend on them); before, [Access] ended every
-label the whole position's meaning read (`o = id`). -/
-theorem access_ends_nothing (s : SState) (p : Pos) (o : Sem → Sem) (h : ∀ l, ¬ s.obsDep p o l) :
-    s.access p o = s := by
-  have hround : SState.accessRound p o s = s := by
-    have hf : (s.liveLabels.filter fun l => decide (s.obsDep p o l)) = [] := by
-      apply List.filter_eq_nil_iff.mpr
-      intro l _
-      simp only [decide_eq_true_eq]
-      exact h l
-    unfold SState.accessRound
-    rw [hf]; rfl
-  rw [SState.access_eq_rounds]
-  generalize List.range s.liveLabels.length = ns
-  induction ns with
-  | nil => rfl
-  | cons _ ns ih => rw [List.foldl_cons, hround]; exact ih
-
-/-- A1, the instance: a position holding a pair-like tuple whose first component reads label `l`
-and whose second is a constant. Observing the second component ends nothing; observing the whole
-meaning depends on `l`. (The position means a TUPLE at every future here. The run's own meanings
-are `ctorM` of the fields, which meant `err` where a whole field was outside its type, and the
-property then failed: `Regress/SiblingAccess.lean`, docs/31 D25. Since that fix `ctorM` is such a
-tuple or a packed element at every future.) -/
-theorem access_other_field (s : SState) (p : Pos) (l : Nat) (c : Sem)
-    (hv : ∀ ψ, s.valAt p ψ = .ctor "P" 0 [ψ l, c]) :
-    s.access p (fun x => match x with | .ctor _ _ [_, b] => b | _ => .err) = s ∧ s.obsDep p id l := by
-  refine ⟨access_ends_nothing s p _ fun l' ⟨ψ, x, hne⟩ => hne (by simp only [hv]), ?_⟩
-  refine ⟨fun _ => .err, .proof, ?_⟩
-  simp [hv, Future.upd]
+/-- The audit's A1, in the static form (docs/31 D29): [Access] of a place ends the borrows lent at,
+over or under it, so reading the second field of a pair leaves a borrow of the first field live
+(its site is not comparable with the path read), and reading the pair whole ends it. Before D29
+this was stated on what the observed content depends on (`obsDep`), which the static access no
+longer consults. (The checker accepts the program this models only through a borrow's content
+since main's D90, whose known gap F4 makes a field read of a known pair a one-arm match whose
+entry reads the whole pair: `AdequacyProbes2.Disjoint`, now rejected.) -/
+theorem access_other_field (s : SState) (p : Pos) (l : Nat)
+    (hl : s.lent l = [⟨p, [.proj 0], false⟩]) :
+    s.reached p (dataHit [.proj 1]) l = false ∧ s.reached p (dataHit []) l = true := by
+  simp [SState.reached, hl, dataHit, pathKey, Step.key]
+  decide
 
 /-- The audit's A16: a checker binding whose stored type is a Π-type has that Π's shape in the
 reference state, so it can be called (`Value.tyS` reads `CodeMeaning.tyShape`, the run's
