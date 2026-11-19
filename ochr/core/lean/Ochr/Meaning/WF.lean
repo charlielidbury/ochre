@@ -178,37 +178,10 @@ def WF12 (env : Env) : Prop :=
       (pathKey x.path).isPrefixOf (pathKey y.path) = true → pathKey y.path ≠ pathKey x.path →
       ∃ z ∈ Env.sitesOf env l, z.pos = x.pos ∧ (pathKey z.path).isPrefixOf (pathKey x.path) = true
 
-/-- A value agrees with the structured type it is read at, at its top constructor (docs/31 D31):
-at a constructor value the type names the value's own declaration (data, not `Prop`) at its
-recorded parameters' meanings; at `S` the type is the number type; marks and borrows are
-transparent. Its fields are NOT constrained: a field's declared hint is computed from the earlier
-fields' current contents, which a write or a move can change while the field keeps its value (an
-open value, D64): as first stated, every field agreeing with its declared hint, it was false after
-an ordinary move of an earlier field (`MkDep(n, v : Vec(n))`), and as then restricted (fields after
-whole earlier fields) false after a write of an earlier field (`Regress/OpenWriteDep.lean`, `OWK`).
-Navigation below the top constructor is D32's question. -/
-def DataAll (ρ : Assignment) (φ : Future) : TyS → Value → Prop
-  | H, .borrow _ w => DataAll ρ φ H w
-  | H, .gloan _ w => DataAll ρ φ H w
-  | H, .succ w => H.isNat Γ ∧ DataAll ρ φ (.plain (.ty0 Nat)) w
-  | H, .ind ty _ _ ps _ =>
-    ∃ d, Γ.find? (·.name == ty) = some d ∧ d.sort ≠ 0 ∧
-      H.dataDecl Γ = some (d, Value.meanParams dm C Γ ρ φ d 0 [] ps)
-  | _, _ => True
-
-/-- (WF13) Every binding's value agrees with its stored type at its top constructor (docs/31 D31:
-the reference decodes a constructor value by its type's declaration name and parameters, which is
-the value's own decoding exactly when they agree). A typing fact of the checker (it converts a constructor's type to the
-position's, parameter by parameter, and types each field by its declared type), read off it, NOT
-proved preserved. Parameter-typed fields rest on D8's open item (`fieldData` at a `par j` field). -/
-def WF13 (ρ : Assignment) (st : MState) : Prop :=
-  ∀ f i, i < (st.env[f]?.map (·.binds.size)).getD 0 → ∀ φ,
-    DataAll dm C Γ ρ φ (Env.hintAt dm C Γ ρ st.env (.bind f i)) (valAt st.env (.bind f i))
-
 /-- Well-formedness, part (c) of the main theorem. -/
 def WF (ρ : Assignment) (st : MState) : Prop :=
   WF1 st.env ∧ WF2 st.env ∧ WF3 st.env ∧ WF4 st.env ∧ WF6 st ∧ WF7 dm C Γ ρ st ∧ WF8 st ∧ WF9 dm C Γ ρ st ∧
-  WF10 Γ st ∧ WF11 st ∧ WF12 st.env ∧ WF13 dm C Γ ρ st
+  WF10 Γ st ∧ WF11 st ∧ WF12 st.env
 
 /-! ## Typed assignments, typed futures, membership -/
 
@@ -255,7 +228,7 @@ structure TypedAssignment (ρ : Assignment) (st : MState) : Prop where
 stored type holds a (possibly partly moved) member of it; Δ's types and the goal are types. -/
 structure Membership (ρ : Assignment) (st : MState) : Prop where
   pos : ∀ φ, TypedFuture dm C Γ ρ st φ →
-    ∀ p T, MState.posTyM dm C Γ ρ st p = some T → dm.pmem Γ (Env.mean dm C Γ ρ φ st.env p) T
+    ∀ p T, MState.posTyM dm C Γ ρ st p = some T → DataModel.pmem Γ (Env.mean dm C Γ ρ φ st.env p) T
   absTy : ∀ σ, st.Refd σ → σ < st.absTy.size → (MState.absTyM dm C Γ ρ st σ).level.isSome
   goal : ∀ G, MState.goalM dm C Γ ρ st = some G → G.level.isSome
 
@@ -283,7 +256,7 @@ def TypedFutureF (ρ : Assignment) (st : MState) (fl : Flight) (φ : Future) : P
 /-- `Membership` under futures typed at the flight too. -/
 structure MembershipF (ρ : Assignment) (st : MState) (fl : Flight) : Prop where
   pos : ∀ φ, TypedFutureF dm C Γ ρ st fl φ →
-    ∀ p T, MState.posTyM dm C Γ ρ st p = some T → dm.pmem Γ (Env.mean dm C Γ ρ φ st.env p) T
+    ∀ p T, MState.posTyM dm C Γ ρ st p = some T → DataModel.pmem Γ (Env.mean dm C Γ ρ φ st.env p) T
   absTy : ∀ σ, st.Refd σ → σ < st.absTy.size → (MState.absTyM dm C Γ ρ st σ).level.isSome
   goal : ∀ G, MState.goalM dm C Γ ρ st = some G → G.level.isSome
 

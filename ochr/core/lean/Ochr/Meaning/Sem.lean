@@ -17,8 +17,11 @@ In ZFC a constructor value means a tagged tuple and a function a set of pairs, a
 functions on itself cannot be an inductive type, and a universe of first-order trees with leaves
 of arbitrary small types is one level too big to be a leaf type itself. The only encoding that
 keeps `Π` small is the typed one: a function value means a Lean function on the carriers of its
-domain and codomain, `el0 ((a : A) → B a) f`. Data is then typed too (`el0 ⟦D(ā)⟧ x`), with
-the one exception below.
+domain and codomain, `el0 ((a : A) → B a) f`. A constructor value (docs/31 D32) describes itself:
+`dat` carries its declaration's name, its parameters' meanings, its constructor and its fields, and
+when it is whole and of its type also its element of the carrier, which is what a Lean function on
+carriers is applied to (`dec`/`enc` at a data type's code, `TyM.data`). So a value is taken apart
+by reading it, as a ZFC tree is in Lean's own model, and never through a type or a carrier.
 
 ## Levels (Q1, docs/18)
 
@@ -31,11 +34,14 @@ level is one more constructor in each of `TyM`, `Sem`, `El`.
 
 namespace Ochr.Meaning
 
+mutual
 /-- The meaning of a type value: a proposition (whose only possible element is the proof `•`),
-a carrier at one of the three supported Lean levels, a universe `⟦sort l⟧`, or the error value
-(an ill-formed type; no derivation reaches one). A universe is kept symbolic rather than as the
-Lean type `Type` etc. so that its *elements*, type values `Sem.ty T`, are recognised by their
-level (`mem`). -/
+a carrier at one of the three supported Lean levels, a data type, a universe `⟦sort l⟧`, or the
+error value (an ill-formed type; no derivation reaches one). A universe is kept symbolic rather
+than as the Lean type `Type` etc. so that its *elements*, type values `Sem.ty T`, are recognised
+by their level (`mem`). A data type (docs/31 D32) is a code: its declaration's name and its
+parameters' meanings, decoding to its carrier `A`, with `unpk` reading an element's constructor
+and fields (Lean's tagged types, Carneiro §6.4, for data). -/
 inductive TyM : Type 3 where
   | prop (P : Prop)
   | ty0 (A : Type)
@@ -43,6 +49,29 @@ inductive TyM : Type 3 where
   | ty2 (A : Type 2)
   | univ (l : Nat)
   | err
+  | data (name : String) (ps : List Sem) (A : Type) (unpk : A → Nat × List Sem)
+
+/-- The meaning of a value, tagged by its carrier. `proof` is `•`, the one element of every true
+proposition; `ty T` a type used as a value; `moved` is `⊥`, a place definitely moved out of
+(D84: a definite value, equal only to itself); `err` is the error value.
+
+A constructor value describes itself (docs/31 D32): `dat name ps c fs el` is its declaration's
+name, its parameters' meanings, its constructor and its fields' meanings, and `el` its element of
+the carrier when it is whole and of its type (`DataModel.ctorM` packs it), `none` when a field is
+moved out or the value is open (a field outside the type its earlier fields give). So a value is
+taken apart by reading it, never through a type: an element of an inductive type is a tree that
+describes itself, as in Lean's set-theoretic model. A partly moved number `S(⊥)` is
+`dat "Nat" [] 1 [⊥] none`; a whole number is `el0 Nat n`. -/
+inductive Sem : Type 3 where
+  | el0 (A : Type) (a : A)
+  | el1 (A : Type 1) (a : A)
+  | el2 (A : Type 2) (a : A)
+  | ty (T : TyM)
+  | proof
+  | moved
+  | dat (name : String) (ps : List Sem) (c : Nat) (fs : List Sem) (el : Option ((A : Type) × A))
+  | err
+end
 
 /-- Ochr's level of a type meaning: the `l` of the `sort l` it is an element of. -/
 def TyM.level : TyM → Option Nat
@@ -52,28 +81,13 @@ def TyM.level : TyM → Option Nat
   | .ty2 _ => some 3
   | .univ l => some (sortSucc l)
   | .err => none
-
-/-- The meaning of a value, tagged by its carrier. `proof` is `•`, the one element of every true
-proposition; `ty T` a type used as a value; `moved` is `⊥`, a place definitely moved out of
-(D84: a definite value, equal only to itself); `ctor` is a constructor value some field of which
-holds `moved`, which lies in no carrier, so it is kept as an untyped tuple, as is one a field of
-which is outside its type (a whole, well-typed constructor value is `el0` of its data carrier,
-`Data.lean`); `err` is the error value. -/
-inductive Sem : Type 3 where
-  | el0 (A : Type) (a : A)
-  | el1 (A : Type 1) (a : A)
-  | el2 (A : Type 2) (a : A)
-  | ty (T : TyM)
-  | proof
-  | moved
-  | ctor (ty : String) (c : Nat) (fs : List Sem)
-  | err
+  | .data .. => some 1
 
 /-- A meaning holds no `moved` part and is not the error value. -/
 def Sem.whole : Sem → Prop
   | .moved => False
   | .err => False
-  | .ctor _ _ fs => ∀ f ∈ fs, f.whole   -- a tuple of whole fields is an ILL-TYPED constructor value (`ctorM`)
+  | .dat _ _ _ fs _ => ∀ f ∈ fs, f.whole   -- whole fields and no element: an OPEN (ill-typed) value
   | _ => True
 
 mutual
@@ -85,7 +99,7 @@ holder forgotten by an early end (`Pick`) stays below the reference. -/
 inductive Sem.le : Sem → Sem → Prop
   | moved (s : Sem) : Sem.le .moved s
   | refl (s : Sem) : Sem.le s s
-  | ctor {ty c} {fs gs : List Sem} : Sem.leList fs gs → Sem.le (.ctor ty c fs) (.ctor ty c gs)
+  | dat {n ps c} {fs gs : List Sem} : Sem.leList fs gs → Sem.le (.dat n ps c fs none) (.dat n ps c gs none)
 
 /-- The order pointwise on lists of the same length. -/
 inductive Sem.leList : List Sem → List Sem → Prop
@@ -102,9 +116,9 @@ mutual
 theorem Sem.le_eq_of_whole : ∀ {s t : Sem}, s ⊑ t → s.whole → s = t
   | _, _, .moved _, hw => by simp [Sem.whole] at hw
   | _, _, .refl _, _ => rfl
-  | _, _, .ctor h, hw => by
+  | _, _, .dat h, hw => by
     simp only [Sem.whole] at hw
-    exact congrArg _ (Sem.leList_eq_of_whole h hw)
+    rw [Sem.leList_eq_of_whole h hw]
 
 theorem Sem.leList_eq_of_whole : ∀ {fs gs : List Sem}, Sem.leList fs gs → (∀ f ∈ fs, f.whole) → fs = gs
   | _, _, .nil, _ => rfl
@@ -117,8 +131,8 @@ mutual
 theorem Sem.le_trans : ∀ {a b c : Sem}, a ⊑ b → b ⊑ c → a ⊑ c
   | _, _, _, .moved _, _ => .moved _
   | _, _, _, .refl _, h => h
-  | _, _, _, .ctor h₁, .refl _ => .ctor h₁
-  | _, _, _, .ctor h₁, .ctor h₂ => .ctor (Sem.leList_trans h₁ h₂)
+  | _, _, _, .dat h₁, .refl _ => .dat h₁
+  | _, _, _, .dat h₁, .dat h₂ => .dat (Sem.leList_trans h₁ h₂)
 
 theorem Sem.leList_trans : ∀ {a b c : List Sem}, Sem.leList a b → Sem.leList b c → Sem.leList a c
   | _, _, _, .nil, h => h
@@ -128,13 +142,15 @@ end
 /-- Membership: a meaning lies in a type's meaning. An element is a member of the carrier it is
 tagged with; the proof `•` of every true proposition; a type value of the universe of its level.
 The tag is compared as a Lean type, which is what convertible type values must be shown to
-share (`conv_sound_ty`). -/
+share (`conv_sound_ty`). A constructor value is a member of a data type when it names the type's
+declaration and parameters and its element reads back as its constructor and fields (D32). -/
 def Sem.mem : Sem → TyM → Prop
   | .el0 A _, .ty0 B => A = B
   | .el1 A _, .ty1 B => A = B
   | .el2 A _, .ty2 B => A = B
   | .proof, .prop P => P
   | .ty T, .univ l => T.level = some l
+  | .dat n ps c fs (some ⟨A, x⟩), .data n' ps' A' unpk => n = n' ∧ ps = ps' ∧ ∃ h : A = A', unpk (h ▸ x) = (c, fs)
   | _, _ => False
 
 scoped infix:50 " ∈ₛ " => Sem.mem

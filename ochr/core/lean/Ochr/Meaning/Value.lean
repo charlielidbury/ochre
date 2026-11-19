@@ -76,7 +76,7 @@ non-whole argument (D84), `err` otherwise. -/
 noncomputable def Sem.succ (s : Sem) : Sem :=
   match s.asNat with
   | some n => .el0 Nat (n + 1)
-  | none => open Classical in if s.whole then .err else .ctor "Nat" 1 [s]
+  | none => open Classical in if s.whole then .err else .dat "Nat" [] 1 [s] none
 
 section
 variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl)

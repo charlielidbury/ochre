@@ -164,7 +164,7 @@ theorem run_hintIndep : ∀ (t : Term), Term.tailHintFree K.Γ t = true → ∀ 
     simp only [Term.tailHintFree] at ht
     rw [run, run]
     refine erasedIf_resVS_congr _ ?_
-    cases hc : tagOf K φ p (indTag K) s with
+    cases hc : tagOf K φ p indTag s with
     | none => simp only [Bind.bind, hc, Option.bind_none', Option.map_none]
     | some x =>
       obtain ⟨tg, s₁⟩ := x
