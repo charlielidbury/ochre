@@ -45,16 +45,106 @@ theorem Runs.bind_inv {α β : Type} {x : M α} {g : α → M β} {st st' : MSta
   · cases h
   · cases h
 
+/-- The checker's position of de Bruijn variable `i` (`Machine.varPos`, as a function). -/
+def ckVarPos (env : Env) (i : Nat) : Option Pos :=
+  if i < env[env.size - 1]!.binds.size then some (.bind (env.size - 1) (env[env.size - 1]!.binds.size - 1 - i))
+  else none
+
+theorem runs_varPos_inv {i : Nat} {st st' : MState} {b : Nat} {pos : Pos}
+    (h : Runs (Ochr.varPos i) st b pos st') : st' = st ∧ ckVarPos st.env i = some pos := by
+  obtain ⟨L, left, log, h⟩ := h
+  simp only [Ochr.varPos, Ochr.topIdx, runMachineL_bind, runMachineL_get, runMachineL_pure] at h
+  unfold ckVarPos
+  split at h
+  · rename_i hi
+    simp only [runMachineL_pure, Prod.mk.injEq, Outcome.ok.injEq] at h
+    obtain ⟨⟨rfl, rfl⟩, -⟩ := h
+    simp [hi]
+  · simp [runMachineL_err] at h
+
+/-- **The checker's write at a place**: at the variable's position, the value written at the path. -/
+theorem runs_setPlace_inv {q : Place} {new : Value} {st st' : MState} {b : Nat}
+    (h : Runs (Ochr.setPlace q new) st b () st') :
+    ∃ pos v', ckVarPos st.env q.steps.1 = some pos ∧ (valAt st.env pos).updAt (fun _ => new) q.steps.2 = some v' ∧
+      st' = { st with env := Env.setAtE st.env pos v' } := by
+  unfold Ochr.setPlace at h
+  obtain ⟨pos, st₁, b₁, hv, h⟩ := Runs.bind_inv h
+  obtain ⟨hst, hpos⟩ := runs_varPos_inv hv
+  rw [hst] at h
+  obtain ⟨v, st₂, b₂, hg, h⟩ := Runs.bind_inv h
+  have hv2 : st₂ = st ∧ v = valAt st.env pos := by
+    obtain ⟨L, left, log, hg⟩ := hg
+    cases pos <;> simp only [Ochr.getAt, runMachineL_bind, runMachineL_get, runMachineL_pure, Prod.mk.injEq,
+      Outcome.ok.injEq] at hg <;> exact ⟨hg.1.2.symm, by rw [← hg.1.1]; rfl⟩
+  obtain ⟨hst2, hvv⟩ := hv2
+  rw [hst2, hvv] at h
+  split at h
+  · rename_i v' hv'
+    obtain ⟨L, left, log, h⟩ := h
+    refine ⟨pos, v', hpos, hv', ?_⟩
+    cases pos <;> simp only [Ochr.setAt, Ochr.modifyFrame, runMachineL_modify, Prod.mk.injEq,
+      Outcome.ok.injEq] at h <;> exact h.1.2.symm
+  · obtain ⟨_, _, _, _, h⟩ := Runs.bind_inv h
+    obtain ⟨L, left, log, h⟩ := h
+    simp [runMachineL_err] at h
+
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
+/-- The frames of related states have the same numbers of bindings (`Rel.skel`). -/
+theorem rel_frames {st : MState} {s : SState} {π : Nat → Nat} (hs : Rel K ρ φ π st s) :
+    s.env.length = st.env.size ∧
+      ∀ f : Nat, (s.env[f]?.map fun fr : SFrame => fr.binds.length) = (st.env[f]?.map fun fr : Frame => fr.binds.size) := by
+  have hk := hs.skel
+  have hl := congrArg List.length hk
+  simp only [List.length_map] at hl
+  have hlen : (SM' K ρ st).env.length = st.env.size := by simp [SM', MState.sstate]
+  refine ⟨by omega, fun f => ?_⟩
+  have hf := congrArg (fun l => (l[f]?).map List.length) hk
+  simp only [List.getElem?_map, Option.map_map] at hf
+  have e1 : ((SM' K ρ st).env[f]?.map fun fr : SFrame => fr.binds.length) = (st.env[f]?.map fun fr : Frame => fr.binds.size) := by
+    simp only [SM', MState.sstate, List.getElem?_map, List.getElem?_zipIdx, Option.map_map, Array.getElem?_toList]
+    rcases st.env[f]? with _ | fr
+    · rfl
+    · simp [Function.comp_def]
+  rw [← e1]
+  have := hf.symm
+  simpa [Function.comp_def] using this
+
 /-- **(4) The checker's place is the reference's.** At related states a variable's position in the
 checker (`varPos`, the top frame's bindings counted from the top) is the reference's (`resolve`):
-the two have the same frames and bindings (`Rel.skel`). Open: not tried yet. -/
+the two have the same frames and bindings (`Rel.skel`). -/
 theorem rel_resolve (st st₁ : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (b : Nat)
     (hs : Rel K ρ φ π st s) (h : Runs (Ochr.varPos q.steps.1) st b pos st₁) :
     st₁ = st ∧ resolve s q = some (pos, q.steps.2) := by
-  sorry
+  obtain ⟨hst, hpos⟩ := runs_varPos_inv h
+  refine ⟨hst, ?_⟩
+  obtain ⟨hlen, hfr⟩ := rel_frames K ρ φ hs
+  unfold ckVarPos at hpos
+  split at hpos
+  · rename_i hi
+    simp only [Option.some.injEq] at hpos
+    subst hpos
+    have hne : st.env.size ≠ 0 := by
+      intro h0
+      have hd : st.env[st.env.size - 1]! = (default : Frame) := by
+        simp [h0]
+      rw [hd] at hi
+      have : (default : Frame).binds.size = 0 := rfl
+      omega
+    have htop := hfr (st.env.size - 1)
+    rcases e : s.env.getLast? with _ | fr
+    · rw [List.getLast?_eq_none_iff] at e; simp [e] at hlen; omega
+    · have hfr' : s.env[s.env.length - 1]? = some fr := by
+        rw [List.getLast?_eq_getElem?] at e; exact e
+      rw [hlen] at hfr'
+      rw [hfr'] at htop
+      have hsz : fr.binds.length = st.env[st.env.size - 1]!.binds.size := by
+        have : st.env[st.env.size - 1]? = some st.env[st.env.size - 1]! := by
+          rw [Array.getElem?_eq_getElem (by omega), getElem!_pos st.env (st.env.size - 1) (by omega)]
+        rw [this] at htop; simpa using htop
+      simp only [resolve, SState.varPos, e, SState.topIdx, hlen, hsz, hi, ↓reduceIte, Option.map_some]
+  · cases hpos
 
 /-- **(1') L2 with sealed siblings.** `mean_updAt_bot` for a value some field of which off the path
 is a sealed program that is top-hint-free (`Value.topHintFree`: [Close]'s programs, `HintIndep`),
