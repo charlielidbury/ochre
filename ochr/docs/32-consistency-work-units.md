@@ -26,35 +26,37 @@ Not counted, because they are off the consistency path: `id-audit` and `subst-su
 
 ## To do (67%)
 
-| Work unit | What it contains | P(failure) | Time |
-|---|---|---|---|
-| `spine3`: riskiest steps (running) | Prove or refute the two riskiest steps in the new form: the drop at the join, and `Id`'s observation. | 5% | 3% |
-| Statement migration | Move the remaining ~70 step statements to the simulation form, one file at a time. | 1% | 4% |
-| Reference-run redesigns | The open differences from the checker, the comparison at other futures, and restricting the claim about untyped runs. The differences that matter most: the result of a call loses its function shape, so the reference cannot call a function returned by a call, or a parameter whose type is computed by a call (`f : Fn(Nat)`, the ordinary predicate idiom, which the checker accepts); and a proof has no type in the reference, so a constructor whose type parameter is solved by a proof field fails. Until these land, the mechanised theorem is false on such programs. A design for the call cases exists (docs/31, D22). | 4% | 8% |
-| Prover tooling | A shared library about positions in a state, and the standard prover brief. | under 1% | 2% |
-| Provers: simple steps | Borrow primitives, substitution, plain evaluation, tail forms. | 1% | 8% |
-| Provers: calls and stuck calls | Calls, closing a stuck call into a sealed program, re-running one, and the label-renaming lemma. | 4% | 9% |
-| Provers: matches and arms | Splitting on an unknown, leaving an arm, and the drop at the join. | 3% | 6% |
-| Provers: equality | Conversion, `Eq` and `J` computing, and rewriting. | 3% | 5% |
-| Provers: `Id` | `Id` observes every place either side can write. | 5% | 4% |
-| Provers: types and decisions | The model reads types and syntactic decisions the same way as the checker (18 statements). | 2% | 5% |
-| Provers: well-formedness | The borrow discipline is preserved by every step. | 4% | 4% |
-| Provers: dependent values | Membership is restored when a value whose type depends on its own fields is made whole again. | 8% | 4% |
-| Assembly | The top-level theorems, closing the induction, and the data model for a whole program. | 1% | 4% |
-| Universes | Deciding which statement Lean can prove over all programs. | 3%. The uniform statement may be unprovable in Lean (about 40%); bounded levels then replaces it, which is a tweak. | 1% |
+Rows are in the order the units will be taken: the running unit first, then the highest P(failure) for the least time, so that risk comes forward. Where a risky unit needs something built first, that work moves ahead with it and is counted in its row. The three units every remaining prover needs (migration, redesigns, tooling) come before the provers that need them.
+
+| # | Work unit | What it contains | P(failure) | Time |
+|---|---|---|---|---|
+| 1 | `spine3`: the drop at the join (running) | Prove or refute, in the simulation form, that dropping at the end of a match every place some arm moved keeps the relation. | 3% | 2% |
+| 2 | Dependent values | Give a partly opened dependent value a meaning in the reference run, which it lacks today, so the step can be stated. Then prove or refute that membership is restored when a value whose type depends on its own fields is made whole again, under every future of the parts still lent. One of the old proofs of `False` lived here. | 8% | 5% |
+| 3 | `Id` | `Id` observes every place either side can write, and its computing to a conjunction over those places keeps the meaning. | 6% | 5% |
+| 4 | Well-formedness | The borrow discipline is preserved by every step, including the new clause that no stored type or record holds a loan. | 4% | 4% |
+| 5 | Universes | Deciding which statement Lean can prove over all programs. The bounded-levels statement is what the Lean development already builds; the open part is whether a uniform statement is provable (about 40% that it is not, which is a tweak, not a failure). | 1% | 1% |
+| 6 | Statement migration | Move the remaining step statements to the simulation form, one file at a time. A unit taken before this row migrates its own statements. | 1% | 4% |
+| 7 | Reference-run redesigns | The remaining open differences from the checker, the comparison at other futures, and restricting the claim about untyped runs. The differences that matter most: the result of a call loses its function shape, so the reference cannot call a function returned by a call, or a parameter whose type is computed by a call (`f : Fn(Nat)`, the ordinary predicate idiom, which the checker accepts); and a proof has no type in the reference, so a constructor whose type parameter is solved by a proof field fails. Until these land, the mechanised theorem is false on such programs. A design for the call cases exists (docs/31, D22). | 4% | 7% |
+| 8 | Prover tooling | A shared library about positions in a state, and the standard prover brief. | under 1% | 2% |
+| 9 | Provers: equality | Conversion, `Eq` and `J` computing, and rewriting. | 3% | 5% |
+| 10 | Provers: calls and stuck calls | Calls, closing a stuck call into a sealed program, re-running one, and the label-renaming lemma. | 4% | 9% |
+| 11 | Provers: types and decisions | The model reads types and syntactic decisions the same way as the checker (18 statements). | 2% | 5% |
+| 12 | Provers: matches and arms | Splitting on an unknown and leaving an arm. | 2% | 6% |
+| 13 | Provers: simple steps | Borrow primitives, substitution, plain evaluation, tail forms. | 1% | 8% |
+| 14 | Assembly | The top-level theorems, closing the induction, and the data model for a whole program. | 1% | 4% |
 
 ## Reading the risk column
 
 A unit fails only if it cannot be finished on the current plan. Restating a lemma, repairing a model definition and tightening one checker rule are all successes: the proof goes ahead as planned after each. Nearly every refutation so far has ended in one of the first two, and the accepted proofs of `False` found earlier ended in the third.
 
 - **Chance at least one remaining unit needs a local checker fix** (a success): about 65%.
-- **Chance at least one remaining unit fails**, so that a feature is redesigned or part of the proof is re-planned: about 30%. The rows are not independent (the drop at the join and `Id` each appear in two rows), so this is less than the rows multiplied out.
+- **Chance at least one remaining unit fails**, so that a feature is redesigned or part of the proof is re-planned: about 30%. The rows are not independent (a fault in the simulation relation would hit several at once), so this is less than the rows multiplied out.
 - **Chance the route itself fails**, so that meaning preservation has to be abandoned: about 7%.
 - **Riskiest rows:** dependent values, where one of the old `False` proofs lived; then `Id` and the drop at the join. The drop at the join is itself the result of an earlier redesign of this size.
 
 ## Dependencies
 
-An arrow from X to Y means Y builds on X. Green is done, yellow is running, grey is to do. The eight prover units are independent of each other: each proves its steps from the shared induction hypothesis, so they can run in parallel once the statements are migrated.
+An arrow from X to Y means Y builds on X. Green is done, yellow is running, grey is to do. The diagram shows only what builds on what; the order the units are taken in is the table's. Units 2 to 5 need only the repaired simulation relation, which is why they can come before the migration.
 
 ```mermaid
 flowchart TD
@@ -75,22 +77,22 @@ flowchart TD
 
     spine3a["spine3: prerequisites<br/>2%"]:::done
 
-    spine3["spine3: riskiest steps<br/>3%, fail 5%"]:::running
-    migrate["Statement migration<br/>4%, fail 1%"]:::todo
-    redesign["Reference-run redesigns<br/>8%, fail 4%"]:::todo
-    tooling["Prover tooling<br/>2%, fail under 1%"]:::todo
+    joinDrop["1. spine3: the drop at the join<br/>2%, fail 3%"]:::running
+    dep["2. Dependent values<br/>5%, fail 8%"]:::todo
+    idn["3. Id<br/>5%, fail 6%"]:::todo
+    wf["4. Well-formedness<br/>4%, fail 4%"]:::todo
+    universes["5. Universes<br/>1%, fail 1%"]:::todo
+    migrate["6. Statement migration<br/>4%, fail 1%"]:::todo
+    redesign["7. Reference-run redesigns<br/>7%, fail 4%"]:::todo
+    tooling["8. Prover tooling<br/>2%, fail under 1%"]:::todo
 
-    pSimple["Provers: simple steps<br/>8%, fail 1%"]:::todo
-    pCalls["Provers: calls and stuck calls<br/>9%, fail 4%"]:::todo
-    pMatch["Provers: matches and arms<br/>6%, fail 3%"]:::todo
-    pEq["Provers: equality<br/>5%, fail 3%"]:::todo
-    pId["Provers: Id<br/>4%, fail 5%"]:::todo
-    pTypes["Provers: types and decisions<br/>5%, fail 2%"]:::todo
-    pWF["Provers: well-formedness<br/>4%, fail 4%"]:::todo
-    pDep["Provers: dependent values<br/>4%, fail 8%"]:::todo
+    pEq["9. Provers: equality<br/>5%, fail 3%"]:::todo
+    pCalls["10. Provers: calls and stuck calls<br/>9%, fail 4%"]:::todo
+    pTypes["11. Provers: types and decisions<br/>5%, fail 2%"]:::todo
+    pMatch["12. Provers: matches and arms<br/>6%, fail 2%"]:::todo
+    pSimple["13. Provers: simple steps<br/>8%, fail 1%"]:::todo
 
-    universes["Universes<br/>1%, fail 3%"]:::todo
-    assembly["Assembly<br/>4%, fail 1%"]:::todo
+    assembly["14. Assembly<br/>4%, fail 1%"]:::todo
     goal(["Consistency:<br/>no closed proof of False"]):::goal
 
     tests --> fixes
@@ -107,39 +109,35 @@ flowchart TD
     progdec --> spine2
 
     spine2 --> spine3a
-    spine3a --> spine3
     spine2 --> redesign
+    spine3a --> joinDrop
+    spine3a --> dep
+    spine3a --> idn
+    spine3a --> wf
     spine3a --> redesign
     spine3a --> migrate
-    spine3 --> migrate
-    spine3 --> tooling
 
-    migrate --> pSimple
-    migrate --> pCalls
-    migrate --> pMatch
     migrate --> pEq
-    migrate --> pId
+    migrate --> pCalls
     migrate --> pTypes
-    migrate --> pWF
-    migrate --> pDep
-    tooling --> pSimple
+    migrate --> pMatch
+    migrate --> pSimple
     tooling --> pCalls
     tooling --> pMatch
-    tooling --> pId
-    tooling --> pWF
-    tooling --> pDep
+    tooling --> pSimple
     redesign --> pCalls
-    redesign --> pDep
+    joinDrop --> pMatch
     progdec --> pTypes
 
-    pSimple --> assembly
-    pCalls --> assembly
-    pMatch --> assembly
+    joinDrop --> assembly
+    dep --> assembly
+    idn --> assembly
+    wf --> assembly
     pEq --> assembly
-    pId --> assembly
+    pCalls --> assembly
     pTypes --> assembly
-    pWF --> assembly
-    pDep --> assembly
+    pMatch --> assembly
+    pSimple --> assembly
     datagen --> assembly
     progdec --> assembly
     universes --> assembly
