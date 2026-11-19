@@ -49,7 +49,7 @@ Every statement is evaluated along two paths: at a definition's generic call, wh
 - _What a stuck block captures, and how._ Pattern variables are resolved to places first; the block takes the maximal places its arms mention, moved if an arm moves them, borrowed if an arm writes or borrows them, and copied otherwise.
 - _Which places an observation reads._ The footprint is read off the syntax of the two sides, and every owner of each place is observed.
 - _Which calls recurse, and on what._ A recursive function occurs only as the head of a call, in nested functions too, and passes a strict subterm of its parameter's value on entry.
-- _How a call is closed off._ Whether [Close] returns a borrow is read from the callee's declared codomain, and `&` occurs only at the top of a declared type.
+- _How a call is closed off, and what it lends._ Whether [Close] returns a borrow is read from the callee's declared codomain, and `&` occurs only at the top of a declared type; a call that returns a borrow lends it every borrowed argument, whether it runs or not.
 - _Whether a read copies, and where a value is `()`._ Both are read from declared types: a type parameter is never a copy type, and a type that is `Unit` only by computation is not η-normalised.
 - _Whether a match is on a proof._ It is read from the declarations of the constructors the arms name, and the arm from the head of the scrutinee's type (@sec-typing-prop).
 

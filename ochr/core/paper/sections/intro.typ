@@ -53,7 +53,7 @@ Pédrot and Tabareau's fire triangle @fire-triangle shows that a type theory wit
 
 == Scope <sec-intro-scope>
 
-Ochr is a core calculus, and it covers a small part of Rust (@fig-scope). Its borrow checking is also not modular in the way Rust's is. Checking is by running, so whether a caller checks can depend on its callee's body and on which of its inputs are concrete: a callee that gets stuck leaves every borrowed argument borrowed until its returned borrow ends, while one that runs to completion releases them. A call to an opaque definition, or to a function parameter, is stuck at once and behaves according to its signature alone. Conversion likewise unfolds callees, so extracting a helper function can change which equations hold by `refl` (@sec-typing).
+Ochr is a core calculus, and it covers a small part of Rust (@fig-scope). Its borrow checking is also not modular in the way Rust's is. Checking is by running, so whether a caller checks can depend on its callee's body and on which of its inputs are concrete, though never through which borrows end: a callee that returns a borrow keeps every borrowed argument borrowed until that borrow ends, whether it runs or gets stuck. A call to an opaque definition, or to a function parameter, is stuck at once and behaves according to its signature alone. Conversion likewise unfolds callees, so extracting a helper function can change which equations hold by `refl` (@sec-typing).
 
 #figure(kind: image, supplement: [Figure], placement: auto,
   block(breakable: false, { set text(size: 8.5pt); set par(justify: false); table(columns: (30%, 70%), stroke: none, inset: (x: 4pt, y: 2.5pt), align: (left, left),
@@ -61,7 +61,7 @@ Ochr is a core calculus, and it covers a small part of Rust (@fig-scope). Its bo
     [*Rust feature*], [*In Ochr*],
     table.hline(stroke: 0.4pt),
     [`&mut`, reborrowing], [Yes, with exclusivity enforced by running the program (@sec-eval).],
-    [Returned borrows], [Yes, with one region per call: the hole goes into every borrowed argument, so a call that returns a borrow into its first argument keeps its second borrowed too, where Rust would accept a lifetime on the first alone.],
+    [Returned borrows], [Yes, with one region per call: a call that returns a borrow into its first argument keeps its second borrowed too, run or stuck, where Rust would accept a lifetime on the first alone.],
     [Shared borrows `&T`], [No.],
     [Loops], [No; structural recursion only.],
     [Borrows in data], [No: no `Option<&mut T>`, `iter_mut` or `split_at_mut`, and no pair of borrows as a result.],

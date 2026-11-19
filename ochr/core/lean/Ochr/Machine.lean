@@ -2879,6 +2879,7 @@ def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Ar
   let lent := if kind == .ref then ws.toList.filterMap (fun | .borrow l _ => some l | _ => none) else []
   let g? ← if lent.isEmpty then pure none else some <$> freshLoan
   if let some g := g? then
+    fire .Lend fun _ => s!"the result is lent every place its {lent.length} borrow argument(s) lend"
     for l in lent do lendEnv fuel' (.mark l g)
   let r ← match fv with
     | .abs _ | .sealed _ =>
@@ -3486,7 +3487,7 @@ block's arm read a copy the direct run's arm could not: `EK`, probes/static-ends
 def entryAccess (fuel : Nat) (capsS : Array (Place × Nat)) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   for (q, _) in capsS do
-    fire .Access fun _ => s!"static ends: the match's entry, a place a stuck block would capture"
+    fire .Entry fun _ => s!"a place a stuck block would capture"
     accessPath fuel' q
     if (← content? q).isSome then accessInside fuel' q
 termination_by structural fuel

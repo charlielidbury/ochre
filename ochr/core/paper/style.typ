@@ -42,6 +42,8 @@
 // Big-step evaluation (the machine judgement), and dereference of a place.
 #let ev = math.scripts(sym.arrow.b.double)
 #let dr = $class("normal", *)$
+// A place lent to the returned borrow l, holding v: a known function of l's hole (a fill, D90).
+#let lent(l, v) = $"lent"_#l #v$
 
 // Inference rule: premises (any number) over a conclusion, optional name on the right.
 #let infer(name: none, ..args) = {

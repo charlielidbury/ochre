@@ -29,9 +29,9 @@ inductive Rule where
   | EraseProof | EraseType
   -- calls
   | ArgsNil | Args | Call | CallErr | App | AppClose | AppHead | AppNeutral | AppNeutralHead
-  | Close
+  | Close | Lend
   -- matching
-  | Match | MatchStuck | MatchErr | MatchProp | MatchNone | Proj | Join
+  | Match | MatchStuck | MatchErr | MatchProp | MatchNone | Proj | Join | Entry
   -- sealed programs and stuck blocks
   | Seal | SealStuck | SealErr | Block
   -- observation, `Id`, conversion, `eq` (@app-conv)
@@ -58,8 +58,8 @@ def Rule.all : List Rule :=
    .Global, .Fix, .Pi, .Sort, .IndType, .Ref, .Eq, .J, .JStuck, .JRun, .Capture,
    .EraseProof, .EraseType,
    .ArgsNil, .Args, .Call, .CallErr, .App, .AppClose, .AppHead, .AppNeutral, .AppNeutralHead,
-   .Close,
-   .Match, .MatchStuck, .MatchErr, .MatchProp, .MatchNone, .Proj, .Join,
+   .Close, .Lend,
+   .Match, .MatchStuck, .MatchErr, .MatchProp, .MatchNone, .Proj, .Join, .Entry,
    .Seal, .SealStuck, .SealErr, .Block,
    .Obs, .ObsBorrow, .ObsRef, .Id, .IdTypestate,
    .ConvRefl, .ConvCong, .ConvUnit, .ConvPi, .ConvFun,
@@ -86,9 +86,9 @@ def Rule.name : Rule → String
   | .EraseProof => "Erase-proof" | .EraseType => "Erase-type"
   | .ArgsNil => "Args-nil" | .Args => "Args" | .Call => "Call" | .CallErr => "Call-err"
   | .App => "App" | .AppClose => "App-close" | .AppHead => "App-head"
-  | .AppNeutral => "App-neutral" | .AppNeutralHead => "App-neutral-head" | .Close => "Close"
+  | .AppNeutral => "App-neutral" | .AppNeutralHead => "App-neutral-head" | .Close => "Close" | .Lend => "Lend"
   | .Match => "Match" | .MatchStuck => "Match-stuck" | .MatchErr => "Match-err"
-  | .MatchProp => "Match-prop" | .MatchNone => "Match-none" | .Proj => "Proj" | .Join => "Join"
+  | .MatchProp => "Match-prop" | .MatchNone => "Match-none" | .Proj => "Proj" | .Join => "Join" | .Entry => "Entry"
   | .Seal => "Seal" | .SealStuck => "Seal-stuck" | .SealErr => "Seal-err" | .Block => "Block"
   | .Obs => "Obs" | .ObsBorrow => "Obs-borrow" | .ObsRef => "Obs-ref" | .Id => "Id"
   | .IdTypestate => "Id-typestate"

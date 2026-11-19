@@ -18,7 +18,7 @@ This section reduces soundness of a fragment F to an assumption that the two eva
 
 Consistency of F and adequacy of `Id` follow (@tf-cor-cons, @tf-cor-adeq).
 
-The assumption, naturality (@tf-ass-n), says one step at a time that a symbolic run and the ground run agree once every borrow is ended. It carries most of the operational content. It holds only because of the [Drop] rule's treatment of lent places (@tf-drop). A second assumption (@tf-ass-t) collects four invariants of the machine that the proof uses but does not prove: preservation of well-formedness, the frame property, order-independence of [End], and injectivity of contexts. Everything else is proved here, and each assumption is named where it is used (@tf-anchors).
+The assumption, naturality (@tf-ass-n), says one step at a time that a symbolic run and the ground run agree once every borrow is ended. It carries most of the operational content. While the symbolic path could end a borrow earlier than the ground path, it held only because of the [Drop] rule's treatment of lent places; with borrow ends static it no longer depends on that (@tf-drop). A second assumption (@tf-ass-t) collects four invariants of the machine that the proof uses but does not prove: preservation of well-formedness, the frame property, order-independence of [End], and injectivity of contexts. Everything else is proved here, and each assumption is named where it is used (@tf-anchors).
 
 === The fragment F <tf-frag>
 
@@ -93,9 +93,9 @@ No equation is stuck at a ground state. An `Id` is formed only when its two side
 ]) <tf-def-agr>
 
 The clauses do the following:
-- (A2) is equivalent to "some sequences of [End]s take $Omega_s alpha$ and $Omega_g$ to one state" (@tf-lem-res). The stronger form, equality before resolution, fails: in a counterexample, ending a borrow early changes which borrows a later assignment ends, although both states agree after resolution. (A2) survives an [End] on either side, which is how the symbolic path may end a borrow earlier than the ground path (the `Pick` example of @conj-nat).
-- (A3) says the symbolic path has ended at least the borrows the ground path has.
-- (A4) says its owners over-approximate: a returned borrow's hole sits in the fill of every place it may point into.
+- (A2) is equivalent to "some sequences of [End]s take $Omega_s alpha$ and $Omega_g$ to one state" (@tf-lem-res). The stronger form, equality before resolution, fails: the symbolic path keeps a returned borrow's hole in the fill of every place the borrow is lent, the ground path one loan. (A2) survives an [End] on either side. Before borrow ends were static (@conj-nat), that was how the symbolic path ended a borrow earlier than the ground path; now both end the same borrows at the same steps.
+- (A3) says the symbolic path has ended at least the borrows the ground path has. Since borrow ends are static it has ended exactly those; the proof uses only the inclusion.
+- (A4) says its owners include the ground path's: a returned borrow's hole sits in the fill of every place it may point into, and a ground call that runs lends it the same places, marked #lent($ell$, $v$), so the owners are equal; the proof uses only the inclusion.
 - (A5) fixes what each live borrow holds. Without it the relation would admit pairs that resolve alike but in which a borrow points at different parts of its target. For example, symbolically $p$ borrows the predecessor field of $x$'s target, and on the ground it borrows the whole target. $kw("match") dr p$ would then take different arms, and a decreasing argument behind $p$ would have different sizes.
 
 The consequence the proof uses is this. At agreeing states, a place that is readable on both paths has the same resolved content: by (A2) at an owned position, and by (A5) through a borrow. In particular, after [Access], a scrutinee has the same head constructor on both paths. A loan-free value in flight, such as a call's data argument, is the symbolic value under α. And the content of a borrow argument, which is loan-free (well-formedness condition 5) and whole (@tf-lem-res), is the symbolic content under α.
@@ -115,7 +115,7 @@ This is naturality in relational form. It is stated per step, so that the proof 
 - (N1) and (N2) cover erased mode as well as runtime mode.
 
 The risks we know of are:
-- agreement after a [Drop], and the preservation of (A3): early ends are deep, so no reborrow outlives its early-ended borrow on the symbolic path (@tf-drop);
+- agreement after a [Drop], and the preservation of (A3) (@tf-drop); since borrow ends are static the symbolic path ends no borrow early, so the early-end cases there are vacuous;
 - the preservation of (A5) by [Close]. Under α, a closed-off call's fills place the hole where the ground call's returned borrow points (property 3 of @fig-claims);
 - (N3) through [Seal] with inert loans. The lemma behind it is _hole parametricity_: a fill's run writes its hole and reads its cells, but never inspects the hole.
 
@@ -194,7 +194,7 @@ None of (T1)–(T4) is proved, on paper or in Lean. (T1)–(T3) are about runs o
   *(c).* Observed places have type `Nat` or `Unit`. A place's type is read from its stored type; a temporary's is read from its value's type, which is a numeral's, Δ(σ)'s or a sealed program's declared codomain. Agreement relates positions of the same binding, and in F no refinement changes these types (F1, F2).
 ]
 
-The symbolic side's extra positions do occur, and their conjuncts do become `True`: a hypothesis formed at an abstract `n` through `Pick(n, &a, &b)` has type `False ∧ ⊤` in arm `Z`, and a proof can use its second conjunct as `True`.
+Before borrow ends were static, the symbolic side's extra positions did occur, and their conjuncts became `True`: a hypothesis formed at an abstract `n` through `Pick(n, &a, &b)` had type `False ∧ ⊤` in arm `Z`, where the ground side formed `False`. Now the ground side lends `b` to `Pick`'s result too and forms the same `False ∧ ⊤`.
 
 #thm([Lemma], [types agree], [
   Let $Omega_s agr(alpha) Omega_g$ and let $A$ be a proposition of F. Suppose every call made in erased mode by the ground evaluation of $A$ runs to completion without error. If $A$ evaluates to $T_s$ at $Omega_s$ (in a type position, on a private copy), then it evaluates to some $T_g$ at $Omega_g$, and $ok(T_s alpha)$ iff $ok(T_g)$.
@@ -330,18 +330,20 @@ The corollary is about observations. Since D68 an observation reads as runtime c
 - (2): F forms no stuck blocks.
 - (3): at a ground instance every match takes its arm, so no arm is checked.
 - (5): the same types for observed places (@tf-lem-w (c)).
-- (6): footprints may differ in both directions, but every position in only one of them contributes a conjunct that is `True` (@tf-lem-w). The symbolic side's extras are the common case, from over-approximate owners. The ground side's extras come only from borrow variables that the symbolic path has already ended and that a statement reassigns (`AssignBot`).
+- (6): footprints are equal, since both paths lend the same places and end the same borrows; @tf-lem-w covers the general case, in which every position in only one of them contributes a conjunct that is `True`. Before borrow ends were static, the symbolic side's extras were the common case, from over-approximate owners, and the ground side's came from borrow variables the symbolic path had already ended and a statement reassigned (`AssignBot`).
 
 These are remarks, not a corollary. At ground valuations most items hold trivially. The refinements that matter for [Split], such as $sigma := ty("S") sigma'$, are not ground, and this section says nothing about them. Soundness uses @tf-thm, not stability.
 
 === [Drop] after an early end <tf-drop>
 
-The symbolic path can end a borrow earlier than the ground path, which (A2) allows. The [Drop] rule for a lent place is what keeps that from mattering. If a drop failed whenever the dying value held a live loan, this program would be accepted and go wrong:
+*Borrow ends are static, so there are no early ends.* A call that returns a borrow lends it every place its borrow arguments lend, whether it runs or closes off, and a match that is not in tail position ends at its entry what its stuck block would, so the symbolic path ends a borrow exactly where the ground path does (@conj-nat). In `Bad2` below, the ground path lends `b` to `Pick`'s result too, so reading `b` ends it and `a` dies unlent, as on the symbolic path. The [Drop] rule stays, since it is how a place may die while a borrow of it is never used again, as with Rust's non-lexical lifetimes. The rest of this subsection is the argument as it stood when early ends occurred. Its cases for an early end are now vacuous, and the rest still shows the [Drop] clause of (N1).
+
+Before, the symbolic path could end a borrow earlier than the ground path, which (A2) allows. The [Drop] rule for a lent place is what kept that from mattering. If a drop failed whenever the dying value held a live loan, this program would be accepted and go wrong:
 ```
 Bad2(n : Nat, b : Nat, x : &Nat) : Unit := let a = 0; x := Pick(n, &a, &b); let z = b; ()
 ```
 - *Symbolic path.* At the abstract `n`, `Pick` closes off, and its hole $"loan"_k$ sits in the fills of both `a` and `b`. Reading `b` ends `k`, because [Access] ends every loan inside the content, sealed programs included. So `x` holds ⊥, and `a` holds data when it goes out of scope. The [Drop] succeeds.
-- *Ground path, `Bad2(0, 5, &y)`.* `Pick` returns a borrow of `a`, and `b` holds no loan. Reading `b` ends nothing, and `a` goes out of scope while `x` still borrows it. Under that rule, the drop would fail.
+- *Ground path, `Bad2(0, 5, &y)`, before static ends.* `Pick` returns a borrow of `a`, and `b` holds no loan. Reading `b` ends nothing, and `a` goes out of scope while `x` still borrows it. Under that rule, the drop would fail.
 
 A match on a fill with a single owner does the same: the match ends every loan inside the fill, while on the ground the loan sits deeper and survives the match. The test `Bad4` of the `Drops` block has this shape.
 
@@ -359,7 +361,7 @@ Ending every borrower, including those in flight, would be unsound. A stuck bloc
 
 So when the symbolic drop succeeds, the ground drop succeeds. The borrowers the ground drop ends are those held in bindings whose owners include the dying place. By (A4) their symbolic counterparts are ended by the symbolic drop too, or were already ⊥. So (A3) is kept, and (A2), (A4) and (A5) are unaffected, since ending borrows does not change the resolution.
 
-*Early ends are deep.* An early symbolic end does not leave a reborrow alive that the ground path later ends. In F, an early end comes from a hole inside a fill: [Access] or [Drop] meets the loan inside a sealed program.
+*Early ends are deep* (before static ends). An early symbolic end does not leave a reborrow alive that the ground path later ends. In F, an early end comes from a hole inside a fill: [Access] or [Drop] meets the loan inside a sealed program.
 - The ended borrow's content, reborrows included, is substituted into that same fill.
 - Hole parametricity keeps the fill stuck: its run never inspects the hole. So those loans are still inside a neutral at the head of the place being accessed.
 - The same [Access] or [Drop] keeps ending loans until none remains there, so it ends the reborrows too.
