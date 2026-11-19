@@ -151,6 +151,7 @@ def Value.pp : Value → String
     if cs.isEmpty then body else body ++ " where " ++ ", ".intercalate (Value.ppCaps 0 cs)
   | .borrow l v => s!"borrow_{l} {v.argWrap v.pp}"
   | .loan l => s!"loan_{l}"
+  | .gloan l v => s!"lent_{l} {v.argWrap v.pp}"
   | .bot => "⊥"
   | .abs s => s!"σ{s}"
   | .sealed t => s!"⌈{t.pp []}⌉"

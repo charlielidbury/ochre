@@ -153,7 +153,10 @@ inductive Value where
                                               -- each parameter's, the place it takes
   | borrow (l : Nat) (v : Value)              -- `borrow_ℓ v`: the borrowed content lives in the borrow
   | loan (l : Nat)                            -- `loan_ℓ`: a variable bound by borrow ℓ
-  | bot                                       -- `⊥`: moved out / ended
+  | gloan (l : Nat) (v : Value)               -- `lent_ℓ v` (static ends): the content `v` of a place
+                                              -- lent to the returned borrow ℓ, which may point here
+                                              -- by its declared type; [Access] ends ℓ, paths go through
+  | bot                                      -- `⊥`: moved out / ended
   | abs (s : Nat)                             -- `σ`: an abstract value (Lean's fvar)
   | sealed (t : Term)                         -- `⌈t⌉`: a closed program whose run is stuck
   | proof                                     -- `⋆`: every value of a proposition (proof irrelevance)
@@ -235,7 +238,7 @@ def Value.beq : Value → Value → Bool
   | .gfn n, .gfn m => n == m
   | .clo cs t r, .clo ds u r' => Value.beqList cs ds && t.beq u && Value.beqRd r r'
   | .tPi cs t r, .tPi ds u r' => Value.beqList cs ds && t.beq u && Value.beqRd r r'
-  | .borrow l v, .borrow m w => l == m && v.beq w
+  | .borrow l v, .borrow m w | .gloan l v, .gloan m w => l == m && v.beq w
   | .loan l, .loan m | .abs l, .abs m | .sort l, .sort m => l == m
   | .sealed t, .sealed u => t.beq u
   | .tEq a b c, .tEq d e f => a.beq d && b.beq e && c.beq f

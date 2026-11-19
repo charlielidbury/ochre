@@ -259,3 +259,173 @@ ochr Reborrows uses WordType, Lists, Fixtures {
   ("TravRunWrong", "the body of TravRunWrong has type ⊤, but the goal is False"),
   ("UseMoved", "no such place *x: its path does not exist in ⊥"),
   ("PassWhileReborrowed", "no such place *y: its path does not exist in ⊥")]
+
+/-! ## Borrow ends are static
+
+When a borrow ends is decided as Rust decides it, from the program and the declared types, never
+from where a run leaves it pointing, so a definition's generic call and every closed call of it
+have the same borrows live at every point. A call that returns a borrow lends it every place its
+borrow arguments lend, whether the call runs or closes off (rule 1: `Fixtures`' `Pick(Z, &a, &b)`
+lends `a` and `b`, as Rust's `fn pick<'a>(n, x: &'a mut T, y: &'a mut T) -> &'a mut T` does). A
+match that is not in tail position ends and lends as the stuck block it closes off as on an
+unknown scrutinee, whichever arm runs (rule 2), and so does `J`'s transported term. Before this,
+the generic call ended a borrow wherever a stuck call's hole or a stuck block's capture said it
+might, and a closed call only where its run said it did, so an accepted definition could fail
+when called: `EI`, `EJ`, `EIB`, `EJB`, `EJJ` and `GJI` below were accepted and their closed calls
+rejected. -/
+
+ochr StaticEnds uses Nats, Fixtures {
+  def PickP (n : Nat) (x : &(Nat × Nat)) (y : &(Nat × Nat)) : &(Nat × Nat) := (
+    match n { Z => x, S _ => y }
+  )
+  def MN (z : Nat) : Type := Nat
+
+  -- A stuck call's hole: at an unknown `n`, reading `a` ends `r`, so the `Id`'s side ends
+  -- nothing; at `n = 1` it ends `r` too, as `a` is lent to it whatever `n` is
+  def EI (n : Nat) (a : Nat) (b : Nat) : Unit := (
+    let r = Pick(n, &a, &b);
+    let a1 = a;
+    let T = Id(Unit, (let z = clone(b); ()), ());
+    ()
+  )
+  -- ... and the join of a match on a known constructor drops nothing through the dead `r`
+  -- (its arm `Z` does not run), at an unknown `n` and at every `n`
+  def EJ (n : Nat) (a : Nat × Nat) (b : Nat × Nat) : Nat × Nat := (
+    let r = PickP(n, &a, &b);
+    let a1 = a;
+    let k = S(Z);
+    match k { Z => (let z = (*r).0; Z), S m => Z };
+    let bb = b;
+    bb
+  )
+  -- the arm that runs ends the borrow (reading `a`), before the join drops through it
+  def EJ2 (n : Nat) (a : Nat × Nat) (b : Nat × Nat) : Nat × Nat := (
+    let r = PickP(n, &a, &b);
+    let k = S(Z);
+    match k { Z => (let z = (*r).0; Z), S m => (let a2 = clone(a); Z) };
+    let bb = b;
+    bb
+  )
+  -- A stuck block's captures: the block over `k` reads `a`, ending `r`; the arm that runs at
+  -- `k = 1` does not read it, but the match ends what the block would
+  def EIB (k : Nat) (a : Nat) : Unit := (
+    let r = &a;
+    match k { Z => (let z = clone(a); ()), S _ => () };
+    let T = Id(Unit, (let z = clone(a); ()), ());
+    ()
+  )
+  def EJB (k : Nat) (a : Nat × Nat) : Nat × Nat := (
+    let r = &a;
+    match k { Z => (let z = clone(a); ()), S _ => () };
+    let m = S(Z);
+    match m { Z => (let z = (*r).0; Z), S _ => Z };
+    let aa = a;
+    aa
+  )
+  -- The same through `J`: at an unknown `m` the `J` closes off as a block that reads `a`; at
+  -- `m = 0` it is its transported term, which ends what the block would
+  def GJI (m : Nat) (k : Nat) (h : Eq(Nat, m, Z)) (a : Nat) : Unit := (
+    let r = &a;
+    let v = J(Nat, m, Z, MN, h, (match k { Z => (let z = clone(a); Z), S _ => Z }));
+    let T = Id(Unit, (let z = clone(a); ()), ());
+    ()
+  )
+  def EJJ (m : Nat) (h : Eq(Nat, m, Z)) (k : Nat) (a : Nat × Nat) : Nat × Nat := (
+    let r = &a;
+    let v = J(Nat, m, Z, MN, h, (match k { Z => (let z = clone(a); Z), S _ => Z }));
+    let j = S(Z);
+    match j { Z => (let z = (*r).0; Z), S _ => Z };
+    let aa = a;
+    aa
+  )
+  -- A computed call lends every place its borrow arguments lend: `Pick(Z, &a, &b)` points
+  -- into `a`, and reading `b` ends it, as in Rust
+  reject def PickZ (a : Nat) (b : Nat) : Unit := (
+    let r = Pick(Z, &a, &b);
+    let z = clone(b);
+    *r := 5;
+    ()
+  )
+  -- twin of PickZ: `b` is read after the write through `r`
+  def PickZOk (a : Nat) (b : Nat) : Unit := (
+    let r = Pick(Z, &a, &b);
+    *r := 5;
+    let z = clone(b);
+    ()
+  )
+  -- A stuck block's by-move capture of `a.0` reaches `a`'s content, which holds `r`'s hole,
+  -- by ending `r`, as the arm that moves it does. Before, it generalised the content and lost
+  -- the hole: `G1` was accepted and `G1(0, 1, (1, 2), (3, 4))` rejected
+  reject def G1 (n : Nat) (k : Nat) (a : Nat × Nat) (b : Nat × Nat) : Unit := (
+    let r = PickP(n, &a, &b);
+    match k { Z => (let z = a.0; ()), S _ => () };
+    *r := (Z, Z);
+    ()
+  )
+  -- twin of G1: the write through `r` comes before the match
+  def G1Ok (n : Nat) (k : Nat) (a : Nat × Nat) (b : Nat × Nat) : Unit := (
+    let r = PickP(n, &a, &b);
+    *r := (Z, Z);
+    match k { Z => (let z = a.0; ()), S _ => () };
+    ()
+  )
+  -- A match in tail position is split at the generic call, not closed off, so the arm that
+  -- runs uses `r` though the other ends it (Rust accepts this too)
+  def G4 (k : Nat) (a : Nat) : Unit := (
+    let r = &a;
+    match k { Z => (a := 1; ()), S _ => (*r := 2; ()) }
+  )
+  -- not in tail position, the match ends what its block would: `a`'s borrower `r`
+  reject def G5 (k : Nat) (a : Nat) : Unit := (
+    let r = &a;
+    match k { Z => (a := 1; ()), S _ => (*r := 2; ()) };
+    ()
+  )
+  -- A match that returns a borrow lends it what its block's result would be: `a` and `b`
+  reject def G3 (k : Nat) (a : Nat) (b : Nat) : Unit := (
+    let r = match k { Z => &a, S _ => &b };
+    let z = clone(a);
+    *r := 5;
+    ()
+  )
+  -- twin of G3: neither lender is read before the write
+  def G3Ok (k : Nat) (a : Nat) (b : Nat) : Unit := (
+    let r = match k { Z => &a, S _ => &b };
+    *r := 5;
+    let z = clone(a);
+    ()
+  )
+  -- ... at a known constructor too
+  reject def G3K (a : Nat) (b : Nat) : Unit := (
+    let k = S(Z);
+    let r = match k { Z => &a, S _ => &b };
+    let z = clone(a);
+    *r := 5;
+    ()
+  )
+}
+
+-- Closed calls of the definitions above: each is accepted, as its definition is
+ochr StaticEndsRuns uses Nats, Fixtures, StaticEnds {
+  def EIRun : Unit := EI(1, 2, 3)
+  def EIRun0 : Unit := EI(0, 2, 3)
+  def EJRun : Nat × Nat := EJ(1, (2, 3), (4, 5))
+  def EJRun0 : Nat × Nat := EJ(0, (2, 3), (4, 5))
+  def EJ2Run : Nat × Nat := EJ2(1, (2, 3), (4, 5))
+  def EJ2Run0 : Nat × Nat := EJ2(0, (2, 3), (4, 5))
+  def EIBRun : Unit := EIB(1, 0)
+  def EJBRun : Nat × Nat := EJB(1, (1, 2))
+  def GJIRun : Unit := GJI(0, 1, refl, 5)
+  def EJJRun : Nat × Nat := EJJ(0, refl, 1, (1, 2))
+  def G1OkRun : Unit := G1Ok(0, 1, (1, 2), (3, 4))
+  def G4Run : Unit := G4(1, 0)
+  def G4Run0 : Unit := G4(0, 0)
+  def G3OkRun : Unit := G3Ok(1, 0, 0)
+}
+
+#guard (run "StaticEnds" StaticEnds).rejectedWith [
+  ("PickZ", "no such place *r: its path does not exist in ⊥"),
+  ("G1", "no such place *r: its path does not exist in ⊥"),
+  ("G5", "no such place *r: its path does not exist in ⊥"),
+  ("G3", "no such place *r: its path does not exist in ⊥"),
+  ("G3K", "no such place *r: its path does not exist in ⊥")]

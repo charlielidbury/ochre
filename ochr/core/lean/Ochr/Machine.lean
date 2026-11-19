@@ -59,8 +59,11 @@ def setPlace (p : Place) (new : Value) : M Unit := do
 /-- The first live loan met on the path to a place, including at the place itself. -/
 def firstLiveLoanOnPath (env : Env) : Value → List Step → Option Nat
   | .loan l, _ => if liveLoan env l then some l else none
+  -- static ends: a place lent to a returned borrow is on the path of every access below it
+  | .gloan l w, ss => if liveLoan env l then some l else firstLiveLoanOnPath env w ss
   | v, s :: ss => (stepV s v).bind (firstLiveLoanOnPath env · ss)
   | _, [] => none
+termination_by v ss => (ss, v)
 
 def firstBorrowLabel : Value → Option Nat
   | .borrow l _ => some l
@@ -304,6 +307,7 @@ mutual
 /-- D84: the places under `q` whose content in its value `v` is `⊥` (moved out). -/
 def botPlaces : Value → Place → List Place
   | .bot, q => [q]
+  | .gloan _ w, q => botPlaces w q
   | .succ w, q => botPlaces w (.proj 0 q)
   | .borrow _ w, q => botPlaces w (.deref q)
   | .ind t c _ _ fs, q => botPlacesFields t c q 0 fs
@@ -321,6 +325,7 @@ mutual
 def loanPath (v : Value) (l : Nat) : M (Option (List Step)) := do
   match v with
   | .loan m => pure (if m == l then some [] else none)
+  | .gloan _ w => loanPath w l     -- static ends: a mark is not a step
   | .succ w => pure ((← loanPath w l).map (Step.proj 0 :: ·))
   | .borrow _ w => pure ((← loanPath w l).map (Step.deref :: ·))
   | .ind t c _ _ fs =>
@@ -353,6 +358,81 @@ def throughLocalBorrow (f i : Nat) (p : Place) : M (Option (Nat × List Step)) :
       return some (j, path ++ rest)
   pure none
 
+/-! ### Static ends: the places a returned borrow is lent
+
+A call that returns a borrow lends it every place its borrow arguments lend, whether it runs or
+closes off (rule 1), read from its declared type and its arguments, never from where the run
+leaves the result pointing. A lent place keeps its content, marked `lent_ℓ v` (`Value.gloan`):
+[Access] of the place, of a part of it or of a place containing it ends `ℓ` as a loan there
+would (`firstLiveLoanOnPath`, `Value.loans`), paths go through the mark (`stepV`), and ending
+`ℓ` removes the marks ([End ℓ]). So the generic call, where the call closes off and its fills
+hold `ℓ`'s hole, and every instance, where it runs and the result points at one place, have the
+same borrows live and the same places lent; and a fill re-run in a split world keeps its place
+lent though its hole is gone. -/
+
+/-- What `lendV` does to the marks of the borrow `l`. -/
+inductive LendOp where
+  /-- every place lent to `l` (its loan, or its mark) is lent to `g` too -/
+  | mark (l g : Nat)
+  /-- `l` has ended: each place it was lent becomes lent to the borrows in `l`'s final content
+  (a reborrow of `*l` that outlives `l` keeps them lent), or free -/
+  | ended (l : Nat) (to : List Nat)
+
+/-- Mark `w` lent to each of `to`. -/
+def lentTo (to : List Nat) (w : Value) : Value :=
+  to.foldr (fun m acc => match acc with
+    | .gloan m' _ => if m' == m then acc else .gloan m acc
+    | _ => .gloan m acc) w
+
+mutual
+/-- Apply a `LendOp` to every mark and loan of a value, sealed programs and captures included
+(a fill's hole sits inside its program). Marks do not change what a program computes, so a sealed
+program is not re-run. -/
+def lendV (fuel : Nat) (op : LendOp) (v : Value) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let some l := (match op with | .mark l _ | .ended l _ => some l) | return v
+  if !(v.anyAtom fun | .loan m | .gloan m _ => m == l | _ => false) then return v
+  match op, v with
+  | .mark _ g, .loan _ => return .gloan g v
+  | .mark _ g, .gloan m w => if m == l then return .gloan g v else return .gloan m (← lendV fuel' op w)
+  | .ended _ to, .gloan m w =>
+    let w' ← lendV fuel' op w
+    return (if m == l then lentTo to w' else .gloan m w')
+  | _, .succ w => return .succ (← lendV fuel' op w)
+  | _, .borrow m w => return .borrow m (← lendV fuel' op w)
+  | _, .clo cs t rd => return .clo (← cs.mapM (lendV fuel' op)) (← lendT fuel' op t) rd
+  | _, .tPi cs t rd => return .tPi (← cs.mapM (lendV fuel' op)) (← lendT fuel' op t) rd
+  | _, .sealed t => return .sealed (← lendT fuel' op t)
+  | _, .ind t c h ps fs => return .ind t c h ps (← fs.mapM (lendV fuel' op))
+  | _, _ => return v
+termination_by structural fuel
+
+def lendT (fuel : Nat) (op : LendOp) (t : Term) : M Term := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let go := lendT fuel' op
+  match t with
+  | .val v => return .val (← lendV fuel' op v)
+  | .assign p u => return .assign p (← go u)
+  | .letIn h u w => return .letIn h (← go u) (← go w)
+  | .seq u w => return .seq (← go u) (← go w)
+  | .matchNat p z s => return .matchNat p (← go z) (← go s)
+  | .fix h hs ds c d b => return .fix h hs ds c d (← go b)
+  | .call f as hd => return .call (← go f) (← as.mapM go) hd
+  | .succ u => return .succ (← go u)
+  | .ascribe a b => return .ascribe (← go a) b
+  | .prim n as => return .prim n (← as.mapM go)
+  | .ctor ty c h ps as => return .ctor ty c h ps (← as.mapM go)
+  | .matchInd p ty as => return .matchInd p ty (← as.mapM fun (h, a) => do pure (h, ← go a))
+  | _ => return t
+termination_by structural fuel
+end
+
+/-- `lendV` at every value of Ω (types hold no loan: they are formed on a private copy). -/
+def lendEnv (fuel : Nat) (op : LendOp) : M Unit := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  mapState (lendV fuel' op) false
+termination_by structural fuel
+
 /-- D53: record an assignment, borrow or move of `p` by its root position (a stuck block's captures, `armMoves`). -/
 def logEffect (p : Place) (kind : String) : M Unit := do
   if let .bind f i ← varPos p.root then
@@ -375,6 +455,7 @@ where
     let fuel' + 1 := fuel | exhausted "out of fuel"
     match v with
     | .ind t c _ _ fs => pure (if t == g.ty && c == g.ctor then some fs else none)
+    | .gloan _ w => ctorFieldsF fuel' w g
     | .loan l =>
       let env := (← get).env
       match (findBorrow env l).bind fun p => (valAt env p).takeBorrow l with
@@ -397,7 +478,7 @@ def hasDependent (v : Value) : M Bool := do
   | .ind t c _ _ fs =>
     if (← lookupInd t).dependent c then return true
     anyList fs
-  | .borrow _ w | .succ w => hasDependent w
+  | .borrow _ w | .succ w | .gloan _ w => hasDependent w
   | _ => pure false
 termination_by structural v
 where
@@ -697,6 +778,7 @@ def substV (fuel : Nat) (x r : Value) (v : Value) : M Value := do
   | .abs _ | .loan _ => return (if v == x then r else v)
   | .succ w => return .succ (← substV fuel' x r w)
   | .borrow l w => return .borrow l (← substV fuel' x r w)
+  | .gloan l w => return .gloan l (← substV fuel' x r w)
   | .clo cs t rd =>
     let rd' ← rd.mapM fun (d, T) => do pure (d, ← substV fuel' x r T)
     return .clo (← cs.mapM (substV fuel' x r)) (← substT fuel' x r t) rd'
@@ -824,6 +906,9 @@ def endBorrow (fuel : Nat) (l : Nat) : M Unit := do
         err s!"[D53] a borrow ends while its content is partly moved out ({c})"
       setAt p rest
       substEnv fuel' (.loan l) c false
+      -- static ends: the places lent to `l` stay lent to the borrows its final content holds (a
+      -- reborrow of `*l` that outlives it), as a stuck call's fills then hold their loans; else free
+      lendEnv fuel' (.ended l (liveLoansIn (← get).env c))
 termination_by structural fuel
 
 /-- D73 [Repack] with what is lent unknown: a live loan inside a value stands for whatever
@@ -840,6 +925,9 @@ def lentUnknown (fuel : Nat) (v : Value) : M Value := do
       | some T => pure (.abs (← freshAbs T))
       | none => pure v
     | none => pure v
+  -- static ends: a mark says which borrow may point here, not that its content is gone; the
+  -- loans inside it say what is lent out (a stuck call's fill there is read whole, as before)
+  | .gloan _ w => lentUnknown fuel' w
   | .succ w => pure (.succ (← lentUnknown fuel' w))
   | .ind t c h ps fs => pure (.ind t c h ps (← fs.mapM (lentUnknown fuel')))
   | _ => pure v
@@ -1904,7 +1992,10 @@ def evalAt (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) 
   -- D82: whether this term's context reads its type (always, in typing)
   let want := typed || (← get).wantTy
   let wantHere0 := (← get).wantHere
+  -- static ends: whether this term is in tail position of the body being run (one-shot)
+  let tail := (← get).tailNext
   modify fun s => { s with headEval := false, tailDecl := none, wantTy := false, wantHere := want }
+  modify fun s => { s with tailNext := false, curTail := tail }
   let d? ← if !head && !(t matches .val _) then
       match hinted with
       | some d => pure (some d)
@@ -1979,6 +2070,8 @@ constructor application that its fields do not determine (v2.0, D46). -/
 def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   tick
+  -- static ends: this term's tail position, read before any nested `eval` sets it again
+  let tail := (← get).curTail
   -- D82: the machine carries types as typing does (every binding has its declared type); it
   -- differs from typing only where a run is stuck (it closes off where typing splits) and in
   -- not re-checking the code it runs (the checks below are typing's). It computes a term's type
@@ -1990,7 +2083,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
   if let some (p, k) := t.placeOperand? then
     if let some (q, i, rebuild) ← projIn fuel' p then
       let (q, n, arms) ← projMatch fuel' q i (fun f => k (rebuild f))
-      return ← evalMatchInd fuel' typed q n arms
+      return ← evalMatchInd fuel' typed q n arms (tail := tail)
   match t with
   | .place p =>
     let T ← if typed then some <$> placeType fuel' p else if want then placeType? fuel' p else pure none
@@ -2052,6 +2145,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     -- the tail's reading is this let's (read with `h`'s declared type, unless refined)
     if du' == du then modify fun s => { s with tailDecl := myD }
     demand want
+    modify fun s => { s with tailNext := tail }     -- static ends: the body is the let's tail
     let (r, R) ← eval fuel' typed w (if typed then none else hint)     -- D89: the tail's hint
     let fl ← getFlags     -- the body's erasure flags (dropping may normalise)
     pushTemp r
@@ -2064,9 +2158,10 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     dropValue fuel' v
     modify fun s => { s with tailDecl := myD }     -- the tail's reading is this sequence's
     demand want
+    modify fun s => { s with tailNext := tail }     -- static ends: the tail is the sequence's
     eval fuel' typed w (if typed then none else hint)
-  | .matchNat p z s => evalMatch fuel' typed p z s (if typed then none else hint)
-  | .matchInd p ty arms => evalMatchInd fuel' typed p ty arms (if typed then none else hint)
+  | .matchNat p z s => evalMatch fuel' typed p z s (if typed then none else hint) (tail := tail)
+  | .matchInd p ty arms => evalMatchInd fuel' typed p ty arms (if typed then none else hint) (tail := tail)
   | .tind n as => evalTInd fuel' typed n as
   | .ctor ty c h ps as => evalCtor fuel' typed ty c h ps as hint
   | .const n =>
@@ -2166,6 +2261,8 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
       if (← get).runtime then
         fire .JRun
         -- D84 [Join]: `t` is the one arm, at the join's grain, as at every other run of `J`
+        -- static ends, rule 2: its entry ends what [T-J-stuck]'s block would
+        discard (blockEntry fuel' u)
         return ← joinDrop fuel' t (do demand want; eval fuel' false u)
       if !(← jErased fuel' P) then
         -- its endpoints are erased positions, on private copies; `A`, `P` and `h`
@@ -2175,7 +2272,10 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
         -- [J]: the endpoints are convertible, `J` is `t`; [J-stuck]: otherwise the run is
         -- stuck, and `t` does not run (D56, D63, rule-audit item 5)
         -- D84 [Join]: `t` is the one arm, so its moves are taken at the join's grain
-        if ← conv fuel' av bv then return ← joinDrop fuel' t (do demand want; eval fuel' false u)
+        -- static ends, rule 2: its entry ends what [T-J-stuck]'s block would
+        if ← conv fuel' av bv then
+          discard (blockEntry fuel' u)
+          return ← joinDrop fuel' t (do demand want; eval fuel' false u)
         stuckNow
       demand want
       return (← eval fuel' false u)
@@ -2209,6 +2309,8 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
         setFlags fl
         pure (tv, Pa)⟩
       return ← closeBlock fuel' tJ [arm] (some Pb)
+    -- static ends, rule 2: its entry ends what [T-J-stuck]'s block would
+    discard (blockEntry fuel' u)
     let (v, Tu) ← joinDrop fuel' t (eval fuel' true u)
     let fl ← getFlags
     expectTy fuel' "the transported term" Tu Pa
@@ -2684,6 +2786,8 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : Lis
   -- D89: a tail constructor whose fields do not determine its parameters gets the declared
   -- codomain at the arguments, as typing's tail check gives it
   let hint ← if ← needsCtx fuel' body then some <$> declCallType fuel' piTy ws else pure none
+  -- static ends: the body is in tail position, as `checkTail` checks it at the generic call
+  modify fun s => { s with tailNext := true }
   let (v, _) ← withErasedIf erasedFn (eval fuel' false body hint)
   wholeReturned v
   pushTempAt ((← topIdx) - 1) v
@@ -2743,6 +2847,14 @@ def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Ar
     endBorrowArgs fuel' ws
     setFlags (true, true)
     return (.proof, B)
+  -- static ends, rule 1: a call whose declared result is a borrow lends that borrow every place
+  -- its borrow arguments lend, whether it runs or closes off. They are marked for a label `g`
+  -- reserved now (no borrow holds it yet, so the marks are inert while the call runs: the callee
+  -- cannot reach its caller's places, [Frame] F4), and `g` becomes the result's label
+  let lent := if kind == .ref then ws.toList.filterMap (fun | .borrow l _ => some l | _ => none) else []
+  let g? ← if lent.isEmpty then pure none else some <$> freshLoan
+  if let some g := g? then
+    for l in lent do lendEnv fuel' (.mark l g)
   let r ← match fv with
     | .abs _ | .sealed _ =>
       -- a neutral head closes off at once (v1.3), except as [Seal]'s head call (D39)
@@ -2753,6 +2865,10 @@ def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Ar
       catchStuck (runBody fuel' fv cs t rd ws) fun on =>
         if head then throw (.stuck on) else closeCall fuel' fv ws kind res fills tys
     | _ => err s!"call of {fv}, which is not a function"
+  if let some g := g? then
+    match r with
+    | .borrow k _ => lendEnv fuel' (.ended g [k])
+    | _ => lendEnv fuel' (.ended g [])
   let r := if cls == 2 then Value.proof else r
   -- D80 (R2): the result of a call whose declared codomain reads as `Unit` is `()`, whether it
   -- ran or closed off, so the generic call and an instance normalise it alike
@@ -2814,6 +2930,8 @@ def closeCall (fuel : Nat) (fv : Value) (ws : Array Value) (kind : Kind) (res : 
     for ((_, l, _), j) in bs.zipIdx do
       let fill := wrapL (.letIn ⟨"r"⟩ (C 0) (.seq (.assign (.deref (.var 0)) (.val (.loan k))) (peek (cell 1 j))))
       substEnv fuel' (.loan l) (← canonNeutral (.sealed fill)) false
+      -- static ends: `l` is consumed; the places it lent are `k`'s (marked by `callFn`, rule 1)
+      lendEnv fuel' (.ended l [])
     pure (.borrow k (← canonNeutral (.sealed (wrapL (.letIn ⟨"r"⟩ (C 0) (peek (.place (.deref (.var 0)))))))))
   | _ =>
     for ((i, l, _), j) in bs.zipIdx do
@@ -2823,6 +2941,8 @@ def closeCall (fuel : Nat) (fv : Value) (ws : Array Value) (kind : Kind) (res : 
       let fill ← if fills.getD i false then pure .unit
         else canonNeutral (.sealed (wrapL (.seq (C 0) (peek (cell 0 j)))))
       substEnv fuel' (.loan l) fill false
+      -- static ends: `l` is consumed, so the places it lent are free
+      lendEnv fuel' (.ended l [])
     -- D80 (R2): the readback at a declared `Unit` is `()` (η-normal form); the call's effects
     -- are in the fills above
     if res == .unit then return .unit
@@ -2839,21 +2959,21 @@ def refine (fuel : Nat) (σ : Nat) (r : Value) : M Unit := do
   if (← get).neutrals.any (·.2 == σ) then renormAll fuel'
 termination_by structural fuel
 
-def evalMatch (fuel : Nat) (typed : Bool) (p : Place) (z s : Term) (expected : Option Value := none) :
-    M (Value × Option Value) := do
+def evalMatch (fuel : Nat) (typed : Bool) (p : Place) (z s : Term) (expected : Option Value := none)
+    (tail : Bool := false) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- D81 [Proj]: a scrutinee with a field step `q.i` is named by a match on `q` first
   if let some (q, i, rebuild) ← projIn fuel' p then
     let (q, n, arms) ← projMatch fuel' q i (fun f => .matchNat (rebuild f) z s)
-    return ← evalMatchInd fuel' typed q n arms expected
+    return ← evalMatchInd fuel' typed q n arms expected tail
   if typed then natScrutinee fuel' p
   accessPath fuel' p
   accessNeutralHead fuel' p
   let v ← matchContent p
   match v with
   -- D84 [Join]: what another arm moves is dropped at this arm's end
-  | .zero => do let w ← wanted; joinDrop fuel' (.matchNat p z s) (do demand w; eval fuel' typed z (if typed then none else expected))     -- D82: an arm is the match's tail
-  | .succ _ => do let w ← wanted; joinDrop fuel' (.matchNat p z s) (do demand w; eval fuel' typed s (if typed then none else expected))
+  | .zero => do let w ← wanted; joinEnds fuel' (.matchNat p z s) tail (do demand w; modify fun s => { s with tailNext := tail }; eval fuel' typed z (if typed then none else expected))     -- D82: an arm is the match's tail
+  | .succ _ => do let w ← wanted; joinEnds fuel' (.matchNat p z s) tail (do demand w; modify fun s => { s with tailNext := tail }; eval fuel' typed s (if typed then none else expected))
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
   | .abs σ => if typed then splitThenClose fuel' p z s σ expected else stuckOn v
   | .sealed _ | .loan _ =>
@@ -2864,7 +2984,7 @@ def evalMatch (fuel : Nat) (typed : Bool) (p : Place) (z s : Term) (expected : O
       if let some r ← recordedNeutral v then
         substEnv fuel' v r true
         let expected ← expected.mapM (substV fuel' v r)
-        return ← evalMatch fuel' typed p z s expected
+        return ← evalMatch fuel' typed p z s expected tail
       let σ ← generalizeNeutral fuel' p v
       let expected ← expected.mapM (substV fuel' v (.abs σ))
       splitThenClose fuel' p z s σ expected
@@ -2946,6 +3066,7 @@ def renormV (fuel : Nat) (v : Value) : M Value := do
     canonNeutral (← nfSealed fuel' t')
   | .succ w => return .succ (← renormV fuel' w)
   | .borrow l w => return .borrow l (← renormV fuel' w)
+  | .gloan l w => return .gloan l (← renormV fuel' w)
   | .ind ty c h ps fs => return .ind ty c h (← ps.mapM (renormV fuel')) (← fs.mapM (renormV fuel'))
   | .tEq A a b => mkEqM fuel' (← renormV fuel' A) (← renormV fuel' a) (← renormV fuel' b)
   | .tInd n as => return .tInd n (← as.mapM (renormV fuel'))
@@ -3055,7 +3176,7 @@ so the match is a proof, `⋆` (it cannot pick an arm). Subsingleton elimination
 the type has no constructors or one whose fields are all propositions, every arm must be
 a proof (the declared reading of "its result is a proposition", D42). -/
 def evalMatchByType (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : List (Hint × Term))
-    (expected : Option Value) : M (Value × Option Value) := do
+    (expected : Option Value) (tail : Bool := false) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   accessPath fuel' p
   let v ← matchContent p
@@ -3091,6 +3212,8 @@ def evalMatchByType (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms 
   if let [(_, a)] := arms then
     let a ← if typed then bindDataFields fuel' p d ps 0 a else pure a
     demand (← wanted)
+    -- static ends: its one arm is in tail position where the match is (`checkTail` checks it so)
+    modify fun s => { s with tailNext := tail }
     let r ← eval fuel' typed a
     if needProof && !(← getFlags).2 then subErr
     return r
@@ -3130,14 +3253,14 @@ termination_by structural fuel
 
 /-- [Match] / [Split] on a declared inductive type. -/
 def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : List (Hint × Term))
-    (expected : Option Value := none) : M (Value × Option Value) := do
+    (expected : Option Value := none) (tail : Bool := false) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- D81 [Proj]: a scrutinee with a field step `q.i` is named by a match on `q` first
   if let some (q, i, rebuild) ← projIn fuel' p then
     let (q, n, arms') ← projMatch fuel' q i (fun f => .matchInd (rebuild f) ty arms)
-    return ← evalMatchInd fuel' typed q n arms' expected
+    return ← evalMatchInd fuel' typed q n arms' expected tail
   abstractMatchCheck p ty
-  if ← byTypeMatch ty arms then return ← evalMatchByType fuel' typed p ty arms expected
+  if ← byTypeMatch ty arms then return ← evalMatchByType fuel' typed p ty arms expected tail
   accessPath fuel' p
   accessNeutralHead fuel' p
   let v ← matchContent p
@@ -3146,7 +3269,7 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
     if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
     if typed then discard (scrutType fuel' p ty)
     match arms[c]? with
-    | some (_, a) => do let w ← wanted; joinDrop fuel' (.matchInd p ty arms) (do demand w; eval fuel' typed a (if typed then none else expected))
+    | some (_, a) => do let w ← wanted; joinEnds fuel' (.matchInd p ty arms) tail (do demand w; modify fun s => { s with tailNext := tail }; eval fuel' typed a (if typed then none else expected))
     | none => err s!"[Match] no arm for constructor {c}"
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
   | .abs σ =>
@@ -3162,7 +3285,7 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
       if let some r ← recordedNeutral v then
         substEnv fuel' v r true
         let expected ← expected.mapM (substV fuel' v r)
-        return ← evalMatchInd fuel' typed p ty arms expected
+        return ← evalMatchInd fuel' typed p ty arms expected tail
       let (d, ps) ← scrutType fuel' p ty
       let σ ← generalizeNeutral fuel' p v
       let expected ← expected.mapM (substV fuel' v (.abs σ))
@@ -3209,18 +3332,24 @@ def movedPlace (fuel : Nat) (q : Place) : M Place := do
     match ← placeType? fuel' p with
     | some (.tInd tn _) =>
       if (← lookupInd tn).ctors.length == 1 then
+        -- static ends: the arm that moves out of it reaches it by a match, which ends the
+        -- borrows whose loans are inside it first ([Access] for matching, D29); generalising
+        -- a sealed program that holds a live hole would lose the hole (census, G1)
+        if !(liveLoansIn (← get).env n).isEmpty then
+          accessPath fuel' p; accessInside fuel' p
+          return ← movedPlace fuel' q
         match ← recordedNeutral n with
         | some r => substEnv fuel' n r true
         | none => discard (generalizeNeutral fuel' p n)
         movedPlace fuel' q
       else pure p
     | _ => pure p
-  | .loan _ =>
+  | .loan _ | .gloan _ _ =>
     -- D84: a place lent out is reached as the arm that moves out of it reaches it ([Access]
     -- ends its borrowers, which gives it its content back), so its fields are named on every
     -- path: where a borrow of it is live at the join, and where the arm already ended it
     accessPath fuel' p; accessInside fuel' p
-    if (← content p) matches .loan _ then pure p else movedPlace fuel' q
+    if (← content p) matches .loan _ | .gloan _ _ then pure p else movedPlace fuel' q
   | _ => pure p
 termination_by structural fuel
 
@@ -3279,6 +3408,54 @@ def joinCont (fuel : Nat) (mt : Term) (k : Value → Value → M Unit) : M (Valu
     let r ← popTemp
     setFlags fl
     k r R
+termination_by structural fuel
+
+/-- Static ends, rule 2: a match not in tail position, run on a known constructor, ends and lends
+as the stuck block it closes off as on an unknown one (`closeBlock`), so that which borrows are
+live after it does not depend on which arm a run takes. At its entry, the places that block would
+capture (`blockCaptures`, K1) are accessed as the block's arguments are, in its order, ending their
+borrowers (`blockEntry`). If its declared type is a borrow, its result is lent what the block's
+result would be, by [Close] and rule 1: the places it would take by `&`, and those the borrow
+variables it would take by move lend. Then the arm runs and the join drops (D84, `joinDrop`). A
+match in tail position is split at the generic call, never closed off, and runs as before. -/
+def joinEnds (fuel : Nat) (mt : Term) (tail : Bool) (run : M (Value × Option Value)) :
+    M (Value × Option Value) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  if tail then return ← joinDrop fuel' mt run
+  let caps ← blockEntry fuel' mt
+  unless (← withLive true (declOf fuel' false [] [] mt)) matches .ref _ do
+    return ← joinDrop fuel' mt run
+  -- the borrow variables the block would take by move: the places they lend are the result's,
+  -- marked for a label reserved now (inert while the arm runs, as in a call: rule 1)
+  let g ← freshLoan
+  for (q, mode) in caps do
+    if mode == 2 then
+      if let some (.borrow j _) ← content? q then lendEnv fuel' (.mark j g)
+  let (v, T) ← joinDrop fuel' mt run
+  match v with
+  | .borrow k _ =>
+    -- the places the block would take by `&`
+    for (q, mode) in caps do
+      if mode == 1 then
+        if let some w ← content? q then setPlace q (lentTo [k] w)
+    lendEnv fuel' (.ended g [k])
+  | _ => lendEnv fuel' (.ended g [])
+  pure (v, T)
+termination_by structural fuel
+
+/-- Static ends, rule 2: the entry of a match (or of `J`'s transported term) that a stuck block
+would close off: the block's captures, accessed in `closeBlock`'s order (oldest binding first), as
+its arguments are evaluated ([Access]: the borrowers of each place end). Returns the captures. -/
+def blockEntry (fuel : Nat) (mt : Term) : M (Array (Place × Nat)) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let (_, st) ← staticJoin fuel' mt
+  let (caps, _, _) ← blockCaptures fuel' mt st
+  let capsS := caps.qsort fun (a, _) (b, _) => a.root > b.root || (a.root == b.root && (a.steps.2.length < b.steps.2.length))
+  for (q, _) in capsS do
+    fire .Access fun _ => s!"static ends: a stuck block would capture this place"
+    accessPath fuel' q
+    if (← content? q).isSome then accessInside fuel' q
+  pure capsS
 termination_by structural fuel
 
 /-- D84 [Join]: drop `q` as a stuck block's by-move argument takes it (`readPlace`): a borrow is
@@ -3405,7 +3582,7 @@ def blockCaptures (fuel : Nat) (mt : Term) (armMovedAll : List Place) :
     let inner := moved.filter fun m => placePrefix q m && !(placeEq m q)
     if k == 2 || inner.isEmpty then out := out.push (q, k); continue
     if wholeUses.any (fun (p, pk) => placeEq p q && pk != .scrut) then out := out.push (q, 2); continue
-    let children : Option (Option Nat × List Place) ← match ← content q with
+    let children : Option (Option Nat × List Place) ← match (← content q).unlent with
       | .ind t c _ _ fs => do
         let d ← lookupInd t
         let names := (d.ctors[c]?.map (·.2.map (·.1))).getD []
@@ -3610,6 +3787,11 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
   -- D80: its result is `()` exactly when the match's declared type reads as `Unit` (every arm's
   -- does), as the direct path's match is then `()` by its arms; never by `B`, which is computed
   let res ← withLive true (declOf fuel' false [] [] mt)
+  -- static ends, rule 2: a direct run lends its result as this block does exactly when the
+  -- match's declared type reads as a borrow (`joinEnds`); the block's [Close] row is read from
+  -- `B` (`declKind`). `&` is never produced by computation (D48), so the two agree
+  unless (res matches .ref _) == ((← kindOf fuel' B) == .ref) do
+    err s!"INTERNAL [static ends] the match's declared type and its type {B} disagree on whether it is a borrow (please report)"
   -- the block's type is `B`; its call's is not read (D82)
   modify fun s => { s with wantHere := false }
   let (v, _) ← evalCall fuel' false (.val anon) args.toList false (some (if allProof then 2 else 0)) (some res)

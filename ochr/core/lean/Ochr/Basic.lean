@@ -457,7 +457,7 @@ mutual
 programs, closures and Π-types too (loans may occur there: RULES §2). -/
 def Value.anyAtom (P : Value → Bool) (v : Value) : Bool :=
   P v || match v with
-  | .succ w | .tRef w | .borrow _ w => w.anyAtom P
+  | .succ w | .tRef w | .borrow _ w | .gloan _ w => w.anyAtom P
   | .tEq A a b => A.anyAtom P || a.anyAtom P || b.anyAtom P
   | .clo cs t rd | .tPi cs t rd => Value.anyAtomList P cs || t.anyAtom P || Value.anyAtomRd P rd
   | .sealed t => t.anyAtom P
@@ -512,6 +512,8 @@ mutual
 /-- All loan labels occurring in a value (with repetition). -/
 def Value.loans : Value → List Nat
   | .loan l => [l]
+  -- static ends: a place lent to a returned borrow counts as holding its loan
+  | .gloan l w => l :: w.loans
   | .succ w | .tRef w | .borrow _ w => w.loans
   | .tEq A a b => A.loans ++ a.loans ++ b.loans
   | .clo cs t _ | .tPi cs t _ => Value.loansList cs ++ t.loans
@@ -561,6 +563,7 @@ holds. A loan behind a held borrow (a reborrow `&(*x).f`, or a neutral's) travel
 borrow's owner when that borrow ends, and stays live there. -/
 def Value.ownedLoans : Value → List Nat
   | .borrow _ _ => []
+  | .gloan l w => l :: w.ownedLoans
   | .succ w | .tRef w => w.ownedLoans
   | .ind _ _ _ ps fs => Value.ownedLoansList ps ++ Value.ownedLoansList fs
   | v => v.loans
@@ -573,7 +576,13 @@ def Value.ownedLoansList : List Value → List Nat
 termination_by structural vs => vs
 end
 
-def Value.hasLoan (l : Nat) (v : Value) : Bool := v.anyAtom (· == .loan l)
+/-- Static ends: a value without the marks of the borrows its place is lent to (`Value.gloan`). -/
+def Value.unlent : Value → Value
+  | .gloan _ w => w.unlent
+  | v => v
+
+def Value.hasLoan (l : Nat) (v : Value) : Bool :=
+  v.anyAtom fun | .loan m | .gloan m _ => m == l | _ => false
 def Value.hasAbs (s : Nat) (v : Value) : Bool := v.anyAtom (· == .abs s)
 def Value.hasBorrow (v : Value) : Bool := v.anyAtom fun | .borrow _ _ => true | _ => false
 def Value.isBorrow : Value → Bool

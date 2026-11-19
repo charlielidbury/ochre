@@ -168,6 +168,12 @@ structure MState where
   tailDecl : Option DeclInfo := none       -- ... handed to its tail, whose reading it is (one-shot)
   liveScope : Bool := false               -- declared-type reading: variables beyond the local scope are the top frame's
   headEval : Bool := false                -- the next `eval` is of a call's head (not classified by the pre-pass)
+  /-- Static ends, rule 2: the next `eval` is in tail position of the body being run (one-shot,
+  consumed by `evalAt`), as `checkTail` recurses: a body, a `let`'s body, a sequence's tail, an
+  arm of a match in tail position. A match there is split at the generic call, never closed off
+  as a block, so it does not end what a block would. -/
+  tailNext : Bool := false
+  curTail : Bool := false                 -- ... and the term being evaluated is (read by `evalCore` first)
   /-- D82: the next `eval`'s context reads its type (one-shot, consumed by `evalAt`). An untyped
   run computes a term's type only then; typing always does. -/
   wantTy : Bool := false

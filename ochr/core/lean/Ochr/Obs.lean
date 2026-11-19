@@ -28,6 +28,9 @@ constructor is its type's first and only one) or into the predecessor of `S v` (
 `Nat`), `.g` into a field of a value built by the field's constructor. Every field of a proof
 `⋆` is `⋆` (v2.0, D45: a match on a proof binds its fields as places holding `⋆`). -/
 def stepV : Step → Value → Option Value
+  -- static ends: a path goes through the mark of a place lent to a returned borrow ([Access]
+  -- ends that borrow first wherever the mark is live, `firstLiveLoanOnPath`)
+  | s, .gloan _ w => stepV s w
   | .deref, .borrow _ w => some w
   | .proj 0, .succ w => some w
   | .proj i, .ind _ 0 _ _ fs => fs[i]?
@@ -42,6 +45,7 @@ def Value.follow (v : Value) : List Step → Option Value
 /-- Update the sub-value at a path. -/
 def Value.updAt (f : Value → Value) : List Step → Value → Option Value
   | [], v => some (f v)
+  | ss, .gloan l w => (Value.updAt f ss w).map (.gloan l)
   | .deref :: ss, .borrow l w => (Value.updAt f ss w).map (.borrow l)
   | .proj 0 :: ss, .succ w => (Value.updAt f ss w).map .succ
   | .proj i :: ss, .ind t 0 h ps fs => match fs[i]? with
