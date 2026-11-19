@@ -58,7 +58,7 @@ theorem good_after (ρ : Assignment) : Good K.dm K.M K.Γ ρ after := by
   refine ⟨⟨fun σ h _ => absurd h (not_refd σ), fun n σ h => absurd h (by simp [after, saved]),
       fun σ v h => absurd h (by simp [after, saved])⟩, ⟨fun φ _ p T h => absurd h (hpos p T),
       fun σ h _ => absurd h (not_refd σ), fun G h => by simp [MState.goalM, after, saved] at h⟩, ?_⟩
-  refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ⟨?_, ?_, ?_, ?_⟩, ?_, ?_⟩
+  refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ⟨?_, ?_, ?_, ?_⟩, ?_, ?_, ?_⟩
   · intro p hp; rw [allPos_after] at hp; cases hp
   · intro p hp; rw [allPos_after] at hp; cases hp
   · intro v hvv; rw [hv] at hvv; cases hvv
@@ -87,5 +87,15 @@ theorem good_after (ρ : Assignment) : Good K.dm K.M K.Γ ρ after := by
   · intro G hG; simp [after, saved] at hG
   · intro p hp; rw [allPos_after] at hp; cases hp
   · intro v hvv; rw [hv] at hvv; cases hvv
+  · -- (WF11): the one type of an unknown holds no loan; no binding, goal or record
+    refine ⟨?_, ?_, ?_, ?_, ?_⟩
+    · intro f i b hb; rw [noBind] at hb; cases hb
+    · intro T hT l
+      simp only [after, saved, List.mem_singleton] at hT
+      subst hT
+      rfl
+    · intro G hG; simp [after, saved] at hG
+    · intro n σ h; simp [after, saved] at h
+    · intro σ v h; simp [after, saved] at h
 
 end Ochr.Meaning.Regress.ExitWorldFlip

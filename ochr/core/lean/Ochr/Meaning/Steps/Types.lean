@@ -37,6 +37,11 @@ them as slots) means what the run's `.fix` clause gives the original term in the
 theorem capture_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : capture_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
+/-- [T-Pi]: the shape the checker's captured Π-type value reads as is the shape the run reads off
+the original term in the forming state (docs/31 D22). -/
+theorem piShape_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : piShape_step_stmt K ρ φ (fuel + 1) := by
+  sorry
+
 /-- `evalCtor` (a constructor value, its parameters written or inferred): the run's `.ctor`
 clause at the hint the context gives. -/
 theorem evalCtor_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : evalCtor_step_stmt K ρ φ (fuel + 1) := by

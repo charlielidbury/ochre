@@ -26,15 +26,19 @@ a hypothesis, and the checker never uses a holder it has ended.
 
 `Rel` has three parts, each forced by a counterexample (docs/31, D20 item 1):
 
-* `skel`: the same frames and, in each, the same bindings with the same types and readings.
-  `Below` relates meanings only; two states with the same meanings and different binding counts
-  resolve `var 0` to different positions.
+* `skel`: the same frames and, in each, the same bindings with the same types (meaning, Π-shape,
+  data) and readings. `Below` relates meanings only; two states with the same meanings and
+  different binding counts resolve `var 0` to different positions, and one whose bindings have
+  lost their Π-shapes fails every call through a variable (docs/31 D22: the shape was first left
+  out).
 * `fresh`, with the renaming `π` of the checker's labels to the reference's: the two runs do
   NOT issue the same labels, and cannot be made to. The checker runs an erased term on a private
   copy and keeps the label counter (D37), so a proof that borrows consumes labels; the reference
   does not run a proof at all (the audit's A3), and its run could fail if it did. So shapes and
-  futures are compared through `π`, and a step extends `π` at the labels it issues. (The audit's
-  A15, the counter after a private copy, is absorbed by this and needs no fix.)
+  futures are compared through `π`, and a step extends `π` at the labels it issues. The clause
+  ranges over the labels that OCCUR in the checker's state: over every label below its counter
+  it had no renaming after a statement that borrows (docs/31 D23, `Regress/CopyLabels.lean`).
+  (The audit's A15, the counter after a private copy, is absorbed: `Rel.private_copy`.)
 * `early`: the checker's state is the reference's after some of its borrows ended early (`E`),
   compared at the SAME future (`SimEq`), with bindings position by position and a borrow in
   flight by its label. The futures range over those that agree with the run's off the labels
@@ -45,7 +49,8 @@ a hypothesis, and the checker never uses a holder it has ended.
 three statements refuted by `Regress/StaleTemp.lean` (`eval_step_stmt`, `evalCore_step_stmt`,
 `letIn_step_stmt`) are now in the simulation form. Proved here: `Rel.start` (the relation holds
 at the start) and `sim_seq` (steps in this form compose); in `Statements.lean`: `Sim.of_below`,
-`Sim.of_simEq_below` (nothing true under the old order is lost). NOT done: the other statements
+`Sim.of_simEq_below` (nothing true under the old order is lost); and `Rel.private_copy` (the
+relation survives a private copy of the checker's, reference state and renaming unchanged). NOT done: the other statements
 of `Statements.lean` that run the reference from `SM' K ρ st` still have the `Below` form;
 migrating them is the next batch (each `Below (MState.mean … st') s'.toMean` conjunct becomes
 `Rel`, each `SM' K ρ st` a universally quantified `s` with `Rel`, the returned value read at the
@@ -63,7 +68,7 @@ it, with no renaming and no early end. (If this failed the relation would be unu
 top-level statement starts here.) -/
 theorem Rel.start (st : MState) : Rel K ρ φ id st (SM' K ρ st) where
   skel := rfl
-  fresh := fun _ h => h
+  fresh := fun _ h _ => h
   early := ⟨[], fun ψ _ p _ => by
       show _ ⊑ (MState.sstate K.dm K.M K.Γ ρ st).valAt p ψ
       rw [sstate_valAt]; exact Sem.le_refl _,
@@ -71,6 +76,52 @@ theorem Rel.start (st : MState) : Rel K ρ φ id st (SM' K ρ st) where
     fun f i l h => ⟨i, h, fun ψ _ => by
       show _ ⊑ (MState.sstate K.dm K.M K.Γ ρ st).valAt (.temp f i) ψ
       rw [sstate_valAt]; exact Sem.le_refl _⟩⟩
+
+/-! ### A private copy (docs/31 D23; prerequisite (b) of the migration)
+
+The checker runs a statement (a type, a proof, an erased term) on a private copy of its state and
+then restores the snapshot (`restoreKeep`), keeping the name counters, the records and the types
+of the unknowns created inside. The reference does not run a proof at all and runs a type on a
+copy it discards, counter included. So after a statement the checker has issued labels the
+reference has not, and the relation must survive with the reference state UNTOUCHED and the SAME
+renaming. It does, because a label issued inside a copy occurs nowhere after it: Ω is the
+snapshot's, and the records and types that survive hold no loan at all ((WF11)). -/
+
+/-- What `restoreKeep` leaves: the snapshot's Ω and goal, the copy's counters and records. -/
+theorem restoreKeep_spec (saved cur st' : MState) (fuel : Nat) (h : Runs (restoreKeep saved) cur fuel () st') :
+    st'.env = saved.env ∧ st'.goal = saved.goal ∧ st'.inds = saved.inds ∧
+    st'.nextLoan = cur.nextLoan ∧ st'.neutrals = cur.neutrals ∧ st'.etaRefs = cur.etaRefs := by
+  unfold restoreKeep at h
+  obtain ⟨-, rfl⟩ := Runs.unique h (runs_modify _ cur fuel)
+  exact ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+/-- A label occurs in a state through its Ω alone. -/
+theorem occurs_of_env {st st' : MState} (h : st'.env = st.env) (l : Nat) : st'.Occurs l ↔ st.Occurs l := by
+  unfold MState.Occurs; rw [h]
+
+/-- **No label issued inside a private copy occurs after it**: with the labels of the snapshot's
+Ω below its counter ((WF6), in the form `Occurs`), no label at or above that counter occurs in the
+restored state. (Its types and records hold no loan at all: (WF11), a clause of `Good`.) -/
+theorem private_copy_no_label (saved cur st' : MState) (fuel : Nat) (h : Runs (restoreKeep saved) cur fuel () st')
+    (h6 : ∀ l, saved.Occurs l → l < saved.nextLoan) (l : Nat) (hl : saved.nextLoan ≤ l) : ¬ st'.Occurs l :=
+  fun ho => absurd (h6 l ((occurs_of_env (restoreKeep_spec saved cur st' fuel h).1 l).mp ho)) (Nat.not_lt.mpr hl)
+
+/-- **The relation survives a private copy**, with the reference state untouched and the same
+renaming: whatever the copy did to the checker's counters and records, if Ω is the snapshot's
+(and so are the declarations) the restored state is simulated as the snapshot was. This is the
+step of an erased term on the checker's side; with `fresh` as first stated (every label below the
+checker's counter) it was false (`Regress/CopyLabels.lean`). -/
+theorem Rel.private_copy {π : Nat → Nat} {saved st' : MState} {s : SState} (hr : Rel K ρ φ π saved s)
+    (henv : st'.env = saved.env) (h6 : ∀ l, saved.Occurs l → l < saved.nextLoan) : Rel K ρ φ π st' s where
+  skel := by
+    have e : (SM' K ρ st').env = (SM' K ρ saved).env := by
+      simp only [SM', MState.sstate, henv]
+    rw [e]; exact hr.skel
+  fresh := fun l _ ho => hr.fresh l (h6 l ((occurs_of_env henv l).mp ho)) ((occurs_of_env henv l).mp ho)
+  early := by
+    have e : MState.mean K.dm K.M K.Γ ρ st' = MState.mean K.dm K.M K.Γ ρ saved := by
+      simp only [MState.mean, henv]
+    rw [e]; exact hr.early
 
 /-- Steps stated in the simulation form compose: if the first runs from any reference state
 related to `st` into one related to `st₁`, and the second from any related to `st₁` into one
