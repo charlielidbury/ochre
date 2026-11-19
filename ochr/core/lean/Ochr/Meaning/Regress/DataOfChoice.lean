@@ -163,4 +163,13 @@ theorem tyData_B2 : Value.tyData K.dm K.C K.Γ ρ (.tInd "B2" []) = some ("B2", 
 theorem tag_right : indTag K (.el0 Bool true) ⟨.ty0 Bool, none, none, some ("B2", [])⟩ = .el0 Nat 1 := by
   simp [indTag, TyS.dataDecl, K, B1, B2, DataModel.fieldsOf, dm, dec]
 
+/-- **Decoding by the type's name needs the type's data** (D32): at a type that names no
+declaration (`.plain`, what a data call's result is typed at, `callOfL`'s `.data` branch), the
+match reads no tag. So since D31 a match or a field read on a `let`-bound result of a call that
+returns data fails in the reference unless the call's result carries its data (D22's call-result
+redesign). -/
+theorem indTag_plain (K' : RunCtx) (v : Sem) (T : TyM) (hv : v ≠ .proof) :
+    indTag K' v (.plain T) = .err := by
+  cases v <;> simp_all [indTag, TyS.dataDecl, TyS.plain]
+
 end Ochr.Meaning.Regress.DataOfChoice
