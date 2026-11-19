@@ -45,11 +45,11 @@ theorem old_collapse (d : IndDecl) (ps : List Sem) (c : Nat) (fs : List Sem)
   rw [if_pos hw, hp]
 
 /-- No field of `err` can be read, at any type. -/
-theorem follow_err_field (T : TyM) (g : FieldRef) (sts : List Step) :
+theorem follow_err_field (T : TyS) (g : FieldRef) (sts : List Step) :
     Sem.follow dm Γ T .err (.field g :: sts) = none := by
   have h : Sem.step dm Γ T (.field g) .err = none := by
     unfold Sem.step Sem.stepField
-    cases T.dataOf dm Γ with
+    cases T.dataDecl Γ with
     | none => rfl
     | some dp => rfl
   unfold Sem.follow
@@ -58,7 +58,7 @@ theorem follow_err_field (T : TyM) (g : FieldRef) (sts : List Step) :
 /-- **The old dependence.** If a read of a field succeeds at one future, and some whole value of
 the label `l` does not pack, then the content read depended on `l` under the old meaning, whatever
 field is read: the two futures give a content and `none`. -/
-theorem old_sibling_dep (T : TyM) (g : FieldRef) (sts : List Step) (d : IndDecl) (ps : List Sem) (c : Nat)
+theorem old_sibling_dep (T : TyS) (g : FieldRef) (sts : List Step) (d : IndDecl) (ps : List Sem) (c : Nat)
     (fs : Sem → List Sem) (l : Nat) (φ : Future) (x : Sem)
     (hgood : (Sem.follow dm Γ T (ctorMOld dm d ps c (fs (φ l))) (.field g :: sts)).isSome)
     (hw : ∀ f ∈ fs x, f.whole) (hp : dm.pack d ps c (fs x) = none) :
@@ -71,10 +71,10 @@ theorem old_sibling_dep (T : TyM) (g : FieldRef) (sts : List Step) (d : IndDecl)
 
 /-- **The positive form.** A field of a constructor value is its field, whatever the other fields
 hold: lent, moved, or outside their types. -/
-theorem sibling_read (T : TyM) (d : IndDecl) (ps : List Sem) (c i : Nat) (fs : List Sem)
-    (hd : dm.covers d) (hT : T.dataOf dm Γ = some (d, ps)) (hne : dm.ctorM d ps c fs ≠ .proof) :
+theorem sibling_read (T : TyS) (d : IndDecl) (ps : List Sem) (c i : Nat) (fs : List Sem)
+    (hd : dm.covers d) (hT : T.dataDecl Γ = some (d, ps)) (hne : dm.ctorM d ps c fs ≠ .proof) :
     Sem.stepField dm Γ T c i (dm.ctorM d ps c fs)
-      = (fs[i]?).map fun f => (f, dm.fieldTy d ps c i (fs.take i)) := by
+      = (fs[i]?).map fun f => (f, fieldHint dm d ps c i (fs.take i)) := by
   unfold Sem.stepField
   split
   · rename_i h; exact absurd h hne

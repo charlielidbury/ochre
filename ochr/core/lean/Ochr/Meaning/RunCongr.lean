@@ -32,7 +32,7 @@ theorem contentOf_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : R
     rw [closedFuture_read hi'.1 hi'.2.1 hφ pos]
 
 /-- A match's tag is the same at both futures: it is read at the closed future. -/
-theorem tagOf_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Place) (tag : Sem → TyM → Sem) :
+theorem tagOf_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Place) (tag : Sem → TyS → Sem) :
     tagOf K φ p tag s = tagOf K φ' p tag s := by
   unfold tagOf
   cases resolve s p with
