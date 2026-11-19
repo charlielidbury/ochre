@@ -14,21 +14,8 @@ namespace Ochr.Meaning.Steps
 
 open Ochr
 
-/-- `runMachine` from a given log. -/
-def runMachineL {α : Type} (x : M α) (st : MState) (fuel : Nat) (L : Array LogEntry) :
-    Outcome α × Nat × Array LogEntry :=
-  let ((r, fl), log) := (((((x.run st).run).run).run ⟨fuel⟩).run L)
-  let o := match r with
-    | .error e => Outcome.exhausted e.msg
-    | .ok (.error f) => .fail f
-    | .ok (.ok (a, st')) => .ok a st'
-  (o, fl.left, log)
-
-theorem runMachine_eq_L {α : Type} (x : M α) (st : MState) (fuel : Nat) :
-    runMachine x st fuel = runMachineL x st fuel #[] := rfl
-
 theorem runs_iff_L {α : Type} (x : M α) (st : MState) (fuel : Nat) (a : α) (st' : MState) :
-    Runs x st fuel a st' ↔ ∃ left log, runMachineL x st fuel #[] = (.ok a st', left, log) := Iff.rfl
+    Runs x st fuel a st' ↔ ∃ L left log, runMachineL x st fuel L = (.ok a st', left, log) := Iff.rfl
 
 /-- The bind law of the stack. -/
 theorem runMachineL_bind {α β : Type} (x : M α) (k : α → M β) (st : MState) (fuel : Nat) (L : Array LogEntry) :

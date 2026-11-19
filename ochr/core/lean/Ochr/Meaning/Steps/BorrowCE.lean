@@ -70,7 +70,7 @@ theorem runs_out {α : Type} [Inhabited α] (f : M α) (st : MState) (fuel : Nat
   rcases e : runMachine f st fuel with ⟨o, left, log⟩
   rw [e] at h
   cases o with
-  | ok a s => exact ⟨left, log, rfl⟩
+  | ok a s => exact ⟨#[], left, log, rfl⟩
   | fail _ => simp at h
   | exhausted _ => simp at h
 

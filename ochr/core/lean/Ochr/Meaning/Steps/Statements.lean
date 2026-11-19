@@ -101,9 +101,30 @@ structure CtxOk (K : RunCtx) (ρ : Assignment) (st : MState) : Prop where
 
 /-! ### Helpers from `Steps/Borrow.lean` -/
 
-/-- `f` run from `st` succeeds with `a` and `st'`. -/
+/-- `runMachine` from a given log. -/
+def runMachineL {α : Type} (x : M α) (st : MState) (fuel : Nat) (L : Array LogEntry) :
+    Outcome α × Nat × Array LogEntry :=
+  let ((r, fl), log) := (((((x.run st).run).run).run ⟨fuel⟩).run L)
+  let o := match r with
+    | .error e => Outcome.exhausted e.msg
+    | .ok (.error f) => .fail f
+    | .ok (.ok (a, st')) => .ok a st'
+  (o, fl.left, log)
+
+theorem runMachine_eq_L {α : Type} (x : M α) (st : MState) (fuel : Nat) :
+    runMachine x st fuel = runMachineL x st fuel #[] := rfl
+
+/-- `f` run from `st`, with the budget `fuel`, succeeds with `a` and `st'`, from SOME starting log.
+The log is a trace the checker only appends to; a run nested in a `do` block starts from the log
+the steps before it left, and a statement about it must apply there (the drop at the join's loop,
+docs/31 D29, task C). As first written (from the empty log only) a statement about a step could
+not be used at its nested occurrences. The top-level run (`runMachine`, the empty log) is a case. -/
 def Runs {α : Type} (f : M α) (st : MState) (fuel : Nat) (a : α) (st' : MState) : Prop :=
-  ∃ left log, runMachine f st fuel = (.ok a st', left, log)
+  ∃ L left log, runMachineL f st fuel L = (.ok a st', left, log)
+
+theorem Runs.of_runMachine {α : Type} {f : M α} {st : MState} {fuel : Nat} {a : α} {st' : MState} {left : Nat}
+    {log : Array LogEntry} (h : runMachine f st fuel = (.ok a st', left, log)) : Runs f st fuel a st' :=
+  ⟨#[], left, log, h⟩
 
 /-- The meaning of a checker state as the run sees it (read through `K.M`; `CtxOk K ρ st` is a
 hypothesis of every statement). -/
@@ -594,21 +615,69 @@ def joinEntry_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : P
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s),
     movedPlaces φ s = entryOf st
 
+/-- `q` takes a field step through `p` (the same root, `p`'s path, then a field step). -/
+def FieldParent (p q : Place) : Prop :=
+  p.steps.1 = q.steps.1 ∧ ∃ st rest, ((∃ i, st = Step.proj i) ∨ (∃ g, st = Step.field g)) ∧
+    q.steps.2 = p.steps.2 ++ st :: rest
+
+/-- **The join's grain** (main's D84, `Decide.jdGrain`): every field step of a dropped place is
+through a place whose declared reading is an inductive of `Γ` with exactly one constructor. Through
+anything else (several constructors, a type computed by a match, a type parameter, a number's
+predecessor) the join moves the value whole, so no dropped place steps into it. A finding of the
+drop's proof (docs/31 D29, task C): `Machine.movedPlace` re-roots a place that does not exist to
+its longest existing prefix, η-refining or generalising that prefix only when its type has one
+constructor; the reference never re-roots. Without the grain the two drop different places (the
+checker the prefix whole, the reference the field), so the drop's statement needs it of its list,
+which `Decisions.joinMoves`, aligned with `Decide.jdMoves`, provides. -/
+def GrainOk (D : Decisions) (Γ : List IndDecl) (sc : List DeclInfo) (q : Place) : Prop :=
+  ∀ p, FieldParent p q → ∃ n args d, D.placeDecl sc p = .ind n args ∧ Γ.find? (·.name == n) = some d ∧
+    d.ctors.length = 1
+
+/-- The reference's drop of one place (`joinDrop`'s fold body). -/
+noncomputable def joinDropOne (K : RunCtx) (φ : Future) (s : SState) (q : Place) : SState :=
+  match resolve s q with
+  | some (pos, steps) => dropAt K φ q pos steps (accessLentPrefix pos steps s)
+  | none => s
+
+/-- **[Join], the drop of one place** (`Machine.joinDrop`'s loop body: `movedPlace`, then
+`dropAtJoin`), in the simulation form: from related states, the checker's re-rooting and drop of a
+place of the join's list is the reference's drop of it (`joinDropOne`: the lent prefix accessed
+whole, then `dropAt`). The place is at the join's grain (`GrainOk`) and is not of a copy type (the
+join moves only what is not a copy: D84, `jdMoves`). `movedPlace` may η-refine an unknown or
+generalise a sealed program, creating unknowns, so the assignment AND the run context's `Δ` are
+extended (docs/31 D20 item 7: a step that creates unknowns hands on an extended context; the
+reference's drop reads no `Δ`, so `joinDropOne` is the same under either). -/
+def dropOne_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState) (q : Place) (s : SState) (π : Nat → Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
+    (bh : Nat) (h : Runs (do Ochr.dropAtJoin fuel (← Ochr.movedPlace fuel q)) st bh () st'),
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS), st.absTy.size ≤ st'.absTy.size ∧
+      (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+      CtxOk { K with Δ := Δ' } ρ' st' ∧
+      Rel { K with Δ := Δ' } ρ' φ π st' (joinDropOne K φ s q) ∧
+      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
+
 /-- **[Join], the drop** (`Machine.joinDrop`'s loop after the arm: `dropAtJoin` of each place the
 join says is moved, re-rooted by `movedPlace`), in the simulation form: from related states, with
-the join's drop list (`Decisions.joinMoves`, the same on both sides), the states after the
-checker's drops and after the reference's `joinDrop` are related. `movedPlace` may η-refine an
-unknown, so the assignment is extended. The arm's result is in flight: the checker's state is given
-with it pushed as a temporary, as `joinDrop` holds it. (D28's alignment of two drop lists that
-differed by early-ended borrow variables is gone with them, D29.) -/
+the join's drop list (`Decisions.joinMoves`, the same on both sides, at the join's grain and moving
+no copy), the states after the checker's drops and after the reference's `joinDrop` are related,
+under an assignment and a `Δ` extended at the unknowns `movedPlace` creates (D20 item 7). The arm's
+result is in flight: the checker's state is given with it pushed as a temporary, as `joinDrop`
+holds it. (D28's alignment of two drop lists that differed by early-ended borrow variables is gone
+with them, D29; the grain and copy hypotheses and the extended context are D29's task C findings.) -/
 def joinDrop_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (mt : Term) (entry : List Place)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (hgrain : ∀ q ∈ K.D.joinMoves (scopeOf s) entry mt, GrainOk K.D K.Γ (scopeOf s) q)
+    (hcopy : ∀ q ∈ K.D.joinMoves (scopeOf s) entry mt, K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
     (bh : Nat) (h : Runs (do for q in K.D.joinMoves (scopeOf s) entry mt do
       Ochr.dropAtJoin fuel (← Ochr.movedPlace fuel q)) st bh () st'),
-    ∃ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧
-      Rel K ρ' φ π st' (joinDrop K φ entry mt s) ∧ Good K.dm K.M K.Γ ρ' st'
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+      CtxOk { K with Δ := Δ' } ρ' st' ∧
+      Rel { K with Δ := Δ' } ρ' φ π st' (joinDrop K φ entry mt s) ∧
+      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
 
 /-- [Match] on `Nat` (`evalMatch`): the run's `.matchNat` clause, in the simulation form. With a
 known constructor the arm runs and the join drops (`joinEntry_stmt`, `joinDrop_step_stmt`); on an

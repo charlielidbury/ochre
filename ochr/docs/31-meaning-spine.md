@@ -186,7 +186,7 @@ Risk list, ranked, each with its known fix — the next window takes them in thi
 
 **Not built yet of D29** (task B, in progress): the tail flag, [Entry] with `Decisions.blockCaps` and the borrow-typed match's lending, and the ends the reference now owes at `t; u`, at a `let`'s end (D65) and at a closure's captures.
 
-**Then** (task C): the drop at the join proved end to end. No step lemma is proved yet; every statement in `Steps/` is `sorry`.
+**Task C, in progress (D30):** `joinDrop_step` is proved from the drop of one place (`dropOne_step`, open); the statements gained `Runs` from any log, an extended context for steps that create unknowns, the IH at every context, and the drop list's grain. No step lemma is proved without a `sorry` beneath it yet.
 
 ### Second lead (2026-11-13, from dcdd0a34): the four core lemmas landed; review of m2-proofs' proposals
 
@@ -442,6 +442,19 @@ No case was found that the design does not survive. Recorded as known and outsid
 **6. What survives of D28's plan.** R1 is absorbed in *holders*. R2 survives as (WF3) on sites, for the commutation of ends within one access. R3 is gone (no early-ended holders). S1 is gone: the drop lists are the same list (the same entry set, the same `joinMoves`). S2 survives: `endBorrow_step_stmt` and `access_step_stmt` in the simulation form, then `refine_step_stmt`, `generalizeNeutral_step_stmt` and `substEnv_abs_step_stmt` with an extended assignment. L1 is gone. L2 survives, its A13 exception closed by 5 e for hint-free values. L3 survives without its witness half. L4 survives. L5 and L6 survive without their early-ended cases. L7 survives; its lent-place branch is `movedPlace`'s fill branch, matched by the reference's prefix access (5 f). L8 survives without R1 and R3: with no early ends a borrow variable is `⊥` on both sides or on neither.
 
 **Deleted with the early ends** (a note of what they were): `Rel.early`'s list `E` of borrows the checker ended early, compared after ending them in the reference; the loan witness `Wit` with `ReachDep` (what the reference's semantic access could reach), `accLoans`, `loanOnPath`, `insideLoans`, `holderContent` and `pathReaches` (what the checker's access ends, read off Ω); `Regress/EarlyUnpinned.lean` (an unpinned reference state at an early-ended label's other values), `Regress/WitNonVacuity.lean` (the witness checked both ways) and `Regress/CondDep.lean` (case (a)), whose findings are recorded in D25 and D27.
+
+### D30. The drop at the join, first proof: what the statements lacked (fifth lead, 2026-11-19; in progress)
+
+Task C: the drop at the join proved end to end. The loop is proved from the drop of one place; the drop of one place is not yet proved. Four things the statements lacked, each fixed in the open:
+
+1. **A run nested in a `do` block was not a `Runs`.** `Runs x st fuel a st'` was a run from the EMPTY log; the drop's loop runs each body from the log the earlier bodies left, so no step statement could be used at its nested occurrences. `Runs` is now a run from some starting log (`∃ L`); the top-level run is the case `L = #[]` (`Runs.of_runMachine`). Nothing reads the log, so no statement changes in strength in practice; `Runs.unique` (determinism over one log) went with it, and its one use, `restoreKeep_spec`, is proved directly.
+2. **A step that creates unknowns has no context to hand on** (D20 item 7, met for real). `movedPlace` η-refines an unknown, creating field unknowns, and the next drop runs under a context whose `Δ` must give their types (`CtxOk`'s `DeltaOk`). The drop statements now conclude under `{ K with Δ := Δ' }`, `Δ'` agreeing with `K.Δ` on the old unknowns, and the induction hypothesis an area file gets is at every run context (`∀ K' ρ φ, StepsIH K' ρ φ fuel`; the knot is `stepsIH : ∀ fuel K ρ φ`). The reference's drop reads no `Δ` (`joinDropOne_withΔ`, `rfl`).
+3. **The drop list's grain** (`GrainOk`). `movedPlace` re-roots a place that does not exist to its longest existing prefix, and η-refines or generalises that prefix only when its type has one constructor; the reference never re-roots. Without D84's grain (`jdGrain`: a field step only through a declared one-constructor inductive) the two drop different places (the checker the prefix whole, the reference the field). The drop statements assume it of their list, and that the list moves no copy (the join moves only what is not a copy); the match statements discharge both from `joinMoves_aligned`.
+4. **The scope the list is read in** is the same at every step: the reference's drop keeps every binding's declared reading (`declsOf_joinDropOne`, `scopeOf_joinDropOne`, proved).
+
+**Proved, no `sorry` of their own** (standard axioms): the loop taken apart (`runs_dropLoop_cons`, `runs_dropLoop_nil`), the scope kept, and `joinDrop_step` from `dropOne_step` by induction on the list (`Steps/Match.lean`, `Steps/JoinDropLib.lean`; `#print axioms joinDrop_step` shows `sorryAx` through `dropOne_step` only).
+
+**Open: `dropOne_step`**, the drop of one place, a case analysis on `movedPlace` and `dropAtJoin` against `accessLentPrefix` and `dropAt`. What it rests on: the [Access] and [End] statements in the simulation form (IH fields); `refine_step_stmt` and `generalizeNeutral_step_stmt` restated in the simulation form with an extended context; (WF12) for a mark at a strict prefix (the checker accesses the field, the reference the marked prefix whole: the same labels end); L2/L3 of D28 (writing `⊥` at a path commutes with the meaning, for hint-free values, and keeps the sites of the other labels); and a lemma tying the checker's place (its `varPos`) to the reference's `resolve` through `Rel.skel`.
 
 ### Run against evalCore: audit (second lead, 2026-11-13)
 

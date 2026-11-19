@@ -9,7 +9,7 @@ environment's positions and values after them, and the bridge from a checker sta
 semantic state it means (`MState.sstate`, `MState.mean`). This file collects them.
 
 * Part A: `Runs` of the primitives (`modify`, `setAt`, `pushTemp`, `pushBind`, `modifyFrame`), each
-  the one state it reaches, by `rfl` on `runMachine`; determinism (`Runs.unique`).
+  the one state it reaches, by `rfl` on `runMachine`.
 * Part B: the environment after them (`allPos`, `valAt`, `Env.mean`, `Env.shape`, `Env.hintAt`).
 * Part C: the bridge (`sstate`'s `valAt`, `tyAt`, `shape`, `positions` against `Env.mean`,
   `Env.hintAt`, `Env.shape`, `allPos`).
@@ -21,21 +21,11 @@ open Ochr
 
 /-! ## Part A: runs of the primitives -/
 
-/-- A run is deterministic: `runMachine` is a function. -/
-theorem Runs.unique {α : Type} {x : M α} {st : MState} {fuel : Nat} {a b : α} {st' st'' : MState}
-    (h₁ : Runs x st fuel a st') (h₂ : Runs x st fuel b st'') : a = b ∧ st' = st'' := by
-  obtain ⟨l₁, g₁, e₁⟩ := h₁
-  obtain ⟨l₂, g₂, e₂⟩ := h₂
-  rw [e₁] at e₂
-  simp only [Prod.mk.injEq] at e₂
-  cases e₂.1
-  exact ⟨rfl, rfl⟩
-
 theorem runs_modify (g : MState → MState) (st : MState) (fuel : Nat) :
-    Runs (modify g : M Unit) st fuel () (g st) := ⟨fuel, #[], rfl⟩
+    Runs (modify g : M Unit) st fuel () (g st) := ⟨#[], fuel, #[], rfl⟩
 
 theorem runs_modifyFrame (f : Nat) (g : Frame → Frame) (st : MState) (fuel : Nat) :
-    Runs (Ochr.modifyFrame f g) st fuel () { st with env := st.env.modify f g } := ⟨fuel, #[], rfl⟩
+    Runs (Ochr.modifyFrame f g) st fuel () { st with env := st.env.modify f g } := ⟨#[], fuel, #[], rfl⟩
 
 /-- The environment after `setAt`. -/
 def Env.setAtE (env : Env) : Pos → Value → Env
@@ -44,14 +34,14 @@ def Env.setAtE (env : Env) : Pos → Value → Env
 
 theorem runs_setAt (p : Pos) (v : Value) (st : MState) (fuel : Nat) :
     Runs (Ochr.setAt p v) st fuel () { st with env := Env.setAtE st.env p v } := by
-  cases p <;> exact ⟨fuel, #[], rfl⟩
+  cases p <;> exact ⟨#[], fuel, #[], rfl⟩
 
 /-- The environment after `pushTemp` (a temporary of the top frame). -/
 def Env.pushTempE (env : Env) (v : Value) : Env :=
   env.modify (env.size - 1) fun fr => { fr with temps := fr.temps.push v }
 
 theorem runs_pushTemp (v : Value) (st : MState) (fuel : Nat) :
-    Runs (Ochr.pushTemp v) st fuel () { st with env := Env.pushTempE st.env v } := ⟨fuel, #[], rfl⟩
+    Runs (Ochr.pushTemp v) st fuel () { st with env := Env.pushTempE st.env v } := ⟨#[], fuel, #[], rfl⟩
 
 /-- The environment after `pushBind`. -/
 def Env.pushBindE (env : Env) (h : Hint) (ty : Option Value) (v : Value) (proof : Bool) (decl : DeclInfo) : Env :=
@@ -60,7 +50,7 @@ def Env.pushBindE (env : Env) (h : Hint) (ty : Option Value) (v : Value) (proof 
 theorem runs_pushBind (h : Hint) (ty : Option Value) (v : Value) (proof : Bool) (decl : DeclInfo)
     (st : MState) (fuel : Nat) :
     Runs (Ochr.pushBind h ty v proof decl) st fuel () { st with env := Env.pushBindE st.env h ty v proof decl } :=
-  ⟨fuel, #[], rfl⟩
+  ⟨#[], fuel, #[], rfl⟩
 
 /-- `withTemp` is `pushTemp`'s environment. -/
 theorem withTemp_eq (st : MState) (v : Value) : st.withTemp v = { st with env := Env.pushTempE st.env v } := rfl
