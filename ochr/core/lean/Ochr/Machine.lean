@@ -3451,11 +3451,21 @@ def blockEntry (fuel : Nat) (mt : Term) : M (Array (Place × Nat)) := do
   let (_, st) ← staticJoin fuel' mt
   let (caps, _, _) ← blockCaptures fuel' mt st
   let capsS := caps.qsort fun (a, _) (b, _) => a.root > b.root || (a.root == b.root && (a.steps.2.length < b.steps.2.length))
+  entryAccess fuel' capsS
+  pure capsS
+termination_by structural fuel
+
+/-- Static ends: the entry of a match a stuck block would close off, and of the block itself
+(`closeBlock`, before it takes its arguments): every capture is accessed, in order, before any
+is taken, so the arms see the same state whether they run in the block or directly. (Taking a
+read-only capture through a borrow before a later capture's access ended that borrow let the
+block's arm read a copy the direct run's arm could not: `EK`, probes/static-ends/Snapshot.) -/
+def entryAccess (fuel : Nat) (capsS : Array (Place × Nat)) : M Unit := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
   for (q, _) in capsS do
-    fire .Access fun _ => s!"static ends: a stuck block would capture this place"
+    fire .Access fun _ => s!"static ends: the match's entry, a place a stuck block would capture"
     accessPath fuel' q
     if (← content? q).isSome then accessInside fuel' q
-  pure capsS
 termination_by structural fuel
 
 /-- D84 [Join]: drop `q` as a stuck block's by-move argument takes it (`readPlace`): a borrow is
@@ -3730,6 +3740,8 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
       bodyReturns fuel' "a stuck match's arm returns it" av T lent "lent to a stuck match, whose arm returns with it")
       (set cur)
     set cur
+  -- static ends: the block's entry accesses all its captures before it takes any (`entryAccess`)
+  entryAccess fuel' capsS
   let n := capsS.size
   let mut hints := #[]
   let mut doms := #[]

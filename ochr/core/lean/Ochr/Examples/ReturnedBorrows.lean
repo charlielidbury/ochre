@@ -395,6 +395,18 @@ ochr StaticEnds uses Nats, Fixtures {
     let z = clone(a);
     ()
   )
+  -- A stuck block accesses all its captures before it takes any, as a direct run's entry does:
+  -- here `c`'s access ends `b`, through which arm `S` reads. Taking the read of `*b` first would
+  -- let the block's arm read a copy that the direct run at `k = 1`, which reads `*b` after the
+  -- entry, cannot (on main, without the entry, both were accepted; Rust accepts `EK`, its arms
+  -- being separate paths)
+  reject def EK (k : Nat) (a : Nat) : Unit := (
+    let b = &a;
+    let c = 5;
+    b := &c;
+    match k { Z => (c := 1; ()), S _ => (let z = clone(*b); ()) };
+    ()
+  )
   -- ... at a known constructor too
   reject def G3K (a : Nat) (b : Nat) : Unit := (
     let k = S(Z);
@@ -428,4 +440,5 @@ ochr StaticEndsRuns uses Nats, Fixtures, StaticEnds {
   ("G1", "no such place *r: its path does not exist in ⊥"),
   ("G5", "no such place *r: its path does not exist in ⊥"),
   ("G3", "no such place *r: its path does not exist in ⊥"),
-  ("G3K", "no such place *r: its path does not exist in ⊥")]
+  ("G3K", "no such place *r: its path does not exist in ⊥"),
+  ("EK", "no such place *b: its path does not exist in ⊥")]
