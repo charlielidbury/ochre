@@ -1,6 +1,6 @@
 # 32. The consistency proof as work units: done and to do
 
-Written 2026-11-19; last updated the same day, after the first checker fault was found (spine at 4032a13c). A map of the whole consistency effort (Target A of docs/18), one row per unit of work of roughly one agent's size. The plan itself is docs/18; the detailed record of the Lean development is docs/31 on the `spine` branch.
+Written 2026-11-19; last updated the same day, after the borrow-ends redesign was approved for main. A map of the whole consistency effort (Target A of docs/18), one row per unit of work of roughly one agent's size. The plan itself is docs/18; the detailed record of the Lean development is docs/31 on the `spine` branch.
 
 The numbers are estimates by the orchestrating session, not measurements.
 
@@ -29,50 +29,53 @@ Not counted, because they are off the consistency path: `id-audit` and `subst-su
 
 No step lemma is proved yet: every one of the 78 statements is still `sorry`. What is done so far is definitions, the four core lemmas, and attacks that corrected the statements.
 
-Rows are in the order the units will be taken: the highest P(failure) for the least time, so that risk comes forward, except that the row already running stays first and the three units every later prover needs (migration, redesigns, tooling) come before the provers that need them.
+**What can depend on what.** Nothing depends on a proof: once a statement is fixed, other work assumes it. Work depends only on definitions and statements. So the two rows that change definitions and statements (1 and 2) come first and everything else builds on them, and no arrow in the diagram leaves a prover row except into the assembly. Among the prover rows the order is a choice, not a dependency: the highest P(failure) for the least time first, so that risk comes forward. Matches and arms leads because it holds the first proof of any step, which is the first real test of the statement form.
 
 | # | Work unit | What it contains | P(failure) | Time |
 |---|---|---|---|---|
-| 1 | Provers: matches and arms (running) | The drop at the join, splitting on an unknown, and leaving an arm. The drop at the join is first, as the first proof of any step in the simulation form: it tests the form itself. Work folded in so far, all in service of that proof. (a) A repair to the simulation relation so that a read is determined: a witness clause saying every borrow the reference's read of a place depends on is one the checker's own access ends, or one the checker ended early. A first repair was chosen and refuted the same day. Done by `spine4`. (b) A checker fault the proof attempt found: at the generic call a borrow variable can hold ⊥ because its borrow was ended early, which an instance need not share; the join read that ⊥ as "moved" and dropped nothing through it, so an accepted function (`EJ`, in `ochr/core/probes/d90/`) fails on a closed call. No route from it to a proof of `False` is known. A second fault with the same cause was found the same day: a rule on `Id` about when a borrow ends passes at the generic call and fails at an instance (`EI`). A narrow fix for the first (reject a drop through a dead borrow) was started and is parked on branch `d90-join-dead-borrow`, because both faults have one root: each run discovers afresh when a borrow ends, the generic run over-approximating and an instance being precise. (c) The redesign that removes the root, being assessed now by `static-ends`: when a borrow ends becomes a decision every run takes the same way, from syntax and declared types, as the drop at the join did for moves and as Rust does. A call that returns a borrow lends every place it borrowed whether it computes or is stuck, and a match on a known constructor treats outer places as the stuck match would. If it holds, the simulation relation loses its hardest part (the set of early-ended borrows, the witness clause and the lemmas around them), and the proof plan is re-made on the simpler relation. (d) The proof itself, by `spine4`, waiting on (c); its current plan is in docs/31, D28. | 8% | 9% |
-| 2 | Provers: dependent values | Give a partly opened dependent value a meaning in the reference run, which it lacks today, so the step can be stated. Then prove or refute that membership is restored when a value whose type depends on its own fields is made whole again, under every future of the parts still lent. One of the old proofs of `False` lived here. | 8% | 5% |
-| 3 | Provers: `Id` | Prove the corrected statements: `Id` observes every place either side can write, and its computing to a conjunction over those places keeps the meaning. | 4% | 4% |
-| 4 | Provers: well-formedness | The borrow discipline is preserved by every step, including the new clause that no stored type or record holds a loan. | 4% | 4% |
-| 5 | Universes | Deciding which statement Lean can prove over all programs. The bounded-levels statement is what the Lean development already builds; the open part is whether a uniform statement is provable (about 40% that it is not, which is a tweak, not a failure). | 1% | 1% |
-| 6 | Statement migration | Move the remaining step statements to the simulation form: reads, borrows, assignments, access, drops, calls, `J`, closing off and the tail forms. The eval forms, matches, observation and `Eq` are done. | 1% | 2% |
-| 7 | Reference-run redesigns | The remaining open differences from the checker, the comparison at other futures, and restricting the claim about untyped runs. The differences that matter most: the result of a call loses its function shape, so the reference cannot call a function returned by a call, or a parameter whose type is computed by a call (`f : Fn(Nat)`, the ordinary predicate idiom, which the checker accepts); and a proof has no type in the reference, so a constructor whose type parameter is solved by a proof field fails. Until these land, the mechanised theorem is false on such programs. A design for the call cases exists (docs/31, D22). | 4% | 7% |
-| 8 | Prover tooling | A shared library about positions in a state, and the standard prover brief. | under 1% | 2% |
+| 1 | Reference-run redesigns (running) | Making the model's reference run and the checker agree. Folded in, because it is the largest disagreement there was: the checker's borrow-ends redesign. Each run used to discover afresh when a borrow ends, the generic run over-approximating and an instance being precise, which gave three checker faults found on 2026-11-19 (accepted functions whose closed calls fail: `EJ`, `EI`, `G1`, in `ochr/core/probes/static-ends/`) and forced the model to carry a set of early-ended borrows. Now when a borrow ends is a decision every run takes the same way, as Rust does: a call that returns a borrow lends every place it borrowed, and a non-tail match on a known constructor treats outer places as the stuck match would (decision D90; one existing verdict changed, which Rust also rejects). Still to do here: a stuck match touching its captures before its arms are checked (D91), rebuilding the Lean model on the new checker with the reference run reading lending the same static way, and the older open differences. Those are: the comparison at other futures, and restricting the claim about untyped runs. The differences that matter most: the result of a call loses its function shape, so the reference cannot call a function returned by a call, or a parameter whose type is computed by a call (`f : Fn(Nat)`, the ordinary predicate idiom, which the checker accepts); and a proof has no type in the reference, so a constructor whose type parameter is solved by a proof field fails. Until these land, the mechanised theorem is false on such programs. A design for the call cases exists (docs/31, D22). | 5% | 10% |
+| 2 | Statement migration | The form every step statement takes: the simulation relation, re-made on the redesign without the set of early-ended borrows or the witness clause (the checker and the reference now have the same live borrows at every point), and the remaining step statements moved onto it: reads, borrows, assignments, access, drops, calls, `J`, closing off and the tail forms. The eval forms, matches, observation and `Eq` were migrated to the earlier relation and are re-stated. | 3% | 4% |
+| 3 | Provers: matches and arms | The drop at the join, splitting on an unknown, and leaving an arm. The drop at the join is the first proof attempted of any step. The first attempt, on the old checker, is what found the fault that led to the redesign in row 1. | 5% | 6% |
+| 4 | Provers: dependent values | Give a partly opened dependent value a meaning in the reference run, which it lacks today, so the step can be stated. Then prove or refute that membership is restored when a value whose type depends on its own fields is made whole again, under every future of the parts still lent. One of the old proofs of `False` lived here. | 8% | 5% |
+| 5 | Provers: `Id` | Prove the corrected statements: `Id` observes every place either side can write, and its computing to a conjunction over those places keeps the meaning. | 4% | 4% |
+| 6 | Provers: well-formedness | The borrow discipline is preserved by every step, including the clause that no stored type or record holds a loan. | 4% | 4% |
+| 7 | Universes | Deciding which statement Lean can prove over all programs. The bounded-levels statement is what the Lean development already builds; the open part is whether a uniform statement is provable (about 40% that it is not, which is a tweak, not a failure). | 1% | 1% |
+| 8 | Prover tooling | A shared library about positions in a state, and the standard prover brief. | under 1% | 1% |
 | 9 | Provers: equality | Conversion, `Eq` and `J` computing, and rewriting. | 3% | 5% |
 | 10 | Provers: calls and stuck calls | Calls, closing a stuck call into a sealed program, re-running one, and the label-renaming lemma. | 4% | 9% |
 | 11 | Provers: types and decisions | The model reads types and syntactic decisions the same way as the checker (18 statements). | 2% | 5% |
-| 12 | Provers: simple steps | Borrow primitives, substitution, plain evaluation, tail forms. | 1% | 7% |
+| 12 | Provers: simple steps | Borrow primitives, substitution, plain evaluation, tail forms. | 1% | 6% |
 | 13 | Assembly | The top-level theorems, closing the induction, and the data model for a whole program. | 1% | 4% |
 
 ## Reading the risk column
 
 A unit fails only if it cannot be finished on the current plan. Restating a lemma, repairing a model definition and tightening one checker rule are all successes: the proof goes ahead as planned after each. Nearly every refutation so far has ended in one of the first two, and the accepted proofs of `False` found earlier ended in the third.
 
-- **Chance at least one remaining unit needs a local checker fix** (a success): about 65%. One has been found so far, on 2026-11-19: the join through a dead borrow, folded into row 1.
+- **Chance at least one remaining unit needs a local checker fix** (a success): about 65%. Found so far, on 2026-11-19: three faults with one root, when a borrow ends. They were answered by the redesign in row 1, which counts as a feature redesign, not a local fix.
 - **Chance at least one remaining unit fails**, so that a feature is redesigned or part of the proof is re-planned: about 30%. The rows are not independent (a fault in the simulation relation would hit several at once), so this is less than the rows multiplied out.
 - **Chance the route itself fails**, so that meaning preservation has to be abandoned: about 7%.
-- **Riskiest rows:** dependent values, where one of the old `False` proofs lived; then matches and arms, because it holds the first step proof: no step has been proved in the simulation form yet, and an earlier pilot under the old form closed nothing.
+- **Riskiest rows:** dependent values, where one of the old `False` proofs lived; then matches and arms, because it holds the first step proof: no step has been proved yet, and an earlier pilot under the old statement form closed nothing.
 
 ## Design changes awaiting acknowledgement
 
 Changes to the language or the checker made in service of the proof. Each stays here until the user has acknowledged it; none waits on that.
 
-- **Borrow ends become a decision every run shares** (proposed by the user 2026-11-19, acknowledged the same day; viability check and prototype running on branch `static-ends`). Programs that rely on the machine knowing, at known arguments, which place a returned borrow really points to become rejected, as in Rust. Not landed.
+- **A stuck match touches its captures before its arms are checked** (D91; being built on branch `static-ends` after D90). It removes the last point at which the generic run and an instance could have different borrows live. Some error messages move, and a few programs may become accepted.
+- **One-constructor matches refine in place instead of closing off** (queued, not started). It restores Rust's precision for disjoint fields of a pair on both paths; a field read is a one-arm match today, and touches the whole value. It carries risk in the dependent-field rules.
+
+Acknowledged: borrow ends become a decision every run shares (D90; proposed by the user and acknowledged 2026-11-19).
 
 ## Design questions to ask before each risky unit
 
 The bar is "as good as Rust for borrowing, as good as Lean for proving". Where a unit is hard because the design is more precise than that, the design is questioned before the proof is attempted.
 
-- **Matches and arms (row 1):** asked, above.
-- **Dependent values (row 2):** asked 2026-11-19, with the user. The difficulty is a value whose later field's type depends on an earlier field that is lent or half-written. Conclusion, in two parts. (1) Inside a function body there is no problem to solve in the language: once such a value is open, the checker types the later field by what it holds, not by the earlier field, so its type does not follow the lent field. The model does not do this yet (it re-reads the earlier field through the borrow), and that is the fault to fix, in the model. (2) At a point where the value must be whole again (a return, a call), the checker does not require the loan ended: it checks the value with the lent part replaced by a fresh unknown of its type, so the invariant must hold whatever the borrow later writes. Requiring every loan ended there would be simpler, but it would reject accessors that return a borrow into data an invariant mentions (the examples' user-land vector, whose invariant says its first cells are full, returns a borrow into a cell's payload), and Rust has those. So the rule stays; it is also what closed the two proofs of `False` found here. The step to prove is then the natural one: a check that passes for a fresh unknown gives membership under every final content of the borrow.
-- **`Id` (row 3):** its rules about when a borrow ends (a side may not end a borrow held outside it) exist because sides run on private copies. Once ends are a shared decision, check which of those rules are still needed.
+- **Borrow ends (row 1):** asked and answered: the redesign in row 1.
+- **Dependent values (row 4):** asked 2026-11-19, with the user. The difficulty is a value whose later field's type depends on an earlier field that is lent or half-written. Conclusion, in two parts. (1) Inside a function body there is no problem to solve in the language: once such a value is open, the checker types the later field by what it holds, not by the earlier field, so its type does not follow the lent field. The model does not do this yet (it re-reads the earlier field through the borrow), and that is the fault to fix, in the model. (2) At a point where the value must be whole again (a return, a call), the checker does not require the loan ended: it checks the value with the lent part replaced by a fresh unknown of its type, so the invariant must hold whatever the borrow later writes. Requiring every loan ended there would be simpler, but it would reject accessors that return a borrow into data an invariant mentions (the examples' user-land vector, whose invariant says its first cells are full, returns a borrow into a cell's payload), and Rust has those. So the rule stays; it is also what closed the two proofs of `False` found here. The step to prove is then the natural one: a check that passes for a fresh unknown gives membership under every final content of the borrow.
+- **`Id` (row 5):** its rules about when a borrow ends (a side may not end a borrow held outside it) exist because sides run on private copies. Once ends are a shared decision, check which of those rules are still needed.
 
 ## Dependencies
 
-An arrow from X to Y means Y builds on X. Green is done, yellow is running, grey is to do. The diagram shows only what builds on what; the order the units are taken in is the table's. Everything left builds on row 1, because it holds the first step proof: the first test that a step can actually be proved in this form.
+An arrow from X to Y means Y builds on definitions or statements that X produces. Green is done, yellow is running, grey is to do. No arrow leaves a prover row except into the assembly, because nothing depends on a proof; the order among prover rows is the table's.
 
 ```mermaid
 flowchart TD
@@ -93,19 +96,19 @@ flowchart TD
 
     spine3["spine3: prerequisites and<br/>riskiest steps, attacked<br/>5%"]:::done
 
-    pMatch["1. Provers: matches and arms<br/>(first step proof; relation repair<br/>and a checker fix folded in)<br/>9%, fail 8%"]:::running
-    dep["2. Provers: dependent values<br/>5%, fail 8%"]:::todo
-    idn["3. Provers: Id<br/>4%, fail 4%"]:::todo
-    wf["4. Provers: well-formedness<br/>4%, fail 4%"]:::todo
-    universes["5. Universes<br/>1%, fail 1%"]:::todo
-    migrate["6. Statement migration<br/>2%, fail 1%"]:::todo
-    redesign["7. Reference-run redesigns<br/>7%, fail 4%"]:::todo
-    tooling["8. Prover tooling<br/>2%, fail under 1%"]:::todo
+    redesign["1. Reference-run redesigns<br/>(borrow-ends redesign folded in)<br/>10%, fail 5%"]:::running
+    migrate["2. Statement migration<br/>(the relation re-made)<br/>4%, fail 3%"]:::todo
 
+    pMatch["3. Provers: matches and arms<br/>6%, fail 5%"]:::todo
+    dep["4. Provers: dependent values<br/>5%, fail 8%"]:::todo
+    idn["5. Provers: Id<br/>4%, fail 4%"]:::todo
+    wf["6. Provers: well-formedness<br/>4%, fail 4%"]:::todo
+    universes["7. Universes<br/>1%, fail 1%"]:::todo
+    tooling["8. Prover tooling<br/>1%, fail under 1%"]:::todo
     pEq["9. Provers: equality<br/>5%, fail 3%"]:::todo
     pCalls["10. Provers: calls and stuck calls<br/>9%, fail 4%"]:::todo
     pTypes["11. Provers: types and decisions<br/>5%, fail 2%"]:::todo
-    pSimple["12. Provers: simple steps<br/>7%, fail 1%"]:::todo
+    pSimple["12. Provers: simple steps<br/>6%, fail 1%"]:::todo
 
     assembly["13. Assembly<br/>4%, fail 1%"]:::todo
     goal(["Consistency:<br/>no closed proof of False"]):::goal
@@ -124,23 +127,18 @@ flowchart TD
     progdec --> spine2
 
     spine2 --> spine3
-    spine2 --> redesign
-    spine3 --> pMatch
     spine3 --> redesign
+    spine3 --> migrate
+    redesign --> migrate
 
-    pMatch --> dep
-    pMatch --> idn
-    pMatch --> wf
-    pMatch --> migrate
-    pMatch --> tooling
-
+    migrate --> pMatch
+    migrate --> dep
+    migrate --> idn
+    migrate --> wf
     migrate --> pEq
     migrate --> pCalls
     migrate --> pTypes
     migrate --> pSimple
-    tooling --> pCalls
-    tooling --> pSimple
-    redesign --> pCalls
     progdec --> pTypes
 
     pMatch --> assembly
@@ -151,6 +149,7 @@ flowchart TD
     pCalls --> assembly
     pTypes --> assembly
     pSimple --> assembly
+    tooling --> assembly
     datagen --> assembly
     progdec --> assembly
     universes --> assembly
