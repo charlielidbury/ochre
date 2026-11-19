@@ -24,7 +24,7 @@ the order the team lead set (model risk first):
 4. The checker's place and the reference's: `rel_resolve` (through `Rel.skel`).
 5. `refine` and `generalizeNeutral` in the simulation form with an extended context
    (`refine_sim`, `generalizeNeutral_sim`).
-6. `movedPlace`'s branches, last: the place exists (`movedPlace_exists`, proved), the lent prefix
+6. `movedPlace`'s branches, last: the place exists (`movedPlace_exists'`, PROVED in `Steps/DropRuns.lean`), the lent prefix
    absorbed by the access at an instance ((WF12), `lentPrefix_absorbed`), a filled parent accessed
    whole (`movedPlace_fill`), an unknown of a one-constructor type (`movedPlace_eta`), a sealed
    program of one (`movedPlace_sealed`), and the other exits (`movedPlace_exit`).
@@ -217,13 +217,6 @@ theorem generalizeNeutral_sim (fuel : Nat) (st st' : MState) (p : Place) (n : Va
     let ρ' := ρ.ext σ (meanV K ρ φ (.plain (MState.absTyM K.dm K.M K.Γ ρ st' σ)) n)
     ∃ Δ' : Nat → TyS, (∀ τ, τ < st.absTy.size → Δ' τ = K.Δ τ) ∧ CtxOk { K with Δ := Δ' } ρ' st' ∧
       Rel { K with Δ := Δ' } ρ' φ π st' s ∧ Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' := by
-  sorry
-
-/-- **(6) The place exists**: `movedPlace` returns it and changes nothing. Open: monad plumbing
-(`content?`'s run is `varPos` and a pure `follow`); not written. -/
-theorem movedPlace_exists (fuel : Nat) (st st₁ : MState) (q q' : Place) (pos : Pos) (w : Value) (b b' : Nat)
-    (hpos : Runs (Ochr.varPos q.steps.1) st b' pos st) (hw : (valAt st.env pos).follow q.steps.2 = some w)
-    (h : Runs (Ochr.movedPlace (fuel + 1) q) st b q' st₁) : q' = q ∧ st₁ = st := by
   sorry
 
 /-- **(6) The lent prefix, absorbed at an instance.** Where the place exists under a fill (a mark,
