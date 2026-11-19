@@ -101,11 +101,18 @@ noncomputable def Sem.stepField (T : TyS) (c i : Nat) (s : Sem) : Option (Sem ×
       | none => none
     | none => none
 
+/-- `T` is the number type: it names no declaration and its carrier is `Nat` (docs/31 D31: a
+declaration's values are decoded by its name first, so a declaration whose carrier a model makes
+`Nat` is still read as that declaration). -/
+def TyS.isNat (T : TyS) : Prop := T.dataDecl Γ = none ∧ T.m = .ty0 Nat
+
+noncomputable instance (T : TyS) : Decidable (T.isNat Γ) := Classical.propDecidable _
+
 /-- One step on a meaning at type `T`: the sub-meaning and its type. -/
 noncomputable def Sem.step (T : TyS) : Step → Sem → Option (Sem × TyS)
   | .deref, s => some (s, T)
   | .proj 0, s =>
-    if T.m = .ty0 Nat then
+    if T.isNat Γ then
       match s.asNat with
       | some (n + 1) => some (.el0 Nat n, .plain (.ty0 Nat))
       | some 0 => none
@@ -127,7 +134,7 @@ noncomputable def Sem.updAt (T : TyS) (f : Sem → Sem) : List Step → Sem → 
   | [], s => some (f s)
   | .deref :: sts, s => Sem.updAt T f sts s
   | st :: sts, s =>
-    if T.m = .ty0 Nat then
+    if T.isNat Γ then
       match st, s.asNat with
       | .proj 0, some (n + 1) => (Sem.updAt (.plain (.ty0 Nat)) f sts (.el0 Nat n)).map Sem.succ
       | _, _ => none

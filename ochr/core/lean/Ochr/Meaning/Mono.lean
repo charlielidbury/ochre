@@ -495,7 +495,7 @@ theorem Sem.ctor_not_le_el0 {ty : String} {c : Nat} {fs : List Sem} {A : Type} {
 data value is, D3) yields an untyped tuple, so it is not below the value, for every data model:
 the mechanism of `joinDrop_not_below`. (The same holds for a named field `.field g`.) -/
 theorem Sem.updAt_field_not_le (dm : DataModel) (Γ : List IndDecl) (T : TyS) (i : Nat) (A : Type)
-    (x : A) (w : Sem) (hT : T.m ≠ .ty0 Nat)
+    (x : A) (w : Sem) (hT : ¬ T.isNat Γ)
     (hw : Sem.updAt dm Γ T (fun _ => .moved) [.proj i] (.el0 A x) = some w) : ¬ w ⊑ .el0 A x := by
   rw [Sem.updAt.eq_def] at hw
   simp only [if_neg hT] at hw
@@ -644,18 +644,20 @@ theorem unit_ne_nat : TyM.ty0 Unit ≠ .ty0 Nat := fun h => by
 
 theorem dataDecl_eq : TyS.dataDecl [decl] tP = some (decl, []) := rfl
 
+theorem tP_not_nat : ¬ tP.isNat [decl] := fun h => by have h1 := h.1; rw [dataDecl_eq] at h1; cases h1
+
 theorem fieldsOf_eq (ps : List Sem) :
     dm.fieldsOf decl ps (.el0 Unit ()) = some (0, [.el0 Unit (), .el0 Unit ()]) := dif_pos rfl
 
 theorem drop_isSome : ∃ w, Sem.updAt dm [decl] tP (fun _ => .moved) [.proj 0] (.el0 Unit ()) = some w := by
   rw [Sem.updAt.eq_def]
-  simp only [show tP.m = .ty0 Unit from rfl, if_neg unit_ne_nat, dataDecl_eq, fieldsOf_eq]
+  simp only [if_neg tP_not_nat, dataDecl_eq, fieldsOf_eq]
   exact ⟨_, rfl⟩
 
 /-- Following `x.0` reaches the whole field `()`: the drop is not skipped. -/
 theorem follow_eq : Sem.follow dm [decl] tP (.el0 Unit ()) [.proj 0] =
     some (.el0 Unit (), fieldHint dm decl [] 0 0 []) := by
-  simp only [Sem.follow, Sem.step.eq_def, show tP.m = .ty0 Unit from rfl, if_neg unit_ne_nat, Sem.stepField,
+  simp only [Sem.follow, Sem.step.eq_def, if_neg tP_not_nat, Sem.stepField,
     dataDecl_eq, fieldsOf_eq]
   rfl
 
@@ -691,7 +693,7 @@ theorem joinDrop_not_below (φ : Future) (entry : List Place) (t : Term) :
   obtain ⟨φ, hle, _⟩ := h noFuture
   have hx := hle (.bind 0 0)
   rw [hj] at hx
-  exact Sem.updAt_field_not_le dm [decl] tP 0 Unit () w unit_ne_nat hw hx
+  exact Sem.updAt_field_not_le dm [decl] tP 0 Unit () w tP_not_nat hw hx
 
 end JoinDropCounterexample
 

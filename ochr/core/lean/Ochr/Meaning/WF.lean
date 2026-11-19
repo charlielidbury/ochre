@@ -1,4 +1,5 @@
 import Ochr.Meaning.State
+import Ochr.Meaning.Places
 
 /-!
 # Well-formedness (WF1)–(WF7) and membership (docs/18 §2 "Well-formedness", §3.3 (b), (c))
@@ -163,10 +164,51 @@ def WF11 (st : MState) : Prop :=
   (∀ n σ, (n, σ) ∈ st.neutrals → ∀ l, n.hasLoan l = false) ∧
   (∀ σ v, (σ, v) ∈ st.etaRefs → ∀ l, v.hasLoan l = false)
 
+/-- (WF12) Under a live fill, only what that fill's ending reaches (docs/31 D29 point 3, point 5 f):
+a site of a live borrow strictly under a fill of another live borrow belongs to a borrow that is
+also lent at that fill's place or above it. So an access that passes the fill on its way to one
+field (the checker's `accessPath` at an instance, where the mark is transparent) ends the same
+borrows as an access of the filled place whole (the reference's access of the shortest lent prefix,
+and the checker's at the generic call, where the field does not exist). Read off main's D90 (a call
+lends places borrowed whole, and anything that later reaches under a fill ends it first), NOT
+proved preserved: every step's `Good` conclusion owes it. -/
+def WF12 (env : Env) : Prop :=
+  ∀ k l, liveLoan env k = true → liveLoan env l = true →
+    ∀ x ∈ Env.sitesOf env k, x.fill = true → ∀ y ∈ Env.sitesOf env l, y.pos = x.pos →
+      (pathKey x.path).isPrefixOf (pathKey y.path) = true → pathKey y.path ≠ pathKey x.path →
+      ∃ z ∈ Env.sitesOf env l, z.pos = x.pos ∧ (pathKey z.path).isPrefixOf (pathKey x.path) = true
+
+/-- A value agrees with the structured type it is read at, on every path (docs/31 D31): at a
+constructor value the type names the value's own declaration (data, not `Prop`) at its recorded
+parameters' meanings, and each field agrees with the hint its declaration reads it at; at `S` the
+type is the number type; marks and borrows are transparent. -/
+def DataAll (ρ : Assignment) (φ : Future) : TyS → Value → Prop
+  | H, .borrow _ w => DataAll ρ φ H w
+  | H, .gloan _ w => DataAll ρ φ H w
+  | H, .succ w => H.isNat Γ ∧ DataAll ρ φ (.plain (.ty0 Nat)) w
+  | H, .ind ty c _ ps fs =>
+    ∃ d, Γ.find? (·.name == ty) = some d ∧ d.sort ≠ 0 ∧
+      H.dataDecl Γ = some (d, Value.meanParams dm C Γ ρ φ d 0 [] ps) ∧
+      ∀ i w, fs[i]? = some w →
+        DataAll ρ φ (fieldHint dm d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c i
+          ((Value.meanFields dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c 0 [] fs).take i)) w
+  | _, _ => True
+termination_by _ v => sizeOf v
+decreasing_by all_goals (simp_wf; try (have := List.sizeOf_lt_of_mem (List.mem_of_getElem? ‹_›); omega)) <;> omega
+
+/-- (WF13) Every binding's value agrees with its stored type (docs/31 D31: the reference decodes a
+constructor value by its type's declaration name and parameters, which is the value's own decoding
+exactly when they agree). A typing fact of the checker (it converts a constructor's type to the
+position's, parameter by parameter, and types each field by its declared type), read off it, NOT
+proved preserved. Parameter-typed fields rest on D8's open item (`fieldData` at a `par j` field). -/
+def WF13 (ρ : Assignment) (st : MState) : Prop :=
+  ∀ f i, i < (st.env[f]?.map (·.binds.size)).getD 0 → ∀ φ,
+    DataAll dm C Γ ρ φ (Env.hintAt dm C Γ ρ st.env (.bind f i)) (valAt st.env (.bind f i))
+
 /-- Well-formedness, part (c) of the main theorem. -/
 def WF (ρ : Assignment) (st : MState) : Prop :=
   WF1 st.env ∧ WF2 st.env ∧ WF3 st.env ∧ WF4 st.env ∧ WF6 st ∧ WF7 dm C Γ ρ st ∧ WF8 st ∧ WF9 dm C Γ ρ st ∧
-  WF10 Γ st ∧ WF11 st
+  WF10 Γ st ∧ WF11 st ∧ WF12 st.env ∧ WF13 dm C Γ ρ st
 
 /-! ## Typed assignments, typed futures, membership -/
 
