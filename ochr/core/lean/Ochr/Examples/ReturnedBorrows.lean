@@ -447,3 +447,63 @@ ochr StaticEndsRuns uses Nats, Fixtures, StaticEnds {
   ("G3", "no such place *r: its path does not exist in ⊥"),
   ("G3K", "no such place *r: its path does not exist in ⊥"),
   ("EK", "no such place *b: its path does not exist in ⊥")]
+
+/-! ## A stuck block's arms are checked after its entry (D91)
+
+A stuck block computes its captures from syntax and declared types, accesses them all, and only
+then checks its arms, from the state a direct run's arm starts from (D90's entry). Before D91 it
+checked its arms first, in a state where the borrows its entry would end were still live, so the
+generic call was stricter inside an arm than every instance: `IA`, `JA` and `IAPick` were
+rejected by [Id-typestate]'s no-ending clause (the `Id`'s side ends `r`), while at each instance
+the entry had already ended `r`. -/
+
+ochr BlockEntry uses Nats, Fixtures, StaticEnds {
+  -- an `Id` side in an arm reads `a`, whose borrower `r` the block's entry has ended
+  def IA (k : Nat) (a : Nat) : Unit := (
+    let r = &a;
+    match k { Z => (let T = Id(Unit, (let z = clone(a); ()), ()); ()), S _ => () };
+    ()
+  )
+  -- twin of IA: `r` is used after the match, which the entry has ended
+  reject def IAUse (k : Nat) (a : Nat) : Unit := (
+    let r = &a;
+    match k { Z => (let T = Id(Unit, (let z = clone(a); ()), ()); ()), S _ => () };
+    *r := 1;
+    ()
+  )
+  -- the `J` form: [T-J-stuck]'s block
+  def JA (m : Nat) (h : Eq(Nat, m, Z)) (a : Nat) : Nat := (
+    let r = &a;
+    J(Nat, m, Z, MN, h, (let T = Id(Unit, (let z = clone(a); ()), ()); Z))
+  )
+  -- an arm that uses a borrow the entry ends is rejected, now inside the arm
+  reject def ArmUsesEnded (k : Nat) (a : Nat) : Unit := (
+    let r = &a;
+    match k { Z => (a := 1; ()), S _ => (*r := 2; ()) };
+    ()
+  )
+  -- through a returned borrow: the entry reads `b`, a place lent to `r`
+  def IAPick (n : Nat) (k : Nat) (a : Nat) (b : Nat) : Unit := (
+    let r = Pick(n, &a, &b);
+    match k { Z => (let T = Id(Unit, (let z = clone(b); ()), ()); ()), S _ => () };
+    ()
+  )
+  -- the entry η-refines the scrutinee itself (its one arm moves a field of it), and the arm is
+  -- checked at that refinement
+  def EtaScrut (x : Nat × Nat) : Nat := (let v = match x { Mk(a, b) => a, }; v)
+  def EtaScrut2 (x : Nat × Nat) : Nat × Nat := (let v = match x { Mk(a, b) => (b, a), }; v)
+}
+
+-- Closed calls: each is accepted, as its definition is
+ochr BlockEntryRuns uses Nats, Fixtures, StaticEnds, BlockEntry {
+  def IARun : Unit := IA(0, 5)
+  def IARun1 : Unit := IA(1, 5)
+  def JARun : Nat := JA(0, refl, 5)
+  def IAPickRun : Unit := IAPick(1, 0, 2, 3)
+  def EtaScrutRun : Id(Nat, EtaScrut((1, 2)), 1) := refl
+  def EtaScrut2Run : Id(Nat × Nat, EtaScrut2((1, 2)), (2, 1)) := refl
+}
+
+#guard (run "BlockEntry" BlockEntry).rejectedWith [
+  ("IAUse", "no such place *r: its path does not exist in ⊥"),
+  ("ArmUsesEnded", "no such place *r: its path does not exist in ⊥")]

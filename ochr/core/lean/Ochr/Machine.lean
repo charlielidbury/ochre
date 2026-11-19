@@ -3154,7 +3154,13 @@ def splitArmsThenClose (fuel : Nat) (mt : Term) (σ : Nat) (arms : List (M Value
     (expected : Option Value) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let blockArms := arms.map fun (mk, arm) => BlockArm.mk
-    (do let r ← mk; refine fuel' σ r; pure r)
+    -- D91: the block's entry, before the arms, may have η-refined the scrutinee itself (its type
+    -- has one constructor and an arm moves a field of it, `movedPlace`); its one arm is then
+    -- checked at that refinement, recorded for this world (D68, D79), not at a fresh one
+    (do let r ← match (← get).etaRefs.lookup σ with
+          | some r => pure r
+          | none => mk
+        refine fuel' σ r; pure r)
     (fun r => do
       let (av, T) ← eval fuel' true arm
       let fl ← getFlags
@@ -3637,9 +3643,11 @@ termination_by structural fuel
 
 /-- [Block], the one place a stuck block is formed (D76). A stuck match ([Split]), a `J` whose
 endpoints are not convertible ([T-J-stuck]) and a zero-arm match outside a proof position are
-closed off here, as a call to an anonymous function of their free places. The block runs its
-arms itself (`BlockArm`): each from the unrefined state, under its own setup, and each is checked
-to its return by `bodyReturns`, the check every function body's return goes through. So a block
+closed off here, as a call to an anonymous function of their free places. Its captures are
+computed first, from syntax and declared types, and its entry accesses them all (D91); then the
+block runs its arms itself (`BlockArm`): each from the unrefined state after the entry, the state
+a direct run's arm starts from, under its own setup, and each is checked to its return by
+`bodyReturns`, the check every function body's return goes through. So a block
 cannot be formed without its arms having been checked whole where its borrows end: the
 producer obligation for the sealed programs a block leaves, of which D72 (a match's arms) and
 D75 (a `J`'s transported term) were two instances found missing.
@@ -3653,6 +3661,18 @@ whole is a move (reading a borrow moves it); assigning a borrow variable as a wh
 def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Value) :
     M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
+  -- K1: the block takes each outer place by the largest effect any arm has on it (`blockCaptures`);
+  -- D84: the places it moves are the static join's, which the direct run drops; what the arms'
+  -- runs moved is kept as an assertion that the two agree (below). D91: the captures are read
+  -- from syntax and declared types, not from the arms' runs, so they are computed first, and the
+  -- block's entry accesses them all ([Entry], `entryAccess`, D90) before any arm is checked: each
+  -- arm is checked from the state a direct run's arm starts from, so the generic call and every
+  -- instance agree on which borrows are live inside the arms too, with no exception
+  let (_, st) ← staticJoin fuel' mt
+  let (caps, split, moved) ← blockCaptures fuel' mt st
+  -- order the captures by frame position (oldest binding first), then by path
+  let capsS := caps.qsort fun (a, _) (b, _) => a.root > b.root || (a.root == b.root && (a.steps.2.length < b.steps.2.length))
+  entryAccess fuel' capsS
   -- each arm runs in its own world (`enterWorld`/`inWorld`, split-model's (X)): a fact an arm
   -- learns is never visible in a sibling arm or after the block
   let w ← enterWorld
@@ -3692,15 +3712,11 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
         unless ← conv fuel' T T0 do
           err s!"the arms of a non-tail match have different types ({T0} and {T}); annotate it (let x : T = match …)"
       pure T0
-  -- K1: the block takes each outer place by the largest effect any arm has on it (`blockCaptures`);
-  -- D84: the places it moves are the static join's, which the direct run drops; what the arms'
-  -- runs moved is kept as an assertion that the two agree
-  let (_, st) ← staticJoin fuel' mt
+  -- D84: what the arms' runs moved agrees with the static join (an assertion)
   let logged ← joinLogged st
   for q in armMovedAll do
     unless logged.any (jdCovers · q) do
       err s!"INTERNAL [D84] an arm of a stuck match moves {← ppPlace q}, which the static join misses (please report)"
-  let (caps, split, moved) ← blockCaptures fuel' mt st
   let f ← topIdx
   let nb := (← get).env[f]!.binds.size
   -- [Fix] captures no borrow (D63, rule-audit item 7): a closure or Π-type in an arm that
@@ -3720,8 +3736,6 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
       if k == 2 && (b.val.isBorrow || (b.ty matches some (.tRef _))) &&
           moved.any (fun m => m.root == o && m.steps.2.head? == some .deref) then
         err s!"[D53] a borrow ends while its content is partly moved out ({b.hint.name}: moved into a stuck match whose arm moves out through it)"
-  -- order the captures by frame position (oldest binding first), then by path
-  let capsS := caps.qsort fun (a, _) (b, _) => a.root > b.root || (a.root == b.root && (a.steps.2.length < b.steps.2.length))
   -- [Return] at each arm's end (D76): the block is an anonymous function, so each arm ends
   -- where the function returns, and `bodyReturns` checks there what every function body's
   -- return is checked for. A place the block takes by borrow is its borrow parameter, whose
@@ -3764,8 +3778,6 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
       bodyReturns fuel' "a stuck match's arm returns it" av T lent "lent to a stuck match, whose arm returns with it")
       (set cur)
     set cur
-  -- static ends: the block's entry accesses all its captures before it takes any (`entryAccess`)
-  entryAccess fuel' capsS
   let n := capsS.size
   let mut hints := #[]
   let mut doms := #[]
