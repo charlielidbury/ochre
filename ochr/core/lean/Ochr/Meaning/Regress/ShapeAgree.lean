@@ -12,8 +12,8 @@ blanket form it is FALSE, in both directions. The lemmas here are the kernel-che
 checker's side of each (the program is accepted) is asserted by `Regress/ShapeProbes.lean`.
 
 * **The reference has none where the checker's stored type has one.** `call_noShape`: a call's
-  result never has a Π-shape or a data component, whatever the callee and the state
-  (`callOf` types its result `.plain B`). `tyShape_tPi`: a stored Π-type value of a Π-term always
+  result never has a Π-shape, whatever the callee and the state (since docs/31 D32 it has its
+  codomain code's data, `TyS.ofTyM`). `tyShape_tPi`: a stored Π-type value of a Π-term always
   has one. So after `let a = Adder(n)` the checker's binding `a : Π(m : Nat). Nat` has a shape and
   the reference's has none, and after `(f : Fn(Nat))`, with `Fn(A) := Π(x : A). A` computed by a
   call, the same holds of the parameter (probes `UseAdder`, `UseFn`: both accepted).
@@ -32,10 +32,11 @@ open Ochr Ochr.Meaning
 
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- An applied callee's result has no Π-shape and no data, at every level. -/
+/-- An applied callee's result has no Π-shape, at every level; its data is its codomain code's
+(docs/31 D32: the data half of the call-result redesign; it was `none`). -/
 theorem callOfL_noShape.{u} (L : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : Sem) (args : List Res)
     (s s' : SState) (r : Res) (h : callOfL L ps out fv args s = some (r, s')) :
-    r.2.shape = none ∧ r.2.data = none := by
+    r.2.shape = none ∧ r.2.data = r.2.m.dataName? := by
   unfold callOfL at h
   dsimp only at h
   generalize applyFnL L ps out fv (args.map (·.1)) = a at h
@@ -49,7 +50,7 @@ theorem callOfL_noShape.{u} (L : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv 
     exact ⟨rfl, rfl⟩
 
 theorem callOf_noShape (fv : Res) (args : List Res) (s s' : SState) (r : Res)
-    (h : callOf fv args s = some (r, s')) : r.2.shape = none ∧ r.2.data = none := by
+    (h : callOf fv args s = some (r, s')) : r.2.shape = none ∧ r.2.data = r.2.m.dataName? := by
   unfold callOf at h
   split at h
   · split at h
@@ -59,30 +60,30 @@ theorem callOf_noShape (fv : Res) (args : List Res) (s s' : SState) (r : Res)
     · cases h
   · cases h
 
-/-- An erased term's result keeps "no shape, no data" if the term's own run has it. -/
+/-- An erased term's result keeps "no shape" if the term's own run has it. -/
 theorem erasedIf_noShape (fl : Bool × Bool) (x : SM Res) (s s' : SState) (r : Res)
-    (hx : ∀ r s', x s = some (r, s') → r.2.shape = none ∧ r.2.data = none)
-    (h : SM.erasedIf fl x s = some (r, s')) : r.2.shape = none ∧ r.2.data = none := by
+    (hx : ∀ r s', x s = some (r, s') → r.2.shape = none)
+    (h : SM.erasedIf fl x s = some (r, s')) : r.2.shape = none := by
   unfold SM.erasedIf at h
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
-    exact ⟨rfl, rfl⟩
+    rfl
   · rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, -, -, r₀, s₀, h₀, rfl⟩
     · exact hx _ _ h
     · exact hx r₀ s₀ h₀
 
-/-- **A call's result has no Π-shape and no data**, whatever the callee, the arguments and the
-state. So a function returned by a call cannot be called, and a parameter whose type is a call of
-a type function is bound with no shape. -/
+/-- **A call's result has no Π-shape**, whatever the callee, the arguments and the state. So a
+function returned by a call cannot be called, and a parameter whose type is a call of a type
+function is bound with no shape. (Its data, since docs/31 D32, is its codomain code's.) -/
 theorem call_noShape (hint : TyS) (f : Term) (args : List Term) (hd : Bool) (s s' : SState) (r : Res)
-    (h : run K ρ φ hint (.call f args hd) s = some (r, s')) : r.2.shape = none ∧ r.2.data = none := by
+    (h : run K ρ φ hint (.call f args hd) s = some (r, s')) : r.2.shape = none := by
   rw [run] at h
   refine erasedIf_noShape _ _ _ _ _ (fun r s' hx => ?_) h
   simp only [Bind.bind] at hx
   split at hx
   · split at hx
-    · exact callOf_noShape _ _ _ _ _ hx
+    · exact (callOf_noShape _ _ _ _ _ hx).1
     · cases hx
   · cases hx
 
@@ -99,7 +100,7 @@ theorem call_shape_ne (hint : TyS) (f : Term) (args : List Term) (hd : Bool) (s 
     (caps : List Value) (hs : List Hint) (ds : List Term) (c : Term) (rd : List (DeclInfo × Value)) :
     r.2.shape ≠ tyShape K ρ ψ (.tPi caps (.pi hs ds c) rd) := by
   intro e
-  have h1 := (call_noShape K ρ φ hint f args hd s s' r h).1
+  have h1 := call_noShape K ρ φ hint f args hd s s' r h
   have h2 := tyShape_tPi K ρ ψ caps hs ds c rd
   rw [← e, h1] at h2
   cases h2

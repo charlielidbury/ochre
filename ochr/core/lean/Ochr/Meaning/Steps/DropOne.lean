@@ -14,9 +14,10 @@ the order the team lead set (model risk first):
 1. L2, writing `⊥` at a path commutes with the meaning: PROVED for a value that records its
    parameters and holds no sealed program (`mean_updAt_bot`, `BotWrite.lean`); open for a sealed
    sibling (`mean_updAt_bot_sealed`). Attacking it found D31 (the reference decoded data by its
-   carrier), fixed; it rests on (WF13), a new clause of `Good`.
-2. L3, the write keeps the relation (`botWrite_step`), from L2, (WF13) through `dataOn_of_wf13`,
-   and the access having ended every borrow lent at, over or under the place (`access_clears`).
+   carrier) and then the partial-move and open-value faults; since D32 a constructor value
+   describes itself, and L2 asks nothing of the hint.
+2. L3, the write keeps the relation (`botWrite_step`), from L2 and the access having ended every
+   borrow lent at, over or under the place (`access_clears`).
 3. The commutation of ends on sites: PROVED (`relend_comm`, `RelendComm.lean`), when every site
    at either holder is inside its content and the two are not lent at each other's holders; it is
    used inside the [Access] statement, an induction-hypothesis field.
@@ -157,22 +158,9 @@ theorem mean_updAt_bot_sealed (H : TyS) (steps : List Step) (v v' : Value)
     (h : Value.updAt (fun _ => .bot) steps v = some v')
     (hb : v.anyAtom (Value.bareCtor K.Γ) = false)
     (hs : v.anyAtom (fun a => a.isSealed && !a.topHintFree K.Γ) = false)
-    (hd : DataOn K.dm K.M K.Γ ρ φ H steps v) :
+    (hd : NatAlong K.dm K.M K.Γ ρ φ steps v) :
     Sem.updAt K.dm K.Γ H (fun _ => .moved) steps (Value.mean K.dm K.M K.Γ ρ φ H v) =
       some (Value.mean K.dm K.M K.Γ ρ φ H v') := by
-  sorry
-
-/-- **(WF13) gives the path's data agreement**, at a path that enters one constructor (marks,
-`*` and `S` aside): the value at a binding agrees there with the reference's type of the binding
-(`Rel.skel` makes it the checker's hint), at every future. As first stated, along any path where
-the earlier fields are whole (`WholeAlong`), it was REFUTED by an accepted program
-(`Regress/OpenWriteDep.lean`, `OWK`: an index rewritten whole, then a read into the dependent
-field, which the reference decodes at the new index's parameters); deeper paths are D32's question.
-Open: not tried. -/
-theorem dataOn_of_wf13 (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos)
-    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2))
-    (ψ : Future) (hone : (q.steps.2.filter fun st => st.key.isSome).length ≤ 1) :
-    DataOn K.dm K.M K.Γ ρ ψ (s.tyAt pos) q.steps.2 (valAt st.env pos) := by
   sorry
 
 /-- **The checker's access clears the place**: after `accessPath q; accessInside q`, no live borrow
@@ -188,7 +176,7 @@ theorem access_clears (fuel : Nat) (st st' : MState) (q : Place) (pos : Pos) (b 
 
 /-- **(2) L3: the write of `⊥` keeps the relation.** After the access (`access_clears`), the
 checker's `setPlace q ⊥` and the reference's write of `moved` at the same path (`dropAt`'s last
-clause) give related states: the meanings by L2 at every compared future (`dataOn_of_wf13`), the
+clause) give related states: the meanings by L2 at every compared future, the
 holders unchanged (a field, or a root holding no borrow), and every live borrow's sites unchanged
 (none is at, over or under the place). `Good` is kept: membership by `MovedOf` (a part moved out of
 a member), and every clause survives removing a part. Open: not tried beyond L2. -/

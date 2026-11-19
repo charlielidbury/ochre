@@ -311,7 +311,7 @@ theorem callOfL_rinv.{u} (Lv : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : 
       simp only [Option.some.injEq, Prod.mk.injEq] at h'
       obtain ⟨rfl, rfl⟩ := h'
       obtain ⟨i1, i2⟩ := callOfL_data_inv Lv ps out fv args h1 h2 h (fun U fwd back e => by rw [happ] at e; cases e)
-      exact ⟨⟨i1, i2, shapeAt_mapVals (shapeAt_takeAll _ hsa) _⟩, fun l hl => by simp [TyS.plain] at hl⟩
+      exact ⟨⟨i1, i2, shapeAt_mapVals (shapeAt_takeAll _ hsa) _⟩, fun l hl => by simp [TyS.ofTyM] at hl⟩
     | ref U fwd back =>
       obtain ⟨i1, i2⟩ := callOfL_ref_inv Lv ps out fv args h1 h2 hsa h happ
       have h' := h

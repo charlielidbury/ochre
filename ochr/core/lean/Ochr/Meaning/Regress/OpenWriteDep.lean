@@ -1,3 +1,4 @@
+import Ochr.Meaning.Places
 import Ochr.Examples.Nat
 import Ochr.Examples.Logic
 
@@ -13,12 +14,16 @@ docs/31 D32 (fifth lead, 2026-11-20). With `WP := MkWP(n : Nat, x : Pk(n))` and
 * `OW`, `OWM` (rejected, the controls): the same at an unknown `w` (a stuck match the arm returns
   open, [Repack]).
 
-The reference decodes `w.1` at the hint its declaration gives at the current earlier fields,
-`Pk(2)`, where the value was packed at `Pk(S(w0))`: at `w0 ≠ 1` the two parameter lists differ,
-and decoding through equal carriers is not provably the value's own. So reading into an open
-value's dependent field is beyond decoding by the position's type, whatever the join does: (WF13)
-as restricted to fields after whole earlier fields is FALSE here (the earlier field is whole, the
-data disagrees), and tightening the join's drop (D32 option (d)) does not reach this case.
+Before docs/31 D32 the reference decoded `w.1` at the hint its declaration gives at the current
+earlier fields, `Pk(2)`, where the value was packed at `Pk(S(w0))`: at `w0 ≠ 1` the two parameter
+lists differ, and decoding through equal carriers is not provably the value's own. So reading into
+an open value's dependent field was beyond decoding by the position's type, whatever the join does:
+(WF13) as restricted to fields after whole earlier fields was FALSE here, and tightening the join's
+drop (D32 option (d)) does not reach this case.
+
+Fixed by D32: the reference reads `(w.1).1` off `w`'s meaning, and types `w.1` by its content
+(`Pk` at its own parameters, as the checker does), for every data model (`read_after_index_rewritten`,
+kernel-checked).
 -/
 
 open Ochr.Test
@@ -32,3 +37,18 @@ ochr OpenWriteDep uses Nats, Logic {
   reject def OW (w : WP) : Nat := (w.0 := S(S(Z)); let c = (w.1).1; c)
   reject def OWM (w : WP) : Nat := (w.0 := S(S(Z)); match w.1 { MkPk(a, b) => b })
 }
+
+namespace Ochr.Meaning.Regress.OpenWriteDep
+open Ochr Ochr.Meaning
+
+/-- **The read of `(w.1).1` after `w.0` is rewritten, in the reference** (D32): `w` means
+`MkWP(2, MkPk(a, b))` whatever its element (whole and of its type or open); the read reaches `b`,
+and `w.1` is typed by its content, `Pk` at its own parameter `m` (`dataTyS`). -/
+theorem read_after_index_rewritten (dm : DataModel) (Γ : List IndDecl) (T : TyS) (m a b : Sem)
+    (el el' : Option ((A : Type) × A)) :
+    Sem.step dm Γ T (.proj 1) (.dat "WP" [] 0 [.el0 Nat 2, .dat "Pk" [m] 0 [a, b] el] el') =
+      some (.dat "Pk" [m] 0 [a, b] el, dataTyS dm Γ "Pk" [m]) ∧
+    ∃ T', Sem.follow dm Γ T (.dat "WP" [] 0 [.el0 Nat 2, .dat "Pk" [m] 0 [a, b] el] el') [.proj 1, .proj 1] =
+      some (b, T') := ⟨rfl, _, rfl⟩
+
+end Ochr.Meaning.Regress.OpenWriteDep

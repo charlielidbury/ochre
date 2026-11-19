@@ -265,12 +265,9 @@ noncomputable def fixOut (s : SState) (bs : List PBind) (c : Term) : PiOut := ma
 /-- The decreasing argument's rank (φ-free). -/
 noncomputable def fixRank (ps : List PiParam) (dec : Option Nat) (args : List Sem) : Nat := match dec with
   | some j =>
-    match args[j]?, (ps[j]?).map (·.dom (args.take j)) with
-    | some a, some T =>
-      match T.dataOf K.dm K.Γ with
-      | some (d, ps') => match a.as (K.dm.car d ps') with | some x => K.dm.rank x | none => 0
-      | none => match a.asNat with | some n => n | none => 0
-    | _, _ => 0
+    match args[j]? with
+    | some a => semRank K.dm K.Γ a
+    | none => 0
   | none => 0
 
 /-- The closure's function: the guarded fixpoint by stages, or the body with `self` erroneous. -/

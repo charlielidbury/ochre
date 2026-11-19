@@ -80,7 +80,8 @@ variable (dm : DataModel)
 /-- The meaning of the type `D(ps)`: a data type is its carrier; a `Prop`-sorted declaration
 the truncation of the same fixed point, true when it is inhabited. -/
 def tyM (d : IndDecl) (ps : List Sem) : TyM :=
-  if d.sort == 0 then .prop (Nonempty (dm.car d ps)) else .ty0 (dm.car d ps)
+  if d.sort == 0 then .prop (Nonempty (dm.car d ps))
+  else .data d.name ps (dm.car d ps) (fun x => (dm.tag x, dm.fields x))
 
 /-- Parameters whose carrier is the type `T`, chosen classically (`paramsOf_car`). A fallback
 only: since carriers do not determine parameters, no definition relies on this choice; a
@@ -101,10 +102,23 @@ theorem paramsOf_car (d : IndDecl) (A : Type) (ps : List Sem) (h : dm.paramsOf d
     exact Classical.choose_spec hex
   · simp [paramsOf, hex] at h
 
+/-- The constructor and fields of a constructor value, read off the value (docs/31 D32). -/
+def _root_.Ochr.Meaning.Sem.parts : Sem → Option (Nat × List Sem)
+  | .dat _ _ c fs _ => some (c, fs)
+  | _ => none
+
+/-- A whole constructor value OPEN in the data type `T` (D64): it names `T`'s declaration and
+parameters, its fields are whole, and it has no element of the carrier because a field lies
+outside the type its earlier fields give (the checker types such a field by its content until
+[Repack]). Membership's `pmem` admits it, as the checker's state does (`Regress/OpenWriteDep`). -/
+def OpenIn : TyM → Sem → Prop
+  | .data n ps _ _, .dat n' ps' _ fs none => n = n' ∧ ps = ps' ∧ ∀ f ∈ fs, f.whole
+  | _, _ => False
+
 /-- The meaning of a constructor value `C(ps; fs)` of a data type whose fields already mean
-`fs`: packed into the carrier when every field is whole and of its type, and kept as an untyped
-tuple otherwise: when some field holds `moved` (D84: a definite value lying in no type), and when
-a whole field is not of its type. A `Prop`-sorted declaration's constructor values are `⋆` already
+`fs`: it describes itself (`Sem.dat`, docs/31 D32), with its element of the carrier when every field
+is whole and of its type, and none otherwise: when some field holds `moved` (D84: a definite value
+lying in no type), and when a whole field is not of its type (an open value). A `Prop`-sorted declaration's constructor values are `⋆` already
 (`Machine.evalCtor`, D42), so `ctorM` is only applied to data.
 
 An ill-typed constructor value used to mean `err`, not a tuple. Then a value with a LENT field
@@ -117,9 +131,9 @@ noncomputable def ctorM (d : IndDecl) (ps : List Sem) (c : Nat) (fs : List Sem) 
   open Classical in
   if ∀ f ∈ fs, f.whole then
     match dm.pack d ps c fs with
-    | some x => .el0 (dm.car d ps) x
-    | none => .ctor d.name c fs
-  else .ctor d.name c fs
+    | some x => .dat d.name ps c fs (some ⟨dm.car d ps, x⟩)
+    | none => .dat d.name ps c fs none
+  else .dat d.name ps c fs none
 
 mutual
 /-- `s` is `t` with some of its parts moved out: `moved` is anything with all of it moved, a
@@ -135,10 +149,9 @@ that moves a field out leaves, so `Good` failed at the state after it. -/
 inductive MovedOf (Γ : List IndDecl) : Sem → Sem → Prop
   | moved (t : Sem) : MovedOf Γ .moved t
   | refl (t : Sem) : MovedOf Γ t t
-  | ctor {d : IndDecl} {ps : List Sem} {c : Nat} {fs : List Sem} (x : dm.car d ps) :
-      d ∈ Γ → dm.tag x = c → MovedOfList Γ fs (dm.fields x) →
-      MovedOf Γ (.ctor d.name c fs) (.el0 (dm.car d ps) x)
-  | succ {s : Sem} {n : Nat} : MovedOf Γ s (.el0 Nat n) → MovedOf Γ (.ctor "Nat" 1 [s]) (.el0 Nat (n + 1))
+  | dat {n : String} {ps : List Sem} {c : Nat} {fs gs : List Sem} {el : Option ((A : Type) × A)} :
+      MovedOfList Γ fs gs → MovedOf Γ (.dat n ps c fs none) (.dat n ps c gs el)
+  | succ {s : Sem} {n : Nat} : MovedOf Γ s (.el0 Nat n) → MovedOf Γ (.dat "Nat" [] 1 [s] none) (.el0 Nat (n + 1))
 
 /-- The same, field by field. -/
 inductive MovedOfList (Γ : List IndDecl) : List Sem → List Sem → Prop
@@ -151,32 +164,20 @@ some field of which was moved out): the value is `⊥` outright, or it is some w
 type with parts moved out (`MovedOf`). For a whole value this is membership (`pmem_of_mem`). A
 move keeps it: the value before the move is such a member. -/
 def pmem (Γ : List IndDecl) (s : Sem) (T : TyM) : Prop :=
-  s = .moved ∨ ∃ t : Sem, t.whole ∧ dm.MovedOf Γ s t ∧ t ∈ₛ T
+  s = .moved ∨ ∃ t : Sem, t.whole ∧ MovedOf Γ s t ∧ (t ∈ₛ T ∨ OpenIn T t)
 
-theorem pmem_of_mem (Γ : List IndDecl) {s : Sem} {T : TyM} (hw : s.whole) (h : s ∈ₛ T) : dm.pmem Γ s T :=
-  .inr ⟨s, hw, .refl s, h⟩
-
-/-- The fields of a meaning of a constructor value, if it is one. -/
-noncomputable def fieldsOf (d : IndDecl) (ps : List Sem) : Sem → Option (Nat × List Sem)
-  | .el0 A x => open Classical in
-    if h : A = dm.car d ps then some (dm.tag (h ▸ x), dm.fields (h ▸ x)) else none
-  | .ctor n c fs => if n = d.name then some (c, fs) else none
-  | _ => none
+theorem pmem_of_mem (Γ : List IndDecl) {s : Sem} {T : TyM} (hw : s.whole) (h : s ∈ₛ T) : pmem Γ s T :=
+  .inr ⟨s, hw, .refl s, .inl h⟩
 
 /-- **A constructor value's tag and fields are read off its meaning whatever its fields hold**:
-packed, partly moved, or ill-typed. (With an ill-typed value meaning `err`, as it first did, this
-failed where a whole field was outside its type.) -/
-theorem fieldsOf_ctorM {d : IndDecl} {ps : List Sem} (c : Nat) (fs : List Sem) (hd : dm.covers d) :
-    dm.fieldsOf d ps (dm.ctorM d ps c fs) = some (c, fs) := by
-  have htup : dm.fieldsOf d ps (.ctor d.name c fs) = some (c, fs) := by simp [fieldsOf]
+packed, partly moved, or open (docs/31 D32: the value describes itself; no declaration, carrier or
+type is consulted). -/
+theorem parts_ctorM (d : IndDecl) (ps : List Sem) (c : Nat) (fs : List Sem) :
+    (dm.ctorM d ps c fs).parts = some (c, fs) := by
   unfold ctorM
   split
-  · split
-    · rename_i x hx
-      simp only [fieldsOf, dite_true]
-      rw [dm.tag_pack x hd hx, dm.fields_pack x hd hx]
-    · exact htup
-  · exact htup
+  · split <;> rfl
+  · rfl
 
 /-! ## Small field types
 
@@ -191,6 +192,7 @@ otherwise. -/
 def small : TyM → TyM
   | .ty0 A => .ty0 A
   | .prop P => .prop P
+  | .data n ps A unpk => .data n ps A unpk
   | _ => .err
 
 /-- What a carrier in `Type` stores for an element of a small type: the element itself, a proof
@@ -198,18 +200,22 @@ of the proposition; nothing for any other type meaning. -/
 def El : TyM → Type
   | .ty0 A => A
   | .prop P => PLift P
+  | .data _ _ A _ => A
   | _ => PEmpty
 
 /-- The meaning of a stored element. -/
 def enc : (T : TyM) → El T → Sem
   | .ty0 A, a => .el0 A a
   | .prop _, _ => .proof
+  | .data n ps A unpk, a => .dat n ps (unpk a).1 (unpk a).2 (some ⟨A, a⟩)
   | .ty1 _, x | .ty2 _, x | .univ _, x | .err, x => x.elim
 
 /-- Read a meaning as a stored element of a small type, if it is a member (classically). -/
 noncomputable def dec : (T : TyM) → Sem → Option (El T)
   | .ty0 A, .el0 B b => open Classical in if h : B = A then some (h ▸ b) else none
   | .prop P, .proof => open Classical in if h : P then some ⟨h⟩ else none
+  | .data n ps A unpk, .dat n' ps' c fs (some ⟨B, b⟩) => open Classical in
+    if h : n' = n ∧ ps' = ps ∧ ∃ e : B = A, unpk (e ▸ b) = (c, fs) then some (h.2.2.choose ▸ b) else none
   | _, _ => none
 
 theorem small_small (T : TyM) : small (small T) = small T := by
@@ -219,41 +225,79 @@ theorem enc_mem (T : TyM) (a : El T) : enc T a ∈ₛ T := by
   cases T with
   | ty0 A => exact rfl
   | prop P => exact a.down
+  | data n ps A unpk => exact ⟨rfl, rfl, rfl, rfl⟩
   | _ => exact a.elim
 
 theorem enc_mem_small (T : TyM) (a : El T) : enc T a ∈ₛ small T := by
   cases T with
   | ty0 A => exact rfl
   | prop P => exact a.down
+  | data n ps A unpk => exact ⟨rfl, rfl, rfl, rfl⟩
   | _ => exact a.elim
 
 theorem enc_inj {T : TyM} {a b : El T} (h : enc T a = enc T b) : a = b := by
   cases T with
   | ty0 A => cases h; rfl
   | prop P => cases a; cases b; rfl
+  | data n ps A unpk =>
+    simp only [enc, Sem.dat.injEq, Option.some.injEq] at h
+    exact eq_of_heq (Sigma.mk.inj h.2.2.2.2).2
   | _ => exact a.elim
 
 theorem dec_enc (T : TyM) (a : El T) : dec T (enc T a) = some a := by
   cases T with
   | ty0 A => simp [enc, dec]
   | prop P => cases a; simp [enc, dec, *]
+  | data n ps A unpk =>
+    have h : n = n ∧ ps = ps ∧ ∃ e : A = A, unpk (e ▸ a) = ((unpk a).1, (unpk a).2) := ⟨rfl, rfl, rfl, rfl⟩
+    simp only [enc, dec, dif_pos h]
+    rfl
   | _ => exact a.elim
 
 theorem enc_of_dec {T : TyM} {s : Sem} {a : El T} (h : dec T s = some a) : enc T a = s := by
-  cases T <;> cases s <;> simp [dec] at h
-  case ty0.el0 A B b =>
+  cases T with
+  | data n ps A unpk =>
+    cases s with
+    | dat n' ps' c fs el =>
+      rcases el with _ | ⟨B, b⟩
+      · simp [dec] at h
+      · simp only [dec] at h
+        split at h
+        · rename_i hc
+          obtain ⟨rfl, rfl, e, he⟩ := hc
+          cases e
+          obtain rfl : b = a := Option.some.inj h
+          simp only [enc, he]
+        · cases h
+    | _ => simp [dec] at h
+  | ty0 A =>
+    cases s <;> simp [dec] at h
     obtain ⟨rfl, rfl⟩ := h
     rfl
-  case prop.proof P =>
+  | prop P =>
+    cases s <;> simp [dec] at h
     obtain ⟨_, h⟩ := h
     cases h
     rfl
+  | _ => exact a.elim
 
 /-- Decoding succeeds exactly on the members of the small part of the type. -/
 theorem dec_isSome_iff (T : TyM) (s : Sem) : (dec T s).isSome ↔ s ∈ₛ small T := by
-  cases T <;> cases s <;> simp [dec, small, Sem.mem]
-  case prop.proof P =>
+  cases T with
+  | data n ps A unpk =>
+    cases s with
+    | dat n' ps' c fs el =>
+      rcases el with _ | ⟨B, b⟩
+      · simp [dec, small, Sem.mem]
+      · simp only [dec, small, Sem.mem]
+        split
+        · rename_i hc; simp only [Option.isSome_some, true_iff]; exact hc
+        · rename_i hc; simp only [Option.isSome_none, Bool.false_eq_true, false_iff]; exact hc
+    | _ => simp [dec, small, Sem.mem]
+  | prop P =>
+    cases s <;> simp [dec, small, Sem.mem]
     by_cases h : P <;> simp [h, Option.isSome]
+  | _ => cases s <;> simp [dec, small, Sem.mem]
 
 /-- On a small type, membership is membership of the small part. -/
 theorem mem_small_of_mem {T : TyM} {s : Sem} (h : s ∈ₛ T) (hT : small T = T) : s ∈ₛ small T := by

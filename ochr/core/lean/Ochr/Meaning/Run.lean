@@ -296,21 +296,18 @@ noncomputable def natTag (v : Sem) (_ : TyS) : Sem :=
   | some 0 => .el0 Nat 0
   | some (_ + 1) => .el0 Nat 1
   | none => match v with
-    | .ctor "Nat" 0 [] => .el0 Nat 0
-    | .ctor "Nat" 1 _ => .el0 Nat 1
+    | .dat "Nat" _ 0 [] _ => .el0 Nat 0
+    | .dat "Nat" _ 1 _ _ => .el0 Nat 1
     | _ => .err
 
 /-- The tag of a data value, its constructor's index, or `•` for a proof: what a `match` on it
-observes. The value is decoded by its type's declaration NAME (`TyS.dataDecl`), never by its
-carrier (docs/31 D31: two declarations may share a carrier). -/
-noncomputable def indTag (v : Sem) (T : TyS) : Sem :=
+observes, read off the value (docs/31 D32: a constructor value describes itself; neither its
+type nor its carrier is consulted, D31). -/
+noncomputable def indTag (v : Sem) (_ : TyS) : Sem :=
   match v with
   | .proof => .proof
-  | _ => match T.dataDecl K.Γ with
-    | some (d, ps) => match (K.dm.fieldsOf d ps v).map (·.1) with
-      | some c => .el0 Nat c
-      | none => .err
-    | none => .err
+  | .dat _ _ c _ _ => .el0 Nat c
+  | _ => .err
 
 /-- The content of a place after [Access] for it (static, docs/31 D29: the borrows lent at, over
 or under the place have ended), read at the state's closed future, with its type. At a related
@@ -423,7 +420,7 @@ noncomputable def callOfL.{u} (L : Lvl.{u}) (ps : List PiParam) (out : PiOut) (f
   | some (.data r finals) =>
     let s := s.mapVals fun _ v φ' => v (φ'.updList (fixes finals))
     let B := match out with | .data B => B argSems | .ref U => U argSems
-    some ((r, .plain B), s)
+    some ((r, TyS.ofTyM B), s)
   | some (.ref U fwd back) =>
     let (k, s) := s.freshLoan
     -- [Lend] (main's D90, rule 1; docs/31 D29): the result is lent every place its borrow
@@ -434,7 +431,7 @@ noncomputable def callOfL.{u} (L : Lvl.{u}) (ps : List PiParam) (out : PiOut) (f
       | some x => v (φ'.updList (fixes (back x)))
       | none => .err
     let s := s.pushTempShaped (fun _ => L.enc U fwd) k
-    some ((L.enc U fwd, ⟨U, none, some k, none⟩), s.setLent k lentK)
+    some ((L.enc U fwd, ⟨U, none, some k, U.dataName?⟩), s.setLent k lentK)
   | none => none
 
 /-- A call, on the evaluated callee and arguments (docs/18 Def. "reference run", first clause):
@@ -600,7 +597,7 @@ noncomputable def run (hint : TyS) : Term → SM Res
       some ((r, R), joinDrop K φ entry (.matchNat p z u) s)
     | none => none) s
   | .matchInd p n arms => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.matchInd p n arms)) (fun s => do
-    let (tg, s) ← tagOf K φ p (indTag K) s
+    let (tg, s) ← tagOf K φ p indTag s
     let entry := movedPlaces φ s
     -- a proof scrutinee is matched by its type (D45): the one arm of a one-constructor
     -- proposition; a data scrutinee by the tag of its meaning
@@ -756,12 +753,9 @@ noncomputable def run (hint : TyS) : Term → SM Res
         (fun _ gk => bodyAt (closureOf gk))
     let rankOf (args : List Sem) : Nat := match dec with
       | some j =>
-        match args[j]?, (ps[j]?).map (·.dom (args.take j)) with
-        | some a, some T =>
-          match T.dataOf K.dm K.Γ with
-          | some (d, ps') => match a.as (K.dm.car d ps') with | some x => K.dm.rank x | none => 0
-          | none => match a.asNat with | some n => n | none => 0
-        | _, _ => 0
+        match args[j]? with
+        | some a => semRank K.dm K.Γ a
+        | none => 0
       | none => 0
     let g : List Sem → Option BodyOut := match dec with
       | some _ => fun args => stage (rankOf args + 1) args
