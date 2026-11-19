@@ -336,6 +336,7 @@ theorem contentOf_deref_r (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : S
     simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, S₄]
   simp only [contentOf, hr, access_S₄]
   simp [S₄, SState.tyAt, SState.valAt, Sem.follow, Sem.step]
+  rfl
 
 theorem resolve_deref_r (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
     resolve (S₄ F n b k) (.deref (.var 0)) = some (.bind 0 1, [.deref]) := by
