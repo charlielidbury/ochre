@@ -171,27 +171,25 @@ Risk list, ranked, each with its known fix — the next window takes them in thi
 8. **Adequacy notes** (differences from the checker, not leaks): closure capture-by-move leaves the captured holder's shape entry, so the later end gives the lent place `moved`.
 
 
-### WHERE THINGS STAND (second lead, end of the 2026-11-13 window; read this first)
+### WHERE THINGS STAND (third lead, 2026-11-19; read this first)
 
-**Proved, no `sorry`, standard three axioms:** `meanV_substLoan`, `run_substLoan`, `meanV_congr`, `run_congr` (m2-proofs, landed), re-proved four times this window as `run` changed; `run_hintIndep`; the Close attack on docs/27 §3.2's shape; the data model, decide-scope, mono-lemmas as before.
+**Proved, no `sorry`, standard three axioms:** `meanV_substLoan`, `run_substLoan`, `meanV_congr`, `run_congr`; `run_hintIndep`; the Close attack on docs/27 §3.2's shape; the data model, decide-scope, mono-lemmas; `Rel.start`, `sim_seq`; and, this window, `Rel.private_copy`, `private_copy_no_label`, `restoreKeep_spec`, `types_holeFree` (now (WF11)), `ShapeAgree.tyStr_futureFree`.
 
-**What this window found.** The step lemma chosen as most likely false, `nfSealed_step`, could not be derived from the hypothesis at `fuel`, and the reasons were faults of the model and of the statements, not of that lemma. Each is recorded with its evidence in the sections below:
-- D18: the knot was tied at one assignment and future, so a state's code was read at the wrong future. Kernel-checked, fixed.
-- D19, D21: the reference run failed on six kinds of accepted program (an erased term that is not a call, a call's head, a copy-type parameter, a statement call's arguments, an assignment whose right-hand side reads through a borrow of its place, and any call of a function parameter). Probes built; three failures kernel-checked; all six fixed in `Run.lean`.
-- D20: ten things the skeleton lacked to compose. Items 5 (`eval_step_stmt`), 6 (`CtxOk`) and 8 (`MState.Refd`) are fixed, 6 and 8 after kernel-checked refutations of `evalCore_step_stmt` and `exitWorld_step_stmt`; item 7's lemma is stated (`run_abs_congr`).
+**The form of every step statement** is the simulation form (D20 item 1, `Steps/Sim.lean`): from ANY reference state related to the checker's (`Rel`), concluding `Rel` after, labels compared up to a renaming. All ~76 step lemmas are still `sorry`. Do not start a proof against a `Below (MState.mean … st') s'.toMean` conjunct; `Statements.lean`'s header lists which statements are migrated.
 
-**No checker bug was found.** Every refutation was a fault of the model's definitions or of a statement.
+**This window (third lead), in order:**
+- **D22, prerequisite (a), shape agreement: refuted as a blanket claim.** `Rel` now carries a binding's Π-shape and the `eval` statements' type conjunct is `StrAgree` (a statement fault, fixed). The model drops a value's structure at a call's result, a field read and a proof (A11, A12, A17, and a new A18: a function type computed by a call, the predicate idiom), kernel-checked with accepted probes; a `let`-bound type alias (A19) is fixed on the reading side (`Value.strS`). The future half is proved; the state half is stated (`piShape_step_stmt`). The redesign that closes A11 and A18 is designed in D22, not built.
+- **D23, prerequisite (b), labels and private copies:** `Rel.fresh` was false after any statement that borrows (kernel-checked); it now ranges over labels that occur. (WF11), "types and records hold no loan", is a clause of `WF`. `Rel.private_copy` is proved.
 
-**After the window: the audit and its batch (done).** The clause-by-clause audit of `run` against `Machine.evalCore` is the section "Run against evalCore: audit" (36 rows, fifteen divergences A1–A15, a sixteenth found while planning). Eleven are fixed in four staged commits (the section's "Batch status"), the four core lemmas re-proved after each; five stay rows (a call's result and a field read lose a function's shape and a data type's parameters; open dependent values; `clone` of a partly moved place; the label counter). Three statements were found false on the way and restated (`access_step_stmt`, `assignPlace_step_stmt`, and the substitution pair's `FillShape` gained a conjunct). Next is D20, item 1.
+**No checker bug was found** by either lead. Every refutation was a fault of the model's definitions or of a statement.
 
 **Open, in the order to take them** (risk first):
-1. **Sequencing** (D20, item 1): DECIDED and partly done. The form every step statement had (reference run from the checker's own state, checker's state `Below` the result) is kernel-checked false on `let r = &y; ()`, because `Below` compares temporaries by position and the two states do not have the same ones; and it did not compose. The replacement is the simulation form: a step is stated from any reference state related to the checker's (`Steps/Sim.lean`, `Rel`), and steps then compose by construction (`sim_seq`, proved). The relation holds at the start (`Rel.start`, proved), and the three refuted statements are restated in this form. Labels are compared up to a renaming carried by the relation, since the checker spends labels on proofs the reference never runs. Open: migrate the remaining statements (the leaves, matches, calls, `J`, [Close], the tail forms), after stating that a Π-type's shape does not depend on where it is read and checking that no loan issued inside a private copy survives it. See D20 item 1 for the ordered list.
-2. **`Below` at other futures and inert loans in nested runs** (D20, items 2 and 3): needed for any sealed program with a hole, so for [Close]'s `&T` row, [End] on a fill and `nfSealed_step`.
-3. **Untyped runs** (D20, item 4): `evalCore_step_stmt`/`eval_step_stmt` still claim the reference run never fails for arbitrary untyped text.
-4. **The run's remaining differences from the checker**: the five audit rows still open (the audit section's "After the batch": a call's result and a field read lose a function's shape and a data type's parameters; open dependent values; `clone`/`peek` of a partly moved place; the label counter, now absorbed by the relation's renaming), plus a parameter whose type is a Π-type only after computing, and `J`'s join. And the adequacy of every clause is still read off the clause except where a kernel-checked lemma is named: one kernel-checked run per form on a small accepted program would catch a wrong clause before a step proof does (`Regress/StaleTemp.lean` and `Regress/CE4_flipped.lean` show the method, by `simp` lemmas per clause).
-5. **The context extended with the assignment** (D20, item 7): the eight statements with `∃ ρ'` should conclude under an extended `K`; `run_abs_congr` to prove.
-6. **`run_counter_indep`**, the renaming lemma (restated this window in the form the steps need).
-7. Then the step proofs themselves, `nfSealed_step` and `Good st'` after [End] first, and the older list's items (decisions alignment, data-generic's gaps).
+1. **The riskiest leaves, in the simulation form**: the drop at the join, then `Id`'s observation (D20 item 1 (e)).
+2. **Migration** of the remaining statements, one area file at a time.
+3. **Structure of a call's result** (D22's redesign: A11, A18), then a field's (A12) and a proof's type (A17). Until done the simulation statements are false on programs that call a call's result or a field, or assign a bare constructor to a place bound by a call.
+4. **`Below` at other futures, inert loans in nested runs, untyped runs** (D20 items 2–4); (WF11) and `Good` are both false of a sealed program's re-run with a hole.
+5. **The context extended with the assignment** (D20 item 7; `run_abs_congr` to prove), **`run_counter_indep`**.
+6. Then the step proofs, `nfSealed_step` and `Good st'` after [End] first.
 
 ### Second lead (2026-11-13, from dcdd0a34): the four core lemmas landed; review of m2-proofs' proposals
 
@@ -257,6 +255,44 @@ Keeps `PiParam` as it is (no nested inductive), so `Pi.lean` and `Apply1.lean` d
 - Not covered: a parameter whose type is a Π-type only after computing (a type alias, a type function's call), which has no shape here as it has no class in the checker without D77's reading; and a call that returns a function (`PiOut` carries no shape: the old gap (ii)).
 
 Lemmas to restate: `runDoms_congrE`, `runDoms_substSame`, `rinv_extendBy`, `piShapeOf_*`, `fixOut_*`, `run_pi_def`, `run_fix_def`, and the fix helpers of `RunCongr` (`fixStep` takes `bs`).
+
+### D22. Prerequisite (a), shape agreement: REFUTED as a blanket claim; the relation now carries the shape (third lead, 2026-11-19)
+
+**The claim** (D20 item 1 (b)): a binding's Π-shape in the reference state, which its run made, is the shape the checker's stored type reads as (`Value.tyS`, through `tyShape`), because "a Π-type's shape does not depend on where it is read". `Rel` left the shape out of its skeleton on that belief.
+
+**Finding 1, a fault of the statement.** `Rel` without the shape admits a reference state whose bindings have lost their shapes (the skeleton compared the type's meaning, data and reading only), and from such a state every call through a variable fails (`callOf` at `shape = none`). So `evalCore_step_stmt` and `eval_step_stmt`, stated from ANY related state, were false of every accepted call through a variable. Fixed: `bindSkel` includes the Π-shape, and the type conjunct of the two statements is `StrAgree` (the result type's meaning, shape and data are the checker's type's), not the meaning alone. On the way: `eval_step_stmt`'s type conjunct was false of every proof term (the run types an erased proof `err`, the checker returns its proposition); it now excludes proofs.
+
+**Finding 2, three faults of the model** (kernel-checked halves in `Regress/ShapeAgree.lean`, the checker's verdicts in `Regress/ShapeProbes.lean`, each beside a rejected control; all built). The structure of a value (a function's Π-shape, a data type's parameters) is carried beside its meaning, in the type the run returns, and it is lost or misplaced in three places, so the agreement is false there in both directions:
+
+| | accepted program | the checker | the reference run | kernel-checked |
+|---|---|---|---|---|
+| A11, A18 | `let a = Adder(n); a(Z)`; `(f : Fn(Nat))` with `Fn(A) := Π(x : A). A`, then `f(n)` | stores the call's codomain at the arguments, or the type the call computed: a Π-type value, which has a shape | a call's result never has a shape or a data component, whatever the callee | `call_noShape`, `tyShape_tPi`, `call_shape_ne` |
+| A19 | `let T = Π(n : Nat). Nat; let g : T = f; g(n)` | binds `T : Type`; reads the alias's value at the annotation | binds `T` at the type its run returned, a universe carrying the Π's shape; the checker's binding read as a reference state had none | `pi_shape`, `tyShape_sort` |
+| A17 | `let b = MkPBox(h); n` with `PBox(A : Prop) := MkPBox(a : A)` | solves the parameter from the type of the proof `h` | does not run a proof and types it `err`, which solves nothing: the constructor fails | `erased_proof_untyped`, `unify_untyped` |
+
+A18 is new and is not exotic: `UseFn` is the predicate idiom (`Pred(A) := Π(x : A). Prop`, then a parameter `P : Pred(Nat)` applied). The second lead recorded it as "no class in the checker without D77's reading"; the checker accepts it.
+
+**What is proved.** `ShapeAgree.tyStr_futureFree`: a type value with no loan reads as the same type with the same shape and data at every future (from `tyShape_congrE`), so the checker's reading at the constant future is the reading at the run's. So of "where it is read", the future is settled, given (WF11) below.
+
+**What is stated, open.** `piShape_step_stmt` (in the skeleton, `Steps/Types.lean`): for `capture` on a Π-term or `fix`, from any related reference state, the shape the run reads off the ORIGINAL term in the forming state is `tyShape` of the captured value. It rests on a capture lemma (a term's run reads the state only at its free variables, after [Access]) and on the decisions reading the same readings through the renaming. Known false where a captured PROOF variable is inlined as `(⋆ : T)` (A17 again).
+
+**Fixed in the model:** A19's reading side. `Value.strS`: a binding that holds a type value carries the structure of the type it HOLDS, and `MState.sstate` binds at it, so a checker binding `T : Type` holding a Π-type has the shape the reference's own binding has. Not in the run's mutual block, so the four core lemmas are untouched. Residual of A19: a closure's captured alias (`capsTys` reads the recorded type only) and an assignment to a type variable (the reference's binding keeps the old structure).
+
+**Not fixed: A11, A12, A17, A18.** They have one root, and one redesign closes A11 and A18: a function's type must give the structure of its RESULT as a function of the arguments. Design (not built): a W-type `Str := none | mk shape data (res : List Sem → Str)` and a field `res` on `TyS`; `callOf` types its result by `fv.2.res args`; the `.pi` and `.fix` clauses, `mkBind` and the annotation clauses fill it from the codomain term's run (as `fixCod` already does for the body's hint), and from the BODY's run where the codomain is a universe (a type function's result is a type, whose structure only its body knows: A18). No nested inductive, and `TyS.shape` keeps its type, so the proofs change where a `TyS` is built by `⟨_, _, _, _⟩` (56 sites) and at `callOf`. A12 (a field's structure) needs the declarations' field types run, which is not structural on the term: a separate design. A17 needs the run to type a proof it does not run (a place by its binding, a call by its codomain at the arguments).
+
+Until then the simulation statements are false exactly on programs that use a call's result or a field as a function or as the hint of a bare constructor, and on a constructor whose parameter a proof field solves.
+
+### D23. Prerequisite (b), no label issued inside a private copy survives it: a statement fault found, an invariant added, the positive form PROVED (third lead, 2026-11-19)
+
+**Finding, a fault of the statement** (`Regress/CopyLabels.lean`, built). `Rel.fresh` asked that EVERY label below the checker's counter be renamed below the reference's. The checker keeps its counter across a private copy (D37, `restoreKeep`); the reference restores its own, and does not run a proof at all. So after any statement that borrows, the checker's counter is ahead, and from a state whose counter is 0 no renaming exists: on the type `Eq(Nat, (let r = &y; Z), Z)` the checker ends with counter 1 and Ω restored (`checkerCounts`, a `#guard`), the reference's run of an `Eq` leaves its state (`eq_state`, kernel-checked), and no renaming sends every label below 1 below 0 (`old_fresh_false`, kernel-checked). So the two migrated `eval` statements were false on it. Fixed: `fresh` ranges over the labels that OCCUR in the checker's state (`MState.Occurs`: a loan or a borrow of that label inside a value of Ω).
+
+**What survives a private copy** (`restoreKeep`, read; `restoreKeep_spec`, proved): Ω, the goal and the declarations are the snapshot's; the counters, the generalisation and η records, and the types of the unknowns created inside are the copy's. So a label issued inside can survive only in a record, in such a type, or in the value the statement returns.
+
+**The invariant that excludes it: (WF11), now a clause of `WF`.** No stored or deferred type, no type of an unknown, not the goal, and no generalisation or η record holds a loan anywhere. Read off the checker: a neutral is generalised only in typed mode, after `accessNeutralHead` has ended every live loan inside it, and in a typed run every loan is live ((WF2)); an evaluated argument is held in a temporary while the next is run, so a borrow in flight is found by [Access]. It was implicit before (`TypedAssignment.neutral` and `Value.tyS` read at the constant future "because types are hole-free") and stated only as `types_holeFree_stmt`, in a form that `Good` did not imply (a consequence of `Good`, for LIVE loans in stored types). `types_holeFree_stmt` is now (WF11) and is PROVED (a projection). (WF11) is a hypothesis-carried invariant: each step that concludes `Good st'` owes it, and none is proved yet. Not kernel-checked against the checker; no accepted program was found that breaks it.
+
+**Proved** (`Steps/Sim.lean`, standard axioms): `private_copy_no_label` (with the snapshot's labels below its counter, no label at or above it occurs in the restored state) and **`Rel.private_copy`**: if Ω is the snapshot's, the restored state is simulated by the SAME reference state under the SAME renaming. That is the checker's side of the step of an erased term, and it absorbs the audit's A15. `CopyLabels.new_fresh_holds` instantiates it on the program above.
+
+**Open:** a nested run that is not on a `Good` state (a sealed program's re-run binds its holes as inert loans, D20 item 3) can store a type that holds one; (WF11) is false there as `Good` is.
 
 ### Run against evalCore: audit (second lead, 2026-11-13)
 

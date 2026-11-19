@@ -75,6 +75,7 @@ theorem stepsIH : ∀ (fuel : Nat) (ρ : Assignment) (φ : Future), StepsIH K ρ
       evalType_step := evalType_step K ρ φ fuel ih
       piSort_aligned := piSort_aligned K ρ φ fuel ih
       capture_step := capture_step K ρ φ fuel ih
+      piShape_step := piShape_step K ρ φ fuel ih
       evalCtor_step := evalCtor_step K ρ φ fuel ih
       evalTInd_step := evalTInd_step K ρ φ fuel ih
       fieldTypesOf_step := fieldTypesOf_step K ρ φ fuel ih

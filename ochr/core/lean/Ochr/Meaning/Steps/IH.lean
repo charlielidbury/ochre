@@ -52,6 +52,7 @@ structure StepsIH (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Pr
   evalType_step : evalType_step_stmt K ρ φ fuel
   piSort_aligned : piSort_aligned_stmt K ρ φ fuel
   capture_step : capture_step_stmt K ρ φ fuel
+  piShape_step : piShape_step_stmt K ρ φ fuel
   evalCtor_step : evalCtor_step_stmt K ρ φ fuel
   evalTInd_step : evalTInd_step_stmt K ρ φ fuel
   fieldTypesOf_step : fieldTypesOf_step_stmt K ρ φ fuel

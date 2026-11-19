@@ -36,6 +36,8 @@ temporaries by position, the reference keeps the temporary a borrow was parked i
 has none (`Regress/StaleTemp.lean`, on `let r = &y; ()`). Nor do two such statements compose. The
 form to state a step in is the simulation form: from ANY reference state `s` with
 `Rel K ρ φ π st s`, concluding `Rel` after (`Steps/Sim.lean`: `Rel.start`, `sim_seq`).
+`Rel` compares a binding's Π-shape and asks a renaming only of the labels that occur (docs/31 D22,
+D23: both were first left out, and both omissions made the migrated statements false).
 MIGRATED: `evalCore_step_stmt`, `eval_step_stmt`, `letIn_step_stmt` (the three refuted). NOT YET:
 every other statement here with a `Below (MState.mean … st') s'.toMean` conjunct against a run
 from `SM'` (the leaves: read, borrow, assign, access, drop, pop; matches, calls, `J`, [Close], the
@@ -145,20 +147,32 @@ theorem Sim.of_simEq_below {m' : Mean} {s₀ s : SState} (h : SimEq id (fun _ =>
   obtain ⟨j, hj, hle⟩ := h.2.2 f i l hl
   exact ⟨j, hs _ l hj, Sem.le_trans (hle φ' trivial) (hv (.temp f j))⟩
 
-/-- What `run` reads of a binding besides its meaning: its type's meaning and data, and its
-declared reading. (The label a type recorded when it was bound is read by no clause; the Π-shape
-is: its agreement between a stored type read by `Value.tyS` and a type the run made is an open
-lemma, so it is not part of the skeleton here.) -/
-def bindSkel (b : SBinding) : TyM × Option (String × List Sem) × DeclInfo := (b.ty.m, b.ty.data, b.decl)
+/-- What `run` reads of a binding besides its meaning: its type's meaning, Π-shape and data, and
+its declared reading. (The label a type recorded when it was bound is read by no clause.)
+
+The Π-shape was left out when `Rel` was first stated, as an open lemma. Without it the relation
+admits a reference state whose bindings have lost their shapes, from which every call through a
+variable fails, so the statements in the simulation form were false of any accepted call through
+a variable (docs/31 D22; third lead). With it, a step that binds must show the shapes agree: the
+type conjunct of `evalCore_step_stmt` (`StrAgree`), which rests on `piShape_step_stmt` at a
+Π-term and is FALSE today where the run drops structure (a call's result, a field read:
+`Regress/ShapeAgree.lean`, the audit's A11, A12, A18). -/
+def bindSkel (b : SBinding) : TyM × Option (List PiParam × PiOut) × Option (String × List Sem) × DeclInfo :=
+  (b.ty.m, b.ty.shape, b.ty.data, b.decl)
 
 /-- **The reference state `s` simulates the checker's state `st`**, for a reference run at the
 future `φ`, with the checker's labels renamed by `π` (the module docstring). -/
 structure Rel (π : Nat → Nat) (st : MState) (s : SState) : Prop where
   /-- the same frames, each with the same bindings at the same types and readings -/
   skel : (SM' K ρ st).env.map (fun fr => fr.binds.map bindSkel) = s.env.map (fun fr => fr.binds.map bindSkel)
-  /-- every label the checker has issued is renamed to one the reference has issued, so the next
-  labels the two issue are new on both sides -/
-  fresh : ∀ l, l < st.nextLoan → π l < s.nextLoan
+  /-- every label that occurs in the checker's state is renamed to one the reference has issued,
+  so the next labels the two issue are new on both sides. Only a label that OCCURS: the checker
+  issues labels inside private copies and keeps its counter (D37), the reference restores its
+  own, and as first stated (every label below the checker's counter) the clause had no renaming
+  once the checker had issued more labels than the reference, in particular after any proof or
+  type that borrows from a state whose counter is `0` (`Regress/CopyLabels.lean`). A label issued
+  inside a copy occurs nowhere after it (docs/31 D23, (WF11)). -/
+  fresh : ∀ l, l < st.nextLoan → st.Occurs l → π l < s.nextLoan
   /-- the checker's state is the reference's after the borrows of `E` ended early, at every future
   that agrees with the run's off the labels then live -/
   early : ∃ E : List Nat,
@@ -809,15 +823,47 @@ def eval_wf78_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : P
     (h : Runs (Ochr.evalCore fuel typed t hint) st fuel (v, T?) st'),
     WF7 K.dm K.M K.Γ ρ st' ∧ WF8 st'
 
-/-- Types are hole-free at every reachable state (docs/27 Lemma 5): no stored type, type of an
-unknown, record or goal holds a live loan. Stated as the invariant the step lemmas carry; it is
-what lets types be read under `noFuture`. -/
+/-- Types and records hold no loan at every `Good` state: the clause (WF11) (docs/27 Lemma 5,
+docs/31 D23). It is what lets a type and a record be read at the constant future, and what makes
+a label issued inside a private copy occur nowhere after it. PROVED (`Steps/WF.lean`), now that it
+is a clause of `Good`; as first stated (no LIVE loan in a stored type, as a consequence of `Good`)
+it did not follow from `Good`, which said nothing of a type's loans. -/
 def types_holeFree_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st : MState) (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st),
-    (∀ (f i : Nat) (b : Binding), st.env[f]?.bind (fun fr : Frame => fr.binds[i]?) = some b →
-      ∀ T : Value, b.ty = some T → ∀ l ∈ T.loans, liveLoan st.env l = false) ∧
-    (∀ T ∈ st.absTy.toList, ∀ l ∈ T.loans, liveLoan st.env l = false) ∧
-    (∀ G, st.goal = some G → ∀ l ∈ G.loans, liveLoan st.env l = false)
+  ∀ (st : MState) (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st), WF11 st
+
+/-- The run's result type `R` is the checker's type `T` of the value `v`, with its structure
+(docs/31 D22): the same meaning, Π-shape and data, where the checker's side is its stored type
+read as a reference binding reads it (`Value.tyS`, with the structure of `v` itself when `v` is a
+type: `Value.strS`). This is what a `let` needs to keep `Rel.skel`. As first stated the conjunct
+compared the meanings only. -/
+def StrAgree (v T : Value) (R : TyS) : Prop :=
+  (Value.strS K.dm K.M K.Γ ρ v (Value.tyS K.dm K.M K.Γ ρ T)).m = R.m ∧
+  (Value.strS K.dm K.M K.Γ ρ v (Value.tyS K.dm K.M K.Γ ρ T)).shape = R.shape ∧
+  (Value.strS K.dm K.M K.Γ ρ v (Value.tyS K.dm K.M K.Γ ρ T)).data = R.data
+
+/-- **[T-Pi]: a Π-type's shape does not depend on where it is read** (docs/31 D22; prerequisite
+(a) of the migration). The checker closes a Π-term or a `fix` over the values of its free
+variables (`capture`) and stores the Π-type as that closed value, whose shape a later reading takes
+off its term in the frame of its captures, at the constant future (`tyShape`, through
+`Value.tyS`). The reference run reads the shape off the ORIGINAL term in the forming state, at the
+run's future (`piShapeOf`, the `.pi` and `.fix` clauses). The two are the same shape, from any
+reference state that simulates the checker's.
+
+Three things carry it, none proved: the captured term in the captures' frame runs as the original
+in the forming state (the capture lemma: a term's run reads the state only at its free variables,
+each after [Access], which the checker's capture also performs); a type holds no live loan, so the
+future does not matter (`tyShape_congrE`, proved, gives this once the captures are loan-free);
+and the decisions read the same readings through the renaming (`rd` records each capture's).
+Where it is KNOWN false: a captured PROOF variable is inlined as `(⋆ : T)`, which the run types
+`T` where a read of the variable is typed `err` (`SM.erasedIf`), and a constructor's parameter
+solved by such a field's type differs (the audit's A17, `Regress/ShapeProbes.lean`). -/
+def piShape_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState) (t : Term) (cs : List Value) (t' : Term) (rd : List (DeclInfo × Value))
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (ht : t matches .pi .. | .fix ..)
+    (h : Runs (Ochr.capture fuel t) st fuel (cs, t', rd) st'),
+    (piShapeOf K ρ φ s t).map (fun sh => (sh.ps, sh.out)) = tyShape K ρ noFuture (.tPi cs t' rd)
 
 /-- **The induction step, in the simulation form** (docs/31 D20 item 1). For every `Good`
 assignment `ρ` and every reference state `s` that simulates the checker's state under a renaming
@@ -844,7 +890,7 @@ def evalCore_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     ∃ ρ' π', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
       ∃ r s', run K ρ' φ (hintM K ρ hint) t s = some (r, s') ∧
         meanV K ρ' (fun l => φ (π' l)) r.2 v ⊑ r.1 ∧
-        (∀ T, T? = some T → (meanV K ρ' noFuture (.plain .err) T).asTy = r.2.m) ∧
+        (∀ T, T? = some T → StrAgree K ρ' v T r.2) ∧
         Rel K ρ' φ π' st' s' ∧ Good K.dm K.M K.Γ ρ' st'
 
 /-- **The induction step as the checker recurses** (docs/31 D20, item 5): every recursive
@@ -861,7 +907,10 @@ def eval_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : P
     ∃ ρ' π', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
       ∃ r s', run K ρ' φ (hintM K ρ hint) t s = some (r, s') ∧
         meanV K ρ' (fun l => φ (π' l)) r.2 v ⊑ r.1 ∧
-        (∀ T, T? = some T → (meanV K ρ' noFuture (.plain .err) T).asTy = r.2.m) ∧
+        -- not of a proof: the run does not run one and gives it no type (`SM.erasedIf`), where
+        -- the checker returns its proposition (the audit's row 26, and A17). As first stated the
+        -- conjunct had no such condition and was false of every proof term
+        (∀ T, T? = some T → (K.D.flags (scopeOf s) t).2 = false → StrAgree K ρ' v T r.2) ∧
         Rel K ρ' φ π' st' s' ∧ Good K.dm K.M K.Γ ρ' st'
 
 /-- [Let]: the binding is pushed at the right-hand side's type and dropped after the tail
