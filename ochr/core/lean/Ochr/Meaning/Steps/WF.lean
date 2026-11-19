@@ -67,7 +67,7 @@ theorem eval_wf78 (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : eval
 
 /-- Types and records hold no loan at every `Good` state: (WF11), a clause of `Good`. -/
 theorem types_holeFree (fuel : Nat) (_ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : types_holeFree_stmt K ρ φ (fuel + 1) :=
-  fun _ hg _ => hg.2.2.2.2.2.2.2.2.2.2.2
+  fun _ hg _ => hg.2.2.2.2.2.2.2.2.2.2.2.1
 
 end
 
