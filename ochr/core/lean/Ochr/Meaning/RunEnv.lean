@@ -298,11 +298,16 @@ theorem envLe_dropLast_of_push {s a : SState} (h : EnvPush s a) : EnvLe s a.drop
     exact ⟨fr', by rw [ht]; simp [e], hb, htm⟩
 
 /-- The `let`'s drop after its body: the binding's borrow ended, then the binding forgotten. -/
+theorem envLe_letLenders (s : SState) : EnvLe s (letLenders s) := by
+  unfold letLenders; split
+  · exact envLe_access _ _ _
+  · exact EnvLe.refl s
+
 theorem envLe_letDrop {s s₃ : SState} (h : EnvPush s s₃) (held : Option Nat) :
-    EnvLe s (match held with | some l => s₃.endLabel l | none => s₃).dropLast := by
+    EnvLe s (match held with | some l => s₃.endLabel l | none => letLenders s₃).dropLast := by
   apply envLe_dropLast_of_push
   cases held with
-  | none => exact h
+  | none => exact h.trans_le (envLe_letLenders _)
   | some l => exact h.trans_le (envLe_endLabel _ _)
 
 /-- An assignment's hold changes no frame. -/

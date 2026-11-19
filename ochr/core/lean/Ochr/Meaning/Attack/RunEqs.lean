@@ -45,7 +45,7 @@ theorem run_letIn (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (x :
         let held : Option Nat := match s.env.getLast? with
           | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
           | none => none
-        let s := match held with | some l => s.endLabel l | none => s
+        let s := match held with | some l => s.endLabel l | none => letLenders s
         some ((r, R), s.dropLast)) := by
   rw [run]; exact stmtIf_noStmt K hfl _ _ s
 

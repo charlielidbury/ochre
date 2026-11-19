@@ -96,13 +96,13 @@ theorem let_borrow_run (hfl : NoStmt K) (n : Nat) (hint : TyS) :
   show ((run K ρ φ hint .tt (a3 K n)).bind fun y => some (y.1, (match (match y.2.env.getLast? with
             | some fr => y.2.shape (.bind y.2.topIdx (fr.binds.length - 1))
             | none => none) with
-          | some l => y.2.endLabel l | none => y.2).dropLast)) = _
+          | some l => y.2.endLabel l | none => letLenders y.2).dropLast)) = _
   have htt : run K ρ φ hint .tt (a3 K n) = some ((.el0 Unit (), .plain (.ty0 Unit)), a3 K n) := rfl
   rw [htt]
   show some ((Sem.el0 Unit (), TyS.plain (.ty0 Unit)), (match (match (a3 K n).env.getLast? with
             | some fr => (a3 K n).shape (.bind (a3 K n).topIdx (fr.binds.length - 1))
             | none => none) with
-          | some l => (a3 K n).endLabel l | none => a3 K n).dropLast) = _
+          | some l => (a3 K n).endLabel l | none => letLenders (a3 K n)).dropLast) = _
   rw [held_a3]
   show some ((Sem.el0 Unit (), TyS.plain (.ty0 Unit)), ((a3 K n).endLabel n).dropLast) = _
   rw [SState.endLabel_eq (holder_a3 K n)]

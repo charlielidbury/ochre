@@ -184,7 +184,9 @@ Risk list, ranked, each with its known fix — the next window takes them in thi
 - restated in the simulation form on the new relation: `endBorrow_step_stmt`, `access_step_stmt`, `joinEntry_stmt` (now list equality), `joinDrop_step_stmt` (one drop list);
 - kernel-checked runs repaired for the static access: `Attack/RunEqs` (the Close attack), `Regress/CE4_flipped`, `CE5_flipped`, `Adequacy_flipped.access_other_field` (A1, static), `JoinBorrowRoot.dropAt_borrow_root`; two probes main's D90 now rejects (`AdequacyProbes2.Disjoint`, gap F4; `JoinBorrowRoot.RJ`, gap EK) are `reject def`s.
 
-**Not built yet of D29** (task B, in progress): the tail flag, [Entry] with `Decisions.blockCaps` and the borrow-typed match's lending, and the ends the reference now owes at `t; u`, at a `let`'s end (D65) and at a closure's captures.
+**Built since:** the reference ends a discarded borrow at `t; u` (`discardEnd`, the checker's `dropValue`) and, at a `let`'s end, the borrows lent at a binding that holds no borrow (`letLenders`, D65's `endLoansOfTopBind`); the core lemmas re-proved, the kernel-checked runs repaired.
+
+**Not built yet of D29** (task B, in progress): the tail flag, [Entry] with `Decisions.blockCaps` and the borrow-typed match's lending, and the access of a closure's captures before they are moved.
 
 **Task C, in progress (D30):** `joinDrop_step` is proved from the drop of one place (`dropOne_step`, open); the statements gained `Runs` from any log, an extended context for steps that create unknowns, the IH at every context, and the drop list's grain. No step lemma is proved without a `sorry` beneath it yet.
 

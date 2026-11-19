@@ -48,7 +48,7 @@ theorem run_letIn (hfl : NoStmt K) (h : Hint) (u w : Term) (hint : TyS) (s : SSt
         fun y => some (y.1, (match (match y.2.env.getLast? with
             | some fr => y.2.shape (.bind y.2.topIdx (fr.binds.length - 1))
             | none => none) with
-          | some l => y.2.endLabel l | none => y.2).dropLast)) := by
+          | some l => y.2.endLabel l | none => letLenders y.2).dropLast)) := by
   rw [run]; exact stmtIf_noStmt K hfl _ _ s
 
 /-- The [Drop] of a discarded value that holds no borrow does nothing. -/
@@ -309,7 +309,7 @@ theorem drop_b5 (n : Nat) :
     (match (match (b5 K n).env.getLast? with
         | some fr => (b5 K n).shape (.bind (b5 K n).topIdx (fr.binds.length - 1))
         | none => none) with
-      | some l => (b5 K n).endLabel l | none => b5 K n).dropLast = b7 K n := by
+      | some l => (b5 K n).endLabel l | none => letLenders (b5 K n)).dropLast = b7 K n := by
   have : (match (b5 K n).env.getLast? with
         | some fr => (b5 K n).shape (.bind (b5 K n).topIdx (fr.binds.length - 1))
         | none => none) = some n := by
