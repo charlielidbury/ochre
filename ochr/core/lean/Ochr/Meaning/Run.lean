@@ -447,6 +447,23 @@ noncomputable def callOf (fv : Res) (args : List Res) : SM Res := fun s =>
     | _ => none
   | none => none
 
+/-- [Join]'s access of a dropped place (`Machine.dropAtJoin`): none at a root holding a borrow,
+whose drop ends the borrow and accesses nothing it lends; otherwise the content at the path, as a
+read accesses it.
+
+As first written the drop accessed a borrow variable's whole content before ending its borrow, so
+it ended a reborrow of part of that content, which the checker keeps live: on the accepted `RJ`
+(`Regress/JoinBorrowRoot.lean`; the fourth lead) the write through the reborrow after the match was
+then lost, and the model made false an `Id` the checker proves by `refl`. -/
+noncomputable def joinAccess (s : SState) (pos : Pos) (steps : List Step) : SState :=
+  if steps.isEmpty && (s.shape pos).isSome then s else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)
+
+theorem joinAccess_cases (s : SState) (pos : Pos) (steps : List Step) :
+    joinAccess K s pos steps = s ∨ joinAccess K s pos steps = s.access pos (obsAt K (s.tyAt pos).m steps wholeOb) := by
+  unfold joinAccess; split
+  · exact .inl rfl
+  · exact .inr rfl
+
 /-- D84, the drop at the join, as `Machine.dropAtJoin` does it (mono-lemmas' review): every place
 some arm of the match moves (`Decisions.joinMoves`, static, given the places already moved at
 entry) is accessed, then set to `moved`; a place whose declared reading is copy, a proof, or a
@@ -461,7 +478,7 @@ noncomputable def joinDrop (entry : List Place) (t : Term) (s : SState) : SState
     if K.D.copy (K.D.placeDecl (scopeOf s) q) then s else
     match resolve s q with
     | some (pos, steps) =>
-      let s := s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)
+      let s := joinAccess K s pos steps
       match Sem.follow K.dm K.Γ (s.tyAt pos).m (s.valAt pos (s.closedFuture φ)) steps with
       | some (.proof, _) | some (.moved, _) | none => s
       | some _ =>
