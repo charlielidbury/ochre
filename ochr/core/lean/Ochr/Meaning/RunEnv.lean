@@ -200,22 +200,24 @@ theorem joinDrop_envLe (entry : List Place) (t : Term) (s : SState) : EnvLe s (j
     · exact EnvLe.refl s
     · split
       · rename_i pos steps hr
-        have ea := envLe_access s pos (obsAt K (s.tyAt pos).m steps wholeOb)
+        have ea : EnvLe s (joinAccess K s pos steps) := by
+          rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
+          all_goals first | exact EnvLe.refl s | exact envLe_access s pos _
         split
         · exact ea
         · exact ea
         · exact ea
         · have ee : EnvLe s (if steps.isEmpty = true then
-              (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
-              else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) := by
+              (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
+              else joinAccess K s pos steps) := by
             split
             · split
               · exact ea.trans (envLe_endLabel _ _)
               · exact ea
             · exact ea
           generalize (if steps.isEmpty = true then
-              (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
-              else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) = s₂ at ee ⊢
+              (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
+              else joinAccess K s pos steps) = s₂ at ee ⊢
           exact ee.trans (envLe_setAt _ _ _)
       · exact EnvLe.refl s
 

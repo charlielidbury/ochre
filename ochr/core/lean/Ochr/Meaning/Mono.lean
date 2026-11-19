@@ -552,9 +552,11 @@ theorem joinDrop_below (K : RunCtx) (φ : Future) (entry : List Place) (t : Term
       · next pos steps hres =>
         have hd : ∀ st ∈ steps, st = .deref := by
           rw [resolve_steps hres]; exact hroot q (List.mem_cons_self ..)
-        refine Below.trans ?_ (SState.access_below s pos (obsAt K (s.tyAt pos).m steps wholeOb))
+        refine Below.trans ?_ (show Below (joinAccess K s pos steps).toMean s.toMean by
+          rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
+          all_goals first | exact Below.refl _ | exact SState.access_below s pos _)
         dsimp only
-        generalize s.access pos (obsAt K (s.tyAt pos).m steps wholeOb) = s₁
+        generalize joinAccess K s pos steps = s₁
         rcases hf : Sem.follow K.dm K.Γ (s₁.tyAt pos).m (s₁.valAt pos (s₁.closedFuture φ)) steps with _ | ⟨v, T⟩
         · exact Below.refl _
         · cases v <;> first
@@ -661,7 +663,8 @@ theorem joinDrop_not_below (φ : Future) (entry : List Place) (t : Term) :
   have hres : resolve s (.proj 0 (.var 0)) = some (.bind 0 0, [.proj 0]) := rfl
   have hj : joinDrop K φ entry t s = s.setAt (.bind 0 0) fun _ => w := by
     unfold joinDrop
-    simp only [K, D, List.foldl_cons, List.foldl_nil, Bool.false_eq_true, if_false, hres, access_eq]
+    simp only [K, D, List.foldl_cons, List.foldl_nil, Bool.false_eq_true, if_false, hres, joinAccess,
+      List.isEmpty_cons, Bool.false_and, access_eq]
     have e1 : (s.tyAt (.bind 0 0)).m = .ty0 Unit := rfl
     have e2 : s.valAt (.bind 0 0) = fun _ => .el0 Unit () := rfl
     have e3 : [Step.proj 0].isEmpty = false := rfl
@@ -1191,9 +1194,11 @@ theorem shapeSub_joinDrop (K : RunCtx) (φ : Future) (entry : List Place) (t : T
     · exact SState.ShapeSub.refl s
     · split
       · next pos steps _ =>
-        refine SState.ShapeSub.trans ?_ (SState.shapeSub_access s pos (obsAt K (s.tyAt pos).m steps wholeOb))
+        refine SState.ShapeSub.trans ?_ (show SState.ShapeSub (joinAccess K s pos steps) s by
+          rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
+          all_goals first | exact SState.ShapeSub.refl _ | exact SState.shapeSub_access s pos _)
         dsimp only
-        generalize s.access pos (obsAt K (s.tyAt pos).m steps wholeOb) = s₁
+        generalize joinAccess K s pos steps = s₁
         rcases Sem.follow K.dm K.Γ (s₁.tyAt pos).m (s₁.valAt pos (s₁.closedFuture φ)) steps with _ | ⟨v, T⟩
         · exact SState.ShapeSub.refl _
         · cases v <;> first
@@ -1614,9 +1619,11 @@ theorem joinDrop_readsBelow (K : RunCtx) (φ : Future) (entry : List Place) (t :
     · exact hs
     · split
       · next pos steps _ =>
-        have h₁ := SState.readsBelow_access hs pos (obsAt K (s.tyAt pos).m steps wholeOb)
+        have h₁ : (joinAccess K s pos steps).ReadsBelow := by
+          rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
+          all_goals first | exact hs | exact SState.readsBelow_access hs pos _
         dsimp only
-        generalize s.access pos (obsAt K (s.tyAt pos).m steps wholeOb) = s₁ at h₁
+        generalize joinAccess K s pos steps = s₁ at h₁
         rcases Sem.follow K.dm K.Γ (s₁.tyAt pos).m (s₁.valAt pos (s₁.closedFuture φ)) steps with _ | ⟨v, T⟩
         · exact h₁
         · have h₂ : (if steps.isEmpty then (match s₁.shape pos with

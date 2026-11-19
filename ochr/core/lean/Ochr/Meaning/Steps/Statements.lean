@@ -344,7 +344,7 @@ the checker checks outside an observation (D53 (h), D68). -/
 def endBorrow_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (l : Nat) (r : Pos)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hr : Env.shape st.env r = some l)
-    (h : Runs (Ochr.endBorrow fuel l) st fuel () st'),
+    (bh : Nat) (h : Runs (Ochr.endBorrow fuel l) st bh () st'),
     Below (MState.mean K.dm K.M K.Γ ρ st') ((MState.mean K.dm K.M K.Γ ρ st).semEnd r l) ∧
     Good K.dm K.M K.Γ ρ st'
 
@@ -363,7 +363,7 @@ access either (`assignAt`; the audit's A2. As first stated, against the full acc
 def access_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (p : Place) (pos : Pos)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (owned : Bool) (hpos : resolve (SM' K ρ st) p = some (pos, (p.steps).2))
-    (h : Runs (do Ochr.accessPath fuel p; Ochr.accessInside fuel p owned) st fuel () st'),
+    (bh : Nat) (h : Runs (do Ochr.accessPath fuel p; Ochr.accessInside fuel p owned) st bh () st'),
     Below (MState.mean K.dm K.M K.Γ ρ st')
       (if owned && (p.steps).2.isEmpty && ((SM' K ρ st).shape pos).isSome then SM' K ρ st
         else (SM' K ρ st).access pos (obsAt K ((SM' K ρ st).tyAt pos).m (p.steps).2 wholeOb)).toMean ∧
@@ -385,7 +385,7 @@ def readPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
   ∀ (st st' : MState)  (p : Place) (v : Value) (copy : Bool)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hcopy : K.D.copy (K.D.placeDecl (scopeOf (SM' K ρ st)) p) = copy)
-    (h : Runs (Ochr.readPlace fuel p) st fuel v st'),
+    (bh : Nat) (h : Runs (Ochr.readPlace fuel p) st bh v st'),
     ∃ r s', Ochr.Meaning.readPlace K φ p copy (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v = r.1 ∧
       Below (MState.mean K.dm K.M K.Γ ρ (st'.withTemp v)) s'.toMean ∧
@@ -396,7 +396,7 @@ def readPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
 def borrowPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (p : Place) (v : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.borrowPlace fuel p) st fuel v st'),
+    (bh : Nat) (h : Runs (Ochr.borrowPlace fuel p) st bh v st'),
     ∃ r s', Ochr.Meaning.borrowPlace K φ p (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v = r.1 ∧
       Below (MState.mean K.dm K.M K.Γ ρ (st'.withTemp v)) s'.toMean ∧
@@ -412,7 +412,7 @@ def assignPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : N
   ∀ (st st' : MState)  (p : Place) (v : Value) (pos : Pos)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hpos : resolve (SM' K ρ st) p = some (pos, (p.steps).2))
     (hgv : GoodF K.dm K.M K.Γ ρ (st.withTemp v) (flightOfWrite v (Env.hintAt K.dm K.M K.Γ ρ st.env pos).m))
-    (h : Runs (Ochr.assignPlace fuel p v) st fuel () st'),
+    (bh : Nat) (h : Runs (Ochr.assignPlace fuel p v) st bh () st'),
     ∃ r s', assignAt K φ p (meanV K ρ φ (.plain .err) v) (match v with | .borrow l _ => some l | _ => none)
         (SM' K ρ st) = some (r, s') ∧
       Below (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
@@ -422,7 +422,7 @@ borrower when held in a binding (D65), then the binding is gone: ends followed b
 below. -/
 def dropTopBind_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (h : Runs (Ochr.dropTopBind fuel) st fuel () st'),
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.dropTopBind fuel) st bh () st'),
     Below (MState.mean K.dm K.M K.Γ ρ st') ((SM' K ρ st).dropLast).toMean ∧
     Good K.dm K.M K.Γ ρ st'
 
@@ -433,7 +433,7 @@ def popFrame_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     -- the popped frame's temporaries hold no borrow (the pilot's refutation: a pop discards
     -- temporaries without ending them; both call sites move the result below first)
     (htemps : ∀ fr, st.env[st.env.size - 1]? = some fr → ∀ v ∈ fr.temps, v.hasBorrow = false)
-    (h : Runs (Ochr.popFrame fuel) st fuel () st'),
+    (bh : Nat) (h : Runs (Ochr.popFrame fuel) st bh () st'),
     Below (MState.mean K.dm K.M K.Γ ρ st') (MState.mean K.dm K.M K.Γ ρ st) ∧
     Good K.dm K.M K.Γ ρ st'
 
@@ -442,7 +442,7 @@ filling value's meaning (the pure lemma plus re-normalisation). -/
 def substV_loan_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (l : Nat) (w v v' : Value) (hint : TyS)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w)
-    (h : Runs (Ochr.substV fuel (.loan l) w v) st fuel v' st'),
+    (bh : Nat) (h : Runs (Ochr.substV fuel (.loan l) w v) st bh v' st'),
     meanV K ρ φ hint v' ⊑ meanV K ρ (φ.upd l (meanV K ρ φ (.plain .err) w)) hint v ∧ st'.core = st.core
 
 /-- `substV` of an abstract value by a refinement `r` it means: exact. -/
@@ -450,7 +450,7 @@ def substV_abs_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Na
   ∀ (st st' : MState) (σ : Nat) (r v v' : Value) (hint : TyS)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hσ : ρ σ = meanV K ρ φ (.plain (MState.absTyM K.dm K.M K.Γ ρ st σ)) r)
-    (h : Runs (Ochr.substV fuel (.abs σ) r v) st fuel v' st'),
+    (bh : Nat) (h : Runs (Ochr.substV fuel (.abs σ) r v) st bh v' st'),
     (∀ φ, meanV K ρ φ hint v' ⊑ meanV K ρ φ hint v) ∧ st'.core = st.core
 
 /-- `substEnv` of a loan (the state-wide half of [End] and of [Close]'s fills): every position
@@ -458,7 +458,7 @@ reads the fixed future; stored types are untouched (`types = false`: no type hol
 def substEnv_loan_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (l : Nat) (w : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w)
-    (h : Runs (Ochr.substEnv fuel (.loan l) w false) st fuel () st'),
+    (bh : Nat) (h : Runs (Ochr.substEnv fuel (.loan l) w false) st bh () st'),
     (∀ p, (MState.mean K.dm K.M K.Γ ρ st').val φ p ⊑
         (MState.mean K.dm K.M K.Γ ρ st).val (φ.upd l (meanV K ρ φ (.plain .err) w)) p) ∧
     (∀ p, Env.shape st'.env p = Env.shape st.env p)
@@ -469,7 +469,7 @@ def substEnv_abs_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
   ∀ (st st' : MState) (σ : Nat) (r : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hσ : ρ σ = meanV K ρ φ (.plain (MState.absTyM K.dm K.M K.Γ ρ st σ)) r)
-    (h : Runs (Ochr.substEnv fuel (.abs σ) r true) st fuel () st'),
+    (bh : Nat) (h : Runs (Ochr.substEnv fuel (.abs σ) r true) st bh () st'),
     Below (MState.mean K.dm K.M K.Γ ρ st') (MState.mean K.dm K.M K.Γ ρ st) ∧
     Good K.dm K.M K.Γ ρ st'
 
@@ -477,20 +477,20 @@ def substEnv_abs_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
 of the state's core (it runs on a private copy). -/
 def nfSealed_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (t : Term) (v : Value) (hint : TyS)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (h : Runs (Ochr.nfSealed fuel t) st fuel v st'),
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.nfSealed fuel t) st bh v st'),
     (∀ φ, meanV K ρ φ hint v ⊑ meanV K ρ φ hint (.sealed t)) ∧ st'.core = st.core
 
 /-- `canonNeutral`: a sealed program already generalised in this world is its `σ`, which the
 path condition makes mean the same. -/
 def canonNeutral_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (v v' : Value) (hint : TyS)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (h : Runs (Ochr.canonNeutral v) st 0 v' st'),
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.canonNeutral v) st bh v' st'),
     (∀ φ, meanV K ρ φ hint v' = meanV K ρ φ hint v) ∧ st'.core = st.core
 
 /-- `renormAll`: re-running every sealed program of the state keeps every meaning. -/
 def renormAll_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (h : Runs (Ochr.renormAll fuel) st fuel () st'),
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.renormAll fuel) st bh () st'),
     Below (MState.mean K.dm K.M K.Γ ρ st') (MState.mean K.dm K.M K.Γ ρ st) ∧
     Good K.dm K.M K.Γ ρ st'
 
@@ -501,7 +501,7 @@ def refine_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) :
   ∀ (st st' : MState) (σ : Nat) (r : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hσ : ρ σ = meanV K ρ φ (.plain (MState.absTyM K.dm K.M K.Γ ρ st σ)) r)
-    (h : Runs (Ochr.refine fuel σ r) st fuel () st'),
+    (bh : Nat) (h : Runs (Ochr.refine fuel σ r) st bh () st'),
     Below (MState.mean K.dm K.M K.Γ ρ st') (MState.mean K.dm K.M K.Γ ρ st) ∧
     Good K.dm K.M K.Γ ρ st'
 
@@ -511,7 +511,7 @@ def mkEqM_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : 
   ∀ (st st' : MState)  (A a b P : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hA : ∀ φ, (meanV K ρ φ (.plain .err) A).asTy = (meanV K ρ noFuture (.plain .err) A).asTy)
-    (h : Runs (Ochr.mkEqM fuel A a b) st fuel P st'),
+    (bh : Nat) (h : Runs (Ochr.mkEqM fuel A a b) st bh P st'),
     (∀ φ, propOf K ρ φ P ↔
       meanV K ρ φ (.plain (meanV K ρ noFuture (.plain .err) A).asTy) a = meanV K ρ φ (.plain (meanV K ρ noFuture (.plain .err) A).asTy) b) ∧
     st'.core = st.core
@@ -523,14 +523,14 @@ def conv_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : 
   ∀ (st st' : MState)  (v w : Value) (T : TyM)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hv : K.dm.pmem K.Γ (meanV K ρ φ (.plain T) v) T) (hw : K.dm.pmem K.Γ (meanV K ρ φ (.plain T) w) T)
-    (h : Runs (Ochr.conv fuel v w) st fuel true st'),
+    (bh : Nat) (h : Runs (Ochr.conv fuel v w) st bh true st'),
     meanV K ρ φ (.plain T) v = meanV K ρ φ (.plain T) w
 
 /-- [Conv-pi]: convertible Π-type values have equal type meanings (equal Lean carriers), by
 `funext` over the generic arguments, which range over the whole domain (docs/18 (V4)). -/
 def convPi_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (P Q : Value)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (h : Runs (Ochr.convPi fuel P Q) st fuel true st'),
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.convPi fuel P Q) st bh true st'),
     ∀ φ, (meanV K ρ φ (.plain .err) P).asTy = (meanV K ρ φ (.plain .err) Q).asTy
 
 /-- [Conv-fun]: two function values with convertible observations of their generic calls mean
@@ -539,7 +539,7 @@ def convFn_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
   ∀ (st st' : MState)  (f g : Value) (T : TyM)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hf : meanV K ρ φ (.plain T) f ∈ₛ T) (hgm : meanV K ρ φ (.plain T) g ∈ₛ T)
-    (h : Runs (Ochr.convFn fuel f g) st fuel true st'),
+    (bh : Nat) (h : Runs (Ochr.convFn fuel f g) st bh true st'),
     meanV K ρ φ (.plain T) f = meanV K ρ φ (.plain T) g
 
 /-- [Rewrite]: when the equation `h : Eq(A, a, b)` is true, the rewritten goal is true iff the
@@ -547,8 +547,8 @@ goal is (the occurrences replaced mean the same). -/
 def rewriteGoal_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (rev : Bool) (hT : Term) (A a b G G' : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hh : Runs (Ochr.eval fuel true hT) st fuel (.proof, some (.tEq A a b)) st)
-    (h : Runs (Ochr.rewriteGoal fuel rev hT G) st fuel G' st'),
+    (bhh : Nat) (hh : Runs (Ochr.eval fuel true hT) st bhh (.proof, some (.tEq A a b)) st)
+    (bh : Nat) (h : Runs (Ochr.rewriteGoal fuel rev hT G) st bh G' st'),
     ∀ φ, propOf K ρ φ (.tEq A a b) → (propOf K ρ φ G' ↔ propOf K ρ φ G)
 
 /-- The meaning of a type value does not depend on the future (docs/27 Lemma 5: no stored type
@@ -566,7 +566,7 @@ def callFn_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) :
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hargs : ArgsLoanFree st.env ws)
     -- the callee as the run reads it (`closeCall_step_stmt`); `fT` is the checker's input only
     (fres : Res) (hf : run K ρ φ (.plain .err) (.val fv) (SM' K ρ st) = some (fres, SM' K ρ st))
-    (h : Runs (Ochr.callFn fuel typed fv (some fT) ws tys hd) st fuel (v, T?) st'),
+    (bh : Nat) (h : Runs (Ochr.callFn fuel typed fv (some fT) ws tys hd) st bh (v, T?) st'),
     ∃ r s', callOf fres (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v ⊑ r.1 ∧
       Below (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
@@ -580,7 +580,7 @@ def runBody_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     (hfv : fv = .clo cs t rd ∨ ∃ n, fv = .gfn n)
     -- the callee as the run reads it (the pilot form took `fT` free: `Regress/CloseCallStmt.lean`)
     (fres : Res) (hf : run K ρ φ (.plain .err) (.val fv) (SM' K ρ st) = some (fres, SM' K ρ st))
-    (h : Runs (Ochr.runBody fuel fv cs t rd ws) st fuel v st'),
+    (bh : Nat) (h : Runs (Ochr.runBody fuel fv cs t rd ws) st bh v st'),
     ∃ r s', callOf fres (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v ⊑ r.1 ∧
       Below (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
@@ -611,7 +611,7 @@ def closeCall_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
     (htys : ∀ (i l : Nat) (w : Value), ws[i]? = some (Value.borrow l w) → ∀ p : PiParam, ps[i]? = some p →
       ∃ T : Value, tys[i]? = some (some (Value.tRef T)) ∧
         (Value.tyS K.dm K.M K.Γ ρ T).m = p.dom (((argsRes K ρ φ ws).map (·.1)).take i))
-    (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st fuel v st'),
+    (bh : Nat) (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st bh v st'),
     ∃ r s', callOf fres (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v = r.1 ∧
       Exact (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
@@ -622,7 +622,7 @@ def callType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
   ∀ (st st' : MState)  (piTy : Value) (ws : Array Value)
     (tys : Array (Option Value)) (B : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.callType fuel piTy ws tys) st fuel B st'),
+    (bh : Nat) (h : Runs (Ochr.callType fuel piTy ws tys) st bh B st'),
     ∀ ps out, (calleeRes K ρ φ .proof piTy).2.shape = some (ps, out) →
       (meanV K ρ noFuture (.plain .err) B).asTy =
         (match out with
@@ -639,7 +639,7 @@ def recCheck_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     -- `fT` is the value's own declared Π-type, as the checker reads it (the pilot form took it
     -- free: `fT := .zero` refuted it, the defect class of `Regress/CloseCallStmt.lean`)
-    (hfT : ∃ st', Runs (Ochr.funType? fuel fv none) st fuel (some fT) st')
+    (hfT : ∃ bfT st', Runs (Ochr.funType? fuel fv none) st bfT (some fT) st')
     (hacc : ∃ fuel st', Runs (Ochr.checkFix fuel fv [] (match fv with | .clo _ t _ => t | _ => .tt)) st fuel () st'),
     meanV K ρ φ (.plain .err) fv ∈ₛ (meanV K ρ φ (.plain .err) fT).asTy
 
@@ -698,7 +698,7 @@ def joinDrop_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (hsub : ∀ q, q ∈ K.D.joinMoves (scopeOf s) entry mt → q ∈ drops)
     (hsup : ∀ q, q ∈ drops → q ∈ K.D.joinMoves (scopeOf s) entry mt ∨
       ∃ i pos, q = .var i ∧ s.varPos i = some pos ∧ (s.shape pos).isSome = true ∧ Env.shape st.env pos = none)
-    (h : Runs (do for q in drops do Ochr.dropAtJoin fuel (← Ochr.movedPlace fuel q)) st fuel () st'),
+    (bh : Nat) (h : Runs (do for q in drops do Ochr.dropAtJoin fuel (← Ochr.movedPlace fuel q)) st bh () st'),
     ∃ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧
       Rel K ρ' φ π st' (joinDrop K φ entry mt s) ∧ Good K.dm K.M K.Γ ρ' st'
 
@@ -712,7 +712,7 @@ def evalMatch_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) (.matchNat p z u) = (false, false))
-    (h : Runs (Ochr.evalMatch fuel typed p z u expected) st fuel (v, T?) st'),
+    (bh : Nat) (h : Runs (Ochr.evalMatch fuel typed p z u expected) st bh (v, T?) st'),
     -- the run's hint is the checker's expected type (a free hint against `expected` was refutable
     -- on a hint-dependent arm value)
     SimConcl K ρ φ π st st' s (fun ρ' => run K ρ' φ (hintM K ρ expected) (.matchNat p z u)) v
@@ -725,7 +725,7 @@ def evalMatchInd_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) (.matchInd p ty arms) = (false, false))
-    (h : Runs (Ochr.evalMatchInd fuel typed p ty arms expected) st fuel (v, T?) st'),
+    (bh : Nat) (h : Runs (Ochr.evalMatchInd fuel typed p ty arms expected) st bh (v, T?) st'),
     -- the hint is the checker's expected type, as for `evalMatch` (it was free here)
     SimConcl K ρ φ π st st' s (fun ρ' => run K ρ' φ (hintM K ρ expected) (.matchInd p ty arms)) v
 
@@ -739,7 +739,7 @@ def evalMatchByType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) (.matchInd p ty arms) = (false, false))
-    (h : Runs (Ochr.evalMatchByType fuel typed p ty arms expected) st fuel (v, T?) st'),
+    (bh : Nat) (h : Runs (Ochr.evalMatchByType fuel typed p ty arms expected) st bh (v, T?) st'),
     SimConcl K ρ φ π st st' s (fun ρ' => run K ρ' φ (hintM K ρ expected) (.matchInd p ty arms)) v
 
 /-- [Split] coverage: at a place whose content is the unknown `σ` of a data type, every typed
@@ -759,7 +759,7 @@ assignment is typed (the path condition). -/
 def generalizeNeutral_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (p : Place) (n : Value) (σ : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.generalizeNeutral fuel p n) st fuel σ st'),
+    (bh : Nat) (h : Runs (Ochr.generalizeNeutral fuel p n) st bh σ st'),
     -- `n` is read at the type the checker gives `σ` (as `refine_step_stmt`'s `hσ`; a free hint
     -- was refutable: the place read `n` at its own hint, `σ` at the free one)
     let ρ' := ρ.ext σ (meanV K ρ φ (.plain (MState.absTyM K.dm K.M K.Γ ρ st' σ)) n)
@@ -778,7 +778,7 @@ def closeBlock_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Na
     (hmt : mt matches .matchNat .. | .matchInd .. | .prim "J" _)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) mt = (false, false))
-    (h : Runs (Ochr.closeBlock fuel mt arms B?) st fuel (v, T?) st'),
+    (bh : Nat) (h : Runs (Ochr.closeBlock fuel mt arms B?) st bh (v, T?) st'),
     SimConcl K ρ φ π st st' s (fun ρ' => run K ρ' φ (hintM K ρ B?) mt) v
 
 /-- Worlds (X1)–(X4), `exitWorld`: the restored state means the snapshot (every component but
@@ -787,7 +787,7 @@ the name counters and the types of unknowns created inside the arm is the snapsh
 def exitWorld_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (w : World)
     (hg : Good K.dm K.M K.Γ ρ w.saved)
-    (h : Runs (Ochr.exitWorld w) st 0 () st'),
+    (bh : Nat) (h : Runs (Ochr.exitWorld w) st bh () st'),
     Exact (MState.mean K.dm K.M K.Γ ρ st') (MState.mean K.dm K.M K.Γ ρ w.saved) ∧
     (∀ σ, σ < w.saved.absTy.size → st'.absTy[σ]? = w.saved.absTy[σ]?) ∧
     st'.neutrals = w.saved.neutrals ∧ st'.etaRefs = w.saved.etaRefs ∧ st'.goal = w.saved.goal ∧
@@ -811,7 +811,7 @@ def observe_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     (refs : List (Place × Value)) (r : Value) (ws : List Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
-    (h : Runs (Ochr.observe fuel typed t A W refs) st fuel (r, ws) st'),
+    (bh : Nat) (h : Runs (Ochr.observe fuel typed t A W refs) st bh (r, ws) st'),
     st'.env = st.env ∧
     ∀ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) → TypedAssignment K.dm K.M K.Γ ρ' st' →
       ∃ o, refObs K ρ' φ (refs.map (·.1)) (refs.map fun x => meanV K ρ' noFuture (.plain .err) x.2)
@@ -831,8 +831,8 @@ def footprint_coverage_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel :
     (hint : TyS) (tsT tsU : TypeState)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
-    (htT : Runs (withLive true (Ochr.typeState fuel t)) st fuel tsT st₁)
-    (htU : Runs (withLive true (Ochr.typeState fuel u)) st fuel tsU st₂)
+    (bhtT : Nat) (htT : Runs (withLive true (Ochr.typeState fuel t)) st bhtT tsT st₁)
+    (bhtU : Nat) (htU : Runs (withLive true (Ochr.typeState fuel u)) st bhtU tsU st₂)
     (hmv : jdMissing tsT.moved tsU.moved = none ∧ jdMissing tsU.moved tsT.moved = none)
     (hcs : jdMissing tsT.consumed tsU.consumed = none ∧ jdMissing tsU.consumed tsT.consumed = none)
     (hrp : jdMissing tsT.repointed tsU.repointed = none ∧ jdMissing tsU.repointed tsT.repointed = none)
@@ -856,7 +856,7 @@ def idType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) :
   ∀ (st st' : MState)  (typed : Bool) (A t u : Term) (P : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
-    (h : Runs (Ochr.idType fuel typed A t u) st fuel P st'),
+    (bh : Nat) (h : Runs (Ochr.idType fuel typed A t u) st bh P st'),
     st'.env = st.env ∧
     ∃ r, run K ρ φ (.plain .err) (.id A t u) s = some (r, s) ∧
       (∃ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ Good K.dm K.M K.Γ ρ' st' ∧
@@ -876,7 +876,7 @@ def owners_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
 state's core is unchanged. -/
 def evalType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (t : Term) (T : Value)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (h : Runs (Ochr.evalType fuel t) st fuel T st'),
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.evalType fuel t) st bh T st'),
     st'.core = st.core ∧
     ∃ r s', run K ρ φ (.plain .err) t (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ (.plain .err) T = r.1
@@ -886,7 +886,7 @@ def piSort_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
   ∀ (st st' : MState)  (caps : List Value) (hs : List Hint)
     (ds : List Term) (c : Term) (rd : List (DeclInfo × Value)) (l : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.piSort fuel (.tPi caps (.pi hs ds c) rd)) st fuel l st'),
+    (bh : Nat) (h : Runs (Ochr.piSort fuel (.tPi caps (.pi hs ds c) rd)) st bh l st'),
     K.D.piSort (scopeOf (SM' K ρ st)) (.pi hs ds c) = l
 
 /-- `capture`: the closure value the checker forms (captures by value, the term rewritten to read
@@ -895,7 +895,7 @@ def capture_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
   ∀ (st st' : MState)  (t : Term) (cs : List Value) (t' : Term)
     (rd : List (DeclInfo × Value))
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hfix : t matches .fix ..)
-    (h : Runs (Ochr.capture fuel t) st fuel (cs, t', rd) st'),
+    (bh : Nat) (h : Runs (Ochr.capture fuel t) st bh (cs, t', rd) st'),
     ∃ r s', run K ρ φ (.plain .err) t (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ (.plain .err) (.clo cs t' rd) = r.1 ∧
       Below (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
@@ -906,7 +906,7 @@ def evalCtor_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
   ∀ (st st' : MState)  (typed : Bool) (ty : String) (c : Nat) (h0 : Hint)
     (pts as : List Term) (hint : Option Value) (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.evalCtor fuel typed ty c h0 pts as hint) st fuel (v, T?) st'),
+    (bh : Nat) (h : Runs (Ochr.evalCtor fuel typed ty c h0 pts as hint) st bh (v, T?) st'),
     let hm : TyS := (hint.map (Value.tyS K.dm K.M K.Γ ρ)).getD (.plain .err)
     ∃ r s', run K ρ φ hm (.ctor ty c h0 pts as) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ hm v = r.1 ∧
@@ -917,7 +917,7 @@ def evalTInd_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
   ∀ (st st' : MState)  (typed : Bool) (n : String) (as : List Term)
     (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.evalTInd fuel typed n as) st fuel (v, T?) st'),
+    (bh : Nat) (h : Runs (Ochr.evalTInd fuel typed n as) st bh (v, T?) st'),
     ∃ r s', run K ρ φ (.plain .err) (.tind n as) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ (.plain .err) v = r.1 ∧ st'.core = st.core
 
@@ -927,7 +927,7 @@ def fieldTypesOf_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
   ∀ (st st' : MState)  (d : IndDecl) (ps : List Value) (c : Nat)
     (fs : List Value) (tys : List (String × Value))
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.fieldTypesOf fuel d ps c fs) st fuel tys st'),
+    (bh : Nat) (h : Runs (Ochr.fieldTypesOf fuel d ps c fs) st bh tys st'),
     ∀ i T, tys[i]?.map (·.2) = some T →
       (meanV K ρ noFuture (.plain .err) T).asTy =
         K.dm.fieldTy d (Value.meanParams K.dm K.M K.Γ ρ noFuture d 0 [] ps) c i
@@ -939,7 +939,7 @@ future. -/
 def repackCheck_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (what : String) (v T : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.repackCheck fuel what v T) st fuel () st'),
+    (bh : Nat) (h : Runs (Ochr.repackCheck fuel what v T) st bh () st'),
     TypedFuture K.dm K.M K.Γ ρ st φ →
       meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v ∈ₛ (meanV K ρ noFuture (.plain .err) T).asTy
 
@@ -949,7 +949,7 @@ def bodyReturns_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
   ∀ (st st' : MState)  (what : String) (v T : Value)
     (lent : List Place) (lw : String)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.bodyReturns fuel what v T lent lw) st fuel () st'),
+    (bh : Nat) (h : Runs (Ochr.bodyReturns fuel what v T lent lw) st bh () st'),
     TypedFuture K.dm K.M K.Γ ρ st φ →
       meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v ∈ₛ (meanV K ρ noFuture (.plain .err) T).asTy ∧
       (meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v).whole
@@ -959,7 +959,7 @@ meaning of the type the checker reads off it. -/
 def valType_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (v T : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hv : ∃ p, valAt st.env p = v)
-    (h : Runs (Ochr.valType? fuel v) st fuel (some T) st'),
+    (bh : Nat) (h : Runs (Ochr.valType? fuel v) st bh (some T) st'),
     TypedFuture K.dm K.M K.Γ ρ st φ →
       K.dm.pmem K.Γ (meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v) (meanV K ρ noFuture (.plain .err) T).asTy
 
@@ -967,21 +967,21 @@ def valType_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
 place's content holds no live loan (after [Access]), so the borrow relation stays acyclic. -/
 def borrow_wf_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (p : Place) (v : Value)
-    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (h : Runs (Ochr.borrowPlace fuel p) st fuel v st'),
+    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.borrowPlace fuel p) st bh v st'),
     WF1 st'.env ∧ WF2 st'.env ∧ WF3 st'.env
 
 /-- [End] keeps (WF1)–(WF3): the ended label leaves Ω; a reborrow's loan in its content moves
 to the lender, above it in the borrow relation. (WF2) needs (WF3) here (docs/18 §"Well-formedness"). -/
 def end_wf_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (l : Nat)
-    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (h : Runs (Ochr.endBorrow fuel l) st fuel () st'),
+    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.endBorrow fuel l) st bh () st'),
     WF1 st'.env ∧ WF2 st'.env ∧ WF3 st'.env
 
 /-- [Assign] keeps (WF1)–(WF3): D67 ends the loans in the overwritten owned part, and the old
 content's borrows end ([Drop]). -/
 def assign_wf_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (p : Place) (v : Value)
-    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (h : Runs (Ochr.assignPlace fuel p v) st fuel () st'),
+    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.assignPlace fuel p v) st bh () st'),
     WF1 st'.env ∧ WF2 st'.env ∧ WF3 st'.env
 
 /-- [Close] keeps (WF1)–(WF4): the fills are closed sealed programs (C1), the arguments were
@@ -990,7 +990,7 @@ def close_wf_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Pr
   ∀ (st st' : MState)  (fv : Value) (ws : Array Value) (kind : Kind)
     (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)) (v : Value)
     (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hargs : ArgsLoanFree st.env ws)
-    (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st fuel v st'),
+    (bh : Nat) (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st bh v st'),
     WF1 st'.env ∧ WF2 st'.env ∧ WF3 st'.env ∧ WF4 st'.env
 
 /-- Closure formation keeps (WF4): the captures are read after [Access] (loan-free) and may not
@@ -998,7 +998,7 @@ hold `⊥` (the capture check), and a Π-closure captures no borrow (D48). -/
 def capture_wf_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (t : Term) (cs : List Value) (t' : Term)
     (rd : List (DeclInfo × Value))
-    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (h : Runs (Ochr.capture fuel t) st fuel (cs, t', rd) st'),
+    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.capture fuel t) st bh (cs, t', rd) st'),
     ¬ (Value.clo cs t' rd).anyAtom Value.badCapture ∧ WF4 st'.env
 
 /-- Every step of `evalCore` keeps (WF6): names are allocated at and below the counters, which
@@ -1006,7 +1006,7 @@ only grow. -/
 def eval_wf6_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (t : Term) (hint : Option Value)
     (v : Value) (T? : Option Value)
-    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (h : Runs (Ochr.evalCore fuel typed t hint) st fuel (v, T?) st'),
+    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.evalCore fuel typed t hint) st bh (v, T?) st'),
     WF6 st' ∧ st.nextAbs ≤ st'.nextAbs ∧ st.nextLoan ≤ st'.nextLoan
 
 /-- Every step of `evalCore` keeps (WF7) and (WF8): the only places a borrow type is formed
@@ -1015,7 +1015,7 @@ def eval_wf78_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : P
   ∀ (st st' : MState)  (typed : Bool) (t : Term) (hint : Option Value)
     (v : Value) (T? : Option Value)
     (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hprog : t.refsOk = true)
-    (h : Runs (Ochr.evalCore fuel typed t hint) st fuel (v, T?) st'),
+    (bh : Nat) (h : Runs (Ochr.evalCore fuel typed t hint) st bh (v, T?) st'),
     WF7 K.dm K.M K.Γ ρ st' ∧ WF8 st'
 
 /-- Types and records hold no loan at every `Good` state: the clause (WF11) (docs/27 Lemma 5,
@@ -1057,7 +1057,7 @@ def piShape_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (ht : t matches .pi .. | .fix ..)
-    (h : Runs (Ochr.capture fuel t) st fuel (cs, t', rd) st'),
+    (bh : Nat) (h : Runs (Ochr.capture fuel t) st bh (cs, t', rd) st'),
     (piShapeOf K ρ φ s t).map (fun sh => (sh.ps, sh.out)) = tyShape K ρ noFuture (.tPi cs t' rd)
 
 /-- **The induction step, in the simulation form** (docs/31 D20 item 1). For every `Good`
@@ -1082,7 +1082,7 @@ def evalCore_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) t = (false, false))
-    (h : Runs (Ochr.evalCore fuel typed t hint) st fuel (v, T?) st'),
+    (bh : Nat) (h : Runs (Ochr.evalCore fuel typed t hint) st bh (v, T?) st'),
     ∃ ρ' π', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
       ∃ r s', run K ρ' φ (hintM K ρ hint) t s = some (r, s') ∧
         meanV K ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
@@ -1099,7 +1099,7 @@ def eval_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : P
     (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
-    (h : Runs (Ochr.eval fuel typed t hint) st fuel (v, T?) st'),
+    (bh : Nat) (h : Runs (Ochr.eval fuel typed t hint) st bh (v, T?) st'),
     ∃ ρ' π', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
       ∃ r s', run K ρ' φ (hintM K ρ hint) t s = some (r, s') ∧
         meanV K ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
@@ -1117,7 +1117,7 @@ def letIn_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : 
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) (.letIn h0 u w) = (false, false))
-    (h : Runs (Ochr.evalCore fuel typed (.letIn h0 u w) hint) st fuel (v, T?) st'),
+    (bh : Nat) (h : Runs (Ochr.evalCore fuel typed (.letIn h0 u w) hint) st bh (v, T?) st'),
     ∃ ρ' π' r s', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
       run K ρ' φ (hintM K ρ hint) (.letIn h0 u w) s = some (r, s') ∧
       meanV K ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
@@ -1133,7 +1133,7 @@ def eq_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Pro
     (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
-    (h : Runs (Ochr.evalCore fuel typed (.eq A a b) hint) st fuel (v, T?) st'),
+    (bh : Nat) (h : Runs (Ochr.evalCore fuel typed (.eq A a b) hint) st bh (v, T?) st'),
     st'.env = st.env ∧
     ∃ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ Good K.dm K.M K.Γ ρ' st' ∧
       ∃ r, run K ρ' φ (.plain .err) (.eq A a b) s = some (r, s) ∧
@@ -1149,7 +1149,7 @@ def J_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop
     -- neither a statement nor erased (since the audit's A3 the run skips an erased term, which
     -- `evalCore` runs)
     (hns : K.D.flags (scopeOf (SM' K ρ st)) (.prim "J" [A, a, b, P, hh, u]) = (false, false))
-    (h : Runs (Ochr.evalCore fuel typed (.prim "J" [A, a, b, P, hh, u]) hint) st fuel (v, T?) st'),
+    (bh : Nat) (h : Runs (Ochr.evalCore fuel typed (.prim "J" [A, a, b, P, hh, u]) hint) st bh (v, T?) st'),
     ∃ ρ' r s', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧
       run K ρ' φ (hintM K ρ hint) (.prim "J" [A, a, b, P, hh, u]) (SM' K ρ' st) = some (r, s') ∧
       meanV K ρ' φ r.2 v ⊑ r.1 ∧
@@ -1166,7 +1166,7 @@ def proof_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : 
     (hp : (K.D.flags (scopeOf (SM' K ρ st)) t).2 = true)
     -- `eval`, not `evalCore`: it is `evalAt` that runs a proof on a copy (as stated for `evalCore`
     -- a proof-valued `let` whose right-hand side moves a place refuted "the state is unchanged")
-    (h : Runs (Ochr.eval fuel typed t hint) st fuel (.proof, some T) st'),
+    (bh : Nat) (h : Runs (Ochr.eval fuel typed t hint) st bh (.proof, some T) st'),
     st'.core = st.core ∧ Sem.proof ∈ₛ (meanV K ρ φ (.plain .err) T).asTy
 
 /-- η at `Unit` (D80): where a position's declared reading is `Unit`, the value is `()`, and
@@ -1183,7 +1183,7 @@ def generic_good_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
   ∀ (st st' : MState)  (fv : Value) (cs : List Value) (t : Term)
     (capRec : Array (Option Nat)) (rd : List (DeclInfo × Value))
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.checkFix fuel fv cs t capRec rd) st fuel () st'),
+    (bh : Nat) (h : Runs (Ochr.checkFix fuel fv cs t capRec rd) st bh () st'),
     ∀ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) →
       TypedAssignment K.dm K.M K.Γ ρ' st' → Good K.dm K.M K.Γ ρ' st'
 
@@ -1194,7 +1194,7 @@ def checkTail_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
   ∀ (st st' : MState)  (t : Term) (k : Value → Value → M Unit)
     (hint : TyS)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.checkTail fuel t k) st fuel () st'),
+    (bh : Nat) (h : Runs (Ochr.checkTail fuel t k) st bh () st'),
     ∃ ρ' v T stl stl', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ Good K.dm K.M K.Γ ρ' stl ∧
       Runs (k v T) stl fuel () stl' ∧
       ∃ r s', run K ρ' φ hint t (SM' K ρ' st) = some (r, s') ∧
@@ -1210,7 +1210,7 @@ def checkFix_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
     -- `fT` is the fix's own Π-type (the pilot form's `∨` left `fT` free on one side; the defect
     -- class of `Regress/CloseCallStmt.lean`)
     (hT : ∃ self hs ds c r body, t = .fix self hs ds c r body ∧ fT = .tPi cs (.pi hs ds c) rd)
-    (h : Runs (Ochr.checkFix fuel fv cs t capRec rd) st fuel () st'),
+    (bh : Nat) (h : Runs (Ochr.checkFix fuel fv cs t capRec rd) st bh () st'),
     meanV K ρ φ (.plain .err) (.clo cs t rd) ∈ₛ (meanV K ρ φ (.plain .err) fT).asTy
 
 /-- [Const]: an accepted constant's value is a member of its goal, under the empty assignment. -/
@@ -1241,9 +1241,9 @@ def flags_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     -- the decisions are the checker's own at `st` (`DecisionsInst.checkerDecisions`); the call
     -- is the live form `Machine.evalAt` makes (decide-scope's `checkerDecisions_flags`)
     (hD : K.D = checkerDecisions st fuel)
-    (h : Runs (do
+    (bh : Nat) (h : Runs (do
       let d ← withLive true (Ochr.declOf fuel false [] [] t)
-      pure ((← Ochr.preFlags t d).getD (false, false))) st fuel fl st'),
+      pure ((← Ochr.preFlags t d).getD (false, false))) st bh fl st'),
     K.D.flags (scopeOf (SM' K ρ st)) t = fl
 
 /-- `Decisions.placeDecl` is `Decide.placeDecl`. -/
@@ -1251,7 +1251,7 @@ def placeDecl_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
   ∀ (st st' : MState)  (p : Place) (d : DeclInfo)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hD : K.D = checkerDecisions st fuel)
-    (h : Runs (withLive true (Ochr.placeDecl fuel [] p)) st fuel d st'),
+    (bh : Nat) (h : Runs (withLive true (Ochr.placeDecl fuel [] p)) st bh d st'),
     K.D.placeDecl (scopeOf (SM' K ρ st)) p = d
 
 /-- `Decisions.declOf` is `Decide.declOf` (unchecked mode). -/
@@ -1259,14 +1259,14 @@ def declOf_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
   ∀ (st st' : MState)  (t : Term) (d : DeclInfo)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hD : K.D = checkerDecisions st fuel)
-    (h : Runs (withLive true (Ochr.declOf fuel false [] [] t)) st fuel d st'),
+    (bh : Nat) (h : Runs (withLive true (Ochr.declOf fuel false [] [] t)) st bh d st'),
     K.D.declOf (scopeOf (SM' K ρ st)) t = d
 
 /-- `Decisions.copy` is `Decide.declCopy`. -/
 def copy_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (d : DeclInfo) (b : Bool)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.declCopy fuel d) st fuel b st'),
+    (bh : Nat) (h : Runs (Ochr.declCopy fuel d) st bh b st'),
     K.D.copy d = b
 
 /-- `Decisions.piSort` is `Decide.sortOf` of the Π-type value (D55: declared sort = computed). -/
@@ -1274,7 +1274,7 @@ def piSort_aligned'_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Na
   ∀ (st st' : MState) (hs : List Hint) (ds : List Term) (c : Term) (l : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hD : K.D = checkerDecisions st fuel)
-    (h : Runs (withLive true (Ochr.sortOf fuel (.tPi [] (.pi hs ds c) []))) st fuel l st'),
+    (bh : Nat) (h : Runs (withLive true (Ochr.sortOf fuel (.tPi [] (.pi hs ds c) []))) st bh l st'),
     K.D.piSort (scopeOf (SM' K ρ st)) (.pi hs ds c) = l
 
 /-- D84 [Join]: `Decisions.joinMoves` is `Decide.jdMoves` as `Machine.staticJoin` calls it (the
@@ -1282,7 +1282,7 @@ places already `⊥` at the match as its `entry`). -/
 def joinMoves_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (entry ms : List Place) (t : Term)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.jdMoves fuel [] [] t entry) st fuel ms st'),
+    (bh : Nat) (h : Runs (Ochr.jdMoves fuel [] [] t entry) st bh ms st'),
     K.D.joinMoves (scopeOf (SM' K ρ st)) entry t = ms
 
 /-- D84 [Id-typestate]/[Obs-ref]: `Decisions.rePointed` is the `repointed` component of
@@ -1290,7 +1290,7 @@ def joinMoves_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
 def rePointed_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (t : Term) (ts : TypeState)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.typeState fuel t) st fuel ts st'),
+    (bh : Nat) (h : Runs (Ochr.typeState fuel t) st bh ts st'),
     K.D.rePointed (scopeOf (SM' K ρ st)) t = ts.repointed
 
 /-- `Decisions.typeDecl` is `Decide.typeDecl`, the reading of a type term (D19, R3: a closure's
@@ -1299,7 +1299,7 @@ def typeDecl_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : N
   ∀ (st st' : MState) (T : Term) (d : DeclInfo)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hD : K.D = checkerDecisions st fuel)
-    (h : Runs (withLive true (Ochr.typeDecl fuel false [] [] T)) st fuel d st'),
+    (bh : Nat) (h : Runs (withLive true (Ochr.typeDecl fuel false [] [] T)) st bh d st'),
     K.D.typeDecl (scopeOf (SM' K ρ st)) T = d
 
 end
