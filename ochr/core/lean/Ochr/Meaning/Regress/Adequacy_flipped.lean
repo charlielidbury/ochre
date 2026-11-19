@@ -116,7 +116,10 @@ theorem access_ends_nothing (s : SState) (p : Pos) (o : Sem → Sem) (h : ∀ l,
 
 /-- A1, the instance: a position holding a pair-like tuple whose first component reads label `l`
 and whose second is a constant. Observing the second component ends nothing; observing the whole
-meaning depends on `l`. -/
+meaning depends on `l`. (The position means a TUPLE at every future here. The run's own meanings
+are `ctorM` of the fields, which meant `err` where a whole field was outside its type, and the
+property then failed: `Regress/SiblingAccess.lean`, docs/31 D25. Since that fix `ctorM` is such a
+tuple or a packed element at every future.) -/
 theorem access_other_field (s : SState) (p : Pos) (l : Nat) (c : Sem)
     (hv : ∀ ψ, s.valAt p ψ = .ctor "P" 0 [ψ l, c]) :
     s.access p (fun x => match x with | .ctor _ _ [_, b] => b | _ => .err) = s ∧ s.obsDep p id l := by
