@@ -182,15 +182,15 @@ Risk list, ranked, each with its known fix — the next window takes them in thi
 - **D23, labels and private copies:** `Rel.fresh` was false after any statement that borrows; it now ranges over labels that occur. (WF11), "types and records hold no loan", is a clause of `WF`. `Rel.private_copy` is proved.
 - **D24, the drop at the join:** a partly moved value was a member of no type, so `Good` failed after every move of a field (fixed: `DataModel.pmem`); the join's entry set was at the wrong grain and the checker proved an `Id` the model made false (fixed: `movedPlaces`); `Rel` compared by `⊑` and is now equality. The early-ended borrow variable is harmless (stated: `joinEntry_stmt`, `joinDrop_step_stmt`). The match area is migrated.
 - **D25, [Access]:** reading one field ended the borrow of another, for packed data (fixed: `ctorM` keeps the tuple). OPEN: `Rel` does not pin the reference state at other values of an early-ended label, so statements over every related state are false at unreachable ones.
+- **D26, `Id`'s observation:** `Id` ranged over every written value where the checker writes a value of the borrowed type, and was false of two sides that re-point a borrow of a `Unit` (fixed: `obsTyped`); the statements of `Id` and `Eq` parsed to something vacuous, and footprint coverage lacked [Id-typestate] (restated). The observation area is migrated.
 
 **Open, in the order to take them** (risk first):
 1. **D25 item 2**: what `Rel` must say of the reference state for [Access] from it to be determined. A design decision; three candidates are listed there. Every leaf with an access waits on it.
-2. **`Id`'s observation**, from a related state.
-3. **Migration** of the remaining statements, one area file at a time (done: the three `eval` forms, the match area).
-4. **Structure of a call's result** (D22's redesign: A11, A18), then a field's (A12) and a proof's type (A17).
-5. **`Below` at other futures, inert loans in nested runs, untyped runs** (D20 items 2–4); (WF11) and `Good` are both false of a sealed program's re-run with a hole.
-6. **The context extended with the assignment** (D20 item 7; `run_abs_congr` to prove), **`run_counter_indep`**.
-7. Then the step proofs, `nfSealed_step` and `Good st'` after [End] first. Whether `nfSealed` and the calls are exact (D24 item 3's risk) is settled there.
+2. **Migration** of the remaining statements, one area file at a time (done: the three `eval` forms, the match area, the observation area and `Eq`).
+3. **Structure of a call's result** (D22's redesign: A11, A18), then a field's (A12) and a proof's type (A17).
+4. **`Below` at other futures, inert loans in nested runs, untyped runs** (D20 items 2–4); (WF11) and `Good` are both false of a sealed program's re-run with a hole.
+5. **The context extended with the assignment** (D20 item 7; `run_abs_congr` to prove), **`run_counter_indep`**.
+6. Then the step proofs, `nfSealed_step` and `Good st'` after [End] first. Whether `nfSealed` and the calls are exact (D24 item 3's risk) is settled there.
 
 ### Second lead (2026-11-13, from dcdd0a34): the four core lemmas landed; review of m2-proofs' proposals
 
@@ -317,6 +317,22 @@ The leaf D20 item 1 (e) named riskiest: the join reads which places are moved wh
 - `Rel` says the reference state is the reading of some checker-form state of which the checker's is the early-ended version. Regularity is then inherited from `Good`; the cost is that each step must produce that state, which is the "monotone in the state" lemma on the checker's side.
 - [Access] decides dependence at the closed future only (every other label at its holder's content). What it reads is then what `Rel` pins, but "after the access the content reads no live label" (`access_FT`) is lost and reads must be at the closed future.
 - The reference ends what the checker ends where the checker ends deliberately (a discarded borrow, the borrowers of a dying binding, a capture), leaving in `E` only labels no position reads; `Rel` then asks that of `E`. It does not cover a neutral's head ([Access] for a match ends every loan in a neutral, tag or not).
+
+### D26. `Id`'s observation, attacked from a related state: one model fault fixed, three statement faults fixed (third lead, 2026-11-19)
+
+Read: `Machine.idType`, `observe`, `obsResult`, `Obs.footprint`, against the run's `.id` clause and `observation`.
+
+**1. `Id` ranged over every written value, typed or not** (`Regress/IdUnitWrite.lean`, built; a fault of the model). [Obs-ref]: where both sides re-point a borrow binding, the checker writes one fresh unknown of the BORROWED TYPE through it after each side, so that where it points is observed. The reference's `Id` asked the observations to be equal for every `w : Sem`. They differ at a type with one element: `IdUnit` (accepted, by `refl`; `IdNat`, the same at `Nat`, is rejected) re-points `y : &Unit` at `a` on one side and at `b` on the other; a `Unit` written is `()`, and `a`, `b` are `()` after either side; but `⊥` written through `y` is in `a` after one side and in `b` after the other. On the two end states: `id_all_false` (the `∀` over every written value is false) and `id_unit_true` (equal at `()`), kernel-checked through the run's own `observation`. Fixed: the `.id` clause quantifies over `obsTyped` values (one per re-pointed binding, a member of the type the binding is declared at). The four core lemmas still build unchanged.
+
+**2. The statements of `Id` and `Eq` said nothing** (a fault of the statements). Both ended `∃ r s', run … = some (r, s') ∧ ⟦P⟧ true ↔ ⟦r⟧ true`, and `∧` binds tighter than `↔`: any `r` that is not the run's result satisfies it (`IdUnitWrite.old_stmt_vacuous`, kernel-checked). Restated, in the simulation form.
+
+**3. Footprint coverage lacked [Id-typestate]** (a fault of the statement). The footprint lists what the sides write or borrow, not what they move; a place one side moves and the other does not is outside it and differs. The statement now assumes the two sides' type-states agree, as `idType` checks before it observes.
+
+**4. The fresh written values and the assignment.** The checker's `Id` is a conjunction that mentions the fresh unknowns written through the re-pointed bindings; its meaning under one assignment is the instance at the values they are assigned, where the reference's is the `∀`. `idType_step_stmt` therefore says: under SOME assignment of the unknowns created (a member at which the two sides differ, where there is one) the two are true together, and if the reference's is true the checker's is true under EVERY typed assignment. So a binding `h : Id(…)` keeps `Rel.skel` for the assignment the step hands on.
+
+**Checked by reading, no fault found:** the result and the owners against "every position that was there when the side started" (a borrow holder and a temporary are `⊥` after every borrow ends, on both sides; the footprint covers the rest, given the type-state); the order in which the borrows end (label order; a meaning is a function of the future, so a reborrow's end reaches its lender whichever ends first); a borrow ended over a moved-out part (`observing`: the same in the reference); [Obs-ref]'s write through `*y` against a write at `y`'s position.
+
+**Migrated to the simulation form:** `observe_step_stmt` (with the written values, at the hint `A`), `footprint_coverage_stmt`, `idType_step_stmt`, `eq_step_stmt`. They conclude `st'.env = st.env`, not that the core is unchanged: the counters and records of a private copy survive it (D23).
 
 ### Run against evalCore: audit (second lead, 2026-11-13)
 
