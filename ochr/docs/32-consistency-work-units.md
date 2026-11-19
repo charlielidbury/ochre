@@ -60,14 +60,14 @@ A unit fails only if it cannot be finished on the current plan. Restating a lemm
 
 Changes to the language or the checker made in service of the proof. Each stays here until the user has acknowledged it; none waits on that.
 
-- **Borrow ends become a decision every run shares** (proposed by the user 2026-11-19; viability check and prototype running on branch `static-ends`). Programs that rely on the machine knowing, at known arguments, which place a returned borrow really points to become rejected, as in Rust. Not landed.
+- **Borrow ends become a decision every run shares** (proposed by the user 2026-11-19, acknowledged the same day; viability check and prototype running on branch `static-ends`). Programs that rely on the machine knowing, at known arguments, which place a returned borrow really points to become rejected, as in Rust. Not landed.
 
 ## Design questions to ask before each risky unit
 
 The bar is "as good as Rust for borrowing, as good as Lean for proving". Where a unit is hard because the design is more precise than that, the design is questioned before the proof is attempted.
 
 - **Matches and arms (row 1):** asked, above.
-- **Dependent values (row 2):** the difficulty is a value whose later fields' types depend on an earlier field that is lent or half-written. Before the unit starts: which case studies need a field that other fields' types depend on to be lent across a call, and would requiring such a field to be replaced whole, not lent, lose any of them?
+- **Dependent values (row 2):** asked 2026-11-19, with the user. The difficulty is a value whose later field's type depends on an earlier field that is lent or half-written. Conclusion, in two parts. (1) Inside a function body there is no problem to solve in the language: once such a value is open, the checker types the later field by what it holds, not by the earlier field, so its type does not follow the lent field. The model does not do this yet (it re-reads the earlier field through the borrow), and that is the fault to fix, in the model. (2) At a point where the value must be whole again (a return, a call), the checker does not require the loan ended: it checks the value with the lent part replaced by a fresh unknown of its type, so the invariant must hold whatever the borrow later writes. Requiring every loan ended there would be simpler, but it would reject accessors that return a borrow into data an invariant mentions (the examples' user-land vector, whose invariant says its first cells are full, returns a borrow into a cell's payload), and Rust has those. So the rule stays; it is also what closed the two proofs of `False` found here. The step to prove is then the natural one: a check that passes for a fresh unknown gives membership under every final content of the borrow.
 - **`Id` (row 3):** its rules about when a borrow ends (a side may not end a borrow held outside it) exist because sides run on private copies. Once ends are a shared decision, check which of those rules are still needed.
 
 ## Dependencies
