@@ -319,16 +319,16 @@ makes the read congruent in the future at every state (`closedFuture_read`), whi
 lemmas need. The type of a field of a dependent value is read with the earlier fields at their
 current contents, as the checker's `depFieldType` reads them through the borrow (`ctorFields`),
 not at what a borrow of an earlier field will finally hold (D29, point 5 e). A projected field's
-type is read as plain (`.plain`, its data dropped): a documented gap for nested `ps = []` values
-under projections (`Sem.follow` now yields the field's structured type, docs/31 D31, which would
-close it). -/
+type is the structured type `Sem.follow` gives it (docs/31 D31: the hint the field's declaration
+reads it at, with its data, so a value bound from it is decoded by name; it was `.plain`, which
+after D31 left such a binding with no declaration to decode it by), with no label. -/
 noncomputable def contentOf (p : Place) : SM (Sem × TyS × Pos × List Step) := fun s =>
   match resolve s p with
   | some (pos, steps) =>
     let T₀ := s.tyAt pos
     let s := s.access pos (dataHit steps)
     match Sem.follow K.dm K.Γ T₀ (s.valAt pos (s.closedFuture φ)) steps with
-    | some (v, T) => some ((v, if steps.isEmpty then s.tyAt pos else .plain T.m, pos, steps), s)
+    | some (v, T) => some ((v, if steps.isEmpty then s.tyAt pos else { T with label := none }, pos, steps), s)
     | none => none
   | none => none
 
