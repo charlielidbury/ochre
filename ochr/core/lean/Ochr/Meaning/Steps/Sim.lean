@@ -110,11 +110,11 @@ fails exactly where a later field's type, or a sealed field's hint, reads an ear
 lent (open dependent values, the audit's A13; docs/31 D27). -/
 
 /-- A value of a state where a run starts: loan-free, or a bare loan. -/
-def StartVal (v : Value) : Prop := (∀ l, v.hasLoan l = false) ∨ ∃ l, v = .loan l
+def StartVal (v : Value) : Prop := (∀ l, v.hasLoanM l = false) ∨ ∃ l, v = .loan l
 
 /-- A position of a state's reading reads the future through its value's loans alone. -/
 theorem sm_valAt_const (st : MState) (hK : ∀ n, (K.C.global n).2.label = none) (p : Pos)
-    (hlf : ∀ l, (valAt st.env p).hasLoan l = false) (ψ ψ' : Future) :
+    (hlf : ∀ l, (valAt st.env p).hasLoanM l = false) (ψ ψ' : Future) :
     (SM' K ρ st).valAt p ψ = (SM' K ρ st).valAt p ψ' := by
   show (MState.sstate K.dm K.M K.Γ ρ st).valAt p ψ = (MState.sstate K.dm K.M K.Γ ρ st).valAt p ψ'
   rw [sstate_valAt, sstate_valAt]

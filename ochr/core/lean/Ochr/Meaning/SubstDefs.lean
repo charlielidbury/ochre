@@ -31,6 +31,10 @@ theorem hintFree_of_recorded (φ : Future) :
     intro h h'
     simp only [Value.anyAtom, Value.bareCtor, Value.isSealed, Bool.false_or] at hb hs
     exact hintFree_of_recorded φ w hb hs h h'
+  | .gloan l w, hb, hs => by
+    intro h h'
+    simp only [Value.anyAtom, Value.bareCtor, Value.isSealed, Bool.false_or] at hb hs
+    exact hintFree_of_recorded φ w hb hs h h'
   | .ind ty c hd ps fs, hb, _ => by
     intro h h'
     simp only [meanV]

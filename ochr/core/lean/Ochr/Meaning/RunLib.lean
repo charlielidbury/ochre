@@ -256,9 +256,10 @@ theorem substEnv_loan_spec (fuel : Nat) (l : Nat) (w : Value) (st st' : MState) 
   rw [substEnv_succ, runMachineL_mapState_false] at h
   exact loop_spec _ hf (allPos st.env) st st' fuel₀ left L log hnd h
 
-/-! ## [End]'s run: the holder emptied, then the substitution walk -/
+/-! ## [End]'s run: the holder emptied, the substitution walk, then the marks handed on -/
 
-/-- `endBorrow` with fuel, its body. -/
+/-- `endBorrow` with fuel, its body (main's D90: after the substitution, the marks of the ended
+borrow are handed to the live borrows of its final content, `lendEnv (.ended l …)`). -/
 theorem endBorrow_succ (n l : Nat) :
     Ochr.endBorrow (n + 1) l = (do
       let env := (← get).env
@@ -292,14 +293,17 @@ theorem endBorrow_succ (n l : Nat) :
             | _ => pure ()
             err s!"[D53] a borrow ends while its content is partly moved out ({c})"
           Ochr.setAt p rest
-          Ochr.substEnv n (.loan l) c false) := by
+          Ochr.substEnv n (.loan l) c false
+          Ochr.lendEnv n (.ended l (liveLoansIn (← get).env c))) := by
   rfl
 
 /-- **[End]'s run, untyped and outside an observation**: the holder `p` of `ℓ` is found, its
 content `c` taken (the holder left with `rest`, `⊥` for a whole borrow), then every position
-receives `substV (loan ℓ) c` of its value and nothing else. The typed run adds `repackCheck`
-and an observation the type-state check; both only reject, and are the typed form's extra
-hypotheses. -/
+receives `substV (loan ℓ) c` of its value (the state `st₁`), and then the marks of `ℓ` are handed
+to the live borrows of `c` (`lendEnv`, main's D90). The typed run adds `repackCheck` and an
+observation the type-state check; both only reject, and are the typed form's extra hypotheses.
+(The order form `endBorrow_below` that stood here was deleted with the early ends, docs/31 D29:
+[End] is to be stated in the simulation form, exact, marks included.) -/
 theorem endBorrow_spec (m l : Nat) (st st' : MState) (fuel₀ left : Nat) (L log : Array LogEntry)
     (p : Pos) (c rest : Value)
     (hfind : findBorrow st.env l = some p) (htake : (valAt st.env p).takeBorrow l = some (c, rest))
@@ -307,11 +311,12 @@ theorem endBorrow_spec (m l : Nat) (st st' : MState) (fuel₀ left : Nat) (L log
     (hf : ∀ (v : Value) (s s' : MState) (fuel₁ left : Nat) (L log : Array LogEntry) (v' : Value),
       runMachineL (Ochr.substV m (.loan l) c v) s fuel₁ L = (.ok v' s', left, log) → s'.env = s.env)
     (h : runMachineL (Ochr.endBorrow (m + 2) l) st fuel₀ L = (.ok () st', left, log)) :
-    ∃ out : Pos → Value,
-      st'.env = (allPos (Env.setAtE st.env p rest)).foldl (fun e q => Env.setAtE e q (out q)) (Env.setAtE st.env p rest) ∧
-      ∀ q ∈ allPos (Env.setAtE st.env p rest), ∃ (s s' : MState) (fuel' left' : Nat) (L' log' : Array LogEntry),
+    ∃ (out : Pos → Value) (st₁ : MState) (fuel₁ : Nat) (L₁ : Array LogEntry),
+      st₁.env = (allPos (Env.setAtE st.env p rest)).foldl (fun e q => Env.setAtE e q (out q)) (Env.setAtE st.env p rest) ∧
+      (∀ q ∈ allPos (Env.setAtE st.env p rest), ∃ (s s' : MState) (fuel' left' : Nat) (L' log' : Array LogEntry),
         runMachineL (Ochr.substV m (.loan l) c (valAt (Env.setAtE st.env p rest) q)) s fuel' L'
-          = (.ok (out q) s', left', log') := by
+          = (.ok (out q) s', left', log')) ∧
+      runMachineL (Ochr.lendEnv (m + 1) (.ended l (liveLoansIn st₁.env c))) st₁ fuel₁ L₁ = (.ok () st', left, log) := by
   rw [endBorrow_succ, runMachineL_bind, runMachineL_get] at h
   dsimp only at h
   rw [hfind] at h
@@ -332,85 +337,17 @@ theorem endBorrow_spec (m l : Nat) (st st' : MState) (fuel₀ left : Nat) (L log
   simp only [Bool.false_and, Bool.false_eq_true, if_false] at h
   rw [runMachineL_bind, runMachineL_setAt] at h
   dsimp only at h
-  exact substEnv_loan_spec m l c _ st' fuel₀ left L log hf (allPos_nodup _) h
-
-/-! ## [End] below `semEnd`, given the substitution step -/
-
-/-- **[End] is below `semEnd`, given the substitution step at each value.** The holder, emptied,
-means `moved` as `semEnd` says; every other position means `substV`'s output, which the
-substitution step puts below the value read at the future fixed at `ℓ` to the content's meaning
-at the holder's hint, as `semEnd` reads it; shapes: the holder's entry is gone, the others are
-kept (`hshape`: `substV` keeps a value's shape). `hsubst` is `substV_loan_step` with the filler
-read at the holder's hint (hint-free contents make the two readings agree, `hintFree_of_wf10`,
-`hintFree_of_topHintFree`). -/
-theorem endBorrow_below (K : RunCtx) (ρ : Assignment) (m l : Nat) (st st' : MState) (fuel₀ left : Nat)
-    (L log : Array LogEntry) (p : Pos) (c : Value)
-    (hfind : findBorrow st.env l = some p) (hval : valAt st.env p = .borrow l c)
-    (hobs : st.obsFrame = none) (htyping : st.typing = false) (hhole : c.hasHole = false)
-    (hf : ∀ (v : Value) (s s' : MState) (fuel₁ left : Nat) (L log : Array LogEntry) (v' : Value),
-      runMachineL (Ochr.substV m (.loan l) c v) s fuel₁ L = (.ok v' s', left, log) → s'.env = s.env)
-    (hsubst : ∀ (v v' : Value) (s s' : MState) (fuel₁ left' : Nat) (L' log' : Array LogEntry),
-      runMachineL (Ochr.substV m (.loan l) c v) s fuel₁ L' = (.ok v' s', left', log') →
-      ∀ (φ : Future) (hint : TyS), Value.mean K.dm K.C K.Γ ρ φ hint v' ⊑
-        Value.mean K.dm K.C K.Γ ρ (φ.upd l (Value.mean K.dm K.C K.Γ ρ φ (Env.hintAt K.dm K.C K.Γ ρ st.env p) c)) hint v)
-    (hshape : ∀ (v v' : Value) (s s' : MState) (fuel₁ left' : Nat) (L' log' : Array LogEntry),
-      runMachineL (Ochr.substV m (.loan l) c v) s fuel₁ L' = (.ok v' s', left', log') → shapeOf v' = shapeOf v)
-    (h : runMachineL (Ochr.endBorrow (m + 2) l) st fuel₀ L = (.ok () st', left, log)) :
-    Below (MState.mean K.dm K.C K.Γ ρ st') ((MState.mean K.dm K.C K.Γ ρ st).semEnd p l) := by
-  have htake : (valAt st.env p).takeBorrow l = some (c, .bot) := by
-    rw [hval]; simp [Value.takeBorrow]
-  obtain ⟨out, hfold, hpos⟩ := endBorrow_spec m l st st' fuel₀ left L log p c .bot hfind htake hobs htyping hhole hf h
-  have hp := mem_allPos_of_find st.env l p hfind
-  have hallpos : allPos (Env.setAtE st.env p .bot) = allPos st.env := allPos_setAtE _ _ _
-  have hnd : (allPos (Env.setAtE st.env p .bot)).Nodup := allPos_nodup _
-  have hin : ∀ q ∈ allPos (Env.setAtE st.env p .bot), q ∈ allPos (Env.setAtE st.env p .bot) := fun _ hq => hq
-  have hbot : valAt (Env.setAtE st.env p .bot) p = .bot := by
-    cases p with
-    | bind f i =>
-      obtain ⟨fr, b, hf', hi⟩ := mem_allPos_bind st.env f i hp
-      exact valAt_setAtE_bind st.env f i .bot fr b hf' hi
-    | temp f i =>
-      obtain ⟨fr, hf', hi⟩ := mem_allPos_temp st.env f i hp
-      exact valAt_setAtE_temp st.env f i .bot fr hf' hi
-  intro φ'
-  refine ⟨φ', fun q => ?_, fun q l' hq => ?_⟩
-  · show Env.mean K.dm K.C K.Γ ρ φ' st'.env q ⊑ (if q = p then .moved else
-      Env.mean K.dm K.C K.Γ ρ (φ'.upd l (Env.mean K.dm K.C K.Γ ρ φ' st.env p)) st.env q)
-    rw [hfold]
-    by_cases hq : q ∈ allPos (Env.setAtE st.env p .bot)
-    · rw [(mean_fold_setAtE K.dm K.C K.Γ ρ φ' out _ _ hnd hin).1 q hq]
-      obtain ⟨s, s', fuel', left', L', log', hrun⟩ := hpos q hq
-      have hle := hsubst _ _ _ _ _ _ _ _ hrun φ' (Env.hintAt K.dm K.C K.Γ ρ (Env.setAtE st.env p .bot) q)
-      rw [hintAt_setAtE] at hle ⊢
-      by_cases hqp : q = p
-      · subst hqp
-        simp only [if_true]
-        rw [hbot] at hle
-        exact hle
-      · simp only [hqp, if_false]
-        rw [valAt_setAtE_other _ _ _ _ hqp] at hle
-        rw [mean_eq_valAt K.dm K.C K.Γ ρ _ st.env q (hallpos ▸ hq), mean_eq_valAt K.dm K.C K.Γ ρ _ st.env p hp, hval]
-        exact hle
-    · have hqp : q ≠ p := by intro e; subst e; apply hq; rw [hallpos]; exact hp
-      rw [(mean_fold_setAtE K.dm K.C K.Γ ρ φ' out _ _ hnd hin).2 q hq, mean_eq_err _ _ _ _ _ _ q hq]
-      simp only [hqp, if_false]
-      rw [mean_eq_err K.dm K.C K.Γ ρ _ st.env q (hallpos ▸ hq)]
-      exact Sem.le_refl _
-  · change Env.shape st'.env q = some l' at hq
-    change (if q = p then none else Env.shape st.env q) = some l'
-    rw [hfold, shape_eq_shapeOf] at hq
-    by_cases hqm : q ∈ allPos (Env.setAtE st.env p .bot)
-    · rw [(valAt_fold_setAtE out _ _ hnd hin).1 q hqm] at hq
-      obtain ⟨s, s', fuel', left', L', log', hrun⟩ := hpos q hqm
-      rw [hshape _ _ _ _ _ _ _ _ hrun] at hq
-      by_cases hqp : q = p
-      · subst hqp; rw [hbot] at hq; cases hq
-      · simp only [hqp, if_false]
-        rw [valAt_setAtE_other _ _ _ _ hqp] at hq
-        rw [shape_eq_shapeOf]; exact hq
-    · have hqp : q ≠ p := by intro e; subst e; apply hqm; rw [hallpos]; exact hp
-      rw [(valAt_fold_setAtE out _ _ hnd hin).2 q hqm, valAt_setAtE_other _ _ _ _ hqp] at hq
-      simp only [hqp, if_false]
-      rw [shape_eq_shapeOf]; exact hq
+  rw [runMachineL_bind] at h
+  revert h
+  generalize hs : runMachineL (Ochr.substEnv (m + 1) (.loan l) c false) _ fuel₀ L = r
+  intro h
+  obtain ⟨r, fl, lg⟩ := r
+  rcases r with ⟨u, st₁⟩ | f | e
+  · obtain ⟨out, h1, h2⟩ := substEnv_loan_spec m l c _ st₁ fuel₀ fl L lg hf (allPos_nodup _) hs
+    dsimp only at h
+    rw [runMachineL_bind, runMachineL_get] at h
+    exact ⟨out, st₁, fl, lg, h1, h2, h⟩
+  · cases h
+  · cases h
 
 end Ochr.Meaning.Steps

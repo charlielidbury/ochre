@@ -20,6 +20,7 @@ def Value.substLoan (l : Nat) (w : Value) : Value → Value
   | .succ v => .succ (Value.substLoan l w v)
   | .tRef v => .tRef (Value.substLoan l w v)
   | .borrow m v => .borrow m (Value.substLoan l w v)
+  | .gloan m v => .gloan m (Value.substLoan l w v)
   | .tEq A a b => .tEq (Value.substLoan l w A) (Value.substLoan l w a) (Value.substLoan l w b)
   | .clo cs t rd => .clo (Value.substLoanList l w cs) (Term.substLoan l w t) (Value.substLoanRd l w rd)
   | .tPi cs t rd => .tPi (Value.substLoanList l w cs) (Term.substLoan l w t) (Value.substLoanRd l w rd)

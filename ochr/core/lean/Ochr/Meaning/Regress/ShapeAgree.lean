@@ -131,9 +131,12 @@ theorem tyStr_futureFree (hK : ∀ n, (K.C.global n).2.label = none) (T : Value)
     (hT : ∀ l, T.hasLoan l = false) (φ' : Future) (hint : TyS) :
     tyShape K ρ φ T = tyShape K ρ φ' T ∧ tyDataV K ρ φ T = tyDataV K ρ φ' T ∧
       meanV K ρ φ hint T = meanV K ρ φ' hint T :=
-  ⟨tyShape_congrE K ρ φ φ' hK T (fun l h => by rw [hT l] at h; cases h),
-    tyDataV_congrE K ρ φ φ' hK T (fun l h => by rw [hT l] at h; cases h),
-    meanV_congrE K ρ φ φ' hK T hint (fun l h => by rw [hT l] at h; cases h)⟩
+  ⟨tyShape_congrE K ρ φ φ' hK T (fun l h => by
+      have := Value.hasLoan_of_hasLoanM h; rw [hT l] at this; cases this),
+    tyDataV_congrE K ρ φ φ' hK T (fun l h => by
+      have := Value.hasLoan_of_hasLoanM h; rw [hT l] at this; cases this),
+    meanV_congrE K ρ φ φ' hK T hint (fun l h => by
+      have := Value.hasLoan_of_hasLoanM h; rw [hT l] at this; cases this)⟩
 
 /-! ## A17: a proof has no type in the run -/
 

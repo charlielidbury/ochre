@@ -43,6 +43,7 @@ termination_by structural arms => arms
 hint-reading tail. -/
 def _root_.Ochr.Value.topHintFree (Γ : List IndDecl) : Value → Bool
   | .borrow _ w => Value.topHintFree Γ w
+  | .gloan _ w => Value.topHintFree Γ w
   | .sealed t => Term.tailHintFree Γ t
   | .ind ty _ _ [] _ => (match Γ.find? (·.name == ty) with | some d => d.params.isEmpty | none => true)
   | _ => true
@@ -246,6 +247,9 @@ theorem runArm_hintIndep : ∀ (arms : List (Hint × Term)), Term.armsHintFree K
 theorem meanV_hintIndep : ∀ (v : Value), Value.topHintFree K.Γ v = true → ∀ (h h' : TyS),
     meanV K ρ φ h v = meanV K ρ φ h' v
   | .borrow l w, hv, h, h' => by
+    simp only [Value.topHintFree] at hv
+    exact meanV_hintIndep w hv h h'
+  | .gloan l w, hv, h, h' => by
     simp only [Value.topHintFree] at hv
     exact meanV_hintIndep w hv h h'
   | .sealed t, hv, h, h' => by

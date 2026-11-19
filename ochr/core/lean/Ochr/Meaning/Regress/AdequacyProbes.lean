@@ -67,15 +67,18 @@ checker rejects where one can be written. The rows are the audit table's (A1, A2
 
 ochr AdequacyProbes2 uses Nats, Lists, Boxes {
   -- A1 ([Access] is of a place, not of a variable): a field is read while another field of the
-  -- same variable is lent; the borrow stays live, and the write through it is seen
-  def Disjoint (x : Nat) (y : Nat) : Nat × Nat := (
+  -- same variable is lent. Accepted when written (2026-11-13); REJECTED since main's D90 (its
+  -- known gap F4 against Rust: `p.0` is a one-arm match on `p`, not in tail position, whose stuck
+  -- block would read `p` whole, so its entry ends `r`). Its twin `DisjointIs` went with it. The
+  -- model's place-wise access stays right for the forms the checker accepts: `Walk` below keeps
+  -- a reborrow of a part live, and the model's own check is `Adequacy_flipped.access_other_field`.
+  reject def Disjoint (x : Nat) (y : Nat) : Nat × Nat := (
     let p = (x, y);
     let r = &p.1;
     let a = p.0;
     *r := 5;
     (a, p.1)
   )
-  def DisjointIs (x : Nat) (y : Nat) : Id(Nat × Nat, Disjoint(clone(x), clone(y)), (clone(x), 5)) := refl
   -- control: the SAME field is read, which ends the borrow; the write through it is an error
   reject def SameField (x : Nat) (y : Nat) : Nat × Nat := (
     let p = (x, y);
