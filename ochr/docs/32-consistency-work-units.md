@@ -4,7 +4,7 @@ Written 2026-11-19; last updated the same day, after `spine3`'s first milestone 
 
 The numbers are estimates by the orchestrating session, not measurements.
 
-- **P(failure)** is the chance the unit's claim turns out false in spirit: the checker's rules have to change, or the proof architecture does. A statement that has to be tweaked while staying correct in spirit, with the architecture going ahead, counts as success. Most refutations so far have been of that kind.
+- **P(failure)** is the chance the unit cannot be finished on the current plan: it needs a language feature redesigned, or a different proof architecture. Two outcomes count as success, because the work continues as planned after them. One is a tweaked statement: a lemma restated, a hypothesis added or a model definition repaired, the claim staying true in spirit. The other is a local checker fix: one rule tightened so that a class of wrongly accepted programs is rejected, as when a stuck block's arm was forbidden to return a borrow of a place the block takes by move.
 - **Time** is the unit's share of all the effort the consistency proof needs. The column sums to 100% over both tables: about 33% is done and 67% remains.
 
 ## Done (33%)
@@ -28,30 +28,29 @@ Not counted, because they are off the consistency path: `id-audit` and `subst-su
 
 | Work unit | What it contains | P(failure) | Time |
 |---|---|---|---|
-| `spine3`: riskiest steps (running) | Prove or refute the two riskiest steps in the new form: the drop at the join, and `Id`'s observation. | 15% | 3% |
-| Statement migration | Move the remaining ~70 step statements to the simulation form, one file at a time. | 3% | 4% |
-| Reference-run redesigns | The open differences from the checker, the comparison at other futures, and restricting the claim about untyped runs. The differences that matter most: the result of a call loses its function shape, so the reference cannot call a function returned by a call, or a parameter whose type is computed by a call (`f : Fn(Nat)`, the ordinary predicate idiom, which the checker accepts); and a proof has no type in the reference, so a constructor whose type parameter is solved by a proof field fails. Until these land, the mechanised theorem is false on such programs. A design for the call cases exists (docs/31, D22). | 8% | 8% |
-| Prover tooling | A shared library about positions in a state, and the standard prover brief. | 1% | 2% |
-| Provers: simple steps | Borrow primitives, substitution, plain evaluation, tail forms. | 3% | 8% |
-| Provers: calls and stuck calls | Calls, closing a stuck call into a sealed program, re-running one, and the label-renaming lemma. | 10% | 9% |
-| Provers: matches and arms | Splitting on an unknown, leaving an arm, and the drop at the join. | 8% | 6% |
-| Provers: equality | Conversion, `Eq` and `J` computing, and rewriting. | 7% | 5% |
-| Provers: `Id` | `Id` observes every place either side can write. | 10% | 4% |
-| Provers: types and decisions | The model reads types and syntactic decisions the same way as the checker (18 statements). | 7% | 5% |
-| Provers: well-formedness | The borrow discipline is preserved by every step. | 10% | 4% |
-| Provers: dependent values | Membership is restored when a value whose type depends on its own fields is made whole again. | 20% | 4% |
-| Assembly | The top-level theorems, closing the induction, and the data model for a whole program. | 3% | 4% |
-| Universes | Deciding which statement Lean can prove over all programs. | 5%. The uniform statement may be unprovable in Lean (about 40%); bounded levels then replaces it, which is a tweak. | 1% |
+| `spine3`: riskiest steps (running) | Prove or refute the two riskiest steps in the new form: the drop at the join, and `Id`'s observation. | 5% | 3% |
+| Statement migration | Move the remaining ~70 step statements to the simulation form, one file at a time. | 1% | 4% |
+| Reference-run redesigns | The open differences from the checker, the comparison at other futures, and restricting the claim about untyped runs. The differences that matter most: the result of a call loses its function shape, so the reference cannot call a function returned by a call, or a parameter whose type is computed by a call (`f : Fn(Nat)`, the ordinary predicate idiom, which the checker accepts); and a proof has no type in the reference, so a constructor whose type parameter is solved by a proof field fails. Until these land, the mechanised theorem is false on such programs. A design for the call cases exists (docs/31, D22). | 4% | 8% |
+| Prover tooling | A shared library about positions in a state, and the standard prover brief. | under 1% | 2% |
+| Provers: simple steps | Borrow primitives, substitution, plain evaluation, tail forms. | 1% | 8% |
+| Provers: calls and stuck calls | Calls, closing a stuck call into a sealed program, re-running one, and the label-renaming lemma. | 4% | 9% |
+| Provers: matches and arms | Splitting on an unknown, leaving an arm, and the drop at the join. | 3% | 6% |
+| Provers: equality | Conversion, `Eq` and `J` computing, and rewriting. | 3% | 5% |
+| Provers: `Id` | `Id` observes every place either side can write. | 5% | 4% |
+| Provers: types and decisions | The model reads types and syntactic decisions the same way as the checker (18 statements). | 2% | 5% |
+| Provers: well-formedness | The borrow discipline is preserved by every step. | 4% | 4% |
+| Provers: dependent values | Membership is restored when a value whose type depends on its own fields is made whole again. | 8% | 4% |
+| Assembly | The top-level theorems, closing the induction, and the data model for a whole program. | 1% | 4% |
+| Universes | Deciding which statement Lean can prove over all programs. | 3%. The uniform statement may be unprovable in Lean (about 40%); bounded levels then replaces it, which is a tweak. | 1% |
 
 ## Reading the risk column
 
-A unit fails only if its claim is false in spirit. Having to restate a lemma, add a hypothesis or repair a definition of the model is not a failure, and has been the usual outcome of a refutation so far.
+A unit fails only if it cannot be finished on the current plan. Restating a lemma, repairing a model definition and tightening one checker rule are all successes: the proof goes ahead as planned after each. Nearly every refutation so far has ended in one of the first two, and the accepted proofs of `False` found earlier ended in the third.
 
-A failure of one unit rarely ends the project either. It usually means a fix to the checker, then continuing, as with the accepted proofs of `False` found and fixed earlier.
-
-- **Chance at least one remaining unit fails**, so that the checker or the architecture has to change somewhere: about 65%. The rows are not independent (the drop at the join and `Id` each appear in two rows), so this is less than the rows multiplied out.
-- **Chance the route itself fails**, so that meaning preservation has to be abandoned: about 10%.
-- **Riskiest rows:** dependent values, where one of the old `False` proofs lived; then `spine3`'s two steps, the drop at the join and `Id`.
+- **Chance at least one remaining unit needs a local checker fix** (a success): about 65%.
+- **Chance at least one remaining unit fails**, so that a feature is redesigned or part of the proof is re-planned: about 30%. The rows are not independent (the drop at the join and `Id` each appear in two rows), so this is less than the rows multiplied out.
+- **Chance the route itself fails**, so that meaning preservation has to be abandoned: about 7%.
+- **Riskiest rows:** dependent values, where one of the old `False` proofs lived; then `Id` and the drop at the join. The drop at the join is itself the result of an earlier redesign of this size.
 
 ## Dependencies
 
@@ -76,22 +75,22 @@ flowchart TD
 
     spine3a["spine3: prerequisites<br/>2%"]:::done
 
-    spine3["spine3: riskiest steps<br/>3%, fail 15%"]:::running
-    migrate["Statement migration<br/>4%, fail 3%"]:::todo
-    redesign["Reference-run redesigns<br/>8%, fail 8%"]:::todo
-    tooling["Prover tooling<br/>2%, fail 1%"]:::todo
+    spine3["spine3: riskiest steps<br/>3%, fail 5%"]:::running
+    migrate["Statement migration<br/>4%, fail 1%"]:::todo
+    redesign["Reference-run redesigns<br/>8%, fail 4%"]:::todo
+    tooling["Prover tooling<br/>2%, fail under 1%"]:::todo
 
-    pSimple["Provers: simple steps<br/>8%, fail 3%"]:::todo
-    pCalls["Provers: calls and stuck calls<br/>9%, fail 10%"]:::todo
-    pMatch["Provers: matches and arms<br/>6%, fail 8%"]:::todo
-    pEq["Provers: equality<br/>5%, fail 7%"]:::todo
-    pId["Provers: Id<br/>4%, fail 10%"]:::todo
-    pTypes["Provers: types and decisions<br/>5%, fail 7%"]:::todo
-    pWF["Provers: well-formedness<br/>4%, fail 10%"]:::todo
-    pDep["Provers: dependent values<br/>4%, fail 20%"]:::todo
+    pSimple["Provers: simple steps<br/>8%, fail 1%"]:::todo
+    pCalls["Provers: calls and stuck calls<br/>9%, fail 4%"]:::todo
+    pMatch["Provers: matches and arms<br/>6%, fail 3%"]:::todo
+    pEq["Provers: equality<br/>5%, fail 3%"]:::todo
+    pId["Provers: Id<br/>4%, fail 5%"]:::todo
+    pTypes["Provers: types and decisions<br/>5%, fail 2%"]:::todo
+    pWF["Provers: well-formedness<br/>4%, fail 4%"]:::todo
+    pDep["Provers: dependent values<br/>4%, fail 8%"]:::todo
 
-    universes["Universes<br/>1%, fail 5%"]:::todo
-    assembly["Assembly<br/>4%, fail 3%"]:::todo
+    universes["Universes<br/>1%, fail 3%"]:::todo
+    assembly["Assembly<br/>4%, fail 1%"]:::todo
     goal(["Consistency:<br/>no closed proof of False"]):::goal
 
     tests --> fixes
