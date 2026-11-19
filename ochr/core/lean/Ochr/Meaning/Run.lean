@@ -282,16 +282,12 @@ noncomputable def movedPlaces (s : SState) : List Place :=
       | none => []
   | none => []
 
-/-- What [Access] of a place observes of its position's meaning: `ob` of the content at the path
-and of its type, `err` where the path does not resolve (the audit's A1; `SState.access`). -/
+/-- What a match reads of a place's meaning: `ob` of the content at the path and of its type,
+`err` where the path does not resolve (the tag, `natTag`, `indTag`). -/
 noncomputable def obsAt (T : TyM) (steps : List Step) (ob : Sem → TyM → Sem) (x : Sem) : Sem :=
   match Sem.follow K.dm K.Γ T x steps with
   | some (v, T') => ob v T'
   | none => .err
-
-/-- The whole content with its type: what a read, a borrow, an assignment and a drop observe
-(`Machine.accessInside` of the place). -/
-def wholeOb (v : Sem) (T : TyM) : Sem := .ctor "" 0 [v, .ty T]
 
 /-- The tag of a number, `Z` or `S`: what a `match` on a number observes
 (`Machine.accessNeutralHead`). -/
@@ -315,29 +311,35 @@ noncomputable def indTag (v : Sem) (T : TyM) : Sem :=
       | none => .err
     | none => .err
 
-/-- The content of a place after [Access] for it: its meaning at `φ` (the labels the content at
-the path depended on that the run holds have been ended; what remains is read from `φ`) and its
-type. A projected field's type carries no data component (`Sem.follow` yields a `TyM`): a
-documented gap for nested `ps = []` values under projections. -/
+/-- The content of a place after [Access] for it (static, docs/31 D29: the borrows lent at, over
+or under the place have ended), read at the state's closed future, with its type. At a related
+state the content then reads no live label, so this is its meaning at `φ`; the closed future
+makes the read congruent in the future at every state (`closedFuture_read`), which the core
+lemmas need. The type of a field of a dependent value is read with the earlier fields at their
+current contents, as the checker's `depFieldType` reads them through the borrow (`ctorFields`),
+not at what a borrow of an earlier field will finally hold (D29, point 5 e). A projected field's
+type carries no data component (`Sem.follow` yields a `TyM`): a documented gap for nested
+`ps = []` values under projections. -/
 noncomputable def contentOf (p : Place) : SM (Sem × TyS × Pos × List Step) := fun s =>
   match resolve s p with
   | some (pos, steps) =>
     let T₀ := (s.tyAt pos).m
-    let s := s.access pos (obsAt K T₀ steps wholeOb)
-    match Sem.follow K.dm K.Γ T₀ (s.valAt pos φ) steps with
+    let s := s.access pos (dataHit steps)
+    match Sem.follow K.dm K.Γ T₀ (s.valAt pos (s.closedFuture φ)) steps with
     | some (v, T) => some ((v, if steps.isEmpty then s.tyAt pos else .plain T, pos, steps), s)
     | none => none
   | none => none
 
-/-- The scrutinee of a match after [Access] for its tag only (`tag`: `natTag`, `indTag`): the
-tag at `φ`, `err` where the place has none. Borrows inside the scrutinee's fields stay live, as
-in the checker; an arm that reads a field accesses it then. -/
+/-- The scrutinee of a match after [Access] for its tag only (`tagHit`: the borrows lent on the
+path and at the place; `tag`: `natTag`, `indTag`): the tag at the closed future, `err` where the
+place has none. Borrows inside the scrutinee's fields stay live, as in the checker; an arm that
+reads a field accesses it then. -/
 noncomputable def tagOf (p : Place) (tag : Sem → TyM → Sem) : SM Sem := fun s =>
   match resolve s p with
   | some (pos, steps) =>
     let o := obsAt K (s.tyAt pos).m steps tag
-    let s := s.access pos o
-    some (o (s.valAt pos φ), s)
+    let s := s.access pos (tagHit steps)
+    some (o (s.valAt pos (s.closedFuture φ)), s)
   | none => none
 
 /-- Set the content of a place to a constant meaning, pointwise in the future (no access: the
@@ -360,7 +362,7 @@ noncomputable def assignAt (p : Place) (v : Sem) (lab : Option Nat) : SM Res := 
   match resolve s p with
   | none => none
   | some (pos, steps) =>
-    let s := if steps.isEmpty && (s.shape pos).isSome then s else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)
+    let s := if steps.isEmpty && (s.shape pos).isSome then s else s.access pos (dataHit steps)
     let s := if steps.isEmpty then (match s.shape pos with | some l => s.endLabel l | none => s) else s
     match setContent K φ pos steps v s with
     | none => none
@@ -400,7 +402,8 @@ noncomputable def borrowPlace (p : Place) : SM Res := fun s => do
   let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .err
   -- the borrow is parked in a temporary, its holder until it is bound (D14)
   let s := s.pushTempShaped (fun _ => v) l
-  some ((v, { T with label := some l }), s)
+  -- the place is lent to `l`, a plain borrow: one site, its loan (docs/31 D29)
+  some ((v, { T with label := some l }), s.setLent l [⟨pos, steps, false⟩])
 
 /-- A call at level `L` (`Apply1.lean`): unpack the callee at its carrier and apply it along its
 shape (`applyFnL`); otherwise as `callOf`. -/
@@ -421,12 +424,15 @@ noncomputable def callOfL.{u} (L : Lvl.{u}) (ps : List PiParam) (out : PiOut) (f
     some ((r, .plain B), s)
   | some (.ref U fwd back) =>
     let (k, s) := s.freshLoan
+    -- [Lend] (main's D90, rule 1; docs/31 D29): the result is lent every place its borrow
+    -- arguments lend, each a fill, whether the checker runs the call or closes it off
+    let lentK := ((refLabels.filterMap id).flatMap s.lent).map fun x : Site => { x with fill := true }
     let s := s.mapVals fun _ v φ' =>
       match L.dec U (φ' k) with
       | some x => v (φ'.updList (fixes (back x)))
       | none => .err
     let s := s.pushTempShaped (fun _ => L.enc U fwd) k
-    some ((L.enc U fwd, ⟨U, none, some k, none⟩), s)
+    some ((L.enc U fwd, ⟨U, none, some k, none⟩), s.setLent k lentK)
   | none => none
 
 /-- A call, on the evaluated callee and arguments (docs/18 Def. "reference run", first clause):
@@ -447,45 +453,49 @@ noncomputable def callOf (fv : Res) (args : List Res) : SM Res := fun s =>
     | _ => none
   | none => none
 
-/-- [Join]'s access of a dropped place (`Machine.dropAtJoin`): none at a root holding a borrow,
-whose drop ends the borrow and accesses nothing it lends; otherwise the content at the path, as a
-read accesses it.
+/-- The shortest strict prefix of `steps` at which a live label has a site at `pos`: where the
+checker's path stops at a lent part (`Machine.movedPlace`: a place under a loan or a sealed fill
+does not exist, and its longest existing prefix, a fill, is accessed whole). -/
+def lentPrefix (s : SState) (pos : Pos) (steps : List Step) : Option (List Step) :=
+  ((List.range steps.length).map steps.take).find? fun ψ =>
+    s.liveLabels.any (s.reached pos fun ψ' => pathKey ψ' == pathKey ψ)
 
-As first written the drop accessed a borrow variable's whole content before ending its borrow, so
-it ended a reborrow of part of that content, which the checker keeps live: on the accepted `RJ`
-(`Regress/JoinBorrowRoot.lean`; the fourth lead) the write through the reborrow after the match was
-then lost, and the model made false an `Id` the checker proves by `refl`. -/
-noncomputable def joinAccess (s : SState) (pos : Pos) (steps : List Step) : SState :=
-  if steps.isEmpty && (s.shape pos).isSome then s else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)
+/-- `movedPlace`'s access of a lent prefix: the shortest strict prefix of the dropped place that
+holds a site of a live label, accessed whole (docs/31 D29, point 5 f). -/
+noncomputable def accessLentPrefix (pos : Pos) (steps : List Step) (s : SState) : SState :=
+  match lentPrefix s pos steps with
+  | some ψ => s.access pos (dataHit ψ)
+  | none => s
 
-theorem joinAccess_cases (s : SState) (pos : Pos) (steps : List Step) :
-    joinAccess K s pos steps = s ∨ joinAccess K s pos steps = s.access pos (obsAt K (s.tyAt pos).m steps wholeOb) := by
-  unfold joinAccess; split
-  · exact .inl rfl
-  · exact .inr rfl
+/-- `Machine.dropAtJoin` of one place, at `(pos, steps)`: missing, moved or a proof, nothing; a
+borrow at a root, its end; a copy, nothing; otherwise [Access] and `moved`. -/
+noncomputable def dropAt (q : Place) (pos : Pos) (steps : List Step) (s : SState) : SState :=
+  match Sem.follow K.dm K.Γ (s.tyAt pos).m (s.valAt pos (s.closedFuture φ)) steps with
+  | some (.proof, _) | some (.moved, _) | none => s
+  | some _ =>
+    match steps, s.shape pos with
+    | [], some l => s.endLabel l
+    | _, _ =>
+      if K.D.copy (K.D.placeDecl (scopeOf s) q) then s else
+      let s := s.access pos (dataHit steps)
+      s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s.tyAt pos).m (fun _ => .moved) steps (s.valAt pos φ')).getD .err
 
-/-- D84, the drop at the join, as `Machine.dropAtJoin` does it (mono-lemmas' review): every place
-some arm of the match moves (`Decisions.joinMoves`, static, given the places already moved at
-entry) is accessed, then set to `moved`; a place whose declared reading is copy, a proof, or a
-place already `⊥` is left alone; a borrow held at a dropped root ends (`endLabel`). `entry` is
-the set of places already moved when the match STARTED (`Machine.joinDrop` reads `staticJoin`
-before the arm runs: the audit's A6; read after it, a place moved before the match and refilled by
-the arm taken would not be dropped, though the join says it is moved). At a root
-this is below the state before; at a field place it is a real change, so the match step lemma
-is stated exact against the checker's drop, not below its input. -/
+/-- D84, the drop at the join, as the checker does it (`Machine.joinDrop`: `movedPlace`, then
+`dropAtJoin`), for every place some arm of the match moves (`Decisions.joinMoves`, static, given
+the places already moved at entry, read before the arm ran: the audit's A6):
+- a place under a lent part is reached as the arm that moves out of it reaches it: the shortest
+  lent prefix is accessed whole (`movedPlace`'s fill branch; docs/31 D29, point 5 f);
+- a place that is missing, moved or a proof is left alone;
+- a borrow held at a dropped root ends, and nothing it lends is accessed (D28 item 1: accessing
+  it first ended a reborrow of part of its content, which the checker keeps live);
+- a place whose declared reading is copy is left alone;
+- anything else is accessed (static) and set to `moved`.
+At a root this is below the state before; at a field place it is a real change, so the match
+step lemma is stated exact against the checker's drop. -/
 noncomputable def joinDrop (entry : List Place) (t : Term) (s : SState) : SState :=
   (K.D.joinMoves (scopeOf s) entry t).foldl (fun s q =>
-    if K.D.copy (K.D.placeDecl (scopeOf s) q) then s else
     match resolve s q with
-    | some (pos, steps) =>
-      let s := joinAccess K s pos steps
-      match Sem.follow K.dm K.Γ (s.tyAt pos).m (s.valAt pos (s.closedFuture φ)) steps with
-      | some (.proof, _) | some (.moved, _) | none => s
-      | some _ =>
-        let s := if steps.isEmpty then (match s.shape pos with | some l => s.endLabel l | none => s) else s
-        let T := (s.tyAt pos).m
-        let old := s.valAt pos
-        s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T (fun _ => .moved) steps (old φ')).getD .err
+    | some (pos, steps) => dropAt K φ q pos steps (accessLentPrefix pos steps s)
     | none => s) s
 
 /-- An observation for `Id` (docs/27 Def. 5, D84 [Obs-ref]): after the side's run, each borrow

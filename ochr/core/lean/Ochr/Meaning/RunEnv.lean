@@ -83,7 +83,7 @@ theorem envLe_foldl_endLabel : ∀ (ls : List Nat) (s : SState), EnvLe s (ls.fol
   | [], s => EnvLe.refl s
   | l :: ls, s => (envLe_endLabel s l).trans (envLe_foldl_endLabel ls _)
 
-theorem envLe_access (s : SState) (p : Pos) (o : Sem → Sem) : EnvLe s (s.access p o) := by
+theorem envLe_access (s : SState) (p : Pos) (hit : List Step → Bool) : EnvLe s (s.access p hit) := by
   rw [access_eq, foldl_range_iterR]
   generalize s.liveLabels.length = k
   induction k with
@@ -186,7 +186,24 @@ theorem borrowPlace_envLe {p : Place} {s s' : SState} {r : Res}
     simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
     rw [← h.2]
     exact e₁.trans ((EnvLe.of_env (s' := { s₁ with nextLoan := s₁.nextLoan + 1 }) rfl).trans
-      ((envLe_setAt _ _ _).trans (envLe_pushTempShaped _ _ _)))
+      (((envLe_setAt _ _ _).trans (envLe_pushTempShaped _ _ _)).trans (EnvLe.of_env rfl)))
+
+theorem accessLentPrefix_envLe (pos : Pos) (steps : List Step) (s : SState) : EnvLe s (accessLentPrefix pos steps s) := by
+  unfold accessLentPrefix
+  split
+  · exact envLe_access s pos _
+  · exact EnvLe.refl s
+
+theorem dropAt_envLe (q : Place) (pos : Pos) (steps : List Step) (s : SState) : EnvLe s (dropAt K φ q pos steps s) := by
+  unfold dropAt
+  split
+  all_goals first
+    | exact EnvLe.refl s
+    | (split
+       · exact envLe_endLabel _ _
+       · split
+         · exact EnvLe.refl s
+         · exact (envLe_access s pos _).trans (envLe_setAt _ _ _))
 
 theorem joinDrop_envLe (entry : List Place) (t : Term) (s : SState) : EnvLe s (joinDrop K φ entry t s) := by
   unfold joinDrop
@@ -197,29 +214,8 @@ theorem joinDrop_envLe (entry : List Place) (t : Term) (s : SState) : EnvLe s (j
     simp only [List.foldl_cons]
     refine EnvLe.trans ?_ (ih _)
     split
+    · exact (accessLentPrefix_envLe _ _ s).trans (dropAt_envLe K φ q _ _ _)
     · exact EnvLe.refl s
-    · split
-      · rename_i pos steps hr
-        have ea : EnvLe s (joinAccess K s pos steps) := by
-          rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
-          all_goals first | exact EnvLe.refl s | exact envLe_access s pos _
-        split
-        · exact ea
-        · exact ea
-        · exact ea
-        · have ee : EnvLe s (if steps.isEmpty = true then
-              (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
-              else joinAccess K s pos steps) := by
-            split
-            · split
-              · exact ea.trans (envLe_endLabel _ _)
-              · exact ea
-            · exact ea
-          generalize (if steps.isEmpty = true then
-              (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
-              else joinAccess K s pos steps) = s₂ at ee ⊢
-          exact ee.trans (envLe_setAt _ _ _)
-      · exact EnvLe.refl s
 
 theorem foldl_takeLabel_envLe : ∀ (ls : List Nat) (s : SState), EnvLe s (ls.foldl SState.takeLabel s)
   | [], s => EnvLe.refl s
@@ -241,6 +237,7 @@ theorem callOfL_envLe.{u} (Lv : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv :
       unfold callOfL at h; dsimp only at h; rw [happ] at h
       simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
       rw [← h.2]
+      refine EnvLe.trans ?_ (EnvLe.of_env (s := SState.pushTempShaped _ _ _) rfl)
       refine EnvLe.trans ?_ (envLe_pushTempShaped _ _ _)
       refine EnvLe.trans ?_ (envLe_mapVals _ _)
       exact (foldl_takeLabel_envLe _ s).trans (EnvLe.of_env rfl)

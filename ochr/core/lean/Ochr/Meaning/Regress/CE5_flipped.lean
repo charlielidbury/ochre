@@ -23,7 +23,8 @@ theorem filterMap_none {α β} (l : List α) : List.filterMap (fun _ => (none : 
 theorem liveLabels_noshape (s : SState) (h : s.shape = fun _ => none) : s.liveLabels = [] := by
   simp only [SState.liveLabels, h, filterMap_none, List.mergeSort_nil]
 
-theorem access_noshape (s : SState) (p : Pos) (h : s.shape = fun _ => none) (o : Sem → Sem := id) : s.access p o = s := by
+theorem access_noshape (s : SState) (p : Pos) (h : s.shape = fun _ => none) (hit : List Step → Bool := fun _ => true) :
+    s.access p hit = s := by
   simp [SState.access, liveLabels_noshape s h]
 
 theorem SM.bind_apply {α β : Type 3} (x : SM α) (f : α → SM β) (s : SState) :
@@ -40,24 +41,6 @@ def NoStmt (K : RunCtx) : Prop := ∀ sc t, K.D.flags sc t = (false, false)
 theorem stmtIf_noStmt (hfl : NoStmt K) (t : Term) (x : SM Res) (s : SState) :
     SM.erasedIf (K.D.flags (scopeOf s) t) x s = x s := by
   rw [hfl]; rfl
-
-/-- [Access] of a position whose meaning reads no label ends nothing. -/
-theorem access_const (s : SState) (p : Pos) (h : ∀ ψ ψ', s.valAt p ψ = s.valAt p ψ') (o : Sem → Sem := id) :
-    s.access p o = s := by
-  have hround : SState.accessRound p o s = s := by
-    have hf : (s.liveLabels.filter fun l => decide (s.obsDep p o l)) = [] := by
-      apply List.filter_eq_nil_iff.mpr
-      intro l _
-      simp only [decide_eq_true_eq]
-      rintro ⟨ψ, x, hne⟩
-      exact hne (congrArg o (h _ _))
-    unfold SState.accessRound
-    rw [hf]; rfl
-  rw [SState.access_eq_rounds]
-  generalize List.range s.liveLabels.length = ns
-  induction ns with
-  | nil => rfl
-  | cons _ ns ih => rw [List.foldl_cons, hround]; exact ih
 
 theorem run_letIn (hfl : NoStmt K) (h : Hint) (u w : Term) (hint : TyS) (s : SState) :
     run K ρ φ hint (.letIn h u w) s = (run K ρ φ (.plain .err) u s).bind (fun x =>
@@ -129,7 +112,7 @@ theorem run_assign (hfl : NoStmt K) (p : Place) (u : Term) (hint : TyS) (s : SSt
       match resolve s p with
       | none => none
       | some (pos, steps) =>
-        let s := if steps.isEmpty && (s.shape pos).isSome then s else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)
+        let s := if steps.isEmpty && (s.shape pos).isSome then s else s.access pos (dataHit steps)
         let s := if steps.isEmpty then (match s.shape pos with | some l => s.endLabel l | none => s) else s
         match setContent K φ pos steps v s with
         | none => none
@@ -146,7 +129,8 @@ noncomputable def b2 (n : Nat) : SState :=
                         xB K n],
               temps := [fun _ => .el0 Nat 0] }],
     shape := fun p => if p = .temp 0 0 then some n else none,
-    nextLoan := n + 1 }
+    nextLoan := n + 1,
+    lent := fun m => if m = n then [⟨.bind 0 0, [], false⟩] else [] }
 
 theorem borrow_b1 (n : Nat) : borrowPlace K φ (.var 1) (b1 K n) = some ((.el0 Nat 0, { TyS.plain (.ty0 Nat) with label := some n }), b2 K n) := by
   show (match contentOf K φ (.var 1) (b1 K n) with
@@ -157,7 +141,7 @@ theorem borrow_b1 (n : Nat) : borrowPlace K φ (.var 1) (b1 K n) = some ((.el0 N
         let old := s.valAt pos
         let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .err
         let s := s.pushTempShaped (fun _ => v) l
-        some ((v, { T with label := some l }), s)
+        some ((v, { T with label := some l }), s.setLent l [⟨pos, steps, false⟩])
       | none => none) = _
   rw [content_b1_y]
   simp only [Sem.whole, not_true_eq_false, ite_false]
@@ -186,7 +170,8 @@ noncomputable def b5 (n : Nat) : SState :=
 /-- After `&y`, the access of `x` ends nothing: `x` reads no label. -/
 theorem content_b2_x (n : Nat) : contentOf K φ (.var 0) (b2 K n) = some ((.el0 Nat 0, .plain (.ty0 Nat), .bind 0 1, []), b2 K n) := by
   have hr : resolve (b2 K n) (.var 0) = some (.bind 0 1, []) := rfl
-  have ha : ∀ o, (b2 K n).access (.bind 0 1) o = b2 K n := fun o => access_const _ _ (fun _ _ => rfl) o
+  have ha : ∀ hit, (b2 K n).access (.bind 0 1) hit = b2 K n := fun hit =>
+    SState.access_of_unreached _ _ _ fun y _ => by simp [SState.reached, b2]
   simp only [contentOf, hr, ha]
   rfl
 
@@ -197,7 +182,8 @@ theorem assign_b1 (hfl : NoStmt K) (n : Nat) (hint : TyS) :
   rw [run_borrow K ρ φ hfl, borrow_b1]
   dsimp only [Bind.bind, Option.bind]
   have hr : resolve (b2 K n) (.var 0) = some (.bind 0 1, []) := rfl
-  have ha : ∀ o, (b2 K n).access (.bind 0 1) o = b2 K n := fun o => access_const _ _ (fun _ _ => rfl) o
+  have ha : ∀ hit, (b2 K n).access (.bind 0 1) hit = b2 K n := fun hit =>
+    SState.access_of_unreached _ _ _ fun y _ => by simp [SState.reached, b2]
   rw [hr]
   dsimp only
   rw [show (b2 K n).shape (.bind 0 1) = none from rfl]
@@ -252,12 +238,13 @@ theorem liveLabels_b6 (n : Nat) : (b6 K n).liveLabels = [] := by
 theorem content_b6 (n : Nat) : contentOf K φ (.var 0) (b6 K n) = some ((φ n, (yB K n).ty, .bind 0 0, []), b6 K n) := by
   have hr : resolve (b6 K n) (.var 0) = some (.bind 0 0, []) := by
     simp [resolve, Place.steps, SState.varPos, env_b6, SState.topIdx]
-  have ha : ∀ o, (b6 K n).access (.bind 0 0) o = b6 K n := by
-    intro o; simp [SState.access, liveLabels_b6]
+  have ha : ∀ hit, (b6 K n).access (.bind 0 0) hit = b6 K n := by
+    intro hit; simp [SState.access, liveLabels_b6]
   simp only [contentOf, hr, ha]
   have hv : (b6 K n).valAt (.bind 0 0) = (yB' K n).val := by simp [SState.valAt, env_b6]
   have ht : (b6 K n).tyAt (.bind 0 0) = (yB K n).ty := by simp [SState.tyAt, env_b6, yB']
-  rw [hv, ht]
+  have hcf : (b6 K n).closedFuture φ = φ := by simp [SState.closedFuture, liveLabels_b6]
+  rw [hv, ht, hcf]
   rfl
 
 
