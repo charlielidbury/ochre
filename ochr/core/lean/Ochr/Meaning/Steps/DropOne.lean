@@ -70,12 +70,16 @@ theorem mean_updAt_bot_sealed (H : TyS) (steps : List Step) (v v' : Value)
   sorry
 
 /-- **(WF13) gives the path's data agreement**: at a `Good` state, the value at a binding agrees
-along any path of field steps with the reference's type of the binding (`Rel.skel` makes it the
-checker's hint), at every future. Open: `DataAll` → `DataOn` is by induction on the path; the
-reference's type is the checker's by `skel` (`bindSkel` compares `m` and `data`). -/
+along a path of field steps with the reference's type of the binding (`Rel.skel` makes it the
+checker's hint), at every future, where the fields before each one stepped into are whole
+(`WholeAlong`). Where an earlier field on the path is moved and a later field's declared type reads
+it, the reference decodes the later field at junk parameters: D29's row-4 residual, outside this
+statement and open (`dropOne_step` is false there if such a drop is reachable). Open: `DataAll` →
+`DataOn` by induction on the path; the reference's type is the checker's by `skel`. -/
 theorem dataOn_of_wf13 (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2))
-    (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (ψ : Future) :
+    (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (ψ : Future)
+    (hwhole : WholeAlong K.dm K.M K.Γ ρ ψ q.steps.2 (valAt st.env pos)) :
     DataOn K.dm K.M K.Γ ρ ψ (s.tyAt pos) q.steps.2 (valAt st.env pos) := by
   sorry
 

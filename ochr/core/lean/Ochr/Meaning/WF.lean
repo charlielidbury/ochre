@@ -180,8 +180,11 @@ def WF12 (env : Env) : Prop :=
 
 /-- A value agrees with the structured type it is read at, on every path (docs/31 D31): at a
 constructor value the type names the value's own declaration (data, not `Prop`) at its recorded
-parameters' meanings, and each field agrees with the hint its declaration reads it at; at `S` the
-type is the number type; marks and borrows are transparent. -/
+parameters' meanings, and each field after whole earlier fields agrees with the hint its
+declaration reads it at; at `S` the type is the number type; marks and borrows are transparent.
+A field after a moved one is not constrained: its declared type may read the moved field, so its
+hint names junk parameters (the checker types such a field by its content, `valType?`); the
+reference's way into it is D29's row-4 residual, not this clause's. -/
 def DataAll (ρ : Assignment) (φ : Future) : TyS → Value → Prop
   | H, .borrow _ w => DataAll ρ φ H w
   | H, .gloan _ w => DataAll ρ φ H w
@@ -190,6 +193,7 @@ def DataAll (ρ : Assignment) (φ : Future) : TyS → Value → Prop
     ∃ d, Γ.find? (·.name == ty) = some d ∧ d.sort ≠ 0 ∧
       H.dataDecl Γ = some (d, Value.meanParams dm C Γ ρ φ d 0 [] ps) ∧
       ∀ i w, fs[i]? = some w →
+        (∀ e ∈ (Value.meanFields dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c 0 [] fs).take i, e.whole) →
         DataAll ρ φ (fieldHint dm d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c i
           ((Value.meanFields dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c 0 [] fs).take i)) w
   | _, _ => True
