@@ -470,7 +470,7 @@ theorem setAt_moved_below (s : SState) (p : Pos) : Below (s.setAt p fun _ => .mo
 end SState
 
 /-- Updating through `*`s only is updating the whole value (`*` is the identity on meanings). -/
-theorem Sem.updAt_derefs (dm : DataModel) (Γ : List IndDecl) (T : TyM) (f : Sem → Sem) :
+theorem Sem.updAt_derefs (dm : DataModel) (Γ : List IndDecl) (T : TyS) (f : Sem → Sem) :
     ∀ (steps : List Step) (v : Sem), (∀ st ∈ steps, st = .deref) → Sem.updAt dm Γ T f steps v = some (f v)
   | [], _, _ => rfl
   | .deref :: sts, v, h => by
@@ -494,8 +494,8 @@ theorem Sem.ctor_not_le_el0 {ty : String} {c : Nat} {fs : List Sem} {A : Type} {
 /-- Dropping a field of a whole constructor value (an element `el0` of a carrier, as every whole
 data value is, D3) yields an untyped tuple, so it is not below the value, for every data model:
 the mechanism of `joinDrop_not_below`. (The same holds for a named field `.field g`.) -/
-theorem Sem.updAt_field_not_le (dm : DataModel) (Γ : List IndDecl) (T : TyM) (i : Nat) (A : Type)
-    (x : A) (w : Sem) (hT : T ≠ .ty0 Nat)
+theorem Sem.updAt_field_not_le (dm : DataModel) (Γ : List IndDecl) (T : TyS) (i : Nat) (A : Type)
+    (x : A) (w : Sem) (hT : T.m ≠ .ty0 Nat)
     (hw : Sem.updAt dm Γ T (fun _ => .moved) [.proj i] (.el0 A x) = some w) : ¬ w ⊑ .el0 A x := by
   rw [Sem.updAt.eq_def] at hw
   simp only [if_neg hT] at hw
@@ -505,7 +505,7 @@ theorem Sem.updAt_field_not_le (dm : DataModel) (Γ : List IndDecl) (T : TyM) (i
     · next c fs _ =>
       split at hw
       · next fi hfi =>
-        have e0 : Sem.updAt dm Γ (dm.fieldTy d ps c i (List.take i fs)) (fun _ => .moved) [] fi =
+        have e0 : Sem.updAt dm Γ (fieldHint dm d ps c i (List.take i fs)) (fun _ => .moved) [] fi =
             some .moved := rfl
         rw [e0, Option.map_some, Option.some.injEq] at hw
         subst hw
@@ -523,9 +523,9 @@ theorem Sem.updAt_field_not_le (dm : DataModel) (Γ : List IndDecl) (T : TyM) (i
 theorem setAt_derefs_below (K : RunCtx) (s : SState) (pos : Pos) (steps : List Step)
     (hd : ∀ st ∈ steps, st = .deref) :
     Below (s.setAt pos fun φ' =>
-      (Sem.updAt K.dm K.Γ (s.tyAt pos).m (fun _ => .moved) steps (s.valAt pos φ')).getD .err).toMean
+      (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => .moved) steps (s.valAt pos φ')).getD .err).toMean
       s.toMean := by
-  have e : (fun φ' => (Sem.updAt K.dm K.Γ (s.tyAt pos).m (fun _ => .moved) steps (s.valAt pos φ')).getD .err) =
+  have e : (fun φ' => (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => .moved) steps (s.valAt pos φ')).getD .err) =
       fun _ => .moved := by
     funext φ'
     rw [Sem.updAt_derefs _ _ _ _ steps _ hd]
@@ -626,9 +626,13 @@ noncomputable def K : RunCtx where
          clo := fun _ _ _ _ _ => .err, pi := fun _ _ _ _ _ => .err, paramTy := fun _ _ _ _ => .plain .err }
   D := D
 
+/-- The type `P`: carrier `Unit`, named `P` (its structured data, D8, by which a value is
+decoded, docs/31 D31). -/
+def tP : TyS := ⟨.ty0 Unit, none, none, some ("P", [])⟩
+
 /-- One frame, one binding `x : P` holding the whole value `P((), ())`. -/
 def s : SState :=
-  { env := [{ binds := [{ ty := .plain (.ty0 Unit), val := fun _ => .el0 Unit () }] }], shape := fun _ => none,
+  { env := [{ binds := [{ ty := tP, val := fun _ => .el0 Unit () }] }], shape := fun _ => none,
     nextLoan := 0 }
 
 theorem unit_ne_nat : TyM.ty0 Unit ≠ .ty0 Nat := fun h => by
@@ -638,25 +642,21 @@ theorem unit_ne_nat : TyM.ty0 Unit ≠ .ty0 Nat := fun h => by
   simp only [cast_cast, cast_eq] at h2
   exact absurd h2 (by decide)
 
-theorem params_isSome : ∃ ps, dm.paramsOf decl (.ty0 Unit) = some ps := ⟨_, dif_pos ⟨[], rfl⟩⟩
-
-theorem dataOf_eq (ps : List Sem) (hps : dm.paramsOf decl (.ty0 Unit) = some ps) :
-    TyM.dataOf dm [decl] (.ty0 Unit) = some (decl, ps) := by
-  simp [TyM.dataOf, hps]
+theorem dataDecl_eq : TyS.dataDecl [decl] tP = some (decl, []) := rfl
 
 theorem fieldsOf_eq (ps : List Sem) :
     dm.fieldsOf decl ps (.el0 Unit ()) = some (0, [.el0 Unit (), .el0 Unit ()]) := dif_pos rfl
 
-theorem drop_isSome : ∃ w, Sem.updAt dm [decl] (.ty0 Unit) (fun _ => .moved) [.proj 0] (.el0 Unit ()) = some w := by
-  obtain ⟨ps, hps⟩ := params_isSome
+theorem drop_isSome : ∃ w, Sem.updAt dm [decl] tP (fun _ => .moved) [.proj 0] (.el0 Unit ()) = some w := by
   rw [Sem.updAt.eq_def]
-  simp only [if_neg unit_ne_nat, dataOf_eq ps hps, fieldsOf_eq ps]
+  simp only [show tP.m = .ty0 Unit from rfl, if_neg unit_ne_nat, dataDecl_eq, fieldsOf_eq]
   exact ⟨_, rfl⟩
 
 /-- Following `x.0` reaches the whole field `()`: the drop is not skipped. -/
-theorem follow_eq : Sem.follow dm [decl] (.ty0 Unit) (.el0 Unit ()) [.proj 0] = some (.el0 Unit (), .ty0 Unit) := by
-  obtain ⟨ps, hps⟩ := params_isSome
-  simp only [Sem.follow, Sem.step.eq_def, if_neg unit_ne_nat, Sem.stepField, dataOf_eq ps hps, fieldsOf_eq ps]
+theorem follow_eq : Sem.follow dm [decl] tP (.el0 Unit ()) [.proj 0] =
+    some (.el0 Unit (), fieldHint dm decl [] 0 0 []) := by
+  simp only [Sem.follow, Sem.step.eq_def, show tP.m = .ty0 Unit from rfl, if_neg unit_ne_nat, Sem.stepField,
+    dataDecl_eq, fieldsOf_eq]
   rfl
 
 /-- No label is live in `s`, so [Access] does nothing. -/
@@ -683,7 +683,7 @@ theorem joinDrop_not_below (φ : Future) (entry : List Place) (t : Term) :
       simp [lentPrefix, h]
     simp only [K, D, List.foldl_cons, List.foldl_nil, Bool.false_eq_true, if_false, hres, accessLentPrefix, hlp, dropAt,
       access_eq]
-    have e1 : (s.tyAt (.bind 0 0)).m = .ty0 Unit := rfl
+    have e1 : s.tyAt (.bind 0 0) = tP := rfl
     have e2 : s.valAt (.bind 0 0) = fun _ => .el0 Unit () := rfl
     have e3 : [Step.proj 0].isEmpty = false := rfl
     simp only [e1, e2, e3, follow_eq, Bool.false_eq_true, if_false, hw, Option.getD_some]
@@ -691,7 +691,7 @@ theorem joinDrop_not_below (φ : Future) (entry : List Place) (t : Term) :
   obtain ⟨φ, hle, _⟩ := h noFuture
   have hx := hle (.bind 0 0)
   rw [hj] at hx
-  exact Sem.updAt_field_not_le dm [decl] (.ty0 Unit) 0 Unit () w unit_ne_nat hw hx
+  exact Sem.updAt_field_not_le dm [decl] tP 0 Unit () w unit_ne_nat hw hx
 
 end JoinDropCounterexample
 
@@ -1437,7 +1437,7 @@ theorem SVal.dependsOn_comp {v : SVal} {G : Sem → Sem} {l : Nat}
   obtain ⟨φ, x, hne⟩ := h
   exact hne (by simp only [SVal.not_dependsOn hv])
 
-theorem SVal.dependsOn_updAt {dm : DataModel} {Γ : List IndDecl} {T : TyM} {f : Sem → Sem}
+theorem SVal.dependsOn_updAt {dm : DataModel} {Γ : List IndDecl} {T : TyS} {f : Sem → Sem}
     {steps : List Step} {v : SVal} {l : Nat}
     (h : SVal.DependsOn (fun φ => (Sem.updAt dm Γ T f steps (v φ)).getD .err) l) : v.DependsOn l :=
   SVal.dependsOn_comp (G := fun w => (Sem.updAt dm Γ T f steps w).getD .err) h

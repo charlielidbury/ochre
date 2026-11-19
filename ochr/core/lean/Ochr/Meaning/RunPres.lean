@@ -124,8 +124,8 @@ theorem setContent_rinv {pos : Pos} {steps : List Step} {v : Sem} {s s' : SState
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨_, rfl⟩ := h
-    refine ⟨setAt_rinv hi pos _ ((hi.1 pos).comp (fun x => (Sem.updAt K.dm K.Γ (s.tyAt pos).m (fun _ => v) steps x).getD .err))
-        (fun x hx => (hi.2.1 pos x ?_ hx).comp (fun x => (Sem.updAt K.dm K.Γ (s.tyAt pos).m (fun _ => v) steps x).getD .err)),
+    refine ⟨setAt_rinv hi pos _ ((hi.1 pos).comp (fun x => (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => v) steps x).getD .err))
+        (fun x hx => (hi.2.1 pos x ?_ hx).comp (fun x => (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => v) steps x).getD .err)),
       shape_setAt' _ _ _, positions_setAt _ _ _⟩
     exact (hi.2.2 pos x hx).1
   · cases h
@@ -209,7 +209,7 @@ theorem borrowPlace_rinv {p : Place} {s s' : SState} {r : Res}
     refine ⟨writeFresh_park_rinv ⟨h1, h2, hsa⟩ pos _ s₁.nextLoan v hne
       (fun q x hq => (hi₁.2.2 q x hq).2) (Nat.lt_succ_self _) ?_ ?_, ?_⟩
     · exact ((h1 pos).withLabel s₁.nextLoan
-          (fun a b => (Sem.updAt K.dm K.Γ (s₁.tyAt pos).m (fun _ => a) steps b).getD .err)).mono fun y hy => by
+          (fun a b => (Sem.updAt K.dm K.Γ (s₁.tyAt pos) (fun _ => a) steps b).getD .err)).mono fun y hy => by
         rcases hy with hy | rfl
         · rcases hy with hL | hl
           · exact .inl hL
@@ -217,7 +217,7 @@ theorem borrowPlace_rinv {p : Place} {s s' : SState} {r : Res}
         · exact .inr (.inr rfl)
     · intro x hx
       exact ((h2 pos x hpos hx).withLabel s₁.nextLoan
-          (fun a b => (Sem.updAt K.dm K.Γ (s₁.tyAt pos).m (fun _ => a) steps b).getD .err)).mono fun y hy => by
+          (fun a b => (Sem.updAt K.dm K.Γ (s₁.tyAt pos) (fun _ => a) steps b).getD .err)).mono fun y hy => by
         rcases hy with hy | rfl
         · rcases hy with h' | h'
           · exact .inl h'
@@ -242,13 +242,13 @@ theorem accessLentPrefix_rinv {pos : Pos} {steps : List Step} {s : SState} (hi :
 
 /-- Setting a place to `moved` at its path keeps the invariant. -/
 theorem setMoved_rinv (pos : Pos) (steps : List Step) {s₂ : SState} (hie : RInv L s₂) :
-    RInv L (s₂.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps (s₂.valAt pos φ')).getD .err) :=
+    RInv L (s₂.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s₂.tyAt pos) (fun _ => .moved) steps (s₂.valAt pos φ')).getD .err) :=
   setAt_rinv hie pos _
-    ((hie.1 pos).comp (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps x).getD .err))
+    ((hie.1 pos).comp (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos) (fun _ => .moved) steps x).getD .err))
     (fun x hx => by
       by_cases hp : pos ∈ s₂.positions
       · exact (hie.2.1 pos x hp hx).comp
-          (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps x).getD .err)
+          (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos) (fun _ => .moved) steps x).getD .err)
       · exact absurd (hie.2.2 pos x hx).1 hp)
 
 /-- The drop of one place keeps the invariant: an end, or an access and `moved` at its path. -/
@@ -433,10 +433,10 @@ theorem lou_dropLast {s : SState} {y : Nat} (hy : LoU1 s y)
   · exact .inr (indep_dropLast hu)
 
 theorem setMoved_lou (pos : Pos) (steps : List Step) {s₂ : SState} {y : Nat} (hye : LoU1 s₂ y) :
-    LoU1 (s₂.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps (s₂.valAt pos φ')).getD .err) y :=
+    LoU1 (s₂.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s₂.tyAt pos) (fun _ => .moved) steps (s₂.valAt pos φ')).getD .err) y :=
   lou_setAt hye pos _ fun hu ψ c => by
-    show (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps (s₂.valAt pos (ψ.upd y c))).getD .err
-      = (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps (s₂.valAt pos ψ)).getD .err
+    show (Sem.updAt K.dm K.Γ (s₂.tyAt pos) (fun _ => .moved) steps (s₂.valAt pos (ψ.upd y c))).getD .err
+      = (Sem.updAt K.dm K.Γ (s₂.tyAt pos) (fun _ => .moved) steps (s₂.valAt pos ψ)).getD .err
     rw [hu pos ψ c]
 
 theorem accessLentPrefix_lou {pos : Pos} {steps : List Step} {s : SState} (hi : RInv L s) {y : Nat} (hy : LoU1 s y) :

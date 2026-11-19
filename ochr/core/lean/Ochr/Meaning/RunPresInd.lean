@@ -330,8 +330,8 @@ theorem assign_mid {s₂ s₄ : SState} (hi₂ : RInv L s₂) {pos : Pos} (hpos�
       fun q hq => by rw [e]; exact valAt_setAt_ne _ _ _ _ (fun e' => hq e'.symm), fun hnil ψ => ?_⟩
     · rw [e]
       exact lou_setAt (hy₃ y hy) pos _ fun hu ψ c => by
-        show (Sem.updAt K.dm K.Γ (s₃.tyAt pos).m (fun _ => v) steps (s₃.valAt pos (ψ.upd y c))).getD .err
-          = (Sem.updAt K.dm K.Γ (s₃.tyAt pos).m (fun _ => v) steps (s₃.valAt pos ψ)).getD .err
+        show (Sem.updAt K.dm K.Γ (s₃.tyAt pos) (fun _ => v) steps (s₃.valAt pos (ψ.upd y c))).getD .err
+          = (Sem.updAt K.dm K.Γ (s₃.tyAt pos) (fun _ => v) steps (s₃.valAt pos ψ)).getD .err
         rw [hu pos ψ c]
     · subst hnil
       rw [e, valAt_setAt_self _ _ _ hpos₃]; rfl
@@ -383,7 +383,7 @@ theorem contentOf_lou {p : Place} {s s' : SState} {x : Sem × TyS × Pos × List
     · cases h
 
 /-- A match's [Access] for the tag: the state after is the accessed one. -/
-theorem tagOf_some {p : Place} {tag : Sem → TyM → Sem} {s s' : SState} {tg : Sem}
+theorem tagOf_some {p : Place} {tag : Sem → TyS → Sem} {s s' : SState} {tg : Sem}
     (h : tagOf K φ p tag s = some (tg, s')) :
     ∃ pos steps, resolve s p = some (pos, steps) ∧ s' = s.access pos (tagHit steps) := by
   unfold tagOf at h
@@ -395,7 +395,7 @@ theorem tagOf_some {p : Place} {tag : Sem → TyM → Sem} {s s' : SState} {tg :
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     exact ⟨pos, steps, rfl, h.2.symm⟩
 
-theorem tagOf_rinv {p : Place} {tag : Sem → TyM → Sem} {s s' : SState} {tg : Sem}
+theorem tagOf_rinv {p : Place} {tag : Sem → TyS → Sem} {s s' : SState} {tg : Sem}
     (h : tagOf K φ p tag s = some (tg, s')) (hi : RInv L s) : RInv L s' ∧ EnvLe s s' ∧ OrdKeep L s s' := by
   obtain ⟨pos, steps, -, rfl⟩ := tagOf_some K φ h
   exact ⟨access_rinv hi pos _, envLe_access s pos _, ordKeep_access hi pos _⟩
