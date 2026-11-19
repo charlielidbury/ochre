@@ -65,11 +65,9 @@ check D66 and D48, and no step puts `&` below the top of a type. -/
 theorem eval_wf78 (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : eval_wf78_stmt K ρ φ (fuel + 1) := by
   sorry
 
-/-- Types are hole-free at every reachable state (docs/27 Lemma 5): no stored type, type of an
-unknown, record or goal holds a live loan. Stated as the invariant the step lemmas carry; it is
-what lets types be read under `noFuture`. -/
-theorem types_holeFree (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : types_holeFree_stmt K ρ φ (fuel + 1) := by
-  sorry
+/-- Types and records hold no loan at every `Good` state: (WF11), a clause of `Good`. -/
+theorem types_holeFree (fuel : Nat) (_ih : ∀ ρ φ, StepsIH K ρ φ fuel) : types_holeFree_stmt K ρ φ (fuel + 1) :=
+  fun _ hg _ => hg.2.2.2.2.2.2.2.2.2.2.2
 
 end
 

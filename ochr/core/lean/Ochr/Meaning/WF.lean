@@ -94,6 +94,13 @@ def WF6 (st : MState) : Prop :=
   st.absTy.size ≤ st.nextAbs ∧
   ∀ v ∈ Env.values st.env, ∀ l ∈ v.loans, l < st.nextLoan
 
+/-- The label `l` occurs in Ω: some value at a position holds a loan of `l` or a borrow labelled
+`l`, anywhere inside it. (What `Rel` asks the renaming of labels to cover: a label the checker
+issued inside a private copy occurs nowhere after it, docs/31 D23.) -/
+def _root_.Ochr.MState.Occurs (st : MState) (l : Nat) : Prop :=
+  ∃ v ∈ Env.values st.env,
+    v.anyAtom (fun a => a == .loan l || (match a with | .borrow l' _ => l' == l | _ => false)) = true
+
 section
 variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl)
 
@@ -133,10 +140,33 @@ reads the hint only through a sealed program (`Lemmas.hintFree_of_recorded`), wh
 substitution lemmas' `HintFree` needs of a borrow's content at [End]. -/
 def WF10 (st : MState) : Prop := ∀ v ∈ Env.values st.env, v.anyAtom (Value.bareCtor Γ) = false
 
+/-- (WF11) Types and records hold no loan (docs/27 Lemma 5, "types are hole-free", made a clause;
+docs/31 D23, third lead): no stored or deferred type of a binding, no type of an unknown, not the
+goal, and no generalisation or η record holds a loan anywhere, a sealed program's holes included.
+
+Three things rest on it and none could be derived before it was a clause. A type and a record are
+read at the constant future (`Value.tyS`, `TypedAssignment.neutral`), which is the reading at the
+run's future only for a value with no loan. [End] substitutes a loan in Ω's values alone
+(`substEnv … false`), so a loan in a type or a record would outlive its borrow. And what survives
+a private copy beside the restored Ω is exactly the records and the types of the unknowns created
+inside (`restoreKeep`), so with this clause no label issued inside a copy is anywhere in the state
+after it (`Steps/Sim.lean`, `private_copy_no_label`): prerequisite (b) of the migration.
+
+`types_holeFree_stmt` used to state the types' half as a consequence of `Good` (and for LIVE
+loans only), which `Good` did not imply. -/
+def WF11 (st : MState) : Prop :=
+  (∀ (f i : Nat) (b : Binding), st.env[f]?.bind (fun fr => fr.binds[i]?) = some b →
+    (∀ T, b.ty = some T → ∀ l, T.hasLoan l = false) ∧
+    (∀ P ws j, b.lazyTy = some (P, ws, j) → ∀ l, P.hasLoan l = false ∧ ∀ w ∈ ws, w.hasLoan l = false)) ∧
+  (∀ T ∈ st.absTy.toList, ∀ l, T.hasLoan l = false) ∧
+  (∀ G, st.goal = some G → ∀ l, G.hasLoan l = false) ∧
+  (∀ n σ, (n, σ) ∈ st.neutrals → ∀ l, n.hasLoan l = false) ∧
+  (∀ σ v, (σ, v) ∈ st.etaRefs → ∀ l, v.hasLoan l = false)
+
 /-- Well-formedness, part (c) of the main theorem. -/
 def WF (ρ : Assignment) (st : MState) : Prop :=
   WF1 st.env ∧ WF2 st.env ∧ WF3 st.env ∧ WF4 st.env ∧ WF6 st ∧ WF7 dm C Γ ρ st ∧ WF8 st ∧ WF9 dm C Γ ρ st ∧
-  WF10 Γ st
+  WF10 Γ st ∧ WF11 st
 
 /-! ## Typed assignments, typed futures, membership -/
 

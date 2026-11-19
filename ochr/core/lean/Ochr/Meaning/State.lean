@@ -86,6 +86,20 @@ noncomputable def _root_.Ochr.Value.tyS (ρ : Assignment) (T : Value) : TyS :=
     shape := C.tyShape ρ T,
     data := Value.tyData dm C Γ ρ T }
 
+/-- A type with the structure the run carries for a value HELD at it (docs/31 D22, the run's
+convention: the run of a type term returns the structure of the type it denotes in the type of
+its result, a universe, and a `let` binds the alias at that): a binding that holds a Π-type value
+carries that Π-type's shape, one that holds `D(ā)` its data; any other value leaves the type as
+it is. Without it a checker binding `T : Type` holding a Π-type had no shape when read as a
+reference state, where the reference's own binding of the same `let` has one, and
+`let g : T = f; g(n)` failed from the one and ran from the other (the audit's A19,
+`Regress/ShapeAgree.lean`). -/
+noncomputable def _root_.Ochr.Value.strS (ρ : Assignment) (v : Value) (T : TyS) : TyS :=
+  match v with
+  | .tPi caps t rd => { T with shape := C.tyShape ρ (.tPi caps t rd) }
+  | .tInd n args => { T with data := Value.tyData dm C Γ ρ (.tInd n args) }
+  | _ => T
+
 /-- The type a position's value is read at (docs/31 D8): the binding's stored type, or `err` for
 a temporary or an untyped slot. Types are read under the constant future, since no stored type
 holds a live loan (docs/27 Lemma 5). -/
