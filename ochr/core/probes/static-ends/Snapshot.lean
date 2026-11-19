@@ -13,6 +13,6 @@ ochr Snap uses Nats {
   )
 }
 ochr SnapRuns uses Nats, Snap {
-  def EKRun : Unit := EK(1, 0)
-  def EKRun0 : Unit := EK(0, 0)
+  reject def EKRun : Unit := EK(1, 0)
+  reject def EKRun0 : Unit := EK(0, 0)
 }

@@ -411,13 +411,17 @@ ochr ClosingOff uses Logic, Nats, Fixtures {
 }
 
 
-/-! ## Symbolic checking is not the same as checking every instance
+/-! ## Borrow ends agree on every path
 
-At an abstract `n`, `Fixtures`' `Pick` returns a borrow that may point into `a` or into `b`, so its
-hole is in both. Reading `b` then ends it, and the write through `r` in arm `Z` fails. At
-each concrete `n` the program is fine. The checker is sound but rejects `PickEarly`: the
-symbolic run agrees with the concrete ones only up to which borrows have ended (the
-paper's §7, "naturality up to resolution"). -/
+`Fixtures`' `Pick` returns a borrow, so it lends that borrow both `a` and `b`, as Rust's
+`fn pick<'a>(n: u32, x: &'a mut u32, y: &'a mut u32) -> &'a mut u32` does, whatever `n` is:
+at an abstract `n`, where the call is stuck and each place holds a sealed program with the
+borrow's hole, and at each concrete `n`, where the call runs and the borrow points into one of
+them (D90). Reading `b` ends it, and the write through `r` in arm `Z` fails, at every `n`. So
+`PickEarly` is rejected, and so is its instance `PickEarly0` at `n = 0`, which was accepted
+until D90 (the symbolic run then agreed with the concrete ones only up to which borrows had
+ended, and an accepted definition could fail when called: `StaticEnds` in
+`ReturnedBorrows.lean`). Rust rejects both. -/
 
 ochr Naturality uses Fixtures {
   reject def PickEarly (n : Nat) (a : Nat) (b : Nat) : Unit := (
@@ -438,7 +442,9 @@ ochr Naturality uses Fixtures {
     }
   )
 
-  def PickEarly0 (a : Nat) (b : Nat) : Unit := (
+  -- D90: `b` is lent to `r` though `Pick(0, …)` points into `a`, so reading `b` ends `r` and
+  -- the write through it fails, as at an abstract `n` (accepted before D90)
+  reject def PickEarly0 (a : Nat) (b : Nat) : Unit := (
     let n = 0;
     let r = Pick(clone(n), &a, &b);
     let z = b;
@@ -448,6 +454,7 @@ ochr Naturality uses Fixtures {
     }
   )
 
+  -- at `n = 1` arm `Z` does not run, so the ended borrow is never used
   def PickEarly1 (a : Nat) (b : Nat) : Unit := (
     let n = 1;
     let r = Pick(clone(n), &a, &b);
@@ -458,6 +465,10 @@ ochr Naturality uses Fixtures {
     }
   )
 }
+
+#guard (run "Naturality" Naturality).rejectedWith [
+  ("PickEarly", "no such place *r: its path does not exist in ⊥"),
+  ("PickEarly0", "no such place *r: its path does not exist in ⊥")]
 
 
 /-! ## A stuck block's captures over-approximate every arm (notes/erasure-model.md, K1)
