@@ -430,10 +430,15 @@ ochr StaticEndsRuns uses Nats, Fixtures, StaticEnds {
   def GJIRun : Unit := GJI(0, 1, refl, 5)
   def EJJRun : Nat × Nat := EJJ(0, refl, 1, (1, 2))
   def G1OkRun : Unit := G1Ok(0, 1, (1, 2), (3, 4))
+  -- the closed call of the rejected G1 (accepted on main, where G1 was, and rejected there by
+  -- its run: the fault)
+  reject def G1Run : Unit := G1(0, 1, (1, 2), (3, 4))
   def G4Run : Unit := G4(1, 0)
   def G4Run0 : Unit := G4(0, 0)
   def G3OkRun : Unit := G3Ok(1, 0, 0)
 }
+
+#guard (run "StaticEndsRuns" StaticEndsRuns).rejectedWith [("G1Run", "unknown constant G1")]
 
 #guard (run "StaticEnds" StaticEnds).rejectedWith [
   ("PickZ", "no such place *r: its path does not exist in ⊥"),

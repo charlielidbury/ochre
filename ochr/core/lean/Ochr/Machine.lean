@@ -61,6 +61,9 @@ def firstLiveLoanOnPath (env : Env) : Value → List Step → Option Nat
   | .loan l, _ => if liveLoan env l then some l else none
   -- static ends: a place lent to a returned borrow is on the path of every access below it
   | .gloan l w, ss => if liveLoan env l then some l else firstLiveLoanOnPath env w ss
+  -- static ends: a place below a sealed program (a stuck call's fill) lies at an unknown position
+  -- inside it, so the program's holes are on its path (as for matching, D29), as a mark is
+  | v@(.sealed _), _ :: _ => (liveLoansIn env v).head?
   | v, s :: ss => (stepV s v).bind (firstLiveLoanOnPath env · ss)
   | _, [] => none
 termination_by v ss => (ss, v)
@@ -378,11 +381,27 @@ inductive LendOp where
   (a reborrow of `*l` that outlives `l` keeps them lent), or free -/
   | ended (l : Nat) (to : List Nat)
 
-/-- Mark `w` lent to each of `to`. -/
+/-- `w` is already a fill over the borrow `m` at its top: its hole `loan_m` (the place the
+borrow points into), a sealed program over the hole (a stuck call's fill), or marked. -/
+def carriesHole (m : Nat) : Value → Bool
+  | .loan l => l == m
+  | .gloan l w => l == m || carriesHole m w
+  | .sealed t => t.loans.contains m
+  | _ => false
+
+/-- Make `w` a fill over each of `to`: marked `lent_m w`, unless it already is one (a lent place
+holds one fill per borrow it is lent to, in one of three forms: the hole itself, a sealed program
+over the hole, or a known function of the hole, `lent_m v`). -/
 def lentTo (to : List Nat) (w : Value) : Value :=
-  to.foldr (fun m acc => match acc with
-    | .gloan m' _ => if m' == m then acc else .gloan m acc
-    | _ => .gloan m acc) w
+  to.foldr (fun m acc => if carriesHole m acc then acc else .gloan m acc) w
+
+/-- The live borrows a value is a fill over, at its top: its hole, a mark, or the holes inside a
+sealed program (whose position inside it is unknown, so it is at the top, D29). -/
+def fillHoles (env : Env) : Value → List Nat
+  | .loan l => if liveLoan env l then [l] else []
+  | .gloan l w => (if liveLoan env l then [l] else []) ++ fillHoles env w
+  | v@(.sealed _) => liveLoansIn env v
+  | _ => []
 
 mutual
 /-- Apply a `LendOp` to every mark and loan of a value, sealed programs and captures included
@@ -845,6 +864,10 @@ def nfSealed (fuel : Nat) (t : Term) : M Value := do
   -- bounded like calls, so that a normalisation loop (breaker-fresh-v16 X5 without D39)
   -- is an error rather than a stack overflow
   if saved.depth ≥ 2000 then exhausted "normalisation depth exceeded (a sealed program that re-closes itself)"
+  -- static ends: a sealed program over live holes is a fill (a stuck call's, [Close]); its normal
+  -- form is a fill over the same holes, the hole itself where the borrow points, else marked
+  -- (`lentTo`): a fill re-run in a split world keeps its place lent though its hole is gone
+  let holes := liveLoansIn saved.env (.sealed t)
   modify fun s => { s with env := #[{}], obsFrame := none, depth := s.depth + 1 }
   -- D53: a sealed program re-runs with runtime semantics (moves, ⊥ checks); only its final
   -- read of a cell (`peek`, closeCall's `K`) is an observation, and copies
@@ -852,7 +875,7 @@ def nfSealed (fuel : Nat) (t : Term) : M Value := do
   let r ← catchStuck (do let (v, _) ← eval fuel' false t; pure (some v)) fun _ => pure none
   restoreKeep saved
   match r with
-  | some v => pure v
+  | some v => pure (lentTo holes v)
   | none => canonNeutral (.sealed t)
 termination_by structural fuel
 
@@ -3307,6 +3330,16 @@ def movedPlace (fuel : Nat) (q : Place) : M Place := do
     | .var _ => none
   let some p := parent q | return q
   let p ← movedPlace fuel' p
+  -- D84, static ends: a place that holds a fill over a live borrow (its hole, a sealed program
+  -- over the hole, or a known function of it, `fillHoles`), whether the call that lent it closed
+  -- off or ran, is reached as the arm that moves out of it reaches it: [Access] ends the borrow
+  -- (for a sealed program, as [Match] does, D29), which gives the place its content, so its
+  -- fields are named on every path. Generalising a sealed program over a live hole would lose
+  -- the hole (census, G1)
+  if !(fillHoles (← get).env (← content p)).isEmpty then
+    accessPath fuel' p; accessInside fuel' p
+    if !(fillHoles (← get).env (← content p)).isEmpty then return p
+    return ← movedPlace fuel' q
   match ← content p with
   | .abs σ =>
     match ← absType σ with
@@ -3332,24 +3365,12 @@ def movedPlace (fuel : Nat) (q : Place) : M Place := do
     match ← placeType? fuel' p with
     | some (.tInd tn _) =>
       if (← lookupInd tn).ctors.length == 1 then
-        -- static ends: the arm that moves out of it reaches it by a match, which ends the
-        -- borrows whose loans are inside it first ([Access] for matching, D29); generalising
-        -- a sealed program that holds a live hole would lose the hole (census, G1)
-        if !(liveLoansIn (← get).env n).isEmpty then
-          accessPath fuel' p; accessInside fuel' p
-          return ← movedPlace fuel' q
         match ← recordedNeutral n with
         | some r => substEnv fuel' n r true
         | none => discard (generalizeNeutral fuel' p n)
         movedPlace fuel' q
       else pure p
     | _ => pure p
-  | .loan _ | .gloan _ _ =>
-    -- D84: a place lent out is reached as the arm that moves out of it reaches it ([Access]
-    -- ends its borrowers, which gives it its content back), so its fields are named on every
-    -- path: where a borrow of it is live at the join, and where the arm already ended it
-    accessPath fuel' p; accessInside fuel' p
-    if (← content p) matches .loan _ | .gloan _ _ then pure p else movedPlace fuel' q
   | _ => pure p
 termination_by structural fuel
 
