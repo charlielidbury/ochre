@@ -241,22 +241,24 @@ theorem joinDrop_rinv (entry : List Place) (t : Term) {s : SState} (hi : RInv L 
     · exact hi
     · split
       · rename_i pos steps hr
-        have hia := access_rinv hi pos (obsAt K (s.tyAt pos).m steps wholeOb)
+        have hia : RInv L (joinAccess K s pos steps) := by
+          rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
+          all_goals first | exact hi | exact access_rinv hi pos _
         split
         · exact hia
         · exact hia
         · exact hia
         · have hie : RInv L (if steps.isEmpty = true then
-              (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
-              else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) := by
+              (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
+              else joinAccess K s pos steps) := by
             split
             · split
               · exact endLabel_rinv hia _
               · exact hia
             · exact hia
           generalize (if steps.isEmpty = true then
-              (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
-              else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) = s₂ at hie ⊢
+              (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
+              else joinAccess K s pos steps) = s₂ at hie ⊢
           exact setAt_rinv hie pos _
             ((hie.1 pos).comp (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps x).getD .err))
             (fun x hx => by
@@ -431,22 +433,24 @@ theorem joinDrop_lou (entry : List Place) (t : Term) {s : SState} (hi : RInv L s
       · exact hi
       · split
         · rename_i pos steps hr
-          have hia := access_rinv hi pos (obsAt K (s.tyAt pos).m steps wholeOb)
+          have hia : RInv L (joinAccess K s pos steps) := by
+            rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
+            all_goals first | exact hi | exact access_rinv hi pos _
           split
           · exact hia
           · exact hia
           · exact hia
           · have hie : RInv L (if steps.isEmpty = true then
-                (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
-                else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) := by
+                (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
+                else joinAccess K s pos steps) := by
               split
               · split
                 · exact endLabel_rinv hia _
                 · exact hia
               · exact hia
             generalize (if steps.isEmpty = true then
-                (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
-                else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) = s₂ at hie ⊢
+                (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
+                else joinAccess K s pos steps) = s₂ at hie ⊢
             exact setAt_rinv hie pos _
               ((hie.1 pos).comp (fun x => (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps x).getD .err))
               (fun x hx => by
@@ -459,23 +463,27 @@ theorem joinDrop_lou (entry : List Place) (t : Term) {s : SState} (hi : RInv L s
       · exact hy
       · split
         · rename_i pos steps hr
-          have hia := access_rinv hi pos (obsAt K (s.tyAt pos).m steps wholeOb)
-          have hya := lou_access L hi hy pos (obsAt K (s.tyAt pos).m steps wholeOb)
+          have hia : RInv L (joinAccess K s pos steps) := by
+            rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
+            all_goals first | exact hi | exact access_rinv hi pos _
+          have hya : LoU1 (joinAccess K s pos steps) y := by
+            rcases joinAccess_cases K s pos steps with e | e <;> rw [e]
+            all_goals first | exact hy | exact lou_access L hi hy pos _
           split
           · exact hya
           · exact hya
           · exact hya
           · have hye : LoU1 (if steps.isEmpty = true then
-                (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
-                else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) y := by
+                (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
+                else joinAccess K s pos steps) y := by
               split
               · split
                 · exact lou_endLabel L hia.2.1 hya _
                 · exact hya
               · exact hya
             generalize (if steps.isEmpty = true then
-                (match (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).shape pos with | some l => (s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)).endLabel l | none => s.access pos (obsAt K (s.tyAt pos).m steps wholeOb))
-                else s.access pos (obsAt K (s.tyAt pos).m steps wholeOb)) = s₂ at hye ⊢
+                (match (joinAccess K s pos steps).shape pos with | some l => (joinAccess K s pos steps).endLabel l | none => joinAccess K s pos steps)
+                else joinAccess K s pos steps) = s₂ at hye ⊢
             exact lou_setAt hye pos _ fun hu ψ c => by
               show (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps (s₂.valAt pos (ψ.upd y c))).getD .err
                 = (Sem.updAt K.dm K.Γ (s₂.tyAt pos).m (fun _ => .moved) steps (s₂.valAt pos ψ)).getD .err
