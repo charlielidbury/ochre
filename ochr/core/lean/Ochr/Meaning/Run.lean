@@ -284,14 +284,14 @@ noncomputable def movedPlaces (s : SState) : List Place :=
 
 /-- What a match reads of a place's meaning: `ob` of the content at the path and of its type,
 `err` where the path does not resolve (the tag, `natTag`, `indTag`). -/
-noncomputable def obsAt (T : TyM) (steps : List Step) (ob : Sem → TyM → Sem) (x : Sem) : Sem :=
+noncomputable def obsAt (T : TyS) (steps : List Step) (ob : Sem → TyS → Sem) (x : Sem) : Sem :=
   match Sem.follow K.dm K.Γ T x steps with
   | some (v, T') => ob v T'
   | none => .err
 
 /-- The tag of a number, `Z` or `S`: what a `match` on a number observes
 (`Machine.accessNeutralHead`). -/
-noncomputable def natTag (v : Sem) (_ : TyM) : Sem :=
+noncomputable def natTag (v : Sem) (_ : TyS) : Sem :=
   match v.asNat with
   | some 0 => .el0 Nat 0
   | some (_ + 1) => .el0 Nat 1
@@ -301,11 +301,12 @@ noncomputable def natTag (v : Sem) (_ : TyM) : Sem :=
     | _ => .err
 
 /-- The tag of a data value, its constructor's index, or `•` for a proof: what a `match` on it
-observes. -/
-noncomputable def indTag (v : Sem) (T : TyM) : Sem :=
+observes. The value is decoded by its type's declaration NAME (`TyS.dataDecl`), never by its
+carrier (docs/31 D31: two declarations may share a carrier). -/
+noncomputable def indTag (v : Sem) (T : TyS) : Sem :=
   match v with
   | .proof => .proof
-  | _ => match T.dataOf K.dm K.Γ with
+  | _ => match T.dataDecl K.Γ with
     | some (d, ps) => match (K.dm.fieldsOf d ps v).map (·.1) with
       | some c => .el0 Nat c
       | none => .err
@@ -318,15 +319,16 @@ makes the read congruent in the future at every state (`closedFuture_read`), whi
 lemmas need. The type of a field of a dependent value is read with the earlier fields at their
 current contents, as the checker's `depFieldType` reads them through the borrow (`ctorFields`),
 not at what a borrow of an earlier field will finally hold (D29, point 5 e). A projected field's
-type carries no data component (`Sem.follow` yields a `TyM`): a documented gap for nested
-`ps = []` values under projections. -/
+type is read as plain (`.plain`, its data dropped): a documented gap for nested `ps = []` values
+under projections (`Sem.follow` now yields the field's structured type, docs/31 D31, which would
+close it). -/
 noncomputable def contentOf (p : Place) : SM (Sem × TyS × Pos × List Step) := fun s =>
   match resolve s p with
   | some (pos, steps) =>
-    let T₀ := (s.tyAt pos).m
+    let T₀ := s.tyAt pos
     let s := s.access pos (dataHit steps)
     match Sem.follow K.dm K.Γ T₀ (s.valAt pos (s.closedFuture φ)) steps with
-    | some (v, T) => some ((v, if steps.isEmpty then s.tyAt pos else .plain T, pos, steps), s)
+    | some (v, T) => some ((v, if steps.isEmpty then s.tyAt pos else .plain T.m, pos, steps), s)
     | none => none
   | none => none
 
@@ -334,10 +336,10 @@ noncomputable def contentOf (p : Place) : SM (Sem × TyS × Pos × List Step) :=
 path and at the place; `tag`: `natTag`, `indTag`): the tag at the closed future, `err` where the
 place has none. Borrows inside the scrutinee's fields stay live, as in the checker; an arm that
 reads a field accesses it then. -/
-noncomputable def tagOf (p : Place) (tag : Sem → TyM → Sem) : SM Sem := fun s =>
+noncomputable def tagOf (p : Place) (tag : Sem → TyS → Sem) : SM Sem := fun s =>
   match resolve s p with
   | some (pos, steps) =>
-    let o := obsAt K (s.tyAt pos).m steps tag
+    let o := obsAt K (s.tyAt pos) steps tag
     let s := s.access pos (tagHit steps)
     some (o (s.valAt pos (s.closedFuture φ)), s)
   | none => none
@@ -345,7 +347,7 @@ noncomputable def tagOf (p : Place) (tag : Sem → TyM → Sem) : SM Sem := fun 
 /-- Set the content of a place to a constant meaning, pointwise in the future (no access: the
 caller has done it). -/
 noncomputable def setContent (pos : Pos) (steps : List Step) (v : Sem) : SM PUnit := fun s =>
-  let T := (s.tyAt pos).m
+  let T := s.tyAt pos
   let old := s.valAt pos
   match Sem.updAt K.dm K.Γ T (fun _ => v) steps (old (s.closedFuture φ)) with
   | some _ => some (⟨⟩, s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T (fun _ => v) steps (old φ')).getD .err)
@@ -397,7 +399,7 @@ noncomputable def borrowPlace (p : Place) : SM Res := fun s => do
   let ((v, T, pos, steps), s) ← contentOf K φ p s
   if ¬ v.whole then none else
   let (l, s) := s.freshLoan
-  let T0 := (s.tyAt pos).m
+  let T0 := s.tyAt pos
   let old := s.valAt pos
   let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .err
   -- the borrow is parked in a temporary, its holder until it is bound (D14)
@@ -484,7 +486,7 @@ noncomputable def accessLentPrefix (pos : Pos) (steps : List Step) (s : SState) 
 /-- `Machine.dropAtJoin` of one place, at `(pos, steps)`: missing, moved or a proof, nothing; a
 borrow at a root, its end; a copy, nothing; otherwise [Access] and `moved`. -/
 noncomputable def dropAt (q : Place) (pos : Pos) (steps : List Step) (s : SState) : SState :=
-  match Sem.follow K.dm K.Γ (s.tyAt pos).m (s.valAt pos (s.closedFuture φ)) steps with
+  match Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) steps with
   | some (.proof, _) | some (.moved, _) | none => s
   | some _ =>
     match steps, s.shape pos with
@@ -492,7 +494,7 @@ noncomputable def dropAt (q : Place) (pos : Pos) (steps : List Step) (s : SState
     | _, _ =>
       if K.D.copy (K.D.placeDecl (scopeOf s) q) then s else
       let s := s.access pos (dataHit steps)
-      s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s.tyAt pos).m (fun _ => .moved) steps (s.valAt pos φ')).getD .err
+      s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => .moved) steps (s.valAt pos φ')).getD .err
 
 /-- D84, the drop at the join, as the checker does it (`Machine.joinDrop`: `movedPlace`, then
 `dropAtJoin`), for every place some arm of the match moves (`Decisions.joinMoves`, static, given

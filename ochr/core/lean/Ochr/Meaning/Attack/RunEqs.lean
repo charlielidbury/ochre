@@ -12,10 +12,10 @@ namespace Ochr.Meaning.Attack
 
 open Ochr.Meaning
 
-theorem updAt_nil (dm : DataModel) (Γ : List IndDecl) (T : TyM) (f : Sem → Sem) (s : Sem) :
+theorem updAt_nil (dm : DataModel) (Γ : List IndDecl) (T : TyS) (f : Sem → Sem) (s : Sem) :
     Sem.updAt dm Γ T f [] s = some (f s) := rfl
 
-theorem updAt_deref (dm : DataModel) (Γ : List IndDecl) (T : TyM) (f : Sem → Sem) (sts : List Step) (s : Sem) :
+theorem updAt_deref (dm : DataModel) (Γ : List IndDecl) (T : TyS) (f : Sem → Sem) (sts : List Step) (s : Sem) :
     Sem.updAt dm Γ T f (.deref :: sts) s = Sem.updAt dm Γ T f sts s := rfl
 
 /-- Where the decisions classify no term as a statement or as erased (`hfl`; true of `K₀` by

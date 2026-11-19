@@ -2,7 +2,7 @@ import Ochr.Meaning.Run
 import Ochr.Examples.Nat
 
 /-!
-# The reference read a constructor value through another declaration of the same carrier (built)
+# The reference read a constructor value through another declaration of the same carrier (built; fixed)
 
 docs/31 D31 (fifth lead, 2026-11-19; found attacking L2, the drop's write of `⊥` at a path). The
 reference navigates data by its TYPE MEANING: a match's tag (`indTag`), a field read
@@ -28,6 +28,10 @@ unprovable (a proof would have to refute that an earlier declaration's carrier e
 which for two carriers of the same size Lean cannot do). The fix (D31): decode by the type's
 structured data (`TyS.data`: the declaration's NAME and the parameters' meanings, which every
 binding's type and every field's hint already carry, D8), never by its carrier.
+
+Fixed: `TyS.dataDecl`; the reference's match now reads `T2` as constructor `1` (`tag_right`). The
+counterexample against the old definitions is kept, unbuilt, in `DataOfChoice_189132fd.lean`;
+`carrier_names_B1` keeps the fact it rested on (the carrier names `B1` first).
 -/
 
 open Ochr.Test
@@ -141,14 +145,22 @@ theorem mean_B2 : Value.mean K.dm K.C K.Γ ρ φ H (.tInd "B2" []) = .ty (.ty0 B
 theorem fieldsOf_B2 (ps : List Sem) : dm.fieldsOf B2 ps (.el0 Bool true) = some (1, []) := by
   simp [DataModel.fieldsOf, dm, dec, B2]
 
-/-- **The reference's match reads constructor `0`**: `TyM.dataOf` finds `B1` first (its carrier
-is `Bool` too) and decodes `true` as `B1`'s `T1`. -/
-theorem tag_wrong : indTag K (.el0 Bool true) (.ty0 Bool) = .el0 Nat 0 := by
+/-- The type's carrier names `B1` first: decoding by the carrier (`TyM.dataOf`, which the
+reference used until D31) reads `true` through `B1`, as constructor `0` (`DataOfChoice_189132fd`:
+the match took the arm `F2`). -/
+theorem carrier_names_B1 : ∃ ps, TyM.dataOf K.dm K.Γ (.ty0 Bool) = some (B1, ps) ∧
+    dm.fieldsOf B1 ps (.el0 Bool true) = some (0, []) := by
   have hp : ∃ ps, dm.paramsOf B1 (.ty0 Bool) = some ps := ⟨_, dif_pos ⟨[], rfl⟩⟩
   obtain ⟨ps, hps⟩ := hp
-  have hd : TyM.dataOf K.dm K.Γ (.ty0 Bool) = some (B1, ps) := by
-    simp [TyM.dataOf, K, hps]
-  simp only [indTag, hd]
-  simp [DataModel.fieldsOf, K, dm, dec, B1]
+  refine ⟨ps, by simp [TyM.dataOf, K, hps], ?_⟩
+  simp [DataModel.fieldsOf, dm, dec, B1]
+
+/-- The structured type of a position of type `B2` names `B2` (`Value.tyData`, D8). -/
+theorem tyData_B2 : Value.tyData K.dm K.C K.Γ ρ (.tInd "B2" []) = some ("B2", []) := by
+  simp [Value.tyData, K, B1, B2, Value.meanParams]
+
+/-- **Fixed (D31): the reference's match reads constructor `1`**, decoding by the type's name. -/
+theorem tag_right : indTag K (.el0 Bool true) ⟨.ty0 Bool, none, none, some ("B2", [])⟩ = .el0 Nat 1 := by
+  simp [indTag, TyS.dataDecl, K, B1, B2, DataModel.fieldsOf, dm, dec]
 
 end Ochr.Meaning.Regress.DataOfChoice

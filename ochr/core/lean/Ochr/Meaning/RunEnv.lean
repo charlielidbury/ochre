@@ -346,7 +346,7 @@ theorem valAt_setAt_self (s : SState) (p : Pos) (v : SVal) (hp : p ∈ s.positio
 
 theorem setContent_eq (K : RunCtx) (φ : Future) {pos : Pos} {steps : List Step} {v : Sem} {s s' : SState}
     (h : setContent K φ pos steps v s = some (⟨⟩, s')) :
-    s' = s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s.tyAt pos).m (fun _ => v) steps (s.valAt pos φ')).getD .err := by
+    s' = s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => v) steps (s.valAt pos φ')).getD .err := by
   unfold setContent at h
   simp only at h
   split at h

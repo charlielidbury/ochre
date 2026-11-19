@@ -72,61 +72,74 @@ def Decisions.fixDecls (D : Decisions) (sc : List DeclInfo) (ds : List Term) (c 
 section
 variable (dm : DataModel) (Γ : List IndDecl)
 
-/-- The declaration and parameters of a data type meaning, if it is one in `Γ`. -/
+/-- The declaration and parameters of a data type meaning, if it is one in `Γ`, chosen by its
+CARRIER (classically). Not used to find one's way inside a value: carriers do not determine
+declarations (docs/31 D31, `Regress/DataOfChoice_189132fd.lean`); [Rec]'s rank still reads it. -/
 noncomputable def TyM.dataOf (T : TyM) : Option (IndDecl × List Sem) :=
   (Γ.findSome? fun d => (dm.paramsOf d T).map (d, ·))
 
+/-- The declaration and parameters a structured type names (docs/31 D31): the declaration of
+`Γ` with its data's NAME, at its data's parameters. A value is decoded by this, never by its
+carrier. -/
+def TyS.dataDecl (T : TyS) : Option (IndDecl × List Sem) :=
+  T.data.bind fun (n, ps) => (Γ.find? (·.name == n)).map (·, ps)
+
+/-- The structured type field `i` of constructor `c` of `d` at `ps` is read at, given the earlier
+fields: its declared type and data, the hint `Value.meanFields` reads the field at. -/
+def fieldHint (d : IndDecl) (ps : List Sem) (c i : Nat) (earlier : List Sem) : TyS :=
+  ⟨dm.fieldTy d ps c i earlier, none, none, dm.fieldData d ps c i earlier⟩
+
 /-- Field `i` of constructor `c` of a value of the data type `T`, with its type. -/
-noncomputable def Sem.stepField (T : TyM) (c i : Nat) (s : Sem) : Option (Sem × TyM) :=
+noncomputable def Sem.stepField (T : TyS) (c i : Nat) (s : Sem) : Option (Sem × TyS) :=
   match s with
-  | .proof => some (.proof, .err)
+  | .proof => some (.proof, .plain .err)
   | _ =>
-    match T.dataOf dm Γ with
+    match T.dataDecl Γ with
     | some (d, ps) =>
       match dm.fieldsOf d ps s with
-      | some (c', fs) => if c' = c then (fs[i]?).map fun f => (f, dm.fieldTy d ps c i (fs.take i)) else none
+      | some (c', fs) => if c' = c then (fs[i]?).map fun f => (f, fieldHint dm d ps c i (fs.take i)) else none
       | none => none
     | none => none
 
 /-- One step on a meaning at type `T`: the sub-meaning and its type. -/
-noncomputable def Sem.step (T : TyM) : Step → Sem → Option (Sem × TyM)
+noncomputable def Sem.step (T : TyS) : Step → Sem → Option (Sem × TyS)
   | .deref, s => some (s, T)
   | .proj 0, s =>
-    if T = .ty0 Nat then
+    if T.m = .ty0 Nat then
       match s.asNat with
-      | some (n + 1) => some (.el0 Nat n, .ty0 Nat)
+      | some (n + 1) => some (.el0 Nat n, .plain (.ty0 Nat))
       | some 0 => none
       | none => match s with
-        | .ctor "Nat" 1 [w] => some (w, .ty0 Nat)
+        | .ctor "Nat" 1 [w] => some (w, .plain (.ty0 Nat))
         | _ => none
     else Sem.stepField dm Γ T 0 0 s
   | .proj i, s => Sem.stepField dm Γ T 0 i s
   | .field g, s => Sem.stepField dm Γ T g.ctor g.idx s
 
 /-- Follow a path on a meaning at type `T`. -/
-noncomputable def Sem.follow (T : TyM) (s : Sem) : List Step → Option (Sem × TyM)
+noncomputable def Sem.follow (T : TyS) (s : Sem) : List Step → Option (Sem × TyS)
   | [] => some (s, T)
   | st :: sts => (Sem.step dm Γ T st s).bind fun (s', T') => Sem.follow T' s' sts
 
 /-- Update the sub-meaning at a path (re-packing each constructor value on the way, so a field
 set to `moved` makes its value an untyped tuple). -/
-noncomputable def Sem.updAt (T : TyM) (f : Sem → Sem) : List Step → Sem → Option Sem
+noncomputable def Sem.updAt (T : TyS) (f : Sem → Sem) : List Step → Sem → Option Sem
   | [], s => some (f s)
   | .deref :: sts, s => Sem.updAt T f sts s
   | st :: sts, s =>
-    if T = .ty0 Nat then
+    if T.m = .ty0 Nat then
       match st, s.asNat with
-      | .proj 0, some (n + 1) => (Sem.updAt (.ty0 Nat) f sts (.el0 Nat n)).map Sem.succ
+      | .proj 0, some (n + 1) => (Sem.updAt (.plain (.ty0 Nat)) f sts (.el0 Nat n)).map Sem.succ
       | _, _ => none
     else
-      match T.dataOf dm Γ with
+      match T.dataDecl Γ with
       | some (d, ps) =>
         match dm.fieldsOf d ps s with
         | some (c, fs) =>
           let i := match st with | .proj i => i | .field g => g.idx | .deref => 0
           match fs[i]? with
           | some fi =>
-            (Sem.updAt (dm.fieldTy d ps c i (fs.take i)) f sts fi).map fun fi' =>
+            (Sem.updAt (fieldHint dm d ps c i (fs.take i)) f sts fi).map fun fi' =>
               dm.ctorM d ps c (fs.set i fi')
           | none => none
         | none => none

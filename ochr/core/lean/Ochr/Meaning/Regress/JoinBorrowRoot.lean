@@ -74,8 +74,8 @@ borrow and accesses nothing it lends, as `Machine.dropAtJoin` does. (The first f
 dependence went with the early ends, and with it the record `old_access_depends` that the old
 access of a root reading a reborrow's label depended on that label.) -/
 theorem dropAt_borrow_root (q : Place) (s : SState) (pos : Pos) (l : Nat) (hs : s.shape pos = some l)
-    (v : Sem) (T : TyM) (hv : v ≠ .proof ∧ v ≠ .moved)
-    (hf : Sem.follow K.dm K.Γ (s.tyAt pos).m (s.valAt pos (s.closedFuture φ)) [] = some (v, T)) :
+    (v : Sem) (T : TyS) (hv : v ≠ .proof ∧ v ≠ .moved)
+    (hf : Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) [] = some (v, T)) :
     dropAt K φ q pos [] s = s.endLabel l := by
   unfold dropAt
   rw [hf]
