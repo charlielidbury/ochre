@@ -1,13 +1,13 @@
 # 32. The consistency proof as work units: done and to do
 
-Written 2026-11-19; last updated the same day, after `spine3`'s second milestone (spine at c90167e3). A map of the whole consistency effort (Target A of docs/18), one row per unit of work of roughly one agent's size. The plan itself is docs/18; the detailed record of the Lean development is docs/31 on the `spine` branch.
+Written 2026-11-19; last updated the same day, after `spine3`'s third milestone (spine at bb2e5978). A map of the whole consistency effort (Target A of docs/18), one row per unit of work of roughly one agent's size. The plan itself is docs/18; the detailed record of the Lean development is docs/31 on the `spine` branch.
 
 The numbers are estimates by the orchestrating session, not measurements.
 
 - **P(failure)** is the chance the unit cannot be finished on the current plan: it needs a language feature redesigned, or a different proof architecture. Two outcomes count as success, because the work continues as planned after them. One is a tweaked statement: a lemma restated, a hypothesis added or a model definition repaired, the claim staying true in spirit. The other is a local checker fix: one rule tightened so that a class of wrongly accepted programs is rejected, as when a stuck block's arm was forbidden to return a borrow of a place the block takes by move.
-- **Time** is the unit's share of all the effort the consistency proof needs. The column sums to 100% over both tables: about 35% is done and 65% remains.
+- **Time** is the unit's share of all the effort the consistency proof needs. The column sums to 100% over both tables: about 36% is done and 64% remains.
 
-## Done (35%)
+## Done (36%)
 
 | Work unit | What it contains | P(failure) | Time |
 |---|---|---|---|
@@ -21,29 +21,33 @@ The numbers are estimates by the orchestrating session, not measurements.
 | `prover-borrow` | Pilot prover on the borrow steps. It tested the statement form, not the proofs. | done as a pilot; proofs not closed | 1% |
 | `spine2` | Compared the reference run with the checker case by case: 16 differences, 11 fixed. Refuted the old statement form and introduced the simulation form. | done | 4% |
 | `spine3`: prerequisites | The two lemmas the migration waited on. Both exposed a fault in the simulation relation itself: it did not compare function shapes, and it asked for a renaming of labels that cannot exist after a private copy. Both repaired, and the relation is proved to survive a private copy. Well-formedness gained a clause: no stored type or record holds a loan. Found three more differences between the reference run and the checker. | done | 2% |
-| `spine3`: the drop at the join | The step holds. The difference that made it look risky (a borrow the checker ended early counts as moved for the checker and not for the reference) is harmless: the two drop sets differ only where the checker's drop does nothing. Attacking it found four faults elsewhere, all fixed: a partly moved value was a member of no type; the reference read what is already moved at a match as whole variables where the checker reads parts; the relation compared states by an order where it needed equality once the early-ended borrows are ended; and reading one field ended a borrow of another. The match area's statements are migrated. Two lemmas about the drop sets are stated, not proved. | done; no checker change | 2% |
+| `spine3`: the drop at the join, attacked | NOT a proof: the step's statement was attacked from a related state and restated, and it is still `sorry`. The difference that made it look risky (a borrow the checker ended early counts as moved for the checker and not for the reference) reads as harmless: the two drop sets differ only where the checker's drop does nothing. The attack found four faults elsewhere, all fixed: a partly moved value was a member of no type; the reference read what is already moved at a match as whole variables where the checker reads parts; the relation compared states by an order where it needed equality once the early-ended borrows are ended; and reading one field ended a borrow of another. The match area's statements are migrated. | done; no checker change | 2% |
+| `spine3`: `Id`, attacked | NOT a proof either. One fault of the model fixed: where both sides of an `Id` re-point a borrow, the reference compared them for every written value, typed or not, and so made false an `Id` at `Unit` that the checker rightly accepts. Three statement faults fixed: the statements for `Id` and `Eq` were satisfied by any wrong witness (a misplaced bracket), and the footprint lemma lacked the hypothesis that both sides move the same places. The observation area and `Eq` are migrated. | done; no checker change | 1% |
 
 Not counted, because they are off the consistency path: `id-audit` and `subst-survey` (the dropped `Id` target), `runtime-j` (type safety), `paper-claims` and `docs18-sync` (document upkeep).
 
-## To do (65%)
+## To do (64%)
+
+No step lemma is proved yet: every one of the 78 statements is still `sorry`. What is done so far is definitions, the four core lemmas, and attacks that corrected the statements.
 
 Rows are in the order the units will be taken: the highest P(failure) for the least time, so that risk comes forward. Where a risky unit needs something built first, that work moves ahead with it and is counted in its row. The three units every remaining prover needs (migration, redesigns, tooling) come before the provers that need them.
 
 | # | Work unit | What it contains | P(failure) | Time |
 |---|---|---|---|---|
-| 1 | Dependent values (`spine3`, next) | First, a repair to the simulation relation that every step with a read waits on: the relation will say the reference state is the reading of some state of the checker's form that satisfies the invariant (decided 2026-11-19; docs/31, D25). Then give a partly opened dependent value a meaning in the reference run, which it lacks today, so the step can be stated. Then prove or refute that membership is restored when a value whose type depends on its own fields is made whole again, under every future of the parts still lent. One of the old proofs of `False` lived here. | 8% | 5% |
-| 2 | `Id` | `Id` observes every place either side can write, and its computing to a conjunction over those places keeps the meaning. | 6% | 5% |
-| 3 | Well-formedness | The borrow discipline is preserved by every step, including the new clause that no stored type or record holds a loan. | 4% | 4% |
-| 4 | Universes | Deciding which statement Lean can prove over all programs. The bounded-levels statement is what the Lean development already builds; the open part is whether a uniform statement is provable (about 40% that it is not, which is a tweak, not a failure). | 1% | 1% |
-| 5 | Statement migration | Move the remaining step statements to the simulation form, one file at a time. A unit taken before this row migrates its own statements. | 1% | 4% |
-| 6 | Reference-run redesigns | The remaining open differences from the checker, the comparison at other futures, and restricting the claim about untyped runs. The differences that matter most: the result of a call loses its function shape, so the reference cannot call a function returned by a call, or a parameter whose type is computed by a call (`f : Fn(Nat)`, the ordinary predicate idiom, which the checker accepts); and a proof has no type in the reference, so a constructor whose type parameter is solved by a proof field fails. Until these land, the mechanised theorem is false on such programs. A design for the call cases exists (docs/31, D22). | 4% | 7% |
-| 7 | Prover tooling | A shared library about positions in a state, and the standard prover brief. | under 1% | 2% |
-| 8 | Provers: equality | Conversion, `Eq` and `J` computing, and rewriting. | 3% | 5% |
-| 9 | Provers: calls and stuck calls | Calls, closing a stuck call into a sealed program, re-running one, and the label-renaming lemma. | 4% | 9% |
-| 10 | Provers: types and decisions | The model reads types and syntactic decisions the same way as the checker (18 statements). | 2% | 5% |
-| 11 | Provers: matches and arms | Splitting on an unknown and leaving an arm. | 2% | 6% |
-| 12 | Provers: simple steps | Borrow primitives, substitution, plain evaluation, tail forms. | 1% | 8% |
-| 13 | Assembly | The top-level theorems, closing the induction, and the data model for a whole program. | 1% | 4% |
+| 1 | First step proof (`spine4`, running) | Repair the simulation relation so that a read is determined: the reference state is the reading of some state of the checker's form that satisfies the invariant (decided 2026-11-19; docs/31, D25). Then prove the drop at the join from end to end, with no `sorry`. It is the first proof of any step in the simulation form, so it tests the form itself, which every later proof relies on. | 5% | 3% |
+| 2 | Dependent values | Give a partly opened dependent value a meaning in the reference run, which it lacks today, so the step can be stated. Then prove or refute that membership is restored when a value whose type depends on its own fields is made whole again, under every future of the parts still lent. One of the old proofs of `False` lived here. | 8% | 5% |
+| 3 | Provers: `Id` | Prove the corrected statements: `Id` observes every place either side can write, and its computing to a conjunction over those places keeps the meaning. | 4% | 4% |
+| 4 | Well-formedness | The borrow discipline is preserved by every step, including the new clause that no stored type or record holds a loan. | 4% | 4% |
+| 5 | Universes | Deciding which statement Lean can prove over all programs. The bounded-levels statement is what the Lean development already builds; the open part is whether a uniform statement is provable (about 40% that it is not, which is a tweak, not a failure). | 1% | 1% |
+| 6 | Statement migration | Move the remaining step statements to the simulation form: reads, borrows, assignments, access, drops, calls, `J`, closing off and the tail forms. The eval forms, matches, observation and `Eq` are done. | 1% | 2% |
+| 7 | Reference-run redesigns | The remaining open differences from the checker, the comparison at other futures, and restricting the claim about untyped runs. The differences that matter most: the result of a call loses its function shape, so the reference cannot call a function returned by a call, or a parameter whose type is computed by a call (`f : Fn(Nat)`, the ordinary predicate idiom, which the checker accepts); and a proof has no type in the reference, so a constructor whose type parameter is solved by a proof field fails. Until these land, the mechanised theorem is false on such programs. A design for the call cases exists (docs/31, D22). | 4% | 7% |
+| 8 | Prover tooling | A shared library about positions in a state, and the standard prover brief. | under 1% | 2% |
+| 9 | Provers: equality | Conversion, `Eq` and `J` computing, and rewriting. | 3% | 5% |
+| 10 | Provers: calls and stuck calls | Calls, closing a stuck call into a sealed program, re-running one, and the label-renaming lemma. | 4% | 9% |
+| 11 | Provers: types and decisions | The model reads types and syntactic decisions the same way as the checker (18 statements). | 2% | 5% |
+| 12 | Provers: matches and arms | Splitting on an unknown and leaving an arm. | 2% | 5% |
+| 13 | Provers: simple steps | Borrow primitives, substitution, plain evaluation, tail forms. | 1% | 8% |
+| 14 | Assembly | The top-level theorems, closing the induction, and the data model for a whole program. | 1% | 4% |
 
 ## Reading the risk column
 
@@ -52,11 +56,11 @@ A unit fails only if it cannot be finished on the current plan. Restating a lemm
 - **Chance at least one remaining unit needs a local checker fix** (a success): about 65%.
 - **Chance at least one remaining unit fails**, so that a feature is redesigned or part of the proof is re-planned: about 30%. The rows are not independent (a fault in the simulation relation would hit several at once), so this is less than the rows multiplied out.
 - **Chance the route itself fails**, so that meaning preservation has to be abandoned: about 7%.
-- **Riskiest rows:** dependent values, where one of the old `False` proofs lived; then `Id` and the drop at the join. The drop at the join is itself the result of an earlier redesign of this size.
+- **Riskiest rows:** dependent values, where one of the old `False` proofs lived; then the first step proof, because no step has been proved in the simulation form yet and an earlier pilot under the old form closed nothing.
 
 ## Dependencies
 
-An arrow from X to Y means Y builds on X. Green is done, yellow is running, grey is to do. The diagram shows only what builds on what; the order the units are taken in is the table's. Units 1 to 4 need only the repaired simulation relation, which is why they can come before the migration.
+An arrow from X to Y means Y builds on X. Green is done, yellow is running, grey is to do. The diagram shows only what builds on what; the order the units are taken in is the table's. Everything left builds on unit 1: it repairs the relation and is the first test that a step can actually be proved in this form.
 
 ```mermaid
 flowchart TD
@@ -77,22 +81,25 @@ flowchart TD
 
     spine3a["spine3: prerequisites<br/>2%"]:::done
 
-    joinDrop["spine3: the drop at the join<br/>2%"]:::done
-    dep["1. Dependent values<br/>5%, fail 8%"]:::running
-    idn["2. Id<br/>5%, fail 6%"]:::todo
-    wf["3. Well-formedness<br/>4%, fail 4%"]:::todo
-    universes["4. Universes<br/>1%, fail 1%"]:::todo
-    migrate["5. Statement migration<br/>4%, fail 1%"]:::todo
-    redesign["6. Reference-run redesigns<br/>7%, fail 4%"]:::todo
-    tooling["7. Prover tooling<br/>2%, fail under 1%"]:::todo
+    joinDrop["spine3: the drop at the join,<br/>attacked, not proved<br/>2%"]:::done
+    idAtk["spine3: Id,<br/>attacked, not proved<br/>1%"]:::done
 
-    pEq["8. Provers: equality<br/>5%, fail 3%"]:::todo
-    pCalls["9. Provers: calls and stuck calls<br/>9%, fail 4%"]:::todo
-    pTypes["10. Provers: types and decisions<br/>5%, fail 2%"]:::todo
-    pMatch["11. Provers: matches and arms<br/>6%, fail 2%"]:::todo
-    pSimple["12. Provers: simple steps<br/>8%, fail 1%"]:::todo
+    pilot["1. First step proof:<br/>relation repair, then the<br/>drop at the join proved<br/>3%, fail 5%"]:::running
+    dep["2. Dependent values<br/>5%, fail 8%"]:::todo
+    idn["3. Provers: Id<br/>4%, fail 4%"]:::todo
+    wf["4. Well-formedness<br/>4%, fail 4%"]:::todo
+    universes["5. Universes<br/>1%, fail 1%"]:::todo
+    migrate["6. Statement migration<br/>2%, fail 1%"]:::todo
+    redesign["7. Reference-run redesigns<br/>7%, fail 4%"]:::todo
+    tooling["8. Prover tooling<br/>2%, fail under 1%"]:::todo
 
-    assembly["13. Assembly<br/>4%, fail 1%"]:::todo
+    pEq["9. Provers: equality<br/>5%, fail 3%"]:::todo
+    pCalls["10. Provers: calls and stuck calls<br/>9%, fail 4%"]:::todo
+    pTypes["11. Provers: types and decisions<br/>5%, fail 2%"]:::todo
+    pMatch["12. Provers: matches and arms<br/>5%, fail 2%"]:::todo
+    pSimple["13. Provers: simple steps<br/>8%, fail 1%"]:::todo
+
+    assembly["14. Assembly<br/>4%, fail 1%"]:::todo
     goal(["Consistency:<br/>no closed proof of False"]):::goal
 
     tests --> fixes
@@ -111,11 +118,17 @@ flowchart TD
     spine2 --> spine3a
     spine2 --> redesign
     spine3a --> joinDrop
-    spine3a --> dep
-    spine3a --> idn
-    spine3a --> wf
+    spine3a --> idAtk
     spine3a --> redesign
     spine3a --> migrate
+    joinDrop --> pilot
+    idAtk --> idn
+
+    pilot --> dep
+    pilot --> idn
+    pilot --> wf
+    pilot --> migrate
+    pilot --> tooling
 
     migrate --> pEq
     migrate --> pCalls
@@ -126,10 +139,9 @@ flowchart TD
     tooling --> pMatch
     tooling --> pSimple
     redesign --> pCalls
-    joinDrop --> pMatch
     progdec --> pTypes
 
-    joinDrop --> assembly
+    pilot --> assembly
     dep --> assembly
     idn --> assembly
     wf --> assembly
