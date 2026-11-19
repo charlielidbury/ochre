@@ -25,6 +25,15 @@ open Ochr.Meaning
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
+/-- [Join], the entry set: from related states the reference's is the checker's, but for the
+borrow variables the checker ended early (docs/31 D24). -/
+theorem joinEntry (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : joinEntry_stmt K ρ φ (fuel + 1) := by
+  sorry
+
+/-- [Join], the drop: the checker's drops after the arm against the reference's `joinDrop`. -/
+theorem joinDrop_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : joinDrop_step_stmt K ρ φ (fuel + 1) := by
+  sorry
+
 /-- [Match] on `Nat` with a known constructor (`evalMatch`): below the run's `.matchNat` clause. -/
 theorem evalMatch_step (fuel : Nat) (ih : ∀ ρ φ, StepsIH K ρ φ fuel) : evalMatch_step_stmt K ρ φ (fuel + 1) := by
   sorry

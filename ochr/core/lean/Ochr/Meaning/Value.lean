@@ -9,7 +9,7 @@ Under an assignment `ρ` of the abstract values and a future `φ` of the live bo
 * `σ` means `ρ σ`; `⋆` means `•`; `⊥` means `moved`; `Z`, `S v`, `()` mean the numbers and the
   unit as elements of `Nat` and `Unit`;
 * a constructor value means `el0` of its data carrier at its parameters, or an untyped tuple
-  when a field holds `moved` (`DataModel.ctorM`);
+  when a field holds `moved` or is outside its type (`DataModel.ctorM`);
 * a type value means `ty T`: `Nat`, `Unit`, `sort l`, `D(ā)` by the data model, `Eq(A, a, b)` the
   proposition `⟦a⟧ = ⟦b⟧` (so `Eq` reads no type: docs/24 C10), `&A` the content type `⟦A⟧`
   (a borrow is read as what it holds, so a borrow-typed place means its content);

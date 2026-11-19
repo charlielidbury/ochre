@@ -56,8 +56,9 @@ def TyM.level : TyM → Option Nat
 /-- The meaning of a value, tagged by its carrier. `proof` is `•`, the one element of every true
 proposition; `ty T` a type used as a value; `moved` is `⊥`, a place definitely moved out of
 (D84: a definite value, equal only to itself); `ctor` is a constructor value some field of which
-holds `moved`, which lies in no carrier, so it is kept as an untyped tuple (a whole constructor
-value is `el0` of its data carrier, `Data.lean`); `err` is the error value. -/
+holds `moved`, which lies in no carrier, so it is kept as an untyped tuple, as is one a field of
+which is outside its type (a whole, well-typed constructor value is `el0` of its data carrier,
+`Data.lean`); `err` is the error value. -/
 inductive Sem : Type 3 where
   | el0 (A : Type) (a : A)
   | el1 (A : Type 1) (a : A)
@@ -72,7 +73,7 @@ inductive Sem : Type 3 where
 def Sem.whole : Sem → Prop
   | .moved => False
   | .err => False
-  | .ctor _ _ fs => ∀ f ∈ fs, f.whole   -- never whole by the invariant on `ctor`, kept total
+  | .ctor _ _ fs => ∀ f ∈ fs, f.whole   -- a tuple of whole fields is an ILL-TYPED constructor value (`ctorM`)
   | _ => True
 
 mutual
@@ -137,15 +138,6 @@ def Sem.mem : Sem → TyM → Prop
   | _, _ => False
 
 scoped infix:50 " ∈ₛ " => Sem.mem
-
-/-- Membership for a possibly partly moved value (docs/18 part (b) at a binding holding a value
-some field of which was moved out): the value is `⊥` outright, or some whole member of the type
-lies above it. For a whole value this is membership. -/
-def Sem.pmem (s : Sem) (T : TyM) : Prop :=
-  s = .moved ∨ ∃ t : Sem, t.whole ∧ s ⊑ t ∧ t ∈ₛ T
-
-theorem Sem.pmem_of_mem {s : Sem} {T : TyM} (hw : s.whole) (h : s ∈ₛ T) : s.pmem T :=
-  .inr ⟨s, hw, .refl s, h⟩
 
 /-- Read a meaning as a type. -/
 def Sem.asTy : Sem → TyM

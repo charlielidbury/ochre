@@ -54,6 +54,10 @@ import Ochr.Meaning.Regress.StaleTemp
 import Ochr.Meaning.Regress.ShapeAgree
 import Ochr.Meaning.Regress.ShapeProbes
 import Ochr.Meaning.Regress.CopyLabels
+import Ochr.Meaning.Regress.PartlyMoved
+import Ochr.Meaning.Regress.JoinProbes
+import Ochr.Meaning.Regress.SiblingAccess
+import Ochr.Meaning.Regress.EarlyUnpinned
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)

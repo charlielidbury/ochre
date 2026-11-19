@@ -41,7 +41,9 @@ a hypothesis, and the checker never uses a holder it has ended.
   (The audit's A15, the counter after a private copy, is absorbed: `Rel.private_copy`.)
 * `early`: the checker's state is the reference's after some of its borrows ended early (`E`),
   compared at the SAME future (`SimEq`), with bindings position by position and a borrow in
-  flight by its label. The futures range over those that agree with the run's off the labels
+  flight by its label, the meanings EQUAL (with `⊑` the relation admitted a reference state with
+  a value where the checker's has `⊥` inside a tuple, from which a match's join and `Id` differ:
+  docs/31 D24). The futures range over those that agree with the run's off the labels
   live after the ends, which is D20 item 2's repair (a binding of an inert loan is the constant
   `φ ℓ` in the reference and `φ' ℓ` in the checker's state).
 
@@ -70,12 +72,12 @@ theorem Rel.start (st : MState) : Rel K ρ φ id st (SM' K ρ st) where
   skel := rfl
   fresh := fun _ h _ => h
   early := ⟨[], fun ψ _ p _ => by
-      show _ ⊑ (MState.sstate K.dm K.M K.Γ ρ st).valAt p ψ
-      rw [sstate_valAt]; exact Sem.le_refl _,
+      show _ = (MState.sstate K.dm K.M K.Γ ρ st).valAt p ψ
+      rw [sstate_valAt]; rfl,
     fun _ _ _ h => h,
     fun f i l h => ⟨i, h, fun ψ _ => by
-      show _ ⊑ (MState.sstate K.dm K.M K.Γ ρ st).valAt (.temp f i) ψ
-      rw [sstate_valAt]; exact Sem.le_refl _⟩⟩
+      show _ = (MState.sstate K.dm K.M K.Γ ρ st).valAt (.temp f i) ψ
+      rw [sstate_valAt]; rfl⟩⟩
 
 /-! ### A private copy (docs/31 D23; prerequisite (b) of the migration)
 

@@ -102,17 +102,59 @@ theorem paramsOf_car (d : IndDecl) (A : Type) (ps : List Sem) (h : dm.paramsOf d
   · simp [paramsOf, hex] at h
 
 /-- The meaning of a constructor value `C(ps; fs)` of a data type whose fields already mean
-`fs`: packed into the carrier when every field is whole, kept as an untyped tuple when some
-field holds `moved` (D84: a definite value lying in no type), the error value when a whole
-field is not of its type. A `Prop`-sorted declaration's constructor values are `⋆` already
-(`Machine.evalCtor`, D42), so `ctorM` is only applied to data. -/
+`fs`: packed into the carrier when every field is whole and of its type, and kept as an untyped
+tuple otherwise: when some field holds `moved` (D84: a definite value lying in no type), and when
+a whole field is not of its type. A `Prop`-sorted declaration's constructor values are `⋆` already
+(`Machine.evalCtor`, D42), so `ctorM` is only applied to data.
+
+An ill-typed constructor value used to mean `err`, not a tuple. Then a value with a LENT field
+meant `err` at every future that gives the field's label a whole value outside its type, and a
+read of ANOTHER field failed there, so what [Access] observes of the other field depended on the
+lent field's label and the access ended it: the audit's A1 was not fixed for packed data
+(docs/31 D25, third lead; `Regress/SiblingAccess.lean`). As a tuple, a constructor value's fields
+are read whatever the others hold (`fieldsOf_ctorM`). -/
 noncomputable def ctorM (d : IndDecl) (ps : List Sem) (c : Nat) (fs : List Sem) : Sem :=
   open Classical in
   if ∀ f ∈ fs, f.whole then
     match dm.pack d ps c fs with
     | some x => .el0 (dm.car d ps) x
-    | none => .err
+    | none => .ctor d.name c fs
   else .ctor d.name c fs
+
+mutual
+/-- `s` is `t` with some of its parts moved out: `moved` is anything with all of it moved, a
+partly moved tuple is a packed element of its carrier with some fields moved out, and a partly
+moved number is a successor whose predecessor is.
+
+This is the order membership of a partly moved value needs, and `Sem.le` is not it (docs/31 D24,
+third lead): `Sem.le` compares a tuple only with a tuple, and a whole constructor value is never
+a tuple (it is `el0` of its carrier, `ctorM`), so no whole member of any type lay above a partly
+moved tuple, and `pmem` as first stated (`∃ t whole, s ⊑ t ∧ t ∈ T`) was FALSE of every partly
+moved constructor value (`Regress/PartlyMoved.lean`). A partly moved binding is what every match
+that moves a field out leaves, so `Good` failed at the state after it. -/
+inductive MovedOf (Γ : List IndDecl) : Sem → Sem → Prop
+  | moved (t : Sem) : MovedOf Γ .moved t
+  | refl (t : Sem) : MovedOf Γ t t
+  | ctor {d : IndDecl} {ps : List Sem} {c : Nat} {fs : List Sem} (x : dm.car d ps) :
+      d ∈ Γ → dm.tag x = c → MovedOfList Γ fs (dm.fields x) →
+      MovedOf Γ (.ctor d.name c fs) (.el0 (dm.car d ps) x)
+  | succ {s : Sem} {n : Nat} : MovedOf Γ s (.el0 Nat n) → MovedOf Γ (.ctor "Nat" 1 [s]) (.el0 Nat (n + 1))
+
+/-- The same, field by field. -/
+inductive MovedOfList (Γ : List IndDecl) : List Sem → List Sem → Prop
+  | nil : MovedOfList Γ [] []
+  | cons {f g : Sem} {fs gs : List Sem} : MovedOf Γ f g → MovedOfList Γ fs gs → MovedOfList Γ (f :: fs) (g :: gs)
+end
+
+/-- Membership for a possibly partly moved value (docs/18 part (b) at a binding holding a value
+some field of which was moved out): the value is `⊥` outright, or it is some whole member of the
+type with parts moved out (`MovedOf`). For a whole value this is membership (`pmem_of_mem`). A
+move keeps it: the value before the move is such a member. -/
+def pmem (Γ : List IndDecl) (s : Sem) (T : TyM) : Prop :=
+  s = .moved ∨ ∃ t : Sem, t.whole ∧ dm.MovedOf Γ s t ∧ t ∈ₛ T
+
+theorem pmem_of_mem (Γ : List IndDecl) {s : Sem} {T : TyM} (hw : s.whole) (h : s ∈ₛ T) : dm.pmem Γ s T :=
+  .inr ⟨s, hw, .refl s, h⟩
 
 /-- The fields of a meaning of a constructor value, if it is one. -/
 noncomputable def fieldsOf (d : IndDecl) (ps : List Sem) : Sem → Option (Nat × List Sem)
@@ -120,6 +162,21 @@ noncomputable def fieldsOf (d : IndDecl) (ps : List Sem) : Sem → Option (Nat �
     if h : A = dm.car d ps then some (dm.tag (h ▸ x), dm.fields (h ▸ x)) else none
   | .ctor n c fs => if n = d.name then some (c, fs) else none
   | _ => none
+
+/-- **A constructor value's tag and fields are read off its meaning whatever its fields hold**:
+packed, partly moved, or ill-typed. (With an ill-typed value meaning `err`, as it first did, this
+failed where a whole field was outside its type.) -/
+theorem fieldsOf_ctorM {d : IndDecl} {ps : List Sem} (c : Nat) (fs : List Sem) (hd : dm.covers d) :
+    dm.fieldsOf d ps (dm.ctorM d ps c fs) = some (c, fs) := by
+  have htup : dm.fieldsOf d ps (.ctor d.name c fs) = some (c, fs) := by simp [fieldsOf]
+  unfold ctorM
+  split
+  · split
+    · rename_i x hx
+      simp only [fieldsOf, dite_true]
+      rw [dm.tag_pack x hd hx, dm.fields_pack x hd hx]
+    · exact htup
+  · exact htup
 
 /-! ## Small field types
 

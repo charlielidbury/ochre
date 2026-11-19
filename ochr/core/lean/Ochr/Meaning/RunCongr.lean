@@ -94,7 +94,16 @@ theorem movedPlaces_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi :
     funext i
     split
     · rename_i pos _
-      rw [closedFuture_read hi.1 hi.2.1 hφ pos]
+      have e : s.valAt pos (s.lentFuture φ) = s.valAt pos (s.lentFuture φ') :=
+        hi.1 pos _ _ fun l hl => by
+          unfold SState.lentFuture
+          by_cases hlive : l ∈ s.liveLabels
+          · rw [if_pos hlive, if_pos hlive]
+          · rw [if_neg hlive, if_neg hlive]
+            rcases hl with hl | hl
+            · exact hφ l hl
+            · exact absurd hl hlive
+      rw [e]
     · rfl
   · rfl
 
