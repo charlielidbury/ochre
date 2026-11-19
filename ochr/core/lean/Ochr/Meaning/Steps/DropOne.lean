@@ -1,5 +1,7 @@
 import Ochr.Meaning.Steps.JoinDropLib
 import Ochr.Meaning.BotWrite
+import Ochr.Meaning.SitesWrite
+import Ochr.Meaning.RelendComm
 
 /-!
 # The drop of one place at the join: what `dropOne_step` rests on (docs/31 D30, D31; task C)
@@ -15,8 +17,9 @@ the order the team lead set (model risk first):
    carrier), fixed; it rests on (WF13), a new clause of `Good`.
 2. L3, the write keeps the relation (`botWrite_step`), from L2, (WF13) through `dataOn_of_wf13`,
    and the access having ended every borrow lent at, over or under the place (`access_clears`).
-3. The commutation of ends (`relend_comm`): the reference ends in label order, the checker in its
-   own; this is inside the [Access] statement, an induction-hypothesis field.
+3. The commutation of ends on sites: PROVED (`relend_comm`, `RelendComm.lean`), when every site
+   at either holder is inside its content and the two are not lent at each other's holders; it is
+   used inside the [Access] statement, an induction-hypothesis field.
 4. The checker's place and the reference's: `rel_resolve` (through `Rel.skel`).
 5. `refine` and `generalizeNeutral` in the simulation form with an extended context
    (`refine_sim`, `generalizeNeutral_sim`).
@@ -202,18 +205,6 @@ theorem botWrite_step (st st' : MState) (q : Place) (pos : Pos) (s : SState) (π
     Rel K ρ φ π st' (s.setAt pos fun φ' =>
       (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => .moved) q.steps.2 (s.valAt pos φ')).getD .err) ∧
     Good K.dm K.M K.Γ ρ st' := by
-  sorry
-
-/-- **(3) Ends commute on sites.** Ending two live borrows in either order leaves every borrow lent
-at the same sites, when neither is lent inside the other's holder's content ((WF3) on sites: the
-reference ends in label order, the checker in its own; `endLabel_comm` is the meanings' half).
-Checked by hand on the composition of `relend`'s two clauses (a fill stays, a plain site is
-extended); the cycle is the one case where it fails. Open: not written. -/
-theorem relend_comm (s : SState) (k l : Nat) (rk rl : Pos) (hkl : k ≠ l) (hr : rk ≠ rl)
-    (hacyc : (∀ x ∈ s.lent l, x.pos = rk → x.path.head? ≠ some .deref) ∨
-      (∀ x ∈ s.lent k, x.pos = rl → x.path.head? ≠ some .deref)) :
-    ∀ m x, x ∈ ({ s with lent := s.relend k rk } : SState).relend l rl m ↔
-      x ∈ ({ s with lent := s.relend l rl } : SState).relend k rk m := by
   sorry
 
 /-- **(5) `refine` in the simulation form.** Under an assignment that already makes the
