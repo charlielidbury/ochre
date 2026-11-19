@@ -43,6 +43,8 @@ theorem stepsIH : ∀ (fuel : Nat) (ρ : Assignment) (φ : Future), StepsIH K ρ
       dropTopBind_step := dropTopBind_step K ρ φ fuel ih
       popFrame_step := popFrame_step K ρ φ fuel ih
       substV_loan_step := substV_loan_step K ρ φ fuel ih
+      substV_loan_keeps := substV_loan_keeps K ρ φ fuel ih
+      closeCall_hole := closeCall_hole K ρ φ fuel ih
       substV_abs_step := substV_abs_step K ρ φ fuel ih
       substEnv_loan_step := substEnv_loan_step K ρ φ fuel ih
       substEnv_abs_step := substEnv_abs_step K ρ φ fuel ih
