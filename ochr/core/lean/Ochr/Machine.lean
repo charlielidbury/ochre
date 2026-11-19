@@ -300,6 +300,17 @@ def Term.placeOperand? : Term → Option (Place × (Place → Term))
 def stepPlace (q : Place) : Step → Place
   | .deref => .deref q | .proj i => .proj i q | .field g => .field g q
 
+/-- D90: the first borrow-typed place on the path to `q` that is dereferenced while it holds `⊥`
+(`(*r).0` with `r ↦ ⊥`): moved out, or its borrow ended. A total query of the state. -/
+def deadBorrowOn (q : Place) : M (Option Place) := do
+  let (i, ss) := q.steps
+  let mut cur : Place := .var i
+  for st in ss do
+    if st matches .deref then
+      if (← content? cur) matches some .bot then return some cur
+    cur := stepPlace cur st
+  pure none
+
 mutual
 /-- D84: the places under `q` whose content in its value `v` is `⊥` (moved out). -/
 def botPlaces : Value → Place → List Place
@@ -3226,17 +3237,31 @@ termination_by structural fuel
 
 /-- D84 [Join]: the places a match leaves moved, read from its syntax and declared types
 (`Decide.jdMoves`), never from a run: the lattice join of its arms' end states, at the grain of
-the declared types. Returns the places moved after it (the direct run's drops) and the ones of
-them not moved before it (a stuck block's by-move captures, K1). -/
+the declared types. Returns the places the direct run drops (D90: less the places behind a
+borrow variable it drops whole, `Decide.jdDrops`) and the places moved after it that were not
+moved before it (a stuck block's by-move captures, K1).
+
+What is moved at the match's entry is read from the state (its `⊥`s), which is the same on every
+path for an owned place (D84: a move is definite) and for a place behind a live borrow (moved
+through it). A borrow variable holding `⊥` is not counted (D90): its borrow may have been ended
+early, by an access to a place a stuck call's loans over-approximate (`Pick` at an unknown `n`)
+or a stuck block took, while an instance still holds it. Counting it would put it in the join's
+set on the generic call only, where it would cover the places behind it (`jdDrops`). An arm that
+moves it whole puts it there on every path; otherwise its own drop is of `⊥`, nothing. -/
 def staticJoin (fuel : Nat) (mt : Term) : M (List Place × List Place) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let f ← topIdx
   let binds := (← get).env[f]!.binds
   let nb := binds.size
-  let entry := (List.range nb).flatMap fun o => botPlaces binds[nb - 1 - o]!.val (.var o)
+  let mut entry : List Place := []
+  for o in List.range nb do
+    let v := binds[nb - 1 - o]!.val
+    if v matches .bot then
+      if (← withLive true (placeDecl fuel' [] (.var o))) matches .ref _ then continue
+    entry := entry ++ botPlaces v (.var o)
   let u ← withLive true (jdMoves fuel' [] [] mt entry)
   let net := u.filter fun q => !entry.any (jdCovers · q)
-  pure (u, net)
+  pure (← withLive true (jdDrops fuel' u), net)
 
 /-- D84: what an arm's log may say a static join's place moved: the place, and, for a move
 through a borrow a local variable of this frame holds, the lender's part (`logEffect` records
@@ -3261,7 +3286,7 @@ def joinDrop (fuel : Nat) (mt : Term) (run : M (Value × Option Value)) : M (Val
   if drops.isEmpty then return (v, T)
   let fl ← getFlags
   pushTemp v
-  for q in drops do dropAtJoin fuel' (← movedPlace fuel' q)
+  for q in drops do joinDropAt fuel' q
   let v ← popTemp
   setFlags fl
   pure (v, T)
@@ -3275,10 +3300,24 @@ def joinCont (fuel : Nat) (mt : Term) (k : Value → Value → M Unit) : M (Valu
   pure fun r R => do
     let fl ← getFlags
     pushTemp r
-    for q in drops do dropAtJoin fuel' (← movedPlace fuel' q)
+    for q in drops do joinDropAt fuel' q
     let r ← popTemp
     setFlags fl
     k r R
+termination_by structural fuel
+
+/-- D90 [Join]: drop one place of the join's set. A drop of a place reached through a borrow is a
+use of that borrow, as the arm that moves the place uses it, so a borrow that holds `⊥` there is
+an error, as running that arm would be. Without this the drop re-rooted the place to the dead
+borrow and dropped nothing (`movedPlace`), while an instance at which the borrow is still live
+moves the lender's part: the generic call ends a borrow wherever an instance does and also
+where a stuck call's loans or a stuck block over-approximate (`Pick` at an unknown `n`), so it
+would move less than the instance. -/
+def joinDropAt (fuel : Nat) (q : Place) : M Unit := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  if let some r ← deadBorrowOn q then
+    err s!"[Join] {← ppPlace q} is moved by another arm of the match, so it is dropped at the end of this one, through {← ppPlace r}, which was moved out or its borrow ended"
+  dropAtJoin fuel' (← movedPlace fuel' q)
 termination_by structural fuel
 
 /-- D84 [Join]: drop `q` as a stuck block's by-move argument takes it (`readPlace`): a borrow is

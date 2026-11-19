@@ -1030,6 +1030,21 @@ def jdMatch (fuel : Nat) (sc : List DeclInfo) (al : List (Option Place)) (t : Te
 termination_by structural fuel
 end
 
+/-- D90 [Join]: the places the direct run drops at a join, from the join's set `u`. A place
+behind a borrow variable that `u` holds whole (`(*r).0` beside `r`) is not dropped on its own.
+The variable is in the set because an arm moves it whole (reads, passes, binds or captures it)
+or re-points it (K1(b)), and its drop ends its borrow ([End ℓ]), which gives the lender back. The
+arm that moves the place behind it does so through that borrow, which must be whole again when
+the arm ends it (D53), or through a borrow it has since re-pointed, so the lender is whole after
+that arm too. Without this the order of the drops decided whether the lender's part was moved
+before the borrow ended. Read from the set and declared types. -/
+def jdDrops (fuel : Nat) (u : List Place) : M (List Place) := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let mut bs : List Place := []
+  for m in u do
+    if (m matches .var _) && ((← placeDecl fuel' [] m) matches .ref _) then bs := bs ++ [m]
+  pure (u.filter fun q => !bs.any fun b => jdPrefix b q && !jdPrefix q b)
+
 /-! ## D84: the type-state of a side of `Id` ([Id-typestate])
 
 `Id(A, t, u)` is well formed only where `t` and `u` leave the same type-state: the same outer
