@@ -45,7 +45,14 @@ a hypothesis, and the checker never uses a holder it has ended.
   a value where the checker's has `⊥` inside a tuple, from which a match's join and `Id` differ:
   docs/31 D24). The futures range over those that agree with the run's off the labels
   live after the ends, which is D20 item 2's repair (a binding of an inert loan is the constant
-  `φ ℓ` in the reference and `φ' ℓ` in the checker's state).
+  `φ ℓ` in the reference and `φ' ℓ` in the checker's state). With it, the loan witness (`Wit`,
+  docs/31 D27): every label the reference's [Access] of a place ends, outside `E`, is one the
+  checker's [Access] of that place ends. Equality after the ends reads the reference state only
+  where each label of `E` has its holder's content, and [Access] reads every future: without the
+  witness a reference state that reads a label only at other values of an early-ended one was
+  related, and a read from it ended a label the checker kept (D25, `Regress/EarlyUnpinned.lean`).
+  A tie to a `Good` checker-form preimage does not repair that (`Regress/CondDep.lean`: an unknown
+  callee's backward function makes one label's dependence conditional on another's content).
 
 **Status.** The relation (`SimEq`, `Sim`, `Rel`) is defined in `Statements.lean`, where the
 three statements refuted by `Regress/StaleTemp.lean` (`eval_step_stmt`, `evalCore_step_stmt`,
@@ -66,18 +73,23 @@ section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- **The relation holds at the start**: the checker's state read as a reference state simulates
-it, with no renaming and no early end. (If this failed the relation would be unusable: every
-top-level statement starts here.) -/
-theorem Rel.start (st : MState) : Rel K ρ φ id st (SM' K ρ st) where
+it, with no renaming and no early end, given the loan witness with no early end (`hw`): each place
+of the state reads the future only through the loans the checker's access of it ends. That holds
+at the generic state of a definition, whose values are unknowns, borrows of unknowns and loans;
+it is FALSE where a later field's type or a sealed field's hint reads an earlier field that is
+lent, the audit's A13 (open dependent values), where the reference's access ends a borrow the
+checker's keeps. (If this failed the relation would be unusable: every top-level statement starts
+here.) -/
+theorem Rel.start (st : MState) (hw : Wit K id [] st.env (SM' K ρ st)) : Rel K ρ φ id st (SM' K ρ st) where
   skel := rfl
   fresh := fun _ h _ => h
-  early := ⟨[], fun ψ _ p _ => by
+  early := ⟨[], ⟨fun ψ _ p _ => by
       show _ = (MState.sstate K.dm K.M K.Γ ρ st).valAt p ψ
       rw [sstate_valAt]; rfl,
     fun _ _ _ h => h,
     fun f i l h => ⟨i, h, fun ψ _ => by
       show _ = (MState.sstate K.dm K.M K.Γ ρ st).valAt (.temp f i) ψ
-      rw [sstate_valAt]; rfl⟩⟩
+      rw [sstate_valAt]; rfl⟩⟩, hw⟩
 
 /-! ### A private copy (docs/31 D23; prerequisite (b) of the migration)
 
@@ -123,7 +135,7 @@ theorem Rel.private_copy {π : Nat → Nat} {saved st' : MState} {s : SState} (h
   early := by
     have e : MState.mean K.dm K.M K.Γ ρ st' = MState.mean K.dm K.M K.Γ ρ saved := by
       simp only [MState.mean, henv]
-    rw [e]; exact hr.early
+    rw [e, henv]; exact hr.early
 
 /-- Steps stated in the simulation form compose: if the first runs from any reference state
 related to `st` into one related to `st₁`, and the second from any related to `st₁` into one

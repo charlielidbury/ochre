@@ -76,11 +76,28 @@ theorem no_label_stY (l : Nat) : ¬ stY.Occurs l := by
   rw [hz] at h
   simp [Value.anyAtom, BEq.beq, Value.beq] at h
 
+/-- `stY`'s one value is `Z`, so its reading reads no future. -/
+theorem stY_const (p : Pos) (ψ ψ' : Future) : (SM' K ρ stY).valAt p ψ = (SM' K ρ stY).valAt p ψ' := by
+  show (MState.sstate K.dm K.M K.Γ ρ stY).valAt p ψ = (MState.sstate K.dm K.M K.Γ ρ stY).valAt p ψ'
+  rw [sstate_valAt, sstate_valAt]
+  cases p with
+  | bind f i =>
+    rcases f with _ | f
+    · rcases i with _ | i
+      · simp [Env.mean, stY, Value.mean]
+      · simp [Env.mean, stY]
+    · simp [Env.mean, stY]
+  | temp f i =>
+    rcases f with _ | f
+    · simp [Env.mean, stY]
+    · simp [Env.mean, stY]
+
 /-- **The clause as it now stands holds after the statement**: any checker state with `stY`'s Ω,
 whatever its counter, is simulated by the reference's unchanged state under the identity. -/
 theorem new_fresh_holds (st' : MState) (henv : st'.env = stY.env) :
     Rel K ρ φ id st' (SM' K ρ stY) :=
-  Rel.private_copy K ρ φ (Rel.start K ρ φ stY) henv (fun l h => absurd h (no_label_stY l))
+  Rel.private_copy K ρ φ (Rel.start K ρ φ stY (wit_of_const K id [] _ _ (stY_const K ρ))) henv
+    (fun l h => absurd h (no_label_stY l))
 
 end
 
