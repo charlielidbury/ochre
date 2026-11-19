@@ -213,7 +213,7 @@ structure TypedAssignment (ρ : Assignment) (st : MState) : Prop where
 stored type holds a (possibly partly moved) member of it; Δ's types and the goal are types. -/
 structure Membership (ρ : Assignment) (st : MState) : Prop where
   pos : ∀ φ, TypedFuture dm C Γ ρ st φ →
-    ∀ p T, MState.posTyM dm C Γ ρ st p = some T → (Env.mean dm C Γ ρ φ st.env p).pmem T
+    ∀ p T, MState.posTyM dm C Γ ρ st p = some T → dm.pmem Γ (Env.mean dm C Γ ρ φ st.env p) T
   absTy : ∀ σ, st.Refd σ → σ < st.absTy.size → (MState.absTyM dm C Γ ρ st σ).level.isSome
   goal : ∀ G, MState.goalM dm C Γ ρ st = some G → G.level.isSome
 
@@ -241,7 +241,7 @@ def TypedFutureF (ρ : Assignment) (st : MState) (fl : Flight) (φ : Future) : P
 /-- `Membership` under futures typed at the flight too. -/
 structure MembershipF (ρ : Assignment) (st : MState) (fl : Flight) : Prop where
   pos : ∀ φ, TypedFutureF dm C Γ ρ st fl φ →
-    ∀ p T, MState.posTyM dm C Γ ρ st p = some T → (Env.mean dm C Γ ρ φ st.env p).pmem T
+    ∀ p T, MState.posTyM dm C Γ ρ st p = some T → dm.pmem Γ (Env.mean dm C Γ ρ φ st.env p) T
   absTy : ∀ σ, st.Refd σ → σ < st.absTy.size → (MState.absTyM dm C Γ ρ st σ).level.isSome
   goal : ∀ G, MState.goalM dm C Γ ρ st = some G → G.level.isSome
 

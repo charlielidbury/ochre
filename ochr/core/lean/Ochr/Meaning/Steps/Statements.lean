@@ -38,7 +38,12 @@ form to state a step in is the simulation form: from ANY reference state `s` wit
 `Rel K ρ φ π st s`, concluding `Rel` after (`Steps/Sim.lean`: `Rel.start`, `sim_seq`).
 `Rel` compares a binding's Π-shape and asks a renaming only of the labels that occur (docs/31 D22,
 D23: both were first left out, and both omissions made the migrated statements false).
-MIGRATED: `evalCore_step_stmt`, `eval_step_stmt`, `letIn_step_stmt` (the three refuted). NOT YET:
+`Rel` compares meanings by EQUALITY after the early-ended borrows are ended (D24: `⊑` admitted
+states from which a match's join and `Id` differ). OPEN (D25): `Rel` does not pin the reference
+state at other values of an early-ended label, and [Access] reads them.
+MIGRATED: `evalCore_step_stmt`, `eval_step_stmt`, `letIn_step_stmt` (the three refuted); the match
+area (`evalMatch`, `evalMatchInd`, `evalMatchByType`, `closeBlock`, and the join's `joinEntry_stmt`,
+`joinDrop_step_stmt`). NOT YET:
 every other statement here with a `Below (MState.mean … st') s'.toMean` conjunct against a run
 from `SM'` (the leaves: read, borrow, assign, access, drop, pop; matches, calls, `J`, [Close], the
 tail forms). Do not start a step proof against a `Below` conjunct.
@@ -110,18 +115,27 @@ def Exact (m m' : Mean) : Prop := (∀ φ p, m.val φ p = m'.val φ p) ∧ ∀ p
 `π` of the checker's labels to the reference's: bindings position by position (the two push and
 drop bindings in step), a binding's borrow at the same position, and a borrow in flight (held by
 a temporary of the checker's state) held by SOME temporary of the same frame of the reference,
-whose content is above it. Temporaries are otherwise not compared: the reference parks a borrow
+with the same content. Temporaries are otherwise not compared: the reference parks a borrow
 in a temporary until it is bound and leaves the temporary behind, the checker carries a value in
 flight in its monad (`Regress/StaleTemp.lean`).
+
+The meanings compared are EQUAL, not `⊑` (docs/31 D24, third lead). All the slack between the two
+runs is the borrows the checker ended early, which `Rel` names (`E`) and ends before comparing.
+With `⊑` here the relation also admitted a reference state holding a value where the checker's
+holds `⊥` inside a partly moved tuple; the places moved at entry then differ, so the join of a
+match differs (`Regress/JoinProbes.lean`: `slack_le`, `slack_entry`), and `Id`, which compares
+every position after each side, is true for the checker and false for the reference from such a
+state. So the statements, which quantify over EVERY related reference state, were false of a
+match and of `Id`.
 
 `F` is the set of the reference's futures compared; the checker's state is read at the future
 pulled back along `π`. -/
 def SimEq (π : Nat → Nat) (F : Future → Prop) (m' : Mean) (s : SState) : Prop :=
-  (∀ ψ, F ψ → ∀ p, ¬ IsTemp p → m'.val (fun l => ψ (π l)) p ⊑ s.valAt p ψ) ∧
+  (∀ ψ, F ψ → ∀ p, ¬ IsTemp p → m'.val (fun l => ψ (π l)) p = s.valAt p ψ) ∧
   (∀ p l, ¬ IsTemp p → m'.shape p = some l → s.shape p = some (π l)) ∧
   (∀ f i l, m'.shape (.temp f i) = some l →
     ∃ j, s.shape (.temp f j) = some (π l) ∧
-      ∀ ψ, F ψ → m'.val (fun l => ψ (π l)) (.temp f i) ⊑ s.valAt (.temp f j) ψ)
+      ∀ ψ, F ψ → m'.val (fun l => ψ (π l)) (.temp f i) = s.valAt (.temp f j) ψ)
 
 /-- The old order without its positional reading of temporaries: for every future of the lower
 state, a future of the upper at which bindings are below position by position and a borrow in
@@ -142,10 +156,10 @@ theorem Sim.of_below {m' : Mean} {s : SState} (h : Below m' s.toMean) : Sim m' s
 theorem Sim.of_simEq_below {m' : Mean} {s₀ s : SState} (h : SimEq id (fun _ => True) m' s₀)
     (hb : Below s₀.toMean s.toMean) : Sim m' s := fun φ' => by
   obtain ⟨φ, hv, hs⟩ := hb φ'
-  refine ⟨φ, fun p hp => Sem.le_trans (h.1 φ' trivial p hp) (hv p), fun p l hp hl => hs p l (h.2.1 p l hp hl),
+  refine ⟨φ, fun p hp => (h.1 φ' trivial p hp) ▸ hv p, fun p l hp hl => hs p l (h.2.1 p l hp hl),
     fun f i l hl => ?_⟩
   obtain ⟨j, hj, hle⟩ := h.2.2 f i l hl
-  exact ⟨j, hs _ l hj, Sem.le_trans (hle φ' trivial) (hv (.temp f j))⟩
+  exact ⟨j, hs _ l hj, (hle φ' trivial) ▸ hv (.temp f j)⟩
 
 /-- What `run` reads of a binding besides its meaning: its type's meaning, Π-shape and data, and
 its declared reading. (The label a type recorded when it was bound is read by no clause.)
@@ -423,7 +437,7 @@ makes `conv` answer `false` more often, so no hypothesis on it. -/
 def conv_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (v w : Value) (T : TyM)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hv : (meanV K ρ φ (.plain T) v).pmem T) (hw : (meanV K ρ φ (.plain T) w).pmem T)
+    (hv : K.dm.pmem K.Γ (meanV K ρ φ (.plain T) v) T) (hw : K.dm.pmem K.Γ (meanV K ρ φ (.plain T) w) T)
     (h : Runs (Ochr.conv fuel v w) st fuel true st'),
     meanV K ρ φ (.plain T) v = meanV K ρ φ (.plain T) w
 
@@ -544,42 +558,104 @@ def recCheck_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
     (hacc : ∃ fuel st', Runs (Ochr.checkFix fuel fv [] (match fv with | .clo _ t _ => t | _ => .tt)) st fuel () st'),
     meanV K ρ φ (.plain .err) fv ∈ₛ (meanV K ρ φ (.plain .err) fT).asTy
 
-/-- [Match] on `Nat` with a known constructor (`evalMatch`): below the run's `.matchNat` clause. -/
+/-! ### The match area, in the simulation form (docs/31 D24; third lead)
+
+The conclusion every statement of this area shares: the reference's run of the match from the
+related state does not fail, the checker's value IS its result, and the two states after are
+related, for an assignment extending `ρ` to the unknowns created and a renaming extending `π`. -/
+
+/-- The conclusion of a step in the simulation form, for the reference computation `x` run from
+`s`: `x` does not fail, the checker's value `v` (read at the run's future pulled back along the
+renaming) is its result, and the states after are related, under an assignment that extends `ρ`
+on the unknowns of `st` and a renaming that agrees with `π` on the labels `st` had issued. -/
+def SimConcl (π : Nat → Nat) (st st' : MState) (s : SState) (x : Assignment → SM Res) (v : Value) : Prop :=
+  ∃ ρ' π' r s', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
+    x ρ' s = some (r, s') ∧
+    meanV K ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
+    Rel K ρ' φ π' st' s' ∧ Good K.dm K.M K.Γ ρ' st'
+
+/-- The checker's entry set of a match (`Machine.staticJoin`): every place under a variable of the
+top frame whose content is `⊥`, at the grain of the value (`botPlaces`). -/
+def entryOf (st : MState) : List Place :=
+  match st.env.back? with
+  | some fr => (List.range fr.binds.size).flatMap fun o =>
+      botPlaces (fr.binds[fr.binds.size - 1 - o]!).val (.var o)
+  | none => []
+
+/-- **[Join], the entry set** (docs/31 D20 item 1 (e), the leaf named riskiest; D24). From related
+states the reference's entry set (`movedPlaces`) is the checker's (`entryOf`), but for the borrow
+variables whose borrow the checker has ended early: such a variable is `⊥` for the checker and
+still holds its borrow in the reference. The difference is harmless to the join: `Decide.jdMoves`
+adds such a variable to what it returns and changes nothing else (a move of a borrow variable
+covers only itself, `jdCovers`), and the checker's drop of it does nothing (`dropAtJoin` at `⊥`).
+
+As first written the reference's set held whole variables only, and the statement was false at
+any partly moved binding (`Regress/JoinProbes.lean`). OPEN beyond that: it reads the reference
+state at a future that gives the early-ended labels `err`, which `Rel` does not pin
+(`Regress/EarlyUnpinned.lean`, D25). -/
+def joinEntry_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st : MState) (s : SState) (π : Nat → Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s),
+    (∀ q, q ∈ movedPlaces φ s → q ∈ entryOf st) ∧
+    (∀ q, q ∈ entryOf st → q ∈ movedPlaces φ s ∨
+      ∃ i pos, q = .var i ∧ s.varPos i = some pos ∧ (s.shape pos).isSome = true ∧ Env.shape st.env pos = none)
+
+/-- **[Join], the drop** (`Machine.joinDrop`'s loop after the arm: `dropAtJoin` of each place the
+join says is moved, re-rooted by `movedPlace`): from related states, with the checker's drop set
+the reference's but for early-ended borrow variables, the states after the checker's drops and
+after the reference's `joinDrop` are related. `movedPlace` may η-refine an unknown, so the
+assignment is extended. The arm's result is in flight: the checker's state is given with it
+pushed as a temporary, as `joinDrop` holds it. -/
+def joinDrop_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState) (mt : Term) (drops entry : List Place)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (hsub : ∀ q, q ∈ K.D.joinMoves (scopeOf s) entry mt → q ∈ drops)
+    (hsup : ∀ q, q ∈ drops → q ∈ K.D.joinMoves (scopeOf s) entry mt ∨
+      ∃ i pos, q = .var i ∧ s.varPos i = some pos ∧ (s.shape pos).isSome = true ∧ Env.shape st.env pos = none)
+    (h : Runs (do for q in drops do Ochr.dropAtJoin fuel (← Ochr.movedPlace fuel q)) st fuel () st'),
+    ∃ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧
+      Rel K ρ' φ π st' (joinDrop K φ entry mt s) ∧ Good K.dm K.M K.Γ ρ' st'
+
+/-- [Match] on `Nat` (`evalMatch`): the run's `.matchNat` clause, in the simulation form. With a
+known constructor the arm runs and the join drops (`joinEntry_stmt`, `joinDrop_step_stmt`); on an
+unknown the checker splits or closes off, and the run takes the arm the assignment selects.
+`hns`: the run's clause is under `SM.erasedIf`, which `evalMatch` is not. -/
 def evalMatch_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st st' : MState)  (typed : Bool) (p : Place) (z s : Term)
+  ∀ (st st' : MState)  (typed : Bool) (p : Place) (z u : Term)
     (expected : Option Value) (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.evalMatch fuel typed p z s expected) st fuel (v, T?) st'),
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (hns : K.D.flags (scopeOf s) (.matchNat p z u) = (false, false))
+    (h : Runs (Ochr.evalMatch fuel typed p z u expected) st fuel (v, T?) st'),
     -- the run's hint is the checker's expected type (a free hint against `expected` was refutable
     -- on a hint-dependent arm value)
-    ∃ r s', run K ρ φ (hintM K ρ expected) (.matchNat p z s) (SM' K ρ st) = some (r, s') ∧
-      meanV K ρ φ r.2 v ⊑ r.1 ∧
-      Below (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
+    SimConcl K ρ φ π st st' s (fun ρ' => run K ρ' φ (hintM K ρ expected) (.matchNat p z u)) v
 
-/-- [Match] on a declared inductive with a known constructor (`evalMatchInd`): below the run's
-`.matchInd` clause. -/
+/-- [Match] on a declared inductive (`evalMatchInd`): the run's `.matchInd` clause, in the
+simulation form. -/
 def evalMatchInd_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (p : Place) (ty : String)
-    (arms : List (Hint × Term)) (v : Value) (T? : Option Value) (hint : TyS)
+    (arms : List (Hint × Term)) (expected : Option Value) (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.evalMatchInd fuel typed p ty arms) st fuel (v, T?) st'),
-    ∃ r s', run K ρ φ hint (.matchInd p ty arms) (SM' K ρ st) = some (r, s') ∧
-      meanV K ρ φ r.2 v ⊑ r.1 ∧
-      Below (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (hns : K.D.flags (scopeOf s) (.matchInd p ty arms) = (false, false))
+    (h : Runs (Ochr.evalMatchInd fuel typed p ty arms expected) st fuel (v, T?) st'),
+    -- the hint is the checker's expected type, as for `evalMatch` (it was free here)
+    SimConcl K ρ φ π st st' s (fun ρ' => run K ρ' φ (hintM K ρ expected) (.matchInd p ty arms)) v
 
 /-- A match on a proof, by its type (`evalMatchByType`, D45): the one arm of a one-constructor
-proposition, its proof fields `⋆` and its data fields fresh unknowns; below the run's clause for
-a proof scrutinee under an assignment extended at those unknowns by the fields of the proof's
-witness (the proposition is inhabited, since the scrutinee is a member of it). -/
+proposition, its proof fields `⋆` and its data fields fresh unknowns; the run's clause for a proof
+scrutinee under an assignment extended at those unknowns by the fields of the proof's witness (the
+proposition is inhabited, since the scrutinee is a member of it). In the simulation form. -/
 def evalMatchByType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (p : Place) (ty : String)
-    (arms : List (Hint × Term)) (v : Value) (T? : Option Value) (hint : TyS)
+    (arms : List (Hint × Term)) (expected : Option Value) (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.evalMatchByType fuel typed p ty arms none) st fuel (v, T?) st'),
-    ∃ ρ', Extends st ρ ρ' ∧ TypedAssignment K.dm K.M K.Γ ρ' st' ∧
-      ∃ r s', run K ρ' φ hint (.matchInd p ty arms) (SM' K ρ' st) = some (r, s') ∧
-        meanV K ρ' φ r.2 v ⊑ r.1 ∧
-        Below (MState.mean K.dm K.M K.Γ ρ' st') s'.toMean ∧ Good K.dm K.M K.Γ ρ' st'
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (hns : K.D.flags (scopeOf s) (.matchInd p ty arms) = (false, false))
+    (h : Runs (Ochr.evalMatchByType fuel typed p ty arms expected) st fuel (v, T?) st'),
+    SimConcl K ρ φ π st st' s (fun ρ' => run K ρ' φ (hintM K ρ expected) (.matchInd p ty arms)) v
 
 /-- [Split] coverage: at a place whose content is the unknown `σ` of a data type, every typed
 assignment selects a constructor `c` (exactly one: distinct constructors mean distinct tags), and extends to the arm's fresh field unknowns
@@ -606,19 +682,19 @@ def generalizeNeutral_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fu
     Good K.dm K.M K.Γ ρ' st'
 
 /-- A stuck block closed off (`closeBlock`): the block is a call of an anonymous function of its
-captures, so its sealed result and fills mean what running the match means: below the run's
-match clause (the capture by move of a place the selected arm keeps is D84's join, exact; a
-split less fine than the arm's own is an over-approximation). The arms are given as the
-match term `mt`; `B?` is the match's annotated type. -/
+captures, so its sealed result and fills mean what running the match means: the run's match
+clause, in the simulation form (the capture by move of a place the selected arm keeps is D84's
+join, which the run performs too). The arms are given as the match term `mt`; `B?` is the match's
+annotated type. -/
 def closeBlock_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (mt : Term) (arms : List BlockArm)
     (B? : Option Value) (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hmt : mt matches .matchNat .. | .matchInd .. | .prim "J" _)
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (hns : K.D.flags (scopeOf s) mt = (false, false))
     (h : Runs (Ochr.closeBlock fuel mt arms B?) st fuel (v, T?) st'),
-    ∃ r s', run K ρ φ (hintM K ρ B?) mt (SM' K ρ st) = some (r, s') ∧
-      meanV K ρ φ r.2 v ⊑ r.1 ∧
-      Below (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
+    SimConcl K ρ φ π st st' s (fun ρ' => run K ρ' φ (hintM K ρ B?) mt) v
 
 /-- Worlds (X1)–(X4), `exitWorld`: the restored state means the snapshot (every component but
 the name counters and the types of unknowns created inside the arm is the snapshot's), and is
@@ -766,7 +842,7 @@ def valType_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hv : ∃ p, valAt st.env p = v)
     (h : Runs (Ochr.valType? fuel v) st fuel (some T) st'),
     TypedFuture K.dm K.M K.Γ ρ st φ →
-      (meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v).pmem (meanV K ρ noFuture (.plain .err) T).asTy
+      K.dm.pmem K.Γ (meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v) (meanV K ρ noFuture (.plain .err) T).asTy
 
 /-- [Borrow] keeps (WF1)–(WF3): the fresh label is held once, at the destination; the lent
 place's content holds no live loan (after [Access]), so the borrow relation stays acyclic. -/
@@ -869,7 +945,8 @@ def piShape_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
 assignment `ρ` and every reference state `s` that simulates the checker's state under a renaming
 `π` of its labels (`Rel`), following at each split the arm `ρ` selects: the reference run of `t`
 from `s` does not fail; the checker's value, read at the run's future pulled back along the
-renaming, is below its result; the state the run reaches simulates the checker's, for an
+renaming, IS its result (equal, not below: a value that is bound must satisfy `Rel`'s equality at
+its binding; docs/31 D24); the state the run reaches simulates the checker's, for an
 assignment `ρ'` extending `ρ` to the unknowns created and a renaming `π'` that agrees with `π` on
 the labels the checker had issued; and `Good` is kept.
 
@@ -889,7 +966,7 @@ def evalCore_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (h : Runs (Ochr.evalCore fuel typed t hint) st fuel (v, T?) st'),
     ∃ ρ' π', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
       ∃ r s', run K ρ' φ (hintM K ρ hint) t s = some (r, s') ∧
-        meanV K ρ' (fun l => φ (π' l)) r.2 v ⊑ r.1 ∧
+        meanV K ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
         (∀ T, T? = some T → StrAgree K ρ' v T r.2) ∧
         Rel K ρ' φ π' st' s' ∧ Good K.dm K.M K.Γ ρ' st'
 
@@ -906,7 +983,7 @@ def eval_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : P
     (h : Runs (Ochr.eval fuel typed t hint) st fuel (v, T?) st'),
     ∃ ρ' π', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
       ∃ r s', run K ρ' φ (hintM K ρ hint) t s = some (r, s') ∧
-        meanV K ρ' (fun l => φ (π' l)) r.2 v ⊑ r.1 ∧
+        meanV K ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
         -- not of a proof: the run does not run one and gives it no type (`SM.erasedIf`), where
         -- the checker returns its proposition (the audit's row 26, and A17). As first stated the
         -- conjunct had no such condition and was false of every proof term
@@ -924,7 +1001,7 @@ def letIn_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : 
     (h : Runs (Ochr.evalCore fuel typed (.letIn h0 u w) hint) st fuel (v, T?) st'),
     ∃ ρ' π' r s', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
       run K ρ' φ (hintM K ρ hint) (.letIn h0 u w) s = some (r, s') ∧
-      meanV K ρ' (fun l => φ (π' l)) r.2 v ⊑ r.1 ∧
+      meanV K ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
       Rel K ρ' φ π' st' s' ∧ Good K.dm K.M K.Γ ρ' st'
 
 /-- `Eq` (the `.eq` form): both sides on private copies, the type a statement; the result means

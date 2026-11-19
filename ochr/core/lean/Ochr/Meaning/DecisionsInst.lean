@@ -68,8 +68,8 @@ as the machine makes it (`withLive true (… [] …)`) in that state.
   lands. Its second argument is the set of places already `⊥` at the match. The run passes
   `movedPlaces φ s`, the top frame's variables holding `moved`. On `d84`, `Machine.staticJoin`
   calls `withLive true (jdMoves fuel [] [] t entry)` with `entry` = `botPlaces` of the frame's
-  values, which includes sub-places with `⊥` inside a value: the run's whole-variable set is a
-  documented gap for those. Once `jdMoves` lands, the field is
+  values, which includes sub-places with `⊥` inside a value; the run's set is at that grain too
+  since docs/31 D24 (`Sem.movedIn`; it was whole variables, a fault: `Regress/JoinProbes.lean`). Once `jdMoves` lands, the field is
   `fun sc entry t => readDecision (scopeState st sc) fuel [] (withLive true (jdMoves fuel [] [] t entry))`.
 -/
 

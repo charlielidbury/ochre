@@ -134,4 +134,26 @@ noncomputable def Sem.updAt (T : TyM) (f : Sem → Sem) : List Step → Sem → 
 
 end
 
+mutual
+/-- The places under `q` whose content in the meaning `x` is `moved`: `Machine.botPlaces`, on
+meanings. A partly moved constructor value is a tuple (`DataModel.ctorM`) and names its fields as
+the checker does (a `FieldRef` is compared without its printing name); a partly moved number is
+`S` of its predecessor, the step `.0`. A whole value holds no moved part. -/
+def Sem.movedIn : Sem → Place → List Place
+  | .moved, q => [q]
+  | .ctor t c fs, q => if t = "Nat" then Sem.movedInNat fs q else Sem.movedInFields t c q 0 fs
+  | _, _ => []
+termination_by structural x => x
+
+def Sem.movedInFields (t : String) (c : Nat) (q : Place) : Nat → List Sem → List Place
+  | _, [] => []
+  | i, w :: ws => Sem.movedIn w (.field ⟨t, c, i, s!"f{i}"⟩ q) ++ Sem.movedInFields t c q (i + 1) ws
+termination_by structural _ ws => ws
+
+def Sem.movedInNat : List Sem → Place → List Place
+  | [], _ => []
+  | w :: _, q => Sem.movedIn w (.proj 0 q)
+termination_by structural ws => ws
+end
+
 end Ochr.Meaning

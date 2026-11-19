@@ -257,13 +257,29 @@ noncomputable def pushBindShaped (s : SState) (b : SBinding) : SState :=
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- The top frame's variables holding `⊥` at the run's future (D84's `entry` set of a match). -/
+/-- The future at which every label the state holds reads `err`: a lent part of a value then reads
+`err`, which is not `moved`, so what reads `moved` under it is the value's OWN moved parts. -/
+def SState.lentFuture (s : SState) (φ : Future) : Future := fun l => if l ∈ s.liveLabels then .err else φ l
+
+/-- The top frame's places holding `⊥` (D84's `entry` set of a match), as `Machine.staticJoin` reads
+them (`botPlaces` of each binding's value): every place under a variable whose content is moved,
+at the grain of the value (`Sem.movedIn`), through a borrow variable's content as `*r…`, and
+never under a lent part (the checker's value there is a loan, which holds no `⊥` of its own:
+`lentFuture`).
+
+As first written this was the WHOLE variables reading `moved` at the closed future, a gap recorded
+when it was written. It is a fault (docs/31 D24, third lead): with `p.0` moved before a match, an
+arm that refills it and another that does not, the checker's join says `p.0` is moved and drops it
+after the arm taken (`Decide.jdMoves` from the entry `[p.0]`), where the run, passing the entry
+`[]`, left it whole; `Id` observes the difference, and the checker proves an `Id` the run made
+false (`Regress/JoinProbes.lean`: `IdRefill`, accepted). -/
 noncomputable def movedPlaces (s : SState) : List Place :=
   match s.env.getLast? with
-  | some fr => (List.range fr.binds.length).filterMap fun i =>
+  | some fr => (List.range fr.binds.length).flatMap fun i =>
       match s.varPos i with
-      | some pos => if s.valAt pos (s.closedFuture φ) = .moved then some (.var i) else none
-      | none => none
+      | some pos => Sem.movedIn (s.valAt pos (s.lentFuture φ))
+          (if (s.shape pos).isSome then .deref (.var i) else .var i)
+      | none => []
   | none => []
 
 /-- What [Access] of a place observes of its position's meaning: `ob` of the content at the path
