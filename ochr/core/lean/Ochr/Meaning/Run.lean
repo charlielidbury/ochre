@@ -916,6 +916,7 @@ noncomputable def meanV (hint : TyS) : Value → Sem
     | some ((v, _), _) => v
     | none => .err
   | .borrow _ w => meanV hint w
+  | .gloan _ w => meanV hint w
   | .loan l => φ l
   | .bot => .moved
   | .abs σ => ρ σ
@@ -1094,6 +1095,7 @@ theorem meanV_eq_mean_aux (hint : TyS) : (v : Value) →
   | .gfn _ => rfl
   | .clo _ _ _ => rfl
   | .borrow _ w => meanV_eq_mean_aux hint w
+  | .gloan _ w => meanV_eq_mean_aux hint w
   | .loan _ => rfl
   | .bot => rfl
   | .abs _ => rfl

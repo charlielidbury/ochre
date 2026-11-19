@@ -91,6 +91,8 @@ noncomputable def Value.mean (ρ : Assignment) (φ : Future) (hint : TyS) : Valu
   | .gfn n => (C.global n).1
   | .clo caps t rd => C.clo ρ φ caps t rd
   | .borrow _ w => Value.mean ρ φ hint w
+  -- `lent_k w` (static ends, D90): the mark has no meaning of its own (docs/31 D29)
+  | .gloan _ w => Value.mean ρ φ hint w
   | .loan l => φ l
   | .bot => .moved
   | .abs σ => ρ σ
@@ -156,5 +158,121 @@ def _root_.Ochr.Value.bareCtor (Γ : List IndDecl) : Value → Bool
 def _root_.Ochr.Value.isSealed : Value → Bool
   | .sealed _ => true
   | _ => false
+
+/-- The loans a value's MEANING reads: `loan_l` anywhere inside it, sealed programs, closures and
+recorded types included. Main's `Value.hasLoan` also counts a mark `lent_l` (static ends, D90),
+which [Access] reads and a meaning does not (docs/31 D29: the mark has no meaning of its own), so
+the congruence lemmas are stated with this one. -/
+def _root_.Ochr.Value.hasLoanM (l : Nat) (v : Value) : Bool := v.anyAtom (· == .loan l)
+
+mutual
+theorem _root_.Ochr.Value.anyAtom_mono {P Q : Value → Bool} (h : ∀ a, P a = true → Q a = true) :
+    ∀ (v : Value), v.anyAtom P = true → v.anyAtom Q = true
+  | v, hv => by
+    cases v with
+    | succ w | tRef w | borrow _ w | gloan _ w | sealed w | tInd _ w =>
+      simp only [Value.anyAtom, Bool.or_eq_true_iff] at hv ⊢
+      rcases hv with hv | hv
+      · exact .inl (h _ hv)
+      · first
+          | exact .inr (Value.anyAtom_mono h _ hv)
+          | exact .inr (Term.anyAtom_mono h _ hv)
+          | exact .inr (Value.anyAtomList_mono h _ hv)
+    | tEq A a b =>
+      simp only [Value.anyAtom, Bool.or_eq_true_iff] at hv ⊢
+      rcases hv with hv | (hv | hv) | hv
+      · exact .inl (h _ hv)
+      · exact .inr (.inl (.inl (Value.anyAtom_mono h _ hv)))
+      · exact .inr (.inl (.inr (Value.anyAtom_mono h _ hv)))
+      · exact .inr (.inr (Value.anyAtom_mono h _ hv))
+    | clo cs t rd | tPi cs t rd =>
+      simp only [Value.anyAtom, Bool.or_eq_true_iff] at hv ⊢
+      rcases hv with hv | (hv | hv) | hv
+      · exact .inl (h _ hv)
+      · exact .inr (.inl (.inl (Value.anyAtomList_mono h _ hv)))
+      · exact .inr (.inl (.inr (Term.anyAtom_mono h _ hv)))
+      · exact .inr (.inr (Value.anyAtomRd_mono h _ hv))
+    | ind _ _ _ ps fs =>
+      simp only [Value.anyAtom, Bool.or_eq_true_iff] at hv ⊢
+      rcases hv with hv | hv | hv
+      · exact .inl (h _ hv)
+      · exact .inr (.inl (Value.anyAtomList_mono h _ hv))
+      · exact .inr (.inr (Value.anyAtomList_mono h _ hv))
+    | zero | unit | gfn _ | loan _ | bot | abs _ | proof | tNat | tUnit | sort _ =>
+      simp only [Value.anyAtom, Bool.or_eq_true_iff, Bool.or_false] at hv ⊢
+      first | exact h _ hv | exact .inl (h _ hv)
+
+theorem _root_.Ochr.Value.anyAtomList_mono {P Q : Value → Bool} (h : ∀ a, P a = true → Q a = true) :
+    ∀ (vs : List Value), Value.anyAtomList P vs = true → Value.anyAtomList Q vs = true
+  | [], hv => by simp [Value.anyAtomList] at hv
+  | v :: vs, hv => by
+    simp only [Value.anyAtomList, Bool.or_eq_true_iff] at hv ⊢
+    rcases hv with hv | hv
+    · exact .inl (Value.anyAtom_mono h v hv)
+    · exact .inr (Value.anyAtomList_mono h vs hv)
+
+theorem _root_.Ochr.Value.anyAtomRd_mono {P Q : Value → Bool} (h : ∀ a, P a = true → Q a = true) :
+    ∀ (rd : List (DeclInfo × Value)), Value.anyAtomRd P rd = true → Value.anyAtomRd Q rd = true
+  | [], hv => by simp [Value.anyAtomRd] at hv
+  | (_, v) :: rd, hv => by
+    simp only [Value.anyAtomRd, Bool.or_eq_true_iff] at hv ⊢
+    rcases hv with hv | hv
+    · exact .inl (Value.anyAtom_mono h v hv)
+    · exact .inr (Value.anyAtomRd_mono h rd hv)
+
+theorem _root_.Ochr.Term.anyAtom_mono {P Q : Value → Bool} (h : ∀ a, P a = true → Q a = true) :
+    ∀ (t : Term), t.anyAtom P = true → t.anyAtom Q = true
+  | t, ht => by
+    cases t <;> simp only [Term.anyAtom, Bool.or_eq_true_iff] at ht ⊢ <;> (try exact absurd ht Bool.false_ne_true)
+    all_goals first
+      | exact Value.anyAtom_mono h _ ht
+      | exact Term.anyAtom_mono h _ ht
+      | exact Term.anyAtomList_mono h _ ht
+      | exact Term.anyAtomArms_mono h _ ht
+      | (rcases ht with ht | ht
+         · exact .inl (Term.anyAtom_mono h _ ht)
+         · exact .inr (Term.anyAtom_mono h _ ht))
+      | (rcases ht with ht | ht
+         · exact .inl (Term.anyAtomList_mono h _ ht)
+         · exact .inr (Term.anyAtom_mono h _ ht))
+      | (rcases ht with ht | ht
+         · exact .inl (Term.anyAtom_mono h _ ht)
+         · exact .inr (Term.anyAtomList_mono h _ ht))
+      | (rcases ht with ht | ht
+         · exact .inl (Term.anyAtomList_mono h _ ht)
+         · exact .inr (Term.anyAtomList_mono h _ ht))
+      | (rcases ht with (ht | ht) | ht
+         · exact .inl (.inl (Term.anyAtom_mono h _ ht))
+         · exact .inl (.inr (Term.anyAtom_mono h _ ht))
+         · exact .inr (Term.anyAtom_mono h _ ht))
+      | (rcases ht with (ht | ht) | ht
+         · exact .inl (.inl (Term.anyAtomList_mono h _ ht))
+         · exact .inl (.inr (Term.anyAtom_mono h _ ht))
+         · exact .inr (Term.anyAtom_mono h _ ht))
+
+theorem _root_.Ochr.Term.anyAtomList_mono {P Q : Value → Bool} (h : ∀ a, P a = true → Q a = true) :
+    ∀ (ts : List Term), Term.anyAtomList P ts = true → Term.anyAtomList Q ts = true
+  | [], ht => by simp [Term.anyAtomList] at ht
+  | t :: ts, ht => by
+    simp only [Term.anyAtomList, Bool.or_eq_true_iff] at ht ⊢
+    rcases ht with ht | ht
+    · exact .inl (Term.anyAtom_mono h t ht)
+    · exact .inr (Term.anyAtomList_mono h ts ht)
+
+theorem _root_.Ochr.Term.anyAtomArms_mono {P Q : Value → Bool} (h : ∀ a, P a = true → Q a = true) :
+    ∀ (as : List (Hint × Term)), Term.anyAtomArms P as = true → Term.anyAtomArms Q as = true
+  | [], ht => by simp [Term.anyAtomArms] at ht
+  | (_, t) :: as, ht => by
+    simp only [Term.anyAtomArms, Bool.or_eq_true_iff] at ht ⊢
+    rcases ht with ht | ht
+    · exact .inl (Term.anyAtom_mono h t ht)
+    · exact .inr (Term.anyAtomArms_mono h as ht)
+end
+
+/-- A loan the meaning reads is a loan main's `hasLoan` counts. -/
+theorem _root_.Ochr.Value.hasLoan_of_hasLoanM {l : Nat} {v : Value} (h : v.hasLoanM l = true) :
+    v.hasLoan l = true :=
+  Value.anyAtom_mono (fun a ha => by
+    cases a <;> simp_all [BEq.beq, Value.beq]) v h
 
 end Ochr.Meaning

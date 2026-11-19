@@ -468,6 +468,9 @@ theorem meanV_substSame (hF : FillOK K ρ ψ l w) : ∀ (v : Value) (hint : TyS)
     | borrow m u =>
       show meanV K ρ ψ hint (Value.substLoan l w u) = meanV K ρ ψ hint u
       exact meanV_substSame hF u hint
+    | gloan m u =>
+      show meanV K ρ ψ hint (Value.substLoan l w u) = meanV K ρ ψ hint u
+      exact meanV_substSame hF u hint
     | tRef A =>
       show meanV K ρ ψ _ (Value.substLoan l w A) = meanV K ρ ψ _ A
       exact meanV_substSame hF A _
@@ -565,7 +568,7 @@ theorem tyShape_substSame (hF : FillOK K ρ ψ l w) : ∀ (T : Value),
   | .tRef A => by
     show tyShape K ρ ψ (.tRef (Value.substLoan l w A)) = _
     rw [tyShape, tyShape, tyShape_substSame hF A]
-  | .zero | .succ _ | .unit | .gfn _ | .clo _ _ _ | .borrow _ _ | .bot | .abs _
+  | .zero | .succ _ | .unit | .gfn _ | .clo _ _ _ | .borrow _ _ | .gloan _ _ | .bot | .abs _
   | .sealed _ | .proof | .tNat | .tUnit | .tEq _ _ _ | .sort _ | .ind _ _ _ _ _ | .tInd _ _ => by
     simp only [Value.substLoan, tyShape]
 
@@ -582,7 +585,7 @@ theorem tyDataV_substSame (hF : FillOK K ρ ψ l w) : ∀ (T : Value),
   | .tRef A => by
     show tyDataV K ρ ψ (.tRef (Value.substLoan l w A)) = _
     rw [tyDataV, tyDataV, tyDataV_substSame hF A]
-  | .zero | .succ _ | .unit | .gfn _ | .clo _ _ _ | .borrow _ _ | .bot | .abs _
+  | .zero | .succ _ | .unit | .gfn _ | .clo _ _ _ | .borrow _ _ | .gloan _ _ | .bot | .abs _
   | .sealed _ | .proof | .tNat | .tUnit | .tEq _ _ _ | .sort _ | .ind _ _ _ _ _ | .tPi _ _ _ => by
     simp only [Value.substLoan, tyDataV]
 
@@ -648,6 +651,9 @@ theorem noLoan_substLoanV (hw : w.anyAtom (· == .loan l) = false) : ∀ v : Val
     show (_ || (Value.substLoan l w u).anyAtom (· == .loan l)) = false
     rw [noLoan_substLoanV hw u]; rfl
   | .borrow m u => by
+    show (_ || (Value.substLoan l w u).anyAtom (· == .loan l)) = false
+    rw [noLoan_substLoanV hw u]; rfl
+  | .gloan m u => by
     show (_ || (Value.substLoan l w u).anyAtom (· == .loan l)) = false
     rw [noLoan_substLoanV hw u]; rfl
   | .tEq A a b => by

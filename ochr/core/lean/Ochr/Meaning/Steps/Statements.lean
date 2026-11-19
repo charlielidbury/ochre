@@ -492,7 +492,7 @@ def popFrame_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
 filling value's meaning (the pure lemma plus re-normalisation). -/
 def substV_loan_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (l : Nat) (w v v' : Value) (hint : TyS)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hw : ¬ w.hasLoanM l) (hf : HintFree K ρ φ w)
     (bh : Nat) (h : Runs (Ochr.substV fuel (.loan l) w v) st bh v' st'),
     meanV K ρ φ hint v' ⊑ meanV K ρ (φ.upd l (meanV K ρ φ (.plain .err) w)) hint v ∧ st'.core = st.core
 
@@ -507,9 +507,9 @@ arm (`Regress/RenormHoles.lean`). -/
 def substV_loan_keeps_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (l : Nat) (w v v' : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hv : v ∈ Env.values st.env)
-    (htypes : ∀ A a b, v.anyAtom (· == .tEq A a b) = true → ∀ m, (Value.tEq A a b).hasLoan m = false)
+    (htypes : ∀ A a b, v.anyAtom (· == .tEq A a b) = true → ∀ m, (Value.tEq A a b).hasLoanM m = false)
     (bh : Nat) (h : Runs (Ochr.substV fuel (.loan l) w v) st bh v' st'),
-    ∀ m, m ≠ l → v.hasLoan m = true → v'.hasLoan m = true
+    ∀ m, m ≠ l → v.hasLoanM m = true → v'.hasLoanM m = true
 
 /-- **Machine fact (b) of the loan witness** (docs/31 D27): a call closed off with a borrow result
 `k` leaves, at every position that held the loan of a borrow argument, a fill holding the loan of
@@ -521,7 +521,7 @@ def closeCall_hole_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
     (tys : Array (Option Value)) (v : Value)
     (bh : Nat) (h : Runs (Ochr.closeCall fuel fv ws .ref res fills tys) st bh v st'),
     ∃ k w, v = .borrow k w ∧ ∀ (i l : Nat) (u : Value), ws[i]? = some (.borrow l u) →
-      ∀ p, (valAt st.env p).hasLoan l = true → (valAt st'.env p).hasLoan k = true
+      ∀ p, (valAt st.env p).hasLoanM l = true → (valAt st'.env p).hasLoanM k = true
 
 /-- `substV` of an abstract value by a refinement `r` it means: exact. -/
 def substV_abs_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
@@ -535,7 +535,7 @@ def substV_abs_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Na
 reads the fixed future; stored types are untouched (`types = false`: no type holds a loan). -/
 def substEnv_loan_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (l : Nat) (w : Value)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hw : ¬ w.hasLoan l) (hf : HintFree K ρ φ w)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hw : ¬ w.hasLoanM l) (hf : HintFree K ρ φ w)
     (bh : Nat) (h : Runs (Ochr.substEnv fuel (.loan l) w false) st bh () st'),
     (∀ p, (MState.mean K.dm K.M K.Γ ρ st').val φ p ⊑
         (MState.mean K.dm K.M K.Γ ρ st).val (φ.upd l (meanV K ρ φ (.plain .err) w)) p) ∧
