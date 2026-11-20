@@ -199,43 +199,45 @@ def liveVal (s : MState) (i : Nat) : DeclInfo :=
   let bs := s.env[s.env.size - 1]!.binds
   if i < bs.size then bs[bs.size - 1 - i]!.decl else .other
 
-/-- Two states agree on everything a decision reads: equal but for the frames, whose top frame
-has the same readings, the move log (`placeLog`) and the [Split] refinements (`refs`). No decision
-reads the last two: the simulation below (`decideSim`) goes through with them ignored (added
-2026-11-21, so that the decisions' alignment, `Steps.DecAligned`, passes through the steps that
-write only those). -/
+/-- Two states agree on everything a decision reads (docs/31 D53): Σ (`globals`, `inds`), Δ
+(`absTy`), the reading mode (`liveScope`), the top frame's readings (`live`), and, as a separate
+and clearly marked hypothesis, the two caches the decision procedures write into the state
+(`constDecls`, `classCache`), which main is measuring for removal: nothing here is proved about
+their coherence. Everything else may differ: the env's values, the move log, the label and unknown
+counters, the records (`refs`, `neutrals`, `etaRefs`), the goal. The simulation below
+(`decideSim`) goes through with only these. (First stated as equality of the whole state but the
+frames, the move log and the refinements.) -/
 structure EnvRel (s₁ s₂ : MState) : Prop where
-  rest : { s₁ with env := #[], placeLog := #[], refs := [] } = { s₂ with env := #[], placeLog := #[], refs := [] }
+  globals : s₁.globals = s₂.globals
+  inds : s₁.inds = s₂.inds
+  absTy : s₁.absTy = s₂.absTy
+  liveScope : s₁.liveScope = s₂.liveScope
+  /-- THE CACHES (pending main's measurement; no coherence argument is made) -/
+  caches : s₁.constDecls = s₂.constDecls ∧ s₁.classCache = s₂.classCache
   live : ∀ i, liveVal s₁ i = liveVal s₂ i
 
-theorem EnvRel.globals {s₁ s₂ : MState} (h : EnvRel s₁ s₂) : s₁.globals = s₂.globals := by
-  have := congrArg MState.globals h.rest; exact this
-theorem EnvRel.inds {s₁ s₂ : MState} (h : EnvRel s₁ s₂) : s₁.inds = s₂.inds := by
-  have := congrArg MState.inds h.rest; exact this
-theorem EnvRel.absTy {s₁ s₂ : MState} (h : EnvRel s₁ s₂) : s₁.absTy = s₂.absTy := by
-  have := congrArg MState.absTy h.rest; exact this
-theorem EnvRel.constDecls {s₁ s₂ : MState} (h : EnvRel s₁ s₂) : s₁.constDecls = s₂.constDecls := by
-  have := congrArg MState.constDecls h.rest; exact this
-theorem EnvRel.classCache {s₁ s₂ : MState} (h : EnvRel s₁ s₂) : s₁.classCache = s₂.classCache := by
-  have := congrArg MState.classCache h.rest; exact this
-theorem EnvRel.liveScope {s₁ s₂ : MState} (h : EnvRel s₁ s₂) : s₁.liveScope = s₂.liveScope := by
-  have := congrArg MState.liveScope h.rest; exact this
+theorem EnvRel.constDecls {s₁ s₂ : MState} (h : EnvRel s₁ s₂) : s₁.constDecls = s₂.constDecls := h.caches.1
+theorem EnvRel.classCache {s₁ s₂ : MState} (h : EnvRel s₁ s₂) : s₁.classCache = s₂.classCache := h.caches.2
 
 theorem EnvRel.setLive {s₁ s₂ : MState} (h : EnvRel s₁ s₂) (b : Bool) :
     EnvRel { s₁ with liveScope := b } { s₂ with liveScope := b } :=
-  ⟨congrArg (fun s => { s with liveScope := b }) h.rest, h.live⟩
+  ⟨h.globals, h.inds, h.absTy, rfl, h.caches, h.live⟩
 
 theorem EnvRel.consConst {s₁ s₂ : MState} (h : EnvRel s₁ s₂) (c : String × DeclInfo) :
-    EnvRel { s₁ with constDecls := c :: s₁.constDecls } { s₂ with constDecls := c :: s₂.constDecls } := by
-  refine ⟨?_, h.live⟩
-  have := congrArg (fun s => { s with constDecls := c :: s.constDecls }) h.rest
-  exact this
+    EnvRel { s₁ with constDecls := c :: s₁.constDecls } { s₂ with constDecls := c :: s₂.constDecls } :=
+  ⟨h.globals, h.inds, h.absTy, h.liveScope, ⟨by rw [h.caches.1], h.caches.2⟩, h.live⟩
 
 theorem EnvRel.consClass {s₁ s₂ : MState} (h : EnvRel s₁ s₂) (c : Value × Nat) :
-    EnvRel { s₁ with classCache := c :: s₁.classCache } { s₂ with classCache := c :: s₂.classCache } := by
-  refine ⟨?_, h.live⟩
-  have := congrArg (fun s => { s with classCache := c :: s.classCache }) h.rest
-  exact this
+    EnvRel { s₁ with classCache := c :: s₁.classCache } { s₂ with classCache := c :: s₂.classCache } :=
+  ⟨h.globals, h.inds, h.absTy, h.liveScope, ⟨h.caches.1, by rw [h.caches.2]⟩, h.live⟩
+
+theorem EnvRel.symm {s₁ s₂ : MState} (h : EnvRel s₁ s₂) : EnvRel s₂ s₁ :=
+  ⟨h.globals.symm, h.inds.symm, h.absTy.symm, h.liveScope.symm, ⟨h.caches.1.symm, h.caches.2.symm⟩,
+    fun i => (h.live i).symm⟩
+
+theorem EnvRel.trans {s₁ s₂ s₃ : MState} (h : EnvRel s₁ s₂) (h' : EnvRel s₂ s₃) : EnvRel s₁ s₃ :=
+  ⟨h.globals.trans h'.globals, h.inds.trans h'.inds, h.absTy.trans h'.absTy, h.liveScope.trans h'.liveScope,
+    ⟨h.caches.1.trans h'.caches.1, h.caches.2.trans h'.caches.2⟩, fun i => (h.live i).trans (h'.live i)⟩
 
 theorem sim_liveDecl (i : Nat) : Sim EnvRel (liveDecl i) := by
   intro s₁ s₂ f l h
@@ -494,7 +496,7 @@ theorem liveVal_scopeState (st : MState) (sc : List DeclInfo) (i : Nat) :
 
 /-- The scope state at the top frame's readings agrees with the state itself. -/
 theorem envRel_scopeState (st : MState) : EnvRel (scopeState st (topReadings st)) st :=
-  ⟨rfl, fun i => by rw [liveVal_scopeState, liveVal_eq]⟩
+  ⟨rfl, rfl, rfl, rfl, ⟨rfl, rfl⟩, fun i => by rw [liveVal_scopeState, liveVal_eq]⟩
 
 theorem runMachine_fst {α : Type} (x : M α) (s : MState) (fuel : Nat) :
     (runMachine x s fuel).1 = (match runAll x s ⟨fuel⟩ #[] with
@@ -558,5 +560,99 @@ theorem checkerDecisions_piSort (t : Term) :
   readDecision_congr (sim_withLive _ ((decideSim fuel).2.2.2.2.2.2.1 _)) (envRel_scopeState st) _ _
 
 end
+
+end Ochr.Meaning.DecideScope
+
+namespace Ochr.Meaning.DecideScope
+open Ochr
+
+/-! ## D84's join set and [Id-typestate]'s, by the same simulation (docs/31 D53) -/
+
+set_option hygiene false in
+/-- Close the calls a `sim_go` leaves: a decision of the fuel recursion (`decideSim`), or a
+helper. -/
+macro "sim_dec" : tactic => `(tactic| first
+  | exact (decideSim _).1 _ _
+  | exact (decideSim _).2.2.2.1 _
+  | exact (decideSim _).2.2.2.2.2.2.2.2.1 _ _ _ _
+  | exact sim_preFlags _ _
+  | exact sim_withLive _ (decideSim _).1 _ _
+  | exact sim_withLive _ ((decideSim _).2.2.2.2.2.2.2.2.1 _ _ _ _))
+
+theorem sim_jdGrain (fuel : Nat) (m : Place) : Sim EnvRel (jdGrain fuel m) := by
+  unfold jdGrain; sim_go
+  all_goals sim_dec
+
+theorem sim_jdFns (fuel : Nat) (sc : List DeclInfo) (t : Term) (acc : List Place) :
+    Sim EnvRel (jdFns fuel sc t acc) := by
+  unfold jdFns; sim_go
+  all_goals sim_dec
+
+/-- `Decide.jdMoves`' mutual block respects `EnvRel`, at `fuel`. -/
+def JdSim (fuel : Nat) : Prop :=
+  (∀ sc al t acc, Sim EnvRel (jdMoves fuel sc al t acc)) ∧
+  (∀ sc al ts acc, Sim EnvRel (jdMovesList fuel sc al ts acc)) ∧
+  (∀ sc al t arms acc, Sim EnvRel (jdMatch fuel sc al t arms acc))
+
+set_option maxHeartbeats 4000000 in
+theorem jdSim : ∀ fuel, JdSim fuel
+  | 0 => ⟨fun _ _ _ _ => by unfold jdMoves; exact sim_exhausted _,
+      fun _ _ ts _ => by cases ts <;> (unfold jdMovesList; sim_go),
+      fun _ _ _ _ _ => by unfold jdMatch; exact sim_exhausted _⟩
+  | n + 1 => by
+    obtain ⟨ihM, ihL, ihA⟩ := jdSim n
+    refine ⟨fun sc al t acc => ?_, fun sc al ts acc => ?_, fun sc al t arms acc => ?_⟩
+    · unfold jdMoves; sim_go
+      all_goals first
+        | sim_dec
+        | exact ihM _ _ _ _
+        | exact ihL _ _ _ _
+        | exact ihA _ _ _ _ _
+        | exact sim_jdFns _ _ _ _
+    · cases ts with
+      | nil => unfold jdMovesList; sim_go
+      | cons t ts =>
+        unfold jdMovesList; sim_go
+        all_goals first
+          | exact ihM _ _ _ _
+          | exact ihL _ _ _ _
+    · unfold jdMatch; sim_go
+      all_goals first
+        | sim_dec
+        | exact ihM _ _ _ _
+        | exact sim_jdFns _ _ _ _
+        | exact sim_jdGrain _ _
+
+/-- `Decide.jdAssigns`' mutual block respects `EnvRel`, at `fuel`. -/
+def JaSim (fuel : Nat) : Prop :=
+  (∀ sc t acc, Sim EnvRel (jdAssigns fuel sc t acc)) ∧ (∀ sc ts acc, Sim EnvRel (jdAssignsList fuel sc ts acc))
+
+set_option maxHeartbeats 4000000 in
+theorem jaSim : ∀ fuel, JaSim fuel
+  | 0 => ⟨fun _ _ _ => by unfold jdAssigns; exact sim_exhausted _,
+      fun _ ts _ => by cases ts <;> (unfold jdAssignsList; sim_go)⟩
+  | n + 1 => by
+    obtain ⟨ihA, ihL⟩ := jaSim n
+    refine ⟨fun sc t acc => ?_, fun sc ts acc => ?_⟩
+    · unfold jdAssigns; sim_go
+      all_goals first
+        | sim_dec
+        | exact ihA _ _ _
+        | exact ihL _ _ _
+    · cases ts with
+      | nil => unfold jdAssignsList; sim_go
+      | cons t ts =>
+        unfold jdAssignsList; sim_go
+        all_goals first
+          | exact ihA _ _ _
+          | exact ihL _ _ _
+
+/-- [Id-typestate]'s type-state respects `EnvRel`. -/
+theorem sim_typeState (fuel : Nat) (t : Term) : Sim EnvRel (typeState fuel t) := by
+  unfold typeState; sim_go
+  all_goals first
+    | sim_dec
+    | exact (jdSim _).1 _ _ _ _
+    | exact (jaSim _).1 _ _ _
 
 end Ochr.Meaning.DecideScope

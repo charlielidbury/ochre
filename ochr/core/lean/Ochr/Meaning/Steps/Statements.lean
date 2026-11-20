@@ -288,29 +288,49 @@ theorem runs_envRel {α : Type} {x : M α} (hx : DecideScope.Sim DecideScope.Env
   obtain ⟨⟨rfl, rfl⟩, -⟩ := hr
   exact ⟨t₂, hgoal t₂ ⟨_, _, rfl⟩⟩
 
+/-- **Two states with the same decision core** (`DecideScope.EnvRel` but for the frames: Σ, Δ, the
+reading mode and the caches; docs/31 D53): what the decisions read besides the top frame's
+readings. -/
+structure DecCore (st st' : MState) : Prop where
+  globals : st.globals = st'.globals
+  inds : st.inds = st'.inds
+  absTy : st.absTy = st'.absTy
+  liveScope : st.liveScope = st'.liveScope
+  /-- THE CACHES (pending main's measurement) -/
+  caches : st.constDecls = st'.constDecls ∧ st.classCache = st'.classCache
+
+theorem DecCore.of_sameDec {st st' : MState} (h : SameDec st st') : DecCore st st' := by
+  have e := congrArg (fun s : MState => (s.globals, s.inds, s.absTy, s.liveScope, s.constDecls, s.classCache)) h
+  simp only [Prod.mk.injEq] at e
+  exact ⟨e.1, e.2.1, e.2.2.1, e.2.2.2.1, e.2.2.2.2.1, e.2.2.2.2.2⟩
+
+theorem envRel_scope_of_core {st st' : MState} (h : DecCore st st') (sc : List DeclInfo) :
+    DecideScope.EnvRel (scopeState st sc) (scopeState st' sc) :=
+  ⟨h.globals, h.inds, h.absTy, h.liveScope, h.caches, fun i => by
+    rw [DecideScope.liveVal_scopeState, DecideScope.liveVal_scopeState]⟩
+
+theorem envRel_of_core {st st' : MState} (h : DecCore st st') (hl : ∀ i, DecideScope.liveVal st i = DecideScope.liveVal st' i) :
+    DecideScope.EnvRel st st' :=
+  ⟨h.globals, h.inds, h.absTy, h.liveScope, h.caches, hl⟩
+
 theorem sameDec_envRel_scope {st st' : MState} (h : SameDec st st') (sc : List DeclInfo) :
-    DecideScope.EnvRel (scopeState st sc) (scopeState st' sc) := by
-  refine ⟨?_, fun _ => rfl⟩
-  have := congrArg (fun s : MState => { s with env := #[] }) h
-  simpa [scopeState] using this
+    DecideScope.EnvRel (scopeState st sc) (scopeState st' sc) :=
+  envRel_scope_of_core (DecCore.of_sameDec h) sc
 
 theorem sameDec_envRel {st st' : MState} (h : SameDec st st') (he : st.env = st'.env) :
-    DecideScope.EnvRel st st' := by
-  refine ⟨?_, fun i => by simp [DecideScope.liveVal, he]⟩
-  have := congrArg (fun s : MState => { s with env := #[] }) h
-  simpa using this
+    DecideScope.EnvRel st st' :=
+  envRel_of_core (DecCore.of_sameDec h) fun i => by simp [DecideScope.liveVal, he]
 
-/-- D84's join set reads only what the other decisions read (open: `jdMoves` is outside
-`DecideScope.decideSim`'s seventeen functions, its docstring's first gap; the same induction is
-expected to cover it). -/
+/-- D84's join set reads only what the other decisions read (PROVED, docs/31 D53:
+`DecideScope.jdSim`, the same induction as `decideSim`, over `jdMoves`' mutual block). -/
 theorem jdMoves_sim (fuel : Nat) (t : Term) (entry : List Place) :
-    DecideScope.Sim DecideScope.EnvRel (withLive true (Ochr.jdMoves fuel [] [] t entry)) := by
-  sorry
+    DecideScope.Sim DecideScope.EnvRel (withLive true (Ochr.jdMoves fuel [] [] t entry)) :=
+  DecideScope.sim_withLive _ ((DecideScope.jdSim fuel).1 _ _ _ _)
 
-/-- [Id-typestate]'s re-pointed set likewise (open, the same gap: `typeState`). -/
+/-- [Id-typestate]'s re-pointed set likewise (PROVED, `DecideScope.sim_typeState`). -/
 theorem typeState_sim (fuel : Nat) (t : Term) :
-    DecideScope.Sim DecideScope.EnvRel (withLive true (Ochr.typeState fuel t)) := by
-  sorry
+    DecideScope.Sim DecideScope.EnvRel (withLive true (Ochr.typeState fuel t)) :=
+  DecideScope.sim_withLive _ (DecideScope.sim_typeState fuel t)
 
 theorem SameDec.symm {st st' : MState} (h : SameDec st st') : SameDec st' st := Eq.symm h
 theorem SameDec.trans {a b c : MState} (h₁ : SameDec a b) (h₂ : SameDec b c) : SameDec a c := Eq.trans h₁ h₂
@@ -328,42 +348,54 @@ theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MSta
   · intro i pos hck hv; rw [he] at hck hv; rw [e1]; exact hf.typeRoot i pos hck hv
   · intro p hne hp; rw [he] at hp; rw [e1]; exact hf.proofCopy p hne hp
 
-/-- **The decisions stay the checker's across what no decision reads** (the move log, the
-refinements): every field by the simulation of `Decide.lean` (`DecideScope.decideSim`). -/
-theorem DecAligned.of_sameDec {D : Decisions} {st st' : MState} (hd : DecAligned D st) (h : SameDec st' st)
-    (he : st'.env = st.env) : DecAligned D st' where
+/-- **The decisions stay the checker's across what no decision reads** (docs/31 D53): from a state
+with the same decision core (Σ, Δ, the reading mode, and, as a marked hypothesis, the caches,
+`DecCore`) and the same top frame's readings, every scope decision transfers by the simulation of
+`Decide.lean` (`DecideScope.decideSim`); the env's values, the move log, the counters and the
+records may differ. The block's captures (`blockCaps`) read values (D90's first obligation) and are
+asked of the new state separately. -/
+theorem DecAligned.of_core {D : Decisions} {st st' : MState} (hd : DecAligned D st) (h : DecCore st' st)
+    (hl : ∀ i, DecideScope.liveVal st' i = DecideScope.liveVal st i)
+    (hbc : ∀ st₀, SameDec st₀ st' → ∀ fuel mt bc b st₁, Runs (ckBlockCaps fuel mt) st₀ b bc st₁ →
+      D.blockCaps (DecideScope.topReadings st') (entryOf st') mt = bc) : DecAligned D st' where
   flags fuel sc t fl b st₁ hr := by
     obtain ⟨_, hr'⟩ := runs_envRel (DecideScope.sim_bind (DecideScope.sim_withLive _
       ((DecideScope.decideSim fuel).2.2.2.2.2.2.2.2.1 _ _ _ _)) fun d =>
         DecideScope.sim_bind (DecideScope.sim_preFlags t d) fun _ => DecideScope.sim_pure _)
-      (sameDec_envRel_scope h sc) hr
+      (envRel_scope_of_core h sc) hr
     exact hd.flags fuel sc t fl b _ hr'
   placeDecl fuel sc p d b st₁ hr := by
     obtain ⟨_, hr'⟩ := runs_envRel (DecideScope.sim_withLive _ ((DecideScope.decideSim fuel).1 _ _))
-      (sameDec_envRel_scope h sc) hr
+      (envRel_scope_of_core h sc) hr
     exact hd.placeDecl fuel sc p d b _ hr'
   declOf fuel sc t d b st₁ hr := by
     obtain ⟨_, hr'⟩ := runs_envRel (DecideScope.sim_withLive _ ((DecideScope.decideSim fuel).2.2.2.2.2.2.2.2.1 _ _ _ _))
-      (sameDec_envRel_scope h sc) hr
+      (envRel_scope_of_core h sc) hr
     exact hd.declOf fuel sc t d b _ hr'
   copy fuel r c b st₁ hr := by
-    obtain ⟨_, hr'⟩ := runs_envRel ((DecideScope.decideSim fuel).2.2.2.1 _) (sameDec_envRel h he) hr
+    obtain ⟨_, hr'⟩ := runs_envRel ((DecideScope.decideSim fuel).2.2.2.1 _) (envRel_of_core h hl) hr
     exact hd.copy fuel r c b _ hr'
   piSort fuel sc t l b st₁ hr := by
     obtain ⟨_, hr'⟩ := runs_envRel (DecideScope.sim_withLive _ ((DecideScope.decideSim fuel).2.2.2.2.2.2.1 _))
-      (sameDec_envRel_scope h sc) hr
+      (envRel_scope_of_core h sc) hr
     exact hd.piSort fuel sc t l b _ hr'
   joinMoves fuel sc entry t ms b st₁ hr := by
-    obtain ⟨_, hr'⟩ := runs_envRel (jdMoves_sim fuel t entry) (sameDec_envRel_scope h sc) hr
+    obtain ⟨_, hr'⟩ := runs_envRel (jdMoves_sim fuel t entry) (envRel_scope_of_core h sc) hr
     exact hd.joinMoves fuel sc entry t ms b _ hr'
   rePointed fuel sc t ts b st₁ hr := by
-    obtain ⟨_, hr'⟩ := runs_envRel (typeState_sim fuel t) (sameDec_envRel_scope h sc) hr
+    obtain ⟨_, hr'⟩ := runs_envRel (typeState_sim fuel t) (envRel_scope_of_core h sc) hr
     exact hd.rePointed fuel sc t ts b _ hr'
   typeDecl fuel sc T d b st₁ hr := by
     obtain ⟨_, hr'⟩ := runs_envRel (DecideScope.sim_withLive _ ((DecideScope.decideSim fuel).2.2.2.2.2.2.2.2.2.1 _ _ _ _ _ _))
-      (sameDec_envRel_scope h sc) hr
+      (envRel_scope_of_core h sc) hr
     exact hd.typeDecl fuel sc T d b _ hr'
-  blockCaps st₀ h₀ := by
+  blockCaps := hbc
+
+/-- The decisions stay across what only the move log and the refinements change (`DecAligned.of_core`
+with the block's captures read from the same environment). -/
+theorem DecAligned.of_sameDec {D : Decisions} {st st' : MState} (hd : DecAligned D st) (h : SameDec st' st)
+    (he : st'.env = st.env) : DecAligned D st' :=
+  hd.of_core (DecCore.of_sameDec h) (fun i => by simp [DecideScope.liveVal, he]) fun st₀ h₀ => by
     have e1 : DecideScope.topReadings st' = DecideScope.topReadings st := by
       unfold DecideScope.topReadings; rw [he]
     have e2 : entryOf st' = entryOf st := by unfold entryOf; rw [he]
