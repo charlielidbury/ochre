@@ -14,7 +14,7 @@ The step lemmas need to know these gaps.
 ## How a decision is read
 
 The checker's decisions are `M` computations. They read the state's tables (`globals`, `inds`,
-Δ = `absTy`; they write no cache since main's D95) and the declared readings of the top
+the unknowns' frozen readings `absDecl`, never their types since main's D96; they write no cache since main's D95) and the declared readings of the top
 frame's bindings (`liveDecl`, under `withLive true`). They never read a value, a stored type or a
 run (`ochr/core/CLAUDE.md`, "Decisions never read a run"; `Decide.lean` does not import the
 machine). The run has the readings (`scopeOf`: the top frame's `SBinding.decl`s, innermost first)

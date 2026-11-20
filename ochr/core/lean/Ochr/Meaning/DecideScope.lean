@@ -1,7 +1,7 @@
 import Ochr.Meaning.DecisionsInst
 
 /-!
-# Decisions read the state only through Σ, Δ and the top frame's readings
+# Decisions read the state only through Σ, the unknowns' frozen readings and the top frame's readings
 
 `DecisionsInst.lean` reads each decision in `scopeState st sc`: the checker state `st` with its
 frames replaced by one frame of readings. The checker reads it in `st` itself. This file proves
@@ -209,20 +209,20 @@ frames, the move log and the refinements.) -/
 structure EnvRel (s₁ s₂ : MState) : Prop where
   globals : s₁.globals = s₂.globals
   inds : s₁.inds = s₂.inds
-  absTy : s₁.absTy = s₂.absTy
+  absDecl : s₁.absDecl = s₂.absDecl
   liveScope : s₁.liveScope = s₂.liveScope
   live : ∀ i, liveVal s₁ i = liveVal s₂ i
 
 
 theorem EnvRel.setLive {s₁ s₂ : MState} (h : EnvRel s₁ s₂) (b : Bool) :
     EnvRel { s₁ with liveScope := b } { s₂ with liveScope := b } :=
-  ⟨h.globals, h.inds, h.absTy, rfl, h.live⟩
+  ⟨h.globals, h.inds, h.absDecl, rfl, h.live⟩
 
 theorem EnvRel.symm {s₁ s₂ : MState} (h : EnvRel s₁ s₂) : EnvRel s₂ s₁ :=
-  ⟨h.globals.symm, h.inds.symm, h.absTy.symm, h.liveScope.symm, fun i => (h.live i).symm⟩
+  ⟨h.globals.symm, h.inds.symm, h.absDecl.symm, h.liveScope.symm, fun i => (h.live i).symm⟩
 
 theorem EnvRel.trans {s₁ s₂ s₃ : MState} (h : EnvRel s₁ s₂) (h' : EnvRel s₂ s₃) : EnvRel s₁ s₃ :=
-  ⟨h.globals.trans h'.globals, h.inds.trans h'.inds, h.absTy.trans h'.absTy, h.liveScope.trans h'.liveScope,
+  ⟨h.globals.trans h'.globals, h.inds.trans h'.inds, h.absDecl.trans h'.absDecl, h.liveScope.trans h'.liveScope,
     fun i => (h.live i).trans (h'.live i)⟩
 
 theorem sim_liveDecl (i : Nat) : Sim EnvRel (liveDecl i) := by
@@ -259,12 +259,22 @@ theorem sim_lookupGlobal (n : String) : Sim EnvRel (lookupGlobal n) :=
       | none => err (toString "unknown constant " ++ toString n))
     (fun gs => by split <;> first | exact sim_pure _ | exact sim_err _)
 
-theorem sim_absType (σ : Nat) : Sim EnvRel (absType σ) :=
-  sim_get_proj (R := EnvRel) (fun s => s.absTy) (fun _ _ h => h.absTy)
-    (fun ts => match ts[σ]? with
-      | some T => pure T
-      | none => err (toString "unknown abstract value σ" ++ toString σ))
-    (fun ts => by split <;> first | exact sim_pure _ | exact sim_err _)
+/-- D96: an unknown is read by its frozen reading (`absDecl`), never by its type. -/
+theorem sim_absReading (σ : Nat) : Sim EnvRel (absReading σ) :=
+  sim_get_proj (R := EnvRel) (fun s => s.absDecl) (fun _ _ h => h.absDecl)
+    (fun ds => match ds[σ]? with
+      | some d => pure d
+      | none => err (toString "INTERNAL [D96] σ" ++ toString σ ++ toString " has no frozen reading (please report)"))
+    (fun ds => by split <;> first | exact sim_pure _ | exact sim_err _)
+
+/-- D96: a closure's or Π-type's captures are read by the readings it recorded (`rd`): no state. -/
+theorem sim_capReadings (cs : List Value) (rd : List (DeclInfo × Value)) : Sim EnvRel (capReadings cs rd) := by
+  unfold capReadings
+  by_cases h : rd.length < cs.length
+  · simp only [h, if_true]
+    exact sim_bind (sim_err _) fun _ => sim_pure _
+  · simp only [h, if_false]
+    exact sim_bind (sim_pure _) fun _ => sim_pure _
 
 /-! ## Reading the state in a proof -/
 
@@ -289,10 +299,11 @@ macro "sim_step" : tactic => `(tactic| first
   | with_reducible exact sim_liveDecl _
   | with_reducible exact sim_lookupInd _
   | with_reducible exact sim_lookupGlobal _
-  | with_reducible exact sim_absType _
+  | with_reducible exact sim_absReading _
+  | with_reducible exact sim_capReadings _ _
   | (with_reducible refine sim_get_bind fun s₁ s₂ h f l => ?_
      try dsimp only
-     try simp only [EnvRel.globals h, EnvRel.inds h, EnvRel.absTy h, EnvRel.liveScope h]
+     try simp only [EnvRel.globals h, EnvRel.inds h, EnvRel.absDecl h, EnvRel.liveScope h]
      sim_close)
   | (with_reducible refine sim_bind ?_ (fun _ => ?_))
   | (with_reducible refine sim_withLive _ ?_)

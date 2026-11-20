@@ -290,28 +290,28 @@ theorem runs_envRel {α : Type} {x : M α} (hx : DecideScope.Sim DecideScope.Env
   obtain ⟨⟨rfl, rfl⟩, -⟩ := hr
   exact ⟨t₂, hgoal t₂ ⟨_, _, rfl⟩⟩
 
-/-- **Two states with the same decision core** (`DecideScope.EnvRel` but for the frames: Σ, Δ, the
-reading mode; docs/31 D53): what the decisions read besides the top frame's
-readings. -/
+/-- **Two states with the same decision core** (`DecideScope.EnvRel` but for the frames: Σ, the
+unknowns' frozen readings (main's D96: no decision reads their types), the reading mode; docs/31
+D53, D65): what the decisions read besides the top frame's readings. -/
 structure DecCore (st st' : MState) : Prop where
   globals : st.globals = st'.globals
   inds : st.inds = st'.inds
-  absTy : st.absTy = st'.absTy
+  absDecl : st.absDecl = st'.absDecl
   liveScope : st.liveScope = st'.liveScope
 
 theorem DecCore.of_sameDec {st st' : MState} (h : SameDec st st') : DecCore st st' := by
-  have e := congrArg (fun s : MState => (s.globals, s.inds, s.absTy, s.liveScope)) h
+  have e := congrArg (fun s : MState => (s.globals, s.inds, s.absDecl, s.liveScope)) h
   simp only [Prod.mk.injEq] at e
   exact ⟨e.1, e.2.1, e.2.2.1, e.2.2.2⟩
 
 theorem envRel_scope_of_core {st st' : MState} (h : DecCore st st') (sc : List DeclInfo) :
     DecideScope.EnvRel (scopeState st sc) (scopeState st' sc) :=
-  ⟨h.globals, h.inds, h.absTy, h.liveScope, fun i => by
+  ⟨h.globals, h.inds, h.absDecl, h.liveScope, fun i => by
     rw [DecideScope.liveVal_scopeState, DecideScope.liveVal_scopeState]⟩
 
 theorem envRel_of_core {st st' : MState} (h : DecCore st st') (hl : ∀ i, DecideScope.liveVal st i = DecideScope.liveVal st' i) :
     DecideScope.EnvRel st st' :=
-  ⟨h.globals, h.inds, h.absTy, h.liveScope, hl⟩
+  ⟨h.globals, h.inds, h.absDecl, h.liveScope, hl⟩
 
 theorem sameDec_envRel_scope {st st' : MState} (h : SameDec st st') (sc : List DeclInfo) :
     DecideScope.EnvRel (scopeState st sc) (scopeState st' sc) :=

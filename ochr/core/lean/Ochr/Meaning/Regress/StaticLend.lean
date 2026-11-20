@@ -87,7 +87,8 @@ function's own binding, then the bindings at the hole; `k` labels and `σ₀ …
 def stateAt (self : String) (vs : List Value) (k a : Nat) (gl : Bool := false) : MState :=
   { env := #[{}, { binds := #[({ hint := ⟨self⟩, ty := none, val := .gfn self } : Binding)] ++
       (vs.map fun v => ({ hint := ⟨"x"⟩, ty := some .tNat, val := v } : Binding)).toArray }],
-    nextLoan := k, absTy := Array.replicate a .tNat, nextAbs := a,
+    -- main's D96: each unknown's reading frozen when it was made (`Nat`'s is `.other`)
+    nextLoan := k, absTy := Array.replicate a .tNat, absDecl := Array.replicate a .other, nextAbs := a,
     globals := if gl then libGlobals.1 else [], inds := if gl then libGlobals.2 else [] }
 
 /-- Two lists of sites hold the same sites (as sets: the relation's `sites` clause). -/
