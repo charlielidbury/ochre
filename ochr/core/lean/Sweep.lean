@@ -1239,6 +1239,14 @@ def etaHintFree : Clause where
   check st := st.etaRefs.filterMap fun (σ, r) =>
     if topHintFree st.inds r then none else some ⟨"an η record reads the hint", s!"σ{σ} := {clip r.pp}"⟩
 
+/-- CANDIDATE (the slice, for `refine_step`'s `RefineOk` at `movedPlace`'s η branch): an η record
+does not name its own unknown (`ctorRefinement` makes its fields fresh, after the unknown). -/
+def etaNoSelf : Clause where
+  name := "(candidate) an η record does not name its unknown"
+  premises := [("an η record", fun st => !st.etaRefs.isEmpty)]
+  check st := st.etaRefs.filterMap fun (σ, r) =>
+    if r.hasAbs σ then some ⟨"an η record names its unknown", s!"σ{σ} := {clip r.pp}"⟩ else none
+
 /-- (Rd) (`ShapeFacts.readingsSorted`, docs/31 D77, D78): an unknown whose frozen reading is
 `Sort l` (D96) has the type `Sort l`; with `Good` and `CtxOk` it makes the checker's `sortOf` sound
 for the model (`sortOf_sound_stmt`). -/
@@ -1255,7 +1263,7 @@ def readingsSorted : Clause where
     | _ => none
 
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, readingsSorted, plantedFill, plantedAbs, nonCopyProof, untypedBindings, openFields, droppedUnderOpen]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, etaNoSelf, readingsSorted, plantedFill, plantedAbs, nonCopyProof, untypedBindings, openFields, droppedUnderOpen]
 
 /-! ## The sweep -/
 

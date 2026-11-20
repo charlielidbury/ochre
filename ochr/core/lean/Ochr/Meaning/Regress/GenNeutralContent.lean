@@ -4,7 +4,7 @@ import Ochr.Meaning.PosLib
 /-!
 # Generalising a value that is not the place's content (built)
 
-`generalizeNeutral_step_stmt` (and the simulation form `Steps/DropOne.generalizeNeutral_sim`) asked
+`generalizeNeutral_step_stmt` (and the simulation form `generalizeNeutral_sim`, since deleted) asked
 nothing of the generalised value `n`: no hypothesis says it is the content of the place `p`, or
 holds no loan. The checker's `generalizeNeutral fuel p n` types the fresh unknown `σ` by `p`'s
 type and records `n := σ`, so the record makes `σ` referenced and the typed assignment owes

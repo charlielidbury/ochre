@@ -473,8 +473,7 @@ theorem etaFresh_sim (fuel : Nat) (st st' : MState) (p : Place) (σ : Nat) (n : 
   sorry
 
 /-- **`placeType?` in the simulation form** (its field and parameter types run on private copies:
-Ω is the snapshot's, and what the copies keep is assigned by an extension; `placeType_sim` is the
-form with the typing of the result). Open. -/
+Ω is the snapshot's, and what the copies keep is assigned by an extension). Open. -/
 theorem placeTypeQ_sim (fuel : Nat) (st st' : MState) (p : Place) (T? : Option Value) (s : SState)
     (π : Nat → Nat) (b : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
@@ -485,7 +484,7 @@ theorem placeTypeQ_sim (fuel : Nat) (st st' : MState) (p : Place) (T? : Option V
 /-- **A sealed program this world already generalised is its record's value** (`recordedNeutral`,
 then `substEnv`): `Good`'s path condition for the record `n := σ` makes `σ`, refined by the
 refinements made since (`expandRefs`), mean `⟦n⟧`, so the substitution changes no meaning (the
-substitution lemma, as `substEnv_neutral_sim`). Open. -/
+substitution lemma for a sealed program replaced by what it means). Open. -/
 theorem recorded_sim (fuel : Nat) (st st' : MState) (n r : Value) (s : SState) (π : Nat → Nat) (b b' : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hr : Runs (Ochr.recordedNeutral n) st b' (some r) st)
@@ -520,12 +519,30 @@ theorem sealed_loanFree (st : MState) (p : Place) (t : Term) (hg : Good K.dm K.M
     rw [hfill] at hin; cases hin
 
 
+/-- **An η record does not name its own unknown** (`ctorRefinement` makes the fields fresh, after
+the unknown). What `refine_step`'s `RefineOk` asks beyond the record's other facts. Swept as a
+candidate (`Sweep.etaNoSelf`, 2026-11-20): no violation in 11,805 suite states and 167 probe states
+holding an η record. No clause of `Good` says it yet (a clause beside `ShapeFacts.etaHint`, or a
+proof from `TypedAssignment.eta` that a value is not a proper part of itself). Open. -/
+theorem etaRecord_noSelf (st : MState) (hg : Good K.dm K.M K.Γ ρ st) {σ : Nat} {r : Value}
+    (h : (σ, r) ∈ st.etaRefs) : r.hasAbs σ = false := by
+  sorry
+
+/-- **A recorded η refinement is one `refine_step` accepts** (`RefineOk`): it means its unknown
+(given), names typed unknowns ((WF6)), not its own (`etaRecord_noSelf`), and holds no loan ((WF11)). -/
+theorem etaRefineOk (st : MState) (hg : Good K.dm K.M K.Γ ρ st) {σ : Nat} {r : Value}
+    (h : (σ, r) ∈ st.etaRefs) (hσ : ∀ ψ H, ρ σ = meanV K ρ ψ H r) : RefineOk K ρ st σ r :=
+  have h11 : WF11 st := hg.2.2.2.2.2.2.2.2.2.2.2.1
+  ⟨hσ, (Good.eta_bound K hg h).1, (Good.eta_bound K hg h).2, etaRecord_noSelf K ρ st hg h,
+    fun l => h11.2.2.2.2 σ r h l⟩
+
 /-- **An unknown of a one-constructor type refined in place** (`Machine.etaInPlace`, D68, D93:
 `movedPlace`'s η branch, a one-constructor match on an unknown, a block's capture): this world's
 recorded refinement (`etaRecorded_sim`) or a fresh one, recorded (`etaFresh_sim`), then the
-substitution (`refine_sim'`). The reference is untouched; the assignment and Δ are extended at the
-fresh fields. Assembled: no `sorry` beyond the three it composes. -/
-theorem etaInPlace_sim (fuel : Nat) (st st' : MState) (p : Place) (σ : Nat) (n : String) (ps : List Value)
+substitution (the induction hypothesis's `refine_step`, at a record `etaRefineOk` shows it
+accepts). The reference is untouched; the assignment and Δ are extended at the fresh fields.
+Assembled: no `sorry` beyond `etaFresh_sim` and `etaRecord_noSelf`. -/
+theorem etaInPlace_sim (fuel : Nat) (ih : StepsIHBelow fuel) (st st' : MState) (p : Place) (σ : Nat) (n : String) (ps : List Value)
     (d : IndDecl) (r : Value) (s : SState) (π : Nat → Nat) (b : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hp : ckContent st.env p = some (.abs σ)) (hT : st.absTy[σ]? = some (.tInd n ps))
@@ -553,7 +570,9 @@ theorem etaInPlace_sim (fuel : Nat) (st st' : MState) (p : Place) (σ : Nat) (n 
     rcases f with _ | f
     · obtain ⟨L, left, log, hrf⟩ := hrf
       simp [Ochr.refine, runMachineL_exhausted] at hrf
-    exact refine_sim' K ρ φ f st st' σ r₀ s π _ hg hctx hs hσ (Good.eta_bound K hg (mem_of_lookup hr)) hrf
+    obtain ⟨hsh, ρ', Δ', D', he, hrel⟩ := (ih (f + 1) (by omega) K ρ φ).refine_step st st' σ r₀ hg hctx s π hs
+      (etaRefineOk K ρ st hg (mem_of_lookup hr) hσ) _ hrf
+    exact ⟨ρ', Δ', D', Ext.of_extOk K ρ φ hsh.2.2.2.1 he hrel⟩
   · -- a fresh refinement, recorded
     obtain ⟨r₀, st₈, b₈, hcr, h8⟩ := Runs.bind_inv h7
     obtain ⟨u, st₉, b₉, hmod, h9⟩ := Runs.bind_inv h8
@@ -571,9 +590,10 @@ theorem etaInPlace_sim (fuel : Nat) (st st' : MState) (p : Place) (σ : Nat) (n 
     rcases f with _ | f
     · obtain ⟨L, left, log, hrf⟩ := hrf
       simp [Ochr.refine, runMachineL_exhausted] at hrf
-    obtain ⟨ρ₃, Δ₃, D₃, E₃⟩ := refine_sim' { K with Δ := Δ₂, D := D₂ } ρ₂ φ f _ st' σ r₀ s π _
-      E₂.good E₂.ctx E₂.rel hσ (Good.eta_bound { K with Δ := Δ₂, D := D₂ } E₂.good List.mem_cons_self) hrf
-    exact ⟨ρ₃, Δ₃, D₃, E₂.trans K ρ φ E₃⟩
+    obtain ⟨hsh, ρ₃, Δ₃, D₃, he, hrel⟩ := (ih (f + 1) (by omega) { K with Δ := Δ₂, D := D₂ } ρ₂ φ).refine_step
+      _ st' σ r₀ E₂.good E₂.ctx s π E₂.rel
+      (etaRefineOk { K with Δ := Δ₂, D := D₂ } ρ₂ _ E₂.good List.mem_cons_self hσ) _ hrf
+    exact ⟨ρ₃, Δ₃, D₃, E₂.trans K ρ φ (Ext.of_extOk _ _ φ hsh.2.2.2.1 he hrel)⟩
 
 
 /-- **A stuck block's captures made places** (`Machine.etaPlace`, D93 rule 3: after the block's
@@ -581,7 +601,7 @@ entry and before its arms, each capture's prefix that is an unknown, or a sealed
 one-constructor type is refined in place, refusing a fill over a live borrow). The reference never
 forms a block and never refines: in the simulation form the reference state is untouched and the
 assignment and Δ are extended at the fields named, as `movedPlace`'s branches are (the same steps:
-`etaInPlace_sim`, `placeTypeQ_sim`, `recorded_sim`, `generalizeNeutral_sim`). Needed by the block's
+`etaInPlace_sim`, `placeTypeQ_sim`, `recorded_sim`, `generalizeNeutral_step`). Needed by the block's
 statement (`closeBlock_step_stmt`). Open: an induction on the fuel along `etaPlace`'s recursion, as
 `movedPlace_step` is assembled; not written. -/
 theorem etaPlace_sim (fuel : Nat) (st st' : MState) (q : Place) (s : SState) (π : Nat → Nat) (b : Nat)
@@ -785,7 +805,7 @@ theorem mpTail_sim (fuel : Nat) (ih : StepsIHBelow fuel)
             have h1' : d.ctors.length = 1 := by simpa using h1
             obtain ⟨u, st₇, b₇, hdis, h7⟩ := Runs.bind_inv h6
             obtain ⟨r, heta⟩ := runs_discard_inv hdis
-            obtain ⟨ρ₂, Δ₂, D₂, E₂⟩ := etaInPlace_sim { K with Δ := Δ₁, D := D₁ } ρ₁ φ fuel st₁ st₇ p σ n ps d r s₁ π b₆
+            obtain ⟨ρ₂, Δ₂, D₂, E₂⟩ := etaInPlace_sim { K with Δ := Δ₁, D := D₁ } ρ₁ φ fuel ih st₁ st₇ p σ n ps d r s₁ π b₆
               hg₁ hctx₁ hrel₁ hc hT hd h1' heta
             obtain ⟨ρ₄, Δ₄, D₄, s₄, hsz₄, hag₄, hdec₄, hs₄or, hctx₄, hrel₄, hg₄, hout₄⟩ :=
               (ih.at { K with Δ := Δ₂, D := D₂ } ρ₂ φ).movedPlace_step st₇ st' q q' pos s₁ π E₂.good E₂.ctx E₂.rel hpos₁
@@ -827,8 +847,10 @@ theorem mpTail_sim (fuel : Nat) (ih : StepsIHBelow fuel)
               obtain ⟨σ, hgen⟩ := runs_discard_inv hdisc
               have hfill₅ : Ochr.fillHoles st₅.env (.sealed t) = [] := by rw [henv₅]; exact hfill
               have hfree := sealed_loanFree { K with Δ := Δ₂, D := D₂ } ρ₂ st₅ p t E₂.good E₂.ctx hc₅ hfill₅
-              obtain ⟨ρ₃, Δ₃, D₃, E₃⟩ := generalizeNeutral_sim { K with Δ := Δ₂, D := D₂ } ρ₂ φ fuel st₅ st₈ p
-                (.sealed t) σ s₁ π b₇ E₂.good E₂.ctx E₂.rel hc₅ ⟨t, rfl⟩ hfree hgen
+              obtain ⟨hsh₃, ρ₃, Δ₃, D₃, he₃, hrel₃, -⟩ :=
+                (ih.at { K with Δ := Δ₂, D := D₂ } ρ₂ φ).generalizeNeutral_step st₅ st₈ p (.sealed t) σ
+                  E₂.good E₂.ctx s₁ π E₂.rel hc₅ ⟨t, rfl⟩ hfree b₇ hgen
+              have E₃ := Ext.of_extOk { K with Δ := Δ₂, D := D₂ } ρ₂ φ hsh₃.2.2.2.1 he₃ hrel₃
               obtain ⟨ρ₄, Δ₄, D₄, s₄, hsz₄, hag₄, hdec₄, hs₄or, hctx₄, hrel₄, hg₄, hout₄⟩ :=
                 (ih.at { K with Δ := Δ₃, D := D₃ } ρ₃ φ).movedPlace_step st₈ st' q q' pos s₁ π E₃.good E₃.ctx E₃.rel hpos₁
                   (grain_agree (Decisions.AgreeOld.trans E₂.dec E₃.dec E₂.size) hgr₁) b₈ h8
