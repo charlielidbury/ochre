@@ -118,11 +118,9 @@ theorem rel_frames {st : MState} {s : SState} {π : Nat → Nat} (hs : Rel K ρ 
 /-- **(4) The checker's place is the reference's.** At related states a variable's position in the
 checker (`varPos`, the top frame's bindings counted from the top) is the reference's (`resolve`):
 the two have the same frames and bindings (`Rel.skel`). -/
-theorem rel_resolve (st st₁ : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (b : Nat)
-    (hs : Rel K ρ φ π st s) (h : Runs (Ochr.varPos q.steps.1) st b pos st₁) :
-    st₁ = st ∧ resolve s q = some (pos, q.steps.2) := by
-  obtain ⟨hst, hpos⟩ := runs_varPos_inv h
-  refine ⟨hst, ?_⟩
+theorem rel_resolve_ck (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos)
+    (hs : Rel K ρ φ π st s) (hpos : ckVarPos st.env q.steps.1 = some pos) :
+    resolve s q = some (pos, q.steps.2) := by
   obtain ⟨hlen, hfr⟩ := rel_frames K ρ φ hs
   unfold ckVarPos at hpos
   split at hpos
@@ -150,6 +148,13 @@ theorem rel_resolve (st st₁ : MState) (s : SState) (π : Nat → Nat) (q : Pla
       simp only [resolve, SState.varPos, e, SState.topIdx, hlen, hsz, hi, ↓reduceIte, Option.map_some]
   · cases hpos
 
+/-- **(4) The checker's place is the reference's**, from a run of `varPos`. -/
+theorem rel_resolve (st st₁ : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (b : Nat)
+    (hs : Rel K ρ φ π st s) (h : Runs (Ochr.varPos q.steps.1) st b pos st₁) :
+    st₁ = st ∧ resolve s q = some (pos, q.steps.2) := by
+  obtain ⟨hst, hpos⟩ := runs_varPos_inv h
+  exact ⟨hst, rel_resolve_ck K ρ φ st s π q pos hs hpos⟩
+
 /-- **(1') L2 with sealed siblings.** `mean_updAt_bot` for a value some field of which off the path
 is a sealed program that is top-hint-free (`Value.topHintFree`: [Close]'s programs, `HintIndep`),
 at the run's code meaning (`meanV_hintIndep`). Open: the proof is `mean_updAt_bot`'s with
@@ -167,8 +172,8 @@ theorem mean_updAt_bot_sealed (H : TyS) (steps : List Step) (v v' : Value)
 has a site at, over or under the place (`dataHit`): the path holds no live loan, mark or sealed
 program (`firstLiveLoanOnPath` is `none`) and the content none inside (`liveLoansIn` is empty).
 Open: not tried yet; a fact about the checker's two loops' exits. -/
-theorem access_clears (fuel : Nat) (st st' : MState) (q : Place) (pos : Pos) (b b' : Nat)
-    (hpos : Runs (Ochr.varPos q.steps.1) st' b' pos st')
+theorem access_clears (fuel : Nat) (st st' : MState) (q : Place) (pos : Pos) (b : Nat)
+    (hpos : ckVarPos st.env q.steps.1 = some pos)
     (h : Runs (do Ochr.accessPath fuel q; Ochr.accessInside fuel q) st b () st') :
     ∀ l, liveLoan st'.env l = true → ∀ x ∈ Env.sitesOf st'.env l, x.pos = pos →
       dataHit q.steps.2 x.path = false := by
@@ -329,8 +334,9 @@ theorem copyRead_aligned (fuel : Nat) (st st₁ : MState) (s : SState) (π : Nat
 /-- **`logEffect` changes nothing the relation or `Good` reads** (it writes `placeLog` only).
 Open: not tried. -/
 theorem logEffect_rel (st st₁ : MState) (s : SState) (π : Nat → Nat) (q : Place) (k : String) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (h : Runs (Ochr.logEffect q k) st b () st₁) :
-    Rel K ρ φ π st₁ s ∧ Good K.dm K.M K.Γ ρ st₁ := by
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (h : Runs (Ochr.logEffect q k) st b () st₁) :
+    Rel K ρ φ π st₁ s ∧ Good K.dm K.M K.Γ ρ st₁ ∧ CtxOk K ρ st₁ ∧ st₁.env = st.env := by
   sorry
 
 end
