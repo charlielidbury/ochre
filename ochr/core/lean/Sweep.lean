@@ -37,7 +37,8 @@ Two deliberately false clauses (`planted…`) guard against a vacuous sweep: the
 both are reported.
 
 Usage: `lake exe sweep [Block …]` (all blocks if none named), `lake exe sweep --probes` (the
-adversarial programs of `SweepProbes.lean`, written to make clauses' premises arise), or `Sweep.sweep [("B", B)]` from a
+adversarial programs of `SweepProbes.lean`, written to make clauses' premises arise), `lake exe sweep --ends`
+(`--ends --probes`: from each recorded state, end each live borrow and report new unknowns and records, docs/31 D35), or `Sweep.sweep [("B", B)]` from a
 file that imports this module and declares the `ochr` block `B` (a minimal program). Exit 0 iff
 every real clause holds on every state, both planted clauses are violated, and every verdict is as
 expected.
@@ -457,24 +458,38 @@ def wf4 : Clause where
 
 def absAbove (n : Nat) (v : Value) : Bool := v.anyAtom fun | .abs σ => σ ≥ n | _ => false
 
-/-- (WF6), mirrored EXACTLY (`∀ σ, v.hasAbs σ → σ < n` is `!absAbove n v`):
+/-- (WF6), mirrored (`∀ σ, v.hasAbs σ → σ < n` is `!absAbove n v`):
 ```
 def WF6 (st : MState) : Prop :=
-  (∀ v ∈ Env.values st.env, ∀ σ, v.hasAbs σ → σ < st.absTy.size) ∧
+  (∀ σ, st.Refd σ → σ < st.absTy.size) ∧
   (∀ T ∈ st.absTy.toList, ∀ σ, T.hasAbs σ → σ < st.absTy.size) ∧
-  (∀ G, st.goal = some G → ∀ σ, G.hasAbs σ → σ < st.absTy.size) ∧
+  (∀ σ r, (σ, r) ∈ st.refs → σ < st.absTy.size ∧ ∀ τ, r.hasAbs τ → τ < st.absTy.size) ∧
   st.absTy.size = st.nextAbs ∧
   ∀ v ∈ Env.values st.env, ∀ l ∈ v.loans, l < st.nextLoan
 ```
-The counter conjunct was `≤` at a3e22c78; the spine made it `=` (a fresh unknown is named by the
-counter and typed at index `absTy.size`, `Regress/GenNeutralContent.lean`). -/
+`MState.Refd` is mirrored by the places it reads (values of Ω, stored and deferred types, the goal,
+the generalisation and η records, each with its own unknown), its last case (the types of
+referenced unknowns) by the second part, which asks it of every unknown's type: so the mirror is
+exact. The counter conjunct was `≤` at a3e22c78; the spine made it `=` (a fresh unknown is named
+by the counter and typed at index `absTy.size`, `Regress/GenNeutralContent.lean`). The first part
+was "every unknown in a value of Ω" and the third "in the goal" until the spine's FreshBound
+(2026-11-21: a record naming the counter, `Regress/FreshBound.lean`). -/
 def wf6 : Clause where
   name := "(WF6) names: every unknown has a type, every name is below its counter"
   check st :=
     let n := st.absTy.size
-    ((posVals st.env).filterMap fun (p, v) => if absAbove n v then some ⟨"an unknown without a type, in Ω", posName st.env p⟩ else none) ++
-    (st.absTy.toList.filterMap fun T => if absAbove n T then some ⟨"an unknown without a type, in an unknown's type", clip T.pp⟩ else none) ++
-    (match st.goal with | some G => if absAbove n G then [⟨"an unknown without a type, in the goal", clip G.pp⟩] else [] | none => []) ++
+    let a := absAbove n
+    ((posVals st.env).filterMap fun (p, v) => if a v then some ⟨"an unknown without a type, in Ω", posName st.env p⟩ else none) ++
+    ((bindings st.env).filterMap fun (_, _, b) =>
+      if (b.ty.map a).getD false then some ⟨"an unknown without a type, in a stored type", b.hint.name⟩ else none) ++
+    ((bindings st.env).filterMap fun (_, _, b) =>
+      if (match b.lazyTy with | some (P, ws, _) => a P || ws.any a | none => false) then
+        some ⟨"an unknown without a type, in a deferred type", b.hint.name⟩ else none) ++
+    (st.absTy.toList.filterMap fun T => if a T then some ⟨"an unknown without a type, in an unknown's type", clip T.pp⟩ else none) ++
+    (match st.goal with | some G => if a G then [⟨"an unknown without a type, in the goal", clip G.pp⟩] else [] | none => []) ++
+    (st.neutrals.filterMap fun (v, σ) => if a v || σ ≥ n then some ⟨"an unknown without a type, in a generalisation record", s!"{clip v.pp} := σ{σ}"⟩ else none) ++
+    (st.etaRefs.filterMap fun (σ, v) => if a v || σ ≥ n then some ⟨"an unknown without a type, in an η record", s!"σ{σ} := {clip v.pp}"⟩ else none) ++
+    (st.refs.filterMap fun (σ, v) => if a v || σ ≥ n then some ⟨"an unknown without a type, in a refinement", s!"σ{σ} := {clip v.pp}"⟩ else none) ++
     (if n = st.nextAbs then [] else [⟨"the counter of unknowns is not the number typed", s!"{n} typed, counter {st.nextAbs}"⟩]) ++
     ((posVals st.env).flatMap fun (p, v) => v.loans.filterMap fun l =>
       if l < st.nextLoan then none else some ⟨"a label at or above the counter", s!"{l} in {posName st.env p}"⟩)
@@ -852,8 +867,84 @@ def sweep (blocks : List (String × Block)) : IO UInt32 := do
   IO.println (if ok then "sweep: every real clause holds on every state; both planted clauses reported" else "sweep: FAILED (see above)")
   return if ok then 0 else 1
 
+/-! ## Do ends create unknowns or records? (docs/31 D35)
+
+From every recorded state, end each live borrow (`Machine.endBorrow`, as the checker would there)
+and compare the state's unknowns and records before and after: `nextAbs`, `absTy`, `neutrals`,
+`etaRefs`, `refs`. An end substitutes the borrow's content into every sealed program holding its
+loan, and a changed sealed program re-runs (`nfSealed`, whose `restoreKeep` keeps the unknowns'
+types and the generalisation and η records of the run, D37); with `typing` on it also checks the
+content against a dependent borrow type (`repackCheck`). Counted: the ends run, those that touched
+a sealed program holding the loan (the premise: a re-run), those that failed or ran out of fuel,
+and those after which the state has more unknowns or records. -/
+
+/-- Some sealed program inside `v` holds a loan of `l`. -/
+def sealedHolds (l : Nat) (v : Value) : Bool :=
+  v.anyAtom fun | .sealed t => t.anyAtom (· == .loan l) | _ => false
+
+structure EndStat where
+  states : Nat := 0
+  ends : Nat := 0
+  reruns : Nat := 0
+  failed : Nat := 0
+  grew : Nat := 0
+  grewRecords : Nat := 0
+  grewReferenced : Nat := 0
+  grewRerun : Nat := 0
+  grewTyping : Nat := 0
+  grewDecls : Array String := #[]
+  examples : Array String := #[]
+
+/-- Some unknown at or above `n` occurs in a value of Ω, a stored or deferred type, the goal, or a
+record: the syntactic `MState.Refd` of a new unknown (its types' dependencies aside). -/
+def refdAbove (st : MState) (n : Nat) : Bool :=
+  let a := absAbove n
+  (posVals st.env).any (fun (_, v) => a v) ||
+  (bindings st.env).any (fun (_, _, b) => (b.ty.map a).getD false ||
+    (match b.lazyTy with | some (P, ws, _) => a P || ws.any a | none => false)) ||
+  (st.goal.map a).getD false ||
+  st.neutrals.any (fun (v, σ) => a v || σ ≥ n) || st.etaRefs.any (fun (σ, v) => a v || σ ≥ n) ||
+  st.refs.any (fun (σ, v) => a v || σ ≥ n)
+
+def endProbe (blocks : List (String × Block)) : IO UInt32 := do
+  let cfg : Config := { recordStates := true }
+  let mut S : EndStat := {}
+  for (bn, b) in blocks do
+    let r := runWith (some Prelude) bn b cfg 2000000 (located := true)
+    for row in r.rows do
+      for e in row.trace do
+        let .state _ _ _ st := e | continue
+        S := { S with states := S.states + 1 }
+        for l in liveLabels st.env do
+          let rerun := (posVals st.env).any fun (_, v) => sealedHolds l v
+          S := { S with ends := S.ends + 1, reruns := S.reruns + (if rerun then 1 else 0) }
+          match (runMachine (Ochr.endBorrow 100000 l) st 100000).1 with
+          | .ok () st' =>
+            let grew := st'.nextAbs != st.nextAbs || st'.absTy.size != st.absTy.size ||
+              st'.neutrals.length != st.neutrals.length || st'.etaRefs.length != st.etaRefs.length ||
+              st'.refs.length != st.refs.length
+            if grew then
+              let recs := st'.neutrals.length != st.neutrals.length || st'.etaRefs.length != st.etaRefs.length ||
+                st'.refs.length != st.refs.length
+              let key := s!"{bn}.{row.name}"
+              S := { S with grew := S.grew + 1, grewRecords := S.grewRecords + (if recs then 1 else 0)
+                            grewReferenced := S.grewReferenced + (if refdAbove st' st.nextAbs then 1 else 0)
+                            grewRerun := S.grewRerun + (if rerun then 1 else 0)
+                            grewTyping := S.grewTyping + (if st.typing then 1 else 0)
+                            grewDecls := if S.grewDecls.contains key then S.grewDecls else S.grewDecls.push key }
+              if S.examples.size < 5 then
+                let msg := s!"{bn}.{row.name}: ending {l}: nextAbs {st.nextAbs}→{st'.nextAbs}, absTy {st.absTy.size}→{st'.absTy.size}, neutrals {st.neutrals.length}→{st'.neutrals.length}, etaRefs {st.etaRefs.length}→{st'.etaRefs.length}, refs {st.refs.length}→{st'.refs.length} (re-run: {rerun})\n{ppState st}"
+                S := { S with examples := S.examples.push msg }
+          | _ => S := { S with failed := S.failed + 1 }
+  IO.println s!"end probe (dev tooling): {blocks.length} blocks, {S.states} states, {S.ends} ends run, {S.reruns} touching a sealed program that holds the loan, {S.failed} failed or out of fuel"
+  IO.println s!"ends after which the state has more unknowns or records: {S.grew} (with more records: {S.grewRecords}; a new unknown referenced after: {S.grewReferenced}; touching a re-run: {S.grewRerun}; with typing on: {S.grewTyping}), in {S.grewDecls.size} declarations: {", ".intercalate S.grewDecls.toList}"
+  for x in S.examples do IO.println x
+  return 0
+
 end Sweep
 
 def main (args : List String) : IO UInt32 :=
   if args == ["--probes"] then Sweep.sweep Sweep.probes else
+  if args == ["--ends"] then Sweep.endProbe (Ochr.Registry.programs ++ Ochr.Registry.caseStudies) else
+  if args == ["--ends", "--probes"] then Sweep.endProbe Sweep.probes else
   Sweep.sweep ((Ochr.Registry.programs ++ Ochr.Registry.caseStudies).filter fun (n, _) => args.isEmpty || args.contains n)
