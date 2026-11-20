@@ -54,6 +54,8 @@ theorem unit_ne_nat' : (Unit : Type) ≠ Nat := by
     simpa using congrArg (cast h) this
   exact absurd (this 0 1) (by decide)
 
+@[simp] theorem labTyOk_none (s : SState) (T : TyM) : labTyOk s none T := fun _ h => by cases h
+
 theorem nat_not_unit (n : Nat) (R : DataRead) : ¬ (Sem.el0 Nat n ∈ₛ[R] TyM.unit) := by
   rintro ⟨a, ha⟩
   exact unit_ne_nat' (Sem.el0.inj ha).1
@@ -62,18 +64,13 @@ theorem nat_not_unit (n : Nat) (R : DataRead) : ¬ (Sem.el0 Nat n ∈ₛ[R] TyM.
 ascription fails (a statement or a proof runs the same clause, on a copy). -/
 theorem zero_unit_none (tl : Bool) (h : TyS) (s : SState) :
     runS K ρ φ tl h (.ascribe (.val .zero) (.val .tUnit)) s = none := by
-  have hx : SM.strictS K.dm.read (do
-      let (TA, _) ← SM.onCopy (runS K ρ φ false (.plain TyM.err) (.val .tUnit))
-      let T : TyS := .plain TA.asTy
-      let (v, R) ← runS K ρ φ false T (.val .zero)
-      pure (v, { T with label := R.label })) s = none := by
-    simp [SM.strictS, runS, SM.onCopy, bind, pure, meanS, Sem.asTy, strictVal]
-    exact nat_not_unit 0 K.dm.read
+  have hn := nat_not_unit 0 K.dm.read
   rw [runS]
   show SM.erasedS (K.D.flags (scopeOf s) _) _ s = none
   generalize K.D.flags (scopeOf s) (.ascribe (.val .zero) (.val .tUnit)) = fl
   obtain ⟨b1, b2⟩ := fl
-  cases b2 <;> cases b1 <;> simp [SM.erasedS, SM.stmtIf, hx]
+  cases b2 <;> cases b1 <;>
+    simp [SM.erasedS, SM.stmtIf, SM.strictS, runS, SM.onCopy, bind, pure, meanS, Sem.asTy, strictVal, TyS.plain, hn]
 
 /-- **The untyped `let x = (0 : Unit); x` has no successful strict run**: its binding's run fails. -/
 theorem let_zero_unit_none (tl : Bool) (h : TyS) (x : Hint) (s : SState) :
@@ -92,8 +89,8 @@ theorem succ_nat_runs (hfl : ∀ sc t, K.D.flags sc t = (false, false)) (tl : Bo
     runS K ρ φ tl h (.ascribe (.succ .zero) .nat) s = some ((.el0 Nat 1, .plain TyM.nat), s) ∧
       Sem.el0 Nat 1 ∈ₛ[K.dm.read] TyM.nat := by
   refine ⟨?_, one_mem_nat _⟩
-  have hm : Sem.el0 Nat 1 ∈ₛ[K.dm.read] (TyS.plain TyM.nat).m := one_mem_nat K.dm.read
-  simp [runS, hfl, SM.erasedS, SM.stmtIf, SM.strictS, SM.onCopy, bind, pure, Sem.succ_el0, Sem.asTy, hm]
+  have hm : Sem.el0 Nat 1 ∈ₛ[K.dm.read] TyM.nat := one_mem_nat K.dm.read
+  simp [runS, hfl, SM.erasedS, SM.stmtIf, SM.strictS, SM.onCopy, bind, pure, Sem.succ_el0, Sem.asTy, hm, TyS.plain]
 /-- **`Type₁` as a term runs, to a value that is no (partly moved) member of the type the run gives
 it**: `sort 2 : sort 3`, and the bounded model has no `Type₂` (`TyM.univ 3 = err`). The term occurs in
 accepted programs (a codomain `Type_1`, `Regress/CodeRuns`' `Pred`), so the fundamental lemma's
@@ -116,26 +113,25 @@ abbrev trueR : Rec := dm.recOf trueD []
 
 /-- **`refl` is true in the model**: `⋆` is a member of `True`'s meaning (its constructor `I` with no
 field: `CtorMem.proof_mem_tyR`). -/
-theorem proof_mem_true : Sem.proof ∈ₛ[dm.read] dm.tyR trueD (trueR dm) :=
+theorem proof_mem_trueD : Sem.proof ∈ₛ[dm.read] dm.tyR trueD (trueR dm) :=
   dm.proof_mem_tyR trueD _ 0 [] rfl (by decide) rfl (fun _ _ h => by simp at h)
 
 theorem tyR_true_level : (dm.tyR trueD (trueR dm)).level = some 0 := by
   simp [DataModel.tyR, trueD, TyM.prop, TyM.level, Code0.level]
 
-/-- **`refl`, classed a proof, runs on its copy to `⋆` at `True`'s meaning**, of which `⋆` is a member:
-the strict run of the proof term certifies its proposition (C1). -/
+/-- **`refl`, classed a proof, runs**: its constructor clause runs on a copy to `⋆` at `True`'s meaning,
+of which `⋆` is a member (the strict test, `proof_mem_trueD`), and the erased term is `⋆` at
+`prop True` (C1, decision 1). -/
 theorem refl_runs (tl : Bool) (h : TyS) (x : Hint) (s : SState) :
-    runS (Kt dm Dpf) ρ φ tl h (.ctor "True" 0 x [] []) s = some ((.proof, .plain (dm.tyR trueD (trueR dm))), s) ∧
+    runS (Kt dm Dpf) ρ φ tl h (.ctor "True" 0 x [] []) s = some ((.proof, .plain (TyM.prop True)), s) ∧
       Sem.proof ∈ₛ[dm.read] dm.tyR trueD (trueR dm) := by
-  refine ⟨?_, proof_mem_true dm⟩
-  have hm : Sem.proof ∈ₛ[dm.read] (TyS.plain (dm.tyR trueD (trueR dm))).m := proof_mem_true dm
-  have hl : (TyS.plain (dm.tyR trueD (trueR dm))).m.level = some 0 := tyR_true_level dm
+  refine ⟨?_, proof_mem_trueD dm⟩
+  have hm : Sem.proof ∈ₛ[dm.read] (TyS.plain (dm.tyR trueD (trueR dm))).m := proof_mem_trueD dm
   have hfind : [trueD].find? (·.name == "True") = some trueD := rfl
   have hsort : (trueD.sort == 0) = true := rfl
   have hpar : trueD.params.isEmpty = true := rfl
   simp [runS, Kt, Dpf, SM.erasedS, SM.strictS, runParamsS, runFieldsS, ctorOut, bind, pure, hfind, hsort,
-    hpar, hm, Sem.isProof, hl]
-  rfl
+    hpar, hm, Sem.isProof]
 
 theorem proof_mem_prop {R : DataRead} {P : Prop} (hP : P) : Sem.proof ∈ₛ[R] TyM.prop P := ⟨⟨hP⟩, rfl⟩
 
@@ -147,35 +143,33 @@ theorem refl_eq_runs (tl : Bool) (h : TyS) (x : Hint) (s : SState) :
     runS (Kt dm Dpf) ρ φ tl h (.ascribe (.ctor "True" 0 x [] []) (.eq .nat .zero .zero)) s =
       some ((.proof, .plain (TyM.prop True)), s) := by
   have hr : ∀ h s, runS (Kt dm Dpf) ρ φ false h (.ctor "True" 0 x [] []) s =
-      some ((.proof, .plain (dm.tyR trueD (trueR dm))), s) := fun h s => (refl_runs ρ φ dm false h x s).1
+      some ((.proof, .plain (TyM.prop True)), s) := fun h s => (refl_runs ρ φ dm false h x s).1
   have he : ∀ h s, runS (Kt dm Dpf) ρ φ false h (.eq .nat .zero .zero) s =
       some ((.ty (TyM.prop True), .plain (TyM.univ 0)), s) := by
     intro h s; simp [runS, SM.onCopy, bind, pure]
-  have hm : Sem.proof ∈ₛ[dm.read] (TyS.plain (TyM.prop True)).m := proof_mem_prop trivial
-  have hl : (TyS.plain (TyM.prop True)).m.level = some 0 := rfl
+  have hm : Sem.proof ∈ₛ[(Kt dm Dpf).dm.read] TyM.prop True := proof_mem_prop trivial
   have hfl : ∀ sc, (Kt dm Dpf).D.flags sc (.ascribe (.ctor "True" 0 x [] []) (.eq .nat .zero .zero)) = (false, true) :=
     fun _ => rfl
   have hdm : (Kt dm Dpf).dm = dm := rfl
   rw [runS]
-  simp [hfl, hdm, SM.erasedS, SM.strictS, SM.onCopy, bind, pure, hr, he, Sem.asTy, hm, Sem.isProof, hl]
-  rfl
+  simp [hfl, SM.erasedS, SM.strictS, SM.onCopy, bind, pure, hr, he, Sem.asTy, hm, Sem.isProof, TyS.plain]
 
 /-- **`(refl : Eq(Nat, Z, S(Z)))` has no successful strict run**: the ascription's test is the
 proposition `0 = 1`. -/
 theorem refl_neq_none (tl : Bool) (h : TyS) (x : Hint) (s : SState) :
     runS (Kt dm Dpf) ρ φ tl h (.ascribe (.ctor "True" 0 x [] []) (.eq .nat .zero (.succ .zero))) s = none := by
   have hr : ∀ h s, runS (Kt dm Dpf) ρ φ false h (.ctor "True" 0 x [] []) s =
-      some ((.proof, .plain (dm.tyR trueD (trueR dm))), s) := fun h s => (refl_runs ρ φ dm false h x s).1
+      some ((.proof, .plain (TyM.prop True)), s) := fun h s => (refl_runs ρ φ dm false h x s).1
   have h1 : Sem.el0 Nat 1 ∈ₛ[dm.read] (TyS.plain TyM.nat).m := one_mem_nat _
   have he : ∀ h s, runS (Kt dm Dpf) ρ φ false h (.eq .nat .zero (.succ .zero)) s =
       some ((.ty (TyM.prop False), .plain (TyM.univ 0)), s) := by
     intro h s; simp [runS, Dpf, Kt, SM.erasedS, SM.stmtIf, SM.strictS, SM.onCopy, bind, pure, Sem.succ_el0, h1]
-  have hn : ¬ Sem.proof ∈ₛ[dm.read] (TyS.plain (TyM.prop False)).m := proof_not_mem_false
+  have hn : ¬ Sem.proof ∈ₛ[(Kt dm Dpf).dm.read] TyM.prop False := proof_not_mem_false
   have hfl : ∀ sc, (Kt dm Dpf).D.flags sc (.ascribe (.ctor "True" 0 x [] []) (.eq .nat .zero (.succ .zero))) =
     (false, true) := fun _ => rfl
   have hdm : (Kt dm Dpf).dm = dm := rfl
   rw [runS]
-  simp [hfl, hdm, SM.erasedS, SM.strictS, SM.onCopy, bind, pure, hr, he, Sem.asTy, hn]
+  simp [hfl, SM.erasedS, SM.strictS, SM.onCopy, bind, pure, hr, he, Sem.asTy, hn, TyS.plain]
 
 end
 
