@@ -251,8 +251,9 @@ theorem SState.live_setAt (s : SState) (p : Pos) (g : SVal) (l : Nat) : (s.setAt
 
 /-- **L3, the relation's half: the write of `⊥` keeps the relation.** After the access (no live
 borrow lent at, over or under the place), the checker's write of `⊥` at a binding's path and the
-reference's write of `moved` there give related states: the meanings by L2, the skeleton, the
-holders, liveness and every borrow's sites unchanged. -/
+reference's write of `moved` there give related states: the meanings by L2 (with sealed siblings
+whose tails read no hint, `mean_updAt_botS`, docs/31 D45; first stated for a value holding no
+sealed program at all), the skeleton, the holders, liveness and every borrow's sites unchanged. -/
 theorem botWrite_rel (st : MState) (s : SState) (π : Nat → Nat) (f i : Nat) (steps : List Step) (v' : Value)
     (hs : Rel K ρ φ π st s) (hwf1 : WF1 st.env)
     (hp : Pos.bind f i ∈ allPos st.env) (hsp : Pos.bind f i ∈ s.positions)
@@ -262,7 +263,8 @@ theorem botWrite_rel (st : MState) (s : SState) (π : Nat → Nat) (f i : Nat) (
       ∀ n a, valAt st.env (.bind f i) ≠ .tInd n a)
     (hclear : ∀ l, liveLoan st.env l = true → ∀ x ∈ Env.sitesOf st.env l, x.pos = .bind f i →
       dataHit steps x.path = false)
-    (hplain : RecPlain K.Γ (valAt st.env (.bind f i)))
+    (hplain : (valAt st.env (.bind f i)).anyAtom (Value.bareCtor K.Γ) = false ∧
+      (valAt st.env (.bind f i)).anyAtom (fun a => a.isSealed && !a.topHintFree K.Γ) = false)
     (hnat : ∀ ψ, NatAlong K.dm K.M K.Γ ρ ψ steps (valAt st.env (.bind f i))) :
     Rel K ρ φ π { st with env := Env.setAtE st.env (.bind f i) v' }
       (s.setAt (.bind f i) fun φ' =>
@@ -311,7 +313,7 @@ theorem botWrite_rel (st : MState) (s : SState) (π : Nat → Nat) (f i : Nat) (
         (Env.mean K.dm K.M K.Γ ρ (fun l => ψ (π l)) st.env (Pos.bind f i))).getD .err
       rw [mean_eq_valAt K.dm K.M K.Γ ρ _ _ _ hp', hintAt_setAtE, valAt_setAtE_self v' hp,
         mean_eq_valAt K.dm K.M K.Γ ρ _ _ _ hp,
-        mean_updAt_bot K.dm K.M K.Γ ρ _ steps _ _ _ v' hv hplain (hnat _)]
+        mean_updAt_botS K ρ _ steps _ _ _ v' hv hplain.1 hplain.2 (hnat _)]
       rfl
     · rw [mean_setAtE_other K.dm K.M K.Γ ρ st.env (Pos.bind f i) p v' _ hpp, SState.valAt_setAt_ne _ _ _ _ (Ne.symm hpp)]
       exact hs.sim.1 ψ hψ0 p hpt

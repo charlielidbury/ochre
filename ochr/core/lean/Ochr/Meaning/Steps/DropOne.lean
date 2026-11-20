@@ -261,18 +261,139 @@ theorem rel_resolve (st st₁ : MState) (s : SState) (π : Nat → Nat) (q : Pla
   obtain ⟨hst, hpos⟩ := runs_varPos_inv h
   exact ⟨hst, rel_resolve_ck K ρ φ st s π q pos hs hpos⟩
 
-/-- **(1') L2 with sealed siblings.** `mean_updAt_bot` for a value some field of which off the path
-is a sealed program that is top-hint-free (`Value.topHintFree`: [Close]'s programs, `HintIndep`),
-at the run's code meaning (`meanV_hintIndep`). Open: the proof is `mean_updAt_bot`'s with
-`meanV_hintIndep` in place of `mean_hintFree`; not yet written. -/
+theorem anyAtomList_mem {P : Value → Bool} : ∀ {fs : List Value}, Value.anyAtomList P fs = false →
+    ∀ x ∈ fs, x.anyAtom P = false
+  | [], _, x, hx => by cases hx
+  | y :: ys, h, x, hx => by
+    simp only [Value.anyAtomList, Bool.or_eq_false_iff] at h
+    rcases List.mem_cons.mp hx with rfl | hx
+    · exact h.1
+    · exact anyAtomList_mem h.2 x hx
+
+/-- No bare constructor and no sealed program with a hint-reading tail, anywhere: top-hint-free. -/
+theorem topHintFree_of (Γ : List IndDecl) : ∀ (x : Value), x.anyAtom (Value.bareCtor Γ) = false →
+    x.anyAtom (fun a => a.isSealed && !a.topHintFree Γ) = false → x.topHintFree Γ = true
+  | .borrow l w, hb, hs => by
+    rw [Value.anyAtom] at hb hs; simp only [Bool.or_eq_false_iff] at hb hs
+    simp only [Value.topHintFree]; exact topHintFree_of Γ w hb.2 hs.2
+  | .gloan l w, hb, hs => by
+    rw [Value.anyAtom] at hb hs; simp only [Bool.or_eq_false_iff] at hb hs
+    simp only [Value.topHintFree]; exact topHintFree_of Γ w hb.2 hs.2
+  | .sealed t, _, hs => by
+    rw [Value.anyAtom] at hs; simp only [Bool.or_eq_false_iff] at hs
+    have := hs.1; simp only [Value.isSealed, Bool.true_and, Bool.not_eq_false'] at this; exact this
+  | .ind ty c h ps fs, hb, _ => by
+    rw [Value.anyAtom] at hb; simp only [Bool.or_eq_false_iff] at hb
+    have := hb.1
+    cases ps with
+    | nil =>
+      simp only [Value.bareCtor] at this
+      simp only [Value.topHintFree]
+      cases e : List.find? (fun x => x.name == ty) Γ <;> simp_all
+    | cons _ _ => simp [Value.topHintFree]
+  | .zero, _, _ | .succ _, _, _ | .unit, _, _ | .gfn _, _, _ | .clo .., _, _ | .loan _, _, _ | .bot, _, _
+  | .abs _, _, _ | .proof, _, _ | .tNat, _, _ | .tUnit, _, _ | .tEq .., _, _ | .tRef _, _, _ | .tPi .., _, _
+  | .sort _, _, _ | .tInd .., _, _ => by simp [Value.topHintFree]
+
+/-- Under the run's code meaning, such a value means the same at every hint (`meanV_hintIndep`). -/
+theorem meanK_hintFree (x : Value) (hb : x.anyAtom (Value.bareCtor K.Γ) = false)
+    (hs : x.anyAtom (fun a => a.isSealed && !a.topHintFree K.Γ) = false) (h h' : TyS) :
+    Value.mean K.dm K.M K.Γ ρ φ h x = Value.mean K.dm K.M K.Γ ρ φ h' x := by
+  rw [meanV_eq_mean K ρ φ h x, meanV_eq_mean K ρ φ h' x]
+  exact meanV_hintIndep K ρ φ x (topHintFree_of K.Γ x hb hs) h h'
+
+/-- **(1') L2 with sealed siblings**, at every reading type `T` of the write: `mean_updAt_bot` for a
+value with no bare constructor and no sealed program whose tail reads the hint (`Value.topHintFree`:
+[Close]'s programs, `HintIndep`), under the run's code meaning. The proof is `mean_updAt_bot`'s
+with `meanV_hintIndep` (`meanK_hintFree`) in place of `mean_hintFree` for the later fields, which
+are typed at the earlier ones. -/
+theorem mean_updAt_botS : ∀ (steps : List Step) (H T : TyS) (v v' : Value),
+    Value.updAt (fun _ => .bot) steps v = some v' →
+    v.anyAtom (Value.bareCtor K.Γ) = false → v.anyAtom (fun a => a.isSealed && !a.topHintFree K.Γ) = false →
+    NatAlong K.dm K.M K.Γ ρ φ steps v →
+    Sem.updAt K.dm K.Γ T (fun _ => .moved) steps (Value.mean K.dm K.M K.Γ ρ φ H v) =
+      some (Value.mean K.dm K.M K.Γ ρ φ H v')
+  | [], H, T, v, v', h, _, _, _ => by
+    simp only [Value.updAt, Option.some.injEq] at h
+    subst h
+    simp only [Sem.updAt_nil', Value.mean]
+  | st :: ss, H, T, v, v', h, hb, hs, hd => by
+    cases v with
+    | gloan l w =>
+      simp only [Value.updAt] at h
+      obtain ⟨w', hw', rfl⟩ := Option.map_eq_some_iff.mp h
+      have hd' : NatAlong K.dm K.M K.Γ ρ φ (st :: ss) w := by cases st <;> simpa [NatAlong] using hd
+      rw [Value.anyAtom] at hb hs; simp only [Bool.or_eq_false_iff] at hb hs
+      simp only [Value.mean]
+      exact mean_updAt_botS (st :: ss) H T w w' hw' hb.2 hs.2 hd'
+    | borrow l w =>
+      cases st with
+      | deref =>
+        simp only [Value.updAt] at h
+        obtain ⟨w', hw', rfl⟩ := Option.map_eq_some_iff.mp h
+        have hd' : NatAlong K.dm K.M K.Γ ρ φ ss w := by simpa [NatAlong] using hd
+        rw [Value.anyAtom] at hb hs; simp only [Bool.or_eq_false_iff] at hb hs
+        simp only [Value.mean, Sem.updAt_deref']
+        exact mean_updAt_botS ss H T w w' hw' hb.2 hs.2 hd'
+      | proj i => simp [Value.updAt] at h
+      | field g => simp [Value.updAt] at h
+    | succ w =>
+      cases st with
+      | proj i =>
+        cases i with
+        | zero =>
+          simp only [Value.updAt] at h
+          obtain ⟨w', hw', rfl⟩ := Option.map_eq_some_iff.mp h
+          obtain ⟨⟨n, hn⟩, hd'⟩ : (∃ n, (Value.mean K.dm K.M K.Γ ρ φ (.plain (.ty0 Nat)) w).asNat = some n) ∧
+              NatAlong K.dm K.M K.Γ ρ φ ss w := by simpa [NatAlong] using hd
+          rw [Value.anyAtom] at hb hs; simp only [Bool.or_eq_false_iff] at hb hs
+          have IH := mean_updAt_botS ss (.plain (.ty0 Nat)) (.plain (.ty0 Nat)) w w' hw' hb.2 hs.2 hd'
+          rw [Sem.asNat_some hn] at IH
+          simp only [Value.mean, Sem.asNat_some hn, Sem.succ_el0]
+          rw [Sem.updAt_nat' K.dm K.Γ T _ ss _ n (Sem.asNat_el0 (n + 1)), IH, Option.map_some]
+        | succ i => simp [Value.updAt] at h
+      | deref => simp [Value.updAt] at h
+      | field g => simp [Value.updAt] at h
+    | ind ty c hh ps fs =>
+      obtain ⟨hst, w, w', hw, hw', rfl⟩ := updAt_ind_inv h
+      obtain ⟨d, hf, hsort, hnat, hrec⟩ : ∃ d, K.Γ.find? (·.name == ty) = some d ∧ d.sort ≠ 0 ∧ d.name ≠ "Nat" ∧
+          ∀ w, fs[st.fieldIdx]? = some w → NatAlong K.dm K.M K.Γ ρ φ ss w := by
+        cases st with
+        | deref => exact absurd rfl hst
+        | proj i => simpa only [NatAlong] using hd
+        | field g => simpa only [NatAlong] using hd
+      rw [Value.anyAtom] at hb hs; simp only [Bool.or_eq_false_iff] at hb hs
+      have hbare := hb.1
+      have hbare' : Value.bareCtor K.Γ (.ind ty c hh ps (fs.set st.fieldIdx w')) = false := by
+        cases ps <;> simp only [Value.bareCtor] at hbare ⊢ <;> exact hbare
+      have hfb := anyAtomList_mem hb.2.2
+      have hfs := anyAtomList_mem hs.2.2
+      have HF : ∀ x ∈ fs, ∀ h h', Value.mean K.dm K.M K.Γ ρ φ h x = Value.mean K.dm K.M K.Γ ρ φ h' x :=
+        fun x hx => meanK_hintFree K ρ φ x (hfb x hx) (hfs x hx)
+      have hi : st.fieldIdx < fs.length := (List.getElem?_eq_some_iff.mp hw).1
+      have hget := meanFields_getElem? K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c fs 0 [] st.fieldIdx w hw
+      have hset := meanFields_setH K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c fs 0 [] st.fieldIdx w' hi HF
+      simp only [Nat.zero_add, List.nil_append] at hget hset
+      have hwm := List.mem_of_getElem? hw
+      have IH := mean_updAt_botS ss (fieldHint K.dm d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c st.fieldIdx
+        ((Value.meanFields K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c 0 [] fs).take st.fieldIdx))
+        T w w' hw' (hfb w hwm) (hfs w hwm) (hrec w hw)
+      rw [mean_ind K.dm K.M K.Γ ρ φ hf hbare hsort, mean_ind K.dm K.M K.Γ ρ φ hf hbare' hsort, hset]
+      obtain ⟨el, hel⟩ := Ochr.Meaning.ctorM_dat K.dm d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c
+        (Value.meanFields K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c 0 [] fs)
+      rw [hel, Sem.updAt_dat' K.dm K.Γ T _ st ss hst hnat hget, IH, Option.map_some, reDat_eq K.dm K.Γ hf]
+    | _ => simp [Value.updAt] at h
+termination_by steps _ _ v => (steps.length, sizeOf v)
+
+/-- **(1') L2 with sealed siblings** (`mean_updAt_botS` at `T = H`). PROVED (docs/31 D45). -/
 theorem mean_updAt_bot_sealed (H : TyS) (steps : List Step) (v v' : Value)
     (h : Value.updAt (fun _ => .bot) steps v = some v')
     (hb : v.anyAtom (Value.bareCtor K.Γ) = false)
     (hs : v.anyAtom (fun a => a.isSealed && !a.topHintFree K.Γ) = false)
     (hd : NatAlong K.dm K.M K.Γ ρ φ steps v) :
     Sem.updAt K.dm K.Γ H (fun _ => .moved) steps (Value.mean K.dm K.M K.Γ ρ φ H v) =
-      some (Value.mean K.dm K.M K.Γ ρ φ H v') := by
-  sorry
+      some (Value.mean K.dm K.M K.Γ ρ φ H v') :=
+  mean_updAt_botS K ρ φ steps H H v v' h hb hs hd
 
 /-- **The checker's access clears the place**: after `accessPath q; accessInside q`, no live borrow
 has a site at, over or under the place (`dataHit`): the path holds no live loan, mark or sealed

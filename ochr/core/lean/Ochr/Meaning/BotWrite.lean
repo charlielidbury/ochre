@@ -134,6 +134,38 @@ theorem meanFields_set (d : IndDecl) (ps : List Sem) (c : Nat) :
     rw [meanFields_set d ps c xs (k + 1) _ i w (by simpa using hi) (fun y hy => h y (List.mem_cons_of_mem _ hy))]
     simp only [List.append_assoc, List.singleton_append, Nat.add_right_comm k 1 i, Nat.add_assoc]
 
+/-- `meanFields_earlier` for fields that mean the same at every hint, whatever makes them so
+(recorded and unsealed, `mean_hintFree`; or top-hint-free under the run's code meaning,
+`HintIndep.meanV_hintIndep`). -/
+theorem meanFields_earlierH (d : IndDecl) (ps : List Sem) (c : Nat) :
+    ∀ (fs : List Value) (k : Nat) (e e' : List Sem),
+      (∀ x ∈ fs, ∀ h h', Value.mean dm C Γ ρ φ h x = Value.mean dm C Γ ρ φ h' x) →
+      Value.meanFields dm C Γ ρ φ d ps c k e fs = Value.meanFields dm C Γ ρ φ d ps c k e' fs
+  | [], _, _, _, _ => by simp [Value.meanFields]
+  | x :: xs, k, e, e', h => by
+    simp only [Value.meanFields]
+    have hx := h x (List.mem_cons_self ..)
+      ⟨dm.fieldTy d ps c k e, none, none, dm.fieldData d ps c k e⟩
+      ⟨dm.fieldTy d ps c k e', none, none, dm.fieldData d ps c k e'⟩
+    rw [hx, meanFields_earlierH d ps c xs (k + 1) _ (e' ++ _) (fun y hy => h y (List.mem_cons_of_mem _ hy))]
+
+/-- `meanFields_set` for fields that mean the same at every hint. -/
+theorem meanFields_setH (d : IndDecl) (ps : List Sem) (c : Nat) :
+    ∀ (fs : List Value) (k : Nat) (e : List Sem) (i : Nat) (w : Value), i < fs.length →
+      (∀ x ∈ fs, ∀ h h', Value.mean dm C Γ ρ φ h x = Value.mean dm C Γ ρ φ h' x) →
+      Value.meanFields dm C Γ ρ φ d ps c k e (fs.set i w) =
+        (Value.meanFields dm C Γ ρ φ d ps c k e fs).set i
+          (Value.mean dm C Γ ρ φ (fieldHint dm d ps c (k + i) (e ++ (Value.meanFields dm C Γ ρ φ d ps c k e fs).take i)) w)
+  | [], _, _, _, _, hi, _ => by simp at hi
+  | x :: xs, k, e, 0, w, _, h => by
+    simp only [List.set_cons_zero, Value.meanFields, List.set_cons_zero, fieldHint_eq, Nat.add_zero,
+      List.take_zero, List.append_nil, List.cons.injEq, true_and]
+    exact meanFields_earlierH dm C Γ ρ φ d ps c xs (k + 1) _ _ (fun y hy => h y (List.mem_cons_of_mem _ hy))
+  | x :: xs, k, e, i + 1, w, hi, h => by
+    simp only [List.set_cons_succ, Value.meanFields, List.take_succ_cons, List.cons.injEq, true_and]
+    rw [meanFields_setH d ps c xs (k + 1) _ i w (by simpa using hi) (fun y hy => h y (List.mem_cons_of_mem _ hy))]
+    simp only [List.append_assoc, List.singleton_append, Nat.add_right_comm k 1 i, Nat.add_assoc]
+
 theorem Sem.asNat_some {s : Sem} {n : Nat} (h : s.asNat = some n) : s = .el0 Nat n := by
   unfold Sem.asNat Sem.as at h
   split at h
