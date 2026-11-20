@@ -729,8 +729,73 @@ def plantedAbs : Clause where
   check st := (typesAndRecords st).filterMap fun (c, w, v) =>
     if v.anyAtom (fun | .abs _ => true | _ => false) then some ⟨s!"{c} holds an unknown", s!"{c} {w}: {clip v.pp}"⟩ else none
 
+/-! ### The shape facts at every place in scope (docs/31 D34, D40)
+
+The candidates (U), (V), (R) above read only bindings' declared readings and constructor fields
+whose declared type is written `E(…)`. The Lean form quantifies over every place in scope and its
+declared reading as the decisions give it (`Decisions.placeDecl` at the top frame's readings). This
+clause closes the gap: it walks every place of the top frame that exists (a binding, the fields of
+a constructor value, the content of a borrow, through marks), asks the checker's own `placeDecl`
+(live, at the state) for its reading, and checks (U), (V) and (R) there; at a place holding a sealed
+program whose reading is an inductive, it also asks the checker's `placeType?` (P: `exit_sealed`'s
+alignment of the computed type with the declared reading). -/
+
+/-- The places of the top frame under `q` holding `v`, with their values, to a depth. -/
+def placesIn (q : Place) : Value → Nat → List (Place × Value)
+  | v, 0 => [(q, v)]
+  | v, n + 1 => (q, v) :: match v with
+    | .gloan _ w => (placesIn q w n).drop 1
+    | .borrow _ w => placesIn (.deref q) w n
+    | .ind t c _ _ fs => (fs.zipIdx).flatMap fun (w, i) => placesIn (.field ⟨t, c, i, ""⟩ q) w n
+    | _ => []
+
+def topPlaces (st : MState) : List (Place × Value) :=
+  match st.env.back? with
+  | some fr => (List.range fr.binds.size).flatMap fun o => placesIn (.var o) (fr.binds[fr.binds.size - 1 - o]!).val 8
+  | none => []
+
+/-- The checker's declared reading of a place, live at the state. -/
+def declAt (st : MState) (q : Place) : Option DeclInfo :=
+  match (runMachine (withLive true (Ochr.placeDecl 1000 [] q)) st 100000).1 with
+  | .ok d _ => some d
+  | _ => none
+
+def shapeViols (st : MState) : List Viol :=
+  (topPlaces st).flatMap fun (q, v) =>
+    let pq := (posName st.env (match st.env.back? with | some fr => .bind (st.env.size - 1) (fr.binds.size - 1 - q.root) | none => .bind 0 0))
+    match declAt st q with
+    | some (.ind n _) =>
+      if (st.inds.find? (·.name == n)).isNone then [] else
+      (if fitsInd n v then [] else [⟨"(V) a place declared an inductive holds something else", s!"{pq}…: {n}(…) holds {clip v.pp}"⟩]) ++
+      (match v with
+        | .abs σ => if indHead? (st.absTy.getD σ .bot) == some n then []
+          else [⟨"(U) an unknown at a place declared an inductive has another type", s!"{pq}…: {n}(…) holds σ{σ} : {clip (st.absTy.getD σ .bot).pp}"⟩]
+        | .sealed _ => match (runMachine (Ochr.placeType? 1000 q) st 1000000).1 with
+          | .ok (some T) _ => if indHead? T == some n then []
+            else [⟨"(P) a sealed program's computed type is not its declared inductive", s!"{pq}…: {n}(…), placeType? gives {clip T.pp}"⟩]
+          | _ => [⟨"(P) a sealed program's computed type is missing", s!"{pq}…: {n}(…)"⟩]
+        | _ => [])
+    | some (.ref _) =>
+      if refFits v then [] else [⟨"(R) a place declared a borrow type holds something else", s!"{pq}…: holds {clip v.pp}"⟩]
+    | _ => []
+
+def shapeFacts : Clause where
+  name := "(U, V, R, P) at every place in scope, by the checker's declared reading"
+  premises := [
+    ("a place in scope is declared an inductive", fun st => (topPlaces st).any fun (q, _) =>
+      match declAt st q with | some (.ind n _) => (st.inds.find? (·.name == n)).isSome | _ => false),
+    ("... and holds an unknown", fun st => (topPlaces st).any fun (q, v) =>
+      (match v with | .abs _ => true | _ => false) && (match declAt st q with | some (.ind _ _) => true | _ => false)),
+    ("... and holds a sealed program", fun st => (topPlaces st).any fun (q, v) =>
+      (match v with | .sealed _ => true | _ => false) && (match declAt st q with | some (.ind _ _) => true | _ => false)),
+    ("a place in scope below a binding is declared an inductive", fun st => (topPlaces st).any fun (q, _) =>
+      !(q matches .var _) && (match declAt st q with | some (.ind _ _) => true | _ => false)),
+    ("a place in scope is declared a borrow type", fun st => (topPlaces st).any fun (q, _) =>
+      match declAt st q with | some (.ref _) => true | _ => false)]
+  check st := shapeViols st
+
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, plantedFill, plantedAbs]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, plantedFill, plantedAbs]
 
 /-! ## The sweep -/
 

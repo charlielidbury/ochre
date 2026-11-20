@@ -619,4 +619,66 @@ theorem anyAtom_of_follow {P : Value → Bool} : ∀ (ss : List Step) (v u : Val
     | none => simp [hs] at h
     | some v' => rw [hs, Option.bind_some] at h; exact anyAtom_of_stepV s₁ v v' hs (anyAtom_of_follow ss v' u h hu)
 
+
+/-! ## What a path reaches holds no loan its root does not -/
+
+theorem mem_loansList_of_mem {l : Nat} {u : Value} : ∀ {vs : List Value}, u ∈ vs → l ∈ u.loans → l ∈ Value.loansList vs
+  | v :: vs, hm, h => by
+    rcases List.mem_cons.mp hm with rfl | hm
+    · simp [Value.loansList, h]
+    · simp [Value.loansList, mem_loansList_of_mem hm h]
+
+theorem loans_of_stepV {l : Nat} : ∀ (st : Step) (v u : Value), stepV st v = some u → l ∈ u.loans → l ∈ v.loans
+  | st, .gloan m w, u, h, hu => by
+    have : stepV st (.gloan m w) = stepV st w := by cases st <;> rfl
+    rw [this] at h
+    simp only [Value.loans, List.mem_cons]; exact .inr (loans_of_stepV st w u h hu)
+  | .deref, .borrow _ w, u, h, hu => by
+    simp only [stepV, Option.some.injEq] at h; subst h; simpa [Value.loans] using hu
+  | .proj 0, .succ w, u, h, hu => by
+    simp only [stepV, Option.some.injEq] at h; subst h; simpa [Value.loans] using hu
+  | .proj i, .ind t 0 hh ps fs, u, h, hu => by
+    simp only [stepV] at h
+    simp only [Value.loans, List.mem_append]
+    exact .inr (mem_loansList_of_mem (List.mem_of_getElem? h) hu)
+  | .field g, .ind t c hh ps fs, u, h, hu => by
+    simp only [stepV] at h
+    split at h
+    · simp only [Value.loans, List.mem_append]
+      exact .inr (mem_loansList_of_mem (List.mem_of_getElem? h) hu)
+    · cases h
+  | .proj _, .proof, u, h, hu | .field _, .proof, u, h, hu => by
+    simp only [stepV, Option.some.injEq] at h; subst h; exact hu
+  | .deref, .zero, _, h, _ | .deref, .succ _, _, h, _ | .deref, .unit, _, h, _ | .deref, .gfn _, _, h, _
+  | .deref, .clo .., _, h, _ | .deref, .loan _, _, h, _ | .deref, .bot, _, h, _ | .deref, .abs _, _, h, _
+  | .deref, .sealed _, _, h, _ | .deref, .proof, _, h, _ | .deref, .tNat, _, h, _ | .deref, .tUnit, _, h, _
+  | .deref, .tEq .., _, h, _ | .deref, .tRef _, _, h, _ | .deref, .tPi .., _, h, _ | .deref, .sort _, _, h, _
+  | .deref, .ind .., _, h, _ | .deref, .tInd .., _, h, _ => by simp [stepV] at h
+  | .proj _, .zero, _, h, _ | .proj (_ + 1), .succ _, _, h, _ | .proj _, .unit, _, h, _ | .proj _, .gfn _, _, h, _
+  | .proj _, .clo .., _, h, _ | .proj _, .borrow .., _, h, _ | .proj _, .loan _, _, h, _ | .proj _, .bot, _, h, _
+  | .proj _, .abs _, _, h, _ | .proj _, .sealed _, _, h, _ | .proj _, .tNat, _, h, _ | .proj _, .tUnit, _, h, _
+  | .proj _, .tEq .., _, h, _ | .proj _, .tRef _, _, h, _ | .proj _, .tPi .., _, h, _ | .proj _, .sort _, _, h, _
+  | .proj _, .ind _ (_ + 1) .., _, h, _ | .proj _, .tInd .., _, h, _ => by simp [stepV] at h
+  | .field _, .zero, _, h, _ | .field _, .succ _, _, h, _ | .field _, .unit, _, h, _ | .field _, .gfn _, _, h, _
+  | .field _, .clo .., _, h, _ | .field _, .borrow .., _, h, _ | .field _, .loan _, _, h, _ | .field _, .bot, _, h, _
+  | .field _, .abs _, _, h, _ | .field _, .sealed _, _, h, _ | .field _, .tNat, _, h, _ | .field _, .tUnit, _, h, _
+  | .field _, .tEq .., _, h, _ | .field _, .tRef _, _, h, _ | .field _, .tPi .., _, h, _ | .field _, .sort _, _, h, _
+  | .field _, .tInd .., _, h, _ => by simp [stepV] at h
+
+theorem loans_of_follow {l : Nat} : ∀ (ss : List Step) (v u : Value), v.follow ss = some u → l ∈ u.loans → l ∈ v.loans
+  | [], v, u, h, hu => by simp [Value.follow] at h; subst h; exact hu
+  | s₁ :: ss, v, u, h, hu => by
+    simp only [Value.follow] at h
+    cases hs : stepV s₁ v with
+    | none => simp [hs] at h
+    | some v' => rw [hs, Option.bind_some] at h; exact loans_of_stepV s₁ v v' hs (loans_of_follow ss v' u h hu)
+
+theorem follow_append : ∀ (v : Value) (a b : List Step), v.follow (a ++ b) = (v.follow a).bind (·.follow b)
+  | v, [], b => by simp [Value.follow]
+  | v, s₁ :: a, b => by
+    simp only [List.cons_append, Value.follow]
+    cases stepV s₁ v with
+    | none => rfl
+    | some w => simp only [Option.bind_some]; exact follow_append w a b
+
 end Ochr.Meaning
