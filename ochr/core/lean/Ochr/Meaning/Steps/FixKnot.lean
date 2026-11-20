@@ -1,5 +1,6 @@
 import Ochr.Meaning.Steps.Knot
 import Ochr.Meaning.ClosureStage
+import Ochr.Meaning.Levels
 
 /-!
 # The knot of [Def]: the induction on the bound (docs/31 D73, D79; docs/34, the weakened stage closure)
@@ -137,6 +138,41 @@ theorem closure_mem_of_total (R : DataRead) (l : Nat) (φ : Future) (ds : List P
         (fun args hm => by
           obtain ⟨o, hg, hgd, hret, hlen⟩ := htot args hm
           exact ⟨o, hg, hgd, hret hr, hlen⟩)
+
+/-! ### Where `PiFits` and `PiCallable` come from: the sort rule and canonical codes -/
+
+/-- **The sort rule of a function type, as the model reads its parts** (what `fix_split` must give
+of the definition's function type; `Assembly.fix_sortRule`, open): the decided sort `l` is bounded
+(`l ≤ 3`); at sort `0` the codomain is not a returned borrow and is of level `0` at every member
+argument tuple; at a data sort the codomain's and every domain's levels are at most `l`. -/
+def SortRule (R : DataRead) (l : Nat) (ds : List PiDom) (out : PiCod) : Prop :=
+  l ≤ 3 ∧ (l = 0 → out.isRef = false) ∧ ∀ args, DomMembers R ds args →
+    (l = 0 → (out.cod args).level = some 0) ∧
+    (1 ≤ l → (∃ s, (out.cod args).level = some s ∧ s ≤ l) ∧
+      ∀ (i : Nat) (d : PiDom), ds[i]? = some d → ∃ s, (d.dom (args.take i)).level = some s ∧ s ≤ l)
+
+/-- **The parts of a function type are canonical codes** at every member argument tuple (no lifted
+code at the top; `Assembly.fix_canon`, open: an invariant of the run's type values, of which a
+member of a universe is an instance, `mem_univ_canon`). -/
+def CanonRule (R : DataRead) (ds : List PiDom) (out : PiCod) : Prop :=
+  ∀ args, DomMembers R ds args →
+    (out.cod args).Canon ∧ ∀ (i : Nat) (d : PiDom), ds[i]? = some d → (d.dom (args.take i)).Canon
+
+/-- **The sort rule and canonical codes give what membership and a call consume**, at any guard. -/
+theorem piFits_of_rules (R : DataRead) (l : Nat) (ds : List PiDom) (out : PiCod) (P : List Sem → Prop)
+    (hs : SortRule R l ds out) (hc : CanonRule R ds out) :
+    PiFits R l ds out P ∧ (1 ≤ l → PiCallable R l ds out P) := by
+  obtain ⟨hl3, h0, hall⟩ := hs
+  cases l with
+  | zero =>
+    refine ⟨⟨h0 rfl, fun args hm _ => prop_of_level_zero _ (hc args hm).1 ((hall args hm).1 rfl)⟩,
+      fun h => absurd h (by omega)⟩
+  | succ n =>
+    refine ⟨⟨hl3, fun args hm _ => ?_⟩, fun _ args hm _ => ⟨(hc args hm).1, fun i d hd => ?_⟩⟩
+    · obtain ⟨s, hs, hsl⟩ := ((hall args hm).2 (by omega)).1
+      exact levelFit_of_level _ (hc args hm).1 hs hsl (by omega)
+    · obtain ⟨s, hs, hsl⟩ := ((hall args hm).2 (by omega)).2 i d hd
+      exact levelFit_of_level _ ((hc args hm).2 i d hd) hs hsl (by omega)
 
 /-- **The induction on the bound, in the run's shape**: if, from stage `b` good at member arguments
 of rank below `b`, stage `b + 1` is good at member arguments of rank below `b + 1`, then the guarded

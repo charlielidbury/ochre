@@ -136,4 +136,29 @@ theorem prop_of_level_zero (T : TyM) (hc : T.Canon) (hs : T.level = some 0) : �
     | lift => exact hc.elim
     | _ => simp [TyM.level, Code2.level] at hs
 
+/-- **A member of `Sort l` is a canonical code**, at the bounded levels: the universes' carriers hold
+codes at their own level (`Sort 2`'s, level-1 codes of level `2`, never a lifted one). -/
+theorem mem_univ_canon (R : DataRead) (s : Sem) :
+    ∀ l, l ≤ 2 → s ∈ₛ[R] TyM.univ l → ∃ T, s = .ty T ∧ T.Canon
+  | 0, _, ⟨a, h⟩ => ⟨_, h.symm, trivial⟩
+  | 1, _, ⟨a, h⟩ => ⟨_, h.symm, trivial⟩
+  | 2, _, ⟨⟨A, c, hc⟩, h⟩ => by
+    refine ⟨_, h.symm, ?_⟩
+    cases c with
+    | lift B c' =>
+      exfalso
+      cases c' <;> simp [Code1.level, Code0.level] at hc
+    | _ => trivial
+  | _ + 3, h, _ => absurd h (by omega)
+
+/-- **A Π-type's code has a level only at the bounded sorts** (`l ≤ 3`; above, `piTyAt` is `err`). -/
+theorem le_three_of_piTyAt_level (R : DataRead) (ds : List PiDom) (out : PiCod) {l l' : Nat}
+    (h : (piTyAt R l ds out).level = some l') : l ≤ 3 := by
+  match l, h with
+  | 0, _ => omega
+  | 1, _ => omega
+  | 2, _ => omega
+  | 3, _ => omega
+  | _ + 4, h => simp [piTyAt, TyM.level, TyM.err, Code0.level] at h
+
 end Ochr.Meaning

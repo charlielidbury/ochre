@@ -121,6 +121,48 @@ theorem step_member_const (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) 
   rw [hgoal]
   exact const_value dm D fuel P d st' st₁ goal v hd hgoal ρ' Δ' π' r s₂ hrunr hmean ψ hmem
 
+/-- (leaf, OPEN; to be routed: the function-type case of sort soundness) **An accepted definition's
+function type obeys the sort rule, as the model reads its parts** (`Steps.SortRule`), at the decided
+sort of its Π-term (`D.piSort`, aligned with the checker's `Machine.piSort`, `piSort_aligned_stmt`)
+and the run's reading of its domains and codomain (`runDoms`, `codOf`; what `run_fix_def` builds the
+closure along): the sort is at most `3`; at sort `0` the codomain is not a returned borrow and is a
+proposition (level `0`) at every member argument tuple; at a data sort the levels of the codomain and
+of every domain are at most the sort. `fix_split` gives `PiFits` from it and `fix_canon`
+(`Steps.piFits_of_rules`), and its step's `MemBelow` gives `PiCallable` the same way.
+
+Stronger than `sortOf_sound_stmt` as stated: that equates the level of a whole stored type with the
+checker's `sortOf` of it, so of the Π-type it gives only the Π's own level (`piTyAt_level`; with
+`le_three_of_piTyAt_level`, the bound `3` when the stored Π-type has a level). The components' part
+follows from `sortOf_sound_stmt` at the body's generic state (the parameters' types and the goal are
+stored types there, and the run's reading of the domain and codomain terms at the arguments is their
+meaning) together with a fact of the checker alone: `Machine.piSort` is at least the `sortOf` of
+each domain and of the codomain at a data sort, and is `0` only for a codomain of sort `0` that is
+not a borrow type (`Machine.piSort`: `if lb == 0 then 0 else max l lb`, a borrow type being of sort
+`1`). One point to check when routing: a borrow parameter `&A` counts at `sortOf (&A) = 1`, while the
+model reads its content `A`, so the rule needs `A` of level at most `1` ((WF7)). -/
+theorem fix_sortRule (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms ≠ [])
+    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm D P)
+    (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
+    Steps.SortRule dm.read ((P.ctx dm D st').D.piSort (scopeOf (emptyState 0)) (.pi d.hs d.doms d.cod))
+      (runDoms (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0) d.doms)
+      (codOf (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0)
+        (bindsOf (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0) d.doms) d.cod) := by
+  sorry
+
+/-- (leaf, OPEN) **The parts of an accepted definition's function type are canonical codes**
+(`Steps.CanonRule`: no lifted code at the top, where `toTy ∘ codeOf` would not give the type back).
+An instance of an invariant of the run: every type value it produces is canonical (the model's
+constructors are; a member of a universe is, `mem_univ_canon`, which covers the arguments a type
+parameter is read at; a call's type result is encoded at its universe's code). Not small: it is an
+induction over the run, as `RunPresInd` is. -/
+theorem fix_canon (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms ≠ [])
+    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm D P)
+    (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
+    Steps.CanonRule dm.read (runDoms (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0) d.doms)
+      (codOf (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0)
+        (bindsOf (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0) d.doms) d.cod) := by
+  sorry
+
 /-- **`checkDef`'s function branch, taken apart** (leaf; docs/31 D73, D79). Two halves.
 (1) The meaning. The reference runs the definition's `fix` term from the empty state (`run_fix_def`;
 neither a statement nor a proof, by the aligned flags): the closure built along the code
@@ -129,9 +171,9 @@ neither a statement nor a proof, by the aligned flags): the closure built along 
 function is its body with `self` erroneous, the stage `1` at rank `0`); and the stored type's code is
 that code (the checker stores `Π(x̄ : Ā). B`, which the `fix` term's domains and codomain run to).
 (2) The function type fits its sort (`Steps.PiFits` at every member argument: at sort `0` a
-borrow-free codomain that is a proposition, at a data sort `l ≤ 3` a codomain that fits the level;
-from the decisions' sort of the Π-term and the levels of its domains' and codomain's codes,
-`Levels.lean`).
+borrow-free codomain that is a proposition, at a data sort `l ≤ 3` a codomain that fits the level):
+`Steps.piFits_of_rules` from the sort rule (`fix_sortRule`, open, to be routed) and canonical codes
+(`fix_canon`, open), `l`, `ds`, `out` being the run's reading of the definition's Π-term.
 (3) The step of the induction on the bound, in the run's shape: from stage `b` good below `b`,
 stage `b + 1` is good below `b + 1` (`Steps.OutGood'`: the result a member of the codomain, the
 borrow parameters' final contents members, one per borrow parameter, and at a returned borrow its
