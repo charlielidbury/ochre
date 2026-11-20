@@ -84,27 +84,27 @@ theorem mean_hintFree : ∀ (w : Value), RecPlain Γ w → ∀ h h',
   | .abs _, _ | .proof, _ | .tNat, _ | .tUnit, _ | .tEq _ _ _, _ | .tRef _, _
   | .tPi _ _ _, _ | .sort _, _ | .tInd _ _, _ | .succ _, _ => fun _ _ => by simp only [Value.mean]
 
-theorem fieldHint_eq (d : IndDecl) (ps : List Sem) (c i : Nat) (e : List Sem) :
-    fieldHint dm d ps c i e = .plain (dm.fieldTy d ps c i e) := rfl
+theorem fieldHint_eq (d : IndDecl) (r : Rec) (c i : Nat) (e : List Sem) :
+    fieldHint dm d r c i e = .plain (dm.fieldTyR d r c i e) := rfl
 
 /-- Fields that record their parameters and hold no sealed program mean the same whatever the
 earlier fields they are typed at. -/
-theorem meanFields_earlier (d : IndDecl) (ps : List Sem) (c : Nat) :
+theorem meanFields_earlier (d : IndDecl) (r : Rec) (c : Nat) :
     ∀ (fs : List Value) (k : Nat) (e e' : List Sem), (∀ x ∈ fs, RecPlain Γ x) →
-      Value.meanFields dm C Γ ρ φ d ps c k e fs = Value.meanFields dm C Γ ρ φ d ps c k e' fs
+      Value.meanFields dm C Γ ρ φ d r c k e fs = Value.meanFields dm C Γ ρ φ d r c k e' fs
   | [], _, _, _, _ => by simp [Value.meanFields]
   | x :: xs, k, e, e', h => by
     simp only [Value.meanFields]
     have hx := mean_hintFree dm C Γ ρ φ x (h x (List.mem_cons_self ..))
-      (.plain (dm.fieldTy d ps c k e))
-      (.plain (dm.fieldTy d ps c k e'))
-    rw [hx, meanFields_earlier d ps c xs (k + 1) _ (e' ++ _) (fun y hy => h y (List.mem_cons_of_mem _ hy))]
+      (.plain (dm.fieldTyR d r c k e))
+      (.plain (dm.fieldTyR d r c k e'))
+    rw [hx, meanFields_earlier d r c xs (k + 1) _ (e' ++ _) (fun y hy => h y (List.mem_cons_of_mem _ hy))]
 
 /-- Field `i`'s meaning is its value read at its hint, after the earlier fields. -/
-theorem meanFields_getElem? (d : IndDecl) (ps : List Sem) (c : Nat) :
+theorem meanFields_getElem? (d : IndDecl) (r : Rec) (c : Nat) :
     ∀ (fs : List Value) (k : Nat) (e : List Sem) (i : Nat) (w : Value), fs[i]? = some w →
-      (Value.meanFields dm C Γ ρ φ d ps c k e fs)[i]? =
-        some (Value.mean dm C Γ ρ φ (fieldHint dm d ps c (k + i) (e ++ (Value.meanFields dm C Γ ρ φ d ps c k e fs).take i)) w)
+      (Value.meanFields dm C Γ ρ φ d r c k e fs)[i]? =
+        some (Value.mean dm C Γ ρ φ (fieldHint dm d r c (k + i) (e ++ (Value.meanFields dm C Γ ρ φ d r c k e fs).take i)) w)
   | [], _, _, _, _, h => by simp at h
   | x :: xs, k, e, 0, w, h => by
     simp only [List.getElem?_cons_zero, Option.some.injEq] at h
@@ -113,57 +113,57 @@ theorem meanFields_getElem? (d : IndDecl) (ps : List Sem) (c : Nat) :
   | x :: xs, k, e, i + 1, w, h => by
     simp only [List.getElem?_cons_succ] at h
     simp only [Value.meanFields, List.getElem?_cons_succ, List.take_succ_cons]
-    rw [meanFields_getElem? d ps c xs (k + 1) _ i w h]
+    rw [meanFields_getElem? d r c xs (k + 1) _ i w h]
     simp only [List.append_assoc, List.singleton_append, Nat.add_right_comm k 1 i, Nat.add_assoc]
 
 /-- **Writing field `i`**: the fields' meanings are the old ones with field `i` replaced by the new
 value read at field `i`'s hint, when every field records its parameters and holds no sealed
 program (a later field is typed at the changed earlier fields, and does not read its type). -/
-theorem meanFields_set (d : IndDecl) (ps : List Sem) (c : Nat) :
+theorem meanFields_set (d : IndDecl) (r : Rec) (c : Nat) :
     ∀ (fs : List Value) (k : Nat) (e : List Sem) (i : Nat) (w : Value), i < fs.length → (∀ x ∈ fs, RecPlain Γ x) →
-      Value.meanFields dm C Γ ρ φ d ps c k e (fs.set i w) =
-        (Value.meanFields dm C Γ ρ φ d ps c k e fs).set i
-          (Value.mean dm C Γ ρ φ (fieldHint dm d ps c (k + i) (e ++ (Value.meanFields dm C Γ ρ φ d ps c k e fs).take i)) w)
+      Value.meanFields dm C Γ ρ φ d r c k e (fs.set i w) =
+        (Value.meanFields dm C Γ ρ φ d r c k e fs).set i
+          (Value.mean dm C Γ ρ φ (fieldHint dm d r c (k + i) (e ++ (Value.meanFields dm C Γ ρ φ d r c k e fs).take i)) w)
   | [], _, _, _, _, hi, _ => by simp at hi
   | x :: xs, k, e, 0, w, _, h => by
     simp only [List.set_cons_zero, Value.meanFields, List.set_cons_zero, fieldHint_eq, Nat.add_zero,
       List.take_zero, List.append_nil, List.cons.injEq, true_and]
-    exact meanFields_earlier dm C Γ ρ φ d ps c xs (k + 1) _ _ (fun y hy => h y (List.mem_cons_of_mem _ hy))
+    exact meanFields_earlier dm C Γ ρ φ d r c xs (k + 1) _ _ (fun y hy => h y (List.mem_cons_of_mem _ hy))
   | x :: xs, k, e, i + 1, w, hi, h => by
     simp only [List.set_cons_succ, Value.meanFields, List.take_succ_cons, List.cons.injEq, true_and]
-    rw [meanFields_set d ps c xs (k + 1) _ i w (by simpa using hi) (fun y hy => h y (List.mem_cons_of_mem _ hy))]
+    rw [meanFields_set d r c xs (k + 1) _ i w (by simpa using hi) (fun y hy => h y (List.mem_cons_of_mem _ hy))]
     simp only [List.append_assoc, List.singleton_append, Nat.add_right_comm k 1 i, Nat.add_assoc]
 
 /-- `meanFields_earlier` for fields that mean the same at every hint, whatever makes them so
 (recorded and unsealed, `mean_hintFree`; or top-hint-free under the run's code meaning,
 `HintIndep.meanV_hintIndep`). -/
-theorem meanFields_earlierH (d : IndDecl) (ps : List Sem) (c : Nat) :
+theorem meanFields_earlierH (d : IndDecl) (r : Rec) (c : Nat) :
     ∀ (fs : List Value) (k : Nat) (e e' : List Sem),
       (∀ x ∈ fs, ∀ h h', Value.mean dm C Γ ρ φ h x = Value.mean dm C Γ ρ φ h' x) →
-      Value.meanFields dm C Γ ρ φ d ps c k e fs = Value.meanFields dm C Γ ρ φ d ps c k e' fs
+      Value.meanFields dm C Γ ρ φ d r c k e fs = Value.meanFields dm C Γ ρ φ d r c k e' fs
   | [], _, _, _, _ => by simp [Value.meanFields]
   | x :: xs, k, e, e', h => by
     simp only [Value.meanFields]
     have hx := h x (List.mem_cons_self ..)
-      (.plain (dm.fieldTy d ps c k e))
-      (.plain (dm.fieldTy d ps c k e'))
-    rw [hx, meanFields_earlierH d ps c xs (k + 1) _ (e' ++ _) (fun y hy => h y (List.mem_cons_of_mem _ hy))]
+      (.plain (dm.fieldTyR d r c k e))
+      (.plain (dm.fieldTyR d r c k e'))
+    rw [hx, meanFields_earlierH d r c xs (k + 1) _ (e' ++ _) (fun y hy => h y (List.mem_cons_of_mem _ hy))]
 
 /-- `meanFields_set` for fields that mean the same at every hint. -/
-theorem meanFields_setH (d : IndDecl) (ps : List Sem) (c : Nat) :
+theorem meanFields_setH (d : IndDecl) (r : Rec) (c : Nat) :
     ∀ (fs : List Value) (k : Nat) (e : List Sem) (i : Nat) (w : Value), i < fs.length →
       (∀ x ∈ fs, ∀ h h', Value.mean dm C Γ ρ φ h x = Value.mean dm C Γ ρ φ h' x) →
-      Value.meanFields dm C Γ ρ φ d ps c k e (fs.set i w) =
-        (Value.meanFields dm C Γ ρ φ d ps c k e fs).set i
-          (Value.mean dm C Γ ρ φ (fieldHint dm d ps c (k + i) (e ++ (Value.meanFields dm C Γ ρ φ d ps c k e fs).take i)) w)
+      Value.meanFields dm C Γ ρ φ d r c k e (fs.set i w) =
+        (Value.meanFields dm C Γ ρ φ d r c k e fs).set i
+          (Value.mean dm C Γ ρ φ (fieldHint dm d r c (k + i) (e ++ (Value.meanFields dm C Γ ρ φ d r c k e fs).take i)) w)
   | [], _, _, _, _, hi, _ => by simp at hi
   | x :: xs, k, e, 0, w, _, h => by
     simp only [List.set_cons_zero, Value.meanFields, List.set_cons_zero, fieldHint_eq, Nat.add_zero,
       List.take_zero, List.append_nil, List.cons.injEq, true_and]
-    exact meanFields_earlierH dm C Γ ρ φ d ps c xs (k + 1) _ _ (fun y hy => h y (List.mem_cons_of_mem _ hy))
+    exact meanFields_earlierH dm C Γ ρ φ d r c xs (k + 1) _ _ (fun y hy => h y (List.mem_cons_of_mem _ hy))
   | x :: xs, k, e, i + 1, w, hi, h => by
     simp only [List.set_cons_succ, Value.meanFields, List.take_succ_cons, List.cons.injEq, true_and]
-    rw [meanFields_setH d ps c xs (k + 1) _ i w (by simpa using hi) (fun y hy => h y (List.mem_cons_of_mem _ hy))]
+    rw [meanFields_setH d r c xs (k + 1) _ i w (by simpa using hi) (fun y hy => h y (List.mem_cons_of_mem _ hy))]
     simp only [List.append_assoc, List.singleton_append, Nat.add_right_comm k 1 i, Nat.add_assoc]
 
 theorem Sem.asNat_some {s : Sem} {n : Nat} (h : s.asNat = some n) : s = .el0 Nat n := by
@@ -215,13 +215,14 @@ theorem mean_ind {H : TyS} {ty : String} {c : Nat} {hh : Hint} {ps fs : List Val
     (hs : d.sort ≠ 0) :
     Value.mean dm C Γ ρ φ H (.ind ty c hh ps fs) =
       dm.ctorM d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c
-        (Value.meanFields dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c 0 [] fs) := by
+        (Value.meanFields dm C Γ ρ φ d (dm.recOf d (Value.meanParams dm C Γ ρ φ d 0 [] ps)) c 0 [] fs) := by
   have hbare : (ps.isEmpty && !d.params.isEmpty) = false := by
     cases ps with
     | nil => simp only [Value.bareCtor, hf] at hb; simp [hb]
     | cons _ _ => rfl
   have hs' : (d.sort == 0) = false := by simpa using hs
   simp only [Value.mean, hf, hbare, Bool.false_eq_true, ↓reduceIte, hs']
+  rfl
 
 /-- **The path is one the value has** (docs/31 D32): at each constructor value on the path its
 declaration is a data declaration of `Γ` other than the number type's name, and at each `S` the
@@ -326,16 +327,16 @@ theorem mean_updAt_bot : ∀ (steps : List Step) (H T : TyS) (v v' : Value),
       have hbare' : Value.bareCtor Γ (.ind ty c hh ps (fs.set st.fieldIdx w')) = false := by
         cases ps <;> simp only [Value.bareCtor] at hbare ⊢ <;> exact hbare
       have hi : st.fieldIdx < fs.length := (List.getElem?_eq_some_iff.mp hw).1
-      have hget := meanFields_getElem? dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c fs 0 [] st.fieldIdx w hw
-      have hset := meanFields_set dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c fs 0 [] st.fieldIdx w' hi hfs
+      have hget := meanFields_getElem? dm C Γ ρ φ d (dm.recOf d (Value.meanParams dm C Γ ρ φ d 0 [] ps)) c fs 0 [] st.fieldIdx w hw
+      have hset := meanFields_set dm C Γ ρ φ d (dm.recOf d (Value.meanParams dm C Γ ρ φ d 0 [] ps)) c fs 0 [] st.fieldIdx w' hi hfs
       simp only [Nat.zero_add, List.nil_append] at hget hset
-      have IH := mean_updAt_bot ss (fieldHint dm d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c st.fieldIdx
-        ((Value.meanFields dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c 0 [] fs).take st.fieldIdx))
+      have IH := mean_updAt_bot ss (fieldHint dm d (dm.recOf d (Value.meanParams dm C Γ ρ φ d 0 [] ps)) c st.fieldIdx
+        ((Value.meanFields dm C Γ ρ φ d (dm.recOf d (Value.meanParams dm C Γ ρ φ d 0 [] ps)) c 0 [] fs).take st.fieldIdx))
         T w w' hw' (hfs w (List.mem_of_getElem? hw)) (hrec w hw)
       rw [mean_ind dm C Γ ρ φ hf hbare hsort, mean_ind dm C Γ ρ φ hf hbare' hsort, hset]
-      obtain ⟨el, hel⟩ := ctorM_dat dm d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c
-        (Value.meanFields dm C Γ ρ φ d (Value.meanParams dm C Γ ρ φ d 0 [] ps) c 0 [] fs)
-      rw [hel, Sem.updAt_dat' dm Γ T _ st ss hst hnat hget, IH, Option.map_some, reDat_eq dm Γ hf]
+      have hn : d.name = ty := by have := List.find?_some hf; simpa using this
+      rw [ctorM_dat, ctorM_dat, Sem.updAt_dat' dm Γ T _ st ss hst (hn ▸ hnat) hget, IH, Option.map_some, hn]
+      rfl
     | _ => simp [Value.updAt] at h
 termination_by steps _ _ v => (steps.length, sizeOf v)
 

@@ -267,14 +267,14 @@ noncomputable def fixStage (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod
 noncomputable def fixRank (dec : Option Nat) (args : List Sem) : Nat := match dec with
   | some j =>
     match args[j]? with
-    | some a => semRank K.dm K.Γ a
+    | some a => semRank a
     | none => 0
   | none => 0
 
 /-- The closure's function: the guarded fixpoint by stages, or the body with `self` erroneous. -/
 noncomputable def fixG (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat)
     (dec : Option Nat) (body : Term) : List Sem → Option BodyOut := match dec with
-  | some _ => fun args => fixStage K ρ φ fb l s ps out piT start body (fixRank K dec args + 1) args
+  | some _ => fun args => fixStage K ρ φ fb l s ps out piT start body (fixRank dec args + 1) args
   | none => fixBodyAt K ρ φ fb s ps out piT start body .err
 
 /-- Forming the closure accesses each capture, oldest first, and moves the non-copy ones. -/
@@ -621,8 +621,8 @@ theorem fixG_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (h�
     exact fixBodyAt_finals K ρ hK hi ps out piT body _ args o h
   | some j =>
     refine ⟨funext fun args => ?_, fun args o h => ?_⟩
-    · exact congrFun (fixStage_congr K ρ hK hφ hb hi l ps out piT (fixRank K (some j) args + 1)).1 args
-    · exact (fixStage_congr K ρ hK hφ hb hi l ps out piT (fixRank K (some j) args + 1)).2 args o h
+    · exact congrFun (fixStage_congr K ρ hK hφ hb hi l ps out piT (fixRank (some j) args + 1)).1 args
+    · exact (fixStage_congr K ρ hK hφ hb hi l ps out piT (fixRank (some j) args + 1)).2 args o h
 
 end FixCongr
 
@@ -878,7 +878,7 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
       have e := runParams_state K ρ φ d ps 0 [] s s₁ psM h1
       subst e
       dsimp only
-      exact SM.bind_congr (runFields_congrE hK _ d c args 0 _ [] s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
+      exact SM.bind_congr (runFields_congrE hK _ d c args 0 _ _ [] s₁ L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
         (fun _ _ _ => rfl)
   | tl, .prim n args, hint, s, L, hφ, ht, hi => by
     have hall : ∀ t ∈ args, ∀ (hint : TyS) (s : SState), RInv L s →
@@ -1000,8 +1000,8 @@ theorem meanV_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (v : Valu
       dsimp only
       rw [meanParams_congrE hK d ps _ _ fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])]
       split
-      · rename_i ps' _
-        rw [meanFields_congrE hK d ps' c fs _ _ fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])]
+      · rename_i r' _
+        rw [meanFields_congrE hK d r' c fs _ _ fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])]
       · rfl
     · rfl
   | .tInd n args, hint, hv => by
@@ -1066,12 +1066,12 @@ theorem runArgs_congrE (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool)
     intro _ _ _; rfl
 
 theorem runFields_congrE (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool) (d : IndDecl) (c : Nat) :
-    ∀ (args : List Term) (i : Nat) (sol : List (Option Sem)) (earlier : List Sem) (s : SState) (L : Nat → Prop),
+    ∀ (args : List Term) (i : Nat) (rh : Option Rec) (sol : List (Option Sem)) (earlier : List Sem) (s : SState) (L : Nat → Prop),
     (∀ l, L l → φ l = φ' l) →
     (∀ l, Term.anyAtomList (· == .loan l) args = true → L l) → RInv L s →
-    runFields K ρ φ stmt d c i sol earlier args s = runFields K ρ φ' stmt d c i sol earlier args s
-  | [], _, _, _, _, _, _, _, _ => rfl
-  | a :: as, i, sol, earlier, s, L, hφ, ht, hi => by
+    runFields K ρ φ stmt d c i rh sol earlier args s = runFields K ρ φ' stmt d c i rh sol earlier args s
+  | [], _, _, _, _, _, _, _, _, _ => rfl
+  | a :: as, i, rh, sol, earlier, s, L, hφ, ht, hi => by
     simp only [runFields]
     apply SM.bind_congr (SM.stmtIf_congr (runT_congrE hK false a _ s L hφ (fun l h => ht l (by simp [Term.anyAtomList, h])) hi))
     intro r s₁ h1
@@ -1079,7 +1079,7 @@ theorem runFields_congrE (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Boo
       rcases SM.stmtIf_some h1 with ⟨-, h1⟩ | ⟨-, rfl, -, -⟩
       · exact (runT_rinv K ρ φ L hK false a _ s s₁ r hi h1).1
       · exact hi
-    apply SM.bind_congr (runFields_congrE hK stmt d c as _ _ _ s₁ L hφ (fun l h => ht l (by simp [Term.anyAtomList, h])) hi₁)
+    apply SM.bind_congr (runFields_congrE hK stmt d c as _ _ _ _ s₁ L hφ (fun l h => ht l (by simp [Term.anyAtomList, h])) hi₁)
     intro _ _ _; rfl
 
 theorem runParams_congrE (hK : ∀ n, (K.C.global n).2.label = none) (d : IndDecl) :
@@ -1123,15 +1123,15 @@ theorem capsTys_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (rd : L
     rw [meanV_congrE hK T _ (fun l h => hv l (by simp [Value.hasLoanM] at h; simp [Value.anyAtomRd, h])),
       capsTys_congrE hK rest (fun l h => hv l (by simp [Value.anyAtomRd, h]))]
 
-theorem meanFields_congrE (hK : ∀ n, (K.C.global n).2.label = none) (d : IndDecl) (ps : List Sem) (c : Nat) :
+theorem meanFields_congrE (hK : ∀ n, (K.C.global n).2.label = none) (d : IndDecl) (r : Rec) (c : Nat) :
     ∀ (vs : List Value) (i : Nat) (earlier : List Sem),
     (∀ l, Value.anyAtomList (· == .loan l) vs = true → φ l = φ' l) →
-    meanFields K ρ φ d ps c i earlier vs = meanFields K ρ φ' d ps c i earlier vs
+    meanFields K ρ φ d r c i earlier vs = meanFields K ρ φ' d r c i earlier vs
   | [], _, _, _ => rfl
   | v :: vs, i, earlier, hv => by
     simp only [meanFields]
     rw [meanV_congrE hK v _ (fun l h => hv l (by simp [Value.hasLoanM] at h; simp [Value.anyAtomList, h])),
-      meanFields_congrE hK d ps c vs _ _ (fun l h => hv l (by simp [Value.anyAtomList, h]))]
+      meanFields_congrE hK d r c vs _ _ (fun l h => hv l (by simp [Value.anyAtomList, h]))]
 
 theorem meanParams_congrE (hK : ∀ n, (K.C.global n).2.label = none) (d : IndDecl) :
     ∀ (vs : List Value) (i : Nat) (earlier : List Sem),

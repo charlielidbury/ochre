@@ -516,10 +516,10 @@ theorem runArgs_substSame (hF : FillOK K ρ ψ l w) (stmt : Bool) (fT : TyM) :
     simp only [Term.substLoanList, runArgs, runT_substSame hF false a, runArgs_substSame hF stmt fT as, hF.dec.2.1]
 
 theorem runFields_substSame (hF : FillOK K ρ ψ l w) (stmt : Bool) (d : IndDecl) (c : Nat) :
-    ∀ (args : List Term) (i : Nat) (sol : List (Option Sem)) (earlier : List Sem),
-    runFields K ρ ψ stmt d c i sol earlier (Term.substLoanList l w args) = runFields K ρ ψ stmt d c i sol earlier args
-  | [], _, _, _ => rfl
-  | a :: as, i, sol, earlier => by
+    ∀ (args : List Term) (i : Nat) (rh : Option Rec) (sol : List (Option Sem)) (earlier : List Sem),
+    runFields K ρ ψ stmt d c i rh sol earlier (Term.substLoanList l w args) = runFields K ρ ψ stmt d c i rh sol earlier args
+  | [], _, _, _, _ => rfl
+  | a :: as, i, rh, sol, earlier => by
     simp only [Term.substLoanList, runFields, runT_substSame hF false a, runFields_substSame hF stmt d c as, hF.dec.2.1]
 
 theorem runParams_substSame (hF : FillOK K ρ ψ l w) (d : IndDecl) :
@@ -552,12 +552,12 @@ theorem capsTys_substSame (hF : FillOK K ρ ψ l w) : ∀ (rd : List (DeclInfo �
   | (d, T) :: rest => by
     simp only [Value.substLoanRd, capsTys, meanV_substSame hF T, capsTys_substSame hF rest]
 
-theorem meanFields_substSame (hF : FillOK K ρ ψ l w) (d : IndDecl) (ps : List Sem) (c : Nat) :
+theorem meanFields_substSame (hF : FillOK K ρ ψ l w) (d : IndDecl) (r : Rec) (c : Nat) :
     ∀ (vs : List Value) (i : Nat) (earlier : List Sem),
-    meanFields K ρ ψ d ps c i earlier (Value.substLoanList l w vs) = meanFields K ρ ψ d ps c i earlier vs
+    meanFields K ρ ψ d r c i earlier (Value.substLoanList l w vs) = meanFields K ρ ψ d r c i earlier vs
   | [], _, _ => rfl
   | v :: vs, i, earlier => by
-    simp only [Value.substLoanList, meanFields, meanV_substSame hF v, meanFields_substSame hF d ps c vs]
+    simp only [Value.substLoanList, meanFields, meanV_substSame hF v, meanFields_substSame hF d r c vs]
 
 theorem meanParams_substSame (hF : FillOK K ρ ψ l w) (d : IndDecl) :
     ∀ (vs : List Value) (i : Nat) (earlier : List Sem),

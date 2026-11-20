@@ -238,17 +238,20 @@ parameter variable, the parameter is `R` itself; where it is `D(x̄)` and `R`'s 
 each parameter variable among `x̄` is its `v`. Only unsolved parameters are filled. A type the run
 does not know (`err`) solves nothing, as the checker's field with no type. Not covered: a
 parameter nested deeper (`List(Pair(A, B))`). -/
-def unifyTyS (rd : DataRead) (np : Nat) (FT : Term) (R : TyS) (sol : List (Option Sem)) : List (Option Sem) :=
+def unifyTyS (dm : DataModel) (np : Nat) (FT : Term) (R : TyS) (sol : List (Option Sem)) : List (Option Sem) :=
   if R.m.isErr then sol else
     match FT with
     | .place (.var j) => fillParam np j (.ty R.m) sol
     | .tind m as =>
-      match R.data rd with
-      | some (m', vs) =>
-        if m = m' ∧ as.length = vs.length then
-          (as.zip vs).foldl (fun sol av => match av.1 with
-            | .place (.var j) => fillParam np j av.2 sol
-            | _ => sol) sol
+      -- docs/34 §14: a data type's code keeps no parameter list; a type parameter is read back
+      -- off its record's entry (`paramKey`), a value or large parameter is not
+      match R.data with
+      | some (m', r) =>
+        if m = m' then
+          as.zipIdx.foldl (fun sol ai => match ai.1, r (paramKey ai.2) with
+            | .place (.var _), .none => sol
+            | .place (.var j), e => fillParam np j (.ty (dm.entryTy e)) sol
+            | _, _ => sol) sol
         else sol
       | none => sol
     | _ => sol
@@ -319,8 +322,8 @@ noncomputable def natTag (v : Sem) (_ : TyS) : Sem :=
   | some 0 => .el0 Nat 0
   | some (_ + 1) => .el0 Nat 1
   | none => match v with
-    | .dat "Nat" _ 0 [] _ => .el0 Nat 0
-    | .dat "Nat" _ 1 _ _ => .el0 Nat 1
+    | .dat "Nat" _ 0 [] => .el0 Nat 0
+    | .dat "Nat" _ 1 _ => .el0 Nat 1
     | _ => .err
 
 /-- The tag of a data value, its constructor's index, or `•` for a proof: what a `match` on it
@@ -329,7 +332,7 @@ type nor its carrier is consulted, D31). -/
 noncomputable def indTag (v : Sem) (_ : TyS) : Sem :=
   match v with
   | .proof => .proof
-  | .dat _ _ c _ _ => .el0 Nat c
+  | .dat _ _ c _ => .el0 Nat c
   | _ => .err
 
 /-- The content of a place after [Access] for it (static, docs/31 D29: the borrows lent at, over
@@ -679,6 +682,23 @@ noncomputable def capStep (s : SState) (i : Nat) : SState := match s.varPos i wi
     if K.D.copy (K.D.placeDecl (scopeOf s) (.var i)) then s else s.setAt pos fun _ => .moved
   | none => s
 
+/-- A constructor value's result once its record is known (docs/34 §14): the tree at the record,
+or `•` for a `Prop`-sorted declaration (D42), at the declaration's type there; no record, no
+value. -/
+def ctorOut (dm : DataModel) (d : IndDecl) (c : Nat) (fs : List Sem) : Option Rec → SM Res
+  | some r => pure (if d.sort == 0 then .proof else DataModel.ctorR d r c fs, .plain (dm.tyR d r))
+  | none => SM.fail
+
+theorem ctorOut_inv {dm : DataModel} {d : IndDecl} {c : Nat} {fs : List Sem} {r? : Option Rec}
+    {s s' : SState} {r : Res} (h : ctorOut dm d c fs r? s = some (r, s')) :
+    s' = s ∧ ∃ rr, r? = some rr ∧
+      r = (if d.sort == 0 then .proof else DataModel.ctorR d rr c fs, .plain (dm.tyR d rr)) := by
+  cases r? with
+  | none => cases h
+  | some rr =>
+    simp only [ctorOut, pure, Option.some.injEq, Prod.mk.injEq] at h
+    exact ⟨h.2.symm, rr, rfl, h.1.symm⟩
+
 mutual
 /-- The reference run of a term at the future `φ`, at the type `hint` its context expects, in
 tail position when `tl` (D90's tail flag, docs/31 D29 point 2). A term is in tail position when it
@@ -773,22 +793,18 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     match K.Γ.find? (·.name == ty) with
     | some d =>
       let psM ← runParams d 0 [] ps
-      -- the parameters known before the fields: the written ones, or the hint's (`evalCtor`'s
-      -- `sol`); the fields' types then solve the rest (`runFields`; the audit's A9)
-      let sol₀ : List (Option Sem) := if !ps.isEmpty then psM.map some else
-        match hint.data K.dm.read with
-        | some (n, ps') => if n = ty ∧ ps'.length = d.params.length then ps'.map some else List.replicate d.params.length none
-        | none => List.replicate d.params.length none
+      -- the record known before the fields: the written parameters', or the hint's (`evalCtor`'s
+      -- `sol`; docs/34 §14: a code keeps a record, not parameters); otherwise the fields' types
+      -- solve the parameters (`runFields`; the audit's A9)
+      let rh : Option Rec := if !ps.isEmpty then some (K.dm.recOf d psM) else
+        match hint.data with
+        | some (n, r) => if n = ty then some r else none
+        | none => none
+      let sol₀ : List (Option Sem) := if !ps.isEmpty then psM.map some else List.replicate d.params.length none
       -- a constructor of a Prop-sorted inductive is a proof, `⋆` (D42); its arguments are
       -- statement positions, each on its own copy (`stmtArgIf`; D19, R4)
-      let (fs, sol) ← runFields (d.sort == 0) d c 0 sol₀ [] args
-      if sol.all (·.isSome) then
-        let ps' := solved sol
-        if d.sort == 0 then
-          pure (.proof, .plain (K.dm.tyM d ps'))
-        else
-          pure (K.dm.ctorM d ps' c fs, .plain (K.dm.tyM d ps'))
-      else SM.fail
+      let (fs, sol) ← runFields (d.sort == 0) d c 0 rh sol₀ [] args
+      ctorOut K.dm d c fs (rh <|> (if sol.all (·.isSome) then some (K.dm.recOf d (solved sol)) else none))
     | none => SM.fail) s
   | .const n => pure (K.C.global n)
   | .val v => fun s =>
@@ -900,7 +916,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let rankOf (args : List Sem) : Nat := match dec with
       | some j =>
         match args[j]? with
-        | some a => semRank K.dm K.Γ a
+        | some a => semRank a
         | none => 0
       | none => 0
     let g : List Sem → Option BodyOut := match dec with
@@ -1027,21 +1043,23 @@ hint's, then what each field's type gives the unsolved ones (`unifyTyS`; the aud
 an unannotated `Pair(a, b)` or `Cons(x, xs)` with no hint had no parameters and failed). A field
 is run at its declared type as hint once every parameter that type reads is solved
 (`Machine.fieldTypeAt`'s guard), and at no hint before. -/
-noncomputable def runFields (stmt : Bool) (d : IndDecl) (c i : Nat) (sol : List (Option Sem)) (earlier : List Sem) :
-    List Term → SM (List Sem × List (Option Sem))
+noncomputable def runFields (stmt : Bool) (d : IndDecl) (c i : Nat) (rh : Option Rec) (sol : List (Option Sem))
+    (earlier : List Sem) : List Term → SM (List Sem × List (Option Sem))
   | [] => pure ([], sol)
   | a :: as => fun s => (do
-    let T : TyS := match fieldTerm d c i with
-      | some FT =>
-        if FT.freeVars.all (fun j => d.params.length ≤ j || (sol.getD (d.params.length - 1 - j) none).isSome) then
-          .plain (K.dm.fieldTy d (solved sol) c i earlier)
-        else .plain TyM.err
-      | none => .plain TyM.err
+    let T : TyS := match rh with
+      | some r => .plain (K.dm.fieldTyR d r c i earlier)
+      | none => match fieldTerm d c i with
+        | some FT =>
+          if FT.freeVars.all (fun j => d.params.length ≤ j || (sol.getD (d.params.length - 1 - j) none).isSome) then
+            .plain (K.dm.fieldTy d (solved sol) c i earlier)
+          else .plain TyM.err
+        | none => .plain TyM.err
     let (v, R) ← SM.stmtIf (stmt && !(K.D.declOf (scopeOf s) a matches .ref _)) (runT false T a)
     let sol₁ := match fieldTerm d c i with
-      | some FT => unifyTyS K.dm.read d.params.length FT R sol
+      | some FT => unifyTyS K.dm d.params.length FT R sol
       | none => sol
-    let (rest, sol₂) ← runFields stmt d c (i + 1) sol₁ (earlier ++ [v]) as
+    let (rest, sol₂) ← runFields stmt d c (i + 1) rh sol₁ (earlier ++ [v]) as
     pure (v :: rest, sol₂)) s
 termination_by structural as => as
 
@@ -1099,11 +1117,11 @@ noncomputable def meanV (hint : TyS) : Value → Sem
   | .ind ty c _ ps fs =>
     match K.Γ.find? (·.name == ty) with
     | some d =>
-      let ps? := if ps.isEmpty && !d.params.isEmpty then
-          (match hint.data K.dm.read with | some (n, ps') => if n = ty then some ps' else none | none => none)
-        else some (meanParams d 0 [] ps)
-      match ps? with
-      | some ps' => if d.sort == 0 then .proof else K.dm.ctorM d ps' c (meanFields d ps' c 0 [] fs)
+      let r? : Option Rec := if ps.isEmpty && !d.params.isEmpty then
+          (match hint.data with | some (n, r) => if n = ty then some r else none | none => none)
+        else some (K.dm.recOf d (meanParams d 0 [] ps))
+      match r? with
+      | some r => if d.sort == 0 then .proof else DataModel.ctorR d r c (meanFields d r c 0 [] fs)
       | none => .err
     | none => .err
   | .tInd n args =>
@@ -1112,11 +1130,11 @@ noncomputable def meanV (hint : TyS) : Value → Sem
     | none => .ty TyM.err
 termination_by structural v => v
 
-noncomputable def meanFields (d : IndDecl) (ps : List Sem) (c i : Nat) (earlier : List Sem) : List Value → List Sem
+noncomputable def meanFields (d : IndDecl) (r : Rec) (c i : Nat) (earlier : List Sem) : List Value → List Sem
   | [] => []
   | v :: vs =>
-    let s := meanV (.plain (K.dm.fieldTy d ps c i earlier)) v
-    s :: meanFields d ps c (i + 1) (earlier ++ [s]) vs
+    let s := meanV (.plain (K.dm.fieldTyR d r c i earlier)) v
+    s :: meanFields d r c (i + 1) (earlier ++ [s]) vs
 termination_by structural vs => vs
 
 noncomputable def meanParams (d : IndDecl) (i : Nat) (earlier : List Sem) : List Value → List Sem
@@ -1258,16 +1276,16 @@ theorem meanV_eq_mean_aux (hint : TyS) : (v : Value) →
   | .ind ty c h ps fs => by
     have hP : ∀ d, Value.meanParams K.dm (codeMeaning K) K.Γ ρ φ d 0 [] ps = meanParams K ρ φ d 0 [] ps :=
       fun d => meanParams_eq_mean d 0 [] ps
-    have hF : ∀ d ps', Value.meanFields K.dm (codeMeaning K) K.Γ ρ φ d ps' c 0 [] fs
-        = meanFields K ρ φ d ps' c 0 [] fs :=
-      fun d ps' => meanFields_eq_mean d ps' c 0 [] fs
+    have hF : ∀ d r, Value.meanFields K.dm (codeMeaning K) K.Γ ρ φ d r c 0 [] fs
+        = meanFields K ρ φ d r c 0 [] fs :=
+      fun d r => meanFields_eq_mean d r c 0 [] fs
     simp only [Value.mean, meanV, hP, hF]
     cases List.find? (fun x => x.name == ty) K.Γ with
     | none => rfl
     | some d =>
       cases (if (ps.isEmpty && !d.params.isEmpty) = true then
-          (match hint.data K.dm.read with | some (n, ps') => if n = ty then some ps' else none | none => none)
-        else some (meanParams K ρ φ d 0 [] ps)) <;> rfl
+          (match hint.data with | some (n, r) => if n = ty then some r else none | none => none)
+        else some (K.dm.recOf d (meanParams K ρ φ d 0 [] ps))) <;> rfl
   | .tInd n args => by
     have hP : ∀ d, Value.meanParams K.dm (codeMeaning K) K.Γ ρ φ d 0 [] args = meanParams K ρ φ d 0 [] args :=
       fun d => meanParams_eq_mean d 0 [] args
@@ -1275,17 +1293,17 @@ theorem meanV_eq_mean_aux (hint : TyS) : (v : Value) →
     cases List.find? (fun x => x.name == n) K.Γ <;> rfl
 termination_by structural v => v
 
-theorem meanFields_eq_mean (d : IndDecl) (ps : List Sem) (c : Nat) :
+theorem meanFields_eq_mean (d : IndDecl) (r : Rec) (c : Nat) :
     (i : Nat) → (earlier : List Sem) → (vs : List Value) →
-    Value.meanFields K.dm (codeMeaning K) K.Γ ρ φ d ps c i earlier vs = meanFields K ρ φ d ps c i earlier vs
+    Value.meanFields K.dm (codeMeaning K) K.Γ ρ φ d r c i earlier vs = meanFields K ρ φ d r c i earlier vs
   | _, _, [] => rfl
   | i, earlier, v :: vs => by
-    show Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain (K.dm.fieldTy d ps c i earlier)) v
-        :: Value.meanFields K.dm (codeMeaning K) K.Γ ρ φ d ps c (i + 1)
-          (earlier ++ [Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain (K.dm.fieldTy d ps c i earlier)) v]) vs
-      = meanV K ρ φ (.plain (K.dm.fieldTy d ps c i earlier)) v
-        :: meanFields K ρ φ d ps c (i + 1) (earlier ++ [meanV K ρ φ (.plain (K.dm.fieldTy d ps c i earlier)) v]) vs
-    rw [meanV_eq_mean_aux _ v, meanFields_eq_mean d ps c (i + 1) _ vs]
+    show Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain (K.dm.fieldTyR d r c i earlier)) v
+        :: Value.meanFields K.dm (codeMeaning K) K.Γ ρ φ d r c (i + 1)
+          (earlier ++ [Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain (K.dm.fieldTyR d r c i earlier)) v]) vs
+      = meanV K ρ φ (.plain (K.dm.fieldTyR d r c i earlier)) v
+        :: meanFields K ρ φ d r c (i + 1) (earlier ++ [meanV K ρ φ (.plain (K.dm.fieldTyR d r c i earlier)) v]) vs
+    rw [meanV_eq_mean_aux _ v, meanFields_eq_mean d r c (i + 1) _ vs]
 termination_by structural _ _ vs => vs
 
 theorem meanParams_eq_mean (d : IndDecl) :

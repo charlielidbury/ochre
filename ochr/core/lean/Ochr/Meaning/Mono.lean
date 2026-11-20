@@ -254,7 +254,7 @@ theorem Mean.semEnd_comm_cycle : ∃ (m : Mean) (r₁ r₂ : Pos) (l₁ l₂ : N
     m.dependsOn r₁ l₂ ∧ m.dependsOn r₂ l₁ ∧
     (m.semEnd r₁ l₁).semEnd r₂ l₂ ≠ (m.semEnd r₂ l₂).semEnd r₁ l₁ := by
   let m : Mean := ⟨[], fun φ p => if p = .bind 0 0 then φ 1 else if p = .bind 0 1 then φ 0
-      else .dat "x" [] 0 [φ 0, φ 1] none, fun _ => none⟩
+      else .dat "x" natRec 0 [φ 0, φ 1], fun _ => none⟩
   refine ⟨m, .bind 0 0, .bind 0 1, 0, 1, by decide, by decide,
     ⟨fun _ => .moved, .proof, ?_⟩, ⟨fun _ => .moved, .proof, ?_⟩, fun h => ?_⟩
   · simp [m, Future.upd]
@@ -487,38 +487,6 @@ theorem resolve_steps {s : SState} {q : Place} {pos : Pos} {steps : List Step}
   cases h
   rfl
 
-/-- A partly moved constructor value is below no whole one with an element of its carrier. -/
-theorem Sem.dat_none_not_le_some {n : String} {ps : List Sem} {c : Nat} {fs gs : List Sem}
-    {e : (A : Type) × A} : ¬ (Sem.dat n ps c fs none ⊑ Sem.dat n ps c gs (some e)) := fun h => by
-  cases h
-
-/-- Dropping a field of a whole constructor value (one with an element of its carrier) yields a
-partly moved value, which is not below it, for every data model: the mechanism of
-`joinDrop_not_below`. (The same holds for a named field `.field g`.) -/
-theorem Sem.updAt_field_not_le (dm : DataModel) (Γ : List IndDecl) (T : TyS) (i : Nat) {n : String}
-    {ps : List Sem} {c : Nat} {fs : List Sem} {e : (A : Type) × A} (hn : n ≠ "Nat") (w : Sem)
-    (hw : Sem.updAt dm Γ T (fun _ => .moved) [.proj i] (.dat n ps c fs (some e)) = some w) :
-    ¬ w ⊑ .dat n ps c fs (some e) := by
-  rcases hfi : fs[i]? with _ | fi
-  · rw [Sem.updAt.eq_def] at hw
-    simp only [Sem.asNat_dat] at hw
-    split at hw
-    · rename_i heq; simp only [Sem.dat.injEq] at heq; exact absurd heq.1 hn
-    · rename_i heq
-      simp only [Sem.dat.injEq] at heq
-      obtain ⟨rfl, rfl, rfl, rfl, rfl⟩ := heq
-      simp [hfi] at hw
-    · rename_i hne; exact absurd rfl (hne _ _ _ _ _)
-  · rw [Sem.updAt_dat' dm Γ T _ (.proj i) [] (by simp) hn (by simpa [Step.fieldIdx] using hfi)] at hw
-    have e0 : Sem.updAt dm Γ T (fun _ => .moved) [] fi = some .moved := by rw [Sem.updAt.eq_def]
-    rw [e0, Option.map_some, Option.some.injEq] at hw
-    subst hw
-    have hi : i < fs.length := (List.getElem?_eq_some_iff.mp hfi).1
-    have hmem : Sem.moved ∈ fs.set (Step.proj i).fieldIdx .moved :=
-      List.mem_of_getElem? (by simp [Step.fieldIdx, hi] : (fs.set (Step.proj i).fieldIdx .moved)[i]? = some .moved)
-    rw [reDat_moved dm Γ n ps c _ hmem]
-    exact Sem.dat_none_not_le_some
-
 /-- Setting a place reached through `*`s only to `⊥`, as `joinDrop` does, loses only information. -/
 theorem setAt_derefs_below (K : RunCtx) (s : SState) (pos : Pos) (steps : List Step)
     (hd : ∀ st ∈ steps, st = .deref) :
@@ -582,101 +550,29 @@ theorem joinDrop_below (K : RunCtx) (φ : Future) (entry : List Place) (t : Term
       exact (dropAt_below K φ q pos steps _ hd).trans (accessLentPrefix_below K pos steps s)
     · exact Below.refl _
 
-/-! ### The counterexample: a partial move at the join -/
+/-! ### A partial move at the join, now below its input (docs/34 §14)
+
+Before the data-layer port a whole constructor value packed its carrier element and a partly
+moved one did not, so dropping a field gave a value below no whole one, and the drop at the join
+was not `Below` its input (`joinDrop_not_below`, this section's former counterexample). A
+constructor value is now a tree: the partly moved `P(⊥, ())` is below the whole `P((), ())`. -/
 
 namespace JoinDropCounterexample
 
-/-- One declaration `P` with one constructor of two fields: every element is `()`, with fields
-`()` and `()`. It covers no declaration, so its laws hold vacuously; the failure does not depend
-on them (`Sem.updAt_field_not_le` holds for every data model). -/
-noncomputable def dm : DataModel where
-  covers _ := False
-  car _ _ := Unit
-  fieldTy _ _ _ _ _ := TyM.unit
-  paramTy _ _ _ := TyM.err
-  pack _ _ _ _ := some ()
-  tag _ := 0
-  fields _ := [.el0 Unit (), .el0 Unit ()]
-  rank _ := 0
-  tag_pack _ h := h.elim
-  fields_pack _ h := h.elim
-  pack_fields _ h := h.elim
-  pack_isSome h := h.elim
-  rank_lt _ _ h := h.elim
-
 def decl : IndDecl := { name := "P" }
 
-/-- The decisions: the join drops `x.0`, field `0` of variable `x` (what `Decide.jdGrain` keeps
-for a one-constructor type: one arm moved `x.0`, the other did not). -/
-def D : Decisions where
-  flags _ _ := (false, false)
-  placeDecl _ _ := .other
-  declOf _ _ := .other
-  copy _ := false
-  piSort _ _ := 1
-  joinMoves _ _ _ := [.proj 0 (.var 0)]
-  rePointed _ _ := []
-  typeDecl _ _ := .other
+/-- The whole value `P((), ())`: constructor `0` of `P`, its fields `()` and `()`. -/
+def pv : Sem := .dat "P" natRec 0 [.el0 Unit (), .el0 Unit ()]
 
-noncomputable def K : RunCtx where
-  dm := dm
-  Γ := [decl]
-  C := { global := fun _ => (.err, .plain .err), sealed := fun _ _ _ _ => .err,
-         clo := fun _ _ _ _ _ => .err, pi := fun _ _ _ _ _ => .err, paramTy := fun _ _ _ _ => .plain .err }
-  D := D
+def tP : TyS := .plain TyM.err
 
-/-- The type `P`. (No value is read through it: since docs/31 D32 a value describes itself.) -/
-def tP : TyS := .plain (.t0 Unit (.data decl [] Unit))
-
-/-- The whole value `P((), ())`: constructor `0` of `P`, its fields `()` and `()`, its element `()`. -/
-def pv : Sem := .dat "P" [] 0 [.el0 Unit (), .el0 Unit ()] (some ⟨Unit, ()⟩)
-
-/-- One frame, one binding `x : P` holding the whole value `P((), ())`. -/
-def s : SState :=
-  { env := [{ binds := [{ ty := tP, val := fun _ => pv }] }], shape := fun _ => none,
-    nextLoan := 0 }
-
-theorem drop_isSome : ∃ w, Sem.updAt dm [decl] tP (fun _ => .moved) [.proj 0] pv = some w := by
+/-- Dropping `x.0` gives `P(⊥, ())`, which is below `P((), ())`, for every data model. -/
+theorem drop_below (dm : DataModel) :
+    Sem.updAt dm [decl] tP (fun _ => .moved) [.proj 0] pv = some (.dat "P" natRec 0 [.moved, .el0 Unit ()]) ∧
+      Sem.dat "P" natRec 0 [.moved, .el0 Unit ()] ⊑ pv := by
+  refine ⟨?_, .dat (.cons (.moved _) (.cons (.refl _) .nil))⟩
   rw [pv, Sem.updAt_dat' dm [decl] tP _ (.proj 0) [] (by simp) (by decide) (fi := .el0 Unit ()) rfl]
-  exact ⟨_, rfl⟩
-
-/-- Following `x.0` reaches the whole field `()`: the drop is not skipped. -/
-theorem follow_eq : ∃ T, Sem.follow dm [decl] tP pv [.proj 0] = some (.el0 Unit (), T) := ⟨_, rfl⟩
-
-/-- No label is live in `s`, so [Access] does nothing. -/
-theorem access_eq (p : Pos) (hit : List Step → Bool) : s.access p hit = s := by
-  have h0 : s.positions.filterMap s.shape = [] := List.filterMap_eq_nil_iff.mpr fun _ _ => rfl
-  have h : s.liveLabels = [] := by simp only [SState.liveLabels, h0, List.mergeSort_nil]
-  unfold SState.access
-  rw [h]
   rfl
-
-/-- **The drop at the join is not `Below` its input in general.** `x : P` holds `P((), ())`; the
-join drops `x.0` (after [Access], which ends nothing, and reading `x.0`, which is whole); then `x`
-means the partly moved `P(⊥, ())`, which is below no whole value, so no future makes the state
-after the drop below the state before. -/
-theorem joinDrop_not_below (φ : Future) (entry : List Place) (t : Term) :
-    ¬ Below (joinDrop K φ entry t s).toMean s.toMean := by
-  obtain ⟨w, hw⟩ := drop_isSome
-  have hres : resolve s (.proj 0 (.var 0)) = some (.bind 0 0, [.proj 0]) := rfl
-  have hj : joinDrop K φ entry t s = s.setAt (.bind 0 0) fun _ => w := by
-    unfold joinDrop
-    have hlp : lentPrefix s (.bind 0 0) [.proj 0] = none := by
-      have h0 : s.positions.filterMap s.shape = [] := List.filterMap_eq_nil_iff.mpr fun _ _ => rfl
-      have h : s.liveLabels = [] := by simp only [SState.liveLabels, h0, List.mergeSort_nil]
-      simp [lentPrefix, h]
-    simp only [K, D, List.foldl_cons, List.foldl_nil, Bool.false_eq_true, if_false, hres, accessLentPrefix, hlp, dropAt,
-      access_eq]
-    have e1 : s.tyAt (.bind 0 0) = tP := rfl
-    have e2 : s.valAt (.bind 0 0) = fun _ => pv := rfl
-    have e3 : [Step.proj 0].isEmpty = false := rfl
-    obtain ⟨T, hT⟩ := follow_eq
-    simp only [e1, e2, e3, hT, Bool.false_eq_true, if_false, hw, Option.getD_some]
-  intro h
-  obtain ⟨φ, hle, _⟩ := h noFuture
-  have hx := hle (.bind 0 0)
-  rw [hj] at hx
-  exact Sem.updAt_field_not_le dm [decl] tP 0 (by decide) w hw hx
 
 end JoinDropCounterexample
 
@@ -1002,7 +898,7 @@ namespace ObservationCounterexamples
 `0`, and `x₂` holds a pair of both loans. -/
 def cyc : SState :=
   { env := [{ binds := [{ ty := .plain .err, val := fun φ => φ 1 }, { ty := .plain .err, val := fun φ => φ 0 },
-      { ty := .plain .err, val := fun φ => .dat "x" [] 0 [φ 0, φ 1] none }] }],
+      { ty := .plain .err, val := fun φ => .dat "x" natRec 0 [φ 0, φ 1] }] }],
     shape := fun p => if p = .bind 0 0 then some 0 else if p = .bind 0 1 then some 1 else none,
     nextLoan := 2 }
 
@@ -1012,7 +908,7 @@ theorem cyc_positions : cyc.positions = [.bind 0 0, .bind 0 1, .bind 0 2] := by
 
 /-- After ending `0` and then `1`, `x₂` reads `(φ 1, φ 1)`: it still depends on the live label `1`. -/
 theorem cyc_ends (φ : Future) :
-    ([0, 1].foldl SState.endLabel cyc).valAt (.bind 0 2) φ = .dat "x" [] 0 [φ 1, φ 1] none := by
+    ([0, 1].foldl SState.endLabel cyc).valAt (.bind 0 2) φ = .dat "x" natRec 0 [φ 1, φ 1] := by
   have h0 : cyc.positions.find? (fun p => decide (cyc.shape p = some 0)) = some (.bind 0 0) := by
     rw [cyc_positions]; rfl
   have h1 : (cyc.endLabel 0).positions.find? (fun p => decide ((cyc.endLabel 0).shape p = some 1)) =

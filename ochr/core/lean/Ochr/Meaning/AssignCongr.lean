@@ -54,10 +54,9 @@ theorem fixG_congrA {body : Term} {fb : List PBind × PBind}
   | none => exact funext fun args => fixBodyAt_congrA K Δ' ρ ρ' φ hb s ps out piT start _ args
   | some j =>
     funext args
-    show fixStage K ρ φ fb l s ps out piT start body (fixRank K (some j) args + 1) args
-      = fixStage (KA K Δ') ρ' φ fb l s ps out piT start body (fixRank (KA K Δ') (some j) args + 1) args
+    show fixStage K ρ φ fb l s ps out piT start body (fixRank (some j) args + 1) args
+      = fixStage (KA K Δ') ρ' φ fb l s ps out piT start body (fixRank (some j) args + 1) args
     rw [fixStage_congrA K Δ' ρ ρ' φ hb]
-    rfl
 
 end
 
@@ -232,7 +231,7 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
       have e := runParams_state K ρ φ d ps 0 [] s s₁ psM h1
       subst e
       dsimp only
-      exact SM.bind_congr (runFields_congrA _ d c args 0 _ [] s₁ fun σ h => ha σ (by simp [Term.anyAtom, h]))
+      exact SM.bind_congr (runFields_congrA _ d c args 0 _ _ [] s₁ fun σ h => ha σ (by simp [Term.anyAtom, h]))
         (fun _ _ _ => rfl)
 
   | tl, .prim n args, hint, s, ha => by
@@ -341,8 +340,8 @@ theorem meanV_congrA : ∀ (v : Value) (hint : TyS),
     · rename_i d _
       rw [meanParams_congrA d ps _ _ fun σ h => hv σ (by simp [Value.anyAtom, h])]
       split
-      · rename_i ps' _
-        rw [meanFields_congrA d ps' c fs _ _ fun σ h => hv σ (by simp [Value.anyAtom, h])]
+      · rename_i r' _
+        rw [meanFields_congrA d r' c fs _ _ fun σ h => hv σ (by simp [Value.anyAtom, h])]
       · rfl
     · rfl
   | .tInd n args, hint, hv => by
@@ -402,15 +401,15 @@ theorem runArgs_congrA (stmt : Bool) (fT : TyM) :
     intro _ _ _; rfl
 
 theorem runFields_congrA (stmt : Bool) (d : IndDecl) (c : Nat) :
-    ∀ (args : List Term) (i : Nat) (sol : List (Option Sem)) (earlier : List Sem) (s : SState),
+    ∀ (args : List Term) (i : Nat) (rh : Option Rec) (sol : List (Option Sem)) (earlier : List Sem) (s : SState),
     (∀ σ, Term.anyAtomList (· == .abs σ) args = true → AgreeA K Δ' ρ ρ' σ) →
-    runFields K ρ φ stmt d c i sol earlier args s = runFields (KA K Δ') ρ' φ stmt d c i sol earlier args s
-  | [], _, _, _, _, _ => rfl
-  | a :: as, i, sol, earlier, s, ha => by
+    runFields K ρ φ stmt d c i rh sol earlier args s = runFields (KA K Δ') ρ' φ stmt d c i rh sol earlier args s
+  | [], _, _, _, _, _, _ => rfl
+  | a :: as, i, rh, sol, earlier, s, ha => by
     simp only [runFields]
     apply SM.bind_congr (SM.stmtIf_congr (runT_congrA false a _ s (fun σ h => ha σ (by simp [Term.anyAtomList, h]))))
     intro r s₁ _
-    apply SM.bind_congr (runFields_congrA stmt d c as _ _ _ s₁ (fun σ h => ha σ (by simp [Term.anyAtomList, h])))
+    apply SM.bind_congr (runFields_congrA stmt d c as _ _ _ _ s₁ (fun σ h => ha σ (by simp [Term.anyAtomList, h])))
     intro _ _ _; rfl
 
 theorem runParams_congrA (d : IndDecl) :
@@ -455,15 +454,15 @@ theorem capsTys_congrA : ∀ (rd : List (DeclInfo × Value)),
     rw [meanV_congrA T _ (fun σ h => hv σ (by simp [Value.anyAtomRd, h])),
       capsTys_congrA rest (fun σ h => hv σ (by simp [Value.anyAtomRd, h]))]
 
-theorem meanFields_congrA (d : IndDecl) (ps : List Sem) (c : Nat) :
+theorem meanFields_congrA (d : IndDecl) (r : Rec) (c : Nat) :
     ∀ (vs : List Value) (i : Nat) (earlier : List Sem),
     (∀ σ, Value.anyAtomList (· == .abs σ) vs = true → AgreeA K Δ' ρ ρ' σ) →
-    meanFields K ρ φ d ps c i earlier vs = meanFields (KA K Δ') ρ' φ d ps c i earlier vs
+    meanFields K ρ φ d r c i earlier vs = meanFields (KA K Δ') ρ' φ d r c i earlier vs
   | [], _, _, _ => rfl
   | v :: vs, i, earlier, hv => by
     simp only [meanFields]
     rw [meanV_congrA v _ (fun σ h => hv σ (by simp [Value.anyAtomList, h])),
-      meanFields_congrA d ps c vs _ _ (fun σ h => hv σ (by simp [Value.anyAtomList, h]))]
+      meanFields_congrA d r c vs _ _ (fun σ h => hv σ (by simp [Value.anyAtomList, h]))]
 
 theorem meanParams_congrA (d : IndDecl) :
     ∀ (vs : List Value) (i : Nat) (earlier : List Sem),

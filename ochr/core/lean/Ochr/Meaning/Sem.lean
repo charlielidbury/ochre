@@ -61,28 +61,41 @@ inductive Tel (Code : Type u → Type (u + 1)) : Type u → Type u → Type (u +
   | param (Fin : Type u) (isRef : Bool) (A : Type u) (c : Code A) (C : A → Type u)
       (k : (a : A) → Tel Code (extFin isRef Fin A) (C a)) : Tel Code Fin ((a : A) → C a)
 
+/-- What a later field's type reads of an earlier field: its constructor tree and its leaves,
+without types or records (docs/34 §8). Small, so a record can be keyed by it. -/
+inductive Small : Type 1
+  | el (A : Type) (a : A)
+  | proof
+  | node (c : Nat) (fs : List Small)
+  | other
+
+/-- One step into a declaration's fields: constructor, field, the earlier fields read small. -/
+abbrev RStep : Type 1 := Nat × Nat × List Small
+
 mutual
 /-- **Codes of carrier level 0** (`Type₀` types and propositions), indexed by their carrier: a
-proposition (decoding to `PLift P`), `Nat`, `Unit`, a data type (its declaration, its parameters
-as codes and coded values, and its carrier; its elements are read through the data model, D61), a
-function type (a telescope code), and the error code (no elements). -/
+proposition (decoding to `PLift P`), `Nat`, `Unit`, a data type (its declaration, its RECORD and
+its carrier; docs/34 §8: a record keeps what the declaration's field types read of the
+parameters, never a parameter above level 0, which no `Type₀` code can hold), a function type (a
+telescope code), and the error code (no elements). -/
 inductive Code0 : Type → Type 1
   | prop (P : Prop) : Code0 (PLift P)
   | nat : Code0 Nat
   | unit : Code0 Unit
-  | data (d : IndDecl) (ps : List Par0) (A : Type) : Code0 A
+  | data (d : IndDecl) (r : List RStep → Entry) (A : Type) : Code0 A
   | pi (C : Type) (t : Tel Code0 PUnit C) : Code0 C
   | err : Code0 PEmpty
-/-- A coded element (a value parameter of a data type): a carrier, its code, an element; or
-nothing (a parameter not of its declared type, which no well-typed value has). -/
-inductive Elt0 : Type 1
-  | mk (B : Type) (c : Code0 B) (b : B)
-  | bad
-/-- A data type's parameter: a type (as its code), or a coded value. -/
-inductive Par0 : Type 1
-  | ty (A : Type) (c : Code0 A)
-  | val (e : Elt0)
+/-- What a record says at a position: a leaf's code, a data type's declaration and record, or
+nothing. -/
+inductive Entry : Type 1
+  | none
+  | leaf (B : Type) (c : Code0 B)
+  | data (d : IndDecl) (r : List RStep → Entry)
 end
+
+/-- **A data type's record** (docs/34 §8, §14): what its declaration's field types read of the
+parameters, keyed by paths of steps; small, so codes stay small. -/
+abbrev Rec : Type 1 := List RStep → Entry
 
 /-- The sort a level-0 code is a type of: `0` for a proposition, `1` for a `Type₀` type. -/
 def Code0.level : {A : Type} → Code0 A → Option Nat
@@ -127,11 +140,11 @@ inductive TyM : Type 3 where
 proposition; `ty T` a type used as a value; `moved` is `⊥`, a place definitely moved out of
 (D84: a definite value, equal only to itself); `err` is the error value.
 
-A constructor value describes itself (docs/31 D32): `dat name ps c fs el` is its declaration's
-name, its parameters' meanings, its constructor and its fields' meanings, and `el` its element of
-the carrier when it is whole and of its type (`DataModel.ctorM` packs it), `none` when a field is
-moved out or the value is open. A partly moved number `S(⊥)` is `dat "Nat" [] 1 [⊥] none`; a whole
-number is `el0 Nat n`. -/
+A constructor value describes itself (docs/31 D32, docs/34 §14): `dat name r c fs` is a TREE, its
+declaration's name, its type's record, its constructor and its fields' meanings, whole, partly
+moved or open alike. It holds no element of a carrier: whether it is a member of its type is the
+data model's predicate on trees (`DataModel.Mem`), so meanings exist before any carrier. A partly
+moved number `S(⊥)` is `dat "Nat" natRec 1 [⊥]`; a whole number is `el0 Nat n`. -/
 inductive Sem : Type 3 where
   | el0 (A : Type) (a : A)
   | el1 (A : Type 1) (a : A)
@@ -139,13 +152,15 @@ inductive Sem : Type 3 where
   | ty (T : TyM)
   | proof
   | moved
-  | dat (name : String) (ps : List Sem) (c : Nat) (fs : List Sem) (el : Option ((A : Type) × A))
+  | dat (name : String) (r : Rec) (c : Nat) (fs : List Sem)
   | err
 
-/-- **How a data value is read** (docs/31 D61): an element of a declaration's carrier at its
-parameters' meanings, read as its constructor and its fields' meanings. The data model gives it
-(`DataModel.read`); a code does not hold it. -/
-abbrev DataRead : Type 3 := IndDecl → List Sem → (A : Type) → A → Nat × List Sem
+/-- **How a data element is read** (docs/31 D61, docs/34 §14): an element of a carrier, at its
+declaration and record, read as its whole meaning (the data model's bijection between a carrier
+and its members). Injective, so encoding is. -/
+structure DataRead : Type 3 where
+  read : IndDecl → Rec → (A : Type) → A → Sem
+  inj : ∀ d r A, Function.Injective (read d r A)
 
 /-! ## Types as codes: the common ones and their views -/
 
@@ -228,27 +243,16 @@ theorem false_not_true : ¬ (TyM.prop False).true := id
 section
 variable (R : DataRead)
 
-mutual
-/-- A level-0 element as a meaning: a proof is `•`, a data element is the constructor value that
-describes it (its constructor and fields read through the data model, `R`), anything else is
-tagged by its carrier. -/
+/-- A level-0 element as a meaning: a proof is `•`, a data element its meaning as the data model
+reads it (a constructor value recording its type's record), anything else is tagged by its
+carrier. -/
 def Code0.enc : {A : Type} → Code0 A → A → Sem
   | _, .prop _, _ => .proof
   | _, .nat, n => .el0 Nat n
   | _, .unit, x => .el0 Unit x
-  | _, .data d ps A, a => .dat d.name (Par0.sems ps) (R d (Par0.sems ps) A a).1 (R d (Par0.sems ps) A a).2 (some ⟨A, a⟩)
+  | _, .data d r A, a => R.read d r A a
   | _, .pi C _, f => .el0 C f
   | _, .err, x => nomatch x
-def Elt0.sem : Elt0 → Sem
-  | .mk _ c b => Code0.enc c b
-  | .bad => .err
-def Par0.sem : Par0 → Sem
-  | .ty A c => .ty (.t0 A c)
-  | .val e => e.sem
-def Par0.sems : List Par0 → List Sem
-  | [] => []
-  | p :: ps => p.sem :: Par0.sems ps
-end
 
 /-- A level-1 element as a meaning: a lifted element as itself, a proposition or a `Type₀` code as
 the type value it is, a function by its tag. -/
@@ -278,9 +282,9 @@ open Classical in
 noncomputable def Code2.dec {A : Type 2} (c : Code2 A) (s : Sem) : Option A :=
   if h : ∃ a, c.enc R a = s then some h.choose else none
 
-/-- The declaration's name and parameters' meanings a data type's code carries. -/
-def TyM.dataName? : TyM → Option (String × List Sem)
-  | .t0 _ (.data d ps _) => some (d.name, Par0.sems R ps)
+/-- The declaration's name and record a data type's code carries. -/
+def TyM.dataRec? : TyM → Option (String × Rec)
+  | .t0 _ (.data d r _) => some (d.name, r)
   | _ => none
 
 /-- **Membership**: a meaning lies in a type when it is the encoding of an element of the type's
@@ -297,12 +301,6 @@ end
 /-- Membership, the data model's reading `R` explicit. -/
 scoped notation:50 s:51 " ∈ₛ[" R "] " T:51 => Sem.mem R s T
 
-/-- The element of a carrier a constructor value packs, if it is whole and of its type (what
-guarded recursion ranks, `semRank`). -/
-def Sem.elt : Sem → Option ((A : Type) × A)
-  | .dat _ _ _ _ el => el
-  | _ => none
-
 /-- Read a meaning as a type. -/
 def Sem.asTy : Sem → TyM
   | .ty T => T
@@ -312,14 +310,34 @@ def Sem.asTy : Sem → TyM
 def Sem.whole : Sem → Prop
   | .moved => False
   | .err => False
-  | .dat _ _ _ fs _ => ∀ f ∈ fs, f.whole   -- whole fields and no element: an OPEN (ill-typed) value
+  | .dat _ _ _ fs => ∀ f ∈ fs, f.whole
   | _ => True
 
 /-- The reading gives whole fields: what makes an encoding whole (`Steps/Records.lean`,
 `enc_whole_lvl0`), so that the record a borrow-returning call makes is whole (docs/31 D68). A fact
 about the data model, owed where the reading is fixed (`Assembly.exists_dataModel`). -/
 def DataRead.WholeFields (R : DataRead) : Prop :=
-  ∀ d ps A a, ∀ f ∈ (R d ps A a).2, Sem.whole f
+  ∀ d r A a, (R.read d r A a).whole
+
+/-- The record of the numbers' partly moved form (`Nat` is not a declaration). -/
+def natRec : Rec := fun _ => .none
+
+mutual
+/-- A meaning read small (docs/34 §8): its constructor tree and its leaves, no records. -/
+def Sem.small : Sem → Small
+  | .el0 A a => .el A a
+  | .proof => .proof
+  | .dat _ _ c fs => .node c (Sem.smallList fs)
+  | _ => .other
+def Sem.smallList : List Sem → List Small
+  | [] => []
+  | v :: vs => v.small :: Sem.smallList vs
+end
+
+theorem Sem.smallList_eq (vs : List Sem) : Sem.smallList vs = vs.map Sem.small := by
+  induction vs with
+  | nil => rfl
+  | cons v vs ih => simp [Sem.smallList, ih]
 
 mutual
 /-- The information order used by the step lemmas (docs/18 Def. "less informative"): `moved` is
@@ -330,7 +348,7 @@ holder forgotten by an early end (`Pick`) stays below the reference. -/
 inductive Sem.le : Sem → Sem → Prop
   | moved (s : Sem) : Sem.le .moved s
   | refl (s : Sem) : Sem.le s s
-  | dat {n ps c} {fs gs : List Sem} : Sem.leList fs gs → Sem.le (.dat n ps c fs none) (.dat n ps c gs none)
+  | dat {n r c} {fs gs : List Sem} : Sem.leList fs gs → Sem.le (.dat n r c fs) (.dat n r c gs)
 
 /-- The order pointwise on lists of the same length. -/
 inductive Sem.leList : List Sem → List Sem → Prop
@@ -389,9 +407,7 @@ theorem Code0.enc_inj : ∀ {A : Type} (c : Code0 A) {a b : A}, c.enc R a = c.en
   | _, .prop _, a, b, _ => by cases a; cases b; rfl
   | _, .nat, _, _, h => by simp only [Code0.enc, Sem.el0.injEq, heq_eq_eq, true_and] at h; exact h
   | _, .unit, _, _, _ => Subsingleton.elim _ _
-  | _, .data .., _, _, h => by
-    simp only [Code0.enc, Sem.dat.injEq, Option.some.injEq] at h
-    exact eq_of_heq (Sigma.mk.inj h.2.2.2.2).2
+  | _, .data d r A, _, _, h => R.inj d r A h
   | _, .pi .., _, _, h => by simp only [Code0.enc, Sem.el0.injEq, heq_eq_eq, true_and] at h; exact h
   | _, .err, a, _, _ => nomatch a
 

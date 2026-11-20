@@ -8,8 +8,8 @@ import Ochr.Meaning.Pi
 Under an assignment `ρ` of the abstract values and a future `φ` of the live borrows:
 * `σ` means `ρ σ`; `⋆` means `•`; `⊥` means `moved`; `Z`, `S v`, `()` mean the numbers and the
   unit as elements of `Nat` and `Unit`;
-* a constructor value means `el0` of its data carrier at its parameters, or an untyped tuple
-  when a field holds `moved` or is outside its type (`DataModel.ctorM`);
+* a constructor value means the tree recording its type's record (`DataModel.ctorR`; docs/34),
+  whatever its fields hold;
 * a type value means `ty T`: `Nat`, `Unit`, `sort l`, `D(ā)` by the data model, `Eq(A, a, b)` the
   proposition `⟦a⟧ = ⟦b⟧` (so `Eq` reads no type: docs/24 C10), `&A` the content type `⟦A⟧`
   (a borrow is read as what it holds, so a borrow-typed place means its content);
@@ -25,10 +25,9 @@ run (a sealed program's re-normalisation, a callee's body) records only the para
 in the source, and the checker reads such a value's type from its position (D49 (4),
 `Machine.indValType?`). The typed model needs the parameters' meanings, so the meaning of a
 value is read *at a type*, the `hint : TyS`, whose `data` component names the declaration and
-the parameters' meanings (read off its code): the position's stored type, a field's type at the earlier fields
+its record (read off its code): the position's stored type, a field's type at the earlier fields
 (`DataModel.fieldTy`), a parameter's type, an equation's type. Only a constructor value with
-`ps = []` reads the hint, taking the parameters straight off `hint.data` (no choice: a carrier
-does not determine them, data-generic's counterexample); everything else ignores it. So
+`ps = []` reads the hint, taking the record straight off `hint.data`; everything else ignores it. So
 docs/18's V2 holds in this sense: what a constructor value means is determined by its type,
 whether or not it records its parameters. `TyS.plain TyM.err` is "no hint".
 
@@ -71,7 +70,7 @@ non-whole argument (D84), `err` otherwise. -/
 noncomputable def Sem.succ (s : Sem) : Sem :=
   match s.asNat with
   | some n => .el0 Nat (n + 1)
-  | none => open Classical in if s.whole then .err else .dat "Nat" [] 1 [s] none
+  | none => open Classical in if s.whole then .err else .dat "Nat" natRec 1 [s]
 
 section
 variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl)
@@ -104,11 +103,11 @@ noncomputable def Value.mean (ρ : Assignment) (φ : Future) (hint : TyS) : Valu
   | .ind ty c _ ps fs =>
     match Γ.find? (·.name == ty) with
     | some d =>
-      let ps? := if ps.isEmpty && !d.params.isEmpty then
-          (match hint.data dm.read with | some (n, ps') => if n = ty then some ps' else none | none => none)
-        else some (Value.meanParams ρ φ d 0 [] ps)
-      match ps? with
-      | some ps' => if d.sort == 0 then .proof else dm.ctorM d ps' c (Value.meanFields ρ φ d ps' c 0 [] fs)
+      let r? : Option Rec := if ps.isEmpty && !d.params.isEmpty then
+          (match hint.data with | some (n, r) => if n = ty then some r else none | none => none)
+        else some (dm.recOf d (Value.meanParams ρ φ d 0 [] ps))
+      match r? with
+      | some r => if d.sort == 0 then .proof else DataModel.ctorR d r c (Value.meanFields ρ φ d r c 0 [] fs)
       | none => .err
     | none => .err
   | .tInd n args =>
@@ -117,13 +116,14 @@ noncomputable def Value.mean (ρ : Assignment) (φ : Future) (hint : TyS) : Valu
     | none => .ty TyM.err
 termination_by structural v => v
 
-/-- The meanings of a constructor's fields, each read at its field type at the earlier ones. -/
-noncomputable def Value.meanFields (ρ : Assignment) (φ : Future) (d : IndDecl) (ps : List Sem) (c i : Nat)
+/-- The meanings of a constructor's fields, each read at its field type at the record and the
+earlier ones. -/
+noncomputable def Value.meanFields (ρ : Assignment) (φ : Future) (d : IndDecl) (r : Rec) (c i : Nat)
     (earlier : List Sem) : List Value → List Sem
   | [] => []
   | v :: vs =>
-    let s := Value.mean ρ φ (.plain (dm.fieldTy d ps c i earlier)) v
-    s :: Value.meanFields ρ φ d ps c (i + 1) (earlier ++ [s]) vs
+    let s := Value.mean ρ φ (.plain (dm.fieldTyR d r c i earlier)) v
+    s :: Value.meanFields ρ φ d r c (i + 1) (earlier ++ [s]) vs
 termination_by structural vs => vs
 
 /-- The meanings of an inductive's parameters, each read at its parameter type. -/

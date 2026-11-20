@@ -25,9 +25,9 @@ structure TyS : Type 3 where
 /-- A type with no borrow label. -/
 def TyS.plain (T : TyM) : TyS := ⟨T, none⟩
 
-/-- The declaration's name and parameters' meanings of a data type, read off its code: what a
-constructor value that records no parameters is read at (docs/31 D8). -/
-def TyS.data (R : DataRead) (T : TyS) : Option (String × List Sem) := T.m.dataName? R
+/-- The declaration's name and record of a data type, read off its code: what a constructor value
+that records no parameters is read at (docs/31 D8, docs/34 §14). -/
+def TyS.data (T : TyS) : Option (String × Rec) := T.m.dataRec?
 
 /-- A parameter of a function type as the reference run reads it off the term: whether it is a
 borrow (`&A`), and its (content) type at each tuple of earlier arguments. -/

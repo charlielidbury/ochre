@@ -8,11 +8,11 @@ import Ochr.Meaning.Apply
 A place `x | *p | p.i | p.g` is followed on a meaning by reading the meaning (docs/31 D32): `*` is
 the identity (a borrow's holder means its content, docs/27 Def. 2), `.0` of a number is its
 predecessor, and `.i` and `.g` take a field of a constructor value, which describes itself
-(`Sem.dat`: name, parameters, constructor, fields). No type, declaration or carrier is consulted
+(`Sem.dat`: name, record, constructor, fields). No type, declaration or carrier is consulted
 to find the field; the type handed on (`contentTyS`) is the field's own when it is a constructor
-value, else its declared one, and is what a read's result is typed at. A partly moved value
-projects like a whole one; `⊥` and `err` have no fields. Updating at a path rebuilds with
-`DataModel.ctorM` by the value's own name (`reDat`), so a field set to `moved` leaves no element.
+value, else its declared one at the value's record, and is what a read's result is typed at. A
+partly moved value projects like a whole one; `⊥` and `err` have no fields. Updating at a path
+rebuilds the tree (`reDat`); whether it is a member is the data model's predicate on trees.
 
 ## Decisions (docs/18 §"Decisions, by kind", *aligned*)
 
@@ -79,55 +79,74 @@ parameters at, and (`.pi cd`) `self`. -/
 def Decisions.fixDecls (D : Decisions) (sc : List DeclInfo) (ds : List Term) (c : Term) : List DeclInfo × DeclInfo :=
   (D.paramDecls sc ds, D.typeDecl (D.teleDecls sc ds) c)
 
+mutual
+/-- **The height of a meaning** (docs/34 §15): a constructor value one more than its fields, a
+number its value, anything else `0`. -/
+noncomputable def semHeight : Sem → Nat
+  | .dat _ _ _ fs => semHeightList fs + 1
+  | s => s.asNat.getD 0
+noncomputable def semHeightList : List Sem → Nat
+  | [] => 0
+  | f :: fs => max (semHeight f) (semHeightList fs)
+end
+
+theorem semHeight_le_list : ∀ (fs : List Sem) (f : Sem), f ∈ fs → semHeight f ≤ semHeightList fs
+  | [], _, h => by cases h
+  | g :: gs, f, h => by
+    simp only [semHeightList]
+    rcases List.mem_cons.1 h with rfl | h
+    · exact Nat.le_max_left _ _
+    · exact Nat.le_trans (semHeight_le_list gs f h) (Nat.le_max_right _ _)
+
+/-- **Every field of a constructor value has smaller height**, through every declaration and every
+nesting, whole, partly moved or open (docs/34 §15). -/
+theorem semHeight_field_lt (n : String) (r : Rec) (c : Nat) (fs : List Sem) (f : Sem) (h : f ∈ fs) :
+    semHeight f < semHeight (.dat n r c fs) := by
+  simp only [semHeight]
+  exact Nat.lt_succ_of_le (semHeight_le_list fs f h)
+
+/-- The rank of a meaning for guarded recursion ([Rec], docs/24): its height (docs/34 §15). -/
+noncomputable def semRank (s : Sem) : Nat := semHeight s
+
+/-- A constructor value rebuilt after one of its fields changed: the tree, by its own name and
+record (docs/34: membership is the model's predicate on trees, so nothing is repacked). The data
+model and declarations are not read (kept so that callers read alike). -/
+def reDat (_dm : DataModel) (_Γ : List IndDecl) (n : String) (r : Rec) (c : Nat) (fs : List Sem) : Sem :=
+  .dat n r c fs
+
 section
 variable (dm : DataModel) (Γ : List IndDecl)
 
-/-- The type field `i` of constructor `c` of `d` at `ps` is read at, given the earlier fields: its
-declared type's code, the hint `Value.meanFields` reads the field at. -/
-def fieldHint (d : IndDecl) (ps : List Sem) (c i : Nat) (earlier : List Sem) : TyS :=
-  .plain (dm.fieldTy d ps c i earlier)
+/-- The type field `i` of constructor `c` of `d` at the record `r` is read at, given the earlier
+fields: its declared type's code, the hint `Value.meanFields` reads the field at. -/
+def fieldHint (d : IndDecl) (r : Rec) (c i : Nat) (earlier : List Sem) : TyS :=
+  .plain (dm.fieldTyR d r c i earlier)
 
-/-- The structured type of a constructor value of the declaration named `n` at the parameters `ps`
+/-- The structured type of a constructor value of the declaration named `n` at the record `r`
 (docs/31 D32: a value read off a constructor value is typed by its content). -/
-noncomputable def dataTyS (n : String) (ps : List Sem) : TyS :=
+noncomputable def dataTyS (n : String) (r : Rec) : TyS :=
   match Γ.find? (·.name == n) with
-  | some d => .plain (dm.tyM d ps)
+  | some d => .plain (dm.tyR d r)
   | none => .plain TyM.err
 
 /-- The type a field read off a constructor value is read at: its own when it is a constructor
 value (by content, as the checker types an open value's field), a number's when it is a partly
-moved number, else the hint its declaration gives it at the earlier fields. -/
-noncomputable def contentTyS (n : String) (ps : List Sem) (c i : Nat) (earlier : List Sem) : Sem → TyS
-  | .dat "Nat" _ _ _ _ => .plain TyM.nat
-  | .dat n' ps' _ _ _ => dataTyS dm Γ n' ps'
+moved number, else the hint its declaration gives it at the value's record and the earlier
+fields. -/
+noncomputable def contentTyS (n : String) (r : Rec) (c i : Nat) (earlier : List Sem) : Sem → TyS
+  | .dat "Nat" _ _ _ => .plain TyM.nat
+  | .dat n' r' _ _ => dataTyS dm Γ n' r'
   | _ => match Γ.find? (·.name == n) with
-    | some d => fieldHint dm d ps c i earlier
+    | some d => fieldHint dm d r c i earlier
     | none => .plain TyM.err
-
-/-- A constructor value rebuilt after one of its fields changed: packed again when whole and of
-its type (`ctorM`), by its own declaration's name. -/
-noncomputable def reDat (n : String) (ps : List Sem) (c : Nat) (fs : List Sem) : Sem :=
-  match Γ.find? (·.name == n) with
-  | some d => dm.ctorM d ps c fs
-  | none => .dat n ps c fs none
-
-/-- The rank of a meaning for guarded recursion ([Rec], docs/24): a constructor value's element's
-rank, found by its own declaration's name (docs/31 D32: no declaration is guessed from a carrier),
-or a number. -/
-noncomputable def semRank : Sem → Nat
-  | .dat n ps _ _ (some ⟨A, x⟩) =>
-    match Γ.find? (·.name == n) with
-    | some d => open Classical in if h : A = dm.car d ps then dm.rank (h ▸ x) else 0
-    | none => 0
-  | s => match s.asNat with | some n => n | none => 0
 
 /-- Field `i` of constructor `c` of a constructor value, read off the value (docs/31 D32), with the
 type it is read at (`contentTyS`). -/
 noncomputable def Sem.stepField (c i : Nat) (s : Sem) : Option (Sem × TyS) :=
   match s with
   | .proof => some (.proof, .plain TyM.err)
-  | .dat n ps c' fs _ =>
-    if c' = c then (fs[i]?).map fun f => (f, contentTyS dm Γ n ps c i (fs.take i) f) else none
+  | .dat n r c' fs =>
+    if c' = c then (fs[i]?).map fun f => (f, contentTyS dm Γ n r c i (fs.take i) f) else none
   | _ => none
 
 /-- One step on a meaning: the sub-meaning and its type. A step `.0` into a number takes its
@@ -140,7 +159,7 @@ noncomputable def Sem.step (T : TyS) : Step → Sem → Option (Sem × TyS)
     | some (n + 1) => some (.el0 Nat n, .plain TyM.nat)
     | some 0 => none
     | none => match s with
-      | .dat "Nat" _ 1 [w] _ => some (w, .plain TyM.nat)
+      | .dat "Nat" _ 1 [w] => some (w, .plain TyM.nat)
       | _ => Sem.stepField dm Γ 0 0 s
   | .proj i, s => Sem.stepField dm Γ 0 i s
   | .field g, s => Sem.stepField dm Γ g.ctor g.idx s
@@ -162,14 +181,14 @@ noncomputable def Sem.updAt (T : TyS) (f : Sem → Sem) : List Step → Sem → 
     | .proj 0, some (n + 1) => (Sem.updAt (.plain TyM.nat) f sts (.el0 Nat n)).map Sem.succ
     | _, _ =>
       match s with
-      | .dat "Nat" _ 1 [w] _ =>
+      | .dat "Nat" _ 1 [w] =>
         match st with
         | .proj 0 => (Sem.updAt (.plain TyM.nat) f sts w).map Sem.succ
         | _ => none
-      | .dat n ps c fs _ =>
+      | .dat n r c fs =>
         let i := match st with | .proj i => i | .field g => g.idx | .deref => 0
         match fs[i]? with
-        | some fi => (Sem.updAt T f sts fi).map fun fi' => reDat dm Γ n ps c (fs.set i fi')
+        | some fi => (Sem.updAt T f sts fi).map fun fi' => reDat dm Γ n r c (fs.set i fi')
         | none => none
       | _ => none
 
@@ -182,15 +201,15 @@ def _root_.Ochr.Step.fieldIdx : Step → Nat
 theorem _root_.Ochr.Step.fieldIdx_eq (st : Step) :
     (match st with | .proj i => i | .field g => g.idx | .deref => 0) = st.fieldIdx := by cases st <;> rfl
 
-theorem Sem.asNat_dat (n : String) (ps : List Sem) (c : Nat) (fs : List Sem) (el : Option ((A : Type) × A)) :
-    (Sem.dat n ps c fs el).asNat = none := rfl
+theorem Sem.asNat_dat (n : String) (r : Rec) (c : Nat) (fs : List Sem) :
+    (Sem.dat n r c fs).asNat = none := rfl
 
 /-- A write at a field of a constructor value rebuilds it by its own name (`reDat`). -/
-theorem Sem.updAt_dat' (T : TyS) (f : Sem → Sem) (st : Step) (sts : List Step) {n : String} {ps : List Sem}
-    {c : Nat} {fs : List Sem} {el : Option ((A : Type) × A)} {fi : Sem}
+theorem Sem.updAt_dat' (T : TyS) (f : Sem → Sem) (st : Step) (sts : List Step) {n : String} {r : Rec}
+    {c : Nat} {fs : List Sem} {fi : Sem}
     (hst : st ≠ .deref) (hn : n ≠ "Nat") (hi : fs[st.fieldIdx]? = some fi) :
-    Sem.updAt dm Γ T f (st :: sts) (.dat n ps c fs el) =
-      (Sem.updAt dm Γ T f sts fi).map fun fi' => reDat dm Γ n ps c (fs.set st.fieldIdx fi') := by
+    Sem.updAt dm Γ T f (st :: sts) (.dat n r c fs) =
+      (Sem.updAt dm Γ T f sts fi).map fun fi' => reDat dm Γ n r c (fs.set st.fieldIdx fi') := by
   cases st with
   | deref => exact absurd rfl hst
   | proj i =>
@@ -200,10 +219,10 @@ theorem Sem.updAt_dat' (T : TyS) (f : Sem → Sem) (st : Step) (sts : List Step)
     · rename_i heq; simp only [Sem.dat.injEq] at heq; exact absurd heq.1 hn
     · rename_i heq
       simp only [Sem.dat.injEq] at heq
-      obtain ⟨rfl, rfl, rfl, rfl, rfl⟩ := heq
+      obtain ⟨rfl, rfl, rfl, rfl⟩ := heq
       simp only [Step.fieldIdx] at hi ⊢
       rw [hi]
-    · rename_i hne; exact absurd rfl (hne _ _ _ _ _)
+    · rename_i hne; exact absurd rfl (hne _ _ _ _)
   | field g =>
     rw [Sem.updAt.eq_def]
     simp only [Sem.asNat_dat]
@@ -211,38 +230,22 @@ theorem Sem.updAt_dat' (T : TyS) (f : Sem → Sem) (st : Step) (sts : List Step)
     · rename_i heq; simp only [Sem.dat.injEq] at heq; exact absurd heq.1 hn
     · rename_i heq
       simp only [Sem.dat.injEq] at heq
-      obtain ⟨rfl, rfl, rfl, rfl, rfl⟩ := heq
+      obtain ⟨rfl, rfl, rfl, rfl⟩ := heq
       simp only [Step.fieldIdx] at hi ⊢
       rw [hi]
-    · rename_i hne; exact absurd rfl (hne _ _ _ _ _)
+    · rename_i hne; exact absurd rfl (hne _ _ _ _)
 
-/-- A packed constructor value is a `dat` of its declaration's name. -/
+/-- A constructor value is a `dat` of its declaration's name and record. -/
 theorem ctorM_dat (d : IndDecl) (ps : List Sem) (c : Nat) (fs : List Sem) :
-    ∃ el, dm.ctorM d ps c fs = .dat d.name ps c fs el := by
-  unfold DataModel.ctorM
-  split
-  · split
-    · exact ⟨_, rfl⟩
-    · exact ⟨_, rfl⟩
-  · exact ⟨_, rfl⟩
+    dm.ctorM d ps c fs = .dat d.name (dm.recOf d ps) c fs := rfl
 
-/-- Rebuilding by the name of a declaration found by that name is `ctorM`. -/
-theorem reDat_eq {d : IndDecl} {ty : String} (hf : Γ.find? (·.name == ty) = some d) (ps : List Sem) (c : Nat)
-    (fs : List Sem) : reDat dm Γ d.name ps c fs = dm.ctorM d ps c fs := by
-  have hn : d.name = ty := by
-    have := List.find?_some hf; simpa using this
-  unfold reDat; rw [hn, hf]
+/-- Rebuilding by the name of a declaration is the constructor value at the record. -/
+theorem reDat_eq (d : IndDecl) (r : Rec) (c : Nat) (fs : List Sem) :
+    reDat dm Γ d.name r c fs = DataModel.ctorR d r c fs := rfl
 
-/-- Rebuilding with a moved field gives a value with no element. -/
-theorem reDat_moved (dm : DataModel) (Γ : List IndDecl) (n : String) (ps : List Sem) (c : Nat) (fs : List Sem)
-    (h : Sem.moved ∈ fs) : reDat dm Γ n ps c fs = .dat n ps c fs none := by
-  have hnw : ¬ ∀ f ∈ fs, f.whole := fun hw => by simpa [Sem.whole] using hw _ h
-  unfold reDat
-  split
-  · rename_i d hd
-    have hn : d.name = n := by have := List.find?_some hd; simpa using this
-    simp only [DataModel.ctorM, if_neg hnw, hn]
-  · rfl
+/-- Rebuilding is the tree, with a moved field as with any other. -/
+theorem reDat_moved (dm : DataModel) (Γ : List IndDecl) (n : String) (r : Rec) (c : Nat) (fs : List Sem) :
+    reDat dm Γ n r c fs = .dat n r c fs := rfl
 
 end
 
@@ -253,7 +256,7 @@ the checker does (a `FieldRef` is compared without its printing name); a partly 
 `S` of its predecessor, the step `.0`. A whole value holds no moved part. -/
 def Sem.movedIn : Sem → Place → List Place
   | .moved, q => [q]
-  | .dat t _ c fs _, q => if t = "Nat" then Sem.movedInNat fs q else Sem.movedInFields t c q 0 fs
+  | .dat t _ c fs, q => if t = "Nat" then Sem.movedInNat fs q else Sem.movedInFields t c q 0 fs
   | _, _ => []
 termination_by structural x => x
 

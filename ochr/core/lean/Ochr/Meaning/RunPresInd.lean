@@ -764,15 +764,9 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
       subst e
       dsimp only at h2
       obtain ⟨⟨fs, sol⟩, s₂, h3, h4⟩ := SM.bind_some h2
-      obtain ⟨hi₂, e₂, o₂⟩ := runFields_rinv hK _ d c args 0 _ [] _ _ _ hi h3
-      dsimp only at h4
-      split at h4
-      · split at h4
-        · obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
-          exact rinv_ret L hi₂ e₂ o₂ rfl
-        · obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
-          exact rinv_ret L hi₂ e₂ o₂ rfl
-      · cases h4
+      obtain ⟨hi₂, e₂, o₂⟩ := runFields_rinv hK _ d c args 0 _ _ [] _ _ _ hi h3
+      obtain ⟨rfl, _, -, rfl⟩ := ctorOut_inv h4
+      exact rinv_ret L hi₂ e₂ o₂ rfl
   | tl, .fix self hs ds c dec body, hint, s, s', r, hi, h => by
     rw [runT] at h
     rcases SM.erasedIf_some h with h | ⟨rfl, hl⟩
@@ -874,14 +868,14 @@ theorem runArgs_rinv (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool) (
     exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
 
 theorem runFields_rinv (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool) (d : IndDecl) (c : Nat) :
-    ∀ (args : List Term) (i : Nat) (sol : List (Option Sem)) (earlier : List Sem) (s s' : SState)
+    ∀ (args : List Term) (i : Nat) (rh : Option Rec) (sol : List (Option Sem)) (earlier : List Sem) (s s' : SState)
       (fs : List Sem × List (Option Sem)), RInv L s →
-      runFields K ρ φ stmt d c i sol earlier args s = some (fs, s') → RInv L s' ∧ EnvLe s s' ∧ OrdKeep L s s'
-  | [], i, sol, earlier, s, s', fs, hi, h => by
+      runFields K ρ φ stmt d c i rh sol earlier args s = some (fs, s') → RInv L s' ∧ EnvLe s s' ∧ OrdKeep L s s'
+  | [], i, rh, sol, earlier, s, s', fs, hi, h => by
     simp only [runFields] at h
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h)
     exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
-  | a :: as, i, sol, earlier, s, s', fs, hi, h => by
+  | a :: as, i, rh, sol, earlier, s, s', fs, hi, h => by
     simp only [runFields] at h
     obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some h
     obtain ⟨y, s₂, h3, h4⟩ := SM.bind_some h2
@@ -892,7 +886,7 @@ theorem runFields_rinv (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool)
         exact ⟨hi₁, e₁, o₁⟩
       · exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
     obtain ⟨hi₁, e₁, o₁⟩ := hx
-    obtain ⟨hi₂, e₂, o₂⟩ := runFields_rinv hK stmt d c as _ _ _ s₁ _ y hi₁ h3
+    obtain ⟨hi₂, e₂, o₂⟩ := runFields_rinv hK stmt d c as _ _ _ _ s₁ _ y hi₁ h3
     exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
 
 theorem runArm_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) (arms : List (Hint × Term)) (hint : TyS) (c : Nat)
