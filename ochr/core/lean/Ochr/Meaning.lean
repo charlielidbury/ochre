@@ -90,6 +90,7 @@ import Ochr.Meaning.KeyBridge
 import Ochr.Meaning.DepWithin
 import Ochr.Meaning.Regress.DepSites
 import Ochr.Meaning.Regress.DepSitesMore
+import Ochr.Meaning.Regress.StepKinds
 import Ochr.Meaning.Regress.StarErasure
 
 /-!
