@@ -395,6 +395,160 @@ theorem mean_updAt_bot_sealed (H : TyS) (steps : List Step) (v v' : Value)
       some (Value.mean K.dm K.M K.Γ ρ φ H v') :=
   mean_updAt_botS K ρ φ steps H H v v' h hb hs hd
 
+open DataModel
+
+mutual
+theorem movedOf_trans {Γ : List IndDecl} : ∀ {a b c : Sem}, MovedOf Γ a b → MovedOf Γ b c → MovedOf Γ a c
+  | _, _, c, .moved _, _ => .moved c
+  | _, _, _, .refl _, h => h
+  | _, _, _, .dat h1, h2 => by
+    cases h2 with
+    | refl => exact .dat h1
+    | dat h2' => exact .dat (movedOfList_trans h1 h2')
+    | succ h2' =>
+      cases h1 with
+      | cons hx hn => cases hn; exact .succ (movedOf_trans hx h2')
+  | _, _, _, .succ h1, h2 => by
+    cases h2 with
+    | refl => exact .succ h1
+
+theorem movedOfList_trans {Γ : List IndDecl} : ∀ {a b c : List Sem}, MovedOfList Γ a b → MovedOfList Γ b c →
+    MovedOfList Γ a c
+  | _, _, _, .nil, .nil => .nil
+  | _, _, _, .cons h1 t1, .cons h2 t2 => .cons (movedOf_trans h1 h2) (movedOfList_trans t1 t2)
+end
+
+theorem movedOfList_refl {Γ : List IndDecl} : ∀ (fs : List Sem), MovedOfList Γ fs fs
+  | [] => .nil
+  | f :: fs => .cons (.refl f) (movedOfList_refl fs)
+
+theorem movedOfList_set {Γ : List IndDecl} {a b : Sem} (h : MovedOf Γ a b) :
+    ∀ (fs : List Sem) (i : Nat), fs[i]? = some b → MovedOfList Γ (fs.set i a) fs
+  | [], _, hi => by simp at hi
+  | f :: fs, 0, hi => by
+    simp only [List.getElem?_cons_zero, Option.some.injEq] at hi; subst hi
+    exact .cons h (movedOfList_refl fs)
+  | f :: fs, i + 1, hi => by
+    simp only [List.getElem?_cons_succ] at hi
+    exact .cons (.refl f) (movedOfList_set h fs i hi)
+
+theorem ctorM_partial (dm : DataModel) (d : IndDecl) (ps : List Sem) (c : Nat) (fs : List Sem)
+    (h : ∃ f ∈ fs, ¬ f.whole) : dm.ctorM d ps c fs = .dat d.name ps c fs none := by
+  unfold DataModel.ctorM
+  rw [if_neg]
+  obtain ⟨f, hf, hw⟩ := h
+  exact fun ha => hw (ha f hf)
+
+
+/-- Moving a part out keeps partial membership (`pmem`: a member with parts moved out). -/
+theorem pmem_moved_part {Γ : List IndDecl} {s s' : Sem} {T : TyM} (hm : MovedOf Γ s' s)
+    (h : DataModel.pmem Γ s T) : DataModel.pmem Γ s' T := by
+  rcases h with rfl | ⟨t, hw, hst, ht⟩
+  · cases hm <;> exact .inl rfl
+  · exact .inr ⟨t, hw, movedOf_trans hm hst, ht⟩
+
+
+/-- **Writing `⊥` at a path moves a part out** of the meaning: the new meaning is the old with
+that part moved (`MovedOf`), and is not whole. -/
+theorem movedOf_mean_updAt : ∀ (steps : List Step) (H : TyS) (v v' : Value),
+    Value.updAt (fun _ => .bot) steps v = some v' →
+    v.anyAtom (Value.bareCtor K.Γ) = false → v.anyAtom (fun a => a.isSealed && !a.topHintFree K.Γ) = false →
+    NatAlong K.dm K.M K.Γ ρ φ steps v →
+    MovedOf K.Γ (Value.mean K.dm K.M K.Γ ρ φ H v') (Value.mean K.dm K.M K.Γ ρ φ H v) ∧
+      ¬ (Value.mean K.dm K.M K.Γ ρ φ H v').whole
+  | [], H, v, v', h, _, _, _ => by
+    simp only [Value.updAt, Option.some.injEq] at h
+    subst h
+    simp only [Value.mean]
+    exact ⟨.moved _, by simp [Sem.whole]⟩
+  | st :: ss, H, v, v', h, hb, hs, hd => by
+    cases v with
+    | gloan l w =>
+      simp only [Value.updAt] at h
+      obtain ⟨w', hw', rfl⟩ := Option.map_eq_some_iff.mp h
+      have hd' : NatAlong K.dm K.M K.Γ ρ φ (st :: ss) w := by cases st <;> simpa [NatAlong] using hd
+      rw [Value.anyAtom] at hb hs; simp only [Bool.or_eq_false_iff] at hb hs
+      simp only [Value.mean]
+      exact movedOf_mean_updAt (st :: ss) H w w' hw' hb.2 hs.2 hd'
+    | borrow l w =>
+      cases st with
+      | deref =>
+        simp only [Value.updAt] at h
+        obtain ⟨w', hw', rfl⟩ := Option.map_eq_some_iff.mp h
+        have hd' : NatAlong K.dm K.M K.Γ ρ φ ss w := by simpa [NatAlong] using hd
+        rw [Value.anyAtom] at hb hs; simp only [Bool.or_eq_false_iff] at hb hs
+        simp only [Value.mean]
+        exact movedOf_mean_updAt ss H w w' hw' hb.2 hs.2 hd'
+      | proj i => simp [Value.updAt] at h
+      | field g => simp [Value.updAt] at h
+    | succ w =>
+      cases st with
+      | proj i =>
+        cases i with
+        | zero =>
+          simp only [Value.updAt] at h
+          obtain ⟨w', hw', rfl⟩ := Option.map_eq_some_iff.mp h
+          obtain ⟨⟨n, hn⟩, hd'⟩ : (∃ n, (Value.mean K.dm K.M K.Γ ρ φ (.plain (.ty0 Nat)) w).asNat = some n) ∧
+              NatAlong K.dm K.M K.Γ ρ φ ss w := by simpa [NatAlong] using hd
+          rw [Value.anyAtom] at hb hs; simp only [Bool.or_eq_false_iff] at hb hs
+          obtain ⟨h1, h2⟩ := movedOf_mean_updAt ss (.plain (.ty0 Nat)) w w' hw' hb.2 hs.2 hd'
+          rw [Sem.asNat_some hn] at h1
+          have hna : (Value.mean K.dm K.M K.Γ ρ φ (.plain (.ty0 Nat)) w').asNat = none := by
+            cases e : (Value.mean K.dm K.M K.Γ ρ φ (.plain (.ty0 Nat)) w').asNat with
+            | none => rfl
+            | some k => exact absurd (by rw [Sem.asNat_some e]; simp [Sem.whole]) h2
+          simp only [Value.mean, Sem.asNat_some hn, Sem.succ_el0]
+          simp only [Sem.succ, hna, h2, if_false]
+          exact ⟨.succ h1, by simp [Sem.whole, h2]⟩
+        | succ i => simp [Value.updAt] at h
+      | deref => simp [Value.updAt] at h
+      | field g => simp [Value.updAt] at h
+    | ind ty c hh ps fs =>
+      obtain ⟨hst, w, w', hw, hw', rfl⟩ := updAt_ind_inv h
+      obtain ⟨d, hf, hsort, hnat, hrec⟩ : ∃ d, K.Γ.find? (·.name == ty) = some d ∧ d.sort ≠ 0 ∧ d.name ≠ "Nat" ∧
+          ∀ w, fs[st.fieldIdx]? = some w → NatAlong K.dm K.M K.Γ ρ φ ss w := by
+        cases st with
+        | deref => exact absurd rfl hst
+        | proj i => simpa only [NatAlong] using hd
+        | field g => simpa only [NatAlong] using hd
+      rw [Value.anyAtom] at hb hs; simp only [Bool.or_eq_false_iff] at hb hs
+      have hbare := hb.1
+      have hbare' : Value.bareCtor K.Γ (.ind ty c hh ps (fs.set st.fieldIdx w')) = false := by
+        cases ps <;> simp only [Value.bareCtor] at hbare ⊢ <;> exact hbare
+      have hfb := anyAtomList_mem hb.2.2
+      have hfs := anyAtomList_mem hs.2.2
+      have HF : ∀ x ∈ fs, ∀ h h', Value.mean K.dm K.M K.Γ ρ φ h x = Value.mean K.dm K.M K.Γ ρ φ h' x :=
+        fun x hx => meanK_hintFree K ρ φ x (hfb x hx) (hfs x hx)
+      have hi : st.fieldIdx < fs.length := (List.getElem?_eq_some_iff.mp hw).1
+      have hget := meanFields_getElem? K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c fs 0 [] st.fieldIdx w hw
+      have hset := meanFields_setH K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c fs 0 [] st.fieldIdx w' hi HF
+      simp only [Nat.zero_add, List.nil_append] at hget hset
+      have hwm := List.mem_of_getElem? hw
+      obtain ⟨h1, h2⟩ := movedOf_mean_updAt ss (fieldHint K.dm d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c st.fieldIdx
+        ((Value.meanFields K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c 0 [] fs).take st.fieldIdx))
+        w w' hw' (hfb w hwm) (hfs w hwm) (hrec w hw)
+      rw [mean_ind K.dm K.M K.Γ ρ φ hf hbare hsort, mean_ind K.dm K.M K.Γ ρ φ hf hbare' hsort, hset]
+      obtain ⟨el, hel⟩ := Ochr.Meaning.ctorM_dat K.dm d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c
+        (Value.meanFields K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c 0 [] fs)
+      have hpart : ∃ f ∈ (Value.meanFields K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c 0 [] fs).set
+          st.fieldIdx (Value.mean K.dm K.M K.Γ ρ φ (fieldHint K.dm d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c
+            st.fieldIdx ((Value.meanFields K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c 0 [] fs).take
+              st.fieldIdx)) w'), ¬ f.whole :=
+        ⟨_, List.mem_iff_getElem?.mpr ⟨st.fieldIdx, by
+          rw [List.getElem?_set_self]; exact (by
+            have : st.fieldIdx < (Value.meanFields K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c 0 [] fs).length :=
+              (List.getElem?_eq_some_iff.mp hget).1
+            simp [this])⟩, h2⟩
+      rw [hel, ctorM_partial K.dm d _ c _ hpart]
+      refine ⟨.dat (movedOfList_set h1 _ _ hget), ?_⟩
+      intro hw2
+      obtain ⟨f, hf', hnw⟩ := hpart
+      simp only [Sem.whole] at hw2
+      exact hnw (hw2 f hf')
+    | _ => simp [Value.updAt] at h
+termination_by steps _ v => (steps.length, sizeOf v)
+
+
 /-- **A live label of the checker is live in the reference**: under (WF1) its holder holds it
 whole, so the position has its shape; `SimEq` gives the reference a holder of its renaming (a
 temporary's at some index), and the reference holds borrows only at its positions (`Rel.holders`). -/
