@@ -82,14 +82,8 @@ def Decisions.fixDecls (D : Decisions) (sc : List DeclInfo) (ds : List Term) (c 
 section
 variable (dm : DataModel) (Γ : List IndDecl)
 
-/-- The declaration and parameters a structured type names (docs/31 D31): the declaration of
-`Γ` with its data's NAME, at its data's parameters. Since D32 no value is decoded through a type;
-this names a declaration for a type's own use (a bare constructor's parameters, D8). -/
-def TyS.dataDecl (T : TyS) : Option (IndDecl × List Sem) :=
-  T.data.bind fun (n, ps) => (Γ.find? (·.name == n)).map (·, ps)
-
-/-- The structured type field `i` of constructor `c` of `d` at `ps` is read at, given the earlier
-fields: its declared type (a code, with its data), the hint `Value.meanFields` reads the field at. -/
+/-- The type field `i` of constructor `c` of `d` at `ps` is read at, given the earlier fields: its
+declared type's code, the hint `Value.meanFields` reads the field at. -/
 def fieldHint (d : IndDecl) (ps : List Sem) (c i : Nat) (earlier : List Sem) : TyS :=
   .plain (dm.fieldTy d ps c i earlier)
 

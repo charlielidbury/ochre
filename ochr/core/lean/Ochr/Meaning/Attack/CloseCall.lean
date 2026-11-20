@@ -22,7 +22,7 @@ them. Probe findings that shaped `RunEqs.lean` (a throwaway `simp` unfolding of 
 callOfL, applyFnL, …, runT]` reduces the `ascribe`/`letIn`/`borrow` prefix and reaches `callOf` with
 `fv.2 = Δ₀ 1` (the telescope code `telG`) and `fv.1 = meanV … (.abs 1)`, as intended. Two
 obstacles: (1) `simp [Sem.updAt]` fails outright ("failed to generate equational theorem for
-`Sem.updAt`", at the `isTrue`/`.ty0 Nat` branch of `Places.lean:93`), so every place write
+`Sem.updAt`", at its number branch), so every place write
 (`setContent`, hence the fill's `*r := loan_1`) must be reduced by a hand lemma on the concrete
 steps; (2) the ascription's hint becomes `plain (meanV … .tNat).asTy`, which only reduces with
 `meanV` itself in the simp set (its `.sealed`/`.clo` clauses then unfold the knot everywhere, so
