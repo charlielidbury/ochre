@@ -122,20 +122,31 @@ theorem follow_proof_fields : ∀ (fs : List Step), (∀ x ∈ fs, x ≠ .deref)
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- **The join derefs no proof**: a place a join drops goes through `*` only at a place of a borrow
-type (the checker types the arm that moves it, and `*` of anything else is rejected), and a place
-at the join's grain holding `⋆` is declared a copy type ((C⋆)), which no borrow type is
-(`declCopy`). The grain no longer carries the `*` step's borrow type (docs/31 D51, dropped with the
-exits main's D94 made a rejection), so this is stated on its own. Stated below a variable until the
-slice (2026-11-20); at a variable too since the reference's drop no longer tests the meaning `⋆` at
-the place (a `*r` with `r` holding `⋆` would otherwise be written by the reference and left by the
-checker), with the same argument. Open: not tried. -/
+/-- **The join derefs no proof**: a place at the join's grain goes through `*` only at a place
+declared a borrow (`StepOk .deref`), and a place at the grain holding `⋆` is declared a copy
+((C⋆)), which no borrow is (`declCopy`). PROVED. (The grain asked nothing of a `*` step from main's
+D94 until the slice, 2026-11-20, and the leaf was then false, `Regress/GrainDerefProof.lean`: an arm
+the run does not take is never checked, so `*h` of a proof `h` reached the join. Restated, PROPOSED
+for main and the lead, with the checker's `jdGrain` rejecting a `*` through a place not declared a
+borrow.) -/
 theorem grain_deref_not_proof (st : MState) (s : SState) (π : Nat → Nat) (q p : Place)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
     (hp1 : p.steps.1 = q.steps.1) (hp2 : p.steps.2 ++ [.deref] <+: q.steps.2)
     (hp : ckContent st.env p = some .proof) : False := by
-  sorry
+  obtain ⟨rest, hrest⟩ := hp2
+  -- the `*` after `p` is through a place declared a borrow (the grain)
+  obtain ⟨d, hd⟩ : ∃ d, K.D.placeDecl (scopeOf s) p = .ref d :=
+    hgrain p .deref rest hp1 (by rw [← hrest]; simp)
+  -- `p` is at the grain and holds `⋆`, so it is declared a copy ((C⋆))
+  have hgp : GrainOk K.D K.Γ (scopeOf s) p := grain_prefix hgrain hp1 ⟨[.deref] ++ rest, by rw [← hrest]; simp⟩
+  have hc := hctx.shapes.proofCopy p (by rw [← rel_scopeOf K ρ φ hs]; exact hgp) hp
+  rw [← rel_scopeOf K ρ φ hs, hd] at hc
+  -- no borrow type is a copy type (`declCopy`)
+  have hnc : K.D.copy (.ref d) = false :=
+    hctx.dec.copy 1 (.ref d) false 0 st ⟨#[], _, _, rfl⟩
+  rw [hnc] at hc
+  cases hc
 
 /-- **No place the join drops is at or below a `⋆`**: through field steps it holds `⋆` too, and is
 a copy ((C⋆)), which the join does not drop; through a `*`, the join derefs no proof
