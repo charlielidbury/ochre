@@ -191,8 +191,11 @@ theorem rest_S (K : RunCtx) : Membership K.dm K.M K.Γ ρ₇ S ∧ WF K.dm K.M K
   · intro G hG; simp [S] at hG
   · intro n σ h l; simp [S] at h; obtain ⟨rfl, rfl⟩ := h; rfl
   · intro σ v h; simp [S] at h
-  · intro k l _ _ x hx
-    simp [Env.sitesOf, hA, h0, Value.sitesOf] at hx
+  · refine ⟨?_, ?_⟩
+    · intro k l _ _ x hx
+      simp [Env.sitesOf, hA, h0, Value.sitesOf] at hx
+    · intro pos path _ l _ x hx
+      simp [Env.sitesOf, hA, h0, Value.sitesOf] at hx
 
 /-! ## The statement as it stood, refuted; the clause that excludes `S` -/
 

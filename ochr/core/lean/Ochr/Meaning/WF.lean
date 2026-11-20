@@ -276,10 +276,22 @@ def WF12 (env : Env) : Prop :=
       (pathKey x.path).isPrefixOf (pathKey y.path) = true →
       ∃ z ∈ Env.sitesOf env l, z.pos = x.pos ∧ pathKey z.path = pathKey x.path ∧ z.fill = true
 
+/-- (WF14) **No live borrow is lent strictly above a moved part** (docs/31 D43): where a position's
+value has `⊥` at a path, no live borrow has a site at that position at a strict prefix of the path
+(compared by `pathKey`, as the reference's `lentPrefix` does). [Borrow] rejects a partly moved
+place, and a move under a fill reaches the fill first and ends it. Read off the checker and swept
+(`Sweep.lean`'s clause (iii), at every `⊥` part of every position), NOT proved preserved. What the
+drop at the join needs where the checker's place is `⊥` (`DropOne.lentPrefix_none_of_noop`): the
+checker does nothing there, so the reference's access of the lent prefix must do nothing too. -/
+def WF14 (env : Env) : Prop :=
+  ∀ pos path, (valAt env pos).follow path = some .bot →
+    ∀ l, liveLoan env l = true → ∀ x ∈ Env.sitesOf env l, x.pos = pos →
+      ∀ k < path.length, pathKey x.path ≠ pathKey (path.take k)
+
 /-- Well-formedness, part (c) of the main theorem. -/
 def WF (ρ : Assignment) (st : MState) : Prop :=
   WF1 st.env ∧ WF2 st.env ∧ WF3 st.env ∧ WF4 st.env ∧ WF6 st ∧ WF7 dm C Γ ρ st ∧ WF8 st ∧ WF9 dm C Γ ρ st ∧
-  WF10 Γ st ∧ WF11 st ∧ WF12 st.env
+  WF10 Γ st ∧ WF11 st ∧ WF12 st.env ∧ WF14 st.env
 
 /-! ## Typed assignments, typed futures, membership -/
 

@@ -309,7 +309,7 @@ def wf12 : Clause where
       ss.any fun (k, x) => x.fill && ss.any fun (l, y) => l != k && y.pos == x.pos)]
   check st := wf12Viols st.env
 
-/-! ### (iii) No live fill above a moved part (`lentPrefix_none_of_noop`) -/
+/-! ### (WF14), formerly (iii): no live fill above a moved part (`lentPrefix_none_of_noop`) -/
 
 mutual
 /-- The paths `ψ` of a value at which `Value.follow` gives `⊥` (`false`) or `⋆` (`true`), at their
@@ -345,8 +345,9 @@ def lentPrefix (ss : List (Nat × Site)) (pos : Pos) (steps : List Step) : Optio
   ((List.range steps.length).map steps.take).findSome? fun ψ =>
     (ss.find? fun (_, x) => x.pos == pos && pathKey x.path == pathKey ψ).map fun (l, x) => (ψ, l, x)
 
-/-- Clause (iii), the conclusion of `lentPrefix_none_of_noop` (Steps/DropOne.lean) made a state
-clause: at every `⊥` part of every position, no live borrow has a site at a strict prefix.
+/-- (WF14) (`WF.lean`, docs/31 D43), first swept as clause (iii), the conclusion of
+`lentPrefix_none_of_noop` (Steps/DropOne.lean) made a state clause; the Lean clause is this mirror's
+form exactly (strict prefixes by `pathKey`, at every path `follow` sends to `⊥`): at every `⊥` part of every position, no live borrow has a site at a strict prefix.
 ```
 theorem lentPrefix_none_of_noop (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2))
@@ -373,7 +374,7 @@ def noopViols (env : Env) : List Viol := Id.run do
   pure out.toList
 
 def noopClause : Clause where
-  name := "(iii) no live fill sits above a moved part"
+  name := "(WF14) no live fill sits above a moved part"
   premises := [
     ("(not a violation since the restatement) a ⋆ part lies strictly under a live borrow's site", fun st =>
       let ss := liveSites st.env
