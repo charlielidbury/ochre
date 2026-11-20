@@ -448,17 +448,39 @@ theorem exit_other (st : MState) (s : SState) (π : Nat → Nat) (q p : Place) (
     (habs : ∀ σ, v ≠ .abs σ) (hsealed : ∀ t, v ≠ .sealed t) : v = .bot ∨ v = .proof := by
   sorry
 
-/-- After the shortest lent prefix is accessed whole, no strict prefix of the path is lent: the
-access ends, to a fixpoint, what is lent at or under that prefix, sites re-rooted by its ends
-included (`relend` re-roots a site to one of the ended label's, which is at or under the prefix or
-off the path), and nothing above it was lent; an ended label keeps no site, so each label is
-ended at most once and the access's rounds (one per live label) reach the fixpoint. Stated under
-the relation and `Good`, which the proof may need about the reference's holders; not known to be
-false without them. Open. -/
-theorem alp_idem (st : MState) (s : SState) (π : Nat → Nat) (pos : Pos) (steps : List Step)
-    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) :
+/-- **After the shortest lent prefix is accessed whole, no strict prefix of the path is lent**:
+every strict prefix of the path is a prefix of the accessed one or extends it, so a site there is
+one the access reaches, and after the access no live label has one (`SState.access_post`, the
+access's fixpoint). Proved for every reference state. -/
+theorem alp_idem (pos : Pos) (steps : List Step) (s : SState) :
     accessLentPrefix pos steps (accessLentPrefix pos steps s) = accessLentPrefix pos steps s := by
-  sorry
+  unfold accessLentPrefix
+  rcases hl : lentPrefix s pos steps with _ | ψ
+  · simp only [hl]
+  · simp only
+    have hψ : ψ ∈ (List.range steps.length).map steps.take := List.mem_of_find?_eq_some hl
+    obtain ⟨j, -, rfl⟩ := List.mem_map.mp hψ
+    have hnone : lentPrefix (s.access pos (dataHit (steps.take j))) pos steps = none := by
+      unfold lentPrefix
+      apply List.find?_eq_none.mpr
+      intro ψ' hψ' hany
+      obtain ⟨i, -, rfl⟩ := List.mem_map.mp hψ'
+      obtain ⟨y, hy, hr⟩ := List.any_eq_true.mp hany
+      have hpost := SState.access_post s pos (dataHit (steps.take j)) y hy
+      rw [← Bool.not_eq_true] at hpost
+      apply hpost
+      unfold SState.reached at hr ⊢
+      obtain ⟨x, hx, hxr⟩ := List.any_eq_true.mp hr
+      refine List.any_eq_true.mpr ⟨x, hx, ?_⟩
+      simp only [Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at hxr ⊢
+      refine ⟨hxr.1, ?_⟩
+      unfold dataHit
+      rw [hxr.2]
+      simp only [pathKey, List.map_take]
+      rcases Nat.le_total i j with h | h
+      · simp [h, List.isPrefixOf_iff_prefix, List.take_prefix_take_left]
+      · simp [List.isPrefixOf_iff_prefix, List.take_prefix_take_left, h]
+    rw [hnone]
 
 /-- **Where the checker re-rooted to a prefix holding `⊥` or `⋆`, the reference's drop does
 nothing either**: no live fill is above a moved or proof part (`lentPrefix_none_of_noop`), so the
@@ -515,7 +537,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
   obtain ⟨ρ₁, Δ₁, s₁, hsz₁, hag₁, hs₁or, hctx₁, hrel₁, hg₁, hout₁⟩ :=
     (ih K ρ φ).movedPlace_step st st₁ p p' pos s π hg hctx hs (resolve_parent hpar hpos) (grain_parent hpar hgrain) bh hmp
   have hs₁q := alp_parent hpar hs₁or
-  have hidem := alp_idem K ρ φ st s π pos q.steps.2 hg hs
+  have hidem := alp_idem pos q.steps.2 s
   have E₁ : Ext K ρ φ π st st₁ s₁ ρ₁ Δ₁ := ⟨hsz₁, hag₁, hctx₁, hrel₁, hg₁⟩
   obtain ⟨x, st₂, b₂, hget, h2⟩ := Runs.bind_inv h
   obtain ⟨hx, hst₂⟩ := runs_get_inv hget
@@ -775,7 +797,7 @@ theorem dropOne_step_asm (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
     obtain ⟨hrel, hgood⟩ := dropOne_exists { K with Δ := Δ₁ } ρ₁ φ fuel ih st₁ st' q s₁ π hg₁ hctx₁ hrel₁ hgr₁ hcp₁
       pos' w hck' hw' b₁ hdj
     obtain ⟨hctx', hsize⟩ := dropAtJoin_ctx { K with Δ := Δ₁ } ρ₁ fuel st₁ st' q b₁ hctx₁ hdj
-    rw [joinDropOne_alp { K with Δ := Δ₁ } φ hpos (alp_idem K ρ φ st s π pos q.steps.2 hg hs) hs₁or] at hrel
+    rw [joinDropOne_alp { K with Δ := Δ₁ } φ hpos (alp_idem pos q.steps.2 s) hs₁or] at hrel
     exact ⟨ρ₁, Δ₁, Nat.le_trans hsz₁ hsize, hag₁, hctx', hrel, hgood⟩
   · have hj := joinDropOne_noop { K with Δ := Δ₁ } ρ₁ φ st₁ s s₁ π q q' pos hg₁ hrel₁ hs₁or hpos ⟨hroot, hpre⟩ hbt
     obtain ⟨pos', hck', hcases⟩ := runs_dropAtJoin_inv hdj
