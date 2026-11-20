@@ -23,18 +23,6 @@ open Ochr Ochr.Meaning.Steps
 
 universe u
 
-/-- A code fits the level a closure of sort `l` is built at: its carrier level is below `l`. -/
-def LevelFit (l : Nat) : TyM → Prop
-  | .t0 .. => 1 ≤ l
-  | .t1 .. => 2 ≤ l
-  | .t2 .. => 3 ≤ l
-
-/-- A type read back from its code at a higher level is itself: no lifted code at the top. -/
-def TyM.Canon : TyM → Prop
-  | .t1 _ (.lift ..) => False
-  | .t2 _ (.lift ..) => False
-  | _ => True
-
 /-- What the closure lemma needs of a level beside lawfulness, for the codes that fit it. -/
 structure Lvl.Fits (L : Lvl.{u}) (Fit : TyM → Prop) : Prop where
   enc_mem : ∀ (T : TyM) (x : (L.codeOf T).1), L.enc (L.codeOf T).2 x ∈ₛ[L.read] T

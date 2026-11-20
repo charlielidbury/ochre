@@ -55,26 +55,32 @@ def ΓS : List IndDecl := [slD, cellD, tagD, wrapD, hlD, hwD, opt2D]
 
 /-! ## Their data model: canonical records -/
 
+/-- A record keeping only a level-0 value parameter, read small, at its `paramKey` (`Tag(n)`,
+`Wrap(n)`: their fields read nothing of `n`). -/
+def valRec (sn : Small) : Rec
+  | [(0, 0, [.other])] => .small sn
+  | _ => .none
+
+/-- The small reading a record keeps at a value parameter's key. -/
+def smallOf : Entry → Small
+  | .small sn => sn
+  | _ => .other
+
 /-- The signature: `Sl`'s and `CellT`'s fields read `R`'s entry; `Tag`'s and `HL`'s read nothing of
-their parameters; `Opt2`'s `B2` reads the equation `n = 3`. -/
+their parameters; `Wrap`'s and `Opt2`'s field `Tag(n)` is `Tag` at the record of `n` (read small off
+the record); `Opt2`'s `B2` reads the equation `n = 3`. -/
 def solveShape (d : IndDecl) (r : Rec) (c i : Nat) (_e : List Small) : Shape :=
   match d.name, c, i with
   | "Sl", 0, 0 => shapeOf (r (paramKey 0))
   | "CellT", 0, 0 => .leaf Nat .nat
   | "CellT", 0, 1 => .sub slD (constRec (r (paramKey 0)))
   | "Tag", 0, 0 => .leaf Nat .nat
-  | "Wrap", 0, 0 => .sub tagD (constRec .none)
+  | "Wrap", 0, 0 => .sub tagD (valRec (smallOf (r (paramKey 0))))
   | "HL", 0, 0 => .leaf Nat .nat
   | "HW", 0, 0 => .sub hlD (constRec .none)
-  | "Opt2", 0, 0 => .sub tagD (constRec .none)
+  | "Opt2", 0, 0 => .sub tagD (valRec (smallOf (r (paramKey 0))))
   | "Opt2", 1, 0 => shapeOf (r [(1, 0, [])])
   | _, _, _ => .leaf PEmpty .err
-
-/-- A record keeping only a level-0 value parameter, read small, at its `paramKey` (`Tag(n)`,
-`Wrap(n)`: their fields read nothing of `n`). -/
-def valRec (sn : Small) : Rec
-  | [(0, 0, [.other])] => .small sn
-  | _ => .none
 
 /-- `Opt2(n)`'s record: `B2`'s equation, `n` read small; `n` read small at its `paramKey`. -/
 def opt2Rec (sn : Small) : Rec

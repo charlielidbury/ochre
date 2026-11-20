@@ -25,6 +25,7 @@ structure StepsIH (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Pr
   substV_abs_step : substV_abs_step_stmt K ρ φ fuel
   substEnv_loan_step : substEnv_loan_step_stmt K ρ φ fuel
   substEnv_abs_step : substEnv_abs_step_stmt K ρ φ fuel
+  substEnv_neutral_step : substEnv_neutral_step_stmt K ρ φ fuel
   nfSealed_step : nfSealed_step_stmt K ρ φ fuel
   canonNeutral_step : canonNeutral_step_stmt K ρ φ fuel
   renormAll_step : renormAll_step_stmt K ρ φ fuel
@@ -55,6 +56,7 @@ structure StepsIH (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Pr
   idType_step : idType_step_stmt K ρ φ fuel
   owners_sound : owners_sound_stmt K ρ φ fuel
   evalType_step : evalType_step_stmt K ρ φ fuel
+  placeTypeQ_step : placeTypeQ_step_stmt K ρ φ fuel
   piSort_aligned : piSort_aligned_stmt K ρ φ fuel
   capture_step : capture_step_stmt K ρ φ fuel
   piShape_step : piShape_step_stmt K ρ φ fuel

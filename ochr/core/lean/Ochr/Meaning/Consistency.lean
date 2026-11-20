@@ -16,7 +16,7 @@ the leaves below and the step lemmas (`Steps/*.lean`). Writing them found the kn
    the items are checked in order from the Σ of the earlier ones, exactly as `progMeaning`
    steps through them (`Program.progMeaning_sig`).
 2. **Every accepted definition means an element of its type** (`defn_member`): by induction on
-   the items, an accepted function's closure is a member of its Π-type (`Steps/Tail.checkFix_sound`)
+   the items, an accepted function's closure is a member of its Π-type (`step_member_fix`, the knot)
    and an accepted constant's value a member of its goal (`checkConst_sound`), under the globals'
    meanings so far; the data model covers every accepted declaration (`checkInd_sound`).
 3. **`False` means the empty proposition**: the library's `False` has no constructors, so it has
@@ -121,6 +121,48 @@ theorem step_member_const (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) 
   rw [hgoal]
   exact const_value dm D fuel P d st' st₁ goal v hd hgoal ρ' Δ' π' r s₂ hrunr hmean ψ hmem
 
+/-- (leaf, OPEN; to be routed: the function-type case of sort soundness) **An accepted definition's
+function type obeys the sort rule, as the model reads its parts** (`Steps.SortRule`), at the decided
+sort of its Π-term (`D.piSort`, aligned with the checker's `Machine.piSort`, `piSort_aligned_stmt`)
+and the run's reading of its domains and codomain (`runDoms`, `codOf`; what `run_fix_def` builds the
+closure along): the sort is at most `3`; at sort `0` the codomain is not a returned borrow and is a
+proposition (level `0`) at every member argument tuple; at a data sort the levels of the codomain and
+of every domain are at most the sort. `fix_split` gives `PiFits` from it and `fix_canon`
+(`Steps.piFits_of_rules`), and its step's `MemBelow` gives `PiCallable` the same way.
+
+Stronger than `sortOf_sound_stmt` as stated: that equates the level of a whole stored type with the
+checker's `sortOf` of it, so of the Π-type it gives only the Π's own level (`piTyAt_level`; with
+`le_three_of_piTyAt_level`, the bound `3` when the stored Π-type has a level). The components' part
+follows from `sortOf_sound_stmt` at the body's generic state (the parameters' types and the goal are
+stored types there, and the run's reading of the domain and codomain terms at the arguments is their
+meaning) together with a fact of the checker alone: `Machine.piSort` is at least the `sortOf` of
+each domain and of the codomain at a data sort, and is `0` only for a codomain of sort `0` that is
+not a borrow type (`Machine.piSort`: `if lb == 0 then 0 else max l lb`, a borrow type being of sort
+`1`). One point to check when routing: a borrow parameter `&A` counts at `sortOf (&A) = 1`, while the
+model reads its content `A`, so the rule needs `A` of level at most `1` ((WF7)). -/
+theorem fix_sortRule (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms ≠ [])
+    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm D P)
+    (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
+    Steps.SortRule dm.read ((P.ctx dm D st').D.piSort (scopeOf (emptyState 0)) (.pi d.hs d.doms d.cod))
+      (runDoms (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0) d.doms)
+      (codOf (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0)
+        (bindsOf (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0) d.doms) d.cod) := by
+  sorry
+
+/-- (leaf, OPEN) **The parts of an accepted definition's function type are canonical codes**
+(`Steps.CanonRule`: no lifted code at the top, where `toTy ∘ codeOf` would not give the type back).
+An instance of an invariant of the run: every type value it produces is canonical (the model's
+constructors are; a member of a universe is, `mem_univ_canon`, which covers the arguments a type
+parameter is read at; a call's type result is encoded at its universe's code). Not small: it is an
+induction over the run, as `RunPresInd` is. -/
+theorem fix_canon (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms ≠ [])
+    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm D P)
+    (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
+    Steps.CanonRule dm.read (runDoms (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0) d.doms)
+      (codOf (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0)
+        (bindsOf (P.ctx dm D st') (fun _ => .err) noFuture (emptyState 0) d.doms) d.cod) := by
+  sorry
+
 /-- **`checkDef`'s function branch, taken apart** (leaf; docs/31 D73, D79). Two halves.
 (1) The meaning. The reference runs the definition's `fix` term from the empty state (`run_fix_def`;
 neither a statement nor a proof, by the aligned flags): the closure built along the code
@@ -128,55 +170,62 @@ neither a statement nor a proof, by the aligned flags): the closure built along 
 (`fixG`: at arguments of rank `r`, the stage `r + 1`, `fixStage`, the rank `fixRank`; a non-recursive
 function is its body with `self` erroneous, the stage `1` at rank `0`); and the stored type's code is
 that code (the checker stores `Π(x̄ : Ā). B`, which the `fix` term's domains and codomain run to).
-(2) The step of the induction on the bound: from the fixpoint good below `b`, the stage `b + 1` is
-good at member arguments of rank `b`. Its proof is the checker's run of the body (`checkFix`) read
-through the step statements under the context that names the definition at the bound
-(`RunCtx.cur := (f, b)`) and gives its global the meaning of the stage-`b` closure (so that the
-checker's `self`, `.gfn f`, and the reference's frame's `self` mean the same at the generic state),
-where `CtxOk` asks of the global only `MemBelow b`: the stage-`b` closure applied at arguments of rank
-below `b` is the stage `b` there (`closure_apply`), which is the fixpoint there (stage stability: every
-self call the body makes is at a smaller rank, `recDecreases` and `semRank_part`), good by the
-hypothesis. Then: the generic state good for the assignment giving each parameter its argument
+(2) The function type fits its sort (`Steps.PiFits` at every member argument: at sort `0` a
+borrow-free codomain that is a proposition, at a data sort `l ≤ 3` a codomain that fits the level):
+`Steps.piFits_of_rules` from the sort rule (`fix_sortRule`, open, to be routed) and canonical codes
+(`fix_canon`, open), `l`, `ds`, `out` being the run's reading of the definition's Π-term.
+(3) The step of the induction on the bound, in the run's shape: from stage `b` good below `b`,
+stage `b + 1` is good below `b + 1` (`Steps.OutGood'`: the result a member of the codomain, the
+borrow parameters' final contents members, one per borrow parameter, and at a returned borrow its
+label and an injective backward function). Its proof is the checker's run of the body (`checkFix`)
+read through the step statements under the context that names the definition at the bound
+(`RunCtx.cur := (f, b)`) and gives its global the meaning of the run's own `self` at stage `b + 1`:
+stage `b`'s closure at the weakened function type (`RunCongr.fixStage`; so the checker's `self`,
+`.gfn f`, and the reference's frame's `self` mean the same at the generic state), where `CtxOk` asks
+of the global only `MemBelow b` with the function the stage `b`, which the hypothesis gives (no
+stage stability: a self call below the bound reads stage `b` itself, `Steps.memBelow_apply`).
+Then: the generic state good for the assignment giving each parameter its argument
 (`generic_good`) and related to the body's frame (`Rel.start`, the frame property, D70);
-`checkTail_step` along the case tree to a leaf; the return check (`conv_sound`, `bodyReturns_sound`);
-the leaf's value is the stage `b + 1` at the arguments, a member of the codomain, and the borrow
-parameters' final contents members (`OutGood`: the frame's pop at `fixReturn`). Its pieces are now in
-the final form: `generic_good_stmt` (the generic state related to `bodyFrame` at the arguments) and
-`checkTail_step_stmt` (docs/31 D80). The one place the context's meaning of a global differs from
-`defMeaning`'s: inside this step, the global means the stage-`b` closure (D79). -/
+`checkTail_step` along the case tree to a leaf; the leaf's value is stage `b + 1` at the arguments,
+and its membership in the codomain (with the borrow parameters' final contents, the frame's pop at
+`fixReturn`) is `OutGood'`. (The return check's statement, `bodyReturns_step_stmt`, is being
+restated: the membership of a body's value is to come from the evaluation step; this leaf is the
+knot's one reader of it.) The one place the context's meaning of a global differs from
+`defMeaning`'s: inside this step, the global means the stage-`b` closure at the weakened type (D79). -/
 theorem fix_split (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms ≠ [])
     (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm D P)
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
     ∃ (l : Nat) (ds : List PiDom) (out : PiCod) (stage : Nat → List Sem → Option BodyOut) (rank : List Sem → Nat),
-      l ≤ 3 ∧
+      Steps.PiFits dm.read l ds out (fun _ => True) ∧
       defMeaning (fun _ => .err) (P.ctx dm D st') d (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)
         = some (closureAt dm.read l noFuture ds out (fun args => stage (rank args + 1) args),
             globalTyS (fun _ => .err) (P.ctx dm D st') (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)) ∧
       (globalTyS (fun _ => .err) (P.ctx dm D st') (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)).m
         = piTyAt dm.read l ds out ∧
       (∀ b, (∀ a, Steps.DomMembers dm.read ds a → rank a < b →
-          ∃ o, stage (rank a + 1) a = some o ∧ Steps.OutGood dm.read ds out a o) →
-        ∀ a, Steps.DomMembers dm.read ds a → rank a = b → ∃ o, stage (b + 1) a = some o ∧ Steps.OutGood dm.read ds out a o) := by
+          ∃ o, stage b a = some o ∧ Steps.OutGood' dm.read ds out a o) →
+        ∀ a, Steps.DomMembers dm.read ds a → rank a < b + 1 →
+          ∃ o, stage (b + 1) a = some o ∧ Steps.OutGood' dm.read ds out a o) := by
   sorry
 
 /-- **An accepted function means a member of its type** (assembled, no `sorry` in the body; THE KNOT,
-docs/31 D72, D73, D79): the branch taken apart (`fix_split`), the induction on the bound
-(`Steps.stages_total`, proved) makes the guarded fixpoint good at every member argument, and a closure
-whose function is total and good is a member of its code (`Steps.closure_mem_of_total`, the data
-layer's). Not `checkFix_sound`: `CtxOk` at the state it starts from asked the function to be a member
-of its type (`Regress/DefKnot.ctx_contains_fix_member`); it now asks only membership below the bound
+docs/31 D72, D73, D79; docs/34): the branch taken apart (`fix_split`), the induction on the bound in
+the run's shape (`Steps.stages_below`, proved) makes the guarded fixpoint good at every member
+argument, and a closure whose function is total and good is a member of its code
+(`Steps.closure_mem_of_total`, the data layer's; together `Steps.knot_member`). Not
+`checkFix_sound`: `CtxOk` at the state it starts from asked the function to be a member of its type
+(`Regress/DefKnot.ctx_contains_fix_member`); it now asks only membership below the bound
 (`RunCtx.cur`, `MemBelow`). -/
 theorem step_member_fix (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms ≠ [])
     (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm D P)
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
     ∃ m, defMeaning (fun _ => .err) (P.ctx dm D st') d
         (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot) = some m ∧ m.1 ∈ₛ[dm.read] m.2.m := by
-  obtain ⟨l, ds, out, stage, rank, hl, hdm, hA, hstep⟩ := fix_split dm D fuel P d st' hd hP hcov hfaith hrun
+  obtain ⟨l, ds, out, stage, rank, hfit, hdm, hA, hstep⟩ := fix_split dm D fuel P d st' hd hP hcov hfaith hrun
   refine ⟨_, hdm, ?_⟩
   show closureAt dm.read l noFuture ds out (fun args => stage (rank args + 1) args) ∈ₛ[dm.read] _
   rw [hA]
-  exact Steps.closure_mem_of_total dm.read l noFuture ds out _ hl
-    (fun args ha => Steps.stages_total stage rank (Steps.DomMembers dm.read ds) (Steps.OutGood dm.read ds out) hstep args ha)
+  exact Steps.knot_member dm.read l noFuture ds out stage rank hfit hstep
 
 /-- **One item keeps every definition a member** (assembled): an inductive declaration adds no
 definition; a definition's meaning is a member by `step_member_const` or `step_member_fix`. -/

@@ -23,6 +23,10 @@ open Ochr.Meaning
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
+/-- `placeType?` is a private computation (the slice's field, main's item 3), as `evalType`'s. Open. -/
+theorem placeTypeQ_step (fuel : Nat) (ih : StepsIHBelow fuel) : placeTypeQ_step_stmt K ρ φ (fuel + 1) := by
+  sorry
+
 /-- `evalType` (a type term, on a private copy): the result means the run's result, and the
 state's core is unchanged. -/
 theorem evalType_step (fuel : Nat) (ih : StepsIHBelow fuel) : evalType_step_stmt K ρ φ (fuel + 1) := by

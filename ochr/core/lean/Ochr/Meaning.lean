@@ -102,6 +102,7 @@ import Ochr.Meaning.Regress.InFlight
 import Ochr.Meaning.Regress.DefKnot
 import Ochr.Meaning.Regress.IdWrite
 import Ochr.Meaning.SubstAbs
+import Ochr.Meaning.RunSubstAbs
 import Ochr.Meaning.Regress.EqJ
 import Ochr.Meaning.Regress.SplitSubst
 import Ochr.Meaning.Regress.StarErasure
@@ -115,7 +116,8 @@ import Ochr.Meaning.DataModel.ParamSolve
 import Ochr.Meaning.DataModel.ReadMember
 import Ochr.Meaning.Closure
 import Ochr.Meaning.ClosureStage
-import Ochr.Meaning.Steps.FixKnotStage
+import Ochr.Meaning.ApplyMem
+import Ochr.Meaning.DataModel.CtorMem
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)

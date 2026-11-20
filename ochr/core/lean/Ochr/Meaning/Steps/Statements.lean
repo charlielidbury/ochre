@@ -101,17 +101,43 @@ noncomputable def decRank (K : RunCtx) (g : GDef) (args : List Sem) : Nat :=
   | some (.fix _ _ _ _ (some j) _) => ((args[j]?).map fun a => semRank a).getD 0
   | _ => 0
 
-/-- **Membership below a bound** (docs/31 D73, D80): the global's meaning is the closure, along a
-code that is its type's, of a function that is defined and good (result and borrow parameters'
-final contents members, `OutGood`) at member arguments whose decreasing component has rank below
-`b`. What `CtxOk` asks of the definition being checked (`RunCtx.cur`), and what the induction on the
-bound supplies (in its step, the global means the stage-`b` closure). A call reads it through the
-closure lemma (`closure_apply`). -/
+/-- **A body's output is good** at arguments (docs/34, the weakened stage closure): `OutGood`, a
+returned borrow's label and injective backward function (`RetGood`: what an element of the carrier
+of a borrow-returning function type holds, `mkLeafRefL`), and one final content per borrow
+parameter (what the strict construction decodes; the run's frame pop gives one per borrow cell). -/
+def OutGood' (R : DataRead) (ds : List PiDom) (out : PiCod) (args : List Sem) (o : BodyOut) : Prop :=
+  OutGood R ds out args o ∧ (out.isRef = true → RetGood R out args o) ∧
+    o.finals.length = (ds.filter (·.isRef)).length
+
+/-- **What membership consumes of a function type**, at the argument tuples `P` admits: at sort `0`
+a borrow-free codomain that is a proposition; at a data sort `1 ≤ l ≤ 3`, a codomain that fits the
+level (`LevelFit`). -/
+def PiFits (R : DataRead) : Nat → List PiDom → PiCod → (List Sem → Prop) → Prop
+  | 0, ds, out, P => out.isRef = false ∧ ∀ args, DomMembers R ds args → P args → ∃ Q, out.cod args = TyM.prop Q
+  | n + 1, ds, out, P => n + 1 ≤ 3 ∧ ∀ args, DomMembers R ds args → P args → LevelFit (n + 1) (out.cod args)
+
+/-- **What a call consumes of a function type** beyond membership, at the argument tuples `P`
+admits: a canonical codomain, and domains that fit the level. -/
+def PiCallable (R : DataRead) (l : Nat) (ds : List PiDom) (out : PiCod) (P : List Sem → Prop) : Prop :=
+  ∀ args, DomMembers R ds args → P args →
+    (out.cod args).Canon ∧ ∀ (i : Nat) (d : PiDom), ds[i]? = some d → LevelFit l (d.dom (args.take i))
+
+/-- **Membership below a bound** (docs/31 D73, D80; docs/34, the weakened stage closure): the
+global is the stage closure (`closureAt` of `stageFn`) of a function good (`OutGood'`) at member
+arguments whose decreasing component has rank below `b`, typed at the WEAKENED function type
+(`weakCod`: the true codomain below `b`, `Unit`/`True` above), an honest element
+(`FixKnot.memBelow_mem`); below the bound, the function type meets what membership and (at a data
+sort) a call consume. What `CtxOk` asks of the definition being checked (`RunCtx.cur`): in the
+induction's step the global is the run's own `self` at stage `b + 1` (`RunCongr.fixStage`, with
+`fn` the stage `b`). A call reads it through `FixKnot.memBelow_apply`. -/
 def MemBelow (K : RunCtx) (G : Sem × TyS) (g : GDef) (b : Nat) : Prop :=
   ∃ (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod) (fn : List Sem → Option BodyOut),
-    G.1 = closureAt K.dm.read l φ ds out fn ∧ G.2.m = piTyAt K.dm.read l ds out ∧
+    PiFits K.dm.read l ds out (decRank K g · < b) ∧
+    (1 ≤ l → PiCallable K.dm.read l ds out (decRank K g · < b)) ∧
+    G.1 = closureAt K.dm.read l φ ds (weakCod l (decRank K g) b out) (stageFn l ds (decRank K g) b fn) ∧
+    G.2.m = piTyAt K.dm.read l ds (weakCod l (decRank K g) b out) ∧
     ∀ args, DomMembers K.dm.read ds args → decRank K g args < b →
-      ∃ o, fn args = some o ∧ OutGood K.dm.read ds out args o
+      ∃ o, fn args = some o ∧ OutGood' K.dm.read ds out args o
 
 /-- `K.C.global` is Σ: each global of the state has its stored type, a constant means its stored
 value read at that type (`⋆` at a proposition, as `evalCore`'s `.const` reads it), a function means
@@ -119,15 +145,18 @@ the closure of its `fix` term formed in the empty frame, whose run gives the sto
 and each is a member of its type. The last is the outer induction of docs/18's theorem: while a definition is checked,
 every global is an earlier, accepted one. A global is closed, so these hold at every assignment
 and future. The definition being checked (`K.cur`, pushed by `checkDef` before its body is checked
-so that recursive calls find it) is asked membership only below the bound (`memBelow`): as first
-stated every global was asked membership, which for that one is `checkFix_sound`'s conclusion, so the
-statement was vacuous at a definition (the knot, docs/31 D72, D73, `Regress/DefKnot`). -/
+so that recursive calls find it) is asked only membership below the bound (`memBelow`), at the
+weakened function type and as the stage closure, so neither its stored type (`ty`) nor its closure
+(`fn`) is asked of it: as first stated every global was asked membership, which for that one is
+`checkFix_sound`'s conclusion, so the statement was vacuous at a definition (the knot, docs/31 D72,
+D73, `Regress/DefKnot`); and a function good only below the bound is an element of the weakened
+type, not of its stored one (docs/34). -/
 structure GlobalsOk (K : RunCtx) (st : MState) : Prop where
-  ty : ∀ n g, st.globals.find? (·.name == n) = some g → ∀ ρ,
+  ty : ∀ n g, st.globals.find? (·.name == n) = some g → (K.cur.map (·.1)) ≠ some n → ∀ ρ,
     (K.C.global n).2.m = (meanV K ρ noFuture (.plain .err) g.ty).asTy
   const : ∀ n g, st.globals.find? (·.name == n) = some g → g.fn? = none → ∀ ρ φ,
     (K.C.global n).1 = constMean (K.C.global n).2.m (meanV K ρ φ (K.C.global n).2 g.val)
-  fn : ∀ n g t, st.globals.find? (·.name == n) = some g → g.fn? = some t → ∀ ρ φ,
+  fn : ∀ n g t, st.globals.find? (·.name == n) = some g → g.fn? = some t → (K.cur.map (·.1)) ≠ some n → ∀ ρ φ,
     (K.C.global n).1 = meanV K ρ φ (.plain .err) (.clo [] t []) ∧
     ∀ r s', run K ρ φ (.plain .err) t (stateOf 0 []) = some (r, s') → r.2.m = (K.C.global n).2.m
   /-- every global but the definition being checked is a member of its type -/
@@ -751,52 +780,6 @@ noncomputable def refObs (reps : List Place) (ws : List Sem) (hint : TyS) (t : T
 noncomputable def hintM (hint : Option Value) : TyS :=
   (hint.map (Value.tyS K.dm K.M K.Γ ρ)).getD (.plain .err)
 
-/-- [End ℓ] (`Machine.endBorrow`) in the simulation form (docs/31 D29): from any related reference
-state, the checker's end of a live borrow `ℓ` is the reference's `endLabel (π ℓ)`: the meanings
-are `semEnd`'s (the substitution is fixing the future, `meanV_substLoan`; re-normalisation keeps
-a meaning; a mark has none), the holder is forgotten on both sides, and the places `ℓ` was lent
-pass to the borrows of its content alike (main's `lendEnv (.ended ℓ …)` against `SState.relend`).
-`Good` is kept. The content is whole, which the checker checks outside an observation (D53 (h),
-D68). (As first stated, in the order form against `Mean.semEnd` from the checker's own state.) -/
-def endBorrow_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st st' : MState) (l : Nat) (s : SState) (π : Nat → Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s) (hl : liveLoan st.env l = true)
-    (bh : Nat) (h : Runs (Ochr.endBorrow fuel l) st bh () st'),
-    Rel K ρ φ π st' (s.endLabel (π l)) ∧ Good K.dm K.M K.Γ ρ st'
-
-/-- [Access] as the checker performs it before a read (`accessPath` then `accessInside`), in the
-simulation form (docs/31 D29): it ends the borrows lent on the path, at the place or inside its
-content, iterated, which is the reference's static access of the place (`dataHit`), whose sites
-the relation makes the checker's. (`accessPath` alone ends only the path: the pilot prover's
-finding, so it is not stated on its own.)
-
-With `owned` (before an assignment, D67) the checker ends only the loans inside the part the
-place owns: none at a borrow variable written whole, where the reference's assignment does no
-access either (`assignAt`; the audit's A2).
-
-The checker's typing of places holds after it (`ShapeFacts`, at the same decisions: it reads only
-the place and copy decisions, which name no unknown, and the top frame's readings, which an access
-does not change). Added for the slice (the drop of one place reads it after its access; the old
-`access_ctx`, the whole `CtxOk` at the same context after an access, is false where the access
-grows the table of unknowns, docs/31 D57 (1)); for the lead to review. -/
-def access_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st st' : MState) (p : Place) (pos : Pos) (owned : Bool) (s : SState) (π : Nat → Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
-    (hpos : resolve s p = some (pos, (p.steps).2))
-    (bh : Nat) (h : Runs (do Ochr.accessPath fuel p; Ochr.accessInside fuel p owned) st bh () st'),
-    Rel K ρ φ π st'
-      (if owned && (p.steps).2.isEmpty && (s.shape pos).isSome then s else s.access pos (dataHit (p.steps).2)) ∧
-    Good K.dm K.M K.Γ ρ st' ∧ ShapeFacts K.D K.Γ st'
-
-/-- The flight of a result: its label, typed at its content type (the reference's result type
-carries both). The in-flight value is typed by this where `MState.withTemp` holds it untyped
-(`GoodF`, the pilot's refutations in `BorrowCE.lean`). -/
-def flightOf (T : TyS) : Flight := match T.label with | some l => [(l, T.m)] | none => []
-
-/-- The flight of a value about to be written at a place of content type `T`: a borrow's label,
-typed at `T`. -/
-def flightOfWrite (v : Value) (T : TyM) : Flight := match v with | .borrow l _ => [(l, T)] | _ => []
-
 /-- **What a private computation leaves** (`inStatement`, `privately`: `restoreKeep`, D37): Ω, the
 goal, the path condition and the declarations are the snapshot's; the tables of unknowns and labels
 only grow, the old unknowns keeping their types. With `ExtOk`, an extension under which the state
@@ -820,6 +803,61 @@ them aligned at the state after it, `DecTab K.D st'`, `Steps/MachineMono.lean`).
 def ExtOk (st st' : MState) (ρ' : Assignment) (Δ' : Nat → TyS) : Prop :=
   (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
     CtxOk { K with Δ := Δ' } ρ' st' ∧ Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
+
+/-- [End ℓ] (`Machine.endBorrow`) in the simulation form (docs/31 D29): from any related reference
+state, the checker's end of a live borrow `ℓ` is the reference's `endLabel (π ℓ)`: the meanings
+are `semEnd`'s (the substitution is fixing the future, `meanV_substLoan`; re-normalisation keeps
+a meaning; a mark has none), the holder is forgotten on both sides, and the places `ℓ` was lent
+pass to the borrows of its content alike (main's `lendEnv (.ended ℓ …)` against `SState.relend`).
+The content is whole, which the checker checks outside an observation (D53 (h), D68). In the
+extended form (docs/31 D71's rule; the slice, main's item 3, 2026-11-20): an end substitutes its
+content for the loan (`substEnv_loan_step`), whose re-runs of sealed programs keep unknowns and
+records (D37), and its [Repack] check may make an unknown nothing names, so the assignment and `Δ`
+are extended, the decisions aligned after it (`hD`), and the context and `Good` hold after it.
+(As first stated, in the order form against `Mean.semEnd` from the checker's own state; then
+`Rel` and `Good` at the same context, which a re-run's kept unknowns falsify.) -/
+def endBorrow_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState) (l : Nat) (s : SState) (π : Nat → Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s) (hl : liveLoan st.env l = true)
+    (hD : DecTab K.D st')
+    (bh : Nat) (h : Runs (Ochr.endBorrow fuel l) st bh () st'),
+    st.absTy.size ≤ st'.absTy.size ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS),
+      ExtOk K ρ st st' ρ' Δ' ∧ Rel { K with Δ := Δ' } ρ' φ π st' (s.endLabel (π l))
+
+/-- [Access] as the checker performs it before a read (`accessPath` then `accessInside`), in the
+simulation form (docs/31 D29): it ends the borrows lent on the path, at the place or inside its
+content, iterated, which is the reference's static access of the place (`dataHit`), whose sites
+the relation makes the checker's. (`accessPath` alone ends only the path: the pilot prover's
+finding, so it is not stated on its own.)
+
+With `owned` (before an assignment, D67) the checker ends only the loans inside the part the
+place owns: none at a borrow variable written whole, where the reference's assignment does no
+access either (`assignAt`; the audit's A2).
+
+In the extended form (docs/31 D71's rule; the slice, main's item 3, 2026-11-20): the ends it runs
+extend the assignment and `Δ` (`endBorrow_step_stmt`), the decisions aligned after it (`hD`), and
+the context holds after it, the checker's typing of places (`ShapeFacts`) included. (As first
+stated, `Rel` and `Good` at the same context; the slice added `ShapeFacts`; the whole `CtxOk` at
+the same context, the old `access_ctx`, is false where the access grows the table of unknowns,
+docs/31 D57 (1).) -/
+def access_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState) (p : Place) (pos : Pos) (owned : Bool) (s : SState) (π : Nat → Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (hpos : resolve s p = some (pos, (p.steps).2))
+    (hD : DecTab K.D st')
+    (bh : Nat) (h : Runs (do Ochr.accessPath fuel p; Ochr.accessInside fuel p owned) st bh () st'),
+    st.absTy.size ≤ st'.absTy.size ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ' ∧
+      Rel { K with Δ := Δ' } ρ' φ π st'
+        (if owned && (p.steps).2.isEmpty && (s.shape pos).isSome then s else s.access pos (dataHit (p.steps).2))
+
+/-- The flight of a result: its label, typed at its content type (the reference's result type
+carries both). The in-flight value is typed by this where `MState.withTemp` holds it untyped
+(`GoodF`, the pilot's refutations in `BorrowCE.lean`). -/
+def flightOf (T : TyS) : Flight := match T.label with | some l => [(l, T.m)] | none => []
+
+/-- The flight of a value about to be written at a place of content type `T`: a borrow's label,
+typed at `T`. -/
+def flightOfWrite (v : Value) (T : TyM) : Flight := match v with | .borrow l _ => [(l, T)] | _ => []
 
 /-- The conclusion of a step in the simulation form, for the reference computation `x` run from
 `s`: `x` does not fail, the checker's value `v` (read at the run's future pulled back along the
@@ -993,6 +1031,27 @@ def substEnv_abs_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) (hr : RefineOk K ρ st σ r)
     (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.substEnv fuel (.abs σ) r true) st bh () st'),
+    SubstShape st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS),
+      ExtOk K ρ st st' ρ' Δ' ∧ Rel { K with Δ := Δ' } ρ' φ π st' s
+
+/-- What a value `r` must be to replace a sealed program `n` everywhere (`substEnv n r`): it means
+what `n` means, at every future and hint, names typed unknowns only, and holds no loan. -/
+def NeutralOk (st : MState) (n r : Value) : Prop :=
+  (∀ ψ H, meanV K ρ ψ H r = meanV K ρ ψ H n) ∧ (∀ τ, r.hasAbs τ = true → τ < st.absTy.size) ∧
+    ∀ l, r.hasLoan l = false
+
+/-- **Replacing a sealed program by a value that means it keeps every meaning** (`substEnv` of a
+sealed program `n` by `r`, `types = true`: a generalisation's record read back, `recordedNeutral`,
+or a program replaced by its unknown), in the form of `substEnv_abs_step_stmt`: the state after is
+related to the SAME reference state, good and meeting `CtxOk` under an extension at the unknowns the
+re-runs keep, the decisions aligned after it. Added for the slice (main's item 3, 2026-11-20; the
+drop's `recorded_sim`). -/
+def substEnv_neutral_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState) (n r : Value)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) (hr : NeutralOk K ρ st n r)
+    (hD : DecTab K.D st')
+    (bh : Nat) (h : Runs (Ochr.substEnv fuel n r true) st bh () st'),
     SubstShape st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS),
       ExtOk K ρ st st' ρ' Δ' ∧ Rel { K with Δ := Δ' } ρ' φ π st' s
 
@@ -1469,6 +1528,20 @@ def evalType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ' ∧
       ∃ (r : Res), run K ρ' φ (.plain .err) t s = some (r, s) ∧
         meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (.plain .err) T = r.1
+
+/-- `placeType?` (a place's type, its field and parameter types evaluated on private copies) is a
+private computation (`KeptAfter`), in the form of `evalType_step_stmt`: the state after is good and
+meets `CtxOk` under an extension at the unknowns the copies keep, the decisions aligned after it.
+Its value is not stated: `movedPlace` reads it only to test for one constructor. Added for the
+slice (main's item 3, 2026-11-20; the drop's `placeTypeQ_sim`). Swept first for the other lane's
+fault (a private copy leaving a record that names an unknown of an empty type, so that no typed
+assignment exists): see `Sweep.recordNamesEmpty`. -/
+def placeTypeQ_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState) (p : Place) (T? : Option Value)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hD : DecTab K.D st')
+    (bh : Nat) (h : Runs (Ochr.placeType? fuel p) st bh T? st'),
+    KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ'
 
 /-- `piSort` agrees with the aligned decision (D55: a type's declared sort is its computed sort). -/
 def piSort_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=

@@ -1264,6 +1264,36 @@ def etaOlder : Clause where
         s!"σ{σ} := {clip r.pp}; params {match r with | .ind _ _ _ ps _ => ", ".intercalate (ps.map fun (p : Value) => p.pp) | _ => "-"}"⟩
     else none
 
+/-- A type evidently empty: a declared inductive with no constructor, or an equation between two
+closed values with different heads (`0` and `S(_)`, two constructors of one declaration). -/
+def evidentlyEmpty (st : MState) : Value → Bool
+  | .tInd n _ => match st.inds.find? (·.name == n) with
+    | some d => d.ctors.isEmpty
+    | none => false
+  | .tEq _ a b => match a, b with
+    | .zero, .succ _ | .succ _, .zero => true
+    | .ind t c _ _ _, .ind t' c' _ _ _ => t == t' && c != c'
+    | _, _ => false
+  | _ => false
+
+/-- REPORT (main's warning, 2026-11-20, for `placeType?`'s step stated as a private computation):
+an η record or a generalisation record naming an unknown whose type is evidently empty, so that no
+typed assignment exists (the other lane found one left by a comparison's private copy). -/
+def recordNamesEmpty : Clause where
+  name := "(report) a record names an unknown of an evidently empty type"
+  report := true
+  premises := [("an η or generalisation record", fun st => !st.etaRefs.isEmpty || !st.neutrals.isEmpty)]
+  check st :=
+    let emptyAbs (v : Value) : List Nat := (List.range st.absTy.size).filter fun τ =>
+      v.hasAbs τ && evidentlyEmpty st st.absTy[τ]!
+    (st.etaRefs.filterMap fun (σ, r) => match emptyAbs r with
+      | [] => none
+      | τs => some ⟨s!"an η record names an unknown of an empty type{if st.privateDepth > 0 then " (inside a private copy)" else ""}",
+          s!"σ{σ} := {clip r.pp}; empty: {τs}"⟩) ++
+    (st.neutrals.filterMap fun (n, σ) => match emptyAbs n with
+      | [] => none
+      | τs => some ⟨"a generalisation record names an unknown of an empty type", s!"{clip n.pp} := σ{σ}; empty: {τs}"⟩)
+
 /-- (Rd) (`ShapeFacts.readingsSorted`, docs/31 D77, D78): an unknown whose frozen reading is
 `Sort l` (D96) has the type `Sort l`; with `Good` and `CtxOk` it makes the checker's `sortOf` sound
 for the model (`sortOf_sound_stmt`). -/
@@ -1280,7 +1310,7 @@ def readingsSorted : Clause where
     | _ => none
 
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, etaNoSelf, etaOlder, readingsSorted, plantedFill, plantedAbs, nonCopyProof, untypedBindings, openFields, droppedUnderOpen]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, etaNoSelf, etaOlder, recordNamesEmpty, readingsSorted, plantedFill, plantedAbs, nonCopyProof, untypedBindings, openFields, droppedUnderOpen]
 
 /-! ## The sweep -/
 

@@ -241,42 +241,38 @@ theorem Ext.of_extOk {π : Nat → Nat} {st st' : MState} {s' : SState} {ρ' : A
     (hr : Rel { K with Δ := Δ' } ρ' φ π st' s') : Ext K ρ φ π st st' s' ρ' Δ' :=
   ⟨hsz, he.1, he.2.1, hr, he.2.2⟩
 
-/-- **The checker's access keeps its run context** (it ends borrows: no global or declaration
-changes). An end of a borrow of a dependent type may keep an unknown nothing names (`repackCheck`,
-docs/31 D35, measured): `DeltaOk` asks nothing of it. `Good` is needed: a state that already
-names the counter would have the kept unknown named, with `K.Δ` free there.
+/-- The same state, related to another reference state, as an extension by nothing. -/
+theorem Ext.same {π : Nat → Nat} {st : MState} {s' : SState} (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hs' : Rel K ρ φ π st s') : Ext K ρ φ π st st s' ρ K.Δ :=
+  ⟨Nat.le_refl _, fun _ _ => ⟨rfl, rfl⟩, by rw [runCtx_with_self K]; exact hctx,
+    by rw [runCtx_with_self K]; exact hs', by rw [runCtx_with_self K]; exact hg⟩
 
-FALSE as stated (the slice, docs/31 D57 (1)): an access can grow the table of unknowns (ending a
-borrow of a dependent type runs `repackCheck`, whose `lentUnknown` makes one with a frozen reading;
-D35's measured ends), and then `CtxOk.dec` asks the fixed `K.D` to be the checker's on inputs naming
-the new unknown (`declOf` of `.val (.abs σ)` reads `absDecl[σ]`), which `CtxOk K ρ st` leaves free
-since the checker's run on them fails before the access. The drop of one place no longer uses it
-(it reads the typing of places after the access from the induction hypothesis's [Access]);
-`movedPlace_step`'s filled-parent branch still does, and waits on the statement form for steps that
-grow the table (the spine lead's).
-
-RESTATED (docs/31 D76, D78): [Repack]'s new unknown is used for the check only, named by nothing in
-Ω, so the assignment and `Δ` stay; the decisions are the context's, aligned after the access
-(`hD`, main's fixed table, 2026-11-20), and the relation and `Good` the access left carry over. -/
-theorem access_ctx (fuel : Nat) (st st' : MState) (q : Place) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hD : DecTab K.D st')
-    (h : Runs (do Ochr.accessPath fuel q; Ochr.accessInside fuel q) st b () st')
-    {s' : SState} {π : Nat → Nat} (hs' : Rel K ρ φ π st' s') (hg' : Good K.dm K.M K.Γ ρ st') :
-    Ext K ρ φ π st st' s' ρ K.Δ := by
+/-- **The context after the drop's write of `⊥`** (leaf; it replaces the old `dropAtJoin_ctx`, whose
+other parts are now the induction hypothesis's [Access] and [End] in the extended form). The write
+changes one place's content to `⊥`: the declarations, globals and tables are the state's, `Δ` asks
+of no new unknown (the write names none), the decisions are aligned after it (`hD`, the tables), and
+`ShapeFacts` hold of a `⊥` part. What is open is the block's captures at the new state, whose entry
+set the write changes (main's item 4: measured on recorded states first, not proved). -/
+theorem ctx_botWrite (st : MState) (pos : Pos) (steps : List Step) (v' : Value)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hv : Value.updAt (fun _ => .bot) steps (valAt st.env pos) = some v')
+    (hD : DecTab K.D { st with env := Env.setAtE st.env pos v' }) :
+    CtxOk K ρ { st with env := Env.setAtE st.env pos v' } := by
   sorry
 
 /-- **The drop of one place where the place exists** (`dropOne_step`'s main case), assembled from
 the named obligations and the induction hypothesis's [Access] and [End]: missing, `⊥` or `⋆` (both
 sides do nothing); a borrow at a root (both end it); a copy (excluded: the join moves no copy);
-data (both access, then write `⊥`/`moved`). -/
+data (both access, then write `⊥`/`moved`). In the extended form (main's item 3): the access and
+the end extend the context, and the context after the write is `ctx_botWrite`. -/
 theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
     (st st' : MState) (q : Place) (s : SState) (π : Nat → Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
     (pos : Pos) (w : Value) (hck : ckVarPos st.env q.steps.1 = some pos)
-    (hw : (valAt st.env pos).follow q.steps.2 = some w)
+    (hw : (valAt st.env pos).follow q.steps.2 = some w) (hD : DecTab K.D st')
     (b : Nat) (h : Runs (Ochr.dropAtJoin (fuel + 1) q) st b () st') :
-    Rel K ρ φ π st' (joinDropOne K φ s q) ∧ Good K.dm K.M K.Γ ρ st' := by
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS), Ext K ρ φ π st st' (joinDropOne K φ s q) ρ' Δ' := by
   have hres := rel_resolve_ck K ρ φ st s π q pos hs hck
   have hj : joinDropOne K φ s q = dropAt K φ q pos q.steps.2 (accessLentPrefix pos q.steps.2 s) := by
     simp [joinDropOne, hres]
@@ -289,6 +285,7 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
       ⟨v, hv, hb, hbot, hproof, st₁, st₂, st₃, b₁, b₂, b₃, b₄, hcr, hacc, hlog, hset⟩
   · -- missing, ⊥ or ⋆: the checker does nothing
     rw [hst]
+    refine ⟨ρ, K.Δ, Ext.same K ρ φ hg hctx ?_⟩
     rcases hno with hn | hn
     · rw [hw] at hn; cases hn
     have hpt : ¬ IsTemp pos := by
@@ -340,7 +337,7 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
       simp only [hcopy, Bool.false_eq_true, if_false]
       split
       · -- the write cannot be made (the path passes through a moved part): nothing
-        exact ⟨hs, hg⟩
+        exact hs
       · -- a place already moved: the reference writes `moved` over `moved`, which changes nothing
         -- the relation reads (docs/31 D52)
         have hself := updAt_bot_self q.steps.2 _ hn
@@ -350,14 +347,16 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
         have hrel := botWrite_rel K ρ φ st s π f i q.steps.2 _ hs hg.2.2.1 hpb hsp hself hroot
           (fun l hl x hx hxp => hclr l hl x hx hxp) hplain hnat
         rw [setAtE_self_bind st.env f i hpb] at hrel
-        exact ⟨hrel, hg⟩
+        exact hrel
   · -- a borrow at a root: both end it
     have hsteps := follow_borrow_root hg.2.2.1 hp hbw
     have hval : valAt st.env pos = .borrow l w' := by
       rw [hsteps] at hbw; simpa [Value.follow] using hbw
     obtain ⟨hs₁, hg₁, hctx₁, henv₁⟩ := logEffect_rel K ρ φ st st₁ s π q "moves" b₁ hg hctx hs hlog
+    obtain ⟨X₁, hX₁⟩ := runs_logEffect_inv hlog
+    have hsz₁ : st.absTy.size ≤ st₁.absTy.size := by rw [hX₁]; exact Nat.le_refl _
     have hl : liveLoan st₁.env l = true := by rw [henv₁]; exact liveLoan_of_holder hp hval
-    obtain ⟨hs', hg'⟩ := (ih.at K ρ φ).endBorrow_step st₁ st' l s π hg₁ hctx₁ hs₁ hl b₂ hend
+    obtain ⟨hsz', ρ₂, Δ₂, e₂, hs'⟩ := (ih.at K ρ φ).endBorrow_step st₁ st' l s π hg₁ hctx₁ hs₁ hl hD b₂ hend
     have hsh : s.shape pos = some (π l) := by
       have hpt : ¬ IsTemp pos := by
         rcases pos with ⟨f, i⟩ | ⟨f, i⟩
@@ -368,29 +367,34 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
     have hd : dropAt K φ q pos [] s = s.endLabel (π l) := by
       unfold dropAt; rw [hsh]
     rw [hd]
-    exact ⟨hs', hg'⟩
+    exact ⟨ρ₂, Δ₂, Nat.le_trans hsz₁ hsz', fun σ hσ => e₂.1 σ (Nat.lt_of_lt_of_le hσ hsz₁), e₂.2.1, hs', e₂.2.2⟩
   · -- a copy: excluded
     obtain ⟨-, hc⟩ := copyRead_aligned K ρ φ fuel st st' s π q true b₁ hctx hs hcr
     rw [hcopy] at hc; cases hc
   · -- data: both access, then write
     obtain ⟨hst₁, -⟩ := copyRead_aligned K ρ φ fuel st st₁ s π q false b₁ hctx hs hcr
     rw [hst₁] at hacc
-    obtain ⟨hs₂, hg₂, hsh₂⟩ := (ih.at K ρ φ).access_step st st₂ q pos false s π hg hctx hs hres b₂ hacc
+    have hD₂ : DecTab K.D st₂ :=
+      hD.back ((hlog.grows (grows_logEffect _ _)).trans (hset.grows (grows_setPlace _ _)))
+    obtain ⟨hsz₂, ρ₂, Δ₂, e₂, hs₂⟩ := (ih.at K ρ φ).access_step st st₂ q pos false s π hg hctx hs hres hD₂ b₂ hacc
     simp only [Bool.false_and, Bool.false_eq_true, if_false] at hs₂
-    have hs₂' := (lentPrefix_absorbed K ρ φ st st₂ s π pos q.steps.2 v hg hs hp hv).mpr hs₂
-    obtain ⟨hs₃, hg₃, hsh₃, henv₃⟩ := Slice.logEffect_rel_shapes K ρ φ st₂ st₃ _ π q "moves" b₃ hg₂ hsh₂ hs₂' hlog
+    have hs₂' : Rel { K with Δ := Δ₂ } ρ₂ φ π st₂ ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2)) := by
+      rw [lentPrefix_absorbed_eq K ρ φ st s π pos q.steps.2 v hg hs hp hv]; exact hs₂
+    obtain ⟨hs₃, hg₃, hctx₃, henv₃⟩ := logEffect_rel { K with Δ := Δ₂ } ρ₂ φ st₂ st₃ _ π q "moves" b₃ e₂.2.2 e₂.2.1 hs₂' hlog
+    have hsh₃ := hctx₃.shapes
+    obtain ⟨X₃, hX₃⟩ := runs_logEffect_inv hlog
     have hdecl : declsOf ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2)) = declsOf s := by
       rw [declsOf_access, declsOf_accessLentPrefix]
     have hres₁ : resolve ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2)) q =
         some (pos, q.steps.2) := by rw [resolve_of_declsOf hdecl]; exact hres
     obtain ⟨pos'', v', hck'', hupd, hst'⟩ := runs_setPlace_inv hset
     have hpp : pos'' = pos := by
-      have := rel_resolve_ck K ρ φ st₃ _ π q pos'' hs₃ hck''
+      have := rel_resolve_ck { K with Δ := Δ₂ } ρ₂ φ st₃ _ π q pos'' hs₃ hck''
       rw [hres₁] at this
       simp only [Option.some.injEq, Prod.mk.injEq] at this
       exact this.1.symm
     rw [hpp] at hck'' hupd hst'
-    have hclear₂ := access_clears K ρ φ st₂ (accessLentPrefix pos q.steps.2 s) π pos q.steps.2 hg₂ hs₂'
+    have hclear₂ := access_clears { K with Δ := Δ₂ } ρ₂ φ st₂ (accessLentPrefix pos q.steps.2 s) π pos q.steps.2 e₂.2.2 hs₂'
     have hclear₃ : ∀ l, liveLoan st₃.env l = true → ∀ x ∈ Env.sitesOf st₃.env l, x.pos = pos →
         dataHit q.steps.2 x.path = false := by rw [henv₃]; exact hclear₂
     have hgrain₁ : GrainOk K.D K.Γ (scopeOf ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2))) q := by
@@ -429,9 +433,9 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
     have hcopy₀ : K.D.copy (K.D.placeDecl (scopeOf (accessLentPrefix pos q.steps.2 s)) q) = false := by
       rw [scopeOf_of_declsOf (declsOf_accessLentPrefix s pos q.steps.2)]; exact hcopy
     obtain ⟨f, i, hposfi, hpb, hsp, hroot, hplain, hnat⟩ :=
-      botWrite_hyps K ρ φ st₃ _ π q pos v' hg₃ hsh₃ hs₃ hck'' hgrain₁ hns₁ hupd
+      botWrite_hyps { K with Δ := Δ₂ } ρ₂ φ st₃ _ π q pos v' hg₃ hsh₃ hs₃ hck'' hgrain₁ hns₁ hupd
     subst hposfi
-    have hrel := botWrite_rel K ρ φ st₃ _ π f i q.steps.2 v' hs₃ hg₃.2.2.1 hpb hsp hupd hroot hclear₃ hplain hnat
+    have hrel := botWrite_rel { K with Δ := Δ₂ } ρ₂ φ st₃ _ π f i q.steps.2 v' hs₃ hg₃.2.2.1 hpb hsp hupd hroot hclear₃ hplain hnat
     -- the reference's write can be made: its reading of the position after its access is the
     -- meaning of the checker's value there (the relation, at the typed future), and writing `⊥`
     -- commutes with the meaning along a place at the grain (`mean_updAt_botS`, L2)
@@ -442,29 +446,20 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
         some y := by
       have hval : ((accessLentPrefix (.bind f i) q.steps.2 s).access (.bind f i) (dataHit q.steps.2)).valAt (.bind f i)
           (((accessLentPrefix (.bind f i) q.steps.2 s).access (.bind f i) (dataHit q.steps.2)).typedFuture φ) =
-          Env.mean K.dm K.M K.Γ ρ
+          Env.mean K.dm ({ K with Δ := Δ₂ } : RunCtx).M K.Γ ρ₂
             (fun l => ((accessLentPrefix (.bind f i) q.steps.2 s).access (.bind f i) (dataHit q.steps.2)).typedFuture φ (π l))
             st₃.env (.bind f i) :=
         (hs₃.sim.1 _ ⟨relF_typedFuture φ _, hs₃.typedFuture_typed φ⟩ (.bind f i) (by simp [IsTemp])).symm
-      obtain ⟨H, hH⟩ := envMean_ck K.dm K.M K.Γ ρ
+      obtain ⟨H, hH⟩ := envMean_ck K.dm ({ K with Δ := Δ₂ } : RunCtx).M K.Γ ρ₂
         (fun l => ((accessLentPrefix (.bind f i) q.steps.2 s).access (.bind f i) (dataHit q.steps.2)).typedFuture φ (π l)) hck''
       rw [hval, hH]
-      exact ⟨_, mean_updAt_botS K ρ _ q.steps.2 H _ _ v' hupd hplain.1 hplain.2 (hnat _)⟩
-    rw [dropAt_data K φ _ q (.bind f i) q.steps.2 hns₀ hupdR hcopy₀, hst']
-    exact ⟨hrel, botWrite_good K ρ st₃ (.bind f i) q.steps.2 v' hg₃ hpb hupd hroot hclear₃ hplain hnat⟩
-
-/-- **The checker's drop of one place keeps the run context** (`dropAtJoin` ends a borrow, accesses
-and writes: no global or declaration changes, and no unknown is NAMED, but an end's [Repack] may make
-one for its check, as [Access] does: `access_ctx`). The decisions aligned after the drop (`hD`,
-main's fixed table; as first stated, the context unchanged and no such hypothesis, it was false for
-the reason `access_ctx` was), the relation and `Good` the drop left carried over. Open: not tried. -/
-theorem dropAtJoin_ctx (fuel : Nat) (st st' : MState) (q : Place) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hD : DecTab K.D st')
-    (h : Runs (Ochr.dropAtJoin (fuel + 1) q) st b () st')
-    {s' : SState} {π : Nat → Nat} (hs' : Rel K ρ φ π st' s') (hg' : Good K.dm K.M K.Γ ρ st') :
-    Ext K ρ φ π st st' s' ρ K.Δ := by
-  sorry
-
+      exact ⟨_, mean_updAt_botS { K with Δ := Δ₂ } ρ₂ _ q.steps.2 H _ _ v' hupd hplain.1 hplain.2 (hnat _)⟩
+    rw [dropAt_data K φ _ q (.bind f i) q.steps.2 hns₀ hupdR hcopy₀]
+    have hsz : st.absTy.size ≤ st'.absTy.size := by rw [hst', hX₃]; exact hsz₂
+    rw [hst'] at hD hsz ⊢
+    exact ⟨ρ₂, Δ₂, hsz, e₂.1,
+      ctx_botWrite { K with Δ := Δ₂ } ρ₂ st₃ (.bind f i) q.steps.2 v' hg₃ hctx₃ hupd hD, hrel,
+      botWrite_good { K with Δ := Δ₂ } ρ₂ st₃ (.bind f i) q.steps.2 v' hg₃ hpb hupd hroot hclear₃ hplain hnat⟩
 
 /-! ## Records of refinements (the steps `refine` and `generalizeNeutral` are the induction
 hypothesis's fields `refine_step` and `generalizeNeutral_step`) -/

@@ -1,4 +1,5 @@
 import Ochr.Meaning.Steps.JoinNoop
+import Ochr.Meaning.Steps.EqJAsm
 import Ochr.Meaning.Steps.Slice.UpdAt
 
 /-!
@@ -357,12 +358,11 @@ it (`lentPrefix_some_of_fill`); at the parent's own path the two accesses are on
 access of the parent ends what the access of the prefix ends (`SState.access_absorb`, under
 `lentPrefix_absorbInv`: no live site above the prefix, its minimality; only the prefix's borrow at
 or below it, as a fill, (WF12)). Assembled. -/
-theorem fillPrefix_absorbed (st st' : MState) (s : SState) (π : Nat → Nat) (q p : Place) (pos : Pos) (c : Value)
+theorem fillPrefix_eq (st : MState) (s : SState) (π : Nat → Nat) (q p : Place) (pos : Pos) (c : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpar : parentOf q = some p)
     (hpos : resolve s q = some (pos, q.steps.2)) (hc : ckContent st.env p = some c)
-    (hfill : Ochr.fillHoles st.env c ≠ [])
-    (hs' : Rel K ρ φ π st' (s.access pos (dataHit p.steps.2))) :
-    Rel K ρ φ π st' (accessLentPrefix pos q.steps.2 s) := by
+    (hfill : Ochr.fillHoles st.env c ≠ []) :
+    accessLentPrefix pos q.steps.2 s = s.access pos (dataHit p.steps.2) := by
   obtain ⟨ψ, hl, hψp⟩ := lentPrefix_some_of_fill K ρ φ st s π q p pos c hg hs hpar hpos hc hfill
   unfold ckContent at hc
   obtain ⟨pos', hck, hfol⟩ := Option.bind_eq_some_iff.mp hc
@@ -371,15 +371,13 @@ theorem fillPrefix_absorbed (st st' : MState) (s : SState) (π : Nat → Nat) (q
   simp only [Option.some.injEq, Prod.mk.injEq] at hpos'
   obtain ⟨rfl, -⟩ := hpos'
   have hp := ckVarPos_mem hck
-  have e : accessLentPrefix pos q.steps.2 s = s.access pos (dataHit p.steps.2) := by
-    unfold accessLentPrefix
-    rw [hl]
-    simp only
-    by_cases hk : pathKey ψ = pathKey p.steps.2
-    · rw [dataHit_congr hk]
-    · have hI := lentPrefix_absorbInv K ρ φ st s π pos q.steps.2 p.steps.2 ψ c hg hs hp hl hfol hψp hk
-      exact SState.access_absorb hI hψp
-  rw [e]; exact hs'
+  unfold accessLentPrefix
+  rw [hl]
+  simp only
+  by_cases hk : pathKey ψ = pathKey p.steps.2
+  · rw [dataHit_congr hk]
+  · have hI := lentPrefix_absorbInv K ρ φ st s π pos q.steps.2 p.steps.2 ψ c hg hs hp hl hfol hψp hk
+    exact SState.access_absorb hI hψp
 
 /-- `accessInside` stops where the place's content holds no live loan. -/
 theorem accessInside_final (p : Place) : ∀ (fuel : Nat) {st st' : MState} {b : Nat} {u : Unit},
@@ -474,24 +472,36 @@ theorem etaFresh_sim (fuel : Nat) (st st' : MState) (p : Place) (σ : Nat) (n : 
   sorry
 
 /-- **`placeType?` in the simulation form** (its field and parameter types run on private copies:
-Ω is the snapshot's, and what the copies keep is assigned by an extension). Open. -/
-theorem placeTypeQ_sim (fuel : Nat) (st st' : MState) (p : Place) (T? : Option Value) (s : SState)
-    (π : Nat → Nat) (b : Nat)
+Ω is the snapshot's, and what the copies keep is assigned by an extension). Assembled: the induction
+hypothesis's `placeTypeQ_step` (a private computation) and `Rel.kept`. -/
+theorem placeTypeQ_sim (fuel : Nat) (ih : StepsIHBelow fuel) (st st' : MState) (p : Place) (T? : Option Value)
+    (s : SState) (π : Nat → Nat) (b : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (h : Runs (Ochr.placeType? fuel p) st b T? st') (hD : DecTab K.D st') :
     ∃ ρ' Δ', Ext K ρ φ π st st' s ρ' Δ' ∧ st'.env = st.env := by
+  obtain ⟨hk, ρ', Δ', e⟩ := (ih.at K ρ φ).placeTypeQ_step st st' p T? hg hctx hD b h
+  exact ⟨ρ', Δ', ⟨hk.2.2.2.2.1, e.1, e.2.1, Rel.kept K ρ φ hg hctx hs hk e, e.2.2⟩, hk.1⟩
+
+/-- **A sealed program this world already generalised: its record's value means it**
+(`recordedNeutral`): `Good`'s path condition for the record `n := σ` makes `σ`, refined by the
+refinements made since (`expandRefs`), mean `⟦n⟧`; the value names typed unknowns and holds no loan
+((WF6), (WF11)). Open. -/
+theorem recordedNeutral_ok (st : MState) (n r : Value) (b' : Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hr : Runs (Ochr.recordedNeutral n) st b' (some r) st) : NeutralOk K ρ st n r := by
   sorry
 
-/-- **A sealed program this world already generalised is its record's value** (`recordedNeutral`,
-then `substEnv`): `Good`'s path condition for the record `n := σ` makes `σ`, refined by the
-refinements made since (`expandRefs`), mean `⟦n⟧`, so the substitution changes no meaning (the
-substitution lemma for a sealed program replaced by what it means). Open. -/
-theorem recorded_sim (fuel : Nat) (st st' : MState) (n r : Value) (s : SState) (π : Nat → Nat) (b b' : Nat)
+/-- The record read back and substituted (assembled: `recordedNeutral_ok`, then the induction
+hypothesis's `substEnv_neutral_step`). -/
+theorem recorded_sim (fuel : Nat) (ih : StepsIHBelow fuel) (st st' : MState) (n r : Value) (s : SState)
+    (π : Nat → Nat) (b b' : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hr : Runs (Ochr.recordedNeutral n) st b' (some r) st)
     (h : Runs (Ochr.substEnv fuel n r true) st b () st') (hD : DecTab K.D st') :
     ∃ ρ' Δ', Ext K ρ φ π st st' s ρ' Δ' := by
-  sorry
+  obtain ⟨hsh, ρ', Δ', e, hrel⟩ := (ih.at K ρ φ).substEnv_neutral_step st st' n r hg hctx s π hs
+    (recordedNeutral_ok K ρ st n r b' hg hctx hr) hD b h
+  exact ⟨ρ', Δ', Ext.of_extOk K ρ φ hsh.2.2.2.1 e hrel⟩
 
 /-- **A sealed program in Ω with no live hole holds no loan at all**: a loan it holds (outside a
 recorded reading, (WF15)) is in its list of loans, so it is live ((L), [End] substitutes a loan
@@ -742,12 +752,13 @@ theorem mpTail_sim (fuel : Nat) (ih : StepsIHBelow fuel)
       obtain ⟨u, st₄, b₄, hacc, h4⟩ := Runs.bind_assoc_inv h3
       have hres₁ : resolve s₁ p = some (pos, p.steps.2) := by
         rw [resolve_alp hs₁q]; exact resolve_parent hpar hpos
-      obtain ⟨hrel₄, hg₄, -⟩ := (ih.at { K with Δ := Δ₁ } ρ₁ φ).access_step st₁ st₄ p pos false s₁ π hg₁ hctx₁ hrel₁ hres₁ b₃ hacc
+      have hD₄ : DecTab K.D st₄ := hD.of_rest (by grows_go; all_goals exact grows_mpFinal _ _) h4
+      obtain ⟨hsz₄, ρ₄, Δ₄, e₄, hrel₄⟩ := (ih.at { K with Δ := Δ₁ } ρ₁ φ).access_step st₁ st₄ p pos false s₁ π hg₁ hctx₁
+        hrel₁ hres₁ hD₄ b₃ hacc
       simp only [Bool.false_and, Bool.false_eq_true, ↓reduceIte] at hrel₄
-      have hrel₄' := fillPrefix_absorbed { K with Δ := Δ₁ } ρ₁ φ st₁ st₄ s₁ π q p pos c hg₁ hrel₁ hpar
-        (by rw [resolve_alp hs₁q]; exact hpos) hc hfill' hrel₄
-      have E₂ := access_ctx { K with Δ := Δ₁ } ρ₁ φ fuel st₁ st₄ p b₃ hg₁ hctx₁ (hD.of_rest (by grows_go; all_goals exact grows_mpFinal _ _) h4) hacc
-        hrel₄' hg₄
+      rw [← fillPrefix_eq { K with Δ := Δ₁ } ρ₁ φ st₁ s₁ π q p pos c hg₁ hrel₁ hpar
+        (by rw [resolve_alp hs₁q]; exact hpos) hc hfill'] at hrel₄
+      have E₂ := Ext.of_extOk { K with Δ := Δ₁ } ρ₁ φ hsz₄ e₄ hrel₄
       obtain ⟨x, st₅, b₅, hget, h5⟩ := Runs.bind_inv h4
       obtain ⟨hx, hst₅⟩ := runs_get_inv hget
       subst x; subst st₅
@@ -758,10 +769,10 @@ theorem mpTail_sim (fuel : Nat) (ih : StepsIHBelow fuel)
       simp only [hclr, List.isEmpty_nil, Bool.not_true, Bool.false_eq_true, ↓reduceIte] at h6
       have hs₂q := alp_again hidem hs₁q (.inr rfl)
       obtain ⟨ρ₃, Δ₃, s₃, hsz₃, hag₃, hs₃or, hctx₃, hrel₃, hg₃, hout₃⟩ :=
-        (ih.at { K with Δ := Δ₁ } ρ₁ φ).movedPlace_step st₄ st' q q' pos (accessLentPrefix pos q.steps.2 s₁) π
+        (ih.at { K with Δ := Δ₄ } ρ₄ φ).movedPlace_step st₄ st' q q' pos (accessLentPrefix pos q.steps.2 s₁) π
           E₂.good E₂.ctx E₂.rel (by rw [resolve_alp hs₂q]; exact hpos)
           (by rw [scopeOf_alp hs₂q]; exact hgrain) hD b₆ h6
-      have E₃ : Ext { K with Δ := Δ₁ } ρ₁ φ π st₄ st' s₃ ρ₃ Δ₃ := ⟨hsz₃, hag₃, hctx₃, hrel₃, hg₃⟩
+      have E₃ : Ext { K with Δ := Δ₄ } ρ₄ φ π st₄ st' s₃ ρ₃ Δ₃ := ⟨hsz₃, hag₃, hctx₃, hrel₃, hg₃⟩
       exact ⟨ρ₃, Δ₃, s₃, alp_again hidem hs₂q hs₃or, (E₁.trans K ρ φ E₂).trans K ρ φ E₃, hout₃⟩
     · -- no fill: the parent's content decides
       rename_i hnf
@@ -812,7 +823,7 @@ theorem mpTail_sim (fuel : Nat) (ih : StepsIHBelow fuel)
         -- the place asked again
         rename_i t
         obtain ⟨T?, st₅, b₅, hpt, h5⟩ := Runs.bind_inv h4
-        obtain ⟨ρ₂, Δ₂, E₂, henv₅⟩ := placeTypeQ_sim { K with Δ := Δ₁ } ρ₁ φ fuel st₁ st₅ p T? s₁ π b₄ hg₁ hctx₁ hrel₁ hpt
+        obtain ⟨ρ₂, Δ₂, E₂, henv₅⟩ := placeTypeQ_sim { K with Δ := Δ₁ } ρ₁ φ fuel ih st₁ st₅ p T? s₁ π b₄ hg₁ hctx₁ hrel₁ hpt
           (hD.of_rest (by grows_go; all_goals exact grows_mpFinal _ _) h5)
         have E₁₂ := E₁.trans K ρ φ E₂
         split at h5
@@ -829,7 +840,7 @@ theorem mpTail_sim (fuel : Nat) (ih : StepsIHBelow fuel)
             · -- generalised before in this world: its record's value
               rename_i r
               obtain ⟨u, st₈, b₈, hsub, h8⟩ := Runs.bind_inv h7
-              obtain ⟨ρ₃, Δ₃, E₃⟩ := recorded_sim { K with Δ := Δ₂ } ρ₂ φ fuel st₅ st₈ (.sealed t) r s₁ π b₇ b₆
+              obtain ⟨ρ₃, Δ₃, E₃⟩ := recorded_sim { K with Δ := Δ₂ } ρ₂ φ fuel ih st₅ st₈ (.sealed t) r s₁ π b₇ b₆
                 E₂.good E₂.ctx E₂.rel hrn hsub (hD.of_rest (grows_movedPlace _ _) h8)
               obtain ⟨ρ₄, Δ₄, s₄, hsz₄, hag₄, hs₄or, hctx₄, hrel₄, hg₄, hout₄⟩ :=
                 (ih.at { K with Δ := Δ₃ } ρ₃ φ).movedPlace_step st₈ st' q q' pos s₁ π E₃.good E₃.ctx E₃.rel hpos₁
@@ -1064,12 +1075,13 @@ theorem dropOne_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) :
     have hgr₁ : GrainOk K.D K.Γ (scopeOf s₁) q := by rw [scopeOf_alp hs₁or]; exact hgrain
     have hcp₁ : K.D.copy (K.D.placeDecl (scopeOf s₁) q) = false := by
       rw [scopeOf_alp hs₁or]; exact hcopy
-    obtain ⟨hrel, hgood⟩ := dropOne_exists { K with Δ := Δ₁ } ρ₁ φ fuel ih st₁ st' q s₁ π hg₁ hctx₁ hrel₁ hgr₁ hcp₁
-      pos' w hck' hw' b₁ hdj
-    have E₂ := dropAtJoin_ctx { K with Δ := Δ₁ } ρ₁ φ fuel st₁ st' q b₁ hg₁ hctx₁ hD hdj hrel hgood
+    obtain ⟨ρ₂, Δ₂, E₂⟩ := dropOne_exists { K with Δ := Δ₁ } ρ₁ φ fuel ih st₁ st' q s₁ π hg₁ hctx₁ hrel₁ hgr₁ hcp₁
+      pos' w hck' hw' hD b₁ hdj
     have hrel₂ := E₂.rel
     rw [joinDropOne_alp { K with Δ := Δ₁ } φ hpos (alp_idem pos q.steps.2 s) hs₁or] at hrel₂
-    exact ⟨ρ₁, Δ₁, Nat.le_trans hsz₁ E₂.size, hag₁, E₂.ctx, hrel₂, E₂.good⟩
+    exact ⟨ρ₂, Δ₂, Nat.le_trans hsz₁ E₂.size,
+      fun σ hσ => ⟨((E₂.agree σ (Nat.lt_of_lt_of_le hσ hsz₁)).1).trans (hag₁ σ hσ).1,
+        ((E₂.agree σ (Nat.lt_of_lt_of_le hσ hsz₁)).2).trans (hag₁ σ hσ).2⟩, E₂.ctx, hrel₂, E₂.good⟩
   · have hj := joinDropOne_noop { K with Δ := Δ₁ } ρ₁ φ st₁ s s₁ π q q' pos hg₁ hctx₁ hrel₁ hs₁or hpos
       hgrain hcopy ⟨hroot, hpre⟩ hbt
     obtain ⟨pos', hck', hcases⟩ := runs_dropAtJoin_inv hdj

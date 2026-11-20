@@ -100,3 +100,65 @@ theorem proof_mem_level (dm : DataModel) (T : TyM) (h : Sem.proof ∈ₛ[dm.read
   | t2 A c => obtain ⟨a, ha⟩ := h; exact Code2.enc_proof_level dm c a ha
 
 end Ochr.Meaning
+
+/-! ## What `PiFits` reads of the levels (the knot's split; `Steps.PiFits`, `Steps.PiCallable`) -/
+
+namespace Ochr.Meaning
+
+/-- **A canonical code whose level is at most `l` fits level `l`** (`1 ≤ l`): levels `0` and `1` are
+carried at tier `0`, level `2` at tier `1`, level `3` at tier `2`. -/
+theorem levelFit_of_level (T : TyM) (hc : T.Canon) {s l : Nat} (hs : T.level = some s) (hsl : s ≤ l)
+    (hl : 1 ≤ l) : LevelFit l T := by
+  cases T with
+  | t0 A c => exact hl
+  | t1 A c =>
+    cases c with
+    | lift => exact hc.elim
+    | univ0 | univ1 | pi => simp [TyM.level, Code1.level] at hs; subst hs; exact hsl
+  | t2 A c =>
+    cases c with
+    | lift => exact hc.elim
+    | univ2 | pi => simp [TyM.level, Code2.level] at hs; subst hs; exact hsl
+
+/-- **A canonical code of level `0` is a proposition.** -/
+theorem prop_of_level_zero (T : TyM) (hc : T.Canon) (hs : T.level = some 0) : ∃ P, T = TyM.prop P := by
+  cases T with
+  | t0 A c =>
+    cases c with
+    | prop P => exact ⟨P, rfl⟩
+    | _ => simp [TyM.level, Code0.level] at hs
+  | t1 A c =>
+    cases c with
+    | lift => exact hc.elim
+    | _ => simp [TyM.level, Code1.level] at hs
+  | t2 A c =>
+    cases c with
+    | lift => exact hc.elim
+    | _ => simp [TyM.level, Code2.level] at hs
+
+/-- **A member of `Sort l` is a canonical code**, at the bounded levels: the universes' carriers hold
+codes at their own level (`Sort 2`'s, level-1 codes of level `2`, never a lifted one). -/
+theorem mem_univ_canon (R : DataRead) (s : Sem) :
+    ∀ l, l ≤ 2 → s ∈ₛ[R] TyM.univ l → ∃ T, s = .ty T ∧ T.Canon
+  | 0, _, ⟨a, h⟩ => ⟨_, h.symm, trivial⟩
+  | 1, _, ⟨a, h⟩ => ⟨_, h.symm, trivial⟩
+  | 2, _, ⟨⟨A, c, hc⟩, h⟩ => by
+    refine ⟨_, h.symm, ?_⟩
+    cases c with
+    | lift B c' =>
+      exfalso
+      cases c' <;> simp [Code1.level, Code0.level] at hc
+    | _ => trivial
+  | _ + 3, h, _ => absurd h (by omega)
+
+/-- **A Π-type's code has a level only at the bounded sorts** (`l ≤ 3`; above, `piTyAt` is `err`). -/
+theorem le_three_of_piTyAt_level (R : DataRead) (ds : List PiDom) (out : PiCod) {l l' : Nat}
+    (h : (piTyAt R l ds out).level = some l') : l ≤ 3 := by
+  match l, h with
+  | 0, _ => omega
+  | 1, _ => omega
+  | 2, _ => omega
+  | 3, _ => omega
+  | _ + 4, h => simp [piTyAt, TyM.level, TyM.err, Code0.level] at h
+
+end Ochr.Meaning

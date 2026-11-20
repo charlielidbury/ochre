@@ -22,13 +22,6 @@ open Ochr Ochr.Meaning.Steps
 
 universe u
 
-/-- **A returned borrow is good**: the body returns a label `k`, and at every future, the borrow
-parameters' final contents with `k` fixed to two members of the returned borrow's content type
-differ unless the members are equal (the backward function is injective). -/
-def RetGood (R : DataRead) (out : PiCod) (args : List Sem) (o : BodyOut) : Prop :=
-  ∃ k, o.retLabel = some k ∧ ∀ (ψ : Future) (v w : Sem), v ∈ₛ[R] out.cod args → w ∈ₛ[R] out.cod args →
-    o.finals.map (· (ψ.upd k v)) = o.finals.map (· (ψ.upd k w)) → v = w
-
 section
 variable (L : Lvl.{u})
 
