@@ -39,6 +39,7 @@ structure StepsIH (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Pr
   callType_step : callType_step_stmt K ρ φ fuel
   recCheck_sound : recCheck_sound_stmt K ρ φ fuel
   joinEntry : joinEntry_stmt K ρ φ fuel
+  movedPlace_step : movedPlace_step_stmt K ρ φ fuel
   dropOne_step : dropOne_step_stmt K ρ φ fuel
   joinDrop_step : joinDrop_step_stmt K ρ φ fuel
   evalMatch_step : evalMatch_step_stmt K ρ φ fuel
