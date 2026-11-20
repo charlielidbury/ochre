@@ -49,6 +49,7 @@ theorem stepsIH_succ (fuel : Nat) (ih : StepsIHBelow fuel) (K : RunCtx) (ρ : As
       substV_abs_step := substV_abs_step K ρ φ fuel ih
       substEnv_loan_step := substEnv_loan_step K ρ φ fuel ih
       substEnv_abs_step := substEnv_abs_step K ρ φ fuel ih
+      substEnv_neutral_step := substEnv_neutral_step K ρ φ fuel ih
       nfSealed_step := nfSealed_step K ρ φ fuel ih
       canonNeutral_step := canonNeutral_step K ρ φ fuel ih
       renormAll_step := renormAll_step K ρ φ fuel ih
@@ -79,6 +80,7 @@ theorem stepsIH_succ (fuel : Nat) (ih : StepsIHBelow fuel) (K : RunCtx) (ρ : As
       idType_step := idType_step K ρ φ fuel ih
       owners_sound := owners_sound K ρ φ fuel ih
       evalType_step := evalType_step K ρ φ fuel ih
+      placeTypeQ_step := placeTypeQ_step K ρ φ fuel ih
       piSort_aligned := piSort_aligned K ρ φ fuel ih
       capture_step := capture_step K ρ φ fuel ih
       piShape_step := piShape_step K ρ φ fuel ih
