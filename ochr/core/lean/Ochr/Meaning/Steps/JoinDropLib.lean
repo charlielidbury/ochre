@@ -164,11 +164,11 @@ theorem declsOf_joinDropOne (K : RunCtx) (φ : Future) (s : SState) (q : Place) 
     generalize accessLentPrefix pos steps s = s₁
     unfold dropAt
     split
-    all_goals first
-      | rfl
-      | (split
-         · exact declsOf_endLabel _ _
-         · split
+    · exact declsOf_endLabel _ _
+    · split
+      all_goals first
+        | rfl
+        | (split
            · rfl
            · exact (declsOf_setAt _ _ _).trans (declsOf_access _ _ _))
   · rfl

@@ -452,11 +452,11 @@ theorem dropAt_ordKeep (q : Place) {pos : Pos} (steps : List Step) (hp : ¬ IsTe
     OrdKeep L s (dropAt K φ q pos steps s) := by
   unfold dropAt
   split
-  all_goals first
-    | exact OrdKeep.refl s
-    | (split
-       · exact ordKeep_endLabel hi.2.1 _
-       · split
+  · exact ordKeep_endLabel hi.2.1 _
+  · split
+    all_goals first
+      | exact OrdKeep.refl s
+      | (split
          · exact OrdKeep.refl s
          · exact (ordKeep_access hi pos _).trans (envLe_access s pos _) (ordKeep_setAt hp _))
 
