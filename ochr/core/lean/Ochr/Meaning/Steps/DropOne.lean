@@ -27,9 +27,9 @@ the order the team lead set (model risk first):
    at either holder is inside its content and the two are not lent at each other's holders; it is
    used inside the [Access] statement, an induction-hypothesis field.
 4. The checker's place and the reference's: `rel_resolve` (through `Rel.skel`).
-5. `refine` and `generalizeNeutral` in the simulation form with an extended context
-   (both assembled from smaller obligations in `Steps/DropOneAsm.lean`, `refine_sim'` and
-   `generalizeNeutral_sim`; the first forms, unused, are deleted).
+5. `refine` and `generalizeNeutral` in the simulation form with an extended context: the
+   induction hypothesis's `refine_step` and `generalizeNeutral_step` (the slice, 2026-11-20; the
+   simulation-form leaves they made redundant are deleted).
 6. `movedPlace`'s branches, last: the place exists (`movedPlace_exists'`, PROVED in `Steps/DropRuns.lean`), the lent prefix
    absorbed by the access at an instance ((WF12), `lentPrefix_absorbed`); the other branches (a
    filled parent accessed whole, an unknown or a sealed program of a one-constructor type refined,

@@ -1239,6 +1239,31 @@ def etaHintFree : Clause where
   check st := st.etaRefs.filterMap fun (σ, r) =>
     if topHintFree st.inds r then none else some ⟨"an η record reads the hint", s!"σ{σ} := {clip r.pp}"⟩
 
+/-- (Hη≠) (`ShapeFacts.etaNoSelf`, the slice, main's decision 2026-11-20): no η record names its own
+unknown (`ctorRefinement` makes its fields fresh; the parameters it records are the unknown's
+type's). What `refine_step`'s `RefineOk` asks of a recorded refinement. -/
+def etaNoSelf : Clause where
+  name := "(Hη≠) an η record does not name its unknown"
+  premises := [("an η record", fun st => !st.etaRefs.isEmpty)]
+  check st := st.etaRefs.filterMap fun (σ, r) =>
+    if r.hasAbs σ then some ⟨"an η record names its unknown", s!"σ{σ} := {clip r.pp}"⟩ else none
+
+/-- REPORT (the stronger form main asked for first, false): where an η record names an unknown made
+before its own, in its recorded parameters or in its fields. -/
+def etaOlder : Clause where
+  name := "(report) an η record naming an older unknown"
+  report := true
+  premises := [("an η record", fun st => !st.etaRefs.isEmpty)]
+  check st := st.etaRefs.filterMap fun (σ, r) =>
+    let old (v : Value) : Bool := v.anyAtom (fun | .abs τ => decide (τ < σ) | _ => false)
+    if old r then
+      let (inPs, inFs) := match r with
+        | .ind _ _ _ ps fs => (ps.any old, fs.any old)
+        | _ => (false, true)
+      some ⟨s!"an η record names an older unknown (in its parameters: {inPs}, in its fields: {inFs})",
+        s!"σ{σ} := {clip r.pp}; params {match r with | .ind _ _ _ ps _ => ", ".intercalate (ps.map fun (p : Value) => p.pp) | _ => "-"}"⟩
+    else none
+
 /-- (Rd) (`ShapeFacts.readingsSorted`, docs/31 D77, D78): an unknown whose frozen reading is
 `Sort l` (D96) has the type `Sort l`; with `Good` and `CtxOk` it makes the checker's `sortOf` sound
 for the model (`sortOf_sound_stmt`). -/
@@ -1255,7 +1280,7 @@ def readingsSorted : Clause where
     | _ => none
 
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, readingsSorted, plantedFill, plantedAbs, nonCopyProof, untypedBindings, openFields, droppedUnderOpen]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, etaNoSelf, etaOlder, readingsSorted, plantedFill, plantedAbs, nonCopyProof, untypedBindings, openFields, droppedUnderOpen]
 
 /-! ## The sweep -/
 
