@@ -1,5 +1,5 @@
 import Ochr.Meaning.Rules.Sound
-import Ochr.Meaning.Rules.Refine
+import Ochr.Meaning.Rules.RefineEq
 
 /-!
 # The rules trial, part C: A and B composed into the area's statements
@@ -13,7 +13,8 @@ existing statement's hypotheses:
   values inside `v` and `w`; it is what the existing statement was missing), (ii) the premises'
   soundness at the machine's instance (`hprem`: the generic call of each function pair and the
   generic arguments of each Π-pair the comparison made stand for every instance; a statement about
-  machine runs from the states the comparison reached), and (iii) `CounterMono` for `KeptAfter`.
+  machine runs from the states the comparison reached), and (iii) `GenericKept` (B's one assumption:
+  the generic sub-computations keep the state as a private computation does).
   `Good` and `CtxOk` are not used by the composition: they are what (ii) needs.
 - `mkEqM_C` (beside `mkEqM_step_stmt`, false): likewise, with part A's hypotheses on the sides.
 - `ExtOk` is not produced by A or B. On this route it splits as a machine-side fact, that the run
@@ -31,17 +32,29 @@ section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- **(C) `conv`**, from A and B. -/
-theorem conv_C (hmono : CounterMono) (E : Syn) (hs : SynSound K ρ φ E) (fuel : Nat) (st st' : MState)
+theorem conv_C (hk : GenericKept StateRel.reach) (E : Syn) (hs : SynSound K ρ φ E) (fuel : Nat) (st st' : MState)
     (v w : Value) (bh : Nat)
     (hbridge : ConvV Syn.machine (machPremises st) st.globals v w → ConvV E (machPremises st) st.globals v w)
     (hprem : PremSound K ρ φ (machPremises st))
     (h : Runs (Ochr.conv fuel v w) st bh true st') (T : TyM) :
     meanV K ρ φ (.plain T) v = meanV K ρ φ (.plain T) w ∧ KeptAfter st st' := by
-  obtain ⟨hd, hk⟩ := conv_refine hmono fuel st st' v w bh h
-  exact ⟨conv_sound_at K ρ φ hs hprem (hbridge hd) T, hk⟩
+  obtain ⟨hd, hkept⟩ := conv_refine' hk fuel st st' v w bh h
+  exact ⟨conv_sound_at K ρ φ hs hprem (hbridge hd) T, hkept⟩
+
+/-- **(C) `conv` in the target form** (a checker whose comparisons restore their start state):
+the meaning part, and the state unchanged; the premises are runs from the comparison's own start. -/
+theorem conv_C_same (hk : GenericKept StateRel.same) (E : Syn) (hs : SynSound K ρ φ E) (fuel : Nat)
+    (st st' : MState) (v w : Value) (bh : Nat)
+    (hbridge : ConvV Syn.machine (machPremisesR (fun a b => b = a) st) st.globals v w →
+      ConvV E (machPremisesR (fun a b => b = a) st) st.globals v w)
+    (hprem : PremSound K ρ φ (machPremisesR (fun a b => b = a) st))
+    (h : Runs (Ochr.conv fuel v w) st bh true st') (T : TyM) :
+    meanV K ρ φ (.plain T) v = meanV K ρ φ (.plain T) w ∧ st' = st := by
+  obtain ⟨hd, he⟩ := conv_refine_same hk fuel st st' v w bh h
+  exact ⟨conv_sound_at K ρ φ hs hprem (hbridge hd) T, he⟩
 
 /-- **(C) `mkEqM`**, from A and B, with part A's hypotheses on the sides. -/
-theorem mkEqM_C (hmono : CounterMono) (E : Syn) (hs : SynSound K ρ φ E) (hl : LibOk K ρ φ)
+theorem mkEqM_C (hk : EqKept StateRel.reach) (E : Syn) (hs : SynSound K ρ φ E) (hl : LibOk K ρ φ)
     (fuel : Nat) (st st' : MState) (A a b P : Value) (bh : Nat) (hΓ : K.Γ = st.inds)
     (hbridge : EqTo Syn.machine (machPremises st) st.globals st.inds A a b P →
       EqTo E (machPremises st) st.globals st.inds A a b P)
@@ -54,10 +67,10 @@ theorem mkEqM_C (hmono : CounterMono) (E : Syn) (hs : SynSound K ρ φ E) (hl : 
     (h : Runs (Ochr.mkEqM fuel A a b) st bh P st') :
     KeptAfter st st' ∧ ∀ hint, meanV K ρ φ hint P =
       .ty (TyM.prop (meanV K ρ φ (.plain (tyOf K ρ φ A)) a = meanV K ρ φ (.plain (tyOf K ρ φ A)) b)) := by
-  obtain ⟨hd, hk⟩ := mkEqM_refine hmono fuel st st' A a b P bh h
+  obtain ⟨hd, hkept⟩ := mkEqM_refine' hk fuel st st' A a b P bh h
   have hd' := hbridge hd
   rw [← hΓ] at hd'
-  exact ⟨hk, eqTo_sound K ρ φ hs hprem hl hd' ha hb hma hmb hda hdb⟩
+  exact ⟨hkept, eqTo_sound K ρ φ hs hprem hl hd' ha hb hma hmb hda hdb⟩
 
 /-- A side of an `Eq`: `⊥` (D84: moved on every path), or a whole member of the type. -/
 def SideOk (A a : Value) : Prop :=
@@ -80,7 +93,7 @@ theorem SideOk.not_moved {A a : Value} (h : SideOk K ρ φ A a) (hb : a ≠ .bot
 their constructor values are of data declarations (membership does not give this: a `Prop`
 inductive's values all mean `⋆`, so [Eq-disj] between two of its constructors would compute
 `False` for `⋆ = ⋆`; the checker never builds one, D42, `ShapeFacts` (N) for Ω). -/
-theorem mkEqM_C' (hmono : CounterMono) (E : Syn) (hs : SynSound K ρ φ E) (hl : LibOk K ρ φ)
+theorem mkEqM_C' (hk : EqKept StateRel.reach) (E : Syn) (hs : SynSound K ρ φ E) (hl : LibOk K ρ φ)
     (fuel : Nat) (st st' : MState) (A a b P : Value) (bh : Nat) (hΓ : K.Γ = st.inds)
     (hbridge : EqTo Syn.machine (machPremises st) st.globals st.inds A a b P →
       EqTo E (machPremises st) st.globals st.inds A a b P)
@@ -90,7 +103,7 @@ theorem mkEqM_C' (hmono : CounterMono) (E : Syn) (hs : SynSound K ρ φ E) (hl :
     (h : Runs (Ochr.mkEqM fuel A a b) st bh P st') :
     KeptAfter st st' ∧ ∀ hint, meanV K ρ φ hint P =
       .ty (TyM.prop (meanV K ρ φ (.plain (tyOf K ρ φ A)) a = meanV K ρ φ (.plain (tyOf K ρ φ A)) b)) :=
-  mkEqM_C K ρ φ hmono E hs hl fuel st st' A a b P bh hΓ hbridge hprem (ha.pmem K ρ φ) (hb.pmem K ρ φ)
+  mkEqM_C K ρ φ hk E hs hl fuel st st' A a b P bh hΓ hbridge hprem (ha.pmem K ρ φ) (hb.pmem K ρ φ)
     (ha.not_moved K ρ φ) (hb.not_moved K ρ φ) hda hdb h
 
 end

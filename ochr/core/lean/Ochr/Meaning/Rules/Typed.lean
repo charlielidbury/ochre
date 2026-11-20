@@ -81,7 +81,11 @@ inductive HWT : TyM → Value → Prop
       DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain T) (.ind t c h ps fs)) T →
       K.Γ.find? (·.name == t) = some d → T.dataRec? = some (t, r) →
       HWTParams d 0 [] ps → HWTFields d r c 0 [] fs → HWT T (.ind t c h ps fs)
-  | tRef {T : TyM} {A : Value} : HWT T A → HWT T (.tRef A)
+  /-- a borrow type's content type at a universe, as `tEq` types its type (`⟦&A⟧` reads `A` at
+  hint `err`; as first written this was `HWT T A → HWT T (.tRef A)`, typing `A` at the hint `T`,
+  which is not where `⟦&A⟧` reads it, and with no membership of `&A` itself) -/
+  | tRef {T : TyM} {A : Value} {l : Nat} : DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain T) (.tRef A)) T →
+      HWT (TyM.univ l) A → HWT T (.tRef A)
   | borrow {T : TyM} {l : Nat} {a : Value} : HWT T a → HWT T (.borrow l a)
   | gloan {T : TyM} {l : Nat} {a : Value} : HWT T a → HWT T (.gloan l a)
   /-- code: each value written in it well typed at some type (all a term-free predicate can say) -/

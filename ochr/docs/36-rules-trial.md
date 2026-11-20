@@ -15,9 +15,11 @@ Build each with `cd ochr/core/lean && taskset -c 0-14 lake build Ochr.Meaning.Ru
 | `Conv.lean` | R: the relations (section 3) | definitions |
 | `Sound.lean` | A's statements in the untyped-parts form: `ValAlike`, `TermAlike`, `SynSound`, `PremSound`, `LibOk`, `convV_sound`, `convH_sound`, `convT_sound`, `conv_sound_at`, `eqTo_sound` | `runT_val_fst`, `ValAlike.mean`, `conv_sound_at` (from `convV_sound`) proved; the rest `sorry` |
 | `Typed.lean` | the hereditarily-well-typed predicate `HWT` (section 6); `vBad_not_hwt`; `convV_sound_hwt` | `vBad_not_hwt`, `ty_not_pmem_nat` proved; `convV_sound_hwt` a guess (`sorry`), and `HWT.tRef` needs changing (section 10) |
-| `Refine.lean` | B's statements: `Reach`, `machPremisesR`/`machPremises`, `CounterMono`, `conv_refine`, `convFn_refine`, `convPi_refine`, `mkEqM_refine` | `sorry`; `conv_refine` is superseded by `RefineConv` |
+| `Refine.lean` | B's shared definitions: `Reach`, `machPremisesR`/`machPremises` | definitions (the first `sorry`'d statements and `CounterMono` removed: superseded by `RefineConv`, `RefineEq`) |
 | `RefineConv.lean` | **B for `conv` (all five mutually recursive functions), PROVED**: `conv_refine'` (the checker as it is, `Reach`), `conv_refine_same` (target form, state unchanged) | proved, standard axioms, assuming only `GenericKept` |
-| `Compose.lean` | C: `conv_C`, `mkEqM_C`, `mkEqM_C'` (with `SideOk`), `Quiet`, `extOk_of_quiet` | the compositions are proved from A and B's statements; `extOk_of_quiet` a guess (`sorry`); `conv_C` still calls the `sorry`'d `Refine.conv_refine`: re-point it to `RefineConv.conv_refine'` |
+| `RefineEq.lean` | **B for `mkEqM`, PROVED**: `mkEqM_refine'` (by induction on fuel; `conv` from `RefineConv`) | proved, standard axioms, assuming only `EqKept` (`GenericKept` and: `fieldTypesOf` keeps `Reach`) |
+| `InFlight.lean` | item 2 of the second brief: the value in flight is an untyped temporary (`posTyM_temp`, `hintAt_temp`); `EvalMemConcl`, what `eval_step` would have to conclude | kernel-checked (`rfl`) |
+| `Compose.lean` | C: `conv_C`, `conv_C_same` (target form), `mkEqM_C`, `mkEqM_C'` (with `SideOk`), `Quiet`, `extOk_of_quiet` | the compositions call the proved B (`conv_refine'`, `conv_refine_same`, `mkEqM_refine'`) and A's statements; `extOk_of_quiet` a guess (`sorry`) |
 | `Counter.lean` | `conv_sound_stmt_false`, `mkEqM_step_stmt_false` (section 4) | kernel-checked |
 | `EmptyDomain.lean` | the empty-domain test; `convPi_sound_stmt_false_of_run` (section 4) | model side kernel-checked; the machine run by `#guard` |
 | `GrowthProbe.lean` | `mkEqM`'s inherent growth (section 5) | compiled `#guard`s |
@@ -109,19 +111,20 @@ Awkward:
 
 The rule log: in this area the machine fires only `EqDisj`, `EqStuck` and `EqInj` (dependent constructors only), as text lines (`fire`, `Rules.lean`), and none of the conversion rules. For a small checker to rebuild a derivation the log would have to carry, at each comparison, the rule and the components compared ([Conv-refl], [Conv-unit], each [Conv-cong] former, [Eq-refl] and so on). The function rules' premises cannot be checked by a small checker without re-running the generic call, so for them the machine stays trusted (or the checker re-executes it).
 
-## 9. Exact next steps for the successor, in order
+## 9. Exact next steps for the successor, in order (kept current by the second agent)
 
-1. **Housekeeping.** In `Compose.lean`, re-point `conv_C` to `RefineConv.conv_refine'` (it calls the `sorry`'d `Refine.conv_refine`), and add the target-form composition from `conv_refine_same`. Delete `Refine.conv_refine` and `CounterMono` or mark them superseded.
-2. **B for `mkEqM`** (`mkEqM_refine`), with the same idioms, by induction on fuel: the `⊥` test and `fire` (needs a small `runs_fire_inv`: the state unchanged), `conv` (from `RefineConv` at the current state, composed by `Reach.trans`), the `succ` recursion, the `ind` case (`eqArgs`, `lookupInd`, the `anyM` over index fields with `conv`, `fieldTypesOf` as the premise, `mapM mkEqM` by induction on the field list, `andList`), `distinctCtors`, the stuck default. Medium; mechanical.
-3. **Fix `HWT.tRef`** (`Typed.lean`): it passes `T` to `A`, but `⟦&A⟧` reads `A` at hint `err`; make it require `HWT (TyM.univ l) A` for some `l`, as `HWT.tEq` does.
-4. **A, the pinning lemma**: an `HWT T` constructor value at a data type `T` (`T.dataRec? = some (t, r)`) means `.dat t r c (meanFields d r c 0 [] fs)` whatever parameters it records (from `pmem`: `MovedOf` keeps the record, `Sem.mem` at a data code and `OpenIn` both fix it; `err` and `⋆` are not members of a data type).
-5. **A, `==` sound on `HWT` values** (the [Conv-refl] case for the machine's instance). Induction on values with a two-part claim: at one type `T`, the meanings at `T` agree; for values `HWT` at universes (possibly different ones), the meanings agree at every hint (type values' meanings are hint-free except a sealed program, and except `borrow`/`gloan`, which pass through). `.ind` by step 4 and the fields at their field types; `tEq` via the type part for `A` then the sides at `tyOf A`; `tInd` at the parameter types; `sealed`, `clo`, `tPi` from the code hypothesis (section 7's second congruence, named).
-6. **A, `convV_sound_hwt`**: by induction on the `ConvV Syn.machine` derivation with the same two-part claim: `refl` by step 5; `unit` by a named library hypothesis (the unit laws keep the meaning of an `HWT` value and its `unitTop` is `HWT`; provable from the data model's faithfulness for the library's `True` and `And` the way `Assembly.false_means_empty` is); the congruences by inverting `HWT`; `ind` by step 4; `sealed` by step 7; `piCong` by the code hypothesis; `pi`, `fn` by `PremSound`.
-7. **The sealed-program congruence** on the invariant (section 7, first bullet): state it on `ShapeSweep.isCloseText`-shaped texts and prove it by unfolding `runT`'s `.letIn`, `.call` (`callOf`), `.prim "peek"` and `.assign` clauses for the [Close] shapes only.
-8. **`eqTo_sound`** under `SideOk` (both sides), constructor values of data declarations, `LibOk`, `PremSound.fieldTys`: `stuck` (by definition), `refl` (step 6), `disjBot` (a whole member is not `moved`), `disj` (different constructors give different trees), `succ`, `inj` (step 4 on both sides, the field equations, `andList`'s meaning by `LibOk`).
-9. **Compose** `mkEqM_C'` and `conv_C` with B proved; check `#print axioms` on each.
+Done: 1 (housekeeping: `Compose` calls `conv_refine'`/`conv_refine_same`/`mkEqM_refine'`; `conv_C_same` added; the superseded statements and `CounterMono` removed from `Refine.lean`); 2 (`RefineEq.mkEqM_refine'`, proved; the target form `StateRel.same` is not available for `mkEqM`: `fieldTypesOf` keeps what it makes); 3 (`HWT.tRef` now types `A` at a universe and asks `&A`'s membership).
 
-Hardest, I expect: step 7 (it needs the model's call clause and every decision it reads on the [Close] shapes) and the `inj` case of step 8 (records, `meanFields` at a dependent constructor, the conjunction's meaning). Most likely still wrong as stated: `PremSound.fieldTys` (for a dependent constructor the earlier fields are read from the left side, and in the inherent-growth case the field types name an unknown made inside `mkEqM`, so the statement needs the extended assignment), `LibOk.and` (it asks the arguments' meanings to be propositions at hint `err`), and `convV_sound_hwt` itself until step 3 is done.
+Next, in order:
+
+4. **A, the pinning lemma**: an `HWT T` constructor value at a data type `T` (`T.dataRec? = some (t, r)`) means `.dat t r c (meanFields d r c 0 [] fs)` whatever parameters it records.
+5. **A, `==` sound on `HWT` values** (the [Conv-refl] case for the machine's instance), first-order values; code (closures, Π-closures, sealed programs) through a named hypothesis.
+6. **A, `convV_sound_hwt`** by induction on the derivation, two-part claim (one type; type values at universes, at every hint).
+7. **The sealed-program congruence** on the [Close] shape.
+8. **`eqTo_sound`**.
+9. **Compose** with B proved; `#print axioms`.
+
+Traps found so far: `split at h` on `mkEqM`'s `if`s substitutes the condition everywhere (so `simp only [..., hdep]` is not needed after it); after `simp only at h` the join points are inlined and the code is duplicated per branch, so prove the shared tail once as a `have` with its explicit `M` term (it is accepted up to definitional unfolding, `eqArgs` included).
 
 ## 10. Interim verdict (if the trial stopped here)
 

@@ -16,11 +16,8 @@ tables, and a later one runs from what they left. So the instance names the stat
 sub-computation starts from (`Reach`), and the premises' soundness, which part A assumes, is a
 statement about machine runs from such states.
 
-**`KeptAfter` of a private computation needs a machine-wide fact**: `restoreKeep` keeps the copy's
-label counter, so the counter after is the inner run's, and `KeptAfter` asks it not to have gone
-down: the whole machine (every function a generic call can reach) never lowers `nextLoan`
-(`closeBlock`'s re-check of an arm's return `set`s an earlier state and then restores a later one).
-That is a statement about all of `Machine.lean`, model-free; it is a named hypothesis here.
+**`KeptAfter` of a private computation** is assumed only of the generic sub-computations
+(`RefineConv.GenericKept`, `RefineEq.EqKept`); everything else is proved.
 -/
 
 namespace Ochr.Meaning.Rules
@@ -47,41 +44,12 @@ def machPremisesR (R : MState → MState → Prop) (st : MState) : Premises wher
 /-- The checker as it is: sub-computations start from states the comparison reached. -/
 abbrev machPremises (st : MState) : Premises := machPremisesR Reach st
 
-/-- A computation that never lowers the label counter. -/
-def CounterMonoOf {α : Type} (x : M α) : Prop :=
-  ∀ (st st' : MState) (bh : Nat) (a : α), Runs x st bh a st' → st.nextLoan ≤ st'.nextLoan
-
-/-- The machine-wide fact `KeptAfter` needs: no run of the checker lowers the label counter, for
-the computations a comparison runs privately (the generic calls, which reach the whole machine,
-and the types). A hypothesis of every statement below (open; model-free). -/
-def CounterMono : Prop :=
-  (∀ fuel typed t hint, CounterMonoOf (Ochr.eval fuel typed t hint)) ∧
-  (∀ fuel typed fv fT ws ts head cls rec res fills want defer,
-    CounterMonoOf (Ochr.callFn fuel typed fv fT ws ts head cls rec res fills want defer))
-
-/-- **(B) `conv`**: a successful comparison is a derivation of the machine's instance, and leaves
-the state as a private computation does. -/
-theorem conv_refine (hmono : CounterMono) (fuel : Nat) (st st' : MState) (v w : Value) (bh : Nat)
-    (h : Runs (Ochr.conv fuel v w) st bh true st') :
-    ConvV Syn.machine (machPremises st) st.globals v w ∧ KeptAfter st st' := by
-  sorry
-
-/-- (B) `convFn`: [Conv-fun]'s conclusion. -/
-theorem convFn_refine (hmono : CounterMono) (fuel : Nat) (st st' : MState) (f g : Value) (bh : Nat)
-    (h : Runs (Ochr.convFn fuel f g) st bh true st') :
-    ConvH Syn.machine (machPremises st) st.globals f g ∧ KeptAfter st st' := by
-  sorry
-
-/-- (B) `convPi`: its own premise, and the state after. -/
-theorem convPi_refine (hmono : CounterMono) (fuel : Nat) (st st' : MState) (P Q : Value) (bh : Nat)
-    (h : Runs (Ochr.convPi fuel P Q) st bh true st') :
-    (machPremises st).pi P Q ∧ KeptAfter st st' := by
-  sorry
-
-/-- **(B) `mkEqM`**: the proposition it builds is one `Eq` computes to by the rules. -/
-theorem mkEqM_refine (hmono : CounterMono) (fuel : Nat) (st st' : MState) (A a b P : Value) (bh : Nat)
-    (h : Runs (Ochr.mkEqM fuel A a b) st bh P st') :
-    EqTo Syn.machine (machPremises st) st.globals st.inds A a b P ∧ KeptAfter st st' := by
-  sorry
+/-! The statements first written here (`conv_refine`, `convFn_refine`, `convPi_refine`,
+`mkEqM_refine`, under a machine-wide `CounterMono`) are superseded by the proved
+`RefineConv.conv_refine'`, `RefineConv.conv_refine_same` and `RefineEq.mkEqM_refine'`, whose one
+assumption is narrower: the generic sub-computations (`convPi`, `convFnRun`) and [Eq-inj]'s field
+types (`fieldTypesOf`) keep the state as a private computation does (`GenericKept`, `EqKept`). The
+induction threads the relation through every sub-call from the comparison's start, so no
+machine-wide monotonicity of the label counter is needed. -/
 
 end Ochr.Meaning.Rules
