@@ -149,9 +149,11 @@ noncomputable def Sem.stepField (c i : Nat) (s : Sem) : Option (Sem × TyS) :=
     if c' = c then (fs[i]?).map fun f => (f, contentTyS dm Γ n r c i (fs.take i) f) else none
   | _ => none
 
-/-- One step on a meaning: the sub-meaning and its type. A step `.0` into a number takes its
-predecessor; any other field step reads the constructor value; `*` is the identity (a borrow
-means its content). The type `T` is the type of `s`, handed on through `*`. -/
+/-- One step on a meaning: the sub-meaning and its type, exactly where the checker's `stepV`
+steps. A step `.0` into a number takes its predecessor; a positional step `.i` reads constructor
+`0`'s field; a named step `.g` reads a field of a constructor value of `g`'s declaration; a field
+of `⋆` is `⋆`; `*` is the identity (a borrow means its content). The type `T`
+is the type of `s`, handed on through `*`. -/
 noncomputable def Sem.step (T : TyS) : Step → Sem → Option (Sem × TyS)
   | .deref, s => some (s, T)
   | .proj 0, s =>
@@ -162,7 +164,11 @@ noncomputable def Sem.step (T : TyS) : Step → Sem → Option (Sem × TyS)
       | .dat "Nat" _ 1 [w] => some (w, .plain TyM.nat)
       | _ => Sem.stepField dm Γ 0 0 s
   | .proj i, s => Sem.stepField dm Γ 0 i s
-  | .field g, s => Sem.stepField dm Γ g.ctor g.idx s
+  -- a named field step reads only a constructor value of the declaration it names, as the
+  -- checker's `stepV` reads only `.ind` values of `g.ty`
+  | .field g, s => match s with
+    | .dat n _ _ _ => if n = g.ty then Sem.stepField dm Γ g.ctor g.idx s else none
+    | s => Sem.stepField dm Γ g.ctor g.idx s
 
 /-- Follow a path on a meaning of type `T`. -/
 noncomputable def Sem.follow (T : TyS) (s : Sem) : List Step → Option (Sem × TyS)

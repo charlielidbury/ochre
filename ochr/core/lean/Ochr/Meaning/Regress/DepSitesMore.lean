@@ -179,6 +179,10 @@ theorem follow_dat_off (n : String) (ps : Rec) (v1 : Sem) (a a' : Sem) :
       | succ i => simp [Sem.follow, Sem.step, Sem.stepField]
   | .field g :: ss, T, h1, h2 => by
     simp only [Sem.follow, Sem.step, Sem.stepField]
+    by_cases hn : ¬ n = g.ty
+    · simp [hn]
+    have hn : n = g.ty := Classical.byContradiction hn
+    simp only [hn, if_true]
     by_cases hc : 0 = g.ctor
     · have hi : g.idx ≠ 0 := fun hi => h2 (by simp [pathKey, Step.key, ← hc, hi])
       rcases g with ⟨gt, gc, gi, gn⟩

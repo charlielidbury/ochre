@@ -192,7 +192,7 @@ theorem sort_ne_zero_of_N {n : String} {d : IndDecl} {c : Nat} {hh : Hint} {ps f
 theorem step_mean_ind {n : String} {d : IndDecl} (c : Nat) (hh : Hint) (ps fs' : List Value) (x : Step) (i : Nat)
     (v : Value) (H T : TyS) (hd : Γ.find? (·.name == n) = some d)
     (hb : (Value.ind n c hh ps fs').anyAtom (Value.bareCtor Γ) = false) (hv : fs'[i]? = some v)
-    (hx : (x = .proj i ∧ c = 0) ∨ ∃ g, x = .field g ∧ g.idx = i ∧ g.ctor = c) (hs0 : d.sort ≠ 0) :
+    (hx : (x = .proj i ∧ c = 0) ∨ ∃ g, x = .field g ∧ g.idx = i ∧ g.ctor = c ∧ g.ty = n) (hs0 : d.sort ≠ 0) :
     ∃ s' T', Sem.step dm Γ T x (Value.mean dm C Γ ρ f H (.ind n c hh ps fs')) = some (s', T') ∧
       ((s' = .proof ∧ v = .proof) ∨ ∃ H', s' = Value.mean dm C Γ ρ f H' v) := by
   rw [Value.anyAtom] at hb
@@ -210,11 +210,13 @@ theorem step_mean_ind {n : String} {d : IndDecl} (c : Nat) (hh : Hint) (ps fs' :
       (Value.meanFields dm C Γ ρ f d (dm.recOf d (Value.meanParams dm C Γ ρ f d 0 [] ps)) c 0 [] fs') c i hH'
     show ∃ s' T', Sem.step dm Γ T x (.dat d.name _ c _) = some (s', T') ∧ _
     refine ⟨_, T', ?_, .inr ⟨H', rfl⟩⟩
-    rcases hx with ⟨rfl, rfl⟩ | ⟨g, rfl, rfl, hgc⟩
+    rcases hx with ⟨rfl, rfl⟩ | ⟨g, rfl, rfl, hgc, hgt⟩
     · rcases i with _ | i
       · rw [sem_step_proj0_dat]; exact hT'
       · simpa [Sem.step] using hT'
-    · simpa [Sem.step, hgc] using hT'
+    · have hdn : d.name = g.ty := by
+        have := List.find?_some hd; simp only [beq_iff_eq] at this; rw [this, hgt]
+      simpa [Sem.step, hgc, hdn] using hT'
 
 /-- **One step of a place, on the checker's value and on its meaning** (at the join's grain, by
 the checker's typing of the place): the reference's step from the value's meaning is the meaning of
@@ -264,7 +266,7 @@ theorem step_mean (r : DeclInfo) (x : Step) (hx : StepOk Γ r x) :
       split at h
       · rename_i hc
         simp only [Bool.and_eq_true, beq_iff_eq] at hc
-        exact step_mean_ind dm C Γ ρ f c hh ps fs' (.field g) g.idx v H T hd hb h (.inr ⟨g, rfl, rfl, hc.2.symm⟩) (sort_ne_zero_of_N Γ hd hN)
+        exact step_mean_ind dm C Γ ρ f c hh ps fs' (.field g) g.idx v H T hd hb h (.inr ⟨g, rfl, rfl, hc.2.symm, hc.1.symm⟩) (sort_ne_zero_of_N Γ hd hN)
       · cases h
   | .bot, _, _, _, h, _, _, _ | .loan _, _, _, _, h, _, _, _ | .abs _, _, _, _, h, _, _, _
   | .sealed _, _, _, _, h, _, _, _ | .zero, _, _, _, h, _, _, _ | .unit, _, _, _, h, _, _, _
