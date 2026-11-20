@@ -98,6 +98,6 @@ theorem good_after (ρ : Assignment) : Good K.dm K.M K.Γ ρ after := by
     · intro n σ h; simp [after, saved] at h
     · intro σ v h; simp [after, saved] at h
   · -- (WF12): no position, so no site
-    intro k l _ _ _ x hx; simp [Env.sitesOf, allPos_after] at hx
+    intro k l _ _ x hx; simp [Env.sitesOf, allPos_after] at hx
 
 end Ochr.Meaning.Regress.ExitWorldFlip

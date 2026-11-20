@@ -331,15 +331,11 @@ theorem lentPrefix_fill (st : MState) (s : SState) (π : Nat → Nat) (pos : Pos
       have := hb ss (hzr.2 ▸ hlt) (hzr.2 ▸ hne)
       rw [hw] at this; cases this
     · rfl
-  by_cases hkl : k₀ = l₀
-  · subst hkl
-    exact ⟨z, hz, hzr.1, hzr.2, hzf⟩
-  · exfalso
-    have h12 : WF12 st.env := hg.2.2.2.2.2.2.2.2.2.2.2.2
-    have := h12 k₀ l₀ hk₀ hl₀ hkl z hz' hzf x hx' (hxp.trans hzr.1.symm)
-    rw [hzr.2] at this
-    have hpre : (pathKey ψ).isPrefixOf (pathKey x.path) = true := List.isPrefixOf_iff_prefix.mpr hK
-    rw [hpre] at this; cases this
+  have h12 : WF12 st.env := hg.2.2.2.2.2.2.2.2.2.2.2.2
+  have hpre : (pathKey z.path).isPrefixOf (pathKey x.path) = true := by
+    rw [hzr.2]; exact List.isPrefixOf_iff_prefix.mpr hK
+  obtain ⟨z', hz', hz'p, hz'k, hz'f⟩ := h12 k₀ l₀ hk₀ hl₀ z hz' hzf x hx' (hxp.trans hzr.1.symm) hpre
+  refine ⟨z', (hs.sites l₀ hl₀ z').mpr hz', hz'p.trans hzr.1, hz'k.trans hzr.2, hz'f⟩
 
 /-- The sites at the lent prefix of a path above an existing place are as the absorption needs. -/
 theorem lentPrefix_absorbInv (st : MState) (s : SState) (π : Nat → Nat) (pos : Pos) (steps ss ψ : List Step) (w : Value)

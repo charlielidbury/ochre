@@ -251,25 +251,30 @@ def WF11 (st : MState) : Prop :=
   (∀ n σ, (n, σ) ∈ st.neutrals → ∀ l, n.hasLoan l = false) ∧
   (∀ σ v, (σ, v) ∈ st.etaRefs → ∀ l, v.hasLoan l = false)
 
-/-- (WF12) At a live fill, nothing else is lent: at a position holding a live borrow's fill, no
-other live borrow has a site, at the fill's path or below it. So an access that passes the fill on
-its way to one field (the checker's `accessPath` at an instance, where a mark is transparent) and
-an access of the filled place whole (the reference's access of the shortest lent prefix, and the
-checker's at the generic call, where the field does not exist) end the same borrows. Read off the
-checker (a returned borrow's mark wraps the whole lent place, with the reborrow's loan inside it;
-when a borrow ends its mark passes to the borrow its content was lent onward to, at the same
+/-- (WF12) Under a live fill, only borrows filled there: at a position holding a live borrow's
+fill at a path, every live borrow with a site at that path or below it has a fill at that same
+path. So an access that passes the fill on its way to one field (the checker's `accessPath` at an
+instance, where a mark is transparent) and an access of the filled place whole (the reference's
+access of the shortest lent prefix, and the checker's at the generic call, where the field does
+not exist) end the same borrows (`AccessAbsorb.AbsorbInv`'s second half). Read off the checker (a
+returned borrow's mark wraps the whole lent place, with the reborrow's loan inside it; when a
+borrow ends, its mark passes to EVERY live borrow its content was lent onward to, at the same
 place; reaching below a mark ends its borrow first, D90; lending a place whole ends the borrows of
 its parts), NOT proved preserved: every step's `Good` conclusion owes it. Tested by the sweep
-(`lake exe sweep`, with `--probes`): no violation in 68,541 states of the suite and 512 states of
-adversarial probes; positions without a fill were not measured, so it says nothing of them.
+(`lake exe sweep`, with `--probes`; docs/31 D39).
 
-As first written (docs/31 D29) the clause allowed another borrow's site strictly under the fill
-when that borrow was also lent at the fill's place or above it; the sweep found the premise never
-arises, and this form, which is what it measured, is stronger and simpler. -/
+Its history (each form kept as the record). As first written (docs/31 D29): a site of a live
+borrow strictly under a fill of another belongs to a borrow also lent at that fill's place or
+above it. Restated after the sweep (D33) to what that sweep measured: at a live fill, no other live
+borrow has a site at the fill's path or below it. FALSE since main's D93 (`SweepProbes.TwoParts`,
+accepted since: two disjoint parts of a returned borrow's place lent onward; when the returned
+borrow is re-pointed, its mark passes to both, so both are filled at the whole place,
+`Regress/TwoFills.lean`). This form is what the absorption needs and both states meet. -/
 def WF12 (env : Env) : Prop :=
-  ∀ k l, liveLoan env k = true → liveLoan env l = true → k ≠ l →
+  ∀ k l, liveLoan env k = true → liveLoan env l = true →
     ∀ x ∈ Env.sitesOf env k, x.fill = true → ∀ y ∈ Env.sitesOf env l, y.pos = x.pos →
-      (pathKey x.path).isPrefixOf (pathKey y.path) = false
+      (pathKey x.path).isPrefixOf (pathKey y.path) = true →
+      ∃ z ∈ Env.sitesOf env l, z.pos = x.pos ∧ pathKey z.path = pathKey x.path ∧ z.fill = true
 
 /-- Well-formedness, part (c) of the main theorem. -/
 def WF (ρ : Assignment) (st : MState) : Prop :=
