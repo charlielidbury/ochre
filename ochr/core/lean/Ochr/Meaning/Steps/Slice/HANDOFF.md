@@ -11,12 +11,15 @@ Report to `main` (SendMessage) at each boundary, then end the turn; main always 
 - `dropOne_exists` (the drop where the place exists), `dropAt_data`, `copyRead_aligned`,
   `runs_valTypeDecl_keep` (`Slice/DecideKeep.lean`), `logEffect_rel_shapes` (`Slice/Shapes.lean`),
   `Slice/UpdAt.lean`.
-- On the side branch `spine-slice-grainref` (94c478f9, approved, NOT yet on `spine-slice`): the
-  grain asks a `*` step's borrow type (`StepOk .deref := ∃ d, r = .ref d`); with it
-  `grain_deref_not_proof`, `not_below_proof`, `joinDropOne_noop` are proved. Take it only after
-  main says D101 (the checker's `jdGrain` check) is on `main`: merge `origin/main`, then rebase the
-  side branch's commit onto `spine-slice`.
-- `Regress/StepKindsTable.lean`: step kind × parent kind, checker and reference, kernel-checked.
+- The grain asks a `*` step's borrow type (`StepOk .deref := ∃ d, r = .ref d`, with the checker's
+  D101, taken at 567c1d11): `grain_deref_not_proof`, `not_below_proof`, `joinDropOne_noop` proved.
+- `Regress/StepKindsTable.lean`: step kind × parent kind, checker and reference, kernel-checked; the
+  table shows agreement at the restated grain cell by cell with the clause each cell needs.
+- `Regress/JoinPrefixBorrow.lean`: 13 programs where a match's result borrows a prefix of a place the
+  join drops, all rejected ([Entry], [Join] D65 + K1(g), D53 in tail position), asserted.
+- Reopened lemmas, and what they wait on: `dropOne_exists` concludes the extended context itself
+  since item 3, so it rests on `ctx_botWrite`, the [Access]/[End] hypothesis steps and the machine
+  facts (main asks to be told whenever a closed lemma reopens).
 
 ## The fixed decision table (main's decision 2026-11-20, DONE at 1f328465)
 
@@ -45,7 +48,6 @@ after it) and concludes `CtxOk { K with Δ := Δ' }` there; no `D'`, no `AgreeOl
 - `etaFresh_sim` (MovedPlace): a fresh η record means its unknown, the context extended.
 - `recordedNeutral_ok` (MovedPlace): a generalisation record's value means the program (path condition).
 - `Rel.kept` (EqJAsm, the lead's).
-- `grain_deref_not_proof`: proved on `spine-slice-grainref`; take it after D101 is on `main`.
 [Access]/[End] are now IH fields in the extended form; `access_ctx`/`dropAtJoin_ctx` are gone.
 The lead owns `Steps/Statements.lean` from 19d86568: statement changes go through the lead.
 
