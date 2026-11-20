@@ -155,7 +155,10 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
     rw [hst]
     rcases hno with hn | hn
     · rw [hw] at hn; cases hn
-    have hlp := lentPrefix_none_of_noop K ρ φ st s π q pos hg hs hres hn
+    have hlp : lentPrefix s pos q.steps.2 = none := by
+      rcases hn with hn | hn
+      · exact lentPrefix_none_of_noop K ρ φ st s π q pos hg hs hres hn
+      · exact lentPrefix_none_of_proof K ρ φ st s π q pos hg hs hres hcopy hn
     have hpre : accessLentPrefix pos q.steps.2 s = s := by simp [accessLentPrefix, hlp]
     rw [hpre]
     obtain ⟨cbot, cproof, -⟩ := content_follow K ρ φ st s π q pos hg hs hres
@@ -303,7 +306,7 @@ structure GenTy (st : MState) (T n : Value) : Prop where
   abs : ∀ τ, T.hasAbs τ = true → τ < st.absTy.size
   nabs : ∀ τ, n.hasAbs τ = true → τ < st.absTy.size
   loanFree : ∀ l, T.hasLoan l = false
-  refTop : match T with | .tRef A => ¬ A.typeHasRef | T => ¬ T.typeHasRef
+  refOk : T.refMisplaced = false
   level : (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T).level.isSome
   mem : meanV K ρ (fun _ => .err) (.plain (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T)) n ∈ₛ
     Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T
