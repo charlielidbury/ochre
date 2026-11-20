@@ -75,12 +75,35 @@ model's coverage of it, and `K.C.global` (`.const n` means `K.C.global n`, so
 `evalCore_step_stmt` was false at a `K.C.global` that is not Σ's: `Regress/ConstFree_70247f07.lean`,
 kernel-checked). `CtxOk K ρ st` is the one hypothesis that ties them. -/
 
+/-- Arguments are members along a function type's code: each at the domain the code reaches at the
+earlier ones. -/
+def ArgsMember (R : DataRead) (T : TyM) (args : List Res) : Prop :=
+  ∀ (i : Nat) (a : Res), args[i]? = some a → a.1 ∈ₛ[R] T.domAfter R ((args.take i).map (·.1))
+
+/-- The rank of a call's decreasing argument (the global's `fix` names it; `0` for a function that
+does not recurse): `semRank`, the height of the meaning after the data-layer port (D73's R1–R3). -/
+noncomputable def decRank (K : RunCtx) (g : GDef) (args : List Res) : Nat :=
+  match g.fn? with
+  | some (.fix _ _ _ _ (some j) _) => ((args[j]?).map fun a => semRank K.dm K.Γ a.1).getD 0
+  | _ => 0
+
+/-- **Membership below a bound** (docs/31 D73): the global's meaning, applied at member arguments
+whose decreasing component has rank below `b`, is defined and its result a member of the codomain
+there. What `CtxOk` asks of the definition being checked (`RunCtx.cur`), and what the induction on
+the bound supplies. (A borrow parameter's final content's membership is the next clause to add.) -/
+def MemBelow (K : RunCtx) (G : Sem × TyS) (g : GDef) (b : Nat) : Prop :=
+  ∀ (args : List Res) (s : SState), ArgsMember K.dm.read G.2.m args → decRank K g args < b →
+    ∃ (r : Res) (s' : SState), callOf K.dm.read G args s = some (r, s') ∧ r.1 ∈ₛ[K.dm.read] r.2.m
+
 /-- `K.C.global` is Σ: each global of the state has its stored type, a constant means its stored
 value read at that type (`⋆` at a proposition, as `evalCore`'s `.const` reads it), a function means
 the closure of its `fix` term formed in the empty frame, whose run gives the stored type's code,
 and each is a member of its type. The last is the outer induction of docs/18's theorem: while a definition is checked,
 every global is an earlier, accepted one. A global is closed, so these hold at every assignment
-and future. -/
+and future. The definition being checked (`K.cur`, pushed by `checkDef` before its body is checked
+so that recursive calls find it) is asked membership only below the bound (`memBelow`): as first
+stated every global was asked membership, which for that one is `checkFix_sound`'s conclusion, so the
+statement was vacuous at a definition (the knot, docs/31 D72, D73, `Regress/DefKnot`). -/
 structure GlobalsOk (K : RunCtx) (st : MState) : Prop where
   ty : ∀ n g, st.globals.find? (·.name == n) = some g → ∀ ρ,
     (K.C.global n).2.m = (meanV K ρ noFuture (.plain .err) g.ty).asTy
@@ -89,7 +112,17 @@ structure GlobalsOk (K : RunCtx) (st : MState) : Prop where
   fn : ∀ n g t, st.globals.find? (·.name == n) = some g → g.fn? = some t → ∀ ρ φ,
     (K.C.global n).1 = meanV K ρ φ (.plain .err) (.clo [] t []) ∧
     ∀ r s', run K ρ φ (.plain .err) t (stateOf 0 []) = some (r, s') → r.2.m = (K.C.global n).2.m
-  mem : ∀ n g, st.globals.find? (·.name == n) = some g → (K.C.global n).1 ∈ₛ[K.dm.read] (K.C.global n).2.m
+  /-- every global but the definition being checked is a member of its type -/
+  mem : ∀ n g, st.globals.find? (·.name == n) = some g → (K.cur.map (·.1)) ≠ some n →
+    (K.C.global n).1 ∈ₛ[K.dm.read] (K.C.global n).2.m
+  /-- the definition being checked (docs/31 D73): only membership below the bound -/
+  memBelow : ∀ n g b, st.globals.find? (·.name == n) = some g → K.cur = some (n, b) → MemBelow K (K.C.global n) g b
+
+/-- `GlobalsOk` reads the globals only. -/
+theorem GlobalsOk.of_globals {K : RunCtx} {st st' : MState} (h : GlobalsOk K st) (hg : st'.globals = st.globals) :
+    GlobalsOk K st' :=
+  ⟨fun n g hf => h.ty n g (hg ▸ hf), fun n g hf => h.const n g (hg ▸ hf), fun n g t hf => h.fn n g t (hg ▸ hf),
+    fun n g hf => h.mem n g (hg ▸ hf), fun n g b hf => h.memBelow n g b (hg ▸ hf)⟩
 
 /-- The run context knows the types of the unknowns the state names: `K.Δ` is `deltaOf` at every
 referenced unknown (`MState.Refd`). Elsewhere `K.Δ` is free, so a step that names new unknowns

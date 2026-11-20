@@ -162,6 +162,10 @@ structure RunCtx : Type 3 where
   declared type (by (WF9) every loan outside a sealed program sits at a typed position), as the
   value that fills it will. A loan with no shape here reads as the hint (data). -/
   Λ : Nat → TyS := fun _ => .plain TyM.err
+  /-- the definition being checked and a bound (docs/31 D73, the knot of [Def]): while a function
+  is checked, `CtxOk` asks of its global only membership at arguments whose decreasing component
+  has rank below the bound (`Steps.MemBelow`), which the induction on the bound supplies -/
+  cur : Option (String × Nat) := none
 
 /-- A result: the meaning at the run's future, with its type. -/
 abbrev Res : Type 3 := Sem × TyS

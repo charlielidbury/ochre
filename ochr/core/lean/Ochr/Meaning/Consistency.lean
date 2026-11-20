@@ -2,6 +2,7 @@ import Ochr.Meaning.Program
 import Ochr.Meaning.Bounded
 import Ochr.Meaning.Steps.Tail
 import Ochr.Meaning.Steps.Knot
+import Ochr.Meaning.Steps.FixKnot
 
 /-!
 # Milestone 4: the assembly of `consistencyBounded` (docs/18 Corollaries 15 and 16)
@@ -114,21 +115,59 @@ theorem step_member_const (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) 
   rw [hgoal]
   exact const_value dm D fuel P d st' st₁ goal v hd hgoal ρ' Δ' D' π' r s₂ hrunr hmean ψ hmem
 
-/-- **An accepted function means a member of its type** (leaf; THE KNOT, docs/31 D72). Not
-`checkFix_sound`: `checkDef` pushes the function's global before `checkFix`, so `CtxOk` at the state
-`checkFix_sound` starts from already asks the function to be a member of its type
-(`Regress/DefKnot.ctx_contains_fix_member`), and the statement is vacuous at a definition. What proves
-it: the guarded recursion on the decreasing argument, by induction on its rank, the body's generic
-run (`generic_good`, `Rel.start`, `checkTail_step`, the return check by `conv_sound` and
-`bodyReturns_sound`) under a context asking of the function only membership at arguments of smaller
-rank (the stage before, `RunCongr.fixStage`). That form of `GlobalsOk` for the definition being
-checked is not stated. -/
+/-- **`checkDef`'s function branch, taken apart** (leaf; docs/31 D73, D79). Two halves.
+(1) The meaning. The reference runs the definition's `fix` term from the empty state (`run_fix_def`;
+neither a statement nor a proof, by the aligned flags): the closure built along the code
+`piTyAt l ds out`, at the declared sort `l ≤ 3`, of its function, the guarded fixpoint by stages
+(`fixG`: at arguments of rank `r`, the stage `r + 1`, `fixStage`, the rank `fixRank`; a non-recursive
+function is its body with `self` erroneous, the stage `1` at rank `0`); and the stored type's code is
+that code (the checker stores `Π(x̄ : Ā). B`, which the `fix` term's domains and codomain run to).
+(2) The step of the induction on the bound: from the fixpoint good below `b`, the stage `b + 1` is
+good at member arguments of rank `b`. Its proof is the checker's run of the body (`checkFix`) read
+through the step statements under the context that names the definition at the bound
+(`RunCtx.cur := (f, b)`) and gives its global the meaning of the stage-`b` closure (so that the
+checker's `self`, `.gfn f`, and the reference's frame's `self` mean the same at the generic state),
+where `CtxOk` asks of the global only `MemBelow b`: the stage-`b` closure applied at arguments of rank
+below `b` is the stage `b` there (`closure_apply`), which is the fixpoint there (stage stability: every
+self call the body makes is at a smaller rank, `recDecreases` and `semRank_part`), good by the
+hypothesis. Then: the generic state good for the assignment giving each parameter its argument
+(`generic_good`) and related to the body's frame (`Rel.start`, the frame property, D70);
+`checkTail_step` along the case tree to a leaf; the return check (`conv_sound`, `bodyReturns_sound`);
+the leaf's value is the stage `b + 1` at the arguments, a member of the codomain. Needs first:
+`checkTail_step_stmt` and `generic_good_stmt` in the simulation form (they are in the old form). -/
+theorem fix_split (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms ≠ [])
+    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm P)
+    (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
+    ∃ (l : Nat) (ds : List PiDom) (out : PiCod) (stage : Nat → List Sem → Option BodyOut) (rank : List Sem → Nat),
+      l ≤ 3 ∧
+      defMeaning (fun _ => .err) (P.ctx dm D st') d (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)
+        = some (closureAt dm.read l noFuture ds out (fun args => stage (rank args + 1) args),
+            globalTyS (fun _ => .err) (P.ctx dm D st') (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)) ∧
+      (globalTyS (fun _ => .err) (P.ctx dm D st') (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)).m
+        = piTyAt dm.read l ds out ∧
+      (∀ b, (∀ a, Steps.DomMembers dm.read ds a → rank a < b →
+          ∃ o, stage (rank a + 1) a = some o ∧ Steps.OutGood dm.read out a o) →
+        ∀ a, Steps.DomMembers dm.read ds a → rank a = b → ∃ o, stage (b + 1) a = some o ∧ Steps.OutGood dm.read out a o) := by
+  sorry
+
+/-- **An accepted function means a member of its type** (assembled, no `sorry` in the body; THE KNOT,
+docs/31 D72, D73, D79): the branch taken apart (`fix_split`), the induction on the bound
+(`Steps.stages_total`, proved) makes the guarded fixpoint good at every member argument, and a closure
+whose function is total and good is a member of its code (`Steps.closure_mem_of_total`, the data
+layer's). Not `checkFix_sound`: `CtxOk` at the state it starts from asked the function to be a member
+of its type (`Regress/DefKnot.ctx_contains_fix_member`); it now asks only membership below the bound
+(`RunCtx.cur`, `MemBelow`). -/
 theorem step_member_fix (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms ≠ [])
     (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm P)
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
     ∃ m, defMeaning (fun _ => .err) (P.ctx dm D st') d
         (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot) = some m ∧ m.1 ∈ₛ[dm.read] m.2.m := by
-  sorry
+  obtain ⟨l, ds, out, stage, rank, hl, hdm, hA, hstep⟩ := fix_split dm D fuel P d st' hd hP hcov hfaith hrun
+  refine ⟨_, hdm, ?_⟩
+  show closureAt dm.read l noFuture ds out (fun args => stage (rank args + 1) args) ∈ₛ[dm.read] _
+  rw [hA]
+  exact Steps.closure_mem_of_total dm.read l noFuture ds out _ hl
+    (fun args ha => Steps.stages_total stage rank (Steps.DomMembers dm.read ds) (Steps.OutGood dm.read out) hstep args ha)
 
 /-- **One item keeps every definition a member** (assembled): an inductive declaration adds no
 definition; a definition's meaning is a member by `step_member_const` or `step_member_fix`. -/
