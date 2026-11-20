@@ -1142,13 +1142,18 @@ def observe_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (bh : Nat) (h : Runs (Ochr.observe fuel typed t A W refs) st bh (r, ws) st'),
-    st'.env = st.env ∧
-    ∀ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) → TypedAssignment K.dm K.M K.Γ ρ' st' →
-      ∃ o, refObs K ρ' φ (refs.map (·.1)) (refs.map fun x => meanV K ρ' noFuture (.plain .err) x.2)
+    st'.env = st.env ∧ st.absTy.size ≤ st'.absTy.size ∧ st.nextLoan ≤ st'.nextLoan ∧
+    ∀ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
+      TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' →
+      -- the state after (the side ran on a copy) is good again, for the next observation of the
+      -- same `Id`, which starts from it (docs/31 D74: as first stated nothing was said of it)
+      (Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' ∧ CtxOk { K with Δ := Δ' } ρ' st' ∧
+        Rel { K with Δ := Δ' } ρ' φ π st' s) ∧
+      ∃ o, refObs K ρ' φ (refs.map (·.1)) (refs.map fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2)
           (Value.tyS K.dm K.M K.Γ ρ A) t s = some o ∧
-        o[0]? = some (meanV K ρ' (fun l => φ (π l)) (Value.tyS K.dm K.M K.Γ ρ A) r) ∧
+        o[0]? = some (meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Value.tyS K.dm K.M K.Γ ρ A) r) ∧
         ∀ (i j : Nat) (p : Pos), W[i]? = some p → s.positions[j]? = some p →
-          ws[i]?.map (meanV K ρ' (fun l => φ (π l)) (Env.hintAt K.dm K.M K.Γ ρ st.env p)) = o.tail[j]?
+          ws[i]?.map (meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Env.hintAt K.dm K.M K.Γ ρ st.env p)) = o.tail[j]?
 
 /-- Footprint coverage (docs/18 "Footprint coverage", the third of the five lemmas), from a
 related state: a position that was there when the sides started and is outside the footprint of
@@ -1187,12 +1192,15 @@ def idType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) :
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (bh : Nat) (h : Runs (Ochr.idType fuel typed A t u) st bh P st'),
-    st'.env = st.env ∧
+    st'.env = st.env ∧ st.absTy.size ≤ st'.absTy.size ∧ st.nextLoan ≤ st'.nextLoan ∧
     ∃ r, run K ρ φ (.plain .err) (.id A t u) s = some (r, s) ∧
-      (∃ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ Good K.dm K.M K.Γ ρ' st' ∧
-        (((meanV K ρ' (fun l => φ (π l)) (.plain .err) P).asTy).true ↔ (r.1.asTy).true)) ∧
-      ((r.1.asTy).true → ∀ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) → TypedAssignment K.dm K.M K.Γ ρ' st' →
-        ((meanV K ρ' (fun l => φ (π l)) (.plain .err) P).asTy).true)
+      (∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+        CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π (st'.withTemp P) s ∧
+        GoodF K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' (st'.withTemp P) [] ∧
+        (((meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (.plain .err) P).asTy).true ↔ (r.1.asTy).true)) ∧
+      ((r.1.asTy).true → ∀ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
+        TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' →
+        ((meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (.plain .err) P).asTy).true)
 
 /-- Owners (RULES §4): every position `owners env l` lists holds, directly or through the content
 of a borrow it holds, a loan of `l`; and conversely every position whose meaning depends on `l`

@@ -1,4 +1,4 @@
-import Ochr.Meaning.Steps.IH
+import Ochr.Meaning.Steps.IdAsm
 
 /-!
 # Step lemmas, observation and `Id`: `observe`, `idType`, footprint coverage (milestone 3;
@@ -37,8 +37,8 @@ theorem footprint_coverage (fuel : Nat) (ih : StepsIHBelow fuel) : footprint_cov
 /-- `Id` computes (`idType`): the conjunction over the result and the footprint's owners means
 the reference's `Id`, the equality of the two observations; exact, and the state's core is
 unchanged. -/
-theorem idType_step (fuel : Nat) (ih : StepsIHBelow fuel) : idType_step_stmt K ρ φ (fuel + 1) := by
-  sorry
+theorem idType_step (fuel : Nat) (ih : StepsIHBelow fuel) : idType_step_stmt K ρ φ (fuel + 1) :=
+  idType_step_asm K ρ φ fuel ih
 
 /-- Owners (RULES §4): every position `owners env l` lists holds, directly or through the content
 of a borrow it holds, a loan of `l`; and conversely every position whose meaning depends on `l`
