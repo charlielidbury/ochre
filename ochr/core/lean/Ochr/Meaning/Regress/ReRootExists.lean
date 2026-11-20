@@ -16,12 +16,17 @@ On the checker's own state at the end of `LentAt`'s first arm, where `c` is lent
 (`c = lent_2 loan_2`, `rr = borrow_2 MkOut(MkIn(σ0, σ1), σ2)`), `movedPlace((c.0).0)` returns `c.0`,
 which then holds `MkIn(σ0, σ1)`, and `(c.0).0` exists (`#guard`s below). So the drop's statement
 (`movedPlace_step_stmt`: the place returned exists, or is a prefix holding `⊥` or `⋆`) is false at
-this state for a place at the join's grain, and `MovedPlace.reRoot_created` is its false leaf.
+this state for a place at the join's grain (its leaf `reRoot_created` was false, and went with D94).
 
 The join does not reach it here: the arm that lends `c` uses `c` whole, so the join moves `c` whole
 (K1(g)) and `LentRead` is rejected while `NotLentRead`, the same program without the lending, is
 accepted (dropping only `(c.0).0`). A lending before the match is ended by the entry's access of the
 captured place. No accepted program is known on which the join reaches the case.
+
+Main's D94 (8035f7ed) changed `movedPlace`: it returns the place whenever the place exists after
+refining, generalising and accessing. On the same state it now returns `(c.0).0` (`#guard`s below),
+and the drop is of the place, as the reference's. Main's `ReturnedBorrows.JoinPlaces.LentTail`
+reaches the shape at a join (tail position, `c` lent whole).
 -/
 
 open Ochr.Test
@@ -96,9 +101,9 @@ def after : Option (Place × MState) :=
   | .ok p st => some (p, st)
   | _ => none
 
--- it returns `c.0` ...
-#guard match after with | some (p, _) => p.steps.1 == cIdx && p.steps.2.length == 1 | none => false
--- ... which holds a constructor value of `In`, and `(c.0).0` now exists
+-- since main's D94 it returns `(c.0).0` itself, which now exists ...
+#guard match after with | some (p, _) => p.steps.1 == cIdx && p.steps.2.length == 2 | none => false
+-- ... under `c.0`, which holds a constructor value of `In` (the shape of the finding)
 #guard match after with
   | some (_, st) => (match ckContent st.env c0 with | some (.ind "In" 0 _ _ _) => true | _ => false) &&
       (ckContent st.env c00).isSome
