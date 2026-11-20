@@ -116,4 +116,32 @@ theorem run_ascribe_trusted (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : B
   · rintro ⟨a, ha⟩
     exact unit_ne_nat (Sem.el0.inj ha).1
 
+/-! ## 5. The chain's decision table at one fuel against the checker at every fuel
+
+`DecTab D st` asks the table to agree with the checker's decision at EVERY fuel at which that
+decision succeeds; the chain's instance `checkerDecisions st fuel` reads each decision at ONE fuel
+and answers a default where that fuel runs out. On a term the instance's fuel is too small for, a
+larger fuel answers otherwise, so `DecTab` fails for the instance. Here at fuel `1`: the reading of
+`&x` (with `x` read `Unit`) is the default `other` for the instance and `&Unit` at fuel `3`. The same
+holds at any fuel with a term nested deeper than it. -/
+
+def tB : Term := .borrow (.var 0)
+abbrev d3 : M DeclInfo := withLive true (Ochr.declOf 3 false [] [] tB)
+
+def isOther : DeclInfo → Bool
+  | .other => true
+  | _ => false
+
+theorem inst_other : isOther ((checkerDecisions S0 1).declOf [.unit] tB) = true := by decide +kernel
+theorem okD3 : isOk d3 (scopeState S0 [.unit]) 3 = true := by decide +kernel
+theorem d3_not_other : isOther (outVal d3 (scopeState S0 [.unit]) 3) = false := by decide +kernel
+
+/-- **The fixed-fuel instance does not meet `DecTab`** (kernel-checked at fuel `1`). -/
+theorem decTab_fixedFuel_false : ¬ DecTab (checkerDecisions S0 1) S0 := by
+  intro h
+  have e := h.declOf 3 [.unit] tB _ 3 _ (runs_out d3 _ 3 okD3)
+  have h1 := inst_other
+  rw [e, d3_not_other] at h1
+  cases h1
+
 end Ochr.Meaning.Regress.OpenFalse
