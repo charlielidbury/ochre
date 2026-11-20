@@ -35,64 +35,56 @@ and write `moved`, nothing where `Sem.updAt` fails). The step statements: `moved
 (`mpTail_sim`, `movedPlace_step`, `dropOne_step_asm`), `Steps/DropOneAsm.lean` (`dropOne_exists`),
 `Steps/Match.lean` (`joinDrop_step`, by induction on the list).
 
-## State of the drop step (0bff37e8 and after)
+## State of the drop step (18662217 and after)
 
 `joinDrop_step` and `dropOne_step_asm` are assembled with no `sorry` in their bodies. They rest on
-exactly these open pieces (`#sorry_leaves`, below):
+exactly these open pieces (`#sorry_leaves`; the script is `slice2/Leaves.lean` in the session
+scratchpad, or rebuild it from the idiom below):
 
-1. **`etaFresh_sim`** (MovedPlace): a fresh η refinement of an unknown `σ` of a one-constructor type
-   (`ctorRefinement`, fresh field unknowns), recorded, means `ρ' σ` under an extension giving the
-   fields the fields of `ρ σ`; the relation (reference untouched), `Good` (the record is the path
-   condition just met) and `CtxOk` (with `hD`) after. Best route: the induction hypothesis's
-   `split_coverage` (same shape: some `c`, an extension, the refinement satisfied) at the one
-   constructor (`c = 0`), plus determinism of the run (`split_coverage` gives SOME run of
-   `ctorRefinement`; `etaInPlace_sim` holds a particular one: successful runs at different fuels
-   agree, a machine-only fact to add to MachineMono's list), then `Rel` unchanged (the run touches
-   no environment value), `Good` with the new record (`TypedAssignment.eta` is the path condition;
-   (WF6) bounds, `Good.eta_bound`), `CtxOk` (Δ at the fresh unknowns, `DeltaOk`; `ShapeFacts`: (Hη)
-   top-hint-free and (Hη≠) no-self for the new record). Needs `meanV_ext` (assignment-and-Δ
-   congruence, DropOneAsm, still `sorry`, `AssignCongr.lean`'s shape) for old values.
-2. **`recordedNeutral_ok`** (MovedPlace): `recordedNeutral n = some r` (`r = expandRefs refs (.abs σ)`
-   for `(n, σ) ∈ neutrals`) gives `NeutralOk K ρ st n r`: `r` means `n` at every future and hint,
-   names typed unknowns, holds no loan. Route: mirror `etaRecorded_sim` (proved, MovedPlace ~447):
-   `TypedAssignment.neutral` (`ρ σ = ⟦n⟧` at σ's type and the constant future) and
-   `TypedAssignment.refs` (each refinement `σ' := r'` means `ρ σ'`), an induction on `expandRefsF`'s
-   fuel; future independence from loan-freedom ((WF11) for records and refinements, `meanV_congr`);
-   hint independence (`meanV_hintIndep` needs `topHintFree`: for `n` (WF16) and for the refinement
-   values, which record their parameters ((WF10)); check a clause covers refs, else sweep one).
-   I would attack this one first: it is the most self-contained and its pattern exists.
-3. **`ctx_botWrite`** (DropOneAsm): `CtxOk` after the drop's write of `⊥` at one place. Routine except
-   the block's captures: `inds`, `covers`, `faithful`, `noLabel`, `globals` unchanged (env only);
-   `delta` by `refd_setAtE` (Refd shrinks); `dec.toDecTab` is the hypothesis `hD`; `shapes`: a new
-   lemma `ShapeFacts.of_botWrite` (every place's content after the write is the old one, or `⊥`, or
-   does not exist; the top readings are the bindings' `decl`s, unchanged). The `blockCaps` clause is
-   D90's obligation 1 at the new state, a checker-only fact (MachineMono's list; measured: 338 block
-   entries of the suite, static = checker at all 335 successful ones). Main passed to the lead the
-   suggestion to ask it as the [Entry] step's hypothesis instead of a `CtxOk` clause: then
-   `ctx_botWrite` is fully routine. Check whether the lead did before proving it.
-4. **`Rel.kept`** (EqJAsm, the lead's): the relation survives a private computation (Ω the
-   snapshot's; values name only old unknowns, where the extension agrees; labels made inside occur
-   nowhere after). Not this lane's.
-5. **Machine-only facts** (`Steps/MachineMono.lean`, its own lane, do not prove unless asked):
-   `DecTab.back` and `grows_absType`, `grows_accessInside`, `grows_accessPath`, `grows_content`,
-   `grows_content?`, `grows_dropAtJoin`, `grows_etaInPlace`, `grows_generalizeNeutral`,
-   `grows_logEffect`, `grows_lookupInd`, `grows_movedPlace`, `grows_placeTypeQ`, `grows_ppPlace`,
+1. **`etaFresh_sim`** (MovedPlace): unchanged, the largest. Findings from planning it: the route
+   through the induction hypothesis's `split_coverage` needs that statement in a "for every run"
+   form with the constructor bounded (`∃ c < d.ctors.length, ∀ b r st', Runs (ctorRefinement …
+   c) st b r st' → ∃ ρ', …`): as stated it gives SOME run at its own budget and SOME `c`, so the
+   one-constructor case cannot be pinned to `c = 0` nor to the checker's own run without a fuel
+   determinism fact. Not yet proposed to main. Its `CtxOk` after also asks the block's captures
+   at the new state (as `ctx_botWrite` did) and (Hη≠) for the new record (needs: σ's type does not
+   name σ). Needs `meanV_ext` (DropOneAsm, open, `AssignCongr.lean`'s shape).
+2. **`recordedNeutral_ok`** (MovedPlace): ASSEMBLED (`Slice/Recorded.lean`, standard axioms:
+   `expandRefsF_mean`, `expandRefsF_anyAtom`, `pathCond_everywhere`, `recordedNeutral_ok_of_facts`).
+   Rests on two open leaves in MovedPlace:
+   - `recordFacts_of_good` (`RecordFacts`: refinement records loan-free and top-hint-free,
+     generalisation records' programs top-hint-free). Not derivable from `Good`/`CtxOk`: the path
+     conditions are at the constant future and the unknown's type only. Swept (Sweep.lean clauses
+     (WF11r), (Hr), (Hn)): no violation on 72,076 suite / 739 probe states. Proposed to main as
+     clauses (WF11 for the first, `ShapeFacts` for the other two).
+   - `neutralKey`: `recordedNeutral`'s lookup is by `==` (`Value.beq`), which ignores a constructor
+     value's recorded parameters and binder names, so the record found may differ from the program
+     asked. Probe (instrumented `recordedNeutral`, `canonNeutral`, `substV`'s sealed match, whole
+     suite and probes): 19,937 + 4 + 16,578 matches, every one equal up to binder names (params
+     compared). The same gap is in the lead's `canonNeutral_step` and `substEnv_neutral_step`.
+     Proposed: the checker compares sealed programs exactly at these three sites.
+3. **`ctx_botWrite`** (DropOneAsm): ASSEMBLED, no `sorry` in its body; statement gained `hp`, `hroot`
+   (the call site had them). `Slice/BotShapes.lean` (standard axioms): `ShapeFacts.of_botWrite`
+   via `follow_updAt_bot_any`, `updAt_bot_head`, `ckVarPos_setAtE`, `topReadings_setAtE`. The
+   block's captures are split into the open leaf `blockCaps_botWrite`, to be deleted when the lead
+   moves that clause out of `CtxOk`.
+4. **`Rel.kept`** (EqJAsm, the lead's). Not this lane's.
+5. **Machine-only facts** (`Steps/MachineMono.lean`, `machine1`'s lane): `DecTab.back` and
+   `grows_absType`, `grows_accessInside`, `grows_accessPath`, `grows_content`, `grows_content?`,
+   `grows_dropAtJoin`, `grows_etaInPlace`, `grows_generalizeNeutral`, `grows_logEffect`,
+   `grows_lookupInd`, `grows_movedPlace`, `grows_placeTypeQ`, `grows_ppPlace`,
    `grows_recordedNeutral`, `grows_refine`, `grows_setPlace`, `grows_substEnv`.
-6. Induction-hypothesis fields the step uses (proved elsewhere or open in their areas): `access_step`,
-   `endBorrow_step` (extended form), `movedPlace_step` (recursive), `refine_step`,
-   `generalizeNeutral_step`, `substEnv_neutral_step`, `placeTypeQ_step`.
+6. Induction-hypothesis fields the step uses (hypotheses, not leaves): `access_step`,
+   `endBorrow_step`, `movedPlace_step`, `refine_step`, `generalizeNeutral_step`,
+   `substEnv_neutral_step`, `placeTypeQ_step`.
 
 Proved on the standard axioms: `grain_deref_not_proof`, `not_below_proof`, `joinDropOne_noop`,
 `copyRead_aligned`, `dropAt_data`, `botWrite_rel`, `botWrite_good`, the `Slice/` files.
-`dropOne_exists` was closed at 1216caba and is open again since item 3 because it concludes the
-extended context itself: it waits on `ctx_botWrite`, the [Access]/[End] hypothesis steps, and the
-machine facts.
+`dropOne_exists` is open since it concludes the extended context itself: it waits on
+`blockCaps_botWrite`, the [Access]/[End] hypothesis steps, and the machine facts.
 
-**Order I would attack them in:** (1) `recordedNeutral_ok` (self-contained, its pattern exists);
-(2) the routine part of `ctx_botWrite` (`ShapeFacts.of_botWrite` and the field-by-field `CtxOk`),
-after checking whether the lead has moved the block-captures clause out of `CtxOk`; (3)
-`etaFresh_sim` (through `split_coverage`, plus `meanV_ext`'s assignment-and-Δ half, which is the
-largest of the three). `Rel.kept` and the machine facts belong to other lanes.
+Scratch: a session scratchpad subdirectory `slice2/` holds `Leaves.lean` (the `#sorry_leaves` and
+`#print axioms` script), `sweep-records.patch`, `key-probe.patch` (the instrumented lookups).
 
 ## Decisions in force (why the statements look as they do)
 
