@@ -680,14 +680,13 @@ theorem decisionsCommute_closeRow (Ω : MState) (α : Refinement) (cs : List Val
     cases hk
 
 /-- Field `fnClass` (site 3) for the Π-types whose codomain's shape fixes the class (a sort; a
-stuck block's function), at states whose class caches are sound (`ClassCacheSound`). -/
+stuck block's function), at any states (`fnClass` reads the state and never writes it). -/
 theorem decisionsCommute_fnClass_shape (Ω : MState) (α : Refinement) (cs : List Value) (hs : List Hint)
     (ds : List Term) (c : Term) (rd : List (DeclInfo × Value)) (K : Nat) (hK : shapeClass (rowOf c) = some K) (Pα : Value)
-    (fuel : Nat) (hP : (run? (α.onValue fuel (.tPi cs (.pi hs ds c) rd)) Ω fuel).map (·.1) = some Pα) (Ωα : MState)
-    (hΩ : ClassCacheSound Ω (.tPi cs (.pi hs ds c) rd)) (hΩα : ClassCacheSound Ωα Pα) (k : Nat)
+    (fuel : Nat) (hP : (run? (α.onValue fuel (.tPi cs (.pi hs ds c) rd)) Ω fuel).map (·.1) = some Pα) (Ωα : MState) (k : Nat)
     (hk : (run? (fnClass fuel (.tPi cs (.pi hs ds c) rd)) Ω fuel).map (·.1) = some k) :
     (run? (fnClass fuel Pα) Ωα fuel).map (·.1) = some k := by
-  rw [fnClass_shape Ω α cs hs ds c rd K hK Pα fuel hP Ωα hΩ hΩα]
+  rw [fnClass_shape Ω α cs hs ds c rd K hK Pα fuel hP Ωα]
   exact hk
 
 /-! ### Why a stuck block's row is excluded
@@ -716,12 +715,12 @@ theorem probe_fnRow : (run? (declKind 5 (.tPi [] (.pi [] [] (.place (.var 0))) [
 what it needs (`notes/stability.md` §9). -/
 theorem stability : Conjecture2 :=
   ⟨{ -- needs `ValueDeclCommutes` (embedded values' readings: evaluation preserves declared
-     -- readings, D55, typing M), and refinement to keep the live scope's binding readings and the
-     -- `constDecls` cache coherent (invariants of the kind of `onState_sig`, not done)
+     -- readings, D55, typing M), and refinement to keep the live scope's binding readings
+     -- coherent (an invariant of the kind of `onState_sig`, not done)
      erasure := sorry
      byType := decisionsCommute_byType
-     -- proved for codomains whose shape fixes the class (`decisionsCommute_fnClass_shape`, given
-     -- class-cache soundness); the general case reads captured values' declared readings
+     -- proved for codomains whose shape fixes the class (`decisionsCommute_fnClass_shape`); the
+     -- general case reads captured values' declared readings
      -- (`ValueDeclCommutes`, typing M)
      fnClass := sorry
      closeRow := fun Ω α cs t rd Pα fuel hblock _ hP Ωα _ k hk =>

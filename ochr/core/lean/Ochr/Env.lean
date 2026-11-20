@@ -162,13 +162,11 @@ structure MState where
   cfg : Config := {}
   lastErased : Bool := false          -- set by `eval`: was the term just evaluated erased (D28)?
   lastProof : Bool := false           -- ... and is it a proof (its declared type has sort Prop, D35)?
-  classCache : List (Value × Nat) := []   -- erasure class of function types (D28), a pure cache
   convStack : List (Value × Value) := []  -- function pairs being compared observationally (D30)
   neutrals : List (Value × Nat) := []     -- [Split] generalisations: sealed program ↦ its σ (finding G1)
   depth : Nat := 0                        -- call depth (bounded, like fuel: the checker must terminate)
   placeLog : Array (Nat × Nat × Place × Bool) := #[]  -- D53: every move (true) and assignment (false), at its
                                           -- root binding's position (restored with the state)
-  constDecls : List (String × DeclInfo) := []   -- what each global's declared type says (a pure cache)
   curDecl : Option DeclInfo := none        -- the pre-pass's reading of the term being evaluated
   tailDecl : Option DeclInfo := none       -- ... handed to its tail, whose reading it is (one-shot)
   liveScope : Bool := false               -- declared-type reading: variables beyond the local scope are the top frame's
@@ -278,8 +276,7 @@ def restoreKeep (saved : MState) : M Unit :=
       match cur.recStack.find? (·.uid == fr.uid) with
       | some c => { fr with cands := c.cands }
       | none => fr
-    let s := { saved with classCache := cur.classCache, constDecls := cur.constDecls,
-                          recStack := saved.recStack.map keepCands, nextRecUid := cur.nextRecUid }
+    let s := { saved with recStack := saved.recStack.map keepCands, nextRecUid := cur.nextRecUid }
     -- D37 (v1.8): fresh names are never reused, and generalisation and η records survive a
     -- private copy, which stays within one world (`exitWorld` scopes them to it). Only
     -- the types of abstract values created by the nested run are kept: a refinement of an
@@ -327,8 +324,7 @@ Kept (true in every world, or names only):
   never reused (D37); a counter states no fact.
 - the types of abstract values created inside the arm: their names are fresh, and once the
   arm's records are dropped nothing outside the arm names them.
-- the [Rec] candidates (`recStack` frames by `uid`) and the pure caches (`classCache`,
-  `constDecls`): facts about declarations and calls, not about `σ`.
+- the [Rec] candidates (`recStack` frames by `uid`): facts about calls, not about `σ`.
 
 A field added to `MState` is restored by default; keeping one here is a claim that it holds in
 every world, and needs the argument above. -/
@@ -339,8 +335,7 @@ def exitWorld (w : World) : M Unit :=
       match cur.recStack.find? (·.uid == fr.uid) with
       | some c => { fr with cands := c.cands }
       | none => fr
-    { saved with classCache := cur.classCache, constDecls := cur.constDecls,
-                 recStack := saved.recStack.map keepCands, nextRecUid := cur.nextRecUid,
+    { saved with recStack := saved.recStack.map keepCands, nextRecUid := cur.nextRecUid,
                  nextAbs := cur.nextAbs, nextLoan := cur.nextLoan,
                  absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size }
 

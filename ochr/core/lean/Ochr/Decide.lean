@@ -425,12 +425,9 @@ def declOf (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) (t 
     if chk && d == .conflict then err (conflictMsg t ns)
     pure (DeclInfo.joinAlt ds d)
   | .const n =>     -- an unknown name is the machine's error, reported where it is met
-    if let some d := (← get).constDecls.lookup n then return d
     let some g := (← get).globals.find? (·.name == n) | return .any
     -- D80: a constant's declared type is closed, so its data is read too
-    let d ← closedTypeDecl fuel' g.ty
-    modify fun s => { s with constDecls := (n, d) :: s.constDecls }
-    pure d
+    closedTypeDecl fuel' g.ty
   | .val v => valueDecl fuel' v
   | .sort l => pure (.sort (sortSucc l))
   | .nat | .unit => pure (.sort 1)
@@ -753,13 +750,10 @@ and local functions alike: types if it is syntactically a sort, proofs if its de
 sort is `Prop` (`typeDecl`, D63), never by evaluating it (formal-appendix BoomL). The
 function of a stuck block (codomain `.val B`, the match's type) returns proofs if `B`
 has sort `Prop` and data otherwise, so the block is erased exactly when its match is
-(BoomB). Cached per Π-type. -/
+(BoomB). It reads the state and never writes it. -/
 def fnClass (fuel : Nat) (piTy : Value) : M Nat := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  match (← get).classCache.lookup piTy with
-  | some k => return k
-  | none => pure ()
-  let k ← match piTy with
+  match piTy with
     | .tPi cs (.pi hs ds c) _ =>
       match c with
       | .sort _ => pure 1
@@ -771,8 +765,6 @@ def fnClass (fuel : Nat) (piTy : Value) : M Nat := do
         let (sc', ns', _) ← telescope fuel' false capSc [] hs ds
         pure (if (← typeDecl fuel' false sc' ns' c).isProof then 2 else 0)
     | _ => pure 0
-  modify fun s => { s with classCache := (piTy, k) :: s.classCache }
-  pure k
 termination_by structural fuel
 
 /-- v1.7 (D35): which parameters are proofs, i.e. declared of sort Prop, read by the one
