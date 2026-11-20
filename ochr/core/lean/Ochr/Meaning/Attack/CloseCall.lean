@@ -9,7 +9,7 @@ on the concrete shape the checker produces for `σ_g(&a)` with `σ_g : Π(x : &N
 (probed on the checker at 5dc7710b: result `borrow_1 ⌈let c1 = σ0; let r = σ1(&c1); *r⌉`, the
 lender `a ↦ ⌈let c1 = σ0; let r = σ1(&c1); *r := loan_1; c1⌉`, counter `2`), and proves what it
 can of it, or refutes it. Every piece of the run's borrow bookkeeping (D10–D15), `RunCtx.Δ`
-(D17), `piCarL`/`applyFnL` and the knot is exercised end to end.
+(D17), the telescope code's carrier and `applyFnL` (D59) and the knot are exercised end to end.
 
 Status (2026-11-10): both proved. (A') in `CloseCallFwd.lean`, by stepping the run through the
 concrete-state normal forms of `RunEqs.lean` (binding, borrow `S₂`, call `S₃`, `r` bound `S₄`,
@@ -20,7 +20,7 @@ checker's sealed programs mean the forward value and the backward function, as `
 them. Probe findings that shaped `RunEqs.lean` (a throwaway `simp` unfolding of `res_means_fwd`): `unfold meanV` then
 `simp [run, emptyState, pushBindShaped, contentOf, readPlace, borrowPlace, runArgs, callOf,
 callOfL, applyFnL, …, runT]` reduces the `ascribe`/`letIn`/`borrow` prefix and reaches `callOf` with
-`fv.2.shape = (Δ₀ 1).shape = some (psG, outG)` and `fv.1 = meanV … (.abs 1)`, as intended. Two
+`fv.2 = Δ₀ 1` (the telescope code `telG`) and `fv.1 = meanV … (.abs 1)`, as intended. Two
 obstacles: (1) `simp [Sem.updAt]` fails outright ("failed to generate equational theorem for
 `Sem.updAt`", at the `isTrue`/`.ty0 Nat` branch of `Places.lean:93`), so every place write
 (`setContent`, hence the fill's `*r := loan_1`) must be reduced by a hand lemma on the concrete
@@ -36,15 +36,14 @@ namespace Ochr.Meaning.Attack
 
 open Ochr.Meaning Ochr.Meaning.Steps
 
-/-- `σ_g`'s shape: one borrow parameter of content type `Nat`, a borrow result of type `Nat`. -/
-def psG : List PiParam := [⟨true, fun _ => .ty0 Nat, fun _ => none⟩]
-def outG : PiOut := .ref fun _ => .ty0 Nat
-
 /-- The carrier of `Π(x : &Nat). &Nat` at level 0: from a starting content to a forward value
 and an injective backward function into the final contents `PUnit × Nat`. -/
-abbrev GCar : Type := piCarL lvl0 psG [] PUnit outG
+abbrev GCar : Type := (d : Nat) → Back (PUnit × Nat) Nat
 
-example : GCar = ((d : Nat) → Back (PUnit × Nat) Nat) := rfl
+/-- `σ_g`'s telescope code: one borrow parameter of content type `Nat`, a borrow result of
+content type `Nat`; its carrier is `GCar` (the index of the code). -/
+def telG : Tel Code0 PUnit GCar :=
+  .param PUnit true Nat .nat (fun _ => Back (PUnit × Nat) Nat) fun _ => .ref (PUnit × Nat) Nat .nat
 
 /-- Decisions for the shape: nothing is a statement or a proof, nothing is copied, no join, no
 re-pointing. -/
@@ -58,11 +57,11 @@ def D₀ : Decisions where
   rePointed _ _ := []
   typeDecl _ _ := .other
 
-/-- Δ: `σ0 : Nat`, `σ1 : Π(x : &Nat). &Nat` with its shape. -/
+/-- Δ: `σ0 : Nat`, `σ1 : Π(x : &Nat). &Nat` at its code. -/
 def Δ₀ : Nat → TyS
-  | 0 => .plain (.ty0 Nat)
-  | 1 => ⟨.ty0 GCar, some (psG, outG), none, none⟩
-  | _ => .plain .err
+  | 0 => .plain TyM.nat
+  | 1 => .plain (.t0 GCar (.pi GCar telG))
+  | _ => .plain TyM.err
 
 /-- The context: an arbitrary data model and code meaning (no inductive and no global is
 touched), `D₀`, `Δ₀`. -/

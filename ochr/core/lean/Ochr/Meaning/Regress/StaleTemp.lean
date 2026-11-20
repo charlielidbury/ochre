@@ -54,7 +54,7 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- `r`'s binding: the borrow's content at `Nat`, labelled `n`. -/
 noncomputable def rB (n : Nat) : SBinding :=
-  { ty := { TyS.plain (.ty0 Nat) with label := some n }, val := fun _ => .el0 Nat 0,
+  { ty := { TyS.plain TyM.nat with label := some n }, val := fun _ => .el0 Nat 0,
     decl := K.D.declOf (scopeOf (a2 K n)) (.borrow (.var 0)) }
 
 theorem take_a2 (n : Nat) : (a2 K n).takeLabel n =
@@ -91,20 +91,20 @@ theorem held_a3 (n : Nat) :
 
 /-- The reference run of `let r = &y; ()` from `y = Z` ends in `aF`. -/
 theorem let_borrow_run (hfl : NoStmt K) (n : Nat) (hint : TyS) :
-    run K ρ φ hint tLet (a1 K n) = some ((.el0 Unit (), .plain (.ty0 Unit)), aF K n) := by
+    run K ρ φ hint tLet (a1 K n) = some ((.el0 Unit (), .plain TyM.unit), aF K n) := by
   rw [tLet, run_letIn ρ φ K hfl, run_borrow ρ φ K hfl, borrow_a1]
   show ((run K ρ φ hint .tt (a3 K n)).bind fun y => some (y.1, (match (match y.2.env.getLast? with
             | some fr => y.2.shape (.bind y.2.topIdx (fr.binds.length - 1))
             | none => none) with
           | some l => y.2.endLabel l | none => letLenders y.2).dropLast)) = _
-  have htt : run K ρ φ hint .tt (a3 K n) = some ((.el0 Unit (), .plain (.ty0 Unit)), a3 K n) := rfl
+  have htt : run K ρ φ hint .tt (a3 K n) = some ((.el0 Unit (), .plain TyM.unit), a3 K n) := rfl
   rw [htt]
-  show some ((Sem.el0 Unit (), TyS.plain (.ty0 Unit)), (match (match (a3 K n).env.getLast? with
+  show some ((Sem.el0 Unit (), TyS.plain TyM.unit), (match (match (a3 K n).env.getLast? with
             | some fr => (a3 K n).shape (.bind (a3 K n).topIdx (fr.binds.length - 1))
             | none => none) with
           | some l => (a3 K n).endLabel l | none => letLenders (a3 K n)).dropLast) = _
   rw [held_a3]
-  show some ((Sem.el0 Unit (), TyS.plain (.ty0 Unit)), ((a3 K n).endLabel n).dropLast) = _
+  show some ((Sem.el0 Unit (), TyS.plain TyM.unit), ((a3 K n).endLabel n).dropLast) = _
   rw [SState.endLabel_eq (holder_a3 K n)]
   rfl
 

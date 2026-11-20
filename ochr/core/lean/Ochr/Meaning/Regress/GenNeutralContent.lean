@@ -96,7 +96,7 @@ theorem not_good (K : RunCtx) (ρ : Assignment) (φ : Future) :
     rw [← Array.getElem?_toList, absTy_S']; rfl
   have hm := ht.mem 0 hr hsz
   simp only [MState.absTyM, h0, Assignment.ext] at hm
-  exact absurd hm (by simp [meanV, Value.tyM, Value.mean, Sem.asTy, Sem.mem])
+  exact absurd hm (by simp [meanV, Value.tyM, Value.mean, Sem.asTy, Sem.mem, TyM.nat, Code0.enc])
 
 /-! ## The start state is `Good` at every assignment -/
 
@@ -107,7 +107,7 @@ theorem bindAt_S (f i : Nat) (b : Binding) (h : S.env[f]?.bind (fun fr => fr.bin
   all_goals simp [S] at h
 
 theorem posTyM_S (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (p : Pos) (T : TyM)
-    (h : MState.posTyM dm C Γ ρ S p = some T) : p = .bind 0 0 ∧ T = .ty0 Nat := by
+    (h : MState.posTyM dm C Γ ρ S p = some T) : p = .bind 0 0 ∧ T = TyM.nat := by
   cases p with
   | temp f i => simp [MState.posTyM] at h
   | bind f i =>
@@ -126,7 +126,7 @@ theorem good_S (K : RunCtx) (ρ : Assignment) : Good K.dm K.M K.Γ ρ S := by
   · intro φ _ p T hp
     obtain ⟨rfl, rfl⟩ := posTyM_S K.dm K.M K.Γ ρ p T hp
     have e : Env.mean K.dm K.M K.Γ ρ φ S.env (.bind 0 0) = .el0 Nat 0 := rfl
-    rw [e]; exact DataModel.pmem_of_mem K.Γ (by simp [Sem.whole]) (by simp [Sem.mem])
+    rw [e]; exact DataModel.pmem_of_mem K.Γ (by simp [Sem.whole]) (by simp [Sem.mem, TyM.nat, Code0.enc])
   · rw [hA]; intro p hp; simp at hp; subst hp; show ¬ (Value.zero.hasBorrow = true); decide
   · rw [hA]; intro p hp q hq _ _ _; simp at hp hq; rw [hp, hq]
   · rw [hV]; intro v hv l hl; simp at hv; subst hv; simp [Value.outerLoans] at hl

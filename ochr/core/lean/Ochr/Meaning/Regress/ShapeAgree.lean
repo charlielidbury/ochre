@@ -3,28 +3,28 @@ import Ochr.Meaning.RunSubst
 import Ochr.Meaning.RunCongr
 
 /-!
-# Where a function type's shape does NOT survive (docs/31 D22; third lead, 2026-11-19; built)
+# A function type's structure survives where its shape did not (docs/31 D22, D59; built)
 
-Prerequisite (a) of the migration to the simulation form (docs/31 D20 item 1): "a Π-type's shape
-does not depend on where it is read", so that a binding's shape in the reference state (made by
-the run) is the shape the checker's stored type reads as (`Value.tyS`, through `tyShape`). In that
-blanket form it is FALSE, in both directions. The lemmas here are the kernel-checked halves; the
-checker's side of each (the program is accepted) is asserted by `Regress/ShapeProbes.lean`.
+Prerequisite (a) of the migration to the simulation form (docs/31 D20 item 1): "a Π-type's
+structure does not depend on where it is read". With the structure carried beside the meaning
+(a Π-shape and data in the type the run returns), it was FALSE in both directions, and this file
+held the kernel-checked halves: a call's result never had a shape (`call_noShape`) where the
+checker's stored Π-type value had one, so after `let a = Adder(n)` or a parameter `f : Fn(Nat)`
+the reference could not call `a` or `f` (probes `UseAdder`, `UseFn`); and the run of a Π-term
+carried its shape in the TYPE of its result, a universe, which the checker's stored `T : Type`
+has none of, so `let T = Π(n : Nat). Nat; let g : T = f; g(n)` failed (probe `Alias`).
 
-* **The reference has none where the checker's stored type has one.** `call_noShape`: a call's
-  result never has a Π-shape, whatever the callee and the state (since docs/31 D32 it has its
-  codomain code's data, `TyS.ofTyM`). `tyShape_tPi`: a stored Π-type value of a Π-term always
-  has one. So after `let a = Adder(n)` the checker's binding `a : Π(m : Nat). Nat` has a shape and
-  the reference's has none, and after `(f : Fn(Nat))`, with `Fn(A) := Π(x : A). A` computed by a
-  call, the same holds of the parameter (probes `UseAdder`, `UseFn`: both accepted).
-* **The reference has one where the checker's stored type has none.** `pi_shape`: the run of a
-  Π-term returns the Π's shape in its result's TYPE, whose meaning is a universe; `tyShape_sort`: a
-  stored universe has no shape. So after `let T = Π(n : Nat). Nat` the reference's binding `T`
-  has a shape and the checker's `T : Type` read as a reference state has none, and from that state
-  `let g : T = f; g(n)` fails (probe `Alias`: accepted).
+Since D59 a type is its code, and the code holds the structure. The same places, positively:
 
-Both are faults of the model (the structure of a value is carried beside its meaning, in the
-type the run returns, and three clauses drop it), not of the checker.
+* `call_cod`: a call's result is typed at the code the callee's telescope reaches at the
+  arguments, so a function returned by a call is called along its own code (`UseAdder`), and a
+  parameter whose type is a call of a type function is bound at the code that call computed
+  (`UseFn`): the code is in the value the domain runs to, not beside it.
+* `pi_code`: the run of a Π-term returns the type value holding its code, typed at the universe;
+  the checker's binding `T : Type` holds the same value, so `g : T` is typed at `T`'s code
+  (`Alias`).
+
+The checker's side of each (the program is accepted) is asserted by `Regress/ShapeProbes.lean`.
 -/
 
 namespace Ochr.Meaning.Regress.ShapeAgree
@@ -32,112 +32,115 @@ open Ochr Ochr.Meaning
 
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- An applied callee's result has no Π-shape, at every level; its data is its codomain code's
-(docs/31 D32: the data half of the call-result redesign; it was `none`). -/
-theorem callOfL_noShape.{u} (L : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : Sem) (args : List Res)
-    (s s' : SState) (r : Res) (h : callOfL L ps out fv args s = some (r, s')) :
-    r.2.shape = none ∧ r.2.data = r.2.m.dataName? := by
+/-- What an application gives back, as the codomain it reached: a data result's code, or a
+returned borrow's content code. -/
+def _root_.Ochr.Meaning.AppResultL.cod.{u} {L : Lvl.{u}} : AppResultL L → Bool × TyM
+  | .data _ T _ => (false, T)
+  | .ref _ c _ _ => (true, L.toTy c)
+
+/-- **Applying along a telescope code reaches its codomain**: the result's type is the code
+`telCodL` reads off the telescope at the same arguments. -/
+theorem applyTelL_cod.{u} (L : Lvl.{u}) : ∀ {Fin C : Type u} (t : Tel L.Code Fin C) (readFin : Fin → List Sem)
+    (f : C) (args : List Sem) (r : AppResultL L), applyTelL L t readFin f args = some r →
+    telCodL L t args = some r.cod
+  | _, _, .dat _ _ c, readFin, f, [], r, h => by
+    simp only [applyTelL, Option.some.injEq] at h; subst h; rfl
+  | _, _, .ref _ U c, readFin, f, [], r, h => by
+    simp only [applyTelL, Option.some.injEq] at h; subst h; rfl
+  | _, _, .param Fin isRef A c _ k, readFin, f, a :: as, r, h => by
+    simp only [applyTelL] at h
+    simp only [telCodL]
+    cases hd : L.dec c a with
+    | none => rw [hd] at h; cases h
+    | some x =>
+      rw [hd] at h
+      exact applyTelL_cod L (k x) _ (f x) as r h
+  | _, _, .dat .., _, _, _ :: _, _, h => by simp [applyTelL] at h
+  | _, _, .ref .., _, _, _ :: _, _, h => by simp [applyTelL] at h
+  | _, _, .param .., _, _, [], _, h => by simp [applyTelL] at h
+
+/-- A call at level `L` is typed at the codomain its callee's telescope reaches. -/
+theorem callOfL_cod.{u} (L : Lvl.{u}) {C : Type u} (t : Tel L.Code PUnit C) (fv : Sem) (args : List Res)
+    {s s' : SState} {r : Res} (h : callOfL L t fv args s = some (r, s')) :
+    ∃ b, telCodL L t (args.map (·.1)) = some (b, r.2.m) := by
   unfold callOfL at h
   dsimp only at h
-  generalize applyFnL L ps out fv (args.map (·.1)) = a at h
-  rcases a with _ | (_ | _)
-  · cases h
-  · simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact ⟨rfl, rfl⟩
-  · simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    exact ⟨rfl, rfl⟩
+  cases happ : applyFnL L t fv (args.map (·.1)) with
+  | none => rw [happ] at h; cases h
+  | some a =>
+    obtain ⟨F, -, hF⟩ := Option.bind_eq_some_iff.mp happ
+    have hc := applyTelL_cod L t _ F _ a hF
+    rw [happ] at h
+    cases a with
+    | data res T fin =>
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨⟨-, rfl⟩, -⟩ := h
+      exact ⟨false, hc⟩
+    | ref U c fwd back =>
+      simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨⟨-, rfl⟩, -⟩ := h
+      exact ⟨true, hc⟩
 
-theorem callOf_noShape (fv : Res) (args : List Res) (s s' : SState) (r : Res)
-    (h : callOf fv args s = some (r, s')) : r.2.shape = none ∧ r.2.data = r.2.m.dataName? := by
+/-- **A call is typed at the codomain code its callee's type reaches at the arguments.** -/
+theorem callOf_cod (fv : Res) (args : List Res) {s s' : SState} {r : Res}
+    (h : callOf fv args s = some (r, s')) : ∃ b, fv.2.m.codAt? (args.map (·.1)) = some (b, r.2.m) := by
   unfold callOf at h
   split at h
-  · split at h
-    · exact callOfL_noShape _ _ _ _ _ _ _ _ h
-    · exact callOfL_noShape _ _ _ _ _ _ _ _ h
-    · exact callOfL_noShape _ _ _ _ _ _ _ _ h
-    · cases h
+  · rename_i A C t e; rw [e]; exact callOfL_cod lvl0 t _ _ h
+  · rename_i A C t e; rw [e]; exact callOfL_cod lvl1 t _ _ h
+  · rename_i A C t e; rw [e]; exact callOfL_cod lvl2 t _ _ h
   · cases h
 
-/-- An erased term's result keeps "no shape" if the term's own run has it. -/
-theorem erasedIf_noShape (fl : Bool × Bool) (x : SM Res) (s s' : SState) (r : Res)
-    (hx : ∀ r s', x s = some (r, s') → r.2.shape = none)
-    (h : SM.erasedIf fl x s = some (r, s')) : r.2.shape = none := by
-  unfold SM.erasedIf at h
-  split at h
-  · simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h
-    rfl
-  · rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, -, -, r₀, s₀, h₀, rfl⟩
-    · exact hx _ _ h
-    · exact hx r₀ s₀ h₀
-
-/-- **A call's result has no Π-shape**, whatever the callee, the arguments and the state. So a
-function returned by a call cannot be called, and a parameter whose type is a call of a type
-function is bound with no shape. (Its data, since docs/31 D32, is its codomain code's.) -/
-theorem call_noShape (hint : TyS) (f : Term) (args : List Term) (hd : Bool) (s s' : SState) (r : Res)
-    (h : run K ρ φ hint (.call f args hd) s = some (r, s')) : r.2.shape = none := by
+/-- **A call's result has the code its callee's telescope reaches** (the positive form of what was
+`call_noShape`): whatever the callee and the state, a call that is not erased is typed at the
+codomain code of the callee's type at the argument meanings. So a function returned by a call is
+called along its own code, and a type computed by a call keeps its structure. -/
+theorem call_cod (hint : TyS) (f : Term) (args : List Term) (hd : Bool) (s s' : SState) (r : Res)
+    (hfl : (K.D.flags (scopeOf s) (.call f args hd)).2 = false)
+    (h : run K ρ φ hint (.call f args hd) s = some (r, s')) :
+    ∃ (fv : Res) (as : List Res) (b : Bool), fv.2.m.codAt? (as.map (·.1)) = some (b, r.2.m) := by
   rw [run, runT] at h
-  refine erasedIf_noShape _ _ _ _ _ (fun r s' hx => ?_) h
-  simp only [Bind.bind] at hx
-  split at hx
-  · split at hx
-    · exact (callOf_noShape _ _ _ _ _ hx).1
-    · cases hx
-  · cases hx
+  dsimp only at h
+  unfold SM.erasedIf at h
+  rw [if_neg (by simp [hfl])] at h
+  have key : ∀ r₀ s₀, (do
+      let fv ← SM.headOf f (fun p => readPlace K φ p true) (runT K ρ φ false (.plain TyM.err) f)
+      let as ← runArgs K ρ φ (K.D.flags (scopeOf s) (.call f args hd)).1 fv.2.m [] args
+      callOf fv as) s = some (r₀, s₀) →
+      ∃ (fv : Res) (as : List Res) (b : Bool), fv.2.m.codAt? (as.map (·.1)) = some (b, r₀.2.m) := by
+    intro r₀ s₀ h₀
+    obtain ⟨fv, s₁, -, h₁⟩ := SM.bind_some h₀
+    obtain ⟨as, s₂, -, h₂⟩ := SM.bind_some h₁
+    obtain ⟨b, hb⟩ := callOf_cod fv as h₂
+    exact ⟨fv, as, b, hb⟩
+  rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, -, -, r₀, s₀, h₀, rfl⟩
+  · exact key r s' h
+  · exact key r₀ s₀ h₀
 
-/-- A stored Π-type value of a Π-term has a shape, at every assignment and future. -/
-theorem tyShape_tPi (caps : List Value) (hs : List Hint) (ds : List Term) (c : Term) (rd : List (DeclInfo × Value)) :
-    (tyShape K ρ φ (.tPi caps (.pi hs ds c) rd)).isSome = true := by
-  rw [tyShape]
-  cases c <;> simp [piShapeOf]
+/-- **The run of a Π-term returns the type value holding the function type's code**, typed at the
+universe of its declared sort (the positive form of what was `pi_shape`): the code is in the
+value, so a binding `T = Π(n : Nat). Nat` holds it, and so does the checker's `T : Type`. -/
+theorem pi_code (hint : TyS) (hs : List Hint) (ds : List Term) (c : Term) (s : SState) :
+    run K ρ φ hint (.pi hs ds c) s = some ((.ty (piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c))
+      (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)),
+        .plain (TyM.univ (K.D.piSort (scopeOf s) (.pi hs ds c)))), s) :=
+  run_pi_def K ρ φ hint hs ds c s
 
-/-- **So the two never agree on a call's result**: the type the checker stores for a call that
-returns a function is a Π-type value with a shape, and the reference's result has none. -/
-theorem call_shape_ne (hint : TyS) (f : Term) (args : List Term) (hd : Bool) (s s' : SState) (r : Res)
-    (h : run K ρ φ hint (.call f args hd) s = some (r, s')) (ψ : Future)
-    (caps : List Value) (hs : List Hint) (ds : List Term) (c : Term) (rd : List (DeclInfo × Value)) :
-    r.2.shape ≠ tyShape K ρ ψ (.tPi caps (.pi hs ds c) rd) := by
-  intro e
-  have h1 := call_noShape K ρ φ hint f args hd s s' r h
-  have h2 := tyShape_tPi K ρ ψ caps hs ds c rd
-  rw [← e, h1] at h2
-  cases h2
+/-- At a data sort the Π-type's code is a function type's (its telescope is what a call walks). -/
+theorem piTyAt_isPi (l : Nat) (hl : l = 1 ∨ l = 2 ∨ l = 3) (ds : List PiDom) (out : PiCod) :
+    (piTyAt l ds out).isPi = true := by
+  rcases hl with rfl | rfl | rfl <;> rfl
 
-/-- The run of a Π-term returns the Π's shape in the type of its result, a universe. -/
-theorem pi_shape (hint : TyS) (hs : List Hint) (ds : List Term) (c : Term) (s : SState) :
-    ∃ r, run K ρ φ hint (.pi hs ds c) s = some (r, s) ∧ r.2.shape.isSome = true ∧
-      r.2.m = .univ (K.D.piSort (scopeOf s) (.pi hs ds c)) := by
-  rw [run, run_pi_def]
-  exact ⟨_, rfl, rfl, rfl⟩
+/-! ## The future does not matter -/
 
-/-- A stored universe has no shape: a binding `T : Type` of a checker state, read as a reference
-state, has none, whatever type `T` holds. -/
-theorem tyShape_sort (l : Nat) : tyShape K ρ φ (.sort l) = none := by
-  rw [tyShape]
-  · intro _ _ _ h; cases h
-  · intro _ h; cases h
-
-theorem tyS_sort_shape (l : Nat) : (Value.tyS K.dm K.M K.Γ ρ (.sort l)).shape = none := by
-  show tyShape K ρ noFuture (.sort l) = none
-  exact tyShape_sort K ρ noFuture l
-
-/-! ## What IS proved: the future does not matter -/
-
-/-- A type value that holds no loan reads as the same type, with the same shape and data, at
-every future. (So the checker's reading at the constant future, `Value.tyS`, is the reading at the
-run's; what remains of "does not depend on where it is read" is the state, `piShape_step_stmt`.) -/
-theorem tyStr_futureFree (hK : ∀ n, (K.C.global n).2.label = none) (T : Value)
+/-- A type value that holds no loan reads as the same code at every future. (So the checker's
+reading at the constant future, `Value.tyS`, is the reading at the run's; what remains of "does
+not depend on where it is read" is the state, `piShape_step_stmt`.) -/
+theorem ty_futureFree (hK : ∀ n, (K.C.global n).2.label = none) (T : Value)
     (hT : ∀ l, T.hasLoan l = false) (φ' : Future) (hint : TyS) :
-    tyShape K ρ φ T = tyShape K ρ φ' T ∧ tyDataV K ρ φ T = tyDataV K ρ φ' T ∧
-      meanV K ρ φ hint T = meanV K ρ φ' hint T :=
-  ⟨tyShape_congrE K ρ φ φ' hK T (fun l h => by
-      have := Value.hasLoan_of_hasLoanM h; rw [hT l] at this; cases this),
-    tyDataV_congrE K ρ φ φ' hK T (fun l h => by
-      have := Value.hasLoan_of_hasLoanM h; rw [hT l] at this; cases this),
-    meanV_congrE K ρ φ φ' hK T hint (fun l h => by
-      have := Value.hasLoan_of_hasLoanM h; rw [hT l] at this; cases this)⟩
+    meanV K ρ φ hint T = meanV K ρ φ' hint T :=
+  meanV_congrE K ρ φ φ' hK T hint (fun l h => by
+    have := Value.hasLoan_of_hasLoanM h; rw [hT l] at this; cases this)
 
 /-! ## A17: a proof has no type in the run -/
 

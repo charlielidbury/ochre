@@ -54,9 +54,9 @@ def u : Sem := .el0 Unit ()
 (content `()`), and the lent one of `a`, `b` reading the label's final content. -/
 def endState (lentA : Bool) : SState :=
   { env := [{ binds := [
-      { ty := .plain (.ty0 Unit), val := if lentA then (fun ψ => ψ 0) else fun _ => u },
-      { ty := .plain (.ty0 Unit), val := if lentA then (fun _ => u) else fun ψ => ψ 0 },
-      { ty := .plain (.ty0 Unit), val := fun _ => u }] }],
+      { ty := .plain TyM.unit, val := if lentA then (fun ψ => ψ 0) else fun _ => u },
+      { ty := .plain TyM.unit, val := if lentA then (fun _ => u) else fun ψ => ψ 0 },
+      { ty := .plain TyM.unit, val := fun _ => u }] }],
     shape := fun p => if p = .bind 0 2 then some 0 else none,
     nextLoan := 1 }
 

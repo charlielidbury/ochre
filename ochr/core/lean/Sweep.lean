@@ -860,7 +860,7 @@ def shapeFacts : Clause where
       match declAt st q with | some (.ref _) => true | _ => false)]
   check st := shapeViols st
 
-/-! ### (N), (Ty): constructor values of data declarations; type values declared sorts (docs/31 D47) -/
+/-! ### (N): constructor values of data declarations (docs/31 D47) -/
 
 /-- `Steps.dataCtorBad`, mirrored EXACTLY. -/
 def dataCtorBad (Γ : List IndDecl) : Value → Bool
@@ -880,24 +880,6 @@ def ctorsData : Clause where
       some ⟨s!"a constructor value of a Prop or undeclared or Nat declaration, at {posKind p}", s!"{posName st.env p} = {clip v.pp}"⟩
     else none
 
-/-- (Ty) (`ShapeFacts.typeRoot`): a variable of the top frame holding a type value (`Π` or an
-inductive type) is declared a sort, by the checker's own `placeDecl`. -/
-def typeRoots : Clause where
-  name := "(Ty) a variable holding a type value is declared a sort"
-  premises := [("a variable of the top frame holds a Π or an inductive type", fun st =>
-    match st.env.back? with
-    | some fr => fr.binds.toList.any fun b => match b.val with | .tPi .. | .tInd .. => true | _ => false
-    | none => false)]
-  check st := match st.env.back? with
-    | some fr => (List.range fr.binds.size).filterMap fun o =>
-      match (fr.binds[fr.binds.size - 1 - o]!).val with
-      | .tPi .. | .tInd .. =>
-        match declAt st (.var o) with
-        | some (.sort _) => none
-        | d => some ⟨"a variable holding a type value is declared something else",
-            s!"{(fr.binds[fr.binds.size - 1 - o]!).hint.name}: {match d with | some _ => "a non-sort reading" | none => "no reading"}"⟩
-      | _ => none
-    | none => []
 
 /-- (C⋆) (`ShapeFacts.proofCopy`, docs/31 D49): a place in scope BELOW A VARIABLE holding `⋆` is
 declared a copy type (a field of a proof), by the checker's own `placeDecl` and `declCopy`; so the
@@ -979,7 +961,7 @@ def etaHintFree : Clause where
     if topHintFree st.inds r then none else some ⟨"an η record reads the hint", s!"σ{σ} := {clip r.pp}"⟩
 
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, typeRoots, proofCopy, dataNotProof, etaHintFree, plantedFill, plantedAbs]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, etaHintFree, plantedFill, plantedAbs]
 
 /-! ## The sweep -/
 

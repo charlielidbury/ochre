@@ -51,7 +51,7 @@ theorem bindAt_S (f i : Nat) (b : Binding) (h : S.env[f]?.bind (fun fr => fr.bin
   all_goals simp [S] at h
 
 theorem posTyM_S (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (p : Pos) (T : TyM)
-    (h : MState.posTyM dm C Γ ρ S p = some T) : p = .bind 0 0 ∧ T = .ty0 Nat := by
+    (h : MState.posTyM dm C Γ ρ S p = some T) : p = .bind 0 0 ∧ T = TyM.nat := by
   cases p with
   | temp f i => simp [MState.posTyM] at h
   | bind f i =>
@@ -75,7 +75,7 @@ theorem goodOld_S (K : RunCtx) : GoodOld K ρ₀ S := by
   · intro φ _ p T hp
     obtain ⟨rfl, rfl⟩ := posTyM_S K.dm K.M K.Γ ρ₀ p T hp
     have e : Env.mean K.dm K.M K.Γ ρ₀ φ S.env (.bind 0 0) = .el0 Nat 0 := rfl
-    rw [e]; exact DataModel.pmem_of_mem K.Γ (by simp [Sem.whole]) (by simp [Sem.mem])
+    rw [e]; exact DataModel.pmem_of_mem K.Γ (by simp [Sem.whole]) (by simp [Sem.mem, TyM.nat, Code0.enc])
   · rw [hA]; intro p hp; simp at hp; subst hp; show ¬ (Value.zero.hasBorrow = true); decide
   · rw [hA]; intro p hp q hq _ _ _; simp at hp hq; rw [hp, hq]
   · rw [hV]; intro v hv l hl; simp at hv; subst hv; simp [Value.outerLoans] at hl
@@ -120,8 +120,8 @@ theorem genTy_S (K : RunCtx) : GenTy K ρ₀ S .tNat .zero where
   nabs τ h := by simp [Value.hasAbs, Value.anyAtom, BEq.beq, Value.beq] at h
   loanFree l := rfl
   refOk := rfl
-  level := by simp [Value.tyM, Value.mean, Sem.asTy, TyM.level]
-  mem := by simp [Value.tyM, Value.mean, Sem.asTy, meanV, Sem.mem]
+  level := by simp [Value.tyM, Value.mean, Sem.asTy, TyM.level, TyM.nat, Code0.level]
+  mem := by simp [Value.tyM, Value.mean, Sem.asTy, meanV, Sem.mem, TyM.nat, Code0.enc]
 
 /-- The state after the fresh unknown: `σ₀ : Nat`. -/
 def S' : MState := { S with nextAbs := S.nextAbs + 1, absTy := S.absTy.push .tNat }
