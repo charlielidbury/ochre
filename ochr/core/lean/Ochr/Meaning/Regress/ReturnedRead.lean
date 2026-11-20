@@ -20,6 +20,7 @@ open Ochr.Test
 ochr ReturnedReadAt uses Nats {
   def Id1 (x : &Nat) : &Nat := &*x
   def Id1At (a : Nat) : Unit := (let r = Id1(&a); ?)
+  def UseId1At (u : Unit) : Nat := (let y = 2; let r = Id1(&y); ?)
 }
 
 namespace Ochr.Meaning.Regress.ReturnedRead
@@ -40,6 +41,15 @@ def markLoan : List Value → Bool
 
 -- the checker's state after the direct call: `a` holds the mark over the returned borrow's loan
 #guard markLoan (atHole "Id1At")
+
+/-- `y ↦ lent_k loan_k` and `r ↦ borrow_k 2` (after the unused parameter). -/
+def markLoan2 : List Value → Bool
+  | [_, .gloan k (.loan k'), .borrow k'' (.succ (.succ .zero))] => k == k' && k == k''
+  | _ => false
+
+-- the same in `UseId1`, the program `CallInPlace.useId1_callOf` runs: `y` holds the mark, `r` the
+-- reborrow of `2`
+#guard markLoan2 (atHole "UseId1At")
 
 /-- The checker's `a` means the future at `k`, raw. -/
 theorem mark_loan_raw (K : RunCtx) (ρ : Assignment) (ψ : Future) (hint : TyS) (k : Nat) :
