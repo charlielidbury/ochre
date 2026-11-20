@@ -1251,6 +1251,31 @@ Also: `eq`, `J` and `letIn` lacked `hok` (incomplete: an untyped side, transport
 
 **Where the type lives**: recommended, a field of the checker's frame beside its temporaries, written at the 18 push sites (each has the type in hand, at the site or one call up: `assignPlace`, `dropValue`, `obsResult`, `endBorrowArgs` take it as a parameter); no verdict changes. The model-side form (`Good` taking the types as a parameter) threads through 28 files.
 
+**The checker change, for the checker lane** (decided by the orchestrator 2026-11-20: the type lives in the checker's frame). `Frame` gains, beside `temps : Array Value`, the stored type of each temporary (`Option Value`; e.g. `tempTys : Array (Option Value)` kept the same length, or `temps : Array (Value × Option Value)`). Each push stores the type the machine already holds for the value at that moment, never one computed for the purpose; `none` where it holds none (an untyped run's result whose type was not demanded, D82). No verdict changes. Line numbers are `Ochr/Machine.lean` at spine b2992440 (= spine's copy of main's checker; find each by its function on `main`).
+
+| # | Function (line) | Value pushed | Type in hand | At the site, or from which caller |
+|---|---|---|---|---|
+| 1 | `obsResult` (1048) | `u`, the content of a borrow result `borrow k u` ([Obs-borrow]) | the content type `T` of the result's type `&T` | caller: `convFnRun` (1940), where `callType … pf args …` returned `.tRef T` (1930–1931); `obsResult` gains a type parameter (`observe`'s call at 4005 passes `σw? = none` and never reaches this branch) |
+| 2 | `obsResult` (1049) | `borrow k (abs σw)` | `&T` (same) | same caller |
+| 3 | `obsResult` (1054) | the result `r` | the result's type | callers: `observe` (4005: `T` from the side's `eval`, 3993, checked by `expectTy` at 3997) and `convFnRun` (1940: the `_` of `callFn … false …` at 1939, which `callFn` computes as `declCallType` since its `want` defaults to `true`) |
+| 4 | `assignPlace` (1192) | the value written `v` | the value's type | callers: `evalCore` `.assign` (2179: `Tv` from `eval` at 2171), `lentProofAssign` (2485: `.proof` at `T := placeType p`, 2482), `observe` [Obs-ref] (4003: `σ` at the content type `T'` that `idType` read when building `refs`, 4037–4040; `refs` must then carry `T'`); `assignPlace` gains a type parameter |
+| 5 | `dropValue` (1245) | a discarded value | its type | callers: `evalCore` `.seq` (2215: the `_` of `eval` at 2214) and `checkTailAt` `.seq` (4188: the `_` at 4187); `dropValue` gains a type parameter |
+| 6 | `evalCore` `.letIn` (2208) | the tail's result `r` | `R` (2206) | site |
+| 7 | `evalCtor` (2569) | a field `w` | `T` (2566) | site |
+| 8 | `evalCall` (2638) | the head `fv` | `fT` (2636) | site |
+| 9 | `evalCall` (2653) | an argument `w` | `T` (2652) | site |
+| 10 | `endBorrowArgs` (2797) | a borrow argument `w`, pushed to be ended | its type `tys[i]` | callers: `callFn` (2872, 2908), which holds `tys`; `endBorrowArgs` gains `tys` |
+| 11 | `runBodyCore` (2854, `pushTempAt` below the frame) | the body's result `v` | the `_` of the UNTYPED `eval … false body hint` (2851): `none` unless demanded | site; an untyped run, so `none` is expected and owes nothing |
+| 12 | `joinDrop` (3547) | the arm's result `v` | `T` (3545) | site |
+| 13 | `joinCont` (3561) | the arm's result `r` | `R` (the continuation's argument) | site |
+| 14 | `closeBlock` (3830) | an arm's result `av` | `T` (the arm's `eval`) | site |
+| 15 | `observe` (4000) | the side's result `v` | `T` (3993) | site |
+| 16 | `checkTailAt` split continuation (4166) | `r` | `R` | site |
+| 17 | `checkTailAt` `.letIn` continuation (4182) | `r` | `R` | site |
+| 18 | `checkFix`'s leaf (4357, `pushTempAt` below the frame) | `v` | `T` (the continuation's argument) | site |
+
+Beside the pushes: `popTemp`/`popTemps` (`Env.lean` 512, 518) pop the type with the value; `setAt (.temp …)` (`Env.lean` 536) keeps the type; `tyAt (.temp …)` (`Env.lean` 540, today `none`) returns it; `mapState` with `types` (`Env.lean` 565) rewrites a temporary's stored type as it rewrites a binding's (a refinement reaches it). Readers of values only (`allPos`, `valAt`, `Stability.lean` 133, `Located.lean` 61, `obsFrame`'s `temps.size`, `endLoansOfTopTemp` 1257) are unchanged. In an untyped run (`typed = false`), sites 6–9 and 12–14 store whatever the untyped `eval` returned, `some` only where D82 demanded the type (borrow arguments are demanded: `evalCall`'s `demand (ad matches .ref _)`).
+
 **Untyped runs** (instance runs of known callees, re-runs): the value in flight owes nothing (its temporary untyped when no type is in hand). But the invariant ALREADY owes, inside an untyped run, membership at positions bound at a type the run read and never checked (D82's demanded types; `Regress/EvalMemRuns`, part 3: the untyped `let x = (0 : Unit); x` runs and binds `x : Unit ↦ 0`), and η at `Unit` there (parameters, call results) needs it. True on accepted code (the generic run checked the same body) but established by no step of the untyped run. Open; two routes: (A) positions written by an untyped run owe no membership and the reference makes the membership-dependent decisions alike (η at `Unit` in `callFrame` and `callOf`), so the simulation needs none there; (B) a theorem that an instance run of a generically checked body keeps every position a member (docs/35 Theme 2). Leaning (A), after a census of the membership-dependent decisions an untyped run makes. A borrow in flight in an untyped run with no type in hand keeps `Flight` (the reference's type); whether that case occurs is to be measured.
 
 **The return path**: membership at the declared type comes from the evaluation's membership at the type it returned, conversion's soundness at the two types (`Rules/ComposeT.conv_sound_T` on the trial, under "well typed inside"), wholeness, and [Repack]'s honest content (`RepackSound`, a guess); composed in `return_member` (proved). `step_member_const` and the knot's `fix_split` rest on the false [Return] statement and are to be re-assembled this way (`const_split` also omits the conversion the checker runs).
