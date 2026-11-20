@@ -126,9 +126,8 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 declared a borrow (`StepOk .deref`), and a place at the grain holding `⋆` is declared a copy
 ((C⋆)), which no borrow is (`declCopy`). PROVED. (The grain asked nothing of a `*` step from main's
 D94 until the slice, 2026-11-20, and the leaf was then false, `Regress/GrainDerefProof.lean`: an arm
-the run does not take is never checked, so `*h` of a proof `h` reached the join. Restated, PROPOSED
-for main and the lead, with the checker's `jdGrain` rejecting a `*` through a place not declared a
-borrow.) -/
+the run does not take is never checked, so `*h` of a proof `h` reached the join. Restated with the
+checker's D101: `jdGrain` rejects a `*` through a place not declared a borrow.) -/
 theorem grain_deref_not_proof (st : MState) (s : SState) (π : Nat → Nat) (q p : Place)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)

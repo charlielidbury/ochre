@@ -2,61 +2,42 @@ import Ochr.Meaning.Regress.GenNeutralContent
 import Ochr.Meaning.Steps.MovedPlace
 
 /-!
-# Step kinds against parent kinds: the checker's place and the reference's drop (the slice, for main)
+# Step kinds against parent kinds: the checker's walk and the reference's drop agree at the grain
 
 Every kind of step (`*`, a named field `.g`, a positional field `.i`, a number's predecessor `.0`)
-against every kind of value its parent can hold, with what each side does at the join: the
-checker's `stepV` (the place exists or not), `movedPlace` and `dropAtJoin` (drop, re-root and do
-nothing, access and retry, η or generalise and retry, reject), and the reference's drop
-(`Run.dropAt`: `Sem.updAt` of `moved` along the path at the meaning; nothing where it fails) and its
-lent-prefix access (`accessLentPrefix`, before the drop). Kernel-checked below where it computes:
-`stepV` for every cell (`ck_*`), `Sem.step` and the drop's write for every meaning form (`md_*`,
-`wr_*`), and `movedPlace` on concrete states for the cells where the place does not exist
-(`mp_*`). A rejection is no run, so a step lemma says nothing there ("vacuous").
+against every kind of value its parent can hold, at the join's grain as restated with the checker's
+D101 (a `*` step is through a place declared a borrow, `Steps.StepOk`; the checker's `jdGrain`
+rejects a move through any other `*`). Each cell: the checker (`stepV`, then `movedPlace` and
+`dropAtJoin`: drop, re-root and do nothing, access and retry, η or generalise and retry, reject) and
+the reference (its lent-prefix access `accessLentPrefix`, then `Run.dropAt`: `Sem.updAt` of `moved`
+along the path, nothing where it fails), and the clause that makes them agree. Kernel-checked below
+where it computes: `stepV` for every cell (`ck_*`), `Sem.step` and the drop's write for every meaning
+form (`md_*`, `wr_*`), `movedPlace` on concrete states where the place does not exist (`mp_*`), and
+the reference's lent prefix at DP4's cell (`lp_dp4`). A rejection is no run ("vacuous").
 
-| step | parent holds (checker) | `stepV` | checker at the join | meaning | reference's drop | verdict |
-|---|---|---|---|---|---|---|
-| `*` | a borrow (a holder) | content | drop | content's | write | agree |
-| `*` | `⋆` | none | re-root, nothing | `proof` | WRITES `moved` (`*` is the identity) | DISAGREE (DP1; DP4 below); excluded by the proposed `StepOk .deref` + (C⋆) |
-| `*` | `⊥` | none | re-root, nothing | `moved` | `moved` over `moved` | agree (no change) |
-| `*` | constructor, number, closure | none | reject | data, fn | write | vacuous |
-| `*` | unknown, sealed | none | reject (no type with one constructor is a borrow) | `ρ σ`, run | write | vacuous |
-| `*` | a hole (`loan`) | none | access, retry | `φ l` | access (lent prefix), write | agree after the access |
-| `*` | a mark (`lent_l v`) | as `v` | as `v` | as `v` | as `v` | as `v` |
-| `.g` | constructor of `g`'s | field | drop | `dat` | write | agree (grain, `followMean`) |
-| `.g` | other constructor / declaration | none | reject (D94) | `dat` | none or write | vacuous |
-| `.g` | `⋆` | `⋆` | exists, holds `⋆`: a copy | `proof` | none | excluded: (C⋆) + `hcopy` |
-| `.g` | `⊥` | none | re-root, nothing | `moved` | none (nothing) | agree |
-| `.g` | a borrow, number, closure | none | reject | — | — | vacuous |
-| `.g` | unknown / sealed, one constructor | none | η / generalise, retry | `ρ σ`, run | write | agree after the refinement |
-| `.g` | unknown / sealed, several | none | reject | — | — | vacuous |
-| `.g` | a hole | none | access, retry | `φ l` | access, write | agree after the access |
-| `.i` | constructor 0 | field | drop | `dat` | write | agree |
-| `.i` | another constructor | none | reject | `dat` | write (`updAt` reads `fs[i]`) | vacuous |
-| `.0` | `S(n)` | `n` | drop | number | write | agree |
-| `.0` | `Z` | none | reject | `0` | none | vacuous |
-| `.i`, `.0` | `⋆`, `⊥`, others | as `.g` | as `.g` | | | as `.g` |
+| step | parent holds | checker | reference: lent prefix, then write | agree by |
+|---|---|---|---|---|
+| `*` | a borrow (a holder) | the place exists: access, drop | prefix access absorbed, write | `lentPrefix_absorbed_eq` |
+| `*` | `⊥` (the borrow moved) | re-root to the holder, nothing | no prefix site; `moved` over `moved` | (WF14), `updAt_bot_self` |
+| `*` | `⋆` | — | — | excluded: the parent is declared a borrow, no copy, so (C⋆) |
+| `*` | anything else | reject (no borrow), or D101 at the grain | — | vacuous |
+| `.g` | constructor of `g`'s | exists: access, drop | prefix access absorbed, write | grain, `followMean`, `lentPrefix_absorbed_eq` |
+| `.g` | `⊥` | re-root, nothing | no prefix site ((WF14)); the write fails through `moved` | (WF14), `Slice.updAt_moved_none` |
+| `.g` | `⋆` | exists, holds `⋆` | — | excluded: a copy ((C⋆)), the join drops none |
+| `.g` | unknown / sealed, one constructor | η / generalise, retry | after the refinement as the row above | `refine_step`, `generalizeNeutral_step` |
+| `.g` | a hole or a fill (`loan`, sealed over one) | access the parent, retry | the same prefix accessed | `fillPrefix_eq` |
+| `.g` | other constructor, a borrow, a number, a closure; unknown or sealed of several | reject (D94) | — | vacuous |
+| `.i` | constructor 0 | as `.g` | as `.g` | as `.g` |
+| `.0` | `S(n)` | exists: drop | write (the predecessor) | `NatAlong` |
+| `.0` | `Z` | reject | — | vacuous |
+| any | under a mark (`lent_l v`) | walks through it, as `v` | the mark is a site: absorbed where the place exists; no mark above a `⊥` ((WF14)); none above a `⋆` reached by a non-copy place (the `*` row) | as `v`'s row |
 
-The lent-prefix column. The reference accesses the shortest strict prefix holding a live site
-before its drop, whatever follows; the checker accesses only a fill AT the longest existing prefix
-(`fillHoles` of its content). They agree where the place exists (the drop's access ends the same,
-`lentPrefix_absorbed`), and where the checker re-roots to a `⊥` ((WF14): no live site strictly above
-a moved part). They DISAGREE where it re-roots to a `⋆` under a mark (DP4, `mp_dp4_markKept`): the
-checker reaches `x.1` through `lent_1` and does nothing; the reference accesses `x` whole and ends
-label 1. A `⋆` re-root of a non-copy place happens only through a `*` (`.g`, `.i` keep `⋆`, (C⋆)), so
-both disagreeing cells are the `*`-on-`⋆` row, and only a dead arm puts a `*` on a non-borrow there.
-
-Excluding that row: at the grain a `*` step goes through a place declared a borrow (`StepOk`), which
-the checker's `jdGrain` rejects otherwise (the side branch `spine-slice-grainref`); then a `⋆` at the
-`*`'s parent is a non-copy place holding `⋆`, against (C⋆). `Regress/GrainDerefProof.lean` is this
-row's record at the grain as it stood (the leaf `grain_deref_not_proof` false), and the side branch
-proves the leaf at the restated grain.
-
-A model-only fix of the row (the reference's drop doing nothing at a `*` that is not the first step
-out of a holder, read from the shape) repairs the write (DP1) but not the lent-prefix access (DP4),
-which runs before the drop. And no test read from the shape and the path alone decides existence
-under a `⊥` parent (`.g` on `⊥`: the checker's `stepV` fails; the shape says nothing; the reference
-sees `moved` only in the meaning, which is what its write fails on today).
+The grain as it stood (a `*` step needed nothing) left one row unexcluded, `*` on `⋆`: there the
+reference wrote `moved` through the `*` (DP1, `wr_deref_proof`) and its lent-prefix access ended a
+borrow whose mark sat above the `⋆` (DP4, `mp_dp4_markKept`, `lp_dp4`), where the checker did
+nothing; only an arm the run never takes could put a `*` on a non-borrow there.
+`Regress/GrainDerefProof.lean` records the leaf `grain_deref_not_proof` false at that grain; at the
+restated grain it is proved from (C⋆).
 -/
 
 namespace Ochr.Meaning.Regress.StepKindsTable

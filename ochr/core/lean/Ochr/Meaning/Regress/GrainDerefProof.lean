@@ -20,9 +20,9 @@ of a borrow (`stepV`), which (WF1) puts only at a root.
 
 The state is reached by an accepted program (`def DP1 (h : Eq(Nat, Z, Z)) : Unit := (let k = Z;
 match k { Z => (), S m => (let a = *h; ()) })`: the arm `S` is never run, so never checked, and
-`jdMoves` reads its move of `*h`). PROPOSED (the slice, for main and the lead): the grain asks the
-`*` step's borrow type again (`Steps.StepOk`), with the checker's `jdGrain` keeping a `*` only
-through a place declared a borrow. The leaf is then proved (`JoinNoop.grain_deref_not_proof`, from
+`jdMoves` reads its move of `*h`). Since the checker's D101 (main, c4628e33) `jdGrain` rejects a
+move through `*` of a place not declared a borrow (`DP1` is rejected), and the grain asks the `*`
+step's borrow type again (`Steps.StepOk`). The leaf is then proved (`JoinNoop.grain_deref_not_proof`, from
 (C⋆)). The counterexample below is to the leaf at the grain as it stood (`GrainOkOld`).
 -/
 

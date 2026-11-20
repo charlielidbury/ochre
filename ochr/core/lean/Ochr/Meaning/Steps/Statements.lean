@@ -307,8 +307,8 @@ step (`.proj i`, `.field g`) is through an inductive of `Γ` with exactly one co
 is through a place declared a borrow (`Decide.jdGrain`). (Restated at main's D94: the index a field
 step names and the borrow type a `*` step goes through were asked too, for `movedPlace`'s exits,
 which D94 replaced by a rejection, docs/31 D51. The borrow type is asked again since the slice,
-2026-11-20, PROPOSED with a checker change for the lead and main to review: an arm the run does not
-take is never checked, so `*h` of a proof `h` reached the join, where the checker re-roots to the
+2026-11-20, with the checker's D101 (`jdGrain` rejects a move through `*` of a place not declared a
+borrow): an arm the run does not take is never checked, so `*h` of a proof `h` reached the join, where the checker re-roots to the
 `⋆` and does nothing; the reference wrote `moved` through the `*` (`Regress/GrainDerefProof.lean`),
 or, under a mark of a live returned borrow above the `⋆`, its lent-prefix access ended a borrow the
 checker kept. With the `*` step's borrow type at the grain no non-copy place of the join is at or
