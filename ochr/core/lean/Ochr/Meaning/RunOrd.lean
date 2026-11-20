@@ -562,50 +562,50 @@ theorem park_fix_ordKeep {s : SState} (hsa : ShapeAt s) {X : Type u} (ls : List 
   · rw [hkk, hx'] at hx; cases hx
   · rw [e, e']
 
-theorem callOfL_ordKeep.{v} (Lv : Lvl.{v}) (ps : List PiParam) (out : PiOut) (fv : Sem) (args : List Res)
-    {s s' : SState} {r : Res} (hi : RInv L s) (h : callOfL Lv ps out fv args s = some (r, s')) :
+theorem callOfL_ordKeep.{v} (Lv : Lvl.{v}) {C : Type v} (t : Tel Lv.Code PUnit C) (fv : Sem) (args : List Res)
+    {s s' : SState} {r : Res} (hi : RInv L s) (h : callOfL Lv t fv args s = some (r, s')) :
     OrdKeep L s s' := by
-  cases happ : applyFnL Lv ps out fv (args.map (·.1)) with
+  cases happ : applyFnL Lv t fv (args.map (·.1)) with
   | none => unfold callOfL at h; dsimp only at h; rw [happ] at h; cases h
   | some res =>
     unfold applyFnL at happ
-    obtain ⟨F, hu, happ'⟩ : ∃ F, Lv.unpack (piCarL Lv ps [] PUnit out) fv = some F ∧
-        applyTeleL Lv ps [] PUnit (fun _ => []) out F (args.map (·.1)) = some res := by
-      cases hu : Lv.unpack (piCarL Lv ps [] PUnit out) fv with
+    obtain ⟨F, hu, happ'⟩ : ∃ F, Lv.unpack C fv = some F ∧
+        applyTelL Lv t (fun _ => []) F (args.map (·.1)) = some res := by
+      cases hu : Lv.unpack C fv with
       | none => rw [hu] at happ; cases happ
       | some F => rw [hu] at happ; exact ⟨F, rfl, happ⟩
-    obtain ⟨hlen, hfin⟩ := applyTeleL_len Lv ps [] PUnit (fun _ => []) out F _ 0 (fun _ => rfl) _ happ'
+    obtain ⟨hlen, hfin⟩ := applyTelL_len Lv t (fun _ => []) F _ 0 (fun _ => rfl) _ happ'
     simp only [List.length_map] at hlen
     simp only [Nat.zero_add] at hfin
-    have happ2 : applyFnL Lv ps out fv (args.map (·.1)) = some res := by
+    have happ2 : applyFnL Lv t fv (args.map (·.1)) = some res := by
       unfold applyFnL; rw [hu]; exact happ'
     cases res with
-    | data r' finals =>
+    | data r' T' finals =>
       unfold callOfL at h; dsimp only at h; rw [happ2] at h
       simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨_, rfl⟩ := h
       apply takeAll_fix_ordKeep
       apply fixes_cover
-      rw [List.length_map, zip_filter_len args ps hlen, hfin]
+      rw [List.length_map, zip_filter_len args _ hlen, hfin]
       exact Nat.le_refl _
-    | ref U fwd back =>
+    | ref U c fwd back =>
       unfold callOfL at h; dsimp only at h; rw [happ2] at h
       simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨_, rfl⟩ := h
       rw [ordKeep_setLent_iff]
-      have hcover : ∀ x, ∀ l ∈ (((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).filterMap id,
-          l ∈ (((((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).zip (back x)).filterMap
+      have hcover : ∀ x, ∀ l ∈ (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id,
+          l ∈ (((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).zip (back x)).filterMap
             fun (y : Option Nat × Sem) => y.1.map (·, y.2)).map (·.1) := by
         intro x
         have hfx : (fun (y : Option Nat × Sem) => y.1.map (·, y.2)) = (fun (l?, f) => l?.map (·, f)) :=
           funext fun ⟨_, _⟩ => rfl
         rw [hfx]
         apply fixes_cover
-        rw [List.length_map, zip_filter_len args ps hlen, hfin x]
+        rw [List.length_map, zip_filter_len args _ hlen, hfin x]
         exact Nat.le_refl _
-      apply park_fix_ordKeep hi.2.2 _ (Lv.dec U) _ _ hcover (Lv.enc U fwd)
+      apply park_fix_ordKeep hi.2.2 _ (Lv.dec c) _ _ hcover (Lv.enc c fwd)
       intro p v ψ
-      cases hd : Lv.dec U (ψ ((((((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).filterMap id)).foldl
+      cases hd : Lv.dec c (ψ ((((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id)).foldl
           SState.takeLabel s).nextLoan) with
       | none => exact .inr ⟨rfl, by simp only [hd]⟩
       | some x => exact .inl ⟨x, rfl, by simp only [hd]⟩

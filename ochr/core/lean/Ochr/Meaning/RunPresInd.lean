@@ -102,7 +102,7 @@ theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {tl : Bool} 
       (hc : ∀ u, n = "clone" → args = [u] → False) (hp : ∀ u, n = "peek" → args = [u] → False)
       (hi : ∀ u, n = "inplace" → args = [u] → False), False := by
     intro hJ hc hp hi
-    rw [runT.eq_39 K ρ φ tl hint n args h1 h2 h3 h4 hJ hc hp hi] at h
+    rw [runT.eq_38 K ρ φ tl hint n args h1 h2 h3 h4 hJ hc hp hi] at h
     cases h
   by_cases hJ : ∃ A a b P h t, n = "J" ∧ args = [A, a, b, P, h, t]
   · obtain ⟨A, a, b, P, h', t, rfl, rfl⟩ := hJ
@@ -728,21 +728,13 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
       · obtain ⟨hi₁, _, e₁, o₁⟩ := runT_rinv hK false f _ s s₁ fv hi h1
         exact ⟨hi₁, e₁, o₁⟩
     obtain ⟨hi₁, e₁, o₁⟩ := hf
-    obtain ⟨hi₂, e₂, o₂⟩ := runArgs_rinv hK _ _ args 0 [] s₁ s₂ as hi₁ h3
+    obtain ⟨hi₂, e₂, o₂⟩ := runArgs_rinv hK _ _ args [] s₁ s₂ as hi₁ h3
     unfold callOf at h4
-    split at h4
-    · split at h4
-      · exact ⟨(callOfL_rinv L _ _ _ _ _ hi₂ h4).1, (callOfL_rinv L _ _ _ _ _ hi₂ h4).2,
-          e₁.trans (e₂.trans (callOfL_envLe _ _ _ _ _ h4)),
-          o₁.trans e₁ (o₂.trans e₂ (callOfL_ordKeep _ _ _ _ _ hi₂ h4))⟩
-      · exact ⟨(callOfL_rinv L _ _ _ _ _ hi₂ h4).1, (callOfL_rinv L _ _ _ _ _ hi₂ h4).2,
-          e₁.trans (e₂.trans (callOfL_envLe _ _ _ _ _ h4)),
-          o₁.trans e₁ (o₂.trans e₂ (callOfL_ordKeep _ _ _ _ _ hi₂ h4))⟩
-      · exact ⟨(callOfL_rinv L _ _ _ _ _ hi₂ h4).1, (callOfL_rinv L _ _ _ _ _ hi₂ h4).2,
-          e₁.trans (e₂.trans (callOfL_envLe _ _ _ _ _ h4)),
-          o₁.trans e₁ (o₂.trans e₂ (callOfL_ordKeep _ _ _ _ _ hi₂ h4))⟩
-      · cases h4
-    · cases h4
+    split at h4 <;> first
+      | exact ⟨(callOfL_rinv L _ _ _ _ hi₂ h4).1, (callOfL_rinv L _ _ _ _ hi₂ h4).2,
+          e₁.trans (e₂.trans (callOfL_envLe _ _ _ _ h4)),
+          o₁.trans e₁ (o₂.trans e₂ (callOfL_ordKeep _ _ _ _ hi₂ h4))⟩
+      | cases h4
   | tl, .pi hs ds c, hint, s, s', r, hi, h => by
     rw [runT] at h
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
@@ -859,14 +851,14 @@ theorem runAll_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (ts : List
     · rw [e] at h; exact runT_rinv hK false a hint s s' r hi h
     · exact runAll_rinv hK as t ht' hint s s' r hi h
 
-theorem runArgs_rinv (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool) (shape : Option (List PiParam × PiOut)) :
-    ∀ (args : List Term) (i : Nat) (earlier : List Sem) (s s' : SState) (rs : List Res), RInv L s →
-      runArgs K ρ φ stmt shape i earlier args s = some (rs, s') → RInv L s' ∧ EnvLe s s' ∧ OrdKeep L s s'
-  | [], i, earlier, s, s', rs, hi, h => by
+theorem runArgs_rinv (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool) (fT : TyM) :
+    ∀ (args : List Term) (earlier : List Sem) (s s' : SState) (rs : List Res), RInv L s →
+      runArgs K ρ φ stmt fT earlier args s = some (rs, s') → RInv L s' ∧ EnvLe s s' ∧ OrdKeep L s s'
+  | [], earlier, s, s', rs, hi, h => by
     simp only [runArgs] at h
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h)
     exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
-  | a :: as, i, earlier, s, s', rs, hi, h => by
+  | a :: as, earlier, s, s', rs, hi, h => by
     simp only [runArgs] at h
     obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some h
     obtain ⟨y, s₂, h3, h4⟩ := SM.bind_some h2
@@ -878,7 +870,7 @@ theorem runArgs_rinv (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool) (
         exact ⟨hi₁, e₁, o₁⟩
       · exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
     obtain ⟨hi₁, e₁, o₁⟩ := hx
-    obtain ⟨hi₂, e₂, o₂⟩ := runArgs_rinv hK stmt shape as _ _ s₁ _ y hi₁ h3
+    obtain ⟨hi₂, e₂, o₂⟩ := runArgs_rinv hK stmt fT as _ s₁ _ y hi₁ h3
     exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
 
 theorem runFields_rinv (hK : ∀ n, (K.C.global n).2.label = none) (stmt : Bool) (d : IndDecl) (c : Nat) :
