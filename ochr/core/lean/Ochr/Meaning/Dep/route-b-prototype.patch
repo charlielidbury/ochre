@@ -1,0 +1,123 @@
+diff --git a/ochr/core/lean/Ochr/Decide.lean b/ochr/core/lean/Ochr/Decide.lean
+index fd46d74d..229c9ff7 100644
+--- a/ochr/core/lean/Ochr/Decide.lean
++++ b/ochr/core/lean/Ochr/Decide.lean
+@@ -64,6 +64,36 @@ def fieldTermIsProp (d : IndDecl) (FT : Term) : M Bool := do
+     | none => pure false
+   | _ => pure false
+ 
++/-- PROTOTYPE (dep lane, not for landing): a type term whose values are constructor values of a
++data inductive at every instance, read through type-function bodies (their match arms and lets). -/
++def treeTerm (fuel : Nat) (vis : List String) (T : Term) : M Bool := do
++  match fuel with
++  | 0 => pure false
++  | fuel' + 1 =>
++  match T with
++  | .tind m _ => pure ((← lookupInd m).sort != 0)
++  | .call (.const f) _ _ =>
++    if vis.contains f then return true
++    let some g := (← get).globals.find? (·.name == f) | return false
++    let some (.fix _ _ _ c _ body) := g.fn? | return false
++    unless c matches .sort _ do return false
++    treeTerm fuel' (f :: vis) body
++  | .matchInd _ _ arms =>
++    let mut ok := true
++    for (_, a) in arms do
++      if !(← treeTerm fuel' vis a) then ok := false
++    pure ok
++  | .matchNat _ z s => pure ((← treeTerm fuel' vis z) && (← treeTerm fuel' vis s))
++  | .letIn _ _ w | .seq _ w | .ascribe w _ => treeTerm fuel' vis w
++  | _ => pure false
++
++/-- PROTOTYPE (dep lane): a dependent field that is neither a proof nor tree-valued (a leaf:
++a number, the unit, a function, a type parameter's value). -/
++def fieldIsLeafDep (d : IndDecl) (c i : Nat) (FT : Term) : M Bool := do
++  if !d.fieldDependent c i then return false
++  if ← fieldTermIsProp d FT then return false
++  pure !(← treeTerm 64 [] FT)
++
+ /-- A field place is a proof iff its declared type is a proposition (syntactic, D42). -/
+ def fieldIsProof (g : FieldRef) : M Bool := do
+   let d ← lookupInd g.ty
+diff --git a/ochr/core/lean/Ochr/Machine.lean b/ochr/core/lean/Ochr/Machine.lean
+index e501d521..79eafccc 100644
+--- a/ochr/core/lean/Ochr/Machine.lean
++++ b/ochr/core/lean/Ochr/Machine.lean
+@@ -203,6 +203,9 @@ def strictSubtermsList : List Value → List Value
+ termination_by structural fs => fs
+ end
+ 
++/-- PROTOTYPE (dep lane): `true` invalidates every dependent field on an index write (trees too). -/
++def protoUniform : Bool := false
++
+ /-- D64 [Open]: a write or borrow through an index field of a dependent constructor value
+ invalidates the proof fields whose types mention that field: they become `⊥` until assigned
+ again (a proof is `⋆` and carries no type, so a stale one could not be told apart at the
+@@ -216,8 +219,13 @@ def openWrite (p : Place) : M Unit := do
+     let some d := (← get).inds.find? (·.name == g.ty) | continue
+     unless (d.indexFields g.ctor).contains g.idx do continue
+     for ((fname, FT), j) in ((d.ctors[g.ctor]!).2).zipIdx do
+-      if j != g.idx && (d.fieldRefs g.ctor FT).contains g.idx && (← fieldTermIsProp d FT) then
++      if j != g.idx && (d.fieldRefs g.ctor FT).contains g.idx && ((← fieldTermIsProp d FT) || (← fieldIsLeafDep d g.ctor j FT) || (protoUniform && d.fieldDependent g.ctor j)) then
+         let fp := Place.field ⟨g.ty, g.ctor, j, fname⟩ q
++        -- PROTOTYPE (dep lane): a leaf that is lent cannot be invalidated in place (its borrow's
++        -- loan would be lost); the full rule would end the borrow first, as an [Access] does
++        if let some w ← content? fp then
++          if !w.loans.isEmpty then
++            err s!"[Open] a write through {g.name} invalidates the field {fname}, which is lent: end its borrow first"
+         if (← content? fp).isSome then
+           fire .Open fun _ => s!"a write through {g.name} invalidates the proof field {fname}"
+           setPlace fp .bot
+@@ -500,7 +508,8 @@ assignment is a strong update). -/
+ def strongUpdate (p : Place) : M Bool := do
+   let .field g _ := p | return false
+   let some d := (← get).inds.find? (·.name == g.ty) | return false
+-  pure (d.fieldDependent g.ctor g.idx && !(← fieldIsProof g))
++  let some (_, FT) := (d.ctors[g.ctor]?).bind (·.2[g.idx]?) | return false
++  pure (d.fieldDependent g.ctor g.idx && !(← fieldIsProof g) && !(← fieldIsLeafDep d g.ctor g.idx FT) && !protoUniform)
+ 
+ /-- D64: does a value hold a value of a dependent constructor (outside sealed programs and
+ closures, which carry their types)? -/
+@@ -1400,6 +1409,10 @@ def depFieldType (fuel : Nat) (d : IndDecl) (ps : List Value) (g : FieldRef) (q
+     | err s!"{← ppPlace q}.{g.name}: no such field"
+   fire .Field fun _ => s!"{g.name}: {T}, from the earlier fields' contents"
+   if !d.fieldDependent g.ctor g.idx then return T
++  -- PROTOTYPE (dep lane): a leaf (or, uniform, every dependent field) is never typed by content
++  if protoUniform then return T
++  if let some (_, FT) := (d.ctors[g.ctor]?).bind (·.2[g.idx]?) then
++    if ← fieldIsLeafDep d g.ctor g.idx FT then return T
+   let c := fs.getD g.idx .bot
+   if c == .bot || c == .proof then return T
+   if (← packedErr fuel' c T).isNone then return T
+@@ -2176,8 +2189,15 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
+     -- D64 [Open]: a field whose declared type mentions earlier fields takes any value (a strong
+     -- update: while its value is open it is typed by what it holds); [Repack] checks it later
+     -- [Open]: a strong update
+-    if typed && (← strongUpdate p) then fire .Open fun _ => s!"a strong update of a dependent field, to a value of type {Tv.getD .bot}"
+-    if typed && !(← strongUpdate p) then
++    -- PROTOTYPE (dep lane): a strong update writes only a value of a tree type
++    let strong ← if typed && (← strongUpdate p) then
++        (match Tv with
++          | some (.tInd n _) => do pure ((← lookupInd n).sort != 0)
++          | some (.sealed t) => treeTerm 64 [] t
++          | _ => pure false)
++      else pure false
++    if strong then fire .Open fun _ => s!"a strong update of a dependent field, to a value of type {Tv.getD .bot}"
++    if typed && !strong then
+       expectTy fuel' "the assigned value" Tv (← match Tp0 with | some T => pure T | none => placeType fuel' p)
+     assignPlace fuel' p v Tv
+     openWrite p
+@@ -3629,10 +3649,12 @@ read-only capture through a borrow before a later capture's access ended that bo
+ block's arm read a copy the direct run's arm could not: `EK`, probes/static-ends/Snapshot.) -/
+ def entryAccess (fuel : Nat) (capsS : Array (Place × Nat)) : M Unit := do
+   let fuel' + 1 := fuel | exhausted "out of fuel"
+-  for (q, _) in capsS do
++  for (q, mode) in capsS do
+     fire .Entry fun _ => s!"a place a stuck block would capture"
+     accessPath fuel' q
+     if (← content? q).isSome then accessInside fuel' q
++    -- PROTOTYPE (dep lane): a capture by `&` invalidates as its borrow does, on every path
++    if mode == 1 then openWrite q
+ termination_by structural fuel
+ 
+ /-- D84 [Join]: drop `q` as a stuck block's by-move argument takes it (`readPlace`): a borrow is
