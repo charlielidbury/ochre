@@ -9,6 +9,14 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
   1. `fieldsFaithful_false_junk`: a type parameter that is a junk code (`.data d r X`, `X` not the model's carrier; `Type₀`'s carrier holds it) runs to itself, and `shapeTy` never gives a data code with a foreign carrier (`shapeTy_ne_junk`, Cantor).
   2. `fieldsFaithful_false_short`: `ParamsTyped` does not fix the length; at `ps = []` the field type reads the field `⊥`, the run is undefined.
   3. `fieldsFaithful_false_frame` (`run_dl_undefined`): `teleFrame` binds parameters at `other` (move), the checker's `fieldTele` at their declared readings (a type parameter copies), so `DL (A : Type) := MkDL(e : Eq(Nat, (let x = A; let y = A; 0), 0))` (accepted) has no run in `teleFrame`.
+- `Positivity.lean`: D107's input (the condition the existence proof needs of an accepted declaration, semantic and syntactic, in its docstring) and the battery: three more accepted proofs of `False` through the same hole (`Chain`, `TyFn`, `PropRoute`), the declarations that must stay accepted (`MustStay`), and controls (`Controls`). All verdicts `#guard`ed; the four paradox blocks flip to rejected when D107 lands.
+- `Proto/` (the prototype of the record layout, task 3 of the lead's 2026-11-20 decisions; standard axioms, no `sorry`):
+  - `Layout.lean`: keys (`kindKey`, `contStep`, `paramKey`, `paramContStep`), the universal signature `uShape`/`uSig` (reads the record alone; projects to index fields: `uShape_idx` is `FieldTyIdx`), `ucar`, `uTyR`, `shapeTyP` (2a), `FTy` (a field type as the construction reads it: a declaration at a record, or a type) with `kind`/`cont`, and `shapeTyP_uShape` (a record holding a field type's kind and continuation means it).
+  - `Knot.lean`: the generic knot (`KnotSpec`, `approx`, `recK`), stabilization (`approx_stab`), the fixed point (`recK_kind`, `recK_cont`, `recK_param`, `recK_paramCont`), parametricity (`recK_agree`), faithfulness at a field (`recK_shape`); helpers (`parTy`, `pEntryTy`, agreement lemmas).
+  - `Hard.lean`: `List`, `Box`, `Duo`, `Rose`, `DD`, `RN`, `BB`, `NN`, `RP`, `HN` as knot instances (guardedness proved for each).
+  - `Examples.lean`: shapes read off canonical records, and memberships (`rose_example`: a rose tree with a nested forest; `dd_example`: `DNode(DLeaf) : DD(Nat)`).
+  - `PropSorted.lean`: `Prop`-sorted declarations through their truth predicate (impredicative least fixed point), no knot: `Ev`, `ev_mem_iff`, `ev_tyR` (`uTyR Ev (recK evK [n]) = prop (evT [n])`).
+  - `Statement.lean`: faithfulness restated (2b length, 2c `fieldTele`'s readings: `teleFrameR`, `paramDecls`; 2d conditional): `FieldsFaithfulR`, `ParamsFaithfulR`, `CtxFaithfulR`.
 - `Probes.lean`: checker verdicts asserted by the build: `DMXFrame` (counterexample 3's programs), `DMXShapes` (the shapes a construction must cover: `DD(DD(A))`, non-uniform nesting `RN`, `BB`, nesting through two declarations `RP`, `NN`, recursive `Prop` field `Ev`, a type function returning data `TF`).
 
 ## Traps
@@ -26,6 +34,15 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
 - The data layer's argument for "a member is determined by its small reading and its type" is in `../HANDOFF.md` (last section); it says to define the canonical record through small readings (e.g. an equation as `propEntry (va.small = vb.small)`), agreeing with the run only at typed parameters.
 - `LibOkT`, `UnitOk`: not this lane's (argued from faithfulness in `../HANDOFF.md`).
 
+## Decisions (the lead, 2026-11-20)
+
+Positivity fix: D107 (checker lane, `positivity1`), input in `Positivity.lean`. 2a–2c: yes. 2d: yes in principle, after the consumers' list. Records as path functions: yes in direction, PROTOTYPE FIRST (done, `Proto/`), report before porting. The congruence lemma: go ahead when waiting. This lane now OWNS the data layer's files (`Sem`, `Data`, `DataLib/*`, `DataModel/*`, `Places`, the data clauses of `Run.lean`); statement changes under `Steps/` or in `Consistency.lean`'s chain go through the lead.
+
+## Findings of the prototype
+
+- `Prop`-sorted declarations need their truth predicates first: `D3 (n) : Prop := D3Z | D3S(w : PB2(D3(n)))` with `PB2 (P : Prop) := MkPB2(x : P)` is accepted, and the run's type of `w` is a DATA type whose record holds `D3`'s own proposition as an opaque leaf; a leaf is fixed before the carriers, so it cannot be read off `D3`'s carrier. Defining the predicate impredicatively first (least predicate closed under the constructors) and putting it in the leaves removes the knot for `Prop`-sorted declarations altogether; `prop (Nonempty car) = prop predicate` by `propext` (`ev_tyR`). Monotonicity of the one-step operator is what positivity gives.
+- The knot needs guardedness at RELATED parameters, not only related records: `DD(DD(A))` passes the declaration's own record inside a parameter.
+
 ## Status and next steps
 
-Reported to the lead (2026-11-20): the consistency counterexample, the three statement defects with repairs, and the record-layout design question. Waiting on: the checker fix for positivity; the restatement of faithfulness (conditional form, length, `teleFrame`'s readings); `shapeTy` of a data-coded leaf; the record layout (records as path functions, no record inside an entry).
+Reported the condition and battery (770ba363). Next: report the prototype, the port's change list and the 2d consumers' list; then the port and the congruence lemma.
