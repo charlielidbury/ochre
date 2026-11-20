@@ -838,6 +838,8 @@ The lead's B: `closeCall`, `callFn`/`runBodyCore` against "apply the callee's me
 
 **The bookkeeping leaves** (statements with the assemblies): `callFrame` and `popCallFrame` against the checker's push and pop; the call's type and the hints (`argHint` against `domAfter`, `declCallType` against the codomain, `paramTypes` against the binders); the class 0 from `hns`; the marks and `.ended g [k]`; `catchStuck`; η at `Unit` (the callee's membership); `lentTo`; `canonNeutral_step` (existing).
 
+**Progress on the concrete calls (item 3; `Regress/CallInPlace.lean`).** `UseInc` by `callOf` is kernel-checked: `let y = 2; Inc(&y); y` runs to `3`, the checker's answer (`useInc_callOf`; through `meanV_incClo`, `gInc_eval`, `mkTel_inc`, `callOf_inc`). In place: the frame pushed on the caller's state (`callFrame_inc`) and the body run there (`runBody_incP`, `x` holding `y`'s own label) are proved; the pop (`popCallFrame_SP`: `y` reads `3`, the frame gone, no holder left) is stated, its proof in progress; then `UseId1` (a returned reborrow) both ways, then `callOf_inPlace`'s proof with the frame property of `run` as its own lemma.
+
 **Order.** The nested-run invariant first (it changes `Good`, so the earlier it is settled the less is re-proved), with the sweep of its clauses on nested states; then the kernel check of the untyped `Nil`; then `callOf_inPlace`'s frame property and the cells on a concrete call with a borrow parameter and one returning a reborrow (the reference's own run, kernel-checked, beside the checker's verdicts), then its proof; then the assemblies; then [Close]'s meanings.
 
 ### D63. Where the checker runs a sealed program that has a hole (fifth lead, 2026-11-20; for main's D97)
