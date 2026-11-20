@@ -1274,13 +1274,16 @@ def repackCheck_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
       meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v ∈ₛ[K.dm.read] (meanV K ρ noFuture (.plain .err) T).asTy
 
 /-- [Return]'s accepting direction (`bodyReturns`): the returned value is a member of its type
-and every place held by borrow is whole, under every typed future. -/
+and every place held by borrow is whole, under every typed future. The value is in flight: the state
+it is good in counts it (`MState.withTemp`, its label typed by the step that made it, `fl`), as the
+step that returned it concludes (docs/31 D71); as first stated it asked `Good` of the state without
+it, false when it is a borrow (its loan then has no borrow in the state, (WF2); docs/31 D72). -/
 def bodyReturns_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (what : String) (v T : Value)
-    (lent : List Place) (lw : String)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (lent : List Place) (lw : String) (fl : Flight)
+    (hg : GoodF K.dm K.M K.Γ ρ (st.withTemp v) fl) (hctx : CtxOk K ρ st)
     (bh : Nat) (h : Runs (Ochr.bodyReturns fuel what v T lent lw) st bh () st'),
-    TypedFuture K.dm K.M K.Γ ρ st φ →
+    TypedFutureF K.dm K.M K.Γ ρ (st.withTemp v) fl φ →
       meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v ∈ₛ[K.dm.read] (meanV K ρ noFuture (.plain .err) T).asTy ∧
       (meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v).whole
 

@@ -98,6 +98,7 @@ import Ochr.Meaning.Regress.ReturnParam
 import Ochr.Meaning.Regress.FrameCheck
 import Ochr.Meaning.Regress.CallInPlaceD99
 import Ochr.Meaning.Regress.InFlight
+import Ochr.Meaning.Regress.DefKnot
 import Ochr.Meaning.Regress.StarErasure
 
 /-!
