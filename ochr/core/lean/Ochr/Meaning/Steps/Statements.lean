@@ -639,6 +639,42 @@ noncomputable def joinDropOne (K : RunCtx) (φ : Future) (s : SState) (q : Place
   | some (pos, steps) => dropAt K φ q pos steps (accessLentPrefix pos steps s)
   | none => s
 
+/-- The checker's position of de Bruijn variable `i` (`Machine.varPos`, as a function). -/
+def ckVarPos (env : Env) (i : Nat) : Option Pos :=
+  if i < env[env.size - 1]!.binds.size then some (.bind (env.size - 1) (env[env.size - 1]!.binds.size - 1 - i))
+  else none
+
+/-- The checker's content of a place, as a function (`Machine.content`: the variable's position,
+then the path). -/
+def ckContent (env : Env) (p : Place) : Option Value :=
+  (ckVarPos env p.steps.1).bind fun pos => (valAt env pos).follow p.steps.2
+
+/-- What `movedPlace` leaves of a place `q` it was asked for (`q'`): `q` itself, which now exists;
+or a prefix of it (the same root, a prefix of the path) holding `⊥` or `⋆`, whose drop does
+nothing. -/
+def MPOut (st : MState) (q q' : Place) : Prop :=
+  (q' = q ∧ ∃ w, ckContent st.env q = some w) ∨
+  (q'.steps.1 = q.steps.1 ∧ q'.steps.2 <+: q.steps.2 ∧
+    (ckContent st.env q' = some .bot ∨ ckContent st.env q' = some .proof))
+
+/-- **`movedPlace`** (D84, the join's re-rooting of a place to drop), in the simulation form: from
+related states, with the place at the join's grain, the checker η-refines the unknowns and
+generalises the sealed programs of one-constructor types on its path and accesses a filled parent
+whole; the reference does nothing or accesses the shortest lent prefix whole (`accessLentPrefix`,
+which the drop does first in any case). Afterwards the place exists, or the checker re-rooted to a
+prefix holding `⊥` or `⋆` (`MPOut`). The context is extended at the unknowns created. Recursive,
+like the checker's function: the recursion is the field at the fuel below. -/
+def movedPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState) (q q' : Place) (pos : Pos) (s : SState) (π : Nat → Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (hpos : resolve s q = some (pos, q.steps.2)) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
+    (bh : Nat) (h : Runs (Ochr.movedPlace fuel q) st bh q' st'),
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
+      (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+      (s' = s ∨ s' = accessLentPrefix pos q.steps.2 s) ∧
+      CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π st' s' ∧
+      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' ∧ MPOut st' q q'
+
 /-- **[Join], the drop of one place** (`Machine.joinDrop`'s loop body: `movedPlace`, then
 `dropAtJoin`), in the simulation form: from related states, the checker's re-rooting and drop of a
 place of the join's list is the reference's drop of it (`joinDropOne`: the lent prefix accessed

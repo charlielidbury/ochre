@@ -111,7 +111,8 @@ theorem runs_dropAtJoin_inv {fuel : Nat} {q : Place} {st st' : MState} {b : Nat}
           (valAt st.env pos).follow q.steps.2 = some .proof) ∧ st' = st) ∨
       (∃ l w, (valAt st.env pos).follow q.steps.2 = some (.borrow l w) ∧
         ∃ st₁ b₁ b₂, Runs (Ochr.logEffect q "moves") st b₁ () st₁ ∧ Runs (Ochr.endBorrow fuel l) st₁ b₂ () st') ∨
-      (∃ v, (valAt st.env pos).follow q.steps.2 = some v ∧ ∃ b₁, Runs (Ochr.copyRead fuel q) st b₁ true st') ∨
+      (∃ v, (valAt st.env pos).follow q.steps.2 = some v ∧ v ≠ .bot ∧ v ≠ .proof ∧
+        ∃ b₁, Runs (Ochr.copyRead fuel q) st b₁ true st') ∨
       (∃ v, (valAt st.env pos).follow q.steps.2 = some v ∧ (∀ l w, v ≠ .borrow l w) ∧ v ≠ .bot ∧ v ≠ .proof ∧
         ∃ st₁ st₂ st₃ b₁ b₂ b₃ b₄, Runs (Ochr.copyRead fuel q) st b₁ false st₁ ∧
           Runs (do Ochr.accessPath fuel q; Ochr.accessInside fuel q) st₁ b₂ () st₂ ∧
@@ -146,7 +147,7 @@ theorem runs_dropAtJoin_inv {fuel : Nat} {q : Place} {st st' : MState} {b : Nat}
     | true =>
       simp only [if_true] at hk1
       have e := hpure hk1
-      exact .inr (.inr (.inl ⟨v, rfl, b₁, by rw [e]; exact hcr⟩))
+      exact .inr (.inr (.inl ⟨v, rfl, fun e => hbot e, fun e => hproof e, b₁, by rw [e]; exact hcr⟩))
     | false =>
       simp only [Bool.false_eq_true, if_false] at hk1
       obtain ⟨g, st₃, b₃, hg, hk2⟩ := Runs.bind_inv hk1
