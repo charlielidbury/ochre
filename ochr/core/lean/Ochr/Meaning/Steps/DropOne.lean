@@ -53,6 +53,112 @@ theorem Runs.bind_inv {α β : Type} {x : M α} {g : α → M β} {st st' : MSta
   · cases h
   · cases h
 
+theorem runs_get_inv {st st' x : MState} {b : Nat} (h : Runs (get : M MState) st b x st') : x = st ∧ st' = st := by
+  obtain ⟨L, left, log, h⟩ := h
+  simp only [runMachineL_get, Prod.mk.injEq, Outcome.ok.injEq] at h
+  exact ⟨h.1.1.symm, h.1.2.symm⟩
+
+theorem runs_pure_inv {α : Type} {a a' : α} {st st' : MState} {b : Nat} (h : Runs (pure a : M α) st b a' st') :
+    a' = a ∧ st' = st := by
+  obtain ⟨L, left, log, h⟩ := h
+  simp only [runMachineL_pure, Prod.mk.injEq, Outcome.ok.injEq] at h
+  exact ⟨h.1.1.symm, h.1.2.symm⟩
+
+theorem runs_err_false {α : Type} {m : String} {a : α} {st st' : MState} {b : Nat}
+    (h : Runs (err m : M α) st b a st') : False := by
+  obtain ⟨L, left, log, h⟩ := h
+  simp [runMachineL_err] at h
+
+theorem runs_lookupInd_inv {n : String} {st st' : MState} {b : Nat} {d : IndDecl}
+    (h : Runs (Ochr.lookupInd n) st b d st') : st' = st ∧ st.inds.find? (·.name == n) = some d := by
+  unfold Ochr.lookupInd at h
+  obtain ⟨x, st₁, b₁, hg, h2⟩ := Runs.bind_inv h
+  obtain ⟨rfl, rfl⟩ := runs_get_inv hg
+  split at h2
+  · rename_i d' hd
+    obtain ⟨rfl, rfl⟩ := runs_pure_inv h2
+    exact ⟨rfl, hd⟩
+  · exact (runs_err_false h2).elim
+
+/-- A loop whose body never changes the state leaves it as it was. -/
+theorem runs_forIn_keep' {α β : Type} (body : α → β → M (ForInStep β))
+    (hb : ∀ x c st b r st', Runs (body x c) st b r st' → st' = st) :
+    ∀ (xs : List α) (c : β) {st st' : MState} {b : Nat} {u : β}, Runs (forIn xs c body) st b u st' → st' = st
+  | [], c, st, st', b, u, h => by
+    rw [List.forIn_nil] at h
+    exact (runs_pure_inv h).2
+  | x :: xs, c, st, st', b, u, h => by
+    rw [List.forIn_cons] at h
+    obtain ⟨r, st₁, b₁, h1, h2⟩ := Runs.bind_inv h
+    have e1 := hb x c st b r st₁ h1
+    subst e1
+    cases r with
+    | done c' => exact (runs_pure_inv h2).2
+    | yield c' => exact runs_forIn_keep' body hb xs c' h2
+
+mutual
+/-- `loanPath` reads the value and the declarations and changes nothing. -/
+theorem runs_loanPath_keep (l : Nat) : ∀ (v : Value) {st st' : MState} {b : Nat} {o : Option (List Step)},
+    Runs (Ochr.loanPath v l) st b o st' → st' = st
+  | .loan m, _, _, _, _, h => by unfold Ochr.loanPath at h; exact (runs_pure_inv h).2
+  | .gloan m w, _, _, _, _, h => by unfold Ochr.loanPath at h; exact runs_loanPath_keep l w h
+  | .succ w, _, _, _, _, h | .borrow _ w, _, _, _, _, h => by
+    unfold Ochr.loanPath at h
+    obtain ⟨o', st₁, b₁, h1, h2⟩ := Runs.bind_inv h
+    rw [(runs_pure_inv h2).2]; exact runs_loanPath_keep l w h1
+  | .ind t c hh ps fs, _, _, _, _, h => by
+    unfold Ochr.loanPath at h
+    obtain ⟨d, st₁, b₁, h1, h2⟩ := Runs.bind_inv h
+    rw [runs_loanPathFields_keep l t c _ 0 fs h2]
+    exact (runs_lookupInd_inv h1).1
+  | .zero, _, _, _, _, h | .unit, _, _, _, _, h | .gfn _, _, _, _, _, h | .clo .., _, _, _, _, h
+  | .bot, _, _, _, _, h | .abs _, _, _, _, _, h | .sealed _, _, _, _, _, h | .proof, _, _, _, _, h
+  | .tNat, _, _, _, _, h | .tUnit, _, _, _, _, h | .tEq .., _, _, _, _, h | .tRef _, _, _, _, _, h
+  | .tPi .., _, _, _, _, h | .sort _, _, _, _, _, h | .tInd .., _, _, _, _, h => by
+    unfold Ochr.loanPath at h; exact (runs_pure_inv h).2
+
+theorem runs_loanPathFields_keep (l : Nat) (t : String) (c : Nat) (names : List String) :
+    ∀ (i : Nat) (ws : List Value) {st st' : MState} {b : Nat} {o : Option (List Step)},
+      Runs (Ochr.loanPathFields t c names l i ws) st b o st' → st' = st
+  | _, [], _, _, _, _, h => by unfold Ochr.loanPathFields at h; exact (runs_pure_inv h).2
+  | i, w :: ws, _, _, _, _, h => by
+    unfold Ochr.loanPathFields at h
+    obtain ⟨o', st₁, b₁, h1, h2⟩ := Runs.bind_inv h
+    have e1 := runs_loanPath_keep l w h1
+    subst e1
+    split at h2
+    · exact (runs_pure_inv h2).2
+    · exact runs_loanPathFields_keep l t c names (i + 1) ws h2
+end
+
+/-- `throughLocalBorrow` reads the frame and changes nothing. -/
+theorem runs_throughLocalBorrow_keep {f i : Nat} {p : Place} {st st' : MState} {b : Nat}
+    {o : Option (Nat × List Step)} (h : Runs (Ochr.throughLocalBorrow f i p) st b o st') : st' = st := by
+  unfold Ochr.throughLocalBorrow at h
+  split at h
+  rename_i fst ss _
+  split at h
+  · obtain ⟨x, st₁, b₁, hg, h1⟩ := Runs.bind_inv h
+    obtain ⟨hx, hst₁⟩ := runs_get_inv hg
+    subst x; subst st₁
+    split at h1
+    · obtain ⟨x, st₂, b₂, hg', h2⟩ := Runs.bind_inv h1
+      obtain ⟨hx', hst₂⟩ := runs_get_inv hg'
+      subst x; subst st₂
+      obtain ⟨r, st₃, b₃, hl, h3⟩ := Runs.bind_inv h2
+      have e3 : st₃ = st := by
+        rw [Std.Legacy.Range.forIn_eq_forIn_range'] at hl
+        refine runs_forIn_keep' _ (fun j c st₀ b₀ r₀ st₀' hb => ?_) _ _ hl
+        obtain ⟨o₀, st₄, b₄, h4, h5⟩ := Runs.bind_inv hb
+        have := runs_loanPath_keep _ _ h4
+        subst this
+        split at h5 <;> exact (runs_pure_inv h5).2
+      subst e3
+      dsimp only at h3
+      split at h3 <;> exact (runs_pure_inv h3).2
+    · exact (runs_pure_inv h1).2
+  · exact (runs_pure_inv h).2
+
 theorem runs_varPos_inv {i : Nat} {st st' : MState} {b : Nat} {pos : Pos}
     (h : Runs (Ochr.varPos i) st b pos st') : st' = st ∧ ckVarPos st.env i = some pos := by
   obtain ⟨L, left, log, h⟩ := h
@@ -327,13 +433,58 @@ theorem copyRead_aligned (fuel : Nat) (st st₁ : MState) (s : SState) (π : Nat
     st₁ = st ∧ c = K.D.copy (K.D.placeDecl (scopeOf s) q) := by
   sorry
 
-/-- **`logEffect` changes nothing the relation or `Good` reads** (it writes `placeLog` only).
-Open: not tried. -/
+/-- `logEffect` appends to `placeLog` and changes nothing else. -/
+theorem runs_logEffect_inv {q : Place} {k : String} {st st' : MState} {b : Nat} {u : Unit}
+    (h : Runs (Ochr.logEffect q k) st b u st') : ∃ X, st' = { st with placeLog := X } := by
+  unfold Ochr.logEffect at h
+  obtain ⟨pos, st₁, b₁, hv, h1⟩ := Runs.bind_inv h
+  obtain ⟨hst₁, -⟩ := runs_varPos_inv hv
+  subst st₁
+  split at h1
+  · split at h1
+    · obtain ⟨u₁, st₂, b₂, hm, h2⟩ := Runs.bind_inv h1
+      obtain ⟨L, left, log, hm⟩ := hm
+      simp only [runMachineL_modify, Prod.mk.injEq, Outcome.ok.injEq] at hm
+      obtain ⟨⟨-, hst₂⟩, -⟩ := hm
+      subst st₂
+      obtain ⟨o, st₃, b₃, ht, h3⟩ := Runs.bind_inv h2
+      have := runs_throughLocalBorrow_keep ht
+      subst st₃
+      split at h3
+      · obtain ⟨L, left, log, h3⟩ := h3
+        simp only [runMachineL_modify, Prod.mk.injEq, Outcome.ok.injEq] at h3
+        exact ⟨_, h3.1.2.symm⟩
+      · exact ⟨_, (runs_pure_inv h3).2⟩
+    · exact ⟨st.placeLog, (runs_pure_inv h1).2⟩
+  · exact ⟨st.placeLog, (runs_pure_inv h1).2⟩
+
+/-- Being referenced reads the values, stored types, goal, records and types of unknowns only. -/
+theorem refd_of_same {st st' : MState} (henv : st'.env = st.env) (hgoal : st'.goal = st.goal)
+    (hn : st'.neutrals = st.neutrals) (he : st'.etaRefs = st.etaRefs) (ha : st'.absTy = st.absTy) {σ : Nat}
+    (h : st'.Refd σ) : st.Refd σ := by
+  induction h with
+  | val v hv h => exact .val v (henv ▸ hv) h
+  | ty f i b T hb hT h => exact .ty f i b T (henv ▸ hb) hT h
+  | lazyTy f i b P ws j hb hT h => exact .lazyTy f i b P ws j (henv ▸ hb) hT h
+  | goal G hG h => exact .goal G (hgoal ▸ hG) h
+  | neutral n σ' hn' h => exact .neutral n σ' (hn ▸ hn') h
+  | eta σ' v he' h => exact .eta σ' v (he ▸ he') h
+  | dep σ' T _ hT h ih => exact .dep σ' T ih (ha ▸ hT) h
+
+/-- **`logEffect` changes nothing the relation or `Good` reads** (it writes `placeLog` only,
+`runs_logEffect_inv`; `throughLocalBorrow` and `loanPath` only read). -/
 theorem logEffect_rel (st st₁ : MState) (s : SState) (π : Nat → Nat) (q : Place) (k : String) (b : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (h : Runs (Ochr.logEffect q k) st b () st₁) :
     Rel K ρ φ π st₁ s ∧ Good K.dm K.M K.Γ ρ st₁ ∧ CtxOk K ρ st₁ ∧ st₁.env = st.env := by
-  sorry
+  obtain ⟨X, rfl⟩ := runs_logEffect_inv h
+  obtain ⟨ta, mem, wf⟩ := hg
+  have hrefd : ∀ τ, ({ st with placeLog := X } : MState).Refd τ → st.Refd τ :=
+    fun τ h => refd_of_same (st := st) (st' := { st with placeLog := X }) rfl rfl rfl rfl rfl h
+  exact ⟨⟨hs.1, hs.2, hs.3, hs.4, hs.5, hs.6⟩,
+    ⟨⟨fun τ hr hlt => ta.mem τ (hrefd τ hr) hlt, ta.neutral, ta.eta, ta.refs⟩,
+     ⟨mem.pos, fun τ hr hlt => mem.absTy τ (hrefd τ hr) hlt, mem.goal⟩, wf⟩,
+    ⟨hctx.1, hctx.2, hctx.3, hctx.4, ⟨hctx.5.1, hctx.5.2, hctx.5.3, hctx.5.4⟩⟩, rfl⟩
 
 end
 

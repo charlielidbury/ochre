@@ -72,22 +72,6 @@ theorem movedPlace_succ_eq (fuel : Nat) (q : Place) :
 
 /-! ## Small inversions -/
 
-theorem runs_get_inv {st st' x : MState} {b : Nat} (h : Runs (get : M MState) st b x st') : x = st ∧ st' = st := by
-  obtain ⟨L, left, log, h⟩ := h
-  simp only [runMachineL_get, Prod.mk.injEq, Outcome.ok.injEq] at h
-  exact ⟨h.1.1.symm, h.1.2.symm⟩
-
-theorem runs_pure_inv {α : Type} {a a' : α} {st st' : MState} {b : Nat} (h : Runs (pure a : M α) st b a' st') :
-    a' = a ∧ st' = st := by
-  obtain ⟨L, left, log, h⟩ := h
-  simp only [runMachineL_pure, Prod.mk.injEq, Outcome.ok.injEq] at h
-  exact ⟨h.1.1.symm, h.1.2.symm⟩
-
-theorem runs_err_false {α : Type} {m : String} {a : α} {st st' : MState} {b : Nat}
-    (h : Runs (err m : M α) st b a st') : False := by
-  obtain ⟨L, left, log, h⟩ := h
-  simp [runMachineL_err] at h
-
 /-- `content` reads the place and changes nothing. -/
 theorem runs_content_inv {p : Place} {st st' : MState} {b : Nat} {v : Value}
     (h : Runs (Ochr.content p) st b v st') : st' = st ∧ ckContent st.env p = some v := by
@@ -114,17 +98,6 @@ theorem runs_absType_inv {σ : Nat} {st st' : MState} {b : Nat} {T : Value}
   · rename_i T' hT
     obtain ⟨rfl, rfl⟩ := runs_pure_inv h2
     exact ⟨rfl, hT⟩
-  · exact (runs_err_false h2).elim
-
-theorem runs_lookupInd_inv {n : String} {st st' : MState} {b : Nat} {d : IndDecl}
-    (h : Runs (Ochr.lookupInd n) st b d st') : st' = st ∧ st.inds.find? (·.name == n) = some d := by
-  unfold Ochr.lookupInd at h
-  obtain ⟨x, st₁, b₁, hg, h2⟩ := Runs.bind_inv h
-  obtain ⟨rfl, rfl⟩ := runs_get_inv hg
-  split at h2
-  · rename_i d' hd
-    obtain ⟨rfl, rfl⟩ := runs_pure_inv h2
-    exact ⟨rfl, hd⟩
   · exact (runs_err_false h2).elim
 
 theorem runs_mapM_keep {α β : Type} (f : α → M β)

@@ -263,19 +263,6 @@ theorem substEnv_abs_sim (fuel : Nat) (st st' : MState) (σ : Nat) (r : Value) (
 theorem rel_refs (st : MState) (σ : Nat) (r : Value) (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) :
     Rel K ρ φ π { st with refs := (σ, r) :: st.refs } s := ⟨hs.1, hs.2, hs.3, hs.4, hs.5, hs.6⟩
 
-/-- Being referenced reads the values, stored types, goal, records and types of unknowns only. -/
-theorem refd_of_same {st st' : MState} (henv : st'.env = st.env) (hgoal : st'.goal = st.goal)
-    (hn : st'.neutrals = st.neutrals) (he : st'.etaRefs = st.etaRefs) (ha : st'.absTy = st.absTy) {σ : Nat}
-    (h : st'.Refd σ) : st.Refd σ := by
-  induction h with
-  | val v hv h => exact .val v (henv ▸ hv) h
-  | ty f i b T hb hT h => exact .ty f i b T (henv ▸ hb) hT h
-  | lazyTy f i b P ws j hb hT h => exact .lazyTy f i b P ws j (henv ▸ hb) hT h
-  | goal G hG h => exact .goal G (hgoal ▸ hG) h
-  | neutral n σ' hn' h => exact .neutral n σ' (hn ▸ hn') h
-  | eta σ' v he' h => exact .eta σ' v (he ▸ he') h
-  | dep σ' T _ hT h ih => exact .dep σ' T ih (ha ▸ hT) h
-
 /-- **Recording a refinement keeps `Good` and the context** where the assignment makes the
 refinement true: the record is `TypedAssignment.refs`'s path condition (`hσ` at the closed future
 and `σ`'s type), and nothing else reads `refs` (the relation's half is `rel_refs`). -/
