@@ -63,18 +63,30 @@ theorem closure_apply (R : DataRead) (l : Nat) (φ : Future) (ds : List PiDom) (
       some ((o.result, .plain (out.cod (args.map (·.1)))), s') := by
   sorry
 
-/-- A part of a meaning: a field of a constructor value, a number's predecessor, and so on down. -/
+/-- A part of a meaning: a field of a constructor value, a number's predecessor, and so on down.
+Only a constructor value has fields here: a proof (`⋆`) has none, although the run reads `⋆` off a
+field of `⋆` (`Sem.stepField`), so `⋆` would otherwise be a part of itself and (R2) false. [Rec]
+never needs one: `strictSubterms` does not descend into `⋆`, and the only constructor values of a
+`Prop`-sorted declaration it descends into (refinements of a subsingleton, (I7)) have only proof
+fields, none of the decreasing parameter's data type. -/
 inductive SemPart (dm : DataModel) (Γ : List IndDecl) : Sem → Sem → Prop
-  | field {c i : Nat} {s f : Sem} {T : TyS} (h : Sem.stepField dm Γ c i s = some (f, T)) : SemPart dm Γ f s
+  | field {n : String} {r : Rec} {c i : Nat} {fs : List Sem} {f : Sem} (h : fs[i]? = some f) :
+      SemPart dm Γ f (.dat n r c fs)
   | pred (n : Nat) : SemPart dm Γ (.el0 Nat n) (.el0 Nat (n + 1))
   | trans {a b c : Sem} : SemPart dm Γ a b → SemPart dm Γ b c → SemPart dm Γ a c
 
-/-- **(R2) A part has a strictly smaller rank** (owed by the data layer: `semHeight_field_lt`, through
-every declaration and nesting, as a function of the meaning alone; `semRank` is the height after the
-port). What `recDecreases_stmt` turns [Rec]'s syntactic check into. -/
+/-- **(R2) A part has a strictly smaller rank** (from the data layer: `semHeight_field_lt`, through
+every declaration and nesting, as a function of the meaning alone; `semRank` is the height). What
+`recDecreases_stmt` turns [Rec]'s syntactic check into. -/
 theorem semRank_part (dm : DataModel) (Γ : List IndDecl) {a b : Sem} (h : SemPart dm Γ a b) :
     semRank a < semRank b := by
-  sorry
+  induction h with
+  | field h => exact semHeight_field_lt _ _ _ _ _ (List.mem_of_getElem? h)
+  | pred n =>
+    show semHeight (.el0 Nat n) < semHeight (.el0 Nat (n + 1))
+    simp only [semHeight, Sem.asNat_el0, Option.getD_some]
+    omega
+  | trans _ _ ih₁ ih₂ => exact Nat.lt_trans ih₁ ih₂
 
 /-! ### The [Rec] link (the spine's; docs/31 D73 item 3) -/
 
