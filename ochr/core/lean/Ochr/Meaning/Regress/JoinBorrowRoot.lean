@@ -72,14 +72,11 @@ variable (K : RunCtx) (φ : Future)
 borrow and accesses nothing it lends, as `Machine.dropAtJoin` does. (The first form of the fix,
 `joinAccess`, skipped the reference's access by dependence at such a root; the access by
 dependence went with the early ends, and with it the record `old_access_depends` that the old
-access of a root reading a reborrow's label depended on that label.) -/
-theorem dropAt_borrow_root (q : Place) (s : SState) (pos : Pos) (l : Nat) (hs : s.shape pos = some l)
-    (v : Sem) (T : TyS) (hv : v ≠ .proof ∧ v ≠ .moved)
-    (hf : Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) [] = some (v, T)) :
+access of a root reading a reborrow's label depended on that label.) Since docs/31 D42 the holder is
+tested first, so the place's reading is no longer a hypothesis. -/
+theorem dropAt_borrow_root (q : Place) (s : SState) (pos : Pos) (l : Nat) (hs : s.shape pos = some l) :
     dropAt K φ q pos [] s = s.endLabel l := by
   unfold dropAt
-  rw [hf]
-  rcases hv with ⟨h1, h2⟩
-  cases v <;> simp_all
+  rw [hs]
 
 end Ochr.Meaning.Regress.JoinBorrowRoot

@@ -190,13 +190,22 @@ theorem ctorM_dat (dm : DataModel) (d : IndDecl) (ps : List Sem) (c : Nat) (fs :
 section
 variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (f : Future)
 
+/-- A constructor value with no constructor of a `Prop`-sorted declaration ((N)) is of a data
+declaration. -/
+theorem sort_ne_zero_of_N {n : String} {d : IndDecl} {c : Nat} {hh : Hint} {ps fs : List Value}
+    (hd : Γ.find? (·.name == n) = some d) (hN : (Value.ind n c hh ps fs).anyAtom (dataCtorBad Γ) = false) :
+    d.sort ≠ 0 := by
+  intro h0
+  rw [Value.anyAtom] at hN
+  simp [dataCtorBad, hd, h0] at hN
+
 /-- The step into a field of a constructor value of a declared inductive that is not bare. -/
 theorem step_mean_ind {n : String} {d : IndDecl} (c : Nat) (hh : Hint) (ps fs' : List Value) (x : Step) (i : Nat)
     (v : Value) (H T : TyS) (hd : Γ.find? (·.name == n) = some d)
     (hb : (Value.ind n c hh ps fs').anyAtom (Value.bareCtor Γ) = false) (hv : fs'[i]? = some v)
-    (hx : (x = .proj i ∧ c = 0) ∨ ∃ g, x = .field g ∧ g.idx = i ∧ g.ctor = c) :
+    (hx : (x = .proj i ∧ c = 0) ∨ ∃ g, x = .field g ∧ g.idx = i ∧ g.ctor = c) (hs0 : d.sort ≠ 0) :
     ∃ s' T', Sem.step dm Γ T x (Value.mean dm C Γ ρ f H (.ind n c hh ps fs')) = some (s', T') ∧
-      (s' = .proof ∨ ∃ H', s' = Value.mean dm C Γ ρ f H' v) := by
+      ((s' = .proof ∧ v = .proof) ∨ ∃ H', s' = Value.mean dm C Γ ρ f H' v) := by
   rw [Value.anyAtom] at hb
   simp only [Bool.or_eq_false_iff] at hb
   have hps : (ps.isEmpty && !d.params.isEmpty) = false := by
@@ -206,8 +215,7 @@ theorem step_mean_ind {n : String} {d : IndDecl} (c : Nat) (hh : Hint) (ps fs' :
   rw [Value.mean]
   simp only [hd, hps, Bool.false_eq_true, ↓reduceIte]
   split
-  · obtain ⟨T', hT'⟩ := sem_step_proof dm Γ T x
-    exact ⟨.proof, T', hT', .inl rfl⟩
+  · rename_i h0; simp only [beq_iff_eq] at h0; exact absurd h0 hs0
   · obtain ⟨el, hel⟩ := ctorM_dat dm d (Value.meanParams dm C Γ ρ f d 0 [] ps) c
       (Value.meanFields dm C Γ ρ f d (Value.meanParams dm C Γ ρ f d 0 [] ps) c 0 [] fs')
     rw [hel]
@@ -227,31 +235,31 @@ the value the checker's step reaches, or `⋆` (a step inside a proof). -/
 theorem step_mean (r : DeclInfo) (x : Step) (hx : StepOk Γ r x) :
     ∀ (w v : Value) (H T : TyS), stepV x w = some v →
       (∀ n args, r = .ind n args → (Γ.find? (·.name == n)).isSome → w.fitsInd n = true) →
-      w.anyAtom (Value.bareCtor Γ) = false →
+      w.anyAtom (Value.bareCtor Γ) = false → w.anyAtom (dataCtorBad Γ) = false →
       ∃ s' T', Sem.step dm Γ T x (Value.mean dm C Γ ρ f H w) = some (s', T') ∧
-        (s' = .proof ∨ ∃ H', s' = Value.mean dm C Γ ρ f H' v)
-  | .gloan l w, v, H, T, h, hf, hb => by
+        ((s' = .proof ∧ v = .proof) ∨ ∃ H', s' = Value.mean dm C Γ ρ f H' v)
+  | .gloan l w, v, H, T, h, hf, hb, hN => by
     have e : stepV x (.gloan l w) = stepV x w := by cases x <;> rfl
     rw [e] at h
-    rw [Value.anyAtom] at hb
-    simp only [Bool.or_eq_false_iff] at hb
+    rw [Value.anyAtom] at hb hN
+    simp only [Bool.or_eq_false_iff] at hb hN
     obtain ⟨s', T', h1, h2⟩ := step_mean r x hx w v H T h
-      (fun n args e hn => by have := hf n args e hn; simpa [Value.fitsInd] using this) hb.2
+      (fun n args e hn => by have := hf n args e hn; simpa [Value.fitsInd] using this) hb.2 hN.2
     exact ⟨s', T', by simpa [Value.mean] using h1, h2⟩
-  | .proof, v, H, T, h, _, _ => by
+  | .proof, v, H, T, h, _, _, _ => by
     cases x with
     | deref => simp [stepV] at h
     | proj i | field g =>
       simp only [stepV, Option.some.injEq] at h; subst h
       obtain ⟨T', hT'⟩ := sem_step_proof dm Γ T _
-      exact ⟨.proof, T', by simpa [Value.mean] using hT', .inl rfl⟩
-  | .borrow l w, v, H, T, h, hf, _ => by
+      exact ⟨.proof, T', by simpa [Value.mean] using hT', .inl ⟨rfl, rfl⟩⟩
+  | .borrow l w, v, H, T, h, hf, _, _ => by
     cases x with
     | deref =>
       simp only [stepV, Option.some.injEq] at h; subst h
       exact ⟨_, T, by simp [Sem.step, Value.mean], .inr ⟨H, rfl⟩⟩
     | proj i | field g => simp [stepV] at h
-  | .ind ty c hh ps fs', v, H, T, h, hf, hb => by
+  | .ind ty c hh ps fs', v, H, T, h, hf, hb, hN => by
     cases x with
     | deref => simp [stepV] at h
     | proj i =>
@@ -259,7 +267,7 @@ theorem step_mean (r : DeclInfo) (x : Step) (hx : StepOk Γ r x) :
       have hty := hf n args rfl (by simp [hd])
       simp only [Value.fitsInd, beq_iff_eq] at hty; subst hty
       rcases c with _ | c
-      · exact step_mean_ind dm C Γ ρ f 0 hh ps fs' (.proj i) i v H T hd hb (by simpa [stepV] using h) (.inl ⟨rfl, rfl⟩)
+      · exact step_mean_ind dm C Γ ρ f 0 hh ps fs' (.proj i) i v H T hd hb (by simpa [stepV] using h) (.inl ⟨rfl, rfl⟩) (sort_ne_zero_of_N Γ hd hN)
       · simp [stepV] at h
     | field g =>
       obtain ⟨n, args, d, rfl, hd, -⟩ := hx
@@ -269,15 +277,15 @@ theorem step_mean (r : DeclInfo) (x : Step) (hx : StepOk Γ r x) :
       split at h
       · rename_i hc
         simp only [Bool.and_eq_true, beq_iff_eq] at hc
-        exact step_mean_ind dm C Γ ρ f c hh ps fs' (.field g) g.idx v H T hd hb h (.inr ⟨g, rfl, rfl, hc.2.symm⟩)
+        exact step_mean_ind dm C Γ ρ f c hh ps fs' (.field g) g.idx v H T hd hb h (.inr ⟨g, rfl, rfl, hc.2.symm⟩) (sort_ne_zero_of_N Γ hd hN)
       · cases h
-  | .bot, _, _, _, h, _, _ | .loan _, _, _, _, h, _, _ | .abs _, _, _, _, h, _, _
-  | .sealed _, _, _, _, h, _, _ | .zero, _, _, _, h, _, _ | .unit, _, _, _, h, _, _
-  | .gfn _, _, _, _, h, _, _ | .clo .., _, _, _, h, _, _ | .tNat, _, _, _, h, _, _
-  | .tUnit, _, _, _, h, _, _ | .tEq .., _, _, _, h, _, _ | .tRef _, _, _, _, h, _, _
-  | .tPi .., _, _, _, h, _, _ | .sort _, _, _, _, h, _, _ | .tInd .., _, _, _, h, _, _ => by
+  | .bot, _, _, _, h, _, _, _ | .loan _, _, _, _, h, _, _, _ | .abs _, _, _, _, h, _, _, _
+  | .sealed _, _, _, _, h, _, _, _ | .zero, _, _, _, h, _, _, _ | .unit, _, _, _, h, _, _, _
+  | .gfn _, _, _, _, h, _, _, _ | .clo .., _, _, _, h, _, _, _ | .tNat, _, _, _, h, _, _, _
+  | .tUnit, _, _, _, h, _, _, _ | .tEq .., _, _, _, h, _, _, _ | .tRef _, _, _, _, h, _, _, _
+  | .tPi .., _, _, _, h, _, _, _ | .sort _, _, _, _, h, _, _, _ | .tInd .., _, _, _, h, _, _, _ => by
     cases x <;> simp [stepV] at h
-  | .succ w, v, H, T, h, hf, _ => by
+  | .succ w, v, H, T, h, hf, _, _ => by
     cases x with
     | deref => simp [stepV] at h
     | proj i => obtain ⟨n, args, d, rfl, hd, -⟩ := hx; have := hf n args rfl (by simp [hd]); simp [Value.fitsInd] at this
@@ -315,7 +323,11 @@ def FollowMeanP (K : RunCtx) (ρ : Assignment) (st : MState) (f : Future) (pos :
   GrainOk K.D K.Γ (DecideScope.topReadings st) q → ckVarPos st.env q.steps.1 = some pos →
     ∀ v, ckContent st.env q = some v → ∀ T,
     ∃ s' T', Sem.follow K.dm K.Γ T (Env.mean K.dm K.M K.Γ ρ f st.env pos) q.steps.2 = some (s', T') ∧
-      (s' = .proof ∨ ∃ H, s' = Value.mean K.dm K.M K.Γ ρ f H v)
+      ((s' = .proof ∧ v = .proof) ∨ ∃ H, s' = Value.mean K.dm K.M K.Γ ρ f H v)
+
+/-- A step from `⋆` reaches `⋆` (`stepV` keeps a proof a proof). -/
+theorem stepV_proof {x : Step} {v : Value} (h : stepV x .proof = some v) : v = .proof := by
+  cases x <;> simp [stepV] at h <;> exact h.symm
 
 theorem followMean_snoc (K : RunCtx) (ρ : Assignment) {st : MState} (hctx : CtxOk K ρ st)
     (hwf10 : WF10 K.Γ st) (f : Future) (pos : Pos) {q p : Place} (hpar : parentOf q = some p)
@@ -328,17 +340,22 @@ theorem followMean_snoc (K : RunCtx) (ρ : Assignment) {st : MState} (hctx : Ctx
   obtain ⟨s₁, T₁, h1, h2⟩ := ih (grain_parent hpar hgr) hck' w hw T
   rw [hx, sem_follow_append, h1, Option.bind_some]
   have hst := grain_step hx hgr
-  rcases h2 with rfl | ⟨H, rfl⟩
+  rcases h2 with ⟨rfl, rfl⟩ | ⟨H, rfl⟩
   · obtain ⟨T', hT'⟩ := sem_step_proof K.dm K.Γ T₁ x
-    exact ⟨.proof, T', by simp [Sem.follow, hT'], .inl rfl⟩
+    exact ⟨.proof, T', by simp [Sem.follow, hT'], .inl ⟨rfl, stepV_proof hwv⟩⟩
   · obtain ⟨root, hroot, hfr⟩ := ckContent_root hw
     have hbc : w.anyAtom (Value.bareCtor K.Γ) = false := by
       cases e : w.anyAtom (Value.bareCtor K.Γ)
       · rfl
       · have := anyAtom_of_follow _ _ _ hfr e
         rw [hwf10 root hroot] at this; exact absurd this (by simp)
+    have hN : w.anyAtom (dataCtorBad K.Γ) = false := by
+      cases e : w.anyAtom (dataCtorBad K.Γ)
+      · rfl
+      · have := anyAtom_of_follow _ _ _ hfr e
+        rw [hctx.shapes.ctors root hroot] at this; exact absurd this (by simp)
     obtain ⟨s', T', h3, h4⟩ := step_mean K.dm K.M K.Γ ρ f _ x hst w v H T₁ hwv
-      (fun n args e hn => hctx.shapes.fits p w n args hw e hn) hbc
+      (fun n args e hn => hctx.shapes.fits p w n args hw e hn) hbc hN
     exact ⟨s', T', by simp [Sem.follow, h3], h4⟩
 
 /-- **The reference's reading of a place at the join's grain is the meaning of the checker's

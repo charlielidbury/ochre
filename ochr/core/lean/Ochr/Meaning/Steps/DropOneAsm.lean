@@ -45,21 +45,128 @@ theorem follow_borrow_root {env : Env} {pos : Pos} {ss : List Step} {l : Nat} {w
     | _ => rw [hv] at hwf1 h; exact hwf1 (anyAtom_of_follow _ _ _ h hb)
 
 /-- **The reference's drop of a data place is its access then its write** (`dropAt`'s last clause,
-under the lead's (B), docs/31 D52): after the lent prefix's access the place is no holder at a root,
-the reference reads it, and not as `⋆`, and it is not a copy. Open: the reading after the prefix's
-access (the prefix's access fixes the borrows lent above the place to their holders' contents, at
-the closed future the reading is the same) and that a value the checker holds as data does not
-read `⋆` (an unknown or a sealed program of a proposition, or a loan whose final content is a
-proof; values of propositions are `⋆` in the checker, P5). -/
-theorem dropAt_data (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (v : Value)
-    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2))
-    (hv : (valAt st.env pos).follow q.steps.2 = some v) (hb : ∀ l w, v ≠ .borrow l w) (hbot : v ≠ .bot)
-    (hproof : v ≠ .proof) (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false) :
-    let s₀ := accessLentPrefix pos q.steps.2 s
-    let s₁ := s₀.access pos (dataHit q.steps.2)
-    dropAt K φ q pos q.steps.2 s₀ = s₁.setAt pos fun φ' =>
-      (Sem.updAt K.dm K.Γ (s₁.tyAt pos) (fun _ => .moved) q.steps.2 (s₁.valAt pos φ')).getD .err := by
+under the lead's (B), docs/31 D52, reading after the access, D54): where the place is no holder at
+a root, its reading after the access exists and is not `⋆`, and it is no copy. PROVED. -/
+theorem dropAt_data (s : SState) (q : Place) (pos : Pos) (steps : List Step)
+    (hns : steps = [] → s.shape pos = none)
+    (hread : ∃ x T, Sem.follow K.dm K.Γ ((s.access pos (dataHit steps)).tyAt pos)
+      ((s.access pos (dataHit steps)).valAt pos ((s.access pos (dataHit steps)).closedFuture φ)) steps =
+        some (x, T) ∧ x ≠ .proof)
+    (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false) :
+    dropAt K φ q pos steps s = (s.access pos (dataHit steps)).setAt pos fun φ' =>
+      (Sem.updAt K.dm K.Γ ((s.access pos (dataHit steps)).tyAt pos) (fun _ => .moved) steps
+        ((s.access pos (dataHit steps)).valAt pos φ')).getD .err := by
+  obtain ⟨x, T, hf, hx⟩ := hread
+  unfold dropAt
+  split
+  · next h2 => rw [hns rfl] at h2; cases h2
+  · dsimp only
+    rw [hf]
+    split
+    · next h => simp only [Option.some.injEq, Prod.mk.injEq] at h; exact absurd h.1 hx
+    · next h => cases h
+    · simp only [hcopy, Bool.false_eq_true, if_false]
+
+/-- **The checker's access of a place holding data at a root leaves no `⋆` there**: the access
+substitutes the borrows lent at the variable by their contents and re-runs the sealed programs
+reading them; a variable of a non-copy reading holding data (no `⋆`, `⊥` or borrow) is of a type
+whose values are not proofs, so what the access puts there is not `⋆` either (below a variable
+(C⋆) gives it, `dataRead_after`). Open: not tried. -/
+theorem access_root_not_proof (fuel : Nat) (st st' : MState) (q : Place) (pos : Pos) (b : Nat) (v : Value)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hck : ckVarPos st.env q.steps.1 = some pos)
+    (hnil : q.steps.2 = []) (hv : valAt st.env pos = v) (hb : ∀ l w, v ≠ .borrow l w) (hbot : v ≠ .bot)
+    (hproof : v ≠ .proof) (hcopy : K.D.copy (K.D.placeDecl (DecideScope.topReadings st) q) = false)
+    (h : Runs (do Ochr.accessPath fuel q; Ochr.accessInside fuel q) st b () st') :
+    valAt st'.env pos ≠ .proof := by
   sorry
+
+/-- **The reference reads no data of a non-copy place as `⋆`**: at a related state, the meaning of
+what the checker holds at a place of a non-copy reading, other than `⋆`, is not `⋆`. By membership
+(`Good`) and the typing of places, the meaning is a member of the place's type; `⋆` is a member of
+a proposition only, and a place declared a proposition is a copy (`declCopy`: `.prop`); a borrow
+of a proposition is no copy, but the checker holds `⋆` there (P5, the `⋆` excluded here). Open: not
+tried. -/
+theorem dataMean_ne_proof (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (v : Value)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
+    (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
+    (hv : (valAt st.env pos).follow q.steps.2 = some v) (hproof : v ≠ .proof) (H : TyS) :
+    Value.mean K.dm K.M K.Γ ρ (fun l => s.closedFuture φ (π l)) H v ≠ .proof := by
+  sorry
+
+/-- **The reference's reading of a data place at a related state** exists and is not `⋆`
+(`followMean`: it is the meaning of the checker's value, which is not `⋆`, `dataMean_ne_proof`).
+PROVED from `dataMean_ne_proof`. -/
+theorem dataRead (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (v : Value)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
+    (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
+    (hv : (valAt st.env pos).follow q.steps.2 = some v) (hproof : v ≠ .proof) :
+    ∃ x T, Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) q.steps.2 = some (x, T) ∧
+      x ≠ .proof := by
+  have hgr : GrainOk K.D K.Γ (DecideScope.topReadings st) q := by rw [← rel_scopeOf K ρ φ hs]; exact hgrain
+  have hpt : ¬ IsTemp pos := by
+    rcases pos with ⟨f, i⟩ | ⟨f, i⟩
+    · simp [IsTemp]
+    · unfold ckVarPos at hck; split at hck <;> cases hck
+  have hrel : RelF φ s (s.closedFuture φ) := fun l hl => closedFuture_nonlive s φ hl
+  have hval : s.valAt pos (s.closedFuture φ) =
+      Env.mean K.dm K.M K.Γ ρ (fun l => s.closedFuture φ (π l)) st.env pos := (hs.sim.1 _ hrel pos hpt).symm
+  obtain ⟨s', T', h1, h2⟩ := followMean K ρ hctx hg (fun l => s.closedFuture φ (π l)) pos q hgr hck v
+    (by unfold ckContent; simp [hck, hv]) (s.tyAt pos)
+  rw [hval]
+  refine ⟨s', T', h1, ?_⟩
+  rcases h2 with ⟨-, rfl⟩ | ⟨H, rfl⟩
+  · exact absurd rfl hproof
+  · exact dataMean_ne_proof K ρ φ st s π q pos v hg hctx hs hck hgrain hcopy hv hproof H
+
+/-- **Nothing is lent at a root holding `⋆`** (`⋆` holds no loan, mark or sealed program). -/
+theorem clear_of_proof_root {env : Env} {pos : Pos} (hproof : valAt env pos = .proof) :
+    ∀ l, ∀ x ∈ Env.sitesOf env l, x.pos ≠ pos := by
+  intro l x hx hxp
+  simp only [Env.sitesOf, List.mem_flatMap] at hx
+  obtain ⟨p, -, hxv⟩ := hx
+  have hpp : x.pos = p := (sitesOf_prefix l p [] _ x hxv).1
+  rw [hxp] at hpp; subst hpp
+  rw [hproof] at hxv
+  simp [Value.sitesOf] at hxv
+
+/-- A write along a path finds the path. -/
+theorem follow_of_updAt (f : Value → Value) (ss : List Step) (v v' : Value)
+    (h : Value.updAt f ss v = some v') : ∃ c, v.follow ss = some c := by
+  fun_induction Value.updAt f ss v generalizing v' with
+  | case1 v => exact ⟨v, rfl⟩
+  | case2 ss l w hne ih =>
+    obtain ⟨w', hw', -⟩ := Option.map_eq_some_iff.mp h
+    obtain ⟨c, hc⟩ := ih w' hw'
+    cases ss with
+    | nil => exact absurd rfl hne
+    | cons x ss => exact ⟨c, by simpa [Value.follow, stepV] using hc⟩
+  | case3 ss l w ih =>
+    obtain ⟨w', hw', -⟩ := Option.map_eq_some_iff.mp h
+    obtain ⟨c, hc⟩ := ih w' hw'
+    exact ⟨c, by simpa [Value.follow, stepV] using hc⟩
+  | case4 ss w ih =>
+    obtain ⟨w', hw', -⟩ := Option.map_eq_some_iff.mp h
+    obtain ⟨c, hc⟩ := ih w' hw'
+    exact ⟨c, by simpa [Value.follow, stepV] using hc⟩
+  | case5 =>
+    rename_i hi ih
+    obtain ⟨w', hw', -⟩ := Option.map_eq_some_iff.mp h
+    obtain ⟨c, hc⟩ := ih w' hw'
+    exact ⟨c, by simp [Value.follow, stepV, hi, hc]⟩
+  | case6 => simp_all
+  | case7 =>
+    rename_i hi ih
+    obtain ⟨w', hw', -⟩ := Option.map_eq_some_iff.mp h
+    obtain ⟨c, hc⟩ := ih w' hw'
+    refine ⟨c, ?_⟩
+    simp only [Value.follow, stepV]
+    rw [dite_eq_ite] at hi
+    rw [hi]
+    simpa using hc
+  | case8 => simp_all
+  | case9 => simp_all
 
 /-- A place with no steps is a variable. -/
 theorem place_eq_var_of_nil {q : Place} (h : q.steps.2 = []) : q = .var q.steps.1 := by
@@ -215,28 +322,43 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
       rcases hn with hn | hn
       · exact ⟨_, hn, .inl rfl⟩
       · exact ⟨_, hn, .inr rfl⟩
+    -- the reference's access of a place holding `⊥` or `⋆` ends nothing: nothing is lent over,
+    -- at or under a `⊥` (`clear_of_bot`); a `⋆` below a variable is a copy ((C⋆)), excluded, and at
+    -- a root nothing is lent at all (`clear_of_proof_root`)
+    have hclr : ∀ l, liveLoan st.env l = true → ∀ x ∈ Env.sitesOf st.env l, x.pos = pos →
+        dataHit q.steps.2 x.path = false := by
+      rcases hcb with rfl | rfl
+      · exact clear_of_bot hg.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hn
+      · by_cases hne : q.steps.2 = []
+        · rw [hne] at hn
+          simp only [Value.follow, Option.some.injEq] at hn
+          intro l _ x hx hxp
+          exact absurd hxp (clear_of_proof_root hn l x hx)
+        · have h := hctx.shapes.proofCopy q hne (by unfold ckContent; simp [hck, hn])
+          rw [← rel_scopeOf K ρ φ hs, hcopy] at h
+          cases h
+    have hacc : s.access pos (dataHit q.steps.2) = s := by
+      apply SState.access_of_unreached
+      intro y hy
+      obtain ⟨l, hl, rfl⟩ := rel_live_ref K ρ φ st s π hs hy
+      unfold SState.reached
+      rw [List.any_eq_false]
+      intro x hx hpx
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at hpx
+      rw [hclr l hl x ((hs.sites l hl x).mp hx) hpx.1] at hpx
+      exact Bool.false_ne_true hpx.2
     obtain ⟨x, T, hT, hx⟩ := content_follow K ρ φ st s π q pos hg hctx hs hck hgrain c hn hcb
     unfold dropAt
     split
     · next l h1 h2 => rw [hnb _ hn hcb h1] at h2; cases h2
-    · rw [hT]
+    · dsimp only
+      rw [hacc, hT]
       rcases hx with rfl | ⟨rfl, rfl⟩
       · exact ⟨hs, hg⟩
       · -- a place already moved: the reference accesses it, which ends nothing, and writes `moved`
         -- over `moved`, which changes nothing the relation reads (docs/31 D52)
         simp only [hcopy, Bool.false_eq_true, if_false]
         have hclr := clear_of_bot hg.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hn
-        have hacc : s.access pos (dataHit q.steps.2) = s := by
-          apply SState.access_of_unreached
-          intro y hy
-          obtain ⟨l, hl, rfl⟩ := rel_live_ref K ρ φ st s π hs hy
-          unfold SState.reached
-          rw [List.any_eq_false]
-          intro x hx hpx
-          simp only [Bool.and_eq_true, decide_eq_true_eq] at hpx
-          rw [hclr l hl x ((hs.sites l hl x).mp hx) hpx.1] at hpx
-          exact Bool.false_ne_true hpx.2
-        rw [hacc]
         have hself := updAt_bot_self q.steps.2 _ hn
         obtain ⟨f, i, hposfi, hpb, hsp, hroot, htype, hplain, hnat⟩ :=
           botWrite_hyps K ρ φ st s π q pos _ hg hctx hs hck hgrain hcopy (fun he => hnb _ hn (.inl rfl) he) hself
@@ -292,33 +414,58 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
       rw [scopeOf_of_declsOf hdecl]; exact hgrain
     have hcopy₁ : K.D.copy (K.D.placeDecl (scopeOf ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2))) q) = false := by
       rw [scopeOf_of_declsOf hdecl]; exact hcopy
-    have hns₁ : q.steps.2 = [] → ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2)).shape pos = none := by
+    have hns : q.steps.2 = [] → s.shape pos = none := by
       intro he
       have hpt : ¬ IsTemp pos := by
         rcases pos with ⟨f, i⟩ | ⟨f, i⟩
         · simp [IsTemp]
         · unfold ckVarPos at hck; split at hck <;> cases hck
-      have h0 : s.shape pos = none := by
-        cases hsh : s.shape pos with
-        | none => rfl
-        | some l' =>
-          obtain ⟨l, hl, -⟩ := hs.sim.2.2.1 pos l' hpt hsh
-          have hl' : Env.shape st.env pos = some l := hl
-          rw [he] at hv; simp only [Value.follow, Option.some.injEq] at hv
-          rw [shape_eq_shapeOf, hv] at hl'
-          cases v <;> simp [shapeOf] at hl'
-          exact absurd rfl (hb _ _)
+      cases hsh : s.shape pos with
+      | none => rfl
+      | some l' =>
+        obtain ⟨l, hl, -⟩ := hs.sim.2.2.1 pos l' hpt hsh
+        have hl' : Env.shape st.env pos = some l := hl
+        rw [he] at hv; simp only [Value.follow, Option.some.injEq] at hv
+        rw [shape_eq_shapeOf, hv] at hl'
+        cases v <;> simp [shapeOf] at hl'
+        exact absurd rfl (hb _ _)
+    have hns₀ : q.steps.2 = [] → (accessLentPrefix pos q.steps.2 s).shape pos = none := by
+      intro he
+      cases hsh : (accessLentPrefix pos q.steps.2 s).shape pos with
+      | none => rfl
+      | some l =>
+        have := (shapeSub_accessLentPrefix pos q.steps.2 s).1 pos l hsh
+        rw [hns he] at this; cases this
+    have hns₁ : q.steps.2 = [] → ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2)).shape pos = none := by
+      intro he
       cases hsh : ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2)).shape pos with
       | none => rfl
       | some l =>
-        have := (shapeSub_accessLentPrefix pos q.steps.2 s).1 pos l
-          ((SState.shapeSub_access _ pos _).1 pos l hsh)
-        rw [h0] at this; cases this
+        have := (SState.shapeSub_access _ pos _).1 pos l hsh
+        rw [hns₀ he] at this; cases this
+    -- the reference's reading after its access: at the checker's state after its access, the place
+    -- holds data the access did not make `⋆`, which the reference does not read as `⋆`
+    obtain ⟨v₃, hv₃⟩ := follow_of_updAt _ _ _ _ hupd
+    have hproof₃ : v₃ ≠ .proof := by
+      rintro rfl
+      by_cases hne : q.steps.2 = []
+      · rw [hne] at hv₃ hv
+        simp only [Value.follow, Option.some.injEq] at hv₃ hv
+        have hcp : K.D.copy (K.D.placeDecl (DecideScope.topReadings st) q) = false := by
+          rw [← rel_scopeOf K ρ φ hs]; exact hcopy
+        exact access_root_not_proof K ρ fuel st st₂ q pos b₂ v hg hctx hck hne hv hb hbot hproof hcp hacc
+          (by rw [← henv₃]; exact hv₃)
+      · have h := hctx₃.shapes.proofCopy q hne (by unfold ckContent; simp [hck'', hv₃])
+        rw [← rel_scopeOf K ρ φ hs₃, hcopy₁] at h
+        cases h
+    have hread := dataRead K ρ φ st₃ _ π q pos v₃ hg₃ hctx₃ hs₃ hck'' hgrain₁ hcopy₁ hv₃ hproof₃
+    have hcopy₀ : K.D.copy (K.D.placeDecl (scopeOf (accessLentPrefix pos q.steps.2 s)) q) = false := by
+      rw [scopeOf_of_declsOf (declsOf_accessLentPrefix s pos q.steps.2)]; exact hcopy
     obtain ⟨f, i, hposfi, hpb, hsp, hroot, htype, hplain, hnat⟩ :=
       botWrite_hyps K ρ φ st₃ _ π q pos v' hg₃ hctx₃ hs₃ hck'' hgrain₁ hcopy₁ hns₁ hupd
     subst hposfi
     have hrel := botWrite_rel K ρ φ st₃ _ π f i q.steps.2 v' hs₃ hg₃.2.2.1 hpb hsp hupd hroot htype hclear₃ hplain hnat
-    rw [dropAt_data K ρ φ st s π q (.bind f i) v hg hs hres hv hb hbot hproof hcopy, hst']
+    rw [dropAt_data K φ _ q (.bind f i) q.steps.2 hns₀ hread hcopy₀, hst']
     exact ⟨hrel, botWrite_good K ρ st₃ (.bind f i) q.steps.2 v' hg₃ hpb hupd hroot hclear₃ hplain hnat⟩
 
 /-- **The checker's drop of one place keeps the run context and creates no unknown** (`dropAtJoin`

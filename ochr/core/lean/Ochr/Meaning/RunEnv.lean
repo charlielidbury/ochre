@@ -198,12 +198,11 @@ theorem dropAt_envLe (q : Place) (pos : Pos) (steps : List Step) (s : SState) : 
   unfold dropAt
   split
   · exact envLe_endLabel _ _
-  · split
+  · dsimp only
+    repeat' split
     all_goals first
       | exact EnvLe.refl s
-      | (split
-         · exact EnvLe.refl s
-         · exact (envLe_access s pos _).trans (envLe_setAt _ _ _))
+      | (exact (envLe_access s pos _).trans (envLe_setAt _ _ _))
 
 theorem joinDrop_envLe (entry : List Place) (t : Term) (s : SState) : EnvLe s (joinDrop K φ entry t s) := by
   unfold joinDrop

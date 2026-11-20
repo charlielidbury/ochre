@@ -788,7 +788,7 @@ theorem content_follow (st : MState) (s : SState) (π : Nat → Nat) (q : Place)
     (by unfold ckContent; simp [hck, hc]) (s.tyAt pos)
   rw [hval]
   refine ⟨s', T', h1, ?_⟩
-  rcases h2 with rfl | ⟨H, rfl⟩
+  rcases h2 with ⟨rfl, -⟩ | ⟨H, rfl⟩
   · exact .inl rfl
   · rcases hcb with rfl | rfl
     · exact .inr ⟨by simp [Value.mean], rfl⟩
