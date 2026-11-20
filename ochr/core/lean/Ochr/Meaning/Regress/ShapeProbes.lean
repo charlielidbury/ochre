@@ -64,6 +64,16 @@ ochr ShapeProbes uses Nats, Lists, Boxes {
   def RootOfTree : Eq(Nat, Root(Tree), 1) := refl
   -- control: the tree is read
   reject def RootOfTreeBad : Eq(Nat, Root(Tree), 2) := refl
+  -- D62: a call with a borrow parameter, and one returning a reborrow (`Regress/CallInPlace.lean`:
+  -- the reference's call by the callee's meaning and its run in place)
+  def Inc (x : &Nat) : Unit := (*x := S(*x))
+  def UseInc : Nat := (let y = 2; Inc(&y); y)
+  def UseIncIs3 : Eq(Nat, UseInc, 3) := refl
+  reject def UseIncIs2 : Eq(Nat, UseInc, 2) := refl
+  def Id1 (x : &Nat) : &Nat := &*x
+  def UseId1 : Nat := (let y = 2; let r = Id1(&y); *r := 5; y)
+  def UseId1Is5 : Eq(Nat, UseId1, 5) := refl
+  reject def UseId1Is2 : Eq(Nat, UseId1, 2) := refl
 
   -- A17: a constructor's parameter solved by a proof field's type
   inductive PBox (A : Prop) := MkPBox(a : A)
