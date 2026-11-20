@@ -117,6 +117,7 @@ import Ochr.Meaning.DataModel.ReadMember
 import Ochr.Meaning.Closure
 import Ochr.Meaning.ClosureStage
 import Ochr.Meaning.ApplyMem
+import Ochr.Meaning.DataModel.CtorMem
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
