@@ -344,10 +344,10 @@ theorem mean_updAt_botS : ∀ (steps : List Step) (H T : TyS) (v v' : Value),
         | zero =>
           simp only [Value.updAt] at h
           obtain ⟨w', hw', rfl⟩ := Option.map_eq_some_iff.mp h
-          obtain ⟨⟨n, hn⟩, hd'⟩ : (∃ n, (Value.mean K.dm K.M K.Γ ρ φ (.plain (.ty0 Nat)) w).asNat = some n) ∧
+          obtain ⟨⟨n, hn⟩, hd'⟩ : (∃ n, (Value.mean K.dm K.M K.Γ ρ φ (.plain TyM.nat) w).asNat = some n) ∧
               NatAlong K.dm K.M K.Γ ρ φ ss w := by simpa [NatAlong] using hd
           rw [Value.anyAtom] at hb hs; simp only [Bool.or_eq_false_iff] at hb hs
-          have IH := mean_updAt_botS ss (.plain (.ty0 Nat)) (.plain (.ty0 Nat)) w w' hw' hb.2 hs.2 hd'
+          have IH := mean_updAt_botS ss (.plain TyM.nat) (.plain TyM.nat) w w' hw' hb.2 hs.2 hd'
           rw [Sem.asNat_some hn] at IH
           simp only [Value.mean, Sem.asNat_some hn, Sem.succ_el0]
           rw [Sem.updAt_nat' K.dm K.Γ T _ ss _ n (Sem.asNat_el0 (n + 1)), IH, Option.map_some]
@@ -488,13 +488,13 @@ theorem movedOf_mean_updAt : ∀ (steps : List Step) (H : TyS) (v v' : Value),
         | zero =>
           simp only [Value.updAt] at h
           obtain ⟨w', hw', rfl⟩ := Option.map_eq_some_iff.mp h
-          obtain ⟨⟨n, hn⟩, hd'⟩ : (∃ n, (Value.mean K.dm K.M K.Γ ρ φ (.plain (.ty0 Nat)) w).asNat = some n) ∧
+          obtain ⟨⟨n, hn⟩, hd'⟩ : (∃ n, (Value.mean K.dm K.M K.Γ ρ φ (.plain TyM.nat) w).asNat = some n) ∧
               NatAlong K.dm K.M K.Γ ρ φ ss w := by simpa [NatAlong] using hd
           rw [Value.anyAtom] at hb hs; simp only [Bool.or_eq_false_iff] at hb hs
-          obtain ⟨h1, h2⟩ := movedOf_mean_updAt ss (.plain (.ty0 Nat)) w w' hw' hb.2 hs.2 hd'
+          obtain ⟨h1, h2⟩ := movedOf_mean_updAt ss (.plain TyM.nat) w w' hw' hb.2 hs.2 hd'
           rw [Sem.asNat_some hn] at h1
-          have hna : (Value.mean K.dm K.M K.Γ ρ φ (.plain (.ty0 Nat)) w').asNat = none := by
-            cases e : (Value.mean K.dm K.M K.Γ ρ φ (.plain (.ty0 Nat)) w').asNat with
+          have hna : (Value.mean K.dm K.M K.Γ ρ φ (.plain TyM.nat) w').asNat = none := by
+            cases e : (Value.mean K.dm K.M K.Γ ρ φ (.plain TyM.nat) w').asNat with
             | none => rfl
             | some k => exact absurd (by rw [Sem.asNat_some e]; simp [Sem.whole]) h2
           simp only [Value.mean, Sem.asNat_some hn, Sem.succ_el0]

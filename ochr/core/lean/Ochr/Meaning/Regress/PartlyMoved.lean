@@ -33,8 +33,8 @@ theorem old_pmem_false (n : String) (ps : List Sem) (c : Nat) (fs : List Sem) (T
   rintro (h | ⟨t, -, hle, hm⟩)
   · cases h
   · cases hle with
-    | refl => cases T <;> exact hm
-    | dat _ => cases T <;> exact hm
+    | refl => exact Sem.not_mem_dat_none n ps c fs T hm
+    | dat _ => exact Sem.not_mem_dat_none n ps c _ T hm
 
 /-- A constructor value some field of which is not whole has no element. -/
 theorem ctorM_partly (dm : DataModel) (d : IndDecl) (ps : List Sem) (c : Nat) (fs : List Sem)
@@ -46,14 +46,13 @@ theorem ctorM_partly (dm : DataModel) (d : IndDecl) (ps : List Sem) (c : Nat) (f
 theorem moved_not_whole : ¬ Sem.moved.whole := by simp [Sem.whole]
 
 /-- **The positive form.** A whole member of a data type with some of its fields moved out is a
-partly moved member of the type. -/
+partly moved member of the type (where the type's code reads its elements back,
+`DataModel.CodeFaithful`, docs/31 D59, D61). -/
 theorem pmem_partly (dm : DataModel) (Γ : List IndDecl) (d : IndDecl) (ps : List Sem) (x : dm.car d ps)
-    (hs : (d.sort == 0) = false) (hw : ∀ f ∈ dm.fields x, f.whole) (fs : List Sem)
+    (hs : (d.sort == 0) = false) (hf : dm.CodeFaithful d ps) (hw : ∀ f ∈ dm.fields x, f.whole) (fs : List Sem)
     (hfs : DataModel.MovedOfList Γ fs (dm.fields x)) :
-    DataModel.pmem Γ (.dat d.name ps (dm.tag x) fs none) (dm.tyM d ps) := by
-  refine .inr ⟨.dat d.name ps (dm.tag x) (dm.fields x) (some ⟨dm.car d ps, x⟩), by simpa [Sem.whole] using hw, .dat hfs, .inl ?_⟩
-  unfold DataModel.tyM
-  rw [hs]
-  exact ⟨rfl, rfl, rfl, rfl⟩
+    DataModel.pmem Γ (.dat d.name ps (dm.tag x) fs none) (dm.tyM d ps) :=
+  .inr ⟨.dat d.name ps (dm.tag x) (dm.fields x) (some ⟨dm.car d ps, x⟩), by simpa [Sem.whole] using hw, .dat hfs,
+    .inl (dm.ctor_mem_tyM d ps hs hf x)⟩
 
 end Ochr.Meaning.Regress.PartlyMoved

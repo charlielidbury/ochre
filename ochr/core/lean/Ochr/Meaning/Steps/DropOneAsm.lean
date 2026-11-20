@@ -174,26 +174,21 @@ theorem place_eq_var_of_nil {q : Place} (h : q.steps.2 = []) : q = .var q.steps.
   | var i => rfl
   | deref p | proj _ p | field _ p => simp [Place.steps] at h
 
-/-- A variable declared a sort is a copy (the decisions are the checker's, `CtxOk.dec`). -/
-theorem copy_sort {st : MState} (hctx : CtxOk K ρ st) (l : Nat) : K.D.copy (.sort l) = true :=
-  hctx.dec.copy 1 (.sort l) true 0 st ⟨#[], 0, #[], rfl⟩
-
 /-- **What the write of `⊥` needs, at the drop** (`botWrite_rel`'s hypotheses after the access and
 the log): the place is at a binding of the reference's positions, a whole root written is not a
-holder (the reference's root is none, `hns`) or a type value (`htype`; at a place that is no copy,
-`botWrite_hyps`: a variable holding one is declared a sort, (Ty), a copy), the value records its parameters (WF10) and
-holds no sealed program whose tail reads the hint ((WF16); docs/31 D45: first, no sealed program at
-all, false of a value with a closed-off call in a field), and the path conditions of the write hold
-along the place (`natAlong_grain`: the typing of places at every prefix). PROVED (docs/31 D47). -/
-theorem botWrite_hyps_ty (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (v' : Value)
+holder (the reference's root is none, `hns`), the value records its parameters (WF10) and holds no
+sealed program whose tail reads the hint ((WF16); docs/31 D45: first, no sealed program at all,
+false of a value with a closed-off call in a field), and the path conditions of the write hold
+along the place (`natAlong_grain`: the typing of places at every prefix). PROVED (docs/31 D47).
+(Until D59 a whole root written also had to hold no type value, through (Ty): the binding's
+structure was read off the value it held.) -/
+theorem botWrite_hyps (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (v' : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
-    (htype : q.steps.2 = [] → (∀ c t rd, valAt st.env pos ≠ .tPi c t rd) ∧ ∀ n a, valAt st.env pos ≠ .tInd n a)
     (hns : q.steps.2 = [] → s.shape pos = none)
     (hv : Value.updAt (fun _ => .bot) q.steps.2 (valAt st.env pos) = some v') :
     ∃ f i, pos = .bind f i ∧ Pos.bind f i ∈ allPos st.env ∧ Pos.bind f i ∈ s.positions ∧
       (q.steps.2 = [] → Env.shape st.env pos = none) ∧
-      (q.steps.2 = [] → (∀ c t rd, valAt st.env pos ≠ .tPi c t rd) ∧ ∀ n a, valAt st.env pos ≠ .tInd n a) ∧
       ((valAt st.env pos).anyAtom (Value.bareCtor K.Γ) = false ∧
         (valAt st.env pos).anyAtom (fun a => a.isSealed && !a.topHintFree K.Γ) = false) ∧
       ∀ ψ, NatAlong K.dm K.M K.Γ ρ ψ q.steps.2 (valAt st.env pos) := by
@@ -211,45 +206,17 @@ theorem botWrite_hyps_ty (st : MState) (s : SState) (π : Nat → Nat) (q : Plac
     · simp only [Option.some.injEq] at hck; exact ⟨_, _, hck.symm⟩
     · cases hck
   obtain ⟨f, i, rfl⟩ := hbind
-  refine ⟨f, i, rfl, hp, hsp, ?_, ?_, ⟨hg.2.2.2.2.2.2.2.2.2.2.1 _ hmem, hg.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2 _ hmem⟩, ?_⟩
+  refine ⟨f, i, rfl, hp, hsp, ?_, ⟨hg.2.2.2.2.2.2.2.2.2.2.1 _ hmem, hg.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2 _ hmem⟩, ?_⟩
   · intro he
     cases hsh : Env.shape st.env (.bind f i) with
     | none => rfl
     | some l =>
       have := hs.sim.2.1 (.bind f i) l (by simp [IsTemp]) hsh
       rw [hns he] at this; cases this
-  · exact htype
   · intro ψ
     refine natAlong_grain K ρ hctx ψ (fun _ => .bot) q.steps.2 (.var q.steps.1) _
       (grainOk_of_steps (by rw [jdExtend_steps]; simp [Place.steps]) hgr) ?_ (by rw [hv]; rfl)
     unfold ckContent; simp [Place.steps, hck, Value.follow]
-
-/-- `botWrite_hyps_ty` at a place that is no copy: a variable holding a type value is declared a
-sort ((Ty)), a copy. -/
-theorem botWrite_hyps (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (v' : Value)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
-    (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
-    (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
-    (hns : q.steps.2 = [] → s.shape pos = none)
-    (hv : Value.updAt (fun _ => .bot) q.steps.2 (valAt st.env pos) = some v') :
-    ∃ f i, pos = .bind f i ∧ Pos.bind f i ∈ allPos st.env ∧ Pos.bind f i ∈ s.positions ∧
-      (q.steps.2 = [] → Env.shape st.env pos = none) ∧
-      (q.steps.2 = [] → (∀ c t rd, valAt st.env pos ≠ .tPi c t rd) ∧ ∀ n a, valAt st.env pos ≠ .tInd n a) ∧
-      ((valAt st.env pos).anyAtom (Value.bareCtor K.Γ) = false ∧
-        (valAt st.env pos).anyAtom (fun a => a.isSealed && !a.topHintFree K.Γ) = false) ∧
-      ∀ ψ, NatAlong K.dm K.M K.Γ ρ ψ q.steps.2 (valAt st.env pos) := by
-  refine botWrite_hyps_ty K ρ φ st s π q pos v' hg hctx hs hck hgrain ?_ hns hv
-  intro he
-  have hsc := rel_scopeOf K ρ φ hs
-  have hq := place_eq_var_of_nil he
-  have hno : ∀ l, K.D.placeDecl (DecideScope.topReadings st) (.var q.steps.1) ≠ .sort l := by
-    intro l hl
-    have hc := copy_sort K ρ hctx l
-    rw [← hl, ← hsc, ← hq, hcopy] at hc; cases hc
-  refine ⟨fun c t rd hv' => ?_, fun n a hv' => ?_⟩
-  · obtain ⟨l, hl⟩ := hctx.shapes.typeRoot q.steps.1 _ hck (.inl ⟨c, t, rd, hv'⟩); exact hno l hl
-  · obtain ⟨l, hl⟩ := hctx.shapes.typeRoot q.steps.1 _ hck (.inr ⟨n, a, hv'⟩); exact hno l hl
-
 
 /-- A borrow held at a position of Ω is live. -/
 theorem liveLoan_of_holder {env : Env} {pos : Pos} {l : Nat} {w : Value} (hp : pos ∈ allPos env)
@@ -378,10 +345,10 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
         simp only [hcopy, Bool.false_eq_true, if_false]
         have hclr := clear_of_bot hg.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hn
         have hself := updAt_bot_self q.steps.2 _ hn
-        obtain ⟨f, i, hposfi, hpb, hsp, hroot, htype, hplain, hnat⟩ :=
-          botWrite_hyps K ρ φ st s π q pos _ hg hctx hs hck hgrain hcopy (fun he => hnb _ hn (.inl rfl) he) hself
+        obtain ⟨f, i, hposfi, hpb, hsp, hroot, hplain, hnat⟩ :=
+          botWrite_hyps K ρ φ st s π q pos _ hg hctx hs hck hgrain (fun he => hnb _ hn (.inl rfl) he) hself
         subst hposfi
-        have hrel := botWrite_rel K ρ φ st s π f i q.steps.2 _ hs hg.2.2.1 hpb hsp hself hroot htype
+        have hrel := botWrite_rel K ρ φ st s π f i q.steps.2 _ hs hg.2.2.1 hpb hsp hself hroot
           (fun l hl x hx hxp => hclr l hl x hx hxp) hplain hnat
         rw [setAtE_self_bind st.env f i hpb] at hrel
         exact ⟨hrel, hg⟩
@@ -479,10 +446,10 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
     have hread := dataRead K ρ φ st₃ _ π q pos v₃ hg₃ hctx₃ hs₃ hck'' hgrain₁ hcopy₁ hv₃ hproof₃
     have hcopy₀ : K.D.copy (K.D.placeDecl (scopeOf (accessLentPrefix pos q.steps.2 s)) q) = false := by
       rw [scopeOf_of_declsOf (declsOf_accessLentPrefix s pos q.steps.2)]; exact hcopy
-    obtain ⟨f, i, hposfi, hpb, hsp, hroot, htype, hplain, hnat⟩ :=
-      botWrite_hyps K ρ φ st₃ _ π q pos v' hg₃ hctx₃ hs₃ hck'' hgrain₁ hcopy₁ hns₁ hupd
+    obtain ⟨f, i, hposfi, hpb, hsp, hroot, hplain, hnat⟩ :=
+      botWrite_hyps K ρ φ st₃ _ π q pos v' hg₃ hctx₃ hs₃ hck'' hgrain₁ hns₁ hupd
     subst hposfi
-    have hrel := botWrite_rel K ρ φ st₃ _ π f i q.steps.2 v' hs₃ hg₃.2.2.1 hpb hsp hupd hroot htype hclear₃ hplain hnat
+    have hrel := botWrite_rel K ρ φ st₃ _ π f i q.steps.2 v' hs₃ hg₃.2.2.1 hpb hsp hupd hroot hclear₃ hplain hnat
     rw [dropAt_data K φ _ q (.bind f i) q.steps.2 hns₀ hread hcopy₀, hst']
     exact ⟨hrel, botWrite_good K ρ st₃ (.bind f i) q.steps.2 v' hg₃ hpb hupd hroot hclear₃ hplain hnat⟩
 

@@ -1030,15 +1030,10 @@ theorem joinDropOne_noop (st : MState) (s s₁ : SState) (π : Nat → Nat) (q q
         simp only [hcp₁, Bool.false_eq_true, if_false]
         simp only [sem_updAt_append_derefs K.dm K.Γ _ rest hd]
         have hself := updAt_bot_self q'.steps.2 _ hf'
-        have htype : q'.steps.2 = [] → (∀ c t rd, valAt st.env pos' ≠ .tPi c t rd) ∧ ∀ n a, valAt st.env pos' ≠ .tInd n a := by
-          intro he
-          have hv0 := hf'
-          rw [he] at hv0; simp only [Value.follow, Option.some.injEq] at hv0
-          rw [hv0]; exact ⟨fun _ _ _ h => (nomatch h), fun _ _ h => (nomatch h)⟩
-        obtain ⟨f, i, hposfi, hpb, hsp, hroot, htype', hplain, hnat⟩ :=
-          botWrite_hyps_ty K ρ φ st s₁ π q' pos' _ hg hctx hs hck' hgr' htype hnb' hself
+        obtain ⟨f, i, hposfi, hpb, hsp, hroot, hplain, hnat⟩ :=
+          botWrite_hyps K ρ φ st s₁ π q' pos' _ hg hctx hs hck' hgr' hnb' hself
         subst hposfi
-        have hrel := botWrite_rel K ρ φ st s₁ π f i q'.steps.2 _ hs hg.2.2.1 hpb hsp hself hroot htype'
+        have hrel := botWrite_rel K ρ φ st s₁ π f i q'.steps.2 _ hs hg.2.2.1 hpb hsp hself hroot
           (fun l hl x hx hxp => hclr l hl x hx hxp) hplain hnat
         rw [setAtE_self_bind st.env f i hpb] at hrel
         exact hrel

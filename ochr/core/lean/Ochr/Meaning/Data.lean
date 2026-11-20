@@ -170,6 +170,51 @@ def pmem (Γ : List IndDecl) (s : Sem) (T : TyM) : Prop :=
 theorem pmem_of_mem (Γ : List IndDecl) {s : Sem} {T : TyM} (hw : s.whole) (h : s ∈ₛ T) : pmem Γ s T :=
   .inr ⟨s, hw, .refl s, .inl h⟩
 
+/-- No code encodes an element as a constructor value with no element: a constructor value is a
+member of a type only when it packs an element of the carrier. -/
+theorem _root_.Ochr.Meaning.Code0.enc_ne_dat_none {A : Type} (c : Code0 A) (a : A) (n : String) (ps : List Sem)
+    (k : Nat) (fs : List Sem) : c.enc a ≠ .dat n ps k fs none := by
+  cases c with
+  | err => exact a.elim
+  | _ => simp [Code0.enc]
+
+theorem _root_.Ochr.Meaning.Sem.not_mem_dat_none (n : String) (ps : List Sem) (k : Nat) (fs : List Sem) (T : TyM) :
+    ¬ (Sem.dat n ps k fs none ∈ₛ T) := by
+  rintro h
+  cases T with
+  | t0 A c => obtain ⟨a, ha⟩ := h; exact Code0.enc_ne_dat_none c a n ps k fs ha
+  | t1 A c =>
+    obtain ⟨a, ha⟩ := h
+    cases c with
+    | lift _ c₀ => exact Code0.enc_ne_dat_none c₀ a.down n ps k fs ha
+    | _ => simp [Code1.enc] at ha
+  | t2 A c =>
+    obtain ⟨a, ha⟩ := h
+    cases c with
+    | lift _ c₁ =>
+      cases c₁ with
+      | lift _ c₀ => exact Code0.enc_ne_dat_none c₀ a.down.down n ps k fs ha
+      | _ => simp [Code1.enc, Code2.enc] at ha
+    | _ => simp [Code2.enc] at ha
+
+/-- **The code of `D(ps)` reads its elements back** (docs/31 D59): the parameters decode at
+their declared types, and every element's fields at their field types. Then a packed element is
+a member of its type (`ctor_mem_tyM`). It follows from the pack laws where the fields are small
+(docs/18 (I6)) and the parameters members of their types; a recursive or nested declaration's
+code cannot be built so that it holds (docs/31 D61). -/
+def CodeFaithful (d : IndDecl) (ps : List Sem) : Prop :=
+  Par0.sems (dm.parsOf d 0 [] ps) = ps ∧
+    ∀ x : dm.car d ps, Elt0.sems (dm.eltsOf d ps (dm.tag x) 0 [] (dm.fields x)) = dm.fields x
+
+/-- A packed element, read as the constructor value that describes it, is a member of its type
+where the code reads it back. -/
+theorem ctor_mem_tyM (d : IndDecl) (ps : List Sem) (hs : (d.sort == 0) = false) (hf : dm.CodeFaithful d ps)
+    (x : dm.car d ps) : Sem.dat d.name ps (dm.tag x) (dm.fields x) (some ⟨dm.car d ps, x⟩) ∈ₛ dm.tyM d ps := by
+  unfold tyM
+  rw [hs]
+  refine ⟨x, ?_⟩
+  simp only [Code0.enc, Unpk0.ctor, Unpk0.sems, hf.1, hf.2 x]
+
 /-- **A constructor value's tag and fields are read off its meaning whatever its fields hold**:
 packed, partly moved, or open (docs/31 D32: the value describes itself; no declaration, carrier or
 type is consulted). -/

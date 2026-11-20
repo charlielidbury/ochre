@@ -89,21 +89,21 @@ def tA : Term :=
   .letIn ⟨"y"⟩ .zero (.seq (.letIn ⟨"x"⟩ .zero (.assign (.var 0) (.borrow (.var 1)))) (.place (.var 0)))
 
 def yB (K : RunCtx) (n : Nat) : SBinding :=
-  { ty := .plain (.ty0 Nat), val := fun _ => .el0 Nat 0, decl := K.D.declOf (scopeOf (emptyState n)) .zero }
+  { ty := .plain TyM.nat, val := fun _ => .el0 Nat 0, decl := K.D.declOf (scopeOf (emptyState n)) .zero }
 
 noncomputable def xB (K : RunCtx) (n : Nat) : SBinding :=
-  { ty := .plain (.ty0 Nat), val := fun _ => .el0 Nat 0,
+  { ty := .plain TyM.nat, val := fun _ => .el0 Nat 0,
     decl := K.D.declOf (scopeOf ((emptyState n).pushBind (yB K n))) .zero }
 
 /-- `y` and `x` bound. -/
 noncomputable def b1 (n : Nat) : SState := ((emptyState n).pushBind (yB K n)).pushBind (xB K n)
 
-theorem content_b1_y (n : Nat) : contentOf K φ (.var 1) (b1 K n) = some ((.el0 Nat 0, .plain (.ty0 Nat), .bind 0 0, []), b1 K n) := by
+theorem content_b1_y (n : Nat) : contentOf K φ (.var 1) (b1 K n) = some ((.el0 Nat 0, .plain TyM.nat, .bind 0 0, []), b1 K n) := by
   have hr : resolve (b1 K n) (.var 1) = some (.bind 0 0, []) := rfl
   simp only [contentOf, hr, access_noshape _ _ (rfl : (b1 K n).shape = _) _]
   rfl
 
-theorem content_b1_x (n : Nat) : contentOf K φ (.var 0) (b1 K n) = some ((.el0 Nat 0, .plain (.ty0 Nat), .bind 0 1, []), b1 K n) := by
+theorem content_b1_x (n : Nat) : contentOf K φ (.var 0) (b1 K n) = some ((.el0 Nat 0, .plain TyM.nat, .bind 0 1, []), b1 K n) := by
   have hr : resolve (b1 K n) (.var 0) = some (.bind 0 1, []) := rfl
   simp only [contentOf, hr, access_noshape _ _ (rfl : (b1 K n).shape = _) _]
   rfl
@@ -125,19 +125,19 @@ theorem run_assign (hfl : NoStmt K) (p : Place) (u : Term) (hint : TyS) (s : SSt
           let s := match R.label, steps with
             | some l, [] => let s := s.takeLabel l; { s with shape := fun q => if q = pos then some l else s.shape q }
             | _, _ => s
-          some ((.el0 Unit (), .plain (.ty0 Unit)), s)) := by
+          some ((.el0 Unit (), .plain TyM.unit), s)) := by
   rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 /-- After `&y`: `y` reads label `n`, the borrow parked in temporary `0`. -/
 noncomputable def b2 (n : Nat) : SState :=
-  { env := [{ binds := [{ yB K n with val := fun φ' => (Sem.updAt K.dm K.Γ (.plain (.ty0 Nat)) (fun _ => φ' n) [] (Sem.el0 Nat 0)).getD .err },
+  { env := [{ binds := [{ yB K n with val := fun φ' => (Sem.updAt K.dm K.Γ (.plain TyM.nat) (fun _ => φ' n) [] (Sem.el0 Nat 0)).getD .err },
                         xB K n],
               temps := [fun _ => .el0 Nat 0] }],
     shape := fun p => if p = .temp 0 0 then some n else none,
     nextLoan := n + 1,
     lent := fun m => if m = n then [⟨.bind 0 0, [], false⟩] else [] }
 
-theorem borrow_b1 (n : Nat) : borrowPlace K φ (.var 1) (b1 K n) = some ((.el0 Nat 0, { TyS.plain (.ty0 Nat) with label := some n }), b2 K n) := by
+theorem borrow_b1 (n : Nat) : borrowPlace K φ (.var 1) (b1 K n) = some ((.el0 Nat 0, { TyS.plain TyM.nat with label := some n }), b2 K n) := by
   show (match contentOf K φ (.var 1) (b1 K n) with
       | some ((v, T, pos, steps), s) =>
         if ¬ v.whole then none else
@@ -173,7 +173,7 @@ noncomputable def b5 (n : Nat) : SState :=
   { b4 with shape := fun q => if q = .bind 0 1 then some n else b4.shape q }
 
 /-- After `&y`, the access of `x` ends nothing: `x` reads no label. -/
-theorem content_b2_x (n : Nat) : contentOf K φ (.var 0) (b2 K n) = some ((.el0 Nat 0, .plain (.ty0 Nat), .bind 0 1, []), b2 K n) := by
+theorem content_b2_x (n : Nat) : contentOf K φ (.var 0) (b2 K n) = some ((.el0 Nat 0, .plain TyM.nat, .bind 0 1, []), b2 K n) := by
   have hr : resolve (b2 K n) (.var 0) = some (.bind 0 1, []) := rfl
   have ha : ∀ hit, (b2 K n).access (.bind 0 1) hit = b2 K n := fun hit =>
     SState.access_of_unreached _ _ _ fun y _ => by simp [SState.reached, b2]
@@ -181,9 +181,9 @@ theorem content_b2_x (n : Nat) : contentOf K φ (.var 0) (b2 K n) = some ((.el0 
   rfl
 
 theorem assign_b1 (hfl : NoStmt K) (n : Nat) (hint : TyS) :
-    run K ρ φ hint (.assign (.var 0) (.borrow (.var 1))) (b1 K n) = some ((.el0 Unit (), .plain (.ty0 Unit)), b5 K n) := by
+    run K ρ φ hint (.assign (.var 0) (.borrow (.var 1))) (b1 K n) = some ((.el0 Unit (), .plain TyM.unit), b5 K n) := by
   rw [run_assign K ρ φ hfl, content_b1_x]
-  show (run K ρ φ (.plain (.ty0 Nat)) (.borrow (.var 1)) (b1 K n) >>= _) = _
+  show (run K ρ φ (.plain TyM.nat) (.borrow (.var 1)) (b1 K n) >>= _) = _
   rw [run_borrow K ρ φ hfl, borrow_b1]
   dsimp only [Bind.bind, Option.bind]
   have hr : resolve (b2 K n) (.var 0) = some (.bind 0 1, []) := rfl
@@ -208,7 +208,7 @@ theorem holder_b3 (n : Nat) : (b3 K n).holderOf n = some (.temp 0 0) := by
 noncomputable def b6 (n : Nat) : SState := (b5 K n).dropLast
 
 noncomputable def yB' (n : Nat) : SBinding :=
-  { yB K n with val := fun φ' => (Sem.updAt K.dm K.Γ (.plain (.ty0 Nat)) (fun _ => φ' n) [] (Sem.el0 Nat 0)).getD .err }
+  { yB K n with val := fun φ' => (Sem.updAt K.dm K.Γ (.plain TyM.nat) (fun _ => φ' n) [] (Sem.el0 Nat 0)).getD .err }
 
 theorem take_b3 (n : Nat) : (b3 K n).takeLabel n =
     { ((b3 K n).setAt (.temp 0 0) fun _ => .moved) with
@@ -324,13 +324,13 @@ drop ends `x`'s borrow, so `y` gets `x`'s content back (CE5, flipped). -/
 theorem tA_reads_zero (hfl : NoStmt K) (n : Nat) (hint : TyS) :
     ∃ T s', run K ρ φ hint tA (emptyState n) = some ((.el0 Nat 0, T), s') := by
   rw [tA, run_letIn K ρ φ hfl]
-  have h0 : run K ρ φ (.plain .err) .zero (emptyState n) = some ((.el0 Nat 0, .plain (.ty0 Nat)), emptyState n) := rfl
+  have h0 : run K ρ φ (.plain .err) .zero (emptyState n) = some ((.el0 Nat 0, .plain TyM.nat), emptyState n) := rfl
   rw [h0]
   simp only [Option.bind]
   rw [show pushBindShaped (emptyState n) _ = (emptyState n).pushBind (yB K n) from rfl, run_seq K ρ φ hfl, SM.bind_apply,
     run_letIn K ρ φ hfl]
   have h1 : run K ρ φ (.plain .err) .zero ((emptyState n).pushBind (yB K n))
-      = some ((.el0 Nat 0, .plain (.ty0 Nat)), (emptyState n).pushBind (yB K n)) := rfl
+      = some ((.el0 Nat 0, .plain TyM.nat), (emptyState n).pushBind (yB K n)) := rfl
   rw [h1]
   simp only [Option.bind]
   rw [show pushBindShaped ((emptyState n).pushBind (yB K n)) _ = b1 K n from rfl, assign_b1 K ρ φ hfl]

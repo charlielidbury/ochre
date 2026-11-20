@@ -76,7 +76,7 @@ theorem scope_decls (s : SState) : scopeOf s = ((s.env.getLast?.map fun fr => fr
 scope `GrainOk` and the aligned decisions are read at is the one `ShapeFacts` is stated at. -/
 theorem rel_scopeOf (K : RunCtx) (ρ : Assignment) (φ : Future) {st : MState} {s : SState} {π : Nat → Nat}
     (hs : Rel K ρ φ π st s) : scopeOf s = DecideScope.topReadings st := by
-  have hk := congrArg (fun l => (l.getLast?).map fun bs => bs.map fun x : TyM × Option (List PiParam × PiOut) × Option (String × List Sem) × DeclInfo => x.2.2.2) hs.skel
+  have hk := congrArg (fun l => (l.getLast?).map fun bs => bs.map fun x : TyM × DeclInfo => x.2) hs.skel
   simp only [List.getLast?_map, Option.map_map, Function.comp_def, List.map_map] at hk
   rw [scope_decls]
   unfold DecideScope.topReadings

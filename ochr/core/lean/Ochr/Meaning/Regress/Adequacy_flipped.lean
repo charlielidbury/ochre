@@ -57,15 +57,18 @@ theorem erased_unrun (t : Term) (hint : TyS) (s : SState) (hfl : (K.D.flags (sco
 
 /-- The audit's A9: a field of type `A` (the one parameter) given a `Nat` solves `A := Nat`
 (`Pair(a, b)`, `Cons(x, xs)`'s head). -/
-example : unifyTyS 1 (.place (.var 0)) (.plain (.ty0 Nat)) [none] = [some (.ty (.ty0 Nat))] := rfl
+example : unifyTyS 1 (.place (.var 0)) (.plain TyM.nat) [none] = [some (.ty TyM.nat)] := rfl
 
-/-- A9: a field of type `List(A)` given a value whose type records `List(Nat)` solves `A := Nat`. -/
-example : unifyTyS 1 (.tind "List" [.place (.var 0)]) ⟨.ty0 (List Nat), none, none, some ("List", [.ty (.ty0 Nat)])⟩ [none]
-    = [some (.ty (.ty0 Nat))] := by
-  simp [unifyTyS, fillParam]
+/-- A9: a field of type `List(A)` given a value whose type is `List(Nat)`'s code (its declaration
+and parameters) solves `A := Nat`. -/
+example : unifyTyS 1 (.tind "List" [.place (.var 0)])
+    (.plain (.t0 (List Nat) (.data "List" [.ty Nat .nat] (List Nat) fun _ => ⟨0, []⟩))) [none]
+    = [some (.ty TyM.nat)] := by
+  simp [unifyTyS, fillParam, TyS.data, TyM.dataName?, Par0.sems, Par0.sem, TyM.isErr]
+  rfl
 
 /-- A9: a solved parameter is not overwritten, and a field with no type (`err`) solves nothing. -/
-example : unifyTyS 1 (.place (.var 0)) (.plain (.ty0 Nat)) [some (.ty (.ty0 Unit))] = [some (.ty (.ty0 Unit))] := rfl
+example : unifyTyS 1 (.place (.var 0)) (.plain TyM.nat) [some (.ty TyM.unit)] = [some (.ty TyM.unit)] := rfl
 example : unifyTyS 1 (.place (.var 0)) (.plain .err) [none] = [none] := rfl
 
 /-- A9: the constructor clause with every parameter solved by its fields does not fail for want
@@ -77,10 +80,10 @@ theorem ctor_no_hint (ty : String) (c : Nat) (x : Hint) (args : List Term) (s : 
     (hf : runFields K ρ φ (d.sort == 0) d c 0 (List.replicate d.params.length none) [] args s = some ((fs, sol), s'))
     (hsol : sol.all (·.isSome) = true) (hs : (d.sort == 0) = false) :
     run K ρ φ (.plain .err) (.ctor ty c x [] args) s
-      = some ((K.dm.ctorM d (solved sol) c fs, ⟨K.dm.tyM d (solved sol), none, none, some (ty, solved sol)⟩), s') := by
+      = some ((K.dm.ctorM d (solved sol) c fs, .plain (K.dm.tyM d (solved sol))), s') := by
   rw [run, runT]
   simp only [SM.erasedIf, hfl, SM.stmtIf, Bool.false_eq_true, if_false, hd, runParams, bind, pure, TyS.plain,
-    List.isEmpty_nil, Bool.not_true, hs]
+    List.isEmpty_nil, Bool.not_true, hs, TyS.data, TyM.dataName?, TyM.err]
   rw [hs] at hf
   rw [hf]
   simp only [hsol, if_true]
@@ -105,32 +108,36 @@ theorem access_other_field (s : SState) (p : Pos) (l : Nat)
   simp [SState.reached, hl, dataHit, pathKey, Step.key]
   decide
 
-/-- The audit's A16: a checker binding whose stored type is a Π-type has that Π's shape in the
-reference state, so it can be called (`Value.tyS` reads `CodeMeaning.tyShape`, the run's
-`tyShape`; before, `Value.tyS` had no shape and `callOf` failed). -/
-theorem stored_pi_has_shape (caps : List Value) (hs : List Hint) (ds : List Term) (c : Term) (rd : List (DeclInfo × Value)) :
-    (Value.tyS K.dm K.M K.Γ ρ (.tPi caps (.pi hs ds c) rd)).shape.isSome = true := by
-  show (tyShape K ρ noFuture (.tPi caps (.pi hs ds c) rd)).isSome = true
-  rw [tyShape]
-  cases c <;> simp [piShapeOf]
+/-- The audit's A16: a checker binding whose stored type is a Π-type reads, in the reference state,
+as the code its Π-term runs to in the frame of its captures, so it can be called (before D59 it
+was read with that Π's shape, `tyShape`; before that with none, and `callOf` failed). -/
+theorem stored_pi_code (caps : List Value) (hs : List Hint) (ds : List Term) (c : Term) (rd : List (DeclInfo × Value)) :
+    (Value.tyS K.dm K.M K.Γ ρ (.tPi caps (.pi hs ds c) rd)).m =
+      piTyAt (K.D.piSort (scopeOf (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))))
+          (.pi hs ds c))
+        (runDoms K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) ds)
+        (codOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd)))
+          (bindsOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) ds) c) := by
+  show (meanV K ρ noFuture (.plain .err) (.tPi caps (.pi hs ds c) rd)).asTy = _
+  rw [meanV, run_pi_def]
+  rfl
 
-/-- The audit's A10: a closure's capture whose recorded type is a Π-type is bound with that Π's
-shape (before, `capsTys` read every recorded type as `.plain _`). -/
-theorem captured_pi_has_shape (d : DeclInfo) (caps : List Value) (hs : List Hint) (ds : List Term) (c : Term)
-    (rd rest : List (DeclInfo × Value)) :
-    ((capsTys K ρ φ ((d, .tPi caps (.pi hs ds c) rd) :: rest)).head?.map (·.2.shape.isSome)) = some true := by
-  rw [capsTys]
-  simp only [List.head?_cons, Option.map_some, Option.some.injEq]
-  rw [tyShape]
-  cases c <;> simp [piShapeOf]
+/-- The audit's A10: a closure's capture whose recorded type is a Π-type is bound at that type's
+code (before, `capsTys` read every recorded type as `.plain _`; then with its shape). -/
+theorem captured_pi_code (d : DeclInfo) (caps : List Value) (t : Term) (rd rest : List (DeclInfo × Value)) :
+    (capsTys K ρ φ ((d, .tPi caps t rd) :: rest)).head?
+      = some (d, .plain (meanV K ρ φ (.plain .err) (.tPi caps t rd)).asTy) := by
+  rw [capsTys]; rfl
 
-/-- R6: a parameter whose domain term is a Π-type is bound with that Π's shape, so it can be
-called (`Regress/NoShape_R6.lean` records the failure before: a parameter was bound at `.plain _`).
-The `.fix` clause's frame binds parameter `i` at `(runBinds …)[i].1 acc`. -/
-theorem pi_param_has_shape (s : SState) (dcs : List DeclInfo) (pre : List PBind) (hs : List Hint)
+/-- R6: a parameter whose domain term is a Π-type is bound at the code that term runs to, so it
+can be called (`Regress/NoShape_R6.lean` records the failure before: a parameter was bound at
+`.plain _`). The `.fix` clause's frame binds parameter `i` at `(runBinds …)[i].1 acc`. -/
+theorem pi_param_code (s : SState) (dcs : List DeclInfo) (pre : List PBind) (hs : List Hint)
     (ds : List Term) (c : Term) (acc : List Sem) :
-    ((mkBind dcs pre fun acc => run K ρ φ (.plain .err) (.pi hs ds c) (extendBy s pre acc)).1 acc).shape.isSome = true := by
-  simp only [mkBind, run, runT]
+    ((mkBind dcs pre fun acc => run K ρ φ (.plain .err) (.pi hs ds c) (extendBy s pre acc)).1 acc).m
+      = piTyAt (K.D.piSort (scopeOf (extendBy s pre acc)) (.pi hs ds c)) (runDoms K ρ φ (extendBy s pre acc) ds)
+          (codOf K ρ φ (extendBy s pre acc) (bindsOf K ρ φ (extendBy s pre acc) ds) c) := by
+  simp only [mkBind, run, run_pi_def]
   rfl
 
 /-- ... and that binder is the one `runBinds` gives a Π-typed parameter. -/

@@ -88,7 +88,7 @@ theorem bindAt_S (f i : Nat) (b : Binding) (h : S.env[f]?.bind (fun fr => fr.bin
   all_goals simp [S] at h
 
 theorem posTyM_S (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (p : Pos) (T : TyM)
-    (h : MState.posTyM dm C Γ ρ S p = some T) : p = .bind 0 0 ∧ T = .ty0 Nat := by
+    (h : MState.posTyM dm C Γ ρ S p = some T) : p = .bind 0 0 ∧ T = TyM.nat := by
   cases p with
   | temp f i => simp [MState.posTyM] at h
   | bind f i =>
@@ -98,14 +98,14 @@ theorem posTyM_S (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : As
     all_goals simp [MState.posTyM, S] at h
 
 theorem absTyM_S (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (σ : Nat) (hσ : σ < 2) :
-    MState.absTyM dm C Γ ρ S σ = .ty0 Nat := by
+    MState.absTyM dm C Γ ρ S σ = TyM.nat := by
   rcases σ with _ | _ | σ
   · simp [MState.absTyM, S, Value.tyM, Value.mean, Sem.asTy]
   · simp [MState.absTyM, S, Value.tyM, Value.mean, Sem.asTy]
   · omega
 
-theorem mem_ρ₇ (σ : Nat) : ρ₇ σ ∈ₛ .ty0 Nat := by
-  unfold ρ₇; split <;> simp [Sem.mem]
+theorem mem_ρ₇ (σ : Nat) : ρ₇ σ ∈ₛ TyM.nat := by
+  unfold ρ₇; split <;> simp [Sem.mem, TyM.nat, Code0.enc]
 
 /-- The typed assignment's clauses as they stood: each referenced unknown an element of its type,
 the generalisation and η records. -/
@@ -133,7 +133,7 @@ theorem rest_S (K : RunCtx) : Membership K.dm K.M K.Γ ρ₇ S ∧ WF K.dm K.M K
   · intro φ _ p T hp
     obtain ⟨rfl, rfl⟩ := posTyM_S K.dm K.M K.Γ ρ₇ p T hp
     have e : Env.mean K.dm K.M K.Γ ρ₇ φ S.env (.bind 0 0) = .el0 Nat 7 := rfl
-    rw [e]; exact DataModel.pmem_of_mem K.Γ (by simp [Sem.whole]) (by simp [Sem.mem])
+    rw [e]; exact DataModel.pmem_of_mem K.Γ (by simp [Sem.whole]) (by simp [Sem.mem, TyM.nat, Code0.enc])
   · have hσ' : σ < 2 := hσ
     rw [absTyM_S _ _ _ _ σ hσ']; rfl
   · rw [hA]; intro p hp; simp at hp; subst hp; rw [h0]; decide
@@ -222,7 +222,7 @@ theorem goodOld_S (K : RunCtx) : GoodOld K ρ₇ S := ⟨ta_S K, rest_S K⟩
 /-- **`canonNeutral_step_stmt` as it stood is false** at every context admitting `S`. -/
 theorem canon_step_false (K : RunCtx) (hctx : CtxOk K ρ₇ S) : ¬ canonNeutral_step_stmt_old K ρ₇ 10 := by
   intro h
-  obtain ⟨hm, -⟩ := h S _ (.sealed .zero) (.succ (.abs 1)) (.plain (.ty0 Nat)) (goodOld_S K) hctx 10 runs
+  obtain ⟨hm, -⟩ := h S _ (.sealed .zero) (.succ (.abs 1)) (.plain TyM.nat) (goodOld_S K) hctx 10 runs
   exact canon_changes_meaning K (fun _ => .err) _ (hm (fun _ => .err))
 
 /-- **With the refinement records a path condition, `S` is not `Good` at `ρ₇`**: the record
@@ -231,7 +231,7 @@ theorem not_good (K : RunCtx) : ¬ Good K.dm K.M K.Γ ρ₇ S := by
   rintro ⟨ht, -, -⟩
   have h := ht.refs 0 (.succ (.abs 1)) (by simp [S])
   rw [absTyM_S _ _ _ _ 0 (by decide)] at h
-  have e : Value.mean K.dm K.M K.Γ ρ₇ (fun _ => .err) (.plain (.ty0 Nat)) (.succ (.abs 1)) = .el0 Nat 8 := by
+  have e : Value.mean K.dm K.M K.Γ ρ₇ (fun _ => .err) (.plain TyM.nat) (.succ (.abs 1)) = .el0 Nat 8 := by
     simp [Value.mean, ρ₇, Sem.succ, Sem.asNat, Sem.as]
   rw [e] at h
   simp [ρ₇] at h

@@ -30,15 +30,15 @@ theorem access_noshape (s : SState) (p : Pos) (h : s.shape = fun _ => none) (hit
 theorem SM.bind_apply {α β : Type 3} (x : SM α) (f : α → SM β) (s : SState) :
     (x >>= f) s = match x s with | some (a, s') => f a s' | none => none := rfl
 
-/-- `f : Π(x : Nat). Nat`, the identity, as a global with its shape. -/
-abbrev psF : List PiParam := [⟨false, fun _ => .ty0 Nat, fun _ => none⟩]
-abbrev outF : PiOut := .data fun _ => .ty0 Nat
-def Fid : piCarL lvl0 psF [] PUnit outF := fun a => (a, ⟨⟩)
+/-- `f : Π(x : Nat). Nat`, the identity, as a global at its type's code. -/
+abbrev FCar : Type := (n : Nat) → Nat × PUnit
+def telF : Tel Code0 PUnit FCar := .param PUnit false Nat .nat (fun _ => Nat × PUnit) fun _ => .dat PUnit Nat .nat
+def Fid : FCar := fun a => (a, ⟨⟩)
 
 noncomputable def KF : RunCtx :=
   { JoinDropCounterexample.K with
     C := { JoinDropCounterexample.K.C with
-      global := fun _ => (.el0 (piCarL lvl0 psF [] PUnit outF) Fid, ⟨.err, some (psF, outF), none, none⟩) } }
+      global := fun _ => (.el0 FCar Fid, .plain (.t0 FCar (.pi FCar telF))) } }
 
 /-- `let y = Z; (f(&y); y)`: the borrow goes to a non-borrow parameter. -/
 def tF : Term := .letIn ⟨"y"⟩ .zero (.seq (.call (.const "f") [.borrow (.var 0)] false) (.place (.var 0)))
@@ -46,16 +46,11 @@ def tF : Term := .letIn ⟨"y"⟩ .zero (.seq (.call (.const "f") [.borrow (.var
 section
 variable (ρ : Assignment) (φ : Future)
 
-theorem applyFn_F : applyFnL lvl0 psF outF (.el0 (piCarL lvl0 psF [] PUnit outF) Fid) [.el0 Nat 0]
-    = some (.data (.el0 Nat 0) []) := by
-  simp only [applyFnL]
-  have h1 : lvl0.unpack (piCarL lvl0 psF [] PUnit outF) (.el0 (piCarL lvl0 psF [] PUnit outF) Fid) = some Fid := by
-    exact lvl0_unpack_pack _ Fid
-  rw [h1]
-  show applyTeleL lvl0 psF [] PUnit (fun _ => []) outF Fid [.el0 Nat 0] = _
-  have h2 : lvl0.dec (TyM.ty0 Nat) (.el0 Nat 0) = some (0 : Nat) := TyM.dec0_enc0 (.ty0 Nat) (0 : Nat)
-  rw [applyTeleL]
-  simp only [h2]
+theorem applyFn_F : applyFnL lvl0 telF (.el0 FCar Fid) [.el0 Nat 0]
+    = some (.data (.el0 Nat 0) (lvl0.toTy Code0.nat) []) := by
+  have hu : Sem.as FCar (.el0 FCar Fid) = some Fid := by simp [Sem.as]
+  have h2 : Code0.nat.dec (.el0 Nat 0) = some (0 : Nat) := Code0.dec_enc .nat 0
+  simp only [applyFnL, lvl0, hu, Option.bind_some, telF, applyTelL, h2]
   rfl
 
 variable (K : RunCtx)
@@ -110,24 +105,24 @@ theorem readPlace_of (p : Place) (b : Bool) (s : SState) (v : Sem) (T : TyS) (po
 
 /-- The empty state at counter `n` with `y = Z` bound. -/
 noncomputable def a1 (n : Nat) : SState :=
-  pushBindShaped (emptyState n) { ty := .plain (.ty0 Nat), val := fun _ => .el0 Nat 0, decl := K.D.declOf (scopeOf (emptyState n)) .zero }
+  pushBindShaped (emptyState n) { ty := .plain TyM.nat, val := fun _ => .el0 Nat 0, decl := K.D.declOf (scopeOf (emptyState n)) .zero }
 
-theorem content_a1 (n : Nat) : contentOf K φ (.var 0) (a1 K n) = some ((.el0 Nat 0, .plain (.ty0 Nat), .bind 0 0, []), a1 K n) := by
+theorem content_a1 (n : Nat) : contentOf K φ (.var 0) (a1 K n) = some ((.el0 Nat 0, .plain TyM.nat, .bind 0 0, []), a1 K n) := by
   have hr : resolve (a1 K n) (.var 0) = some (.bind 0 0, []) := rfl
   simp only [contentOf, hr, access_noshape _ _ (rfl : (a1 K n).shape = _) _]
   rfl
 
 /-- After `&y` at counter `n`: `y` reads label `n`, and the borrow is parked in temporary `0`. -/
 noncomputable def a2 (n : Nat) : SState :=
-  { env := [{ binds := [{ ty := .plain (.ty0 Nat),
-                          val := fun φ' => (Sem.updAt K.dm K.Γ (.plain (.ty0 Nat)) (fun _ => φ' n) [] (Sem.el0 Nat 0)).getD .err,
+  { env := [{ binds := [{ ty := .plain TyM.nat,
+                          val := fun φ' => (Sem.updAt K.dm K.Γ (.plain TyM.nat) (fun _ => φ' n) [] (Sem.el0 Nat 0)).getD .err,
                           decl := K.D.declOf (scopeOf (emptyState n)) .zero }],
               temps := [fun _ => .el0 Nat 0] }],
     shape := fun p => if p = .temp 0 0 then some n else none,
     nextLoan := n + 1,
     lent := fun m => if m = n then [⟨.bind 0 0, [], false⟩] else [] }
 
-theorem borrow_a1 (n : Nat) : borrowPlace K φ (.var 0) (a1 K n) = some ((.el0 Nat 0, { TyS.plain (.ty0 Nat) with label := some n }), a2 K n) := by
+theorem borrow_a1 (n : Nat) : borrowPlace K φ (.var 0) (a1 K n) = some ((.el0 Nat 0, { TyS.plain TyM.nat with label := some n }), a2 K n) := by
   show (match contentOf K φ (.var 0) (a1 K n) with
       | some ((v, T, pos, steps), s) =>
         if ¬ v.whole then none else
@@ -156,13 +151,13 @@ theorem noStmt_KF : NoStmt KF := fun _ _ => rfl
 theorem run_call_KF (f : Term) (args : List Term) (hd : Bool) (hint : TyS) (s : SState) :
     run KF ρ φ hint (.call f args hd) s
       = (SM.headOf f (fun p => readPlace KF φ p true) (run KF ρ φ (.plain .err) f) >>= fun fv =>
-          runArgs KF ρ φ false fv.2.shape 0 [] args >>= fun as => callOf fv as) s := rfl
+          runArgs KF ρ φ false fv.2.m [] args >>= fun as => callOf fv as) s := rfl
 
 theorem runArgs_borrow (n : Nat) :
-    runArgs KF ρ φ false (some (psF, outF)) 0 [] [.borrow (.var 0)] (a1 KF n)
-      = some ([(.el0 Nat 0, { TyS.plain (.ty0 Nat) with label := some n })], a2 KF n) := by
-  show (run KF ρ φ (.plain (TyM.ty0 Nat)) (.borrow (.var 0)) >>= fun r =>
-      runArgs KF ρ φ false (some (psF, outF)) 1 ([] ++ [r.1]) [] >>= fun rest => pure (r :: rest)) (a1 KF n) = _
+    runArgs KF ρ φ false (.t0 FCar (.pi FCar telF)) [] [.borrow (.var 0)] (a1 KF n)
+      = some ([(.el0 Nat 0, { TyS.plain TyM.nat with label := some n })], a2 KF n) := by
+  show (run KF ρ φ (.plain ((TyM.t0 FCar (.pi FCar telF)).domAfter [])) (.borrow (.var 0)) >>= fun r =>
+      runArgs KF ρ φ false (.t0 FCar (.pi FCar telF)) ([] ++ [r.1]) [] >>= fun rest => pure (r :: rest)) (a1 KF n) = _
   rw [SM.bind_apply, run_borrow ρ φ KF noStmt_KF, borrow_a1]
   rfl
 
@@ -171,14 +166,16 @@ noncomputable def a4 (n : Nat) : SState := (a2 KF n).mapVals fun _ v φ' => v (�
 
 theorem call_a1 (n : Nat) :
     run KF ρ φ (.plain .err) (.call (.const "f") [.borrow (.var 0)] false) (a1 KF n)
-      = some ((.el0 Nat 0, .plain (.ty0 Nat)), a4 n) := by
+      = some ((.el0 Nat 0, .plain TyM.nat), a4 n) := by
   rw [run_call_KF, SM.bind_apply]
-  show (runArgs KF ρ φ false (some (psF, outF)) 0 [] [.borrow (.var 0)] >>= fun as => callOf _ as) (a1 KF n) = _
+  show (runArgs KF ρ φ false (.t0 FCar (.pi FCar telF)) [] [.borrow (.var 0)] >>= fun as => callOf _ as) (a1 KF n) = _
   rw [SM.bind_apply, runArgs_borrow]
-  show callOfL lvl0 psF outF (.el0 (piCarL lvl0 psF [] PUnit outF) Fid)
-    [(.el0 Nat 0, { TyS.plain (.ty0 Nat) with label := some n })] (a2 KF n) = _
+  show callOfL lvl0 telF (.el0 FCar Fid)
+    [(.el0 Nat 0, { TyS.plain TyM.nat with label := some n })] (a2 KF n) = _
+  have hr : telRefsL lvl0 telF [Sem.el0 Nat 0] = [false] := by
+    simp [telRefsL, telF, show Code0.nat.dec (.el0 Nat 0) = some (0 : Nat) from Code0.dec_enc .nat 0]
   unfold callOfL
-  simp only [List.map_cons, List.map_nil, applyFn_F]
+  simp only [List.map_cons, List.map_nil, applyFn_F, hr]
   rfl
 
 theorem positions_a4 (n : Nat) : (a4 n).positions = [.bind 0 0, .temp 0 0] := by
@@ -217,7 +214,7 @@ theorem content_a4 (n : Nat) : ∃ T, contentOf KF φ (.var 0) (a4 n)
 the non-borrow parameter stays parked, and the read of `y` ends it (CE4, flipped). -/
 theorem tF_reads_zero (n : Nat) (hint : TyS) : ∃ T s', run KF ρ φ hint tF (emptyState n) = some ((.el0 Nat 0, T), s') := by
   rw [tF, run_letIn ρ φ KF noStmt_KF]
-  have h0 : run KF ρ φ (.plain .err) .zero (emptyState n) = some ((.el0 Nat 0, .plain (.ty0 Nat)), emptyState n) := rfl
+  have h0 : run KF ρ φ (.plain .err) .zero (emptyState n) = some ((.el0 Nat 0, .plain TyM.nat), emptyState n) := rfl
   rw [h0]
   simp only [Option.bind]
   rw [show pushBindShaped (emptyState n) _ = a1 KF n from rfl, run_seq ρ φ KF noStmt_KF, SM.bind_apply, call_a1]
