@@ -16,8 +16,9 @@ where `loan ℓ` already means the filler, substituting it changes nothing, clau
 unknown no congruence step is needed: the assignment already gives `σ` the refinement's meaning, so
 the lemma IS the same-meaning substitution, with the atom `.abs σ` in place of `.loan ℓ`. That
 induction does not look at which atom it replaces except in its base case, so the proof is
-`RunSubst.lean`'s induction generalised from a loan to an atom (`FillOK` per atom), not a fifth
-induction: provided its base case holds, the hypothesis `AbsFillOK` below.
+`RunSubst.lean`'s induction with the atom renamed, not a fifth induction, provided its base case
+holds, the hypothesis `AbsFillOK` below. **Proved** (`RunSubstAbs.lean`: `meanV_substAbs`,
+`run_substAbs`, standard axioms).
 
 **The base case failed at the type the run gave an embedded value** (`absFill_shape_false`, until
 the data-layer port): `run`'s `.val` clause typed `.abs σ` at `Δ σ` and every other data value at the
@@ -128,20 +129,6 @@ structure AbsFillOK (ψ : Future) (σ : Nat) (r : Value) : Prop where
   mean : ∀ hint, meanV K ρ ψ hint r = ρ σ
   shape : ∀ hint s, (run K ρ ψ hint (.val r) s).map (·.1.2) = (run K ρ ψ hint (.val (.abs σ)) s).map (·.1.2)
   dec : DecInvariantAbs K.D σ r
-
-/-- **Replacing an unknown by what it means keeps a value's meaning** (open; the proof is
-`meanV_substSame`'s, `RunSubst.lean`, with the atom generalised from `loan ℓ` to `.abs σ`: the
-mutual induction with the run below). -/
-theorem meanV_substAbs (ψ : Future) (σ : Nat) (r : Value) (hF : AbsFillOK K ρ ψ σ r) (v : Value) (hint : TyS) :
-    meanV K ρ ψ hint (Value.substAbs σ r v) = meanV K ρ ψ hint v := by
-  sorry
-
-/-- **Replacing an unknown by what it means keeps a program's run** (open; `runT_substSame`'s
-induction with the atom generalised; at a `.fix` the stages' bodies agree by the same lemma,
-`fixBodyAt_bodyEq`, `fixStage_bodyEq`, `fixG_bodyEq`, which are already stated for any body pair). -/
-theorem run_substAbs (ψ : Future) (σ : Nat) (r : Value) (hF : AbsFillOK K ρ ψ σ r) (tl : Bool) (t : Term)
-    (hint : TyS) : runT K ρ ψ tl hint (Term.substAbs σ r t) = runT K ρ ψ tl hint t := by
-  sorry
 
 /-- **The base case holds wherever `DeltaOk` does** (kernel-checked; since the run's `.val` clause
 types an embedded value by what it is, as the checker does). Where `Δ σ` is `σ`'s stored type read
