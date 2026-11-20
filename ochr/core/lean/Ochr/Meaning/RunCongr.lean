@@ -112,7 +112,9 @@ theorem accessLentPrefix_congr (pos : Pos) (steps : List Step) (s : SState) :
 theorem dropAt_congr (hφ : ∀ l, L l → φ l = φ' l) (q : Place) (pos : Pos) (steps : List Step) {s : SState}
     (hi : RInv L s) : dropAt K φ q pos steps s = dropAt K φ' q pos steps s := by
   unfold dropAt
-  rw [closedFuture_read hi.1 hi.2.1 hφ pos]
+  have hi' := access_rinv hi pos (dataHit steps)
+  dsimp only
+  rw [closedFuture_read hi'.1 hi'.2.1 hφ pos]
 
 /-- The join's drop is the same at both futures. -/
 theorem joinDrop_congr (hφ : ∀ l, L l → φ l = φ' l) (entry : List Place) (t : Term) {s : SState} (hi : RInv L s) :

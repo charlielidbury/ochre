@@ -165,12 +165,11 @@ theorem declsOf_joinDropOne (K : RunCtx) (φ : Future) (s : SState) (q : Place) 
     unfold dropAt
     split
     · exact declsOf_endLabel _ _
-    · split
+    · dsimp only
+      repeat' split
       all_goals first
         | rfl
-        | (split
-           · rfl
-           · exact (declsOf_setAt _ _ _).trans (declsOf_access _ _ _))
+        | (exact (declsOf_setAt _ _ _).trans (declsOf_access _ _ _))
   · rfl
 
 theorem scopeOf_joinDropOne (K : RunCtx) (φ : Future) (s : SState) (q : Place) :
