@@ -32,15 +32,6 @@ structure DataModel where
   /-- The meaning of the declared type of parameter `i` at the earlier parameters (a type
   parameter's is its sort; a value parameter's, D71, a data type). -/
   paramTy : IndDecl → Nat → List Sem → TyM
-  /-- The declaration's name and parameter meanings of field `i`'s declared type, at the
-  parameters and the earlier fields, when that type is an inductive: the `data` of the field's
-  structured hint (docs/31 D8), so that a field holding a constructor value that records no
-  parameters is read at its declared parameters. Read by the same reading as `fieldTy`. -/
-  fieldData : IndDecl → List Sem → Nat → Nat → List Sem → Option (String × List Sem) :=
-    fun _ _ _ _ _ => none
-  /-- The same for parameter `i`'s declared type at the earlier parameters (a value parameter
-  of inductive type, D71). -/
-  paramData : IndDecl → Nat → List Sem → Option (String × List Sem) := fun _ _ _ => none
   /-- The parameters of field `i`'s declared type when it is an occurrence of the declaration
   itself (a recursive field), at the parameters and the earlier fields: what guarded recursion
   reads (`rank_lt`). -/
@@ -77,30 +68,38 @@ namespace DataModel
 
 variable (dm : DataModel)
 
-/-- The meaning of the type `D(ps)`: a data type is its carrier; a `Prop`-sorted declaration
-the truncation of the same fixed point, true when it is inhabited. -/
-def tyM (d : IndDecl) (ps : List Sem) : TyM :=
-  if d.sort == 0 then .prop (Nonempty (dm.car d ps))
-  else .data d.name ps (dm.car d ps) (fun x => (dm.tag x, dm.fields x))
+/-- A value read as a coded element of the type `T` (its code read at carrier level 0); `bad`
+when it is not a member. -/
+noncomputable def _root_.Ochr.Meaning.eltOf (T : TyM) (s : Sem) : Elt0 :=
+  match T.code0.2.dec s with
+  | some b => .mk _ T.code0.2 b
+  | none => .bad
 
-/-- Parameters whose carrier is the type `T`, chosen classically (`paramsOf_car`). A fallback
-only: since carriers do not determine parameters, no definition relies on this choice; a
-constructor value that records no parameters reads them off its structured hint (docs/31 D8),
-`fieldData` and `paramData` supplying the hints of fields and parameters. -/
-noncomputable def paramsOf (d : IndDecl) : TyM → Option (List Sem)
-  | .ty0 A => open Classical in
-    if h : ∃ ps, dm.car d ps = A then some (Classical.choose h) else none
-  | _ => none
+/-- A parameter's meaning as a coded parameter of a data type: a type value as its code, a value
+as a coded element of the parameter's declared type `T`. -/
+noncomputable def _root_.Ochr.Meaning.parOf (T : TyM) : Sem → Par0
+  | .ty (.t0 A c) => .ty A c
+  | s => .val (eltOf T s)
 
-theorem paramsOf_car (d : IndDecl) (A : Type) (ps : List Sem) (h : dm.paramsOf d (.ty0 A) = some ps) :
-    dm.car d ps = A := by
-  by_cases hex : ∃ ps, dm.car d ps = A
-  · have : dm.paramsOf d (.ty0 A) = some (Classical.choose hex) := by
-      simp [paramsOf, hex]
-    rw [this] at h
-    cases h
-    exact Classical.choose_spec hex
-  · simp [paramsOf, hex] at h
+/-- The parameters of `d` as coded parameters, each at its declared type at the earlier ones. -/
+noncomputable def parsOf (d : IndDecl) (i : Nat) (earlier : List Sem) : List Sem → List Par0
+  | [] => []
+  | p :: ps => parOf (dm.paramTy d i earlier) p :: parsOf d (i + 1) (earlier ++ [p]) ps
+
+/-- The fields of constructor `c` as coded elements, each at its field type at the earlier ones. -/
+noncomputable def eltsOf (d : IndDecl) (ps : List Sem) (c : Nat) (i : Nat) (earlier : List Sem) :
+    List Sem → List Elt0
+  | [] => []
+  | f :: fs => eltOf (dm.fieldTy d ps c i earlier) f :: eltsOf d ps c (i + 1) (earlier ++ [f]) fs
+
+/-- The meaning of the type `D(ps)`: a data type is its code (its declaration's name, its
+parameters, its carrier, and an element read as its constructor and its fields at their field
+types: docs/31 D59); a `Prop`-sorted declaration the truncation of the same fixed point, true
+when it is inhabited. -/
+noncomputable def tyM (d : IndDecl) (ps : List Sem) : TyM :=
+  if d.sort == 0 then TyM.prop (Nonempty (dm.car d ps))
+  else .t0 (dm.car d ps) (.data d.name (dm.parsOf d 0 [] ps) (dm.car d ps)
+    fun x => ⟨dm.tag x, dm.eltsOf d ps (dm.tag x) 0 [] (dm.fields x)⟩)
 
 /-- The constructor and fields of a constructor value, read off the value (docs/31 D32). -/
 def _root_.Ochr.Meaning.Sem.parts : Sem → Option (Nat × List Sem)
@@ -112,7 +111,7 @@ parameters, its fields are whole, and it has no element of the carrier because a
 outside the type its earlier fields give (the checker types such a field by its content until
 [Repack]). Membership's `pmem` admits it, as the checker's state does (`Regress/OpenWriteDep`). -/
 def OpenIn : TyM → Sem → Prop
-  | .data n ps _ _, .dat n' ps' _ fs none => n = n' ∧ ps = ps' ∧ ∀ f ∈ fs, f.whole
+  | .t0 _ (.data n ps _ _), .dat n' ps' _ fs none => n = n' ∧ Par0.sems ps = ps' ∧ ∀ f ∈ fs, f.whole
   | _, _ => False
 
 /-- The meaning of a constructor value `C(ps; fs)` of a data type whose fields already mean
@@ -182,122 +181,57 @@ theorem parts_ctorM (d : IndDecl) (ps : List Sem) (c : Nat) (fs : List Sem) :
 /-! ## Small field types
 
 A field of a `Type₀` or `Prop` inductive lives in `Type₀` or `Prop` (docs/18 (I6)), so its
-meaning is a carrier `ty0 A` or a proposition `prop P`: a *small* type, whose elements a carrier
+meaning is a level-0 code (a `Type₀` type or a proposition): a *small* type, whose elements a carrier
 in `Type` can store (`El`). `small` cuts any other type meaning down to `err`, which has no
 members, so that a model whose field types are `small` packs exactly the members of its field
 types. -/
 
-/-- The small part of a type meaning: itself if it is a `Type₀` carrier or a proposition, `err`
-otherwise. -/
+/-- The small part of a type meaning: itself if its carrier is at level 0 (a `Type₀` type or a
+proposition), `err` otherwise. -/
 def small : TyM → TyM
-  | .ty0 A => .ty0 A
-  | .prop P => .prop P
-  | .data n ps A unpk => .data n ps A unpk
-  | _ => .err
+  | .t0 A c => .t0 A c
+  | _ => TyM.err
 
-/-- What a carrier in `Type` stores for an element of a small type: the element itself, a proof
-of the proposition; nothing for any other type meaning. -/
-def El : TyM → Type
-  | .ty0 A => A
-  | .prop P => PLift P
-  | .data _ _ A _ => A
-  | _ => PEmpty
+/-- What a carrier in `Type` stores for an element of a small type: its level-0 carrier. -/
+abbrev El (T : TyM) : Type := T.el0
 
 /-- The meaning of a stored element. -/
-def enc : (T : TyM) → El T → Sem
-  | .ty0 A, a => .el0 A a
-  | .prop _, _ => .proof
-  | .data n ps A unpk, a => .dat n ps (unpk a).1 (unpk a).2 (some ⟨A, a⟩)
-  | .ty1 _, x | .ty2 _, x | .univ _, x | .err, x => x.elim
+def enc (T : TyM) (a : El T) : Sem := T.code0.2.enc a
 
 /-- Read a meaning as a stored element of a small type, if it is a member (classically). -/
-noncomputable def dec : (T : TyM) → Sem → Option (El T)
-  | .ty0 A, .el0 B b => open Classical in if h : B = A then some (h ▸ b) else none
-  | .prop P, .proof => open Classical in if h : P then some ⟨h⟩ else none
-  | .data n ps A unpk, .dat n' ps' c fs (some ⟨B, b⟩) => open Classical in
-    if h : n' = n ∧ ps' = ps ∧ ∃ e : B = A, unpk (e ▸ b) = (c, fs) then some (h.2.2.choose ▸ b) else none
-  | _, _ => none
+noncomputable def dec (T : TyM) (s : Sem) : Option (El T) := T.code0.2.dec s
 
 theorem small_small (T : TyM) : small (small T) = small T := by
   cases T <;> rfl
 
-theorem enc_mem (T : TyM) (a : El T) : enc T a ∈ₛ T := by
-  cases T with
-  | ty0 A => exact rfl
-  | prop P => exact a.down
-  | data n ps A unpk => exact ⟨rfl, rfl, rfl, rfl⟩
-  | _ => exact a.elim
+theorem small_code0 (T : TyM) : (small T).code0 = T.code0 := by
+  cases T <;> rfl
 
 theorem enc_mem_small (T : TyM) (a : El T) : enc T a ∈ₛ small T := by
   cases T with
-  | ty0 A => exact rfl
-  | prop P => exact a.down
-  | data n ps A unpk => exact ⟨rfl, rfl, rfl, rfl⟩
-  | _ => exact a.elim
+  | t0 A c => exact ⟨a, rfl⟩
+  | t1 _ _ | t2 _ _ => exact a.elim
 
-theorem enc_inj {T : TyM} {a b : El T} (h : enc T a = enc T b) : a = b := by
+theorem enc_mem (T : TyM) (a : El T) : enc T a ∈ₛ T := by
   cases T with
-  | ty0 A => cases h; rfl
-  | prop P => cases a; cases b; rfl
-  | data n ps A unpk =>
-    simp only [enc, Sem.dat.injEq, Option.some.injEq] at h
-    exact eq_of_heq (Sigma.mk.inj h.2.2.2.2).2
-  | _ => exact a.elim
+  | t0 A c => exact ⟨a, rfl⟩
+  | t1 _ _ | t2 _ _ => exact a.elim
 
-theorem dec_enc (T : TyM) (a : El T) : dec T (enc T a) = some a := by
-  cases T with
-  | ty0 A => simp [enc, dec]
-  | prop P => cases a; simp [enc, dec, *]
-  | data n ps A unpk =>
-    have h : n = n ∧ ps = ps ∧ ∃ e : A = A, unpk (e ▸ a) = ((unpk a).1, (unpk a).2) := ⟨rfl, rfl, rfl, rfl⟩
-    simp only [enc, dec, dif_pos h]
-    rfl
-  | _ => exact a.elim
+theorem enc_inj {T : TyM} {a b : El T} (h : enc T a = enc T b) : a = b := Code0.enc_inj _ h
 
-theorem enc_of_dec {T : TyM} {s : Sem} {a : El T} (h : dec T s = some a) : enc T a = s := by
-  cases T with
-  | data n ps A unpk =>
-    cases s with
-    | dat n' ps' c fs el =>
-      rcases el with _ | ⟨B, b⟩
-      · simp [dec] at h
-      · simp only [dec] at h
-        split at h
-        · rename_i hc
-          obtain ⟨rfl, rfl, e, he⟩ := hc
-          cases e
-          obtain rfl : b = a := Option.some.inj h
-          simp only [enc, he]
-        · cases h
-    | _ => simp [dec] at h
-  | ty0 A =>
-    cases s <;> simp [dec] at h
-    obtain ⟨rfl, rfl⟩ := h
-    rfl
-  | prop P =>
-    cases s <;> simp [dec] at h
-    obtain ⟨_, h⟩ := h
-    cases h
-    rfl
-  | _ => exact a.elim
+theorem dec_enc (T : TyM) (a : El T) : dec T (enc T a) = some a := Code0.dec_enc _ a
+
+theorem enc_of_dec {T : TyM} {s : Sem} {a : El T} (h : dec T s = some a) : enc T a = s :=
+  Code0.enc_of_dec _ h
 
 /-- Decoding succeeds exactly on the members of the small part of the type. -/
 theorem dec_isSome_iff (T : TyM) (s : Sem) : (dec T s).isSome ↔ s ∈ₛ small T := by
+  rw [dec, Code0.dec_isSome]
   cases T with
-  | data n ps A unpk =>
-    cases s with
-    | dat n' ps' c fs el =>
-      rcases el with _ | ⟨B, b⟩
-      · simp [dec, small, Sem.mem]
-      · simp only [dec, small, Sem.mem]
-        split
-        · rename_i hc; simp only [Option.isSome_some, true_iff]; exact hc
-        · rename_i hc; simp only [Option.isSome_none, Bool.false_eq_true, false_iff]; exact hc
-    | _ => simp [dec, small, Sem.mem]
-  | prop P =>
-    cases s <;> simp [dec, small, Sem.mem]
-    by_cases h : P <;> simp [h, Option.isSome]
-  | _ => cases s <;> simp [dec, small, Sem.mem]
+  | t0 A c => rfl
+  | t1 _ _ | t2 _ _ =>
+    simp only [small, TyM.err, Sem.mem]
+    exact ⟨fun ⟨a, _⟩ => a.elim, fun ⟨a, _⟩ => a.elim⟩
 
 /-- On a small type, membership is membership of the small part. -/
 theorem mem_small_of_mem {T : TyM} {s : Sem} (h : s ∈ₛ T) (hT : small T = T) : s ∈ₛ small T := by
@@ -359,7 +293,7 @@ theorem arities_libKind (d : IndDecl) (h : libKind d ≠ .other) :
 def libPar (ps : List Sem) (i : Nat) : TyM :=
   small (match ps.getD i .err with
     | .ty T => T
-    | _ => .err)
+    | _ => TyM.err)
 
 /-- `Pair(A, B)` means `A × B`, `And(P, Q)` the product of the proofs, `True` the unit type and
 `False` the empty type (so the truncations of the last three are `P ∧ Q`, `True` and `False`). -/
@@ -374,7 +308,7 @@ def libCar (d : IndDecl) (ps : List Sem) : Type := (libKind d).car ps
 /-- The two fields of `Pair` and `And` have the parameters' types. -/
 def LibKind.fieldTy : LibKind → List Sem → Nat → TyM
   | .pair, ps, i | .and, ps, i => if i = 0 then libPar ps 0 else libPar ps 1
-  | _, _, _ => .err
+  | _, _, _ => TyM.err
 
 noncomputable def LibKind.pack : (k : LibKind) → (ps : List Sem) → Nat → List Sem → Option (k.car ps)
   | .pair, _, c, fs | .and, _, c, fs =>
@@ -471,13 +405,13 @@ theorem LibKind.pack_isSome (k : LibKind) (ps : List Sem) (c : Nat) (fs : List S
 
 /-- The library model (`Prelude.decls`: `Pair`, `False`, `True`, `And`). Every constructor is
 constructor `0`; no library declaration is recursive (`recArgs` is `none`), so the rank is `0`;
-no field's declared type is an inductive (`fieldData` is `none`: `Pair`'s and `And`'s fields
+no field's declared type is an inductive (`Pair`'s and `And`'s fields
 have the parameters' types). -/
 noncomputable def libModel : DataModel where
   covers d := libKind d ≠ .other
   car := libCar
   fieldTy d ps _ i _ := (libKind d).fieldTy ps i
-  paramTy d _ _ := if d.name = "Pair" then .univ 1 else if d.name = "And" then .univ 0 else .err
+  paramTy d _ _ := if d.name = "Pair" then TyM.univ 1 else if d.name = "And" then TyM.univ 0 else TyM.err
   pack d ps c fs := (libKind d).pack ps c fs
   tag _ := 0
   fields {d ps} x := (libKind d).fields ps x
