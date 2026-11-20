@@ -1,4 +1,4 @@
-import Ochr.Meaning.Strict.Ops
+import Ochr.Meaning.Strict.OpsCall
 import Ochr.Meaning.RunCongr
 import Ochr.Meaning.MonoHolders
 
@@ -32,36 +32,6 @@ theorem env_ne_of_mem {s : SState} {p : Pos} (h : p ∈ s.positions) : s.env ≠
   intro he
   rw [SState.mem_positions] at h
   cases p <;> simp [SState.lookup, he] at h
-
-theorem lookup_pushTemp_bind (s : SState) (v : SVal) (f i : Nat) :
-    (s.pushTemp v).lookup (.bind f i) = s.lookup (.bind f i) := by
-  simp only [SState.lookup, SState.pushTemp, List.getElem?_modify]
-  by_cases hf : s.topIdx = f <;> cases s.env[f]? <;> simp [hf]
-
-theorem tyAt_pushTemp (s : SState) (v : SVal) (q : Pos) : (s.pushTemp v).tyAt q = s.tyAt q := by
-  cases q with
-  | temp => rfl
-  | bind f i =>
-    simp only [SState.tyAt, SState.pushTemp, List.getElem?_modify]
-    by_cases hf : s.topIdx = f <;> cases s.env[f]? <;> simp [hf]
-
-theorem bind_mem_pushTemp (s : SState) (v : SVal) (f i : Nat) :
-    Pos.bind f i ∈ (s.pushTemp v).positions ↔ Pos.bind f i ∈ s.positions := by
-  rw [SState.mem_positions, SState.mem_positions, lookup_pushTemp_bind]
-
-theorem valAt_pushTemp_bind (s : SState) (v : SVal) (f i : Nat) :
-    (s.pushTemp v).valAt (.bind f i) = s.valAt (.bind f i) := by
-  rw [SState.valAt_eq, SState.valAt_eq, lookup_pushTemp_bind]
-
-theorem tyAt_pushTempShaped (s : SState) (v : SVal) (l : Nat) (q : Pos) :
-    (s.pushTempShaped v l).tyAt q = s.tyAt q := by
-  rw [← tyAt_pushTemp s v q]; unfold SState.pushTempShaped; dsimp only; split <;> rfl
-
-theorem heldTy_pushTempShaped (s : SState) (v : SVal) (l : Nat) : (s.pushTempShaped v l).heldTy = s.heldTy := by
-  unfold SState.pushTempShaped; dsimp only; split <;> rfl
-
-theorem heldMem_pushTempShaped (s : SState) (v : SVal) (l : Nat) : (s.pushTempShaped v l).heldMem = s.heldMem := by
-  unfold SState.pushTempShaped; dsimp only; split <;> rfl
 
 theorem bind_mem_pushTempShaped (s : SState) (v : SVal) (l : Nat) (f i : Nat) :
     Pos.bind f i ∈ (s.pushTempShaped v l).positions ↔ Pos.bind f i ∈ s.positions := by
@@ -479,20 +449,6 @@ theorem sgood_pushBindShaped (hMR : MemReads K.dm K.Γ) {s : SState} (hs : SGood
       hacyc hfresh
 
 /-! ## A `let`'s drop -/
-
-/-- On the error value, a read gives `err` or nothing. -/
-theorem follow_err (dm : DataModel) (Γ : List IndDecl) : ∀ (T : TyS) (steps : List Step) (x : Sem) (U : TyS),
-    Sem.follow dm Γ T .err steps = some (x, U) → x = .err
-  | _, [], _, _, h => by simp only [Sem.follow, Option.some.injEq, Prod.mk.injEq] at h; exact h.1.symm
-  | T, st :: sts, x, U, h => by
-    simp only [Sem.follow] at h
-    cases st with
-    | deref => exact follow_err dm Γ T sts x U (by simpa [Sem.step] using h)
-    | proj i =>
-      cases i with
-      | zero => simp [Sem.step, Sem.asNat, Sem.as, Sem.stepField] at h
-      | succ i => simp [Sem.step, Sem.stepField] at h
-    | field g => simp [Sem.step, Sem.stepField] at h
 
 theorem binds_dropLast (s : SState) (f i : Nat) (hq : some (Pos.bind f i) ≠ s.dropped) :
     s.dropLast.env[f]?.bind (·.binds[i]?) = s.env[f]?.bind (·.binds[i]?) := by
