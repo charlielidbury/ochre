@@ -1,4 +1,4 @@
-import Ochr.Meaning.Rules.SoundT
+import Ochr.Meaning.Rules.SoundEq
 import Ochr.Meaning.Rules.RefineEq
 
 /-!
@@ -57,10 +57,36 @@ theorem conv_sound_T_fo (hk : GenericKept StateRel.reach)
     meanV K ρ φ (.plain T) v = meanV K ρ φ (.plain T) w ∧ KeptAfter st st' :=
   conv_sound_T hk FO.closed hp hu (FO.codeOk K ρ φ _ _) h hqv hqw hv hw
 
+/-- **`Eq` computes soundly** (the true restatement of `mkEqM_step_stmt`'s meaning part): a
+successful `mkEqM` returns a proposition meaning `⟦a⟧ = ⟦b⟧` at `⟦A⟧`, at every hint, and the
+state after is reached from the one before. The sides' hypotheses, named for what will supply
+them: `SideMem` (`⊥` or a whole member of `⟦A⟧`: the evaluation step's membership, `EvalMemConcl`,
+with the side's type checked against `A` and D84), `HWT` (typed inside: the typing gap), `Q` (the
+class `CodeOk` holds on). One assignment throughout: the caller takes the one after the
+computation (where [Eq-inj]'s field types, which can name an unknown made inside, mean what
+`FieldTysSound` says), under which the sides, old values, mean what they meant. -/
+theorem mkEqM_sound_T (hk : EqKept StateRel.reach) {Q : Value → Prop}
+    {fuel : Nat} {st st' : MState} {A a b P : Value} {bh : Nat}
+    (H : AHyps K ρ φ Q (machPremises st) st.globals) (hΓ : K.Γ = st.inds)
+    (h : Runs (Ochr.mkEqM fuel A a b) st bh P st') (qa : Q a) (qb : Q b)
+    (ha : HWT K ρ φ (tyOf K ρ φ A) a) (hb : HWT K ρ φ (tyOf K ρ φ A) b)
+    (sa : SideMem K ρ φ (tyOf K ρ φ A) a) (sb : SideMem K ρ φ (tyOf K ρ φ A) b) :
+    KeptAfter st st' ∧ ∀ hint, meanV K ρ φ hint P =
+      .ty (TyM.prop (meanV K ρ φ (.plain (tyOf K ρ φ A)) a = meanV K ρ φ (.plain (tyOf K ρ φ A)) b)) := by
+  obtain ⟨d, hkept⟩ := mkEqM_refine' hk fuel st st' A a b P bh h
+  rw [← hΓ] at d
+  exact ⟨hkept, eqTo_alike H d qa qb ha hb sa sb⟩
+
+/-- The first-order fragment needs no code hypothesis. -/
+theorem AHyps.fo {G : Premises} {gs₀ : List GDef} (hp : PremSoundT K ρ φ G) (hu : UnitOk K ρ φ FO)
+    (hl : LibOkT K ρ φ) (hf : FieldTysSound K ρ φ G) (hi : FieldTyIdx K) : AHyps K ρ φ FO G gs₀ :=
+  ⟨FO.closed, hp, hu, FO.codeOk K ρ φ G gs₀, hl, hf, hi⟩
+
 end
 
 end Ochr.Meaning.Rules
 
+#print axioms Ochr.Meaning.Rules.mkEqM_sound_T
 #print axioms Ochr.Meaning.Rules.conv_sound_T
 #print axioms Ochr.Meaning.Rules.conv_sound_T_same
 #print axioms Ochr.Meaning.Rules.conv_sound_T_fo

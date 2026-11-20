@@ -78,49 +78,13 @@ structure LibOk : Prop where
   and : ∀ hint (P Q : Value) (p q : Prop), meanV K ρ φ (.plain .err) P = .ty (TyM.prop p) →
     meanV K ρ φ (.plain .err) Q = .ty (TyM.prop q) → meanV K ρ φ hint (.tInd "And" [P, Q]) = .ty (TyM.prop (p ∧ q))
 
-variable {E : Syn} {G : Premises} {gs : List GDef}
-
-/-- **(A) Conversion is sound**: convertible values run alike, hence mean the same at every hint.
-By induction on the derivation (mutually with `convH_sound`, `convL_sound`, `convT_sound`). No
-membership hypothesis: with sound untyped parts, conversion is sound at every hint. -/
-theorem convV_sound (hs : SynSound K ρ φ E) (hp : PremSound K ρ φ G) {v w : Value}
-    (h : ConvV E G gs v w) : ValAlike K ρ φ v w := by
-  sorry
-
-theorem convH_sound (hs : SynSound K ρ φ E) (hp : PremSound K ρ φ G) {v w : Value}
-    (h : ConvH E G gs v w) : ValAlike K ρ φ v w := by
-  sorry
-
-/-- (A) Convertible programs run alike from every state. The congruence of the model's run: it
-reads a program's decisions (`K.D`) at its terms, so this needs the decisions to agree on
-convertible terms (a guess; not yet a hypothesis). -/
-theorem convT_sound (hs : SynSound K ρ φ E) (hp : PremSound K ρ φ G) {t u : Term}
-    (h : ConvT E G gs t u) : TermAlike K ρ φ t u := by
-  sorry
-
-/-- (A) The existing statement's shape: at a type. -/
-theorem conv_sound_at (hs : SynSound K ρ φ E) (hp : PremSound K ρ φ G) {v w : Value}
-    (h : ConvV E G gs v w) (T : TyM) : meanV K ρ φ (.plain T) v = meanV K ρ φ (.plain T) w :=
-  (convV_sound K ρ φ hs hp h).mean K ρ φ _
+/-! The first design's statements of A (`convV_sound`, `convH_sound`, `convT_sound`, `conv_sound_at`,
+`eqTo_sound`: soundness for an instance of the untyped parts that keeps meanings, `SynSound`) were
+`sorry`'d and are removed: no instance the machine produces meets `SynSound` (`Counter.lean`), and
+the proved route is `SoundT.lean` / `SoundEq.lean` (the machine's instance on well-typed values). -/
 
 /-- The meaning of the equation's type, as the sides are read at it. -/
 noncomputable abbrev tyOf (A : Value) : TyM := (meanV K ρ φ (.plain .err) A).asTy
-
-/-- **(A) `Eq` computes soundly**: the proposition computed means `⟦a⟧ = ⟦b⟧` at `A`. Hypotheses on
-the sides, each needed by one rule: partly moved members of `A` ([Eq-inj] reads `A`'s record;
-[Conv-refl] does not need it), not meaning `moved` unless `⊥` ([Eq-disj] at `⊥`), constructor
-values of data declarations ([Eq-disj] and [Eq-inj] on a `Prop` inductive's values, which all
-mean `⋆`). -/
-theorem eqTo_sound (hs : SynSound K ρ φ E) (hp : PremSound K ρ φ G) (hl : LibOk K ρ φ)
-    {A a b P : Value} (h : EqTo E G gs K.Γ A a b P)
-    (ha : DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain (tyOf K ρ φ A)) a) (tyOf K ρ φ A))
-    (hb : DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain (tyOf K ρ φ A)) b) (tyOf K ρ φ A))
-    (hma : a ≠ .bot → meanV K ρ φ (.plain (tyOf K ρ φ A)) a ≠ .moved)
-    (hmb : b ≠ .bot → meanV K ρ φ (.plain (tyOf K ρ φ A)) b ≠ .moved)
-    (hda : a.anyAtom (dataCtorBad K.Γ) = false) (hdb : b.anyAtom (dataCtorBad K.Γ) = false) :
-    ∀ hint, meanV K ρ φ hint P =
-      .ty (TyM.prop (meanV K ρ φ (.plain (tyOf K ρ φ A)) a = meanV K ρ φ (.plain (tyOf K ρ φ A)) b)) := by
-  sorry
 
 end
 
