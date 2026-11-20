@@ -316,19 +316,47 @@ end
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
+/-- **Above a filled parent the lent prefix exists, at or above it**: the parent holds a fill
+over a live borrow, so that borrow (or one whose mark the path passes, holding it) has a site at
+the parent's path or above it, and the related reference state has the same sites for the same
+live labels. Open: the correspondence between the checker's sites and paths, and between the live
+labels of related states. -/
+theorem lentPrefix_some_of_fill (st : MState) (s : SState) (π : Nat → Nat) (q p : Place) (pos : Pos) (c : Value)
+    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpar : parentOf q = some p)
+    (hpos : resolve s q = some (pos, q.steps.2)) (hc : ckContent st.env p = some c)
+    (hfill : Ochr.fillHoles st.env c ≠ []) :
+    ∃ ψ, lentPrefix s pos q.steps.2 = some ψ ∧ pathKey ψ <+: pathKey p.steps.2 := by
+  sorry
+
 /-- **A filled parent accessed whole is the lent prefix accessed whole** (`movedPlace`'s fill
-branch against the reference's `accessLentPrefix`). The parent holds a fill over a live borrow, so
-its path is lent and the shortest lent prefix is it or above it; a borrow the reference's access of
-that prefix ends and the checker's access of the parent (its path and inside) does not would be
-lent strictly under a fill and not at or above it, which (WF12) excludes. Open: the argument of
-`lentPrefix_absorbed`, with the fill at the parent. -/
+branch against the reference's `accessLentPrefix`). The lent prefix is the parent's path or above
+it (`lentPrefix_some_of_fill`); at the parent's own path the two accesses are one; above it, the
+access of the parent ends what the access of the prefix ends (`SState.access_absorb`, under
+`lentPrefix_absorbInv`: no live site above the prefix, its minimality; only the prefix's borrow at
+or below it, as a fill, (WF12)). Assembled. -/
 theorem fillPrefix_absorbed (st st' : MState) (s : SState) (π : Nat → Nat) (q p : Place) (pos : Pos) (c : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpar : parentOf q = some p)
     (hpos : resolve s q = some (pos, q.steps.2)) (hc : ckContent st.env p = some c)
     (hfill : Ochr.fillHoles st.env c ≠ [])
     (hs' : Rel K ρ φ π st' (s.access pos (dataHit p.steps.2))) :
     Rel K ρ φ π st' (accessLentPrefix pos q.steps.2 s) := by
-  sorry
+  obtain ⟨ψ, hl, hψp⟩ := lentPrefix_some_of_fill K ρ φ st s π q p pos c hg hs hpar hpos hc hfill
+  unfold ckContent at hc
+  obtain ⟨pos', hck, hfol⟩ := Option.bind_eq_some_iff.mp hc
+  have hpos' := rel_resolve_ck K ρ φ st s π p pos' hs hck
+  rw [resolve_parent hpar hpos] at hpos'
+  simp only [Option.some.injEq, Prod.mk.injEq] at hpos'
+  obtain ⟨rfl, -⟩ := hpos'
+  have hp := ckVarPos_mem hck
+  have e : accessLentPrefix pos q.steps.2 s = s.access pos (dataHit p.steps.2) := by
+    unfold accessLentPrefix
+    rw [hl]
+    simp only
+    by_cases hk : pathKey ψ = pathKey p.steps.2
+    · rw [dataHit_congr hk]
+    · have hI := lentPrefix_absorbInv K ρ φ st s π pos q.steps.2 p.steps.2 ψ c hg hs hp hl hfol hψp hk
+      exact SState.access_absorb hI hψp
+  rw [e]; exact hs'
 
 theorem mem_liveLoansIn_foldl (env : Env) (l : Nat) :
     ∀ (xs acc : List Nat), (l ∈ acc ∨ (l ∈ xs ∧ liveLoan env l = true)) →

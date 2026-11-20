@@ -196,7 +196,7 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
     rw [hst₁] at hacc
     obtain ⟨hs₂, hg₂⟩ := (ih K ρ φ).access_step st st₂ q pos false s π hg hctx hs hres b₂ hacc
     simp only [Bool.false_and, Bool.false_eq_true, if_false] at hs₂
-    have hs₂' := (lentPrefix_absorbed K ρ φ st st₂ s π pos q.steps.2 hg hs).mpr hs₂
+    have hs₂' := (lentPrefix_absorbed K ρ φ st st₂ s π pos q.steps.2 v hg hs hp hv).mpr hs₂
     have hctx₂ := access_ctx K ρ fuel st st₂ q b₂ hctx hacc
     obtain ⟨hs₃, hg₃, hctx₃, henv₃⟩ := logEffect_rel K ρ φ st₂ st₃ _ π q "moves" b₃ hg₂ hctx₂ hs₂' hlog
     have hdecl : declsOf ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2)) = declsOf s := by
