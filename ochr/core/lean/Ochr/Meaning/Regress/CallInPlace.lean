@@ -304,4 +304,109 @@ theorem useInc_callOf (hint : TyS) :
     = yB from rfl, hseq]
   exact ⟨_, rfl⟩
 
+/-! ## `Inc(&y)` in place (`CallRef.runCallRef`): the body run on the caller's state -/
+
+/-- `Inc`'s reading as a call's head (`run_incClo`). -/
+noncomputable def fresInc : Res := (closureAt dm.read 1 φ psInc outInc (gInc dm ρ φ), .plain (piInc dm))
+
+/-- `self`'s binding in the callee's frame pushed in place. -/
+noncomputable def selfP (cd : DeclInfo) : SBinding :=
+  { ty := { (fresInc dm ρ φ).2 with label := none }, val := fun _ => (fresInc dm ρ φ).1, decl := .pi cd }
+
+/-- The caller's frame after `&y` and the borrow's holder moved into the callee's parameter. -/
+def yFrame : SFrame := { binds := [{ yB with val := fun φ' => φ' 0 }], temps := [fun _ => .moved] }
+
+/-- The caller's state with `Inc`'s frame pushed in place: `x` holds `c` at `y`'s own label `0`. -/
+noncomputable def SP (cd d : DeclInfo) (c : Sem) : SState :=
+  { env := [yFrame, { binds := [selfP dm ρ φ cd, xB c d] }],
+    shape := fun p => if p = .bind 1 1 then some 0 else none, nextLoan := 1,
+    lent := fun m => if m = 0 then [⟨.bind 0 0, [], false⟩] else [] }
+
+theorem callFrame_inc (cd : DeclInfo) (bs : List PBind) (hb : bs = bindsOf (Kc dm) ρ φ (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame [.ref .nat]) :
+    callFrame (Kc dm) ρ φ [] [] (fresInc dm ρ φ) cd bs [(.el0 Nat 2, { yB.ty with label := some 0 })] (Attack.S₂ yB 0 (.el0 Nat 2))
+      = SP dm ρ φ cd ((bs.getD 0 (fun _ => .plain TyM.err, .other)).2) (.el0 Nat 2) := by
+  subst hb
+  simp [callFrame, capsState, capsVals, capsTys, SState.pushFrame, SState.pushBind, SState.topIdx, pushBindShaped,
+    SState.takeLabel, SState.holderOf, SState.positions, List.range', Attack.S₂, SState.setAt, SP, yFrame, selfP, xB,
+    bindsOf, runBinds, mkBind]
+  refine ⟨rfl, ?_⟩
+  funext p
+  by_cases h1 : p = Pos.bind 1 1 <;> by_cases h2 : p = Pos.temp 0 0 <;> simp [h1, h2]
+
+section InPlace
+variable (cd d : DeclInfo)
+
+theorem positions_SP (c : Sem) : (SP dm ρ φ cd d c).positions = [.bind 0 0, .temp 0 0, .bind 1 0, .bind 1 1] := by
+  simp [SP, yFrame, SState.positions, List.range']
+
+theorem liveLabels_SP (c : Sem) : (SP dm ρ φ cd d c).liveLabels = [0] := by
+  unfold SState.liveLabels; rw [positions_SP]; simp [SP]
+
+theorem holderOf_SP (c : Sem) : (SP dm ρ φ cd d c).holderOf 0 = some (.bind 1 1) := by
+  unfold SState.holderOf; rw [positions_SP]; simp [SP]
+
+theorem reached_SP (c : Sem) (hit : List Step → Bool) (l : Nat) : (SP dm ρ φ cd d c).reached (.bind 1 1) hit l = false := by
+  simp [SState.reached, SP]
+
+theorem access_SP (c : Sem) (hit : List Step → Bool) : (SP dm ρ φ cd d c).access (.bind 1 1) hit = SP dm ρ φ cd d c := by
+  unfold SState.access
+  have h : ∀ n : Nat, (List.range n).foldl (fun s _ => (s.liveLabels.filter (s.reached (.bind 1 1) hit)).foldl SState.endLabel s)
+      (SP dm ρ φ cd d c) = SP dm ρ φ cd d c := by
+    intro n; induction n with
+    | zero => rfl
+    | succ n ih => rw [List.range_succ, List.foldl_append, ih]; simp [liveLabels_SP, reached_SP]
+  exact h _
+
+theorem closedFuture_SP (c : Sem) (ψ : Future) : (SP dm ρ φ cd d c).closedFuture ψ = ψ.upd 0 c := by
+  unfold SState.closedFuture; rw [liveLabels_SP]
+  simp only [List.length_singleton, List.range_one, List.foldl_cons, List.foldl_nil, holderOf_SP]
+  rfl
+
+theorem resolve_SP (c : Sem) : resolve (SP dm ρ φ cd d c) (.deref (.var 0)) = some (.bind 1 1, [.deref]) := by
+  simp [resolve, SState.varPos, SState.topIdx, Place.steps, SP]
+
+theorem contentOf_SP (c : Sem) :
+    ∃ T, contentOf (Kc dm) φ (.deref (.var 0)) (SP dm ρ φ cd d c) = some ((c, T, .bind 1 1, [.deref]), SP dm ρ φ cd d c) := by
+  unfold contentOf
+  rw [resolve_SP]
+  dsimp only
+  rw [access_SP, closedFuture_SP]
+  simp [Sem.follow, Sem.step, SState.valAt, SState.tyAt, SP, xB]
+
+theorem readPlace_SP (a : Nat) :
+    ∃ T, readPlace (Kc dm) φ (.deref (.var 0)) true (SP dm ρ φ cd d (.el0 Nat a))
+      = some ((.el0 Nat a, T), SP dm ρ φ cd d (.el0 Nat a)) := by
+  obtain ⟨T, hT⟩ := contentOf_SP dm ρ φ cd d (.el0 Nat a)
+  refine ⟨{ T with label := none }, ?_⟩
+  simp [readPlace, hT, bind, Option.bind, Sem.whole]
+
+theorem setContent_SP (a b : Nat) :
+    setContent (Kc dm) φ (.bind 1 1) [.deref] (.el0 Nat b) (SP dm ρ φ cd d (.el0 Nat a)) = some (⟨⟩, SP dm ρ φ cd d (.el0 Nat b)) := by
+  simp [setContent, Attack.updAt_deref, Attack.updAt_nil, SState.setAt, SP, xB, SState.valAt]
+
+/-- `*x := S(*x)` run in place, `x` holding `y`'s label: `x` holds `a + 1`. -/
+theorem runBody_incP (a : Nat) (hint : TyS) (tl : Bool) :
+    runT (Kc dm) ρ φ tl hint incBody (SP dm ρ φ cd d (.el0 Nat a))
+      = some ((.el0 Unit (), .plain TyM.unit), SP dm ρ φ cd d (.el0 Nat (a + 1))) := by
+  obtain ⟨T, hT⟩ := contentOf_SP dm ρ φ cd d (.el0 Nat a)
+  obtain ⟨T', hT'⟩ := readPlace_SP dm ρ φ cd d a
+  simp only [incBody, runT, SM.erasedIf, SM.erasedAt, SM.stmtIf, flags_Kc, copy_Kc, hT, hT', Bool.false_eq_true, if_false,
+    bind, Option.bind, pure]
+  rw [Sem.succ_el0, show (TyS.plain TyM.nat).label = none from rfl]
+  simp only [assignAt, resolve_SP, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false, access_SP,
+    setContent_SP]
+
+/-- The pop after the body: `x`'s label `0` ends (its holder is in the callee's frame), `y` reads
+its final content, the frame goes. -/
+theorem popCallFrame_SP (c : Sem) :
+    let s' := popCallFrame 1 none (SP dm ρ φ cd d c)
+    s'.positions = [.bind 0 0, .temp 0 0] ∧ (∀ ψ, s'.valAt (.bind 0 0) ψ = c) ∧
+      (∀ ψ, s'.valAt (.temp 0 0) ψ = .moved) ∧ s'.shape = fun _ => none := by
+  have hl : (SP dm ρ φ cd d c).liveLabels.filter (fun l => (decide (1 ≤ l) || (match (SP dm ρ φ cd d c).holderOf l with
+      | some (.bind f _) | some (.temp f _) => f == (SP dm ρ φ cd d c).topIdx | none => false)) && decide (some l ≠ none)) = [0] := by
+    rw [liveLabels_SP]; simp only [List.filter_cons, List.filter_nil, holderOf_SP]; simp [SState.topIdx, SP]
+  sorry
+
+end InPlace
+
 end Ochr.Meaning.Regress.CallInPlace
