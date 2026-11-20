@@ -83,8 +83,8 @@ def valAt (s : SState) : Pos → SVal
 def tyAt (s : SState) : Pos → TyS
   | .bind f i => match s.env[f]?.bind (·.binds[i]?) with
     | some b => b.ty
-    | none => .plain .err
-  | .temp _ _ => .plain .err
+    | none => .plain TyM.err
+  | .temp _ _ => .plain TyM.err
 
 def setAt (s : SState) (p : Pos) (v : SVal) : SState :=
   match p with
@@ -262,15 +262,13 @@ section
 variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl)
 
 /-- The checker's state read as a semantic state: each binding's value as a function of the
-future at its stored type, each temporary's, the shape, and the label counter. A binding is
-typed at its stored type with the structure of the value it holds where that is a type
-(`Value.strS`, the audit's A19). A binding of a
+future at its stored type, each temporary's, the shape, and the label counter. A binding of a
 function of itself carries no recursion mark here (the checker's `RecCtx` is a check's input);
 the reference run sets it when it pushes a frame. -/
 noncomputable def _root_.Ochr.MState.sstate (ρ : Assignment) (st : MState) : SState :=
   { env := st.env.toList.zipIdx.map fun (fr, f) =>
       { binds := fr.binds.toList.zipIdx.map fun (b, i) =>
-          { ty := Value.strS dm C Γ ρ b.val (Env.hintAt dm C Γ ρ st.env (.bind f i)),
+          { ty := Env.hintAt dm C Γ ρ st.env (.bind f i),
             val := fun φ => Env.mean dm C Γ ρ φ st.env (.bind f i),
             decl := b.decl },
         temps := fr.temps.toList.zipIdx.map fun (_, i) => fun φ => Env.mean dm C Γ ρ φ st.env (.temp f i) },

@@ -25,12 +25,12 @@ run (a sealed program's re-normalisation, a callee's body) records only the para
 in the source, and the checker reads such a value's type from its position (D49 (4),
 `Machine.indValType?`). The typed model needs the parameters' meanings, so the meaning of a
 value is read *at a type*, the `hint : TyS`, whose `data` component names the declaration and
-the parameters' meanings: the position's stored type, a field's type at the earlier fields
+the parameters' meanings (read off its code): the position's stored type, a field's type at the earlier fields
 (`DataModel.fieldTy`), a parameter's type, an equation's type. Only a constructor value with
 `ps = []` reads the hint, taking the parameters straight off `hint.data` (no choice: a carrier
 does not determine them, data-generic's counterexample); everything else ignores it. So
 docs/18's V2 holds in this sense: what a constructor value means is determined by its type,
-whether or not it records its parameters. `TyS.plain .err` is "no hint".
+whether or not it records its parameters. `TyS.plain TyM.err` is "no hint".
 
 The definition is total; an ill-formed value means `err`.
 -/
@@ -57,11 +57,6 @@ structure CodeMeaning where
   /-- The meaning of a deferred type (D82 `Binding.lazyTy`): parameter `i` of the Π-type `P` at
   the arguments `ws` as passed, or `P`'s codomain there for `i` the number of parameters. -/
   paramTy : Assignment → Value → List Value → Nat → TyS
-  /-- The Π-shape of a stored type value (a Π-closure's parameters and output), which a call
-  through a binding of that type is applied along (`Value.tyS`; the audit's A16: without it a
-  checker binding of function type had no shape in the reference state, and a call through it
-  failed). The run's `tyShape`, at the constant future. -/
-  tyShape : Assignment → Value → Option (List PiParam × PiOut) := fun _ _ => none
 
 /-- Read a meaning as an element of the Lean type `A` (classically, by the tag). -/
 noncomputable def Sem.as (A : Type) : Sem → Option A
@@ -86,7 +81,7 @@ mutual
 `Γ` (`MState.inds`). -/
 noncomputable def Value.mean (ρ : Assignment) (φ : Future) (hint : TyS) : Value → Sem
   | .zero => .el0 Nat 0
-  | .succ v => (Value.mean ρ φ (.plain (.ty0 Nat)) v).succ
+  | .succ v => (Value.mean ρ φ (.plain TyM.nat) v).succ
   | .unit => .el0 Unit ()
   | .gfn n => (C.global n).1
   | .clo caps t rd => C.clo ρ φ caps t rd
@@ -98,14 +93,14 @@ noncomputable def Value.mean (ρ : Assignment) (φ : Future) (hint : TyS) : Valu
   | .abs σ => ρ σ
   | .sealed t => C.sealed ρ φ hint t
   | .proof => .proof
-  | .tNat => .ty (.ty0 Nat)
-  | .tUnit => .ty (.ty0 Unit)
+  | .tNat => .ty TyM.nat
+  | .tUnit => .ty TyM.unit
   | .tEq A a b =>
-    let T := TyS.plain (Value.mean ρ φ (.plain .err) A).asTy
-    .ty (.prop (Value.mean ρ φ T a = Value.mean ρ φ T b))
-  | .tRef A => Value.mean ρ φ (.plain .err) A
+    let T := TyS.plain (Value.mean ρ φ (.plain TyM.err) A).asTy
+    .ty (TyM.prop (Value.mean ρ φ T a = Value.mean ρ φ T b))
+  | .tRef A => Value.mean ρ φ (.plain TyM.err) A
   | .tPi caps t rd => .ty (C.pi ρ φ caps t rd)
-  | .sort l => .ty (.univ l)
+  | .sort l => .ty (TyM.univ l)
   | .ind ty c _ ps fs =>
     match Γ.find? (·.name == ty) with
     | some d =>
@@ -119,7 +114,7 @@ noncomputable def Value.mean (ρ : Assignment) (φ : Future) (hint : TyS) : Valu
   | .tInd n args =>
     match Γ.find? (·.name == n) with
     | some d => .ty (dm.tyM d (Value.meanParams ρ φ d 0 [] args))
-    | none => .ty .err
+    | none => .ty TyM.err
 termination_by structural v => v
 
 /-- The meanings of a constructor's fields, each read at its field type at the earlier ones. -/
@@ -127,7 +122,7 @@ noncomputable def Value.meanFields (ρ : Assignment) (φ : Future) (d : IndDecl)
     (earlier : List Sem) : List Value → List Sem
   | [] => []
   | v :: vs =>
-    let s := Value.mean ρ φ ⟨dm.fieldTy d ps c i earlier, none, none, dm.fieldData d ps c i earlier⟩ v
+    let s := Value.mean ρ φ ⟨dm.fieldTy d ps c i earlier, none⟩ v
     s :: Value.meanFields ρ φ d ps c (i + 1) (earlier ++ [s]) vs
 termination_by structural vs => vs
 
@@ -136,14 +131,14 @@ noncomputable def Value.meanParams (ρ : Assignment) (φ : Future) (d : IndDecl)
     (earlier : List Sem) : List Value → List Sem
   | [] => []
   | v :: vs =>
-    let s := Value.mean ρ φ ⟨dm.paramTy d i earlier, none, none, dm.paramData d i earlier⟩ v
+    let s := Value.mean ρ φ ⟨dm.paramTy d i earlier, none⟩ v
     s :: Value.meanParams ρ φ d (i + 1) (earlier ++ [s]) vs
 termination_by structural vs => vs
 end
 
 /-- The meaning of a type value, as a type. -/
 noncomputable def Value.tyM (ρ : Assignment) (φ : Future) (T : Value) : TyM :=
-  (Value.mean dm C Γ ρ φ (.plain .err) T).asTy
+  (Value.mean dm C Γ ρ φ (.plain TyM.err) T).asTy
 
 end
 

@@ -64,40 +64,11 @@ structure Mean : Type 3 where
 section
 variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl)
 
-/-- The structured hint of `D(ā)`, and of `&D(ā)` (a borrow's content is read at the content
-type's hint: a holder `t : &List(Nat) ↦ borrow_ℓ Nil` reads `Nil` with `List`'s parameters;
-without this the holder meant `err`, no state holding such a borrow was `Good`, and [End]'s
-statement was vacuous there — the spine's finding while attacking `endBorrow_step`). -/
-noncomputable def _root_.Ochr.Value.tyData (ρ : Assignment) : Value → Option (String × List Sem)
-  | .tInd n args =>
-    match Γ.find? (·.name == n) with
-    | some d => some (n, Value.meanParams dm C Γ ρ (fun _ => .err) d 0 [] args)
-    | none => none
-  | .tRef T => Value.tyData ρ T
-  | _ => none
-
-/-- A stored type value as the run knows it: its meaning, for `D(ā)` its declaration and
-parameters' meanings (the structured hint, D8 revised), and for a Π-type its shape, which is the
-run's business (`CodeMeaning.tyShape`, the run's `piShapeOf`; the audit's A16). Read under the
-constant future (docs/27 Lemma 5). -/
+/-- A stored type value as the run knows it: its meaning, a code that carries its structure (a
+function type's telescope, a data type's declaration and parameters; a borrow type's is its
+content's). Read under the constant future (docs/27 Lemma 5). -/
 noncomputable def _root_.Ochr.Value.tyS (ρ : Assignment) (T : Value) : TyS :=
-  { m := (Value.mean dm C Γ ρ (fun _ => .err) (.plain .err) T).asTy,
-    shape := C.tyShape ρ T,
-    data := Value.tyData dm C Γ ρ T }
-
-/-- A type with the structure the run carries for a value HELD at it (docs/31 D22, the run's
-convention: the run of a type term returns the structure of the type it denotes in the type of
-its result, a universe, and a `let` binds the alias at that): a binding that holds a Π-type value
-carries that Π-type's shape, one that holds `D(ā)` its data; any other value leaves the type as
-it is. Without it a checker binding `T : Type` holding a Π-type had no shape when read as a
-reference state, where the reference's own binding of the same `let` has one, and
-`let g : T = f; g(n)` failed from the one and ran from the other (the audit's A19,
-`Regress/ShapeAgree.lean`). -/
-noncomputable def _root_.Ochr.Value.strS (ρ : Assignment) (v : Value) (T : TyS) : TyS :=
-  match v with
-  | .tPi caps t rd => { T with shape := C.tyShape ρ (.tPi caps t rd) }
-  | .tInd n args => { T with data := Value.tyData dm C Γ ρ (.tInd n args) }
-  | _ => T
+  .plain (Value.mean dm C Γ ρ (fun _ => .err) (.plain TyM.err) T).asTy
 
 /-- The type a position's value is read at (docs/31 D8): the binding's stored type, or `err` for
 a temporary or an untyped slot. Types are read under the constant future, since no stored type
@@ -109,9 +80,9 @@ noncomputable def _root_.Ochr.Env.hintAt (ρ : Assignment) (env : Env) : Pos →
       match b.ty, b.lazyTy with
       | some T, _ => Value.tyS dm C Γ ρ T
       | none, some (P, ws, j) => C.paramTy ρ P ws j
-      | none, none => .plain .err
-    | none => .plain .err
-  | .temp _ _ => .plain .err
+      | none, none => .plain TyM.err
+    | none => .plain TyM.err
+  | .temp _ _ => .plain TyM.err
 
 /-- The meaning of an environment under `ρ` and `φ`, position by position. -/
 noncomputable def _root_.Ochr.Env.mean (ρ : Assignment) (φ : Future) (env : Env) (p : Pos) : Sem :=
@@ -165,7 +136,7 @@ constant future `err` is used. -/
 noncomputable def MState.absTyM (ρ : Assignment) (st : MState) (σ : Nat) : TyM :=
   match st.absTy[σ]? with
   | some T => Value.tyM dm C Γ ρ (fun _ => .err) T
-  | none => .err
+  | none => TyM.err
 
 /-- The meaning of the stored type at a position, if it has one: a binding's `ty`, or its
 deferred type (D82 `lazyTy`: parameter `i` of the Π-type at the arguments as passed), through
@@ -189,7 +160,7 @@ theorem MState.hintAt_posTyM (ρ : Assignment) (st : MState) (p : Pos) (T : TyM)
     simp only [MState.posTyM] at h
     simp only [Env.hintAt]
     split at h
-    · split at h <;> simp_all [Value.tyM, Value.tyS]
+    · split at h <;> simp_all [Value.tyM, Value.tyS, TyS.plain]
     · cases h
   | temp _ _ => cases h
 
