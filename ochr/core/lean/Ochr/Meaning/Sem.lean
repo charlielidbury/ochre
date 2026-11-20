@@ -1,55 +1,126 @@
 import Ochr.Env
 
 /-!
-# The semantic domain: meanings of types (`TyM`) and of values (`Sem`)
+# The semantic domain: meanings of types (`TyM`, codes) and of values (`Sem`)
 
-The set model of `ochr/docs/18` §3, built from Lean's own types as `Ochr/Model/Slice.lean` does
-(docs/24): a type means a Lean type holding only its good elements, so there is no universe of
-codes and no induction-recursion. What a *value* means must also be nameable without its type
-(a state is a function from positions to meanings, and `Eq` compares two meanings), so meanings
-live in one untyped universe `Sem`, whose elements are tagged by the Lean type they belong to.
-Membership `s ∈ ⟦T⟧` is then the tag's equality with the type's carrier.
+The set model of `ochr/docs/18` §3, built from Lean's own types (docs/24). A type means a CODE
+closed under the type formers, as Lean's tagged types do (Carneiro §6.4; docs/31 D59): a function
+type's code gives the code of the rest of its telescope as a function of each argument, a data
+type's code names its declaration and parameters, and a universe decodes to the codes of the level
+below. Every type the reference run holds (a call's result, a computed function type, a field's
+type, a type passed through a universe parameter) therefore keeps its structure by construction.
 
-## Why tagged elements, not tuples
+Lean cannot define codes together with their decoding (induction-recursion), so each code is
+INDEXED by the Lean type it decodes to: `Code0 A` is a code whose carrier is `A`. The codes hold
+no meaning (`Sem`), so they are small, and `Type₀` can decode to `(A : Type) × Code0 A`.
 
-In ZFC a constructor value means a tagged tuple and a function a set of pairs, all in one
-`V_κ`. Lean has no small type closed under its own function space, so an untyped universe holding
-functions on itself cannot be an inductive type, and a universe of first-order trees with leaves
-of arbitrary small types is one level too big to be a leaf type itself. The only encoding that
-keeps `Π` small is the typed one: a function value means a Lean function on the carriers of its
-domain and codomain, `el0 ((a : A) → B a) f`. A constructor value (docs/31 D32) describes itself:
-`dat` carries its declaration's name, its parameters' meanings, its constructor and its fields, and
-when it is whole and of its type also its element of the carrier, which is what a Lean function on
-carriers is applied to (`dec`/`enc` at a data type's code, `TyM.data`). So a value is taken apart
-by reading it, as a ZFC tree is in Lean's own model, and never through a type or a carrier.
+What a *value* means must be nameable without its type (a state is a function from positions to
+meanings, and `Eq` compares two meanings), so meanings live in one untyped universe `Sem`, whose
+elements are tagged by the Lean type they belong to; a constructor value describes itself (`dat`,
+docs/31 D32). A value is a member of a type when it is the encoding of an element of the type's
+carrier (Lean: elements are taken from the decoding).
 
 ## Levels (Q1, docs/18)
 
-Ochr's `sort 0 = Prop`, `sort 1 = Type₀`, `sort 2 = Type₁`, …, with `Prop : Type₁` beside
-`Type₀ : Type₁` (`sortSucc`). Lean's universes cannot be indexed by a number, so the model fixes
-the levels a program may write: `Prop`, `Type₀` and `Type₁` (`LevelsBelow 2`, `Bounded.lean`).
-Carriers then live in `Type`, `Type 1` or `Type 2`, and `Sem : Type 3`. Supporting one more
-level is one more constructor in each of `TyM`, `Sem`, `El`.
+Ochr's `sort 0 = Prop`, `sort 1 = Type₀`, `sort 2 = Type₁`, with `Prop : Type₁` beside
+`Type₀ : Type₁` (`sortSucc`). The model fixes the levels a program may write: `Prop`, `Type₀`,
+`Type₁` (`LevelsBelow 2`, `Bounded.lean`). There is one code family per carrier level: `Code0`
+(carriers in `Type`: propositions and `Type₀` types), `Code1` (`Type 1`: `Type₁` types, the
+universes `Prop` and `Type₀`, lower codes lifted), `Code2` (`Type 2`: `Type₂` types and `Type₁`).
 -/
 
 namespace Ochr.Meaning
 
+universe u
+
+/-- What a call returning `&U` from borrowed places with final contents `Fin` gives back: the
+returned borrow's content at return, and an injective backward function from the value the
+caller leaves in it to the final contents (`Slice.lean`'s `Back`). -/
+def Back (Fin U : Type u) : Type u := {p : U × (U → Fin) // ∀ v w, p.2 v = p.2 w → v = w}
+
+/-- The final contents accumulated after a parameter: a borrow parameter adds its content. -/
+abbrev extFin (b : Bool) (Fin T : Type u) : Type u := match b with | true => Fin × T | false => Fin
+
+/-- **A telescope code** over a level's code family, indexed by the final contents of the borrow
+parameters seen so far and by the carrier it decodes to. A function with borrow parameters means a
+function from the parameters' starting contents to the result and the borrowed places' final
+contents: `dat B c` decodes to `B × Fin`; a returned borrow `&U` decodes to `Back Fin U`, the
+forward value with an injective backward function (docs/18's relation R folded in); `param` decodes
+to `(a : A) → C a`, and `k a` is the rest of the telescope at the parameter's element `a`, as
+Lean's `(Π, A, B)` with `B` a function from `A`'s elements to codes. -/
+inductive Tel (Code : Type u → Type (u + 1)) : Type u → Type u → Type (u + 1)
+  | dat (Fin B : Type u) (c : Code B) : Tel Code Fin (B × Fin)
+  | ref (Fin U : Type u) (c : Code U) : Tel Code Fin (Back Fin U)
+  | param (Fin : Type u) (isRef : Bool) (A : Type u) (c : Code A) (C : A → Type u)
+      (k : (a : A) → Tel Code (extFin isRef Fin A) (C a)) : Tel Code Fin ((a : A) → C a)
+
 mutual
-/-- The meaning of a type value: a proposition (whose only possible element is the proof `•`),
-a carrier at one of the three supported Lean levels, a data type, a universe `⟦sort l⟧`, or the
-error value (an ill-formed type; no derivation reaches one). A universe is kept symbolic rather
-than as the Lean type `Type` etc. so that its *elements*, type values `Sem.ty T`, are recognised
-by their level (`mem`). A data type (docs/31 D32) is a code: its declaration's name and its
-parameters' meanings, decoding to its carrier `A`, with `unpk` reading an element's constructor
-and fields (Lean's tagged types, Carneiro §6.4, for data). -/
+/-- **Codes of carrier level 0** (`Type₀` types and propositions), indexed by their carrier: a
+proposition (decoding to `PLift P`), `Nat`, `Unit`, a data type (its declaration's name, its
+parameters, its carrier, and the reading of an element as its constructor and its coded fields),
+a function type (a telescope code), and the error code (no elements). -/
+inductive Code0 : Type → Type 1
+  | prop (P : Prop) : Code0 (PLift P)
+  | nat : Code0 Nat
+  | unit : Code0 Unit
+  | data (n : String) (ps : List Par0) (A : Type) (unpk : A → Unpk0) : Code0 A
+  | pi (C : Type) (t : Tel Code0 PUnit C) : Code0 C
+  | err : Code0 PEmpty
+/-- A coded element (a field of a data value): a carrier, its code, an element; or nothing (a
+field the data model could not read at its type, which no well-typed value has). -/
+inductive Elt0 : Type 1
+  | mk (B : Type) (c : Code0 B) (b : B)
+  | bad
+/-- A data type's parameter: a type (as its code), a coded value, or nothing. -/
+inductive Par0 : Type 1
+  | ty (A : Type) (c : Code0 A)
+  | val (e : Elt0)
+/-- A data element read as its constructor and its coded fields. -/
+inductive Unpk0 : Type 1
+  | mk (ctor : Nat) (fs : List Elt0)
+end
+
+def Unpk0.ctor : Unpk0 → Nat
+  | .mk c _ => c
+
+/-- The sort a level-0 code is a type of: `0` for a proposition, `1` for a `Type₀` type. -/
+def Code0.level : {A : Type} → Code0 A → Option Nat
+  | _, .prop _ => some 0
+  | _, .err => none
+  | _, _ => some 1
+
+/-- **Codes of carrier level 1**: a level-0 code lifted; the universe `Prop`, decoding to the
+propositions (untagged, as Lean's `T₀ = U₀`); the universe `Type₀`, decoding to the codes of
+`Type₀` types (Lean's `⦇(U, 0)⦈ = T₀`); a function type at `Type₁`. -/
+inductive Code1 : Type 1 → Type 2
+  | lift (A : Type) (c : Code0 A) : Code1 (ULift.{1} A)
+  | univ0 : Code1 (ULift.{1} Prop)
+  | univ1 : Code1 ((A : Type) × {c : Code0 A // c.level = some 1})
+  | pi (C : Type 1) (t : Tel Code1 PUnit C) : Code1 C
+
+def Code1.level : {A : Type 1} → Code1 A → Option Nat
+  | _, .lift _ c => c.level
+  | _, .univ0 => some 2
+  | _, .univ1 => some 2
+  | _, .pi .. => some 2
+
+/-- **Codes of carrier level 2**: a level-1 code lifted; the universe `Type₁`, decoding to the
+codes of `Type₁` types (`Prop` and `Type₀` among them); a function type at `Type₂`. -/
+inductive Code2 : Type 2 → Type 3
+  | lift (A : Type 1) (c : Code1 A) : Code2 (ULift.{2} A)
+  | univ2 : Code2 ((A : Type 1) × {c : Code1 A // c.level = some 2})
+  | pi (C : Type 2) (t : Tel Code2 PUnit C) : Code2 C
+
+def Code2.level : {A : Type 2} → Code2 A → Option Nat
+  | _, .lift _ c => c.level
+  | _, .univ2 => some 3
+  | _, .pi .. => some 3
+
+/-- **The meaning of a type**: a code at one of the three carrier levels. -/
 inductive TyM : Type 3 where
-  | prop (P : Prop)
-  | ty0 (A : Type)
-  | ty1 (A : Type 1)
-  | ty2 (A : Type 2)
-  | univ (l : Nat)
-  | err
-  | data (name : String) (ps : List Sem) (A : Type) (unpk : A → Nat × List Sem)
+  | t0 (A : Type) (c : Code0 A)
+  | t1 (A : Type 1) (c : Code1 A)
+  | t2 (A : Type 2) (c : Code2 A)
 
 /-- The meaning of a value, tagged by its carrier. `proof` is `•`, the one element of every true
 proposition; `ty T` a type used as a value; `moved` is `⊥`, a place definitely moved out of
@@ -58,10 +129,8 @@ proposition; `ty T` a type used as a value; `moved` is `⊥`, a place definitely
 A constructor value describes itself (docs/31 D32): `dat name ps c fs el` is its declaration's
 name, its parameters' meanings, its constructor and its fields' meanings, and `el` its element of
 the carrier when it is whole and of its type (`DataModel.ctorM` packs it), `none` when a field is
-moved out or the value is open (a field outside the type its earlier fields give). So a value is
-taken apart by reading it, never through a type: an element of an inductive type is a tree that
-describes itself, as in Lean's set-theoretic model. A partly moved number `S(⊥)` is
-`dat "Nat" [] 1 [⊥] none`; a whole number is `el0 Nat n`. -/
+moved out or the value is open. A partly moved number `S(⊥)` is `dat "Nat" [] 1 [⊥] none`; a whole
+number is `el0 Nat n`. -/
 inductive Sem : Type 3 where
   | el0 (A : Type) (a : A)
   | el1 (A : Type 1) (a : A)
@@ -71,17 +140,159 @@ inductive Sem : Type 3 where
   | moved
   | dat (name : String) (ps : List Sem) (c : Nat) (fs : List Sem) (el : Option ((A : Type) × A))
   | err
+
+/-! ## Types as codes: the common ones and their views -/
+
+namespace TyM
+
+/-- The error type (ill-formed: no derivation reaches one; it has no members). -/
+def err : TyM := .t0 PEmpty .err
+/-- A proposition. -/
+def prop (P : Prop) : TyM := .t0 (PLift P) (.prop P)
+/-- `Nat` and `Unit`. -/
+def nat : TyM := .t0 Nat .nat
+def unit : TyM := .t0 Unit .unit
+/-- The universe `sort l`: `Prop` and `Type₀` at carrier level 1, `Type₁` at level 2; above the
+bounded levels, the error type. -/
+def univ : Nat → TyM
+  | 0 => .t1 _ .univ0
+  | 1 => .t1 _ .univ1
+  | 2 => .t2 _ .univ2
+  | _ => err
+
+/-- A level-1 code as a type, a lifted level-0 code read at its own level. -/
+def of1 : {A : Type 1} → Code1 A → TyM
+  | _, .lift A c => .t0 A c
+  | _, c => .t1 _ c
+
+/-- A level-2 code as a type, lifted codes read at their own level. -/
+def of2 : {A : Type 2} → Code2 A → TyM
+  | _, .lift _ c => of1 c
+  | _, c => .t2 _ c
+
+/-- Ochr's level of a type: the `l` of the `sort l` it is an element of. -/
+def level : TyM → Option Nat
+  | .t0 _ c => c.level
+  | .t1 _ c => c.level
+  | .t2 _ c => c.level
+
+/-- The error type, recognised. -/
+def isErr : TyM → Bool
+  | .t0 _ .err => true
+  | _ => false
+
+/-- A function type (its code is a telescope). -/
+def isPi : TyM → Bool
+  | .t0 _ (.pi ..) | .t1 _ (.pi ..) | .t2 _ (.pi ..) => true
+  | _ => false
+
+/-- A proposition's meaning is true. -/
+def true : TyM → Prop
+  | .t0 _ (.prop P) => P
+  | _ => False
+
+/-- The code of a type read at carrier level 0 (the error code at a higher level). -/
+def code0 : TyM → (A : Type) × Code0 A
+  | .t0 A c => ⟨A, c⟩
+  | _ => ⟨PEmpty, .err⟩
+
+/-- The code of a type read at carrier level 1 (a level-0 code lifted). -/
+def code1 : TyM → (A : Type 1) × Code1 A
+  | .t0 A c => ⟨ULift A, .lift A c⟩
+  | .t1 A c => ⟨A, c⟩
+  | .t2 _ _ => ⟨ULift PEmpty, .lift _ .err⟩
+
+/-- The code of a type read at carrier level 2 (lower codes lifted). -/
+def code2 : TyM → (A : Type 2) × Code2 A
+  | .t0 A c => ⟨ULift (ULift A), .lift _ (.lift A c)⟩
+  | .t1 A c => ⟨ULift A, .lift A c⟩
+  | .t2 A c => ⟨A, c⟩
+
+/-- The carriers at each level (`PEmpty` above the level; lower levels lifted). -/
+abbrev el0 (T : TyM) : Type := T.code0.1
+abbrev el1 (T : TyM) : Type 1 := T.code1.1
+abbrev el2 (T : TyM) : Type 2 := T.code2.1
+
+end TyM
+
+theorem false_not_true : ¬ (TyM.prop False).true := id
+
+/-! ## Encoding an element of a carrier as a meaning -/
+
+mutual
+/-- A level-0 element as a meaning: a proof is `•`, a data element is the constructor value that
+describes it (`unpk`), anything else is tagged by its carrier. -/
+def Code0.enc : {A : Type} → Code0 A → A → Sem
+  | _, .prop _, _ => .proof
+  | _, .nat, n => .el0 Nat n
+  | _, .unit, x => .el0 Unit x
+  | _, .data n ps A unpk, a => .dat n (Par0.sems ps) (unpk a).ctor (Unpk0.sems (unpk a)) (some ⟨A, a⟩)
+  | _, .pi C _, f => .el0 C f
+  | _, .err, x => nomatch x
+def Unpk0.sems : Unpk0 → List Sem
+  | .mk _ fs => Elt0.sems fs
+def Elt0.sem : Elt0 → Sem
+  | .mk _ c b => Code0.enc c b
+  | .bad => .err
+def Elt0.sems : List Elt0 → List Sem
+  | [] => []
+  | e :: es => e.sem :: Elt0.sems es
+def Par0.sem : Par0 → Sem
+  | .ty A c => .ty (.t0 A c)
+  | .val e => e.sem
+def Par0.sems : List Par0 → List Sem
+  | [] => []
+  | p :: ps => p.sem :: Par0.sems ps
 end
 
-/-- Ochr's level of a type meaning: the `l` of the `sort l` it is an element of. -/
-def TyM.level : TyM → Option Nat
-  | .prop _ => some 0
-  | .ty0 _ => some 1
-  | .ty1 _ => some 2
-  | .ty2 _ => some 3
-  | .univ l => some (sortSucc l)
-  | .err => none
-  | .data .. => some 1
+/-- A level-1 element as a meaning: a lifted element as itself, a proposition or a `Type₀` code as
+the type value it is, a function by its tag. -/
+def Code1.enc : {A : Type 1} → Code1 A → A → Sem
+  | _, .lift _ c, a => c.enc a.down
+  | _, .univ0, P => .ty (.prop P.down)
+  | _, .univ1, p => .ty (.t0 p.1 p.2.1)
+  | _, .pi C _, f => .el1 C f
+
+/-- A level-2 element as a meaning. -/
+def Code2.enc : {A : Type 2} → Code2 A → A → Sem
+  | _, .lift _ c, a => c.enc a.down
+  | _, .univ2, p => .ty (.t1 p.1 p.2.1)
+  | _, .pi C _, f => .el2 C f
+
+open Classical in
+/-- Decoding a meaning at a code: its preimage under the encoding, if it has one (the encoding is
+injective, `Code0.enc_inj`). -/
+noncomputable def Code0.dec {A : Type} (c : Code0 A) (s : Sem) : Option A :=
+  if h : ∃ a, c.enc a = s then some h.choose else none
+
+open Classical in
+noncomputable def Code1.dec {A : Type 1} (c : Code1 A) (s : Sem) : Option A :=
+  if h : ∃ a, c.enc a = s then some h.choose else none
+
+open Classical in
+noncomputable def Code2.dec {A : Type 2} (c : Code2 A) (s : Sem) : Option A :=
+  if h : ∃ a, c.enc a = s then some h.choose else none
+
+/-- The declaration's name and parameters' meanings a data type's code carries. -/
+def TyM.dataName? : TyM → Option (String × List Sem)
+  | .t0 _ (.data n ps _ _) => some (n, Par0.sems ps)
+  | _ => none
+
+/-- **Membership**: a meaning lies in a type when it is the encoding of an element of the type's
+carrier (Lean: a type's elements are taken from its code's decoding). An element is a member of
+the carrier it is tagged with; `•` of every true proposition; a type value of the universe of its
+level; a constructor value of the data type it names, when it describes an element. -/
+def Sem.mem (s : Sem) : TyM → Prop
+  | .t0 _ c => ∃ a, c.enc a = s
+  | .t1 _ c => ∃ a, c.enc a = s
+  | .t2 _ c => ∃ a, c.enc a = s
+
+scoped infix:50 " ∈ₛ " => Sem.mem
+
+/-- Read a meaning as a type. -/
+def Sem.asTy : Sem → TyM
+  | .ty T => T
+  | _ => .err
 
 /-- A meaning holds no `moved` part and is not the error value. -/
 def Sem.whole : Sem → Prop
@@ -139,32 +350,102 @@ theorem Sem.leList_trans : ∀ {a b c : List Sem}, Sem.leList a b → Sem.leList
   | _, _, _, .cons h₁ hs₁, .cons h₂ hs₂ => .cons (Sem.le_trans h₁ h₂) (Sem.leList_trans hs₁ hs₂)
 end
 
-/-- Membership: a meaning lies in a type's meaning. An element is a member of the carrier it is
-tagged with; the proof `•` of every true proposition; a type value of the universe of its level.
-The tag is compared as a Lean type, which is what convertible type values must be shown to
-share (`conv_sound_ty`). A constructor value is a member of a data type when it names the type's
-declaration and parameters and its element reads back as its constructor and fields (D32). -/
-def Sem.mem : Sem → TyM → Prop
-  | .el0 A _, .ty0 B => A = B
-  | .el1 A _, .ty1 B => A = B
-  | .el2 A _, .ty2 B => A = B
-  | .proof, .prop P => P
-  | .ty T, .univ l => T.level = some l
-  | .dat n ps c fs (some ⟨A, x⟩), .data n' ps' A' unpk => n = n' ∧ ps = ps' ∧ ∃ h : A = A', unpk (h ▸ x) = (c, fs)
+/-! ## The encodings are injective, so decoding inverts them -/
+
+/-- A function of a code respects heterogeneous equality of codes over equal carriers. -/
+theorem Code0.congr_heq {X : Sort _} (f : {A : Type} → Code0 A → X) :
+    ∀ {A A' : Type} (c : Code0 A) (c' : Code0 A'), A = A' → HEq c c' → f c = f c' := by
+  intro A A' c c' h hh; subst h; cases hh; rfl
+
+/-- The proposition a level-0 code is (`False` for any other code). -/
+def Code0.propOf : {A : Type} → Code0 A → Prop
+  | _, .prop P => P
   | _, _ => False
 
-scoped infix:50 " ∈ₛ " => Sem.mem
+theorem Code0.enc_inj : ∀ {A : Type} (c : Code0 A) {a b : A}, c.enc a = c.enc b → a = b
+  | _, .prop _, a, b, _ => by cases a; cases b; rfl
+  | _, .nat, _, _, h => by simp only [Code0.enc, Sem.el0.injEq, heq_eq_eq, true_and] at h; exact h
+  | _, .unit, _, _, _ => Subsingleton.elim _ _
+  | _, .data .., _, _, h => by
+    simp only [Code0.enc, Sem.dat.injEq, Option.some.injEq] at h
+    exact eq_of_heq (Sigma.mk.inj h.2.2.2.2).2
+  | _, .pi .., _, _, h => by simp only [Code0.enc, Sem.el0.injEq, heq_eq_eq, true_and] at h; exact h
+  | _, .err, a, _, _ => nomatch a
 
-/-- Read a meaning as a type. -/
-def Sem.asTy : Sem → TyM
-  | .ty T => T
-  | _ => .err
+theorem TyM.t0_inj {A A' : Type} {c : Code0 A} {c' : Code0 A'} (h : TyM.t0 A c = TyM.t0 A' c') :
+    A = A' ∧ HEq c c' := by
+  cases h; exact ⟨rfl, HEq.rfl⟩
 
-/-- A proposition's meaning is true. -/
-def TyM.true : TyM → Prop
-  | .prop P => P
-  | _ => False
+theorem Code1.enc_inj : ∀ {A : Type 1} (c : Code1 A) {a b : A}, c.enc a = c.enc b → a = b
+  | _, .lift _ c, a, b, h => by
+    have := Code0.enc_inj c h
+    cases a; cases b; cases this; rfl
+  | _, .univ0, a, b, h => by
+    simp only [Code1.enc, Sem.ty.injEq, TyM.prop] at h
+    obtain ⟨e, hh⟩ := TyM.t0_inj h
+    have := Code0.congr_heq Code0.propOf _ _ e hh
+    cases a; cases b; simp only [Code0.propOf] at this; cases this; rfl
+  | _, .univ1, ⟨A, c, hc⟩, ⟨A', c', hc'⟩, h => by
+    simp only [Code1.enc, Sem.ty.injEq] at h
+    obtain ⟨e, hh⟩ := TyM.t0_inj h
+    subst e; cases hh; rfl
+  | _, .pi .., _, _, h => by simp only [Code1.enc, Sem.el1.injEq, heq_eq_eq, true_and] at h; exact h
 
-theorem false_not_true : ¬ (TyM.prop False).true := id
+theorem TyM.t1_inj {A A' : Type 1} {c : Code1 A} {c' : Code1 A'} (h : TyM.t1 A c = TyM.t1 A' c') :
+    A = A' ∧ HEq c c' := by
+  cases h; exact ⟨rfl, HEq.rfl⟩
+
+theorem Code2.enc_inj : ∀ {A : Type 2} (c : Code2 A) {a b : A}, c.enc a = c.enc b → a = b
+  | _, .lift _ c, a, b, h => by
+    have := Code1.enc_inj c h
+    cases a; cases b; cases this; rfl
+  | _, .univ2, ⟨A, c, hc⟩, ⟨A', c', hc'⟩, h => by
+    simp only [Code2.enc, Sem.ty.injEq] at h
+    obtain ⟨e, hh⟩ := TyM.t1_inj h
+    subst e; cases hh; rfl
+  | _, .pi .., _, _, h => by simp only [Code2.enc, Sem.el2.injEq, heq_eq_eq, true_and] at h; exact h
+
+theorem Code0.dec_enc {A : Type} (c : Code0 A) (a : A) : c.dec (c.enc a) = some a := by
+  have h : ∃ a', c.enc a' = c.enc a := ⟨a, rfl⟩
+  simp only [Code0.dec, dif_pos h, Option.some.injEq]
+  exact Code0.enc_inj c h.choose_spec
+
+theorem Code1.dec_enc {A : Type 1} (c : Code1 A) (a : A) : c.dec (c.enc a) = some a := by
+  have h : ∃ a', c.enc a' = c.enc a := ⟨a, rfl⟩
+  simp only [Code1.dec, dif_pos h, Option.some.injEq]
+  exact Code1.enc_inj c h.choose_spec
+
+theorem Code2.dec_enc {A : Type 2} (c : Code2 A) (a : A) : c.dec (c.enc a) = some a := by
+  have h : ∃ a', c.enc a' = c.enc a := ⟨a, rfl⟩
+  simp only [Code2.dec, dif_pos h, Option.some.injEq]
+  exact Code2.enc_inj c h.choose_spec
+
+theorem Code0.enc_of_dec {A : Type} (c : Code0 A) {s : Sem} {a : A} (h : c.dec s = some a) : c.enc a = s := by
+  unfold Code0.dec at h
+  split at h
+  · rename_i hx; cases h; exact hx.choose_spec
+  · cases h
+
+theorem Code1.enc_of_dec {A : Type 1} (c : Code1 A) {s : Sem} {a : A} (h : c.dec s = some a) : c.enc a = s := by
+  unfold Code1.dec at h
+  split at h
+  · rename_i hx; cases h; exact hx.choose_spec
+  · cases h
+
+theorem Code2.enc_of_dec {A : Type 2} (c : Code2 A) {s : Sem} {a : A} (h : c.dec s = some a) : c.enc a = s := by
+  unfold Code2.dec at h
+  split at h
+  · rename_i hx; cases h; exact hx.choose_spec
+  · cases h
+
+/-- Decoding succeeds exactly on the encodings. -/
+theorem Code0.dec_isSome {A : Type} (c : Code0 A) (s : Sem) : (c.dec s).isSome ↔ ∃ a, c.enc a = s := by
+  unfold Code0.dec; split <;> simp_all
+
+theorem Code1.dec_isSome {A : Type 1} (c : Code1 A) (s : Sem) : (c.dec s).isSome ↔ ∃ a, c.enc a = s := by
+  unfold Code1.dec; split <;> simp_all
+
+theorem Code2.dec_isSome {A : Type 2} (c : Code2 A) (s : Sem) : (c.dec s).isSome ↔ ∃ a, c.enc a = s := by
+  unfold Code2.dec; split <;> simp_all
 
 end Ochr.Meaning

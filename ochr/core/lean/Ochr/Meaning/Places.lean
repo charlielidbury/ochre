@@ -89,26 +89,26 @@ def TyS.dataDecl (T : TyS) : Option (IndDecl × List Sem) :=
   T.data.bind fun (n, ps) => (Γ.find? (·.name == n)).map (·, ps)
 
 /-- The structured type field `i` of constructor `c` of `d` at `ps` is read at, given the earlier
-fields: its declared type and data, the hint `Value.meanFields` reads the field at. -/
+fields: its declared type (a code, with its data), the hint `Value.meanFields` reads the field at. -/
 def fieldHint (d : IndDecl) (ps : List Sem) (c i : Nat) (earlier : List Sem) : TyS :=
-  ⟨dm.fieldTy d ps c i earlier, none, none, dm.fieldData d ps c i earlier⟩
+  .plain (dm.fieldTy d ps c i earlier)
 
 /-- The structured type of a constructor value of the declaration named `n` at the parameters `ps`
 (docs/31 D32: a value read off a constructor value is typed by its content). -/
-def dataTyS (n : String) (ps : List Sem) : TyS :=
+noncomputable def dataTyS (n : String) (ps : List Sem) : TyS :=
   match Γ.find? (·.name == n) with
-  | some d => ⟨dm.tyM d ps, none, none, some (n, ps)⟩
-  | none => .plain .err
+  | some d => .plain (dm.tyM d ps)
+  | none => .plain TyM.err
 
 /-- The type a field read off a constructor value is read at: its own when it is a constructor
 value (by content, as the checker types an open value's field), a number's when it is a partly
 moved number, else the hint its declaration gives it at the earlier fields. -/
-def contentTyS (n : String) (ps : List Sem) (c i : Nat) (earlier : List Sem) : Sem → TyS
-  | .dat "Nat" _ _ _ _ => .plain (.ty0 Nat)
+noncomputable def contentTyS (n : String) (ps : List Sem) (c i : Nat) (earlier : List Sem) : Sem → TyS
+  | .dat "Nat" _ _ _ _ => .plain TyM.nat
   | .dat n' ps' _ _ _ => dataTyS dm Γ n' ps'
   | _ => match Γ.find? (·.name == n) with
     | some d => fieldHint dm d ps c i earlier
-    | none => .plain .err
+    | none => .plain TyM.err
 
 /-- A constructor value rebuilt after one of its fields changed: packed again when whole and of
 its type (`ctorM`), by its own declaration's name. -/
@@ -131,7 +131,7 @@ noncomputable def semRank : Sem → Nat
 type it is read at (`contentTyS`). -/
 noncomputable def Sem.stepField (c i : Nat) (s : Sem) : Option (Sem × TyS) :=
   match s with
-  | .proof => some (.proof, .plain .err)
+  | .proof => some (.proof, .plain TyM.err)
   | .dat n ps c' fs _ =>
     if c' = c then (fs[i]?).map fun f => (f, contentTyS dm Γ n ps c i (fs.take i) f) else none
   | _ => none
@@ -143,10 +143,10 @@ noncomputable def Sem.step (T : TyS) : Step → Sem → Option (Sem × TyS)
   | .deref, s => some (s, T)
   | .proj 0, s =>
     match s.asNat with
-    | some (n + 1) => some (.el0 Nat n, .plain (.ty0 Nat))
+    | some (n + 1) => some (.el0 Nat n, .plain TyM.nat)
     | some 0 => none
     | none => match s with
-      | .dat "Nat" _ 1 [w] _ => some (w, .plain (.ty0 Nat))
+      | .dat "Nat" _ 1 [w] _ => some (w, .plain TyM.nat)
       | _ => Sem.stepField dm Γ 0 0 s
   | .proj i, s => Sem.stepField dm Γ 0 i s
   | .field g, s => Sem.stepField dm Γ g.ctor g.idx s
@@ -165,12 +165,12 @@ noncomputable def Sem.updAt (T : TyS) (f : Sem → Sem) : List Step → Sem → 
   | .deref :: sts, s => Sem.updAt T f sts s
   | st :: sts, s =>
     match st, s.asNat with
-    | .proj 0, some (n + 1) => (Sem.updAt (.plain (.ty0 Nat)) f sts (.el0 Nat n)).map Sem.succ
+    | .proj 0, some (n + 1) => (Sem.updAt (.plain TyM.nat) f sts (.el0 Nat n)).map Sem.succ
     | _, _ =>
       match s with
       | .dat "Nat" _ 1 [w] _ =>
         match st with
-        | .proj 0 => (Sem.updAt (.plain (.ty0 Nat)) f sts w).map Sem.succ
+        | .proj 0 => (Sem.updAt (.plain TyM.nat) f sts w).map Sem.succ
         | _ => none
       | .dat n ps c fs _ =>
         let i := match st with | .proj i => i | .field g => g.idx | .deref => 0

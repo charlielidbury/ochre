@@ -1,100 +1,99 @@
 import Ochr.Meaning.SState
 
 /-!
-# Applying and building function meanings (docs/18 Def. "reference run": every call applies
-the callee's meaning)
+# Applying and building function meanings along their codes (docs/18 Def. "reference run":
+every call applies the callee's meaning; docs/31 D59)
 
-A function value means `el0` of a Π-carrier (`Pi.lean`). To apply it the reference run needs
-the Π's shape: its parameters (`PiParam`) and output (`PiOut`), read off the callee's Π-type by
-running its parameter types and codomain. `applyTele` walks the telescope, decoding each
-argument at its parameter type, and returns the output; `mkTele` builds a carrier element from
-a function on meanings (a body's run at every argument), `none` where that function is
-undefined or ill-typed at some argument: the carrier holds total good functions only, so a
-closure whose body goes wrong somewhere, or whose backward function is not injective, means
-`err`. Decoding is classical, by the tag (`TyM.dec0`).
+A function value means an element of its type's carrier, and its type's code is a telescope code
+(`Tel`, `Sem.lean`). To apply a function the reference run walks the code: each argument is decoded
+at its parameter's code, the function applied to it, and the rest of the telescope is the code `k`
+gives at that element; the result is read at the code the telescope reaches, so a call's result
+keeps its whole type. `mkTelL` builds a carrier element from a function on meanings (a body's run
+at every argument), `none` where that function is undefined or ill-typed at some argument: the
+carrier holds total good functions only, so a closure whose body goes wrong somewhere, or whose
+backward function is not injective, means `err`.
+
+## One construction, three levels (`Lvl`)
+
+A function type at `Type₀` has its carrier in `Type`, one at `Type₁` in `Type 1`, one at `Type₂` in
+`Type 2` (`Swap (V : Type) (a : &V) (b : &V) : Unit` is in `Type₁` and borrows). The construction
+reads its level only through `Lvl`: the code family, its encoding and decoding, how a type is read
+at the level (lower levels lifted), how a code is read back as a type, the function-type code, and
+the tag of the level's elements. `lvl0`, `lvl1`, `lvl2` are the three levels the bounded model
+supports (D2).
 -/
 
 namespace Ochr.Meaning
 
 open Classical
 
-/-- Decode a meaning as an element of a level-0 carrier. -/
-noncomputable def TyM.dec0 : (T : TyM) → Sem → Option T.el0
-  | .ty0 A, s => s.as A
-  | .prop P, .proof => if h : P then some ⟨h⟩ else none
-  | .data n ps A unpk, .dat n' ps' c fs (some ⟨B, b⟩) =>
-    if h : n' = n ∧ ps' = ps ∧ ∃ e : B = A, unpk (cast e b) = (c, fs) then some (cast h.2.2.choose b) else none
-  | _, _ => none
+universe u
 
-theorem TyM.dec0_enc0 (T : TyM) (a : T.el0) : T.dec0 (T.enc0 a) = some a := by
-  cases T with
-  | ty0 A =>
-    show (open Classical in if h : A = A then some (h ▸ a) else none) = some a
+/-- Read a meaning as an element of a level-1 Lean type, by its tag (as `Sem.as` at level 0). -/
+noncomputable def Sem.as1 (A : Type 1) : Sem → Option A
+  | .el1 B b => if h : B = A then some (h ▸ b) else none
+  | _ => none
+
+/-- Read a meaning as an element of a level-2 Lean type, by its tag. -/
+noncomputable def Sem.as2 (A : Type 2) : Sem → Option A
+  | .el2 B b => if h : B = A then some (h ▸ b) else none
+  | _ => none
+
+/-- A carrier level. -/
+structure Lvl : Type (max 3 (u + 2)) where
+  Code : Type u → Type (u + 1)
+  enc : {A : Type u} → Code A → A → Sem
+  dec : {A : Type u} → Code A → Sem → Option A
+  codeOf : TyM → (A : Type u) × Code A
+  toTy : {A : Type u} → Code A → TyM
+  pi : (C : Type u) → Tel Code PUnit C → Code C
+  pack : (A : Type u) → A → Sem
+  unpack : (A : Type u) → Sem → Option A
+
+noncomputable abbrev lvl0 : Lvl.{0} := ⟨Code0, Code0.enc, Code0.dec, TyM.code0, fun c => .t0 _ c, Code0.pi, .el0, Sem.as⟩
+
+/-- Level 1: `Type₁`, the universes `Prop` and `Type₀`, lower levels lifted. -/
+noncomputable abbrev lvl1 : Lvl.{1} := ⟨Code1, Code1.enc, Code1.dec, TyM.code1, TyM.of1, Code1.pi, .el1, Sem.as1⟩
+
+/-- Level 2: `Type₂`, the universe `Type₁`, lower levels lifted. -/
+noncomputable abbrev lvl2 : Lvl.{2} := ⟨Code2, Code2.enc, Code2.dec, TyM.code2, TyM.of2, Code2.pi, .el2, Sem.as2⟩
+
+/-- A level is lawful: decoding inverts encoding both ways, a function-type code encodes its
+elements by their tag, which unpacking reads back, and a function-type code read back as a type
+has exactly those encodings as members. -/
+structure Lvl.Lawful (L : Lvl.{u}) : Prop where
+  enc_of_dec : ∀ {A : Type u} (c : L.Code A) {s : Sem} {a : A}, L.dec c s = some a → L.enc c a = s
+  dec_enc : ∀ {A : Type u} (c : L.Code A) (a : A), L.dec c (L.enc c a) = some a
+  enc_pi : ∀ (C : Type u) (t : Tel L.Code PUnit C) (f : C), L.enc (L.pi C t) f = L.pack C f
+  unpack_pack : ∀ (A : Type u) (a : A), L.unpack A (L.pack A a) = some a
+  mem_pi : ∀ (C : Type u) (t : Tel L.Code PUnit C) (s : Sem), s ∈ₛ L.toTy (L.pi C t) ↔ ∃ f, L.enc (L.pi C t) f = s
+
+theorem lvl0_lawful : lvl0.Lawful where
+  enc_of_dec c _ _ h := Code0.enc_of_dec c h
+  dec_enc c a := Code0.dec_enc c a
+  enc_pi _ _ _ := rfl
+  unpack_pack A a := by
+    show (if h : A = A then some (h ▸ a) else none) = some a
     rw [dif_pos rfl]
-  | prop P =>
-    show (if h : P then some (⟨h⟩ : PLift P) else none) = some a
-    rw [dif_pos a.down]
-    rfl
-  | data n ps A unpk =>
-    have h : n = n ∧ ps = ps ∧ ∃ e : A = A, unpk (cast e a) = ((unpk a).1, (unpk a).2) := ⟨rfl, rfl, rfl, rfl⟩
-    show (if h : n = n ∧ ps = ps ∧ ∃ e : A = A, unpk (cast e a) = ((unpk a).1, (unpk a).2)
-      then some (cast h.2.2.choose a) else none) = some a
-    rw [dif_pos h]
-    rfl
-  | ty1 _ | ty2 _ | univ _ | err => exact a.elim
+  mem_pi _ _ _ := Iff.rfl
 
-/-- Decode a meaning as an element of a level-1 carrier. -/
-noncomputable def TyM.dec1 : (T : TyM) → Sem → Option T.el1
-  | .ty1 A, .el1 B b => if h : B = A then some (h ▸ b) else none
-  | .univ 0, .ty (.prop P) => some ⟨P⟩
-  | .univ 1, .ty (.ty0 A) => some A
-  | .ty0 A, s => (s.as A).map ULift.up
-  | .prop P, s => ((TyM.prop P).dec0 s).map ULift.up
-  | .data n ps A unpk, s => ((TyM.data n ps A unpk).dec0 s).map ULift.up
-  | _, _ => none
+theorem lvl1_lawful : lvl1.Lawful where
+  enc_of_dec c _ _ h := Code1.enc_of_dec c h
+  dec_enc c a := Code1.dec_enc c a
+  enc_pi _ _ _ := rfl
+  unpack_pack A a := by
+    show (if h : A = A then some (h ▸ a) else none) = some a
+    rw [dif_pos rfl]
+  mem_pi _ _ _ := Iff.rfl
 
-/-- The type of accumulated final contents after a parameter (`piCar0`'s accumulator step). -/
-abbrev extFin (b : Bool) (Fin T : Type) : Type := match b with | true => Fin × T | false => Fin
-
-/-- Read the accumulated final contents as a list of meanings, in parameter order. -/
-def extRead (b : Bool) (Fin T : Type) (readFin : Fin → List Sem) (enc : T → Sem) :
-    extFin b Fin T → List Sem :=
-  match b with
-  | true => fun x => readFin x.1 ++ [enc x.2]
-  | false => readFin
-
-/-- Build the accumulated final contents from a list of meanings in parameter order, consuming
-it from the front; the rest of the list is returned. -/
-def extMk (b : Bool) (Fin T : Type) (mkFin : List Sem → Option (Fin × List Sem)) (dec : Sem → Option T) :
-    List Sem → Option (extFin b Fin T × List Sem) :=
-  match b with
-  | true => fun fs => do
-    let (x, rest) ← mkFin fs
-    match rest with
-    | t :: rest' => (dec t).map fun y => ((x, y), rest')
-    | [] => none
-  | false => mkFin
-
-/-- The result of applying a level-0 Π: for a data codomain the result and the final contents
-of the borrow parameters, in parameter order; for a returned borrow the forward value and the
-backward function from the value the caller leaves in it to the final contents. -/
-inductive AppResult : Type 3 where
-  | data (result : Sem) (finals : List Sem)
-  | ref (U : TyM) (fwd : U.el0) (back : U.el0 → List Sem)
-
-/-- Apply a level-0 Π-carrier element to arguments, walking the telescope; `none` if an argument
-is not of its parameter type or their number is wrong. -/
-noncomputable def applyTele : (ps : List PiParam) → (acc : List Sem) → (Fin : Type) →
-    (Fin → List Sem) → (out : PiOut) → piCar0 ps acc Fin out → List Sem → Option AppResult
-  | [], acc, _, readFin, .data B, r, [] => some (.data ((B acc).enc0 r.1) (readFin r.2))
-  | [], acc, _, readFin, .ref U, r, [] => some (.ref (U acc) r.val.1 fun v => readFin (r.val.2 v))
-  | p :: ps, acc, Fin, readFin, out, f, a :: as =>
-    match (p.dom acc).dec0 a with
-    | some x =>
-      applyTele ps (acc ++ [(p.dom acc).enc0 x]) (extFin p.isRef Fin (p.dom acc).el0)
-        (extRead p.isRef Fin (p.dom acc).el0 readFin (p.dom acc).enc0) out (f x) as
-    | none => none
-  | _, _, _, _, _, _, _ => none
+theorem lvl2_lawful : lvl2.Lawful where
+  enc_of_dec c _ _ h := Code2.enc_of_dec c h
+  dec_enc c a := Code2.dec_enc c a
+  enc_pi _ _ _ := rfl
+  unpack_pack A a := by
+    show (if h : A = A then some (h ▸ a) else none) = some a
+    rw [dif_pos rfl]
+  mem_pi _ _ _ := Iff.rfl
 
 /-- What a body's run gives at a tuple of arguments: the result (at the run's future), the final
 contents of the borrow parameters as functions of the future (they may depend on a returned
@@ -108,50 +107,172 @@ structure BodyOut : Type 3 where
 /-- The constant future: what is read where nothing depends on the future. -/
 def noFuture : Future := fun _ => .err
 
-/-- The leaf of `mkTele` for a data codomain: the result decoded at `B acc`, the final contents
-built from the body's finals, all read under the constant future (every borrow of the frame
-has ended when the body returns). -/
-noncomputable def mkLeafData (φ : Future) (acc : List Sem) (Fin : Type) (mkFin : List Sem → Option (Fin × List Sem))
-    (B : List Sem → TyM) (o : BodyOut) : Option ((B acc).el0 × Fin) :=
-  match (B acc).dec0 o.result, mkFin (o.finals.map (· φ)) with
+section
+variable (L : Lvl.{u})
+
+/-- Read the accumulated final contents as a list of meanings, in parameter order. -/
+def extReadL (b : Bool) (Fin T : Type u) (readFin : Fin → List Sem) (enc : T → Sem) :
+    extFin b Fin T → List Sem :=
+  match b with
+  | true => fun x => readFin x.1 ++ [enc x.2]
+  | false => readFin
+
+/-- Build the accumulated final contents from meanings in parameter order, consuming them from
+the front; the rest of the list is returned. -/
+def extMkL (b : Bool) (Fin T : Type u) (mkFin : List Sem → Option (Fin × List Sem)) (dec : Sem → Option T) :
+    List Sem → Option (extFin b Fin T × List Sem) :=
+  match b with
+  | true => fun fs => do
+    let (x, rest) ← mkFin fs
+    match rest with
+    | t :: rest' => (dec t).map fun y => ((x, y), rest')
+    | [] => none
+  | false => mkFin
+
+/-- What a call gives back: for a data codomain the result, its type (the code the telescope
+reached at the arguments), and the final contents of the borrow parameters in parameter order; for
+a returned borrow `&U` its code, the forward value, and the backward function from the value the
+caller leaves in it to the final contents. -/
+inductive AppResultL : Type (max 3 (u + 1)) where
+  | data (result : Sem) (T : TyM) (finals : List Sem)
+  | ref (U : Type u) (c : L.Code U) (fwd : U) (back : U → List Sem)
+
+/-- Apply an element of a telescope code's carrier to arguments, walking the code; `none` if an
+argument is not of its parameter's type or their number is wrong. -/
+noncomputable def applyTelL : {Fin C : Type u} → Tel L.Code Fin C → (Fin → List Sem) → C → List Sem →
+    Option (AppResultL L)
+  | _, _, .dat _ _ c, readFin, r, [] => some (.data (L.enc c r.1) (L.toTy c) (readFin r.2))
+  | _, _, .ref _ U c, readFin, r, [] => some (.ref U c r.val.1 fun v => readFin (r.val.2 v))
+  | _, _, .param Fin isRef A c _ k, readFin, f, a :: as =>
+    match L.dec c a with
+    | some x => applyTelL (k x) (extReadL isRef Fin A readFin (L.enc c)) (f x) as
+    | none => none
+  | _, _, .dat .., _, _, _ :: _ => none
+  | _, _, .ref .., _, _, _ :: _ => none
+  | _, _, .param .., _, _, [] => none
+
+/-- The leaf of `mkTelL` for a data codomain: the result decoded at the codomain's code, the
+final contents built from the body's finals, all read under the future `φ`. -/
+noncomputable def mkLeafDataL (φ : Future) (Fin : Type u) (mkFin : List Sem → Option (Fin × List Sem))
+    {B : Type u} (c : L.Code B) (o : BodyOut) : Option (B × Fin) :=
+  match L.dec c o.result, mkFin (o.finals.map (· φ)) with
   | some r, some (fin, []) => some (r, fin)
   | _, _ => none
 
 /-- The backward function of a borrow-returning body at the value `v` the caller leaves in the
 returned borrow: the finals read in the future that fixes the returned label to `v`. -/
-noncomputable def mkBackAt (φ : Future) (Fin : Type) (mkFin : List Sem → Option (Fin × List Sem)) (U : TyM)
-    (o : BodyOut) (k : Nat) (v : U.el0) : Option Fin :=
-  match mkFin (o.finals.map (· (φ.upd k (U.enc0 v)))) with
+noncomputable def mkBackAtL (φ : Future) (Fin : Type u) (mkFin : List Sem → Option (Fin × List Sem))
+    {U : Type u} (c : L.Code U) (o : BodyOut) (k : Nat) (v : U) : Option Fin :=
+  match mkFin (o.finals.map (· (φ.upd k (L.enc c v)))) with
   | some (fin, []) => some fin
   | _ => none
 
-/-- The leaf of `mkTele` for a returned borrow: the forward value and the backward function,
+/-- The leaf of `mkTelL` for a returned borrow: the forward value and the backward function,
 which must be total and injective (`Back`). -/
-noncomputable def mkLeafRef (φ : Future) (acc : List Sem) (Fin : Type) (mkFin : List Sem → Option (Fin × List Sem))
-    (U : List Sem → TyM) (o : BodyOut) : Option (Back Fin (U acc).el0) :=
-  match o.retLabel, (U acc).dec0 o.result with
+noncomputable def mkLeafRefL (φ : Future) (Fin : Type u) (mkFin : List Sem → Option (Fin × List Sem))
+    {U : Type u} (c : L.Code U) (o : BodyOut) : Option (Back Fin U) :=
+  match o.retLabel, L.dec c o.result with
   | some k, some fwd =>
-    if h : ∀ v, (mkBackAt φ Fin mkFin (U acc) o k v).isSome then
-      let back := fun v => (mkBackAt φ Fin mkFin (U acc) o k v).get (h v)
+    if h : ∀ v, (mkBackAtL L φ Fin mkFin c o k v).isSome then
+      let back := fun v => (mkBackAtL L φ Fin mkFin c o k v).get (h v)
       if hi : ∀ v w, back v = back w → v = w then some ⟨(fwd, back), hi⟩ else none
     else none
   | _, _ => none
 
-/-- Build a level-0 Π-carrier element from a function on meanings (a body's run), walking the
-telescope and deciding classically at each argument; `none` if the body is undefined somewhere,
-its result or a final content is not of its type, or (a returned borrow) the backward function
-is not injective. -/
-noncomputable def mkTele (φ : Future) : (ps : List PiParam) → (acc : List Sem) → (Fin : Type) →
-    (List Sem → Option (Fin × List Sem)) → (out : PiOut) → (List Sem → Option BodyOut) →
-    Option (piCar0 ps acc Fin out)
-  | [], acc, Fin, mkFin, .data B, g => (g acc).bind (mkLeafData φ acc Fin mkFin B)
-  | [], acc, Fin, mkFin, .ref U, g => (g acc).bind (mkLeafRef φ acc Fin mkFin U)
-  | p :: ps, acc, Fin, mkFin, out, g =>
-    if h : ∀ x : (p.dom acc).el0,
-        (mkTele φ ps (acc ++ [(p.dom acc).enc0 x]) (extFin p.isRef Fin (p.dom acc).el0)
-          (extMk p.isRef Fin (p.dom acc).el0 mkFin (p.dom acc).dec0) out g).isSome then
-      some fun x => (mkTele φ ps (acc ++ [(p.dom acc).enc0 x]) (extFin p.isRef Fin (p.dom acc).el0)
-          (extMk p.isRef Fin (p.dom acc).el0 mkFin (p.dom acc).dec0) out g).get (h x)
+/-- Build an element of a telescope code's carrier from a function on meanings (a body's run at
+the arguments `acc` so far extended), walking the code and deciding classically at each argument;
+`none` if the body is undefined somewhere, its result or a final content is not of its type, or
+(a returned borrow) the backward function is not injective. -/
+noncomputable def mkTelL (φ : Future) : {Fin C : Type u} → Tel L.Code Fin C → List Sem →
+    (List Sem → Option (Fin × List Sem)) → (List Sem → Option BodyOut) → Option C
+  | _, _, .dat Fin _ c, acc, mkFin, g => (g acc).bind (mkLeafDataL L φ Fin mkFin c)
+  | _, _, .ref Fin _ c, acc, mkFin, g => (g acc).bind (mkLeafRefL L φ Fin mkFin c)
+  | _, _, .param Fin isRef A c _ k, acc, mkFin, g =>
+    if h : ∀ x : A, (mkTelL φ (k x) (acc ++ [L.enc c x]) (extMkL isRef Fin A mkFin (L.dec c)) g).isSome then
+      some fun x => (mkTelL φ (k x) (acc ++ [L.enc c x]) (extMkL isRef Fin A mkFin (L.dec c)) g).get (h x)
     else none
+
+/-- `mkTelL` for a stage of a recursion (`Run.lean`'s `.fix`): where the body is undefined, the
+element is an arbitrary element of the leaf type, when it has one. A stage of a guarded recursion
+is defined only below its rank, and the carrier holds total functions only, so built strictly every
+stage would be `err` and so would every recursive closure (docs/31 D60); a call that decreases in
+rank never reads a stage where it was filled. -/
+noncomputable def mkTelFillL (φ : Future) : {Fin C : Type u} → Tel L.Code Fin C → List Sem →
+    (List Sem → Option (Fin × List Sem)) → (List Sem → Option BodyOut) → Option C
+  | _, _, .dat Fin B c, acc, mkFin, g =>
+    match (g acc).bind (mkLeafDataL L φ Fin mkFin c) with
+    | some r => some r
+    | none => if h : Nonempty (B × Fin) then some (Classical.choice h) else none
+  | _, _, .ref Fin U c, acc, mkFin, g =>
+    match (g acc).bind (mkLeafRefL L φ Fin mkFin c) with
+    | some r => some r
+    | none => if h : Nonempty (Back Fin U) then some (Classical.choice h) else none
+  | _, _, .param Fin isRef A c _ k, acc, mkFin, g =>
+    if h : ∀ x : A, (mkTelFillL φ (k x) (acc ++ [L.enc c x]) (extMkL isRef Fin A mkFin (L.dec c)) g).isSome then
+      some fun x => (mkTelFillL φ (k x) (acc ++ [L.enc c x]) (extMkL isRef Fin A mkFin (L.dec c)) g).get (h x)
+    else none
+
+/-- **The telescope code of a function type** from its description (the reference run's reading
+of the term: each domain, and the codomain, at the arguments so far, `Pi.lean`): each parameter's
+code is its domain's at the earlier arguments, read at the level, and the rest is built at each of
+its elements, encoded as a meaning. -/
+def telL : (ds : List PiDom) → (acc : List Sem) → (Fin : Type u) → (out : PiCod) →
+    (C : Type u) × Tel L.Code Fin C
+  | [], acc, Fin, out =>
+    match out.isRef with
+    | false => ⟨(L.codeOf (out.cod acc)).1 × Fin, .dat Fin _ (L.codeOf (out.cod acc)).2⟩
+    | true => ⟨Back Fin (L.codeOf (out.cod acc)).1, .ref Fin _ (L.codeOf (out.cod acc)).2⟩
+  | p :: ps, acc, Fin, out =>
+    ⟨(a : (L.codeOf (p.dom acc)).1) →
+        (telL ps (acc ++ [L.enc (L.codeOf (p.dom acc)).2 a]) (extFin p.isRef Fin (L.codeOf (p.dom acc)).1) out).1,
+      .param Fin p.isRef _ (L.codeOf (p.dom acc)).2 _ fun a =>
+        (telL ps (acc ++ [L.enc (L.codeOf (p.dom acc)).2 a]) (extFin p.isRef Fin (L.codeOf (p.dom acc)).1) out).2⟩
+
+/-- The type of the next parameter of a telescope code after the given arguments (decoded at
+their parameters' codes), the hint the next argument runs at; `err` past the end or at an argument
+of the wrong type. -/
+noncomputable def telDomL : {Fin C : Type u} → Tel L.Code Fin C → List Sem → TyM
+  | _, _, .param _ _ _ c _ _, [] => L.toTy c
+  | _, _, .param _ _ _ c _ k, a :: as =>
+    match L.dec c a with
+    | some x => telDomL (k x) as
+    | none => TyM.err
+  | _, _, .dat .., _ => TyM.err
+  | _, _, .ref .., _ => TyM.err
+
+/-- The meaning of a function type with telescope code `t`, at level `L`. -/
+def piTyL {C : Type u} (t : Tel L.Code PUnit C) : TyM := L.toTy (L.pi C t)
+
+/-- The meaning of a closure at level `L` from its body's run at every argument (`g`): the element
+`mkTelL` builds along the type's code, tagged at the code's carrier; `err` where it fails. -/
+noncomputable def closureL (φ : Future) {C : Type u} (t : Tel L.Code PUnit C) (g : List Sem → Option BodyOut) : Sem :=
+  match mkTelL L φ t [] (fun fs => some (PUnit.unit, fs)) g with
+  | some F => L.pack C F
+  | none => .err
+
+/-- The meaning of a recursion stage's closure: `mkTelFillL`'s element, tagged at the code's
+carrier; `err` where even filling fails (an empty leaf type). -/
+noncomputable def closureFillL (φ : Future) {C : Type u} (t : Tel L.Code PUnit C) (g : List Sem → Option BodyOut) : Sem :=
+  match mkTelFillL L φ t [] (fun fs => some (PUnit.unit, fs)) g with
+  | some F => L.pack C F
+  | none => .err
+
+/-- Apply a function meaning at level `L` along its type's telescope code: unpack it at the code's
+carrier, then walk the code. -/
+noncomputable def applyFnL {C : Type u} (t : Tel L.Code PUnit C) (F : Sem) (args : List Sem) :
+    Option (AppResultL L) :=
+  (L.unpack C F).bind fun F => applyTelL L t (fun _ => []) F args
+
+/-- **A closure is a member of its own type, or `err`**: it is built in the carrier its type's code
+is indexed by. -/
+theorem closureL_mem (hL : L.Lawful) (φ : Future) {C : Type u} (t : Tel L.Code PUnit C)
+    (g : List Sem → Option BodyOut) : closureL L φ t g ∈ₛ piTyL L t ∨ closureL L φ t g = .err := by
+  unfold closureL
+  split
+  · rename_i F _
+    exact .inl ((hL.mem_pi C t _).2 ⟨F, hL.enc_pi C t F⟩)
+  · exact .inr rfl
+
+end
 
 end Ochr.Meaning
