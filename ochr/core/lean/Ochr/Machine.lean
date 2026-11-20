@@ -1040,18 +1040,20 @@ result as it is then. A borrow-typed result `borrow_k u` given a fresh `σw` is 
 show where it pointed, and the observed result is `u`'s final content. `Id`'s sides
 (`observe`) and [Conv-fun]'s generic calls (`convFnRun`) both observe through here, alike: a
 borrow ending over a moved-out part is an error here as anywhere ([End], D53; D98 removed D68's
-exception for `Id`, under which such a part was read as `⊥`). -/
-def obsResult (fuel : Nat) (r : Value) (σw? : Option Nat) : M Value := do
+exception for `Id`, under which such a part was read as `⊥`). `T` is `r`'s type, as its caller
+has it (D104: the temporaries' stored types; a borrow's content is held at the content of its
+type `&C`). -/
+def obsResult (fuel : Nat) (r : Value) (T : Option Value) (σw? : Option Nat) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   match r, σw? with
   | .borrow k u, some σw =>
-    pushTemp u
-    pushTemp (.borrow k (.abs σw))
+    pushTemp u (match T with | some (.tRef C) => some C | _ => none) "obsResult"
+    pushTemp (.borrow k (.abs σw)) T "obsResult"
     endAll fuel'
     discard popTemp
     popTemp
   | _, _ =>
-    pushTemp r
+    pushTemp r T "obsResult"
     endAll fuel'
     popTemp
 termination_by structural fuel
@@ -1186,10 +1188,11 @@ def borrowPlace (fuel : Nat) (p : Place) : M Value := do
     pure (.borrow l v)
 termination_by structural fuel
 
-/-- [Assign] with the value already computed: drop the old content, store the new. -/
-def assignPlace (fuel : Nat) (p : Place) (v : Value) : M Unit := do
+/-- [Assign] with the value already computed: drop the old content, store the new. `T` is `v`'s
+type, as the caller has it (D104), held with `v` while the old content is dropped. -/
+def assignPlace (fuel : Nat) (p : Place) (v : Value) (T : Option Value) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  pushTemp v
+  pushTemp v T "assignPlace"
   -- D67: a loan behind a borrow the old content holds is not ended: [Drop] of the old borrow
   -- ([End]) carries it back to its owner, where it stays live (reborrow-and-replace,
   -- `x := &(*x).f`). Loans in the owned part, neutrals there included, still end
@@ -1239,10 +1242,10 @@ def endLoansOfTopBind (fuel : Nat) (f : Nat) : M Unit := do
   | [] => pure ()
 termination_by structural fuel
 
-/-- [Drop] a discarded value (`t; u`). -/
-def dropValue (fuel : Nat) (v : Value) : M Unit := do
+/-- [Drop] a discarded value (`t; u`), held with its type `T` as its evaluation returned it (D104). -/
+def dropValue (fuel : Nat) (v : Value) (T : Option Value) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  pushTemp v
+  pushTemp v T "dropValue"
   match v with
   | .borrow l _ => endBorrow fuel' l
   | _ => endLoansOfTopTemp fuel'
@@ -1935,9 +1938,9 @@ def convFnRun (fuel : Nat) (f g pf : Value) (cs : List Value) (hs : List Hint) (
     -- parameters' (for [Close]'s fills)
     let fills := pds.toArray.map (· == .ref .unit)
     let obs (fv : Value) : M (Value × List Value) := privately do
-      let (r, _) ← callFn fuel' false fv none args (args.map fun _ => none) false (res := cd) (fills := fills)
+      let (r, R) ← callFn fuel' false fv none args (args.map fun _ => none) false (res := cd) (fills := fills)
       wholeReturned r
-      let r' ← obsResult fuel' r σw?
+      let r' ← obsResult fuel' r R σw?
       pure (r', (← get).env[0]!.binds.toList.map (·.val))
     -- D53: functions are compared as code, with their moves (fuzz-port shape (c)), wherever
     -- the comparison is asked (a statement's is erased)
@@ -2036,7 +2039,7 @@ discarded. Every value of a proposition is `⋆` (C7) and only such terms evalua
 def eval (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- the editor: an error here is reported at `t`, and hovering `t` shows its value
-  located t (noteValue t (evalAt fuel' typed t hint)) (flight := fun r => some r.1)
+  located t (noteValue t (evalAt fuel' typed t hint)) (flight := some)
 termination_by structural fuel
 
 def evalAt (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) : M (Value × Option Value) := do
@@ -2176,7 +2179,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     if typed && (← strongUpdate p) then fire .Open fun _ => s!"a strong update of a dependent field, to a value of type {Tv.getD .bot}"
     if typed && !(← strongUpdate p) then
       expectTy fuel' "the assigned value" Tv (← match Tp0 with | some T => pure T | none => placeType fuel' p)
-    assignPlace fuel' p v
+    assignPlace fuel' p v Tv
     openWrite p
     pure (.unit, ty .tUnit)
   | .letIn h u w =>
@@ -2205,14 +2208,14 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     modify fun s => { s with tailNext := tail }     -- static ends: the body is the let's tail
     let (r, R) ← eval fuel' typed w (if typed then none else hint)     -- D89: the tail's hint
     let fl ← getFlags     -- the body's erasure flags (dropping may normalise)
-    pushTemp r
+    pushTemp r R "letIn"
     dropTopBind fuel'
     setFlags fl
     pure (← popTemp, R)
   | .seq u w =>
     let myD := (← get).curDecl
-    let (v, _) ← eval fuel' typed u
-    dropValue fuel' v
+    let (v, Tv) ← eval fuel' typed u
+    dropValue fuel' v Tv
     modify fun s => { s with tailDecl := myD }     -- the tail's reading is this sequence's
     demand want
     modify fun s => { s with tailNext := tail }     -- static ends: the tail is the sequence's
@@ -2482,7 +2485,9 @@ def lentProofAssign (fuel : Nat) (p : Place) (u : Term) : M (Option (Value × Op
     let T ← placeType fuel' p
     let (_, Tv) ← eval fuel' true u (some T)
     expectTy fuel' s!"the proof assigned to {g.name} (while part of its value is lent, what the borrow holds unknown: [Open])" Tv T
-  assignPlace fuel' p .proof
+  -- D104: no type is in hand here: the proof was checked on the private copy above, at the
+  -- field's type there, where the lent parts were unknowns
+  assignPlace fuel' p .proof none
   openWrite p
   pure (some (.unit, some .tUnit))
 termination_by structural fuel
@@ -2566,7 +2571,7 @@ def evalCtor (fuel : Nat) (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts
     let (w, T) ← stmtArgIf fuel' stmtC a (eval fuel' typed a fh)
     if let some T := T then sol := unifyParams np FT T sol
     tys := tys.push T
-    pushTemp w
+    pushTemp w T "evalCtor"
     ws0 := ws0.push w
   let ws ← popTemps as.length
   let proof ← ctorIsProof ty
@@ -2611,7 +2616,8 @@ def stmtCallee (fuel : Nat) (fv : Value) (fT : Option Value) (cls? : Option Nat)
 termination_by structural fuel
 
 def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Bool)
-    (cls? : Option Nat := none) (res? : Option DeclInfo := none) : M (Value × Option Value) := do
+    (cls? : Option Nat := none) (res? : Option DeclInfo := none)
+    (given : Option (Value × List Value) := none) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- D80: what the call's declared result type says (η at `Unit`, R2), and which borrow
   -- arguments lend a place whose declared type reads as `Unit` ([Close]'s fill, R3), read off
@@ -2635,14 +2641,16 @@ def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Boo
   demand true
   let (fv, fT) ← eval fuel' typed f
   modify fun s => { s with inPlace := false }
-  pushTemp fv
+  -- D104: the head and each argument are held at the type their evaluation returned, else at the
+  -- one the caller has for them (`given`: a stuck block's function type and its domains)
+  pushTemp fv (fT <|> given.map (·.1)) "evalCall"
   -- one mental model: a call that returns a type or a proof is a statement, and each of its
   -- arguments a statement position, run on its own private copy of the state
   let stmt ← stmtCallee fuel' fv fT cls?
   let mut tys := #[]
   let mut ws0 := #[]
   let mut ender := #[]     -- the editor: which argument ended each argument's borrow
-  for (a, ad) in as.zip argDecls.toList do
+  for ((a, ad), i) in (as.zip argDecls.toList).zipIdx do
     -- v2.0: a constructor argument's parameters may come from the parameter's type
     let hint ← if (typed && (a matches .ctor .. | .val _ | .prim "rewrite" _ | .prim "rewriteR" _ | .prim "hole" _))
         || (!typed && (← needsCtx fuel' a)) then argHint fuel' fv fT ws0 else pure none     -- D89
@@ -2650,7 +2658,7 @@ def evalCall (fuel : Nat) (typed : Bool) (f : Term) (as : List Term) (head : Boo
     -- borrow exactly when its declared type is (D48)
     demand (ad matches .ref _)
     let (w, T) ← stmtArgIf fuel' stmt a (eval fuel' typed a hint)
-    pushTemp w
+    pushTemp w (T <|> given.bind (·.2[i]?)) "evalCall"
     ws0 := ws0.push w
     ender ← noteEnders ender ws0
     tys := tys.push T
@@ -2789,19 +2797,21 @@ def bindTy? (fuel : Nat) (pos : Pos) : M (Option Value) := do
   else some <$> declCallType fuel' P ws.toArray
 termination_by structural fuel
 
-/-- P5: the borrow arguments of a call that is not run end unchanged. -/
-def endBorrowArgs (fuel : Nat) (ws : Array Value) : M Unit := do
+/-- P5: the borrow arguments of a call that is not run end unchanged. `tys` are the arguments'
+types, as the call has them (D104: each held with its type while its borrow ends). -/
+def endBorrowArgs (fuel : Nat) (ws : Array Value) (tys : Array (Option Value)) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  for w in ws do
+  for (w, i) in ws.toList.zipIdx do
     if let .borrow l _ := w then
-      pushTemp w
+      pushTemp w tys[i]?.join "endBorrowArgs"
       endBorrow fuel' l
       discard popTemp
 termination_by structural fuel
 
-/-- [Call]: push a frame `[caps, self, x̄ ↦ w̄]`, run the body, pop the frame. -/
-def runBody (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) :
-    M Value := do
+/-- [Call]: push a frame `[caps, self, x̄ ↦ w̄]`, run the body, pop the frame. `B` is the call's
+type, as the call has it (D104: the body's result is held at it across the frame's pop). -/
+def runBody (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value)
+    (B : Option Value) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let .fix self hs ds c _ body := t | err "internal: not a fix"
   -- K2/K3: a model function's body never runs at runtime
@@ -2809,14 +2819,14 @@ def runBody (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : List (D
     | .gfn n => do pure (← lookupGlobal n).model
     | _ => pure false
   if model then modify fun s => { s with modelDepth := s.modelDepth + 1 }
-  let r ← onFail (runBodyCore fuel' fv cs t rd ws self hs ds c body)
+  let r ← onFail (runBodyCore fuel' fv cs t rd ws B self hs ds c body)
     (if model then modify fun s => { s with modelDepth := s.modelDepth - 1 } else pure ())
   if model then modify fun s => { s with modelDepth := s.modelDepth - 1 }
   pure r
 termination_by structural fuel
 
 def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value)
-    (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (body : Term) : M Value := do
+    (B : Option Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (body : Term) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let d := (← get).depth
   if d ≥ 2000 then exhausted "call depth exceeded (a non-terminating recursion)"
@@ -2851,7 +2861,9 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : Lis
   modify fun s => { s with tailNext := true }
   let (v, _) ← withErasedIf erasedFn (eval fuel' false body hint)
   wholeReturned v
-  pushTempAt ((← topIdx) - 1) v
+  -- D104: the result is held across the pop at the call's type, the declared type of the position
+  -- it is headed for (the body's run is untyped and has none of its own)
+  pushTempAt ((← topIdx) - 1) v B "runBodyCore"
   popFrame fuel'
   modify fun s => { s with depth := d }
   popTemp
@@ -2869,7 +2881,7 @@ def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Ar
   if fv == .proof then
     let B ← if typed then some <$> callType fuel' (← funType fuel' fv fT) ws tys
       else if want then some <$> declCallType fuel' (← funType fuel' fv fT) ws else pure none
-    endBorrowArgs fuel' ws
+    endBorrowArgs fuel' ws tys
     setFlags (true, true)
     return (.proof, B)
   let piTy ← funType fuel' fv fT
@@ -2905,7 +2917,7 @@ def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Ar
   -- D53: an erased call cannot make whole a borrow it is passed (its effects vanish at runtime)
   if cls != 0 then wholeBorrowArgs ws "an erased call"
   if cls == 2 then
-    endBorrowArgs fuel' ws
+    endBorrowArgs fuel' ws tys
     setFlags (true, true)
     return (.proof, B)
   -- static ends, rule 1: a call whose declared result is a borrow lends that borrow every place
@@ -2924,7 +2936,7 @@ def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Ar
     | .gfn _ | .clo _ _ _ =>
       let (cs, t, rd) ← fixOf fv
       -- [App-close]: a stuck body closes the call off; [App-head]: not a sealed program's head call
-      catchStuck (runBody fuel' fv cs t rd ws) fun on =>
+      catchStuck (runBody fuel' fv cs t rd ws B) fun on =>
         if head then throw (.stuck on) else closeCall fuel' fv ws kind res fills tys
     | _ => err s!"call of {fv}, which is not a function"
   -- D99: the result is the fresh borrow `g`, whether the body ran or the call closed off. The
@@ -3544,7 +3556,7 @@ def joinDrop (fuel : Nat) (mt : Term) (run : M (Value × Option Value)) : M (Val
   let (v, T) ← run
   if drops.isEmpty then return (v, T)
   let fl ← getFlags
-  pushTemp v
+  pushTemp v T "joinDrop"
   for q in drops do dropAtJoin fuel' (← movedPlace fuel' q)
   let v ← popTemp
   setFlags fl
@@ -3558,7 +3570,7 @@ def joinCont (fuel : Nat) (mt : Term) (k : Value → Value → M Unit) : M (Valu
   if drops.isEmpty then return k
   pure fun r R => do
     let fl ← getFlags
-    pushTemp r
+    pushTemp r (some R) "joinCont"
     for q in drops do dropAtJoin fuel' (← movedPlace fuel' q)
     let r ← popTemp
     setFlags fl
@@ -3827,7 +3839,7 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
       let armMoved ← armMoves ((← get).placeLog.extract ls (← get).placeLog.size) f0 n0
       -- the arm's result is held as a temporary there, so that a borrow it returns into a
       -- lent place is still in Ω when that place is checked
-      pushTemp av
+      pushTemp av (some T) "closeBlock"
       pure (av, T, pf, armMoved, ← get)
     allProof := allProof && pf
     for q in armMoved do
@@ -3972,7 +3984,9 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
     err s!"INTERNAL [static ends] the match's declared type and its type {B} disagree on whether it is a borrow (please report)"
   -- the block's type is `B`; its call's is not read (D82)
   modify fun s => { s with wantHere := false }
+  -- D104: the block's call holds its head and arguments at the block's function type and domains
   let (v, _) ← evalCall fuel' false (.val anon) args.toList false (some (if allProof then 2 else 0)) (some res)
+    (given := some (.tPi [] (.pi hints.toList domTs (.val B)) rd.toList, doms.toList))
   pure (v, some B)
 termination_by structural fuel
 
@@ -3982,7 +3996,7 @@ termination_by structural fuel
 and the final contents of the owners in `W` (a tuple of the machine, not a `Pair` value,
 D52). -/
 def observe (fuel : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos)
-    (refs : List (Place × Value) := []) : M (Value × List Value) := inStatement do
+    (refs : List (Place × Value × Value) := []) : M (Value × List Value) := inStatement do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- D84 [Id-typestate]: while the side runs, a borrow held outside it (by a binding or a
   -- temporary of this frame) may not end
@@ -3997,12 +4011,12 @@ def observe (fuel : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos)
   expectTy fuel' "a side of Id" T A
   -- D84 [Obs-ref]: each re-pointed borrow binding is observed by where it points, a fresh value
   -- written through it (the same for both sides), as [Obs-borrow] observes a borrow result
-  pushTemp v
-  for (y, σ) in refs do
+  pushTemp v T "observe"
+  for (y, σ, Tσ) in refs do
     fire .ObsRef fun _ => s!"{σ} written through a re-pointed borrow"
-    assignPlace fuel' (.deref y) σ
+    assignPlace fuel' (.deref y) σ (some Tσ)
   let v ← popTemp
-  let v ← obsResult fuel' v none
+  let v ← obsResult fuel' v T none
   let ws ← W.mapM getAt
   pure (v, ws)
 termination_by structural fuel
@@ -4033,12 +4047,12 @@ def idType (fuel : Nat) (typed : Bool) (A t u : Term) : M Value := do
         err s!"[Id-typestate] the {side} side of Id {what} {qs}, the {other} side does not ({hint})"
   -- D84 [Obs-ref]: the borrow bindings both sides re-point (and do not consume), each observed
   -- through one fresh value of its borrowed type
-  let mut refs : List (Place × Value) := []
+  let mut refs : List (Place × Value × Value) := []
   for y in tsT.repointed do
     let T ← placeType fuel' y
     let .tRef T' := T | err s!"INTERNAL [Obs-ref] {← ppPlace y} : {T} is not a borrow type (please report)"
     let d ← withLive true (placeDecl fuel' [] y)
-    refs := refs ++ [(y, ← absAt fuel' d.deref T')]
+    refs := refs ++ [(y, ← absAt fuel' d.deref T', T')]
   let st ← get
   let W := footprint st.env [t, u]
   let (a, as) ← observe fuel' true t A' W refs
@@ -4163,7 +4177,7 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
     pushBind h (some T) (.abs σ) false
     checkTail fuel' w fun r R => do
       let fl ← getFlags
-      pushTemp r
+      pushTemp r (some R) "checkTail"
       dropTopBind fuel'
       setFlags fl
       k (← popTemp) R
@@ -4179,13 +4193,13 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
     pushBind h T v (← getFlags).2 (← refineDecl du)
     checkTail fuel' w fun r R => do
       let fl ← getFlags      -- the path's tail flags (dropping may normalise)
-      pushTemp r
+      pushTemp r (some R) "checkTail"
       dropTopBind fuel'
       setFlags fl
       k (← popTemp) R
   | .seq u w =>
-    let (v, _) ← eval fuel' true u
-    dropValue fuel' v
+    let (v, Tv) ← eval fuel' true u
+    dropValue fuel' v Tv
     checkTail fuel' w k
   | .matchNat p z s =>
     natScrutinee fuel' p
@@ -4354,7 +4368,7 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
   withErasedIf bodyCopies <| checkTail fuel' body fun v T => do
     wholeReturned v
     bodyReturns fuel' s!"{self.name} returns it" v T [] ""
-    pushTempAt ((← topIdx) - 1) v
+    pushTempAt ((← topIdx) - 1) v (some T) "checkFix"
     popFrame fuel'
     discard popTemp
     let g := (← get).goal.getD .bot

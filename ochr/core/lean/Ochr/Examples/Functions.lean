@@ -483,3 +483,93 @@ ochr CallUnknown uses Nats {
 }
 
 #guard (run "CallUnknown" CallUnknown).rejectedWith [("CallSort", "not a function type: σ0")]
+
+/-! ## Values in flight carry their types (D104)
+
+Every binding has a stored type (D82); so does every temporary, a value the machine holds between
+computing it and storing or consuming it: a call's earlier arguments while a later one runs, a
+constructor's earlier fields, an assignment's right-hand side, a discarded value, a result across
+a `let`'s drop, the join or a frame's pop. Each is held with the type the machine has in hand when
+it pushes it. The checker never reads it, so no verdict depends on it; it is there so that the
+consistency proof's invariant ("values have their types") covers values in flight. Each program
+below holds such a value; the guards read the recorded states (`Config.recordStates`) at each term
+of each declaration's own code: every temporary there has a stored type, a borrow at a borrow
+type. The recorded states are at the declaration's own terms only; `inFlightPushes` reads every
+push, at every call depth (`Config.recordPushes`): none in a typed run lacks a type but `⋆`. -/
+
+ochr InFlight uses Nats {
+  def Snd (x : &Nat) (y : Nat) : Nat := y
+  def IdR (x : &Nat) : &Nat := x
+  -- a call's earlier argument, a borrow, held while the later one runs
+  def ArgBorrow (a : Nat) (b : Nat) : Nat := Snd(&a, b)
+  def ArgBorrowRun : Eq(Nat, ArgBorrow(1, 2), 2) := refl
+  -- two calls deep: the outer call's head and borrow, then the inner call's
+  def Nested (a : Nat) (b : Nat) : Nat := Snd(&a, Snd(&b, S(Z)))
+  -- a returned borrow, held as an argument while the later one runs
+  def ArgReturned (a : Nat) (b : Nat) : Nat := Snd(IdR(&a), b)
+  -- a constructor's earlier field held while the later one runs
+  def Fields (a : Nat) (b : Nat) : Pair(Nat, Nat) := Mk(S(a), Add(b, Z))
+  -- an assignment's right-hand side, held while the old content is dropped
+  def Assign (a : &Nat) (b : Nat) : Unit := *a := S(b)
+  -- a discarded value, a borrow
+  def Discard (a : Nat) : Nat := (&a; a)
+  -- a result held across the drop of a `let`'s binding, the binding a borrow
+  def LetDrop (a : Nat) : Nat := (let r = &a; S(Z))
+  -- an arm's result held across the join, which drops what the other arm moves
+  def Join (a : Nat) : Nat := (let k = S(Z); let x = match k { Z => a, S _ => Z }; x)
+  -- a known function's result, a borrow, held at the call's type across its frame's pop (its
+  -- body runs untyped and has no type of its own)
+  def UseIdR (u : Unit) : Nat := (let y = 1; let r = IdR(&y); 0)
+  -- a stuck block's call: its head and its by-move argument held at the block's function type
+  -- and domain
+  def Blk (n : Nat) (x : Nat) : Nat := (let r = match n { Z => x, S _ => Z }; r)
+}
+
+/-- The temporaries of the top frame, `value : type`, at each recorded state on entry to a term
+of `name`'s own code (`Config.recordStates`, located). -/
+def inFlightTemps (name : String) : List (List String) :=
+  let r := runWith (some Prelude) "InFlight" InFlight { recordStates := true } (located := true)
+  match r.rows.find? (·.name == name) with
+  | some row => row.trace.toList.filterMap fun
+      | .state _ false _ st =>
+        let fr := st.env.back!
+        some ((List.range fr.temps.size).map fun i =>
+          s!"{fr.temps[i]!.pp} : {match fr.tempTys[i]?.join with | some T => T.pp | none => "(no type)"}")
+      | _ => none
+  | none => []
+
+/-- Every temporary of every frame, at every recorded state of every declaration of `InFlight`
+(entry and exit), has a stored type, and one that is a borrow type exactly when it holds a borrow. -/
+def inFlightAllTyped : Bool :=
+  let r := runWith (some Prelude) "InFlight" InFlight { recordStates := true } (located := true)
+  r.rows.all fun row => row.trace.all fun
+    | .state _ _ _ st => st.env.all fun fr =>
+        fr.temps.size == fr.tempTys.size &&
+        (fr.temps.zip fr.tempTys).all fun (v, T) => match v, T with
+          | .borrow .., some (.tRef _) => true
+          | .borrow .., _ => false
+          | .bot, some _ => true
+          | _, some (.tRef _) => false
+          | _, some _ => true
+          | v, none => v == .proof
+    | _ => true
+
+#guard inFlightAllTyped
+
+/-- The pushes of `InFlight`'s rows with no stored type in a typed run, at every call depth
+(`Config.recordPushes`): `(site, value)`, `⋆` excluded. -/
+def inFlightPushes : List (String × String) :=
+  let r := runWith (some Prelude) "InFlight" InFlight { recordPushes := true }
+  r.rows.flatMap fun row => row.trace.toList.filterMap fun
+    | .push site true v _ => if v == .proof then none else some (site, v.pp)
+    | _ => none
+
+#guard inFlightPushes.isEmpty
+
+-- the outer call's head and borrow argument, then the inner call's, all typed
+#guard (inFlightTemps "Nested").contains ["Snd : Π(x : &Nat) (y : Nat). Nat", "borrow_0 σ0 : &Nat",
+  "Snd : Π(x : &Nat) (y : Nat). Nat", "borrow_1 σ1 : &Nat"]
+-- a borrow a call returned (its fresh label, D99), at the call's declared type
+#guard (inFlightTemps "ArgReturned").contains ["Snd : Π(x : &Nat) (y : Nat). Nat", "borrow_1 σ0 : &Nat"]
+-- a constructor's first field while the second is evaluated
+#guard (inFlightTemps "Fields").contains ["S(σ0) : Nat", "Add : Π(x : Nat) (y : Nat). Nat"]
