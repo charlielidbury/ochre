@@ -628,6 +628,17 @@ end FixCongr
 
 /-- The type an embedded value's run carries (`run`'s `.val` clause). -/
 noncomputable def valT (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) : Value → TyS
+  | .zero | .succ _ => .plain TyM.nat
+  | .unit => .plain TyM.unit
+  | .ind ty _ _ ps _ => match K.Γ.find? (·.name == ty) with
+    | some d =>
+      let r? : Option Rec := if ps.isEmpty && !d.params.isEmpty then
+          (match hint.data with | some (n, r) => if n = ty then some r else none | none => none)
+        else some (K.dm.recOf d (meanParams K ρ φ d 0 [] ps))
+      match r? with
+      | some r => .plain (K.dm.tyR d r)
+      | none => hint
+    | none => hint
   | .clo caps t rd => match runT K ρ φ false (.plain TyM.err) t (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) with
     | some ((_, R), _) => R
     | none => hint
@@ -708,6 +719,11 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
       simp only [valT]
       rw [runT_congrE hK false t hint _ (fun l => φ l = φ' l) (fun _ h => h)
         (fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h])) (rinv_emptyState _)]
+    | ind ty c h ps fs =>
+      simp only [valT]
+      have hP : ∀ d, meanParams K ρ φ d 0 [] ps = meanParams K ρ φ' d 0 [] ps := fun d =>
+        meanParams_congrE hK d ps 0 [] (fun l h => hv l (by simp [Value.hasLoanM, Value.anyAtom, h]))
+      simp only [hP]
     | _ => rfl
   | tl, .ascribe u A, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]
@@ -928,8 +944,8 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     have hc1 : ∀ u, n = "clone" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inl e1, e2⟩
     have hc2 : ∀ u, n = "peek" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inr (.inl e1), e2⟩
     have hc3 : ∀ u, n = "inplace" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inr (.inr e1), e2⟩
-    rw [runT.eq_38 K ρ φ tl hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3,
-      runT.eq_38 K ρ φ' tl hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3]
+    rw [runT.eq_42 K ρ φ tl hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3,
+      runT.eq_42 K ρ φ' tl hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3]
   | tl, .fix self hs ds c dec body, hint, s, L, hφ, ht, hi => by
     have hbs : bindsOf K ρ φ s ds = bindsOf K ρ φ' s ds :=
       runBinds_congrE hK s L hφ hi (K.D.paramDecls (scopeOf s) ds) ds [] (fun l h => ht l (by simp [Term.anyAtom, h]))

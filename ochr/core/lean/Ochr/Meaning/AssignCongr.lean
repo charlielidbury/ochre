@@ -110,6 +110,10 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     | abs σ =>
       simp only [valT]
       rw [(hv σ (by simp [Value.anyAtom, BEq.beq, Value.beq])).2]
+    | ind ty c h ps fs =>
+      have hP : ∀ d, meanParams K ρ φ d 0 [] ps = meanParams (KA K Δ') ρ' φ d 0 [] ps := fun d =>
+        meanParams_congrA d ps 0 [] (fun σ h => hv σ (by simp [Value.anyAtom, h]))
+      simp only [valT, hP]
     | _ => rfl
   | tl, .ascribe u A, hint, s, ha => by
     rw [runT, runT]
@@ -277,8 +281,8 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     have hc1 : ∀ u, n = "clone" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inl e1, e2⟩
     have hc2 : ∀ u, n = "peek" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inr (.inl e1), e2⟩
     have hc3 : ∀ u, n = "inplace" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inr (.inr e1), e2⟩
-    rw [runT.eq_38 K ρ φ tl hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3,
-      runT.eq_38 (KA K Δ') ρ' φ tl hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3]
+    rw [runT.eq_42 K ρ φ tl hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3,
+      runT.eq_42 (KA K Δ') ρ' φ tl hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3]
   | tl, .fix self hs ds c dec body, hint, s, ha => by
     have hbs : bindsOf K ρ φ s ds = bindsOf (KA K Δ') ρ' φ s ds :=
       runBinds_congrA s (K.D.paramDecls (scopeOf s) ds) ds [] (fun σ h => ha σ (by simp [Term.anyAtom, h]))

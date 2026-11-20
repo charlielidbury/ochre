@@ -809,9 +809,23 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     | none => SM.fail) s
   | .const n => pure (K.C.global n)
   | .val v => fun s =>
-    -- an embedded value, at the hint; a closure at its own type (its code, from its term in its
-    -- captures' frame), an unknown at its type in Δ
+    -- an embedded value at the type it is, as the checker types it (`valType?`): a number at
+    -- `Nat`, `()` at `Unit`, a constructor value at the type its record names (the record its
+    -- meaning carries: the written parameters', or the hint's for a bare one), a closure at its
+    -- own type (its code, from its term in its captures' frame), an unknown at its type in Δ;
+    -- anything else at the hint
     let T : TyS := match v with
+      | .zero | .succ _ => .plain TyM.nat
+      | .unit => .plain TyM.unit
+      | .ind ty _ _ ps _ => match K.Γ.find? (·.name == ty) with
+        | some d =>
+          let r? : Option Rec := if ps.isEmpty && !d.params.isEmpty then
+              (match hint.data with | some (n, r) => if n = ty then some r else none | none => none)
+            else some (K.dm.recOf d (meanParams d 0 [] ps))
+          match r? with
+          | some r => .plain (K.dm.tyR d r)
+          | none => hint
+        | none => hint
       | .clo caps t rd => match runT false (.plain TyM.err) t (stateOf 0 (capsState (capsVals caps) (capsTys rd))) with
         | some ((_, R), _) => R
         | none => hint
