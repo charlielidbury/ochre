@@ -25,19 +25,23 @@ The reference's temporaries are only borrow holders (typed by their label, `hold
 frame's cells (read at the future, owing nothing).
 
 **The fundamental lemma** (`Fund`): from a good state, a successful strict run returns a good result
-(a member of the type it returns, or at `err`) whose label, if any, records its type (`LabOk`), and
-leaves a good state. A proof's run (`SM.erasedS`) returns `⋆` at a proposition, so its
+(a member of the type it returns, or at `err`) whose label, if any, records its type (`LabOk`) and is live or read
+by no position (`LoU`, as `RunPresInd` has it), and leaves a good state. A proof's run (`SM.erasedS`) returns `⋆` at a proposition, so its
 membership is the proposition's truth (`erasedS_true`).
 -/
 
 namespace Ochr.Meaning.Strict
 open Ochr.Meaning
 
-/-- A result is good: a whole member of its type, or `⊥`, or a type value at the error type (a type
-the bounded model has no universe for, e.g. `Type₁` as a value, whose type `Type₂` means `err`). Only a
-TYPE VALUE may sit at `err`: a value at `err` with fields would have them read at real types. -/
+/-- A value with no data inside: a type value or `⋆`. Only such a value may sit at the error type: a
+value at `err` with fields would have them read at real types. -/
+def NoData (v : Sem) : Prop := (∃ T, v = .ty T) ∨ v = .proof
+
+/-- A result is good: a whole member of its type, or `⊥`, or a value with no data at the error type
+(a type the bounded model has no universe for, e.g. `Type₁` as a value, whose type `Type₂` means `err`;
+a field of `⋆`, which a read types `err`). -/
 def GoodRes (R : DataRead) (r : Res) : Prop :=
-  r.1 ∈ₛ[R] r.2.m ∨ r.1 = .moved ∨ (r.2.m = TyM.err ∧ ∃ T, r.1 = .ty T)
+  r.1 ∈ₛ[R] r.2.m ∨ r.1 = .moved ∨ (r.2.m = TyM.err ∧ NoData r.1)
 
 /-- A partly moved MEMBER: `⊥`, or a whole member with parts moved out (`pmem` without its `OpenIn`
 disjunct: what a live label's final content and a holder's content are). -/
@@ -51,7 +55,7 @@ theorem PMem.pmem {R : DataRead} {Γ : List IndDecl} {v : Sem} {T : TyM} (h : PM
 
 /-- A binding's value is good: a (partly moved) member of its stored type, or a type value at `err`. -/
 def GoodVal (R : DataRead) (Γ : List IndDecl) (v : Sem) (T : TyM) : Prop :=
-  DataModel.pmem R Γ v T ∨ (T = TyM.err ∧ ∃ U, v = .ty U)
+  DataModel.pmem R Γ v T ∨ (T = TyM.err ∧ NoData v)
 
 section
 variable (dm : DataModel) (Γ : List IndDecl) (φ : Future)
@@ -70,7 +74,7 @@ breaks it at the root. -/
 def ReadOk (s : SState) : Prop :=
   ∀ ψ, TypedF dm Γ φ s ψ → ∀ f i steps x U,
     Sem.follow dm Γ (s.tyAt (.bind f i)) (s.valAt (.bind f i) ψ) steps = some (x, U) → x.whole →
-      x ∈ₛ[dm.read] U.m ∨ U.m = TyM.err
+      x ∈ₛ[dm.read] U.m ∨ (U.m = TyM.err ∧ NoData x)
 
 /-- **The model-side invariant.** -/
 structure SGood (s : SState) : Prop where
@@ -94,10 +98,11 @@ def StatePres {α : Type 3} (x : SM α) : Prop := ∀ s s' r, SGood dm Γ φ s �
 
 /-- **The fundamental lemma at one run**. -/
 def FundAt (x : SM Res) : Prop :=
-  ∀ s s' r, SGood dm Γ φ s → x s = some (r, s') → GoodRes dm.read r ∧ LabOk dm s' r ∧ SGood dm Γ φ s'
+  ∀ s s' r, SGood dm Γ φ s → x s = some (r, s') →
+    GoodRes dm.read r ∧ LabOk dm s' r ∧ LoU s' r.2.label ∧ SGood dm Γ φ s'
 
 theorem FundAt.pres {x : SM Res} (h : FundAt dm Γ φ x) : StatePres dm Γ φ x :=
-  fun s s' r hs hx => (h s s' r hs hx).2.2
+  fun s s' r hs hx => (h s s' r hs hx).2.2.2
 
 end
 

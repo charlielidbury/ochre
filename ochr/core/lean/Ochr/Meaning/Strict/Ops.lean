@@ -19,7 +19,7 @@ members of the types the read gives them (or the type is `err`: a read through `
 `err`). -/
 def MemReads (dm : DataModel) (Γ : List IndDecl) : Prop :=
   ∀ (T : TyS) (w v : Sem), w ∈ₛ[dm.read] T.m → DataModel.MovedOf Γ v w → ∀ steps x U,
-    Sem.follow dm Γ T v steps = some (x, U) → x.whole → x ∈ₛ[dm.read] U.m ∨ U.m = TyM.err
+    Sem.follow dm Γ T v steps = some (x, U) → x.whole → x ∈ₛ[dm.read] U.m ∨ (U.m = TyM.err ∧ NoData x)
 
 /-- On `⊥`, a read gives `⊥` or nothing. -/
 theorem follow_moved' (dm : DataModel) (Γ : List IndDecl) : ∀ (T : TyS) (steps : List Step) (x : Sem) (U : TyS),
@@ -44,7 +44,7 @@ theorem Future.upd_comm (ψ : Future) {a b : Nat} (h : a ≠ b) (x y : Sem) :
 /-- Read paths of a partly moved member (`MemReads` at a `PMem`; `⊥` reads nothing whole). -/
 theorem MemReads.pmem {dm : DataModel} {Γ : List IndDecl} (hMR : MemReads dm Γ) {T : TyS} {v : Sem}
     (hv : PMem dm.read Γ v T.m) (steps : List Step) (x : Sem) (U : TyS)
-    (hf : Sem.follow dm Γ T v steps = some (x, U)) (hx : x.whole) : x ∈ₛ[dm.read] U.m ∨ U.m = TyM.err := by
+    (hf : Sem.follow dm Γ T v steps = some (x, U)) (hx : x.whole) : x ∈ₛ[dm.read] U.m ∨ (U.m = TyM.err ∧ NoData x) := by
   rcases hv with rfl | ⟨t, -, hm, ht⟩
   · rw [follow_moved' dm Γ _ _ _ _ hf] at hx; exact absurd hx (by simp [Sem.whole])
   · exact hMR T t v ht hm steps x U hf hx

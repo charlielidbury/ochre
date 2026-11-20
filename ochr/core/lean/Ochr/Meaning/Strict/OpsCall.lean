@@ -452,7 +452,7 @@ theorem sgood_bind_read {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s S 
       S.valAt (.bind f i) ψ' = s.valAt (.bind f i) ψ₀ ∨ S.valAt (.bind f i) ψ' = .moved) :
     (∀ f i, Pos.bind f i ∈ S.positions → GoodVal dm.read Γ (S.valAt (.bind f i) ψ') (S.tyAt (.bind f i)).m) ∧
     (∀ f i steps x U, Sem.follow dm Γ (S.tyAt (.bind f i)) (S.valAt (.bind f i) ψ') steps = some (x, U) → x.whole →
-      x ∈ₛ[dm.read] U.m ∨ U.m = TyM.err) := by
+      x ∈ₛ[dm.read] U.m ∨ (U.m = TyM.err ∧ NoData x)) := by
   refine ⟨fun f i hp => ?_, fun f i steps x U hf hx => ?_⟩
   · have hp' := (hpos f i).1 hp
     rw [hty]
@@ -889,23 +889,29 @@ position (`hlive`; `RunPresInd`'s `LoU` of each argument's run), see the module 
 theorem callOfS_sgood {K : RunCtx} {φ : Future} (_hMR : MemReads K.dm K.Γ) {fv : Res} {as : List Res}
     {s s' : SState} {r : Res} (hs : SGood K.dm K.Γ φ s) (_hf : GoodRes K.dm.read fv)
     (ht : BorrowArgsTyped K.dm.read fv as s)
-    (hlive : ∀ l, some l ∈ refLabelsOf K.dm.read fv as → l ∈ s.liveLabels ∨ ∀ p, Indep l (s.valAt p))
     (h : callOfS K.dm.read fv as s = some (r, s')) :
     LabOk K.dm s' r ∧ SGood K.dm K.Γ φ s' := by
+  -- each borrow argument's label is live (the strict test)
+  have hlive : ∀ l, some l ∈ refLabelsOf K.dm.read fv as → l ∈ s.liveLabels ∨ ∀ p, Indep l (s.valAt p) := by
+    intro l hl
+    obtain ⟨i, hi⟩ := List.mem_iff_getElem?.mp hl
+    exact .inl (ht i l hi).1
+  have ht' := fun i l h => (ht i l h).2
+  clear ht
   rcases fv with ⟨fv, ⟨T, lab⟩⟩
   unfold callOfS at h
   cases T with
   | t0 A c =>
     cases c with
-    | pi C t => exact callOfLS_sgood (lvl0 K.dm.read) (lvl0_encMem _) rfl t fv as hs ht hlive h
+    | pi C t => exact callOfLS_sgood (lvl0 K.dm.read) (lvl0_encMem _) rfl t fv as hs ht' hlive h
     | _ => cases h
   | t1 A c =>
     cases c with
-    | pi C t => exact callOfLS_sgood (lvl1 K.dm.read) (lvl1_encMem _) rfl t fv as hs ht hlive h
+    | pi C t => exact callOfLS_sgood (lvl1 K.dm.read) (lvl1_encMem _) rfl t fv as hs ht' hlive h
     | _ => cases h
   | t2 A c =>
     cases c with
-    | pi C t => exact callOfLS_sgood (lvl2 K.dm.read) (lvl2_encMem _) rfl t fv as hs ht hlive h
+    | pi C t => exact callOfLS_sgood (lvl2 K.dm.read) (lvl2_encMem _) rfl t fv as hs ht' hlive h
     | _ => cases h
 
 end Ochr.Meaning.Strict

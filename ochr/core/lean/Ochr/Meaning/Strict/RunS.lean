@@ -14,9 +14,8 @@ an `S` suffix, with these changes and no others (each marked `STRICT` or `C1` at
   passed at (`BorrowArgsTyped`: a borrow is invariant; the callee's final content, a member of the
   parameter's type, becomes the lender's).
 * `.assign`: fails unless the value written is a member of the place's type at the write.
-* `SM.erasedS` (C1) replaces `SM.erasedS`/`SM.erasedAt`: a proof is RUN, on a copy, strictly, and is
-  `⋆` at the type its clause gives it, only if that type is a proposition (level 0). A statement is
-  unchanged (`SM.stmtIf`).
+* `SM.erasedS` (C1) replaces `SM.erasedIf`/`SM.erasedAt`: a proof is RUN, on a copy, strictly, and is
+  `⋆` at `prop True` where its clause ran to `⋆`. A statement is unchanged (`SM.stmtIf`).
 * `cong`, `symm`, `trans`, `rewrite`, `rewriteR` (the orchestrator's decision 1): their premise proofs
   run, each on a copy, and must succeed; the result is `⋆` at `prop True`. A level-0 code is fixed
   by its truth, so a proof that runs has THE true proposition as its type, whatever the checker calls
@@ -42,14 +41,16 @@ noncomputable def SM.strictS (R : DataRead) (x : SM (Sem × TyS)) : SM (Sem × T
   | some (r, s') => if r.1 ∈ₛ[R] r.2.m then some (r, s') else none
   | none => none
 
-/-- C1: an erased term. A proof (`fl.2`) is run on a copy, strictly, and is `⋆` at the type its
-clause gives it when its value is `⋆` and that type is a proposition (level `0`); a statement
-(`fl.1`) runs on a copy as before. Both tests are computable (`Sem.isProof`, `TyM.level` match on
-constructors), so a concrete run still reduces. -/
+/-- C1: an erased term. A proof (`fl.2`) is run on a copy, strictly; where it runs to `⋆` it is `⋆`
+at `prop True`: a level-0 code is fixed by its truth (`propext`), so a proof that runs has THE true
+proposition as its type, whatever its clause called it (the orchestrator's decision 1, applied to every
+proof: a field of `⋆`, which a read types `err`, included). That the checker's proposition means
+`prop True` is the simulation's, from the clause's own run (`⋆` a member of the type it gave, by the
+lemma at the clause). A statement (`fl.1`) runs on a copy as before. The test is computable. -/
 noncomputable def SM.erasedS (fl : Bool × Bool) (x : SM (Sem × TyS)) : SM (Sem × TyS) := fun s =>
   if fl.2 then
     match x s with
-    | some ((v, T), _) => if v.isProof = true ∧ T.m.level = some 0 then some ((.proof, .plain T.m), s) else none
+    | some ((v, _), _) => if v.isProof = true then some ((.proof, .plain (TyM.prop True)), s) else none
     | none => none
   else SM.stmtIf fl.1 x s
 
@@ -80,12 +81,13 @@ noncomputable def refTysOf (R : DataRead) (T : TyM) (as : List Sem) : List TyM :
 noncomputable def refLabelsOf (R : DataRead) (fv : Res) (args : List Res) : List (Option Nat) :=
   ((args.zip (refsOf R fv.2.m (args.map (·.1)))).filter (·.2)).map (·.1.2.label)
 
-/-- STRICT at a call: each borrow argument's label holds the content type of the parameter it is
+/-- STRICT at a call: each borrow argument's label is live (a borrow ended before the call, by a later
+argument's access of its lender, is not passed) and holds the content type of the parameter it is
 passed at (a borrow is invariant: the callee's final content, a member of the parameter's type,
 becomes what the lender reads). -/
 def BorrowArgsTyped (R : DataRead) (fv : Res) (args : List Res) (s : SState) : Prop :=
   ∀ (i l : Nat), (refLabelsOf R fv args)[i]? = some (some l) →
-    s.heldTy l = (refTysOf R fv.2.m (args.map (·.1))).getD i TyM.err
+    l ∈ s.liveLabels ∧ s.heldTy l = (refTysOf R fv.2.m (args.map (·.1))).getD i TyM.err
 
 /-- `callOfL` with one change (REPAIR, prototype): where the final content of a returned borrow does not
 decode (a partly moved content, D53 (h)), the consumed argument labels are fixed to `moved` rather than
