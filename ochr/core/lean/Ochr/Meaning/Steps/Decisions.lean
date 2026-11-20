@@ -29,7 +29,7 @@ theorem scopeOf_sstate (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) :
 /-- The checker's state and its scope state at the top frame's readings agree on what decisions
 read, both ways. -/
 theorem envRel_scopeState' (st : MState) : DecideScope.EnvRel st (scopeState st (DecideScope.topReadings st)) :=
-  ⟨(DecideScope.envRel_scopeState st).rest.symm, fun i => ((DecideScope.envRel_scopeState st).live i).symm⟩
+  (DecideScope.envRel_scopeState st).symm
 
 /-- A decision's live call at `st` runs alike at the top frame's scope state. -/
 theorem runs_top {α : Type} {x : M α} (hx : DecideScope.Sim DecideScope.EnvRel x) {st st' : MState} {b : Nat} {a : α}
