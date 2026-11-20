@@ -131,6 +131,16 @@ theorem Runs.of_runMachine {α : Type} {f : M α} {st : MState} {fuel : Nat} {a 
     {log : Array LogEntry} (h : runMachine f st fuel = (.ok a st', left, log)) : Runs f st fuel a st' :=
   ⟨#[], left, log, h⟩
 
+/-- The checker's position of de Bruijn variable `i` (`Machine.varPos`, as a function). -/
+def ckVarPos (env : Env) (i : Nat) : Option Pos :=
+  if i < env[env.size - 1]!.binds.size then some (.bind (env.size - 1) (env[env.size - 1]!.binds.size - 1 - i))
+  else none
+
+/-- The checker's content of a place, as a function (`Machine.content`: the variable's position,
+then the path). -/
+def ckContent (env : Env) (p : Place) : Option Value :=
+  (ckVarPos env p.steps.1).bind fun pos => (valAt env pos).follow p.steps.2
+
 /-- The checker's entry set of a match (`Machine.staticJoin`): every place under a variable of the
 top frame whose content is `⊥`, at the grain of the value (`botPlaces`). -/
 def entryOf (st : MState) : List Place :=
@@ -188,9 +198,63 @@ structure DecAligned (D : Decisions) (st : MState) : Prop where
   blockCaps : ∀ st₀, SameDec st₀ st → ∀ fuel mt bc b st', Runs (ckBlockCaps fuel mt) st₀ b bc st' →
     D.blockCaps (DecideScope.topReadings st) (entryOf st) mt = bc
 
+/-- What may sit at a place declared an inductive `n`: `⊥`, `⋆`, an unknown, a sealed program, a
+loan, a mark (over anything), or a constructor value of `n`. -/
+def _root_.Ochr.Value.fitsInd (n : String) : Value → Bool
+  | .bot | .proof | .abs _ | .sealed _ | .loan _ | .gloan _ _ => true
+  | .ind ty _ _ _ _ => ty == n
+  | _ => false
+
+/-- What may sit at a place declared a borrow type: a borrow, `⊥`, a loan, or a mark over one. -/
+def _root_.Ochr.Value.refFits : Value → Bool
+  | .borrow _ _ | .bot | .loan _ => true
+  | .gloan _ w => w.refFits
+  | _ => false
+
+/-- A constructor value of a declared inductive with the wrong number of fields (an atom test). -/
+def arityBad (Γ : List IndDecl) : Value → Bool
+  | .ind n c _ _ fs => match Γ.find? (·.name == n) with
+    | some d => match d.ctors[c]? with
+      | some (_, fds) => fs.length != fds.length
+      | none => true
+    | none => false
+  | _ => false
+
+/-- The labels of the marks outside sealed programs and code. -/
+def _root_.Ochr.Value.outerMarks : Value → List Nat
+  | .gloan l w => l :: w.outerMarks
+  | .succ w | .tRef w | .borrow _ w => w.outerMarks
+  | .ind _ _ _ ps fs => (ps.attach.flatMap fun ⟨v, _⟩ => v.outerMarks) ++ (fs.attach.flatMap fun ⟨v, _⟩ => v.outerMarks)
+  | _ => []
+
+/-- **The checker's typing of places** (docs/31 D34, D40), what `movedPlace`'s exits need: at every
+place in scope that exists, by its declared reading (`Decisions.placeDecl` at the top frame's
+readings): an unknown at a place declared an inductive of the declarations has that inductive's
+type (U); such a place holds a value of it or a stand-in (V); a place declared a borrow type holds a
+borrow, `⊥`, a loan or a mark over one (R); a sealed program at a place declared an inductive has
+that inductive as its computed type (`placeType?`, P, asked of every state the same up to what no
+decision reads); every constructor value has its constructor's fields (A); every mark outside a
+sealed program is of a live borrow (M); every loan and mark anywhere in Ω is of a live borrow (L).
+Syntactic typing, which `Good`'s membership does not give (the model reads `&A` as `A`). Read off
+the checker and swept (every place in scope, by the checker's own `placeDecl`); NOT proved
+preserved: every step's `CtxOk` conclusion owes it. -/
+structure ShapeFacts (D : Decisions) (Γ : List IndDecl) (st : MState) : Prop where
+  unknown : ∀ p σ n args, ckContent st.env p = some (.abs σ) → D.placeDecl (DecideScope.topReadings st) p = .ind n args →
+    (Γ.find? (·.name == n)).isSome → ∃ ps, st.absTy[σ]? = some (.tInd n ps)
+  fits : ∀ p v n args, ckContent st.env p = some v → D.placeDecl (DecideScope.topReadings st) p = .ind n args →
+    (Γ.find? (·.name == n)).isSome → v.fitsInd n = true
+  ref : ∀ p v A, ckContent st.env p = some v → D.placeDecl (DecideScope.topReadings st) p = .ref A → v.refFits = true
+  placeType : ∀ st₀, SameDec st₀ st → ∀ fuel p t n args T? b st', ckContent st.env p = some (.sealed t) →
+    D.placeDecl (DecideScope.topReadings st) p = .ind n args → (Γ.find? (·.name == n)).isSome →
+    Runs (Ochr.placeType? fuel p) st₀ b T? st' → ∃ ps, T? = some (.tInd n ps)
+  arity : ∀ v ∈ Env.values st.env, v.anyAtom (arityBad Γ) = false
+  marks : ∀ v ∈ Env.values st.env, ∀ l ∈ v.outerMarks, liveLoan st.env l = true
+  loans : ∀ v ∈ Env.values st.env, ∀ l ∈ v.loans, liveLoan st.env l = true
+
 /-- The run context is the checker state's: its declarations, a data model that speaks for each,
 Δ at the state's unknowns (`DeltaOk`), globals with no label (`run_congr`'s `hK`), Σ
-(`GlobalsOk`), and its decisions the checker's (`DecAligned`). A hypothesis of every statement. -/
+(`GlobalsOk`), its decisions the checker's (`DecAligned`), and the checker's typing of places
+(`ShapeFacts`). A hypothesis of every statement. -/
 structure CtxOk (K : RunCtx) (ρ : Assignment) (st : MState) : Prop where
   inds : K.Γ = st.inds
   covers : ∀ d ∈ K.Γ, K.dm.covers d
@@ -198,6 +262,7 @@ structure CtxOk (K : RunCtx) (ρ : Assignment) (st : MState) : Prop where
   noLabel : ∀ n, (K.C.global n).2.label = none
   globals : GlobalsOk K st
   dec : DecAligned K.D st
+  shapes : ShapeFacts K.D K.Γ st
 
 /-- A run of a decision transfers between states that agree on what decisions read. -/
 theorem runs_envRel {α : Type} {x : M α} (hx : DecideScope.Sim DecideScope.EnvRel x) {s₁ s₂ : MState}
@@ -256,6 +321,23 @@ theorem typeState_sim (fuel : Nat) (t : Term) :
 
 theorem SameDec.symm {st st' : MState} (h : SameDec st st') : SameDec st' st := Eq.symm h
 theorem SameDec.trans {a b c : MState} (h₁ : SameDec a b) (h₂ : SameDec b c) : SameDec a c := Eq.trans h₁ h₂
+
+/-- **The typing of places stays across a change of what no decision reads**, the environment and
+the unknowns' types kept. -/
+theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MState} (hf : ShapeFacts D Γ st)
+    (h : SameDec st' st) (he : st'.env = st.env) (ha : st'.absTy = st.absTy) : ShapeFacts D Γ st' := by
+  have e1 : DecideScope.topReadings st' = DecideScope.topReadings st := by
+    unfold DecideScope.topReadings; rw [he]
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · intro p σ n args hp hd hn; rw [he] at hp; rw [e1] at hd; rw [ha]; exact hf.unknown p σ n args hp hd hn
+  · intro p v n args hp hd hn; rw [he] at hp; rw [e1] at hd; exact hf.fits p v n args hp hd hn
+  · intro p v A hp hd; rw [he] at hp; rw [e1] at hd; exact hf.ref p v A hp hd
+  · intro st₀ h₀ fuel p t n args T? b st₁ hp hd hn hr
+    rw [he] at hp; rw [e1] at hd
+    exact hf.placeType st₀ (Eq.trans h₀ h) fuel p t n args T? b st₁ hp hd hn hr
+  · rw [he]; exact hf.arity
+  · rw [he]; exact hf.marks
+  · rw [he]; exact hf.loans
 
 /-- **The decisions stay the checker's across what no decision reads** (the move log, the
 refinements): every field by the simulation of `Decide.lean` (`DecideScope.decideSim`). -/
@@ -789,39 +871,43 @@ def joinEntry_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : P
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s),
     movedPlaces φ s = entryOf st
 
-/-- `q` takes a field step through `p` (the same root, `p`'s path, then a field step). -/
-def FieldParent (p q : Place) : Prop :=
-  p.steps.1 = q.steps.1 ∧ ∃ st rest, ((∃ i, st = Step.proj i) ∨ (∃ g, st = Step.field g)) ∧
-    q.steps.2 = p.steps.2 ++ st :: rest
+/-- What the step `x` from a place of declared reading `r` needs of it, at the join's grain: a field
+step (`.proj i`, or `.field g` naming the declaration's one constructor) is through an inductive of
+`Γ` with exactly one constructor, at an index that constructor has; a `*` step is through a borrow
+type. -/
+def StepOk (Γ : List IndDecl) (r : DeclInfo) : Step → Prop
+  | .proj i => ∃ n args d cn fs, r = .ind n args ∧ Γ.find? (·.name == n) = some d ∧ d.ctors = [(cn, fs)] ∧
+      i < fs.length
+  | .field g => ∃ n args d cn fs, r = .ind n args ∧ Γ.find? (·.name == n) = some d ∧ d.ctors = [(cn, fs)] ∧
+      g.ty = n ∧ g.ctor = 0 ∧ g.idx < fs.length
+  | .deref => ∃ A, r = .ref A
 
-/-- **The join's grain** (main's D84, `Decide.jdGrain`): every field step of a dropped place is
-through a place whose declared reading is an inductive of `Γ` with exactly one constructor. Through
-anything else (several constructors, a type computed by a match, a type parameter, a number's
-predecessor) the join moves the value whole, so no dropped place steps into it. A finding of the
-drop's proof (docs/31 D29, task C): `Machine.movedPlace` re-roots a place that does not exist to
-its longest existing prefix, η-refining or generalising that prefix only when its type has one
-constructor; the reference never re-roots. Without the grain the two drop different places (the
-checker the prefix whole, the reference the field), so the drop's statement needs it of its list,
-which `Decisions.joinMoves`, aligned with `Decide.jdMoves`, provides. -/
+/-- **The join's grain** (main's D84, `Decide.jdGrain`), and the dropped places' typing: every step
+of a dropped place, from its prefix, is as that prefix's declared reading allows (`StepOk`): a field
+step only through a place whose declared reading is an inductive of `Γ` with exactly one
+constructor, at an index it has; a `*` step only through a borrow type. Through anything else
+(several constructors, a type computed by a match, a type parameter, a number's predecessor) the
+join moves the value whole, so no dropped place steps into it. A finding of the drop's proof
+(docs/31 D29, task C): `Machine.movedPlace` re-roots a place that does not exist to its longest
+existing prefix, η-refining or generalising that prefix only when its type has one constructor;
+the reference never re-roots. Without the grain the two drop different places (the checker the
+prefix whole, the reference the field), so the drop's statement needs it of its list, which
+`Decisions.joinMoves`, aligned with `Decide.jdMoves`, provides. The field index and the `*` clause
+(added with docs/31 D40) are what `movedPlace`'s exits need: a place declared an inductive holding a
+constructor value of it has the field, and a `*` step is through a place that holds a borrow (the
+checker's typing of places, `ShapeFacts`). They are NOT what `jdMoves` provides for a place in an
+arm the checker does not run, which can be ill-typed (`(c.0).5`, `*(c.0)`): there the checker drops
+the parent whole and the reference nothing (docs/31 D41, `Regress/UnrunArmPlace.lean`); open,
+proposed to main as a change to `movedPlace`'s exits. -/
 def GrainOk (D : Decisions) (Γ : List IndDecl) (sc : List DeclInfo) (q : Place) : Prop :=
-  ∀ p, FieldParent p q → ∃ n args d, D.placeDecl sc p = .ind n args ∧ Γ.find? (·.name == n) = some d ∧
-    d.ctors.length = 1
+  ∀ (p : Place) (x : Step) (rest : List Step), p.steps.1 = q.steps.1 → q.steps.2 = p.steps.2 ++ x :: rest →
+    StepOk Γ (D.placeDecl sc p) x
 
 /-- The reference's drop of one place (`joinDrop`'s fold body). -/
 noncomputable def joinDropOne (K : RunCtx) (φ : Future) (s : SState) (q : Place) : SState :=
   match resolve s q with
   | some (pos, steps) => dropAt K φ q pos steps (accessLentPrefix pos steps s)
   | none => s
-
-/-- The checker's position of de Bruijn variable `i` (`Machine.varPos`, as a function). -/
-def ckVarPos (env : Env) (i : Nat) : Option Pos :=
-  if i < env[env.size - 1]!.binds.size then some (.bind (env.size - 1) (env[env.size - 1]!.binds.size - 1 - i))
-  else none
-
-/-- The checker's content of a place, as a function (`Machine.content`: the variable's position,
-then the path). -/
-def ckContent (env : Env) (p : Place) : Option Value :=
-  (ckVarPos env p.steps.1).bind fun pos => (valAt env pos).follow p.steps.2
 
 /-- What `movedPlace` leaves of a place `q` it was asked for (`q'`): `q` itself, which now exists;
 or a prefix of it (the same root, a prefix of the path) holding `⊥` or `⋆`, whose drop does
