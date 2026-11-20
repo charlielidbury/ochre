@@ -73,6 +73,7 @@ import Ochr.Meaning.Regress.OpenWriteDep
 import Ochr.Meaning.Regress.GenNeutralContent
 import Ochr.Meaning.Regress.RefsPathCond
 import Ochr.Meaning.Regress.FreshBound
+import Ochr.Meaning.Regress.EntryCheck
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
