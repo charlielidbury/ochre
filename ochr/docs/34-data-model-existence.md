@@ -1,6 +1,6 @@
 # 34. The data model exists: what `exists_dataModel` owes, two constructions, a recommendation
 
-Design note, task 1 of the data-model lane (branch `spine-datamodel`, from `spine` at d67b1d51). Nothing here is proved yet. Checker verdicts quoted below were obtained by running the checker on the probe program in the appendix at that commit. Claims about the model are marked *argued* (read off the Lean definitions, not kernel-checked) unless said otherwise.
+Design note of the data-model lane (branch `spine-datamodel`, from `spine` at d67b1d51). Sections 1–6 are task 1 (the design, before any code); sections 7–10 are task 2 (records against the current definitions, the large-parameter design, the faithfulness draft, and the prototype of the recommended construction), kernel-checked unless marked *argued*. The checker's verdicts on every probe program are asserted by the build (`Meaning/DataModel/Probes.lean`).
 
 ## 1. What `exists_dataModel` owes today
 
@@ -32,13 +32,13 @@ What the generic model (`DataGeneric.lean`) still has open, by its own account: 
 
 ## 2. Findings, before any construction
 
-### 2.1 As stated, `exists_dataModel` holds of a model that ignores the program (argued; easy to kernel-check)
+### 2.1 As stated, `exists_dataModel` holds of a model that ignores the program (kernel-checked: `Counterexamples.degenerate_meets`)
 
 Take `covers d := True`, `fieldTy := err` everywhere, `car d ps :=` the indices of `d`'s constructors with no fields, `pack d ps c [] := c` when constructor `c` has no fields (else `none`), `fields := []`, `rank := 0`, default `recArgs` and reading. `err` has no members, so `pack_isSome`'s right side holds exactly for a fieldless constructor with no fields; every other law is immediate; `WholeFields` holds because no reading returns a field. Any `D` will do. So the statement is true and says nothing about the program. At this model `fieldTypesOf_step` is false (the checker's type for `Pair(Nat, Nat)`'s first field means `Nat`, not `err`), so the assembly cannot use a model that `exists_dataModel` merely asserts.
 
 **Fix (spine-owned statement):** `exists_dataModel` must conclude faithfulness (O1), honest recursion data or a better rank law (O2, O3, see 2.2), and `CtxOk` must carry the same faithfulness, not only `covers`. Faithfulness has to be stated against the reference run of the declared field and parameter type terms, under the model itself (a field type `List(A)` means `dm.tyM List [A]`), so the statement is about a model together with the program meaning of the items before each declaration (type functions in field types read earlier globals).
 
-### 2.2 The rank law does not give guarded recursion through nesting (checker verdicts checked; model side argued)
+### 2.2 The rank law does not give guarded recursion through nesting (kernel-checked: `RankCounterexample.semRank_eq`)
 
 The checker accepts, and computes to 3 (`F3` accepted by `refl`, `F2` rejected):
 
@@ -53,7 +53,7 @@ The recursive call is at `k = f.0.1`, a list of the same type nested inside `f`'
 
 **Fix:** a rank that decreases along every field step, whatever declaration the step passes through. The uniform choice is the height of the value's meaning as a tree: every field of a constructor value is a proper subtree of its meaning, so every strict subterm has smaller height, through nesting and across declarations, with nothing to prove per declaration. `semRank` would read the height of the meaning (with a number's height its value), and `rank`, `recArgs` and `rank_lt` would leave `DataModel`. That changes `Places.lean` and `Data.lean` (not this lane's files).
 
-### 2.3 Parameters above level 0 cannot be coded, so some accepted constructor values are members of no code (argued from the definitions; to be kernel-checked)
+### 2.3 Parameters above level 0 cannot be coded, so some accepted constructor values are members of no code (kernel-checked: `Counterexamples.ctorM_large_not_mem`)
 
 `Fording.lean`'s `InductiveModel` block, accepted by the checker:
 
@@ -66,7 +66,7 @@ def hl : HL(λ(x : Word) : Type => Word) := MkHL[λ(x : Word) : Type => Word](Ze
 
 `te`'s first parameter runs to the type value `Type₀`, `.ty (TyM.univ 1)` = `.ty (.t1 _ .univ1)` (`Run.lean`, the `.sort` clause). A data code holds its parameters as `Par0`, which holds a level-0 type or a coded level-0 element only (`Sem.lean`), and `parOf` (`Data.lean`) turns any other parameter into `.val .bad`, whose meaning is `.err`. The encoding of every element at `tyM TEq ps` therefore has `.err` where the run's constructor value has `.ty (.t1 _ .univ1)`, and `Code0.enc` never produces `.ty _` at that position. So for every data model and every reading, the run's meaning of `te` is not a member of its declared type, and `Assembly.defn_member` is false for this program. This is not about the construction: it is the code layering (D59: `Code0 : Type → Type 1` cannot hold a `Code1`). `hl` and `G (F : Π(X : Type). Type)` in the same block are the same case wherever their parameter means a level-1 value (`.el1 C f`), which `Code0.enc` never produces either.
 
-**Fix (spine decision):** either a data code may hold large parameters (a change to the code families' universes, which D59 chose to avoid), or a constructor value records its parameters as its type's code reads them back (so a large parameter is recorded as the code records it, and `car` depends on the parameters only through what the code keeps), or the checker forbids parameters above `Type₀`'s elements in data declarations (it would reject `TEq`, `HL`, `G`).
+**Fix (spine decision):** settled in §8 (the checker is not restricted): a data type's code keeps a small record of what its field types read of the parameters (K3), and a constructor value records that record.
 
 ### 2.4 Model and reading are a fixed point only because a data value's meaning holds its carrier element (argued)
 
@@ -132,29 +132,102 @@ The root is the element inside the meaning (`el`). Lean's model has no such thin
 - **Stuck:** `Coherent` for the generic model as designed, in general (2.4). The fixed point probably exists (the set model does), but I see no recursion a Lean construction could use; `Single(Single(Nat, 0), S1)` is the smallest declaration showing it.
 - **Open, smaller:** (b2)'s residual, a field type applying a function to parameter-typed data at an instance that mentions the declaration itself.
 
-## Next (task 2), as I would run it
+## 7. Task 2, part 1: records against the current definitions (kernel-checked, standard axioms)
 
-A concrete program with `List`, `Rose` (and `CountF`), `V`, a `Prop`-sorted declaration, `Single` at `Single(Nat, 0)`, `VecF` over `Word`, `BW` and `BH`, each beside the checker's verdict (asserted at build), with a hand-built model satisfying every `DataModel` law, `read_eq`, `WholeFields` and pack/read round trips, `#print axioms` on each. Plus three kernel-checked counterexamples: the degenerate model of 2.1, the rank of 2.2 (a lawful model under which `CountF`'s recursive call does not decrease `semRank`), and `te`'s non-membership (2.3). Under (b2) the hand-built model would be built in the (b2) shape where the current `Sem` allows it, to check the design before asking for the `Sem` change.
+All in `Meaning/DataModel/`, beside the checker's verdicts in `Probes.lean`.
 
-## Appendix: the probe program (all verdicts as marked)
+- **`Counterexamples.degenerate_meets`**: `exists_dataModel`'s statement holds of `degenerate` (every field type `err`, carriers the fieldless constructors) for every list of items; its field types are `err`, which no checker field type means (`degenerate_fieldTy`).
+- **`RankCounterexample`**: `dmK`, a data model covering `List` and `Rose` with every `DataModel` law proved (its reading its own, `List`'s tail announced by `recArgs`, ranked by length), reading the program's types at the run's codes (`tyM_rose`, `tyM_listRose`, `fieldTy_honest`, `recArgs_honest`). For `CountF`'s argument `f` and the forest `k` its recursive call is at (`k_in_f`: two field steps), both members of `List(Rose(Nat))` (`f_mem`, `k_mem`), `semRank_eq : semRank k = semRank f`. The checker accepts `CountF` and computes `3` by `refl` (`Probes.lean`, `F3`; `F2` with `2` rejected).
+- **`Counterexamples.ctorM_large_not_mem`**: for every data model, a constructor value whose first parameter is `Type` (what the run gives `te`'s first parameter) is not a member of its type's code (`dat_large_not_mem`, any level-1 or level-2 type value as a parameter).
+- **The W-type shape** (the team lead's check on the height): a field that is a function into the declared type is rejected by positivity, directly (`WT`) and through a type function (`WT2`), both asserted. Data values are finite trees, so the height of a meaning is a natural number and decreases along every field.
 
-```
-ochr DMProbe1 uses Nats, Lists, Bools {
-  inductive Rose (A : Type) := Node(a : A, kids : List(Rose(A)))
-  def CountF (f : List(Rose(Nat))) : Nat by f := (
-    match f { Nil => 0, Cons(t, rest) => match t { Node(a, k) => S(CountF(k)) } })
-  def F3 : Eq(Nat, CountF(Cons(Node(1, Cons(Node(2, Cons(Node(3, Nil), Nil)), Nil)), Nil)), 3) := refl
-  reject def F2 : Eq(Nat, CountF(Cons(Node(1, Cons(Node(2, Cons(Node(3, Nil), Nil)), Nil)), Nil)), 2) := refl
-  inductive Single (A : Type) (a : A) := MkS(x : A, e : Eq(A, x, a))
-  def S1 : Single(Nat, 0) := MkS(0, refl)
-  def S2 : Single(Single(Nat, 0), S1) := MkS(S1, refl)
-  def BF (b : Bool) : Type := (match b { false => Nat, true => Unit })
-  inductive BW := MkBW(b : Bool, x : BF(b))
-  def BW1 : BW := MkBW(true, ())
-  def BW0 : BW := MkBW(false, 5)
-  def BG (b : Bool) : Type := (match b { false => Nat, true => (Π(n : Nat). Nat) })
-  inductive BH := MkBH(b : Bool, x : BG(b))
-}
-```
+## 8. Parameters above level 0: what a data type's code stores (task 2, part 2)
 
-`TEq`, `te`, `HL`, `hl`, `G`, `EqF`, `ef`, `NL` are in `Examples/Fording.lean` (`InductiveModel`), accepted and asserted by the build.
+**What cannot be stored.** A `Type₀` code cannot hold `Type₀` as a value: `Type₀`'s carrier is the type of all `Type₀` codes, so a code holding an element of it would be as large as the collection it belongs to (D59's `Code0 : Type → Type 1` is forced: `univ1 : Code1 ((A : Type) × Code0 A)` needs `Code0 A : Type 1`). Lean's set model agrees: `TEq(U, a, b)` is a small set that does not contain `U`. So no data type's code stores a parameter above level 0. Since types travel through universes (`te4 := IdT(TEq(Type, Word, Word), te)`, accepted), a type's code must determine its members exactly, so a constructor value's meaning cannot record such a parameter either: the members of `TEq(U, …)` over every `U` would not form a small set, and a type passed through `Type₀` would change its members.
+
+**What must be stored**: the declaration, the carrier, and a small *record* of what the declaration's field types read of the parameters. The probes show how much that is:
+- `te2`/`te3` (accepted/rejected): an equation between two level-1 closures. The field's type depends on the large values (the truth of their equation).
+- `HL3` (accepted; `h3bad` rejected): a field `y : App0(f)` with `App0(f) := f(Zero)`. The field's type is a code computed from the large parameter, not a truth value.
+- `H` (accepted): the same with non-uniform recursion at the large parameter.
+
+**Options.**
+- **(K1) Small parameters as they are, large ones by a marker.** This is the current `parOf` with constructor values recording their parameters as the code reads them back. It costs least, but it is unsound for accepted programs: at markers, `te3`'s type has the same members as `te2`'s, while its declared field type is false, so no lawful model exists (`pack_isSome` fails at `te3`'s parameters), and `HL3`'s field types differ at `λ.Word` and `λ.Unit` with equal markers.
+- **(K2) K1 plus the truth of each equation field.** It covers `TEq` at every `U`. It fails on `HL3`, whose field type is a code, not a truth value.
+- **(K3) Records** (chosen, built in the prototype). A record keeps what the field types read:
+  - a type parameter's entry (its code, or its declaration and record);
+  - a value parameter read small (its constructor tree and leaves);
+  - for a large parameter, only the codes and propositions the field types compute from it, as functions of the earlier fields read small (`teqRec`: the truth of `a = b`; `U` is dropped, `teqRecOf_U`).
+
+  Recursive and nested children's records are computed by the declaration's signature and never stored: a record holding its own children's records would be a non-well-founded value, which is D61's cycle again. A record is small (`Rec := List Step → Entry`, in `Type 1`), so codes stay small. A constructor value records its type's record instead of its parameters (D32's self-description, by record).
+
+  Cost (spine-owned):
+  - `Code0.data d (r : Rec) A` replaces `Par0`;
+  - `Sem.dat` records `r`;
+  - `tyM d ps` builds the record from the parameters by the declaration's field types (faithfulness);
+  - `unifyTyS` and `hint.data` give a record (a constructor with omitted parameters takes the hint's record directly).
+
+**Built (prototype, kernel-checked):**
+- `te` is a member of `TEq(Type, Word, Word)` (`te_mem`, `te_memTy`).
+- An equation between one level-1 value and itself has a member (`te2_mem`); between two different values the type is empty (`te3_empty`).
+- `te4`: the type is its code, an element of `Type₀`'s carrier with nothing dropped, and `te` encodes an element of its carrier.
+
+**What keeps small keys faithful.** The run computes a later field's type from the earlier fields' full meanings; the record is keyed by their small readings. On well-typed earlier fields nothing is lost: two members of one type with the same small reading are equal (`mem_small_inj`, proved generically).
+
+## 9. Faithfulness, drafted (task 2, part 3)
+
+`Meaning/DataModel/Faithful.lean` (definitions, type-checked; for the spine lead to restate):
+- `FieldsFaithful K ρ` and `ParamsFaithful K ρ`: at well-typed parameters and earlier fields (`ParamsTyped`, `FieldsTyped`), the reference run of the declared type term, in the frame the checker's `fieldTele` evaluates it in (`teleFrame`: the fields, the later ones `moved`, then the parameters, each at its type), is defined and means `K.dm.fieldTy` (`K.dm.paramTy`). Definedness is asked, so a run made undefined cannot make it vacuous.
+- `ExistsDataModel items fuel`: `exists_dataModel` restated with the checker's decisions (not an existential `D`) and faithfulness at every checker state over the program's Σ and every assignment, the run context being the program meaning's (type functions in field types read earlier globals). `CtxFaithful K ρ` is what `CtxOk` should carry beside `covers`.
+- What replaces `recArgs`: nothing. `rank`, `recArgs` and `rank_lt` go, and `semRank` reads `semHeight` (a constructor value one more than its fields, a number its value), whose law `semHeight_field_lt` is proved for every field of every declaration.
+
+## 10. The prototype of (b2) (task 2, part 4)
+
+`Meaning/DataModel/Proto/` holds local copies of the definitions that change, nothing of the spine's edited. Every theorem below is kernel-checked. `#print axioms` gives `propext` alone for the stage and membership laws, and `propext`, `Classical.choice`, `Quot.sound` where the encoding's classical carrier test enters.
+
+- `Core.lean`:
+  - `Val`, a meaning without the packed element;
+  - codes with records (`Code`, `Entry`, `Rec`, level-1 `Code1` for large parameter values);
+  - `Small`, the small reading;
+  - `depth`, with `depth_field_lt`;
+  - `whole`.
+- `Stages.lean`:
+  - a signature of field shapes (a leaf's code, or a data field's declaration and record), with stages built together with their meanings;
+  - a later field's shape reads an earlier field's meaning small, so no field needs masking;
+  - `tele_image` characterizes a telescope's meanings.
+- `Carrier.lean`:
+  - stage injectivity (`lvl_inj`) and realizability, monotone in the stage (`rz_le`);
+  - every member realized at the stage equal to its depth (`rz_depth`);
+  - members are whole (`mem_whole`);
+  - **the carrier holds each member once and its meaning function is a bijection onto the members** (`meanC_inj`, `mem_iff_meanC`).
+- `Members.lean`:
+  - **`mem_iff`**: the members are the least set closed under the constructors, which is `DataModel`'s four packing laws in one statement on meanings, with no reading;
+  - types as codes (`tyOf`, `encC`, `memTy`, `memTy_tyOf`);
+  - `mem_small_inj`.
+- `Program.lean`, `Examples.lean`: the probe programs' declarations, records and signature, and their values as members:
+  - `Word`, `Bool`;
+  - `List(Nat)`;
+  - `Rose(Nat)` nested through `List`;
+  - `CountF`'s argument and recursive argument, both members, the recursive one of smaller depth (`countF_decreases`; contrast `semRank_eq`);
+  - **`S2 : Single(Single(Nat, 0), S1)`** (`s2_mem`, with no fixed point: §2.4's smallest hard case);
+  - `te`, `te2`, `te3`, `te4`;
+  - `VecF(Nat, Succ(Zero))` over `Word` (`v1_mem`);
+  - `BW` and `BH` (type-function fields over a `Bool` field, a function-valued leaf);
+  - `IsZ` (`Prop`-sorted: inhabited at `Zero`, empty at `Succ(Zero)`);
+  - `V := MkV(n : Nat, x : Fin1(n))`.
+
+**No law failed.** What the prototype does not cover:
+- function types' telescopes (`Code.fn C` stands in, as their structure is not this lane's subject);
+- data types at carrier level 1;
+- faithfulness: the signature and records are written by hand, and that they are the run's readings is §9's statement.
+
+**The residual** (§3; `RV`, `rv1 : RV(RV(Nat))` accepted, asserted). It is real at the level of faithfulness: computing `RV`'s field type at `RV(Nat)` runs `LenL` on a `List(RV(Nat))` field, which decodes it into `List`'s carrier at `RV(Nat)`'s record. In the prototype's terms that carrier exists before `RV`'s record at `RV(RV(Nat))` is needed: its stages need only the signature at records nested strictly inside (`RV(Nat)`'s, inside `RV(RV(Nat))`'s entry for `A`). This suggests the faithful signature is definable by recursion on records (the structural order of `Entry`), which non-uniform recursion does not disturb: a child's record is built from entries of the parent's. *Argued, not built.*
+
+## 11. Next
+
+With the prototype validated, the port is the spine lead's (§8's cost list, plus `Sem.dat` without `el` and `semRank` by height). On the ported definitions, the general existence proof is then:
+- the generic signature from the declarations (`self`, `nest`, closed fields), with records computed by the run (faithfulness by construction where the signature *is* the run's reading, the residual by recursion on records);
+- `ExistsDataModel` from the prototype's generic laws, which carry over unchanged.
+
+## Appendix: the probe programs
+
+In `Meaning/DataModel/Probes.lean`, checked when the file is elaborated, every verdict and every rejection's reason asserted by the build: `DMProbeNest` (`Rose`, `CountF`, `F3`/`F2`, `Single`, `S1`, `S2`, `BW`, `BH`, the rejected W-type shapes `WT`, `WT2`) and `DMProbeLarge` (`TEq`, `te`, `te2`, `te3` rejected, `te4`, `LP`, `HL3`, `h3`, `h3bad` rejected, `H`, `RV`, `rv0`, `rv1`). `TEq`, `te`, `HL`, `hl`, `G`, `EqF`, `ef`, `NL` are also in `Examples/Fording.lean` (`InductiveModel`).

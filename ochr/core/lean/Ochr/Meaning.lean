@@ -104,6 +104,11 @@ import Ochr.Meaning.SubstAbs
 import Ochr.Meaning.Regress.EqJ
 import Ochr.Meaning.Regress.SplitSubst
 import Ochr.Meaning.Regress.StarErasure
+import Ochr.Meaning.DataModel.Probes
+import Ochr.Meaning.DataModel.Counterexamples
+import Ochr.Meaning.DataModel.RankCounterexample
+import Ochr.Meaning.DataModel.Faithful
+import Ochr.Meaning.DataModel.Proto.Examples
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
