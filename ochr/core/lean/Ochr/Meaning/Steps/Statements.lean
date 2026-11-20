@@ -4,6 +4,7 @@ import Ochr.Meaning.DecisionsInst
 import Ochr.Meaning.DecideScope
 import Ochr.Meaning.Program
 import Ochr.Meaning.WF
+import Ochr.Meaning.CallRef
 import Ochr.Machine
 import Ochr.Check
 
@@ -687,12 +688,29 @@ def substEnv_abs_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
     Below (MState.mean K.dm K.M K.Γ ρ st') (MState.mean K.dm K.M K.Γ ρ st) ∧
     Good K.dm K.M K.Γ ρ st'
 
-/-- [Seal]: a re-run of a sealed program means the sealed program (its run), and changes nothing
-of the state's core (it runs on a private copy). -/
+/-- **[Seal]: a re-run of a sealed program means the sealed program** (`nfSealed`: its run from
+the empty state, kept where it is stuck), EXACTLY (since D29 no borrow ends early in a run, so the
+old `⊑` is equality), under an assignment extending `ρ` at the unknowns the nested run created
+(`restoreKeep` keeps their types and the generalisation and η records, docs/31 D20 item 9); the
+environment, goal and records in force are the state's, the table of unknowns only grows, and
+`Good` holds of the state after.
+
+`t` is the text of a sealed program the state holds, or one a substitution made of it: its loans
+are live borrows of the state (its holes, `hholes`), its tail reads no hint (`htf`, (WF16)), and its
+reference run succeeds (`hok`, the restriction of untyped runs to checked code, docs/31 D20 item 4).
+Its proof runs the induction hypothesis on the nested state (`env := #[{}]`), which holds the holes
+as loans whose borrows are outside it: no state of that run is `Good` as stated ((WF2), and the
+future is untyped at the holes), which is the nested-run obligation `nestedRun_sim`. -/
 def nfSealed_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st st' : MState)  (t : Term) (v : Value) (hint : TyS)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.nfSealed fuel t) st bh v st'),
-    (∀ φ, meanV K ρ φ hint v ⊑ meanV K ρ φ hint (.sealed t)) ∧ st'.core = st.core
+  ∀ (st st' : MState) (t : Term) (v : Value) (hint : TyS)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hholes : ∀ l ∈ t.loans, liveLoan st.env l = true) (htf : Term.tailHintFree K.Γ t = true)
+    (hok : ∀ ψ, (runT K ρ ψ false hint t (emptyState 0)).isSome)
+    (bh : Nat) (h : Runs (Ochr.nfSealed fuel t) st bh v st'),
+    ∃ ρ', Extends st ρ ρ' ∧ (∀ ψ, meanV K ρ' ψ hint v = meanV K ρ ψ hint (.sealed t)) ∧
+      st'.env = st.env ∧ st'.goal = st.goal ∧ st'.refs = st.refs ∧
+      st.absTy.size ≤ st'.absTy.size ∧ (∀ σ, σ < st.absTy.size → st'.absTy[σ]? = st.absTy[σ]?) ∧
+      Good K.dm K.M K.Γ ρ' st'
 
 /-- `canonNeutral`: a sealed program already generalised in this world is its `σ`, which the
 path condition makes mean the same. -/
@@ -771,66 +789,6 @@ def type_futureFree_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Na
   ∀ (st : MState) (T : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hT : ∃ p, MState.posTyM K.dm K.M K.Γ ρ st p = some (meanV K ρ noFuture (.plain .err) T).asTy),
     ∀ φ', (meanV K ρ φ (.plain .err) T).asTy = (meanV K ρ φ' (.plain .err) T).asTy
-
-/-- A direct call (`callFn`, untyped or typed): below the reference's `callOf` on the callee's
-meaning, and `Good` kept. The arguments are loan-free (WF5, `ArgsLoanFree`). -/
-def callFn_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st st' : MState)  (typed : Bool) (fv : Value) (fT : Value)
-    (ws : Array Value) (tys : Array (Option Value)) (hd : Bool) (v : Value) (T? : Option Value)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hargs : ArgsLoanFree st.env ws)
-    -- the callee as the run reads it (`closeCall_step_stmt`); `fT` is the checker's input only
-    (fres : Res) (hf : run K ρ φ (.plain .err) (.val fv) (SM' K ρ st) = some (fres, SM' K ρ st))
-    (bh : Nat) (h : Runs (Ochr.callFn fuel typed fv (some fT) ws tys hd) st bh (v, T?) st'),
-    ∃ r s', callOf K.dm.read fres (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
-      meanV K ρ φ r.2 v ⊑ r.1 ∧
-      Below (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
-
-/-- Running a body (`runBody`): the frame pushed with the captures and parameters, the body run,
-the frame popped: below the function's meaning applied (the induction hypothesis on the body). -/
-def runBody_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st st' : MState)  (fv : Value) (cs : List Value) (t : Term)
-    (rd : List (DeclInfo × Value)) (ws : Array Value) (v : Value)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hargs : ArgsLoanFree st.env ws)
-    (hfv : fv = .clo cs t rd ∨ ∃ n, fv = .gfn n)
-    -- the callee as the run reads it (the pilot form took `fT` free: `Regress/CloseCallStmt.lean`)
-    (fres : Res) (hf : run K ρ φ (.plain .err) (.val fv) (SM' K ρ st) = some (fres, SM' K ρ st))
-    (bh : Nat) (h : Runs (Ochr.runBody fuel fv cs t rd ws) st bh v st'),
-    ∃ r s', callOf K.dm.read fres (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
-      meanV K ρ φ r.2 v ⊑ r.1 ∧
-      Below (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
-
-/-- [Close] (`closeCall`), every row: exact against `callOf`. The result is a sealed program (or
-`()` at a declared `Unit`, or a borrow of one), and each lent place a fill: both mean what the
-reference's call gives them, since a sealed program means its run.
-
-The callee's meaning and type code are the run's reading of the value (`run (.val fv)`: a
-closure's code from its term, a global's from `K.C`, an abstract value's from `Δ`; a sealed callee
-is typed as its program's result where that is a function, docs/31 item 3), not a separately
-quantified type (the pilot form took `fT` free, so `fT := .zero` refuted it at once:
-`Regress/CloseCallStmt.lean`). The row and the declared-`Unit` readings `kind`, `res`, `fills`
-and the cells' types `tys` are read off the call as written (`evalCall`) and trusted; typing
-makes them agree with the callee's telescope code at the arguments (`TyM.paramAt?`,
-`TyM.codAt?`), which the hypotheses `hkind`, `hres`, `hfills`, `htys` state (without them a
-`res := .unit` at a `Nat` codomain, or a `fills` entry at a `Nat` cell, made the checker return
-`()` where the reference returns the value: the same file). -/
-def closeCall_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st st' : MState) (fv : Value) (ws : Array Value)
-    (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)) (v : Value)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hargs : ArgsLoanFree st.env ws)
-    (fres : Res) (hf : run K ρ φ (.plain .err) (.val fv) (SM' K ρ st) = some (fres, SM' K ρ st))
-    (hpi : fres.2.m.isPi = true)
-    (hkind : kind = .ref ↔ ∃ U, fres.2.m.codAt? K.dm.read ((argsRes K ρ φ ws).map (·.1)) = some (true, U))
-    (hres : res = .unit → ∀ B, fres.2.m.codAt? K.dm.read ((argsRes K ρ φ ws).map (·.1)) = some (false, B) →
-      B = TyM.unit)
-    (hfills : ∀ i : Nat, fills.getD i false = true → ∀ p,
-      fres.2.m.paramAt? K.dm.read (((argsRes K ρ φ ws).map (·.1)).take i) = some p → p.2 = TyM.unit)
-    (htys : ∀ (i l : Nat) (w : Value), ws[i]? = some (Value.borrow l w) → ∀ p,
-      fres.2.m.paramAt? K.dm.read (((argsRes K ρ φ ws).map (·.1)).take i) = some p →
-      ∃ T : Value, tys[i]? = some (some (Value.tRef T)) ∧ (Value.tyS K.dm K.M K.Γ ρ T).m = p.2)
-    (bh : Nat) (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st bh v st'),
-    ∃ r s', callOf K.dm.read fres (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
-      meanV K ρ φ r.2 v = r.1 ∧
-      Exact (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
 
 /-- [Call-type] (`callType`, `declCallType`): the codomain the callee's telescope code reaches at
 the arguments (for a returned borrow, its content) is the reference's result type. -/
@@ -1339,6 +1297,102 @@ def piShape_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
       (run K ρ noFuture (.plain .err) t'
         (stateOf 0 (capsState (capsVals K ρ noFuture cs) (capsTys K ρ noFuture rd)))).map
         (fun r => (r.1.1.asTy, r.1.2.m))
+
+/-! ### The call area, in the simulation form (fifth lead; docs/31 D62)
+
+The checker's call (`Machine.callFn`) is reached from `evalCall` once the head and the arguments
+are evaluated and popped from the temporaries; the reference's (`run`'s `.call` clause) applies the
+callee's meaning to the head's and the arguments' results (`callOf`). The statements below start
+from the checker's state with the head and the arguments still counted as temporaries
+(`MState.withTemps`), where the relation holds as it held before the pops; the reference's
+arguments are the checker's read through the renaming (`ArgsAgree`). (As first stated, in the order
+form against `callOf` from `SM' K ρ st`, which is false once a borrow was held, docs/31 D20.) -/
+
+/-- The state with values in flight counted as temporaries of the top frame, in order. -/
+def _root_.Ochr.MState.withTemps (st : MState) (ws : List Value) : MState := ws.foldl MState.withTemp st
+
+/-- The reference's arguments are the checker's: each argument's meaning at the run's future pulled
+back along the renaming, and a borrow argument's label renamed (`callOf` reads nothing else). -/
+def ArgsAgree (π : Nat → Nat) (ws : Array Value) (as : List Res) : Prop :=
+  as.length = ws.size ∧ ∀ (i : Nat) (w : Value) (a : Res), ws[i]? = some w → as[i]? = some a →
+    a.1 = meanV K ρ (fun l => φ (π l)) (.plain .err) w ∧
+    a.2.label = (match w with | .borrow l _ => some (π l) | _ => none)
+
+/-- `SimConcl`, and the type the checker returns agrees with the reference's (`StrAgree`). -/
+def SimConclT (π : Nat → Nat) (st st' : MState) (s : SState) (x : Assignment → SM Res) (v : Value)
+    (T? : Option Value) : Prop :=
+  ∃ ρ' π' r s', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
+    x ρ' s = some (r, s') ∧
+    meanV K ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
+    (∀ T, T? = some T → StrAgree K ρ' T r.2) ∧
+    Rel K ρ' φ π' st' s' ∧ Good K.dm K.M K.Γ ρ' st'
+
+/-- **A call** (`callFn`) of a callee that is neither a statement nor a proof (`hns`: the run's
+`SM.erasedIf` is not taken; such calls are `eval`'s, on a copy), in the simulation form: the
+reference applies the callee's meaning (`callOf`), and the checker's result, read through the
+renaming, is its result, of the same type. Its assembly (`Steps/Call.lean`, docs/31 D62): the
+call's type and decisions, the result's lending (static ends, rule 1), then a neutral callee closed
+off (`closeCall_step_stmt`) or a known one's body run (`runBody_step_stmt`, then
+`callOf_inPlace`), or, where the body is stuck, the call closed off from the state before it. -/
+def callFn_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState) (typed : Bool) (f : Term) (args : List Term) (hd : Bool) (fv : Value)
+    (fT : Option Value) (ws : Array Value) (tys : Array (Option Value)) (recUid? : Option Nat)
+    (res : DeclInfo) (fills : Array Bool) (want defer : Bool) (v : Value) (T? : Option Value)
+    (hg : Good K.dm K.M K.Γ ρ (st.withTemps (fv :: ws.toList))) (hctx : CtxOk K ρ st)
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π (st.withTemps (fv :: ws.toList)) s)
+    (hns : K.D.flags (scopeOf s) (.call f args hd) = (false, false))
+    (fres : Res) (hf : run K ρ (fun l => φ (π l)) (.plain .err) (.val fv) s = some (fres, s))
+    (as : List Res) (has : ArgsAgree K ρ φ π ws as)
+    (bh : Nat) (h : Runs (Ochr.callFn fuel typed fv fT ws tys hd none recUid? res fills want defer) st bh (v, T?) st'),
+    SimConclT K ρ φ π (st.withTemps (fv :: ws.toList)) st' s (fun ρ' => callOf K.dm.read fres as) v T?
+
+/-- **A known callee's body, run in place** (`runBody`), in the simulation form: against the
+reference's run in place (`CallRef.runBodyRef`: the frame pushed, the body run, the frame popped),
+which the induction hypothesis reaches from a related state. That the run in place is the
+application of the callee's meaning is the reference's own lemma (`callOf_inPlace`).
+
+`hok`: the body runs untyped (`eval fuel' false body`), and an untyped run of arbitrary text can
+succeed in the checker where the reference has no meaning (an unannotated `Nil`; docs/31 D20 item 4),
+so the statement is for code whose reference run succeeds; for a body, the callee's meaning being a
+member of its type gives it. -/
+def runBody_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState) (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value))
+    (ws : Array Value) (v : Value)
+    (hg : Good K.dm K.M K.Γ ρ (st.withTemps (fv :: ws.toList))) (hctx : CtxOk K ρ st)
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π (st.withTemps (fv :: ws.toList)) s)
+    (hfix : fv = .clo cs t rd ∨ ∃ n, fv = .gfn n ∧ Runs (Ochr.fixOf fv) st 0 (cs, t, rd) st)
+    (fres : Res) (hf : run K ρ (fun l => φ (π l)) (.plain .err) (.val fv) s = some (fres, s))
+    (as : List Res) (has : ArgsAgree K ρ φ π ws as)
+    (hok : ∀ ρ', (runBodyRef K ρ' φ fres cs t rd as s).isSome)
+    (bh : Nat) (h : Runs (Ochr.runBody fuel fv cs t rd ws) st bh v st'),
+    SimConcl K ρ φ π (st.withTemps (fv :: ws.toList)) st' s (fun ρ' => runBodyRef K ρ' φ fres cs t rd as) v
+
+/-- **[Close]** (`closeCall`), every row, in the simulation form: EXACT against `callOf`. The
+result is a sealed program (or `()` at a declared `Unit`, or a borrow of one), and each lent place
+a fill; both mean what the reference's call gives them (the result, the finals; for a returned
+borrow, the forward value and the backward function at its final content), since a sealed program
+means its run from the empty state, whose call is the same `callOf`. The lending marks `callFn`
+made before (`lent_g`) are no site of a live borrow, so they are not compared. The row and the
+declared-`Unit` readings (`kind`, `res`, `fills`) and the cells' types (`tys`) are read off the call
+as written and trusted; `hkind`, `hres`, `hfills`, `htys` tie them to the callee's telescope code at
+the arguments, as before (`Regress/CloseCallStmt.lean` refuted the statement without them). -/
+def closeCall_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
+  ∀ (st st' : MState) (fv : Value) (ws : Array Value)
+    (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)) (v : Value)
+    (hg : Good K.dm K.M K.Γ ρ (st.withTemps (fv :: ws.toList))) (hctx : CtxOk K ρ st)
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π (st.withTemps (fv :: ws.toList)) s)
+    (fres : Res) (hf : run K ρ (fun l => φ (π l)) (.plain .err) (.val fv) s = some (fres, s))
+    (hpi : fres.2.m.isPi = true)
+    (as : List Res) (has : ArgsAgree K ρ φ π ws as)
+    (hkind : kind = .ref ↔ ∃ U, fres.2.m.codAt? K.dm.read (as.map (·.1)) = some (true, U))
+    (hres : res = .unit → ∀ B, fres.2.m.codAt? K.dm.read (as.map (·.1)) = some (false, B) → B = TyM.unit)
+    (hfills : ∀ i : Nat, fills.getD i false = true → ∀ p,
+      fres.2.m.paramAt? K.dm.read ((as.map (·.1)).take i) = some p → p.2 = TyM.unit)
+    (htys : ∀ (i l : Nat) (w : Value), ws[i]? = some (Value.borrow l w) → ∀ p,
+      fres.2.m.paramAt? K.dm.read ((as.map (·.1)).take i) = some p →
+      ∃ T : Value, tys[i]? = some (some (Value.tRef T)) ∧ (Value.tyS K.dm K.M K.Γ ρ T).m = p.2)
+    (bh : Nat) (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st bh v st'),
+    SimConcl K ρ φ π (st.withTemps (fv :: ws.toList)) st' s (fun ρ' => callOf K.dm.read fres as) v
 
 /-- **The induction step, in the simulation form** (docs/31 D20 item 1). For every `Good`
 assignment `ρ` and every reference state `s` that simulates the checker's state under a renaming
