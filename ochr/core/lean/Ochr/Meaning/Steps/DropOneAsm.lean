@@ -261,7 +261,7 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
       simp only [Option.some.injEq, Prod.mk.injEq] at this
       exact this.1.symm
     rw [hpp] at hck'' hupd hst'
-    have hclear₂ := access_clears fuel st st₂ q pos b₂ hck hacc
+    have hclear₂ := access_clears K ρ φ st₂ (accessLentPrefix pos q.steps.2 s) π pos q.steps.2 hg₂ hs₂'
     have hclear₃ : ∀ l, liveLoan st₃.env l = true → ∀ x ∈ Env.sitesOf st₃.env l, x.pos = pos →
         dataHit q.steps.2 x.path = false := by rw [henv₃]; exact hclear₂
     have hgrain₁ : GrainOk K.D K.Γ (scopeOf ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2))) q := by

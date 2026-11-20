@@ -105,17 +105,6 @@ theorem shallow_borrow : ShallowAtom (fun | .borrow _ _ => true | _ => false) wh
   gloan _ _ _ := rfl
   succ _ _ := rfl
 
-theorem hasBorrow_of_holdsBorrow (l : Nat) : ∀ (v : Value), v.holdsBorrow l = true → v.hasBorrow = true
-  | .borrow m w, _ => by simp [Value.hasBorrow, Value.anyAtom]
-  | .succ w, h => by
-    simp only [Value.holdsBorrow] at h
-    have := hasBorrow_of_holdsBorrow l w h
-    simp only [Value.hasBorrow] at this ⊢
-    rw [Value.anyAtom]; simp [this]
-  | .zero, h | .unit, h | .gfn _, h | .clo _ _ _, h | .gloan _ _, h | .loan _, h | .bot, h | .abs _, h
-  | .sealed _, h | .proof, h | .tNat, h | .tUnit, h | .tEq _ _ _, h | .tRef _, h | .tPi _ _ _, h
-  | .sort _, h | .ind _ _ _ _ _, h | .tInd _ _, h => by simp [Value.holdsBorrow] at h
-
 /-- **The write of `⊥` holds the same borrows**, where a borrow is the whole value of its position
 ((WF1)) and a whole root written holds no borrow. -/
 theorem holdsBorrow_updAt_bot {steps : List Step} {v v' : Value}
