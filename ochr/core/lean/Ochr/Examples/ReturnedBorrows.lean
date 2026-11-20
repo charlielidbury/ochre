@@ -704,7 +704,7 @@ ochr HoleSites uses Nats, Fixtures, StaticEnds {
     let z = match k { Z => 0, S m => 1 };
     *r := z;
     let d = a; d)
-  -- observing a lent place without ending its borrow: an Id over the lender in a split world
+  -- reading a lent place without ending its borrow: an Id over the lender in a split world
   reject def ObsLent (n : Nat) (a : Nat) (b : Nat) : Prop := (
     let r = Pick(clone(n), &a, &b);
     match n { Z => Id(Nat, clone(a), 1), S m => True })

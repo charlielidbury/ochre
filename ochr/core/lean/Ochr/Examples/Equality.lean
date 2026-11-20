@@ -291,7 +291,7 @@ ochr Moves84 uses Nats {
   def Reborrows (x : &Nat) : Id(Unit, AddM(&*x, 0), ()) := AddMZero(x)
   -- a side that moves out through a borrow and does not refill it leaves it open
   reject def LeftOpen (y : &Nat) : Id(Unit, (let a = *y; ()), ()) := refl
-  -- changed by D98: both sides leave `*y` moved, and observing them ends `y` over it, an error
+  -- changed by D98: both sides leave `*y` moved, and the observation ends `y` over it, an error
   -- as when the same code runs ([D53]); refilled, or copied with `clone`, it is accepted
   reject def LeftOpenBoth (y : &Nat) : Id(Unit, (let a = *y; ()), (let b = *y; ())) := refl
   def RefilledBoth (y : &Nat) : Id(Unit, (let a = *y; *y := a; ()), (let b = *y; *y := b; ())) := refl

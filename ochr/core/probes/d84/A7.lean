@@ -3,10 +3,12 @@ import Ochr.Examples.Fixtures
 open Ochr.Test
 ochr A7 uses Nats {
   inductive Pr := MkPr(a : Nat, b : Nat)
-  -- left open at a field, through a join, against a direct move of the same field
-  def L1 (k : Nat) (y : &Pr) : Prop := Id(Unit, match k { Z => (let a = (*y).0; ()), S _ => () }, (let a = (*y).0; ()))
-  def L1Gen (k : Nat) (y : &Pr) : L1(k, y) := refl
-  def L1At1 (y : &Pr) : L1(S(Z), y) := refl
+  -- left open at a field, through a join, against a direct move of the same field. Since D98
+  -- rejected: both sides leave `(*y).0` moved, and the observation ends `y` over it ([D53]);
+  -- `L1Gen` and `L1At1` then name no constant (accepted before D98)
+  reject def L1 (k : Nat) (y : &Pr) : Prop := Id(Unit, match k { Z => (let a = (*y).0; ()), S _ => () }, (let a = (*y).0; ()))
+  reject def L1Gen (k : Nat) (y : &Pr) : L1(k, y) := refl
+  reject def L1At1 (y : &Pr) : L1(S(Z), y) := refl
   -- flipped: the other field on the right
   reject def L2 (k : Nat) (y : &Pr) : Id(Unit, match k { Z => (let a = (*y).0; ()), S _ => () }, (let a = (*y).1; ())) := refl
   -- left open whole through the join vs a field directly
