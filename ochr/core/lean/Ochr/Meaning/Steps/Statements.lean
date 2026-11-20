@@ -434,7 +434,7 @@ def renormAll_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
 
 /-- [Split]'s refinement `σ := r` (`refine`): under an assignment that gives `σ` the meaning of
 `r` (the arm the assignment selects, with its fields assigned), the substitution is exact and
-`Good` is kept; the record in `refs` states no fact. -/
+`Good` is kept, the record in `refs` included (it is the path condition the assignment meets). -/
 def refine_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (σ : Nat) (r : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)

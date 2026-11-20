@@ -59,7 +59,7 @@ theorem renormAll_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) :
 
 /-- [Split]'s refinement `σ := r` (`refine`): under an assignment that gives `σ` the meaning of
 `r` (the arm the assignment selects, with its fields assigned), the substitution is exact and
-`Good` is kept; the record in `refs` states no fact. -/
+`Good` is kept, the record in `refs` included (it is the path condition the assignment meets). -/
 theorem refine_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : refine_step_stmt K ρ φ (fuel + 1) := by
   sorry
 

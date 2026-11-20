@@ -56,7 +56,7 @@ theorem good_after (ρ : Assignment) : Good K.dm K.M K.Γ ρ after := by
     | bind f i => simp only [MState.posTyM, noBind] at h; cases h
     | temp f i => cases h
   refine ⟨⟨fun σ h _ => absurd h (not_refd σ), fun n σ h => absurd h (by simp [after, saved]),
-      fun σ v h => absurd h (by simp [after, saved])⟩, ⟨fun φ _ p T h => absurd h (hpos p T),
+      fun σ v h => absurd h (by simp [after, saved]), fun σ r h => absurd h (by simp [after, saved])⟩, ⟨fun φ _ p T h => absurd h (hpos p T),
       fun σ h _ => absurd h (not_refd σ), fun G h => by simp [MState.goalM, after, saved] at h⟩, ?_⟩
   refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ⟨?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
   · intro p hp; rw [allPos_after] at hp; cases hp

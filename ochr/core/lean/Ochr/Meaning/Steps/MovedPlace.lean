@@ -425,9 +425,10 @@ theorem exit_abs (st : MState) (s : SState) (π : Nat → Nat) (q p : Place) (σ
 
 /-- **A sealed program at the parent has a one-constructor declared type** (the exit of the sealed
 branch does not happen). Through a field step, `GrainOk` gives it (`placeType?` reads the declared
-type). Through a borrow step the parent would hold a sealed program of a borrow type with no live
-hole, which `GrainOk` does not exclude: whether a join can drop the content of such a borrow is
-open. -/
+type). Through a borrow step the parent would hold a bare sealed program of a borrow type, which
+`GrainOk` does not exclude; but a place of a borrow type holds a borrow (`borrow_k ⌈…⌉`: a call
+returning a borrow closes off to one, `closeCall`'s `.ref` kind; a generic borrow is
+`borrow_ℓ σ`), `⊥` or a loan, never a bare sealed program: an invariant to state. Open. -/
 theorem exit_sealed (fuel : Nat) (st st' : MState) (s : SState) (π : Nat → Nat) (q p : Place) (t : Term)
     (T? : Option Value) (b : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpar : parentOf q = some p)
@@ -447,10 +448,15 @@ theorem exit_other (st : MState) (s : SState) (π : Nat → Nat) (q p : Place) (
     (habs : ∀ σ, v ≠ .abs σ) (hsealed : ∀ t, v ≠ .sealed t) : v = .bot ∨ v = .proof := by
   sorry
 
-/-- After the shortest lent prefix is accessed whole, no strict prefix of the path is lent (the
-access ends what is lent at or under that prefix, sites re-rooted by its ends included, and
-nothing above it was lent). Open. -/
-theorem alp_idem (pos : Pos) (steps : List Step) (s : SState) :
+/-- After the shortest lent prefix is accessed whole, no strict prefix of the path is lent: the
+access ends, to a fixpoint, what is lent at or under that prefix, sites re-rooted by its ends
+included (`relend` re-roots a site to one of the ended label's, which is at or under the prefix or
+off the path), and nothing above it was lent; an ended label keeps no site, so each label is
+ended at most once and the access's rounds (one per live label) reach the fixpoint. Stated under
+the relation and `Good`, which the proof may need about the reference's holders; not known to be
+false without them. Open. -/
+theorem alp_idem (st : MState) (s : SState) (π : Nat → Nat) (pos : Pos) (steps : List Step)
+    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) :
     accessLentPrefix pos steps (accessLentPrefix pos steps s) = accessLentPrefix pos steps s := by
   sorry
 
@@ -485,13 +491,15 @@ theorem scopeOf_alp {s s₁ : SState} {pos : Pos} {steps : List Step} (h : s₁ 
   · exact scopeOf_of_declsOf (declsOf_accessLentPrefix s pos steps)
 
 /-- The reference's state after an access of the lent prefix, again: the same. -/
-theorem alp_again {s s₁ s₂ : SState} {pos : Pos} {steps : List Step} (h₁ : s₁ = s ∨ s₁ = accessLentPrefix pos steps s)
+theorem alp_again {s s₁ s₂ : SState} {pos : Pos} {steps : List Step}
+    (hidem : accessLentPrefix pos steps (accessLentPrefix pos steps s) = accessLentPrefix pos steps s)
+    (h₁ : s₁ = s ∨ s₁ = accessLentPrefix pos steps s)
     (h₂ : s₂ = s₁ ∨ s₂ = accessLentPrefix pos steps s₁) : s₂ = s ∨ s₂ = accessLentPrefix pos steps s := by
   rcases h₂ with rfl | rfl
   · exact h₁
   · rcases h₁ with rfl | rfl
     · exact .inr rfl
-    · exact .inr (alp_idem pos steps s)
+    · exact .inr hidem
 
 /-- **`movedPlace` after the parent is found**, in the simulation form. -/
 theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
@@ -507,6 +515,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
   obtain ⟨ρ₁, Δ₁, s₁, hsz₁, hag₁, hs₁or, hctx₁, hrel₁, hg₁, hout₁⟩ :=
     (ih K ρ φ).movedPlace_step st st₁ p p' pos s π hg hctx hs (resolve_parent hpar hpos) (grain_parent hpar hgrain) bh hmp
   have hs₁q := alp_parent hpar hs₁or
+  have hidem := alp_idem K ρ φ st s π pos q.steps.2 hg hs
   have E₁ : Ext K ρ φ π st st₁ s₁ ρ₁ Δ₁ := ⟨hsz₁, hag₁, hctx₁, hrel₁, hg₁⟩
   obtain ⟨x, st₂, b₂, hget, h2⟩ := Runs.bind_inv h
   obtain ⟨hx, hst₂⟩ := runs_get_inv hget
@@ -544,12 +553,12 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
       subst st₆
       have hclr := fillAccess_clears fuel st₁ st₄ p b₃ c₂ hacc hc₂
       simp only [hclr, List.isEmpty_nil, Bool.not_true, Bool.false_eq_true, ↓reduceIte] at h6
-      have hs₂q := alp_again hs₁q (.inr rfl)
+      have hs₂q := alp_again hidem hs₁q (.inr rfl)
       obtain ⟨ρ₃, Δ₃, s₃, hsz₃, hag₃, hs₃or, hctx₃, hrel₃, hg₃, hout₃⟩ :=
         (ih { K with Δ := Δ₁ } ρ₁ φ).movedPlace_step st₄ st' q q' pos (accessLentPrefix pos q.steps.2 s₁) π hg₄ hctx₄
           hrel₄' (by rw [resolve_alp hs₂q]; exact hpos) (by rw [scopeOf_alp hs₂q]; exact hgrain) b₆ h6
       have E₃ : Ext { K with Δ := Δ₁ } ρ₁ φ π st₄ st' s₃ ρ₃ Δ₃ := ⟨hsz₃, hag₃, hctx₃, hrel₃, hg₃⟩
-      exact ⟨ρ₃, Δ₃, s₃, alp_again hs₂q hs₃or, (E₁.trans K ρ φ E₂).trans K ρ φ E₃, hout₃⟩
+      exact ⟨ρ₃, Δ₃, s₃, alp_again hidem hs₂q hs₃or, (E₁.trans K ρ φ E₂).trans K ρ φ E₃, hout₃⟩
     · -- no fill: the parent's content decides
       rename_i hnf
       have hfill : Ochr.fillHoles st₁.env c = [] := by simpa using hnf
@@ -596,7 +605,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
           obtain ⟨ρ₃, Δ₃, s₃, hsz₃, hag₃, hs₃or, hctx₃, hrel₃, hg₃, hout₃⟩ :=
             (ih { K with Δ := Δ₁ } ρ₁ φ).movedPlace_step st₉ st' q q' pos s₁ π hg₉ hctx₉ hs₉ hpos₁ hgr₁ b₉ h9
           have E₃ : Ext { K with Δ := Δ₁ } ρ₁ φ π st₉ st' s₃ ρ₃ Δ₃ := ⟨hsz₃, hag₃, hctx₃, hrel₃, hg₃⟩
-          exact ⟨ρ₃, Δ₃, s₃, alp_again hs₁q hs₃or, E₁.trans K ρ φ (E₂.trans _ _ φ E₃), hout₃⟩
+          exact ⟨ρ₃, Δ₃, s₃, alp_again hidem hs₁q hs₃or, E₁.trans K ρ φ (E₂.trans _ _ φ E₃), hout₃⟩
         · -- a fresh refinement, recorded
           obtain ⟨r, st₈, b₈, hcr, h8⟩ := Runs.bind_inv h7
           obtain ⟨u, st₉, b₉, hmod, h9⟩ := Runs.bind_inv h8
@@ -619,7 +628,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
           obtain ⟨ρ₄, Δ₄, s₄, hsz₄, hag₄, hs₄or, hctx₄, hrel₄, hg₄, hout₄⟩ :=
             (ih { K with Δ := Δ₂ } ρ₂ φ).movedPlace_step st₁₁ st' q q' pos s₁ π hg₁₁ hctx₁₁ hs₁₁ hpos₁ hgr₁ b₁₁ h11
           have E₄ : Ext { K with Δ := Δ₂ } ρ₂ φ π st₁₁ st' s₄ ρ₄ Δ₄ := ⟨hsz₄, hag₄, hctx₄, hrel₄, hg₄⟩
-          exact ⟨ρ₄, Δ₄, s₄, alp_again hs₁q hs₄or,
+          exact ⟨ρ₄, Δ₄, s₄, alp_again hidem hs₁q hs₄or,
             E₁.trans K ρ φ (E₂.trans _ _ φ (E₃.trans _ _ φ E₄)), hout₄⟩
       · -- a sealed program: of a one-constructor declared type, generalised (or its record), then
         -- the place asked again
@@ -648,7 +657,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
           obtain ⟨ρ₄, Δ₄, s₄, hsz₄, hag₄, hs₄or, hctx₄, hrel₄, hg₄, hout₄⟩ :=
             (ih { K with Δ := Δ₂ } ρ₂ φ).movedPlace_step st₈ st' q q' pos s₁ π E₃.good E₃.ctx E₃.rel hpos₁ hgr₁ b₈ h8
           have E₄ : Ext { K with Δ := Δ₂ } ρ₂ φ π st₈ st' s₄ ρ₄ Δ₄ := ⟨hsz₄, hag₄, hctx₄, hrel₄, hg₄⟩
-          exact ⟨ρ₄, Δ₄, s₄, alp_again hs₁q hs₄or,
+          exact ⟨ρ₄, Δ₄, s₄, alp_again hidem hs₁q hs₄or,
             E₁.trans K ρ φ (E₂.trans _ _ φ (E₃.trans _ _ φ E₄)), hout₄⟩
         · -- generalised here (D34)
           obtain ⟨u, st₈, b₈, hdisc, h8⟩ := Runs.bind_inv h7
@@ -661,7 +670,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
           obtain ⟨ρ₄, Δ₄, s₄, hsz₄, hag₄, hs₄or, hctx₄, hrel₄, hg₄, hout₄⟩ :=
             (ih { K with Δ := Δ₃ } ρ₃ φ).movedPlace_step st₈ st' q q' pos s₁ π hg₃ hctx₃ hrel₃ hpos₁ hgr₁ b₈ h8
           have E₄ : Ext { K with Δ := Δ₃ } ρ₃ φ π st₈ st' s₄ ρ₄ Δ₄ := ⟨hsz₄, hag₄, hctx₄, hrel₄, hg₄⟩
-          exact ⟨ρ₄, Δ₄, s₄, alp_again hs₁q hs₄or,
+          exact ⟨ρ₄, Δ₄, s₄, alp_again hidem hs₁q hs₄or,
             E₁.trans K ρ φ (E₂.trans _ _ φ (E₃.trans _ _ φ E₄)), hout₄⟩
       · -- any other content: `⊥` or `⋆`, re-rooted to the parent
         rename_i habs hsea
@@ -734,12 +743,13 @@ theorem movedPlace_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) 
 
 /-- The reference's drop of a place from the state after the lent prefix's access is its drop. -/
 theorem joinDropOne_alp {s s₁ : SState} {q : Place} {pos : Pos} (hpos : resolve s q = some (pos, q.steps.2))
+    (hidem : accessLentPrefix pos q.steps.2 (accessLentPrefix pos q.steps.2 s) = accessLentPrefix pos q.steps.2 s)
     (h : s₁ = s ∨ s₁ = accessLentPrefix pos q.steps.2 s) : joinDropOne K φ s₁ q = joinDropOne K φ s q := by
   rcases h with rfl | rfl
   · rfl
   · have hpos₁ : resolve (accessLentPrefix pos q.steps.2 s) q = some (pos, q.steps.2) := by
       rw [resolve_alp (.inr rfl)]; exact hpos
-    simp only [joinDropOne, hpos₁, hpos, alp_idem]
+    simp only [joinDropOne, hpos₁, hpos, hidem]
 
 /-- **`dropOne_step`, assembled** (the drop of one place, D84): `movedPlace` in the simulation form
 (`movedPlace_step`), then where the place exists the drop of an existing place (`dropOne_exists`)
@@ -765,7 +775,7 @@ theorem dropOne_step_asm (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
     obtain ⟨hrel, hgood⟩ := dropOne_exists { K with Δ := Δ₁ } ρ₁ φ fuel ih st₁ st' q s₁ π hg₁ hctx₁ hrel₁ hgr₁ hcp₁
       pos' w hck' hw' b₁ hdj
     obtain ⟨hctx', hsize⟩ := dropAtJoin_ctx { K with Δ := Δ₁ } ρ₁ fuel st₁ st' q b₁ hctx₁ hdj
-    rw [joinDropOne_alp { K with Δ := Δ₁ } φ hpos hs₁or] at hrel
+    rw [joinDropOne_alp { K with Δ := Δ₁ } φ hpos (alp_idem K ρ φ st s π pos q.steps.2 hg hs) hs₁or] at hrel
     exact ⟨ρ₁, Δ₁, Nat.le_trans hsz₁ hsize, hag₁, hctx', hrel, hgood⟩
   · have hj := joinDropOne_noop { K with Δ := Δ₁ } ρ₁ φ st₁ s s₁ π q q' pos hg₁ hrel₁ hs₁or hpos ⟨hroot, hpre⟩ hbt
     obtain ⟨pos', hck', hcases⟩ := runs_dropAtJoin_inv hdj
