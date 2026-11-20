@@ -511,6 +511,67 @@ noncomputable def joinDrop (entry : List Place) (t : Term) (s : SState) : SState
     | some (pos, steps) => dropAt K φ q pos steps (accessLentPrefix pos steps s)
     | none => s) s
 
+/-- `movedPlace`'s access while a block's captures are computed: the lent prefix, accessed whole. -/
+noncomputable def entryReroot (s : SState) (q : Place) : SState := match resolve s q with
+  | some (pos, steps) => accessLentPrefix pos steps s
+  | none => s
+
+/-- A capture's access at a block's entry (`Machine.entryAccess`), as data. -/
+noncomputable def entryCap (s : SState) (qk : Place × Nat) : SState := match resolve s qk.1 with
+  | some (pos, steps) => s.access pos (dataHit steps)
+  | none => s
+
+/-- D90 [Entry] (static ends, rule 2): a non-tail match on a known constructor, and `J`'s
+transported term, first do what the stuck block they would close off does at its entry
+(`Machine.blockEntry`): `movedPlace`'s accesses of the places K1 re-roots (the reference's
+`accessLentPrefix`, as at the join), then each capture accessed as data, in the block's order
+(`entryAccess`: `accessPath`, and `accessInside` where the place exists; below a moved part nothing
+is lent, so the reference's data access ends the same). `bc` is `Decisions.blockCaps`. -/
+noncomputable def entryAccess (bc : List Place × List (Place × Nat)) (s : SState) : SState :=
+  bc.2.foldl entryCap (bc.1.foldl entryReroot s)
+
+/-- The sites, as fills, of the borrows a block takes by move (`joinEnds`' marks for its
+reserved label, made after the entry and before the arm). -/
+noncomputable def entrySnapshot (bc : List Place × List (Place × Nat)) (s : SState) : List Site :=
+  bc.2.flatMap fun qk => if qk.2 == 2 then
+    match resolve s qk.1 with
+    | some (pos, []) => match s.shape pos with
+      | some j => (s.lent j).map fun x => { x with fill := true }
+      | none => []
+    | _ => []
+  else []
+
+/-- After the arm and the join of a borrow-typed non-tail match (`joinEnds`): the result's label
+is lent, as fills, the places the block takes by `&` and the snapshot (its reserved label's marks,
+handed to the result by `LendOp.ended g [k]`). -/
+noncomputable def entryLend (bc : List Place × List (Place × Nat)) (snap : List Site) (lab : Option Nat)
+    (s : SState) : SState :=
+  match lab with
+  | some k => s.setLent k (s.lent k ++ (bc.2.filterMap fun qk => if qk.2 == 1 then
+      (resolve s qk.1).map fun ps => ({ pos := ps.1, path := ps.2, fill := true } : Site) else none) ++ snap)
+  | none => s
+
+/-- A proof's meaning, `⋆`. -/
+def Sem.isProof : Sem → Bool
+  | .proof => true
+  | _ => false
+
+/-- A declared reading that is a borrow type. -/
+def isRefDecl : DeclInfo → Bool
+  | .ref _ => true
+  | _ => false
+
+/-- **[Entry] at a match** (`Machine.joinEnds`), when `ent` (not in tail position, not on a
+proof): the state after the entry, and the lending to apply after the arm and the join to the
+result's label (nothing unless the match's declared type is a borrow). The captures are read at
+the match's start, with the places then moved (`movedPlaces`), as `blockEntry`'s `staticJoin`. -/
+noncomputable def matchEntry (ent : Bool) (mt : Term) (s : SState) : SState × (Option Nat → SState → SState) :=
+  if ent then
+    let bc := K.D.blockCaps (scopeOf s) (movedPlaces φ s) mt
+    let s₁ := entryAccess bc s
+    (s₁, fun lab s₂ => if isRefDecl (K.D.declOf (scopeOf s₁) mt) then entryLend bc (entrySnapshot bc s₁) lab s₂ else s₂)
+  else (s, fun _ s₂ => s₂)
+
 /-- An observation for `Id` (docs/27 Def. 5, D84 [Obs-ref]): after the side's run, each borrow
 binding the side re-points (`rePointed`, static) has a fresh value written through it, the
 `i`-th of `ws` for the `i`-th re-pointed binding, so that where it points is observed through
@@ -545,6 +606,18 @@ parameters, read in a state. Used by `.pi`, `.fix`, `.val` of a closure, and `co
 structure PiShape : Type 3 where
   ps : List PiParam
   out : PiOut
+
+/-- The variables a closure captures, oldest binding first (`Machine.capture`'s order: the
+largest de Bruijn index first). -/
+def capOrder (t : Term) : List Nat := (t.freeVars.toArray.qsort (· > ·)).toList
+
+/-- One capture of a closure being formed (`Machine.capture`): the variable is accessed, then
+moved unless its declared reading is copy (D80). -/
+noncomputable def capStep (s : SState) (i : Nat) : SState := match s.varPos i with
+  | some pos =>
+    let s := s.access pos (dataHit [])
+    if K.D.copy (K.D.placeDecl (scopeOf s) (.var i)) then s else s.setAt pos fun _ => .moved
+  | none => s
 
 mutual
 /-- The reference run of a term at the future `φ`, at the type `hint` its context expects, in
@@ -594,17 +667,22 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     -- [Match]: the arm by the tag of the scrutinee's meaning (after [Access] for the tag: the
     -- audit's A1); `⊥` is an error; then D84's drop at the join
     let (tg, s) ← tagOf K φ p natTag s
+    -- D90 [Entry]: not in tail position, the stuck block's captures are accessed first, and a
+    -- borrow-typed match's result is lent what the block's would be (`matchEntry`)
+    let (s, lend) := matchEntry K φ (!tl) (.matchNat p z u) s
     let entry := movedPlaces φ s
     match tg.asNat with
     | some 0 => do
       let ((r, R), s) ← runT tl hint z s
-      some ((r, R), joinDrop K φ entry (.matchNat p z u) s)
+      some ((r, R), lend R.label (joinDrop K φ entry (.matchNat p z u) s))
     | some (_ + 1) => do
       let ((r, R), s) ← runT tl hint u s
-      some ((r, R), joinDrop K φ entry (.matchNat p z u) s)
+      some ((r, R), lend R.label (joinDrop K φ entry (.matchNat p z u) s))
     | none => none) s
   | .matchInd p n arms => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.matchInd p n arms)) (fun s => do
     let (tg, s) ← tagOf K φ p indTag s
+    -- D90 [Entry], not in tail position and not on a proof (`evalMatchByType` has none)
+    let (s, lend) := matchEntry K φ (!tl && !tg.isProof) (.matchInd p n arms) s
     let entry := movedPlaces φ s
     -- a proof scrutinee is matched by its type (D45): the one arm of a one-constructor
     -- proposition; a data scrutinee by the tag of its meaning
@@ -616,7 +694,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       let ((r, R), s) ← runArm tl hint c arms s
       -- a match on a proof has no join (`Machine.evalMatchByType`: its one arm runs on every
       -- path; the audit's A4)
-      some ((r, R), match tg with | .proof => s | _ => joinDrop K φ entry (.matchInd p n arms) s)
+      some ((r, R), match tg with | .proof => s | _ => lend R.label (joinDrop K φ entry (.matchInd p n arms) s))
     | none => none) s
   | .tind n args => do
     match K.Γ.find? (·.name == n) with
@@ -767,12 +845,10 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let g : List Sem → Option BodyOut := match dec with
       | some _ => fun args => stage (rankOf args + 1) args
       | none => bodyAt .err
-    -- forming the closure moves the captured places whose declared readings are not copy (D80)
-    let s' := (Term.freeVars (.fix self hs ds c dec body)).foldl (fun s i =>
-      if K.D.copy (K.D.placeDecl (scopeOf s) (.var i)) then s
-      else match s.varPos i with
-        | some pos => s.setAt pos fun _ => .moved
-        | none => s) s
+    -- forming the closure (`Machine.capture`) accesses each captured variable, oldest binding
+    -- first, and then moves it unless its declared reading is copy (D80): the checker's [Access]
+    -- before the capture ends the borrows lent at it (docs/31 D29 point 2, D37)
+    let s' := (capOrder (.fix self hs ds c dec body)).foldl (capStep K) s
     some ((closureOf g, ⟨piT, some (ps, out), none, none⟩), s')) s
   | .call f args hd => fun s =>
     let fl := K.D.flags (scopeOf s) (.call f args hd)
@@ -825,7 +901,14 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let _ ← SM.onCopy (runT false (.plain .err) b)
     let _ ← SM.onCopy (runT false (.plain .err) P)
     let _ ← SM.onCopy (runT false (.plain .err) h)
-    runT false hint t) s
+    -- D90 [Entry]: `J` computes, so its transported term's stuck block's captures are accessed
+    -- first; then the term runs as the one arm of D84's join (`Machine.evalCore`'s `J`)
+    fun s =>
+      let s := (matchEntry K φ true t s).1
+      let entry := movedPlaces φ s
+      match runT false hint t s with
+      | some ((r, R), s) => some ((r, R), joinDrop K φ entry (.prim "J" [A, a, b, P, h, t]) s)
+      | none => none) s
   -- `clone`, `peek` and `inplace` of a place read it in place: not consumed (`inplace` is a stuck
   -- block's read-only capture; it used to be `run hint u`, a move: D19)
   | .prim "clone" [u] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "clone" [u]))

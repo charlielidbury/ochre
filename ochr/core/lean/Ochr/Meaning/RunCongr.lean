@@ -87,6 +87,12 @@ theorem movedPlaces_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi :
     · rfl
   · rfl
 
+/-- [Entry] reads the future only through the places then moved. -/
+theorem matchEntry_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (ent : Bool) (mt : Term) :
+    matchEntry K φ ent mt s = matchEntry K φ' ent mt s := by
+  unfold matchEntry
+  rw [movedPlaces_congr hφ hi]
+
 theorem foldl_inv {α : Type} (P : SState → Prop) (F : SState → α → SState) (h : ∀ s a, P s → P (F s a)) :
     ∀ (qs : List α) (s : SState), P s → P (qs.foldl F s)
   | [], _, hs => hs
@@ -276,13 +282,9 @@ noncomputable def fixG (l : Nat) (s : SState) (ps : List PiParam) (out : PiOut) 
   | some _ => fun args => fixStage K ρ φ fb l s ps out piT start body (fixRank K ps dec args + 1) args
   | none => fixBodyAt K ρ φ fb s ps out piT start body .err
 
-/-- Forming the closure moves its non-copy captures. -/
+/-- Forming the closure accesses each capture, oldest first, and moves the non-copy ones. -/
 noncomputable def fixMoves (t : Term) (s : SState) : SState :=
-  (Term.freeVars t).foldl (fun s i =>
-    if K.D.copy (K.D.placeDecl (scopeOf s) (.var i)) then s
-    else match s.varPos i with
-      | some pos => s.setAt pos fun _ => .moved
-      | none => s) s
+  (capOrder t).foldl (capStep K) s
 
 theorem run_fix_def (tl : Bool) (hint : TyS) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat)
     (body : Term) (s : SState) :
@@ -765,8 +767,14 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     dsimp only
     rw [tagOf_congr K hφ hi p]
     apply Option.bind_congr' rfl
-    rintro ⟨tg, s₁⟩ h1
-    have hi₁ := (tagOf_rinv K φ' L h1 hi).1
+    rintro ⟨tg, s₀⟩ h1
+    have hi₀ := (tagOf_rinv K φ' L h1 hi).1
+    dsimp only
+    rw [matchEntry_congr K hφ hi₀]
+    have hi₁' := (matchEntry_props K φ' L (!tl) (.matchNat p z u) hi₀).1
+    generalize matchEntry K φ' (!tl) (.matchNat p z u) s₀ = me at hi₁' ⊢
+    obtain ⟨s₁, lend⟩ := me
+    have hi₁ : RInv L s₁ := hi₁'
     dsimp only
     rw [movedPlaces_congr hφ hi₁]
     split
@@ -783,8 +791,14 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     dsimp only
     rw [tagOf_congr K hφ hi p]
     apply Option.bind_congr' rfl
-    rintro ⟨tg, s₁⟩ h1
-    have hi₁ := (tagOf_rinv K φ' L h1 hi).1
+    rintro ⟨tg, s₀⟩ h1
+    have hi₀ := (tagOf_rinv K φ' L h1 hi).1
+    dsimp only
+    rw [matchEntry_congr K hφ hi₀]
+    have hi₁' := (matchEntry_props K φ' L (!tl && !tg.isProof) (.matchInd p n arms) hi₀).1
+    generalize matchEntry K φ' (!tl && !tg.isProof) (.matchInd p n arms) s₀ = me at hi₁' ⊢
+    obtain ⟨s₁, lend⟩ := me
+    have hi₁ : RInv L s₁ := hi₁'
     dsimp only
     rw [movedPlaces_congr hφ hi₁]
     split
@@ -890,7 +904,15 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
       intro _ s₄ e4; have e := SM.onCopy_state e4; subst e
       apply SM.bind_congr (SM.onCopy_congr (hall h' (hm h' (by simp)) _ _ hi))
       intro _ s₅ e5; have e := SM.onCopy_state e5; subst e
-      exact hall t (hm t (by simp)) _ _ hi
+      dsimp only
+      rw [matchEntry_congr K hφ hi]
+      have hi₁ := (matchEntry_props K φ' L true t hi).1
+      rw [movedPlaces_congr hφ hi₁]
+      rw [show runT K ρ φ false hint t _ = runT K ρ φ' false hint t _ from hall t (hm t (by simp)) _ _ hi₁]
+      split
+      · rename_i r₁ R₁ s₆ h6
+        rw [joinDrop_congr K hφ _ _ (runAll_rinv K ρ φ' L hK args t (hm t (by simp)) _ _ _ _ hi₁ h6).1]
+      · rfl
     by_cases hc : ∃ u, (n = "clone" ∨ n = "peek" ∨ n = "inplace") ∧ args = [u]
     · obtain ⟨u, hn, hargs⟩ := hc
       have hu : u ∈ args := by rw [hargs]; simp

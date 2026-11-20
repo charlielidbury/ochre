@@ -89,7 +89,7 @@ theorem teleDecls_substLoan (hD : DecInvariant K.D l w) : ∀ (ds : List Term) (
     K.D.teleDecls sc (Term.substLoanList l w ds) = K.D.teleDecls sc ds
   | [], _ => rfl
   | d :: ds, sc => by
-    simp only [Term.substLoanList, Decisions.teleDecls, hD.2.2.2.2.2, teleDecls_substLoan hD ds]
+    simp only [Term.substLoanList, Decisions.teleDecls, hD.2.2.2.2.2.1, teleDecls_substLoan hD ds]
 
 theorem paramDecls_substLoan (hD : DecInvariant K.D l w) (sc : List DeclInfo) (ds : List Term) :
     K.D.paramDecls sc (Term.substLoanList l w ds) = K.D.paramDecls sc ds := by
@@ -97,7 +97,7 @@ theorem paramDecls_substLoan (hD : DecInvariant K.D l w) (sc : List DeclInfo) (d
 
 theorem fixDecls_substLoan (hD : DecInvariant K.D l w) (sc : List DeclInfo) (ds : List Term) (c : Term) :
     K.D.fixDecls sc (Term.substLoanList l w ds) (Term.substLoan l w c) = K.D.fixDecls sc ds c := by
-  simp only [Decisions.fixDecls, paramDecls_substLoan K l w hD, teleDecls_substLoan K l w hD, hD.2.2.2.2.2]
+  simp only [Decisions.fixDecls, paramDecls_substLoan K l w hD, teleDecls_substLoan K l w hD, hD.2.2.2.2.2.1]
 
 /-- Filling a loan keeps which parameters are borrows: `&A` stays `&A`, and nothing else becomes one. -/
 theorem psOf_substLoan : ∀ (bs : List PBind) (ds : List Term), psOf bs (Term.substLoanList l w ds) = psOf bs ds
@@ -111,6 +111,10 @@ theorem psOf_substLoan : ∀ (bs : List PBind) (ds : List Term), psOf bs (Term.s
 theorem joinDrop_substLoan (hD : DecInvariant K.D l w) (φ : Future) (t : Term) (entry : List Place) (s : SState) :
     joinDrop K φ entry (Term.substLoan l w t) s = joinDrop K φ entry t s := by
   unfold joinDrop; rw [hD.2.2.2.1]
+
+theorem matchEntry_substLoan (hD : DecInvariant K.D l w) (φ : Future) (ent : Bool) (t : Term) (s : SState) :
+    matchEntry K φ ent (Term.substLoan l w t) s = matchEntry K φ ent t s := by
+  unfold matchEntry; simp only [hD.2.2.2.2.2.2, hD.2.1]
 
 theorem fixBodyAt_bodyEq {body body' : Term} (hb : ∀ hint, runT K ρ ψ true hint body' = runT K ρ ψ true hint body)
     (s : SState) (ps : List PiParam) (out : PiOut) (piT : TyM) (start : Nat) :
@@ -139,7 +143,7 @@ theorem fixG_bodyEq {body body' : Term} (hb : ∀ hint, runT K ρ ψ true hint b
     exact congrFun (fixStage_bodyEq K ρ ψ hb lv s ps out piT start _) args
 
 theorem fixMoves_substLoan (t : Term) (s : SState) : fixMoves K (Term.substLoan l w t) s = fixMoves K t s := by
-  unfold fixMoves; rw [freeVars_substLoan]
+  unfold fixMoves capOrder; rw [freeVars_substLoan]
 
 theorem substLoan_isPlace (u : Term) : (∃ p, Term.substLoan l w u = .place p) ↔ ∃ p, u = .place p := by
   cases u <;> simp [Term.substLoan]
@@ -235,7 +239,7 @@ theorem headOf_substLoan (u : Term) (rd : Place → SM (Sem × TyS)) (rn : SM (S
     SM.headOf (Term.substLoan l w u) rd rn = SM.headOf u rd rn := by
   cases u <;> rfl
 
-theorem run_prim_substSame (tl : Bool) (n : String) (args : List Term) (hint : TyS)
+theorem run_prim_substSame (hD : DecInvariant K.D l w) (tl : Bool) (n : String) (args : List Term) (hint : TyS)
     (hfl : ∀ sc, K.D.flags sc (Term.substLoan l w (.prim n args)) = K.D.flags sc (.prim n args))
     (hall : ∀ t ∈ args, ∀ hint, run K ρ ψ hint (Term.substLoan l w t) = run K ρ ψ hint t) :
     runT K ρ ψ tl hint (Term.substLoan l w (.prim n args)) = runT K ρ ψ tl hint (.prim n args) := by
@@ -254,9 +258,14 @@ theorem run_prim_substSame (tl : Bool) (n : String) (args : List Term) (hint : T
   by_cases hJ : ∃ A a b P h t, n = "J" ∧ args = [A, a, b, P, h, t]
   · obtain ⟨A, a, b, P, h', t, rfl, rfl⟩ := hJ
     simp only [Term.substLoanList] at hfl' ⊢
+    have hme : ∀ s, matchEntry K ψ true (Term.substLoan l w t) s = matchEntry K ψ true t s :=
+      matchEntry_substLoan K l w hD ψ true t
+    have hj : ∀ e s, joinDrop K ψ e (.prim "J" [Term.substLoan l w A, Term.substLoan l w a, Term.substLoan l w b,
+        Term.substLoan l w P, Term.substLoan l w h', Term.substLoan l w t]) s = joinDrop K ψ e (.prim "J" [A, a, b, P, h', t]) s :=
+      joinDrop_substLoan K l w hD ψ (.prim "J" [A, a, b, P, h', t])
     rw [runT, runT]
     simp only [hfl', hall A (by simp), hall a (by simp), hall b (by simp),
-      hall P (by simp), hall h' (by simp), hall t (by simp)]
+      hall P (by simp), hall h' (by simp), hall t (by simp), hme, hj]
   by_cases hc : ∃ u, (n = "clone" ∨ n = "peek" ∨ n = "inplace") ∧ args = [u]
   · obtain ⟨u, hn, rfl⟩ := hc
     simp only [Term.substLoanList] at hfl' ⊢
@@ -343,20 +352,24 @@ theorem runT_substSame (hF : FillOK K ρ ψ l w) : ∀ (tl : Bool) (t : Term) (h
       have hu := fun tl' => runT_substSame hF tl' u
       have hj : ∀ e s, joinDrop K ψ e (.matchNat p (Term.substLoan l w z) (Term.substLoan l w u)) s
           = joinDrop K ψ e (.matchNat p z u) s := joinDrop_substLoan K l w hF.dec ψ (.matchNat p z u)
+      have hme : ∀ e s, matchEntry K ψ e (.matchNat p (Term.substLoan l w z) (Term.substLoan l w u)) s
+          = matchEntry K ψ e (.matchNat p z u) s := fun e => matchEntry_substLoan K l w hF.dec ψ e (.matchNat p z u)
       funext s
       show runT K ρ ψ tl hint (.matchNat p (Term.substLoan l w z) (Term.substLoan l w u)) s = _
       have hfl : ∀ sc, K.D.flags sc (.matchNat p (Term.substLoan l w z) (Term.substLoan l w u)) = K.D.flags sc (.matchNat p z u) :=
         fun sc => hF.dec.1 sc (.matchNat p z u)
-      rw [runT, runT]; simp only [hz, hu, hj, hfl]
+      rw [runT, runT]; simp only [hz, hu, hj, hfl, hme]
     | matchInd p n arms =>
       have ha := fun tl' => runArm_substSame hF tl' arms
       have hj : ∀ e s, joinDrop K ψ e (.matchInd p n (Term.substLoanArms l w arms)) s
           = joinDrop K ψ e (.matchInd p n arms) s := joinDrop_substLoan K l w hF.dec ψ (.matchInd p n arms)
+      have hme : ∀ e s, matchEntry K ψ e (.matchInd p n (Term.substLoanArms l w arms)) s
+          = matchEntry K ψ e (.matchInd p n arms) s := fun e => matchEntry_substLoan K l w hF.dec ψ e (.matchInd p n arms)
       funext s
       show runT K ρ ψ tl hint (.matchInd p n (Term.substLoanArms l w arms)) s = _
       have hfl : ∀ sc, K.D.flags sc (.matchInd p n (Term.substLoanArms l w arms)) = K.D.flags sc (.matchInd p n arms) :=
         fun sc => hF.dec.1 sc (.matchInd p n arms)
-      rw [runT, runT]; simp only [ha, hj, length_substLoanArms, hfl]
+      rw [runT, runT]; simp only [ha, hj, length_substLoanArms, hfl, hme]
     | succ u =>
       have hu := fun tl' => runT_substSame hF tl' u
       show runT K ρ ψ tl hint (.succ (Term.substLoan l w u)) = _
@@ -447,11 +460,11 @@ theorem runT_substSame (hF : FillOK K ρ ψ l w) : ∀ (tl : Bool) (t : Term) (h
           (Term.substLoan l w body)) = K.D.flags sc (.fix self hs ds c dec body) :=
         fun sc => hF.dec.1 sc (.fix self hs ds c dec body)
       rw [run_fix_def, run_fix_def, hfl, hps, hds, hbs, fixOut_subst_of K ρ ψ l w (hc false) hU, fixCod_subst_of K ρ ψ l w (hc false) hU, hmv,
-        teleDecls_substLoan K l w hF.dec, hF.dec.2.2.2.2.2, fixG_bodyEq K ρ ψ (hb true)]
+        teleDecls_substLoan K l w hF.dec, hF.dec.2.2.2.2.2.1, fixG_bodyEq K ρ ψ (hb true)]
     | prim n args =>
       have hall : ∀ t ∈ args, ∀ hint, run K ρ ψ hint (Term.substLoan l w t) = run K ρ ψ hint t :=
         fun t hm hint => runAll_substSame hF args t hm hint
-      exact run_prim_substSame K ρ ψ l w tl n args hint (fun sc => hF.dec.1 sc (.prim n args)) hall
+      exact run_prim_substSame K ρ ψ l w hF.dec tl n args hint (fun sc => hF.dec.1 sc (.prim n args)) hall
     | _ => rfl
 
 theorem meanV_substSame (hF : FillOK K ρ ψ l w) : ∀ (v : Value) (hint : TyS),
