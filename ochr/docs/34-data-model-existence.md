@@ -409,6 +409,11 @@ As §14.1, file by file:
 - Every regress run evaluates on the new layer (`CodeRuns`, `DataCodes`, `StaticLend`, `CallInPlace*`, `EntryCheck`, `OneCtorEntry`, `PartMoveRead`, `DepSites*`, the rest). Results that changed: the join drop and `pmem` above; `Adequacy_flipped.ctor_no_hint` now asks that the declaration have parameters (without, the record is known before the fields).
 - The prototype's examples, residual and adversarial list are on the real layer: `DataModel/Program.lean` (a data model of the probe programs, `dmP`), `Examples.lean`, `Residual.lean`, `Adversarial.lean`.
 
+### 17.4a Two requirements from the proof lead, after the port
+
+- **The run types an embedded value by what it is**, as the checker's `valType?` does: a number at `Nat`, `()` at `Unit`, a constructor value at the type its record names (`Run.lean`'s `.val` clause and `RunCongr.valT`). Its own commit, after the port, so its regressions are attributable: a numeral runs at `Nat` (`CodeRuns.run_num`), and `CallInPlace`'s `let y = 2` binds `y` at `Nat`. With it the base case of the substitution lemma for unknowns holds wherever `DeltaOk` does (`SubstAbs.absFill_shape`, replacing `absFill_shape_false` and `run_substAbs_false`).
+- **The levels sort soundness reads** (`Levels.lean`): the codes of `Nat`, `Unit` and a proposition; `Sort l` at `sortSucc l`; a data type at its declaration's sort; a Π-type at its declared sort; a member of `Sort l` is a code of level `l`; only a code of level `0` has `⋆` as a member (a data type's members are trees). All hold on the new codes.
+
 ### 17.5 The design point: parameters solved from a field (`DataModel/ParamSolve.lean`)
 
 The checker solves an unwritten parameter from a field's type by reading the field type's parameter list (`Machine.unifyParams`). The model reads back only what the record keeps: a level-0 type parameter's entry.
