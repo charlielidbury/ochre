@@ -713,4 +713,65 @@ theorem callOf_id1 (s : SState) (T : TyS) (lab : Nat) :
       funext p v φ'
       split <;> rename_i h <;> rw [h]
 
+/-! ## `UseId1` by `callOf`: `let y = 2; let r = Id1(&y); *r := 5; y` is `5` -/
+
+theorem run_id1Clo (hint : TyS) (s : SState) :
+    run (Kc dm) ρ φ hint (.val id1Clo) s = some (fresId1 dm ρ φ, s) := by
+  rw [run_val_def, meanV_id1Clo]
+  congr
+
+/-- `y`'s meaning after the call: the final content of the reborrow `1`, read back. -/
+noncomputable def yR1 : SVal := fun φ' =>
+  match Code0.dec dm.read TyM.nat.code0.snd (φ' 1) with
+  | some x => (φ'.upd 0 (Code0.enc dm.read TyM.nat.code0.snd x)) 0
+  | none => .err
+
+/-- The frame `y`, `r` with two temporaries, `r` holding the reborrow `1`, lent at `y` as a fill (and
+the dead `0` at `y`'s old loan site). -/
+def SR (rT : TyS) (yv rv t0 t1 : SVal) : SState :=
+  { env := [SFrame.mk [{ yB with val := yv }, { ty := rT, val := rv, decl := .other }] [t0, t1]],
+    shape := fun p => if p = .bind 0 1 then some 1 else none, nextLoan := 2,
+    lent := fun m => if m = 1 then [⟨.bind 0 0, [], true⟩] else if m = 0 then [⟨.bind 0 0, [], false⟩] else [] }
+
+/-- The parked temporary `0` after the call's fixing: `moved` where the reborrow's final content decodes. -/
+noncomputable def mv1 : SVal := fun φ' =>
+  match Code0.dec dm.read TyM.nat.code0.snd (φ' 1) with
+  | some _ => .moved
+  | none => .err
+
+/-- The state after the call `Id1(&y)` by `callOf` (`callOf_id1` at `S₂`, label `0`). -/
+noncomputable def SC1 : SState :=
+  ((((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.2.mapVals fun _ v φ' =>
+      match Code0.dec dm.read TyM.nat.code0.snd (φ' ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1) with
+      | some x => v (φ'.upd 0 (Code0.enc dm.read TyM.nat.code0.snd x))
+      | none => .err).pushTempShaped (fun _ => .el0 Nat 2) ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1).setLent
+    ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1
+    ((((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.2.lent 0).map fun x => { x with fill := true })
+
+/-- The call `Id1(&y)` after `let y = 2`: `2` at the reborrow `1`. -/
+theorem run_callId1 :
+    ∃ TU : TyS, TU.label = some 1 ∧
+      run (Kc dm) ρ φ (.plain .err) (.call (.val id1Clo) [.borrow (.var 0)] false) ((emptyState 0).pushBind yB)
+        = some ((.el0 Nat 2, TU), SC1 dm) := by
+  obtain ⟨TU, hTU, hc⟩ := callOf_id1 dm ρ φ (Attack.S₂ yB 0 (.el0 Nat 2)) yB.ty 0
+  refine ⟨TU, by rw [hTU, Attack.takeLabel_S₂]; rfl, ?_⟩
+  rw [show Kc dm = Kp dm [] (fun _ => (.err, .plain TyM.err)) from rfl, run_call]
+  rw [show Kp dm [] (fun _ => (.err, .plain TyM.err)) = Kc dm from rfl]
+  simp only [SM.headOf, run_id1Clo, bind, Option.bind, fresId1, runArgs_borrowY]
+  exact hc
+
+/-- Binding `r` to the call's result: `r` holds the reborrow, its parked temporary consumed. -/
+theorem bindR (TU : TyS) (hTU : TU.label = some 1) :
+    pushBindShaped (SC1 dm)
+        { ty := TU, val := fun _ => .el0 Nat 2, decl := .other }
+      = SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved) := by
+  simp only [SC1, Attack.takeLabel_S₂]
+  simp [pushBindShaped, hTU, SState.freshLoan, SState.mapVals, SState.pushTempShaped, SState.pushTemp, SState.setLent,
+    SState.topIdx, SState.takeLabel, SState.holderOf, SState.positions, List.range', SState.setAt, SState.pushBind, SR,
+    yR1, mv1]
+  refine ⟨⟨?_, ?_⟩, ?_⟩
+  · funext φ'; unfold yR1; split <;> rename_i h <;> first | rfl | rw [h]
+  · funext φ'; unfold mv1; split <;> rename_i h <;> first | rfl | rw [h]
+  · funext p; by_cases h1 : p = Pos.bind 0 1 <;> by_cases h2 : p = Pos.temp 0 1 <;> simp [h1, h2]
+
 end Ochr.Meaning.Regress.CallInPlace
