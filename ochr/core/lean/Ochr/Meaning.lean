@@ -13,6 +13,7 @@ import Ochr.Meaning.Subst
 import Ochr.Meaning.Lemmas
 import Ochr.Meaning.HintIndep
 import Ochr.Meaning.Steps.Statements
+import Ochr.Meaning.Steps.DecExtend
 import Ochr.Meaning.PosLib
 import Ochr.Meaning.RunLib
 import Ochr.Meaning.Steps.IH
