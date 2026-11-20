@@ -91,11 +91,20 @@ def tyR (d : IndDecl) (r : Rec) : TyM :=
 /-- **The meaning of the type `D(ps)`.** -/
 def tyM (d : IndDecl) (ps : List Sem) : TyM := dm.tyR d (dm.recOf d ps)
 
-/-- A shape's type. -/
+/-- A data code (a leaf's code is never one in a canonical signature). -/
+def _root_.Ochr.Meaning.Code0.isData : {A : Type} → Code0 A → Bool
+  | _, .data .. => true
+  | _, _ => false
+
+/-- A shape's type. A non-canonical shape has the error type: a data code as a leaf (a data field
+is a `sub`), a `sub` of a `Prop`-sorted declaration or a `prf` of a data one. So faithfulness, which
+equates a field's type with the run's reading of the declared field type (never `err` for an
+accepted declaration), forces the signature's shapes to be canonical; on canonical shapes
+membership is fitting (`fitsOneM_mem`). -/
 def shapeTy : Shape → TyM
-  | .leaf B c => .t0 B c
-  | .sub d r => dm.tyR d r
-  | .prf d r => dm.tyR d r
+  | .leaf B c => if c.isData then TyM.err else .t0 B c
+  | .sub d r => if d.sort == 0 then TyM.err else dm.tyR d r
+  | .prf d r => if d.sort == 0 then dm.tyR d r else TyM.err
 
 /-- The type field `i` of constructor `c` of `D` at record `r` is read at, given the earlier fields. -/
 def fieldTyR (d : IndDecl) (r : Rec) (c i : Nat) (earlier : List Sem) : TyM :=
@@ -148,6 +157,36 @@ theorem tyR_prop (d : IndDecl) (r : Rec) (hs : (d.sort == 0) = true) :
   constructor
   · rintro ⟨x⟩; exact ⟨_, (DataLib.mem_iff_meanC dm.sig d r _).2 ⟨x, rfl⟩⟩
   · rintro ⟨v, hv⟩; obtain ⟨x, _⟩ := (DataLib.mem_iff_meanC dm.sig d r v).1 hv; exact ⟨x⟩
+
+theorem err_mem_false (R : DataRead) (s : Sem) : ¬ (s ∈ₛ[R] TyM.err) := fun ⟨a, _⟩ => nomatch a
+
+/-- **On a canonical shape, fitting is membership**: a field that fits its shape among the members
+is a member of the shape's type, unless that type is `err` (a non-canonical shape). -/
+theorem fitsOneM_mem (s : Shape) (f : Sem) (h : DataLib.FitsOneM dm.sig s f) (hne : dm.shapeTy s ≠ TyM.err) :
+    f ∈ₛ[dm.read] dm.shapeTy s := by
+  cases s with
+  | leaf B c =>
+    obtain ⟨b, rfl⟩ := h
+    cases c with
+    | data d r A => exact absurd (by simp [shapeTy, Code0.isData]) hne
+    | err => exact b.elim
+    | prop P => exact ⟨b, rfl⟩
+    | nat => exact ⟨b, rfl⟩
+    | unit => exact ⟨b, rfl⟩
+    | pi C t => exact ⟨b, rfl⟩
+  | sub d r =>
+    by_cases hs : (d.sort == 0) = true
+    · exact absurd (by simp [shapeTy, hs]) hne
+    · have hs' : (d.sort == 0) = false := by simpa using hs
+      simp only [shapeTy, hs', Bool.false_eq_true, if_false]
+      exact (dm.mem_tyR d r hs' f).2 h
+  | prf d r =>
+    by_cases hs : (d.sort == 0) = true
+    · obtain ⟨rfl, hv⟩ := h
+      simp only [shapeTy, hs, if_true]
+      rw [dm.tyR_prop d r hs]
+      exact ⟨⟨hv⟩, rfl⟩
+    · exact absurd (by simp [shapeTy, hs]) hne
 
 /-- **The reading gives whole meanings** (docs/31 D68): a member is whole. -/
 theorem read_wholeFields : dm.read.WholeFields := by

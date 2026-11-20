@@ -12,9 +12,13 @@ ways: `.0` (key `(0, 0)`) and, on the partly moved form `S(⊥…)` (`Sem.succ` 
 argument, `.dat "Nat" [] 1 [w]`), the constructor field `S.0` (key `(1, 0)`). The checker reaches
 it one way (`stepV`: `.field` on a number is nothing). So a read of `x` at `[S.0]`, a path no place
 of the program produces, is incomparable with `k`'s site by key and reads `k`'s final content:
-at `k ↦ 5` it reads nothing (`S(5)` is the number `6`), at `k ↦ ⊥` it reads `⊥`
-(`dws_fails_succField`). The invariant compares readings at every path; two steps with different
-keys reaching the same part break it.
+at `k ↦ 5` it read nothing (`S(5)` is the number `6`), at `k ↦ ⊥` it read `⊥`. The invariant
+compares readings at every path; two steps with different keys reaching the same part broke it.
+
+Fixed (the data-layer lane, at the lead's decision: the run reads exactly the steps the checker
+reads): `Sem.step`'s named field step never reads a number, whole or partly moved, as `stepV`
+reads `.field` only on constructor values and no declaration is named `Nat` ((N)). So the read of
+`x` at `[S.0]` is nothing at every future (`succField_reads_nothing`).
 -/
 
 open Ochr.Test
@@ -34,21 +38,15 @@ noncomputable def SN (b : SBinding) (c : Sem) : SState :=
 
 variable (dm : DataModel) (Γ : List IndDecl)
 
-theorem dws_fails_succField (b : SBinding) (c : Sem) : ¬ DepWithinSites dm Γ (SN b c) := by
-  intro h
-  have := h (.bind 0 0) [.field ⟨"Nat", 1, 0, ""⟩] (fun l => if l = 0 then .el0 Nat 5 else .err)
-    (fun l => if l = 0 then .moved else .err) (fun l hl => ?_)
-  · have e1 : Sem.succ (Sem.el0 Nat 5) = .el0 Nat 6 := Sem.succ_el0 5
-    have e2 : Sem.succ Sem.moved = .dat "Nat" natRec 1 [.moved] := by
-      simp [Sem.succ, Sem.asNat, Sem.as, Sem.whole]
-    simp [readV, SN, SState.valAt, e1, e2, Sem.follow, Sem.step, Sem.stepField] at this
-  · refine ⟨?_, ?_⟩
-    · rw [SState.live_iff]
-      by_cases hl0 : l = 0
-      · subst hl0; exact ⟨.temp 0 0, by simp [SN, SState.positions], by simp [SN]⟩
-      · simp [hl0] at hl
-    · by_cases hl0 : l = 0
-      · subst hl0; simp [SState.reached, SN, dataHit, pathKey, Step.key, List.isPrefixOf]
-      · simp [hl0] at hl
+/-- **The read at `[S.0]` is nothing at every future**: at `k ↦ 5` (`x` is the number `6`) and at
+`k ↦ ⊥` (`x` is `S(⊥)`) alike. -/
+theorem succField_reads_nothing (T : TyS) (v : Sem) :
+    Sem.follow dm Γ T (Sem.succ v) [.field ⟨"Nat", 1, 0, ""⟩] = none := by
+  unfold Sem.succ
+  split
+  · rfl
+  · split
+    · rfl
+    · simp [Sem.follow, Sem.step]
 
 end Ochr.Meaning.Regress.StepKinds

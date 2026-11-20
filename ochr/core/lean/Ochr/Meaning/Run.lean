@@ -232,29 +232,34 @@ def psOf : List PBind → List Term → List PiDom
 def fillParam (np j : Nat) (v : Sem) (sol : List (Option Sem)) : List (Option Sem) :=
   if j < np ∧ (sol.getD (np - 1 - j) none).isNone then sol.set (np - 1 - j) (some v) else sol
 
+mutual
 /-- Infer a constructor's unwritten parameters from a field's declared type term `FT` and the
 type `R` the field's run returned (`Machine.unifyParams`, D46; the audit's A9): where `FT` is a
-parameter variable, the parameter is `R` itself; where it is `D(x̄)` and `R`'s code is `D(v̄)`,
-each parameter variable among `x̄` is its `v`. Only unsolved parameters are filled. A type the run
-does not know (`err`) solves nothing, as the checker's field with no type. Not covered: a
-parameter nested deeper (`List(Pair(A, B))`). -/
-def unifyTyS (dm : DataModel) (np : Nat) (FT : Term) (R : TyS) (sol : List (Option Sem)) : List (Option Sem) :=
-  if R.m.isErr then sol else
-    match FT with
-    | .place (.var j) => fillParam np j (.ty R.m) sol
-    | .tind m as =>
-      -- docs/34 §14: a data type's code keeps no parameter list; a type parameter is read back
-      -- off its record's entry (`paramKey`), a value or large parameter is not
+parameter variable, the parameter is `R` itself; where it is `D(x̄)` and `R` is `D`'s code at a
+record, each argument is read against the entry the record keeps for that parameter (docs/34
+§14: a type parameter's code at `paramKey`), at any depth (`List(List(A))`, the lead's 3a). Only
+unsolved parameters are filled. A type the run does not know (`err`) solves nothing, as the
+checker's field with no type. A parameter the record does not keep (a value or a large one) is not
+solved. -/
+def unifyTyS (dm : DataModel) (np : Nat) : Term → TyS → List (Option Sem) → List (Option Sem)
+  | .place (.var j), R, sol => if R.m.isErr then sol else fillParam np j (.ty R.m) sol
+  | .tind m as, R, sol =>
+    if R.m.isErr then sol else
       match R.data with
-      | some (m', r) =>
-        if m = m' then
-          as.zipIdx.foldl (fun sol ai => match ai.1, r (paramKey ai.2) with
-            | .place (.var _), .none => sol
-            | .place (.var j), e => fillParam np j (.ty (dm.entryTy e)) sol
-            | _, _ => sol) sol
-        else sol
+      | some (m', r) => if m = m' then unifyArgsTyS dm np r 0 as sol else sol
       | none => sol
-    | _ => sol
+  | _, _, sol => sol
+termination_by structural FT => FT
+
+/-- The arguments of `D(x̄)` against `D`'s record, left to right (`Machine.unifyParamsList`). -/
+def unifyArgsTyS (dm : DataModel) (np : Nat) (r : Rec) : Nat → List Term → List (Option Sem) → List (Option Sem)
+  | _, [], sol => sol
+  | k, a :: as, sol =>
+    unifyArgsTyS dm np r (k + 1) as (match r (paramKey k) with
+      | .none => sol
+      | e => unifyTyS dm np a (.plain (dm.entryTy e)) sol)
+termination_by structural _ as => as
+end
 
 /-- A solution read as parameters: an unsolved one is `err` (read by no field type that is asked). -/
 def solved (sol : List (Option Sem)) : List Sem := sol.map fun o => o.getD .err
