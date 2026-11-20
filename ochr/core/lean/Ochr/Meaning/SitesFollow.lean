@@ -132,6 +132,124 @@ theorem loanSite_blocks_fields (l : Nat) (pos : Pos) (path : List Step) (ty : St
       exact ⟨j + 1, w', by simpa using hj, ψ₀, by rw [hx, show i + 1 + j = i + (j + 1) by omega], hb⟩
 end
 
+/-! ## No site lies under a `⊥` -/
+
+theorem pathKey_prefix_cons {s₁ x₀ : Step} {ss ψ : List Step} (h : pathKey (s₁ :: ss) <+: pathKey (x₀ :: ψ)) :
+    s₁.key = x₀.key ∧ pathKey ss <+: pathKey ψ := by
+  simp only [pathKey, List.map_cons, List.cons_prefix_cons] at h
+  exact h
+
+mutual
+/-- **Along a site's own path nothing is `⊥`**: a site of `l` read at `path` is at `path ++ ψ₀`, and
+following any prefix of `ψ₀` (by key) reaches a constructor, a borrow, a successor, a mark, a loan
+or a sealed program, never `⊥` (docs/31 D52). -/
+theorem site_not_bot (l : Nat) (pos : Pos) : ∀ (path : List Step) (v : Value) (x : Site),
+    x ∈ Value.sitesOf l pos path v →
+    ∃ ψ₀, x.path = path ++ ψ₀ ∧ ∀ ss, pathKey ss <+: pathKey ψ₀ → v.follow ss ≠ some .bot
+  | path, .loan m, x, h => by
+    simp only [Value.sitesOf] at h
+    split at h
+    · simp only [List.mem_singleton] at h; subst h
+      refine ⟨[], by simp, fun ss hss => ?_⟩
+      cases ss with
+      | nil => simp [Value.follow]
+      | cons s₁ ss' => simp [pathKey] at hss
+    · cases h
+  | path, .gloan m w, x, h => by
+    simp only [Value.sitesOf] at h
+    split at h
+    · simp only [List.mem_singleton] at h; subst h
+      refine ⟨[], by simp, fun ss hss => ?_⟩
+      cases ss with
+      | nil => simp [Value.follow]
+      | cons s₁ ss' => simp [pathKey] at hss
+    · obtain ⟨ψ₀, hx, hb⟩ := site_not_bot l pos path w x h
+      refine ⟨ψ₀, hx, fun ss hss => ?_⟩
+      cases ss with
+      | nil => simp [Value.follow]
+      | cons s₁ ss' => rw [follow_gloan_cons]; exact hb _ hss
+  | path, .sealed t, x, h => by
+    simp only [Value.sitesOf] at h
+    split at h
+    · simp only [List.mem_singleton] at h; subst h
+      refine ⟨[], by simp, fun ss hss => ?_⟩
+      cases ss with
+      | nil => simp [Value.follow]
+      | cons s₁ ss' => simp [pathKey] at hss
+    · cases h
+  | path, .borrow b w, x, h => by
+    simp only [Value.sitesOf] at h
+    obtain ⟨ψ₀, hx, hb⟩ := site_not_bot l pos (path ++ [.deref]) w x h
+    refine ⟨.deref :: ψ₀, by rw [hx]; simp, fun ss hss => ?_⟩
+    cases ss with
+    | nil => simp [Value.follow]
+    | cons s₁ ss' =>
+      obtain ⟨hk, hss'⟩ := pathKey_prefix_cons hss
+      rw [key_none_deref hk]
+      simp only [Value.follow, stepV, Option.bind_some]
+      exact hb ss' hss'
+  | path, .succ w, x, h => by
+    simp only [Value.sitesOf] at h
+    obtain ⟨ψ₀, hx, hb⟩ := site_not_bot l pos (path ++ [.proj 0]) w x h
+    refine ⟨.proj 0 :: ψ₀, by rw [hx]; simp, fun ss hss => ?_⟩
+    cases ss with
+    | nil => simp [Value.follow]
+    | cons s₁ ss' =>
+      obtain ⟨hk, hss'⟩ := pathKey_prefix_cons hss
+      cases s₁ with
+      | deref => simp [Step.key] at hk
+      | proj i =>
+        simp only [Step.key, Option.some.injEq, Prod.mk.injEq] at hk
+        obtain ⟨-, rfl⟩ := hk
+        simp only [Value.follow, stepV, Option.bind_some]
+        exact hb ss' hss'
+      | field g => simp [Value.follow, stepV]
+  | path, .ind ty c hh ps fs, x, h => by
+    simp only [Value.sitesOf] at h
+    obtain ⟨j, w, hj, ψ₀, hx, hb⟩ := site_not_bot_fields l pos path ty c 0 fs x h
+    refine ⟨.field ⟨ty, c, 0 + j, ""⟩ :: ψ₀, by rw [hx], fun ss hss => ?_⟩
+    cases ss with
+    | nil => simp [Value.follow]
+    | cons s₁ ss' =>
+      obtain ⟨hk, hss'⟩ := pathKey_prefix_cons hss
+      cases s₁ with
+      | deref => simp [Step.key] at hk
+      | proj i =>
+        simp only [Step.key, Option.some.injEq, Prod.mk.injEq] at hk
+        obtain ⟨hc, hi⟩ := hk
+        subst hc
+        simp only [Nat.zero_add] at hi
+        subst hi
+        simp only [Value.follow, stepV, hj, Option.bind_some]
+        exact hb ss' hss'
+      | field g =>
+        simp only [Step.key, Option.some.injEq, Prod.mk.injEq] at hk
+        obtain ⟨hc, hi⟩ := hk
+        simp only [Value.follow, stepV]
+        split
+        · simp only [Nat.zero_add] at hi
+          rw [hi, hj, Option.bind_some]
+          exact hb ss' hss'
+        · simp
+  | _, .zero, _, h | _, .unit, _, h | _, .gfn _, _, h | _, .clo _ _ _, _, h | _, .bot, _, h
+  | _, .abs _, _, h | _, .proof, _, h | _, .tNat, _, h | _, .tUnit, _, h | _, .tEq _ _ _, _, h
+  | _, .tRef _, _, h | _, .tPi _ _ _, _, h | _, .sort _, _, h | _, .tInd _ _, _, h => by
+    simp [Value.sitesOf] at h
+
+theorem site_not_bot_fields (l : Nat) (pos : Pos) (path : List Step) (ty : String) (c : Nat) :
+    ∀ (i : Nat) (ws : List Value) (x : Site), x ∈ Value.sitesOfFields l pos path ty c i ws →
+      ∃ j w, ws[j]? = some w ∧ ∃ ψ₀, x.path = path ++ .field ⟨ty, c, i + j, ""⟩ :: ψ₀ ∧
+        ∀ ss, pathKey ss <+: pathKey ψ₀ → w.follow ss ≠ some .bot
+  | _, [], x, h => by simp [Value.sitesOfFields] at h
+  | i, w :: ws, x, h => by
+    simp only [Value.sitesOfFields, List.mem_append] at h
+    rcases h with h | h
+    · obtain ⟨ψ₀, hx, hb⟩ := site_not_bot l pos (path ++ [.field ⟨ty, c, i, ""⟩]) w x h
+      exact ⟨0, w, rfl, ψ₀, by rw [hx]; simp, hb⟩
+    · obtain ⟨j, w', hj, ψ₀, hx, hb⟩ := site_not_bot_fields l pos path ty c (i + 1) ws x h
+      exact ⟨j + 1, w', by simpa using hj, ψ₀, by rw [hx, show i + 1 + j = i + (j + 1) by omega], hb⟩
+end
+
 /-! ## A loan in a value's list of loans is one `hasLoan` sees -/
 
 /-- The atoms `hasLoan l` tests. -/

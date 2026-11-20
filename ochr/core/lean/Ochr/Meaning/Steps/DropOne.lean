@@ -775,7 +775,7 @@ theorem content_follow (st : MState) (s : SState) (π : Nat → Nat) (q : Place)
     (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (c : Value)
     (hc : (valAt st.env pos).follow q.steps.2 = some c) (hcb : c = .bot ∨ c = .proof) :
     ∃ x T, Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) q.steps.2 = some (x, T) ∧
-      (x = .moved ∨ x = .proof) := by
+      (x = .proof ∨ (x = .moved ∧ c = .bot)) := by
   have hgr : GrainOk K.D K.Γ (DecideScope.topReadings st) q := by rw [← rel_scopeOf K ρ φ hs]; exact hgrain
   have hpt : ¬ IsTemp pos := by
     rcases pos with ⟨f, i⟩ | ⟨f, i⟩
@@ -789,10 +789,10 @@ theorem content_follow (st : MState) (s : SState) (π : Nat → Nat) (q : Place)
   rw [hval]
   refine ⟨s', T', h1, ?_⟩
   rcases h2 with rfl | ⟨H, rfl⟩
-  · exact .inr rfl
+  · exact .inl rfl
   · rcases hcb with rfl | rfl
+    · exact .inr ⟨by simp [Value.mean], rfl⟩
     · exact .inl (by simp [Value.mean])
-    · exact .inr (by simp [Value.mean])
 
 /-- **The copy decision is aligned**: the checker's `copyRead` is the reference's declared reading
 of the place (the decisions are the checker's `Decide`, `CtxOk`). Open: not tried. -/

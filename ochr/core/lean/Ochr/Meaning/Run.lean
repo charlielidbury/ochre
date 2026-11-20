@@ -480,17 +480,21 @@ noncomputable def accessLentPrefix (pos : Pos) (steps : List Step) (s : SState) 
   | some ψ => s.access pos (dataHit ψ)
   | none => s
 
-/-- `Machine.dropAtJoin` of one place, at `(pos, steps)`: a borrow at a root, its end; missing,
-moved or a proof, nothing; a copy, nothing; otherwise [Access] and `moved`. The holder is tested
-first, by the shape, as the checker tests its stored value: a holder's meaning is its content's,
-which reads `moved` when the content was moved out through the borrow (D53 (h)), and the checker
-ends that borrow too (docs/31 D42; it was tested second, after the meaning). -/
+/-- `Machine.dropAtJoin` of one place, at `(pos, steps)`: a borrow at a root, its end; missing or a
+proof, nothing; a copy, nothing; otherwise [Access] and `moved`. The holder is tested first, by the
+shape, as the checker tests its stored value: a holder's meaning is its content's, which reads
+`moved` when the content was moved out through the borrow (D53 (h)), and the checker ends that
+borrow too (docs/31 D42). A place already moved is accessed and written `moved` like any other
+(docs/31 D52, the lead's (B)): the access finds nothing there ((WF14)) and the write is the
+identity, where the checker does nothing; deciding it by reading `moved` from the meaning disagreed
+with the checker wherever data means `moved` (a loan whose borrow's content was moved out, ended
+inside an observation, D68). -/
 noncomputable def dropAt (q : Place) (pos : Pos) (steps : List Step) (s : SState) : SState :=
   match steps, s.shape pos with
   | [], some l => s.endLabel l
   | _, _ =>
     match Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) steps with
-    | some (.proof, _) | some (.moved, _) | none => s
+    | some (.proof, _) | none => s
     | some _ =>
       if K.D.copy (K.D.placeDecl (scopeOf s) q) then s else
       let s := s.access pos (dataHit steps)
