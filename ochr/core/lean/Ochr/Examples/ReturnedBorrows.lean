@@ -727,3 +727,59 @@ ochr HoleSites uses Nats, Fixtures, StaticEnds {
 #guard (run "HoleSites" HoleSites).rejectedWith [
   ("ObsLent", "[Id-typestate] a side of Id ends the borrow r"),
   ("CallLentUse", "no such place *r")]
+
+/-! ## A borrow never ends over a moved-out content, in an observation as anywhere (D98)
+
+Observing a side of `Id` ends every borrow ([Obs]). A side that leaves a borrow's content moved
+out (`let z = *r; ()`) is rejected there, as the same code is when it runs (`RunAfterCall`):
+[End] requires the content to be whole (D53). Until D98 an observation read such a part as `⊥`
+instead; the semantic model cannot follow that through a borrow a call returned, whose backward
+function is defined only on whole contents (`ObsBorrowThrough`, found by the proof). Copying with
+`clone`, as runtime code must, or refilling the place, is accepted. A statement that ends no
+borrow (a side of `Eq`) is unaffected: its moves are undone with its copy. -/
+
+ochr ObsMoved uses Nats, Lists {
+  def IdL (x : &List(Nat)) : &List(Nat) := &*x
+  -- the witness: both sides reborrow through a borrow a call returned, then move its content out
+  reject def ObsBorrowThrough (y : List(Nat)) : Unit := (let r = IdL(&y); let p : Id(Unit, (let w = &*r; let z = *r; ()), (let w = &*r; let z = *r; ())) = refl; ())
+  -- its neighbours, changed alike: without the reborrow, after a plain borrow, through a parameter
+  reject def ObsAfterCall (y : List(Nat)) : Unit := (let r = IdL(&y); let p : Id(Unit, (let z = *r; ()), (let z = *r; ())) = refl; ())
+  reject def ObsAfterBorrow (y : List(Nat)) : Unit := (let r = &y; let p : Id(Unit, (let z = *r; ()), (let z = *r; ())) = refl; ())
+  reject def ObsR (r : &List(Nat)) : Id(Unit, (let z = *r; ()), (let z = *r; ())) := refl
+  -- ... a result that carries the content out, a field, a side split on an unknown, a nested Id
+  reject def TakeBoth (r : &List(Nat)) : Id(List(Nat), *r, *r) := refl
+  reject def FieldOpen (r : &Pair(List(Nat), Nat)) : Id(Unit, (let z = (*r).0; ()), (let z = (*r).0; ())) := refl
+  reject def SplitSide (n : Nat) (y : List(Nat)) : Unit := (let r = IdL(&y); let p : Id(Unit, match clone(n) { Z => (let z = *r; ()), S m => (let z = *r; ()) }, (let z = *r; ())) = refl; ())
+  reject def Nested (r : &List(Nat)) : Id(Prop, Id(Unit, (let z = *r; ()), (let z = *r; ())), True) := refl
+  -- unchanged: sides that differ are told apart by the type-state first; a borrow that ends
+  -- inside a side, and the same code run rather than observed, were always rejected
+  reject def ObsAfterCallCtl (y : List(Nat)) : Unit := (let r = IdL(&y); let p : Id(Unit, (let z = *r; ()), ()) = refl; ())
+  reject def ObsInSide (y : List(Nat)) : Id(Unit, (let r = IdL(&y); let z = *r; ()), (let r = IdL(&y); let z = *r; ())) := refl
+  reject def ThroughW (y : List(Nat)) : Unit := (let r = IdL(&y); let p : Id(Unit, (let w = &*r; let z = *w; ()), (let w = &*r; let z = *w; ())) = refl; ())
+  reject def RunAfterCall (y : List(Nat)) : Unit := (let r = IdL(&y); let z = *r; ())
+  -- the rewrites: copy (D68's idiom) or refill
+  def ObsBorrowThroughClone (y : List(Nat)) : Unit := (let r = IdL(&y); let p : Id(Unit, (let w = &*r; let z = clone(*r); ()), (let w = &*r; let z = clone(*r); ())) = refl; ())
+  def ObsAfterCallClone (y : List(Nat)) : Unit := (let r = IdL(&y); let p : Id(Unit, (let z = clone(*r); ()), (let z = clone(*r); ())) = refl; ())
+  def ObsAfterCallRefill (y : List(Nat)) : Unit := (let r = IdL(&y); let p : Id(Unit, (let z = *r; *r := z; ()), (let z = *r; *r := z; ())) = refl; ())
+  def ObsRRefill (r : &List(Nat)) : Id(Unit, (let z = *r; *r := Cons(0, z); ()), (let z = *r; *r := Cons(0, z); ())) := refl
+  def TakeBothClone (r : &List(Nat)) : Id(List(Nat), clone(*r), clone(*r)) := refl
+  def FieldRefill (r : &Pair(List(Nat), Nat)) : Id(Unit, (let z = (*r).0; (*r).0 := z; ()), (let z = (*r).0; (*r).0 := z; ())) := refl
+  -- a side of Eq ends no borrow: its move is undone with its copy
+  def EqSideVal (r : &List(Nat)) : Eq(List(Nat), *r, *r) := refl
+  -- a partial move refilled, another variable read in between (the proof's check 2)
+  def PartMove (p : Pair(List(Nat), Nat)) (q : Nat) : Nat := (let r = &p; let z = (*r).0; let w = q; (*r).0 := z; w)
+}
+
+#guard (run "ObsMoved" ObsMoved).rejectedWith [
+  ("ObsBorrowThrough", "[D53] a borrow ends while its content is partly moved out (⊥)"),
+  ("ObsAfterCall", "[D53] a borrow ends while its content is partly moved out (⊥)"),
+  ("ObsAfterBorrow", "[D53] a borrow ends while its content is partly moved out (⊥)"),
+  ("ObsR", "[D53] a borrow ends while its content is partly moved out (⊥)"),
+  ("TakeBoth", "[D53] a borrow ends while its content is partly moved out (⊥)"),
+  ("FieldOpen", "[D53] a borrow ends while its content is partly moved out ((⊥, σ"),
+  ("SplitSide", "[D53] a borrow ends while its content is partly moved out (⊥)"),
+  ("Nested", "[D53] a borrow ends while its content is partly moved out (⊥)"),
+  ("ObsAfterCallCtl", "[Id-typestate] the left side of Id leaves moved, through a borrow, *r, the right side does not"),
+  ("ObsInSide", "[D53] a borrow ends while its content is partly moved out (⊥)"),
+  ("ThroughW", "[D53] a borrow ends while its content is partly moved out (⊥)"),
+  ("RunAfterCall", "[D53] a borrow ends while its content is partly moved out (⊥)")]

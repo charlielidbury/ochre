@@ -291,7 +291,11 @@ ochr Moves84 uses Nats {
   def Reborrows (x : &Nat) : Id(Unit, AddM(&*x, 0), ()) := AddMZero(x)
   -- a side that moves out through a borrow and does not refill it leaves it open
   reject def LeftOpen (y : &Nat) : Id(Unit, (let a = *y; ()), ()) := refl
-  def LeftOpenBoth (y : &Nat) : Id(Unit, (let a = *y; ()), (let b = *y; ())) := refl
+  -- changed by D98: both sides leave `*y` moved, and observing them ends `y` over it, an error
+  -- as when the same code runs ([D53]); refilled, or copied with `clone`, it is accepted
+  reject def LeftOpenBoth (y : &Nat) : Id(Unit, (let a = *y; ()), (let b = *y; ())) := refl
+  def RefilledBoth (y : &Nat) : Id(Unit, (let a = *y; *y := a; ()), (let b = *y; *y := b; ())) := refl
+  def ClonedBoth (y : &Nat) : Id(Unit, (let a = clone(*y); ()), (let b = clone(*y); ())) := refl
   -- re-pointing a borrow binding: on one side only, ill-formed; on both, observed by where it
   -- points ([Obs-ref]), so different targets are told apart and the same target is not
   reject def RePointOne (x : Nat) (y : &Nat) : Id(Unit, (y := &x; ()), ()) := refl
@@ -371,6 +375,7 @@ ochr Moves84 uses Nats {
   ("FxFyLet", "[Id-typestate] the left side of Id moves x, the right side does not"),
   ("Consumes", "[Id-typestate] the left side of Id consumes the borrow x, the right side does not (pass a reborrow, &*x)"),
   ("LeftOpen", "[Id-typestate] the left side of Id leaves moved, through a borrow, *y, the right side does not"),
+  ("LeftOpenBoth", "[D53] a borrow ends while its content is partly moved out (⊥)"),
   ("RePointOne", "[Id-typestate] the left side of Id re-points the borrow y, the right side does not"),
   ("RePoint", "the body of RePoint has type ⊤, but the goal is Eq(Nat, σ3, σ0) ∧ Eq(Nat, σ1, σ3)"),
   ("SwapB", "[Id-typestate] the left side of Id re-points the borrow y1, the right side does not"),
