@@ -23,13 +23,13 @@ theorem follow_gloan_cons (m : Nat) (w : Value) (s₁ : Step) (ss : List Step) :
   simp only [Value.follow, stepV]
 
 /-- A key list that extends a non-empty one comes from a path with the same first key. -/
-theorem pathKey_cons_prefix {k : Option (Nat × Nat)} {K : List (Option (Nat × Nat))} {ss : List Step}
-    (h : k :: K <+: pathKey ss) (hne : k :: K ≠ pathKey ss) :
-    ∃ s₁ ss', ss = s₁ :: ss' ∧ s₁.key = k ∧ K <+: pathKey ss' ∧ K ≠ pathKey ss' := by
+theorem walkKey_cons_prefix {k : Option (Nat × Nat)} {K : List (Option (Nat × Nat))} {ss : List Step}
+    (h : k :: K <+: walkKey ss) (hne : k :: K ≠ walkKey ss) :
+    ∃ s₁ ss', ss = s₁ :: ss' ∧ s₁.key = k ∧ K <+: walkKey ss' ∧ K ≠ walkKey ss' := by
   cases ss with
-  | nil => obtain ⟨t, ht⟩ := h; simp [pathKey] at ht
+  | nil => obtain ⟨t, ht⟩ := h; simp [walkKey] at ht
   | cons s₁ ss' =>
-    simp only [pathKey, List.map_cons] at h hne
+    simp only [walkKey, List.map_cons] at h hne
     obtain ⟨t, ht⟩ := h
     simp only [List.cons_append, List.cons.injEq] at ht
     refine ⟨s₁, ss', rfl, ht.1.symm, ⟨t, ht.2⟩, fun e => hne ?_⟩
@@ -40,7 +40,7 @@ mutual
 `path ++ ψ₀` and blocks every path whose key strictly extends `ψ₀`'s. -/
 theorem loanSite_blocks (l : Nat) (pos : Pos) : ∀ (path : List Step) (v : Value) (x : Site),
     x ∈ Value.sitesOf l pos path v → x.fill = false →
-    ∃ ψ₀, x.path = path ++ ψ₀ ∧ ∀ ss, pathKey ψ₀ <+: pathKey ss → pathKey ψ₀ ≠ pathKey ss → v.follow ss = none
+    ∃ ψ₀, x.path = path ++ ψ₀ ∧ ∀ ss, walkKey ψ₀ <+: walkKey ss → walkKey ψ₀ ≠ walkKey ss → v.follow ss = none
   | path, .loan m, x, h, _ => by
     simp only [Value.sitesOf] at h
     split at h
@@ -59,7 +59,7 @@ theorem loanSite_blocks (l : Nat) (pos : Pos) : ∀ (path : List Step) (v : Valu
       cases ss with
       | nil =>
         have := hpre.length_le
-        simp [pathKey] at this
+        simp [walkKey] at this
         subst this
         exact absurd rfl hne
       | cons s₁ ss' => rw [follow_gloan_cons]; exact hb _ hpre hne
@@ -72,7 +72,7 @@ theorem loanSite_blocks (l : Nat) (pos : Pos) : ∀ (path : List Step) (v : Valu
     simp only [Value.sitesOf] at h
     obtain ⟨ψ₀, hx, hb⟩ := loanSite_blocks l pos (path ++ [.deref]) w x h hf
     refine ⟨.deref :: ψ₀, by rw [hx]; simp, fun ss hpre hne => ?_⟩
-    obtain ⟨s₁, ss', rfl, hk, hpre', hne'⟩ := pathKey_cons_prefix hpre hne
+    obtain ⟨s₁, ss', rfl, hk, hpre', hne'⟩ := walkKey_cons_prefix hpre hne
     rw [key_none_deref hk]
     simp only [Value.follow, stepV, Option.bind_some]
     exact hb ss' hpre' hne'
@@ -80,7 +80,7 @@ theorem loanSite_blocks (l : Nat) (pos : Pos) : ∀ (path : List Step) (v : Valu
     simp only [Value.sitesOf] at h
     obtain ⟨ψ₀, hx, hb⟩ := loanSite_blocks l pos (path ++ [.proj 0]) w x h hf
     refine ⟨.proj 0 :: ψ₀, by rw [hx]; simp, fun ss hpre hne => ?_⟩
-    obtain ⟨s₁, ss', rfl, hk, hpre', hne'⟩ := pathKey_cons_prefix hpre hne
+    obtain ⟨s₁, ss', rfl, hk, hpre', hne'⟩ := walkKey_cons_prefix hpre hne
     cases s₁ with
     | deref => simp [Step.key] at hk
     | proj i =>
@@ -93,7 +93,7 @@ theorem loanSite_blocks (l : Nat) (pos : Pos) : ∀ (path : List Step) (v : Valu
     simp only [Value.sitesOf] at h
     obtain ⟨j, w, hj, ψ₀, hx, hb⟩ := loanSite_blocks_fields l pos path ty c 0 fs x h hf
     refine ⟨.field ⟨ty, c, 0 + j, ""⟩ :: ψ₀, by rw [hx], fun ss hpre hne => ?_⟩
-    obtain ⟨s₁, ss', rfl, hk, hpre', hne'⟩ := pathKey_cons_prefix hpre hne
+    obtain ⟨s₁, ss', rfl, hk, hpre', hne'⟩ := walkKey_cons_prefix hpre hne
     cases s₁ with
     | deref => simp [Step.key] at hk
     | proj i =>
@@ -121,7 +121,7 @@ theorem loanSite_blocks (l : Nat) (pos : Pos) : ∀ (path : List Step) (v : Valu
 theorem loanSite_blocks_fields (l : Nat) (pos : Pos) (path : List Step) (ty : String) (c : Nat) :
     ∀ (i : Nat) (ws : List Value) (x : Site), x ∈ Value.sitesOfFields l pos path ty c i ws → x.fill = false →
       ∃ j w, ws[j]? = some w ∧ ∃ ψ₀, x.path = path ++ .field ⟨ty, c, i + j, ""⟩ :: ψ₀ ∧
-        ∀ ss, pathKey ψ₀ <+: pathKey ss → pathKey ψ₀ ≠ pathKey ss → w.follow ss = none
+        ∀ ss, walkKey ψ₀ <+: walkKey ss → walkKey ψ₀ ≠ walkKey ss → w.follow ss = none
   | _, [], x, h, _ => by simp [Value.sitesOfFields] at h
   | i, w :: ws, x, h, hf => by
     simp only [Value.sitesOfFields, List.mem_append] at h
@@ -134,9 +134,9 @@ end
 
 /-! ## No site lies under a `⊥` -/
 
-theorem pathKey_prefix_cons {s₁ x₀ : Step} {ss ψ : List Step} (h : pathKey (s₁ :: ss) <+: pathKey (x₀ :: ψ)) :
-    s₁.key = x₀.key ∧ pathKey ss <+: pathKey ψ := by
-  simp only [pathKey, List.map_cons, List.cons_prefix_cons] at h
+theorem walkKey_prefix_cons {s₁ x₀ : Step} {ss ψ : List Step} (h : walkKey (s₁ :: ss) <+: walkKey (x₀ :: ψ)) :
+    s₁.key = x₀.key ∧ walkKey ss <+: walkKey ψ := by
+  simp only [walkKey, List.map_cons, List.cons_prefix_cons] at h
   exact h
 
 mutual
@@ -145,7 +145,7 @@ following any prefix of `ψ₀` (by key) reaches a constructor, a borrow, a succ
 or a sealed program, never `⊥` (docs/31 D52). -/
 theorem site_not_bot (l : Nat) (pos : Pos) : ∀ (path : List Step) (v : Value) (x : Site),
     x ∈ Value.sitesOf l pos path v →
-    ∃ ψ₀, x.path = path ++ ψ₀ ∧ ∀ ss, pathKey ss <+: pathKey ψ₀ → v.follow ss ≠ some .bot
+    ∃ ψ₀, x.path = path ++ ψ₀ ∧ ∀ ss, walkKey ss <+: walkKey ψ₀ → v.follow ss ≠ some .bot
   | path, .loan m, x, h => by
     simp only [Value.sitesOf] at h
     split at h
@@ -153,7 +153,7 @@ theorem site_not_bot (l : Nat) (pos : Pos) : ∀ (path : List Step) (v : Value) 
       refine ⟨[], by simp, fun ss hss => ?_⟩
       cases ss with
       | nil => simp [Value.follow]
-      | cons s₁ ss' => simp [pathKey] at hss
+      | cons s₁ ss' => simp [walkKey] at hss
     · cases h
   | path, .gloan m w, x, h => by
     simp only [Value.sitesOf] at h
@@ -162,7 +162,7 @@ theorem site_not_bot (l : Nat) (pos : Pos) : ∀ (path : List Step) (v : Value) 
       refine ⟨[], by simp, fun ss hss => ?_⟩
       cases ss with
       | nil => simp [Value.follow]
-      | cons s₁ ss' => simp [pathKey] at hss
+      | cons s₁ ss' => simp [walkKey] at hss
     · obtain ⟨ψ₀, hx, hb⟩ := site_not_bot l pos path w x h
       refine ⟨ψ₀, hx, fun ss hss => ?_⟩
       cases ss with
@@ -175,7 +175,7 @@ theorem site_not_bot (l : Nat) (pos : Pos) : ∀ (path : List Step) (v : Value) 
       refine ⟨[], by simp, fun ss hss => ?_⟩
       cases ss with
       | nil => simp [Value.follow]
-      | cons s₁ ss' => simp [pathKey] at hss
+      | cons s₁ ss' => simp [walkKey] at hss
     · cases h
   | path, .borrow b w, x, h => by
     simp only [Value.sitesOf] at h
@@ -184,7 +184,7 @@ theorem site_not_bot (l : Nat) (pos : Pos) : ∀ (path : List Step) (v : Value) 
     cases ss with
     | nil => simp [Value.follow]
     | cons s₁ ss' =>
-      obtain ⟨hk, hss'⟩ := pathKey_prefix_cons hss
+      obtain ⟨hk, hss'⟩ := walkKey_prefix_cons hss
       rw [key_none_deref hk]
       simp only [Value.follow, stepV, Option.bind_some]
       exact hb ss' hss'
@@ -195,7 +195,7 @@ theorem site_not_bot (l : Nat) (pos : Pos) : ∀ (path : List Step) (v : Value) 
     cases ss with
     | nil => simp [Value.follow]
     | cons s₁ ss' =>
-      obtain ⟨hk, hss'⟩ := pathKey_prefix_cons hss
+      obtain ⟨hk, hss'⟩ := walkKey_prefix_cons hss
       cases s₁ with
       | deref => simp [Step.key] at hk
       | proj i =>
@@ -211,7 +211,7 @@ theorem site_not_bot (l : Nat) (pos : Pos) : ∀ (path : List Step) (v : Value) 
     cases ss with
     | nil => simp [Value.follow]
     | cons s₁ ss' =>
-      obtain ⟨hk, hss'⟩ := pathKey_prefix_cons hss
+      obtain ⟨hk, hss'⟩ := walkKey_prefix_cons hss
       cases s₁ with
       | deref => simp [Step.key] at hk
       | proj i =>
@@ -239,7 +239,7 @@ theorem site_not_bot (l : Nat) (pos : Pos) : ∀ (path : List Step) (v : Value) 
 theorem site_not_bot_fields (l : Nat) (pos : Pos) (path : List Step) (ty : String) (c : Nat) :
     ∀ (i : Nat) (ws : List Value) (x : Site), x ∈ Value.sitesOfFields l pos path ty c i ws →
       ∃ j w, ws[j]? = some w ∧ ∃ ψ₀, x.path = path ++ .field ⟨ty, c, i + j, ""⟩ :: ψ₀ ∧
-        ∀ ss, pathKey ss <+: pathKey ψ₀ → w.follow ss ≠ some .bot
+        ∀ ss, walkKey ss <+: walkKey ψ₀ → w.follow ss ≠ some .bot
   | _, [], x, h => by simp [Value.sitesOfFields] at h
   | i, w :: ws, x, h => by
     simp only [Value.sitesOfFields, List.mem_append] at h
@@ -742,7 +742,7 @@ theorem mem_liveLoansIn_inv' {env : Env} {v : Value} {l : Nat} (h : l ∈ liveLo
 hole `l`, the borrow `l` has a site at that path or at a mark of `l` above it. -/
 theorem site_of_fillHole (env : Env) (l : Nat) (pos : Pos) : ∀ (v : Value) (path ss : List Step) (c : Value),
     v.follow ss = some c → l ∈ Ochr.fillHoles env c →
-    ∃ x ∈ v.sitesOf l pos path, ∃ ψ, x.path = path ++ ψ ∧ pathKey ψ <+: pathKey ss
+    ∃ x ∈ v.sitesOf l pos path, ∃ ψ, x.path = path ++ ψ ∧ walkKey ψ <+: walkKey ss
   | v, path, [], c, hf, hl => by
     simp only [Value.follow, Option.some.injEq] at hf
     subst hf
@@ -786,7 +786,7 @@ theorem site_of_fillHole (env : Env) (l : Nat) (pos : Pos) : ∀ (v : Value) (pa
         simp only [Value.follow, stepV, Option.bind_some] at hf
         obtain ⟨x, hx, ψ, hxp, hk⟩ := site_of_fillHole env l pos w (path ++ [.deref]) ss c hf hl
         refine ⟨x, by simpa [Value.sitesOf] using hx, .deref :: ψ, by rw [hxp]; simp, ?_⟩
-        simp only [pathKey, List.map_cons]
+        simp only [walkKey, List.map_cons]
         exact List.cons_prefix_cons.mpr ⟨rfl, hk⟩
       | proj _ | field _ => simp [Value.follow, stepV] at hf
     | succ w =>
@@ -797,13 +797,13 @@ theorem site_of_fillHole (env : Env) (l : Nat) (pos : Pos) : ∀ (v : Value) (pa
           simp only [Value.follow, stepV, Option.bind_some] at hf
           obtain ⟨x, hx, ψ, hxp, hk⟩ := site_of_fillHole env l pos w (path ++ [.proj 0]) ss c hf hl
           refine ⟨x, by simpa [Value.sitesOf] using hx, .proj 0 :: ψ, by rw [hxp]; simp, ?_⟩
-          simp only [pathKey, List.map_cons]
+          simp only [walkKey, List.map_cons]
           exact List.cons_prefix_cons.mpr ⟨rfl, hk⟩
         | succ _ => simp [Value.follow, stepV] at hf
       | deref | field _ => simp [Value.follow, stepV] at hf
     | ind ty c' hh ps fs =>
       have key : ∀ (i : Nat) (w : Value), fs[i]? = some w → w.follow ss = some c → (Step.key s₁ = some (c', i)) →
-          ∃ x ∈ (Value.ind ty c' hh ps fs).sitesOf l pos path, ∃ ψ, x.path = path ++ ψ ∧ pathKey ψ <+: pathKey (s₁ :: ss) := by
+          ∃ x ∈ (Value.ind ty c' hh ps fs).sitesOf l pos path, ∃ ψ, x.path = path ++ ψ ∧ walkKey ψ <+: walkKey (s₁ :: ss) := by
         intro i w hi hfw hk
         have : sizeOf w < sizeOf (Value.ind ty c' hh ps fs) := by
           have := List.sizeOf_lt_of_mem (List.mem_of_getElem? hi)
@@ -812,7 +812,7 @@ theorem site_of_fillHole (env : Env) (l : Nat) (pos : Pos) : ∀ (v : Value) (pa
         refine ⟨x, ?_, .field ⟨ty, c', i, ""⟩ :: ψ, by rw [hxp]; simp, ?_⟩
         · simp only [Value.sitesOf]
           exact (mem_sitesOfFields l pos path ty c' 0 fs x).mpr ⟨i, w, hi, by simpa using hx⟩
-        · simp only [pathKey, List.map_cons]
+        · simp only [walkKey, List.map_cons]
           rw [hk]
           exact List.cons_prefix_cons.mpr ⟨rfl, hk'⟩
       cases s₁ with

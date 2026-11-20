@@ -322,8 +322,8 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 /-- **Above a filled parent the lent prefix exists, at or above it**: the parent holds a fill
 over a live borrow, so that borrow (or one whose mark the path passes, holding it) has a site at
 the parent's path or above it, and the related reference state has the same sites for the same
-live labels. Open: the correspondence between the checker's sites and paths, and between the live
-labels of related states. -/
+live labels. PROVED (the checker's site found by `site_of_fillHole`, compared step by step, read as
+the reference's erased key, `KeyBridge`'s free direction). -/
 theorem lentPrefix_some_of_fill (st : MState) (s : SState) (π : Nat → Nat) (q p : Place) (pos : Pos) (c : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpar : parentOf q = some p)
     (hpos : resolve s q = some (pos, q.steps.2)) (hc : ckContent st.env p = some c)
@@ -353,12 +353,14 @@ theorem lentPrefix_some_of_fill (st : MState) (s : SState) (π : Nat → Nat) (q
   have hq2 : q.steps.2 = p.steps.2 ++ [xs] := by rw [hxs']
   let n := ψ₁.length
   have hn : n ≤ p.steps.2.length := by
-    have := hk.length_le; simp only [pathKey, List.length_map] at this; exact this
+    have := hk.length_le; simp only [walkKey, List.length_map] at this; exact this
   have hkey : pathKey (q.steps.2.take n) = pathKey ψ₁ := by
     rw [hq2, List.take_append_of_le_length hn]
     have := List.prefix_iff_eq_take.mp hk
-    simp only [pathKey, List.length_map] at this ⊢
-    rw [List.map_take]; exact this.symm
+    simp only [walkKey, List.length_map] at this
+    rw [← List.map_take] at this
+    -- the checker's positional key, read as the reference's (`KeyBridge`, the free direction)
+    exact pathKey_eq_of_walkKey (by simp only [walkKey]; exact this.symm)
   have hPn : s.liveLabels.any (s.reached pos fun ψ' => pathKey ψ' == pathKey (q.steps.2.take n)) = true := by
     rw [List.any_eq_true]
     refine ⟨π l, hπl, ?_⟩
@@ -377,8 +379,7 @@ theorem lentPrefix_some_of_fill (st : MState) (s : SState) (π : Nat → Nat) (q
     · rw [hmin n h] at hPn; cases hPn
     · exact h
   rw [hq2, List.take_append_of_le_length (Nat.le_trans hjn hn)]
-  simp only [pathKey, List.map_take]
-  exact List.take_prefix _ _
+  exact (List.take_prefix _ _).filterMap _
 
 /-- **A filled parent accessed whole is the lent prefix accessed whole** (`movedPlace`'s fill
 branch against the reference's `accessLentPrefix`). The lent prefix is the parent's path or above
@@ -679,10 +680,10 @@ theorem alp_idem (pos : Pos) (steps : List Step) (s : SState) :
       refine ⟨hxr.1, ?_⟩
       unfold dataHit
       rw [hxr.2]
-      simp only [pathKey, List.map_take]
+      simp only [Bool.or_eq_true, List.isPrefixOf_iff_prefix]
       rcases Nat.le_total i j with h | h
-      · simp [h, List.isPrefixOf_iff_prefix, List.take_prefix_take_left]
-      · simp [List.isPrefixOf_iff_prefix, List.take_prefix_take_left, h]
+      · exact .inl (pathKey_take_prefix steps h)
+      · exact .inr (pathKey_take_prefix steps h)
     rw [hnone]
 
 
@@ -978,7 +979,7 @@ theorem joinDropOne_noop (st : MState) (s s₁ : SState) (π : Nat → Nat) (q q
   have hclr : ∀ l, liveLoan st.env l = true → ∀ x ∈ Env.sitesOf st.env l, x.pos = pos' →
       dataHit q'.steps.2 x.path = false := by
     rcases hcb with rfl | rfl
-    · exact clear_of_bot hg.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hf'
+    · exact clear_of_bot hg.2.2.1 hg.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hf'
     · have he := hrootP rfl
       rw [he] at hf'
       simp only [Value.follow, Option.some.injEq] at hf'

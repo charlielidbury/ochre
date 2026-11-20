@@ -50,7 +50,7 @@ def stAt (name : String) : MState :=
 /-- `0`'s one site: field `1` of the pair. -/
 def site1 (x : Pos) : Site := ⟨x, [.field ⟨"Pair", 0, 1, ""⟩], false⟩
 
-def siteForm (x : Site) : Pos × List (Option (Nat × Nat)) × Bool := (x.pos, pathKey x.path, x.fill)
+def siteForm (x : Site) : Pos × List (Option (Nat × Nat)) × Bool := (x.pos, walkKey x.path, x.fill)
 
 /-- The checker's `clone(x.0)` (`x` is variable `1`, `r` variable `0`). -/
 def cloneX0 (fuel : Nat) : M Unit := discard (eval fuel true (.prim "clone" [.place (.proj 0 (.var 1))]))

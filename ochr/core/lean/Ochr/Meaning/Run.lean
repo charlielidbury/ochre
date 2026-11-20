@@ -507,7 +507,9 @@ noncomputable def discardEnd (R : TyS) (s : SState) : SState :=
 
 /-- The shortest strict prefix of `steps` at which a live label has a site at `pos`: where the
 checker's path stops at a lent part (`Machine.movedPlace`: a place under a loan or a sealed fill
-does not exist, and its longest existing prefix, a fill, is accessed whole). -/
+does not exist, and its longest existing prefix, a fill, is accessed whole). Sites are matched by
+key (`*` erased, docs/31 D67), so a prefix that differs from the place by `*`s only may be the one
+found; accessing it whole is then accessing the place (`DropOne.lentPrefix_absorbed`). -/
 def lentPrefix (s : SState) (pos : Pos) (steps : List Step) : Option (List Step) :=
   ((List.range steps.length).map steps.take).find? fun ψ =>
     s.liveLabels.any (s.reached pos fun ψ' => pathKey ψ' == pathKey ψ)

@@ -12,13 +12,11 @@ a borrow, `&&T` is outside the core). `endLabel_comm` is the meanings' half.
 
 namespace Ochr.Meaning
 
-/-- What [End] at `(l, r)` does to one site `x` of another borrow. -/
+/-- What [End] at `(l, r)` does to one site `x` of another borrow: a site at the holder lies in the
+content and is re-rooted, whatever its path (docs/31 D67); any other site stays. -/
 def relendOne (L : Nat → List Site) (l : Nat) (r : Pos) (x : Site) : List Site :=
-  match x.path with
-  | .deref :: π =>
-    if x.pos = r then (L l).map fun y => if y.fill then y else { y with path := y.path ++ π, fill := x.fill }
-    else [x]
-  | _ => [x]
+  if x.pos = r then (L l).map fun y => if y.fill then y else { y with path := y.path ++ inContent x.path, fill := x.fill }
+  else [x]
 
 theorem relend_eq (s : SState) (l : Nat) (r : Pos) (m : Nat) :
     s.relend l r m = if m = l then [] else (s.lent m).flatMap (relendOne s.lent l r) := by
@@ -30,18 +28,21 @@ def relendL (L : Nat → List Site) (l : Nat) (r : Pos) : Nat → List Site := f
 
 theorem relendOne_off {L : Nat → List Site} {l : Nat} {r : Pos} {x : Site} (h : x.pos ≠ r) :
     relendOne L l r x = [x] := by
-  unfold relendOne; split <;> simp [h]
+  unfold relendOne; simp [h]
 
-/-- How [End] adjusts one of the ended borrow's sites `y` for a site `x` with path `* :: π`. -/
+/-- How [End] adjusts one of the ended borrow's sites `y` for a site `x` at the holder, `π` being
+`x`'s path in the content (`inContent`). -/
 def adjust (x : Site) (π : List Step) (y : Site) : Site :=
   if y.fill then y else { y with path := y.path ++ π, fill := x.fill }
 
 theorem adjust_pos (x : Site) (π : List Step) (y : Site) : (adjust x π y).pos = y.pos := by
   unfold adjust; split <;> rfl
 
-theorem relendOne_at {L : Nat → List Site} {l : Nat} {r : Pos} {x : Site} {π : List Step}
-    (hp : x.path = .deref :: π) (hx : x.pos = r) : relendOne L l r x = (L l).map (adjust x π) := by
-  unfold relendOne adjust; simp [hp, hx]
+theorem relendOne_at {L : Nat → List Site} {l : Nat} {r : Pos} {x : Site} (hx : x.pos = r) :
+    relendOne L l r x = (L l).map (adjust x (inContent x.path)) := by
+  unfold relendOne adjust; simp [hx]
+
+theorem inContent_deref (π : List Step) : inContent (.deref :: π) = π := rfl
 
 theorem flatMap_congr' {α β : Type _} {f g : α → List β} : ∀ {l : List α}, (∀ x ∈ l, f x = g x) →
     l.flatMap f = l.flatMap g
@@ -63,33 +64,29 @@ theorem relendOne_comm_at (L : Nat → List Site) (k l : Nat) (rk rl : Pos) (hkl
       (relendOne L l rl x).flatMap (relendOne (relendL L l rl) k rk) := by
   have hxl : x.pos ≠ rl := hx ▸ hr
   rw [relendOne_off (L := L) (l := l) hxl, List.flatMap_singleton]
-  rcases hp : x.path with _ | ⟨st, π⟩
-  · unfold relendOne; simp [hp]
-  · cases st with
-    | proj _ | field _ => unfold relendOne; simp [hp]
-    | deref =>
-      rw [relendOne_at hp hx, relendOne_at hp hx, List.flatMap_map]
-      simp only [relendL, if_neg hkl, List.map_flatMap]
-      refine flatMap_congr' fun y0 hy0 => ?_
-      by_cases hy0r : y0.pos = rl
-      · have h1 : ∀ y ∈ L l, y.pos ≠ rk := by
-          rcases hacyc with h1 | h2
-          · exact h1
-          · exact absurd hy0r (h2 y0 hy0)
-        obtain ⟨π0, hπ0⟩ := hin_k y0 hy0 hy0r
-        rw [relendOne_at hπ0 hy0r, List.map_map]
-        have hRk : relendL L k rk l = L l := by simp only [relendL, if_neg hkl.symm]; exact flatMap_off h1
-        by_cases hf : y0.fill
-        · have e : adjust x π y0 = y0 := by simp [adjust, hf]
-          rw [e, relendOne_at hπ0 hy0r, hRk]
-          refine List.map_congr_left fun z _ => ?_
-          by_cases hz : z.fill <;> simp [adjust, hz, hf]
-        · have hp' : (adjust x π y0).path = .deref :: (π0 ++ π) := by simp [adjust, hf, hπ0]
-          rw [relendOne_at hp' (by rw [adjust_pos]; exact hy0r), hRk]
-          refine List.map_congr_left fun z _ => ?_
-          by_cases hz : z.fill <;> simp [adjust, hz, hf, List.append_assoc]
-      · rw [relendOne_off hy0r, relendOne_off (by rw [adjust_pos]; exact hy0r)]
-        rfl
+  rw [relendOne_at hx, relendOne_at hx, List.flatMap_map]
+  simp only [relendL, if_neg hkl, List.map_flatMap]
+  refine flatMap_congr' fun y0 hy0 => ?_
+  by_cases hy0r : y0.pos = rl
+  · have h1 : ∀ y ∈ L l, y.pos ≠ rk := by
+      rcases hacyc with h1 | h2
+      · exact h1
+      · exact absurd hy0r (h2 y0 hy0)
+    obtain ⟨π0, hπ0⟩ := hin_k y0 hy0 hy0r
+    rw [relendOne_at hy0r, List.map_map, hπ0, inContent_deref]
+    have hRk : relendL L k rk l = L l := by simp only [relendL, if_neg hkl.symm]; exact flatMap_off h1
+    by_cases hf : y0.fill
+    · have e : adjust x (inContent x.path) y0 = y0 := by simp [adjust, hf]
+      rw [e, relendOne_at hy0r, hRk, hπ0, inContent_deref]
+      refine List.map_congr_left fun z _ => ?_
+      by_cases hz : z.fill <;> simp [adjust, hz, hf]
+    · have hp' : (adjust x (inContent x.path) y0).path = .deref :: (π0 ++ inContent x.path) := by
+        simp [adjust, hf, hπ0]
+      rw [relendOne_at (by rw [adjust_pos]; exact hy0r), hRk, hp', inContent_deref]
+      refine List.map_congr_left fun z _ => ?_
+      by_cases hz : z.fill <;> simp [adjust, hz, hf, List.append_assoc]
+  · rw [relendOne_off hy0r, relendOne_off (by rw [adjust_pos]; exact hy0r)]
+    rfl
 
 /-- **Ends commute on sites**: ending `k` at its holder `rk` and `l` at `rl` in either order leaves
 every borrow lent at the same sites (as lists), when every site at either holder lies inside its

@@ -1,6 +1,7 @@
 import Ochr.Meaning.Steps.DropOne
 import Ochr.Meaning.UpdBot
 import Ochr.Meaning.RunEnv
+import Ochr.Meaning.KeyBridge
 
 /-!
 # L3: the write of `⊥` keeps the relation (the relation's half of `botWrite_step`)
@@ -187,7 +188,11 @@ theorem sitesOf_setAtE_bot {env : Env} {pos : Pos} {steps : List Step} {v' : Val
       have hd := hclear x (by simp only [Env.sitesOf, List.mem_flatMap]; exact ⟨p, hp', hx⟩) hxp
       simp only [dataHit, Bool.or_eq_false_iff] at hd
       simp only [List.nil_append]
-      rw [hd.2]; simp
+      -- the checker's positional prefix is an erased one (`KeyBridge`, the free direction)
+      intro h
+      have h' := pathKey_prefix_of_walkKey (List.isPrefixOf_iff_prefix.mp h)
+      rw [← List.isPrefixOf_iff_prefix, hd.2] at h'
+      cases h'
     · rw [← valAt_setAtE_other env pos p v' hpp] at hx
       exact ⟨p, hp', hx⟩
 

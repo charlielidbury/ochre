@@ -27,7 +27,7 @@ theorem grain_prefix {D : Decisions} {Γ : List IndDecl} {sc : List DeclInfo} {q
 /-- An access of a longer path reaches only what an access of its prefix reaches (both read sites
 by key, and two prefixes of one key are comparable). -/
 theorem dataHit_of_prefix {a b ψ : List Step} (hab : a <+: b) (h : dataHit b ψ = true) : dataHit a ψ = true := by
-  have hk : pathKey a <+: pathKey b := hab.map _
+  have hk : pathKey a <+: pathKey b := hab.filterMap _
   simp only [dataHit, Bool.or_eq_true, List.isPrefixOf_iff_prefix] at h ⊢
   rcases h with h | h
   · exact List.prefix_or_prefix_of_prefix h hk
@@ -67,7 +67,7 @@ theorem lentPrefix_none_of_unreached {s : SState} {pos : Pos} {p steps : List St
   simp only [dataHit, Bool.or_eq_true, List.isPrefixOf_iff_prefix]
   left
   rw [hxr.2]
-  exact (List.take_prefix j steps).map _
+  exact (List.take_prefix j steps).filterMap _
 
 /-- `⋆` reads `⋆` along any path. -/
 theorem sem_follow_proof (dm : DataModel) (Γ : List IndDecl) :

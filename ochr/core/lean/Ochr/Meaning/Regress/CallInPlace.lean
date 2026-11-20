@@ -1084,7 +1084,7 @@ theorem id1_inPlace_typed :
         Attack.takeLabel_S₂, SState.freshLoan, Mean.semEnd, SState.toMean]
   · rw [hpop, endLabel_SPg2]
     simp [SState.setLent, SState.pushTempShaped, SState.pushTemp, SState.mapVals, SState.topIdx, SPg2, yFrame, SC1,
-      Attack.takeLabel_S₂, SState.freshLoan, SState.relend]
+      Attack.takeLabel_S₂, SState.freshLoan, SState.relend, inContent]
   · intro p ψ n hψ
     have hd : Code0.dec dm.read TyM.nat.code0.snd (.el0 Nat n) = some (show TyM.nat.code0.fst from n) :=
       Attack.dec_nat_el0 dm.read n

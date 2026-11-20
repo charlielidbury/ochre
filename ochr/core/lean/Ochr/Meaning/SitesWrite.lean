@@ -75,35 +75,35 @@ theorem mem_sitesOfFields (l : Nat) (pos : Pos) (path : List Step) (ty : String)
         simp only [List.getElem?_cons_succ] at hj
         exact .inr ⟨j, w', hj, by rwa [show i + 1 + j = i + (j + 1) by omega]⟩
 
-theorem pathKey_append (a b : List Step) : pathKey (a ++ b) = pathKey a ++ pathKey b := List.map_append
+theorem walkKey_append (a b : List Step) : walkKey (a ++ b) = walkKey a ++ walkKey b := List.map_append
 
 /-- A path through a field other than the written one is not under the written path. -/
 theorem not_under_of_key_ne {path y ss : List Step} {a b : Step} (hy : path ++ [a] <+: y)
-    (hab : a.key ≠ b.key) : ¬ (pathKey (path ++ b :: ss)).isPrefixOf (pathKey y) = true := by
+    (hab : a.key ≠ b.key) : ¬ (walkKey (path ++ b :: ss)).isPrefixOf (walkKey y) = true := by
   intro h
   rw [List.isPrefixOf_iff_prefix] at h
   obtain ⟨t, rfl⟩ := hy
-  simp only [pathKey_append, List.append_assoc, List.singleton_append] at h
+  simp only [walkKey_append, List.append_assoc, List.singleton_append] at h
   obtain ⟨u, hu⟩ := h
-  simp only [pathKey, List.map_cons, List.cons_append, List.append_assoc] at hu
+  simp only [walkKey, List.map_cons, List.cons_append, List.append_assoc] at hu
   have := List.append_cancel_left hu
   simp only [List.cons.injEq] at this
   exact hab this.1.symm
 
 /-- A path strictly above the written one is not under it. -/
 theorem not_under_strict {path ss : List Step} {b : Step} :
-    ¬ (pathKey (path ++ b :: ss)).isPrefixOf (pathKey path) = true := by
+    ¬ (walkKey (path ++ b :: ss)).isPrefixOf (walkKey path) = true := by
   intro h
   rw [List.isPrefixOf_iff_prefix] at h
   have := h.length_le
-  simp [pathKey] at this
+  simp [walkKey] at this
   omega
 
 /-- **The write of `⊥` at a path removes exactly the sites at or under it.** -/
 theorem sitesOf_updAt_bot (l : Nat) (pos : Pos) : ∀ (steps path : List Step) (v v' : Value),
     Value.updAt (fun _ => .bot) steps v = some v' → ∀ x,
       x ∈ Value.sitesOf l pos path v' ↔
-        (x ∈ Value.sitesOf l pos path v ∧ ¬ (pathKey (path ++ steps)).isPrefixOf (pathKey x.path) = true)
+        (x ∈ Value.sitesOf l pos path v ∧ ¬ (walkKey (path ++ steps)).isPrefixOf (walkKey x.path) = true)
   | [], path, v, v', h, x => by
     simp only [Value.updAt, Option.some.injEq] at h
     subst h
@@ -174,8 +174,8 @@ theorem sitesOf_updAt_bot (l : Nat) (pos : Pos) : ∀ (steps path : List Step) (
           rw [sitesOf_updAt_bot l pos ss _ w w' hw' x] at hx
           refine ⟨⟨st.fieldIdx, w, hw, hx.1⟩, ?_⟩
           have := hx.2
-          simp only [pathKey_append, List.append_assoc, List.singleton_append] at this ⊢
-          simpa [pathKey, hkey] using this
+          simp only [walkKey_append, List.append_assoc, List.singleton_append] at this ⊢
+          simpa [walkKey, hkey] using this
         · rw [List.getElem?_set_ne (Ne.symm hjk)] at hj
           refine ⟨⟨j, u, hj, hx⟩, not_under_of_key_ne (sitesOf_prefix l pos _ u x hx).2 ?_⟩
           simp only [Step.key]
@@ -191,8 +191,8 @@ theorem sitesOf_updAt_bot (l : Nat) (pos : Pos) : ∀ (steps path : List Step) (
           refine ⟨st.fieldIdx, w', List.getElem?_set_self (List.getElem?_eq_some_iff.mp hw).1, ?_⟩
           rw [sitesOf_updAt_bot l pos ss _ w w' hw' x]
           refine ⟨hx, ?_⟩
-          simp only [pathKey_append, List.append_assoc, List.singleton_append] at hnot ⊢
-          simpa [pathKey, hkey] using hnot
+          simp only [walkKey_append, List.append_assoc, List.singleton_append] at hnot ⊢
+          simpa [walkKey, hkey] using hnot
         · exact ⟨j, u, by rw [List.getElem?_set_ne (Ne.symm hjk)]; exact hj, hx⟩
     | _ => simp [Value.updAt] at h
 termination_by steps _ v => (steps.length, sizeOf v)

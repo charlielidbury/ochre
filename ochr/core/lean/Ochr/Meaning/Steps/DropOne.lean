@@ -4,6 +4,7 @@ import Ochr.Meaning.SitesWrite
 import Ochr.Meaning.RelendComm
 import Ochr.Meaning.AccessAbsorb
 import Ochr.Meaning.SitesFollow
+import Ochr.Meaning.KeyBridge
 import Ochr.Meaning.Steps.PlaceTyping
 
 /-!
@@ -620,9 +621,10 @@ theorem rel_live_ref (st : MState) (s : SState) (π : Nat → Nat) (hs : Rel K �
 live borrow with a site at or below the lent prefix has a fill exactly there. The prefix's own site
 is a fill, not a loan (a place exists below it, and nothing exists below a loan); and (WF12) leaves
 no other live borrow at or below a live fill. The second half of `SState.AbsorbInv`; the first is
-the prefix's minimality (`lentPrefix_above`). Open: the correspondence between the checker's sites
-(`Value.sitesOf`) and its paths (`Value.follow`) at one position, and between the live labels of
-related states (`SimEq`'s holders, `Rel.sites`). -/
+the prefix's minimality (`lentPrefix_above`). PROVED: the checker's sites (`Value.sitesOf`) against
+its paths (`Value.follow`) at one position (`loanSite_blocks`), compared step by step, read as the
+reference's erased comparison through (WF1) (`KeyBridge`, docs/31 D67), and the live labels of
+related states (`rel_live_ref`, `Rel.sites`). -/
 theorem lentPrefix_fill (st : MState) (s : SState) (π : Nat → Nat) (pos : Pos) (steps ss ψ : List Step) (w : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hp : pos ∈ allPos st.env)
     (hl : lentPrefix s pos steps = some ψ) (hw : (valAt st.env pos).follow ss = some w)
@@ -641,20 +643,28 @@ theorem lentPrefix_fill (st : MState) (s : SState) (π : Nat → Nat) (pos : Pos
   obtain ⟨l₀, hl₀, rfl⟩ := rel_live_ref K ρ φ st s π hs hm
   have hz' : z ∈ Env.sitesOf st.env k₀ := (hs.sites k₀ hk₀ z).mp hz
   have hx' : x ∈ Env.sitesOf st.env l₀ := (hs.sites l₀ hl₀ x).mp hx
+  -- the two keys meet here (docs/31 D67): under (WF1) the sites and walks at `pos` place their
+  -- `*`s alike (`KeyBridge`)
+  have hv : WF1At (valAt st.env pos) := wf1At_of_WF1 hg.2.2.1 hp
+  have hzs := mem_sitesOf_at hz' hzr.1
+  have hxs := mem_sitesOf_at hx' hxp
   have hzf : z.fill = true := by
     cases hzfill : z.fill
     · exfalso
-      obtain ⟨ψ₀, hzpath, hb⟩ := loanSite_blocks k₀ pos [] (valAt st.env pos) z (mem_sitesOf_at hz' hzr.1) hzfill
+      obtain ⟨ψ₀, hzpath, hb⟩ := loanSite_blocks k₀ pos [] (valAt st.env pos) z hzs hzfill
       simp only [List.nil_append] at hzpath
-      rw [hzpath] at hzr
-      have := hb ss (hzr.2 ▸ hlt) (hzr.2 ▸ hne)
+      obtain ⟨h1, h2⟩ := walkKey_strict_of_site_walk (site_shaped hv hzs) (walk_shaped hv hw)
+        (hzr.2 ▸ hlt) (hzr.2 ▸ hne)
+      rw [hzpath] at h1 h2
+      have := hb ss h1 h2
       rw [hw] at this; cases this
     · rfl
   have h12 : WF12 st.env := hg.2.2.2.2.2.2.2.2.2.2.2.2.1
-  have hpre : (pathKey z.path).isPrefixOf (pathKey x.path) = true := by
-    rw [hzr.2]; exact List.isPrefixOf_iff_prefix.mpr hK
+  have hpre : (walkKey z.path).isPrefixOf (walkKey x.path) = true := by
+    rw [List.isPrefixOf_iff_prefix]
+    exact walkKey_prefix_of_sites (site_shaped hv hzs) (site_shaped hv hxs) (by rw [hzr.2]; exact hK)
   obtain ⟨z', hz', hz'p, hz'k, hz'f⟩ := h12 k₀ l₀ hk₀ hl₀ z hz' hzf x hx' (hxp.trans hzr.1.symm) hpre
-  refine ⟨z', (hs.sites l₀ hl₀ z').mpr hz', hz'p.trans hzr.1, hz'k.trans hzr.2, hz'f⟩
+  refine ⟨z', (hs.sites l₀ hl₀ z').mpr hz', hz'p.trans hzr.1, (pathKey_eq_of_walkKey hz'k).trans hzr.2, hz'f⟩
 
 /-- The sites at the lent prefix of a path above an existing place are as the absorption needs. -/
 theorem lentPrefix_absorbInv (st : MState) (s : SState) (π : Nat → Nat) (pos : Pos) (steps ss ψ : List Step) (w : Value)
@@ -681,16 +691,14 @@ theorem lentPrefix_absorbed (st st' : MState) (s : SState) (π : Nat → Nat) (p
     rcases hl : lentPrefix s pos steps with _ | ψ
     · rfl
     · simp only
-      obtain ⟨j, hj, hψ, -⟩ := lentPrefix_spec hl
+      obtain ⟨j, -, hψ, -⟩ := lentPrefix_spec hl
       have hlt : pathKey ψ <+: pathKey steps := by
-        rw [hψ]; simp only [pathKey, List.map_take]; exact List.take_prefix _ _
-      have hne : pathKey ψ ≠ pathKey steps := by
-        intro h
-        have := congrArg List.length h
-        simp [pathKey, hψ] at this
-        omega
-      have hI := lentPrefix_absorbInv K ρ φ st s π pos steps steps ψ w hg hs hp hl hw hlt hne
-      rw [SState.access_absorb hI hlt, SState.access_access]
+        rw [hψ]; exact (List.take_prefix _ _).filterMap _
+      by_cases hne : pathKey ψ = pathKey steps
+      · -- a prefix that differs from the place by `*`s only: the place itself (docs/31 D67)
+        rw [dataHit_congr hne, SState.access_access]
+      · have hI := lentPrefix_absorbInv K ρ φ st s π pos steps steps ψ w hg hs hp hl hw hlt hne
+        rw [SState.access_absorb hI hlt, SState.access_access]
   rw [e]
 
 /-- **(6) No lent prefix above a moved part.** Where the checker's place is `⊥` (its drop does
@@ -717,7 +725,25 @@ theorem lentPrefix_none_of_noop (st : MState) (s : SState) (π : Nat → Nat) (q
   unfold SState.reached at hr
   obtain ⟨x, hx, hxp⟩ := List.any_eq_true.mp hr
   simp only [Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at hxp
-  exact h14 pos q.steps.2 hnoop l hl x ((hs.sites l hl x).mp hx) hxp.1 k (List.mem_range.mp hk) hxp.2
+  have hx' := (hs.sites l hl x).mp hx
+  have hpos : pos ∈ allPos st.env := by
+    unfold Env.sitesOf at hx'
+    obtain ⟨p, hp, hxp'⟩ := List.mem_flatMap.mp hx'
+    rw [← hxp.1, (sitesOf_prefix l p [] _ x hxp').1]; exact hp
+  -- the two keys meet here (docs/31 D67, `KeyBridge`)
+  have hv := wf1At_of_WF1 hg.2.2.1 hpos
+  have hxv := mem_sitesOf_at hx' hxp.1
+  by_cases hs' : pathKey (q.steps.2.take k) = pathKey q.steps.2
+  · -- a site at the moved place itself, by key: nothing along a site's own path is `⊥`
+    obtain ⟨ψ₀, hxψ, hnb⟩ := site_not_bot l pos [] _ x hxv
+    simp only [List.nil_append] at hxψ
+    have hkp : pathKey q.steps.2 <+: pathKey x.path := by rw [hxp.2, hs']; exact List.prefix_refl _
+    have hw := walkKey_prefix_of_walk_site (walk_shaped hv hnoop) (site_shaped hv hxv) hkp
+    rw [hxψ] at hw
+    exact hnb q.steps.2 hw hnoop
+  obtain ⟨k', hk', he⟩ := walkKey_take_of_site (site_shaped hv hxv) (walk_shaped hv hnoop)
+    (List.mem_range.mp hk) hxp.2 hs'
+  exact h14 pos q.steps.2 hnoop l hl x hx' hxp.1 k' hk' he
 
 /-- **(6) No lent prefix above a proof part the join drops.** At a variable there is no strict
 prefix; below one, vacuously: a place below a variable holding `⋆` is declared a copy type ((C⋆),

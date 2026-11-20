@@ -273,12 +273,13 @@ borrow is re-pointed, its mark passes to both, so both are filled at the whole p
 def WF12 (env : Env) : Prop :=
   ∀ k l, liveLoan env k = true → liveLoan env l = true →
     ∀ x ∈ Env.sitesOf env k, x.fill = true → ∀ y ∈ Env.sitesOf env l, y.pos = x.pos →
-      (pathKey x.path).isPrefixOf (pathKey y.path) = true →
-      ∃ z ∈ Env.sitesOf env l, z.pos = x.pos ∧ pathKey z.path = pathKey x.path ∧ z.fill = true
+      (walkKey x.path).isPrefixOf (walkKey y.path) = true →
+      ∃ z ∈ Env.sitesOf env l, z.pos = x.pos ∧ walkKey z.path = walkKey x.path ∧ z.fill = true
 
 /-- (WF14) **No live borrow is lent strictly above a moved part** (docs/31 D43): where a position's
 value has `⊥` at a path, no live borrow has a site at that position at a strict prefix of the path
-(compared by `pathKey`, as the reference's `lentPrefix` does). [Borrow] rejects a partly moved
+(compared step by step, `walkKey`, as the checker's own clauses compare; the reference's `lentPrefix`
+compares by `pathKey`, `*` erased, and the two meet in `KeyBridge`, docs/31 D67). [Borrow] rejects a partly moved
 place, and a move under a fill reaches the fill first and ends it. Read off the checker and swept
 (`Sweep.lean`'s clause (iii), at every `⊥` part of every position), NOT proved preserved. What the
 drop at the join needs where the checker's place is `⊥` (`DropOne.lentPrefix_none_of_noop`): the
@@ -286,7 +287,7 @@ checker does nothing there, so the reference's access of the lent prefix must do
 def WF14 (env : Env) : Prop :=
   ∀ pos path, (valAt env pos).follow path = some .bot →
     ∀ l, liveLoan env l = true → ∀ x ∈ Env.sitesOf env l, x.pos = pos →
-      ∀ k < path.length, pathKey x.path ≠ pathKey (path.take k)
+      ∀ k < path.length, walkKey x.path ≠ walkKey (path.take k)
 
 /-- A closure or Π-type recording (D82) a declared type that holds a loan or a mark of `l`. -/
 def _root_.Ochr.Value.rdLoan (l : Nat) : Value → Bool

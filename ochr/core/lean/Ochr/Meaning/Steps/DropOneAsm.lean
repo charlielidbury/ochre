@@ -313,7 +313,7 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
     have hclr : ∀ l, liveLoan st.env l = true → ∀ x ∈ Env.sitesOf st.env l, x.pos = pos →
         dataHit q.steps.2 x.path = false := by
       rcases hcb with rfl | rfl
-      · exact clear_of_bot hg.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hn
+      · exact clear_of_bot hg.2.2.1 hg.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hn
       · by_cases hne : q.steps.2 = []
         · rw [hne] at hn
           simp only [Value.follow, Option.some.injEq] at hn
@@ -343,7 +343,7 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
       · -- a place already moved: the reference accesses it, which ends nothing, and writes `moved`
         -- over `moved`, which changes nothing the relation reads (docs/31 D52)
         simp only [hcopy, Bool.false_eq_true, if_false]
-        have hclr := clear_of_bot hg.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hn
+        have hclr := clear_of_bot hg.2.2.1 hg.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hn
         have hself := updAt_bot_self q.steps.2 _ hn
         obtain ⟨f, i, hposfi, hpb, hsp, hroot, hplain, hnat⟩ :=
           botWrite_hyps K ρ φ st s π q pos _ hg hctx hs hck hgrain (fun he => hnb _ hn (.inl rfl) he) hself

@@ -1,4 +1,5 @@
 import Ochr.Meaning.Steps.BotWriteRel
+import Ochr.Meaning.KeyBridge
 
 /-!
 # `Good` after the write of `⊥` (L3's other half; docs/31 D50)
@@ -293,7 +294,7 @@ theorem stepV_ind_set (x : Step) (ty : String) (c : Nat) (hh : Hint) (ps fs : Li
 /-- **A `⊥` after the write is an old one, or the written one**: following a path to `⊥` in the
 written value follows it in the old, unless the path is the written one (by key). -/
 theorem follow_updAt_bot : ∀ (steps : List Step) (v v' : Value), Value.updAt (fun _ => .bot) steps v = some v' →
-    ∀ path, v'.follow path = some .bot → v.follow path = some .bot ∨ pathKey path = pathKey steps
+    ∀ path, v'.follow path = some .bot → v.follow path = some .bot ∨ walkKey path = walkKey steps
   | [], v, v', h, path, hf => by
     simp only [Value.updAt, Option.some.injEq] at h; subst h
     cases path with
@@ -322,7 +323,7 @@ theorem follow_updAt_bot : ∀ (steps : List Step) (v v' : Value), Value.updAt (
             simp only [Value.follow, stepV, Option.bind_some] at hf ⊢
             rcases follow_updAt_bot ss w w' hw' ps hf with h1 | h1
             · exact .inl h1
-            · right; simp [pathKey] at h1 ⊢; exact h1
+            · right; simp [walkKey] at h1 ⊢; exact h1
           | proj _ | field _ => simp [Value.follow, stepV] at hf
       | proj _ | field _ => simp [Value.updAt] at h
     | succ w =>
@@ -342,7 +343,7 @@ theorem follow_updAt_bot : ∀ (steps : List Step) (v v' : Value), Value.updAt (
                 simp only [Value.follow, stepV, Option.bind_some] at hf ⊢
                 rcases follow_updAt_bot ss w w' hw' ps hf with h1 | h1
                 · exact .inl h1
-                · right; simp [pathKey] at h1 ⊢; exact h1
+                · right; simp [walkKey] at h1 ⊢; exact h1
               | succ _ => simp [Value.follow, stepV] at hf
             | deref | field _ => simp [Value.follow, stepV] at hf
         | succ _ => simp [Value.updAt] at h
@@ -382,7 +383,7 @@ theorem follow_updAt_bot : ∀ (steps : List Step) (v v' : Value), Value.updAt (
         · left; rw [h1, Option.bind_some]; exact hfu
         · rcases follow_updAt_bot ss w u hw' rest hfu with h2 | h2
           · left; rw [h1, Option.bind_some]; exact h2
-          · right; simp only [pathKey, List.map_cons, List.cons.injEq] at h2 ⊢; exact ⟨hk.trans hci.symm, h2⟩
+          · right; simp only [walkKey, List.map_cons, List.cons.injEq] at h2 ⊢; exact ⟨hk.trans hci.symm, h2⟩
     | _ => simp [Value.updAt] at h
 termination_by steps v => (steps.length, sizeOf v)
 
@@ -460,10 +461,12 @@ theorem wf14_setAtE {env : Env} {pos : Pos} {steps : List Step} {v' : Value} (hp
     · exact h14 q path h1 l hl x hx' hxq k hk hkey
     · have hd := hclear l hl x hx' hxq
       simp only [dataHit, Bool.or_eq_false_iff] at hd
-      have : (pathKey x.path).isPrefixOf (pathKey steps) = true := by
-        rw [hkey, ← h1, pathKey, pathKey]
+      have : (walkKey x.path).isPrefixOf (walkKey steps) = true := by
+        rw [hkey, ← h1, walkKey, walkKey]
         exact List.isPrefixOf_iff_prefix.mpr ((List.take_prefix k path).map Step.key)
-      rw [hd.1] at this; cases this
+      -- a positional prefix is an erased one (`KeyBridge`, the free direction)
+      have h' := pathKey_prefix_of_walkKey (List.isPrefixOf_iff_prefix.mp this)
+      rw [← List.isPrefixOf_iff_prefix, hd.1] at h'; cases h'
   · rw [valAt_setAtE_other env pos q v' hqp] at hq
     exact h14 q path hq l hl x hx' hxq k hk hkey
 
@@ -582,37 +585,46 @@ theorem updAt_bot_self : ∀ (steps : List Step) (v : Value), v.follow steps = s
 termination_by steps v => (steps.length, sizeOf v)
 
 /-- **No live borrow has a site at, over or under a `⊥`**: over it by (WF14); at or under it no site
-can be, since nothing along a site's own path is `⊥` (`site_not_bot`). -/
-theorem clear_of_bot {env : Env} {pos : Pos} {steps : List Step} (h14 : WF14 env)
+can be, since nothing along a site's own path is `⊥` (`site_not_bot`). The comparison is the
+reference's (`dataHit`, `*` erased); the checker's clauses compare step by step, and (WF1) makes
+the two agree at one position (`KeyBridge`, docs/31 D67). -/
+theorem clear_of_bot {env : Env} {pos : Pos} {steps : List Step} (h1 : WF1 env) (h14 : WF14 env)
     (hbot : (valAt env pos).follow steps = some .bot) :
     ∀ l, liveLoan env l = true → ∀ x ∈ Env.sitesOf env l, x.pos = pos → dataHit steps x.path = false := by
   intro l hl x hx hxp
   have hx' := hx
   simp only [Env.sitesOf, List.mem_flatMap] at hx'
-  obtain ⟨p, -, hxv⟩ := hx'
+  obtain ⟨p, hpm, hxv⟩ := hx'
   have hpp : x.pos = p := (sitesOf_prefix l p [] _ x hxv).1
   rw [hxp] at hpp; subst hpp
   obtain ⟨ψ₀, hxψ, hnb⟩ := site_not_bot l pos [] _ x hxv
   simp only [List.nil_append] at hxψ
+  have hv := wf1At_of_WF1 h1 hpm
+  have hsx := site_shaped hv hxv
+  have hws := walk_shaped hv hbot
   cases e : dataHit steps x.path
   · rfl
   · exfalso
     simp only [dataHit, Bool.or_eq_true, List.isPrefixOf_iff_prefix] at e
+    -- at or under the `⊥`: nothing along a site's path is `⊥`
+    have hunder : ¬ pathKey steps <+: pathKey x.path := fun e' =>
+      hnb steps (by rw [← hxψ]; exact walkKey_prefix_of_walk_site hws hsx e') hbot
     rcases e with e | e
     · by_cases heq : pathKey x.path = pathKey steps
-      · exact hnb steps (by rw [← hxψ, heq]; exact List.prefix_refl _) hbot
-      · obtain ⟨t, ht⟩ := id e
+      · exact hunder (by rw [heq]; exact List.prefix_refl _)
+      · obtain ⟨e, hne⟩ := walkKey_strict_of_site_walk hsx hws e heq
+        obtain ⟨t, ht⟩ := id e
         have hlt : x.path.length < steps.length := by
           have h1 := congrArg List.length ht
-          simp only [pathKey, List.length_append, List.length_map] at h1
+          simp only [walkKey, List.length_append, List.length_map] at h1
           rcases t with _ | ⟨a, t⟩
-          · simp at ht; exact absurd ht heq
+          · simp at ht; exact absurd ht hne
           · simp at h1; omega
         apply h14 pos steps hbot l hl x hx hxp x.path.length hlt
         have hp := List.prefix_iff_eq_take.mp e
-        simp only [pathKey, List.length_map] at hp
-        rw [pathKey, pathKey, List.map_take]; exact hp
-    · exact hnb steps (by rw [← hxψ]; exact e) hbot
+        simp only [walkKey, List.length_map] at hp
+        rw [walkKey, walkKey, List.map_take]; exact hp
+    · exact hunder e
 
 /-! ## The assembly -/
 

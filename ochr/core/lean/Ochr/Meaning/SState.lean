@@ -50,8 +50,19 @@ def _root_.Ochr.Step.key : Step → Option (Nat × Nat)
   | .proj i => some (0, i)
   | .field g => some (g.ctor, g.idx)
 
-/-- A path compared by fields. -/
-def pathKey (ψ : List Step) : List (Option (Nat × Nat)) := ψ.map Step.key
+/-- A path compared by fields, its `*`s erased: a borrow means its content, so `*` is the identity
+on meanings (`Sem.step .deref`), and two paths that differ only in where they put `*`s read the
+same part of a meaning (docs/31 D67). -/
+def pathKey (ψ : List Step) : List (Nat × Nat) := ψ.filterMap Step.key
+
+/-- The CHECKER's key of a path: step by step, `*` included. The checker walks values, and its
+walk tells `*` from a field (`stepV`), so statements about its own values (`Value.sitesOf`,
+`Value.follow`, `Value.updAt`, the clauses about fills and moved parts) compare paths by this key;
+the reference compares by `pathKey`. The two meet in the relation (docs/31 D67). -/
+def walkKey (ψ : List Step) : List (Option (Nat × Nat)) := ψ.map Step.key
+
+@[simp] theorem pathKey_nil : pathKey [] = [] := rfl
+@[simp] theorem walkKey_nil : walkKey [] = [] := rfl
 
 /-- [Access] of a place at `steps` reaches a site at the path `ψ` of the same position when the
 site is on the path, at the place or inside its content (`accessPath`, then `accessInside`): one
@@ -116,18 +127,26 @@ def mapVals (s : SState) (f : Pos → SVal → SVal) : SState :=
       { binds := fr.binds.zipIdx.map fun (b, i) => { b with val := f (.bind fi i) b.val },
         temps := fr.temps.zipIdx.map fun (v, i) => f (.temp fi i) v } }
 
+/-- A site's path at a borrow's holder, read in the borrow's content: its leading `*` dropped, if
+any (a borrow means its content, docs/31 D67). -/
+def _root_.Ochr.Meaning.inContent : List Step → List Step
+  | .deref :: π => π
+  | π => π
+
 /-- [End l] on sites (docs/31 D29; main's `lendV (.ended l …)` with the substitution): each site of
-any label lying under `l`'s holder `r`, at the path `*::π`, is replaced, for each site of `l`, by
-that site whole if it is a fill (a fill over `l` becomes a fill over every borrow of `l`'s final
-content) and by the path `π` below it, keeping its own kind, if it is `l`'s loan (the content
-replaces the loan, so a reborrow's loan lands at its own path); `l` keeps no site. -/
+any label at `l`'s holder `r`, at the path `σ`, lies in `l`'s content (the holder's meaning is that
+content), and is replaced, for each site of `l`, by that site whole if it is a fill (a fill over
+`l` becomes a fill over every borrow of `l`'s final content) and by the path `inContent σ` below
+it, keeping its own kind, if it is `l`'s loan (the content replaces the loan, so a reborrow's loan
+lands at its own path); `l` keeps no site. As first written only the sites at `*::π` were
+re-rooted, a positional accident that `*`-erasure exposed (docs/31 D67,
+`Regress/StarErasure.lean`); at the checker's states every site at a borrow holder is under its
+`*`, so the two agree there. -/
 def relend (s : SState) (l : Nat) (r : Pos) : Nat → List Site := fun m =>
   if m = l then [] else (s.lent m).flatMap fun x =>
-    match x.path with
-    | .deref :: π =>
-      if x.pos = r then (s.lent l).map fun y => if y.fill then y else { y with path := y.path ++ π, fill := x.fill }
-      else [x]
-    | _ => [x]
+    if x.pos = r then
+      (s.lent l).map fun y => if y.fill then y else { y with path := y.path ++ inContent x.path, fill := x.fill }
+    else [x]
 
 /-- [End l] (docs/27 Def. 4): the holder `r` of `l` is forgotten and every meaning reads `l`'s
 final content as what `r` holds now; the places `l` was lent pass to the borrows of that content

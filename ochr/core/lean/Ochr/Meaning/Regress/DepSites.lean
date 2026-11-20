@@ -6,7 +6,7 @@ import Ochr.Meaning.Regress.StaticLend
 
 The invariant (`CallInPlace.DepWithinSites`): two futures that differ only at live labels with no
 site at `p` on a path comparable with `steps` give the same reading of `p` at `steps`, typed or not.
-Checked on the lead's five states, each the reference's state at that point (by its own run where
+Checked on the lead's states, each the reference's state at that point (by its own run where
 the run is computed, else written in the form `callOf`'s `.ref` row (i') and [End] give it, with
 the checker's sites where a checker state is at hand):
 - the plain borrow, `let y = …; &y` (`Attack.S₂`, `borrowPlace`'s output): holds (`dws_S₂`);
@@ -16,27 +16,27 @@ the checker's sites where a checker state is at hand):
   reference's `relend` on the checker's sites, which `StaticLend` checks equal to the checker's):
   holds;
 - the conditional-dependence state (D27's `CondDep`, reachable form, after `k`'s end): holds.
-All five hold for the same reason: every position reads only labels lent at its ROOT (a fill at a
-lent place, a plain loan of a whole binding), which every path at the position is comparable with
-(`dws_of_root`).
+All five hold for the same reason: every position reads only labels lent at it at a path of `*`s
+only (a fill at a lent place, a plain loan of a whole binding), which every path at the position is
+comparable with (`dws_of_root`).
 
-**It fails at the first site below a root** (`dws_fails_SRb`): after `let r = σ1(&c1); let s = &*r`
-(the attack's program, by the reference's own run: `Attack.callOf_S₂`, `pushBindShaped_S₃`, then `borrowPlace_deref_S₄`) `r` reads `s`'s final
-content and `s` is lent at `(r, [*])`. A path at `r` that skips the `*` (`[.0]`, ill-typed: `r` is a
-borrow) is incomparable with `[*]` by field keys, yet reads the content through it, since `*` is the
-identity on meanings (`Sem.step .deref`). With `*` erased from the comparison (`DepWithinSitesE`)
-the state satisfies it (`dwsE_SRb`); the erased form is a weakening (`dwsE_of_dws`), so it holds on
-the five states too. The checker's `G8At` holds the same kind of site (`StaticLend`: `4` lent at
-`(r, [*])`), so the stated form fails there by the same argument (not separately checked). See
-docs/31 D67 for the fix proposed.
+**The first site below a root** (`SRb`): after `let r = σ1(&c1); let s = &*r` (the attack's
+program, by the reference's own run: `Attack.callOf_S₂`, `pushBindShaped_S₃`, then
+`borrowPlace_deref_S₄`) `r` reads `s`'s final content and `s` is lent at `(r, [*])`. With paths
+compared step by step the invariant failed there (`dwsW_fails_SRb`, kept as the record): `[.0]` at
+`r`, a path that skips the `*` (ill-typed: `r` is a borrow), is incomparable with `[*]`, yet reads
+the content through it, `*` being the identity on meanings. Since D67's erasure (`pathKey` drops
+`*`) the site's key is the root's and the state satisfies it (`dws_SRb`). The further states (a
+reborrow of a reborrow, a field borrowed through a returned borrow of a pair) are in
+`Regress/DepSitesMore.lean`.
 -/
 
 namespace Ochr.Meaning.Regress.DepSites
 open Ochr Ochr.Meaning Ochr.Meaning.Regress.CallInPlace
 
-/-- `l` is lent at the root of `p` (the place whole). -/
+/-- `l` is lent at `p` at a path of `*`s only: the place whole, or a borrow's whole content. -/
 def rootSited (s : SState) (p : Pos) (l : Nat) : Bool :=
-  (s.lent l).any fun x => decide (x.pos = p) && x.path.isEmpty
+  (s.lent l).any fun x => decide (x.pos = p) && (pathKey x.path).isEmpty
 
 theorem reached_of_rootSited {s : SState} {p : Pos} {l : Nat} (h : rootSited s p l = true)
     (steps : List Step) : s.reached p (dataHit steps) l = true := by
@@ -44,7 +44,7 @@ theorem reached_of_rootSited {s : SState} {p : Pos} {l : Nat} (h : rootSited s p
   obtain ⟨x, hx, hp⟩ := List.any_eq_true.1 h
   simp only [Bool.and_eq_true, decide_eq_true_eq, List.isEmpty_iff] at hp
   refine List.any_eq_true.2 ⟨x, hx, ?_⟩
-  simp [hp.1, hp.2, dataHit, pathKey]
+  simp [hp.1, hp.2, dataHit]
 
 /-- A position each of whose readings reads only labels lent at its root: such a label is reached at
 every path, so the futures compared agree on it. -/
@@ -133,9 +133,9 @@ def SPZ (S A B R : SBinding) (fa fb : Sem → Sem) (vs vr : Sem) : SState :=
     lent := Env.sitesOf StaticLend.stZ.env,
     heldTy := fun m => if m = 0 then TyM.nat else TyM.err }
 
-theorem rs_PZ_a : (Env.sitesOf StaticLend.stZ.env 0).any (fun x => decide (x.pos = .bind 1 1) && x.path.isEmpty) = true := by
+theorem rs_PZ_a : (Env.sitesOf StaticLend.stZ.env 0).any (fun x => decide (x.pos = .bind 1 1) && (pathKey x.path).isEmpty) = true := by
   decide +kernel
-theorem rs_PZ_b : (Env.sitesOf StaticLend.stZ.env 0).any (fun x => decide (x.pos = .bind 1 2) && x.path.isEmpty) = true := by
+theorem rs_PZ_b : (Env.sitesOf StaticLend.stZ.env 0).any (fun x => decide (x.pos = .bind 1 2) && (pathKey x.path).isEmpty) = true := by
   decide +kernel
 
 /-- **`Pick` at `Z`.** -/
@@ -174,9 +174,9 @@ def SG8K (S A B R T : SBinding) (fa fb : Sem → Sem) (vs vt : Sem) : SState :=
     heldTy := fun m => if m = 3 then TyM.nat else TyM.err }
 
 theorem rs_G8K_a : ((StaticLend.refOf StaticLend.stK.env).relend 1 StaticLend.rK 3).any
-    (fun x => decide (x.pos = .bind 1 1) && x.path.isEmpty) = true := by decide +kernel
+    (fun x => decide (x.pos = .bind 1 1) && (pathKey x.path).isEmpty) = true := by decide +kernel
 theorem rs_G8K_b : ((StaticLend.refOf StaticLend.stK.env).relend 1 StaticLend.rK 3).any
-    (fun x => decide (x.pos = .bind 1 2) && x.path.isEmpty) = true := by decide +kernel
+    (fun x => decide (x.pos = .bind 1 2) && (pathKey x.path).isEmpty) = true := by decide +kernel
 
 /-- **`G8` after the re-rooting end, `n` known.** -/
 theorem dws_G8K (S A B R T : SBinding) (fa fb : Sem → Sem) (vs vt : Sem) :
@@ -267,7 +267,7 @@ noncomputable def SCD (X Y R J M : SBinding) (c : Nat) (g : Sem → Sem → Sem)
     nextLoan := 3, lent := lentCD' }
 
 theorem rs_CD (l : Nat) (hl : l = 1 ∨ l = 2) (i : Nat) (hi : i = 0 ∨ i = 1) :
-    (lentCD' l).any (fun x => decide (x.pos = .bind 0 i) && x.path.isEmpty) = true := by
+    (lentCD' l).any (fun x => decide (x.pos = .bind 0 i) && (pathKey x.path).isEmpty) = true := by
   rcases hl with rfl | rfl <;> rcases hi with rfl | rfl <;> decide +kernel
 
 /-- **The conditional dependence.** -/
@@ -326,63 +326,18 @@ theorem live_SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) : (SRb F n
   rw [SState.live_iff]
   exact ⟨.temp 0 2, by simp [SRb, SState.positions, List.range'], by simp [SRb]⟩
 
-/-- **The invariant fails at the reborrow's lender, at a path that skips the `*`**: `r` read at
-`[.0]` is `k+2`'s final content's predecessor, so two typed futures differing only at `k+2` (`1`,
-`2`) read `0` and `1`; `k+2` is live and lent at `(r, [*])` only, and `[.0]` and `[*]` are
-incomparable by field keys. -/
-theorem dws_fails_SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) :
-    ¬ DepWithinSites dm Γ (SRb F n b k) := by
-  intro h
-  have := h (.bind 0 1) [.proj 0] (fun l => if l = k+2 then .el0 Nat 1 else .err)
-    (fun l => if l = k+2 then .el0 Nat 2 else .err) (fun l hl => ?_)
-  · simp [SRb, SState.valAt, Sem.follow, Sem.step, Sem.asNat_el0] at this
-  · by_cases hlk : l = k + 2
-    · subst hlk
-      exact ⟨live_SRb F n b k, by simp [SState.reached, SRb, dataHit, pathKey, Step.key, List.isPrefixOf]⟩
-    · simp [hlk] at hl
-
-/-! ### With `*` erased from the comparison -/
-
-/-- A path's field keys with its `*`s erased: a meaning reads a path as it reads the path without
-them (`Sem.step .deref` is the identity). -/
-def pathKeyE (ψ : List Step) : List (Nat × Nat) := ψ.filterMap Step.key
-
-def dataHitE (steps ψ : List Step) : Bool :=
-  (pathKeyE ψ).isPrefixOf (pathKeyE steps) || (pathKeyE steps).isPrefixOf (pathKeyE ψ)
-
-/-- The invariant with sites compared by `dataHitE`. -/
-def DepWithinSitesE (s : SState) : Prop :=
-  ∀ (p : Pos) (steps : List Step) (ψ ψ' : Future),
-    (∀ l, ψ l ≠ ψ' l → s.Live l ∧ s.reached p (dataHitE steps) l = false) →
-    Sem.follow dm Γ (s.tyAt p) (s.valAt p ψ) steps = Sem.follow dm Γ (s.tyAt p) (s.valAt p ψ') steps
-
-/-- `l` is lent at `p` at a path of `*`s only. -/
-def starSited (s : SState) (p : Pos) (l : Nat) : Bool :=
-  (s.lent l).any fun x => decide (x.pos = p) && (pathKeyE x.path).isEmpty
-
-theorem agree_of_starSited {s : SState} {p : Pos} {steps : List Step} {ψ ψ' : Future}
-    (h : ∀ l, ψ l ≠ ψ' l → s.Live l ∧ s.reached p (dataHitE steps) l = false) {l : Nat}
-    (hr : starSited s p l = true) : ψ l = ψ' l := by
-  refine Classical.byContradiction fun hne => ?_
-  have := (h l hne).2
-  obtain ⟨x, hx, hp⟩ := List.any_eq_true.1 hr
-  simp only [Bool.and_eq_true, decide_eq_true_eq, List.isEmpty_iff] at hp
-  have hr' : s.reached p (dataHitE steps) l = true :=
-    List.any_eq_true.2 ⟨x, hx, by simp [hp.1, dataHitE, hp.2]⟩
-  rw [hr'] at this; cases this
-
-/-- **With `*` erased the reborrow's state satisfies it**: every position reads only labels lent
-at it at a path of `*`s, comparable with every path. -/
-theorem dwsE_SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) :
-    DepWithinSitesE dm Γ (SRb F n b k) := by
-  intro p steps ψ ψ' h
-  congr 1
+/-- **The reborrow's lender**: `r` reads `s`'s borrow `k+2`, lent at `(r, [*])`, whose key is the
+root's, so every path at `r` is comparable with it. -/
+theorem dws_SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) :
+    DepWithinSites dm Γ (SRb F n b k) := by
+  apply dws_of_root
+  intro p ψ ψ' h
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
   · rcases f with _ | f
     · rcases i with _ | _ | i
-      · have := agree_of_starSited h (l := k+1) (by simp [starSited, SRb, Attack.lentA, pathKeyE])
+      · have := agree_of_rootSited h (l := k+1) (by simp [rootSited, SRb, Attack.lentA, pathKey])
         simp [SState.valAt, SRb, this]
-      · have := agree_of_starSited h (l := k+2) (by simp [starSited, SRb, pathKeyE, Step.key])
+      · have := agree_of_rootSited h (l := k+2) (by simp [rootSited, SRb, pathKey, Step.key])
         simp [SState.valAt, SRb, this]
       · simp [SState.valAt, SRb]
     · simp [SState.valAt, SRb]
@@ -395,27 +350,30 @@ theorem dwsE_SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) :
       all_goals simp [SState.valAt, SRb]
     · simp [SState.valAt, SRb]
 
-/-- The erased comparison only adds comparable pairs. -/
-theorem dataHitE_of_dataHit (steps ψ : List Step) (h : dataHit steps ψ = true) : dataHitE steps ψ = true := by
-  have hE : ∀ π, pathKeyE π = (pathKey π).filterMap id := fun π => by
-    simp [pathKeyE, pathKey, List.filterMap_map]
-  simp only [dataHit, dataHitE, Bool.or_eq_true, List.isPrefixOf_iff_prefix, hE] at h ⊢
-  rcases h with h | h
-  · exact .inl (h.filterMap id)
-  · exact .inr (h.filterMap id)
+/-! ### The record: with the positional comparison it failed -/
 
-/-- So the erased form is a weakening: it holds wherever the stated form holds (the five states
-above included), and also at the reborrow's lender. -/
-theorem dwsE_of_dws (s : SState) (h : DepWithinSites dm Γ s) : DepWithinSitesE dm Γ s := by
-  intro p steps ψ ψ' hd
-  refine h p steps ψ ψ' fun l hl => ⟨(hd l hl).1, ?_⟩
-  have := (hd l hl).2
-  cases hr : s.reached p (dataHit steps) l
-  · rfl
-  · obtain ⟨x, hx, hp⟩ := List.any_eq_true.1 hr
-    simp only [Bool.and_eq_true] at hp
-    rw [show s.reached p (dataHitE steps) l = true from
-      List.any_eq_true.2 ⟨x, hx, by simp [hp.1, dataHitE_of_dataHit steps x.path hp.2]⟩] at this
-    cases this
+/-- Sites compared step by step, `*` included (the comparison before D67's erasure). -/
+def walkHit (steps ψ : List Step) : Bool :=
+  (walkKey ψ).isPrefixOf (walkKey steps) || (walkKey steps).isPrefixOf (walkKey ψ)
+
+def DepWithinSitesW (s : SState) : Prop :=
+  ∀ (p : Pos) (steps : List Step) (ψ ψ' : Future),
+    (∀ l, ψ l ≠ ψ' l → s.Live l ∧ s.reached p (walkHit steps) l = false) →
+    Sem.follow dm Γ (s.tyAt p) (s.valAt p ψ) steps = Sem.follow dm Γ (s.tyAt p) (s.valAt p ψ') steps
+
+/-- **With the positional comparison the invariant failed at the reborrow's lender, at a path that
+skips the `*`**: `r` read at `[.0]` is `k+2`'s final content's predecessor, so two typed futures
+differing only at `k+2` (`1`, `2`) read `0` and `1`; `[.0]` and `[*]` are incomparable step by
+step. -/
+theorem dwsW_fails_SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) :
+    ¬ DepWithinSitesW dm Γ (SRb F n b k) := by
+  intro h
+  have := h (.bind 0 1) [.proj 0] (fun l => if l = k+2 then .el0 Nat 1 else .err)
+    (fun l => if l = k+2 then .el0 Nat 2 else .err) (fun l hl => ?_)
+  · simp [SRb, SState.valAt, Sem.follow, Sem.step, Sem.asNat_el0] at this
+  · by_cases hlk : l = k + 2
+    · subst hlk
+      exact ⟨live_SRb F n b k, by simp [SState.reached, SRb, walkHit, walkKey, Step.key, List.isPrefixOf]⟩
+    · simp [hlk] at hl
 
 end Ochr.Meaning.Regress.DepSites

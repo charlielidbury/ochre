@@ -1,17 +1,23 @@
 import Ochr.Meaning.SitesWrite
 import Ochr.Meaning.AccessAbsorb
+import Ochr.Examples.Nat
 
 /-!
-# Two statements that `*`-erasure makes false (docs/31 D67; kernel-checked, for the lead)
+# Two statements that `*`-erasure made false (docs/31 D67; kernel-checked, kept as records)
 
-The lead's (a): compare paths with `*` erased (`pathKey`). Two proved statements depend on the
-positional comparison and are false under erasure, each at a state the checker never reaches.
+The lead's (a): compare paths with `*` erased (`pathKey`). Two proved statements depended on the
+positional comparison and were false under erasure, each at a state the checker never reaches.
 Both are stated here with the erased key written out (`keyE`), so they hold whatever `pathKey` is.
+The lead's resolution: `relend` re-roots every site at the holder (the first holds again,
+`absorb_endLabel_now`); the checker's statements about its own values keep the positional key
+(`walkKey`), meeting the reference's in the relation (`KeyBridge`). The checker's rejection that
+makes both states unreachable is asserted below (`StarErasureProbe`).
 
 * **`AccessAbsorb.AbsorbInv.endLabel`** (the absorption invariant survives an end). When the
   ended borrow's holder `r` is itself lent at a path NOT under its `*` (here at `[]`) as well as at
-  `[*]`, the erased keys of the two sites are equal; [End] (`relend`) re-roots only the site under
-  the `*`, so after it the site at `[]` has no fill at its key (`absorb_endLabel_fails`). A site at
+  `[*]`, the erased keys of the two sites are equal; [End] as first written (`relendOld`) re-roots
+  only the site under the `*`, so after it the site at `[]` has no fill at its key
+  (`absorb_endLabel_fails`). A site at
   a borrow holder not under its `*` is a borrow of a borrow-typed place, which the checker rejects
   ("a borrow of a borrow-typed place").
 * **`SitesWrite.sitesOf_updAt_bot`** (the write of `⊥` removes exactly the sites at or under the
@@ -60,22 +66,49 @@ theorem absorb_SA : AbsorbInvE SA (.bind 0 1) [] := by
   · simp [SA] at hx; rw [hx] at hxp; simp at hxp
   · exact ⟨⟨.bind 0 1, [.deref], true⟩, by simp [SA], rfl, rfl, rfl⟩
 
-/-- **The absorption invariant does not survive [End] under erasure**: after `0` ends at `r`, `1`'s
-site `(r, [])` stays and its fill `(r, [*])` moves to `q`. -/
-theorem absorb_endLabel_fails : AbsorbInvE SA (.bind 0 1) [] ∧ ¬ AbsorbInvE (SA.endLabel 0) (.bind 0 1) [] := by
+/-- [End] on sites as first written: only the sites under the holder's `*` re-rooted. -/
+def relendOld (s : SState) (l : Nat) (r : Pos) : Nat → List Site := fun m =>
+  if m = l then [] else (s.lent m).flatMap fun x =>
+    match x.path with
+    | .deref :: π =>
+      if x.pos = r then (s.lent l).map fun y => if y.fill then y else { y with path := y.path ++ π, fill := x.fill }
+      else [x]
+    | _ => [x]
+
+theorem live_end_SA : 1 ∈ (SA.endLabel 0).liveLabels := by
+  rw [SState.mem_liveLabels, SState.positions_endLabel, SState.endLabel_shape SA 0 _ find_SA, positions_SA]
+  exact ⟨.bind 0 2, by simp, by simp [SA]⟩
+
+/-- **The absorption invariant did not survive [End] as first written, under erasure**: after `0`
+ends at `r`, `1`'s site `(r, [])` stayed and its fill `(r, [*])` moved to `q`. -/
+theorem absorb_endLabel_fails : AbsorbInvE SA (.bind 0 1) [] ∧
+    ¬ AbsorbInvE { SA.endLabel 0 with lent := relendOld SA 0 (.bind 0 1) } (.bind 0 1) [] := by
   refine ⟨absorb_SA, fun h => ?_⟩
-  have hlent : (SA.endLabel 0).lent 1 = [⟨.bind 0 1, [], false⟩, ⟨.bind 0 0, [], true⟩] := by
-    rw [SState.lent_endLabel find_SA]
-    simp [SState.relend, SA]
-  have hlive : 1 ∈ (SA.endLabel 0).liveLabels := by
-    rw [SState.mem_liveLabels, SState.positions_endLabel, SState.endLabel_shape SA 0 _ find_SA, positions_SA]
-    exact ⟨.bind 0 2, by simp, by simp [SA]⟩
-  obtain ⟨y, hy, hyp, -, hyf⟩ := h.2 1 hlive ⟨.bind 0 1, [], false⟩ (by rw [hlent]; simp) rfl (List.nil_prefix)
+  have hlent : relendOld SA 0 (.bind 0 1) 1 = [⟨.bind 0 1, [], false⟩, ⟨.bind 0 0, [], true⟩] := by
+    simp [relendOld, SA]
+  obtain ⟨y, hy, hyp, -, hyf⟩ := h.2 1 live_end_SA ⟨.bind 0 1, [], false⟩
+    (by show _ ∈ relendOld SA 0 (.bind 0 1) 1; rw [hlent]; simp) rfl (List.nil_prefix)
+  change y ∈ relendOld SA 0 (.bind 0 1) 1 at hy
   rw [hlent] at hy
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hy
   rcases hy with rfl | rfl
   · cases hyf
   · simp at hyp
+
+/-- **With [End] re-rooting every site at the holder it survives**: both of `1`'s sites at `r` pass
+to `q`, and nothing is left at `r`. -/
+theorem absorb_endLabel_now : AbsorbInvE (SA.endLabel 0) (.bind 0 1) [] := by
+  have hlent : (SA.endLabel 0).lent 1 = [⟨.bind 0 0, [], false⟩, ⟨.bind 0 0, [], true⟩] := by
+    rw [SState.lent_endLabel find_SA]
+    simp [SState.relend, SA, inContent]
+  have hlent0 : (SA.endLabel 0).lent 0 = [] := by
+    rw [SState.lent_endLabel find_SA]; simp [SState.relend]
+  refine ⟨fun m _ x _ _ h => List.prefix_nil.mp h, fun m hm x hx hxp _ => ?_⟩
+  rcases live_SA (SState.mem_liveLabels_of_endLabel hm) with rfl | rfl
+  · rw [hlent0] at hx; cases hx
+  · rw [hlent] at hx
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
+    rcases hx with rfl | rfl <;> simp at hxp
 
 /-- **The write of `⊥` does not remove exactly the sites under it, under erasure**: at the mark
 `gloan 0 (borrow 1 Z)`, the write at `[*]` keeps the mark's site at `[]`, whose erased key is the
@@ -90,3 +123,12 @@ theorem updAt_bot_fails :
   simp [keyE, Step.key] at this
 
 end Ochr.Meaning.Regress.StarErasure
+
+/-! The checker's rejection that keeps both states out of reach: a borrow-typed place is never
+lent whole (a reborrow goes through `*`), beside the accepted reborrow. -/
+
+open Ochr.Test in
+ochr StarErasureProbe uses Nats {
+  reject def BorrowOfBorrow (a : Nat) : Unit := (let r = &a; let s = &r; ())
+  def Reborrow (a : Nat) : Unit := (let r = &a; let s = &*r; ())
+}
