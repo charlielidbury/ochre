@@ -21,19 +21,29 @@ def atLoc {α : Type} (l : Option Loc) (x : M α) : M α :=
 source range, unless a term inside it already was (the innermost wins). Only in the checked
 declaration's own code at this point: at call depth 0 (a callee's body and a sealed program's
 re-run raise `depth`; their errors belong to the call, or the point, that started them). A call
-also makes its arguments' ranges the ones `callType` reads. -/
-@[inline] def located {α : Type} (t : Term) (x : M α) : M α := do
+also makes its arguments' ranges the ones `callType` reads. With `Config.recordStates` (dev
+tooling, `Sweep.lean`), the whole state is logged at such a term on entry and on a successful
+exit (`noteState`), with the value `flight` reads off the result. -/
+@[inline] def located {α : Type} (t : Term) (x : M α) (flight : α → Option Value := fun _ => none) : M α := do
   let s ← get
   if s.locs.table.isEmpty then x else
   let a := termAddr t
   let here := s.depth == 0 && s.locs.on
   let saved := (s.locs.callArgs, s.locs.here)
   let l := if here then s.locs.table.get? a else none
+  noteState l false none
   set { s with locs.callArgs := if here then s.locs.args.getD a #[] else #[],
                locs.here := if l.isSome then l else s.locs.here }
   let r ← if here then atLoc l x else x
   modify fun s => { s with locs.callArgs := saved.1, locs.here := saved.2 }
+  noteState l true (flight r)
   pure r
+where
+  /-- Dev tooling (`Config.recordStates`): log the whole state at the located term `l`. -/
+  noteState (l : Option Loc) (exit : Bool) (v : Option Value) : M Unit := do
+    let s ← get
+    if s.cfg.recordStates then
+      if let some l := l then modifyThe (Array LogEntry) (·.push (.state l exit v s))
 
 /-- Run `x` with no term located: it is not the declaration's own code at this point. -/
 def unlocated {α : Type} (x : M α) : M α := do

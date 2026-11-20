@@ -136,6 +136,11 @@ program is accepted, rejected or runs to a given result. -/
 structure Config where
   trace : Bool := false          -- record goals, splits and call types (for inspection)
   derivation : Bool := false     -- record every rule application, in the paper's names (`fire`, Rules.lean)
+  /-- Dev tooling (`lake exe sweep`, `Sweep.lean`): in `located` mode, record the whole machine
+  state at each located term, on entry and on a successful exit (`LogEntry.state`). Off by
+  default, and off in every run that produces a verdict (the `ochr` command, the tests): it only
+  adds log entries, which no decision reads. -/
+  recordStates : Bool := false
 deriving Inhabited, Repr, BEq
 
 /-- The universe a sort lives in: `Type_l : Type_{l+1}`, and `Prop : Type₁` beside `Type₀`
@@ -215,10 +220,14 @@ inductive Note where
   | hole (G : Value) (Ω : List (String × Option Value × Value))    -- a hole's goal, and Ω there
 
 /-- An entry of the log: a trace line (`Config.trace`), or a note for the editor, at a source
-range, with the [Split] refinements of the path it was made on. -/
+range, with the [Split] refinements of the path it was made on, or (`Config.recordStates`, dev
+tooling) the whole machine state at a located term: on entry to its evaluation (`exit = false`)
+or as it leaves it, successfully (`exit = true`), with the term's value, which the checker then
+holds in its monad and not in `st` (`flight`, for an evaluated term; none for a tail term). -/
 inductive LogEntry where
   | line (s : String)
   | note (l : Loc) (refs : List (Nat × Value)) (n : Note)
+  | state (l : Loc) (exit : Bool) (flight : Option Value) (st : MState)
 
 /-- The machine monad. The inner `StateM` holds the log (the trace, and the editor's notes),
 which survives both state restores and errors (so a rejected definition still shows how far
