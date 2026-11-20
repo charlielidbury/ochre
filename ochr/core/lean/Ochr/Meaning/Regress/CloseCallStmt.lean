@@ -7,8 +7,9 @@ The pilot form quantified the callee's type `fT` and the call's readings `kind`,
 `tys` freely, with nothing tying them to the callee. The checker's `closeCall` reads none of them
 off a value (`evalCall` computes them from the call as written and typing makes them agree with
 the callee's declared Π-type), so the statement had to assume the agreement and did not:
-- `fT := .zero` gives `calleeRes fv .zero` no shape, so `callOf` fails and the conclusion's `∃`
-  is false for every successful run from a `Good` state (`old_false_of_run` below);
+- `fT := .zero` gives `calleeRes fv .zero` the error code (no telescope), so `callOf` fails and
+  the conclusion's `∃` is false for every successful run from a `Good` state (`old_false_of_run`
+  below);
 - `res := .unit` at a `Nat` codomain makes the checker return `()` where the reference returns
   the value (`closeCall`'s `if res == .unit then return .unit`), and `fills.getD i = true` at a
   `Nat` cell makes the fill `()` where the reference leaves the final content.
@@ -30,14 +31,14 @@ def closeCall_step_stmt_old (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel :
       meanV K ρ φ r.2 v = r.1 ∧
       Exact (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
 
-/-- A callee typed by `.zero` has no shape. -/
-theorem calleeRes_zero_shape (K : RunCtx) (ρ : Assignment) (φ : Future) (fv : Value) :
-    (calleeRes K ρ φ fv .zero).2.shape = none := rfl
+/-- A callee typed by `.zero` has the error code. -/
+theorem calleeRes_zero_code (K : RunCtx) (ρ : Assignment) (φ : Future) (fv : Value) :
+    (calleeRes K ρ φ fv .zero).2.m = TyM.err := rfl
 
-/-- Without a shape, `callOf` fails. -/
-theorem callOf_none_of_noShape (fv : Res) (args : List Res) (s : SState) (h : fv.2.shape = none) :
+/-- At the error code (no telescope), `callOf` fails. -/
+theorem callOf_none_of_err (fv : Res) (args : List Res) (s : SState) (h : fv.2.m = TyM.err) :
     callOf fv args s = none := by
-  unfold callOf; rw [h]
+  unfold callOf; rw [h]; rfl
 
 /-- **The pilot's form is false** whenever the checker closes off any call from a `Good` state
 (with `K.Δ` read off it and the arguments loan-free): take `fT := .zero`. -/
@@ -49,7 +50,7 @@ theorem old_false_of_run (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Na
     ¬ closeCall_step_stmt_old K ρ φ fuel := by
   intro hstmt
   obtain ⟨r, s', hc, _⟩ := hstmt st st' fv .zero ws kind res fills tys v hg hΔ hargs h
-  rw [callOf_none_of_noShape _ _ _ (calleeRes_zero_shape ..)] at hc
+  rw [callOf_none_of_err _ _ _ (calleeRes_zero_code ..)] at hc
   cases hc
 
 /-- `runBody_step_stmt` as the pilot stated it: `fT` free, not even an input of `runBody`. -/
@@ -76,7 +77,7 @@ theorem runBody_old_false_of_run (K : RunCtx) (ρ : Assignment) (φ : Future) (f
     ¬ runBody_step_stmt_old K ρ φ fuel := by
   intro hstmt
   obtain ⟨r, s', hc, _⟩ := hstmt st st' fv cs t rd ws v .zero hg hΔ hargs hfv h
-  rw [callOf_none_of_noShape _ _ _ (calleeRes_zero_shape ..)] at hc
+  rw [callOf_none_of_err _ _ _ (calleeRes_zero_code ..)] at hc
   cases hc
 
 end Ochr.Meaning.Steps.Regress

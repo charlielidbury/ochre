@@ -24,7 +24,7 @@ theorem const_one_ok (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (
   refine ⟨K.C.global "one", rfl, ?_⟩
   have hty := hG.ty "one" gOne rfl ρ
   have hc := hG.const "one" gOne rfl rfl ρ φ
-  have hm : (K.C.global "one").2.m = .ty0 Nat := by rw [hty]; rfl
+  have hm : (K.C.global "one").2.m = TyM.nat := by rw [hty]; rfl
   rw [hc, hm]
   rfl
 

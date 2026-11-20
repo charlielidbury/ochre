@@ -142,9 +142,9 @@ theorem mean_T2 : Value.mean K.dm K.C K.Γ ρ φ H (.ind "B2" 1 ⟨"T2"⟩ [] []
   simp [Value.mean, K, B1, B2, Value.meanParams, Value.meanFields, DataModel.ctorM, dm, enc]
 
 /-- The type `B2` is a code naming `B2`, decoding to `Bool`, the carrier of `B1` too. -/
-theorem mean_B2 : ∃ unpk, Value.mean K.dm K.C K.Γ ρ φ H (.tInd "B2" []) = .ty (.data "B2" [] Bool unpk) := by
-  refine ⟨fun x => (dec B2 x, []), ?_⟩
-  simp [Value.mean, K, B1, B2, Value.meanParams, DataModel.tyM, dm]
+theorem mean_B2 : ∃ unpk, Value.mean K.dm K.C K.Γ ρ φ H (.tInd "B2" []) = .ty (.t0 Bool (.data "B2" [] Bool unpk)) := by
+  refine ⟨fun x => ⟨dec B2 x, []⟩, ?_⟩
+  simp [Value.mean, K, B1, B2, Value.meanParams, DataModel.tyM, DataModel.parsOf, DataModel.eltsOf, dm]
 
 /-- **The reference's match reads constructor `1`** at any type the value is held at: the value is
 read, not decoded through a declaration found by its carrier (`DataOfChoice_189132fd`: the match
@@ -156,7 +156,9 @@ theorem tag_right (T : TyS) : indTag (Value.mean K.dm K.C K.Γ ρ φ H (.ind "B2
 back as its constructor and fields. -/
 theorem T2_mem : Value.mean K.dm K.C K.Γ ρ φ H (.ind "B2" 1 ⟨"T2"⟩ [] []) ∈ₛ dm.tyM B2 [] := by
   rw [mean_T2]
-  exact ⟨rfl, rfl, rfl, rfl⟩
+  refine ⟨true, ?_⟩
+  simp [DataModel.tyM, DataModel.parsOf, DataModel.eltsOf, dm, B2, dec, Code0.enc, Unpk0.ctor, Unpk0.sems,
+    Elt0.sems, Par0.sems]
 
 /-- A value held at a type that names no declaration (as a call's result was typed, `.plain`) is
 still read: since D32 nothing is decoded through a type. -/

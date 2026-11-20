@@ -219,12 +219,14 @@ def dataCtorBad (Γ : List IndDecl) : Value → Bool
 that exists, by its declared reading (`Decisions.placeDecl` at the top frame's readings), a place
 declared an inductive of the declarations holds a constructor value of it or a stand-in (V); every
 loan and mark anywhere in Ω is of a live borrow (L); every constructor value is of a data
-declaration, not named `Nat` (N); a variable holding a type value is declared a sort (Ty); a place
-below a variable holding `⋆` is declared a copy type (C⋆); every η record is top-hint-free (Hη).
-What the drop's reading of a place and
-its write need. Syntactic typing, which `Good`'s membership does not give. Read off the checker and
-swept; NOT proved preserved: every step's `CtxOk` conclusion owes it. (U), (R), (P), (A) and (M),
-which `movedPlace`'s exits needed, went with main's D94, which made those exits a rejection. -/
+declaration, not named `Nat` (N); a place below a variable holding `⋆` is declared a copy type
+(C⋆); every η record is top-hint-free (Hη). What the drop's reading of a place and its write
+need. Syntactic typing, which `Good`'s membership does not give. Read off the checker and swept;
+NOT proved preserved: every step's `CtxOk` conclusion owes it. (U), (R), (P), (A) and (M), which
+`movedPlace`'s exits needed, went with main's D94, which made those exits a rejection. (Ty), a
+variable holding a type value is declared a sort, went with D59: the write of `⊥` over a type
+value needed it only because the binding's structure was read off the value it held
+(`Value.strS`); a type value now carries its own code. -/
 structure ShapeFacts (D : Decisions) (Γ : List IndDecl) (st : MState) : Prop where
   /-- (V) a place declared an inductive of `Γ` holds a constructor value of it or a stand-in -/
   fits : ∀ p v n args, ckContent st.env p = some v → D.placeDecl (DecideScope.topReadings st) p = .ind n args →
@@ -234,11 +236,6 @@ structure ShapeFacts (D : Decisions) (Γ : List IndDecl) (st : MState) : Prop wh
   /-- (N) every constructor value is of a data declaration of `Γ` (a `Prop`-sorted one's values are
   `⋆`, `Machine.evalCtor`, D42), not named `Nat` (numbers are `zero`/`succ`) -/
   ctors : ∀ v ∈ Env.values st.env, v.anyAtom (dataCtorBad Γ) = false
-  /-- (Ty) a variable of the top frame holding a type value (`Π` or an inductive type) is declared
-  a sort, so a copy: the join never drops it whole -/
-  typeRoot : ∀ i pos, ckVarPos st.env i = some pos →
-    ((∃ c t rd, valAt st.env pos = .tPi c t rd) ∨ ∃ n a, valAt st.env pos = .tInd n a) →
-    ∃ l, D.placeDecl (DecideScope.topReadings st) (.var i) = .sort l
   /-- (C⋆) a place below a variable holding `⋆` is declared a copy type (a field of a proof), so
   the join, which moves no copy, never drops a `⋆` below a variable (docs/31 D49; at a variable it
   can: one declared a borrow of a proposition holds `⋆`) -/
@@ -346,11 +343,10 @@ theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MSta
     ShapeFacts D Γ st' := by
   have e1 : DecideScope.topReadings st' = DecideScope.topReadings st := by
     unfold DecideScope.topReadings; rw [he]
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · intro p v n args hp hd hn; rw [he] at hp; rw [e1] at hd; exact hf.fits p v n args hp hd hn
   · rw [he]; exact hf.loans
   · rw [he]; exact hf.ctors
-  · intro i pos hck hv; rw [he] at hck hv; rw [e1]; exact hf.typeRoot i pos hck hv
   · intro p hne hp; rw [he] at hp; rw [e1]; exact hf.proofCopy p hne hp
   · rw [hη]; exact hf.etaHint
 

@@ -14,9 +14,8 @@ section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- The skeleton of the checker's state read as a reference state is unchanged by a write at a
-binding that does not change what the binding's type reads off its value (`Value.strS`). -/
-theorem skel_setAtE (st : MState) (f i : Nat) (v' : Value)
-    (hstr : ∀ T, Value.strS K.dm K.M K.Γ ρ v' T = Value.strS K.dm K.M K.Γ ρ (valAt st.env (.bind f i)) T) :
+binding (its type's code is read off the stored type, not the value). -/
+theorem skel_setAtE (st : MState) (f i : Nat) (v' : Value) :
     (SM' K ρ { st with env := Env.setAtE st.env (.bind f i) v' }).env.map (fun fr => fr.binds.map bindSkel) =
       (SM' K ρ st).env.map (fun fr => fr.binds.map bindSkel) := by
   apply List.ext_getElem?
@@ -37,9 +36,7 @@ theorem skel_setAtE (st : MState) (f i : Nat) (v' : Value)
       · subst hi
         rcases hb : fr.binds[i]? with _ | b
         · simp
-        · have hv : valAt st.env (.bind f i) = b.val := by
-            rw [valAt_bind_eq]; simp [hfr, hb]
-          simp only [if_true, Option.map_some, Function.comp_apply, bindSkel, hstr, hv]
+        · simp only [if_true, Option.map_some, Function.comp_apply, bindSkel]
       · simp only [hi, if_false]
         rcases fr.binds[i']? with _ | b' <;> rfl
   · simp only [hf, if_false]
@@ -196,39 +193,6 @@ theorem sitesOf_setAtE_bot {env : Env} {pos : Pos} {steps : List Step} {v' : Val
 
 theorem shapeOf_eq_topLabel (v : Value) : shapeOf v = topLabel v := by cases v <;> rfl
 
-/-- What a binding's type reads off its value does not change under a write of `⊥` at a path,
-when a whole root written is not a type value. -/
-theorem strS_updAt_bot {steps : List Step} {v v' : Value} (h : Value.updAt (fun _ => .bot) steps v = some v')
-    (htype : steps = [] → (∀ c t rd, v ≠ .tPi c t rd) ∧ ∀ n a, v ≠ .tInd n a) (T : TyS) :
-    Value.strS K.dm K.M K.Γ ρ v' T = Value.strS K.dm K.M K.Γ ρ v T := by
-  rcases steps with _ | ⟨st, ss⟩
-  · simp only [Value.updAt, Option.some.injEq] at h
-    subst h
-    obtain ⟨h1, h2⟩ := htype rfl
-    cases v <;> first | rfl | exact absurd rfl (h1 _ _ _) | exact absurd rfl (h2 _ _)
-  · cases v with
-    | gloan m w =>
-      simp only [Value.updAt] at h
-      obtain ⟨w', -, rfl⟩ := Option.map_eq_some_iff.mp h; rfl
-    | borrow m w =>
-      cases st with
-      | deref =>
-        simp only [Value.updAt] at h
-        obtain ⟨w', -, rfl⟩ := Option.map_eq_some_iff.mp h; rfl
-      | proj _ | field _ => simp [Value.updAt] at h
-    | succ w =>
-      cases st with
-      | proj i =>
-        cases i with
-        | zero =>
-          simp only [Value.updAt] at h
-          obtain ⟨w', -, rfl⟩ := Option.map_eq_some_iff.mp h; rfl
-        | succ _ => simp [Value.updAt] at h
-      | deref | field _ => simp [Value.updAt] at h
-    | ind ty c hh ps fs =>
-      obtain ⟨-, w, w', -, -, rfl⟩ := updAt_ind_inv h; rfl
-    | _ => simp [Value.updAt] at h
-
 theorem SState.lent_setAt (s : SState) (p : Pos) (g : SVal) : (s.setAt p g).lent = s.lent := by
   cases p <;> rfl
 
@@ -248,8 +212,6 @@ theorem botWrite_rel (st : MState) (s : SState) (π : Nat → Nat) (f i : Nat) (
     (hp : Pos.bind f i ∈ allPos st.env) (hsp : Pos.bind f i ∈ s.positions)
     (hv : Value.updAt (fun _ => .bot) steps (valAt st.env (.bind f i)) = some v')
     (hroot : steps = [] → Env.shape st.env (.bind f i) = none)
-    (htype : steps = [] → (∀ c t rd, valAt st.env (.bind f i) ≠ .tPi c t rd) ∧
-      ∀ n a, valAt st.env (.bind f i) ≠ .tInd n a)
     (hclear : ∀ l, liveLoan st.env l = true → ∀ x ∈ Env.sitesOf st.env l, x.pos = .bind f i →
       dataHit steps x.path = false)
     (hplain : (valAt st.env (.bind f i)).anyAtom (Value.bareCtor K.Γ) = false ∧
@@ -284,7 +246,7 @@ theorem botWrite_rel (st : MState) (s : SState) (π : Nat → Nat) (f i : Nat) (
   have hp' : Pos.bind f i ∈ allPos (Env.setAtE st.env (Pos.bind f i) v') := by rw [allPos_setAtE]; exact hp
   refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_⟩
   · -- skel
-    rw [skel_setAtE K ρ st f i v' (strS_updAt_bot K ρ hv htype), hs.skel]
+    rw [skel_setAtE K ρ st f i v', hs.skel]
     exact (skel_setAt s _ _).symm
   · -- fresh
     intro l hl ho
