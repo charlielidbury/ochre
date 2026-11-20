@@ -289,6 +289,12 @@ def Sem.mem (s : Sem) : TyM → Prop
 
 scoped infix:50 " ∈ₛ " => Sem.mem
 
+/-- The element of a carrier a constructor value packs, if it is whole and of its type (what
+guarded recursion ranks, `semRank`). -/
+def Sem.elt : Sem → Option ((A : Type) × A)
+  | .dat _ _ _ _ el => el
+  | _ => none
+
 /-- Read a meaning as a type. -/
 def Sem.asTy : Sem → TyM
   | .ty T => T

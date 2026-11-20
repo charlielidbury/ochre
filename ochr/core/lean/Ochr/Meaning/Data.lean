@@ -55,14 +55,16 @@ structure DataModel where
       ∃ ctor, d.ctors[c]? = some ctor ∧ fs.length = ctor.2.length ∧
         ∀ i (h : i < fs.length), fs[i] ∈ₛ fieldTy d ps c i (fs.take i))
   /-- A recursive field, read at the parameters of its declared occurrence (`recArgs`), has
-  smaller rank. The law is stated through the declared type, not through carriers: carriers do
-  not determine parameters, and the form "every field whose carrier is the declaration's" is
-  false (in `Pair(Pair(Unit, Unit), Unit)` the inner pair's meaning is definitionally
-  `el0 (car Pair [Unit, Unit]) _`, a field of the outer one at the same rank; with `Nat = Nat × Unit`,
-  consistent with Lean, no rank function satisfies it; docs/31, data-generic). -/
+  smaller rank: the element it packs (`Sem.elt`, what `semRank` ranks) is ranked below. The law
+  is stated through the declared type, not through carriers: carriers do not determine
+  parameters, and the form "every field whose carrier is the declaration's" is false (in
+  `Pair(Pair(Unit, Unit), Unit)` the inner pair packs an element of `car Pair [Unit, Unit]`, a
+  field of the outer one at the same rank; with `Nat = Nat × Unit`, consistent with Lean, no rank
+  function satisfies it; docs/31, data-generic). As first stated the field was the tagged element
+  `el0 (car d ps') y`, which no field has been since D32 (a constructor value describes itself). -/
   rank_lt : ∀ {d ps ps'} (x : car d ps) (y : car d ps'), covers d → ∀ i,
     recArgs d ps (tag x) i ((fields x).take i) = some ps' →
-    (fields x)[i]? = some (Sem.el0 (car d ps') y) → rank y < rank x
+    ((fields x)[i]?).bind Sem.elt = some ⟨car d ps', y⟩ → rank y < rank x
 
 namespace DataModel
 
