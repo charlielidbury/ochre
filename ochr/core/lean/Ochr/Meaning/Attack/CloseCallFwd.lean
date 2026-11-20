@@ -30,7 +30,7 @@ theorem res_means_fwd (dm : DataModel) (C : CodeMeaning) (n : Nat) (F : GCar) (�
   simp only [List.nil_append, List.foldl_nil, Nat.zero_add, Bool.false_eq_true, reduceIte]
   erw [callOf_S₂ _ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n)]
   dsimp only
-  have hp := pushBindShaped_S₃ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0
+  have hp := pushBindShaped_S₃ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n)
   simp only [rBind] at hp
   simp only [hp, readPlace_deref_r]
 

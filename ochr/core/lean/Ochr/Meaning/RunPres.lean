@@ -32,6 +32,9 @@ theorem lou_setLent {s : SState} {l : Nat} {xs : List Site} {lab : Option Nat} :
 theorem rinv_setHeldTy {s : SState} {l : Nat} {T : TyM} : RInv L (s.setHeldTy l T) ↔ RInv L s := Iff.rfl
 theorem lou_setHeldTy {s : SState} {l : Nat} {T : TyM} {lab : Option Nat} : LoU (s.setHeldTy l T) lab ↔ LoU s lab :=
   Iff.rfl
+theorem rinv_setHeldMem {s : SState} {l : Nat} {v : Sem} : RInv L (s.setHeldMem l v) ↔ RInv L s := Iff.rfl
+theorem lou_setHeldMem {s : SState} {l : Nat} {v : Sem} {lab : Option Nat} : LoU (s.setHeldMem l v) lab ↔ LoU s lab :=
+  Iff.rfl
 
 theorem lou_live {s : SState} (hsa : ShapeAt s) {l : Nat} (h : s.Live l) :
     (s.Live l ∨ ∀ q, Indep l (s.valAt q)) ∧ l < s.nextLoan := by
@@ -208,7 +211,7 @@ theorem borrowPlace_rinv {p : Place} {s s' : SState} {r : Res}
       intro he
       have : pos ∈ ({ s₁ with nextLoan := s₁.nextLoan + 1 } : SState).positions := hpos
       rw [positions_eq, he] at this; simp at this
-    rw [rinv_setHeldTy, lou_setHeldTy, rinv_setLent, lou_setLent]
+    rw [rinv_setHeldMem, lou_setHeldMem, rinv_setHeldTy, lou_setHeldTy, rinv_setLent, lou_setLent]
     refine ⟨writeFresh_park_rinv ⟨h1, h2, hsa⟩ pos _ s₁.nextLoan v hne
       (fun q x hq => (hi₁.2.2 q x hq).2) (Nat.lt_succ_self _) ?_ ?_, ?_⟩
     · exact ((h1 pos).withLabel s₁.nextLoan
@@ -320,9 +323,9 @@ theorem callOfL_rinv.{u} (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C) (
       unfold callOfL at h'; dsimp only at h'; rw [happ] at h'
       simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h'
       obtain ⟨rfl, rfl⟩ := h'
-      rw [SState.inv1_setHeldTy, SState.inv1_setLent] at i1
-      rw [SState.inv2_setHeldTy, SState.inv2_setLent] at i2
-      rw [rinv_setHeldTy, lou_setHeldTy, rinv_setLent, lou_setLent]
+      rw [SState.inv1_setHeldMem, SState.inv1_setHeldTy, SState.inv1_setLent] at i1
+      rw [SState.inv2_setHeldMem, SState.inv2_setHeldTy, SState.inv2_setLent] at i2
+      rw [rinv_setHeldMem, lou_setHeldMem, rinv_setHeldTy, lou_setHeldTy, rinv_setLent, lou_setLent]
       generalize hS : (SState.mapVals _ _ : SState) = S at i1 i2 ⊢
       have hsaS : ShapeAt S := by
         rw [← hS]

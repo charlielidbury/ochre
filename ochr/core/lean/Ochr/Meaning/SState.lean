@@ -84,6 +84,11 @@ structure SState : Type 3 where
   of its holder's content, which a binding's stored type also gives and a parked temporary has no
   other record of; read only for the labels the state holds -/
   heldTy : Nat → TyM := fun _ => TyM.err
+  /-- a whole member of each borrow's content type, recorded when the borrow is made (docs/31 D68):
+  the content it was made from (`borrowPlace`), or a borrow-returning call's forward value. A place
+  is read at the future that gives each live label its record (`typedFuture`); read only for the
+  labels the state holds -/
+  heldMem : Nat → Sem := fun _ => .err
 
 namespace SState
 
@@ -163,6 +168,13 @@ noncomputable def endLabel (s : SState) (l : Nat) : SState :=
 def liveLabels (s : SState) : List Nat :=
   (s.positions.filterMap s.shape).mergeSort (· ≤ ·)
 
+/-- **The future a place is read at** (docs/31 D68): each live label its recorded member, the given
+future elsewhere. It agrees with the given future off the live labels and gives each live label a
+whole member of its content type (at a related state), so the relation at typed futures applies to
+it directly; which member is read matters only at a place that reads a live label it is not lent to,
+which no related state has. -/
+def typedFuture (s : SState) (φ : Future) : Future := fun l => if l ∈ s.liveLabels then s.heldMem l else φ l
+
 /-- The label `l` has a site at `p` whose path `hit` accepts (`dataHit`, `tagHit`). -/
 def reached (s : SState) (p : Pos) (hit : List Step → Bool) (l : Nat) : Bool :=
   (s.lent l).any fun x => decide (x.pos = p) && hit x.path
@@ -210,6 +222,23 @@ def setHeldTy (s : SState) (l : Nat) (T : TyM) : SState :=
     (s.setHeldTy l T).tyAt p = s.tyAt p := rfl
 @[simp] theorem setHeldTy_positions (s : SState) (l : Nat) (T : TyM) :
     (s.setHeldTy l T).positions = s.positions := rfl
+@[simp] theorem setHeldTy_heldMem (s : SState) (l : Nat) (T : TyM) : (s.setHeldTy l T).heldMem = s.heldMem := rfl
+
+/-- The borrow `l` is recorded with the whole member `v` of its content type (docs/31 D68). -/
+def setHeldMem (s : SState) (l : Nat) (v : Sem) : SState :=
+  { s with heldMem := fun m => if m = l then v else s.heldMem m }
+
+@[simp] theorem setHeldMem_env (s : SState) (l : Nat) (v : Sem) : (s.setHeldMem l v).env = s.env := rfl
+@[simp] theorem setHeldMem_shape (s : SState) (l : Nat) (v : Sem) : (s.setHeldMem l v).shape = s.shape := rfl
+@[simp] theorem setHeldMem_nextLoan (s : SState) (l : Nat) (v : Sem) : (s.setHeldMem l v).nextLoan = s.nextLoan := rfl
+@[simp] theorem setHeldMem_lent (s : SState) (l : Nat) (v : Sem) : (s.setHeldMem l v).lent = s.lent := rfl
+@[simp] theorem setHeldMem_heldTy (s : SState) (l : Nat) (v : Sem) : (s.setHeldMem l v).heldTy = s.heldTy := rfl
+@[simp] theorem setHeldMem_valAt (s : SState) (l : Nat) (v : Sem) (p : Pos) :
+    (s.setHeldMem l v).valAt p = s.valAt p := rfl
+@[simp] theorem setHeldMem_tyAt (s : SState) (l : Nat) (v : Sem) (p : Pos) :
+    (s.setHeldMem l v).tyAt p = s.tyAt p := rfl
+@[simp] theorem setHeldMem_positions (s : SState) (l : Nat) (v : Sem) :
+    (s.setHeldMem l v).positions = s.positions := rfl
 
 /-- The top frame's index. -/
 def topIdx (s : SState) : Nat := s.env.length - 1

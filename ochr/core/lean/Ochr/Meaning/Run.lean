@@ -329,10 +329,12 @@ noncomputable def indTag (v : Sem) (_ : TyS) : Sem :=
   | _ => .err
 
 /-- The content of a place after [Access] for it (static, docs/31 D29: the borrows lent at, over
-or under the place have ended), read at the state's closed future, with its type. At a related
-state the content then reads no live label, so this is its meaning at `φ`; the closed future
-makes the read congruent in the future at every state (`closedFuture_read`), which the core
-lemmas need. The type of a field of a dependent value is read with the earlier fields at their
+or under the place have ended), read at the state's typed future (`SState.typedFuture`: each live
+label its recorded member, docs/31 D68), with its type. That future is typed at a related state, so
+the relation compares the reading there with the checker's value, whose meaning, holding no live
+loan after the access, is the same at every future; and it makes the read congruent in the future
+at every state. (Until D68 the read was at the closed future, each live label fixed to its holder's
+current content, which is not typed while a holder's content is partly moved.) The type of a field of a dependent value is read with the earlier fields at their
 current contents, as the checker's `depFieldType` reads them through the borrow (`ctorFields`),
 not at what a borrow of an earlier field will finally hold (D29, point 5 e). A projected field's
 type is the structured type `Sem.follow` gives it (docs/31 D31: the hint the field's declaration
@@ -343,7 +345,7 @@ noncomputable def contentOf (p : Place) : SM (Sem × TyS × Pos × List Step) :=
   | some (pos, steps) =>
     let T₀ := s.tyAt pos
     let s := s.access pos (dataHit steps)
-    match Sem.follow K.dm K.Γ T₀ (s.valAt pos (s.closedFuture φ)) steps with
+    match Sem.follow K.dm K.Γ T₀ (s.valAt pos (s.typedFuture φ)) steps with
     | some (v, T) => some ((v, if steps.isEmpty then s.tyAt pos else { T with label := none }, pos, steps), s)
     | none => none
   | none => none
@@ -357,7 +359,7 @@ noncomputable def tagOf (p : Place) (tag : Sem → TyS → Sem) : SM Sem := fun 
   | some (pos, steps) =>
     let o := obsAt K (s.tyAt pos) steps tag
     let s := s.access pos (tagHit steps)
-    some (o (s.valAt pos (s.closedFuture φ)), s)
+    some (o (s.valAt pos (s.typedFuture φ)), s)
   | none => none
 
 /-- Set the content of a place to a constant meaning, pointwise in the future (no access: the
@@ -365,7 +367,7 @@ caller has done it). -/
 noncomputable def setContent (pos : Pos) (steps : List Step) (v : Sem) : SM PUnit := fun s =>
   let T := s.tyAt pos
   let old := s.valAt pos
-  match Sem.updAt K.dm K.Γ T (fun _ => v) steps (old (s.closedFuture φ)) with
+  match Sem.updAt K.dm K.Γ T (fun _ => v) steps (old (s.typedFuture φ)) with
   | some _ => some (⟨⟩, s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T (fun _ => v) steps (old φ')).getD .err)
   | none => none
 
@@ -431,7 +433,8 @@ noncomputable def borrowPlace (p : Place) : SM Res := fun s => do
   -- the borrow is parked in a temporary, its holder until it is bound (D14)
   let s := s.pushTempShaped (fun _ => v) l
   -- the place is lent to `l`, a plain borrow: one site, its loan (docs/31 D29)
-  some ((v, { T with label := some l }), (s.setLent l [⟨pos, steps, false⟩]).setHeldTy l T.m)
+  -- the content it was made from is recorded as the label's member (docs/31 D68)
+  some ((v, { T with label := some l }), ((s.setLent l [⟨pos, steps, false⟩]).setHeldTy l T.m).setHeldMem l v)
 
 /-- The borrow flags of a telescope code's parameters along the arguments given (decoded at their
 parameters' codes): which arguments are borrowed. -/
@@ -474,7 +477,7 @@ noncomputable def callOfL.{u} (L : Lvl.{u}) {C : Type u} (t : Tel L.Code PUnit C
       -- is then unchanged in both branches, and none reads a consumed argument label after the call)
       | none => v (φ'.updList (fixes (refLabels.map fun _ => .err)))
     let s := s.pushTempShaped (fun _ => L.enc c fwd) k
-    some ((L.enc c fwd, ⟨L.toTy c, some k⟩), (s.setLent k lentK).setHeldTy k (L.toTy c))
+    some ((L.enc c fwd, ⟨L.toTy c, some k⟩), ((s.setLent k lentK).setHeldTy k (L.toTy c)).setHeldMem k (L.enc c fwd))
   | none => none
 
 /-- A call, on the evaluated callee and arguments (docs/18 Def. "reference run", first clause):
@@ -539,7 +542,7 @@ noncomputable def dropAt (q : Place) (pos : Pos) (steps : List Step) (s : SState
   | [], some l => s.endLabel l
   | _, _ =>
     let s' := s.access pos (dataHit steps)
-    match Sem.follow K.dm K.Γ (s'.tyAt pos) (s'.valAt pos (s'.closedFuture φ)) steps with
+    match Sem.follow K.dm K.Γ (s'.tyAt pos) (s'.valAt pos (s'.typedFuture φ)) steps with
     | some (.proof, _) | none => s
     | some _ =>
       if K.D.copy (K.D.placeDecl (scopeOf s) q) then s else
@@ -865,7 +868,8 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
           let (l, s) := s.freshLoan
           let s := s.pushTemp fun ψ => ψ l
           let cell : Pos := .temp s.topIdx (((s.env.getLast?).map (·.temps.length)).getD 1 - 1)
-          let s := pushBindShaped s { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
+          -- the argument is recorded as the label's member (docs/31 D68: where a label is made)
+          let s := pushBindShaped (s.setHeldMem l ap.1) { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
           (s, acc ++ [ap.1], cells ++ [cell])
         else
           (s.pushBind { ty := { T with label := none }, val := fun _ => ap.1, decl := d }, acc ++ [ap.1], cells)

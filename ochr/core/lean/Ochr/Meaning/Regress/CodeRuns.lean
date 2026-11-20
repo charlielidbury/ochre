@@ -262,7 +262,7 @@ theorem readPlace_frame (K : RunCtx) (bs : List SBinding) (i : Nat) (b : SBindin
   have hr : resolve (frame bs) (.var i) = some (.bind 0 (bs.length - 1 - i), []) := by
     simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, frame, hi]
   have ha := fun hit => CE4flip.access_noshape (frame bs) (.bind 0 (bs.length - 1 - i)) rfl hit
-  have hcf : (frame bs).closedFuture φ = φ := by simp [SState.closedFuture, frame_liveLabels]
+  have hcf : (frame bs).typedFuture φ = φ := by funext l; simp [SState.typedFuture, frame_liveLabels]
   simp only [readPlace, contentOf, hr, ha, hcf, bind, Option.bind]
   simp [SState.tyAt, SState.valAt, Sem.follow, frame, hb, hw]
 

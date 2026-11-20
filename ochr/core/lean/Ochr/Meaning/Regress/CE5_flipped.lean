@@ -136,7 +136,8 @@ noncomputable def b2 (n : Nat) : SState :=
     shape := fun p => if p = .temp 0 0 then some n else none,
     nextLoan := n + 1,
     lent := fun m => if m = n then [⟨.bind 0 0, [], false⟩] else [],
-    heldTy := fun m => if m = n then TyM.nat else TyM.err }
+    heldTy := fun m => if m = n then TyM.nat else TyM.err,
+    heldMem := fun m => if m = n then .el0 Nat 0 else .err }
 
 theorem borrow_b1 (n : Nat) : borrowPlace K φ (.var 1) (b1 K n) = some ((.el0 Nat 0, { TyS.plain TyM.nat with label := some n }), b2 K n) := by
   show (match contentOf K φ (.var 1) (b1 K n) with
@@ -147,7 +148,7 @@ theorem borrow_b1 (n : Nat) : borrowPlace K φ (.var 1) (b1 K n) = some ((.el0 N
         let old := s.valAt pos
         let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .err
         let s := s.pushTempShaped (fun _ => v) l
-        some ((v, { T with label := some l }), (s.setLent l [⟨pos, steps, false⟩]).setHeldTy l T.m)
+        some ((v, { T with label := some l }), ((s.setLent l [⟨pos, steps, false⟩]).setHeldTy l T.m).setHeldMem l v)
       | none => none) = _
   rw [content_b1_y]
   simp only [Sem.whole, not_true_eq_false, ite_false]
@@ -249,7 +250,7 @@ theorem content_b6 (n : Nat) : contentOf K φ (.var 0) (b6 K n) = some ((φ n, (
   simp only [contentOf, hr, ha]
   have hv : (b6 K n).valAt (.bind 0 0) = (yB' K n).val := by simp [SState.valAt, env_b6]
   have ht : (b6 K n).tyAt (.bind 0 0) = (yB K n).ty := by simp [SState.tyAt, env_b6, yB']
-  have hcf : (b6 K n).closedFuture φ = φ := by simp [SState.closedFuture, liveLabels_b6]
+  have hcf : (b6 K n).typedFuture φ = φ := by funext l; simp [SState.typedFuture, liveLabels_b6]
   rw [hv, ht, hcf]
   rfl
 

@@ -111,19 +111,19 @@ theorem dws_park_fix.{u} {s : SState} (hd : DepWithinSites dm Γ s) (hfr : Fresh
     {X : Type u} (ls : List Nat) (hls : ∀ j ∈ ls, s.Live j)
     (dec : Sem → Option X) (fx : X → List (Nat × Sem)) (ee : List (Nat × Sem))
     (hkx : ∀ x, ∀ y ∈ (fx x).map (·.1), y ∈ ls) (hke : ∀ y ∈ ee.map (·.1), y ∈ ls)
-    (ht : Nat → TyM) (c : Sem) (g : Pos → SVal → SVal)
+    (ht : Nat → TyM) (hm : Nat → Sem) (c : Sem) (g : Pos → SVal → SVal)
     (hg : ∀ p v ψ, (∃ x, dec (ψ (ls.foldl takeLabel s).nextLoan) = some x ∧ g p v ψ = v (ψ.updList (fx x))) ∨
       (dec (ψ (ls.foldl takeLabel s).nextLoan) = none ∧ g p v ψ = v (ψ.updList ee)))
-    (lentK : List Site) (hlK : ∀ j ∈ ls, ∀ x ∈ s.lent j, ∃ y ∈ lentK, y.pos = x.pos ∧ y.path = x.path) (T : TyM) :
-    DepWithinSites dm Γ (((((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape
-        ((ls.foldl takeLabel s).nextLoan + 1) (ls.foldl takeLabel s).lent ht).mapVals g).pushTempShaped (fun _ => c)
-        (ls.foldl takeLabel s).nextLoan).setLent (ls.foldl takeLabel s).nextLoan lentK).setHeldTy (ls.foldl takeLabel s).nextLoan T) := by
+    (lentK : List Site) (hlK : ∀ j ∈ ls, ∀ x ∈ s.lent j, ∃ y ∈ lentK, y.pos = x.pos ∧ y.path = x.path) (T : TyM) (m : Sem) :
+    DepWithinSites dm Γ ((((((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape
+        ((ls.foldl takeLabel s).nextLoan + 1) (ls.foldl takeLabel s).lent ht hm).mapVals g).pushTempShaped (fun _ => c)
+        (ls.foldl takeLabel s).nextLoan).setLent (ls.foldl takeLabel s).nextLoan lentK).setHeldTy (ls.foldl takeLabel s).nextLoan T).setHeldMem (ls.foldl takeLabel s).nextLoan m) := by
   have hk' : (ls.foldl takeLabel s).nextLoan = s.nextLoan := (shapeSub_foldl_takeLabel ls s).2
   have hpos₁ : (ls.foldl takeLabel s).positions = s.positions := takeAll_positions s ls
   have hlent₁ : (ls.foldl takeLabel s).lent = s.lent := takeAll_lent ls s
   generalize hs₁ : ls.foldl takeLabel s = s₁ at hg hk' hpos₁ hlent₁ ⊢
   generalize hk : s₁.nextLoan = k at hg hk' ⊢
-  generalize hs₂ : (SState.mk s₁.env s₁.shape (k + 1) s₁.lent ht).mapVals g = s₃
+  generalize hs₂ : (SState.mk s₁.env s₁.shape (k + 1) s₁.lent ht hm).mapVals g = s₃
   have hpos₃ : s₃.positions = s.positions := by rw [← hs₂, positions_mapVals]; exact hpos₁
   have hlive₃ : ∀ y, s₃.Live y ↔ s₁.Live y := by intro y; rw [← hs₂, live_mapVals]; rfl
   have hshape₃ : s₃.shape = s₁.shape := by rw [← hs₂]; rfl
@@ -146,14 +146,14 @@ theorem dws_park_fix.{u} {s : SState} (hd : DepWithinSites dm Γ s) (hfr : Fresh
   have hv : ∀ q, (s₃.pushTempShaped (fun _ => c) k).valAt q = s₃.valAt q ∨
       (s₃.pushTempShaped (fun _ => c) k).valAt q = fun _ => c := by
     intro q; rw [valAt_pushTempShaped]; exact valAt_pushTemp s₃ _ q
-  have hlentF : ∀ y, y ≠ k → (((s₃.pushTempShaped (fun _ => c) k).setLent k lentK).setHeldTy k T).lent y = s.lent y := by
+  have hlentF : ∀ y, y ≠ k → ((((s₃.pushTempShaped (fun _ => c) k).setLent k lentK).setHeldTy k T).setHeldMem k m).lent y = s.lent y := by
     intro y hy
     show (if y = k then lentK else (s₃.pushTempShaped (fun _ => c) k).lent y) = s.lent y
     rw [if_neg hy, ← hlent₁]
     unfold SState.pushTempShaped; dsimp only
     split <;> (rw [← hs₂]; rfl)
   intro q σ ψ ψ' hψ
-  simp only [SState.setHeldTy_valAt, SState.setLent_valAt]
+  simp only [SState.setHeldMem_valAt, SState.setHeldTy_valAt, SState.setLent_valAt]
   -- what the reference does not read: the consumed labels where none is reached, and `k`
   have hfix : ∀ (χ : Future) (F : List (Nat × Sem)), (∀ y ∈ F.map (·.1), y ∈ ls) →
       (∀ j ∈ ls, s.reached q (dataHit σ) j = false) →
@@ -295,7 +295,7 @@ theorem dws_callOfL_ref.{u} (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C
         fun (y : Option Nat × Sem) => y.1.map (·, y.2)).map (·.1),
       y ∈ (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id :=
     fun y hy => fixes_keys _ _ y hy
-  refine dws_park_fix dm Γ hd hfr hsa _ hls (Lv.dec c) _ _ hkx hke _ _ _ ?_ _ ?_ _
+  refine dws_park_fix dm Γ hd hfr hsa _ hls (Lv.dec c) _ _ hkx hke _ _ _ _ ?_ _ ?_ _ _
   · intro p v ψ
     cases hdc : Lv.dec c (ψ ((((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap
         id)).foldl SState.takeLabel s).nextLoan) with

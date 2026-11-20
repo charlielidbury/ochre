@@ -34,12 +34,12 @@ theorem fill_means_back (dm : DataModel) (C : CodeMeaning) (n : Nat) (F : GCar) 
     Nat.reduceAdd, Bool.false_eq_true, reduceIte]
   erw [callOf_S₂ _ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n)]
   dsimp only
-  have hp := pushBindShaped_S₃ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0
+  have hp := pushBindShaped_S₃ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n)
   simp only [rBind] at hp
   simp only [hp, contentOf_deref_r, assignAt, resolve_deref_r, access_S₄, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true,
     reduceIte, setContent_deref_r]
   simp only [TyS.plain, discardEnd, SM.modify, bind, Option.bind]
-  have hc := readPlace_c1 (K₀ dm C) φ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (φ 1) rfl
+  have hc := readPlace_c1 (K₀ dm C) φ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n) (φ 1) rfl
   simp only [K₀, D₀, TyS.plain] at hc
   first
     | (simp only [hc, Sem.asNat]; cases (φ 1).as Nat <;> simp)

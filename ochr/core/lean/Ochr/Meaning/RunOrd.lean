@@ -45,6 +45,8 @@ theorem ordKeep_setLent_iff {s t : SState} {l : Nat} {xs : List Site} :
 
 theorem ordKeep_setHeldTy_iff {s t : SState} {l : Nat} {T : TyM} :
     OrdKeep L s (t.setHeldTy l T) ↔ OrdKeep L s t := Iff.rfl
+theorem ordKeep_setHeldMem_iff {s t : SState} {l : Nat} {v : Sem} :
+    OrdKeep L s (t.setHeldMem l v) ↔ OrdKeep L s t := Iff.rfl
 
 theorem OrdKeep.trans' {a b c : SState} (h₁ : OrdKeep L a b) (e : ∀ q ∈ a.positions, q ∈ b.positions)
     (h₂ : OrdKeep L b c) : OrdKeep L a c :=
@@ -259,7 +261,7 @@ theorem borrowPlace_ordKeep {p : Place} {s s' : SState} {r : Res}
     · cases h
     simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
-    rw [ordKeep_setHeldTy_iff, ordKeep_setLent_iff]
+    rw [ordKeep_setHeldMem_iff, ordKeep_setHeldTy_iff, ordKeep_setLent_iff]
     refine o₁.trans e₁ (ordKeep_of ?_ ?_ ?_ ?_)
     · rw [nextLoan_pushTempShaped, nextLoan_setAt']; exact Nat.le_succ _
     · intro c hct hcm
@@ -504,18 +506,18 @@ theorem takeAll_fix_ordKeep {s : SState} (ls : List Nat) (fx : List (Nat × Sem)
   · exact .inr ⟨live_mapVals.mpr (takeAll_live ls hy fun hm => hn (hl y hm)), hby⟩
 
 theorem park_fix_ordKeep {s : SState} (hsa : ShapeAt s) {X : Type u} (ls : List Nat) (dec : Sem → Option X)
-    (fx : X → List (Nat × Sem)) (le : Nat → List Site) (ht : Nat → TyM) (hcov : ∀ x, ∀ l ∈ ls, l ∈ (fx x).map (·.1)) (ee : List (Nat × Sem)) (hcovE : ∀ l ∈ ls, l ∈ ee.map (·.1)) (c : Sem)
+    (fx : X → List (Nat × Sem)) (le : Nat → List Site) (ht : Nat → TyM) (hm : Nat → Sem) (hcov : ∀ x, ∀ l ∈ ls, l ∈ (fx x).map (·.1)) (ee : List (Nat × Sem)) (hcovE : ∀ l ∈ ls, l ∈ ee.map (·.1)) (c : Sem)
     (g : Pos → SVal → SVal)
     (hg : ∀ p v ψ, (∃ x, dec (ψ (ls.foldl takeLabel s).nextLoan) = some x ∧ g p v ψ = v (ψ.updList (fx x))) ∨
       (dec (ψ (ls.foldl takeLabel s).nextLoan) = none ∧ g p v ψ = v (ψ.updList ee))) :
     OrdKeep L s (((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape
-      ((ls.foldl takeLabel s).nextLoan + 1) le ht).mapVals g).pushTempShaped (fun _ => c) (ls.foldl takeLabel s).nextLoan) := by
+      ((ls.foldl takeLabel s).nextLoan + 1) le ht hm).mapVals g).pushTempShaped (fun _ => c) (ls.foldl takeLabel s).nextLoan) := by
   generalize hs₁ : ls.foldl takeLabel s = s₁
   generalize hk : s₁.nextLoan = k
   have hpos₁ : s₁.positions = s.positions := by rw [← hs₁]; exact takeAll_positions s ls
   have hk' : k = s.nextLoan := by rw [← hk, ← hs₁]; exact (shapeSub_foldl_takeLabel ls s).2
   rw [hs₁, hk] at hg
-  generalize hs₃ : (SState.mk s₁.env s₁.shape (k + 1) le ht).mapVals g = s₃
+  generalize hs₃ : (SState.mk s₁.env s₁.shape (k + 1) le ht hm).mapVals g = s₃
   have hpos₃ : s₃.positions = s.positions := by rw [← hs₃, positions_mapVals]; exact hpos₁
   have hlive₃ : ∀ y, s₃.Live y ↔ s₁.Live y := by intro y; rw [← hs₃, live_mapVals]; rfl
   have hsa₃ : ShapeAt s₃ := by
@@ -609,7 +611,7 @@ theorem callOfL_ordKeep.{v} (Lv : Lvl.{v}) {C : Type v} (t : Tel Lv.Code PUnit C
       unfold callOfL at h; dsimp only at h; rw [happ2] at h
       simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨_, rfl⟩ := h
-      rw [ordKeep_setHeldTy_iff, ordKeep_setLent_iff]
+      rw [ordKeep_setHeldMem_iff, ordKeep_setHeldTy_iff, ordKeep_setLent_iff]
       have hcover : ∀ x, ∀ l ∈ (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id,
           l ∈ (((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).zip (back x)).filterMap
             fun (y : Option Nat × Sem) => y.1.map (·, y.2)).map (·.1) := by
@@ -630,7 +632,7 @@ theorem callOfL_ordKeep.{v} (Lv : Lvl.{v}) {C : Type v} (t : Tel Lv.Code PUnit C
         apply fixes_cover
         simp only [List.length_map]
         exact Nat.le_refl _
-      apply park_fix_ordKeep hi.2.2 _ (Lv.dec c) _ _ _ hcover _ hcoverE (Lv.enc c fwd)
+      apply park_fix_ordKeep hi.2.2 _ (Lv.dec c) _ _ _ _ hcover _ hcoverE (Lv.enc c fwd)
       intro p v ψ
       cases hd : Lv.dec c (ψ ((((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id)).foldl
           SState.takeLabel s).nextLoan) with

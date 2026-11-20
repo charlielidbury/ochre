@@ -28,7 +28,7 @@ def incClo : Value := .clo [] incT []
 /-- The context: no inductive, no global, the probes' decisions. -/
 def Kc (dm : DataModel) : RunCtx := Kp dm [] (fun _ => (.err, .plain TyM.err))
 
-variable (dm : DataModel) (ρ : Assignment) (φ : Future)
+variable (dm : DataModel) (ρ : Assignment) (φ : Future) {r : Sem}
 
 /-- `Inc`'s parameter and codomain as the clause reads them: a borrow of `Nat`, `Unit`. -/
 def psInc : List PiDom := [⟨true, fun _ => TyM.nat⟩]
@@ -72,74 +72,74 @@ noncomputable def dInc : DeclInfo := ((Kc dm).D.paramDecls [] [.ref .nat]).getD 
 def xB (c : Sem) (d : DeclInfo) : SBinding := { ty := { (TyS.plain TyM.nat) with label := some 0 }, val := fun _ => c, decl := d }
 
 /-- `Inc`'s frame: `self`, `x` holding `c` at label `0`, and `x`'s cell reading `0`'s final content. -/
-noncomputable def SB (c : Sem) : SState :=
+noncomputable def SB (c r : Sem) : SState :=
   { env := [{ binds := [selfInc dm ρ φ, xB c (dInc dm)], temps := [fun ψ => ψ 0] }],
-    shape := fun p => if p = .bind 0 1 then some 0 else none, nextLoan := 1 }
+    shape := fun p => if p = .bind 0 1 then some 0 else none, nextLoan := 1,
+    heldMem := fun m => if m = 0 then r else .err }
 
 theorem frame_inc (c : Sem) :
     ([c].zip psInc).foldl (fixStep (fbInc dm ρ φ)) ((stateOf 0 []).pushBind (selfInc dm ρ φ), [], [])
-      = (SB dm ρ φ c, [c], [.temp 0 0]) := by
+      = (SB dm ρ φ c c, [c], [.temp 0 0]) := by
   simp [fixStep, psInc, stateOf, SState.freshLoan, SState.pushTemp, SState.pushBind, SState.topIdx, pushBindShaped,
-    SState.takeLabel, SState.holderOf, SState.positions, SB, xB, dInc, fbInc, bindsOf, runBinds, mkBind]
+    SState.takeLabel, SState.holderOf, SState.positions, SB, xB, dInc, fbInc, bindsOf, runBinds, mkBind, SState.setHeldMem]
   exact ⟨rfl, rfl⟩
 
-theorem positions_SB (c : Sem) : (SB dm ρ φ c).positions = [.bind 0 0, .bind 0 1, .temp 0 0] := by
+theorem positions_SB (c : Sem) : (SB dm ρ φ c r).positions = [.bind 0 0, .bind 0 1, .temp 0 0] := by
   simp [SB, SState.positions, List.range']
 
-theorem liveLabels_SB (c : Sem) : (SB dm ρ φ c).liveLabels = [0] := by
+theorem liveLabels_SB (c : Sem) : (SB dm ρ φ c r).liveLabels = [0] := by
   unfold SState.liveLabels; rw [positions_SB]; simp [SB]
 
-theorem holderOf_SB (c : Sem) : (SB dm ρ φ c).holderOf 0 = some (.bind 0 1) := by
+theorem holderOf_SB (c : Sem) : (SB dm ρ φ c r).holderOf 0 = some (.bind 0 1) := by
   unfold SState.holderOf; rw [positions_SB]; simp [SB]
 
-theorem reached_SB (c : Sem) (p : Pos) (hit : List Step → Bool) (l : Nat) : (SB dm ρ φ c).reached p hit l = false := by
+theorem reached_SB (c : Sem) (p : Pos) (hit : List Step → Bool) (l : Nat) : (SB dm ρ φ c r).reached p hit l = false := by
   simp [SState.reached, SB]
 
-theorem access_SB (c : Sem) (p : Pos) (hit : List Step → Bool) : (SB dm ρ φ c).access p hit = SB dm ρ φ c := by
+theorem access_SB (c : Sem) (p : Pos) (hit : List Step → Bool) : (SB dm ρ φ c r).access p hit = SB dm ρ φ c r := by
   unfold SState.access
   have h : ∀ n : Nat, (List.range n).foldl (fun s _ => (s.liveLabels.filter (s.reached p hit)).foldl SState.endLabel s)
-      (SB dm ρ φ c) = SB dm ρ φ c := by
+      (SB dm ρ φ c r) = SB dm ρ φ c r := by
     intro n; induction n with
     | zero => rfl
     | succ n ih => rw [List.range_succ, List.foldl_append, ih]; simp [liveLabels_SB, reached_SB]
   exact h _
 
-theorem closedFuture_SB (c : Sem) (ψ : Future) : (SB dm ρ φ c).closedFuture ψ = ψ.upd 0 c := by
-  unfold SState.closedFuture; rw [liveLabels_SB]
-  simp only [List.length_singleton, List.range_one, List.foldl_cons, List.foldl_nil, holderOf_SB]
-  rfl
+theorem typedFuture_SB (c : Sem) (ψ : Future) : (SB dm ρ φ c r).typedFuture ψ = ψ.upd 0 r := by
+  funext l; unfold SState.typedFuture; rw [liveLabels_SB]
+  by_cases hl : l = 0 <;> simp [hl, SB, Future.upd]
 
-theorem resolve_SB (c : Sem) : resolve (SB dm ρ φ c) (.deref (.var 0)) = some (.bind 0 1, [.deref]) := by
+theorem resolve_SB (c : Sem) : resolve (SB dm ρ φ c r) (.deref (.var 0)) = some (.bind 0 1, [.deref]) := by
   simp [resolve, SState.varPos, SState.topIdx, Place.steps, SB]
 
 /-- `*x` in `Inc`'s frame: `x`'s content, at `x`'s position through `*`; the state unchanged. -/
 theorem contentOf_SB (c : Sem) :
-    ∃ T, contentOf (Kc dm) φ (.deref (.var 0)) (SB dm ρ φ c) = some ((c, T, .bind 0 1, [.deref]), SB dm ρ φ c) := by
+    ∃ T, contentOf (Kc dm) φ (.deref (.var 0)) (SB dm ρ φ c r) = some ((c, T, .bind 0 1, [.deref]), SB dm ρ φ c r) := by
   unfold contentOf
   rw [resolve_SB]
   dsimp only
-  rw [access_SB, closedFuture_SB]
+  rw [access_SB, typedFuture_SB]
   simp [Sem.follow, Sem.step, SState.valAt, SState.tyAt, SB, xB]
 
 theorem flags_Kc (sc : List DeclInfo) (t : Term) : (Kc dm).D.flags sc t = (false, false) := rfl
 theorem copy_Kc (r : DeclInfo) : (Kc dm).D.copy r = true := rfl
 
 theorem readPlace_SB (a : Nat) :
-    ∃ T, readPlace (Kc dm) φ (.deref (.var 0)) true (SB dm ρ φ (.el0 Nat a))
-      = some ((.el0 Nat a, T), SB dm ρ φ (.el0 Nat a)) := by
-  obtain ⟨T, hT⟩ := contentOf_SB dm ρ φ (.el0 Nat a)
+    ∃ T, readPlace (Kc dm) φ (.deref (.var 0)) true (SB dm ρ φ (.el0 Nat a) r)
+      = some ((.el0 Nat a, T), SB dm ρ φ (.el0 Nat a) r) := by
+  obtain ⟨T, hT⟩ := contentOf_SB (r := r) dm ρ φ (.el0 Nat a)
   refine ⟨{ T with label := none }, ?_⟩
   simp [readPlace, hT, bind, Option.bind, Sem.whole]
 
 theorem setContent_SB (a b : Nat) :
-    setContent (Kc dm) φ (.bind 0 1) [.deref] (.el0 Nat b) (SB dm ρ φ (.el0 Nat a)) = some (⟨⟩, SB dm ρ φ (.el0 Nat b)) := by
+    setContent (Kc dm) φ (.bind 0 1) [.deref] (.el0 Nat b) (SB dm ρ φ (.el0 Nat a) r) = some (⟨⟩, SB dm ρ φ (.el0 Nat b) r) := by
   simp [setContent, Attack.updAt_deref, Attack.updAt_nil, SState.setAt, SB, xB, SState.valAt]
 
 /-- `*x := S(*x)` in `Inc`'s frame: `x` holds `a + 1`. -/
 theorem runBody_inc (a : Nat) (hint : TyS) (tl : Bool) :
-    runT (Kc dm) ρ φ tl hint incBody (SB dm ρ φ (.el0 Nat a)) = some ((.el0 Unit (), .plain TyM.unit), SB dm ρ φ (.el0 Nat (a + 1))) := by
-  obtain ⟨T, hT⟩ := contentOf_SB dm ρ φ (.el0 Nat a)
-  obtain ⟨T', hT'⟩ := readPlace_SB dm ρ φ a
+    runT (Kc dm) ρ φ tl hint incBody (SB dm ρ φ (.el0 Nat a) r) = some ((.el0 Unit (), .plain TyM.unit), SB dm ρ φ (.el0 Nat (a + 1)) r) := by
+  obtain ⟨T, hT⟩ := contentOf_SB (r := r) dm ρ φ (.el0 Nat a)
+  obtain ⟨T', hT'⟩ := readPlace_SB (r := r) dm ρ φ a
   simp only [incBody, runT, SM.erasedIf, SM.erasedAt, SM.stmtIf, flags_Kc, copy_Kc, hT, hT', Bool.false_eq_true, if_false,
     bind, Option.bind, pure]
   have hs : (Sem.el0 Nat a).succ = .el0 Nat (a + 1) := Sem.succ_el0 a
@@ -149,7 +149,7 @@ theorem runBody_inc (a : Nat) (hint : TyS) (tl : Bool) :
     setContent_SB]
 
 /-- Ending `x`'s label at the pop: the cell reads the content. -/
-theorem endLabel_SB_cell (c : Sem) (ψ : Future) : ((SB dm ρ φ c).endLabel 0).valAt (.temp 0 0) ψ = c := by
+theorem endLabel_SB_cell (c : Sem) (ψ : Future) : ((SB dm ρ φ c r).endLabel 0).valAt (.temp 0 0) ψ = c := by
   unfold SState.endLabel
   rw [positions_SB]
   simp [SB, SState.mapVals, SState.valAt, Mean.semEnd, SState.toMean, Future.upd]
@@ -263,7 +263,7 @@ theorem readY_SI : ∃ T, readPlace (Kc dm) φ (.var 0) true SI = some ((.el0 Na
     intro l; induction l <;> simp_all
   have hl : SI.liveLabels = [] := by
     unfold SState.liveLabels; rw [SI_shape, h0]; simp
-  have hcf : SI.closedFuture φ = φ := by simp [SState.closedFuture, hl]
+  have hcf : SI.typedFuture φ = φ := by funext l; simp [SState.typedFuture, hl]
   have hr : resolve SI (.var 0) = some (.bind 0 0, []) := by
     simp [resolve, SState.varPos, SState.topIdx, Place.steps, SI, SState.mapVals, Attack.takeLabel_S₂]
   have hv : SI.valAt (.bind 0 0) φ = .el0 Nat 3 := by
@@ -317,15 +317,16 @@ noncomputable def selfP (cd : DeclInfo) : SBinding :=
 def yFrame : SFrame := { binds := [{ yB with val := fun φ' => φ' 0 }], temps := [fun _ => .moved] }
 
 /-- The caller's state with `Inc`'s frame pushed in place: `x` holds `c` at `y`'s own label `0`. -/
-noncomputable def SP (cd d : DeclInfo) (c : Sem) : SState :=
+noncomputable def SP (cd d : DeclInfo) (c r : Sem) : SState :=
   { env := [yFrame, { binds := [selfP dm ρ φ cd, xB c d] }],
     shape := fun p => if p = .bind 1 1 then some 0 else none, nextLoan := 1,
     lent := fun m => if m = 0 then [⟨.bind 0 0, [], false⟩] else [],
-    heldTy := fun m => if m = 0 then yB.ty.m else TyM.err }
+    heldTy := fun m => if m = 0 then yB.ty.m else TyM.err,
+    heldMem := fun m => if m = 0 then r else .err }
 
 theorem callFrame_inc (cd : DeclInfo) (bs : List PBind) (hb : bs = bindsOf (Kc dm) ρ φ (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame [.ref .nat]) :
     callFrame (Kc dm) ρ φ [] [] (fresInc dm ρ φ) cd bs [(.el0 Nat 2, { yB.ty with label := some 0 })] (Attack.S₂ yB 0 (.el0 Nat 2))
-      = SP dm ρ φ cd ((bs.getD 0 (fun _ => .plain TyM.err, .other)).2) (.el0 Nat 2) := by
+      = SP dm ρ φ cd ((bs.getD 0 (fun _ => .plain TyM.err, .other)).2) (.el0 Nat 2) (.el0 Nat 2) := by
   subst hb
   simp [callFrame, capsState, capsVals, capsTys, SState.pushFrame, SState.pushBind, SState.topIdx, pushBindShaped,
     SState.takeLabel, SState.holderOf, SState.positions, List.range', Attack.S₂, SState.setAt, SP, yFrame, selfP, xB,
@@ -337,60 +338,59 @@ theorem callFrame_inc (cd : DeclInfo) (bs : List PBind) (hb : bs = bindsOf (Kc d
 section InPlace
 variable (cd d : DeclInfo)
 
-theorem positions_SP (c : Sem) : (SP dm ρ φ cd d c).positions = [.bind 0 0, .temp 0 0, .bind 1 0, .bind 1 1] := by
+theorem positions_SP (c : Sem) : (SP dm ρ φ cd d c r).positions = [.bind 0 0, .temp 0 0, .bind 1 0, .bind 1 1] := by
   simp [SP, yFrame, SState.positions, List.range']
 
-theorem liveLabels_SP (c : Sem) : (SP dm ρ φ cd d c).liveLabels = [0] := by
+theorem liveLabels_SP (c : Sem) : (SP dm ρ φ cd d c r).liveLabels = [0] := by
   unfold SState.liveLabels; rw [positions_SP]; simp [SP]
 
-theorem holderOf_SP (c : Sem) : (SP dm ρ φ cd d c).holderOf 0 = some (.bind 1 1) := by
+theorem holderOf_SP (c : Sem) : (SP dm ρ φ cd d c r).holderOf 0 = some (.bind 1 1) := by
   unfold SState.holderOf; rw [positions_SP]; simp [SP]
 
-theorem reached_SP (c : Sem) (hit : List Step → Bool) (l : Nat) : (SP dm ρ φ cd d c).reached (.bind 1 1) hit l = false := by
+theorem reached_SP (c : Sem) (hit : List Step → Bool) (l : Nat) : (SP dm ρ φ cd d c r).reached (.bind 1 1) hit l = false := by
   simp [SState.reached, SP]
 
-theorem access_SP (c : Sem) (hit : List Step → Bool) : (SP dm ρ φ cd d c).access (.bind 1 1) hit = SP dm ρ φ cd d c := by
+theorem access_SP (c : Sem) (hit : List Step → Bool) : (SP dm ρ φ cd d c r).access (.bind 1 1) hit = SP dm ρ φ cd d c r := by
   unfold SState.access
   have h : ∀ n : Nat, (List.range n).foldl (fun s _ => (s.liveLabels.filter (s.reached (.bind 1 1) hit)).foldl SState.endLabel s)
-      (SP dm ρ φ cd d c) = SP dm ρ φ cd d c := by
+      (SP dm ρ φ cd d c r) = SP dm ρ φ cd d c r := by
     intro n; induction n with
     | zero => rfl
     | succ n ih => rw [List.range_succ, List.foldl_append, ih]; simp [liveLabels_SP, reached_SP]
   exact h _
 
-theorem closedFuture_SP (c : Sem) (ψ : Future) : (SP dm ρ φ cd d c).closedFuture ψ = ψ.upd 0 c := by
-  unfold SState.closedFuture; rw [liveLabels_SP]
-  simp only [List.length_singleton, List.range_one, List.foldl_cons, List.foldl_nil, holderOf_SP]
-  rfl
+theorem typedFuture_SP (c : Sem) (ψ : Future) : (SP dm ρ φ cd d c r).typedFuture ψ = ψ.upd 0 r := by
+  funext l; unfold SState.typedFuture; rw [liveLabels_SP]
+  by_cases hl : l = 0 <;> simp [hl, SP, Future.upd]
 
-theorem resolve_SP (c : Sem) : resolve (SP dm ρ φ cd d c) (.deref (.var 0)) = some (.bind 1 1, [.deref]) := by
+theorem resolve_SP (c : Sem) : resolve (SP dm ρ φ cd d c r) (.deref (.var 0)) = some (.bind 1 1, [.deref]) := by
   simp [resolve, SState.varPos, SState.topIdx, Place.steps, SP]
 
 theorem contentOf_SP (c : Sem) :
-    ∃ T, contentOf (Kc dm) φ (.deref (.var 0)) (SP dm ρ φ cd d c) = some ((c, T, .bind 1 1, [.deref]), SP dm ρ φ cd d c) := by
+    ∃ T, contentOf (Kc dm) φ (.deref (.var 0)) (SP dm ρ φ cd d c r) = some ((c, T, .bind 1 1, [.deref]), SP dm ρ φ cd d c r) := by
   unfold contentOf
   rw [resolve_SP]
   dsimp only
-  rw [access_SP, closedFuture_SP]
+  rw [access_SP, typedFuture_SP]
   simp [Sem.follow, Sem.step, SState.valAt, SState.tyAt, SP, xB]
 
 theorem readPlace_SP (a : Nat) :
-    ∃ T, readPlace (Kc dm) φ (.deref (.var 0)) true (SP dm ρ φ cd d (.el0 Nat a))
-      = some ((.el0 Nat a, T), SP dm ρ φ cd d (.el0 Nat a)) := by
-  obtain ⟨T, hT⟩ := contentOf_SP dm ρ φ cd d (.el0 Nat a)
+    ∃ T, readPlace (Kc dm) φ (.deref (.var 0)) true (SP dm ρ φ cd d (.el0 Nat a) r)
+      = some ((.el0 Nat a, T), SP dm ρ φ cd d (.el0 Nat a) r) := by
+  obtain ⟨T, hT⟩ := contentOf_SP (r := r) dm ρ φ cd d (.el0 Nat a)
   refine ⟨{ T with label := none }, ?_⟩
   simp [readPlace, hT, bind, Option.bind, Sem.whole]
 
 theorem setContent_SP (a b : Nat) :
-    setContent (Kc dm) φ (.bind 1 1) [.deref] (.el0 Nat b) (SP dm ρ φ cd d (.el0 Nat a)) = some (⟨⟩, SP dm ρ φ cd d (.el0 Nat b)) := by
+    setContent (Kc dm) φ (.bind 1 1) [.deref] (.el0 Nat b) (SP dm ρ φ cd d (.el0 Nat a) r) = some (⟨⟩, SP dm ρ φ cd d (.el0 Nat b) r) := by
   simp [setContent, Attack.updAt_deref, Attack.updAt_nil, SState.setAt, SP, xB, SState.valAt]
 
 /-- `*x := S(*x)` run in place, `x` holding `y`'s label: `x` holds `a + 1`. -/
 theorem runBody_incP (a : Nat) (hint : TyS) (tl : Bool) :
-    runT (Kc dm) ρ φ tl hint incBody (SP dm ρ φ cd d (.el0 Nat a))
-      = some ((.el0 Unit (), .plain TyM.unit), SP dm ρ φ cd d (.el0 Nat (a + 1))) := by
-  obtain ⟨T, hT⟩ := contentOf_SP dm ρ φ cd d (.el0 Nat a)
-  obtain ⟨T', hT'⟩ := readPlace_SP dm ρ φ cd d a
+    runT (Kc dm) ρ φ tl hint incBody (SP dm ρ φ cd d (.el0 Nat a) r)
+      = some ((.el0 Unit (), .plain TyM.unit), SP dm ρ φ cd d (.el0 Nat (a + 1)) r) := by
+  obtain ⟨T, hT⟩ := contentOf_SP (r := r) dm ρ φ cd d (.el0 Nat a)
+  obtain ⟨T', hT'⟩ := readPlace_SP (r := r) dm ρ φ cd d a
   simp only [incBody, runT, SM.erasedIf, SM.erasedAt, SM.stmtIf, flags_Kc, copy_Kc, hT, hT', Bool.false_eq_true, if_false,
     bind, Option.bind, pure]
   rw [Sem.succ_el0, show (TyS.plain TyM.nat).label = none from rfl]
@@ -398,17 +398,17 @@ theorem runBody_incP (a : Nat) (hint : TyS) (tl : Bool) :
     setContent_SP]
 
 theorem find_SP (c : Sem) :
-    ((SP dm ρ φ cd d c).positions.find? fun p => decide ((SP dm ρ φ cd d c).shape p = some 0)) = some (.bind 1 1) := by
+    ((SP dm ρ φ cd d c r).positions.find? fun p => decide ((SP dm ρ φ cd d c r).shape p = some 0)) = some (.bind 1 1) := by
   rw [positions_SP]; simp [SP]
 
 /-- Ending `x`'s label: every position reads as before at the future that fixes `0` to `x`'s content,
 `x` itself `moved`. -/
 theorem endLabel_SP_valAt (c : Sem) (p : Pos) (ψ : Future) :
-    ((SP dm ρ φ cd d c).endLabel 0).valAt p ψ = if p = .bind 1 1 then .moved else (SP dm ρ φ cd d c).valAt p (ψ.upd 0 c) := by
+    ((SP dm ρ φ cd d c r).endLabel 0).valAt p ψ = if p = .bind 1 1 then .moved else (SP dm ρ φ cd d c r).valAt p (ψ.upd 0 c) := by
   unfold SState.endLabel
   rw [find_SP]
   dsimp only
-  have hx : (SP dm ρ φ cd d c).toMean.val ψ (.bind 1 1) = c := rfl
+  have hx : (SP dm ρ φ cd d c r).toMean.val ψ (.bind 1 1) = c := rfl
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
   · rcases f with _ | _ | f <;> rcases i with _ | _ | i <;>
       simp [SState.valAt, SState.mapVals, Mean.semEnd, SState.toMean, SP, yFrame, hx, xB, selfP]
@@ -423,7 +423,7 @@ theorem popCallFrame_one (start : Nat) (s : SState) (l f i : Nat) (hl : s.liveLa
       SState.mk (s.endLabel l).env.dropLast
         (fun p => match p with
           | .bind g _ | .temp g _ => if g = s.topIdx then none else (s.endLabel l).shape p)
-        (s.endLabel l).nextLoan (s.endLabel l).lent (s.endLabel l).heldTy := by
+        (s.endLabel l).nextLoan (s.endLabel l).lent (s.endLabel l).heldTy (s.endLabel l).heldMem := by
   unfold popCallFrame
   simp only [hl, List.filter_cons, List.filter_nil, hh, hf, beq_self_eq_true, Bool.or_true, ne_eq, reduceCtorEq,
     not_false_eq_true, decide_true, Bool.and_self, if_true, List.foldl_cons, List.foldl_nil, Option.bind_none]
@@ -433,17 +433,17 @@ attribute [local irreducible] SP in
 /-- The pop after the body: `x`'s label `0` ends (its holder is in the callee's frame), `y` reads
 its final content, the frame goes. -/
 theorem popCallFrame_SP (c : Sem) :
-    let s' := popCallFrame 1 none (SP dm ρ φ cd d c)
+    let s' := popCallFrame 1 none (SP dm ρ φ cd d c r)
     s'.positions = [.bind 0 0, .temp 0 0] ∧ (∀ ψ, s'.valAt (.bind 0 0) ψ = c) ∧
       (∀ ψ, s'.valAt (.temp 0 0) ψ = .moved) ∧ s'.shape = fun _ => none := by
-  have ht : (SP dm ρ φ cd d c).topIdx = 1 := by simp [SState.topIdx, SP]
-  have hE : (SP dm ρ φ cd d c).endLabel 0 = (let m := (SP dm ρ φ cd d c).toMean.semEnd (.bind 1 1) 0
-      ({ SP dm ρ φ cd d c with shape := m.shape, lent := (SP dm ρ φ cd d c).relend 0 (.bind 1 1) }).mapVals
+  have ht : (SP dm ρ φ cd d c r).topIdx = 1 := by simp [SState.topIdx, SP]
+  have hE : (SP dm ρ φ cd d c r).endLabel 0 = (let m := (SP dm ρ φ cd d c r).toMean.semEnd (.bind 1 1) 0
+      ({ SP dm ρ φ cd d c r with shape := m.shape, lent := (SP dm ρ φ cd d c r).relend 0 (.bind 1 1) }).mapVals
         fun p _ => (m.val · p)) := by
     unfold SState.endLabel; rw [find_SP]
   dsimp only
   rw [popCallFrame_one 1 _ 0 1 1 (liveLabels_SP dm ρ φ cd d c) (holderOf_SP dm ρ φ cd d c) ht.symm, hE]
-  have hx : (SP dm ρ φ cd d c).toMean.val = fun ψ p => (SP dm ρ φ cd d c).valAt p ψ := rfl
+  have hx : (SP dm ρ φ cd d c r).toMean.val = fun ψ p => (SP dm ρ φ cd d c r).valAt p ψ := rfl
   refine ⟨?_, ?_, ?_, ?_⟩
   · simp [SState.positions, SState.mapVals, SP, yFrame, List.range']
   · intro ψ; simp [SState.valAt, SState.mapVals, Mean.semEnd, SState.toMean, SP, yFrame, xB, Future.upd]
@@ -465,8 +465,8 @@ theorem inc_inPlace :
     simp [capsState, capsVals, capsTys]
   let cd := (Kc dm).D.typeDecl ((Kc dm).D.teleDecls (scopeOf (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame) [.ref .nat]) .unit
   let d := ((bindsOf (Kc dm) ρ φ (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame [.ref .nat]).getD 0 (fun _ => .plain TyM.err, .other)).2
-  obtain ⟨hp, hv, ht, hsh⟩ := popCallFrame_SP dm ρ φ cd d (.el0 Nat 3)
-  refine ⟨{ (TyS.plain TyM.unit) with label := none }, popCallFrame 1 none (SP dm ρ φ cd d (.el0 Nat 3)), ?_,
+  obtain ⟨hp, hv, ht, hsh⟩ := popCallFrame_SP (r := .el0 Nat 2) dm ρ φ cd d (.el0 Nat 3)
+  refine ⟨{ (TyS.plain TyM.unit) with label := none }, popCallFrame 1 none (SP dm ρ φ cd d (.el0 Nat 3) (.el0 Nat 2)), ?_,
     hp, hv, ht, hsh⟩
   unfold runCallRef runBodyRef
   simp only [incT, hs₀, codOf_inc]
@@ -522,96 +522,97 @@ theorem meanV_id1Clo (hint : TyS) :
   rfl
 
 /-- A frame `self`, `x` holding `c` at label `0`, `x`'s cell (as `SB`, any `self`). -/
-def SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) : SState :=
+def SBs (selfB : SBinding) (d : DeclInfo) (c r : Sem) : SState :=
   { env := [{ binds := [selfB, xB c d], temps := [fun ψ => ψ 0] }],
-    shape := fun p => if p = .bind 0 1 then some 0 else none, nextLoan := 1 }
+    shape := fun p => if p = .bind 0 1 then some 0 else none, nextLoan := 1,
+    heldMem := fun m => if m = 0 then r else .err }
 
 theorem positions_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) :
-    (SBs selfB d c).positions = [.bind 0 0, .bind 0 1, .temp 0 0] := by
+    (SBs selfB d c r).positions = [.bind 0 0, .bind 0 1, .temp 0 0] := by
   simp [SBs, SState.positions, List.range']
 
-theorem liveLabels_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) : (SBs selfB d c).liveLabels = [0] := by
+theorem liveLabels_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) : (SBs selfB d c r).liveLabels = [0] := by
   unfold SState.liveLabels; rw [positions_SBs]; simp [SBs]
 
-theorem holderOf_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) : (SBs selfB d c).holderOf 0 = some (.bind 0 1) := by
+theorem holderOf_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) : (SBs selfB d c r).holderOf 0 = some (.bind 0 1) := by
   unfold SState.holderOf; rw [positions_SBs]; simp [SBs]
 
 theorem reached_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) (p : Pos) (hit : List Step → Bool) (l : Nat) :
-    (SBs selfB d c).reached p hit l = false := by
+    (SBs selfB d c r).reached p hit l = false := by
   simp [SState.reached, SBs]
 
 theorem access_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) (p : Pos) (hit : List Step → Bool) :
-    (SBs selfB d c).access p hit = SBs selfB d c := by
+    (SBs selfB d c r).access p hit = SBs selfB d c r := by
   unfold SState.access
   have h : ∀ n : Nat, (List.range n).foldl (fun s _ => (s.liveLabels.filter (s.reached p hit)).foldl SState.endLabel s)
-      (SBs selfB d c) = SBs selfB d c := by
+      (SBs selfB d c r) = SBs selfB d c r := by
     intro n; induction n with
     | zero => rfl
     | succ n ih => rw [List.range_succ, List.foldl_append, ih]; simp [liveLabels_SBs, reached_SBs]
   exact h _
 
-theorem closedFuture_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) (ψ : Future) :
-    (SBs selfB d c).closedFuture ψ = ψ.upd 0 c := by
-  unfold SState.closedFuture; rw [liveLabels_SBs]
-  simp only [List.length_singleton, List.range_one, List.foldl_cons, List.foldl_nil, holderOf_SBs]
-  rfl
+theorem typedFuture_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) (ψ : Future) :
+    (SBs selfB d c r).typedFuture ψ = ψ.upd 0 r := by
+  funext l; unfold SState.typedFuture; rw [liveLabels_SBs]
+  by_cases hl : l = 0 <;> simp [hl, SBs, Future.upd]
 
 theorem resolve_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) :
-    resolve (SBs selfB d c) (.deref (.var 0)) = some (.bind 0 1, [.deref]) := by
+    resolve (SBs selfB d c r) (.deref (.var 0)) = some (.bind 0 1, [.deref]) := by
   simp [resolve, SState.varPos, SState.topIdx, Place.steps, SBs]
 
 theorem contentOf_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) :
-    ∃ T, contentOf (Kc dm) φ (.deref (.var 0)) (SBs selfB d c) = some ((c, T, .bind 0 1, [.deref]), SBs selfB d c) := by
+    ∃ T, contentOf (Kc dm) φ (.deref (.var 0)) (SBs selfB d c r) = some ((c, T, .bind 0 1, [.deref]), SBs selfB d c r) := by
   unfold contentOf
   rw [resolve_SBs]
   dsimp only
-  rw [access_SBs, closedFuture_SBs]
+  rw [access_SBs, typedFuture_SBs]
   simp [Sem.follow, Sem.step, SState.valAt, SState.tyAt, SBs, xB]
 
 /-- After `&*x` in the frame: `x` reads the reborrow `1`'s final content, the reborrow's content `c`
 parked in a temporary holding `1`, lent at `*x`. -/
-def SB2 (selfB : SBinding) (d : DeclInfo) (T : TyM) (c : Sem) : SState :=
+def SB2 (selfB : SBinding) (d : DeclInfo) (T : TyM) (c r : Sem) : SState :=
   { env := [{ binds := [selfB, { xB c d with val := fun φ' => φ' 1 }], temps := [fun ψ => ψ 0, fun _ => c] }],
     shape := fun p => if p = .temp 0 1 then some 1 else if p = .bind 0 1 then some 0 else none, nextLoan := 2,
     lent := fun m => if m = 1 then [⟨.bind 0 1, [.deref], false⟩] else [],
-    heldTy := fun m => if m = 1 then T else TyM.err }
+    heldTy := fun m => if m = 1 then T else TyM.err,
+    heldMem := fun m => if m = 1 then c else if m = 0 then r else .err }
 
 theorem runBody_id1 (selfB : SBinding) (d : DeclInfo) (a : Nat) (hint : TyS) (tl : Bool) :
-    ∃ T, runT (Kc dm) ρ φ tl hint id1Body (SBs selfB d (.el0 Nat a)) = some ((.el0 Nat a, T), SB2 selfB d T.m (.el0 Nat a)) ∧
+    ∃ T, runT (Kc dm) ρ φ tl hint id1Body (SBs selfB d (.el0 Nat a) r) = some ((.el0 Nat a, T), SB2 selfB d T.m (.el0 Nat a) r) ∧
       T.label = some 1 := by
-  obtain ⟨T, hT⟩ := contentOf_SBs dm φ selfB d (.el0 Nat a)
+  obtain ⟨T, hT⟩ := contentOf_SBs (r := r) dm φ selfB d (.el0 Nat a)
   refine ⟨{ T with label := some 1 }, ?_, rfl⟩
   simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
   unfold borrowPlace
   simp only [hT, bind, Option.bind]
   simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
-    Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent, SState.setHeldTy, SBs, SB2, xB]
+    Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent, SState.setHeldTy, SState.setHeldMem, SBs, SB2, xB]
   done
 
 noncomputable def selfId1 : SBinding := { ty := .plain (piId1 dm), val := fun _ => .err, decl := .pi (fbId1 dm ρ φ).2.2 }
 
 theorem frame_id1 (c : Sem) :
     ([c].zip psInc).foldl (fixStep (fbId1 dm ρ φ)) ((stateOf 0 []).pushBind (selfId1 dm ρ φ), [], [])
-      = (SBs (selfId1 dm ρ φ) (dInc dm) c, [c], [.temp 0 0]) := by
+      = (SBs (selfId1 dm ρ φ) (dInc dm) c c, [c], [.temp 0 0]) := by
   simp [fixStep, psInc, stateOf, SState.freshLoan, SState.pushTemp, SState.pushBind, SState.topIdx, pushBindShaped,
-    SState.takeLabel, SState.holderOf, SState.positions, SBs, xB, dInc, fbId1, bindsOf, runBinds, mkBind]
+    SState.takeLabel, SState.holderOf, SState.positions, SBs, xB, dInc, fbId1, bindsOf, runBinds, mkBind, SState.setHeldMem]
   exact ⟨rfl, rfl⟩
 
 theorem positions_SB2 (selfB : SBinding) (d : DeclInfo) (T : TyM) (c : Sem) :
-    (SB2 selfB d T c).positions = [.bind 0 0, .bind 0 1, .temp 0 0, .temp 0 1] := by
+    (SB2 selfB d T c r).positions = [.bind 0 0, .bind 0 1, .temp 0 0, .temp 0 1] := by
   simp [SB2, SState.positions, List.range']
 
-theorem liveLabels_SB2 (selfB : SBinding) (d : DeclInfo) (T : TyM) (c : Sem) : (SB2 selfB d T c).liveLabels = [0, 1] := by
+theorem liveLabels_SB2 (selfB : SBinding) (d : DeclInfo) (T : TyM) (c : Sem) : (SB2 selfB d T c r).liveLabels = [0, 1] := by
   unfold SState.liveLabels; rw [positions_SB2]; simp [SB2]
   first | rfl | decide | simp [List.mergeSort]
 
 theorem find_SB2 (selfB : SBinding) (d : DeclInfo) (T : TyM) (c : Sem) :
-    ((SB2 selfB d T c).positions.find? fun p => decide ((SB2 selfB d T c).shape p = some 0)) = some (.bind 0 1) := by
+    ((SB2 selfB d T c r).positions.find? fun p => decide ((SB2 selfB d T c r).shape p = some 0)) = some (.bind 0 1) := by
   rw [positions_SB2]; simp [SB2]
 
 /-- Ending `x`'s label at the pop: the cell reads the reborrow's final content. -/
 theorem endLabel_SB2_cell (selfB : SBinding) (d : DeclInfo) (T : TyM) (c : Sem) (ψ : Future) :
-    ((SB2 selfB d T c).endLabel 0).valAt (.temp 0 0) ψ = ψ 1 := by
+    ((SB2 selfB d T c r).endLabel 0).valAt (.temp 0 0) ψ = ψ 1 := by
   unfold SState.endLabel
   rw [find_SB2]
   simp [SB2, SState.mapVals, SState.valAt, Mean.semEnd, SState.toMean, Future.upd, xB]
@@ -674,12 +675,13 @@ theorem callOf_id1 (s : SState) (T : TyS) (lab : Nat) :
     ∃ TU : TyS, TU.label = some (s.takeLabel lab).freshLoan.1 ∧
       callOf dm.read (fresId1 dm ρ φ) [(.el0 Nat 2, { T with label := some lab })] s
       = some ((.el0 Nat 2, TU),
-          ((((s.takeLabel lab).freshLoan.2.mapVals fun _ v φ' =>
+          (((((s.takeLabel lab).freshLoan.2.mapVals fun _ v φ' =>
               match Code0.dec dm.read TyM.nat.code0.snd (φ' (s.takeLabel lab).freshLoan.1) with
               | some x => v (φ'.upd lab (Code0.enc dm.read TyM.nat.code0.snd x))
               | none => v (φ'.upd lab .err)).pushTempShaped (fun _ => .el0 Nat 2) (s.takeLabel lab).freshLoan.1).setLent
             (s.takeLabel lab).freshLoan.1 (((s.takeLabel lab).freshLoan.2.lent lab).map fun x => { x with fill := true })).setHeldTy
-            (s.takeLabel lab).freshLoan.1 ((lvl0 dm.read).toTy TyM.nat.code0.snd)) := by
+            (s.takeLabel lab).freshLoan.1 ((lvl0 dm.read).toTy TyM.nat.code0.snd)).setHeldMem
+            (s.takeLabel lab).freshLoan.1 (.el0 Nat 2)) := by
   obtain ⟨o, r, hg, hap, hm⟩ := applyFnL_closureL (lvl0 dm.read) (lvl0_lawful dm.read) φ
     (telL (lvl0 dm.read) psInc [] PUnit outId1).2 (gId1 dm ρ φ) [.el0 Nat 2] (mkTel_id1 dm ρ φ)
     ⟨(2 : Nat), Attack.dec_nat_el0 dm.read 2, trivial⟩
@@ -712,7 +714,7 @@ theorem callOf_id1 (s : SState) (T : TyS) (lab : Nat) :
     refine ⟨⟨?_, rfl, HEq.rfl⟩, ?_⟩
     · exact hf
     · rw [hf]
-      congr 4
+      congr 5
       funext p v φ'
       split <;> rename_i h <;> rw [h]
 
@@ -735,7 +737,8 @@ def SR (rT : TyS) (yv rv t0 t1 : SVal) : SState :=
   { env := [SFrame.mk [{ yB with val := yv }, { ty := rT, val := rv, decl := .other }] [t0, t1]],
     shape := fun p => if p = .bind 0 1 then some 1 else none, nextLoan := 2,
     lent := fun m => if m = 1 then [⟨.bind 0 0, [], true⟩] else if m = 0 then [⟨.bind 0 0, [], false⟩] else [],
-    heldTy := fun m => if m = 1 then TyM.t0 TyM.nat.code0.fst TyM.nat.code0.snd else if m = 0 then yB.ty.m else TyM.err }
+    heldTy := fun m => if m = 1 then TyM.t0 TyM.nat.code0.fst TyM.nat.code0.snd else if m = 0 then yB.ty.m else TyM.err,
+    heldMem := fun m => if m = 1 then .el0 Nat 2 else if m = 0 then .el0 Nat 2 else .err }
 
 /-- The parked temporary `0` after the call's fixing: `moved` where the reborrow's final content decodes. -/
 noncomputable def mv1 : SVal := fun φ' =>
@@ -745,13 +748,14 @@ noncomputable def mv1 : SVal := fun φ' =>
 
 /-- The state after the call `Id1(&y)` by `callOf` (`callOf_id1` at `S₂`, label `0`). -/
 noncomputable def SC1 : SState :=
-  (((((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.2.mapVals fun _ v φ' =>
+  ((((((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.2.mapVals fun _ v φ' =>
       match Code0.dec dm.read TyM.nat.code0.snd (φ' ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1) with
       | some x => v (φ'.upd 0 (Code0.enc dm.read TyM.nat.code0.snd x))
       | none => v (φ'.upd 0 .err)).pushTempShaped (fun _ => .el0 Nat 2) ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1).setLent
     ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1
     ((((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.2.lent 0).map fun x => { x with fill := true })).setHeldTy
-    ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1 ((lvl0 dm.read).toTy TyM.nat.code0.snd)
+    ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1 ((lvl0 dm.read).toTy TyM.nat.code0.snd)).setHeldMem
+    ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1 (.el0 Nat 2)
 
 /-- The call `Id1(&y)` after `let y = 2`: `2` at the reborrow `1`. -/
 theorem run_callId1 :
@@ -772,7 +776,7 @@ theorem bindR (TU : TyS) (hTU : TU.label = some 1) :
       = SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved) := by
   simp only [SC1, Attack.takeLabel_S₂]
   simp [pushBindShaped, hTU, SState.freshLoan, SState.mapVals, SState.pushTempShaped, SState.pushTemp, SState.setLent,
-    SState.setHeldTy, SState.topIdx, SState.takeLabel, SState.holderOf, SState.positions, List.range', SState.setAt,
+    SState.setHeldTy, SState.setHeldMem, SState.topIdx, SState.takeLabel, SState.holderOf, SState.positions, List.range', SState.setAt,
     SState.pushBind, SR, yR1, mv1]
   refine ⟨⟨?_, ?_⟩, ?_⟩
   · funext φ'; unfold yR1; split <;> rename_i h <;> first | rfl | rw [h]
@@ -857,8 +861,8 @@ theorem readY_SR (yv' : SVal) (hy : ∀ ψ, yv (ψ.upd 1 (.el0 Nat 5)) = yv' ψ)
     intro l; induction l <;> simp_all
   have hl : ((SR rT yv (fun _ => .el0 Nat 5) t0 t1).endLabel 1).liveLabels = [] := by
     unfold SState.liveLabels; rw [endLabel_SR_shape, h0]; simp
-  have hcf : ((SR rT yv (fun _ => .el0 Nat 5) t0 t1).endLabel 1).closedFuture φ = φ := by
-    simp [SState.closedFuture, hl]
+  have hcf : ((SR rT yv (fun _ => .el0 Nat 5) t0 t1).endLabel 1).typedFuture φ = φ := by
+    funext l; simp [SState.typedFuture, hl]
   have hv : ((SR rT yv (fun _ => .el0 Nat 5) t0 t1).endLabel 1).valAt (.bind 0 0) φ = yv' φ := by
     rw [endLabel_SR_valAt]; simp [SR, SState.valAt, hy]
   refine ⟨{ (SR rT yv (fun _ => .el0 Nat 5) t0 t1).tyAt (.bind 0 0) with label := none }, ?_⟩
@@ -921,70 +925,71 @@ theorem useId1_callOf (hint : TyS) :
 
 /-- The caller's state with a callee's frame pushed in place (any `self`): `x` holds `c` at `y`'s
 own label `0`. -/
-def SPg (selfB : SBinding) (d : DeclInfo) (c : Sem) : SState :=
+def SPg (selfB : SBinding) (d : DeclInfo) (c r : Sem) : SState :=
   { env := [yFrame, SFrame.mk [selfB, xB c d] []],
     shape := fun p => if p = .bind 1 1 then some 0 else none, nextLoan := 1,
     lent := fun m => if m = 0 then [⟨.bind 0 0, [], false⟩] else [],
-    heldTy := fun m => if m = 0 then yB.ty.m else TyM.err }
+    heldTy := fun m => if m = 0 then yB.ty.m else TyM.err,
+    heldMem := fun m => if m = 0 then r else .err }
 
 section SPgLemmas
 variable (selfB : SBinding) (d : DeclInfo)
 
-theorem positions_SPg (c : Sem) : (SPg selfB d c).positions = [.bind 0 0, .temp 0 0, .bind 1 0, .bind 1 1] := by
+theorem positions_SPg (c : Sem) : (SPg selfB d c r).positions = [.bind 0 0, .temp 0 0, .bind 1 0, .bind 1 1] := by
   simp [SPg, yFrame, SState.positions, List.range']
 
-theorem liveLabels_SPg (c : Sem) : (SPg selfB d c).liveLabels = [0] := by
+theorem liveLabels_SPg (c : Sem) : (SPg selfB d c r).liveLabels = [0] := by
   unfold SState.liveLabels; rw [positions_SPg]; simp [SPg]
 
-theorem holderOf_SPg (c : Sem) : (SPg selfB d c).holderOf 0 = some (.bind 1 1) := by
+theorem holderOf_SPg (c : Sem) : (SPg selfB d c r).holderOf 0 = some (.bind 1 1) := by
   unfold SState.holderOf; rw [positions_SPg]; simp [SPg]
 
-theorem reached_SPg (c : Sem) (hit : List Step → Bool) (l : Nat) : (SPg selfB d c).reached (.bind 1 1) hit l = false := by
+theorem reached_SPg (c : Sem) (hit : List Step → Bool) (l : Nat) : (SPg selfB d c r).reached (.bind 1 1) hit l = false := by
   simp [SState.reached, SPg]
 
-theorem access_SPg (c : Sem) (hit : List Step → Bool) : (SPg selfB d c).access (.bind 1 1) hit = SPg selfB d c := by
+theorem access_SPg (c : Sem) (hit : List Step → Bool) : (SPg selfB d c r).access (.bind 1 1) hit = SPg selfB d c r := by
   unfold SState.access
   have h : ∀ n : Nat, (List.range n).foldl (fun s _ => (s.liveLabels.filter (s.reached (.bind 1 1) hit)).foldl SState.endLabel s)
-      (SPg selfB d c) = SPg selfB d c := by
+      (SPg selfB d c r) = SPg selfB d c r := by
     intro n; induction n with
     | zero => rfl
     | succ n ih => rw [List.range_succ, List.foldl_append, ih]; simp [liveLabels_SPg, reached_SPg]
   exact h _
 
-theorem closedFuture_SPg (c : Sem) (ψ : Future) : (SPg selfB d c).closedFuture ψ = ψ.upd 0 c := by
-  unfold SState.closedFuture; rw [liveLabels_SPg]
-  simp only [List.length_singleton, List.range_one, List.foldl_cons, List.foldl_nil, holderOf_SPg]
-  rfl
+theorem typedFuture_SPg (c : Sem) (ψ : Future) : (SPg selfB d c r).typedFuture ψ = ψ.upd 0 r := by
+  funext l; unfold SState.typedFuture; rw [liveLabels_SPg]
+  by_cases hl : l = 0 <;> simp [hl, SPg, Future.upd]
 
-theorem resolve_SPg (c : Sem) : resolve (SPg selfB d c) (.deref (.var 0)) = some (.bind 1 1, [.deref]) := by
+theorem resolve_SPg (c : Sem) : resolve (SPg selfB d c r) (.deref (.var 0)) = some (.bind 1 1, [.deref]) := by
   simp [resolve, SState.varPos, SState.topIdx, Place.steps, SPg]
 
 theorem contentOf_SPg (c : Sem) :
-    ∃ T, contentOf (Kc dm) φ (.deref (.var 0)) (SPg selfB d c) = some ((c, T, .bind 1 1, [.deref]), SPg selfB d c) := by
+    ∃ T, contentOf (Kc dm) φ (.deref (.var 0)) (SPg selfB d c r) = some ((c, T, .bind 1 1, [.deref]), SPg selfB d c r) := by
   unfold contentOf
   rw [resolve_SPg]
   dsimp only
-  rw [access_SPg, closedFuture_SPg]
+  rw [access_SPg, typedFuture_SPg]
   simp [Sem.follow, Sem.step, SState.valAt, SState.tyAt, SPg, xB]
 
 /-- After `&*x` in place: `x` reads the reborrow `1`'s final content, the reborrow (content `c`) parked
 in the callee's frame, lent at `*x`. -/
-def SPg2 (T : TyM) (c : Sem) : SState :=
+def SPg2 (T : TyM) (c r : Sem) : SState :=
   { env := [yFrame, SFrame.mk [selfB, { xB c d with val := fun φ' => φ' 1 }] [fun _ => c]],
     shape := fun p => if p = .temp 1 0 then some 1 else if p = .bind 1 1 then some 0 else none, nextLoan := 2,
     lent := fun m => if m = 1 then [⟨.bind 1 1, [.deref], false⟩] else if m = 0 then [⟨.bind 0 0, [], false⟩] else [],
-    heldTy := fun m => if m = 1 then T else if m = 0 then yB.ty.m else TyM.err }
+    heldTy := fun m => if m = 1 then T else if m = 0 then yB.ty.m else TyM.err,
+    heldMem := fun m => if m = 1 then c else if m = 0 then r else .err }
 
 theorem runBody_id1P (a : Nat) :
     ∃ T : TyS, T.label = some 1 ∧ ∀ (hint : TyS) (tl : Bool),
-      runT (Kc dm) ρ φ tl hint id1Body (SPg selfB d (.el0 Nat a)) = some ((.el0 Nat a, T), SPg2 selfB d T.m (.el0 Nat a)) := by
-  obtain ⟨T, hT⟩ := contentOf_SPg dm φ selfB d (.el0 Nat a)
+      runT (Kc dm) ρ φ tl hint id1Body (SPg selfB d (.el0 Nat a) r) = some ((.el0 Nat a, T), SPg2 selfB d T.m (.el0 Nat a) r) := by
+  obtain ⟨T, hT⟩ := contentOf_SPg (r := r) dm φ selfB d (.el0 Nat a)
   refine ⟨{ T with label := some 1 }, rfl, fun hint tl => ?_⟩
   simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
   unfold borrowPlace
   simp only [hT, bind, Option.bind]
   simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
-    Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent, SState.setHeldTy, SPg, SPg2, xB]
+    Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent, SState.setHeldTy, SState.setHeldMem, SPg, SPg2, xB]
   done
 
 /-- The pop where two labels are live: `l`, held in the callee's frame, ends; `k`, returned, is kept
@@ -995,7 +1000,7 @@ theorem popCallFrame_two (start : Nat) (s : SState) (l k f i : Nat) (r : Pos) (h
       (SState.mk (s.endLabel l).env.dropLast
         (fun p => match p with
           | .bind g _ | .temp g _ => if g = s.topIdx then none else (s.endLabel l).shape p)
-        (s.endLabel l).nextLoan (s.endLabel l).lent (s.endLabel l).heldTy).pushTempShaped ((s.endLabel l).valAt r) k := by
+        (s.endLabel l).nextLoan (s.endLabel l).lent (s.endLabel l).heldTy (s.endLabel l).heldMem).pushTempShaped ((s.endLabel l).valAt r) k := by
   unfold popCallFrame
   have hne : (some l ≠ some k) := fun h => hlk (Option.some.inj h)
   simp only [hl, List.filter_cons, List.filter_nil, hh, hf, beq_self_eq_true, Bool.or_true, ne_eq, hne,
@@ -1004,28 +1009,28 @@ theorem popCallFrame_two (start : Nat) (s : SState) (l k f i : Nat) (r : Pos) (h
   congr 1
 
 theorem positions_SPg2 (T : TyM) (c : Sem) :
-    (SPg2 selfB d T c).positions = [.bind 0 0, .temp 0 0, .bind 1 0, .bind 1 1, .temp 1 0] := by
+    (SPg2 selfB d T c r).positions = [.bind 0 0, .temp 0 0, .bind 1 0, .bind 1 1, .temp 1 0] := by
   simp [SPg2, yFrame, SState.positions, List.range']
 
-theorem liveLabels_SPg2 (T : TyM) (c : Sem) : (SPg2 selfB d T c).liveLabels = [0, 1] := by
+theorem liveLabels_SPg2 (T : TyM) (c : Sem) : (SPg2 selfB d T c r).liveLabels = [0, 1] := by
   unfold SState.liveLabels; rw [positions_SPg2]; simp [SPg2]
   first | rfl | decide | simp [List.mergeSort]
 
-theorem holderOf_SPg2 (T : TyM) (c : Sem) : (SPg2 selfB d T c).holderOf 0 = some (.bind 1 1) := by
+theorem holderOf_SPg2 (T : TyM) (c : Sem) : (SPg2 selfB d T c r).holderOf 0 = some (.bind 1 1) := by
   unfold SState.holderOf; rw [positions_SPg2]; simp [SPg2]
 
 theorem find_SPg2 (T : TyM) (c : Sem) :
-    ((SPg2 selfB d T c).positions.find? fun p => decide ((SPg2 selfB d T c).shape p = some 0)) = some (.bind 1 1) := by
+    ((SPg2 selfB d T c r).positions.find? fun p => decide ((SPg2 selfB d T c r).shape p = some 0)) = some (.bind 1 1) := by
   rw [positions_SPg2]; simp [SPg2]
 
 /-- Ending `x`'s label `0` at the pop, as `endLabel` computes it. -/
-theorem endLabel_SPg2 (T : TyM) (c : Sem) : (SPg2 selfB d T c).endLabel 0 =
-    (let m := (SPg2 selfB d T c).toMean.semEnd (.bind 1 1) 0
-     ({ SPg2 selfB d T c with shape := m.shape, lent := (SPg2 selfB d T c).relend 0 (.bind 1 1) }).mapVals
+theorem endLabel_SPg2 (T : TyM) (c : Sem) : (SPg2 selfB d T c r).endLabel 0 =
+    (let m := (SPg2 selfB d T c r).toMean.semEnd (.bind 1 1) 0
+     ({ SPg2 selfB d T c r with shape := m.shape, lent := (SPg2 selfB d T c r).relend 0 (.bind 1 1) }).mapVals
        fun p _ => (m.val · p)) := by
   unfold SState.endLabel; rw [find_SPg2]
 
-theorem holderOf_end_SPg2 (T : TyM) (c : Sem) : ((SPg2 selfB d T c).endLabel 0).holderOf 1 = some (.temp 1 0) := by
+theorem holderOf_end_SPg2 (T : TyM) (c : Sem) : ((SPg2 selfB d T c r).endLabel 0).holderOf 1 = some (.temp 1 0) := by
   rw [endLabel_SPg2]
   unfold SState.holderOf
   simp [SState.positions, SState.mapVals, SPg2, yFrame, List.range', Mean.semEnd, SState.toMean]
@@ -1038,7 +1043,7 @@ noncomputable def selfId1P (cd : DeclInfo) : SBinding :=
 
 theorem callFrame_id1 (cd : DeclInfo) (bs : List PBind) (hb : bs = bindsOf (Kc dm) ρ φ (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame [.ref .nat]) :
     callFrame (Kc dm) ρ φ [] [] (fresId1 dm ρ φ) cd bs [(.el0 Nat 2, { yB.ty with label := some 0 })] (Attack.S₂ yB 0 (.el0 Nat 2))
-      = SPg (selfId1P dm ρ φ cd) ((bs.getD 0 (fun _ => .plain TyM.err, .other)).2) (.el0 Nat 2) := by
+      = SPg (selfId1P dm ρ φ cd) ((bs.getD 0 (fun _ => .plain TyM.err, .other)).2) (.el0 Nat 2) (.el0 Nat 2) := by
   subst hb
   simp [callFrame, capsState, capsVals, capsTys, SState.pushFrame, SState.pushBind, SState.topIdx, pushBindShaped,
     SState.takeLabel, SState.holderOf, SState.positions, List.range', Attack.S₂, SState.setAt, SPg, yFrame, selfId1P, xB,
@@ -1062,12 +1067,12 @@ theorem id1_inPlace_typed :
   let cd := (Kc dm).D.typeDecl ((Kc dm).D.teleDecls (scopeOf (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame) [.ref .nat]) (.ref .nat)
   let d := ((bindsOf (Kc dm) ρ φ (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame [.ref .nat]).getD 0 (fun _ => .plain TyM.err, .other)).2
   obtain ⟨Tb, hlb, hTb⟩ := runBody_id1P dm ρ φ (selfId1P dm ρ φ cd) d 2
-  have hpop := popCallFrame_two 1 (SPg2 (selfId1P dm ρ φ cd) d Tb.m (.el0 Nat 2)) 0 1 1 1 (.temp 1 0)
+  have hpop := popCallFrame_two 1 (SPg2 (selfId1P dm ρ φ cd) d Tb.m (.el0 Nat 2) (.el0 Nat 2)) 0 1 1 1 (.temp 1 0)
     (liveLabels_SPg2 _ _ _ _) (holderOf_SPg2 _ _ _ _) rfl (by decide) (holderOf_end_SPg2 _ _ _ _)
   have hrun : runCallRef (Kc dm) ρ φ (fresId1 dm ρ φ) [] id1T [] [(.el0 Nat 2, { yB.ty with label := some 0 })]
       (Attack.S₂ yB 0 (.el0 Nat 2)) = some ((.el0 Nat 2, { Tb with label := some 1 }),
-        (popCallFrame 1 (some 1) (SPg2 (selfId1P dm ρ φ cd) d Tb.m (.el0 Nat 2))).setLent 1
-          (((popCallFrame 1 (some 1) (SPg2 (selfId1P dm ρ φ cd) d Tb.m (.el0 Nat 2))).lent 1).map fun x => { x with fill := true })) := by
+        (popCallFrame 1 (some 1) (SPg2 (selfId1P dm ρ φ cd) d Tb.m (.el0 Nat 2) (.el0 Nat 2))).setLent 1
+          (((popCallFrame 1 (some 1) (SPg2 (selfId1P dm ρ φ cd) d Tb.m (.el0 Nat 2) (.el0 Nat 2))).lent 1).map fun x => { x with fill := true })) := by
     unfold runCallRef runBodyRef
     simp only [id1T, hs₀]
     rw [callFrame_id1 dm ρ φ _ _ rfl, hTb _ _]

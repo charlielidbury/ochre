@@ -29,9 +29,9 @@ theorem contentOf_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : R
     obtain ⟨pos, steps⟩ := ps
     dsimp only
     have hi' := access_rinv hi pos (dataHit steps)
-    rw [closedFuture_read hi'.1 hi'.2.1 hφ pos]
+    rw [typedFuture_read hi'.1 hφ pos]
 
-/-- A match's tag is the same at both futures: it is read at the closed future. -/
+/-- A match's tag is the same at both futures: it is read at the typed future. -/
 theorem tagOf_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Place) (tag : Sem → TyS → Sem) :
     tagOf K φ p tag s = tagOf K φ' p tag s := by
   unfold tagOf
@@ -41,13 +41,13 @@ theorem tagOf_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv 
     obtain ⟨pos, steps⟩ := ps
     dsimp only
     have hi' := access_rinv hi pos (tagHit steps)
-    rw [closedFuture_read hi'.1 hi'.2.1 hφ pos]
+    rw [typedFuture_read hi'.1 hφ pos]
 
 theorem setContent_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (pos : Pos)
     (steps : List Step) (v : Sem) : setContent K φ pos steps v s = setContent K φ' pos steps v s := by
   unfold setContent
   dsimp only
-  rw [closedFuture_read hi.1 hi.2.1 hφ pos]
+  rw [typedFuture_read hi.1 hφ pos]
 
 theorem readPlace_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Place) (copy : Bool) :
     readPlace K φ p copy s = readPlace K φ' p copy s := by
@@ -114,7 +114,7 @@ theorem dropAt_congr (hφ : ∀ l, L l → φ l = φ' l) (q : Place) (pos : Pos)
   unfold dropAt
   have hi' := access_rinv hi pos (dataHit steps)
   dsimp only
-  rw [closedFuture_read hi'.1 hi'.2.1 hφ pos]
+  rw [typedFuture_read hi'.1 hφ pos]
 
 /-- The join's drop is the same at both futures. -/
 theorem joinDrop_congr (hφ : ∀ l, L l → φ l = φ' l) (entry : List Place) (t : Term) {s : SState} (hi : RInv L s) :
@@ -237,7 +237,8 @@ noncomputable def fixStep (sa : SState × List Sem × List Pos) (ap : Sem × PiD
     let (l, s) := s.freshLoan
     let s := s.pushTemp fun ψ => ψ l
     let cell : Pos := .temp s.topIdx (((s.env.getLast?).map (·.temps.length)).getD 1 - 1)
-    let s := pushBindShaped s { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
+    -- the argument is recorded as the label's member (docs/31 D68: where a label is made)
+    let s := pushBindShaped (s.setHeldMem l ap.1) { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
     (s, acc ++ [ap.1], cells ++ [cell])
   else
     (s.pushBind { ty := { T with label := none }, val := fun _ => ap.1, decl := d }, acc ++ [ap.1], cells)
@@ -389,6 +390,36 @@ theorem indep_of_env_nil {s : SState} (he : s.env = []) (y : Nat) (q : Pos) : In
   have : q ∉ s.positions := by rw [positions_eq, he]; simp
   rw [valAt_of_not_mem _ _ this]; intro _ _; rfl
 
+/-- The record of a label is read by nothing the forming invariant reads. -/
+theorem formInv_setHeldMem {start : Nat} {s : SState} {l : Nat} {v : Sem} {acc : List Sem} {cells : List Pos} :
+    FormInv L start (s.setHeldMem l v, acc, cells) ↔ FormInv L start (s, acc, cells) := Iff.rfl
+
+theorem setAt_setHeldMem (s : SState) (l : Nat) (v : Sem) (p : Pos) (g : SVal) :
+    (s.setHeldMem l v).setAt p g = (s.setAt p g).setHeldMem l v := by
+  cases p <;> rfl
+
+theorem takeLabel_setHeldMem (s : SState) (l : Nat) (v : Sem) (k : Nat) :
+    (s.setHeldMem l v).takeLabel k = (s.takeLabel k).setHeldMem l v := by
+  unfold SState.takeLabel
+  have hh : (s.setHeldMem l v).holderOf k = s.holderOf k := rfl
+  rw [hh]
+  cases h : s.holderOf k with
+  | none => rfl
+  | some r => dsimp only; rw [setAt_setHeldMem]; rfl
+
+theorem pushBindShaped_setHeldMem (s : SState) (l : Nat) (v : Sem) (b : SBinding) :
+    pushBindShaped (s.setHeldMem l v) b = (pushBindShaped s b).setHeldMem l v := by
+  unfold pushBindShaped
+  cases b.ty.label with
+  | none => rfl
+  | some k =>
+    dsimp only
+    rw [takeLabel_setHeldMem]
+    have he : (((s.takeLabel k).setHeldMem l v).pushBind b) = ((s.takeLabel k).pushBind b).setHeldMem l v := rfl
+    rw [he]
+    simp only [SState.setHeldMem_env]
+    cases h : ((s.takeLabel k).pushBind b).env.getLast? <;> rfl
+
 theorem fixStep_inv {start : Nat} {sa : SState × List Sem × List Pos} (h : FormInv L start sa) (ap : Sem × PiDom) :
     FormInv L start (fixStep fb sa ap) := by
   obtain ⟨s, acc, cells⟩ := sa
@@ -397,7 +428,8 @@ theorem fixStep_inv {start : Nat} {sa : SState × List Sem × List Pos} (h : For
   unfold fixStep
   dsimp only
   split
-  · simp only [SState.freshLoan]
+  · simp only [SState.freshLoan, pushBindShaped_setHeldMem]
+    rw [formInv_setHeldMem]
     generalize hs₀ : ({ s with nextLoan := s.nextLoan + 1 } : SState) = s₀
     have hi₀ : RInv L s₀ := by rw [← hs₀]; exact freshLoan_rinv hi
     have hpos₀ : s₀.positions = s.positions := by rw [← hs₀]; rfl

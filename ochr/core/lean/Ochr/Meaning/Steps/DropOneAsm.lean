@@ -50,7 +50,7 @@ a root, its reading after the access exists and is not `⋆`, and it is no copy.
 theorem dropAt_data (s : SState) (q : Place) (pos : Pos) (steps : List Step)
     (hns : steps = [] → s.shape pos = none)
     (hread : ∃ x T, Sem.follow K.dm K.Γ ((s.access pos (dataHit steps)).tyAt pos)
-      ((s.access pos (dataHit steps)).valAt pos ((s.access pos (dataHit steps)).closedFuture φ)) steps =
+      ((s.access pos (dataHit steps)).valAt pos ((s.access pos (dataHit steps)).typedFuture φ)) steps =
         some (x, T) ∧ x ≠ .proof)
     (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false) :
     dropAt K φ q pos steps s = (s.access pos (dataHit steps)).setAt pos fun φ' =>
@@ -91,7 +91,7 @@ theorem dataMean_ne_proof (st : MState) (s : SState) (π : Nat → Nat) (q : Pla
     (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
     (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
     (hv : (valAt st.env pos).follow q.steps.2 = some v) (hproof : v ≠ .proof) (H : TyS) :
-    Value.mean K.dm K.M K.Γ ρ (fun l => s.closedFuture φ (π l)) H v ≠ .proof := by
+    Value.mean K.dm K.M K.Γ ρ (fun l => s.typedFuture φ (π l)) H v ≠ .proof := by
   sorry
 
 /-- **The reference's reading of a data place at a related state** exists and is not `⋆`
@@ -102,17 +102,17 @@ theorem dataRead (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos 
     (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
     (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
     (hv : (valAt st.env pos).follow q.steps.2 = some v) (hproof : v ≠ .proof) :
-    ∃ x T, Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) q.steps.2 = some (x, T) ∧
+    ∃ x T, Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.typedFuture φ)) q.steps.2 = some (x, T) ∧
       x ≠ .proof := by
   have hgr : GrainOk K.D K.Γ (DecideScope.topReadings st) q := by rw [← rel_scopeOf K ρ φ hs]; exact hgrain
   have hpt : ¬ IsTemp pos := by
     rcases pos with ⟨f, i⟩ | ⟨f, i⟩
     · simp [IsTemp]
     · unfold ckVarPos at hck; split at hck <;> cases hck
-  have hrel : RelF φ s (s.closedFuture φ) := fun l hl => closedFuture_nonlive s φ hl
-  have hval : s.valAt pos (s.closedFuture φ) =
-      Env.mean K.dm K.M K.Γ ρ (fun l => s.closedFuture φ (π l)) st.env pos := (hs.sim.1 _ hrel pos hpt).symm
-  obtain ⟨s', T', h1, h2⟩ := followMean K ρ hctx hg (fun l => s.closedFuture φ (π l)) pos q hgr hck v
+  have hrel : RelF φ s (s.typedFuture φ) := relF_typedFuture φ s
+  have hval : s.valAt pos (s.typedFuture φ) =
+      Env.mean K.dm K.M K.Γ ρ (fun l => s.typedFuture φ (π l)) st.env pos := (hs.sim.1 _ ⟨hrel, hs.typedFuture_typed φ⟩ pos hpt).symm
+  obtain ⟨s', T', h1, h2⟩ := followMean K ρ hctx hg (fun l => s.typedFuture φ (π l)) pos q hgr hck v
     (by unfold ckContent; simp [hck, hv]) (s.tyAt pos)
   rw [hval]
   refine ⟨s', T', h1, ?_⟩

@@ -480,6 +480,44 @@ noncomputable def holderTy (s : SState) (l : Nat) : TyM :=
   | some (.temp _ _) => s.heldTy l
   | none => TyM.err
 
+/-- The holder's content type depends only on the positions, the holders, the stored types and the
+recorded ones. -/
+theorem holderTy_congr {s t : SState} (hpos : t.positions = s.positions) (hsh : t.shape = s.shape)
+    (hty : ∀ p, t.tyAt p = s.tyAt p) (hht : t.heldTy = s.heldTy) (l : Nat) : holderTy t l = holderTy s l := by
+  have hh : t.holderOf l = s.holderOf l := by unfold SState.holderOf; rw [hpos, hsh]
+  unfold holderTy
+  rw [hh]
+  split
+  · rw [hty]
+  · rw [hht]
+  · rfl
+
+theorem tyAt_setAt (s : SState) (p : Pos) (g : SVal) (q : Pos) : (s.setAt p g).tyAt q = s.tyAt q := by
+  cases q with
+  | temp => rfl
+  | bind f' i' =>
+    cases p with
+    | bind f i =>
+      simp only [SState.setAt, SState.tyAt, List.getElem?_modify]
+      cases hfr : s.env[f']? with
+      | none => rfl
+      | some fr =>
+        by_cases hf : f = f'
+        · simp only [Option.map_eq_map, Option.map_some, hf, if_true, Option.bind_some, List.getElem?_modify]
+          cases fr.binds[i']? with
+          | none => rfl
+          | some b => simp only [Option.map_eq_map, Option.map_some]; split <;> rfl
+        · simp only [Option.map_eq_map, Option.map_some, hf, if_false, Option.bind_some]
+    | temp f i =>
+      simp only [SState.setAt, SState.tyAt, List.getElem?_modify]
+      cases hfr : s.env[f']? with
+      | none => rfl
+      | some fr =>
+        by_cases hf : f = f' <;> simp only [Option.map_eq_map, Option.map_some, hf, if_true, if_false, Option.bind_some]
+
+theorem holderTy_setAt (s : SState) (p : Pos) (g : SVal) (l : Nat) : holderTy (s.setAt p g) l = holderTy s l :=
+  holderTy_congr (SState.positions_setAt s p g) (SState.shape_setAt s p g) (tyAt_setAt s p g) (by cases p <;> rfl) l
+
 /-- **A typed future** for the reference state `s` (docs/31 D66): it gives each live label a whole
 member of its holder's content type. A future gives each borrow its FINAL content, which is a whole
 member of its type (the checker rejects an end over a moved or partly moved content, D53), so these
@@ -515,21 +553,32 @@ structure Rel (π : Nat → Nat) (st : MState) (s : SState) : Prop where
   held in a temporary need not be live in the reference, whose `SimEq` gives its holder a
   temporary index but not that the index exists. -/
   holders : ∀ p l, s.shape p = some l → p ∈ s.positions
-  /-- every live label's content type has a whole member (docs/31 D66; the lead's inhabitation
-  invariant): a typed future exists. Made where a label is made (a borrow's content is a whole
-  member of its type at a typed future; a borrow-returning call's forward value), kept because
-  `heldTy` is written once per label and a write through a borrow changes contents, not types. -/
-  inhabited : ∀ l, s.Live l → ∃ v : Sem, v.whole ∧ v ∈ₛ[K.dm.read] holderTy s l
+  /-- every live label's RECORD is a whole member of its holder's content type (docs/31 D68): made
+  where a label is made (`borrowPlace` records the content it borrowed, a member by the checker's
+  [Borrow], whose [Repack] rejects lending an open value whole; `callOf`'s `.ref` row records the
+  forward value, a member by construction), and kept, since records and held types are written
+  once per label and a binding holder's stored type is the held type. So the future a place is read
+  at (`SState.typedFuture`) is typed. (It replaces D66's inhabitation clause, which asked only that
+  some member exist.) -/
+  records : ∀ l, s.Live l → (s.heldMem l).whole ∧ s.heldMem l ∈ₛ[K.dm.read] holderTy s l
 
-/-- **A typed future exists** that agrees with any given one off the live labels (docs/31 D66): give
-each live label the whole member the inhabitation clause provides. -/
+/-- The future a place is read at agrees with the run's off the live labels. -/
+theorem relF_typedFuture (φ : Future) (s : SState) : RelF φ s (s.typedFuture φ) := fun l hl => by
+  have : l ∉ s.liveLabels := hl
+  simp [SState.typedFuture, this]
+
+/-- **The future a place is read at is typed** at a related state (docs/31 D68). -/
+theorem Rel.typedFuture_typed {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState}
+    {s : SState} (hs : Rel K ρ φ π st s) (ψ : Future) : TypedLive K s (s.typedFuture ψ) := fun l hl => by
+  have : l ∈ s.liveLabels := hl
+  simp only [SState.typedFuture, this, if_true]
+  exact hs.records l hl
+
+/-- **A typed future exists** that agrees with any given one off the live labels: the records. -/
 theorem Rel.typed_exists {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
     (hs : Rel K ρ φ π st s) (ψ : Future) :
-    ∃ ψ' : Future, (∀ l, ¬ s.Live l → ψ' l = ψ l) ∧ TypedLive K s ψ' := by
-  classical
-  refine ⟨fun l => if h : s.Live l then (hs.inhabited l h).choose else ψ l, fun l hl => by simp [hl], fun l hl => ?_⟩
-  simp only [dif_pos hl]
-  exact (hs.inhabited l hl).choose_spec
+    ∃ ψ' : Future, (∀ l, ¬ s.Live l → ψ' l = ψ l) ∧ TypedLive K s ψ' :=
+  ⟨s.typedFuture ψ, relF_typedFuture ψ s, hs.typedFuture_typed ψ⟩
 
 /-! ### Helpers from `Steps/Eq.lean` -/
 

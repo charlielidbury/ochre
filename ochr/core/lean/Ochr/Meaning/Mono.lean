@@ -333,7 +333,7 @@ theorem endLabel_endLabel (s : SState) {l₁ l₂ : Nat} {r₁ r₂ : Pos}
       ({ s with shape := ((s.toMean.semEnd r₁ l₁).semEnd r₂ l₂).shape, lent := (s.endLabel l₁).relend l₂ r₂ }).mapVals
         fun p _ => (((s.toMean.semEnd r₁ l₁).semEnd r₂ l₂).val · p) := by
   rw [endLabel_of_find _ l₂ r₂ h₂]
-  have e : ({ env := (s.endLabel l₁).env, shape := ((s.endLabel l₁).toMean.semEnd r₂ l₂).shape, nextLoan := (s.endLabel l₁).nextLoan, lent := (s.endLabel l₁).relend l₂ r₂, heldTy := (s.endLabel l₁).heldTy } : SState) =
+  have e : ({ env := (s.endLabel l₁).env, shape := ((s.endLabel l₁).toMean.semEnd r₂ l₂).shape, nextLoan := (s.endLabel l₁).nextLoan, lent := (s.endLabel l₁).relend l₂ r₂, heldTy := (s.endLabel l₁).heldTy, heldMem := (s.endLabel l₁).heldMem } : SState) =
       ({ s with shape := ((s.toMean.semEnd r₁ l₁).semEnd r₂ l₂).shape, lent := (s.endLabel l₁).relend l₂ r₂ } : SState).mapVals
         fun p _ => ((s.toMean.semEnd r₁ l₁).val · p) := by
     generalize (s.endLabel l₁).relend l₂ r₂ = L₂
@@ -1075,6 +1075,8 @@ theorem shapeBelow_setLent {s : SState} {l : Nat} {xs : List Site} : (s.setLent 
 
 theorem shapeBelow_setHeldTy {s : SState} {l : Nat} {T : TyM} : (s.setHeldTy l T).ShapeBelow ↔ s.ShapeBelow :=
   Iff.rfl
+theorem shapeBelow_setHeldMem {s : SState} {l : Nat} {v : Sem} : (s.setHeldMem l v).ShapeBelow ↔ s.ShapeBelow :=
+  Iff.rfl
 
 /-- `s'` holds only borrows `s` holds, at the same positions, and has the same counter: what every
 step that forgets or rewrites meanings leaves (`endLabel`, `access`, `setAt`, `mapVals`,
@@ -1307,7 +1309,8 @@ theorem borrowPlace_fresh (K : RunCtx) (φ : Future) (p : Place) (s : SState) (h
     · cases h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨⟨_, rfl⟩, rfl⟩ := h
-      simp only [SState.shapeBelow_setHeldTy, SState.setHeldTy_shape, SState.setHeldTy_nextLoan,
+      simp only [SState.shapeBelow_setHeldMem, SState.setHeldMem_shape, SState.setHeldMem_nextLoan,
+        SState.shapeBelow_setHeldTy, SState.setHeldTy_shape, SState.setHeldTy_nextLoan,
         SState.shapeBelow_setLent, SState.setLent_shape, SState.setLent_nextLoan]
       refine ⟨SState.shapeBelow_pushTempShaped (SState.ShapeBelow.of_sub (SState.shapeSub_setAt _ _ _) hb) _
           (by rw [SState.nextLoan_setAt]; exact hlt), s₁.freshLoan.1, rfl,
@@ -1339,7 +1342,9 @@ theorem callOfL_fresh.{u} (L : Lvl.{u}) {C : Type u} (t : Tel L.Code PUnit C) (f
   · simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨⟨_, rfl⟩, rfl⟩ := h
     obtain ⟨_, _, hfresh, hb⟩ := SState.freshLoan_fresh _ hs₀
-    simp only [SState.shapeBelow_setLent, SState.setLent_shape, SState.setLent_nextLoan]
+    simp only [SState.shapeBelow_setHeldMem, SState.setHeldMem_shape, SState.setHeldMem_nextLoan,
+      SState.shapeBelow_setHeldTy, SState.setHeldTy_shape, SState.setHeldTy_nextLoan,
+      SState.shapeBelow_setLent, SState.setLent_shape, SState.setLent_nextLoan]
     obtain ⟨hb', hlt', huniq⟩ := SState.fresh_park
       (SState.ShapeBelow.of_sub (SState.shapeSub_mapVals _ _) hb) (Nat.lt_succ_self _)
       (fun q hq => hfresh q hq) _

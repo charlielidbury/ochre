@@ -800,17 +800,17 @@ theorem content_follow (st : MState) (s : SState) (π : Nat → Nat) (q : Place)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (c : Value)
     (hc : (valAt st.env pos).follow q.steps.2 = some c) (hcb : c = .bot ∨ c = .proof) :
-    ∃ x T, Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) q.steps.2 = some (x, T) ∧
+    ∃ x T, Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.typedFuture φ)) q.steps.2 = some (x, T) ∧
       (x = .proof ∨ (x = .moved ∧ c = .bot)) := by
   have hgr : GrainOk K.D K.Γ (DecideScope.topReadings st) q := by rw [← rel_scopeOf K ρ φ hs]; exact hgrain
   have hpt : ¬ IsTemp pos := by
     rcases pos with ⟨f, i⟩ | ⟨f, i⟩
     · simp [IsTemp]
     · unfold ckVarPos at hck; split at hck <;> cases hck
-  have hrel : RelF φ s (s.closedFuture φ) := fun l hl => closedFuture_nonlive s φ hl
-  have hval : s.valAt pos (s.closedFuture φ) =
-      Env.mean K.dm K.M K.Γ ρ (fun l => s.closedFuture φ (π l)) st.env pos := (hs.sim.1 _ hrel pos hpt).symm
-  obtain ⟨s', T', h1, h2⟩ := followMean K ρ hctx hg (fun l => s.closedFuture φ (π l)) pos q hgr hck c
+  have hrel : RelF φ s (s.typedFuture φ) := relF_typedFuture φ s
+  have hval : s.valAt pos (s.typedFuture φ) =
+      Env.mean K.dm K.M K.Γ ρ (fun l => s.typedFuture φ (π l)) st.env pos := (hs.sim.1 _ ⟨hrel, hs.typedFuture_typed φ⟩ pos hpt).symm
+  obtain ⟨s', T', h1, h2⟩ := followMean K ρ hctx hg (fun l => s.typedFuture φ (π l)) pos q hgr hck c
     (by unfold ckContent; simp [hck, hc]) (s.tyAt pos)
   rw [hval]
   refine ⟨s', T', h1, ?_⟩

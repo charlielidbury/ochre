@@ -296,7 +296,7 @@ theorem dws_CD (X Y R J M : SBinding) (c : Nat) (g : Sem → Sem → Sem) (vj vm
 /-- The reference's state after `let r = σ1(&c1); let s = &*r` (the attack's program, `Attack.S₄`
 then the borrow, `s`'s borrow `k+2` still parked in temporary `2`): `r` reads `k+2`'s final
 content, lent at `(r, [*])`. -/
-noncomputable def SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) : SState :=
+noncomputable def SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) : SState :=
   { env := [{ binds := [{ b with val := fun φ' => match (φ' (k+1)).as Nat with
                                                   | some x => .el0 Nat ((F n).val.2 x).2
                                                   | none => .err },
@@ -306,16 +306,18 @@ noncomputable def SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) : SSt
     shape := fun p => if p = .temp 0 2 then some (k+2) else if p = .bind 0 1 then some (k+1) else none,
     nextLoan := k + 3,
     lent := fun m => if m = k + 2 then [⟨.bind 0 1, [.deref], false⟩] else Attack.lentA k m,
-    heldTy := fun m => if m = k + 2 then TyM.nat else if m = k + 1 then TyM.nat else if m = k then b.ty.m else TyM.err }
+    heldTy := fun m => if m = k + 2 then TyM.nat else if m = k + 1 then TyM.nat else if m = k then b.ty.m else TyM.err,
+    heldMem := fun m => if m = k + 2 then .el0 Nat (F n).val.1 else if m = k + 1 then .el0 Nat (F n).val.1
+      else if m = k then c else .err }
 
 set_option maxHeartbeats 1000000 in
 /-- `&*r` on `S₄`, by the reference's own `borrowPlace`. -/
-theorem borrowPlace_deref_S₄ (K : RunCtx) (φ : Future) (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) :
-    borrowPlace K φ (.deref (.var 0)) (Attack.S₄ F n b k)
-      = some ((.el0 Nat (F n).val.1, ⟨TyM.nat, some (k+2)⟩), SRb F n b k) := by
+theorem borrowPlace_deref_S₄ (K : RunCtx) (φ : Future) (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
+    borrowPlace K φ (.deref (.var 0)) (Attack.S₄ F n b k c)
+      = some ((.el0 Nat (F n).val.1, ⟨TyM.nat, some (k+2)⟩), SRb F n b k c) := by
   simp only [borrowPlace, Attack.contentOf_deref_r, bind, Option.bind]
   simp [Sem.whole, SState.freshLoan, SState.pushTempShaped, SState.pushTemp, SState.setAt, SState.topIdx,
-    SState.tyAt, SState.valAt, Attack.updAt_deref, Attack.updAt_nil, SState.setLent, SState.setHeldTy, Attack.S₄, SRb,
+    SState.tyAt, SState.valAt, Attack.updAt_deref, Attack.updAt_nil, SState.setLent, SState.setHeldTy, SState.setHeldMem, Attack.S₄, SRb,
     List.modify, List.modifyTailIdx, List.modifyTailIdx.go, List.modifyHead]
   and_intros
   all_goals first
@@ -323,14 +325,14 @@ theorem borrowPlace_deref_S₄ (K : RunCtx) (φ : Future) (F : Attack.GCar) (n :
     | (funext φ'; cases Sem.as Nat (φ' (k+1)) <;> rfl)
 
 /-- `s`'s borrow `k+2` is live: temporary `2` holds it. -/
-theorem live_SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) : (SRb F n b k).Live (k+2) := by
+theorem live_SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) : (SRb F n b k c).Live (k+2) := by
   rw [SState.live_iff]
   exact ⟨.temp 0 2, by simp [SRb, SState.positions, List.range'], by simp [SRb]⟩
 
 /-- **The reborrow's lender**: `r` reads `s`'s borrow `k+2`, lent at `(r, [*])`, whose key is the
 root's, so every path at `r` is comparable with it. -/
-theorem dws_SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) :
-    DepWithinSites dm Γ (SRb F n b k) := by
+theorem dws_SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
+    DepWithinSites dm Γ (SRb F n b k c) := by
   apply dws_of_root
   intro p ψ ψ' h
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
@@ -366,15 +368,15 @@ def DepWithinSitesW (s : SState) : Prop :=
 skips the `*`**: `r` read at `[.0]` is `k+2`'s final content's predecessor, so two typed futures
 differing only at `k+2` (`1`, `2`) read `0` and `1`; `[.0]` and `[*]` are incomparable step by
 step. -/
-theorem dwsW_fails_SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) :
-    ¬ DepWithinSitesW dm Γ (SRb F n b k) := by
+theorem dwsW_fails_SRb (F : Attack.GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
+    ¬ DepWithinSitesW dm Γ (SRb F n b k c) := by
   intro h
   have := h (.bind 0 1) [.proj 0] (fun l => if l = k+2 then .el0 Nat 1 else .err)
     (fun l => if l = k+2 then .el0 Nat 2 else .err) (fun l hl => ?_)
   · simp [SRb, SState.valAt, Sem.follow, Sem.step, Sem.asNat_el0] at this
   · by_cases hlk : l = k + 2
     · subst hlk
-      exact ⟨live_SRb F n b k, by simp [SState.reached, SRb, walkHit, walkKey, Step.key, List.isPrefixOf]⟩
+      exact ⟨live_SRb F n b k c, by simp [SState.reached, SRb, walkHit, walkKey, Step.key, List.isPrefixOf]⟩
     · simp [hlk] at hl
 
 end Ochr.Meaning.Regress.DepSites

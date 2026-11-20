@@ -245,11 +245,17 @@ theorem botWrite_rel (st : MState) (s : SState) (π : Nat → Nat) (f i : Nat) (
       · exact updAt_bot_top hv
     · exact shape_setAtE_other st.env (Pos.bind f i) q v' hq
   -- the reference's live labels are the same
-  have hF : ∀ ψ, RelF φ (s.setAt (Pos.bind f i) fun φ' =>
-      (Sem.updAt K.dm K.Γ (s.tyAt (Pos.bind f i)) (fun _ => .moved) steps (s.valAt (Pos.bind f i) φ')).getD .err) ψ → RelF φ s ψ :=
-    fun ψ hψ l hl => hψ l (fun h => hl ((SState.live_setAt _ _ _ l).mp h))
+  have hF : ∀ ψ, (RelF φ (s.setAt (Pos.bind f i) fun φ' =>
+      (Sem.updAt K.dm K.Γ (s.tyAt (Pos.bind f i)) (fun _ => .moved) steps (s.valAt (Pos.bind f i) φ')).getD .err) ψ ∧
+      TypedLive K (s.setAt (Pos.bind f i) fun φ' =>
+      (Sem.updAt K.dm K.Γ (s.tyAt (Pos.bind f i)) (fun _ => .moved) steps (s.valAt (Pos.bind f i) φ')).getD .err) ψ) →
+      RelF φ s ψ ∧ TypedLive K s ψ :=
+    fun ψ hψ => ⟨fun l hl => hψ.1 l (fun h => hl ((SState.live_setAt _ _ _ l).mp h)),
+      fun l hl => by
+        have := hψ.2 l ((SState.live_setAt _ _ _ l).mpr hl)
+        rwa [holderTy_setAt] at this⟩
   have hp' : Pos.bind f i ∈ allPos (Env.setAtE st.env (Pos.bind f i) v') := by rw [allPos_setAtE]; exact hp
-  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
   · -- skel
     rw [skel_setAtE K ρ st f i v', hs.skel]
     exact (skel_setAt s _ _).symm
@@ -310,6 +316,11 @@ theorem botWrite_rel (st : MState) (s : SState) (π : Nat → Nat) (f i : Nat) (
     rw [SState.shape_setAt'] at h
     rw [SState.positions_setAt]
     exact hs.holders p l h
+  · -- records: the write changes no record, no holder and no stored type
+    intro l hl
+    rw [holderTy_setAt]
+    have hrec := hs.records l ((SState.live_setAt _ _ _ l).mp hl)
+    rcases f with _ | f <;> exact hrec
 
 end
 
