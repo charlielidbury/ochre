@@ -783,3 +783,68 @@ ochr ObsMoved uses Nats, Lists {
   ("ObsInSide", "[D53] a borrow ends while its content is partly moved out (⊥)"),
   ("ThroughW", "[D53] a borrow ends while its content is partly moved out (⊥)"),
   ("RunAfterCall", "[D53] a borrow ends while its content is partly moved out (⊥)")]
+
+/-! ## A call's returned borrow is always fresh (D99)
+
+A call whose declared result is a borrow returns the label it reserves for [Lend], whether its
+body runs or it closes off. The borrow the body returned is ended into that label: its loans and
+marks become the label's. That borrow may be a borrow argument, made before the call (`IdP`, a
+`let` of one in `LetP`), a reborrow made in the call (`Reb`), one of several (`PickN`), or the
+result of an inner call (`Via`, `IdP(IdP(&y))`). So after the call no label made before it is the
+result's, on every path, as in the call's meaning. Before D99 a call that ran returned the
+argument's own label, and one that closed off a fresh one (found by the proof:
+`Meaning/Regress/ReturnParam.lean`). A renaming of labels changes no value. -/
+
+ochr FreshResult uses Nats {
+  def IdP (x : &Nat) : &Nat := x
+  def Reb (x : &Nat) : &Nat := &*x
+  def LetP (x : &Nat) : &Nat := (let z = x; z)
+  def Via (x : &Nat) : &Nat := IdP(x)
+  def PickN (n : Nat) (x : &Nat) (y : &Nat) : &Nat := match n { Z => x, S _ => y }
+  -- the proof's witness: the callee returns its borrow parameter
+  def UseIdP (u : Unit) : Nat := (let y = 2; let r = IdP(&y); *r := 5; y)
+  def UseIdP5 : Eq(Nat, UseIdP(()), 5) := refl
+  reject def UseIdP2 : Eq(Nat, UseIdP(()), 2) := refl
+  -- a reborrow, a `let` of the parameter, through two calls, through a call in the body
+  def UseReb : Eq(Nat, (let y = 2; let r = Reb(&y); *r := 5; y), 5) := refl
+  def UseLetP : Eq(Nat, (let y = 2; let r = LetP(&y); *r := 5; y), 5) := refl
+  def UseTwice : Eq(Nat, (let y = 2; let r = IdP(IdP(&y)); *r := 5; y), 5) := refl
+  def UseVia : Eq(Nat, (let y = 2; let r = Via(&y); *r := 5; y), 5) := refl
+  -- one of several, computed: both places are lent to the result
+  def UsePick (n : Nat) : Nat := (let a = 1; let b = 2; let r = PickN(n, &a, &b); *r := 5; Add(a, b))
+  def UsePick0 : Eq(Nat, UsePick(0), 7) := refl
+  def UsePick1 : Eq(Nat, UsePick(1), 6) := refl
+  reject def UsePickWrong : Eq(Nat, UsePick(0), 6) := refl
+  -- the generic call closes `PickN(n, …)` off; a split on `n` refines it, and it runs
+  def Pk (n : Nat) : Nat := match n { Z => 7, S _ => 6 }
+  def UsePickSplit (n : Nat) : Eq(Nat, UsePick(n), Pk(n)) := match n { Z => refl, S m => refl }
+}
+
+#guard (run "FreshResult" FreshResult).rejectedWith [
+  ("UseIdP2", "the body of UseIdP2 has type ⊤, but the goal is False"),
+  ("UsePickWrong", "the body of UsePickWrong has type ⊤, but the goal is False")]
+
+-- The property itself, read off the checker's state at a hole after the call: `&y` makes the
+-- label 0, the call reserves 1, and the result is 1, not 0 (before D99: `lent_0 loan_0`,
+-- `borrow_0 2`). Through two calls the result is the outer call's label 2; a reborrow made in
+-- the callee (label 2) is ended into the call's label 1.
+#guard_msgs (drop warning) in
+ochr FreshResultAt uses Nats {
+  def IdP (x : &Nat) : &Nat := x
+  def Reb (x : &Nat) : &Nat := &*x
+  def At1 (u : Unit) : Nat := (let y = 2; let r = IdP(&y); ?)
+  def At2 (u : Unit) : Nat := (let y = 2; let r = IdP(IdP(&y)); ?)
+  def At3 (u : Unit) : Nat := (let y = 2; let r = Reb(&y); ?)
+}
+
+/-- The values of the state at the first hole of `name` (`FreshResultAt`). -/
+def freshResultAt (name : String) : List String :=
+  let r := runWith (some Prelude) "FreshResultAt" FreshResultAt (located := true)
+  match r.rows.find? (·.name == name) with
+  | some row => (row.trace.toList.filterMap fun
+      | .note _ _ (.hole _ Ω) => some (Ω.map (·.2.2.pp)) | _ => none).headD []
+  | none => []
+
+#guard freshResultAt "At1" == ["()", "lent_1 loan_1", "borrow_1 2"]
+#guard freshResultAt "At2" == ["()", "lent_2 loan_2", "borrow_2 2"]
+#guard freshResultAt "At3" == ["()", "lent_1 loan_1", "borrow_1 2"]

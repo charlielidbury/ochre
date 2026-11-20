@@ -380,6 +380,10 @@ inductive LendOp where
   /-- `l` has ended: each place it was lent becomes lent to the borrows in `l`'s final content
   (a reborrow of `*l` that outlives `l` keeps them lent), or free -/
   | ended (l : Nat) (to : List Nat)
+  /-- D99: the borrow `l` is ended into the fresh borrow `g` that a call returns: every loan
+  `loan_l` and mark `lent_l` becomes `g`'s, a renaming. A place that is then marked `lent_g`
+  over a value already carrying `g`'s hole (marked by the call's rule 1 and by `l`) keeps one -/
+  | into (l g : Nat)
 
 /-- `w` is already a fill over the borrow `m` at its top: a sealed program over the hole `loan_m`
 (a stuck call's fill, an unknown function of the hole), or marked `lent_m` (a known one). A bare
@@ -411,10 +415,16 @@ mutual
 program is not re-run. -/
 def lendV (fuel : Nat) (op : LendOp) (v : Value) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  let some l := (match op with | .mark l _ | .ended l _ => some l) | return v
-  if !(v.anyAtom fun | .loan m | .gloan m _ => m == l | _ => false) then return v
+  let some l := (match op with | .mark l _ | .ended l _ | .into l _ => some l) | return v
+  if !(v.anyAtom fun | .loan m | .gloan m _ | .borrow m _ => m == l | _ => false) then return v
   match op, v with
   | .mark _ g, .loan _ => return .gloan g v
+  | .into _ g, .loan _ => return .loan g
+  | .into _ g, .gloan m w =>
+    let w' ← lendV fuel' op w
+    if m == l || m == g then return (if carriesHole g w' then w' else .gloan g w')
+    return .gloan m w'
+  | .into _ g, .borrow m w => return .borrow (if m == l then g else m) (← lendV fuel' op w)
   | .mark _ g, .gloan m w => if m == l then return .gloan g v else return .gloan m (← lendV fuel' op w)
   | .ended _ to, .gloan m w =>
     let w' ← lendV fuel' op w
@@ -2901,7 +2911,7 @@ def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Ar
   -- static ends, rule 1: a call whose declared result is a borrow lends that borrow every place
   -- its borrow arguments lend, whether it runs or closes off. They are marked for a label `g`
   -- reserved now (no borrow holds it yet, so the marks are inert while the call runs: the callee
-  -- cannot reach its caller's places, [Frame] F4), and `g` becomes the result's label
+  -- cannot reach its caller's places, [Frame] F4), and `g` becomes the result's label (D99)
   let lent := if kind == .ref then ws.toList.filterMap (fun | .borrow l _ => some l | _ => none) else []
   let g? ← if lent.isEmpty then pure none else some <$> freshLoan
   if let some g := g? then
@@ -2917,10 +2927,16 @@ def callFn (fuel : Nat) (typed : Bool) (fv : Value) (fT : Option Value) (ws : Ar
       catchStuck (runBody fuel' fv cs t rd ws) fun on =>
         if head then throw (.stuck on) else closeCall fuel' fv ws kind res fills tys
     | _ => err s!"call of {fv}, which is not a function"
-  if let some g := g? then
-    match r with
-    | .borrow k _ => lendEnv fuel' (.ended g [k])
-    | _ => lendEnv fuel' (.ended g [])
+  -- D99: the result is the fresh borrow `g`, whether the body ran or the call closed off. The
+  -- borrow the body returned (a borrow argument, made before the call, or one made inside it) or
+  -- [Close]'s `k` is ended into `g`: its loans and marks become `g`'s, so after the call no
+  -- label made before it is the result's, on every path, as in the meaning of the call
+  let r ← match g?, r with
+    | some g, .borrow k u => do
+      if k != g then lendEnv fuel' (.into k g)
+      pure (Value.borrow g u)
+    | some g, _ => do lendEnv fuel' (.ended g []); pure r
+    | none, _ => pure r
   let r := if cls == 2 then Value.proof else r
   -- D80 (R2): the result of a call whose declared codomain reads as `Unit` is `()`, whether it
   -- ran or closed off, so the generic call and an instance normalise it alike
