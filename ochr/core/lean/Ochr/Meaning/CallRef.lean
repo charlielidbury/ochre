@@ -75,13 +75,19 @@ noncomputable def runBodyRef (fres : Res) (cs : List Value) (t : Term) (rd : Lis
   | _ => none
 
 /-- The run in place with the result's lending as the checker's `callFn` finishes it (static ends,
-rule 1: `lendEnv (.ended g [k])`): a returned borrow is lent, as fills, every place it was lent at
-(the places its borrow arguments lent), as `callOf` sets it (`setLent k lentK`). -/
+rule 1, [Lend]): before the body runs the checker marks every place its borrow arguments lend for a
+reserved label `g` (`lendEnv (.mark l g)`), and after it hands those marks to the returned borrow
+(`lendEnv (.ended g [k])`). So a returned borrow is lent, as fills, at every place a borrow argument
+was lent at before the call, as `callOf` sets it (`setLent k lentK`), WHATEVER the body returned
+it from: `Pick2 (a : &Nat) (b : &Nat) : &Nat := &*a` lends its result at `b`'s lender too, though
+the pop's [End]s re-root the reborrow only to `a`'s (docs/31 D69, `Regress/ReturnParam.lean`).
+As first written the result kept the sites the pop gave it, made fills, which missed `b`'s. -/
 noncomputable def runCallRef (fres : Res) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value))
     (args : List Res) : SM Res := fun s =>
+  let lentK := ((args.filterMap (·.2.label)).flatMap s.lent).map fun x : Site => { x with fill := true }
   (runBodyRef K ρ φ fres cs t rd args s).map fun (r, s') =>
     (r, match r.2.label with
-      | some k => s'.setLent k ((s'.lent k).map fun x => { x with fill := true })
+      | some k => s'.setLent k lentK
       | none => s')
 
 end

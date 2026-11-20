@@ -18,6 +18,9 @@ renaming after a step to agree with the one before on every label the checker ha
 (`∀ l < st.nextLoan, π' l = π l`), which is false here: the statements of `callFn` and of every
 step that runs a call, and `callOf_inPlace`'s renaming (`τ` fixes every label below the counter),
 fail at this program (docs/31 D69).
+
+A second record, for the reference's in-place run: `Pick2 (a : &Nat) (b : &Nat) : &Nat := &*a`
+lends its result at `b`'s lender too.
 -/
 
 open Ochr.Test
@@ -27,10 +30,21 @@ ochr ReturnParam uses Nats {
   def UseIdP (u : Unit) : Nat := (let y = 2; let r = IdP(&y); *r := 5; y)
 }
 
+-- A callee whose result reborrows one of two borrow arguments: the result is lent at both lenders
+-- (the checker's marks `lent_g` at every borrow argument's lender, handed to the result), so reading
+-- `y` ends `r` though `r` points into `x` (`UsePick2Read`, rejected)
+ochr ReturnPick uses Nats {
+  def Pick2 (a : &Nat) (b : &Nat) : &Nat := &*a
+  def UsePick2 (u : Unit) : Nat := (let x = 1; let y = 2; let r = Pick2(&x, &y); *r := 5; x)
+  reject def UsePick2Read (u : Unit) : Nat := (let x = 1; let y = 2; let r = Pick2(&x, &y); let z = clone(y); *r := 5; x)
+}
+
 #guard_msgs (drop warning) in
 ochr ReturnParamAt uses Nats {
   def IdP (x : &Nat) : &Nat := x
   def UseIdPAt (u : Unit) : Nat := (let y = 2; let r = IdP(&y); ?)
+  def Pick2 (a : &Nat) (b : &Nat) : &Nat := &*a
+  def UsePick2At (u : Unit) : Nat := (let x = 1; let y = 2; let r = Pick2(&x, &y); ?)
 }
 
 namespace Ochr.Meaning.Regress.ReturnParam
@@ -45,6 +59,12 @@ def atHole (name : String) : List Value :=
 
 -- The checker's state after the call: `r` holds the borrow `0`, the one `&y` made.
 #guard (atHole "UseIdPAt").map Value.pp == ["()", "lent_0 loan_0", "borrow_0 2"]
+
+-- After `Pick2(&x, &y)`: `r`'s borrow `3` is lent at `x` and, by the mark, at `y`. The reference's
+-- in-place run lends its result every place a borrow argument lent before the call
+-- (`CallRef.runCallRef`), as `callOf` does; as first written it kept the sites the pop's [End]s gave
+-- the reborrow, `x`'s only.
+#guard (atHole "UsePick2At").map Value.pp == ["()", "lent_3 loan_3", "lent_3 2", "borrow_3 1"]
 
 /-- **No renaming that agrees before the call relates the result** (the reference's side): the
 result of `callOf`'s `.ref` row is a label no state before the call had issued, so it is not the

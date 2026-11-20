@@ -1072,7 +1072,7 @@ theorem id1_inPlace_typed :
   have hrun : runCallRef (Kc dm) ρ φ (fresId1 dm ρ φ) [] id1T [] [(.el0 Nat 2, { yB.ty with label := some 0 })]
       (Attack.S₂ yB 0 (.el0 Nat 2)) = some ((.el0 Nat 2, { Tb with label := some 1 }),
         (popCallFrame 1 (some 1) (SPg2 (selfId1P dm ρ φ cd) d Tb.m (.el0 Nat 2) (.el0 Nat 2))).setLent 1
-          (((popCallFrame 1 (some 1) (SPg2 (selfId1P dm ρ φ cd) d Tb.m (.el0 Nat 2) (.el0 Nat 2))).lent 1).map fun x => { x with fill := true })) := by
+          (((Attack.S₂ yB 0 (.el0 Nat 2)).lent 0).map fun x => { x with fill := true })) := by
     unfold runCallRef runBodyRef
     simp only [id1T, hs₀]
     rw [callFrame_id1 dm ρ φ _ _ rfl, hTb _ _]
@@ -1088,8 +1088,9 @@ theorem id1_inPlace_typed :
       simp [SState.setLent, SState.pushTempShaped, SState.pushTemp, SState.mapVals, SState.topIdx, SPg2, yFrame, SC1,
         Attack.takeLabel_S₂, SState.freshLoan, Mean.semEnd, SState.toMean]
   · rw [hpop, endLabel_SPg2]
+    have h1 : (Attack.S₂ yB 0 (.el0 Nat 2)).lent 0 = [⟨.bind 0 0, [], false⟩] := rfl
     simp [SState.setLent, SState.pushTempShaped, SState.pushTemp, SState.mapVals, SState.topIdx, SPg2, yFrame, SC1,
-      Attack.takeLabel_S₂, SState.freshLoan, SState.relend, inContent]
+      Attack.takeLabel_S₂, SState.freshLoan, h1]
   · intro p ψ n hψ
     have hd : Code0.dec dm.read TyM.nat.code0.snd (.el0 Nat n) = some (show TyM.nat.code0.fst from n) :=
       Attack.dec_nat_el0 dm.read n
