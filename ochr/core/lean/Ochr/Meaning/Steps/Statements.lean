@@ -732,10 +732,15 @@ def split_coverage_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
 
 /-- [Split-gen] (`generalizeNeutral`): the sealed program `n` at place `p` becomes a fresh `σ`
 with the record `n := σ`; under `ρ` extended at `σ` by `⟦n⟧`, the state means the same and the
-assignment is typed (the path condition). -/
+assignment is typed (the path condition). `n` is `p`'s content, a sealed program holding no
+loan, as at both callers (`evalMatch`'s scrutinee, `movedPlace`'s prefix); without the first the
+statement was false (`Regress/GenNeutralContent.lean`: generalising `⋆` at `a : Nat` records a
+proof as a number), and the record needs the others (a partly moved value is no member of its
+type; (WF11) forbids a record holding a loan). -/
 def generalizeNeutral_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (p : Place) (n : Value) (σ : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hn : Runs (Ochr.content p) st 0 n st) (hsealed : ∃ t, n = .sealed t) (hfree : ∀ l, n.hasLoan l = false)
     (bh : Nat) (h : Runs (Ochr.generalizeNeutral fuel p n) st bh σ st'),
     -- `n` is read at the type the checker gives `σ` (as `refine_step_stmt`'s `hσ`; a free hint
     -- was refutable: the place read `n` at its own hint, `σ` at the free one)
