@@ -58,9 +58,11 @@ theorem dropAt_data (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (p
 
 /-- **What the write of `⊥` needs, at the drop** (`botWrite_rel`'s hypotheses after the access and
 the log): the place is at a binding of the reference's positions, the value records its parameters
-with no sealed program, the path is one it has, a whole root written is not a holder or a type
-value, and the access cleared the place. Open: from (WF10), [Close]'s programs being top-hint-free
-(`mean_updAt_bot_sealed` for the sealed case), `GrainOk`, the copy decision, `access_clears`. -/
+(WF10) and holds no sealed program whose tail reads the hint (docs/31 D45: first, no sealed program
+at all, false of a value with a closed-off call in a field), the path is one it has, a whole root
+written is not a holder or a type value, and the access cleared the place. Open: from (WF10), the
+sealed programs' tails ([Close]'s programs; swept as (H)), `GrainOk`, the copy decision,
+`access_clears`. -/
 theorem botWrite_hyps (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (v' : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2))
     (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
@@ -70,7 +72,9 @@ theorem botWrite_hyps (st : MState) (s : SState) (π : Nat → Nat) (q : Place) 
     ∃ f i, pos = .bind f i ∧ Pos.bind f i ∈ allPos st.env ∧ Pos.bind f i ∈ s.positions ∧
       (q.steps.2 = [] → Env.shape st.env pos = none) ∧
       (q.steps.2 = [] → (∀ c t rd, valAt st.env pos ≠ .tPi c t rd) ∧ ∀ n a, valAt st.env pos ≠ .tInd n a) ∧
-      RecPlain K.Γ (valAt st.env pos) ∧ ∀ ψ, NatAlong K.dm K.M K.Γ ρ ψ q.steps.2 (valAt st.env pos) := by
+      ((valAt st.env pos).anyAtom (Value.bareCtor K.Γ) = false ∧
+        (valAt st.env pos).anyAtom (fun a => a.isSealed && !a.topHintFree K.Γ) = false) ∧
+      ∀ ψ, NatAlong K.dm K.M K.Γ ρ ψ q.steps.2 (valAt st.env pos) := by
   sorry
 
 /-- **`Good` after the write of `⊥`** (L3's other half): membership by `MovedOf` (a part moved out
