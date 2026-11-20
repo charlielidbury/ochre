@@ -197,26 +197,6 @@ noncomputable def mkTelL (φ : Future) : {Fin C : Type u} → Tel L.Code Fin C �
       some fun x => (mkTelL φ (k x) (acc ++ [L.enc c x]) (extMkL isRef Fin A mkFin (L.dec c)) g).get (h x)
     else none
 
-/-- `mkTelL` for a stage of a recursion (`Run.lean`'s `.fix`): where the body is undefined, the
-element is an arbitrary element of the leaf type, when it has one. A stage of a guarded recursion
-is defined only below its rank, and the carrier holds total functions only, so built strictly every
-stage would be `err` and so would every recursive closure (docs/31 D60); a call that decreases in
-rank never reads a stage where it was filled. -/
-noncomputable def mkTelFillL (φ : Future) : {Fin C : Type u} → Tel L.Code Fin C → List Sem →
-    (List Sem → Option (Fin × List Sem)) → (List Sem → Option BodyOut) → Option C
-  | _, _, .dat Fin B c, acc, mkFin, g =>
-    match (g acc).bind (mkLeafDataL L φ Fin mkFin c) with
-    | some r => some r
-    | none => if h : Nonempty (B × Fin) then some (Classical.choice h) else none
-  | _, _, .ref Fin U c, acc, mkFin, g =>
-    match (g acc).bind (mkLeafRefL L φ Fin mkFin c) with
-    | some r => some r
-    | none => if h : Nonempty (Back Fin U) then some (Classical.choice h) else none
-  | _, _, .param Fin isRef A c _ k, acc, mkFin, g =>
-    if h : ∀ x : A, (mkTelFillL φ (k x) (acc ++ [L.enc c x]) (extMkL isRef Fin A mkFin (L.dec c)) g).isSome then
-      some fun x => (mkTelFillL φ (k x) (acc ++ [L.enc c x]) (extMkL isRef Fin A mkFin (L.dec c)) g).get (h x)
-    else none
-
 /-- **The telescope code of a function type** from its description (the reference run's reading
 of the term: each domain, and the codomain, at the arguments so far, `Pi.lean`): each parameter's
 code is its domain's at the earlier arguments, read at the level, and the rest is built at each of
@@ -265,13 +245,6 @@ def piTyL {C : Type u} (t : Tel L.Code PUnit C) : TyM := L.toTy (L.pi C t)
 `mkTelL` builds along the type's code, tagged at the code's carrier; `err` where it fails. -/
 noncomputable def closureL (φ : Future) {C : Type u} (t : Tel L.Code PUnit C) (g : List Sem → Option BodyOut) : Sem :=
   match mkTelL L φ t [] (fun fs => some (PUnit.unit, fs)) g with
-  | some F => L.pack C F
-  | none => .err
-
-/-- The meaning of a recursion stage's closure: `mkTelFillL`'s element, tagged at the code's
-carrier; `err` where even filling fails (an empty leaf type). -/
-noncomputable def closureFillL (φ : Future) {C : Type u} (t : Tel L.Code PUnit C) (g : List Sem → Option BodyOut) : Sem :=
-  match mkTelFillL L φ t [] (fun fs => some (PUnit.unit, fs)) g with
   | some F => L.pack C F
   | none => .err
 

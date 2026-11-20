@@ -28,8 +28,9 @@ namespace Ochr.Meaning
 
 open DataLib
 
-/-- The key at which a record keeps type parameter `j`'s entry (docs/34 §14). No field lookup
-uses it: field `0` has no earlier fields. -/
+/-- The key at which a record keeps parameter `j`'s entry (docs/34 §14): a type parameter's type
+entry, a level-0 value parameter read small (`Entry.small`). No field lookup uses it: field `0`
+has no earlier fields. -/
 def paramKey (j : Nat) : List RStep := [(j, 0, [.other])]
 
 /-- **The model of the program's inductive declarations** (docs/34 §14). -/
@@ -38,7 +39,8 @@ structure DataModel where
   /-- Each field's shape at a record, after the earlier fields read small. -/
   sig : Sig
   /-- The record of `D(ps)`: what `D`'s field types read of the parameters (along the whole
-  unfolding), and each type parameter's entry at `paramKey`. -/
+  unfolding), and at `paramKey` each type parameter's entry and each level-0 value parameter read
+  small. -/
   recOf : IndDecl → List Sem → Rec
   /-- The meaning of the declared type of parameter `i` at the earlier parameters (a type
   parameter's is its sort; a value parameter's, D71, a data type). -/
@@ -119,6 +121,7 @@ def fieldTy (d : IndDecl) (ps : List Sem) (c i : Nat) (earlier : List Sem) : TyM
 def entryTy : Entry → TyM
   | .leaf B c => .t0 B c
   | .data d r => dm.tyR d r
+  | .small _ => TyM.err
   | .none => TyM.err
 
 /-- **A constructor value at a record**: the tree, whatever its fields hold. -/

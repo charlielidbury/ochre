@@ -256,13 +256,6 @@ noncomputable def fixBodyAt (s : SState) (ps : List PiDom) (out : PiCod) (piT : 
     some ⟨r, finals, R.label⟩
   | none => none
 
-/-- The stages of a recursive closure: a stage's closure is filled where the stage is undefined
-(docs/31 D60). -/
-noncomputable def fixStage (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat)
-    (body : Term) : Nat → List Sem → Option BodyOut :=
-  Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none)
-    (fun _ gk => fixBodyAt K ρ φ fb s ps out piT start body (closureFillAt K.dm.read l φ ps out gk))
-
 /-- The decreasing argument's rank (φ-free). -/
 noncomputable def fixRank (dec : Option Nat) (args : List Sem) : Nat := match dec with
   | some j =>
@@ -271,10 +264,18 @@ noncomputable def fixRank (dec : Option Nat) (args : List Sem) : Nat := match de
     | none => 0
   | none => 0
 
+/-- The stages of a recursive closure: stage `k + 1` binds `self` to stage `k`'s closure at the
+weakened function type (the true codomain below rank `k`, `Unit` above; docs/34). -/
+noncomputable def fixStage (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (dec : Option Nat) (start : Nat)
+    (body : Term) : Nat → List Sem → Option BodyOut :=
+  Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none)
+    (fun k gk => fixBodyAt K ρ φ fb s ps out (piTyAt K.dm.read l ps (weakCod l (fixRank dec) k out)) start body
+      (closureAt K.dm.read l φ ps (weakCod l (fixRank dec) k out) (stageFn l ps (fixRank dec) k gk)))
+
 /-- The closure's function: the guarded fixpoint by stages, or the body with `self` erroneous. -/
 noncomputable def fixG (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat)
     (dec : Option Nat) (body : Term) : List Sem → Option BodyOut := match dec with
-  | some _ => fun args => fixStage K ρ φ fb l s ps out piT start body (fixRank dec args + 1) args
+  | some _ => fun args => fixStage K ρ φ fb l s ps out dec start body (fixRank dec args + 1) args
   | none => fixBodyAt K ρ φ fb s ps out piT start body .err
 
 /-- Forming the closure accesses each capture, oldest first, and moves the non-copy ones. -/
@@ -590,25 +591,47 @@ theorem fixBodyAt_finals (hK : ∀ n, (K.C.global n).2.label = none) {s : SState
   · cases h
 
 /-- **The stages of a recursive closure** agree at the two futures, and every stage's finals read
-only `L` and the returned label: by induction on the stage, with `closureAt_congr` for `self`. -/
+only `L` and the returned label: by induction on the stage, with `closureAt_congr` for `self` (the
+weakened stage closure; above the bound its finals are constant). -/
 theorem fixStage_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (hφ : ∀ l, L l → φ l = φ' l)
     (hb : ∀ hint s₂, RInv L s₂ → runT K ρ φ true hint body s₂ = runT K ρ φ' true hint body s₂)
-    {s : SState} (hi : RInv L s) (l : Nat) (ps : List PiDom) (out : PiCod) (piT : TyM) :
-    ∀ k, fixStage K ρ φ fb l s ps out piT s.nextLoan body k = fixStage K ρ φ' fb l s ps out piT s.nextLoan body k ∧
-      ∀ args o, fixStage K ρ φ fb l s ps out piT s.nextLoan body k args = some o → FinalsIn L out.isRef o
+    {s : SState} (hi : RInv L s) (l : Nat) (ps : List PiDom) (out : PiCod) (dec : Option Nat) :
+    ∀ k, fixStage K ρ φ fb l s ps out dec s.nextLoan body k = fixStage K ρ φ' fb l s ps out dec s.nextLoan body k ∧
+      ∀ args o, fixStage K ρ φ fb l s ps out dec s.nextLoan body k args = some o → FinalsIn L out.isRef o
   | 0 => ⟨rfl, fun _ _ h => by cases h⟩
   | k + 1 => by
-    obtain ⟨ih1, ih2⟩ := fixStage_congr hK hφ hb hi l ps out piT k
-    have hcl : closureFillAt K.dm.read l φ ps out (fixStage K ρ φ fb l s ps out piT s.nextLoan body k)
-        = closureFillAt K.dm.read l φ' ps out (fixStage K ρ φ' fb l s ps out piT s.nextLoan body k) := by
-      rw [← ih1]; exact closureFillAt_congr K.dm.read hφ l ps out _ ih2
+    obtain ⟨ih1, ih2⟩ := fixStage_congr hK hφ hb hi l ps out dec k
+    have hfin : ∀ args o, stageFn l ps (fixRank dec) k (fixStage K ρ φ fb l s ps out dec s.nextLoan body k) args = some o →
+        FinalsIn L (weakCod l (fixRank dec) k out).isRef o := by
+      intro args o h
+      unfold stageFn at h
+      split at h
+      · exact ih2 args o h
+      · cases h
+        intro c hc
+        obtain ⟨a, rfl⟩ := refFinals_const ps args c hc
+        show match out.isRef with
+          | false => FT L (fun _ => a)
+          | true => ∀ k', some 0 = some k' → FT (fun y => L y ∨ y = k') (fun _ => a)
+        cases out.isRef
+        · exact FT.const _ _
+        · exact fun _ _ => FT.const _ _
+    have hcl : closureAt K.dm.read l φ ps (weakCod l (fixRank dec) k out)
+          (stageFn l ps (fixRank dec) k (fixStage K ρ φ fb l s ps out dec s.nextLoan body k))
+        = closureAt K.dm.read l φ' ps (weakCod l (fixRank dec) k out)
+          (stageFn l ps (fixRank dec) k (fixStage K ρ φ' fb l s ps out dec s.nextLoan body k)) := by
+      rw [← ih1]; exact closureAt_congr K.dm.read hφ l ps _ _ hfin
     refine ⟨?_, fun args o h => ?_⟩
-    · show fixBodyAt K ρ φ fb s ps out piT s.nextLoan body (closureFillAt K.dm.read l φ ps out (fixStage K ρ φ fb l s ps out piT s.nextLoan body k))
-        = fixBodyAt K ρ φ' fb s ps out piT s.nextLoan body (closureFillAt K.dm.read l φ' ps out (fixStage K ρ φ' fb l s ps out piT s.nextLoan body k))
+    · show fixBodyAt K ρ φ fb s ps out (piTyAt K.dm.read l ps (weakCod l (fixRank dec) k out)) s.nextLoan body
+          (closureAt K.dm.read l φ ps (weakCod l (fixRank dec) k out)
+            (stageFn l ps (fixRank dec) k (fixStage K ρ φ fb l s ps out dec s.nextLoan body k)))
+        = fixBodyAt K ρ φ' fb s ps out (piTyAt K.dm.read l ps (weakCod l (fixRank dec) k out)) s.nextLoan body
+          (closureAt K.dm.read l φ' ps (weakCod l (fixRank dec) k out)
+            (stageFn l ps (fixRank dec) k (fixStage K ρ φ' fb l s ps out dec s.nextLoan body k)))
       rw [hcl]
       funext args
-      exact fixBodyAt_congr K ρ hb hi ps out piT _ args
-    · exact fixBodyAt_finals K ρ hK hi ps out piT body _ args o h
+      exact fixBodyAt_congr K ρ hb hi ps out _ _ args
+    · exact fixBodyAt_finals K ρ hK hi ps out _ body _ args o h
 
 theorem fixG_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (hφ : ∀ l, L l → φ l = φ' l)
     (hb : ∀ hint s₂, RInv L s₂ → runT K ρ φ true hint body s₂ = runT K ρ φ' true hint body s₂)
@@ -621,8 +644,8 @@ theorem fixG_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (h�
     exact fixBodyAt_finals K ρ hK hi ps out piT body _ args o h
   | some j =>
     refine ⟨funext fun args => ?_, fun args o h => ?_⟩
-    · exact congrFun (fixStage_congr K ρ hK hφ hb hi l ps out piT (fixRank (some j) args + 1)).1 args
-    · exact (fixStage_congr K ρ hK hφ hb hi l ps out piT (fixRank (some j) args + 1)).2 args o h
+    · exact congrFun (fixStage_congr K ρ hK hφ hb hi l ps out (some j) (fixRank (some j) args + 1)).1 args
+    · exact (fixStage_congr K ρ hK hφ hb hi l ps out (some j) (fixRank (some j) args + 1)).2 args o h
 
 end FixCongr
 

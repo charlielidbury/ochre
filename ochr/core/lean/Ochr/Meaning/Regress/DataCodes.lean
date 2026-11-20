@@ -1,6 +1,7 @@
 import Ochr.Meaning.Apply1
 import Ochr.Meaning.Places
 import Ochr.Meaning.DataModel.Program
+import Ochr.Meaning.ClosureStage
 
 /-!
 # Recursive and nested data types have codes; recursion is guarded by height (docs/31 D61, docs/34 §14; kernel-checked)
@@ -13,8 +14,9 @@ one (`Rose(Nat)`, whose field `kids` is a `List(Rose(Nat))`):
 - each value, as the run builds it (`ctorM`: the tree of its declaration, record, constructor and
   fields), is a member of its type's code;
 - a value is matched by reading its constructor and fields off it (`Sem.parts`);
-- a recursive function over a list (`Len`), built along its type's code by filled stages as the
-  `.fix` clause builds it (D60), the stage chosen by the height of the argument's meaning
+- a recursive function over a list (`Len`), built along its type's code by stages as the `.fix`
+  clause builds them (each stage's `self` the stage below at the weakened function type, docs/34),
+  the stage chosen by the height of the argument's meaning
   (`semRank`), is a member of that code and gives `2` at `[3, 4]`;
 - **`CountF`** over `List(Rose(Nat))`, whose recursive call is at the head tree's forest (two field
   steps down, through the nested field), built the same way, gives `3` at `F3`'s forest. Under the
@@ -118,61 +120,6 @@ def tOne : Tel (lvl0 R).Code PUnit ((a : A) → Nat × PUnit) :=
 
 theorem dec_nat (n : Nat) : Code0.dec R .nat (.el0 Nat n) = some n := Code0.dec_enc R .nat n
 
-/-- The element a recursion stage's closure is built from along `tOne`: filled where the stage is
-undefined, the body's number where it is defined. -/
-theorem fill_some (φ : Future) (g : List Sem → Option BodyOut) :
-    ∃ F, mkTelFillL (lvl0 R) φ (tOne R c) [] (fun fs => some (PUnit.unit, fs)) g = some F ∧
-      ∀ a k, g [c.enc R a] = some ⟨.el0 Nat k, [], none⟩ → F a = (k, PUnit.unit) := by
-  have hleaf : ∀ a, ∃ r, mkTelFillL (lvl0 R) φ (Tel.dat PUnit Nat .nat) ([] ++ [(lvl0 R).enc c a])
-      (extMkL false PUnit A (fun fs => some (PUnit.unit, fs)) ((lvl0 R).dec c)) g = some r ∧
-      ∀ k, g [c.enc R a] = some ⟨.el0 Nat k, [], none⟩ → r = (k, PUnit.unit) := by
-    intro a
-    rw [mkTelFillL.eq_1]
-    cases hga : g [c.enc R a] with
-    | none =>
-      have : (g ([] ++ [(lvl0 R).enc c a])) = none := hga
-      simp only [this, Option.bind_none]
-      exact ⟨_, dif_pos ⟨(0, PUnit.unit)⟩, fun k h => by cases h⟩
-    | some o =>
-      have : (g ([] ++ [(lvl0 R).enc c a])) = some o := hga
-      simp only [this, Option.bind_some]
-      cases hl : mkLeafDataL (lvl0 R) φ (extFin false PUnit A)
-          (extMkL false PUnit A (fun fs => some (PUnit.unit, fs)) ((lvl0 R).dec c)) Code0.nat o with
-      | some r =>
-        refine ⟨r, rfl, fun k hk => ?_⟩
-        cases hk
-        simp [mkLeafDataL, extMkL, dec_nat, Code0.dec_enc] at hl
-        exact hl.symm
-      | none =>
-        refine ⟨_, dif_pos ⟨(0, PUnit.unit)⟩, fun k hk => ?_⟩
-        cases hk
-        simp [mkLeafDataL, extMkL, dec_nat, Code0.dec_enc] at hl
-  have hall : ∀ a, (mkTelFillL (lvl0 R) φ (Tel.dat PUnit Nat .nat) ([] ++ [(lvl0 R).enc c a])
-      (extMkL false PUnit A (fun fs => some (PUnit.unit, fs)) ((lvl0 R).dec c)) g).isSome := by
-    intro a
-    obtain ⟨r, hr, -⟩ := hleaf a
-    rw [hr]; rfl
-  refine ⟨fun a => (mkTelFillL (lvl0 R) φ (Tel.dat PUnit Nat .nat) ([] ++ [(lvl0 R).enc c a])
-      (extMkL false PUnit A (fun fs => some (PUnit.unit, fs)) ((lvl0 R).dec c)) g).get (hall a), ?_, ?_⟩
-  · unfold tOne
-    rw [mkTelFillL.eq_3, dif_pos hall]
-  · intro a k hk
-    obtain ⟨r, hr, hrk⟩ := hleaf a
-    simp only [hr, Option.get_some, hrk k hk]
-
-/-- A stage's closure along `tOne`, applied at an element where the stage gives `k`, gives `k`. -/
-theorem apply_fill (φ : Future) (g : List Sem → Option BodyOut) (a : A) (k : Nat)
-    (ha : g [c.enc R a] = some ⟨.el0 Nat k, [], none⟩) :
-    applyFnL (lvl0 R) (tOne R c) (closureFillL (lvl0 R) φ (tOne R c) g) [c.enc R a]
-      = some (.data (.el0 Nat k) TyM.nat []) := by
-  obtain ⟨F, hF, hFa⟩ := fill_some R c φ g
-  unfold closureFillL
-  rw [hF]
-  show (Sem.as _ (.el0 _ F)).bind (fun F => applyTelL (lvl0 R) (tOne R c) (fun _ => []) F [c.enc R a]) = _
-  rw [show Sem.as ((a : A) → Nat × PUnit) (.el0 _ F) = some F from (lvl0_lawful R).unpack_pack _ F, Option.bind_some]
-  simp only [tOne, applyTelL, lvl0, Code0.dec_enc, hFa a k ha]
-  rfl
-
 /-- The element built strictly along `tOne`, where the body gives a number at every element. -/
 theorem mk_some (φ : Future) (g : List Sem → Option BodyOut)
     (hg : ∀ a, ∃ k, g [c.enc R a] = some ⟨.el0 Nat k, [], none⟩) :
@@ -212,6 +159,55 @@ theorem apply_strict (φ : Future) (g : List Sem → Option BodyOut)
   simp only [tOne, applyTelL, lvl0, Code0.dec_enc, hFa a k ha]
   rfl
 
+/-- `Π(a : A). Nat`'s description, as the `.fix` clause reads it. -/
+def dsOne : List PiDom := [⟨false, fun _ => TyM.t0 A c⟩]
+
+def outOne : PiCod := ⟨false, fun _ => TyM.nat⟩
+
+theorem tOne_telL : telL (lvl0 R) (dsOne c) [] PUnit outOne = ⟨(a : A) → Nat × PUnit, tOne R c⟩ := rfl
+
+/-- Stage `k`'s closure, the `self` of stage `k + 1`, at the weakened function type (docs/34). -/
+noncomputable def selfOne (φ : Future) (rk : List Sem → Nat) (k : Nat) (gk : List Sem → Option BodyOut) : Res :=
+  (closureAt R 1 φ (dsOne c) (weakCod 1 rk k outOne) (stageFn 1 (dsOne c) rk k gk),
+    .plain (piTyAt R 1 (dsOne c) (weakCod 1 rk k outOne)))
+
+/-- **A call through a stage's `self` below its bound** gives the stage below's number, when that
+stage gives a number at every element below the bound (`ClosureStage.stage_apply`). -/
+theorem selfOne_call (φ : Future) (rk : List Sem → Nat) (k : Nat) (gk : List Sem → Option BodyOut)
+    (hgood : ∀ a : A, rk [c.enc R a] < k → ∃ n, gk [c.enc R a] = some ⟨.el0 Nat n, [], none⟩)
+    (a : A) (n : Nat) (hlt : rk [c.enc R a] < k) (hn : gk [c.enc R a] = some ⟨.el0 Nat n, [], none⟩) :
+    ∃ s', callOf R (selfOne R c φ rk k gk) [(c.enc R a, .plain (TyM.t0 A c))] (emptyState 0)
+      = some ((.el0 Nat n, .plain TyM.nat), s') := by
+  have hmem1 : ∀ args, Steps.DomMembers R (dsOne c) args → ∃ a : A, args = [c.enc R a] := by
+    intro args ⟨hl, hm⟩
+    match args, hl with
+    | [x], _ =>
+      obtain ⟨a, ha⟩ := hm 0 x _ rfl rfl
+      exact ⟨a, by rw [← ha]⟩
+  exact stage_apply R 1 φ (dsOne c) outOne rk k gk ⟨Nat.le_refl 1, by omega⟩ rfl
+    (fun _ _ _ => by simp [LevelFit, outOne, TyM.nat])
+    (fun args ha hr => by
+      obtain ⟨a', rfl⟩ := hmem1 args ha
+      obtain ⟨n', hn'⟩ := hgood a' hr
+      refine ⟨_, hn', ⟨⟨n', rfl⟩, fun i d hd hr' => ?_⟩, rfl⟩
+      rcases i with _ | i
+      · simp only [dsOne, List.getElem?_cons_zero, Option.some.injEq] at hd
+        subst hd; cases hr'
+      · simp [dsOne] at hd)
+    [(c.enc R a, .plain (TyM.t0 A c))] (emptyState 0) ⟨.el0 Nat n, [], none⟩
+    ⟨rfl, fun i x d hx hd => by
+      rcases i with _ | i
+      · simp only [List.map_cons, List.map_nil, List.getElem?_cons_zero, Option.some.injEq] at hx
+        simp only [dsOne, List.getElem?_cons_zero, Option.some.injEq] at hd
+        subst hx; subst hd; exact ⟨a, rfl⟩
+      · simp at hx⟩
+    (fun i d hd => by
+      rcases i with _ | i
+      · simp only [dsOne, List.getElem?_cons_zero, Option.some.injEq] at hd
+        subst hd; simp [LevelFit]
+      · simp [dsOne] at hd)
+    hlt trivial hn
+
 end
 
 /-- `List(Nat)`'s code. -/
@@ -221,21 +217,21 @@ def cL : Code0 (dmP.car listD rN) := .data listD rN (dmP.car listD rN)
 theorem enc_cL (x : dmP.car listD rN) : cL.enc dmP.read x = dmP.meanC x := DataModel.read_car dmP x
 
 /-- `Len`'s body, as the `.fix` clause runs `match l { Nil => Z, Cons(h, t) => S(self(t)) }`: the
-match reads the constructor and fields off the value; the recursive call goes through `self` along
-the code. -/
-noncomputable def lenBody (self : Sem) : List Sem → Option BodyOut
+match reads the constructor and fields off the value; the recursive call goes through `self` at
+its type (`callOf`). -/
+noncomputable def lenBody (self : Res) : List Sem → Option BodyOut
   | [x] => match x.parts with
     | some (0, []) => some ⟨.el0 Nat 0, [], none⟩
-    | some (1, [_, t]) => match applyFnL (lvl0 dmP.read) (tOne dmP.read cL) self [t] with
-      | some (.data r _ _) => (Code0.dec dmP.read .nat r).map fun k => ⟨.el0 Nat (k + 1), [], none⟩
-      | _ => none
+    | some (1, [_, t]) => match callOf dmP.read self [(t, .plain (TyM.t0 _ cL))] (emptyState 0) with
+      | some ((r, _), _) => (Code0.dec dmP.read .nat r).map fun k => ⟨.el0 Nat (k + 1), [], none⟩
+      | none => none
     | _ => none
   | _ => none
 
-/-- The stages, each binding `self` to the closure `mk` builds of the stage below. -/
-noncomputable def stage (body : Sem → List Sem → Option BodyOut) (mk : (List Sem → Option BodyOut) → Sem) (k : Nat) :
-    List Sem → Option BodyOut :=
-  Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none) (fun _ gk => body (mk gk)) k
+/-- The stages, each binding `self` to `mk k`'s closure of the stage below (`selfOne`). -/
+noncomputable def stage (body : Res → List Sem → Option BodyOut) (mk : Nat → (List Sem → Option BodyOut) → Res)
+    (k : Nat) : List Sem → Option BodyOut :=
+  Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none) (fun k gk => body (mk k gk)) k
 
 /-- The decreasing argument's rank, as the `.fix` clause reads it (`RunCongr.fixRank`): the height
 of its meaning. -/
@@ -243,7 +239,7 @@ noncomputable def rankOf : List Sem → Nat
   | [x] => semRank x
   | _ => 0
 
-noncomputable def gOf (body : Sem → List Sem → Option BodyOut) (mk : (List Sem → Option BodyOut) → Sem) :
+noncomputable def gOf (body : Res → List Sem → Option BodyOut) (mk : Nat → (List Sem → Option BodyOut) → Res) :
     List Sem → Option BodyOut :=
   fun args => stage body mk (rankOf args + 1) args
 
@@ -252,13 +248,13 @@ def lenV : Sem → Nat
   | .dat _ _ 1 [_, t] => lenV t + 1
   | _ => 0
 
-/-- With the stages' closures filled (D60), a stage above a member's height gives its length. -/
+/-- A stage above a member's height gives its length (the call at the tail reads the stage below's
+`self` below its bound). -/
 theorem stage_len (φ : Future) : ∀ (n : Nat) (v : Sem), dmP.Mem listD rN v → semHeight v < n →
-    stage lenBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cL)) n [v] = some ⟨.el0 Nat (lenV v), [], none⟩
+    stage lenBody (selfOne dmP.read cL φ rankOf) n [v] = some ⟨.el0 Nat (lenV v), [], none⟩
   | 0, _, _, hn => absurd hn (Nat.not_lt_zero _)
   | n + 1, v, hv, hn => by
-    show lenBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cL)
-      (stage lenBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cL)) n)) [v] = _
+    show lenBody (selfOne dmP.read cL φ rankOf n (stage lenBody (selfOne dmP.read cL φ rankOf) n)) [v] = _
     rcases list_mem_cases rN v hv with rfl | ⟨x, t, rfl, -, ht⟩
     · rfl
     · have hlt : semHeight t < n := by
@@ -266,25 +262,31 @@ theorem stage_len (φ : Future) : ∀ (n : Nat) (v : Sem), dmP.Mem listD rN v �
         omega
       obtain ⟨a, ha⟩ := (DataModel.mem_iff_meanC dmP listD rN t).1 ht
       have ih := stage_len φ n t ht hlt
-      have happ := apply_fill dmP.read cL φ _ a (lenV t) (by rw [enc_cL, ha]; exact ih)
-      rw [enc_cL, ha] at happ
-      simp only [lenBody, Sem.parts, happ, Option.map, dec_nat]
+      have hgood : ∀ b : dmP.car listD rN, rankOf [cL.enc dmP.read b] < n →
+          ∃ m, stage lenBody (selfOne dmP.read cL φ rankOf) n [cL.enc dmP.read b] = some ⟨.el0 Nat m, [], none⟩ := by
+        intro b hb
+        rw [enc_cL] at hb ⊢
+        exact ⟨_, stage_len φ n _ ((DataModel.mem_iff_meanC dmP listD rN _).2 ⟨b, rfl⟩) hb⟩
+      obtain ⟨s', hs⟩ := selfOne_call dmP.read cL φ rankOf n _ hgood a (lenV t)
+        (by rw [enc_cL, ha]; exact hlt) (by rw [enc_cL, ha]; exact ih)
+      rw [enc_cL, ha] at hs
+      simp only [lenBody, Sem.parts, hs, Option.map, dec_nat]
       rfl
 
 /-- **`Len` is a member of its type's code, and `Len([3, 4])` is `2`.** -/
 theorem len_member (φ : Future) :
-    (closureL (lvl0 dmP.read) φ (tOne dmP.read cL) (gOf lenBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cL)))
+    (closureL (lvl0 dmP.read) φ (tOne dmP.read cL) (gOf lenBody (selfOne dmP.read cL φ rankOf))
         ∈ₛ[dmP.read] piTyL (lvl0 dmP.read) (tOne dmP.read cL)) ∧
       applyFnL (lvl0 dmP.read) (tOne dmP.read cL)
-        (closureL (lvl0 dmP.read) φ (tOne dmP.read cL) (gOf lenBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cL))))
+        (closureL (lvl0 dmP.read) φ (tOne dmP.read cL) (gOf lenBody (selfOne dmP.read cL φ rankOf)))
         [semL [3, 4]] = some (.data (.el0 Nat 2) TyM.nat []) := by
-  have hg : ∀ a : dmP.car listD rN, gOf lenBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cL)) [cL.enc dmP.read a]
+  have hg : ∀ a : dmP.car listD rN, gOf lenBody (selfOne dmP.read cL φ rankOf) [cL.enc dmP.read a]
       = some ⟨.el0 Nat (lenV (dmP.meanC a)), [], none⟩ := by
     intro a
     rw [enc_cL]
     exact stage_len φ _ _ ((DataModel.mem_iff_meanC dmP listD rN _).2 ⟨a, rfl⟩) (Nat.lt_succ_self _)
   obtain ⟨F, hF, -⟩ := mk_some dmP.read cL φ _ fun a => ⟨_, hg a⟩
-  have hc : closureL (lvl0 dmP.read) φ (tOne dmP.read cL) (gOf lenBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cL)))
+  have hc : closureL (lvl0 dmP.read) φ (tOne dmP.read cL) (gOf lenBody (selfOne dmP.read cL φ rankOf))
       = .el0 _ F := by
     unfold closureL; rw [hF]
   refine ⟨by rw [hc]; exact ⟨F, rfl⟩, ?_⟩
@@ -350,13 +352,13 @@ theorem enc_cF (x : dmP.car listD rF) : cF.enc dmP.read x = dmP.meanC x := DataM
 
 /-- `CountF`'s body, as the `.fix` clause runs it: two matches read off the value, the recursive
 call through `self` along the code. -/
-noncomputable def countBody (self : Sem) : List Sem → Option BodyOut
+noncomputable def countBody (self : Res) : List Sem → Option BodyOut
   | [x] => match x.parts with
     | some (0, []) => some ⟨.el0 Nat 0, [], none⟩
     | some (1, [t, _]) => match t.parts with
-      | some (0, [_, k]) => match applyFnL (lvl0 dmP.read) (tOne dmP.read cF) self [k] with
-        | some (.data r _ _) => (Code0.dec dmP.read .nat r).map fun n => ⟨.el0 Nat (n + 1), [], none⟩
-        | _ => none
+      | some (0, [_, k]) => match callOf dmP.read self [(k, .plain (TyM.t0 _ cF))] (emptyState 0) with
+        | some ((r, _), _) => (Code0.dec dmP.read .nat r).map fun n => ⟨.el0 Nat (n + 1), [], none⟩
+        | none => none
       | _ => none
     | _ => none
   | _ => none
@@ -366,14 +368,13 @@ def countV : Sem → Nat
   | .dat _ _ 1 (.dat _ _ 0 [_, k] :: _) => countV k + 1
   | _ => 0
 
-/-- With the stages' closures filled, a stage above a member's height gives its count: the
-recursive call's forest is two field steps down, so two stages lower in height. -/
+/-- A stage above a member's height gives its count: the recursive call's forest is two field
+steps down, so two stages lower in height, below the stage's bound. -/
 theorem stage_count (φ : Future) : ∀ (n : Nat) (v : Sem), dmP.Mem listD rF v → semHeight v < n →
-    stage countBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cF)) n [v] = some ⟨.el0 Nat (countV v), [], none⟩
+    stage countBody (selfOne dmP.read cF φ rankOf) n [v] = some ⟨.el0 Nat (countV v), [], none⟩
   | 0, _, _, hn => absurd hn (Nat.not_lt_zero _)
   | n + 1, v, hv, hn => by
-    show countBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cF)
-      (stage countBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cF)) n)) [v] = _
+    show countBody (selfOne dmP.read cF φ rankOf n (stage countBody (selfOne dmP.read cF φ rankOf) n)) [v] = _
     rcases list_mem_cases rF v hv with rfl | ⟨x, t, rfl, hx, -⟩
     · rfl
     · have hx' : dmP.Mem roseD rRN x := hx
@@ -384,9 +385,15 @@ theorem stage_count (φ : Future) : ∀ (n : Nat) (v : Sem), dmP.Mem listD rF v 
         omega
       obtain ⟨y, hy⟩ := (DataModel.mem_iff_meanC dmP listD rF k).1 hk
       have ih := stage_count φ n k hk hlt
-      have happ := apply_fill dmP.read cF φ _ y (countV k) (by rw [enc_cF, hy]; exact ih)
-      rw [enc_cF, hy] at happ
-      simp only [countBody, Sem.parts, happ, Option.map, dec_nat]
+      have hgood : ∀ b : dmP.car listD rF, rankOf [cF.enc dmP.read b] < n →
+          ∃ m, stage countBody (selfOne dmP.read cF φ rankOf) n [cF.enc dmP.read b] = some ⟨.el0 Nat m, [], none⟩ := by
+        intro b hb
+        rw [enc_cF] at hb ⊢
+        exact ⟨_, stage_count φ n _ ((DataModel.mem_iff_meanC dmP listD rF _).2 ⟨b, rfl⟩) hb⟩
+      obtain ⟨s', hs⟩ := selfOne_call dmP.read cF φ rankOf n _ hgood y (countV k)
+        (by rw [enc_cF, hy]; exact hlt) (by rw [enc_cF, hy]; exact ih)
+      rw [enc_cF, hy] at hs
+      simp only [countBody, Sem.parts, hs, Option.map, dec_nat]
       rfl
 
 /-- `F3`'s forest: `Cons(Node(1, Cons(Node(2, Cons(Node(3, Nil), Nil)), Nil)), Nil)`. -/
@@ -398,18 +405,18 @@ theorem f3_mem : dmP.Mem listD rF f3 :=
 /-- **`CountF` is a member of its type's code, and `CountF(F3's forest)` is `3`**, as the checker
 computes (`F3` accepted, `F2` rejected). -/
 theorem countF_three (φ : Future) :
-    (closureL (lvl0 dmP.read) φ (tOne dmP.read cF) (gOf countBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cF)))
+    (closureL (lvl0 dmP.read) φ (tOne dmP.read cF) (gOf countBody (selfOne dmP.read cF φ rankOf))
         ∈ₛ[dmP.read] piTyL (lvl0 dmP.read) (tOne dmP.read cF)) ∧
       applyFnL (lvl0 dmP.read) (tOne dmP.read cF)
-        (closureL (lvl0 dmP.read) φ (tOne dmP.read cF) (gOf countBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cF))))
+        (closureL (lvl0 dmP.read) φ (tOne dmP.read cF) (gOf countBody (selfOne dmP.read cF φ rankOf)))
         [f3] = some (.data (.el0 Nat 3) TyM.nat []) := by
-  have hg : ∀ a : dmP.car listD rF, gOf countBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cF)) [cF.enc dmP.read a]
+  have hg : ∀ a : dmP.car listD rF, gOf countBody (selfOne dmP.read cF φ rankOf) [cF.enc dmP.read a]
       = some ⟨.el0 Nat (countV (dmP.meanC a)), [], none⟩ := by
     intro a
     rw [enc_cF]
     exact stage_count φ _ _ ((DataModel.mem_iff_meanC dmP listD rF _).2 ⟨a, rfl⟩) (Nat.lt_succ_self _)
   obtain ⟨F, hF, -⟩ := mk_some dmP.read cF φ _ fun a => ⟨_, hg a⟩
-  have hc : closureL (lvl0 dmP.read) φ (tOne dmP.read cF) (gOf countBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cF)))
+  have hc : closureL (lvl0 dmP.read) φ (tOne dmP.read cF) (gOf countBody (selfOne dmP.read cF φ rankOf))
       = .el0 _ F := by
     unfold closureL; rw [hF]
   refine ⟨by rw [hc]; exact ⟨F, rfl⟩, ?_⟩

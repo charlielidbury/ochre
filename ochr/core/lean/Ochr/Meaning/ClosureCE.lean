@@ -3,8 +3,10 @@ import Ochr.Meaning.Steps.Statements
 /-!
 # The closure lemma as stated in `Steps/FixKnot.lean`: where it is false (kernel-checked)
 
-`closure_mem_of_total` and `closure_apply` (the knot's two closure statements, owed by the data
-layer) each fail at a small closure, here, for every data reading:
+`closure_mem_of_total` and `closure_apply` as first stated in `Steps/FixKnot.lean` (the knot's two
+closure statements, owed by the data layer; since replaced there by `closure_mem_of_total` on
+`OutGood'`/`PiFits` and `memBelow_apply`) each fail at a small closure, here, for every data
+reading:
 
 1. `closure_apply` asks only that the function be defined at the arguments applied. A closure is
    built strictly (`closureAt` is `mkTelL`'s element, `err` unless the function is defined and of its
