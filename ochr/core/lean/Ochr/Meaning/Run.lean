@@ -556,6 +556,13 @@ def Sem.isProof : Sem → Bool
   | .proof => true
   | _ => false
 
+/-- D93: the declaration named `n` has exactly one constructor (`Machine.evalMatchInd`'s
+`(← lookupInd ty).ctors.length == 1`, read from the match term's declaration name). -/
+def oneCtor (Γ : List IndDecl) (n : String) : Bool :=
+  match Γ.find? (·.name == n) with
+  | some d => d.ctors.length == 1
+  | none => false
+
 /-- A declared reading that is a borrow type. -/
 def isRefDecl : DeclInfo → Bool
   | .ref _ => true
@@ -681,8 +688,12 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     | none => none) s
   | .matchInd p n arms => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.matchInd p n arms)) (fun s => do
     let (tg, s) ← tagOf K φ p indTag s
-    -- D90 [Entry], not in tail position and not on a proof (`evalMatchByType` has none)
-    let (s, lend) := matchEntry K φ (!tl && !tg.isProof) (.matchInd p n arms) s
+    -- D93: a match on a type with one constructor never closes off, so it has no entry and no
+    -- join, on any path (`Machine.evalMatchInd`: its one arm runs directly)
+    let one := oneCtor K.Γ n
+    -- D90 [Entry], not in tail position, not on a proof (`evalMatchByType` has none), and not on a
+    -- one-constructor type (D93)
+    let (s, lend) := matchEntry K φ (!tl && !tg.isProof && !one) (.matchInd p n arms) s
     let entry := movedPlaces φ s
     -- a proof scrutinee is matched by its type (D45): the one arm of a one-constructor
     -- proposition; a data scrutinee by the tag of its meaning
@@ -694,7 +705,9 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       let ((r, R), s) ← runArm tl hint c arms s
       -- a match on a proof has no join (`Machine.evalMatchByType`: its one arm runs on every
       -- path; the audit's A4)
-      some ((r, R), match tg with | .proof => s | _ => lend R.label (joinDrop K φ entry (.matchInd p n arms) s))
+      some ((r, R), match tg with
+        | .proof => s
+        | _ => if one then s else lend R.label (joinDrop K φ entry (.matchInd p n arms) s))
     | none => none) s
   | .tind n args => do
     match K.Γ.find? (·.name == n) with

@@ -795,8 +795,8 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     have hi₀ := (tagOf_rinv K φ' L h1 hi).1
     dsimp only
     rw [matchEntry_congr K hφ hi₀]
-    have hi₁' := (matchEntry_props K φ' L (!tl && !tg.isProof) (.matchInd p n arms) hi₀).1
-    generalize matchEntry K φ' (!tl && !tg.isProof) (.matchInd p n arms) s₀ = me at hi₁' ⊢
+    have hi₁' := (matchEntry_props K φ' L (!tl && !tg.isProof && !oneCtor K.Γ n) (.matchInd p n arms) hi₀).1
+    generalize matchEntry K φ' (!tl && !tg.isProof && !oneCtor K.Γ n) (.matchInd p n arms) s₀ = me at hi₁' ⊢
     obtain ⟨s₁, lend⟩ := me
     have hi₁ : RInv L s₁ := hi₁'
     dsimp only

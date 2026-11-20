@@ -188,9 +188,9 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     apply Option.bind_congr' rfl
     rintro ⟨tg, s₀⟩ _
     dsimp only
-    rw [show matchEntry (KA K Δ') φ (!tl && !tg.isProof) (.matchInd p n arms) s₀
-      = matchEntry K φ (!tl && !tg.isProof) (.matchInd p n arms) s₀ from rfl]
-    generalize matchEntry K φ (!tl && !tg.isProof) (.matchInd p n arms) s₀ = me
+    rw [show matchEntry (KA K Δ') φ (!tl && !tg.isProof && !oneCtor K.Γ n) (.matchInd p n arms) s₀
+      = matchEntry K φ (!tl && !tg.isProof && !oneCtor K.Γ n) (.matchInd p n arms) s₀ from rfl]
+    generalize matchEntry K φ (!tl && !tg.isProof && !oneCtor K.Γ n) (.matchInd p n arms) s₀ = me
     obtain ⟨s₁, lend⟩ := me
     dsimp only
     split
