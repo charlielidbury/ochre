@@ -4,7 +4,8 @@ import Ochr.Meaning.Steps.Statements
 # The bundled induction hypothesis (milestone 3)
 
 `StepsIH K ρ φ fuel`: every step statement at `fuel`. An area file proves its statements at
-`fuel + 1` from the hypothesis at `fuel` **at every assignment and future** (`∀ ρ φ, StepsIH K ρ φ
+`fuel + 1` from the hypothesis at every fuel up to `fuel` (`StepsIHBelow`, strong induction, docs/31
+D71) **at every assignment and future** (`∀ ρ φ, StepsIH K ρ φ
 fuel`); `Steps/Knot.lean` closes the induction. There is no knot field: a state is read through
 `K.M = codeMeaning K` (docs/31 D18).
 -/
@@ -95,3 +96,17 @@ structure StepsIH (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Pr
 
 end Ochr.Meaning.Steps
 
+
+namespace Ochr.Meaning.Steps
+
+/-- **The hypothesis at every fuel up to `fuel`** (strong induction, docs/31 D71): a step at
+`fuel + 1` may run a sub-step at any smaller fuel (a body runs at one fuel less than its call's
+call, `runBody` then `runBodyCore`), so the hypothesis is at every fuel below, not only at `fuel`.
+As first set up it was at `fuel` only, and the body's step had no hypothesis at its fuel. -/
+def StepsIHBelow (fuel : Nat) : Prop := ∀ f, f ≤ fuel → ∀ K' ρ φ, StepsIH K' ρ φ f
+
+/-- The hypothesis at `fuel` itself. -/
+theorem StepsIHBelow.at {fuel : Nat} (ih : StepsIHBelow fuel) : ∀ K' ρ φ, StepsIH K' ρ φ fuel :=
+  ih fuel (Nat.le_refl _)
+
+end Ochr.Meaning.Steps

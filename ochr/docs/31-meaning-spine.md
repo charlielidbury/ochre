@@ -1032,9 +1032,21 @@ Recommended: (B), the uniform form: a returned borrow is a new borrow on every p
 1. *The induction hypothesis ran every term out of tail position.* `eval_step_stmt`, `evalCore_step_stmt` and `letIn_step_stmt` compared the checker with `run` (`runT false`), while a body runs in tail position on both sides (`runBody` sets `tailNext`; `runBodyRef` runs `runT true`). Now the reference's tail flag is the checker state's (`runT … st.tailNext`). Backed by the assembly: the body's step has no other hypothesis to use.
 2. *The simulation form kept the context and concluded no `CtxOk`.* `SimConcl`, `SimConclT`, `eval_step_stmt`, `evalCore_step_stmt`, `letIn_step_stmt` and `nfSealed_step_stmt` (with `nestedRun_sim`) now conclude in the extended form the join's statements already had (`Δ` extended at new unknowns, `CtxOk` after, the tables only grow): without it no step could follow another (the pop after a body).
 3. *The value a step returns was not counted.* The same statements related the checker's state without the returned value; the reference parks a returned borrow in a temporary (D14), and the relation matches temporaries by the borrows they hold, so after `&x` nothing matched (`Regress/InFlight.not_rel_without_flight`, kernel-checked: the reference's state after `&y` is related to no checker state whose frame holds no borrow in a temporary, which is the checker's after its `borrowPlace`). Now the checker's state is read with the value in flight (`MState.withTemp`, `GoodF` with `flightOf`), as the borrow statements already did.
-4. *A body runs at one fuel less than the hypothesis.* `runBody` at `fuel + 1` evaluates its body at `fuel - 1`, the induction hypothesis is at `fuel`: the assembly needs fuel monotonicity of a successful run (`runs_eval_fuel_mono`, a leaf about the checker: running out of fuel is never caught below the top level), or a strong induction in the knot.
+4. *A body runs at one fuel less than the hypothesis.* `runBody` at `fuel + 1` evaluates its body at `fuel - 1`, the induction hypothesis is at `fuel`. Decided: strong induction in the knot (`StepsIHBelow`, `Knot.stepsIH_below`); the hypothesis is at every fuel up to the step's.
 5. *The nested run needs one assignment for every future* (`nested_uniform`, a leaf): the induction hypothesis gives an assignment per future, the statement one for all; a loan-free text run from an empty frame reads the future only at labels it makes, so the values of the unknowns it creates do not depend on it.
 6. *`callFn`'s hypotheses must supply [Close]'s readings and the run in place's success* (`callFn_front`): `closeCall_step_stmt` needs the row, the declared-`Unit` readings and the cells' types tied to the code, `runBody_step_stmt` that the run in place succeeds; `callFn_step_stmt` has neither, so they are the front's obligations (the decisions' alignment; the callee's meaning a member of its type).
+
+**The rule for every step statement from now on** (the lead's decision, 2026-11-20): a statement in
+the simulation form concludes in the extended form and counts the value it returns as in flight:
+an assignment and a `Δ` extending the old ones at the unknowns the step created
+(`∀ σ < st.absTy.size, ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ`), a renaming agreeing on the labels issued, the
+tables only growing (`st.absTy.size ≤ st'.absTy.size`, `st.nextLoan ≤ st'.nextLoan`), `CtxOk` of the
+state after under the extended context, the relation and `GoodF` of the state after **with the
+returned value counted** (`st'.withTemp v`, `flightOf r.2`). `SimConcl` and `SimConclT` are that
+form; the remaining statements in the old form are migrated with their areas, and no new statement is
+written in it. The induction hypothesis is at every fuel up to the step's (`StepsIHBelow`, the knot by
+strong induction: the lead's decision on item 4 below, in place of a fuel-monotonicity fact about the
+checker).
 
 **Running count, per area** (for the lead's tracking in docs/32):
 

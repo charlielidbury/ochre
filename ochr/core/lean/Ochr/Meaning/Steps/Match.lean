@@ -27,14 +27,14 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- [Join], the entry set: from related states the reference's is the checker's, but for the
 borrow variables the checker ended early (docs/31 D24). -/
-theorem joinEntry (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : joinEntry_stmt K ρ φ (fuel + 1) := by
+theorem joinEntry (fuel : Nat) (ih : StepsIHBelow fuel) : joinEntry_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- [Join], the drop of one place: the checker's `movedPlace` and `dropAtJoin` against the
 reference's `joinDropOne` (docs/31 D29, task C). Its obligations are the named statements of
 `Steps/DropOne.lean` and `Steps/DropOneAsm.lean`, with the induction hypothesis's [Access] and [End]
 statements: the assembly is written (`dropOne_step_asm`); what it rests on is open there. -/
-theorem dropOne_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : dropOne_step_stmt K ρ φ (fuel + 1) :=
+theorem dropOne_step (fuel : Nat) (ih : StepsIHBelow fuel) : dropOne_step_stmt K ρ φ (fuel + 1) :=
   dropOne_step_asm K ρ φ fuel ih
 
 /-- The reference's drop under a context with another `Δ` is the same: it reads no `Δ`. -/
@@ -44,7 +44,7 @@ theorem joinDropOne_withΔ (Δ' : Nat → TyS) (s : SState) (q : Place) :
 /-- **[Join], the drop** (docs/31 D29, task C): the checker's loop over the join's list against the
 reference's fold, by induction on the list, one place at a time (`dropOne_step`), the assignment
 and the context's `Δ` extended at each, the scope the list is read in kept (`scopeOf_joinDropOne`). -/
-theorem joinDrop_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : joinDrop_step_stmt K ρ φ (fuel + 1) := by
+theorem joinDrop_step (fuel : Nat) (ih : StepsIHBelow fuel) : joinDrop_step_stmt K ρ φ (fuel + 1) := by
   intro st st' mt entry hg hctx s π hs hgrain hcopy bh h
   unfold joinDrop
   change Runs (dropLoop (fuel + 1) (K.D.joinMoves (scopeOf s) entry mt)) st bh () st' at h
@@ -76,31 +76,31 @@ theorem joinDrop_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : 
     · exact hg₂
 
 /-- [Match] on `Nat` with a known constructor (`evalMatch`): below the run's `.matchNat` clause. -/
-theorem evalMatch_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : evalMatch_step_stmt K ρ φ (fuel + 1) := by
+theorem evalMatch_step (fuel : Nat) (ih : StepsIHBelow fuel) : evalMatch_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- [Match] on a declared inductive with a known constructor (`evalMatchInd`): below the run's
 `.matchInd` clause. -/
-theorem evalMatchInd_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : evalMatchInd_step_stmt K ρ φ (fuel + 1) := by
+theorem evalMatchInd_step (fuel : Nat) (ih : StepsIHBelow fuel) : evalMatchInd_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- A match on a proof, by its type (`evalMatchByType`, D45): the one arm of a one-constructor
 proposition, its proof fields `⋆` and its data fields fresh unknowns; below the run's clause for
 a proof scrutinee under an assignment extended at those unknowns by the fields of the proof's
 witness (the proposition is inhabited, since the scrutinee is a member of it). -/
-theorem evalMatchByType_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : evalMatchByType_step_stmt K ρ φ (fuel + 1) := by
+theorem evalMatchByType_step (fuel : Nat) (ih : StepsIHBelow fuel) : evalMatchByType_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- [Split] coverage: at a place whose content is the unknown `σ` of a data type, every typed
 assignment selects a constructor `c` (exactly one: distinct constructors mean distinct tags), and extends to the arm's fresh field unknowns
 (`ctorRefinement`) so that `σ`'s refinement is satisfied. -/
-theorem split_coverage (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : split_coverage_stmt K ρ φ (fuel + 1) := by
+theorem split_coverage (fuel : Nat) (ih : StepsIHBelow fuel) : split_coverage_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- [Split-gen] (`generalizeNeutral`): the sealed program `n` at place `p` becomes a fresh `σ`
 with the record `n := σ`; under `ρ` extended at `σ` by `⟦n⟧`, the state means the same and the
 assignment is typed (the path condition). -/
-theorem generalizeNeutral_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : generalizeNeutral_step_stmt K ρ φ (fuel + 1) := by
+theorem generalizeNeutral_step (fuel : Nat) (ih : StepsIHBelow fuel) : generalizeNeutral_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- A stuck block closed off (`closeBlock`): the block is a call of an anonymous function of its
@@ -108,13 +108,13 @@ captures, so its sealed result and fills mean what running the match means: belo
 match clause (the capture by move of a place the selected arm keeps is D84's join, exact; a
 split less fine than the arm's own is an over-approximation). The arms are given as the
 match term `mt`; `B?` is the match's annotated type. -/
-theorem closeBlock_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : closeBlock_step_stmt K ρ φ (fuel + 1) := by
+theorem closeBlock_step (fuel : Nat) (ih : StepsIHBelow fuel) : closeBlock_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- Worlds (X1)–(X4), `exitWorld`: the restored state means the snapshot (every component but
 the name counters and the types of unknowns created inside the arm is the snapshot's), and is
 `Good` for any assignment the snapshot was. -/
-theorem exitWorld_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : exitWorld_step_stmt K ρ φ (fuel + 1) := by
+theorem exitWorld_step (fuel : Nat) (ih : StepsIHBelow fuel) : exitWorld_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 end

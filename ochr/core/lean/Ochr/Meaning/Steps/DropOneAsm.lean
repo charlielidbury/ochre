@@ -259,7 +259,7 @@ theorem access_ctx (fuel : Nat) (st st' : MState) (q : Place) (b : Nat)
 the named obligations and the induction hypothesis's [Access] and [End]: missing, `⊥` or `⋆` (both
 sides do nothing); a borrow at a root (both end it); a copy (excluded: the join moves no copy);
 data (both access, then write `⊥`/`moved`). -/
-theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
+theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
     (st st' : MState) (q : Place) (s : SState) (π : Nat → Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
@@ -358,7 +358,7 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
       rw [hsteps] at hbw; simpa [Value.follow] using hbw
     obtain ⟨hs₁, hg₁, hctx₁, henv₁⟩ := logEffect_rel K ρ φ st st₁ s π q "moves" b₁ hg hctx hs hlog
     have hl : liveLoan st₁.env l = true := by rw [henv₁]; exact liveLoan_of_holder hp hval
-    obtain ⟨hs', hg'⟩ := (ih K ρ φ).endBorrow_step st₁ st' l s π hg₁ hctx₁ hs₁ hl b₂ hend
+    obtain ⟨hs', hg'⟩ := (ih.at K ρ φ).endBorrow_step st₁ st' l s π hg₁ hctx₁ hs₁ hl b₂ hend
     have hsh : s.shape pos = some (π l) := by
       have hpt : ¬ IsTemp pos := by
         rcases pos with ⟨f, i⟩ | ⟨f, i⟩
@@ -376,7 +376,7 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
   · -- data: both access, then write
     obtain ⟨hst₁, -⟩ := copyRead_aligned K ρ φ fuel st st₁ s π q false b₁ hctx hs hcr
     rw [hst₁] at hacc
-    obtain ⟨hs₂, hg₂⟩ := (ih K ρ φ).access_step st st₂ q pos false s π hg hctx hs hres b₂ hacc
+    obtain ⟨hs₂, hg₂⟩ := (ih.at K ρ φ).access_step st st₂ q pos false s π hg hctx hs hres b₂ hacc
     simp only [Bool.false_and, Bool.false_eq_true, if_false] at hs₂
     have hs₂' := (lentPrefix_absorbed K ρ φ st st₂ s π pos q.steps.2 v hg hs hp hv).mpr hs₂
     have hctx₂ := access_ctx K ρ fuel st st₂ q b₂ hg hctx hacc

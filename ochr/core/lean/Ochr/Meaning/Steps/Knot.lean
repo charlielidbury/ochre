@@ -11,10 +11,11 @@ import Ochr.Meaning.Steps.Tail
 import Ochr.Meaning.Steps.Decisions
 
 /-!
-# The knot of the step lemmas (milestone 3): induction on fuel
+# The knot of the step lemmas (milestone 3): strong induction on fuel
 
 `stepsIH`: every step statement holds at every fuel, assignment and future (no knot hypothesis:
-docs/31 D18). The successor case is the area files' theorems applied to the hypothesis at `fuel`,
+docs/31 D18). The successor case is the area files' theorems applied to the hypothesis at every
+fuel up to `fuel` (`StepsIHBelow`: a body runs at one fuel less than its call's step, docs/31 D71),
 which they get at every run context, assignment and future. The base case: a checker function at
 fuel `0` is `exhausted`, so every `Runs … 0 …` hypothesis is false and the fuel-indexed
 statements hold vacuously; the statements without a fuel-indexed run must be proved outright
@@ -35,10 +36,8 @@ end
 /-- Every step statement, at every fuel, run context, assignment and future (the hypothesis an
 area file gets is at every context too: a step that creates unknowns continues under a context
 whose `Δ` is extended, docs/31 D20 item 7, D29 task C). -/
-theorem stepsIH : ∀ (fuel : Nat) (K : RunCtx) (ρ : Assignment) (φ : Future), StepsIH K ρ φ fuel
-  | 0, K, ρ, φ => stepsIH_zero K ρ φ
-  | fuel + 1, K, ρ, φ =>
-    let ih := stepsIH fuel
+theorem stepsIH_succ (fuel : Nat) (ih : StepsIHBelow fuel) (K : RunCtx) (ρ : Assignment) (φ : Future) :
+    StepsIH K ρ φ (fuel + 1) :=
     { endBorrow_step := endBorrow_step K ρ φ fuel ih
       access_step := access_step K ρ φ fuel ih
       readPlace_step := readPlace_step K ρ φ fuel ih
@@ -121,5 +120,21 @@ theorem stepsIH : ∀ (fuel : Nat) (K : RunCtx) (ρ : Assignment) (φ : Future),
       typeDecl_aligned := typeDecl_aligned K ρ φ fuel ih
     }
 
+
+/-- The hypothesis at every fuel below, by strong induction on the fuel (docs/31 D71: a body runs at
+one fuel less than its call's step). -/
+theorem stepsIH_below : ∀ (fuel : Nat), StepsIHBelow fuel
+  | 0 => fun f hf K ρ φ => by
+    have : f = 0 := by omega
+    subst this; exact stepsIH_zero K ρ φ
+  | fuel + 1 => fun f hf K ρ φ => by
+    by_cases h : f ≤ fuel
+    · exact stepsIH_below fuel f h K ρ φ
+    · have : f = fuel + 1 := by omega
+      subst this; exact stepsIH_succ fuel (stepsIH_below fuel) K ρ φ
+
+/-- Every step statement, at every fuel, run context, assignment and future. -/
+theorem stepsIH (fuel : Nat) (K : RunCtx) (ρ : Assignment) (φ : Future) : StepsIH K ρ φ fuel :=
+  stepsIH_below fuel fuel (Nat.le_refl _) K ρ φ
 end Ochr.Meaning.Steps
 

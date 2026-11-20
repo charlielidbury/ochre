@@ -24,23 +24,23 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- A direct call (`callFn`, untyped or typed): below the reference's `callOf` on the callee's
 meaning, and `Good` kept. The arguments are loan-free (WF5, `ArgsLoanFree`). -/
-theorem callFn_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : callFn_step_stmt K ρ φ (fuel + 1) :=
+theorem callFn_step (fuel : Nat) (ih : StepsIHBelow fuel) : callFn_step_stmt K ρ φ (fuel + 1) :=
   callFn_step_asm K ρ φ fuel ih
 
 /-- Running a body (`runBody`): the frame pushed with the captures and parameters, the body run,
 the frame popped: below the function's meaning applied (the induction hypothesis on the body). -/
-theorem runBody_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : runBody_step_stmt K ρ φ (fuel + 1) :=
+theorem runBody_step (fuel : Nat) (ih : StepsIHBelow fuel) : runBody_step_stmt K ρ φ (fuel + 1) :=
   runBody_step_asm K ρ φ fuel ih
 
 /-- [Close] (`closeCall`), every row: exact against `callOf`. The result is a sealed program (or
 `()` at a declared `Unit`, or a borrow of one), and each lent place a fill: both mean what the
 reference's call gives them, since a sealed program means its run. -/
-theorem closeCall_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : closeCall_step_stmt K ρ φ (fuel + 1) :=
+theorem closeCall_step (fuel : Nat) (ih : StepsIHBelow fuel) : closeCall_step_stmt K ρ φ (fuel + 1) :=
   closeCall_step_asm K ρ φ fuel ih
 
 /-- [Call-type] (`callType`, `declCallType`): the codomain at the arguments is the reference's
 result type. -/
-theorem callType_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : callType_step_stmt K ρ φ (fuel + 1) := by
+theorem callType_step (fuel : Nat) (ih : StepsIHBelow fuel) : callType_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-- [Rec]'s accepting direction (`recCheck`), semantically: for a recursive function whose every
@@ -48,7 +48,7 @@ recursive call passes a strict subterm of the entry value, the stages of the `fi
 stabilise, so the closure's meaning is not `err` and the guard never fires (docs/24 §4, the
 semantic form of [Rec]; `Slice.stage_stable` generalised). Stated on the closure value: its
 meaning is a member of its Π-type. -/
-theorem recCheck_sound (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : recCheck_sound_stmt K ρ φ (fuel + 1) := by
+theorem recCheck_sound (fuel : Nat) (ih : StepsIHBelow fuel) : recCheck_sound_stmt K ρ φ (fuel + 1) := by
   sorry
 
 /-! ### The obligations of the call steps (docs/31 D62)
@@ -128,7 +128,7 @@ What it rests on: the induction hypothesis (`eval_step_stmt`) at the nested star
 reference's `emptyState` at the checker's counter (`Rel.start`'s analogue), then the counter lemma
 (`run_counter_indep`: the meaning runs from `0`), the untyped run (`hok`, docs/31 D62 item 4), and
 `restoreKeep` keeping only names, the new unknowns' types and records. Not attempted. -/
-theorem nestedRun_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) (st st₁ : MState) (t : Term)
+theorem nestedRun_sim (fuel : Nat) (ih : StepsIHBelow fuel) (st st₁ : MState) (t : Term)
     (v : Value) (T? : Option Value) (hint : TyS)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hfree : t.loans = []) (htf : Term.tailHintFree K.Γ t = true)

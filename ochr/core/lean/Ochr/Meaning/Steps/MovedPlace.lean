@@ -718,7 +718,7 @@ theorem alp_again {s s₁ s₂ : SState} {pos : Pos} {steps : List Step}
     · exact .inr hidem
 
 /-- **`movedPlace` after the parent is found**, in the simulation form. -/
-theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
+theorem mpTail_sim (fuel : Nat) (ih : StepsIHBelow fuel)
     (st st' : MState) (q p q' : Place) (pos : Pos) (s : SState) (π : Nat → Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hpos : resolve s q = some (pos, q.steps.2)) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
@@ -730,7 +730,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
   unfold mpTail' at h
   obtain ⟨p', st₁, b₁, hmp, h⟩ := Runs.bind_inv h
   obtain ⟨ρ₁, Δ₁, s₁, hsz₁, hag₁, hs₁or, hctx₁, hrel₁, hg₁, hout₁⟩ :=
-    (ih K ρ φ).movedPlace_step st st₁ p p' pos s π hg hctx hs (resolve_parent hpar hpos) (grain_parent hpar hgrain) bh hmp
+    (ih.at K ρ φ).movedPlace_step st st₁ p p' pos s π hg hctx hs (resolve_parent hpar hpos) (grain_parent hpar hgrain) bh hmp
   have hs₁q := alp_parent hpar hs₁or
   have hidem := alp_idem pos q.steps.2 s
   have E₁ : Ext K ρ φ π st st₁ s₁ ρ₁ Δ₁ := ⟨hsz₁, hag₁, hctx₁, hrel₁, hg₁⟩
@@ -754,7 +754,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
       obtain ⟨u, st₄, b₄, hacc, h4⟩ := Runs.bind_assoc_inv h3
       have hres₁ : resolve s₁ p = some (pos, p.steps.2) := by
         rw [resolve_alp hs₁q]; exact resolve_parent hpar hpos
-      obtain ⟨hrel₄, hg₄⟩ := (ih { K with Δ := Δ₁ } ρ₁ φ).access_step st₁ st₄ p pos false s₁ π hg₁ hctx₁ hrel₁ hres₁ b₃ hacc
+      obtain ⟨hrel₄, hg₄⟩ := (ih.at { K with Δ := Δ₁ } ρ₁ φ).access_step st₁ st₄ p pos false s₁ π hg₁ hctx₁ hrel₁ hres₁ b₃ hacc
       simp only [Bool.false_and, Bool.false_eq_true, ↓reduceIte] at hrel₄
       have hrel₄' := fillPrefix_absorbed { K with Δ := Δ₁ } ρ₁ φ st₁ st₄ s₁ π q p pos c hg₁ hrel₁ hpar
         (by rw [resolve_alp hs₁q]; exact hpos) hc hfill' hrel₄
@@ -772,7 +772,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
       simp only [hclr, List.isEmpty_nil, Bool.not_true, Bool.false_eq_true, ↓reduceIte] at h6
       have hs₂q := alp_again hidem hs₁q (.inr rfl)
       obtain ⟨ρ₃, Δ₃, s₃, hsz₃, hag₃, hs₃or, hctx₃, hrel₃, hg₃, hout₃⟩ :=
-        (ih { K with Δ := Δ₁ } ρ₁ φ).movedPlace_step st₄ st' q q' pos (accessLentPrefix pos q.steps.2 s₁) π hg₄ hctx₄
+        (ih.at { K with Δ := Δ₁ } ρ₁ φ).movedPlace_step st₄ st' q q' pos (accessLentPrefix pos q.steps.2 s₁) π hg₄ hctx₄
           hrel₄' (by rw [resolve_alp hs₂q]; exact hpos) (by rw [scopeOf_alp hs₂q]; exact hgrain) b₆ h6
       have E₃ : Ext { K with Δ := Δ₁ } ρ₁ φ π st₄ st' s₃ ρ₃ Δ₃ := ⟨hsz₃, hag₃, hctx₃, hrel₃, hg₃⟩
       exact ⟨ρ₃, Δ₃, s₃, alp_again hidem hs₂q hs₃or, (E₁.trans K ρ φ E₂).trans K ρ φ E₃, hout₃⟩
@@ -815,7 +815,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
             obtain ⟨ρ₂, Δ₂, E₂⟩ := etaInPlace_sim { K with Δ := Δ₁ } ρ₁ φ fuel st₁ st₇ p σ n ps d r s₁ π b₆
               hg₁ hctx₁ hrel₁ hc hT hd h1' heta
             obtain ⟨ρ₄, Δ₄, s₄, hsz₄, hag₄, hs₄or, hctx₄, hrel₄, hg₄, hout₄⟩ :=
-              (ih { K with Δ := Δ₂ } ρ₂ φ).movedPlace_step st₇ st' q q' pos s₁ π E₂.good E₂.ctx E₂.rel hpos₁ hgr₁ b₇ h7
+              (ih.at { K with Δ := Δ₂ } ρ₂ φ).movedPlace_step st₇ st' q q' pos s₁ π E₂.good E₂.ctx E₂.rel hpos₁ hgr₁ b₇ h7
             have E₄ : Ext { K with Δ := Δ₂ } ρ₂ φ π st₇ st' s₄ ρ₄ Δ₄ := ⟨hsz₄, hag₄, hctx₄, hrel₄, hg₄⟩
             exact ⟨ρ₄, Δ₄, s₄, alp_again hidem hs₁q hs₄or, E₁.trans K ρ φ (E₂.trans _ _ φ E₄), hout₄⟩
           · exact hfinal E₁ h6
@@ -843,7 +843,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
               have E₃ := recorded_sim { K with Δ := Δ₂ } ρ₂ φ fuel st₅ st₈ (.sealed t) r s₁ π b₇ b₆ E₂.good E₂.ctx E₂.rel
                 hrn hsub
               obtain ⟨ρ₄, Δ₄, s₄, hsz₄, hag₄, hs₄or, hctx₄, hrel₄, hg₄, hout₄⟩ :=
-                (ih { K with Δ := Δ₂ } ρ₂ φ).movedPlace_step st₈ st' q q' pos s₁ π E₃.good E₃.ctx E₃.rel hpos₁ hgr₁ b₈ h8
+                (ih.at { K with Δ := Δ₂ } ρ₂ φ).movedPlace_step st₈ st' q q' pos s₁ π E₃.good E₃.ctx E₃.rel hpos₁ hgr₁ b₈ h8
               have E₄ : Ext { K with Δ := Δ₂ } ρ₂ φ π st₈ st' s₄ ρ₄ Δ₄ := ⟨hsz₄, hag₄, hctx₄, hrel₄, hg₄⟩
               exact ⟨ρ₄, Δ₄, s₄, alp_again hidem hs₁q hs₄or,
                 E₁.trans K ρ φ (E₂.trans _ _ φ (E₃.trans _ _ φ E₄)), hout₄⟩
@@ -856,7 +856,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
                 (.sealed t) σ s₁ π b₇ E₂.good E₂.ctx E₂.rel hc₅ ⟨t, rfl⟩ hfree hgen
               have E₃ : Ext { K with Δ := Δ₂ } ρ₂ φ π st₅ st₈ s₁ ρ₃ Δ₃ := ⟨hsz₃, hag₃, hctx₃, hrel₃, hg₃⟩
               obtain ⟨ρ₄, Δ₄, s₄, hsz₄, hag₄, hs₄or, hctx₄, hrel₄, hg₄, hout₄⟩ :=
-                (ih { K with Δ := Δ₃ } ρ₃ φ).movedPlace_step st₈ st' q q' pos s₁ π hg₃ hctx₃ hrel₃ hpos₁ hgr₁ b₈ h8
+                (ih.at { K with Δ := Δ₃ } ρ₃ φ).movedPlace_step st₈ st' q q' pos s₁ π hg₃ hctx₃ hrel₃ hpos₁ hgr₁ b₈ h8
               have E₄ : Ext { K with Δ := Δ₃ } ρ₃ φ π st₈ st' s₄ ρ₄ Δ₄ := ⟨hsz₄, hag₄, hctx₄, hrel₄, hg₄⟩
               exact ⟨ρ₄, Δ₄, s₄, alp_again hidem hs₁q hs₄or,
                 E₁.trans K ρ φ (E₂.trans _ _ φ (E₃.trans _ _ φ E₄)), hout₄⟩
@@ -889,7 +889,7 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- **`movedPlace` in the simulation form** (the induction hypothesis's field at `fuel + 1`): where
 the place exists it is returned and nothing changes; otherwise `mpTail_sim`. -/
-theorem movedPlace_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) :
+theorem movedPlace_step (fuel : Nat) (ih : StepsIHBelow fuel) :
     movedPlace_step_stmt K ρ φ (fuel + 1) := by
   intro st st' q q' pos s π hg hctx hs hpos hgrain bh h
   rw [movedPlace_succ_eq] at h
@@ -1043,7 +1043,7 @@ theorem joinDropOne_noop (st : MState) (s s₁ : SState) (π : Nat → Nat) (q q
 (`movedPlace_step`), then where the place exists the drop of an existing place (`dropOne_exists`)
 from the reference state after the re-rooting, and where it re-rooted to a prefix holding `⊥` or
 `⋆` nothing on either side (`joinDropOne_noop`). -/
-theorem dropOne_step_asm (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) :
+theorem dropOne_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) :
     dropOne_step_stmt K ρ φ (fuel + 1) := by
   intro st st' q s π hg hctx hs hgrain hcopy bh h
   obtain ⟨q', st₁, b₁, hmp, hdj⟩ := Runs.bind_inv h

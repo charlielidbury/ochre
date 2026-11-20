@@ -72,13 +72,6 @@ def CalleeBounded (st : MState) (cs : List Value) (t : Term) (rd : List (DeclInf
 
 /-! ### Leaves (named, open) -/
 
-/-- (checker) A run that succeeds at a fuel succeeds alike at more: running out of fuel is never
-caught below the top level (`ochr/core/CLAUDE.md`), so it decides nothing. -/
-theorem runs_eval_fuel_mono {f f' : Nat} (hf : f ≤ f') {typed : Bool} {t : Term} {hint : Option Value}
-    {st st' : MState} {b : Nat} {a : Value × Option Value} (h : Runs (Ochr.eval f typed t hint) st b a st') :
-    ∃ b', Runs (Ochr.eval f' typed t hint) st b' a st' := by
-  sorry
-
 /-- (checker) The callee a related call runs is bounded by the call's table: a closure in the state
 names only unknowns it has a type for ((WF6)), and a global names none. -/
 theorem callee_bounded (st : MState) (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value))
@@ -159,19 +152,18 @@ theorem runBody_back (fuel : Nat) (st₂ st' : MState) (s₂ : SState) (π : Nat
 /-! ### [Call]: the assembly -/
 
 /-- **[Call], a known callee's body run in place** (`runBody_step_stmt`), assembled: the front
-(`runBody_front`), the body by the induction hypothesis in tail position (after lifting its fuel,
-`runs_eval_fuel_mono`), the back (`runBody_back`), the run in place re-read under the final
+(`runBody_front`), the body by the induction hypothesis in tail position (at the body's fuel, one below
+the call's: the hypothesis is at every fuel below, `StepsIHBelow`), the back (`runBody_back`), the run in place re-read under the final
 assignment (`runBodyRef_extend`). -/
-theorem runBody_step_asm (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : runBody_step_stmt K ρ φ (fuel + 1) := by
+theorem runBody_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : runBody_step_stmt K ρ φ (fuel + 1) := by
   intro st st' fv cs t rd ws v hg hctx s π hs hfix fres hf as has hok bh h
   obtain ⟨self, hs', ds, c, dec, body, hint, st₁, st₂, b₁, b₂, d, model, v₀, T₀, rfl, hev, htail, htl, habs₁, hnl₁,
     hg₁, hctx₁, hs₁, hhint⟩ := runBody_front K ρ φ fuel st st' fv cs t rd ws v hg hctx s π hs hfix fres hf as has bh h
-  obtain ⟨b₁', hev'⟩ := runs_eval_fuel_mono (Nat.sub_le fuel 1) hev
   have hok' : false = false →
       (runT K ρ φ st₁.tailNext (hintM K ρ hint) body (bodyFrame K ρ φ fres cs rd ds c as s).1).isSome := by
     intro _; rw [htl, hhint]; exact body_isSome_of_runBodyRef K ρ φ fres cs self hs' ds c dec body rd as s hok
   obtain ⟨ρ₁, Δ₁, π₁, habs₂, hnl₂, hext₁, hπ₁, r, s₂, hrun, hmean, -, hctx₂, hs₂, hg₂⟩ :=
-    (ih K ρ φ).eval_step st₁ st₂ false body hint v₀ T₀ hg₁ hctx₁ _ π hs₁ hok' b₁' hev'
+    (ih (fuel - 1) (Nat.sub_le fuel 1) K ρ φ).eval_step st₁ st₂ false body hint v₀ T₀ hg₁ hctx₁ _ π hs₁ hok' b₁ hev
   rw [htl, hhint] at hrun
   obtain ⟨ρ₂, Δ₂, π₂, habs₃, hnl₃, hext₂, hπ₂, hmean', hctx₃, hs₃, hg₃⟩ :=
     runBody_back { K with Δ := Δ₁ } ρ₁ φ (fuel - 1) st₂ st' s₂ π₁ v₀ r hg₂ hctx₂ hs₂ K ρ ρ₁ fres cs rd ds c body as s hrun
@@ -233,7 +225,7 @@ theorem nested_uniform (st st₁ : MState) (t : Term) (v : Value) (T? : Option V
 /-- **The nested run** (`nestedRun_sim`), assembled: the start (`nested_start`), related to the empty
 state by `Rel.start` (it holds no borrow, so no record is asked), the step by the induction
 hypothesis at every future, one assignment for all (`nested_uniform`). -/
-theorem nestedRun_sim_asm (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) (st st₁ : MState) (t : Term)
+theorem nestedRun_sim_asm (fuel : Nat) (ih : StepsIHBelow fuel) (st st₁ : MState) (t : Term)
     (v : Value) (T? : Option Value) (hint : TyS)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hfree : t.loans = []) (htf : Term.tailHintFree K.Γ t = true)
@@ -252,7 +244,7 @@ theorem nestedRun_sim_asm (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel
   have hok' : false = false → (runT K ρ ψ (nestedStart st).tailNext (hintM K ρ none) t (emptyState st.nextLoan)).isSome :=
     fun _ => by rw [htl₀]; exact hok ψ
   obtain ⟨ρ', Δ', π', habs, -, hext, -, r, s', hrun, hmean, -, hctx', hs', hg'⟩ :=
-    (ih K ρ ψ).eval_step (nestedStart st) st₁ false t none v T? hg₀ hctx₀ _ id hrel hok' bh h
+    (ih.at K ρ ψ).eval_step (nestedStart st) st₁ false t none v T? hg₀ hctx₀ _ id hrel hok' bh h
   rw [htl₀] at hrun
   exact ⟨ρ', Δ', π', habs, hext, r, s', hrun, hmean, hctx', hs', hg'⟩
 
@@ -368,17 +360,17 @@ theorem callFn_tail_ran (fuel : Nat) (st st₁ st₂ st' : MState) (fv : Value) 
 /-- **A call** (`callFn_step_stmt`), assembled: the front (`callFn_front`), then the call proper by the
 induction hypothesis (`closeCall_step` or `runBody_step`, at the fuel below, with the hypotheses the
 front supplies), then the tail (`callFn_tail_closed`, `callFn_tail_ran`). -/
-theorem callFn_step_asm (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : callFn_step_stmt K ρ φ (fuel + 1) := by
+theorem callFn_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : callFn_step_stmt K ρ φ (fuel + 1) := by
   intro st st' typed f args hd fv fT ws tys recUid? res fills want defer v T? hg hctx s π hs hns fres hf as has bh h
   obtain ⟨isRef, st₁, st₂, π₁, w, b₁, hg₁, hctx₁, hs₁, hπ₁, habs, hnl, hf₁, has₁, hpath, b₂, g?, B, later, piTy, hg?,
     htail⟩ := callFn_front K ρ φ fuel st st' typed f args hd fv fT ws tys recUid? res fills want defer v T? hg hctx s π hs
       hns fres hf as has bh h
   rcases hpath with ⟨kind, res', fills', tys', hcl, hpi, hkind, hres, hfills, htys⟩ | ⟨cs, t, rd, hfix, hok, hrb⟩
-  · have hcall := (ih K ρ φ).closeCall_step st₁ st₂ fv ws kind res' fills' tys' w hg₁ hctx₁ _ π₁ hs₁ fres hf₁ hpi as
+  · have hcall := (ih.at K ρ φ).closeCall_step st₁ st₂ fv ws kind res' fills' tys' w hg₁ hctx₁ _ π₁ hs₁ fres hf₁ hpi as
       has₁ hkind hres hfills htys b₁ hcl
     exact callFn_tail_closed K ρ φ fuel st st₁ st₂ st' fv ws s π π₁ isRef fres as w v T? res hπ₁ habs hnl hcall b₂ g? B
       later piTy hg? htail
-  · have hbody := (ih K ρ φ).runBody_step st₁ st₂ fv cs t rd ws w hg₁ hctx₁ _ π₁ hs₁ hfix fres hf₁ as has₁ hok b₁ hrb
+  · have hbody := (ih.at K ρ φ).runBody_step st₁ st₂ fv cs t rd ws w hg₁ hctx₁ _ π₁ hs₁ hfix fres hf₁ as has₁ hok b₁ hrb
     exact callFn_tail_ran K ρ φ fuel st st₁ st₂ st' fv ws s π π₁ isRef fres as cs t rd w v T? res hπ₁ habs hnl hbody b₂
       g? B later piTy hg? htail
 
@@ -495,7 +487,7 @@ theorem closeCall_post (fuel : Nat) (st st₁ st₂ st' : MState) (fv : Value) (
 
 /-- **[Close]** (`closeCall_step_stmt`), assembled: the checks and the fresh label (`closeCall_split`),
 the fills one at a time (`closeLoop_rel`), the result (`closeCall_post`). -/
-theorem closeCall_step_asm (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : closeCall_step_stmt K ρ φ (fuel + 1) := by
+theorem closeCall_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : closeCall_step_stmt K ρ φ (fuel + 1) := by
   intro st st' fv ws kind res fills tys v hg hctx s π hs fres hf hpi as has hkind hres hfills htys bh h
   obtain ⟨st₁, st₂, b₁, fx, fins, habs, hnl, hg₁, hctx₁, hs₁, hlen, hfin, hloop⟩ :=
     closeCall_split K ρ φ fuel st st' fv ws kind res fills tys v hg hctx s π hs fres as has bh h
