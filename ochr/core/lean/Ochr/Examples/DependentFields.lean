@@ -573,7 +573,13 @@ arm's lie about a dependent field was never re-checked there: the place received
 program, which the dependency check cannot see into, and the direct path, which runs the arm
 and checks nothing, kept a value of the wrong type (`LieSeq`) or a proof field ⊥ that fails
 when the caller's borrow ends (`LieSeqProof`). In tail position the arms are checked to the
-function's return, which caught the lie already (`LieV`). -/
+function's return, which caught the lie already (`LieV`).
+
+Since D93 a match on a value of a one-constructor type (`V`, `Pos`) is never closed off: an
+unknown is refined in place and its one arm runs, at the generic call as at an instance. So the
+one-constructor lies below are caught at the next whole-again point of the code after the match
+(the borrow parameter's end at the return, `Id`'s observation, a whole read), and those inside
+another match's block (`LieNested`, `LieOther`, `LieOwned`) still at that block's return. -/
 
 ochr StuckBlocks uses DepFields {
   -- a data field: the arm lies, and code follows the match
@@ -734,14 +740,16 @@ ochr StuckBlocks uses DepFields {
     let r = match *v { MkV(n, x) => &x, };
     ()
   )
-  -- an arm that only returns a borrow of the index field is rejected too (D73): the borrow
-  -- outlives the block's return, so the caller may write any `Word` through it (`LentIndex`)
-  reject def LendIndex (v : &V) : Unit := (
+  -- an arm that only returns a borrow of the index field: rejected by D73 while the match was a
+  -- block (the borrow outlived the block's return); since D93 the match runs directly, nothing is
+  -- written through `r`, and `*v` is whole when its borrow ends (Rust accepts `let r = &mut v.n;`)
+  def LendIndex (v : &V) : Unit := (
     let r = match *v { MkV(n, x) => &n, };
     ()
   )
-  -- a fail-safe incompleteness, pinned: a lie repaired by a second block. The direct path
-  -- is whole again by the return, but the first block's borrow of `*v` ends with `*v` open
+  -- a fail-safe incompleteness, pinned: a lie repaired later. Since D93 neither match is a
+  -- block; at the return `n` is `Succ(Zero)` but `x` still has the type `Fin1(σ)` of the unknown
+  -- length it came with, which `One` is not known to be
   reject def RepairLater (v : &V) : Unit := (
     match *v {
       MkV(n, x) => n := Zero,
@@ -750,27 +758,25 @@ ochr StuckBlocks uses DepFields {
       MkV(n, x) => n := Succ(Zero),
     }
   )
-  -- a fail-safe incompleteness, pinned: in a statement the side runs on its own copy, and a
-  -- local it breaks is dropped broken on the direct path, harmlessly; the block's borrow of
-  -- `w` still ends at its return
-  reject def LieDropped (v : V) : Prop := Id(Unit, (let w = v; match w { MkV(n, x) => n := Zero, }; ()), (let w = v; ()))
+  -- in a statement the side runs on its own copy, and a local it breaks is dropped broken,
+  -- harmlessly: a fail-safe incompleteness while the match was a block (its borrow of `w` ended
+  -- at its arm's return), accepted since D93, as the direct path always did
+  def LieDropped (v : V) : Prop := Id(Unit, (let w = v; match w { MkV(n, x) => n := Zero, }; ()), (let w = v; ()))
   -- twin of LieDropped: the side's arm writes `n := n`
   def LieDroppedOk (v : V) : Prop := Id(Unit, (let w = v; match w { MkV(n, x) => n := n, }; ()), (let w = v; ()))
 }
 
 #guard (run "StuckBlocks" StuckBlocks).rejectedWith [
-  ("LieSeq", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is Void"),
-  ("LieSeqProof", "[Repack] *p is lent to a stuck match, whose arm returns with it, but it is open: field h of MkPos: it holds ⊥"),
+  ("LieSeq", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is Void"),
+  ("LieSeqProof", "[Repack] a borrow of it ends, but it is open: field h of MkPos: it holds ⊥"),
   ("LieNested", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open"),
   ("LieOther", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open"),
   ("LieOwned", "[Repack] w is lent to a stuck match, whose arm returns with it, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Void"),
   ("LieLend", "[Repack] *v is borrowed whole, but it is open"),
   ("LiePass", "[Repack] v is read whole, but it is open"),
-  ("LieClosure", "[Repack] *w is lent to a stuck match, whose arm returns with it, but it is open"),
-  ("LieRet", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is"),
-  ("LendIndex", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is"),
-  ("RepairLater", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open"),
-  ("LieDropped", "[Repack] w is lent to a stuck match, whose arm returns with it, but it is open")]
+  ("LieClosure", "[Repack] a borrow of it ends, but it is open"),
+  ("LieRet", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is One"),
+  ("RepairLater", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is One")]
 
 /-! ## A lent part is unknown at a whole-again point (D73)
 
@@ -829,12 +835,22 @@ ochr LentIndex uses DepFields {
     *r := Zero;
     ()
   )
-  -- and in a statement, with no helper at all
-  reject def BoomB (c0 : V) : Prop := (
+  -- and in a statement, with no helper at all: a proposition that is false on every path, which
+  -- may be stated (rejected while the match was a block, D93); its proof is rejected, so no closed
+  -- `False` follows: `x` keeps the type `Fin1(σ)` of the length it came with
+  def BoomB (c0 : V) : Prop := (
     let c = c0;
     (let r = match c { MkV(n, x) => &n, }; *r := Zero; ());
     match c { MkV(n, x) => IsSucc(clone(n)), }
   )
+  reject def BoomBPf (c0 : V) : BoomB(c0) := (
+    let c = c0;
+    (let r = match c { MkV(n, x) => &n, }; *r := Zero; ());
+    match c {
+      MkV(n, x) => match n { Zero => match x {}, Succ(m) => refl, },
+    }
+  )
+  reject def BoomIB : False := BoomBPf(One1)
   -- The lent part is read as an unknown of its content's own type (docs/26, item 2). An index
   -- field is first-order data, so its content's type is always readable: a constructor value
   -- records its parameters (an unwritten one is an error, `None` here needs `None[Word]`), an
@@ -873,8 +889,9 @@ ochr LentIndex uses DepFields {
   ("Boom2", "unknown constant A2e"),
   ("Boom2Pf", "unknown constant"),
   ("BoomI2", "unknown constant Boom2Pf"),
-  ("LendIndexWrite", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open"),
-  ("BoomB", "[Repack] c is lent to a stuck match, whose arm returns with it, but it is open")]
+  ("LendIndexWrite", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is Void"),
+  ("BoomBPf", "[Match] on c.x, whose type ⌈Fin1(σ1)⌉ is not an inductive type"),
+  ("BoomIB", "unknown constant BoomBPf")]
 
 /-! ## A growable vector (a case study)
 
@@ -989,11 +1006,86 @@ ochr Producers uses DepFields {
 }
 
 #guard (run "Producers" Producers).rejectedWith [
-  ("ClosLie", "[Repack] *w is lent to a stuck match, whose arm returns with it, but it is open"),
+  ("ClosLie", "[Repack] a borrow of it ends, but it is open"),
   ("ClosLieTail", "[Repack] a borrow of it ends, but it is open"),
-  ("IdSideLie", "[Repack] c is lent to a stuck match, whose arm returns with it, but it is open"),
+  ("IdSideLie", "[Repack] Id observes it, but it is open"),
   ("JInClos", "[Repack] *w is lent to a stuck match, whose arm returns with it, but it is open"),
-  ("ArmResult", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open")]
+  ("ArmResult", "[Repack] a borrow of it ends, but it is open")]
+
+-- ## A one-constructor arm runs directly (D93): its lies are caught after it
+-- Since D93 a match on a value of a one-constructor type never closes off, so the end of its arm
+-- is no longer a block's return. A value it breaks stays open after it, as after a write outside
+-- any match (D64), and every way the value reaches code that relies on its type is a whole-again
+-- point the generic path checks, or a read of a field typed by its content ([Open]). These
+-- attacks carry a broken `V` past the end of a directly run arm: read by the field's telescope
+-- type, copied, moved, passed, returned (whole, reborrowed, a field, the index), captured, observed,
+-- through `J` (direct and closed off), into a stuck call (whole, or its index field), through a
+-- join and a later partial repair, and into a statement whose proof would be a closed `False`.
+-- Each is rejected, at the check its reason names.
+ochr DirectArm uses DepFields {
+  def VoidF (v : Void) : False := match v {}
+  def Stuck (k : Word) (v : &V) : Unit := match k { Zero => (), Succ(m) => () }
+  def StuckN (k : Word) (n : &Word) : Unit := match k { Zero => (), Succ(m) => () }
+  reject def ProjAfter (c0 : V) : False := (let c = c0; match c { MkV(n, x) => n := Zero, }; match c.1 {})
+  reject def MatchAfter (c0 : V) : False := (let c = c0; match c { MkV(n, x) => n := Zero, }; match c { MkV(n, x) => match x {}, })
+  reject def InArm (c0 : V) : False := (let c = c0; match c { MkV(n, x) => (n := Zero; match x {}), })
+  reject def CloneAfter (c0 : V) : False := (let c = c0; match c { MkV(n, x) => n := Zero, }; let y = clone(c); match y { MkV(n, x) => match x {}, })
+  reject def CloneThrough (v : &V) : False := (match *v { MkV(n, x) => n := Zero, }; let y = clone(*v); match y { MkV(n, x) => match x {}, })
+  reject def MoveAfter (c0 : V) : False := (let c = c0; match c { MkV(n, x) => n := Zero, }; let y = c; match y { MkV(n, x) => match x {}, })
+  reject def PassAfter (c0 : V) : Word := (let c = c0; match c { MkV(n, x) => n := Zero, }; VN(c))
+  reject def RetWhole (v : &V) : &V := (match *v { MkV(n, x) => n := Zero, }; v)
+  reject def RetReborrow (v : &V) : &V := (match *v { MkV(n, x) => n := Zero, }; &*v)
+  reject def RetField (v : &V) : &Fin1(Zero) := (match *v { MkV(n, x) => (n := Zero; &x), })
+  reject def RetIndex (v : &V) : &Word := match *v { MkV(n, x) => &n, }
+  reject def ClosAfter (c0 : V) : Unit := (let c = c0; match c { MkV(n, x) => n := Zero, }; let f = (λ(u : Unit) : Word => VN(c)); ())
+  reject def IdAfter (c0 : V) : Prop := (let c = c0; Id(Unit, (match c { MkV(n, x) => n := Zero, }; ()), ()))
+  -- an `Eq` side's lie is discarded with its copy, unobserved: harmless
+  def EqSide (c0 : V) : Prop := (let c = c0; Eq(Unit, (match c { MkV(n, x) => n := Zero, }; ()), ()))
+  reject def JDirect (v : &V) : Unit := (J(Word, Zero, Zero, λ(z : Word) : Type => Unit, refl, (match *v { MkV(n, x) => n := Zero, }; ())); ())
+  reject def JStuck (a : Word) (b : Word) (h : Eq(Word, a, b)) (v : &V) : Unit := (J(Word, a, b, λ(z : Word) : Type => Unit, h, (match *v { MkV(n, x) => n := Zero, }; ())); ())
+  reject def StuckCallWhole (k : Word) (v : &V) : Unit := (match *v { MkV(n, x) => n := Zero, }; Stuck(k, v))
+  reject def StuckCallIdx (k : Word) (v : &V) : Unit := (match *v { MkV(n, x) => n := Zero, }; StuckN(k, &(*v).0); ())
+  -- a fail-safe incompleteness, pinned: a stuck call given the index field leaves a sealed
+  -- program there, against which `x`'s type cannot be checked
+  reject def StuckCallIdxNoLie (k : Word) (v : &V) : Unit := (StuckN(k, &(*v).0); ())
+  reject def JoinLie (k : Word) (v : &V) : Unit := (match k { Zero => (match *v { MkV(n, x) => n := Zero, }; ()), Succ(m) => (), }; ())
+  reject def JoinLieTail (k : Word) (v : &V) : Unit := match k { Zero => (match *v { MkV(n, x) => n := Zero, }; ()), Succ(m) => (), }
+  reject def RepairOnePath (k : Word) (v : &V) : Unit := (
+    match *v { MkV(n, x) => n := Zero, };
+    match k { Zero => (match *v { MkV(n, x) => n := Succ(Zero), }; ()), Succ(m) => (), };
+    ())
+  def LenS (c0 : V) : Prop := (let c = c0; match c { MkV(n, x) => n := Zero, }; match c { MkV(n, x) => IsSucc(clone(n)), })
+  reject def LenSPf (c0 : V) : LenS(c0) := (
+    let c = c0;
+    match c { MkV(n, x) => n := Zero, };
+    match c { MkV(n, x) => match n { Zero => match x {}, Succ(m) => refl, }, })
+  reject def BoomS : False := VoidF(match LenSPf(One1) {})
+}
+
+#guard (run "DirectArm" DirectArm).rejectedWith [
+  ("ProjAfter", "[Match] on c.1, whose type ⌈Fin1(σ1)⌉ is not an inductive type"),
+  ("MatchAfter", "[Match] on c.x, whose type ⌈Fin1(σ1)⌉ is not an inductive type"),
+  ("InArm", "[Match] on c.x, whose type ⌈Fin1(σ1)⌉ is not an inductive type"),
+  ("CloneAfter", "[Repack] c is read whole, but it is open"),
+  ("CloneThrough", "[Repack] *v is read whole, but it is open"),
+  ("MoveAfter", "[Repack] c is read whole, but it is open"),
+  ("PassAfter", "[Repack] c is read whole, but it is open"),
+  ("RetWhole", "[Repack] v is read whole, but it is open"),
+  ("RetReborrow", "[Repack] *v is borrowed whole, but it is open"),
+  ("RetField", "[Repack] a borrow of it ends, but it is open"),
+  ("RetIndex", "[Repack] a borrow of it ends, but it is open"),
+  ("ClosAfter", "[Repack] a closure or Π-type captures c, but it is open"),
+  ("IdAfter", "[Repack] Id observes it, but it is open"),
+  ("JDirect", "[Repack] a borrow of it ends, but it is open"),
+  ("JStuck", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open"),
+  ("StuckCallWhole", "[Repack] v is read whole, but it is open"),
+  ("StuckCallIdx", "[Repack] a borrow of it ends, but it is open"),
+  ("StuckCallIdxNoLie", "[Repack] a borrow of it ends, but it is open"),
+  ("JoinLie", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open"),
+  ("JoinLieTail", "[Repack] a borrow of it ends, but it is open"),
+  ("RepairOnePath", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open"),
+  ("LenSPf", "[Match] on c.x, whose type ⌈Fin1(σ1)⌉ is not an inductive type"),
+  ("BoomS", "unknown constant LenSPf")]
 
 ochr DepVec uses ArrayLemmas, Options {
   -- ## The cells

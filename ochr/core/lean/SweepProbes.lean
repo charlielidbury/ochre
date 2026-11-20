@@ -20,10 +20,11 @@ through a returned borrow, end the two in each order, nest calls that return bor
 borrow's content, return a borrow from a stuck block, a stuck call and a `J` whose places are
 already lent, and assign through a returned borrow while a part of it is reborrowed.
 
-What the runs show (`lake exe sweep --probes`). In 212 of their 512 states a live fill exists.
-But in none of those states, and in none of the suite's 1,786, does another live borrow have any
-site at the position of a live fill, at the same path or below it. The fills stay single-label for
-two reasons. First, a returned borrow's mark wraps the whole place it is lent, with the reborrow's
+What the runs show (`lake exe sweep --probes`, after D93). In 224 of their 538 states a live fill
+exists. In 18 of them another live borrow has a site at the position of a live fill (`TwoParts`,
+accepted since D93: two disjoint parts of a returned borrow's place lent onward), in 3 at the same
+path, never strictly below it; in the suite's 1,825 states with a live fill, none. The premise
+of (WF12) does not arise. A fill has nothing of another borrow below it for two reasons. First, a returned borrow's mark wraps the whole place it is lent, with the reborrow's
 loan inside it: after `let a = (let r = Whole(&c); &(*r).0)` the state is
 `c = lent_3 (loan_3, 2), a = borrow_3 1`. Second, when the returned borrow ends, its mark passes to
 the borrow its content was lent onward to, at the same place. Putting another borrow's site below
@@ -74,9 +75,9 @@ ochr LentUnder uses Nats, Fixtures {
     let a = (let r = Whole(&c); IdN(&(*r).1));
     *a := 3;
     let d = c; d)
-  -- two borrows of disjoint parts through one returned borrow: the second ends the first (a
-  -- borrow of a part ends the borrows of its siblings, as `&c.0; &c.1` does), so `*a` is gone
-  reject def TwoParts : Nat × Nat := (
+  -- two borrows of disjoint parts through one returned borrow, live together (Rust accepts;
+  -- rejected before D93, when a borrow of a part ended the borrows of its siblings)
+  def TwoParts : Nat × Nat := (
     let c = (1, 2);
     let e = (0, 0);
     let r = Whole(&c);

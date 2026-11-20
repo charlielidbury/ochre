@@ -162,11 +162,13 @@ ochr FordAttack uses Lists {
   -- A12: a stale proof through a closure: `f` was formed at the old index, so after the write its
   -- result does not have the type the equation field now needs
   reject def StaleProof (r : VS) : Unit := match r { MkVS(n, h) => (let f = (λ(u : Unit) : Eq(Word, n, Zero) => h); n := Succ(Zero); h := f(())) }
-  -- A13: an honest write inside one side of an `Id`, and the lying version: the side's match is
-  -- closed off as a stuck block, whose borrow of `*r` ends at its arm's return (D72)
+  -- A13: an honest write inside one side of an `Id`, and the lying version: the side's match runs
+  -- directly (D93: one constructor), and the observation ends every borrow, `*r`'s with `*r` open
+  -- (D72's block, whose borrow of `*r` ended at its arm's return, caught it before)
   def IdHonest (r : &VS) : Prop := Id(Unit, match *r { MkVS(n, h) => (n := Zero; h := refl) }, ())
   reject def IdLie (r : &VS) : Prop := Id(Unit, match *r { MkVS(n, h) => n := Succ(Zero) }, ())
-  -- the same lie in a match followed by more code (D72), and its honest twin
+  -- the same lie in a match followed by more code (D72; since D93 caught where `r`'s borrow ends),
+  -- and its honest twin
   reject def SeqLie (r : &VS) : Unit := (match *r { MkVS(n, h) => n := Succ(Zero) }; ())
   -- D76: the producer obligation on a closed-off `J` over Forded values. The transported term
   -- writes an index (the equation field becomes ⊥), or the length of a tail behind a
@@ -224,8 +226,8 @@ ochr FordAttack uses Lists {
   ("SwapTail", "[Repack] a borrow of it ends, but it is open: field xs of VCons holds a value of type VecF(Word, Zero), but its type from the earlier fields is VecF(Word, σ2)"),
   ("BlockElim", "[Match] on v.h, whose type Eq(Word, σ0, Zero) is not an inductive type"),
   ("Sneak", "[D55] T is written where a type is expected, but its declared type is not a sort (it is a type only by computation)"),
-  ("IdLie", "[Repack] *r is lent to a stuck match, whose arm returns with it, but it is open: field h of MkVS: it holds ⊥"),
-  ("SeqLie", "[Repack] *r is lent to a stuck match, whose arm returns with it, but it is open: field h of MkVS: it holds ⊥"),
+  ("IdLie", "[Repack] a borrow of it ends, but it is open: field h of MkVS: it holds ⊥"),
+  ("SeqLie", "[Repack] a borrow of it ends, but it is open: field h of MkVS: it holds ⊥"),
   ("JLieF", "[Repack] *r is lent to a stuck match, whose arm returns with it, but it is open: field h of MkVS: it holds ⊥"),
   ("JLieV", "[Repack] *v is lent to a stuck match, whose arm returns with it, but it is open: field xs of VCons")]
 

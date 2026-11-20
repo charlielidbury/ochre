@@ -507,3 +507,90 @@ ochr BlockEntryRuns uses Nats, Fixtures, StaticEnds, BlockEntry {
 #guard (run "BlockEntry" BlockEntry).rejectedWith [
   ("IAUse", "no such place *r: its path does not exist in ⊥"),
   ("ArmUsesEnded", "no such place *r: its path does not exist in ⊥")]
+
+/-! ## A match on a value of a one-constructor type never closes off (D93)
+
+A projection `x.i` (D81), a destructuring `let` and an explicit one-arm match are matches on a
+value of a type with one constructor. In a typed run an unknown scrutinee is refined in place to
+that constructor (a sealed one is generalised first), and the one arm runs, as at an instance:
+such a match is never a stuck block. With one arm there is no other path to agree with, so it has
+no entry (D90's rule 2) and no join (D84) on any path. Before D93 the generic call closed it off
+when it was not in tail position, and its entry read the whole value: `&x.1; x.0` ended the
+borrow of `x.1` (D90's known gap F4: `F1`–`F4`, which Rust accepts), and `clone(x.0)`'s join
+counted the clone's read as a move (`CL`, `CLrun`: `x` partly moved afterwards). A stuck block
+whose arm borrows a field of a captured place reached an internal error ("stuck escaped to the
+top"): the block's call took `&c.0` at an unrefined `c`. A block's captures are now refined in
+place before its arms (`SB` and its variants). -/
+
+ochr OneConstructor uses Nats, Fixtures, StaticEnds {
+  def Whole (x : &(Nat × Nat)) : &(Nat × Nat) := x
+  def IdN (x : &Nat) : &Nat := x
+  -- disjoint fields (D90's gap F4; Rust accepts all four)
+  def F1 (x : Nat × Nat) : Unit := (let r = &x.1; let y = x.0; *r := Z; ())
+  def F2 (x : Nat × Nat) : Unit := (let r = &x.1; let y = clone(x.0); *r := Z; ())
+  def F3 (x : &(Nat × Nat)) : Unit := (let r = &(*x).1; let y = clone((*x).0); *r := Z; ())
+  def F4 : Unit := (let x = (Z, Z); let r = &x.1; let y = clone(x.0); *r := Z; ())
+  -- two borrows of disjoint fields, live together (Rust accepts)
+  def TwoBorrows (c : Nat × Nat) : Unit := (let a = &c.0; let b = &c.1; *a := Z; *b := Z; ())
+  def TwoBorrowsRun : Unit := (let c = (Z, Z); let a = &c.0; let b = &c.1; *a := Z; *b := Z; ())
+  -- control: the same field twice; the second borrow ends the first (Rust rejects too)
+  reject def SameField (c : Nat × Nat) : Unit := (let a = &c.0; let b = &c.0; *a := Z; *b := Z; ())
+  -- `clone` of a projection copies, and leaves the value whole (CloneProj)
+  def CL : Nat × Nat := (let x = (Z, Z); let y = clone(x.0); x)
+  def CLg (x : Nat × Nat) : Nat × Nat := (let y = clone(x.0); x)
+  -- control: a read of a projection moves the field, so the value is partly moved
+  reject def MoveProj (x : Nat × Nat) : Nat × Nat := (let y = x.0; x)
+  -- a stuck block whose arm borrows a field of a captured place (an internal error before)
+  def SB (k : Nat) (c : Nat × Nat) : Nat := (match k { Z => (let t = &c.0; ()), S _ => () }; 0)
+  def SBRet1 (k : Nat) (c : Nat × Nat) : Nat := (let s = match k { Z => &c.0, S _ => &c.0 }; 0)
+  def SBRet2 (k : Nat) (c : Nat × Nat) : Nat := (let s = match k { Z => &c.0, S _ => &c.1 }; 0)
+  def SBRetMix (k : Nat) (c : Nat × Nat) (d : Nat) : Nat := (let s = match k { Z => &c.0, S _ => &d }; 0)
+  def SBDeref (k : Nat) (c : Nat × Nat) : Nat := (let r = &c; let s = match k { Z => &(*r).0, S _ => &(*r).1 }; 0)
+  def SBParam (k : Nat) (r : &(Nat × Nat)) : Nat := (let s = match k { Z => &(*r).0, S _ => &(*r).1 }; 0)
+  def SBInBlock (k : Nat) (c : Nat × Nat) : Nat := (let s = (let r = Whole(&c); match k { Z => &(*r).0, S _ => &(*r).1 }); 0)
+  -- ... and through `J`'s transported term at an unknown endpoint ([T-J-stuck]'s block)
+  def SJ (m : Nat) (h : Eq(Nat, m, Z)) (c : Nat × Nat) : Nat × Nat := (
+    let r = Whole(&c);
+    let v = J(Nat, m, Z, MN, h, (let t = IdN(&(*r).0); *t := 1; Z));
+    let d = c; d)
+  -- a captured field under a fill over a live borrow: the block's entry ends the borrow first
+  -- (D90), then the capture is refined (a fill is never generalised with its hole, D90's `G1`)
+  def SFB (n : Nat) (k : Nat) (a : Nat × Nat) (b : Nat × Nat) : Unit := (
+    let r = PickP(n, &a, &b); match k { Z => (let t = &a.0; ()), S _ => () }; ())
+  reject def SFBUse (n : Nat) (k : Nat) (a : Nat × Nat) (b : Nat × Nat) : Unit := (
+    let r = PickP(n, &a, &b); match k { Z => (let t = &a.0; ()), S _ => () }; *r := (Z, Z); ())
+  -- a field of the place a returned borrow points to, borrowed in a block's arm
+  def SFR (n : Nat) (k : Nat) (a : Nat × Nat) (b : Nat × Nat) : Unit := (
+    let r = PickP(n, &a, &b); match k { Z => (let t = &(*r).0; ()), S _ => () }; *r := (Z, Z); ())
+  -- the borrow a block returns of one field is still live after it, the other field free
+  def SBUse (k : Nat) (c : Nat × Nat) : Nat × Nat := (let s = match k { Z => &c.0, S _ => &c.0 }; *s := 1; let d = c; d)
+  reject def SBUseAfter (k : Nat) (c : Nat × Nat) : Nat × Nat := (let s = match k { Z => &c.0, S _ => &c.0 }; let d = c; *s := 1; d)
+}
+
+ochr OneConstructorRuns uses Nats, Fixtures, StaticEnds, OneConstructor {
+  def F1Run : Unit := F1((Z, Z))
+  def F2Run : Unit := F2((Z, Z))
+  def F3Run : Unit := (let x = (Z, Z); F3(&x))
+  def TwoBorrowsCall : Unit := TwoBorrows((Z, Z))
+  def CLrun : Nat × Nat := CLg((Z, Z))
+  def SBRun : Nat := SB(0, (Z, Z))
+  def SBRet2Run : Nat := SBRet2(1, (Z, Z))
+  def SBParamRun : Nat := (let c = (Z, Z); SBParam(0, &c))
+  def SJRun : Nat × Nat := SJ(0, refl, (Z, Z))
+  def SBUseRun : Nat × Nat := SBUse(1, (Z, Z))
+  def SFBRun : Unit := SFB(0, 0, (Z, Z), (Z, Z))
+  def SFRRun : Unit := SFR(0, 0, (Z, Z), (Z, Z))
+  -- `SFBUse` at known values: the match on `k` runs directly, its entry ends `r` as the block's did
+  reject def SFBUseRun : Unit := (
+    let a = (Z, Z); let b = (Z, Z); let r = PickP(0, &a, &b); let k = 0;
+    match k { Z => (let t = &a.0; ()), S _ => () }; *r := (Z, Z); ())
+}
+
+#guard (run "OneConstructor" OneConstructor).rejectedWith [
+  ("SameField", "no such place *a"),
+  ("MoveProj", "[Read] x was partly moved out (D53)"),
+  ("SBUseAfter", "no such place *s"),
+  ("SFBUse", "no such place *r")]
+
+#guard (run "OneConstructorRuns" OneConstructorRuns).rejectedWith [
+  ("SFBUseRun", "no such place *r")]

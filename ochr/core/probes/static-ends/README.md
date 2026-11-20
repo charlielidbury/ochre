@@ -15,8 +15,8 @@ they are checked by every build.
 | `CensusBlock.lean` | `EIB`, `EJB`, `GJ`, `GJI` and closed calls | `EIB`, `EJB`, `GJI` accepted with their closed calls rejected (the faults through a stuck block's captures, and through `J`'s); `GJ` rejected | `EIB`, `EJB`, `GJI` and their calls accepted (asserted) |
 | `Census2.lean` | reborrow transfer `G8`/`G8K`, nested calls `Nest`/`NestK`, `Pick2`, a tail match in a proof match's arm `PT`, `Local` | `G8K`, `NestK` accepted; the rest as after | `G8K`, `NestK` rejected (Rust rejects both) |
 | `Census3.lean` | `SplitKeeps`, `SplitKeeps0` | both accepted (a split world's re-run of `b`'s fill dropped `r`'s hole) | both rejected: `b` stays lent (Rust rejects) |
-| `Fields.lean` | `F1`–`F4`, disjoint field borrows | `F1`–`F3` rejected (abstract `x`), `F4` accepted (known `x`) | all rejected: D90's known gap F4 (Rust accepts all four) |
+| `Fields.lean` | `F1`–`F4`, disjoint field borrows | `F1`–`F3` rejected (abstract `x`), `F4` accepted (known `x`) | all rejected: D90's known gap F4 (Rust accepts all four); all accepted since D93 |
 | `Snapshot.lean` | `EK` | `EK` and its closed calls accepted | `EK` rejected (asserted): D90's known gap EK (Rust accepts) |
 | `Sealed.lean` | `SF`, `SF0` | both accepted | both rejected: a place below a sealed fill has the fill's holes on its path |
 | `Reborrow.lean` | `RB`: a reborrow of a part of `*r` outlives the returned borrow `r` | all accepted | all accepted; the place `r` points into stays marked (`lent_r loan_r`), so the whole of it is handed to the reborrow when `r` ends |
-| `CloneProj.lean` | `CL`, `CLg`, `CLrun` | `CLg` accepted, `CLrun` rejected | the same: **not a D90 probe**, a fault on main found while writing D90 (`clone(x.0)` moves `x.0` at the projection match's join) |
+| `CloneProj.lean` | `CL`, `CLg`, `CLrun` | `CLg` accepted, `CLrun` rejected | the same: **not a D90 probe**, a fault on main found while writing D90 (`clone(x.0)` moves `x.0` at the projection match's join); all accepted since D93 (no join) |

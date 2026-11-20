@@ -3305,13 +3305,27 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
     if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
     if typed then discard (scrutType fuel' p ty)
     match arms[c]? with
-    | some (_, a) => do let w ← wanted; joinEnds fuel' (.matchInd p ty arms) tail (do demand w; modify fun s => { s with tailNext := tail }; eval fuel' typed a (if typed then none else expected))
+    | some (_, a) => do
+      let w ← wanted
+      let run := do demand w; modify fun s => { s with tailNext := tail }; eval fuel' typed a (if typed then none else expected)
+      -- D93: a match on a type with one constructor has one arm and no other path to agree
+      -- with: it never closes off in a typed run (an unknown is refined in place, below), so it
+      -- has no entry (rule 2) and no join (D84), on every path
+      if (← lookupInd ty).ctors.length == 1 then run
+      else joinEnds fuel' (.matchInd p ty arms) tail run
     | none => err s!"[Match] no arm for constructor {c}"
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
   | .abs σ =>
     if !typed then stuckOn v
     else
       let (d, ps) ← scrutType fuel' p ty
+      -- D93: an unknown of a type with one constructor is that constructor, so the match
+      -- refines it in place and runs its one arm, as an instance does (above)
+      if d.ctors.length == 1 then
+        let r ← etaInPlace fuel' σ d ps
+        trace fun _ => s!"[Split] σ{σ} := {r} (one constructor, in place)"
+        let expected ← expected.mapM (substV fuel' (.abs σ) r)
+        return ← evalMatchInd fuel' typed p ty arms expected tail
       splitArmsThenClose fuel' (.matchInd p ty arms) σ
         ((List.range d.ctors.length).zip (arms.map (·.2)) |>.map fun (c, a) => (ctorRefinement fuel' d ps c, a)) expected
   | .sealed _ | .loan _ =>
@@ -3325,9 +3339,61 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
       let (d, ps) ← scrutType fuel' p ty
       let σ ← generalizeNeutral fuel' p v
       let expected ← expected.mapM (substV fuel' v (.abs σ))
+      -- D93: generalised, it is refined in place (above)
+      if d.ctors.length == 1 then return ← evalMatchInd fuel' typed p ty arms expected tail
       splitArmsThenClose fuel' (.matchInd p ty arms) σ
         ((List.range d.ctors.length).zip (arms.map (·.2)) |>.map fun (c, a) => (ctorRefinement fuel' d ps c, a)) expected
   | _ => err s!"[Match] on {v}, which is not a value of {ty}"
+termination_by structural fuel
+
+/-- D68, D93: the unknown `σ` of the one-constructor declaration `d` (at the parameters `ps`) is
+that constructor: it is refined in place, `σ := C(σ̄)`, an exhaustive [Split] with one arm. The
+fields are the ones this world already named, if any (`etaRefs`: every private copy names them
+alike, D68), else fresh ones, recorded for this world, since their types are read in it (D79). -/
+def etaInPlace (fuel : Nat) (σ : Nat) (d : IndDecl) (ps : List Value) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let r ← match (← get).etaRefs.lookup σ with
+    | some r => pure r
+    | none => do
+      let r ← ctorRefinement fuel' d ps 0
+      modify fun s => { s with etaRefs := (σ, r) :: s.etaRefs }
+      pure r
+  refine fuel' σ r
+  pure r
+termination_by structural fuel
+
+/-- D93: make the place `q` exist where a prefix of it holds an unknown of a one-constructor type,
+or a sealed program of one (generalised first, D34, or replaced by this world's record of it):
+each such prefix is refined in place (`etaInPlace`), as `movedPlace` refines one for a moved place.
+A prefix that is missing for any other reason (an unknown of a type with several constructors) is
+left as it is, and so is a fill over a live borrow, which generalising would lose (D90's `G1`):
+`closeBlock` calls it after its entry has accessed the captures, which ends such a borrow first.
+The field of a captured place is then a place, so the block's call takes it (`SB`). -/
+def etaPlace (fuel : Nat) (q : Place) : M Unit := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  if (← content? q).isSome then return
+  let some p := (match q with
+    | .deref p | .proj _ p | .field _ p => some p
+    | .var _ => none) | return
+  etaPlace fuel' p
+  if let some v ← content? p then
+    if !(fillHoles (← get).env v).isEmpty then return
+  let oneCtor (T : Value) : M (Option (IndDecl × List Value)) := do
+    match T with
+    | .tInd n ps => do
+      let d ← lookupInd n
+      pure (if d.ctors.length == 1 then some (d, ps) else none)
+    | _ => pure none
+  match ← content? p with
+  | some n@(.sealed _) =>
+    if let some T ← placeType? fuel' p then
+      if (← oneCtor T).isSome then
+        match ← recordedNeutral n with
+        | some r => substEnv fuel' n r true
+        | none => discard (generalizeNeutral fuel' p n)
+  | _ => pure ()
+  if let some (.abs σ) ← content? p then
+    if let some (d, ps) ← oneCtor (← absType σ) then discard (etaInPlace fuel' σ d ps)
 termination_by structural fuel
 
 /-- D53: a place an arm moved out, as it exists in the closed-off (unrefined) state. The
@@ -3361,13 +3427,7 @@ def movedPlace (fuel : Nat) (q : Place) : M Place := do
       if d.ctors.length == 1 then
         -- D68: the same fields in every private copy (a statement's sides each move out of `σ`);
         -- the record is this world's, since the fields' types are read here (`exitWorld`)
-        let r ← match (← get).etaRefs.lookup σ with
-          | some r => pure r
-          | none => do
-            let r ← ctorRefinement fuel' d ps 0
-            modify fun s => { s with etaRefs := (σ, r) :: s.etaRefs }
-            pure r
-        refine fuel' σ r
+        discard (etaInPlace fuel' σ d ps)
         movedPlace fuel' q
       else pure p
     | _ => pure p
@@ -3677,6 +3737,11 @@ def closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Valu
   -- order the captures by frame position (oldest binding first), then by path
   let capsS := caps.qsort fun (a, _) (b, _) => a.root > b.root || (a.root == b.root && (a.steps.2.length < b.steps.2.length))
   entryAccess fuel' capsS
+  -- D93: a captured field of an unknown of a one-constructor type is a place once the unknown is
+  -- refined in place, here, after the entry (which has ended any borrow over a fill on its path)
+  -- and before the arms, in this world, as a moved place is (`movedPlace`); the block's call then
+  -- takes it (the internal error `SB` reached before)
+  for (q, _) in capsS do etaPlace fuel' q
   -- each arm runs in its own world (`enterWorld`/`inWorld`, split-model's (X)): a fact an arm
   -- learns is never visible in a sibling arm or after the block
   let w ← enterWorld
@@ -4115,10 +4180,18 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
       if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
       discard (scrutType fuel' p ty)
       match arms[c]? with
-      | some (_, a) => checkTail fuel' a (← joinCont fuel' (.matchInd p ty arms) k)
+      | some (_, a) =>
+        -- D93: one constructor, one arm: no join
+        if (← lookupInd ty).ctors.length == 1 then checkTail fuel' a k
+        else checkTail fuel' a (← joinCont fuel' (.matchInd p ty arms) k)
       | none => err s!"[Match] no arm for constructor {c}"
     | .abs σ =>
       let (d, ps) ← scrutType fuel' p ty
+      -- D93: an unknown of a type with one constructor is refined in place, as `evalMatchInd` does
+      if d.ctors.length == 1 then
+        let r ← etaInPlace fuel' σ d ps
+        trace fun _ => s!"[Split] σ{σ} := {r} (one constructor, in place)"
+        return ← checkTail fuel' t k
       let w ← enterWorld
       for (c, (_, a)) in (List.range d.ctors.length).zip arms do
         inWorld w do
