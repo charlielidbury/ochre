@@ -469,6 +469,143 @@ theorem sgood_pushBindShaped (hMR : MemReads K.dm K.Γ) {s : SState} (hs : SGood
       (fun y => by rw [hlive, hl]) hv hlab hl.symm (fun l' h => by cases h; exact hind l hl)
       hacyc hfresh
 
+/-! ## A `let`'s drop -/
+
+/-- On the error value, a read gives `err` or nothing. -/
+theorem follow_err (dm : DataModel) (Γ : List IndDecl) : ∀ (T : TyS) (steps : List Step) (x : Sem) (U : TyS),
+    Sem.follow dm Γ T .err steps = some (x, U) → x = .err
+  | _, [], _, _, h => by simp only [Sem.follow, Option.some.injEq, Prod.mk.injEq] at h; exact h.1.symm
+  | T, st :: sts, x, U, h => by
+    simp only [Sem.follow] at h
+    cases st with
+    | deref => exact follow_err dm Γ T sts x U (by simpa [Sem.step] using h)
+    | proj i =>
+      cases i with
+      | zero => simp [Sem.step, Sem.asNat, Sem.as, Sem.stepField] at h
+      | succ i => simp [Sem.step, Sem.stepField] at h
+    | field g => simp [Sem.step, Sem.stepField] at h
+
+theorem binds_dropLast (s : SState) (f i : Nat) (hq : some (Pos.bind f i) ≠ s.dropped) :
+    s.dropLast.env[f]?.bind (·.binds[i]?) = s.env[f]?.bind (·.binds[i]?) := by
+  simp only [SState.dropLast, List.getElem?_modify]
+  split
+  · rename_i hf
+    cases e : s.env[f]? with
+    | none => simp
+    | some fr =>
+      simp only [Functor.map, Option.map_some, Option.bind_some]
+      have hlast : s.env.getLast? = some fr := by
+        rw [List.getLast?_eq_getElem?]; rw [← hf] at e; simpa [SState.topIdx] using e
+      have hi : i ≠ fr.binds.length - 1 := by
+        intro hi; apply hq; simp [SState.dropped, hlast, hf, hi]
+      by_cases hlt : i < fr.binds.length - 1
+      · rw [List.getElem?_dropLast]; simp [hlt]
+      · have h1 : fr.binds.dropLast[i]? = none := List.getElem?_eq_none (by simp; omega)
+        have h2 : fr.binds[i]? = none := List.getElem?_eq_none (by omega)
+        rw [h1, h2]
+  · cases s.env[f]? <;> simp
+
+theorem tyAt_dropLast (s : SState) (q : Pos) (hq : some q ≠ s.dropped) : s.dropLast.tyAt q = s.tyAt q := by
+  cases q with
+  | temp f i => rfl
+  | bind f i =>
+    show (match s.dropLast.env[f]?.bind (·.binds[i]?) with | some b => b.ty | none => .plain TyM.err) = _
+    rw [binds_dropLast s f i hq]; rfl
+
+/-- **Dropping the last binding keeps the invariant** where the label it may still hold is read by no
+position (the `let`'s drop ends that label first): a future typed after, with that label set to its
+record, is typed before, and nothing reads the label. -/
+theorem sgood_dropLast {s : SState} (hs : SGood K.dm K.Γ φ s)
+    (hind : ∀ r x, s.dropped = some r → s.shape r = some x → ∀ p, Indep x (s.valAt p)) :
+    SGood K.dm K.Γ φ s.dropLast := by
+  have hHT : s.dropLast.heldTy = s.heldTy := rfl
+  have hHM : s.dropLast.heldMem = s.heldMem := rfl
+  have hsub : ∀ p x, s.dropLast.shape p = some x → s.shape p = some x := (SState.shapeSub_dropLast s).1
+  have hlive_sub : ∀ y, y ∈ s.dropLast.liveLabels → y ∈ s.liveLabels := by
+    intro y hy
+    obtain ⟨q, hq, h⟩ := (SState.live_iff _ y).1 hy
+    exact (SState.live_iff s y).2 ⟨q, (SState.mem_positions_dropLast hq).1, hsub q y h⟩
+  -- a label live before and not after was held only by the dropped binding, so nothing reads it
+  have hgone : ∀ y, y ∈ s.liveLabels → y ∉ s.dropLast.liveLabels → ∀ p, Indep y (s.valAt p) := by
+    intro y hy hny
+    obtain ⟨q, hq, h⟩ := (SState.live_iff s y).1 hy
+    by_cases hqd : some q = s.dropped
+    · exact hind q y hqd.symm h
+    · exact absurd ((SState.live_iff _ y).2 ⟨q, SState.mem_positions_dropLast' hq hqd,
+        by rw [SState.dropLast_shape, if_neg hqd]; exact h⟩) hny
+  let ψ' : Future → Future := fun ψ y => if y ∈ s.liveLabels ∧ y ∉ s.dropLast.liveLabels then s.heldMem y else ψ y
+  have hT1 : ∀ ψ, TypedF K.dm K.Γ φ s.dropLast ψ → TypedF K.dm K.Γ φ s (ψ' ψ) := by
+    rintro ψ ⟨hag, hψ⟩
+    refine ⟨fun y hy => ?_, fun y hy => ?_⟩
+    · show (if y ∈ s.liveLabels ∧ y ∉ s.dropLast.liveLabels then _ else ψ y) = φ y
+      rw [if_neg (fun h => hy h.1)]; exact hag y (fun h => hy (hlive_sub y h))
+    · show PMem _ _ (if y ∈ s.liveLabels ∧ y ∉ s.dropLast.liveLabels then _ else ψ y) _
+      split
+      · exact .inr ⟨_, mem_whole K.dm.read_wholeFields (hs.held y hy), .refl _, hs.held y hy⟩
+      · rename_i hc
+        have hy' : y ∈ s.dropLast.liveLabels := Classical.byContradiction fun h => hc ⟨hy, h⟩
+        exact hψ y hy'
+  have hT2 : ∀ ψ p, s.valAt p (ψ' ψ) = s.valAt p ψ := by
+    intro ψ p
+    -- the labels updated are each read by no one; there is at most the dropped binding's
+    by_cases hc : ∃ y, y ∈ s.liveLabels ∧ y ∉ s.dropLast.liveLabels
+    · obtain ⟨y, hy, hny⟩ := hc
+      have huniq : ∀ z, z ∈ s.liveLabels ∧ z ∉ s.dropLast.liveLabels → z = y := by
+        intro z ⟨hz, hnz⟩
+        obtain ⟨q, hq, h⟩ := (SState.live_iff s z).1 hz
+        obtain ⟨q', hq', h'⟩ := (SState.live_iff s y).1 hy
+        have e1 : some q = s.dropped := Classical.byContradiction fun hqd => hnz ((SState.live_iff _ z).2
+          ⟨q, SState.mem_positions_dropLast' hq hqd, by rw [SState.dropLast_shape, if_neg hqd]; exact h⟩)
+        have e2 : some q' = s.dropped := Classical.byContradiction fun hqd => hny ((SState.live_iff _ y).2
+          ⟨q', SState.mem_positions_dropLast' hq' hqd, by rw [SState.dropLast_shape, if_neg hqd]; exact h'⟩)
+        have : q = q' := Option.some.inj (e1.trans e2.symm)
+        subst this; exact Option.some.inj (h.symm.trans h')
+      have e : ψ' ψ = ψ.upd y (s.heldMem y) := by
+        funext z
+        show (if z ∈ s.liveLabels ∧ z ∉ s.dropLast.liveLabels then s.heldMem z else ψ z) = _
+        split
+        · rename_i hz; rw [huniq z hz, Future.upd_same]
+        · rename_i hz
+          have hzy : z ≠ y := fun e => hz (e ▸ ⟨hy, hny⟩)
+          rw [Future.upd_other _ _ hzy]
+      rw [e]; exact hgone y hy hny p ψ _
+    · have e : ψ' ψ = ψ := by
+        funext z
+        show (if z ∈ s.liveLabels ∧ z ∉ s.dropLast.liveLabels then s.heldMem z else ψ z) = _
+        rw [if_neg (fun h => hc ⟨z, h⟩)]
+      rw [e]
+  refine ⟨fun ψ hψ f i hpi => ?_, fun ψ hψ p l' hl' => ?_, fun l' hl' => ?_, fun f i l' hl' => ?_, ?_, ?_,
+    fun ψ hψ f i steps x U hf hx => ?_⟩
+  · obtain ⟨hpi', hd⟩ := SState.mem_positions_dropLast hpi
+    show GoodVal _ _ (s.dropLast.valAt _ ψ) (s.dropLast.tyAt _).m
+    rw [SState.valAt_dropLast s _ hd, tyAt_dropLast s _ hd, ← hT2 ψ]
+    exact hs.bind _ (hT1 ψ hψ) f i hpi'
+  · rw [SState.dropLast_shape] at hl'
+    split at hl'
+    · cases hl'
+    · rename_i hd
+      rw [SState.valAt_dropLast s _ hd, hHT, ← hT2 ψ]
+      exact hs.holder _ (hT1 ψ hψ) p l' hl'
+  · rw [hHT, hHM]; exact hs.held l' (hlive_sub l' hl')
+  · rw [SState.dropLast_shape] at hl'
+    split at hl'
+    · cases hl'
+    · rename_i hd; rw [tyAt_dropLast s _ hd, hHT]; exact hs.holderTy f i l' hl'
+  · exact SState.dropLast_rinv hs.acyc hind
+  · intro q l ⟨ψ, x, hne⟩
+    show l < s.nextLoan
+    by_cases hd : some q = s.dropped
+    · exfalso
+      have hq : q ∉ s.dropLast.positions := fun h => (SState.mem_positions_dropLast h).2 hd
+      apply hne; simp [SState.toMean, SState.valAt_of_not_mem _ _ hq]
+    · exact hs.fresh q l ⟨ψ, x, by simpa [SState.toMean, SState.valAt_dropLast s _ hd] using hne⟩
+  · by_cases hd : some (Pos.bind f i) = s.dropped
+    · have hq : Pos.bind f i ∉ s.dropLast.positions := fun h => (SState.mem_positions_dropLast h).2 hd
+      rw [SState.valAt_of_not_mem _ _ hq] at hf
+      rw [follow_err K.dm K.Γ _ _ _ _ hf] at hx; exact absurd hx (by simp [Sem.whole])
+    · rw [SState.valAt_dropLast s _ hd, tyAt_dropLast s _ hd, ← hT2 ψ] at hf
+      exact hs.read _ (hT1 ψ hψ) f i steps x U hf hx
+
 /-- A `let`'s drop: the borrow its binding holds ends, or the borrows lent at it end, then it goes. -/
 theorem sgood_letDrop {s : SState} (hs : SGood K.dm K.Γ φ s) :
     SGood K.dm K.Γ φ ((match (match s.env.getLast? with
@@ -476,7 +613,42 @@ theorem sgood_letDrop {s : SState} (hs : SGood K.dm K.Γ φ s) :
         | none => none) with
       | some l => s.endLabel l
       | none => letLenders s).dropLast) := by
-  sorry
+  have hi := hs.acyc
+  generalize hH : (match s.env.getLast? with
+      | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
+      | none => none) = held
+  have hheld : held = match s.dropped with | some r => s.shape r | none => none := by
+    rw [← hH]; unfold SState.dropped; cases s.env.getLast? <;> rfl
+  apply sgood_dropLast
+  · cases held with
+    | none =>
+      show SGood _ _ _ (letLenders s)
+      unfold letLenders
+      split
+      · exact access_sgood hs _ _
+      · exact hs
+    | some l => exact endLabel_sgood hs l
+  · intro r x hr hx
+    cases held with
+    | none =>
+      simp only at hr hx ⊢
+      rw [(letLenders_props (fun _ => True) hi).2.2.2.2.1] at hr
+      rw [hr] at hheld; simp only at hheld
+      rw [(letLenders_props (fun _ => True) hi).2.2.2.2.2 r x hx] at hheld; cases hheld
+    | some l =>
+      simp only at hr hx ⊢
+      rw [dropped_endLabel] at hr
+      rw [hr] at hheld; simp only at hheld
+      have hrpos : r ∈ s.positions := (hi.2.2 r l hheld.symm).1
+      obtain ⟨r', hr'⟩ := SState.holderOf_of_live (live_of_shape hrpos hheld.symm)
+      obtain ⟨hr'pos, hr'shape⟩ := SState.holderOf_spec hr'
+      rw [SState.endLabel_eq hr'] at hx ⊢
+      rw [SState.endAt_shape] at hx
+      simp only at hx
+      split at hx
+      · cases hx
+      · rw [← hheld] at hx; cases hx
+        exact SState.endAt_indep hi.2.1 hr'pos hr'shape
 
 /-- **A read of a place**, copied or moved: the value read is a member of the type the read gives it
 (the read clause, `ReadOk`, at the typed future of the accessed state); a move writes `⊥` there and,
