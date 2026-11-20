@@ -269,16 +269,17 @@ def wf11 : Clause where
 
 /-! ### (ii) (WF12): at a live fill, nothing else is lent -/
 
-/-- (WF12), mirrored EXACTLY, with `liveLoan` (main's, as the Prop) and `Env.sitesOf` (copied):
+/-- (WF12), mirrored (restated a second time, docs/31 D39, after main's D93 made
+`LentUnder.TwoParts` accepted: two live borrows filled at one place):
 ```
 def WF12 (env : Env) : Prop :=
-  ∀ k l, liveLoan env k = true → liveLoan env l = true → k ≠ l →
+  ∀ k l, liveLoan env k = true → liveLoan env l = true →
     ∀ x ∈ Env.sitesOf env k, x.fill = true → ∀ y ∈ Env.sitesOf env l, y.pos = x.pos →
-      (pathKey x.path).isPrefixOf (pathKey y.path) = false
+      (pathKey x.path).isPrefixOf (pathKey y.path) = true →
+      ∃ z ∈ Env.sitesOf env l, z.pos = x.pos ∧ pathKey z.path = pathKey x.path ∧ z.fill = true
 ```
-The labels range over `liveLabels env`, which is exactly the set of `k` with `liveLoan env k`.
-Restated from the first run's form ("under a live fill, only what ending that fill reaches", whose
-premise never arose) to what that run measured. -/
+Under a live fill only borrows filled there. The labels range over `liveLabels env`. The D33 form
+("no other live borrow is lent at the fill's path or below") is kept as a premise, counted. -/
 def wf12Viols (env : Env) : List Viol := Id.run do
   let live := (liveLabels env).map fun l => (l, envSitesOf env l)
   let mut out : Array Viol := #[]
@@ -286,17 +287,23 @@ def wf12Viols (env : Env) : List Viol := Id.run do
     for x in xs do
       if x.fill then
         for (l, ys) in live do
-          if l != k then
-            for y in ys do
-              if y.pos == x.pos && (pathKey x.path).isPrefixOf (pathKey y.path) then
-                out := out.push ⟨s!"{siteForm env y} of a live borrow at or under {siteForm env x} of another, at {posKind x.pos}",
+          for y in ys do
+            if y.pos == x.pos && (pathKey x.path).isPrefixOf (pathKey y.path) then
+              unless ys.any (fun z => z.pos == x.pos && pathKey z.path == pathKey x.path && z.fill) do
+                out := out.push ⟨s!"{siteForm env y} of a live borrow at or under {siteForm env x} of another, not filled there, at {posKind x.pos}",
                   s!"{posName env x.pos}: borrow {k}'s fill at {ppPath x.path}, borrow {l}'s site at {ppPath y.path}"⟩
   pure out.toList
 
+/-- The D33 form's violations (another live borrow with any site at or under a live fill). -/
+def wf12D33 (env : Env) : Bool :=
+  let ss := liveSites env
+  ss.any fun (k, x) => x.fill && ss.any fun (l, y) => l != k && y.pos == x.pos && (pathKey x.path).isPrefixOf (pathKey y.path)
+
 def wf12 : Clause where
-  name := "(ii) (WF12) at a live fill, no other live borrow is lent at its path or below"
+  name := "(ii) (WF12) under a live fill, only borrows filled at its path"
   premises := [
     ("a live fill exists", fun st => (liveSites st.env).any (·.2.fill)),
+    ("(the D33 form's violation) another live borrow has a site at or under a live fill", fun st => wf12D33 st.env),
     ("another live borrow has a site at the same position as a live fill", fun st =>
       let ss := liveSites st.env
       ss.any fun (k, x) => x.fill && ss.any fun (l, y) => l != k && y.pos == x.pos)]

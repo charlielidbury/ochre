@@ -110,7 +110,7 @@ theorem goodOld_S (K : RunCtx) : GoodOld K ρ₀ S := by
     obtain ⟨rfl, rfl⟩ := h
     rfl
   · intro σ v h; simp [S] at h
-  · intro k l _ _ _ x hx
+  · intro k l _ _ x hx
     have h0 : valAt S.env (.bind 0 0) = .zero := rfl
     simp [Env.sitesOf, hA, h0, Value.sitesOf] at hx
 
