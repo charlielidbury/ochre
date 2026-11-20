@@ -166,11 +166,12 @@ theorem good_S (K : RunCtx) (ρ : Assignment) : Good K.dm K.M K.Γ ρ S := by
   · intro n σ h; simp [S] at h
   · intro σ v h; simp [S] at h
   · have h0 : valAt S.env (.bind 0 0) = .zero := rfl
-    refine ⟨?_, ?_⟩
+    refine ⟨?_, ?_, ?_⟩
     · intro k l _ _ x hx
       simp [Env.sitesOf, hA, h0, Value.sitesOf] at hx
     · intro pos path _ l _ x hx
       simp [Env.sitesOf, hA, h0, Value.sitesOf] at hx
+    · intro v hv l; rw [hV] at hv; simp at hv; subst hv; rfl
 
 /-- **`generalizeNeutral_step_stmt` as it stood is false** at fuel 10, at every context that admits
 the start state: the run's end state is not `Good` at the statement's assignment. -/

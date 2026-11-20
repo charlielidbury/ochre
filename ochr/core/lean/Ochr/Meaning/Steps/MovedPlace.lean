@@ -479,13 +479,31 @@ theorem recorded_sim (fuel : Nat) (st st' : MState) (n r : Value) (s : SState) (
     (h : Runs (Ochr.substEnv fuel n r true) st b () st') : Ext K ρ φ π st st' s ρ K.Δ := by
   sorry
 
-/-- A sealed program in Ω with no live hole holds no loan at all: [End] substitutes a loan
-everywhere its borrow ends, so a loan in Ω is live. Not a clause of `Good` yet ((WF2) is about the
-loans outside sealed programs); a fact read off the checker. Open. -/
+/-- **A sealed program in Ω with no live hole holds no loan at all**: a loan it holds (outside a
+recorded reading, (WF15)) is in its list of loans, so it is live ((L), [End] substitutes a loan
+everywhere its borrow ends), so it is a live hole, and there is none. PROVED (docs/31 D46). -/
 theorem sealed_loanFree (st : MState) (p : Place) (t : Term) (hg : Good K.dm K.M K.Γ ρ st)
+    (hctx : CtxOk K ρ st)
     (hp : ckContent st.env p = some (.sealed t)) (hfill : Ochr.fillHoles st.env (.sealed t) = []) :
     ∀ l, (Value.sealed t).hasLoan l = false := by
-  sorry
+  intro l
+  cases h : (Value.sealed t).hasLoan l
+  · rfl
+  · exfalso
+    obtain ⟨root, hroot, hf⟩ := ckContent_root hp
+    have h15 : WF15 st.env := hg.2.2.2.2.2.2.2.2.2.2.2.2.2.2
+    have hrd : (Value.sealed t).anyAtom (rdHasLoan l) = false := by
+      have hr := h15 root hroot l
+      rw [← rdHasLoan_eq] at hr
+      cases e : (Value.sealed t).anyAtom (rdHasLoan l)
+      · rfl
+      · have := anyAtom_of_follow _ _ _ hf e
+        rw [hr] at this; cases this
+    have hmem := mem_loans_of_hasLoan hrd h
+    have hlive := hctx.shapes.loans root hroot l (loans_of_follow _ _ _ hf hmem)
+    have hin := mem_liveLoansIn hmem hlive
+    simp only [Ochr.fillHoles] at hfill
+    rw [hfill] at hin; cases hin
 
 
 /-- **An unknown of a one-constructor type refined in place** (`Machine.etaInPlace`, D68, D93:
@@ -951,7 +969,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
           obtain ⟨u, st₈, b₈, hdisc, h8⟩ := Runs.bind_inv h7
           obtain ⟨σ, hgen⟩ := runs_discard_inv hdisc
           have hfill₅ : Ochr.fillHoles st₅.env (.sealed t) = [] := by rw [henv₅]; exact hfill
-          have hfree := sealed_loanFree { K with Δ := Δ₂ } ρ₂ st₅ p t E₂.good hc₅ hfill₅
+          have hfree := sealed_loanFree { K with Δ := Δ₂ } ρ₂ st₅ p t E₂.good E₂.ctx hc₅ hfill₅
           obtain ⟨ρ₃, Δ₃, hag₃, hctx₃, hrel₃, hg₃, hsz₃⟩ := generalizeNeutral_sim { K with Δ := Δ₂ } ρ₂ φ fuel st₅ st₈ p
             (.sealed t) σ s₁ π b₇ E₂.good E₂.ctx E₂.rel hc₅ ⟨t, rfl⟩ hfree hgen
           have E₃ : Ext { K with Δ := Δ₂ } ρ₂ φ π st₅ st₈ s₁ ρ₃ Δ₃ := ⟨hsz₃, hag₃, hctx₃, hrel₃, hg₃⟩

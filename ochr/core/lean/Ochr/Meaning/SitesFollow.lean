@@ -268,6 +268,177 @@ theorem hasLoan_of_mem_loans {l : Nat} {v : Value} (h : l ∈ v.loans) : v.hasLo
   refine (congrArg (fun P => v.anyAtom P) ?_).trans this
   funext x; cases x <;> rfl
 
+/-- A closure or Π-type recording a declared type that holds `l` (docs/31 D46). -/
+def rdHasLoan (l : Nat) : Value → Bool
+  | .clo _ _ rd | .tPi _ _ rd => Value.anyAtomRd (loanAt l) rd
+  | _ => false
+
+mutual
+/-- **The converse of `anyAtom_of_mem_loans`, outside recorded readings**: a loan or mark of `l`
+that `hasLoan` sees is in `loans`, unless it sits in a closure's recorded declared type, which
+`loans` does not walk. -/
+theorem mem_loans_of_anyAtom (l : Nat) : ∀ (v : Value), v.anyAtom (rdHasLoan l) = false →
+    v.anyAtom (loanAt l) = true → l ∈ v.loans
+  | .loan m, _, h => by
+    simp only [Value.anyAtom, loanAt, Bool.or_false, beq_iff_eq] at h; subst h; simp [Value.loans]
+  | .gloan m w, hr, h => by
+    rw [Value.anyAtom] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff] at h hr
+    simp only [Value.loans, List.mem_cons]
+    rcases h with h | h
+    · left; simp only [loanAt, beq_iff_eq] at h; exact h.symm
+    · exact .inr (mem_loans_of_anyAtom l w hr.2 h)
+  | .succ w, hr, h | .tRef w, hr, h | .borrow _ w, hr, h => by
+    rw [Value.anyAtom] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff, loanAt, rdHasLoan, Bool.false_or] at h hr
+    simp only [Value.loans]; exact mem_loans_of_anyAtom l w hr h
+  | .tEq A a b, hr, h => by
+    rw [Value.anyAtom] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff, loanAt, rdHasLoan, Bool.false_or] at h hr
+    simp only [Value.loans, List.mem_append]
+    rcases h with (h | h) | h
+    · exact .inl (.inl (mem_loans_of_anyAtom l A hr.1.1 h))
+    · exact .inl (.inr (mem_loans_of_anyAtom l a hr.1.2 h))
+    · exact .inr (mem_loans_of_anyAtom l b hr.2 h)
+  | .clo cs t rd, hr, h | .tPi cs t rd, hr, h => by
+    rw [Value.anyAtom] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff, loanAt, rdHasLoan, Bool.false_or] at h hr
+    simp only [Value.loans, List.mem_append]
+    rcases h with (h | h) | h
+    · exact .inl (mem_loansList_of_anyAtom l cs hr.2.1.1 h)
+    · exact .inr (Term_mem_loans_of_anyAtom l t hr.2.1.2 h)
+    · rw [hr.1] at h; cases h
+  | .sealed t, hr, h => by
+    rw [Value.anyAtom] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff, loanAt, rdHasLoan, Bool.false_or] at h hr
+    simp only [Value.loans]; exact Term_mem_loans_of_anyAtom l t hr h
+  | .ind _ _ _ ps fs, hr, h => by
+    rw [Value.anyAtom] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff, loanAt, rdHasLoan, Bool.false_or] at h hr
+    simp only [Value.loans, List.mem_append]
+    rcases h with h | h
+    · exact .inl (mem_loansList_of_anyAtom l ps hr.1 h)
+    · exact .inr (mem_loansList_of_anyAtom l fs hr.2 h)
+  | .tInd _ fs, hr, h => by
+    rw [Value.anyAtom] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff, loanAt, rdHasLoan, Bool.false_or] at h hr
+    simp only [Value.loans]; exact mem_loansList_of_anyAtom l fs hr h
+  | .zero, _, h | .unit, _, h | .gfn _, _, h | .bot, _, h | .abs _, _, h | .proof, _, h | .tNat, _, h
+  | .tUnit, _, h | .sort _, _, h => by simp [Value.anyAtom, loanAt] at h
+
+theorem mem_loansList_of_anyAtom (l : Nat) : ∀ (vs : List Value), Value.anyAtomList (rdHasLoan l) vs = false →
+    Value.anyAtomList (loanAt l) vs = true → l ∈ Value.loansList vs
+  | [], _, h => by simp [Value.anyAtomList] at h
+  | v :: vs, hr, h => by
+    rw [Value.anyAtomList] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff] at h hr
+    simp only [Value.loansList, List.mem_append]
+    rcases h with h | h
+    · exact .inl (mem_loans_of_anyAtom l v hr.1 h)
+    · exact .inr (mem_loansList_of_anyAtom l vs hr.2 h)
+
+theorem Term_mem_loans_of_anyAtom (l : Nat) : ∀ (t : Term), t.anyAtom (rdHasLoan l) = false →
+    t.anyAtom (loanAt l) = true → l ∈ t.loans
+  | .val v, hr, h => by
+    rw [Term.anyAtom] at h hr; simp only [Term.loans]; exact mem_loans_of_anyAtom l v hr h
+  | .assign _ t, hr, h | .succ t, hr, h | .ref t, hr, h => by
+    rw [Term.anyAtom] at h hr; simp only [Term.loans]; exact Term_mem_loans_of_anyAtom l t hr h
+  | .letIn _ t u, hr, h | .seq t u, hr, h | .cong t u, hr, h | .ascribe t u, hr, h => by
+    rw [Term.anyAtom] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff] at h hr
+    simp only [Term.loans, List.mem_append]
+    rcases h with h | h
+    · exact .inl (Term_mem_loans_of_anyAtom l t hr.1 h)
+    · exact .inr (Term_mem_loans_of_anyAtom l u hr.2 h)
+  | .matchNat _ z s, hr, h => by
+    rw [Term.anyAtom] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff] at h hr
+    simp only [Term.loans, List.mem_append]
+    rcases h with h | h
+    · exact .inl (Term_mem_loans_of_anyAtom l z hr.1 h)
+    · exact .inr (Term_mem_loans_of_anyAtom l s hr.2 h)
+  | .pi _ ds c, hr, h => by
+    rw [Term.anyAtom] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff] at h hr
+    simp only [Term.loans, List.mem_append]
+    rcases h with h | h
+    · exact .inl (Term_mem_loansList_of_anyAtom l ds hr.1 h)
+    · exact .inr (Term_mem_loans_of_anyAtom l c hr.2 h)
+  | .fix _ _ ds c _ b, hr, h => by
+    rw [Term.anyAtom] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff] at h hr
+    simp only [Term.loans, List.mem_append]
+    rcases h with (h | h) | h
+    · exact .inl (.inl (Term_mem_loansList_of_anyAtom l ds hr.1.1 h))
+    · exact .inl (.inr (Term_mem_loans_of_anyAtom l c hr.1.2 h))
+    · exact .inr (Term_mem_loans_of_anyAtom l b hr.2 h)
+  | .call f as _, hr, h => by
+    rw [Term.anyAtom] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff] at h hr
+    simp only [Term.loans, List.mem_append]
+    rcases h with h | h
+    · exact .inl (Term_mem_loans_of_anyAtom l f hr.1 h)
+    · exact .inr (Term_mem_loansList_of_anyAtom l as hr.2 h)
+  | .eq a b c, hr, h | .id a b c, hr, h => by
+    rw [Term.anyAtom] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff] at h hr
+    simp only [Term.loans, List.mem_append]
+    rcases h with (h | h) | h
+    · exact .inl (.inl (Term_mem_loans_of_anyAtom l a hr.1.1 h))
+    · exact .inl (.inr (Term_mem_loans_of_anyAtom l b hr.1.2 h))
+    · exact .inr (Term_mem_loans_of_anyAtom l c hr.2 h)
+  | .ctor _ _ _ ps as, hr, h => by
+    rw [Term.anyAtom] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff] at h hr
+    simp only [Term.loans, List.mem_append]
+    rcases h with h | h
+    · exact .inl (Term_mem_loansList_of_anyAtom l ps hr.1 h)
+    · exact .inr (Term_mem_loansList_of_anyAtom l as hr.2 h)
+  | .prim _ as, hr, h | .tind _ as, hr, h => by
+    rw [Term.anyAtom] at h hr; simp only [Term.loans]; exact Term_mem_loansList_of_anyAtom l as hr h
+  | .matchInd _ _ as, hr, h => by
+    rw [Term.anyAtom] at h hr; simp only [Term.loans]; exact Term_mem_loansArms_of_anyAtom l as hr h
+  | .place _, _, h | .borrow _, _, h | .const _, _, h | .sort _, _, h | .nat, _, h | .zero, _, h | .unit, _, h
+  | .tt, _, h => by simp [Term.anyAtom] at h
+
+theorem Term_mem_loansList_of_anyAtom (l : Nat) : ∀ (ts : List Term), Term.anyAtomList (rdHasLoan l) ts = false →
+    Term.anyAtomList (loanAt l) ts = true → l ∈ Term.loansList ts
+  | [], _, h => by simp [Term.anyAtomList] at h
+  | t :: ts, hr, h => by
+    rw [Term.anyAtomList] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff] at h hr
+    simp only [Term.loansList, List.mem_append]
+    rcases h with h | h
+    · exact .inl (Term_mem_loans_of_anyAtom l t hr.1 h)
+    · exact .inr (Term_mem_loansList_of_anyAtom l ts hr.2 h)
+
+theorem Term_mem_loansArms_of_anyAtom (l : Nat) : ∀ (as : List (Hint × Term)), Term.anyAtomArms (rdHasLoan l) as = false →
+    Term.anyAtomArms (loanAt l) as = true → l ∈ Term.loansArms as
+  | [], _, h => by simp [Term.anyAtomArms] at h
+  | (_, t) :: as, hr, h => by
+    rw [Term.anyAtomArms] at h hr
+    simp only [Bool.or_eq_true, Bool.or_eq_false_iff] at h hr
+    simp only [Term.loansArms, List.mem_append]
+    rcases h with h | h
+    · exact .inl (Term_mem_loans_of_anyAtom l t hr.1 h)
+    · exact .inr (Term_mem_loansArms_of_anyAtom l as hr.2 h)
+end
+
+theorem rdHasLoan_eq (l : Nat) : rdHasLoan l = Value.rdLoan l := by
+  funext v
+  cases v <;> try rfl
+  all_goals
+    simp only [rdHasLoan, Value.rdLoan]
+    exact congrArg (Value.anyAtomRd · _) (funext fun x => by cases x <;> rfl)
+
+/-- `hasLoan` is `loans`, outside recorded readings. -/
+theorem mem_loans_of_hasLoan {l : Nat} {v : Value} (hr : v.anyAtom (rdHasLoan l) = false)
+    (h : v.hasLoan l = true) : l ∈ v.loans := by
+  apply mem_loans_of_anyAtom l v hr
+  unfold Value.hasLoan at h
+  refine (congrArg (fun P => v.anyAtom P) ?_).trans h
+  funext x; cases x <;> rfl
+
 /-! ## Positions, holders and sites in the checker's environment -/
 
 /-- A position that holds a borrow is a position of the environment (elsewhere `valAt` reads the
