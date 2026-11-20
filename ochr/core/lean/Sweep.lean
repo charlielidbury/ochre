@@ -884,18 +884,43 @@ def ctorsData : Clause where
     else none
 
 
-/-- (C⋆) (`ShapeFacts.proofCopy`, docs/31 D49): a place in scope BELOW A VARIABLE holding `⋆` is
-declared a copy type (a field of a proof), by the checker's own `placeDecl` and `declCopy`; so the
-join, which moves no copy, never drops a `⋆` below a variable (`lentPrefix_none_of_proof`'s
-premise; at a variable there is no strict prefix to be lent). First asked at every place: false at
-a variable declared a borrow of a proposition, which holds `⋆` (`PiSorts.BorrowQ`, 6,447 states). -/
+/-- The place steps into a field only through a one-constructor inductive, as the join's grain
+(`jdGrain`) asks, by the checker's declared readings. -/
+def atGrain (st : MState) : Place → Bool
+  | .var _ => true
+  | .deref p => atGrain st p
+  | .proj _ p | .field _ p => atGrain st p && match declAt st p with
+    | some (.ind n _) => match st.inds.find? (·.name == n) with
+      | some d => d.ctors.length == 1
+      | none => false
+    | _ => false
+
+/-- A declared reading that is a data inductive of the declarations. -/
+def isDataInd (st : MState) : Option DeclInfo → Bool
+  | some (.ind n _) => match st.inds.find? (·.name == n) with
+    | some d => d.sort != 0
+    | none => false
+  | _ => false
+
+/-- (C⋆) (`ShapeFacts.proofCopy`, docs/31 D49, restated by the slice 2026-11-20): a place in scope
+AT THE JOIN'S GRAIN holding `⋆`, at a variable as below one, is declared a copy type, by the
+checker's own `placeDecl` and `declCopy`; so the join, which moves no copy, never drops a `⋆`, and
+the reference's drop needs no test of the meaning at the place. Before main's D100 false at a
+variable declared a Π into proofs or a borrow of a proposition (6,447 states); first stated for
+every place below a variable, false at a data field of a proof (read `other`, off the grain), which
+this walk, stepping into no `⋆`, never visits. The grain test is the checker's declared readings
+(`atGrain`). -/
 def proofCopy : Clause where
-  name := "(C⋆) a place below a variable holding ⋆ is declared a copy type"
+  name := "(C⋆) a place at the grain holding ⋆ is declared a copy type"
   premises := [
     ("a place in scope holds ⋆", fun st => (topPlaces st).any fun (_, v) => v matches .proof),
-    ("... below a binding", fun st => (topPlaces st).any fun (q, v) => (v matches .proof) && !(q matches .var _))]
+    ("... at the grain", fun st => (topPlaces st).any fun (q, v) => (v matches .proof) && atGrain st q),
+    ("... at the grain, below a binding", fun st => (topPlaces st).any fun (q, v) =>
+      (v matches .proof) && !(q matches .var _) && atGrain st q),
+    ("... declared a data inductive (a field step could pass through it)", fun st => (topPlaces st).any fun (q, v) =>
+      (v matches .proof) && isDataInd st (declAt st q))]
   check st := (topPlaces st).filterMap fun (q, v) =>
-    if !(v matches .proof) || (q matches .var _) then none else
+    if !(v matches .proof) || !atGrain st q then none else
     match declAt st q with
     | some d => match (runMachine (Ochr.declCopy 1000 d) st 100000).1 with
       | .ok true _ => none
@@ -1038,7 +1063,8 @@ before main's D100 (a place declared a Π into proofs was no copy, and a functio
 binding of a proof-valued type holds the function's name or the closure, not `⋆`: 19,132 states);
 holds since D100 (every proposition is a copy). -/
 def typeNotProp : Clause where
-  name := "(D⋆T) a non-copy place holding neither ⋆ nor ⊥ has a computed type that is no proposition"
+  name := "(D⋆T, a report since the slice's dropAt) a non-copy place holding neither ⋆ nor ⊥ has a computed type that is no proposition"
+  report := true
   premises := [
     ("a non-copy place in scope holds neither ⋆ nor ⊥", fun st => (nonCopyPlaces st).any fun (_, v, _) =>
       !(v matches .proof) && !(v matches .bot)),
@@ -1142,17 +1168,6 @@ def openFields : Clause where
 def prefixesOf : Place → List Place
   | .var _ => []
   | .deref p | .proj _ p | .field _ p => p :: prefixesOf p
-
-/-- The place steps into a field only through a one-constructor inductive, as the join's grain
-(`jdGrain`) asks, by the checker's declared readings. -/
-def atGrain (st : MState) : Place → Bool
-  | .var _ => true
-  | .deref p => atGrain st p
-  | .proj _ p | .field _ p => atGrain st p && match declAt st p with
-    | some (.ind n _) => match st.inds.find? (·.name == n) with
-      | some d => d.ctors.length == 1
-      | none => false
-    | _ => false
 
 /-- REPORT (the slice's measurement): a place the join could drop (in scope, at the grain, of a
 non-copy reading, holding neither ⋆ nor ⊥) with an open value at a strict prefix. -/
