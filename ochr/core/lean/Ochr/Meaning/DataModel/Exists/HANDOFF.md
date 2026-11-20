@@ -1,51 +1,41 @@
 # Existence of the data model: handoff (working file)
 
-Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists`, worktree `/home/charlielidbury/repos/ochre-exists`. Design note: `ochr/docs/34-data-model-existence.md`; the data layer's own note: `../HANDOFF.md`. Started 2026-11-20. Kept current at each milestone; deleted when the lane's work is merged.
+Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists`, worktree `/home/charlielidbury/repos/ochre-exists`. Design note: `ochr/docs/34-data-model-existence.md` (§1–17 are the layer before this lane; the port below is "§18" in docstrings, not yet written into the note). This file is enough to continue the existence proof alone; deleted when the lane's work is merged. Last updated 2026-11-20 after the port (part 1 4c749d49, part 2 928da269).
 
-## Files (none imported by `Ochr/Meaning.lean`; build each by name)
+## What this lane found (all reported; the lead decided)
 
-- `ConsistencyCE.lean`: **the checker accepts a closed proof of `False`** (`Boom`), natively checked (`#guard accepts …`). A positivity hole: a self occurrence `Q(Q(A, b), B1)` nests `Q` at `Q`'s own parameter `A`, which `Q` passes to a type function `FB(A, b)` that is a Π-type only at `b := B1` (stuck at the generic `b`). `nestViolation`/`firstOrderArgs` skip the nesting condition when `m == n`. Curry's paradox follows; `Delta(ι(Delta))` diverges (undecided), but `Lem(Delta)` is a proof the checker never runs. No set model of `Q` exists, so no data model is faithful to it.
-- `StatementCE.lean`: kernel-checked (standard axioms) counterexamples to `FieldsFaithful` at `Box (A : Type) := MkBox(x : A)` for EVERY data model, and the lift to `exists_dataModel` at the program `[Box]` (acceptance of `Box` a hypothesis, `#guard`ed natively):
-  1. `fieldsFaithful_false_junk`: a type parameter that is a junk code (`.data d r X`, `X` not the model's carrier; `Type₀`'s carrier holds it) runs to itself, and `shapeTy` never gives a data code with a foreign carrier (`shapeTy_ne_junk`, Cantor).
-  2. `fieldsFaithful_false_short`: `ParamsTyped` does not fix the length; at `ps = []` the field type reads the field `⊥`, the run is undefined.
-  3. `fieldsFaithful_false_frame` (`run_dl_undefined`): `teleFrame` binds parameters at `other` (move), the checker's `fieldTele` at their declared readings (a type parameter copies), so `DL (A : Type) := MkDL(e : Eq(Nat, (let x = A; let y = A; 0), 0))` (accepted) has no run in `teleFrame`.
-- `Positivity.lean`: D107's input (the condition the existence proof needs of an accepted declaration, semantic and syntactic, in its docstring) and the battery: three more accepted proofs of `False` through the same hole (`Chain`, `TyFn`, `PropRoute`), the declarations that must stay accepted (`MustStay`), and controls (`Controls`). All verdicts `#guard`ed; the four paradox blocks flip to rejected when D107 lands.
-- `Proto/` (the prototype of the record layout, task 3 of the lead's 2026-11-20 decisions; standard axioms, no `sorry`):
-  - `Layout.lean`: keys (`kindKey`, `contStep`, `paramKey`, `paramContStep`), the universal signature `uShape`/`uSig` (reads the record alone; projects to index fields: `uShape_idx` is `FieldTyIdx`), `ucar`, `uTyR`, `shapeTyP` (2a), `FTy` (a field type as the construction reads it: a declaration at a record, or a type) with `kind`/`cont`, and `shapeTyP_uShape` (a record holding a field type's kind and continuation means it).
-  - `Knot.lean`: the generic knot (`KnotSpec`, `approx`, `recK`), stabilization (`approx_stab`), the fixed point (`recK_kind`, `recK_cont`, `recK_param`, `recK_paramCont`), parametricity (`recK_agree`), faithfulness at a field (`recK_shape`); helpers (`parTy`, `pEntryTy`, agreement lemmas).
-  - `Hard.lean`: `List`, `Box`, `Duo`, `Rose`, `DD`, `RN`, `BB`, `NN`, `RP`, `HN` as knot instances (guardedness proved for each).
-  - `Examples.lean`: shapes read off canonical records, and memberships (`rose_example`: a rose tree with a nested forest; `dd_example`: `DNode(DLeaf) : DD(Nat)`).
-  - `PropSorted.lean`: `Prop`-sorted declarations through their truth predicate (impredicative least fixed point), no knot: `Ev`, `ev_mem_iff`, `ev_tyR` (`uTyR Ev (recK evK [n]) = prop (evT [n])`).
-  - `ValueParams.lean`: a value parameter whose argument is a value of the declaration being defined (`G1 (A) (a : A) := MkG1(x : A, e : Eq(A, x, a))`, `T1 := Leaf1 | Node1(t : T1, g : G1(T1, t))`): records read value parameters only through small readings (`recK_small`, the generic `smallOnly`), so `T1`'s knot stays guarded and `g`'s type at the actual `t` is the canonical one (`t1_g_faithful`).
-  - `Statement.lean`: faithfulness restated (2b length, 2c `fieldTele`'s readings: `teleFrameR`, `paramDecls`; 2d conditional): `FieldsFaithfulR`, `ParamsFaithfulR`, `CtxFaithfulR`.
-- `Probes.lean`: checker verdicts asserted by the build: `DMXFrame` (counterexample 3's programs), `DMXShapes` (the shapes a construction must cover: `DD(DD(A))`, non-uniform nesting `RN`, `BB`, nesting through two declarations `RP`, `NN`, recursive `Prop` field `Ev`, a type function returning data `TF`).
+- **The checker accepted closed proofs of `False`** through a positivity hole (self occurrences were exempt from the nesting condition): `ConsistencyCE.lean` (Curry), `Positivity.lean` (`Chain`, `TyFn`, `PropRoute`, and the D107 agent's independent `SecondHole`), all `#guard`ed natively, flipping to rejected when D107 lands. `Positivity.lean`'s docstring is the condition the existence proof needs (semantic, and the greatest-fixed-point syntactic rule D107 implements) and the must-stay battery.
+- **The old existence statement was false for every model** at `Box (A : Type) := MkBox(x : A)` three ways (junk type parameter; parameter list too short; the frame's readings): kernel-checked at 8b5f60f2 (`StatementCE.lean`, removed at the port because it targets the old definitions; read it in that commit). Repaired at the port (below).
+- **Decisions taken**: a leaf's type is its code (2a), the parameter list has the declaration's length (2b), the frame binds as `fieldTele` (2c), faithfulness is conditional on the run being defined (2d; the consumers get definedness from simulating the checker's `evalType`; shared owed caveat: the checker's frame sits on the current state, faithfulness speaks of a one-frame state, a special case of the open frame property), records as path functions with a universal signature (the port). The `Eq` relaxation (an equation's type as a nestable position) is optional for D107.
 
-## Traps
+## The ported layer (what a successor builds on)
 
-- `Sem.whole (.ty T)` does not close by `simp [Sem.whole]` or `trivial` (well-founded definition): `unfold Sem.whole; exact trivial` (`whole_ty`).
-- `Sem.updAt`'s equation lemmas fail to generate; `Sem.updAt dm Γ T f [] v = some (f v)` is `rfl` (`updAt_nil`).
-- Checker decisions at fixed fuel reduce by `rfl` at an arbitrary state (`checker_flags`, `checker_dl`); the checker's runs (`checkInd`, `checkProgram`) do not reduce in the kernel (`decide +kernel` gets stuck): assert them natively with `#guard`.
-- A `let` binding a structure literal across lines inside a tactic block mis-parses; write it as an anonymous constructor on one line.
-- A `generalize` of the program meaning (`progMeaning … = P`) avoids max-recursion in unification.
+- `Sem`: `Entry := none | leaf B c | data d | small s` (no record inside an entry).
+- `DataLib/Universal.lean`: keys (`kindKey c i es`, `contStep`, `paramKey`, `paramContStep`), `contRec`, `projIdx` (earlier fields projected to index fields), `uShape`/`uSig` (one signature for every model), `uShape_idx` (`FieldTyIdx` at every record), `uShape_data`, `uShape_leaf`.
+- `Data.lean`: `DataModel := {covers, recOf, paramTy}`; `dm.sig := uSig` (a definition); `shapeTy` (leaf = its code); `paramTyOf r j` (a parameter's type by continuation); `LeafOk`, `RecLeafOk` (no leaf holding a data code over the model's own carrier); `fitsOneM_mem` asks `LeafOk`.
+- `Run.lean`: only `unifyArgsTyS`'s last clause changed (reads `paramTyOf`).
+- `DataModel/Faithful.lean`: `teleFrame dm D d ps c e` (fields at `prop`/`other` by `fieldProof D` = the decisions' reading of a field place, parameters at `paramDecls`), `FieldsFaithful`/`ParamsFaithful` conditional and length-fixed, `RecordsFaithful` (`types` by `paramTyOf`, `values`, `smallOnly`, new `leafOk`), `CtxFaithful K` (same signature as before, so `Steps/` and `Consistency.lean` were not edited).
+- `DataModel/CtorMem.lean`: `ctorOut_mem` etc. take `RecLeafOk`. `ReadMember.lean`: `ShapeCanon dm` (leaf clause = not the model's own data code), `TyIn dm` (only data codes with a constructor member).
+- `DataModel/Canonical/Layout.lean`: `ucar`, `uTyR` (`tyR_eq_uTyR`: every model's), `shapeTyP` (`shapeTy_eq_shapeTyP`), `dataView` (a type that is a data code at the model's carrier), `FTy` (a field type as the construction reads it) with `kind`/`cont`/`mean`, and `shapeTyP_uShape` (a record holding a field type's kind and continuation means it).
+- `DataModel/Canonical/Knot.lean`: `KnotSpec` (field types as functions of the declaration's own record function, guarded), `approx`, `recK`, `approx_stab`, `recK_kind`/`recK_cont`/`recK_param`/`recK_paramCont`/`recK_contRec` (the fixed point), `recK_agree` (parametric in nestable parameters), `recK_shape` (faithful at a field), helpers (`parTy`, `pEntryTy`, agreement lemmas).
+- `Exists/Proto/`: instances. `Hard.lean` (`List`, `Box`, `Duo`, `Rose`, `DD`, `RN`, `BB`, `NN`, `RP`, `HN`), `Examples.lean` (memberships `rose_example`, `dd_example`; shape-reading idioms), `PropSorted.lean` (`Ev` by its truth predicate: `ev_mem_iff`, `ev_tyR`), `ValueParams.lean` (`G1`/`T1`: `recK_small`, `t1_g_faithful`).
+- Hand models (`DataModel/Program.lean` etc.) are records of paths now; results whose statements changed are listed in 928da269's message.
 
-## Requirements the construction must meet beyond the statement
+## The decomposition
 
-- `FieldTyIdx` (`origin/rules-trial`, `Rules/SoundEq.lean`): a field's type reads, of the earlier fields, only the index fields, at EVERY record and every pair of field lists. Not a consequence of faithfulness (the lead, 2026-11-20): make the canonical signature project the earlier fields' small readings to `d.indexFields c` before reading the record, so it holds by construction.
-- `FieldLevelsFaithful`, `ReadCoherent` (`Faithful.lean`, `ReadMember.lean`): item 3, after the main line. `ReadCoherent.canon` must admit a leaf whose code is a data code with a foreign carrier (counterexample 1).
-- The data layer's argument for "a member is determined by its small reading and its type" is in `../HANDOFF.md` (last section); it says to define the canonical record through small readings (e.g. an equation as `propEntry (va.small = vb.small)`), agreeing with the run only at typed parameters.
-- `LibOkT`, `UnitOk`: not this lane's (argued from faithfulness in `../HANDOFF.md`).
+`Exists/Decomposition.lean`: the nine pieces with the author's belief in each (all believed true); `runT_congrDM` (piece 1, the data-model congruence) is stated there with `sorry`. Order: 1 (mechanical, `AssignCongr.lean` is the template), 2 (Γ narrowed to reachable names; needs a `Term.declNames`), 3 (the canonical field-type interpreter over `Check.firstOrderTerm`'s fragment, and its agreement with the run), 4 (guardedness from D107's rule: the bridge from the checker to the knot), 5 (`Prop`-sorted truth predicates, generally), 6 (record clauses), 7 (parameter types), 8 (machine fact, the machine-only lane's), 9 (assembly by induction on the items). Riskiest: 3 (the interpreter must agree with the run on every first-order field type, including a type function returning data, whose result's record is then a continuation, and equations keyed by small readings) and 4 (stating guardedness against D107's exact rule once it lands; check its relaxations against `recK_agree`).
 
-## Decisions (the lead, 2026-11-20)
+## Idioms and traps of the new layout
 
-Positivity fix: D107 (checker lane, `positivity1`), input in `Positivity.lean`. 2a–2c: yes. 2d: yes in principle, after the consumers' list. Records as path functions: yes in direction, PROTOTYPE FIRST (done, `Proto/`), report before porting. The congruence lemma: go ahead when waiting. This lane now OWNS the data layer's files (`Sem`, `Data`, `DataLib/*`, `DataModel/*`, `Places`, the data clauses of `Run.lean`); statement changes under `Steps/` or in `Consistency.lean`'s chain go through the lead.
+- A record for a hand model: a path-recursive function, keys PROJECTED (`projIdx`: non-index earlier fields read `.other`), continuation steps end their small list in `.proof` (`contStep`), parameters at `(j, 0, [.other])` and `(j, 0, [.other, .other]) :: q`. Or `Canonical.recK` with a `KnotSpec`.
+- A shape at a canonical record: `uShape_data`/`uShape_leaf` with `recK_kind`, `recK_contRec`, then `kind_nondata` (a non-data code is a leaf), `kind_data`/`cont_data` (a data code at the model's carrier is `.data` with its record) (`Proto/Examples.lean`).
+- `dataView` is classical: prove `dataView T = none` for a concrete non-data code by `dataView_nondata`, and `= some (d, r)` for `uTyR d r` by `dataView_uTyR`.
+- Two records equal only extensionally (a mutual pair of path functions against a record built through `recK`): prove by `funext` and induction on the path (`Program.forestR_eq`).
+- `Sem.whole (.ty T)`: `unfold Sem.whole; exact trivial`. `Sem.updAt … [] v = some (f v)` is `rfl` (its equation lemmas fail to generate).
+- Checker decisions: `chainDecisions` is classical (fuel-free); facts about specific decisions need `FuelAgree` (`DecisionsFF.lean`), no longer `rfl`.
+- A `#guard` on the checker is native; the kernel cannot run `checkInd`/`checkProgram`.
+- Doc comments cannot precede an `ochr` block (use `--`). No Mathlib: no `Set`, no `List.Forall₂`.
 
-## Findings of the prototype
+## Status
 
-- `Prop`-sorted declarations need their truth predicates first: `D3 (n) : Prop := D3Z | D3S(w : PB2(D3(n)))` with `PB2 (P : Prop) := MkPB2(x : P)` is accepted, and the run's type of `w` is a DATA type whose record holds `D3`'s own proposition as an opaque leaf; a leaf is fixed before the carriers, so it cannot be read off `D3`'s carrier. Defining the predicate impredicatively first (least predicate closed under the constructors) and putting it in the leaves removes the knot for `Prop`-sorted declarations altogether; `prop (Nonempty car) = prop predicate` by `propext` (`ev_tyR`). Monotonicity of the one-step operator is what positivity gives.
-- The knot needs guardedness at RELATED parameters, not only related records: `DD(DD(A))` passes the declaration's own record inside a parameter.
-
-- Decisions: `exists_dataModel` will name `chainDecisions fuel` (fuel-free, classical; `origin/spine-lead` `DecisionsFF.lean`). Still a function of the state: the canonical record comes from field-type runs under ONE table, while `DataFaithful` asks every state extending the program's Σ, so the construction needs the decisions on a declaration's field-type terms not to change when Σ grows past it (a machine fact, owed). `StatementCE`'s lift used `rfl` on `checkerDecisions` at fixed fuel; under `chainDecisions` those facts need `FuelAgree` for the one decision (historical: the statement is being replaced).
-
-## Status and next steps
-
-Reported the condition and battery (770ba363). Next: report the prototype, the port's change list and the 2d consumers' list; then the port and the congruence lemma.
+Port green (`lake build OchrMeaning`), core lemmas on the standard axioms. Next: the decomposition's pieces in order, starting with `runT_congrDM`. Item 3 of the lane's brief (`FieldLevelsFaithful`, `ReadCoherent`) after the main line. The design note's §18 (how existence is proved) is owed at the end.
