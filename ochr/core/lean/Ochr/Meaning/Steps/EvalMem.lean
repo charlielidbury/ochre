@@ -1,4 +1,5 @@
 import Ochr.Meaning.Steps.Statements
+import Ochr.Meaning.ApplyMem
 
 /-!
 # Every evaluation returns a member of its type: the typed temporaries (sixth lead, docs/31 D81)
@@ -210,15 +211,15 @@ end
 theorem prop_mem_univ0 (R : DataRead) (P : Prop) : Sem.ty (TyM.prop P) ∈ₛ[R] TyM.univ 0 :=
   ⟨ULift.up P, rfl⟩
 
-/-- **Π-elimination** (a guess, not proved; owed by the data layer's closure lemmas, which cover only
-closures built by the `.fix` clause, `Closure.closure_apply'`): a member of a function type's code,
-applied at arguments that are members of its domains, gives a member of the codomain at them. What a
-call's result's membership rests on when the callee is a global, a function parameter or a variable,
-and what η at `Unit` needs. -/
+/-- **Π-elimination**: a member of a function type's code, applied at arguments, gives a member of
+the codomain at them (stated here; PROVED by the data layer, `ApplyMem.app_mem`, with the argument
+hypothesis unused: reaching the codomain decodes every argument at its parameter's code). What a
+call's result's membership rests on when the callee is a global, a function parameter or a variable;
+η at `Unit` is `ApplyMem.app_mem_unit`. -/
 theorem app_mem (R : DataRead) (f : Res) (args : List Res) (s : SState) (B : TyM)
     (hf : f.1 ∈ₛ[R] f.2.m) (hargs : ArgsMember R f.2.m args)
     (hcod : f.2.m.codAt? R (args.map (·.1)) = some (false, B)) :
-    ∃ r s', callOf R f args s = some (r, s') ∧ r.1 ∈ₛ[R] B := by
-  sorry
+    ∃ r s', callOf R f args s = some (r, s') ∧ r.1 ∈ₛ[R] B :=
+  Ochr.Meaning.app_mem R f args s B hf hargs hcod
 
 end Ochr.Meaning.Steps
