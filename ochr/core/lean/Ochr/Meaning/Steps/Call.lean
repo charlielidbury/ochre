@@ -24,8 +24,8 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- A direct call (`callFn`, untyped or typed): below the reference's `callOf` on the callee's
 meaning, and `Good` kept. The arguments are loan-free (WF5, `ArgsLoanFree`). -/
-theorem callFn_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : callFn_step_stmt K ρ φ (fuel + 1) := by
-  sorry
+theorem callFn_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : callFn_step_stmt K ρ φ (fuel + 1) :=
+  callFn_step_asm K ρ φ fuel ih
 
 /-- Running a body (`runBody`): the frame pushed with the captures and parameters, the body run,
 the frame popped: below the function's meaning applied (the induction hypothesis on the body). -/
@@ -35,8 +35,8 @@ theorem runBody_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : r
 /-- [Close] (`closeCall`), every row: exact against `callOf`. The result is a sealed program (or
 `()` at a declared `Unit`, or a borrow of one), and each lent place a fill: both mean what the
 reference's call gives them, since a sealed program means its run. -/
-theorem closeCall_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : closeCall_step_stmt K ρ φ (fuel + 1) := by
-  sorry
+theorem closeCall_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : closeCall_step_stmt K ρ φ (fuel + 1) :=
+  closeCall_step_asm K ρ φ fuel ih
 
 /-- [Call-type] (`callType`, `declCallType`): the codomain at the arguments is the reference's
 result type. -/
@@ -135,9 +135,19 @@ theorem nestedRun_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) (s
     (hok : ∀ ψ, (runT K ρ ψ false hint t (emptyState 0)).isSome)
     (bh : Nat) (h : Runs (Ochr.eval fuel false t none)
       { st with env := #[{}], obsFrame := none, depth := st.depth + 1 } bh (v, T?) st₁) :
-    ∃ ρ', Extends st ρ ρ' ∧ (∀ ψ, meanV K ρ' ψ hint v = meanV K ρ ψ hint (.sealed t)) ∧
-      ∀ st₂, Runs (Ochr.restoreKeep st) st₁ 0 () st₂ → Good K.dm K.M K.Γ ρ' st₂ := by
-  sorry
+    NestedOut K ρ st st₁ t v hint := by
+  refine nestedRun_sim_asm K ρ fuel ih st st₁ t v T? hint hg hctx hfree htf (fun ψ => ?_) bh h
+  -- the induction hypothesis's run is at the empty hint and the outer counter: the same success
+  -- (a tail-hint-free text runs alike at every hint; the counter lemma)
+  have e1 := run_hintIndep K ρ ψ t htf hint (hintM K ρ none) (emptyState 0)
+  have e2 := run_counter_indep K ρ ψ (hintM K ρ none) t [] 0 st.nextLoan (by simp) (by simp)
+  have h0 := hok ψ
+  have h1 : (run K ρ ψ (hintM K ρ none) t (emptyState 0)).isSome := by
+    have := congrArg Option.isSome e1; simp only [Option.isSome_map] at this; rw [← this]; exact h0
+  have h2 : (run K ρ ψ (hintM K ρ none) t (stateOf st.nextLoan [])).isSome := by
+    have := congrArg Option.isSome e2; simp only [Option.isSome_map] at this
+    rw [← this]; exact h1
+  exact h2
 
 /-! The text `closeCall` seals, as its local definitions build it (`wrapL`, `C`, `cellTerm`,
 `cell`): the borrow arguments `(i, ℓᵢ, uᵢ)`, each content in a cell `cⱼ`, the call with `&cⱼ` for
