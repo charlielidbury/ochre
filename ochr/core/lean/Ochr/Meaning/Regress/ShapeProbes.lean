@@ -44,6 +44,27 @@ ochr ShapeProbes uses Nats, Lists, Boxes {
   -- control: the alias is read (it is not a function type)
   reject def AliasBad (f : Π(n : Nat). Nat) (n : Nat) : Nat := (let T = Nat; let g : T = f; g(n))
 
+  -- D61: a recursive declaration recursed over, and a nested one built and matched
+  def Len (l : List(Nat)) : Nat by l := (
+    match l {
+      Nil => 0,
+      Cons(x, t) => S(Len(t)),
+    }
+  )
+  def LenTwo : Eq(Nat, Len(Cons(3, Cons(4, Nil))), 2) := refl
+  -- control: the length is computed
+  reject def LenThree : Eq(Nat, Len(Cons(3, Cons(4, Nil))), 3) := refl
+  inductive Rose (A : Type) := Node(a : A, kids : List(Rose(A)))
+  def Tree : Rose(Nat) := Node(1, Cons(Node(2, Nil), Nil))
+  def Root (r : Rose(Nat)) : Nat := (
+    match r {
+      Node(a, k) => a,
+    }
+  )
+  def RootOfTree : Eq(Nat, Root(Tree), 1) := refl
+  -- control: the tree is read
+  reject def RootOfTreeBad : Eq(Nat, Root(Tree), 2) := refl
+
   -- A17: a constructor's parameter solved by a proof field's type
   inductive PBox (A : Prop) := MkPBox(a : A)
   def BoxProof (h : True) (n : Nat) : Nat := (let b = MkPBox(h); n)

@@ -215,64 +215,65 @@ end
 /-- The meaning of a Π-type at its declared sort `l` (D55, `Decisions.piSort`): the proposition
 `piProp` at `Prop`, the level-`l - 1` telescope code at `Type_{l-1}` for the bounded levels, `err`
 above (D2). The `.pi` and `.fix` clauses both use it, so that a closure lies in its type. -/
-noncomputable def piTyAt (l : Nat) (ds : List PiDom) (out : PiCod) : TyM :=
+noncomputable def piTyAt (R : DataRead) (l : Nat) (ds : List PiDom) (out : PiCod) : TyM :=
   match l with
-  | 0 => TyM.prop (piProp ds [] fun acc => if out.isRef then False else (out.cod acc).true)
-  | 1 => piTyL lvl0 (telL lvl0 ds [] PUnit out).2
-  | 2 => piTyL lvl1 (telL lvl1 ds [] PUnit out).2
-  | 3 => piTyL lvl2 (telL lvl2 ds [] PUnit out).2
+  | 0 => TyM.prop (piProp R ds [] fun acc => if out.isRef then False else (out.cod acc).true)
+  | 1 => piTyL (lvl0 R) (telL (lvl0 R) ds [] PUnit out).2
+  | 2 => piTyL (lvl1 R) (telL (lvl1 R) ds [] PUnit out).2
+  | 3 => piTyL (lvl2 R) (telL (lvl2 R) ds [] PUnit out).2
   | _ => TyM.err
 
 /-- The meaning of a closure at its declared sort `l`: `⋆` at `Prop` (D12: a proof-valued
 function is a proof), the level-`l - 1` element built along the same code otherwise, `err` above
 the bounded levels. -/
-noncomputable def closureAt (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
+noncomputable def closureAt (R : DataRead) (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
     (g : List Sem → Option BodyOut) : Sem :=
   match l with
   | 0 => .proof
-  | 1 => closureL lvl0 φ (telL lvl0 ds [] PUnit out).2 g
-  | 2 => closureL lvl1 φ (telL lvl1 ds [] PUnit out).2 g
-  | 3 => closureL lvl2 φ (telL lvl2 ds [] PUnit out).2 g
+  | 1 => closureL (lvl0 R) φ (telL (lvl0 R) ds [] PUnit out).2 g
+  | 2 => closureL (lvl1 R) φ (telL (lvl1 R) ds [] PUnit out).2 g
+  | 3 => closureL (lvl2 R) φ (telL (lvl2 R) ds [] PUnit out).2 g
   | _ => .err
 
 /-- The closure of a recursion stage at its declared sort (`mkTelFillL`, docs/31 D60). -/
-noncomputable def closureFillAt (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
+noncomputable def closureFillAt (R : DataRead) (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
     (g : List Sem → Option BodyOut) : Sem :=
   match l with
   | 0 => .proof
-  | 1 => closureFillL lvl0 φ (telL lvl0 ds [] PUnit out).2 g
-  | 2 => closureFillL lvl1 φ (telL lvl1 ds [] PUnit out).2 g
-  | 3 => closureFillL lvl2 φ (telL lvl2 ds [] PUnit out).2 g
+  | 1 => closureFillL (lvl0 R) φ (telL (lvl0 R) ds [] PUnit out).2 g
+  | 2 => closureFillL (lvl1 R) φ (telL (lvl1 R) ds [] PUnit out).2 g
+  | 3 => closureFillL (lvl2 R) φ (telL (lvl2 R) ds [] PUnit out).2 g
   | _ => .err
 
 /-- **At a data sort, a closure is a member of its type at that sort, or `err`** (D12's invariant
 for `Type₀`, `Type₁`, `Type₂`): it is built in the carrier its type's code is indexed by. -/
-theorem closureAt_mem (l : Nat) (hl : l = 1 ∨ l = 2 ∨ l = 3) (φ : Future) (ds : List PiDom)
+theorem closureAt_mem (R : DataRead) (l : Nat) (hl : l = 1 ∨ l = 2 ∨ l = 3) (φ : Future) (ds : List PiDom)
     (out : PiCod) (g : List Sem → Option BodyOut) :
-    closureAt l φ ds out g ∈ₛ piTyAt l ds out ∨ closureAt l φ ds out g = .err := by
+    (closureAt R l φ ds out g ∈ₛ[R] piTyAt R l ds out) ∨ closureAt R l φ ds out g = .err := by
   rcases hl with rfl | rfl | rfl
-  · exact closureL_mem lvl0 lvl0_lawful φ _ g
-  · exact closureL_mem lvl1 lvl1_lawful φ _ g
-  · exact closureL_mem lvl2 lvl2_lawful φ _ g
+  · exact closureL_mem (lvl0 R) (lvl0_lawful R) φ _ g
+  · exact closureL_mem (lvl1 R) (lvl1_lawful R) φ _ g
+  · exact closureL_mem (lvl2 R) (lvl2_lawful R) φ _ g
 
 /-- The next parameter of a function type `T` after the given arguments, read off its telescope
 code: whether it is a borrow, and its (content) code; `none` if `T` is not a function type. -/
-noncomputable def TyM.paramAt? : TyM → List Sem → Option (Bool × TyM)
-  | .t0 _ (.pi _ t), as => telParamL lvl0 t as
-  | .t1 _ (.pi _ t), as => telParamL lvl1 t as
-  | .t2 _ (.pi _ t), as => telParamL lvl2 t as
+noncomputable def TyM.paramAt? (R : DataRead) : TyM → List Sem → Option (Bool × TyM)
+  | .t0 _ (.pi _ t), as => telParamL (lvl0 R) t as
+  | .t1 _ (.pi _ t), as => telParamL (lvl1 R) t as
+  | .t2 _ (.pi _ t), as => telParamL (lvl2 R) t as
   | _, _ => none
 
 /-- The codomain a function type `T` reaches at the arguments, read off its telescope code:
 whether it is a returned borrow, and its (content) code (D82 [Call-type]). -/
-noncomputable def TyM.codAt? : TyM → List Sem → Option (Bool × TyM)
-  | .t0 _ (.pi _ t), as => telCodL lvl0 t as
-  | .t1 _ (.pi _ t), as => telCodL lvl1 t as
-  | .t2 _ (.pi _ t), as => telCodL lvl2 t as
+noncomputable def TyM.codAt? (R : DataRead) : TyM → List Sem → Option (Bool × TyM)
+  | .t0 _ (.pi _ t), as => telCodL (lvl0 R) t as
+  | .t1 _ (.pi _ t), as => telCodL (lvl1 R) t as
+  | .t2 _ (.pi _ t), as => telCodL (lvl2 R) t as
   | _, _ => none
 
 /-- The type of the next argument of a call through a function of type `T`, after the given
 arguments (the hint the argument runs at, D82 [Call-type]); `err` past the end. -/
-noncomputable def TyM.domAfter (T : TyM) (as : List Sem) : TyM := ((T.paramAt? as).map (·.2)).getD TyM.err
+noncomputable def TyM.domAfter (R : DataRead) (T : TyM) (as : List Sem) : TyM :=
+  ((T.paramAt? R as).map (·.2)).getD TyM.err
 
 end Ochr.Meaning
