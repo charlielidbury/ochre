@@ -1,5 +1,6 @@
 import Ochr.Meaning.Steps.Statements
 import Ochr.Meaning.PosLib
+import Ochr.Meaning.SitesFollow
 
 /-!
 # The relation that lets steps compose (docs/31, D20 item 1; second lead, 2026-11-13)
@@ -82,6 +83,10 @@ theorem Rel.start (st : MState) : Rel K ρ φ id st (SM' K ρ st) where
     fun f j l' h => ⟨j, l', h, rfl⟩⟩
   inj := fun _ _ _ _ h => h
   sites := fun _ _ _ => Iff.rfl
+  holders := fun p l h => by
+    show p ∈ (MState.sstate K.dm K.M K.Γ ρ st).positions
+    rw [sstate_positions]
+    exact mem_allPos_of_shape (l := l) h
 
 /-! ### A private copy (docs/31 D23; prerequisite (b) of the migration)
 
@@ -135,6 +140,7 @@ theorem Rel.private_copy {π : Nat → Nat} {saved st' : MState} {s : SState} (h
     rw [e]; exact hr.sim
   inj := by rw [henv]; exact hr.inj
   sites := by rw [henv]; exact hr.sites
+  holders := hr.holders
 
 /-- Steps stated in the simulation form compose: if the first runs from any reference state
 related to `st` into one related to `st₁`, and the second from any related to `st₁` into one

@@ -291,7 +291,7 @@ theorem botWrite_rel (st : MState) (s : SState) (π : Nat → Nat) (f i : Nat) (
       (Sem.updAt K.dm K.Γ (s.tyAt (Pos.bind f i)) (fun _ => .moved) steps (s.valAt (Pos.bind f i) φ')).getD .err) ψ → RelF φ s ψ :=
     fun ψ hψ l hl => hψ l (fun h => hl ((SState.live_setAt _ _ _ l).mp h))
   have hp' : Pos.bind f i ∈ allPos (Env.setAtE st.env (Pos.bind f i) v') := by rw [allPos_setAtE]; exact hp
-  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_⟩
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_⟩
   · -- skel
     rw [skel_setAtE K ρ st f i v' (strS_updAt_bot K ρ hv htype), hs.skel]
     exact (skel_setAt s _ _).symm
@@ -347,6 +347,11 @@ theorem botWrite_rel (st : MState) (s : SState) (π : Nat → Nat) (f i : Nat) (
     rw [hlive] at hl
     rw [SState.lent_setAt, hs.sites l hl x]
     exact (sitesOf_setAtE_bot hp hv l (hclear l hl) x).symm
+  · -- holders: the write changes no position and no holder
+    intro p l h
+    rw [SState.shape_setAt'] at h
+    rw [SState.positions_setAt]
+    exact hs.holders p l h
 
 end
 
