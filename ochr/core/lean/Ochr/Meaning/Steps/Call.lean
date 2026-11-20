@@ -86,23 +86,26 @@ theorem callOf_inPlace (cs : List Value) (t : Term) (rd : List (DeclInfo × Valu
       ∀ (st : MState) (π : Nat → Nat), Rel K ρ φ π st s₁ → Rel K ρ φ (τ ∘ π) st s' := by
   sorry
 
-/-- **The nested run of a re-normalised sealed program** (`nfSealed`'s `eval fuel' false t` on the
-state with an empty environment; docs/31 D62, risk-bearing; docs/31 D20 item 3). Its result means
-the sealed program, under an assignment extending `ρ` at the unknowns it creates, and the state
+/-- **The nested run of a re-normalised sealed program, for a program with no hole** (`nfSealed`'s
+`eval fuel' false t` on the state with an empty environment; docs/31 D62, D63). Its result means the
+sealed program, under an assignment extending `ρ` at the unknowns it creates, and the state
 `restoreKeep` makes of it is `Good`.
 
-The induction hypothesis does not apply as stated: once the nested run binds or writes one of the
-program's holes (`loan_l` of a borrow outside the nested environment; a fill's `*r := loan_k` does
-at once), its state holds a loan outside any sealed program whose borrow it does not hold, which
-(WF2) forbids, and a future typed for it (`TypedFuture`) says nothing at that label, so a binding
-holding the hole has no member. The invariant must type the free labels of a nested run, as `GoodF`
-types the labels in flight: with the holes' content types from the outer state (each hole is the
-loan of a live borrow there, `hholes`), every statement's `Good` becomes that relative form, and
-the sweep must check the relative clauses on the nested states first. Not attempted. -/
+Stated for a program holding no loan (`hfree`), under plain `Good`: what both outcomes of the lead's
+question need (docs/31 D63). With a hole (a live borrow's loan inside the program) the nested run
+binds or writes it, and its state holds a loan outside any sealed program whose borrow it does not
+hold, which (WF2) forbids and no typed future covers; either the checker never runs such a program
+(main's D97, being assessed) or the invariant types the holes (D62's relative invariant). A
+program with no hole runs from a state with an empty environment and the outer tables, which is
+`Good` with the outer assignment, and every state of its run holds only the loans of borrows it made.
+What it rests on: the induction hypothesis (`eval_step_stmt`) at the nested start, related to the
+reference's `emptyState` at the checker's counter (`Rel.start`'s analogue), then the counter lemma
+(`run_counter_indep`: the meaning runs from `0`), the untyped run (`hok`, docs/31 D62 item 4), and
+`restoreKeep` keeping only names, the new unknowns' types and records. Not attempted. -/
 theorem nestedRun_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) (st st₁ : MState) (t : Term)
     (v : Value) (T? : Option Value) (hint : TyS)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hholes : ∀ l ∈ t.loans, liveLoan st.env l = true) (htf : Term.tailHintFree K.Γ t = true)
+    (hfree : t.loans = []) (htf : Term.tailHintFree K.Γ t = true)
     (hok : ∀ ψ, (runT K ρ ψ false hint t (emptyState 0)).isSome)
     (bh : Nat) (h : Runs (Ochr.eval fuel false t none)
       { st with env := #[{}], obsFrame := none, depth := st.depth + 1 } bh (v, T?) st₁) :

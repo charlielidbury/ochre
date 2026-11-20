@@ -1363,7 +1363,7 @@ def runBody_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     (hfix : fv = .clo cs t rd ∨ ∃ n, fv = .gfn n ∧ Runs (Ochr.fixOf fv) st 0 (cs, t, rd) st)
     (fres : Res) (hf : run K ρ (fun l => φ (π l)) (.plain .err) (.val fv) s = some (fres, s))
     (as : List Res) (has : ArgsAgree K ρ φ π ws as)
-    (hok : ∀ ρ', (runBodyRef K ρ' φ fres cs t rd as s).isSome)
+    (hok : (runBodyRef K ρ φ fres cs t rd as s).isSome)
     (bh : Nat) (h : Runs (Ochr.runBody fuel fv cs t rd ws) st bh v st'),
     SimConcl K ρ φ π (st.withTemps (fv :: ws.toList)) st' s (fun ρ' => runBodyRef K ρ' φ fres cs t rd as) v
 
@@ -1409,13 +1409,21 @@ and two such statements did not compose.)
 
 `hns`: `evalCore` does not erase (`evalAt` does), and the run of a statement is on a copy and of
 an erased term is `•` unrun (`SM.erasedIf`), so the two agree where the term is neither. (It
-asked only for "not a statement" before the audit's A3 made the run skip an erased term.) -/
+asked only for "not a statement" before the audit's A3 made the run skip an erased term.)
+
+`hok`: an untyped run (a body's, a sealed program's re-run) is claimed only of code whose reference
+run succeeds. Without it the statement is false: the checker's untyped run of an unannotated `Nil`
+with no hint returns a bare constructor value, and the reference cannot solve its parameter
+(`Regress/UntypedNil.lean`, `evalCore_untyped_false`, `eval_untyped_false`; docs/31 D20 item 4,
+D64). Accepted code meets it: the reference run of a callee's body succeeds where its meaning is a
+member of its type. -/
 def evalCore_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (t : Term) (hint : Option Value)
     (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) t = (false, false))
+    (hok : typed = false → (run K ρ φ (hintM K ρ hint) t s).isSome)
     (bh : Nat) (h : Runs (Ochr.evalCore fuel typed t hint) st bh (v, T?) st'),
     ∃ ρ' π', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
       ∃ r s', run K ρ' φ (hintM K ρ hint) t s = some (r, s') ∧
@@ -1426,13 +1434,15 @@ def evalCore_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
 /-- **The induction step as the checker recurses** (docs/31 D20, item 5): every recursive
 position of the checker calls `Machine.eval`, which is `evalAt`: it classifies the term
 (`preFlags`), runs an erased one on a private copy and restores the environment. The run does
-the same at `Decisions.flags` (`SM.erasedIf`, D19), so this statement has no side condition,
-where `evalCore_step_stmt` has `hns`. Same conclusion, in the simulation form. -/
+the same at `Decisions.flags` (`SM.erasedIf`, D19), so this statement has no side condition on
+the term's class, where `evalCore_step_stmt` has `hns`. Same conclusion, in the simulation form,
+and the same restriction of untyped runs (`hok`; `Regress/UntypedNil.eval_untyped_false`). -/
 def eval_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (t : Term) (hint : Option Value)
     (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (hok : typed = false → (run K ρ φ (hintM K ρ hint) t s).isSome)
     (bh : Nat) (h : Runs (Ochr.eval fuel typed t hint) st bh (v, T?) st'),
     ∃ ρ' π', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
       ∃ r s', run K ρ' φ (hintM K ρ hint) t s = some (r, s') ∧
