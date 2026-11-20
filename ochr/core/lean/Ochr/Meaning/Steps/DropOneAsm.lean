@@ -1,6 +1,7 @@
 import Ochr.Meaning.Steps.DropRuns
 import Ochr.Meaning.Steps.BotWriteGood
 import Ochr.Meaning.Steps.Slice.Shapes
+import Ochr.Meaning.Steps.Slice.ReadTyping
 
 /-!
 # `dropOne_step` assembled where the place exists (docs/31 D30; task C)
