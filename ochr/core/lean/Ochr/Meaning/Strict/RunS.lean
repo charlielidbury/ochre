@@ -123,10 +123,13 @@ noncomputable def callOfS (R : DataRead) (fv : Res) (args : List Res) : SM Res :
   | _ => none
 
 /-- STRICT `.val` (D83 row 8): a constructor value must be a member of the type its record names;
-any other value is typed as before. Written as a function of the value so that each constructor's
+embedded code (a closure, a sealed program) whose strict meaning is `err` fails (the orchestrator's
+ruling, consistently with strict `.fix`); any other value is typed as before. Written as a function of the value so that each constructor's
 case reduces by `rfl`. -/
 noncomputable def strictVal (R : DataRead) : Value → Res → SM Res
   | .ind .., r => SM.strictS R (pure r)
+  -- embedded code whose strict meaning is an error (its strict run failed) fails, as strict `.fix`
+  | .clo .., r | .sealed _, r => fun s => if r.1 = .err then none else some (r, s)
   | _, r => pure r
 
 section

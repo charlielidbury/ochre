@@ -231,3 +231,19 @@ theorem tyAt_access (s : SState) (p : Pos) (hit : List Step → Bool) (q : Pos) 
 
 end Ochr.Meaning.Strict
 
+
+namespace Ochr.Meaning.Strict
+open Ochr.Meaning
+
+/-- **A named fact the simulation may use (the checker's rule, D98; D53 for a parameter's borrow at
+the function's end): no borrow ends over moved-out content.** On a reference state related to a state
+the checker reaches, the holder of a label about to end holds a WHOLE value at every typed future. The
+fundamental lemma does not need it (its typed futures give live labels partly moved members, and
+`endAt_sgood` holds without it); the simulation may use it where it wants an ended borrow's content
+whole (e.g. to relate the reference's lenders after an end to the checker's, at whole-member
+futures). Not proved here: it is a fact about the checker, to be read off `Machine` by the simulation
+side. -/
+def EndWhole (dm : DataModel) (Γ : List IndDecl) (φ : Future) (s : SState) (l : Nat) : Prop :=
+  ∀ r, s.holderOf l = some r → ∀ ψ, TypedF dm Γ φ s ψ → (s.valAt r ψ).whole
+
+end Ochr.Meaning.Strict
