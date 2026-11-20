@@ -35,7 +35,7 @@ theorem call_param_no_shape (b : SBinding) (k : Nat) (hint : TyS) (args : List T
     (hb : b.ty.shape = none)
     (hpf : (K.D.flags (scopeOf (one b k)) (.call (.place (.var 0)) args hd)).2 = false) :
     run K ρ φ hint (.call (.place (.var 0)) args hd) (one b k) = none := by
-  rw [run]
+  rw [run, runT]
   apply stmtIf_none
   by_cases hw : (b.val φ).whole
   · rw [SM.bind_apply, head_in_place K φ b k _ hw]

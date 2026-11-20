@@ -547,8 +547,15 @@ structure PiShape : Type 3 where
   out : PiOut
 
 mutual
-/-- The reference run of a term at the future `φ`, at the type `hint` its context expects. -/
-noncomputable def run (hint : TyS) : Term → SM Res
+/-- The reference run of a term at the future `φ`, at the type `hint` its context expects, in
+tail position when `tl` (D90's tail flag, docs/31 D29 point 2). A term is in tail position when it
+is a function's body (the `.fix` clause's body run), or a tail's `let` body, sequence tail, match
+arm, or the one arm of a match on a proof: exactly where the checker's `checkTail` recurses and
+its untyped runs carry `MState.tailNext` (`runBody`, `evalCore`'s `.letIn` and `.seq`,
+`evalMatch`'s arms, `evalMatchByType`'s one arm). Everything else, `J`'s transported term and a
+sealed program's re-run included, is not; a constant's body is run by `eval`, not `checkTail`,
+so it is not either. -/
+noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
   | .place p => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.place p))
       (readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p))) s
   | .borrow p => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.borrow p)) (borrowPlace K φ p) s
@@ -560,12 +567,12 @@ noncomputable def run (hint : TyS) : Term → SM Res
     let T : TyS := match contentOf K φ p s with
       | some ((_, T, _, _), _) => T
       | none => .plain .err
-    let ((v, R), s) ← run T u s
+    let ((v, R), s) ← runT false T u s
     assignAt K φ p v R.label s) s
   | .letIn x u w => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.letIn x u w)) (fun s => do
-    let ((v, T), s) ← run (.plain .err) u s
+    let ((v, T), s) ← runT false (.plain .err) u s
     let s := pushBindShaped s { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u }
-    let ((r, R), s) ← run hint w s
+    let ((r, R), s) ← runT tl hint w s
     -- [Drop] of the binding: the borrow it holds *now* ends, then it is forgotten (PROPOSAL,
     -- m2-proofs, CE5: not the label its type carried when it was bound, which it may have moved
     -- out, while an assignment may have made it the holder of another)
@@ -580,9 +587,9 @@ noncomputable def run (hint : TyS) : Term → SM Res
     -- [Drop] of a discarded value (`Machine.dropValue`): a borrow it holds ends now, as the
     -- checker ends it (docs/31 D29: the two hold the same live borrows at every point; it used
     -- to stay parked until an access depended on it, an early end of the checker's)
-    let r ← run (.plain .err) u
+    let r ← runT false (.plain .err) u
     SM.modify (discardEnd r.2)
-    run hint w) s
+    runT tl hint w) s
   | .matchNat p z u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.matchNat p z u)) (fun s => do
     -- [Match]: the arm by the tag of the scrutinee's meaning (after [Access] for the tag: the
     -- audit's A1); `⊥` is an error; then D84's drop at the join
@@ -590,10 +597,10 @@ noncomputable def run (hint : TyS) : Term → SM Res
     let entry := movedPlaces φ s
     match tg.asNat with
     | some 0 => do
-      let ((r, R), s) ← run hint z s
+      let ((r, R), s) ← runT tl hint z s
       some ((r, R), joinDrop K φ entry (.matchNat p z u) s)
     | some (_ + 1) => do
-      let ((r, R), s) ← run hint u s
+      let ((r, R), s) ← runT tl hint u s
       some ((r, R), joinDrop K φ entry (.matchNat p z u) s)
     | none => none) s
   | .matchInd p n arms => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.matchInd p n arms)) (fun s => do
@@ -606,7 +613,7 @@ noncomputable def run (hint : TyS) : Term → SM Res
       | _ => tg.asNat
     match c? with
     | some c => do
-      let ((r, R), s) ← runArm hint c arms s
+      let ((r, R), s) ← runArm tl hint c arms s
       -- a match on a proof has no join (`Machine.evalMatchByType`: its one arm runs on every
       -- path; the audit's A4)
       some ((r, R), match tg with | .proof => s | _ => joinDrop K φ entry (.matchInd p n arms) s)
@@ -656,7 +663,7 @@ noncomputable def run (hint : TyS) : Term → SM Res
       -- a sealed callee (D39: the checker calls a sealed function value) carries the shape of
       -- its program's result (the spine's finding at the general closeCall_step, docs/31 item
       -- 3); its labels are its own, so only the shape is taken
-      | .sealed t => match run hint t (emptyState 0) with
+      | .sealed t => match runT false hint t (emptyState 0) with
         | some ((_, R), _) => { hint with shape := R.shape }
         | none => hint
       | _ => hint
@@ -670,10 +677,10 @@ noncomputable def run (hint : TyS) : Term → SM Res
     let bs := runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds
     let ps := psOf bs ds
     let out : PiOut := match c with
-      | .ref U => .ref fun acc => match run (.plain .err) U (extendBy s bs acc) with
+      | .ref U => .ref fun acc => match runT false (.plain .err) U (extendBy s bs acc) with
         | some ((v, _), _) => v.asTy
         | none => .err
-      | c => .data fun acc => match run (.plain .err) c (extendBy s bs acc) with
+      | c => .data fun acc => match runT false (.plain .err) c (extendBy s bs acc) with
         | some ((v, _), _) => v.asTy
         | none => .err
     let l := K.D.piSort (scopeOf s) (.pi hs ds c)
@@ -689,19 +696,19 @@ noncomputable def run (hint : TyS) : Term → SM Res
     let bs := runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds
     let ps := psOf bs ds
     let out : PiOut := match c with
-      | .ref U => .ref fun acc => match run (.plain .err) U (extendBy s bs acc) with
+      | .ref U => .ref fun acc => match runT false (.plain .err) U (extendBy s bs acc) with
         | some ((v, _), _) => v.asTy
         | none => .err
-      | c => .data fun acc => match run (.plain .err) c (extendBy s bs acc) with
+      | c => .data fun acc => match runT false (.plain .err) c (extendBy s bs acc) with
         | some ((v, _), _) => v.asTy
         | none => .err
     -- the codomain with its structure: the body's hint (the audit's A8: at `.plain _`, a body
     -- that is a bare `Nil` had no parameters to read)
     let cod : List Sem → TyS := match c with
-      | .ref U => fun acc => match run (.plain .err) U (extendBy s bs acc) with
+      | .ref U => fun acc => match runT false (.plain .err) U (extendBy s bs acc) with
         | some ((v, R), _) => ⟨v.asTy, R.shape, none, R.data⟩
         | none => .plain .err
-      | c => fun acc => match run (.plain .err) c (extendBy s bs acc) with
+      | c => fun acc => match runT false (.plain .err) c (extendBy s bs acc) with
         | some ((v, R), _) => ⟨v.asTy, R.shape, none, R.data⟩
         | none => .plain .err
     -- the carrier at the declared sort (D55, D12): `piTyAt`/`closureAt` (`Apply1.lean`)
@@ -734,7 +741,7 @@ noncomputable def run (hint : TyS) : Term → SM Res
         else
           (s.pushBind { ty := { T with label := none }, val := fun _ => ap.1, decl := d }, acc ++ [ap.1], cells)
       let (s₂, _, cells) := (args.zip ps).foldl step (s₁, [], [])
-      match run (cod args) body s₂ with
+      match runT true (cod args) body s₂ with
       | some ((r, R), s₃) =>
         -- the frame pop ends the borrows the body made and the parameters' (their cells then
         -- read the holders' contents), except the returned borrow's, whose holder is the
@@ -777,7 +784,7 @@ noncomputable def run (hint : TyS) : Term → SM Res
       -- a call reads its head in place: it does not consume the function it calls (D53 (e),
       -- `evalCall`'s `inPlace`; D19, R2: `run f` moved a function variable out, so `f(f(n))`
       -- failed)
-      let fv ← SM.headOf f (fun p => readPlace K φ p true) (run (.plain .err) f)
+      let fv ← SM.headOf f (fun p => readPlace K φ p true) (runT false (.plain .err) f)
       -- a statement call's arguments are statement positions, each on its own copy (R4)
       let as ← runArgs fl.1 fv.2.shape 0 [] args
       callOf fv as) s
@@ -786,62 +793,62 @@ noncomputable def run (hint : TyS) : Term → SM Res
   | .zero => pure (.el0 Nat 0, .plain (.ty0 Nat))
   | .tt => pure (.el0 Unit (), .plain (.ty0 Unit))
   | .succ u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.succ u)) (do
-    let (v, _) ← run (.plain (.ty0 Nat)) u
+    let (v, _) ← runT false (.plain (.ty0 Nat)) u
     pure (v.succ, .plain (.ty0 Nat))) s
   | .eq A a b => SM.onCopy do
-    let (TA, RA) ← run (.plain .err) A
+    let (TA, RA) ← runT false (.plain .err) A
     let T : TyS := ⟨TA.asTy, RA.shape, none, RA.data⟩
-    let (va, _) ← SM.onCopy (run T a)
-    let (vb, _) ← SM.onCopy (run T b)
+    let (va, _) ← SM.onCopy (runT false T a)
+    let (vb, _) ← SM.onCopy (runT false T b)
     pure (.ty (.prop (va = vb)), .plain (.univ 0))
   | .cong _ _ | .prim "symm" _ | .prim "trans" _ | .prim "rewrite" _ | .prim "rewriteR" _ =>
     pure (.proof, .plain .err)
   | .ref A => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.ref A)) (do
-    let (TA, _) ← run (.plain .err) A
+    let (TA, _) ← runT false (.plain .err) A
     pure (TA, .plain (.univ 1))) s
   | .id A t u => fun s => do
     -- `Id` observes: each side on a copy of the state, a fresh value written through each
     -- re-pointed borrow binding ([Obs-ref]), every borrow ended, the result and every position
     -- compared (D84: moved places are definite values, so they compare too); the proposition
     -- holds for every choice of the written values among the members of the borrowed types
-    let ((TA, RA), _) ← SM.onCopy (run (.plain .err) A) s
+    let ((TA, RA), _) ← SM.onCopy (runT false (.plain .err) A) s
     let T : TyS := ⟨TA.asTy, RA.shape, none, RA.data⟩
     let reps := K.D.rePointed (scopeOf s) t
-    let o₁ ← run T t s
-    let o₂ ← run T u s
+    let o₁ ← runT false T t s
+    let o₂ ← runT false T u s
     some ((.ty (.prop (∀ ws : List Sem, obsTyped reps ws s →
       observation φ reps ws s.positions o₁.1 o₁.2 = observation φ reps ws s.positions o₂.1 o₂.2)), .plain (.univ 0)), s)
   | .prim "J" [A, a, b, P, h, t] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "J" [A, a, b, P, h, t])) (do
     -- `J` means its transported term; its endpoints, motive and proof are statements on copies
-    let _ ← SM.onCopy (run (.plain .err) A)
-    let _ ← SM.onCopy (run (.plain .err) a)
-    let _ ← SM.onCopy (run (.plain .err) b)
-    let _ ← SM.onCopy (run (.plain .err) P)
-    let _ ← SM.onCopy (run (.plain .err) h)
-    run hint t) s
+    let _ ← SM.onCopy (runT false (.plain .err) A)
+    let _ ← SM.onCopy (runT false (.plain .err) a)
+    let _ ← SM.onCopy (runT false (.plain .err) b)
+    let _ ← SM.onCopy (runT false (.plain .err) P)
+    let _ ← SM.onCopy (runT false (.plain .err) h)
+    runT false hint t) s
   -- `clone`, `peek` and `inplace` of a place read it in place: not consumed (`inplace` is a stuck
   -- block's read-only capture; it used to be `run hint u`, a move: D19)
   | .prim "clone" [u] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "clone" [u]))
-      (SM.headOf u (fun p => readPlace K φ p true) (run hint u)) s
+      (SM.headOf u (fun p => readPlace K φ p true) (runT false hint u)) s
   | .prim "peek" [u] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "peek" [u]))
-      (SM.headOf u (fun p => readPlace K φ p true) (run hint u)) s
+      (SM.headOf u (fun p => readPlace K φ p true) (runT false hint u)) s
   | .prim "inplace" [u] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "inplace" [u]))
-      (SM.headOf u (fun p => readPlace K φ p true) (run hint u)) s
+      (SM.headOf u (fun p => readPlace K φ p true) (runT false hint u)) s
   | .prim _ _ => SM.fail
   | .ascribe u A => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.ascribe u A)) (do
     -- the annotation is the term's type WITH its structure: the Π-shape and the `D(ā)` data the
     -- run of the type term returns (the audit's A7: at `.plain _`, an annotated function could
     -- not be called and an annotated bare constructor had no parameters)
-    let (TA, RA) ← SM.onCopy (run (.plain .err) A)
+    let (TA, RA) ← SM.onCopy (runT false (.plain .err) A)
     let T : TyS := ⟨TA.asTy, RA.shape, none, RA.data⟩
-    let (v, R) ← run T u
+    let (v, R) ← runT false T u
     pure (v, { T with label := R.label })) s
 termination_by structural t => t
 
 /-- Arm `c` of a match, run at the match's expected type. -/
-noncomputable def runArm (hint : TyS) (c : Nat) : List (Hint × Term) → SM Res
+noncomputable def runArm (tl : Bool) (hint : TyS) (c : Nat) : List (Hint × Term) → SM Res
   | [] => SM.fail
-  | (_, t) :: rest => if c = 0 then run hint t else runArm hint (c - 1) rest
+  | (_, t) :: rest => if c = 0 then runT tl hint t else runArm tl hint (c - 1) rest
 termination_by structural arms => arms
 
 /-- The parameters of a Π-term as a frame binds them (`PBind`): each domain term run in the
@@ -852,18 +859,18 @@ content type `A` is run. (D19, R6; `psOf` reads the `PiParam`s off the result.) 
 noncomputable def runBinds (s : SState) (dcs : List DeclInfo) (pre : List PBind) : List Term → List PBind
   | [] => []
   | .ref A :: ds =>
-    mkBind dcs pre (fun acc => run (.plain .err) A (extendBy s pre acc)) ::
-      runBinds s dcs (pre ++ [mkBind dcs pre (fun acc => run (.plain .err) A (extendBy s pre acc))]) ds
+    mkBind dcs pre (fun acc => runT false (.plain .err) A (extendBy s pre acc)) ::
+      runBinds s dcs (pre ++ [mkBind dcs pre (fun acc => runT false (.plain .err) A (extendBy s pre acc))]) ds
   | d :: ds =>
-    mkBind dcs pre (fun acc => run (.plain .err) d (extendBy s pre acc)) ::
-      runBinds s dcs (pre ++ [mkBind dcs pre (fun acc => run (.plain .err) d (extendBy s pre acc))]) ds
+    mkBind dcs pre (fun acc => runT false (.plain .err) d (extendBy s pre acc)) ::
+      runBinds s dcs (pre ++ [mkBind dcs pre (fun acc => runT false (.plain .err) d (extendBy s pre acc))]) ds
 termination_by structural ds => ds
 
 /-- An inductive's parameters, each at its parameter type (a statement position, on a copy). -/
 noncomputable def runParams (d : IndDecl) (i : Nat) (earlier : List Sem) : List Term → SM (List Sem)
   | [] => pure []
   | a :: as => do
-    let (v, _) ← SM.onCopy (run ⟨K.dm.paramTy d i earlier, none, none, K.dm.paramData d i earlier⟩ a)
+    let (v, _) ← SM.onCopy (runT false ⟨K.dm.paramTy d i earlier, none, none, K.dm.paramData d i earlier⟩ a)
     let rest ← runParams d (i + 1) (earlier ++ [v]) as
     pure (v :: rest)
 termination_by structural as => as
@@ -887,7 +894,7 @@ noncomputable def runFields (stmt : Bool) (d : IndDecl) (c i : Nat) (sol : List 
           ⟨K.dm.fieldTy d (solved sol) c i earlier, none, none, K.dm.fieldData d (solved sol) c i earlier⟩
         else .plain .err
       | none => .plain .err
-    let (v, R) ← SM.stmtIf (stmt && !(K.D.declOf (scopeOf s) a matches .ref _)) (run T a)
+    let (v, R) ← SM.stmtIf (stmt && !(K.D.declOf (scopeOf s) a matches .ref _)) (runT false T a)
     let sol₁ := match fieldTerm d c i with
       | some FT => unifyTyS d.params.length FT R sol
       | none => sol
@@ -906,7 +913,7 @@ noncomputable def runArgs (stmt : Bool) (shape : Option (List PiParam × PiOut))
     let T : TyS := match shape with
       | some (ps, _) => match ps[i]? with | some p => ⟨p.dom earlier, none, none, p.data earlier⟩ | none => .plain .err
       | none => .plain .err
-    let r ← SM.stmtIf (stmt && !(K.D.declOf (scopeOf s) a matches .ref _)) (run T a)
+    let r ← SM.stmtIf (stmt && !(K.D.declOf (scopeOf s) a matches .ref _)) (runT false T a)
     let rest ← runArgs stmt shape (i + 1) (earlier ++ [r.1]) as
     pure (r :: rest)) s
 termination_by structural as => as
@@ -915,12 +922,12 @@ termination_by structural as => as
 noncomputable def piShapeOf (s : SState) : Term → Option PiShape
   | .pi _ ds (.ref U) | .fix _ _ ds (.ref U) _ _ =>
     some ⟨psOf (runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds) ds,
-      .ref fun acc => match run (.plain .err) U (extendBy s (runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds) acc) with
+      .ref fun acc => match runT false (.plain .err) U (extendBy s (runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds) acc) with
       | some ((v, _), _) => v.asTy
       | none => .err⟩
   | .pi _ ds c | .fix _ _ ds c _ _ =>
     some ⟨psOf (runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds) ds,
-      .data fun acc => match run (.plain .err) c (extendBy s (runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds) acc) with
+      .data fun acc => match runT false (.plain .err) c (extendBy s (runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds) acc) with
       | some ((v, _), _) => v.asTy
       | none => .err⟩
   | _ => none
@@ -936,7 +943,7 @@ noncomputable def meanV (hint : TyS) : Value → Sem
   | .succ v => (meanV (.plain (.ty0 Nat)) v).succ
   | .unit => .el0 Unit ()
   | .gfn n => (K.C.global n).1
-  | .clo caps t rd => match run (.plain .err) t (stateOf 0 (capsState (capsVals caps) (capsTys rd))) with
+  | .clo caps t rd => match runT false (.plain .err) t (stateOf 0 (capsState (capsVals caps) (capsTys rd))) with
     | some ((v, _), _) => v
     | none => .err
   | .borrow _ w => meanV hint w
@@ -949,7 +956,7 @@ noncomputable def meanV (hint : TyS) : Value → Sem
   -- and meeting one of its loans is harmless (a loan is read by the value's meaning, never through
   -- the state). A counter fixed by the term changes under substitution, which then needs the
   -- counter's independence (the renaming lemma, false as first stated: finding 7)
-  | .sealed t => match run hint t (emptyState 0) with
+  | .sealed t => match runT false hint t (emptyState 0) with
     | some ((v, _), _) => v
     | none => .err
   | .proof => .proof
@@ -959,7 +966,7 @@ noncomputable def meanV (hint : TyS) : Value → Sem
     let T := TyS.plain (meanV (.plain .err) A).asTy
     .ty (.prop (meanV T a = meanV T b))
   | .tRef A => meanV (.plain .err) A
-  | .tPi caps t rd => match run (.plain .err) t (stateOf 0 (capsState (capsVals caps) (capsTys rd))) with
+  | .tPi caps t rd => match runT false (.plain .err) t (stateOf 0 (capsState (capsVals caps) (capsTys rd))) with
     | some ((v, _), _) => .ty v.asTy
     | none => .ty .err
   | .sort l => .ty (.univ l)
@@ -1026,6 +1033,10 @@ noncomputable def tyDataV : Value → Option (String × List Sem)
 termination_by structural v => v
 end
 
+/-- The reference run in a position that is not a tail (`runT false`): every run but a function's
+body, and the tails a body's tail hands on (D90's tail flag, `runT`). -/
+noncomputable abbrev run (hint : TyS) (t : Term) : SM Res := runT K ρ φ false hint t
+
 /-- The binders of a telescope formed in `s`: `runBinds` at the telescope's declared readings. -/
 noncomputable def bindsOf (s : SState) (ds : List Term) : List PBind :=
   runBinds K ρ φ s (K.D.paramDecls (scopeOf s) ds) [] ds
@@ -1087,7 +1098,7 @@ positive form of `Regress/Knot_dcdd0a34.lean`). -/
 theorem mean_sealed_at_future (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (l : Nat) :
     Value.mean K.dm K.M K.Γ ρ φ hint (.sealed (.val (.loan l))) = φ l := by
   show meanV K ρ φ hint (.sealed (.val (.loan l))) = φ l
-  simp [meanV, run]
+  simp [meanV, runT]
 
 /-- The Π-closure clause of the knot: `meanV` of a Π-closure is already a type value. -/
 theorem meanV_tPi_ty (hint : TyS) (caps : List Value) (t : Term) (rd : List (DeclInfo × Value)) :

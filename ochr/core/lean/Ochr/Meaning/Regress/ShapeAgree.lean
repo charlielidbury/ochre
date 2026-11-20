@@ -78,7 +78,7 @@ function returned by a call cannot be called, and a parameter whose type is a ca
 function is bound with no shape. (Its data, since docs/31 D32, is its codomain code's.) -/
 theorem call_noShape (hint : TyS) (f : Term) (args : List Term) (hd : Bool) (s s' : SState) (r : Res)
     (h : run K ρ φ hint (.call f args hd) s = some (r, s')) : r.2.shape = none := by
-  rw [run] at h
+  rw [run, runT] at h
   refine erasedIf_noShape _ _ _ _ _ (fun r s' hx => ?_) h
   simp only [Bind.bind] at hx
   split at hx
@@ -109,7 +109,7 @@ theorem call_shape_ne (hint : TyS) (f : Term) (args : List Term) (hd : Bool) (s 
 theorem pi_shape (hint : TyS) (hs : List Hint) (ds : List Term) (c : Term) (s : SState) :
     ∃ r, run K ρ φ hint (.pi hs ds c) s = some (r, s) ∧ r.2.shape.isSome = true ∧
       r.2.m = .univ (K.D.piSort (scopeOf s) (.pi hs ds c)) := by
-  rw [run_pi_def]
+  rw [run, run_pi_def]
   exact ⟨_, rfl, rfl, rfl⟩
 
 /-- A stored universe has no shape: a binding `T : Type` of a checker state, read as a reference

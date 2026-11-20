@@ -49,7 +49,7 @@ theorem run_letIn (hfl : NoStmt K) (h : Hint) (u w : Term) (hint : TyS) (s : SSt
             | some fr => y.2.shape (.bind y.2.topIdx (fr.binds.length - 1))
             | none => none) with
           | some l => y.2.endLabel l | none => letLenders y.2).dropLast)) := by
-  rw [run]; exact stmtIf_noStmt K hfl _ _ s
+  rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 /-- The [Drop] of a discarded value that holds no borrow does nothing. -/
 theorem seq_discard_plain (T : TyM) (k : SM Res) (s : SState) :
@@ -58,15 +58,15 @@ theorem seq_discard_plain (T : TyM) (k : SM Res) (s : SState) :
 theorem run_seq (hfl : NoStmt K) (u w : Term) (hint : TyS) (s : SState) :
     run K ρ φ hint (.seq u w) s =
       (run K ρ φ (.plain .err) u >>= fun r => SM.modify (discardEnd r.2) >>= fun _ => run K ρ φ hint w) s := by
-  rw [run]; exact stmtIf_noStmt K hfl _ _ s
+  rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem run_place (hfl : NoStmt K) (p : Place) (hint : TyS) (s : SState) :
     run K ρ φ hint (.place p) s = readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p)) s := by
-  rw [run]; exact stmtIf_noStmt K hfl _ _ s
+  rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem run_borrow (hfl : NoStmt K) (p : Place) (hint : TyS) (s : SState) :
     run K ρ φ hint (.borrow p) s = borrowPlace K φ p s := by
-  rw [run]; exact stmtIf_noStmt K hfl _ _ s
+  rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem readPlace_of (p : Place) (b : Bool) (s : SState) (v : Sem) (T : TyS) (pos : Pos) (st : List Step)
     (s' : SState) (h : contentOf K φ p s = some ((v, T, pos, st), s')) :
@@ -126,7 +126,7 @@ theorem run_assign (hfl : NoStmt K) (p : Place) (u : Term) (hint : TyS) (s : SSt
             | some l, [] => let s := s.takeLabel l; { s with shape := fun q => if q = pos then some l else s.shape q }
             | _, _ => s
           some ((.el0 Unit (), .plain (.ty0 Unit)), s)) := by
-  rw [run]; exact stmtIf_noStmt K hfl _ _ s
+  rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 /-- After `&y`: `y` reads label `n`, the borrow parked in temporary `0`. -/
 noncomputable def b2 (n : Nat) : SState :=

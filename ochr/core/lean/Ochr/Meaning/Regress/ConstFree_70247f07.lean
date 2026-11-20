@@ -87,7 +87,7 @@ theorem evalCore_const_free (ρ : Assignment) (φ : Future) (hC : K.C.global "on
   obtain ⟨st', left, log, hrun⟩ := runs_const
   obtain ⟨ρ', -, r, s', hr, hle, -⟩ := h stG st' true (.const "one") none (.succ .zero) (some .tNat)
     (good_stG K ρ) (fun σ hσ => absurd hσ (by simp [stG])) ⟨left, log, hrun⟩
-  rw [run] at hr
+  rw [run, runT] at hr
   obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj hr)
   rw [hC] at hle
   simp [meanV, Sem.succ, Sem.asNat, Sem.as] at hle
