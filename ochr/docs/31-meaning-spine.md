@@ -1046,7 +1046,24 @@ tables only growing (`st.absTy.size ≤ st'.absTy.size`, `st.nextLoan ≤ st'.ne
 state after under the extended context, the relation and `GoodF` of the state after **with the
 returned value counted** (`st'.withTemp v`, `flightOf r.2`). `SimConcl` and `SimConclT` are that
 form; the remaining statements in the old form are migrated with their areas, and no new statement is
-written in it. The induction hypothesis is at every fuel up to the step's (`StepsIHBelow`, the knot by
+written in it.
+
+**The decisions are extended with `Δ`** (decided 2026-11-20, after the slice prover's finding that
+`access_ctx` is false: an access can grow the table of unknowns, an end's [Repack] making the lent
+part a fresh unknown, and the context's decisions, fixed, cannot agree with the checker's on inputs
+naming it). The extended context is `{ K with Δ := Δ', D := D' }`, with a new decision table `D'`
+that agrees with the old one on every input naming only unknowns that existed before the step,
+`K.D.AgreeOld st.absTy.size D'` (`Decisions.AgreeOld`: places and readings name no unknown and agree
+outright; a term's decision agrees when its unknowns are below the bound; `refl`, `mono`, `trans`).
+The other form offered (keep `D`, restrict `CtxOk`'s decision clause to inputs over existing
+unknowns, the extension a separate fact) was not taken: it would weaken `CtxOk` itself, so every
+reader of the decisions would carry a side condition on the unknowns of its input, while extending
+`D` with `Δ` is the left half of D57/D65 completed in the one place the context grows. The old
+inputs keep their decisions (`decAligned_grow`, and `runT_congrD` for a run that reads only old
+inputs). Applied to every statement in the extended form (`SimConcl`, `SimConclT`, `eval`,
+`evalCore`, `letIn`, `nfSealed`, `observe`, `idType`, the call statements and their assemblies,
+the chain's `const_value`); `movedPlace`, `dropOne` and the join's drop get it when the slice
+branch is merged. The induction hypothesis is at every fuel up to the step's (`StepsIHBelow`, the knot by
 strong induction: the lead's decision on item 4 below, in place of a fuel-monotonicity fact about the
 checker).
 

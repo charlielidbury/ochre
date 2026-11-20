@@ -21,41 +21,8 @@ namespace Ochr.Meaning.Steps
 
 open Ochr.Meaning
 
-/-- A term's unknowns are below `n`. -/
-def _root_.Ochr.Term.absBelow (n : Nat) (t : Term) : Prop := ∀ σ, t.anyAtom (· == .abs σ) = true → σ < n
-
-theorem _root_.Ochr.Term.absBelow_mono {n m : Nat} {t : Term} (h : t.absBelow n) (hnm : n ≤ m) : t.absBelow m :=
-  fun σ hσ => Nat.lt_of_lt_of_le (h σ hσ) hnm
-
-/-- **Two decision tables agree on the inputs naming no unknown at or above `n`**: a place's or a
-reading's decision names none (they read the readings in scope, not values); a term's names those
-its embedded values hold. -/
-structure _root_.Ochr.Meaning.Decisions.AgreeOld (n : Nat) (D D' : Decisions) : Prop where
-  placeDecl : ∀ sc p, D'.placeDecl sc p = D.placeDecl sc p
-  copy : ∀ r, D'.copy r = D.copy r
-  flags : ∀ sc t, t.absBelow n → D'.flags sc t = D.flags sc t
-  declOf : ∀ sc t, t.absBelow n → D'.declOf sc t = D.declOf sc t
-  piSort : ∀ sc t, t.absBelow n → D'.piSort sc t = D.piSort sc t
-  joinMoves : ∀ sc entry t, t.absBelow n → D'.joinMoves sc entry t = D.joinMoves sc entry t
-  rePointed : ∀ sc t, t.absBelow n → D'.rePointed sc t = D.rePointed sc t
-  typeDecl : ∀ sc t, t.absBelow n → D'.typeDecl sc t = D.typeDecl sc t
-  blockCaps : ∀ sc entry t, t.absBelow n → D'.blockCaps sc entry t = D.blockCaps sc entry t
-
-theorem _root_.Ochr.Meaning.Decisions.AgreeOld.refl (n : Nat) (D : Decisions) : D.AgreeOld n D :=
-  ⟨fun _ _ => rfl, fun _ => rfl, fun _ _ _ => rfl, fun _ _ _ => rfl, fun _ _ _ => rfl,
-    fun _ _ _ _ => rfl, fun _ _ _ => rfl, fun _ _ _ => rfl, fun _ _ _ _ => rfl⟩
-
-theorem _root_.Ochr.Meaning.Decisions.AgreeOld.trans {n m : Nat} {D₁ D₂ D₃ : Decisions}
-    (h₁ : D₁.AgreeOld n D₂) (h₂ : D₂.AgreeOld m D₃) (hnm : n ≤ m) : D₁.AgreeOld n D₃ where
-  placeDecl sc p := (h₂.placeDecl sc p).trans (h₁.placeDecl sc p)
-  copy r := (h₂.copy r).trans (h₁.copy r)
-  flags sc t ht := (h₂.flags sc t (Term.absBelow_mono ht hnm)).trans (h₁.flags sc t ht)
-  declOf sc t ht := (h₂.declOf sc t (Term.absBelow_mono ht hnm)).trans (h₁.declOf sc t ht)
-  piSort sc t ht := (h₂.piSort sc t (Term.absBelow_mono ht hnm)).trans (h₁.piSort sc t ht)
-  joinMoves sc e t ht := (h₂.joinMoves sc e t (Term.absBelow_mono ht hnm)).trans (h₁.joinMoves sc e t ht)
-  rePointed sc t ht := (h₂.rePointed sc t (Term.absBelow_mono ht hnm)).trans (h₁.rePointed sc t ht)
-  typeDecl sc t ht := (h₂.typeDecl sc t (Term.absBelow_mono ht hnm)).trans (h₁.typeDecl sc t ht)
-  blockCaps sc e t ht := (h₂.blockCaps sc e t (Term.absBelow_mono ht hnm)).trans (h₁.blockCaps sc e t ht)
+-- `Term.absBelow` and `Decisions.AgreeOld` moved to `Steps/Statements.lean` (docs/31 D75: the
+-- statement form extends the context's decisions with its `Δ`).
 
 /-- `DecAligned` on the inputs naming only unknowns below `n` (a place's and a reading's decisions
 name none). -/

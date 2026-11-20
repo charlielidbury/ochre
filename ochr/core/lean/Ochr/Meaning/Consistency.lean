@@ -83,13 +83,13 @@ type), and at a proposition it is `•` (`constMean`): so the membership [Return
 definition's. -/
 theorem const_value (fuel : Nat) (P : ProgState) (d : Def) (st' st₁ : MState) (goal v : Value) (hd : d.doms = [])
     (hgoal : ((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot = goal)
-    (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s₂ : SState)
+    (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (π' : Nat → Nat) (r : Res) (s₂ : SState)
     (hrun : runT (P.ctx dm D st') ρ' noFuture false (Steps.hintM (P.ctx dm D st') (fun _ => .err) (some goal)) d.body
       (emptyState st₁.nextLoan) = some (r, s₂))
-    (hmean : meanV { P.ctx dm D st' with Δ := Δ' } ρ' (fun l => noFuture (π' l)) r.2 v = r.1) (ψ : Future)
-    (hmem : meanV { P.ctx dm D st' with Δ := Δ' } ρ' ψ (Value.tyS dm ({ P.ctx dm D st' with Δ := Δ' } : RunCtx).M
+    (hmean : meanV { P.ctx dm D st' with Δ := Δ', D := D' } ρ' (fun l => noFuture (π' l)) r.2 v = r.1) (ψ : Future)
+    (hmem : meanV { P.ctx dm D st' with Δ := Δ', D := D' } ρ' ψ (Value.tyS dm ({ P.ctx dm D st' with Δ := Δ', D := D' } : RunCtx).M
         (P.ctx dm D st').Γ ρ' goal) v ∈ₛ[dm.read]
-      (meanV { P.ctx dm D st' with Δ := Δ' } ρ' noFuture (.plain .err) goal).asTy) :
+      (meanV { P.ctx dm D st' with Δ := Δ', D := D' } ρ' noFuture (.plain .err) goal).asTy) :
     ∃ m, defMeaning (fun _ => .err) (P.ctx dm D st') d goal = some m ∧ m.1 ∈ₛ[dm.read] m.2.m := by
   sorry
 
@@ -104,15 +104,15 @@ theorem step_member_const (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) 
         (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot) = some m ∧ m.1 ∈ₛ[dm.read] m.2.m := by
   obtain ⟨f, st₁, st₂, st₃, b₁, b₂, goal, v, T?, hg₁, hctx₁, hs₁, htl, hev, hbr, hgoal⟩ :=
     const_split dm D fuel P d st' hd hP hcov hfaith hrun
-  obtain ⟨ρ', Δ', π', -, -, -, -, r, s₂, hrunr, hmean, -, hctx₂, -, hg₂⟩ :=
+  obtain ⟨ρ', Δ', D', π', -, -, -, -, -, r, s₂, hrunr, hmean, -, hctx₂, -, hg₂⟩ :=
     (Steps.stepsIH f (P.ctx dm D st') (fun _ => .err) noFuture).eval_step st₁ st₂ true d.body (some goal) v T? hg₁
       hctx₁ _ id hs₁ (fun h => absurd h (by decide)) b₁ hev
   rw [htl] at hrunr
-  obtain ⟨ψ, hψ⟩ := typedFutureF_exists { P.ctx dm D st' with Δ := Δ' } ρ' _ _ hg₂
-  have hmem := ((Steps.stepsIH f { P.ctx dm D st' with Δ := Δ' } ρ' ψ).bodyReturns_sound st₂ st₃ _ v goal [] ""
+  obtain ⟨ψ, hψ⟩ := typedFutureF_exists { P.ctx dm D st' with Δ := Δ', D := D' } ρ' _ _ hg₂
+  have hmem := ((Steps.stepsIH f { P.ctx dm D st' with Δ := Δ', D := D' } ρ' ψ).bodyReturns_sound st₂ st₃ _ v goal [] ""
     (Steps.flightOf r.2) hg₂ hctx₂ b₂ hbr hψ).1
   rw [hgoal]
-  exact const_value dm D fuel P d st' st₁ goal v hd hgoal ρ' Δ' π' r s₂ hrunr hmean ψ hmem
+  exact const_value dm D fuel P d st' st₁ goal v hd hgoal ρ' Δ' D' π' r s₂ hrunr hmean ψ hmem
 
 /-- **An accepted function means a member of its type** (leaf; THE KNOT, docs/31 D72). Not
 `checkFix_sound`: `checkDef` pushes the function's global before `checkFix`, so `CtxOk` at the state
