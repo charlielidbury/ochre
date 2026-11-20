@@ -1,5 +1,12 @@
 # Slice lane: handoff note (for a successor who has seen none of this)
 
+## First thing to do
+
+`spine` is now **f9f685df** (the data layer's final state: function application, a constructor's
+membership, and the substitution lemma for unknowns proved). Merge `origin/spine` into `spine-slice`
+first, then `origin/main` if it has moved; build `OchrMeaning`; re-run `#sorry_leaves` on
+`joinDrop_step` to see the open pieces as they stand.
+
 ## Where and how
 
 - Worktree `/home/charlielidbury/repos/ochre-slice`, branch `spine-slice`. Push there after every
@@ -81,6 +88,12 @@ Proved on the standard axioms: `grain_deref_not_proof`, `not_below_proof`, `join
 extended context itself: it waits on `ctx_botWrite`, the [Access]/[End] hypothesis steps, and the
 machine facts.
 
+**Order I would attack them in:** (1) `recordedNeutral_ok` (self-contained, its pattern exists);
+(2) the routine part of `ctx_botWrite` (`ShapeFacts.of_botWrite` and the field-by-field `CtxOk`),
+after checking whether the lead has moved the block-captures clause out of `CtxOk`; (3)
+`etaFresh_sim` (through `split_coverage`, plus `meanV_ext`'s assignment-and-Δ half, which is the
+largest of the three). `Rel.kept` and the machine facts belong to other lanes.
+
 ## Decisions in force (why the statements look as they do)
 
 - **The reference's `dropAt` tests no meaning** (only the copy decision and whether `Sem.updAt` can
@@ -117,7 +130,9 @@ machine facts.
   `import Ochr.Meaning`, `open Lean Elab Command`, and an `elab "#sorry_leaves " id:ident` that walks
   `ci.type.getUsedConstants` and `ci.value? (allowOpaque := true)` from the root, collecting names
   whose type or value mentions `sorryAx`; run with `lake env lean <file>`.
-- `#print axioms` in a scratch file importing `Ochr.Meaning`.
+- **Checking axioms**: a scratch file `import Ochr.Meaning` then `#print axioms Ochr.Meaning.Steps.<name>`,
+  run with `taskset -c 0-14 lake env lean <file>` from `ochr/core/lean` after `lake build OchrMeaning`
+  (a stale olean otherwise). "Proved" means exactly `[propext, Classical.choice, Quot.sound]`.
 - **Kernel-checked counterexamples / checker facts**: `Regress/GenNeutralContent`'s `isOk`, `outVal`,
   `outSt`, `runs_out`, with `decide +kernel` on a concrete `MState`; `Place` equality through
   `Place.beq`; `DeclInfo` has no `DecidableEq` (use a `match … with | .x => true | _ => false`).
@@ -161,10 +176,23 @@ machine facts.
   along `etaPlace`'s recursion, shaped like `movedPlace_step`); `Regress/EntryCheck`.
 - **Leaving an arm**: `exitWorld_step_asm` (SplitAsm, assembled from `exitWorld_ctx`, a leaf, and
   `Rel.kept`).
-- **Coming checker changes** (main's queue): the join's existing check (an arm moves a place while
-  the result borrows it) extended to the access of a lent prefix, so the join never ends a borrow
-  held in flight (today only D53 rejects the tail case: `Regress/JoinPrefixBorrow`'s `TK`, `TU`); the
-  dead `⋆` test removed from `dropAtJoin` (D102); comparisons keeping only names on exit; every
-  temporary carrying its type (then `Good` speaks of typed temporaries: `botWrite_good` treats every
-  position alike, and only `posTyM_setAtE`'s `temp` case, `rfl` today, would need the temporary's
-  stored type to be unchanged by a write at a binding).
+
+## What is coming that will touch the step
+
+- **Every temporary carries its type** (a checker change, then the lead migrates `Good` to speak of
+  typed temporaries). The drop: `botWrite_good` treats every position alike (the written one, and
+  the rest by `mean_setAtE_other`); only `posTyM_setAtE`'s `temp` case (`rfl` today, since a
+  temporary has no type) needs the temporary's stored type unchanged by a write at a binding.
+  `dropOne_exists` writes only at a binding; the arm's result in flight is untouched by the write.
+- **The block-captures clause moves to a hypothesis of the [Entry] step** (main passed the slice's
+  suggestion to the lead): then `CtxOk` no longer asks it of every state, and `ctx_botWrite` is
+  routine. Until then, its open part is D90's obligation 1 at the state after the write.
+- **The join rejects when it would end a borrow held in flight** (main's checker change from the
+  slice's probe): the join's existing check (an arm moves a place while the result borrows it) is
+  extended to the access of a lent prefix, so the tail case (`Regress/JoinPrefixBorrow`'s `TK`, `TU`,
+  today rejected only by D53) is rejected at the join for its own reason. The proof gets a clause for
+  the lead: the join's drop ends no borrow held in flight. Re-check `JoinPrefixBorrow`'s expected
+  messages for `TK`, `TU` when it lands (they will change to the [Join] message).
+- Also queued on main: the dead `⋆` test removed from `dropAtJoin` (D102; the reference no longer
+  mirrors it, so nothing in the drop changes), and comparisons keeping only names on exit (fresh
+  names never reused, which `MachineMono` relies on).
