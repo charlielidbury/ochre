@@ -547,16 +547,6 @@ theorem sealed_loanFree (st : MState) (p : Place) (t : Term) (hg : Good K.dm K.M
     ∀ l, (Value.sealed t).hasLoan l = false := by
   sorry
 
-/-- **`movedPlace` of the parent leaves the place missing** when it returns the parent itself: if
-the parent existed, nothing changed (`movedPlace_exists'`); if not, it holds a fresh field of a
-refinement, an unknown or `⋆` (`fieldsGeneric`; no field is a borrow, (WF8)), which has no field
-and no content. Open: needs the typing of a refinement's fields. -/
-theorem movedPlace_keeps_missing (fuel : Nat) (st st' : MState) (q p : Place) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hpar : parentOf q = some p) (hq : ckContent st.env q = none)
-    (h : Runs (Ochr.movedPlace fuel p) st b p st') (hp : ∃ w, ckContent st'.env p = some w) :
-    ckContent st'.env q = none := by
-  sorry
-
 end
 
 /-! ## The exits -/
@@ -590,13 +580,21 @@ theorem exit_sealed (fuel : Nat) (st st' : MState) (s : SState) (π : Nat → Na
     ∃ tn args d, T? = some (.tInd tn args) ∧ st'.inds.find? (·.name == tn) = some d ∧ d.ctors.length = 1 := by
   sorry
 
-/-- **Any other parent holds `⊥` or `⋆`** (`movedPlace`'s last exit): the place is missing and its
-parent holds no fill, unknown or sealed program, so (by membership at the parent's declared type)
-it holds no constructor, number or borrow the step would go into. Open. -/
-theorem exit_other (st : MState) (s : SState) (π : Nat → Nat) (q p : Place) (v : Value)
+/-- **Any other parent holds `⊥` or `⋆`** (`movedPlace`'s last exit): the place was missing before
+its parent was re-rooted (`hq₀`, in the state `st₀` the re-rooting started from), and the parent
+now holds no fill, unknown or sealed program. If the parent existed, nothing changed
+(`movedPlace_exists'`) and by the parent's declared inductive type (`GrainOk`, a field step) it
+holds a constructor of that type, whose fields exist, or `⊥` or `⋆`; through a `*` step it holds a
+borrow or `⊥`. If not, it holds a fresh field of a refinement (an unknown or `⋆`). Open: needs the
+checker's syntactic typing of places (docs/31 D34: (V), (R), (A), (M)). As first stated the place
+was asked to be missing after the re-rooting too (`movedPlace_keeps_missing`, deleted): false
+without the grain where the parent became a refinement's proof field `⋆`, through which the place
+exists. -/
+theorem exit_other (fuel : Nat) (st₀ st : MState) (s : SState) (π : Nat → Nat) (q p : Place) (v : Value) (b : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpar : parentOf q = some p)
-    (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hp : ckContent st.env p = some v)
-    (hq : ckContent st.env q = none) (hfill : Ochr.fillHoles st.env v = [])
+    (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hq₀ : ckContent st₀.env q = none)
+    (hrun : Runs (Ochr.movedPlace fuel p) st₀ b p st) (hp : ckContent st.env p = some v)
+    (hfill : Ochr.fillHoles st.env v = [])
     (habs : ∀ σ, v ≠ .abs σ) (hsealed : ∀ t, v ≠ .sealed t) : v = .bot ∨ v = .proof := by
   sorry
 
@@ -742,8 +740,6 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
       subst st₄
       rw [hc] at hc'
       cases hc'
-      have hq₁ : ckContent st₁.env q = none :=
-        movedPlace_keeps_missing K ρ fuel st st₁ q p bh hg hpar hq hmp ⟨c, hc⟩
       have hgr₁ : GrainOk K.D K.Γ (scopeOf s₁) q := by rw [scopeOf_alp hs₁q]; exact hgrain
       have hpos₁ : resolve s₁ q = some (pos, q.steps.2) := by rw [resolve_alp hs₁q]; exact hpos
       split at h4
@@ -849,7 +845,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
             E₁.trans K ρ φ (E₂.trans _ _ φ (E₃.trans _ _ φ E₄)), hout₄⟩
       · -- any other content: `⊥` or `⋆`, re-rooted to the parent
         rename_i habs hsea
-        have hcv := exit_other { K with Δ := Δ₁ } ρ₁ φ st₁ s₁ π q p c hg₁ hrel₁ hpar hgr₁ hc hq₁ hfill
+        have hcv := exit_other { K with Δ := Δ₁ } ρ₁ φ fuel st st₁ s₁ π q p c bh hg₁ hrel₁ hpar hgr₁ hq hmp hc hfill
           (fun σ e => habs σ e) (fun t e => hsea t e)
         obtain ⟨rfl, rfl⟩ := runs_pure_inv h4
         refine ⟨ρ₁, Δ₁, s₁, hs₁q, E₁, .inr ⟨hq1.symm, by rw [hq2]; exact List.prefix_append _ _, ?_⟩⟩
