@@ -604,7 +604,9 @@ such a place to its longest existing prefix and dropped that whole (`c.0`), so `
 accepted and `BadIdxRead` rejected for reading the dropped `c.0`. The join's place is now dropped
 when it exists, whatever made it exist; nothing is dropped when its longest existing prefix holds
 `⊥` or `⋆`; and otherwise the definition is rejected where the match is, naming the place (found
-by the meaning spine, docs/31 D41: `Regress/UnrunArmPlace.lean`, `ReRootExists.lean`). -/
+by the meaning spine, docs/31 D41: `Regress/UnrunArmPlace.lean`, `ReRootExists.lean`). Since D101
+a move through `*` of a place not declared a borrow is rejected before any run, from declared
+types (`Decide.jdGrain`), so `BadDerefRead` is rejected statically. -/
 
 ochr JoinPlaces uses Nats, Lists {
   inductive In := MkIn(a : List(Nat), b : List(Nat))
@@ -647,8 +649,64 @@ ochr JoinPlaces uses Nats, Lists {
 #guard (run "JoinPlaces" JoinPlaces).rejectedWith [
   ("BadIdx", "[Join] an arm of the match moves c.0.5, which does not exist: c.0 holds a constructor value without that field"),
   ("BadIdxRead", "[Join] an arm of the match moves c.0.5, which does not exist: c.0 holds a constructor value without that field"),
-  ("BadDerefRead", "[Join] an arm of the match moves *c.0, which does not exist: c.0 holds a constructor value, which is not a borrow"),
+  ("BadDerefRead", "[Join] an arm of the match moves a place through * of a place not declared a borrow"),
   ("LentRead", "[Match] on c, which was moved out")]
+
+/-! ### A move through `*` in an arm that is not run (D101)
+
+The join's moves through `*` must go through a place declared a borrow (`&T`), decided from
+declared types before any run, as Rust type-checks every arm. `*h` of a proof (`DP1`) and of a
+proof field (`DP2` to `DP4`, the last two under a place lent to a returned borrow, where the
+checker read through the borrow's mark and the model could not follow), or of a number
+(`DData`), in an arm the run never takes, used to be accepted or caught only at run time. A
+borrow read through a match (`ViaMatchLive`), returned by a call (`RetDead`) or a parameter
+(`ParamDead`) is declared one. Moving through it in a dead arm is a move like any other: unless
+it is refilled (`ParamDeadRefill`) or copied (`ParamDeadClone`), the borrow ends with its content
+moved out ([D53]). A borrow variable moved earlier (`MovedBefore`, `MovedByArm`) and a reborrow
+(`RebDead`) are still fine. A type function cannot compute a borrow type (`&` is only ever
+written, D48), so no place is a borrow only through one. -/
+
+ochr JoinDeref uses Nats {
+  reject def DP1 (h : Eq(Nat, Z, Z)) : Unit := (
+    let k = Z;
+    match k { Z => (), S m => (let a = *h; ()) })
+  inductive Tg := MkTg(n : Nat, h : Eq(Nat, 0, 0))
+  def Get (s : &Tg) : &Nat := &(*s).0
+  reject def DP2 (x : Tg) : Unit := (
+    let r = Get(&x);
+    let k = Z;
+    match k { Z => (), S m => (let a = *(x.1); ()) })
+  reject def DP3 : Unit := (
+    let x = MkTg(0, refl);
+    let r = Get(&x);
+    let k = Z;
+    match k { Z => (), S m => (let a = *(x.1); ()) })
+  reject def DP4 (n : Nat) : Unit := (
+    let x = MkTg(n, refl);
+    let r = Get(&x);
+    let k = Z;
+    match k { Z => (), S m => (let a = *(x.1); ()) })
+  reject def DData (x : Nat) : Unit := (let k = Z; match k { Z => (), S m => (let a = *x; ()) })
+  def IdB (x : &Nat) : &Nat := x
+  def Take (x : &Nat) : Unit := ()
+  def ViaMatchLive (b : Nat) (x : Nat) (y : Nat) : Nat := (let r = match b { Z => &x, S _ => &y }; *r := 5; 0)
+  def ViaMatchDead (b : Nat) (x : Nat) (y : Nat) : Unit := (let r = match b { Z => &x, S _ => &y }; let k = Z; match k { Z => (), S m => (let a = clone(*r); ()) })
+  def RetDead (x : Nat) : Unit := (let r = IdB(&x); let k = Z; match k { Z => (), S m => (let a = clone(*r); ()) })
+  reject def ParamDead (r : &Nat) : Unit := (let k = Z; match k { Z => (), S m => (let a = *r; ()) })
+  def ParamDeadClone (r : &Nat) : Unit := (let k = Z; match k { Z => (), S m => (let a = clone(*r); ()) })
+  def ParamDeadRefill (r : &Nat) : Unit := (let k = Z; match k { Z => (), S m => (let a = *r; *r := a; ()) })
+  def MovedBefore (x : Nat) : Unit := (let r = &x; let s = r; let k = Z; match k { Z => (), S m => (let a = *r; ()) })
+  def MovedByArm (k : Nat) (x : Nat) : Unit := (let r = &x; match k { Z => Take(r), S m => () }; let j = Z; match j { Z => (), S m => (let a = *r; ()) })
+  def RebDead (x : Nat) : Unit := (let r = &x; let k = Z; match k { Z => (), S m => (let w = &*r; ()) })
+}
+
+#guard (run "JoinDeref" JoinDeref).rejectedWith [
+  ("DP1", "[Join] an arm of the match moves a place through * of a place not declared a borrow"),
+  ("DP2", "[Join] an arm of the match moves a place through * of a place not declared a borrow"),
+  ("DP3", "[Join] an arm of the match moves a place through * of a place not declared a borrow"),
+  ("DP4", "[Join] an arm of the match moves a place through * of a place not declared a borrow"),
+  ("DData", "[Join] an arm of the match moves a place through * of a place not declared a borrow"),
+  ("ParamDead", "[D53] a borrow ends while its content is partly moved out (⊥)")]
 
 /-! ## A sealed program whose text holds a loan is not run (D97)
 
