@@ -14,7 +14,9 @@ Branch `spine-lead` (worktree `/home/charlielidbury/repos/ochre-spine`), from `o
 
 ## In flight
 - Waiting on the orchestrator: decision on where the type lives; the fixed-decision-table change landing on `spine` before `Statements.lean` is touched.
-- Second job: `Ochr/Meaning/OPEN.md` inventory (not started).
+- Second job DONE (D82): `Ochr/Meaning/OPEN.md`; `Regress/OpenFalse.lean` (two statements false). Keep OPEN.md current with every statement change.
+- `Steps/Statements.lean`, `IH.lean`, `Knot.lean` are MINE since b323f4e1 (the orchestrator's message); others request statement changes through the orchestrator. Pending merge: the datamodel+b323f4e1 commit (hash to come) supersedes b323f4e1.
+- Statement requests known: typed temporaries need `posTyM_setAtE`'s temporary case ("a write leaves a temporary's stored type"); the join's drop may end a borrow held by the arm's result (probe pending, orchestrator).
 
 ## Do not touch (other lanes)
 - `Steps/Statements.lean` and every existing file under `Steps/` until the orchestrator says the fixed-decision-table change is on `spine`.
