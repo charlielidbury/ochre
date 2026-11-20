@@ -18,33 +18,33 @@ Report to `main` (SendMessage) at each boundary, then end the turn; main always 
   side branch's commit onto `spine-slice`.
 - `Regress/StepKindsTable.lean`: step kind × parent kind, checker and reference, kernel-checked.
 
-## The fixed decision table (main's decision 2026-11-20, in progress)
+## The fixed decision table (main's decision 2026-11-20, DONE at 1f328465)
 
 The context's decisions `K.D` are fixed for a run (the item's final state's,
-`Consistency.const_split` already builds them so). A step assumes `(hD : DecTab K.D st')` (aligned
-after it) and concludes `CtxOk { K with Δ := Δ' }` there; no `D'`, no `AgreeOld`.
-- `Statements.lean`: DONE (46 statements got `hD` before `(bh : Nat)`; `ExtOk`, `SimConcl`,
-  `SimConclT` lost `D'`; `AgreeOld` deleted; `DecAligned extends DecTab` + `blockCaps`).
-- `DecExtend.lean`: deleted (`meanV_congrD`, `runT_congrD`, `decAligned_grow` gone).
-- `Steps/MachineMono.lean`: `TablesGrow`, `GrowsM` + closure lemmas (proved), (b) `DecTab.back`
-  (sorry), (a) `MachineGrows` (sorry, one field per machine function an assembly runs; fill as
-  sites need them), `DecTab.of_rest` (an assembly's tool). Main staffs (a), (b) as their own lane.
-- Repair status: `DropOneAsm` DONE; `MovedPlace`, `Match`, `SplitAsm`, `EqJAsm`, `CallAsm`, `IdAsm`,
-  `Consistency` and the rest TODO. Generic textual pass: `scratchpad/genfix.py <file>`.
-- At every IH application whose statement has `hD`: supply `DecTab K.D st₁` for the sub-step's
-  post-state as `hD.of_rest (rest grows) hrest`, where `hrest` is the run of the rest of the
-  computation (from `Runs.bind_inv`) and its growth comes from `MachineGrows` fields + closure.
+`Consistency.const_split` builds them so). A step assumes `(hD : DecTab K.D st')` (aligned
+after it) and concludes `CtxOk { K with Δ := Δ' }` there; no `D'`, no `AgreeOld` anywhere.
+- `DecAligned extends DecTab` + `blockCaps` (per state: it reads values).
+- `Steps/MachineMono.lean` (machine-only, main staffs it as its own lane, do not prove unless asked):
+  `TablesGrow`, `GrowsM` + closure lemmas (proved), (b) `DecTab.back` (sorry), (a) `grows_<fn>`
+  (sorry, one per machine function an assembly's rest runs; add new ones there and to the
+  `grows_step` macro), `DecTab.of_rest`.
+- At an IH application for a sub-run ending at `st₁`, with `hrest : Runs rest st₁ b a st'`:
+  `hD.of_rest (by grows_go) hrest` (add `; all_goals exact grows_<localDef> …` for local defs such
+  as `mpFinal`). Match by reducible unfolding only, or `whnf` times out on big rests.
+- Where a leaf hides the rest of a run (`closeCall_split`, `idType_split`, `const_split`), the leaf
+  supplies `TablesGrow …` or `DecTab …` as a conjunct.
 
 ## Open leaves of the drop step (what each rests on)
 
-- `access_ctx`, `dropAtJoin_ctx`: become the hypothesis's/compositions once [Access]/[End] conclude
-  the extended form (item 3 of main's queue).
+- `access_ctx`, `dropAtJoin_ctx` (now with `hD`): become the hypothesis's/compositions once
+  [Access]/[End] conclude the extended form (item 3 of main's queue, NEXT).
 - `etaFresh_sim` (fresh η record means its unknown), `placeTypeQ_sim` (item 3: state `placeType?`
   as a private computation like `evalType_step_stmt`, `KeptAfter`/`ExtOk`/`Rel.kept`; FIRST sweep
   whether its private copies can leave an η record naming an unknown of an empty type),
   `recorded_sim` (item 3: a hypothesis field `substEnv_neutral_step` in the form of
   `substEnv_abs_step`).
-- `meanV_ext`: the assignment-and-Δ congruence only (`AssignCongr` shape).
+- `meanV_ext`: the assignment-and-Δ congruence only (`AssignCongr` shape); the decisions half is gone.
+- The machine facts of `MachineMono` (its own lane).
 - Block captures after a write (item 4): measure on recorded states that the static instance at
   the new entry set is what the checker computes; do not prove.
 
