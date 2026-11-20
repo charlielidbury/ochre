@@ -264,6 +264,70 @@ theorem dropOne_step_asm (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
     · exact hgood
   · exact dropOne_missing K ρ φ fuel ih st st' q s π hg hctx hs hgrain hcopy hex bh h
 
+/-! ## `refine` in the simulation form, reduced -/
+
+/-- **`substEnv` of an unknown by a refinement it means, in the simulation form**: every position
+means the same (the substitution lemma for unknowns, the analogue of `meanV_substLoan` and
+`run_substLoan`, with [Seal]'s re-run of a changed sealed program meaning the same), the shape,
+sites and labels are untouched (a refinement holds no loan), and `Good` and the context are kept.
+Open: the analogue of `RunSubst.lean` for unknowns is not written. -/
+theorem substEnv_abs_sim (fuel : Nat) (st st' : MState) (σ : Nat) (r : Value) (s : SState) (π : Nat → Nat) (b : Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (hσ : ∀ ψ H, ρ σ = meanV K ρ ψ H r)
+    (h : Runs (Ochr.substEnv fuel (.abs σ) r true) st b () st') :
+    Rel K ρ φ π st' s ∧ Good K.dm K.M K.Γ ρ st' ∧ CtxOk K ρ st' := by
+  sorry
+
+/-- Recording a refinement changes nothing the relation reads (it reads Ω and the counter). -/
+theorem rel_refs (st : MState) (σ : Nat) (r : Value) (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) :
+    Rel K ρ φ π { st with refs := (σ, r) :: st.refs } s := ⟨hs.1, hs.2, hs.3, hs.4, hs.5⟩
+
+/-- **Recording a refinement keeps `Good` and the context** where the assignment makes the
+refinement true (the relation's half is `rel_refs`). Open: `Good`'s path conditions. -/
+theorem refs_sim (st : MState) (σ : Nat) (r : Value) (s : SState) (π : Nat → Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (hσ : ∀ ψ H, ρ σ = meanV K ρ ψ H r) :
+    Rel K ρ φ π { st with refs := (σ, r) :: st.refs } s ∧ Good K.dm K.M K.Γ ρ { st with refs := (σ, r) :: st.refs } ∧
+      CtxOk K ρ { st with refs := (σ, r) :: st.refs } := by
+  sorry
+
+/-- **The re-normalisation after a refinement keeps the relation** (`renormAll`: every sealed
+program the refined unknown's records mention re-runs, meaning the same, [Seal]). Open. -/
+theorem renormAll_sim (fuel : Nat) (st st' : MState) (s : SState) (π : Nat → Nat) (b : Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (h : Runs (Ochr.renormAll fuel) st b () st') :
+    Rel K ρ φ π st' s ∧ Good K.dm K.M K.Γ ρ st' ∧ CtxOk K ρ st' := by
+  sorry
+
+/-- **`refine` in the simulation form**, assembled: the substitution, the record, the
+re-normalisation. The refinement means `ρ σ` at every future and hint (it holds no loan and
+records its parameters). -/
+theorem refine_sim' (fuel : Nat) (st st' : MState) (σ : Nat) (r : Value) (s : SState) (π : Nat → Nat) (b : Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (hσ : ∀ ψ H, ρ σ = meanV K ρ ψ H r)
+    (h : Runs (Ochr.refine (fuel + 1) σ r) st b () st') :
+    Rel K ρ φ π st' s ∧ Good K.dm K.M K.Γ ρ st' ∧ CtxOk K ρ st' := by
+  unfold Ochr.refine at h
+  obtain ⟨_, st₁, b₁, hsub, h1⟩ := Runs.bind_inv h
+  obtain ⟨hs₁, hg₁, hctx₁⟩ := substEnv_abs_sim K ρ φ fuel st st₁ σ r s π b hg hctx hs hσ hsub
+  obtain ⟨_, st₂, b₂, hmod, h2⟩ := Runs.bind_inv h1
+  obtain ⟨L, left, log, hmod⟩ := hmod
+  simp only [runMachineL_modify, Prod.mk.injEq, Outcome.ok.injEq] at hmod
+  obtain ⟨⟨-, hst₂⟩, -⟩ := hmod
+  obtain ⟨hs₂, hg₂, hctx₂⟩ := refs_sim K ρ φ st₁ σ r s π hg₁ hctx₁ hs₁ hσ
+  rw [hst₂] at hs₂ hg₂ hctx₂
+  obtain ⟨g, st₃, b₃, hget, h3⟩ := Runs.bind_inv h2
+  obtain ⟨L, left, log, hget⟩ := hget
+  simp only [runMachineL_get, Prod.mk.injEq, Outcome.ok.injEq] at hget
+  obtain ⟨⟨hg3, hst3⟩, -⟩ := hget
+  rw [← hst3, ← hg3] at h3
+  split at h3
+  · exact renormAll_sim K ρ φ fuel st₂ st' s π b₃ hg₂ hctx₂ hs₂ h3
+  · obtain ⟨L, left, log, h3⟩ := h3
+    simp only [runMachineL_pure, Prod.mk.injEq, Outcome.ok.injEq] at h3
+    rw [← h3.1.2]
+    exact ⟨hs₂, hg₂, hctx₂⟩
+
 end
 
 end Ochr.Meaning.Steps
