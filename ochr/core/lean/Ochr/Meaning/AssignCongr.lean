@@ -25,37 +25,37 @@ abbrev KA : RunCtx := { K with Δ := Δ' }
 
 theorem fixBodyAt_congrA {body : Term} {fb : List PBind × PBind}
     (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KA K Δ') ρ' φ true hint body s₂)
-    (s : SState) (ps : List PiParam) (out : PiOut) (piT : TyM) (start : Nat) (selfM : Sem) (args : List Sem) :
+    (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) (selfM : Sem) (args : List Sem) :
     fixBodyAt K ρ φ fb s ps out piT start body selfM args = fixBodyAt (KA K Δ') ρ' φ fb s ps out piT start body selfM args := by
   unfold fixBodyAt
   dsimp only
-  generalize (args.zip ps).foldl (fixStep fb) (s.pushBind { ty := ⟨piT, some (ps, out), none, none⟩, val := fun _ => selfM, decl := .pi fb.2.2 }, [], []) = F
+  generalize (args.zip ps).foldl (fixStep fb) (s.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }, [], []) = F
   obtain ⟨s₂, acc, cells⟩ := F
   dsimp only
   rw [hb]
 
 theorem fixStage_congrA {body : Term} {fb : List PBind × PBind}
     (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KA K Δ') ρ' φ true hint body s₂)
-    (l : Nat) (s : SState) (ps : List PiParam) (out : PiOut) (piT : TyM) (start : Nat) :
+    (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) :
     ∀ k, fixStage K ρ φ fb l s ps out piT start body k = fixStage (KA K Δ') ρ' φ fb l s ps out piT start body k
   | 0 => rfl
   | k + 1 => by
-    show fixBodyAt K ρ φ fb s ps out piT start body (closureAt l φ ps out (fixStage K ρ φ fb l s ps out piT start body k))
-      = fixBodyAt (KA K Δ') ρ' φ fb s ps out piT start body (closureAt l φ ps out (fixStage (KA K Δ') ρ' φ fb l s ps out piT start body k))
+    show fixBodyAt K ρ φ fb s ps out piT start body (closureFillAt l φ ps out (fixStage K ρ φ fb l s ps out piT start body k))
+      = fixBodyAt (KA K Δ') ρ' φ fb s ps out piT start body (closureFillAt l φ ps out (fixStage (KA K Δ') ρ' φ fb l s ps out piT start body k))
     rw [fixStage_congrA hb l s ps out piT start k]
     funext args
     exact fixBodyAt_congrA K Δ' ρ ρ' φ hb s ps out piT start _ args
 
 theorem fixG_congrA {body : Term} {fb : List PBind × PBind}
     (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KA K Δ') ρ' φ true hint body s₂)
-    (l : Nat) (s : SState) (ps : List PiParam) (out : PiOut) (piT : TyM) (start : Nat) (dec : Option Nat) :
+    (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) (dec : Option Nat) :
     fixG K ρ φ fb l s ps out piT start dec body = fixG (KA K Δ') ρ' φ fb l s ps out piT start dec body := by
   cases dec with
   | none => exact funext fun args => fixBodyAt_congrA K Δ' ρ ρ' φ hb s ps out piT start _ args
   | some j =>
     funext args
-    show fixStage K ρ φ fb l s ps out piT start body (fixRank K ps (some j) args + 1) args
-      = fixStage (KA K Δ') ρ' φ fb l s ps out piT start body (fixRank (KA K Δ') ps (some j) args + 1) args
+    show fixStage K ρ φ fb l s ps out piT start body (fixRank K (some j) args + 1) args
+      = fixStage (KA K Δ') ρ' φ fb l s ps out piT start body (fixRank (KA K Δ') (some j) args + 1) args
     rw [fixStage_congrA K Δ' ρ ρ' φ hb]
     rfl
 
@@ -104,12 +104,7 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
       simp only [valT]
       rw [capsVals_congrA caps fun σ h => hv σ (by simp [Value.anyAtom, h]),
         capsTys_congrA rd fun σ h => hv σ (by simp [Value.anyAtom, h]),
-        piShapeOf_congrA t _ fun σ h => hv σ (by simp [Value.anyAtom, h])]
-    | tPi caps t rd =>
-      simp only [valT]
-      rw [capsVals_congrA caps fun σ h => hv σ (by simp [Value.anyAtom, h]),
-        capsTys_congrA rd fun σ h => hv σ (by simp [Value.anyAtom, h]),
-        piShapeOf_congrA t _ fun σ h => hv σ (by simp [Value.anyAtom, h])]
+        runT_congrA false t _ _ fun σ h => hv σ (by simp [Value.anyAtom, h])]
     | sealed t =>
       simp only [valT]
       rw [runT_congrA false t hint _ fun σ h => hv σ (by simp [Value.anyAtom, h])]
@@ -162,7 +157,7 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
       SM.headOf_congr (fun p => rfl) (runT_congrA false f _ s fun σ h => ha σ (by simp [Term.anyAtom, h]))
     apply SM.bind_congr hhead
     intro fv s₁ _
-    apply SM.bind_congr (runArgs_congrA _ _ args 0 [] s₁ fun σ h => ha σ (by simp [Term.anyAtom, h]))
+    apply SM.bind_congr (runArgs_congrA _ _ args [] s₁ fun σ h => ha σ (by simp [Term.anyAtom, h]))
     intro _ _ _; rfl
   | tl, .matchNat p z u, hint, s, ha => by
     rw [runT, runT]
@@ -283,8 +278,8 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     have hc1 : ∀ u, n = "clone" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inl e1, e2⟩
     have hc2 : ∀ u, n = "peek" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inr (.inl e1), e2⟩
     have hc3 : ∀ u, n = "inplace" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inr (.inr e1), e2⟩
-    rw [runT.eq_39 K ρ φ tl hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3,
-      runT.eq_39 (KA K Δ') ρ' φ tl hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3]
+    rw [runT.eq_38 K ρ φ tl hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3,
+      runT.eq_38 (KA K Δ') ρ' φ tl hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3]
   | tl, .fix self hs ds c dec body, hint, s, ha => by
     have hbs : bindsOf K ρ φ s ds = bindsOf (KA K Δ') ρ' φ s ds :=
       runBinds_congrA s (K.D.paramDecls (scopeOf s) ds) ds [] (fun σ h => ha σ (by simp [Term.anyAtom, h]))
@@ -293,22 +288,15 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
       fun bs acc => runT_congrA false c _ _ fun σ h => ha σ (by simp [Term.anyAtom, h])
     have hb : ∀ (hint : TyS) (s₂ : SState), runT K ρ φ true hint body s₂ = runT (KA K Δ') ρ' φ true hint body s₂ :=
       fun hint s₂ => runT_congrA true body hint s₂ fun σ h => ha σ (by simp [Term.anyAtom, h])
-    have hout : ∀ bs, fixOut K ρ φ s bs c = fixOut (KA K Δ') ρ' φ s bs c := by
+    have hout : ∀ bs, codOf K ρ φ s bs c = codOf (KA K Δ') ρ' φ s bs c := by
       intro bs
       cases c with
       | ref U =>
         have hU : ∀ bs acc, runT K ρ φ false (.plain .err) U (extendBy s bs acc) = runT (KA K Δ') ρ' φ false (.plain .err) U (extendBy s bs acc) :=
           fun bs acc => runT_congrA false U _ _ fun σ h => ha σ (by simp [Term.anyAtom, h])
-        simp only [fixOut, hU]
-      | _ => simp only [fixOut, hc]
-    have hcod : ∀ bs, fixCod K ρ φ s bs c = fixCod (KA K Δ') ρ' φ s bs c := by
-      intro bs
-      cases c with
-      | ref U =>
-        have hU : ∀ bs acc, runT K ρ φ false (.plain .err) U (extendBy s bs acc) = runT (KA K Δ') ρ' φ false (.plain .err) U (extendBy s bs acc) :=
-          fun bs acc => runT_congrA false U _ _ fun σ h => ha σ (by simp [Term.anyAtom, h])
-        simp only [fixCod, hU]
-      | _ => simp only [fixCod, hc]
+        simp only [codOf, hU]
+      | _ => simp only [codOf, hc]
+    have hcod : ∀ bs, fixCod K ρ φ s bs c = fixCod (KA K Δ') ρ' φ s bs c := fun bs => by unfold fixCod; rw [hout]
     rw [run_fix_def, run_fix_def, hds, hbs, hout, hcod]
     rw [fixG_congrA K Δ' ρ ρ' φ hb]
     rfl
@@ -401,16 +389,16 @@ theorem runBinds_congrA (s : SState) (dcs : List DeclInfo) : ∀ (ds : List Term
       simp only [runBinds, hA, hds]
     | _ => simp only [runBinds, hd, hds]
 
-theorem runArgs_congrA (stmt : Bool) (shape : Option (List PiParam × PiOut)) :
-    ∀ (args : List Term) (i : Nat) (earlier : List Sem) (s : SState),
+theorem runArgs_congrA (stmt : Bool) (fT : TyM) :
+    ∀ (args : List Term) (earlier : List Sem) (s : SState),
     (∀ σ, Term.anyAtomList (· == .abs σ) args = true → AgreeA K Δ' ρ ρ' σ) →
-    runArgs K ρ φ stmt shape i earlier args s = runArgs (KA K Δ') ρ' φ stmt shape i earlier args s
-  | [], _, _, _, _ => rfl
-  | a :: as, i, earlier, s, ha => by
+    runArgs K ρ φ stmt fT earlier args s = runArgs (KA K Δ') ρ' φ stmt fT earlier args s
+  | [], _, _, _ => rfl
+  | a :: as, earlier, s, ha => by
     simp only [runArgs]
     apply SM.bind_congr (SM.stmtIf_congr (runT_congrA false a _ s (fun σ h => ha σ (by simp [Term.anyAtomList, h]))))
     intro r s₁ _
-    apply SM.bind_congr (runArgs_congrA stmt shape as _ _ s₁ (fun σ h => ha σ (by simp [Term.anyAtomList, h])))
+    apply SM.bind_congr (runArgs_congrA stmt fT as _ s₁ (fun σ h => ha σ (by simp [Term.anyAtomList, h])))
     intro _ _ _; rfl
 
 theorem runFields_congrA (stmt : Bool) (d : IndDecl) (c : Nat) :
@@ -465,39 +453,7 @@ theorem capsTys_congrA : ∀ (rd : List (DeclInfo × Value)),
   | (d, T) :: rest, hv => by
     simp only [capsTys]
     rw [meanV_congrA T _ (fun σ h => hv σ (by simp [Value.anyAtomRd, h])),
-      tyShape_congrA T (fun σ h => hv σ (by simp [Value.anyAtomRd, h])),
-      tyDataV_congrA T (fun σ h => hv σ (by simp [Value.anyAtomRd, h])),
       capsTys_congrA rest (fun σ h => hv σ (by simp [Value.anyAtomRd, h]))]
-
-theorem tyShape_congrA : ∀ (T : Value),
-    (∀ σ, T.anyAtom (· == .abs σ) = true → AgreeA K Δ' ρ ρ' σ) → tyShape K ρ φ T = tyShape (KA K Δ') ρ' φ T
-  | .tPi caps t rd, hv => by
-    rw [tyShape, tyShape]
-    rw [capsVals_congrA caps fun σ h => hv σ (by simp [Value.anyAtom, h]),
-      capsTys_congrA rd fun σ h => hv σ (by simp [Value.anyAtom, h]),
-      piShapeOf_congrA t _ fun σ h => hv σ (by simp [Value.anyAtom, h])]
-  | .tRef A, hv => by
-    rw [tyShape, tyShape]
-    exact tyShape_congrA A fun σ h => hv σ (by simp [Value.anyAtom, h])
-  | .zero, _ | .succ _, _ | .unit, _ | .gfn _, _ | .clo _ _ _, _ | .borrow _ _, _ | .gloan _ _, _ | .loan _, _ | .bot, _ | .abs _, _
-  | .sealed _, _ | .proof, _ | .tNat, _ | .tUnit, _ | .tEq _ _ _, _ | .sort _, _ | .ind _ _ _ _ _, _ | .tInd _ _, _ => by
-    simp only [tyShape]
-
-theorem tyDataV_congrA : ∀ (T : Value),
-    (∀ σ, T.anyAtom (· == .abs σ) = true → AgreeA K Δ' ρ ρ' σ) → tyDataV K ρ φ T = tyDataV (KA K Δ') ρ' φ T
-  | .tInd n args, hv => by
-    rw [tyDataV, tyDataV]
-    dsimp only
-    split
-    · rename_i d _
-      rw [meanParams_congrA d args _ _ fun σ h => hv σ (by simp [Value.anyAtom, h])]
-    · rfl
-  | .tRef A, hv => by
-    rw [tyDataV, tyDataV]
-    exact tyDataV_congrA A fun σ h => hv σ (by simp [Value.anyAtom, h])
-  | .zero, _ | .succ _, _ | .unit, _ | .gfn _, _ | .clo _ _ _, _ | .borrow _ _, _ | .gloan _ _, _ | .loan _, _ | .bot, _ | .abs _, _
-  | .sealed _, _ | .proof, _ | .tNat, _ | .tUnit, _ | .tEq _ _ _, _ | .sort _, _ | .ind _ _ _ _ _, _ | .tPi _ _ _, _ => by
-    simp only [tyDataV]
 
 theorem meanFields_congrA (d : IndDecl) (ps : List Sem) (c : Nat) :
     ∀ (vs : List Value) (i : Nat) (earlier : List Sem),
@@ -519,32 +475,6 @@ theorem meanParams_congrA (d : IndDecl) :
     rw [meanV_congrA v _ (fun σ h => hv σ (by simp [Value.anyAtomList, h])),
       meanParams_congrA d vs _ _ (fun σ h => hv σ (by simp [Value.anyAtomList, h]))]
 
-theorem piShapeOf_congrA : ∀ (t : Term) (s : SState),
-    (∀ σ, t.anyAtom (· == .abs σ) = true → AgreeA K Δ' ρ ρ' σ) →
-    piShapeOf K ρ φ s t = piShapeOf (KA K Δ') ρ' φ s t
-  | t, s, ha => by
-    cases t with
-    | pi hs ds c =>
-      have hbs := runBinds_congrA s (K.D.paramDecls (scopeOf s) ds) ds [] (fun σ h => ha σ (by simp [Term.anyAtom, h]))
-      have hc : ∀ bs acc, runT K ρ φ false (.plain .err) c (extendBy s bs acc) = runT (KA K Δ') ρ' φ false (.plain .err) c (extendBy s bs acc) :=
-        fun bs acc => runT_congrA false c _ _ (fun σ h => ha σ (by simp [Term.anyAtom, h]))
-      cases c with
-      | ref U =>
-        have hU : ∀ bs acc, runT K ρ φ false (.plain .err) U (extendBy s bs acc) = runT (KA K Δ') ρ' φ false (.plain .err) U (extendBy s bs acc) :=
-          fun bs acc => runT_congrA false U _ _ (fun σ h => ha σ (by simp [Term.anyAtom, h]))
-        simp only [piShapeOf, hU, hbs]
-      | _ => simp only [piShapeOf, hc, hbs]
-    | fix self hs ds c dec body =>
-      have hbs := runBinds_congrA s (K.D.paramDecls (scopeOf s) ds) ds [] (fun σ h => ha σ (by simp [Term.anyAtom, h]))
-      have hc : ∀ bs acc, runT K ρ φ false (.plain .err) c (extendBy s bs acc) = runT (KA K Δ') ρ' φ false (.plain .err) c (extendBy s bs acc) :=
-        fun bs acc => runT_congrA false c _ _ (fun σ h => ha σ (by simp [Term.anyAtom, h]))
-      cases c with
-      | ref U =>
-        have hU : ∀ bs acc, runT K ρ φ false (.plain .err) U (extendBy s bs acc) = runT (KA K Δ') ρ' φ false (.plain .err) U (extendBy s bs acc) :=
-          fun bs acc => runT_congrA false U _ _ (fun σ h => ha σ (by simp [Term.anyAtom, h]))
-        simp only [piShapeOf, hU, hbs]
-      | _ => simp only [piShapeOf, hc, hbs]
-    | _ => simp only [piShapeOf]
 end
 
 /-- `runT_congrA` at a position that is not a tail. -/

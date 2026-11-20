@@ -220,19 +220,19 @@ theorem foldl_takeLabel_envLe : ∀ (ls : List Nat) (s : SState), EnvLe s (ls.fo
   | [], s => EnvLe.refl s
   | l :: ls, s => (envLe_takeLabel s l).trans (foldl_takeLabel_envLe ls _)
 
-theorem callOfL_envLe.{u} (Lv : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : Sem) (args : List Res)
-    {s s' : SState} {r : Res} (h : callOfL Lv ps out fv args s = some (r, s')) : EnvLe s s' := by
-  cases happ : applyFnL Lv ps out fv (args.map (·.1)) with
+theorem callOfL_envLe.{u} (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C) (fv : Sem) (args : List Res)
+    {s s' : SState} {r : Res} (h : callOfL Lv t fv args s = some (r, s')) : EnvLe s s' := by
+  cases happ : applyFnL Lv t fv (args.map (·.1)) with
   | none =>
     unfold callOfL at h; dsimp only at h; rw [happ] at h; cases h
   | some res =>
     cases res with
-    | data r' finals =>
+    | data r' T' finals =>
       unfold callOfL at h; dsimp only at h; rw [happ] at h
       simp only [Option.some.injEq, Prod.mk.injEq] at h
       rw [← h.2]
       exact (foldl_takeLabel_envLe _ _).trans (envLe_mapVals _ _)
-    | ref U fwd back =>
+    | ref U c fwd back =>
       unfold callOfL at h; dsimp only at h; rw [happ] at h
       simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
       rw [← h.2]

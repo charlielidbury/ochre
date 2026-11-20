@@ -592,8 +592,8 @@ on them (`Sem.updAt_field_not_le` holds for every data model). -/
 noncomputable def dm : DataModel where
   covers _ := False
   car _ _ := Unit
-  fieldTy _ _ _ _ _ := .ty0 Unit
-  paramTy _ _ _ := .err
+  fieldTy _ _ _ _ _ := TyM.unit
+  paramTy _ _ _ := TyM.err
   pack _ _ _ _ := some ()
   tag _ := 0
   fields _ := [.el0 Unit (), .el0 Unit ()]
@@ -626,7 +626,7 @@ noncomputable def K : RunCtx where
   D := D
 
 /-- The type `P`. (No value is read through it: since docs/31 D32 a value describes itself.) -/
-def tP : TyS := ⟨.ty0 Unit, none, none, some ("P", [])⟩
+def tP : TyS := .plain (.t0 Unit (.data "P" [] Unit fun _ => ⟨0, [.mk Unit .unit (), .mk Unit .unit ()]⟩))
 
 /-- The whole value `P((), ())`: constructor `0` of `P`, its fields `()` and `()`, its element `()`. -/
 def pv : Sem := .dat "P" [] 0 [.el0 Unit (), .el0 Unit ()] (some ⟨Unit, ()⟩)
@@ -1318,20 +1318,20 @@ theorem borrowPlace_fresh (K : RunCtx) (φ : Future) (p : Place) (s : SState) (h
 arguments' parked borrows are taken (`takeLabel`); the borrow-returning case takes `freshLoan`
 and parks the result, so its label was held nowhere before, is below the new counter, and has
 one holder. Milestone 3: `Steps/Call.lean`'s `closeCall_step`. -/
-theorem callOfL_fresh.{u} (L : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : Sem) (args : List Res) (s : SState)
+theorem callOfL_fresh.{u} (L : Lvl.{u}) {C : Type u} (t : Tel L.Code PUnit C) (fv : Sem) (args : List Res) (s : SState)
     (hs : s.ShapeBelow) {r : Sem} {T : TyS} {s' : SState}
-    (h : callOfL L ps out fv args s = some ((r, T), s')) :
+    (h : callOfL L t fv args s = some ((r, T), s')) :
     s'.ShapeBelow ∧ ∀ l, T.label = some l → l < s'.nextLoan ∧ (∀ q, s.shape q ≠ some l) ∧
       ∀ q q', s'.shape q = some l → s'.shape q' = some l → q = q' := by
   unfold callOfL at h
   try dsimp only at h
-  have hsub := SState.shapeSub_foldl_takeLabel ((((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).filterMap id) s
+  have hsub := SState.shapeSub_foldl_takeLabel ((((args.zip (telRefsL L t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id) s
   have hs₀ := SState.ShapeBelow.of_sub hsub hs
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨⟨_, rfl⟩, rfl⟩ := h
     exact ⟨SState.ShapeBelow.of_sub (SState.shapeSub_mapVals _ _) hs₀, fun l hl => by
-      simp [TyS.ofTyM] at hl⟩
+      simp [TyS.plain] at hl⟩
   · simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨⟨_, rfl⟩, rfl⟩ := h
     obtain ⟨_, _, hfresh, hb⟩ := SState.freshLoan_fresh _ hs₀
@@ -1354,11 +1354,9 @@ theorem callOf_fresh (fv : Res) (args : List Res) (s : SState)
       ∀ q q', s'.shape q = some l → s'.shape q' = some l → q = q' := by
   unfold callOf at h
   split at h
-  · split at h
-    · exact callOfL_fresh _ _ _ _ _ _ hs h
-    · exact callOfL_fresh _ _ _ _ _ _ hs h
-    · exact callOfL_fresh _ _ _ _ _ _ hs h
-    · cases h
+  · exact callOfL_fresh _ _ _ _ _ hs h
+  · exact callOfL_fresh _ _ _ _ _ hs h
+  · exact callOfL_fresh _ _ _ _ _ hs h
   · cases h
 
 /-- [Read] keeps the shape invariant and the counter: its access and its move only forget, and a

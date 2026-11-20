@@ -1105,14 +1105,19 @@ noncomputable def bindsOf (s : SState) (ds : List Term) : List PBind :=
 /-- The parameters of a Π-term formed in `s`, as the `.pi` and `.fix` clauses read them. -/
 noncomputable def runDoms (s : SState) (ds : List Term) : List PiDom := psOf (bindsOf K ρ φ s ds) ds
 
+/-- A Π-term's or closure's codomain, as the `.pi` and `.fix` clauses read it: a returned borrow
+or borrow-free data, its type at each tuple of arguments. -/
+noncomputable def codOf (s : SState) (bs : List PBind) (c : Term) : PiCod := match c with
+  | .ref U => ⟨true, fun acc => match run K ρ φ (.plain TyM.err) U (extendBy s bs acc) with
+    | some ((v, _), _) => v.asTy
+    | none => TyM.err⟩
+  | c => ⟨false, fun acc => match run K ρ φ (.plain TyM.err) c (extendBy s bs acc) with
+    | some ((v, _), _) => v.asTy
+    | none => TyM.err⟩
+
 /-- A closure's codomain, its code, as a function of the parameters: its body's hint. -/
-noncomputable def fixCod (s : SState) (bs : List PBind) (c : Term) : List Sem → TyS := match c with
-  | .ref U => fun acc => match run K ρ φ (.plain TyM.err) U (extendBy s bs acc) with
-    | some ((v, _), _) => .plain v.asTy
-    | none => .plain TyM.err
-  | c => fun acc => match run K ρ φ (.plain TyM.err) c (extendBy s bs acc) with
-    | some ((v, _), _) => .plain v.asTy
-    | none => .plain TyM.err
+noncomputable def fixCod (s : SState) (bs : List PBind) (c : Term) : List Sem → TyS :=
+  fun acc => .plain ((codOf K ρ φ s bs c).cod acc)
 
 /-- The code meaning the run induces (the knot of `Value.mean`): each code-dependent form read by
 the run **at the assignment and future it is asked at**. As first written it ignored both and read

@@ -71,7 +71,7 @@ a counter, which one run issues and the other does not. Stated for the states co
 frame of future-free bindings and no holder (`emptyState` for a sealed program, `capsState` for a
 closure's code), at any two counters, with no condition on the term's loans (a fresh label meeting
 one of them is harmless: a loan is read by the value's meaning, never through the state), and
-compared on the result's meaning and shape.
+compared on the result's meaning and type (its code).
 
 Not used by the substitution pair (a sealed program runs from the counter 0, PROPOSAL 8, as a
 closure's code always did). It IS needed by the step lemmas that compare the checker's run of
@@ -81,8 +81,8 @@ body (`runBody`) at its global, never-reused counter (D37), so `evalCore_step` g
 simulation of the two runs up to the shift of the labels, an induction of the size of part (E). -/
 theorem run_counter_indep (φ : Future) (hint : TyS) (t : Term) (bs : List SBinding) (n n' : Nat)
     (hbs : ∀ b ∈ bs, ∀ ψ ψ', b.val ψ = b.val ψ') :
-    (run K ρ φ hint t (stateOf n bs)).map (fun r => (r.1.1, r.1.2.shape))
-      = (run K ρ φ hint t (stateOf n' bs)).map (fun r => (r.1.1, r.1.2.shape)) := by
+    (run K ρ φ hint t (stateOf n bs)).map (fun r => (r.1.1, r.1.2.m))
+      = (run K ρ φ hint t (stateOf n' bs)).map (fun r => (r.1.1, r.1.2.m)) := by
   sorry
 
 /-- **Locality in the unknowns** (the twin of `run_congr` for the assignment and Δ). The run reads
@@ -103,14 +103,9 @@ theorem fillOK_upd (φ : Future) (l : Nat) (w : Value) (hK : ∀ n, (K.C.global 
   have hw' : ∀ y, w.anyAtom (· == .loan y) = true → y ≠ l := fun y hy e => hw (by subst e; exact hy)
   have hagree : ∀ y, y ≠ l → (φ.upd l (meanV K ρ φ (.plain .err) w)) y = φ y :=
     fun y hy => Future.upd_other _ _ hy
-  refine ⟨fun hint => ?_, ⟨fun hint s => ?_, ?_, ?_⟩, hD⟩
-  rotate_left 2
-  · rw [← tyShape_congrE K ρ φ (φ.upd l (meanV K ρ φ (.plain .err) w)) hK w (fun y hy => (hagree y (hw' y hy)).symm)]
-    exact hc.2.1
-  · rw [← tyDataV_congrE K ρ φ (φ.upd l (meanV K ρ φ (.plain .err) w)) hK w (fun y hy => (hagree y (hw' y hy)).symm)]
-    exact hc.2.2
+  refine ⟨fun hint => ?_, fun hint s => ?_, hD⟩
   · rw [meanV_congr K ρ _ φ hint w hK (fun y hy => hagree y (hw' y hy)), hf hint (.plain .err), Future.upd_same]
-  · have h0 := hc.1 hint (emptyState 0)
+  · have h0 := hc hint (emptyState 0)
     have hr := run_congrE K ρ φ (φ.upd l (meanV K ρ φ (.plain .err) w)) hK (.val w) hint (emptyState 0)
       (fun y => y ≠ l) (fun y hy => (hagree y hy).symm) (fun y hy => hw' y hy) (rinv_emptyState _)
     rw [run_val_def, run_val_def] at h0 hr ⊢

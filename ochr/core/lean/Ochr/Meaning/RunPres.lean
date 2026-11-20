@@ -295,24 +295,24 @@ theorem indep_of_nil {s : SState} (he : s.env = []) (l : Nat) (q : Pos) : Indep 
   rw [valAt_of_not_mem _ _ this]; intro _ _; rfl
 
 /-- **A call** keeps the invariant; a returned borrow's fresh label is live (parked). -/
-theorem callOfL_rinv.{u} (Lv : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : Sem) (args : List Res)
-    {s s' : SState} {r : Res} (hi : RInv L s) (h : callOfL Lv ps out fv args s = some (r, s')) :
+theorem callOfL_rinv.{u} (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C) (fv : Sem) (args : List Res)
+    {s s' : SState} {r : Res} (hi : RInv L s) (h : callOfL Lv t fv args s = some (r, s')) :
     RInv L s' ∧ LoU s' r.2.label := by
   obtain ⟨h1, h2, hsa⟩ := hi
-  cases happ : applyFnL Lv ps out fv (args.map (·.1)) with
+  cases happ : applyFnL Lv t fv (args.map (·.1)) with
   | none =>
     unfold callOfL at h; dsimp only at h; rw [happ] at h; cases h
   | some res =>
     cases res with
-    | data r' finals =>
+    | data r' T' finals =>
       have h' := h
       unfold callOfL at h'; dsimp only at h'; rw [happ] at h'
       simp only [Option.some.injEq, Prod.mk.injEq] at h'
       obtain ⟨rfl, rfl⟩ := h'
-      obtain ⟨i1, i2⟩ := callOfL_data_inv Lv ps out fv args h1 h2 h (fun U fwd back e => by rw [happ] at e; cases e)
-      exact ⟨⟨i1, i2, shapeAt_mapVals (shapeAt_takeAll _ hsa) _⟩, fun l hl => by simp [TyS.ofTyM] at hl⟩
-    | ref U fwd back =>
-      obtain ⟨i1, i2⟩ := callOfL_ref_inv Lv ps out fv args h1 h2 hsa h happ
+      obtain ⟨i1, i2⟩ := callOfL_data_inv Lv t fv args h1 h2 h (fun U c fwd back e => by rw [happ] at e; cases e)
+      exact ⟨⟨i1, i2, shapeAt_mapVals (shapeAt_takeAll _ hsa) _⟩, fun l hl => by simp [TyS.plain] at hl⟩
+    | ref U c fwd back =>
+      obtain ⟨i1, i2⟩ := callOfL_ref_inv Lv t fv args h1 h2 hsa h happ
       have h' := h
       unfold callOfL at h'; dsimp only at h'; rw [happ] at h'
       simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h'
@@ -328,17 +328,17 @@ theorem callOfL_rinv.{u} (Lv : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : 
         obtain ⟨h1', h2'⟩ := shapeAt_takeAll _ hsa p x hp
         exact ⟨h1', Nat.lt_succ_of_lt h2'⟩
       have hnlS : S.nextLoan = (List.foldl SState.takeLabel s
-          (List.filterMap id (List.map (fun x => x.1.2.label) (List.filter (fun x => x.2.isRef) (args.zip ps))))).nextLoan + 1 := by
+          (List.filterMap id (List.map (fun x => x.1.2.label) (List.filter (fun x => x.2) (args.zip (telRefsL Lv t (args.map (·.1)))))))).nextLoan + 1 := by
         rw [← hS]; rfl
       by_cases hne : S.env = []
-      · have hfin : S.pushTempShaped (fun _ => Lv.enc U fwd) (List.foldl SState.takeLabel s
-            (List.filterMap id (List.map (fun x => x.1.2.label) (List.filter (fun x => x.2.isRef) (args.zip ps))))).nextLoan
-            = S.pushTemp (fun _ => Lv.enc U fwd) := by
+      · have hfin : S.pushTempShaped (fun _ => Lv.enc c fwd) (List.foldl SState.takeLabel s
+            (List.filterMap id (List.map (fun x => x.1.2.label) (List.filter (fun x => x.2) (args.zip (telRefsL Lv t (args.map (·.1)))))))).nextLoan
+            = S.pushTemp (fun _ => Lv.enc c fwd) := by
           unfold SState.pushTempShaped
           dsimp only
           rw [pushTemp_getLast, hne]; rfl
         rw [hfin] at i1 i2 ⊢
-        have hnil : (S.pushTemp (fun _ => Lv.enc U fwd)).env = [] := by simp [SState.pushTemp, hne]
+        have hnil : (S.pushTemp (fun _ => Lv.enc c fwd)).env = [] := by simp [SState.pushTemp, hne]
         refine ⟨⟨i1, i2, fun p x hp => ?_⟩, fun l hl => ⟨.inr fun q => indep_of_nil hnil l q, ?nl⟩⟩
         case nl =>
           simp only [Option.some.injEq] at hl
