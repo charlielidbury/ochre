@@ -119,7 +119,8 @@ theorem posTyM_S (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : As
 theorem good_S (K : RunCtx) (ρ : Assignment) : Good K.dm K.M K.Γ ρ S := by
   have hA : allPos S.env = [.bind 0 0] := by decide +kernel
   have hV : Env.values S.env = [.zero] := by rw [Env.values, hA]; rfl
-  refine ⟨⟨fun σ _ h => by simp [S] at h, fun n σ h => by simp [S] at h, fun σ v h => by simp [S] at h⟩,
+  refine ⟨⟨fun σ _ h => by simp [S] at h, fun n σ h => by simp [S] at h, fun σ v h => by simp [S] at h,
+      fun σ r h => by simp [S] at h⟩,
     ⟨?_, fun σ _ h => by simp [S] at h, fun G h => by simp [MState.goalM, S] at h⟩,
     ⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ⟨?_, ?_, ?_, ?_⟩, ?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_⟩
   · intro φ _ p T hp
