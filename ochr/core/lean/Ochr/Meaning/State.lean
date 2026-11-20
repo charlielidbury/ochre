@@ -33,9 +33,9 @@ reasons (`MState.Core` below is the relevant part, and `mean_core` the statement
   soundness holds for every stack), `lastErased`, `lastProof`, `curDecl`, `tailDecl`,
   `liveScope`, `headEval`, `wantTy`, `wantHere`, `deferCallTy`, `callTyLater` (the declared-type
   reader's plumbing: inputs to *aligned* decisions, D77/D80, which the model reads from the same
-  syntax), `erasedDepth`, `privateDepth`, `inPlace`, `modelDepth`, `copying`, `observing`,
-  `typing` (run modes selecting which rule applies; `observing` relaxes [End]'s wholeness check
-  inside an observation, D68), and `placeLog` (D53's log of moves and writes at root positions;
+  syntax), `erasedDepth`, `privateDepth`, `inPlace`, `modelDepth`, `copying`,
+  `typing` (run modes selecting which rule applies; main's D98 removed `observing`, which relaxed
+  [End]'s wholeness check inside an observation), and `placeLog` (D53's log of moves and writes at root positions;
   under D84 the drop at the join and a block's captures are decided statically, from syntax and
   declared types (`Decide.jdMoves` on branch `d84`), and the log is kept only for an internal
   assertion that never fires, so it feeds no decision).

@@ -270,7 +270,7 @@ theorem endBorrow_succ (n l : Nat) :
           if (← get).typing then
             if let (.borrow _ _, some (.tRef A)) := (valAt env p, ← tyAt p) then
               repackCheck n "a borrow of it ends" c A
-          if c.hasHole && !(← get).observing then
+          if c.hasHole then
             match p with
             | .bind f i =>
               let x := env[f]!.binds[i]!.hint.name
@@ -318,10 +318,8 @@ theorem endBorrow_spec (m l : Nat) (st st' : MState) (fuel₀ left : Nat) (L log
   dsimp only at h
   rw [htyping] at h
   simp only [Bool.false_eq_true, if_false] at h
-  rw [runMachineL_bind, runMachineL_get] at h
-  dsimp only at h
   rw [hhole] at h
-  simp only [Bool.false_and, Bool.false_eq_true, if_false] at h
+  simp only [Bool.false_eq_true, if_false] at h
   rw [runMachineL_bind, runMachineL_setAt] at h
   dsimp only at h
   rw [runMachineL_bind] at h
