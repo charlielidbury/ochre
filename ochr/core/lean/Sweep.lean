@@ -899,8 +899,26 @@ def typeRoots : Clause where
       | _ => none
     | none => []
 
+/-- (C⋆) (`ShapeFacts.proofCopy`, docs/31 D49): a place in scope BELOW A VARIABLE holding `⋆` is
+declared a copy type (a field of a proof), by the checker's own `placeDecl` and `declCopy`; so the
+join, which moves no copy, never drops a `⋆` below a variable (`lentPrefix_none_of_proof`'s
+premise; at a variable there is no strict prefix to be lent). First asked at every place: false at
+a variable declared a borrow of a proposition, which holds `⋆` (`PiSorts.BorrowQ`, 6,447 states). -/
+def proofCopy : Clause where
+  name := "(C⋆) a place below a variable holding ⋆ is declared a copy type"
+  premises := [
+    ("a place in scope holds ⋆", fun st => (topPlaces st).any fun (_, v) => v matches .proof),
+    ("... below a binding", fun st => (topPlaces st).any fun (q, v) => (v matches .proof) && !(q matches .var _))]
+  check st := (topPlaces st).filterMap fun (q, v) =>
+    if !(v matches .proof) || (q matches .var _) then none else
+    match declAt st q with
+    | some d => match (runMachine (Ochr.declCopy 1000 d) st 100000).1 with
+      | .ok true _ => none
+      | _ => some ⟨"a place holding ⋆ is declared a type that is not a copy", s!"{q.root}…: {d.beq .prop}"⟩
+    | none => some ⟨"a place holding ⋆ has no declared reading", s!"{q.root}"⟩
+
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, typeRoots, plantedFill, plantedAbs]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, typeRoots, proofCopy, plantedFill, plantedAbs]
 
 /-! ## The sweep -/
 

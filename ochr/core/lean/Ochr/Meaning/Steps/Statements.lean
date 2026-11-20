@@ -268,6 +268,11 @@ structure ShapeFacts (D : Decisions) (Γ : List IndDecl) (st : MState) : Prop wh
   typeRoot : ∀ i pos, ckVarPos st.env i = some pos →
     ((∃ c t rd, valAt st.env pos = .tPi c t rd) ∨ ∃ n a, valAt st.env pos = .tInd n a) →
     ∃ l, D.placeDecl (DecideScope.topReadings st) (.var i) = .sort l
+  /-- (C⋆) a place below a variable holding `⋆` is declared a copy type (a field of a proof), so
+  the join, which moves no copy, never drops a `⋆` below a variable (docs/31 D49; at a variable it
+  can: one declared a borrow of a proposition holds `⋆`) -/
+  proofCopy : ∀ p, p.steps.2 ≠ [] → ckContent st.env p = some .proof →
+    D.copy (D.placeDecl (DecideScope.topReadings st) p) = true
 
 /-- The run context is the checker state's: its declarations, a data model that speaks for each,
 Δ at the state's unknowns (`DeltaOk`), globals with no label (`run_congr`'s `hK`), Σ
@@ -346,7 +351,7 @@ theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MSta
     (h : SameDec st' st) (he : st'.env = st.env) (ha : st'.absTy = st.absTy) : ShapeFacts D Γ st' := by
   have e1 : DecideScope.topReadings st' = DecideScope.topReadings st := by
     unfold DecideScope.topReadings; rw [he]
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro p σ n args hp hd hn; rw [he] at hp; rw [e1] at hd; rw [ha]; exact hf.unknown p σ n args hp hd hn
   · intro p v n args hp hd hn; rw [he] at hp; rw [e1] at hd; exact hf.fits p v n args hp hd hn
   · intro p v A hp hd; rw [he] at hp; rw [e1] at hd; exact hf.ref p v A hp hd
@@ -358,6 +363,7 @@ theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MSta
   · rw [he]; exact hf.loans
   · rw [he]; exact hf.ctors
   · intro i pos hck hv; rw [he] at hck hv; rw [e1]; exact hf.typeRoot i pos hck hv
+  · intro p hne hp; rw [he] at hp; rw [e1]; exact hf.proofCopy p hne hp
 
 /-- **The decisions stay the checker's across what no decision reads** (the move log, the
 refinements): every field by the simulation of `Decide.lean` (`DecideScope.decideSim`). -/

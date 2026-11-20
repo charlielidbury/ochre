@@ -209,7 +209,7 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
     have hlp : lentPrefix s pos q.steps.2 = none := by
       rcases hn with hn | hn
       · exact lentPrefix_none_of_noop K ρ φ st s π q pos hg hs hres hn
-      · exact lentPrefix_none_of_proof K ρ φ st s π q pos hg hs hres hcopy hn
+      · exact lentPrefix_none_of_proof K ρ φ st s π q pos hctx hs hck hcopy hn
     have hpre : accessLentPrefix pos q.steps.2 s = s := by simp [accessLentPrefix, hlp]
     rw [hpre]
     obtain ⟨c, hn, hcb⟩ : ∃ c, (valAt st.env pos).follow q.steps.2 = some c ∧ (c = .bot ∨ c = .proof) := by
