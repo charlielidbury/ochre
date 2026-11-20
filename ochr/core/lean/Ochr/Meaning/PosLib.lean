@@ -682,19 +682,14 @@ theorem sstate_valAt (st : MState) (p : Pos) (φ : Future) :
       | none => rfl
       | some v => simp [Nat.zero_add, hf, hi, Env.mean]
 
-/-- A binding's type in the semantic state is its hint with the structure of the value it holds
-(`Value.strS`). -/
+/-- A binding's type in the semantic state is its hint (its stored type's code; since D59 a
+type value carries its own structure, so nothing is added from the value it holds). -/
 theorem sstate_tyAt_bind (st : MState) (f i : Nat) (fr : Frame) (b : Binding)
     (hf : st.env[f]? = some fr) (hi : fr.binds[i]? = some b) :
-    (MState.sstate dm C Γ ρ st).tyAt (.bind f i)
-      = Value.strS dm C Γ ρ b.val (Env.hintAt dm C Γ ρ st.env (.bind f i)) := by
+    (MState.sstate dm C Γ ρ st).tyAt (.bind f i) = Env.hintAt dm C Γ ρ st.env (.bind f i) := by
   simp only [SState.tyAt, MState.sstate, List.getElem?_map, List.getElem?_zipIdx,
     Array.getElem?_toList, Option.map_map, Option.bind_map, hf, Option.map_some, Option.bind_some,
     Function.comp, hi, Nat.zero_add]
-
-/-- Its meaning is the hint's: the structure of the value held does not change it. -/
-theorem strS_m (v : Value) (T : TyS) : (Value.strS dm C Γ ρ v T).m = T.m := by
-  cases v <;> rfl
 
 theorem sstate_tyAt_m (st : MState) (p : Pos) :
     ((MState.sstate dm C Γ ρ st).tyAt p).m = (Env.hintAt dm C Γ ρ st.env p).m := by
@@ -705,7 +700,7 @@ theorem sstate_tyAt_m (st : MState) (p : Pos) :
     | some fr =>
       cases hi : fr.binds[i]? with
       | none => simp [SState.tyAt, MState.sstate, Env.hintAt, hf, hi]
-      | some b => rw [sstate_tyAt_bind dm C Γ ρ st f i fr b hf hi, strS_m]
+      | some b => rw [sstate_tyAt_bind dm C Γ ρ st f i fr b hf hi]
   | temp f i => rfl
 
 /-- The semantic state's positions are the environment's. -/

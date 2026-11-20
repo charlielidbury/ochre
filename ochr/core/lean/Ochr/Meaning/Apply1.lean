@@ -255,12 +255,24 @@ theorem closureAt_mem (l : Nat) (hl : l = 1 ∨ l = 2 ∨ l = 3) (φ : Future) (
   · exact closureL_mem lvl1 lvl1_lawful φ _ g
   · exact closureL_mem lvl2 lvl2_lawful φ _ g
 
+/-- The next parameter of a function type `T` after the given arguments, read off its telescope
+code: whether it is a borrow, and its (content) code; `none` if `T` is not a function type. -/
+noncomputable def TyM.paramAt? : TyM → List Sem → Option (Bool × TyM)
+  | .t0 _ (.pi _ t), as => telParamL lvl0 t as
+  | .t1 _ (.pi _ t), as => telParamL lvl1 t as
+  | .t2 _ (.pi _ t), as => telParamL lvl2 t as
+  | _, _ => none
+
+/-- The codomain a function type `T` reaches at the arguments, read off its telescope code:
+whether it is a returned borrow, and its (content) code (D82 [Call-type]). -/
+noncomputable def TyM.codAt? : TyM → List Sem → Option (Bool × TyM)
+  | .t0 _ (.pi _ t), as => telCodL lvl0 t as
+  | .t1 _ (.pi _ t), as => telCodL lvl1 t as
+  | .t2 _ (.pi _ t), as => telCodL lvl2 t as
+  | _, _ => none
+
 /-- The type of the next argument of a call through a function of type `T`, after the given
-arguments: read off `T`'s telescope code (the hint the argument runs at, D82 [Call-type]). -/
-noncomputable def TyM.domAfter : TyM → List Sem → TyM
-  | .t0 _ (.pi _ t), as => telDomL lvl0 t as
-  | .t1 _ (.pi _ t), as => telDomL lvl1 t as
-  | .t2 _ (.pi _ t), as => telDomL lvl2 t as
-  | _, _ => TyM.err
+arguments (the hint the argument runs at, D82 [Call-type]); `err` past the end. -/
+noncomputable def TyM.domAfter (T : TyM) (as : List Sem) : TyM := ((T.paramAt? as).map (·.2)).getD TyM.err
 
 end Ochr.Meaning

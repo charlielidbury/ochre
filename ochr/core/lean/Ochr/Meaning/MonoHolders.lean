@@ -136,19 +136,19 @@ end SState
 borrow-free result fixes the arguments' labels; a borrow result reads its own fresh label `k`
 and otherwise what each meaning read before. Milestone 3: `Steps/Call.lean`'s `closeCall_step`
 (with `callOf_fresh`). -/
-theorem callOfL_readsBelow.{u} (L : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : Sem)
+theorem callOfL_readsBelow.{u} (L : Lvl.{u}) {C : Type u} (t : Tel L.Code PUnit C) (fv : Sem)
     (args : List Res) (s : SState) (hs : s.ReadsBelow) {r : Sem} {T : TyS} {s' : SState}
-    (h : callOfL L ps out fv args s = some ((r, T), s')) : s'.ReadsBelow := by
+    (h : callOfL L t fv args s = some ((r, T), s')) : s'.ReadsBelow := by
   unfold callOfL at h
   try dsimp only at h
-  have hs₀ := SState.readsBelow_foldl_takeLabel hs ((((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).filterMap id)
+  have hs₀ := SState.readsBelow_foldl_takeLabel hs ((((args.zip (telRefsL L t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id)
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨_, rfl⟩ := h
     exact SState.readsBelow_mapVals_updList hs₀ _
   · simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨_, rfl⟩ := h
-    generalize ((((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).filterMap id).foldl SState.takeLabel s = s₀ at hs₀ ⊢
+    generalize ((((args.zip (telRefsL L t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id).foldl SState.takeLabel s = s₀ at hs₀ ⊢
     refine SState.readsBelow_pushTempShaped ?_ _ _ fun _ ⟨_, _, hne⟩ => absurd rfl hne
     intro p l ⟨φ, x, hne⟩
     show l < s₀.nextLoan + 1
@@ -171,11 +171,9 @@ theorem callOf_readsBelow (fv : Res) (args : List Res) (s : SState) (hs : s.Read
     {r : Sem} {T : TyS} {s' : SState} (h : callOf fv args s = some ((r, T), s')) : s'.ReadsBelow := by
   unfold callOf at h
   split at h
-  · split at h
-    · exact callOfL_readsBelow _ _ _ _ _ _ hs h
-    · exact callOfL_readsBelow _ _ _ _ _ _ hs h
-    · exact callOfL_readsBelow _ _ _ _ _ _ hs h
-    · cases h
+  · exact callOfL_readsBelow _ _ _ _ _ hs h
+  · exact callOfL_readsBelow _ _ _ _ _ hs h
+  · exact callOfL_readsBelow _ _ _ _ _ hs h
   · cases h
 
 end Ochr.Meaning
