@@ -105,7 +105,7 @@ noncomputable def Value.mean (ρ : Assignment) (φ : Future) (hint : TyS) : Valu
     match Γ.find? (·.name == ty) with
     | some d =>
       let ps? := if ps.isEmpty && !d.params.isEmpty then
-          (match hint.data with | some (n, ps') => if n = ty then some ps' else none | none => none)
+          (match hint.data dm.read with | some (n, ps') => if n = ty then some ps' else none | none => none)
         else some (Value.meanParams ρ φ d 0 [] ps)
       match ps? with
       | some ps' => if d.sort == 0 then .proof else dm.ctorM d ps' c (Value.meanFields ρ φ d ps' c 0 [] fs)

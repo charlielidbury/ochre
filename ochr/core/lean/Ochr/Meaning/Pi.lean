@@ -27,7 +27,7 @@ def TyS.plain (T : TyM) : TyS := ⟨T, none⟩
 
 /-- The declaration's name and parameters' meanings of a data type, read off its code: what a
 constructor value that records no parameters is read at (docs/31 D8). -/
-def TyS.data (T : TyS) : Option (String × List Sem) := T.m.dataName?
+def TyS.data (R : DataRead) (T : TyS) : Option (String × List Sem) := T.m.dataName? R
 
 /-- A parameter of a function type as the reference run reads it off the term: whether it is a
 borrow (`&A`), and its (content) type at each tuple of earlier arguments. -/
@@ -44,8 +44,8 @@ structure PiCod : Type 3 where
 /-- A Π into a proposition: a proposition, however large the domains (impredicativity). Each
 parameter ranges over its level-1 carrier so that `Π(A : Type₀). P(A)` and `Π(P : Prop). Q(P)`
 are covered; a borrow parameter contributes nothing to a proof. -/
-def piProp : List PiDom → List Sem → (List Sem → Prop) → Prop
+def piProp (R : DataRead) : List PiDom → List Sem → (List Sem → Prop) → Prop
   | [], acc, P => P acc
-  | p :: ps, acc, P => ∀ a : (p.dom acc).el1, piProp ps (acc ++ [(p.dom acc).code1.2.enc a]) P
+  | p :: ps, acc, P => ∀ a : (p.dom acc).el1, piProp R ps (acc ++ [(p.dom acc).code1.2.enc R a]) P
 
 end Ochr.Meaning
