@@ -188,11 +188,20 @@ theorem sort_ne_zero_of_N {n : String} {d : IndDecl} {c : Nat} {hh : Hint} {ps f
   rw [Value.anyAtom] at hN
   simp [dataCtorBad, hd, h0] at hN
 
+/-- (N): a constructor value's declaration is not named `Nat`. -/
+theorem name_ne_nat_of_N {n : String} {d : IndDecl} {c : Nat} {hh : Hint} {ps fs : List Value}
+    (hd : Γ.find? (·.name == n) = some d) (hN : (Value.ind n c hh ps fs).anyAtom (dataCtorBad Γ) = false) :
+    d.name ≠ "Nat" := by
+  intro h0
+  rw [Value.anyAtom] at hN
+  simp [dataCtorBad, hd, h0] at hN
+
 /-- The step into a field of a constructor value of a declared inductive that is not bare. -/
 theorem step_mean_ind {n : String} {d : IndDecl} (c : Nat) (hh : Hint) (ps fs' : List Value) (x : Step) (i : Nat)
     (v : Value) (H T : TyS) (hd : Γ.find? (·.name == n) = some d)
     (hb : (Value.ind n c hh ps fs').anyAtom (Value.bareCtor Γ) = false) (hv : fs'[i]? = some v)
-    (hx : (x = .proj i ∧ c = 0) ∨ ∃ g, x = .field g ∧ g.idx = i ∧ g.ctor = c ∧ g.ty = n) (hs0 : d.sort ≠ 0) :
+    (hx : (x = .proj i ∧ c = 0) ∨ ∃ g, x = .field g ∧ g.idx = i ∧ g.ctor = c ∧ g.ty = n) (hs0 : d.sort ≠ 0)
+    (hnat : d.name ≠ "Nat") :
     ∃ s' T', Sem.step dm Γ T x (Value.mean dm C Γ ρ f H (.ind n c hh ps fs')) = some (s', T') ∧
       ((s' = .proof ∧ v = .proof) ∨ ∃ H', s' = Value.mean dm C Γ ρ f H' v) := by
   rw [Value.anyAtom] at hb
@@ -216,7 +225,8 @@ theorem step_mean_ind {n : String} {d : IndDecl} (c : Nat) (hh : Hint) (ps fs' :
       · simpa [Sem.step] using hT'
     · have hdn : d.name = g.ty := by
         have := List.find?_some hd; simp only [beq_iff_eq] at this; rw [this, hgt]
-      simpa [Sem.step, hgc, hdn] using hT'
+      have hnat' : g.ty ≠ "Nat" := hdn ▸ hnat
+      simpa [Sem.step, hgc, hdn, hnat'] using hT'
 
 /-- **One step of a place, on the checker's value and on its meaning** (at the join's grain, by
 the checker's typing of the place): the reference's step from the value's meaning is the meaning of
@@ -256,7 +266,7 @@ theorem step_mean (r : DeclInfo) (x : Step) (hx : StepOk Γ r x) :
       have hty := hf n args rfl (by simp [hd])
       simp only [Value.fitsInd, beq_iff_eq] at hty; subst hty
       rcases c with _ | c
-      · exact step_mean_ind dm C Γ ρ f 0 hh ps fs' (.proj i) i v H T hd hb (by simpa [stepV] using h) (.inl ⟨rfl, rfl⟩) (sort_ne_zero_of_N Γ hd hN)
+      · exact step_mean_ind dm C Γ ρ f 0 hh ps fs' (.proj i) i v H T hd hb (by simpa [stepV] using h) (.inl ⟨rfl, rfl⟩) (sort_ne_zero_of_N Γ hd hN) (name_ne_nat_of_N Γ hd hN)
       · simp [stepV] at h
     | field g =>
       obtain ⟨n, args, d, rfl, hd, -⟩ := hx
@@ -266,7 +276,7 @@ theorem step_mean (r : DeclInfo) (x : Step) (hx : StepOk Γ r x) :
       split at h
       · rename_i hc
         simp only [Bool.and_eq_true, beq_iff_eq] at hc
-        exact step_mean_ind dm C Γ ρ f c hh ps fs' (.field g) g.idx v H T hd hb h (.inr ⟨g, rfl, rfl, hc.2.symm, hc.1.symm⟩) (sort_ne_zero_of_N Γ hd hN)
+        exact step_mean_ind dm C Γ ρ f c hh ps fs' (.field g) g.idx v H T hd hb h (.inr ⟨g, rfl, rfl, hc.2.symm, hc.1.symm⟩) (sort_ne_zero_of_N Γ hd hN) (name_ne_nat_of_N Γ hd hN)
       · cases h
   | .bot, _, _, _, h, _, _, _ | .loan _, _, _, _, h, _, _, _ | .abs _, _, _, _, h, _, _, _
   | .sealed _, _, _, _, h, _, _, _ | .zero, _, _, _, h, _, _, _ | .unit, _, _, _, h, _, _, _
