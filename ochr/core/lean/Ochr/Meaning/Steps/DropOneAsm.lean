@@ -86,31 +86,56 @@ theorem access_root_not_proof (st st₂ : MState) (s : SState) (π : Nat → Nat
     valAt st₂.env pos ≠ .proof := by
   sorry
 
-/-- **The reference reads no data of a non-copy place as `⋆`**: at a related state, the meaning of
-what the checker holds at a place of a non-copy reading, other than `⋆`, is not `⋆`. By membership
-(`Good`) and the typing of places, the meaning is a member of the place's type; `⋆` is a member of
-a proposition only, and a place declared a proposition is a copy (`declCopy`: `.prop`); a borrow
-of a proposition is no copy, but the checker holds `⋆` there (P5, the `⋆` excluded here). Open: not
-tried. -/
-theorem dataMean_ne_proof (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (v : Value)
-    (hg : Good K.dm K.M K.Γ ρ st) (hsh : ShapeFacts K.D K.Γ st) (hs : Rel K ρ φ π st s)
-    (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
-    (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
+/-- **The reference reads no data of a non-copy place as `⋆`, after the access** (the drop reads
+the place after its [Access], docs/31 D54): the meaning of what the checker holds at a place of a
+non-copy reading, other than `⋆`, is not `⋆`. By membership (`Good`, after) the meaning is below a
+member of the place's type; the type's code is not a proposition, since the checker's sort test does
+not call the place's computed type one ((D⋆T)) and that test is sound for the model
+(`sortOf_sound_stmt`). The levels are read BEFORE the access, where the run context holds (the
+soundness of `sortOf` needs it; after the access the slice has only `Good`, the relation and the
+typing of places, from the induction hypothesis's [Access]); membership is read after it; the two are
+joined through the relation's skeleton (the reference's access changes no binding's type). Restated
+so for the slice (the orchestrator's decision on the timing, report 4); first stated at one state,
+after the access, where the levels cannot be read. For the lead to review. Open. -/
+theorem dataMean_ne_proof (st₀ st : MState) (s₀ : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (v₀ v : Value)
+    (hg₀ : Good K.dm K.M K.Γ ρ st₀) (hctx₀ : CtxOk K ρ st₀) (hs₀ : Rel K ρ φ π st₀ s₀)
+    (hck₀ : ckVarPos st₀.env q.steps.1 = some pos)
+    (hv₀ : (valAt st₀.env pos).follow q.steps.2 = some v₀) (hproof₀ : v₀ ≠ .proof) (hbot₀ : v₀ ≠ .bot)
+    (hg : Good K.dm K.M K.Γ ρ st) (hsh : ShapeFacts K.D K.Γ st)
+    (hs : Rel K ρ φ π st ((accessLentPrefix pos q.steps.2 s₀).access pos (dataHit q.steps.2)))
+    (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s₀) q)
+    (hcopy : K.D.copy (K.D.placeDecl (scopeOf s₀) q) = false)
     (hv : (valAt st.env pos).follow q.steps.2 = some v) (hproof : v ≠ .proof) (H : TyS) :
-    Value.mean K.dm K.M K.Γ ρ (fun l => s.typedFuture φ (π l)) H v ≠ .proof := by
+    Value.mean K.dm K.M K.Γ ρ
+      (fun l => ((accessLentPrefix pos q.steps.2 s₀).access pos (dataHit q.steps.2)).typedFuture φ (π l)) H v ≠ .proof := by
   sorry
 
-/-- **The reference's reading of a data place at a related state** exists and is not `⋆`
-(`followMean`: it is the meaning of the checker's value, which is not `⋆`, `dataMean_ne_proof`).
-PROVED from `dataMean_ne_proof`. -/
-theorem dataRead (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (v : Value)
-    (hg : Good K.dm K.M K.Γ ρ st) (hsh : ShapeFacts K.D K.Γ st) (hs : Rel K ρ φ π st s)
-    (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
-    (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
+/-- **The reference's reading of a data place after the access** exists and is not `⋆`
+(`followMean`: it is the meaning of the checker's value, which is not `⋆`, `dataMean_ne_proof`, with
+the levels read before the access). PROVED from `dataMean_ne_proof`. Restated with it (the
+facts before the access added). -/
+theorem dataRead (st₀ st : MState) (s₀ : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (v₀ v : Value)
+    (hg₀ : Good K.dm K.M K.Γ ρ st₀) (hctx₀ : CtxOk K ρ st₀) (hs₀ : Rel K ρ φ π st₀ s₀)
+    (hck₀ : ckVarPos st₀.env q.steps.1 = some pos)
+    (hv₀ : (valAt st₀.env pos).follow q.steps.2 = some v₀) (hproof₀ : v₀ ≠ .proof) (hbot₀ : v₀ ≠ .bot)
+    (hg : Good K.dm K.M K.Γ ρ st) (hsh : ShapeFacts K.D K.Γ st)
+    (hs : Rel K ρ φ π st ((accessLentPrefix pos q.steps.2 s₀).access pos (dataHit q.steps.2)))
+    (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s₀) q)
+    (hcopy : K.D.copy (K.D.placeDecl (scopeOf s₀) q) = false)
     (hv : (valAt st.env pos).follow q.steps.2 = some v) (hproof : v ≠ .proof) :
-    ∃ x T, Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.typedFuture φ)) q.steps.2 = some (x, T) ∧
+    ∃ x T, Sem.follow K.dm K.Γ (((accessLentPrefix pos q.steps.2 s₀).access pos (dataHit q.steps.2)).tyAt pos)
+      (((accessLentPrefix pos q.steps.2 s₀).access pos (dataHit q.steps.2)).valAt pos
+        (((accessLentPrefix pos q.steps.2 s₀).access pos (dataHit q.steps.2)).typedFuture φ)) q.steps.2 = some (x, T) ∧
       x ≠ .proof := by
-  have hgr : GrainOk K.D K.Γ (DecideScope.topReadings st) q := by rw [← rel_scopeOf K ρ φ hs]; exact hgrain
+  generalize hsd : (accessLentPrefix pos q.steps.2 s₀).access pos (dataHit q.steps.2) = s at hs ⊢
+  have hdecl : declsOf s = declsOf s₀ := by
+    rw [← hsd, declsOf_access]
+    unfold accessLentPrefix
+    split
+    · exact declsOf_access _ _ _
+    · rfl
+  have hgrain' : GrainOk K.D K.Γ (scopeOf s) q := by rw [scopeOf_of_declsOf hdecl]; exact hgrain
+  have hgr : GrainOk K.D K.Γ (DecideScope.topReadings st) q := by rw [← rel_scopeOf K ρ φ hs]; exact hgrain'
   have hpt : ¬ IsTemp pos := by
     rcases pos with ⟨f, i⟩ | ⟨f, i⟩
     · simp [IsTemp]
@@ -124,7 +149,9 @@ theorem dataRead (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos 
   refine ⟨s', T', h1, ?_⟩
   rcases h2 with ⟨-, rfl⟩ | ⟨H, rfl⟩
   · exact absurd rfl hproof
-  · exact dataMean_ne_proof K ρ φ st s π q pos v hg hsh hs hck hgrain hcopy hv hproof H
+  · have := dataMean_ne_proof K ρ φ st₀ st s₀ π q pos v₀ v hg₀ hctx₀ hs₀ hck₀ hv₀ hproof₀ hbot₀ hg hsh
+      (by rw [hsd]; exact hs) hck hgrain hcopy hv hproof H
+    rwa [hsd] at this
 
 /-- **Nothing is lent at a root holding `⋆`** (`⋆` holds no loan, mark or sealed program). -/
 theorem clear_of_proof_root {env : Env} {pos : Pos} (hproof : valAt env pos = .proof) :
@@ -512,7 +539,8 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
       · have h := hsh₃.proofCopy q hne (by unfold ckContent; simp [hck'', hv₃])
         rw [← rel_scopeOf K ρ φ hs₃, hcopy₁] at h
         cases h
-    have hread := dataRead K ρ φ st₃ _ π q pos v₃ hg₃ hsh₃ hs₃ hck'' hgrain₁ hcopy₁ hv₃ hproof₃
+    have hread := dataRead K ρ φ st st₃ s π q pos v v₃ hg hctx hs hck hv hproof hbot hg₃ hsh₃ hs₃ hck''
+      hgrain hcopy hv₃ hproof₃
     have hcopy₀ : K.D.copy (K.D.placeDecl (scopeOf (accessLentPrefix pos q.steps.2 s)) q) = false := by
       rw [scopeOf_of_declsOf (declsOf_accessLentPrefix s pos q.steps.2)]; exact hcopy
     obtain ⟨f, i, hposfi, hpb, hsp, hroot, hplain, hnat⟩ :=
