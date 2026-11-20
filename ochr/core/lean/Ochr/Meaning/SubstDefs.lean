@@ -77,17 +77,10 @@ closure or Π-closure filler the loan's declared shape (`K.Λ ℓ`) is the fille
 gives. (A global or abstract filler carries its own `TyS` rather than the hint's, so it satisfies
 this only when the loan's declared type is that `TyS`: a residual, should one be met.)
 
-And the filler is not itself a Π-type or `D(ā)` type value (`tyShape`, `tyDataV` are `none`;
-second lead, with the audit's A10). Since A10 a closure's captures are bound at their recorded
-types WITH their structure, read off the type value's text. A loan standing as a recorded type
-has no structure to read, and its filler would. No stored type holds a live loan (docs/27 Lemma
-5), so that never happens in a reachable state; rather than carry "no recorded type holds `ℓ`"
-through the induction on the term, the pair excludes the fillers for which it would matter.
-RESIDUAL: [End] of a borrow of a type-valued place whose content is a Π-type or `D(ā)`; its fix
-is that hypothesis on the term instead of this one on the filler. -/
+A type-valued filler needs nothing more: a recorded type is read through its meaning, which is
+its code (docs/31 D59), so a loan standing as a recorded type and its filler read alike. -/
 def FillShape (φ : Future) (l : Nat) (w : Value) : Prop :=
-  (∀ hint s, (run K ρ φ hint (.val w) s).map (·.1.2) = (run K ρ φ hint (.val (.loan l)) s).map (·.1.2)) ∧
-  tyShape K ρ φ w = none ∧ tyDataV K ρ φ w = none
+  ∀ hint s, (run K ρ φ hint (.val w) s).map (·.1.2) = (run K ρ φ hint (.val (.loan l)) s).map (·.1.2)
 
 /-- The state does not read label `l`, and `l` is below its label counter (m2-proofs' B: fresh
 labels never collide with `l`). -/

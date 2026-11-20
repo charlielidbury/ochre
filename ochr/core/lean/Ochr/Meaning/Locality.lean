@@ -1129,10 +1129,10 @@ end SState
 /-- What a body's output must satisfy for its closure to mean the same at two futures that agree
 on `L`: at a data codomain the finals read only `L`; at a returned borrow they read only `L` and
 the returned label (which the backward function fixes). -/
-def FinalsIn (L : Nat → Prop) (out : PiOut) (o : BodyOut) : Prop :=
-  ∀ c ∈ o.finals, match out with
-    | .data _ => FT L c
-    | .ref _ => ∀ k, o.retLabel = some k → FT (fun y => L y ∨ y = k) c
+def FinalsIn (L : Nat → Prop) (isRef : Bool) (o : BodyOut) : Prop :=
+  ∀ c ∈ o.finals, match isRef with
+    | false => FT L c
+    | true => ∀ k, o.retLabel = some k → FT (fun y => L y ∨ y = k) c
 
 theorem finals_map_eq {fs : List SVal} {φ φ' : Future} {S : Nat → Prop}
     (hφ : ∀ l, S l → φ l = φ' l) (h : ∀ c ∈ fs, FT S c) : fs.map (· φ) = fs.map (· φ') :=
@@ -1154,66 +1154,114 @@ theorem dite_isSome_congr {X : Type u} {Y : X → Type u} (M M' : (x : X) → Op
       = (if h : ∀ x, (M' x).isSome then some fun x => (M' x).get (h x) else none) := by
   subst h; rfl
 
-theorem mkLeafRefL_congr (Lv : Lvl.{u}) {φ φ' : Future} (acc : List Sem) (Fin : Type u)
-    (mkFin : List Sem → Option (Fin × List Sem)) (U : List Sem → TyM) (o : BodyOut)
-    (hb : ∀ k, o.retLabel = some k → ∀ v, mkBackAtL Lv φ Fin mkFin (U acc) o k v = mkBackAtL Lv φ' Fin mkFin (U acc) o k v) :
-    mkLeafRefL Lv φ acc Fin mkFin U o = mkLeafRefL Lv φ' acc Fin mkFin U o := by
+/-- Every leaf of a telescope code is of the kind `isRef` says: a returned borrow, or data. -/
+def TelKind (Lv : Lvl.{u}) (isRef : Bool) : {Fin C : Type u} → Tel Lv.Code Fin C → Prop
+  | _, _, .dat .. => isRef = false
+  | _, _, .ref .. => isRef = true
+  | _, _, .param _ _ _ _ _ k => ∀ a, TelKind Lv isRef (k a)
+
+/-- The code the reference run builds from a description has the codomain's kind at every leaf. -/
+theorem telL_kind (Lv : Lvl.{u}) : ∀ (ds : List PiDom) (acc : List Sem) (Fin : Type u) (out : PiCod),
+    TelKind Lv out.isRef (telL Lv ds acc Fin out).2
+  | [], acc, Fin, ⟨b, cod⟩ => by
+    cases b <;> simp only [telL, TelKind]
+  | p :: ps, acc, Fin, out => fun a => telL_kind Lv ps _ _ out
+
+theorem mkLeafRefL_congr (Lv : Lvl.{u}) {φ φ' : Future} (Fin : Type u)
+    (mkFin : List Sem → Option (Fin × List Sem)) {U : Type u} (c : Lv.Code U) (o : BodyOut)
+    (hb : ∀ k, o.retLabel = some k → ∀ v, mkBackAtL Lv φ Fin mkFin c o k v = mkBackAtL Lv φ' Fin mkFin c o k v) :
+    mkLeafRefL Lv φ Fin mkFin c o = mkLeafRefL Lv φ' Fin mkFin c o := by
   unfold mkLeafRefL
   cases hk : o.retLabel with
   | none => rfl
   | some k =>
-    have hfun : mkBackAtL Lv φ Fin mkFin (U acc) o k = mkBackAtL Lv φ' Fin mkFin (U acc) o k := funext (hb k hk)
-    cases hd : Lv.dec (U acc) o.result with
+    have hfun : mkBackAtL Lv φ Fin mkFin c o k = mkBackAtL Lv φ' Fin mkFin c o k := funext (hb k hk)
+    cases hd : Lv.dec c o.result with
     | none => rfl
     | some fwd =>
       dsimp only
       rw [hfun]
 
-/-- **A closure's telescope is the same at two futures agreeing on `L`** when every body output
+/-- The leaves of `mkTelL` and `mkTelFillL` are the same at two futures agreeing on `L`. -/
+theorem leaf_congr (Lv : Lvl.{u}) {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l)
+    (isRef : Bool) (g : List Sem → Option BodyOut) (hg : ∀ args o, g args = some o → FinalsIn L isRef o)
+    (acc : List Sem) (Fin : Type u) (mkFin : List Sem → Option (Fin × List Sem)) :
+    (∀ {B : Type u} (c : Lv.Code B), isRef = false →
+      (g acc).bind (mkLeafDataL Lv φ Fin mkFin c) = (g acc).bind (mkLeafDataL Lv φ' Fin mkFin c)) ∧
+    (∀ {U : Type u} (c : Lv.Code U), isRef = true →
+      (g acc).bind (mkLeafRefL Lv φ Fin mkFin c) = (g acc).bind (mkLeafRefL Lv φ' Fin mkFin c)) := by
+  refine ⟨fun c hk => ?_, fun c hk => ?_⟩
+  · cases e : g acc with
+    | none => rfl
+    | some o =>
+      simp only [Option.bind, mkLeafDataL]
+      have hf := hg acc o e
+      subst hk
+      rw [finals_map_eq hφ fun c hc => (hf c hc : FT L c)]
+  · cases e : g acc with
+    | none => rfl
+    | some o =>
+      simp only [Option.bind]
+      have hf := hg acc o e
+      subst hk
+      have hb : ∀ k, o.retLabel = some k → ∀ v, mkBackAtL Lv φ Fin mkFin c o k v
+          = mkBackAtL Lv φ' Fin mkFin c o k v := by
+        intro k hk v
+        simp only [mkBackAtL]
+        rw [finals_map_eq (S := fun y => L y ∨ y = k) (upd_agree hφ k _) fun c hc => (hf c hc) k hk]
+      exact mkLeafRefL_congr Lv Fin mkFin c o hb
+
+/-- **A closure's element is the same at two futures agreeing on `L`** when every body output
 reads its finals only there (`FinalsIn`). -/
-theorem mkTeleL_congr (Lv : Lvl.{u}) {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l)
-    (out : PiOut) (g : List Sem → Option BodyOut) (hg : ∀ args o, g args = some o → FinalsIn L out o) :
-    ∀ (ps : List PiParam) (acc : List Sem) (Fin : Type u) (mkFin : List Sem → Option (Fin × List Sem)),
-      mkTeleL Lv φ ps acc Fin mkFin out g = mkTeleL Lv φ' ps acc Fin mkFin out g
-  | [], acc, Fin, mkFin => by
-    cases out with
-    | data B =>
-      simp only [mkTeleL]
-      cases e : g acc with
-      | none => rfl
-      | some o =>
-        simp only [Option.bind, mkLeafDataL]
-        have hf := hg acc o e
-        rw [finals_map_eq hφ fun c hc => (hf c hc : FT L c)]
-    | ref U =>
-      simp only [mkTeleL]
-      cases e : g acc with
-      | none => rfl
-      | some o =>
-        simp only [Option.bind]
-        have hf := hg acc o e
-        have hb : ∀ k, o.retLabel = some k → ∀ v, mkBackAtL Lv φ Fin mkFin (U acc) o k v
-            = mkBackAtL Lv φ' Fin mkFin (U acc) o k v := by
-          intro k hk v
-          simp only [mkBackAtL]
-          rw [finals_map_eq (S := fun y => L y ∨ y = k) (upd_agree hφ k _) fun c hc => (hf c hc) k hk]
-        exact mkLeafRefL_congr Lv acc Fin mkFin U o hb
-  | p :: ps, acc, Fin, mkFin => by
-    simp only [mkTeleL]
-    exact dite_isSome_congr _ _ (funext fun x => mkTeleL_congr Lv hφ out g hg ps (acc ++ [Lv.enc (p.dom acc) x])
-      (extFinL p.isRef Fin (Lv.el (p.dom acc))) (extMkL p.isRef Fin (Lv.el (p.dom acc)) mkFin (Lv.dec (p.dom acc))))
+theorem mkTelL_congr (Lv : Lvl.{u}) {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l)
+    (isRef : Bool) (g : List Sem → Option BodyOut) (hg : ∀ args o, g args = some o → FinalsIn L isRef o) :
+    ∀ {Fin C : Type u} (t : Tel Lv.Code Fin C), TelKind Lv isRef t →
+      ∀ (acc : List Sem) (mkFin : List Sem → Option (Fin × List Sem)),
+      mkTelL Lv φ t acc mkFin g = mkTelL Lv φ' t acc mkFin g
+  | _, _, .dat Fin B c, hk, acc, mkFin => (leaf_congr Lv hφ isRef g hg acc Fin mkFin).1 c hk
+  | _, _, .ref Fin U c, hk, acc, mkFin => (leaf_congr Lv hφ isRef g hg acc Fin mkFin).2 c hk
+  | _, _, .param Fin isR A c C k, hk, acc, mkFin => by
+    simp only [mkTelL]
+    exact dite_isSome_congr _ _ (funext fun x => mkTelL_congr Lv hφ isRef g hg (k x) (hk x) _ _)
+
+/-- The same for a recursion stage's filled element. -/
+theorem mkTelFillL_congr (Lv : Lvl.{u}) {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l)
+    (isRef : Bool) (g : List Sem → Option BodyOut) (hg : ∀ args o, g args = some o → FinalsIn L isRef o) :
+    ∀ {Fin C : Type u} (t : Tel Lv.Code Fin C), TelKind Lv isRef t →
+      ∀ (acc : List Sem) (mkFin : List Sem → Option (Fin × List Sem)),
+      mkTelFillL Lv φ t acc mkFin g = mkTelFillL Lv φ' t acc mkFin g
+  | _, _, .dat Fin B c, hk, acc, mkFin => by
+    simp only [mkTelFillL, (leaf_congr Lv hφ isRef g hg acc Fin mkFin).1 c hk]
+  | _, _, .ref Fin U c, hk, acc, mkFin => by
+    simp only [mkTelFillL, (leaf_congr Lv hφ isRef g hg acc Fin mkFin).2 c hk]
+  | _, _, .param Fin isR A c C k, hk, acc, mkFin => by
+    simp only [mkTelFillL]
+    exact dite_isSome_congr _ _ (funext fun x => mkTelFillL_congr Lv hφ isRef g hg (k x) (hk x) _ _)
 
 /-- The closure meaning at its sort, the same at two futures agreeing on `L` under `FinalsIn`. -/
 theorem closureAt_congr {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l) (l : Nat)
-    (ps : List PiParam) (out : PiOut) (g : List Sem → Option BodyOut)
-    (hg : ∀ args o, g args = some o → FinalsIn L out o) :
-    closureAt l φ ps out g = closureAt l φ' ps out g := by
+    (ds : List PiDom) (out : PiCod) (g : List Sem → Option BodyOut)
+    (hg : ∀ args o, g args = some o → FinalsIn L out.isRef o) :
+    closureAt l φ ds out g = closureAt l φ' ds out g := by
   unfold closureAt
   rcases l with _ | _ | _ | _ | l
   · rfl
-  · simp only [closureL, mkTeleL_congr lvl0 hφ out g hg]
-  · simp only [closureL, mkTeleL_congr lvl1 hφ out g hg]
-  · simp only [closureL, mkTeleL_congr lvl2 hφ out g hg]
+  · simp only [closureL, mkTelL_congr lvl0 hφ out.isRef g hg _ (telL_kind lvl0 ds [] PUnit out)]
+  · simp only [closureL, mkTelL_congr lvl1 hφ out.isRef g hg _ (telL_kind lvl1 ds [] PUnit out)]
+  · simp only [closureL, mkTelL_congr lvl2 hφ out.isRef g hg _ (telL_kind lvl2 ds [] PUnit out)]
+  · rfl
+
+/-- A recursion stage's closure, the same at two futures agreeing on `L` under `FinalsIn`. -/
+theorem closureFillAt_congr {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l) (l : Nat)
+    (ds : List PiDom) (out : PiCod) (g : List Sem → Option BodyOut)
+    (hg : ∀ args o, g args = some o → FinalsIn L out.isRef o) :
+    closureFillAt l φ ds out g = closureFillAt l φ' ds out g := by
+  unfold closureFillAt
+  rcases l with _ | _ | _ | _ | l
+  · rfl
+  · simp only [closureFillL, mkTelFillL_congr lvl0 hφ out.isRef g hg _ (telL_kind lvl0 ds [] PUnit out)]
+  · simp only [closureFillL, mkTelFillL_congr lvl1 hφ out.isRef g hg _ (telL_kind lvl1 ds [] PUnit out)]
+  · simp only [closureFillL, mkTelFillL_congr lvl2 hφ out.isRef g hg _ (telL_kind lvl2 ds [] PUnit out)]
   · rfl
 
 /-! ## The call clause: the finals match the borrow parameters
@@ -1224,56 +1272,55 @@ exactly one argument per parameter and returns exactly one final per borrow para
 
 theorem extReadL_len (b : Bool) (Fin T : Type u) (readFin : Fin → List Sem) (enc : T → Sem) (n : Nat)
     (hn : ∀ x, (readFin x).length = n) :
-    ∀ y : extFinL b Fin T, (extReadL b Fin T readFin enc y).length = n + if b then 1 else 0 := by
+    ∀ y : extFin b Fin T, (extReadL b Fin T readFin enc y).length = n + if b then 1 else 0 := by
   cases b <;> intro y <;> simp [extReadL, hn]
 
-/-- The finals of a successful application: as many arguments as parameters, and one final per
+/-- The finals of a successful application: one argument per parameter reached, and one final per
 borrow parameter after what the accumulator already read. -/
-theorem applyTeleL_len (Lv : Lvl.{u}) : ∀ (ps : List PiParam) (acc : List Sem) (Fin : Type u)
-    (readFin : Fin → List Sem) (out : PiOut) (F : piCarL Lv ps acc Fin out) (args : List Sem) (n : Nat),
-    (∀ x, (readFin x).length = n) → ∀ res, applyTeleL Lv ps acc Fin readFin out F args = some res →
-    args.length = ps.length ∧
+theorem applyTelL_len (Lv : Lvl.{u}) : ∀ {Fin C : Type u} (t : Tel Lv.Code Fin C) (readFin : Fin → List Sem)
+    (F : C) (args : List Sem) (n : Nat),
+    (∀ x, (readFin x).length = n) → ∀ res, applyTelL Lv t readFin F args = some res →
+    args.length = (telRefsL Lv t args).length ∧
       (match res with
-       | .data _ finals => finals.length = n + (ps.filter (·.isRef)).length
-       | .ref _ _ back => ∀ v, (back v).length = n + (ps.filter (·.isRef)).length)
-  | [], acc, Fin, readFin, out, F, args, n, hn, res, h => by
-    cases args with
-    | cons _ _ => cases out <;> simp [applyTeleL] at h
-    | nil =>
-      cases out with
-      | data B =>
-        simp only [applyTeleL, Option.some.injEq] at h
-        subst h
-        simp [hn]
-      | ref U =>
-        simp only [applyTeleL, Option.some.injEq] at h
-        subst h
-        simp [hn]
-  | p :: ps, acc, Fin, readFin, out, F, args, n, hn, res, h => by
-    cases args with
-    | nil => simp [applyTeleL] at h
-    | cons a as =>
-      simp only [applyTeleL] at h
-      split at h
-      · rename_i x _
-        obtain ⟨ha, hr⟩ := applyTeleL_len Lv ps _ _ _ out (F x) as _
-          (extReadL_len p.isRef Fin (Lv.el (p.dom acc)) readFin (Lv.enc (p.dom acc)) n hn) res h
-        refine ⟨by simp [ha], ?_⟩
-        have hf : ((p :: ps).filter (·.isRef)).length = (if p.isRef then 1 else 0) + (ps.filter (·.isRef)).length := by
-          by_cases hp : p.isRef = true <;> simp [List.filter_cons, hp] <;> omega
-        rw [hf]
-        cases res with
-        | data r finals => simp only at hr ⊢; omega
-        | ref U fwd back => intro v; have := hr v; omega
-      · cases h
+       | .data _ _ finals => finals.length = n + ((telRefsL Lv t args).filter id).length
+       | .ref _ _ _ back => ∀ v, (back v).length = n + ((telRefsL Lv t args).filter id).length)
+  | _, _, .dat .., readFin, F, [], n, hn, res, h => by
+    simp only [applyTelL, Option.some.injEq] at h
+    subst h
+    simp [telRefsL, hn]
+  | _, _, .ref .., readFin, F, [], n, hn, res, h => by
+    simp only [applyTelL, Option.some.injEq] at h
+    subst h
+    simp [telRefsL, hn]
+  | _, _, .dat .., _, _, _ :: _, _, _, _, h => by simp [applyTelL] at h
+  | _, _, .ref .., _, _, _ :: _, _, _, _, h => by simp [applyTelL] at h
+  | _, _, .param .., _, _, [], _, _, _, h => by simp [applyTelL] at h
+  | _, _, .param Fin isRef A c C k, readFin, F, a :: as, n, hn, res, h => by
+    simp only [applyTelL] at h
+    split at h
+    · rename_i x hx
+      obtain ⟨ha, hr⟩ := applyTelL_len Lv (k x) _ (F x) as _
+        (extReadL_len isRef Fin A readFin (Lv.enc c) n hn) res h
+      have hrefs : telRefsL Lv (.param Fin isRef A c C k) (a :: as) = isRef :: telRefsL Lv (k x) as := by
+        simp only [telRefsL, hx]
+      rw [hrefs]
+      refine ⟨by simp [ha], ?_⟩
+      have hf : ((isRef :: telRefsL Lv (k x) as).filter id).length
+          = (if isRef then 1 else 0) + ((telRefsL Lv (k x) as).filter id).length := by
+        cases isRef <;> simp [List.filter_cons] <;> omega
+      rw [hf]
+      cases res with
+      | data r T finals => simp only at hr ⊢; omega
+      | ref U c' fwd back => intro v; have := hr v; omega
+    · cases h
 
-/-- The arguments at borrow parameters, as many as the borrow parameters when the arity is right. -/
-theorem zip_filter_len {α : Type _} : ∀ (args : List α) (ps : List PiParam), args.length = ps.length →
-    ((args.zip ps).filter (·.2.isRef)).length = (ps.filter (·.isRef)).length
+/-- The arguments at borrow parameters, as many as the borrow flags set when the arity is right. -/
+theorem zip_filter_len {α : Type _} : ∀ (args : List α) (bs : List Bool), args.length = bs.length →
+    ((args.zip bs).filter (·.2)).length = (bs.filter id).length
   | [], [], _ => rfl
-  | a :: as, p :: ps, h => by
-    have ih := zip_filter_len as ps (by simpa using h)
-    by_cases hp : p.isRef = true <;> simp [List.filter_cons, hp, ih]
+  | a :: as, b :: bs, h => by
+    have ih := zip_filter_len as bs (by simpa using h)
+    cases b <;> simp [List.filter_cons, ih]
   | [], _ :: _, h => by simp at h
   | _ :: _, [], h => by simp at h
 
@@ -1297,31 +1344,31 @@ theorem fixes_cover : ∀ (ls : List (Option Nat)) (fs : List Sem), ls.length �
 /-- **The call clause, data result**: `callOfL` keeps (I1) and (I2). Its borrow arguments' holders
 are taken and every taken label is fixed to its final, since a successful application has one
 argument per parameter and one final per borrow parameter. -/
-theorem callOfL_data_inv {L : Nat → Prop} (Lv : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : Sem)
+theorem callOfL_data_inv {L : Nat → Prop} (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C) (fv : Sem)
     (args : List Res) {s s' : SState} (h1 : SState.Inv1 L s) (h2 : SState.Inv2 L s) {r : Sem} {B : TyM}
-    (h : callOfL Lv ps out fv args s = some ((r, TyS.ofTyM B), s'))
-    (hdata : ∀ U fwd back, applyFnL Lv ps out fv (args.map (·.1)) ≠ some (.ref U fwd back)) :
+    (h : callOfL Lv t fv args s = some ((r, TyS.plain B), s'))
+    (hdata : ∀ U c fwd back, applyFnL Lv t fv (args.map (·.1)) ≠ some (.ref U c fwd back)) :
     SState.Inv1 L s' ∧ SState.Inv2 L s' := by
   unfold callOfL at h
   dsimp only at h
   split at h
-  · rename_i r' finals happ
+  · rename_i r' T' finals happ
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨_, rfl⟩ := h
     unfold applyFnL at happ
-    cases hu : Lv.unpack (piCarL Lv ps [] PUnit out) fv with
+    cases hu : Lv.unpack C fv with
     | none => rw [hu] at happ; cases happ
     | some F =>
       rw [hu] at happ
-      obtain ⟨hlen, hfin⟩ := applyTeleL_len Lv ps [] PUnit (fun _ => []) out F _ 0 (fun _ => rfl) _ happ
+      obtain ⟨hlen, hfin⟩ := applyTelL_len Lv t (fun _ => []) F _ 0 (fun _ => rfl) _ happ
       simp only [List.length_map] at hlen
       simp only [Nat.zero_add] at hfin
       apply SState.takeAll_fix_inv h1 h2
       apply fixes_cover
-      rw [List.length_map, zip_filter_len args ps hlen, hfin]
+      rw [List.length_map, zip_filter_len args _ hlen, hfin]
       exact Nat.le_refl _
-  · rename_i U fwd back happ
-    exact absurd happ (hdata U fwd back)
+  · rename_i U c fwd back happ
+    exact absurd happ (hdata U c fwd back)
   · cases h
 
 /-! ## Parking: a fresh label's new holder keeps the invariant -/
@@ -1613,11 +1660,11 @@ end SState
 holders are taken; every position then reads the fresh label `k`'s final content, decodes the
 backward function's finals from it, and fixes every taken label to them; `k` is parked, a fresh
 label above every held one, so the holders' order is kept. -/
-theorem callOfL_ref_inv {L : Nat → Prop} (Lv : Lvl.{u}) (ps : List PiParam) (out : PiOut) (fv : Sem)
+theorem callOfL_ref_inv {L : Nat → Prop} (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C) (fv : Sem)
     (args : List Res) {s s' : SState} (h1 : SState.Inv1 L s) (h2 : SState.Inv2 L s) (hsa : SState.ShapeAt s)
-    {res : Res} (h : callOfL Lv ps out fv args s = some (res, s'))
-    {U : TyM} {fwd : Lv.el U} {back : Lv.el U → List Sem}
-    (happ : applyFnL Lv ps out fv (args.map (·.1)) = some (.ref U fwd back)) :
+    {res : Res} (h : callOfL Lv t fv args s = some (res, s'))
+    {U : Type u} {c : Lv.Code U} {fwd : U} {back : U → List Sem}
+    (happ : applyFnL Lv t fv (args.map (·.1)) = some (.ref U c fwd back)) :
     SState.Inv1 L s' ∧ SState.Inv2 L s' := by
   unfold callOfL at h
   dsimp only at h
@@ -1627,27 +1674,27 @@ theorem callOfL_ref_inv {L : Nat → Prop} (Lv : Lvl.{u}) (ps : List PiParam) (o
   rw [SState.inv1_setLent, SState.inv2_setLent]
   -- the lengths: every taken label is fixed, whatever the backward function's argument
   unfold applyFnL at happ
-  obtain ⟨F, hu, happ'⟩ : ∃ F, Lv.unpack (piCarL Lv ps [] PUnit out) fv = some F ∧
-      applyTeleL Lv ps [] PUnit (fun _ => []) out F (args.map (·.1)) = some (.ref U fwd back) := by
-    cases hu : Lv.unpack (piCarL Lv ps [] PUnit out) fv with
+  obtain ⟨F, hu, happ'⟩ : ∃ F, Lv.unpack C fv = some F ∧
+      applyTelL Lv t (fun _ => []) F (args.map (·.1)) = some (.ref U c fwd back) := by
+    cases hu : Lv.unpack C fv with
     | none => rw [hu] at happ; cases happ
     | some F => rw [hu] at happ; exact ⟨F, rfl, happ⟩
-  obtain ⟨hlen, hfin⟩ := applyTeleL_len Lv ps [] PUnit (fun _ => []) out F _ 0 (fun _ => rfl) _ happ'
+  obtain ⟨hlen, hfin⟩ := applyTelL_len Lv t (fun _ => []) F _ 0 (fun _ => rfl) _ happ'
   simp only [List.length_map] at hlen
   simp only [Nat.zero_add] at hfin
-  have hcover : ∀ x, ∀ l ∈ (((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).filterMap id,
-      l ∈ (((((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).zip (back x)).filterMap
+  have hcover : ∀ x, ∀ l ∈ (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id,
+      l ∈ (((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).zip (back x)).filterMap
         fun (y : Option Nat × Sem) => y.1.map (·, y.2)).map (·.1) := by
     intro x
     have hfx : (fun (y : Option Nat × Sem) => y.1.map (·, y.2)) = (fun (l?, f) => l?.map (·, f)) :=
       funext fun ⟨_, _⟩ => rfl
     rw [hfx]
     apply fixes_cover
-    rw [List.length_map, zip_filter_len args ps hlen, hfin x]
+    rw [List.length_map, zip_filter_len args _ hlen, hfin x]
     exact Nat.le_refl _
-  apply SState.park_fix_inv h1 h2 hsa _ (Lv.dec U) _ _ hcover (Lv.enc U fwd)
+  apply SState.park_fix_inv h1 h2 hsa _ (Lv.dec c) _ _ hcover (Lv.enc c fwd)
   intro p v ψ
-  cases hd : Lv.dec U (ψ ((((((args.zip ps).filter (·.2.isRef)).map (·.1.2.label)).filterMap id)).foldl
+  cases hd : Lv.dec c (ψ ((((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id)).foldl
       SState.takeLabel s).nextLoan) with
   | none => exact .inr ⟨rfl, by simp only [hd]⟩
   | some x => exact .inl ⟨x, rfl, by simp only [hd]⟩
