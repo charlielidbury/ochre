@@ -39,6 +39,13 @@ def content? (p : Place) : M (Option Value) := do
   let (i, ss) := p.steps
   pure ((← getAt (← varPos i)).follow ss)
 
+/-- D102: a proper prefix of `p` holds `⋆`, so `p` is a part of a proof, which has no value of its
+own (a total query, like `content?`). -/
+def underProof : Place → M Bool
+  | .var _ => pure false
+  | .deref q | .proj _ q | .field _ q => do
+    if (← content? q) == some .proof then pure true else underProof q
+
 /-- The content of a place (RULES §3: follow `x`, `*p` through `borrow_ℓ v` to `v`,
 `p.1` through `S v` to `v`), which must exist. -/
 def content (p : Place) : M Value := do
@@ -3636,14 +3643,20 @@ def entryAccess (fuel : Nat) (capsS : Array (Place × Nat)) : M Unit := do
 termination_by structural fuel
 
 /-- D84 [Join]: drop `q` as a stuck block's by-move argument takes it (`readPlace`): a borrow is
-ended, a copy or a proof stays, a place already moved stays, anything else is moved out, its
-borrowers ended first ([Access]). -/
+ended, a copy stays, a place already moved or not there stays, a part of a proof stays, anything
+else is moved out, its borrowers ended first ([Access]).
+
+D102: a place's own `⋆` is decided like any value, by the copy decision (since D100 every proof
+is a copy, so it stays); only a place under a `⋆` (a part of a proof) is skipped by its
+position. So the drop's "do nothing" is decided by the shared copy decision and by whether the
+place exists, never by the value it holds. -/
 def dropAtJoin (fuel : Nat) (q : Place) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   match ← content? q with
-  | none | some .bot | some .proof => pure ()
+  | none | some .bot => pure ()
   | some (.borrow l _) => fire .Join fun _ => s!"a borrow ended"; logEffect q "moves"; endBorrow fuel' l
   | some v =>
+    if v == .proof && (← underProof q) then return
     if ← copyRead fuel' q then return
     -- [Drop] (D65 amended): a place dies while a value in flight borrows it, here the arm's
     -- result, which the match is about to return
