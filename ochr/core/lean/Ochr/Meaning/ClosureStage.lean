@@ -1,4 +1,4 @@
-import Ochr.Meaning.Closure
+import Ochr.Meaning.ClosureRef
 
 /-!
 # The weakened stage closure (the recursion knot's stage-`b` meaning; docs/34, Handoff)
@@ -17,6 +17,8 @@ ordinary strict construction (`closureAt`), with no fill.
 * `stage_apply`: applied at arguments below the bound, it gives the stage's result at the TRUE
   result type (the weakened codomain agrees with the true one there).
 * `stage_mem_prop`: the sort-`0` form (a function into propositions).
+* `stage_mem_ref`, `stage_apply_ref`: at a returned borrow (`ClosureRef.lean`); above the bound the
+  borrow's content type is `Unit`, so the backward function is injective trivially.
 -/
 
 namespace Ochr.Meaning
@@ -182,5 +184,82 @@ theorem stage_mem_prop (R : DataRead) (φ : Future) (ds : List PiDom) (out : PiC
     · refine ⟨⟨fillVal 0, refFinals ds args, some 0⟩, by simp [stageFn, hlt], ?_⟩
       show fillVal 0 ∈ₛ[R] (if rk args < b then out.cod args else fillTy 0)
       rw [if_neg hlt]; exact fillVal_mem R 0
+
+/-! ## At a returned borrow -/
+
+/-- Above the bound at a data sort, the trivial output's returned borrow is good: its content type
+is `Unit`, which has one member. -/
+theorem fill_retGood (R : DataRead) (l : Nat) (hl : l ≠ 0) (ds : List PiDom) (rk : List Sem → Nat) (b : Nat)
+    (out : PiCod) (args : List Sem) (hge : ¬ rk args < b) :
+    RetGood R (weakCod l rk b out) args ⟨fillVal l, refFinals ds args, some 0⟩ := by
+  refine ⟨0, rfl, fun ψ v w hv hw _ => ?_⟩
+  simp only [weakCod, hge, if_false, fillTy, hl, TyM.unit] at hv hw
+  obtain ⟨⟨⟩, rfl⟩ := hv
+  obtain ⟨⟨⟩, rfl⟩ := hw
+  rfl
+
+/-- The stage function is good everywhere at the weakened codomain, returned borrow included. -/
+theorem stageFn_good_ref (R : DataRead) (l : Nat) (hl : l ≠ 0) (ds : List PiDom) (rk : List Sem → Nat)
+    (b : Nat) (out : PiCod) (stage : List Sem → Option BodyOut)
+    (hgood : ∀ args, DomMembers R ds args → rk args < b →
+      ∃ o, stage args = some o ∧ OutGood R ds out args o ∧ RetGood R out args o ∧
+        o.finals.length = (ds.filter (·.isRef)).length) :
+    ∀ args, DomMembers R ds args →
+      ∃ o, stageFn l ds rk b stage args = some o ∧ OutGood R ds (weakCod l rk b out) args o ∧
+        RetGood R (weakCod l rk b out) args o ∧ o.finals.length = (ds.filter (·.isRef)).length := by
+  intro args hm
+  by_cases hlt : rk args < b
+  · obtain ⟨o, hg, ⟨hres, hfin⟩, ⟨k, hk, hinj⟩, hlen⟩ := hgood args hm hlt
+    have hw : (weakCod l rk b out).cod args = out.cod args := by simp [weakCod, hlt]
+    refine ⟨o, by simp [stageFn, hlt, hg], ⟨by rw [hw]; exact hres, hfin⟩,
+      ⟨k, hk, fun ψ v w hv hw' => hinj ψ v w (by rwa [hw] at hv) (by rwa [hw] at hw')⟩, hlen⟩
+  · exact ⟨_, by simp [stageFn, hlt], fill_outGood R l ds rk b out args hm hlt,
+      fill_retGood R l hl ds rk b out args hlt, refFinals_length ds args hm.1⟩
+
+theorem weakCod_fit (l : Nat) (hl : 1 ≤ l ∧ l ≤ 3) (R : DataRead) (ds : List PiDom) (rk : List Sem → Nat)
+    (b : Nat) (out : PiCod) (hcod : ∀ args, DomMembers R ds args → rk args < b → LevelFit l (out.cod args)) :
+    ∀ args, DomMembers R ds args → LevelFit l ((weakCod l rk b out).cod args) := by
+  intro args hm
+  show LevelFit l (if rk args < b then out.cod args else fillTy l)
+  split
+  · exact hcod args hm ‹_›
+  · have : l ≠ 0 := by omega
+    simp only [fillTy, this, if_false, TyM.unit, LevelFit]; exact hl.1
+
+/-- **The stage closure at a returned borrow is a member of the weakened function type.** -/
+theorem stage_mem_ref (R : DataRead) (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
+    (rk : List Sem → Nat) (b : Nat) (stage : List Sem → Option BodyOut)
+    (hl : 1 ≤ l ∧ l ≤ 3) (href : out.isRef = true)
+    (hcod : ∀ args, DomMembers R ds args → rk args < b → LevelFit l (out.cod args))
+    (hgood : ∀ args, DomMembers R ds args → rk args < b →
+      ∃ o, stage args = some o ∧ OutGood R ds out args o ∧ RetGood R out args o ∧
+        o.finals.length = (ds.filter (·.isRef)).length) :
+    closureAt R l φ ds (weakCod l rk b out) (stageFn l ds rk b stage) ∈ₛ[R]
+      piTyAt R l ds (weakCod l rk b out) :=
+  closure_mem_of_total_ref' R l φ ds _ _ hl href (weakCod_fit l hl R ds rk b out hcod)
+    (stageFn_good_ref R l (by omega) ds rk b out stage hgood)
+
+/-- **The stage closure at a returned borrow, applied below the bound**, is the stage's result at
+the TRUE codomain, under a fresh label, as a call reads it. -/
+theorem stage_apply_ref (R : DataRead) (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
+    (rk : List Sem → Nat) (b : Nat) (stage : List Sem → Option BodyOut)
+    (hl : 1 ≤ l ∧ l ≤ 3) (href : out.isRef = true)
+    (hcod : ∀ args, DomMembers R ds args → rk args < b → LevelFit l (out.cod args))
+    (hgood : ∀ args, DomMembers R ds args → rk args < b →
+      ∃ o, stage args = some o ∧ OutGood R ds out args o ∧ RetGood R out args o ∧
+        o.finals.length = (ds.filter (·.isRef)).length)
+    (args : List Res) (s : SState) (o : BodyOut) (hmem : DomMembers R ds (args.map (·.1)))
+    (hdom : ∀ (i : Nat) (d : PiDom), ds[i]? = some d → LevelFit l (d.dom ((args.map (·.1)).take i)))
+    (hlt : rk (args.map (·.1)) < b) (hcanon : (out.cod (args.map (·.1))).Canon)
+    (hg : stage (args.map (·.1)) = some o) :
+    ∃ k s', callOf R (closureAt R l φ ds (weakCod l rk b out) (stageFn l ds rk b stage),
+        .plain (piTyAt R l ds (weakCod l rk b out))) args s =
+      some ((o.result, ⟨out.cod (args.map (·.1)), some k⟩), s') := by
+  have hw : (weakCod l rk b out).cod (args.map (·.1)) = out.cod (args.map (·.1)) := by
+    simp [weakCod, hlt]
+  have := closure_apply_ref' R l φ ds (weakCod l rk b out) (stageFn l ds rk b stage) hl href
+    (weakCod_fit l hl R ds rk b out hcod) (stageFn_good_ref R l (by omega) ds rk b out stage hgood)
+    args s o hmem hdom (by rw [hw]; exact hcanon) (by simp [stageFn, hlt, hg])
+  rwa [hw] at this
 
 end Ochr.Meaning
