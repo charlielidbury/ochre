@@ -1,6 +1,7 @@
 import Ochr.Meaning.Steps.DropRuns
 import Ochr.Meaning.Steps.BotWriteGood
 import Ochr.Meaning.Steps.Slice.Shapes
+import Ochr.Meaning.Steps.Slice.BotShapes
 
 /-!
 # `dropOne_step` assembled where the place exists (docs/31 D30; task C)
@@ -247,18 +248,40 @@ theorem Ext.same {π : Nat → Nat} {st : MState} {s' : SState} (hg : Good K.dm 
   ⟨Nat.le_refl _, fun _ _ => ⟨rfl, rfl⟩, by rw [runCtx_with_self K]; exact hctx,
     by rw [runCtx_with_self K]; exact hs', by rw [runCtx_with_self K]; exact hg⟩
 
+/-- **The block's captures after the drop's write of `⊥`** (D90's obligation 1 at the new state: the
+captures `Decisions.blockCaps` gives at the new entry set are the checker's `ckBlockCaps` there). A
+fact about the checker alone (measured: 338 block entries of the suite, static = checker at all 335
+successful ones). Open; main has passed to the lead the suggestion to ask it as a hypothesis of the
+block-entry step instead of a clause of `CtxOk`, which would delete this leaf. -/
+theorem blockCaps_botWrite (st : MState) (pos : Pos) (v' : Value) (hctx : CtxOk K ρ st)
+    (hD : DecTab K.D { st with env := Env.setAtE st.env pos v' }) :
+    ∀ st₀, SameDec st₀ { st with env := Env.setAtE st.env pos v' } → ∀ fuel mt bc b st'',
+      Runs (ckBlockCaps fuel mt) st₀ b bc st'' →
+      K.D.blockCaps (DecideScope.topReadings { st with env := Env.setAtE st.env pos v' })
+        (entryOf { st with env := Env.setAtE st.env pos v' }) mt = bc := by
+  sorry
+
 /-- **The context after the drop's write of `⊥`** (leaf; it replaces the old `dropAtJoin_ctx`, whose
 other parts are now the induction hypothesis's [Access] and [End] in the extended form). The write
 changes one place's content to `⊥`: the declarations, globals and tables are the state's, `Δ` asks
-of no new unknown (the write names none), the decisions are aligned after it (`hD`, the tables), and
-`ShapeFacts` hold of a `⊥` part. What is open is the block's captures at the new state, whose entry
-set the write changes (main's item 4: measured on recorded states first, not proved). -/
+of no new unknown (the write names none, `refd_setAtE`; the unknowns' types are untouched), the
+decisions' tables are aligned after it (`hD`), and the typing of places survives
+(`Slice.ShapeFacts.of_botWrite`: the borrows held are unchanged, `holdsBorrow_updAt_bot`, from (WF1)
+and `hroot`). Assembled; the block's captures at the new state are `blockCaps_botWrite`. -/
 theorem ctx_botWrite (st : MState) (pos : Pos) (steps : List Step) (v' : Value)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hp : pos ∈ allPos st.env)
+    (hroot : steps = [] → Env.shape st.env pos = none)
     (hv : Value.updAt (fun _ => .bot) steps (valAt st.env pos) = some v')
     (hD : DecTab K.D { st with env := Env.setAtE st.env pos v' }) :
     CtxOk K ρ { st with env := Env.setAtE st.env pos v' } := by
-  sorry
+  have h1 : WF1 st.env := hg.2.2.1
+  have hhold : ∀ l, v'.holdsBorrow l = (valAt st.env pos).holdsBorrow l :=
+    holdsBorrow_updAt_bot (h1.1 pos hp)
+      (fun he => by rw [← shapeOf_eq_topLabel, ← shape_eq_shapeOf]; exact hroot he) hv
+  refine ⟨hctx.inds, hctx.covers, hctx.faithful, fun σ hr hlt => ?_, hctx.noLabel,
+    hctx.globals.of_globals rfl, ⟨hD, blockCaps_botWrite K ρ st pos v' hctx hD⟩,
+    Slice.ShapeFacts.of_botWrite hctx.shapes hp hv (liveLoan_setAtE hp hhold)⟩
+  exact hctx.delta σ (refd_setAtE hp hv hr) hlt
 
 /-- **The drop of one place where the place exists** (`dropOne_step`'s main case), assembled from
 the named obligations and the induction hypothesis's [Access] and [End]: missing, `⊥` or `⋆` (both
@@ -458,7 +481,7 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
     have hsz : st.absTy.size ≤ st'.absTy.size := by rw [hst', hX₃]; exact hsz₂
     rw [hst'] at hD hsz ⊢
     exact ⟨ρ₂, Δ₂, hsz, e₂.1,
-      ctx_botWrite { K with Δ := Δ₂ } ρ₂ st₃ (.bind f i) q.steps.2 v' hg₃ hctx₃ hupd hD, hrel,
+      ctx_botWrite { K with Δ := Δ₂ } ρ₂ st₃ (.bind f i) q.steps.2 v' hg₃ hctx₃ hpb hroot hupd hD, hrel,
       botWrite_good { K with Δ := Δ₂ } ρ₂ st₃ (.bind f i) q.steps.2 v' hg₃ hpb hupd hroot hclear₃ hplain hnat⟩
 
 /-! ## Records of refinements (the steps `refine` and `generalizeNeutral` are the induction

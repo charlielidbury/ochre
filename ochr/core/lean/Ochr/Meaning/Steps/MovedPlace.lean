@@ -1,6 +1,7 @@
 import Ochr.Meaning.Steps.JoinNoop
 import Ochr.Meaning.Steps.EqJAsm
 import Ochr.Meaning.Steps.Slice.UpdAt
+import Ochr.Meaning.Steps.Slice.Recorded
 
 /-!
 # `movedPlace` in the simulation form, and the drop of a place that does not exist (D84; task C)
@@ -482,14 +483,34 @@ theorem placeTypeQ_sim (fuel : Nat) (ih : StepsIHBelow fuel) (st st' : MState) (
   obtain ⟨hk, ρ', Δ', e⟩ := (ih.at K ρ φ).placeTypeQ_step st st' p T? hg hctx hD b h
   exact ⟨ρ', Δ', ⟨hk.2.2.2.2.1, e.1, e.2.1, Rel.kept K ρ φ hg hctx hs hk e, e.2.2⟩, hk.1⟩
 
+/-- **The record facts hold of a good state** (`RecordFacts`: refinement records hold no loan
+and are top-hint-free, generalisation records' programs are top-hint-free). NOT derivable from `Good`
+and `CtxOk` as they stand: a placeholder for the clauses proposed to main (2026-11-20), swept on every
+recorded state of the suite and the probes with no violation. When the clauses land this is their
+projection. Open. -/
+theorem recordFacts_of_good (st : MState) (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) :
+    RecordFacts K.Γ st := by
+  sorry
+
+/-- **The generalisation record the lookup finds means the program asked**: `recordedNeutral n`
+finds the first record `n' := σ` with `n == n'`, and `==` ignores a constructor value's recorded
+parameters (`Value.beq`, "the type determines them") and binder names; the reading of `n'` is that
+of `n`. Open (the slice's finding, 2026-11-20: measured by the key probe, reported to main). -/
+theorem neutralKey (st : MState) (n : Value) (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) :
+    ∀ n' σ, (n', σ) ∈ st.neutrals → (n == n') = true → ∀ ψ H, meanV K ρ ψ H n' = meanV K ρ ψ H n := by
+  sorry
+
 /-- **A sealed program this world already generalised: its record's value means it**
 (`recordedNeutral`): `Good`'s path condition for the record `n := σ` makes `σ`, refined by the
-refinements made since (`expandRefs`), mean `⟦n⟧`; the value names typed unknowns and holds no loan
-((WF6), (WF11)). Open. -/
+refinements made since (`expandRefs`), mean `⟦n⟧`; the value names typed unknowns ((WF6)) and holds
+no loan. Assembled (`recordedNeutral_ok_of_facts`: the expansion means the value,
+`expandRefsF_mean`; its unknowns and loans are the value's or the records', `expandRefsF_anyAtom`)
+from the record facts (`recordFacts_of_good`) and the key (`neutralKey`). -/
 theorem recordedNeutral_ok (st : MState) (n r : Value) (b' : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hr : Runs (Ochr.recordedNeutral n) st b' (some r) st) : NeutralOk K ρ st n r := by
-  sorry
+    (hr : Runs (Ochr.recordedNeutral n) st b' (some r) st) : NeutralOk K ρ st n r :=
+  recordedNeutral_ok_of_facts K ρ st n r b' hg hctx (recordFacts_of_good K ρ st hg hctx)
+    (neutralKey K ρ st n hg hctx) hr
 
 /-- The record read back and substituted (assembled: `recordedNeutral_ok`, then the induction
 hypothesis's `substEnv_neutral_step`). -/
