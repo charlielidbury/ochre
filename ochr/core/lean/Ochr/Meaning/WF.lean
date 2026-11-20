@@ -301,10 +301,17 @@ without it a sealed program can be lent (`sitesOf`, by `hasLoan`) where no live-
 off the checker and swept (`Sweep.lean`'s (RD)), NOT proved preserved. -/
 def WF15 (env : Env) : Prop := ∀ v ∈ Env.values env, ∀ l, v.anyAtom (Value.rdLoan l) = false
 
+/-- (WF16) **No sealed program reads the hint at a tail** (docs/31 D45, D47): every sealed program
+anywhere in Ω ends, on every path, in something whose meaning does not depend on the type it is
+read at (`Value.topHintFree`: [Close]'s programs end in a read). What the write of `⊥` beside a
+sealed program needs (`mean_updAt_botS`). Read off the checker and swept (`Sweep.lean`'s (H)),
+NOT proved preserved. -/
+def WF16 (st : MState) : Prop := ∀ v ∈ Env.values st.env, v.anyAtom (fun a => a.isSealed && !a.topHintFree Γ) = false
+
 /-- Well-formedness, part (c) of the main theorem. -/
 def WF (ρ : Assignment) (st : MState) : Prop :=
   WF1 st.env ∧ WF2 st.env ∧ WF3 st.env ∧ WF4 st.env ∧ WF6 st ∧ WF7 dm C Γ ρ st ∧ WF8 st ∧ WF9 dm C Γ ρ st ∧
-  WF10 Γ st ∧ WF11 st ∧ WF12 st.env ∧ WF14 st.env ∧ WF15 st.env
+  WF10 Γ st ∧ WF11 st ∧ WF12 st.env ∧ WF14 st.env ∧ WF15 st.env ∧ WF16 Γ st
 
 /-! ## Typed assignments, typed futures, membership -/
 

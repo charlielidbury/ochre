@@ -56,26 +56,69 @@ theorem dropAt_data (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (p
       (Sem.updAt K.dm K.Γ (s₁.tyAt pos) (fun _ => .moved) q.steps.2 (s₁.valAt pos φ')).getD .err := by
   sorry
 
+/-- A place with no steps is a variable. -/
+theorem place_eq_var_of_nil {q : Place} (h : q.steps.2 = []) : q = .var q.steps.1 := by
+  cases q with
+  | var i => rfl
+  | deref p | proj _ p | field _ p => simp [Place.steps] at h
+
+/-- A variable declared a sort is a copy (the decisions are the checker's, `CtxOk.dec`). -/
+theorem copy_sort {st : MState} (hctx : CtxOk K ρ st) (l : Nat) : K.D.copy (.sort l) = true :=
+  hctx.dec.copy 1 (.sort l) true 0 st ⟨#[], 0, #[], rfl⟩
+
 /-- **What the write of `⊥` needs, at the drop** (`botWrite_rel`'s hypotheses after the access and
-the log): the place is at a binding of the reference's positions, the value records its parameters
-(WF10) and holds no sealed program whose tail reads the hint (docs/31 D45: first, no sealed program
-at all, false of a value with a closed-off call in a field), the path is one it has, a whole root
-written is not a holder or a type value, and the access cleared the place. Open: from (WF10), the
-sealed programs' tails ([Close]'s programs; swept as (H)), `GrainOk`, the copy decision,
-`access_clears`. -/
+the log): the place is at a binding of the reference's positions, a whole root written is not a
+holder (the reference's root is none, `hns`) or a type value (a variable holding one is declared a
+sort, (Ty), a copy, which the join does not drop), the value records its parameters (WF10) and
+holds no sealed program whose tail reads the hint ((WF16); docs/31 D45: first, no sealed program at
+all, false of a value with a closed-off call in a field), and the path conditions of the write hold
+along the place (`natAlong_grain`: the typing of places at every prefix). PROVED (docs/31 D47). -/
 theorem botWrite_hyps (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (v' : Value)
-    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2))
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
-    (hv : Value.updAt (fun _ => .bot) q.steps.2 (valAt st.env pos) = some v')
-    (hclear : ∀ l, liveLoan st.env l = true → ∀ x ∈ Env.sitesOf st.env l, x.pos = pos →
-      dataHit q.steps.2 x.path = false) :
+    (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
+    (hns : q.steps.2 = [] → s.shape pos = none)
+    (hv : Value.updAt (fun _ => .bot) q.steps.2 (valAt st.env pos) = some v') :
     ∃ f i, pos = .bind f i ∧ Pos.bind f i ∈ allPos st.env ∧ Pos.bind f i ∈ s.positions ∧
       (q.steps.2 = [] → Env.shape st.env pos = none) ∧
       (q.steps.2 = [] → (∀ c t rd, valAt st.env pos ≠ .tPi c t rd) ∧ ∀ n a, valAt st.env pos ≠ .tInd n a) ∧
       ((valAt st.env pos).anyAtom (Value.bareCtor K.Γ) = false ∧
         (valAt st.env pos).anyAtom (fun a => a.isSealed && !a.topHintFree K.Γ) = false) ∧
       ∀ ψ, NatAlong K.dm K.M K.Γ ρ ψ q.steps.2 (valAt st.env pos) := by
-  sorry
+  have hp := ckVarPos_mem hck
+  have hsc := rel_scopeOf K ρ φ hs
+  have hgr : GrainOk K.D K.Γ (DecideScope.topReadings st) q := by rw [← hsc]; exact hgrain
+  have hmem : valAt st.env pos ∈ Env.values st.env := List.mem_map.mpr ⟨pos, hp, rfl⟩
+  have hres := rel_resolve_ck K ρ φ st s π q pos hs hck
+  have hsp : pos ∈ s.positions := by
+    simp only [resolve] at hres
+    obtain ⟨pos', hvp, he⟩ := Option.map_eq_some_iff.mp hres
+    simp only [Prod.mk.injEq] at he; rw [← he.1]; exact varPos_mem hvp
+  have hbind : ∃ f i, pos = .bind f i := by
+    unfold ckVarPos at hck; split at hck
+    · simp only [Option.some.injEq] at hck; exact ⟨_, _, hck.symm⟩
+    · cases hck
+  obtain ⟨f, i, rfl⟩ := hbind
+  refine ⟨f, i, rfl, hp, hsp, ?_, ?_, ⟨hg.2.2.2.2.2.2.2.2.2.2.1 _ hmem, hg.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2 _ hmem⟩, ?_⟩
+  · intro he
+    cases hsh : Env.shape st.env (.bind f i) with
+    | none => rfl
+    | some l =>
+      have := hs.sim.2.1 (.bind f i) l (by simp [IsTemp]) hsh
+      rw [hns he] at this; cases this
+  · intro he
+    have hq := place_eq_var_of_nil he
+    have hno : ∀ l, K.D.placeDecl (DecideScope.topReadings st) (.var q.steps.1) ≠ .sort l := by
+      intro l hl
+      have hc := copy_sort K ρ hctx l
+      rw [← hl, ← hsc, ← hq, hcopy] at hc; cases hc
+    refine ⟨fun c t rd hv' => ?_, fun n a hv' => ?_⟩
+    · obtain ⟨l, hl⟩ := hctx.shapes.typeRoot q.steps.1 _ hck (.inl ⟨c, t, rd, hv'⟩); exact hno l hl
+    · obtain ⟨l, hl⟩ := hctx.shapes.typeRoot q.steps.1 _ hck (.inr ⟨n, a, hv'⟩); exact hno l hl
+  · intro ψ
+    refine natAlong_grain K ρ hctx ψ (fun _ => .bot) q.steps.2 (.var q.steps.1) _
+      (grainOk_of_steps (by rw [jdExtend_steps]; simp [Place.steps]) hgr) ?_ (by rw [hv]; rfl)
+    unfold ckContent; simp [Place.steps, hck, Value.follow]
 
 /-- **`Good` after the write of `⊥`** (L3's other half): membership by `MovedOf` (a part moved out
 of a member), and every clause of well-formedness survives removing a part. Open: not tried. -/
@@ -223,8 +266,32 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
         dataHit q.steps.2 x.path = false := by rw [henv₃]; exact hclear₂
     have hgrain₁ : GrainOk K.D K.Γ (scopeOf ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2))) q := by
       rw [scopeOf_of_declsOf hdecl]; exact hgrain
+    have hcopy₁ : K.D.copy (K.D.placeDecl (scopeOf ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2))) q) = false := by
+      rw [scopeOf_of_declsOf hdecl]; exact hcopy
+    have hns₁ : q.steps.2 = [] → ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2)).shape pos = none := by
+      intro he
+      have hpt : ¬ IsTemp pos := by
+        rcases pos with ⟨f, i⟩ | ⟨f, i⟩
+        · simp [IsTemp]
+        · unfold ckVarPos at hck; split at hck <;> cases hck
+      have h0 : s.shape pos = none := by
+        cases hsh : s.shape pos with
+        | none => rfl
+        | some l' =>
+          obtain ⟨l, hl, -⟩ := hs.sim.2.2.1 pos l' hpt hsh
+          have hl' : Env.shape st.env pos = some l := hl
+          rw [he] at hv; simp only [Value.follow, Option.some.injEq] at hv
+          rw [shape_eq_shapeOf, hv] at hl'
+          cases v <;> simp [shapeOf] at hl'
+          exact absurd rfl (hb _ _)
+      cases hsh : ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2)).shape pos with
+      | none => rfl
+      | some l =>
+        have := (shapeSub_accessLentPrefix pos q.steps.2 s).1 pos l
+          ((SState.shapeSub_access _ pos _).1 pos l hsh)
+        rw [h0] at this; cases this
     obtain ⟨f, i, hposfi, hpb, hsp, hroot, htype, hplain, hnat⟩ :=
-      botWrite_hyps K ρ φ st₃ _ π q pos v' hg₃ hs₃ hres₁ hck'' hgrain₁ hupd hclear₃
+      botWrite_hyps K ρ φ st₃ _ π q pos v' hg₃ hctx₃ hs₃ hck'' hgrain₁ hcopy₁ hns₁ hupd
     subst hposfi
     have hrel := botWrite_rel K ρ φ st₃ _ π f i q.steps.2 v' hs₃ hg₃.2.2.1 hpb hsp hupd hroot htype hclear₃ hplain hnat
     rw [dropAt_data K ρ φ st s π q (.bind f i) v hg hs hres hv hb hbot hproof hcopy, hst']

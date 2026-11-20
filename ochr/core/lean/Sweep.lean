@@ -573,7 +573,7 @@ def wf10 : Clause where
   check st := (posVals st.env).filterMap fun (p, v) =>
     if v.anyAtom (bareCtor st.inds) then some ⟨s!"a constructor value without its parameters, at {posKind p}", posName st.env p⟩ else none
 
-/-! ### (H) Sealed programs read no hint at their tails (`mean_updAt_botS`, docs/31 D45) -/
+/-! ### (WF16), first (H): sealed programs read no hint at their tails (`mean_updAt_botS`, docs/31 D45, D47) -/
 
 mutual
 /-- `Term.tailHintFree` (`HintIndep.lean`), mirrored EXACTLY. -/
@@ -604,9 +604,9 @@ end
 
 /-- (H): no sealed program anywhere in Ω (inside sealed programs and code included) reads the hint
 at a tail: `∀ v ∈ Env.values st.env, v.anyAtom (fun a => a.isSealed && !a.topHintFree Γ) = false`,
-what the write of `⊥` with sealed siblings needs (`botWrite_hyps`). A candidate, not a clause. -/
+what the write of `⊥` with sealed siblings needs (`botWrite_hyps`). (WF16) in `WF.lean`, exactly. -/
 def hintFreeSealed : Clause where
-  name := "(H, candidate) every sealed program in Ω reads no hint at its tails"
+  name := "(WF16) every sealed program in Ω reads no hint at its tails"
   premises := [
     ("a sealed program in Ω", fun st => (posVals st.env).any fun (_, v) =>
       v.anyAtom fun | .sealed _ => true | _ => false),
@@ -860,8 +860,47 @@ def shapeFacts : Clause where
       match declAt st q with | some (.ref _) => true | _ => false)]
   check st := shapeViols st
 
+/-! ### (N), (Ty): constructor values of data declarations; type values declared sorts (docs/31 D47) -/
+
+/-- `Steps.dataCtorBad`, mirrored EXACTLY. -/
+def dataCtorBad (Γ : List IndDecl) : Value → Bool
+  | .ind n _ _ _ _ => match Γ.find? (·.name == n) with
+    | some d => d.sort == 0 || d.name == "Nat"
+    | none => true
+  | _ => false
+
+/-- (N) (`ShapeFacts.ctors`): every constructor value anywhere in Ω is of a data declaration of the
+state's declarations, not named `Nat`. -/
+def ctorsData : Clause where
+  name := "(N) every constructor value is of a data declaration, not named Nat"
+  premises := [("a constructor value in Ω", fun st => (posVals st.env).any fun (_, v) =>
+    v.anyAtom fun | .ind .. => true | _ => false)]
+  check st := (posVals st.env).filterMap fun (p, v) =>
+    if v.anyAtom (dataCtorBad st.inds) then
+      some ⟨s!"a constructor value of a Prop or undeclared or Nat declaration, at {posKind p}", s!"{posName st.env p} = {clip v.pp}"⟩
+    else none
+
+/-- (Ty) (`ShapeFacts.typeRoot`): a variable of the top frame holding a type value (`Π` or an
+inductive type) is declared a sort, by the checker's own `placeDecl`. -/
+def typeRoots : Clause where
+  name := "(Ty) a variable holding a type value is declared a sort"
+  premises := [("a variable of the top frame holds a Π or an inductive type", fun st =>
+    match st.env.back? with
+    | some fr => fr.binds.toList.any fun b => match b.val with | .tPi .. | .tInd .. => true | _ => false
+    | none => false)]
+  check st := match st.env.back? with
+    | some fr => (List.range fr.binds.size).filterMap fun o =>
+      match (fr.binds[fr.binds.size - 1 - o]!).val with
+      | .tPi .. | .tInd .. =>
+        match declAt st (.var o) with
+        | some (.sort _) => none
+        | d => some ⟨"a variable holding a type value is declared something else",
+            s!"{(fr.binds[fr.binds.size - 1 - o]!).hint.name}: {match d with | some _ => "a non-sort reading" | none => "no reading"}"⟩
+      | _ => none
+    | none => []
+
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, plantedFill, plantedAbs]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, typeRoots, plantedFill, plantedAbs]
 
 /-! ## The sweep -/
 
