@@ -1,7 +1,7 @@
 import Ochr.Meaning.Steps.JoinNoop
 import Ochr.Meaning.Steps.EqJAsm
 import Ochr.Meaning.Steps.Slice.UpdAt
-import Ochr.Meaning.Steps.Slice.Recorded
+import Ochr.Meaning.Steps.Slice.EtaFresh
 
 /-!
 # `movedPlace` in the simulation form, and the drop of a place that does not exist (D84; task C)
@@ -456,13 +456,41 @@ theorem etaRecorded_sim (st : MState) (σ : Nat) (r : Value) (hg : Good K.dm K.M
     rw [Value.hasLoan_of_hasLoanM hl] at this; cases this]
   exact meanV_hintIndep K ρ ψ r (hctx.shapes.etaHint σ r hm) _ H
 
+/-- **[Split]'s coverage in the simulation form, at the checker's run of `ctorRefinement`**
+(PROPOSED restatement of the induction hypothesis's `split_coverage`, the slice → main, 2026-11-20).
+As stated, `split_coverage_stmt` gives SOME run of `ctorRefinement` at its own budget and SOME
+constructor, so it cannot be applied to the run the checker made (that would need successful runs
+at different budgets to agree, a machine fact nobody has) nor pinned to the one constructor; and its
+`TypedAssignment` at the state after says nothing of the fresh fields, which nothing names yet. In
+this form (`CovConcl`): the constructor exists, and for every run of its refinement an extension
+keeps the extended context and types every unknown the recorded refinement names. When the lead
+restates `split_coverage_stmt` so, this is the induction hypothesis's field. Open. -/
+theorem split_coverage_sim (fuel : Nat) (ih : StepsIHBelow fuel) (st : MState) (σ : Nat) (d : IndDecl)
+    (ps : List Value) (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (s : SState) (π : Nat → Nat)
+    (hs : Rel K ρ φ π st s) (hσ : st.absTy[σ]? = some (.tInd d.name ps)) :
+    ∃ c, c < d.ctors.length ∧ ∀ (st' : MState) (r : Value) (bh : Nat), DecTab K.D st' →
+      Runs (Ochr.ctorRefinement fuel d ps c) st bh r st' → ∃ ρ' Δ', CovConcl K ρ φ π st st' s σ r ρ' Δ' := by
+  sorry
+
+/-- **The block's captures at the state with a fresh η record** (D90's obligation 1 there, as
+`blockCaps_botWrite`; deleted when the lead moves the clause out of `CtxOk`). Open. -/
+theorem blockCaps_etaRecord (st' : MState) (σ : Nat) (r : Value) :
+    ∀ st₀, SameDec st₀ { st' with etaRefs := (σ, r) :: st'.etaRefs } → ∀ fuel mt bc b st'',
+      Runs (ckBlockCaps fuel mt) st₀ b bc st'' →
+      K.D.blockCaps (DecideScope.topReadings { st' with etaRefs := (σ, r) :: st'.etaRefs })
+        (entryOf { st' with etaRefs := (σ, r) :: st'.etaRefs }) mt = bc := by
+  sorry
+
 /-- **A fresh η-refinement of an unknown of a one-constructor type, recorded** (`ctorRefinement`,
 then the record `σ := r`): under the assignment extended at the fresh field unknowns by the
 fields of `ρ σ` (a member of a one-constructor type is that constructor: D32 reads its fields
 off the value) and `Δ` by their types, the refinement means `ρ σ`, and the relation (the reference
-is untouched), `Good` (the record is the path condition just met) and the context are kept. Open. -/
-theorem etaFresh_sim (fuel : Nat) (st st' : MState) (p : Place) (σ : Nat) (n : String) (ps : List Value)
-    (d : IndDecl) (r : Value) (s : SState) (π : Nat → Nat) (b : Nat)
+is untouched), `Good` (the record is the path condition just met) and the context are kept.
+Assembled: [Split]'s coverage at the one constructor (`split_coverage_sim`; a run at `c` exists only
+for `c < 1`), then the record (`etaRecord_ext`, proved), the decision tables back from the state
+after (`DecTab.back`), the block's captures there (`blockCaps_etaRecord`). -/
+theorem etaFresh_sim (fuel : Nat) (ih : StepsIHBelow fuel) (st st' : MState) (p : Place) (σ : Nat) (n : String)
+    (ps : List Value) (d : IndDecl) (r : Value) (s : SState) (π : Nat → Nat) (b : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hp : ckContent st.env p = some (.abs σ)) (hT : st.absTy[σ]? = some (.tInd n ps))
     (hd : st.inds.find? (·.name == n) = some d) (h1 : d.ctors.length = 1)
@@ -470,7 +498,16 @@ theorem etaFresh_sim (fuel : Nat) (st st' : MState) (p : Place) (σ : Nat) (n : 
     (hD : DecTab K.D { st' with etaRefs := (σ, r) :: st'.etaRefs }) :
     ∃ ρ' Δ', Ext K ρ φ π st { st' with etaRefs := (σ, r) :: st'.etaRefs } s ρ' Δ' ∧
       ∀ ψ H, ρ' σ = meanV { K with Δ := Δ' } ρ' ψ H r := by
-  sorry
+  have hn : d.name = n := by
+    have := List.find?_some hd
+    simpa using this
+  obtain ⟨c, hc, hcov⟩ := split_coverage_sim K ρ φ fuel ih st σ d ps hg hctx s π hs (hn ▸ hT)
+  have hc0 : c = 0 := by omega
+  subst hc0
+  have hD' : DecTab K.D st' := hD.back ⟨rfl, rfl, Nat.le_refl _, fun _ _ => rfl, Nat.le_refl _, Nat.le_refl _⟩
+  obtain ⟨ρ', Δ', hcc⟩ := hcov st' r b hD' h
+  exact ⟨ρ', Δ', etaRecord_ext K ρ φ π st st' s σ r ρ' Δ' hcc ⟨hD, blockCaps_etaRecord K st' σ r⟩,
+    hcc.ok.1⟩
 
 /-- **`placeType?` in the simulation form** (its field and parameter types run on private copies:
 Ω is the snapshot's, and what the copies keep is assigned by an extension). Assembled: the induction
@@ -610,7 +647,7 @@ theorem etaInPlace_sim (fuel : Nat) (ih : StepsIHBelow fuel) (st st' : MState) (
     obtain ⟨u', st₁₁, b₁₁, hrf, h11⟩ := Runs.bind_inv h10
     obtain ⟨-, hst⟩ := runs_pure_inv h11
     subst hst
-    obtain ⟨ρ₂, Δ₂, E₂, hσ⟩ := etaFresh_sim K ρ φ f st st₈ p σ n ps d r₀ s π _ hg hctx hs hp hT hd h1 hcr
+    obtain ⟨ρ₂, Δ₂, E₂, hσ⟩ := etaFresh_sim K ρ φ f (fun m hm => ih m (by omega)) st st₈ p σ n ps d r₀ s π _ hg hctx hs hp hT hd h1 hcr
       (hD.of_rest (grows_refine _ _ _) hrf)
     rcases f with _ | f
     · obtain ⟨L, left, log, hrf⟩ := hrf
