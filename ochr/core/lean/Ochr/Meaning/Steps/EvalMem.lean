@@ -131,14 +131,13 @@ the checker returned (`T?`; `none` for an untyped run, which owes nothing of the
 temporaries below keeping their types (`tt`). Its hypotheses take `GoodT st tt` in place of `Good st`. -/
 def SimConclTT (π : Nat → Nat) (st st' : MState) (tt : TempTys) (s : SState) (x : Assignment → SM Res)
     (v : Value) (T? : Option Value) : Prop :=
-  ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (π' : Nat → Nat) (r : Res) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
-    st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
-    (∀ l, l < st.nextLoan → π' l = π l) ∧
+  ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
+    st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
     x ρ' s = some (r, s') ∧
-    meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
-    (∀ T, T? = some T → StrAgree { K with Δ := Δ', D := D' } ρ' T r.2) ∧
-    CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π' (st'.withTemp v) s' ∧
-    GoodT K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' (st'.withTemp v) (tt.push st' T?)
+    meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
+    (∀ T, T? = some T → StrAgree { K with Δ := Δ' } ρ' T r.2) ∧
+    CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π' (st'.withTemp v) s' ∧
+    GoodT K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' (st'.withTemp v) (tt.push st' T?)
 
 set_option linter.unusedVariables false in
 /-- **The evaluation step under D81** (the form `eval_step_stmt` takes): from a state good with its
@@ -151,6 +150,7 @@ def eval_step_stmtT (fuel : Nat) : Prop :=
     (hg : GoodT K.dm K.M K.Γ ρ st tt) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hok : typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.eval fuel typed t hint) st bh (v, T?) st'),
     SimConclTT K ρ φ π st st' tt s (fun ρ' => runT K ρ' φ st.tailNext (hintM K ρ hint) t) v
       (if typed then T? else Option.none)
