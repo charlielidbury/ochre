@@ -53,7 +53,10 @@ The lead owns `Steps/Statements.lean` from 19d86568: statement changes go throug
 the one temporary-specific spot is `posTyM_setAtE`'s `temp` case, `rfl` today because a temporary
 has no type: with typed temporaries it needs "a write leaves a temporary's stored type as it was".
 `dropOne_exists` writes only at a binding (`.bind f i`). The arm's result in flight is untouched by
-the write; the access cannot end a borrow it holds (the checker rejects that, `dropAtJoin`'s D65).
+the write. `dropAtJoin` rejects a drop whose value holds a loan of a borrow a temporary holds (D65),
+so the drop's own access ends no such borrow; a borrow the result holds that is lent at a PREFIX of
+the place (ended by `movedPlace`'s fill branch, `accessPath` of the parent) is not covered by that
+check: to look at when temporaries get types.
 
 ## Idioms and traps
 
