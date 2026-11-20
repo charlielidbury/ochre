@@ -16,8 +16,8 @@ is a step on these meanings alone (`Mean.semEnd`), and it loses only information
 theorem, reads exactly `env` (the values at every position, with the frame structure) and `inds`
 (to interpret constructor values and inductive types); its typed form, for membership (b) and
 the goal, also reads the stored types in `env` (`Binding.ty`, `Binding.lazyTy`), `absTy` (Δ),
-`goal`, and the records `neutrals` and `etaRefs`, which are conditions on the assignment (the path
-condition, `WF.lean`). `globals` enters through `CodeMeaning.global`, the meanings of the
+`goal`, and the records `neutrals`, `etaRefs` and `refs`, which are conditions on the assignment
+(the path condition, `WF.lean`). `globals` enters through `CodeMeaning.global`, the meanings of the
 earlier definitions. Every other field is semantically irrelevant to `⟦Ω⟧`, for one of three
 reasons (`MState.Core` below is the relevant part, and `mean_core` the statement):
 
@@ -28,8 +28,7 @@ reasons (`MState.Core` below is the relevant part, and `mean_core` the statement
 * **Pure caches and logs**: `classCache`, `constDecls` (caches of syntactic readings: a lemma
   says a cached value is its recomputation), `cfg`, `locs` (recording only; `Accepted` leaves
   `located` off, so `locs` is empty).
-* **Inputs of decisions, not of meanings**: `refs` (refinements already substituted into the
-  state; read again only by [Rec]'s subterm test and the editor), `recStack` ([Rec]'s entry values
+* **Inputs of decisions, not of meanings**: `recStack` ([Rec]'s entry values
   and candidates: a check, whose accepting direction is membership of recursive functions),
   `convStack` ([Conv-fun]'s guard: it only makes conversion answer "no" more often, so conversion
   soundness holds for every stack), `lastErased`, `lastProof`, `curDecl`, `tailDecl`,
@@ -146,9 +145,13 @@ structure MState.Core where
   goal : Option Value
   neutrals : List (Value × Nat)
   etaRefs : List (Nat × Value)
+  /-- [Split]'s refinements in this world: read back into the state by `canonNeutral` and
+  `recordedNeutral` (as first classed here, an input of decisions only, which it is not:
+  `Regress/RefsPathCond.lean`) -/
+  refs : List (Nat × Value)
 
 def _root_.Ochr.MState.core (st : MState) : MState.Core :=
-  ⟨st.env, st.inds, st.absTy, st.goal, st.neutrals, st.etaRefs⟩
+  ⟨st.env, st.inds, st.absTy, st.goal, st.neutrals, st.etaRefs, st.refs⟩
 
 /-- The meaning of a state is a function of its core: every other field is irrelevant. -/
 theorem MState.mean_core (ρ : Assignment) (st st' : MState) (h : st.core = st'.core) :

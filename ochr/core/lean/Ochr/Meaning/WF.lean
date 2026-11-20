@@ -224,13 +224,21 @@ inductive _root_.Ochr.MState.Refd (st : MState) : Nat → Prop
 /-- An assignment of Ω (docs/18 Def. "assignment"): each referenced `σ` means an element of `⟦Δ(σ)⟧_ρ`, and
 the path condition holds: each generalisation record `n := σ` in force says `ρ σ = ⟦n⟧_ρ` (a
 generalised program is hole-free, docs/27 Lemma 5, so its meaning does not read the future),
-and each η-refinement `σ := C(σ̄)` says the same of its constructor value. -/
+each η-refinement `σ := C(σ̄)` says the same of its constructor value, and so does each [Split]
+refinement `σ := r` made in this world (`refs`).
+
+The last was missing: `refs` was taken for an input of decisions only, but the checker reads it
+back into the state (`canonNeutral`, `recordedNeutral`: a program generalised in this world is
+its unknown with the refinements since substituted), so without it a `Good` state could replace
+a program by a value meaning something else (`Regress/RefsPathCond.lean`). -/
 structure TypedAssignment (ρ : Assignment) (st : MState) : Prop where
   mem : ∀ σ, st.Refd σ → σ < st.absTy.size → ρ σ ∈ₛ MState.absTyM dm C Γ ρ st σ
   neutral : ∀ n σ, (n, σ) ∈ st.neutrals →
     ρ σ = Value.mean dm C Γ ρ (fun _ => .err) (.plain (MState.absTyM dm C Γ ρ st σ)) n
   eta : ∀ σ v, (σ, v) ∈ st.etaRefs →
     ρ σ = Value.mean dm C Γ ρ (fun _ => .err) (.plain (MState.absTyM dm C Γ ρ st σ)) v
+  refs : ∀ σ r, (σ, r) ∈ st.refs →
+    ρ σ = Value.mean dm C Γ ρ (fun _ => .err) (.plain (MState.absTyM dm C Γ ρ st σ)) r
 
 /-- Membership, part (b) of the main theorem: under every typed future, every position with a
 stored type holds a (possibly partly moved) member of it; Δ's types and the goal are types. -/
