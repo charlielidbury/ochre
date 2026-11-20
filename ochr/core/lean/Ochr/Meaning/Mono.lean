@@ -559,12 +559,11 @@ theorem dropAt_below (K : RunCtx) (φ : Future) (q : Place) (pos : Pos) (steps :
   unfold dropAt
   split
   · exact SState.endLabel_below _ _
-  · split
+  · dsimp only
+    repeat' split
     all_goals first
       | exact Below.refl _
-      | (split
-         · exact Below.refl _
-         · exact (setAt_derefs_below K _ pos _ hd).trans (SState.access_below _ _ _))
+      | (exact (setAt_derefs_below K _ pos _ hd).trans (SState.access_below _ _ _))
 
 theorem joinDrop_below (K : RunCtx) (φ : Future) (entry : List Place) (t : Term) (s : SState)
     (hroot : ∀ q ∈ K.D.joinMoves (scopeOf s) entry t, ∀ st ∈ q.steps.2, st = .deref) :
@@ -1136,12 +1135,11 @@ theorem shapeSub_dropAt (K : RunCtx) (φ : Future) (q : Place) (pos : Pos) (step
   unfold dropAt
   split
   · exact SState.shapeSub_endLabel _ _
-  · split
+  · dsimp only
+    repeat' split
     all_goals first
       | exact SState.ShapeSub.refl _
-      | (split
-         · exact SState.ShapeSub.refl _
-         · exact (SState.shapeSub_setAt _ pos _).trans (SState.shapeSub_access _ _ _))
+      | (exact (SState.shapeSub_setAt _ pos _).trans (SState.shapeSub_access _ _ _))
 
 theorem shapeSub_joinDrop (K : RunCtx) (φ : Future) (entry : List Place) (t : Term) (s : SState) :
     SState.ShapeSub (joinDrop K φ entry t s) s := by
@@ -1576,14 +1574,12 @@ theorem joinDrop_readsBelow (K : RunCtx) (φ : Future) (entry : List Place) (t :
       unfold dropAt
       split
       · exact SState.readsBelow_endLabel h₁ _
-      · split
+      · dsimp only
+        repeat' split
         all_goals first
           | exact h₁
-          | (split
-             · exact h₁
-             · refine SState.readsBelow_setAt ?_ pos _ fun l hl => ?_
-               · exact SState.readsBelow_access h₁ pos _
-               · exact SState.readsBelow_access h₁ pos _ pos l (SVal.dependsOn_updAt hl))
+          | exact SState.readsBelow_setAt (SState.readsBelow_access h₁ pos _) pos _ fun l hl =>
+              SState.readsBelow_access h₁ pos _ pos l (SVal.dependsOn_updAt hl)
     · exact hs
 
 end Ochr.Meaning

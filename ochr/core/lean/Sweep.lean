@@ -917,8 +917,57 @@ def proofCopy : Clause where
       | _ => some ⟨"a place holding ⋆ is declared a type that is not a copy", s!"{q.root}…: {d.beq .prop}"⟩
     | none => some ⟨"a place holding ⋆ has no declared reading", s!"{q.root}"⟩
 
+/-- The content of the borrow `l`, where some position holds it. -/
+def holderContent (st : MState) (l : Nat) : Option Value :=
+  (posVals st.env).findSome? fun (_, v) => match v with
+    | .borrow m w => if m == l then some w else none
+    | _ => none
+
+def sortIsProp (st : MState) (T : Value) : Bool :=
+  match (runMachine (Ochr.sortOf 1000 T) st 100000).1 with
+  | .ok 0 _ => true
+  | _ => false
+
+/-- Why a value at the place `q` could mean `⋆` (the atoms whose meaning is not their own: an
+unknown of a proposition, a sealed program of one, a loan whose borrow holds `⋆` or such an
+unknown, through a mark), or `none`. -/
+def meansProof (st : MState) (q : Place) : Value → Option String
+  | .gloan _ w => meansProof st q w
+  | .abs σ => if sortIsProp st (st.absTy.getD σ .bot) then some s!"σ{σ} of a proposition" else none
+  | .sealed _ => match (runMachine (Ochr.placeType? 1000 q) st 1000000).1 with
+    | .ok (some T) _ => if sortIsProp st T then some "a sealed program of a proposition" else none
+    | _ => none
+  | .loan l => match holderContent st l with
+    | some .proof => some s!"a loan ℓ{l} whose borrow holds ⋆"
+    | some (.abs σ) => if sortIsProp st (st.absTy.getD σ .bot) then some s!"a loan ℓ{l} whose borrow holds σ{σ} of a proposition" else none
+    | _ => none
+  | _ => none
+
+/-- (D⋆) (`dataMean_ne_proof`, `access_root_not_proof`, docs/31 D54): a place in scope of a
+non-copy reading that holds data (not `⋆`, `⊥` or a borrow) holds nothing the reference reads as
+`⋆`, and nothing the checker's access turns into `⋆` (a loan whose borrow holds `⋆`). The atoms
+checked are those whose meaning is not fixed by their form; a constructor value, a number, a type
+or a closure never means `⋆`. -/
+def dataNotProof : Clause where
+  name := "(D⋆) a place of a non-copy reading holding data holds nothing meaning ⋆"
+  premises := [
+    ("a place in scope holds an unknown", fun st => (topPlaces st).any fun (_, v) => v matches .abs _),
+    ("a place in scope holds a sealed program", fun st => (topPlaces st).any fun (_, v) => v matches .sealed _),
+    ("a place in scope holds a loan", fun st => (topPlaces st).any fun (_, v) => v matches .loan _),
+    ("a place in scope holds a loan whose borrow holds ⋆", fun st => (topPlaces st).any fun (_, v) =>
+      match v with | .loan l => holderContent st l == some .proof | _ => false)]
+  check st := (topPlaces st).filterMap fun (q, v) =>
+    if v matches .proof || v matches .bot || v matches .borrow .. then none else
+    match meansProof st q v with
+    | none => none
+    | some m => match declAt st q with
+      | some d => match (runMachine (Ochr.declCopy 1000 d) st 100000).1 with
+        | .ok true _ => none
+        | _ => some ⟨"a place of a non-copy reading holds data meaning ⋆", s!"{q.root}…: {m}"⟩
+      | none => some ⟨"a place holding data meaning ⋆ has no declared reading", s!"{q.root}…: {m}"⟩
+
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, typeRoots, proofCopy, plantedFill, plantedAbs]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, typeRoots, proofCopy, dataNotProof, plantedFill, plantedAbs]
 
 /-! ## The sweep -/
 

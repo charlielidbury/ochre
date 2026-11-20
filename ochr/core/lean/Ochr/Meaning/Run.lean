@@ -488,17 +488,21 @@ borrow too (docs/31 D42). A place already moved is accessed and written `moved` 
 (docs/31 D52, the lead's (B)): the access finds nothing there ((WF14)) and the write is the
 identity, where the checker does nothing; deciding it by reading `moved` from the meaning disagreed
 with the checker wherever data means `moved` (a loan whose borrow's content was moved out, ended
-inside an observation, D68). -/
+inside an observation, D68). The place is read as every read of a place reads it (`contentOf`,
+`tagOf`): after its [Access], at the closed future (docs/31 D54); the access is kept only where
+the place is then dropped. Read before the access, the reading was at a state no checker state is
+related to (the checker reads the place, then accesses it; the reference had accessed the lent
+prefix already), and relating it needed the reading to be unchanged by an access. -/
 noncomputable def dropAt (q : Place) (pos : Pos) (steps : List Step) (s : SState) : SState :=
   match steps, s.shape pos with
   | [], some l => s.endLabel l
   | _, _ =>
-    match Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) steps with
+    let s' := s.access pos (dataHit steps)
+    match Sem.follow K.dm K.Γ (s'.tyAt pos) (s'.valAt pos (s'.closedFuture φ)) steps with
     | some (.proof, _) | none => s
     | some _ =>
       if K.D.copy (K.D.placeDecl (scopeOf s) q) then s else
-      let s := s.access pos (dataHit steps)
-      s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => .moved) steps (s.valAt pos φ')).getD .err
+      s'.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s'.tyAt pos) (fun _ => .moved) steps (s'.valAt pos φ')).getD .err
 
 /-- D84, the drop at the join, as the checker does it (`Machine.joinDrop`: `movedPlace`, then
 `dropAtJoin`), for every place some arm of the match moves (`Decisions.joinMoves`, static, given

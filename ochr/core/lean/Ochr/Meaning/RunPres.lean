@@ -257,12 +257,11 @@ theorem dropAt_rinv (q : Place) (pos : Pos) (steps : List Step) {s : SState} (hi
   unfold dropAt
   split
   · exact endLabel_rinv hi _
-  · split
+  · dsimp only
+    repeat' split
     all_goals first
       | exact hi
-      | (split
-         · exact hi
-         · exact setMoved_rinv K L _ _ (access_rinv hi pos _))
+      | (exact setMoved_rinv K L _ _ (access_rinv hi pos _))
 
 /-- **D84's drop at the join** keeps the invariant: each dropped place's lent prefix accessed, then
 the place accessed and set to `moved`, or its root's borrow ended. -/
@@ -451,12 +450,11 @@ theorem dropAt_lou (q : Place) (pos : Pos) (steps : List Step) {s : SState} (hi 
   unfold dropAt
   split
   · exact lou_endLabel L hi.2.1 hy _
-  · split
+  · dsimp only
+    repeat' split
     all_goals first
       | exact hy
-      | (split
-         · exact hy
-         · exact setMoved_lou K _ _ (lou_access L hi hy pos _))
+      | (exact setMoved_lou K _ _ (lou_access L hi hy pos _))
 
 /-- **D84's drop at the join** keeps a result's label live or unread (with the invariant). -/
 theorem joinDrop_lou (entry : List Place) (t : Term) {s : SState} (hi : RInv L s) {y : Nat} (hy : LoU1 s y) :
