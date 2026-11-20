@@ -652,4 +652,65 @@ theorem leaf_id1 (x : Nat) :
   simp [hb]
   rfl
 
+theorem mkTel_id1 :
+    (mkTelL (lvl0 dm.read) φ (telL (lvl0 dm.read) psInc [] PUnit outId1).2 [] (fun fs => some (PUnit.unit, fs))
+      (gId1 dm ρ φ)).isSome := by
+  simp only [telL, psInc, outId1, mkTelL]
+  have h' : ∀ (x : TyM.nat.code0.fst), ((gId1 dm ρ φ [Code0.enc dm.read TyM.nat.code0.snd x]).bind
+      (mkLeafRefL (lvl0 dm.read) φ (extFin true PUnit TyM.nat.code0.fst)
+        (extMkL true PUnit TyM.nat.code0.fst (fun fs => some (PUnit.unit, fs)) (Code0.dec dm.read TyM.nat.code0.snd))
+        TyM.nat.code0.snd)).isSome := fun x => leaf_id1 dm ρ φ x
+  simp [h']
+
+/-- `Id1`'s reading as a call's head. -/
+noncomputable def fresId1 : Res := (closureAt dm.read 1 φ psInc outId1 (gId1 dm ρ φ), .plain (piId1 dm))
+
+/-- **`callOf` on `Id1`'s closure at `2` with the borrow's label `lab`**: the reborrow, at the fresh
+label `k` (the counter), holding `2`; the argument's holder consumed; a place that read `lab`'s final
+content now reads `k`'s, through the backward function `v ↦ v`; `k` lent, as fills, where `lab` was. -/
+theorem callOf_id1 (s : SState) (T : TyS) (lab : Nat) :
+    ∃ TU : TyS, TU.label = some (s.takeLabel lab).freshLoan.1 ∧
+      callOf dm.read (fresId1 dm ρ φ) [(.el0 Nat 2, { T with label := some lab })] s
+      = some ((.el0 Nat 2, TU),
+          ((((s.takeLabel lab).freshLoan.2.mapVals fun _ v φ' =>
+              match Code0.dec dm.read TyM.nat.code0.snd (φ' (s.takeLabel lab).freshLoan.1) with
+              | some x => v (φ'.upd lab (Code0.enc dm.read TyM.nat.code0.snd x))
+              | none => .err).pushTempShaped (fun _ => .el0 Nat 2) (s.takeLabel lab).freshLoan.1).setLent
+            (s.takeLabel lab).freshLoan.1 (((s.takeLabel lab).freshLoan.2.lent lab).map fun x => { x with fill := true }))) := by
+  obtain ⟨o, r, hg, hap, hm⟩ := applyFnL_closureL (lvl0 dm.read) (lvl0_lawful dm.read) φ
+    (telL (lvl0 dm.read) psInc [] PUnit outId1).2 (gId1 dm ρ φ) [.el0 Nat 2] (mkTel_id1 dm ρ φ)
+    ⟨(2 : Nat), Attack.dec_nat_el0 dm.read 2, trivial⟩
+  rw [gId1_eval] at hg
+  cases hg
+  rcases r with ⟨res, TT, fins⟩ | ⟨U, c, fwd, back⟩
+  · exfalso
+    have hd2 : Code0.dec dm.read TyM.nat.code0.snd (Sem.el0 Nat 2) = some (2 : Nat) := Attack.dec_nat_el0 dm.read 2
+    simp [applyFnL, telL, psInc, outId1, applyTelL, hd2] at hap
+    obtain ⟨F, -, hF⟩ := Option.bind_eq_some_iff.mp hap
+    cases hF
+  · have hd2 : Code0.dec dm.read TyM.nat.code0.snd (Sem.el0 Nat 2) = some (2 : Nat) := Attack.dec_nat_el0 dm.read 2
+    have hap' := hap
+    simp [applyFnL, telL, psInc, outId1, applyTelL, hd2] at hap'
+    obtain ⟨F, -, hF⟩ := Option.bind_eq_some_iff.mp hap'
+    cases hF
+    obtain ⟨k, hk, hfwd, hback⟩ := hm
+    cases hk
+    refine ⟨⟨(lvl0 dm.read).toTy Code0.nat, some (s.takeLabel lab).freshLoan.1⟩, rfl, ?_⟩
+    show callOfL (lvl0 dm.read) (telL (lvl0 dm.read) psInc [] PUnit outId1).2
+      (closureL (lvl0 dm.read) φ (telL (lvl0 dm.read) psInc [] PUnit outId1).2 (gId1 dm ρ φ)) _ s = _
+    unfold callOfL
+    dsimp only
+    rw [show List.map (fun x : Res => x.fst) [(Sem.el0 Nat 2, { T with label := some lab })] = [Sem.el0 Nat 2] from rfl, hap]
+    have hd3 : Code0.dec dm.read TyM.nat.code0.snd (Sem.el0 Nat 2) = some (show TyM.nat.code0.fst from (2 : Nat)) := hd2
+    simp only [telRefsL, telL, psInc, outId1]
+    simp only [hd3]
+    simp [hfwd, hback, Future.upd, Future.updList]
+    have hf : Code0.enc dm.read TyM.nat.code0.snd (F (show TyM.nat.code0.fst from (2 : Nat))).val.fst = Sem.el0 Nat 2 := hfwd
+    refine ⟨⟨?_, rfl, HEq.rfl⟩, ?_⟩
+    · exact hf
+    · rw [hf]
+      congr 3
+      funext p v φ'
+      split <;> rename_i h <;> rw [h]
+
 end Ochr.Meaning.Regress.CallInPlace
