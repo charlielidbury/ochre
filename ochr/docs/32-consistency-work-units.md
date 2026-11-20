@@ -71,6 +71,23 @@ What the counts say. The checker changes are getting less serious: the first fix
 
 What changes because of it. (1) Breadth before depth: after the call steps are stated and checked on concrete runs, every remaining area gets a bounded attack of the kind that has worked (its statements in final form, concrete runs checked in Lean beside the checker's verdicts, any needed fact swept on recorded states; no reading-only judgements), before more leaf lemmas are proved. That brings the remaining redesigns forward and shows whether the stream of faults is drying up. (2) A stop rule: if a full pass over the remaining areas still forces a change to the relation or a model rebuild per area, or if no step is closed end to end within a week of that pass, the architecture is re-examined (first candidate: a declarative rule system between the checker and the model, docs/33 item 2) instead of continuing.
 
+## The two things running in parallel (from 2026-11-20)
+
+**The first vertical slice: one step proved all the way down.** The step is the drop at the join, the first step of row 3. Its proof is split into pieces and the glue between the pieces is proved. What is left, in words:
+- *The half where the place to drop already exists* is nearly closed. It needs a few small typing facts (a data place never reads as a proof), and the bookkeeping that the run's context is still right after a read.
+- *The half where the place has to be made first* (an unknown pair refined into its fields, or a stuck value generalised) is the real work. It needs the counterpart, for unknowns, of the substitution lemma already proved for borrows: replacing an unknown by what a refinement says it is keeps every meaning. That is one large proof, of the size of a core lemma, plus the re-running of stuck programs after a refinement.
+- *Two facts about the checker alone* (a read loses no unknown; reading a decision leaves the state as it was) are true by inspection; one is long because it is an induction over the whole interpreter.
+- The rest of row 3 (matching on a known constructor, splitting on an unknown, closing a stuck match into a block, leaving an arm) is stated but not yet broken into pieces. The stuck match is the largest and riskiest step in the row.
+A prover works on this slice alone, easy half first.
+
+**The breadth-first pass: every remaining area attacked before more is proved.** The pattern so far is that an area's first real attack finds its faults (the join forced two rebuilds of the model, calls three, the data model four findings before anything was built). So before leaf lemmas are proved elsewhere, each remaining area gets a bounded attack, about half a day at most, by the proof's lead:
+1. its statements written in their final form;
+2. two to four small accepted programs whose run in the model is checked in Lean beside the checker's verdict, with rejected controls;
+3. any fact about the checker that the statements need, tested on every recorded state of the suite before it is assumed;
+4. the short proof that the area's step follows from its named pieces, where there is one;
+5. a list of findings. A checker fault stops work and is reported with a minimal program; a fault of the model or of a statement is fixed in the open.
+No judgement made by reading alone counts. The areas, in order: calls (finishing at the statement level); the top-level chain from the step statements to "an accepted definition means an element of its type" (the cheapest test of the whole architecture); `Id`; equality and `J`; splits and worlds; a table of which step establishes and which preserves each clause of the invariant; then, after the data model's new form is ported, closures and recursion, and dependent values. The counts per area go in the table above; the stop rule is stated there.
+
 ## Design changes awaiting acknowledgement
 
 Changes to the language or the checker made in service of the proof. Each stays here until the user has acknowledged it; none waits on that.
