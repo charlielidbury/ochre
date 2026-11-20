@@ -102,6 +102,7 @@ import Ochr.Meaning.Regress.CallInPlaceD99
 import Ochr.Meaning.Regress.InFlight
 import Ochr.Meaning.Regress.EvalMemGap
 import Ochr.Meaning.Steps.EvalMem
+import Ochr.Meaning.Steps.StrictSim
 import Ochr.Meaning.Regress.EvalMemRuns
 import Ochr.Meaning.Regress.OpenFalse
 import Ochr.Meaning.Regress.DefKnot
