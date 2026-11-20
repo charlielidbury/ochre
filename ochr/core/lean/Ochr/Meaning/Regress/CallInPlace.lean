@@ -774,4 +774,142 @@ theorem bindR (TU : TyS) (hTU : TU.label = some 1) :
   · funext φ'; unfold mv1; split <;> rename_i h <;> first | rfl | rw [h]
   · funext p; by_cases h1 : p = Pos.bind 0 1 <;> by_cases h2 : p = Pos.temp 0 1 <;> simp [h1, h2]
 
+section SRLemmas
+variable (rT : TyS) (yv rv t0 t1 : SVal)
+
+theorem positions_SR : (SR rT yv rv t0 t1).positions = [.bind 0 0, .bind 0 1, .temp 0 0, .temp 0 1] := by
+  simp [SR, SState.positions, List.range']
+
+theorem liveLabels_SR : (SR rT yv rv t0 t1).liveLabels = [1] := by
+  unfold SState.liveLabels; rw [positions_SR]; simp [SR]
+
+theorem find_SR : ((SR rT yv rv t0 t1).positions.find? fun p => decide ((SR rT yv rv t0 t1).shape p = some 1))
+    = some (.bind 0 1) := by
+  rw [positions_SR]; simp [SR]
+
+theorem access_SR_r (hit : List Step → Bool) : (SR rT yv rv t0 t1).access (.bind 0 1) hit = SR rT yv rv t0 t1 := by
+  unfold SState.access
+  have h : ∀ n : Nat, (List.range n).foldl (fun s _ => (s.liveLabels.filter (s.reached (.bind 0 1) hit)).foldl SState.endLabel s)
+      (SR rT yv rv t0 t1) = SR rT yv rv t0 t1 := by
+    intro n; induction n with
+    | zero => rfl
+    | succ n ih =>
+      rw [List.range_succ, List.foldl_append, ih]
+      simp [liveLabels_SR, SState.reached, show (SR rT yv rv t0 t1).lent 1 = [⟨.bind 0 0, [], true⟩] from rfl]
+  exact h _
+
+theorem resolve_SR_r : resolve (SR rT yv rv t0 t1) (.deref (.var 0)) = some (.bind 0 1, [.deref]) := by
+  simp [resolve, SState.varPos, SState.topIdx, Place.steps, SR]
+
+theorem resolve_SR_y : resolve (SR rT yv rv t0 t1) (.var 1) = some (.bind 0 0, []) := by
+  simp [resolve, SState.varPos, SState.topIdx, Place.steps, SR]
+
+theorem setContent_SR (v : Sem) :
+    setContent (Kc dm) φ (.bind 0 1) [.deref] v (SR rT yv rv t0 t1) = some (⟨⟩, SR rT yv (fun _ => v) t0 t1) := by
+  simp [setContent, Attack.updAt_deref, Attack.updAt_nil, SState.setAt, SR, SState.valAt]
+
+/-- Ending the reborrow `1` (its holder `r`): `y` reads the future that fixes `1` to `r`'s content. -/
+theorem endLabel_SR_valAt (p : Pos) (ψ : Future) :
+    ((SR rT yv rv t0 t1).endLabel 1).valAt p ψ =
+      if p = .bind 0 1 then .moved else (SR rT yv rv t0 t1).valAt p (ψ.upd 1 (rv ψ)) := by
+  unfold SState.endLabel
+  rw [find_SR]
+  dsimp only
+  rcases p with ⟨f, i⟩ | ⟨f, i⟩
+  · rcases f with _ | f <;> rcases i with _ | _ | i <;> simp [SState.valAt, SState.mapVals, Mean.semEnd, SState.toMean, SR]
+  · rcases f with _ | f <;> rcases i with _ | _ | i <;> simp [SState.valAt, SState.mapVals, Mean.semEnd, SState.toMean, SR]
+
+theorem endLabel_SR_shape : ((SR rT yv rv t0 t1).endLabel 1).shape = fun _ => none := by
+  unfold SState.endLabel
+  rw [find_SR]
+  funext p; by_cases h : p = .bind 0 1 <;> simp [Mean.semEnd, SState.toMean, SState.mapVals, SR, h]
+
+/-- `*r := 5`: `r`'s content is `5`; no borrow ends (the reborrow is lent at `y`, not at `r`). -/
+theorem runAssign_SR (hint : TyS) :
+    run (Kc dm) ρ φ hint (.assign (.deref (.var 0)) (num 5)) (SR rT yv rv t0 t1)
+      = some ((.el0 Unit (), .plain TyM.unit), SR rT yv (fun _ => .el0 Nat 5) t0 t1) := by
+  show runT (Kc dm) ρ φ false hint _ _ = _
+  rw [runT]
+  simp only [SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
+  show (do let ((v, R), s) ← runT (Kc dm) ρ φ false _ (num 5) (SR rT yv rv t0 t1); assignAt (Kc dm) φ (.deref (.var 0)) v R.label s) = _
+  simp only [bind, Option.bind]
+  rw [show runT (Kc dm) ρ φ false _ (num 5) (SR rT yv rv t0 t1) = _ from run_num dm [] _ ρ φ 5 _ _]
+  dsimp only
+  simp only [assignAt, resolve_SR_r, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false, access_SR_r,
+    setContent_SR]
+
+/-- Reading `y` after `*r := 5`: the read of `y` ends the reborrow `1` (lent at `y`), whose final
+content `5` `y` then reads. -/
+theorem readY_SR (yv' : SVal) (hy : ∀ ψ, yv (ψ.upd 1 (.el0 Nat 5)) = yv' ψ) (hw : ∀ ψ, (yv' ψ).whole) :
+    ∃ T, readPlace (Kc dm) φ (.var 1) true (SR rT yv (fun _ => .el0 Nat 5) t0 t1)
+      = some ((yv' φ, T), (SR rT yv (fun _ => .el0 Nat 5) t0 t1).endLabel 1) := by
+  have ha : (SR rT yv (fun _ => .el0 Nat 5) t0 t1).access (.bind 0 0) (dataHit []) = (SR rT yv (fun _ => .el0 Nat 5) t0 t1).endLabel 1 := by
+    unfold SState.access
+    rw [liveLabels_SR]
+    simp [SState.reached, dataHit, show (SR rT yv (fun _ => .el0 Nat 5) t0 t1).lent 1 = [⟨.bind 0 0, [], true⟩] from rfl,
+      liveLabels_SR]
+  have h0 : ∀ l : List Pos, List.filterMap (fun _ : Pos => (none : Option Nat)) l = [] := by
+    intro l; induction l <;> simp_all
+  have hl : ((SR rT yv (fun _ => .el0 Nat 5) t0 t1).endLabel 1).liveLabels = [] := by
+    unfold SState.liveLabels; rw [endLabel_SR_shape, h0]; simp
+  have hcf : ((SR rT yv (fun _ => .el0 Nat 5) t0 t1).endLabel 1).closedFuture φ = φ := by
+    simp [SState.closedFuture, hl]
+  have hv : ((SR rT yv (fun _ => .el0 Nat 5) t0 t1).endLabel 1).valAt (.bind 0 0) φ = yv' φ := by
+    rw [endLabel_SR_valAt]; simp [SR, SState.valAt, hy]
+  refine ⟨{ (SR rT yv (fun _ => .el0 Nat 5) t0 t1).tyAt (.bind 0 0) with label := none }, ?_⟩
+  simp only [readPlace, contentOf, resolve_SR_y, ha, hcf, Sem.follow, hv, bind, Option.bind]
+  simp [hw]
+  unfold SState.endLabel; rw [find_SR]; simp [SState.tyAt, SState.mapVals, SR]
+
+end SRLemmas
+
+/-- `let y = 2; let r = Id1(&y); *r := 5; y`, with `Id1`'s closure as the head. -/
+def useId1T : Term :=
+  .letIn ⟨"y"⟩ (num 2) (.letIn ⟨"r"⟩ (.call (.val id1Clo) [.borrow (.var 0)] false)
+    (.seq (.assign (.deref (.var 0)) (num 5)) (.place (.var 1))))
+
+theorem yR1_five (ψ : Future) : yR1 dm (ψ.upd 1 (.el0 Nat 5)) = .el0 Nat 5 := by
+  have hd : Code0.dec dm.read TyM.nat.code0.snd (.el0 Nat 5) = some (show TyM.nat.code0.fst from (5 : Nat)) :=
+    Attack.dec_nat_el0 dm.read 5
+  simp only [yR1, Future.upd, if_true, if_pos rfl]
+  rw [hd]
+  rfl
+
+/-- **`UseId1` by `callOf`: `let y = 2; let r = Id1(&y); *r := 5; y` runs to `5`**, the checker's
+answer (`Regress/ShapeProbes.lean`: `UseId1Is5` accepted, `UseId1Is2` rejected): the call returns the
+reborrow, `y` reads its final content through the backward function, the write through `r` is that
+content, and reading `y` ends the reborrow. -/
+theorem useId1_callOf (hint : TyS) :
+    ∃ T s', run (Kc dm) ρ φ hint useId1T (emptyState 0) = some ((.el0 Nat 5, T), s') := by
+  obtain ⟨TU, hTU, hc⟩ := run_callId1 dm ρ φ
+  have hb := bindR dm TU hTU
+  obtain ⟨Ty, hy⟩ := readY_SR dm φ TU (yR1 dm) (mv1 dm) (fun _ => .moved) (fun _ => .el0 Nat 5)
+    (yR1_five dm) (fun _ => by simp [Sem.whole])
+  have hseq : run (Kc dm) ρ φ hint (.seq (.assign (.deref (.var 0)) (num 5)) (.place (.var 1)))
+      (SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved))
+      = some ((.el0 Nat 5, Ty), (SR TU (yR1 dm) (fun _ => .el0 Nat 5) (mv1 dm) (fun _ => .moved)).endLabel 1) := by
+    show runT (Kc dm) ρ φ false hint _ _ = _
+    rw [runT]
+    simp only [SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
+    show (do let r ← run (Kc dm) ρ φ (.plain .err) _; SM.modify (discardEnd r.2); runT (Kc dm) ρ φ false hint (.place (.var 1))) _ = _
+    simp only [bind, Option.bind, runAssign_SR, SM.modify]
+    rw [show discardEnd (.plain TyM.unit) (SR TU (yR1 dm) (fun _ => .el0 Nat 5) (mv1 dm) (fun _ => .moved))
+      = SR TU (yR1 dm) (fun _ => .el0 Nat 5) (mv1 dm) (fun _ => .moved) from rfl]
+    rw [runT]
+    simp only [SM.erasedAt, flags_Kc, copy_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
+    exact hy
+  refine ⟨Ty, ?_⟩
+  rw [useId1T, show Kc dm = Kp dm [] (fun _ => (.err, .plain TyM.err)) from rfl, run_letIn, run_num]
+  rw [show Kp dm [] (fun _ => (.err, .plain TyM.err)) = Kc dm from rfl]
+  simp only [bind, Option.bind]
+  rw [Attack.pushBindShaped_noLabel _ _ rfl]
+  rw [show ({ ty := { (TyS.plain TyM.err) with label := none }, val := fun _ => .el0 Nat 2, decl := .other } : SBinding)
+    = yB from rfl]
+  rw [show Kc dm = Kp dm [] (fun _ => (.err, .plain TyM.err)) from rfl, run_letIn]
+  rw [show Kp dm [] (fun _ => (.err, .plain TyM.err)) = Kc dm from rfl, hc]
+  simp only [bind, Option.bind]
+  rw [show ({ ty := TU, val := fun _ => .el0 Nat 2 } : SBinding) = { ty := TU, val := fun _ => .el0 Nat 2, decl := .other }
+    from rfl, hb, hseq]
+  exact ⟨_, rfl⟩
+
 end Ochr.Meaning.Regress.CallInPlace
