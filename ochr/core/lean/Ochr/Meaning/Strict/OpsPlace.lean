@@ -882,10 +882,178 @@ theorem readPlace_reads (hMR : MemReads K.dm K.Γ) (p : Place) (copy : Bool) {s 
       obtain ⟨rfl, rfl⟩ := h
       exact ⟨by simp only; rw [hTm]; exact hread, (fun l hl => by cases hl), setContent_field_moved_sgood hs₁ hst h2⟩
 
+/-! ## Borrows -/
+
+/-- **A fresh borrow of a binding, whole** (`&x`, `&*r`): the binding becomes the lender of the fresh
+label `l` (reading `l`'s final content), a new temporary holds the content `v` (a member of the
+binding's type), and `l` records that type and `v`. -/
+theorem sgood_borrow_root (hMR : MemReads K.dm K.Γ) {s₁ : SState} (hs₁ : SGood K.dm K.Γ φ s₁) {f i : Nat}
+    (hp : Pos.bind f i ∈ s₁.positions) {v : Sem} (hv : v ∈ₛ[K.dm.read] (s₁.tyAt (.bind f i)).m) (xs : List Site) :
+    SGood K.dm K.Γ φ (((((s₁.freshLoan.2.setAt (.bind f i) fun φ' => φ' s₁.nextLoan).pushTempShaped
+      (fun _ => v) s₁.nextLoan).setLent s₁.nextLoan xs).setHeldTy s₁.nextLoan (s₁.tyAt (.bind f i)).m).setHeldMem
+        s₁.nextLoan v) := by
+  have hsa₁ := hs₁.acyc.2.2
+  generalize hl : s₁.nextLoan = l at *
+  generalize hTm : (s₁.tyAt (.bind f i)).m = Tm at hv
+  -- the stages
+  have hF : s₁.freshLoan.2 = { s₁ with nextLoan := l + 1 } := by rw [← hl]; rfl
+  rw [hF]
+  generalize hS₂ : ({ s₁ with nextLoan := l + 1 } : SState) = S₂
+  have h2pos : S₂.positions = s₁.positions := by rw [← hS₂]; rfl
+  have h2val : S₂.valAt = s₁.valAt := by rw [← hS₂]; rfl
+  have h2ty : S₂.tyAt = s₁.tyAt := by rw [← hS₂]; rfl
+  have h2sh : S₂.shape = s₁.shape := by rw [← hS₂]
+  have h2HT : S₂.heldTy = s₁.heldTy := by rw [← hS₂]
+  have h2HM : S₂.heldMem = s₁.heldMem := by rw [← hS₂]
+  have h2nl : S₂.nextLoan = l + 1 := by rw [← hS₂]
+  have h2env : S₂.env = s₁.env := by rw [← hS₂]
+  generalize hS₃ : S₂.setAt (.bind f i) (fun φ' => φ' l) = S₃
+  have hp₂ : Pos.bind f i ∈ S₂.positions := by rw [h2pos]; exact hp
+  have h3val : ∀ q, S₃.valAt q = if q = .bind f i then (fun φ' => φ' l) else s₁.valAt q := by
+    intro q; rw [← hS₃]
+    split
+    · rename_i hq; subst hq; exact valAt_setAt_self S₂ _ _ hp₂
+    · rename_i hq; rw [SState.valAt_setAt_ne S₂ _ _ q (Ne.symm hq), h2val]
+  have h3ty : ∀ q, S₃.tyAt q = s₁.tyAt q := by intro q; rw [← hS₃, tyAt_setAt, h2ty]
+  have h3sh : S₃.shape = s₁.shape := by rw [← hS₃, SState.shape_setAt, h2sh]
+  have h3pos : S₃.positions = s₁.positions := by rw [← hS₃, SState.positions_setAt, h2pos]
+  have h3HT : S₃.heldTy = s₁.heldTy := by rw [← hS₃, heldTy_setAt, h2HT]
+  have h3HM : S₃.heldMem = s₁.heldMem := by rw [← hS₃, heldMem_setAt, h2HM]
+  have h3env : S₃.env ≠ [] := env_ne_of_mem (p := .bind f i) (by rw [h3pos]; exact hp)
+  have hsa₃ : SState.ShapeAt S₃ := by
+    intro q x hq
+    rw [h3sh] at hq
+    obtain ⟨h1, h2⟩ := hsa₁ q x hq
+    refine ⟨by rw [h3pos]; exact h1, ?_⟩
+    rw [← hS₃, nextLoan_setAt, h2nl]; omega
+  have h3live : ∀ y, y ∈ S₃.liveLabels ↔ y ∈ s₁.liveLabels := by
+    intro y; unfold SState.liveLabels; rw [h3pos, h3sh]
+  have hlnew : l ∉ s₁.liveLabels := fun h => by
+    have := hs₁.live_lt h; rw [hl] at this; exact Nat.lt_irrefl l this
+  -- the final state, `S`, read through `S₄`
+  have hacyc : SState.RInv (fun _ => True) ((((S₃.pushTempShaped (fun _ => v) l).setLent l xs).setHeldTy l Tm).setHeldMem l v) := by
+    show SState.RInv _ (S₃.pushTempShaped (fun _ => v) l)
+    rw [← hS₃]
+    refine SState.writeFresh_park_rinv ?_ _ _ l v (by rw [h2env]; exact env_ne_of_mem hp)
+      (fun q x hq => ?_) (by rw [h2nl]; omega) (fun ψ ψ' h => h l (.inl trivial))
+      (fun x _ ψ ψ' h => h l (.inr (.inr rfl)))
+    · have := SState.freshLoan_rinv (L := fun _ => True) hs₁.acyc
+      rwa [hF, hS₂] at this
+    · rw [h2sh] at hq; have := (hsa₁ q x hq).2; rw [hl] at this; exact this
+  have hfresh : ((((S₃.pushTempShaped (fun _ => v) l).setLent l xs).setHeldTy l Tm).setHeldMem l v).ReadsBelow := by
+    show (S₃.pushTempShaped (fun _ => v) l).ReadsBelow
+    refine SState.readsBelow_pushTempShaped ?_ _ _ (fun _ ⟨_, _, h⟩ => absurd rfl h)
+    rw [← hS₃]
+    have h₂ : S₂.ReadsBelow := by
+      have := SState.readsBelow_freshLoan hs₁.fresh; rwa [hF, hS₂] at this
+    refine SState.readsBelow_setAt h₂ _ _ (fun k ⟨ψ, x, hne⟩ => ?_)
+    rw [h2nl]
+    by_cases hk : k = l
+    · omega
+    · exact absurd (by simp [Future.upd, Ne.symm hk]) hne
+  generalize hS : ((((S₃.pushTempShaped (fun _ => v) l).setLent l xs).setHeldTy l Tm).setHeldMem l v) = S at hacyc hfresh
+  have hSval : ∀ q, S.valAt q = (S₃.pushTempShaped (fun _ => v) l).valAt q := by intro q; rw [← hS]; simp
+  have hSty : ∀ q, S.tyAt q = s₁.tyAt q := by intro q; rw [← hS]; simp [tyAt_pushTempShaped, h3ty]
+  have hSsh : S.shape = (S₃.pushTempShaped (fun _ => v) l).shape := by rw [← hS]; rfl
+  have hSHT : ∀ y, S.heldTy y = if y = l then Tm else s₁.heldTy y := by
+    intro y; rw [← hS]; simp only [SState.setHeldMem_heldTy]; show (if y = l then Tm else _) = _
+    rw [show ((S₃.pushTempShaped (fun _ => v) l).setLent l xs).heldTy = (S₃.pushTempShaped (fun _ => v) l).heldTy
+      from rfl, heldTy_pushTempShaped, h3HT]
+  have hSHM : ∀ y, S.heldMem y = if y = l then v else s₁.heldMem y := by
+    intro y; rw [← hS]; show (if y = l then v else _) = _
+    rw [SState.setHeldTy_heldMem, show ((S₃.pushTempShaped (fun _ => v) l).setLent l xs).heldMem =
+      (S₃.pushTempShaped (fun _ => v) l).heldMem from rfl, heldMem_pushTempShaped, h3HM]
+  have hSbpos : ∀ f' i', Pos.bind f' i' ∈ S.positions ↔ Pos.bind f' i' ∈ s₁.positions := by
+    intro f' i'; rw [← hS]; simp only [SState.setHeldMem_positions, SState.setHeldTy_positions, SState.setLent_positions]
+    rw [bind_mem_pushTempShaped, h3pos]
+  have hSlive : ∀ y, y ∈ S.liveLabels ↔ y ∈ s₁.liveLabels ∨ y = l := by
+    intro y
+    have e : y ∈ S.liveLabels ↔ y ∈ (S₃.pushTempShaped (fun _ => v) l).liveLabels := by
+      rw [← hS]; rfl
+    rw [e]
+    constructor
+    · intro h
+      rcases SState.live_pushTempShaped_new hsa₃ h with h | h
+      · exact .inl ((h3live y).1 h)
+      · exact .inr h
+    · rintro (h | rfl)
+      · exact SState.live_pushTempShaped_old ((h3live y).2 h)
+      · exact SState.live_pushTempShaped_self _ _ _ h3env
+  have hT1 : ∀ ψ, TypedF K.dm K.Γ φ S ψ → TypedF K.dm K.Γ φ s₁ (ψ.upd l (φ l)) := by
+    rintro ψ ⟨hag, hψ⟩
+    refine ⟨fun y hy => ?_, fun y hy => ?_⟩
+    · by_cases hyl : y = l
+      · subst hyl; rw [Future.upd_same]
+      · rw [Future.upd_other _ _ hyl]; exact hag y (fun h => ((hSlive y).1 h).elim hy hyl)
+    · have hyl : y ≠ l := fun e => hlnew (e ▸ hy)
+      rw [Future.upd_other _ _ hyl]
+      have := hψ y ((hSlive y).2 (.inl hy)); rwa [hSHT, if_neg hyl] at this
+  have hT2 : ∀ ψ q, s₁.valAt q (ψ.upd l (φ l)) = s₁.valAt q ψ := fun ψ q =>
+    hs₁.indep_fresh q (by rw [hl]; exact Nat.le_refl l) ψ (φ l)
+  have hψl : ∀ ψ, TypedF K.dm K.Γ φ S ψ → PMem K.dm.read K.Γ (ψ l) Tm := by
+    rintro ψ ⟨-, hψ⟩; have := hψ l ((hSlive l).2 (.inr rfl)); rwa [hSHT, if_pos rfl] at this
+  have hbval : ∀ f' i', S.valAt (.bind f' i') =
+      if Pos.bind f' i' = .bind f i then (fun φ' => φ' l) else s₁.valAt (.bind f' i') := by
+    intro f' i'; rw [hSval, valAt_pushTempShaped_bind, h3val]
+  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l' hl' => ?_, fun y hy => ?_, fun f' i' l' hl' => ?_, hacyc, hfresh,
+    fun ψ hψ f' i' steps x U hf hx => ?_⟩
+  · show GoodVal _ _ (S.valAt _ ψ) (S.tyAt _).m
+    rw [hbval, hSty]
+    split
+    · rename_i hq; rw [hq, hTm]; exact .inl (hψl ψ hψ).pmem
+    · rw [← hT2]; exact hs₁.bind _ (hT1 ψ hψ) f' i' ((hSbpos f' i').1 hpi)
+  · rw [hSsh] at hl'
+    rcases pushTempShaped_holder hsa₃ h3env _ l hl' with ⟨hq3, hsh3, hv4⟩ | ⟨rfl, -, hv4⟩
+    · rw [h3sh] at hsh3
+      have hl'l : l' ≠ l := fun e => hlnew (e ▸ live_of_shape (h3pos ▸ hq3) hsh3)
+      rw [hSHT, if_neg hl'l, hSval, hv4, h3val]
+      split
+      · rename_i hq; subst hq
+        rw [← hs₁.holderTy f i l' hsh3, hTm]; exact hψl ψ hψ
+      · rw [← hT2]; exact hs₁.holder _ (hT1 ψ hψ) q l' hsh3
+    · rw [hSHT, if_pos rfl, hSval, hv4]
+      exact .inr ⟨v, mem_whole K.dm.read_wholeFields hv, .refl v, hv⟩
+  · rw [hSHM, hSHT]
+    rcases (hSlive y).1 hy with h | rfl
+    · have hyl : y ≠ l := fun e => hlnew (e ▸ h)
+      rw [if_neg hyl, if_neg hyl]; exact hs₁.held y h
+    · rw [if_pos rfl, if_pos rfl]; exact hv
+  · rw [hSsh] at hl'
+    rcases pushTempShaped_holder hsa₃ h3env _ l hl' with ⟨hq3, hsh3, -⟩ | ⟨-, hnb, -⟩
+    · rw [h3sh] at hsh3
+      have hl'l : l' ≠ l := fun e => hlnew (e ▸ live_of_shape (h3pos ▸ hq3) hsh3)
+      rw [hSty, hSHT, if_neg hl'l]; exact hs₁.holderTy f' i' l' hsh3
+    · exact absurd rfl (hnb f' i')
+  · rw [hbval, hSty] at hf
+    split at hf
+    · rename_i hq; rw [hq] at hf
+      have : PMem K.dm.read K.Γ (ψ l) (s₁.tyAt (.bind f i)).m := by rw [hTm]; exact hψl ψ hψ
+      exact hMR.pmem this steps x U hf hx
+    · rw [← hT2] at hf; exact hs₁.read _ (hT1 ψ hψ) f' i' steps x U hf hx
+
 /-- **A borrow** (strict: the content is a member of the place's type). -/
 theorem borrowPlace_fund (hMR : MemReads K.dm K.Γ) (p : Place) :
     FundAt K.dm K.Γ φ (SM.strictS K.dm.read (borrowPlace K φ p)) := by
-  sorry
+  intro s s' r hs h
+  unfold SM.strictS at h
+  cases hb : borrowPlace K φ p s with
+  | none => rw [hb] at h; cases h
+  | some x =>
+    rw [hb] at h
+    obtain ⟨r₀, s₀⟩ := x
+    simp only at h
+    by_cases hm : r₀.1 ∈ₛ[K.dm.read] r₀.2.m
+    rotate_left
+    · rw [if_neg hm] at h; cases h
+    rw [if_pos hm] at h
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    have hrinv := borrowPlace_rinv K φ (fun _ => True) hb hs.acyc
+    have hfr := borrowPlace_readsBelow K φ p s hs.fresh hb
+    unfold borrowPlace at hb
+    simp only [Bind.bind, Option.bind_eq_some_iff] at hb
+    obtain ⟨⟨⟨v, T, pos, steps⟩, s₁⟩, h1, hb⟩ := hb
+    sorry
 
 /-- **An assignment's write** (`assignAt`), the value checked at the place's type at the write and its
 label at that type (the strict `.assign` clause's test). -/
