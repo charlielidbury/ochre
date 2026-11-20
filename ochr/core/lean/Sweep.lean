@@ -1275,6 +1275,21 @@ def neutralHintFree : Clause where
   check st := st.neutrals.filterMap fun (n, σ) =>
     if topHintFree st.inds n then none else some ⟨"a generalisation record's program reads the hint", s!"{clip n.pp} := σ{σ}"⟩
 
+/-- (Ty≠) (the slice, for `split_coverage`'s conclusion, `RefineOk`'s no-self part at a fresh
+refinement, whose parameters are the unknown's type's): no unknown's type names the unknown. -/
+def tyNoSelf : Clause where
+  name := "(Ty≠) no unknown's type names the unknown"
+  premises := [("a typed unknown", fun st => st.absTy.size > 0)]
+  check st := (List.range st.absTy.size).filterMap fun σ =>
+    if (st.absTy[σ]!).hasAbs σ then some ⟨"an unknown's type names it", s!"σ{σ} : {clip (st.absTy[σ]!).pp}"⟩ else none
+
+/-- (Hr≠) (the slice): no refinement record names its own unknown. -/
+def refsNoSelf : Clause where
+  name := "(Hr≠) a refinement record does not name its unknown"
+  premises := [("a refinement record", fun st => !st.refs.isEmpty)]
+  check st := st.refs.filterMap fun (σ, r) =>
+    if r.hasAbs σ then some ⟨"a refinement record names its unknown", s!"σ{σ} := {clip r.pp}"⟩ else none
+
 /-- REPORT (the slice): the shapes of refinement records, by head. -/
 def refsShapes : Clause where
   name := "(report) refinement record heads"
@@ -1349,7 +1364,7 @@ def readingsSorted : Clause where
     | _ => none
 
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, etaNoSelf, refsLoanFree, refsHintFree, neutralHintFree, refsShapes, etaOlder, recordNamesEmpty, readingsSorted, plantedFill, plantedAbs, nonCopyProof, untypedBindings, openFields, droppedUnderOpen]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, etaNoSelf, refsLoanFree, refsHintFree, neutralHintFree, refsShapes, tyNoSelf, refsNoSelf, etaOlder, recordNamesEmpty, readingsSorted, plantedFill, plantedAbs, nonCopyProof, untypedBindings, openFields, droppedUnderOpen]
 
 /-! ## The sweep -/
 
