@@ -71,6 +71,8 @@ Agreed with the user on 2026-11-20. One area, a few days at most, run before pro
 - **It fails if** the rules need the machine's state to be stated at all (for instance, if equality of types cannot be given except as "what the machine computes"), or the link from the machine is as large as the present proof. A failure is recorded here with its reason, and the present route continues unchanged.
 - **Either way** the present route is not paused for it.
 
+Started 2026-11-20, late evening (branch `rules-trial`), narrowed on starting to one real piece instead of a paper design: the checker's comparison functions for equality (`conv`, `convPi`, `convFn`, `mkEqM`), whose statements are open obligations of the present proof. The paper already defines conversion as "the least relation closed under" five named rules, so the trial writes that relation in Lean, proves it sound in the model, proves the machine's run yields a derivation, and composes the two into the existing statements. A proved obligation comes out of it whichever way the verdict goes. One correction to this section's claims, to be tested by the trial: a step that creates an unknown its result mentions must conclude under an extended context under any architecture; only the unknowns nothing mentions afterwards are bookkeeping.
+
 ## Theme 2. One evaluator, written three times
 
 ### The pattern
