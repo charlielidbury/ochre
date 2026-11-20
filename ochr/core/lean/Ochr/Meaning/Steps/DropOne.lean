@@ -331,7 +331,7 @@ theorem lentPrefix_fill (st : MState) (s : SState) (π : Nat → Nat) (pos : Pos
       have := hb ss (hzr.2 ▸ hlt) (hzr.2 ▸ hne)
       rw [hw] at this; cases this
     · rfl
-  have h12 : WF12 st.env := hg.2.2.2.2.2.2.2.2.2.2.2.2
+  have h12 : WF12 st.env := hg.2.2.2.2.2.2.2.2.2.2.2.2.1
   have hpre : (pathKey z.path).isPrefixOf (pathKey x.path) = true := by
     rw [hzr.2]; exact List.isPrefixOf_iff_prefix.mpr hK
   obtain ⟨z', hz', hz'p, hz'k, hz'f⟩ := h12 k₀ l₀ hk₀ hl₀ z hz' hzf x hx' (hxp.trans hzr.1.symm) hpre
@@ -377,8 +377,9 @@ theorem lentPrefix_absorbed (st st' : MState) (s : SState) (π : Nat → Nat) (p
 /-- **(6) No lent prefix above a moved part.** Where the checker's place is `⊥` (its drop does
 nothing), no live borrow is lent at a strict prefix of it, so the reference's prefix access does
 nothing either: [Borrow] rejects a partly moved place, and a move under a fill reaches the fill
-first and ends it. A fact read off the checker; the sweep (`lake exe sweep`) found no violation
-(32 suite states with a moved part beside a live fill). Open: not tried.
+first and ends it. PROVED from (WF14) (docs/31 D43), the clause read off the checker and swept
+(`lake exe sweep`'s clause (iii), at every `⊥` part of every position), through the relation's live
+labels (`rel_live_ref`) and sites.
 
 As first written it also covered a `⋆` part, which the sweep refuted: a place lent whole keeps its
 proof field under the mark (`MkC(n, h)` lent by `Get(&c)`, state `c = lent_2 MkC(loan_2, ⋆)`,
@@ -387,7 +388,17 @@ theorem lentPrefix_none_of_noop (st : MState) (s : SState) (π : Nat → Nat) (q
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2))
     (hnoop : (valAt st.env pos).follow q.steps.2 = some .bot) :
     lentPrefix s pos q.steps.2 = none := by
-  sorry
+  have h14 : WF14 st.env := hg.2.2.2.2.2.2.2.2.2.2.2.2.2
+  unfold lentPrefix
+  rw [List.find?_eq_none]
+  intro ψ hψ hP
+  obtain ⟨k, hk, rfl⟩ := List.mem_map.mp hψ
+  obtain ⟨m, hm, hr⟩ := List.any_eq_true.mp hP
+  obtain ⟨l, hl, rfl⟩ := rel_live_ref K ρ φ st s π hs hm
+  unfold SState.reached at hr
+  obtain ⟨x, hx, hxp⟩ := List.any_eq_true.mp hr
+  simp only [Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at hxp
+  exact h14 pos q.steps.2 hnoop l hl x ((hs.sites l hl x).mp hx) hxp.1 k (List.mem_range.mp hk) hxp.2
 
 /-- **(6) No lent prefix above a proof part the join drops.** A place the join drops is not of a
 copy type (`hcopy`), and a proposition is one, so the sweep's proof fields under a mark are never
