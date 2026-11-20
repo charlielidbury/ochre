@@ -137,9 +137,12 @@ theorem declsOf_accessLentPrefix (s : SState) (pos : Pos) (steps : List Step) :
   · exact declsOf_access _ _ _
   · rfl
 
-/-- **The checker's access keeps its run context** (it ends borrows: no unknown, global or
-declaration changes). Open: not tried. -/
-theorem access_ctx (fuel : Nat) (st st' : MState) (q : Place) (b : Nat) (hctx : CtxOk K ρ st)
+/-- **The checker's access keeps its run context** (it ends borrows: no global or declaration
+changes). An end of a borrow of a dependent type may keep an unknown nothing names (`repackCheck`,
+docs/31 D35, measured): `DeltaOk` asks nothing of it. `Good` is needed: a state that already
+names the counter would have the kept unknown named, with `K.Δ` free there. Open: not tried. -/
+theorem access_ctx (fuel : Nat) (st st' : MState) (q : Place) (b : Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (h : Runs (do Ochr.accessPath fuel q; Ochr.accessInside fuel q) st b () st') : CtxOk K ρ st' := by
   sorry
 
@@ -211,7 +214,7 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
     obtain ⟨hs₂, hg₂⟩ := (ih K ρ φ).access_step st st₂ q pos false s π hg hctx hs hres b₂ hacc
     simp only [Bool.false_and, Bool.false_eq_true, if_false] at hs₂
     have hs₂' := (lentPrefix_absorbed K ρ φ st st₂ s π pos q.steps.2 v hg hs hp hv).mpr hs₂
-    have hctx₂ := access_ctx K ρ fuel st st₂ q b₂ hctx hacc
+    have hctx₂ := access_ctx K ρ fuel st st₂ q b₂ hg hctx hacc
     obtain ⟨hs₃, hg₃, hctx₃, henv₃⟩ := logEffect_rel K ρ φ st₂ st₃ _ π q "moves" b₃ hg₂ hctx₂ hs₂' hlog
     have hdecl : declsOf ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2)) = declsOf s := by
       rw [declsOf_access, declsOf_accessLentPrefix]
@@ -238,7 +241,8 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
 
 /-- **The checker's drop of one place keeps the run context and creates no unknown** (`dropAtJoin`
 ends a borrow, accesses and writes: no unknown, global or declaration changes). Open: not tried. -/
-theorem dropAtJoin_ctx (fuel : Nat) (st st' : MState) (q : Place) (b : Nat) (hctx : CtxOk K ρ st)
+theorem dropAtJoin_ctx (fuel : Nat) (st st' : MState) (q : Place) (b : Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (h : Runs (Ochr.dropAtJoin (fuel + 1) q) st b () st') :
     CtxOk K ρ st' ∧ st.absTy.size ≤ st'.absTy.size := by
   sorry
@@ -263,20 +267,45 @@ theorem substEnv_abs_sim (fuel : Nat) (st st' : MState) (σ : Nat) (r : Value) (
 theorem rel_refs (st : MState) (σ : Nat) (r : Value) (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) :
     Rel K ρ φ π { st with refs := (σ, r) :: st.refs } s := ⟨hs.1, hs.2, hs.3, hs.4, hs.5, hs.6⟩
 
+theorem mem_of_lookup {β : Type} : ∀ {l : List (Nat × β)} {a : Nat} {b : β}, l.lookup a = some b → (a, b) ∈ l
+  | [], _, _, h => by simp [List.lookup] at h
+  | (k, v) :: rest, a, b, h => by
+    simp only [List.lookup] at h
+    split at h
+    · rename_i hk
+      cases h
+      have e : a = k := by simpa using hk
+      subst e
+      exact List.mem_cons_self
+    · exact List.mem_cons_of_mem _ (mem_of_lookup h)
+
+/-- (WF6): an η record names only typed unknowns. -/
+theorem Good.eta_bound {C : CodeMeaning} {ρ : Assignment} {st : MState} (hg : Good K.dm C K.Γ ρ st)
+    {σ : Nat} {r : Value} (h : (σ, r) ∈ st.etaRefs) :
+    σ < st.absTy.size ∧ ∀ τ, r.hasAbs τ = true → τ < st.absTy.size :=
+  ⟨hg.2.2.2.2.2.2.1.1 σ (.eta σ r h (.inl rfl)), fun τ hτ => hg.2.2.2.2.2.2.1.1 τ (.eta σ r h (.inr hτ))⟩
+
 /-- **Recording a refinement keeps `Good` and the context** where the assignment makes the
 refinement true: the record is `TypedAssignment.refs`'s path condition (`hσ` at the closed future
-and `σ`'s type), and nothing else reads `refs` (the relation's half is `rel_refs`). -/
+and `σ`'s type), it names typed unknowns only ((WF6), `hb`), and nothing else reads `refs` (the
+relation's half is `rel_refs`). -/
 theorem refs_sim (st : MState) (σ : Nat) (r : Value) (s : SState) (π : Nat → Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
-    (hσ : ∀ ψ H, ρ σ = meanV K ρ ψ H r) :
+    (hσ : ∀ ψ H, ρ σ = meanV K ρ ψ H r)
+    (hb : σ < st.absTy.size ∧ ∀ τ, r.hasAbs τ = true → τ < st.absTy.size) :
     Rel K ρ φ π { st with refs := (σ, r) :: st.refs } s ∧ Good K.dm K.M K.Γ ρ { st with refs := (σ, r) :: st.refs } ∧
       CtxOk K ρ { st with refs := (σ, r) :: st.refs } := by
   obtain ⟨ta, mem, wf⟩ := hg
   have hrefd : ∀ τ, ({ st with refs := (σ, r) :: st.refs } : MState).Refd τ → st.Refd τ :=
     fun τ h => refd_of_same (st := st) (st' := { st with refs := (σ, r) :: st.refs }) rfl rfl rfl rfl rfl h
+  have w6 := wf.2.2.2.2.1
   refine ⟨rel_refs K ρ φ st σ r s π hs, ⟨⟨fun τ hr hlt => ta.mem τ (hrefd τ hr) hlt, ta.neutral, ta.eta, ?_⟩,
-    ⟨mem.pos, fun τ hr hlt => mem.absTy τ (hrefd τ hr) hlt, mem.goal⟩, wf⟩,
-    ⟨hctx.1, hctx.2, hctx.3, hctx.4, ⟨hctx.5.1, hctx.5.2, hctx.5.3, hctx.5.4⟩⟩⟩
+    ⟨mem.pos, fun τ hr hlt => mem.absTy τ (hrefd τ hr) hlt, mem.goal⟩,
+    ⟨wf.1, wf.2.1, wf.2.2.1, wf.2.2.2.1,
+      ⟨fun τ hr => w6.1 τ (hrefd τ hr), w6.2.1, fun τ v hv => (List.mem_cons.mp hv).elim
+        (fun h => by simp only [Prod.mk.injEq] at h; obtain ⟨rfl, rfl⟩ := h; exact hb)
+        (fun h => w6.2.2.1 τ v h), w6.2.2.2⟩, wf.2.2.2.2.2⟩⟩,
+    ⟨hctx.1, hctx.2, fun τ hr hlt => hctx.3 τ (hrefd τ hr) hlt, hctx.4, ⟨hctx.5.1, hctx.5.2, hctx.5.3, hctx.5.4⟩⟩⟩
   intro τ v hv
   rcases List.mem_cons.mp hv with h | h
   · simp only [Prod.mk.injEq] at h
@@ -299,6 +328,7 @@ records its parameters). -/
 theorem refine_sim' (fuel : Nat) (st st' : MState) (σ : Nat) (r : Value) (s : SState) (π : Nat → Nat) (b : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hσ : ∀ ψ H, ρ σ = meanV K ρ ψ H r)
+    (hb : σ < st.absTy.size ∧ ∀ τ, r.hasAbs τ = true → τ < st.absTy.size)
     (h : Runs (Ochr.refine (fuel + 1) σ r) st b () st') :
     Rel K ρ φ π st' s ∧ Good K.dm K.M K.Γ ρ st' ∧ CtxOk K ρ st' ∧ st.absTy.size ≤ st'.absTy.size := by
   unfold Ochr.refine at h
@@ -309,6 +339,7 @@ theorem refine_sim' (fuel : Nat) (st st' : MState) (σ : Nat) (r : Value) (s : S
   simp only [runMachineL_modify, Prod.mk.injEq, Outcome.ok.injEq] at hmod
   obtain ⟨⟨-, hst₂⟩, -⟩ := hmod
   obtain ⟨hs₂, hg₂, hctx₂⟩ := refs_sim K ρ φ st₁ σ r s π hg₁ hctx₁ hs₁ hσ
+    ⟨Nat.lt_of_lt_of_le hb.1 hsz₁, fun τ hτ => Nat.lt_of_lt_of_le (hb.2 τ hτ) hsz₁⟩
   rw [hst₂] at hs₂ hg₂ hctx₂
   have hsz₂ : st.absTy.size ≤ st₂.absTy.size := by rw [← hst₂]; exact hsz₁
   obtain ⟨g, st₃, b₃, hget, h3⟩ := Runs.bind_inv h2

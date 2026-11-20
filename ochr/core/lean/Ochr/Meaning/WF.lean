@@ -86,8 +86,33 @@ def ArgsLoanFree (env : Env) (ws : Array Value) : Prop :=
     | .borrow _ u => liveLoansIn env u = []
     | u => liveLoansIn env u = []
 
-/-- (WF6), the naming half: every abstract value occurring in Ω, in a stored type, in Δ or in the
-goal has a type in Δ, and every label and abstract value is below its counter (freshness).
+/-- `σ` is *referenced* by the state: it occurs in a value of Ω, in a stored or deferred type, in
+the goal, in a generalisation or η record in force, or in the type of a referenced unknown.
+
+An assignment owes an element only to a referenced unknown (docs/18 Def. "assignment": "each
+abstract value σ **of Ω**"). The types of the unknowns an arm of a split created are kept when the
+arm is left (`exitWorld`, D37), but nothing kept names them, and such a type can be empty in the
+world an assignment selects (a field of an arm the assignment does not take). Asked of every
+`σ < absTy.size`, as `TypedAssignment.mem` first was, no assignment of the state after a split
+would be typed, and `exitWorld_step_stmt` was false outright
+(`Regress/ExitWorld_f32a7048.lean`, kernel-checked). -/
+inductive _root_.Ochr.MState.Refd (st : MState) : Nat → Prop
+  | val {σ : Nat} (v : Value) (hv : v ∈ Env.values st.env) (h : v.hasAbs σ = true) : Refd st σ
+  | ty {σ : Nat} (f i : Nat) (b : Binding) (T : Value) (hb : st.env[f]?.bind (fun fr => fr.binds[i]?) = some b)
+      (hT : b.ty = some T) (h : T.hasAbs σ = true) : Refd st σ
+  | lazyTy {σ : Nat} (f i : Nat) (b : Binding) (P : Value) (ws : List Value) (j : Nat)
+      (hb : st.env[f]?.bind (fun fr => fr.binds[i]?) = some b) (hT : b.lazyTy = some (P, ws, j))
+      (h : P.hasAbs σ = true ∨ ∃ w ∈ ws, w.hasAbs σ = true) : Refd st σ
+  | goal {σ : Nat} (G : Value) (hG : st.goal = some G) (h : G.hasAbs σ = true) : Refd st σ
+  | neutral {σ : Nat} (n : Value) (σ' : Nat) (hn : (n, σ') ∈ st.neutrals) (h : σ = σ' ∨ n.hasAbs σ = true) : Refd st σ
+  | eta {σ : Nat} (σ' : Nat) (v : Value) (he : (σ', v) ∈ st.etaRefs) (h : σ = σ' ∨ v.hasAbs σ = true) : Refd st σ
+  | dep {σ : Nat} (σ' : Nat) (T : Value) (hσ' : Refd st σ') (hT : st.absTy[σ']? = some T) (h : T.hasAbs σ = true) :
+      Refd st σ
+
+/-- (WF6), the naming half: every unknown the state names (in Ω, a stored or deferred type, the goal,
+a generalisation or η record, or the type of one of those: `MState.Refd`) and every unknown a
+[Split] refinement names (the refined one and those of its value) has a type in Δ, every unknown
+in Δ's types does, and every label is below its counter (freshness).
 
 The counter of unknowns IS the number of typed unknowns. As first written the clause had
 `absTy.size ≤ nextAbs`, which a state with an untyped name below the counter satisfies; `freshAbs`
@@ -95,13 +120,44 @@ names the new unknown `nextAbs` but types it at index `absTy.size`, so from such
 generalisation leaves an unknown with no type in Ω and the clause's own first part fails
 (`Regress/GenNeutralContent.lean`, `wf6_le_not_kept`). The checker keeps the equality: `freshAbs`
 grows both, `restoreKeep` and `exitWorld` keep the copy's counter and its whole list of types,
-`seedHoles` sets both. -/
+`seedHoles` sets both.
+
+The first and third parts were, until 2026-11-21, "every unknown in a value of Ω" and "every
+unknown in the goal": stored and deferred types and the records were unbounded, though the
+docstring said stored types were bounded. A record naming the counter itself then met every
+clause, and a fresh unknown (`freshAbs`) took that name: the record's path condition, which
+asked nothing new before, then pins the fresh unknown, and `freshAbs_sim`'s conclusion (any value
+for it) was false (`Regress/FreshBound.lean`). The checker never names an unknown at or above its
+counter (fresh names are never reused; swept, docs/31 D36). -/
 def WF6 (st : MState) : Prop :=
-  (∀ v ∈ Env.values st.env, ∀ σ, v.hasAbs σ → σ < st.absTy.size) ∧
+  (∀ σ, st.Refd σ → σ < st.absTy.size) ∧
   (∀ T ∈ st.absTy.toList, ∀ σ, T.hasAbs σ → σ < st.absTy.size) ∧
-  (∀ G, st.goal = some G → ∀ σ, G.hasAbs σ → σ < st.absTy.size) ∧
+  (∀ σ r, (σ, r) ∈ st.refs → σ < st.absTy.size ∧ ∀ τ, r.hasAbs τ → τ < st.absTy.size) ∧
   st.absTy.size = st.nextAbs ∧
   ∀ v ∈ Env.values st.env, ∀ l ∈ v.loans, l < st.nextLoan
+
+/-- The referenced unknowns are below `n` when every place `Refd` reads holds only unknowns below
+`n` (for concrete states). -/
+theorem _root_.Ochr.MState.refd_lt (st : MState) (n : Nat)
+    (hv : ∀ v ∈ Env.values st.env, ∀ σ, v.hasAbs σ = true → σ < n)
+    (hty : ∀ (f i : Nat) (b : Binding) (T : Value), st.env[f]?.bind (fun fr => fr.binds[i]?) = some b → b.ty = some T →
+      ∀ σ, T.hasAbs σ = true → σ < n)
+    (hlazy : ∀ (f i : Nat) (b : Binding) (P : Value) (ws : List Value) (j : Nat), st.env[f]?.bind (fun fr => fr.binds[i]?) = some b → b.lazyTy = some (P, ws, j) →
+      ∀ σ, (P.hasAbs σ = true ∨ ∃ w ∈ ws, w.hasAbs σ = true) → σ < n)
+    (hgoal : ∀ G, st.goal = some G → ∀ σ, G.hasAbs σ = true → σ < n)
+    (hneut : ∀ (m : Value) (σ' : Nat), (m, σ') ∈ st.neutrals → ∀ σ, (σ = σ' ∨ m.hasAbs σ = true) → σ < n)
+    (heta : ∀ (σ' : Nat) (v : Value), (σ', v) ∈ st.etaRefs → ∀ σ, (σ = σ' ∨ v.hasAbs σ = true) → σ < n)
+    (habs : ∀ (σ' : Nat) (T : Value), st.absTy[σ']? = some T → ∀ σ, T.hasAbs σ = true → σ < n) :
+    ∀ σ, st.Refd σ → σ < n := by
+  intro σ h
+  induction h with
+  | val v hv' h => exact hv v hv' _ h
+  | ty f i b T hb hT h => exact hty f i b T hb hT _ h
+  | lazyTy f i b P ws j hb hT h => exact hlazy f i b P ws j hb hT _ h
+  | goal G hG h => exact hgoal G hG _ h
+  | neutral m σ' hm h => exact hneut m σ' hm _ h
+  | eta σ' v he h => exact heta σ' v he _ h
+  | dep σ' T _ hT h _ => exact habs σ' T hT _ h
 
 /-- The label `l` occurs in Ω: some value at a position holds a loan of `l` or a borrow labelled
 `l`, anywhere inside it. (What `Rel` asks the renaming of labels to cover: a label the checker
@@ -227,28 +283,6 @@ holder's declared borrow type (`⟦&T⟧ = ⟦T⟧`). -/
 def TypedFuture (ρ : Assignment) (st : MState) (φ : Future) : Prop :=
   ∀ p l, Env.shape st.env p = some l → ∀ T, MState.posTyM dm C Γ ρ st p = some T → φ l ∈ₛ T
 
-/-- `σ` is *referenced* by the state: it occurs in a value of Ω, in a stored or deferred type, in
-the goal, in a generalisation or η record in force, or in the type of a referenced unknown.
-
-An assignment owes an element only to a referenced unknown (docs/18 Def. "assignment": "each
-abstract value σ **of Ω**"). The types of the unknowns an arm of a split created are kept when the
-arm is left (`exitWorld`, D37), but nothing kept names them, and such a type can be empty in the
-world an assignment selects (a field of an arm the assignment does not take). Asked of every
-`σ < absTy.size`, as `TypedAssignment.mem` first was, no assignment of the state after a split
-would be typed, and `exitWorld_step_stmt` was false outright
-(`Regress/ExitWorld_f32a7048.lean`, kernel-checked). -/
-inductive _root_.Ochr.MState.Refd (st : MState) : Nat → Prop
-  | val {σ : Nat} (v : Value) (hv : v ∈ Env.values st.env) (h : v.hasAbs σ = true) : Refd st σ
-  | ty {σ : Nat} (f i : Nat) (b : Binding) (T : Value) (hb : st.env[f]?.bind (fun fr => fr.binds[i]?) = some b)
-      (hT : b.ty = some T) (h : T.hasAbs σ = true) : Refd st σ
-  | lazyTy {σ : Nat} (f i : Nat) (b : Binding) (P : Value) (ws : List Value) (j : Nat)
-      (hb : st.env[f]?.bind (fun fr => fr.binds[i]?) = some b) (hT : b.lazyTy = some (P, ws, j))
-      (h : P.hasAbs σ = true ∨ ∃ w ∈ ws, w.hasAbs σ = true) : Refd st σ
-  | goal {σ : Nat} (G : Value) (hG : st.goal = some G) (h : G.hasAbs σ = true) : Refd st σ
-  | neutral {σ : Nat} (n : Value) (σ' : Nat) (hn : (n, σ') ∈ st.neutrals) (h : σ = σ' ∨ n.hasAbs σ = true) : Refd st σ
-  | eta {σ : Nat} (σ' : Nat) (v : Value) (he : (σ', v) ∈ st.etaRefs) (h : σ = σ' ∨ v.hasAbs σ = true) : Refd st σ
-  | dep {σ : Nat} (σ' : Nat) (T : Value) (hσ' : Refd st σ') (hT : st.absTy[σ']? = some T) (h : T.hasAbs σ = true) :
-      Refd st σ
 
 /-- An assignment of Ω (docs/18 Def. "assignment"): each referenced `σ` means an element of `⟦Δ(σ)⟧_ρ`, and
 the path condition holds: each generalisation record `n := σ` in force says `ρ σ = ⟦n⟧_ρ` (a

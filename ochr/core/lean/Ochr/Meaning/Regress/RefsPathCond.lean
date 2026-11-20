@@ -143,12 +143,34 @@ theorem rest_S (K : RunCtx) : Membership K.dm K.M K.Γ ρ₇ S ∧ WF K.dm K.M K
   · exact ⟨fun a => ⟨a, fun b ⟨p, hp, w, hw, _⟩ => by
       rw [hA] at hp; simp at hp; subst hp; rw [h0] at hw; cases hw⟩⟩
   · unfold WF4; rw [hV]; intro v hv; simp at hv; subst hv; decide
-  · rw [hV]; intro v hv σ h; simp at hv; subst hv
-    simp [Value.hasAbs, Value.anyAtom, BEq.beq, Value.beq] at h
-    simp [S]; omega
+  · have h2 : S.absTy.size = 2 := rfl
+    rw [h2]
+    refine MState.refd_lt S _ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    · rw [hV]; intro v hv σ h; simp at hv; subst hv
+      simp [Value.hasAbs, Value.anyAtom, BEq.beq, Value.beq] at h
+      omega
+    · intro f i b T hb hT σ h
+      obtain ⟨_, _, rfl⟩ := bindAt_S f i b hb
+      simp [natB] at hT; subst hT; simp [Value.hasAbs, Value.anyAtom, BEq.beq, Value.beq] at h
+    · intro f i b P ws j hb hT; obtain ⟨_, _, rfl⟩ := bindAt_S f i b hb; simp [natB] at hT
+    · intro G hG; simp [S] at hG
+    · intro m σ' h σ hσ
+      simp [S] at h; obtain ⟨rfl, rfl⟩ := h
+      rcases hσ with rfl | h
+      · decide
+      · simp [Value.hasAbs, Value.anyAtom, Term.anyAtom, BEq.beq, Value.beq] at h
+    · intro σ' v h; simp [S] at h
+    · intro σ' T h σ hσ
+      rcases σ' with _ | _ | σ'
+      all_goals simp [S] at h
+      all_goals subst h; simp [Value.hasAbs, Value.anyAtom, BEq.beq, Value.beq] at hσ
   · intro T hT σ h; simp [S] at hT
     rcases hT with rfl | rfl <;> simp [Value.hasAbs, Value.anyAtom, BEq.beq, Value.beq] at h
-  · intro G hG; simp [S] at hG
+  · intro σ r h
+    simp [S] at h; obtain ⟨rfl, rfl⟩ := h
+    refine ⟨by decide, fun τ hτ => ?_⟩
+    simp [Value.hasAbs, Value.anyAtom, BEq.beq, Value.beq] at hτ
+    show τ < 2; omega
   · rfl
   · rw [hV]; intro v hv l hl; simp at hv; subst hv; simp [Value.loans] at hl
   · intro p T _ f i b _ hb A hA'
