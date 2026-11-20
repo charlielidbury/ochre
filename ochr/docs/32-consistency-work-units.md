@@ -47,6 +47,8 @@ No step lemma is proved end to end yet, but the first one is close (2026-11-20, 
 | 12 | Provers: simple steps | Borrow primitives, substitution, plain evaluation, tail forms. | 1% | 4% |
 | 13 | Assembly | The top-level theorems, closing the induction, and the data model for a whole program. | 1% | 4% |
 
+**Progress inside the to-do rows** (estimated 2026-11-20; a row moves to the done table only when it is finished). Row 1, reference-run redesigns: about two thirds (the checker redesign, the model rebuilt on it, self-describing data values; coded types being built; the older open differences left). Row 2, statement migration: about half (the relation re-made, about a fifth of the statements in the new form). Row 3, matches and arms: about half (the drop at the join proved apart from named obligations). Every other row: not started, apart from invariant clauses for row 6 that are tested by the sweep and not yet proved preserved. That is about 14 of the 64 points, so roughly half of the whole effort is done.
+
 ## Reading the risk column
 
 A unit fails only if it cannot be finished on the current plan. Restating a lemma, repairing a model definition and tightening one checker rule are all successes: the proof goes ahead as planned after each. Nearly every refutation so far has ended in one of the first two, and the accepted proofs of `False` found earlier ended in the third.
