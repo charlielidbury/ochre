@@ -328,6 +328,157 @@ theorem refine_sim' (fuel : Nat) (st st' : MState) (σ : Nat) (r : Value) (s : S
     rw [← h3.1.2]
     exact ⟨hs₂, hg₂, hctx₂⟩
 
+/-! ## `generalizeNeutral` in the simulation form, reduced -/
+
+/-- The checker's content of a place, as a function (`Machine.content`: the variable's position,
+then the path). -/
+def ckContent (env : Env) (p : Place) : Option Value :=
+  (ckVarPos env p.steps.1).bind fun pos => (valAt env pos).follow p.steps.2
+
+/-- What the generalisation needs of the type `placeType` gives the new unknown (`T`, the type of
+the place holding the program `n`): a type of the state (its unknowns typed), of some level,
+holding no loan, a borrow type only at its top; `n`'s unknowns typed too, and `n` a member of `T`. -/
+structure GenTy (st : MState) (T n : Value) : Prop where
+  abs : ∀ τ, T.hasAbs τ = true → τ < st.absTy.size
+  nabs : ∀ τ, n.hasAbs τ = true → τ < st.absTy.size
+  loanFree : ∀ l, T.hasLoan l = false
+  refTop : match T with | .tRef A => ¬ A.typeHasRef | T => ¬ T.typeHasRef
+  level : (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T).level.isSome
+  mem : meanV K ρ (fun _ => .err) (.plain (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T)) n ∈ₛ
+    Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T
+
+/-- **`placeType` in the simulation form.** The field and parameter types it evaluates run on
+private copies (`inStatement`, `privately`), so Ω is the snapshot's (`Rel.private_copy` is the
+relation's half); the unknowns and records the copies keep (D37) are given values and types by an
+extension; and the type returned is a `GenTy` for the place's sealed, loan-free content (a member
+of the place's type, by membership at the place's position and the typing of a path). Open. -/
+theorem placeType_sim (fuel : Nat) (st st₁ : MState) (p : Place) (n T : Value) (s : SState) (π : Nat → Nat) (b : Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (hn : ckContent st.env p = some n) (hsealed : ∃ t, n = .sealed t) (hfree : ∀ l, n.hasLoan l = false)
+    (h : Runs (Ochr.placeType fuel p) st b T st₁) :
+    ∃ (ρ₁ : Assignment) (Δ₁ : Nat → TyS), (∀ τ, τ < st.absTy.size → ρ₁ τ = ρ τ ∧ Δ₁ τ = K.Δ τ) ∧
+      st₁.env = st.env ∧ st.absTy.size ≤ st₁.absTy.size ∧
+      CtxOk { K with Δ := Δ₁ } ρ₁ st₁ ∧ Rel { K with Δ := Δ₁ } ρ₁ φ π st₁ s ∧
+      Good K.dm ({ K with Δ := Δ₁ } : RunCtx).M K.Γ ρ₁ st₁ ∧ GenTy { K with Δ := Δ₁ } ρ₁ st₁ T n := by
+  sorry
+
+/-- `freshAbs` names the unknown by the counter and pushes its type. -/
+theorem runs_freshAbs_inv {T : Value} {st st' : MState} {b σ : Nat} (h : Runs (Ochr.freshAbs T) st b σ st') :
+    σ = st.nextAbs ∧ st' = { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T } := by
+  obtain ⟨L, left, log, h⟩ := h
+  simp only [Ochr.freshAbs, runMachineL_bind, runMachineL_get, runMachineL_set, runMachineL_pure,
+    Prod.mk.injEq, Outcome.ok.injEq] at h
+  exact ⟨h.1.1.symm, h.1.2.symm⟩
+
+/-- `trace` writes the log only. -/
+theorem runs_trace_inv {m : Unit → String} {st st' : MState} {b : Nat} {u : Unit}
+    (h : Runs (Ochr.trace m) st b u st') : st' = st := by
+  obtain ⟨L, left, log, h⟩ := h
+  unfold Ochr.trace at h
+  simp only [runMachineL_bind, runMachineL_get] at h
+  split at h <;> simp_all [runMachineL_modifyThe_log, runMachineL_pure]
+
+/-- (WF6): the counter of unknowns is the number typed. -/
+theorem Good.absTy_size {C : CodeMeaning} {ρ : Assignment} {st : MState} (hg : Good K.dm C K.Γ ρ st) :
+    st.absTy.size = st.nextAbs :=
+  hg.2.2.2.2.2.2.1.2.2.2.1
+
+/-- **A fresh unknown of a well-formed type** (`freshAbs`). Nothing in the state names it yet, so
+under any value for it, with its type added to Δ, the relation, `Good`, the context and the
+`GenTy` are kept, and the program and its type read the same (neither holds the new unknown).
+Open: needs that a meaning reads the assignment and Δ only at the unknowns the value holds (the
+assignment's analogue of `RunCongr.meanV_congrE`, not written). -/
+theorem freshAbs_sim (st : MState) (T n : Value) (s : SState) (π : Nat → Nat) (v : Sem)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s) (hT : GenTy K ρ st T n) :
+    ∃ Δ' : Nat → TyS, (∀ τ, τ < st.absTy.size → Δ' τ = K.Δ τ) ∧
+      CtxOk { K with Δ := Δ' } (ρ.ext st.nextAbs v) { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T } ∧
+      Rel { K with Δ := Δ' } (ρ.ext st.nextAbs v) φ π { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T } s ∧
+      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ (ρ.ext st.nextAbs v)
+        { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T } ∧
+      GenTy { K with Δ := Δ' } (ρ.ext st.nextAbs v) { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T } T n ∧
+      meanV { K with Δ := Δ' } (ρ.ext st.nextAbs v) (fun _ => .err)
+          (.plain (Value.tyM K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ (ρ.ext st.nextAbs v) (fun _ => .err) T)) n =
+        meanV K ρ (fun _ => .err) (.plain (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T)) n := by
+  sorry
+
+/-- **`substEnv` of a sealed program by an unknown that means it, then the record `n := σ`.** Every
+position means the same (the substitution lemma, a program replaced by an unknown: the converse of
+`substEnv_abs_sim`, with [Seal]'s re-run of a changed sealed program meaning the same), the types
+of the unknowns mean the same, and the record is the path condition the assignment already meets
+(`hσ`); `Good` and the context are kept. Open: the substitution lemma is not written. -/
+theorem substEnv_neutral_sim (fuel : Nat) (st st' : MState) (p : Place) (n T : Value) (σ : Nat) (s : SState)
+    (π : Nat → Nat) (b : Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (hn : ckContent st.env p = some n) (hsealed : ∃ t, n = .sealed t) (hfree : ∀ l, n.hasLoan l = false)
+    (hT : GenTy K ρ st T n) (hσT : st.absTy[σ]? = some T) (hσn : n.hasAbs σ = false)
+    (hσ : ρ σ = meanV K ρ (fun _ => .err) (.plain (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T)) n)
+    (h : Runs (Ochr.substEnv fuel n (.abs σ) true) st b () st') :
+    Rel K ρ φ π st' s ∧ Good K.dm K.M K.Γ ρ { st' with neutrals := (n, σ) :: st'.neutrals } ∧
+      CtxOk K ρ { st' with neutrals := (n, σ) :: st'.neutrals } := by
+  sorry
+
+/-- Recording a generalisation changes nothing the relation reads. -/
+theorem rel_neutrals (st : MState) (x : List (Value × Nat)) (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) :
+    Rel K ρ φ π { st with neutrals := x } s := ⟨hs.1, hs.2, hs.3, hs.4, hs.5⟩
+
+/-- **`generalizeNeutral` in the simulation form, with an extended context**, assembled: the
+place's type, the fresh unknown, the substitution and the record. The sealed program `n` at `p`
+becomes a fresh unknown `σ` with the record `n := σ`; under an assignment extended by `σ := ⟦n⟧`
+(read at `σ`'s type) and Δ by `σ`'s type, and at the unknowns `placeType`'s private copies keep,
+the states stay related to the same reference state. `n` is `p`'s content, a sealed program
+holding no loan, as at both callers; without the first the statement was false
+(`Regress/GenNeutralContent.lean`). The extension is existential, as in every step that creates
+unknowns: `placeType`'s copies keep their unknowns and records (D37), which must be given values. -/
+theorem generalizeNeutral_sim (fuel : Nat) (st st' : MState) (p : Place) (n : Value) (σ : Nat) (s : SState)
+    (π : Nat → Nat) (b : Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (hn : ckContent st.env p = some n) (hsealed : ∃ t, n = .sealed t) (hfree : ∀ l, n.hasLoan l = false)
+    (h : Runs (Ochr.generalizeNeutral fuel p n) st b σ st') :
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ τ, τ < st.absTy.size → ρ' τ = ρ τ ∧ Δ' τ = K.Δ τ) ∧
+      CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π st' s ∧
+      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' := by
+  cases fuel with
+  | zero =>
+    obtain ⟨L, left, log, h⟩ := h
+    simp [Ochr.generalizeNeutral, runMachineL_exhausted] at h
+  | succ fuel =>
+  unfold Ochr.generalizeNeutral at h
+  obtain ⟨T, st₁, b₁, hpt, h1⟩ := Runs.bind_inv h
+  obtain ⟨ρ₁, Δ₁, hext₁, henv₁, hsz₁, hctx₁, hs₁, hg₁, hT₁⟩ :=
+    placeType_sim K ρ φ fuel st st₁ p n T s π b hg hctx hs hn hsealed hfree hpt
+  have hn₁ : ckContent st₁.env p = some n := by rw [henv₁]; exact hn
+  obtain ⟨σ', st₂, b₂, hfa, h2⟩ := Runs.bind_inv h1
+  obtain ⟨rfl, rfl⟩ := runs_freshAbs_inv hfa
+  let v := meanV { K with Δ := Δ₁ } ρ₁ (fun _ => .err)
+    (.plain (Value.tyM K.dm ({ K with Δ := Δ₁ } : RunCtx).M K.Γ ρ₁ (fun _ => .err) T)) n
+  obtain ⟨Δ₂, hext₂, hctx₂, hs₂, hg₂, hT₂, hv⟩ :=
+    freshAbs_sim { K with Δ := Δ₁ } ρ₁ φ st₁ T n s π v hg₁ hctx₁ hs₁ hT₁
+  have hsize₁ : st₁.absTy.size = st₁.nextAbs := Good.absTy_size { K with Δ := Δ₁ } hg₁
+  obtain ⟨u, st₃, b₃, htr, h3⟩ := Runs.bind_inv h2
+  have hst₃ := runs_trace_inv htr
+  subst hst₃
+  obtain ⟨u', st₄, b₄, hsub, h4⟩ := Runs.bind_inv h3
+  have hσT : ({ st₁ with nextAbs := st₁.nextAbs + 1, absTy := st₁.absTy.push T } : MState).absTy[st₁.nextAbs]? = some T := by
+    simp only [← hsize₁, Array.getElem?_push_size]
+  have hσn : n.hasAbs st₁.nextAbs = false := by
+    cases e : n.hasAbs st₁.nextAbs
+    · rfl
+    · have := hT₁.nabs _ e; omega
+  have hσ : (ρ₁.ext st₁.nextAbs v) st₁.nextAbs = meanV { K with Δ := Δ₂ } (ρ₁.ext st₁.nextAbs v) (fun _ => .err)
+      (.plain (Value.tyM K.dm ({ K with Δ := Δ₂ } : RunCtx).M K.Γ (ρ₁.ext st₁.nextAbs v) (fun _ => .err) T)) n := by
+    simp only [Assignment.ext, if_pos rfl]; exact hv.symm
+  obtain ⟨hs₄, hg₄, hctx₄⟩ := substEnv_neutral_sim { K with Δ := Δ₂ } (ρ₁.ext st₁.nextAbs v) φ fuel _ st₄ p n T
+    st₁.nextAbs s π b₃ hg₂ hctx₂ hs₂ hn₁ hsealed hfree hT₂ hσT hσn hσ hsub
+  obtain ⟨L, left, log, h4⟩ := h4
+  simp only [runMachineL_bind, runMachineL_modify, runMachineL_pure, Prod.mk.injEq, Outcome.ok.injEq] at h4
+  obtain ⟨⟨-, rfl⟩, -⟩ := h4
+  refine ⟨ρ₁.ext st₁.nextAbs v, Δ₂, fun τ hτ => ?_, hctx₄, rel_neutrals { K with Δ := Δ₂ } _ φ st₄ _ s π hs₄, hg₄⟩
+  have hτ₁ : τ < st₁.absTy.size := Nat.lt_of_lt_of_le hτ hsz₁
+  have hne : τ ≠ st₁.nextAbs := by omega
+  refine ⟨?_, ?_⟩
+  · simp only [Assignment.ext, if_neg hne]; exact (hext₁ τ hτ).1
+  · rw [hext₂ τ hτ₁]; exact (hext₁ τ hτ).2
+
 end
 
 end Ochr.Meaning.Steps

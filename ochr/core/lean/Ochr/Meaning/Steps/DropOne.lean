@@ -23,7 +23,8 @@ the order the team lead set (model risk first):
    used inside the [Access] statement, an induction-hypothesis field.
 4. The checker's place and the reference's: `rel_resolve` (through `Rel.skel`).
 5. `refine` and `generalizeNeutral` in the simulation form with an extended context
-   (`refine_sim`, `generalizeNeutral_sim`).
+   (`refine_sim`; both are assembled from smaller obligations in `Steps/DropOneAsm.lean`,
+   `refine_sim'` and `generalizeNeutral_sim`).
 6. `movedPlace`'s branches, last: the place exists (`movedPlace_exists'`, PROVED in `Steps/DropRuns.lean`), the lent prefix
    absorbed by the access at an instance ((WF12), `lentPrefix_absorbed`), a filled parent accessed
    whole (`movedPlace_fill`), an unknown of a one-constructor type (`movedPlace_eta`), a sealed
@@ -209,19 +210,6 @@ theorem refine_sim (fuel : Nat) (st st' : MState) (σ : Nat) (r : Value) (s : SS
     (hσ : ρ σ = meanV K ρ φ (.plain (MState.absTyM K.dm K.M K.Γ ρ st σ)) r)
     (h : Runs (Ochr.refine fuel σ r) st b () st') :
     Rel K ρ φ π st' s ∧ Good K.dm K.M K.Γ ρ st' := by
-  sorry
-
-/-- **(5) `generalizeNeutral` in the simulation form, with an extended context.** The sealed
-program `n` at `p` becomes a fresh unknown `σ` with the record `n := σ`; under the assignment
-extended by `σ := ⟦n⟧` (read at `σ`'s type) and `Δ` by `σ`'s type, the states stay related to the
-same reference state. Open: the old `Exact` form (`generalizeNeutral_step_stmt`) is the template. -/
-theorem generalizeNeutral_sim (fuel : Nat) (st st' : MState) (p : Place) (n : Value) (σ : Nat) (s : SState)
-    (π : Nat → Nat) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
-    (h : Runs (Ochr.generalizeNeutral fuel p n) st b σ st') :
-    let ρ' := ρ.ext σ (meanV K ρ φ (.plain (MState.absTyM K.dm K.M K.Γ ρ st' σ)) n)
-    ∃ Δ' : Nat → TyS, (∀ τ, τ < st.absTy.size → Δ' τ = K.Δ τ) ∧ CtxOk { K with Δ := Δ' } ρ' st' ∧
-      Rel { K with Δ := Δ' } ρ' φ π st' s ∧ Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' := by
   sorry
 
 /-- **(6) The lent prefix, absorbed at an instance.** Where the place exists under a fill (a mark,

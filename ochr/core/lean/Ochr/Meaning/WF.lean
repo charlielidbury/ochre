@@ -87,12 +87,20 @@ def ArgsLoanFree (env : Env) (ws : Array Value) : Prop :=
     | u => liveLoansIn env u = []
 
 /-- (WF6), the naming half: every abstract value occurring in Ω, in a stored type, in Δ or in the
-goal has a type in Δ, and every label and abstract value is below its counter (freshness). -/
+goal has a type in Δ, and every label and abstract value is below its counter (freshness).
+
+The counter of unknowns IS the number of typed unknowns. As first written the clause had
+`absTy.size ≤ nextAbs`, which a state with an untyped name below the counter satisfies; `freshAbs`
+names the new unknown `nextAbs` but types it at index `absTy.size`, so from such a state a
+generalisation leaves an unknown with no type in Ω and the clause's own first part fails
+(`Regress/GenNeutralContent.lean`, `wf6_le_not_kept`). The checker keeps the equality: `freshAbs`
+grows both, `restoreKeep` and `exitWorld` keep the copy's counter and its whole list of types,
+`seedHoles` sets both. -/
 def WF6 (st : MState) : Prop :=
   (∀ v ∈ Env.values st.env, ∀ σ, v.hasAbs σ → σ < st.absTy.size) ∧
   (∀ T ∈ st.absTy.toList, ∀ σ, T.hasAbs σ → σ < st.absTy.size) ∧
   (∀ G, st.goal = some G → ∀ σ, G.hasAbs σ → σ < st.absTy.size) ∧
-  st.absTy.size ≤ st.nextAbs ∧
+  st.absTy.size = st.nextAbs ∧
   ∀ v ∈ Env.values st.env, ∀ l ∈ v.loans, l < st.nextLoan
 
 /-- The label `l` occurs in Ω: some value at a position holds a loan of `l` or a borrow labelled
