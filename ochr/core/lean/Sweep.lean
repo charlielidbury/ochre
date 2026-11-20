@@ -552,6 +552,131 @@ def wf10 : Clause where
 
 /-! ### Planted: deliberately false, to show the sweep is not vacuous -/
 
+/-! ### Candidates for `movedPlace`'s exits (not yet clauses of `Good`; spine, 2026-11-21)
+
+`movedPlace` re-roots a place the join drops to its parent when the parent holds nothing it can
+refine (`MovedPlace.exit_abs`, `exit_sealed`, `exit_other`). The proof needs the parent to hold
+`⊥`, `⋆`, or an unknown of the parent's declared inductive type. These clauses test the facts that
+would give it, on the states recorded. -/
+
+/-- The labels of marks outside sealed programs and code (as `outerLoans` walks). -/
+def outerMarks : Value → List Nat
+  | .gloan l w => l :: outerMarks w
+  | .succ w | .tRef w | .borrow _ w => outerMarks w
+  | .ind _ _ _ ps fs => (ps.attach.flatMap fun ⟨v, _⟩ => outerMarks v) ++ (fs.attach.flatMap fun ⟨v, _⟩ => outerMarks v)
+  | _ => []
+
+/-- (M) Every mark outside a sealed program is of a live borrow ([End] removes its marks). -/
+def marksLive : Clause where
+  name := "(M, candidate) every mark outside a sealed program is of a live borrow"
+  premises := [("a mark exists", fun st => (posVals st.env).any fun (_, v) => !(outerMarks v).isEmpty)]
+  check st := (posVals st.env).flatMap fun (p, v) => (outerMarks v).filterMap fun l =>
+    if liveLoan st.env l then none else some ⟨"a mark of an ended borrow", s!"{posName st.env p}: lent_{l}"⟩
+
+/-- The head of an inductive type value. -/
+def indHead? : Value → Option String
+  | .tInd n _ => some n
+  | _ => none
+
+/-- (U) An unknown has its holder's declared inductive type: at a binding whose stored type is an
+inductive `D(…)` and whose value is an unknown `σ`, `σ`'s type is `D(…)`; and an unknown that is a
+field of a constructor value whose declared field type is written `E(…)` has a type `E(…)`. -/
+def unknownTyped : Clause where
+  name := "(U, candidate) an unknown has its holder's declared inductive type"
+  premises := [
+    ("a binding of an inductive type holds an unknown", fun st => (bindings st.env).any fun (_, _, b) =>
+      (match b.ty with | some (.tInd _ _) => true | _ => false) && (match b.val with | .abs _ => true | _ => false)),
+    ("a constructor field declared `E(…)` holds an unknown", fun st => (posVals st.env).any fun (_, v) =>
+      v.anyAtom fun
+        | .ind ty c _ _ fs => match st.inds.find? (·.name == ty) with
+          | some d => match d.ctors[c]? with
+            | some (_, flds) => (fs.zip flds).any fun (w, (_, FT)) =>
+                (match FT with | .tind _ _ => true | _ => false) && (match w with | .abs _ => true | _ => false)
+            | none => false
+          | none => false
+        | _ => false)]
+  check st :=
+    ((bindings st.env).filterMap fun (f, i, b) => match b.ty, b.val with
+      | some (.tInd n _), .abs σ =>
+        if indHead? (st.absTy.getD σ .bot) == some n then none
+        else some ⟨"an unknown at a binding of an inductive type, with another type",
+          s!"{b.hint.name} (binding {f}.{i}) : {n}(…) holds σ{σ} : {clip (st.absTy.getD σ .bot).pp}"⟩
+      | _, _ => none) ++
+    ((posVals st.env).flatMap fun (p, v) =>
+      let bad := fun (w : Value) => match w with
+        | .ind ty c _ _ fs => match st.inds.find? (·.name == ty) with
+          | some d => match d.ctors[c]? with
+            | some (_, flds) => (fs.zip flds).any fun (w, (_, FT)) => match FT, w with
+              | .tind m _, .abs σ => indHead? (st.absTy.getD σ .bot) != some m
+              | _, _ => false
+            | none => false
+          | none => false
+        | _ => false
+      if v.anyAtom bad then [⟨"an unknown field declared `E(…)`, with another type", s!"{posName st.env p}: {clip v.pp}"⟩] else [])
+
+/-- What may sit at a place declared an inductive `n` of the declarations: `⊥`, `⋆`, an unknown, a
+sealed program, a loan, a mark (over anything), or a constructor value of `n`. -/
+def fitsInd (n : String) : Value → Bool
+  | .bot | .proof | .abs _ | .sealed _ | .loan _ | .gloan _ _ => true
+  | .ind ty _ _ _ _ => ty == n
+  | _ => false
+
+/-- (V) A place declared an inductive holds a value of that inductive or a stand-in for one: at a
+binding whose declared reading is `.ind n _` with `n` declared, and at a constructor field whose
+declared type is written `E(…)` with `E` declared. -/
+def valueFits : Clause where
+  name := "(V, candidate) a place declared an inductive holds one of its values or a stand-in"
+  premises := [
+    ("a binding is declared an inductive of the declarations", fun st => (bindings st.env).any fun (_, _, b) =>
+      match b.decl with | .ind n _ => (st.inds.find? (·.name == n)).isSome | _ => false)]
+  check st :=
+    ((bindings st.env).filterMap fun (f, i, b) => match b.decl with
+      | .ind n _ =>
+        if (st.inds.find? (·.name == n)).isSome && !fitsInd n b.val then
+          some ⟨s!"a binding declared an inductive holds something else", s!"{b.hint.name} (binding {f}.{i}) : {n}(…) holds {clip b.val.pp}"⟩
+        else none
+      | _ => none) ++
+    ((posVals st.env).flatMap fun (p, v) =>
+      let bad := fun (w : Value) => match w with
+        | .ind ty c _ _ fs => match st.inds.find? (·.name == ty) with
+          | some d => match d.ctors[c]? with
+            | some (_, flds) => (fs.zip flds).any fun (w, (_, FT)) => match FT with
+              | .tind m _ => (st.inds.find? (·.name == m)).isSome && !fitsInd m w
+              | _ => false
+            | none => false
+          | none => false
+        | _ => false
+      if v.anyAtom bad then [⟨"a field declared `E(…)` holds something else", s!"{posName st.env p}: {clip v.pp}"⟩] else [])
+
+/-- (R) A binding declared a borrow type holds a borrow, `⊥`, a loan or a mark over one (so `*p` exists
+where `p` holds anything else than `⊥`). -/
+def refFits : Value → Bool
+  | .borrow _ _ | .bot | .loan _ => true
+  | .gloan _ w => refFits w
+  | _ => false
+
+def refHolds : Clause where
+  name := "(R, candidate) a binding declared a borrow type holds a borrow, ⊥ or a loan"
+  premises := [("a binding is declared a borrow type", fun st => (bindings st.env).any fun (_, _, b) =>
+    match b.decl with | .ref _ => true | _ => false)]
+  check st := (bindings st.env).filterMap fun (f, i, b) => match b.decl with
+    | .ref _ => if refFits b.val then none
+      else some ⟨"a binding declared a borrow type holds something else", s!"{b.hint.name} (binding {f}.{i}) holds {clip b.val.pp}"⟩
+    | _ => none
+
+/-- (A) A constructor value of a declared inductive has its constructor's number of fields. -/
+def arity : Clause where
+  name := "(A, candidate) a constructor value has its constructor's fields"
+  check st := (posVals st.env).flatMap fun (p, v) =>
+    let bad := fun (w : Value) => match w with
+      | .ind ty c _ _ fs => match st.inds.find? (·.name == ty) with
+        | some d => match d.ctors[c]? with
+          | some (_, flds) => fs.length != flds.length
+          | none => true
+        | none => false
+      | _ => false
+    if v.anyAtom bad then [⟨"a constructor value with the wrong fields", s!"{posName st.env p}: {clip v.pp}"⟩] else []
+
 /-- Planted, FALSE: "no live borrow has a fill". It reads the same sites and live labels as (ii) and
 (iii), so its violations must be exactly the states (ii)'s first premise counts. -/
 def plantedFill : Clause where
@@ -569,7 +694,7 @@ def plantedAbs : Clause where
     if v.anyAtom (fun | .abs _ => true | _ => false) then some ⟨s!"{c} holds an unknown", s!"{c} {w}: {clip v.pp}"⟩ else none
 
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, plantedFill, plantedAbs]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, plantedFill, plantedAbs]
 
 /-! ## The sweep -/
 
