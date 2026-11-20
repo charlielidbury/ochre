@@ -1052,53 +1052,9 @@ theorem callFrame_id1 (cd : DeclInfo) (bs : List PBind) (hb : bs = bindsOf (Kc d
   funext p
   by_cases h1 : p = Pos.bind 1 1 <;> by_cases h2 : p = Pos.temp 0 0 <;> simp [h1, h2]
 
-/-- **`Id1(&y)` in place against `callOf`, at typed futures** (the lead's first check for D66): the
-same result (`2` at the reborrow `1`), the same positions, holders and lending of the reborrow, and,
-at every future that gives the reborrow a number, the same meaning at every position (`y` reads the
-reborrow's final content raw in place, decoded by `callOf`). -/
-theorem id1_inPlace_typed :
-    ∃ T s', runCallRef (Kc dm) ρ φ (fresId1 dm ρ φ) [] id1T [] [(.el0 Nat 2, { yB.ty with label := some 0 })]
-        (Attack.S₂ yB 0 (.el0 Nat 2)) = some ((.el0 Nat 2, T), s') ∧ T.label = some 1 ∧
-      s'.positions = (SC1 dm).positions ∧ s'.shape = (SC1 dm).shape ∧ s'.lent 1 = (SC1 dm).lent 1 ∧
-      ∀ (p : Pos) (ψ : Future) (n : Nat), ψ 1 = .el0 Nat n → s'.valAt p ψ = (SC1 dm).valAt p ψ := by
-  have hs₀ : (capsState (capsVals (Kc dm) ρ φ []) (capsTys (Kc dm) ρ φ [])).foldl SState.pushBind
-      (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame = (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame := by
-    simp [capsState, capsVals, capsTys]
-  let cd := (Kc dm).D.typeDecl ((Kc dm).D.teleDecls (scopeOf (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame) [.ref .nat]) (.ref .nat)
-  let d := ((bindsOf (Kc dm) ρ φ (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame [.ref .nat]).getD 0 (fun _ => .plain TyM.err, .other)).2
-  obtain ⟨Tb, hlb, hTb⟩ := runBody_id1P dm ρ φ (selfId1P dm ρ φ cd) d 2
-  have hpop := popCallFrame_two 1 (SPg2 (selfId1P dm ρ φ cd) d Tb.m (.el0 Nat 2) (.el0 Nat 2)) 0 1 1 1 (.temp 1 0)
-    (liveLabels_SPg2 _ _ _ _) (holderOf_SPg2 _ _ _ _) rfl (by decide) (holderOf_end_SPg2 _ _ _ _)
-  have hrun : runCallRef (Kc dm) ρ φ (fresId1 dm ρ φ) [] id1T [] [(.el0 Nat 2, { yB.ty with label := some 0 })]
-      (Attack.S₂ yB 0 (.el0 Nat 2)) = some ((.el0 Nat 2, { Tb with label := some 1 }),
-        (popCallFrame 1 (some 1) (SPg2 (selfId1P dm ρ φ cd) d Tb.m (.el0 Nat 2) (.el0 Nat 2))).setLent 1
-          (((Attack.S₂ yB 0 (.el0 Nat 2)).lent 0).map fun x => { x with fill := true })) := by
-    unfold runCallRef runBodyRef
-    simp only [id1T, hs₀]
-    rw [callFrame_id1 dm ρ φ _ _ rfl, hTb _ _]
-    simp [outId1, codOf_id1, hlb]
-    rfl
-  refine ⟨_, _, hrun, rfl, ?_, ?_, ?_, ?_⟩
-  · rw [hpop, endLabel_SPg2]
-    simp [SState.positions, SState.setLent, SState.pushTempShaped, SState.pushTemp, SState.mapVals, SState.topIdx, SPg2,
-      yFrame, SC1, Attack.takeLabel_S₂, SState.freshLoan, List.range']
-  · rw [hpop, endLabel_SPg2]
-    funext p
-    rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> rcases f with _ | _ | f <;> rcases i with _ | _ | i <;>
-      simp [SState.setLent, SState.pushTempShaped, SState.pushTemp, SState.mapVals, SState.topIdx, SPg2, yFrame, SC1,
-        Attack.takeLabel_S₂, SState.freshLoan, Mean.semEnd, SState.toMean]
-  · rw [hpop, endLabel_SPg2]
-    have h1 : (Attack.S₂ yB 0 (.el0 Nat 2)).lent 0 = [⟨.bind 0 0, [], false⟩] := rfl
-    simp [SState.setLent, SState.pushTempShaped, SState.pushTemp, SState.mapVals, SState.topIdx, SPg2, yFrame, SC1,
-      Attack.takeLabel_S₂, SState.freshLoan, h1]
-  · intro p ψ n hψ
-    have hd : Code0.dec dm.read TyM.nat.code0.snd (.el0 Nat n) = some (show TyM.nat.code0.fst from n) :=
-      Attack.dec_nat_el0 dm.read n
-    rw [hpop, endLabel_SPg2]
-    rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> rcases f with _ | _ | f <;> rcases i with _ | _ | i <;>
-      simp [SState.valAt, SState.setLent, SState.pushTempShaped, SState.pushTemp, SState.mapVals, SState.topIdx, SPg2,
-        yFrame, SC1, Attack.takeLabel_S₂, SState.freshLoan, Mean.semEnd, SState.toMean, hψ, hd, xB, Future.upd]
-    rfl
+-- `Id1(&y)` in place against `callOf` is `Regress/CallInPlaceD99.lean` (`id1_inPlace_typed`): since
+-- D99 the call in place reserves the result's label before the body runs and renames the body's
+-- returned borrow into it.
 
 end Ochr.Meaning.Regress.CallInPlace
 

@@ -74,21 +74,37 @@ noncomputable def runBodyRef (fres : Res) (cs : List Value) (t : Term) (rd : Lis
     | none => none
   | _ => none
 
-/-- The run in place with the result's lending as the checker's `callFn` finishes it (static ends,
-rule 1, [Lend]): before the body runs the checker marks every place its borrow arguments lend for a
-reserved label `g` (`lendEnv (.mark l g)`), and after it hands those marks to the returned borrow
-(`lendEnv (.ended g [k])`). So a returned borrow is lent, as fills, at every place a borrow argument
-was lent at before the call, as `callOf` sets it (`setLent k lentK`), WHATEVER the body returned
-it from: `Pick2 (a : &Nat) (b : &Nat) : &Nat := &*a` lends its result at `b`'s lender too, though
-the pop's [End]s re-root the reborrow only to `a`'s (docs/31 D69, `Regress/ReturnParam.lean`).
-As first written the result kept the sites the pop gave it, made fills, which missed `b`'s. -/
+/-- D99's renaming of a returned borrow `k` into the label `g` the call reserved: the holder of `k`
+holds `g` instead, every meaning reads `g`'s final content where it read `k`'s, and `g` takes `k`'s
+record and held type; `k` is gone, and so are its sites (`g` was lent before the body ran). -/
+noncomputable def SState.endInto (s : SState) (k g : Nat) : SState :=
+  { (s.mapVals fun _ v φ' => v (φ'.upd k (φ' g))) with
+    shape := fun p => if s.shape p = some k then some g else s.shape p,
+    lent := fun m => if m = k then [] else s.lent m,
+    heldMem := fun m => if m = g then s.heldMem k else s.heldMem m,
+    heldTy := fun m => if m = g then s.heldTy k else s.heldTy m }
+
+/-- **The call in place, as the checker's `callFn` makes it** (static ends, rule 1, [Lend]; main's D99).
+For a callee whose codomain is a borrow, the call first reserves the result's label `g` and lends it,
+as fills, at every place a borrow argument was lent (the checker's marks `lent_g`), whatever the body
+returns it from (`Pick2 (a : &Nat) (b : &Nat) : &Nat := &*a` lends its result at `b`'s lender too,
+docs/31 D69, `Regress/ReturnParam.lean`); then the body runs in place; then the borrow the body
+returned, whichever it is (a reborrow made in the body, or a borrow argument itself, `IdP(x) := x`),
+is renamed into `g` (`endInto`), so the result is always the fresh `g`, as when the call closes off
+and as `callOf` gives it. As first written the result kept the body's label (an argument's, for
+`IdP`), which no renaming agreeing before the call relates to `callOf`'s (D69); and it kept the sites
+the pop gave it, missing `b`'s lender for `Pick2`. -/
 noncomputable def runCallRef (fres : Res) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value))
     (args : List Res) : SM Res := fun s =>
   let lentK := ((args.filterMap (·.2.label)).flatMap s.lent).map fun x : Site => { x with fill := true }
-  (runBodyRef K ρ φ fres cs t rd args s).map fun (r, s') =>
-    (r, match r.2.label with
-      | some k => s'.setLent k lentK
-      | none => s')
+  match t with
+  | .fix _ _ _ (.ref _) _ _ =>
+    let (g, s₁) := s.freshLoan
+    (runBodyRef K ρ φ fres cs t rd args (s₁.setLent g lentK)).map fun (r, s') =>
+      match r.2.label with
+      | some k => ((r.1, { r.2 with label := some g }), s'.endInto k g)
+      | none => (r, s')
+  | _ => runBodyRef K ρ φ fres cs t rd args s
 
 end
 

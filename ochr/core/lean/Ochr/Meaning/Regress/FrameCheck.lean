@@ -21,9 +21,25 @@ namespace Ochr.Meaning.Regress.FrameCheck
 open Ochr Ochr.Meaning Ochr.Meaning.Regress.CallInPlace
 
 /-- A cell that still reads its label leaves the caller's frames as they were. -/
-theorem cellFuture_self (ψ : Future) : cellFuture [0] [fun ψ => ψ 0] ψ = ψ := by
+theorem cellFuture_self (ψ : Future) : cellFuture (fun l => l) [0] [fun ψ => ψ 0] ψ = ψ := by
   funext l
-  by_cases hl : l = 0 <;> simp [cellFuture, Future.updList, Future.upd, hl]
+  by_cases hl : l = 0 <;> simp [cellFuture, renF, Future.updList, Future.upd, hl]
+
+/-- A binding of the closure's frame is itself in place, under the identity renaming. -/
+theorem bindRen_id (b : SBinding) : BindRen (fun l => l) b b := by
+  refine ⟨?_, rfl, rfl, fun ψ => rfl⟩
+  cases b with | mk ty v d rb => cases ty with | mk m lab => cases lab <;> rfl
+
+/-- The top-frame clause where both frames hold the same bindings and the in-place one no temporary
+(at the call), or one temporary after the cell (after `&*x`). -/
+theorem top_same (bs : List SBinding) (ts : List SVal) (cell : SVal) :
+    ∃ F F', [SFrame.mk bs ts].getLast? = some F ∧ [SFrame.mk bs (cell :: ts)] = [F'] ∧ F.binds.length = F'.binds.length ∧
+      (∀ (i : Nat) b b', F.binds[i]? = some b → F'.binds[i]? = some b' → BindRen (fun l => l) b b') ∧
+      F'.temps.length = [0].length + F.temps.length ∧
+      ∀ (j : Nat) v, F.temps[j]? = some v → ∃ v', F'.temps[j + [0].length]? = some v' ∧ ∀ ψ, v ψ = v' (renF (fun l => l) ψ) := by
+  refine ⟨_, _, rfl, rfl, rfl, fun i b b' h h' => ?_, by simp; omega, fun j v hv => ⟨v, by simpa using hv, fun _ => rfl⟩⟩
+  have h1 : bs[i]? = some b := by simpa using h
+  rw [h1] at h'; cases h'; exact bindRen_id b
 
 theorem cellsOf_SBs (selfB : SBinding) (d : DeclInfo) (c r : Sem) : cellsOf 1 (SBs selfB d c r) = [fun ψ => ψ 0] := rfl
 
@@ -82,17 +98,21 @@ theorem SPg_start (c : Sem) : FrameStart (SPg selfB d c r) [0] where
   ks_lt := by simp [SPg]
   callerHeld := fun p l hp hl => by
     rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp hl <;> omega
+  callerLent := fun p l x hp hl => by
+    rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp hl <;> omega
   ks_nodup := by simp
 
 /-- **`Id1`, at the call**: the in-place state and the closure's frame are related. -/
-theorem id1_start (c : Sem) : FrameRel (SPg selfB d c r) [0] (SPg selfB d c r) (SBs selfB d c r) where
+theorem id1_start (c : Sem) : FrameRel (fun l => l) (SPg selfB d c r) [0] (SPg selfB d c r) (SBs selfB d c r) where
+  inj := fun _ _ h => h
+  fresh := fun _ => rfl
   frames := ⟨rfl, rfl⟩
   lowerSkel := fun _ _ => rfl
   lowerVal := fun p _ ψ => by
-    show _ = (SPg selfB d c r).valAt p (cellFuture [0] (cellsOf 1 (SBs selfB d c r)) ψ)
+    show _ = (SPg selfB d c r).valAt p (cellFuture (fun l => l) [0] (cellsOf 1 (SBs selfB d c r)) ψ)
     rw [cellsOf_SBs, cellFuture_self]
   lowerShape := fun _ _ => rfl
-  top := ⟨_, _, rfl, rfl, rfl, rfl, rfl⟩
+  top := top_same _ _ _
   topShape := fun p hp => by
     rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;>
       simp [upPos, SBs, SPg]
@@ -100,7 +120,6 @@ theorem id1_start (c : Sem) : FrameRel (SPg selfB d c r) [0] (SPg selfB d c r) (
     by_cases h : q = .bind 0 1
     · exact ⟨.bind 1 1, rfl, h⟩
     · simp [SBs, h] at hq
-  next := rfl
   held := fun l hl => by
     have h0 : l = 0 := by simpa [SState.Live, liveLabels_SBs] using hl
     subst h0; simp [SPg, SBs]
@@ -111,6 +130,7 @@ theorem id1_start (c : Sem) : FrameRel (SPg selfB d c r) [0] (SPg selfB d c r) (
       · subst hl; simp [SPg] at hm; subst hm; simp [Pos.frameOf, SState.topIdx, SPg] at hx
       · simp [SPg, hl] at hm
     · intro hm; simp [SBs] at hm
+  lentImg := fun m _ _ _ => ⟨m, rfl⟩
   lentCl := fun l x hx => by simp [SBs] at hx
   lentCaller := fun _ _ _ _ => rfl
   topLabels := fun l hl => by
@@ -121,20 +141,22 @@ theorem cellsOf_SB2 (T : TyM) (c r : Sem) : cellsOf 1 (SB2 selfB d T c r) = [fun
 
 /-- **`Id1`, after the body**: related again, the reborrow `1` parked and lent at `*x` on both sides. -/
 theorem id1_after (T : TyM) (c c₀ : Sem) :
-    FrameRel (SPg selfB d c₀ r) [0] (SPg2 selfB d T c r) (SB2 selfB d T c r) where
+    FrameRel (fun l => l) (SPg selfB d c₀ r) [0] (SPg2 selfB d T c r) (SB2 selfB d T c r) where
+  inj := fun _ _ h => h
+  fresh := fun _ => rfl
   frames := ⟨rfl, rfl⟩
   lowerSkel := fun f hf => by
     have : f = 0 := by simp [SState.topIdx, SPg] at hf; omega
     subst this; rfl
   lowerVal := fun p hp ψ => by
-    show _ = (SPg selfB d c₀ r).valAt p (cellFuture [0] (cellsOf 1 (SB2 selfB d T c r)) ψ)
+    show _ = (SPg selfB d c₀ r).valAt p (cellFuture (fun l => l) [0] (cellsOf 1 (SB2 selfB d T c r)) ψ)
     rw [cellsOf_SB2, cellFuture_self]
     rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;>
       simp [SState.valAt, SPg, SPg2]
   lowerShape := fun p hp => by
     rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;>
       simp [SPg, SPg2]
-  top := ⟨_, _, rfl, rfl, rfl, rfl, rfl⟩
+  top := top_same _ _ _
   topShape := fun p hp => by
     rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;>
       rcases i with _ | _ | i <;> simp [upPos, SB2, SPg2]
@@ -144,7 +166,6 @@ theorem id1_after (T : TyM) (c c₀ : Sem) :
     · by_cases h2 : q = .bind 0 1
       · exact ⟨.bind 1 1, rfl, h2⟩
       · simp [SB2, h1, h2] at hq
-  next := rfl
   held := fun l hl => by
     have h01 : l = 0 ∨ l = 1 := by
       have := hl; simp only [SState.Live, liveLabels_SB2] at this; simpa using this
@@ -160,6 +181,7 @@ theorem id1_after (T : TyM) (c c₀ : Sem) :
         rcases pos with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hx <;> subst hx <;>
           simp [SPg2, SB2, upPos]
       · simp [SPg2, SB2, h1, h0]
+  lentImg := fun m _ _ _ => ⟨m, rfl⟩
   lentCl := fun l x hx => by
     by_cases h1 : l = 1
     · subst h1; simp [SB2] at hx; subst hx; exact ⟨.bind 1 1, rfl, rfl⟩
@@ -175,34 +197,36 @@ theorem id1_after (T : TyM) (c c₀ : Sem) :
 same result and related states, in place and in the closure's frame. -/
 theorem id1_frame (a : Nat) (hint : TyS) (tl : Bool) :
     FrameStart (SPg selfB d (.el0 Nat a) r) [0] ∧
-    FrameRel (SPg selfB d (.el0 Nat a) r) [0] (SPg selfB d (.el0 Nat a) r) (SBs selfB d (.el0 Nat a) r) ∧
+    FrameRel (fun l => l) (SPg selfB d (.el0 Nat a) r) [0] (SPg selfB d (.el0 Nat a) r) (SBs selfB d (.el0 Nat a) r) ∧
     ∃ res s₁ s₁', runT (Kc dm) ρ φ tl hint id1Body (SPg selfB d (.el0 Nat a) r) = some (res, s₁) ∧
       runT (Kc dm) ρ φ tl hint id1Body (SBs selfB d (.el0 Nat a) r) = some (res, s₁') ∧
-      FrameRel (SPg selfB d (.el0 Nat a) r) [0] s₁ s₁' :=
+      FrameRel (fun l => l) (SPg selfB d (.el0 Nat a) r) [0] s₁ s₁' :=
   ⟨SPg_start selfB d _, id1_start selfB d _, _, _, _, run_id1_in dm ρ φ selfB d a hint tl,
     run_id1_cl dm ρ φ selfB d a hint tl, id1_after selfB d _ _ _⟩
 
 /-- **`Inc`, after the body**: the same frames, `x` holding the new content; still related (`y`
 reads the parameter's label, which the cell reads). -/
-theorem inc_after (c c₀ : Sem) : FrameRel (SPg selfB d c₀ r) [0] (SPg selfB d c r) (SBs selfB d c r) where
+theorem inc_after (c c₀ : Sem) : FrameRel (fun l => l) (SPg selfB d c₀ r) [0] (SPg selfB d c r) (SBs selfB d c r) where
+  inj := fun _ _ h => h
+  fresh := fun _ => rfl
   frames := ⟨rfl, rfl⟩
   lowerSkel := fun f hf => by
     have : f = 0 := by simp [SState.topIdx, SPg] at hf; omega
     subst this; rfl
   lowerVal := fun p hp ψ => by
-    show _ = (SPg selfB d c₀ r).valAt p (cellFuture [0] (cellsOf 1 (SBs selfB d c r)) ψ)
+    show _ = (SPg selfB d c₀ r).valAt p (cellFuture (fun l => l) [0] (cellsOf 1 (SBs selfB d c r)) ψ)
     rw [cellsOf_SBs, cellFuture_self]
     rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;>
       simp [SState.valAt, SPg]
   lowerShape := fun _ _ => rfl
-  top := ⟨_, _, rfl, rfl, rfl, rfl, rfl⟩
+  top := top_same _ _ _
   topShape := fun p hp => by
     rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;>
       simp [upPos, SBs, SPg]
   clShape := (id1_start selfB d c).clShape
-  next := rfl
   held := fun l hl => (id1_start (r := r) selfB d c).held l hl
   lentTop := fun l x hx => (id1_start (r := r) selfB d c).lentTop l x (by simpa [SState.topIdx, SPg] using hx)
+  lentImg := fun m _ _ _ => ⟨m, rfl⟩
   lentCl := (id1_start selfB d c).lentCl
   lentCaller := fun _ _ _ _ => rfl
   topLabels := fun l hl => by
@@ -238,10 +262,10 @@ theorem SP_eq (cd : DeclInfo) (c : Sem) : SP dm ρ φ cd d c r = SPg (selfP dm �
 the same result `()`, related after (`y` reading the parameter's label, the closure's cell reading it). -/
 theorem inc_frame (cd : DeclInfo) (a : Nat) (hint : TyS) (tl : Bool) :
     FrameStart (SP dm ρ φ cd d (.el0 Nat a) r) [0] ∧
-    FrameRel (SP dm ρ φ cd d (.el0 Nat a) r) [0] (SP dm ρ φ cd d (.el0 Nat a) r) (SBs (selfP dm ρ φ cd) d (.el0 Nat a) r) ∧
+    FrameRel (fun l => l) (SP dm ρ φ cd d (.el0 Nat a) r) [0] (SP dm ρ φ cd d (.el0 Nat a) r) (SBs (selfP dm ρ φ cd) d (.el0 Nat a) r) ∧
     ∃ res s₁ s₁', runT (Kc dm) ρ φ tl hint incBody (SP dm ρ φ cd d (.el0 Nat a) r) = some (res, s₁) ∧
       runT (Kc dm) ρ φ tl hint incBody (SBs (selfP dm ρ φ cd) d (.el0 Nat a) r) = some (res, s₁') ∧
-      FrameRel (SP dm ρ φ cd d (.el0 Nat a) r) [0] s₁ s₁' := by
+      FrameRel (fun l => l) (SP dm ρ φ cd d (.el0 Nat a) r) [0] s₁ s₁' := by
   rw [SP_eq]
   have hin := runBody_incP (r := r) dm ρ φ cd d a hint tl
   rw [SP_eq, SP_eq] at hin

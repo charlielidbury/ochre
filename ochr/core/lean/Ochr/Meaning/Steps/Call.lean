@@ -1,4 +1,4 @@
-import Ochr.Meaning.Steps.IH
+import Ochr.Meaning.Steps.CallAsm
 
 /-!
 # Step lemmas, calls: `callFn`, `runBody`, `closeCall`, `callType`, `recCheck` (milestone 3)
@@ -29,8 +29,8 @@ theorem callFn_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : ca
 
 /-- Running a body (`runBody`): the frame pushed with the captures and parameters, the body run,
 the frame popped: below the function's meaning applied (the induction hypothesis on the body). -/
-theorem runBody_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : runBody_step_stmt K ρ φ (fuel + 1) := by
-  sorry
+theorem runBody_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : runBody_step_stmt K ρ φ (fuel + 1) :=
+  runBody_step_asm K ρ φ fuel ih
 
 /-- [Close] (`closeCall`), every row: exact against `callOf`. The result is a sealed program (or
 `()` at a declared `Unit`, or a borrow of one), and each lent place a fill: both mean what the
@@ -60,33 +60,56 @@ lending marks and their end, the call's type and the body's and arguments' hints
 `catchStuck` restoring the state, the class of a call that is neither a statement nor erased) are
 named in docs/31 D62 and get their statements with the assemblies. -/
 
-/-- **The in-place run of a known callee's body is the application of its meaning** (the
-reference alone; docs/31 D62, risk-bearing). `runCallRef` pushes the callee's frame on the caller's
-state, holds each borrow parameter at its argument's label, runs the body, ends at the pop every
-borrow the frame holds or the body made but the returned one, and lends that one where its borrow
-arguments were lent; `callOf` applies the closure's meaning, built from the body's run in the
-closure's own frame from the label counter 0, each borrow parameter at a fresh label read back
-through a cell, and fixes each lent place's final content. They give the same result (meaning and
-code), and the states after relate every checker state alike, the result's label renamed.
+/-- **The in-place run of a known callee's body is the application of its meaning** (the reference
+alone; docs/31 D62, D70; open). `runCallRef` runs the call as the checker's `callFn` does (main's D99):
+it reserves the result's label and lends it where the borrow arguments lent, pushes the callee's frame
+on the caller's state, runs the body, pops the frame (every borrow it holds or the body made ends but
+the returned one), and renames the returned borrow into the reserved label. `callOf` applies the
+closure's meaning, built from the body's run in the closure's own frame (labels from `0`, a cell per
+borrow parameter), and fixes each lent place's final content. They give the same result, its label
+included (both the reserved fresh label), and every checker state related to the one is related to
+the other under the same renaming. For a body that holds no `Id`, or a call with no borrow argument:
+there the frame property needs no hypothesis (`FrameProp.run_frame`); the other case is
+`callOf_inPlace_rel`, at a call related to the checker's.
 
-What it rests on, none proved: the reference's run reads and writes only the top frame and the
-sites of the labels it holds, reaching the caller's frames only through the parameters' labels,
-which the closure's cells stand for (the frame property of `run`, `FrameProp.run_frame`, stated for
-`Id`-free bodies and checked on `Inc` and `Id1`, `Regress/FrameCheck.lean`; at an `Id` the in-place
-observation reads the caller's frames where the closure reads the cells, docs/31 D70); the run does
-not depend on its starting label counter (`Lemmas.run_counter_indep`, open); a cell read after the frame's ends is the holder's
-content at its end, which `endLabel` fixes in the caller's places; for a recursive callee, the
-closure's meaning applied at the arguments is the body's run with `self` the closure itself, which
-needs every recursive call to decrease ([Rec], `hacc`; `recCheck_sound_stmt`), and whose statement
-needs the `.fix` clause's stages named outside the clause. -/
+What it rests on, none proved: the frame property with the renaming of labels
+(`FrameProp.run_frame`, whose special case is `run_counter_indep`); the `self` binding (in place the
+callee's reading, in the closure's meaning `err` (non-recursive: a body that never reads `self`) or
+the stage's closure (recursive: the fixpoint equation under [Rec], which needs every recursive call
+to decrease, `hacc`, and the `.fix` clause's stages, `RunCongr.fixStage`)); the pop against the
+closure's ends and its cells (`popCallFrame` ends what `bodyAt` ends, and the cells, read after, are
+what `callOf` writes into the lent places, `FrameRel.lowerVal` at the end); the reservation and the
+renaming against `callOf`'s fresh label (`SState.endInto`). Checked on `Inc` and `Id1`
+(`Regress/CallInPlace.inc_agree`, `Regress/CallInPlaceD99.id1_inPlace_typed`). -/
 theorem callOf_inPlace (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (fres : Res)
     (as : List Res) (s s₁ : SState) (r₁ : Res)
     (hf : run K ρ φ (.plain .err) (.val (.clo cs t rd)) s = some (fres, s))
     (hacc : ∃ st fuel st', Runs (Ochr.checkFix fuel (.clo cs t rd) [] t) st fuel () st')
+    (hid : t.idFree = true ∨ ∀ a ∈ as, a.2.label = none)
     (hin : runCallRef K ρ φ fres cs t rd as s = some (r₁, s₁)) :
-    ∃ (r : Res) (s' : SState) (τ : Nat → Nat), callOf K.dm.read fres as s = some (r, s') ∧ r.1 = r₁.1 ∧ r.2.m = r₁.2.m ∧
-      (∀ l, l < s.nextLoan → τ l = l) ∧ r.2.label = r₁.2.label.map τ ∧
-      ∀ (st : MState) (π : Nat → Nat), Rel K ρ φ π st s₁ → Rel K ρ φ (τ ∘ π) st s' := by
+    ∃ s', callOf K.dm.read fres as s = some (r₁, s') ∧
+      ∀ (st : MState) (π : Nat → Nat), Good K.dm K.M K.Γ ρ st → Rel K ρ φ π st s₁ → Rel K ρ φ π st s' := by
+  sorry
+
+/-- **The in-place call is `callOf`, at a call related to the checker's** (docs/31 D70; open), for every
+body: `callOf_inPlace` where the body holds no `Id` or no argument is a borrow; otherwise the same
+proof with the frame property at each `Id` (`FrameProp.run_frame_obs`), whose hypotheses the checker's
+run gives: at each observation the parameters' final contents are whole members (no borrow ends over
+a moved-out content, main's D98; the body is typed), and the caller's places determine them (each
+borrow argument is lent where its final content is read directly, or through an earlier call's
+backward function, injective on members). -/
+theorem callOf_inPlace_rel (fuel : Nat) (st st' : MState) (fv : Value) (cs : List Value) (t : Term)
+    (rd : List (DeclInfo × Value)) (ws : Array Value) (v : Value)
+    (hg : Good K.dm K.M K.Γ ρ (st.withTemps (fv :: ws.toList))) (hctx : CtxOk K ρ st)
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π (st.withTemps (fv :: ws.toList)) s)
+    (hfix : fv = .clo cs t rd ∨ ∃ n, fv = .gfn n ∧ Runs (Ochr.fixOf fv) st 0 (cs, t, rd) st)
+    (fres : Res) (hf : run K ρ (fun l => φ (π l)) (.plain .err) (.val fv) s = some (fres, s))
+    (as : List Res) (has : ArgsAgree K ρ φ π ws as)
+    (bh : Nat) (h : Runs (Ochr.runBody fuel fv cs t rd ws) st bh v st')
+    (r₁ : Res) (s₁ : SState) (hin : runCallRef K ρ φ fres cs t rd as s = some (r₁, s₁)) :
+    ∃ s', callOf K.dm.read fres as s = some (r₁, s') ∧
+      ∀ (st'' : MState) (π' : Nat → Nat) (K' : RunCtx) (ρ' : Assignment), K'.dm = K.dm → K'.D = K.D →
+        Good K'.dm K'.M K'.Γ ρ' st'' → Rel K' ρ' φ π' st'' s₁ → Rel K' ρ' φ π' st'' s' := by
   sorry
 
 /-- **The nested run of a re-normalised sealed program, for a program with no hole** (`nfSealed`'s

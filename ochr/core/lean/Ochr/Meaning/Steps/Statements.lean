@@ -904,12 +904,20 @@ related, for an assignment extending `ρ` to the unknowns created and a renaming
 /-- The conclusion of a step in the simulation form, for the reference computation `x` run from
 `s`: `x` does not fail, the checker's value `v` (read at the run's future pulled back along the
 renaming) is its result, and the states after are related, under an assignment that extends `ρ`
-on the unknowns of `st` and a renaming that agrees with `π` on the labels `st` had issued. -/
+on the unknowns of `st`, a run context whose `Δ` is extended there too, and a renaming that agrees
+with `π` on the labels `st` had issued; the state after meets the context's conditions again
+(`CtxOk`), and its tables of unknowns and labels only grew. As first stated it kept the context and
+concluded no `CtxOk`, so no step could follow it: the assembly of a body's run (the frame pushed,
+the body, the frame popped) had nothing to apply the pop's step to (docs/31 D71; the join's
+statements already had this form, docs/31 D29 task C). -/
 def SimConcl (π : Nat → Nat) (st st' : MState) (s : SState) (x : Assignment → SM Res) (v : Value) : Prop :=
-  ∃ ρ' π' r s', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
+  ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
+    st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+    (∀ l, l < st.nextLoan → π' l = π l) ∧
     x ρ' s = some (r, s') ∧
-    meanV K ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
-    Rel K ρ' φ π' st' s' ∧ Good K.dm K.M K.Γ ρ' st'
+    meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
+    CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π' st' s' ∧
+    Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
 
 
 /-- **[Join], the entry set** (docs/31 D20 item 1 (e), D24, D29): from related states the
@@ -1402,11 +1410,14 @@ def ArgsAgree (π : Nat → Nat) (ws : Array Value) (as : List Res) : Prop :=
 /-- `SimConcl`, and the type the checker returns agrees with the reference's (`StrAgree`). -/
 def SimConclT (π : Nat → Nat) (st st' : MState) (s : SState) (x : Assignment → SM Res) (v : Value)
     (T? : Option Value) : Prop :=
-  ∃ ρ' π' r s', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
+  ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
+    st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+    (∀ l, l < st.nextLoan → π' l = π l) ∧
     x ρ' s = some (r, s') ∧
-    meanV K ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
-    (∀ T, T? = some T → StrAgree K ρ' T r.2) ∧
-    Rel K ρ' φ π' st' s' ∧ Good K.dm K.M K.Γ ρ' st'
+    meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
+    (∀ T, T? = some T → StrAgree { K with Δ := Δ' } ρ' T r.2) ∧
+    CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π' st' s' ∧
+    Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
 
 /-- **A call** (`callFn`) of a callee that is neither a statement nor a proof (`hns`: the run's
 `SM.erasedIf` is not taken; such calls are `eval`'s, on a copy), in the simulation form: the
@@ -1504,35 +1515,45 @@ def evalCore_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) t = (false, false))
-    (hok : typed = false → (run K ρ φ (hintM K ρ hint) t s).isSome)
+    (hok : typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome)
     (bh : Nat) (h : Runs (Ochr.evalCore fuel typed t hint) st bh (v, T?) st'),
-    ∃ ρ' π', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
-      ∃ r s', run K ρ' φ (hintM K ρ hint) t s = some (r, s') ∧
-        meanV K ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
-        (∀ T, T? = some T → StrAgree K ρ' T r.2) ∧
-        Rel K ρ' φ π' st' s' ∧ Good K.dm K.M K.Γ ρ' st'
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat), st.absTy.size ≤ st'.absTy.size ∧
+      st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+      (∀ l, l < st.nextLoan → π' l = π l) ∧
+      ∃ r s', runT K ρ' φ st.tailNext (hintM K ρ hint) t s = some (r, s') ∧
+        meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
+        (∀ T, T? = some T → StrAgree { K with Δ := Δ' } ρ' T r.2) ∧
+        CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π' st' s' ∧
+        Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
 
-/-- **The induction step as the checker recurses** (docs/31 D20, item 5): every recursive
+/-- **The induction step as the checker recurses** (docs/31 D20, item 5; the tail flag, D71): every recursive
 position of the checker calls `Machine.eval`, which is `evalAt`: it classifies the term
 (`preFlags`), runs an erased one on a private copy and restores the environment. The run does
 the same at `Decisions.flags` (`SM.erasedIf`, D19), so this statement has no side condition on
-the term's class, where `evalCore_step_stmt` has `hns`. Same conclusion, in the simulation form,
+the term's class, where `evalCore_step_stmt` has `hns`. The reference runs in tail position exactly
+when the checker's state says the term is (`st.tailNext`, D90's one-shot flag, which `runBody` sets
+before a body and a tail `let`, sequence or arm hands on): as first stated the reference ran every
+term out of tail position (`run`), and the step for a body, run in tail position on both sides
+(`runBody`, `CallRef.runBodyRef`), had no hypothesis to use (docs/31 D71, found by the assembly). Same conclusion, in the simulation form,
 and the same restriction of untyped runs (`hok`; `Regress/UntypedNil.eval_untyped_false`). -/
 def eval_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (t : Term) (hint : Option Value)
     (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
-    (hok : typed = false → (run K ρ φ (hintM K ρ hint) t s).isSome)
+    (hok : typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome)
     (bh : Nat) (h : Runs (Ochr.eval fuel typed t hint) st bh (v, T?) st'),
-    ∃ ρ' π', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
-      ∃ r s', run K ρ' φ (hintM K ρ hint) t s = some (r, s') ∧
-        meanV K ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat), st.absTy.size ≤ st'.absTy.size ∧
+      st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+      (∀ l, l < st.nextLoan → π' l = π l) ∧
+      ∃ r s', runT K ρ' φ st.tailNext (hintM K ρ hint) t s = some (r, s') ∧
+        meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
         -- not of a proof: the run does not run one and gives it no type (`SM.erasedIf`), where
         -- the checker returns its proposition (the audit's row 26, and A17). As first stated the
         -- conjunct had no such condition and was false of every proof term
-        (∀ T, T? = some T → (K.D.flags (scopeOf s) t).2 = false → StrAgree K ρ' T r.2) ∧
-        Rel K ρ' φ π' st' s' ∧ Good K.dm K.M K.Γ ρ' st'
+        (∀ T, T? = some T → (K.D.flags (scopeOf s) t).2 = false → StrAgree { K with Δ := Δ' } ρ' T r.2) ∧
+        CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π' st' s' ∧
+        Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
 
 /-- [Let]: the binding is pushed at the right-hand side's type and dropped after the tail
 (`dropTopBind`); the run's `.letIn` clause. In the simulation form, as `evalCore_step_stmt`. -/
@@ -1543,10 +1564,13 @@ def letIn_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : 
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) (.letIn h0 u w) = (false, false))
     (bh : Nat) (h : Runs (Ochr.evalCore fuel typed (.letIn h0 u w) hint) st bh (v, T?) st'),
-    ∃ ρ' π' r s', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
-      run K ρ' φ (hintM K ρ hint) (.letIn h0 u w) s = some (r, s') ∧
-      meanV K ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
-      Rel K ρ' φ π' st' s' ∧ Good K.dm K.M K.Γ ρ' st'
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
+      st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+      (∀ l, l < st.nextLoan → π' l = π l) ∧
+      runT K ρ' φ st.tailNext (hintM K ρ hint) (.letIn h0 u w) s = some (r, s') ∧
+      meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
+      CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π' st' s' ∧
+      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
 
 /-- `Eq` (the `.eq` form): both sides on private copies, the type a statement; the result means
 `⟦a⟧ = ⟦b⟧` (`Steps/Eq.mkEqM_step`), the checker's Ω is unchanged and the reference state is

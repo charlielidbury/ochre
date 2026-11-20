@@ -2,36 +2,41 @@ import Ochr.Meaning.CallRef
 import Ochr.Meaning.Locality
 
 /-!
-# The frame property of the reference's run (docs/31 D62, D70)
+# The frame property of the reference's run, with a renaming of labels (docs/31 D62, D70)
 
 The checker runs a known callee's body in place: its frame pushed on the caller's state. The
 reference applies the callee's meaning, built from runs of the body in the closure's own frame: one
-frame, each borrow parameter at a label of its own with a CELL, a temporary reading the label's final
-content (`Run.lean`'s `.fix` clause, `bodyAt`). `callOf_inPlace` (`Steps/Call.lean`) says the two
-agree; it rests on this file's frame property: a run of a term from a state whose top frame is a
-callee's reads and writes only that frame, and reaches the caller's frames only through the labels the
-frame holds, which the cells stand for.
+frame, its own labels from `0`, each borrow parameter at a label of its own with a CELL, a temporary
+reading the label's final content (`Run.lean`'s `.fix` clause, `bodyAt`). `callOf_inPlace`
+(`Steps/Call.lean`) says the two agree; it rests on this file's one simulation, which is both the
+frame property and the renaming of labels:
 
-The relation (`FrameRel s₀ ks s s'`), between an in-place state `s` and a closure state `s'`, for the
-in-place state `s₀` at the call and the parameter labels `ks` (in cell order):
-- the closure has one frame; in place, the caller's frames of `s₀` lie below the callee's;
-- the top frames hold the same bindings; the closure's temporaries are the cells, then the in-place
-  frame's temporaries, so an in-place top position `p` is the closure's `upPos c p`;
-- the caller's frames keep their structure and their holders, and each reads what it read at the
-  call, at the future that gives each parameter label its cell's value (`lowerVal`): the run ends a
-  parameter's label in place where the closure updates its cell;
-- shapes, sites at the top frame, records and the counter agree; the caller's borrows keep their
-  sites. Sites of the frame's borrows in the caller's frames (a parameter's, and those [End] passes
-  them to) are not compared: the closure has none, and nothing the run does reads them.
+- a run of a term from a state whose top frame is a callee's reads and writes only that frame, and
+  reaches the caller's frames only through the labels the frame holds, which the cells stand for;
+- the run does not depend on which labels it issues: the closure's labels are the in-place ones
+  under an injective renaming `σ` that maps the closure's counter onwards to the in-place counter
+  onwards (`Lemmas.run_counter_indep` was this alone; it is now a corollary,
+  `run_counter_indep_of_frame`).
 
-Labels are the same on both sides: the closure's labels are renamed to the in-place ones separately
-(the counter lemma, `Lemmas.run_counter_indep`, generalised).
+The relation (`FrameRel σ s₀ ks s s'`), between an in-place state `s` and a closure state `s'`, for the
+in-place state `s₀` at the call and the parameter labels `ks` (in place, in cell order):
+- the closure has one frame; in place the caller's frames of `s₀` lie below the callee's;
+- the top frames hold the same bindings, read through `σ` (an in-place value at `ψ` is the closure's at
+  `ψ ∘ σ`); the closure's temporaries are the cells, then the in-place ones, so an in-place top
+  position `p` is the closure's `upPos c p`;
+- the caller's frames keep their structure and holders, and read what they read at the call, at the
+  future that gives each parameter label its cell's value (`lowerVal`, `cellFuture`);
+- holders, top-frame sites, records and counters agree through `σ`; the caller's borrows keep their
+  sites. Sites of the frame's borrows in the caller's frames are not compared: the closure has none,
+  and nothing the run does reads them.
 
-`Id` is excluded here (`Term.idFree`): its observation reads every position, so in place it reads the
-caller's frames where the closure reads the cells, and the two agree only when the caller's frames
-determine the cells, which needs the parameters' final contents at the observation to be members (a
-returned borrow's lender reads its final content decoded, through the backward function). See
-docs/31 D70.
+`Id` (`run_frame_obs`): its observation reads every position, so in place it reads the caller's
+frames where the closure reads the cells. The two agree when the caller's frames determine the cells'
+values at the observation, which holds where each parameter's final content there is a member of its
+type (a place lent to a returned borrow reads its final content through the backward function,
+injective on members only): the hypothesis `CellsDetermined`, which the checker's acceptance of the
+callee's body gives (main's D98, typing) and the reference alone does not. With no parameter the
+property holds for every term (`run_frame`'s second case). docs/31 D70.
 -/
 
 namespace Ochr
@@ -83,13 +88,28 @@ def upPos (c : Nat) : Pos → Pos
 /-- The closure frame's first `c` temporaries: the cells. -/
 def cellsOf (c : Nat) (s' : SState) : List SVal := ((s'.env.headD {}).temps).take c
 
-/-- The future at which the caller's frames are read: each parameter label its cell's value. -/
-def cellFuture (ks : List Nat) (cells : List SVal) (ψ : Future) : Future :=
-  ψ.updList (ks.zip (cells.map (· ψ)))
+/-- The closure's future of an in-place future: each closure label read at its in-place name. -/
+def renF (σ : Nat → Nat) (ψ : Future) : Future := fun l => ψ (σ l)
 
-/-- **The in-place state `s` and the closure's state `s'`, related** (docs/31 D70), for the in-place
-state `s₀` at the call and its parameter labels `ks`, in cell order. -/
-structure FrameRel (s₀ : SState) (ks : List Nat) (s s' : SState) : Prop where
+/-- The future at which the caller's frames are read: each parameter label (in place) its cell's
+value (a closure meaning, read at the closure's future). -/
+def cellFuture (σ : Nat → Nat) (ks : List Nat) (cells : List SVal) (ψ : Future) : Future :=
+  ψ.updList (ks.zip (cells.map (· (renF σ ψ))))
+
+/-- A binding of the closure's frame, in place: the same declared reading, the same code, its label
+renamed, its meaning read through the renaming. -/
+def BindRen (σ : Nat → Nat) (b b' : SBinding) : Prop :=
+  b.ty = { b'.ty with label := b'.ty.label.map σ } ∧ b.decl = b'.decl ∧ b.recBound = b'.recBound ∧
+    ∀ ψ, b.val ψ = b'.val (renF σ ψ)
+
+
+/-- **The in-place state `s` and the closure's state `s'`, related through the renaming `σ`** (closure
+labels to in-place labels; docs/31 D70), for the in-place state `s₀` at the call and its parameter
+labels `ks`, in cell order. -/
+structure FrameRel (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) (s s' : SState) : Prop where
+  /-- the renaming is one to one, and the closure's fresh labels are the in-place fresh labels -/
+  inj : ∀ l l', σ l = σ l' → l = l'
+  fresh : ∀ j, σ (s'.nextLoan + j) = s.nextLoan + j
   /-- in place, the caller's frames and the callee's; the closure, its frame alone -/
   frames : s.env.length = s₀.env.length ∧ s'.env.length = 1
   /-- the caller's frames keep their bindings' types and readings and their temporaries' number -/
@@ -97,58 +117,155 @@ structure FrameRel (s₀ : SState) (ks : List Nat) (s s' : SState) : Prop where
     (s.env[f]?).map (fun fr => (fr.binds.map fun b => (b.ty, b.decl), fr.temps.length)) =
     (s₀.env[f]?).map (fun fr => (fr.binds.map fun b => (b.ty, b.decl), fr.temps.length))
   /-- and read what they read at the call, each parameter label at its cell -/
-  lowerVal : ∀ p, p.frameOf < s₀.topIdx → ∀ ψ, s.valAt p ψ = s₀.valAt p (cellFuture ks (cellsOf ks.length s') ψ)
+  lowerVal : ∀ p, p.frameOf < s₀.topIdx → ∀ ψ,
+    s.valAt p ψ = s₀.valAt p (cellFuture σ ks (cellsOf ks.length s') ψ)
   /-- the caller's holders stay -/
   lowerShape : ∀ p, p.frameOf < s₀.topIdx → s.shape p = s₀.shape p
-  /-- the same bindings in the top frame; the closure's temporaries are the cells, then the in-place ones -/
-  top : ∃ F F', s.env.getLast? = some F ∧ s'.env = [F'] ∧ F'.binds = F.binds ∧
-    F'.temps.length = ks.length + F.temps.length ∧ F'.temps.drop ks.length = F.temps
-  /-- the same holders in the top frame; the cells hold nothing, and the closure nothing else -/
-  topShape : ∀ p, p.frameOf = s₀.topIdx → s'.shape (upPos ks.length p) = s.shape p
+  /-- the same bindings in the top frame, renamed; the closure's temporaries are the cells, then the
+  in-place ones, renamed -/
+  top : ∃ F F', s.env.getLast? = some F ∧ s'.env = [F'] ∧ F.binds.length = F'.binds.length ∧
+    (∀ (i : Nat) b b', F.binds[i]? = some b → F'.binds[i]? = some b' → BindRen σ b b') ∧
+    F'.temps.length = ks.length + F.temps.length ∧
+    ∀ (j : Nat) v, F.temps[j]? = some v → ∃ v', F'.temps[j + ks.length]? = some v' ∧ ∀ ψ, v ψ = v' (renF σ ψ)
+  /-- the same holders in the top frame, renamed; the cells hold nothing, and the closure nothing else -/
+  topShape : ∀ p, p.frameOf = s₀.topIdx → s.shape p = (s'.shape (upPos ks.length p)).map σ
   clShape : ∀ q l, s'.shape q = some l → ∃ p, p.frameOf = s₀.topIdx ∧ q = upPos ks.length p
-  /-- the same counter -/
-  next : s.nextLoan = s'.nextLoan
   /-- the same records for the frame's labels, and the same held types but for the parameters' (in
   place the caller's, in the closure none: a parameter's holder is a binding, typed by its type) -/
-  held : ∀ l, s'.Live l → s.heldMem l = s'.heldMem l ∧ (l ∉ ks → s.heldTy l = s'.heldTy l)
-  /-- the same sites in the top frame; the closure has no other -/
+  held : ∀ l, s'.Live l → s.heldMem (σ l) = s'.heldMem l ∧ (σ l ∉ ks → s.heldTy (σ l) = s'.heldTy l)
+  /-- the same sites in the top frame, renamed; only the frame's labels have one there; the closure
+  has no other -/
   lentTop : ∀ l (x : Site), x.pos.frameOf = s₀.topIdx →
-    (x ∈ s.lent l ↔ { x with pos := upPos ks.length x.pos } ∈ s'.lent l)
+    (x ∈ s.lent (σ l) ↔ { x with pos := upPos ks.length x.pos } ∈ s'.lent l)
+  lentImg : ∀ m (x : Site), x.pos.frameOf = s₀.topIdx → x ∈ s.lent m → ∃ l, m = σ l
   lentCl : ∀ l (x : Site), x ∈ s'.lent l → ∃ p, p.frameOf = s₀.topIdx ∧ x.pos = upPos ks.length p
   /-- the caller's borrows keep their sites -/
   lentCaller : ∀ l p, p.frameOf < s₀.topIdx → s₀.shape p = some l → s.lent l = s₀.lent l
   /-- the frame's labels are the parameters' or the run's own (at or above the counter at the call) -/
-  topLabels : ∀ l, s'.Live l → l ∈ ks ∨ s₀.nextLoan ≤ l
+  topLabels : ∀ l, s'.Live l → σ l ∈ ks ∨ s₀.nextLoan ≤ σ l
 
 /-- What the in-place state at the call must be for the relation to start: the caller's frames read
 no label at or above the counter (nothing the callee makes), the parameter labels are below it and
-held in the top frame, and the caller holds none of them. -/
+distinct, and the caller holds none of them and lends nothing in the callee's frame. -/
 structure FrameStart (s₀ : SState) (ks : List Nat) : Prop where
   reads : ∀ p, p.frameOf < s₀.topIdx → ∀ ψ ψ', (∀ l, l < s₀.nextLoan → ψ l = ψ' l) → s₀.valAt p ψ = s₀.valAt p ψ'
   ks_lt : ∀ k ∈ ks, k < s₀.nextLoan
   callerHeld : ∀ p l, p.frameOf < s₀.topIdx → s₀.shape p = some l → l ∉ ks ∧ l < s₀.nextLoan
+  callerLent : ∀ p l (x : Site), p.frameOf < s₀.topIdx → s₀.shape p = some l → x ∈ s₀.lent l → x.pos.frameOf < s₀.topIdx
   ks_nodup : ks.Nodup
+
+/-- The two runs agree: the same result (its label renamed) and related states, or both fail. -/
+def FrameAgree (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) : Option (Res × SState) → Option (Res × SState) → Prop
+  | some (r, s₁), some (r', s₁') => r.1 = r'.1 ∧ r.2 = { r'.2 with label := r'.2.label.map σ } ∧ FrameRel σ s₀ ks s₁ s₁'
+  | none, none => True
+  | _, _ => False
 
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- **The frame property of the reference's run** (docs/31 D62, D70; open). From related states an
-`Id`-free term runs to related states with the same result, or fails on both sides. Proved by
-induction on the term, a simulation of the two runs clause by clause: what reads a state reads the
-top frame (`resolve`, `scopeOf`, `movedPlaces`), the shapes and the sites at the top frame (an
-[Access] at a top position reaches no caller borrow: none is lent there), or the records of the
-frame's labels (the read's typed future); what writes the caller's frames is [End] of a frame's
-label (`semEnd`, which in place reads the label's holder where the closure updates the cell; both
-are `lowerVal`'s substitution) and a call's fixing of its consumed arguments (`callOf`'s `mapVals`,
-the same substitution); a closure formed in the body means its body's runs from the extended states,
-related again (the property itself, on the subterm). -/
-theorem run_frame (s₀ : SState) (ks : List Nat) (hs₀ : FrameStart s₀ ks) (tl : Bool) (hint : TyS) (t : Term)
-    (hid : t.idFree = true) (s s' : SState) (h : FrameRel s₀ ks s s') :
-    match runT K ρ φ tl hint t s, runT K ρ φ tl hint t s' with
-    | some (r, s₁), some (r', s₁') => r = r' ∧ FrameRel s₀ ks s₁ s₁'
-    | none, none => True
-    | _, _ => False := by
+/-- **The frame property with a renaming of labels** (docs/31 D62, D70; open, the one simulation the
+call steps rest on). From related states a term runs to the same result and related states, or
+fails on both sides, when it holds no `Id` or the frame has no parameter (the `Id` clause is
+`run_frame_obs`, under its hypothesis). Proof: induction on the term, clause by clause. What reads a
+state reads the top frame (`resolve`, `scopeOf`, `movedPlaces`), the holders and sites at the top
+frame (an [Access] at a top position reaches no caller borrow: none is lent there, `FrameStart`), or
+the records of the frame's labels (the read's typed future: a caller's label is read by no top
+position); what writes the caller's frames is [End] of a frame label (`semEnd`: in place it reads the
+holder where the closure updates the cell, both `lowerVal`'s substitution; the extra update at a
+non-parameter label is invisible, the caller's frames reading below the call's counter) and a call's
+fixing of its consumed arguments (`callOf`'s `mapVals`, the same); a label issued is renamed by
+`σ`'s fresh clause; a closure formed in the body means its body's runs from the extended states,
+related again (the property on the subterm). -/
+theorem run_frame (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) (hs₀ : FrameStart s₀ ks) (tl : Bool)
+    (hint : TyS) (t : Term) (hid : t.idFree = true ∨ ks = []) (s s' : SState) (h : FrameRel σ s₀ ks s s') :
+    FrameAgree σ s₀ ks (runT K ρ φ tl hint t s) (runT K ρ φ tl hint t s') := by
   sorry
+
+/-- The caller's frames tell apart any two lists of whole members of the parameters' types (`Ts`): what
+an `Id` observation in place needs (a place lent to a parameter reads its final content directly, or
+through an earlier call's backward function, injective on members). -/
+def CellsDetermined (s₀ : SState) (ks : List Nat) (Ts : List TyM) : Prop :=
+  ∀ vs vs' : List Sem, vs.length = ks.length → vs'.length = ks.length →
+    (∀ (i : Nat) v, vs[i]? = some v → v.whole ∧ v ∈ₛ[K.dm.read] Ts.getD i TyM.err) →
+    (∀ (i : Nat) v, vs'[i]? = some v → v.whole ∧ v ∈ₛ[K.dm.read] Ts.getD i TyM.err) →
+    (∀ p, p.frameOf < s₀.topIdx → ∀ ψ : Future, s₀.valAt p (ψ.updList (ks.zip vs)) = s₀.valAt p (ψ.updList (ks.zip vs'))) →
+    vs = vs'
+
+/-- At an observation, after a side's run in the closure's frame and every live borrow ended, each
+cell holds a whole member of its parameter's type at the run's future. At an accepted program this
+is the checker's: no borrow ends over a moved-out content (main's D98), and a typed body writes
+members. -/
+def CellsAtObs (Ts : List TyM) (s' : SState) : Prop :=
+  ∀ (i : Nat) c, (cellsOf Ts.length (s'.liveLabels.foldl SState.endLabel s'))[i]? = some c →
+    (c φ).whole ∧ c φ ∈ₛ[K.dm.read] Ts.getD i TyM.err
+
+/-- **The frame property at an `Id`** (docs/31 D70; open). From related states, with each side's runs
+related, the in-place observations of the two sides agree exactly when the closure's do, provided the
+cells at both observations hold members (`CellsAtObs`) and the caller's frames tell members apart
+(`CellsDetermined`): in place the observation reads the caller's frames, the closure the cells. -/
+theorem run_frame_obs (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) (hs₀ : FrameStart s₀ ks) (Ts : List TyM)
+    (hdet : CellsDetermined K s₀ ks Ts) (s s' : SState) (h : FrameRel σ s₀ ks s s') (reps : List Place) (ws : List Sem)
+    (r₁ r₂ r₁' r₂' : Res) (s₁ s₂ s₁' s₂' : SState)
+    (h₁ : FrameAgree σ s₀ ks (some (r₁, s₁)) (some (r₁', s₁'))) (h₂ : FrameAgree σ s₀ ks (some (r₂, s₂)) (some (r₂', s₂')))
+    (hm₁ : CellsAtObs K φ Ts s₁') (hm₂ : CellsAtObs K φ Ts s₂') :
+    (observation φ reps ws s.positions r₁ s₁ = observation φ reps ws s.positions r₂ s₂) ↔
+    (observation φ reps ws s'.positions r₁' s₁' = observation φ reps ws s'.positions r₂' s₂') := by
+  sorry
+
+end
+
+end Ochr.Meaning
+
+namespace Ochr.Meaning
+open Ochr
+
+section
+variable (K : RunCtx) (ρ : Assignment)
+
+/-- **The renaming lemma** (m2-proofs' D; was `Lemmas.run_counter_indep`, open). The run's result does
+not depend on the starting label counter: fresh labels are names. Stated for the states code runs
+from: one frame of future-free bindings whose types carry no label and no holder, compared on the
+result's meaning and type. As first stated (any state whose holders are below both counters) it was
+false, finding 7. Now a corollary of the frame property: no caller frame, no parameter, the renaming
+the shift from one counter to the other. -/
+theorem run_counter_indep (φ : Future) (hint : TyS) (t : Term) (bs : List SBinding) (n n' : Nat)
+    (hbs : ∀ b ∈ bs, ∀ ψ ψ', b.val ψ = b.val ψ') (hlab : ∀ b ∈ bs, b.ty.label = none) :
+    (run K ρ φ hint t (stateOf n bs)).map (fun r => (r.1.1, r.1.2.m))
+      = (run K ρ φ hint t (stateOf n' bs)).map (fun r => (r.1.1, r.1.2.m)) := by
+  -- the closure side runs at the smaller counter, in place at the larger
+  suffices H : ∀ a b, a ≤ b → (run K ρ φ hint t (stateOf b bs)).map (fun r => (r.1.1, r.1.2.m))
+      = (run K ρ φ hint t (stateOf a bs)).map (fun r => (r.1.1, r.1.2.m)) by
+    rcases Nat.le_total n n' with hn | hn
+    · exact (H n n' hn).symm
+    · exact H n' n hn
+  intro a b hab
+  have hst : FrameStart (stateOf b bs) [] :=
+    ⟨fun p hp => by simp [SState.topIdx, stateOf] at hp, by simp, fun p l hp => by simp [SState.topIdx, stateOf] at hp,
+      fun p l x hp => by simp [SState.topIdx, stateOf] at hp, List.nodup_nil⟩
+  have hrel : FrameRel (fun l => l + (b - a)) (stateOf b bs) [] (stateOf b bs) (stateOf a bs) := by
+    refine ⟨fun l l' h => by simpa using h, fun j => by simp [stateOf]; omega, ⟨rfl, rfl⟩,
+      fun f hf => by simp [SState.topIdx, stateOf] at hf, fun p hp => by simp [SState.topIdx, stateOf] at hp,
+      fun p hp => by simp [SState.topIdx, stateOf] at hp, ?_, fun p _ => by simp [stateOf],
+      fun q l hq => by simp [stateOf] at hq, fun l hl => ?_, fun l x _ => by simp [stateOf],
+      fun m x _ hx => by simp [stateOf] at hx, fun l x hx => by simp [stateOf] at hx,
+      fun l p hp => by simp [SState.topIdx, stateOf] at hp, fun l hl => ?_⟩
+    · refine ⟨{ binds := bs }, { binds := bs }, rfl, rfl, rfl, fun i b₁ b₂ h₁ h₂ => ?_, by simp, fun j v hv => by simp at hv⟩
+      rw [h₁] at h₂; cases h₂
+      have hm : b₁ ∈ bs := List.mem_of_getElem? h₁
+      refine ⟨?_, rfl, rfl, fun ψ => hbs b₁ hm _ _⟩
+      have hl := hlab b₁ hm
+      cases b₁ with | mk ty v d rb => cases ty with | mk m lab => simp only at hl ⊢; subst hl; rfl
+    · exfalso; simp [SState.Live, SState.liveLabels, stateOf] at hl
+    · exfalso; simp [SState.Live, SState.liveLabels, stateOf] at hl
+  have h := run_frame K ρ φ (fun l => l + (b - a)) (stateOf b bs) [] hst false hint t (Or.inr rfl) _ _ hrel
+  unfold run
+  rcases h1 : runT K ρ φ false hint t (stateOf b bs) with _ | ⟨r, s₁⟩ <;>
+    rcases h2 : runT K ρ φ false hint t (stateOf a bs) with _ | ⟨r', s₁'⟩ <;> rw [h1, h2] at h <;>
+    simp only [FrameAgree] at h
+  all_goals first
+    | rfl
+    | exact h.elim
+    | (obtain ⟨e1, e2, -⟩ := h; simp [e1, e2])
 
 end
 
