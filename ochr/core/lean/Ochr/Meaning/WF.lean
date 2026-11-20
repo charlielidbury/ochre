@@ -120,19 +120,42 @@ def WF7 (ρ : Assignment) (st : MState) : Prop :=
     ∀ f i b, p = .bind f i → st.env[f]?.bind (·.binds[i]?) = some b →
       ∀ A, b.ty = some (.tRef A) → (Value.tyM dm C Γ ρ (fun _ => .err) A).level = some 1
 
-/-- (WF8) `&` occurs only at the top of a declared type (RULES §1, D48 (2)): a borrow type `&A`
-is the whole stored type of a binding, the whole type of an abstract value or the whole goal,
-with `A` borrow-free, and no `tRef` occurs inside any value of Ω, inside a type, or inside the
-parameters a constructor value records. In particular no state holds the type value
+/-- A borrow type value. -/
+def _root_.Ochr.Value.isRefV : Value → Bool
+  | .tRef _ => true
+  | _ => false
+
+/-- An `&` out of place, anywhere inside a value (code's embedded values and recorded readings
+included): `&` applied to a borrow type, or a borrow type as a parameter of an inductive type, as a
+parameter a constructor value records, or as the type or a side of `Eq`. A borrow type at the top
+of anything else (a value, a stored type, a parameter's declared reading) is in place. -/
+def _root_.Ochr.Value.refMisplaced (v : Value) : Bool := v.anyAtom fun
+  | .tRef A => A.isRefV
+  | .tInd _ ps => ps.any Value.isRefV
+  | .ind _ _ _ ps _ => ps.any Value.isRefV
+  | .tEq A a b => A.isRefV || a.isRefV || b.isRefV
+  | _ => false
+
+/-- (WF8) `&` is applied only to a type with no `&` and never sits inside a data type or an
+equation, wherever the type sits (RULES §1, D48 (2)): no borrow type is under another, a
+parameter of an inductive type or of a constructor value, or the type or a side of `Eq`, in any
+value of Ω, stored type, type of an unknown or goal. In particular no state holds the type value
 `Eq(Type₀, &A, A)`, so the model's `⟦&A⟧ = ⟦A⟧` (Value.lean) can refute nothing the checker
-proves (docs/31 D1). -/
+proves (docs/31 D1). That `&` is applied only to data types is (WF7), for stored types.
+
+As first written the clause said `&` occurs only at the top of a stored type, an unknown's type
+or the goal, and nowhere inside a value of Ω. The sweep of the checker's own states (main
+d26ee93c, `lake exe sweep`) found it false two ways, neither a fault: a borrow type in flight (the
+temporary holding `&Nat` on exit of the type term of `def F (x : &Nat) : Nat := 0`), and a
+closed-off stuck block, whose function keeps `&A` as a captured place's declared reading
+(`def W (n : Nat) : Nat := (let a = 0; match n { Z => (a := 1), S _ => () }; a)`). Both have
+`&` at the top of a type, which RULES allows. -/
 def WF8 (st : MState) : Prop :=
-  (∀ v ∈ Env.values st.env, ¬ v.typeHasRef) ∧
+  (∀ v ∈ Env.values st.env, v.refMisplaced = false) ∧
   (∀ (f i : Nat) (b : Binding), st.env[f]?.bind (fun fr => fr.binds[i]?) = some b →
-    ∀ T : Value, b.ty = some T →
-    match T with | .tRef A => ¬ A.typeHasRef | T => ¬ T.typeHasRef) ∧
-  (∀ T ∈ st.absTy.toList, match T with | .tRef A => ¬ A.typeHasRef | T => ¬ T.typeHasRef) ∧
-  (∀ G, st.goal = some G → match G with | .tRef A => ¬ A.typeHasRef | G => ¬ G.typeHasRef)
+    ∀ T : Value, b.ty = some T → T.refMisplaced = false) ∧
+  (∀ T ∈ st.absTy.toList, T.refMisplaced = false) ∧
+  (∀ G, st.goal = some G → G.refMisplaced = false)
 
 /-- (WF9) A loan outside a sealed program sits at a typed position. A lender's value is read
 at its position's hint; a hint-dependent content written back by [End] (a constructor with
@@ -172,19 +195,25 @@ def WF11 (st : MState) : Prop :=
   (∀ n σ, (n, σ) ∈ st.neutrals → ∀ l, n.hasLoan l = false) ∧
   (∀ σ v, (σ, v) ∈ st.etaRefs → ∀ l, v.hasLoan l = false)
 
-/-- (WF12) Under a live fill, only what that fill's ending reaches (docs/31 D29 point 3, point 5 f):
-a site of a live borrow strictly under a fill of another live borrow belongs to a borrow that is
-also lent at that fill's place or above it. So an access that passes the fill on its way to one
-field (the checker's `accessPath` at an instance, where the mark is transparent) ends the same
-borrows as an access of the filled place whole (the reference's access of the shortest lent prefix,
-and the checker's at the generic call, where the field does not exist). Read off main's D90 (a call
-lends places borrowed whole, and anything that later reaches under a fill ends it first), NOT
-proved preserved: every step's `Good` conclusion owes it. -/
+/-- (WF12) At a live fill, nothing else is lent: at a position holding a live borrow's fill, no
+other live borrow has a site, at the fill's path or below it. So an access that passes the fill on
+its way to one field (the checker's `accessPath` at an instance, where a mark is transparent) and
+an access of the filled place whole (the reference's access of the shortest lent prefix, and the
+checker's at the generic call, where the field does not exist) end the same borrows. Read off the
+checker (a returned borrow's mark wraps the whole lent place, with the reborrow's loan inside it;
+when a borrow ends its mark passes to the borrow its content was lent onward to, at the same
+place; reaching below a mark ends its borrow first, D90; lending a place whole ends the borrows of
+its parts), NOT proved preserved: every step's `Good` conclusion owes it. Tested by the sweep
+(`lake exe sweep`, with `--probes`): no violation in 68,541 states of the suite and 512 states of
+adversarial probes; positions without a fill were not measured, so it says nothing of them.
+
+As first written (docs/31 D29) the clause allowed another borrow's site strictly under the fill
+when that borrow was also lent at the fill's place or above it; the sweep found the premise never
+arises, and this form, which is what it measured, is stronger and simpler. -/
 def WF12 (env : Env) : Prop :=
-  ∀ k l, liveLoan env k = true → liveLoan env l = true →
+  ∀ k l, liveLoan env k = true → liveLoan env l = true → k ≠ l →
     ∀ x ∈ Env.sitesOf env k, x.fill = true → ∀ y ∈ Env.sitesOf env l, y.pos = x.pos →
-      (pathKey x.path).isPrefixOf (pathKey y.path) = true → pathKey y.path ≠ pathKey x.path →
-      ∃ z ∈ Env.sitesOf env l, z.pos = x.pos ∧ (pathKey z.path).isPrefixOf (pathKey x.path) = true
+      (pathKey x.path).isPrefixOf (pathKey y.path) = false
 
 /-- Well-formedness, part (c) of the main theorem. -/
 def WF (ρ : Assignment) (st : MState) : Prop :=

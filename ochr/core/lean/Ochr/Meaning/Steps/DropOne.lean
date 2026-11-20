@@ -218,14 +218,33 @@ theorem lentPrefix_absorbed (st st' : MState) (s : SState) (π : Nat → Nat) (p
       Rel K ρ φ π st' (s.access pos (dataHit steps)) := by
   sorry
 
-/-- **(6) No lent prefix where the drop does nothing.** Where the checker's place is `⊥` or `⋆`
-(its drop does nothing), no live borrow is lent at a strict prefix of it, so the reference's
-prefix access does nothing either: [Borrow] rejects a partly moved place, and a move under a fill
-reaches the fill first and ends it. A fact read off the checker, to be a clause beside (WF12).
-Open: not tried. -/
+/-- **(6) No lent prefix above a moved part.** Where the checker's place is `⊥` (its drop does
+nothing), no live borrow is lent at a strict prefix of it, so the reference's prefix access does
+nothing either: [Borrow] rejects a partly moved place, and a move under a fill reaches the fill
+first and ends it. A fact read off the checker; the sweep (`lake exe sweep`) found no violation
+(32 suite states with a moved part beside a live fill). Open: not tried.
+
+As first written it also covered a `⋆` part, which the sweep refuted: a place lent whole keeps its
+proof field under the mark (`MkC(n, h)` lent by `Get(&c)`, state `c = lent_2 MkC(loan_2, ⋆)`,
+19 states). The `⋆` case is `lentPrefix_none_of_proof`, at the places the join drops. -/
 theorem lentPrefix_none_of_noop (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2))
-    (hnoop : (valAt st.env pos).follow q.steps.2 = some .bot ∨ (valAt st.env pos).follow q.steps.2 = some .proof) :
+    (hnoop : (valAt st.env pos).follow q.steps.2 = some .bot) :
+    lentPrefix s pos q.steps.2 = none := by
+  sorry
+
+/-- **(6) No lent prefix above a proof part the join drops.** A place the join drops is not of a
+copy type (`hcopy`), and a proposition is one, so the sweep's proof fields under a mark are never
+dropped; a non-copy place holds `⋆` only as a data field of a proof. Whether the join can drop
+such a field under a live fill is untested. If it can, the checker's two paths end different
+borrows: at the generic call the place is missing under the sealed fill and `movedPlace` accesses
+the parent whole, at an instance the mark is transparent and the drop of `⋆` does nothing; the
+reference, which accesses the lent prefix, matches the generic call, and this statement would be
+a checker finding (D90: a borrow ends alike on every path). Open: a probe is owed. -/
+theorem lentPrefix_none_of_proof (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos)
+    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2))
+    (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
+    (hproof : (valAt st.env pos).follow q.steps.2 = some .proof) :
     lentPrefix s pos q.steps.2 = none := by
   sorry
 

@@ -330,12 +330,127 @@ theorem fillPrefix_absorbed (st st' : MState) (s : SState) (π : Nat → Nat) (q
     Rel K ρ φ π st' (accessLentPrefix pos q.steps.2 s) := by
   sorry
 
-/-- After the checker's access of a place (path and inside), its content holds no live hole
-(`accessInside` ends every live loan inside it, and a fill's holes are among them). Open. -/
+theorem mem_liveLoansIn_foldl (env : Env) (l : Nat) :
+    ∀ (xs acc : List Nat), (l ∈ acc ∨ (l ∈ xs ∧ liveLoan env l = true)) →
+      l ∈ xs.foldl (fun acc l => if !acc.contains l && liveLoan env l then acc ++ [l] else acc) acc
+  | [], acc, h => by
+    rcases h with h | ⟨h, -⟩
+    · exact h
+    · cases h
+  | x :: xs, acc, h => by
+    simp only [List.foldl_cons]
+    apply mem_liveLoansIn_foldl env l xs
+    rcases h with h | ⟨h, hl⟩
+    · left; split <;> simp_all
+    · rcases List.mem_cons.mp h with rfl | h'
+      · left
+        by_cases hc : acc.contains l = true
+        · simp only [hc, Bool.not_true, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
+          exact List.contains_iff_mem.mp hc
+        · simp only [hc, Bool.not_false, Bool.true_and, hl, ↓reduceIte]
+          exact List.mem_append_right _ (List.mem_singleton_self l)
+      · right; exact ⟨h', hl⟩
+
+theorem mem_liveLoansIn_foldl_inv (env : Env) (l : Nat) :
+    ∀ (xs acc : List Nat), l ∈ xs.foldl (fun acc l => if !acc.contains l && liveLoan env l then acc ++ [l] else acc) acc →
+      l ∈ acc ∨ (l ∈ xs ∧ liveLoan env l = true)
+  | [], acc, h => .inl h
+  | x :: xs, acc, h => by
+    simp only [List.foldl_cons] at h
+    rcases mem_liveLoansIn_foldl_inv env l xs _ h with h | ⟨h, hl⟩
+    · split at h
+      · rename_i hc
+        rcases List.mem_append.mp h with h | h
+        · exact .inl h
+        · simp only [List.mem_singleton] at h; subst h
+          simp only [Bool.and_eq_true, Bool.not_eq_true'] at hc
+          exact .inr ⟨List.mem_cons_self .., hc.2⟩
+      · exact .inl h
+    · exact .inr ⟨List.mem_cons_of_mem _ h, hl⟩
+
+theorem mem_liveLoansIn_inv {env : Env} {v : Value} {l : Nat} (h : l ∈ liveLoansIn env v) :
+    l ∈ v.loans ∧ liveLoan env l = true := by
+  rcases mem_liveLoansIn_foldl_inv env l v.loans [] h with h | h
+  · cases h
+  · exact h
+
+theorem mem_liveLoansIn {env : Env} {v : Value} {l : Nat} (h : l ∈ v.loans) (hl : liveLoan env l = true) :
+    l ∈ liveLoansIn env v :=
+  mem_liveLoansIn_foldl env l v.loans [] (.inr ⟨h, hl⟩)
+
+/-- A fill's holes are live loans of the value. -/
+theorem fillHoles_sub (env : Env) : ∀ (v : Value) (l : Nat), l ∈ Ochr.fillHoles env v → l ∈ liveLoansIn env v
+  | .loan m, l, h => by
+    unfold Ochr.fillHoles at h
+    split at h
+    · rename_i hm
+      simp only [List.mem_singleton] at h; subst h
+      exact mem_liveLoansIn (by simp [Value.loans]) hm
+    · cases h
+  | .gloan m w, l, h => by
+    unfold Ochr.fillHoles at h
+    rcases List.mem_append.mp h with h | h
+    · split at h
+      · rename_i hm
+        simp only [List.mem_singleton] at h; subst h
+        exact mem_liveLoansIn (by simp [Value.loans]) hm
+      · cases h
+    · have hw := mem_liveLoansIn_inv (fillHoles_sub env w l h)
+      exact mem_liveLoansIn (by simp [Value.loans, hw.1]) hw.2
+  | .sealed t, l, h => by unfold Ochr.fillHoles at h; exact h
+  | .zero, l, h | .succ _, l, h | .unit, l, h | .gfn _, l, h | .clo .., l, h | .borrow .., l, h
+  | .bot, l, h | .abs _, l, h | .proof, l, h | .tNat, l, h | .tUnit, l, h | .tEq .., l, h | .tRef _, l, h
+  | .tPi .., l, h | .sort _, l, h | .ind .., l, h | .tInd .., l, h => by
+    simp [Ochr.fillHoles] at h
+
+/-- `accessInside` stops where the place's content holds no live loan. -/
+theorem accessInside_final (p : Place) : ∀ (fuel : Nat) {st st' : MState} {b : Nat} {u : Unit},
+    Runs (Ochr.accessInside fuel p false) st b u st' →
+      ∃ v, ckContent st'.env p = some v ∧ liveLoansIn st'.env v = []
+  | 0, st, st', b, u, h => by
+    obtain ⟨L, left, log, h⟩ := h
+    simp [Ochr.accessInside, runMachineL_exhausted] at h
+  | fuel + 1, st, st', b, u, h => by
+    unfold Ochr.accessInside at h
+    obtain ⟨v, st₁, b₁, hc, h1⟩ := Runs.bind_inv h
+    obtain ⟨hst₁, hcv⟩ := runs_content_inv hc
+    subst st₁
+    obtain ⟨x, st₂, b₂, hg, h2⟩ := Runs.bind_inv h1
+    obtain ⟨hx, hst₂⟩ := runs_get_inv hg
+    subst x; subst st₂
+    simp only [Bool.false_eq_true, ↓reduceIte] at h2
+    have hk : ∀ {b₃ : Nat}, Runs (match liveLoansIn st.env v with
+        | l :: _ => do Ochr.endTopLoan fuel l "accessInside"; Ochr.accessInside fuel p
+        | [] => pure ()) st b₃ u st' → ∃ v, ckContent st'.env p = some v ∧ liveLoansIn st'.env v = [] := by
+      intro b₃ h3
+      split at h3
+      · obtain ⟨u₂, st₄, b₄, he, h4⟩ := Runs.bind_inv h3
+        exact accessInside_final p fuel h4
+      · rename_i hnil
+        rw [(runs_pure_inv h3).2]
+        exact ⟨v, hcv, hnil⟩
+    split at h2
+    · exact hk h2
+    · obtain ⟨u₁, st₃, b₃, hf, h3⟩ := Runs.bind_inv h2
+      rw [runs_fire_inv hf] at h3
+      exact hk h3
+
+/-- **After the checker's access of a place (path and inside), its content holds no live hole**:
+`accessInside` stops only where the content holds no live loan, and a fill's holes are live loans
+of it (`fillHoles_sub`). -/
 theorem fillAccess_clears (fuel : Nat) (st st' : MState) (p : Place) (b : Nat) (c : Value)
     (h : Runs (do Ochr.accessPath fuel p; Ochr.accessInside fuel p) st b () st')
     (hc : ckContent st'.env p = some c) : Ochr.fillHoles st'.env c = [] := by
-  sorry
+  obtain ⟨u, st₁, b₁, -, h2⟩ := Runs.bind_inv h
+  obtain ⟨v, hv, hnil⟩ := accessInside_final p fuel h2
+  rw [hc] at hv
+  cases hv
+  cases e : Ochr.fillHoles st'.env c with
+  | nil => rfl
+  | cons l ls =>
+    have := fillHoles_sub st'.env c l (by rw [e]; exact List.mem_cons_self ..)
+    rw [hnil] at this
+    cases this
 
 /-- The checker's access creates no unknown and forgets none (its ends substitute, and a sealed
 program they re-run keeps the types its copy created). Open. -/
@@ -483,7 +598,8 @@ theorem alp_idem (pos : Pos) (steps : List Step) (s : SState) :
     rw [hnone]
 
 /-- **Where the checker re-rooted to a prefix holding `⊥` or `⋆`, the reference's drop does
-nothing either**: no live fill is above a moved or proof part (`lentPrefix_none_of_noop`), so the
+nothing either**: no live fill is above a moved part, or a proof part the join drops (`lentPrefix_none_of_noop`,
+`lentPrefix_none_of_proof`), so the
 lent prefix's access does nothing, and the reference's place reads `moved` or `proof` or is
 missing (`Sem.follow` through a moved or proof part). Open. -/
 theorem joinDropOne_noop (st : MState) (s s₁ : SState) (π : Nat → Nat) (q q' : Place) (pos : Pos)
