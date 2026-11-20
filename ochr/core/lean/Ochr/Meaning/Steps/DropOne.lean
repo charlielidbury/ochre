@@ -240,7 +240,11 @@ such a field under a live fill is untested. If it can, the checker's two paths e
 borrows: at the generic call the place is missing under the sealed fill and `movedPlace` accesses
 the parent whole, at an instance the mark is transparent and the drop of `⋆` does nothing; the
 reference, which accesses the lent prefix, matches the generic call, and this statement would be
-a checker finding (D90: a borrow ends alike on every path). Open: a probe is owed. -/
+a checker finding (D90: a borrow ends alike on every path). Probed (2026-11-21): a data field of a
+proof cannot be read at a data position, so no arm moves one: a match on a proof returning data is
+rejected ([D45]: not a subsingleton) and a projection from data into its proof field is rejected
+([D81]: name it with a match, which is then on a proof); a read inside a proof is erased, and the
+join's move list skips erased terms (`Decide.jdMoves`). Open: no proof; the premise did not arise. -/
 theorem lentPrefix_none_of_proof (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2))
     (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
