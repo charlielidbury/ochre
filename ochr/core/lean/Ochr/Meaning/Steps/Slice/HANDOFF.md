@@ -34,19 +34,26 @@ after it) and concludes `CtxOk { K with Δ := Δ' }` there; no `D'`, no `AgreeOl
 - Where a leaf hides the rest of a run (`closeCall_split`, `idType_split`, `const_split`), the leaf
   supplies `TablesGrow …` or `DecTab …` as a conjunct.
 
-## Open leaves of the drop step (what each rests on)
+## Open leaves of the drop step (after item 3, 19d86568)
 
-- `access_ctx`, `dropAtJoin_ctx` (now with `hD`): become the hypothesis's/compositions once
-  [Access]/[End] conclude the extended form (item 3 of main's queue, NEXT).
-- `etaFresh_sim` (fresh η record means its unknown), `placeTypeQ_sim` (item 3: state `placeType?`
-  as a private computation like `evalType_step_stmt`, `KeptAfter`/`ExtOk`/`Rel.kept`; FIRST sweep
-  whether its private copies can leave an η record naming an unknown of an empty type),
-  `recorded_sim` (item 3: a hypothesis field `substEnv_neutral_step` in the form of
-  `substEnv_abs_step`).
-- `meanV_ext`: the assignment-and-Δ congruence only (`AssignCongr` shape); the decisions half is gone.
-- The machine facts of `MachineMono` (its own lane).
-- Block captures after a write (item 4): measure on recorded states that the static instance at
-  the new entry set is what the checker computes; do not prove.
+`joinDrop_step` and `dropOne_step_asm` rest on, beyond `MachineMono`'s machine facts:
+- `ctx_botWrite` (DropOneAsm): `CtxOk` after the drop's write of `⊥`. Everything but the block's
+  captures at the new entry set is routine; that part is item 4 (measure on recorded states that
+  the static instance at the new entry set is what `ckBlockCaps` computes there; do not prove).
+- `etaFresh_sim` (MovedPlace): a fresh η record means its unknown, the context extended.
+- `recordedNeutral_ok` (MovedPlace): a generalisation record's value means the program (path condition).
+- `Rel.kept` (EqJAsm, the lead's).
+- `grain_deref_not_proof`: proved on `spine-slice-grainref`; take it after D101 is on `main`.
+[Access]/[End] are now IH fields in the extended form; `access_ctx`/`dropAtJoin_ctx` are gone.
+The lead owns `Steps/Statements.lean` from 19d86568: statement changes go through the lead.
+
+## Typed temporaries (the new lead's coming change)
+
+`botWrite_good` treats every position alike (the written one vs the rest, `mean_setAtE_other`);
+the one temporary-specific spot is `posTyM_setAtE`'s `temp` case, `rfl` today because a temporary
+has no type: with typed temporaries it needs "a write leaves a temporary's stored type as it was".
+`dropOne_exists` writes only at a binding (`.bind f i`). The arm's result in flight is untouched by
+the write; the access cannot end a borrow it holds (the checker rejects that, `dropAtJoin`'s D65).
 
 ## Idioms and traps
 
