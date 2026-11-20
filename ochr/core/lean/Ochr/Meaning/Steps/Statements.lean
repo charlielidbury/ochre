@@ -868,16 +868,39 @@ def refine_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) :
     Below (MState.mean K.dm K.M K.Γ ρ st') (MState.mean K.dm K.M K.Γ ρ st) ∧
     Good K.dm K.M K.Γ ρ st'
 
-/-- `Eq` computes soundly: whatever `mkEqM` returns means `⟦a⟧ = ⟦b⟧` at `A`, and the state's
-core is unchanged. -/
+/-- **What a private computation leaves** (`inStatement`, `privately`: `restoreKeep`, D37): Ω, the
+goal, the path condition and the declarations are the snapshot's; the tables of unknowns and labels
+only grow, the old unknowns keeping their types. With `ExtOk`, an extension under which the state
+after meets `CtxOk` and is good, it is the conclusion of every private computation; the relation to
+the reference state, which a private computation does not touch, follows (`Rel.kept`).
+As first stated `mkEqM` and `evalType` kept the state's core unchanged and the conversions said
+nothing of the state after: false, and incomplete. A conversion of two functions or Π-types runs
+their generic calls on a private copy, whose new unknowns' types `restoreKeep` keeps, so the table
+grows (`Regress/EqJ`: `conv`, `mkEqM` and `evalType` at `F` and `G`); and `J` runs its transported
+term from the state its conversion leaves (docs/31 D75). -/
+def KeptAfter (st st' : MState) : Prop :=
+  st'.env = st.env ∧ st'.goal = st.goal ∧ st'.refs = st.refs ∧ st'.inds = st.inds ∧
+    st.absTy.size ≤ st'.absTy.size ∧ (∀ σ, σ < st.absTy.size → st'.absTy[σ]? = st.absTy[σ]?) ∧
+    st.nextLoan ≤ st'.nextLoan
+
+/-- An extension of the assignment, `Δ` and the decisions at the unknowns created between `st` and
+`st'` (D71's rule) under which `st'` meets `CtxOk` and is good. -/
+def ExtOk (st st' : MState) (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) : Prop :=
+  (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
+    CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st'
+
+/-- `Eq` computes soundly: whatever `mkEqM` returns means the proposition `⟦a⟧ = ⟦b⟧` at `A`
+(every outcome, `True`, `False`, a conjunction of field equations, the stuck `Eq`, is a proposition,
+`Data.tyM` at a declaration of sort `0`, so its meaning is that proposition, not only as true), and
+it is a private computation (`KeptAfter`: its conversions run on copies). -/
 def mkEqM_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (A a b P : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hA : ∀ φ, (meanV K ρ φ (.plain .err) A).asTy = (meanV K ρ noFuture (.plain .err) A).asTy)
     (bh : Nat) (h : Runs (Ochr.mkEqM fuel A a b) st bh P st'),
-    (∀ φ, propOf K ρ φ P ↔
-      meanV K ρ φ (.plain (meanV K ρ noFuture (.plain .err) A).asTy) a = meanV K ρ φ (.plain (meanV K ρ noFuture (.plain .err) A).asTy) b) ∧
-    st'.core = st.core
+    KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D' ∧
+      ∀ φ (hint : TyS), meanV { K with Δ := Δ', D := D' } ρ' φ hint P = .ty (TyM.prop
+        (meanV K ρ φ (.plain (meanV K ρ noFuture (.plain .err) A).asTy) a = meanV K ρ φ (.plain (meanV K ρ noFuture (.plain .err) A).asTy) b))
 
 /-- Conversion is sound: two values convertible at a state, both (partly moved) members of one
 type, have equal meanings under every future. The accepting direction only; `convStack` only
@@ -887,14 +910,16 @@ def conv_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : 
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hv : DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain T) v) T) (hw : DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain T) w) T)
     (bh : Nat) (h : Runs (Ochr.conv fuel v w) st bh true st'),
-    meanV K ρ φ (.plain T) v = meanV K ρ φ (.plain T) w
+    meanV K ρ φ (.plain T) v = meanV K ρ φ (.plain T) w ∧ KeptAfter st st' ∧
+      ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D'
 
 /-- [Conv-pi]: convertible Π-type values have equal type meanings (equal Lean carriers), by
 `funext` over the generic arguments, which range over the whole domain (docs/18 (V4)). -/
 def convPi_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (P Q : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.convPi fuel P Q) st bh true st'),
-    ∀ φ, (meanV K ρ φ (.plain .err) P).asTy = (meanV K ρ φ (.plain .err) Q).asTy
+    (∀ φ, (meanV K ρ φ (.plain .err) P).asTy = (meanV K ρ φ (.plain .err) Q).asTy) ∧ KeptAfter st st' ∧
+      ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D'
 
 /-- [Conv-fun]: two function values with convertible observations of their generic calls mean
 the same function (extensionality on good carriers, docs/18 (V5), `Slice.pi_ext`). -/
@@ -903,7 +928,8 @@ def convFn_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hf : meanV K ρ φ (.plain T) f ∈ₛ[K.dm.read] T) (hgm : meanV K ρ φ (.plain T) g ∈ₛ[K.dm.read] T)
     (bh : Nat) (h : Runs (Ochr.convFn fuel f g) st bh true st'),
-    meanV K ρ φ (.plain T) f = meanV K ρ φ (.plain T) g
+    meanV K ρ φ (.plain T) f = meanV K ρ φ (.plain T) g ∧ KeptAfter st st' ∧
+      ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D'
 
 /-- [Rewrite]: when the equation `h : Eq(A, a, b)` is true, the rewritten goal is true iff the
 goal is (the occurrences replaced mean the same). -/
@@ -1259,14 +1285,21 @@ def owners_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hl : liveLoan st.env l = true),
     (MState.mean K.dm K.M K.Γ ρ st).dependsOn p l → p ∈ owners st.env l
 
-/-- `evalType` (a type term, on a private copy): the result means the run's result, and the
-state's core is unchanged. -/
+/-- `evalType` (a type term, on a private copy), from a related state: the result means the run's
+result under an extension at the unknowns it made, the reference state untouched (a type is a
+statement, which the run runs on a copy at the aligned flags), and it is a private computation
+(`KeptAfter`).
+As first stated the state's core was unchanged, false: a type that compares two functions keeps
+the types of the unknowns its conversion made (`Regress/EqJ`); and the run was from the checker
+state's image rather than a related reference state (docs/31 D75). -/
 def evalType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (t : Term) (T : Value)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.evalType fuel t) st bh T st'),
-    st'.core = st.core ∧
-    ∃ r s', run K ρ φ (.plain .err) t (SM' K ρ st) = some (r, s') ∧
-      meanV K ρ φ (.plain .err) T = r.1
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (bh : Nat) (h : Runs (Ochr.evalType fuel t) st bh T st'),
+    KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D' ∧
+      ∃ (r : Res), run K ρ' φ (.plain .err) t s = some (r, s) ∧
+        meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π l)) (.plain .err) T = r.1
 
 /-- `piSort` agrees with the aligned decision (D55: a type's declared sort is its computed sort). -/
 def piSort_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
@@ -1396,7 +1429,8 @@ only grow. -/
 def eval_wf6_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (t : Term) (hint : Option Value)
     (v : Value) (T? : Option Value)
-    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.evalCore fuel typed t hint) st bh (v, T?) st'),
+    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (htn : st.tailNext = false)
+    (bh : Nat) (h : Runs (Ochr.evalCore fuel typed t hint) st bh (v, T?) st'),
     WF6 st' ∧ st.nextAbs ≤ st'.nextAbs ∧ st.nextLoan ≤ st'.nextLoan
 
 /-- Every step of `evalCore` keeps (WF7) and (WF8): the only places a borrow type is formed
@@ -1568,6 +1602,14 @@ and two such statements did not compose.)
 an erased term is `•` unrun (`SM.erasedIf`), so the two agree where the term is neither. (It
 asked only for "not a statement" before the audit's A3 made the run skip an erased term.)
 
+The tail flag is `st.curTail`: `eval` reads the one-shot `tailNext`, clears it, and hands it to
+`evalCore` in `curTail`, which the forms read (a `let`'s or sequence's tail, an arm). As first
+migrated (docs/31 D71) this statement and the `evalCore` forms' (`letIn`, `eq`, `J`) read
+`st.tailNext`, which is `false` at every `evalCore` entry, so a body's `let` was compared with the
+reference out of tail position and `eval_step` could not be assembled from it (docs/31 D75, found by
+the `Eq` assembly). `htn` records that clearing: a form's subterms are run through `eval`, which
+reads `tailNext`, so a set flag would make the first of them a tail.
+
 `hok`: an untyped run (a body's, a sealed program's re-run) is claimed only of code whose reference
 run succeeds. Without it the statement is false: the checker's untyped run of an unannotated `Nil`
 with no hint returns a bare constructor value, and the reference cannot solve its parameter
@@ -1580,12 +1622,13 @@ def evalCore_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) t = (false, false))
-    (hok : typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome)
+    (hok : typed = false → (runT K ρ φ st.curTail (hintM K ρ hint) t s).isSome)
+    (htn : st.tailNext = false)
     (bh : Nat) (h : Runs (Ochr.evalCore fuel typed t hint) st bh (v, T?) st'),
     ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (π' : Nat → Nat), st.absTy.size ≤ st'.absTy.size ∧
       st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
       (∀ l, l < st.nextLoan → π' l = π l) ∧
-      ∃ r s', runT K ρ' φ st.tailNext (hintM K ρ hint) t s = some (r, s') ∧
+      ∃ r s', runT K ρ' φ st.curTail (hintM K ρ hint) t s = some (r, s') ∧
         meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
         (∀ T, T? = some T → StrAgree { K with Δ := Δ', D := D' } ρ' T r.2) ∧
         CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π' (st'.withTemp v) s' ∧
@@ -1621,53 +1664,61 @@ def eval_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : P
         GoodF K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' (st'.withTemp v) (flightOf r.2)
 
 /-- [Let]: the binding is pushed at the right-hand side's type and dropped after the tail
-(`dropTopBind`); the run's `.letIn` clause. In the simulation form, as `evalCore_step_stmt`. -/
+(`dropTopBind`); the run's `.letIn` clause. In the simulation form, as `evalCore_step_stmt`, with its
+`hok` (missing until docs/31 D75: an untyped run's right-hand side and tail need it). -/
 def letIn_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (h0 : Hint) (u w : Term)
     (hint : Option Value) (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) (.letIn h0 u w) = (false, false))
+    (hok : typed = false → (runT K ρ φ st.curTail (hintM K ρ hint) (.letIn h0 u w) s).isSome)
+    (htn : st.tailNext = false)
     (bh : Nat) (h : Runs (Ochr.evalCore fuel typed (.letIn h0 u w) hint) st bh (v, T?) st'),
     ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (π' : Nat → Nat) (r : Res) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
       st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
       (∀ l, l < st.nextLoan → π' l = π l) ∧
-      runT K ρ' φ st.tailNext (hintM K ρ hint) (.letIn h0 u w) s = some (r, s') ∧
+      runT K ρ' φ st.curTail (hintM K ρ hint) (.letIn h0 u w) s = some (r, s') ∧
       meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
       CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π' (st'.withTemp v) s' ∧
       GoodF K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' (st'.withTemp v) (flightOf r.2)
 
-/-- `Eq` (the `.eq` form): both sides on private copies, the type a statement; the result means
-`⟦a⟧ = ⟦b⟧` (`Steps/Eq.mkEqM_step`), the checker's Ω is unchanged and the reference state is
-untouched. From a related state. (As first stated the last conjunct was
-`(run … = some (r, s') ∧ ⟦v⟧ true) ↔ ⟦r⟧ true` under `∃ r s'`, which said nothing:
-`Regress/IdUnitWrite.old_stmt_vacuous`.) -/
+/-- `Eq` (the `.eq` form), in the simulation form (D71's rule; docs/31 D75): the type and both
+sides on private copies, the result `mkEqM`'s. The reference runs the same on copies and returns the
+proposition `⟦a⟧ = ⟦b⟧`, which the checker's value means (not only as true: every outcome of
+`mkEqM` is a proposition); its state is untouched, the checker's Ω is unchanged and its tables
+grow. (As first stated the last conjunct was `(run … = some (r, s') ∧ ⟦v⟧ true) ↔ ⟦r⟧ true` under
+`∃ r s'`, which said nothing: `Regress/IdUnitWrite.old_stmt_vacuous`; then it kept the context and
+said nothing of `CtxOk` or the relation after.) `hok`, the restriction of untyped runs, as
+`evalCore_step_stmt` (missing until the assembly: an untyped side's run needs it). -/
 def eq_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (A a b : Term) (hint : Option Value)
     (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (hok : typed = false → (runT K ρ φ st.curTail (hintM K ρ hint) (.eq A a b) s).isSome)
+    (htn : st.tailNext = false)
     (bh : Nat) (h : Runs (Ochr.evalCore fuel typed (.eq A a b) hint) st bh (v, T?) st'),
-    st'.env = st.env ∧
-    ∃ ρ', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ Good K.dm K.M K.Γ ρ' st' ∧
-      ∃ r, run K ρ' φ (.plain .err) (.eq A a b) s = some (r, s) ∧
-        (((meanV K ρ' (fun l => φ (π l)) (.plain .err) v).asTy).true ↔ (r.1.asTy).true)
+    SimConclT K ρ φ π st st' s (fun ρ' => runT K ρ' φ st.curTail (hintM K ρ hint) (.eq A a b)) v T?
 
-/-- `J`, both outcomes: computed at convertible endpoints (the transported term runs in place)
-or closed off as a stuck block whose one arm is the transported term ([T-J-stuck]); each means
-the transported term (docs/24 C9). -/
+/-- `J`, in the simulation form (D71's rule; docs/31 D75), both outcomes: computed at convertible
+endpoints, where the transported term runs in place at the join's grain (static ends, rule 2: its
+entry first, `blockEntry`), or closed off as a stuck block whose one arm is the transported term
+([T-J-stuck], `closeBlock`). The reference's `J` means its transported term whatever the endpoints
+([J-run]: `Regress/EqJ.ref_J_runs_t`). `hns`: the run's clause is under `SM.erasedIf`, which
+`evalCore` is not; `hok`, the restriction of untyped runs, as `evalCore_step_stmt` (missing until the
+assembly: an untyped run's transported term needs it). (As first stated: the old `⊑`/`Below` form,
+from the checker state's image.) -/
 def J_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (A a b P hh u : Term) (hint : Option Value)
     (v : Value) (T? : Option Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    -- neither a statement nor erased (since the audit's A3 the run skips an erased term, which
-    -- `evalCore` runs)
-    (hns : K.D.flags (scopeOf (SM' K ρ st)) (.prim "J" [A, a, b, P, hh, u]) = (false, false))
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (hns : K.D.flags (scopeOf s) (.prim "J" [A, a, b, P, hh, u]) = (false, false))
+    (hok : typed = false → (runT K ρ φ st.curTail (hintM K ρ hint) (.prim "J" [A, a, b, P, hh, u]) s).isSome)
+    (htn : st.tailNext = false)
     (bh : Nat) (h : Runs (Ochr.evalCore fuel typed (.prim "J" [A, a, b, P, hh, u]) hint) st bh (v, T?) st'),
-    ∃ ρ' r s', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧
-      run K ρ' φ (hintM K ρ hint) (.prim "J" [A, a, b, P, hh, u]) (SM' K ρ' st) = some (r, s') ∧
-      meanV K ρ' φ r.2 v ⊑ r.1 ∧
-      Below (MState.mean K.dm K.M K.Γ ρ' st') s'.toMean ∧ Good K.dm K.M K.Γ ρ' st'
+    SimConclT K ρ φ π st st' s (fun ρ' => runT K ρ' φ st.curTail (hintM K ρ hint) (.prim "J" [A, a, b, P, hh, u])) v T?
 
 /-- A proof position (a proof-returning call, a proof primitive, a proof `let`): its value is
 `⋆`, which is a member of its proposition exactly when the proposition is true; the state is

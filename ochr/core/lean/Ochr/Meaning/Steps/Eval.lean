@@ -1,4 +1,4 @@
-import Ochr.Meaning.Steps.IH
+import Ochr.Meaning.Steps.EqJAsm
 
 /-!
 # Step lemmas, `evalCore` (milestone 3): the run of a term is below the reference run
@@ -36,16 +36,17 @@ theorem eval_step (fuel : Nat) (ih : StepsIHBelow fuel) : eval_step_stmt K ρ φ
 theorem letIn_step (fuel : Nat) (ih : StepsIHBelow fuel) : letIn_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
-/-- `Eq` (the `.eq` form): both sides on private copies, the type a statement; the result means
-`⟦a⟧ = ⟦b⟧` (`Steps/Eq.mkEqM_step`), and the state's core is unchanged. -/
-theorem eq_step (fuel : Nat) (ih : StepsIHBelow fuel) : eq_step_stmt K ρ φ (fuel + 1) := by
-  sorry
+/-- `Eq` (the `.eq` form): the type and both sides on private copies, the result `mkEqM`'s, in the
+simulation form; assembled in `Steps/EqJAsm.lean` (docs/31 D75). -/
+theorem eq_step (fuel : Nat) (ih : StepsIHBelow fuel) : eq_step_stmt K ρ φ (fuel + 1) :=
+  eq_step_asm K ρ φ fuel ih
 
-/-- `J`, both outcomes: computed at convertible endpoints (the transported term runs in place)
-or closed off as a stuck block whose one arm is the transported term ([T-J-stuck]); each means
-the transported term (docs/24 C9). -/
-theorem J_step (fuel : Nat) (ih : StepsIHBelow fuel) : J_step_stmt K ρ φ (fuel + 1) := by
-  sorry
+/-- `J`, both outcomes, in the simulation form: computed at convertible endpoints (the transported
+term after its entry, at the join's grain) or closed off as a stuck block whose one arm is the
+transported term ([T-J-stuck]); each is the reference's [J-run]. Assembled in `Steps/EqJAsm.lean`
+(docs/31 D75). -/
+theorem J_step (fuel : Nat) (ih : StepsIHBelow fuel) : J_step_stmt K ρ φ (fuel + 1) :=
+  J_step_asm K ρ φ fuel ih
 
 /-- A proof position (a proof-returning call, a proof primitive, a proof `let`): its value is
 `⋆`, which is a member of its proposition exactly when the proposition is true; the state is
