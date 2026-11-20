@@ -30,6 +30,7 @@ import Ochr.Meaning.Steps.Tail
 import Ochr.Meaning.Steps.Decisions
 import Ochr.Meaning.Steps.Knot
 import Ochr.Meaning.Steps.Sim
+import Ochr.Meaning.Steps.Records
 import Ochr.Meaning.Steps.JoinDropLib
 import Ochr.Meaning.Attack.CloseCall
 import Ochr.Meaning.Attack.RunEqs
@@ -92,6 +93,7 @@ import Ochr.Meaning.Regress.DepSites
 import Ochr.Meaning.Regress.DepSitesMore
 import Ochr.Meaning.Regress.StepKinds
 import Ochr.Meaning.Regress.PartMoveRead
+import Ochr.Meaning.Regress.RecordSites
 import Ochr.Meaning.Regress.StarErasure
 
 /-!
