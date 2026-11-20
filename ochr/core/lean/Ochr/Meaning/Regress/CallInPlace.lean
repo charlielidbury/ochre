@@ -1098,13 +1098,16 @@ end Ochr.Meaning.Regress.CallInPlace
 
 namespace Ochr.Meaning.Regress.CallInPlace
 
-/-- **Dependence within sites** (docs/31 D67, stated for the check): two futures that differ only at
-live labels with no site at `p` on a path comparable with `steps` give the same reading of `p` at
-`steps`, typed or not. -/
+/-- **Dependence within sites** (docs/31 D67): two futures that differ only at live labels with no
+site at `p` on a path comparable with `steps` (by key, `*` erased) give the same VALUE read at `p`
+and `steps`, typed or not. The value only: a data value describes itself, so the value read needs
+no type to be found, and a field is typed at the closed future, as reads are; with the type too it
+fails at a dependent pair whose index is lent (`DepSitesMore.dws_Pair_dependent_fails`). -/
 def DepWithinSites (dm : DataModel) (Γ : List IndDecl) (s : SState) : Prop :=
   ∀ (p : Pos) (steps : List Step) (ψ ψ' : Future),
     (∀ l, ψ l ≠ ψ' l → s.Live l ∧ s.reached p (dataHit steps) l = false) →
-    Sem.follow dm Γ (s.tyAt p) (s.valAt p ψ) steps = Sem.follow dm Γ (s.tyAt p) (s.valAt p ψ') steps
+    (Sem.follow dm Γ (s.tyAt p) (s.valAt p ψ) steps).map Prod.fst =
+      (Sem.follow dm Γ (s.tyAt p) (s.valAt p ψ') steps).map Prod.fst
 
 /-- **After (i') the failure of D67 is gone** at the position that showed it: in the reference's
 state after `let y = 2; let r = Id1(&y)` the argument's consumed holder reads `moved` at every

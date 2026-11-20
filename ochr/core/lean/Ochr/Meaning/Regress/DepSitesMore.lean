@@ -1,5 +1,6 @@
 import Ochr.Meaning.Regress.DepSites
 import Ochr.Meaning.Regress.StaticLend
+import Ochr.Examples.DependentFields
 
 /-!
 # Dependence within sites on two more states (docs/31 D67; kernel-checked)
@@ -9,10 +10,13 @@ Under the erased comparison (`pathKey`), beside `Regress/DepSites.lean`'s six:
   borrow's end, whose re-rooting the checker's `endBorrow` agrees with (`rr_end`): holds
   (`dws_RR`, `dws_RR'`);
 * **a field borrowed through a returned borrow of a pair** (`let r = IdP(&x); let s = &(*r).0`),
-  the first site BELOW a root by field (`(r, [*, .0])`): holds (`dws_Pair`) when the pair's second
-  field's type reads no earlier field (`hty`, as the library data model's `fieldTy` does). For a
-  dependent pair it fails in the reading's TYPE (`dws_Pair_dependent_fails`): the type field `1` is
-  read at reads field `0`, which is lent; the meaning read does not.
+  the first site BELOW a root by field (`(r, [*, .0])`): holds (`dws_Pair`), the value read off
+  field `0` being independent of `s`'s final content whatever the declaration;
+* **a dependent pair with its index lent** (D93's `LendIndex`: `V := MkV(n : Word, x : Fin1(n))`,
+  `let r = match *v { MkV(n, x) => &n }`): holds (`dws_LendIndex`).
+With the reading's TYPE compared too the invariant failed at a dependent pair
+(`dws_Pair_dependent_fails`, kept as the record of why the typed form was dropped): the type field
+`1` is read at reads field `0`, which is lent; the value read does not.
 The checker's states are read at holes of its real runs (`atHole`, the editor's Ω), and the
 reference's sites are the checker's (identity renaming), kernel-checked.
 -/
@@ -26,15 +30,22 @@ ochr DepSitesAt uses Nats {
   def PairAt (a : Nat) (b : Nat) : Unit := (let x = (a, b); let r = IdP(&x); let s = &(*r).0; ?)
 }
 
+#guard_msgs (drop warning) in
+ochr DepSitesDepAt uses DepFields {
+  def LendIndexAt (v : &V) : Unit := (let r = match *v { MkV(n, x) => &n, }; ?)
+}
+
 namespace Ochr.Meaning.Regress.DepSitesMore
 open Ochr Ochr.Meaning Ochr.Meaning.Regress.CallInPlace Ochr.Meaning.Regress
 
-def atHole (name : String) : List Value :=
-  let r := Ochr.Test.runWith (some Prelude) "DepSitesAt" DepSitesAt (located := true)
+def atHoleIn (blk : String) (prog : Ochr.Surface.Block) (name : String) : List Value :=
+  let r := Ochr.Test.runWith (some Prelude) blk prog (located := true)
   match r.rows.find? (·.name == name) with
   | some row => (row.trace.toList.filterMap fun
       | .note _ _ (.hole _ Ω) => some (Ω.map (·.2.2)) | _ => none).headD []
   | none => []
+
+def atHole (name : String) : List Value := atHoleIn "DepSitesAt" DepSitesAt name
 
 /-! ## A reborrow of a reborrow
 
@@ -126,8 +137,8 @@ final content (`callOf`'s `.ref` row), `r` reads the pair whose field `0` is `3`
 and whose field `1` is `σ1`'s meaning (`ctorM`: a constructor value describes itself, its element
 whatever the fields give), `s` holds `σ0`. `3` is lent at `(r, [*, .0])`, BELOW the root: a read of
 `r` at a path whose first field is `.1` is incomparable with it, and reads field `1` whatever `3`'s
-final content is, at a type that does not read field `0` when the pair is not dependent
-(`hty`; the library data model's `fieldTy` ignores the earlier fields, `Data.lean`). -/
+final content is, whatever the declaration (`follow_dat_off`; the type it is read at may read field `0`, which the
+invariant does not compare). -/
 
 def vP : List Value := [.bot, .bot, .gloan 2 (.loan 2),
   .borrow 2 (.ind "Pair" 0 ⟨"Mk"⟩ [.tNat, .tNat] [.loan 3, .abs 1]), .borrow 3 (.abs 0)]
@@ -147,22 +158,39 @@ noncomputable def SPr (S A B X R T : SBinding) (fx : Sem → Sem) (ps : List Sem
     shape := fun p => if p = .bind 1 4 then some 2 else if p = .bind 1 5 then some 3 else none,
     nextLoan := 4, lent := Env.sitesOf stP.env }
 
-/-- Off field `0`, a pair's reading does not read field `0` (its type at field `1` by `hty`). -/
-theorem follow_pair_off (ps : List Sem) (v1 : Sem)
-    (hty : ∀ x y : Sem, contentTyS dm Γ "Pair" ps 0 1 [x] v1 = contentTyS dm Γ "Pair" ps 0 1 [y] v1)
-    (a a' : Sem) (e e' : Option (Σ A : Type, A)) :
+/-- The value component of a reading does not read the type it starts at. -/
+theorem follow_fst_indep : ∀ (steps : List Step) (s : Sem) (T T' : TyS),
+    (Sem.follow dm Γ T s steps).map Prod.fst = (Sem.follow dm Γ T' s steps).map Prod.fst
+  | [], _, _, _ => rfl
+  | .deref :: ss, s, T, T' => by
+    simp only [Sem.follow, Sem.step, Option.bind_some]
+    exact follow_fst_indep ss s T T'
+  | .proj i :: ss, s, T, T' => by
+    have e : Sem.step dm Γ T (.proj i) s = Sem.step dm Γ T' (.proj i) s := by cases i <;> rfl
+    simp only [Sem.follow, e]
+  | .field g :: ss, s, T, T' => by
+    have e : Sem.step dm Γ T (.field g) s = Sem.step dm Γ T' (.field g) s := rfl
+    simp only [Sem.follow, e]
+
+/-- **Off field `0`, the value read off a two-field constructor value does not read field `0`**,
+whatever the declaration (its type at field `1` may). -/
+theorem follow_dat_off (n : String) (ps : List Sem) (v1 : Sem) (a a' : Sem) (e e' : Option (Σ A : Type, A)) :
     ∀ (steps : List Step) (T : TyS), (pathKey steps).head? ≠ none → (pathKey steps).head? ≠ some (0, 0) →
-      Sem.follow dm Γ T (.dat "Pair" ps 0 [a, v1] e) steps = Sem.follow dm Γ T (.dat "Pair" ps 0 [a', v1] e') steps
+      (Sem.follow dm Γ T (.dat n ps 0 [a, v1] e) steps).map Prod.fst =
+        (Sem.follow dm Γ T (.dat n ps 0 [a', v1] e') steps).map Prod.fst
   | [], _, h, _ => absurd rfl h
   | .deref :: ss, T, h1, h2 => by
     simp only [Sem.follow, Sem.step, Option.bind_some]
-    exact follow_pair_off ps v1 hty a a' e e' ss T h1 h2
+    exact follow_dat_off n ps v1 a a' e e' ss T h1 h2
   | .proj i :: ss, T, h1, h2 => by
     cases i with
     | zero => exact absurd rfl h2
     | succ i =>
       cases i with
-      | zero => simp [Sem.follow, Sem.step, Sem.stepField, hty a a']
+      | zero =>
+        simp only [Sem.follow, Sem.step, Sem.stepField, if_true, List.getElem?_cons_succ, List.getElem?_cons_zero,
+          Option.map_some, Option.bind_some]
+        exact follow_fst_indep dm Γ ss v1 _ _
       | succ i => simp [Sem.follow, Sem.step, Sem.stepField]
   | .field g :: ss, T, h1, h2 => by
     simp only [Sem.follow, Sem.step, Sem.stepField]
@@ -173,9 +201,28 @@ theorem follow_pair_off (ps : List Sem) (v1 : Sem)
       subst hc
       rcases gi with _ | _ | gi
       · exact absurd rfl hi
-      · simp [hty a a']
+      · simp only [if_true, List.getElem?_cons_succ, List.getElem?_cons_zero, Option.map_some, Option.bind_some]
+        exact follow_fst_indep dm Γ ss v1 _ _
       · simp
     · simp [hc]
+
+/-- A path whose key is not comparable with `[.0]`'s starts with another field. -/
+theorem off_key00 {steps π : List Step} (hπ : pathKey π = [(0, 0)]) (hd : dataHit steps π = false) :
+    (pathKey steps).head? ≠ none ∧ (pathKey steps).head? ≠ some (0, 0) := by
+  simp only [dataHit, hπ, Bool.or_eq_false_iff] at hd
+  refine ⟨fun hn => ?_, fun hn => ?_⟩
+  · have : pathKey steps = [] := by
+      cases hk : pathKey steps with
+      | nil => rfl
+      | cons _ _ => rw [hk] at hn; cases hn
+    rw [this] at hd; simp at hd
+  · cases hk : pathKey steps with
+    | nil => rw [hk] at hn; cases hn
+    | cons k0 rest =>
+      rw [hk] at hn hd
+      simp only [List.head?_cons, Option.some.injEq] at hn
+      subst hn
+      simp [List.isPrefixOf] at hd
 
 theorem rs_P (l i : Nat) (h : l = 2 ∧ i = 3) :
     (Env.sitesOf stP.env l).any (fun x => decide (x.pos = .bind 1 i) && (pathKey x.path).isEmpty) = true := by
@@ -187,9 +234,7 @@ theorem siteP3 : (Env.sitesOf stP.env 3).any
 
 /-- **A field borrowed through a returned borrow of a pair**: the site below the root. -/
 theorem dws_Pair (S A B X R T : SBinding) (fx : Sem → Sem) (ps : List Sem) (v1 vs vt : Sem)
-    (e : Sem → Option (Σ A : Type, A))
-    (hty : ∀ x y : Sem, contentTyS dm Γ "Pair" ps 0 1 [x] v1 = contentTyS dm Γ "Pair" ps 0 1 [y] v1) :
-    DepWithinSites dm Γ (SPr S A B X R T fx ps v1 vs vt e) := by
+    (e : Sem → Option (Σ A : Type, A)) : DepWithinSites dm Γ (SPr S A B X R T fx ps v1 vs vt e) := by
   intro p steps ψ ψ' h
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
   · rcases f with _ | _ | f
@@ -213,23 +258,9 @@ theorem dws_Pair (S A B X R T : SBinding) (fx : Sem → Sem) (ps : List Sem) (v1
             have := hr x hx
             simp only [hxp.1, Bool.and_eq_true, decide_eq_true_eq, true_and, Bool.not_eq_true] at this
             exact this
-          simp only [dataHit, hxp.2, Bool.or_eq_false_iff] at hd
+          obtain ⟨h1, h2⟩ := off_key00 hxp.2 hd
           simp only [SState.valAt, SPr, SState.tyAt]
-          refine follow_pair_off dm Γ ps v1 hty _ _ _ _ steps _ ?_ ?_
-          · intro hn
-            have : pathKey steps = [] := by
-              cases hk : pathKey steps with
-              | nil => rfl
-              | cons _ _ => rw [hk] at hn; cases hn
-            rw [this] at hd; simp at hd
-          · intro hn
-            cases hk : pathKey steps with
-            | nil => rw [hk] at hn; cases hn
-            | cons k0 rest =>
-              rw [hk] at hn hd
-              simp only [List.head?_cons, Option.some.injEq] at hn
-              subst hn
-              simp [List.isPrefixOf] at hd
+          exact follow_dat_off dm Γ "Pair" ps v1 _ _ _ _ steps _ h1 h2
       · simp [SState.valAt, SPr]
       · simp [SState.valAt, SPr]
     · simp [SState.valAt, SPr]
@@ -239,14 +270,22 @@ theorem sitesP3_all : (Env.sitesOf stP.env 3).all
     (fun x => !decide (x.pos = .bind 1 4) || pathKey x.path == [(0, 0)]) = true := by
   decide +kernel
 
-/-- **For a dependent pair the reading's TYPE reads the lent field**: where the type field `1` is read
+/-- The invariant with the reading's type compared too (its form before the lead's decision on the
+dependent pair, docs/31 D67). -/
+def DepWithinSitesT (s : SState) : Prop :=
+  ∀ (p : Pos) (steps : List Step) (ψ ψ' : Future),
+    (∀ l, ψ l ≠ ψ' l → s.Live l ∧ s.reached p (dataHit steps) l = false) →
+    Sem.follow dm Γ (s.tyAt p) (s.valAt p ψ) steps = Sem.follow dm Γ (s.tyAt p) (s.valAt p ψ') steps
+
+/-- **With the type compared, for a dependent pair the reading's TYPE reads the lent field**: where the type field `1` is read
 at depends on field `0` (`fieldTy` reading the earlier fields, as a dependent declaration's does),
 two typed futures differing only at `3` (lent at `(r, [*, .0])`, incomparable with `[*, .1]`) read
-field `1` at different types. The meaning read is the same (`follow_pair_off`'s first component). -/
+field `1` at different types. The value read is the same (`dws_Pair`). The record of why the
+invariant compares values only. -/
 theorem dws_Pair_dependent_fails (S A B X R T : SBinding) (fx : Sem → Sem) (ps : List Sem) (v1 vs vt : Sem)
     (e : Sem → Option (Σ A : Type, A)) (x y : Sem)
     (hdep : contentTyS dm Γ "Pair" ps 0 1 [x] v1 ≠ contentTyS dm Γ "Pair" ps 0 1 [y] v1) :
-    ¬ DepWithinSites dm Γ (SPr S A B X R T fx ps v1 vs vt e) := by
+    ¬ DepWithinSitesT dm Γ (SPr S A B X R T fx ps v1 vs vt e) := by
   intro h
   have := h (.bind 1 4) [.deref, .field ⟨"Pair", 0, 1, ""⟩] (fun l => if l = 3 then x else .err)
     (fun l => if l = 3 then y else .err) (fun l hl => ?_)
@@ -267,5 +306,77 @@ theorem dws_Pair_dependent_fails (S A B X R T : SBinding) (fx : Sem → Sem) (ps
         rw [dataHit, hall, hk] at h2
         revert h2; decide
     · simp [hl3] at hl
+
+/-! ## A dependent pair with its index lent (D93's `LendIndex`)
+
+`V := MkV(n : Word, x : Fin1(n))`, `x`'s type reading `n`; `let r = match *v { MkV(n, x) => &n }`.
+At the hole the checker holds the parameter's cell `loan_0` (frame `0`), `v ↦ borrow_0 MkV(loan_1, σ2)`
+and `r ↦ borrow_1 σ1` (frame `1`: the function, `v`, `r`). The reference (identity renaming, the
+checker's sites): the cell reads `0`'s final content, `v` reads the constructor value whose field
+`0` is `1`'s final content, `r` holds `σ1`. `1` is lent at `(v, [*, .0])`: reading `v` at `x`
+reads `σ2`'s meaning whatever the index's final content is, though the type `x` is read at reads it. -/
+
+def vLI : List Value := [.loan 0, .borrow 0 (.ind "V" 0 ⟨"MkV"⟩ [] [.loan 1, .abs 2]), .borrow 1 (.abs 1)]
+#guard atHoleIn "DepSitesDepAt" DepSitesDepAt "LendIndexAt" == vLI
+
+/-- The checker's state at the hole: the cell in frame `0`, the function, `v`, `r` in frame `1`. -/
+def stLI : MState :=
+  { env := #[{ binds := #[({ hint := ⟨"cell"⟩, ty := none, val := .loan 0 } : Binding)] },
+      { binds := #[({ hint := ⟨"LendIndexAt"⟩, ty := none, val := .gfn "LendIndexAt" } : Binding),
+        { hint := ⟨"v"⟩, ty := none, val := .borrow 0 (.ind "V" 0 ⟨"MkV"⟩ [] [.loan 1, .abs 2]) },
+        { hint := ⟨"r"⟩, ty := none, val := .borrow 1 (.abs 1) }] }],
+    nextLoan := 2, absTy := Array.replicate 3 .tNat, absDecl := Array.replicate 3 .other, nextAbs := 3 }
+
+theorem li_sites : StaticLend.sameSites (Env.sitesOf stLI.env 0) [⟨.bind 0 0, [], false⟩] = true ∧
+    StaticLend.sameSites (Env.sitesOf stLI.env 1) [⟨.bind 1 1, [.deref, .field ⟨"V", 0, 0, ""⟩], false⟩] = true := by
+  decide +kernel
+
+theorem rsLI0 : (Env.sitesOf stLI.env 0).any (fun x => decide (x.pos = .bind 0 0) && (pathKey x.path).isEmpty) = true := by
+  decide +kernel
+
+theorem siteLI1 : (Env.sitesOf stLI.env 1).any
+    (fun x => decide (x.pos = .bind 1 1) && pathKey x.path == [(0, 0)]) = true := by
+  decide +kernel
+
+noncomputable def SLI (C S Vb R : SBinding) (ps : List Sem) (vx vs vr : Sem) (e : Sem → Option (Σ A : Type, A)) : SState :=
+  { env := [SFrame.mk [{ C with val := fun ψ => ψ 0 }] [],
+      SFrame.mk [{ S with val := fun _ => vs }, { Vb with val := fun ψ => .dat "V" ps 0 [ψ 1, vx] (e (ψ 1)) },
+        { R with val := fun _ => vr }] []],
+    shape := fun p => if p = .bind 1 1 then some 0 else if p = .bind 1 2 then some 1 else none,
+    nextLoan := 2, lent := Env.sitesOf stLI.env }
+
+/-- **A dependent pair with its index lent**: the value read at the dependent field does not read
+the lent index. -/
+theorem dws_LendIndex (C S Vb R : SBinding) (ps : List Sem) (vx vs vr : Sem) (e : Sem → Option (Σ A : Type, A)) :
+    DepWithinSites dm Γ (SLI C S Vb R ps vx vs vr e) := by
+  intro p steps ψ ψ' h
+  rcases p with ⟨f, i⟩ | ⟨f, i⟩
+  · rcases f with _ | _ | f
+    · rcases i with _ | i
+      · have h0 : ψ 0 = ψ' 0 := Classical.byContradiction fun hne => by
+          have := (h 0 hne).2
+          rw [DepSites.reached_of_rootSited (s := SLI C S Vb R ps vx vs vr e) (p := .bind 0 0) (l := 0)
+            rsLI0 steps] at this; cases this
+        simp [SState.valAt, SLI, h0]
+      · simp [SState.valAt, SLI]
+    · rcases i with _ | _ | _ | i
+      · simp [SState.valAt, SLI]
+      · by_cases h1 : ψ 1 = ψ' 1
+        · simp [SState.valAt, SLI, h1]
+        · have hr := (h 1 h1).2
+          obtain ⟨x, hx, hxp⟩ := List.any_eq_true.mp siteLI1
+          simp only [Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at hxp
+          have hd : dataHit steps x.path = false := by
+            simp only [SState.reached, SLI, List.any_eq_false] at hr
+            have := hr x hx
+            simp only [hxp.1, Bool.and_eq_true, decide_eq_true_eq, true_and, Bool.not_eq_true] at this
+            exact this
+          obtain ⟨hn, hk⟩ := off_key00 hxp.2 hd
+          simp only [SState.valAt, SLI, SState.tyAt]
+          exact follow_dat_off dm Γ "V" ps vx _ _ _ _ steps _ hn hk
+      · simp [SState.valAt, SLI]
+      · simp [SState.valAt, SLI]
+    · simp [SState.valAt, SLI]
+  · rcases f with _ | _ | f <;> simp [SState.valAt, SLI]
 
 end Ochr.Meaning.Regress.DepSitesMore
