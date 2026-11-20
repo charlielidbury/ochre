@@ -272,9 +272,9 @@ theorem run_prim_substSame (hD : DecInvariant K.D l w) (tl : Bool) (n : String) 
     have : args.length = 1 := by rw [← hlen, e2]; rfl
     obtain ⟨x, hx⟩ := list_one args this
     exact hc ⟨x, e1 ▸ hm, hx⟩
-  rw [runT.eq_38 K ρ ψ tl hint n _ h1 h2 h3 h4 hJs (hcs _ (.inl rfl)).2 (hcs _ (.inr (.inl rfl))).2
+  rw [runT.eq_42 K ρ ψ tl hint n _ h1 h2 h3 h4 hJs (hcs _ (.inl rfl)).2 (hcs _ (.inr (.inl rfl))).2
       (hcs _ (.inr (.inr rfl))).2,
-    runT.eq_38 K ρ ψ tl hint n _ h1 h2 h3 h4 hJ' (hcs _ (.inl rfl)).1 (hcs _ (.inr (.inl rfl))).1
+    runT.eq_42 K ρ ψ tl hint n _ h1 h2 h3 h4 hJ' (hcs _ (.inl rfl)).1 (hcs _ (.inr (.inl rfl))).1
       (hcs _ (.inr (.inr rfl))).1]
 
 end SubstPrim
@@ -308,6 +308,8 @@ theorem runT_substSame (hF : FillOK K ρ ψ l w) : ∀ (tl : Bool) (t : Term) (h
           runT_substSame hF false t]
       | sealed t =>
         simp only [Value.substLoan, valT, runT_substSame hF false t hint]
+      | ind ty c h ps fs =>
+        simp only [Value.substLoan, valT, meanParams_substSame hF, Value.substLoanList_isEmpty]
       | _ => rfl
     | assign p u =>
       have hu := fun tl' => runT_substSame hF tl' u

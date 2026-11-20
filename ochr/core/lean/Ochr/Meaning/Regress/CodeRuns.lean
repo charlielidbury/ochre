@@ -72,10 +72,10 @@ theorem meanV_num (K : RunCtx) (n : Nat) : ∀ hint : TyS,
   | zero => intro _; rfl
   | succ k ih => intro _; show (meanV _ ρ φ _ _).succ = _; rw [ih]; simp [Sem.succ, Sem.asNat, Sem.as]
 
-/-- A number written as a value runs to itself at the hint, the state untouched. -/
+/-- A number written as a value runs to itself at `Nat`, the state untouched. -/
 theorem run_num (n : Nat) (hint : TyS) (s : SState) :
     run (Kp dm Γ G) ρ φ hint (.val (Nat.rec Value.zero (fun _ v => .succ v) n)) s =
-      some ((.el0 Nat n, { hint with label := none }), s) := by
+      some ((.el0 Nat n, .plain TyM.nat), s) := by
   rw [run_val_def, meanV_num]
   congr 3
   cases n <;> rfl
@@ -86,7 +86,7 @@ abbrev num (n : Nat) : Term := .val (Nat.rec Value.zero (fun _ v => .succ v) n)
 /-- The arguments of a call, numerals: each at its parameter's code, the state untouched. -/
 theorem runArgs_num (fT : TyM) (earlier : List Sem) (n : Nat) (s : SState) :
     runArgs (Kp dm Γ G) ρ φ false fT earlier [num n] s =
-      some ([(.el0 Nat n, .plain (fT.domAfter dm.read earlier))], s) := by
+      some ([(.el0 Nat n, .plain TyM.nat)], s) := by
   simp only [runArgs, Bool.false_and]
   show (do let r ← run (Kp dm Γ G) ρ φ (.plain (fT.domAfter dm.read earlier)) (num n); _) s = _
   simp only [bind, run_num]
@@ -594,7 +594,7 @@ theorem run_cons (h : Nat) (t : Term) (l : List Nat) (s : SState)
     run (Kp dmP [listD] G) ρ φ hint (consT h t) s = some ((semL (h :: l), .plain (dmP.tyM listD psN)), s) := by
   have hf : runFields (Kp dmP [listD] G) ρ φ false listD 1 0 (some (dmP.recOf listD psN)) (psN.map some) [] [num h, t] s
       = some (([.el0 Nat h, semL l], psN.map some), s) := by
-    have hn : ∀ hint, runT (Kp dmP [listD] G) ρ φ false hint (num h) s = some ((.el0 Nat h, { hint with label := none }), s) :=
+    have hn : ∀ hint, runT (Kp dmP [listD] G) ρ φ false hint (num h) s = some ((.el0 Nat h, .plain TyM.nat), s) :=
       fun hint => run_num dmP [listD] G ρ φ h hint s
     have ht' : ∀ hint, runT (Kp dmP [listD] G) ρ φ false hint t s = some ((semL l, .plain (dmP.tyM listD psN)), s) := ht
     simp only [runFields, SM.stmtIf, Bool.false_and, Bool.false_eq_true, if_false, bind, Option.bind, hn, ht', pure]
@@ -642,7 +642,7 @@ theorem run_node (a : Nat) (ks : Term) (l : Sem) (s : SState)
     run (Kp dmP ΓR G) ρ φ hint (nodeT a ks) s = some ((nodeV a l, .plain (dmP.tyM roseD psN)), s) := by
   have hf : runFields (Kp dmP ΓR G) ρ φ false roseD 0 0 (some (dmP.recOf roseD psN)) (psN.map some) [] [num a, ks] s
       = some (([.el0 Nat a, l], psN.map some), s) := by
-    have hn : ∀ hint, runT (Kp dmP ΓR G) ρ φ false hint (num a) s = some ((.el0 Nat a, { hint with label := none }), s) :=
+    have hn : ∀ hint, runT (Kp dmP ΓR G) ρ φ false hint (num a) s = some ((.el0 Nat a, .plain TyM.nat), s) :=
       fun hint => run_num dmP ΓR G ρ φ a hint s
     have hk' : ∀ hint, runT (Kp dmP ΓR G) ρ φ false hint ks s = some ((l, .plain (dmP.tyM listD psR)), s) := hk
     simp only [runFields, SM.stmtIf, Bool.false_and, Bool.false_eq_true, if_false, bind, Option.bind, hn, hk', pure]

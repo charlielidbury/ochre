@@ -102,7 +102,7 @@ theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {tl : Bool} 
       (hc : ∀ u, n = "clone" → args = [u] → False) (hp : ∀ u, n = "peek" → args = [u] → False)
       (hi : ∀ u, n = "inplace" → args = [u] → False), False := by
     intro hJ hc hp hi
-    rw [runT.eq_38 K ρ φ tl hint n args h1 h2 h3 h4 hJ hc hp hi] at h
+    rw [runT.eq_42 K ρ φ tl hint n args h1 h2 h3 h4 hJ hc hp hi] at h
     cases h
   by_cases hJ : ∃ A a b P h t, n = "J" ∧ args = [A, a, b, P, h, t]
   · obtain ⟨A, a, b, P, h', t, rfl, rfl⟩ := hJ

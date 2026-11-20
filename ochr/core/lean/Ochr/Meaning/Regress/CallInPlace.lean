@@ -228,8 +228,8 @@ theorem run_incClo (hint : TyS) (s : SState) :
   rw [run_val_def, meanV_incClo]
   congr
 
-/-- `y`'s binding: `2`, at the hint `let` gives a value (`err`). -/
-def yB : SBinding := { ty := { (TyS.plain TyM.err) with label := none }, val := fun _ => .el0 Nat 2, decl := .other }
+/-- `y`'s binding: `2`, at `Nat` (the run types an embedded number at `Nat`). -/
+def yB : SBinding := { ty := TyS.plain TyM.nat, val := fun _ => .el0 Nat 2, decl := .other }
 
 /-- `Inc(&y)`'s argument: `&y` at label `0`, `y` lent there, the content parked. -/
 theorem runArgs_borrowY (fT : TyM) :
@@ -300,7 +300,7 @@ theorem useInc_callOf (hint : TyS) :
   rw [show Kp dm [] (fun _ => (.err, .plain TyM.err)) = Kc dm from rfl]
   simp only [bind, Option.bind]
   rw [Attack.pushBindShaped_noLabel _ _ rfl]
-  rw [show ({ ty := { (TyS.plain TyM.err) with label := none }, val := fun _ => .el0 Nat 2, decl := .other } : SBinding)
+  rw [show ({ ty := TyS.plain TyM.nat, val := fun _ => .el0 Nat 2, decl := .other } : SBinding)
     = yB from rfl, hseq]
   exact ⟨_, rfl⟩
 
@@ -846,6 +846,7 @@ theorem runAssign_SR (hint : TyS) :
   dsimp only
   simp only [assignAt, resolve_SR_r, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false, access_SR_r,
     setContent_SR]
+  rfl
 
 /-- Reading `y` after `*r := 5`: the read of `y` ends the reborrow `1` (lent at `y`), whose final
 content `5` `y` then reads. -/
@@ -912,7 +913,7 @@ theorem useId1_callOf (hint : TyS) :
   rw [show Kp dm [] (fun _ => (.err, .plain TyM.err)) = Kc dm from rfl]
   simp only [bind, Option.bind]
   rw [Attack.pushBindShaped_noLabel _ _ rfl]
-  rw [show ({ ty := { (TyS.plain TyM.err) with label := none }, val := fun _ => .el0 Nat 2, decl := .other } : SBinding)
+  rw [show ({ ty := TyS.plain TyM.nat, val := fun _ => .el0 Nat 2, decl := .other } : SBinding)
     = yB from rfl]
   rw [show Kc dm = Kp dm [] (fun _ => (.err, .plain TyM.err)) from rfl, run_letIn]
   rw [show Kp dm [] (fun _ => (.err, .plain TyM.err)) = Kc dm from rfl, hc]

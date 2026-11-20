@@ -19,18 +19,20 @@ induction does not look at which atom it replaces except in its base case, so th
 `RunSubst.lean`'s induction generalised from a loan to an atom (`FillOK` per atom), not a fifth
 induction: provided its base case holds, the hypothesis `AbsFillOK` below.
 
-**The base case fails today, at the type the run gives an embedded value** (`absFill_shape_false`,
-kernel-checked). `run`'s `.val` clause types `.abs σ` at `Δ σ` and every other data value at the
-HINT: `.val (.abs σ)` and `.val Z` mean the same where `ρ σ = 0` and are typed `Nat` and `err`. So the
-run-level lemma with whole results is false (`run_substAbs_false`, the text `.val σ` itself), and the
-substituted text's `let` binds its value at `err` where the original bound it at `Δ σ`. Where the
+**The base case failed at the type the run gave an embedded value** (`absFill_shape_false`, until
+the data-layer port): `run`'s `.val` clause typed `.abs σ` at `Δ σ` and every other data value at the
+HINT, so `.val (.abs σ)` and `.val Z` meant the same where `ρ σ = 0` and were typed `Nat` and `err`;
+the run-level lemma with whole results was false at the text `.val σ` itself. Way out 1 below is
+taken: the run types an embedded value by what it is, and the base case now holds wherever
+`DeltaOk` does (`absFill_shape`, kernel-checked). Where the
 type is not read again, nothing changes: on the `SplitSubst` runs the meanings and even the whole
-runs agree (`pred2_instance`), since a call reads its arguments' meanings only. Two ways out:
-1. (recommended) the run's `.val` clause types a number at `Nat` and a constructor value that
-   records its parameters at its own type `D(ps̄)`, as the checker types them. Then `AbsFillOK.shape`
-   holds wherever `DeltaOk` does (a refinement of `σ` is a value of `σ`'s stored type, which is what
-   `Δ σ` is the code of), and the lemma is the generalised `runT_substSame`. A change to a data
-   clause of `Run.lean`, so after the data-layer port.
+runs agree (`pred2_instance`), since a call reads its arguments' meanings only. The two ways out
+that were open:
+1. (taken) the run's `.val` clause types a number at `Nat` and a constructor value at the type its
+   record names (for one that records its parameters, its own type `D(ps̄)`), as the checker types
+   them. Then `AbsFillOK.shape` holds wherever `DeltaOk` does (a refinement of `σ` is a value of
+   `σ`'s stored type, which is what `Δ σ` is the code of), and the lemma is the generalised
+   `runT_substSame`.
 2. state it up to types (result types and the types bindings store): then it is a new induction (a
    simulation between states whose binding types differ but whose meanings agree).
 -/
@@ -141,34 +143,39 @@ theorem run_substAbs (ψ : Future) (σ : Nat) (r : Value) (hF : AbsFillOK K ρ �
     (hint : TyS) : runT K ρ ψ tl hint (Term.substAbs σ r t) = runT K ρ ψ tl hint t := by
   sorry
 
-theorem TyM.err_ne_nat : TyM.err ≠ TyM.nat := fun h => by
-  have := congrArg TyM.isErr h
-  simp [TyM.isErr, TyM.err, TyM.nat] at this
-
-/-- **The base case fails as the run stands** (kernel-checked): where `Δ σ` is `Nat` and `ρ σ = 0`,
-`.val Z` means `σ`'s value but is typed at the hint, `.val σ` at `Δ σ`. -/
-theorem absFill_shape_false (ψ : Future) (hΔ : K.Δ 0 = .plain TyM.nat) (s : SState) :
-    (run K ρ ψ (.plain .err) (.val .zero) s).map (·.1.2) ≠ (run K ρ ψ (.plain .err) (.val (.abs 0)) s).map (·.1.2) := by
+/-- **The base case holds wherever `DeltaOk` does** (kernel-checked; since the run's `.val` clause
+types an embedded value by what it is, as the checker does). Where `Δ σ` is `σ`'s stored type read
+as `DeltaOk` reads it (`deltaOf`), a refinement of `σ`, a number where the stored type is `Nat`, a
+constructor value recording the stored type's parameters where it is `D(ps̄)`, is typed by the run
+exactly as `.val σ` is. (Before, the run typed every data value but an unknown at the hint, and this
+was false at the text `.val σ` itself: `.val Z` at `err`, `.val σ` at `Nat`.) -/
+theorem absFill_shape (hK : ∀ n, (K.C.global n).2.label = none) (st : MState) (σ : Nat)
+    (hΔ : K.Δ σ = deltaOf K ρ st σ) (ψ : Future) (r : Value)
+    (hr : (st.absTy[σ]? = some .tNat ∧ (r = .zero ∨ ∃ v, r = .succ v)) ∨
+      ∃ (ty : String) (c : Nat) (h : Hint) (ps fs : List Value) (d : IndDecl),
+        st.absTy[σ]? = some (.tInd ty ps) ∧ r = .ind ty c h ps fs ∧
+        K.Γ.find? (·.name == ty) = some d ∧ (ps.isEmpty && !d.params.isEmpty) = false ∧
+        ∀ l, Value.anyAtomList (· == .loan l) ps = false) :
+    ∀ hint s, (run K ρ ψ hint (.val r) s).map (·.1.2) = (run K ρ ψ hint (.val (.abs σ)) s).map (·.1.2) := by
+  intro hint s
   rw [run_val_def, run_val_def]
-  simp only [Option.map_some]
-  intro h
-  have h' := congrArg (fun x => x.map TyS.m) h
-  simp only [Option.map_some] at h'
-  have e1 : (valT K ρ ψ (.plain .err) Value.zero).m = TyM.err := rfl
-  have e2 : (valT K ρ ψ (.plain .err) (.abs 0)).m = TyM.nat := by
-    show (K.Δ 0).m = TyM.nat
-    rw [hΔ]; rfl
-  simp only [Option.some.injEq] at h'
-  exact TyM.err_ne_nat (e1.symm.trans (h'.trans e2))
-
-/-- **So the run-level lemma with whole results is false today**, at the simplest text, `.val σ`,
-although both sides mean `0` (the type differs; a `let` would store it). -/
-theorem run_substAbs_false (ψ : Future) (hΔ : K.Δ 0 = .plain TyM.nat) (s : SState) :
-    run K ρ ψ (.plain .err) (Term.substAbs 0 .zero (.val (.abs 0))) s ≠ run K ρ ψ (.plain .err) (.val (.abs 0)) s := by
-  intro h
-  exact absFill_shape_false K ρ ψ hΔ s (by
-    show (run K ρ ψ (.plain .err) (Term.substAbs 0 .zero (.val (.abs 0))) s).map (·.1.2) = _
-    rw [h])
+  simp only [Option.map_some, Option.some.injEq]
+  have hvσ : valT K ρ ψ hint (.abs σ) = deltaOf K ρ st σ := hΔ
+  rw [hvσ]
+  rcases hr with ⟨hT, hn⟩ | ⟨ty, c, h, ps, fs, d, hT, rfl, hd, hps, hl⟩
+  · have hv : valT K ρ ψ hint r = .plain TyM.nat := by
+      rcases hn with rfl | ⟨v, rfl⟩ <;> rfl
+    rw [hv]
+    simp only [deltaOf, hT]
+    rfl
+  · have hP : meanParams K ρ ψ d 0 [] ps = meanParams K ρ (fun _ => .err) d 0 [] ps :=
+      meanParams_congrE K ρ ψ (fun _ => .err) hK d ps 0 [] (fun l h => by rw [hl l] at h; cases h)
+    have hv : valT K ρ ψ hint (.ind ty c h ps fs) = .plain (K.dm.tyM d (meanParams K ρ (fun _ => .err) d 0 [] ps)) := by
+      simp only [valT, hd, hps, Bool.false_eq_true, if_false, hP]
+      rfl
+    rw [hv]
+    simp only [deltaOf, hT, Ochr.Value.tyS, Value.mean, hd, meanParams_eq_mean]
+    rfl
 
 end
 
