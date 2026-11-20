@@ -208,6 +208,9 @@ where the clause has something to say), and its check, which lists the violation
 structure Clause where
   name : String
   planted : Bool := false
+  /-- A report (the slice): its cases are listed with their smallest programs, and it never fails
+  the sweep (neither when it has cases nor when it has none). -/
+  report : Bool := false
   premises : List (String × (MState → Bool)) := []
   check : MState → List Viol
 
@@ -986,6 +989,110 @@ def loanContentFits : Clause where
       | none => none
     | _, _ => none
 
+/-- A declared reading, briefly. -/
+partial def declStr : DeclInfo → String
+  | .sort l => s!"sort {l}"
+  | .prop => "prop"
+  | .pi c => s!"pi({declStr c})"
+  | .ref a => s!"ref({declStr a})"
+  | .unit => "unit"
+  | .ind n _ => s!"ind {n}"
+  | .alt ds => s!"alt[{", ".intercalate (ds.map declStr)}]"
+  | .other => "other"
+  | .any => "any"
+  | .conflict => "conflict"
+
+/-- The places in scope whose declared reading is not a copy (`declCopy` does not run to `true`),
+with their values and readings. -/
+def nonCopyPlaces (st : MState) : List (Place × Value × DeclInfo) :=
+  (topPlaces st).filterMap fun (q, v) => match declAt st q with
+    | some d => match (runMachine (Ochr.declCopy 1000 d) st 100000).1 with
+      | .ok true _ => none
+      | _ => some (q, v, d)
+    | none => none
+
+/-- The checker's computed type of a place (`Machine.placeType?`), at the state. -/
+def placeTypeOf (st : MState) (q : Place) : Option Value :=
+  match (runMachine (Ochr.placeType? 1000 q) st 1000000).1 with
+  | .ok (some T) _ => some T
+  | _ => none
+
+/-- The head of a value, briefly. -/
+def valHead : Value → String
+  | .gfn _ => "a global function name" | .clo .. => "a closure" | .abs _ => "an unknown"
+  | .sealed _ => "a sealed program" | .loan _ => "a loan" | .gloan _ _ => "a mark"
+  | .borrow _ _ => "a borrow" | .ind .. => "a constructor value" | _ => "other"
+
+/-- The place is the top frame's first binding (a function's own binding, `self`). -/
+def isSelf (st : MState) (q : Place) : Bool :=
+  match q, st.env.back? with
+  | .var o, some fr => o + 1 == fr.binds.size
+  | _, _ => false
+
+/-- (D⋆T, REFUTED CANDIDATE, the slice; kept as a report): a place in scope whose declared reading
+is not a copy and which holds neither `⋆` nor `⊥` has a computed type (`placeType?`) that the
+checker's sort test (`sortOf … = 0`) does not call a proposition. Proposed to replace the per-value
+(D⋆). False on the suite: a place declared a Π into proofs (`pi(prop)`, `pi(pi(prop))`) is no
+copy, and a function's or closure's own binding of a proof-valued type holds the function's name
+or the closure, not `⋆` (19,132 states, every one such a binding or a capture of one). -/
+def typeNotProp : Clause where
+  name := "(D⋆T, REFUTED candidate, kept as a report) a non-copy place holding neither ⋆ nor ⊥ has a computed type that is no proposition"
+  report := true
+  premises := [
+    ("a non-copy place in scope holds neither ⋆ nor ⊥", fun st => (nonCopyPlaces st).any fun (_, v, _) =>
+      !(v matches .proof) && !(v matches .bot)),
+    ("... and has a computed type", fun st => (nonCopyPlaces st).any fun (q, v, _) =>
+      !(v matches .proof) && !(v matches .bot) && (placeTypeOf st q).isSome),
+    ("... and has none (placeType? fails or gives none)", fun st => (nonCopyPlaces st).any fun (q, v, _) =>
+      !(v matches .proof) && !(v matches .bot) && (placeTypeOf st q).isNone)]
+  check st := (nonCopyPlaces st).filterMap fun (q, v, d) =>
+    if v matches .proof || v matches .bot then none else
+    match placeTypeOf st q with
+    | some T => if sortIsProp st T then
+        some ⟨s!"a non-copy place ({declStr d}) holding {if q matches .var _ then "at a variable" else "below a variable"} data of a proposition: {valHead v}{if isSelf st q then ", the function's own binding" else ""}",
+          s!"{q.root}…: holds {clip v.pp} : {clip T.pp}"⟩ else none
+    | none => none
+
+/-- REPORT (not a clause): the non-copy places in scope that hold `⋆`, by where and by declared
+reading. -/
+def nonCopyProof : Clause where
+  name := "(report) a non-copy place holding ⋆"
+  report := true
+  premises := [("a non-copy place holds ⋆", fun st => (nonCopyPlaces st).any fun (_, v, _) => v matches .proof)]
+  check st := (nonCopyPlaces st).filterMap fun (q, v, d) =>
+    if v matches .proof then
+      some ⟨s!"⋆ {if q matches .var _ then "at a variable" else "below a variable"} declared {declStr d}",
+        s!"{q.root}…: {declStr d}"⟩
+    else none
+
+/-- REPORT (not a clause): the top frame's bindings with no stored type (`ty` and `lazyTy` both
+`none`), where `Good`'s membership says nothing of the binding. -/
+def untypedBindings : Clause where
+  name := "(report) a binding of the top frame with no stored type"
+  report := true
+  premises := [
+    ("a binding of the top frame has no stored type", fun st => match st.env.back? with
+      | some fr => fr.binds.any fun b => b.ty.isNone && b.lazyTy.isNone
+      | none => false),
+    ("... outside a private copy", fun st => st.privateDepth == 0 && match st.env.back? with
+      | some fr => fr.binds.any fun b => b.ty.isNone && b.lazyTy.isNone
+      | none => false),
+    ("... at a non-copy place holding neither ⋆ nor ⊥", fun st => (nonCopyPlaces st).any fun (q, v, _) =>
+      (q matches .var _) && !(v matches .proof) && !(v matches .bot) &&
+      (match st.env.back? with
+        | some fr => match fr.binds[fr.binds.size - 1 - q.root]? with
+          | some b => b.ty.isNone && b.lazyTy.isNone
+          | none => false
+        | none => false))]
+  check st := match st.env.back? with
+    | some fr => (List.range fr.binds.size).filterMap fun o =>
+      let b := fr.binds[fr.binds.size - 1 - o]!
+      if b.ty.isNone && b.lazyTy.isNone then
+        some ⟨s!"an untyped binding {if st.privateDepth > 0 then "inside a private copy" else "outside private copies"}, declared {declStr b.decl}{if b.val matches .proof then ", holding ⋆" else if b.val matches .bot then ", holding ⊥" else ""}",
+          s!"{b.hint.name}: {clip b.val.pp}"⟩
+      else none
+    | none => []
+
 /-- (Hη) (`ShapeFacts.etaHint`, docs/31 D55): every η record is top-hint-free (a constructor value
 of fresh unknowns that records its parameters, `ctorRefinement`), so it means its unknown at every
 hint (`etaRecorded_sim`). -/
@@ -999,7 +1106,7 @@ def etaHintFree : Clause where
     if topHintFree st.inds r then none else some ⟨"an η record reads the hint", s!"σ{σ} := {clip r.pp}"⟩
 
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, etaHintFree, plantedFill, plantedAbs]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, plantedFill, plantedAbs, nonCopyProof, untypedBindings]
 
 /-! ## The sweep -/
 
@@ -1140,13 +1247,15 @@ def sweep (blocks : List (String × Block)) : IO UInt32 := do
         IO.println "   PLANTED CLAUSE NOT REPORTED: the sweep is vacuous"
         ok := false
     else
-      if c.planted then IO.println "   (planted: violations expected)" else ok := false
+      if c.planted then IO.println "   (planted: violations expected)"
+      else if c.report then IO.println "   (a report: its cases are listed, not violations)"
+      else ok := false
       for (k, ks) in s.kinds do
         IO.println s!"   VIOLATED: {k}: {ks.states} states ({ks.states - ks.exits} on entry, {ks.exits} on exit), in {ks.decls.size} declarations: {", ".intercalate (ks.decls.toList.take 8)}{if ks.decls.size > 8 then ", …" else ""}"
         if let some ex := ks.best then
           IO.println s!"     smallest: {ex.block}.{ex.decl} ({ex.size} bytes), at the term {repr ex.loc} on {if ex.exit then "exit" else "entry"}"
           IO.println s!"      {ex.detail}"
-          if !c.planted then
+          if !c.planted && !c.report then
             match ← blockSource ex.block with
             | some src =>
               IO.println s!"     source of the term:\n{slice src ex.loc}"
