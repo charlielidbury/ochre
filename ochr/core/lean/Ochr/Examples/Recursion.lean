@@ -306,3 +306,84 @@ ochr Recursion uses Nats, Fixtures {
   reject def BoomId : False := LieId(0)
 }
 
+
+/-! ## Proof functions are copies, and a proof function's own binding is a proof (D100)
+
+A Π-type into proofs is a proposition, so its values are proofs, erased to `⋆`, and the place
+that holds one is a copy, like every proof: a proof-function parameter can be passed, bound,
+captured and used again, as in Lean. Reading a proof never moved it before either, so no verdict
+of these changes; the declared copy-ness now agrees with what erasure says the value is. A type
+function is not a proof and stays not a copy (`TyFnTwice`), as does a data closure (`DataCloTwice`).
+
+A proof function's binding of itself is a proof by its declared reading too, though it holds the
+function, not `⋆`, so that [Rec] sees the recursive calls made through it. A stuck block that
+captures it (a recursive call in a match that is not in tail position, `C1`) used to fail an
+internal assertion: a proof by the pre-pass, not one by the binding's flag. A recursive call
+through a non-tail match or a closure must still decrease (`BadBlk`, `BadClo`). -/
+
+ochr ProofCopies uses Nats {
+  def Refl (x : Nat) : Eq(Nat, x, x) := refl
+  def G (h : Π(x : Nat). Eq(Nat, x, x)) : Eq(Nat, 0, 0) := h(0)
+  def D (h : Π(x : Nat). Eq(Nat, x, x)) (n : Nat) : Nat := n
+  -- a proof-function parameter used twice: called, passed, bound, captured, used by one arm
+  def CallTwice (f : Π(x : Nat). Eq(Nat, x, x)) (n : Nat) : Nat := (let a = f(0); let b = f(1); n)
+  def ArgTwice (f : Π(x : Nat). Eq(Nat, x, x)) (n : Nat) : Nat := (let a = G(f); let b = D(f, 0); D(f, n))
+  def LetTwice (f : Π(x : Nat). Eq(Nat, x, x)) (n : Nat) : Nat := (let g = f; let h = f; let a = h(0); n)
+  def CapTwice (f : Π(x : Nat). Eq(Nat, x, x)) (n : Nat) : Nat := (
+    let c1 = (λ(u : Unit) : Eq(Nat, 0, 0) => f(0));
+    let c2 = (λ(u : Unit) : Eq(Nat, 0, 0) => f(0));
+    let a = c1(()); let b = c2(()); n)
+  def ArmUse (k : Nat) (f : Π(x : Nat). Eq(Nat, x, x)) (n : Nat) : Nat := (
+    let u : Nat = match k { Z => D(f, 0), S _ => 1 };
+    D(f, n))
+  def CallTwiceAt : Eq(Nat, CallTwice(Refl, 3), 3) := refl
+  def ArgTwiceAt : Eq(Nat, ArgTwice(Refl, 3), 3) := refl
+  def LetTwiceAt : Eq(Nat, LetTwice(Refl, 3), 3) := refl
+  def CapTwiceAt : Eq(Nat, CapTwice(Refl, 3), 3) := refl
+  def ArmUseAt0 : Eq(Nat, ArmUse(0, Refl, 3), 3) := refl
+  def ArmUseAt1 : Eq(Nat, ArmUse(1, Refl, 3), 3) := refl
+  def UseTwiceF (f : Π(x : Nat). False) : False := (let a = f(Z); f(Z))
+  def Curried (h : Π(x : Nat). Π(y : Nat). Eq(Nat, y, y)) (n : Nat) : Nat := (let a = h; let b = h; n)
+  -- never borrowed (D66), never a field (D36)
+  reject def BorrowF (f : Π(x : Nat). Eq(Nat, x, x)) (n : Nat) : Nat := (let r = &f; n)
+  reject inductive PB := MkPB(u : Unit, h : Π(x : Nat). Eq(Nat, x, x))
+  -- not proofs, so not copies
+  reject def TyFnTwice (T : Π(x : Nat). Type) (n : Nat) : Nat := (let a = T; let b = T; n)
+  reject def DataCloTwice (n : Nat) : Nat := (let c = (λ(u : Unit) : Nat => clone(n)); let d = c; let e = c; 0)
+  -- a closure into proofs is erased where it is made: its captures are untouched, so `n` is
+  -- still there, and nothing can be taken out of it through the closure
+  def CapNC (n : Nat) : Nat := (let c = (λ(u : Unit) : Eq(Nat, n, n) => refl); let d = c; let e = c; let m = n; m)
+  def CapNCAt : Eq(Nat, CapNC(3), 3) := refl
+  inductive Ex : Prop := MkEx(k : Nat)
+  reject def DupThrough (n : Nat) : Nat := (let c = (λ(u : Unit) : Ex => MkEx(n)); match c(()) { MkEx(k) => Add(k, n) })
+  -- a proof function's own binding captured by a stuck block (the internal fault), and its controls
+  def C1 (x : Nat) : Id(Nat, x, x) by x := (
+    match x { Z => (), S q => (C1(q); ()) };
+    refl
+  )
+  def C3 (x : Nat) : Id(Nat, x, x) by x := match x { Z => refl, S q => (C3(q); refl) }
+  def L0 (x : Nat) : Id(Nat, x, x) := refl
+  def C2 (x : Nat) : Id(Nat, x, x) := (
+    match x { Z => (), S q => (L0(q); ()) };
+    refl
+  )
+  def SelfArm (x : Nat) : Eq(Nat, x, x) by x := (
+    let u : Unit = match x { Z => (), S q => (let h = SelfArm(q); ()) };
+    match x { Z => refl, S q => SelfArm(q) })
+  -- a recursive call through a non-tail match or a closure still has to decrease
+  reject def BadBlk (x : Nat) : Id(Nat, x, x) by x := (
+    match x { Z => (), S q => (BadBlk(x); ()) };
+    refl
+  )
+  reject def BadClo (x : Nat) : False by x := (let c = (λ(u : Unit) : False => BadClo(x)); c(()))
+  def GoodClo (x : Nat) : Id(Nat, x, x) by x := match x { Z => refl, S q => (let c = (λ(u : Unit) : Id(Nat, q, q) => GoodClo(q)); c(()); refl) }
+}
+
+#guard (run "ProofCopies" ProofCopies).rejectedWith [
+  ("BorrowF", "[D66] &f: its type Π(x : Nat). Eq(Nat, x, x) is not in Type₀"),
+  ("PB", "field h of MkPB"),
+  ("TyFnTwice", "[Read] T was moved out or its borrow ended (reading ⊥)"),
+  ("DataCloTwice", "[Read] c was moved out or its borrow ended (reading ⊥)"),
+  ("DupThrough", "[D45] a match on a proof of Ex returns a non-proof"),
+  ("BadBlk", "[Rec] at BadBlk(S(σ1))"),
+  ("BadClo", "[Rec] at BadClo(σ0)")]
