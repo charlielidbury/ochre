@@ -1,4 +1,5 @@
 import Ochr.Meaning.Steps.JoinNoop
+import Ochr.Meaning.Steps.Slice.UpdAt
 
 /-!
 # `movedPlace` in the simulation form, and the drop of a place that does not exist (D84; task C)
@@ -951,22 +952,14 @@ theorem joinDropOne_noop (st : MState) (s s₁ : SState) (π : Nat → Nat) (q q
     rcases pos' with ⟨f, i⟩ | ⟨f, i⟩
     · simp [IsTemp]
     · unfold ckVarPos at hck'; split at hck' <;> cases hck'
-  -- a `⋆` above the place is at a root (`not_below_proof`)
-  have hrootP : c = .proof → q'.steps.2 = [] := by
-    intro hcp
-    by_cases hne : q'.steps.2 = []
-    · exact hne
-    · exact (not_below_proof K ρ φ st s₁ π q q' hg hctx hs hgr₁ hcp₁ hpre.1 hpre.2 hne (hcp ▸ hc)).elim
-  -- nothing is lent comparable with the prefix
+  -- `⋆` at the prefix: excluded, the place at or below it is a copy or the join derefs a proof
+  -- (`not_below_proof`)
+  rcases hcb with rfl | rfl
+  rotate_left
+  · exact (not_below_proof K ρ φ st s₁ π q q' hg hctx hs hgr₁ hcp₁ hpre.1 hpre.2 hc).elim
+  -- `⊥` at the prefix: nothing is lent comparable with it (`clear_of_bot`)
   have hclr : ∀ l, liveLoan st.env l = true → ∀ x ∈ Env.sitesOf st.env l, x.pos = pos' →
-      dataHit q'.steps.2 x.path = false := by
-    rcases hcb with rfl | rfl
-    · exact clear_of_bot hg.2.2.1 hg.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hf'
-    · have he := hrootP rfl
-      rw [he] at hf'
-      simp only [Value.follow, Option.some.injEq] at hf'
-      intro l _ x hx hxp
-      exact absurd hxp (clear_of_proof_root hf' l x hx)
+      dataHit q'.steps.2 x.path = false := clear_of_bot hg.2.2.1 hg.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hf'
   have hun := unreached_of_clear K ρ φ hs pos' (dataHit q'.steps.2) hclr
   have hlp : accessLentPrefix pos' q.steps.2 s₁ = s₁ := by
     simp [accessLentPrefix, lentPrefix_none_of_unreached hpre.2 hun]
@@ -978,7 +971,7 @@ theorem joinDropOne_noop (st : MState) (s s₁ : SState) (π : Nat → Nat) (q q
     intro x hx hxr
     simp only [Bool.and_eq_true, decide_eq_true_eq] at hxr
     exact h0 x hx (by simp [hxr.1, dataHit_of_prefix hpre.2 hxr.2])
-  -- a root holding `⊥` or `⋆` is no holder
+  -- a root holding `⊥` is no holder
   have hnb' : q'.steps.2 = [] → s₁.shape pos' = none := by
     intro he
     have hv0 := hf'
@@ -989,11 +982,22 @@ theorem joinDropOne_noop (st : MState) (s s₁ : SState) (π : Nat → Nat) (q q
       obtain ⟨l, hl, -⟩ := hs.sim.2.2.1 pos' l' hpt hsp
       have hl' : Env.shape st.env pos' = some l := hl
       rw [shape_eq_shapeOf, hv0] at hl'
-      rcases hcb with rfl | rfl <;> simp [shapeOf] at hl'
+      simp [shapeOf] at hl'
   obtain ⟨rest, hrest⟩ := hpre.2
   have hnb : q.steps.2 = [] → s₁.shape pos' = none := fun he =>
     hnb' (List.append_eq_nil_iff.mp (hrest.trans he)).1
-  obtain ⟨x, T, hT, hx⟩ := content_follow K ρ φ st s₁ π q' pos' hg hctx hs hck' hgr' c hf' hcb
+  -- the reference reads `moved` at the prefix (the checker's `⊥` there, `followMean`)
+  have hgrT : GrainOk K.D K.Γ (DecideScope.topReadings st) q' := by rw [← rel_scopeOf K ρ φ hs]; exact hgr'
+  have hval : s₁.valAt pos' (s₁.typedFuture φ) =
+      Env.mean K.dm K.M K.Γ ρ (fun l => s₁.typedFuture φ (π l)) st.env pos' :=
+    (hs.sim.1 _ ⟨relF_typedFuture φ s₁, hs.typedFuture_typed φ⟩ pos' hpt).symm
+  obtain ⟨x, T₁, hT, hx⟩ := followMean K ρ hctx.shapes hg (fun l => s₁.typedFuture φ (π l)) pos' q' hgrT hck'
+    .bot hc (s₁.tyAt pos')
+  have hxm : x = .moved := by
+    rcases hx with ⟨-, h⟩ | ⟨H, rfl⟩
+    · cases h
+    · simp [Value.mean]
+  rw [← hval, hxm] at hT
   unfold joinDropOne
   rw [hres₁]
   dsimp only
@@ -1002,17 +1006,15 @@ theorem joinDropOne_noop (st : MState) (s s₁ : SState) (π : Nat → Nat) (q q
   split
   · next l h1 h2 => rw [hnb h1] at h2; cases h2
   · dsimp only
-    rw [hacc, ← hrest, sem_follow_append, hT, Option.bind_some]
-    rcases hx with rfl | ⟨rfl, rfl⟩
-    · obtain ⟨T', hT'⟩ := sem_follow_proof K.dm K.Γ rest T
-      rw [hT']
-      exact hs
-    · rcases sem_follow_moved K.dm K.Γ rest T with h | ⟨hd, T', h⟩
-      · rw [h]; exact hs
-      · rw [h]
-        simp only [hcp₁, Bool.false_eq_true, if_false]
-        simp only [sem_updAt_append_derefs K.dm K.Γ _ rest hd]
-        have hself := updAt_bot_self q'.steps.2 _ hf'
+    rw [hacc]
+    simp only [hcp₁, Bool.false_eq_true, if_false]
+    by_cases hd : ∀ x ∈ rest, x = .deref
+    · -- through `*`s only: the write at the place is the write at the prefix, `moved` over `moved`
+      rw [← hrest]
+      simp only [sem_updAt_append_derefs K.dm K.Γ _ rest hd]
+      split
+      · exact hs
+      · have hself := updAt_bot_self q'.steps.2 _ hf'
         obtain ⟨f, i, hposfi, hpb, hsp, hroot, hplain, hnat⟩ :=
           botWrite_hyps K ρ φ st s₁ π q' pos' _ hg hctx.shapes hs hck' hgr' hnb' hself
         subst hposfi
@@ -1020,6 +1022,13 @@ theorem joinDropOne_noop (st : MState) (s s₁ : SState) (π : Nat → Nat) (q q
           (fun l hl x hx hxp => hclr l hl x hx hxp) hplain hnat
         rw [setAtE_self_bind st.env f i hpb] at hrel
         exact hrel
+    · -- through the moved prefix by a field step: the write cannot be made, nothing is done
+      obtain ⟨y, hy, hyd⟩ : ∃ y ∈ rest, y ≠ .deref :=
+        Classical.byContradiction fun hne => hd fun y hy => Classical.byContradiction fun h => hne ⟨y, hy, h⟩
+      have hnone := Slice.updAt_append_none K.dm K.Γ (fun _ => Sem.moved) q'.steps.2 _ _ _ T₁ rest hT
+        (Slice.updAt_moved_none K.dm K.Γ (fun _ => Sem.moved) rest T₁ ⟨y, hy, hyd⟩)
+      rw [← hrest, hnone]
+      exact hs
 
 /-- **`dropOne_step`, assembled** (the drop of one place, D84): `movedPlace` in the simulation form
 (`movedPlace_step`), then where the place exists the drop of an existing place (`dropOne_exists`)

@@ -18,11 +18,9 @@ open value (`Sweep.droppedUnderOpen`: unknowns, constructor values, a sealed pro
 rewritten index invalidates the proof field that mentions it, so an open value is often partly
 moved too.) For `datamodel` to prove in the tree layer, or to say why it is false.
 
-How the slice uses it: where the checker holds data other than `⋆` at a place of a non-copy
-reading and the reference reads `⋆` there, the read `x` is `⋆`, so the member's read `w'` is `⋆`
-(nothing is above `⋆` but itself, `MovedOf`), a member of `U`; then `U` is a proposition, which the
-checker's typing of the place excludes ((D⋆T) and the soundness of `sortOf`, at a root the
-position's stored type; at a field the field's declared type).
+The slice no longer consumes it (2026-11-20): the reference's drop no longer tests the meaning `⋆`
+at the place (`Run.dropAt`), so the drop needs no typing of the read. It is kept as the typing of
+reads that every step reading a place will need, for the data layer to prove.
 -/
 
 namespace Ochr.Meaning.Steps.Slice

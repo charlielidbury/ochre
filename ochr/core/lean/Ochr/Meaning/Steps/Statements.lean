@@ -267,11 +267,25 @@ def dataCtorBad (Γ : List IndDecl) : Value → Bool
     | none => true
   | _ => false
 
-/-- The checker's syntactic test that a type is a proposition, as the sweep's (D⋆) asks it: some
-run of `Decide.sortOf` on it gives `0`, from a state the same as `st` up to what no decision reads
-(`SameDec`). -/
-def SortIsProp (st : MState) (T : Value) : Prop :=
-  ∃ st₀ fuel b st', SameDec st₀ st ∧ Runs (Ochr.sortOf fuel T) st₀ b 0 st'
+/-- What the step `x` from a place of declared reading `r` needs of it, at the join's grain: a field
+step (`.proj i`, `.field g`) is through an inductive of `Γ` with exactly one constructor; a `*` step
+needs nothing (`Decide.jdGrain`). (Restated at main's D94: the index a field step names and the
+borrow type a `*` step goes through were asked too, for `movedPlace`'s exits, which D94 replaced
+by a rejection, docs/31 D51.) -/
+def StepOk (Γ : List IndDecl) (r : DeclInfo) : Step → Prop
+  | .proj _ | .field _ => ∃ n args d, r = .ind n args ∧ Γ.find? (·.name == n) = some d ∧ d.ctors.length = 1
+  | .deref => True
+
+/-- **The join's grain** (main's D84, `Decide.jdGrain`): every field step of a dropped place, from its
+prefix, is through a place whose declared reading is an inductive of `Γ` with exactly one
+constructor (`StepOk`). Through anything else (several constructors, a type computed by a match, a
+type parameter, a number's predecessor) the join moves the value whole. It is what the drop's
+reading of the place needs (`PlaceTyping.followMean`, `natAlong_grain`: no number's predecessor on
+the path, and the constructor value there is of the declared type), which `Decisions.joinMoves`,
+aligned with `Decide.jdMoves`, provides. -/
+def GrainOk (D : Decisions) (Γ : List IndDecl) (sc : List DeclInfo) (q : Place) : Prop :=
+  ∀ (p : Place) (x : Step) (rest : List Step), p.steps.1 = q.steps.1 → q.steps.2 = p.steps.2 ++ x :: rest →
+    StepOk Γ (D.placeDecl sc p) x
 
 /-- (Rd), a clause of `ShapeFacts` (the lead's decision, docs/31 D78): an unknown whose frozen reading is `Sort l` (D96) has the type `Sort l`.
 `freshAbsR` freezes `valTypeDecl` of the type it pushes, which is `.sort l` exactly at `Sort l`;
@@ -286,8 +300,7 @@ that exists, by its declared reading (`Decisions.placeDecl` at the top frame's r
 declared an inductive of the declarations holds a constructor value of it or a stand-in (V); every
 loan and mark anywhere in Ω is of a live borrow (L); every constructor value is of a data
 declaration, not named `Nat` (N); a place below a variable holding `⋆` is declared a copy type
-(C⋆); every η record is top-hint-free (Hη); a place of a non-copy reading holding data has a
-computed type that is no proposition (D⋆T). What the drop's reading of a place and its write
+(C⋆); every η record is top-hint-free (Hη). What the drop's reading of a place and its write
 need. Syntactic typing, which `Good`'s membership does not give. Read off the checker and swept;
 NOT proved preserved: every step's `CtxOk` conclusion owes it. (U), (R), (P), (A) and (M), which
 `movedPlace`'s exits needed, went with main's D94, which made those exits a rejection. (Ty), a
@@ -303,26 +316,21 @@ structure ShapeFacts (D : Decisions) (Γ : List IndDecl) (st : MState) : Prop wh
   /-- (N) every constructor value is of a data declaration of `Γ` (a `Prop`-sorted one's values are
   `⋆`, `Machine.evalCtor`, D42), not named `Nat` (numbers are `zero`/`succ`) -/
   ctors : ∀ v ∈ Env.values st.env, v.anyAtom (dataCtorBad Γ) = false
-  /-- (C⋆) a place below a variable holding `⋆` is declared a copy type (a field of a proof), so
-  the join, which moves no copy, never drops a `⋆` below a variable (docs/31 D49; at a variable it
-  can: one declared a borrow of a proposition holds `⋆`) -/
-  proofCopy : ∀ p, p.steps.2 ≠ [] → ckContent st.env p = some .proof →
+  /-- (C⋆) a place at the join's grain holding `⋆` is declared a copy type, at a variable as below
+  one: the join, which moves no copy, never drops a `⋆`, so the reference's drop needs no test of
+  the meaning at the place (the slice, 2026-11-20). True since main's D100 (every proposition, a Π
+  into proofs included, is a copy); before it a variable declared a Π into proofs held `⋆` and was no
+  copy (6,447 suite states, docs/31 D49 for the earlier borrow of a proposition). First stated for
+  EVERY place below a variable, which is false: a data field of a proof, `p.w` for `p : ExW(n)`
+  (`Wit(w : Word, …) : Prop`), exists in the checker (a step from `⋆` reaches `⋆`) and is read
+  `other` (a field of a place read `prop`), no copy; it is off the grain (a field step needs a place
+  read as a one-constructor inductive) and the sweep, which walks no place under a `⋆`, never saw
+  it. -/
+  proofCopy : ∀ p, GrainOk D Γ (DecideScope.topReadings st) p → ckContent st.env p = some .proof →
     D.copy (D.placeDecl (DecideScope.topReadings st) p) = true
   /-- (Hη) every η record is top-hint-free (a constructor value of fresh unknowns recording its
   parameters, `ctorRefinement`), so it means its unknown at every hint (docs/31 D55) -/
   etaHint : ∀ σ r, (σ, r) ∈ st.etaRefs → r.topHintFree Γ = true
-  /-- (D⋆T) a place in scope whose declared reading is not a copy and which holds neither `⋆` nor
-  `⊥` has a computed type (`Machine.placeType?`) that no run of the checker's sort test calls a
-  proposition (`SortIsProp`). The slice's replacement for the per-value (D⋆) (which missed
-  closures, a function's own binding and borrows, and needed one alignment per kind of value):
-  with the typing of reads and the soundness of `sortOf`, it gives `dataMean_ne_proof` for every
-  value at once. True only since main's D100 (every proposition, a Π into proofs included, is a
-  copy). The sweep's `typeNotProp`, mirrored (it runs `placeType?` and `sortOf` at the state with
-  fixed fuel; this asks every run from a state the same up to the move log and the refinements). -/
-  typeNotProp : ∀ p v, ckContent st.env p = some v → v ≠ .proof → v ≠ .bot →
-    D.copy (D.placeDecl (DecideScope.topReadings st) p) = false →
-    ∀ st₀ fuel b T st₁, SameDec st₀ st → Runs (Ochr.placeType? fuel p) st₀ b (some T) st₁ →
-      ¬ SortIsProp st T
   /-- (Rd) an unknown read as `Sort l` has the type `Sort l` (docs/31 D77, D78): with `Good` and
   `CtxOk`, what makes the checker's `sortOf` sound (`sortOf_sound_stmt`) -/
   readingsSorted : ReadingsSorted st
@@ -467,11 +475,6 @@ theorem typeState_sim (fuel : Nat) (t : Term) :
 theorem SameDec.symm {st st' : MState} (h : SameDec st st') : SameDec st' st := Eq.symm h
 theorem SameDec.trans {a b c : MState} (h₁ : SameDec a b) (h₂ : SameDec b c) : SameDec a c := Eq.trans h₁ h₂
 
-theorem SortIsProp.of_sameDec {st st' : MState} (h : SameDec st' st) {T : Value} (hT : SortIsProp st' T) :
-    SortIsProp st T := by
-  obtain ⟨st₀, fuel, b, st₁, h₀, hr⟩ := hT
-  exact ⟨st₀, fuel, b, st₁, h₀.trans h, hr⟩
-
 /-- **The typing of places stays across a change of what no decision reads**, the environment and
 the unknowns' types kept. -/
 theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MState} (hf : ShapeFacts D Γ st)
@@ -479,15 +482,12 @@ theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MSta
     ShapeFacts D Γ st' := by
   have e1 : DecideScope.topReadings st' = DecideScope.topReadings st := by
     unfold DecideScope.topReadings; rw [he]
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro p v n args hp hd hn; rw [he] at hp; rw [e1] at hd; exact hf.fits p v n args hp hd hn
   · rw [he]; exact hf.loans
   · rw [he]; exact hf.ctors
-  · intro p hne hp; rw [he] at hp; rw [e1]; exact hf.proofCopy p hne hp
+  · intro p hgr hp; rw [he] at hp; rw [e1] at hgr ⊢; exact hf.proofCopy p hgr hp
   · rw [hη]; exact hf.etaHint
-  · intro p v hp hv1 hv2 hc st₀ fuel b T st₁ h₀ hr hsp
-    rw [he] at hp; rw [e1] at hc
-    exact hf.typeNotProp p v hp hv1 hv2 hc st₀ fuel b T st₁ (h₀.trans h) hr (hsp.of_sameDec h)
   · have hd : st'.absDecl = st.absDecl := by
       have := congrArg MState.absDecl h
       simpa using this
@@ -1158,26 +1158,6 @@ def joinEntry_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : P
   ∀ (st : MState) (s : SState) (π : Nat → Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s),
     movedPlaces φ s = entryOf st
-
-/-- What the step `x` from a place of declared reading `r` needs of it, at the join's grain: a field
-step (`.proj i`, `.field g`) is through an inductive of `Γ` with exactly one constructor; a `*` step
-needs nothing (`Decide.jdGrain`). (Restated at main's D94: the index a field step names and the
-borrow type a `*` step goes through were asked too, for `movedPlace`'s exits, which D94 replaced
-by a rejection, docs/31 D51.) -/
-def StepOk (Γ : List IndDecl) (r : DeclInfo) : Step → Prop
-  | .proj _ | .field _ => ∃ n args d, r = .ind n args ∧ Γ.find? (·.name == n) = some d ∧ d.ctors.length = 1
-  | .deref => True
-
-/-- **The join's grain** (main's D84, `Decide.jdGrain`): every field step of a dropped place, from its
-prefix, is through a place whose declared reading is an inductive of `Γ` with exactly one
-constructor (`StepOk`). Through anything else (several constructors, a type computed by a match, a
-type parameter, a number's predecessor) the join moves the value whole. It is what the drop's
-reading of the place needs (`PlaceTyping.followMean`, `natAlong_grain`: no number's predecessor on
-the path, and the constructor value there is of the declared type), which `Decisions.joinMoves`,
-aligned with `Decide.jdMoves`, provides. -/
-def GrainOk (D : Decisions) (Γ : List IndDecl) (sc : List DeclInfo) (q : Place) : Prop :=
-  ∀ (p : Place) (x : Step) (rest : List Step), p.steps.1 = q.steps.1 → q.steps.2 = p.steps.2 ++ x :: rest →
-    StepOk Γ (D.placeDecl sc p) x
 
 /-- The reference's drop of one place (`joinDrop`'s fold body). -/
 noncomputable def joinDropOne (K : RunCtx) (φ : Future) (s : SState) (q : Place) : SState :=

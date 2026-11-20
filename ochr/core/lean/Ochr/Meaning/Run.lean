@@ -531,8 +531,9 @@ noncomputable def accessLentPrefix (pos : Pos) (steps : List Step) (s : SState) 
   | some ψ => s.access pos (dataHit ψ)
   | none => s
 
-/-- `Machine.dropAtJoin` of one place, at `(pos, steps)`: a borrow at a root, its end; missing or a
-proof, nothing; a copy, nothing; otherwise [Access] and `moved`. The holder is tested first, by the
+/-- `Machine.dropAtJoin` of one place, at `(pos, steps)`: a borrow at a root, its end; a copy,
+nothing; where the write cannot be made (the place is missing, or the path passes through a proof
+or a moved part by a field step), nothing; otherwise [Access] and `moved`. The holder is tested first, by the
 shape, as the checker tests its stored value: a holder's meaning is its content's, which reads
 `moved` when the content was moved out through the borrow (D53 (h)), and the checker ends that
 borrow too (docs/31 D42). A place already moved is accessed and written `moved` like any other
@@ -543,16 +544,28 @@ inside an observation, D68). The place is read as every read of a place reads it
 `tagOf`): after its [Access], at the typed future (docs/31 D54, D68); the access is kept only where
 the place is then dropped. Read before the access, the reading was at a state no checker state is
 related to (the checker reads the place, then accesses it; the reference had accessed the lent
-prefix already), and relating it needed the reading to be unchanged by an access. -/
+prefix already), and relating it needed the reading to be unchanged by an access.
+
+No test of the meaning at the place (the slice, 2026-11-20, the orchestrator's decision): a place
+the shared copy decision does not call a copy is accessed and written `moved` whatever the model
+reads there, and nothing is done exactly where the write cannot be made (`Sem.updAt` fails at the
+typed future: the path passes by a field step through a part with no fields, a proof or a moved
+part, which is where the checker's `movedPlace` re-roots to a `⊥` or `⋆` prefix and does nothing).
+It used to do nothing where the place read `⋆`, mirroring the checker's "a proof: nothing" test on
+its own stored value; the two tests agree only if the checker holds `⋆` exactly where the model
+reads `⋆`, which is the typing of the whole state (sort soundness, the typing of reads, open values,
+the typing of sealed programs). Since main's D100 every place holding its own `⋆` is a copy
+(`ShapeFacts.proofCopy`), so the checker's test is dead on related states, and with it the drop
+needs no typing fact. -/
 noncomputable def dropAt (q : Place) (pos : Pos) (steps : List Step) (s : SState) : SState :=
   match steps, s.shape pos with
   | [], some l => s.endLabel l
   | _, _ =>
     let s' := s.access pos (dataHit steps)
-    match Sem.follow K.dm K.Γ (s'.tyAt pos) (s'.valAt pos (s'.typedFuture φ)) steps with
-    | some (.proof, _) | none => s
+    if K.D.copy (K.D.placeDecl (scopeOf s) q) then s else
+    match Sem.updAt K.dm K.Γ (s'.tyAt pos) (fun _ => .moved) steps (s'.valAt pos (s'.typedFuture φ)) with
+    | none => s
     | some _ =>
-      if K.D.copy (K.D.placeDecl (scopeOf s) q) then s else
       s'.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s'.tyAt pos) (fun _ => .moved) steps (s'.valAt pos φ')).getD .err
 
 /-- D84, the drop at the join, as the checker does it (`Machine.joinDrop`: `movedPlace`, then

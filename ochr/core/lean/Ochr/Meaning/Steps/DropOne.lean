@@ -701,7 +701,8 @@ labels (`rel_live_ref`) and sites.
 
 As first written it also covered a `⋆` part, which the sweep refuted: a place lent whole keeps its
 proof field under the mark (`MkC(n, h)` lent by `Get(&c)`, state `c = lent_2 MkC(loan_2, ⋆)`,
-19 states). The `⋆` case is `lentPrefix_none_of_proof`, at the places the join drops. -/
+19 states). The `⋆` case needs no lemma since the slice's `dropAt` (2026-11-20): a place at the
+join's grain holding `⋆` is a copy ((C⋆)), which the join does not drop (`lentPrefix_none_of_proof`, deleted). -/
 theorem lentPrefix_none_of_noop (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2))
     (hnoop : (valAt st.env pos).follow q.steps.2 = some .bot) :
@@ -735,23 +736,6 @@ theorem lentPrefix_none_of_noop (st : MState) (s : SState) (π : Nat → Nat) (q
   obtain ⟨k', hk', he⟩ := walkKey_take_of_site (site_shaped hv hxv) (walk_shaped hv hnoop)
     (List.mem_range.mp hk) hxp.2 hs'
   exact h14 pos q.steps.2 hnoop l hl x hx' hxp.1 k' hk' he
-
-/-- **(6) No lent prefix above a proof part the join drops.** At a variable there is no strict
-prefix; below one, vacuously: a place below a variable holding `⋆` is declared a copy type ((C⋆),
-`ShapeFacts.proofCopy`, swept), and the join moves no copy. PROVED (docs/31 D49). It had been left
-open because the premise never arose: a data field of a proof cannot be read at a data position,
-so no arm moves one. A variable declared a borrow of a proposition holds `⋆` and is no copy. -/
-theorem lentPrefix_none_of_proof (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos)
-    (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s) (hck : ckVarPos st.env q.steps.1 = some pos)
-    (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
-    (hproof : (valAt st.env pos).follow q.steps.2 = some .proof) :
-    lentPrefix s pos q.steps.2 = none := by
-  by_cases hne : q.steps.2 = []
-  · rw [hne]; rfl
-  exfalso
-  have h := hctx.shapes.proofCopy q hne (by unfold ckContent; simp [hck, hproof])
-  rw [← rel_scopeOf K ρ φ hs, hcopy] at h
-  cases h
 
 /-- The closed future changes only the live labels. -/
 theorem closedFuture_nonlive (s : SState) (φ : Future) {l : Nat} (hl : l ∉ s.liveLabels) :

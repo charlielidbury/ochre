@@ -122,26 +122,29 @@ theorem follow_proof_fields : ∀ (fs : List Step), (∀ x ∈ fs, x ≠ .deref)
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- **The join derefs no proof below a variable**: a place a join drops goes through `*` only at a
-place of a borrow type (the checker types the arm that moves it, and `*` of anything else is
-rejected), and a place below a variable holding `⋆` is declared a copy type ((C⋆)), which no
-borrow type is (`declCopy`). The grain no longer carries the `*` step's borrow type (docs/31 D51,
-dropped with the exits main's D94 made a rejection), so this is stated on its own. Open: not
-tried. -/
+/-- **The join derefs no proof**: a place a join drops goes through `*` only at a place of a borrow
+type (the checker types the arm that moves it, and `*` of anything else is rejected), and a place
+at the join's grain holding `⋆` is declared a copy type ((C⋆)), which no borrow type is
+(`declCopy`). The grain no longer carries the `*` step's borrow type (docs/31 D51, dropped with the
+exits main's D94 made a rejection), so this is stated on its own. Stated below a variable until the
+slice (2026-11-20); at a variable too since the reference's drop no longer tests the meaning `⋆` at
+the place (a `*r` with `r` holding `⋆` would otherwise be written by the reference and left by the
+checker), with the same argument. Open: not tried. -/
 theorem grain_deref_not_proof (st : MState) (s : SState) (π : Nat → Nat) (q p : Place)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
-    (hp1 : p.steps.1 = q.steps.1) (hp2 : p.steps.2 ++ [.deref] <+: q.steps.2) (hne : p.steps.2 ≠ [])
+    (hp1 : p.steps.1 = q.steps.1) (hp2 : p.steps.2 ++ [.deref] <+: q.steps.2)
     (hp : ckContent st.env p = some .proof) : False := by
   sorry
 
-/-- **No place the join drops is strictly below a `⋆` below a variable**: through field steps it
-holds `⋆` too, and is a copy ((C⋆)), which the join does not drop; through a `*`, the join derefs
-no proof (`grain_deref_not_proof`). PROVED from `grain_deref_not_proof`. -/
+/-- **No place the join drops is at or below a `⋆`**: through field steps it holds `⋆` too, and is
+a copy ((C⋆)), which the join does not drop; through a `*`, the join derefs no proof
+(`grain_deref_not_proof`). PROVED from `grain_deref_not_proof`. (Below a variable only until the
+slice, 2026-11-20; at a variable too since (C⋆) covers variables.) -/
 theorem not_below_proof (st : MState) (s : SState) (π : Nat → Nat) (q q' : Place)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
-    (h1 : q'.steps.1 = q.steps.1) (h2 : q'.steps.2 <+: q.steps.2) (hne : q'.steps.2 ≠ [])
+    (h1 : q'.steps.1 = q.steps.1) (h2 : q'.steps.2 <+: q.steps.2)
     (hq' : ckContent st.env q' = some .proof) : False := by
   obtain ⟨rest, hrest⟩ := h2
   obtain ⟨pos, hck, hf⟩ := Option.bind_eq_some_iff.mp hq'
@@ -154,7 +157,7 @@ theorem not_below_proof (st : MState) (s : SState) (π : Nat → Nat) (q q' : Pl
         unfold ckContent
         rw [← h1, hck, Option.bind_some, he, List.append_nil, follow_append, hf, Option.bind_some]
         exact follow_proof_fields fs hfs
-      have h := hctx.shapes.proofCopy q (by rw [he]; simp [hne]) hc
+      have h := hctx.shapes.proofCopy q (by rw [← rel_scopeOf K ρ φ hs]; exact hgrain) hc
       rw [← rel_scopeOf K ρ φ hs, hcopy] at h
       cases h
     | cons x rs ih =>
@@ -162,7 +165,7 @@ theorem not_below_proof (st : MState) (s : SState) (π : Nat → Nat) (q q' : Pl
       cases x with
       | deref =>
         refine grain_deref_not_proof K ρ φ st s π q (Ochr.jdExtend q' fs) hg hctx hs hgrain hcopy
-          (by rw [jdExtend_steps]; exact h1) (by rw [jdExtend_steps, he]; simp) (by rw [jdExtend_steps]; simp [hne]) ?_
+          (by rw [jdExtend_steps]; exact h1) (by rw [jdExtend_steps, he]; simp) ?_
         unfold ckContent
         rw [jdExtend_steps]
         simp only
