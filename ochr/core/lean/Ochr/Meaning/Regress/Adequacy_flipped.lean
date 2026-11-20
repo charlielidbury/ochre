@@ -64,19 +64,19 @@ theorem erased_place (p : Place) (hint : TyS) (s : SState) (hfl : (K.D.flags (sc
 
 /-- The audit's A9: a field of type `A` (the one parameter) given a `Nat` solves `A := Nat`
 (`Pair(a, b)`, `Cons(x, xs)`'s head). -/
-example : unifyTyS 1 (.place (.var 0)) (.plain TyM.nat) [none] = [some (.ty TyM.nat)] := rfl
+example : unifyTyS K.dm.read 1 (.place (.var 0)) (.plain TyM.nat) [none] = [some (.ty TyM.nat)] := rfl
 
 /-- A9: a field of type `List(A)` given a value whose type is `List(Nat)`'s code (its declaration
 and parameters) solves `A := Nat`. -/
-example : unifyTyS 1 (.tind "List" [.place (.var 0)])
-    (.plain (.t0 (List Nat) (.data "List" [.ty Nat .nat] (List Nat) fun _ => ⟨0, []⟩))) [none]
+example : unifyTyS K.dm.read 1 (.tind "List" [.place (.var 0)])
+    (.plain (.t0 (List Nat) (.data { name := "List" } [.ty Nat .nat] (List Nat)))) [none]
     = [some (.ty TyM.nat)] := by
   simp [unifyTyS, fillParam, TyS.data, TyM.dataName?, Par0.sems, Par0.sem, TyM.isErr]
   rfl
 
 /-- A9: a solved parameter is not overwritten, and a field with no type (`err`) solves nothing. -/
-example : unifyTyS 1 (.place (.var 0)) (.plain TyM.nat) [some (.ty TyM.unit)] = [some (.ty TyM.unit)] := rfl
-example : unifyTyS 1 (.place (.var 0)) (.plain .err) [none] = [none] := rfl
+example : unifyTyS K.dm.read 1 (.place (.var 0)) (.plain TyM.nat) [some (.ty TyM.unit)] = [some (.ty TyM.unit)] := rfl
+example : unifyTyS K.dm.read 1 (.place (.var 0)) (.plain .err) [none] = [none] := rfl
 
 /-- A9: the constructor clause with every parameter solved by its fields does not fail for want
 of a hint: at no hint, `sol₀` is all unsolved, and the clause's result is decided by `runFields`'
@@ -120,7 +120,7 @@ as the code its Π-term runs to in the frame of its captures, so it can be calle
 was read with that Π's shape, `tyShape`; before that with none, and `callOf` failed). -/
 theorem stored_pi_code (caps : List Value) (hs : List Hint) (ds : List Term) (c : Term) (rd : List (DeclInfo × Value)) :
     (Value.tyS K.dm K.M K.Γ ρ (.tPi caps (.pi hs ds c) rd)).m =
-      piTyAt (K.D.piSort (scopeOf (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))))
+      piTyAt K.dm.read (K.D.piSort (scopeOf (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))))
           (.pi hs ds c))
         (runDoms K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) ds)
         (codOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd)))
@@ -142,7 +142,7 @@ can be called (`Regress/NoShape_R6.lean` records the failure before: a parameter
 theorem pi_param_code (s : SState) (dcs : List DeclInfo) (pre : List PBind) (hs : List Hint)
     (ds : List Term) (c : Term) (acc : List Sem) :
     ((mkBind dcs pre fun acc => run K ρ φ (.plain .err) (.pi hs ds c) (extendBy s pre acc)).1 acc).m
-      = piTyAt (K.D.piSort (scopeOf (extendBy s pre acc)) (.pi hs ds c)) (runDoms K ρ φ (extendBy s pre acc) ds)
+      = piTyAt K.dm.read (K.D.piSort (scopeOf (extendBy s pre acc)) (.pi hs ds c)) (runDoms K ρ φ (extendBy s pre acc) ds)
           (codOf K ρ φ (extendBy s pre acc) (bindsOf K ρ φ (extendBy s pre acc) ds) c) := by
   simp only [mkBind, run, run_pi_def]
   rfl

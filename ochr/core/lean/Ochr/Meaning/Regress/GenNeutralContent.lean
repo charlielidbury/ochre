@@ -126,7 +126,7 @@ theorem good_S (K : RunCtx) (ρ : Assignment) : Good K.dm K.M K.Γ ρ S := by
   · intro φ _ p T hp
     obtain ⟨rfl, rfl⟩ := posTyM_S K.dm K.M K.Γ ρ p T hp
     have e : Env.mean K.dm K.M K.Γ ρ φ S.env (.bind 0 0) = .el0 Nat 0 := rfl
-    rw [e]; exact DataModel.pmem_of_mem K.Γ (by simp [Sem.whole]) (by simp [Sem.mem, TyM.nat, Code0.enc])
+    rw [e]; exact DataModel.pmem_of_mem K.dm.read K.Γ (by simp [Sem.whole]) (by simp [Sem.mem, TyM.nat, Code0.enc])
   · rw [hA]; intro p hp; simp at hp; subst hp; show ¬ (Value.zero.hasBorrow = true); decide
   · rw [hA]; intro p hp q hq _ _ _; simp at hp hq; rw [hp, hq]
   · rw [hV]; intro v hv l hl; simp at hv; subst hv; simp [Value.outerLoans] at hl

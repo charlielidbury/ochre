@@ -318,7 +318,7 @@ def WF (ρ : Assignment) (st : MState) : Prop :=
 /-- A future is typed for Ω: each live borrow's final content lies in the content type of its
 holder's declared borrow type (`⟦&T⟧ = ⟦T⟧`). -/
 def TypedFuture (ρ : Assignment) (st : MState) (φ : Future) : Prop :=
-  ∀ p l, Env.shape st.env p = some l → ∀ T, MState.posTyM dm C Γ ρ st p = some T → φ l ∈ₛ T
+  ∀ p l, Env.shape st.env p = some l → ∀ T, MState.posTyM dm C Γ ρ st p = some T → φ l ∈ₛ[dm.read] T
 
 
 /-- An assignment of Ω (docs/18 Def. "assignment"): each referenced `σ` means an element of `⟦Δ(σ)⟧_ρ`, and
@@ -332,7 +332,7 @@ back into the state (`canonNeutral`, `recordedNeutral`: a program generalised in
 its unknown with the refinements since substituted), so without it a `Good` state could replace
 a program by a value meaning something else (`Regress/RefsPathCond.lean`). -/
 structure TypedAssignment (ρ : Assignment) (st : MState) : Prop where
-  mem : ∀ σ, st.Refd σ → σ < st.absTy.size → ρ σ ∈ₛ MState.absTyM dm C Γ ρ st σ
+  mem : ∀ σ, st.Refd σ → σ < st.absTy.size → ρ σ ∈ₛ[dm.read] MState.absTyM dm C Γ ρ st σ
   neutral : ∀ n σ, (n, σ) ∈ st.neutrals →
     ρ σ = Value.mean dm C Γ ρ (fun _ => .err) (.plain (MState.absTyM dm C Γ ρ st σ)) n
   eta : ∀ σ v, (σ, v) ∈ st.etaRefs →
@@ -344,7 +344,7 @@ structure TypedAssignment (ρ : Assignment) (st : MState) : Prop where
 stored type holds a (possibly partly moved) member of it; Δ's types and the goal are types. -/
 structure Membership (ρ : Assignment) (st : MState) : Prop where
   pos : ∀ φ, TypedFuture dm C Γ ρ st φ →
-    ∀ p T, MState.posTyM dm C Γ ρ st p = some T → DataModel.pmem Γ (Env.mean dm C Γ ρ φ st.env p) T
+    ∀ p T, MState.posTyM dm C Γ ρ st p = some T → DataModel.pmem dm.read Γ (Env.mean dm C Γ ρ φ st.env p) T
   absTy : ∀ σ, st.Refd σ → σ < st.absTy.size → (MState.absTyM dm C Γ ρ st σ).level.isSome
   goal : ∀ G, MState.goalM dm C Γ ρ st = some G → G.level.isSome
 
@@ -367,12 +367,12 @@ abbrev Flight : Type 3 := List (Nat × TyM)
 
 /-- `TypedFuture`, and typed at the labels in flight. -/
 def TypedFutureF (ρ : Assignment) (st : MState) (fl : Flight) (φ : Future) : Prop :=
-  TypedFuture dm C Γ ρ st φ ∧ ∀ l T, (l, T) ∈ fl → φ l ∈ₛ T
+  TypedFuture dm C Γ ρ st φ ∧ ∀ l T, (l, T) ∈ fl → φ l ∈ₛ[dm.read] T
 
 /-- `Membership` under futures typed at the flight too. -/
 structure MembershipF (ρ : Assignment) (st : MState) (fl : Flight) : Prop where
   pos : ∀ φ, TypedFutureF dm C Γ ρ st fl φ →
-    ∀ p T, MState.posTyM dm C Γ ρ st p = some T → DataModel.pmem Γ (Env.mean dm C Γ ρ φ st.env p) T
+    ∀ p T, MState.posTyM dm C Γ ρ st p = some T → DataModel.pmem dm.read Γ (Env.mean dm C Γ ρ φ st.env p) T
   absTy : ∀ σ, st.Refd σ → σ < st.absTy.size → (MState.absTyM dm C Γ ρ st σ).level.isSome
   goal : ∀ G, MState.goalM dm C Γ ρ st = some G → G.level.isSome
 

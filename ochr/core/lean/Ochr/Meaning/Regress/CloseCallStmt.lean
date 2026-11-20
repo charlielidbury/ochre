@@ -27,7 +27,7 @@ def closeCall_step_stmt_old (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel :
     (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)) (v : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hΔ : DeltaOk K ρ st) (hargs : ArgsLoanFree st.env ws)
     (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st fuel v st'),
-    ∃ r s', callOf (calleeRes K ρ φ fv fT) (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
+    ∃ r s', callOf K.dm.read (calleeRes K ρ φ fv fT) (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v = r.1 ∧
       Exact (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
 
@@ -36,8 +36,8 @@ theorem calleeRes_zero_code (K : RunCtx) (ρ : Assignment) (φ : Future) (fv : V
     (calleeRes K ρ φ fv .zero).2.m = TyM.err := rfl
 
 /-- At the error code (no telescope), `callOf` fails. -/
-theorem callOf_none_of_err (fv : Res) (args : List Res) (s : SState) (h : fv.2.m = TyM.err) :
-    callOf fv args s = none := by
+theorem callOf_none_of_err (R : DataRead) (fv : Res) (args : List Res) (s : SState) (h : fv.2.m = TyM.err) :
+    callOf R fv args s = none := by
   unfold callOf; rw [h]; rfl
 
 /-- **The pilot's form is false** whenever the checker closes off any call from a `Good` state
@@ -50,7 +50,7 @@ theorem old_false_of_run (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Na
     ¬ closeCall_step_stmt_old K ρ φ fuel := by
   intro hstmt
   obtain ⟨r, s', hc, _⟩ := hstmt st st' fv .zero ws kind res fills tys v hg hΔ hargs h
-  rw [callOf_none_of_err _ _ _ (calleeRes_zero_code ..)] at hc
+  rw [callOf_none_of_err _ _ _ _ (calleeRes_zero_code ..)] at hc
   cases hc
 
 /-- `runBody_step_stmt` as the pilot stated it: `fT` free, not even an input of `runBody`. -/
@@ -60,7 +60,7 @@ def runBody_step_stmt_old (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : N
     (hg : Good K.dm K.M K.Γ ρ st) (hΔ : DeltaOk K ρ st) (hargs : ArgsLoanFree st.env ws)
     (hfv : fv = .clo cs t rd ∨ ∃ n, fv = .gfn n)
     (h : Runs (Ochr.runBody fuel fv cs t rd ws) st fuel v st'),
-    ∃ r s', callOf (calleeRes K ρ φ fv fT) (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
+    ∃ r s', callOf K.dm.read (calleeRes K ρ φ fv fT) (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v ⊑ r.1 ∧
       Below (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
 
@@ -77,7 +77,7 @@ theorem runBody_old_false_of_run (K : RunCtx) (ρ : Assignment) (φ : Future) (f
     ¬ runBody_step_stmt_old K ρ φ fuel := by
   intro hstmt
   obtain ⟨r, s', hc, _⟩ := hstmt st st' fv cs t rd ws v .zero hg hΔ hargs hfv h
-  rw [callOf_none_of_err _ _ _ (calleeRes_zero_code ..)] at hc
+  rw [callOf_none_of_err _ _ _ _ (calleeRes_zero_code ..)] at hc
   cases hc
 
 end Ochr.Meaning.Steps.Regress

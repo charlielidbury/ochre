@@ -234,12 +234,12 @@ parameter variable, the parameter is `R` itself; where it is `D(x̄)` and `R`'s 
 each parameter variable among `x̄` is its `v`. Only unsolved parameters are filled. A type the run
 does not know (`err`) solves nothing, as the checker's field with no type. Not covered: a
 parameter nested deeper (`List(Pair(A, B))`). -/
-def unifyTyS (np : Nat) (FT : Term) (R : TyS) (sol : List (Option Sem)) : List (Option Sem) :=
+def unifyTyS (rd : DataRead) (np : Nat) (FT : Term) (R : TyS) (sol : List (Option Sem)) : List (Option Sem) :=
   if R.m.isErr then sol else
     match FT with
     | .place (.var j) => fillParam np j (.ty R.m) sol
     | .tind m as =>
-      match R.data with
+      match R.data rd with
       | some (m', vs) =>
         if m = m' ∧ as.length = vs.length then
           (as.zip vs).foldl (fun sol av => match av.1 with
@@ -481,11 +481,11 @@ result `&U`, a fresh label `k`, the result holds the forward value, and each len
 its component of the backward function at the final content of `k`. A callee whose type is not a
 function type, or an ill-typed application, is an error. The guard of a recursive call and a
 statement call's copy are the caller's (`run`'s `.call` clause). The level is the code's. -/
-noncomputable def callOf (fv : Res) (args : List Res) : SM Res := fun s =>
+noncomputable def callOf (R : DataRead) (fv : Res) (args : List Res) : SM Res := fun s =>
   match fv.2.m with
-  | .t0 _ (.pi _ t) => callOfL lvl0 t fv.1 args s
-  | .t1 _ (.pi _ t) => callOfL lvl1 t fv.1 args s
-  | .t2 _ (.pi _ t) => callOfL lvl2 t fv.1 args s
+  | .t0 _ (.pi _ t) => callOfL (lvl0 R) t fv.1 args s
+  | .t1 _ (.pi _ t) => callOfL (lvl1 R) t fv.1 args s
+  | .t2 _ (.pi _ t) => callOfL (lvl2 R) t fv.1 args s
   | _ => none
 
 /-- [Drop] of the top frame's last binding when it holds no borrow (`Machine.endLoansOfTopBind`,
@@ -648,11 +648,11 @@ checker writes a fresh unknown of the borrowed type (`Machine.idType`: `absAt �
 every assignment is every MEMBER of it. As first written `Id` ranged over every meaning, typed or
 not, and was false where the checker's is true: two sides that re-point a borrow of a `Unit` at
 different places (docs/31 D26, `Regress/IdUnitWrite.lean`). -/
-def obsTyped (reps : List Place) (ws : List Sem) (s : SState) : Prop :=
+def obsTyped (R : DataRead) (reps : List Place) (ws : List Sem) (s : SState) : Prop :=
   ws.length = reps.length ∧
   ∀ (i : Nat) (q : Place) (w : Sem), reps[i]? = some q → ws[i]? = some w →
     match resolve s q with
-    | some (pos, _) => w ∈ₛ (s.tyAt pos).m
+    | some (pos, _) => w ∈ₛ[R] (s.tyAt pos).m
     | none => True
 
 /-- The variables a closure captures, oldest binding first (`Machine.capture`'s order: the
@@ -764,7 +764,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       -- the parameters known before the fields: the written ones, or the hint's (`evalCtor`'s
       -- `sol`); the fields' types then solve the rest (`runFields`; the audit's A9)
       let sol₀ : List (Option Sem) := if !ps.isEmpty then psM.map some else
-        match hint.data with
+        match hint.data K.dm.read with
         | some (n, ps') => if n = ty ∧ ps'.length = d.params.length then ps'.map some else List.replicate d.params.length none
         | none => List.replicate d.params.length none
       -- a constructor of a Prop-sorted inductive is a proof, `⋆` (D42); its arguments are
@@ -815,7 +815,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
         | some ((v, _), _) => v.asTy
         | none => TyM.err⟩
     let l := K.D.piSort (scopeOf s) (.pi hs ds c)
-    some ((.ty (piTyAt l ps out), .plain (TyM.univ l)), s)
+    some ((.ty (piTyAt K.dm.read l ps out), .plain (TyM.univ l)), s)
   | .fix self hs ds c dec body => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.fix self hs ds c dec body)) (fun s =>
     -- [Closure] (D51, D53, D80): a closure means a function on its annotated domain, read off
     -- the reference run of its body in the forming frame extended by `self` and the parameters
@@ -838,7 +838,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let cod : List Sem → TyS := fun acc => .plain (out.cod acc)
     -- the code at the declared sort (D55, D12): `piTyAt`/`closureAt` (`Apply1.lean`)
     let l := K.D.piSort (scopeOf s) (.pi hs ds c)
-    let piT := piTyAt l ps out
+    let piT := piTyAt K.dm.read l ps out
     let start := s.nextLoan
     -- the declared readings of the parameters and the codomain (`Decide.paramDecls`): what the
     -- frame binds the parameters at, and `self` (D19, R3: bound at `other`, a parameter of a copy
@@ -878,12 +878,12 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
         let finals := cells.map fun c => s₄.valAt c
         some ⟨r, finals, R.label⟩
       | none => none
-    let closureOf (g : List Sem → Option BodyOut) : Sem := closureAt l φ ps out g
+    let closureOf (g : List Sem → Option BodyOut) : Sem := closureAt K.dm.read l φ ps out g
     -- a stage's closure is filled where the stage is undefined (docs/31 D60: built strictly,
     -- every stage's closure, so every recursive closure, was `err`)
     let stage : Nat → List Sem → Option BodyOut :=
       Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none)
-        (fun _ gk => bodyAt (closureFillAt l φ ps out gk))
+        (fun _ gk => bodyAt (closureFillAt K.dm.read l φ ps out gk))
     let rankOf (args : List Sem) : Nat := match dec with
       | some j =>
         match args[j]? with
@@ -911,7 +911,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       let fv ← SM.headOf f (fun p => readPlace K φ p true) (runT false (.plain TyM.err) f)
       -- a statement call's arguments are statement positions, each on its own copy (R4)
       let as ← runArgs fl.1 fv.2.m [] args
-      callOf fv as) s
+      callOf K.dm.read fv as) s
   | .nat => pure (.ty TyM.nat, .plain (TyM.univ 1))
   | .unit => pure (.ty TyM.unit, .plain (TyM.univ 1))
   | .zero => pure (.el0 Nat 0, .plain TyM.nat)
@@ -940,7 +940,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let reps := K.D.rePointed (scopeOf s) t
     let o₁ ← runT false T t s
     let o₂ ← runT false T u s
-    some ((.ty (TyM.prop (∀ ws : List Sem, obsTyped reps ws s →
+    some ((.ty (TyM.prop (∀ ws : List Sem, obsTyped K.dm.read reps ws s →
       observation φ reps ws s.positions o₁.1 o₁.2 = observation φ reps ws s.positions o₂.1 o₂.2)), .plain (TyM.univ 0)), s)
   | .prim "J" [A, a, b, P, h, t] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "J" [A, a, b, P, h, t])) (do
     -- `J` means its transported term; its endpoints, motive and proof are statements on copies
@@ -1026,7 +1026,7 @@ noncomputable def runFields (stmt : Bool) (d : IndDecl) (c i : Nat) (sol : List 
       | none => .plain TyM.err
     let (v, R) ← SM.stmtIf (stmt && !(K.D.declOf (scopeOf s) a matches .ref _)) (runT false T a)
     let sol₁ := match fieldTerm d c i with
-      | some FT => unifyTyS d.params.length FT R sol
+      | some FT => unifyTyS K.dm.read d.params.length FT R sol
       | none => sol
     let (rest, sol₂) ← runFields stmt d c (i + 1) sol₁ (earlier ++ [v]) as
     pure (v :: rest, sol₂)) s
@@ -1040,7 +1040,7 @@ found `x` moved), unless its declared type is a borrow type, which runs in place
 noncomputable def runArgs (stmt : Bool) (fT : TyM) (earlier : List Sem) : List Term → SM (List Res)
   | [] => pure []
   | a :: as => fun s => (do
-    let T : TyS := .plain (fT.domAfter earlier)
+    let T : TyS := .plain (fT.domAfter K.dm.read earlier)
     let r ← SM.stmtIf (stmt && !(K.D.declOf (scopeOf s) a matches .ref _)) (runT false T a)
     let rest ← runArgs stmt fT (earlier ++ [r.1]) as
     pure (r :: rest)) s
@@ -1087,7 +1087,7 @@ noncomputable def meanV (hint : TyS) : Value → Sem
     match K.Γ.find? (·.name == ty) with
     | some d =>
       let ps? := if ps.isEmpty && !d.params.isEmpty then
-          (match hint.data with | some (n, ps') => if n = ty then some ps' else none | none => none)
+          (match hint.data K.dm.read with | some (n, ps') => if n = ty then some ps' else none | none => none)
         else some (meanParams d 0 [] ps)
       match ps? with
       | some ps' => if d.sort == 0 then .proof else K.dm.ctorM d ps' c (meanFields d ps' c 0 [] fs)
@@ -1253,7 +1253,7 @@ theorem meanV_eq_mean_aux (hint : TyS) : (v : Value) →
     | none => rfl
     | some d =>
       cases (if (ps.isEmpty && !d.params.isEmpty) = true then
-          (match hint.data with | some (n, ps') => if n = ty then some ps' else none | none => none)
+          (match hint.data K.dm.read with | some (n, ps') => if n = ty then some ps' else none | none => none)
         else some (meanParams K ρ φ d 0 [] ps)) <;> rfl
   | .tInd n args => by
     have hP : ∀ d, Value.meanParams K.dm (codeMeaning K) K.Γ ρ φ d 0 [] args = meanParams K ρ φ d 0 [] args :=

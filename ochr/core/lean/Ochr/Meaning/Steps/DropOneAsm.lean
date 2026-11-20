@@ -581,7 +581,7 @@ structure GenTy (st : MState) (T n : Value) : Prop where
   loanFree : ∀ l, T.hasLoan l = false
   refOk : T.refMisplaced = false
   level : (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T).level.isSome
-  mem : meanV K ρ (fun _ => .err) (.plain (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T)) n ∈ₛ
+  mem : meanV K ρ (fun _ => .err) (.plain (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T)) n ∈ₛ[K.dm.read]
     Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T
 
 /-- **`placeType` in the simulation form.** The field and parameter types it evaluates run on

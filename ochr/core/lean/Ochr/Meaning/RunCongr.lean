@@ -260,7 +260,7 @@ noncomputable def fixBodyAt (s : SState) (ps : List PiDom) (out : PiCod) (piT : 
 noncomputable def fixStage (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat)
     (body : Term) : Nat → List Sem → Option BodyOut :=
   Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none)
-    (fun _ gk => fixBodyAt K ρ φ fb s ps out piT start body (closureFillAt l φ ps out gk))
+    (fun _ gk => fixBodyAt K ρ φ fb s ps out piT start body (closureFillAt K.dm.read l φ ps out gk))
 
 /-- The decreasing argument's rank (φ-free). -/
 noncomputable def fixRank (dec : Option Nat) (args : List Sem) : Nat := match dec with
@@ -283,10 +283,10 @@ noncomputable def fixMoves (t : Term) (s : SState) : SState :=
 theorem run_fix_def (tl : Bool) (hint : TyS) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (dec : Option Nat)
     (body : Term) (s : SState) :
     runT K ρ φ tl hint (.fix self hs ds c dec body) s =
-      SM.erasedIf (K.D.flags (scopeOf s) (.fix self hs ds c dec body)) (fun _ => some ((closureAt (K.D.piSort (scopeOf s) (.pi hs ds c)) φ (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)
+      SM.erasedIf (K.D.flags (scopeOf s) (.fix self hs ds c dec body)) (fun _ => some ((closureAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c)) φ (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)
           (fixG K ρ φ (bindsOf K ρ φ s ds, fixCod K ρ φ s (bindsOf K ρ φ s ds) c, K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c) (K.D.piSort (scopeOf s) (.pi hs ds c)) s (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)
-            (piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)) s.nextLoan dec body),
-        .plain (piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c))),
+            (piTyAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)) s.nextLoan dec body),
+        .plain (piTyAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c))),
         fixMoves K (.fix self hs ds c dec body) s)) s := by
   rw [runT]
   rfl
@@ -567,12 +567,12 @@ theorem fixStage_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none)
   | 0 => ⟨rfl, fun _ _ h => by cases h⟩
   | k + 1 => by
     obtain ⟨ih1, ih2⟩ := fixStage_congr hK hφ hb hi l ps out piT k
-    have hcl : closureFillAt l φ ps out (fixStage K ρ φ fb l s ps out piT s.nextLoan body k)
-        = closureFillAt l φ' ps out (fixStage K ρ φ' fb l s ps out piT s.nextLoan body k) := by
-      rw [← ih1]; exact closureFillAt_congr hφ l ps out _ ih2
+    have hcl : closureFillAt K.dm.read l φ ps out (fixStage K ρ φ fb l s ps out piT s.nextLoan body k)
+        = closureFillAt K.dm.read l φ' ps out (fixStage K ρ φ' fb l s ps out piT s.nextLoan body k) := by
+      rw [← ih1]; exact closureFillAt_congr K.dm.read hφ l ps out _ ih2
     refine ⟨?_, fun args o h => ?_⟩
-    · show fixBodyAt K ρ φ fb s ps out piT s.nextLoan body (closureFillAt l φ ps out (fixStage K ρ φ fb l s ps out piT s.nextLoan body k))
-        = fixBodyAt K ρ φ' fb s ps out piT s.nextLoan body (closureFillAt l φ' ps out (fixStage K ρ φ' fb l s ps out piT s.nextLoan body k))
+    · show fixBodyAt K ρ φ fb s ps out piT s.nextLoan body (closureFillAt K.dm.read l φ ps out (fixStage K ρ φ fb l s ps out piT s.nextLoan body k))
+        = fixBodyAt K ρ φ' fb s ps out piT s.nextLoan body (closureFillAt K.dm.read l φ' ps out (fixStage K ρ φ' fb l s ps out piT s.nextLoan body k))
       rw [hcl]
       funext args
       exact fixBodyAt_congr K ρ hb hi ps out piT _ args
@@ -918,8 +918,8 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     rw [run_fix_def, run_fix_def, hds, hbs, hout, hcod]
     obtain ⟨hg1, hg2⟩ := fixG_congr K ρ hK hφ hb hi (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ' s ds)
       (codOf K ρ φ' s (bindsOf K ρ φ' s ds) c)
-      (piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ' s ds) (codOf K ρ φ' s (bindsOf K ρ φ' s ds) c)) dec
-    rw [← hg1, closureAt_congr hφ _ _ _ _ hg2]
+      (piTyAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ φ' s ds) (codOf K ρ φ' s (bindsOf K ρ φ' s ds) c)) dec
+    rw [← hg1, closureAt_congr K.dm.read hφ _ _ _ _ hg2]
 
 theorem meanV_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (v : Value) (hint : TyS),
     (∀ l, v.hasLoanM l = true → φ l = φ' l) → meanV K ρ φ hint v = meanV K ρ φ' hint v
