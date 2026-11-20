@@ -754,7 +754,7 @@ theorem mpTail_sim (fuel : Nat) (ih : StepsIHBelow fuel)
       obtain ⟨u, st₄, b₄, hacc, h4⟩ := Runs.bind_assoc_inv h3
       have hres₁ : resolve s₁ p = some (pos, p.steps.2) := by
         rw [resolve_alp hs₁q]; exact resolve_parent hpar hpos
-      obtain ⟨hrel₄, hg₄⟩ := (ih.at { K with Δ := Δ₁ } ρ₁ φ).access_step st₁ st₄ p pos false s₁ π hg₁ hctx₁ hrel₁ hres₁ b₃ hacc
+      obtain ⟨hrel₄, hg₄, -⟩ := (ih.at { K with Δ := Δ₁ } ρ₁ φ).access_step st₁ st₄ p pos false s₁ π hg₁ hctx₁ hrel₁ hres₁ b₃ hacc
       simp only [Bool.false_and, Bool.false_eq_true, ↓reduceIte] at hrel₄
       have hrel₄' := fillPrefix_absorbed { K with Δ := Δ₁ } ρ₁ φ st₁ st₄ s₁ π q p pos c hg₁ hrel₁ hpar
         (by rw [resolve_alp hs₁q]; exact hpos) hc hfill' hrel₄
@@ -1032,7 +1032,7 @@ theorem joinDropOne_noop (st : MState) (s s₁ : SState) (π : Nat → Nat) (q q
         simp only [sem_updAt_append_derefs K.dm K.Γ _ rest hd]
         have hself := updAt_bot_self q'.steps.2 _ hf'
         obtain ⟨f, i, hposfi, hpb, hsp, hroot, hplain, hnat⟩ :=
-          botWrite_hyps K ρ φ st s₁ π q' pos' _ hg hctx hs hck' hgr' hnb' hself
+          botWrite_hyps K ρ φ st s₁ π q' pos' _ hg hctx.shapes hs hck' hgr' hnb' hself
         subst hposfi
         have hrel := botWrite_rel K ρ φ st s₁ π f i q'.steps.2 _ hs hg.2.2.1 hpb hsp hself hroot
           (fun l hl x hx hxp => hclr l hl x hx hxp) hplain hnat
