@@ -1,4 +1,4 @@
-import Ochr.Meaning.Steps.DropRuns
+import Ochr.Meaning.Steps.DropOneAsm
 
 /-!
 # Step lemmas, matches and worlds: `evalMatch`, `evalMatchInd`, `evalMatchByType`,
@@ -32,10 +32,10 @@ theorem joinEntry (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : join
 
 /-- [Join], the drop of one place: the checker's `movedPlace` and `dropAtJoin` against the
 reference's `joinDropOne` (docs/31 D29, task C). Its obligations are the named statements of
-`Steps/DropOne.lean` (L2 proved, `mean_updAt_bot`; the rest open), with the induction hypothesis's
-[Access] and [End] statements; the assembly from them is not yet written. -/
-theorem dropOne_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : dropOne_step_stmt K ρ φ (fuel + 1) := by
-  sorry
+`Steps/DropOne.lean` and `Steps/DropOneAsm.lean`, with the induction hypothesis's [Access] and [End]
+statements: the assembly is written (`dropOne_step_asm`); what it rests on is open there. -/
+theorem dropOne_step (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : dropOne_step_stmt K ρ φ (fuel + 1) :=
+  dropOne_step_asm K ρ φ fuel ih
 
 /-- The reference's drop under a context with another `Δ` is the same: it reads no `Δ`. -/
 theorem joinDropOne_withΔ (Δ' : Nat → TyS) (s : SState) (q : Place) :
