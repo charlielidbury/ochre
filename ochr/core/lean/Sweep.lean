@@ -638,9 +638,11 @@ def unknownTyped : Clause where
       if v.anyAtom bad then [⟨"an unknown field declared `E(…)`, with another type", s!"{posName st.env p}: {clip v.pp}"⟩] else [])
 
 /-- What may sit at a place declared an inductive `n` of the declarations: `⊥`, `⋆`, an unknown, a
-sealed program, a loan, a mark (over anything), or a constructor value of `n`. -/
+sealed program, a loan, a constructor value of `n`, or a mark over any of these (`Value.fitsInd`,
+`Steps/Statements.lean`, mirrored EXACTLY; docs/31 D44: first a mark over anything). -/
 def fitsInd (n : String) : Value → Bool
-  | .bot | .proof | .abs _ | .sealed _ | .loan _ | .gloan _ _ => true
+  | .bot | .proof | .abs _ | .sealed _ | .loan _ => true
+  | .gloan _ w => fitsInd n w
   | .ind ty _ _ _ _ => ty == n
   | _ => false
 
