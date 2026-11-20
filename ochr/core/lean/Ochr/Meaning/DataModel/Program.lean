@@ -89,6 +89,7 @@ def entryOf : TyM → Entry
 def shapeOf : Entry → Shape
   | .leaf B c => .leaf B c
   | .data d r => if d.sort == 0 then .prf d r else .sub d r
+  | .small _ => .leaf PEmpty .err
   | .none => .leaf PEmpty .err
 
 def constRec (x : Entry) : Rec := fun _ => x
@@ -98,22 +99,30 @@ def propEntry (P : Prop) : Entry := .leaf (PLift P) (.prop P)
 def zeroS : Small := .node 0 []
 def succS (m : Small) : Small := .node 1 [m]
 
-/-- `Single(A, a)`: `A`'s entry; the equation `x = a`, `a` read small. -/
+/-- `Single(A, a)`: `A`'s entry; the equation `x = a`, `a` read small; `a` read small at its
+`paramKey`. -/
 def singleRec (eA : Entry) (sa : Small) : Rec
   | [(0, 1, [sx])] => propEntry (sx = sa)
+  | [(1, 0, [.other])] => .small sa
   | _ => eA
 
 /-- `TEq(U, a, b)`: only the truth of `a = b` (`U`, of level 2, is not kept). -/
 def teqRec (P : Prop) : Rec := constRec (propEntry P)
 
-/-- `VecF(A, n)`: `A`'s entry and the two equations on `n`, read small. -/
+/-- `VecF(A, n)`: `A`'s entry and the two equations on `n`, read small; `n` read small at its
+`paramKey`. -/
 def vecRec (eA : Entry) (sn : Small) : Rec
   | [(0, 0, [])] => propEntry (sn = zeroS)
   | [(1, 3, sm :: _)] => propEntry (sn = succS sm)
+  | [(1, 0, [.other])] => .small sn
   | _ => eA
 
-def isZRec (sn : Small) : Rec := constRec (propEntry (sn = zeroS))
-def fin1Rec (sn : Small) : Rec := constRec (propEntry (sn = .el Nat 1))
+def isZRec (sn : Small) : Rec
+  | [(0, 0, [.other])] => .small sn
+  | _ => propEntry (sn = zeroS)
+def fin1Rec (sn : Small) : Rec
+  | [(0, 0, [.other])] => .small sn
+  | _ => propEntry (sn = .el Nat 1)
 
 /-- `LenL` read off a list's small reading: what `RE`'s record keys its equation by. -/
 def lenS : Small → Nat
