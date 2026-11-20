@@ -41,6 +41,8 @@ noncomputable def Sem.as2 (A : Type 2) : Sem → Option A
 
 /-- A carrier level. -/
 structure Lvl : Type (max 3 (u + 2)) where
+  /-- How a data element is read (docs/31 D61): the data model's, which the encoding reads. -/
+  read : DataRead
   Code : Type u → Type (u + 1)
   enc : {A : Type u} → Code A → A → Sem
   dec : {A : Type u} → Code A → Sem → Option A
@@ -50,13 +52,16 @@ structure Lvl : Type (max 3 (u + 2)) where
   pack : (A : Type u) → A → Sem
   unpack : (A : Type u) → Sem → Option A
 
-noncomputable abbrev lvl0 : Lvl.{0} := ⟨Code0, Code0.enc, Code0.dec, TyM.code0, fun c => .t0 _ c, Code0.pi, .el0, Sem.as⟩
+noncomputable abbrev lvl0 (R : DataRead) : Lvl.{0} :=
+  ⟨R, Code0, Code0.enc R, Code0.dec R, TyM.code0, fun c => .t0 _ c, Code0.pi, .el0, Sem.as⟩
 
 /-- Level 1: `Type₁`, the universes `Prop` and `Type₀`, lower levels lifted. -/
-noncomputable abbrev lvl1 : Lvl.{1} := ⟨Code1, Code1.enc, Code1.dec, TyM.code1, TyM.of1, Code1.pi, .el1, Sem.as1⟩
+noncomputable abbrev lvl1 (R : DataRead) : Lvl.{1} :=
+  ⟨R, Code1, Code1.enc R, Code1.dec R, TyM.code1, TyM.of1, Code1.pi, .el1, Sem.as1⟩
 
 /-- Level 2: `Type₂`, the universe `Type₁`, lower levels lifted. -/
-noncomputable abbrev lvl2 : Lvl.{2} := ⟨Code2, Code2.enc, Code2.dec, TyM.code2, TyM.of2, Code2.pi, .el2, Sem.as2⟩
+noncomputable abbrev lvl2 (R : DataRead) : Lvl.{2} :=
+  ⟨R, Code2, Code2.enc R, Code2.dec R, TyM.code2, TyM.of2, Code2.pi, .el2, Sem.as2⟩
 
 /-- A level is lawful: decoding inverts encoding both ways, a function-type code encodes its
 elements by their tag, which unpacking reads back, and a function-type code read back as a type
@@ -66,29 +71,29 @@ structure Lvl.Lawful (L : Lvl.{u}) : Prop where
   dec_enc : ∀ {A : Type u} (c : L.Code A) (a : A), L.dec c (L.enc c a) = some a
   enc_pi : ∀ (C : Type u) (t : Tel L.Code PUnit C) (f : C), L.enc (L.pi C t) f = L.pack C f
   unpack_pack : ∀ (A : Type u) (a : A), L.unpack A (L.pack A a) = some a
-  mem_pi : ∀ (C : Type u) (t : Tel L.Code PUnit C) (s : Sem), s ∈ₛ L.toTy (L.pi C t) ↔ ∃ f, L.enc (L.pi C t) f = s
+  mem_pi : ∀ (C : Type u) (t : Tel L.Code PUnit C) (s : Sem), (s ∈ₛ[L.read] L.toTy (L.pi C t)) ↔ ∃ f, L.enc (L.pi C t) f = s
 
-theorem lvl0_lawful : lvl0.Lawful where
-  enc_of_dec c _ _ h := Code0.enc_of_dec c h
-  dec_enc c a := Code0.dec_enc c a
+theorem lvl0_lawful (R : DataRead) : (lvl0 R).Lawful where
+  enc_of_dec c _ _ h := Code0.enc_of_dec R c h
+  dec_enc c a := Code0.dec_enc R c a
   enc_pi _ _ _ := rfl
   unpack_pack A a := by
     show (if h : A = A then some (h ▸ a) else none) = some a
     rw [dif_pos rfl]
   mem_pi _ _ _ := Iff.rfl
 
-theorem lvl1_lawful : lvl1.Lawful where
-  enc_of_dec c _ _ h := Code1.enc_of_dec c h
-  dec_enc c a := Code1.dec_enc c a
+theorem lvl1_lawful (R : DataRead) : (lvl1 R).Lawful where
+  enc_of_dec c _ _ h := Code1.enc_of_dec R c h
+  dec_enc c a := Code1.dec_enc R c a
   enc_pi _ _ _ := rfl
   unpack_pack A a := by
     show (if h : A = A then some (h ▸ a) else none) = some a
     rw [dif_pos rfl]
   mem_pi _ _ _ := Iff.rfl
 
-theorem lvl2_lawful : lvl2.Lawful where
-  enc_of_dec c _ _ h := Code2.enc_of_dec c h
-  dec_enc c a := Code2.dec_enc c a
+theorem lvl2_lawful (R : DataRead) : (lvl2 R).Lawful where
+  enc_of_dec c _ _ h := Code2.enc_of_dec R c h
+  dec_enc c a := Code2.dec_enc R c a
   enc_pi _ _ _ := rfl
   unpack_pack A a := by
     show (if h : A = A then some (h ▸ a) else none) = some a
@@ -279,7 +284,7 @@ noncomputable def applyFnL {C : Type u} (t : Tel L.Code PUnit C) (F : Sem) (args
 /-- **A closure is a member of its own type, or `err`**: it is built in the carrier its type's code
 is indexed by. -/
 theorem closureL_mem (hL : L.Lawful) (φ : Future) {C : Type u} (t : Tel L.Code PUnit C)
-    (g : List Sem → Option BodyOut) : closureL L φ t g ∈ₛ piTyL L t ∨ closureL L φ t g = .err := by
+    (g : List Sem → Option BodyOut) : (closureL L φ t g ∈ₛ[L.read] piTyL L t) ∨ closureL L φ t g = .err := by
   unfold closureL
   split
   · rename_i F _

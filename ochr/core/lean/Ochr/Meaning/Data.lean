@@ -18,6 +18,18 @@ are modelled directly in `Value.lean` as `Nat` and `Unit`.
 
 namespace Ochr.Meaning
 
+/-- The reading of a data model's elements (docs/31 D61) from its carriers, tags and fields: an
+element of `D(ps)`'s carrier is its tag and fields; an element of any other type is read as
+nothing (no code of `D(ps)` has that carrier). -/
+noncomputable def readOf (car : IndDecl → List Sem → Type) (tag : {d : IndDecl} → {ps : List Sem} → car d ps → Nat)
+    (fields : {d : IndDecl} → {ps : List Sem} → car d ps → List Sem) : DataRead :=
+  fun d ps A a => open Classical in if h : A = car d ps then (tag (cast h a), fields (cast h a)) else (0, [])
+
+theorem readOf_car (car : IndDecl → List Sem → Type) (tag : {d : IndDecl} → {ps : List Sem} → car d ps → Nat)
+    (fields : {d : IndDecl} → {ps : List Sem} → car d ps → List Sem) {d : IndDecl} {ps : List Sem} (x : car d ps) :
+    readOf car tag fields d ps (car d ps) x = (tag x, fields x) := by
+  simp [readOf]
+
 /-- The model of the program's inductive declarations. Parameters are passed as meanings: a
 type parameter as `Sem.ty T`, a value parameter (D71) as the value's meaning. `fieldTy d ps c i
 earlier` is the meaning of the declared type of field `i` of constructor `c` at the parameters
@@ -44,6 +56,16 @@ structure DataModel where
   fields : {d : IndDecl} → {ps : List Sem} → car d ps → List Sem
   /-- The rank, for guarded recursion (docs/24): a recursive field has a smaller rank. -/
   rank : {d : IndDecl} → {ps : List Sem} → car d ps → Nat
+  /-- How an element is read as a constructor value (docs/31 D61): what the codes' encoding,
+  decoding and membership read a data element through. A data type's code names its declaration,
+  parameters and carrier only, so a recursive or nested declaration's element is read here, by
+  the model, and never by a code holding the code it is the code of. -/
+  read : DataRead := readOf car tag fields
+  /-- The reading is the model's: a covered declaration's element is read as its tag and fields
+  (by `readOf_car` for the default reading; a model that reads at a reading given from outside,
+  as the generic one, owes it as a coherence: docs/31 D61). -/
+  read_eq : ∀ {d ps} (x : car d ps), covers d → read d ps (car d ps) x = (tag x, fields x) := by
+    intro d ps x _; simp [readOf]
   tag_pack : ∀ {d ps c fs} (x : car d ps), covers d → pack d ps c fs = some x → tag x = c
   fields_pack : ∀ {d ps c fs} (x : car d ps), covers d → pack d ps c fs = some x → fields x = fs
   /-- Every element is a constructor applied to its fields (the carrier is a least fixed point). -/
@@ -53,7 +75,7 @@ structure DataModel where
   pack_isSome : ∀ {d ps c fs}, covers d →
     ((pack d ps c fs).isSome ↔
       ∃ ctor, d.ctors[c]? = some ctor ∧ fs.length = ctor.2.length ∧
-        ∀ i (h : i < fs.length), fs[i] ∈ₛ fieldTy d ps c i (fs.take i))
+        ∀ i (h : i < fs.length), fs[i] ∈ₛ[read] fieldTy d ps c i (fs.take i))
   /-- A recursive field, read at the parameters of its declared occurrence (`recArgs`), has
   smaller rank: the element it packs (`Sem.elt`, what `semRank` ranks) is ranked below. The law
   is stated through the declared type, not through carriers: carriers do not determine
@@ -72,36 +94,29 @@ variable (dm : DataModel)
 
 /-- A value read as a coded element of the type `T` (its code read at carrier level 0); `bad`
 when it is not a member. -/
-noncomputable def _root_.Ochr.Meaning.eltOf (T : TyM) (s : Sem) : Elt0 :=
-  match T.code0.2.dec s with
+noncomputable def _root_.Ochr.Meaning.eltOf (R : DataRead) (T : TyM) (s : Sem) : Elt0 :=
+  match T.code0.2.dec R s with
   | some b => .mk _ T.code0.2 b
   | none => .bad
 
 /-- A parameter's meaning as a coded parameter of a data type: a type value as its code, a value
 as a coded element of the parameter's declared type `T`. -/
-noncomputable def _root_.Ochr.Meaning.parOf (T : TyM) : Sem → Par0
+noncomputable def _root_.Ochr.Meaning.parOf (R : DataRead) (T : TyM) : Sem → Par0
   | .ty (.t0 A c) => .ty A c
-  | s => .val (eltOf T s)
+  | s => .val (eltOf R T s)
 
 /-- The parameters of `d` as coded parameters, each at its declared type at the earlier ones. -/
 noncomputable def parsOf (d : IndDecl) (i : Nat) (earlier : List Sem) : List Sem → List Par0
   | [] => []
-  | p :: ps => parOf (dm.paramTy d i earlier) p :: parsOf d (i + 1) (earlier ++ [p]) ps
+  | p :: ps => parOf dm.read (dm.paramTy d i earlier) p :: parsOf d (i + 1) (earlier ++ [p]) ps
 
-/-- The fields of constructor `c` as coded elements, each at its field type at the earlier ones. -/
-noncomputable def eltsOf (d : IndDecl) (ps : List Sem) (c : Nat) (i : Nat) (earlier : List Sem) :
-    List Sem → List Elt0
-  | [] => []
-  | f :: fs => eltOf (dm.fieldTy d ps c i earlier) f :: eltsOf d ps c (i + 1) (earlier ++ [f]) fs
-
-/-- The meaning of the type `D(ps)`: a data type is its code (its declaration's name, its
-parameters, its carrier, and an element read as its constructor and its fields at their field
-types: docs/31 D59); a `Prop`-sorted declaration the truncation of the same fixed point, true
-when it is inhabited. -/
+/-- The meaning of the type `D(ps)`: a data type is its code, naming its declaration, its
+parameters and its carrier and nothing more (docs/31 D61: its elements are read through the model,
+`read`); a `Prop`-sorted declaration the truncation of the same fixed point, true when it is
+inhabited. -/
 noncomputable def tyM (d : IndDecl) (ps : List Sem) : TyM :=
   if d.sort == 0 then TyM.prop (Nonempty (dm.car d ps))
-  else .t0 (dm.car d ps) (.data d.name (dm.parsOf d 0 [] ps) (dm.car d ps)
-    fun x => ⟨dm.tag x, dm.eltsOf d ps (dm.tag x) 0 [] (dm.fields x)⟩)
+  else .t0 (dm.car d ps) (.data d (dm.parsOf d 0 [] ps) (dm.car d ps))
 
 /-- The constructor and fields of a constructor value, read off the value (docs/31 D32). -/
 def _root_.Ochr.Meaning.Sem.parts : Sem → Option (Nat × List Sem)
@@ -112,8 +127,8 @@ def _root_.Ochr.Meaning.Sem.parts : Sem → Option (Nat × List Sem)
 parameters, its fields are whole, and it has no element of the carrier because a field lies
 outside the type its earlier fields give (the checker types such a field by its content until
 [Repack]). Membership's `pmem` admits it, as the checker's state does (`Regress/OpenWriteDep`). -/
-def OpenIn : TyM → Sem → Prop
-  | .t0 _ (.data n ps _ _), .dat n' ps' _ fs none => n = n' ∧ Par0.sems ps = ps' ∧ ∀ f ∈ fs, f.whole
+def OpenIn (R : DataRead) : TyM → Sem → Prop
+  | .t0 _ (.data d ps _), .dat n' ps' _ fs none => d.name = n' ∧ Par0.sems R ps = ps' ∧ ∀ f ∈ fs, f.whole
   | _, _ => False
 
 /-- The meaning of a constructor value `C(ps; fs)` of a data type whose fields already mean
@@ -164,56 +179,58 @@ end
 some field of which was moved out): the value is `⊥` outright, or it is some whole member of the
 type with parts moved out (`MovedOf`). For a whole value this is membership (`pmem_of_mem`). A
 move keeps it: the value before the move is such a member. -/
-def pmem (Γ : List IndDecl) (s : Sem) (T : TyM) : Prop :=
-  s = .moved ∨ ∃ t : Sem, t.whole ∧ MovedOf Γ s t ∧ (t ∈ₛ T ∨ OpenIn T t)
+def pmem (R : DataRead) (Γ : List IndDecl) (s : Sem) (T : TyM) : Prop :=
+  s = .moved ∨ ∃ t : Sem, t.whole ∧ MovedOf Γ s t ∧ (t ∈ₛ[R] T ∨ OpenIn R T t)
 
-theorem pmem_of_mem (Γ : List IndDecl) {s : Sem} {T : TyM} (hw : s.whole) (h : s ∈ₛ T) : pmem Γ s T :=
+theorem pmem_of_mem (R : DataRead) (Γ : List IndDecl) {s : Sem} {T : TyM} (hw : s.whole) (h : s ∈ₛ[R] T) :
+    pmem R Γ s T :=
   .inr ⟨s, hw, .refl s, .inl h⟩
 
 /-- No code encodes an element as a constructor value with no element: a constructor value is a
 member of a type only when it packs an element of the carrier. -/
-theorem _root_.Ochr.Meaning.Code0.enc_ne_dat_none {A : Type} (c : Code0 A) (a : A) (n : String) (ps : List Sem)
-    (k : Nat) (fs : List Sem) : c.enc a ≠ .dat n ps k fs none := by
+theorem _root_.Ochr.Meaning.Code0.enc_ne_dat_none (R : DataRead) {A : Type} (c : Code0 A) (a : A) (n : String)
+    (ps : List Sem) (k : Nat) (fs : List Sem) : c.enc R a ≠ .dat n ps k fs none := by
   cases c with
   | err => exact a.elim
   | _ => simp [Code0.enc]
 
-theorem _root_.Ochr.Meaning.Sem.not_mem_dat_none (n : String) (ps : List Sem) (k : Nat) (fs : List Sem) (T : TyM) :
-    ¬ (Sem.dat n ps k fs none ∈ₛ T) := by
+theorem _root_.Ochr.Meaning.Sem.not_mem_dat_none (R : DataRead) (n : String) (ps : List Sem) (k : Nat)
+    (fs : List Sem) (T : TyM) : ¬ (Sem.dat n ps k fs none ∈ₛ[R] T) := by
   rintro h
   cases T with
-  | t0 A c => obtain ⟨a, ha⟩ := h; exact Code0.enc_ne_dat_none c a n ps k fs ha
+  | t0 A c => obtain ⟨a, ha⟩ := h; exact Code0.enc_ne_dat_none R c a n ps k fs ha
   | t1 A c =>
     obtain ⟨a, ha⟩ := h
     cases c with
-    | lift _ c₀ => exact Code0.enc_ne_dat_none c₀ a.down n ps k fs ha
+    | lift _ c₀ => exact Code0.enc_ne_dat_none R c₀ a.down n ps k fs ha
     | _ => simp [Code1.enc] at ha
   | t2 A c =>
     obtain ⟨a, ha⟩ := h
     cases c with
     | lift _ c₁ =>
       cases c₁ with
-      | lift _ c₀ => exact Code0.enc_ne_dat_none c₀ a.down.down n ps k fs ha
+      | lift _ c₀ => exact Code0.enc_ne_dat_none R c₀ a.down.down n ps k fs ha
       | _ => simp [Code1.enc, Code2.enc] at ha
     | _ => simp [Code2.enc] at ha
 
-/-- **The code of `D(ps)` reads its elements back** (docs/31 D59): the parameters decode at
-their declared types, and every element's fields at their field types. Then a packed element is
-a member of its type (`ctor_mem_tyM`). It follows from the pack laws where the fields are small
-(docs/18 (I6)) and the parameters members of their types; a recursive or nested declaration's
-code cannot be built so that it holds (docs/31 D61). -/
-def CodeFaithful (d : IndDecl) (ps : List Sem) : Prop :=
-  Par0.sems (dm.parsOf d 0 [] ps) = ps ∧
-    ∀ x : dm.car d ps, Elt0.sems (dm.eltsOf d ps (dm.tag x) 0 [] (dm.fields x)) = dm.fields x
+/-- **The parameters of `D(ps)` are read back from its code** (docs/31 D61): each a level-0 type
+value or a member of its declared type (`parsOf_sems`). With the model's reading of a covered
+declaration (`read_eq`), it is all a packed element needs to be a member of its type
+(`ctor_mem_tyM`), for every declaration, recursive and nested ones included: the code reads no
+field. (D59's `CodeFaithful` also asked the code to read every element's fields back, which a
+recursive declaration's code could do only by stages and a nested one's not at all.) -/
+def ParamsCoded (d : IndDecl) (ps : List Sem) : Prop := Par0.sems dm.read (dm.parsOf d 0 [] ps) = ps
 
-/-- A packed element, read as the constructor value that describes it, is a member of its type
-where the code reads it back. -/
-theorem ctor_mem_tyM (d : IndDecl) (ps : List Sem) (hs : (d.sort == 0) = false) (hf : dm.CodeFaithful d ps)
-    (x : dm.car d ps) : Sem.dat d.name ps (dm.tag x) (dm.fields x) (some ⟨dm.car d ps, x⟩) ∈ₛ dm.tyM d ps := by
+/-- A packed element of a covered declaration, read as the constructor value that describes it,
+is a member of its type where its parameters are read back from its code. -/
+theorem ctor_mem_tyM (d : IndDecl) (ps : List Sem) (hd : dm.covers d) (hs : (d.sort == 0) = false)
+    (hp : dm.ParamsCoded d ps) (x : dm.car d ps) :
+    Sem.dat d.name ps (dm.tag x) (dm.fields x) (some ⟨dm.car d ps, x⟩) ∈ₛ[dm.read] dm.tyM d ps := by
   unfold tyM
   rw [hs]
   refine ⟨x, ?_⟩
-  simp only [Code0.enc, Unpk0.ctor, Unpk0.sems, hf.1, hf.2 x]
+  unfold ParamsCoded at hp
+  simp only [Code0.enc, hp, dm.read_eq x hd]
 
 /-- **A constructor value's tag and fields are read off its meaning whatever its fields hold**:
 packed, partly moved, or open (docs/31 D32: the value describes itself; no declaration, carrier or
@@ -242,11 +259,14 @@ def small : TyM → TyM
 /-- What a carrier in `Type` stores for an element of a small type: its level-0 carrier. -/
 abbrev El (T : TyM) : Type := T.el0
 
+section
+variable (R : DataRead)
+
 /-- The meaning of a stored element. -/
-def enc (T : TyM) (a : El T) : Sem := T.code0.2.enc a
+def enc (T : TyM) (a : El T) : Sem := T.code0.2.enc R a
 
 /-- Read a meaning as a stored element of a small type, if it is a member (classically). -/
-noncomputable def dec (T : TyM) (s : Sem) : Option (El T) := T.code0.2.dec s
+noncomputable def dec (T : TyM) (s : Sem) : Option (El T) := T.code0.2.dec R s
 
 theorem small_small (T : TyM) : small (small T) = small T := by
   cases T <;> rfl
@@ -254,25 +274,25 @@ theorem small_small (T : TyM) : small (small T) = small T := by
 theorem small_code0 (T : TyM) : (small T).code0 = T.code0 := by
   cases T <;> rfl
 
-theorem enc_mem_small (T : TyM) (a : El T) : enc T a ∈ₛ small T := by
+theorem enc_mem_small (T : TyM) (a : El T) : enc R T a ∈ₛ[R] small T := by
   cases T with
   | t0 A c => exact ⟨a, rfl⟩
   | t1 _ _ | t2 _ _ => exact a.elim
 
-theorem enc_mem (T : TyM) (a : El T) : enc T a ∈ₛ T := by
+theorem enc_mem (T : TyM) (a : El T) : enc R T a ∈ₛ[R] T := by
   cases T with
   | t0 A c => exact ⟨a, rfl⟩
   | t1 _ _ | t2 _ _ => exact a.elim
 
-theorem enc_inj {T : TyM} {a b : El T} (h : enc T a = enc T b) : a = b := Code0.enc_inj _ h
+theorem enc_inj {T : TyM} {a b : El T} (h : enc R T a = enc R T b) : a = b := Code0.enc_inj R _ h
 
-theorem dec_enc (T : TyM) (a : El T) : dec T (enc T a) = some a := Code0.dec_enc _ a
+theorem dec_enc (T : TyM) (a : El T) : dec R T (enc R T a) = some a := Code0.dec_enc R _ a
 
-theorem enc_of_dec {T : TyM} {s : Sem} {a : El T} (h : dec T s = some a) : enc T a = s :=
-  Code0.enc_of_dec _ h
+theorem enc_of_dec {T : TyM} {s : Sem} {a : El T} (h : dec R T s = some a) : enc R T a = s :=
+  Code0.enc_of_dec R _ h
 
 /-- Decoding succeeds exactly on the members of the small part of the type. -/
-theorem dec_isSome_iff (T : TyM) (s : Sem) : (dec T s).isSome ↔ s ∈ₛ small T := by
+theorem dec_isSome_iff (T : TyM) (s : Sem) : (dec R T s).isSome ↔ s ∈ₛ[R] small T := by
   rw [dec, Code0.dec_isSome]
   cases T with
   | t0 A c => rfl
@@ -281,8 +301,10 @@ theorem dec_isSome_iff (T : TyM) (s : Sem) : (dec T s).isSome ↔ s ∈ₛ small
     exact ⟨fun ⟨a, _⟩ => a.elim, fun ⟨a, _⟩ => a.elim⟩
 
 /-- On a small type, membership is membership of the small part. -/
-theorem mem_small_of_mem {T : TyM} {s : Sem} (h : s ∈ₛ T) (hT : small T = T) : s ∈ₛ small T := by
+theorem mem_small_of_mem {T : TyM} {s : Sem} (h : s ∈ₛ[R] T) (hT : small T = T) : s ∈ₛ[R] small T := by
   rw [hT]; exact h
+
+end
 
 /-! ## Constructor shapes
 
@@ -357,36 +379,36 @@ def LibKind.fieldTy : LibKind → List Sem → Nat → TyM
   | .pair, ps, i | .and, ps, i => if i = 0 then libPar ps 0 else libPar ps 1
   | _, _, _ => TyM.err
 
-noncomputable def LibKind.pack : (k : LibKind) → (ps : List Sem) → Nat → List Sem → Option (k.car ps)
+noncomputable def LibKind.pack (R : DataRead) : (k : LibKind) → (ps : List Sem) → Nat → List Sem → Option (k.car ps)
   | .pair, _, c, fs | .and, _, c, fs =>
     if c = 0 then
       match fs with
-      | [f, g] => (dec _ f).bind fun a => (dec _ g).map fun b => (a, b)
+      | [f, g] => (dec R _ f).bind fun a => (dec R _ g).map fun b => (a, b)
       | _ => none
     else none
   | .tt, _, c, fs => if c = 0 ∧ fs = [] then some PUnit.unit else none
   | .ff, _, _, _ | .other, _, _, _ => none
 
-def LibKind.fields : (k : LibKind) → (ps : List Sem) → k.car ps → List Sem
-  | .pair, ps, (a, b) | .and, ps, (a, b) => [enc (libPar ps 0) a, enc (libPar ps 1) b]
+def LibKind.fields (R : DataRead) : (k : LibKind) → (ps : List Sem) → k.car ps → List Sem
+  | .pair, ps, (a, b) | .and, ps, (a, b) => [enc R (libPar ps 0) a, enc R (libPar ps 1) b]
   | .tt, _, _ => []
   | .ff, _, x | .other, _, x => x.elim
 
-theorem LibKind.tag_pack (k : LibKind) (ps : List Sem) (c : Nat) (fs : List Sem) (x : k.car ps)
-    (h : k.pack ps c fs = some x) : c = 0 := by
+theorem LibKind.tag_pack (R : DataRead) (k : LibKind) (ps : List Sem) (c : Nat) (fs : List Sem) (x : k.car ps)
+    (h : k.pack R ps c fs = some x) : c = 0 := by
   cases k <;> simp only [LibKind.pack] at h
   all_goals first | cases h | (split at h <;> simp_all)
 
-theorem LibKind.fields_pack (k : LibKind) (ps : List Sem) (c : Nat) (fs : List Sem) (x : k.car ps)
-    (h : k.pack ps c fs = some x) : k.fields ps x = fs := by
+theorem LibKind.fields_pack (R : DataRead) (k : LibKind) (ps : List Sem) (c : Nat) (fs : List Sem) (x : k.car ps)
+    (h : k.pack R ps c fs = some x) : k.fields R ps x = fs := by
   cases k <;> simp only [LibKind.pack] at h
   case pair | and =>
     split at h
     · split at h
       · rename_i f g
-        cases ha : dec (libPar ps 0) f <;> cases hb : dec (libPar ps 1) g <;>
+        cases ha : dec R (libPar ps 0) f <;> cases hb : dec R (libPar ps 1) g <;>
           rw [ha, hb] at h <;> cases h
-        simp [LibKind.fields, enc_of_dec ha, enc_of_dec hb]
+        simp [LibKind.fields, enc_of_dec R ha, enc_of_dec R hb]
       · cases h
     · cases h
   case tt =>
@@ -395,24 +417,24 @@ theorem LibKind.fields_pack (k : LibKind) (ps : List Sem) (c : Nat) (fs : List S
     · cases h
   all_goals cases h
 
-theorem LibKind.pack_fields (k : LibKind) (ps : List Sem) (x : k.car ps) :
-    k.pack ps 0 (k.fields ps x) = some x := by
+theorem LibKind.pack_fields (R : DataRead) (k : LibKind) (ps : List Sem) (x : k.car ps) :
+    k.pack R ps 0 (k.fields R ps x) = some x := by
   cases k
   case pair | and =>
     obtain ⟨a, b⟩ := x
-    simp only [LibKind.pack, LibKind.fields, dec_enc]
+    simp only [LibKind.pack, LibKind.fields, dec_enc R]
     rfl
   case tt => rfl
   all_goals exact x.elim
 
-theorem dec_libPar_isSome (ps : List Sem) (i : Nat) (s : Sem) :
-    (dec (libPar ps i) s).isSome ↔ s ∈ₛ libPar ps i := by
+theorem dec_libPar_isSome (R : DataRead) (ps : List Sem) (i : Nat) (s : Sem) :
+    (dec R (libPar ps i) s).isSome ↔ s ∈ₛ[R] libPar ps i := by
   rw [dec_isSome_iff, libPar, small_small]
 
-theorem LibKind.pack_isSome (k : LibKind) (ps : List Sem) (c : Nat) (fs : List Sem) :
-    (k.pack ps c fs).isSome ↔
+theorem LibKind.pack_isSome (R : DataRead) (k : LibKind) (ps : List Sem) (c : Nat) (fs : List Sem) :
+    (k.pack R ps c fs).isSome ↔
       ∃ n, k.arities[c]? = some n ∧ fs.length = n ∧
-        ∀ i (h : i < fs.length), fs[i] ∈ₛ k.fieldTy ps i := by
+        ∀ i (h : i < fs.length), fs[i] ∈ₛ[R] k.fieldTy ps i := by
   cases k
   case pair | and =>
     simp only [LibKind.pack, LibKind.arities, LibKind.fieldTy]
@@ -424,17 +446,17 @@ theorem LibKind.pack_isSome (k : LibKind) (ps : List Sem) (c : Nat) (fs : List S
         simp only [List.length_cons, List.length_nil, true_and]
         constructor
         · intro h i hi
-          cases ha : dec (libPar ps 0) f <;> cases hb : dec (libPar ps 1) g <;>
+          cases ha : dec R (libPar ps 0) f <;> cases hb : dec R (libPar ps 1) g <;>
             rw [ha, hb] at h <;> simp [Option.bind, Option.map] at h
-          have hf := (dec_libPar_isSome ps 0 f).1 (by simp [ha])
-          have hg := (dec_libPar_isSome ps 1 g).1 (by simp [hb])
+          have hf := (dec_libPar_isSome R ps 0 f).1 (by simp [ha])
+          have hg := (dec_libPar_isSome R ps 1 g).1 (by simp [hb])
           match i, hi with
           | 0, _ => exact hf
           | 1, _ => exact hg
         · intro h
-          have ha := (dec_libPar_isSome ps 0 f).2 (h 0 (by decide))
-          have hb := (dec_libPar_isSome ps 1 g).2 (h 1 (by decide))
-          cases ha' : dec (libPar ps 0) f <;> cases hb' : dec (libPar ps 1) g <;>
+          have ha := (dec_libPar_isSome R ps 0 f).2 (h 0 (by decide))
+          have hb := (dec_libPar_isSome R ps 1 g).2 (h 1 (by decide))
+          cases ha' : dec R (libPar ps 0) f <;> cases hb' : dec R (libPar ps 1) g <;>
             simp_all [Option.bind, Option.map]
           rfl
       | [] | [_] | _ :: _ :: _ :: _ => simp
@@ -452,23 +474,29 @@ theorem LibKind.pack_isSome (k : LibKind) (ps : List Sem) (c : Nat) (fs : List S
 
 /-- The library model (`Prelude.decls`: `Pair`, `False`, `True`, `And`). Every constructor is
 constructor `0`; no library declaration is recursive (`recArgs` is `none`), so the rank is `0`;
-no field's declared type is an inductive (`Pair`'s and `And`'s fields
-have the parameters' types). -/
-noncomputable def libModel : DataModel where
+no field's declared type is an inductive (`Pair`'s and `And`'s fields have the parameters' types).
+A field of a parameter's type is read at a reading `R` given from outside (the whole program's
+model, which reads the parameters' own data), and the model is lawful where `R` reads the library's
+elements as this model does (`hR`, docs/31 D61). -/
+noncomputable def libModel (R : DataRead)
+    (hR : ∀ {d ps} (x : libCar d ps), libKind d ≠ .other → R d ps (libCar d ps) x = (0, (libKind d).fields R ps x)) :
+    DataModel where
   covers d := libKind d ≠ .other
   car := libCar
   fieldTy d ps _ i _ := (libKind d).fieldTy ps i
   paramTy d _ _ := if d.name = "Pair" then TyM.univ 1 else if d.name = "And" then TyM.univ 0 else TyM.err
-  pack d ps c fs := (libKind d).pack ps c fs
+  pack d ps c fs := (libKind d).pack R ps c fs
   tag _ := 0
-  fields {d ps} x := (libKind d).fields ps x
+  fields {d ps} x := (libKind d).fields R ps x
   rank _ := 0
-  tag_pack {d ps c fs} x _ h := ((libKind d).tag_pack ps c fs x h).symm
-  fields_pack {d ps c fs} x _ h := (libKind d).fields_pack ps c fs x h
-  pack_fields {d ps} x _ := (libKind d).pack_fields ps x
+  read := R
+  read_eq x hd := hR x hd
+  tag_pack {d ps c fs} x _ h := ((libKind d).tag_pack R ps c fs x h).symm
+  fields_pack {d ps c fs} x _ h := (libKind d).fields_pack R ps c fs x h
+  pack_fields {d ps} x _ := (libKind d).pack_fields R ps x
   pack_isSome {d ps c fs} hd := by
     rw [ctor_iff_arity d c (fun n => fs.length = n ∧ _), arities_libKind d hd]
-    exact (libKind d).pack_isSome ps c fs
+    exact (libKind d).pack_isSome R ps c fs
   rank_lt _ _ _ _ h := by cases h
 
 end DataModel

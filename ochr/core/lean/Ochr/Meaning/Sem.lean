@@ -20,6 +20,13 @@ elements are tagged by the Lean type they belong to; a constructor value describ
 docs/31 D32). A value is a member of a type when it is the encoding of an element of the type's
 carrier (Lean: elements are taken from the decoding).
 
+A data type's code names its declaration, its parameters and its carrier, and nothing more
+(docs/31 D61): an element's constructor and fields are read through the data model (`DataRead`),
+which every run has, so encoding, decoding and membership take it as an argument. As Lean's model
+codes a W-type by its index set and family and never by its own decoding, no code holds a code of
+the type it is the code of, so a recursive or nested declaration (`List`, `Rose(A)` with a field
+`List(Rose(A))`) has a code like any other.
+
 ## Levels (Q1, docs/18)
 
 Ochr's `sort 0 = Prop`, `sort 1 = Type₀`, `sort 2 = Type₁`, with `Prop : Type₁` beside
@@ -56,32 +63,26 @@ inductive Tel (Code : Type u → Type (u + 1)) : Type u → Type u → Type (u +
 
 mutual
 /-- **Codes of carrier level 0** (`Type₀` types and propositions), indexed by their carrier: a
-proposition (decoding to `PLift P`), `Nat`, `Unit`, a data type (its declaration's name, its
-parameters, its carrier, and the reading of an element as its constructor and its coded fields),
-a function type (a telescope code), and the error code (no elements). -/
+proposition (decoding to `PLift P`), `Nat`, `Unit`, a data type (its declaration, its parameters
+as codes and coded values, and its carrier; its elements are read through the data model, D61), a
+function type (a telescope code), and the error code (no elements). -/
 inductive Code0 : Type → Type 1
   | prop (P : Prop) : Code0 (PLift P)
   | nat : Code0 Nat
   | unit : Code0 Unit
-  | data (n : String) (ps : List Par0) (A : Type) (unpk : A → Unpk0) : Code0 A
+  | data (d : IndDecl) (ps : List Par0) (A : Type) : Code0 A
   | pi (C : Type) (t : Tel Code0 PUnit C) : Code0 C
   | err : Code0 PEmpty
-/-- A coded element (a field of a data value): a carrier, its code, an element; or nothing (a
-field the data model could not read at its type, which no well-typed value has). -/
+/-- A coded element (a value parameter of a data type): a carrier, its code, an element; or
+nothing (a parameter not of its declared type, which no well-typed value has). -/
 inductive Elt0 : Type 1
   | mk (B : Type) (c : Code0 B) (b : B)
   | bad
-/-- A data type's parameter: a type (as its code), a coded value, or nothing. -/
+/-- A data type's parameter: a type (as its code), or a coded value. -/
 inductive Par0 : Type 1
   | ty (A : Type) (c : Code0 A)
   | val (e : Elt0)
-/-- A data element read as its constructor and its coded fields. -/
-inductive Unpk0 : Type 1
-  | mk (ctor : Nat) (fs : List Elt0)
 end
-
-def Unpk0.ctor : Unpk0 → Nat
-  | .mk c _ => c
 
 /-- The sort a level-0 code is a type of: `0` for a proposition, `1` for a `Type₀` type. -/
 def Code0.level : {A : Type} → Code0 A → Option Nat
@@ -140,6 +141,11 @@ inductive Sem : Type 3 where
   | moved
   | dat (name : String) (ps : List Sem) (c : Nat) (fs : List Sem) (el : Option ((A : Type) × A))
   | err
+
+/-- **How a data value is read** (docs/31 D61): an element of a declaration's carrier at its
+parameters' meanings, read as its constructor and its fields' meanings. The data model gives it
+(`DataModel.read`); a code does not hold it. -/
+abbrev DataRead : Type 3 := IndDecl → List Sem → (A : Type) → A → Nat × List Sem
 
 /-! ## Types as codes: the common ones and their views -/
 
@@ -219,24 +225,23 @@ theorem false_not_true : ¬ (TyM.prop False).true := id
 
 /-! ## Encoding an element of a carrier as a meaning -/
 
+section
+variable (R : DataRead)
+
 mutual
 /-- A level-0 element as a meaning: a proof is `•`, a data element is the constructor value that
-describes it (`unpk`), anything else is tagged by its carrier. -/
+describes it (its constructor and fields read through the data model, `R`), anything else is
+tagged by its carrier. -/
 def Code0.enc : {A : Type} → Code0 A → A → Sem
   | _, .prop _, _ => .proof
   | _, .nat, n => .el0 Nat n
   | _, .unit, x => .el0 Unit x
-  | _, .data n ps A unpk, a => .dat n (Par0.sems ps) (unpk a).ctor (Unpk0.sems (unpk a)) (some ⟨A, a⟩)
+  | _, .data d ps A, a => .dat d.name (Par0.sems ps) (R d (Par0.sems ps) A a).1 (R d (Par0.sems ps) A a).2 (some ⟨A, a⟩)
   | _, .pi C _, f => .el0 C f
   | _, .err, x => nomatch x
-def Unpk0.sems : Unpk0 → List Sem
-  | .mk _ fs => Elt0.sems fs
 def Elt0.sem : Elt0 → Sem
   | .mk _ c b => Code0.enc c b
   | .bad => .err
-def Elt0.sems : List Elt0 → List Sem
-  | [] => []
-  | e :: es => e.sem :: Elt0.sems es
 def Par0.sem : Par0 → Sem
   | .ty A c => .ty (.t0 A c)
   | .val e => e.sem
@@ -248,14 +253,14 @@ end
 /-- A level-1 element as a meaning: a lifted element as itself, a proposition or a `Type₀` code as
 the type value it is, a function by its tag. -/
 def Code1.enc : {A : Type 1} → Code1 A → A → Sem
-  | _, .lift _ c, a => c.enc a.down
+  | _, .lift _ c, a => c.enc R a.down
   | _, .univ0, P => .ty (.prop P.down)
   | _, .univ1, p => .ty (.t0 p.1 p.2.1)
   | _, .pi C _, f => .el1 C f
 
 /-- A level-2 element as a meaning. -/
 def Code2.enc : {A : Type 2} → Code2 A → A → Sem
-  | _, .lift _ c, a => c.enc a.down
+  | _, .lift _ c, a => c.enc R a.down
   | _, .univ2, p => .ty (.t1 p.1 p.2.1)
   | _, .pi C _, f => .el2 C f
 
@@ -263,19 +268,19 @@ open Classical in
 /-- Decoding a meaning at a code: its preimage under the encoding, if it has one (the encoding is
 injective, `Code0.enc_inj`). -/
 noncomputable def Code0.dec {A : Type} (c : Code0 A) (s : Sem) : Option A :=
-  if h : ∃ a, c.enc a = s then some h.choose else none
+  if h : ∃ a, c.enc R a = s then some h.choose else none
 
 open Classical in
 noncomputable def Code1.dec {A : Type 1} (c : Code1 A) (s : Sem) : Option A :=
-  if h : ∃ a, c.enc a = s then some h.choose else none
+  if h : ∃ a, c.enc R a = s then some h.choose else none
 
 open Classical in
 noncomputable def Code2.dec {A : Type 2} (c : Code2 A) (s : Sem) : Option A :=
-  if h : ∃ a, c.enc a = s then some h.choose else none
+  if h : ∃ a, c.enc R a = s then some h.choose else none
 
 /-- The declaration's name and parameters' meanings a data type's code carries. -/
 def TyM.dataName? : TyM → Option (String × List Sem)
-  | .t0 _ (.data n ps _ _) => some (n, Par0.sems ps)
+  | .t0 _ (.data d ps _) => some (d.name, Par0.sems R ps)
   | _ => none
 
 /-- **Membership**: a meaning lies in a type when it is the encoding of an element of the type's
@@ -283,11 +288,14 @@ carrier (Lean: a type's elements are taken from its code's decoding). An element
 the carrier it is tagged with; `•` of every true proposition; a type value of the universe of its
 level; a constructor value of the data type it names, when it describes an element. -/
 def Sem.mem (s : Sem) : TyM → Prop
-  | .t0 _ c => ∃ a, c.enc a = s
-  | .t1 _ c => ∃ a, c.enc a = s
-  | .t2 _ c => ∃ a, c.enc a = s
+  | .t0 _ c => ∃ a, c.enc R a = s
+  | .t1 _ c => ∃ a, c.enc R a = s
+  | .t2 _ c => ∃ a, c.enc R a = s
 
-scoped infix:50 " ∈ₛ " => Sem.mem
+end
+
+/-- Membership, the data model's reading `R` explicit. -/
+scoped notation:50 s:51 " ∈ₛ[" R "] " T:51 => Sem.mem R s T
 
 /-- The element of a carrier a constructor value packs, if it is whole and of its type (what
 guarded recursion ranks, `semRank`). -/
@@ -358,6 +366,9 @@ end
 
 /-! ## The encodings are injective, so decoding inverts them -/
 
+section
+variable (R : DataRead)
+
 /-- A function of a code respects heterogeneous equality of codes over equal carriers. -/
 theorem Code0.congr_heq {X : Sort _} (f : {A : Type} → Code0 A → X) :
     ∀ {A A' : Type} (c : Code0 A) (c' : Code0 A'), A = A' → HEq c c' → f c = f c' := by
@@ -368,7 +379,7 @@ def Code0.propOf : {A : Type} → Code0 A → Prop
   | _, .prop P => P
   | _, _ => False
 
-theorem Code0.enc_inj : ∀ {A : Type} (c : Code0 A) {a b : A}, c.enc a = c.enc b → a = b
+theorem Code0.enc_inj : ∀ {A : Type} (c : Code0 A) {a b : A}, c.enc R a = c.enc R b → a = b
   | _, .prop _, a, b, _ => by cases a; cases b; rfl
   | _, .nat, _, _, h => by simp only [Code0.enc, Sem.el0.injEq, heq_eq_eq, true_and] at h; exact h
   | _, .unit, _, _, _ => Subsingleton.elim _ _
@@ -382,9 +393,9 @@ theorem TyM.t0_inj {A A' : Type} {c : Code0 A} {c' : Code0 A'} (h : TyM.t0 A c =
     A = A' ∧ HEq c c' := by
   cases h; exact ⟨rfl, HEq.rfl⟩
 
-theorem Code1.enc_inj : ∀ {A : Type 1} (c : Code1 A) {a b : A}, c.enc a = c.enc b → a = b
+theorem Code1.enc_inj : ∀ {A : Type 1} (c : Code1 A) {a b : A}, c.enc R a = c.enc R b → a = b
   | _, .lift _ c, a, b, h => by
-    have := Code0.enc_inj c h
+    have := Code0.enc_inj R c h
     cases a; cases b; cases this; rfl
   | _, .univ0, a, b, h => by
     simp only [Code1.enc, Sem.ty.injEq, TyM.prop] at h
@@ -401,9 +412,9 @@ theorem TyM.t1_inj {A A' : Type 1} {c : Code1 A} {c' : Code1 A'} (h : TyM.t1 A c
     A = A' ∧ HEq c c' := by
   cases h; exact ⟨rfl, HEq.rfl⟩
 
-theorem Code2.enc_inj : ∀ {A : Type 2} (c : Code2 A) {a b : A}, c.enc a = c.enc b → a = b
+theorem Code2.enc_inj : ∀ {A : Type 2} (c : Code2 A) {a b : A}, c.enc R a = c.enc R b → a = b
   | _, .lift _ c, a, b, h => by
-    have := Code1.enc_inj c h
+    have := Code1.enc_inj R c h
     cases a; cases b; cases this; rfl
   | _, .univ2, ⟨A, c, hc⟩, ⟨A', c', hc'⟩, h => by
     simp only [Code2.enc, Sem.ty.injEq] at h
@@ -411,47 +422,49 @@ theorem Code2.enc_inj : ∀ {A : Type 2} (c : Code2 A) {a b : A}, c.enc a = c.en
     subst e; cases hh; rfl
   | _, .pi .., _, _, h => by simp only [Code2.enc, Sem.el2.injEq, heq_eq_eq, true_and] at h; exact h
 
-theorem Code0.dec_enc {A : Type} (c : Code0 A) (a : A) : c.dec (c.enc a) = some a := by
-  have h : ∃ a', c.enc a' = c.enc a := ⟨a, rfl⟩
+theorem Code0.dec_enc {A : Type} (c : Code0 A) (a : A) : c.dec R (c.enc R a) = some a := by
+  have h : ∃ a', c.enc R a' = c.enc R a := ⟨a, rfl⟩
   simp only [Code0.dec, dif_pos h, Option.some.injEq]
-  exact Code0.enc_inj c h.choose_spec
+  exact Code0.enc_inj R c h.choose_spec
 
-theorem Code1.dec_enc {A : Type 1} (c : Code1 A) (a : A) : c.dec (c.enc a) = some a := by
-  have h : ∃ a', c.enc a' = c.enc a := ⟨a, rfl⟩
+theorem Code1.dec_enc {A : Type 1} (c : Code1 A) (a : A) : c.dec R (c.enc R a) = some a := by
+  have h : ∃ a', c.enc R a' = c.enc R a := ⟨a, rfl⟩
   simp only [Code1.dec, dif_pos h, Option.some.injEq]
-  exact Code1.enc_inj c h.choose_spec
+  exact Code1.enc_inj R c h.choose_spec
 
-theorem Code2.dec_enc {A : Type 2} (c : Code2 A) (a : A) : c.dec (c.enc a) = some a := by
-  have h : ∃ a', c.enc a' = c.enc a := ⟨a, rfl⟩
+theorem Code2.dec_enc {A : Type 2} (c : Code2 A) (a : A) : c.dec R (c.enc R a) = some a := by
+  have h : ∃ a', c.enc R a' = c.enc R a := ⟨a, rfl⟩
   simp only [Code2.dec, dif_pos h, Option.some.injEq]
-  exact Code2.enc_inj c h.choose_spec
+  exact Code2.enc_inj R c h.choose_spec
 
-theorem Code0.enc_of_dec {A : Type} (c : Code0 A) {s : Sem} {a : A} (h : c.dec s = some a) : c.enc a = s := by
+theorem Code0.enc_of_dec {A : Type} (c : Code0 A) {s : Sem} {a : A} (h : c.dec R s = some a) : c.enc R a = s := by
   unfold Code0.dec at h
   split at h
   · rename_i hx; cases h; exact hx.choose_spec
   · cases h
 
-theorem Code1.enc_of_dec {A : Type 1} (c : Code1 A) {s : Sem} {a : A} (h : c.dec s = some a) : c.enc a = s := by
+theorem Code1.enc_of_dec {A : Type 1} (c : Code1 A) {s : Sem} {a : A} (h : c.dec R s = some a) : c.enc R a = s := by
   unfold Code1.dec at h
   split at h
   · rename_i hx; cases h; exact hx.choose_spec
   · cases h
 
-theorem Code2.enc_of_dec {A : Type 2} (c : Code2 A) {s : Sem} {a : A} (h : c.dec s = some a) : c.enc a = s := by
+theorem Code2.enc_of_dec {A : Type 2} (c : Code2 A) {s : Sem} {a : A} (h : c.dec R s = some a) : c.enc R a = s := by
   unfold Code2.dec at h
   split at h
   · rename_i hx; cases h; exact hx.choose_spec
   · cases h
 
 /-- Decoding succeeds exactly on the encodings. -/
-theorem Code0.dec_isSome {A : Type} (c : Code0 A) (s : Sem) : (c.dec s).isSome ↔ ∃ a, c.enc a = s := by
+theorem Code0.dec_isSome {A : Type} (c : Code0 A) (s : Sem) : (c.dec R s).isSome ↔ ∃ a, c.enc R a = s := by
   unfold Code0.dec; split <;> simp_all
 
-theorem Code1.dec_isSome {A : Type 1} (c : Code1 A) (s : Sem) : (c.dec s).isSome ↔ ∃ a, c.enc a = s := by
+theorem Code1.dec_isSome {A : Type 1} (c : Code1 A) (s : Sem) : (c.dec R s).isSome ↔ ∃ a, c.enc R a = s := by
   unfold Code1.dec; split <;> simp_all
 
-theorem Code2.dec_isSome {A : Type 2} (c : Code2 A) (s : Sem) : (c.dec s).isSome ↔ ∃ a, c.enc a = s := by
+theorem Code2.dec_isSome {A : Type 2} (c : Code2 A) (s : Sem) : (c.dec R s).isSome ↔ ∃ a, c.enc R a = s := by
   unfold Code2.dec; split <;> simp_all
+
+end
 
 end Ochr.Meaning
