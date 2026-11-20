@@ -187,6 +187,27 @@ noncomputable def closureAt (R : DataRead) (l : Nat) (φ : Future) (ds : List Pi
   | 3 => closureL (lvl2 R) φ (telL (lvl2 R) ds [] PUnit out).2 g
   | _ => .err
 
+/-! ## What the closure lemmas ask of a function type and a returned borrow (`Closure.lean`, `ClosureRef.lean`) -/
+
+/-- A code fits the level a closure of sort `l` is built at: its carrier level is below `l`. -/
+def LevelFit (l : Nat) : TyM → Prop
+  | .t0 .. => 1 ≤ l
+  | .t1 .. => 2 ≤ l
+  | .t2 .. => 3 ≤ l
+
+/-- A type read back from its code at a higher level is itself: no lifted code at the top. -/
+def TyM.Canon : TyM → Prop
+  | .t1 _ (.lift ..) => False
+  | .t2 _ (.lift ..) => False
+  | _ => True
+
+/-- **A returned borrow is good**: the body returns a label `k`, and at every future, the borrow
+parameters' final contents with `k` fixed to two members of the returned borrow's content type
+differ unless the members are equal (the backward function is injective). -/
+def RetGood (R : DataRead) (out : PiCod) (args : List Sem) (o : BodyOut) : Prop :=
+  ∃ k, o.retLabel = some k ∧ ∀ (ψ : Future) (v w : Sem), v ∈ₛ[R] out.cod args → w ∈ₛ[R] out.cod args →
+    o.finals.map (· (ψ.upd k v)) = o.finals.map (· (ψ.upd k w)) → v = w
+
 /-! ## A recursion's stage closure (docs/34, the weakened stage closure)
 
 A stage of a guarded recursion is good only at arguments whose decreasing component has rank below

@@ -101,17 +101,43 @@ noncomputable def decRank (K : RunCtx) (g : GDef) (args : List Sem) : Nat :=
   | some (.fix _ _ _ _ (some j) _) => ((args[j]?).map fun a => semRank a).getD 0
   | _ => 0
 
-/-- **Membership below a bound** (docs/31 D73, D80): the global's meaning is the closure, along a
-code that is its type's, of a function that is defined and good (result and borrow parameters'
-final contents members, `OutGood`) at member arguments whose decreasing component has rank below
-`b`. What `CtxOk` asks of the definition being checked (`RunCtx.cur`), and what the induction on the
-bound supplies (in its step, the global means the stage-`b` closure). A call reads it through the
-closure lemma (`closure_apply`). -/
+/-- **A body's output is good** at arguments (docs/34, the weakened stage closure): `OutGood`, a
+returned borrow's label and injective backward function (`RetGood`: what an element of the carrier
+of a borrow-returning function type holds, `mkLeafRefL`), and one final content per borrow
+parameter (what the strict construction decodes; the run's frame pop gives one per borrow cell). -/
+def OutGood' (R : DataRead) (ds : List PiDom) (out : PiCod) (args : List Sem) (o : BodyOut) : Prop :=
+  OutGood R ds out args o ∧ (out.isRef = true → RetGood R out args o) ∧
+    o.finals.length = (ds.filter (·.isRef)).length
+
+/-- **What membership consumes of a function type**, at the argument tuples `P` admits: at sort `0`
+a borrow-free codomain that is a proposition; at a data sort `1 ≤ l ≤ 3`, a codomain that fits the
+level (`LevelFit`). -/
+def PiFits (R : DataRead) : Nat → List PiDom → PiCod → (List Sem → Prop) → Prop
+  | 0, ds, out, P => out.isRef = false ∧ ∀ args, DomMembers R ds args → P args → ∃ Q, out.cod args = TyM.prop Q
+  | n + 1, ds, out, P => n + 1 ≤ 3 ∧ ∀ args, DomMembers R ds args → P args → LevelFit (n + 1) (out.cod args)
+
+/-- **What a call consumes of a function type** beyond membership, at the argument tuples `P`
+admits: a canonical codomain, and domains that fit the level. -/
+def PiCallable (R : DataRead) (l : Nat) (ds : List PiDom) (out : PiCod) (P : List Sem → Prop) : Prop :=
+  ∀ args, DomMembers R ds args → P args →
+    (out.cod args).Canon ∧ ∀ (i : Nat) (d : PiDom), ds[i]? = some d → LevelFit l (d.dom (args.take i))
+
+/-- **Membership below a bound** (docs/31 D73, D80; docs/34, the weakened stage closure): the
+global is the stage closure (`closureAt` of `stageFn`) of a function good (`OutGood'`) at member
+arguments whose decreasing component has rank below `b`, typed at the WEAKENED function type
+(`weakCod`: the true codomain below `b`, `Unit`/`True` above), an honest element
+(`FixKnot.memBelow_mem`); below the bound, the function type meets what membership and (at a data
+sort) a call consume. What `CtxOk` asks of the definition being checked (`RunCtx.cur`): in the
+induction's step the global is the run's own `self` at stage `b + 1` (`RunCongr.fixStage`, with
+`fn` the stage `b`). A call reads it through `FixKnot.memBelow_apply`. -/
 def MemBelow (K : RunCtx) (G : Sem × TyS) (g : GDef) (b : Nat) : Prop :=
   ∃ (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod) (fn : List Sem → Option BodyOut),
-    G.1 = closureAt K.dm.read l φ ds out fn ∧ G.2.m = piTyAt K.dm.read l ds out ∧
+    PiFits K.dm.read l ds out (decRank K g · < b) ∧
+    (1 ≤ l → PiCallable K.dm.read l ds out (decRank K g · < b)) ∧
+    G.1 = closureAt K.dm.read l φ ds (weakCod l (decRank K g) b out) (stageFn l ds (decRank K g) b fn) ∧
+    G.2.m = piTyAt K.dm.read l ds (weakCod l (decRank K g) b out) ∧
     ∀ args, DomMembers K.dm.read ds args → decRank K g args < b →
-      ∃ o, fn args = some o ∧ OutGood K.dm.read ds out args o
+      ∃ o, fn args = some o ∧ OutGood' K.dm.read ds out args o
 
 /-- `K.C.global` is Σ: each global of the state has its stored type, a constant means its stored
 value read at that type (`⋆` at a proposition, as `evalCore`'s `.const` reads it), a function means
@@ -119,15 +145,18 @@ the closure of its `fix` term formed in the empty frame, whose run gives the sto
 and each is a member of its type. The last is the outer induction of docs/18's theorem: while a definition is checked,
 every global is an earlier, accepted one. A global is closed, so these hold at every assignment
 and future. The definition being checked (`K.cur`, pushed by `checkDef` before its body is checked
-so that recursive calls find it) is asked membership only below the bound (`memBelow`): as first
-stated every global was asked membership, which for that one is `checkFix_sound`'s conclusion, so the
-statement was vacuous at a definition (the knot, docs/31 D72, D73, `Regress/DefKnot`). -/
+so that recursive calls find it) is asked only membership below the bound (`memBelow`), at the
+weakened function type and as the stage closure, so neither its stored type (`ty`) nor its closure
+(`fn`) is asked of it: as first stated every global was asked membership, which for that one is
+`checkFix_sound`'s conclusion, so the statement was vacuous at a definition (the knot, docs/31 D72,
+D73, `Regress/DefKnot`); and a function good only below the bound is an element of the weakened
+type, not of its stored one (docs/34). -/
 structure GlobalsOk (K : RunCtx) (st : MState) : Prop where
-  ty : ∀ n g, st.globals.find? (·.name == n) = some g → ∀ ρ,
+  ty : ∀ n g, st.globals.find? (·.name == n) = some g → (K.cur.map (·.1)) ≠ some n → ∀ ρ,
     (K.C.global n).2.m = (meanV K ρ noFuture (.plain .err) g.ty).asTy
   const : ∀ n g, st.globals.find? (·.name == n) = some g → g.fn? = none → ∀ ρ φ,
     (K.C.global n).1 = constMean (K.C.global n).2.m (meanV K ρ φ (K.C.global n).2 g.val)
-  fn : ∀ n g t, st.globals.find? (·.name == n) = some g → g.fn? = some t → ∀ ρ φ,
+  fn : ∀ n g t, st.globals.find? (·.name == n) = some g → g.fn? = some t → (K.cur.map (·.1)) ≠ some n → ∀ ρ φ,
     (K.C.global n).1 = meanV K ρ φ (.plain .err) (.clo [] t []) ∧
     ∀ r s', run K ρ φ (.plain .err) t (stateOf 0 []) = some (r, s') → r.2.m = (K.C.global n).2.m
   /-- every global but the definition being checked is a member of its type -/

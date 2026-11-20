@@ -115,7 +115,6 @@ import Ochr.Meaning.DataModel.ParamSolve
 import Ochr.Meaning.DataModel.ReadMember
 import Ochr.Meaning.Closure
 import Ochr.Meaning.ClosureStage
-import Ochr.Meaning.Steps.FixKnotStage
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)

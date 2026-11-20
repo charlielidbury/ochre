@@ -1,67 +1,171 @@
 import Ochr.Meaning.Steps.Knot
+import Ochr.Meaning.ClosureStage
 
 /-!
-# The knot of [Def]: the induction on the bound (docs/31 D73, D79)
+# The knot of [Def]: the induction on the bound (docs/31 D73, D79; docs/34, the weakened stage closure)
 
 `checkDef` pushes a function's global before it checks the body, so that recursive calls find it;
-`CtxOk` then asks of that global only membership below a bound (`RunCtx.cur`, `MemBelow`), and the
-function's membership comes from an induction on the bound: from the function being good below `b`,
-the body's generic run (the checker accepted it) makes the stage `b + 1` good at arguments of rank
-`b`; so the guarded fixpoint (at arguments of rank `r`, the stage `r + 1`) is good at every member
-argument, and a closure whose function is total and good is a member of its type.
+`CtxOk` then asks of that global only membership below a bound (`RunCtx.cur`, `MemBelow`): it is
+the stage closure, typed at the weakened function type (the true codomain at arguments whose
+decreasing component has rank below `b`, `Unit` above), of a function good below `b`. The run's
+own stages are these closures (`RunCongr.fixStage`: stage `b + 1` binds `self` to stage `b`'s), so
+in the induction's step the global is the run's `self`, `MemBelow b` holds with the function the
+stage `b`, and no stage-stability lemma is needed: from stage `b` good below `b`, the body's generic
+run (the checker accepted it) makes stage `b + 1` good below `b + 1`; so the guarded fixpoint (at
+arguments of rank `r`, the stage `r + 1`) is good at every member argument (`stages_below`), and a
+closure whose function is total and good is a member of its type (`closure_mem_of_total`).
 
-Here: the induction itself, abstractly (`stages_total`, proved), and the data layer's facts it
-takes as named statements: the closure lemma's two halves (`closure_mem_of_total`, `closure_apply`)
-and the rank's strict decrease (`semRank_part`, R2). The spine's leaves and the assembly of
-`step_member_fix` are in `Consistency.lean`.
+Here, all proved from the data layer (`Closure.lean`, `ClosureRef.lean`, `ClosureStage.lean`):
+* `memBelow_mem`: the global under `MemBelow` is a member of the type it carries;
+* `memBelow_zero`: `MemBelow` at bound `0` holds of any function (the induction's base);
+* `memBelow_apply`: a call of the global below the bound gives the function's result at the TRUE
+  codomain (a fresh label at a returned borrow), and that result is good (`OutGood'`);
+* `closure_mem_of_total`, `knot_member`: the knot's conclusion at the true type.
+The first-stated `closure_mem_of_total` and `closure_apply` were false (`ClosureCE`) and are
+replaced by these. Also here: the rank's strict decrease (`semRank_part`, R2) and [Rec]'s link
+(`recDecreases`, a leaf). The spine's leaves and the assembly of `step_member_fix` are in
+`Consistency.lean`.
 -/
 
 namespace Ochr.Meaning.Steps
 
 open Ochr Ochr.Meaning
 
-/-- **The induction on the bound** (proved; docs/31 D73 item 2). If at every bound `b`, from the
-guarded fixpoint (`stage (rank a + 1) a`) being good at member arguments of rank below `b`, the stage
-`b + 1` is good at member arguments of rank `b`, then the fixpoint is good at every member argument
-(each has a finite rank). -/
-theorem stages_total {A O : Type _} (stage : Nat → A → Option O) (rank : A → Nat) (mem : A → Prop)
+/-- **The stage closure is a member of the type the global carries** (the weakened function type):
+an honest element, so `MemBelow` is consistent with membership. -/
+theorem memBelow_mem (K : RunCtx) (G : Sem × TyS) (g : GDef) (b : Nat) (h : MemBelow K G g b) :
+    G.1 ∈ₛ[K.dm.read] G.2.m := by
+  obtain ⟨l, φ, ds, out, fn, hfit, -, h1, h2, hgood⟩ := h
+  rw [h1, h2]
+  cases l with
+  | zero =>
+    obtain ⟨hdata, hprop⟩ := hfit
+    exact stage_mem_prop _ φ ds out _ b fn hdata (fun args hm hlt => hprop args hm hlt)
+      (fun args hm hlt => by
+        obtain ⟨o, hg, ⟨⟨hres, -⟩, -⟩⟩ := hgood args hm hlt
+        exact ⟨o, hg, hres⟩)
+  | succ n =>
+    obtain ⟨hle, hall⟩ := hfit
+    cases hr : out.isRef with
+    | false =>
+      exact stage_mem _ (n + 1) φ ds out _ b fn ⟨by omega, hle⟩ hr (fun args hm hlt => hall args hm hlt)
+        (fun args hm hlt => by
+          obtain ⟨o, hg, hgd, -, hlen⟩ := hgood args hm hlt
+          exact ⟨o, hg, hgd, hlen⟩)
+    | true =>
+      exact stage_mem_ref _ (n + 1) φ ds out _ b fn ⟨by omega, hle⟩ hr (fun args hm hlt => hall args hm hlt)
+        (fun args hm hlt => by
+          obtain ⟨o, hg, hgd, hret, hlen⟩ := hgood args hm hlt
+          exact ⟨o, hg, hgd, hret hr, hlen⟩)
+
+/-- **`MemBelow` at bound `0` holds of any function** at a sort `l ≤ 3` (borrow-free at sort `0`):
+nothing is asked below `0` (the induction's base; the stage-`0` closure is `()`/`True`-valued
+everywhere). -/
+theorem memBelow_zero (K : RunCtx) (g : GDef) (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
+    (fn : List Sem → Option BodyOut) (hl : l ≤ 3) (h0 : l = 0 → out.isRef = false) :
+    MemBelow K (closureAt K.dm.read l φ ds (weakCod l (decRank K g) 0 out) (stageFn l ds (decRank K g) 0 fn),
+      .plain (piTyAt K.dm.read l ds (weakCod l (decRank K g) 0 out))) g 0 := by
+  refine ⟨l, φ, ds, out, fn, ?_, fun _ _ _ h => absurd h (Nat.not_lt_zero _), rfl, rfl,
+    fun _ _ h => absurd h (Nat.not_lt_zero _)⟩
+  cases l with
+  | zero => exact ⟨h0 rfl, fun _ _ h => absurd h (Nat.not_lt_zero _)⟩
+  | succ n => exact ⟨hl, fun _ _ h => absurd h (Nat.not_lt_zero _)⟩
+
+/-- **The closure lemma's application half, read through `MemBelow`** (the form of
+the first-stated `closure_apply` that holds, `ClosureCE`): at a data sort, the global called at member arguments whose decreasing
+component has rank below the bound gives the function's result there, typed at the TRUE codomain
+(under a fresh label at a returned borrow), and that result is good. -/
+theorem memBelow_apply (K : RunCtx) (G : Sem × TyS) (g : GDef) (b : Nat) (h : MemBelow K G g b) :
+    ∃ (l : Nat) (ds : List PiDom) (out : PiCod) (fn : List Sem → Option BodyOut),
+      (∀ args, DomMembers K.dm.read ds args → decRank K g args < b →
+        ∃ o, fn args = some o ∧ OutGood' K.dm.read ds out args o) ∧
+      (1 ≤ l → ∀ (args : List Res) (s : SState), DomMembers K.dm.read ds (args.map (·.1)) →
+        decRank K g (args.map (·.1)) < b →
+        ∃ o, fn (args.map (·.1)) = some o ∧ OutGood' K.dm.read ds out (args.map (·.1)) o ∧
+          ∃ (lab : Option Nat) (s' : SState),
+            callOf K.dm.read G args s = some ((o.result, ⟨out.cod (args.map (·.1)), lab⟩), s') ∧
+            (out.isRef = false → lab = none)) := by
+  obtain ⟨l, φ, ds, out, fn, hfit, hcall, h1, h2, hgood⟩ := h
+  refine ⟨l, ds, out, fn, hgood, fun hl1 args s hm hlt => ?_⟩
+  have hc : callOf K.dm.read G args s = callOf K.dm.read (G.1, .plain G.2.m) args s := rfl
+  rw [hc, h1, h2]
+  obtain ⟨o, hg, hgd⟩ := hgood _ hm hlt
+  refine ⟨o, hg, hgd, ?_⟩
+  obtain ⟨hcanon, hdom⟩ := hcall hl1 _ hm hlt
+  cases l with
+  | zero => exact absurd hl1 (by omega)
+  | succ n =>
+    obtain ⟨hle, hall⟩ := hfit
+    cases hr : out.isRef with
+    | false =>
+      obtain ⟨s', hs'⟩ := stage_apply _ (n + 1) φ ds out _ b fn ⟨by omega, hle⟩ hr hall
+        (fun args hm hlt => by
+          obtain ⟨o, hg, hgd, -, hlen⟩ := hgood args hm hlt
+          exact ⟨o, hg, hgd, hlen⟩) args s o hm hdom hlt hcanon hg
+      exact ⟨none, s', hs', fun _ => rfl⟩
+    | true =>
+      obtain ⟨k, s', hs'⟩ := stage_apply_ref _ (n + 1) φ ds out _ b fn ⟨by omega, hle⟩ hr hall
+        (fun args hm hlt => by
+          obtain ⟨o, hg, hgd, hret, hlen⟩ := hgood args hm hlt
+          exact ⟨o, hg, hgd, hret hr, hlen⟩) args s o hm hdom hlt hcanon hg
+      exact ⟨some k, s', hs', fun h => by cases h⟩
+
+/-- **The closure lemma's membership half, in the form that holds** (the knot's last step,
+`Assembly.step_member_fix`): a closure whose function is defined and good (`OutGood'`) at every
+member argument is a member of its TRUE function type, when the type meets what membership
+consumes. -/
+theorem closure_mem_of_total (R : DataRead) (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
+    (g : List Sem → Option BodyOut) (hfit : PiFits R l ds out (fun _ => True))
+    (htot : ∀ args, DomMembers R ds args → ∃ o, g args = some o ∧ OutGood' R ds out args o) :
+    closureAt R l φ ds out g ∈ₛ[R] piTyAt R l ds out := by
+  cases l with
+  | zero =>
+    obtain ⟨hdata, hprop⟩ := hfit
+    exact closure_mem_prop' R φ ds out g hdata (fun args hm => hprop args hm trivial) (fun args hm => by
+      obtain ⟨o, hg, ⟨⟨hres, -⟩, -⟩⟩ := htot args hm
+      exact ⟨o, hg, hres⟩)
+  | succ n =>
+    obtain ⟨hle, hall⟩ := hfit
+    cases hr : out.isRef with
+    | false =>
+      exact closure_mem_of_total' R (n + 1) φ ds out g ⟨by omega, hle⟩ hr (fun args hm => hall args hm trivial)
+        (fun args hm => by
+          obtain ⟨o, hg, hgd, -, hlen⟩ := htot args hm
+          exact ⟨o, hg, hgd, hlen⟩)
+    | true =>
+      exact closure_mem_of_total_ref' R (n + 1) φ ds out g ⟨by omega, hle⟩ hr (fun args hm => hall args hm trivial)
+        (fun args hm => by
+          obtain ⟨o, hg, hgd, hret, hlen⟩ := htot args hm
+          exact ⟨o, hg, hgd, hret hr, hlen⟩)
+
+/-- **The induction on the bound, in the run's shape**: if, from stage `b` good at member arguments
+of rank below `b`, stage `b + 1` is good at member arguments of rank below `b + 1`, then the guarded
+fixpoint (`stage (rank a + 1) a`) is good at every member argument. With the run's stages built on
+the weakened closure, the step's hypothesis is `MemBelow` at `b` for `fn := stage b`: no
+stage-stability lemma is needed. -/
+theorem stages_below {A O : Type _} (stage : Nat → A → Option O) (rank : A → Nat) (mem : A → Prop)
     (good : A → O → Prop)
-    (hstep : ∀ b, (∀ a, mem a → rank a < b → ∃ o, stage (rank a + 1) a = some o ∧ good a o) →
-      ∀ a, mem a → rank a = b → ∃ o, stage (b + 1) a = some o ∧ good a o) :
+    (hstep : ∀ b, (∀ a, mem a → rank a < b → ∃ o, stage b a = some o ∧ good a o) →
+      ∀ a, mem a → rank a < b + 1 → ∃ o, stage (b + 1) a = some o ∧ good a o) :
     ∀ a, mem a → ∃ o, stage (rank a + 1) a = some o ∧ good a o := by
-  have key : ∀ b a, mem a → rank a < b → ∃ o, stage (rank a + 1) a = some o ∧ good a o := by
+  have key : ∀ b a, mem a → rank a < b → ∃ o, stage b a = some o ∧ good a o := by
     intro b
     induction b with
     | zero => intro a _ h; exact absurd h (Nat.not_lt_zero _)
-    | succ b ih =>
-      intro a ha h
-      rcases Nat.lt_succ_iff_lt_or_eq.mp h with h | h
-      · exact ih a ha h
-      · rw [h]; exact hstep b ih a ha h
+    | succ b ih => exact hstep b ih
   intro a ha
   exact key (rank a + 1) a ha (Nat.lt_succ_self _)
 
-/-! ### Owed by the data layer (named statements; docs/31 D73, the lane's answer, D79) -/
-
-/-- **The closure lemma, membership half** (owed by the data layer, at any closure meaning, captures
-included): a closure whose function is defined and good at every member argument is a member of its
-code. For the levels the run builds (`piSort` gives `0` to `3`). -/
-theorem closure_mem_of_total (R : DataRead) (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
-    (g : List Sem → Option BodyOut) (hl : l ≤ 3)
-    (htot : ∀ args, DomMembers R ds args → ∃ o, g args = some o ∧ OutGood R ds out args o) :
-    closureAt R l φ ds out g ∈ₛ[R] piTyAt R l ds out := by
-  sorry
-
-/-- **The closure lemma, application half** (owed by the data layer): a closure applied at member
-arguments where its function is defined is that function's result (what a call reads, `callOf`; the
-borrow arguments' labels fixed to the function's final contents, `callOfL`). What the call step reads
-`MemBelow` through. -/
-theorem closure_apply (R : DataRead) (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
-    (g : List Sem → Option BodyOut) (hl : 1 ≤ l ∧ l ≤ 3) (args : List Res) (s : SState) (o : BodyOut)
-    (hmem : DomMembers R ds (args.map (·.1))) (hg : g (args.map (·.1)) = some o) (hdata : out.isRef = false) :
-    ∃ s', callOf R (closureAt R l φ ds out g, .plain (piTyAt R l ds out)) args s =
-      some ((o.result, .plain (out.cod (args.map (·.1)))), s') := by
-  sorry
+/-- **The knot's conclusion, restated** (what `Assembly.step_member_fix` becomes on `fix_split`
+restated to `OutGood'`, `PiFits` and the run's shape of the step): the guarded fixpoint's closure is
+a member of its true function type. -/
+theorem knot_member (R : DataRead) (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
+    (stage : Nat → List Sem → Option BodyOut) (rank : List Sem → Nat) (hfit : PiFits R l ds out (fun _ => True))
+    (hstep : ∀ b, (∀ a, DomMembers R ds a → rank a < b → ∃ o, stage b a = some o ∧ OutGood' R ds out a o) →
+      ∀ a, DomMembers R ds a → rank a < b + 1 → ∃ o, stage (b + 1) a = some o ∧ OutGood' R ds out a o) :
+    closureAt R l φ ds out (fun args => stage (rank args + 1) args) ∈ₛ[R] piTyAt R l ds out :=
+  closure_mem_of_total R l φ ds out _ hfit
+    (fun args ha => stages_below stage rank (DomMembers R ds) (OutGood' R ds out) hstep args ha)
 
 /-- A part of a meaning: a field of a constructor value, a number's predecessor, and so on down.
 Only a constructor value has fields here: a proof (`⋆`) has none, although the run reads `⋆` off a

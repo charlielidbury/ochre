@@ -100,3 +100,40 @@ theorem proof_mem_level (dm : DataModel) (T : TyM) (h : Sem.proof ∈ₛ[dm.read
   | t2 A c => obtain ⟨a, ha⟩ := h; exact Code2.enc_proof_level dm c a ha
 
 end Ochr.Meaning
+
+/-! ## What `PiFits` reads of the levels (the knot's split; `Steps.PiFits`, `Steps.PiCallable`) -/
+
+namespace Ochr.Meaning
+
+/-- **A canonical code whose level is at most `l` fits level `l`** (`1 ≤ l`): levels `0` and `1` are
+carried at tier `0`, level `2` at tier `1`, level `3` at tier `2`. -/
+theorem levelFit_of_level (T : TyM) (hc : T.Canon) {s l : Nat} (hs : T.level = some s) (hsl : s ≤ l)
+    (hl : 1 ≤ l) : LevelFit l T := by
+  cases T with
+  | t0 A c => exact hl
+  | t1 A c =>
+    cases c with
+    | lift => exact hc.elim
+    | univ0 | univ1 | pi => simp [TyM.level, Code1.level] at hs; subst hs; exact hsl
+  | t2 A c =>
+    cases c with
+    | lift => exact hc.elim
+    | univ2 | pi => simp [TyM.level, Code2.level] at hs; subst hs; exact hsl
+
+/-- **A canonical code of level `0` is a proposition.** -/
+theorem prop_of_level_zero (T : TyM) (hc : T.Canon) (hs : T.level = some 0) : ∃ P, T = TyM.prop P := by
+  cases T with
+  | t0 A c =>
+    cases c with
+    | prop P => exact ⟨P, rfl⟩
+    | _ => simp [TyM.level, Code0.level] at hs
+  | t1 A c =>
+    cases c with
+    | lift => exact hc.elim
+    | _ => simp [TyM.level, Code1.level] at hs
+  | t2 A c =>
+    cases c with
+    | lift => exact hc.elim
+    | _ => simp [TyM.level, Code2.level] at hs
+
+end Ochr.Meaning
