@@ -215,6 +215,12 @@ structure Rel (π : Nat → Nat) (st : MState) (s : SState) : Prop where
   /-- each live borrow is lent at the same places, in the same way (fill or loan), on both sides:
   the reference's [Access] reads these, the checker's reads its values (`Env.sitesOf`) -/
   sites : ∀ l, liveLoan st.env l = true → ∀ x, x ∈ s.lent (π l) ↔ x ∈ Env.sitesOf st.env l
+  /-- the reference holds borrows at its own positions only (a reference-state fact every reference
+  step keeps: a holder is pushed with its position, `dropLast` and [End] clear theirs). Added for
+  the lent prefix (`MovedPlace.lentPrefix_some_of_fill`): without it a live borrow of the checker
+  held in a temporary need not be live in the reference, whose `SimEq` gives its holder a
+  temporary index but not that the index exists. -/
+  holders : ∀ p l, s.shape p = some l → p ∈ s.positions
 
 /-! ### Helpers from `Steps/Eq.lean` -/
 

@@ -316,6 +316,39 @@ end
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
+/-- **A live label of the checker is live in the reference**: under (WF1) its holder holds it
+whole, so the position has its shape; `SimEq` gives the reference a holder of its renaming (a
+temporary's at some index), and the reference holds borrows only at its positions (`Rel.holders`). -/
+theorem rel_live_ref' (st : MState) (s : SState) (π : Nat → Nat) (hg : Good K.dm K.M K.Γ ρ st)
+    (hs : Rel K ρ φ π st s) {l : Nat} (hl : liveLoan st.env l = true) : π l ∈ s.liveLabels := by
+  unfold liveLoan at hl
+  obtain ⟨p₀, hp₀⟩ := Option.isSome_iff_exists.mp hl
+  have hmem := mem_allPos_of_find st.env l p₀ hp₀
+  have hhold : (valAt st.env p₀).holdsBorrow l = true := by
+    unfold findBorrow at hp₀; exact List.find?_some (p := fun p => (valAt st.env p).holdsBorrow l) hp₀
+  have hsh : Env.shape st.env p₀ = some l := by
+    have hwf1 := hg.2.2.1.1 p₀ hmem
+    cases hv : valAt st.env p₀ with
+    | borrow m w =>
+      rw [hv] at hwf1 hhold
+      simp only [Value.holdsBorrow, Bool.or_eq_true, beq_iff_eq] at hhold
+      rcases hhold with rfl | hw
+      · simp [Env.shape, hv]
+      · exact absurd (hasBorrow_of_holdsBorrow l w hw) hwf1
+    | succ w =>
+      rw [hv] at hwf1 hhold
+      simp only [Value.holdsBorrow] at hhold
+      exact absurd (hasBorrow_of_holdsBorrow l (.succ w) (by simpa [Value.holdsBorrow] using hhold)) hwf1
+    | _ => rw [hv] at hhold; simp [Value.holdsBorrow] at hhold
+  rw [SState.mem_liveLabels]
+  cases p₀ with
+  | bind f i =>
+    have := hs.sim.2.1 (.bind f i) l (by simp [IsTemp]) hsh
+    exact ⟨_, hs.holders _ _ this, this⟩
+  | temp f i =>
+    obtain ⟨j, hj, -⟩ := hs.sim.2.2.2.1 f i l hsh
+    exact ⟨_, hs.holders _ _ hj, hj⟩
+
 /-- **Above a filled parent the lent prefix exists, at or above it**: the parent holds a fill
 over a live borrow, so that borrow (or one whose mark the path passes, holding it) has a site at
 the parent's path or above it, and the related reference state has the same sites for the same
@@ -326,7 +359,56 @@ theorem lentPrefix_some_of_fill (st : MState) (s : SState) (π : Nat → Nat) (q
     (hpos : resolve s q = some (pos, q.steps.2)) (hc : ckContent st.env p = some c)
     (hfill : Ochr.fillHoles st.env c ≠ []) :
     ∃ ψ, lentPrefix s pos q.steps.2 = some ψ ∧ pathKey ψ <+: pathKey p.steps.2 := by
-  sorry
+  -- the parent's position
+  unfold ckContent at hc
+  obtain ⟨pos', hck, hfol⟩ := Option.bind_eq_some_iff.mp hc
+  have hpos' := rel_resolve_ck K ρ φ st s π p pos' hs hck
+  rw [resolve_parent hpar hpos] at hpos'
+  simp only [Option.some.injEq, Prod.mk.injEq] at hpos'
+  obtain ⟨rfl, -⟩ := hpos'
+  have hp := ckVarPos_mem hck
+  -- a live hole of the fill, and its site at or above the parent
+  obtain ⟨l, hl⟩ : ∃ l, l ∈ Ochr.fillHoles st.env c := by
+    cases e : Ochr.fillHoles st.env c with
+    | nil => exact absurd e hfill
+    | cons l _ => exact ⟨l, List.mem_cons_self ..⟩
+  have hlive : liveLoan st.env l = true := (mem_liveLoansIn_inv (fillHoles_sub st.env c l hl)).2
+  obtain ⟨x, hx, ψ₁, hxp, hk⟩ := site_of_fillHole st.env l pos (valAt st.env pos) [] p.steps.2 c hfol hl
+  simp only [List.nil_append] at hxp
+  have hxs : x ∈ s.lent (π l) := (hs.sites l hlive x).mpr (mem_env_sitesOf hp hx)
+  have hxpos : x.pos = pos := (sitesOf_prefix l pos [] _ x hx).1
+  have hπl := rel_live_ref' K ρ φ st s π hg hs hlive
+  -- the predicate holds at the prefix of the parent's path of the site's length
+  obtain ⟨xs, hxs', -⟩ := steps_parent hpar
+  have hq2 : q.steps.2 = p.steps.2 ++ [xs] := by rw [hxs']
+  let n := ψ₁.length
+  have hn : n ≤ p.steps.2.length := by
+    have := hk.length_le; simp only [pathKey, List.length_map] at this; exact this
+  have hkey : pathKey (q.steps.2.take n) = pathKey ψ₁ := by
+    rw [hq2, List.take_append_of_le_length hn]
+    have := List.prefix_iff_eq_take.mp hk
+    simp only [pathKey, List.length_map] at this ⊢
+    rw [List.map_take]; exact this.symm
+  have hPn : s.liveLabels.any (s.reached pos fun ψ' => pathKey ψ' == pathKey (q.steps.2.take n)) = true := by
+    rw [List.any_eq_true]
+    refine ⟨π l, hπl, ?_⟩
+    unfold SState.reached
+    rw [List.any_eq_true]
+    exact ⟨x, hxs, by simp [hxpos, hxp, hkey]⟩
+  have hsome : (lentPrefix s pos q.steps.2).isSome := by
+    unfold lentPrefix
+    rw [List.find?_isSome]
+    refine ⟨q.steps.2.take n, List.mem_map.mpr ⟨n, List.mem_range.mpr (by rw [hq2]; simp; omega), rfl⟩, hPn⟩
+  obtain ⟨ψ, hψ⟩ := Option.isSome_iff_exists.mp hsome
+  obtain ⟨j, hj, rfl, hmin⟩ := lentPrefix_spec hψ
+  refine ⟨q.steps.2.take j, hψ, ?_⟩
+  have hjn : j ≤ n := by
+    rcases Nat.lt_or_ge n j with h | h
+    · rw [hmin n h] at hPn; cases hPn
+    · exact h
+  rw [hq2, List.take_append_of_le_length (Nat.le_trans hjn hn)]
+  simp only [pathKey, List.map_take]
+  exact List.take_prefix _ _
 
 /-- **A filled parent accessed whole is the lent prefix accessed whole** (`movedPlace`'s fill
 branch against the reference's `accessLentPrefix`). The lent prefix is the parent's path or above
@@ -357,79 +439,6 @@ theorem fillPrefix_absorbed (st st' : MState) (s : SState) (π : Nat → Nat) (q
     · have hI := lentPrefix_absorbInv K ρ φ st s π pos q.steps.2 p.steps.2 ψ c hg hs hp hl hfol hψp hk
       exact SState.access_absorb hI hψp
   rw [e]; exact hs'
-
-theorem mem_liveLoansIn_foldl (env : Env) (l : Nat) :
-    ∀ (xs acc : List Nat), (l ∈ acc ∨ (l ∈ xs ∧ liveLoan env l = true)) →
-      l ∈ xs.foldl (fun acc l => if !acc.contains l && liveLoan env l then acc ++ [l] else acc) acc
-  | [], acc, h => by
-    rcases h with h | ⟨h, -⟩
-    · exact h
-    · cases h
-  | x :: xs, acc, h => by
-    simp only [List.foldl_cons]
-    apply mem_liveLoansIn_foldl env l xs
-    rcases h with h | ⟨h, hl⟩
-    · left; split <;> simp_all
-    · rcases List.mem_cons.mp h with rfl | h'
-      · left
-        by_cases hc : acc.contains l = true
-        · simp only [hc, Bool.not_true, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
-          exact List.contains_iff_mem.mp hc
-        · simp only [hc, Bool.not_false, Bool.true_and, hl, ↓reduceIte]
-          exact List.mem_append_right _ (List.mem_singleton_self l)
-      · right; exact ⟨h', hl⟩
-
-theorem mem_liveLoansIn_foldl_inv (env : Env) (l : Nat) :
-    ∀ (xs acc : List Nat), l ∈ xs.foldl (fun acc l => if !acc.contains l && liveLoan env l then acc ++ [l] else acc) acc →
-      l ∈ acc ∨ (l ∈ xs ∧ liveLoan env l = true)
-  | [], acc, h => .inl h
-  | x :: xs, acc, h => by
-    simp only [List.foldl_cons] at h
-    rcases mem_liveLoansIn_foldl_inv env l xs _ h with h | ⟨h, hl⟩
-    · split at h
-      · rename_i hc
-        rcases List.mem_append.mp h with h | h
-        · exact .inl h
-        · simp only [List.mem_singleton] at h; subst h
-          simp only [Bool.and_eq_true, Bool.not_eq_true'] at hc
-          exact .inr ⟨List.mem_cons_self .., hc.2⟩
-      · exact .inl h
-    · exact .inr ⟨List.mem_cons_of_mem _ h, hl⟩
-
-theorem mem_liveLoansIn_inv {env : Env} {v : Value} {l : Nat} (h : l ∈ liveLoansIn env v) :
-    l ∈ v.loans ∧ liveLoan env l = true := by
-  rcases mem_liveLoansIn_foldl_inv env l v.loans [] h with h | h
-  · cases h
-  · exact h
-
-theorem mem_liveLoansIn {env : Env} {v : Value} {l : Nat} (h : l ∈ v.loans) (hl : liveLoan env l = true) :
-    l ∈ liveLoansIn env v :=
-  mem_liveLoansIn_foldl env l v.loans [] (.inr ⟨h, hl⟩)
-
-/-- A fill's holes are live loans of the value. -/
-theorem fillHoles_sub (env : Env) : ∀ (v : Value) (l : Nat), l ∈ Ochr.fillHoles env v → l ∈ liveLoansIn env v
-  | .loan m, l, h => by
-    unfold Ochr.fillHoles at h
-    split at h
-    · rename_i hm
-      simp only [List.mem_singleton] at h; subst h
-      exact mem_liveLoansIn (by simp [Value.loans]) hm
-    · cases h
-  | .gloan m w, l, h => by
-    unfold Ochr.fillHoles at h
-    rcases List.mem_append.mp h with h | h
-    · split at h
-      · rename_i hm
-        simp only [List.mem_singleton] at h; subst h
-        exact mem_liveLoansIn (by simp [Value.loans]) hm
-      · cases h
-    · have hw := mem_liveLoansIn_inv (fillHoles_sub env w l h)
-      exact mem_liveLoansIn (by simp [Value.loans, hw.1]) hw.2
-  | .sealed t, l, h => by unfold Ochr.fillHoles at h; exact h
-  | .zero, l, h | .succ _, l, h | .unit, l, h | .gfn _, l, h | .clo .., l, h | .borrow .., l, h
-  | .bot, l, h | .abs _, l, h | .proof, l, h | .tNat, l, h | .tUnit, l, h | .tEq .., l, h | .tRef _, l, h
-  | .tPi .., l, h | .sort _, l, h | .ind .., l, h | .tInd .., l, h => by
-    simp [Ochr.fillHoles] at h
 
 /-- `accessInside` stops where the place's content holds no live loan. -/
 theorem accessInside_final (p : Place) : ∀ (fuel : Nat) {st st' : MState} {b : Nat} {u : Unit},
