@@ -32,34 +32,11 @@ noncomputable def decArgRank (dec : Option Nat) (args : List Sem) : Nat :=
   | some j => ((args[j]?).map semRank).getD 0
   | none => 0
 
-/-- The result type above the bound: the true proposition at sort `0`, `Unit` at a data sort. -/
-def fillTy (l : Nat) : TyM := if l = 0 then TyM.prop True else TyM.unit
-
-/-- The trivial result above the bound, a member of `fillTy l`. -/
-def fillVal (l : Nat) : Sem := if l = 0 then .proof else .el0 Unit ()
-
 theorem fillVal_mem (R : DataRead) (l : Nat) : fillVal l ∈ₛ[R] fillTy l := by
   unfold fillVal fillTy
   split
   · exact ⟨⟨trivial⟩, rfl⟩
   · exact ⟨(), rfl⟩
-
-/-- **The weakened codomain** at bound `b`: the true codomain at arguments of rank below `b`,
-`fillTy l` above. Whether it is a returned borrow is the true codomain's. -/
-def weakCod (l : Nat) (rk : List Sem → Nat) (b : Nat) (out : PiCod) : PiCod :=
-  ⟨out.isRef, fun args => if rk args < b then out.cod args else fillTy l⟩
-
-/-- The arguments at borrow parameters, as constant final contents, in parameter order: what a
-function that leaves its borrow arguments unchanged hands back. -/
-def refFinals : List PiDom → List Sem → List SVal
-  | d :: ds, a :: as => if d.isRef then (fun _ => a) :: refFinals ds as else refFinals ds as
-  | _, _ => []
-
-/-- **The stage function** at bound `b`: the stage below the bound, the trivial output above it
-(`fillVal l`, the borrow arguments unchanged, label `0`). -/
-noncomputable def stageFn (l : Nat) (ds : List PiDom) (rk : List Sem → Nat) (b : Nat)
-    (stage : List Sem → Option BodyOut) (args : List Sem) : Option BodyOut :=
-  if rk args < b then stage args else some ⟨fillVal l, refFinals ds args, some 0⟩
 
 theorem refFinals_length : ∀ (ds : List PiDom) (args : List Sem), args.length = ds.length →
     (refFinals ds args).length = (ds.filter (·.isRef)).length

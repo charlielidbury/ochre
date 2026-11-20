@@ -23,11 +23,11 @@ the statements in the forms that hold, on the weakened stage closure (`ClosureSt
   knot's final step, a closure whose function is total and good is a member of its true type
   (`closure_mem_of_total_stmt`).
 
-What adopting it changes on the lead's side (not done here): `GlobalsOk.ty` asks the definition
-being checked (`K.cur`) to be typed at the weakened Π, not at its stored type; the run's `.fix`
-clause binds `self` to the filled closure (`closureFillAt`) at the true type, so either its stages
-are rebuilt from the weakened closure (the fill then goes) or the two are related; `fix_split`'s
-step carries `OutGood'` and the result `PiFits`.
+The run's `.fix` clause builds its stages on the weakened closure (`RunCongr.fixStage`): stage
+`b + 1` binds `self` to `MemBelow'`'s global at bound `b` with `fn` the stage `b`. What adopting
+this changes on the lead's side (not done here): `GlobalsOk.ty` asks the definition being checked
+(`K.cur`) to be typed at the weakened Π, not at its stored type; `fix_split`'s step carries
+`OutGood'` and the result `PiFits`.
 -/
 
 namespace Ochr.Meaning.Steps

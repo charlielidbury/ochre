@@ -1,4 +1,5 @@
 import Ochr.Meaning.Apply1
+import Ochr.Meaning.ClosureStage
 
 /-!
 # Closures are members of their types' codes (docs/31 D59, D60; built, kernel-checked)
@@ -6,7 +7,7 @@ import Ochr.Meaning.Apply1
 The concrete check the lead asked for before the re-proof: a recursive function, a function
 returning a function, a function taking a function parameter, and a polymorphic function applied
 to a function type, each built along its type's code exactly as the reference run's `.fix` clause
-builds it (`telL`, `closureL`, and the recursion's stages with `closureFillL`), each a member of its
+builds it (`telL`, `closureL`, and the recursion's stages at the weakened type), each a member of its
 type's code, and each applied by `applyFnL` as a call applies it. The bodies are written as
 functions on meanings (what the `.fix` clause's `bodyAt` computes for these terms); the terms'
 own runs need a concrete instance of the decisions under `run` (docs/31, the open check per term
@@ -15,7 +16,9 @@ form) and are not run here.
 Found on the way (docs/31 D60): with the stages' closures built strictly, as the `.fix` clause
 did, every recursive closure meant `err` (`Old.closure_err`): a stage R is defined only below its
 rank, the carrier holds total functions only, so every stage's closure was `err`, and so every
-recursive call failed.
+recursive call failed. D60 then filled each stage's closure where the stage was undefined; the
+stages are now closures at a weakened function type instead (docs/34), and `double` is built that
+way here.
 -/
 
 namespace Ochr.Meaning.Regress.CodeClosures
@@ -94,65 +97,104 @@ theorem apply_strict (φ : Future) (g : List Sem → Option BodyOut) (hg : ∀ x
   simp only [tNN, applyTelL, lvl0, dec_nat, hFx n k hn]
   rfl
 
-/-- The element a recursion stage's closure is built from along `tNN`: filled where the stage R is
-undefined (`Nat × PUnit` is inhabited, so never `err`), and the body's number where it is defined. -/
-theorem fill_some (φ : Future) (g : List Sem → Option BodyOut) :
-    ∃ F, mkTelFillL (lvl0 R) φ tNN [] (fun fs => some (PUnit.unit, fs)) g = some F ∧
-      ∀ x k, g [.el0 Nat x] = some ⟨.el0 Nat k, [], none⟩ → F x = (k, PUnit.unit) := by
-  have hleaf : ∀ x, ∃ r, mkTelFillL (lvl0 R) φ (Tel.dat PUnit Nat .nat) ([] ++ [(lvl0 R).enc Code0.nat x])
-      (extMkL false PUnit Nat (fun fs => some (PUnit.unit, fs)) ((lvl0 R).dec Code0.nat)) g = some r ∧
-      ∀ k, g [.el0 Nat x] = some ⟨.el0 Nat k, [], none⟩ → r = (k, PUnit.unit) := by
-    intro x
-    rw [mkTelFillL.eq_1]
-    cases hgx : g [.el0 Nat x] with
-    | none =>
-      have : (g ([] ++ [(lvl0 R).enc Code0.nat x])) = none := hgx
-      simp only [this, Option.bind_none]
-      exact ⟨_, dif_pos ⟨(0, PUnit.unit)⟩, fun k h => by cases h⟩
-    | some o =>
-      have : (g ([] ++ [(lvl0 R).enc Code0.nat x])) = some o := hgx
-      simp only [this, Option.bind_some]
-      cases hl : mkLeafDataL (lvl0 R) φ (extFin false PUnit Nat)
-          (extMkL false PUnit Nat (fun fs => some (PUnit.unit, fs)) ((lvl0 R).dec Code0.nat)) Code0.nat o with
-      | some r =>
-        refine ⟨r, rfl, fun k hk => ?_⟩
-        cases hk
-        simp [mkLeafDataL, extMkL, dec_nat] at hl
-        exact hl.symm
-      | none =>
-        refine ⟨_, dif_pos ⟨(0, PUnit.unit)⟩, fun k hk => ?_⟩
-        cases hk
-        simp [mkLeafDataL, extMkL, dec_nat] at hl
-  have hall : ∀ x : Nat, (mkTelFillL (lvl0 R) φ (Tel.dat PUnit Nat .nat) ([] ++ [(lvl0 R).enc Code0.nat x])
-      (extMkL false PUnit Nat (fun fs => some (PUnit.unit, fs)) ((lvl0 R).dec Code0.nat)) g).isSome := by
-    intro x
-    obtain ⟨r, hr, -⟩ := hleaf x
-    rw [hr]; rfl
-  refine ⟨fun x => (mkTelFillL (lvl0 R) φ (Tel.dat PUnit Nat .nat) ([] ++ [(lvl0 R).enc Code0.nat x])
-      (extMkL false PUnit Nat (fun fs => some (PUnit.unit, fs)) ((lvl0 R).dec Code0.nat)) g).get (hall x), ?_, ?_⟩
-  · unfold tNN
-    rw [mkTelFillL.eq_3, dif_pos hall]
-  · intro x k hk
-    obtain ⟨r, hr, hrk⟩ := hleaf x
-    simp only [hr, Option.get_some, hrk k hk]
-
-/-- A recursion stage's closure along `tNN`, applied at `n` where the stage R gives `k`, gives `k`. -/
-theorem apply_fill (φ : Future) (g : List Sem → Option BodyOut) (n k : Nat)
-    (hn : g [.el0 Nat n] = some ⟨.el0 Nat k, [], none⟩) :
-    applyFnL (lvl0 R) tNN (closureFillL (lvl0 R) φ tNN g) [.el0 Nat n] = some (.data (.el0 Nat k) TyM.nat []) := by
-  obtain ⟨F, hF, hFx⟩ := fill_some φ g
-  unfold closureFillL
-  rw [hF]
-  show (Sem.as NN (.el0 NN F)).bind (fun F => applyTelL (lvl0 R) tNN (fun _ => []) F [.el0 Nat n]) = _
-  rw [show Sem.as NN (.el0 NN F) = some F from (lvl0_lawful R).unpack_pack NN F, Option.bind_some]
-  simp only [tNN, applyTelL, lvl0, dec_nat, hFx n k hn]
-  rfl
-
 /-! ## A recursive function: `double (n : Nat) : Nat by n := match n { Z => Z, S m => S(S(double(m))) }`
 
-The `.fix` clause's construction, with `bodyAt self` written as the function on meanings the body
-computes (`dblBody R`): a call through `self` applies it along `tNN`. -/
+The `.fix` clause's construction (docs/34), with `bodyAt self` written as the function on meanings
+the body computes (`dblBody R`): stage `k + 1` binds `self` to stage `k`'s closure at the weakened
+function type (`Nat` below rank `k`, `Unit` above, `selfAt`), and a call through `self` is
+`callOf` at that type. -/
 
+/-- `Π(n : Nat). Nat`'s description, as the `.fix` clause reads it. -/
+def dsNN : List PiDom := [⟨false, fun _ => TyM.nat⟩]
+
+def outNN : PiCod := ⟨false, fun _ => TyM.nat⟩
+
+noncomputable def dblBody (R : DataRead) (self : Res) : List Sem → Option BodyOut
+  | [x] => match Code0.dec R .nat x with
+    | some 0 => some ⟨.el0 Nat 0, [], none⟩
+    | some (m + 1) => match callOf R self [(.el0 Nat m, .plain TyM.nat)] (emptyState 0) with
+      | some ((r, _), _) => (Code0.dec R .nat r).map fun k => ⟨.el0 Nat (k + 2), [], none⟩
+      | none => none
+    | none => none
+  | _ => none
+
+noncomputable def rankOf (R : DataRead) : List Sem → Nat
+  | [x] => (Code0.dec R .nat x).getD 0
+  | _ => 0
+
+/-- Stage `k`'s closure, the `self` of stage `k + 1`, at the weakened function type. -/
+noncomputable def selfAt (R : DataRead) (φ : Future) (k : Nat) (gk : List Sem → Option BodyOut) : Res :=
+  (closureAt R 1 φ dsNN (weakCod 1 (rankOf R) k outNN) (stageFn 1 dsNN (rankOf R) k gk),
+    .plain (piTyAt R 1 dsNN (weakCod 1 (rankOf R) k outNN)))
+
+/-- The stages (the `.fix` clause's `stage`). -/
+noncomputable def stage (R : DataRead) (φ : Future) (k : Nat) : List Sem → Option BodyOut :=
+  Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none) (fun k gk => dblBody R (selfAt R φ k gk)) k
+
+/-- The function at arguments of rank `r` is stage `r + 1` (the `.fix` clause's `g`). -/
+noncomputable def gOf (R : DataRead) (φ : Future) : List Sem → Option BodyOut :=
+  fun args => stage R φ (rankOf R args + 1) args
+
+theorem rankOf_nat (n : Nat) : rankOf R [.el0 Nat n] = n := by simp [rankOf, dec_nat]
+
+theorem natArgs_of_members {a : List Sem} (h : Steps.DomMembers R dsNN a) : ∃ n, a = [.el0 Nat n] := by
+  obtain ⟨hl, hm⟩ := h
+  match a, hl with
+  | [x], _ =>
+    obtain ⟨n, hn⟩ := hm 0 x _ rfl rfl
+    exact ⟨n, by rw [← hn]; rfl⟩
+
+theorem dblBody_zero (self : Res) : dblBody R self [.el0 Nat 0] = some ⟨.el0 Nat 0, [], none⟩ := by
+  simp [dblBody, dec_nat]
+
+theorem dblBody_succ (self : Res) (m : Nat) :
+    dblBody R self [.el0 Nat (m + 1)] = match callOf R self [(.el0 Nat m, .plain TyM.nat)] (emptyState 0) with
+      | some ((r, _), _) => (Code0.dec R .nat r).map fun k => ⟨.el0 Nat (k + 2), [], none⟩
+      | none => none := by
+  simp [dblBody, dec_nat]
+
+/-- **A stage is good below its bound**: stage `n` doubles every `x < n` (the call at `m < x` reads
+stage `n - 1`'s closure below its bound, `ClosureStage.stage_apply`). -/
+theorem stage_val (φ : Future) : ∀ n x : Nat, x < n → stage R φ n [.el0 Nat x] = some ⟨.el0 Nat (2 * x), [], none⟩
+  | 0, _, h => absurd h (Nat.not_lt_zero _)
+  | n + 1, 0, _ => dblBody_zero _
+  | n + 1, m + 1, h => by
+    show dblBody R (selfAt R φ n (stage R φ n)) [.el0 Nat (m + 1)] = _
+    have hgood : ∀ args, Steps.DomMembers R dsNN args → rankOf R args < n →
+        ∃ o, stage R φ n args = some o ∧ Steps.OutGood R dsNN outNN args o ∧
+          o.finals.length = (dsNN.filter (·.isRef)).length := by
+      intro args ha hr
+      obtain ⟨y, rfl⟩ := natArgs_of_members ha
+      rw [rankOf_nat] at hr
+      refine ⟨_, stage_val φ n y hr, ⟨⟨2 * y, rfl⟩, fun i d hd hr' => ?_⟩, rfl⟩
+      rcases i with _ | i
+      · simp only [dsNN, List.getElem?_cons_zero, Option.some.injEq] at hd
+        subst hd; cases hr'
+      · simp [dsNN] at hd
+    have hmem : Steps.DomMembers R dsNN [Sem.el0 Nat m] := ⟨rfl, fun i a d ha hd => by
+      rcases i with _ | i
+      · simp only [List.getElem?_cons_zero, Option.some.injEq] at ha
+        simp only [dsNN, List.getElem?_cons_zero, Option.some.injEq] at hd
+        subst ha; subst hd; exact ⟨m, rfl⟩
+      · simp at ha⟩
+    obtain ⟨s', hs⟩ := stage_apply R 1 φ dsNN outNN (rankOf R) n (stage R φ n) ⟨Nat.le_refl 1, by omega⟩ rfl
+      (fun _ _ _ => by simp [LevelFit, outNN, TyM.nat]) hgood [(.el0 Nat m, .plain TyM.nat)] (emptyState 0)
+      ⟨.el0 Nat (2 * m), [], none⟩ hmem
+      (fun i d hd => by
+        rcases i with _ | i
+        · simp only [dsNN, List.getElem?_cons_zero, Option.some.injEq] at hd
+          subst hd; simp [LevelFit, TyM.nat]
+        · simp [dsNN] at hd)
+      (by show rankOf R [.el0 Nat m] < n; rw [rankOf_nat]; omega) trivial (stage_val φ n m (by omega))
+    rw [dblBody_succ]
+    unfold selfAt
+    rw [hs]
+    simp only [Option.map, dec_nat]
+    rfl
+
+namespace Old
+
+/-- The body as it read `self` before the weakened stages: applied along the true code `tNN`. -/
 noncomputable def dblBody (R : DataRead) (self : Sem) : List Sem → Option BodyOut
   | [x] => match Code0.dec R .nat x with
     | some 0 => some ⟨.el0 Nat 0, [], none⟩
@@ -162,23 +204,11 @@ noncomputable def dblBody (R : DataRead) (self : Sem) : List Sem → Option Body
     | none => none
   | _ => none
 
-/-- The stages, each binding `self` to the closure `mk` builds of the stage R below (the `.fix`
-clause's `stage R`). -/
 noncomputable def stage (R : DataRead) (mk : (List Sem → Option BodyOut) → Sem) (k : Nat) : List Sem → Option BodyOut :=
   Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none) (fun _ gk => dblBody R (mk gk)) k
 
-noncomputable def rankOf (R : DataRead) : List Sem → Nat
-  | [x] => (Code0.dec R .nat x).getD 0
-  | _ => 0
-
-/-- The function at arguments of rank `r` is stage R `r + 1` (the `.fix` clause's `g`). -/
 noncomputable def gOf (R : DataRead) (mk : (List Sem → Option BodyOut) → Sem) : List Sem → Option BodyOut :=
   fun args => stage R mk (rankOf R args + 1) args
-
-theorem rankOf_nat (n : Nat) : rankOf R [.el0 Nat n] = n := by simp [rankOf, dec_nat]
-
-theorem dblBody_zero (self : Sem) : dblBody R self [.el0 Nat 0] = some ⟨.el0 Nat 0, [], none⟩ := by
-  simp [dblBody, dec_nat]
 
 theorem dblBody_succ (self : Sem) (m : Nat) :
     dblBody R self [.el0 Nat (m + 1)] = match applyFnL (lvl0 R) tNN self [.el0 Nat m] with
@@ -186,11 +216,9 @@ theorem dblBody_succ (self : Sem) (m : Nat) :
       | _ => none := by
   simp [dblBody, dec_nat]
 
-namespace Old
-
 /-- **As the `.fix` clause built it before D60, the recursive closure is `err`**: each stage's
-closure was built strictly, so it was `err` (a stage R is undefined above its rank), and every
-recursive call through it failed. -/
+closure was built strictly at the TRUE type, so it was `err` (a stage R is undefined above its
+rank), and every recursive call through it failed. -/
 theorem closure_err (φ : Future) : closureL (lvl0 R) φ tNN (gOf R (closureL (lvl0 R) φ tNN)) = .err := by
   have h0 : closureL (lvl0 R) φ tNN (stage R (closureL (lvl0 R) φ tNN) 0) = .err :=
     CodeClosures.closure_err φ _ 0 rfl
@@ -207,28 +235,18 @@ theorem closure_err (φ : Future) : closureL (lvl0 R) φ tNN (gOf R (closureL (l
 
 end Old
 
-/-- With the stages' closures filled (D60), stage R `n + 1` doubles `n`. -/
-theorem stage_val (φ : Future) : ∀ n : Nat,
-    stage R (closureFillL (lvl0 R) φ tNN) (n + 1) [.el0 Nat n] = some ⟨.el0 Nat (2 * n), [], none⟩
-  | 0 => dblBody_zero _
-  | m + 1 => by
-    show dblBody R (closureFillL (lvl0 R) φ tNN (stage R (closureFillL (lvl0 R) φ tNN) (m + 1))) [.el0 Nat (m + 1)] = _
-    rw [dblBody_succ, apply_fill φ _ m (2 * m) (stage_val φ m)]
-    simp only [Option.map, dec_nat]
-    congr 3
-
 /-- **The recursive closure is a member of its type's code**, and `double(3)` is `6`. -/
 theorem double_member (φ : Future) :
-    closureL (lvl0 R) φ tNN (gOf R (closureFillL (lvl0 R) φ tNN)) ∈ₛ[R] piTyL (lvl0 R) tNN ∧
-      closureL (lvl0 R) φ tNN (gOf R (closureFillL (lvl0 R) φ tNN)) ≠ .err ∧
-      applyFnL (lvl0 R) tNN (closureL (lvl0 R) φ tNN (gOf R (closureFillL (lvl0 R) φ tNN))) [.el0 Nat 3]
+    closureL (lvl0 R) φ tNN (gOf R φ) ∈ₛ[R] piTyL (lvl0 R) tNN ∧
+      closureL (lvl0 R) φ tNN (gOf R φ) ≠ .err ∧
+      applyFnL (lvl0 R) tNN (closureL (lvl0 R) φ tNN (gOf R φ)) [.el0 Nat 3]
         = some (.data (.el0 Nat 6) TyM.nat []) := by
-  have hg : ∀ x, gOf R (closureFillL (lvl0 R) φ tNN) [.el0 Nat x] = some ⟨.el0 Nat (2 * x), [], none⟩ := by
+  have hg : ∀ x, gOf R φ [.el0 Nat x] = some ⟨.el0 Nat (2 * x), [], none⟩ := by
     intro x
-    show stage R _ (rankOf R [.el0 Nat x] + 1) [.el0 Nat x] = _
-    rw [rankOf_nat]; exact stage_val φ x
+    show stage R φ (rankOf R [.el0 Nat x] + 1) [.el0 Nat x] = _
+    rw [rankOf_nat]; exact stage_val φ (x + 1) x (Nat.lt_succ_self x)
   obtain ⟨F, hF, -⟩ := mk_some φ _ fun x => ⟨_, hg x⟩
-  have hc : closureL (lvl0 R) φ tNN (gOf R (closureFillL (lvl0 R) φ tNN)) = .el0 NN F := by
+  have hc : closureL (lvl0 R) φ tNN (gOf R φ) = .el0 NN F := by
     unfold closureL; rw [hF]
   refine ⟨?_, ?_, apply_strict φ _ (fun x => ⟨_, hg x⟩) 3 6 (hg 3)⟩
   · rw [hc]; exact ⟨F, rfl⟩

@@ -51,8 +51,8 @@ theorem memBelow_zero (K : RunCtx) (G : Sem × TyS) (g : GDef) (l : Nat) (φ : F
 /-! ## `Double` through the knot's induction (kernel-checked)
 
 `Double`'s closure as the `.fix` clause builds it (`CodeClosures`: its body as the function on
-meanings it computes, `dblBody`; its stages with filled closures; at arguments of rank `r` the stage
-`r + 1`, `gOf`). The step of the induction on the bound holds at every bound (`double_step`: the stage
+meanings it computes, `dblBody`; each stage's `self` the stage below at the weakened function type,
+docs/34; at arguments of rank `r` the stage `r + 1`, `gOf`). The step of the induction on the bound holds at every bound (`double_step`: the stage
 `b + 1` doubles `b`, `stage_val`), so the knot's induction (`stages_total`) makes the fixpoint good at
 every member argument (`double_total`), and its closure is a member of its type (`double_member`, the
 closure lemma's membership half on this instance). The checker accepts `Double` and rejects `Same`. -/
@@ -79,14 +79,14 @@ open Ochr.Meaning.Regress.CodeClosures in
 stage `b + 1` is good (whatever the fixpoint below `b`: here the stages compute outright). -/
 theorem double_step (R : DataRead) (φ : Future) (b : Nat)
     (_ : ∀ a, DomMembers R dsNat a → rankOf R a < b →
-      ∃ o, stage R (closureFillL (lvl0 R) φ tNN) (rankOf R a + 1) a = some o ∧ OutGood R dsNat outNat a o) :
+      ∃ o, stage R φ (rankOf R a + 1) a = some o ∧ OutGood R dsNat outNat a o) :
     ∀ a, DomMembers R dsNat a → rankOf R a = b →
-      ∃ o, stage R (closureFillL (lvl0 R) φ tNN) (b + 1) a = some o ∧ OutGood R dsNat outNat a o := by
+      ∃ o, stage R φ (b + 1) a = some o ∧ OutGood R dsNat outNat a o := by
   intro a ha hr
   obtain ⟨n, rfl⟩ := args_of_members ha
   rw [rankOf_nat] at hr
   subst hr
-  refine ⟨_, stage_val φ n, ⟨2 * n, rfl⟩, ?_⟩
+  refine ⟨_, stage_val φ (n + 1) n (Nat.lt_succ_self n), ⟨2 * n, rfl⟩, ?_⟩
   intro i d hd hr
   rcases i with _ | i
   · simp only [dsNat, List.getElem?_cons_zero, Option.some.injEq] at hd
@@ -96,15 +96,15 @@ theorem double_step (R : DataRead) (φ : Future) (b : Nat)
 open Ochr.Meaning.Regress.CodeClosures in
 /-- **`Double`'s fixpoint is good at every member argument**, by the knot's induction. -/
 theorem double_total (R : DataRead) (φ : Future) :
-    ∀ a, DomMembers R dsNat a → ∃ o, gOf R (closureFillL (lvl0 R) φ tNN) a = some o ∧ OutGood R dsNat outNat a o :=
-  stages_total (stage R (closureFillL (lvl0 R) φ tNN)) (rankOf R) (DomMembers R dsNat) (OutGood R dsNat outNat)
+    ∀ a, DomMembers R dsNat a → ∃ o, gOf R φ a = some o ∧ OutGood R dsNat outNat a o :=
+  stages_total (stage R φ) (rankOf R) (DomMembers R dsNat) (OutGood R dsNat outNat)
     (double_step R φ)
 
 open Ochr.Meaning.Regress.CodeClosures in
 /-- **`Double`'s closure is a member of its type**: the closure lemma's membership half on this
 instance (`closure_mem_of_total` at the level `1`, whose code is `tNN`), from `double_member`. -/
 theorem double_closure_member (R : DataRead) (φ : Future) :
-    closureAt R 1 φ dsNat outNat (gOf R (closureFillL (lvl0 R) φ tNN)) ∈ₛ[R] piTyAt R 1 dsNat outNat :=
+    closureAt R 1 φ dsNat outNat (gOf R φ) ∈ₛ[R] piTyAt R 1 dsNat outNat :=
   (double_member φ).1
 
 end Ochr.Meaning.Regress.DefKnot

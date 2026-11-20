@@ -13,10 +13,8 @@ forms that hold (`ClosureCE.lean` records where the statements of `Steps/FixKnot
   a codomain that is a proposition.
 * `closure_apply'`: such a closure applied at member arguments (whose domains fit the level) is its
   function's result there, at the codomain the code reaches, as a call reads it (`callOf`).
-* `closureFill_apply`: a filled closure (`closureFillAt`, a recursion stage's, D60) applied where its
-  function is defined and good is that function's result, provided the fill succeeded.
 
-The recursion stages appear only through `g` (and `closureFillAt`): nothing here is about them.
+The recursion stages appear only through `g`: their closures are built in `ClosureStage.lean`.
 -/
 
 namespace Ochr.Meaning
@@ -420,125 +418,6 @@ theorem closureL_apply (hL : L.Lawful) {Fit : TyM → Prop} (hF : L.Fits Fit) (�
 
 end
 
-/-! ## A filled closure (a recursion stage's), applied where its function is defined -/
-
-section
-variable (L : Lvl.{u})
-
-/-- At one argument tuple whose entries are members of fitting domains, a function defined there
-with a result in the codomain and final contents of their types meets `mkTelL`'s leaf along the
-code (`LeafDefL`). -/
-theorem leafDef_telL (hL : L.Lawful) {Fit : TyM → Prop} (hF : L.Fits Fit) (φ : Future) (g : List Sem → Option BodyOut)
-    (out : PiCod) (hdata : out.isRef = false) :
-    ∀ (ds : List PiDom) (acc : List Sem) (Fin : Type u) (mkFin : List Sem → Option (Fin × List Sem))
-      (goods : List (Sem → Prop)) (rest : List Sem), MkFinOk mkFin goods → DomMembersFrom L ds acc rest →
-      (∀ (i : Nat) (d : PiDom), ds[i]? = some d → Fit (d.dom (acc ++ rest.take i))) →
-      (∃ o, g (acc ++ rest) = some o ∧ Fit (out.cod (acc ++ rest)) ∧
-        o.result ∈ₛ[L.read] out.cod (acc ++ rest) ∧ FinalsOk L ds acc rest goods (o.finals.map (· φ))) →
-      LeafDefL L φ g (telL L ds acc Fin out).2 acc mkFin rest
-  | [], acc, Fin, mkFin, goods, rest, hmk, hm, _, H => by
-    have : rest = [] := List.eq_nil_of_length_eq_zero (by simpa using hm.1)
-    subst this
-    obtain ⟨o, hg, hfit, hres, hfin⟩ := H
-    simp only [List.append_nil] at hg hfit hres
-    obtain ⟨r, hr⟩ := hF.dec_mem _ _ hfit hres
-    obtain ⟨fin, hfin'⟩ := hmk (o.finals.map (· φ)) [] (by simpa using hfin.1) hfin.2.1
-    simp only [List.append_nil] at hfin'
-    rcases out with ⟨isRef, cod⟩
-    simp only at hdata
-    subst hdata
-    show ((g acc).bind (mkLeafDataL L φ Fin mkFin (L.codeOf (cod acc)).2)).isSome
-    rw [hg, Option.bind_some]
-    unfold mkLeafDataL
-    rw [hr, hfin']
-    rfl
-  | p :: ps, acc, Fin, mkFin, goods, [], hmk, hm, _, _ => by simp [DomMembersFrom] at hm
-  | p :: ps, acc, Fin, mkFin, goods, a :: rest', hmk, hm, hfit, H => by
-    intro x hx
-    have hex : L.enc (L.codeOf (p.dom acc)).2 x = a := hL.enc_of_dec _ hx
-    refine leafDef_telL hL hF φ g out hdata ps _ _ _ _ rest' (mkFinOk_ext L p.isRef Fin _ _ mkFin goods hmk) ?_ ?_ ?_
-    · refine ⟨by simpa using hm.1, fun i a' d ha' hd => ?_⟩
-      have := hm.2 (i + 1) a' d (by simpa using ha') (by simpa using hd)
-      rw [hex]; simpa [List.take_succ_cons] using this
-    · intro i d hd
-      have := hfit (i + 1) d (by simpa using hd)
-      rw [hex]; simpa [List.take_succ_cons] using this
-    · obtain ⟨o, hg, hfo, hres, hl, hgd, href⟩ := H
-      have e : acc ++ a :: rest' = acc ++ [L.enc (L.codeOf (p.dom acc)).2 x] ++ rest' := by simp [hex]
-      rw [e] at hg hfo hres
-      refine ⟨o, hg, hfo, hres, ?_, ?_, ?_⟩
-      · cases hp : p.isRef <;> simp [hp] at hl ⊢ <;> omega
-      · intro j gd f hj hf
-        cases hp : p.isRef
-        · simp only [hp, Bool.false_eq_true, if_false] at hj
-          exact hgd j gd f hj hf
-        · simp only [hp, if_true] at hj
-          by_cases hjl : j < goods.length
-          · rw [List.getElem?_append_left hjl] at hj
-            exact hgd j gd f hj hf
-          · have hje : j = goods.length := by
-              have := (List.getElem?_eq_some_iff.mp hj).1; simp at this; omega
-            subst hje
-            rw [List.getElem?_append_right (Nat.le_refl _)] at hj
-            simp only [Nat.sub_self, List.getElem?_cons_zero, Option.some.injEq] at hj
-            subst hj
-            obtain ⟨f', hf', hmem⟩ := href 0 p rfl hp
-            simp only [List.take_zero, List.filter_nil, List.length_nil, Nat.add_zero] at hf'
-            rw [hf'] at hf
-            cases hf
-            exact hF.dec_mem _ _ (hF.fit_of _ x) (by simpa using hmem)
-      · intro i d hd hdr
-        obtain ⟨f, hf, hmem⟩ := href (i + 1) d (by simpa using hd) hdr
-        refine ⟨f, ?_, by rw [hex]; simpa [List.take_succ_cons] using hmem⟩
-        rw [← hf]
-        congr 1
-        cases hp : p.isRef <;> simp [hp, List.take_succ_cons] <;> omega
-
-/-- **A filled closure applied where its function is defined and good is that function's result**,
-provided the fill succeeded (`mkTelFillL` defined: no empty leaf type where the function is
-undefined), at member arguments whose domains fit the level. -/
-theorem closureFillL_apply (hL : L.Lawful) {Fit : TyM → Prop} (hF : L.Fits Fit) (φ : Future)
-    (g : List Sem → Option BodyOut) (ds : List PiDom) (out : PiCod) (hdata : out.isRef = false)
-    (hfill : (mkTelFillL L φ (telL L ds [] PUnit out).2 [] (fun fs => some (PUnit.unit, fs)) g).isSome)
-    (args : List Res) (s : SState) (o : BodyOut) (hmem : DomMembers L.read ds (args.map (·.1)))
-    (hdom : ∀ (i : Nat) (d : PiDom), ds[i]? = some d → Fit (d.dom ((args.map (·.1)).take i)))
-    (hcod : Fit (out.cod (args.map (·.1)))) (hcanon : (out.cod (args.map (·.1))).Canon)
-    (hg : g (args.map (·.1)) = some o) (hgood : OutGood L.read ds out (args.map (·.1)) o)
-    (hlen : o.finals.length = (ds.filter (·.isRef)).length) :
-    ∃ s', callOfL L (telL L ds [] PUnit out).2 (closureFillL L φ (telL L ds [] PUnit out).2 g) args s =
-      some ((o.result, .plain (out.cod (args.map (·.1)))), s') := by
-  obtain ⟨F, hF'⟩ := Option.isSome_iff_exists.mp hfill
-  have hm' : DomMembersFrom L ds [] (args.map (·.1)) := ⟨hmem.1, fun i a d ha hd => by simpa using hmem.2 i a d ha hd⟩
-  have hfit : ArgsFitL L (telL L ds [] PUnit out).2 (args.map (·.1)) :=
-    argsFit_telL L hL hF out ds [] PUnit _ hm' (fun i d hd => by simpa using hdom i d hd)
-  have hdef : LeafDefL L φ g (telL L ds [] PUnit out).2 [] (fun fs => some (PUnit.unit, fs)) (args.map (·.1)) :=
-    leafDef_telL L hL hF φ g out hdata ds [] PUnit _ [] _ mkFinOk_start hm' (fun i d hd => by simpa using hdom i d hd)
-      ⟨o, by simpa using hg, by simpa using hcod, by simpa using hgood.1, by simp [hlen], fun j gd f hj => by simp at hj,
-        fun i d hd hdr => by
-          obtain ⟨f, hf, hmem⟩ := hgood.2 i d hd hdr
-          exact ⟨f φ, by simp [hf], by simpa using hmem φ⟩⟩
-  obtain ⟨o', r, hg', hap, hm⟩ := applyTelL_mkTelFillL L hL φ g (telL L ds [] PUnit out).2 [] _ (fun _ => []) F
-    (args.map (·.1)) finInv_start hF' hfit hdef
-  simp only [List.nil_append] at hg'
-  rw [hg] at hg'
-  cases hg'
-  obtain ⟨res, fins, rfl⟩ := applyTelL_telL_data L hL out hdata ds [] PUnit _ F _ r hap
-  obtain ⟨hres, -⟩ := hm
-  subst hres
-  have hT : L.toTy (L.codeOf (out.cod ([] ++ args.map (·.1)))).2 = out.cod (args.map (·.1)) := by
-    rw [List.nil_append]; exact hF.toTy_code _ hcod hcanon
-  have happ : applyFnL L (telL L ds [] PUnit out).2 (closureFillL L φ (telL L ds [] PUnit out).2 g) (args.map (·.1)) =
-      some (.data o.result (out.cod (args.map (·.1))) fins) := by
-    unfold applyFnL closureFillL
-    rw [hF']
-    simp only [hL.unpack_pack, Option.bind_some]
-    rw [hap, hT]
-  unfold callOfL
-  simp only [happ]
-  exact ⟨_, rfl⟩
-
-end
-
 /-! ## The closure lemma, at the declared sort -/
 
 section
@@ -620,35 +499,6 @@ theorem closure_mem_prop' (φ : Future) (ds : List PiDom) (out : PiCod) (g : Lis
     simp only [hdata, Bool.false_eq_true, if_false, List.nil_append, hP]
     exact hp
   exact ⟨⟨hQ⟩, rfl⟩
-
-end
-
-section
-variable (R : DataRead)
-
-/-- **A recursion stage's closure (`closureFillAt`), applied where its function is defined and
-good, is that function's result** (what `MemBelow` needs of the stage-`b` closure, at arguments of
-rank below `b`), provided the fill succeeded: the closure is not `err`. The fill fails exactly when
-some leaf type (codomain and final contents) is empty at an argument where the function is
-undefined; see `ClosureCE` and the report on the knot. -/
-theorem closureFill_apply' (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
-    (g : List Sem → Option BodyOut) (hl : 1 ≤ l ∧ l ≤ 3) (hdata : out.isRef = false)
-    (hfill : closureFillAt R l φ ds out g ≠ .err)
-    (args : List Res) (s : SState) (o : BodyOut) (hmem : DomMembers R ds (args.map (·.1)))
-    (hdom : ∀ (i : Nat) (d : PiDom), ds[i]? = some d → LevelFit l (d.dom ((args.map (·.1)).take i)))
-    (hcod : LevelFit l (out.cod (args.map (·.1)))) (hcanon : (out.cod (args.map (·.1))).Canon)
-    (hg : g (args.map (·.1)) = some o) (hgood : OutGood R ds out (args.map (·.1)) o)
-    (hlen : o.finals.length = (ds.filter (·.isRef)).length) :
-    ∃ s', callOf R (closureFillAt R l φ ds out g, .plain (piTyAt R l ds out)) args s =
-      some ((o.result, .plain (out.cod (args.map (·.1)))), s') := by
-  obtain ⟨h1, h3⟩ := hl
-  rcases (show l = 1 ∨ l = 2 ∨ l = 3 by omega) with rfl | rfl | rfl
-  · refine closureFillL_apply (lvl0 R) (lvl0_lawful R) (lvl0_fits R) φ g ds out hdata ?_ args s o hmem hdom hcod hcanon hg hgood hlen
-    revert hfill; simp only [closureFillAt, closureFillL]; split <;> simp_all
-  · refine closureFillL_apply (lvl1 R) (lvl1_lawful R) (lvl1_fits R) φ g ds out hdata ?_ args s o hmem hdom hcod hcanon hg hgood hlen
-    revert hfill; simp only [closureFillAt, closureFillL]; split <;> simp_all
-  · refine closureFillL_apply (lvl2 R) (lvl2_lawful R) (lvl2_fits R) φ g ds out hdata ?_ args s o hmem hdom hcod hcanon hg hgood hlen
-    revert hfill; simp only [closureFillAt, closureFillL]; split <;> simp_all
 
 end
 

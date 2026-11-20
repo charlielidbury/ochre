@@ -881,10 +881,11 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     -- [Closure] (D51, D53, D80): a closure means a function on its annotated domain, read off
     -- the reference run of its body in the forming frame extended by `self` and the parameters
     -- (the body's layout `[caps…, self, x̄]`). A recursive `fix` means its guarded fixpoint by
-    -- stages (docs/24 §4): stage 0 binds `self` to `err`, stage `k + 1` to stage `k`'s closure,
-    -- and the function at arguments whose decreasing argument has rank `r` is stage `r + 1`; so
-    -- a call that does not decrease reaches stage 0 and means `err`, and `mkTele` then makes
-    -- the closure mean `err`.
+    -- stages (docs/24 §4): stage 0 is undefined, stage `k + 1` binds `self` to stage `k`'s
+    -- closure at the weakened function type (the true codomain at arguments of rank below `k`,
+    -- `Unit` above, docs/34), and the function at arguments whose decreasing argument has rank
+    -- `r` is stage `r + 1`; so a call that does not decrease reads `()` at `Unit`, and the
+    -- closure, built strictly at the true type, is `err` unless the codomain holds it.
     let bs := runBinds s (K.D.paramDecls (scopeOf s) ds) [] ds
     let ps := psOf bs ds
     let out : PiCod := match c with
@@ -906,12 +907,12 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     -- type was moved by its first read, and a call through `self` or a function parameter was
     -- never classified as a statement or a proof)
     let cd := K.D.typeDecl (K.D.teleDecls (scopeOf s) ds) c
-    let bodyAt (selfM : Sem) (args : List Sem) : Option BodyOut :=
+    let bodyAt (selfT : TyM) (selfM : Sem) (args : List Sem) : Option BodyOut :=
       -- the frame: `self`, then the parameters. A borrow parameter is set up as the generic call
       -- is ([Def]): a fresh label `lᵢ`, a *cell* (a temporary of the frame: temporaries do not
       -- shift de Bruijn indices) reading `lᵢ`'s final content, and the parameter holding the
       -- content as the borrow's holder (D14). Returning the parameter returns its label.
-      let s₁ := s.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi cd }
+      let s₁ := s.pushBind { ty := .plain selfT, val := fun _ => selfM, decl := .pi cd }
       -- each parameter is bound at its type (its code) and at its declared reading (`bs`)
       let step (sa : SState × List Sem × List Pos) (ap : Sem × PiDom) : SState × List Sem × List Pos :=
         let (s, acc, cells) := sa
@@ -941,20 +942,22 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
         some ⟨r, finals, R.label⟩
       | none => none
     let closureOf (g : List Sem → Option BodyOut) : Sem := closureAt K.dm.read l φ ps out g
-    -- a stage's closure is filled where the stage is undefined (docs/31 D60: built strictly,
-    -- every stage's closure, so every recursive closure, was `err`)
-    let stage : Nat → List Sem → Option BodyOut :=
-      Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none)
-        (fun _ gk => bodyAt (closureFillAt K.dm.read l φ ps out gk))
     let rankOf (args : List Sem) : Nat := match dec with
       | some j =>
         match args[j]? with
         | some a => semRank a
         | none => 0
       | none => 0
+    -- a stage's `self` is the stage below at the weakened function type (docs/34): built
+    -- strictly, a stage good only below its bound is an element of that type, not of the true
+    -- one (docs/31 D60's fill is gone)
+    let stage : Nat → List Sem → Option BodyOut :=
+      Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none)
+        (fun k gk => bodyAt (piTyAt K.dm.read l ps (weakCod l rankOf k out))
+          (closureAt K.dm.read l φ ps (weakCod l rankOf k out) (stageFn l ps rankOf k gk)))
     let g : List Sem → Option BodyOut := match dec with
       | some _ => fun args => stage (rankOf args + 1) args
-      | none => bodyAt .err
+      | none => bodyAt piT .err
     -- forming the closure (`Machine.capture`) accesses each captured variable, oldest binding
     -- first, and then moves it unless its declared reading is copy (D80): the checker's [Access]
     -- before the capture ends the borrows lent at it (docs/31 D29 point 2, D37)
