@@ -11,9 +11,10 @@ be disturbed is stated here, and not proved:
 - `runT_congrD`/`meanV_congrD`, the congruence of the run in the decisions: two tables that agree
   on every input naming only old unknowns give a term or value naming only old unknowns the same
   run or meaning (the analogue of `AssignCongr.runT_congrA`).
-Not built on yet: main is assessing decisions that read no table of unknowns at all, which would
-make all of this unnecessary. A refinement also REWRITES the old entries (`Env.mapState` with its
-types, after `substEnv … true`), so the one-sided transfer is stated for growth only.
+Since main's D96 the decisions read no unknown's type, only its frozen reading (`absDecl`, written
+once by `freshAbs`), so a refinement, which rewrites the types, keeps the decision core whole, and
+a step that adds unknowns only extends it: the one-sided transfer is the only thing left of the
+table here (docs/31 D65).
 -/
 
 namespace Ochr.Meaning.Steps
@@ -76,23 +77,27 @@ structure DecAlignedBelow (n : Nat) (D : Decisions) (st : MState) : Prop where
   typeDecl : ∀ fuel sc T d b st', T.absBelow n →
     Runs (withLive true (Ochr.typeDecl fuel false [] [] T)) (scopeState st sc) b d st' → D.typeDecl sc T = d
 
-/-- A step that only grows the table of unknowns: the decision core is kept but for Δ, whose old
-entries are kept. -/
+/-- A step that only adds unknowns: the decision core is kept but for the frozen readings, whose
+old entries are kept (main's D96: the table is written once per unknown, by `freshAbs`, and kept
+whole by `restoreKeep` and `exitWorld`). A refinement rewrites the unknowns' TYPES, which no
+decision reads since D96, so it keeps the decision core whole (`DecCore`). -/
 structure Grows (st st' : MState) : Prop where
   globals : st.globals = st'.globals
   inds : st.inds = st'.inds
   liveScope : st.liveScope = st'.liveScope
   live : ∀ i, DecideScope.liveVal st i = DecideScope.liveVal st' i
-  size : st.absTy.size ≤ st'.absTy.size
-  old : ∀ σ, σ < st.absTy.size → st'.absTy[σ]? = st.absTy[σ]?
+  size : st.absDecl.size ≤ st'.absDecl.size
+  old : ∀ σ, σ < st.absDecl.size → st'.absDecl[σ]? = st.absDecl[σ]?
 
 /-- **The one-sided transfer** (the lead's (ii)): where the table only grows, the checker's
-decisions on inputs naming only old unknowns are the old ones. Open: the simulation of
-`Decide.lean` (`DecideScope.decideSim`) for a table whose old entries agree, carrying that every
-value a decision inspects names only old unknowns (an old entry names only older ones, (WF6)). Not
-for a refinement, which rewrites old entries. -/
+decisions on inputs naming only old unknowns are the old ones. Since main's D96 a decision reads an
+unknown only by its frozen reading (`absReading σ`, `absDecl[σ]`), never by its type, so what is
+open is only the simulation of `Decide.lean` (`DecideScope.decideSim`) for tables whose old entries
+agree, carrying that every unknown a decision reads is one its input or Σ names (a closure's
+captures are read by their recorded readings, `capReadings`). A refinement is not growth and needs
+nothing: it keeps the decision core whole. -/
 theorem decAligned_grow {D : Decisions} {st st' : MState} (hd : DecAligned D st) (hg : Grows st st') :
-    DecAlignedBelow st.absTy.size D st' := by
+    DecAlignedBelow st.absDecl.size D st' := by
   sorry
 
 /-- **The congruence of the run in the decisions** (the lead's (ii); the analogue of

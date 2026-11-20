@@ -599,13 +599,37 @@ theorem placeType_sim (fuel : Nat) (st st₁ : MState) (p : Place) (n T : Value)
       Good K.dm ({ K with Δ := Δ₁ } : RunCtx).M K.Γ ρ₁ st₁ ∧ GenTy { K with Δ := Δ₁ } ρ₁ st₁ T n := by
   sorry
 
-/-- `freshAbs` names the unknown by the counter and pushes its type. -/
-theorem runs_freshAbs_inv {T : Value} {st st' : MState} {b σ : Nat} (h : Runs (Ochr.freshAbs T) st b σ st') :
-    σ = st.nextAbs ∧ st' = { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T } := by
+/-- `freshAbs` names the unknown by the counter and pushes its type and its frozen reading (D96). -/
+theorem runs_freshAbs_inv {T : Value} {d : DeclInfo} {st st' : MState} {b σ : Nat} (h : Runs (Ochr.freshAbs T d) st b σ st') :
+    σ = st.nextAbs ∧ st' = { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T, absDecl := st.absDecl.push d } := by
   obtain ⟨L, left, log, h⟩ := h
   simp only [Ochr.freshAbs, runMachineL_bind, runMachineL_get, runMachineL_set, runMachineL_pure,
     Prod.mk.injEq, Outcome.ok.injEq] at h
   exact ⟨h.1.1.symm, h.1.2.symm⟩
+
+/-- **A decision's run leaves the state as it was** (main's D95: the decision procedures write no
+cache; they set `liveScope` only inside `withLive`, which restores it). Here for `valTypeDecl`, the
+reading `freshAbsR` freezes (D96); the same fact is `copyRead_aligned`'s "state unchanged". Open: an
+induction over `Decide.lean`'s mutual block, the shape of `DecideScope.decideSim`. -/
+theorem runs_valTypeDecl_keep {fuel : Nat} {T : Value} {st st' : MState} {b : Nat} {d : DeclInfo}
+    (h : Runs (Ochr.valTypeDecl fuel T) st b d st') : st' = st := by
+  sorry
+
+/-- `freshAbsR` (D96): the unknown's reading is read off its type, then frozen by `freshAbs`. -/
+theorem runs_freshAbsR_inv {fuel : Nat} {T : Value} {st st' : MState} {b σ : Nat}
+    (h : Runs (Ochr.freshAbsR fuel T) st b σ st') :
+    ∃ d, σ = st.nextAbs ∧
+      st' = { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T, absDecl := st.absDecl.push d } := by
+  cases fuel with
+  | zero =>
+    obtain ⟨L, left, log, h⟩ := h
+    simp [Ochr.freshAbsR, runMachineL_exhausted] at h
+  | succ fuel =>
+    unfold Ochr.freshAbsR at h
+    obtain ⟨d, st₁, b₁, hd, h1⟩ := Runs.bind_inv h
+    have e := runs_valTypeDecl_keep hd
+    subst e
+    exact ⟨d, runs_freshAbs_inv h1⟩
 
 /-- `trace` writes the log only. -/
 theorem runs_trace_inv {m : Unit → String} {st st' : MState} {b : Nat} {u : Unit}
@@ -625,14 +649,14 @@ under any value for it, with its type added to Δ, the relation, `Good`, the con
 `GenTy` are kept, and the program and its type read the same (neither holds the new unknown).
 Open: needs that a meaning reads the assignment and Δ only at the unknowns the value holds (the
 assignment's analogue of `RunCongr.meanV_congrE`, not written). -/
-theorem freshAbs_sim (st : MState) (T n : Value) (s : SState) (π : Nat → Nat) (v : Sem)
+theorem freshAbs_sim (st : MState) (T n : Value) (d : DeclInfo) (s : SState) (π : Nat → Nat) (v : Sem)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s) (hT : GenTy K ρ st T n) :
     ∃ Δ' : Nat → TyS, (∀ τ, τ < st.absTy.size → Δ' τ = K.Δ τ) ∧
-      CtxOk { K with Δ := Δ' } (ρ.ext st.nextAbs v) { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T } ∧
-      Rel { K with Δ := Δ' } (ρ.ext st.nextAbs v) φ π { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T } s ∧
+      CtxOk { K with Δ := Δ' } (ρ.ext st.nextAbs v) { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T, absDecl := st.absDecl.push d } ∧
+      Rel { K with Δ := Δ' } (ρ.ext st.nextAbs v) φ π { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T, absDecl := st.absDecl.push d } s ∧
       Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ (ρ.ext st.nextAbs v)
-        { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T } ∧
-      GenTy { K with Δ := Δ' } (ρ.ext st.nextAbs v) { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T } T n ∧
+        { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T, absDecl := st.absDecl.push d } ∧
+      GenTy { K with Δ := Δ' } (ρ.ext st.nextAbs v) { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T, absDecl := st.absDecl.push d } T n ∧
       meanV { K with Δ := Δ' } (ρ.ext st.nextAbs v) (fun _ => .err)
           (.plain (Value.tyM K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ (ρ.ext st.nextAbs v) (fun _ => .err) T)) n =
         meanV K ρ (fun _ => .err) (.plain (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T)) n := by
@@ -685,17 +709,17 @@ theorem generalizeNeutral_sim (fuel : Nat) (st st' : MState) (p : Place) (n : Va
     placeType_sim K ρ φ fuel st st₁ p n T s π b hg hctx hs hn hsealed hfree hpt
   have hn₁ : ckContent st₁.env p = some n := by rw [henv₁]; exact hn
   obtain ⟨σ', st₂, b₂, hfa, h2⟩ := Runs.bind_inv h1
-  obtain ⟨rfl, rfl⟩ := runs_freshAbs_inv hfa
+  obtain ⟨dσ, rfl, rfl⟩ := runs_freshAbsR_inv hfa
   let v := meanV { K with Δ := Δ₁ } ρ₁ (fun _ => .err)
     (.plain (Value.tyM K.dm ({ K with Δ := Δ₁ } : RunCtx).M K.Γ ρ₁ (fun _ => .err) T)) n
   obtain ⟨Δ₂, hext₂, hctx₂, hs₂, hg₂, hT₂, hv⟩ :=
-    freshAbs_sim { K with Δ := Δ₁ } ρ₁ φ st₁ T n s π v hg₁ hctx₁ hs₁ hT₁
+    freshAbs_sim { K with Δ := Δ₁ } ρ₁ φ st₁ T n dσ s π v hg₁ hctx₁ hs₁ hT₁
   have hsize₁ : st₁.absTy.size = st₁.nextAbs := Good.absTy_size { K with Δ := Δ₁ } hg₁
   obtain ⟨u, st₃, b₃, htr, h3⟩ := Runs.bind_inv h2
   have hst₃ := runs_trace_inv htr
   subst hst₃
   obtain ⟨u', st₄, b₄, hsub, h4⟩ := Runs.bind_inv h3
-  have hσT : ({ st₁ with nextAbs := st₁.nextAbs + 1, absTy := st₁.absTy.push T } : MState).absTy[st₁.nextAbs]? = some T := by
+  have hσT : ({ st₁ with nextAbs := st₁.nextAbs + 1, absTy := st₁.absTy.push T, absDecl := st₁.absDecl.push dσ } : MState).absTy[st₁.nextAbs]? = some T := by
     simp only [← hsize₁, Array.getElem?_push_size]
   have hσn : n.hasAbs st₁.nextAbs = false := by
     cases e : n.hasAbs st₁.nextAbs
