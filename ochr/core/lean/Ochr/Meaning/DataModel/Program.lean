@@ -3,6 +3,11 @@ import Ochr.Meaning.Data
 /-!
 # A data model of the probe programs' declarations (docs/34 §10, §14)
 
+The declarations are written as the checker records them: in a field's type the parameters are
+`var 0 …` (the last parameter innermost) and the fields `var np …` (the last field innermost),
+as `Machine.fieldTele` binds them (the fields first, then the parameters). `H`'s recursive field
+type is abbreviated (`H(f)` for `H(λ(x : Word) : Type => f(Succ(x)))`: only its name matters here).
+
 The declarations of `DataModel/Probes.lean` (and the library's `Word`, `Bool`, `List`), each with
 the record its type keeps (`*Rec`), its fields' shapes (`progShape`), and the record at given
 parameters (`progRecOf`): a concrete `DataModel` (`dmP`), on which the concrete runs and
@@ -25,47 +30,47 @@ def wordD : IndDecl := { name := "Word", ctors := [("Zero", []), ("Succ", [("pre
 def boolD : IndDecl := { name := "Bool", ctors := [("false", []), ("true", [])] }
 def listD : IndDecl :=
   { name := "List", params := [(h "A", .sort 1)],
-    ctors := [("Nil", []), ("Cons", [("h", .place (.var 0)), ("t", .tind "List" [.place (.var 1)])])] }
+    ctors := [("Nil", []), ("Cons", [("h", .place (.var 0)), ("t", .tind "List" [.place (.var 0)])])] }
 def roseD : IndDecl :=
   { name := "Rose", params := [(h "A", .sort 1)],
-    ctors := [("Node", [("a", .place (.var 0)), ("kids", .tind "List" [.tind "Rose" [.place (.var 1)]])])] }
+    ctors := [("Node", [("a", .place (.var 0)), ("kids", .tind "List" [.tind "Rose" [.place (.var 0)]])])] }
 def singleD : IndDecl :=
   { name := "Single", params := [(h "A", .sort 1), (h "a", .place (.var 0))],
-    ctors := [("MkS", [("x", .place (.var 1)), ("e", .eq (.place (.var 2)) (.place (.var 0)) (.place (.var 1)))])] }
+    ctors := [("MkS", [("x", .place (.var 1)), ("e", .eq (.place (.var 1)) (.place (.var 3)) (.place (.var 0)))])] }
 def teqD : IndDecl :=
   { name := "TEq", params := [(h "U", .sort 2), (h "a", .place (.var 0)), (h "b", .place (.var 1))],
     ctors := [("MkTEq", [("h", .eq (.place (.var 2)) (.place (.var 1)) (.place (.var 0)))])] }
 def bwD : IndDecl :=
-  { name := "BW", ctors := [("MkBW", [("b", .tind "Bool" []), ("x", .call (.const "BF") [.place (.var 0)] false)])] }
+  { name := "BW", ctors := [("MkBW", [("b", .tind "Bool" []), ("x", .call (.const "BF") [.place (.var 1)] false)])] }
 def bhD : IndDecl :=
-  { name := "BH", ctors := [("MkBH", [("b", .tind "Bool" []), ("x", .call (.const "BG") [.place (.var 0)] false)])] }
+  { name := "BH", ctors := [("MkBH", [("b", .tind "Bool" []), ("x", .call (.const "BG") [.place (.var 1)] false)])] }
 def vecD : IndDecl :=
   { name := "VecF", params := [(h "A", .sort 1), (h "n", .tind "Word" [])],
     ctors := [("VNil", [("h", .eq (.tind "Word" []) (.place (.var 0)) (.ctor "Word" 0 (h "") [] []))]),
-      ("VCons", [("m", .tind "Word" []), ("x", .place (.var 2)), ("xs", .tind "VecF" [.place (.var 3), .place (.var 1)]),
-        ("h", .eq (.tind "Word" []) (.place (.var 4)) (.ctor "Word" 1 (h "") [] [.place (.var 2)]))])] }
+      ("VCons", [("m", .tind "Word" []), ("x", .place (.var 1)), ("xs", .tind "VecF" [.place (.var 1), .place (.var 5)]),
+        ("h", .eq (.tind "Word" []) (.place (.var 0)) (.ctor "Word" 1 (h "") [] [.place (.var 5)]))])] }
 def isZD : IndDecl :=
   { name := "IsZ", params := [(h "n", .tind "Word" [])], sort := 0,
     ctors := [("MkZ", [("h", .eq (.tind "Word" []) (.place (.var 0)) (.ctor "Word" 0 (h "") [] []))])] }
 def fin1D : IndDecl :=
   { name := "Fin1", params := [(h "n", .nat)], ctors := [("Only", [("h", .eq .nat (.place (.var 0)) (.succ .zero))])] }
 def vD : IndDecl :=
-  { name := "V", ctors := [("MkV", [("n", .nat), ("x", .tind "Fin1" [.place (.var 0)])])] }
+  { name := "V", ctors := [("MkV", [("n", .nat), ("x", .tind "Fin1" [.place (.var 1)])])] }
 
 def reD : IndDecl :=
   { name := "RE", params := [(h "A", .sort 1)],
     ctors := [("MkRE", [("xs", .tind "List" [.place (.var 0)]),
-      ("v", .eq (.tind "Word" []) (.call (.const "LenL") [.place (.var 1), .place (.var 0)] false) (.ctor "Word" 1 (h "") [] [.ctor "Word" 0 (h "") [] []]))])] }
+      ("v", .eq (.tind "Word" []) (.call (.const "LenL") [.place (.var 0), .place (.var 2)] false) (.ctor "Word" 1 (h "") [] [.ctor "Word" 0 (h "") [] []]))])] }
 def hD : IndDecl :=
   { name := "H", params := [(h "f", .pi [h "x"] [.tind "Word" []] (.sort 1))],
     ctors := [("HB", []), ("HS", [("y", .call (.const "App0") [.place (.var 0)] false),
-      ("r", .tind "H" [.place (.var 1)])])] }
+      ("r", .tind "H" [.place (.var 0)])])] }
 def mmD : IndDecl :=
   { name := "MM", params := [(h "G", .pi [h "X"] [.sort 1] (.tind "Word" []))],
     ctors := [("MkMM", [("y", .call (.const "MG") [.place (.var 0)] false)])] }
 def fpD : IndDecl :=
   { name := "FP", params := [(h "f", .pi [h "x"] [.tind "Word" []] (.tind "Word" []))],
-    ctors := [("MkFP", [("y", .tind "Word" []), ("e", .eq (.tind "Word" []) (.call (.place (.var 1)) [.place (.var 0)] false) (.place (.var 0)))])] }
+    ctors := [("MkFP", [("y", .tind "Word" []), ("e", .eq (.tind "Word" []) (.call (.place (.var 0)) [.place (.var 2)] false) (.place (.var 2)))])] }
 
 /-- The program's declarations. -/
 def progDecls : List IndDecl :=

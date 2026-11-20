@@ -161,4 +161,28 @@ ochr DMProbeAdv uses Nats, Lists, WordType {
   ("LB", "κ is not a type: its declared type is not a sort"),
   ("mm0Bad", "field y of MkMM has type Unit, expected Word")]
 
+/-! ## Parameters solved from a field's type, with no hint (docs/34 §14.1 item 7)
+
+Each `let` below runs its constructor with no parameters written and no hint naming the type, so
+the checker solves the parameter from the field's type (`Machine.unifyParams`). `SC` is the
+suite's pattern (a type parameter, a direct argument of the field's type: `Cell.MkC(h, t :
+SliceOf(R))`); `SW`, `SH`, `SO` solve a value or a large parameter, which no program of the suite
+does (traced over `lake exe tests`). All accepted. The model's runs: `DataModel/ParamSolve.lean`
+(`SC`'s parameter is read back off the field's record; on `SW`, `SH` and `SO` the run fails). -/
+
+ochr DMProbeSolve uses Nats {
+  inductive Sl (R : Type) := MkSl(c : R)
+  inductive CellT (R : Type) := MkCT(h : Nat, t : Sl(R))
+  def SC (s : Sl(Nat)) : Nat := (let c = MkCT(0, s); 0)
+  inductive Tag (n : Nat) := MkTag(x : Nat)
+  inductive Wrap (n : Nat) := MkW(t : Tag(n))
+  def SW (t : Tag(3)) : Nat := (let w = MkW(t); 0)
+  def F0 (x : Nat) : Type := Nat
+  inductive HL (f : Π(x : Nat). Type) := MkHL(y : Nat)
+  inductive HW (f : Π(x : Nat). Type) := MkHW(t : HL(f))
+  def SH (t : HL(F0)) : Nat := (let w = MkHW(t); 0)
+  inductive Opt2 (n : Nat) := A2(t : Tag(n)) | B2(h : Eq(Nat, n, 3))
+  def SO (t : Tag(3)) : Nat := (let w = A2(t); 0)
+}
+
 end Ochr.Meaning.DataModel.Probes

@@ -109,6 +109,7 @@ import Ochr.Meaning.DataModel.RankCounterexample
 import Ochr.Meaning.DataModel.Faithful
 import Ochr.Meaning.DataModel.Degenerate
 import Ochr.Meaning.DataModel.Adversarial
+import Ochr.Meaning.DataModel.ParamSolve
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
