@@ -17,6 +17,13 @@ With the reference's drop of the slice (`Run.dropAt`: no test of the meaning at 
 drop step itself is false at `q = *h`: the checker re-roots to `h` and does nothing, the reference
 writes `moved` through the `*` (a `*` is the identity on meanings). The checker reads a `*` only
 of a borrow (`stepV`), which (WF1) puts only at a root.
+
+The state is reached by an accepted program (`def DP1 (h : Eq(Nat, Z, Z)) : Unit := (let k = Z;
+match k { Z => (), S m => (let a = *h; ()) })`: the arm `S` is never run, so never checked, and
+`jdMoves` reads its move of `*h`). Since the checker's D101 (main, c4628e33) `jdGrain` rejects a
+move through `*` of a place not declared a borrow (`DP1` is rejected), and the grain asks the `*`
+step's borrow type again (`Steps.StepOk`). The leaf is then proved (`JoinNoop.grain_deref_not_proof`, from
+(C⋆)). The counterexample below is to the leaf at the grain as it stood (`GrainOkOld`).
 -/
 
 namespace Ochr.Meaning.Regress.GrainDerefProof
@@ -27,11 +34,21 @@ open Ochr.Meaning.Regress.GenNeutralContent (outVal outSt isOk runs_out)
 def hB : Binding := { hint := ⟨"h"⟩, ty := some (.tEq .tNat .zero .zero), val := .proof, decl := .prop }
 def S : MState := { env := #[{ binds := #[hB] }] }
 
-/-- `grain_deref_not_proof`'s statement, at a context. -/
+/-- The grain's step as it stood: a `*` step needed nothing. -/
+def StepOkOld (Γ : List IndDecl) (r : DeclInfo) : Step → Prop
+  | .proj _ | .field _ => ∃ n args d, r = .ind n args ∧ Γ.find? (·.name == n) = some d ∧ d.ctors.length = 1
+  | .deref => True
+
+/-- The grain as it stood. -/
+def GrainOkOld (D : Decisions) (Γ : List IndDecl) (sc : List DeclInfo) (q : Place) : Prop :=
+  ∀ (p : Place) (x : Step) (rest : List Step), p.steps.1 = q.steps.1 → q.steps.2 = p.steps.2 ++ x :: rest →
+    StepOkOld Γ (D.placeDecl sc p) x
+
+/-- `grain_deref_not_proof`'s statement, at a context, at the grain as it stood. -/
 def GrainDerefStmt (K : RunCtx) (ρ : Assignment) (φ : Future) : Prop :=
   ∀ (st : MState) (s : SState) (π : Nat → Nat) (q p : Place),
     Good K.dm K.M K.Γ ρ st → CtxOk K ρ st → Rel K ρ φ π st s →
-    GrainOk K.D K.Γ (scopeOf s) q → K.D.copy (K.D.placeDecl (scopeOf s) q) = false →
+    GrainOkOld K.D K.Γ (scopeOf s) q → K.D.copy (K.D.placeDecl (scopeOf s) q) = false →
     p.steps.1 = q.steps.1 → p.steps.2 ++ [.deref] <+: q.steps.2 →
     ckContent st.env p = some .proof → False
 

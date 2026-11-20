@@ -80,6 +80,7 @@ import Ochr.Meaning.Regress.OpenWriteDep
 import Ochr.Meaning.Regress.GenNeutralContent
 import Ochr.Meaning.Regress.GrainDerefProof
 import Ochr.Meaning.Regress.StepKindsTable
+import Ochr.Meaning.Regress.JoinPrefixBorrow
 import Ochr.Meaning.Regress.RefsPathCond
 import Ochr.Meaning.Regress.FreshBound
 import Ochr.Meaning.Regress.EntryCheck
@@ -99,6 +100,11 @@ import Ochr.Meaning.Regress.ReturnParam
 import Ochr.Meaning.Regress.FrameCheck
 import Ochr.Meaning.Regress.CallInPlaceD99
 import Ochr.Meaning.Regress.InFlight
+import Ochr.Meaning.Regress.EvalMemGap
+import Ochr.Meaning.Steps.EvalMem
+import Ochr.Meaning.Steps.StrictSim
+import Ochr.Meaning.Regress.EvalMemRuns
+import Ochr.Meaning.Regress.OpenFalse
 import Ochr.Meaning.Regress.DefKnot
 import Ochr.Meaning.Regress.IdWrite
 import Ochr.Meaning.SubstAbs
