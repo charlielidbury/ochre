@@ -940,3 +940,20 @@ Decision (the orchestrator, from two findings of the meaning spine, docs/31 D41)
   - `lake exe sweep` (70,207 states) and `--probes`: every clause as before, with the same kinds for the two clause faults already with the proof lead.
   - Every hand-run probe file reports what it did on main.
 - RULES §3 [Join] and the paper's *Join* paragraph gain the rule. The paper's body is unchanged.
+
+## D95. The decision procedures write no cache (user, 2026-11-21) [lane: no-decision-caches]
+Decision (the orchestrator, after a measurement). The decision procedures in `Ochr/Decide.lean` wrote two caches into the checker's state. `constDecls` held what each global's declared type says (`declOf` on a constant), and `classCache` held each Π-type's erasure class (`fnClass`). The consistency proof must show after every step that the model's decisions are still the checker's, and a decision procedure that writes the state makes that a proof about cache coherence. A plain checker is also part of the paper's claim.
+- **Rule.** Both caches are removed, along with their `MState` fields and their keeping in `restoreKeep` and `exitWorld`, and the procedures recompute. The stability proofs lose their hypothesis about the cache: `ClassCacheSound` and `lookup_mem` are deleted, and `step_fnClass_shape` holds at any state, leaving it unchanged.
+- **Evidence.** `lake build` is green with 2,173 verdicts. A dump of every row's verdict, message, location and log size, in both located modes, is identical to main (8035f7ed). `lake exe sweep` (70,207 states) and `--probes` give the same counts.
+- **Cost.** Three interleaved runs each, on 15 pinned cores. Nothing else was busy: other Claude sessions at 1–3% CPU, an oversight web app and one Lean editor worker, load average 1.1–2.4 on 20 cores.
+
+  | | with the caches | without | change |
+  |---|---|---|---|
+  | `lake build` of the examples (outputs deleted, every verdict re-checked) | 162.9 / 159.7 / 160.8 s | 192.0 / 187.0 / 187.0 s | +16% |
+  | `lake exe tests`, total check time (sum of per-declaration medians of 21 runs) | 9.86 / 9.69 / 9.82 s | 11.13 / 11.07 / 11.30 s | +13% |
+
+  The slowdown is spread over every call, because `fnClass` runs at each call and now recomputes the callee's telescope and codomain reading:
+  - The slowest declarations grow 9–13%: `Quicksort.ContractRun2` goes from 2.14 to 2.32 s and `ContractRun1` from 1.53 to 1.69 s.
+  - The largest relative growth, about 1.3x, is in call-heavy code over long dependent telescopes: `Quicksort.Scan*` and `ArrayLemmas.SwapIsSwapS`.
+- **Available, not taken.** The smallest pure change that would buy the time back is to compute a global's type reading and its Π-type's class once, when the global is added, and store them with its declaration (`GDef`). That is declaration data, not run state, and it covers constants and most calls. It is to be taken only when a workload needs it.
+- **Still written.** `liveScope`, the reader's mode flag, is still set and restored around a reading by `withLive`. RULES and the paper never described the caches, so they are unchanged.
