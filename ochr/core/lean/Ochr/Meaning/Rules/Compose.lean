@@ -59,6 +59,40 @@ theorem mkEqM_C (hmono : CounterMono) (E : Syn) (hs : SynSound K ρ φ E) (hl : 
   rw [← hΓ] at hd'
   exact ⟨hk, eqTo_sound K ρ φ hs hprem hl hd' ha hb hma hmb hda hdb⟩
 
+/-- A side of an `Eq`: `⊥` (D84: moved on every path), or a whole member of the type. -/
+def SideOk (A a : Value) : Prop :=
+  a = .bot ∨ ((meanV K ρ φ (.plain (tyOf K ρ φ A)) a).whole ∧
+    meanV K ρ φ (.plain (tyOf K ρ φ A)) a ∈ₛ[K.dm.read] tyOf K ρ φ A)
+
+theorem SideOk.pmem {A a : Value} (h : SideOk K ρ φ A a) :
+    DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain (tyOf K ρ φ A)) a) (tyOf K ρ φ A) := by
+  rcases h with rfl | ⟨hw, hm⟩
+  · exact .inl rfl
+  · exact DataModel.pmem_of_mem K.dm.read K.Γ hw hm
+
+theorem SideOk.not_moved {A a : Value} (h : SideOk K ρ φ A a) (hb : a ≠ .bot) :
+    meanV K ρ φ (.plain (tyOf K ρ φ A)) a ≠ .moved := by
+  rcases h with rfl | ⟨hw, -⟩
+  · exact absurd rfl hb
+  · intro e; rw [e] at hw; simp [Sem.whole] at hw
+
+/-- **(C) `mkEqM`, the lead's form** (decision 3): the sides are `⊥` or whole members of `A`, and
+their constructor values are of data declarations (membership does not give this: a `Prop`
+inductive's values all mean `⋆`, so [Eq-disj] between two of its constructors would compute
+`False` for `⋆ = ⋆`; the checker never builds one, D42, `ShapeFacts` (N) for Ω). -/
+theorem mkEqM_C' (hmono : CounterMono) (E : Syn) (hs : SynSound K ρ φ E) (hl : LibOk K ρ φ)
+    (fuel : Nat) (st st' : MState) (A a b P : Value) (bh : Nat) (hΓ : K.Γ = st.inds)
+    (hbridge : EqTo Syn.machine (machPremises st) st.globals st.inds A a b P →
+      EqTo E (machPremises st) st.globals st.inds A a b P)
+    (hprem : PremSound K ρ φ (machPremises st))
+    (ha : SideOk K ρ φ A a) (hb : SideOk K ρ φ A b)
+    (hda : a.anyAtom (dataCtorBad K.Γ) = false) (hdb : b.anyAtom (dataCtorBad K.Γ) = false)
+    (h : Runs (Ochr.mkEqM fuel A a b) st bh P st') :
+    KeptAfter st st' ∧ ∀ hint, meanV K ρ φ hint P =
+      .ty (TyM.prop (meanV K ρ φ (.plain (tyOf K ρ φ A)) a = meanV K ρ φ (.plain (tyOf K ρ φ A)) b)) :=
+  mkEqM_C K ρ φ hmono E hs hl fuel st st' A a b P bh hΓ hbridge hprem (ha.pmem K ρ φ) (hb.pmem K ρ φ)
+    (ha.not_moved K ρ φ) (hb.not_moved K ρ φ) hda hdb h
+
 end
 
 /-- A run that leaves no new reference: the state after is the state before with its tables grown
