@@ -698,9 +698,10 @@ environment, goal and records in force are the state's, the table of unknowns on
 `t` is the text of a sealed program the state holds, or one a substitution made of it: its loans
 are live borrows of the state (its holes, `hholes`), its tail reads no hint (`htf`, (WF16)), and its
 reference run succeeds (`hok`, the restriction of untyped runs to checked code, docs/31 D20 item 4).
-Its proof runs the induction hypothesis on the nested state (`env := #[{}]`), which holds the holes
-as loans whose borrows are outside it: no state of that run is `Good` as stated ((WF2), and the
-future is untyped at the holes), which is the nested-run obligation `nestedRun_sim`. -/
+Since main's D97 a text that holds a loan is not run: `nfSealed` returns `⌈t⌉` as it is, which
+means itself (`ρ' = ρ`); a text that holds none is run, and that is `nestedRun_sim` (`Steps/Call.lean`)
+for a hole-free program under plain `Good` (docs/31 D63). The nested state no longer holds loans
+whose borrows are outside it, which no relative form of `Good` is needed for. -/
 def nfSealed_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (t : Term) (v : Value) (hint : TyS)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
