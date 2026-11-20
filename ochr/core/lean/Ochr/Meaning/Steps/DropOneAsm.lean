@@ -1,4 +1,5 @@
 import Ochr.Meaning.Steps.DropRuns
+import Ochr.Meaning.Steps.BotWriteGood
 
 /-!
 # `dropOne_step` assembled where the place exists (docs/31 D30; task C)
@@ -120,12 +121,6 @@ theorem botWrite_hyps (st : MState) (s : SState) (π : Nat → Nat) (q : Place) 
       (grainOk_of_steps (by rw [jdExtend_steps]; simp [Place.steps]) hgr) ?_ (by rw [hv]; rfl)
     unfold ckContent; simp [Place.steps, hck, Value.follow]
 
-/-- **`Good` after the write of `⊥`** (L3's other half): membership by `MovedOf` (a part moved out
-of a member), and every clause of well-formedness survives removing a part. Open: not tried. -/
-theorem botWrite_good (st : MState) (pos : Pos) (steps : List Step) (v' : Value)
-    (hg : Good K.dm K.M K.Γ ρ st) (hv : Value.updAt (fun _ => .bot) steps (valAt st.env pos) = some v') :
-    Good K.dm K.M K.Γ ρ { st with env := Env.setAtE st.env pos v' } := by
-  sorry
 
 /-- A borrow held at a position of Ω is live. -/
 theorem liveLoan_of_holder {env : Env} {pos : Pos} {l : Nat} {w : Value} (hp : pos ∈ allPos env)
@@ -295,7 +290,7 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
     subst hposfi
     have hrel := botWrite_rel K ρ φ st₃ _ π f i q.steps.2 v' hs₃ hg₃.2.2.1 hpb hsp hupd hroot htype hclear₃ hplain hnat
     rw [dropAt_data K ρ φ st s π q (.bind f i) v hg hs hres hv hb hbot hproof hcopy, hst']
-    exact ⟨hrel, botWrite_good K ρ st₃ (.bind f i) q.steps.2 v' hg₃ hupd⟩
+    exact ⟨hrel, botWrite_good K ρ st₃ (.bind f i) q.steps.2 v' hg₃ hpb hupd hroot hclear₃ hplain hnat⟩
 
 /-- **The checker's drop of one place keeps the run context and creates no unknown** (`dropAtJoin`
 ends a borrow, accesses and writes: no unknown, global or declaration changes). Open: not tried. -/
