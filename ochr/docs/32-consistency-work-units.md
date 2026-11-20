@@ -78,7 +78,9 @@ What changes because of it. (1) Breadth before depth: after the call steps are s
 - *The half where the place has to be made first* (an unknown pair refined into its fields, or a stuck value generalised) is the real work. It needs the counterpart, for unknowns, of the substitution lemma already proved for borrows: replacing an unknown by what a refinement says it is keeps every meaning. That is one large proof, of the size of a core lemma, plus the re-running of stuck programs after a refinement.
 - *Two facts about the checker alone* (a read loses no unknown; reading a decision leaves the state as it was) are true by inspection; one is long because it is an induction over the whole interpreter.
 - The rest of row 3 (matching on a known constructor, splitting on an unknown, closing a stuck match into a block, leaving an arm) is stated but not yet broken into pieces. The stuck match is the largest and riskiest step in the row.
-A prover works on this slice alone, easy half first.
+Agreed with the user on 2026-11-20: a dedicated prover takes the easy half first; the hard half waits until the breadth pass has covered refinement, since that decides the statement of its large lemma.
+
+At most three agents run at once (agreed with the user): the proof's lead on the breadth pass over the step areas, one agent on the data layer, and the slice prover; a checker fix, when one is needed, takes the place of one of them for its duration.
 
 **The breadth-first pass: every remaining area attacked before more is proved.** The pattern so far is that an area's first real attack finds its faults (the join forced two rebuilds of the model, calls three, the data model four findings before anything was built). So before leaf lemmas are proved elsewhere, each remaining area gets a bounded attack, about half a day at most, by the proof's lead:
 1. its statements written in their final form;
