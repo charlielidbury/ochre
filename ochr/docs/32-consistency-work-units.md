@@ -1,6 +1,6 @@
 # 32. The consistency proof as work units: done and to do
 
-Written 2026-11-19; last updated the same day, after both checker changes landed on main (9c78a376). A map of the whole consistency effort (Target A of docs/18), one row per unit of work of roughly one agent's size. The plan itself is docs/18; the detailed record of the Lean development is docs/31 on the `spine` branch.
+Written 2026-11-19; last updated 2026-11-20, late evening (tables, progress paragraph and diagram brought into line with each other). A map of the whole consistency effort (Target A of docs/18), one row per unit of work of roughly one agent's size. The plan itself is docs/18; the detailed record of the Lean development is docs/31 on the `spine` branch.
 
 The numbers are estimates by the orchestrating session, not measurements.
 
@@ -27,7 +27,7 @@ Not counted, because they are off the consistency path: `id-audit` and `subst-su
 
 ## To do (64%)
 
-No step lemma is proved end to end yet, but the first one is close (2026-11-20, `spine` 0a71dd94): the drop at the join is proved from the drop of one place, and the drop of one place is proved apart from a short list of named obligations (three typing facts, two facts about the checker, and what the run context is after each step). That is the evidence that the statement form supports a proof. What else is done is definitions, the four core lemmas, and attacks that corrected the statements.
+No step lemma is proved end to end yet (2026-11-20, late evening). The furthest along is the drop at the join: it is proved from the drop of one place, and that one is proved apart from named obligations, of which the bookkeeping is now proved and one typing fact is the real work (see "The two things running in parallel"). Calls, the top-level chain, `Id`, and equality and `J` have their statements in final form and are proved from named pieces, with the model's runs checked in Lean beside the checker's verdicts; the pieces themselves are open. What else is done is definitions, the four core lemmas (re-proved on each rebuild of the model), and attacks that corrected the statements.
 
 **What can depend on what.** Nothing depends on a proof: once a statement is fixed, other work assumes it. Work depends only on definitions and statements. So the two rows that change definitions and statements (1 and 2) come first and everything else builds on them, and no arrow in the diagram leaves a prover row except into the assembly. Among the prover rows the order is a choice, not a dependency: the highest P(failure) for the least time first, so that risk comes forward. Matches and arms leads because it holds the first proof of any step, which is the first real test of the statement form.
 
@@ -47,7 +47,7 @@ No step lemma is proved end to end yet, but the first one is close (2026-11-20, 
 | 12 | Provers: simple steps | Borrow primitives, substitution, plain evaluation, tail forms. | 1% | 4% |
 | 13 | Assembly | The top-level theorems, closing the induction, and the data model for a whole program. | 1% | 4% |
 
-**Progress inside the to-do rows** (estimated 2026-11-20; a row moves to the done table only when it is finished). Row 1, reference-run redesigns: about four fifths (the checker redesign, the model rebuilt on it, self-describing data values, coded types built; a nested inductive's code and the older open differences left; re-estimated after D59, 2026-11-21). Row 2, statement migration: about half (the relation re-made, about a fifth of the statements in the new form). Row 3, matches and arms: about half (the drop at the join proved apart from named obligations). Every other row: not started, apart from invariant clauses for row 6 that are tested by the sweep and not yet proved preserved. That is about 14 of the 64 points, so roughly half of the whole effort is done.
+**Progress inside the to-do rows** (estimated 2026-11-20, late evening; a row moves to the done table only when it is finished). Row 1, reference-run redesigns: nearly all of it (the checker redesign, the model rebuilt on it, coded types, records for reads, the data layer ported to tree values; left: small alignments of the run with the checker that the port and the breadth pass named). Row 2, statement migration: about two thirds (the relation re-made; calls, the top-level chain, `Id`, equality and `J` in final form; splits and worlds, the well-formedness table, closures and recursion, and dependent values still to be attacked). Row 3, matches and arms: about two fifths (the drop at the join proved apart from named obligations; one of them is the slice's typing fact). Rows 5, 9, 10 and 13 (`Id`, equality, calls, assembly): the step follows from named pieces, the pieces are open; about a fifth each. Row 6: invariant clauses are tested on every recorded checker state, none proved preserved. Row 11: one statement (the checker's reading of a type's sort is sound for the model) is being stated by the slice. Rows 4, 7, 8, 12: not started. That is about 19 of the 64 points, so a little over half of the whole effort is done.
 
 ## Reading the risk column
 
@@ -67,20 +67,35 @@ Asked by the user on 2026-11-20: the effort keeps finding problems and no row of
 | 19 Nov 16:30 to 20 Nov 04:00 | 3 (D90, D91, D92) | 1 (D90: three accepted functions that failed when run) | 2 (static lending; self-describing data values) | 2 | 0 | 1 (the join) |
 | 20 Nov 04:00 to 16:30 | 6 (D93 to D98) | 3 (D93: two bugs and Rust's disjoint fields; D94: an ill-typed dead arm; D98: nine probe rows) | 3 (coded types; data codes; reads at recorded values) | 2 | 0 | 2 (the join, calls) |
 
-What the counts say. The checker changes are getting less serious: the first fixed real faults; most since change no verdict and only make the checker's own paths agree. The model and the relation are not settling yet: each new area attacked by proof has forced a change to them. No step is closed. Six areas have not been attacked at all (dependent values, `Id`, equality and `J`, splits and worlds, closures and recursion, well-formedness), and the pattern so far is that an area's first real attack finds its faults.
+Per area, since the breadth-first pass began (2026-11-20, evening). "Statements false" counts statements found false or empty by the attack.
+
+| Area attacked | Checker faults | Model definitions changed | Relation changed | Statements false | Note |
+|---|---|---|---|---|---|
+| Calls | 1 (a returned borrow kept its argument's label; fixed as D99, no verdict change) | 1 | 0 | 4 | found by writing the proofs that glue the pieces |
+| The data model | 0 | 2 (recursion through nested types; large type parameters) and a redesign, ported on 2026-11-20 (a data value means its own tree; the whole library builds on it, rebuilt and axiom-checked independently; a dropped value is now below the original and a partly moved value is a member in the form first stated, both of which the old layer got the other way; the statement that the type `False` has no member is now proved). The port found one disagreement with the checker: the checker solves a constructor's value parameter from the type of a field (`MkW(t)` with `t : Tag(3)` gives `Wrap(3)`), which the model cannot mirror because it does not treat `Tag` as injective. No program in the suite does this; three constructed ones do. Decided: the checker stops inferring such parameters from fields (they come from the expected type or are written); not landed yet | 0 | 2 (the existence statement is satisfied by a model that ignores the program) | found before anything was built |
+| The top-level chain | 0 | 0 | 0 | 2 | the chain closed for a constant and stopped at a function: the context assumed, of the definition being checked, what was to be proved of it. The plan's outer induction on the decreasing argument was missing from the Lean statements; it changes the context every step assumes, not the relation. Built since (2026-11-20, late evening): the context names the definition being checked and assumes of it only its good behaviour on smaller arguments; the chain now closes for a recursive function too, every gap a named statement, and a real recursive definition goes through the induction in Lean's kernel. Building it found no statement false |
+| `Id` | 0 | 0 | 0 | 1 (the observation's statement said nothing about the state a side leaves) | the step follows from four named pieces; observations checked in Lean on a write through a borrow, with rejected controls |
+| Equality and `J` | 0 | 0 | 0 | 3 (a conversion was said to leave the state unchanged, but comparing two functions creates unknowns that stay; the steps read the wrong tail flag, so a body's `let` was compared out of tail position; a type's evaluation started from the wrong state) and 2 incomplete | both steps follow from their named pieces; checked in Lean on accepted and rejected programs and on the reference's own runs |
+| Splits and worlds | 0 | 0 | 0 | 2 of the lead's (a substitution was said to leave the state unchanged, but re-running a stuck program keeps the unknowns it makes; leaving a world concluded nothing about the context) and 9 of the slice's unproved obligations, all from one cause: a step that creates unknowns must conclude under an extended context | the statement that refining an unknown keeps every meaning is in final form and was checked first on the checker's own states: a stuck program re-run after a refinement, a refinement of an unknown that a record or a stored type mentions, and a refinement in one arm followed by the join |
+| The well-formedness table, and the substitution lemma for unknowns | 0 | 0 made, 1 proposed (the reference run types a value written in a program's text less precisely than the checker does; to be aligned at the end of the data layer's port) | 0 | 1 (the run-level substitution lemma for unknowns is false as the run stands, shown by a kernel-checked counterexample at the smallest text) | every clause of the invariant now has a row saying which steps make it true and which must keep it. Proofs that a clause is kept exist only for three kinds of write; most borrow-discipline clauses are tested on every recorded state and not proved; the clauses about meanings are neither. One small new clause (an unknown read as a sort has a sort as its type; true on all 76,568 recorded states) makes "the checker's reading of a type's sort is sound" a lemma instead of an assumption |
+| The first slice (the easy half of the drop, by proving) | 1 (a function into proofs was read as not a copy although its values are proofs; being fixed as D100, no suite verdict changes) and an internal assertion that rejects a recursive lemma with a non-tail match | 0 | 0 | 4 (the context after a read cannot answer for unknowns the read created; a typing fact was tested but never made part of the invariant; the two leaves about a data place never reading as a proof were false at a function's own binding, by the checker fault) | the first two by the prover's first pass; the checker fault by sweeping the candidate clause on every recorded state before assuming it |
+
+Reading on 2026-11-20, late evening: the last five areas attacked by the lead (the top-level chain, `Id`, equality and `J`, splits and worlds, the well-formedness table) forced no change to the relation and one small proposed change to the model; their faults were all in statements and were fixed in the same pass. The pass has now covered every area that does not wait on the data layer's port (closures and recursion, and dependent values, do). By the stop rule's first test the architecture stands; its second test, a step closed end to end within a week, is still open. The one checker fault since came from the slice, by testing a clause on recorded states before assuming it.
+
+What the counts say (written before the breadth pass). The checker changes are getting less serious: the first fixed real faults; most since change no verdict and only make the checker's own paths agree. The model and the relation are not settling yet: each new area attacked by proof has forced a change to them. No step is closed. Six areas have not been attacked at all (dependent values, `Id`, equality and `J`, splits and worlds, closures and recursion, well-formedness), and the pattern so far is that an area's first real attack finds its faults.
 
 What changes because of it. (1) Breadth before depth: after the call steps are stated and checked on concrete runs, every remaining area gets a bounded attack of the kind that has worked (its statements in final form, concrete runs checked in Lean beside the checker's verdicts, any needed fact swept on recorded states; no reading-only judgements), before more leaf lemmas are proved. That brings the remaining redesigns forward and shows whether the stream of faults is drying up. (2) A stop rule: if a full pass over the remaining areas still forces a change to the relation or a model rebuild per area, or if no step is closed end to end within a week of that pass, the architecture is re-examined (first candidate: a declarative rule system between the checker and the model, docs/33 item 2) instead of continuing.
 
 ## The two things running in parallel (from 2026-11-20)
 
 **The first vertical slice: one step proved all the way down.** The step is the drop at the join, the first step of row 3. Its proof is split into pieces and the glue between the pieces is proved. What is left, in words:
-- *The half where the place to drop already exists* is nearly closed. It needs a few small typing facts (a data place never reads as a proof), and the bookkeeping that the run's context is still right after a read.
+- *The half where the place to drop already exists* is not nearly closed, as first thought (corrected 2026-11-20 evening). The bookkeeping is proved (a read's decisions leave the state as it was). What is left is one typing fact, a data place never reads as a proof, and it rests on three things: a clause of the invariant about the place's type (true on every recorded state once the checker reads a function into proofs as a copy, D100); that reading along a place's path respects types, which is stated against the new data layer and proved there; and that the checker's reading of a type's sort is sound for the model, which is the slice's riskiest piece and is being attacked from its hardest case, a type that is a stuck call.
 - *The half where the place has to be made first* (an unknown pair refined into its fields, or a stuck value generalised) is the real work. It needs the counterpart, for unknowns, of the substitution lemma already proved for borrows: replacing an unknown by what a refinement says it is keeps every meaning. That is one large proof, of the size of a core lemma, plus the re-running of stuck programs after a refinement.
 - *Two facts about the checker alone* (a read loses no unknown; reading a decision leaves the state as it was) are true by inspection; one is long because it is an induction over the whole interpreter.
 - The rest of row 3 (matching on a known constructor, splitting on an unknown, closing a stuck match into a block, leaving an arm) is stated but not yet broken into pieces. The stuck match is the largest and riskiest step in the row.
 Agreed with the user on 2026-11-20: a dedicated prover takes the easy half first; the hard half waits until the breadth pass has covered refinement, since that decides the statement of its large lemma.
 
-At most three agents run at once (agreed with the user): the proof's lead on the breadth pass over the step areas, one agent on the data layer, and the slice prover; a checker fix, when one is needed, takes the place of one of them for its duration.
+At most two agents run at once (the user's instruction, 2026-11-20 late evening; it was three before). The data layer's port keeps one place because the riskiest remaining areas wait on it. The other place goes, in turn, to a checker fix while one is needed, then to the slice prover (the first step proved end to end is the open test of the architecture), then to the proof's lead for the remaining statement work.
 
 **The breadth-first pass: every remaining area attacked before more is proved.** The pattern so far is that an area's first real attack finds its faults (the join forced two rebuilds of the model, calls three, the data model four findings before anything was built). So before leaf lemmas are proved elsewhere, each remaining area gets a bounded attack, about half a day at most, by the proof's lead:
 1. its statements written in their final form;
@@ -107,6 +122,10 @@ Changes to the language or the checker made in service of the proof. Each stays 
 
 - **A call's returned borrow is always a fresh one** (D99; on main since 2026-11-20 at 874584e1). When a function returned its own borrow parameter and the call ran, the result kept the argument's label, where a stuck call and the model's application of a function both give a fresh one. Now all three agree. No verdict, message or location changed; it is a renaming of labels.
 
+Decided and not yet on main (they move up into the list when they land):
+- **Every proposition is a copy, a function into proofs included.** The checker's copy test had no case for a function type whose result is a proposition, so such a value was treated as a resource although it is a proof. Found by testing a clause of the proof on every recorded checker state. No suite verdict changes; programs that use a proof function twice may go from rejected to accepted.
+- **A constructor's parameter is solved from its fields only when it is a type.** Today `let w = MkW(t)` with `t : Tag(3)` and `inductive Wrap (n : Nat) := MkW(t : Tag(n))` is accepted, the checker solving `n := 3` from the field's type. The model cannot follow that step (it would need `Tag` to be injective), so the proof has a hole exactly there. After the change the programmer gives the type, `let w : Wrap(3) = MkW(t)`, or returns it at a declared type; both forms are accepted today. No program in the suite is affected. The alternative kept on file gives back inference of number-like parameters at the cost of more machinery in the model.
+
 Acknowledged: borrow ends become a decision every run shares (D90; proposed by the user and acknowledged 2026-11-19).
 
 ## Design questions to ask before each risky unit
@@ -121,12 +140,13 @@ The bar is "as good as Rust for borrowing, as good as Lean for proving". Where a
 
 ## Dependencies
 
-An arrow from X to Y means Y builds on definitions or statements that X produces. Green is done, yellow is running, grey is to do. No arrow leaves a prover row except into the assembly, because nothing depends on a proof; the order among prover rows is the table's.
+An arrow from X to Y means Y builds on definitions or statements that X produces. Green is done, yellow is running, orange means the step is proved from named pieces and the pieces are open, grey is to do. The percentages are the tables' (time, then P(failure)). No arrow leaves a prover row except into the assembly, because nothing depends on a proof; the order among prover rows is the table's.
 
 ```mermaid
 flowchart TD
     classDef done fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef running fill:#fff59d,stroke:#f9a825,color:#000
+    classDef stated fill:#ffe0b2,stroke:#ef6c00,color:#000
     classDef todo fill:#eeeeee,stroke:#757575,color:#000
     classDef goal fill:#bbdefb,stroke:#1565c0,color:#000
 
@@ -142,21 +162,21 @@ flowchart TD
 
     spine3["spine3: prerequisites and<br/>riskiest steps, attacked<br/>5%"]:::done
 
-    redesign["1. Reference-run redesigns<br/>(borrow-ends redesign folded in)<br/>10%, fail 5%"]:::running
-    migrate["2. Statement migration<br/>(the relation re-made)<br/>4%, fail 3%"]:::todo
+    redesign["1. Reference-run redesigns<br/>(borrow-ends redesign folded in;<br/>data layer ported)<br/>12%, fail 6%"]:::running
+    migrate["2. Statement migration<br/>(the breadth-first pass)<br/>4%, fail 3%"]:::running
 
-    pMatch["3. Provers: matches and arms<br/>6%, fail 5%"]:::todo
+    pMatch["3. Provers: matches and arms<br/>(the first slice)<br/>7%, fail 4%"]:::running
     dep["4. Provers: dependent values<br/>5%, fail 8%"]:::todo
-    idn["5. Provers: Id<br/>4%, fail 4%"]:::todo
+    idn["5. Provers: Id<br/>4%, fail 4%"]:::stated
     wf["6. Provers: well-formedness<br/>4%, fail 4%"]:::todo
     universes["7. Universes<br/>1%, fail 1%"]:::todo
     tooling["8. Prover tooling<br/>1%, fail under 1%"]:::todo
-    pEq["9. Provers: equality<br/>5%, fail 3%"]:::todo
-    pCalls["10. Provers: calls and stuck calls<br/>9%, fail 4%"]:::todo
+    pEq["9. Provers: equality<br/>5%, fail 3%"]:::stated
+    pCalls["10. Provers: calls and stuck calls<br/>8%, fail 4%"]:::stated
     pTypes["11. Provers: types and decisions<br/>5%, fail 2%"]:::todo
-    pSimple["12. Provers: simple steps<br/>6%, fail 1%"]:::todo
+    pSimple["12. Provers: simple steps<br/>4%, fail 1%"]:::todo
 
-    assembly["13. Assembly<br/>4%, fail 1%"]:::todo
+    assembly["13. Assembly<br/>4%, fail 1%"]:::stated
     goal(["Consistency:<br/>no closed proof of False"]):::goal
 
     tests --> fixes

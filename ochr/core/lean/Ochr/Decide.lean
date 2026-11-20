@@ -272,16 +272,24 @@ def fieldDecl (fuel : Nat) (d : IndDecl) (args : List DeclInfo) (c i : Nat) : M 
   pure (if r.isData then r else .other)
 termination_by structural fuel
 
-/-- D80, P3: a copy type, read off a declared type: `Unit`, a sort, a proposition, an inductive
-declared `copy`, a non-recursive inductive in `Type₀` with no dependent constructor whose fields
-read as copy types at its arguments as written, and alternatives (a type function's arms) each
-of which is one. Nothing else is one: a type parameter (Ochr has no `copy` bounds), `Nat`, a
-Π-type, a borrow, a type the reader cannot see through. Never read off a value or an evaluated
-type, so every evaluation path decides it alike. -/
+/-- D80, P3: a copy type, read off a declared type: `Unit`, a sort, a proposition or a Π-type
+into proofs (D100), an inductive declared `copy`, a non-recursive inductive in `Type₀` with no
+dependent constructor whose fields read as copy types at its arguments as written, and
+alternatives (a type function's arms) each of which is one. Nothing else is one: a type
+parameter (Ochr has no `copy` bounds), `Nat`, a Π-type into data or types, a borrow, a type the
+reader cannot see through. Never read off a value or an evaluated type, so every evaluation path
+decides it alike.
+
+D100: copy-ness agrees with the sort decision. Every declared reading that is a proposition
+(`DeclInfo.isProof`: `Prop`, or a Π-type whose codomain is one, by impredicativity) is a copy, as
+its values are proofs, erased to `⋆`, which are freely reusable. Before, a Π into proofs read as
+not a copy, so a place holding a proof function was moved by a read and could be dropped by the
+join, while erasure and the model read its value as `⋆`. -/
 def declCopy (fuel : Nat) (r : DeclInfo) : M Bool := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
+  if r.isProof then return true
   match r with
-  | .unit | .sort _ | .prop => pure true
+  | .unit | .sort _ => pure true
   | .alt ds => ds.allM (declCopy fuel')
   | .ind n args =>
     let d ← lookupInd n
@@ -779,14 +787,22 @@ def paramFlags (fuel : Nat) (cs : List Value) (rd : List (DeclInfo × Value)) (d
   pure ((sc'.take ds.length).reverse.map (·.isProof))
 
 /-- Is this leaf (a place, constant or `λ`) a proof, i.e. declared of sort Prop? A
-variable by its binding's flag (`letIn`, `paramFlags`); a constructor field by its
-declared type (v2.0: a parameter declared `: Prop`, or a Prop inductive); other
-sub-places and captured values never are. -/
+variable by its binding's declared reading, as the pre-pass reads it (`preFlags`); a constructor
+field by its declared type (v2.0: a parameter declared `: Prop`, or a Prop inductive); other
+sub-places and captured values never are.
+
+D100: by the declared reading, not the binding's `proof` flag. They differ at one kind of
+binding: a proof function's binding of itself in its body (`runBodyCore`, `checkFix`), and a
+closure's capture of it, which hold the function itself rather than `⋆` so that [Rec] sees the
+recursive calls made through them (D78). Their flag stays `false`, since a capture flagged a proof
+has its reads inlined as `(⋆ : T)` (`capture`), which would hide a call that does not decrease
+from [Rec]. Read by the flag, such a binding captured by a stuck block was a proof by the pre-pass
+and not one after running (INTERNAL [pre-pass], `Recursion.C1`). -/
 def leafProof (fuel : Nat) (t : Term) (v : Value) : M Bool := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   match t with
   | .place (.var i) => match ← varPos i with
-    | .bind f j => pure (← get).env[f]!.binds[j]!.proof
+    | .bind f j => pure (← get).env[f]!.binds[j]!.decl.isProof
     | _ => pure false
   | .place (.field g _) => fieldIsProof g      -- v2.0: a field declared of a proposition
   | .place (.proj _ q) => leafProof fuel' (.place q) v   -- D81: its parent's class

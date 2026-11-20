@@ -44,7 +44,7 @@ def programs : List (String × Block) :=
   [("Prelude", Prelude), ("Bools", Bools), ("Logic", Logic), ("Nats", Nats), ("WordType", WordType), ("Words", Words), ("Lists", Lists),
    ("Options", Options), ("OptionRuns", OptionRuns), ("Boxes", Boxes), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("Drops", Drops), ("FrameModel", FrameModel), ("Moves", Moves), ("ReturnedBorrows", ReturnedBorrows), ("Reborrows", Reborrows), ("StaticEnds", StaticEnds), ("StaticEndsRuns", StaticEndsRuns), ("BlockEntry", BlockEntry), ("BlockEntryRuns", BlockEntryRuns), ("OneConstructor", OneConstructor), ("OneConstructorRuns", OneConstructorRuns), ("JoinPlaces", JoinPlaces), ("HoleSites", HoleSites), ("ObsMoved", ObsMoved), ("FreshResult", FreshResult),
    ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("BlockCaptures", BlockCaptures), ("CloseOffModel", CloseOffModel), ("DeclaredReadings", DeclaredReadings), ("Equality", Equality), ("BotConv", BotConv), ("Moves84", Moves84), ("RuntimeJ", RuntimeJ), ("Rewriting", Rewriting),
-   ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion),
+   ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion), ("ProofCopies", ProofCopies),
    ("CaseSplits", CaseSplits), ("GenType", GenType), ("RenormPi", RenormPi), ("Splitting", Splitting), ("ScrutineeTypes", ScrutineeTypes),
    ("GlobalRecords", GlobalRecords), ("ArmLocal", ArmLocal), ("ArmLocalBoom", ArmLocalBoom), ("ArmRecords", ArmRecords), ("ArmEta", ArmEta), ("Functions", Functions), ("ConvModel", ConvModel), ("CallUnknown", CallUnknown), ("NatLists", NatLists), ("Trees", Trees), ("InPlaceTrees", InPlaceTrees),
    ("PolyLists", PolyLists), ("Positivity", Positivity), ("PositivityParams", PositivityParams),
@@ -72,7 +72,7 @@ def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 2261
+def Ochr.Registry.expectedTotal : Nat := 2293
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal
