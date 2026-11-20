@@ -34,6 +34,12 @@ lean_exe tests where
 lean_exe sweep where
   root := `Sweep
 
+-- The sweep's adversarial programs (`SweepProbes.lean`, `lake exe sweep --probes`): dev tooling,
+-- not a default target, and not counted with the suite's verdicts.
+lean_lib SweepProbes where
+  srcDir := "."
+  roots := #[`SweepProbes]
+
 -- `lake exe fuzz`: the differential naturality fuzzer (Ochr/Fuzz/, notes/fuzzer.md).
 lean_exe fuzz where
   root := `Fuzz

@@ -1,4 +1,5 @@
 import Ochr.Examples.Registry
+import SweepProbes
 
 /-!
 # `lake exe sweep`: `Good`'s read-off clauses on the checker's own states (DEV TOOLING)
@@ -34,7 +35,8 @@ itself).
 Two deliberately false clauses (`planted…`) guard against a vacuous sweep: the run fails unless
 both are reported.
 
-Usage: `lake exe sweep [Block …]` (all blocks if none named), or `Sweep.sweep [("B", B)]` from a
+Usage: `lake exe sweep [Block …]` (all blocks if none named), `lake exe sweep --probes` (the
+adversarial programs of `SweepProbes.lean`, written to make clauses' premises arise), or `Sweep.sweep [("B", B)]` from a
 file that imports this module and declares the `ochr` block `B` (a minimal program). Exit 0 iff
 every real clause holds on every state, both planted clauses are violated, and every verdict is as
 expected.
@@ -298,6 +300,12 @@ def wf12 : Clause where
   name := "(ii) (WF12) under a live fill, only what ending that fill reaches"
   premises := [
     ("a live fill exists", fun st => (liveSites st.env).any (·.2.fill)),
+    ("another live borrow has a site at the same position as a live fill", fun st =>
+      let ss := liveSites st.env
+      ss.any fun (k, x) => x.fill && ss.any fun (l, y) => l != k && y.pos == x.pos),
+    ("... at the same path", fun st =>
+      let ss := liveSites st.env
+      ss.any fun (k, x) => x.fill && ss.any fun (l, y) => l != k && y.pos == x.pos && pathKey y.path == pathKey x.path),
     ("a live site lies strictly under another live borrow's fill", fun st => wf12Premise st.env)]
   check st := wf12Viols st.env
 
@@ -686,4 +694,5 @@ def sweep (blocks : List (String × Block)) : IO UInt32 := do
 end Sweep
 
 def main (args : List String) : IO UInt32 :=
+  if args == ["--probes"] then Sweep.sweep Sweep.probes else
   Sweep.sweep ((Ochr.Registry.programs ++ Ochr.Registry.caseStudies).filter fun (n, _) => args.isEmpty || args.contains n)
