@@ -1,6 +1,6 @@
 # 34. The data model exists: what `exists_dataModel` owes, two constructions, a recommendation
 
-Design note of the data-model lane (branch `spine-datamodel`, from `spine` at d67b1d51). Sections 1–6 are task 1 (the design, before any code); sections 7–10 are task 2 (records against the current definitions, the large-parameter design, the faithfulness draft, and the prototype of the recommended construction); sections 12–15 are task 3 (the residual settled, K3 attacked, the rank the recursion knot needs, and the porting guide for the spine lead). Kernel-checked unless marked *argued*. The checker's verdicts on every probe program are asserted by the build (`Meaning/DataModel/Probes.lean`).
+Design note of the data-model lane (branch `spine-datamodel`, from `spine` at d67b1d51). Sections 1–6 are task 1 (the design, before any code); sections 7–10 are task 2 (records against the current definitions, the large-parameter design, the faithfulness draft, and the prototype of the recommended construction); sections 12–15 are task 3 (the residual settled, K3 attacked, the rank the recursion knot needs, and the porting guide for the spine lead). Section 17 is the port itself, done by this lane: **BUILT** (`lake build OchrMeaning` green on the (b2) data layer). Kernel-checked unless marked *argued*. The checker's verdicts on every probe program are asserted by the build (`Meaning/DataModel/Probes.lean`). Sections 1–16 are kept as written; where they name a prototype file (`Proto/…`), §17 says where it went.
 
 ## 1. What `exists_dataModel` owes today
 
@@ -229,7 +229,7 @@ All in `Meaning/DataModel/`, beside the checker's verdicts in `Probes.lean`.
 - **The rank the recursion knot needs (§15):** `semHeight` gives decrease along every path of field steps and finiteness. It does not give the semantic [Rec] link from the checker's strict subterm to a field path, and it never decreases through applications, which [Rec] does not need.
 - **The porting guide is §14.**
 
-## 12. The residual, settled (kernel-checked: `Proto/Residual.lean`)
+## 12. The residual, settled (kernel-checked: `Proto/Residual.lean`, now `DataModel/Residual.lean`)
 
 **The worry.** `RE (A : Type) := MkRE(xs : List(A), v : Eq(Word, LenL(A, xs), Succ(Zero)))` is accepted. So are `re0 : RE(Nat)` and `re1 : RE(RE(Nat))`, and `reBad` (empty list) is rejected. It is §3's residual with a field type that the function's result decides (`RV`'s equation was trivially true). The reference run computes `v`'s type by applying `LenL`'s meaning to `xs`'s meaning decoded into `List`'s carrier at `A`'s record. `LenL`'s meaning is a Lean function on carriers (D59's closures). At `A := RE(Nat)` that carrier is built from `RE`'s own signature, so read naively the signature is defined through a carrier built from it.
 
@@ -247,7 +247,7 @@ The nested form cannot arise: applying a function to a nested field names the de
 
 **Verdict:** the residual does not make the existence proof impossible as designed. The decoding it needs is discharged by the bijection; what remains is the closure lemma (b).
 
-## 13. Where K3 could be wrong: the adversarial list (`Probes.lean` `DMProbeAdv`, all asserted; `Proto/Adversarial.lean`)
+## 13. Where K3 could be wrong: the adversarial list (`Probes.lean` `DMProbeAdv`, all asserted; `Proto/Adversarial.lean`, now `DataModel/Adversarial.lean`)
 
 1. **Records identify types the checker keeps apart.** A record keeps only what field types read, so K3 makes `Tag(Zero)` and `Tag(Succ(Zero))` one type (`Tag (n : Word) := MkTag(x : Word)`), `PH(Type)` and `PH(Prop)` one type (`PH (U : Type₁) := MkPH`), and `TEq(Type, Word, Word)` and `TEq(Π(x : Word). Type, λx.Word, λx.Word)` one type (both records say "true"). That is unsound exactly if the checker can prove two such types different. It cannot: an equation between two different applications of type formers is stuck, never `False`. `TagNe`, `ListNe`, `PHNe`, `TEqNe`, `TEqNe2` and `TagAB` (two declarations with the same shape) are all rejected, each with `h : Eq(Type, …)` and goal `False`. Lean's set model makes the same identifications. **Not a counterexample**, but a standing condition: if the checker ever decides type-former injectivity, K3 breaks for large parameters, and no small code can repair it.
 2. **Parameters that are functions.** `FP (f : Π(x : Word). Word) := MkFP(y : Word, e : Eq(Word, f(y), y))` is accepted: a function-valued (level-0) parameter applied in an equation. The record keeps the equation as a function of `y` read small. `fp_mem` passes.
@@ -373,8 +373,49 @@ The knot asks for two things:
 
 ## 16. Next
 
-- The port is the spine lead's (§14).
-- On the ported definitions: the generic signature from the declarations, with records by the run along paths (faithfulness by construction where the signature is the run's reading), then §12's closure lemma, then `ExistsDataModel` from the library's laws.
+- ~~The port is the spine lead's (§14).~~ The port was done by this lane (§17).
+- On the ported definitions: the generic signature from the declarations, with records by the run along paths (faithfulness by construction where the signature is the run's reading), then §12's closure lemma, then `exists_dataModel` from the library's laws.
+
+## 17. Built: the port (branch `spine-datamodel`)
+
+`lake build OchrMeaning` is green on the (b2) data layer. What landed, and where it differs from the guide (§14).
+
+### 17.1 Definitions
+
+As §14.1, file by file:
+- `Sem.lean`: `Small`, `RStep` (§14's `Step`, renamed: `Ochr.Step` is the checker's path step), `Entry` and `Code0.data d r A` in one mutual block, `Rec`, `Sem.dat name r c fs`, `DataRead` a structure, `TyM.dataRec?`, `Sem.small`.
+- `DataLib/{Stages,Carrier,Members}.lean`: the prototype's library over `Sem` and `Code0` (the prototype's `depth` was dropped: the rank is `semHeight`, in `Places.lean`).
+- `Data.lean`: `DataModel := { covers, sig, recOf, paramTy }`; `car`, `meanC`, `Mem`, `read`, `tyR`, `tyM`, `shapeTy`, `fieldTyR`, `fieldTy`, `entryTy`, `ctorR`, `ctorM` are definitions, and their laws are theorems (`mem_tyR`, `tyR_prop`, `read_wholeFields`, `mem_iff_meanC`, `read_car`). `paramKey j` is where a record keeps type parameter `j`'s entry.
+- `Value.lean`, `Places.lean`, `Run.lean` as §14. One difference: the constructor clause takes the record known before the fields from the written parameters, or, for a declaration with no parameters, `recOf d []`; only otherwise from the hint (as the value's meaning already did; this keeps the run hint-independent on parameterless types, `HintIndep`). The clause's result is `ctorOut`.
+- Deleted: `DataGeneric.lean`, `DataModel/Proto/`, the old data model's fields and laws.
+
+### 17.2 The core lemmas
+
+`meanV_congr`, `run_congr`, `meanV_substLoan`, `run_substLoan` and `run_congrA` are on the standard axioms. The data cases lost `el` and read a record; `RunCongr`'s rank case no longer reads the data model.
+
+### 17.3 Statements changed (the port forced each)
+
+- `Steps/Statements.lean`: `CtxOk` gains `faithful : CtxFaithful K` (`DataModel/Faithful.lean`). It holds at every Δ and every assignment (the runs of declared types read neither, and the steps change Δ), and has three parts: `FieldsFaithful`, `ParamsFaithful` (§9), and, new, `RecordsFaithful`: the record at parameters keeps each level-0 type parameter's entry at `paramKey`, which is what the constructor clause reads back off a field's type. `fieldTypesOf_step_stmt` reads the fields at `recOf d (meanParams …)`.
+- `Consistency.lean`: `DataFaithful dm D P` (was an opaque placeholder): `CtxFaithful` at every state over `P`'s declarations whose globals extend `P`'s (the decisions read the globals). `exists_dataModel` is stated at the checker's decisions and owes `Covered` and `DataFaithful`; `WholeFields` is no longer asked (it is `read_wholeFields`). `false_means_empty` is proved (a declaration with no constructors has no member, `mem_iff`).
+- The second prover's files were repaired only where the data layer forced it: `Steps/DropOne.lean` (two data cases: records instead of parameters; `ctorM` is always the tree, so `ctorM_partial` went) and `Steps/DropOneAsm.lean` (the `CtxOk` constructor). `Steps/PlaceTyping.lean`, `Steps/Eq.lean` and `Steps/Records.lean` (docstrings) likewise.
+
+### 17.4 The records, as runs the model now gets right
+
+- **`CountF` computes `3`** (`Regress/DataCodes.lean`, `countF_three`): the closure built by stages along `Π(f : List(Rose(Nat))). Nat`'s code, the stage chosen by the height of the argument's meaning, applied to `F3`'s forest. The recursive call's forest is two field steps down, so two stages lower in height (`stage_count`). `Len([3, 4]) = 2` likewise (`len_member`).
+- **`te : TEq(Type, Word, Word)` is a member of its type** (`DataModel/Examples.lean`, `te_ctorM_memTy`): the run's `ctorM` at parameters whose first is `Type`.
+- **The degenerate model no longer meets the existence statement** (`DataModel/Degenerate.lean`): it covers every program, and it is not faithful at any program declaring a `Nat` field (`degenerate_not_dataFaithful`).
+- The join's drop of a field is below its input (`Mono.JoinDropCounterexample.drop_below`, replacing `joinDrop_not_below`), and `pmem` as first stated holds of a partly moved member (`Regress/PartlyMoved.first_stated_holds`).
+- The old counterexamples are kept against a frozen copy of the layer before the port (`DataModel/Old.lean`: `Sem.lean` and `Data.lean` at 34ecffdd under `Ochr.Meaning.Old`): `Counterexamples` (`degenerate_meets`, restated over the declarations the old statement asked to cover; `ctorM_large_not_mem`), `RankCounterexample` (`semRank_eq`), `PartlyMoved.old_pmem_false`, `SiblingAccess.old_collapse`.
+- Every regress run evaluates on the new layer (`CodeRuns`, `DataCodes`, `StaticLend`, `CallInPlace*`, `EntryCheck`, `OneCtorEntry`, `PartMoveRead`, `DepSites*`, the rest). Results that changed: the join drop and `pmem` above; `Adequacy_flipped.ctor_no_hint` now asks that the declaration have parameters (without, the record is known before the fields).
+- The prototype's examples, residual and adversarial list are on the real layer: `DataModel/Program.lean` (a data model of the probe programs, `dmP`), `Examples.lean`, `Residual.lean`, `Adversarial.lean`.
+
+### 17.5 The design point: parameters solved from a field (`DataModel/ParamSolve.lean`)
+
+The checker solves an unwritten parameter from a field's type by reading the field type's parameter list (`Machine.unifyParams`). The model reads back only what the record keeps: a level-0 type parameter's entry.
+- **On the suite and the case studies the two agree.** Traced over `lake exe tests` (a temporary trace in `evalCtor`, not committed): every constructor solved from its fields with no parameter written and no hint naming the type has only type parameters, read as a field's own type (`Opt.Some`, `Pair.Mk`, `List.Cons`, `Box.MkBox`, `And.Intro`) or as a direct argument of a field's type (`ArrayOf.MkArray(s : SliceOf(R))`, `Cell.MkC(h, t : SliceOf(R))`, `GBucket.GCons(…, t : GBucket(V))`). The model reads both (`cell_solves`).
+- **They disagree off the suite.** Three constructed programs the checker accepts (`DMProbeSolve`, asserted): `SW` (`Wrap`'s value parameter from `t : Tag(3)`), `SH` (`HW`'s function parameter from `t : HL(F0)`), `SO` (`Opt2`'s value parameter from `t : Tag(3)`, where `Opt2`'s record depends on it through another constructor's equation). The model's run of each fails (`sw_fails`, `sh_fails`, `so_fails`), so `evalCtor_step_stmt` is false there. Solving `n := 3` from `Tag(3)` uses the injectivity of `Tag`, which the model does not have (`Tag(3)` and `Tag(4)` are one type: `opt2_record_not_determined`).
+- **The options**, a shared decision: (1) the checker infers from fields only parameters whose declared type is a sort, so a value or large parameter is written or comes from the expected type (rejects `SW`, `SH`, `SO`, nothing in the suite); (2) the record keeps every level-0 value parameter small at `paramKey` too, so `Tag` becomes injective in the model in its value parameters (fixes `SW` and `SO`, not `SH`: a large parameter has no small reading). (1) is the uniform one: the checker's inference then uses only what the model's types keep.
+- Also found: the declarations written by hand in the earlier records numbered a field type's variables earlier fields first; the checker numbers the parameters first (`Machine.fieldTele`). `Program.lean` now follows the checker; no theorem read the variables.
 
 ## Appendix: the probe programs
 
