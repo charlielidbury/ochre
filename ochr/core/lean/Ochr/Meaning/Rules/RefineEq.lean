@@ -8,7 +8,7 @@ By induction on fuel, as `RefineConv`, with `conv` taken from there at the state
 What B takes as given beyond `RefineConv`'s `GenericKept`: [Eq-inj]'s field types
 (`fieldTypesOf`) keep the state related (for `Reach`: a private computation's growth). The
 full-restore target form (`StateRel.same`) is NOT available here: `fieldTypesOf` keeps what it
-makes (the inherent growth of docs/36 section 5).
+makes (the inherent growth: `Rules/HANDOFF.md` section 5).
 -/
 
 namespace Ochr.Meaning.Rules

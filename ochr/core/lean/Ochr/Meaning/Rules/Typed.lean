@@ -75,11 +75,13 @@ inductive HWT : TyM → Value → Prop
   | tInd {T : TyM} {n : String} {args : List Value} {d : IndDecl} :
       DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain T) (.tInd n args)) T →
       K.Γ.find? (·.name == n) = some d → HWTParams d 0 [] args → HWT T (.tInd n args)
-  /-- a constructor value: its recorded parameters at the parameter types, its fields at the
-  field types of its record -/
+  /-- a constructor value of a data declaration at that declaration's type in the model
+  (`DataModel.tyR`, whose carrier is the model's: as first written only `T.dataRec?` was asked,
+  which a data code over another carrier also has): its recorded parameters at the parameter
+  types, its fields at the field types of its record -/
   | ind {T : TyM} {t : String} {c : Nat} {h : Hint} {ps fs : List Value} {d : IndDecl} {r : Rec} :
       DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain T) (.ind t c h ps fs)) T →
-      K.Γ.find? (·.name == t) = some d → T.dataRec? = some (t, r) →
+      K.Γ.find? (·.name == t) = some d → (d.sort == 0) = false → T = K.dm.tyR d r →
       HWTParams d 0 [] ps → HWTFields d r c 0 [] fs → HWT T (.ind t c h ps fs)
   /-- a borrow type's content type at a universe, as `tEq` types its type (`⟦&A⟧` reads `A` at
   hint `err`; as first written this was `HWT T A → HWT T (.tRef A)`, typing `A` at the hint `T`,
@@ -154,20 +156,15 @@ theorem vBad_not_hwt (T : TyM) : ¬ HWT K ρ φ T Counter.vBad := by
       revert hp; simp only [meanV]
       split <;> exact ty_not_pmem_nat K _
 
-variable {G : Premises} {gs : List GDef}
-
-/-- **(A) under the predicate, with the machine's untyped parts** (a guess, open): convertible
-values, both hereditarily well typed at one type, mean the same there. What makes it plausible for
-values: each component is typed at the type its position expects, determined by the enclosing
-former and the earlier components, so two `==`-equal constructor values at one position record
-parameters of equal meaning (the paper's "determined by its type"), and the unit laws meet only
-propositions. Where it is not: the code of closures and Π-closures and the programs of sealed
-programs, where `HWTerm` types each written value at SOME type, not at the type its position
-reads it at (see the report). -/
-theorem convV_sound_hwt (hp : PremSound K ρ φ G) (hl : LibOk K ρ φ) {T : TyM} {v w : Value}
-    (h : ConvV Syn.machine G gs v w) (hv : HWT K ρ φ T v) (hw : HWT K ρ φ T w) :
-    meanV K ρ φ (.plain T) v = meanV K ρ φ (.plain T) w := by
-  sorry
+/-! The first statement of A under the predicate (`convV_sound_hwt`, a `sorry`'d guess: convertible
+values, both `HWT` at one type, mean the same there, from `PremSound` and `LibOk`) is replaced by
+`Rules/SoundT.lean`'s `convV_alike`: proved, with the claim strengthened to two parts (type values at
+possibly different universes), and with the code cases as a named hypothesis (`CodeOk`) on a closed
+class of values. As written it is believed false for code: `HWTerm` types each value written in
+code at SOME type, so a sealed program `⌈Eq(D(Nat), Nil(Unit;), Nil(Nat;))⌉` and its `==`-copy
+`⌈Eq(D(Nat), Nil(Nat;), Nil(Nat;))⌉` (`==` ignores recorded parameters) are both well typed
+propositions and mean `False` and `True` when the data model's record keeps the type parameter
+(a guess: not kernel-checked, since a run context meeting `LibOk` has to be built). -/
 
 end
 

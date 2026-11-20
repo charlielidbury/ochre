@@ -1,6 +1,6 @@
-# 36. The rules trial: conversion and `Eq` as rules between the checker and the model (interim note and handoff)
+# The rules trial: conversion and `Eq` as rules between the checker and the model (working handoff note)
 
-Written 2026-11-21 by the trial's agent, at the end of its part of the work. Branch `rules-trial` (worktree `/home/charlielidbury/repos/ochre-rules`, based on e1af9662). It is both the trial's record so far and the brief for a successor who has not seen the conversation that produced it.
+Written 2026-11-21 by the trial's first agent; kept current by the second. Branch `rules-trial` (worktree `/home/charlielidbury/repos/ochre-rules`, based on e1af9662). A working file for whoever continues the branch (moved here from `ochr/docs/36` at the lead's request; deleted when the branch's work is merged). The trial's verdict goes to the lead, not into this file.
 
 ## 1. What the trial tests
 
@@ -14,7 +14,9 @@ Build each with `cd ochr/core/lean && taskset -c 0-14 lake build Ochr.Meaning.Ru
 |---|---|---|
 | `Conv.lean` | R: the relations (section 3) | definitions |
 | `Sound.lean` | A's statements in the untyped-parts form: `ValAlike`, `TermAlike`, `SynSound`, `PremSound`, `LibOk`, `convV_sound`, `convH_sound`, `convT_sound`, `conv_sound_at`, `eqTo_sound` | `runT_val_fst`, `ValAlike.mean`, `conv_sound_at` (from `convV_sound`) proved; the rest `sorry` |
-| `Typed.lean` | the hereditarily-well-typed predicate `HWT` (section 6); `vBad_not_hwt`; `convV_sound_hwt` | `vBad_not_hwt`, `ty_not_pmem_nat` proved; `convV_sound_hwt` a guess (`sorry`), and `HWT.tRef` needs changing (section 10) |
+| `Typed.lean` | the hereditarily-well-typed predicate `HWT` (section 6); `vBad_not_hwt` | proved; `HWT.tRef` and `HWT.ind` restated by the second agent; the first `convV_sound_hwt` removed (replaced by `SoundT`; believed false for code, see its comment) |
+| `SoundT.lean` | **A under `HWT`, PROVED**: the pinning lemma `meanV_ind_pinned`; `Alike2` (the two-part claim); one congruence lemma per first-order former; `beq_alike` (`==` sound, step 5); `convV_alike` (conversion sound, step 6); the first-order class `FO` with `FO.codeOk`, `convV_alike_fo` | proved, standard axioms, from the named hypotheses `PremSoundT` (function rules), `UnitOk` (unit laws), `CodeOk` (code, on a closed class `Q`; outright for `FO`) |
+| `ComposeT.lean` | **C under `HWT`**: `conv_sound_T`, `conv_sound_T_same`, `conv_sound_T_fo` | proved, standard axioms, from B and A |
 | `Refine.lean` | B's shared definitions: `Reach`, `machPremisesR`/`machPremises` | definitions (the first `sorry`'d statements and `CounterMono` removed: superseded by `RefineConv`, `RefineEq`) |
 | `RefineConv.lean` | **B for `conv` (all five mutually recursive functions), PROVED**: `conv_refine'` (the checker as it is, `Reach`), `conv_refine_same` (target form, state unchanged) | proved, standard axioms, assuming only `GenericKept` |
 | `RefineEq.lean` | **B for `mkEqM`, PROVED**: `mkEqM_refine'` (by induction on fuel; `conv` from `RefineConv`) | proved, standard axioms, assuming only `EqKept` (`GenericKept` and: `fieldTypesOf` keeps `Reach`) |
@@ -113,18 +115,15 @@ The rule log: in this area the machine fires only `EqDisj`, `EqStuck` and `EqInj
 
 ## 9. Exact next steps for the successor, in order (kept current by the second agent)
 
-Done: 1 (housekeeping: `Compose` calls `conv_refine'`/`conv_refine_same`/`mkEqM_refine'`; `conv_C_same` added; the superseded statements and `CounterMono` removed from `Refine.lean`); 2 (`RefineEq.mkEqM_refine'`, proved; the target form `StateRel.same` is not available for `mkEqM`: `fieldTypesOf` keeps what it makes); 3 (`HWT.tRef` now types `A` at a universe and asks `&A`'s membership).
+Done: 1 (housekeeping: `Compose` calls `conv_refine'`/`conv_refine_same`/`mkEqM_refine'`; `conv_C_same` added; the superseded statements and `CounterMono` removed from `Refine.lean`); 2 (`RefineEq.mkEqM_refine'`, proved; the target form `StateRel.same` is not available for `mkEqM`: `fieldTypesOf` keeps what it makes); 3 (`HWT.tRef` types `A` at a universe and asks `&A`'s membership); 4 (`SoundT.meanV_ind_pinned`; `HWT.ind` now asks `T = K.dm.tyR d r` with `d` data-sorted, since `T.dataRec?` alone admits a data code over a foreign carrier); 5 and 6 (`SoundT.beq_alike`, `convV_alike`, with code as `CodeOk`); the conversion half of 9 (`ComposeT.conv_sound_T`, `_same`, `_fo`).
 
 Next, in order:
 
-4. **A, the pinning lemma**: an `HWT T` constructor value at a data type `T` (`T.dataRec? = some (t, r)`) means `.dat t r c (meanFields d r c 0 [] fs)` whatever parameters it records.
-5. **A, `==` sound on `HWT` values** (the [Conv-refl] case for the machine's instance), first-order values; code (closures, Π-closures, sealed programs) through a named hypothesis.
-6. **A, `convV_sound_hwt`** by induction on the derivation, two-part claim (one type; type values at universes, at every hint).
-7. **The sealed-program congruence** on the [Close] shape.
-8. **`eqTo_sound`**.
-9. **Compose** with B proved; `#print axioms`.
+7. **Code** (`CodeOk` on the [Close]-shape class): `refl` on code, `sealed`, `piCong`. Not true for every `HWT` value (comment in `Typed.lean`: `HWTerm` types code values at SOME type). Needs the [Close]-shape class as a `Closed` predicate and the model's call clause; or stays a named hypothesis.
+8. **`eqTo_alike`** (A for `Eq`, under `HWT`): cases `disjBot` (side hypothesis: a side is `⊥` or means something whole), `refl` (`convV_alike`), `succ` (`Sem.succ` injective on members of `Nat`), `disj`, `stuck` (by definition), `inj` (pinning on both sides; the field types: a data-model hypothesis that a field's type reads only the index fields, `IndDecl.indexFields`; the conjunction via a hint-uniform `LibOk`).
+9. **Compose** `mkEqM` with B proved; `#print axioms`.
 
-Traps found so far: `split at h` on `mkEqM`'s `if`s substitutes the condition everywhere (so `simp only [..., hdep]` is not needed after it); after `simp only at h` the join points are inlined and the code is duplicated per branch, so prove the shared tail once as a `have` with its explicit `M` term (it is accepted up to definitional unfolding, `eqArgs` included).
+Traps found so far: `induction` does not work on the mutual relations; term-mode `match` on the derivation does, as mutual theorems over a subset of the mutual group (`convV_alike`, `convH_alike`, `convL_alike`), with no `termination_by`. `cases w <;> simp only [Value.beq, Bool.false_eq_true] at h` kills every mismatched constructor pair of `==` and leaves the matching one. `split at h` on `mkEqM`'s `if`s substitutes the condition everywhere (so `simp only [..., hdep]` is not needed after it); after `simp only at h` the join points are inlined and the code is duplicated per branch, so prove the shared tail once as a `have` with its explicit `M` term (it is accepted up to definitional unfolding, `eqArgs` included).
 
 ## 10. Interim verdict (if the trial stopped here)
 
