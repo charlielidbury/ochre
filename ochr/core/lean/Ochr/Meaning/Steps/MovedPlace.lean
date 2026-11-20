@@ -256,39 +256,6 @@ end
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- **A live label of the checker is live in the reference**: under (WF1) its holder holds it
-whole, so the position has its shape; `SimEq` gives the reference a holder of its renaming (a
-temporary's at some index), and the reference holds borrows only at its positions (`Rel.holders`). -/
-theorem rel_live_ref' (st : MState) (s : SState) (π : Nat → Nat) (hg : Good K.dm K.M K.Γ ρ st)
-    (hs : Rel K ρ φ π st s) {l : Nat} (hl : liveLoan st.env l = true) : π l ∈ s.liveLabels := by
-  unfold liveLoan at hl
-  obtain ⟨p₀, hp₀⟩ := Option.isSome_iff_exists.mp hl
-  have hmem := mem_allPos_of_find st.env l p₀ hp₀
-  have hhold : (valAt st.env p₀).holdsBorrow l = true := by
-    unfold findBorrow at hp₀; exact List.find?_some (p := fun p => (valAt st.env p).holdsBorrow l) hp₀
-  have hsh : Env.shape st.env p₀ = some l := by
-    have hwf1 := hg.2.2.1.1 p₀ hmem
-    cases hv : valAt st.env p₀ with
-    | borrow m w =>
-      rw [hv] at hwf1 hhold
-      simp only [Value.holdsBorrow, Bool.or_eq_true, beq_iff_eq] at hhold
-      rcases hhold with rfl | hw
-      · simp [Env.shape, hv]
-      · exact absurd (hasBorrow_of_holdsBorrow l w hw) hwf1
-    | succ w =>
-      rw [hv] at hwf1 hhold
-      simp only [Value.holdsBorrow] at hhold
-      exact absurd (hasBorrow_of_holdsBorrow l (.succ w) (by simpa [Value.holdsBorrow] using hhold)) hwf1
-    | _ => rw [hv] at hhold; simp [Value.holdsBorrow] at hhold
-  rw [SState.mem_liveLabels]
-  cases p₀ with
-  | bind f i =>
-    have := hs.sim.2.1 (.bind f i) l (by simp [IsTemp]) hsh
-    exact ⟨_, hs.holders _ _ this, this⟩
-  | temp f i =>
-    obtain ⟨j, hj, -⟩ := hs.sim.2.2.2.1 f i l hsh
-    exact ⟨_, hs.holders _ _ hj, hj⟩
-
 /-- **Above a filled parent the lent prefix exists, at or above it**: the parent holds a fill
 over a live borrow, so that borrow (or one whose mark the path passes, holding it) has a site at
 the parent's path or above it, and the related reference state has the same sites for the same
