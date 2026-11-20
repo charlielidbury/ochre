@@ -511,7 +511,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     runT K ρ φ tl hint t s = some (r, s') → RInv L s' ∧ LoU s' r.2.label ∧ EnvLe s s' ∧ OrdKeep L s s'
   | tl, .place p, hint, s, s', r, hi, h => by
     rw [runT] at h
-    rcases SM.erasedIf_some h with h | ⟨rfl, hl⟩
+    rcases SM.erasedAt_some (placeTy_label K φ p s) h with h | ⟨rfl, hl⟩
     rotate_left
     · exact rinv_pure L hi hl
     exact ⟨(readPlace_rinv K φ L h hi).1, (readPlace_rinv K φ L h hi).2, readPlace_envLe K φ h,

@@ -142,17 +142,18 @@ theorem ty_futureFree (hK : ∀ n, (K.C.global n).2.label = none) (T : Value)
   meanV_congrE K ρ φ φ' hK T hint (fun l h => by
     have := Value.hasLoan_of_hasLoanM h; rw [hT l] at this; cases this)
 
-/-! ## A17: a proof has no type in the run -/
+/-! ## A17: a proof has a type in the run only at a place -/
 
-/-- A term the decisions class as a proof is not run and its result is typed `err`. -/
+/-- A term the decisions class as a proof, other than a place, is not run and its result is typed
+`err`. (A place is typed at its stored type, `SM.erasedAt`, `AdequacyFlip.erased_place`, so
+`MkPBox(h)` solves its parameter off `h`'s type and runs: `CodeRuns.boxProof`.) -/
 theorem erased_proof_untyped (fl : Bool × Bool) (h : fl.2 = true) (x : SM Res) (s : SState) :
     SM.erasedIf fl x s = some ((.proof, .plain .err), s) := by
   simp [SM.erasedIf, h]
 
-/-- A field whose run is typed `err` solves no parameter of its constructor. So `MkPBox(h)`, whose
-one parameter is the proposition `h` proves, has an unsolved parameter after its fields, and the
-`.ctor` clause fails (`sol.all (·.isSome)`); the checker reads the parameter off the type of `h`
-(`Machine.unifyParams`) and accepts (`ShapeProbes.BoxProof`). -/
+/-- A field whose run is typed `err` solves no parameter of its constructor (`Machine.unifyParams`
+reads the parameter off the field's type; before A17 a proof read at a place was typed `err`, so
+`MkPBox(h)` failed where the checker accepts `ShapeProbes.BoxProof`). -/
 theorem unify_untyped (np : Nat) (FT : Term) (sol : List (Option Sem)) :
     unifyTyS np FT (.plain .err) sol = sol := rfl
 
