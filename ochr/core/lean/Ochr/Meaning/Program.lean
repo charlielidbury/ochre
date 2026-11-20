@@ -252,7 +252,7 @@ theorem run_succ_zero (K : RunCtx) (ρ : Assignment) (φ : Future) (h : TyS) (s 
     (hne : (K.D.flags (scopeOf s) (.succ .zero)).2 = false) :
     run K ρ φ h (.succ .zero) s = some (((Sem.el0 Nat 0).succ, .plain (.ty0 Nat)), s) := by
   -- not erased (`hne`); statement or not (`SM.stmtIf`), the value and the state are the same
-  rw [run]
+  rw [run, runT]
   show SM.erasedIf (K.D.flags (scopeOf s) (.succ .zero)) _ s = _
   generalize K.D.flags (scopeOf s) (.succ .zero) = fl at hne
   obtain ⟨b, e⟩ := fl

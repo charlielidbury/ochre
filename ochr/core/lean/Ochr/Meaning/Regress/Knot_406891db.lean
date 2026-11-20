@@ -24,4 +24,4 @@ theorem knot_fixed_future (K : RunCtx) (ρ : Assignment) (φ₀ φ : Future) (hi
     Value.mean K.dm K.C K.Γ ρ φ hint (.sealed (.val (.loan l))) = φ₀ l := by
   rw [hK]
   show meanV K ρ φ₀ hint (.sealed (.val (.loan l))) = φ₀ l
-  simp [meanV, run]
+  simp [meanV, run, runT]

@@ -54,7 +54,7 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 /-- The reference's run of an `Eq` leaves its state as it was, label counter included. -/
 theorem eq_state (hint : TyS) (A a b : Term) (s s' : SState) (r : Res)
     (h : run K ρ φ hint (.eq A a b) s = some (r, s')) : s' = s := by
-  rw [run] at h
+  rw [run, runT] at h
   exact SM.onCopy_state h
 
 /-- **The clause as first stated has no renaming** once the checker has issued a label and the

@@ -125,30 +125,30 @@ theorem erasedIf_resVS_congr (fl : Bool × Bool) {x x' : SM Res} {s : SState} (h
 
 mutual
 /-- **A run with a hint-free tail reads no hint**: same value, same state at every hint. -/
-theorem run_hintIndep : ∀ (t : Term), Term.tailHintFree K.Γ t = true → ∀ (h h' : TyS) (s : SState),
-    (run K ρ φ h t s).map resVS = (run K ρ φ h' t s).map resVS
-  | .letIn x u w, ht, h, h', s => by
+theorem runT_hintIndep : ∀ (tl : Bool) (t : Term), Term.tailHintFree K.Γ t = true → ∀ (h h' : TyS) (s : SState),
+    (runT K ρ φ tl h t s).map resVS = (runT K ρ φ tl h' t s).map resVS
+  | tl, .letIn x u w, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
-    rw [run, run]
+    rw [runT, runT]
     refine erasedIf_resVS_congr _ ?_
-    cases hu : run K ρ φ (.plain .err) u s with
+    cases hu : runT K ρ φ false (.plain .err) u s with
     | none => simp only [Bind.bind, hu, Option.bind_none', Option.map_none]
     | some x =>
       obtain ⟨⟨v, T⟩, s₁⟩ := x
       simp only [Bind.bind, hu, Option.bind_some']
-      exact bind_resVS_congr (run_hintIndep w ht h h' _) _ (tailCont_ok' _ (fun _ _ _ _ => rfl))
-  | .seq u w, ht, h, h', s => by
+      exact bind_resVS_congr (runT_hintIndep tl w ht h h' _) _ (tailCont_ok' _ (fun _ _ _ _ => rfl))
+  | tl, .seq u w, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
-    rw [run, run]
+    rw [runT, runT]
     refine erasedIf_resVS_congr _ ?_
-    cases hu : run K ρ φ (.plain .err) u s with
+    cases hu : runT K ρ φ false (.plain .err) u s with
     | none => simp only [Bind.bind, Monad.toBind, instMonadSM, hu]
     | some x =>
       simp only [Bind.bind, Monad.toBind, instMonadSM, hu]
-      exact run_hintIndep w ht h h' _
-  | .matchNat p z u, ht, h, h', s => by
+      exact runT_hintIndep tl w ht h h' _
+  | tl, .matchNat p z u, ht, h, h', s => by
     simp only [Term.tailHintFree, Bool.and_eq_true] at ht
-    rw [run, run]
+    rw [runT, runT]
     refine erasedIf_resVS_congr _ ?_
     cases hc : tagOf K φ p natTag s with
     | none => simp only [Bind.bind, hc, Option.bind_none', Option.map_none]
@@ -158,11 +158,11 @@ theorem run_hintIndep : ∀ (t : Term), Term.tailHintFree K.Γ t = true → ∀ 
       split <;> rename_i heq <;> (try simp only [heq])
       all_goals first
         | rfl
-        | exact bind_resVS_congr (run_hintIndep z ht.1 h h' _) _ (tailCont_ok' _ (fun _ _ _ _ => rfl))
-        | exact bind_resVS_congr (run_hintIndep u ht.2 h h' _) _ (tailCont_ok' _ (fun _ _ _ _ => rfl))
-  | .matchInd p ty arms, ht, h, h', s => by
+        | exact bind_resVS_congr (runT_hintIndep tl z ht.1 h h' _) _ (tailCont_ok' _ (fun _ _ _ _ => rfl))
+        | exact bind_resVS_congr (runT_hintIndep tl u ht.2 h h' _) _ (tailCont_ok' _ (fun _ _ _ _ => rfl))
+  | tl, .matchInd p ty arms, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
-    rw [run, run]
+    rw [runT, runT]
     refine erasedIf_resVS_congr _ ?_
     cases hc : tagOf K φ p indTag s with
     | none => simp only [Bind.bind, hc, Option.bind_none', Option.map_none]
@@ -172,10 +172,10 @@ theorem run_hintIndep : ∀ (t : Term), Term.tailHintFree K.Γ t = true → ∀ 
       split <;> rename_i heq <;> (try simp only [heq])
       all_goals first
         | rfl
-        | exact bind_resVS_congr (runArm_hintIndep arms ht _ h h' _) _ (tailCont_ok' _ (fun _ _ _ _ => rfl))
-  | .ctor ty c hd ps args, ht, h, h', s => by
+        | exact bind_resVS_congr (runArm_hintIndep tl arms ht _ h h' _) _ (tailCont_ok' _ (fun _ _ _ _ => rfl))
+  | tl, .ctor ty c hd ps args, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
-    rw [run, run]
+    rw [runT, runT]
     refine erasedIf_resVS_congr _ ?_
     cases hfind : K.Γ.find? (·.name == ty) with
     | none => simp only [hfind]
@@ -194,14 +194,14 @@ theorem run_hintIndep : ∀ (t : Term), Term.tailHintFree K.Γ t = true → ∀ 
           · rfl
         simp only [hfind, Bool.not_true, Bool.false_eq_true, if_false, hq, List.replicate_zero]
         cases h.data <;> cases h'.data <;> simp only [hz]
-  | .val v, ht, h, h', s => by
+  | tl, .val v, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     have e := meanV_hintIndep v ht h h'
     -- the `.val` clause's equation is split by its match on `v`: case on `v` first
-    cases v <;> (rw [run, run] <;> first
+    cases v <;> (rw [runT, runT] <;> first
       | (simp only [Option.map_some, resVS, e])
       | (intros; simp_all))
-  | .prim n args, ht, h, h', s => by
+  | tl, .prim n args, ht, h, h', s => by
     -- only `peek`/`clone` of a place are tail-hint-free primitives, and those read no hint
     rcases args with _ | ⟨u, _ | ⟨u2, rest⟩⟩
     · simp [Term.tailHintFree] at ht
@@ -210,38 +210,38 @@ theorem run_hintIndep : ∀ (t : Term), Term.tailHintFree K.Γ t = true → ∀ 
            rcases ht with rfl | rfl <;> rfl)
         | (simp [Term.tailHintFree] at ht)
     · simp [Term.tailHintFree] at ht
-  | .place p, _, h, h', s => rfl
-  | .borrow p, _, h, h', s => rfl
-  | .assign p t, _, h, h', s => rfl
-  | .const n, _, h, h', s => rfl
-  | .sort l, _, h, h', s => rfl
-  | .pi hs ds c, _, h, h', s => by
-    first | rfl | (rw [run, run]) | (rw [run, run]; rfl)
-  | .fix sf hs ds c dec b, _, h, h', s => by
-    first | rfl | (rw [run, run]) | (rw [run, run]; rfl)
-  | .call f args hd, _, h, h', s => rfl
-  | .nat, _, h, h', s => rfl
-  | .zero, _, h, h', s => rfl
-  | .succ t, _, h, h', s => rfl
-  | .unit, _, h, h', s => rfl
-  | .tt, _, h, h', s => rfl
-  | .eq A t u, _, h, h', s => rfl
-  | .cong f hh, _, h, h', s => rfl
-  | .ref A, _, h, h', s => rfl
-  | .id A t u, _, h, h', s => rfl
-  | .ascribe t A, _, h, h', s => rfl
-  | .tind n args, _, h, h', s => rfl
+  | tl, .place p, _, h, h', s => rfl
+  | tl, .borrow p, _, h, h', s => rfl
+  | tl, .assign p t, _, h, h', s => rfl
+  | tl, .const n, _, h, h', s => rfl
+  | tl, .sort l, _, h, h', s => rfl
+  | tl, .pi hs ds c, _, h, h', s => by
+    first | rfl | (rw [runT, runT]) | (rw [runT, runT]; rfl)
+  | tl, .fix sf hs ds c dec b, _, h, h', s => by
+    first | rfl | (rw [runT, runT]) | (rw [runT, runT]; rfl)
+  | tl, .call f args hd, _, h, h', s => rfl
+  | tl, .nat, _, h, h', s => rfl
+  | tl, .zero, _, h, h', s => rfl
+  | tl, .succ t, _, h, h', s => rfl
+  | tl, .unit, _, h, h', s => rfl
+  | tl, .tt, _, h, h', s => rfl
+  | tl, .eq A t u, _, h, h', s => rfl
+  | tl, .cong f hh, _, h, h', s => rfl
+  | tl, .ref A, _, h, h', s => rfl
+  | tl, .id A t u, _, h, h', s => rfl
+  | tl, .ascribe t A, _, h, h', s => rfl
+  | tl, .tind n args, _, h, h', s => rfl
 
-theorem runArm_hintIndep : ∀ (arms : List (Hint × Term)), Term.armsHintFree K.Γ arms = true →
+theorem runArm_hintIndep : ∀ (tl : Bool) (arms : List (Hint × Term)), Term.armsHintFree K.Γ arms = true →
     ∀ (c : Nat) (h h' : TyS) (s : SState),
-    (runArm K ρ φ h c arms s).map resVS = (runArm K ρ φ h' c arms s).map resVS
-  | [], _, c, h, h', s => rfl
-  | (x, t) :: rest, ha, c, h, h', s => by
+    (runArm K ρ φ tl h c arms s).map resVS = (runArm K ρ φ tl h' c arms s).map resVS
+  | _, [], _, c, h, h', s => rfl
+  | tl, (x, t) :: rest, ha, c, h, h', s => by
     simp only [Term.armsHintFree, Bool.and_eq_true] at ha
     simp only [runArm]
     split
-    · exact run_hintIndep t ha.1 h h' s
-    · exact runArm_hintIndep rest ha.2 (c - 1) h h' s
+    · exact runT_hintIndep tl t ha.1 h h' s
+    · exact runArm_hintIndep tl rest ha.2 (c - 1) h h' s
 
 /-- **A top-hint-free value means the same at every hint.** -/
 theorem meanV_hintIndep : ∀ (v : Value), Value.topHintFree K.Γ v = true → ∀ (h h' : TyS),
@@ -254,11 +254,11 @@ theorem meanV_hintIndep : ∀ (v : Value), Value.topHintFree K.Γ v = true → �
     exact meanV_hintIndep w hv h h'
   | .sealed t, hv, h, h' => by
     simp only [Value.topHintFree] at hv
-    show (match run K ρ φ h t (emptyState _) with | some ((v, _), _) => v | none => .err)
-      = (match run K ρ φ h' t (emptyState _) with | some ((v, _), _) => v | none => .err)
-    have := run_hintIndep t hv h h' (emptyState 0)
-    cases hr : run K ρ φ h t (emptyState 0) <;>
-      cases hr' : run K ρ φ h' t (emptyState 0) <;>
+    show (match runT K ρ φ false h t (emptyState _) with | some ((v, _), _) => v | none => .err)
+      = (match runT K ρ φ false h' t (emptyState _) with | some ((v, _), _) => v | none => .err)
+    have := runT_hintIndep false t hv h h' (emptyState 0)
+    cases hr : runT K ρ φ false h t (emptyState 0) <;>
+      cases hr' : runT K ρ φ false h' t (emptyState 0) <;>
       simp [hr, hr', resVS] at this ⊢
     · exact this.1
   | .ind ty c hd ps fs, hv, h, h' => by
@@ -289,6 +289,11 @@ theorem meanV_hintIndep : ∀ (v : Value), Value.topHintFree K.Γ v = true → �
   | .tInd _ _, _, _, _ => rfl
   | .succ _, _, _, _ => rfl
 end
+
+/-- `runT_hintIndep` at a position that is not a tail. -/
+theorem run_hintIndep (t : Term) (ht : Term.tailHintFree K.Γ t = true) (h h' : TyS) (s : SState) :
+    (run K ρ φ h t s).map resVS = (run K ρ φ h' t s).map resVS :=
+  runT_hintIndep K ρ φ false t ht h h' s
 
 end
 

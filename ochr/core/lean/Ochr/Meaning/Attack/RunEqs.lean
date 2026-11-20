@@ -27,27 +27,27 @@ theorem stmtIf_noStmt (K : RunCtx) (hfl : ∀ sc t, K.D.flags sc t = (false, fal
 
 theorem run_ascribe (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (u A : Term) (s : SState)
     (hfl : ∀ sc t, K.D.flags sc t = (false, false)) :
-    run K ρ φ hint (.ascribe u A) s =
+    runT K ρ φ false hint (.ascribe u A) s =
       (do
-        let (TA, RA) ← SM.onCopy (run K ρ φ (.plain .err) A)
+        let (TA, RA) ← SM.onCopy (runT K ρ φ false (.plain .err) A)
         let T : TyS := ⟨TA.asTy, RA.shape, none, RA.data⟩
-        let (v, R) ← run K ρ φ T u
+        let (v, R) ← runT K ρ φ false T u
         pure (v, { T with label := R.label })) s := by
-  rw [run]; exact stmtIf_noStmt K hfl _ _ s
+  rw [runT]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem run_letIn (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (x : Hint) (u w : Term) (s : SState)
     (hfl : ∀ sc t, K.D.flags sc t = (false, false)) :
-    run K ρ φ hint (.letIn x u w) s =
+    runT K ρ φ false hint (.letIn x u w) s =
       (do
-        let ((v, T), s) ← run K ρ φ (.plain .err) u s
+        let ((v, T), s) ← runT K ρ φ false (.plain .err) u s
         let s := pushBindShaped s { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u }
-        let ((r, R), s) ← run K ρ φ hint w s
+        let ((r, R), s) ← runT K ρ φ false hint w s
         let held : Option Nat := match s.env.getLast? with
           | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
           | none => none
         let s := match held with | some l => s.endLabel l | none => letLenders s
         some ((r, R), s.dropLast)) := by
-  rw [run]; exact stmtIf_noStmt K hfl _ _ s
+  rw [runT]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem meanV_abs (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (σ : Nat) :
     meanV K ρ φ hint (.abs σ) = ρ σ := rfl

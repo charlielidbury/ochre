@@ -53,7 +53,7 @@ theorem call_moved_head_fails (b : SBinding) (k : Nat) (hint : TyS) (args : List
     run K ρ φ hint (.call (.place (.var 0)) args hd) (one b k) = none := by
   have h1 : run K ρ φ (.plain .err) (.place (.var 0)) (one b k) = none := by
     rw [run_place]; exact read_moved_fails K φ b k _ hm
-  rw [run]
+  rw [run, runT]
   simp only [SM.onCopy, bind, h1]
   split <;> rfl
 
@@ -70,13 +70,13 @@ theorem call_twice_fails (b : SBinding) (k : Nat) (hint : TyS) (a : Term) (hd hd
       rw [run_place, scope_one, hc]; exact read_moves K φ b k hw
     have h2 : ∀ T, run K ρ φ T (.call (.place (.var 0)) [a] hd') (one { b with val := fun _ => .moved } k) = none :=
       fun T => call_moved_head_fails K ρ φ _ k T [a] hd' rfl
-    rw [run]
+    rw [run, runT]
     simp only [SM.onCopy, bind, h1, runArgs, h2]
     split <;> rfl
   · have h1 : run K ρ φ (.plain .err) (.place (.var 0)) (one b k) = none := by
       rw [run_place, readPlace_of φ K (.var 0) _ (one b k) _ _ _ _ _ (contentOf_var0_one K φ k b)]
       simp [hw]
-    rw [run]
+    rw [run, runT]
     simp only [SM.onCopy, bind, h1]
     split <;> rfl
 end HeadCE
@@ -98,7 +98,7 @@ theorem stmt_let_moves (b : SBinding) (k : Nat) (hint : TyS) (y : Hint)
     have h2 : run K ρ φ (.plain .err) (.letIn y (.place (.var 0)) .tt) (one b k)
         = some ((.el0 Unit (), .plain (.ty0 Unit)), one { b with val := fun _ => .moved } k) := by
       rw [Attack.run_letIn, h1]
-      simp [run, pushBindShaped, one, SState.pushBind, SState.topIdx, SState.dropLast, pure, Option.bind]
+      simp [run, pushBindShaped, one, SState.pushBind, SState.topIdx, SState.dropLast, pure, Option.bind, runT]
     have h3 : ∀ T, run K ρ φ T (.place (.var 0)) (one { b with val := fun _ => .moved } k) = none := by
       intro T; rw [run_place]; exact read_moved_fails K φ _ k _ rfl
     rw [run_seq]

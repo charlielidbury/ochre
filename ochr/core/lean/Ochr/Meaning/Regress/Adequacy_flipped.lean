@@ -39,7 +39,7 @@ theorem stmt_keeps (t : Term) (hint : TyS) (s : SState) (hfl : (K.D.flags (scope
     (ht : t matches .letIn .. | .seq .. | .matchNat .. | .matchInd .. | .assign .. | .place .. | .call ..) :
     s' = s ∧ r.2.label = none := by
   cases t <;> simp at ht <;>
-    (rw [run] at h
+    (rw [run, runT] at h
      simp only [SM.erasedIf] at h
      split at h
      · obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h); exact ⟨rfl, rfl⟩
@@ -53,7 +53,7 @@ none, no longer fails. -/
 theorem erased_unrun (t : Term) (hint : TyS) (s : SState) (hfl : (K.D.flags (scopeOf s) t).2 = true)
     (ht : t matches .letIn .. | .seq .. | .matchNat .. | .matchInd .. | .assign .. | .place .. | .call .. | .ctor .. | .fix ..) :
     run K ρ φ hint t s = some ((.proof, .plain .err), s) := by
-  cases t <;> simp at ht <;> (rw [run]; simp only [SM.erasedIf, hfl, if_true])
+  cases t <;> simp at ht <;> (rw [run, runT]; simp only [SM.erasedIf, hfl, if_true])
 
 /-- The audit's A9: a field of type `A` (the one parameter) given a `Nat` solves `A := Nat`
 (`Pair(a, b)`, `Cons(x, xs)`'s head). -/
@@ -78,7 +78,7 @@ theorem ctor_no_hint (ty : String) (c : Nat) (x : Hint) (args : List Term) (s : 
     (hsol : sol.all (·.isSome) = true) (hs : (d.sort == 0) = false) :
     run K ρ φ (.plain .err) (.ctor ty c x [] args) s
       = some ((K.dm.ctorM d (solved sol) c fs, ⟨K.dm.tyM d (solved sol), none, none, some (ty, solved sol)⟩), s') := by
-  rw [run]
+  rw [run, runT]
   simp only [SM.erasedIf, hfl, SM.stmtIf, Bool.false_eq_true, if_false, hd, runParams, bind, pure, TyS.plain,
     List.isEmpty_nil, Bool.not_true, hs]
   rw [hs] at hf
@@ -130,7 +130,7 @@ The `.fix` clause's frame binds parameter `i` at `(runBinds …)[i].1 acc`. -/
 theorem pi_param_has_shape (s : SState) (dcs : List DeclInfo) (pre : List PBind) (hs : List Hint)
     (ds : List Term) (c : Term) (acc : List Sem) :
     ((mkBind dcs pre fun acc => run K ρ φ (.plain .err) (.pi hs ds c) (extendBy s pre acc)).1 acc).shape.isSome = true := by
-  simp only [mkBind, run]
+  simp only [mkBind, run, runT]
   rfl
 
 /-- ... and that binder is the one `runBinds` gives a Π-typed parameter. -/
