@@ -488,6 +488,20 @@ theorem EndsAt.restoreKeep_bind {β} {s₀ : MState} {k : Unit → M β} (hk : �
   have := h _ fl lg b Ω' fl' lg' hs
   exact ⟨this.inds, this.globals⟩
 
+/-- D103: a run that ends by putting back the state it saved but for the names made since
+(`restoreNames`), as a comparison does, ends with that state's signature. -/
+theorem EndsAt.restoreNames_bind {β} {s₀ : MState} {k : Unit → M β} (hk : ∀ u, SigPres (k u)) :
+    EndsAt s₀ (restoreNames s₀ >>= k) := by
+  intro Ω fl lg b Ω' fl' lg' hs
+  rw [step_bind] at hs
+  unfold restoreNames at hs
+  rw [step_modify] at hs
+  simp only [cont] at hs
+  have h := hk ()
+  unfold SigPres at h
+  have := h _ fl lg b Ω' fl' lg' hs
+  exact ⟨this.inds, this.globals⟩
+
 theorem SigPres.get_ends {β} {k : MState → M β} (hk : ∀ s, EndsAt s (k s)) :
     SigPres (MonadState.get >>= k) := by
   unfold SigPres
@@ -596,12 +610,19 @@ theorem refSP_succ (n : Nat) (ih : RefSP n) : RefSP (n + 1) := by
     repeat' (first | (intro) | (with_reducible apply EndsAt.restoreKeep_bind) | (with_reducible apply EndsAt.bind_any) | split)
     all_goals sp
   · intro A a b; unfold mkEqM; sp
-  · intro v w; unfold conv; sp
+  · intro v w; unfold conv; simp only []
+    -- D103: a comparison puts back the state it saved, but for names, on every exit
+    refine SigPres.get_ends fun saved => ?_
+    exact EndsAt.bind_any _ fun r => EndsAt.restoreNames_bind fun _ => SigPres.pure r
   · intro l l'; unfold convList; sp
   · intro l l'; unfold convTList; sp
   · intro t u; unfold convT; sp
-  · intro P Q; unfold convPi; sp
-  · intro f g; unfold convFn; sp
+  · intro P Q; unfold convPi; simp only []
+    refine SigPres.get_ends fun saved => ?_
+    exact EndsAt.bind_any _ fun r => EndsAt.restoreNames_bind fun _ => SigPres.pure r
+  · intro f g; unfold convFn; simp only []
+    refine SigPres.get_ends fun saved => ?_
+    exact EndsAt.bind_any _ fun r => EndsAt.restoreNames_bind fun _ => SigPres.pure r
   · intro f g pf cs hs ds c; unfold convFnRun; sp
   · intro fv fT; unfold funType?; sp
   · intro fv fT; unfold funType; sp

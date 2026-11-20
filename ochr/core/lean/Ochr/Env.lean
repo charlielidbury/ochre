@@ -306,6 +306,19 @@ def restoreKeep (saved : MState) : M Unit :=
              absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size,
              absDecl := cur.absDecl }
 
+/-- D103: leave a comparison (`conv`, `convPi`, `convFn`): put back the state it started from,
+keeping only the names made inside, as every private computation keeps them (D37's first half:
+fresh names are never reused, so `nextAbs`, `nextLoan`, `nextRecUid`, the frozen readings
+`absDecl` and the types of the unknowns made inside, the tail of `absTy`, only grow). Unlike
+`restoreKeep`, the records made inside (generalisations `neutrals`, η-refinements `etaRefs`)
+and the copy's changes to the recursion check's candidate lists are dropped: a comparison's
+result is a boolean, which can mention nothing it made. -/
+def restoreNames (saved : MState) : M Unit :=
+  modify fun cur =>
+    { saved with nextAbs := cur.nextAbs, nextLoan := cur.nextLoan, nextRecUid := cur.nextRecUid,
+                 absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size,
+                 absDecl := cur.absDecl }
+
 /-- A [Split] world (notes/split-model.md): the state an arm of a case split starts from.
 Each arm of a split on an unknown `σ` is checked in its own world, the one where `σ` is that
 arm's constructor; the worlds are exclusive (principle X), so nothing an arm establishes may

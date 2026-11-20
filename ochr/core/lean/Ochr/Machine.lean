@@ -1802,25 +1802,33 @@ owned places) plus its captured values (D30). Structural everywhere else. `⊥` 
 own, "moved on every path" (D84): it is convertible with itself only. -/
 def conv (fuel : Nat) (v w : Value) : M Bool := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  if v == w then return true
-  -- D50: the unit laws And(True, P) ≡ P ≡ And(P, True) are conversion rules
-  let v := unitTop v
-  let w := unitTop w
-  if v == w then return true
-  match v, w with
-  | .succ a, .succ b | .tRef a, .tRef b => conv fuel' a b
-  | .tInd n as, .tInd m bs => pure (n == m && (← convList fuel' as bs))
-  | .tEq A a b, .tEq B c d => pure ((← conv fuel' A B) && (← conv fuel' a c) && (← conv fuel' b d))
-  | .borrow l a, .borrow m b => pure (l == m && (← conv fuel' a b))
-  | .ind t c _ _ fs, .ind u d _ _ gs => pure (t == u && c == d && (← convList fuel' fs gs))
-  | .sealed t, .sealed u => convT fuel' t u
-  | .tPi cs t r, .tPi ds u r' =>
-    -- same captures, read alike, and code
-    if r == r' && (← convList fuel' cs ds) && (← convT fuel' t u) then return true
-    convPi fuel' v w
-  | f, g =>
-    let isFn : Value → Bool := fun | .gfn _ | .clo _ _ _ => true | _ => false
-    if isFn f && isFn g then convFn fuel' f g else pure false
+  -- D103: a comparison keeps nothing but names. On every exit it puts back the state it started
+  -- from, keeping only the fresh names made inside (`restoreNames`): its result is a boolean,
+  -- which can mention nothing it made
+  let saved ← get
+  let r ← onFail (do
+    if v == w then return true
+    -- D50: the unit laws And(True, P) ≡ P ≡ And(P, True) are conversion rules
+    let v := unitTop v
+    let w := unitTop w
+    if v == w then return true
+    match v, w with
+    | .succ a, .succ b | .tRef a, .tRef b => conv fuel' a b
+    | .tInd n as, .tInd m bs => pure (n == m && (← convList fuel' as bs))
+    | .tEq A a b, .tEq B c d => pure ((← conv fuel' A B) && (← conv fuel' a c) && (← conv fuel' b d))
+    | .borrow l a, .borrow m b => pure (l == m && (← conv fuel' a b))
+    | .ind t c _ _ fs, .ind u d _ _ gs => pure (t == u && c == d && (← convList fuel' fs gs))
+    | .sealed t, .sealed u => convT fuel' t u
+    | .tPi cs t r, .tPi ds u r' =>
+      -- same captures, read alike, and code
+      if r == r' && (← convList fuel' cs ds) && (← convT fuel' t u) then return true
+      convPi fuel' v w
+    | f, g =>
+      let isFn : Value → Bool := fun | .gfn _ | .clo _ _ _ => true | _ => false
+      if isFn f && isFn g then convFn fuel' f g else pure false
+    ) (restoreNames saved)
+  restoreNames saved
+  pure r
 termination_by structural fuel
 
 def convList (fuel : Nat) : List Value → List Value → M Bool
@@ -1848,44 +1856,52 @@ comparison that needs itself answers "not convertible" (the relation is the leas
 that errors is an error (it used to answer "not convertible": `notes/catch-census.md`). -/
 def convPi (fuel : Nat) (P Q : Value) : M Bool := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  let .tPi cs (.pi hs ds c) rd := P | return false
-  let .tPi cs' (.pi _ ds' c') rd' := Q | return false
-  if ds.length != ds'.length then return false
-  -- D54: the erasure class, and whether it returns a borrow, are part of the Π-type (the
-  -- `Unit` and data rows of [Close] may differ: `Unit` has one value, D54 refined)
-  unless (← fnClass fuel' P) == (← fnClass fuel' Q) && ((← declKind fuel' P) == .ref) == ((← declKind fuel' Q) == .ref) do
-    return false
-  if (← get).convStack.contains (P, Q) then return false
-  privately do
-      modify fun s => { s with env := #[{}], obsFrame := none, convStack := (P, Q) :: s.convStack }
-      pushFrame
-      pushCaps fuel' cs rd
-      let (pds, _) ← paramDecls fuel' cs rd hs ds c
-      let mut ws : Array (Value × Value) := #[]
-      for ((d, h), pd) in (ds.zip hs).zip pds do
-        let A ← evalType fuel' d
-        let w ← match A with
-          | .tRef T =>
-            let c ← absAt fuel' pd.deref T
-            let l ← freshLoan
-            modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
-            pure (Value.borrow l c)
-          | _ => genericValue fuel' A pd
-        let pd' ← refineDecl pd
-        pushBind h (some A) w pd'.isProof pd'
-        ws := ws.push (w, A)
-      let C ← evalType fuel' c
-      discard popFrameRaw
-      pushFrame
-      pushCaps fuel' cs' rd'
-      let (pds', _) ← paramDecls fuel' cs' rd' hs ds' c'
-      for (((d', h), (w, A)), pd) in ((ds'.zip hs).zip ws.toList).zip pds' do
-        let A' ← evalType fuel' d'
-        unless ← conv fuel' A A' do return false
-        let pd' ← refineDecl pd
-        pushBind h (some A') w pd'.isProof pd'
-      let C' ← evalType fuel' c'
-      conv fuel' C C'
+  -- D103: a comparison keeps nothing but names. On every exit it puts back the state it started
+  -- from, keeping only the fresh names made inside (`restoreNames`): its result is a boolean,
+  -- which can mention nothing it made
+  let saved ← get
+  let r ← onFail (do
+    let .tPi cs (.pi hs ds c) rd := P | return false
+    let .tPi cs' (.pi _ ds' c') rd' := Q | return false
+    if ds.length != ds'.length then return false
+    -- D54: the erasure class, and whether it returns a borrow, are part of the Π-type (the
+    -- `Unit` and data rows of [Close] may differ: `Unit` has one value, D54 refined)
+    unless (← fnClass fuel' P) == (← fnClass fuel' Q) && ((← declKind fuel' P) == .ref) == ((← declKind fuel' Q) == .ref) do
+      return false
+    if (← get).convStack.contains (P, Q) then return false
+    privately do
+        modify fun s => { s with env := #[{}], obsFrame := none, convStack := (P, Q) :: s.convStack }
+        pushFrame
+        pushCaps fuel' cs rd
+        let (pds, _) ← paramDecls fuel' cs rd hs ds c
+        let mut ws : Array (Value × Value) := #[]
+        for ((d, h), pd) in (ds.zip hs).zip pds do
+          let A ← evalType fuel' d
+          let w ← match A with
+            | .tRef T =>
+              let c ← absAt fuel' pd.deref T
+              let l ← freshLoan
+              modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
+              pure (Value.borrow l c)
+            | _ => genericValue fuel' A pd
+          let pd' ← refineDecl pd
+          pushBind h (some A) w pd'.isProof pd'
+          ws := ws.push (w, A)
+        let C ← evalType fuel' c
+        discard popFrameRaw
+        pushFrame
+        pushCaps fuel' cs' rd'
+        let (pds', _) ← paramDecls fuel' cs' rd' hs ds' c'
+        for (((d', h), (w, A)), pd) in ((ds'.zip hs).zip ws.toList).zip pds' do
+          let A' ← evalType fuel' d'
+          unless ← conv fuel' A A' do return false
+          let pd' ← refineDecl pd
+          pushBind h (some A') w pd'.isProof pd'
+        let C' ← evalType fuel' c'
+        conv fuel' C C'
+    ) (restoreNames saved)
+  restoreNames saved
+  pure r
 termination_by structural fuel
 
 /-- Structural comparison of terms (inside sealed programs, closures and Π-types),
@@ -1922,16 +1938,24 @@ call observes only a sealed call of itself) answers "not convertible": sound, an
 incomplete only for functions whose observation mentions themselves. -/
 def convFn (fuel : Nat) (f g : Value) : M Bool := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  if (← get).convStack.contains (f, g) then return false
-  let pf ← funType fuel' f none
-  let pg ← funType fuel' g none
-  unless ← conv fuel' pf pg do return false
-  let caps : Value → List Value := fun | .clo cs _ _ => cs | _ => []
-  unless ← convList fuel' (caps f) (caps g) do return false
-  let .tPi cs (.pi hs ds c) _ := pf | return false
-  -- a comparison that errors (e.g. a stuck block's function run at a generic argument where
-  -- a pattern's sub-place does not exist, fuzz-port R3) is an error, as in `convPi`
-  convFnRun fuel' f g pf cs hs ds c
+  -- D103: a comparison keeps nothing but names. On every exit it puts back the state it started
+  -- from, keeping only the fresh names made inside (`restoreNames`): its result is a boolean,
+  -- which can mention nothing it made
+  let saved ← get
+  let r ← onFail (do
+    if (← get).convStack.contains (f, g) then return false
+    let pf ← funType fuel' f none
+    let pg ← funType fuel' g none
+    unless ← conv fuel' pf pg do return false
+    let caps : Value → List Value := fun | .clo cs _ _ => cs | _ => []
+    unless ← convList fuel' (caps f) (caps g) do return false
+    let .tPi cs (.pi hs ds c) _ := pf | return false
+    -- a comparison that errors (e.g. a stuck block's function run at a generic argument where
+    -- a pattern's sub-place does not exist, fuzz-port R3) is an error, as in `convPi`
+    convFnRun fuel' f g pf cs hs ds c
+    ) (restoreNames saved)
+  restoreNames saved
+  pure r
 termination_by structural fuel
 
 /-- `convFn`'s observation of both functions' generic calls. -/
