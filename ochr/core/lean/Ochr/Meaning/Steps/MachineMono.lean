@@ -2,6 +2,7 @@ import Ochr.Meaning.Steps.Statements
 import Ochr.Meaning.RunLib
 import Ochr.Meaning.Steps.Machine.All
 import Ochr.Meaning.Steps.Machine.False
+import Ochr.Meaning.Steps.Machine.DecideFuel
 
 /-!
 # Facts about the machine alone (the slice, main's decision 2026-11-20; its own lane)
@@ -35,7 +36,12 @@ To be stated here as they are reached (from the slice's knowledge, 2026-11-20):
   (`repackCheck`'s `lentUnknown`, docs/31 D35, D57);
 - a decision's run leaves the state as it was (PROVED for the decisions the slice reads,
   `Slice.DecideKeep`), and a successful run at one fuel is a successful run with the same answer
-  at every larger fuel (the decisions are asked at any fuel, `DecAligned`);
+  at every larger fuel (the decisions are asked at any fuel, `DecAligned`): PROVED for every field of
+  `Decisions` but `blockCaps` (`Machine.fuelAgree_flags`, `_placeDecl`, `_declOf`, `_copy`, `_piSort`,
+  `_joinMoves`, `_rePointed`, `_typeDecl`: two successes at any fuels and budgets agree;
+  `Machine.FuelMono`). The checker's block captures (`ckBlockCaps`) run the machine itself
+  (`movedPlace`, `blockCaptures`), so theirs is a fuel induction over the whole machine block, and
+  `blockCaptures`' `while` loop blocks it as it blocks (a);
 - a comparison's private copy leaves no record naming an unknown it made (main's comparison fix),
   and `placeType?`'s private copies likewise (to be swept before `placeType?`'s step is stated);
 - (WF1)–(WF16) and `ShapeFacts` are kept by every step: about checker states only, but each step's
@@ -117,10 +123,12 @@ globals and the declarations from `saved`. It keeps the tables when `saved` has 
 which holds at every use in the machine: `restoreKeep_grows` below, `Machine.growsIn_restoreKeep`.
 Kept (with its `sorry`) only while its users (`EqJAsm.eq_step_asm`) move to `restoreKeep_grows`. -/
 theorem grows_restoreKeep (saved : MState) : GrowsM (Ochr.restoreKeep saved) := by sorry
-/-- `restoreKeep` to a saved state with the current globals and declarations only extends the tables. -/
-theorem restoreKeep_grows {saved st st' : MState} {b : Nat} (h₁ : saved.globals = st.globals)
-    (h₂ : saved.inds = st.inds) (h : Runs (Ochr.restoreKeep saved) st b () st') : TablesGrow st st' :=
-  (growsIn_restoreKeep (G := (saved.globals, saved.inds)) ⟨rfl, rfl⟩).runs ⟨h₁.symm, h₂.symm⟩ h
+/-- **`restoreKeep` to an earlier state of the same run only extends the tables** (the corrected
+`grows_restoreKeep`): the snapshot `saved` is a state the run has grown from (`TablesGrow saved cur`),
+so it has the current globals and declarations, which are all `restoreKeep` takes from it. -/
+theorem restoreKeep_grows {saved cur st' : MState} {b : Nat} (hs : TablesGrow saved cur)
+    (h : Runs (Ochr.restoreKeep saved) cur b () st') : TablesGrow cur st' :=
+  (growsIn_restoreKeep (G := (saved.globals, saved.inds)) ⟨rfl, rfl⟩).runs ⟨hs.globals, hs.inds⟩ h
 theorem grows_expectTy (fuel : Nat) (w : String) (T : Option Value) (A : Value) :
     GrowsM (Ochr.expectTy fuel w T A) := growsM_of_growsIn fun _ => (machineGrows fuel).expectTy w T A
 theorem grows_mkEqM (fuel : Nat) (A a b : Value) : GrowsM (Ochr.mkEqM fuel A a b) :=

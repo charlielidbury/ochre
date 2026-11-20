@@ -33,6 +33,16 @@ was read earlier in the same run (`get`, `enterWorld` give `OnTab tb s` for what
   `All.lean`: `machineGrows : ∀ nf, MachineGrows tb nf`.
 - `MachineMono.lean`'s statements are proved from these, except the two below that are false.
 - `False.lean`: `not_grows_restoreKeep` (kernel-checked).
+- Decisions agree across fuels (`FuelDefs.lean`, `DecideFuel.lean`): `FuelLe x y` (every success of
+  `x` is one of `y`, same value and final state, from any budget and log: the decision procedures
+  never touch the budget or the log); each function of Decide's block at `n` is `FuelLe` itself at
+  `n + 1` (`decideFuelLe`, `jdFuelLe`, `jaFuelLe`, `fuelLe_typeState`; macro tactics `fuel_go`,
+  `fuel_ih` in DecideScope's style, both sides walked in step); `FuelAgree`/`FuelMono` for each
+  field of `Decisions` as `checkerDecisions₀` reads it (`fuelAgree_flags`, …, `_typeDecl`). Not
+  `blockCaps` (`ckBlockCaps` runs the machine: a whole-block fuel induction, blocked by the `while`).
+- `MachineMono.restoreKeep_grows`: the corrected `grows_restoreKeep` (hypothesis `TablesGrow saved cur`).
+  `eq_step_asm` goes through with it (checked on a scratch copy; the replacement is a forward chain of
+  `TablesGrow` along the run, then the `back`s).
 
 ## Open (all inside the induction, in `StepPending.lean`)
 
