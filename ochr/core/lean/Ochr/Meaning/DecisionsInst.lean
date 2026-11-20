@@ -1,4 +1,5 @@
 import Ochr.Meaning.Places
+import Ochr.Meaning.BlockCaps
 import Ochr.Decide
 
 /-!
@@ -93,7 +94,7 @@ def readDecision {α : Type} (st : MState) (fuel : Nat) (dflt : α) (x : M α) :
 /-- The checker's decisions at the tables of `st`, each read as `Machine.lean` calls it; D84's
 `joinMoves` is `Decide.jdMoves` as `staticJoin` calls it, and `rePointed` is `Decide.typeState`'s
 `repointed` as `idType` reads it. See the module docstring for the one mismatch (`piSort`). -/
-def checkerDecisions (st : MState) (fuel : Nat) : Decisions where
+def checkerDecisions₀ (st : MState) (fuel : Nat) : Decisions where
   -- `Machine.evalAt`: `withLive true (declOf … t)`, then `preFlags`; `none` is "not erased"
   flags sc t := readDecision (scopeState st sc) fuel (false, false) do
     let d ← withLive true (Ochr.declOf fuel false [] [] t)
@@ -113,6 +114,13 @@ def checkerDecisions (st : MState) (fuel : Nat) : Decisions where
   -- `Decide.typeDecl`, the reading of a type term, with the scope as the live frame (as
   -- `Decide.telescope` reads a parameter's type in the scope of the earlier ones)
   typeDecl sc T := readDecision (scopeState st sc) fuel .other (withLive true (Ochr.typeDecl fuel false [] [] T))
+
+/-- The checker's decisions, with D90's [Entry] captures read statically from the others
+(`BlockCaps.staticBlockCaps`: `Machine.blockCaptures` reads values, so it cannot be run in a scope
+state; which of its inputs read values, and what replaces each, is that file's docstring). -/
+def checkerDecisions (st : MState) (fuel : Nat) : Decisions :=
+  { checkerDecisions₀ st fuel with
+    blockCaps := fun sc entry t => BlockCaps.staticBlockCaps (checkerDecisions₀ st fuel) st.inds fuel sc entry t }
 
 /-! ## Sanity: the fields compute (by the kernel, at any tables `st`) -/
 

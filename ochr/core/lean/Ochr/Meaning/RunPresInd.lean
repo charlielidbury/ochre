@@ -86,7 +86,10 @@ theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {tl : Bool} 
     {s s' : SState} {r : Res} (h : runT K ρ φ tl hint (.prim n args) s = some (r, s')) :
     (s' = s ∧ r.2.label = none) ∨
     (∃ t, t ∈ args ∧ run K ρ φ hint t s = some (r, s')) ∨
-    (∃ p, readPlace K φ p true s = some (r, s')) := by
+    (∃ p, readPlace K φ p true s = some (r, s')) ∨
+    -- `J`: its transported term's entry, its run, its join
+    (∃ t s₂, t ∈ args ∧ run K ρ φ hint t (matchEntry K φ true t s).1 = some (r, s₂) ∧
+      s' = joinDrop K φ (movedPlaces φ (matchEntry K φ true t s).1) (.prim n args) s₂) := by
   by_cases h1 : n = "symm"
   · subst h1; rw [runT] at h; obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h); exact .inl ⟨rfl, rfl⟩
   by_cases h2 : n = "trans"
@@ -114,7 +117,12 @@ theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {tl : Bool} 
     obtain ⟨_, s₅, e5, h⟩ := SM.bind_some h
     rw [SM.onCopy_state e1] at e2; rw [SM.onCopy_state e2] at e3; rw [SM.onCopy_state e3] at e4
     rw [SM.onCopy_state e4] at e5; rw [SM.onCopy_state e5] at h
-    exact .inr (.inl ⟨t, by simp, h⟩)
+    dsimp only at h
+    split at h
+    · rename_i r₁ R₁ s₂ h2
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
+      exact .inr (.inr (.inr ⟨t, s₂, by simp, h2, rfl⟩))
+    · cases h
   by_cases hc : ∃ u, (n = "clone" ∨ n = "peek" ∨ n = "inplace") ∧ args = [u]
   · obtain ⟨u, hn, rfl⟩ := hc
     have key : ∀ b : Bool × Bool, SM.erasedIf b (SM.headOf u (fun p => readPlace K φ p true) (run K ρ φ hint u)) s = some (r, s') →
@@ -126,7 +134,13 @@ theorem run_prim_cases (K : RunCtx) (ρ : Assignment) (φ : Future) {tl : Bool} 
         · exact .inr (.inr ⟨p, h⟩)
         · exact .inr (.inl ⟨u, by simp, h⟩)
       · exact .inl ⟨rfl, hl⟩
-    rcases hn with rfl | rfl | rfl <;> (rw [runT] at h; exact key _ h)
+    have key' : ∀ b : Bool × Bool, SM.erasedIf b (SM.headOf u (fun p => readPlace K φ p true) (run K ρ φ hint u)) s = some (r, s') →
+        (s' = s ∧ r.2.label = none) ∨ (∃ t, t ∈ [u] ∧ run K ρ φ hint t s = some (r, s')) ∨
+        (∃ p, readPlace K φ p true s = some (r, s')) ∨
+        (∃ t s₂, t ∈ [u] ∧ run K ρ φ hint t (matchEntry K φ true t s).1 = some (r, s₂) ∧
+          s' = joinDrop K φ (movedPlaces φ (matchEntry K φ true t s).1) (.prim n [u]) s₂) :=
+      fun b h => (key b h).imp_right (Or.imp_right Or.inl)
+    rcases hn with rfl | rfl | rfl <;> (rw [runT] at h; exact key' _ h)
   exfalso
   exact fail (fun A a b P h t e1 e2 => hJ ⟨A, a, b, P, h, t, e1, e2⟩)
     (fun u e1 e2 => hc ⟨u, .inl e1, e2⟩) (fun u e1 e2 => hc ⟨u, .inr (.inl e1), e2⟩)
@@ -308,6 +322,28 @@ theorem fixMoves_rinv (g : SState → Nat → SState)
     · rw [e]; exact hi
     · rw [e]; exact setAt_rinv hi pos _ (FT.const _ _) (fun _ _ => FT.const _ _)
 
+/-- Forming a closure accesses each capture and moves the non-copy ones: a fold of accesses, each
+maybe followed by a write of the constant `moved` at the accessed position. -/
+theorem capMoves_props (g : SState → Nat → SState)
+    (hg : ∀ s i, g s i = s ∨ ∃ pos, g s i = s.access pos (dataHit []) ∨
+      g s i = (s.access pos (dataHit [])).setAt pos fun _ => .moved) :
+    ∀ (vs : List Nat) {s : SState}, RInv L s →
+      RInv L (vs.foldl g s) ∧ EnvLe s (vs.foldl g s) ∧ OrdKeep L s (vs.foldl g s)
+  | [], s, hi => ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
+  | v :: vs, s, hi => by
+    simp only [List.foldl_cons]
+    have h1 : RInv L (g s v) ∧ EnvLe s (g s v) ∧ OrdKeep L s (g s v) := by
+      rcases hg s v with e | ⟨pos, e | e⟩ <;> rw [e]
+      · exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
+      · exact ⟨access_rinv hi pos _, envLe_access _ _ _, ordKeep_access hi pos _⟩
+      · have ha := access_rinv hi pos (dataHit [])
+        exact ⟨setAt_rinv ha pos _ (FT.const _ _) (fun _ _ => FT.const _ _),
+          (envLe_access _ _ _).trans (envLe_setAt _ _ _),
+          (ordKeep_access hi pos _).trans (envLe_access _ _ _) (ordKeep_setAt_const pos _)⟩
+    obtain ⟨hi₁, e₁, o₁⟩ := h1
+    obtain ⟨hi₂, e₂, o₂⟩ := capMoves_props g hg vs hi₁
+    exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
+
 /-- **An assignment's middle**: the borrow the target root held ends (at a root), then the content
 is written. The target stays a position; at a root, its meaning is then the constant written, and
 a label it still records (another holder was found first) is read by no one. -/
@@ -399,6 +435,74 @@ theorem tagOf_rinv {p : Place} {tag : Sem → TyS → Sem} {s s' : SState} {tg :
     (h : tagOf K φ p tag s = some (tg, s')) (hi : RInv L s) : RInv L s' ∧ EnvLe s s' ∧ OrdKeep L s s' := by
   obtain ⟨pos, steps, -, rfl⟩ := tagOf_some K φ h
   exact ⟨access_rinv hi pos _, envLe_access s pos _, ordKeep_access hi pos _⟩
+
+/-- A fold whose every step is nothing or an access keeps the invariant. -/
+theorem foldAccess_props {α : Type} (g : SState → α → SState)
+    (hg : ∀ s a, g s a = s ∨ ∃ pos hit, g s a = s.access pos hit) :
+    ∀ (xs : List α) {s : SState}, RInv L s →
+      RInv L (xs.foldl g s) ∧ EnvLe s (xs.foldl g s) ∧ OrdKeep L s (xs.foldl g s)
+  | [], s, hi => ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
+  | x :: xs, s, hi => by
+    simp only [List.foldl_cons]
+    have h1 : RInv L (g s x) ∧ EnvLe s (g s x) ∧ OrdKeep L s (g s x) := by
+      rcases hg s x with e | ⟨pos, hit, e⟩ <;> rw [e]
+      · exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
+      · exact ⟨access_rinv hi pos _, envLe_access _ _ _, ordKeep_access hi pos _⟩
+    obtain ⟨hi₁, e₁, o₁⟩ := h1
+    obtain ⟨hi₂, e₂, o₂⟩ := foldAccess_props g hg xs hi₁
+    exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
+
+/-- [Entry]'s accesses keep the invariant. -/
+theorem entryAccess_props (bc : List Place × List (Place × Nat)) {s : SState} (hi : RInv L s) :
+    RInv L (entryAccess bc s) ∧ EnvLe s (entryAccess bc s) ∧ OrdKeep L s (entryAccess bc s) := by
+  unfold entryAccess
+  obtain ⟨hi₁, e₁, o₁⟩ := foldAccess_props L entryReroot (fun s q => by
+    unfold entryReroot
+    split
+    · rename_i pos steps _
+      unfold accessLentPrefix
+      split
+      · exact .inr ⟨pos, _, rfl⟩
+      · exact .inl rfl
+    · exact .inl rfl) bc.1 hi
+  obtain ⟨hi₂, e₂, o₂⟩ := foldAccess_props L entryCap (fun s qk => by
+    unfold entryCap
+    split
+    · rename_i pos steps _
+      exact .inr ⟨pos, _, rfl⟩
+    · exact .inl rfl) bc.2 hi₁
+  exact ⟨hi₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
+
+/-- **[Entry] at a match** keeps the invariant, and its lending only adds sites. -/
+theorem matchEntry_props (ent : Bool) (mt : Term) {s : SState} (hi : RInv L s) :
+    RInv L (matchEntry K φ ent mt s).1 ∧ EnvLe s (matchEntry K φ ent mt s).1 ∧
+      OrdKeep L s (matchEntry K φ ent mt s).1 := by
+  unfold matchEntry
+  split
+  · exact entryAccess_props L _ hi
+  · exact ⟨hi, EnvLe.refl _, OrdKeep.refl _⟩
+
+theorem matchEntry_lend (ent : Bool) (mt : Term) (s : SState) (lab : Option Nat) (s₂ : SState) :
+    (matchEntry K φ ent mt s).2 lab s₂ = s₂ ∨ ∃ k xs, (matchEntry K φ ent mt s).2 lab s₂ = s₂.setLent k xs := by
+  unfold matchEntry
+  split
+  · dsimp only
+    split
+    · unfold entryLend
+      split
+      · exact .inr ⟨_, _, rfl⟩
+      · exact .inl rfl
+    · exact .inl rfl
+  · exact .inl rfl
+
+/-- A lending that only adds sites keeps what the run's invariant says of a state. -/
+theorem lend_post {s₀ s₂ : SState} {lab : Option Nat} (x : SState)
+    (hx : x = s₂ ∨ ∃ k xs, x = s₂.setLent k xs)
+    (h : RInv L s₂ ∧ (∀ y, lab = some y → LoU1 s₂ y) ∧ EnvLe s₀ s₂ ∧ OrdKeep L s₀ s₂) :
+    RInv L x ∧ (∀ y, lab = some y → LoU1 x y) ∧ EnvLe s₀ x ∧ OrdKeep L s₀ x := by
+  rcases hx with rfl | ⟨k, xs, rfl⟩
+  · exact h
+  · exact h
 
 mutual
 /-- **Part (P)**: the run keeps `RInv L`, its result's label is live or unread, and it keeps the
@@ -540,10 +644,18 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     rotate_left
     · exact rinv_pure L hi hl
     simp only [Bind.bind, Option.bind_eq_some_iff] at h
-    obtain ⟨⟨tg, s₁⟩, h1, h⟩ := h
-    obtain ⟨hi₁, e₁, o₁⟩ := tagOf_rinv K φ L h1 hi
+    obtain ⟨⟨tg, s₀⟩, h1, h⟩ := h
+    obtain ⟨hi₀, e₀, o₀⟩ := tagOf_rinv K φ L h1 hi
+    obtain ⟨hi₁', e₁', o₁'⟩ := matchEntry_props K φ L (!tl) (.matchNat p z u) hi₀
+    have hlend := matchEntry_lend K φ (!tl) (.matchNat p z u) s₀
+    generalize matchEntry K φ (!tl) (.matchNat p z u) s₀ = me at h hi₁' e₁' o₁' hlend
+    obtain ⟨s₁, lend⟩ := me
+    dsimp only at h hi₁' e₁' o₁' hlend
+    have hi₁ := hi₁'
+    have e₁ := e₀.trans e₁'
+    have o₁ := o₀.trans e₀ o₁'
     split at h
-    · dsimp only at h
+    · try dsimp only at h
       cases h2 : runT K ρ φ tl hint z s₁ with
       | none => rw [h2] at h; cases h
       | some a =>
@@ -551,10 +663,10 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
         obtain ⟨⟨r', R⟩, s₂⟩ := a
         obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
         obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runT_rinv hK tl z hint _ s₂ (r', R) hi₁ h2
-        exact ⟨joinDrop_rinv K φ L _ _ hi₂, fun y hl => joinDrop_lou K φ L _ _ hi₂ (hy₂ y hl),
+        exact lend_post L _ (hlend _ _) ⟨joinDrop_rinv K φ L _ _ hi₂, fun y hl => joinDrop_lou K φ L _ _ hi₂ (hy₂ y hl),
           e₁.trans (e₂.trans (joinDrop_envLe K φ _ _ _)),
           o₁.trans e₁ (o₂.trans e₂ (joinDrop_ordKeep K φ _ _ hi₂))⟩
-    · dsimp only at h
+    · try dsimp only at h
       cases h2 : runT K ρ φ tl hint u s₁ with
       | none => rw [h2] at h; cases h
       | some a =>
@@ -562,7 +674,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
         obtain ⟨⟨r', R⟩, s₂⟩ := a
         obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
         obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runT_rinv hK tl u hint _ s₂ (r', R) hi₁ h2
-        exact ⟨joinDrop_rinv K φ L _ _ hi₂, fun y hl => joinDrop_lou K φ L _ _ hi₂ (hy₂ y hl),
+        exact lend_post L _ (hlend _ _) ⟨joinDrop_rinv K φ L _ _ hi₂, fun y hl => joinDrop_lou K φ L _ _ hi₂ (hy₂ y hl),
           e₁.trans (e₂.trans (joinDrop_envLe K φ _ _ _)),
           o₁.trans e₁ (o₂.trans e₂ (joinDrop_ordKeep K φ _ _ hi₂))⟩
     · cases h
@@ -572,11 +684,19 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     rotate_left
     · exact rinv_pure L hi hl
     simp only [Bind.bind, Option.bind_eq_some_iff] at h
-    obtain ⟨⟨tg, s₁⟩, h1, h⟩ := h
-    obtain ⟨hi₁, e₁, o₁⟩ := tagOf_rinv K φ L h1 hi
+    obtain ⟨⟨tg, s₀⟩, h1, h⟩ := h
+    obtain ⟨hi₀, e₀, o₀⟩ := tagOf_rinv K φ L h1 hi
+    obtain ⟨hi₁', e₁', o₁'⟩ := matchEntry_props K φ L (!tl && !tg.isProof) (.matchInd p n arms) hi₀
+    have hlend := matchEntry_lend K φ (!tl && !tg.isProof) (.matchInd p n arms) s₀
+    generalize matchEntry K φ (!tl && !tg.isProof) (.matchInd p n arms) s₀ = me at h hi₁' e₁' o₁' hlend
+    obtain ⟨s₁, lend⟩ := me
+    dsimp only at h hi₁' e₁' o₁' hlend
+    have hi₁ := hi₁'
+    have e₁ := e₀.trans e₁'
+    have o₁ := o₀.trans e₀ o₁'
     split at h
     · rename_i c _
-      dsimp only at h
+      try dsimp only at h
       cases h2 : runArm K ρ φ tl hint c arms s₁ with
       | none => rw [h2] at h; cases h
       | some a =>
@@ -584,10 +704,10 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
         obtain ⟨⟨r', R⟩, s₂⟩ := a
         obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
         obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runArm_rinv hK tl arms hint _ _ s₂ (r', R) hi₁ h2
-        have hj : ∀ sj, sj = joinDrop K φ (movedPlaces φ s₁) (.matchInd p n arms) s₂ ∨ sj = s₂ →
+        have hj : ∀ sj, sj = lend R.label (joinDrop K φ (movedPlaces φ s₁) (.matchInd p n arms) s₂) ∨ sj = s₂ →
             RInv L sj ∧ (∀ y, R.label = some y → LoU1 sj y) ∧ EnvLe s sj ∧ OrdKeep L s sj := by
           rintro sj (rfl | rfl)
-          · exact ⟨joinDrop_rinv K φ L _ _ hi₂, fun y hl => joinDrop_lou K φ L _ _ hi₂ (hy₂ y hl),
+          · exact lend_post L _ (hlend _ _) ⟨joinDrop_rinv K φ L _ _ hi₂, fun y hl => joinDrop_lou K φ L _ _ hi₂ (hy₂ y hl),
               e₁.trans (e₂.trans (joinDrop_envLe K φ _ _ _)),
               o₁.trans e₁ (o₂.trans e₂ (joinDrop_ordKeep K φ _ _ hi₂))⟩
           · exact ⟨hi₂, hy₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
@@ -667,34 +787,27 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     rotate_left
     · exact rinv_pure L hi hl
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
-    refine ⟨?_, (fun l hl => by cases hl), ?_, ?_⟩
-    · apply fixMoves_rinv L _ _ _ hi
-      intro s i
+    obtain ⟨hi', e', o'⟩ := capMoves_props L (capStep K) (fun s i => by
+      unfold capStep
       split
-      · exact .inl rfl
-      · split
-        · exact .inr ⟨_, rfl⟩
-        · exact .inl rfl
-    · apply envLe_foldl _ _ _ s
-      intro s i
-      split
-      · exact EnvLe.refl s
-      · split
-        · exact envLe_setAt _ _ _
-        · exact EnvLe.refl s
-    · apply ordKeep_foldl_moves _ _ _ s
-      intro s i
-      split
-      · exact .inl rfl
-      · split
-        · exact .inr ⟨_, rfl⟩
-        · exact .inl rfl
+      · rename_i pos _
+        dsimp only
+        split
+        · exact .inr ⟨pos, .inl rfl⟩
+        · exact .inr ⟨pos, .inr rfl⟩
+      · exact .inl rfl) _ hi
+    exact ⟨hi', (fun l hl => by cases hl), e', o'⟩
   | tl, .prim n args, hint, s, s', r, hi, h => by
-    rcases run_prim_cases K ρ φ h with ⟨rfl, hl⟩ | ⟨t, ht, h'⟩ | ⟨p, h'⟩
+    rcases run_prim_cases K ρ φ h with ⟨rfl, hl⟩ | ⟨t, ht, h'⟩ | ⟨p, h'⟩ | ⟨t, s₂, ht, h', rfl⟩
     · exact rinv_pure L hi hl
     · exact runAll_rinv hK args t ht hint s s' r hi h'
     · exact ⟨(readPlace_rinv K φ L h' hi).1, (readPlace_rinv K φ L h' hi).2, readPlace_envLe K φ h',
         readPlace_ordKeep K φ h' hi⟩
+    · obtain ⟨hi₁, e₁, o₁⟩ := matchEntry_props K φ L true t hi
+      obtain ⟨hi₂, hy₂, e₂, o₂⟩ := runAll_rinv hK args t ht hint _ s₂ r hi₁ h'
+      exact ⟨joinDrop_rinv K φ L _ _ hi₂, fun y hl => joinDrop_lou K φ L _ _ hi₂ (hy₂ y hl),
+        e₁.trans (e₂.trans (joinDrop_envLe K φ _ _ _)),
+        o₁.trans e₁ (o₂.trans e₂ (joinDrop_ordKeep K φ _ _ hi₂))⟩
   | tl, .assign p u, hint, s, s', r, hi, h => by
     rw [runT] at h
     rcases SM.erasedIf_some h with h | ⟨rfl, hl⟩

@@ -53,8 +53,9 @@ end
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- The value and the state of a run, without the result's type. -/
-def resVS (x : Res × SState) : Sem × SState := (x.1.1, x.2)
+/-- The value, the result's label and the state of a run, without the rest of the result's type
+(the label is read after a borrow-typed non-tail match, D90 [Entry]'s lending). -/
+def resVS (x : Res × SState) : Sem × Option Nat × SState := (x.1.1, x.1.2.label, x.2)
 
 theorem Option.bind_none' {α β : Type _} (f : α → Option β) : (none : Option α).bind f = none := rfl
 theorem Option.bind_some' {α β : Type _} (a : α) (f : α → Option β) : (some a).bind f = f a := rfl
@@ -83,18 +84,20 @@ theorem tailCont_ok (g : SState → SState) :
         = (some ((y.1.1, y.1.2), g y.2)).map resVS := by
   intro x y hxy
   simp only [resVS, Prod.mk.injEq] at hxy
-  simp only [Option.map_some, resVS, hxy.1, hxy.2]
+  simp only [Option.map_some, resVS, hxy.1, hxy.2.1, hxy.2.2]
 
-/-- A continuation whose result, up to its type, does not depend on its input's type. -/
+/-- A continuation whose result, up to its type but its label, does not depend on its input's
+type but its label. -/
 theorem tailCont_ok' (f : Res × SState → Option (Res × SState))
-    (hf : ∀ (a : Sem) (A B : TyS) (sx : SState), (f ((a, A), sx)).map resVS = (f ((a, B), sx)).map resVS) :
+    (hf : ∀ (a : Sem) (A B : TyS) (sx : SState), A.label = B.label →
+      (f ((a, A), sx)).map resVS = (f ((a, B), sx)).map resVS) :
     ∀ x y, resVS x = resVS y → (f x).map resVS = (f y).map resVS := by
   intro x y hxy
   obtain ⟨⟨a, A⟩, sx⟩ := x
   obtain ⟨⟨b, B⟩, sy⟩ := y
   simp only [resVS, Prod.mk.injEq] at hxy
-  obtain ⟨rfl, rfl⟩ := hxy
-  exact hf a A B sx
+  obtain ⟨rfl, hl, rfl⟩ := hxy
+  exact hf a A B sx hl
 
 /-- A bind whose continuations agree up to the result's type. -/
 theorem SM_bind_congr {α : Type 3} (c : SM α) (k k' : α → SM Res) (s : SState)
@@ -136,7 +139,7 @@ theorem runT_hintIndep : ∀ (tl : Bool) (t : Term), Term.tailHintFree K.Γ t = 
     | some x =>
       obtain ⟨⟨v, T⟩, s₁⟩ := x
       simp only [Bind.bind, hu, Option.bind_some']
-      exact bind_resVS_congr (runT_hintIndep tl w ht h h' _) _ (tailCont_ok' _ (fun _ _ _ _ => rfl))
+      exact bind_resVS_congr (runT_hintIndep tl w ht h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl => by simp only [Option.map_some, resVS, hl]))
   | tl, .seq u w, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     rw [runT, runT]
@@ -158,8 +161,8 @@ theorem runT_hintIndep : ∀ (tl : Bool) (t : Term), Term.tailHintFree K.Γ t = 
       split <;> rename_i heq <;> (try simp only [heq])
       all_goals first
         | rfl
-        | exact bind_resVS_congr (runT_hintIndep tl z ht.1 h h' _) _ (tailCont_ok' _ (fun _ _ _ _ => rfl))
-        | exact bind_resVS_congr (runT_hintIndep tl u ht.2 h h' _) _ (tailCont_ok' _ (fun _ _ _ _ => rfl))
+        | exact bind_resVS_congr (runT_hintIndep tl z ht.1 h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl => by simp only [Option.map_some, resVS, hl]))
+        | exact bind_resVS_congr (runT_hintIndep tl u ht.2 h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl => by simp only [Option.map_some, resVS, hl]))
   | tl, .matchInd p ty arms, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     rw [runT, runT]
@@ -172,7 +175,7 @@ theorem runT_hintIndep : ∀ (tl : Bool) (t : Term), Term.tailHintFree K.Γ t = 
       split <;> rename_i heq <;> (try simp only [heq])
       all_goals first
         | rfl
-        | exact bind_resVS_congr (runArm_hintIndep tl arms ht _ h h' _) _ (tailCont_ok' _ (fun _ _ _ _ => rfl))
+        | exact bind_resVS_congr (runArm_hintIndep tl arms ht _ h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl => by simp only [Option.map_some, resVS, hl]))
   | tl, .ctor ty c hd ps args, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     rw [runT, runT]

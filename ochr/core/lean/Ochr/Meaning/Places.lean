@@ -53,6 +53,14 @@ structure Decisions : Type where
   /-- The reading of a type term, as a type (`Decide.typeDecl`): what a binding declared at it
   reads (D19, R3: a parameter's reading is its domain term's, `Decide.paramDecls`). -/
   typeDecl : List DeclInfo → Term → DeclInfo
+  /-- D90 [Entry] (static ends, rule 2): what the stuck block a match term (or `J`'s transported
+  term) would close off as captures, given the places already moved at its start (`entry`), as
+  `Machine.blockEntry` computes it: the places `movedPlace` re-roots while the captures are
+  computed (K1(a), in order, before re-rooting), and the captures with their modes (`0` read in
+  place, `1` by `&`, `2` by move), in the block's order (oldest binding first, then shorter
+  paths). Its alignment with `Machine.blockCaptures` is D90's first obligation (docs/31 D37); the
+  instance is `BlockCaps.staticBlockCaps`. -/
+  blockCaps : List DeclInfo → List Place → Term → List Place × List (Place × Nat) := fun _ _ _ => ([], [])
 
 /-- The scope after a telescope of parameter types: each parameter's reading, read in the scope
 of the earlier ones, innermost first (`Decide.telescope`). -/
