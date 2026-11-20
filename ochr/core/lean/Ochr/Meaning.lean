@@ -108,7 +108,7 @@ import Ochr.Meaning.DataModel.Probes
 import Ochr.Meaning.DataModel.Counterexamples
 import Ochr.Meaning.DataModel.RankCounterexample
 import Ochr.Meaning.DataModel.Faithful
-import Ochr.Meaning.DataModel.Proto.Examples
+import Ochr.Meaning.DataModel.Proto.Adversarial
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)

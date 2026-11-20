@@ -102,4 +102,63 @@ ochr DMProbeLarge uses Nats, Lists, WordType {
   ("te3", "field h of MkTEq has type ⊤, expected Eq(Π(x : Word). Type"),
   ("h3bad", "field y of MkHL3 has type Word, expected Unit")]
 
+/-! ## Where K3 could be wrong (docs/34 §13), and the residual made decisive (§12)
+
+* `TagNe`, `ListNe`, `PHNe`, `TEqNe`, `TEqNe2`, `TagAB`: an equation between two different
+  applications of type formers is stuck, never `False`: the checker does not decide that type
+  formers are injective. So identifying types whose records agree (`Tag(Zero)` and
+  `Tag(Succ(Zero))`, `PH(Type)` and `PH(Prop)`, which K3's records do) contradicts no verdict.
+* `RE` (accepted; `re1 : RE(RE(Nat))` accepted, `reBad` rejected): the residual with a field type
+  that the function's result decides.
+* `RoseL` (rejected): applying a function to a NESTED field at the declaration itself is not
+  first-order (its argument mentions the type being declared), so the residual has no nested form.
+* `FP` (accepted): a function-valued parameter applied in an equation field.
+* `H`, `hh` (accepted): non-uniform recursion at a large parameter that a field type applies.
+* `LB` (rejected): a large parameter typing another, applied by a type function in a field type.
+* `MM` (accepted; `mm0`, `mm1` accepted, `mm0Bad` rejected): a large function applied in a field
+  type and its result matched.
+-/
+
+ochr DMProbeAdv uses Nats, Lists, WordType {
+  inductive Tag (n : Word) := MkTag(x : Word)
+  reject def TagNe (h : Eq(Type, Tag(Zero), Tag(Succ(Zero)))) : False := h
+  reject def ListNe (h : Eq(Type, List(Word), List(Unit))) : False := h
+  inductive PH (U : Type₁) := MkPH
+  reject def PHNe (h : Eq(Type, PH(Type), PH(Prop))) : False := h
+  inductive TEq (U : Type₁) (a : U) (b : U) := MkTEq(h : Eq(U, a, b))
+  reject def TEqNe (h : Eq(Type, TEq(Type, Word, Word), TEq(Type, Unit, Unit))) : False := h
+  reject def TEqNe2 (h : Eq(Type, TEq(Type, Word, Word), TEq(Π(x : Word). Type, λ(x : Word) : Type => Word, λ(x : Word) : Type => Word))) : False := h
+  inductive TagA (n : Word) := MkTA(x : Word)
+  inductive TagB (n : Word) := MkTB(x : Word)
+  reject def TagAB (h : Eq(Type, TagA(Zero), TagB(Zero))) : False := h
+  inductive RE (A : Type) := MkRE(xs : List(A), v : Eq(Word, LenL(A, xs), Succ(Zero)))
+  def re0 : RE(Nat) := MkRE[Nat](Cons(0, Nil), refl)
+  def re1 : RE(RE(Nat)) := MkRE[RE(Nat)](Cons(re0, Nil), refl)
+  reject def reBad : RE(Nat) := MkRE[Nat](Nil, refl)
+  reject inductive RoseL (A : Type) := NodeL(kids : List(RoseL(A)), v : Eq(Word, LenL(RoseL(A), kids), LenL(RoseL(A), kids)))
+  inductive FP (f : Π(x : Word). Word) := MkFP(y : Word, e : Eq(Word, f(y), y))
+  def App0 (f : Π(x : Word). Type) : Type := f(Zero)
+  inductive H (f : Π(x : Word). Type) := HB | HS(y : App0(f), r : H(λ(x : Word) : Type => f(Succ(x))))
+  def hh : H(λ(x : Word) : Type => Word) := HS[λ(x : Word) : Type => Word](Zero, HB)
+  def AppU (U : Type₁) (F : Π(x : U). Type) (a : U) : Type := F(a)
+  reject inductive LB (U : Type₁) (F : Π(x : U). Type) (a : U) := MkLB(y : AppU(U, F, a))
+  def MG (G : Π(X : Type). Word) : Type := (match G(Word) { Zero => Word, Succ(k) => Unit })
+  inductive MM (G : Π(X : Type). Word) := MkMM(y : MG(G))
+  def mm0 : MM(λ(X : Type) : Word => Zero) := MkMM[λ(X : Type) : Word => Zero](Zero)
+  reject def mm0Bad : MM(λ(X : Type) : Word => Zero) := MkMM[λ(X : Type) : Word => Zero](())
+  def mm1 : MM(λ(X : Type) : Word => Succ(Zero)) := MkMM[λ(X : Type) : Word => Succ(Zero)](())
+}
+
+#guard (run "DMProbeAdv" DMProbeAdv).rejectedWith [
+  ("TagNe", "the body of TagNe has type Eq(Type, Tag(Zero), Tag(Succ(Zero))), but the goal is False"),
+  ("ListNe", "the body of ListNe has type Eq(Type, List(Word), List(Unit)), but the goal is False"),
+  ("PHNe", "the body of PHNe has type Eq(Type, PH(Type), PH(Prop)), but the goal is False"),
+  ("TEqNe", "the body of TEqNe has type Eq(Type, TEq(Type, Word, Word), TEq(Type, Unit, Unit)), but the goal is False"),
+  ("TEqNe2", "the body of TEqNe2 has type Eq(Type, TEq(Type, Word, Word), TEq(Π(x : Word). Type"),
+  ("TagAB", "the body of TagAB has type Eq(Type, TagA(Zero), TagB(Zero)), but the goal is False"),
+  ("reBad", "field v of MkRE has type ⊤, expected False"),
+  ("RoseL", "field v of NodeL : Eq(Word, LenL(RoseL(A), kids), LenL(RoseL(A), kids)): fields are first-order data"),
+  ("LB", "κ is not a type: its declared type is not a sort"),
+  ("mm0Bad", "field y of MkMM has type Unit, expected Word")]
+
 end Ochr.Meaning.DataModel.Probes

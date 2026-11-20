@@ -1,6 +1,6 @@
 # 34. The data model exists: what `exists_dataModel` owes, two constructions, a recommendation
 
-Design note of the data-model lane (branch `spine-datamodel`, from `spine` at d67b1d51). Sections 1–6 are task 1 (the design, before any code); sections 7–10 are task 2 (records against the current definitions, the large-parameter design, the faithfulness draft, and the prototype of the recommended construction), kernel-checked unless marked *argued*. The checker's verdicts on every probe program are asserted by the build (`Meaning/DataModel/Probes.lean`).
+Design note of the data-model lane (branch `spine-datamodel`, from `spine` at d67b1d51). Sections 1–6 are task 1 (the design, before any code); sections 7–10 are task 2 (records against the current definitions, the large-parameter design, the faithfulness draft, and the prototype of the recommended construction); sections 12–15 are task 3 (the residual settled, K3 attacked, the rank the recursion knot needs, and the porting guide for the spine lead). Kernel-checked unless marked *argued*. The checker's verdicts on every probe program are asserted by the build (`Meaning/DataModel/Probes.lean`).
 
 ## 1. What `exists_dataModel` owes today
 
@@ -220,14 +220,162 @@ All in `Meaning/DataModel/`, beside the checker's verdicts in `Probes.lean`.
 - data types at carrier level 1;
 - faithfulness: the signature and records are written by hand, and that they are the run's readings is §9's statement.
 
-**The residual** (§3; `RV`, `rv1 : RV(RV(Nat))` accepted, asserted). It is real at the level of faithfulness: computing `RV`'s field type at `RV(Nat)` runs `LenL` on a `List(RV(Nat))` field, which decodes it into `List`'s carrier at `RV(Nat)`'s record. In the prototype's terms that carrier exists before `RV`'s record at `RV(RV(Nat))` is needed: its stages need only the signature at records nested strictly inside (`RV(Nat)`'s, inside `RV(RV(Nat))`'s entry for `A`). This suggests the faithful signature is definable by recursion on records (the structural order of `Entry`), which non-uniform recursion does not disturb: a child's record is built from entries of the parent's. *Argued, not built.*
+**The residual** (§3; `RV`, `rv1 : RV(RV(Nat))` accepted, asserted; settled in §12). It is real at the level of faithfulness: computing `RV`'s field type at `RV(Nat)` runs `LenL` on a `List(RV(Nat))` field, which decodes it into `List`'s carrier at `RV(Nat)`'s record. In the prototype's terms that carrier exists before `RV`'s record at `RV(RV(Nat))` is needed: its stages need only the signature at records nested strictly inside (`RV(Nat)`'s, inside `RV(RV(Nat))`'s entry for `A`). This suggests the faithful signature is definable by recursion on records (the structural order of `Entry`), which non-uniform recursion does not disturb: a child's record is built from entries of the parent's. *Argued, not built.*
 
-## 11. Next
+## 11. Task 3 in brief
 
-With the prototype validated, the port is the spine lead's (§8's cost list, plus `Sem.dat` without `el` and `semRank` by height). On the ported definitions, the general existence proof is then:
-- the generic signature from the declarations (`self`, `nest`, closed fields), with records computed by the run (faithfulness by construction where the signature *is* the run's reading, the residual by recursion on records);
-- `ExistsDataModel` from the prototype's generic laws, which carry over unchanged.
+- **The residual is settled (§12):** no recursion on records is needed. A closure applied to a decoded member is its body's run on the member, so the signature is defined on meanings, and the run's carrier-based reading agrees at every well-typed input. This is kernel-checked for `RE` at `RE(Nat)`, where `List`'s carrier is built from `RE`'s own signature. What the port needs instead is the closure lemma the recursion knot needs anyway.
+- **K3 attacked (§13):** six adversarial cases were probed (assertions in `Probes.lean`), and the accepted ones were checked in the prototype. None is a counterexample. One sharpened the design: a record keeps its field codes along the whole unfolding, not at the root only (`H`). One is a standing condition: the checker must never decide that type formers are injective, and today it does not.
+- **The rank the recursion knot needs (§15):** `semHeight` gives decrease along every path of field steps and finiteness. It does not give the semantic [Rec] link from the checker's strict subterm to a field path, and it never decreases through applications, which [Rec] does not need.
+- **The porting guide is §14.**
+
+## 12. The residual, settled (kernel-checked: `Proto/Residual.lean`)
+
+**The worry.** `RE (A : Type) := MkRE(xs : List(A), v : Eq(Word, LenL(A, xs), Succ(Zero)))` is accepted. So are `re0 : RE(Nat)` and `re1 : RE(RE(Nat))`, and `reBad` (empty list) is rejected. It is §3's residual with a field type that the function's result decides (`RV`'s equation was trivially true). The reference run computes `v`'s type by applying `LenL`'s meaning to `xs`'s meaning decoded into `List`'s carrier at `A`'s record. `LenL`'s meaning is a Lean function on carriers (D59's closures). At `A := RE(Nat)` that carrier is built from `RE`'s own signature, so read naively the signature is defined through a carrier built from it.
+
+**The finding: no recursion on records is needed.** A closure is built from its body's run on the encoding of its argument (`closureAt`: `f a := dec (run body (enc a))`; in the prototype `lenC := lenV ∘ meanC`). Applied to the decoding of a member, it is therefore the body's run on the member itself, because decoding then encoding is the identity on members (the bijection). So:
+- the signature is defined on meanings alone, with no carrier: `reRec` keys the equation by `xs` read small (`lenS`);
+- the run's carrier-based reading (`runRE`: decode, apply the closure, compare) agrees with it at every well-typed `xs` and every parameter (`re_faithful`);
+- in particular it agrees at `A := RE(Nat)`, where `List`'s carrier is built from `RE`'s own signature (`re_faithful_nested`);
+- the probe's values check out: `re1_mem`, and `reBad_empty` (the type is empty at the empty list).
+
+The nested form cannot arise: applying a function to a nested field names the declaration in the function's argument, which positivity rejects (`RoseL`, asserted). `Rose`'s nested field reads no carrier (`rose_faithful`).
+
+**What the port needs in its place.** The definitional order: define the signature on meanings, then the carriers, then the closures. That holds if the field types' reading uses, for every global function, its body's run on meanings. Two ways to have that:
+- **(a) A locality lemma for the run in the data model, then recursion on records.** Two models agreeing on the records an input reaches give the same run. The membership half is kernel-checked here: `mem_congr` says two signatures agreeing on a set of records closed under data fields have the same members there. So the members of `List` at `RE(Nat)`'s record are fixed by `RE`'s signature at `RE(Nat)`'s record, whatever it says at `RE(RE(Nat))`'s.
+- **(b) The run-level form of the closure fact, used directly** (preferred). A global closure applied to a member argument is its body's run on the argument's meaning. That is `closureAt`'s defining property plus the round trip, and the recursion knot needs it anyway. With it, the faithful signature is the run's reading with calls evaluated by bodies, no carrier involved, and faithfulness at well-typed inputs is that lemma.
+
+**Verdict:** the residual does not make the existence proof impossible as designed. The decoding it needs is discharged by the bijection; what remains is the closure lemma (b).
+
+## 13. Where K3 could be wrong: the adversarial list (`Probes.lean` `DMProbeAdv`, all asserted; `Proto/Adversarial.lean`)
+
+1. **Records identify types the checker keeps apart.** A record keeps only what field types read, so K3 makes `Tag(Zero)` and `Tag(Succ(Zero))` one type (`Tag (n : Word) := MkTag(x : Word)`), `PH(Type)` and `PH(Prop)` one type (`PH (U : Type₁) := MkPH`), and `TEq(Type, Word, Word)` and `TEq(Π(x : Word). Type, λx.Word, λx.Word)` one type (both records say "true"). That is unsound exactly if the checker can prove two such types different. It cannot: an equation between two different applications of type formers is stuck, never `False`. `TagNe`, `ListNe`, `PHNe`, `TEqNe`, `TEqNe2` and `TagAB` (two declarations with the same shape) are all rejected, each with `h : Eq(Type, …)` and goal `False`. Lean's set model makes the same identifications. **Not a counterexample**, but a standing condition: if the checker ever decides type-former injectivity, K3 breaks for large parameters, and no small code can repair it.
+2. **Parameters that are functions.** `FP (f : Π(x : Word). Word) := MkFP(y : Word, e : Eq(Word, f(y), y))` is accepted: a function-valued (level-0) parameter applied in an equation. The record keeps the equation as a function of `y` read small. `fp_mem` passes.
+3. **A large parameter typing another, used in a field's type.** `LB (U : Type₁) (F : Π(x : U). Type) (a : U) := MkLB(y : AppU(U, F, a))` is rejected ("κ is not a type: its declared type is not a sort"), asserted as a control.
+4. **A type function applied to a large parameter, its result matched.** `MM (G : Π(X : Type). Word) := MkMM(y : MG(G))` is accepted, with `MG(G) := match G(Word) {Zero => Word, Succ(k) => Unit}`; `mm0` and `mm1` are accepted and `mm0Bad` rejected. The record keeps the code the match gives: `mm0_mem`, `mm1_mem`, and `mm0Bad_not` (rejected, and not a member).
+5. **Non-uniform recursion at a large parameter that a field type applies.** `H (f : Π(x : Word). Type) := HB | HS(y : App0(f), r : H(λx. f(Succ(x))))` is accepted, and `hh := HS(Zero, HB)` is accepted. **This one sharpens K3:** a record keeping only the root's field codes (`f(0)`) cannot give the child's (`f(1)`). The record must keep the codes along the whole unfolding: `hRec`, the sequence `f(0), f(1), …`, small. A child's record is the parent's shifted (`shiftRec`), and `shift_hRec` proves that shift is the record of the child's own parameter. `hh_mem` passes. §14 makes this the canonical record layout.
+6. **A record at a partly moved or open value** (*argued*). A value records its type's record, fixed when it is built from the parameters; writes change fields, never the record. Later field types of an open value are read from the record at the current earlier fields' small readings. Those fields are whole values of their declared types ([Open] writes them whole), so `mem_small_inj` makes the small reading lose nothing. A moved earlier part reads `other`. The checker never computes a field type from a moved sibling ([Read] refuses; the join's drop does not compute types), so that reading is never compared. Not built: it needs the run.
+
+No accepted declaration found whose record cannot tell apart what the checker distinguishes.
+
+## 14. Porting guide, for the spine lead
+
+What changes, in the order to change it, with the prototype lemma that replaces each core lemma. The prototype's proofs need not be read: each generic file moves over by renaming `Val` to `Sem`, `Ty` to `TyM` and `Code` to `Code0`.
+
+### 14.1 Definitions, file by file
+
+1. **`Sem.lean`**
+   - Add `Small`, `Step := Nat × Nat × List Small`, and `Entry` to the `Code0` mutual block (`Entry := none | leaf (B) (c : Code0 B) | data (d : IndDecl) (r : List Step → Entry)`), with `Rec := List Step → Entry`.
+   - `Code0.data (d : IndDecl) (r : Rec) (A : Type)` replaces `(ps : List Par0)`. Delete `Elt0`, `Par0`, `Par0.sems`.
+   - `Sem.dat (name : String) (r : Rec) (c : Nat) (fs : List Sem)`: no parameter list, no packed element.
+   - `DataRead` becomes a structure: `read : IndDecl → Rec → (A : Type) → A → Sem` (an element's whole meaning), `inj : ∀ d r A, Function.Injective (read d r A)`.
+   - `Code0.enc R (.data d r A) a := R.read d r A a`. `Code0.enc_inj`, `dec_enc` and `enc_of_dec` are unchanged in form; `enc_inj` takes the data case from `R.inj`.
+   - `TyM.dataName? R` becomes `TyM.dataRec? : TyM → Option (String × Rec)` (no reading needed).
+   - Delete `Sem.elt`.
+   - `DataRead.WholeFields R` becomes `∀ d r A a, (R.read d r A a).whole`.
+   - `Sem.le`'s `dat` clause relates any two `dat`s with equal name, record and constructor, fieldwise (it no longer requires `none`).
+   - Add `Sem.small` and `semHeight` (`DataModel/Faithful.lean`).
+2. **`Pi.lean`**: `TyS.data R` becomes `TyS.dataRec`.
+3. **The data model** (`Data.lean`, with the prototype's `Stages`, `Carrier`, `Members` as new library files). The interface shrinks to what the program decides:
+   - `DataModel := { covers, sig : IndDecl → Rec → Nat → Nat → List Small → Shape, recOf : IndDecl → List Sem → Rec, paramTy }`. `Shape := leaf (B) (c : Code0 B) | sub (d : IndDecl) (r : Rec)`.
+   - **Everything else is defined, and its laws are library theorems** (no field to prove):
+     - `car d r` (the stage equal to the depth), `meanC`, `Mem` (`mem_iff`);
+     - `read := ⟨fun d r A a => if h : A = car d r then meanC (cast h a) else .el0 A a, _⟩` (injectivity from `meanC_inj`);
+     - `tyOf d r := .t0 (car d r) (.data d r (car d r))`;
+     - `tyM d ps := tyOf d (recOf d ps)`, or `prop (Nonempty (car d (recOf d ps)))` for a `Prop`-sorted declaration;
+     - `fieldTyR d r c i e` is the shape's type (a leaf's code, a `sub`'s `tyOf`), and `fieldTy d ps c i earlier := fieldTyR d (recOf d ps) c i (earlier.map Sem.small)`;
+     - `ctorM d ps c fs := .dat d.name (recOf d ps) c fs`: no packing, no case split.
+   - **Deleted:** `readOf`, `pack`, `tag`, `fields`, `rank`, `recArgs`, `read_eq`, `tag_pack`, `fields_pack`, `pack_fields`, `pack_isSome`, `rank_lt`, `parOf`, `parsOf`, `eltOf`, `ParamsCoded`, `ctor_mem_tyM`, `Sem.not_mem_dat_none`, `small`/`El`/`enc`/`dec` of `Data.lean` (the `small` cut is not needed: a shape's leaf is a level-0 code by construction), `libModel` (the library's declarations get signatures like any other), and `DataGeneric.lean` whole.
+   - `OpenIn T v` is the `dat` of `T`'s name and record with whole fields that is not a member. `MovedOf.dat` drops `el`.
+   - **The record layout (canonical).** `recOf d ps path` is the entry of the closed field type reached along `path` through `d`'s self positions (each step a constructor, a field, and the earlier fields read small), computed by the reference run of the declared field-type terms at the parameters of the descendant `path` reaches. Do not keep the root only (§13.5).
+   - **The signature.** `sig d r c i e` is `r [(c, i, e)]`'s entry where there is one, `sub d (r ∘ ((c, i, e) :: ·))` at a self position, and `sub e' (recOf e' args)` at a nested position, the arguments built from `tyOf d r`. A self occurrence at the same parameters gets the same record, extensionally (`shift_hRec`'s form).
+   - Large parameters are never stored. They enter only through the entries the run computes from them (§8).
+4. **`Apply.lean`, `Apply1.lean`**: the codecs at a data code go through `R.read`. `Lvl.Lawful` holds as now, `dec_enc` from `R.inj`. `closureAt` is unchanged.
+5. **`Value.lean`** (`Value.mean`):
+   - `.ind ty c _ ps fs` takes the record from the written parameters (`recOf d (meanParams …)`), or from the hint's record when parameters are omitted (`hint.dataRec`, D8). It is `.dat ty r c (meanFields d r c 0 [] fs)`, the fields read at `fieldTyR d r c i`.
+   - `.tInd` is `.ty (tyM d (meanParams …))`.
+6. **`Places.lean`**:
+   - `semRank := semHeight` (no data model, no `Γ`);
+   - `dataTyS n r` is `tyOf` of the declaration named `n` at `r`, and `contentTyS` reads a `dat` field's own record;
+   - `reDat n r c fs := .dat n r c fs` (no repacking);
+   - `fieldHint` reads `fieldTyR` at the value's record.
+7. **`Run.lean`**:
+   - `.tind` is unchanged in form.
+   - `.ctor` builds `.dat d.name r c fs` at type `tyOf d r`, where `r` is the written parameters' record, else the hint's record, else the record of the parameters `unifyTyS` solves.
+   - `rankOf` reads `semHeight`.
+   - **`unifyTyS` is the one design point.** Its `.tind` case read parameters off a data field's code (`R.data`), and a record keeps no parameter list. Two cases remain available:
+     - a type parameter's entry, which the canonical record keeps, so give the record a parameter key per type parameter;
+     - a self occurrence at the declaration's own parameters, whose record is the value's record.
+
+     A value parameter (read small) or a large parameter cannot be solved from a field's type. The run must then take the record from the hint. Check the suite for unannotated constructor values whose value parameters only a field's type determines. That is the first thing I would expect to differ from the checker.
+8. **The core lemmas** (`Locality`, `LocalityRun`, `RunPres*`, `RunOrd`, `RunCongr`, `SubstDefs`, `RunSubst`, `HintIndep`, `AssignCongr`): every case that builds or takes apart a data meaning loses `el` and reads a record instead of parameters. `RunCongr`'s rank case no longer reads the data model. Mechanical, as D32's re-proof was.
+9. **`Mono.lean`, `BotWrite.lean`, `WF.lean`, `State.lean`**:
+   - toy values (`pv`) lose `el`;
+   - `mean_updAt_bot` gets simpler (`reDat` does not repack);
+   - `pmem` is unchanged in form.
+10. **`Steps/`**:
+    - `CtxOk` gains `faithful : CtxFaithful K ρ` (`Faithful.lean`);
+    - `fieldTypesOf_step_stmt` is stated on `fieldTyR` at the value's record;
+    - `Records.lean`'s `enc_whole_lvl0` takes `WholeFields` from `mem_whole`.
+11. **`Consistency.lean`**:
+    - `exists_dataModel` becomes `ExistsDataModel` (covers and faithfulness only; the laws are theorems);
+    - `false_means_empty` holds because a declaration with no constructors has no stage element (`mem_iff` at `Fin 0`).
+
+### 14.2 Which lemma replaces which
+
+| Core (today) | Prototype (to port) |
+|---|---|
+| `ctor_mem_tyM`, `ParamsCoded` | `memTy_tyOf` with `mem_iff` (a constructor value recording `r` is a member iff its fields fit) |
+| `pack_isSome`, `tag_pack`, `fields_pack`, `pack_fields` | `mem_iff`; for elements, `meanC_inj`, `mem_iff_meanC` |
+| `read_eq`, `DataGeneric.Coherent` | none: the reading is `meanC` |
+| `rank_lt`, `recArgs`, `gRank_lt`, `crank_self` | `semHeight_field_lt` (prototype: `depth_field_lt`) |
+| `DataRead.WholeFields` at the model | `mem_whole` |
+| `Code0.enc_inj` (data case) | `meanC_inj` |
+| `parts_ctorM` | `rfl` |
+| `DataGeneric`'s `gPack_isSome`, `sraw_*`, `NModel`, `view`/`unview`, `progEnv_car` | `tele_image`, `lvl_inj`, `rz_succ_iff`, `rz_le`, `rz_depth` (nesting needs no functor: a nested field is a `sub` like any data field) |
+| `FieldsFaithful` (DataGeneric) | `Faithful.FieldsFaithful`; small keys: `mem_small_inj`; residual: `re_faithful` with §12's lemma |
+| `libModel_fieldTy_pair` | the faithfulness instance for `Pair`'s signature |
+
+### 14.3 What I expect to break
+
+- **The core lemmas**: the data cases only, mechanically.
+- **The regress files that build hand models or packed values.** These need their models rewritten as signatures: `DataCodes`, `CodeRuns`, `DataOfChoice`, `DataOfChoice_189132fd`, `SiblingAccess` (its `ctorMOld` record of the old semantics stays as history), `PartlyMoved`, `OpenWriteDep`, `PartialMoveDep`, `Adequacy_flipped`, `ShapeAgree`, `CodeClosures`, `StepKinds`, `DepSitesMore`, `CE4_flipped`, `JoinProbes`, `PartMoveRead`, `UntypedNil`.
+- **`DataModel/RankCounterexample.lean` and `Counterexamples.lean`** record the old definitions. Delete them with the port, or keep them pinned as history.
+- **`unifyTyS`** (above): the one place where I expect the run and the checker to disagree on an accepted program until the record layout gives it what it needs.
+- **What should get simpler:** `mean_updAt_bot`, `RunCongr`'s rank case, `Places`' navigation (no repacking), and everything that cast between carriers.
+
+## 15. The rank the recursion knot needs
+
+The knot asks for two things:
+- a strict part of a value, reached by any path of field steps through any nesting, has strictly smaller rank, under every assignment, including where the entry value has moved or open parts elsewhere;
+- every value has a finite rank.
+
+`semHeight` (`Faithful.lean`) is a function of the meaning alone, natural-number valued:
+
+| meaning | `semHeight` |
+|---|---|
+| `dat …` (whole, partly moved or open alike) | one more than the largest height of its fields |
+| a whole number `el0 Nat n` | `n` |
+| `moved`, `•`, a function `el0 C f`, a type value, `err` | `0` |
+| an unknown | the height of its assigned element (the meaning under the assignment) |
+
+**What it gives.**
+- Every field of a `dat` has smaller height, through every declaration and every nesting (`semHeight_field_lt`). So along any path of field steps the height strictly decreases.
+- This holds for every meaning, so under every assignment, and wherever moved or open parts sit elsewhere in the value: a partly moved or open value is still a `dat`.
+- A number's predecessor has smaller height, so a recursion through a number's predecessor decreases too.
+- Heights are natural numbers, so every value's rank is finite.
+- The W-type shape that would break this is rejected by the checker (§7).
+
+**What it does not give.**
+- **The link from the checker to the meaning.** That a recursive call [Rec] accepts, at a strict subterm of `xⱼ`'s entry value as refined so far, has as its argument's meaning a value reached from the entry value's meaning by field steps. Under an assignment that holds only if the assignment satisfies the recorded refinements (`TypedAssignment.refs`), so "every assignment" must be every typed assignment satisfying the records. That is the semantic [Rec] lemma, separate from the height.
+- **Decrease through a function application.** A function stored in a field is a leaf of height 0, and what it returns is unrelated. [Rec] never counts an application's result as a strict subterm, and positivity rejects the shapes that would need it.
+- **Agreement between a number's two forms.** A whole number is `el0 Nat n` and a partly moved one is a `dat "Nat"`. Their heights agree along predecessor steps (`S(⊥)` has height 1), but a lemma that the run's step from `el0 Nat (n+1)` gives `el0 Nat n` is the run's business, not the height's.
+
+## 16. Next
+
+- The port is the spine lead's (§14).
+- On the ported definitions: the generic signature from the declarations, with records by the run along paths (faithfulness by construction where the signature is the run's reading), then §12's closure lemma, then `ExistsDataModel` from the library's laws.
 
 ## Appendix: the probe programs
 
-In `Meaning/DataModel/Probes.lean`, checked when the file is elaborated, every verdict and every rejection's reason asserted by the build: `DMProbeNest` (`Rose`, `CountF`, `F3`/`F2`, `Single`, `S1`, `S2`, `BW`, `BH`, the rejected W-type shapes `WT`, `WT2`) and `DMProbeLarge` (`TEq`, `te`, `te2`, `te3` rejected, `te4`, `LP`, `HL3`, `h3`, `h3bad` rejected, `H`, `RV`, `rv0`, `rv1`). `TEq`, `te`, `HL`, `hl`, `G`, `EqF`, `ef`, `NL` are also in `Examples/Fording.lean` (`InductiveModel`).
+In `Meaning/DataModel/Probes.lean`, checked when the file is elaborated, every verdict and every rejection's reason asserted by the build: `DMProbeAdv` (§13: the stuck type equations, `RE`, `RoseL`, `FP`, `H`, `LB`, `MM`), `DMProbeNest` (`Rose`, `CountF`, `F3`/`F2`, `Single`, `S1`, `S2`, `BW`, `BH`, the rejected W-type shapes `WT`, `WT2`) and `DMProbeLarge` (`TEq`, `te`, `te2`, `te3` rejected, `te4`, `LP`, `HL3`, `h3`, `h3bad` rejected, `H`, `RV`, `rv0`, `rv1`). `TEq`, `te`, `HL`, `hl`, `G`, `EqF`, `ef`, `NL` are also in `Examples/Fording.lean` (`InductiveModel`).

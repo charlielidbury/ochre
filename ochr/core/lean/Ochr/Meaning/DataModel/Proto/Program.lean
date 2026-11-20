@@ -49,6 +49,21 @@ def fin1D : IndDecl :=
 def vD : IndDecl :=
   { name := "V", ctors := [("MkV", [("n", .nat), ("x", .tind "Fin1" [.place (.var 0)])])] }
 
+def reD : IndDecl :=
+  { name := "RE", params := [(h "A", .sort 1)],
+    ctors := [("MkRE", [("xs", .tind "List" [.place (.var 0)]),
+      ("v", .eq (.tind "Word" []) (.call (.const "LenL") [.place (.var 1), .place (.var 0)] false) (.ctor "Word" 1 (h "") [] [.ctor "Word" 0 (h "") [] []]))])] }
+def hD : IndDecl :=
+  { name := "H", params := [(h "f", .pi [h "x"] [.tind "Word" []] (.sort 1))],
+    ctors := [("HB", []), ("HS", [("y", .call (.const "App0") [.place (.var 0)] false),
+      ("r", .tind "H" [.place (.var 1)])])] }
+def mmD : IndDecl :=
+  { name := "MM", params := [(h "G", .pi [h "X"] [.sort 1] (.tind "Word" []))],
+    ctors := [("MkMM", [("y", .call (.const "MG") [.place (.var 0)] false)])] }
+def fpD : IndDecl :=
+  { name := "FP", params := [(h "f", .pi [h "x"] [.tind "Word" []] (.tind "Word" []))],
+    ctors := [("MkFP", [("y", .tind "Word" []), ("e", .eq (.tind "Word" []) (.call (.place (.var 1)) [.place (.var 0)] false) (.place (.var 0)))])] }
+
 /-! ## Records -/
 
 /-- A type's entry in a record: a data type's declaration and record, a leaf's code. A type of
@@ -87,6 +102,36 @@ def vecRec (eA : Entry) (sn : Small) : Rec
 def isZRec (sn : Small) : Rec := constRec (propEntry (sn = zeroS))
 def fin1Rec (sn : Small) : Rec := constRec (propEntry (sn = .el Nat 1))
 
+/-- `LenL` read off a list's small reading: what `RE`'s record keys its equation by. -/
+def lenS : Small → Nat
+  | .node 1 [_, t] => lenS t + 1
+  | _ => 0
+
+/-- `RE(A)`: `A`'s entry; the equation `LenL(A, xs) = Succ(Zero)`, `xs` read small. -/
+def reRec (eA : Entry) : Rec
+  | [(0, 1, [sxs])] => propEntry (lenS sxs = 1)
+  | _ => eA
+
+/-- A key holding a number: position `k` of a sequence a record keeps. -/
+def keyN (k : Nat) : List Step := [(0, 0, [.node k []])]
+
+/-- `H(f)`: the codes `App0` gives along the unfolding, `f(0), f(1), …` (`f`, of level 1, is not
+kept); a child's record is the parent's shifted by one (`shiftRec`). -/
+def hRec (g : Nat → Entry) : Rec
+  | [(0, 0, [.node k []])] => g k
+  | _ => .none
+
+def shiftRec (r : Rec) : Rec
+  | [(0, 0, [.node k []])] => r (keyN (k + 1))
+  | st => r st
+
+/-- `MM(G)`: the code `MG(G)` (`G(Word)` matched); `FP(f)`: the equation `f(y) = y`, `y` read
+small. -/
+def mmRec (e : Entry) : Rec := constRec e
+def fpRec (P : Small → Prop) : Rec
+  | [(0, 1, [sy])] => propEntry (P sy)
+  | _ => .none
+
 /-- `BF(b)` and `BG(b)` (`DataModel/Probes.lean`), as the field types they compute. -/
 def bfShape : Small → Shape
   | .node 0 [] => .leaf Nat .nat
@@ -123,6 +168,13 @@ def progShape (d : IndDecl) (r : Rec) (c i : Nat) (e : List Small) : Shape :=
   | "Fin1", 0, 0, _ => shapeOf (r [])
   | "V", 0, 0, _ => .leaf Nat .nat
   | "V", 0, 1, [s] => .sub fin1D (fin1Rec s)
+  | "RE", 0, 0, _ => .sub listD (constRec (r []))
+  | "RE", 0, 1, e => shapeOf (r [(0, 1, e)])
+  | "H", 1, 0, _ => shapeOf (r (keyN 0))
+  | "H", 1, 1, _ => .sub d (shiftRec r)
+  | "MM", 0, 0, _ => shapeOf (r [])
+  | "FP", 0, 0, _ => .sub wordD (constRec .none)
+  | "FP", 0, 1, e => shapeOf (r [(0, 1, e)])
   | _, _, _, _ => .leaf PEmpty .err
 
 def S : Sig := ⟨progShape⟩
