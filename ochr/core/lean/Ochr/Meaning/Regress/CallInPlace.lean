@@ -396,17 +396,100 @@ theorem runBody_incP (a : Nat) (hint : TyS) (tl : Bool) :
   simp only [assignAt, resolve_SP, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false, access_SP,
     setContent_SP]
 
+theorem find_SP (c : Sem) :
+    ((SP dm ρ φ cd d c).positions.find? fun p => decide ((SP dm ρ φ cd d c).shape p = some 0)) = some (.bind 1 1) := by
+  rw [positions_SP]; simp [SP]
+
+/-- Ending `x`'s label: every position reads as before at the future that fixes `0` to `x`'s content,
+`x` itself `moved`. -/
+theorem endLabel_SP_valAt (c : Sem) (p : Pos) (ψ : Future) :
+    ((SP dm ρ φ cd d c).endLabel 0).valAt p ψ = if p = .bind 1 1 then .moved else (SP dm ρ φ cd d c).valAt p (ψ.upd 0 c) := by
+  unfold SState.endLabel
+  rw [find_SP]
+  dsimp only
+  have hx : (SP dm ρ φ cd d c).toMean.val ψ (.bind 1 1) = c := rfl
+  rcases p with ⟨f, i⟩ | ⟨f, i⟩
+  · rcases f with _ | _ | f <;> rcases i with _ | _ | i <;>
+      simp [SState.valAt, SState.mapVals, Mean.semEnd, SState.toMean, SP, yFrame, hx, xB, selfP]
+  · rcases f with _ | _ | f <;> rcases i with _ | i <;>
+      simp [SState.valAt, SState.mapVals, Mean.semEnd, SState.toMean, SP, yFrame, hx, xB, selfP]
+
+/-- The pop where the only live label is held in the callee's frame and nothing is returned: it ends,
+and the frame goes. -/
+theorem popCallFrame_one (start : Nat) (s : SState) (l f i : Nat) (hl : s.liveLabels = [l])
+    (hh : s.holderOf l = some (.bind f i)) (hf : f = s.topIdx) :
+    popCallFrame start none s =
+      SState.mk (s.endLabel l).env.dropLast
+        (fun p => match p with
+          | .bind g _ | .temp g _ => if g = s.topIdx then none else (s.endLabel l).shape p)
+        (s.endLabel l).nextLoan (s.endLabel l).lent := by
+  unfold popCallFrame
+  simp only [hl, List.filter_cons, List.filter_nil, hh, hf, beq_self_eq_true, Bool.or_true, ne_eq, reduceCtorEq,
+    not_false_eq_true, decide_true, Bool.and_self, if_true, List.foldl_cons, List.foldl_nil, Option.bind_none]
+  congr 1
+
+attribute [local irreducible] SP in
 /-- The pop after the body: `x`'s label `0` ends (its holder is in the callee's frame), `y` reads
 its final content, the frame goes. -/
 theorem popCallFrame_SP (c : Sem) :
     let s' := popCallFrame 1 none (SP dm ρ φ cd d c)
     s'.positions = [.bind 0 0, .temp 0 0] ∧ (∀ ψ, s'.valAt (.bind 0 0) ψ = c) ∧
       (∀ ψ, s'.valAt (.temp 0 0) ψ = .moved) ∧ s'.shape = fun _ => none := by
-  have hl : (SP dm ρ φ cd d c).liveLabels.filter (fun l => (decide (1 ≤ l) || (match (SP dm ρ φ cd d c).holderOf l with
-      | some (.bind f _) | some (.temp f _) => f == (SP dm ρ φ cd d c).topIdx | none => false)) && decide (some l ≠ none)) = [0] := by
-    rw [liveLabels_SP]; simp only [List.filter_cons, List.filter_nil, holderOf_SP]; simp [SState.topIdx, SP]
-  sorry
+  have ht : (SP dm ρ φ cd d c).topIdx = 1 := by simp [SState.topIdx, SP]
+  have hE : (SP dm ρ φ cd d c).endLabel 0 = (let m := (SP dm ρ φ cd d c).toMean.semEnd (.bind 1 1) 0
+      ({ SP dm ρ φ cd d c with shape := m.shape, lent := (SP dm ρ φ cd d c).relend 0 (.bind 1 1) }).mapVals
+        fun p _ => (m.val · p)) := by
+    unfold SState.endLabel; rw [find_SP]
+  dsimp only
+  rw [popCallFrame_one 1 _ 0 1 1 (liveLabels_SP dm ρ φ cd d c) (holderOf_SP dm ρ φ cd d c) ht.symm, hE]
+  have hx : (SP dm ρ φ cd d c).toMean.val = fun ψ p => (SP dm ρ φ cd d c).valAt p ψ := rfl
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · simp [SState.positions, SState.mapVals, SP, yFrame, List.range']
+  · intro ψ; simp [SState.valAt, SState.mapVals, Mean.semEnd, SState.toMean, SP, yFrame, xB, Future.upd]
+  · intro ψ; simp [SState.valAt, SState.mapVals, Mean.semEnd, SState.toMean, SP, yFrame]
+  · funext p
+    rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> rcases f with _ | _ | f <;> simp [Mean.semEnd, SState.toMean, SP, SState.mapVals]
 
 end InPlace
+
+/-- **`Inc(&y)` in place** (`CallRef.runCallRef`): `()`, and the state after reads as `callOf`'s
+(`SI`): the same positions, `y` reading `3`, the parked borrow consumed, no label held. -/
+theorem inc_inPlace :
+    ∃ T s', runCallRef (Kc dm) ρ φ (fresInc dm ρ φ) [] incT [] [(.el0 Nat 2, { yB.ty with label := some 0 })]
+        (Attack.S₂ yB 0 (.el0 Nat 2)) = some ((.el0 Unit (), T), s') ∧
+      s'.positions = [.bind 0 0, .temp 0 0] ∧ (∀ ψ, s'.valAt (.bind 0 0) ψ = .el0 Nat 3) ∧
+      (∀ ψ, s'.valAt (.temp 0 0) ψ = .moved) ∧ s'.shape = fun _ => none := by
+  have hs₀ : (capsState (capsVals (Kc dm) ρ φ []) (capsTys (Kc dm) ρ φ [])).foldl SState.pushBind
+      (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame = (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame := by
+    simp [capsState, capsVals, capsTys]
+  let cd := (Kc dm).D.typeDecl ((Kc dm).D.teleDecls (scopeOf (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame) [.ref .nat]) .unit
+  let d := ((bindsOf (Kc dm) ρ φ (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame [.ref .nat]).getD 0 (fun _ => .plain TyM.err, .other)).2
+  obtain ⟨hp, hv, ht, hsh⟩ := popCallFrame_SP dm ρ φ cd d (.el0 Nat 3)
+  refine ⟨{ (TyS.plain TyM.unit) with label := none }, popCallFrame 1 none (SP dm ρ φ cd d (.el0 Nat 3)), ?_,
+    hp, hv, ht, hsh⟩
+  unfold runCallRef runBodyRef
+  simp only [incT, hs₀, codOf_inc]
+  rw [callFrame_inc dm ρ φ _ _ rfl, runBody_incP]
+  rfl
+
+/-- **`Inc(&y)`: the call by `callOf` and the call in place agree** (`callOf_inPlace` on a borrow
+parameter): both give `()`, and the states after have the same positions, the same meaning at each
+(`y` reads `3`, the parked borrow `moved`) and no label held. -/
+theorem inc_agree :
+    ∃ TU T s', callOf dm.read (fresInc dm ρ φ) [(.el0 Nat 2, { yB.ty with label := some 0 })] (Attack.S₂ yB 0 (.el0 Nat 2))
+        = some ((.el0 Unit (), TU), SI) ∧
+      runCallRef (Kc dm) ρ φ (fresInc dm ρ φ) [] incT [] [(.el0 Nat 2, { yB.ty with label := some 0 })]
+        (Attack.S₂ yB 0 (.el0 Nat 2)) = some ((.el0 Unit (), T), s') ∧
+      s'.positions = SI.positions ∧ (∀ p ψ, p ∈ SI.positions → s'.valAt p ψ = SI.valAt p ψ) ∧ s'.shape = SI.shape := by
+  obtain ⟨TU, -, hc⟩ := callOf_inc dm ρ φ (Attack.S₂ yB 0 (.el0 Nat 2)) yB.ty 0
+  obtain ⟨T, s', hr, hp, hv, ht, hsh⟩ := inc_inPlace dm ρ φ
+  have hpSI : SI.positions = [.bind 0 0, .temp 0 0] := by
+    simp [SI, SState.mapVals, Attack.takeLabel_S₂, SState.positions, List.range']
+  refine ⟨TU, T, s', hc, hr, by rw [hp, hpSI], fun p ψ hp' => ?_, by rw [hsh, SI_shape]⟩
+  rw [hpSI] at hp'
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at hp'
+  rcases hp' with rfl | rfl
+  · rw [hv]; simp [SI, SState.mapVals, Attack.takeLabel_S₂, SState.valAt, Future.updList, Future.upd]
+  · rw [ht]; simp [SI, SState.mapVals, Attack.takeLabel_S₂, SState.valAt]
 
 end Ochr.Meaning.Regress.CallInPlace
