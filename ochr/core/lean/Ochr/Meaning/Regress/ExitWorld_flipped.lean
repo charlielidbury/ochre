@@ -83,7 +83,7 @@ theorem good_after (ρ : Assignment) : Good K.dm K.M K.Γ ρ after := by
   · intro T hT
     simp only [after, saved, List.mem_singleton] at hT
     subst hT
-    simp [Value.typeHasRef, Value.anyAtom]
+    rfl
   · intro G hG; simp [after, saved] at hG
   · intro p hp; rw [allPos_after] at hp; cases hp
   · intro v hvv; rw [hv] at hvv; cases hvv
@@ -98,6 +98,6 @@ theorem good_after (ρ : Assignment) : Good K.dm K.M K.Γ ρ after := by
     · intro n σ h; simp [after, saved] at h
     · intro σ v h; simp [after, saved] at h
   · -- (WF12): no position, so no site
-    intro k l _ _ x hx; simp [Env.sitesOf, allPos_after] at hx
+    intro k l _ _ _ x hx; simp [Env.sitesOf, allPos_after] at hx
 
 end Ochr.Meaning.Regress.ExitWorldFlip

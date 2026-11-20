@@ -20,7 +20,8 @@ which is then in flight with no record of it: those states are counted, not chec
 call depth above 0 (a callee's body, a sealed program's re-run) are not located, so not recorded:
 a callee's generic call is swept in its own declaration, its instance runs are not.
 
-The clauses are those of branch `spine` at a3e22c78 (`Ochr/Meaning/WF.lean`; the helpers in
+The clauses are those of branch `spine` at a3e22c78, with (WF8), (WF12) and (iii) restated after
+this sweep's first run (spine, 2026-11-21: see each mirror) (`Ochr/Meaning/WF.lean`; the helpers in
 `SState.lean`, `State.lean`, `Value.lean`, `Run.lean`; clause (iii) from `Steps/DropOne.lean`,
 `lentPrefix_none_of_noop`), read there and copied here, since `spine` is not on `main`. Each mirror
 quotes the statement it mirrors and says where it is weaker or stronger. No step lemma of the spine
@@ -265,17 +266,18 @@ def wf11 : Clause where
   check st := (typesAndRecords st).filterMap fun (c, w, v) =>
     if v.anyAtom isLoanAtom then some ⟨s!"{c} holds {loanForm v}", s!"{c} {w}: {clip v.pp}"⟩ else none
 
-/-! ### (ii) (WF12): under a live fill, only what ending that fill reaches -/
+/-! ### (ii) (WF12): at a live fill, nothing else is lent -/
 
 /-- (WF12), mirrored EXACTLY, with `liveLoan` (main's, as the Prop) and `Env.sitesOf` (copied):
 ```
 def WF12 (env : Env) : Prop :=
-  ∀ k l, liveLoan env k = true → liveLoan env l = true →
+  ∀ k l, liveLoan env k = true → liveLoan env l = true → k ≠ l →
     ∀ x ∈ Env.sitesOf env k, x.fill = true → ∀ y ∈ Env.sitesOf env l, y.pos = x.pos →
-      (pathKey x.path).isPrefixOf (pathKey y.path) = true → pathKey y.path ≠ pathKey x.path →
-      ∃ z ∈ Env.sitesOf env l, z.pos = x.pos ∧ (pathKey z.path).isPrefixOf (pathKey x.path) = true
+      (pathKey x.path).isPrefixOf (pathKey y.path) = false
 ```
-The labels range over `liveLabels env`, which is exactly the set of `k` with `liveLoan env k`. -/
+The labels range over `liveLabels env`, which is exactly the set of `k` with `liveLoan env k`.
+Restated from the first run's form ("under a live fill, only what ending that fill reaches", whose
+premise never arose) to what that run measured. -/
 def wf12Viols (env : Env) : List Viol := Id.run do
   let live := (liveLabels env).map fun l => (l, envSitesOf env l)
   let mut out : Array Viol := #[]
@@ -283,33 +285,23 @@ def wf12Viols (env : Env) : List Viol := Id.run do
     for x in xs do
       if x.fill then
         for (l, ys) in live do
-          for y in ys do
-            if y.pos == x.pos && (pathKey x.path).isPrefixOf (pathKey y.path) && pathKey y.path != pathKey x.path then
-              unless ys.any fun z => z.pos == x.pos && (pathKey z.path).isPrefixOf (pathKey x.path) do
-                out := out.push ⟨s!"{siteForm env y} of a live borrow strictly under {siteForm env x} of another, at {posKind x.pos}",
-                  s!"{posName env x.pos}: borrow {k}'s fill at {ppPath x.path}, borrow {l}'s site at {ppPath y.path}, {l} not lent at or above {ppPath x.path}"⟩
+          if l != k then
+            for y in ys do
+              if y.pos == x.pos && (pathKey x.path).isPrefixOf (pathKey y.path) then
+                out := out.push ⟨s!"{siteForm env y} of a live borrow at or under {siteForm env x} of another, at {posKind x.pos}",
+                  s!"{posName env x.pos}: borrow {k}'s fill at {ppPath x.path}, borrow {l}'s site at {ppPath y.path}"⟩
   pure out.toList
 
-/-- The antecedent of (WF12) holds somewhere: a live site strictly under another live borrow's fill. -/
-def wf12Premise (env : Env) : Bool :=
-  let ss := liveSites env
-  ss.any fun (k, x) => x.fill && ss.any fun (l, y) =>
-    l != k && y.pos == x.pos && (pathKey x.path).isPrefixOf (pathKey y.path) && pathKey y.path != pathKey x.path
-
 def wf12 : Clause where
-  name := "(ii) (WF12) under a live fill, only what ending that fill reaches"
+  name := "(ii) (WF12) at a live fill, no other live borrow is lent at its path or below"
   premises := [
     ("a live fill exists", fun st => (liveSites st.env).any (·.2.fill)),
     ("another live borrow has a site at the same position as a live fill", fun st =>
       let ss := liveSites st.env
-      ss.any fun (k, x) => x.fill && ss.any fun (l, y) => l != k && y.pos == x.pos),
-    ("... at the same path", fun st =>
-      let ss := liveSites st.env
-      ss.any fun (k, x) => x.fill && ss.any fun (l, y) => l != k && y.pos == x.pos && pathKey y.path == pathKey x.path),
-    ("a live site lies strictly under another live borrow's fill", fun st => wf12Premise st.env)]
+      ss.any fun (k, x) => x.fill && ss.any fun (l, y) => l != k && y.pos == x.pos)]
   check st := wf12Viols st.env
 
-/-! ### (iii) No live fill above a moved or proof part (`lentPrefix_none_of_noop`) -/
+/-! ### (iii) No live fill above a moved part (`lentPrefix_none_of_noop`) -/
 
 mutual
 /-- The paths `ψ` of a value at which `Value.follow` gives `⊥` (`false`) or `⋆` (`true`), at their
@@ -346,14 +338,16 @@ def lentPrefix (ss : List (Nat × Site)) (pos : Pos) (steps : List Step) : Optio
     (ss.find? fun (_, x) => x.pos == pos && pathKey x.path == pathKey ψ).map fun (l, x) => (ψ, l, x)
 
 /-- Clause (iii), the conclusion of `lentPrefix_none_of_noop` (Steps/DropOne.lean) made a state
-clause: at every `⊥` or `⋆` part of every position, no live borrow has a site at a strict prefix.
+clause: at every `⊥` part of every position, no live borrow has a site at a strict prefix.
 ```
 theorem lentPrefix_none_of_noop (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2))
-    (hnoop : (valAt st.env pos).follow q.steps.2 = some .bot ∨ (valAt st.env pos).follow q.steps.2 = some .proof) :
+    (hnoop : (valAt st.env pos).follow q.steps.2 = some .bot) :
     lentPrefix s pos q.steps.2 = none
 ```
-STRONGER than the theorem: asked at every `⊥`/`⋆` part of every position (bindings and
+Restated from the first run's form, which also asked it at `⋆` parts and was refuted there (a place
+lent whole keeps its proof field under the mark); the `⋆` parts under a live borrow's site are now
+counted as a premise. STRONGER than the theorem: asked at every `⊥` part of every position (bindings and
 temporaries), where the theorem asks it only at the places the join drops (`resolve s q`, a place
 some arm moves). The relation's `sites` and holders clauses identify `s.lent` with `Env.sitesOf`
 and `s.liveLabels` with the live borrows, which is what this reads. A loan or a sealed fill can
@@ -364,14 +358,19 @@ def noopViols (env : Env) : List Viol := Id.run do
   let mut out : Array Viol := #[]
   for (p, v) in posVals env do
     for (ψ, prf) in noopParts v [] true do
+      if prf then continue
       if let some (pre, l, x) := lentPrefix ss p ψ then
         out := out.push ⟨s!"a {if prf then "⋆" else "⊥"} part strictly under {siteForm env x} of a live borrow, at {posKind p}",
           s!"{posName env p}: the part at {ppPath ψ}, borrow {l}'s site at {ppPath pre}"⟩
   pure out.toList
 
 def noopClause : Clause where
-  name := "(iii) no live fill sits above a moved or proof part"
+  name := "(iii) no live fill sits above a moved part"
   premises := [
+    ("(not a violation since the restatement) a ⋆ part lies strictly under a live borrow's site", fun st =>
+      let ss := liveSites st.env
+      (posVals st.env).any fun (p, v) =>
+        (noopParts v [] true).any fun (ψ, prf) => prf && (lentPrefix ss p ψ).isSome),
     ("a ⊥ part lies at a position holding a live fill (moved under or beside one)", fun st =>
       let ss := liveSites st.env
       (posVals st.env).any fun (p, v) =>
@@ -464,9 +463,11 @@ def WF6 (st : MState) : Prop :=
   (∀ v ∈ Env.values st.env, ∀ σ, v.hasAbs σ → σ < st.absTy.size) ∧
   (∀ T ∈ st.absTy.toList, ∀ σ, T.hasAbs σ → σ < st.absTy.size) ∧
   (∀ G, st.goal = some G → ∀ σ, G.hasAbs σ → σ < st.absTy.size) ∧
-  st.absTy.size ≤ st.nextAbs ∧
+  st.absTy.size = st.nextAbs ∧
   ∀ v ∈ Env.values st.env, ∀ l ∈ v.loans, l < st.nextLoan
-``` -/
+```
+The counter conjunct was `≤` at a3e22c78; the spine made it `=` (a fresh unknown is named by the
+counter and typed at index `absTy.size`, `Regress/GenNeutralContent.lean`). -/
 def wf6 : Clause where
   name := "(WF6) names: every unknown has a type, every name is below its counter"
   check st :=
@@ -474,31 +475,52 @@ def wf6 : Clause where
     ((posVals st.env).filterMap fun (p, v) => if absAbove n v then some ⟨"an unknown without a type, in Ω", posName st.env p⟩ else none) ++
     (st.absTy.toList.filterMap fun T => if absAbove n T then some ⟨"an unknown without a type, in an unknown's type", clip T.pp⟩ else none) ++
     (match st.goal with | some G => if absAbove n G then [⟨"an unknown without a type, in the goal", clip G.pp⟩] else [] | none => []) ++
-    (if n ≤ st.nextAbs then [] else [⟨"more unknowns' types than the counter", s!"{n} > {st.nextAbs}"⟩]) ++
+    (if n = st.nextAbs then [] else [⟨"the counter of unknowns is not the number typed", s!"{n} typed, counter {st.nextAbs}"⟩]) ++
     ((posVals st.env).flatMap fun (p, v) => v.loans.filterMap fun l =>
       if l < st.nextLoan then none else some ⟨"a label at or above the counter", s!"{l} in {posName st.env p}"⟩)
 
-def refTopOk (T : Value) : Bool := match T with | .tRef A => !A.typeHasRef | T => !T.typeHasRef
+/-- `Value.isRefV` (WF.lean), verbatim. -/
+def isRefV : Value → Bool
+  | .tRef _ => true
+  | _ => false
+
+/-- `Value.refMisplaced` (WF.lean), verbatim. -/
+def refMisplaced (v : Value) : Bool := v.anyAtom fun
+  | .tRef A => isRefV A
+  | .tInd _ ps => ps.any isRefV
+  | .ind _ _ _ ps _ => ps.any isRefV
+  | .tEq A a b => isRefV A || isRefV a || isRefV b
+  | _ => false
 
 /-- (WF8), mirrored EXACTLY:
 ```
 def WF8 (st : MState) : Prop :=
-  (∀ v ∈ Env.values st.env, ¬ v.typeHasRef) ∧
+  (∀ v ∈ Env.values st.env, v.refMisplaced = false) ∧
   (∀ (f i : Nat) (b : Binding), st.env[f]?.bind (fun fr => fr.binds[i]?) = some b →
-    ∀ T : Value, b.ty = some T →
-    match T with | .tRef A => ¬ A.typeHasRef | T => ¬ T.typeHasRef) ∧
-  (∀ T ∈ st.absTy.toList, match T with | .tRef A => ¬ A.typeHasRef | T => ¬ T.typeHasRef) ∧
-  (∀ G, st.goal = some G → match G with | .tRef A => ¬ A.typeHasRef | G => ¬ G.typeHasRef)
-``` -/
+    ∀ T : Value, b.ty = some T → T.refMisplaced = false) ∧
+  (∀ T ∈ st.absTy.toList, T.refMisplaced = false) ∧
+  (∀ G, st.goal = some G → G.refMisplaced = false)
+```
+Restated from the first run's form ("& only at the top of a declared type", false at a borrow type
+in flight and at a stuck block's function, both with `&` at the top of a type); the old form's
+violations are counted as a premise. -/
+def refTopOk (T : Value) : Bool := match T with | .tRef A => !A.typeHasRef | T => !T.typeHasRef
+
 def wf8 : Clause where
-  name := "(WF8) & only at the top of a declared type"
+  name := "(WF8) & applied to no borrow type, and never inside a data type or an equation"
+  premises := [
+    ("(not a violation since the restatement) a borrow type inside a value, or not at the top of a stored type, an unknown's type or the goal", fun st =>
+      (posVals st.env).any (fun (_, v) => v.typeHasRef) ||
+      (bindings st.env).any (fun (_, _, b) => match b.ty with | some T => !refTopOk T | none => false) ||
+      st.absTy.toList.any (!refTopOk ·) ||
+      (match st.goal with | some G => !refTopOk G | none => false))]
   check st :=
-    ((posVals st.env).filterMap fun (p, v) => if v.typeHasRef then some ⟨s!"a borrow type inside a value, at {posKind p}", posName st.env p⟩ else none) ++
+    ((posVals st.env).filterMap fun (p, v) => if refMisplaced v then some ⟨s!"a borrow type out of place inside a value, at {posKind p}", s!"{posName st.env p}: {clip v.pp}"⟩ else none) ++
     ((bindings st.env).filterMap fun (f, i, b) => match b.ty with
-      | some T => if refTopOk T then none else some ⟨"a borrow type inside a stored type", s!"{b.hint.name} (binding {f}.{i}): {clip T.pp}"⟩
+      | some T => if refMisplaced T then some ⟨"a borrow type out of place in a stored type", s!"{b.hint.name} (binding {f}.{i}): {clip T.pp}"⟩ else none
       | none => none) ++
-    (st.absTy.toList.filterMap fun T => if refTopOk T then none else some ⟨"a borrow type inside an unknown's type", clip T.pp⟩) ++
-    (match st.goal with | some G => if refTopOk G then [] else [⟨"a borrow type inside the goal", clip G.pp⟩] | none => [])
+    (st.absTy.toList.filterMap fun T => if refMisplaced T then some ⟨"a borrow type out of place in an unknown's type", clip T.pp⟩ else none) ++
+    (match st.goal with | some G => if refMisplaced G then [⟨"a borrow type out of place in the goal", clip G.pp⟩] else [] | none => [])
 
 /-- (WF9), mirrored EXACTLY: `MState.posTyM … st p` is `some` exactly at a binding with a stored
 type or a deferred one (State.lean: `some T, _ => some …`, `none, some (P, ws, j) => some …`,
