@@ -459,8 +459,13 @@ theorem fillAccess_clears (fuel : Nat) (st st' : MState) (p : Place) (b : Nat) (
     rw [hnil] at this
     cases this
 
-/-- The checker's access creates no unknown and forgets none (its ends substitute, and a sealed
-program they re-run keeps the types its copy created). Open. -/
+/-- The checker's access forgets no unknown (its ends substitute, and a sealed program they re-run
+keeps the types its copy created). True by inspection: every write of the table is a push
+(`freshAbs`), an in-place rewrite (`Env.mapState`) or a restore that keeps the new entries
+(`restoreKeep`); a proof is an induction over the interpreter, not attempted by the lead's
+decision. Swept (docs/31 D58): 358,141 accesses of a top-frame variable from the suite's recorded
+states and 25,451 ends, none shrinking the table or a record list (none of the accesses grew it);
+along each run, 68,120 consecutive recorded states, none shrinking it. Open. -/
 theorem access_absTy (fuel : Nat) (st st' : MState) (p : Place) (b : Nat)
     (h : Runs (do Ochr.accessPath fuel p; Ochr.accessInside fuel p) st b () st') :
     st.absTy.size ≤ st'.absTy.size := by
