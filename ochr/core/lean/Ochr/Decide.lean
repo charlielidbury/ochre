@@ -147,6 +147,20 @@ def preFlags (t : Term) (d : DeclInfo) : M (Option (Bool × Bool)) := do
   let e := p || (t matches .call ..) && !block && (d matches .sort _)
   pure (some (e, p))
 
+/-- D96: the declared reading of the abstract value `σ`, frozen when it was made (`absDecl`). Every
+decision about an unknown reads this, never its type, which a refinement can rewrite. -/
+def absReading (σ : Nat) : M DeclInfo := do
+  match (← get).absDecl[σ]? with
+  | some d => pure d
+  | none => err s!"INTERNAL [D96] σ{σ} has no frozen reading (please report)"
+
+/-- D96: the declared readings of a closure's or Π-type's captures, as it recorded them when it was
+formed (`rd`, D80, D82), as a scope (the last capture first). -/
+def capReadings (cs : List Value) (rd : List (DeclInfo × Value)) : M (List DeclInfo) := do
+  if rd.length < cs.length then
+    err "INTERNAL [Capture] a captured value has no recorded declared reading (D82; please report)"
+  pure ((rd.take cs.length).map (·.1)).reverse
+
 /-- The sort of a sealed program that is a type (v1.4: "a sealed program of sort Prop is
 a type"), read off its head call: in result form `L; C`, when the callee's codomain is a
 sort. -/
@@ -159,7 +173,8 @@ def sealedSort? (t : Term) : M (Option Nat) := do
     let piTy ← match f with
       | .gfn n => pure (some (← lookupGlobal n).ty)
       | .clo cs (.fix _ hs ds c _ _) rd => pure (some (Value.tPi cs (.pi hs ds c) rd))
-      | .abs σ => pure (some (← absType σ))
+      -- D96: an unknown function by its frozen reading, `Π…. Type_l` reading as `.pi (.sort l)`
+      | .abs σ => return (match ← absReading σ with | .pi (.sort l) => some l | _ => none)
       | _ => pure none
     match piTy with
     | some (.tPi _ (.pi _ _ (.sort l)) _) => pure (some l)
@@ -167,20 +182,10 @@ def sealedSort? (t : Term) : M (Option Nat) := do
     | _ => pure none
   | _ => pure none
 
-/-- A fresh abstract value of type `T`. D80: never `()` by `T`, which is a computed type; a fresh
-value made for a position whose declared type reads as `Unit` is `()` there (`etaUnit`). -/
-def absOf (T : Value) : M Value := do
-  pure (.abs (← freshAbs T))
-
 /-- D80 (R2), η at `Unit`: a value at a position whose declared type reads as `Unit` is `()`. A
 value of `Unit` carries nothing, so this loses nothing; reading the declared type, never the
 value's computed type, makes the two evaluation paths normalise at the same positions. -/
 def etaUnit (d : DeclInfo) (v : Value) : Value := if d == .unit then .unit else v
-
-/-- D80: a fresh abstract value of type `T` for a position whose declared type reads `d`: `()`
-where `d` reads as `Unit` (`etaUnit`). -/
-def absAt (d : DeclInfo) (T : Value) : M Value :=
-  if d == .unit then pure .unit else absOf T
 
 /-- What a borrow type's reading says of the borrowed place (`other` for any other reading). -/
 def DeclInfo.deref : DeclInfo → DeclInfo
@@ -341,7 +346,7 @@ codomain is not a sort, any other value. A total query. -/
 def sortOf? (fuel : Nat) (T : Value) : M (Option Nat) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   match T with
-  | .abs σ => match ← absType σ with
+  | .abs σ => match ← absReading σ with     -- D96
     | .sort l => pure (some l)
     | _ => pure none
   | .sealed t => sealedSort? t
@@ -356,17 +361,18 @@ def sortOf (fuel : Nat) (T : Value) : M Nat := do
   | .tInd n _ => pure (← lookupInd n).sort
   | .tEq .. => pure 0
   | .sort l => pure (sortSucc l)
-  | .abs σ => match ← absType σ with
+  | .abs σ => match ← absReading σ with     -- D96
     | .sort l => pure l
-    | S => err s!"σ{σ} : {S} is not a type"
+    | _ => err s!"σ{σ} is not a type: its type, when it was made, does not read as a sort"
   | .sealed t => match ← sealedSort? t with
     | some l => pure l
     | none => err s!"{T} is not known to be a type"
-  | .tPi cs (.pi hs ds c) _ => do
+  | .tPi cs (.pi hs ds c) rd => do
     -- D55: a type's declared sort is its computed sort, so a Π-type's sort is read off its
     -- parameter and codomain terms, each in the scope of the captured values and the earlier
-    -- parameters, never by evaluating them (nothing in this module can run a term)
-    let capSc ← cs.reverse.mapM (valueDecl fuel')
+    -- parameters, never by evaluating them (nothing in this module can run a term); D96: the
+    -- captures by the readings recorded when the Π-type was formed
+    let capSc ← capReadings cs rd
     let mut sc := capSc
     let mut ns : List String := cs.map fun _ => "κ"
     let mut l := 0
@@ -655,11 +661,11 @@ def valueDecl (fuel : Nat) (v : Value) : M DeclInfo := withLive false do
   | .tNat | .tUnit | .tRef _ | .tInd .. | .tEq .. | .tPi .. =>
     pure (.sort (← sortOf fuel' v))
   | .gfn n => valTypeDecl fuel' (← lookupGlobal n).ty
-  | .clo cs (.fix _ hs ds c _ _) _ => do
-    let capSc ← cs.reverse.mapM (valueDecl fuel')
+  | .clo cs (.fix _ hs ds c _ _) rd => do
+    let capSc ← capReadings cs rd     -- D96: as recorded when the closure was formed
     let (sc', ns', _) ← telescope fuel' false capSc [] hs ds
     pure (.pi (← typeDecl fuel' false sc' ns' c))
-  | .abs σ => valTypeDecl fuel' (← absType σ)
+  | .abs σ => absReading σ     -- D96: frozen when σ was made
   | .sealed t => declOf fuel' false [] [] t
   | .borrow _ _ => pure (.ref .other)
   | _ => pure .other
@@ -670,8 +676,8 @@ def valTypeDecl (fuel : Nat) (T : Value) : M DeclInfo := withLive false do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   match T with
   | .sort l => pure (.sort l)
-  | .tPi cs (.pi hs ds c) _ => do
-    let capSc ← cs.reverse.mapM (valueDecl fuel')
+  | .tPi cs (.pi hs ds c) rd => do
+    let capSc ← capReadings cs rd     -- D96
     let (sc', ns', _) ← telescope fuel' false capSc [] hs ds
     pure (.pi (← typeDecl fuel' false sc' ns' c))
   | .tRef A => pure (.ref (← valTypeDecl fuel' A))
@@ -680,10 +686,10 @@ termination_by structural fuel
 
 /-- What each parameter's declared type says, each in the scope of the captured values
 and the earlier parameters, and what the codomain says. -/
-def paramDecls (fuel : Nat) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term) :
+def paramDecls (fuel : Nat) (cs : List Value) (rd : List (DeclInfo × Value)) (hs : List Hint) (ds : List Term) (c : Term) :
     M (List DeclInfo × DeclInfo) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  let capSc ← cs.reverse.mapM (valueDecl fuel')
+  let capSc ← capReadings cs rd     -- D96
   let (sc', ns', _) ← telescope fuel' false capSc [] hs ds
   pure ((sc'.take ds.length).reverse, ← typeDecl fuel' false sc' ns' c)
 
@@ -730,19 +736,10 @@ def isPropV (fuel : Nat) (T : Value) : M Bool := do
   | .tInd n _ => pure ((← lookupInd n).sort == 0)
   | .tNat | .tUnit | .tRef _ | .sort _ => pure false
   | .tPi .. => pure ((← fnClass fuel' T) == 2)
-  | .abs σ => pure ((← absType σ) == .sort 0)
+  | .abs σ => pure ((← absReading σ) == .sort 0)     -- D96
   | .sealed t => pure ((← sealedSort? t) == some 0)
   | _ => pure false
 termination_by structural fuel
-
-/-- A value standing for an arbitrary inhabitant of `A`, used only to compute sorts. -/
-def genericValue (fuel : Nat) (A : Value) (d : DeclInfo := .other) : M Value := do
-  let fuel' + 1 := fuel | exhausted "out of fuel"
-  if ← isPropV fuel' A then return .proof
-  -- D80: `()` where the position's declared type `d` reads as `Unit`
-  match A with
-  | .tRef T => pure (.borrow (← freshLoan) (← absAt d.deref T))
-  | _ => absAt d A
 
 /-- The erasure class of a function type (D28, D35): 1 = it returns types, 2 = it
 returns proofs, 0 = it returns data. v1.7: read off the codomain *term*, for top-level
@@ -754,14 +751,14 @@ has sort `Prop` and data otherwise, so the block is erased exactly when its matc
 def fnClass (fuel : Nat) (piTy : Value) : M Nat := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   match piTy with
-    | .tPi cs (.pi hs ds c) _ =>
+    | .tPi cs (.pi hs ds c) rd =>
       match c with
       | .sort _ => pure 1
       | .val _ => pure 0     -- a stuck block's function (`closeBlock`): its class is given at its call
       | _ =>
         -- read from the codomain term, never evaluated (D35), by the one reader of declared
         -- types (`typeDecl`, D63): proofs if the codomain's declared sort is `Prop`
-        let capSc ← cs.reverse.mapM (valueDecl fuel')
+        let capSc ← capReadings cs rd     -- D96
         let (sc', ns', _) ← telescope fuel' false capSc [] hs ds
         pure (if (← typeDecl fuel' false sc' ns' c).isProof then 2 else 0)
     | _ => pure 0
@@ -771,13 +768,13 @@ termination_by structural fuel
 reader of declared types (`typeDecl` over the telescope, in the scope of the captured values and
 the earlier parameters, D63). The same flags wherever parameters are bound: the body, [Def]
 and [Call-type]. -/
-def paramFlags (fuel : Nat) (cs : List Value) (ds : List Term) : M (List Bool) := do
+def paramFlags (fuel : Nat) (cs : List Value) (rd : List (DeclInfo × Value)) (ds : List Term) : M (List Bool) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let quick : Term → Bool := fun
     | .nat | .unit | .ref _ | .sort _ => true
     | _ => false
   if ds.all quick then return ds.map fun _ => false
-  let capSc ← cs.reverse.mapM (valueDecl fuel')
+  let capSc ← capReadings cs rd     -- D96
   let (sc', _, _) ← telescope fuel' false capSc [] (ds.map fun _ => ⟨"_"⟩) ds
   pure ((sc'.take ds.length).reverse.map (·.isProof))
 
@@ -811,7 +808,7 @@ def typeClass (fuel : Nat) (T : Value) : M Nat := do
   | .tInd n _ => pure (if (← lookupInd n).sort == 0 then 2 else 0)
   | .tPi .. => pure (if (← fnClass fuel' T) == 2 then 2 else 0)
   | .sealed t => pure (if (← sealedSort? t) == some 0 then 2 else 0)
-  | .abs σ => match ← absType σ with
+  | .abs σ => match ← absReading σ with     -- D96
     | .sort 0 => pure 2
     | _ => pure 0
   | _ => pure 0
@@ -842,6 +839,35 @@ def declKind (fuel : Nat) (piTy : Value) : M Kind := do
   | _ => err s!"not a function type: {piTy}"
 
 end
+
+/-- D96: a fresh abstract value of type `T`, its declared reading frozen with it: what `T` says as a
+declared type (`valTypeDecl`), read now, from `T` and the frozen readings of the unknowns it names.
+Returns its name. -/
+def freshAbsR (fuel : Nat) (T : Value) : M Nat := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  freshAbs T (← valTypeDecl fuel' T)
+
+/-- A fresh abstract value of type `T`. D80: never `()` by `T`, which is a computed type; a fresh
+value made for a position whose declared type reads as `Unit` is `()` there (`etaUnit`). -/
+def absOf (fuel : Nat) (T : Value) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  pure (.abs (← freshAbsR fuel' T))
+
+/-- D80: a fresh abstract value of type `T` for a position whose declared type reads `d`: `()`
+where `d` reads as `Unit` (`etaUnit`). -/
+def absAt (fuel : Nat) (d : DeclInfo) (T : Value) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  if d == .unit then pure .unit else absOf fuel' T
+
+/-- A value standing for an arbitrary inhabitant of `A`, used only to compute sorts. -/
+def genericValue (fuel : Nat) (A : Value) (d : DeclInfo := .other) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  if ← isPropV fuel' A then return .proof
+  -- D80: `()` where the position's declared type `d` reads as `Unit`
+  match A with
+  | .tRef T => pure (.borrow (← freshLoan) (← absAt fuel' d.deref T))
+  | _ => absAt fuel' d A
+
 
 /-! ## D84: the join of a match, read from syntax and declared types
 

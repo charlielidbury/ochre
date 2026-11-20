@@ -577,3 +577,63 @@ ochr PositivityPaper {
   def Bad4Ok (h : False) : False := LOk(MkBadOk(h))
 }
 
+/-! ## Decisions read an unknown by the reading frozen when it was made (D96)
+
+A decision about an abstract value (is it a proof, a type and of which sort, a function of which
+class) reads its declared reading, frozen when the value is made, never its type, which a
+refinement can rewrite. These programs make an unknown whose type is a type parameter or a stuck
+type (`TP(n)`, `TS(n)`, `TF2(n)`), refined by a split to a proposition, a sort or a function type,
+and read it where a decision does, at the generic call and at closed calls. Each takes the same
+verdict as before D96, and the generic call and the closed calls agree. A function type computed
+by a type function whose arms differ in class is rejected before any decision reads it (D77), and
+so is a call through a type that is not known to be a function type. -/
+
+ochr FrozenReadings uses Nats, Logic {
+  -- a type function whose value is a sort at one index and a function type at another
+  def TS (n : Nat) : Type₁ := match n { Z => Prop, S _ => Type }
+  def TF (n : Nat) : Type := match n { Z => Π(m : Nat). Nat, S _ => Nat }
+  def TP (n : Nat) : Prop := match n { Z => True, S _ => Eq(Nat, 0, 0) }
+  -- 1. type parameter at a proposition: proof-ness of an embedded unknown after a split
+  def KeepP (P : Prop) (h : P) (k : Nat) : P := match k { Z => h, S _ => h }
+  def KeepPRun : True := KeepP(True, I, 1)
+  -- 2. a stuck proposition refined by a split: erasure and proof-ness of `h`
+  def KeepTP (n : Nat) (h : TP(n)) (k : Nat) : TP(n) := (let r = match k { Z => h, S _ => h }; r)
+  def KeepTPRun0 : TP(0) := KeepTP(0, I, 1)
+  def KeepTPRun1 : TP(1) := KeepTP(1, refl, 0)
+  def KeepTPSplit (n : Nat) (h : TP(n)) : TP(n) := match n { Z => KeepTP(Z, h, 1), S m => KeepTP(S(m), h, 0) }
+  -- 3. a stuck function type: a call's class through an unknown function after a split
+  reject def CallTF (n : Nat) (f : TF(n)) : Nat := match n { Z => f(1), S _ => 0 }
+  reject def CallTFRun : Nat := CallTF(0, λ(m : Nat) : Nat => m)
+  reject def KeepTF (n : Nat) (f : TF(n)) (k : Nat) : TF(n) := (let r = match k { Z => f, S _ => f }; r)
+  reject def KeepTFSplit (n : Nat) (f : TF(n)) : Nat := match n { Z => (let g = KeepTF(Z, f, 1); g(2)), S _ => 0 }
+  reject def KeepTFSplitRun : Nat := KeepTFSplit(0, λ(m : Nat) : Nat => m)
+  -- 3b. a stuck function type with one class: an unknown function passed to a stuck call, whose
+  -- sealed program re-runs after the split refines its type to a Π-type
+  def TF2 (n : Nat) : Type := match n { Z => Π(m : Nat). Nat, S _ => Π(m : Nat). Nat }
+  def ApplyAt (k : Nat) (f : Π(m : Nat). Nat) : Nat := match k { Z => f(0), S _ => f(1) }
+  reject def CallTF2 (n : Nat) (k : Nat) (f : TF2(n)) : Nat := (let r = ApplyAt(k, f); match n { Z => r, S _ => r })
+  reject def CallTF2Run : Nat := CallTF2(0, 1, λ(m : Nat) : Nat => m)
+  def CallTF2Split (n : Nat) (f : TF2(n)) : Nat := match n { Z => (let g = f; g(3)), S _ => f(4) }
+  def CallTF2SplitRun : Nat := CallTF2Split(0, λ(m : Nat) : Nat => m)
+  -- 3c. an unknown proposition-valued function: its calls are proofs on both paths
+  def TQ (n : Nat) : Type₁ := match n { Z => Π(m : Nat). Prop, S _ => Π(m : Nat). Prop }
+  reject def CallTQ (n : Nat) (q : TQ(n)) (k : Nat) : Prop := (let r = match k { Z => q(0), S _ => q(1) }; match n { Z => r, S _ => r })
+  reject def CallTQRun : Prop := CallTQ(0, λ(m : Nat) : Prop => True, 1)
+  -- 4. a stuck sort: a value whose type is `TS(n)`, a proposition at 0 and a type at 1
+  def KeepTS (n : Nat) (x : TS(n)) (k : Nat) : TS(n) := (let r = match k { Z => x, S _ => x }; r)
+  def KeepTSSplit (n : Nat) (x : TS(n)) : TS(n) := match n { Z => KeepTS(Z, x, 1), S m => KeepTS(S(m), x, 0) }
+  def KeepTSRun0 : Prop := KeepTSSplit(0, True)
+  def KeepTSRun1 : Type := KeepTSSplit(1, Nat)
+  -- 5. a type parameter at a type of types
+  def IdT (A : Type₁) (x : A) (k : Nat) : A := (let r = match k { Z => x, S _ => x }; r)
+  def IdTProp : Prop := IdT(Prop, True, 1)
+  def IdTType : Type := IdT(Type, Nat, 0)
+  -- 6. a statement over the refined unknown: Id of two runs that keep `h`
+  def StmtTP (n : Nat) (h : TP(n)) : Prop := match n { Z => Id(TP(Z), KeepTP(Z, h, 0), KeepTP(Z, h, 1)), S _ => True }
+}
+
+#guard (run "FrozenReadings" FrozenReadings).rejectedWith [
+  ("CallTF", "[D77]"), ("CallTFRun", "unknown constant CallTF"),
+  ("KeepTF", "[D63]"), ("KeepTFSplit", "[D77]"), ("KeepTFSplitRun", "unknown constant KeepTFSplit"),
+  ("CallTF2", "argument 2 (f) has type ⌈TF2(σ0)⌉, expected Π(m : Nat). Nat"), ("CallTF2Run", "unknown constant CallTF2"),
+  ("CallTQ", "not a function type"), ("CallTQRun", "unknown constant CallTQ")]

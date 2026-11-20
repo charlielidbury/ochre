@@ -233,7 +233,7 @@ value `&Nat` checks at `σ0`'s type, so only borrow-freeness excludes it. -/
 
 /-- `σ0 : Type`, `σ1 : σ0`, and a binding `x : σ0` holding `σ1`. -/
 def probeFpΩ : MState := { (default : MState) with
-  absTy := #[.sort 1, .abs 0], nextAbs := 2,
+  absTy := #[.sort 1, .abs 0], absDecl := #[.sort 1, .other], nextAbs := 2,
   env := #[{ binds := #[{ hint := ⟨"x"⟩, ty := some (.abs 0), val := .abs 1 }] }] }
 
 theorem probe_footprint_generic : (footprint probeFpΩ.env [.place (.var 0)] == []) = true := by
@@ -257,10 +257,10 @@ readings, which needs an induction over the evaluator. -/
 
 /-- `F (n : Nat) : Nat := Nat`, never checked. -/
 def probeBadF : GDef := GDef.mk "F" (.tPi [] (.pi [⟨"n"⟩] [.nat] .nat) [])
-  (some (.fix ⟨"F"⟩ [⟨"n"⟩] [.nat] .nat none .nat)) (.gfn "F") false []
+  (some (.fix ⟨"F"⟩ [⟨"n"⟩] [.nat] .nat none .nat)) (.gfn "F") false [] []
 
 def probeD55Ω : MState := { (default : MState) with
-  absTy := #[.tNat], nextAbs := 1, globals := [probeBadF], env := #[{}] }
+  absTy := #[.tNat], absDecl := #[.other], nextAbs := 1, globals := [probeBadF], env := #[{}] }
 
 theorem probe_d55_generic :
     ((run? (valueDecl 50 (.sealed (.call (.val (.gfn "F")) [.val (.abs 0)] true))) probeD55Ω 50).map (·.1) ==

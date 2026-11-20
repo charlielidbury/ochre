@@ -295,7 +295,7 @@ theorem sigPres_setAt (p : Pos) (v : Value) : SigPres (setAt p v) := by
   unfold setAt; split <;> exact sigPres_modifyFrame _ _
 theorem sigPres_tyAt (p : Pos) : SigPres (tyAt p) := by unfold tyAt; sp
 theorem sigPres_freshLoan : SigPres freshLoan := by unfold freshLoan; sp
-theorem sigPres_freshAbs (T : Value) : SigPres (freshAbs T) := by unfold freshAbs; sp
+theorem sigPres_freshAbs (T : Value) (d : DeclInfo) : SigPres (freshAbs T d) := by unfold freshAbs; sp
 theorem sigPres_absType (σ : Nat) : SigPres (absType σ) := by unfold absType; sp
 theorem sigPres_lookupInd (n : String) : SigPres (lookupInd n) := by unfold lookupInd; sp
 theorem sigPres_lookupGlobal (n : String) : SigPres (lookupGlobal n) := by unfold lookupGlobal; sp
@@ -346,7 +346,11 @@ macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_fire)
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_withErased)
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_withLive)
 
-theorem sigPres_absOf (T : Value) : SigPres (absOf T) := by unfold absOf; sp
+theorem sigPres_absReading (σ : Nat) : SigPres (absReading σ) := by unfold absReading; sp
+theorem sigPres_capReadings (cs : List Value) (rd : List (DeclInfo × Value)) : SigPres (capReadings cs rd) := by
+  unfold capReadings; sp
+macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_absReading)
+macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_capReadings)
 theorem sigPres_sealedSort? (t : Term) : SigPres (sealedSort? t) := by unfold sealedSort?; sp
 theorem sigPres_liveDecl (i : Nat) : SigPres (liveDecl i) := by unfold liveDecl; sp
 theorem sigPres_ctorIsProof (ty : String) : SigPres (ctorIsProof ty) := (readsSig_ctorIsProof ty).sigPres
@@ -355,7 +359,6 @@ theorem sigPres_fieldTermIsProp (d : IndDecl) (FT : Term) : SigPres (fieldTermIs
   (readsSig_fieldTermIsProp d FT).sigPres
 theorem sigPres_refineDecl (d : DeclInfo) : SigPres (refineDecl d) := (readsSig_refineDecl d).sigPres
 
-macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_absOf)
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_sealedSort?)
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_liveDecl)
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_ctorIsProof)
@@ -430,6 +433,12 @@ macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply (decSP _).type
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply (decSP _).fnClass)
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply (decSP _).declKind)
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply (decSP _).isPropV)
+macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply (decSP _).valTypeDecl)
+
+theorem sigPres_freshAbsR (n : Nat) (T : Value) : SigPres (freshAbsR n T) := by unfold freshAbsR; sp
+macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_freshAbsR)
+theorem sigPres_absOf (n : Nat) (T : Value) : SigPres (absOf n T) := by unfold absOf; sp
+macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_absOf)
 
 /-! ### Runs that restore the state they saved -/
 
@@ -696,7 +705,7 @@ refining an unknown match type to `Unit` changes the row `declKind` reads from d
 (η at `Unit`, D59). Checked here against the real `declKind`, with a function as control. -/
 
 /-- A state with one unknown, `σ0 : Type`. -/
-def probeΩ : MState := { (default : MState) with absTy := #[.sort 1] }
+def probeΩ : MState := { (default : MState) with absTy := #[.sort 1], absDecl := #[.sort 1] }
 
 theorem probe_blockRow_refined :
     (run? (Refinement.onValue [(0, .tUnit)] 5 (.tPi [] (.pi [] [] (.val (.abs 0))) [])) probeΩ 5).map (·.1) =

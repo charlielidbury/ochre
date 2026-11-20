@@ -48,7 +48,7 @@ def programs : List (String × Block) :=
    ("CaseSplits", CaseSplits), ("GenType", GenType), ("RenormPi", RenormPi), ("Splitting", Splitting), ("ScrutineeTypes", ScrutineeTypes),
    ("GlobalRecords", GlobalRecords), ("ArmLocal", ArmLocal), ("ArmLocalBoom", ArmLocalBoom), ("ArmRecords", ArmRecords), ("ArmEta", ArmEta), ("Functions", Functions), ("ConvModel", ConvModel), ("CallUnknown", CallUnknown), ("NatLists", NatLists), ("Trees", Trees), ("InPlaceTrees", InPlaceTrees),
    ("PolyLists", PolyLists), ("Positivity", Positivity), ("PositivityParams", PositivityParams),
-   ("PositivityPaper", PositivityPaper), ("Propositions", Propositions), ("Destructuring", Destructuring),
+   ("PositivityPaper", PositivityPaper), ("FrozenReadings", FrozenReadings), ("Propositions", Propositions), ("Destructuring", Destructuring),
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
    ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("PiSorts", PiSorts), ("BorrowTypes", BorrowTypes), ("BlockRow", BlockRow), ("FnBorrows", FnBorrows),
    ("Abstraction", Abstraction), ("DepFields", DepFields), ("StuckBlocks", StuckBlocks), ("LentIndex", LentIndex), ("JBlocks", JBlocks), ("Producers", Producers), ("DirectArm", DirectArm), ("Sugar", Sugar),
@@ -72,7 +72,7 @@ def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 2173
+def Ochr.Registry.expectedTotal : Nat := 2204
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal

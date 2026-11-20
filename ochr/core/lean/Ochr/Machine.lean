@@ -947,7 +947,7 @@ def lentUnknown (fuel : Nat) (v : Value) : M Value := do
     match (findBorrow env l).bind fun p => (valAt env p).takeBorrow l with
     | some (c, _) =>
       match ← valType? fuel' c with
-      | some T => pure (.abs (← freshAbs T))
+      | some T => pure (.abs (← freshAbsR fuel' T))
       | none => pure v
     | none => pure v
   -- static ends: a mark says which borrow may point here, not that its content is gone; the
@@ -1646,7 +1646,7 @@ def piSort (fuel : Nat) (T : Value) : M Nat := do
   privately do
     pushFrame
     pushCaps fuel' cs rd
-    let (pds, _) ← paramDecls fuel' cs hs ds c
+    let (pds, _) ← paramDecls fuel' cs rd hs ds c
     let mut l := 0
     for ((d, h), pd) in (ds.zip hs).zip pds do
       let A ← evalType fuel' d
@@ -1793,13 +1793,13 @@ def convPi (fuel : Nat) (P Q : Value) : M Bool := do
       modify fun s => { s with env := #[{}], obsFrame := none, convStack := (P, Q) :: s.convStack }
       pushFrame
       pushCaps fuel' cs rd
-      let (pds, _) ← paramDecls fuel' cs hs ds c
+      let (pds, _) ← paramDecls fuel' cs rd hs ds c
       let mut ws : Array (Value × Value) := #[]
       for ((d, h), pd) in (ds.zip hs).zip pds do
         let A ← evalType fuel' d
         let w ← match A with
           | .tRef T =>
-            let c ← absAt pd.deref T
+            let c ← absAt fuel' pd.deref T
             let l ← freshLoan
             modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
             pure (Value.borrow l c)
@@ -1811,7 +1811,7 @@ def convPi (fuel : Nat) (P Q : Value) : M Bool := do
       discard popFrameRaw
       pushFrame
       pushCaps fuel' cs' rd'
-      let (pds', _) ← paramDecls fuel' cs' hs ds' c'
+      let (pds', _) ← paramDecls fuel' cs' rd' hs ds' c'
       for (((d', h), (w, A)), pd) in ((ds'.zip hs).zip ws.toList).zip pds' do
         let A' ← evalType fuel' d'
         unless ← conv fuel' A A' do return false
@@ -1874,18 +1874,19 @@ def convFnRun (fuel : Nat) (f g pf : Value) (cs : List Value) (hs : List Hint) (
   privately do
     modify fun s => { s with env := #[{}], obsFrame := none, convStack := (f, g) :: s.convStack }
     pushFrame
-    pushCaps fuel' cs (match pf with | .tPi _ _ rd => rd | _ => [])
-    let (pds, cd) ← paramDecls fuel' cs hs ds c
+    let rd := match pf with | .tPi _ _ rd => rd | _ => []
+    pushCaps fuel' cs rd
+    let (pds, cd) ← paramDecls fuel' cs rd hs ds c
     let mut args := #[]
     for ((d, h), pd) in (ds.zip hs).zip pds do
       let A ← evalType fuel' d
       let w ← match A with
         | .tRef T =>
-          let c ← absAt pd.deref T
+          let c ← absAt fuel' pd.deref T
           let l ← freshLoan
           modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
           pure (Value.borrow l c)
-        | _ => if ← isPropV fuel' A then pure Value.proof else absAt pd A
+        | _ => if ← isPropV fuel' A then pure Value.proof else absAt fuel' pd A
       let pd' ← refineDecl pd
       pushBind h (some A) w pd'.isProof pd'
       args := args.push w
@@ -1895,7 +1896,7 @@ def convFnRun (fuel : Nat) (f g pf : Value) (cs : List Value) (hs : List Hint) (
     let σw? ← match pf with
       | .tPi _ (.pi _ _ (.ref _)) _ =>
         match ← callType fuel' pf args (args.map fun _ => none) with
-        | .tRef T => some <$> freshAbs T
+        | .tRef T => some <$> freshAbsR fuel' T
         | _ => pure none
       | _ => pure none
     -- D80: the generic call's static readings are `pf`'s: its codomain's, and its borrow
@@ -1980,7 +1981,7 @@ def rewriteGoal (fuel : Nat) (rev : Bool) (h : Term) (G : Value) : M Value := do
   | some (.tInd "True" []) => pure G
   | some (.tEq A a b) =>
     let (src, dst) := if rev then (a, b) else (b, a)
-    let σ ← freshAbs A
+    let σ ← freshAbsR fuel' A
     let G1 ← substV fuel' src (.abs σ) G
     -- [T-Rewrite] has no premise that `b` occurs: a rewrite that finds nothing leaves the goal
     -- as it is (G' = G), and `t` is checked against it (rule-audit C22)
@@ -2383,7 +2384,7 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     noteHole t G
     let p ← isPropV fuel' G
     setFlags (p, p)
-    pure (← if p then pure Value.proof else absOf G, some G)
+    pure (← if p then pure Value.proof else absOf fuel' G, some G)
   -- D53: `clone(p)` copies `p` (an erased read); `peek` is an observation's final read
   | .prim "clone" [u] =>
     -- K2: cloning a view at runtime copies it
@@ -2445,7 +2446,7 @@ def lentProofAssign (fuel : Nat) (p : Place) (u : Term) : M (Option (Value × Op
       let some (c, _) := (valAt env pos).takeBorrow l | continue
       let some T ← valType? fuel' c
         | err s!"[Open] the proof field {g.name} is assigned while its value is lent, and the type of what the borrow holds ({c}) is not known"
-      let σ ← absOf T
+      let σ ← absOf fuel' T
       setAt pos ((valAt env pos).setBorrowContent l σ)
     let T ← placeType fuel' p
     let (_, Tv) ← eval fuel' true u (some T)
@@ -2636,7 +2637,7 @@ def argHint (fuel : Nat) (fv : Value) (fT : Option Value) (ws : Array Value) : M
   privately do
     pushFrame
     pushCaps fuel' cs rd
-    let (pds, _) ← paramDecls fuel' cs hs ds c
+    let (pds, _) ← paramDecls fuel' cs rd hs ds c
     for (((d', h), w), pd) in ((ds.zip hs).zip ws.toList).zip pds do
       let A ← evalType fuel' d'
       let pd' ← refineDecl pd
@@ -2679,12 +2680,12 @@ def callType (fuel : Nat) (piTy : Value) (ws : Array Value) (tys : Array (Option
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let .tPi cs (.pi hs ds c) rd := piTy | err s!"not a function type: {piTy}"
   if ds.length != ws.size then err s!"arity: {ds.length} parameters, {ws.size} arguments"
-  let pf ← paramFlags fuel' cs ds
+  let pf ← paramFlags fuel' cs rd ds
   let argLocs := (← get).locs.callArgs     -- the editor: the arguments' ranges
   privately <| unlocated do     -- the callee's parameter types are not this point's code
     pushFrame
     pushCaps fuel' cs rd
-    let (pds, _) ← paramDecls fuel' cs hs ds c
+    let (pds, _) ← paramDecls fuel' cs rd hs ds c
     for (((d, h), i), pd) in ((ds.zip hs).zipIdx).zip pds do
       let A ← evalType fuel' d
       noteLoc argLocs[i]?.join (.expected A)
@@ -2700,11 +2701,11 @@ def declCallType (fuel : Nat) (piTy : Value) (ws : Array Value) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let .tPi cs (.pi hs ds c) rd := piTy | err s!"not a function type: {piTy}"
   if ds.length != ws.size then err s!"arity: {ds.length} parameters, {ws.size} arguments"
-  let pf ← paramFlags fuel' cs ds
+  let pf ← paramFlags fuel' cs rd ds
   privately <| unlocated do
     pushFrame
     pushCaps fuel' cs rd
-    let (pds, _) ← paramDecls fuel' cs hs ds c
+    let (pds, _) ← paramDecls fuel' cs rd hs ds c
     for (((d, h), i), pd) in ((ds.zip hs).zipIdx).zip pds do
       let A ← evalType fuel' d
       takeArgBorrow ws[i]!
@@ -2730,8 +2731,8 @@ def paramTypes (fuel : Nat) (piTy : Value) (ws : List Value) (need : List Nat) :
       for j in (ds[i]!).freeVars do
         if j < i then want := want.set! (i - 1 - j) true
   if !want.any id then return Array.replicate n none
-  let pf ← paramFlags fuel' cs ds
-  let (pds, _) ← paramDecls fuel' cs hs ds c
+  let pf ← paramFlags fuel' cs rd ds
+  let (pds, _) ← paramDecls fuel' cs rd hs ds c
   let pds := if rd.length > cs.length then (rd.drop cs.length).map (·.1) else pds
   privately do
     pushFrame
@@ -2789,8 +2790,8 @@ def runBodyCore (fuel : Nat) (fv : Value) (cs : List Value) (t : Term) (rd : Lis
   let d := (← get).depth
   if d ≥ 2000 then exhausted "call depth exceeded (a non-terminating recursion)"
   modify fun s => { s with depth := d + 1 }
-  let pf ← paramFlags fuel' cs ds
-  let (pds, cd) ← paramDecls fuel' cs hs ds c
+  let pf ← paramFlags fuel' cs rd ds
+  let (pds, cd) ← paramDecls fuel' cs rd hs ds c
   -- D80: a stuck block records its parameters' readings, the places it takes (`closeBlock`)
   let pds := if rd.length > cs.length then (rd.drop cs.length).map (·.1) else pds
   -- D82: every binding has its declared type, each parameter's evaluated in the frame of the
@@ -3039,7 +3040,7 @@ def generalizeNeutral (fuel : Nat) (p : Place) (n : Value) : M Nat := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- v1.8: σ has the matched place's type
   let T ← placeType fuel' p
-  let σ ← freshAbs T
+  let σ ← freshAbsR fuel' T
   trace fun _ => s!"[Split] generalise {n} to σ{σ} : {T}"
   substEnv fuel' n (.abs σ) true
   modify fun s => { s with neutrals := (n, σ) :: s.neutrals }
@@ -3148,7 +3149,7 @@ def splitThenClose (fuel : Nat) (p : Place) (z s : Term) (σ : Nat) (expected : 
     M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   splitArmsThenClose fuel' (Term.matchNat p z s) σ
-    [(pure .zero, z), (do pure (.succ (.abs (← freshAbs .tNat))), s)] expected
+    [(pure .zero, z), (do pure (.succ (.abs (← freshAbsR fuel' .tNat))), s)] expected
 termination_by structural fuel
 
 /-- The general form: one arm per constructor, each checked under the refinement its
@@ -4000,7 +4001,7 @@ def idType (fuel : Nat) (typed : Bool) (A t u : Term) : M Value := do
     let T ← placeType fuel' y
     let .tRef T' := T | err s!"INTERNAL [Obs-ref] {← ppPlace y} : {T} is not a borrow type (please report)"
     let d ← withLive true (placeDecl fuel' [] y)
-    refs := refs ++ [(y, ← absAt d.deref T')]
+    refs := refs ++ [(y, ← absAt fuel' d.deref T')]
   let st ← get
   let W := footprint st.env [t, u]
   let (a, as) ← observe fuel' true t A' W refs
@@ -4062,7 +4063,7 @@ termination_by structural fuel
 for a sealed scrutinee (D34, D37), and return `σ`. -/
 def generalizeFound (fuel : Nat) (n : Value) (T : Value) : M Nat := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  let σ ← freshAbs T
+  let σ ← freshAbsR fuel' T
   trace fun _ => s!"[Split] generalise {n} to σ{σ} : {T}"
   substEnv fuel' n (.abs σ) true
   modify fun s => { s with neutrals := (n, σ) :: s.neutrals }
@@ -4105,7 +4106,7 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
         trace fun _ => s!"[Split] σ{σ} := 0"
         checkTail fuel' u k
       inWorld w do
-        let σ' ← freshAbs .tNat
+        let σ' ← freshAbsR fuel' .tNat
         refine fuel' σ (.succ (.abs σ'))
         trace fun _ => s!"[Split] σ{σ} := S σ{σ'}"
         checkTail fuel' u k
@@ -4163,7 +4164,7 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
         trace fun _ => s!"[Split] σ{σ} := 0"
         checkTail fuel' z k
       inWorld w do
-        let σ' ← freshAbs .tNat
+        let σ' ← freshAbsR fuel' .tNat
         refine fuel' σ (.succ (.abs σ'))
         trace fun _ => s!"[Split] σ{σ} := S σ{σ'}"
         checkTail fuel' s k
@@ -4258,8 +4259,8 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
   -- keep `refs` (refinements made on the way to a nested fix still hold) and the
   -- enclosing functions' [Rec] contexts
   modify fun s => { s with env := #[{}], obsFrame := none, goal := none }
-  let pf ← paramFlags fuel' cs ds
-  let (pds, cd) ← paramDecls fuel' cs hs ds c
+  let pf ← paramFlags fuel' cs rd ds
+  let (pds, cd) ← paramDecls fuel' cs rd hs ds c
   pushFrame
   pushCaps fuel' cs rd
   let mut entries := #[]
@@ -4268,7 +4269,7 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
     match A with
     | .tRef T =>
       -- D80 (R2): a parameter whose declared type reads as `Unit` (here `&Unit`: the content) is `()`
-      let c ← absAt pd.deref T
+      let c ← absAt fuel' pd.deref T
       let l ← freshLoan
       modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
       pushBind h (some A) (.borrow l c) p pd
@@ -4280,7 +4281,7 @@ def checkFix (fuel : Nat) (fv : Value) (cs : List Value) (t : Term)
         pushBind h (some A) .proof p (← refineDecl pd)
         entries := entries.push none
       else
-        let c ← absAt pd A
+        let c ← absAt fuel' pd A
         pushBind h (some A) c p (← refineDecl pd)
         entries := entries.push (match c with
           | .abs σ => if A == .tNat || (A matches .tInd ..) then some σ else none

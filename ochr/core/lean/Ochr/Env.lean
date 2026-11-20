@@ -67,6 +67,7 @@ structure GDef where
   absTys : List (Nat × Value) := []  -- the abstract values `ty` and `val` mention, with their types:
                         -- a hole's value (docs/07) is an axiom of Σ, so it outlives the declaration
                         -- that made it (`Check.seedHoles`)
+  absDecls : List (Nat × DeclInfo) := []  -- D96: ... and their frozen declared readings
 
 /-- A declared inductive type (v2.0, D45/D46): uniform parameters (a telescope of type
 terms, each in the scope of the earlier parameters), a sort (`0` = `Prop`, `1` = `Type₀`),
@@ -154,6 +155,10 @@ structure MState where
   nextLoan : Nat := 0
   nextAbs : Nat := 0
   absTy : Array Value := #[]
+  /-- D96: each abstract value's declared reading (what its type says, `Decide.valTypeDecl`),
+  frozen when it is made: written once, never refined, so every decision about an unknown reads
+  the same answer at every later point (the decision procedures never read `absTy`). -/
+  absDecl : Array DeclInfo := #[]
   refs : List (Nat × Value) := []     -- [Split] refinements made so far: σ ↦ Z | S σ'
   etaRefs : List (Nat × Value) := []  -- D68: η-refinements of one-constructor abstract values (σ ↦ C(σ₁, …)), kept across private copies, so every copy names σ's fields alike, and scoped to the world that made them (`exitWorld`), since the fields' types are that world's
   goal : Option Value := none
@@ -283,7 +288,8 @@ def restoreKeep (saved : MState) : M Unit :=
     -- older one's type ([Split] substitutes into every stored type) is that run's alone, and
     -- must not reach a sibling arm (arrays-library's arm leak)
     { s with nextAbs := cur.nextAbs, nextLoan := cur.nextLoan, neutrals := cur.neutrals, etaRefs := cur.etaRefs,
-             absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size }
+             absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size,
+             absDecl := cur.absDecl }
 
 /-- A [Split] world (notes/split-model.md): the state an arm of a case split starts from.
 Each arm of a split on an unknown `σ` is checked in its own world, the one where `σ` is that
@@ -337,7 +343,8 @@ def exitWorld (w : World) : M Unit :=
       | none => fr
     { saved with recStack := saved.recStack.map keepCands, nextRecUid := cur.nextRecUid,
                  nextAbs := cur.nextAbs, nextLoan := cur.nextLoan,
-                 absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size }
+                 absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size,
+                 absDecl := cur.absDecl }
 
 /-- Check one arm in world `w`: run `x` (which makes the arm's refinement and checks the arm),
 then leave the world. The result is what `x` returns, read before the world is left. -/
@@ -427,9 +434,10 @@ def freshLoan : M Nat := do
   set { s with nextLoan := s.nextLoan + 1 }
   pure s.nextLoan
 
-def freshAbs (ty : Value) : M Nat := do
+/-- A fresh abstract value of type `ty`, whose declared reading `d` is frozen with it (D96). -/
+def freshAbs (ty : Value) (d : DeclInfo) : M Nat := do
   let s ← get
-  set { s with nextAbs := s.nextAbs + 1, absTy := s.absTy.push ty }
+  set { s with nextAbs := s.nextAbs + 1, absTy := s.absTy.push ty, absDecl := s.absDecl.push d }
   pure s.nextAbs
 
 /-- D82: the next `eval`'s context reads its type, or not (`MState.wantTy`). -/

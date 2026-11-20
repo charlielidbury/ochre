@@ -105,7 +105,11 @@ def seedHoles : M Unit := do
   let n := recs.foldl (fun m (i, _) => max m (i + 1)) 0
   let mut tys : Array Value := Array.replicate n .bot
   for (i, T) in recs do tys := tys.set! i T
-  set { s with absTy := tys, nextAbs := n }
+  -- D96: and their frozen readings, as the declaration that made them froze them (the gaps are
+  -- never read, as above)
+  let mut decls : Array DeclInfo := Array.replicate n .other
+  for (i, d) in s.globals.flatMap (·.absDecls) do decls := decls.set! i d
+  set { s with absTy := tys, absDecl := decls, nextAbs := n }
 
 /-- Check one definition and add it to the globals. -/
 def checkDef (d : Def) : M Unit := do
@@ -129,7 +133,8 @@ def checkDef (d : Def) : M Unit := do
     bodyReturns (← fuelLeft) s!"{d.name} is defined as it" v goal [] ""
     let v ← if (← isPropV (← fuelLeft) goal) then pure .proof else pure v
     let absTys := holeAbs (← get).absTy [goal, v]
-    modify fun s => { s with env := #[{}], globals := s.globals ++ [{ name := d.name, ty := goal, fn? := none, val := v, absTys }] }
+    let absDecls ← absTys.mapM fun (i, _) => do pure (i, ← absReading i)
+    modify fun s => { s with env := #[{}], globals := s.globals ++ [{ name := d.name, ty := goal, fn? := none, val := v, absTys, absDecls }] }
   else
     let fixT := Term.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body
     let ty := Value.tPi [] (.pi d.hs d.doms d.cod) []
