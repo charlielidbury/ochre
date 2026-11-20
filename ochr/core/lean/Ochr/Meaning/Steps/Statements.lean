@@ -230,7 +230,7 @@ Copy-ness reads no frame. D90's [Entry] captures (`blockCaps`) are read from val
 checker (`Machine.blockCaptures`): they are asked at the top frame only, at the places then moved
 (`entryOf`), and of every state the same up to what no decision reads (`SameDec`); that the static
 instance gives them is D90's obligation 1 (`BlockCaps.lean`'s docstring lists the value reads). -/
-structure DecAligned (D : Decisions) (st : MState) : Prop where
+structure DecTab (D : Decisions) (st : MState) : Prop where
   flags : ∀ fuel sc t fl b st', Runs (do
       let d ← withLive true (Ochr.declOf fuel false [] [] t)
       pure ((← Ochr.preFlags t d).getD (false, false))) (scopeState st sc) b fl st' → D.flags sc t = fl
@@ -247,6 +247,12 @@ structure DecAligned (D : Decisions) (st : MState) : Prop where
     D.rePointed sc t = ts.repointed
   typeDecl : ∀ fuel sc T d b st', Runs (withLive true (Ochr.typeDecl fuel false [] [] T)) (scopeState st sc) b d st' →
     D.typeDecl sc T = d
+
+/-- `DecTab` and the block's captures, which read values: the decisions are the checker's at `st`.
+Split (the slice, 2026-11-20, main's fixed decision table): `DecTab` reads only the tables, so it
+transfers from a later state of a run to an earlier one (`MachineMono.DecTab.back`); the block's
+captures are the checker's at each state (D90's obligation 1 there). -/
+structure DecAligned (D : Decisions) (st : MState) extends DecTab D st : Prop where
   blockCaps : ∀ st₀, SameDec st₀ st → ∀ fuel mt bc b st', Runs (ckBlockCaps fuel mt) st₀ b bc st' →
     D.blockCaps (DecideScope.topReadings st) (entryOf st) mt = bc
 
