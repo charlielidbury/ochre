@@ -492,4 +492,164 @@ theorem inc_agree :
   · rw [hv]; simp [SI, SState.mapVals, Attack.takeLabel_S₂, SState.valAt, Future.updList, Future.upd]
   · rw [ht]; simp [SI, SState.mapVals, Attack.takeLabel_S₂, SState.valAt]
 
+/-! ## `Id1 (x : &Nat) : &Nat := &*x`: a returned reborrow, by `callOf` -/
+
+def id1Body : Term := .borrow (.deref (.var 0))
+def id1T : Term := .fix ⟨"Id1"⟩ [⟨"x"⟩] [.ref .nat] (.ref .nat) none id1Body
+def id1Clo : Value := .clo [] id1T []
+
+/-- `Id1`'s codomain: a returned borrow of `Nat`. -/
+def outId1 : PiCod := ⟨true, fun _ => TyM.nat⟩
+
+theorem codOf_id1 (s : SState) (bs : List PBind) : codOf (Kc dm) ρ φ s bs (.ref .nat) = outId1 := rfl
+
+noncomputable def fbId1 : List PBind × (List Sem → TyS) × DeclInfo :=
+  (bindsOf (Kc dm) ρ φ (stateOf 0 []) [.ref .nat],
+    fixCod (Kc dm) ρ φ (stateOf 0 []) (bindsOf (Kc dm) ρ φ (stateOf 0 []) [.ref .nat]) (.ref .nat),
+    (Kc dm).D.typeDecl ((Kc dm).D.teleDecls [] [.ref .nat]) (.ref .nat))
+
+noncomputable def piId1 : TyM := piTyAt dm.read 1 psInc outId1
+
+noncomputable def gId1 : List Sem → Option BodyOut :=
+  fixBodyAt (Kc dm) ρ φ (fbId1 dm ρ φ) (stateOf 0 []) psInc outId1 (piId1 dm) 0 id1Body .err
+
+theorem meanV_id1Clo (hint : TyS) :
+    meanV (Kc dm) ρ φ hint id1Clo = closureAt dm.read 1 φ psInc outId1 (gId1 dm ρ φ) := by
+  show (match runT (Kc dm) ρ φ false (.plain .err) id1T (stateOf 0 (capsState [] [])) with
+    | some ((v, _), _) => v | none => .err) = _
+  rw [id1T, run_fix_def]
+  rfl
+
+/-- A frame `self`, `x` holding `c` at label `0`, `x`'s cell (as `SB`, any `self`). -/
+def SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) : SState :=
+  { env := [{ binds := [selfB, xB c d], temps := [fun ψ => ψ 0] }],
+    shape := fun p => if p = .bind 0 1 then some 0 else none, nextLoan := 1 }
+
+theorem positions_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) :
+    (SBs selfB d c).positions = [.bind 0 0, .bind 0 1, .temp 0 0] := by
+  simp [SBs, SState.positions, List.range']
+
+theorem liveLabels_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) : (SBs selfB d c).liveLabels = [0] := by
+  unfold SState.liveLabels; rw [positions_SBs]; simp [SBs]
+
+theorem holderOf_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) : (SBs selfB d c).holderOf 0 = some (.bind 0 1) := by
+  unfold SState.holderOf; rw [positions_SBs]; simp [SBs]
+
+theorem reached_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) (p : Pos) (hit : List Step → Bool) (l : Nat) :
+    (SBs selfB d c).reached p hit l = false := by
+  simp [SState.reached, SBs]
+
+theorem access_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) (p : Pos) (hit : List Step → Bool) :
+    (SBs selfB d c).access p hit = SBs selfB d c := by
+  unfold SState.access
+  have h : ∀ n : Nat, (List.range n).foldl (fun s _ => (s.liveLabels.filter (s.reached p hit)).foldl SState.endLabel s)
+      (SBs selfB d c) = SBs selfB d c := by
+    intro n; induction n with
+    | zero => rfl
+    | succ n ih => rw [List.range_succ, List.foldl_append, ih]; simp [liveLabels_SBs, reached_SBs]
+  exact h _
+
+theorem closedFuture_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) (ψ : Future) :
+    (SBs selfB d c).closedFuture ψ = ψ.upd 0 c := by
+  unfold SState.closedFuture; rw [liveLabels_SBs]
+  simp only [List.length_singleton, List.range_one, List.foldl_cons, List.foldl_nil, holderOf_SBs]
+  rfl
+
+theorem resolve_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) :
+    resolve (SBs selfB d c) (.deref (.var 0)) = some (.bind 0 1, [.deref]) := by
+  simp [resolve, SState.varPos, SState.topIdx, Place.steps, SBs]
+
+theorem contentOf_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) :
+    ∃ T, contentOf (Kc dm) φ (.deref (.var 0)) (SBs selfB d c) = some ((c, T, .bind 0 1, [.deref]), SBs selfB d c) := by
+  unfold contentOf
+  rw [resolve_SBs]
+  dsimp only
+  rw [access_SBs, closedFuture_SBs]
+  simp [Sem.follow, Sem.step, SState.valAt, SState.tyAt, SBs, xB]
+
+/-- After `&*x` in the frame: `x` reads the reborrow `1`'s final content, the reborrow's content `c`
+parked in a temporary holding `1`, lent at `*x`. -/
+def SB2 (selfB : SBinding) (d : DeclInfo) (c : Sem) : SState :=
+  { env := [{ binds := [selfB, { xB c d with val := fun φ' => φ' 1 }], temps := [fun ψ => ψ 0, fun _ => c] }],
+    shape := fun p => if p = .temp 0 1 then some 1 else if p = .bind 0 1 then some 0 else none, nextLoan := 2,
+    lent := fun m => if m = 1 then [⟨.bind 0 1, [.deref], false⟩] else [] }
+
+theorem runBody_id1 (selfB : SBinding) (d : DeclInfo) (a : Nat) (hint : TyS) (tl : Bool) :
+    ∃ T, runT (Kc dm) ρ φ tl hint id1Body (SBs selfB d (.el0 Nat a)) = some ((.el0 Nat a, T), SB2 selfB d (.el0 Nat a)) ∧
+      T.label = some 1 := by
+  obtain ⟨T, hT⟩ := contentOf_SBs dm φ selfB d (.el0 Nat a)
+  refine ⟨{ T with label := some 1 }, ?_, rfl⟩
+  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
+  unfold borrowPlace
+  simp only [hT, bind, Option.bind]
+  simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
+    Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent, SBs, SB2, xB]
+  done
+
+noncomputable def selfId1 : SBinding := { ty := .plain (piId1 dm), val := fun _ => .err, decl := .pi (fbId1 dm ρ φ).2.2 }
+
+theorem frame_id1 (c : Sem) :
+    ([c].zip psInc).foldl (fixStep (fbId1 dm ρ φ)) ((stateOf 0 []).pushBind (selfId1 dm ρ φ), [], [])
+      = (SBs (selfId1 dm ρ φ) (dInc dm) c, [c], [.temp 0 0]) := by
+  simp [fixStep, psInc, stateOf, SState.freshLoan, SState.pushTemp, SState.pushBind, SState.topIdx, pushBindShaped,
+    SState.takeLabel, SState.holderOf, SState.positions, SBs, xB, dInc, fbId1, bindsOf, runBinds, mkBind]
+  exact ⟨rfl, rfl⟩
+
+theorem positions_SB2 (selfB : SBinding) (d : DeclInfo) (c : Sem) :
+    (SB2 selfB d c).positions = [.bind 0 0, .bind 0 1, .temp 0 0, .temp 0 1] := by
+  simp [SB2, SState.positions, List.range']
+
+theorem liveLabels_SB2 (selfB : SBinding) (d : DeclInfo) (c : Sem) : (SB2 selfB d c).liveLabels = [0, 1] := by
+  unfold SState.liveLabels; rw [positions_SB2]; simp [SB2]
+  first | rfl | decide | simp [List.mergeSort]
+
+theorem find_SB2 (selfB : SBinding) (d : DeclInfo) (c : Sem) :
+    ((SB2 selfB d c).positions.find? fun p => decide ((SB2 selfB d c).shape p = some 0)) = some (.bind 0 1) := by
+  rw [positions_SB2]; simp [SB2]
+
+/-- Ending `x`'s label at the pop: the cell reads the reborrow's final content. -/
+theorem endLabel_SB2_cell (selfB : SBinding) (d : DeclInfo) (c : Sem) (ψ : Future) :
+    ((SB2 selfB d c).endLabel 0).valAt (.temp 0 0) ψ = ψ 1 := by
+  unfold SState.endLabel
+  rw [find_SB2]
+  simp [SB2, SState.mapVals, SState.valAt, Mean.semEnd, SState.toMean, Future.upd, xB]
+
+theorem gId1_eval (a : Nat) :
+    gId1 dm ρ φ [.el0 Nat a] = some ⟨.el0 Nat a, [fun ψ => ψ 1], some 1⟩ := by
+  unfold gId1 fixBodyAt
+  rw [show ({ ty := .plain (piId1 dm), val := fun _ => .err, decl := .pi (fbId1 dm ρ φ).2.2 } : SBinding)
+      = selfId1 dm ρ φ from rfl]
+  dsimp only
+  rw [frame_id1]
+  dsimp only
+  obtain ⟨T, hT, hl⟩ := runBody_id1 dm ρ φ (selfId1 dm ρ φ) (dInc dm) a ((fbId1 dm ρ φ).2.1 [.el0 Nat a]) true
+  rw [hT]
+  dsimp only
+  rw [liveLabels_SB2]
+  simp only [outId1, if_true, hl, List.filter_cons, List.filter_nil, ge_iff_le, Nat.zero_le, ne_eq, reduceCtorEq,
+    not_false_eq_true, and_self, decide_true, if_true, Option.some.injEq, Nat.one_ne_zero, not_true_eq_false,
+    and_false, decide_false, Bool.false_eq_true, List.foldl_cons, List.foldl_nil, List.map_cons, List.map_nil]
+  congr
+  funext ψ
+  exact endLabel_SB2_cell _ _ _ ψ
+
+theorem enc_nat (R : DataRead) (x : Nat) : Code0.enc R Code0.nat x = .el0 Nat x := rfl
+
+/-- `Id1`'s leaf at `x`: the forward value `x`, the backward function `v ↦ v` (injective). -/
+theorem leaf_id1 (x : Nat) :
+    ((gId1 dm ρ φ [Code0.enc dm.read Code0.nat x]).bind
+      (mkLeafRefL (lvl0 dm.read) φ (extFin true PUnit Nat)
+        (extMkL true PUnit Nat (fun fs => some (PUnit.unit, fs)) (Code0.dec dm.read Code0.nat)) Code0.nat)).isSome := by
+  rw [enc_nat, gId1_eval]
+  simp only [Option.bind_some, mkLeafRefL]
+  have hd : Code0.dec dm.read Code0.nat (.el0 Nat x) = some x := Attack.dec_nat_el0 dm.read x
+  have hb : ∀ v : Nat, mkBackAtL (lvl0 dm.read) φ (extFin true PUnit Nat)
+      (extMkL true PUnit Nat (fun fs => some (PUnit.unit, fs)) (Code0.dec dm.read Code0.nat)) Code0.nat
+      ⟨.el0 Nat x, [fun ψ => ψ 1], some 1⟩ 1 v = some (PUnit.unit, v) := by
+    intro v
+    simp [mkBackAtL, extMkL, Future.upd, Lvl.enc, lvl0, enc_nat, Attack.dec_nat_el0]
+  rw [hd]
+  simp [hb]
+  rfl
+
 end Ochr.Meaning.Regress.CallInPlace
