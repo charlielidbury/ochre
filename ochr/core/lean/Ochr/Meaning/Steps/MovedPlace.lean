@@ -39,13 +39,7 @@ def mpTail (fuel : Nat) (q p : Place) : M Place := do
     | .tInd n ps =>
       let d ← Ochr.lookupInd n
       if d.ctors.length == 1 then
-        let r ← match (← get).etaRefs.lookup σ with
-          | some r => pure r
-          | none => do
-            let r ← Ochr.ctorRefinement fuel d ps 0
-            modify fun s => { s with etaRefs := (σ, r) :: s.etaRefs }
-            pure r
-        Ochr.refine fuel σ r
+        discard (Ochr.etaInPlace fuel σ d ps)
         Ochr.movedPlace fuel q
       else pure p
     | _ => pure p
@@ -520,6 +514,81 @@ theorem sealed_loanFree (st : MState) (p : Place) (t : Term) (hg : Good K.dm K.M
     ∀ l, (Value.sealed t).hasLoan l = false := by
   sorry
 
+
+/-- **An unknown of a one-constructor type refined in place** (`Machine.etaInPlace`, D68, D93:
+`movedPlace`'s η branch, a one-constructor match on an unknown, a block's capture): this world's
+recorded refinement (`etaRecorded_sim`) or a fresh one, recorded (`etaFresh_sim`), then the
+substitution (`refine_sim'`). The reference is untouched; the assignment and Δ are extended at the
+fresh fields. Assembled: no `sorry` beyond the three it composes. -/
+theorem etaInPlace_sim (fuel : Nat) (st st' : MState) (p : Place) (σ : Nat) (n : String) (ps : List Value)
+    (d : IndDecl) (r : Value) (s : SState) (π : Nat → Nat) (b : Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (hp : ckContent st.env p = some (.abs σ)) (hT : st.absTy[σ]? = some (.tInd n ps))
+    (hd : st.inds.find? (·.name == n) = some d) (h1 : d.ctors.length = 1)
+    (h : Runs (Ochr.etaInPlace fuel σ d ps) st b r st') :
+    ∃ ρ' Δ', Ext K ρ φ π st st' s ρ' Δ' := by
+  rcases fuel with _ | f
+  · obtain ⟨L, left, log, h⟩ := h
+    simp [Ochr.etaInPlace, runMachineL_exhausted] at h
+  rw [Ochr.etaInPlace] at h
+  obtain ⟨x, st₇, b₇, hget, h7⟩ := Runs.bind_inv h
+  obtain ⟨hx, hst₇⟩ := runs_get_inv hget
+  subst x; subst st₇
+  dsimp only at h7
+  split at h7
+  · -- the recorded refinement
+    rename_i r₀ hr
+    obtain ⟨r', st₈, b₈, hpr, h8⟩ := Runs.bind_inv h7
+    obtain ⟨hrr, hst₈⟩ := runs_pure_inv hpr
+    subst r'; subst st₈
+    obtain ⟨u, st₉, b₉, hrf, h9⟩ := Runs.bind_inv h8
+    obtain ⟨-, hst⟩ := runs_pure_inv h9
+    subst hst
+    have hσ := etaRecorded_sim K ρ st σ r₀ hg hr
+    rcases f with _ | f
+    · obtain ⟨L, left, log, hrf⟩ := hrf
+      simp [Ochr.refine, runMachineL_exhausted] at hrf
+    obtain ⟨hs₉, hg₉, hctx₉, hsz₉⟩ := refine_sim' K ρ φ f st st' σ r₀ s π _ hg hctx hs hσ
+      (Good.eta_bound K hg (mem_of_lookup hr)) hrf
+    exact ⟨ρ, K.Δ, hsz₉, fun _ _ => ⟨rfl, rfl⟩, by rw [runCtx_with_self K]; exact hctx₉,
+      by rw [runCtx_with_self K]; exact hs₉, by rw [runCtx_with_self K]; exact hg₉⟩
+  · -- a fresh refinement, recorded
+    obtain ⟨r₀, st₈, b₈, hcr, h8⟩ := Runs.bind_inv h7
+    obtain ⟨u, st₉, b₉, hmod, h9⟩ := Runs.bind_inv h8
+    obtain ⟨L, left, log, hmod⟩ := hmod
+    simp only [runMachineL_modify, Prod.mk.injEq, Outcome.ok.injEq] at hmod
+    obtain ⟨⟨-, hst₉⟩, -⟩ := hmod
+    subst st₉
+    obtain ⟨r', st₁₀, b₁₀, hpr, h10⟩ := Runs.bind_inv h9
+    obtain ⟨hrr, hst₁₀⟩ := runs_pure_inv hpr
+    subst r'; subst st₁₀
+    obtain ⟨u', st₁₁, b₁₁, hrf, h11⟩ := Runs.bind_inv h10
+    obtain ⟨-, hst⟩ := runs_pure_inv h11
+    subst hst
+    obtain ⟨ρ₂, Δ₂, E₂, hσ⟩ := etaFresh_sim K ρ φ f st st₈ p σ n ps d r₀ s π _ hg hctx hs hp hT hd h1 hcr
+    rcases f with _ | f
+    · obtain ⟨L, left, log, hrf⟩ := hrf
+      simp [Ochr.refine, runMachineL_exhausted] at hrf
+    obtain ⟨hs₁₁, hg₁₁, hctx₁₁, hsz₁₁⟩ := refine_sim' { K with Δ := Δ₂ } ρ₂ φ f _ st' σ r₀ s π _
+      E₂.good E₂.ctx E₂.rel hσ (Good.eta_bound { K with Δ := Δ₂ } E₂.good List.mem_cons_self) hrf
+    have E₃ : Ext { K with Δ := Δ₂ } ρ₂ φ π _ st' s ρ₂ Δ₂ := ⟨hsz₁₁, fun _ _ => ⟨rfl, rfl⟩, hctx₁₁, hs₁₁, hg₁₁⟩
+    exact ⟨ρ₂, Δ₂, E₂.trans K ρ φ E₃⟩
+
+
+/-- **A stuck block's captures made places** (`Machine.etaPlace`, D93 rule 3: after the block's
+entry and before its arms, each capture's prefix that is an unknown, or a sealed program, of a
+one-constructor type is refined in place, refusing a fill over a live borrow). The reference never
+forms a block and never refines: in the simulation form the reference state is untouched and the
+assignment and Δ are extended at the fields named, as `movedPlace`'s branches are (the same steps:
+`etaInPlace_sim`, `placeTypeQ_sim`, `recorded_sim`, `generalizeNeutral_sim`). Needed by the block's
+statement (`closeBlock_step_stmt`). Open: an induction on the fuel along `etaPlace`'s recursion, as
+`movedPlace_step` is assembled; not written. -/
+theorem etaPlace_sim (fuel : Nat) (st st' : MState) (q : Place) (s : SState) (π : Nat → Nat) (b : Nat)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (h : Runs (Ochr.etaPlace fuel q) st b () st') :
+    ∃ ρ' Δ', Ext K ρ φ π st st' s ρ' Δ' := by
+  sorry
+
 end
 
 /-! ## The exits -/
@@ -730,51 +799,14 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
         rw [hd] at hd'
         cases hd'
         simp only [h1, BEq.rfl, ↓reduceIte] at h6
-        obtain ⟨x, st₇, b₇, hget, h7⟩ := Runs.bind_inv h6
-        obtain ⟨hx, hst₇⟩ := runs_get_inv hget
-        subst x; subst st₇
-        split at h7
-        · -- the recorded refinement
-          rename_i r hr
-          obtain ⟨r', st₈, b₈, hpr, h8⟩ := Runs.bind_inv h7
-          obtain ⟨hrr, hst₈⟩ := runs_pure_inv hpr
-          subst r'; subst st₈
-          obtain ⟨u, st₉, b₉, hrf, h9⟩ := Runs.bind_inv h8
-          have hσ := etaRecorded_sim { K with Δ := Δ₁ } ρ₁ st₁ σ r hg₁ hr
-          rcases fuel with _ | f
-          · obtain ⟨L, left, log, hrf⟩ := hrf
-            simp [Ochr.refine, runMachineL_exhausted] at hrf
-          obtain ⟨hs₉, hg₉, hctx₉, hsz₉⟩ := refine_sim' { K with Δ := Δ₁ } ρ₁ φ f st₁ st₉ σ r s₁ π b₈ hg₁ hctx₁ hrel₁ hσ
-            (Good.eta_bound { K with Δ := Δ₁ } hg₁ (mem_of_lookup hr)) hrf
-          have E₂ : Ext { K with Δ := Δ₁ } ρ₁ φ π st₁ st₉ s₁ ρ₁ Δ₁ := ⟨hsz₉, fun _ _ => ⟨rfl, rfl⟩, hctx₉, hs₉, hg₉⟩
-          obtain ⟨ρ₃, Δ₃, s₃, hsz₃, hag₃, hs₃or, hctx₃, hrel₃, hg₃, hout₃⟩ :=
-            (ih { K with Δ := Δ₁ } ρ₁ φ).movedPlace_step st₉ st' q q' pos s₁ π hg₉ hctx₉ hs₉ hpos₁ hgr₁ b₉ h9
-          have E₃ : Ext { K with Δ := Δ₁ } ρ₁ φ π st₉ st' s₃ ρ₃ Δ₃ := ⟨hsz₃, hag₃, hctx₃, hrel₃, hg₃⟩
-          exact ⟨ρ₃, Δ₃, s₃, alp_again hidem hs₁q hs₃or, E₁.trans K ρ φ (E₂.trans _ _ φ E₃), hout₃⟩
-        · -- a fresh refinement, recorded
-          obtain ⟨r, st₈, b₈, hcr, h8⟩ := Runs.bind_inv h7
-          obtain ⟨u, st₉, b₉, hmod, h9⟩ := Runs.bind_inv h8
-          obtain ⟨L, left, log, hmod⟩ := hmod
-          simp only [runMachineL_modify, Prod.mk.injEq, Outcome.ok.injEq] at hmod
-          obtain ⟨⟨-, hst₉⟩, -⟩ := hmod
-          subst st₉
-          obtain ⟨r', st₁₀, b₁₀, hpr, h10⟩ := Runs.bind_inv h9
-          obtain ⟨hrr, hst₁₀⟩ := runs_pure_inv hpr
-          subst r'; subst st₁₀
-          obtain ⟨u', st₁₁, b₁₁, hrf, h11⟩ := Runs.bind_inv h10
-          obtain ⟨ρ₂, Δ₂, E₂, hσ⟩ := etaFresh_sim { K with Δ := Δ₁ } ρ₁ φ fuel st₁ st₈ p σ n ps d r s₁ π b₇
-            hg₁ hctx₁ hrel₁ hc hTn hd h1 hcr
-          rcases fuel with _ | f
-          · obtain ⟨L, left, log, hrf⟩ := hrf
-            simp [Ochr.refine, runMachineL_exhausted] at hrf
-          obtain ⟨hs₁₁, hg₁₁, hctx₁₁, hsz₁₁⟩ := refine_sim' { K with Δ := Δ₂ } ρ₂ φ f _ st₁₁ σ r s₁ π b₁₀
-            E₂.good E₂.ctx E₂.rel hσ (Good.eta_bound { K with Δ := Δ₂ } E₂.good List.mem_cons_self) hrf
-          have E₃ : Ext { K with Δ := Δ₂ } ρ₂ φ π _ st₁₁ s₁ ρ₂ Δ₂ := ⟨hsz₁₁, fun _ _ => ⟨rfl, rfl⟩, hctx₁₁, hs₁₁, hg₁₁⟩
-          obtain ⟨ρ₄, Δ₄, s₄, hsz₄, hag₄, hs₄or, hctx₄, hrel₄, hg₄, hout₄⟩ :=
-            (ih { K with Δ := Δ₂ } ρ₂ φ).movedPlace_step st₁₁ st' q q' pos s₁ π hg₁₁ hctx₁₁ hs₁₁ hpos₁ hgr₁ b₁₁ h11
-          have E₄ : Ext { K with Δ := Δ₂ } ρ₂ φ π st₁₁ st' s₄ ρ₄ Δ₄ := ⟨hsz₄, hag₄, hctx₄, hrel₄, hg₄⟩
-          exact ⟨ρ₄, Δ₄, s₄, alp_again hidem hs₁q hs₄or,
-            E₁.trans K ρ φ (E₂.trans _ _ φ (E₃.trans _ _ φ E₄)), hout₄⟩
+        obtain ⟨u, st₇, b₇, hdis, h7⟩ := Runs.bind_inv h6
+        obtain ⟨r, heta⟩ := runs_discard_inv hdis
+        obtain ⟨ρ₂, Δ₂, E₂⟩ := etaInPlace_sim { K with Δ := Δ₁ } ρ₁ φ fuel st₁ st₇ p σ n ps d r s₁ π b₆
+          hg₁ hctx₁ hrel₁ hc hTn hd h1 heta
+        obtain ⟨ρ₄, Δ₄, s₄, hsz₄, hag₄, hs₄or, hctx₄, hrel₄, hg₄, hout₄⟩ :=
+          (ih { K with Δ := Δ₂ } ρ₂ φ).movedPlace_step st₇ st' q q' pos s₁ π E₂.good E₂.ctx E₂.rel hpos₁ hgr₁ b₇ h7
+        have E₄ : Ext { K with Δ := Δ₂ } ρ₂ φ π st₇ st' s₄ ρ₄ Δ₄ := ⟨hsz₄, hag₄, hctx₄, hrel₄, hg₄⟩
+        exact ⟨ρ₄, Δ₄, s₄, alp_again hidem hs₁q hs₄or, E₁.trans K ρ φ (E₂.trans _ _ φ E₄), hout₄⟩
       · -- a sealed program: of a one-constructor declared type, generalised (or its record), then
         -- the place asked again
         rename_i t

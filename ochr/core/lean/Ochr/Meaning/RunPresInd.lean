@@ -686,9 +686,9 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     simp only [Bind.bind, Option.bind_eq_some_iff] at h
     obtain ⟨⟨tg, s₀⟩, h1, h⟩ := h
     obtain ⟨hi₀, e₀, o₀⟩ := tagOf_rinv K φ L h1 hi
-    obtain ⟨hi₁', e₁', o₁'⟩ := matchEntry_props K φ L (!tl && !tg.isProof) (.matchInd p n arms) hi₀
-    have hlend := matchEntry_lend K φ (!tl && !tg.isProof) (.matchInd p n arms) s₀
-    generalize matchEntry K φ (!tl && !tg.isProof) (.matchInd p n arms) s₀ = me at h hi₁' e₁' o₁' hlend
+    obtain ⟨hi₁', e₁', o₁'⟩ := matchEntry_props K φ L (!tl && !tg.isProof && !oneCtor K.Γ n) (.matchInd p n arms) hi₀
+    have hlend := matchEntry_lend K φ (!tl && !tg.isProof && !oneCtor K.Γ n) (.matchInd p n arms) s₀
+    generalize matchEntry K φ (!tl && !tg.isProof && !oneCtor K.Γ n) (.matchInd p n arms) s₀ = me at h hi₁' e₁' o₁' hlend
     obtain ⟨s₁, lend⟩ := me
     dsimp only at h hi₁' e₁' o₁' hlend
     have hi₁ := hi₁'
@@ -712,7 +712,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
               o₁.trans e₁ (o₂.trans e₂ (joinDrop_ordKeep K φ _ _ hi₂))⟩
           · exact ⟨hi₂, hy₂, e₁.trans e₂, o₁.trans e₁ o₂⟩
         refine hj _ ?_
-        cases tg <;> first | exact .inl rfl | exact .inr rfl
+        cases tg <;> first | exact .inr rfl | (dsimp only; split; exact .inr rfl; exact .inl rfl)
     · cases h
   | tl, .call f args hd, hint, s, s', r, hi, h => by
     rw [runT] at h

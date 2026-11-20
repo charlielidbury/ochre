@@ -11,8 +11,11 @@ docs/31 D32 (fifth lead, 2026-11-20). With `WP := MkWP(n : Nat, x : Pk(n))` and
 * `OWK` (ACCEPTED): `w = MkWP(S(w0), y)`; the index is rewritten whole, `w.0 := S(S(Z))`, so `w`
   is open (D64): `w.1` holds a `Pk(S(w0))` while its type from the earlier fields is `Pk(2)`; then
   `(w.1).1` is read. The checker types `w.1` by its content.
-* `OW`, `OWM` (rejected, the controls): the same at an unknown `w` (a stuck match the arm returns
-  open, [Repack]).
+* `OW`, `OWM`: the same at an unknown `w`. Rejected until main's D93 (the projection's one-arm
+  match closed off as a stuck block whose arm returned `w` open, [Repack]); ACCEPTED since: a match
+  on a one-constructor type refines `w` in place and runs its arm directly, so `w` stays open
+  after it, as `OWK`'s does, and nothing after relies on `w`'s type (D93: a lie is caught at the
+  next whole-again point, and there is none).
 
 Before docs/31 D32 the reference decoded `w.1` at the hint its declaration gives at the current
 earlier fields, `Pk(2)`, where the value was packed at `Pk(S(w0))`: at `w0 ≠ 1` the two parameter
@@ -34,8 +37,8 @@ ochr OpenWriteDep uses Nats, Logic {
   inductive Pk (n : Nat) := MkPk(a : Fin1N(n), b : Nat)
   inductive WP := MkWP(n : Nat, x : Pk(n))
   def OWK (w0 : Nat) (y : Pk(S(w0))) : Nat := (let w = MkWP(S(w0), y); w.0 := S(S(Z)); let c = (w.1).1; c)
-  reject def OW (w : WP) : Nat := (w.0 := S(S(Z)); let c = (w.1).1; c)
-  reject def OWM (w : WP) : Nat := (w.0 := S(S(Z)); match w.1 { MkPk(a, b) => b })
+  def OW (w : WP) : Nat := (w.0 := S(S(Z)); let c = (w.1).1; c)
+  def OWM (w : WP) : Nat := (w.0 := S(S(Z)); match w.1 { MkPk(a, b) => b })
 }
 
 namespace Ochr.Meaning.Regress.OpenWriteDep
