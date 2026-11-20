@@ -1109,6 +1109,173 @@ theorem borrowPlace_fund (hMR : MemReads K.dm K.Γ) (p : Place) :
       exact sgood_borrow_root hMR hs₁ hp₁ hv _
     · exact borrowPlace_field_sgood hs ⟨fun e => hp (.inl e), fun e => hp (.inr e)⟩ hb₀ hm
 
+/-! ## Assignments -/
+
+/-- A meaning read at two futures that differ only at labels it does not read. -/
+theorem eq_of_two_indep {f : SVal} {ψ ψ' : Future} {a b : Nat} (ha : ψ' a ≠ ψ a → Indep a f)
+    (hb : ψ' b ≠ ψ b → Indep b f) (h : ∀ y, y ≠ a → y ≠ b → ψ' y = ψ y) : f ψ' = f ψ := by
+  let ψ₁ : Future := fun y => if y = b then ψ y else ψ' y
+  have e1 : f ψ' = f ψ₁ := by
+    by_cases hbb : ψ' b = ψ b
+    · congr 1; funext y; show ψ' y = if y = b then ψ y else ψ' y; split <;> simp_all
+    · have : ψ' = ψ₁.upd b (ψ' b) := by
+        funext y; simp only [Future.upd, ψ₁]; split <;> simp_all
+      rw [this]; exact hb hbb ψ₁ (ψ' b)
+  have e2 : f ψ₁ = f ψ := by
+    by_cases haa : ψ₁ a = ψ a
+    · congr 1; funext y
+      show (if y = b then ψ y else ψ' y) = ψ y
+      split
+      · rfl
+      · rename_i hyb
+        by_cases hya : y = a
+        · subst hya; simpa [ψ₁, hyb] using haa
+        · exact h y hya hyb
+    · have hab : a ≠ b := fun e => haa (by simp [ψ₁, e])
+      have hψa : ψ' a ≠ ψ a := by simpa [ψ₁, hab] using haa
+      have : ψ₁ = ψ.upd a (ψ₁ a) := by
+        funext y
+        simp only [Future.upd]
+        split
+        · rename_i hy; subst hy; rfl
+        · rename_i hy
+          show (if y = b then ψ y else ψ' y) = ψ y
+          split
+          · rfl
+          · rename_i hyb; exact h y hy hyb
+      rw [this]; exact ha hψa ψ (ψ₁ a)
+  rw [e1, e2]
+
+/-- **A root written with a borrow becomes its holder** (`assignAt`'s hold, `hold_rinv`): the label is
+taken from its old holder (`⊥`) and the root, holding the member written, records it; the label the root
+held before, if still recorded, is read by no one, and the label is live or read by no one. -/
+theorem sgood_hold {s : SState} (hs : SGood K.dm K.Γ φ s) {f i : Nat} (hpos : Pos.bind f i ∈ s.positions)
+    {v : Sem} (hval : s.valAt (.bind f i) = fun _ => v) (hv : v ∈ₛ[K.dm.read] (s.tyAt (.bind f i)).m) {l : Nat}
+    (hTl : s.heldTy l = (s.tyAt (.bind f i)).m) (hMl : s.heldMem l ∈ₛ[K.dm.read] s.heldTy l) (hlou : LoU1 s l)
+    (hold : ∀ x, s.shape (.bind f i) = some x → ∀ q, Indep x (s.valAt q)) :
+    SGood K.dm K.Γ φ { s.takeLabel l with
+      shape := fun q => if q = .bind f i then some l else (s.takeLabel l).shape q } := by
+  obtain ⟨t1val, t1sh, t1ty, t1HT, t1HM, t1pos⟩ := takeLabel_facts s l
+  have hsa := hs.acyc.2.2
+  generalize hS : ({ s.takeLabel l with
+      shape := fun q => if q = .bind f i then some l else (s.takeLabel l).shape q } : SState) = S
+  have hSval : S.valAt = (s.takeLabel l).valAt := by rw [← hS]; rfl
+  have hSty : ∀ q, S.tyAt q = s.tyAt q := by intro q; rw [← hS]; exact t1ty q
+  have hSHT : S.heldTy = s.heldTy := by rw [← hS]; exact t1HT
+  have hSHM : S.heldMem = s.heldMem := by rw [← hS]; exact t1HM
+  have hSpos : S.positions = s.positions := by rw [← hS]; exact t1pos
+  have hSsh : ∀ q, S.shape q = if q = .bind f i then some l else (s.takeLabel l).shape q := by intro q; rw [← hS]
+  have hacyc : SState.RInv (fun _ => True) S := by
+    rw [← hS]; exact hold_rinv (fun _ => True) hs.acyc _ hpos (fun ψ ψ' => by rw [hval]) hlou hold
+  have hfresh : S.ReadsBelow := by
+    rw [← hS]; intro q k h; exact SState.readsBelow_takeLabel hs.fresh l q k h
+  -- the live labels: `l`, and those of `s` held elsewhere than at the root
+  have hlive1 : ∀ y, y ∈ S.liveLabels → y ∈ s.liveLabels ∨ y = l := by
+    intro y hy
+    obtain ⟨q, hq, h⟩ := (SState.live_iff _ y).1 hy
+    rw [hSsh] at h
+    split at h
+    · cases h; exact .inr rfl
+    · exact .inl (live_of_shape (by rw [← hSpos]; exact hq) (t1sh q y h).1)
+  have hlL : l ∈ S.liveLabels := (SState.live_iff _ l).2 ⟨.bind f i, by rw [hSpos]; exact hpos, by rw [hSsh]; simp⟩
+  have hlive2 : ∀ y, y ∈ s.liveLabels → y ∉ S.liveLabels → s.shape (.bind f i) = some y := by
+    intro y hy hny
+    obtain ⟨q, hq, h⟩ := (SState.live_iff s y).1 hy
+    have hyl : y ≠ l := fun e => hny (e ▸ hlL)
+    by_cases hqp : q = .bind f i
+    · subst hqp; exact h
+    · exfalso; apply hny
+      refine (SState.live_iff _ y).2 ⟨q, by rw [hSpos]; exact hq, ?_⟩
+      rw [hSsh, if_neg hqp]
+      cases hr : s.holderOf l with
+      | none => have ht : s.takeLabel l = s := by unfold SState.takeLabel; rw [hr]
+                rw [ht]; exact h
+      | some r =>
+        rw [(takeLabel_view hr).2.1, if_neg]; exact h
+        intro e; subst e; rw [(SState.holderOf_spec hr).2] at h; exact hyl (Option.some.inj h).symm
+  let a : Nat := match s.shape (.bind f i) with | some x => x | none => l
+  let ψ' : Future → Future := fun ψ y =>
+    if y ∈ s.liveLabels ∧ y ∉ S.liveLabels then s.heldMem y
+    else if y ∉ s.liveLabels ∧ y ∈ S.liveLabels then φ y else ψ y
+  have hT1 : ∀ ψ, TypedF K.dm K.Γ φ S ψ → TypedF K.dm K.Γ φ s (ψ' ψ) := by
+    rintro ψ ⟨hag, hψ⟩
+    refine ⟨fun y hy => ?_, fun y hy => ?_⟩
+    · show (if y ∈ s.liveLabels ∧ y ∉ S.liveLabels then _ else if y ∉ s.liveLabels ∧ y ∈ S.liveLabels then φ y else ψ y) = φ y
+      rw [if_neg (fun h => hy h.1)]
+      split
+      · rfl
+      · rename_i hc; exact hag y (fun h => hc ⟨hy, h⟩)
+    · show PMem _ _ (if y ∈ s.liveLabels ∧ y ∉ S.liveLabels then _ else if y ∉ s.liveLabels ∧ y ∈ S.liveLabels then φ y else ψ y) _
+      split
+      · exact .inr ⟨_, mem_whole K.dm.read_wholeFields (hs.held y hy), .refl _, hs.held y hy⟩
+      · rename_i hc
+        rw [if_neg (fun h => h.1 hy)]
+        have hyS : y ∈ S.liveLabels := Classical.byContradiction fun h => hc ⟨hy, h⟩
+        have := hψ y hyS; rwa [hSHT] at this
+  have hdiff : ∀ ψ y, ψ' ψ y ≠ ψ y →
+      (y ∈ s.liveLabels ∧ y ∉ S.liveLabels) ∨ (y ∉ s.liveLabels ∧ y ∈ S.liveLabels) := by
+    intro ψ y hne
+    by_cases h1 : y ∈ s.liveLabels ∧ y ∉ S.liveLabels
+    · exact .inl h1
+    · by_cases h2 : y ∉ s.liveLabels ∧ y ∈ S.liveLabels
+      · exact .inr h2
+      · exfalso; apply hne
+        show (if y ∈ s.liveLabels ∧ y ∉ S.liveLabels then _ else if y ∉ s.liveLabels ∧ y ∈ S.liveLabels then φ y else ψ y) = ψ y
+        rw [if_neg h1, if_neg h2]
+  have ha_eq : ∀ y, s.shape (.bind f i) = some y → a = y := by
+    intro y hy; simp only [a, hy]
+  have hT2 : ∀ ψ q, s.valAt q (ψ' ψ) = s.valAt q ψ := by
+    intro ψ q
+    refine eq_of_two_indep (a := a) (b := l) (fun hne => ?_) (fun hne => ?_) (fun y hya hyl => ?_)
+    · rcases hdiff ψ a hne with ⟨h1, h2⟩ | ⟨h1, h2⟩
+      · exact hold a (hlive2 a h1 h2) q
+      · rcases hlive1 a h2 with h3 | h3
+        · exact absurd h3 h1
+        · rw [h3]; exact hlou.1.resolve_left (h3 ▸ h1) q
+    · rcases hdiff ψ l hne with ⟨-, h2⟩ | ⟨h1, -⟩
+      · exact absurd hlL h2
+      · exact hlou.1.resolve_left h1 q
+    · by_cases hy : ψ' ψ y = ψ y
+      · exact hy
+      · exfalso
+        rcases hdiff ψ y hy with ⟨h1, h2⟩ | ⟨h1, h2⟩
+        · exact hya (ha_eq y (hlive2 y h1 h2)).symm
+        · rcases hlive1 y h2 with h3 | h3
+          · exact h1 h3
+          · exact hyl h3
+  have hval' : ∀ q, (s.takeLabel l).valAt q = s.valAt q ∨ (s.takeLabel l).valAt q = fun _ => .moved := t1val
+  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l' hl' => ?_, fun y hy => ?_, fun f' i' l' hl' => ?_, hacyc, hfresh,
+    fun ψ hψ f' i' steps x U hf hx => ?_⟩
+  · show GoodVal _ _ (S.valAt _ ψ) (S.tyAt _).m
+    rw [hSval, hSty]
+    rw [hSpos] at hpi
+    rcases hval' (.bind f' i') with e | e
+    · rw [e, ← hT2]; exact hs.bind _ (hT1 ψ hψ) f' i' hpi
+    · rw [e]; exact .inl (.inl rfl)
+  · rw [hSHT, hSval]
+    rw [hSsh] at hl'
+    split at hl'
+    · rename_i hq; subst hq
+      simp only [Option.some.injEq] at hl'; subst hl'
+      rcases hval' (.bind f i) with e | e
+      · rw [e, hval, hTl]; exact .inr ⟨v, mem_whole K.dm.read_wholeFields hv, .refl v, hv⟩
+      · rw [e]; exact .inl rfl
+    · obtain ⟨hsh, e⟩ := t1sh q l' hl'
+      rw [e, ← hT2]; exact hs.holder _ (hT1 ψ hψ) q l' hsh
+  · rw [hSHM, hSHT]
+    rcases hlive1 y hy with h | rfl
+    · exact hs.held y h
+    · exact hMl
+  · rw [hSty, hSHT]
+    rw [hSsh] at hl'
+    split at hl'
+    · rename_i hq; rw [hq]; simp only [Option.some.injEq] at hl'; subst hl'; exact hTl.symm
+    · exact hs.holderTy f' i' l' (t1sh _ l' hl').1
+  · rw [hSval, hSty] at hf
+    rcases hval' (.bind f' i') with e | e
+    · rw [e, ← hT2] at hf; exact hs.read _ (hT1 ψ hψ) f' i' steps x U hf hx
+    · rw [e] at hf; rw [follow_moved' K.dm K.Γ _ _ _ _ hf] at hx; exact absurd hx (by simp [Sem.whole])
+
 /-- **An assignment's write** (`assignAt`), the value checked at the place's type at the write and its
 label at that type (the strict `.assign` clause's test). -/
 theorem assignAt_sgood (hMR : MemReads K.dm K.Γ) {p : Place} {v : Sem} {R : TyS} {s s' : SState} {r : Res}
