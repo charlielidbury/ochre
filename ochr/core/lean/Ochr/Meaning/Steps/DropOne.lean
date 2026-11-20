@@ -855,7 +855,7 @@ theorem logEffect_rel (st st₁ : MState) (s : SState) (π : Nat → Nat) (q : P
      ⟨wf.1, wf.2.1, wf.2.2.1, wf.2.2.2.1, ⟨fun τ hr => wf.2.2.2.2.1.1 τ (hrefd τ hr), wf.2.2.2.2.1.2⟩,
       wf.2.2.2.2.2⟩⟩,
     ⟨hctx.1, hctx.2, fun τ hr hlt => hctx.3 τ (hrefd τ hr) hlt, hctx.4, ⟨hctx.5.1, hctx.5.2, hctx.5.3, hctx.5.4⟩,
-      hctx.6.of_sameDec rfl rfl, hctx.7.of_sameDec rfl rfl rfl⟩, rfl⟩
+      hctx.6.of_sameDec rfl rfl, hctx.7.of_sameDec rfl rfl rfl rfl⟩, rfl⟩
 
 end
 

@@ -467,12 +467,19 @@ theorem access_absTy (fuel : Nat) (st st' : MState) (p : Place) (b : Nat)
   sorry
 
 /-- **A recorded η-refinement means the unknown** (D68: the same fields in every private copy).
-`Good`'s path condition for the record gives `ρ σ = ⟦r⟧` at the unknown's type and the closed
-future; the refinement is a constructor of fresh unknowns, which holds no loan and records its
-parameters, so it means the same at every future and hint. Open. -/
+`Good`'s path condition for the record gives `ρ σ = ⟦r⟧` at the unknown's type and the constant
+future; the record holds no loan ((WF11)), so it means the same at every future (`meanV_congr`), and
+it is top-hint-free ((Hη)), so at every hint (`meanV_hintIndep`). PROVED (docs/31 D55). -/
 theorem etaRecorded_sim (st : MState) (σ : Nat) (r : Value) (hg : Good K.dm K.M K.Γ ρ st)
-    (hr : st.etaRefs.lookup σ = some r) : ∀ ψ H, ρ σ = meanV K ρ ψ H r := by
-  sorry
+    (hctx : CtxOk K ρ st) (hr : st.etaRefs.lookup σ = some r) : ∀ ψ H, ρ σ = meanV K ρ ψ H r := by
+  intro ψ H
+  have hm := mem_of_lookup hr
+  rw [hg.1.eta σ r hm, meanV_eq_mean_aux K ρ (fun _ => .err) _ r]
+  have h11 : WF11 st := hg.2.2.2.2.2.2.2.2.2.2.2.1
+  rw [meanV_congr K ρ (fun _ => .err) ψ _ r hctx.noLabel fun l hl => by
+    have := h11.2.2.2.2 σ r hm l
+    rw [Value.hasLoan_of_hasLoanM hl] at this; cases this]
+  exact meanV_hintIndep K ρ ψ r (hctx.shapes.etaHint σ r hm) _ H
 
 /-- **A fresh η-refinement of an unknown of a one-constructor type, recorded** (`ctorRefinement`,
 then the record `σ := r`): under the assignment extended at the fresh field unknowns by the
@@ -565,7 +572,7 @@ theorem etaInPlace_sim (fuel : Nat) (st st' : MState) (p : Place) (σ : Nat) (n 
     obtain ⟨u, st₉, b₉, hrf, h9⟩ := Runs.bind_inv h8
     obtain ⟨-, hst⟩ := runs_pure_inv h9
     subst hst
-    have hσ := etaRecorded_sim K ρ st σ r₀ hg hr
+    have hσ := etaRecorded_sim K ρ st σ r₀ hg hctx hr
     rcases f with _ | f
     · obtain ⟨L, left, log, hrf⟩ := hrf
       simp [Ochr.refine, runMachineL_exhausted] at hrf
