@@ -81,6 +81,13 @@ First checkpoint (2026-11-20, late evening): the relations, both halves stated, 
 - Against this section's claim: for the two rules that compare functions, the machine's bookkeeping is moved into the rule's premise, not removed, as long as evaluation itself is not also given as rules. And some growth of the state is inherent: the computed proposition can name an unknown made during the computation.
 - One leak of exactly the kind this theme is about: a comparison's private copy leaves a record behind that can name an unknown of an empty type, after which no assignment makes the state good. Root fix being probed: a comparison returns a boolean, so it should restore the state it started from entirely; the statement "a conversion leaves the state unchanged", written first and withdrawn as false, would then be true by construction.
 
+Second report, the same evening:
+
+- The probe of that fix came back clean. With every comparison restoring the state it started from, all 2,293 verdicts hold, and across the whole suite nothing a later step could see had been kept by the old code: no record, no change to the recursion check's lists, only fresh-name counters and unknowns that nothing names. The leak disappears. To land as a checker change; three proofs about the checker's own stability need redoing with it.
+- The machine-to-rules half for conversion is PROVED, on the standard axioms, by one induction over the comparison functions, with no model in scope, every branch covered. It took well under an hour. That is direct evidence for the theme: the part of the proof that is about the machine was quick once it was about the machine alone.
+- A new finding that may be more than a proof obstacle: two functions the checker treats as convertible can be read differently by its syntactic decisions (one declared to return `Unit`, one declared to return a type that computes to `Unit`: a call of the first is a copy, a call of the second is not). So the rule that compares programs part by part cannot be justified by "decisions agree on convertible terms". Being pinned down: either a pair of convertible values with different meanings exists, which would be a soundness question for the checker, or an invariant about where values can be embedded in code rules it out.
+- On the typing gap: making the model's meanings strict would give "well typed inside" for types and propositions, from six or so clauses (the sides of an `Eq`, the arguments of an inductive type and of a constructor, what a borrow type may hold, the parts of a function type, an ascription). It would not cover code. Weighed after the trial's verdict, not before.
+
 ## Theme 2. One evaluator, written three times
 
 ### The pattern
