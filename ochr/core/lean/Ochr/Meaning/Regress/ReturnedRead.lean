@@ -21,6 +21,8 @@ ochr ReturnedReadAt uses Nats {
   def Id1 (x : &Nat) : &Nat := &*x
   def Id1At (a : Nat) : Unit := (let r = Id1(&a); ?)
   def UseId1At (u : Unit) : Nat := (let y = 2; let r = Id1(&y); ?)
+  def Fst (p : &Pair(Nat, Nat)) : &Nat := &(*p).0
+  def UseFstAt (u : Unit) : Nat := (let p = Mk(2, 3); let r = Fst(&p); ?)
 }
 
 namespace Ochr.Meaning.Regress.ReturnedRead
@@ -73,5 +75,15 @@ theorem callOf_reads_typed (dm : DataModel) (ψ : Future) (n : Nat) (h : ψ 1 = 
   rw [hd]
   simp [Future.upd]
   rfl
+
+/-- `p ↦ lent_k Mk(loan_k, 3)` and `r ↦ borrow_k 2`: the fill of the borrow of a part sits at the
+pair, the borrow's content is the number. -/
+def fstState : List Value → Bool
+  | [_, .gloan k (.ind "Pair" _ _ _ [.loan k', .succ (.succ (.succ .zero))]), .borrow k'' (.succ (.succ .zero))] =>
+    k == k' && k == k''
+  | _ => false
+
+-- `Fst` (a borrow of a part): the checker's state after `let p = Mk(2, 3); let r = Fst(&p)`
+#guard fstState (atHole "UseFstAt")
 
 end Ochr.Meaning.Regress.ReturnedRead
