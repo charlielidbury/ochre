@@ -77,10 +77,6 @@ theorem borrowPlace_record_mem (K : RunCtx) (ρ : Assignment) (φ : Future) (π 
 
 /-! ### The record a borrow-returning call makes -/
 
-/-- The data model's reading gives whole fields: what makes an encoding whole. -/
-def _root_.Ochr.Meaning.DataRead.WholeFields (R : DataRead) : Prop :=
-  ∀ d ps A a, ∀ f ∈ (R d ps A a).2, Sem.whole f
-
 theorem enc_whole_lvl0 {R : DataRead} (hR : R.WholeFields) : ∀ {A : Type} (c : Code0 A) (a : A),
     ((lvl0 R).enc c a).whole
   | _, .prop _, _ => by simp [Code0.enc, Sem.whole]

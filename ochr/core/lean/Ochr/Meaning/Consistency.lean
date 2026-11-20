@@ -95,10 +95,11 @@ end
 Since docs/31 D61 a data model also carries its reading (`DataModel.read`, `read_eq`): a field
 holds a full meaning, a data field's read through the model's own reading, so the generic model
 needs a reading coherent with it (`DataGeneric.Coherent`), a fixed point of model and reading not
-yet constructed. -/
+yet constructed. The reading also gives whole fields (`DataRead.WholeFields`, docs/31 D68), so
+that the record a borrow-returning call makes, the encoding of its forward value, is whole. -/
 theorem exists_dataModel (items : List Item) (fuel : Nat) :
     ∃ (dm : DataModel) (D : MState → Decisions),
-      (progMeaning dm D (fun _ => .err) {} fuel items).Covered dm := by
+      (progMeaning dm D (fun _ => .err) {} fuel items).Covered dm ∧ dm.read.WholeFields := by
   sorry
 
 /-- `consistencyBounded` from the relative statement and the existence of a data model. -/

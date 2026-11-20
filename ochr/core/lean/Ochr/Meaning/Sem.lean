@@ -315,6 +315,12 @@ def Sem.whole : Sem → Prop
   | .dat _ _ _ fs _ => ∀ f ∈ fs, f.whole   -- whole fields and no element: an OPEN (ill-typed) value
   | _ => True
 
+/-- The reading gives whole fields: what makes an encoding whole (`Steps/Records.lean`,
+`enc_whole_lvl0`), so that the record a borrow-returning call makes is whole (docs/31 D68). A fact
+about the data model, owed where the reading is fixed (`Assembly.exists_dataModel`). -/
+def DataRead.WholeFields (R : DataRead) : Prop :=
+  ∀ d ps A a, ∀ f ∈ (R d ps A a).2, Sem.whole f
+
 mutual
 /-- The information order used by the step lemmas (docs/18 Def. "less informative"): `moved` is
 below everything, `ctor` is compared componentwise, everything else only with itself. Under D84
