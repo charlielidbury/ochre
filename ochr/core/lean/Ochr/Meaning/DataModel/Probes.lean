@@ -185,4 +185,32 @@ ochr DMProbeSolve uses Nats {
   def SO (t : Tag(3)) : Nat := (let w = A2(t); 0)
 }
 
+/-! ## A field's level is fixed when its declaration is checked (the lead's level clause)
+
+`Decide.fieldTermIsProp` reads a field as a proof from its declared type's syntax: a parameter of
+sort `Prop`, an inductive of sort `Prop`, an equation, or a call of a global whose declared codomain
+is literally `Prop`. The ways a field type could be a proposition the syntax misses are rejected:
+an `Id` field (fields are first-order data), and a call whose codomain is a proposition only by
+computation (`PropT`, D55); likewise a data field whose codomain is `Type₀` only by computation
+(`NatT`). A call of a global declared to return `Prop` is accepted (`ZG`), read as a proof field,
+and its type is a proposition. -/
+
+ochr DMProbeLevel uses Nats {
+  reject inductive IdF (n : Nat) := MkIdF(h : Id(Nat, n, n))
+  def PropT : Type₁ := Prop
+  def IsZ (n : Nat) : PropT := Eq(Nat, n, 0)
+  reject inductive ZF (n : Nat) := MkZF(h : IsZ(n))
+  def IsZ2 (n : Nat) : Prop := Eq(Nat, n, 0)
+  def Wrap (n : Nat) : Prop := IsZ2(n)
+  inductive ZG (n : Nat) := MkZG(h : Wrap(n))
+  def T0 : Type₁ := Type
+  def NatT (n : Nat) : T0 := Nat
+  reject inductive NF (n : Nat) := MkNF(x : NatT(n))
+}
+
+#guard (run "DMProbeLevel" DMProbeLevel).rejectedWith [
+  ("IdF", "field h of MkIdF : Id(Nat, n, n): fields are first-order data"),
+  ("ZF", "[D55] IsZ(n) is written where a type is expected, but its declared type is not a sort"),
+  ("NF", "[D55] NatT(n) is written where a type is expected, but its declared type is not a sort")]
+
 end Ochr.Meaning.DataModel.Probes

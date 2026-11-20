@@ -69,6 +69,22 @@ def RecordsFaithful (K : RunCtx) : Prop :=
     ParamsTyped K.dm d ps → ps[j]? = some (.ty (.t0 A c)) →
     K.dm.entryTy (K.dm.recOf d ps (paramKey j)) = .t0 A c
 
+/-- **A field's level is the one its declaration's check gave it** (the lead's addition, stated,
+not yet part of `CtxFaithful`): at well-typed parameters and earlier fields, a field the checker
+reads as a proof (`isProof`, to be the checker's `Decide.fieldTermIsProp` on the field's declared
+type, decided once when the declaration is checked) has a type of level `0`, and any other field a
+type of another level. So "the checker reads this field as data" means "the model's field type is
+not a proposition" with nothing evaluated at the use site. Checked against the syntax
+`fieldTermIsProp` reads (`DataModel/Probes.lean`, `DMProbeLevel`): a proof field is a `Prop`
+parameter, a `Prop`-sorted inductive (its code is `tyR`, of the declaration's sort), an equation,
+or a call of a global declared to return `Prop` (its result is a member of `Sort 0`, a code of level
+`0`); the ways a proposition could hide from that syntax (an `Id` field, a codomain that is a sort
+only by computation) are rejected. -/
+def FieldLevelsFaithful (K : RunCtx) (isProof : IndDecl → Nat → Nat → Bool) : Prop :=
+  ∀ d ∈ K.Γ, ∀ (ps : List Sem) (c i : Nat) (e : List Sem),
+    ParamsTyped K.dm d ps → FieldsTyped K.dm d ps c e → e.length = i → (fieldTerm d c i).isSome →
+      ((K.dm.fieldTy d ps c i e).level = some 0 ↔ isProof d c i = true)
+
 /-- **The run context's data model is faithful to its declarations**, at every assignment and
 every Δ (the runs of declared types read neither). A field of `CtxOk`. -/
 def CtxFaithful (K : RunCtx) : Prop :=
