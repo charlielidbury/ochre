@@ -1,10 +1,11 @@
 import Ochr.Meaning.Regress.CallInPlace
+import Ochr.Meaning.DepWithin
 import Ochr.Meaning.Regress.StaticLend
 
 /-!
 # Dependence within sites, on the concrete states (docs/31 D67, step 2; kernel-checked)
 
-The invariant (`CallInPlace.DepWithinSites`): two futures that differ only at live labels with no
+The invariant (`DepWithin.DepWithinSites`): two futures that differ only at live labels with no
 site at `p` on a path comparable with `steps` give the same reading of `p` at `steps`, typed or not.
 Checked on the lead's states, each the reference's state at that point (by its own run where
 the run is computed, else written in the form `callOf`'s `.ref` row (i') and [End] give it, with

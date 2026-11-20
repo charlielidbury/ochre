@@ -87,6 +87,7 @@ import Ochr.Meaning.Regress.ReRootExists
 import Ochr.Meaning.Regress.UnrunArmPlace
 import Ochr.Meaning.Regress.HolderMoved
 import Ochr.Meaning.KeyBridge
+import Ochr.Meaning.DepWithin
 import Ochr.Meaning.Regress.DepSites
 import Ochr.Meaning.Regress.DepSitesMore
 import Ochr.Meaning.Regress.StarErasure

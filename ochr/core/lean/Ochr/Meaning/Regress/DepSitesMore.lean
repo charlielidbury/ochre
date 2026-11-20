@@ -158,20 +158,6 @@ noncomputable def SPr (S A B X R T : SBinding) (fx : Sem → Sem) (ps : List Sem
     shape := fun p => if p = .bind 1 4 then some 2 else if p = .bind 1 5 then some 3 else none,
     nextLoan := 4, lent := Env.sitesOf stP.env }
 
-/-- The value component of a reading does not read the type it starts at. -/
-theorem follow_fst_indep : ∀ (steps : List Step) (s : Sem) (T T' : TyS),
-    (Sem.follow dm Γ T s steps).map Prod.fst = (Sem.follow dm Γ T' s steps).map Prod.fst
-  | [], _, _, _ => rfl
-  | .deref :: ss, s, T, T' => by
-    simp only [Sem.follow, Sem.step, Option.bind_some]
-    exact follow_fst_indep ss s T T'
-  | .proj i :: ss, s, T, T' => by
-    have e : Sem.step dm Γ T (.proj i) s = Sem.step dm Γ T' (.proj i) s := by cases i <;> rfl
-    simp only [Sem.follow, e]
-  | .field g :: ss, s, T, T' => by
-    have e : Sem.step dm Γ T (.field g) s = Sem.step dm Γ T' (.field g) s := rfl
-    simp only [Sem.follow, e]
-
 /-- **Off field `0`, the value read off a two-field constructor value does not read field `0`**,
 whatever the declaration (its type at field `1` may). -/
 theorem follow_dat_off (n : String) (ps : List Sem) (v1 : Sem) (a a' : Sem) (e e' : Option (Σ A : Type, A)) :
