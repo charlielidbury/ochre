@@ -85,15 +85,16 @@ theorem el2_of_as {A : Type 2} {v : Sem} {a : A} (h : Sem.as2 A v = some a) : v 
 /-- **A call's result is a member of the type the call gives it**: a good callee that the call
 unpacks is a member of its function type, and application lands in the codomain (`app_mem'`, at a
 returned borrow `app_mem_ref`). -/
-theorem callOf_res_mem {R : DataRead} {Γ : List IndDecl} {fv : Res} {args : List Res} {s s' : SState} {r : Res}
-    (hf : GoodRes R Γ fv) (h : callOf R fv args s = some (r, s')) : r.1 ∈ₛ[R] r.2.m := by
+theorem callOf_res_mem {R : DataRead} {fv : Res} {args : List Res} {s s' : SState} {r : Res}
+    (hf : GoodRes R fv) (h : callOf R fv args s = some (r, s')) : r.1 ∈ₛ[R] r.2.m := by
   rcases fv with ⟨fv, ⟨T, lab⟩⟩
   -- the callee: a member of its type
   have key : ∀ (hel : fv ≠ .moved ∧ ∀ n r c fs, fv ≠ .dat n r c fs) (hT : T ≠ TyM.err), fv ∈ₛ[R] T := by
     intro hel hT
-    rcases hf with hf | hf
-    · exact mem_of_pmem_el hel.1 hel.2 hf
-    · exact absurd hf hT
+    rcases hf with hf | hf | hf
+    · exact hf
+    · exact absurd hf hel.1
+    · exact absurd hf.1 hT
   -- at a codomain reached: the result, by `app_mem'` or `app_mem_ref`
   have fin : fv ∈ₛ[R] T → (∃ b B, T.codAt? R (args.map (·.1)) = some (b, B)) → r.1 ∈ₛ[R] r.2.m := by
     rintro hmem ⟨b, B, hcod⟩

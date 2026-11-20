@@ -17,9 +17,16 @@ an `S` suffix, with these changes and no others (each marked `STRICT` or `C1` at
 * `SM.erasedS` (C1) replaces `SM.erasedS`/`SM.erasedAt`: a proof is RUN, on a copy, strictly, and is
   `⋆` at the type its clause gives it, only if that type is a proposition (level 0). A statement is
   unchanged (`SM.stmtIf`).
-* `cong`, `symm`, `trans`, `rewrite`, `rewriteR`: `⋆` at the hint if `⋆` is a member of it (its
-  truth), else a failure. A PLACEHOLDER: the run cannot compute their propositions, since a proof
-  of `Eq(A, a, b)` is typed `prop (a = b)`, which forgets `a` and `b` (see `Strict/HANDOFF.md`).
+* `cong`, `symm`, `trans`, `rewrite`, `rewriteR` (the orchestrator's decision 1): their premise proofs
+  run, each on a copy, and must succeed; the result is `⋆` at `prop True`. A level-0 code is fixed
+  by its truth, so a proof that runs has THE true proposition as its type, whatever the checker calls
+  it; that the checker's conclusion means `prop True` is the simulation's (from the premises'
+  agreement and congruence of meanings).
+* A result carrying a borrow label is typed at the label's content type (`labTyOk`): tested at an
+  ascription and an assignment (the checker's conversion of the two types supplies it).
+* A constructor with written parameters fails unless they are members of their types (`paramsOk`).
+* `&A` is strict at `Type₀` (`&A` is well formed iff `A : Type₀`); a borrow `&p` is strict at the
+  place's type (its record, `heldMem`, is then a member).
 
 Everything outside the block (`contentOf`, `assignAt`, `callOf`, `ctorOut`, the drops, the stage
 machinery) is `Run.lean`'s, unchanged.
@@ -45,6 +52,13 @@ noncomputable def SM.erasedS (fl : Bool × Bool) (x : SM (Sem × TyS)) : SM (Sem
     | some ((v, T), _) => if v.isProof = true ∧ T.m.level = some 0 then some ((.proof, .plain T.m), s) else none
     | none => none
   else SM.stmtIf fl.1 x s
+
+/-- A result's label, if any, has the given content type in the state. -/
+def labTyOk (s : SState) (lab : Option Nat) (T : TyM) : Prop := ∀ l, lab = some l → s.heldTy l = T
+
+/-- Written constructor parameters are members of their declared types at the earlier ones. -/
+def paramsOk (dm : DataModel) (d : IndDecl) (ps : List Sem) : Prop :=
+  ∀ i v, ps[i]? = some v → v ∈ₛ[dm.read] dm.paramTy d i (ps.take i)
 
 /-- The borrow flags of a function type's parameters along the arguments (`telRefsL` at its level). -/
 noncomputable def refsOf (R : DataRead) (T : TyM) (as : List Sem) : List Bool :=
@@ -129,7 +143,8 @@ noncomputable def runS (tl : Bool) (hint : TyS) : Term → SM Res
   -- C1: a proof read at a place is read, on a copy, at the place's type
   | .place p => fun s => SM.erasedS (K.D.flags (scopeOf s) (.place p))
       (readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p))) s
-  | .borrow p => fun s => SM.erasedS (K.D.flags (scopeOf s) (.borrow p)) (borrowPlace K φ p) s
+  -- STRICT: the borrowed content is a member of its type (a borrow's record is a member)
+  | .borrow p => fun s => SM.erasedS (K.D.flags (scopeOf s) (.borrow p)) (SM.strictS K.dm.read (borrowPlace K φ p)) s
   | .assign p u => fun s => SM.erasedS (K.D.flags (scopeOf s) (.assign p u)) (fun s => do
     -- the right-hand side runs BEFORE the place is accessed (`evalCore`'s `.assign`, then
     -- `assignPlace`; D19, R5: accessing first ended the borrows the right-hand side reads
@@ -141,7 +156,8 @@ noncomputable def runS (tl : Bool) (hint : TyS) : Term → SM Res
     let ((v, R), s) ← runS false T u s
     -- STRICT: the value written is a member of the place's type at the write (read on a
     -- discarded copy, `placeTy`; the hint `T` was read before the right-hand side ran)
-    if v ∈ₛ[K.dm.read] (placeTy K φ p s).m then assignAt K φ p v R.label s else none) s
+    if v ∈ₛ[K.dm.read] (placeTy K φ p s).m ∧ labTyOk s R.label (placeTy K φ p s).m then
+      assignAt K φ p v R.label s else none) s
   | .letIn x u w => fun s => SM.erasedS (K.D.flags (scopeOf s) (.letIn x u w)) (fun s => do
     let ((v, T), s) ← runS false (.plain TyM.err) u s
     let s := pushBindShaped s { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u }
@@ -226,7 +242,10 @@ noncomputable def runS (tl : Bool) (hint : TyS) : Term → SM Res
       -- statement positions, each on its own copy (`stmtArgIf`; D19, R4)
       let (fs, sol) ← runFieldsS (d.sort == 0) d c 0 rh sol₀ [] args
       -- STRICT: the value built is a member of the type it is given (`ctorOut_mem`: fields that fit)
-      SM.strictS K.dm.read (ctorOut K.dm d c fs (rh <|> (if sol.all (·.isSome) then some (K.dm.recOf d (solved sol)) else none)))
+      -- STRICT: written parameters are members of their types
+      fun s => if ps.isEmpty ∨ paramsOk K.dm d psM then
+        SM.strictS K.dm.read (ctorOut K.dm d c fs (rh <|> (if sol.all (·.isSome) then some (K.dm.recOf d (solved sol)) else none))) s
+      else none
     | none => SM.fail) s
   | .const n => pure (K.C.global n)
   | .val v => fun s =>
@@ -396,13 +415,29 @@ noncomputable def runS (tl : Bool) (hint : TyS) : Term → SM Res
     let (va, _) ← SM.onCopy (runS false T a)
     let (vb, _) ← SM.onCopy (runS false T b)
     pure (.ty (TyM.prop (va = vb)), .plain (TyM.univ 0))
-  -- PLACEHOLDER (C1): `⋆` at the hint when the hint is true; the run cannot compute these
-  -- propositions (a proof of `Eq` is typed `prop (a = b)`, which forgets the sides)
-  | .cong _ _ | .prim "symm" _ | .prim "trans" _ | .prim "rewrite" _ | .prim "rewriteR" _ =>
-    SM.strictS K.dm.read (pure (.proof, .plain hint.m))
-  | .ref A => fun s => SM.erasedS (K.D.flags (scopeOf s) (.ref A)) (do
+  -- decision 1: the premise proofs run, each on a copy; `⋆` at `prop True`
+  | .cong _ h => SM.onCopy (do
+    let _ ← runS false (.plain TyM.err) h
+    pure (.proof, .plain (TyM.prop True)))
+  | .prim "symm" [h] => SM.onCopy (do
+    let _ ← runS false (.plain TyM.err) h
+    pure (.proof, .plain (TyM.prop True)))
+  | .prim "trans" [h, k] => SM.onCopy (do
+    let _ ← runS false (.plain TyM.err) h
+    let _ ← runS false (.plain TyM.err) k
+    pure (.proof, .plain (TyM.prop True)))
+  | .prim "rewrite" [h, u] => SM.onCopy (do
+    let _ ← runS false (.plain TyM.err) h
+    let _ ← runS false (.plain TyM.err) u
+    pure (.proof, .plain (TyM.prop True)))
+  | .prim "rewriteR" [h, u] => SM.onCopy (do
+    let _ ← runS false (.plain TyM.err) h
+    let _ ← runS false (.plain TyM.err) u
+    pure (.proof, .plain (TyM.prop True)))
+  -- STRICT: `&A` is well formed iff `A : Type₀`
+  | .ref A => fun s => SM.erasedS (K.D.flags (scopeOf s) (.ref A)) (SM.strictS K.dm.read (do
     let (TA, _) ← runS false (.plain TyM.err) A
-    pure (TA, .plain (TyM.univ 1))) s
+    pure (TA, .plain (TyM.univ 1)))) s
   | .id A t u => fun s => do
     -- `Id` observes: each side on a copy of the state, a fresh value written through each
     -- re-pointed borrow binding ([Obs-ref]), every borrow ended, the result and every position
@@ -446,7 +481,7 @@ noncomputable def runS (tl : Bool) (hint : TyS) : Term → SM Res
     let (TA, _) ← SM.onCopy (runS false (.plain TyM.err) A)
     let T : TyS := .plain TA.asTy
     let (v, R) ← runS false T u
-    pure (v, { T with label := R.label })) s
+    fun s => if labTyOk s R.label T.m then some ((v, { T with label := R.label }), s) else none) s
 termination_by structural t => t
 
 /-- Arm `c` of a match, run at the match's expected type. -/
