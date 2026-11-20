@@ -859,17 +859,28 @@ result is its value; if it is stuck, `⌈t⌉` (its embedded values are already 
 The only place a sealed program is re-run (`substV` after a substitution into it, `renormV`
 after a generalised neutral is refined, both at every position `mapState` reaches): closing
 off's (C4), a sealed program runs again exactly when something it depends on changes, wherever
-it occurs (`notes/closeoff-model.md`). -/
+it occurs (`notes/closeoff-model.md`).
+
+D97: a sealed program whose text holds a loan is never run. Such a loan is a hole by
+construction, whether or not its borrow is in Ω yet (a fill, the value a stuck call or block
+left at a place it lends to a borrow still live; `closeCall`'s `&T` row substitutes a fill
+over `loan_k` before `borrow_k` is in Ω). The program is left as it is: a substitution into it
+is made on its text, and its marks and their transfer at [End] are unchanged. It sits at a
+lent place, which no access reaches without ending that borrow first (D90), and ending the
+last of its borrows substitutes the borrow's final content for the last hole (`endBorrow`,
+`substV`), which is the run that computes it. -/
 def nfSealed (fuel : Nat) (t : Term) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
+  -- D97: a sealed program whose text holds a loan (a hole: a fill, or a program a substitution
+  -- has just put a hole into) is left as it is, never run: what its run would compute cannot be
+  -- observed while its borrows live, and ending the last of them runs it
+  if t.hasLoanAtom then
+    trace fun _ => s!"[Seal] left sealed: its text holds a hole ({(Value.sealed t).loans.eraseDups})"
+    return .sealed t
   let saved ← get
   -- bounded like calls, so that a normalisation loop (breaker-fresh-v16 X5 without D39)
   -- is an error rather than a stack overflow
   if saved.depth ≥ 2000 then exhausted "normalisation depth exceeded (a sealed program that re-closes itself)"
-  -- static ends: a sealed program over live holes is a fill (a stuck call's, [Close]); its normal
-  -- form is a fill over the same holes, the hole itself where the borrow points, else marked
-  -- (`lentTo`): a fill re-run in a split world keeps its place lent though its hole is gone
-  let holes := liveLoansIn saved.env (.sealed t)
   modify fun s => { s with env := #[{}], obsFrame := none, depth := s.depth + 1 }
   -- D53: a sealed program re-runs with runtime semantics (moves, ⊥ checks); only its final
   -- read of a cell (`peek`, closeCall's `K`) is an observation, and copies
@@ -877,7 +888,7 @@ def nfSealed (fuel : Nat) (t : Term) : M Value := do
   let r ← catchStuck (do let (v, _) ← eval fuel' false t; pure (some v)) fun _ => pure none
   restoreKeep saved
   match r with
-  | some v => pure (lentTo holes v)
+  | some v => pure v
   | none => canonNeutral (.sealed t)
 termination_by structural fuel
 
@@ -1481,6 +1492,23 @@ an ordinary term on a private copy, from the empty environment. Its head call is
 marked, so a stuck body closes off; its [Call-type] is what gives the type. -/
 def sealedType? (fuel : Nat) (t : Term) : M (Option Value) := privately do
   let fuel' + 1 := fuel | exhausted "out of fuel"
+  -- D97: a program whose text holds a loan (a fill over a live borrow, met by [Repack] at a
+  -- whole-again point) is not run: its type is read off its text, as [Close] wrote it. A fill
+  -- reads a cell (`peek(c)`), of the type the cell was declared at (`(u : T)`) or of its initial
+  -- value; a borrow result reads through the call's result, of its declared codomain's content;
+  -- a result form is its head's declared codomain (`sealedResultType?`). Anything else: unknown.
+  if t.hasLoanAtom then
+    let (bound, body) := t.letChain
+    match body with
+    | .prim "peek" [.place (.var i)] => match bound[i]? with
+      | some (.ascribe (.val _) (.val T)) => return some T
+      | some (.val u) => return ← valType? fuel' u
+      | _ => return none
+    | .prim "peek" [.place (.deref (.var i))] => match bound[i]? with
+      | some c@(.call _ _ true) => return (match ← sealedResultType? fuel' c with | some (.tRef T) => some T | _ => none)
+      | _ => return none
+    | .call _ _ true => return ← sealedResultType? fuel' t
+    | _ => return none
   modify fun s => { s with env := #[{}], obsFrame := none, recStack := [], goal := none }
   let (_, T) ← eval fuel' true t.unHead
   pure T

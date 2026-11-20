@@ -504,6 +504,17 @@ def Term.anyAtomArms (P : Value → Bool) : List (Hint × Term) → Bool
 termination_by structural as => as
 end
 
+/-- D97: a term holds a loan (anywhere inside it, nested sealed programs and closures included):
+as a sealed program's text, a hole. Marks (`lent_ℓ`) are not holes. -/
+def Term.hasLoanAtom (t : Term) : Bool := t.anyAtom fun | .loan _ => true | _ => false
+
+/-- D97: a sealed program's text as its chain of `let`s (the bound terms, innermost first, so that
+variable `i` of the body is the `i`-th) and its tail, through sequences. -/
+def Term.letChain : Term → List Term × Term
+  | .letIn _ u w => let (bs, b) := w.letChain; (bs ++ [u], b)
+  | .seq _ w => w.letChain
+  | t => ([], t)
+
 /-- D53: part of the value was moved out or is gone (`⊥`). -/
 def Value.hasHole (v : Value) : Bool := v.anyAtom fun a => a == .bot
 

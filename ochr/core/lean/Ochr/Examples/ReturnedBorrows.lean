@@ -649,3 +649,81 @@ ochr JoinPlaces uses Nats, Lists {
   ("BadIdxRead", "[Join] an arm of the match moves c.0.5, which does not exist: c.0 holds a constructor value without that field"),
   ("BadDerefRead", "[Join] an arm of the match moves *c.0, which does not exist: c.0 holds a constructor value, which is not a borrow"),
   ("LentRead", "[Match] on c, which was moved out")]
+
+/-! ## A sealed program whose text holds a loan is not run (D97)
+
+A fill (what a stuck call or block leaves at a place it lends to a returned borrow) holds the
+borrow's hole in its text. Running it would write the hole (`*r := loan_k`) in a nested state
+that does not hold the borrow, and what it computed could not be observed anyway: the place is
+lent, and an access ends the borrow first. So such a program is left sealed, and runs when its last
+hole is filled. These programs hit each site that substitutes into a sealed program while a hole
+is in its text: [Close] (its fills, and a second stuck call over a returned borrow), a split's
+refinement and re-normalisation, [End] with a reborrow that outlives its borrow, and a neutral's
+generalisation. They also try to observe a lent place without ending its borrow, through `Id`,
+`Eq` and a call. Every verdict is the one main gave before D97. -/
+
+ochr HoleSites uses Nats, Fixtures, StaticEnds {
+  def IdN (x : &Nat) : &Nat := x
+  def AddTo (x : &Nat) (k : Nat) : Unit := match k { Z => (), S _ => (*x := 7; ()) }
+  -- endBorrow: a reborrow of *r outlives r (the content substituted holds a live loan)
+  def Reb (n : Nat) (a : Nat) (b : Nat) : Nat := (
+    let s = (let r = Pick(clone(n), &a, &b); &*r);
+    *s := 3;
+    let d = a; d)
+  def RebRun : Nat := Reb(0, 1, 2)
+  -- a split after a stuck borrow-returning call (refine's substitution and renormAll, with fills)
+  def SplitAfter (n : Nat) (a : Nat) (b : Nat) : Nat := (
+    let r = Pick(clone(n), &a, &b);
+    let z = match n { Z => 0, S m => 1 };
+    *r := z;
+    let d = a; d)
+  def SplitAfterRun0 : Nat := SplitAfter(0, 1, 2)
+  def SplitAfterRun1 : Nat := SplitAfter(1, 1, 2)
+  -- the same in tail position (the split's arms run to the return)
+  def SplitTail (n : Nat) (a : Nat) (b : Nat) : Nat := (
+    let r = Pick(clone(n), &a, &b);
+    match n { Z => (*r := 5; let d = a; d), S m => (*r := 6; let d = b; d) })
+  -- a second stuck call over a returned borrow (closeCall's &T row puts a new hole in old fills)
+  def Second (n : Nat) (m : Nat) (a : Nat) (b : Nat) (c : Nat) : Nat := (
+    let r = Pick(clone(n), &a, &b);
+    let s = Pick(clone(m), r, &c);
+    *s := 4;
+    let d = a; d)
+  def SecondRun : Nat := Second(0, 0, 1, 2, 3)
+  def SecondSplit (n : Nat) (m : Nat) (a : Nat) (b : Nat) (c : Nat) : Nat := (
+    let r = Pick(clone(n), &a, &b);
+    let s = Pick(clone(m), r, &c);
+    let z = match m { Z => 0, S k => 1 };
+    *s := z;
+    let d = c; d)
+  -- a neutral substitution into a fill: a stuck call's result generalised by a later match,
+  -- while a fill over a live borrow mentions the same program
+  def NeutralIn (n : Nat) (a : Nat) (b : Nat) : Nat := (
+    let r = Pick(clone(n), &a, &b);
+    let k = Add(clone(n), 0);
+    let z = match k { Z => 0, S m => 1 };
+    *r := z;
+    let d = a; d)
+  -- observing a lent place without ending its borrow: an Id over the lender in a split world
+  reject def ObsLent (n : Nat) (a : Nat) (b : Nat) : Prop := (
+    let r = Pick(clone(n), &a, &b);
+    match n { Z => Id(Nat, clone(a), 1), S m => True })
+  -- ... and an Eq, and a stuck call given the lent place (both end the borrow first)
+  def EqLent (n : Nat) (a : Nat) (b : Nat) : Prop := (
+    let r = Pick(clone(n), &a, &b);
+    let z = match n { Z => 0, S m => 1 };
+    Eq(Nat, clone(a), z))
+  def CallLent (n : Nat) (k : Nat) (a : Nat) (b : Nat) : Nat := (
+    let r = Pick(clone(n), &a, &b);
+    AddTo(&a, k);
+    let d = a; d)
+  reject def CallLentUse (n : Nat) (k : Nat) (a : Nat) (b : Nat) : Nat := (
+    let r = Pick(clone(n), &a, &b);
+    AddTo(&a, k);
+    *r := 1;
+    let d = a; d)
+}
+
+#guard (run "HoleSites" HoleSites).rejectedWith [
+  ("ObsLent", "[Id-typestate] a side of Id ends the borrow r"),
+  ("CallLentUse", "no such place *r")]

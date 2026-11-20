@@ -43,8 +43,9 @@ def B (v h : Value) : Value :=
 #guard ok? (runM (do substV (← fuelLeft) (.abs 5) .zero (N (.abs 0) .zero)) (st Nats 6)) == some (N (.abs 0) .zero)
 -- deriver-e2 §3.4: B(S σ1)[τ] ≡ S B(σ1)[τ]
 #guard ok? (runM (do substV (← fuelLeft) (.abs 0) (.succ (.abs 1)) (B (.abs 0) (.abs 2))) (st Nats 3)) == some (.succ (B (.abs 1) (.abs 2)))
--- deriver-e2 F3 / D11: a loan whose borrow is outside the [Seal] run is inert: B(0)[loan_9] ≡ loan_9
-#guard ok? (runM (do substV (← fuelLeft) (.abs 0) .zero (B (.abs 0) (.loan 9))) (st Nats 1)) == some (.loan 9)
+-- deriver-e2 F3 / D11, changed by D97: a program whose text holds a loan (a hole) is not run, so
+-- substituting into `B(σ0)[loan_9]` leaves it sealed; it runs when the hole is filled (next test)
+#guard ok? (runM (do substV (← fuelLeft) (.abs 0) .zero (B (.abs 0) (.loan 9))) (st Nats 1)) == some (B .zero (.loan 9))
 -- ending the borrow fills the hole by substitution and re-normalises (D11)
 #guard ok? (runM (do substV (← fuelLeft) (.loan 9) (.abs 2) (B .zero (.loan 9))) (st Nats 3)) == some (.abs 2)
 

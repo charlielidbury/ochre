@@ -295,6 +295,9 @@ theorem sigPres_setAt (p : Pos) (v : Value) : SigPres (setAt p v) := by
   unfold setAt; split <;> exact sigPres_modifyFrame _ _
 theorem sigPres_tyAt (p : Pos) : SigPres (tyAt p) := by unfold tyAt; sp
 theorem sigPres_freshLoan : SigPres freshLoan := by unfold freshLoan; sp
+theorem sigPres_trace (msg : Unit → String) : SigPres (trace msg) := by
+  unfold trace; exact SigPres.bind SigPres.get fun s => SigPres.ite _ (SigPres.modifyLog _) (SigPres.pure _)
+macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_trace)
 theorem sigPres_freshAbs (T : Value) (d : DeclInfo) : SigPres (freshAbs T d) := by unfold freshAbs; sp
 theorem sigPres_absType (σ : Nat) : SigPres (absType σ) := by unfold absType; sp
 theorem sigPres_lookupInd (n : String) : SigPres (lookupInd n) := by unfold lookupInd; sp
@@ -570,6 +573,9 @@ theorem refSP_succ (n : Nat) (ih : RefSP n) : RefSP (n + 1) := by
   · intro x r t; unfold substT; sp
   · intro x r b; unfold substEnv; sp
   · intro t; unfold nfSealed; simp only []
+    -- D97: a sealed program whose text holds a loan is returned as it is
+    split
+    · sp
     refine SigPres.get_ends fun saved => ?_
     repeat' (first | (intro) | (with_reducible apply EndsAt.restoreKeep_bind) | (with_reducible apply EndsAt.bind_any) | split)
     all_goals sp
