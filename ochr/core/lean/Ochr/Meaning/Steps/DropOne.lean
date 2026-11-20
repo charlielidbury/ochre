@@ -2,6 +2,7 @@ import Ochr.Meaning.Steps.JoinDropLib
 import Ochr.Meaning.BotWrite
 import Ochr.Meaning.SitesWrite
 import Ochr.Meaning.RelendComm
+import Ochr.Meaning.AccessAbsorb
 
 /-!
 # The drop of one place at the join: what `dropOne_step` rests on (docs/31 D30, D31; task C)
@@ -208,15 +209,57 @@ theorem refine_sim (fuel : Nat) (st st' : MState) (σ : Nat) (r : Value) (s : SS
     Rel K ρ φ π st' s ∧ Good K.dm K.M K.Γ ρ st' := by
   sorry
 
+/-- **(6) At the lent prefix above an existing place, only that prefix's borrow, as a fill**: a
+live borrow with a site at or below the lent prefix has a fill exactly there. The prefix's own site
+is a fill, not a loan (a place exists below it, and nothing exists below a loan); and (WF12) leaves
+no other live borrow at or below a live fill. The second half of `SState.AbsorbInv`; the first is
+the prefix's minimality (`lentPrefix_above`). Open: the correspondence between the checker's sites
+(`Value.sitesOf`) and its paths (`Value.follow`) at one position, and between the live labels of
+related states (`SimEq`'s holders, `Rel.sites`). -/
+theorem lentPrefix_fill (st : MState) (s : SState) (π : Nat → Nat) (pos : Pos) (steps ss ψ : List Step) (w : Value)
+    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hp : pos ∈ allPos st.env)
+    (hl : lentPrefix s pos steps = some ψ) (hw : (valAt st.env pos).follow ss = some w)
+    (hlt : pathKey ψ <+: pathKey ss) (hne : pathKey ψ ≠ pathKey ss) :
+    ∀ m ∈ s.liveLabels, ∀ x ∈ s.lent m, x.pos = pos → pathKey ψ <+: pathKey x.path →
+      ∃ y ∈ s.lent m, y.pos = pos ∧ pathKey y.path = pathKey ψ ∧ y.fill = true := by
+  sorry
+
+/-- The sites at the lent prefix of a path above an existing place are as the absorption needs. -/
+theorem lentPrefix_absorbInv (st : MState) (s : SState) (π : Nat → Nat) (pos : Pos) (steps ss ψ : List Step) (w : Value)
+    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hp : pos ∈ allPos st.env)
+    (hl : lentPrefix s pos steps = some ψ) (hw : (valAt st.env pos).follow ss = some w)
+    (hlt : pathKey ψ <+: pathKey ss) (hne : pathKey ψ ≠ pathKey ss) : s.AbsorbInv pos (pathKey ψ) :=
+  ⟨lentPrefix_above hl, lentPrefix_fill K ρ φ st s π pos steps ss ψ w hg hs hp hl hw hlt hne⟩
+
+theorem dataHit_congr {ψ₁ ψ₂ : List Step} (h : pathKey ψ₁ = pathKey ψ₂) : dataHit ψ₁ = dataHit ψ₂ := by
+  funext x; simp [dataHit, h]
+
 /-- **(6) The lent prefix, absorbed at an instance.** Where the place exists under a fill (a mark,
 transparent to the checker's path), the checker accesses the path to the place only, the
-reference first the shortest lent prefix whole; by (WF12) every borrow the prefix access ends is
-one the place's access ends, and by `relend_comm` the order does not matter. Open: not tried. -/
-theorem lentPrefix_absorbed (st st' : MState) (s : SState) (π : Nat → Nat) (pos : Pos) (steps : List Step)
-    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) :
+reference first the shortest lent prefix whole; the two end the same borrows
+(`SState.access_absorb`, under `lentPrefix_absorbInv`), and accessing twice is accessing once.
+Assembled; it rests on `lentPrefix_fill`. -/
+theorem lentPrefix_absorbed (st st' : MState) (s : SState) (π : Nat → Nat) (pos : Pos) (steps : List Step) (w : Value)
+    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hp : pos ∈ allPos st.env)
+    (hw : (valAt st.env pos).follow steps = some w) :
     Rel K ρ φ π st' ((accessLentPrefix pos steps s).access pos (dataHit steps)) ↔
       Rel K ρ φ π st' (s.access pos (dataHit steps)) := by
-  sorry
+  have e : (accessLentPrefix pos steps s).access pos (dataHit steps) = s.access pos (dataHit steps) := by
+    unfold accessLentPrefix
+    rcases hl : lentPrefix s pos steps with _ | ψ
+    · rfl
+    · simp only
+      obtain ⟨j, hj, hψ, -⟩ := lentPrefix_spec hl
+      have hlt : pathKey ψ <+: pathKey steps := by
+        rw [hψ]; simp only [pathKey, List.map_take]; exact List.take_prefix _ _
+      have hne : pathKey ψ ≠ pathKey steps := by
+        intro h
+        have := congrArg List.length h
+        simp [pathKey, hψ] at this
+        omega
+      have hI := lentPrefix_absorbInv K ρ φ st s π pos steps steps ψ w hg hs hp hl hw hlt hne
+      rw [SState.access_absorb hI hlt, SState.access_access]
+  rw [e]
 
 /-- **(6) No lent prefix above a moved part.** Where the checker's place is `⊥` (its drop does
 nothing), no live borrow is lent at a strict prefix of it, so the reference's prefix access does
