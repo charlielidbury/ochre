@@ -19,7 +19,7 @@ to the hole's (`S₆`). So on this shape [Close] is exact against the reference'
 checker's sealed programs mean the forward value and the backward function, as `callOf` gives
 them. Probe findings that shaped `RunEqs.lean` (a throwaway `simp` unfolding of `res_means_fwd`): `unfold meanV` then
 `simp [run, emptyState, pushBindShaped, contentOf, readPlace, borrowPlace, runArgs, callOf,
-callOfL, applyFnL, …]` reduces the `ascribe`/`letIn`/`borrow` prefix and reaches `callOf` with
+callOfL, applyFnL, …, runT]` reduces the `ascribe`/`letIn`/`borrow` prefix and reaches `callOf` with
 `fv.2.shape = (Δ₀ 1).shape = some (psG, outG)` and `fv.1 = meanV … (.abs 1)`, as intended. Two
 obstacles: (1) `simp [Sem.updAt]` fails outright ("failed to generate equational theorem for
 `Sem.updAt`", at the `isTrue`/`.ty0 Nat` branch of `Places.lean:93`), so every place write

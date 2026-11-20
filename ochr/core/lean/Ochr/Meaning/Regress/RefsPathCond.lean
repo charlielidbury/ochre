@@ -73,7 +73,7 @@ theorem canon_changes_meaning (K : RunCtx) (φ : Future) (hint : TyS) :
   have e1 : meanV K ρ₇ φ hint (.succ (.abs 1)) = .el0 Nat 8 := by
     simp [meanV, ρ₇, Sem.succ, Sem.asNat, Sem.as]
   have e2 : meanV K ρ₇ φ hint (.sealed .zero) = .el0 Nat 0 := by
-    simp only [meanV, run]
+    simp only [meanV, run, runT]
     rfl
   rw [e1, e2]
   intro h
@@ -121,7 +121,7 @@ theorem ta_S (K : RunCtx) :
   · simp only [S, List.mem_singleton, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
     show ρ₇ 0 = meanV K ρ₇ (fun _ => .err) (.plain (MState.absTyM K.dm K.M K.Γ ρ₇ S 0)) (.sealed .zero)
-    simp only [meanV, run]
+    simp only [meanV, run, runT]
     rfl
 
 theorem rest_S (K : RunCtx) : Membership K.dm K.M K.Γ ρ₇ S ∧ WF K.dm K.M K.Γ ρ₇ S := by
