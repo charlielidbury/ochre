@@ -1,6 +1,7 @@
 import Ochr.Meaning.Steps.Statements
 import Ochr.Meaning.Regress.CodeRuns
 import Ochr.Meaning.SubstAbs
+import Ochr.Meaning.RunSubstAbs
 import Ochr.Examples.Nat
 
 /-!
@@ -198,5 +199,27 @@ theorem pred2_instance (m : Nat) (h0 : ρ 0 = .el0 Nat (m + 1)) (h1 : ρ 1 = .el
     rw [run_pred2 dm Γ ρ φ (.abs 0) m (fun _ => h0), run_pred2 dm Γ ρ φ (.succ (.abs 1)) m (fun _ => by
       show (ρ 1).succ = _
       rw [h1, succ_el0])]
+
+/-- **The lemma's hypothesis holds on the `SplitSubst` run once `Δ` types the unknown at its stored
+type** (`DeltaOk`: `σ₀ : Nat`): the filler `S(σ₁)` means `ρ σ₀`, the run types `.val S(σ₁)` at `Nat`
+as it types `.val σ₀`, and the probes' decisions are constant. -/
+theorem pred2_absFill (m : Nat) (h0 : ρ 0 = .el0 Nat (m + 1)) (h1 : ρ 1 = .el0 Nat m) :
+    AbsFillOK { Kp dm Γ (gPred2 dm.read) with Δ := fun _ => .plain TyM.nat } ρ φ 0 (.succ (.abs 1)) where
+  mean hint := by
+    show (ρ 1).succ = ρ 0
+    rw [h0, h1, succ_el0]
+  shape hint s := by rw [run_val_def, run_val_def]; rfl
+  dec := ⟨fun _ _ => rfl, fun _ _ => rfl, fun _ _ => rfl, fun _ _ _ => rfl, fun _ _ => rfl, fun _ _ => rfl,
+    fun _ _ _ => rfl⟩
+
+/-- **The substitution lemma for unknowns, applied on the `SplitSubst` run** (`run_substAbs`): the
+substituted call runs as the call, as `pred2_instance` computed by hand. -/
+theorem pred2_by_lemma (m : Nat) (h0 : ρ 0 = .el0 Nat (m + 1)) (h1 : ρ 1 = .el0 Nat m) (hint : TyS) (s : SState) :
+    run { Kp dm Γ (gPred2 dm.read) with Δ := fun _ => .plain TyM.nat } ρ φ hint
+        (Term.substAbs 0 (.succ (.abs 1)) (.call (.const "Pred2") [.val (.abs 0)] true)) s
+      = run { Kp dm Γ (gPred2 dm.read) with Δ := fun _ => .plain TyM.nat } ρ φ hint
+        (.call (.const "Pred2") [.val (.abs 0)] true) s := by
+  show runT _ ρ φ false hint _ s = runT _ ρ φ false hint _ s
+  rw [run_substAbs _ ρ φ 0 _ (pred2_absFill dm Γ ρ φ m h0 h1) false]
 
 end Ochr.Meaning.Regress.SplitSubstRef

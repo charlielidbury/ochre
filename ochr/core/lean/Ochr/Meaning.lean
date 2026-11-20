@@ -102,6 +102,7 @@ import Ochr.Meaning.Regress.InFlight
 import Ochr.Meaning.Regress.DefKnot
 import Ochr.Meaning.Regress.IdWrite
 import Ochr.Meaning.SubstAbs
+import Ochr.Meaning.RunSubstAbs
 import Ochr.Meaning.Regress.EqJ
 import Ochr.Meaning.Regress.SplitSubst
 import Ochr.Meaning.Regress.StarErasure
