@@ -64,6 +64,17 @@ def fieldTermIsProp (d : IndDecl) (FT : Term) : M Bool := do
     | none => pure false
   | _ => pure false
 
+/-- D110 [Open]: a strong update (an assignment to a dependent data field, `Machine.strongUpdate`)
+stores its value unchecked, and the field is then typed by what it holds. That is meaningful only
+for a value whose content determines its type: one whose declared type reads as first-order data,
+the class a field may be declared at (D36). A proof, a borrow, a type or a function is not: its
+content (`⋆`, a borrow, a type, a closure) does not say what the field's type is, and `Boom`
+stored `⋆` in a field whose type then read as `Void`. Any other value is an ordinary checked
+write. Decided from the right-hand side's declared type (`declOf`), never from its value or its
+computed type. -/
+def strongStorable (d : DeclInfo) : Bool :=
+  !d.isProof && !(d matches .ref _ | .sort _ | .pi _ | .conflict)
+
 /-- A field place is a proof iff its declared type is a proposition (syntactic, D42). -/
 def fieldIsProof (g : FieldRef) : M Bool := do
   let d ← lookupInd g.ty

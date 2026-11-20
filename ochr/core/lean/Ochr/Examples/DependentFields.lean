@@ -1,3 +1,4 @@
+import Ochr.Examples.Nat
 import Ochr.Examples.Logic
 import Ochr.Examples.Word
 import Ochr.Examples.Option
@@ -892,6 +893,68 @@ ochr LentIndex uses DepFields {
   ("LendIndexWrite", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is Void"),
   ("BoomBPf", "[Match] on c.x, whose type ⌈Fin1(σ1)⌉ is not an inductive type"),
   ("BoomIB", "unknown constant BoomBPf")]
+
+/-! ## What a strong update may store (D110)
+
+A strong update stores its value unchecked and types the field by what it holds ([Open]). That
+reads back the field's type only from a value whose content determines it, so only a value whose
+declared type is first-order data may be stored so; a proof, a borrow, a type or a function is
+checked against the field's declared type at the current earlier fields, as any other write is.
+Before, `x := refl` stored `⋆`, the field then read at its declared type `Fin1(Z) = Void` once the
+index was rewritten, and a zero-arm match on it closed the goal (`Bad`, a closed proof of `False`
+through `BoomF`): the value was a dropped local, and through a borrow parameter (`ViaParam`) the
+path ended before the borrow's [Repack]. A borrow stored inside the value (`Leak`) left its lender
+a loan nothing would fill, readable as data of any type and, stored back, at the field's declared
+type (`ViaLoan`). Storing data of another type is the strong update's purpose and stays
+(`OtherData`), re-checked where the value must be whole again (`OtherDataWhole`). -/
+
+ochr StrongUpdate uses Nats {
+  inductive Void : Type
+  inductive One := O
+  def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
+  def Fin3 (n : Nat) : Type := match n { Z => Nat, S(m) => Nat, }
+  inductive V := MkV(n : Nat, x : Fin1(n))
+  inductive V3 := MkV3(n : Nat, x : Fin3(n))
+  def AbsurdV (v : Void) : False := match v {}
+  -- a proof: `refl`, a proof parameter, a proof of an arbitrary proposition
+  reject def Bad : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (x := refl; n := Z; let z : Void = match x {}; z), })
+  reject def BoomF : False := AbsurdV(Bad)
+  reject def BadSwap : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (n := Z; x := refl; let z : Void = match x {}; z), })
+  reject def ViaProofParam (h : Eq(Nat, Z, Z)) : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (x := h; n := Z; let z : Void = match x {}; z), })
+  reject def ViaAnyProof (P : Prop) (p : P) : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (x := p; n := Z; let z : Void = match x {}; z), })
+  -- through a borrow parameter, and through a borrow a call returns: no return point is reached
+  reject def ViaParam (r : &V) : Void := ((*r).1 := refl; (*r).0 := Z; match (*r).1 {})
+  def IdV (r : &V) : &V := r
+  reject def ViaReturned (r : &V) : Void := (let s = IdV(r); (*s).1 := refl; (*s).0 := Z; match (*s).1 {})
+  -- a borrow, a type, a function
+  reject def Leak : Nat := (let c = MkV3(Z, 0); match c { MkV3(n, x) => (let w = Z; x := &w; *x := S(Z); x := 0; w), })
+  reject def ViaLoan : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let w = O; x := &w; x := O; x := w; n := Z; let z : Void = match x {}; z), })
+  reject def AType : Nat := (let c = MkV3(Z, 0); match c { MkV3(n, x) => (x := Nat; 0), })
+  reject def AFunction : Nat := (let c = MkV3(Z, 0); match c { MkV3(n, x) => (x := (λ(u : Unit) : Nat => Z); 0), })
+  -- the controls: the index rewritten alone (`x` keeps `O`, now not of `Void`); data of another
+  -- type, the strong update's purpose, re-checked when the value is whole; a checked write of the
+  -- field's own type; a borrow kept out of the value
+  reject def Ctl1 : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (n := Z; let z : Void = match x {}; z), })
+  def OtherData : Nat := (let c = MkV3(Z, 0); match c { MkV3(n, x) => (x := O; 0), })
+  reject def OtherDataWhole : V3 := (let c = MkV3(Z, 0); match c { MkV3(n, x) => (x := O; c), })
+  def OwnType : V := (let c = MkV(S(Z), O); match c { MkV(n, x) => (x := O; c), })
+  def BorrowOutside : Nat := (let w = Z; let r = &w; *r := S(Z); w)
+}
+
+#guard (run "StrongUpdate" StrongUpdate).rejectedWith [
+  ("Bad", "the assigned value has type ⊤, expected One"),
+  ("BoomF", "unknown constant Bad"),
+  ("BadSwap", "the assigned value has type ⊤, expected Void"),
+  ("ViaProofParam", "the assigned value has type ⊤, expected One"),
+  ("ViaAnyProof", "the assigned value has type σ0, expected One"),
+  ("ViaParam", "the assigned value has type ⊤, expected ⌈Fin1(σ1)⌉"),
+  ("ViaReturned", "the assigned value has type ⊤, expected ⌈Fin1(σ1)⌉"),
+  ("Leak", "the assigned value has type &Nat, expected Nat"),
+  ("ViaLoan", "the assigned value has type &One, expected One"),
+  ("AType", "the assigned value has type Type, expected Nat"),
+  ("AFunction", "the assigned value has type Π(u : Unit). Nat, expected Nat"),
+  ("Ctl1", "a match with no arms on c.x : One, which has constructors"),
+  ("OtherDataWhole", "[Repack] c is read whole, but it is open: field x of MkV3 holds a value of type One, but its type from the earlier fields is Nat")]
 
 /-! ## A growable vector (a case study)
 

@@ -1393,7 +1393,8 @@ the earlier fields' current contents. A field whose declared type mentions no ea
 has that type. Any other field has it while its content does (the value is packed);
 otherwise the value is *open*, and the field is typed by its content's own type (what was
 written into it, a stored type), until the value is repacked. -/
-def depFieldType (fuel : Nat) (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Place) : M Value := do
+def depFieldType (fuel : Nat) (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Place)
+    (declared : Bool := false) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   if !d.fieldDependent g.ctor g.idx then
     match ← fieldTypeAt fuel' d ((ps.map some).toArray) g.ctor g.idx [] with
@@ -1406,14 +1407,31 @@ def depFieldType (fuel : Nat) (d : IndDecl) (ps : List Value) (g : FieldRef) (q 
   let some (_, T) := (← fieldTypesOf fuel' d ps g.ctor fs (some (g.idx + 1)))[g.idx]?
     | err s!"{← ppPlace q}.{g.name}: no such field"
   fire .Field fun _ => s!"{g.name}: {T}, from the earlier fields' contents"
-  if !d.fieldDependent g.ctor g.idx then return T
+  if declared || !d.fieldDependent g.ctor g.idx then return T
   let c := fs.getD g.idx .bot
-  if c == .bot || c == .proof then return T
+  -- a moved field has its declared type (any read of it is an error)
+  if c == .bot then return T
+  -- D110: a proof field holds `⋆` at its declared type; a data field never holds a proof (a strong
+  -- update stores none), so it is not given a declared type it was never checked against
+  if c == .proof then
+    if ← fieldIsProof g then return T
+    err s!"INTERNAL [Open] the data field {g.name} of {← ppPlace q} holds ⋆ (D110: a data field never holds a proof; please report)"
   if (← packedErr fuel' c T).isNone then return T
   -- a content with no readable type of its own (a proof, an inert loan) keeps the field's type
   let S := (← valType? fuel' c).getD T
   fire .Open fun _ => s!"{g.name} is open: typed by its content, {S}, not {T}"
   pure S
+termination_by structural fuel
+
+/-- D110: the declared type of the field place `p`, a field of a dependent constructor, at the
+current contents of the earlier fields: what a write that is not a strong update is checked
+against (`depFieldType` without [Open]'s reading of an open field by its content). -/
+def fieldDeclType (fuel : Nat) (p : Place) : M Value := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  let .field g q := p | placeType fuel' p
+  match ← placeType? fuel' q with
+  | some (.tInd n ps) => depFieldType fuel' (← lookupInd n) ps g q (declared := true)
+  | _ => placeType fuel' p
 termination_by structural fuel
 
 /-- D64 [Repack]: why `v` is not a value of `T` by the telescopes of the dependent
@@ -2179,13 +2197,20 @@ def evalCore (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none
     -- the place's type, read before the value is evaluated: evaluating it may move the place's
     -- content out (`*x := match *x {…}`, D68)
     let Tp0 ← if typed then placeType? fuel' p else pure none
-    let (v, Tv) ← eval fuel' typed u hint
     -- D64 [Open]: a field whose declared type mentions earlier fields takes any value (a strong
-    -- update: while its value is open it is typed by what it holds); [Repack] checks it later
+    -- update: while its value is open it is typed by what it holds); [Repack] checks it later.
+    -- D110: only a value whose declared type reads as first-order data (`Decide.strongStorable`);
+    -- any other is checked against the field's declared type at the current earlier fields
+    let strong ← if typed then strongUpdate p else pure false
+    let storable ← if strong then pure (strongStorable (← withLive true (declOf fuel' false [] [] u))) else pure false
+    let Td0 ← if strong && !storable then some <$> fieldDeclType fuel' p else pure none
+    let (v, Tv) ← eval fuel' typed u hint
     -- [Open]: a strong update
-    if typed && (← strongUpdate p) then fire .Open fun _ => s!"a strong update of a dependent field, to a value of type {Tv.getD .bot}"
-    if typed && !(← strongUpdate p) then
-      expectTy fuel' "the assigned value" Tv (← match Tp0 with | some T => pure T | none => placeType fuel' p)
+    if strong && storable then fire .Open fun _ => s!"a strong update of a dependent field, to a value of type {Tv.getD .bot}"
+    if typed && !(strong && storable) then
+      expectTy fuel' "the assigned value" Tv (← match Td0, Tp0 with
+        | some T, _ | none, some T => pure T
+        | none, none => placeType fuel' p)
     assignPlace fuel' p v Tv
     openWrite p
     pure (.unit, ty .tUnit)
