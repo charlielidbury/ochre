@@ -67,6 +67,14 @@ Asked by the user on 2026-11-20: the effort keeps finding problems and no row of
 | 19 Nov 16:30 to 20 Nov 04:00 | 3 (D90, D91, D92) | 1 (D90: three accepted functions that failed when run) | 2 (static lending; self-describing data values) | 2 | 0 | 1 (the join) |
 | 20 Nov 04:00 to 16:30 | 6 (D93 to D98) | 3 (D93: two bugs and Rust's disjoint fields; D94: an ill-typed dead arm; D98: nine probe rows) | 3 (coded types; data codes; reads at recorded values) | 2 | 0 | 2 (the join, calls) |
 
+Per area, since the breadth-first pass began (2026-11-20, evening). "Statements false" counts statements found false or empty by the attack.
+
+| Area attacked | Checker faults | Model definitions changed | Relation changed | Statements false | Note |
+|---|---|---|---|---|---|
+| Calls | 1 (a returned borrow kept its argument's label; fixed as D99, no verdict change) | 1 | 0 | 4 | found by writing the proofs that glue the pieces |
+| The data model | 0 | 2 (recursion through nested types; large type parameters) and a redesign being prototyped | 0 | 2 (the existence statement is satisfied by a model that ignores the program) | found before anything was built |
+| The top-level chain | 0 | 0 | 0 | 2 | the chain closes for a constant and stops at a function: the context assumed, of the definition being checked, what was to be proved of it. The plan's outer induction on the decreasing argument was missing from the Lean statements; it changes the context every step assumes, not the relation |
+
 What the counts say. The checker changes are getting less serious: the first fixed real faults; most since change no verdict and only make the checker's own paths agree. The model and the relation are not settling yet: each new area attacked by proof has forced a change to them. No step is closed. Six areas have not been attacked at all (dependent values, `Id`, equality and `J`, splits and worlds, closures and recursion, well-formedness), and the pattern so far is that an area's first real attack finds its faults.
 
 What changes because of it. (1) Breadth before depth: after the call steps are stated and checked on concrete runs, every remaining area gets a bounded attack of the kind that has worked (its statements in final form, concrete runs checked in Lean beside the checker's verdicts, any needed fact swept on recorded states; no reading-only judgements), before more leaf lemmas are proved. That brings the remaining redesigns forward and shows whether the stream of faults is drying up. (2) A stop rule: if a full pass over the remaining areas still forces a change to the relation or a model rebuild per area, or if no step is closed end to end within a week of that pass, the architecture is re-examined (first candidate: a declarative rule system between the checker and the model, docs/33 item 2) instead of continuing.
