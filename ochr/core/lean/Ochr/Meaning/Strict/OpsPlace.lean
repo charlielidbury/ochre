@@ -1031,6 +1031,20 @@ theorem sgood_borrow_root (hMR : MemReads K.dm K.Γ) {s₁ : SState} (hs₁ : SG
       exact hMR.pmem this steps x U hf hx
     · rw [← hT2] at hf; exact hs₁.read _ (hT1 ψ hψ) f' i' steps x U hf hx
 
+/-- **GUESS (the dependent-values area): a borrow of a FIELD keeps the invariant.** `&p.f` makes the
+lender's FIELD read the fresh label's final content (`Sem.updAt … (φ' l)`), so at a typed future the
+field holds some other (partly moved) member of its type, while the rest of the value is unchanged.
+What may fail is the READ clause (and `bind`'s membership) at a LATER field whose declared type reads
+the lent one: reads type a field by its declaration at the CURRENT earlier fields (`Places.contentTyS`,
+`fieldTyR … (earlier.map Sem.small)`), so the later field's read type moves with the future while its
+value does not (docs/31's `dws_Pair_dependent_fails`: a borrow of `p.0` of a dependent pair).
+Discharged if the checker forbids lending a field a later field's type reads (its dependent-field
+rules), or if the invariant compares a lender's later fields at the record's types only. -/
+theorem borrowPlace_field_sgood {p : Place} {s s' : SState} {r : Res} (hs : SGood K.dm K.Γ φ s)
+    (hfield : p.steps.2 ≠ [] ∧ p.steps.2 ≠ [.deref]) (h : borrowPlace K φ p s = some (r, s'))
+    (hm : r.1 ∈ₛ[K.dm.read] r.2.m) : SGood K.dm K.Γ φ s' := by
+  sorry
+
 /-- **A borrow** (strict: the content is a member of the place's type). -/
 theorem borrowPlace_fund (hMR : MemReads K.dm K.Γ) (p : Place) :
     FundAt K.dm K.Γ φ (SM.strictS K.dm.read (borrowPlace K φ p)) := by
@@ -1050,10 +1064,50 @@ theorem borrowPlace_fund (hMR : MemReads K.dm K.Γ) (p : Place) :
     obtain ⟨rfl, rfl⟩ := h
     have hrinv := borrowPlace_rinv K φ (fun _ => True) hb hs.acyc
     have hfr := borrowPlace_readsBelow K φ p s hs.fresh hb
+    have hb₀ := hb
     unfold borrowPlace at hb
     simp only [Bind.bind, Option.bind_eq_some_iff] at hb
     obtain ⟨⟨⟨v, T, pos, steps⟩, s₁⟩, h1, hb⟩ := hb
-    sorry
+    dsimp only at hb
+    by_cases hw : v.whole
+    rotate_left
+    · rw [if_pos hw] at hb; cases hb
+    rw [if_neg (fun hn => hn hw)] at hb
+    simp only [Option.some.injEq, Prod.mk.injEq] at hb
+    obtain ⟨rfl, rfl⟩ := hb
+    -- the result: a member, its label recording its type and the content
+    have hlab : LabOk K.dm (((((s₁.freshLoan.2.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s₁.freshLoan.2.tyAt pos)
+        (fun _ => φ' s₁.freshLoan.1) steps (s₁.freshLoan.2.valAt pos φ')).getD .err).pushTempShaped (fun _ => v)
+        s₁.freshLoan.1).setLent s₁.freshLoan.1 [⟨pos, steps, false⟩]).setHeldTy s₁.freshLoan.1 T.m).setHeldMem
+        s₁.freshLoan.1 v) (v, { T with label := some s₁.freshLoan.1 }) := by
+      intro l hl
+      simp only [Option.some.injEq] at hl; subst hl
+      simp only [SState.setHeldMem, SState.setHeldTy, if_true]
+      exact ⟨trivial, hm⟩
+    refine ⟨.inl hm, hlab, ?_⟩
+    by_cases hp : p.steps.2 = [] ∨ p.steps.2 = [.deref]
+    · obtain ⟨T', hres, rfl, hf, hT⟩ := contentOf_view h1
+      have hsteps : steps = p.steps.2 := by
+        unfold resolve at hres; cases hv : s.varPos p.steps.1 <;> simp_all
+      have hst : steps = [] ∨ steps = [.deref] := hsteps ▸ hp
+      obtain ⟨f, i, rfl⟩ : ∃ f i, pos = .bind f i := by
+        have := resolve_bind hres
+        cases pos with
+        | bind f i => exact ⟨f, i, rfl⟩
+        | temp => exact absurd this (by simp [IsTemp])
+      have hs₁ := access_sgood hs (.bind f i) (dataHit steps)
+      have hp₁ : Pos.bind f i ∈ (s.access (.bind f i) (dataHit steps)).positions := by
+        rw [access_positions]; exact resolve_mem hres
+      generalize s.access (Pos.bind f i) (dataHit steps) = s₁ at hf hT hs₁ hp₁ hlab ⊢
+      obtain ⟨-, hT', -⟩ := read_root_goodRes hs₁ hp₁ hst hf hw
+      have hTm : T.m = (s₁.tyAt (.bind f i)).m := by rw [hT, hT']; split <;> rfl
+      have hlend : (fun φ' => (Sem.updAt K.dm K.Γ (s₁.freshLoan.2.tyAt (.bind f i)) (fun _ => φ' s₁.freshLoan.1)
+          steps (s₁.freshLoan.2.valAt (.bind f i) φ')).getD .err) = fun φ' => φ' s₁.nextLoan := by
+        funext φ'; rcases hst with rfl | rfl <;> rfl
+      rw [hlend, hTm]
+      have hv : v ∈ₛ[K.dm.read] (s₁.tyAt (.bind f i)).m := by rw [← hTm]; exact hm
+      exact sgood_borrow_root hMR hs₁ hp₁ hv _
+    · exact borrowPlace_field_sgood hs ⟨fun e => hp (.inl e), fun e => hp (.inr e)⟩ hb₀ hm
 
 /-- **An assignment's write** (`assignAt`), the value checked at the place's type at the write and its
 label at that type (the strict `.assign` clause's test). -/
