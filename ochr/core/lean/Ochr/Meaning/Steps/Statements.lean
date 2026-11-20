@@ -89,6 +89,22 @@ structure GlobalsOk (K : RunCtx) (st : MState) : Prop where
     (K.C.global n).2.shape = (piShapeOf K ρ φ (stateOf 0 []) t).map fun sh => (sh.ps, sh.out)
   mem : ∀ n g, st.globals.find? (·.name == n) = some g → (K.C.global n).1 ∈ₛ (K.C.global n).2.m
 
+/-- The run context knows the types of the unknowns the state names: `K.Δ` is `deltaOf` at every
+referenced unknown (`MState.Refd`). Elsewhere `K.Δ` is free, so a step that names new unknowns
+extends it (as it extends the assignment) and leaves what the earlier ones read unchanged.
+
+Until 2026-11-21 it was asked at every typed unknown (`σ < absTy.size`). But the checker keeps
+unknowns nothing names: an end of a borrow of a dependent type checks its content against the type
+again (`endBorrow`'s `repackCheck`, D64), which opens an unknown for a lent part and keeps its type
+(394 of the ends the end probe ran from the suite's recorded states, in 21 declarations; none
+named after the end, none adding a record: docs/31 D35). At a fixed context `K`, `K.Δ` at that
+unknown is whatever it was, so after any access that ends such a borrow the old clause asked `K`
+for what it cannot know, and `access_ctx` (the context is kept by an access) was false. The
+reference reads `Δ` only at the unknowns of the terms and values it runs, which are referenced,
+so the clause asks what the run reads, as `TypedAssignment.mem` and `Membership.absTy` do. -/
+def DeltaOk (K : RunCtx) (ρ : Assignment) (st : MState) : Prop :=
+  ∀ σ, st.Refd σ → σ < st.absTy.size → K.Δ σ = deltaOf K ρ st σ
+
 /-- The run context is the checker state's: its declarations, a data model that speaks for each,
 Δ at the state's unknowns (`DeltaOk`), globals with no label (`run_congr`'s `hK`), and Σ
 (`GlobalsOk`). A hypothesis of every statement. -/

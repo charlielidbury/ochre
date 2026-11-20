@@ -135,9 +135,16 @@ theorem good_S (K : RunCtx) (ρ : Assignment) : Good K.dm K.M K.Γ ρ S := by
     exact ⟨fun a => ⟨a, fun b ⟨p, hp, w, hw, _⟩ => by
       rw [hA] at hp; simp at hp; subst hp; rw [h0] at hw; cases hw⟩⟩
   · unfold WF4; rw [hV]; intro v hv; simp at hv; subst hv; decide
-  · rw [hV]; intro v hv σ h; simp at hv; subst hv; simp [Value.hasAbs, Value.anyAtom, BEq.beq, Value.beq] at h
+  · exact MState.refd_lt S _
+      (by rw [hV]; intro v hv σ h; simp at hv; subst hv; simp [Value.hasAbs, Value.anyAtom, BEq.beq, Value.beq] at h)
+      (fun f i b T hb hT σ h => by
+        obtain ⟨_, _, rfl⟩ := bindAt_S f i b hb
+        simp [natB] at hT; subst hT; simp [Value.hasAbs, Value.anyAtom, BEq.beq, Value.beq] at h)
+      (fun f i b P ws j hb hT => by obtain ⟨_, _, rfl⟩ := bindAt_S f i b hb; simp [natB] at hT)
+      (fun G hG => by simp [S] at hG) (fun m σ' h => by simp [S] at h) (fun σ' v h => by simp [S] at h)
+      (fun σ' T h => by simp [S] at h)
   · intro T hT; simp [S] at hT
-  · intro G hG; simp [S] at hG
+  · intro σ r h; simp [S] at h
   · simp [S]
   · rw [hV]; intro v hv l hl; simp at hv; subst hv; simp [Value.loans] at hl
   · intro p T _ f i b _ hb A hA'

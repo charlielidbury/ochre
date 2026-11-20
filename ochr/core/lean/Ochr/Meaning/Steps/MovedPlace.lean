@@ -687,7 +687,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
       simp only [Bool.false_and, Bool.false_eq_true, ↓reduceIte] at hrel₄
       have hrel₄' := fillPrefix_absorbed { K with Δ := Δ₁ } ρ₁ φ st₁ st₄ s₁ π q p pos c hg₁ hrel₁ hpar
         (by rw [resolve_alp hs₁q]; exact hpos) hc hfill' hrel₄
-      have hctx₄ := access_ctx { K with Δ := Δ₁ } ρ₁ fuel st₁ st₄ p b₃ hctx₁ hacc
+      have hctx₄ := access_ctx { K with Δ := Δ₁ } ρ₁ fuel st₁ st₄ p b₃ hg₁ hctx₁ hacc
       have hsz₄ := access_absTy fuel st₁ st₄ p b₃ hacc
       have E₂ : Ext { K with Δ := Δ₁ } ρ₁ φ π st₁ st₄ (accessLentPrefix pos q.steps.2 s₁) ρ₁ Δ₁ :=
         ⟨hsz₄, fun _ _ => ⟨rfl, rfl⟩, hctx₄, hrel₄', hg₄⟩
@@ -744,7 +744,8 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
           rcases fuel with _ | f
           · obtain ⟨L, left, log, hrf⟩ := hrf
             simp [Ochr.refine, runMachineL_exhausted] at hrf
-          obtain ⟨hs₉, hg₉, hctx₉, hsz₉⟩ := refine_sim' { K with Δ := Δ₁ } ρ₁ φ f st₁ st₉ σ r s₁ π b₈ hg₁ hctx₁ hrel₁ hσ hrf
+          obtain ⟨hs₉, hg₉, hctx₉, hsz₉⟩ := refine_sim' { K with Δ := Δ₁ } ρ₁ φ f st₁ st₉ σ r s₁ π b₈ hg₁ hctx₁ hrel₁ hσ
+            (Good.eta_bound { K with Δ := Δ₁ } hg₁ (mem_of_lookup hr)) hrf
           have E₂ : Ext { K with Δ := Δ₁ } ρ₁ φ π st₁ st₉ s₁ ρ₁ Δ₁ := ⟨hsz₉, fun _ _ => ⟨rfl, rfl⟩, hctx₉, hs₉, hg₉⟩
           obtain ⟨ρ₃, Δ₃, s₃, hsz₃, hag₃, hs₃or, hctx₃, hrel₃, hg₃, hout₃⟩ :=
             (ih { K with Δ := Δ₁ } ρ₁ φ).movedPlace_step st₉ st' q q' pos s₁ π hg₉ hctx₉ hs₉ hpos₁ hgr₁ b₉ h9
@@ -767,7 +768,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
           · obtain ⟨L, left, log, hrf⟩ := hrf
             simp [Ochr.refine, runMachineL_exhausted] at hrf
           obtain ⟨hs₁₁, hg₁₁, hctx₁₁, hsz₁₁⟩ := refine_sim' { K with Δ := Δ₂ } ρ₂ φ f _ st₁₁ σ r s₁ π b₁₀
-            E₂.good E₂.ctx E₂.rel hσ hrf
+            E₂.good E₂.ctx E₂.rel hσ (Good.eta_bound { K with Δ := Δ₂ } E₂.good List.mem_cons_self) hrf
           have E₃ : Ext { K with Δ := Δ₂ } ρ₂ φ π _ st₁₁ s₁ ρ₂ Δ₂ := ⟨hsz₁₁, fun _ _ => ⟨rfl, rfl⟩, hctx₁₁, hs₁₁, hg₁₁⟩
           obtain ⟨ρ₄, Δ₄, s₄, hsz₄, hag₄, hs₄or, hctx₄, hrel₄, hg₄, hout₄⟩ :=
             (ih { K with Δ := Δ₂ } ρ₂ φ).movedPlace_step st₁₁ st' q q' pos s₁ π hg₁₁ hctx₁₁ hs₁₁ hpos₁ hgr₁ b₁₁ h11
@@ -918,7 +919,7 @@ theorem dropOne_step_asm (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
     have hcp₁ : K.D.copy (K.D.placeDecl (scopeOf s₁) q) = false := by rw [scopeOf_alp hs₁or]; exact hcopy
     obtain ⟨hrel, hgood⟩ := dropOne_exists { K with Δ := Δ₁ } ρ₁ φ fuel ih st₁ st' q s₁ π hg₁ hctx₁ hrel₁ hgr₁ hcp₁
       pos' w hck' hw' b₁ hdj
-    obtain ⟨hctx', hsize⟩ := dropAtJoin_ctx { K with Δ := Δ₁ } ρ₁ fuel st₁ st' q b₁ hctx₁ hdj
+    obtain ⟨hctx', hsize⟩ := dropAtJoin_ctx { K with Δ := Δ₁ } ρ₁ fuel st₁ st' q b₁ hg₁ hctx₁ hdj
     rw [joinDropOne_alp { K with Δ := Δ₁ } φ hpos (alp_idem pos q.steps.2 s) hs₁or] at hrel
     exact ⟨ρ₁, Δ₁, Nat.le_trans hsz₁ hsize, hag₁, hctx', hrel, hgood⟩
   · have hj := joinDropOne_noop { K with Δ := Δ₁ } ρ₁ φ st₁ s s₁ π q q' pos hg₁ hrel₁ hs₁or hpos ⟨hroot, hpre⟩ hbt

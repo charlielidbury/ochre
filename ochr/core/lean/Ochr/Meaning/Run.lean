@@ -1081,11 +1081,6 @@ noncomputable def deltaOf (K : RunCtx) (ρ : Assignment) (st : MState) : Nat →
   | some T => Value.tyS K.dm (codeMeaning K) K.Γ ρ T
   | none => .plain .err
 
-/-- The run context knows the types of the state's unknowns: `K.Δ` is `deltaOf` at every unknown
-the state has. Beyond them `K.Δ` is free, so a step that creates unknowns extends it (as it
-extends the assignment) and leaves what the earlier ones read unchanged. -/
-def DeltaOk (K : RunCtx) (ρ : Assignment) (st : MState) : Prop :=
-  ∀ σ, σ < st.absTy.size → K.Δ σ = deltaOf K ρ st σ
 
 /-- The knot at the future asked: a sealed program in a state is read at the state's future (the
 positive form of `Regress/Knot_dcdd0a34.lean`). -/

@@ -65,7 +65,7 @@ theorem good_after (ρ : Assignment) : Good K.dm K.M K.Γ ρ after := by
   · intro l; rw [hv]; simp
   · exact ⟨fun a => ⟨a, fun b ⟨p, hp, _⟩ => by rw [allPos_after] at hp; cases hp⟩⟩
   · intro v hvv; rw [hv] at hvv; cases hvv
-  · intro v hvv; rw [hv] at hvv; cases hvv
+  · intro σ h; exact absurd h (not_refd σ)
   · intro T hT σ hσ
     simp only [after, saved, List.mem_singleton] at hT
     subst hT
@@ -74,7 +74,7 @@ theorem good_after (ρ : Assignment) : Good K.dm K.M K.Γ ρ after := by
       | cases hσ
       | exact absurd hσ (by simp [BEq.beq, Value.beq])
       | exact absurd hσ (by rfl)
-  · intro G hG; simp [after, saved] at hG
+  · intro σ r h; simp [after, saved] at h
   · simp [after]
   · intro v hvv; rw [hv] at hvv; cases hvv
   · intro p T h; exact absurd h (hpos p T)
