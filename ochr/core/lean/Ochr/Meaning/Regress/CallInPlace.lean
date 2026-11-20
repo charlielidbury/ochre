@@ -1095,3 +1095,52 @@ theorem id1_inPlace_typed :
     rfl
 
 end Ochr.Meaning.Regress.CallInPlace
+
+namespace Ochr.Meaning.Regress.CallInPlace
+
+/-- **Dependence within sites** (docs/31 D67, stated for the check): two futures that differ only at
+live labels with no site at `p` on a path comparable with `steps` give the same reading of `p` at
+`steps`, typed or not. -/
+def DepWithinSites (dm : DataModel) (Γ : List IndDecl) (s : SState) : Prop :=
+  ∀ (p : Pos) (steps : List Step) (ψ ψ' : Future),
+    (∀ l, ψ l ≠ ψ' l → s.Live l ∧ s.reached p (dataHit steps) l = false) →
+    Sem.follow dm Γ (s.tyAt p) (s.valAt p ψ) steps = Sem.follow dm Γ (s.tyAt p) (s.valAt p ψ') steps
+
+/-- **It fails after `callOf`'s borrow row** (the lead's step 2, `let y = 2; let r = Id1(&y)`, the
+reference's state `bindR`): the argument's consumed holder, temporary `0`, reads `mv1`, which is
+`moved` where the reborrow's final content decodes and `err` where it does not, so it depends on the
+reborrow `1`, which has no site there (its one site is the fill at `y`). `callOf` fixes EVERY position
+through the decoding (`s.mapVals`, `| none => .err`), not only the lent places. -/
+theorem depWithinSites_fails (TU : TyS) (hTU : TU.label = some 1) :
+    let s := SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved)
+    s.Live 1 ∧ s.reached (.temp 0 0) (dataHit []) 1 = false ∧
+      s.valAt (.temp 0 0) (fun _ => .el0 Nat 0) = .moved ∧
+      s.valAt (.temp 0 0) (Future.upd (fun _ => .el0 Nat 0) 1 .moved) = .err ∧
+      ¬ DepWithinSites dm [] s := by
+  have hd0 : Code0.dec dm.read TyM.nat.code0.snd (.el0 Nat 0) = some (show TyM.nat.code0.fst from (0 : Nat)) :=
+    Attack.dec_nat_el0 dm.read 0
+  have hdm : Code0.dec dm.read TyM.nat.code0.snd Sem.moved = none :=
+    (Attack.dec_nat_as dm.read .moved).trans (by simp [Sem.as]; rfl)
+  have hlive : (SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved)).Live 1 := by
+    show 1 ∈ _; rw [liveLabels_SR]; simp
+  have hreach : (SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved)).reached (.temp 0 0) (dataHit []) 1 = false := by
+    simp [SState.reached, SR]
+  have h1 : (SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved)).valAt (.temp 0 0) (fun _ => .el0 Nat 0) = .moved := by
+    simp only [SR, SState.valAt]
+    show (match Code0.dec dm.read TyM.nat.code0.snd (Sem.el0 Nat 0) with | some _ => Sem.moved | none => .err) = _
+    rw [hd0]
+  have h2 : (SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved)).valAt (.temp 0 0)
+      (Future.upd (fun _ => .el0 Nat 0) 1 .moved) = .err := by
+    simp only [SR, SState.valAt]
+    show (match Code0.dec dm.read TyM.nat.code0.snd (Future.upd (fun _ => Sem.el0 Nat 0) 1 Sem.moved 1) with
+      | some _ => Sem.moved | none => .err) = _
+    rw [show Future.upd (fun _ => Sem.el0 Nat 0) 1 Sem.moved 1 = Sem.moved by simp [Future.upd], hdm]
+  refine ⟨hlive, hreach, h1, h2, fun hd => ?_⟩
+  have := hd (.temp 0 0) [] (fun _ => .el0 Nat 0) (Future.upd (fun _ => .el0 Nat 0) 1 .moved) (fun l hl => by
+    by_cases h : l = 1
+    · subst h; exact ⟨hlive, hreach⟩
+    · exact absurd (by simp [Future.upd, h]) hl)
+  simp only [Sem.follow, h1, h2] at this
+  cases this
+
+end Ochr.Meaning.Regress.CallInPlace
