@@ -68,7 +68,7 @@ Verdict-neutral: `lake build` green (97 jobs), every assertion and the total gua
 
 ## 6. Candidate simplifications and incompletenesses (not implemented)
 
-- **One flag, one rule.** [Conv-fun] observes with whatever `observing` its caller left, `Id` with `true`. The paper states one [Obs]. Either [Conv-fun] should also read a borrow ended over a moved-out part as `⊥` (one rule; risky without a verdict check, since it may admit more conversions), or the paper should say that only `Id`'s observation tolerates `⊥`. Describing only.
+- **One flag, one rule.** [Conv-fun] observes with whatever `observing` its caller left, `Id` with `true`. The paper states one [Obs]. Either [Conv-fun] should also read a borrow ended over a moved-out part as `⊥` (one rule; risky without a verdict check, since it may admit more conversions), or the paper should say that only `Id`'s observation tolerates `⊥`. Describing only. [Resolved the other way by D98 (2026-11-21): the flag is gone, and neither observation tolerates `⊥`; a borrow ending over a moved-out part is an error in both, as the paper's [Obs] already said.]
 - **`own(x) = ∅` for a `⊥` borrow variable** is reachable only through re-initialisation (P3). The paper could say so, which turns a clause that looks like a two-paths risk into an evidently safe one.
 - **No η for a match** (P5): `match g(n) { Zero => Zero, Succ(p) => Succ(p) }` is not convertible with `g(n)`. Lean would not identify these by conversion either; noting it because a generalisation record shared across sides makes it look as if they should meet.
 
