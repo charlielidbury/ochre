@@ -1,5 +1,6 @@
 import Ochr.Meaning.Steps.Statements
 import Ochr.Meaning.Regress.CodeRuns
+import Ochr.Meaning.SubstAbs
 import Ochr.Examples.Nat
 
 /-!
@@ -175,5 +176,27 @@ theorem refine_keeps_type (K : RunCtx) (n : String) (m : Nat) (h0 : ρ 0 = .el0 
   | none => rfl
   | some d =>
     simp only [meanParams, e]
+
+/-- **The substitution lemma for unknowns on the `SplitSubst` run** (`SubstAbs.lean`): the pure
+substitution `σ₀ := S(σ₁)` makes `⌈Pred2(σ₀)⌉` into `⌈Pred2(S(σ₁))⌉`, and under an assignment meeting it
+both the meanings and the whole runs agree, although the lemma's base-case hypothesis
+(`AbsFillOK.shape`) fails there: the argument `S(σ₁)` is typed at the parameter's type and `σ₀` at
+`Δ σ₀`, and a call reads its arguments' meanings only. -/
+theorem pred2_instance (m : Nat) (h0 : ρ 0 = .el0 Nat (m + 1)) (h1 : ρ 1 = .el0 Nat m) (hint : TyS) (s : SState) :
+    Value.substAbs 0 (.succ (.abs 1)) (.sealed (.call (.const "Pred2") [.val (.abs 0)] true))
+        = .sealed (.call (.const "Pred2") [.val (.succ (.abs 1))] true) ∧
+      meanV (Kp dm Γ (gPred2 dm.read)) ρ φ hint
+          (Value.substAbs 0 (.succ (.abs 1)) (.sealed (.call (.const "Pred2") [.val (.abs 0)] true)))
+        = meanV (Kp dm Γ (gPred2 dm.read)) ρ φ hint (.sealed (.call (.const "Pred2") [.val (.abs 0)] true)) ∧
+      run (Kp dm Γ (gPred2 dm.read)) ρ φ hint (Term.substAbs 0 (.succ (.abs 1)) (.call (.const "Pred2") [.val (.abs 0)] true)) s
+        = run (Kp dm Γ (gPred2 dm.read)) ρ φ hint (.call (.const "Pred2") [.val (.abs 0)] true) s := by
+  obtain ⟨e0, e1, -⟩ := refine_keeps_sealed dm Γ ρ φ m h0 h1 hint
+  refine ⟨rfl, ?_, ?_⟩
+  · show meanV (Kp dm Γ (gPred2 dm.read)) ρ φ hint (.sealed (.call (.const "Pred2") [.val (.succ (.abs 1))] true)) = _
+    rw [e0, e1]
+  · show run (Kp dm Γ (gPred2 dm.read)) ρ φ hint (.call (.const "Pred2") [.val (.succ (.abs 1))] true) s = _
+    rw [run_pred2 dm Γ ρ φ (.abs 0) m (fun _ => h0), run_pred2 dm Γ ρ φ (.succ (.abs 1)) m (fun _ => by
+      show (ρ 1).succ = _
+      rw [h1, succ_el0])]
 
 end Ochr.Meaning.Regress.SplitSubstRef

@@ -1241,6 +1241,46 @@ def exitWorld_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
       w.saved.absTy.size ≤ st'.absTy.size ∧ (∀ σ, σ < w.saved.absTy.size → st'.absTy[σ]? = w.saved.absTy[σ]?) ∧
       ∃ D' : Decisions, ExtOk K ρ w.saved st' ρ K.Δ D' ∧ Rel { K with Δ := K.Δ, D := D' } ρ φ π st' s
 
+/-! ### The level the checker reads of a stored type (area (g), docs/31 D77; candidates)
+
+The slice's drop needs that a stored type's code has the level the checker's `sortOf` computes
+(`Good` says only that a level exists, `Membership.absTy`, `Membership.goal`). As a clause of every
+state it would be read off the state at each step; it is rather a consequence of `Good`, `CtxOk` and
+one small clause on frozen readings (`ReadingsSorted`), plus facts of the model (the levels of the
+codes of `Nat`, `Unit`, `Sort l`, a proposition, a data type and a Π-type, and that a member of
+`Sort l` is a code of level `l`). `sortOf_sound_stmt` states it so. -/
+
+/-- A type the state stores: a binding's type, a referenced unknown's type, or the goal. -/
+def StoredTy (st : MState) (T : Value) : Prop :=
+  (∃ (f i : Nat) (b : Binding), st.env[f]?.bind (fun fr => fr.binds[i]?) = some b ∧ b.ty = some T) ∨
+    (∃ σ, st.Refd σ ∧ st.absTy[σ]? = some T) ∨ st.goal = some T
+
+/-- (Rd), candidate clause: an unknown whose frozen reading is `Sort l` (D96) has the type `Sort l`.
+`freshAbsR` freezes `valTypeDecl` of the type it pushes, which is `.sort l` exactly at `Sort l`;
+nothing else writes a reading, and a type `Sort l` holds no unknown, so no substitution changes it.
+Swept on the suite's recorded states (docs/31 D77): 40,214 unknowns read as a sort over 76,568
+states, every one of type `Sort l`. -/
+def ReadingsSorted (st : MState) : Prop :=
+  ∀ (σ l : Nat), st.absDecl[σ]? = some (DeclInfo.sort l) → st.absTy[σ]? = some (Value.sort l)
+
+/-- (Sort), candidate: a stored type's code has the level the checker reads of it (`sortOf`, at the
+state). Swept: `sortOf?` reads a sort of every one of the 392,852 stored binding types of the suite's
+recorded states (the premise always arises); the levels need meanings, so are not swept. -/
+def SortSound (K : RunCtx) (ρ : Assignment) (st : MState) : Prop :=
+  ∀ T, StoredTy st T → ∀ (fuel b l : Nat) (st' : MState), Runs (Ochr.sortOf fuel T) st b l st' →
+    (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T).level = some l
+
+/-- **The checker's `sortOf` is sound for the model at every good state** (the slice's second fact;
+`slice1` owns it). By cases on the type value's head, as `sortOf` reads it: `Nat`, `Unit` and a
+borrow type (level 1: the model, and (WF7) for `&A`), `D(ā)` (the declaration's sort: the data
+model's `tyM`), `Eq` (a proposition: level 0), `Sort l` (its successor), an unknown (its frozen
+reading `Sort l` is its type, (Rd); it is a member of `Sort l` by `TypedAssignment`; a member of
+`Sort l` is a code of level `l`), a sealed program (its head call's declared codomain, a sort read by
+the aligned `declOf`; the call's result is a member of it), a Π-type (the aligned `piSort`,
+`piSort_aligned_stmt`, against the model's level of a telescope). -/
+def sortOf_sound_stmt (K : RunCtx) (ρ : Assignment) : Prop :=
+  ∀ (st : MState), Good K.dm K.M K.Γ ρ st → CtxOk K ρ st → ReadingsSorted st → SortSound K ρ st
+
 /-! ### The observation area, in the simulation form (docs/31 D26; third lead)
 
 `observe` and `idType` run their sides on private copies, so the checker's Ω is unchanged
