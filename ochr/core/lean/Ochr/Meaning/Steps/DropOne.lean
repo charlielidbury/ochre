@@ -26,9 +26,10 @@ the order the team lead set (model risk first):
    (`refine_sim`; both are assembled from smaller obligations in `Steps/DropOneAsm.lean`,
    `refine_sim'` and `generalizeNeutral_sim`).
 6. `movedPlace`'s branches, last: the place exists (`movedPlace_exists'`, PROVED in `Steps/DropRuns.lean`), the lent prefix
-   absorbed by the access at an instance ((WF12), `lentPrefix_absorbed`), a filled parent accessed
-   whole (`movedPlace_fill`), an unknown of a one-constructor type (`movedPlace_eta`), a sealed
-   program of one (`movedPlace_sealed`), and the other exits (`movedPlace_exit`).
+   absorbed by the access at an instance ((WF12), `lentPrefix_absorbed`); the other branches (a
+   filled parent accessed whole, an unknown or a sealed program of a one-constructor type refined,
+   the exits) are `movedPlace_step`, an induction-hypothesis field proved branch by branch in
+   `Steps/MovedPlace.lean`.
 Smaller: the copy decision (`copyRead_aligned`), what the checker's content and the reference's
 `Sem.follow` say of a missing, moved or proof place (`content_follow`), `logEffect` changes nothing
 the relation reads (`logEffect_rel`).
@@ -49,11 +50,6 @@ theorem Runs.bind_inv {α β : Type} {x : M α} {g : α → M β} {st st' : MSta
   · exact ⟨a, st₁, b₁, ⟨L, b₁, L₁, e⟩, ⟨L₁, left, log, h⟩⟩
   · cases h
   · cases h
-
-/-- The checker's position of de Bruijn variable `i` (`Machine.varPos`, as a function). -/
-def ckVarPos (env : Env) (i : Nat) : Option Pos :=
-  if i < env[env.size - 1]!.binds.size then some (.bind (env.size - 1) (env[env.size - 1]!.binds.size - 1 - i))
-  else none
 
 theorem runs_varPos_inv {i : Nat} {st st' : MState} {b : Nat} {pos : Pos}
     (h : Runs (Ochr.varPos i) st b pos st') : st' = st ∧ ckVarPos st.env i = some pos := by
@@ -231,72 +227,6 @@ theorem lentPrefix_none_of_noop (st : MState) (s : SState) (π : Nat → Nat) (q
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2))
     (hnoop : (valAt st.env pos).follow q.steps.2 = some .bot ∨ (valAt st.env pos).follow q.steps.2 = some .proof) :
     lentPrefix s pos q.steps.2 = none := by
-  sorry
-
-/-- **(6) A filled parent accessed whole.** Where the place does not exist because a strict prefix
-holds a fill over a live borrow (a sealed program over its hole: the generic call), `movedPlace`
-accesses that prefix whole (`accessPath`, `accessInside`) and re-roots; the reference accesses the
-shortest lent prefix whole. They end the same borrows ((WF12): the fill is the shortest lent prefix's
-or above it), and afterwards the place exists or is a no-op on both sides. Open: not tried. -/
-theorem movedPlace_fill (fuel : Nat) (st st₁ : MState) (q q' : Place) (pos : Pos) (s : SState) (π : Nat → Nat)
-    (b : Nat) (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
-    (hpos : resolve s q = some (pos, q.steps.2)) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
-    (hnone : (valAt st.env pos).follow q.steps.2 = none)
-    (h : Runs (Ochr.movedPlace (fuel + 1) q) st b q' st₁) :
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
-      CtxOk { K with Δ := Δ' } ρ' st₁ ∧ Rel { K with Δ := Δ' } ρ' φ π st₁ (accessLentPrefix pos q.steps.2 s) ∧
-      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st₁ ∧
-      (q' = q ∨ ((valAt st₁.env pos).follow q'.steps.2 = some .bot ∨ (valAt st₁.env pos).follow q'.steps.2 = some .proof)) := by
-  sorry
-
-/-- **(6) An unknown of a one-constructor type, η-refined** (D68): where a strict prefix `p` of the
-place holds an unknown `σ` (and no fill is above it), `movedPlace` η-refines `σ` (`ctorRefinement`
-creates the field unknowns, or `etaRefs` gives the recorded ones; `refine` substitutes) and the
-place then exists. Under `ρ` extended by the fields of `ρ σ` (decoded by its type's name, D31) and
-`Δ` by their types, the states stay related to the same reference state (`refine_sim`), which never
-refines. `GrainOk` must give that `σ`'s type is the declared one-constructor type (the coupling with
-`absType`). Open: not tried. -/
-theorem movedPlace_eta (fuel : Nat) (st st₁ : MState) (q q' p : Place) (pos : Pos) (σ : Nat) (s : SState)
-    (π : Nat → Nat) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
-    (hpos : resolve s q = some (pos, q.steps.2)) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
-    (hpre : p.steps.2 <+: q.steps.2) (hσ : (valAt st.env pos).follow p.steps.2 = some (.abs σ))
-    (h : Runs (Ochr.movedPlace (fuel + 1) q) st b q' st₁) :
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ τ, τ < st.absTy.size → ρ' τ = ρ τ ∧ Δ' τ = K.Δ τ) ∧
-      CtxOk { K with Δ := Δ' } ρ' st₁ ∧ Rel { K with Δ := Δ' } ρ' φ π st₁ s ∧
-      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st₁ ∧ q' = q := by
-  sorry
-
-/-- **(6) A sealed program of a one-constructor type, generalised then η-refined** (D84): where a
-strict prefix holds a sealed program that is not a fill over a live borrow, `movedPlace`
-generalises it (`generalizeNeutral`, or `substEnv` of the recorded unknown) and η-refines the
-unknown (`movedPlace_eta`); the reference reads the program's meaning directly. Under the
-extended context the states stay related to the same reference state (`generalizeNeutral_sim`).
-`GrainOk` must give that the prefix's declared type has one constructor (`placeType?`). Open: not
-tried. -/
-theorem movedPlace_sealed (fuel : Nat) (st st₁ : MState) (q q' p : Place) (pos : Pos) (t : Term) (s : SState)
-    (π : Nat → Nat) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
-    (hpos : resolve s q = some (pos, q.steps.2)) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
-    (hpre : p.steps.2 <+: q.steps.2) (ht : (valAt st.env pos).follow p.steps.2 = some (.sealed t))
-    (hnofill : fillHoles st.env (.sealed t) = [])
-    (h : Runs (Ochr.movedPlace (fuel + 1) q) st b q' st₁) :
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ τ, τ < st.absTy.size → ρ' τ = ρ τ ∧ Δ' τ = K.Δ τ) ∧
-      CtxOk { K with Δ := Δ' } ρ' st₁ ∧ Rel { K with Δ := Δ' } ρ' φ π st₁ s ∧
-      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st₁ ∧ q' = q := by
-  sorry
-
-/-- **(6) The other exits of `movedPlace`**: a prefix that is `⊥`, `⋆`, or otherwise has no field
-(not a one-constructor unknown or sealed program, excluded by `GrainOk`'s coupling): the checker
-re-roots to it and its drop does nothing; the reference's `Sem.follow` fails or reads `moved` or
-`proof`, and it does nothing either. Open: not tried. -/
-theorem movedPlace_exit (st : MState) (s : SState) (π : Nat → Nat) (q p : Place) (pos : Pos)
-    (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2))
-    (hp : (valAt st.env pos).follow p.steps.2 = some .bot ∨ (valAt st.env pos).follow p.steps.2 = some .proof)
-    (hpre : p.steps.2 <+: q.steps.2) :
-    Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) q.steps.2 = none ∨
-      (∃ T, Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) q.steps.2 = some (.moved, T)) ∨
-      (∃ T, Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) q.steps.2 = some (.proof, T)) := by
   sorry
 
 /-- **What the checker's content and the reference's `follow` say of the dropped place**, after the

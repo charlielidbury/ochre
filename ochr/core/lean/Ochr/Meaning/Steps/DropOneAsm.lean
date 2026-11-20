@@ -149,7 +149,7 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
   obtain ⟨pos', hck', hcases⟩ := runs_dropAtJoin_inv h
   rw [hck] at hck'
   cases hck'
-  rcases hcases with ⟨hno, hst⟩ | ⟨l, w', hbw, st₁, b₁, b₂, hlog, hend⟩ | ⟨v, hv, b₁, hcr⟩ |
+  rcases hcases with ⟨hno, hst⟩ | ⟨l, w', hbw, st₁, b₁, b₂, hlog, hend⟩ | ⟨v, hv, -, -, b₁, hcr⟩ |
       ⟨v, hv, hb, hbot, hproof, st₁, st₂, st₃, b₁, b₂, b₃, b₄, hcr, hacc, hlog, hset⟩
   · -- missing, ⊥ or ⋆: both do nothing
     rw [hst]
@@ -226,43 +226,7 @@ theorem dropAtJoin_ctx (fuel : Nat) (st st' : MState) (q : Place) (b : Nat) (hct
     CtxOk K ρ st' ∧ st.absTy.size ≤ st'.absTy.size := by
   sorry
 
-/-- **The drop of one place where the place does not exist** (`movedPlace`'s other branches: a
-filled parent accessed whole, an unknown or a sealed program of a one-constructor type refined,
-and the exits), with the extended context. Open: the branch lemmas `movedPlace_fill`,
-`movedPlace_eta`, `movedPlace_sealed`, `movedPlace_exit` in `Steps/DropOne.lean`, then the drop
-of the place they return (`dropOne_exists` once it exists). -/
-theorem dropOne_missing (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
-    (st st' : MState) (q : Place) (s : SState) (π : Nat → Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
-    (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
-    (hnex : ¬ ∃ pos w, ckVarPos st.env q.steps.1 = some pos ∧ (valAt st.env pos).follow q.steps.2 = some w)
-    (bh : Nat) (h : Runs (do Ochr.dropAtJoin (fuel + 1) (← Ochr.movedPlace (fuel + 1) q)) st bh () st') :
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS), st.absTy.size ≤ st'.absTy.size ∧
-      (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
-      CtxOk { K with Δ := Δ' } ρ' st' ∧
-      Rel { K with Δ := Δ' } ρ' φ π st' (joinDropOne K φ s q) ∧
-      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' := by
-  sorry
-
 theorem runCtx_with_self (K : RunCtx) : ({ K with Δ := K.Δ } : RunCtx) = K := by cases K; rfl
-
-/-- **`dropOne_step`, assembled**: where the place exists, `dropOne_exists`; where it does not,
-`dropOne_missing`. -/
-theorem dropOne_step_asm (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) :
-    dropOne_step_stmt K ρ φ (fuel + 1) := by
-  intro st st' q s π hg hctx hs hgrain hcopy bh h
-  by_cases hex : ∃ pos w, ckVarPos st.env q.steps.1 = some pos ∧ (valAt st.env pos).follow q.steps.2 = some w
-  · obtain ⟨pos, w, hck, hw⟩ := hex
-    obtain ⟨q', st₁, b₁, hmp, hdj⟩ := Runs.bind_inv h
-    obtain ⟨hq', hst₁⟩ := movedPlace_exists' fuel hck hw hmp
-    rw [hq', hst₁] at hdj
-    obtain ⟨hrel, hgood⟩ := dropOne_exists K ρ φ fuel ih st st' q s π hg hctx hs hgrain hcopy pos w hck hw b₁ hdj
-    obtain ⟨hctx', hsize⟩ := dropAtJoin_ctx K ρ fuel st st' q b₁ hctx hdj
-    refine ⟨ρ, K.Δ, hsize, fun _ _ => ⟨rfl, rfl⟩, ?_, ?_, ?_⟩ <;> rw [runCtx_with_self K]
-    · exact hctx'
-    · exact hrel
-    · exact hgood
-  · exact dropOne_missing K ρ φ fuel ih st st' q s π hg hctx hs hgrain hcopy hex bh h
 
 /-! ## `refine` in the simulation form, reduced -/
 
@@ -275,7 +239,7 @@ theorem substEnv_abs_sim (fuel : Nat) (st st' : MState) (σ : Nat) (r : Value) (
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hσ : ∀ ψ H, ρ σ = meanV K ρ ψ H r)
     (h : Runs (Ochr.substEnv fuel (.abs σ) r true) st b () st') :
-    Rel K ρ φ π st' s ∧ Good K.dm K.M K.Γ ρ st' ∧ CtxOk K ρ st' := by
+    Rel K ρ φ π st' s ∧ Good K.dm K.M K.Γ ρ st' ∧ CtxOk K ρ st' ∧ st.absTy.size ≤ st'.absTy.size := by
   sorry
 
 /-- Recording a refinement changes nothing the relation reads (it reads Ω and the counter). -/
@@ -296,7 +260,7 @@ program the refined unknown's records mention re-runs, meaning the same, [Seal])
 theorem renormAll_sim (fuel : Nat) (st st' : MState) (s : SState) (π : Nat → Nat) (b : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (h : Runs (Ochr.renormAll fuel) st b () st') :
-    Rel K ρ φ π st' s ∧ Good K.dm K.M K.Γ ρ st' ∧ CtxOk K ρ st' := by
+    Rel K ρ φ π st' s ∧ Good K.dm K.M K.Γ ρ st' ∧ CtxOk K ρ st' ∧ st.absTy.size ≤ st'.absTy.size := by
   sorry
 
 /-- **`refine` in the simulation form**, assembled: the substitution, the record, the
@@ -306,34 +270,31 @@ theorem refine_sim' (fuel : Nat) (st st' : MState) (σ : Nat) (r : Value) (s : S
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hσ : ∀ ψ H, ρ σ = meanV K ρ ψ H r)
     (h : Runs (Ochr.refine (fuel + 1) σ r) st b () st') :
-    Rel K ρ φ π st' s ∧ Good K.dm K.M K.Γ ρ st' ∧ CtxOk K ρ st' := by
+    Rel K ρ φ π st' s ∧ Good K.dm K.M K.Γ ρ st' ∧ CtxOk K ρ st' ∧ st.absTy.size ≤ st'.absTy.size := by
   unfold Ochr.refine at h
   obtain ⟨_, st₁, b₁, hsub, h1⟩ := Runs.bind_inv h
-  obtain ⟨hs₁, hg₁, hctx₁⟩ := substEnv_abs_sim K ρ φ fuel st st₁ σ r s π b hg hctx hs hσ hsub
+  obtain ⟨hs₁, hg₁, hctx₁, hsz₁⟩ := substEnv_abs_sim K ρ φ fuel st st₁ σ r s π b hg hctx hs hσ hsub
   obtain ⟨_, st₂, b₂, hmod, h2⟩ := Runs.bind_inv h1
   obtain ⟨L, left, log, hmod⟩ := hmod
   simp only [runMachineL_modify, Prod.mk.injEq, Outcome.ok.injEq] at hmod
   obtain ⟨⟨-, hst₂⟩, -⟩ := hmod
   obtain ⟨hs₂, hg₂, hctx₂⟩ := refs_sim K ρ φ st₁ σ r s π hg₁ hctx₁ hs₁ hσ
   rw [hst₂] at hs₂ hg₂ hctx₂
+  have hsz₂ : st.absTy.size ≤ st₂.absTy.size := by rw [← hst₂]; exact hsz₁
   obtain ⟨g, st₃, b₃, hget, h3⟩ := Runs.bind_inv h2
   obtain ⟨L, left, log, hget⟩ := hget
   simp only [runMachineL_get, Prod.mk.injEq, Outcome.ok.injEq] at hget
   obtain ⟨⟨hg3, hst3⟩, -⟩ := hget
   rw [← hst3, ← hg3] at h3
   split at h3
-  · exact renormAll_sim K ρ φ fuel st₂ st' s π b₃ hg₂ hctx₂ hs₂ h3
+  · obtain ⟨a, b', c, d⟩ := renormAll_sim K ρ φ fuel st₂ st' s π b₃ hg₂ hctx₂ hs₂ h3
+    exact ⟨a, b', c, Nat.le_trans hsz₂ d⟩
   · obtain ⟨L, left, log, h3⟩ := h3
     simp only [runMachineL_pure, Prod.mk.injEq, Outcome.ok.injEq] at h3
     rw [← h3.1.2]
-    exact ⟨hs₂, hg₂, hctx₂⟩
+    exact ⟨hs₂, hg₂, hctx₂, hsz₂⟩
 
 /-! ## `generalizeNeutral` in the simulation form, reduced -/
-
-/-- The checker's content of a place, as a function (`Machine.content`: the variable's position,
-then the path). -/
-def ckContent (env : Env) (p : Place) : Option Value :=
-  (ckVarPos env p.steps.1).bind fun pos => (valAt env pos).follow p.steps.2
 
 /-- What the generalisation needs of the type `placeType` gives the new unknown (`T`, the type of
 the place holding the program `n`): a type of the state (its unknowns typed), of some level,
@@ -414,7 +375,7 @@ theorem substEnv_neutral_sim (fuel : Nat) (st st' : MState) (p : Place) (n T : V
     (hσ : ρ σ = meanV K ρ (fun _ => .err) (.plain (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T)) n)
     (h : Runs (Ochr.substEnv fuel n (.abs σ) true) st b () st') :
     Rel K ρ φ π st' s ∧ Good K.dm K.M K.Γ ρ { st' with neutrals := (n, σ) :: st'.neutrals } ∧
-      CtxOk K ρ { st' with neutrals := (n, σ) :: st'.neutrals } := by
+      CtxOk K ρ { st' with neutrals := (n, σ) :: st'.neutrals } ∧ st.absTy.size ≤ st'.absTy.size := by
   sorry
 
 /-- Recording a generalisation changes nothing the relation reads. -/
@@ -436,7 +397,7 @@ theorem generalizeNeutral_sim (fuel : Nat) (st st' : MState) (p : Place) (n : Va
     (h : Runs (Ochr.generalizeNeutral fuel p n) st b σ st') :
     ∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ τ, τ < st.absTy.size → ρ' τ = ρ τ ∧ Δ' τ = K.Δ τ) ∧
       CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π st' s ∧
-      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' := by
+      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' ∧ st.absTy.size ≤ st'.absTy.size := by
   cases fuel with
   | zero =>
     obtain ⟨L, left, log, h⟩ := h
@@ -467,12 +428,14 @@ theorem generalizeNeutral_sim (fuel : Nat) (st st' : MState) (p : Place) (n : Va
   have hσ : (ρ₁.ext st₁.nextAbs v) st₁.nextAbs = meanV { K with Δ := Δ₂ } (ρ₁.ext st₁.nextAbs v) (fun _ => .err)
       (.plain (Value.tyM K.dm ({ K with Δ := Δ₂ } : RunCtx).M K.Γ (ρ₁.ext st₁.nextAbs v) (fun _ => .err) T)) n := by
     simp only [Assignment.ext, if_pos rfl]; exact hv.symm
-  obtain ⟨hs₄, hg₄, hctx₄⟩ := substEnv_neutral_sim { K with Δ := Δ₂ } (ρ₁.ext st₁.nextAbs v) φ fuel _ st₄ p n T
+  obtain ⟨hs₄, hg₄, hctx₄, hsz₄⟩ := substEnv_neutral_sim { K with Δ := Δ₂ } (ρ₁.ext st₁.nextAbs v) φ fuel _ st₄ p n T
     st₁.nextAbs s π b₃ hg₂ hctx₂ hs₂ hn₁ hsealed hfree hT₂ hσT hσn hσ hsub
   obtain ⟨L, left, log, h4⟩ := h4
   simp only [runMachineL_bind, runMachineL_modify, runMachineL_pure, Prod.mk.injEq, Outcome.ok.injEq] at h4
   obtain ⟨⟨-, rfl⟩, -⟩ := h4
-  refine ⟨ρ₁.ext st₁.nextAbs v, Δ₂, fun τ hτ => ?_, hctx₄, rel_neutrals { K with Δ := Δ₂ } _ φ st₄ _ s π hs₄, hg₄⟩
+  have hpush : st₁.absTy.size ≤ (st₁.absTy.push T).size := by simp
+  refine ⟨ρ₁.ext st₁.nextAbs v, Δ₂, fun τ hτ => ?_, hctx₄, rel_neutrals { K with Δ := Δ₂ } _ φ st₄ _ s π hs₄, hg₄,
+    Nat.le_trans hsz₁ (Nat.le_trans hpush hsz₄)⟩
   have hτ₁ : τ < st₁.absTy.size := Nat.lt_of_lt_of_le hτ hsz₁
   have hne : τ ≠ st₁.nextAbs := by omega
   refine ⟨?_, ?_⟩

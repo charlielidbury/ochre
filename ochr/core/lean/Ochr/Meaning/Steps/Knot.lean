@@ -66,6 +66,7 @@ theorem stepsIH : ∀ (fuel : Nat) (K : RunCtx) (ρ : Assignment) (φ : Future),
       callType_step := callType_step K ρ φ fuel ih
       recCheck_sound := recCheck_sound K ρ φ fuel ih
       joinEntry := joinEntry K ρ φ fuel ih
+      movedPlace_step := movedPlace_step K ρ φ fuel ih
       dropOne_step := dropOne_step K ρ φ fuel ih
       joinDrop_step := joinDrop_step K ρ φ fuel ih
       evalMatch_step := evalMatch_step K ρ φ fuel ih
