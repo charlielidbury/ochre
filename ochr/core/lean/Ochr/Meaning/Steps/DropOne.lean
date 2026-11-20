@@ -6,6 +6,7 @@ import Ochr.Meaning.AccessAbsorb
 import Ochr.Meaning.SitesFollow
 import Ochr.Meaning.KeyBridge
 import Ochr.Meaning.Steps.PlaceTyping
+import Ochr.Meaning.Steps.Slice.DecideKeep
 
 /-!
 # The drop of one place at the join: what `dropOne_step` rests on (docs/31 D30, D31; task C)
@@ -821,13 +822,30 @@ theorem content_follow (st : MState) (s : SState) (π : Nat → Nat) (q : Place)
     · exact .inl (by simp [Value.mean])
 
 /-- **The copy decision is aligned**: the checker's `copyRead` is the reference's declared reading
-of the place (the decisions are the checker's `Decide`, `CtxOk`). Open: not tried. Its "state
-unchanged" was fenced on the caches the decision procedures wrote; main's D95 removed them, so the
-decision procedures now write nothing but restore `liveScope`. -/
+of the place (the decisions are the checker's `Decide`, `CtxOk`). PROVED: the declared reading at
+the top frame's readings is the context's (`DecAligned.placeDecl`, transferred from the machine's
+state by `DecideScope.decideSim`), the copy decision on it is the context's (`DecAligned.copy`),
+and neither run changes the state (main's D95: the decision procedures write nothing but
+`liveScope`, inside `withLive`, which restores it; `Slice.decideKeep`). -/
 theorem copyRead_aligned (fuel : Nat) (st st₁ : MState) (s : SState) (π : Nat → Nat) (q : Place) (c : Bool) (b : Nat)
     (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s) (h : Runs (Ochr.copyRead fuel q) st b c st₁) :
     st₁ = st ∧ c = K.D.copy (K.D.placeDecl (scopeOf s) q) := by
-  sorry
+  cases fuel with
+  | zero =>
+    obtain ⟨L, left, log, h⟩ := h
+    simp [Ochr.copyRead, runMachineL_exhausted] at h
+  | succ fuel =>
+    unfold Ochr.copyRead at h
+    obtain ⟨d, st₀, b₀, hd, h1⟩ := Runs.bind_inv h
+    have e0 : st₀ = st := Slice.runs_placeDecl_keep hd
+    subst e0
+    have e1 : st₁ = st₀ := Slice.runs_declCopy_keep h1
+    refine ⟨e1, ?_⟩
+    have hc := hctx.dec.copy fuel d c b₀ st₁ h1
+    obtain ⟨st'', hr'⟩ := runs_envRel (DecideScope.sim_withLive _ ((DecideScope.decideSim fuel).1 _ _))
+      (DecideScope.envRel_scopeState st₀).symm hd
+    have hp := hctx.dec.placeDecl fuel (DecideScope.topReadings st₀) q d b st'' hr'
+    rw [rel_scopeOf K ρ φ hs, hp, hc]
 
 /-- `logEffect` appends to `placeLog` and changes nothing else. -/
 theorem runs_logEffect_inv {q : Place} {k : String} {st st' : MState} {b : Nat} {u : Unit}

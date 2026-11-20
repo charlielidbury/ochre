@@ -609,11 +609,12 @@ theorem runs_freshAbs_inv {T : Value} {d : DeclInfo} {st st' : MState} {b σ : N
 
 /-- **A decision's run leaves the state as it was** (main's D95: the decision procedures write no
 cache; they set `liveScope` only inside `withLive`, which restores it). Here for `valTypeDecl`, the
-reading `freshAbsR` freezes (D96); the same fact is `copyRead_aligned`'s "state unchanged". Open: an
-induction over `Decide.lean`'s mutual block, the shape of `DecideScope.decideSim`. -/
+reading `freshAbsR` freezes (D96); the same fact is `copyRead_aligned`'s "state unchanged". PROVED:
+an induction over `Decide.lean`'s mutual block, the shape of `DecideScope.decideSim`
+(`Slice.decideKeep`). -/
 theorem runs_valTypeDecl_keep {fuel : Nat} {T : Value} {st st' : MState} {b : Nat} {d : DeclInfo}
-    (h : Runs (Ochr.valTypeDecl fuel T) st b d st') : st' = st := by
-  sorry
+    (h : Runs (Ochr.valTypeDecl fuel T) st b d st') : st' = st :=
+  Slice.runs_valTypeDecl_keep' h
 
 /-- `freshAbsR` (D96): the unknown's reading is read off its type, then frozen by `freshAbs`. -/
 theorem runs_freshAbsR_inv {fuel : Nat} {T : Value} {st st' : MState} {b σ : Nat}
