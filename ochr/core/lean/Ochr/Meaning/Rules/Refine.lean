@@ -33,15 +33,19 @@ def Reach (st st₁ : MState) : Prop :=
   KeptAfter st st₁ ∧ st₁.globals = st.globals ∧ st₁.convStack = st.convStack
 
 /-- The premises, instantiated with the machine's successful runs of exactly those
-sub-computations, from a state the comparison reached. -/
-def machPremises (st : MState) : Premises where
+sub-computations, from a state `R`-related to the comparison's start (`R` is `Reach` for the
+checker as it is; equality for a checker whose comparisons restore their start state). -/
+def machPremisesR (R : MState → MState → Prop) (st : MState) : Premises where
   fn f g := ∃ (st₁ st₂ : MState) (fuel bh : Nat) (pf : Value) (cs : List Value) (hs : List Hint)
       (ds : List Term) (c : Term) (rd : List (DeclInfo × Value)),
-    Reach st st₁ ∧ fnTyOf st.globals f = some pf ∧ pf = .tPi cs (.pi hs ds c) rd ∧
+    R st st₁ ∧ fnTyOf st.globals f = some pf ∧ pf = .tPi cs (.pi hs ds c) rd ∧
       Runs (Ochr.convFnRun fuel f g pf cs hs ds c) st₁ bh true st₂
-  pi P Q := ∃ (st₁ st₂ : MState) (fuel bh : Nat), Reach st st₁ ∧ Runs (Ochr.convPi fuel P Q) st₁ bh true st₂
+  pi P Q := ∃ (st₁ st₂ : MState) (fuel bh : Nat), R st st₁ ∧ Runs (Ochr.convPi fuel P Q) st₁ bh true st₂
   fieldTys d args c fs Ts := ∃ (st₁ st₂ : MState) (fuel bh : Nat) (Ts' : List (String × Value)),
-    Reach st st₁ ∧ Runs (Ochr.fieldTypesOf fuel d args c fs) st₁ bh Ts' st₂ ∧ Ts = Ts'.map (·.2)
+    R st st₁ ∧ Runs (Ochr.fieldTypesOf fuel d args c fs) st₁ bh Ts' st₂ ∧ Ts = Ts'.map (·.2)
+
+/-- The checker as it is: sub-computations start from states the comparison reached. -/
+abbrev machPremises (st : MState) : Premises := machPremisesR Reach st
 
 /-- A computation that never lowers the label counter. -/
 def CounterMonoOf {α : Type} (x : M α) : Prop :=
