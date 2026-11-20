@@ -10,9 +10,13 @@ disjunct, `MovedOf`), read along a path on which no strict prefix reads `⋆`; t
 member is defined and gives a value above the read, a member of the type the read gives on the
 member. No packed element, no field type at the current (possibly partly moved) earlier fields:
 the type is the one the run computes on the member. The open disjunct of partial membership is not
-covered (the dependent-values area); the sweep found no place the join could drop with an open
-value above it (`Sweep.droppedUnderOpen`). For `datamodel` to prove in the tree layer, or to say why
-it is false.
+covered (the dependent-values area). The join does drop fields under open values: accepted programs
+reach it (`SweepProbes.OpenJoin`: the index of a dependent constructor rewritten or lent, then one
+arm of a non-tail match moves a non-copy field), and the suite has places it could drop under an
+open value (`Sweep.droppedUnderOpen`: unknowns, constructor values, a sealed program in
+`DepVec.VPush`). (A first measurement said none: it excluded every partly moved value, and a
+rewritten index invalidates the proof field that mentions it, so an open value is often partly
+moved too.) For `datamodel` to prove in the tree layer, or to say why it is false.
 
 How the slice uses it: where the checker holds data other than `⋆` at a place of a non-copy
 reading and the reference reads `⋆` there, the read `x` is `⋆`, so the member's read `w'` is `⋆`

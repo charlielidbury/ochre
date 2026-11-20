@@ -143,9 +143,65 @@ code borrows a FIELD of a captured place. Once fixed, they belong in the block a
     let d = c; d)
 -/
 
+/-! ## The join drops a field under an open value (the slice, 2026-11-20)
+
+Written to make the join drop a field of a value that is open (D64: a field of a type its earlier
+fields no longer give): rewrite or lend the index of a dependent constructor, then let one arm of a
+non-tail match move a non-copy field, so that the join drops it in the other arm. Accepted: `O1`
+(the capacity rewritten, the buffer moved), `O2` (the same through a borrow, repaired after the
+join), `O3` (the capacity lent instead), `O4b` (one level down, the match in tail position), `O5`
+(another non-copy field of the same open value). Rejected: `O4` (one level down, a non-tail match:
+the stuck block captures the open value whole, [Repack]). A rewritten index invalidates the proof
+field that mentions it (`⊥`), so the open value is partly moved too. -/
+ochr OpenJoin uses ArrayLemmas, Options, DepVec {
+  def O1 (k : Word) (v0 : Vec(Word)) : Unit := (
+    let v = v0;
+    match v { MkVec(len, cap, buf, hl) => cap := Succ(cap), };
+    match k { Zero => (let b = v.2; ()), Succ(m) => () };
+    ()
+  )
+  def O2 (k : Word) (v : &Vec(Word)) : Unit := (
+    match *v {
+      MkVec(len, cap, buf, hl) => (
+        cap := Succ(cap);
+        match k { Zero => (let b = buf; ()), Succ(m) => () };
+        cap := Zero;
+        buf := ([] : Array(Opt(Word), Zero));
+        len := Zero;
+        hl := refl
+      ),
+    }
+  )
+  def O3 (k : Word) (v0 : Vec(Word)) : Unit := (
+    let v = v0;
+    let r = &v.1;
+    match k { Zero => (let b = v.2; ()), Succ(m) => () };
+    ()
+  )
+  reject def O4 (k : Word) (v0 : Vec(Word)) : Unit := (
+    let p = Mk(v0, Zero);
+    match p.0 { MkVec(len, cap, buf, hl) => cap := Succ(cap), };
+    match k { Zero => (let b = (p.0).2; ()), Succ(m) => () };
+    ()
+  )
+  def O4b (k : Word) (v0 : Vec(Word)) : Unit := (
+    let p = Mk(v0, Zero);
+    match p.0 { MkVec(len, cap, buf, hl) => cap := Succ(cap), };
+    match k { Zero => (let b = (p.0).2; ()), Succ(m) => () }
+  )
+  inductive L := LNil | LCons(h : Word, t : L)
+  inductive V2 := MkV2(cap : Word, buf : Array(Opt(Word), cap), other : L)
+  def O5 (k : Word) (v0 : V2) : Unit := (
+    let v = v0;
+    match v { MkV2(cap, buf, other) => cap := Succ(cap), };
+    match k { Zero => (let b = v.2; ()), Succ(m) => () };
+    ()
+  )
+}
+
 namespace Sweep
 
 /-- The probe blocks (`lake exe sweep --probes`). -/
-def probes : List (String × Ochr.Surface.Block) := [("LentUnder", LentUnder)]
+def probes : List (String × Ochr.Surface.Block) := [("LentUnder", LentUnder), ("OpenJoin", OpenJoin)]
 
 end Sweep

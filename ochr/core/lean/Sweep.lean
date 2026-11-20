@@ -1070,13 +1070,41 @@ def hasBotShallow : Value → Bool
   | .gloan _ w | .borrow _ w | .succ w => hasBotShallow w
   | _ => false
 
+/-- `packedErr`, with a moved-out part (`⊥`) taken to fit: a partly moved value is open exactly
+when its other parts do not fit their types from the earlier fields (a rewritten index invalidates
+the proof fields that mention it, `⊥`, so an open value is often partly moved too, docs/31: the
+slice's probe `O1`). A field type that cannot be computed (it reads a moved part) is not counted.
+Dev tooling: `partial`. -/
+partial def packedErrSkipBot (fuel : Nat) (v T : Value) : M (Option String) := do
+  match v with
+  | .bot => pure none
+  | .gloan _ w => packedErrSkipBot fuel w T
+  | .ind t c _ _ fs =>
+    if !hasBotShallow v then return ← Ochr.packedErr fuel v T
+    let d ← Ochr.lookupInd t
+    let some as := (match T with
+        | .tInd n as => if n == t then some as else none
+        | _ => none)
+      | return some s!"{v} is not of type {T}"
+    let tel ← Ochr.fieldTypesOf fuel d as c fs
+    for ((_, Tf), fv) in tel.zip fs do
+      if let some m ← packedErrSkipBot fuel fv Tf then return some m
+    pure none
+  | _ => Ochr.packedErr fuel v T
+
+/-- Open at `T`, a moved-out part taken to fit (`packedErrSkipBot`), lent parts read as unknowns. -/
+def isOpenAtSkipBot (st : MState) (v T : Value) : Bool :=
+  match (runMachine (do let v' ← Ochr.lentUnknown 1000 v; packedErrSkipBot 1000 v' T) st 1000000).1 with
+  | .ok (some _) _ => true
+  | _ => false
+
 /-- The places in scope holding a constructor value (under marks) that is open at its computed
-type and holds no `⊥` (`packedErr` reports a moved-out part as unpacked; a partly moved value is
-below a whole one in the model, `MovedOf`, not open, and is counted apart). -/
+type, a moved-out part taken to fit. (First written excluding every partly moved value, which hid
+the open values whose proof field the rewrite of an index had invalidated: corrected.) -/
 def openPlaces (st : MState) : List (Place × Value) :=
   (topPlaces st).filterMap fun (q, v) => match underMarks v with
-    | .ind .. => if hasBotShallow (underMarks v) then none else match placeTypeOf st q with
-      | some T => if isOpenAt st (underMarks v) T then some (q, underMarks v) else none
+    | .ind .. => match placeTypeOf st q with
+      | some T => if isOpenAtSkipBot st (underMarks v) T then some (q, underMarks v) else none
       | none => none
     | _ => none
 
@@ -1103,7 +1131,7 @@ def openFields : Clause where
     ("... with a sealed program in a field", fun st => (openPlaces st).any fun (_, v) => match v with
       | .ind _ _ _ _ fs => fs.any fun f => (f matches .sealed _)
       | _ => false),
-    ("(apart) a partly moved value packedErr reports", fun st => !(partlyMovedReported st).isEmpty)]
+    ("... partly moved too", fun st => (openPlaces st).any fun (_, v) => hasBotShallow v)]
   check st := (openPlaces st).flatMap fun (q, v) => match v with
     | .ind t _ _ _ fs => (fs.filter fun f => !(f matches .abs _)).map fun f =>
         ⟨s!"an open value {if q matches .var _ then "at a variable" else "below a variable"}: a field holds {valHead f}",
