@@ -193,90 +193,86 @@ theorem declsOf_accessLentPrefix (s : SState) (pos : Pos) (steps : List Step) :
 
 theorem runCtx_with_self (K : RunCtx) : ({ K with Δ := K.Δ } : RunCtx) = K := by cases K; rfl
 
-theorem runCtx_with_self' (K : RunCtx) : ({ K with Δ := K.Δ, D := K.D } : RunCtx) = K := by cases K; rfl
+theorem runCtx_with_self' (K : RunCtx) : ({ K with Δ := K.Δ } : RunCtx) = K := by cases K; rfl
 
-/-- **A value naming only old unknowns means the same under an extension** (leaf;
-`AssignCongr.meanV_congrA` for the assignment, `DecExtend.meanV_congrD` for the decisions, and `Δ`
-read only at the unknowns a value holds). -/
-theorem meanV_ext {n : Nat} {ρ' : Assignment} {Δ' : Nat → TyS} {D' : Decisions} (v : Value) (ψ : Future) (hint : TyS)
-    (hv : ∀ σ, v.hasAbs σ = true → σ < n) (ha : ∀ σ, σ < n → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ)
-    (hd : K.D.AgreeOld n D') :
-    meanV { K with Δ := Δ', D := D' } ρ' ψ hint v = meanV K ρ ψ hint v := by
+/-- **A value naming only old unknowns means the same under an extension** of the assignment and
+`Δ` (leaf; `AssignCongr.meanV_congrA` for the assignment, and `Δ` read only at the unknowns a value
+holds). The decisions are not extended since the slice's change of form (main's decision,
+2026-11-20), so the decisions' half of this lemma is gone. -/
+theorem meanV_ext {n : Nat} {ρ' : Assignment} {Δ' : Nat → TyS} (v : Value) (ψ : Future) (hint : TyS)
+    (hv : ∀ σ, v.hasAbs σ = true → σ < n) (ha : ∀ σ, σ < n → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) :
+    meanV { K with Δ := Δ' } ρ' ψ hint v = meanV K ρ ψ hint v := by
   sorry
 
 /-- From `st` (related to some reference state under `K`, `ρ`) to `st'`, related to `s'` under an
-assignment, a `Δ` and decisions extended at the unknowns created (docs/31 D71's rule: the decisions
-agree with the old ones on inputs naming only old unknowns), with `Good` and the context kept. -/
-structure Ext (π : Nat → Nat) (st st' : MState) (s' : SState) (ρ' : Assignment) (Δ' : Nat → TyS)
-    (D' : Decisions) : Prop where
+assignment and a `Δ` extended at the unknowns created (docs/31 D71's rule), with `Good` and the
+context kept; the decisions are the context's, fixed for the run (main's decision 2026-11-20). -/
+structure Ext (π : Nat → Nat) (st st' : MState) (s' : SState) (ρ' : Assignment) (Δ' : Nat → TyS) : Prop where
   size : st.absTy.size ≤ st'.absTy.size
   agree : ∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ
-  dec : K.D.AgreeOld st.absTy.size D'
-  ctx : CtxOk { K with Δ := Δ', D := D' } ρ' st'
-  rel : Rel { K with Δ := Δ', D := D' } ρ' φ π st' s'
-  good : Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st'
+  ctx : CtxOk { K with Δ := Δ' } ρ' st'
+  rel : Rel { K with Δ := Δ' } ρ' φ π st' s'
+  good : Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
 
 theorem Ext.refl {π : Nat → Nat} {st : MState} {s : SState} (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hs : Rel K ρ φ π st s) : Ext K ρ φ π st st s ρ K.Δ K.D :=
-  ⟨Nat.le_refl _, fun _ _ => ⟨rfl, rfl⟩, Decisions.AgreeOld.refl _ _, by rw [runCtx_with_self' K]; exact hctx,
-    by rw [runCtx_with_self' K]; exact hs, by rw [runCtx_with_self' K]; exact hg⟩
+    (hs : Rel K ρ φ π st s) : Ext K ρ φ π st st s ρ K.Δ :=
+  ⟨Nat.le_refl _, fun _ _ => ⟨rfl, rfl⟩, by rw [runCtx_with_self K]; exact hctx,
+    by rw [runCtx_with_self K]; exact hs, by rw [runCtx_with_self K]; exact hg⟩
 
 theorem Ext.trans {π : Nat → Nat} {st st₁ st₂ : MState} {s₁ s₂ : SState} {ρ₁ ρ₂ : Assignment} {Δ₁ Δ₂ : Nat → TyS}
-    {D₁ D₂ : Decisions}
-    (h₁ : Ext K ρ φ π st st₁ s₁ ρ₁ Δ₁ D₁) (h₂ : Ext { K with Δ := Δ₁, D := D₁ } ρ₁ φ π st₁ st₂ s₂ ρ₂ Δ₂ D₂) :
-    Ext K ρ φ π st st₂ s₂ ρ₂ Δ₂ D₂ where
+    (h₁ : Ext K ρ φ π st st₁ s₁ ρ₁ Δ₁) (h₂ : Ext { K with Δ := Δ₁ } ρ₁ φ π st₁ st₂ s₂ ρ₂ Δ₂) :
+    Ext K ρ φ π st st₂ s₂ ρ₂ Δ₂ where
   size := Nat.le_trans h₁.size h₂.size
   agree σ hσ := by
     obtain ⟨a, b⟩ := h₂.agree σ (Nat.lt_of_lt_of_le hσ h₁.size)
     obtain ⟨c, d⟩ := h₁.agree σ hσ
     exact ⟨a.trans c, b.trans d⟩
-  dec := Decisions.AgreeOld.trans h₁.dec h₂.dec h₁.size
   ctx := h₂.ctx
   rel := h₂.rel
   good := h₂.good
 
 /-- The same state, the reference state replaced by one the checker's is also related to. -/
-theorem Ext.with_rel {π : Nat → Nat} {st st' : MState} {s' s'' : SState} {ρ' : Assignment} {Δ' : Nat → TyS}
-    {D' : Decisions} (h : Ext K ρ φ π st st' s' ρ' Δ' D') (hr : Rel { K with Δ := Δ', D := D' } ρ' φ π st' s'') :
-    Ext K ρ φ π st st' s'' ρ' Δ' D' :=
-  ⟨h.size, h.agree, h.dec, h.ctx, hr, h.good⟩
+theorem Ext.with_rel {π : Nat → Nat} {st st' : MState} {s' s'' : SState} {ρ' : Assignment} {Δ' : Nat → TyS} (h : Ext K ρ φ π st st' s' ρ' Δ') (hr : Rel { K with Δ := Δ' } ρ' φ π st' s'') :
+    Ext K ρ φ π st st' s'' ρ' Δ' :=
+  ⟨h.size, h.agree, h.ctx, hr, h.good⟩
 
-/-- **The checker's access keeps its run context** (it ends borrows: no global or declaration
-changes). An end of a borrow of a dependent type may keep an unknown nothing names (`repackCheck`,
-docs/31 D35, measured): `DeltaOk` asks nothing of it. `Good` is needed: a state that already
-names the counter would have the kept unknown named, with `K.Δ` free there.
+/-- A step's conclusion in the induction hypothesis's form (`ExtOk` and the relation), as an `Ext`. -/
+theorem Ext.of_extOk {π : Nat → Nat} {st st' : MState} {s' : SState} {ρ' : Assignment} {Δ' : Nat → TyS} (hsz : st.absTy.size ≤ st'.absTy.size) (he : ExtOk K ρ st st' ρ' Δ')
+    (hr : Rel { K with Δ := Δ' } ρ' φ π st' s') : Ext K ρ φ π st st' s' ρ' Δ' :=
+  ⟨hsz, he.1, he.2.1, hr, he.2.2⟩
 
-FALSE as stated (the slice, docs/31 D57 (1)): an access can grow the table of unknowns (ending a
-borrow of a dependent type runs `repackCheck`, whose `lentUnknown` makes one with a frozen reading;
-D35's measured ends), and then `CtxOk.dec` asks the fixed `K.D` to be the checker's on inputs naming
-the new unknown (`declOf` of `.val (.abs σ)` reads `absDecl[σ]`), which `CtxOk K ρ st` leaves free
-since the checker's run on them fails before the access. The drop of one place no longer uses it
-(it reads the typing of places after the access from the induction hypothesis's [Access]);
-`movedPlace_step`'s filled-parent branch still does, and waits on the statement form for steps that
-grow the table (the spine lead's).
+/-- The same state, related to another reference state, as an extension by nothing. -/
+theorem Ext.same {π : Nat → Nat} {st : MState} {s' : SState} (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hs' : Rel K ρ φ π st s') : Ext K ρ φ π st st s' ρ K.Δ :=
+  ⟨Nat.le_refl _, fun _ _ => ⟨rfl, rfl⟩, by rw [runCtx_with_self K]; exact hctx,
+    by rw [runCtx_with_self K]; exact hs', by rw [runCtx_with_self K]; exact hg⟩
 
-RESTATED (docs/31 D76, D78): [Repack]'s new unknown is used for the check only, named by nothing in
-Ω, so the assignment and `Δ` stay; the decisions are extended (`D'`, agreeing on old inputs), and
-the relation and `Good` the access left under `K` carry over to the extended context. -/
-theorem access_ctx (fuel : Nat) (st st' : MState) (q : Place) (b : Nat)
+/-- **The context after the drop's write of `⊥`** (leaf; it replaces the old `dropAtJoin_ctx`, whose
+other parts are now the induction hypothesis's [Access] and [End] in the extended form). The write
+changes one place's content to `⊥`: the declarations, globals and tables are the state's, `Δ` asks
+of no new unknown (the write names none), the decisions are aligned after it (`hD`, the tables), and
+`ShapeFacts` hold of a `⊥` part. What is open is the block's captures at the new state, whose entry
+set the write changes (main's item 4: measured on recorded states first, not proved). -/
+theorem ctx_botWrite (st : MState) (pos : Pos) (steps : List Step) (v' : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (do Ochr.accessPath fuel q; Ochr.accessInside fuel q) st b () st')
-    {s' : SState} {π : Nat → Nat} (hs' : Rel K ρ φ π st' s') (hg' : Good K.dm K.M K.Γ ρ st') :
-    ∃ D' : Decisions, Ext K ρ φ π st st' s' ρ K.Δ D' := by
+    (hv : Value.updAt (fun _ => .bot) steps (valAt st.env pos) = some v')
+    (hD : DecTab K.D { st with env := Env.setAtE st.env pos v' }) :
+    CtxOk K ρ { st with env := Env.setAtE st.env pos v' } := by
   sorry
 
 /-- **The drop of one place where the place exists** (`dropOne_step`'s main case), assembled from
 the named obligations and the induction hypothesis's [Access] and [End]: missing, `⊥` or `⋆` (both
 sides do nothing); a borrow at a root (both end it); a copy (excluded: the join moves no copy);
-data (both access, then write `⊥`/`moved`). -/
+data (both access, then write `⊥`/`moved`). In the extended form (main's item 3): the access and
+the end extend the context, and the context after the write is `ctx_botWrite`. -/
 theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
     (st st' : MState) (q : Place) (s : SState) (π : Nat → Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
     (pos : Pos) (w : Value) (hck : ckVarPos st.env q.steps.1 = some pos)
-    (hw : (valAt st.env pos).follow q.steps.2 = some w)
+    (hw : (valAt st.env pos).follow q.steps.2 = some w) (hD : DecTab K.D st')
     (b : Nat) (h : Runs (Ochr.dropAtJoin (fuel + 1) q) st b () st') :
-    Rel K ρ φ π st' (joinDropOne K φ s q) ∧ Good K.dm K.M K.Γ ρ st' := by
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS), Ext K ρ φ π st st' (joinDropOne K φ s q) ρ' Δ' := by
   have hres := rel_resolve_ck K ρ φ st s π q pos hs hck
   have hj : joinDropOne K φ s q = dropAt K φ q pos q.steps.2 (accessLentPrefix pos q.steps.2 s) := by
     simp [joinDropOne, hres]
@@ -289,6 +285,7 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
       ⟨v, hv, hb, hbot, hproof, st₁, st₂, st₃, b₁, b₂, b₃, b₄, hcr, hacc, hlog, hset⟩
   · -- missing, ⊥ or ⋆: the checker does nothing
     rw [hst]
+    refine ⟨ρ, K.Δ, Ext.same K ρ φ hg hctx ?_⟩
     rcases hno with hn | hn
     · rw [hw] at hn; cases hn
     have hpt : ¬ IsTemp pos := by
@@ -340,7 +337,7 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
       simp only [hcopy, Bool.false_eq_true, if_false]
       split
       · -- the write cannot be made (the path passes through a moved part): nothing
-        exact ⟨hs, hg⟩
+        exact hs
       · -- a place already moved: the reference writes `moved` over `moved`, which changes nothing
         -- the relation reads (docs/31 D52)
         have hself := updAt_bot_self q.steps.2 _ hn
@@ -350,14 +347,16 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
         have hrel := botWrite_rel K ρ φ st s π f i q.steps.2 _ hs hg.2.2.1 hpb hsp hself hroot
           (fun l hl x hx hxp => hclr l hl x hx hxp) hplain hnat
         rw [setAtE_self_bind st.env f i hpb] at hrel
-        exact ⟨hrel, hg⟩
+        exact hrel
   · -- a borrow at a root: both end it
     have hsteps := follow_borrow_root hg.2.2.1 hp hbw
     have hval : valAt st.env pos = .borrow l w' := by
       rw [hsteps] at hbw; simpa [Value.follow] using hbw
     obtain ⟨hs₁, hg₁, hctx₁, henv₁⟩ := logEffect_rel K ρ φ st st₁ s π q "moves" b₁ hg hctx hs hlog
+    obtain ⟨X₁, hX₁⟩ := runs_logEffect_inv hlog
+    have hsz₁ : st.absTy.size ≤ st₁.absTy.size := by rw [hX₁]; exact Nat.le_refl _
     have hl : liveLoan st₁.env l = true := by rw [henv₁]; exact liveLoan_of_holder hp hval
-    obtain ⟨hs', hg'⟩ := (ih.at K ρ φ).endBorrow_step st₁ st' l s π hg₁ hctx₁ hs₁ hl b₂ hend
+    obtain ⟨hsz', ρ₂, Δ₂, e₂, hs'⟩ := (ih.at K ρ φ).endBorrow_step st₁ st' l s π hg₁ hctx₁ hs₁ hl hD b₂ hend
     have hsh : s.shape pos = some (π l) := by
       have hpt : ¬ IsTemp pos := by
         rcases pos with ⟨f, i⟩ | ⟨f, i⟩
@@ -368,29 +367,34 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
     have hd : dropAt K φ q pos [] s = s.endLabel (π l) := by
       unfold dropAt; rw [hsh]
     rw [hd]
-    exact ⟨hs', hg'⟩
+    exact ⟨ρ₂, Δ₂, Nat.le_trans hsz₁ hsz', fun σ hσ => e₂.1 σ (Nat.lt_of_lt_of_le hσ hsz₁), e₂.2.1, hs', e₂.2.2⟩
   · -- a copy: excluded
     obtain ⟨-, hc⟩ := copyRead_aligned K ρ φ fuel st st' s π q true b₁ hctx hs hcr
     rw [hcopy] at hc; cases hc
   · -- data: both access, then write
     obtain ⟨hst₁, -⟩ := copyRead_aligned K ρ φ fuel st st₁ s π q false b₁ hctx hs hcr
     rw [hst₁] at hacc
-    obtain ⟨hs₂, hg₂, hsh₂⟩ := (ih.at K ρ φ).access_step st st₂ q pos false s π hg hctx hs hres b₂ hacc
+    have hD₂ : DecTab K.D st₂ :=
+      hD.back ((hlog.grows (grows_logEffect _ _)).trans (hset.grows (grows_setPlace _ _)))
+    obtain ⟨hsz₂, ρ₂, Δ₂, e₂, hs₂⟩ := (ih.at K ρ φ).access_step st st₂ q pos false s π hg hctx hs hres hD₂ b₂ hacc
     simp only [Bool.false_and, Bool.false_eq_true, if_false] at hs₂
-    have hs₂' := (lentPrefix_absorbed K ρ φ st st₂ s π pos q.steps.2 v hg hs hp hv).mpr hs₂
-    obtain ⟨hs₃, hg₃, hsh₃, henv₃⟩ := Slice.logEffect_rel_shapes K ρ φ st₂ st₃ _ π q "moves" b₃ hg₂ hsh₂ hs₂' hlog
+    have hs₂' : Rel { K with Δ := Δ₂ } ρ₂ φ π st₂ ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2)) := by
+      rw [lentPrefix_absorbed_eq K ρ φ st s π pos q.steps.2 v hg hs hp hv]; exact hs₂
+    obtain ⟨hs₃, hg₃, hctx₃, henv₃⟩ := logEffect_rel { K with Δ := Δ₂ } ρ₂ φ st₂ st₃ _ π q "moves" b₃ e₂.2.2 e₂.2.1 hs₂' hlog
+    have hsh₃ := hctx₃.shapes
+    obtain ⟨X₃, hX₃⟩ := runs_logEffect_inv hlog
     have hdecl : declsOf ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2)) = declsOf s := by
       rw [declsOf_access, declsOf_accessLentPrefix]
     have hres₁ : resolve ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2)) q =
         some (pos, q.steps.2) := by rw [resolve_of_declsOf hdecl]; exact hres
     obtain ⟨pos'', v', hck'', hupd, hst'⟩ := runs_setPlace_inv hset
     have hpp : pos'' = pos := by
-      have := rel_resolve_ck K ρ φ st₃ _ π q pos'' hs₃ hck''
+      have := rel_resolve_ck { K with Δ := Δ₂ } ρ₂ φ st₃ _ π q pos'' hs₃ hck''
       rw [hres₁] at this
       simp only [Option.some.injEq, Prod.mk.injEq] at this
       exact this.1.symm
     rw [hpp] at hck'' hupd hst'
-    have hclear₂ := access_clears K ρ φ st₂ (accessLentPrefix pos q.steps.2 s) π pos q.steps.2 hg₂ hs₂'
+    have hclear₂ := access_clears { K with Δ := Δ₂ } ρ₂ φ st₂ (accessLentPrefix pos q.steps.2 s) π pos q.steps.2 e₂.2.2 hs₂'
     have hclear₃ : ∀ l, liveLoan st₃.env l = true → ∀ x ∈ Env.sitesOf st₃.env l, x.pos = pos →
         dataHit q.steps.2 x.path = false := by rw [henv₃]; exact hclear₂
     have hgrain₁ : GrainOk K.D K.Γ (scopeOf ((accessLentPrefix pos q.steps.2 s).access pos (dataHit q.steps.2))) q := by
@@ -429,9 +433,9 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
     have hcopy₀ : K.D.copy (K.D.placeDecl (scopeOf (accessLentPrefix pos q.steps.2 s)) q) = false := by
       rw [scopeOf_of_declsOf (declsOf_accessLentPrefix s pos q.steps.2)]; exact hcopy
     obtain ⟨f, i, hposfi, hpb, hsp, hroot, hplain, hnat⟩ :=
-      botWrite_hyps K ρ φ st₃ _ π q pos v' hg₃ hsh₃ hs₃ hck'' hgrain₁ hns₁ hupd
+      botWrite_hyps { K with Δ := Δ₂ } ρ₂ φ st₃ _ π q pos v' hg₃ hsh₃ hs₃ hck'' hgrain₁ hns₁ hupd
     subst hposfi
-    have hrel := botWrite_rel K ρ φ st₃ _ π f i q.steps.2 v' hs₃ hg₃.2.2.1 hpb hsp hupd hroot hclear₃ hplain hnat
+    have hrel := botWrite_rel { K with Δ := Δ₂ } ρ₂ φ st₃ _ π f i q.steps.2 v' hs₃ hg₃.2.2.1 hpb hsp hupd hroot hclear₃ hplain hnat
     -- the reference's write can be made: its reading of the position after its access is the
     -- meaning of the checker's value there (the relation, at the typed future), and writing `⊥`
     -- commutes with the meaning along a place at the grain (`mean_updAt_botS`, L2)
@@ -442,44 +446,23 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
         some y := by
       have hval : ((accessLentPrefix (.bind f i) q.steps.2 s).access (.bind f i) (dataHit q.steps.2)).valAt (.bind f i)
           (((accessLentPrefix (.bind f i) q.steps.2 s).access (.bind f i) (dataHit q.steps.2)).typedFuture φ) =
-          Env.mean K.dm K.M K.Γ ρ
+          Env.mean K.dm ({ K with Δ := Δ₂ } : RunCtx).M K.Γ ρ₂
             (fun l => ((accessLentPrefix (.bind f i) q.steps.2 s).access (.bind f i) (dataHit q.steps.2)).typedFuture φ (π l))
             st₃.env (.bind f i) :=
         (hs₃.sim.1 _ ⟨relF_typedFuture φ _, hs₃.typedFuture_typed φ⟩ (.bind f i) (by simp [IsTemp])).symm
-      obtain ⟨H, hH⟩ := envMean_ck K.dm K.M K.Γ ρ
+      obtain ⟨H, hH⟩ := envMean_ck K.dm ({ K with Δ := Δ₂ } : RunCtx).M K.Γ ρ₂
         (fun l => ((accessLentPrefix (.bind f i) q.steps.2 s).access (.bind f i) (dataHit q.steps.2)).typedFuture φ (π l)) hck''
       rw [hval, hH]
-      exact ⟨_, mean_updAt_botS K ρ _ q.steps.2 H _ _ v' hupd hplain.1 hplain.2 (hnat _)⟩
-    rw [dropAt_data K φ _ q (.bind f i) q.steps.2 hns₀ hupdR hcopy₀, hst']
-    exact ⟨hrel, botWrite_good K ρ st₃ (.bind f i) q.steps.2 v' hg₃ hpb hupd hroot hclear₃ hplain hnat⟩
+      exact ⟨_, mean_updAt_botS { K with Δ := Δ₂ } ρ₂ _ q.steps.2 H _ _ v' hupd hplain.1 hplain.2 (hnat _)⟩
+    rw [dropAt_data K φ _ q (.bind f i) q.steps.2 hns₀ hupdR hcopy₀]
+    have hsz : st.absTy.size ≤ st'.absTy.size := by rw [hst', hX₃]; exact hsz₂
+    rw [hst'] at hD hsz ⊢
+    exact ⟨ρ₂, Δ₂, hsz, e₂.1,
+      ctx_botWrite { K with Δ := Δ₂ } ρ₂ st₃ (.bind f i) q.steps.2 v' hg₃ hctx₃ hupd hD, hrel,
+      botWrite_good { K with Δ := Δ₂ } ρ₂ st₃ (.bind f i) q.steps.2 v' hg₃ hpb hupd hroot hclear₃ hplain hnat⟩
 
-/-- **The checker's drop of one place keeps the run context** (`dropAtJoin` ends a borrow, accesses
-and writes: no global or declaration changes, and no unknown is NAMED, but an end's [Repack] may make
-one for its check, as [Access] does: `access_ctx`). Restated with the decisions extended (docs/31
-D78; as first stated, the context unchanged, it was false for the reason `access_ctx` was), the
-relation and `Good` the drop left under `K` carried over. Open: not tried. -/
-theorem dropAtJoin_ctx (fuel : Nat) (st st' : MState) (q : Place) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (Ochr.dropAtJoin (fuel + 1) q) st b () st')
-    {s' : SState} {π : Nat → Nat} (hs' : Rel K ρ φ π st' s') (hg' : Good K.dm K.M K.Γ ρ st') :
-    ∃ D' : Decisions, Ext K ρ φ π st st' s' ρ K.Δ D' := by
-  sorry
-
-
-/-! ## `refine` in the simulation form, reduced -/
-
-/-- **`substEnv` of an unknown by a refinement it means, in the simulation form**: every position
-means the same (the substitution lemma for unknowns, the analogue of `meanV_substLoan` and
-`run_substLoan`, with [Seal]'s re-run of a changed sealed program meaning the same), the shape,
-sites and labels are untouched (a refinement holds no loan), and `Good` and the context are kept
-under an extension (the re-runs keep unknowns: docs/31 D76; as first stated, under the same context,
-false for that reason). Open: the substitution lemma for unknowns is `SubstAbs.lean`'s. -/
-theorem substEnv_abs_sim (fuel : Nat) (st st' : MState) (σ : Nat) (r : Value) (s : SState) (π : Nat → Nat) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
-    (hσ : ∀ ψ H, ρ σ = meanV K ρ ψ H r)
-    (h : Runs (Ochr.substEnv fuel (.abs σ) r true) st b () st') :
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), Ext K ρ φ π st st' s ρ' Δ' D' := by
-  sorry
+/-! ## Records of refinements (the steps `refine` and `generalizeNeutral` are the induction
+hypothesis's fields `refine_step` and `generalizeNeutral_step`) -/
 
 /-- Recording a refinement changes nothing the relation reads (it reads Ω and the counter). -/
 theorem rel_refs (st : MState) (σ : Nat) (r : Value) (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) :
@@ -533,51 +516,7 @@ theorem refs_sim (st : MState) (σ : Nat) (r : Value) (s : SState) (π : Nat →
     exact (meanV_eq_mean_aux K ρ (fun _ => .err) _ v).symm
   · exact ta.refs τ v h
 
-/-- **The re-normalisation after a refinement keeps the relation** (`renormAll`: every sealed
-program the refined unknown's records mention re-runs, meaning the same, [Seal]). Open. -/
-theorem renormAll_sim (fuel : Nat) (st st' : MState) (s : SState) (π : Nat → Nat) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
-    (h : Runs (Ochr.renormAll fuel) st b () st') :
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), Ext K ρ φ π st st' s ρ' Δ' D' := by
-  sorry
-
-/-- **`refine` in the simulation form**, assembled: the substitution, the record, the
-re-normalisation. The refinement means `ρ σ` at every future and hint (it holds no loan and
-records its parameters). -/
-theorem refine_sim' (fuel : Nat) (st st' : MState) (σ : Nat) (r : Value) (s : SState) (π : Nat → Nat) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
-    (hσ : ∀ ψ H, ρ σ = meanV K ρ ψ H r)
-    (hb : σ < st.absTy.size ∧ ∀ τ, r.hasAbs τ = true → τ < st.absTy.size)
-    (h : Runs (Ochr.refine (fuel + 1) σ r) st b () st') :
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), Ext K ρ φ π st st' s ρ' Δ' D' := by
-  unfold Ochr.refine at h
-  obtain ⟨_, st₁, b₁, hsub, h1⟩ := Runs.bind_inv h
-  obtain ⟨ρ₁, Δ₁, D₁, E₁⟩ := substEnv_abs_sim K ρ φ fuel st st₁ σ r s π b hg hctx hs hσ hsub
-  obtain ⟨_, st₂, b₂, hmod, h2⟩ := Runs.bind_inv h1
-  obtain ⟨L, left, log, hmod⟩ := hmod
-  simp only [runMachineL_modify, Prod.mk.injEq, Outcome.ok.injEq] at hmod
-  obtain ⟨⟨-, hst₂⟩, -⟩ := hmod
-  have hσ₁ : ∀ ψ H, ρ₁ σ = meanV { K with Δ := Δ₁, D := D₁ } ρ₁ ψ H r := fun ψ H => by
-    rw [meanV_ext K ρ r ψ H hb.2 E₁.agree E₁.dec, (E₁.agree σ hb.1).1]; exact hσ ψ H
-  obtain ⟨hs₂, hg₂, hctx₂⟩ := refs_sim { K with Δ := Δ₁, D := D₁ } ρ₁ φ st₁ σ r s π E₁.good E₁.ctx E₁.rel hσ₁
-    ⟨Nat.lt_of_lt_of_le hb.1 E₁.size, fun τ hτ => Nat.lt_of_lt_of_le (hb.2 τ hτ) E₁.size⟩
-  rw [hst₂] at hs₂ hg₂ hctx₂
-  have E₂ : Ext K ρ φ π st st₂ s ρ₁ Δ₁ D₁ :=
-    ⟨by rw [← hst₂]; exact E₁.size, E₁.agree, E₁.dec, hctx₂, hs₂, hg₂⟩
-  obtain ⟨g, st₃, b₃, hget, h3⟩ := Runs.bind_inv h2
-  obtain ⟨L, left, log, hget⟩ := hget
-  simp only [runMachineL_get, Prod.mk.injEq, Outcome.ok.injEq] at hget
-  obtain ⟨⟨hg3, hst3⟩, -⟩ := hget
-  rw [← hst3, ← hg3] at h3
-  split at h3
-  · obtain ⟨ρ₃, Δ₃, D₃, E₃⟩ := renormAll_sim { K with Δ := Δ₁, D := D₁ } ρ₁ φ fuel st₂ st' s π b₃ hg₂ hctx₂ hs₂ h3
-    exact ⟨ρ₃, Δ₃, D₃, E₂.trans K ρ φ E₃⟩
-  · obtain ⟨L, left, log, h3⟩ := h3
-    simp only [runMachineL_pure, Prod.mk.injEq, Outcome.ok.injEq] at h3
-    rw [← h3.1.2]
-    exact ⟨ρ₁, Δ₁, D₁, E₂⟩
-
-/-! ## `generalizeNeutral` in the simulation form, reduced -/
+/-! ## Generalisation helpers -/
 
 /-- What the generalisation needs of the type `placeType` gives the new unknown (`T`, the type of
 the place holding the program `n`): a type of the state (its unknowns typed), of some level,
@@ -590,19 +529,6 @@ structure GenTy (st : MState) (T n : Value) : Prop where
   level : (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T).level.isSome
   mem : meanV K ρ (fun _ => .err) (.plain (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T)) n ∈ₛ[K.dm.read]
     Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T
-
-/-- **`placeType` in the simulation form.** The field and parameter types it evaluates run on
-private copies (`inStatement`, `privately`), so Ω is the snapshot's (`Rel.private_copy` is the
-relation's half); the unknowns and records the copies keep (D37) are given values and types by an
-extension; and the type returned is a `GenTy` for the place's sealed, loan-free content (a member
-of the place's type, by membership at the place's position and the typing of a path). Open. -/
-theorem placeType_sim (fuel : Nat) (st st₁ : MState) (p : Place) (n T : Value) (s : SState) (π : Nat → Nat) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
-    (hn : ckContent st.env p = some n) (hsealed : ∃ t, n = .sealed t) (hfree : ∀ l, n.hasLoan l = false)
-    (h : Runs (Ochr.placeType fuel p) st b T st₁) :
-    ∃ (ρ₁ : Assignment) (Δ₁ : Nat → TyS) (D₁ : Decisions), Ext K ρ φ π st st₁ s ρ₁ Δ₁ D₁ ∧
-      st₁.env = st.env ∧ GenTy { K with Δ := Δ₁, D := D₁ } ρ₁ st₁ T n := by
-  sorry
 
 /-- `freshAbs` names the unknown by the counter and pushes its type and its frozen reading (D96). -/
 theorem runs_freshAbs_inv {T : Value} {d : DeclInfo} {st st' : MState} {b σ : Nat} (h : Runs (Ochr.freshAbs T d) st b σ st') :
@@ -650,93 +576,9 @@ theorem Good.absTy_size {C : CodeMeaning} {ρ : Assignment} {st : MState} (hg : 
     st.absTy.size = st.nextAbs :=
   hg.2.2.2.2.2.2.1.2.2.2.1
 
-/-- **A fresh unknown of a well-formed type** (`freshAbs`). Nothing in the state names it yet, so
-under any value for it, with its type added to Δ, the relation, `Good`, the context and the
-`GenTy` are kept, and the program and its type read the same (neither holds the new unknown).
-Open: needs that a meaning reads the assignment and Δ only at the unknowns the value holds (the
-assignment's analogue of `RunCongr.meanV_congrE`, not written). -/
-theorem freshAbs_sim (st : MState) (T n : Value) (d : DeclInfo) (s : SState) (π : Nat → Nat) (v : Sem)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s) (hT : GenTy K ρ st T n) :
-    ∃ (Δ' : Nat → TyS) (D' : Decisions),
-      Ext K ρ φ π st { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T, absDecl := st.absDecl.push d } s
-        (ρ.ext st.nextAbs v) Δ' D' ∧
-      GenTy { K with Δ := Δ', D := D' } (ρ.ext st.nextAbs v)
-        { st with nextAbs := st.nextAbs + 1, absTy := st.absTy.push T, absDecl := st.absDecl.push d } T n ∧
-      meanV { K with Δ := Δ', D := D' } (ρ.ext st.nextAbs v) (fun _ => .err)
-          (.plain (Value.tyM K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ (ρ.ext st.nextAbs v) (fun _ => .err) T)) n =
-        meanV K ρ (fun _ => .err) (.plain (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T)) n := by
-  sorry
-
-/-- **`substEnv` of a sealed program by an unknown that means it, then the record `n := σ`.** Every
-position means the same (the substitution lemma, a program replaced by an unknown: the converse of
-`substEnv_abs_sim`, with [Seal]'s re-run of a changed sealed program meaning the same), the types
-of the unknowns mean the same, and the record is the path condition the assignment already meets
-(`hσ`); `Good` and the context are kept. Open: the substitution lemma is not written. -/
-theorem substEnv_neutral_sim (fuel : Nat) (st st' : MState) (p : Place) (n T : Value) (σ : Nat) (s : SState)
-    (π : Nat → Nat) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
-    (hn : ckContent st.env p = some n) (hsealed : ∃ t, n = .sealed t) (hfree : ∀ l, n.hasLoan l = false)
-    (hT : GenTy K ρ st T n) (hσT : st.absTy[σ]? = some T) (hσn : n.hasAbs σ = false)
-    (hσ : ρ σ = meanV K ρ (fun _ => .err) (.plain (Value.tyM K.dm K.M K.Γ ρ (fun _ => .err) T)) n)
-    (h : Runs (Ochr.substEnv fuel n (.abs σ) true) st b () st') :
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions),
-      Ext K ρ φ π st { st' with neutrals := (n, σ) :: st'.neutrals } s ρ' Δ' D' := by
-  sorry
-
 /-- Recording a generalisation changes nothing the relation reads. -/
 theorem rel_neutrals (st : MState) (x : List (Value × Nat)) (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) :
     Rel K ρ φ π { st with neutrals := x } s := ⟨hs.1, hs.2, hs.3, hs.4, hs.5, hs.6, hs.7⟩
-
-/-- **`generalizeNeutral` in the simulation form, with an extended context**, assembled: the
-place's type, the fresh unknown, the substitution and the record. The sealed program `n` at `p`
-becomes a fresh unknown `σ` with the record `n := σ`; under an assignment extended by `σ := ⟦n⟧`
-(read at `σ`'s type) and Δ by `σ`'s type, and at the unknowns `placeType`'s private copies keep,
-the states stay related to the same reference state. `n` is `p`'s content, a sealed program
-holding no loan, as at both callers; without the first the statement was false
-(`Regress/GenNeutralContent.lean`). The extension is existential, as in every step that creates
-unknowns: `placeType`'s copies keep their unknowns and records (D37), which must be given values. -/
-theorem generalizeNeutral_sim (fuel : Nat) (st st' : MState) (p : Place) (n : Value) (σ : Nat) (s : SState)
-    (π : Nat → Nat) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
-    (hn : ckContent st.env p = some n) (hsealed : ∃ t, n = .sealed t) (hfree : ∀ l, n.hasLoan l = false)
-    (h : Runs (Ochr.generalizeNeutral fuel p n) st b σ st') :
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), Ext K ρ φ π st st' s ρ' Δ' D' := by
-  cases fuel with
-  | zero =>
-    obtain ⟨L, left, log, h⟩ := h
-    simp [Ochr.generalizeNeutral, runMachineL_exhausted] at h
-  | succ fuel =>
-  unfold Ochr.generalizeNeutral at h
-  obtain ⟨T, st₁, b₁, hpt, h1⟩ := Runs.bind_inv h
-  obtain ⟨ρ₁, Δ₁, D₁, E₁, henv₁, hT₁⟩ :=
-    placeType_sim K ρ φ fuel st st₁ p n T s π b hg hctx hs hn hsealed hfree hpt
-  have hn₁ : ckContent st₁.env p = some n := by rw [henv₁]; exact hn
-  obtain ⟨σ', st₂, b₂, hfa, h2⟩ := Runs.bind_inv h1
-  obtain ⟨dσ, rfl, rfl⟩ := runs_freshAbsR_inv hfa
-  let v := meanV { K with Δ := Δ₁, D := D₁ } ρ₁ (fun _ => .err)
-    (.plain (Value.tyM K.dm ({ K with Δ := Δ₁, D := D₁ } : RunCtx).M K.Γ ρ₁ (fun _ => .err) T)) n
-  obtain ⟨Δ₂, D₂, E₂, hT₂, hv⟩ :=
-    freshAbs_sim { K with Δ := Δ₁, D := D₁ } ρ₁ φ st₁ T n dσ s π v E₁.good E₁.ctx E₁.rel hT₁
-  have hsize₁ : st₁.absTy.size = st₁.nextAbs := Good.absTy_size { K with Δ := Δ₁, D := D₁ } E₁.good
-  obtain ⟨u, st₃, b₃, htr, h3⟩ := Runs.bind_inv h2
-  have hst₃ := runs_trace_inv htr
-  subst hst₃
-  obtain ⟨u', st₄, b₄, hsub, h4⟩ := Runs.bind_inv h3
-  have hσT : ({ st₁ with nextAbs := st₁.nextAbs + 1, absTy := st₁.absTy.push T, absDecl := st₁.absDecl.push dσ } : MState).absTy[st₁.nextAbs]? = some T := by
-    simp only [← hsize₁, Array.getElem?_push_size]
-  have hσn : n.hasAbs st₁.nextAbs = false := by
-    cases e : n.hasAbs st₁.nextAbs
-    · rfl
-    · have := hT₁.nabs _ e; omega
-  have hσ : (ρ₁.ext st₁.nextAbs v) st₁.nextAbs = meanV { K with Δ := Δ₂, D := D₂ } (ρ₁.ext st₁.nextAbs v) (fun _ => .err)
-      (.plain (Value.tyM K.dm ({ K with Δ := Δ₂, D := D₂ } : RunCtx).M K.Γ (ρ₁.ext st₁.nextAbs v) (fun _ => .err) T)) n := by
-    simp only [Assignment.ext, if_pos rfl]; exact hv.symm
-  obtain ⟨ρ₃, Δ₃, D₃, E₃⟩ := substEnv_neutral_sim { K with Δ := Δ₂, D := D₂ } (ρ₁.ext st₁.nextAbs v) φ fuel _ st₄ p n T
-    st₁.nextAbs s π b₃ E₂.good E₂.ctx E₂.rel hn₁ hsealed hfree hT₂ hσT hσn hσ hsub
-  obtain ⟨L, left, log, h4⟩ := h4
-  simp only [runMachineL_bind, runMachineL_modify, runMachineL_pure, Prod.mk.injEq, Outcome.ok.injEq] at h4
-  obtain ⟨⟨-, rfl⟩, -⟩ := h4
-  exact ⟨ρ₃, Δ₃, D₃, E₁.trans K ρ φ (E₂.trans _ _ φ E₃)⟩
 
 end
 

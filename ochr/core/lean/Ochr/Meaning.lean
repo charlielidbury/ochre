@@ -13,7 +13,6 @@ import Ochr.Meaning.Subst
 import Ochr.Meaning.Lemmas
 import Ochr.Meaning.HintIndep
 import Ochr.Meaning.Steps.Statements
-import Ochr.Meaning.Steps.DecExtend
 import Ochr.Meaning.PosLib
 import Ochr.Meaning.RunLib
 import Ochr.Meaning.Steps.IH
@@ -79,6 +78,8 @@ import Ochr.Meaning.Regress.DataOfChoice
 import Ochr.Meaning.Regress.PartialMoveDep
 import Ochr.Meaning.Regress.OpenWriteDep
 import Ochr.Meaning.Regress.GenNeutralContent
+import Ochr.Meaning.Regress.GrainDerefProof
+import Ochr.Meaning.Regress.StepKindsTable
 import Ochr.Meaning.Regress.RefsPathCond
 import Ochr.Meaning.Regress.FreshBound
 import Ochr.Meaning.Regress.EntryCheck

@@ -27,9 +27,9 @@ the order the team lead set (model risk first):
    at either holder is inside its content and the two are not lent at each other's holders; it is
    used inside the [Access] statement, an induction-hypothesis field.
 4. The checker's place and the reference's: `rel_resolve` (through `Rel.skel`).
-5. `refine` and `generalizeNeutral` in the simulation form with an extended context
-   (both assembled from smaller obligations in `Steps/DropOneAsm.lean`, `refine_sim'` and
-   `generalizeNeutral_sim`; the first forms, unused, are deleted).
+5. `refine` and `generalizeNeutral` in the simulation form with an extended context: the
+   induction hypothesis's `refine_step` and `generalizeNeutral_step` (the slice, 2026-11-20; the
+   simulation-form leaves they made redundant are deleted).
 6. `movedPlace`'s branches, last: the place exists (`movedPlace_exists'`, PROVED in `Steps/DropRuns.lean`), the lent prefix
    absorbed by the access at an instance ((WF12), `lentPrefix_absorbed`); the other branches (a
    filled parent accessed whole, an unknown or a sealed program of a one-constructor type refined,
@@ -672,12 +672,10 @@ transparent to the checker's path), the checker accesses the path to the place o
 reference first the shortest lent prefix whole; the two end the same borrows
 (`SState.access_absorb`, under `lentPrefix_absorbInv`), and accessing twice is accessing once.
 Assembled; it rests on `lentPrefix_fill`. -/
-theorem lentPrefix_absorbed (st st' : MState) (s : SState) (π : Nat → Nat) (pos : Pos) (steps : List Step) (w : Value)
+theorem lentPrefix_absorbed_eq (st : MState) (s : SState) (π : Nat → Nat) (pos : Pos) (steps : List Step) (w : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hp : pos ∈ allPos st.env)
     (hw : (valAt st.env pos).follow steps = some w) :
-    Rel K ρ φ π st' ((accessLentPrefix pos steps s).access pos (dataHit steps)) ↔
-      Rel K ρ φ π st' (s.access pos (dataHit steps)) := by
-  have e : (accessLentPrefix pos steps s).access pos (dataHit steps) = s.access pos (dataHit steps) := by
+    (accessLentPrefix pos steps s).access pos (dataHit steps) = s.access pos (dataHit steps) := by
     unfold accessLentPrefix
     rcases hl : lentPrefix s pos steps with _ | ψ
     · rfl
@@ -690,7 +688,14 @@ theorem lentPrefix_absorbed (st st' : MState) (s : SState) (π : Nat → Nat) (p
         rw [dataHit_congr hne, SState.access_access]
       · have hI := lentPrefix_absorbInv K ρ φ st s π pos steps steps ψ w hg hs hp hl hw hlt hne
         rw [SState.access_absorb hI hlt, SState.access_access]
-  rw [e]
+
+/-- The same, read through the relation at any later state. -/
+theorem lentPrefix_absorbed (st st' : MState) (s : SState) (π : Nat → Nat) (pos : Pos) (steps : List Step) (w : Value)
+    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hp : pos ∈ allPos st.env)
+    (hw : (valAt st.env pos).follow steps = some w) :
+    Rel K ρ φ π st' ((accessLentPrefix pos steps s).access pos (dataHit steps)) ↔
+      Rel K ρ φ π st' (s.access pos (dataHit steps)) := by
+  rw [lentPrefix_absorbed_eq K ρ φ st s π pos steps w hg hs hp hw]
 
 /-- **(6) No lent prefix above a moved part.** Where the checker's place is `⊥` (its drop does
 nothing), no live borrow is lent at a strict prefix of it, so the reference's prefix access does

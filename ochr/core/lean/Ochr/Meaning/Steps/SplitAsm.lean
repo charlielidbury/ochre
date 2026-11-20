@@ -14,7 +14,7 @@ the world restores the snapshot, related as it was.
 Here: `refine` assembled from the substitution lemma for unknowns (`substEnv_abs_step`, the
 induction hypothesis), the record (`refs_sim`, proved) and the re-normalisation (`renormAll_step`);
 `exitWorld` assembled from its run (proved) and the restored state's context (a leaf). (`access_ctx`,
-restated with the decisions extended, is in `DropOneAsm.lean` since the slice's merge, D78.)
+restated in the extended form, is in `DropOneAsm.lean` since the slice's merge, D78.)
 -/
 
 namespace Ochr.Meaning.Steps
@@ -26,13 +26,13 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- A refinement that holds at an assignment holds at an extension of it, and stays well-formed
 in a larger table (proved from `meanV_ext`). -/
-theorem RefineOk.ext {st st₁ : MState} {σ : Nat} {r : Value} {ρ₁ : Assignment} {Δ₁ : Nat → TyS} {D₁ : Decisions}
+theorem RefineOk.ext {st st₁ : MState} {σ : Nat} {r : Value} {ρ₁ : Assignment} {Δ₁ : Nat → TyS}
     (hr : RefineOk K ρ st σ r) (hsz : st.absTy.size ≤ st₁.absTy.size)
-    (ha : ∀ τ, τ < st.absTy.size → ρ₁ τ = ρ τ ∧ Δ₁ τ = K.Δ τ) (hd : K.D.AgreeOld st.absTy.size D₁) :
-    RefineOk { K with Δ := Δ₁, D := D₁ } ρ₁ st₁ σ r := by
+    (ha : ∀ τ, τ < st.absTy.size → ρ₁ τ = ρ τ ∧ Δ₁ τ = K.Δ τ) :
+    RefineOk { K with Δ := Δ₁ } ρ₁ st₁ σ r := by
   obtain ⟨hσ, hlt, habs, hnσ, hloan⟩ := hr
   refine ⟨fun ψ H => ?_, Nat.lt_of_lt_of_le hlt hsz, fun τ hτ => Nat.lt_of_lt_of_le (habs τ hτ) hsz, hnσ, hloan⟩
-  rw [meanV_ext K ρ r ψ H habs ha hd, (ha σ hlt).1]
+  rw [meanV_ext K ρ r ψ H habs ha, (ha σ hlt).1]
   exact hσ ψ H
 
 theorem SubstShape.trans {st₁ st₂ st₃ : MState} (h₁ : SubstShape st₁ st₂) (h₂ : SubstShape st₂ st₃) :
@@ -50,18 +50,18 @@ theorem SubstShape.refl (st : MState) : SubstShape st st :=
 
 /-- An extension by nothing. -/
 theorem ExtOk.self {st : MState} (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) :
-    ExtOk K ρ st st ρ K.Δ K.D := by
-  refine ⟨fun _ _ => ⟨rfl, rfl⟩, Decisions.AgreeOld.refl _ _, ?_, ?_⟩
-  · have e : ({ K with Δ := K.Δ, D := K.D } : RunCtx) = K := by cases K; rfl
+    ExtOk K ρ st st ρ K.Δ := by
+  refine ⟨fun _ _ => ⟨rfl, rfl⟩, ?_, ?_⟩
+  · have e : ({ K with Δ := K.Δ } : RunCtx) = K := by cases K; rfl
     rw [e]; exact hctx
   · exact hg
 
-theorem ExtOk.trans_le {st₁ st₂ st₃ : MState} {ρ₂ ρ₃ : Assignment} {Δ₂ Δ₃ : Nat → TyS} {D₂ D₃ : Decisions}
-    (hsz : st₁.absTy.size ≤ st₂.absTy.size) (h₁ : ExtOk K ρ st₁ st₂ ρ₂ Δ₂ D₂)
-    (h₂ : ExtOk { K with Δ := Δ₂, D := D₂ } ρ₂ st₂ st₃ ρ₃ Δ₃ D₃) : ExtOk K ρ st₁ st₃ ρ₃ Δ₃ D₃ := by
-  obtain ⟨a1, d1, -, -⟩ := h₁
-  obtain ⟨a2, d2, c2, g2⟩ := h₂
-  refine ⟨fun σ hσ => ?_, Decisions.AgreeOld.trans d1 d2 hsz, c2, g2⟩
+theorem ExtOk.trans_le {st₁ st₂ st₃ : MState} {ρ₂ ρ₃ : Assignment} {Δ₂ Δ₃ : Nat → TyS}
+    (hsz : st₁.absTy.size ≤ st₂.absTy.size) (h₁ : ExtOk K ρ st₁ st₂ ρ₂ Δ₂)
+    (h₂ : ExtOk { K with Δ := Δ₂ } ρ₂ st₂ st₃ ρ₃ Δ₃) : ExtOk K ρ st₁ st₃ ρ₃ Δ₃ := by
+  obtain ⟨a1, -, -⟩ := h₁
+  obtain ⟨a2, c2, g2⟩ := h₂
+  refine ⟨fun σ hσ => ?_, c2, g2⟩
   have hσ2 : σ < st₂.absTy.size := Nat.lt_of_lt_of_le hσ hsz
   exact ⟨(a2 σ hσ2).1.trans (a1 σ hσ).1, (a2 σ hσ2).2.trans (a1 σ hσ).2⟩
 
@@ -70,33 +70,34 @@ hypothesis's `substEnv_abs_step`), the path condition recorded (`refs_sim`, prov
 `TypedAssignment.refs`'s condition, which the refinement meets at the extension), and, when `σ` is
 a generalisation's, the re-normalisation (`renormAll_step`); the extensions composed. -/
 theorem refine_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : refine_step_stmt K ρ φ (fuel + 1) := by
-  intro st st' σ r hg hctx s π hs hr bh h
+  intro st st' σ r hg hctx s π hs hr hD bh h
   unfold Ochr.refine at h
   obtain ⟨⟨⟩, st₁, b₁, hsub, h1⟩ := Runs.bind_inv h
-  obtain ⟨sh₁, ρ₁, Δ₁, D₁, e₁, hs₁⟩ := (ih.at K ρ φ).substEnv_abs_step st st₁ σ r hg hctx s π hs hr bh hsub
+  have hD₁ : DecTab K.D st₁ := hD.of_rest (by grows_go; all_goals exact GrowsM.modify fun _ => ⟨rfl, rfl, Nat.le_refl _, fun _ _ => rfl, Nat.le_refl _, Nat.le_refl _⟩) h1
+  obtain ⟨sh₁, ρ₁, Δ₁, e₁, hs₁⟩ := (ih.at K ρ φ).substEnv_abs_step st st₁ σ r hg hctx s π hs hr hD₁ bh hsub
   obtain ⟨_, st₂, b₂, hmod, h2⟩ := Runs.bind_inv h1
   obtain ⟨L, left, log, hmod⟩ := hmod
   simp only [runMachineL_modify, Prod.mk.injEq, Outcome.ok.injEq] at hmod
   obtain ⟨⟨-, hst₂⟩, -⟩ := hmod
-  have hr₁ := RefineOk.ext K ρ hr sh₁.2.2.2.1 e₁.1 e₁.2.1
-  obtain ⟨hs₂, hg₂, hctx₂⟩ := refs_sim { K with Δ := Δ₁, D := D₁ } ρ₁ φ st₁ σ r s π e₁.2.2.2 e₁.2.2.1 hs₁
+  have hr₁ := RefineOk.ext K ρ hr sh₁.2.2.2.1 e₁.1
+  obtain ⟨hs₂, hg₂, hctx₂⟩ := refs_sim { K with Δ := Δ₁ } ρ₁ φ st₁ σ r s π e₁.2.2 e₁.2.1 hs₁
     hr₁.1 ⟨hr₁.2.1, hr₁.2.2.1⟩
   rw [hst₂] at hs₂ hg₂ hctx₂
   have sh₂ : SubstShape st st₂ := by rw [← hst₂]; exact sh₁.trans (SubstShape.refs st₁ σ r)
-  have e₂ : ExtOk K ρ st st₂ ρ₁ Δ₁ D₁ := ⟨e₁.1, e₁.2.1, hctx₂, hg₂⟩
+  have e₂ : ExtOk K ρ st st₂ ρ₁ Δ₁ := ⟨e₁.1, hctx₂, hg₂⟩
   obtain ⟨g, st₃, b₃, hget, h3⟩ := Runs.bind_inv h2
   obtain ⟨L, left, log, hget⟩ := hget
   simp only [runMachineL_get, Prod.mk.injEq, Outcome.ok.injEq] at hget
   obtain ⟨⟨hg3, hst3⟩, -⟩ := hget
   rw [← hst3, ← hg3] at h3
   split at h3
-  · obtain ⟨sh₃, ρ₃, Δ₃, D₃, e₃, hs₃⟩ :=
-      (ih.at { K with Δ := Δ₁, D := D₁ } ρ₁ φ).renormAll_step st₂ st' hg₂ hctx₂ s π hs₂ b₃ h3
-    exact ⟨sh₂.trans sh₃, ρ₃, Δ₃, D₃, ExtOk.trans_le K ρ sh₂.2.2.2.1 e₂ e₃, hs₃⟩
+  · obtain ⟨sh₃, ρ₃, Δ₃, e₃, hs₃⟩ :=
+      (ih.at { K with Δ := Δ₁ } ρ₁ φ).renormAll_step st₂ st' hg₂ hctx₂ s π hs₂ hD b₃ h3
+    exact ⟨sh₂.trans sh₃, ρ₃, Δ₃, ExtOk.trans_le K ρ sh₂.2.2.2.1 e₂ e₃, hs₃⟩
   · obtain ⟨L, left, log, h3⟩ := h3
     simp only [runMachineL_pure, Prod.mk.injEq, Outcome.ok.injEq] at h3
     rw [← h3.1.2]
-    exact ⟨sh₂, ρ₁, Δ₁, D₁, e₂, hs₂⟩
+    exact ⟨sh₂, ρ₁, Δ₁, e₂, hs₂⟩
 
 /-- What `exitWorld` leaves (proved): the snapshot, with the counters and the arm's new unknowns'
 types kept. -/
@@ -113,25 +114,28 @@ theorem runs_exitWorld_inv {w : World} {st st' : MState} {b : Nat} (h : Runs (Oc
 /-- **The restored state's context** (leaf): the snapshot's Ω, goal, path condition and records,
 which name only the snapshot's unknowns, so the assignment and `Δ` are typed as at the snapshot; the
 arm's unknowns are named by nothing, so `DeltaOk` and `TypedAssignment` ask nothing of them; their
-frozen readings are kept (`absDecl`, D96), so the decisions are extended to agree on them. -/
+frozen readings are kept (`absDecl`, D96), and the decisions are aligned after the exit (`hD`). -/
 theorem exitWorld_ctx {w : World} {st st' : MState} {b : Nat}
-    (hg : Good K.dm K.M K.Γ ρ w.saved) (hctx : CtxOk K ρ w.saved) (h : Runs (Ochr.exitWorld w) st b () st') :
-    ∃ D' : Decisions, ExtOk K ρ w.saved st' ρ K.Δ D' := by
+    (hg : Good K.dm K.M K.Γ ρ w.saved) (hctx : CtxOk K ρ w.saved) (h : Runs (Ochr.exitWorld w) st b () st')
+    (hD : DecTab K.D st') :
+    ExtOk K ρ w.saved st' ρ K.Δ := by
   sorry
 
 /-- **Leaving a world, assembled** (no `sorry` in the body): the run restores the snapshot
 (`runs_exitWorld_inv`, proved), so the relation is the snapshot's (`Rel.kept`); the context and
 goodness are the leaf `exitWorld_ctx`. -/
 theorem exitWorld_step_asm (fuel : Nat) (_ih : StepsIHBelow fuel) : exitWorld_step_stmt K ρ φ (fuel + 1) := by
-  intro st st' w hg hctx s π hs hgrow bh h
+  intro st st' w hg hctx s π hs hgrow hD bh h
   obtain ⟨henv, hgoal, hrefs, hneut, heta, hinds, hnl, habs⟩ := runs_exitWorld_inv h
   have hsz : w.saved.absTy.size ≤ st'.absTy.size := by rw [habs]; simp
   have hold : ∀ σ, σ < w.saved.absTy.size → st'.absTy[σ]? = w.saved.absTy[σ]? := by
     intro σ hσ
     rw [habs, Array.getElem?_append_left hσ]
   have hk : KeptAfter w.saved st' := ⟨henv, hgoal, hrefs, hinds, hsz, hold, by rw [hnl]; exact hgrow⟩
-  obtain ⟨D', he⟩ := exitWorld_ctx K ρ hg hctx h
-  exact ⟨henv, hgoal, hrefs, hneut, heta, hsz, hold, D', he, Rel.kept K ρ φ hg hctx hs hk he⟩
+  have he := exitWorld_ctx K ρ hg hctx h hD
+  have hr := Rel.kept K ρ φ hg hctx hs hk he
+  rw [runCtx_with_self K] at hr
+  exact ⟨henv, hgoal, hrefs, hneut, heta, hsz, hold, he, hr⟩
 
 end
 
