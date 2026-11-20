@@ -510,7 +510,7 @@ theorem lentPrefix_none_of_noop (st : MState) (s : SState) (π : Nat → Nat) (q
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2))
     (hnoop : (valAt st.env pos).follow q.steps.2 = some .bot) :
     lentPrefix s pos q.steps.2 = none := by
-  have h14 : WF14 st.env := hg.2.2.2.2.2.2.2.2.2.2.2.2.2
+  have h14 : WF14 st.env := hg.2.2.2.2.2.2.2.2.2.2.2.2.2.1
   unfold lentPrefix
   rw [List.find?_eq_none]
   intro ψ hψ hP

@@ -573,6 +573,69 @@ def wf10 : Clause where
   check st := (posVals st.env).filterMap fun (p, v) =>
     if v.anyAtom (bareCtor st.inds) then some ⟨s!"a constructor value without its parameters, at {posKind p}", posName st.env p⟩ else none
 
+/-! ### (H) Sealed programs read no hint at their tails (`mean_updAt_botS`, docs/31 D45) -/
+
+mutual
+/-- `Term.tailHintFree` (`HintIndep.lean`), mirrored EXACTLY. -/
+def tailHintFree (Γ : List IndDecl) : Term → Bool
+  | .letIn _ _ w => tailHintFree Γ w
+  | .seq _ w => tailHintFree Γ w
+  | .matchNat _ z u => tailHintFree Γ z && tailHintFree Γ u
+  | .matchInd _ _ arms => armsHintFree Γ arms
+  | .ctor ty _ _ ps _ =>
+    !ps.isEmpty || (match Γ.find? (·.name == ty) with | some d => d.params.isEmpty | none => true)
+  | .val v => topHintFree Γ v
+  | .prim n [.place _] => n == "peek" || n == "clone"
+  | .prim _ _ => false
+  | _ => true
+
+def armsHintFree (Γ : List IndDecl) : List (Hint × Term) → Bool
+  | [] => true
+  | (_, t) :: rest => tailHintFree Γ t && armsHintFree Γ rest
+
+/-- `Value.topHintFree`, mirrored EXACTLY. -/
+def topHintFree (Γ : List IndDecl) : Value → Bool
+  | .borrow _ w => topHintFree Γ w
+  | .gloan _ w => topHintFree Γ w
+  | .sealed t => tailHintFree Γ t
+  | .ind ty _ _ [] _ => (match Γ.find? (·.name == ty) with | some d => d.params.isEmpty | none => true)
+  | _ => true
+end
+
+/-- (H): no sealed program anywhere in Ω (inside sealed programs and code included) reads the hint
+at a tail: `∀ v ∈ Env.values st.env, v.anyAtom (fun a => a.isSealed && !a.topHintFree Γ) = false`,
+what the write of `⊥` with sealed siblings needs (`botWrite_hyps`). A candidate, not a clause. -/
+def hintFreeSealed : Clause where
+  name := "(H, candidate) every sealed program in Ω reads no hint at its tails"
+  premises := [
+    ("a sealed program in Ω", fun st => (posVals st.env).any fun (_, v) =>
+      v.anyAtom fun | .sealed _ => true | _ => false),
+    ("a sealed program in a constructor value's field", fun st => (posVals st.env).any fun (_, v) =>
+      v.anyAtom fun | .ind _ _ _ _ fs => fs.any (fun | .sealed _ => true | _ => false) | _ => false)]
+  check st := (posVals st.env).filterMap fun (p, v) =>
+    if v.anyAtom (fun a => match a with | .sealed _ => !topHintFree st.inds a | _ => false) then
+      some ⟨s!"a sealed program whose tail reads the hint, at {posKind p}", s!"{posName st.env p} = {clip v.pp}"⟩
+    else none
+
+/-! ### (WF15), first (RD): no loan or mark in a recorded reading (`sealed_loanFree`; docs/31 D46) -/
+
+/-- (WF15) (`WF.lean`, as `∀ v ∈ values, ∀ l, v.anyAtom (Value.rdLoan l) = false`, which is this
+for every label at once): no closure or Π-type anywhere in Ω (inside sealed programs and code included) records a
+declared type (`rd`, D82) holding a loan or a mark. `Value.loans` (the checker's) does not collect
+them and `Value.hasLoan` (an `anyAtom`) does, so without it a sealed program can have a site
+(`sitesOf`, by `hasLoan`) that no live-loan scan (`liveLoansIn`, by `loans`) sees. -/
+def readingsLoanFree : Clause where
+  name := "(WF15) no recorded reading holds a loan or a mark"
+  premises := [
+    ("a closure or Π-type with a recorded reading", fun st => (posVals st.env).any fun (_, v) =>
+      v.anyAtom fun | .clo _ _ rd | .tPi _ _ rd => !rd.isEmpty | _ => false)]
+  check st := (posVals st.env).filterMap fun (p, v) =>
+    let bad : Value → Bool := fun
+      | .clo _ _ rd | .tPi _ _ rd => rd.any fun (_, T) => T.anyAtom fun | .loan _ | .gloan _ _ => true | _ => false
+      | _ => false
+    if v.anyAtom bad then some ⟨s!"a recorded reading holding a loan or mark, at {posKind p}", s!"{posName st.env p} = {clip v.pp}"⟩
+    else none
+
 /-! ### Planted: deliberately false, to show the sweep is not vacuous -/
 
 /-! ### Candidates for `movedPlace`'s exits (not yet clauses of `Good`; spine, 2026-11-21)
@@ -798,7 +861,7 @@ def shapeFacts : Clause where
   check st := shapeViols st
 
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, plantedFill, plantedAbs]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, plantedFill, plantedAbs]
 
 /-! ## The sweep -/
 
