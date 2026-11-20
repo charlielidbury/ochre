@@ -491,7 +491,7 @@ theorem sealed_loanFree (st : MState) (p : Place) (t : Term) (hg : Good K.dm K.M
   · rfl
   · exfalso
     obtain ⟨root, hroot, hf⟩ := ckContent_root hp
-    have h15 : WF15 st.env := hg.2.2.2.2.2.2.2.2.2.2.2.2.2.2
+    have h15 : WF15 st.env := hg.2.2.2.2.2.2.2.2.2.2.2.2.2.2.1
     have hrd : (Value.sealed t).anyAtom (rdHasLoan l) = false := by
       have hr := h15 root hroot l
       rw [← rdHasLoan_eq] at hr

@@ -382,4 +382,138 @@ theorem followMean (K : RunCtx) (ρ : Assignment) {st : MState} (hctx : CtxOk K 
   | .proj _ p => followMean_snoc K ρ hctx hg.2.2.2.2.2.2.2.2.2.2.1 f pos rfl (followMean K ρ hctx hg f pos p)
   | .field _ p => followMean_snoc K ρ hctx hg.2.2.2.2.2.2.2.2.2.2.1 f pos rfl (followMean K ρ hctx hg f pos p)
 
+/-! ## The write of `⊥` along a place at the grain -/
+
+theorem jdExtend_steps : ∀ (p : Place) (ss : List Step), (Ochr.jdExtend p ss).steps = (p.steps.1, p.steps.2 ++ ss)
+  | p, [] => by simp [Ochr.jdExtend]
+  | p, .deref :: ss => by
+    rw [Ochr.jdExtend, jdExtend_steps]; simp [Place.steps]
+  | p, .proj i :: ss => by
+    rw [Ochr.jdExtend, jdExtend_steps]; simp [Place.steps]
+  | p, .field g :: ss => by
+    rw [Ochr.jdExtend, jdExtend_steps]; simp [Place.steps]
+
+/-- The grain and the content read a place's steps only. -/
+theorem grainOk_of_steps {D : Decisions} {Γ : List IndDecl} {sc : List DeclInfo} {q q' : Place}
+    (he : q'.steps = q.steps) (h : GrainOk D Γ sc q) : GrainOk D Γ sc q' := by
+  intro p x rest h1 h2; rw [he] at h1 h2; exact h p x rest h1 h2
+
+theorem ckContent_of_steps {env : Env} {q q' : Place} (he : q'.steps = q.steps) : ckContent env q' = ckContent env q := by
+  unfold ckContent; rw [he]
+
+/-- The place one step below `p`. -/
+def _root_.Ochr.Place.stepTo (p : Place) : Step → Place
+  | .deref => .deref p
+  | .proj i => .proj i p
+  | .field g => .field g p
+
+theorem stepTo_steps (p : Place) (x : Step) : (p.stepTo x).steps = (p.steps.1, p.steps.2 ++ [x]) := by
+  cases x <;> simp [Place.stepTo, Place.steps]
+
+theorem jdExtend_cons (p : Place) (x : Step) (ss : List Step) :
+    Ochr.jdExtend p (x :: ss) = Ochr.jdExtend (p.stepTo x) ss := by
+  cases x <;> rfl
+
+section
+variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (ψ : Future)
+
+/-- **`NatAlong` at one node of a place at the grain**: the step is through a declared borrow
+holding a borrow, or a declared one-constructor data inductive holding its constructor with the
+field (marks transparent), so the write's path conditions hold there. -/
+theorem natAlong_node (r : DeclInfo) (x : Step) (hx : StepOk Γ r x) (ss : List Step) (f : Value → Value) :
+    ∀ (w : Value), (∀ n args, r = .ind n args → w.fitsInd n = true) → (∀ A, r = .ref A → w.refFits = true) →
+      w.anyAtom (arityBad Γ) = false → w.anyAtom (dataCtorBad Γ) = false →
+      (∀ c, stepV x w = some c → (Value.updAt f ss c).isSome → NatAlong dm C Γ ρ ψ ss c) →
+      (Value.updAt f (x :: ss) w).isSome → NatAlong dm C Γ ρ ψ (x :: ss) w
+  | .gloan l w, hf, hr, ha, hn, ih, hu => by
+    have e : stepV x (.gloan l w) = stepV x w := by cases x <;> rfl
+    rw [Value.anyAtom] at ha hn
+    simp only [Bool.or_eq_false_iff] at ha hn
+    have hu' : (Value.updAt f (x :: ss) w).isSome := by
+      simp only [Value.updAt, Option.isSome_map] at hu; exact hu
+    have := natAlong_node r x hx ss f w
+      (fun n args e => by have := hf n args e; simpa [Value.fitsInd] using this)
+      (fun A e => by have := hr A e; simpa [Value.refFits] using this) ha.2 hn.2
+      (fun c hc => ih c (by rw [e]; exact hc)) hu'
+    cases x <;> simpa [NatAlong] using this
+  | .borrow l w, hf, hr, _, _, ih, hu => by
+    cases x with
+    | deref =>
+      simp only [Value.updAt, Option.isSome_map] at hu
+      simp only [NatAlong]
+      exact ih w rfl hu
+    | proj i => obtain ⟨n, args, d, cn, fs, rfl, -⟩ := hx; simp [Value.fitsInd] at hf
+    | field g => obtain ⟨n, args, d, cn, fs, rfl, -⟩ := hx; simp [Value.fitsInd] at hf
+  | .ind ty c hh ps fs, hf, hr, ha, hn, ih, hu => by
+    cases x with
+    | deref => obtain ⟨A, rfl⟩ := hx; simp [Value.refFits] at hr
+    | proj i =>
+      obtain ⟨n, args, d, cn, fds, rfl, hd, hc, hi⟩ := hx
+      have hty := hf n args rfl
+      simp only [Value.fitsInd, beq_iff_eq] at hty; subst hty
+      obtain ⟨rfl, hl⟩ := arity_one hd hc ha
+      rw [Value.anyAtom] at hn; simp only [Bool.or_eq_false_iff] at hn
+      have hn1 := hn.1
+      simp only [dataCtorBad, hd, Bool.or_eq_false_iff, beq_eq_false_iff_ne, ne_eq] at hn1
+      simp only [NatAlong]
+      refine ⟨d, hd, hn1.1, hn1.2, fun w hw => ?_⟩
+      obtain ⟨-, w₁, w₁', hw₁, hu₁, -⟩ := updAt_ind_inv (Option.get_mem hu)
+      simp only [Step.fieldIdx] at hw hw₁
+      rw [hw] at hw₁; cases hw₁
+      exact ih w (by simpa [stepV] using hw) (by rw [hu₁]; rfl)
+    | field g =>
+      obtain ⟨n, args, d, cn, fds, rfl, hd, hc, hgt, hgc, hi⟩ := hx
+      have hty := hf n args rfl
+      simp only [Value.fitsInd, beq_iff_eq] at hty; subst hty
+      obtain ⟨rfl, hl⟩ := arity_one hd hc ha
+      rw [Value.anyAtom] at hn; simp only [Bool.or_eq_false_iff] at hn
+      have hn1 := hn.1
+      simp only [dataCtorBad, hd, Bool.or_eq_false_iff, beq_eq_false_iff_ne, ne_eq] at hn1
+      simp only [NatAlong]
+      refine ⟨d, hd, hn1.1, hn1.2, fun w hw => ?_⟩
+      obtain ⟨-, w₁, w₁', hw₁, hu₁, -⟩ := updAt_ind_inv (Option.get_mem hu)
+      simp only [Step.fieldIdx] at hw hw₁
+      rw [hw] at hw₁; cases hw₁
+      exact ih w (by simpa [stepV, hgt, hgc] using hw) (by rw [hu₁]; rfl)
+  | .bot, _, _, _, _, _, hu | .loan _, _, _, _, _, _, hu | .abs _, _, _, _, _, _, hu
+  | .sealed _, _, _, _, _, _, hu | .proof, _, _, _, _, _, hu => by
+    cases x <;> simp [Value.updAt] at hu
+  | .zero, hf, hr, _, _, _, _ | .succ _, hf, hr, _, _, _, _ | .unit, hf, hr, _, _, _, _
+  | .gfn _, hf, hr, _, _, _, _ | .clo .., hf, hr, _, _, _, _ | .tNat, hf, hr, _, _, _, _
+  | .tUnit, hf, hr, _, _, _, _ | .tEq .., hf, hr, _, _, _, _ | .tRef _, hf, hr, _, _, _, _
+  | .tPi .., hf, hr, _, _, _, _ | .sort _, hf, hr, _, _, _, _ | .tInd .., hf, hr, _, _, _, _ => by
+    cases x with
+    | deref => obtain ⟨A, rfl⟩ := hx; simp [Value.refFits] at hr
+    | proj i => obtain ⟨n, args, d, cn, fs, rfl, -⟩ := hx; simp [Value.fitsInd] at hf
+    | field g => obtain ⟨n, args, d, cn, fs, rfl, -⟩ := hx; simp [Value.fitsInd] at hf
+
+end
+
+/-- **`NatAlong` along a place at the grain** (the write of `⊥`'s path conditions, `mean_updAt_botS`):
+by the checker's typing of places at every prefix (V, R, A, N), where the write's path exists. -/
+theorem natAlong_grain (K : RunCtx) (ρ : Assignment) {st : MState} (hctx : CtxOk K ρ st) (ψ : Future)
+    (f : Value → Value) : ∀ (ss : List Step) (p : Place) (w : Value),
+      GrainOk K.D K.Γ (DecideScope.topReadings st) (Ochr.jdExtend p ss) → ckContent st.env p = some w →
+      (Value.updAt f ss w).isSome → NatAlong K.dm K.M K.Γ ρ ψ ss w
+  | [], _, _, _, _, _ => by simp [NatAlong]
+  | x :: ss, p, w, hgr, hw, hu => by
+    rw [jdExtend_cons] at hgr
+    have hst : StepOk K.Γ (K.D.placeDecl (DecideScope.topReadings st) p) x := by
+      apply hgr p x ss
+      · rw [jdExtend_steps, stepTo_steps]
+      · rw [jdExtend_steps, stepTo_steps]; simp
+    obtain ⟨root, hroot, hfr⟩ := ckContent_root hw
+    have hsub : ∀ P : Value → Bool, root.anyAtom P = false → w.anyAtom P = false := fun P h => by
+      cases e : w.anyAtom P
+      · rfl
+      · have := anyAtom_of_follow _ _ _ hfr e; rw [h] at this; cases this
+    refine natAlong_node K.dm K.M K.Γ ρ ψ _ x hst ss f w
+      (fun n args e => hctx.shapes.fits p w n args hw e (stepOk_ind_isSome hst e))
+      (fun A e => hctx.shapes.ref p w A hw e)
+      (hsub _ (hctx.shapes.arity root hroot)) (hsub _ (hctx.shapes.ctors root hroot)) ?_ hu
+    intro c hc huc
+    have hcc : ckContent st.env (p.stepTo x) = some c := by
+      rw [ckContent_snoc (stepTo_steps p x), hw, Option.bind_some, hc]
+    exact natAlong_grain K ρ hctx ψ f ss (p.stepTo x) c hgr hcc huc
+
 end Ochr.Meaning.Steps
