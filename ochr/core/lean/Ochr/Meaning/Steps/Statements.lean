@@ -472,6 +472,22 @@ in the checker's state, D20 item 2). Every read the reference run makes of its s
 future (docs/31 D29, point 3), so this is what pins the run. -/
 def RelF (φ : Future) (s : SState) (ψ : Future) : Prop := ∀ l, ¬ s.Live l → ψ l = φ l
 
+/-- The content type of the borrow `l`, read at its HOLDER (docs/31 D66): a binding's stored type,
+a parked temporary's recorded one (`SState.heldTy`). -/
+noncomputable def holderTy (s : SState) (l : Nat) : TyM :=
+  match s.holderOf l with
+  | some (.bind f i) => (s.tyAt (.bind f i)).m
+  | some (.temp _ _) => s.heldTy l
+  | none => TyM.err
+
+/-- **A typed future** for the reference state `s` (docs/31 D66): it gives each live label a whole
+member of its holder's content type. A future gives each borrow its FINAL content, which is a whole
+member of its type (the checker rejects an end over a moved or partly moved content, D53), so these
+are the futures that can occur; at the others the two runs may read a returned borrow differently
+(the checker raw, `callOf` decoded through the backward function, `Regress/ReturnedRead.lean`). -/
+def TypedLive (s : SState) (ψ : Future) : Prop :=
+  ∀ l, s.Live l → (ψ l).whole ∧ ψ l ∈ₛ[K.dm.read] holderTy s l
+
 /-- **The reference state `s` simulates the checker's state `st`** (docs/31 D29, point 4), for a
 reference run at the future `φ`, with the checker's labels renamed by `π`. -/
 structure Rel (π : Nat → Nat) (st : MState) (s : SState) : Prop where
@@ -487,7 +503,7 @@ structure Rel (π : Nat → Nat) (st : MState) (s : SState) : Prop where
   fresh : ∀ l, l < st.nextLoan → st.Occurs l → π l < s.nextLoan
   /-- the same meanings, holders and borrows in flight, at every future that leaves the live
   labels free -/
-  sim : SimEq π (RelF φ s) (MState.mean K.dm K.M K.Γ ρ st) s
+  sim : SimEq π (fun ψ => RelF φ s ψ ∧ TypedLive K s ψ) (MState.mean K.dm K.M K.Γ ρ st) s
   /-- the renaming is one to one on the checker's live labels -/
   inj : ∀ l l', liveLoan st.env l = true → liveLoan st.env l' = true → π l = π l' → l = l'
   /-- each live borrow is lent at the same places, in the same way (fill or loan), on both sides:
