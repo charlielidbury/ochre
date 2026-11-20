@@ -130,3 +130,33 @@ theorem callOfL_record.{u} (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C)
   exact ⟨_, rfl, by simp [SState.setHeldMem], by simp [SState.setHeldMem, SState.setHeldTy]⟩
 
 end Ochr.Meaning.Steps
+
+namespace Ochr.Meaning.Steps
+open Ochr Ochr.Meaning
+
+theorem takeLabel_nextLoan (s : SState) (l : Nat) : (s.takeLabel l).nextLoan = s.nextLoan := by
+  unfold SState.takeLabel
+  split
+  · next r _ => show (s.setAt r fun _ => .moved).nextLoan = s.nextLoan; cases r <;> rfl
+  · rfl
+
+theorem foldl_takeLabel_nextLoan (ls : List Nat) (s : SState) : (ls.foldl SState.takeLabel s).nextLoan = s.nextLoan := by
+  induction ls generalizing s with
+  | nil => rfl
+  | cons l ls ih => simp only [List.foldl_cons]; rw [ih, takeLabel_nextLoan]
+
+/-- **A borrow-returning call's result is a fresh label** (`callOf`'s `.ref` row): the state's
+counter, so no label issued before the call. -/
+theorem callOfL_ref_label.{u} (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C) (fv : Sem) (args : List Res)
+    {s s' : SState} {res : Res} (h : callOfL Lv t fv args s = some (res, s'))
+    {U : Type u} {c : Lv.Code U} {fwd : U} {back : U → List Sem}
+    (happ : applyFnL Lv t fv (args.map (·.1)) = some (.ref U c fwd back)) :
+    res.2.label = some s.nextLoan := by
+  unfold callOfL at h
+  dsimp only at h
+  rw [happ] at h
+  simp only [SState.freshLoan, Option.some.injEq] at h
+  cases h
+  exact congrArg some (foldl_takeLabel_nextLoan _ _)
+
+end Ochr.Meaning.Steps
