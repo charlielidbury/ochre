@@ -267,30 +267,11 @@ def dataCtorBad (Γ : List IndDecl) : Value → Bool
     | none => true
   | _ => false
 
-/-- The content of the borrow `l`, where some position holds it (the sweep's `holderContent`). -/
-def holderContent (env : Env) (l : Nat) : Option Value :=
-  (allPos env).findSome? fun p => match valAt env p with
-    | .borrow m w => if m == l then some w else none
-    | _ => none
-
 /-- The checker's syntactic test that a type is a proposition, as the sweep's (D⋆) asks it: some
 run of `Decide.sortOf` on it gives `0`, from a state the same as `st` up to what no decision reads
 (`SameDec`). -/
 def SortIsProp (st : MState) (T : Value) : Prop :=
   ∃ st₀ fuel b st', SameDec st₀ st ∧ Runs (Ochr.sortOf fuel T) st₀ b 0 st'
-
-/-- What at the place `p` could mean `⋆` though it is not `⋆` (docs/31 D54, the sweep's
-`meansProof`, mirrored): an unknown of a proposition; a sealed program whose computed type
-(`Machine.placeType?`) is a proposition; a loan whose borrow holds `⋆` or an unknown of a
-proposition; any of these under a mark. -/
-def MeansProof (st : MState) (p : Place) : Value → Prop
-  | .gloan _ w => MeansProof st p w
-  | .abs σ => SortIsProp st (st.absTy.getD σ .bot)
-  | .sealed _ => ∃ st₀ fuel b T st', SameDec st₀ st ∧ Runs (Ochr.placeType? fuel p) st₀ b (some T) st' ∧
-      SortIsProp st T
-  | .loan l => holderContent st.env l = some .proof ∨
-      ∃ σ, holderContent st.env l = some (.abs σ) ∧ SortIsProp st (st.absTy.getD σ .bot)
-  | _ => False
 
 /-- (Rd), a clause of `ShapeFacts` (the lead's decision, docs/31 D78): an unknown whose frozen reading is `Sort l` (D96) has the type `Sort l`.
 `freshAbsR` freezes `valTypeDecl` of the type it pushes, which is `.sort l` exactly at `Sort l`;
@@ -305,8 +286,9 @@ that exists, by its declared reading (`Decisions.placeDecl` at the top frame's r
 declared an inductive of the declarations holds a constructor value of it or a stand-in (V); every
 loan and mark anywhere in Ω is of a live borrow (L); every constructor value is of a data
 declaration, not named `Nat` (N); a place below a variable holding `⋆` is declared a copy type
-(C⋆); every η record is top-hint-free (Hη); a place of a non-copy reading holds nothing that could
-mean `⋆` but is not `⋆` (D⋆). What the drop's reading of a place and its write need. Syntactic typing, which `Good`'s membership does not give. Read off the checker and swept;
+(C⋆); every η record is top-hint-free (Hη); a place of a non-copy reading holding data has a
+computed type that is no proposition (D⋆T). What the drop's reading of a place and its write
+need. Syntactic typing, which `Good`'s membership does not give. Read off the checker and swept;
 NOT proved preserved: every step's `CtxOk` conclusion owes it. (U), (R), (P), (A) and (M), which
 `movedPlace`'s exits needed, went with main's D94, which made those exits a rejection. (Ty), a
 variable holding a type value is declared a sort, went with D59: the write of `⊥` over a type
@@ -329,12 +311,18 @@ structure ShapeFacts (D : Decisions) (Γ : List IndDecl) (st : MState) : Prop wh
   /-- (Hη) every η record is top-hint-free (a constructor value of fresh unknowns recording its
   parameters, `ctorRefinement`), so it means its unknown at every hint (docs/31 D55) -/
   etaHint : ∀ σ r, (σ, r) ∈ st.etaRefs → r.topHintFree Γ = true
-  /-- (D⋆) a place in scope holding an unknown or a sealed program of a proposition, or a loan whose
-  borrow holds `⋆` or an unknown of a proposition (through marks), is declared a copy type (docs/31
-  D54: the syntactic shadow of `dataMean_ne_proof` and `access_root_not_proof`; the sweep's
-  `dataNotProof`, swept with no violation; a clause since the slice, for the lead to review) -/
-  dataNotProof : ∀ p v, ckContent st.env p = some v → MeansProof st p v →
-    D.copy (D.placeDecl (DecideScope.topReadings st) p) = true
+  /-- (D⋆T) a place in scope whose declared reading is not a copy and which holds neither `⋆` nor
+  `⊥` has a computed type (`Machine.placeType?`) that no run of the checker's sort test calls a
+  proposition (`SortIsProp`). The slice's replacement for the per-value (D⋆) (which missed
+  closures, a function's own binding and borrows, and needed one alignment per kind of value):
+  with the typing of reads and the soundness of `sortOf`, it gives `dataMean_ne_proof` for every
+  value at once. True only since main's D100 (every proposition, a Π into proofs included, is a
+  copy). The sweep's `typeNotProp`, mirrored (it runs `placeType?` and `sortOf` at the state with
+  fixed fuel; this asks every run from a state the same up to the move log and the refinements). -/
+  typeNotProp : ∀ p v, ckContent st.env p = some v → v ≠ .proof → v ≠ .bot →
+    D.copy (D.placeDecl (DecideScope.topReadings st) p) = false →
+    ∀ st₀ fuel b T st₁, SameDec st₀ st → Runs (Ochr.placeType? fuel p) st₀ b (some T) st₁ →
+      ¬ SortIsProp st T
   /-- (Rd) an unknown read as `Sort l` has the type `Sort l` (docs/31 D77, D78): with `Good` and
   `CtxOk`, what makes the checker's `sortOf` sound (`sortOf_sound_stmt`) -/
   readingsSorted : ReadingsSorted st
@@ -484,23 +472,6 @@ theorem SortIsProp.of_sameDec {st st' : MState} (h : SameDec st' st) {T : Value}
   obtain ⟨st₀, fuel, b, st₁, h₀, hr⟩ := hT
   exact ⟨st₀, fuel, b, st₁, h₀.trans h, hr⟩
 
-theorem MeansProof.of_sameDec {st st' : MState} (h : SameDec st' st) (he : st'.env = st.env)
-    (ha : st'.absTy = st.absTy) (p : Place) : ∀ v, MeansProof st' p v → MeansProof st p v
-  | .gloan _ w, hm => MeansProof.of_sameDec h he ha p w hm
-  | .abs σ, hm => by simp only [MeansProof] at hm ⊢; rw [← ha]; exact hm.of_sameDec h
-  | .sealed _, hm => by
-    obtain ⟨st₀, fuel, b, T, st₁, h₀, hr, hT⟩ := hm
-    exact ⟨st₀, fuel, b, T, st₁, h₀.trans h, hr, hT.of_sameDec h⟩
-  | .loan l, hm => by
-    simp only [MeansProof] at hm ⊢
-    rw [← he, ← ha]
-    rcases hm with hm | ⟨σ, h1, h2⟩
-    · exact .inl hm
-    · exact .inr ⟨σ, h1, h2.of_sameDec h⟩
-  | .zero, hm | .succ _, hm | .unit, hm | .gfn _, hm | .clo _ _ _, hm | .borrow _ _, hm | .bot, hm
-  | .proof, hm | .tNat, hm | .tUnit, hm | .tEq _ _ _, hm | .tRef _, hm | .tPi _ _ _, hm | .sort _, hm
-  | .ind _ _ _ _ _, hm | .tInd _ _, hm => hm.elim
-
 /-- **The typing of places stays across a change of what no decision reads**, the environment and
 the unknowns' types kept. -/
 theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MState} (hf : ShapeFacts D Γ st)
@@ -514,8 +485,9 @@ theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MSta
   · rw [he]; exact hf.ctors
   · intro p hne hp; rw [he] at hp; rw [e1]; exact hf.proofCopy p hne hp
   · rw [hη]; exact hf.etaHint
-  · intro p v hp hm; rw [he] at hp; rw [e1]
-    exact hf.dataNotProof p v hp (MeansProof.of_sameDec h he ha p v hm)
+  · intro p v hp hv1 hv2 hc st₀ fuel b T st₁ h₀ hr hsp
+    rw [he] at hp; rw [e1] at hc
+    exact hf.typeNotProp p v hp hv1 hv2 hc st₀ fuel b T st₁ (h₀.trans h) hr (hsp.of_sameDec h)
   · have hd : st'.absDecl = st.absDecl := by
       have := congrArg MState.absDecl h
       simpa using this
