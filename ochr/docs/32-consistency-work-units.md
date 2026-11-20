@@ -105,6 +105,8 @@ Changes to the language or the checker made in service of the proof. Each stays 
 - **A stuck program whose text still holds a borrow's hole is never run** (D97; on main since 2026-11-20 at 2222d517). It stays as it is until its last hole is filled, and runs then. Nothing can observe a lent place's content until the borrow ends. No verdict, message or location changed; the build is about 1 percent faster. It removes the hardest case from the proof of calls: a nested run that writes a hole whose borrow only the outer state holds.
 - **A borrow never ends over moved content, inside an `Id` observation as anywhere** (D98; on main since 2026-11-20). The checker had an unwritten exception letting an `Id`'s observation end a borrow whose content a side had moved out. It is removed, which is what RULES and the paper already said. Nine rows go from accepted to rejected, all of one shape (both sides move out through a borrow and never put it back, as in `Id(Unit, (let a = *y; ()), (let b = *y; ()))`); the programmer clones or refills instead. No case study or book example relied on it; Rust rejects each such side.
 
+- **A call's returned borrow is always a fresh one** (D99; on main since 2026-11-20 at 874584e1). When a function returned its own borrow parameter and the call ran, the result kept the argument's label, where a stuck call and the model's application of a function both give a fresh one. Now all three agree. No verdict, message or location changed; it is a renaming of labels.
+
 Acknowledged: borrow ends become a decision every run shares (D90; proposed by the user and acknowledged 2026-11-19).
 
 ## Design questions to ask before each risky unit
