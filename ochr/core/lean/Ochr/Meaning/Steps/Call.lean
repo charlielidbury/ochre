@@ -51,6 +51,122 @@ meaning is a member of its Π-type. -/
 theorem recCheck_sound (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) : recCheck_sound_stmt K ρ φ (fuel + 1) := by
   sorry
 
+/-! ### The obligations of the call steps (docs/31 D62)
+
+The assemblies (`callFn_step`, `runBody_step`, `closeCall_step`, `Subst.nfSealed_step`) are not yet
+written; the obligations below are the risk-bearing leaves they rest on, stated first. The
+bookkeeping leaves (the frame pushed and popped against `CallRef.callFrame`/`popCallFrame`, the
+lending marks and their end, the call's type and the body's and arguments' hints, η at `Unit`,
+`catchStuck` restoring the state, the class of a call that is neither a statement nor erased) are
+named in docs/31 D62 and get their statements with the assemblies. -/
+
+/-- **The in-place run of a known callee's body is the application of its meaning** (the
+reference alone; docs/31 D62, risk-bearing). `runCallRef` pushes the callee's frame on the caller's
+state, holds each borrow parameter at its argument's label, runs the body, ends at the pop every
+borrow the frame holds or the body made but the returned one, and lends that one where its borrow
+arguments were lent; `callOf` applies the closure's meaning, built from the body's run in the
+closure's own frame from the label counter 0, each borrow parameter at a fresh label read back
+through a cell, and fixes each lent place's final content. They give the same result (meaning and
+code), and the states after relate every checker state alike, the result's label renamed.
+
+What it rests on, none proved: the reference's run reads and writes only the top frame and the
+sites of the labels it holds (the frame property of `run`); the run does not depend on its starting
+label counter (`Lemmas.run_counter_indep`, open); a cell read after the frame's ends is the holder's
+content at its end, which `endLabel` fixes in the caller's places; for a recursive callee, the
+closure's meaning applied at the arguments is the body's run with `self` the closure itself, which
+needs every recursive call to decrease ([Rec], `hacc`; `recCheck_sound_stmt`), and whose statement
+needs the `.fix` clause's stages named outside the clause. -/
+theorem callOf_inPlace (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (fres : Res)
+    (as : List Res) (s s₁ : SState) (r₁ : Res)
+    (hf : run K ρ φ (.plain .err) (.val (.clo cs t rd)) s = some (fres, s))
+    (hacc : ∃ st fuel st', Runs (Ochr.checkFix fuel (.clo cs t rd) [] t) st fuel () st')
+    (hin : runCallRef K ρ φ fres cs t rd as s = some (r₁, s₁)) :
+    ∃ (r : Res) (s' : SState) (τ : Nat → Nat), callOf K.dm.read fres as s = some (r, s') ∧ r.1 = r₁.1 ∧ r.2.m = r₁.2.m ∧
+      (∀ l, l < s.nextLoan → τ l = l) ∧ r.2.label = r₁.2.label.map τ ∧
+      ∀ (st : MState) (π : Nat → Nat), Rel K ρ φ π st s₁ → Rel K ρ φ (τ ∘ π) st s' := by
+  sorry
+
+/-- **The nested run of a re-normalised sealed program** (`nfSealed`'s `eval fuel' false t` on the
+state with an empty environment; docs/31 D62, risk-bearing; docs/31 D20 item 3). Its result means
+the sealed program, under an assignment extending `ρ` at the unknowns it creates, and the state
+`restoreKeep` makes of it is `Good`.
+
+The induction hypothesis does not apply as stated: once the nested run binds or writes one of the
+program's holes (`loan_l` of a borrow outside the nested environment; a fill's `*r := loan_k` does
+at once), its state holds a loan outside any sealed program whose borrow it does not hold, which
+(WF2) forbids, and a future typed for it (`TypedFuture`) says nothing at that label, so a binding
+holding the hole has no member. The invariant must type the free labels of a nested run, as `GoodF`
+types the labels in flight: with the holes' content types from the outer state (each hole is the
+loan of a live borrow there, `hholes`), every statement's `Good` becomes that relative form, and
+the sweep must check the relative clauses on the nested states first. Not attempted. -/
+theorem nestedRun_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel) (st st₁ : MState) (t : Term)
+    (v : Value) (T? : Option Value) (hint : TyS)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hholes : ∀ l ∈ t.loans, liveLoan st.env l = true) (htf : Term.tailHintFree K.Γ t = true)
+    (hok : ∀ ψ, (runT K ρ ψ false hint t (emptyState 0)).isSome)
+    (bh : Nat) (h : Runs (Ochr.eval fuel false t none)
+      { st with env := #[{}], obsFrame := none, depth := st.depth + 1 } bh (v, T?) st₁) :
+    ∃ ρ', Extends st ρ ρ' ∧ (∀ ψ, meanV K ρ' ψ hint v = meanV K ρ ψ hint (.sealed t)) ∧
+      ∀ st₂, Runs (Ochr.restoreKeep st) st₁ 0 () st₂ → Good K.dm K.M K.Γ ρ' st₂ := by
+  sorry
+
+/-! The text `closeCall` seals, as its local definitions build it (`wrapL`, `C`, `cellTerm`,
+`cell`): the borrow arguments `(i, ℓᵢ, uᵢ)`, each content in a cell `cⱼ`, the call with `&cⱼ` for
+each borrow argument and the value for the others, its head marked. -/
+
+/-- The borrow arguments, with their positions, labels and contents. -/
+def closeBs (ws : Array Value) : List (Nat × Nat × Value) :=
+  (ws.toList.zipIdx).filterMap fun (w, i) => match w with
+    | .borrow l u => some (i, l, u)
+    | _ => none
+
+/-- Argument `i` of the sealed call under `d` more binders: `&cⱼ` or the value. -/
+def closeArgT (ws : Array Value) (d i : Nat) : Term :=
+  match (closeBs ws).findIdx? (·.1 == i) with
+  | some j => .borrow (.var (d + (closeBs ws).length - 1 - j))
+  | none => .val ws[i]!
+
+/-- The sealed call, its head marked (C5). -/
+def closeC (fv : Value) (ws : Array Value) (d : Nat) : Term :=
+  .call (.val fv) ((List.range ws.size).map (closeArgT ws d)) true
+
+/-- Cell `cⱼ`'s initialiser: the content, at its declared type where the call has it (D82). -/
+def closeCell (tys : Array (Option Value)) (i : Nat) (u : Value) : Term :=
+  match tys[i]? with
+  | some (some (.tRef T)) => .ascribe (.val u) (.val T)
+  | _ => .val u
+
+/-- The cells bound around `body`. -/
+def closeWrap (ws : Array Value) (tys : Array (Option Value)) (body : Term) : Term :=
+  ((closeBs ws).zipIdx).foldr (fun ((i, _, u), j) acc => .letIn ⟨s!"c{j + 1}"⟩ (closeCell tys i u) acc) body
+
+/-- Cell `cⱼ` read under `d` more binders. -/
+def closeCellAt (ws : Array Value) (d j : Nat) : Term := .place (.var (d + (closeBs ws).length - 1 - j))
+
+/-- **[Close]'s sealed programs mean the reference's call** (borrow-free codomain; docs/31 D62,
+risk-bearing): the result program `⌈L; C⌉` means `callOf`'s result, and each fill `⌈L; C; peek cⱼ⌉`
+means what `callOf` fixes its borrow argument's label to. Both run from the empty state: the cells
+bound to the contents, `&cⱼ` at fresh labels, the call by the same `callOf` on the same meanings
+(the head and the other arguments are loan-free values, which mean the same in every state), and
+`peek cⱼ` reads the cell after the call fixed its label. Attacked on one instance before
+(`Attack/CloseCall*.lean`, the `&T` row with one borrow argument: both halves proved); the general
+form, and the `&T` row (the result `borrow_k ⌈L; let r = C; peek *r⌉`, the fills
+`⌈L; let r = C; *r := loan_k; peek cⱼ⌉`, against `callOf`'s forward value and backward function at
+the final content of `k`), are not attempted. -/
+theorem closeCall_means_data (fv : Value) (ws : Array Value) (tys : Array (Option Value)) (fres : Res)
+    (as : List Res) (s s' : SState) (r : Res)
+    (hf : ∀ s₀, run K ρ φ (.plain .err) (.val fv) s₀ = some (fres, s₀))
+    (has : ArgsAgree K ρ φ id ws as)
+    (hlf : ∀ w ∈ ws.toList, ∀ l : Nat, (match w with | .borrow _ u => u | u => u : Value).hasLoan l = false)
+    (hdata : ∃ B, fres.2.m.codAt? K.dm.read (as.map (·.1)) = some (false, B))
+    (hcall : callOf K.dm.read fres as s = some (r, s')) :
+    meanV K ρ φ r.2 (.sealed (closeWrap ws tys (closeC fv ws 0))) = r.1 ∧
+    ∃ fx : List (Nat × Sem), (∀ y ψ, s'.valAt y ψ = s.valAt y (ψ.updList fx)) ∧
+      ∀ (j i l : Nat) (u : Value), (closeBs ws)[j]? = some (i, l, u) → ∀ hint,
+        (l, meanV K ρ φ hint (.sealed (closeWrap ws tys (.seq (closeC fv ws 0)
+          (.prim "peek" [closeCellAt ws 0 j]))))) ∈ fx := by
+  sorry
+
 end
 
 end Ochr.Meaning.Steps
