@@ -17,6 +17,11 @@ the constructor has, `*` through a borrow type, `Steps.GrainOk`) is not what `jd
 The checker is the more conservative side (it drops more), so nothing is accepted that should not
 be: `BadIdxRead` and `BadDerefRead` are rejected because `c.0` was dropped, where `GoodIdxRead` (a
 well-typed move of `(c.0).0`) is accepted.
+
+Main's D94 (8035f7ed) resolved it in the checker: where `movedPlace` cannot make the place exist
+and its longest existing prefix holds neither `⊥` nor `⋆`, the definition is rejected ("[Join] an
+arm of the match moves c.0.5, which does not exist"). All three programs are now rejected for that
+reason (main's `ReturnedBorrows.JoinPlaces` has them too); `GoodIdxRead` is accepted as before.
 -/
 
 open Ochr.Test
@@ -24,8 +29,8 @@ open Ochr.Test
 ochr UnrunArmPlace uses Nats, Lists {
   inductive In := MkIn(a : List(Nat), b : List(Nat))
   inductive Out := MkOut(i : In, z : List(Nat))
-  -- accepted: the join drops `c.0` for `(c.0).5`, which nothing reads afterwards
-  def BadIdx (xs : List(Nat)) (ys : List(Nat)) (zs : List(Nat)) : Unit := (
+  -- rejected since main's D94: the arm moves a place that does not exist
+  reject def BadIdx (xs : List(Nat)) (ys : List(Nat)) (zs : List(Nat)) : Unit := (
     let k = Z;
     let c = MkOut(MkIn(xs, ys), zs);
     match k { Z => (), S m => (let a = (c.0).5; ()) };
