@@ -20,11 +20,6 @@ namespace Ochr.Meaning.Steps
 
 open Ochr.Meaning
 
-/-- A place's parent (`Machine.movedPlace`'s local `parent`). -/
-def parentOf : Place → Option Place
-  | .deref p | .proj _ p | .field _ p => some p
-  | .var _ => none
-
 /-- `Machine.movedPlace` after the parent is found, a copy of its code (the two are tied by
 `movedPlace_succ_eq`, which is `rfl`: a change to the checker's function breaks the build here). -/
 def mpTail (fuel : Nat) (q p : Place) : M Place := do
@@ -178,20 +173,6 @@ theorem Runs.bind_assoc_inv {α β γ : Type} {x : M α} {y : α → M β} {k : 
 
 /-! ## Places and their parents -/
 
-theorem steps_parent {q p : Place} (h : parentOf q = some p) :
-    ∃ x, q.steps = (p.steps.1, p.steps.2 ++ [x]) ∧ ((x = .deref) ∨ (∃ i, x = .proj i) ∨ ∃ g, x = .field g) := by
-  cases q with
-  | var i => simp [parentOf] at h
-  | deref p' =>
-    simp only [parentOf, Option.some.injEq] at h; subst h
-    exact ⟨.deref, by simp only [Place.steps], .inl rfl⟩
-  | proj j p' =>
-    simp only [parentOf, Option.some.injEq] at h; subst h
-    exact ⟨.proj j, by simp only [Place.steps], .inr (.inl ⟨j, rfl⟩)⟩
-  | field g p' =>
-    simp only [parentOf, Option.some.injEq] at h; subst h
-    exact ⟨.field g, by simp only [Place.steps], .inr (.inr ⟨g, rfl⟩)⟩
-
 theorem resolve_parent {s : SState} {q p : Place} {pos : Pos} (hpar : parentOf q = some p)
     (h : resolve s q = some (pos, q.steps.2)) : resolve s p = some (pos, p.steps.2) := by
   obtain ⟨x, hx, -⟩ := steps_parent hpar
@@ -201,72 +182,6 @@ theorem resolve_parent {s : SState} {q p : Place} {pos : Pos} (hpar : parentOf q
   · simp [hv] at h
   · simp only [hv, Option.map_some, Option.some.injEq, Prod.mk.injEq] at h ⊢
     exact ⟨h.1, trivial⟩
-
-theorem grain_parent {D : Decisions} {Γ : List IndDecl} {sc : List DeclInfo} {q p : Place}
-    (hpar : parentOf q = some p) (h : GrainOk D Γ sc q) : GrainOk D Γ sc p := by
-  obtain ⟨x, hx, -⟩ := steps_parent hpar
-  intro p' y rest h1 h2
-  apply h p' y (rest ++ [x])
-  · rw [h1, hx]
-  · rw [hx]; simp [h2]
-
-/-- The grain at the parent step itself. -/
-theorem grain_step {D : Decisions} {Γ : List IndDecl} {sc : List DeclInfo} {q p : Place} {x : Step}
-    (hx : q.steps = (p.steps.1, p.steps.2 ++ [x])) (h : GrainOk D Γ sc q) : StepOk Γ (D.placeDecl sc p) x :=
-  h p x [] (by rw [hx]) (by rw [hx])
-
-/-- The reference's declared readings in scope, as a list expression. -/
-theorem scope_decls (s : SState) : scopeOf s = ((s.env.getLast?.map fun fr => fr.binds.map (·.decl)).getD []).reverse := by
-  unfold scopeOf; cases s.env.getLast? <;> rfl
-
-/-- **The reference's readings in scope are the checker's top frame's** (`Rel`'s skeleton): the
-scope `GrainOk` and the aligned decisions are read at is the one `ShapeFacts` is stated at. -/
-theorem rel_scopeOf (K : RunCtx) (ρ : Assignment) (φ : Future) {st : MState} {s : SState} {π : Nat → Nat}
-    (hs : Rel K ρ φ π st s) : scopeOf s = DecideScope.topReadings st := by
-  have hk := congrArg (fun l => (l.getLast?).map fun bs => bs.map fun x : TyM × Option (List PiParam × PiOut) × Option (String × List Sem) × DeclInfo => x.2.2.2) hs.skel
-  simp only [List.getLast?_map, Option.map_map, Function.comp_def, List.map_map] at hk
-  rw [scope_decls]
-  unfold DecideScope.topReadings
-  have e2 : ((SM' K ρ st).env.getLast?.map fun fr => fr.binds.map (·.decl)) = st.env.back?.map (·.binds.toList.map (·.decl)) := by
-    simp only [SM', MState.sstate]
-    rw [List.getLast?_map, Option.map_map]
-    have hf : ∀ (l : List Frame), (l.zipIdx).getLast?.map Prod.fst = l.getLast? := fun l => by
-      rw [← List.getLast?_map]; simp
-    have e3 : Array.back? st.env = st.env.toList.getLast? := by simp [Array.back?, List.getLast?_eq_getElem?]
-    rw [e3, ← hf st.env.toList, Option.map_map]
-    congr 1
-    funext x
-    simp only [Function.comp_def, List.map_map]
-    have hz : ∀ (l : List Binding), l.zipIdx.map (fun y => y.1.decl) = l.map (·.decl) := fun l => by
-      rw [show (fun y : Binding × Nat => y.1.decl) = (fun b : Binding => b.decl) ∘ Prod.fst from rfl, ← List.map_map]
-      simp
-    exact hz _
-  simp only [bindSkel] at hk
-  rw [← e2, hk]
-
-/-- The content of a place one step below another. -/
-theorem ckContent_snoc {env : Env} {q p : Place} {x : Step} (hx : q.steps = (p.steps.1, p.steps.2 ++ [x])) :
-    ckContent env q = (ckContent env p).bind (stepV x) := by
-  unfold ckContent
-  rw [hx]
-  cases ckVarPos env p.steps.1 with
-  | none => rfl
-  | some pos =>
-    simp only [Option.bind_some]
-    rw [follow_append]
-    cases (valAt env pos).follow p.steps.2 with
-    | none => rfl
-    | some w => simp only [Option.bind_some, Value.follow]; cases stepV x w <;> rfl
-
-/-- A place's content is reached from a value of Ω. -/
-theorem ckContent_root {env : Env} {p : Place} {v : Value} (h : ckContent env p = some v) :
-    ∃ root ∈ Env.values env, root.follow p.steps.2 = some v := by
-  unfold ckContent at h
-  cases hv : ckVarPos env p.steps.1 with
-  | none => simp [hv] at h
-  | some pos =>
-    rw [hv, Option.bind_some] at h
-    exact ⟨valAt env pos, List.mem_map.mpr ⟨pos, ckVarPos_mem hv, rfl⟩, h⟩
 
 theorem lentPrefix_snoc (s : SState) (pos : Pos) (steps : List Step) (x : Step) (ψ : List Step)
     (h : lentPrefix s pos steps = some ψ) : lentPrefix s pos (steps ++ [x]) = some ψ := by
@@ -709,19 +624,6 @@ theorem exit_sealed (fuel : Nat) (st st' : MState) (s : SState) (π : Nat → Na
     obtain ⟨n, args, d, cn, fs, hr, hd, hc, -⟩ := hst
     obtain ⟨ps, hps⟩ := hctx.shapes.placeType st rfl fuel p t n args T? b st' hp hr (by simp [hd]) h
     exact ⟨n, ps, d, hps, hctx.inds ▸ hd, by simp [hc]⟩
-
-/-- A constructor value of a declared one-constructor inductive with no arity fault is that
-constructor's, with its fields. -/
-theorem arity_one {Γ : List IndDecl} {n : String} {d : IndDecl} {cn} {fs} {c : Nat} {hh : Hint}
-    {ps fs' : List Value} (hd : Γ.find? (·.name == n) = some d) (hc : d.ctors = [(cn, fs)])
-    (har : (Value.ind n c hh ps fs').anyAtom (arityBad Γ) = false) : c = 0 ∧ fs'.length = fs.length := by
-  rw [Value.anyAtom] at har
-  simp only [Bool.or_eq_false_iff] at har
-  have h1 := har.1
-  simp only [arityBad, hd, hc] at h1
-  rcases c with _ | c
-  · simp at h1; exact ⟨rfl, h1⟩
-  · simp at h1
 
 /-- **The last exit at a place still missing holds `⊥` or `⋆`**: a parent with no live fill, no
 unknown and no sealed program, through which the place does not exist, is by the checker's typing

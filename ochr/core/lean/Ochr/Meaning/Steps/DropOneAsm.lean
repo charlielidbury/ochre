@@ -80,26 +80,6 @@ theorem botWrite_good (st : MState) (pos : Pos) (steps : List Step) (v' : Value)
     Good K.dm K.M K.Γ ρ { st with env := Env.setAtE st.env pos v' } := by
   sorry
 
-theorem ckVarPos_mem {env : Env} {i : Nat} {pos : Pos} (h : ckVarPos env i = some pos) : pos ∈ allPos env := by
-  unfold ckVarPos at h
-  split at h
-  · rename_i hi
-    simp only [Option.some.injEq] at h
-    subst h
-    have hne : env.size ≠ 0 := by
-      intro h0
-      have hd : env[env.size - 1]! = (default : Frame) := by simp [h0]
-      rw [hd] at hi
-      have : (default : Frame).binds.size = 0 := rfl
-      omega
-    have hf : env[env.size - 1]? = some env[env.size - 1]! := by
-      rw [Array.getElem?_eq_getElem (by omega), getElem!_pos env (env.size - 1) (by omega)]
-    generalize hfr : env[env.size - 1]! = fr at hi hf
-    have hb : fr.binds[fr.binds.size - 1 - i]? = some fr.binds[fr.binds.size - 1 - i]! := by
-      rw [Array.getElem?_eq_getElem (by omega), getElem!_pos _ _ (by omega)]
-    exact bind_mem_allPos env _ _ _ _ hf hb
-  · cases h
-
 /-- A borrow held at a position of Ω is live. -/
 theorem liveLoan_of_holder {env : Env} {pos : Pos} {l : Nat} {w : Value} (hp : pos ∈ allPos env)
     (h : valAt env pos = .borrow l w) : liveLoan env l = true := by
@@ -185,18 +165,15 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
       · exact lentPrefix_none_of_proof K ρ φ st s π q pos hg hs hres hcopy hn
     have hpre : accessLentPrefix pos q.steps.2 s = s := by simp [accessLentPrefix, hlp]
     rw [hpre]
-    obtain ⟨cbot, cproof⟩ := content_follow K ρ φ st s π q pos hg hs hres
-    rcases hn with hn | hn
-    · obtain ⟨T, hT⟩ := cbot hn
-      unfold dropAt
-      split
-      · next l h1 h2 => rw [hnb _ hn (.inl rfl) h1] at h2; cases h2
-      · rw [hT]; exact ⟨hs, hg⟩
-    · obtain ⟨T, hT⟩ := cproof hn
-      unfold dropAt
-      split
-      · next l h1 h2 => rw [hnb _ hn (.inr rfl) h1] at h2; cases h2
-      · rw [hT]; exact ⟨hs, hg⟩
+    obtain ⟨c, hn, hcb⟩ : ∃ c, (valAt st.env pos).follow q.steps.2 = some c ∧ (c = .bot ∨ c = .proof) := by
+      rcases hn with hn | hn
+      · exact ⟨_, hn, .inl rfl⟩
+      · exact ⟨_, hn, .inr rfl⟩
+    obtain ⟨x, T, hT, hx⟩ := content_follow K ρ φ st s π q pos hg hctx hs hck hgrain c hn hcb
+    unfold dropAt
+    split
+    · next l h1 h2 => rw [hnb _ hn hcb h1] at h2; cases h2
+    · rw [hT]; rcases hx with rfl | rfl <;> exact ⟨hs, hg⟩
   · -- a borrow at a root: both end it
     have hsteps := follow_borrow_root hg.2.2.1 hp hbw
     have hval : valAt st.env pos = .borrow l w' := by

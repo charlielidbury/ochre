@@ -4,6 +4,7 @@ import Ochr.Meaning.SitesWrite
 import Ochr.Meaning.RelendComm
 import Ochr.Meaning.AccessAbsorb
 import Ochr.Meaning.SitesFollow
+import Ochr.Meaning.Steps.PlaceTyping
 
 /-!
 # The drop of one place at the join: what `dropOne_step` rests on (docs/31 D30, D31; task C)
@@ -419,19 +420,63 @@ theorem lentPrefix_none_of_proof (st : MState) (s : SState) (π : Nat → Nat) (
     lentPrefix s pos q.steps.2 = none := by
   sorry
 
-/-- **What the checker's content says of the reference's `follow`** at the dropped place, after
-the access: a `⊥` reads `moved`, a `⋆` reads `proof` (L4: a proof in Ω is `⋆`; the relation's
-readings at the closed future). As first stated it also claimed the converses and that a place
-missing on one side is missing on the other; that is false under a sealed program or an unknown,
-whose meaning has the field the checker cannot follow (the case `movedPlace` refines), and it was
-never used, so it is removed. Open: not tried. -/
+/-- The closed future changes only the live labels. -/
+theorem closedFuture_nonlive (s : SState) (φ : Future) {l : Nat} (hl : l ∉ s.liveLabels) :
+    s.closedFuture φ l = φ l := by
+  have hpass : ∀ ψ : Future, s.cfPass ψ l = ψ l := by
+    intro ψ
+    unfold SState.cfPass
+    have : ∀ (ls : List Nat) (ψ : Future), l ∉ ls → (ls.foldl (fun ψ l' =>
+        match s.holderOf l' with
+        | some r => ψ.upd l' (s.valAt r ψ)
+        | none => ψ) ψ) l = ψ l := by
+      intro ls
+      induction ls with
+      | nil => intro ψ _; rfl
+      | cons a t ih =>
+        intro ψ hn
+        simp only [List.foldl_cons]
+        rw [ih _ (fun h => hn (List.mem_cons_of_mem _ h))]
+        have hne : l ≠ a := fun e => hn (e ▸ List.mem_cons_self ..)
+        cases hh : s.holderOf a <;> simp [Future.upd, hne]
+    exact this _ ψ hl
+  rw [SState.closedFuture_eq]
+  generalize List.range s.liveLabels.length = rs
+  induction rs generalizing φ with
+  | nil => rfl
+  | cons a t ih => simp only [List.foldl_cons]; rw [ih, hpass]
+
+/-- **What the checker's content says of the reference's `follow`** at the dropped place: a `⊥`
+or a `⋆` reads `moved` or `⋆` (a place inside a proof reads `⋆` whatever the checker holds there).
+PROVED (docs/31 D44) from the checker's typing of places along the join's grain (`followMean`):
+the reference's reading of a place at the grain is the meaning of the checker's value there, or `⋆`.
+As first stated it asked `moved` exactly of a `⊥`, false inside a value of a `Prop`-sorted type
+(whose meaning is `⋆` whatever its fields hold), where the reference's drop does nothing too; it
+also lacked the grain and the typing, without which a step of the reference's reading need not be
+the checker's (a constructor of an undeclared type means `err`). -/
 theorem content_follow (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos)
-    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2)) :
-    ((valAt st.env pos).follow q.steps.2 = some .bot →
-      ∃ T, Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) q.steps.2 = some (.moved, T)) ∧
-    ((valAt st.env pos).follow q.steps.2 = some .proof →
-      ∃ T, Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) q.steps.2 = some (.proof, T)) := by
-  sorry
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (c : Value)
+    (hc : (valAt st.env pos).follow q.steps.2 = some c) (hcb : c = .bot ∨ c = .proof) :
+    ∃ x T, Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) q.steps.2 = some (x, T) ∧
+      (x = .moved ∨ x = .proof) := by
+  have hgr : GrainOk K.D K.Γ (DecideScope.topReadings st) q := by rw [← rel_scopeOf K ρ φ hs]; exact hgrain
+  have hpt : ¬ IsTemp pos := by
+    rcases pos with ⟨f, i⟩ | ⟨f, i⟩
+    · simp [IsTemp]
+    · unfold ckVarPos at hck; split at hck <;> cases hck
+  have hrel : RelF φ s (s.closedFuture φ) := fun l hl => closedFuture_nonlive s φ hl
+  have hval : s.valAt pos (s.closedFuture φ) =
+      Env.mean K.dm K.M K.Γ ρ (fun l => s.closedFuture φ (π l)) st.env pos := (hs.sim.1 _ hrel pos hpt).symm
+  obtain ⟨s', T', h1, h2⟩ := followMean K ρ hctx hg (fun l => s.closedFuture φ (π l)) pos q hgr hck c
+    (by unfold ckContent; simp [hck, hc]) (s.tyAt pos)
+  rw [hval]
+  refine ⟨s', T', h1, ?_⟩
+  rcases h2 with rfl | ⟨H, rfl⟩
+  · exact .inr rfl
+  · rcases hcb with rfl | rfl
+    · exact .inl (by simp [Value.mean])
+    · exact .inr (by simp [Value.mean])
 
 /-- **The copy decision is aligned**: the checker's `copyRead` is the reference's declared reading
 of the place (the decisions are the checker's `Decide`, `CtxOk`). Open: not tried. -/

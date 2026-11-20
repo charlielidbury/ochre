@@ -199,9 +199,11 @@ structure DecAligned (D : Decisions) (st : MState) : Prop where
     D.blockCaps (DecideScope.topReadings st) (entryOf st) mt = bc
 
 /-- What may sit at a place declared an inductive `n`: `⊥`, `⋆`, an unknown, a sealed program, a
-loan, a mark (over anything), or a constructor value of `n`. -/
+loan, a constructor value of `n`, or a mark over any of these (the mark sits over the place's own
+content, docs/31 D44; first stated over anything). -/
 def _root_.Ochr.Value.fitsInd (n : String) : Value → Bool
-  | .bot | .proof | .abs _ | .sealed _ | .loan _ | .gloan _ _ => true
+  | .bot | .proof | .abs _ | .sealed _ | .loan _ => true
+  | .gloan _ w => w.fitsInd n
   | .ind ty _ _ _ _ => ty == n
   | _ => false
 
