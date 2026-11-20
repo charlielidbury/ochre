@@ -8,7 +8,7 @@ These are the orchestrator's judgements. The incidents are facts, recorded in `d
 
 | Theme | Size | Who decides | Status |
 |---|---|---|---|
-| 1. Ochr is defined by an algorithm, not by rules | large | the user: it changes what the paper means by "the rules" | a bounded trial on one area is planned (the user agreed, 2026-11-20) |
+| 1. Ochr is defined by an algorithm, not by rules | large | the user: it changes what the paper means by "the rules" | a bounded trial on one area is running; interim verdict: a qualified success, with the claim corrected in two places (see the end of Theme 1) |
 | 2. One evaluator, written three times | medium | the user, as a refactor of the checker | not started; much of it falls out of theme 1 |
 | 3. Classifications re-derived by parallel readers | small to medium | the orchestrator, change by change | under way piecemeal (two of the eleven changes were this) |
 | 4. Statements are found false by proving them | small (tooling) | the orchestrator | partly in place (tests on recorded states); the next step is costed below |
@@ -87,6 +87,15 @@ Second report, the same evening:
 - The machine-to-rules half for conversion is PROVED, on the standard axioms, by one induction over the comparison functions, with no model in scope, every branch covered. It took well under an hour. That is direct evidence for the theme: the part of the proof that is about the machine was quick once it was about the machine alone.
 - A new finding that may be more than a proof obstacle: two functions the checker treats as convertible can be read differently by its syntactic decisions (one declared to return `Unit`, one declared to return a type that computes to `Unit`: a call of the first is a copy, a call of the second is not). So the rule that compares programs part by part cannot be justified by "decisions agree on convertible terms". Being pinned down: either a pair of convertible values with different meanings exists, which would be a soundness question for the checker, or an invariant about where values can be embedded in code rules it out.
 - On the typing gap: making the model's meanings strict would give "well typed inside" for types and propositions, from six or so clauses (the sides of an `Eq`, the arguments of an inductive type and of a constructor, what a borrow type may hold, the parts of a function type, an ascription). It would not cover code. Weighed after the trial's verdict, not before.
+
+Interim verdict (2026-11-20, late evening; the first agent's, written into its handoff note `ochr/docs/36-rules-trial.md` on branch `rules-trial` before a successor took over the proofs): **a qualified success with one major correction to this section's claim.**
+
+- The convertible-functions finding is benign. No two convertible values with different meanings can arise in accepted code: on all 76,568 recorded states every stuck program has the one shape the checker's closing rule builds, values sit in code only at type and statement positions, and the decision that differs between the two functions only triggers a step that maps a unit value to itself. The checker's behaviour there is what its rules say.
+- Where the split applies it is real and cheap: the machine half is free of the model and small, and the soundness statements are clean and each lists exactly what its rule needs.
+- The claim was oversold twice. The function rules keep the machine's bookkeeping inside their premises. And the main obstacle the trial uncovered is not bookkeeping at all: it is the typing gap between an untyped conversion and a typed model, which the route exposes and does not remove.
+- Its recommendation: use the rules route for the first-order obligations; keep the present route for what involves a generic call; close the typing gap separately; adopt the full restore in the checker either way.
+
+The successor proves the model half, measures the cost of strict meanings on two clauses, and writes the final verdict.
 
 ## Theme 2. One evaluator, written three times
 
