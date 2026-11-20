@@ -95,6 +95,14 @@ def dmS : DataModel where
 theorem cell_solves :
     unifyTyS dmS 1 (.tind "Sl" [.place (.var 0)]) (.plain (dmS.tyM slD [.ty TyM.nat])) [none] = [some (.ty TyM.nat)] := rfl
 
+/-- **A type parameter nested in a field's type is read back** (the lead's 3a: `unifyTyS` recurses
+through the records' entries): `MkGrid(v)` with `v : List(List(Nat))` solves `A := Nat` from
+`List(List(A))`. -/
+theorem nested_solves :
+    unifyTyS Program.dmP 1 (.tind "List" [.tind "List" [.place (.var 0)]])
+      (.plain (Program.dmP.tyM Program.listD [.ty (Program.dmP.tyM Program.listD [.ty TyM.nat])])) [none]
+      = [some (.ty TyM.nat)] := rfl
+
 /-- `Wrap`'s `n` is not read back off `t : Tag(n)`, whatever `n` is: `Tag`'s record keeps nothing. -/
 theorem wrap_unsolved (n : Sem) :
     unifyTyS dmS 1 (.tind "Tag" [.place (.var 0)]) (.plain (dmS.tyM tagD [n])) [none] = [none] := rfl

@@ -421,6 +421,12 @@ The knot's two closure statements (`Steps/FixKnot.lean`: `closure_mem_of_total`,
 - `closure_apply'`: such a closure applied at member arguments whose domains fit the level is its function's result, at the codomain (a canonical code), as `callOf` reads it.
 - `closureFill_apply'`: a recursion stage's closure (`closureFillAt`) applied where its function is defined and good is that function's result, provided the fill succeeded (the closure is not `err`). The fill fails where some leaf type is empty at an argument where the function is undefined, which the knot's induction on the bound does not rule out above the bound: a question for the knot's design, not for the data layer.
 
+### 17.4c The slice's read lemma, the field step, nested parameters
+
+- `DataModel/ReadMember.follow_below_member` (the slice's statement, standard axioms): a meaning below a whole member, read along a path with no strict prefix reading `⋆`; the member's read along the same path is above it and a member of the type the run gives it (a data field by its own record, any other field at the declaration's field type at the member's own earlier fields). It needs `ReadCoherent` on a set of declarations and records containing the root's code (closed under the signature's data and proof fields, each found in `Γ` by name, none named `Nat`, canonical shapes).
+- The run's named field step reads a constructor value of the declaration it names, never a number, as `stepV` (Good's (N) already says no constructor value is of a declaration named `Nat`); `StepKinds`' failure became `succField_reads_nothing`.
+- `unifyTyS` reads a type parameter back through the records' entries at any depth (`ParamSolve.nested_solves`: `List(List(A))`).
+
 ### 17.5 The design point: parameters solved from a field (`DataModel/ParamSolve.lean`)
 
 The checker solves an unwritten parameter from a field's type by reading the field type's parameter list (`Machine.unifyParams`). The model reads back only what the record keeps: a level-0 type parameter's entry.

@@ -155,6 +155,9 @@ theorem erased_proof_untyped (fl : Bool × Bool) (h : fl.2 = true) (x : SM Res) 
 reads the parameter off the field's type; before A17 a proof read at a place was typed `err`, so
 `MkPBox(h)` failed where the checker accepts `ShapeProbes.BoxProof`). -/
 theorem unify_untyped (dm : DataModel) (np : Nat) (FT : Term) (sol : List (Option Sem)) :
-    unifyTyS dm np FT (.plain .err) sol = sol := rfl
+    unifyTyS dm np FT (.plain .err) sol = sol := by
+  have he : (TyS.plain TyM.err).m.isErr = true := rfl
+  unfold unifyTyS
+  split <;> simp only [he, if_true]
 
 end Ochr.Meaning.Regress.ShapeAgree
