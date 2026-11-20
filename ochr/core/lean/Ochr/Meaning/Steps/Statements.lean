@@ -331,6 +331,14 @@ structure ShapeFacts (D : Decisions) (Γ : List IndDecl) (st : MState) : Prop wh
   /-- (Hη) every η record is top-hint-free (a constructor value of fresh unknowns recording its
   parameters, `ctorRefinement`), so it means its unknown at every hint (docs/31 D55) -/
   etaHint : ∀ σ r, (σ, r) ∈ st.etaRefs → r.topHintFree Γ = true
+  /-- (Hη≠) no η record names its own unknown (`ctorRefinement` makes the fields fresh, after the
+  unknown; the parameters it records are the unknown's type's): what `refine_step`'s `RefineOk` asks
+  of a recorded refinement (the slice, main's decision 2026-11-20). Swept: no violation in 11,805
+  suite states and 167 probe states holding an η record. The stronger "names only unknowns made
+  after its unknown" is false: the recorded parameters name the type's older unknowns (9,636 suite
+  states, the smallest `HashMapResize.NOf`, `σ1 := HM[σ0](σ2, σ3, σ4)` for `m : HashMap(V)`, `V ↦ σ0`);
+  the fields are always newer. -/
+  etaNoSelf : ∀ σ r, (σ, r) ∈ st.etaRefs → r.hasAbs σ = false
   /-- (Rd) an unknown read as `Sort l` has the type `Sort l` (docs/31 D77, D78): with `Good` and
   `CtxOk`, what makes the checker's `sortOf` sound (`sortOf_sound_stmt`) -/
   readingsSorted : ReadingsSorted st
@@ -482,12 +490,13 @@ theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MSta
     ShapeFacts D Γ st' := by
   have e1 : DecideScope.topReadings st' = DecideScope.topReadings st := by
     unfold DecideScope.topReadings; rw [he]
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro p v n args hp hd hn; rw [he] at hp; rw [e1] at hd; exact hf.fits p v n args hp hd hn
   · rw [he]; exact hf.loans
   · rw [he]; exact hf.ctors
   · intro p hgr hp; rw [he] at hp; rw [e1] at hgr ⊢; exact hf.proofCopy p hgr hp
   · rw [hη]; exact hf.etaHint
+  · rw [hη]; exact hf.etaNoSelf
   · have hd : st'.absDecl = st.absDecl := by
       have := congrArg MState.absDecl h
       simpa using this

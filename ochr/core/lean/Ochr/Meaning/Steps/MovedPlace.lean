@@ -519,21 +519,13 @@ theorem sealed_loanFree (st : MState) (p : Place) (t : Term) (hg : Good K.dm K.M
     rw [hfill] at hin; cases hin
 
 
-/-- **An η record does not name its own unknown** (`ctorRefinement` makes the fields fresh, after
-the unknown). What `refine_step`'s `RefineOk` asks beyond the record's other facts. Swept as a
-candidate (`Sweep.etaNoSelf`, 2026-11-20): no violation in 11,805 suite states and 167 probe states
-holding an η record. No clause of `Good` says it yet (a clause beside `ShapeFacts.etaHint`, or a
-proof from `TypedAssignment.eta` that a value is not a proper part of itself). Open. -/
-theorem etaRecord_noSelf (st : MState) (hg : Good K.dm K.M K.Γ ρ st) {σ : Nat} {r : Value}
-    (h : (σ, r) ∈ st.etaRefs) : r.hasAbs σ = false := by
-  sorry
-
 /-- **A recorded η refinement is one `refine_step` accepts** (`RefineOk`): it means its unknown
-(given), names typed unknowns ((WF6)), not its own (`etaRecord_noSelf`), and holds no loan ((WF11)). -/
-theorem etaRefineOk (st : MState) (hg : Good K.dm K.M K.Γ ρ st) {σ : Nat} {r : Value}
+(given), names typed unknowns ((WF6)), not its own ((Hη≠), `ShapeFacts.etaNoSelf`), and holds no
+loan ((WF11)). -/
+theorem etaRefineOk (st : MState) (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) {σ : Nat} {r : Value}
     (h : (σ, r) ∈ st.etaRefs) (hσ : ∀ ψ H, ρ σ = meanV K ρ ψ H r) : RefineOk K ρ st σ r :=
   have h11 : WF11 st := hg.2.2.2.2.2.2.2.2.2.2.2.1
-  ⟨hσ, (Good.eta_bound K hg h).1, (Good.eta_bound K hg h).2, etaRecord_noSelf K ρ st hg h,
+  ⟨hσ, (Good.eta_bound K hg h).1, (Good.eta_bound K hg h).2, hctx.shapes.etaNoSelf σ r h,
     fun l => h11.2.2.2.2 σ r h l⟩
 
 /-- **An unknown of a one-constructor type refined in place** (`Machine.etaInPlace`, D68, D93:
@@ -541,7 +533,7 @@ theorem etaRefineOk (st : MState) (hg : Good K.dm K.M K.Γ ρ st) {σ : Nat} {r 
 recorded refinement (`etaRecorded_sim`) or a fresh one, recorded (`etaFresh_sim`), then the
 substitution (the induction hypothesis's `refine_step`, at a record `etaRefineOk` shows it
 accepts). The reference is untouched; the assignment and Δ are extended at the fresh fields.
-Assembled: no `sorry` beyond `etaFresh_sim` and `etaRecord_noSelf`. -/
+Assembled: no `sorry` beyond `etaFresh_sim`. -/
 theorem etaInPlace_sim (fuel : Nat) (ih : StepsIHBelow fuel) (st st' : MState) (p : Place) (σ : Nat) (n : String) (ps : List Value)
     (d : IndDecl) (r : Value) (s : SState) (π : Nat → Nat) (b : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
@@ -571,7 +563,7 @@ theorem etaInPlace_sim (fuel : Nat) (ih : StepsIHBelow fuel) (st st' : MState) (
     · obtain ⟨L, left, log, hrf⟩ := hrf
       simp [Ochr.refine, runMachineL_exhausted] at hrf
     obtain ⟨hsh, ρ', Δ', D', he, hrel⟩ := (ih (f + 1) (by omega) K ρ φ).refine_step st st' σ r₀ hg hctx s π hs
-      (etaRefineOk K ρ st hg (mem_of_lookup hr) hσ) _ hrf
+      (etaRefineOk K ρ st hg hctx (mem_of_lookup hr) hσ) _ hrf
     exact ⟨ρ', Δ', D', Ext.of_extOk K ρ φ hsh.2.2.2.1 he hrel⟩
   · -- a fresh refinement, recorded
     obtain ⟨r₀, st₈, b₈, hcr, h8⟩ := Runs.bind_inv h7
@@ -592,7 +584,7 @@ theorem etaInPlace_sim (fuel : Nat) (ih : StepsIHBelow fuel) (st st' : MState) (
       simp [Ochr.refine, runMachineL_exhausted] at hrf
     obtain ⟨hsh, ρ₃, Δ₃, D₃, he, hrel⟩ := (ih (f + 1) (by omega) { K with Δ := Δ₂, D := D₂ } ρ₂ φ).refine_step
       _ st' σ r₀ E₂.good E₂.ctx s π E₂.rel
-      (etaRefineOk { K with Δ := Δ₂, D := D₂ } ρ₂ _ E₂.good List.mem_cons_self hσ) _ hrf
+      (etaRefineOk { K with Δ := Δ₂, D := D₂ } ρ₂ _ E₂.good E₂.ctx List.mem_cons_self hσ) _ hrf
     exact ⟨ρ₃, Δ₃, D₃, E₂.trans K ρ φ (Ext.of_extOk _ _ φ hsh.2.2.2.1 he hrel)⟩
 
 
