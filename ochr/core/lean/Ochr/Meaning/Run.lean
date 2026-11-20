@@ -106,6 +106,30 @@ theorem SM.erasedIf_some {fl : Bool × Bool} {x : SM (Sem × TyS)} {s s' : SStat
     · exact .inl h
     · exact .inr ⟨e, hl⟩
 
+/-- An erased PLACE (the audit's A17, docs/31 D59): as `SM.erasedIf`, but a proof is `⋆` at the
+type `T s`, the place's stored type, as the checker types a proof it reads at a place (it reads
+the place's type on a private copy). So a constructor parameter solved by a proof field's type is
+solved (`MkPBox(h)`). A proof that is not a place stays untyped. -/
+def SM.erasedAt (fl : Bool × Bool) (T : SState → TyS) (x : SM (Sem × TyS)) : SM (Sem × TyS) := fun s =>
+  if fl.2 then some ((.proof, T s), s) else SM.stmtIf fl.1 x s
+
+theorem SM.erasedAt_congr {fl : Bool × Bool} {T T' : SState → TyS} {x x' : SM (Sem × TyS)} {s : SState}
+    (hT : T s = T' s) (h : x s = x' s) : SM.erasedAt fl T x s = SM.erasedAt fl T' x' s := by
+  simp only [SM.erasedAt, SM.stmtIf, hT, h]
+
+/-- An erased place's run, taken apart, where its type carries no label. -/
+theorem SM.erasedAt_some {fl : Bool × Bool} {T : SState → TyS} {x : SM (Sem × TyS)} {s s' : SState}
+    {r : Sem × TyS} (hT : (T s).label = none) (h : SM.erasedAt fl T x s = some (r, s')) :
+    x s = some (r, s') ∨ (s' = s ∧ r.2.label = none) := by
+  unfold SM.erasedAt at h
+  split at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    exact .inr ⟨rfl, hT⟩
+  · rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, e, hl, -⟩
+    · exact .inl h
+    · exact .inr ⟨e, hl⟩
+
 /-- A term read as a call reads its head, and as `clone`, `peek` and `inplace` read their
 operand: a place in place (`rd`: not consumed, D53 (e)), anything else by its run (`rn`). -/
 def SM.headOf (f : Term) (rd : Place → SM (Sem × TyS)) (rn : SM (Sem × TyS)) : SM (Sem × TyS) :=
@@ -384,6 +408,16 @@ noncomputable def readPlace (p : Place) (copy : Bool) : SM Res := fun s => do
       | none => s
     some ((v, { T with label := lab }), s)
 
+/-- The type an erased place is `⋆` at (A17, `SM.erasedAt`): its content's type, read on a
+discarded copy; `err` where the place does not resolve. Label-free (`placeTy_label`). -/
+noncomputable def placeTy (p : Place) (s : SState) : TyS :=
+  match contentOf K φ p s with
+  | some ((_, T, _, _), _) => .plain T.m
+  | none => .plain TyM.err
+
+theorem placeTy_label (p : Place) (s : SState) : (placeTy K φ p s).label = none := by
+  unfold placeTy; split <;> rfl
+
 /-- [Borrow] `&p` with a fresh label `l`: the place now reads `l`'s final content at its path, and
 the result is the old content, whole, with the label in its type (the holder's position records
 it in the shape when the result is bound). -/
@@ -643,7 +677,7 @@ its untyped runs carry `MState.tailNext` (`runBody`, `evalCore`'s `.letIn` and `
 sealed program's re-run included, is not; a constant's body is run by `eval`, not `checkTail`,
 so it is not either. -/
 noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
-  | .place p => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.place p))
+  | .place p => fun s => SM.erasedAt (K.D.flags (scopeOf s) (.place p)) (placeTy K φ p)
       (readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p))) s
   | .borrow p => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.borrow p)) (borrowPlace K φ p) s
   | .assign p u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.assign p u)) (fun s => do

@@ -629,7 +629,9 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     (L : Nat → Prop), (∀ l, L l → φ l = φ' l) → (∀ l, t.anyAtom (· == .loan l) = true → L l) → RInv L s →
     runT K ρ φ tl hint t s = runT K ρ φ' tl hint t s
   | tl, .place p, hint, s, L, hφ, ht, hi => by
-    rw [runT, runT]; exact SM.erasedIf_congr (readPlace_congr K hφ hi p _)
+    rw [runT, runT]
+    refine SM.erasedAt_congr ?_ (readPlace_congr K hφ hi p _)
+    unfold placeTy; rw [contentOf_congr K hφ hi p]
   | tl, .borrow p, hint, s, L, hφ, ht, hi => by
     rw [runT, runT]; exact SM.erasedIf_congr (borrowPlace_congr K hφ hi p)
   | tl, .seq u w, hint, s, L, hφ, ht, hi => by

@@ -62,7 +62,7 @@ theorem run_seq (hfl : NoStmt K) (u w : Term) (hint : TyS) (s : SState) :
 
 theorem run_place (hfl : NoStmt K) (p : Place) (hint : TyS) (s : SState) :
     run K ρ φ hint (.place p) s = readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p)) s := by
-  rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
+  rw [run, runT]; show SM.erasedAt _ _ _ s = _; rw [hfl]; rfl
 
 theorem run_borrow (hfl : NoStmt K) (p : Place) (hint : TyS) (s : SState) :
     run K ρ φ hint (.borrow p) s = borrowPlace K φ p s := by

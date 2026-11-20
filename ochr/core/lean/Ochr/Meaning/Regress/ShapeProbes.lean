@@ -31,6 +31,11 @@ ochr ShapeProbes uses Nats, Lists, Boxes {
   def UseFnLet (f : Fn(Nat)) (n : Nat) : Nat := (let g = f; g(n))
   -- control: the computed type is read (the argument is checked against its domain)
   reject def UseFnBad (f : Fn(Unit)) (n : Nat) : Nat := f(n)
+  -- A18 through the usual idiom: a predicate type computed by a call (at `Type₁`)
+  def Pred (A : Type) : Type₁ := (Π(x : A). Prop)
+  def UsePred (P : Pred(Nat)) (n : Nat) : Prop := P(n)
+  -- control: the computed predicate type is read
+  reject def UsePredBad (P : Pred(Unit)) (n : Nat) : Prop := P(n)
 
   -- A19: a function type bound by a `let`
   def Alias (f : Π(n : Nat). Nat) (n : Nat) : Nat := (let T = (Π(n : Nat). Nat); let g : T = f; g(n))
