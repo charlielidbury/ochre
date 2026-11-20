@@ -28,6 +28,12 @@ lean_lib OchrExamples where
 lean_exe tests where
   root := `Tests
 
+-- `lake exe sweep`: DEV TOOLING, not part of the checker or the artefact. Records the checker's
+-- states (`Config.recordStates`) over every example and case study and evaluates Bool mirrors of
+-- the meaning spine's syntactic `Good` clauses on each (`Sweep.lean`).
+lean_exe sweep where
+  root := `Sweep
+
 -- `lake exe fuzz`: the differential naturality fuzzer (Ochr/Fuzz/, notes/fuzzer.md).
 lean_exe fuzz where
   root := `Fuzz
