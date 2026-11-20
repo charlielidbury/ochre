@@ -3,23 +3,25 @@ import Ochr.Examples.List
 import Ochr.Examples.Box
 
 /-!
-# Checker verdicts for the shape of a function type (built: each verdict is asserted)
+# Checker verdicts for the structure of a function type (built: each verdict is asserted)
 
-The checker's side of `Regress/ShapeAgree.lean` (docs/31 D22): three programs the checker ACCEPTS
-on which the reference run has no Π-shape where the checker's stored type has one, or the other
-way round, each beside a control it REJECTS. `UseAdder` (the audit's A11) is in
-`Regress/AdequacyProbes.lean`.
+The checker's side of `Regress/ShapeAgree.lean` and `Regress/CodeRuns.lean` (docs/31 D22, D59):
+programs the checker ACCEPTS on which the reference run went wrong while a type's structure was
+carried beside its meaning (a Π-shape in the type the run returns), each beside a control it
+REJECTS. Since D59 the model runs each to the checker's answer (`CodeRuns`). `UseAdder` (the
+audit's A11) is in `Regress/AdequacyProbes.lean`.
 
 * `UseFn` (A18): the parameter's type is a call of a type function. The checker computes it to a
-  Π-type value and calls through the parameter; the reference binds the parameter at the call's
-  result, which has no shape (`ShapeAgree.call_noShape`), so its run of `f(n)` fails. `UsePred`
-  is the same through the usual idiom, a predicate type.
-* `Alias` (A19): the function type is bound by a `let`. The reference's binding of `T` carries the
-  shape (in its type, `ShapeAgree.pi_shape`); the checker's binding `T : Type`, read as a
-  reference state, has none (`ShapeAgree.tyS_sort_shape`).
+  Π-type value and calls through the parameter; the reference bound the parameter at the call's
+  result, which had no shape, so its run of `f(n)` failed (`CodeRuns.useFn`: now bound at the
+  code the call computed). `UsePred` is the same through the usual idiom, a predicate type, at
+  `Type₁` (`CodeRuns.usePred`).
+* `Alias` (A19): the function type is bound by a `let`. The reference's binding of `T` carried the
+  shape in its type, which the checker's `T : Type` read as a reference state had none of
+  (`CodeRuns.alias`: the code is in the value).
 * `BoxProof` (A17): a constructor's parameter is solved by the type of a field that is a proof.
-  The reference does not run a proof and gives it no type, so the parameter stays unsolved and its
-  run fails.
+  The reference did not run a proof and gave it no type, so the parameter stayed unsolved and its
+  run failed (`CodeRuns.boxProof`: an erased place is typed at its stored type).
 -/
 
 open Ochr.Test

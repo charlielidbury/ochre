@@ -33,10 +33,9 @@ The checker's verdict boundary is the only place where acceptance is read (`runM
   (`DataModel.covers`; `ProgState.Covered` is that hypothesis for every declaration of Σ).
 * An accepted **definition** contributes its `GDef` to Σ and its meaning and type to `means`
   (`defMeaning`). Its type is read off the type the checker stores, `GDef.ty` (`globalTyS`):
-  `Value.tyS` of it (its meaning, and for `D(ā)` its parameters, D8), and, for a Π-type, its
-  shape from its Π-term (`piShapeOf`, as `run`'s `.val` clause gives a Π-type value's). For a
-  function, `GDef.ty` is `tPi [] (pi x̄ Ā B) []`, so this is the shape of the `fix` term's binders
-  and codomain.
+  `Value.tyS` of it, its code (docs/31 D59: a function type's telescope, a data type's
+  declaration and parameters). For a function, `GDef.ty` is `tPi [] (pi x̄ Ā B) []`, whose code is
+  the one the `fix` term's binders and codomain build.
   * A function `def f (x̄ : Ā) : B := b` means the run, from the empty state, of the closed term
     `fix f (x̄:Ā):B := b` that [Def] checks (`checkFix`): its closure, the guarded fixpoint by
     stages when it has `by xⱼ` (`run`'s `.fix` clause), recursing through its `self` binder as the
@@ -78,11 +77,10 @@ the kernel runs out of memory on the prelude's inductive declarations (`checkInd
 
 ## Gaps (reported to the spine)
 
-Since D12 (4ea4b9e0) the `.fix` clause reads `Decisions.piSort`. A proof-valued function means
-`•` and a `Type₀` one an element of `piCar0`, each in its type's meaning. A function in `Type₁` or
-`Type₂`, such as `id (A : Type) (x : A) : A`, means `err` until the level-1/2 construction
-(`Apply1.lean`'s `closureAt`/`piTyAt`) is wired into the `.fix`, `.pi` and call clauses. Until
-then, milestone 4's corollary fails for polymorphic definitions.
+Since D12 (4ea4b9e0) the `.fix` clause reads `Decisions.piSort`: a proof-valued function means
+`•`, and since D59 a function at `Type₀`, `Type₁` or `Type₂` (`id (A : Type) (x : A) : A`) is
+built along its type's code at that level and is a member of it (`closureAt_mem`,
+`Regress/CodeClosures.lean`). The run of a definition's own body term is not checked here.
 -/
 
 namespace Ochr.Meaning
@@ -152,10 +150,9 @@ def constMean (T : TyM) (v : Sem) : Sem :=
   | _ => v
 
 /-- The type of a global as the run knows it, from the type value the checker stores
-(`GDef.ty`): `Value.tyS` (its meaning at the constant future, for `D(ā)` the parameters'
-meanings, D8, and for a Π-type its shape read off its Π-term in the frame of its captures,
-`CodeMeaning.tyShape`), as `run`'s `.val` clause gives a Π-type value's. A function's stored type
-is `tPi [] (pi x̄ Ā B) []`, whose shape is that of its `fix` term (same binders and codomain). -/
+(`GDef.ty`): `Value.tyS`, its code at the constant future (a Π-type's read off its Π-term in the
+frame of its captures). A function's stored type is `tPi [] (pi x̄ Ā B) []`, whose code is that of
+its `fix` term (same binders and codomain). -/
 noncomputable def globalTyS (K : RunCtx) (T : Value) : TyS :=
   Value.tyS K.dm (codeMeaning K) K.Γ ρ T
 
