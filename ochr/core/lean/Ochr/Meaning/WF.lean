@@ -288,10 +288,23 @@ def WF14 (env : Env) : Prop :=
     ∀ l, liveLoan env l = true → ∀ x ∈ Env.sitesOf env l, x.pos = pos →
       ∀ k < path.length, pathKey x.path ≠ pathKey (path.take k)
 
+/-- A closure or Π-type recording (D82) a declared type that holds a loan or a mark of `l`. -/
+def _root_.Ochr.Value.rdLoan (l : Nat) : Value → Bool
+  | .clo _ _ rd | .tPi _ _ rd => Value.anyAtomRd (fun | .loan m | .gloan m _ => m == l | _ => false) rd
+  | _ => false
+
+/-- (WF15) **No recorded reading holds a loan or a mark** (docs/31 D46): no closure or Π-type
+anywhere in Ω, inside sealed programs and code included, records a declared type holding a loan or
+a mark. The checker's `Value.loans` does not walk recorded readings and `Value.hasLoan` does, so
+without it a sealed program can be lent (`sitesOf`, by `hasLoan`) where no live-loan scan
+(`liveLoansIn`, by `loans`) sees it. (WF11)'s kind of fact, for the readings closures record. Read
+off the checker and swept (`Sweep.lean`'s (RD)), NOT proved preserved. -/
+def WF15 (env : Env) : Prop := ∀ v ∈ Env.values env, ∀ l, v.anyAtom (Value.rdLoan l) = false
+
 /-- Well-formedness, part (c) of the main theorem. -/
 def WF (ρ : Assignment) (st : MState) : Prop :=
   WF1 st.env ∧ WF2 st.env ∧ WF3 st.env ∧ WF4 st.env ∧ WF6 st ∧ WF7 dm C Γ ρ st ∧ WF8 st ∧ WF9 dm C Γ ρ st ∧
-  WF10 Γ st ∧ WF11 st ∧ WF12 st.env ∧ WF14 st.env
+  WF10 Γ st ∧ WF11 st ∧ WF12 st.env ∧ WF14 st.env ∧ WF15 st.env
 
 /-! ## Typed assignments, typed futures, membership -/
 
