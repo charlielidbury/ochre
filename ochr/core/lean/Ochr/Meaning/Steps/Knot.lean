@@ -63,7 +63,6 @@ theorem stepsIH_succ (fuel : Nat) (ih : StepsIHBelow fuel) (K : RunCtx) (ρ : As
       runBody_step := runBody_step K ρ φ fuel ih
       closeCall_step := closeCall_step K ρ φ fuel ih
       callType_step := callType_step K ρ φ fuel ih
-      recCheck_sound := recCheck_sound K ρ φ fuel ih
       joinEntry := joinEntry K ρ φ fuel ih
       movedPlace_step := movedPlace_step K ρ φ fuel ih
       dropOne_step := dropOne_step K ρ φ fuel ih
@@ -107,7 +106,6 @@ theorem stepsIH_succ (fuel : Nat) (ih : StepsIHBelow fuel) (K : RunCtx) (ρ : As
       generic_good := generic_good K ρ φ fuel ih
       checkTail_step := checkTail_step K ρ φ fuel ih
       checkFix_sound := checkFix_sound K ρ φ fuel ih
-      checkConst_sound := checkConst_sound K ρ φ fuel ih
       checkInd_sound := checkInd_sound K ρ φ fuel ih
       scopeOf_sstate := scopeOf_sstate K ρ φ fuel ih
       flags_aligned := flags_aligned K ρ φ fuel ih
@@ -137,4 +135,5 @@ theorem stepsIH_below : ∀ (fuel : Nat), StepsIHBelow fuel
 theorem stepsIH (fuel : Nat) (K : RunCtx) (ρ : Assignment) (φ : Future) : StepsIH K ρ φ fuel :=
   stepsIH_below fuel fuel (Nat.le_refl _) K ρ φ
 end Ochr.Meaning.Steps
+
 

@@ -38,10 +38,6 @@ member of the goal, so `mkTele` succeeds and the closure's meaning is in the car
 theorem checkFix_sound (fuel : Nat) (ih : StepsIHBelow fuel) : checkFix_sound_stmt K ρ φ (fuel + 1) := by
   sorry
 
-/-- [Const]: an accepted constant's value is a member of its goal, under the empty assignment. -/
-theorem checkConst_sound (fuel : Nat) (ih : StepsIHBelow fuel) : checkConst_sound_stmt K ρ φ (fuel + 1) := by
-  sorry
-
 /-- [Ind-decl] (`checkInd`): an accepted declaration satisfies (I1)–(I9), so the data model covers
 it (the least fixed point exists in the sort's universe; docs/18 Lemma 2). -/
 theorem checkInd_sound (fuel : Nat) (ih : StepsIHBelow fuel) : checkInd_sound_stmt K ρ φ (fuel + 1) := by

@@ -20,16 +20,6 @@ namespace Ochr.Meaning.Steps
 
 open Ochr Ochr.Meaning
 
-/-- Arguments of a closure's code: one per domain, each a member of its domain at the earlier ones. -/
-def DomMembers (R : DataRead) (ds : List PiDom) (args : List Sem) : Prop :=
-  args.length = ds.length ∧
-    ∀ (i : Nat) (a : Sem) (d : PiDom), args[i]? = some a → ds[i]? = some d → a ∈ₛ[R] d.dom (args.take i)
-
-/-- A body's output is good at arguments: its result is a member of the codomain there. (A borrow
-parameter's final content's membership is the next conjunct, as for `MemBelow`.) -/
-def OutGood (R : DataRead) (out : PiCod) (args : List Sem) (o : BodyOut) : Prop :=
-  o.result ∈ₛ[R] out.cod args
-
 /-- **The induction on the bound** (proved; docs/31 D73 item 2). If at every bound `b`, from the
 guarded fixpoint (`stage (rank a + 1) a`) being good at member arguments of rank below `b`, the stage
 `b + 1` is good at member arguments of rank `b`, then the fixpoint is good at every member argument
@@ -58,14 +48,14 @@ included): a closure whose function is defined and good at every member argument
 code. For the levels the run builds (`piSort` gives `0` to `3`). -/
 theorem closure_mem_of_total (R : DataRead) (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
     (g : List Sem → Option BodyOut) (hl : l ≤ 3)
-    (htot : ∀ args, DomMembers R ds args → ∃ o, g args = some o ∧ OutGood R out args o) :
+    (htot : ∀ args, DomMembers R ds args → ∃ o, g args = some o ∧ OutGood R ds out args o) :
     closureAt R l φ ds out g ∈ₛ[R] piTyAt R l ds out := by
   sorry
 
 /-- **The closure lemma, application half** (owed by the data layer): a closure applied at member
-arguments where its function is defined is that function's result (what a call reads, `callOf`),
-the state's labels untouched by a data result. What turns the induction hypothesis (the function
-good below the bound) into `MemBelow` for the global being defined. -/
+arguments where its function is defined is that function's result (what a call reads, `callOf`; the
+borrow arguments' labels fixed to the function's final contents, `callOfL`). What the call step reads
+`MemBelow` through. -/
 theorem closure_apply (R : DataRead) (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
     (g : List Sem → Option BodyOut) (hl : 1 ≤ l ∧ l ≤ 3) (args : List Res) (s : SState) (o : BodyOut)
     (hmem : DomMembers R ds (args.map (·.1))) (hg : g (args.map (·.1)) = some o) (hdata : out.isRef = false) :

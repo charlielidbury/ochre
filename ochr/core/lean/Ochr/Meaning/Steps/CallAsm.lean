@@ -37,13 +37,6 @@ def bodyTail (fuel d : Nat) (model : Bool) (v : Value) : M Value := do
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- The callee's frame and codomain as the run in place computes them (`runBodyRef`'s `let`s). -/
-noncomputable def bodyFrame (fres : Res) (cs : List Value) (rd : List (DeclInfo × Value)) (ds : List Term) (c : Term)
-    (args : List Res) (s : SState) : SState × PiCod :=
-  let s₀ := (capsState (capsVals K ρ φ cs) (capsTys K ρ φ rd)).foldl SState.pushBind s.pushFrame
-  let bs := bindsOf K ρ φ s₀ ds
-  (callFrame K ρ φ cs rd fres (K.D.typeDecl (K.D.teleDecls (scopeOf s₀) ds) c) bs args s, codOf K ρ φ s₀ bs c)
-
 theorem runBodyRef_eq (fres : Res) (cs : List Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term)
     (dec : Option Nat) (body : Term) (rd : List (DeclInfo × Value)) (args : List Res) (s : SState) :
     runBodyRef K ρ φ fres cs (.fix self hs ds c dec body) rd args s =

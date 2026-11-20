@@ -133,8 +133,11 @@ self call the body makes is at a smaller rank, `recDecreases` and `semRank_part`
 hypothesis. Then: the generic state good for the assignment giving each parameter its argument
 (`generic_good`) and related to the body's frame (`Rel.start`, the frame property, D70);
 `checkTail_step` along the case tree to a leaf; the return check (`conv_sound`, `bodyReturns_sound`);
-the leaf's value is the stage `b + 1` at the arguments, a member of the codomain. Needs first:
-`checkTail_step_stmt` and `generic_good_stmt` in the simulation form (they are in the old form). -/
+the leaf's value is the stage `b + 1` at the arguments, a member of the codomain, and the borrow
+parameters' final contents members (`OutGood`: the frame's pop at `fixReturn`). Its pieces are now in
+the final form: `generic_good_stmt` (the generic state related to `bodyFrame` at the arguments) and
+`checkTail_step_stmt` (docs/31 D80). The one place the context's meaning of a global differs from
+`defMeaning`'s: inside this step, the global means the stage-`b` closure (D79). -/
 theorem fix_split (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms ≠ [])
     (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm P)
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
@@ -146,8 +149,8 @@ theorem fix_split (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.
       (globalTyS (fun _ => .err) (P.ctx dm D st') (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot)).m
         = piTyAt dm.read l ds out ∧
       (∀ b, (∀ a, Steps.DomMembers dm.read ds a → rank a < b →
-          ∃ o, stage (rank a + 1) a = some o ∧ Steps.OutGood dm.read out a o) →
-        ∀ a, Steps.DomMembers dm.read ds a → rank a = b → ∃ o, stage (b + 1) a = some o ∧ Steps.OutGood dm.read out a o) := by
+          ∃ o, stage (rank a + 1) a = some o ∧ Steps.OutGood dm.read ds out a o) →
+        ∀ a, Steps.DomMembers dm.read ds a → rank a = b → ∃ o, stage (b + 1) a = some o ∧ Steps.OutGood dm.read ds out a o) := by
   sorry
 
 /-- **An accepted function means a member of its type** (assembled, no `sorry` in the body; THE KNOT,
@@ -167,7 +170,7 @@ theorem step_member_fix (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (h
   show closureAt dm.read l noFuture ds out (fun args => stage (rank args + 1) args) ∈ₛ[dm.read] _
   rw [hA]
   exact Steps.closure_mem_of_total dm.read l noFuture ds out _ hl
-    (fun args ha => Steps.stages_total stage rank (Steps.DomMembers dm.read ds) (Steps.OutGood dm.read out) hstep args ha)
+    (fun args ha => Steps.stages_total stage rank (Steps.DomMembers dm.read ds) (Steps.OutGood dm.read ds out) hstep args ha)
 
 /-- **One item keeps every definition a member** (assembled): an inductive declaration adds no
 definition; a definition's meaning is a member by `step_member_const` or `step_member_fix`. -/

@@ -38,7 +38,6 @@ structure StepsIH (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Pr
   runBody_step : runBody_step_stmt K ρ φ fuel
   closeCall_step : closeCall_step_stmt K ρ φ fuel
   callType_step : callType_step_stmt K ρ φ fuel
-  recCheck_sound : recCheck_sound_stmt K ρ φ fuel
   joinEntry : joinEntry_stmt K ρ φ fuel
   movedPlace_step : movedPlace_step_stmt K ρ φ fuel
   dropOne_step : dropOne_step_stmt K ρ φ fuel
@@ -82,7 +81,6 @@ structure StepsIH (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Pr
   generic_good : generic_good_stmt K ρ φ fuel
   checkTail_step : checkTail_step_stmt K ρ φ fuel
   checkFix_sound : checkFix_sound_stmt K ρ φ fuel
-  checkConst_sound : checkConst_sound_stmt K ρ φ fuel
   checkInd_sound : checkInd_sound_stmt K ρ φ fuel
   scopeOf_sstate : scopeOf_sstate_stmt K ρ φ fuel
   flags_aligned : flags_aligned_stmt K ρ φ fuel
@@ -110,3 +108,4 @@ theorem StepsIHBelow.at {fuel : Nat} (ih : StepsIHBelow fuel) : ∀ K' ρ φ, St
   ih fuel (Nat.le_refl _)
 
 end Ochr.Meaning.Steps
+
