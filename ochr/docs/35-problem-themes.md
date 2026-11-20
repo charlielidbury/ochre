@@ -73,6 +73,14 @@ Agreed with the user on 2026-11-20. One area, a few days at most, run before pro
 
 Started 2026-11-20, late evening (branch `rules-trial`), narrowed on starting to one real piece instead of a paper design: the checker's comparison functions for equality (`conv`, `convPi`, `convFn`, `mkEqM`), whose statements are open obligations of the present proof. The paper already defines conversion as "the least relation closed under" five named rules, so the trial writes that relation in Lean, proves it sound in the model, proves the machine's run yields a derivation, and composes the two into the existing statements. A proved obligation comes out of it whichever way the verdict goes. One correction to this section's claims, to be tested by the trial: a step that creates an unknown its result mentions must conclude under an extended context under any architecture; only the unknowns nothing mentions afterwards are bookkeeping.
 
+First checkpoint (2026-11-20, late evening): the relations, both halves stated, and the composition into the existing statements proved from the two halves. What it showed so far:
+
+- The rules needed only values and declarations, nothing of the machine's state. The soundness half mentions no table, copy, flag or fuel.
+- It found three of the area's existing statements false, with counterexamples checked in Lean, within hours and after the area had just been attacked the usual way.
+- The largest finding is not about bookkeeping. The paper's conversion is untyped and the model is typed, and the proof has no notion of a value being well typed inside: `Eq(A, a, b)` being a proposition says nothing about `a` and `b`. Conversion's rules preserve meaning only on well-typed values. A declarative system has this by construction (every subterm has a derivation); here it has to come from somewhere. Candidate under assessment: make the model's meanings strict (a type former means an error unless its parts are well typed, as closures and applications already do), so that "has a meaning" is "well typed inside".
+- Against this section's claim: for the two rules that compare functions, the machine's bookkeeping is moved into the rule's premise, not removed, as long as evaluation itself is not also given as rules. And some growth of the state is inherent: the computed proposition can name an unknown made during the computation.
+- One leak of exactly the kind this theme is about: a comparison's private copy leaves a record behind that can name an unknown of an empty type, after which no assignment makes the state good. Root fix being probed: a comparison returns a boolean, so it should restore the state it started from entirely; the statement "a conversion leaves the state unchanged", written first and withdrawn as false, would then be true by construction.
+
 ## Theme 2. One evaluator, written three times
 
 ### The pattern
