@@ -1,0 +1,251 @@
+import Ochr.Meaning.Regress.CallInPlace
+import Ochr.Meaning.FrameProp
+
+/-!
+# The frame property on the two concrete calls (docs/31 D70; kernel-checked)
+
+`FrameProp.run_frame` relates a body's run in place (the callee's frame pushed on the caller's state)
+with its run in the closure's own frame (the caller's frames gone, each borrow parameter's label read
+back through a cell). Checked here on the two calls `Regress/CallInPlace.lean` runs both ways, for
+any `self` binding (the property compares frames holding the same bindings; which `self` the closure's
+meaning binds is the fixpoint's business, `callOf_inPlace`):
+- `Id1 (x : &Nat) : &Nat := &*x`, called on `&y` (`y` holding `a`): the states at the call are related
+  (`id1_start`), both runs give `a` at the reborrow `1` with the same type, and the states after are
+  related (`id1_after`): the reborrow parked in the frame and lent at `*x` on both sides, `y` reading
+  the parameter's label `0`, which the closure's cell reads.
+- `Inc (x : &Nat) : Unit := *x := S(*x)`, called on `&y`: related at the call (`inc_start`), both give
+  `()`, related after (`inc_after`).
+-/
+
+namespace Ochr.Meaning.Regress.FrameCheck
+open Ochr Ochr.Meaning Ochr.Meaning.Regress.CallInPlace
+
+/-- A cell that still reads its label leaves the caller's frames as they were. -/
+theorem cellFuture_self (ψ : Future) : cellFuture [0] [fun ψ => ψ 0] ψ = ψ := by
+  funext l
+  by_cases hl : l = 0 <;> simp [cellFuture, Future.updList, Future.upd, hl]
+
+theorem cellsOf_SBs (selfB : SBinding) (d : DeclInfo) (c r : Sem) : cellsOf 1 (SBs selfB d c r) = [fun ψ => ψ 0] := rfl
+
+variable (dm : DataModel) (ρ : Assignment) (φ : Future) (selfB : SBinding) (d : DeclInfo) {r : Sem}
+
+/-- The type `*x` is read at, on both sides. -/
+def T₀ : TyS := { (xB (.el0 Nat 0) .other).ty with label := none }
+
+theorem contentOf_SBs_eq (c : Sem) :
+    contentOf (Kc dm) φ (.deref (.var 0)) (SBs selfB d c r) = some ((c, T₀, .bind 0 1, [.deref]), SBs selfB d c r) := by
+  unfold contentOf
+  rw [resolve_SBs]
+  dsimp only
+  rw [access_SBs, typedFuture_SBs]
+  simp [Sem.follow, Sem.step, SState.valAt, SState.tyAt, SBs, xB, T₀]
+
+theorem contentOf_SPg_eq (c : Sem) :
+    contentOf (Kc dm) φ (.deref (.var 0)) (SPg selfB d c r) = some ((c, T₀, .bind 1 1, [.deref]), SPg selfB d c r) := by
+  unfold contentOf
+  rw [resolve_SPg]
+  dsimp only
+  rw [access_SPg, typedFuture_SPg]
+  simp [Sem.follow, Sem.step, SState.valAt, SState.tyAt, SPg, xB, T₀]
+
+/-- The reborrow's type, on both sides. -/
+def T₁ : TyS := { T₀ with label := some 1 }
+
+/-- `&*x` in the closure's frame. -/
+theorem run_id1_cl (a : Nat) (hint : TyS) (tl : Bool) :
+    runT (Kc dm) ρ φ tl hint id1Body (SBs selfB d (.el0 Nat a) r)
+      = some ((.el0 Nat a, T₁), SB2 selfB d T₀.m (.el0 Nat a) r) := by
+  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
+  unfold borrowPlace
+  simp only [contentOf_SBs_eq, bind, Option.bind]
+  simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
+    Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent,
+    SState.setHeldTy, SState.setHeldMem, SBs, SB2, xB, T₁]
+
+/-- `&*x` in place. -/
+theorem run_id1_in (a : Nat) (hint : TyS) (tl : Bool) :
+    runT (Kc dm) ρ φ tl hint id1Body (SPg selfB d (.el0 Nat a) r)
+      = some ((.el0 Nat a, T₁), SPg2 selfB d T₀.m (.el0 Nat a) r) := by
+  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
+  unfold borrowPlace
+  simp only [contentOf_SPg_eq, bind, Option.bind]
+  simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
+    Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent,
+    SState.setHeldTy, SState.setHeldMem, SPg, SPg2, xB, T₁]
+
+/-- The caller's frame in place reads label `0` only, below the counter. -/
+theorem SPg_start (c : Sem) : FrameStart (SPg selfB d c r) [0] where
+  reads := fun p hp ψ ψ' h => by
+    have h0 : ψ 0 = ψ' 0 := h 0 (by simp [SPg])
+    rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;>
+      rcases i with _ | _ | i <;> simp [SState.valAt, SPg, yFrame, h0]
+  ks_lt := by simp [SPg]
+  callerHeld := fun p l hp hl => by
+    rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp hl <;> omega
+  ks_nodup := by simp
+
+/-- **`Id1`, at the call**: the in-place state and the closure's frame are related. -/
+theorem id1_start (c : Sem) : FrameRel (SPg selfB d c r) [0] (SPg selfB d c r) (SBs selfB d c r) where
+  frames := ⟨rfl, rfl⟩
+  lowerSkel := fun _ _ => rfl
+  lowerVal := fun p _ ψ => by
+    show _ = (SPg selfB d c r).valAt p (cellFuture [0] (cellsOf 1 (SBs selfB d c r)) ψ)
+    rw [cellsOf_SBs, cellFuture_self]
+  lowerShape := fun _ _ => rfl
+  top := ⟨_, _, rfl, rfl, rfl, rfl, rfl⟩
+  topShape := fun p hp => by
+    rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;>
+      simp [upPos, SBs, SPg]
+  clShape := fun q l hq => by
+    by_cases h : q = .bind 0 1
+    · exact ⟨.bind 1 1, rfl, h⟩
+    · simp [SBs, h] at hq
+  next := rfl
+  held := fun l hl => by
+    have h0 : l = 0 := by simpa [SState.Live, liveLabels_SBs] using hl
+    subst h0; simp [SPg, SBs]
+  lentTop := fun l x hx => by
+    constructor
+    · intro hm
+      by_cases hl : l = 0
+      · subst hl; simp [SPg] at hm; subst hm; simp [Pos.frameOf, SState.topIdx, SPg] at hx
+      · simp [SPg, hl] at hm
+    · intro hm; simp [SBs] at hm
+  lentCl := fun l x hx => by simp [SBs] at hx
+  lentCaller := fun _ _ _ _ => rfl
+  topLabels := fun l hl => by
+    have h0 : l = 0 := by simpa [SState.Live, liveLabels_SBs] using hl
+    simp [h0]
+
+theorem cellsOf_SB2 (T : TyM) (c r : Sem) : cellsOf 1 (SB2 selfB d T c r) = [fun ψ => ψ 0] := rfl
+
+/-- **`Id1`, after the body**: related again, the reborrow `1` parked and lent at `*x` on both sides. -/
+theorem id1_after (T : TyM) (c c₀ : Sem) :
+    FrameRel (SPg selfB d c₀ r) [0] (SPg2 selfB d T c r) (SB2 selfB d T c r) where
+  frames := ⟨rfl, rfl⟩
+  lowerSkel := fun f hf => by
+    have : f = 0 := by simp [SState.topIdx, SPg] at hf; omega
+    subst this; rfl
+  lowerVal := fun p hp ψ => by
+    show _ = (SPg selfB d c₀ r).valAt p (cellFuture [0] (cellsOf 1 (SB2 selfB d T c r)) ψ)
+    rw [cellsOf_SB2, cellFuture_self]
+    rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;>
+      simp [SState.valAt, SPg, SPg2]
+  lowerShape := fun p hp => by
+    rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;>
+      simp [SPg, SPg2]
+  top := ⟨_, _, rfl, rfl, rfl, rfl, rfl⟩
+  topShape := fun p hp => by
+    rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;>
+      rcases i with _ | _ | i <;> simp [upPos, SB2, SPg2]
+  clShape := fun q l hq => by
+    by_cases h1 : q = .temp 0 1
+    · exact ⟨.temp 1 0, rfl, h1⟩
+    · by_cases h2 : q = .bind 0 1
+      · exact ⟨.bind 1 1, rfl, h2⟩
+      · simp [SB2, h1, h2] at hq
+  next := rfl
+  held := fun l hl => by
+    have h01 : l = 0 ∨ l = 1 := by
+      have := hl; simp only [SState.Live, liveLabels_SB2] at this; simpa using this
+    rcases h01 with rfl | rfl <;> simp [SPg2, SB2]
+  lentTop := fun l x hx => by
+    obtain ⟨pos, path, fill⟩ := x
+    by_cases h1 : l = 1
+    · subst h1
+      rcases pos with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hx <;> subst hx <;>
+        simp [SPg2, SB2, upPos]
+    · by_cases h0 : l = 0
+      · subst h0
+        rcases pos with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hx <;> subst hx <;>
+          simp [SPg2, SB2, upPos]
+      · simp [SPg2, SB2, h1, h0]
+  lentCl := fun l x hx => by
+    by_cases h1 : l = 1
+    · subst h1; simp [SB2] at hx; subst hx; exact ⟨.bind 1 1, rfl, rfl⟩
+    · simp [SB2, h1] at hx
+  lentCaller := fun l p hp hl => by
+    rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;> simp [SPg] at hl
+  topLabels := fun l hl => by
+    have h01 : l = 0 ∨ l = 1 := by
+      have := hl; simp only [SState.Live, liveLabels_SB2] at this; simpa using this
+    rcases h01 with rfl | rfl <;> simp [SPg]
+
+/-- **The frame property on `Id1(&y)`**: from the related states at the call, the body runs to the
+same result and related states, in place and in the closure's frame. -/
+theorem id1_frame (a : Nat) (hint : TyS) (tl : Bool) :
+    FrameStart (SPg selfB d (.el0 Nat a) r) [0] ∧
+    FrameRel (SPg selfB d (.el0 Nat a) r) [0] (SPg selfB d (.el0 Nat a) r) (SBs selfB d (.el0 Nat a) r) ∧
+    ∃ res s₁ s₁', runT (Kc dm) ρ φ tl hint id1Body (SPg selfB d (.el0 Nat a) r) = some (res, s₁) ∧
+      runT (Kc dm) ρ φ tl hint id1Body (SBs selfB d (.el0 Nat a) r) = some (res, s₁') ∧
+      FrameRel (SPg selfB d (.el0 Nat a) r) [0] s₁ s₁' :=
+  ⟨SPg_start selfB d _, id1_start selfB d _, _, _, _, run_id1_in dm ρ φ selfB d a hint tl,
+    run_id1_cl dm ρ φ selfB d a hint tl, id1_after selfB d _ _ _⟩
+
+/-- **`Inc`, after the body**: the same frames, `x` holding the new content; still related (`y`
+reads the parameter's label, which the cell reads). -/
+theorem inc_after (c c₀ : Sem) : FrameRel (SPg selfB d c₀ r) [0] (SPg selfB d c r) (SBs selfB d c r) where
+  frames := ⟨rfl, rfl⟩
+  lowerSkel := fun f hf => by
+    have : f = 0 := by simp [SState.topIdx, SPg] at hf; omega
+    subst this; rfl
+  lowerVal := fun p hp ψ => by
+    show _ = (SPg selfB d c₀ r).valAt p (cellFuture [0] (cellsOf 1 (SBs selfB d c r)) ψ)
+    rw [cellsOf_SBs, cellFuture_self]
+    rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;>
+      simp [SState.valAt, SPg]
+  lowerShape := fun _ _ => rfl
+  top := ⟨_, _, rfl, rfl, rfl, rfl, rfl⟩
+  topShape := fun p hp => by
+    rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;>
+      simp [upPos, SBs, SPg]
+  clShape := (id1_start selfB d c).clShape
+  next := rfl
+  held := fun l hl => (id1_start (r := r) selfB d c).held l hl
+  lentTop := fun l x hx => (id1_start (r := r) selfB d c).lentTop l x (by simpa [SState.topIdx, SPg] using hx)
+  lentCl := (id1_start selfB d c).lentCl
+  lentCaller := fun _ _ _ _ => rfl
+  topLabels := fun l hl => by
+    have h0 : l = 0 := by simpa [SState.Live, liveLabels_SBs] using hl
+    simp [h0]
+
+/-! ## `Inc` -/
+
+theorem readPlace_SBs (a : Nat) :
+    ∃ T, readPlace (Kc dm) φ (.deref (.var 0)) true (SBs selfB d (.el0 Nat a) r)
+      = some ((.el0 Nat a, T), SBs selfB d (.el0 Nat a) r) :=
+  ⟨{ T₀ with label := none }, by simp [readPlace, contentOf_SBs_eq, bind, Option.bind, Sem.whole]⟩
+
+theorem setContent_SBs (a b : Nat) :
+    setContent (Kc dm) φ (.bind 0 1) [.deref] (.el0 Nat b) (SBs selfB d (.el0 Nat a) r)
+      = some (⟨⟩, SBs selfB d (.el0 Nat b) r) := by
+  simp [setContent, Attack.updAt_deref, Attack.updAt_nil, SState.setAt, SBs, xB, SState.valAt]
+
+/-- `*x := S(*x)` in the closure's frame (any `self`). -/
+theorem run_inc_cl (a : Nat) (hint : TyS) (tl : Bool) :
+    runT (Kc dm) ρ φ tl hint incBody (SBs selfB d (.el0 Nat a) r)
+      = some ((.el0 Unit (), .plain TyM.unit), SBs selfB d (.el0 Nat (a + 1)) r) := by
+  obtain ⟨T', hT'⟩ := readPlace_SBs (r := r) dm φ selfB d a
+  simp only [incBody, runT, SM.erasedIf, SM.erasedAt, SM.stmtIf, flags_Kc, copy_Kc, contentOf_SBs_eq, hT',
+    Bool.false_eq_true, if_false, bind, Option.bind, pure]
+  rw [Sem.succ_el0, show (TyS.plain TyM.nat).label = none from rfl]
+  simp only [assignAt, resolve_SBs, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false, access_SBs,
+    setContent_SBs]
+
+theorem SP_eq (cd : DeclInfo) (c : Sem) : SP dm ρ φ cd d c r = SPg (selfP dm ρ φ cd) d c r := rfl
+
+/-- **The frame property on `Inc(&y)`**, `self` as the call in place binds it: related at the call,
+the same result `()`, related after (`y` reading the parameter's label, the closure's cell reading it). -/
+theorem inc_frame (cd : DeclInfo) (a : Nat) (hint : TyS) (tl : Bool) :
+    FrameStart (SP dm ρ φ cd d (.el0 Nat a) r) [0] ∧
+    FrameRel (SP dm ρ φ cd d (.el0 Nat a) r) [0] (SP dm ρ φ cd d (.el0 Nat a) r) (SBs (selfP dm ρ φ cd) d (.el0 Nat a) r) ∧
+    ∃ res s₁ s₁', runT (Kc dm) ρ φ tl hint incBody (SP dm ρ φ cd d (.el0 Nat a) r) = some (res, s₁) ∧
+      runT (Kc dm) ρ φ tl hint incBody (SBs (selfP dm ρ φ cd) d (.el0 Nat a) r) = some (res, s₁') ∧
+      FrameRel (SP dm ρ φ cd d (.el0 Nat a) r) [0] s₁ s₁' := by
+  rw [SP_eq]
+  have hin := runBody_incP (r := r) dm ρ φ cd d a hint tl
+  rw [SP_eq, SP_eq] at hin
+  exact ⟨SPg_start _ d _, id1_start _ d _, _, _, _, hin, run_inc_cl dm ρ φ _ d a hint tl,
+    inc_after (selfP dm ρ φ cd) d _ _⟩
+
+end Ochr.Meaning.Regress.FrameCheck

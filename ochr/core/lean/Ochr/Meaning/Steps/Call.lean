@@ -70,8 +70,11 @@ through a cell, and fixes each lent place's final content. They give the same re
 code), and the states after relate every checker state alike, the result's label renamed.
 
 What it rests on, none proved: the reference's run reads and writes only the top frame and the
-sites of the labels it holds (the frame property of `run`); the run does not depend on its starting
-label counter (`Lemmas.run_counter_indep`, open); a cell read after the frame's ends is the holder's
+sites of the labels it holds, reaching the caller's frames only through the parameters' labels,
+which the closure's cells stand for (the frame property of `run`, `FrameProp.run_frame`, stated for
+`Id`-free bodies and checked on `Inc` and `Id1`, `Regress/FrameCheck.lean`; at an `Id` the in-place
+observation reads the caller's frames where the closure reads the cells, docs/31 D70); the run does
+not depend on its starting label counter (`Lemmas.run_counter_indep`, open); a cell read after the frame's ends is the holder's
 content at its end, which `endLabel` fixes in the caller's places; for a recursive callee, the
 closure's meaning applied at the arguments is the body's run with `self` the closure itself, which
 needs every recursive call to decrease ([Rec], `hacc`; `recCheck_sound_stmt`), and whose statement
