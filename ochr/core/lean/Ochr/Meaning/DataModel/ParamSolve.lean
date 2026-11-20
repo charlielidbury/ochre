@@ -9,9 +9,10 @@ constructor clause (`unifyTyS`) reads a parameter back off a field's type only w
 keeps it, a level-0 type parameter's entry at `paramKey`. The checker (`Machine.unifyParams`)
 reads the parameter list of the field's type, so it also solves a value or a large parameter.
 
-**The suite and the case studies.** Traced over every constructor evaluated by `lake exe tests`
-(23,648 evaluations with no parameters written and no hint naming the type), every one solved
-from its fields has only type parameters, read either as a field's own type (`Opt.Some(x)`,
+**The suite and the case studies.** Traced (a temporary trace in `Machine.evalCtor`, not kept)
+over every example and case study as the build elaborates it, and over `lake exe tests` as far as
+`Quicksort.ScanLeft`: every constructor evaluated with no parameters written and no hint naming
+the type, and solved from its fields, has only type parameters, read either as a field's own type (`Opt.Some(x)`,
 `Pair.Mk(a, b)`, `List.Cons(h, t)`, `Box.MkBox(x)`) or as a direct argument of a field's type
 (`ArrayOf.MkArray(s : SliceOf(R))`, `Cell.MkC(h, t : SliceOf(R))`, `GBucket.GCons(…, t :
 GBucket(V))`). The model reads both (`cell_solves` is the pattern). No accepted program in the
