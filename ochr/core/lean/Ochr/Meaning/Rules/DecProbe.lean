@@ -32,6 +32,9 @@ ochr DecAt uses Nats {
   def G (n : Nat) : UnitAlias := ()
   def TF (n : Nat) : Type := match n { Z => Unit, S _ => Nat }
   def H (n : Nat) : TF(Z) := ()
+  def FS (n : Nat) : Unit := match n { Z => (), S _ => () }
+  def UseFS (n : Nat) : TF(Z) := ( let f : Π(m : Nat). TF(Z) = FS; f(n) )
+  def EqFSH : Eq(Π(m : Nat). TF(Z), FS, H) := refl
   def UseF : Pair(Unit, Unit) := let x = F(0); Mk(x, x)
   reject def UseH : Pair(Unit, Unit) := let x = H(0); Mk(x, x)
   def EqFG : Eq(Π(n : Nat). Unit, F, G) := refl
@@ -45,6 +48,7 @@ def stT : MState :=
   | some row => (row.trace.toList.filterMap fun
       | .state _ false _ st => some st | _ => none).getLast?.getD default
   | none => default
+instance : ToString (Value × Option Value) := ⟨fun (v, _) => toString v⟩
 def show' {α : Type} [ToString α] (x : M α) : String :=
   match (runMachine x stT 1000000).1 with
   | .ok a _ => s!"ok {a}"
@@ -61,4 +65,9 @@ instance : ToString DeclInfo := ⟨dpp⟩
 #guard show' (Ochr.conv 100000 (.gfn "F") (.gfn "H")) == "ok true"
 #guard show' (withLive true (Ochr.declOf 1000 false [] [] (.val (.gfn "H")))) == "ok pi(other)"
 #guard show' (withLive true (Ochr.declOf 1000 false [] [] (.call (.val (.gfn "H")) [.zero] false))) == "ok other"
+-- the generic call of `UseFS` closes `f(n)` off as a sealed program whose head is `FS` (read
+-- `unit` as a value) while the call as written read `other` (`f`'s declared type): so a [Close]
+-- text whose head's own reading differs from the reading it was made at arises in accepted code
+#guard show' (Ochr.eval 100000 true (.letIn ⟨"f"⟩ (.ascribe (.const "FS") (.pi [⟨"m"⟩] [.nat] (.call (.const "TF") [.zero] false)))
+  (.call (.place (.var 0)) [.place (.var 1)] false))) == "ok ⌈FS(σ0)⌉"
 end DecProbe
