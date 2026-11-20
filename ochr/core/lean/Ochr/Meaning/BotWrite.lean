@@ -85,7 +85,7 @@ theorem mean_hintFree : ∀ (w : Value), RecPlain Γ w → ∀ h h',
   | .tPi _ _ _, _ | .sort _, _ | .tInd _ _, _ | .succ _, _ => fun _ _ => by simp only [Value.mean]
 
 theorem fieldHint_eq (d : IndDecl) (ps : List Sem) (c i : Nat) (e : List Sem) :
-    fieldHint dm d ps c i e = ⟨dm.fieldTy d ps c i e, none, none, dm.fieldData d ps c i e⟩ := rfl
+    fieldHint dm d ps c i e = .plain (dm.fieldTy d ps c i e) := rfl
 
 /-- Fields that record their parameters and hold no sealed program mean the same whatever the
 earlier fields they are typed at. -/
@@ -96,8 +96,8 @@ theorem meanFields_earlier (d : IndDecl) (ps : List Sem) (c : Nat) :
   | x :: xs, k, e, e', h => by
     simp only [Value.meanFields]
     have hx := mean_hintFree dm C Γ ρ φ x (h x (List.mem_cons_self ..))
-      ⟨dm.fieldTy d ps c k e, none, none, dm.fieldData d ps c k e⟩
-      ⟨dm.fieldTy d ps c k e', none, none, dm.fieldData d ps c k e'⟩
+      (.plain (dm.fieldTy d ps c k e))
+      (.plain (dm.fieldTy d ps c k e'))
     rw [hx, meanFields_earlier d ps c xs (k + 1) _ (e' ++ _) (fun y hy => h y (List.mem_cons_of_mem _ hy))]
 
 /-- Field `i`'s meaning is its value read at its hint, after the earlier fields. -/
@@ -145,8 +145,8 @@ theorem meanFields_earlierH (d : IndDecl) (ps : List Sem) (c : Nat) :
   | x :: xs, k, e, e', h => by
     simp only [Value.meanFields]
     have hx := h x (List.mem_cons_self ..)
-      ⟨dm.fieldTy d ps c k e, none, none, dm.fieldData d ps c k e⟩
-      ⟨dm.fieldTy d ps c k e', none, none, dm.fieldData d ps c k e'⟩
+      (.plain (dm.fieldTy d ps c k e))
+      (.plain (dm.fieldTy d ps c k e'))
     rw [hx, meanFields_earlierH d ps c xs (k + 1) _ (e' ++ _) (fun y hy => h y (List.mem_cons_of_mem _ hy))]
 
 /-- `meanFields_set` for fields that mean the same at every hint. -/
@@ -233,7 +233,7 @@ def NatAlong : List Step → Value → Prop
   | .deref :: ss, .borrow _ w => NatAlong ss w
   | st :: ss, .gloan _ w => NatAlong (st :: ss) w
   | .proj 0 :: ss, .succ w =>
-    (∃ n, (Value.mean dm C Γ ρ φ (.plain (.ty0 Nat)) w).asNat = some n) ∧ NatAlong ss w
+    (∃ n, (Value.mean dm C Γ ρ φ (.plain TyM.nat) w).asNat = some n) ∧ NatAlong ss w
   | st :: ss, .ind ty _ _ _ fs =>
     ∃ d, Γ.find? (·.name == ty) = some d ∧ d.sort ≠ 0 ∧ d.name ≠ "Nat" ∧
       ∀ w, fs[st.fieldIdx]? = some w → NatAlong ss w
@@ -264,7 +264,7 @@ theorem Sem.updAt_deref' (T : TyS) (f : Sem → Sem) (sts : List Step) (s : Sem)
 
 theorem Sem.updAt_nat' (T : TyS) (f : Sem → Sem) (sts : List Step) (s : Sem) (n : Nat)
     (hs : s.asNat = some (n + 1)) :
-    Sem.updAt dm Γ T f (.proj 0 :: sts) s = (Sem.updAt dm Γ (.plain (.ty0 Nat)) f sts (.el0 Nat n)).map Sem.succ := by
+    Sem.updAt dm Γ T f (.proj 0 :: sts) s = (Sem.updAt dm Γ (.plain TyM.nat) f sts (.el0 Nat n)).map Sem.succ := by
   rw [Sem.updAt.eq_def]
   simp only [hs]
 
@@ -305,9 +305,9 @@ theorem mean_updAt_bot : ∀ (steps : List Step) (H T : TyS) (v v' : Value),
         | zero =>
           simp only [Value.updAt] at h
           obtain ⟨w', hw', rfl⟩ := Option.map_eq_some_iff.mp h
-          obtain ⟨⟨n, hn⟩, hd'⟩ : (∃ n, (Value.mean dm C Γ ρ φ (.plain (.ty0 Nat)) w).asNat = some n) ∧
+          obtain ⟨⟨n, hn⟩, hd'⟩ : (∃ n, (Value.mean dm C Γ ρ φ (.plain TyM.nat) w).asNat = some n) ∧
               NatAlong dm C Γ ρ φ ss w := by simpa [NatAlong] using hd
-          have IH := mean_updAt_bot ss (.plain (.ty0 Nat)) (.plain (.ty0 Nat)) w w' hw' (recPlain_of_succ Γ hv) hd'
+          have IH := mean_updAt_bot ss (.plain TyM.nat) (.plain TyM.nat) w w' hw' (recPlain_of_succ Γ hv) hd'
           rw [Sem.asNat_some hn] at IH
           simp only [Value.mean, Sem.asNat_some hn, Sem.succ_el0]
           rw [Sem.updAt_nat' dm Γ T _ ss _ n (Sem.asNat_el0 (n + 1)), IH, Option.map_some]

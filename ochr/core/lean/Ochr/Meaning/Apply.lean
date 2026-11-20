@@ -228,17 +228,30 @@ def telL : (ds : List PiDom) → (acc : List Sem) → (Fin : Type u) → (out : 
       .param Fin p.isRef _ (L.codeOf (p.dom acc)).2 _ fun a =>
         (telL ps (acc ++ [L.enc (L.codeOf (p.dom acc)).2 a]) (extFin p.isRef Fin (L.codeOf (p.dom acc)).1) out).2⟩
 
-/-- The type of the next parameter of a telescope code after the given arguments (decoded at
-their parameters' codes), the hint the next argument runs at; `err` past the end or at an argument
-of the wrong type. -/
-noncomputable def telDomL : {Fin C : Type u} → Tel L.Code Fin C → List Sem → TyM
-  | _, _, .param _ _ _ c _ _, [] => L.toTy c
+/-- The next parameter of a telescope code after the given arguments (decoded at their
+parameters' codes): whether it is a borrow, and its (content) code; `none` past the end or at an
+argument of the wrong type. -/
+noncomputable def telParamL : {Fin C : Type u} → Tel L.Code Fin C → List Sem → Option (Bool × TyM)
+  | _, _, .param _ isRef _ c _ _, [] => some (isRef, L.toTy c)
   | _, _, .param _ _ _ c _ k, a :: as =>
     match L.dec c a with
-    | some x => telDomL (k x) as
-    | none => TyM.err
-  | _, _, .dat .., _ => TyM.err
-  | _, _, .ref .., _ => TyM.err
+    | some x => telParamL (k x) as
+    | none => none
+  | _, _, .dat .., _ => none
+  | _, _, .ref .., _ => none
+
+/-- The codomain a telescope code reaches at the arguments: whether it is a returned borrow, and
+its (content) code; `none` at the wrong number of arguments or an argument of the wrong type. -/
+noncomputable def telCodL : {Fin C : Type u} → Tel L.Code Fin C → List Sem → Option (Bool × TyM)
+  | _, _, .dat _ _ c, [] => some (false, L.toTy c)
+  | _, _, .ref _ _ c, [] => some (true, L.toTy c)
+  | _, _, .param _ _ _ c _ k, a :: as =>
+    match L.dec c a with
+    | some x => telCodL (k x) as
+    | none => none
+  | _, _, .dat .., _ :: _ => none
+  | _, _, .ref .., _ :: _ => none
+  | _, _, .param .., [] => none
 
 /-- The meaning of a function type with telescope code `t`, at level `L`. -/
 def piTyL {C : Type u} (t : Tel L.Code PUnit C) : TyM := L.toTy (L.pi C t)

@@ -76,8 +76,8 @@ kernel-checked). `CtxOk K ρ st` is the one hypothesis that ties them. -/
 
 /-- `K.C.global` is Σ: each global of the state has its stored type, a constant means its stored
 value read at that type (`⋆` at a proposition, as `evalCore`'s `.const` reads it), a function means
-the closure of its `fix` term formed in the empty frame, with its Π-shape, and each is a member of
-its type. The last is the outer induction of docs/18's theorem: while a definition is checked,
+the closure of its `fix` term formed in the empty frame, whose run gives the stored type's code,
+and each is a member of its type. The last is the outer induction of docs/18's theorem: while a definition is checked,
 every global is an earlier, accepted one. A global is closed, so these hold at every assignment
 and future. -/
 structure GlobalsOk (K : RunCtx) (st : MState) : Prop where
@@ -87,7 +87,7 @@ structure GlobalsOk (K : RunCtx) (st : MState) : Prop where
     (K.C.global n).1 = constMean (K.C.global n).2.m (meanV K ρ φ (K.C.global n).2 g.val)
   fn : ∀ n g t, st.globals.find? (·.name == n) = some g → g.fn? = some t → ∀ ρ φ,
     (K.C.global n).1 = meanV K ρ φ (.plain .err) (.clo [] t []) ∧
-    (K.C.global n).2.shape = (piShapeOf K ρ φ (stateOf 0 []) t).map fun sh => (sh.ps, sh.out)
+    ∀ r s', run K ρ φ (.plain .err) t (stateOf 0 []) = some (r, s') → r.2.m = (K.C.global n).2.m
   mem : ∀ n g, st.globals.find? (·.name == n) = some g → (K.C.global n).1 ∈ₛ (K.C.global n).2.m
 
 /-- The run context knows the types of the unknowns the state names: `K.Δ` is `deltaOf` at every
@@ -459,18 +459,18 @@ theorem Sim.of_below {m' : Mean} {s : SState} (h : Below m' s.toMean) : Sim m' s
   obtain ⟨φ, hv, hs⟩ := h φ'
   exact ⟨φ, fun p _ => hv p, fun p l _ hl => hs p l hl, fun f i l hl => ⟨i, hs _ l hl, hv _⟩⟩
 
-/-- What `run` reads of a binding besides its meaning: its type's meaning, Π-shape and data, and
-its declared reading. (The label a type recorded when it was bound is read by no clause.)
+/-- What `run` reads of a binding besides its meaning: its type's code, and its declared reading.
+(The label a type recorded when it was bound is read by no clause.)
 
-The Π-shape was left out when `Rel` was first stated, as an open lemma. Without it the relation
-admits a reference state whose bindings have lost their shapes, from which every call through a
-variable fails, so the statements in the simulation form were false of any accepted call through
-a variable (docs/31 D22; third lead). With it, a step that binds must show the shapes agree: the
-type conjunct of `evalCore_step_stmt` (`StrAgree`), which rests on `piShape_step_stmt` at a
-Π-term and is FALSE today where the run drops structure (a call's result, a field read:
-`Regress/ShapeAgree.lean`, the audit's A11, A12, A18). -/
-def bindSkel (b : SBinding) : TyM × Option (List PiParam × PiOut) × Option (String × List Sem) × DeclInfo :=
-  (b.ty.m, b.ty.shape, b.ty.data, b.decl)
+The type's structure was left out when `Rel` was first stated, as an open lemma. Without it the
+relation admits a reference state whose bindings have lost their Π-shapes, from which every call
+through a variable fails, so the statements in the simulation form were false of any accepted
+call through a variable (docs/31 D22; third lead). Since D59 a type is its code, which carries
+its whole structure (a function type's telescope, a data type's declaration and parameters), so
+the skeleton compares codes, and a step that binds must show the codes agree: the type conjunct
+of `evalCore_step_stmt` (`StrAgree`). -/
+def bindSkel (b : SBinding) : TyM × DeclInfo :=
+  (b.ty.m, b.decl)
 
 /-- The futures a relation compares at: those that agree with the run's `φ` off the reference's
 live labels (a binding holding an inert loan means the constant `φ ℓ` in the reference and `ψ ℓ`
@@ -531,22 +531,15 @@ theorem hintFree_of_topHintFree (w : Value) (hw : Value.topHintFree K.Γ w = tru
 
 /-! ### Helpers from `Steps/Call.lean` -/
 
-/-- The callee as the run sees it: its meaning and its type value's shape. The shape is read
-through the run of the type value (the `.pi` clause of `run`); a callee whose type is not a
-Π-type has none. -/
+/-- The callee as the run sees it: its meaning, and its type value's meaning (a code, which holds
+the telescope a call walks). -/
 noncomputable def calleeRes (fv : Value) (fT : Value) : Res :=
-  (meanV K ρ φ (.plain .err) fv,
-    match fT with
-    | .tPi caps t rd =>
-      match piShapeOf K ρ φ (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) t with
-      | some sh => ⟨(meanV K ρ φ (.plain .err) fT).asTy, some (sh.ps, sh.out), none, none⟩
-      | none => .plain .err
-    | _ => .plain .err)
+  (meanV K ρ φ (.plain .err) fv, .plain (meanV K ρ φ (.plain .err) fT).asTy)
 
 /-- The arguments as the run sees them, with each borrow argument's label. -/
 noncomputable def argsRes (ws : Array Value) : List Res :=
   ws.toList.map fun w => (meanV K ρ φ (.plain .err) w,
-    ⟨.err, none, (match w with | .borrow l _ => some l | _ => none), none⟩)
+    ⟨TyM.err, (match w with | .borrow l _ => some l | _ => none)⟩)
 
 /-! ### Helpers from `Steps/Match.lean` -/
 
@@ -817,45 +810,44 @@ def runBody_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
 `()` at a declared `Unit`, or a borrow of one), and each lent place a fill: both mean what the
 reference's call gives them, since a sealed program means its run.
 
-The callee's meaning and shape are the run's reading of the value (`run (.val fv)`: a closure's
-or Π-closure's shape from its term, a global's from `K.C`, an abstract value's from `Δ`; a sealed
-callee has no shape yet, docs/31 item 3), not a separately quantified type (the pilot form took
-`fT` free, so `fT := .zero` refuted it at once: `Regress/CloseCallStmt.lean`). The row and the
-declared-`Unit` readings `kind`, `res`, `fills` and the cells' types `tys` are read off the call
-as written (`evalCall`) and trusted; typing makes them agree with the callee's shape, which the
-hypotheses `hkind`, `hres`, `hfills`, `htys` state (without them a `res := .unit` at a `Nat`
-codomain, or a `fills` entry at a `Nat` cell, made the checker return `()` where the reference
-returns the value: the same file). -/
+The callee's meaning and type code are the run's reading of the value (`run (.val fv)`: a
+closure's code from its term, a global's from `K.C`, an abstract value's from `Δ`; a sealed callee
+is typed as its program's result where that is a function, docs/31 item 3), not a separately
+quantified type (the pilot form took `fT` free, so `fT := .zero` refuted it at once:
+`Regress/CloseCallStmt.lean`). The row and the declared-`Unit` readings `kind`, `res`, `fills`
+and the cells' types `tys` are read off the call as written (`evalCall`) and trusted; typing
+makes them agree with the callee's telescope code at the arguments (`TyM.paramAt?`,
+`TyM.codAt?`), which the hypotheses `hkind`, `hres`, `hfills`, `htys` state (without them a
+`res := .unit` at a `Nat` codomain, or a `fills` entry at a `Nat` cell, made the checker return
+`()` where the reference returns the value: the same file). -/
 def closeCall_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (fv : Value) (ws : Array Value)
     (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)) (v : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hargs : ArgsLoanFree st.env ws)
     (fres : Res) (hf : run K ρ φ (.plain .err) (.val fv) (SM' K ρ st) = some (fres, SM' K ρ st))
-    (ps : List PiParam) (out : PiOut) (hsh : fres.2.shape = some (ps, out))
-    (hkind : kind = .ref ↔ ∃ U, out = .ref U)
-    (hres : res = .unit → ∀ B, out = .data B → B ((argsRes K ρ φ ws).map (·.1)) = .ty0 Unit)
-    (hfills : ∀ i : Nat, fills.getD i false = true → ∀ p : PiParam, ps[i]? = some p →
-      p.dom (((argsRes K ρ φ ws).map (·.1)).take i) = .ty0 Unit)
-    (htys : ∀ (i l : Nat) (w : Value), ws[i]? = some (Value.borrow l w) → ∀ p : PiParam, ps[i]? = some p →
-      ∃ T : Value, tys[i]? = some (some (Value.tRef T)) ∧
-        (Value.tyS K.dm K.M K.Γ ρ T).m = p.dom (((argsRes K ρ φ ws).map (·.1)).take i))
+    (hpi : fres.2.m.isPi = true)
+    (hkind : kind = .ref ↔ ∃ U, fres.2.m.codAt? ((argsRes K ρ φ ws).map (·.1)) = some (true, U))
+    (hres : res = .unit → ∀ B, fres.2.m.codAt? ((argsRes K ρ φ ws).map (·.1)) = some (false, B) →
+      B = TyM.unit)
+    (hfills : ∀ i : Nat, fills.getD i false = true → ∀ p,
+      fres.2.m.paramAt? (((argsRes K ρ φ ws).map (·.1)).take i) = some p → p.2 = TyM.unit)
+    (htys : ∀ (i l : Nat) (w : Value), ws[i]? = some (Value.borrow l w) → ∀ p,
+      fres.2.m.paramAt? (((argsRes K ρ φ ws).map (·.1)).take i) = some p →
+      ∃ T : Value, tys[i]? = some (some (Value.tRef T)) ∧ (Value.tyS K.dm K.M K.Γ ρ T).m = p.2)
     (bh : Nat) (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st bh v st'),
     ∃ r s', callOf fres (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v = r.1 ∧
       Exact (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
 
-/-- [Call-type] (`callType`, `declCallType`): the codomain at the arguments is the reference's
-result type. -/
+/-- [Call-type] (`callType`, `declCallType`): the codomain the callee's telescope code reaches at
+the arguments (for a returned borrow, its content) is the reference's result type. -/
 def callType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (piTy : Value) (ws : Array Value)
     (tys : Array (Option Value)) (B : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (bh : Nat) (h : Runs (Ochr.callType fuel piTy ws tys) st bh B st'),
-    ∀ ps out, (calleeRes K ρ φ .proof piTy).2.shape = some (ps, out) →
-      (meanV K ρ noFuture (.plain .err) B).asTy =
-        (match out with
-          | .data B' => B' ((argsRes K ρ φ ws).map (·.1))
-          | .ref U => U ((argsRes K ρ φ ws).map (·.1)))
+    ∀ b U, (calleeRes K ρ φ .proof piTy).2.m.codAt? ((argsRes K ρ φ ws).map (·.1)) = some (b, U) →
+      (meanV K ρ noFuture (.plain .err) B).asTy = U
 
 /-- [Rec]'s accepting direction (`recCheck`), semantically: for a recursive function whose every
 recursive call passes a strict subterm of the entry value, the stages of the `fix` clause
@@ -1319,29 +1311,28 @@ it did not follow from `Good`, which said nothing of a type's loans. -/
 def types_holeFree_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st : MState) (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st), WF11 st
 
-/-- The run's result type `R` is the checker's type `T` of the value `v`, with its structure
-(docs/31 D22): the same meaning, Π-shape and data, where the checker's side is its stored type
-read as a reference binding reads it (`Value.tyS`, with the structure of `v` itself when `v` is a
-type: `Value.strS`). This is what a `let` needs to keep `Rel.skel`. As first stated the conjunct
-compared the meanings only. -/
-def StrAgree (v T : Value) (R : TyS) : Prop :=
-  (Value.strS K.dm K.M K.Γ ρ v (Value.tyS K.dm K.M K.Γ ρ T)).m = R.m ∧
-  (Value.strS K.dm K.M K.Γ ρ v (Value.tyS K.dm K.M K.Γ ρ T)).shape = R.shape ∧
-  (Value.strS K.dm K.M K.Γ ρ v (Value.tyS K.dm K.M K.Γ ρ T)).data = R.data
+/-- The run's result type `R` is the checker's type `T`, with its structure (docs/31 D22): the
+same code, where the checker's side is its stored type read as a reference binding reads it
+(`Value.tyS`). This is what a `let` needs to keep `Rel.skel`. As first stated the conjunct compared
+the meanings only; then the meaning, Π-shape and data, with a type-valued value's own structure
+carried in its type (`Value.strS`). Since D59 the code carries the structure and a type value
+carries its own code, so one equation of codes says it all. -/
+def StrAgree (T : Value) (R : TyS) : Prop :=
+  (Value.tyS K.dm K.M K.Γ ρ T).m = R.m
 
-/-- **[T-Pi]: a Π-type's shape does not depend on where it is read** (docs/31 D22; prerequisite
+/-- **[T-Pi]: a Π-type's code does not depend on where it is read** (docs/31 D22; prerequisite
 (a) of the migration). The checker closes a Π-term or a `fix` over the values of its free
-variables (`capture`) and stores the Π-type as that closed value, whose shape a later reading takes
-off its term in the frame of its captures, at the constant future (`tyShape`, through
-`Value.tyS`). The reference run reads the shape off the ORIGINAL term in the forming state, at the
-run's future (`piShapeOf`, the `.pi` and `.fix` clauses). The two are the same shape, from any
-reference state that simulates the checker's.
+variables (`capture`) and stores the closed value, which a later reading runs in the frame of its
+captures, at the constant future (`Value.tyS`, `run`'s `.val` clause). The reference run reads the
+ORIGINAL term in the forming state, at the run's future (the `.pi` and `.fix` clauses). The two
+give the same code (the type a Π-term denotes, the type a closure has), from any reference state
+that simulates the checker's.
 
 Three things carry it, none proved: the captured term in the captures' frame runs as the original
 in the forming state (the capture lemma: a term's run reads the state only at its free variables,
 each after [Access], which the checker's capture also performs); a type holds no live loan, so the
-future does not matter (`tyShape_congrE`, proved, gives this once the captures are loan-free);
-and the decisions read the same readings through the renaming (`rd` records each capture's).
+future does not matter (`run_congrE`, proved, gives this once the captures are loan-free); and the
+decisions read the same readings through the renaming (`rd` records each capture's).
 Where it is KNOWN false: a captured PROOF variable is inlined as `(⋆ : T)`, which the run types
 `T` where a read of the variable is typed `err` (`SM.erasedIf`), and a constructor's parameter
 solved by such a field's type differs (the audit's A17, `Regress/ShapeProbes.lean`). -/
@@ -1351,7 +1342,10 @@ def piShape_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (ht : t matches .pi .. | .fix ..)
     (bh : Nat) (h : Runs (Ochr.capture fuel t) st bh (cs, t', rd) st'),
-    (piShapeOf K ρ φ s t).map (fun sh => (sh.ps, sh.out)) = tyShape K ρ noFuture (.tPi cs t' rd)
+    (run K ρ φ (.plain .err) t s).map (fun r => (r.1.1.asTy, r.1.2.m)) =
+      (run K ρ noFuture (.plain .err) t'
+        (stateOf 0 (capsState (capsVals K ρ noFuture cs) (capsTys K ρ noFuture rd)))).map
+        (fun r => (r.1.1.asTy, r.1.2.m))
 
 /-- **The induction step, in the simulation form** (docs/31 D20 item 1). For every `Good`
 assignment `ρ` and every reference state `s` that simulates the checker's state under a renaming
@@ -1379,7 +1373,7 @@ def evalCore_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     ∃ ρ' π', (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
       ∃ r s', run K ρ' φ (hintM K ρ hint) t s = some (r, s') ∧
         meanV K ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
-        (∀ T, T? = some T → StrAgree K ρ' v T r.2) ∧
+        (∀ T, T? = some T → StrAgree K ρ' T r.2) ∧
         Rel K ρ' φ π' st' s' ∧ Good K.dm K.M K.Γ ρ' st'
 
 /-- **The induction step as the checker recurses** (docs/31 D20, item 5): every recursive
@@ -1399,7 +1393,7 @@ def eval_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : P
         -- not of a proof: the run does not run one and gives it no type (`SM.erasedIf`), where
         -- the checker returns its proposition (the audit's row 26, and A17). As first stated the
         -- conjunct had no such condition and was false of every proof term
-        (∀ T, T? = some T → (K.D.flags (scopeOf s) t).2 = false → StrAgree K ρ' v T r.2) ∧
+        (∀ T, T? = some T → (K.D.flags (scopeOf s) t).2 = false → StrAgree K ρ' T r.2) ∧
         Rel K ρ' φ π' st' s' ∧ Good K.dm K.M K.Γ ρ' st'
 
 /-- [Let]: the binding is pushed at the right-hand side's type and dropped after the tail
@@ -1467,7 +1461,7 @@ def proof_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : 
 def etaUnit_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st : MState) (d : DeclInfo) (v : Value) (hint : TyS)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hd : d = .unit)
-    (hv : meanV K ρ φ hint v ∈ₛ .ty0 Unit),
+    (hv : meanV K ρ φ hint v ∈ₛ TyM.unit),
     meanV K ρ φ hint (Ochr.etaUnit d v) = meanV K ρ φ hint v
 
 /-- The generic state of a `fix` is `Good` for every assignment that gives each parameter's

@@ -54,8 +54,12 @@ induction-recursion, as `Ochr/Model/Slice.lean` §4 builds type functions:
   `gRank_lt` is the interface's, through `recArgs` (`gRecArgs`). `recArgs` is returned only
   when the interface carrier is literally the core one, and `gRecArgs_wf` shows that it is for
   a well-formed occurrence. Nested paths (`Rose` → `List` → `Rose`) are not covered.
-* **`fieldData`, `paramData` and `paramTy`** (the structured hints' data, D8) are passed
-  through from the signature; the construction does not use them.
+* **`paramTy`** is passed through from the signature; the construction does not use it.
+* **Types are codes** (docs/31 D59). A leaf's type is a level-0 code (`El`, `enc` read its
+  carrier and encoding), and a constructed carrier is read at the stand-in code `opq`, whose
+  element means the constructor value packing it. That is not the run's meaning of a recursive
+  or nested field, which names its declaration, parameters and fields; the declaration's own
+  code is the assembly's, and it cannot be one code holding itself (docs/31 D61, `FieldsFaithful`).
 -/
 
 namespace Ochr.Meaning
@@ -87,11 +91,19 @@ def canon (Z : Nat → TyM) : LRaw Z := fun j => enc (Z j)
 theorem canon_inj (Z : Nat → TyM) (j : Nat) : Function.Injective (canon Z j) :=
   fun _ _ h => enc_inj h
 
+/-- A constructed carrier as a type meaning, as the construction reads it: a data code naming
+no declaration and unpacking to no fields, so an element means the constructor value that packs
+it and describes nothing else (`enc_opq`). It stands in for the declaration's own code, which
+the assembly owes and which a code cannot hold for a recursive declaration (docs/31 D61). -/
+def opq (A : Type) : TyM := .t0 A (.data "" [] A fun _ => ⟨0, []⟩)
+
+theorem enc_opq (A : Type) (a : A) : enc (opq A) a = .dat "" [] 0 [] (some ⟨A, a⟩) := rfl
+
 /-- The type meaning of a family member: a carrier, or for a `Prop`-sorted declaration its
 inhabitedness (docs/31 D4: the truncation of the same fixed point). -/
 def tyB : Bool → Type → TyM
-  | true, A => .prop (Nonempty A)
-  | false, A => .ty0 A
+  | true, A => TyM.prop (Nonempty A)
+  | false, A => opq A
 
 def mapB : (b : Bool) → {A B : Type} → (A → B) → El (tyB b A) → El (tyB b B)
   | true, _, _, f, h => ⟨h.down.elim fun a => ⟨f a⟩⟩
@@ -591,12 +603,9 @@ structure Sig where
   isProp : Bool
   nestable : Nat → Bool
   code : List Sem → Nat → Nat → List Sem → PCode
-  /-- The readings the construction does not use, passed through to the data model: a
-  parameter's type at the earlier parameters, and the structured hints' data (docs/31 D8) of a
-  field's type (at the parameters and earlier fields) and of a parameter's type. -/
+  /-- The reading the construction does not use, passed through to the data model: a
+  parameter's type at the earlier parameters. -/
   paramTy : Nat → List Sem → TyM := fun _ _ => .err
-  fieldData : List Sem → Nat → Nat → List Sem → Option (String × List Sem) := fun _ _ _ _ => none
-  paramData : Nat → List Sem → Option (String × List Sem) := fun _ _ => none
 
 /-- The parameters with the nestable positions, from `j` on, replaced by `err`. -/
 def blankFrom (nb : Nat → Bool) : Nat → List Sem → List Sem
@@ -1575,10 +1584,12 @@ theorem exists_min (P : Nat → Prop) (h : ∃ n, P n) : ∃ n, P n ∧ ∀ m, P
       exact ih m hm hPm
     · exact ⟨n, hn, fun m hm => Nat.le_of_not_lt fun hlt => h' ⟨m, hlt, hm⟩⟩
 
-theorem enc_mapB_el0 (b : Bool) {A B : Type} (f : A → B) (v : El (tyB b A)) (y : B)
-    (h : enc (tyB b B) (mapB b f v) = .el0 B y) : ∃ a, f a = y := by
+theorem enc_mapB_elt (b : Bool) {A B : Type} (f : A → B) (v : El (tyB b A)) (y : B)
+    (h : (enc (tyB b B) (mapB b f v)).elt = some ⟨B, y⟩) : ∃ a, f a = y := by
   cases b
-  · cases h; exact ⟨v, rfl⟩
+  · have e : (enc (tyB false B) (mapB false f v)).elt = some ⟨B, f v⟩ := rfl
+    rw [e] at h
+    exact ⟨v, eq_of_heq (Sigma.mk.inj (Option.some.inj h)).2⟩
   · cases h
 
 section rank
@@ -1606,12 +1617,12 @@ theorem Step.fields_self_head (k : Nat) {Z : Nat → TyM} {K K' : Sem → Type} 
     (rest : ∀ s, K' s → List Sem) (τ : PCode) (fx : List Sem) (tys : Nat → PCode)
     (hτ : τ = .self fx tys) (st₀ : Step S M (stage S M k) Z τ K) (y : car S M fx (occEnv S M Z tys))
     (h : (Step.fields S M rest τ (Step.mapX S M (X := stage S M k) (Y := car S M)
-      (fun y => ι S M k y) g τ st₀))[0]? = some (.el0 _ y)) :
+      (fun y => ι S M k y) g τ st₀))[0]?.bind Sem.elt = some ⟨_, y⟩) :
     ∃ y₀, ι S M k y₀ = y := by
   subst hτ
   obtain ⟨v₀, t⟩ := st₀
-  simp only [Step.mapX, Step.fields, List.getElem?_cons_zero, Option.some.injEq] at h
-  exact enc_mapB_el0 S.isProp _ v₀ y h
+  simp only [Step.mapX, Step.fields, List.getElem?_cons_zero, Option.bind_some] at h
+  exact enc_mapB_elt S.isProp _ v₀ y h
 
 /-- A recursive field of a stage-`k` telescope read at the colimit is the image of a stage-`k`
 member. -/
@@ -1620,7 +1631,7 @@ theorem Tele.fields_self (k : Nat) {Z : Nat → TyM} {ps : List Sem} {c : Nat} :
       (fx : List Sem) (tys : Nat → PCode) (y : car S M fx (occEnv S M Z tys)),
       S.code ps c (i + j) (Sig.maskList S ps c i e
         ((Tele.fields S M i n e (teleι S M k t₀)).take j)) = .self fx tys →
-      (Tele.fields S M i n e (teleι S M k t₀))[j]? = some (.el0 _ y) →
+      (Tele.fields S M i n e (teleι S M k t₀))[j]?.bind Sem.elt = some ⟨_, y⟩ →
       ∃ y₀, ι S M k y₀ = y
   | 0, _, _, _, _, _, _, _, _, h => by simp [Tele.fields] at h
   | n + 1, i, e, t₀, j, fx, tys, y, h₁, h₂ => by
@@ -1632,7 +1643,7 @@ theorem Tele.fields_self (k : Nat) {Z : Nat → TyM} {ps : List Sem} {c : Nat} :
           .self fx tys →
         (Step.fields S M (fun s => Tele.fields S M (i + 1) n (e ++ [s])) τ (Step.mapX S M
           (X := stage S M k) (Y := car S M) (fun y => ι S M k y) (fun _ t => teleι S M k t) τ
-            st₀))[j]? = some (.el0 _ y) →
+            st₀))[j]?.bind Sem.elt = some ⟨_, y⟩ →
         ∃ y₀, ι S M k y₀ = y := by
       intro τ hτ st₀ h₁ h₂
       cases j with
@@ -1652,7 +1663,7 @@ theorem crank_self {ps : List Sem} {Z : Nat → TyM} (x : car S M ps Z) (i : Nat
     (fx : List Sem) (tys : Nat → PCode) (y : car S M fx (occEnv S M Z tys))
     (hcode : S.code ps (gTag S M x) i (Sig.maskList S ps (gTag S M x) 0 [] ((gFields S M x).take i)) =
       .self fx tys)
-    (hy : (gFields S M x)[i]? = some (.el0 _ y)) : crank S M y < crank S M x := by
+    (hy : (gFields S M x)[i]?.bind Sem.elt = some ⟨_, y⟩) : crank S M y < crank S M x := by
   obtain ⟨y₀, hx⟩ := crank_spec S M x
   revert y₀ hx
   generalize crank S M x = r
@@ -1701,7 +1712,7 @@ theorem crank_self' {ps : List Sem} {Z : Nat → TyM} (x : car S M ps Z) (i : Na
     (hcode : S.code ps (gTag S M x) i (Sig.maskList S ps (gTag S M x) 0 [] ((gFields S M x).take i)) =
       .self fx tys)
     (bps : List Sem) (Z' : Nat → TyM) (hb : bps = fx) (hz : Z' = occEnv S M Z tys)
-    (y : car S M bps Z') (hy : (gFields S M x)[i]? = some (.el0 (car S M bps Z') y)) :
+    (y : car S M bps Z') (hy : (gFields S M x)[i]?.bind Sem.elt = some ⟨car S M bps Z', y⟩) :
     crank S M y < crank S M x := by
   subst hb hz
   exact crank_self S M x i _ tys y hcode hy
@@ -1710,7 +1721,7 @@ theorem crank_self' {ps : List Sem} {Z : Nat → TyM} (x : car S M ps Z) (i : Na
 theorem gRank_lt {ps ps' : List Sem} (x : car S M (S.blank ps) (envOf ps))
     (y : car S M (S.blank ps') (envOf ps')) (i : Nat)
     (h : gRecArgs S M ps (gTag S M x) i ((gFields S M x).take i) = some ps')
-    (hy : (gFields S M x)[i]? = some (.el0 (car S M (S.blank ps') (envOf ps')) y)) :
+    (hy : (gFields S M x)[i]?.bind Sem.elt = some ⟨car S M (S.blank ps') (envOf ps'), y⟩) :
     crank S M y < crank S M x := by
   unfold gRecArgs at h
   split at h
@@ -1777,8 +1788,6 @@ structure DM where
   ar : List Nat
   fieldTy : List Sem → Nat → Nat → List Sem → TyM
   paramTy : Nat → List Sem → TyM
-  fieldData : List Sem → Nat → Nat → List Sem → Option (String × List Sem)
-  paramData : Nat → List Sem → Option (String × List Sem)
   recArgs : List Sem → Nat → Nat → List Sem → Option (List Sem)
   pack : (ps : List Sem) → Nat → List Sem → Option (car ps)
   tag : {ps : List Sem} → car ps → Nat
@@ -1790,7 +1799,7 @@ structure DM where
   pack_isSome : ∀ ps c fs, (pack ps c fs).isSome ↔
     ∃ n, ar[c]? = some n ∧ fs.length = n ∧ ∀ i (h : i < fs.length), fs[i] ∈ₛ fieldTy ps c i (fs.take i)
   rank_lt : ∀ {ps ps'} (x : car ps) (y : car ps') i, recArgs ps (tag x) i ((fields x).take i) = some ps' →
-    (fields x)[i]? = some (.el0 (car ps') y) → rank y < rank x
+    ((fields x)[i]?).bind Sem.elt = some ⟨car ps', y⟩ → rank y < rank x
 
 /-- A declaration's data model: the core construction at the blanked parameters and their leaf
 environment. -/
@@ -1799,8 +1808,6 @@ noncomputable def declDM (S : Sig) (M : Nat → NModel) : DM where
   ar := S.ar
   fieldTy ps := gFieldTy S M (S.blank ps) (envOf ps)
   paramTy := S.paramTy
-  fieldData := S.fieldData
-  paramData := S.paramData
   recArgs := gRecArgs S M
   pack ps := gPack S M (S.blank ps) (envOf ps)
   tag := gTag S M
@@ -1818,8 +1825,6 @@ def DM.empty : DM where
   ar := []
   fieldTy _ _ _ _ := .err
   paramTy _ _ := .err
-  fieldData _ _ _ _ := none
-  paramData _ _ := none
   recArgs _ _ _ _ := none
   pack _ _ _ := none
   tag x := x.elim
@@ -1854,8 +1859,6 @@ noncomputable def genericModel (Γ : Prog) : DataModel where
   car d := (Γ.dm d).car
   fieldTy d := (Γ.dm d).fieldTy
   paramTy d := (Γ.dm d).paramTy
-  fieldData d := (Γ.dm d).fieldData
-  paramData d := (Γ.dm d).paramData
   recArgs d := (Γ.dm d).recArgs
   pack d := (Γ.dm d).pack
   tag := (Γ.dm _).tag
@@ -1873,40 +1876,33 @@ noncomputable def genericModel (Γ : Prog) : DataModel where
 
 /-! ## The assembly's obligation: codes are the run's reading of the field types
 
-`FieldsFaithful dm d readTy readData` is what the assembly owes for a covered declaration `d`:
-`readTy ps c i earlier` and `readData ps c i earlier` are the reference run's reading of field
-`i`'s declared type term (its `TyS`'s `m` and `data`) at the parameters' and earlier fields'
-meanings. Then `Value.meanFields` reads every field at the type and hint the run gives it.
+`FieldsFaithful dm d readTy` is what the assembly owes for a covered declaration `d`:
+`readTy ps c i earlier` is the reference run's reading of field `i`'s declared type term (its
+code) at the parameters' and earlier fields' meanings. Then `Value.meanFields` reads every field
+at the code the run gives it.
 
-Status (data-generic, 2026-11-10), by kind of field code:
+Status, by kind of field code:
 * `ext T` (closed types, including type-function fields like `Cells`' `G(n, x)`): the run's
-  reading is a function of the parameters' and earlier closed fields' meanings, so the type
-  part holds when the assembly takes `T` to be that reading, and the data part holds with
-  `Sig.fieldData` equal to the run's data (a function of the same meanings).
-* `self` / `nest` (an inductive written at arguments, `Cell (R) := MkC(h : Nat, t : SliceOf(R))`):
-  the data is the declaration's name and the arguments' meanings, a function of `ps`. It
-  holds under the well-formedness of `gRecArgs_wf`.
-* **`par j` (a field whose declared type is a parameter, `Pair`'s `fst : A`, `Box(A) :=
-  MkBox(x : A)`): the type part holds (`libModel_fieldTy_pair`), the data part is
-  unprovable.** At `A := List(Nat)` the run's hint for `x` carries `("List", [⟦Nat⟧])`, read
-  off the *parameter's* structured type. But `fieldData d ps` sees only
-  `ps = [ty (ty0 (car List [⟦Nat⟧]))]`, and recovering a declaration and parameters from a
-  carrier is D8's problem: no choice is provably the run's. With two declarations of equal
-  carrier the obligation fails outright, and Lean can neither prove nor refute such equalities.
-  So `MkBox(Nil)` (or `(Nil, 0)` at `List(Nat) × Nat`), with `Nil` recording no parameters
-  (an untyped run), means `err` in the field under any data model with a pass-through
-  `fieldData`, and a well-typed value means junk. Fix (for the lead): parameters must carry
-  their structured hint too. Either `TyS.data : Option (String × List TyS)`, so a parameter's
-  own data travels, with `fieldData` at a `par j` field returning parameter `j`'s; or D8's
-  option (c) (the checker records inferred parameters), which removes `ps = []` values.
+  reading is a function of the parameters' and earlier closed fields' meanings, so it holds when
+  the assembly takes `T` to be that reading.
+* `par j` (`Pair`'s `fst : A`): it holds (`libModel_fieldTy_pair`). Since D59 a parameter's
+  meaning is its code, so the field's structure travels with it (the data part that was
+  unprovable under D8's structured hints is gone with them).
+* **`self` / `nest` (a recursive or nested occurrence): open, and not by this construction's
+  stand-in.** The run reads `D(ps')` as `tyM d ps'`, the data code whose unpacking reads each
+  field at its field code. For a recursive field that code is `tyM d ps'` again, so the code
+  would hold itself, which no code does (codes are an inductive family). A recursive
+  declaration can still be coded by stages (the unpacking of an element of rank `k + 1` reads
+  its recursive fields at the stage-`k` code, which agrees with the full one on elements of
+  smaller rank), but a nested one cannot: `List(Rose(A))`'s code holds `Rose(A)`'s code as a
+  parameter, and a parameter's meaning is its code, so no stage's code is the full one there.
+  docs/31 D61 records this and the options.
 -/
 
 /-- The assembly's obligation for one covered declaration (see the section docstring). -/
 def FieldsFaithful (dm : DataModel) (d : IndDecl)
-    (readTy : List Sem → Nat → Nat → List Sem → TyM)
-    (readData : List Sem → Nat → Nat → List Sem → Option (String × List Sem)) : Prop :=
-  ∀ ps c i earlier, dm.fieldTy d ps c i earlier = small (readTy ps c i earlier) ∧
-    dm.fieldData d ps c i earlier = readData ps c i earlier
+    (readTy : List Sem → Nat → Nat → List Sem → TyM) : Prop :=
+  ∀ ps c i earlier, dm.fieldTy d ps c i earlier = small (readTy ps c i earlier)
 
 /-- The library's type part: `Pair`'s fields have the parameters' types (cut to `small`), as
 the run reads the field type terms `A` and `B`. -/
