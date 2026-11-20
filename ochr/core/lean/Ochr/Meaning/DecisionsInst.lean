@@ -14,7 +14,7 @@ The step lemmas need to know these gaps.
 ## How a decision is read
 
 The checker's decisions are `M` computations. They read the state's tables (`globals`, `inds`,
-Δ = `absTy`, the pure caches `constDecls` and `classCache`) and the declared readings of the top
+Δ = `absTy`; they write no cache since main's D95) and the declared readings of the top
 frame's bindings (`liveDecl`, under `withLive true`). They never read a value, a stored type or a
 run (`ochr/core/CLAUDE.md`, "Decisions never read a run"; `Decide.lean` does not import the
 machine). The run has the readings (`scopeOf`: the top frame's `SBinding.decl`s, innermost first)
@@ -25,7 +25,7 @@ as the machine makes it (`withLive true (… [] …)`) in that state.
 * What the step lemmas need: at the checker's state `st'`, a decision equals the one in
   `scopeState st' (top frame's readings)`. Decisions read the frames only through `liveDecl`. And
   `st'` agrees with the `st` the instance was built at on what decisions read: Σ is fixed during
-  an item's check, Δ only grows, and the caches are consistent.
+  an item's check and Δ only grows.
 * `fuel`: every decision recurses on fuel and is `exhausted` when it runs out. The instance's fuel
   must be at least the checker's (2000000 for `checkDefs`' default); then, by fuel monotonicity
   (`Consistency.lean`, obstacle 2, not proved), its reading is the checker's. Decisions never

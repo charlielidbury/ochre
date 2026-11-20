@@ -25,9 +25,8 @@ reasons (`MState.Core` below is the relevant part, and `mean_core` the statement
   fact (`exitWorld`'s argument); the invariant needs only that every label and `σ` in the state
   is below its counter (freshness, `WF.lean`). `depth` is a bound whose overrun is exhaustion,
   never a decision.
-* **Pure caches and logs**: `classCache`, `constDecls` (caches of syntactic readings: a lemma
-  says a cached value is its recomputation), `cfg`, `locs` (recording only; `Accepted` leaves
-  `located` off, so `locs` is empty).
+* **Logs**: `cfg`, `locs` (recording only; `Accepted` leaves `located` off, so `locs` is empty).
+  (The decision procedures write no cache since main's D95.)
 * **Inputs of decisions, not of meanings**: `recStack` ([Rec]'s entry values
   and candidates: a check, whose accepting direction is membership of recursive functions),
   `convStack` ([Conv-fun]'s guard: it only makes conversion answer "no" more often, so conversion

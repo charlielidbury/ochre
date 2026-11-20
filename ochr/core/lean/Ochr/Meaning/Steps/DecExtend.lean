@@ -77,13 +77,11 @@ structure DecAlignedBelow (n : Nat) (D : Decisions) (st : MState) : Prop where
     Runs (withLive true (Ochr.typeDecl fuel false [] [] T)) (scopeState st sc) b d st' → D.typeDecl sc T = d
 
 /-- A step that only grows the table of unknowns: the decision core is kept but for Δ, whose old
-entries are kept (THE CACHES as a marked hypothesis, pending main's measurement). -/
+entries are kept. -/
 structure Grows (st st' : MState) : Prop where
   globals : st.globals = st'.globals
   inds : st.inds = st'.inds
   liveScope : st.liveScope = st'.liveScope
-  /-- THE CACHES (pending main's measurement; no coherence argument is made) -/
-  caches : st.constDecls = st'.constDecls ∧ st.classCache = st'.classCache
   live : ∀ i, DecideScope.liveVal st i = DecideScope.liveVal st' i
   size : st.absTy.size ≤ st'.absTy.size
   old : ∀ σ, σ < st.absTy.size → st'.absTy[σ]? = st.absTy[σ]?

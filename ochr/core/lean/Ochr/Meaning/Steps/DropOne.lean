@@ -795,7 +795,9 @@ theorem content_follow (st : MState) (s : SState) (π : Nat → Nat) (q : Place)
     · exact .inl (by simp [Value.mean])
 
 /-- **The copy decision is aligned**: the checker's `copyRead` is the reference's declared reading
-of the place (the decisions are the checker's `Decide`, `CtxOk`). Open: not tried. -/
+of the place (the decisions are the checker's `Decide`, `CtxOk`). Open: not tried. Its "state
+unchanged" was fenced on the caches the decision procedures wrote; main's D95 removed them, so the
+decision procedures now write nothing but restore `liveScope`. -/
 theorem copyRead_aligned (fuel : Nat) (st st₁ : MState) (s : SState) (π : Nat → Nat) (q : Place) (c : Bool) (b : Nat)
     (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s) (h : Runs (Ochr.copyRead fuel q) st b c st₁) :
     st₁ = st ∧ c = K.D.copy (K.D.placeDecl (scopeOf s) q) := by
