@@ -937,7 +937,8 @@ Lean form asks it at every place in scope (this walk stops at depth 8 and steps 
 constructor field), and runs `sortOf`/`placeType?` at any fuel from any state the same up to the move
 log and the refinements (`SameDec`), where this runs them at the state itself with fixed fuel. -/
 def dataNotProof : Clause where
-  name := "(D⋆) a place of a non-copy reading holding data holds nothing meaning ⋆"
+  name := "(D⋆, retired: replaced by (D⋆T); a report) a place of a non-copy reading holding data holds nothing meaning ⋆"
+  report := true
   premises := [
     ("a place in scope holds an unknown", fun st => (topPlaces st).any fun (_, v) => v matches .abs _),
     ("a place in scope holds a sealed program", fun st => (topPlaces st).any fun (_, v) => v matches .sealed _),
@@ -1021,7 +1022,8 @@ def placeTypeOf (st : MState) (q : Place) : Option Value :=
 def valHead : Value → String
   | .gfn _ => "a global function name" | .clo .. => "a closure" | .abs _ => "an unknown"
   | .sealed _ => "a sealed program" | .loan _ => "a loan" | .gloan _ _ => "a mark"
-  | .borrow _ _ => "a borrow" | .ind .. => "a constructor value" | _ => "other"
+  | .borrow _ _ => "a borrow" | .ind .. => "a constructor value" | .zero | .succ _ => "a number"
+  | .unit => "()" | .proof => "⋆" | .bot => "⊥" | _ => "a type"
 
 /-- The place is the top frame's first binding (a function's own binding, `self`). -/
 def isSelf (st : MState) (q : Place) : Bool :=
@@ -1029,15 +1031,14 @@ def isSelf (st : MState) (q : Place) : Bool :=
   | .var o, some fr => o + 1 == fr.binds.size
   | _, _ => false
 
-/-- (D⋆T, REFUTED CANDIDATE, the slice; kept as a report): a place in scope whose declared reading
-is not a copy and which holds neither `⋆` nor `⊥` has a computed type (`placeType?`) that the
-checker's sort test (`sortOf … = 0`) does not call a proposition. Proposed to replace the per-value
-(D⋆). False on the suite: a place declared a Π into proofs (`pi(prop)`, `pi(pi(prop))`) is no
-copy, and a function's or closure's own binding of a proof-valued type holds the function's name
-or the closure, not `⋆` (19,132 states, every one such a binding or a capture of one). -/
+/-- (D⋆T) (`ShapeFacts.typeNotProp`, the slice): a place in scope whose declared reading is not a
+copy and which holds neither `⋆` nor `⊥` has a computed type (`placeType?`) that the checker's sort
+test (`sortOf … = 0`) does not call a proposition. Replaced the per-value (D⋆). Refuted on the suite
+before main's D100 (a place declared a Π into proofs was no copy, and a function's or closure's own
+binding of a proof-valued type holds the function's name or the closure, not `⋆`: 19,132 states);
+holds since D100 (every proposition is a copy). -/
 def typeNotProp : Clause where
-  name := "(D⋆T, REFUTED candidate, kept as a report) a non-copy place holding neither ⋆ nor ⊥ has a computed type that is no proposition"
-  report := true
+  name := "(D⋆T) a non-copy place holding neither ⋆ nor ⊥ has a computed type that is no proposition"
   premises := [
     ("a non-copy place in scope holds neither ⋆ nor ⊥", fun st => (nonCopyPlaces st).any fun (_, v, _) =>
       !(v matches .proof) && !(v matches .bot)),
@@ -1052,6 +1053,96 @@ def typeNotProp : Clause where
         some ⟨s!"a non-copy place ({declStr d}) holding {if q matches .var _ then "at a variable" else "below a variable"} data of a proposition: {valHead v}{if isSelf st q then ", the function's own binding" else ""}",
           s!"{q.root}…: holds {clip v.pp} : {clip T.pp}"⟩ else none
     | none => none
+
+/-- The checker's notion of an OPEN value (D64 [Repack], as `repackCheck` applies it at a
+whole-again point): a value that does not fit its type `T` by the telescopes of the dependent
+constructors inside it (`packedErr`), its lent parts read as unknowns of their types
+(`lentUnknown`). Run at the state, its effects discarded. -/
+def isOpenAt (st : MState) (v T : Value) : Bool :=
+  match (runMachine (do let v' ← Ochr.lentUnknown 1000 v; Ochr.packedErr 1000 v' T) st 1000000).1 with
+  | .ok (some _) _ => true
+  | _ => false
+
+/-- A `⊥` in a value outside sealed programs and code (a partly moved value). -/
+def hasBotShallow : Value → Bool
+  | .bot => true
+  | .ind _ _ _ _ fs => fs.attach.any fun ⟨w, _⟩ => hasBotShallow w
+  | .gloan _ w | .borrow _ w | .succ w => hasBotShallow w
+  | _ => false
+
+/-- The places in scope holding a constructor value (under marks) that is open at its computed
+type and holds no `⊥` (`packedErr` reports a moved-out part as unpacked; a partly moved value is
+below a whole one in the model, `MovedOf`, not open, and is counted apart). -/
+def openPlaces (st : MState) : List (Place × Value) :=
+  (topPlaces st).filterMap fun (q, v) => match underMarks v with
+    | .ind .. => if hasBotShallow (underMarks v) then none else match placeTypeOf st q with
+      | some T => if isOpenAt st (underMarks v) T then some (q, underMarks v) else none
+      | none => none
+    | _ => none
+
+/-- The places in scope holding a partly moved constructor value (a `⊥` inside) that `packedErr`
+reports, which this walk does not tell from an open one. -/
+def partlyMovedReported (st : MState) : List (Place × Value) :=
+  (topPlaces st).filterMap fun (q, v) => match underMarks v with
+    | .ind .. => if !hasBotShallow (underMarks v) then none else match placeTypeOf st q with
+      | some T => if isOpenAt st (underMarks v) T then some (q, underMarks v) else none
+      | none => none
+    | _ => none
+
+/-- REPORT (the slice's measurement): the fields of open values, by what they hold. An unknown is
+typed by the assignment wherever it sits; anything else in a field of an open value has no
+membership in the model (`OpenIn`). -/
+def openFields : Clause where
+  name := "(report) what the fields of an open value hold"
+  report := true
+  premises := [
+    ("a place in scope holds an open value", fun st => !(openPlaces st).isEmpty),
+    ("... with a field other than an unknown, ⊥ or ⋆", fun st => (openPlaces st).any fun (_, v) => match v with
+      | .ind _ _ _ _ fs => fs.any fun f => !(f matches .abs _) && !(f matches .bot) && !(f matches .proof)
+      | _ => false),
+    ("... with a sealed program in a field", fun st => (openPlaces st).any fun (_, v) => match v with
+      | .ind _ _ _ _ fs => fs.any fun f => (f matches .sealed _)
+      | _ => false),
+    ("(apart) a partly moved value packedErr reports", fun st => !(partlyMovedReported st).isEmpty)]
+  check st := (openPlaces st).flatMap fun (q, v) => match v with
+    | .ind t _ _ _ fs => (fs.filter fun f => !(f matches .abs _)).map fun f =>
+        ⟨s!"an open value {if q matches .var _ then "at a variable" else "below a variable"}: a field holds {valHead f}",
+          s!"{q.root}…: {clip v.pp} : {t}"⟩
+    | _ => []
+
+/-- A place's strict prefixes. -/
+def prefixesOf : Place → List Place
+  | .var _ => []
+  | .deref p | .proj _ p | .field _ p => p :: prefixesOf p
+
+/-- The place steps into a field only through a one-constructor inductive, as the join's grain
+(`jdGrain`) asks, by the checker's declared readings. -/
+def atGrain (st : MState) : Place → Bool
+  | .var _ => true
+  | .deref p => atGrain st p
+  | .proj _ p | .field _ p => atGrain st p && match declAt st p with
+    | some (.ind n _) => match st.inds.find? (·.name == n) with
+      | some d => d.ctors.length == 1
+      | none => false
+    | _ => false
+
+/-- REPORT (the slice's measurement): a place the join could drop (in scope, at the grain, of a
+non-copy reading, holding neither ⋆ nor ⊥) with an open value at a strict prefix. -/
+def droppedUnderOpen : Clause where
+  name := "(report) a place the join could drop with an open value above it"
+  report := true
+  premises := [
+    ("a place at the grain below a variable, non-copy, holding data", fun st => (nonCopyPlaces st).any fun (q, v, _) =>
+      !(q matches .var _) && !(v matches .proof) && !(v matches .bot) && atGrain st q),
+    ("a place in scope holds an open value", fun st => !(openPlaces st).isEmpty)]
+  check st :=
+    let opens := openPlaces st
+    (nonCopyPlaces st).filterMap fun (q, v, d) =>
+      if (q matches .var _) || v matches .proof || v matches .bot || !atGrain st q then none else
+      match (prefixesOf q).find? (fun p => opens.any fun (o, _) => placeEq o p) with
+      | some p => some ⟨s!"a non-copy place at the grain ({declStr d}) holding {valHead v} under an open value",
+          s!"{q.root}…: holds {clip v.pp}; open at depth {(prefixesOf p).length}"⟩
+      | none => none
 
 /-- REPORT (not a clause): the non-copy places in scope that hold `⋆`, by where and by declared
 reading. -/
@@ -1121,7 +1212,7 @@ def readingsSorted : Clause where
     | _ => none
 
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, readingsSorted, plantedFill, plantedAbs, nonCopyProof, untypedBindings]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, readingsSorted, plantedFill, plantedAbs, nonCopyProof, untypedBindings, openFields, droppedUnderOpen]
 
 /-! ## The sweep -/
 
