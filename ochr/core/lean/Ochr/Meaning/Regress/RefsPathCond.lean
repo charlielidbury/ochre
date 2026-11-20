@@ -104,20 +104,20 @@ theorem absTyM_S (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : As
   · simp [MState.absTyM, S, Value.tyM, Value.mean, Sem.asTy]
   · omega
 
-theorem mem_ρ₇ (σ : Nat) : ρ₇ σ ∈ₛ TyM.nat := by
+theorem mem_ρ₇ (R : DataRead) (σ : Nat) : ρ₇ σ ∈ₛ[R] TyM.nat := by
   unfold ρ₇; split <;> simp [Sem.mem, TyM.nat, Code0.enc]
 
 /-- The typed assignment's clauses as they stood: each referenced unknown an element of its type,
 the generalisation and η records. -/
 theorem ta_S (K : RunCtx) :
-    (∀ σ, S.Refd σ → σ < S.absTy.size → ρ₇ σ ∈ₛ MState.absTyM K.dm K.M K.Γ ρ₇ S σ) ∧
+    (∀ σ, S.Refd σ → σ < S.absTy.size → ρ₇ σ ∈ₛ[K.dm.read] MState.absTyM K.dm K.M K.Γ ρ₇ S σ) ∧
     (∀ n σ, (n, σ) ∈ S.neutrals →
       ρ₇ σ = Value.mean K.dm K.M K.Γ ρ₇ (fun _ => .err) (.plain (MState.absTyM K.dm K.M K.Γ ρ₇ S σ)) n) ∧
     (∀ σ v, (σ, v) ∈ S.etaRefs →
       ρ₇ σ = Value.mean K.dm K.M K.Γ ρ₇ (fun _ => .err) (.plain (MState.absTyM K.dm K.M K.Γ ρ₇ S σ)) v) := by
   refine ⟨fun σ _ hσ => ?_, fun n σ h => ?_, fun σ v h => by simp [S] at h⟩
   · have hσ' : σ < 2 := hσ
-    rw [absTyM_S _ _ _ _ σ hσ']; exact mem_ρ₇ σ
+    rw [absTyM_S _ _ _ _ σ hσ']; exact mem_ρ₇ _ σ
   · simp only [S, List.mem_singleton, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
     show ρ₇ 0 = meanV K ρ₇ (fun _ => .err) (.plain (MState.absTyM K.dm K.M K.Γ ρ₇ S 0)) (.sealed .zero)
@@ -133,7 +133,7 @@ theorem rest_S (K : RunCtx) : Membership K.dm K.M K.Γ ρ₇ S ∧ WF K.dm K.M K
   · intro φ _ p T hp
     obtain ⟨rfl, rfl⟩ := posTyM_S K.dm K.M K.Γ ρ₇ p T hp
     have e : Env.mean K.dm K.M K.Γ ρ₇ φ S.env (.bind 0 0) = .el0 Nat 7 := rfl
-    rw [e]; exact DataModel.pmem_of_mem K.Γ (by simp [Sem.whole]) (by simp [Sem.mem, TyM.nat, Code0.enc])
+    rw [e]; exact DataModel.pmem_of_mem K.dm.read K.Γ (by simp [Sem.whole]) (by simp [Sem.mem, TyM.nat, Code0.enc])
   · have hσ' : σ < 2 := hσ
     rw [absTyM_S _ _ _ _ σ hσ']; rfl
   · rw [hA]; intro p hp; simp at hp; subst hp; rw [h0]; decide
@@ -204,7 +204,7 @@ theorem rest_S (K : RunCtx) : Membership K.dm K.M K.Γ ρ₇ S ∧ WF K.dm K.M K
 
 /-- `Good` as it stood (spine e1b8600e): the typed assignment without the refinement records. -/
 def GoodOld (K : RunCtx) (ρ : Assignment) (st : MState) : Prop :=
-  ((∀ σ, st.Refd σ → σ < st.absTy.size → ρ σ ∈ₛ MState.absTyM K.dm K.M K.Γ ρ st σ) ∧
+  ((∀ σ, st.Refd σ → σ < st.absTy.size → ρ σ ∈ₛ[K.dm.read] MState.absTyM K.dm K.M K.Γ ρ st σ) ∧
     (∀ n σ, (n, σ) ∈ st.neutrals →
       ρ σ = Value.mean K.dm K.M K.Γ ρ (fun _ => .err) (.plain (MState.absTyM K.dm K.M K.Γ ρ st σ)) n) ∧
     (∀ σ v, (σ, v) ∈ st.etaRefs →

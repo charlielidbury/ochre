@@ -59,7 +59,7 @@ theorem defn_member (items : List Item) (fuel : Nat)
       (runMachine (checkItem it) { globals := P.globals, inds := P.inds } fuel).1 matches .ok () _)
     (hcov : (progMeaning dm D (fun _ => .err) {} fuel items).Covered dm) :
     let P := progMeaning dm D (fun _ => .err) {} fuel items
-    ∀ n s T, (n, s, T) ∈ P.means → s ∈ₛ T.m := by
+    ∀ n s T, (n, s, T) ∈ P.means → s ∈ₛ[dm.read] T.m := by
   sorry
 
 /-- (3) The library's `False` means the empty proposition: `tyM` of a declaration with no
@@ -91,7 +91,11 @@ theorem consistency_rel (q : Program) (fuel : Nat)
 end
 
 /-- A data model covering every accepted program exists (the generic construction by stages,
-`DataGeneric.lean`, data-generic), with the checker's decisions (`DecisionsInst.checkerDecisions`). -/
+`DataGeneric.lean`, data-generic), with the checker's decisions (`DecisionsInst.checkerDecisions`).
+Since docs/31 D61 a data model also carries its reading (`DataModel.read`, `read_eq`): a field
+holds a full meaning, a data field's read through the model's own reading, so the generic model
+needs a reading coherent with it (`DataGeneric.Coherent`), a fixed point of model and reading not
+yet constructed. -/
 theorem exists_dataModel (items : List Item) (fuel : Nat) :
     ∃ (dm : DataModel) (D : MState → Decisions),
       (progMeaning dm D (fun _ => .err) {} fuel items).Covered dm := by

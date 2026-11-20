@@ -55,16 +55,30 @@ induction-recursion, as `Ochr/Model/Slice.lean` §4 builds type functions:
   when the interface carrier is literally the core one, and `gRecArgs_wf` shows that it is for
   a well-formed occurrence. Nested paths (`Rose` → `List` → `Rose`) are not covered.
 * **`paramTy`** is passed through from the signature; the construction does not use it.
-* **Types are codes** (docs/31 D59). A leaf's type is a level-0 code (`El`, `enc` read its
-  carrier and encoding), and a constructed carrier is read at the stand-in code `opq`, whose
-  element means the constructor value packing it. That is not the run's meaning of a recursive
-  or nested field, which names its declaration, parameters and fields; the declaration's own
-  code is the assembly's, and it cannot be one code holding itself (docs/31 D61, `FieldsFaithful`).
+* **Types are codes** (docs/31 D59, D61). A leaf's type is a level-0 code (`El`, `enc` read its
+  carrier and encoding), and a constructed carrier is read at the stand-in code `opq`, a data
+  code naming no declaration. A data code names its declaration, its parameters' meanings and its
+  carrier, nothing more; an element's constructor and fields are read through a reading
+  (`Reading`), which every run has as its data model's. The generic model reads at a given
+  reading and owes that the reading reads its elements as it packs them (`Coherent`): its fields
+  are full meanings read through the model's own reading, so a model together with its reading is
+  a fixed point, which `exists_dataModel` owes and is not yet built.
 -/
+
+set_option linter.unusedSectionVars false
 
 namespace Ochr.Meaning
 namespace DataGeneric
 open DataModel
+
+/-- The reading the construction encodes its leaves at (docs/31 D61: encoding a data element reads
+it through a data model, the whole program's). A class, so that it threads through the
+construction without being passed by hand; the generic model reads its elements at it and owes
+that it reads them as the model does (`genericModel`'s `hR`). -/
+class Reading where
+  read : DataRead
+
+variable [Reading]
 
 /-! ## Preliminaries -/
 
@@ -86,18 +100,18 @@ def LRel {Z₁ Z₂ : Nat → TyM} (r₁ r₁' : LRaw Z₁) (r₂ r₂' : LRaw Z
   ∀ j a b, r₁ j a = r₂ j b → r₁' j a = r₂' j b
 
 /-- The canonical raw meaning of a leaf: its own meaning. -/
-def canon (Z : Nat → TyM) : LRaw Z := fun j => enc (Z j)
+def canon (Z : Nat → TyM) : LRaw Z := fun j => enc Reading.read (Z j)
 
 theorem canon_inj (Z : Nat → TyM) (j : Nat) : Function.Injective (canon Z j) :=
-  fun _ _ h => enc_inj h
+  fun _ _ h => enc_inj Reading.read h
 
 /-- A constructed carrier as a type meaning, as the construction reads it: a data code naming
 no declaration and unpacking to no fields, so an element means the constructor value that packs
 it and describes nothing else (`enc_opq`). It stands in for the declaration's own code, which
 the assembly owes and which a code cannot hold for a recursive declaration (docs/31 D61). -/
-def opq (A : Type) : TyM := .t0 A (.data "" [] A fun _ => ⟨0, []⟩)
+def opq (A : Type) : TyM := .t0 A (.data { name := "" } [] A)
 
-theorem enc_opq (A : Type) (a : A) : enc (opq A) a = .dat "" [] 0 [] (some ⟨A, a⟩) := rfl
+theorem enc_opq (A : Type) (a : A) : (enc Reading.read (opq A) a).elt = some ⟨A, a⟩ := rfl
 
 /-- The type meaning of a family member: a carrier, or for a `Prop`-sorted declaration its
 inhabitedness (docs/31 D4: the truncation of the same fixed point). -/
@@ -266,7 +280,7 @@ def interp (X : Fam) (Z : Nat → TyM) : PCode → TyM
 
 /-- What a later field's code sees of this field: a closed field's meaning, `err` otherwise. -/
 def mask (X : Fam) (Z : Nat → TyM) : (τ : PCode) → El (interp M b X Z τ) → Sem
-  | .ext T, v => enc T v
+  | .ext T, v => enc Reading.read T v
   | .par _, _ => .err
   | .self _ _, _ => .err
   | .nest _ _ _, _ => .err
@@ -277,7 +291,7 @@ def maskSem : PCode → Sem → Sem
   | _, _ => .err
 
 theorem mask_eq (X : Fam) (Z : Nat → TyM) (τ : PCode) (v : El (interp M b X Z τ)) :
-    mask M b X Z τ v = maskSem τ (enc _ v) := by
+    mask M b X Z τ v = maskSem τ (enc Reading.read _ v) := by
   cases τ <;> rfl
 
 /-- Change the reading of the declaration, `X` to `Y`, at fixed leaves (a stage into the next,
@@ -302,7 +316,7 @@ def cmapZ {X : Fam} (fX : ∀ {ps Z Z'}, LMap Z Z' → X ps Z → X ps Z') :
 leaves. -/
 def craw {X : Fam} (rX : ∀ {ps Z}, LRaw Z → X ps Z → Sem) :
     (τ : PCode) → {Z : Nat → TyM} → LRaw Z → El (interp M b X Z τ) → Sem
-  | .ext T, _, _, v => enc T v
+  | .ext T, _, _, v => enc Reading.read T v
   | .par j, _, r, v => r j v
   | .self _ tys, _, r, v => rawB b (rX fun j => craw (X := X₀) (fun _ y => y.elim) (tys j) r) v
   | .nest e _ tys, _, r, v => rawB (M e).isProp ((M e).raw fun j => craw (X := X) rX (tys j) r) v
@@ -373,7 +387,7 @@ theorem craw_inj {X : Fam} (rX : ∀ {ps Z}, LRaw Z → X ps Z → Sem)
     (τ : PCode) {Z : Nat → TyM} (r : LRaw Z) (hr : ∀ j, Function.Injective (r j)) :
     Function.Injective (craw M b (X := X) rX τ r) := by
   induction τ generalizing X with
-  | ext T => exact fun _ _ h => enc_inj h
+  | ext T => exact fun _ _ h => enc_inj Reading.read h
   | par j => exact hr j
   | self fx tys ih =>
     apply rawB_inj
@@ -1348,7 +1362,7 @@ variable (S : Sig) (M : Nat → NModel)
 
 def Step.fields {X : Fam} {Z : Nat → TyM} {K : Sem → Type} (rest : ∀ s, K s → List Sem)
     (τ : PCode) : Step S M X Z τ K → List Sem
-  | ⟨v, k⟩ => enc _ v :: rest _ k
+  | ⟨v, k⟩ => enc Reading.read _ v :: rest _ k
 
 /-- The meanings of a telescope's fields. -/
 def Tele.fields {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat} :
@@ -1363,7 +1377,7 @@ noncomputable def Tele.decode {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : N
   | _, 0, _, [] => some PUnit.unit
   | _, 0, _, _ :: _ => none
   | _, _ + 1, _, [] => none
-  | i, n + 1, e, f :: fs => (dec _ f).bind fun v =>
+  | i, n + 1, e, f :: fs => (dec Reading.read _ f).bind fun v =>
     (Tele.decode (i + 1) n (e ++ [mask M S.isProp X Z _ v]) fs).map fun k => ⟨v, k⟩
 
 theorem Tele.decode_fields {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat} :
@@ -1371,7 +1385,7 @@ theorem Tele.decode_fields {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat}
       Tele.decode S M i n e (Tele.fields S M i n e t) = some t
   | _, 0, _, _ => rfl
   | i, n + 1, e, ⟨v, k⟩ => by
-    simp only [Tele.fields, Step.fields, Tele.decode, dec_enc, Option.bind_some, Tele.decode_fields]
+    simp only [Tele.fields, Step.fields, Tele.decode, dec_enc Reading.read, Option.bind_some, Tele.decode_fields]
     rfl
 
 theorem Tele.fields_decode {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat} :
@@ -1382,7 +1396,7 @@ theorem Tele.fields_decode {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat}
   | _, _ + 1, _, [], _, h => by simp [Tele.decode] at h
   | i, n + 1, e, f :: fs, t, h => by
     simp only [Tele.decode] at h
-    cases hv : dec _ f with
+    cases hv : dec Reading.read _ f with
     | none => rw [hv] at h; cases h
     | some v =>
       rw [hv, Option.bind_some] at h
@@ -1391,7 +1405,7 @@ theorem Tele.fields_decode {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat}
       | some k =>
         rw [hk] at h
         obtain rfl : (⟨v, k⟩ : Tele S M X Z ps c i (n + 1) e) = t := Option.some.inj h
-        simp only [Tele.fields, Step.fields, enc_of_dec hv, Tele.fields_decode _ _ _ fs k hk]
+        simp only [Tele.fields, Step.fields, enc_of_dec Reading.read hv, Tele.fields_decode _ _ _ fs k hk]
 
 /-- The masked meanings of a list of fields, after `e`, from field `i` on. -/
 def Sig.maskList (ps : List Sem) (c : Nat) : Nat → List Sem → List Sem → List Sem
@@ -1404,15 +1418,15 @@ theorem isSome_map_eq {α β : Type} (g : α → β) (o : Option α) : (o.map g)
 theorem Tele.decode_isSome {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat} :
     ∀ (n i : Nat) (e : List Sem) (fs : List Sem),
       (Tele.decode S M (X := X) (Z := Z) (ps := ps) (c := c) i n e fs).isSome ↔
-        fs.length = n ∧ ∀ j (h : j < fs.length), fs[j] ∈ₛ
+        fs.length = n ∧ ∀ j (h : j < fs.length), fs[j] ∈ₛ[Reading.read]
           small (interp M S.isProp X Z (S.code ps c (i + j) (Sig.maskList S ps c i e (fs.take j))))
   | 0, _, _, [] => by simp [Tele.decode]; rfl
   | 0, _, _, _ :: _ => by simp [Tele.decode]
   | n + 1, _, _, [] => by simp [Tele.decode]
   | n + 1, i, e, f :: fs => by
     simp only [Tele.decode, List.length_cons, Nat.add_right_cancel_iff]
-    have hf := dec_isSome_iff (interp M S.isProp X Z (S.code ps c i e)) f
-    cases hv : dec _ f with
+    have hf := dec_isSome_iff Reading.read (interp M S.isProp X Z (S.code ps c i e)) f
+    cases hv : dec Reading.read _ f with
     | none =>
       simp only [Option.bind_none, Option.isSome_none, Bool.false_eq_true, false_iff]
       rw [hv] at hf
@@ -1422,7 +1436,7 @@ theorem Tele.decode_isSome {X : Fam} {Z : Nat → TyM} {ps : List Sem} {c : Nat}
       rw [Option.bind_some]
       refine (iff_of_eq (congrArg (fun b => b = true) (isSome_map_eq _ _))).trans ?_
       have hm : mask M S.isProp X Z _ v = maskSem (S.code ps c i e) f := by
-        rw [mask_eq, enc_of_dec hv]
+        rw [mask_eq, enc_of_dec Reading.read hv]
       rw [hm, Tele.decode_isSome n (i + 1) _ fs]
       rw [hv] at hf
       have h0 := hf.1 rfl
@@ -1525,7 +1539,7 @@ theorem gPack_fields {ps : List Sem} {Z : Nat → TyM} (x : car S M ps Z) :
 theorem gPack_isSome (ps : List Sem) (Z : Nat → TyM) (c : Nat) (fs : List Sem) :
     (gPack S M ps Z c fs).isSome ↔
       ∃ n, S.ar[c]? = some n ∧ fs.length = n ∧
-        ∀ i (h : i < fs.length), fs[i] ∈ₛ gFieldTy S M ps Z c i (fs.take i) := by
+        ∀ i (h : i < fs.length), fs[i] ∈ₛ[Reading.read] gFieldTy S M ps Z c i (fs.take i) := by
   unfold gPack
   split
   · rename_i hc
@@ -1585,9 +1599,9 @@ theorem exists_min (P : Nat → Prop) (h : ∃ n, P n) : ∃ n, P n ∧ ∀ m, P
     · exact ⟨n, hn, fun m hm => Nat.le_of_not_lt fun hlt => h' ⟨m, hlt, hm⟩⟩
 
 theorem enc_mapB_elt (b : Bool) {A B : Type} (f : A → B) (v : El (tyB b A)) (y : B)
-    (h : (enc (tyB b B) (mapB b f v)).elt = some ⟨B, y⟩) : ∃ a, f a = y := by
+    (h : (enc Reading.read (tyB b B) (mapB b f v)).elt = some ⟨B, y⟩) : ∃ a, f a = y := by
   cases b
-  · have e : (enc (tyB false B) (mapB false f v)).elt = some ⟨B, f v⟩ := rfl
+  · have e : (enc Reading.read (tyB false B) (mapB false f v)).elt = some ⟨B, f v⟩ := rfl
     rw [e] at h
     exact ⟨v, eq_of_heq (Sigma.mk.inj (Option.some.inj h)).2⟩
   · cases h
@@ -1797,7 +1811,7 @@ structure DM where
   fields_pack : ∀ {ps c fs} (x : car ps), pack ps c fs = some x → fields x = fs
   pack_fields : ∀ {ps} (x : car ps), pack ps (tag x) (fields x) = some x
   pack_isSome : ∀ ps c fs, (pack ps c fs).isSome ↔
-    ∃ n, ar[c]? = some n ∧ fs.length = n ∧ ∀ i (h : i < fs.length), fs[i] ∈ₛ fieldTy ps c i (fs.take i)
+    ∃ n, ar[c]? = some n ∧ fs.length = n ∧ ∀ i (h : i < fs.length), fs[i] ∈ₛ[Reading.read] fieldTy ps c i (fs.take i)
   rank_lt : ∀ {ps ps'} (x : car ps) (y : car ps') i, recArgs ps (tag x) i ((fields x).take i) = some ps' →
     ((fields x)[i]?).bind Sem.elt = some ⟨car ps', y⟩ → rank y < rank x
 
@@ -1849,10 +1863,18 @@ noncomputable def Prog.dm (Γ : Prog) (d : IndDecl) : DM :=
   | some i => declDM ((Γ.map (·.2)).getD i default) (progEnv (Γ.map (·.2)) i)
   | none => DM.empty
 
+/-- What makes the generic model's reading its own (docs/31 D61): the reading its leaves are
+encoded at reads each covered declaration's element as the construction's tag and fields. A
+fixed point (the fields' meanings are encodings at that reading), by recursion on rank and codes;
+the assembly owes it (`exists_dataModel`). -/
+def Coherent (Γ : Prog) : Prop :=
+  ∀ d ps (x : (Γ.dm d).car ps), (∃ i, Γ.index d = some i ∧ (Γ[i]?).map (·.1) = some d) →
+    Reading.read d ps ((Γ.dm d).car ps) x = ((Γ.dm d).tag x, (Γ.dm d).fields x)
+
 /-- **The generic data model** of a program: every declaration by stages, in order. It covers a
 declaration that is the program's declaration of its name, with the signature's arities and
-sort. -/
-noncomputable def genericModel (Γ : Prog) : DataModel where
+sort. It reads its elements at the reading its leaves are encoded at, where that is coherent. -/
+noncomputable def genericModel (Γ : Prog) (hR : Coherent Γ) : DataModel where
   covers d := ∃ i, Γ.index d = some i ∧ (Γ[i]?).map (·.1) = some d ∧
     arities d = ((Γ.map (fun p : IndDecl × Sig => p.2)).getD i default).ar ∧
     (d.sort == 0) = ((Γ.map (fun p : IndDecl × Sig => p.2)).getD i default).isProp
@@ -1864,6 +1886,8 @@ noncomputable def genericModel (Γ : Prog) : DataModel where
   tag := (Γ.dm _).tag
   fields := (Γ.dm _).fields
   rank := (Γ.dm _).rank
+  read := Reading.read
+  read_eq {d ps} x hd := hR d ps x (let ⟨i, hi, hd', _⟩ := hd; ⟨i, hi, hd'⟩)
   tag_pack x _ h := (Γ.dm _).tag_pack x h
   fields_pack x _ h := (Γ.dm _).fields_pack x h
   pack_fields x _ := (Γ.dm _).pack_fields x
@@ -1906,9 +1930,9 @@ def FieldsFaithful (dm : DataModel) (d : IndDecl)
 
 /-- The library's type part: `Pair`'s fields have the parameters' types (cut to `small`), as
 the run reads the field type terms `A` and `B`. -/
-theorem libModel_fieldTy_pair (d : IndDecl) (h : DataModel.libKind d = .pair) (A B : TyM)
+theorem libModel_fieldTy_pair (R : DataRead) (hR) (d : IndDecl) (h : DataModel.libKind d = .pair) (A B : TyM)
     (c i : Nat) (e : List Sem) :
-    DataModel.libModel.fieldTy d [.ty A, .ty B] c i e = small (if i = 0 then A else B) := by
+    (DataModel.libModel R hR).fieldTy d [.ty A, .ty B] c i e = small (if i = 0 then A else B) := by
   show (DataModel.libKind d).fieldTy _ i = _
   rw [h]
   by_cases hi : i = 0 <;> simp [DataModel.LibKind.fieldTy, DataModel.libPar, hi, List.getD]

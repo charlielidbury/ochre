@@ -88,7 +88,7 @@ structure GlobalsOk (K : RunCtx) (st : MState) : Prop where
   fn : ∀ n g t, st.globals.find? (·.name == n) = some g → g.fn? = some t → ∀ ρ φ,
     (K.C.global n).1 = meanV K ρ φ (.plain .err) (.clo [] t []) ∧
     ∀ r s', run K ρ φ (.plain .err) t (stateOf 0 []) = some (r, s') → r.2.m = (K.C.global n).2.m
-  mem : ∀ n g, st.globals.find? (·.name == n) = some g → (K.C.global n).1 ∈ₛ (K.C.global n).2.m
+  mem : ∀ n g, st.globals.find? (·.name == n) = some g → (K.C.global n).1 ∈ₛ[K.dm.read] (K.C.global n).2.m
 
 /-- The run context knows the types of the unknowns the state names: `K.Δ` is `deltaOf` at every
 referenced unknown (`MState.Refd`). Elsewhere `K.Δ` is free, so a step that names new unknowns
@@ -739,7 +739,7 @@ makes `conv` answer `false` more often, so no hypothesis on it. -/
 def conv_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (v w : Value) (T : TyM)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hv : DataModel.pmem K.Γ (meanV K ρ φ (.plain T) v) T) (hw : DataModel.pmem K.Γ (meanV K ρ φ (.plain T) w) T)
+    (hv : DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain T) v) T) (hw : DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain T) w) T)
     (bh : Nat) (h : Runs (Ochr.conv fuel v w) st bh true st'),
     meanV K ρ φ (.plain T) v = meanV K ρ φ (.plain T) w
 
@@ -755,7 +755,7 @@ the same function (extensionality on good carriers, docs/18 (V5), `Slice.pi_ext`
 def convFn_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (f g : Value) (T : TyM)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hf : meanV K ρ φ (.plain T) f ∈ₛ T) (hgm : meanV K ρ φ (.plain T) g ∈ₛ T)
+    (hf : meanV K ρ φ (.plain T) f ∈ₛ[K.dm.read] T) (hgm : meanV K ρ φ (.plain T) g ∈ₛ[K.dm.read] T)
     (bh : Nat) (h : Runs (Ochr.convFn fuel f g) st bh true st'),
     meanV K ρ φ (.plain T) f = meanV K ρ φ (.plain T) g
 
@@ -784,7 +784,7 @@ def callFn_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) :
     -- the callee as the run reads it (`closeCall_step_stmt`); `fT` is the checker's input only
     (fres : Res) (hf : run K ρ φ (.plain .err) (.val fv) (SM' K ρ st) = some (fres, SM' K ρ st))
     (bh : Nat) (h : Runs (Ochr.callFn fuel typed fv (some fT) ws tys hd) st bh (v, T?) st'),
-    ∃ r s', callOf fres (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
+    ∃ r s', callOf K.dm.read fres (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v ⊑ r.1 ∧
       Below (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
 
@@ -798,7 +798,7 @@ def runBody_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     -- the callee as the run reads it (the pilot form took `fT` free: `Regress/CloseCallStmt.lean`)
     (fres : Res) (hf : run K ρ φ (.plain .err) (.val fv) (SM' K ρ st) = some (fres, SM' K ρ st))
     (bh : Nat) (h : Runs (Ochr.runBody fuel fv cs t rd ws) st bh v st'),
-    ∃ r s', callOf fres (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
+    ∃ r s', callOf K.dm.read fres (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v ⊑ r.1 ∧
       Below (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
 
@@ -822,16 +822,16 @@ def closeCall_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hargs : ArgsLoanFree st.env ws)
     (fres : Res) (hf : run K ρ φ (.plain .err) (.val fv) (SM' K ρ st) = some (fres, SM' K ρ st))
     (hpi : fres.2.m.isPi = true)
-    (hkind : kind = .ref ↔ ∃ U, fres.2.m.codAt? ((argsRes K ρ φ ws).map (·.1)) = some (true, U))
-    (hres : res = .unit → ∀ B, fres.2.m.codAt? ((argsRes K ρ φ ws).map (·.1)) = some (false, B) →
+    (hkind : kind = .ref ↔ ∃ U, fres.2.m.codAt? K.dm.read ((argsRes K ρ φ ws).map (·.1)) = some (true, U))
+    (hres : res = .unit → ∀ B, fres.2.m.codAt? K.dm.read ((argsRes K ρ φ ws).map (·.1)) = some (false, B) →
       B = TyM.unit)
     (hfills : ∀ i : Nat, fills.getD i false = true → ∀ p,
-      fres.2.m.paramAt? (((argsRes K ρ φ ws).map (·.1)).take i) = some p → p.2 = TyM.unit)
+      fres.2.m.paramAt? K.dm.read (((argsRes K ρ φ ws).map (·.1)).take i) = some p → p.2 = TyM.unit)
     (htys : ∀ (i l : Nat) (w : Value), ws[i]? = some (Value.borrow l w) → ∀ p,
-      fres.2.m.paramAt? (((argsRes K ρ φ ws).map (·.1)).take i) = some p →
+      fres.2.m.paramAt? K.dm.read (((argsRes K ρ φ ws).map (·.1)).take i) = some p →
       ∃ T : Value, tys[i]? = some (some (Value.tRef T)) ∧ (Value.tyS K.dm K.M K.Γ ρ T).m = p.2)
     (bh : Nat) (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st bh v st'),
-    ∃ r s', callOf fres (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
+    ∃ r s', callOf K.dm.read fres (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v = r.1 ∧
       Exact (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
 
@@ -842,7 +842,7 @@ def callType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (tys : Array (Option Value)) (B : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (bh : Nat) (h : Runs (Ochr.callType fuel piTy ws tys) st bh B st'),
-    ∀ b U, (calleeRes K ρ φ .proof piTy).2.m.codAt? ((argsRes K ρ φ ws).map (·.1)) = some (b, U) →
+    ∀ b U, (calleeRes K ρ φ .proof piTy).2.m.codAt? K.dm.read ((argsRes K ρ φ ws).map (·.1)) = some (b, U) →
       (meanV K ρ noFuture (.plain .err) B).asTy = U
 
 /-- [Rec]'s accepting direction (`recCheck`), semantically: for a recursive function whose every
@@ -857,7 +857,7 @@ def recCheck_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
     -- free: `fT := .zero` refuted it, the defect class of `Regress/CloseCallStmt.lean`)
     (hfT : ∃ bfT st', Runs (Ochr.funType? fuel fv none) st bfT (some fT) st')
     (hacc : ∃ fuel st', Runs (Ochr.checkFix fuel fv [] (match fv with | .clo _ t _ => t | _ => .tt)) st fuel () st'),
-    meanV K ρ φ (.plain .err) fv ∈ₛ (meanV K ρ φ (.plain .err) fT).asTy
+    meanV K ρ φ (.plain .err) fv ∈ₛ[K.dm.read] (meanV K ρ φ (.plain .err) fT).asTy
 
 /-! ### The match area, in the simulation form (docs/31 D24; third lead)
 
@@ -1222,7 +1222,7 @@ def repackCheck_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (bh : Nat) (h : Runs (Ochr.repackCheck fuel what v T) st bh () st'),
     TypedFuture K.dm K.M K.Γ ρ st φ →
-      meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v ∈ₛ (meanV K ρ noFuture (.plain .err) T).asTy
+      meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v ∈ₛ[K.dm.read] (meanV K ρ noFuture (.plain .err) T).asTy
 
 /-- [Return]'s accepting direction (`bodyReturns`): the returned value is a member of its type
 and every place held by borrow is whole, under every typed future. -/
@@ -1232,7 +1232,7 @@ def bodyReturns_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (bh : Nat) (h : Runs (Ochr.bodyReturns fuel what v T lent lw) st bh () st'),
     TypedFuture K.dm K.M K.Γ ρ st φ →
-      meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v ∈ₛ (meanV K ρ noFuture (.plain .err) T).asTy ∧
+      meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v ∈ₛ[K.dm.read] (meanV K ρ noFuture (.plain .err) T).asTy ∧
       (meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v).whole
 
 /-- `valType?` is sound (the second of the five lemmas): the meaning of a value lies in the
@@ -1242,7 +1242,7 @@ def valType_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hv : ∃ p, valAt st.env p = v)
     (bh : Nat) (h : Runs (Ochr.valType? fuel v) st bh (some T) st'),
     TypedFuture K.dm K.M K.Γ ρ st φ →
-      DataModel.pmem K.Γ (meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v) (meanV K ρ noFuture (.plain .err) T).asTy
+      DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v) (meanV K ρ noFuture (.plain .err) T).asTy
 
 /-- [Borrow] keeps (WF1)–(WF3): the fresh label is held once, at the destination; the lent
 place's content holds no live loan (after [Access]), so the borrow relation stays acyclic. -/
@@ -1450,14 +1450,14 @@ def proof_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : 
     -- `eval`, not `evalCore`: it is `evalAt` that runs a proof on a copy (as stated for `evalCore`
     -- a proof-valued `let` whose right-hand side moves a place refuted "the state is unchanged")
     (bh : Nat) (h : Runs (Ochr.eval fuel typed t hint) st bh (.proof, some T) st'),
-    st'.core = st.core ∧ Sem.proof ∈ₛ (meanV K ρ φ (.plain .err) T).asTy
+    st'.core = st.core ∧ Sem.proof ∈ₛ[K.dm.read] (meanV K ρ φ (.plain .err) T).asTy
 
 /-- η at `Unit` (D80): where a position's declared reading is `Unit`, the value is `()`, and
 `()` is the one element of `⟦Unit⟧`, so the normalisation keeps meaning given membership. -/
 def etaUnit_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st : MState) (d : DeclInfo) (v : Value) (hint : TyS)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hd : d = .unit)
-    (hv : meanV K ρ φ hint v ∈ₛ TyM.unit),
+    (hv : meanV K ρ φ hint v ∈ₛ[K.dm.read] TyM.unit),
     meanV K ρ φ hint (Ochr.etaUnit d v) = meanV K ρ φ hint v
 
 /-- The generic state of a `fix` is `Good` for every assignment that gives each parameter's
@@ -1494,7 +1494,7 @@ def checkFix_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
     -- class of `Regress/CloseCallStmt.lean`)
     (hT : ∃ self hs ds c r body, t = .fix self hs ds c r body ∧ fT = .tPi cs (.pi hs ds c) rd)
     (bh : Nat) (h : Runs (Ochr.checkFix fuel fv cs t capRec rd) st bh () st'),
-    meanV K ρ φ (.plain .err) (.clo cs t rd) ∈ₛ (meanV K ρ φ (.plain .err) fT).asTy
+    meanV K ρ φ (.plain .err) (.clo cs t rd) ∈ₛ[K.dm.read] (meanV K ρ φ (.plain .err) fT).asTy
 
 /-- [Const]: an accepted constant's value is a member of its goal, under the empty assignment. -/
 def checkConst_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
@@ -1502,7 +1502,7 @@ def checkConst_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : N
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hd : d.doms = [])
     (h : Runs (Ochr.checkDef d) st 2000000 () st')
     (hgl : ∃ g ∈ st'.globals, g.name = d.name ∧ g.ty = goal ∧ g.val = v),
-    meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ goal) v ∈ₛ (meanV K ρ noFuture (.plain .err) goal).asTy
+    meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ goal) v ∈ₛ[K.dm.read] (meanV K ρ noFuture (.plain .err) goal).asTy
 
 /-- [Ind-decl] (`checkInd`): an accepted declaration satisfies (I1)–(I9), so the data model covers
 it (the least fixed point exists in the sort's universe; docs/18 Lemma 2). -/

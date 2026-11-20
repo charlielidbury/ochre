@@ -166,7 +166,7 @@ theorem runT_hintIndep : ∀ (tl : Bool) (t : Term), Term.tailHintFree K.Γ t = 
           · rename_i hx; rw [List.length_eq_zero_iff.mp hx.2]; rfl
           · rfl
         simp only [hfind, Bool.not_true, Bool.false_eq_true, if_false, hq, List.replicate_zero]
-        cases h.data <;> cases h'.data <;> simp only [hz]
+        cases h.data K.dm.read <;> cases h'.data K.dm.read <;> simp only [hz]
   | tl, .val v, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     have e := meanV_hintIndep v ht h h'

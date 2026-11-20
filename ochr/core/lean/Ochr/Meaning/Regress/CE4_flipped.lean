@@ -46,10 +46,10 @@ def tF : Term := .letIn ⟨"y"⟩ .zero (.seq (.call (.const "f") [.borrow (.var
 section
 variable (ρ : Assignment) (φ : Future)
 
-theorem applyFn_F : applyFnL lvl0 telF (.el0 FCar Fid) [.el0 Nat 0]
-    = some (.data (.el0 Nat 0) (lvl0.toTy Code0.nat) []) := by
+theorem applyFn_F (R : DataRead) : applyFnL (lvl0 R) telF (.el0 FCar Fid) [.el0 Nat 0]
+    = some (.data (.el0 Nat 0) ((lvl0 R).toTy Code0.nat) []) := by
   have hu : Sem.as FCar (.el0 FCar Fid) = some Fid := by simp [Sem.as]
-  have h2 : Code0.nat.dec (.el0 Nat 0) = some (0 : Nat) := Code0.dec_enc .nat 0
+  have h2 : Code0.nat.dec R (.el0 Nat 0) = some (0 : Nat) := Code0.dec_enc R .nat 0
   simp only [applyFnL, lvl0, hu, Option.bind_some, telF, applyTelL, h2]
   rfl
 
@@ -151,12 +151,12 @@ theorem noStmt_KF : NoStmt KF := fun _ _ => rfl
 theorem run_call_KF (f : Term) (args : List Term) (hd : Bool) (hint : TyS) (s : SState) :
     run KF ρ φ hint (.call f args hd) s
       = (SM.headOf f (fun p => readPlace KF φ p true) (run KF ρ φ (.plain .err) f) >>= fun fv =>
-          runArgs KF ρ φ false fv.2.m [] args >>= fun as => callOf fv as) s := rfl
+          runArgs KF ρ φ false fv.2.m [] args >>= fun as => callOf KF.dm.read fv as) s := rfl
 
 theorem runArgs_borrow (n : Nat) :
     runArgs KF ρ φ false (.t0 FCar (.pi FCar telF)) [] [.borrow (.var 0)] (a1 KF n)
       = some ([(.el0 Nat 0, { TyS.plain TyM.nat with label := some n })], a2 KF n) := by
-  show (run KF ρ φ (.plain ((TyM.t0 FCar (.pi FCar telF)).domAfter [])) (.borrow (.var 0)) >>= fun r =>
+  show (run KF ρ φ (.plain ((TyM.t0 FCar (.pi FCar telF)).domAfter KF.dm.read [])) (.borrow (.var 0)) >>= fun r =>
       runArgs KF ρ φ false (.t0 FCar (.pi FCar telF)) ([] ++ [r.1]) [] >>= fun rest => pure (r :: rest)) (a1 KF n) = _
   rw [SM.bind_apply, run_borrow ρ φ KF noStmt_KF, borrow_a1]
   rfl
@@ -168,12 +168,12 @@ theorem call_a1 (n : Nat) :
     run KF ρ φ (.plain .err) (.call (.const "f") [.borrow (.var 0)] false) (a1 KF n)
       = some ((.el0 Nat 0, .plain TyM.nat), a4 n) := by
   rw [run_call_KF, SM.bind_apply]
-  show (runArgs KF ρ φ false (.t0 FCar (.pi FCar telF)) [] [.borrow (.var 0)] >>= fun as => callOf _ as) (a1 KF n) = _
+  show (runArgs KF ρ φ false (.t0 FCar (.pi FCar telF)) [] [.borrow (.var 0)] >>= fun as => callOf KF.dm.read _ as) (a1 KF n) = _
   rw [SM.bind_apply, runArgs_borrow]
-  show callOfL lvl0 telF (.el0 FCar Fid)
+  show callOfL (lvl0 KF.dm.read) telF (.el0 FCar Fid)
     [(.el0 Nat 0, { TyS.plain TyM.nat with label := some n })] (a2 KF n) = _
-  have hr : telRefsL lvl0 telF [Sem.el0 Nat 0] = [false] := by
-    simp [telRefsL, telF, show Code0.nat.dec (.el0 Nat 0) = some (0 : Nat) from Code0.dec_enc .nat 0]
+  have hr : telRefsL (lvl0 KF.dm.read) telF [Sem.el0 Nat 0] = [false] := by
+    simp [telRefsL, telF, show Code0.nat.dec KF.dm.read (.el0 Nat 0) = some (0 : Nat) from Code0.dec_enc _ .nat 0]
   unfold callOfL
   simp only [List.map_cons, List.map_nil, applyFn_F, hr]
   rfl

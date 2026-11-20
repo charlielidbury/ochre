@@ -1,4 +1,5 @@
 import Ochr.Meaning.Regress.CodeClosures
+import Ochr.Meaning.Regress.DataCodes
 import Ochr.Meaning.Regress.Adequacy_flipped
 
 /-!
@@ -49,7 +50,7 @@ code, and the application. -/
 theorem run_call (f : Term) (args : List Term) (hd : Bool) (hint : TyS) (s : SState) :
     run (Kp dm Γ G) ρ φ hint (.call f args hd) s =
       (SM.headOf f (fun p => readPlace (Kp dm Γ G) φ p true) (run (Kp dm Γ G) ρ φ (.plain TyM.err) f) >>= fun fv =>
-        runArgs (Kp dm Γ G) ρ φ false fv.2.m [] args >>= fun as => callOf fv as) s := rfl
+        runArgs (Kp dm Γ G) ρ φ false fv.2.m [] args >>= fun as => callOf dm.read fv as) s := rfl
 
 theorem run_const (n : String) (hint : TyS) (s : SState) : run (Kp dm Γ G) ρ φ hint (.const n) s = some (G n, s) := rfl
 
@@ -85,9 +86,9 @@ abbrev num (n : Nat) : Term := .val (Nat.rec Value.zero (fun _ v => .succ v) n)
 /-- The arguments of a call, numerals: each at its parameter's code, the state untouched. -/
 theorem runArgs_num (fT : TyM) (earlier : List Sem) (n : Nat) (s : SState) :
     runArgs (Kp dm Γ G) ρ φ false fT earlier [num n] s =
-      some ([(.el0 Nat n, .plain (fT.domAfter earlier))], s) := by
+      some ([(.el0 Nat n, .plain (fT.domAfter dm.read earlier))], s) := by
   simp only [runArgs, Bool.false_and]
-  show (do let r ← run (Kp dm Γ G) ρ φ (.plain (fT.domAfter earlier)) (num n); _) s = _
+  show (do let r ← run (Kp dm Γ G) ρ φ (.plain (fT.domAfter dm.read earlier)) (num n); _) s = _
   simp only [bind, run_num]
   rfl
 
@@ -98,37 +99,37 @@ theorem mapVals_noFix (s : SState) : s.mapVals (fun _ v φ' => v (φ'.updList []
 /-- A call at level 0 to a function with no borrow parameter among the arguments and a data
 codomain: the application's result, at the code the telescope reached. -/
 theorem callOf_data0 {C : Type} (t : Tel Code0 PUnit C) (F : Sem) (args : List Res) (s : SState) (r : Sem) (T : TyM)
-    (hr : (args.zip (telRefsL lvl0 t (args.map (·.1)))).filter (·.2) = [])
-    (happ : applyFnL lvl0 t F (args.map (·.1)) = some (.data r T [])) :
-    callOf (F, .plain (.t0 C (.pi C t))) args s = some ((r, .plain T), s) := by
-  change callOfL lvl0 t F args s = some ((r, TyS.plain T), s)
+    (hr : (args.zip (telRefsL (lvl0 dm.read) t (args.map (·.1)))).filter (·.2) = [])
+    (happ : applyFnL (lvl0 dm.read) t F (args.map (·.1)) = some (.data r T [])) :
+    callOf dm.read (F, .plain (.t0 C (.pi C t))) args s = some ((r, .plain T), s) := by
+  change callOfL (lvl0 dm.read) t F args s = some ((r, TyS.plain T), s)
   unfold callOfL; dsimp only; rw [hr, happ]; simp [mapVals_noFix]
 
 /-! ## `UseAdder`: a function returned by a call is called along its code -/
 
 /-- `Adder` as the `.fix` clause builds it, at its type's code. -/
-noncomputable def gAdder : String → Sem × TyS :=
-  fun _ => (closureL lvl0 noFuture tAdd (adderBody noFuture), .plain (piTyL lvl0 tAdd))
+noncomputable def gAdder (R : DataRead) : String → Sem × TyS :=
+  fun _ => (closureL (lvl0 R) noFuture tAdd (adderBody R noFuture), .plain (piTyL (lvl0 R) tAdd))
 
 /-- `Adder(2)` runs to the closure `m ↦ 2 + m`, typed at the code `Π(m : Nat). Nat` that `Adder`'s
 telescope reaches. -/
 theorem run_adder2 (hint : TyS) (s : SState) :
-    run (Kp dm Γ gAdder) ρ φ hint (.call (.const "Adder") [num 2] false) s
-      = some ((closureL lvl0 noFuture tNN (addBody 2), .plain (piTyL lvl0 tNN)), s) := by
+    run (Kp dm Γ (gAdder dm.read)) ρ φ hint (.call (.const "Adder") [num 2] false) s
+      = some ((closureL (lvl0 dm.read) noFuture tNN (addBody dm.read 2), .plain (piTyL (lvl0 dm.read) tNN)), s) := by
   obtain ⟨-, -, -, h3, -⟩ := adder_call noFuture
   rw [run_call]
   simp only [SM.headOf, bind, run_const, Option.bind, runArgs_num]
-  exact callOf_data0 tAdd _ _ s _ _ (by simp [telRefsL, tAdd, dec_nat]) h3
+  exact callOf_data0 dm tAdd _ _ s _ _ (by simp [telRefsL, tAdd, dec_nat]) h3
 
 /-- A closure built along a code is whole. -/
-theorem closure_whole (n : Nat) : (closureL lvl0 noFuture tNN (addBody n)).whole := by
+theorem closure_whole (n : Nat) : (closureL (lvl0 dm.read) noFuture tNN (addBody dm.read n)).whole := by
   obtain ⟨F, hF⟩ := inner_eq noFuture n
   rw [hF]; simp [Sem.whole]
 
 /-- **`UseAdder` in the model: `let a = Adder(2); a(3)` is `5`.** The checker accepts `UseAdder`
 (`AdequacyProbes`); with the result's structure carried beside its meaning, the reference's
 binding `a` had no Π-shape and the call `a(3)` failed (the audit's A11). -/
-theorem useAdder (hint : TyS) : ∃ T s', run (Kp dm Γ gAdder) ρ φ hint
+theorem useAdder (hint : TyS) : ∃ T s', run (Kp dm Γ (gAdder dm.read)) ρ φ hint
     (.letIn ⟨"a"⟩ (.call (.const "Adder") [num 2] false) (.call (.place (.var 0)) [num 3] false)) (emptyState 0)
       = some ((.el0 Nat 5, T), s') := by
   obtain ⟨-, -, -, -, h5⟩ := adder_call noFuture
@@ -136,9 +137,9 @@ theorem useAdder (hint : TyS) : ∃ T s', run (Kp dm Γ gAdder) ρ φ hint
   simp only [bind, Option.bind]
   rw [Attack.pushBindShaped_noLabel _ _ rfl, Attack.pushBind_emptyState, run_call]
   simp only [bind, Option.bind]
-  erw [AdequacyFlip.head_in_place _ φ _ 0 _ (closure_whole 2)]
+  erw [AdequacyFlip.head_in_place _ φ _ 0 _ (closure_whole dm 2)]
   simp only [runArgs_num]
-  erw [callOf_data0 tNN _ _ _ _ _ (by simp [telRefsL, tNN, dec_nat]) h5]
+  erw [callOf_data0 dm tNN _ _ _ _ _ (by simp [telRefsL, tNN, dec_nat]) h5]
   exact ⟨_, _, rfl⟩
 
 /-! ## `UseFn`: a type computed by a call keeps its code -/
@@ -147,58 +148,58 @@ theorem useAdder (hint : TyS) : ∃ T s', run (Kp dm Γ gAdder) ρ φ hint
 `Type₀` types, its codomain is `Type₀`, whose elements are codes. -/
 abbrev FnCar : Type 1 := (p : Ty0) → Ty0 × PUnit.{2}
 
-def tFn : Tel lvl1.Code PUnit.{2} FnCar :=
+def tFn : Tel Code1 PUnit.{2} FnCar :=
   .param PUnit.{2} false Ty0 .univ1 (fun _ => Ty0 × PUnit.{2}) fun _ => .dat PUnit.{2} Ty0 .univ1
 
 /-- `Fn`'s body, as the `.pi` clause runs `Π(x : A). A` with `A` bound to the argument. -/
-noncomputable def fnBody : List Sem → Option BodyOut
-  | [a] => some ⟨.ty (piTyAt 1 [⟨false, fun _ => a.asTy⟩] ⟨false, fun _ => a.asTy⟩), [], none⟩
+noncomputable def fnBody (R : DataRead) : List Sem → Option BodyOut
+  | [a] => some ⟨.ty (piTyAt R 1 [⟨false, fun _ => a.asTy⟩] ⟨false, fun _ => a.asTy⟩), [], none⟩
   | _ => none
 
 /-- The code `Π(x : A). A` at a code of `A`, an element of `Type₀`'s decoding. -/
-noncomputable def arrowP (p : Ty0) : Ty0 :=
-  ⟨(telL lvl0 [⟨false, fun _ => .t0 p.1 p.2.1⟩] [] PUnit ⟨false, fun _ => .t0 p.1 p.2.1⟩).1,
-    ⟨.pi _ (telL lvl0 [⟨false, fun _ => .t0 p.1 p.2.1⟩] [] PUnit ⟨false, fun _ => .t0 p.1 p.2.1⟩).2, rfl⟩⟩
+noncomputable def arrowP (R : DataRead) (p : Ty0) : Ty0 :=
+  ⟨(telL (lvl0 R) [⟨false, fun _ => .t0 p.1 p.2.1⟩] [] PUnit ⟨false, fun _ => .t0 p.1 p.2.1⟩).1,
+    ⟨.pi _ (telL (lvl0 R) [⟨false, fun _ => .t0 p.1 p.2.1⟩] [] PUnit ⟨false, fun _ => .t0 p.1 p.2.1⟩).2, rfl⟩⟩
 
 /-- `Fn` applied along its code: `Fn(Nat)` is the type value holding `Π(x : Nat). Nat`'s code. -/
 theorem fn_apply (φ : Future) :
-    applyFnL lvl1 tFn (closureL lvl1 φ tFn fnBody) [.ty TyM.nat]
-      = some (.data (.ty (piTyL lvl0 tNN)) (lvl1.toTy Code1.univ1) []) := by
-  have hleaf : ∀ p : Ty0, mkTelL lvl1 φ (Tel.dat PUnit.{2} Ty0 .univ1) ([] ++ [lvl1.enc Code1.univ1 p])
-      (extMkL false PUnit.{2} Ty0 (fun fs => some (PUnit.unit, fs)) (lvl1.dec Code1.univ1)) fnBody
-      = some (arrowP p, PUnit.unit) := by
+    applyFnL (lvl1 dm.read) tFn (closureL (lvl1 dm.read) φ tFn (fnBody dm.read)) [.ty TyM.nat]
+      = some (.data (.ty (piTyL (lvl0 dm.read) tNN)) ((lvl1 dm.read).toTy Code1.univ1) []) := by
+  have hleaf : ∀ p : Ty0, mkTelL (lvl1 dm.read) φ (Tel.dat PUnit.{2} Ty0 .univ1) ([] ++ [(lvl1 dm.read).enc Code1.univ1 p])
+      (extMkL false PUnit.{2} Ty0 (fun fs => some (PUnit.unit, fs)) ((lvl1 dm.read).dec Code1.univ1)) (fnBody dm.read)
+      = some ((arrowP dm.read) p, PUnit.unit) := by
     intro p
     rw [mkTelL.eq_1]
-    show (some ⟨lvl1.enc Code1.univ1 (arrowP p), [], none⟩ : Option BodyOut).bind _ = _
+    show (some ⟨(lvl1 dm.read).enc Code1.univ1 ((arrowP dm.read) p), [], none⟩ : Option BodyOut).bind _ = _
     rw [Option.bind_some]
     unfold mkLeafDataL
     simp only
-    rw [show Code1.univ1.dec (Code1.univ1.enc (arrowP p)) = some (arrowP p) from Code1.dec_enc _ _]
+    rw [show Code1.univ1.dec dm.read (Code1.univ1.enc dm.read ((arrowP dm.read) p)) = some ((arrowP dm.read) p) from Code1.dec_enc dm.read _ _]
     rfl
-  have hmk : mkTelL lvl1 φ tFn [] (fun fs => some (PUnit.unit, fs)) fnBody = some fun p => (arrowP p, PUnit.unit) := by
+  have hmk : mkTelL (lvl1 dm.read) φ tFn [] (fun fs => some (PUnit.unit, fs)) (fnBody dm.read) = some fun p => ((arrowP dm.read) p, PUnit.unit) := by
     unfold tFn
     rw [mkTelL.eq_3, dif_pos fun p => by rw [hleaf p]; rfl]
     congr 1
     funext p
     simp only [hleaf p, Option.get_some]
-  have hc : closureL lvl1 φ tFn fnBody = .el1 FnCar fun p => (arrowP p, PUnit.unit) := by
+  have hc : closureL (lvl1 dm.read) φ tFn (fnBody dm.read) = .el1 FnCar fun p => ((arrowP dm.read) p, PUnit.unit) := by
     unfold closureL; rw [hmk]
   rw [hc]
-  show (Sem.as1 _ (.el1 _ _)).bind (fun F => applyTelL lvl1 tFn (fun _ => []) F [.ty TyM.nat]) = _
-  rw [show Sem.as1 FnCar (.el1 _ fun p => (arrowP p, PUnit.unit))
-    = some fun p => (arrowP p, PUnit.unit) from lvl1_lawful.unpack_pack _ _, Option.bind_some]
-  have hA : Code1.univ1.dec (.ty TyM.nat) = some ⟨Nat, ⟨Code0.nat, rfl⟩⟩ :=
-    Code1.dec_enc Code1.univ1 ⟨Nat, ⟨Code0.nat, rfl⟩⟩
+  show (Sem.as1 _ (.el1 _ _)).bind (fun F => applyTelL (lvl1 dm.read) tFn (fun _ => []) F [.ty TyM.nat]) = _
+  rw [show Sem.as1 FnCar (.el1 _ fun p => ((arrowP dm.read) p, PUnit.unit))
+    = some fun p => ((arrowP dm.read) p, PUnit.unit) from (lvl1_lawful dm.read).unpack_pack _ _, Option.bind_some]
+  have hA : Code1.univ1.dec dm.read (.ty TyM.nat) = some ⟨Nat, ⟨Code0.nat, rfl⟩⟩ :=
+    Code1.dec_enc dm.read Code1.univ1 ⟨Nat, ⟨Code0.nat, rfl⟩⟩
   simp only [tFn, applyTelL, lvl1]
   rw [hA]
   rfl
 
 /-- A call at level 1, as `callOf_data0`. -/
 theorem callOf_data1 {C : Type 1} (t : Tel Code1 PUnit.{2} C) (F : Sem) (args : List Res) (s : SState) (r : Sem)
-    (T : TyM) (hr : (args.zip (telRefsL lvl1 t (args.map (·.1)))).filter (·.2) = [])
-    (happ : applyFnL lvl1 t F (args.map (·.1)) = some (.data r T [])) :
-    callOf (F, .plain (.t1 C (.pi C t))) args s = some ((r, .plain T), s) := by
-  change callOfL lvl1 t F args s = some ((r, TyS.plain T), s)
+    (T : TyM) (hr : (args.zip (telRefsL (lvl1 dm.read) t (args.map (·.1)))).filter (·.2) = [])
+    (happ : applyFnL (lvl1 dm.read) t F (args.map (·.1)) = some (.data r T [])) :
+    callOf dm.read (F, .plain (.t1 C (.pi C t))) args s = some ((r, .plain T), s) := by
+  change callOfL (lvl1 dm.read) t F args s = some ((r, TyS.plain T), s)
   unfold callOfL; dsimp only; rw [hr, happ]; simp [mapVals_noFix]
 
 /-- An argument that is the type `Nat` runs to its code, typed at `Type₀`. -/
@@ -209,39 +210,39 @@ theorem runArgs_nat (fT : TyM) (earlier : List Sem) (s : SState) :
   rfl
 
 /-- `Fn` as the `.fix` clause builds it, at its type's code. -/
-noncomputable def gFn : String → Sem × TyS :=
-  fun _ => (closureL lvl1 noFuture tFn fnBody, .plain (piTyL lvl1 tFn))
+noncomputable def gFn (R : DataRead) : String → Sem × TyS :=
+  fun _ => (closureL (lvl1 R) noFuture tFn (fnBody R), .plain (piTyL (lvl1 R) tFn))
 
 /-- `Fn(Nat)` runs to the type value holding `Π(x : Nat). Nat`'s code, from any state. -/
 theorem run_fnNat (hint : TyS) (s : SState) :
-    run (Kp dm Γ gFn) ρ φ hint (.call (.const "Fn") [.nat] false) s
-      = some ((.ty (piTyL lvl0 tNN), .plain (lvl1.toTy Code1.univ1)), s) := by
+    run (Kp dm Γ (gFn dm.read)) ρ φ hint (.call (.const "Fn") [.nat] false) s
+      = some ((.ty (piTyL (lvl0 dm.read) tNN), .plain ((lvl1 dm.read).toTy Code1.univ1)), s) := by
   rw [run_call]
   simp only [SM.headOf, bind, run_const, Option.bind, runArgs_nat]
-  have hA : Code1.univ1.dec (.ty TyM.nat) = some ⟨Nat, ⟨Code0.nat, rfl⟩⟩ :=
-    Code1.dec_enc Code1.univ1 ⟨Nat, ⟨Code0.nat, rfl⟩⟩
-  exact callOf_data1 tFn _ _ s _ _ (by simp [telRefsL, tFn, hA]) (fn_apply noFuture)
+  have hA : Code1.univ1.dec dm.read (.ty TyM.nat) = some ⟨Nat, ⟨Code0.nat, rfl⟩⟩ :=
+    Code1.dec_enc dm.read Code1.univ1 ⟨Nat, ⟨Code0.nat, rfl⟩⟩
+  exact callOf_data1 dm tFn _ _ s _ _ (by simp [telRefsL, tFn, hA]) (fn_apply dm noFuture)
 
 /-- **A parameter typed `Fn(Nat)` is bound at `Π(x : Nat). Nat`'s code** (the `.fix` clause binds a
 parameter at the type its domain term runs to, `mkBind`), whatever the frame. -/
 theorem fn_param_code (s : SState) (dcs : List DeclInfo) (pre : List PBind) (acc : List Sem) :
-    (mkBind dcs pre fun acc => run (Kp dm Γ gFn) ρ φ (.plain .err) (.call (.const "Fn") [.nat] false)
-      (extendBy s pre acc)).1 acc = .plain (piTyL lvl0 tNN) := by
+    (mkBind dcs pre fun acc => run (Kp dm Γ (gFn dm.read)) ρ φ (.plain .err) (.call (.const "Fn") [.nat] false)
+      (extendBy s pre acc)).1 acc = .plain (piTyL (lvl0 dm.read) tNN) := by
   simp only [mkBind, run_fnNat, Sem.asTy]
 
 /-- **`UseFn` in the model**: in a frame binding `f` at `Fn(Nat)`'s code to a function `G`,
 `f(3)` is `G(3)`. The checker accepts `UseFn` (`ShapeProbes`); with a type's structure carried
 beside its meaning the reference bound `f` with no Π-shape and `f(n)` failed (the audit's A18). -/
 theorem useFn (G : NN) (hint : TyS) :
-    run (Kp dm Γ gFn) ρ φ hint (.call (.place (.var 0)) [num 3] false)
-        (AdequacyFlip.one { ty := .plain (piTyL lvl0 tNN), val := fun _ => .el0 NN G, decl := .other } 0)
+    run (Kp dm Γ (gFn dm.read)) ρ φ hint (.call (.place (.var 0)) [num 3] false)
+        (AdequacyFlip.one { ty := .plain (piTyL (lvl0 dm.read) tNN), val := fun _ => .el0 NN G, decl := .other } 0)
       = some ((.el0 Nat (G 3).1, .plain TyM.nat),
-          AdequacyFlip.one { ty := .plain (piTyL lvl0 tNN), val := fun _ => .el0 NN G, decl := .other } 0) := by
+          AdequacyFlip.one { ty := .plain (piTyL (lvl0 dm.read) tNN), val := fun _ => .el0 NN G, decl := .other } 0) := by
   rw [run_call]
   simp only [bind, Option.bind]
   rw [AdequacyFlip.head_in_place _ φ _ 0 _ (by simp [Sem.whole])]
   simp only [runArgs_num]
-  erw [callOf_data0 tNN _ _ _ _ _ (by simp [telRefsL, tNN, dec_nat]) (apply_any G 3)]
+  erw [callOf_data0 dm tNN _ _ _ _ _ (by simp [telRefsL, tNN, dec_nat]) (apply_any G 3)]
 
 /-! ## Frames of bindings -/
 
@@ -269,7 +270,7 @@ theorem run_place (p : Place) (hint : TyS) (s : SState) :
     run (Kp dm Γ G) ρ φ hint (.place p) s = readPlace (Kp dm Γ G) φ p true s := rfl
 
 /-- A call through a variable of the frame bound at `Π(n : Nat). Nat`'s code, applied to `n`. -/
-theorem run_callVar (bs : List SBinding) (i : Nat) (hi : i < bs.length) (Gf : NN) (T : TyS) (hT : T.m = piTyL lvl0 tNN)
+theorem run_callVar (bs : List SBinding) (i : Nat) (hi : i < bs.length) (Gf : NN) (T : TyS) (hT : T.m = piTyL (lvl0 dm.read) tNN)
     (d : DeclInfo) (hb : bs[bs.length - 1 - i]? = some { ty := T, val := fun _ => .el0 NN Gf, decl := d }) (n : Nat)
     (hint : TyS) :
     run (Kp dm Γ G) ρ φ hint (.call (.place (.var i)) [num n] false) (frame bs)
@@ -280,18 +281,18 @@ theorem run_callVar (bs : List SBinding) (i : Nat) (hi : i < bs.length) (Gf : NN
   simp only [runArgs_num]
   obtain ⟨m, l⟩ := T
   simp only at hT; subst hT
-  erw [callOf_data0 tNN _ _ _ _ _ (by simp [telRefsL, tNN, dec_nat]) (apply_any Gf n)]
+  erw [callOf_data0 dm tNN _ _ _ _ _ (by simp [telRefsL, tNN, dec_nat]) (apply_any Gf n)]
 
 /-! ## `Alias`: a function type bound by a `let` -/
 
 /-- `Π(n : Nat). Nat` runs, in any state, to the type value holding its code, typed at `Type₀`. -/
 theorem run_piNN (hs : List Hint) (hint : TyS) (s : SState) :
-    run (Kp dm Γ G) ρ φ hint (.pi hs [.nat] .nat) s = some ((.ty (piTyL lvl0 tNN), .plain (TyM.univ 1)), s) := by
+    run (Kp dm Γ G) ρ φ hint (.pi hs [.nat] .nat) s = some ((.ty (piTyL (lvl0 dm.read) tNN), .plain (TyM.univ 1)), s) := by
   rw [run, run_pi_def]
   rfl
 
 /-- The frame `Alias` starts in: `f : Π(n : Nat). Nat` bound to a function `Gf`. -/
-noncomputable def fB (Gf : NN) : SBinding := { ty := .plain (piTyL lvl0 tNN), val := fun _ => .el0 NN Gf, decl := .other }
+def fB (Gf : NN) : SBinding := { ty := .plain (.t0 NN (.pi NN tNN)), val := fun _ => .el0 NN Gf, decl := .other }
 
 /-- **`Alias` in the model: `let T = Π(n : Nat). Nat; let g : T = f; g(3)` is `f(3)`.** `T` holds
 the type value, whose code the ascription reads, so `g` is bound at it and called along it. The
@@ -302,15 +303,15 @@ theorem alias (Gf : NN) (hint : TyS) : ∃ T s', run (Kp dm Γ G) ρ φ hint
       (.letIn ⟨"g"⟩ (.ascribe (.place (.var 1)) (.place (.var 0))) (.call (.place (.var 0)) [num 3] false)))
     (frame [fB Gf]) = some ((.el0 Nat (Gf 3).1, T), s') := by
   have h2 : run (Kp dm Γ G) ρ φ (.plain .err) (.ascribe (.place (.var 1)) (.place (.var 0)))
-      (frame [fB Gf, { ty := .plain (TyM.univ 1), val := fun _ => .ty (piTyL lvl0 tNN), decl := .other }])
-      = some ((.el0 NN Gf, .plain (piTyL lvl0 tNN)),
-          frame [fB Gf, { ty := .plain (TyM.univ 1), val := fun _ => .ty (piTyL lvl0 tNN), decl := .other }]) := by
+      (frame [fB Gf, { ty := .plain (TyM.univ 1), val := fun _ => .ty (piTyL (lvl0 dm.read) tNN), decl := .other }])
+      = some ((.el0 NN Gf, .plain (piTyL (lvl0 dm.read) tNN)),
+          frame [fB Gf, { ty := .plain (TyM.univ 1), val := fun _ => .ty (piTyL (lvl0 dm.read) tNN), decl := .other }]) := by
     rw [run, Attack.run_ascribe (hfl := fun _ _ => rfl)]
     simp only [bind, SM.onCopy]
     rw [show runT (Kp dm Γ G) ρ φ false (.plain .err) (.place (.var 0)) = readPlace (Kp dm Γ G) φ (.var 0) true from rfl,
       readPlace_frame φ _ _ 0 _ (by simp) rfl (by simp [Sem.whole])]
     simp only [Option.map, Sem.asTy]
-    rw [show runT (Kp dm Γ G) ρ φ false (.plain (piTyL lvl0 tNN)) (.place (.var 1)) = readPlace (Kp dm Γ G) φ (.var 1) true from rfl,
+    rw [show runT (Kp dm Γ G) ρ φ false (.plain (piTyL (lvl0 dm.read) tNN)) (.place (.var 1)) = readPlace (Kp dm Γ G) φ (.var 1) true from rfl,
       readPlace_frame φ _ _ 1 _ (by simp) rfl (by simp [Sem.whole, fB])]
     rfl
   rw [run_letIn, run_piNN]
@@ -337,38 +338,38 @@ theorem useFnLet (Gf : NN) (hint : TyS) : ∃ T s', run (Kp dm Γ G) ρ φ hint
 /-! ## `let g = id(Nat → Nat, f); g(Z)`: a type argument keeps its code -/
 
 /-- `id` as the `.fix` clause builds it, at its type's code (`Type₁`). -/
-noncomputable def gId : String → Sem × TyS := fun _ => (closureL lvl1 noFuture tId idBody, .plain (piTyL lvl1 tId))
+noncomputable def gId (R : DataRead) : String → Sem × TyS := fun _ => (closureL (lvl1 R) noFuture tId idBody, .plain (piTyL (lvl1 R) tId))
 
 /-- **`let g = id(Nat → Nat, f); g(Z)` is `f(Z)` in the model**: the argument `Nat → Nat` runs to
 its code, `id`'s first parameter ranges over `Type₀`'s codes, and the result is typed at the
 argument's own code, so `g` is bound at it and called along it. The checker accepts it; with
 universes decoding to raw Lean types the code would be lost inside `id`, and `g(Z)` would fail. -/
-theorem idLet (Gf : NN) (hint : TyS) : ∃ T s', run (Kp dm Γ gId) ρ φ hint
+theorem idLet (Gf : NN) (hint : TyS) : ∃ T s', run (Kp dm Γ (gId dm.read)) ρ φ hint
     (.letIn ⟨"g"⟩ (.call (.const "id") [.pi [⟨"n"⟩] [.nat] .nat, .place (.var 0)] false)
       (.call (.place (.var 0)) [num 0] false)) (frame [fB Gf])
       = some ((.el0 Nat (Gf 0).1, T), s') := by
   obtain ⟨-, happ, -⟩ := id_call noFuture Gf
-  have hA : Code1.univ1.dec (.ty (piTyL lvl0 tNN)) = some ⟨NN, ⟨Code0.pi NN tNN, rfl⟩⟩ :=
-    Code1.dec_enc Code1.univ1 ⟨NN, ⟨Code0.pi NN tNN, rfl⟩⟩
-  have hx : (Code1.lift NN (Code0.pi NN tNN)).dec (.el0 NN Gf) = some ⟨Gf⟩ :=
-    Code1.dec_enc (Code1.lift NN (Code0.pi NN tNN)) ⟨Gf⟩
-  have hcall : run (Kp dm Γ gId) ρ φ (.plain .err) (.call (.const "id") [.pi [⟨"n"⟩] [.nat] .nat, .place (.var 0)] false)
-      (frame [fB Gf]) = some ((.el0 NN Gf, .plain (piTyL lvl0 tNN)), frame [fB Gf]) := by
+  have hA : Code1.univ1.dec dm.read (.ty (piTyL (lvl0 dm.read) tNN)) = some ⟨NN, ⟨Code0.pi NN tNN, rfl⟩⟩ :=
+    Code1.dec_enc dm.read Code1.univ1 ⟨NN, ⟨Code0.pi NN tNN, rfl⟩⟩
+  have hx : (Code1.lift NN (Code0.pi NN tNN)).dec dm.read (.el0 NN Gf) = some ⟨Gf⟩ :=
+    Code1.dec_enc dm.read (Code1.lift NN (Code0.pi NN tNN)) ⟨Gf⟩
+  have hcall : run (Kp dm Γ (gId dm.read)) ρ φ (.plain .err) (.call (.const "id") [.pi [⟨"n"⟩] [.nat] .nat, .place (.var 0)] false)
+      (frame [fB Gf]) = some ((.el0 NN Gf, .plain (piTyL (lvl0 dm.read) tNN)), frame [fB Gf]) := by
     rw [run_call]
     simp only [SM.headOf, bind, run_const, Option.bind, runArgs, Bool.false_and, SM.stmtIf, Bool.false_eq_true,
       if_false]
-    rw [show runT (Kp dm Γ gId) ρ φ false (TyS.plain ((gId "id").snd.m.domAfter [])) (Term.pi [⟨"n"⟩] [Term.nat] Term.nat)
-        (frame [fB Gf]) = some ((.ty (piTyL lvl0 tNN), .plain (TyM.univ 1)), frame [fB Gf]) from run_piNN dm Γ gId ρ φ _ _ _]
+    rw [show runT (Kp dm Γ (gId dm.read)) ρ φ false (TyS.plain (((gId dm.read) "id").snd.m.domAfter (Kp dm Γ (gId dm.read)).dm.read [])) (Term.pi [⟨"n"⟩] [Term.nat] Term.nat)
+        (frame [fB Gf]) = some ((.ty (piTyL (lvl0 dm.read) tNN), .plain (TyM.univ 1)), frame [fB Gf]) from run_piNN dm Γ (gId dm.read) ρ φ _ _ _]
     simp only
-    rw [show runT (Kp dm Γ gId) ρ φ false (TyS.plain ((gId "id").snd.m.domAfter ([] ++ [Sem.ty (piTyL lvl0 tNN)])))
-        (Term.place (Place.var 0)) = readPlace (Kp dm Γ gId) φ (.var 0) true from rfl,
+    rw [show runT (Kp dm Γ (gId dm.read)) ρ φ false (TyS.plain (((gId dm.read) "id").snd.m.domAfter (Kp dm Γ (gId dm.read)).dm.read ([] ++ [Sem.ty (piTyL (lvl0 dm.read) tNN)])))
+        (Term.place (Place.var 0)) = readPlace (Kp dm Γ (gId dm.read)) φ (.var 0) true from rfl,
       readPlace_frame φ _ _ 0 _ (by simp) rfl (by simp [Sem.whole, fB])]
     simp only [pure]
-    exact callOf_data1 tId _ _ _ _ _ (by simp [telRefsL, tId, hA, hx, fB]) happ
+    exact callOf_data1 dm tId _ _ _ _ _ (by simp [telRefsL, tId, hA, hx, fB]) happ
   rw [run_letIn, hcall]
   simp only [bind, Option.bind]
   rw [Attack.pushBindShaped_noLabel _ _ rfl, frame_push,
-    run_callVar dm Γ gId ρ φ _ 0 (by simp) Gf _ rfl .other rfl 0]
+    run_callVar dm Γ (gId dm.read) ρ φ _ 0 (by simp) Gf _ rfl .other rfl 0]
   exact ⟨_, _, rfl⟩
 
 /-! ## `UsePred`: a predicate type computed by a call, at `Type₁` -/
@@ -376,12 +377,12 @@ theorem idLet (Gf : NN) (hint : TyS) : ∃ T s', run (Kp dm Γ gId) ρ φ hint
 /-- `Π(x : Nat). Prop` at `Type₁` (`Prop : Type₁`): its carrier and telescope code. -/
 abbrev PNCar : Type 1 := (n : ULift.{1} Nat) → ULift.{1} Prop × PUnit.{2}
 
-def tPN : Tel lvl1.Code PUnit.{2} PNCar :=
+def tPN : Tel Code1 PUnit.{2} PNCar :=
   .param PUnit.{2} false (ULift.{1} Nat) (.lift Nat .nat) (fun _ => ULift.{1} Prop × PUnit.{2}) fun _ =>
     .dat PUnit.{2} (ULift.{1} Prop) .univ0
 
 /-- It is the code the `.pi` clause builds at `Type₁` from `x : Nat` and the codomain `Prop`. -/
-theorem tPN_telL : telL lvl1 [⟨false, fun _ => TyM.nat⟩] [] PUnit ⟨false, fun _ => TyM.univ 0⟩ = ⟨PNCar, tPN⟩ := rfl
+theorem tPN_telL : telL (lvl1 dm.read) [⟨false, fun _ => TyM.nat⟩] [] PUnit ⟨false, fun _ => TyM.univ 0⟩ = ⟨PNCar, tPN⟩ := rfl
 
 /-- The codes of `Type₁` types (`Type₁`'s decoding). -/
 abbrev Ty1 : Type 2 := (A : Type 1) × {c : Code1 A // c.level = some 2}
@@ -389,78 +390,78 @@ abbrev Ty1 : Type 2 := (A : Type 1) × {c : Code1 A // c.level = some 2}
 /-- `Pred (A : Type) : Type₁ := Π(x : A). Prop`, at `Type₂`. -/
 abbrev PredCar : Type 2 := (p : ULift.{2} Ty0) → Ty1 × PUnit.{3}
 
-def tPred : Tel lvl2.Code PUnit.{3} PredCar :=
+def tPred : Tel Code2 PUnit.{3} PredCar :=
   .param PUnit.{3} false (ULift.{2} Ty0) (.lift Ty0 .univ1) (fun _ => Ty1 × PUnit.{3}) fun _ => .dat PUnit.{3} Ty1 .univ2
 
 /-- `Pred`'s body, as the `.pi` clause runs `Π(x : A). Prop` (at `Type₁`) with `A` bound. -/
-noncomputable def predBody : List Sem → Option BodyOut
-  | [a] => some ⟨.ty (piTyAt 2 [⟨false, fun _ => a.asTy⟩] ⟨false, fun _ => TyM.univ 0⟩), [], none⟩
+noncomputable def predBody (R : DataRead) : List Sem → Option BodyOut
+  | [a] => some ⟨.ty (piTyAt R 2 [⟨false, fun _ => a.asTy⟩] ⟨false, fun _ => TyM.univ 0⟩), [], none⟩
   | _ => none
 
 /-- The code `Π(x : A). Prop` at a code of `A`, an element of `Type₁`'s decoding. -/
-noncomputable def predP (p : ULift.{2} Ty0) : Ty1 :=
-  ⟨(telL lvl1 [⟨false, fun _ => .t0 p.down.1 p.down.2.1⟩] [] PUnit ⟨false, fun _ => TyM.univ 0⟩).1,
-    ⟨.pi _ (telL lvl1 [⟨false, fun _ => .t0 p.down.1 p.down.2.1⟩] [] PUnit ⟨false, fun _ => TyM.univ 0⟩).2, rfl⟩⟩
+noncomputable def predP (R : DataRead) (p : ULift.{2} Ty0) : Ty1 :=
+  ⟨(telL (lvl1 R) [⟨false, fun _ => .t0 p.down.1 p.down.2.1⟩] [] PUnit ⟨false, fun _ => TyM.univ 0⟩).1,
+    ⟨.pi _ (telL (lvl1 R) [⟨false, fun _ => .t0 p.down.1 p.down.2.1⟩] [] PUnit ⟨false, fun _ => TyM.univ 0⟩).2, rfl⟩⟩
 
 /-- `Pred` applied along its code: `Pred(Nat)` is the type value holding `Π(x : Nat). Prop`'s code. -/
 theorem pred_apply (φ : Future) :
-    applyFnL lvl2 tPred (closureL lvl2 φ tPred predBody) [.ty TyM.nat]
-      = some (.data (.ty (piTyL lvl1 tPN)) (lvl2.toTy Code2.univ2) []) := by
-  have hleaf : ∀ p : ULift.{2} Ty0, mkTelL lvl2 φ (Tel.dat PUnit.{3} Ty1 .univ2) ([] ++ [lvl2.enc (Code2.lift Ty0 .univ1) p])
-      (extMkL false PUnit.{3} (ULift.{2} Ty0) (fun fs => some (PUnit.unit, fs)) (lvl2.dec (Code2.lift Ty0 .univ1)))
-      predBody = some (predP p, PUnit.unit) := by
+    applyFnL (lvl2 dm.read) tPred (closureL (lvl2 dm.read) φ tPred (predBody dm.read)) [.ty TyM.nat]
+      = some (.data (.ty (piTyL (lvl1 dm.read) tPN)) ((lvl2 dm.read).toTy Code2.univ2) []) := by
+  have hleaf : ∀ p : ULift.{2} Ty0, mkTelL (lvl2 dm.read) φ (Tel.dat PUnit.{3} Ty1 .univ2) ([] ++ [(lvl2 dm.read).enc (Code2.lift Ty0 .univ1) p])
+      (extMkL false PUnit.{3} (ULift.{2} Ty0) (fun fs => some (PUnit.unit, fs)) ((lvl2 dm.read).dec (Code2.lift Ty0 .univ1)))
+      (predBody dm.read) = some ((predP dm.read) p, PUnit.unit) := by
     intro p
     rw [mkTelL.eq_1]
-    show (some ⟨lvl2.enc Code2.univ2 (predP p), [], none⟩ : Option BodyOut).bind _ = _
+    show (some ⟨(lvl2 dm.read).enc Code2.univ2 ((predP dm.read) p), [], none⟩ : Option BodyOut).bind _ = _
     rw [Option.bind_some]
     unfold mkLeafDataL
     simp only
-    rw [show Code2.univ2.dec (Code2.univ2.enc (predP p)) = some (predP p) from Code2.dec_enc _ _]
+    rw [show Code2.univ2.dec dm.read (Code2.univ2.enc dm.read ((predP dm.read) p)) = some ((predP dm.read) p) from Code2.dec_enc dm.read _ _]
     rfl
-  have hmk : mkTelL lvl2 φ tPred [] (fun fs => some (PUnit.unit, fs)) predBody = some fun p => (predP p, PUnit.unit) := by
+  have hmk : mkTelL (lvl2 dm.read) φ tPred [] (fun fs => some (PUnit.unit, fs)) (predBody dm.read) = some fun p => ((predP dm.read) p, PUnit.unit) := by
     unfold tPred
     rw [mkTelL.eq_3, dif_pos fun p => by rw [hleaf p]; rfl]
     congr 1
     funext p
     simp only [hleaf p, Option.get_some]
-  have hc : closureL lvl2 φ tPred predBody = .el2 PredCar fun p => (predP p, PUnit.unit) := by
+  have hc : closureL (lvl2 dm.read) φ tPred (predBody dm.read) = .el2 PredCar fun p => ((predP dm.read) p, PUnit.unit) := by
     unfold closureL; rw [hmk]
   rw [hc]
-  show (Sem.as2 _ (.el2 _ _)).bind (fun F => applyTelL lvl2 tPred (fun _ => []) F [.ty TyM.nat]) = _
-  rw [show Sem.as2 PredCar (.el2 _ fun p => (predP p, PUnit.unit))
-    = some fun p => (predP p, PUnit.unit) from lvl2_lawful.unpack_pack _ _, Option.bind_some]
-  have hA : (Code2.lift Ty0 Code1.univ1).dec (.ty TyM.nat) = some ⟨⟨Nat, ⟨Code0.nat, rfl⟩⟩⟩ :=
-    Code2.dec_enc (Code2.lift Ty0 Code1.univ1) ⟨⟨Nat, ⟨Code0.nat, rfl⟩⟩⟩
+  show (Sem.as2 _ (.el2 _ _)).bind (fun F => applyTelL (lvl2 dm.read) tPred (fun _ => []) F [.ty TyM.nat]) = _
+  rw [show Sem.as2 PredCar (.el2 _ fun p => ((predP dm.read) p, PUnit.unit))
+    = some fun p => ((predP dm.read) p, PUnit.unit) from (lvl2_lawful dm.read).unpack_pack _ _, Option.bind_some]
+  have hA : (Code2.lift Ty0 Code1.univ1).dec dm.read (.ty TyM.nat) = some ⟨⟨Nat, ⟨Code0.nat, rfl⟩⟩⟩ :=
+    Code2.dec_enc dm.read (Code2.lift Ty0 Code1.univ1) ⟨⟨Nat, ⟨Code0.nat, rfl⟩⟩⟩
   simp only [tPred, applyTelL, lvl2]
   rw [hA]
   rfl
 
 /-- A call at level 2, as `callOf_data0`. -/
 theorem callOf_data2 {C : Type 2} (t : Tel Code2 PUnit.{3} C) (F : Sem) (args : List Res) (s : SState) (r : Sem)
-    (T : TyM) (hr : (args.zip (telRefsL lvl2 t (args.map (·.1)))).filter (·.2) = [])
-    (happ : applyFnL lvl2 t F (args.map (·.1)) = some (.data r T [])) :
-    callOf (F, .plain (.t2 C (.pi C t))) args s = some ((r, .plain T), s) := by
-  change callOfL lvl2 t F args s = some ((r, TyS.plain T), s)
+    (T : TyM) (hr : (args.zip (telRefsL (lvl2 dm.read) t (args.map (·.1)))).filter (·.2) = [])
+    (happ : applyFnL (lvl2 dm.read) t F (args.map (·.1)) = some (.data r T [])) :
+    callOf dm.read (F, .plain (.t2 C (.pi C t))) args s = some ((r, .plain T), s) := by
+  change callOfL (lvl2 dm.read) t F args s = some ((r, TyS.plain T), s)
   unfold callOfL; dsimp only; rw [hr, happ]; simp [mapVals_noFix]
 
 /-- `Pred` as the `.fix` clause builds it, at its type's code (`Type₂`). -/
-noncomputable def gPred : String → Sem × TyS :=
-  fun _ => (closureL lvl2 noFuture tPred predBody, .plain (.t2 PredCar (.pi PredCar tPred)))
+noncomputable def gPred (R : DataRead) : String → Sem × TyS :=
+  fun _ => (closureL (lvl2 R) noFuture tPred (predBody R), .plain (.t2 PredCar (.pi PredCar tPred)))
 
 /-- `Pred(Nat)` runs to the type value holding `Π(x : Nat). Prop`'s code, from any state. -/
 theorem run_predNat (hint : TyS) (s : SState) :
-    run (Kp dm Γ gPred) ρ φ hint (.call (.const "Pred") [.nat] false) s
-      = some ((.ty (piTyL lvl1 tPN), .plain (lvl2.toTy Code2.univ2)), s) := by
+    run (Kp dm Γ (gPred dm.read)) ρ φ hint (.call (.const "Pred") [.nat] false) s
+      = some ((.ty (piTyL (lvl1 dm.read) tPN), .plain ((lvl2 dm.read).toTy Code2.univ2)), s) := by
   rw [run_call]
   simp only [SM.headOf, bind, run_const, Option.bind, runArgs_nat]
-  have hA : (Code2.lift Ty0 Code1.univ1).dec (.ty TyM.nat) = some ⟨⟨Nat, ⟨Code0.nat, rfl⟩⟩⟩ :=
-    Code2.dec_enc (Code2.lift Ty0 Code1.univ1) ⟨⟨Nat, ⟨Code0.nat, rfl⟩⟩⟩
-  exact callOf_data2 tPred _ _ s _ _ (by simp [telRefsL, tPred, hA]) (pred_apply noFuture)
+  have hA : (Code2.lift Ty0 Code1.univ1).dec dm.read (.ty TyM.nat) = some ⟨⟨Nat, ⟨Code0.nat, rfl⟩⟩⟩ :=
+    Code2.dec_enc dm.read (Code2.lift Ty0 Code1.univ1) ⟨⟨Nat, ⟨Code0.nat, rfl⟩⟩⟩
+  exact callOf_data2 dm tPred _ _ s _ _ (by simp [telRefsL, tPred, hA]) (pred_apply dm noFuture)
 
 /-- **A parameter typed `Pred(Nat)` is bound at `Π(x : Nat). Prop`'s code**, whatever the frame. -/
 theorem pred_param_code (s : SState) (dcs : List DeclInfo) (pre : List PBind) (acc : List Sem) :
-    (mkBind dcs pre fun acc => run (Kp dm Γ gPred) ρ φ (.plain .err) (.call (.const "Pred") [.nat] false)
-      (extendBy s pre acc)).1 acc = .plain (piTyL lvl1 tPN) := by
+    (mkBind dcs pre fun acc => run (Kp dm Γ (gPred dm.read)) ρ φ (.plain .err) (.call (.const "Pred") [.nat] false)
+      (extendBy s pre acc)).1 acc = .plain (piTyL (lvl1 dm.read) tPN) := by
   simp only [mkBind, run_predNat, Sem.asTy]
 
 /-- **`UsePred` in the model**: in a frame binding `P` at `Pred(Nat)`'s code to a predicate `Pf`,
@@ -468,21 +469,21 @@ theorem pred_param_code (s : SState) (dcs : List DeclInfo) (pre : List PBind) (a
 `UsePredBad` (`ShapeProbes`). -/
 theorem usePred (Pf : PNCar) (hint : TyS) :
     run (Kp dm Γ G) ρ φ hint (.call (.place (.var 0)) [num 3] false)
-        (frame [{ ty := .plain (piTyL lvl1 tPN), val := fun _ => .el1 PNCar Pf, decl := .other }])
+        (frame [{ ty := .plain (piTyL (lvl1 dm.read) tPN), val := fun _ => .el1 PNCar Pf, decl := .other }])
       = some ((.ty (TyM.prop (Pf ⟨3⟩).1.down), .plain (TyM.univ 0)),
-          frame [{ ty := .plain (piTyL lvl1 tPN), val := fun _ => .el1 PNCar Pf, decl := .other }]) := by
-  have hx : (Code1.lift Nat Code0.nat).dec (.el0 Nat 3) = some ⟨3⟩ := Code1.dec_enc (Code1.lift Nat Code0.nat) ⟨3⟩
-  have happ : applyFnL lvl1 tPN (.el1 PNCar Pf) [.el0 Nat 3]
+          frame [{ ty := .plain (piTyL (lvl1 dm.read) tPN), val := fun _ => .el1 PNCar Pf, decl := .other }]) := by
+  have hx : (Code1.lift Nat Code0.nat).dec dm.read (.el0 Nat 3) = some ⟨3⟩ := Code1.dec_enc dm.read (Code1.lift Nat Code0.nat) ⟨3⟩
+  have happ : applyFnL (lvl1 dm.read) tPN (.el1 PNCar Pf) [.el0 Nat 3]
       = some (.data (.ty (TyM.prop (Pf ⟨3⟩).1.down)) (TyM.univ 0) []) := by
-    show (Sem.as1 PNCar (.el1 PNCar Pf)).bind (fun F => applyTelL lvl1 tPN (fun _ => []) F [.el0 Nat 3]) = _
-    rw [show Sem.as1 PNCar (.el1 PNCar Pf) = some Pf from lvl1_lawful.unpack_pack _ _, Option.bind_some]
+    show (Sem.as1 PNCar (.el1 PNCar Pf)).bind (fun F => applyTelL (lvl1 dm.read) tPN (fun _ => []) F [.el0 Nat 3]) = _
+    rw [show Sem.as1 PNCar (.el1 PNCar Pf) = some Pf from (lvl1_lawful dm.read).unpack_pack _ _, Option.bind_some]
     simp only [tPN, applyTelL, lvl1, hx]
     rfl
   rw [run_call]
   simp only [bind, Option.bind, SM.headOf]
   rw [readPlace_frame φ _ _ 0 _ (by simp) rfl (by simp [Sem.whole])]
   simp only [runArgs_num]
-  erw [callOf_data1 tPN _ _ _ _ _ (by simp [telRefsL, tPN, hx]) happ]
+  erw [callOf_data1 dm tPN _ _ _ _ _ (by simp [telRefsL, tPN, hx]) happ]
 
 /-! ## `BoxProof`: a parameter solved by a proof field's stored type (A17) -/
 
@@ -537,5 +538,149 @@ theorem boxProof :
   rw [show (pbox.sort == 0) = true from rfl]
   erw [hrf]
   rfl
+
+/-! ## A recursive and a nested declaration, built and matched by the run (docs/31 D61)
+
+The run's constructor clause builds `Cons(3, Cons(4, Nil))` at `List(Nat)` and
+`Node(1, Cons(Node(2, Nil), Nil))` at `Rose(Nat)`, each the value `Regress/DataCodes.lean` shows a
+member of its type's code; the match clause reads a value's constructor (`indTag`) and fields
+(`Sem.stepField`) off it. The checker's verdicts: `ShapeProbes.LenTwo`, `ShapeProbes.RootOfTree`. -/
+
+open Ochr.Meaning.Regress.DataCodes in
+/-- The run's constructor clause at a declaration of `Γ`, nothing a statement or a proof, the
+parameters written: the parameters run on copies, the fields at their field types, the value is
+`ctorM` of the fields' meanings. -/
+theorem run_ctor (d : IndDecl) (hd : Γ.find? (·.name == d.name) = some d) (hs : (d.sort == 0) = false)
+    (c : Nat) (x : Hint) (ps args : List Term) (hp : ps ≠ []) (hint : TyS) (s : SState)
+    (psM : List Sem) (hpm : runParams (Kp dm Γ G) ρ φ d 0 [] ps s = some (psM, s))
+    (fs : List Sem) (sol : List (Option Sem)) (hf : runFields (Kp dm Γ G) ρ φ false d c 0 (psM.map some) [] args s = some ((fs, sol), s))
+    (hsol : sol = psM.map some) :
+    run (Kp dm Γ G) ρ φ hint (.ctor d.name c x ps args) s
+      = some ((dm.ctorM d psM c fs, .plain (dm.tyM d psM)), s) := by
+  rw [run, runT]
+  show SM.erasedIf (false, false) _ _ = _
+  simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false, bind]
+  have hd' : (Kp dm Γ G).Γ.find? (·.name == d.name) = some d := hd
+  rw [hd']
+  simp only [hpm]
+  have hne : (!ps.isEmpty) = true := by cases ps <;> simp_all
+  simp only [hne, if_true, hs, hf, hsol]
+  have hall : (List.map some psM).all (·.isSome) = true := by simp
+  have hsv : solved (psM.map some) = psM := by simp [solved, Function.comp_def]
+  simp only [hall, if_true, Bool.false_eq_true, if_false, hsv]
+  rfl
+
+section Lists
+open Ochr.Meaning.Regress.DataCodes
+
+/-- `Nil` and `Cons(h, t)` at `List(Nat)`, the parameter written. -/
+def nilT : Term := .ctor "List" 0 ⟨"Nil"⟩ [.nat] []
+def consT (h : Nat) (t : Term) : Term := .ctor "List" 1 ⟨"Cons"⟩ [.nat] [num h, t]
+
+theorem runParams_nat (D : IndDecl) (s : SState) :
+    runParams (Kp dmL [listD] G) ρ φ D 0 [] [.nat] s = some (psN, s) := rfl
+
+/-- `Nil` runs to the empty list's meaning, at `List(Nat)`. -/
+theorem run_nil (hint : TyS) (s : SState) :
+    run (Kp dmL [listD] G) ρ φ hint nilT s = some ((semL [], .plain (dmL.tyM listD psN)), s) := by
+  rw [show nilT = .ctor listD.name 0 ⟨"Nil"⟩ [.nat] [] from rfl,
+    run_ctor dmL [listD] G ρ φ listD rfl rfl 0 _ [.nat] [] (by simp) hint s psN (runParams_nat G ρ φ listD s)
+      [] _ rfl rfl, ctorM_nil]
+
+/-- `Cons(h, t)` runs to the list's meaning, where `t` runs to the tail's. -/
+theorem run_cons (h : Nat) (t : Term) (l : List Nat) (s : SState)
+    (ht : ∀ hint, run (Kp dmL [listD] G) ρ φ hint t s = some ((semL l, .plain (dmL.tyM listD psN)), s)) (hint : TyS) :
+    run (Kp dmL [listD] G) ρ φ hint (consT h t) s = some ((semL (h :: l), .plain (dmL.tyM listD psN)), s) := by
+  have hf : runFields (Kp dmL [listD] G) ρ φ false listD 1 0 (psN.map some) [] [num h, t] s
+      = some (([.el0 Nat h, semL l], psN.map some), s) := by
+    have hn : ∀ hint, runT (Kp dmL [listD] G) ρ φ false hint (num h) s = some ((.el0 Nat h, { hint with label := none }), s) :=
+      fun hint => run_num dmL [listD] G ρ φ h hint s
+    have ht' : ∀ hint, runT (Kp dmL [listD] G) ρ φ false hint t s = some ((semL l, .plain (dmL.tyM listD psN)), s) := ht
+    simp only [runFields, SM.stmtIf, Bool.false_and, Bool.false_eq_true, if_false, bind, Option.bind, hn, ht', pure]
+    rw [tyM_list]
+    rfl
+  rw [show consT h t = .ctor listD.name 1 ⟨"Cons"⟩ [.nat] [num h, t] from rfl,
+    run_ctor dmL [listD] G ρ φ listD rfl rfl 1 _ [.nat] [num h, t] (by simp) hint s psN (runParams_nat G ρ φ listD s)
+      _ _ hf rfl, ctorM_cons]
+
+/-- **`Cons(3, Cons(4, Nil))` runs, by the constructor clause, to the list's meaning**, a member of
+`List(Nat)`'s code (`DataCodes.semL_mem`); the match clause reads it as `Cons` (`indTag`) with its
+fields (`Sem.stepField`). -/
+theorem run_list34 (hint : TyS) (s : SState) :
+    run (Kp dmL [listD] G) ρ φ hint (consT 3 (consT 4 nilT)) s = some ((semL [3, 4], .plain (dmL.tyM listD psN)), s) ∧
+      indTag (semL [3, 4]) (.plain (dmL.tyM listD psN)) = .el0 Nat 1 ∧
+      Sem.stepField dmL [listD] 1 1 (semL [3, 4]) = some (semL [4], .plain (dmL.tyM listD psN)) := by
+  refine ⟨run_cons G ρ φ 3 _ [4] s (fun hint => run_cons G ρ φ 4 _ [] s (fun hint => run_nil G ρ φ hint s) hint) hint,
+    rfl, rfl⟩
+
+end Lists
+
+section Roses
+open Ochr.Meaning.Regress.DataCodes
+
+/-- The declarations of the rose-tree program. -/
+def ΓR : List IndDecl := [roseD, listD]
+
+/-- `Node(a, ks)` at `Rose(Nat)`; `Nil` and `Cons(r, rs)` at `List(Rose(Nat))`, the parameters written. -/
+def nodeT (a : Nat) (ks : Term) : Term := .ctor "Rose" 0 ⟨"Node"⟩ [.nat] [num a, ks]
+def rnilT : Term := .ctor "List" 0 ⟨"Nil"⟩ [.tind "Rose" [.nat]] []
+def rconsT (r rs : Term) : Term := .ctor "List" 1 ⟨"Cons"⟩ [.tind "Rose" [.nat]] [r, rs]
+
+theorem runParams_roseNat (s : SState) : runParams (Kp dmR ΓR G) ρ φ roseD 0 [] [.nat] s = some (psN, s) := rfl
+
+/-- `List(Rose(Nat))`'s parameter, the type `Rose(Nat)`, runs to `Rose(Nat)`'s code. -/
+theorem runParams_listRose (s : SState) :
+    runParams (Kp dmR ΓR G) ρ φ listD 0 [] [.tind "Rose" [.nat]] s = some (psR, s) := rfl
+
+/-- `Nil` at `List(Rose(Nat))` runs to the empty forest's meaning. -/
+theorem run_lrNil (hint : TyS) (s : SState) :
+    run (Kp dmR ΓR G) ρ φ hint rnilT s = some ((semLR [], .plain (dmR.tyM listD psR)), s) := by
+  rw [show rnilT = .ctor listD.name 0 ⟨"Nil"⟩ [.tind "Rose" [.nat]] [] from rfl,
+    run_ctor dmR ΓR G ρ φ listD rfl rfl 0 _ _ [] (by simp) hint s psR (runParams_listRose G ρ φ s)
+      [] _ rfl rfl, ctorM_lrNil]
+
+/-- `Node(a, ks)` runs to the tree's meaning, where `ks` runs to the forest's. -/
+theorem run_node (a : Nat) (ks : Term) (l : List RoseN) (s : SState)
+    (hk : ∀ hint, run (Kp dmR ΓR G) ρ φ hint ks s = some ((semLR l, .plain (dmR.tyM listD psR)), s)) (hint : TyS) :
+    run (Kp dmR ΓR G) ρ φ hint (nodeT a ks) s = some ((semR (.node a l), .plain (dmR.tyM roseD psN)), s) := by
+  have hf : runFields (Kp dmR ΓR G) ρ φ false roseD 0 0 (psN.map some) [] [num a, ks] s
+      = some (([.el0 Nat a, semLR l], psN.map some), s) := by
+    have hn : ∀ hint, runT (Kp dmR ΓR G) ρ φ false hint (num a) s = some ((.el0 Nat a, { hint with label := none }), s) :=
+      fun hint => run_num dmR ΓR G ρ φ a hint s
+    have hk' : ∀ hint, runT (Kp dmR ΓR G) ρ φ false hint ks s = some ((semLR l, .plain (dmR.tyM listD psR)), s) := hk
+    simp only [runFields, SM.stmtIf, Bool.false_and, Bool.false_eq_true, if_false, bind, Option.bind, hn, hk', pure]
+    rfl
+  rw [show nodeT a ks = .ctor roseD.name 0 ⟨"Node"⟩ [.nat] [num a, ks] from rfl,
+    run_ctor dmR ΓR G ρ φ roseD rfl rfl 0 _ [.nat] [num a, ks] (by simp) hint s psN (runParams_roseNat G ρ φ s)
+      _ _ hf rfl, ctorM_node]
+
+/-- `Cons(r, rs)` at `List(Rose(Nat))` runs to the forest's meaning. -/
+theorem run_lrCons (r rs : Term) (t : RoseN) (ts : List RoseN) (s : SState)
+    (hr : ∀ hint, run (Kp dmR ΓR G) ρ φ hint r s = some ((semR t, .plain (dmR.tyM roseD psN)), s))
+    (hrs : ∀ hint, run (Kp dmR ΓR G) ρ φ hint rs s = some ((semLR ts, .plain (dmR.tyM listD psR)), s)) (hint : TyS) :
+    run (Kp dmR ΓR G) ρ φ hint (rconsT r rs) s = some ((semLR (t :: ts), .plain (dmR.tyM listD psR)), s) := by
+  have hf : runFields (Kp dmR ΓR G) ρ φ false listD 1 0 (psR.map some) [] [r, rs] s
+      = some (([semR t, semLR ts], psR.map some), s) := by
+    have hr' : ∀ hint, runT (Kp dmR ΓR G) ρ φ false hint r s = some ((semR t, .plain (dmR.tyM roseD psN)), s) := hr
+    have hrs' : ∀ hint, runT (Kp dmR ΓR G) ρ φ false hint rs s = some ((semLR ts, .plain (dmR.tyM listD psR)), s) := hrs
+    simp only [runFields, SM.stmtIf, Bool.false_and, Bool.false_eq_true, if_false, bind, Option.bind, hr', hrs', pure]
+    rfl
+  rw [show rconsT r rs = .ctor listD.name 1 ⟨"Cons"⟩ [.tind "Rose" [.nat]] [r, rs] from rfl,
+    run_ctor dmR ΓR G ρ φ listD rfl rfl 1 _ _ [r, rs] (by simp) hint s psR (runParams_listRose G ρ φ s)
+      _ _ hf rfl, ctorM_lrCons]
+
+/-- **`Node(1, Cons(Node(2, Nil), Nil))` (the probe's `Tree`) runs, by the constructor clause, to the tree's
+meaning**, a member of `Rose(Nat)`'s code (`DataCodes.semR_mem`); the match clause reads it as `Node` with its
+fields, the second a member of `List(Rose(Nat))`'s code. -/
+theorem run_tree (hint : TyS) (s : SState) :
+    run (Kp dmR ΓR G) ρ φ hint (nodeT 1 (rconsT (nodeT 2 rnilT) rnilT)) s
+        = some ((semR (.node 1 [.node 2 []]), .plain (dmR.tyM roseD psN)), s) ∧
+      indTag (semR (.node 1 [.node 2 []])) (.plain (dmR.tyM roseD psN)) = .el0 Nat 0 ∧
+      Sem.stepField dmR ΓR 0 1 (semR (.node 1 [.node 2 []])) = some (semLR [.node 2 []], .plain (dmR.tyM listD psR)) := by
+  refine ⟨run_node G ρ φ 1 _ _ s (fun hint => run_lrCons G ρ φ _ _ _ _ s
+      (fun hint => run_node G ρ φ 2 _ _ s (fun hint => run_lrNil G ρ φ hint s) hint)
+      (fun hint => run_lrNil G ρ φ hint s) hint) hint, rfl, rfl⟩
+
+end Roses
 
 end Ochr.Meaning.Regress.CodeRuns

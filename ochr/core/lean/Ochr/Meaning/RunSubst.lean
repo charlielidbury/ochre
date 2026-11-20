@@ -128,8 +128,8 @@ theorem fixStage_bodyEq {body body' : Term} (hb : ∀ hint, runT K ρ ψ true hi
     ∀ k, fixStage K ρ ψ fb lv s ps out piT start body' k = fixStage K ρ ψ fb lv s ps out piT start body k
   | 0 => rfl
   | k + 1 => by
-    show fixBodyAt K ρ ψ fb s ps out piT start body' (closureFillAt lv ψ ps out (fixStage K ρ ψ fb lv s ps out piT start body' k))
-      = fixBodyAt K ρ ψ fb s ps out piT start body (closureFillAt lv ψ ps out (fixStage K ρ ψ fb lv s ps out piT start body k))
+    show fixBodyAt K ρ ψ fb s ps out piT start body' (closureFillAt K.dm.read lv ψ ps out (fixStage K ρ ψ fb lv s ps out piT start body' k))
+      = fixBodyAt K ρ ψ fb s ps out piT start body (closureFillAt K.dm.read lv ψ ps out (fixStage K ρ ψ fb lv s ps out piT start body k))
     rw [fixStage_bodyEq hb lv s ps out piT start k, fixBodyAt_bodyEq K ρ ψ hb]
 
 theorem fixG_bodyEq {body body' : Term} (hb : ∀ hint, runT K ρ ψ true hint body' = runT K ρ ψ true hint body)
@@ -155,7 +155,7 @@ variable (K : RunCtx) (ρ : Assignment) (ψ : Future) (l : Nat) (w : Value)
 
 theorem run_pi_def (hint : TyS) (hs : List Hint) (ds : List Term) (c : Term) (s : SState) {tl : Bool} :
     runT K ρ ψ tl hint (.pi hs ds c) s =
-      some ((.ty (piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ ψ s ds) (codOf K ρ ψ s (bindsOf K ρ ψ s ds) c)),
+      some ((.ty (piTyAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ ψ s ds) (codOf K ρ ψ s (bindsOf K ρ ψ s ds) c)),
         .plain (TyM.univ (K.D.piSort (scopeOf s) (.pi hs ds c)))), s) := by
   rw [runT]; rfl
 

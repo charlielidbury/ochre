@@ -19,7 +19,13 @@ have held itself (docs/31 D61).
 The checker's side (`Regress/ShapeProbes.lean`, each verdict asserted): `Len` over `List(Nat)` is
 accepted and `Len(Cons(3, Cons(4, Nil)))` is `2` by `refl` (`LenTwo`; `3` is rejected); `Rose`,
 the tree `Node(1, Cons(Node(2, Nil), Nil))` and the match `Root` are accepted, and the root is `1`
-by `refl` (`RootOfTree`; `2` is rejected).
+by `refl` (`RootOfTree`; `2` is rejected). The model's own run of the same terms, by the
+constructor clause, is in `Regress/CodeRuns.lean` (`run_list34`, `run_tree`): each runs to the value
+built here, read back by the match clause's `indTag` and `Sem.stepField`.
+
+These models do not satisfy the generic model's coherence (`DataGeneric.Coherent`) for a program,
+since they cover nothing; that a covered model of a recursive or nested declaration exists with its
+reading is `exists_dataModel`'s obligation.
 -/
 
 namespace Ochr.Meaning.Regress.DataCodes
@@ -93,28 +99,29 @@ theorem tyM_list : dmL.tyM listD psN = .t0 (List Nat) (.data listD [.ty Nat .nat
 theorem semL_mem (l : List Nat) : semL l ∈ₛ[dmL.read] dmL.tyM listD psN := by
   rw [tyM_list]; exact ⟨l, enc_list l⟩
 
-/-- **Built**: the run's constructor value `Cons(3, Cons(4, Nil))` (`ctorM` packing its fields) is
-the list's meaning. -/
-theorem build_list :
-    dmL.ctorM listD psN 1 [.el0 Nat 3, dmL.ctorM listD psN 1 [.el0 Nat 4, dmL.ctorM listD psN 0 []]] = semL [3, 4] := by
-  have hpack : ∀ h (t : List Nat), packL 1 [.el0 Nat h, semL t] = some (h :: t) := by
-    intro h t
+theorem semL_whole : ∀ l : List Nat, (semL l).whole
+  | [] => by simp [semL, Sem.whole]
+  | h :: t => by simp [semL, Sem.whole, semL_whole t]
+
+/-- `Nil`, as the run's constructor value (`ctorM` packing no field), is the empty list's meaning. -/
+theorem ctorM_nil : dmL.ctorM listD psN 0 [] = semL [] := by simp [DataModel.ctorM, dmL, packL, semL, listD]
+
+/-- `Cons(h, t)`, as the run's constructor value (`ctorM` packing its fields), is the list's meaning. -/
+theorem ctorM_cons (h : Nat) (t : List Nat) : dmL.ctorM listD psN 1 [.el0 Nat h, semL t] = semL (h :: t) := by
+  have hpack : packL 1 [.el0 Nat h, semL t] = some (h :: t) := by
     have he : ∃ t', semL t' = semL t := ⟨t, rfl⟩
     have hs : he.choose = t := semL_inj he.choose_spec
     simp [packL, Sem.as, he, hs]
-  have hw : ∀ l, (semL l).whole := by
-    intro l; induction l with
-    | nil => simp [semL, Sem.whole]
-    | cons h t ih => simp [semL, Sem.whole, ih]
-  have h0 : dmL.ctorM listD psN 0 [] = semL [] := by simp [DataModel.ctorM, dmL, packL, semL, listD]
-  have hc : ∀ h t, dmL.ctorM listD psN 1 [.el0 Nat h, semL t] = semL (h :: t) := by
-    intro h t
-    simp only [DataModel.ctorM]
-    rw [if_pos (by simp [Sem.whole, hw t])]
-    have hp : dmL.pack listD psN 1 [.el0 Nat h, semL t] = some (h :: t) := hpack h t
-    simp only [hp]
-    rfl
-  rw [h0, hc, hc]
+  simp only [DataModel.ctorM]
+  rw [if_pos (by simp [Sem.whole, semL_whole t])]
+  have hp : dmL.pack listD psN 1 [.el0 Nat h, semL t] = some (h :: t) := hpack
+  simp only [hp]
+  rfl
+
+/-- **Built**: the run's constructor values `Cons(3, Cons(4, Nil))` are the list's meaning. -/
+theorem build_list :
+    dmL.ctorM listD psN 1 [.el0 Nat 3, dmL.ctorM listD psN 1 [.el0 Nat 4, dmL.ctorM listD psN 0 []]] = semL [3, 4] := by
+  rw [ctorM_nil, ctorM_cons, ctorM_cons]
 
 /-- **Matched**: a list's constructor and fields are read off its meaning. -/
 theorem match_list (h : Nat) (t : List Nat) : (semL (h :: t)).parts = some (1, [.el0 Nat h, semL t]) := rfl
@@ -420,37 +427,41 @@ theorem semLR_whole : ∀ l : List RoseN, (semLR l).whole
   | r :: rs => by simp [semLR, Sem.whole, semR_whole r, semLR_whole rs]
 end
 
+/-- `Nil` at `List(Rose(Nat))`, as the run's constructor value. -/
+theorem ctorM_lrNil : dmR.ctorM listD psR 0 [] = semLR [] := by
+  simp [DataModel.ctorM, dmR, packB, isRose, listD, semLR, carB]
+
+/-- `Node(a, ks)`, as the run's constructor value, is the tree's meaning. -/
+theorem ctorM_node (a : Nat) (ks : List RoseN) : dmR.ctorM roseD psN 0 [.el0 Nat a, semLR ks] = semR (.node a ks) := by
+  have he : ∃ ks', semLR ks' = semLR ks := ⟨ks, rfl⟩
+  have hp : dmR.pack roseD psN 0 [.el0 Nat a, semLR ks] = some (RoseN.node a ks) := by
+    show packB true 0 [.el0 Nat a, semLR ks] = _
+    simp [packB, Sem.as, he, semLR_inj he.choose_spec]
+    rfl
+  simp only [DataModel.ctorM]
+  rw [if_pos (by simp [Sem.whole, semLR_whole ks])]
+  simp only [hp]
+  rfl
+
+/-- `Cons(r, rs)` at `List(Rose(Nat))`, as the run's constructor value. -/
+theorem ctorM_lrCons (r : RoseN) (rs : List RoseN) : dmR.ctorM listD psR 1 [semR r, semLR rs] = semLR (r :: rs) := by
+  have h1 : ∃ r', semR r' = semR r := ⟨r, rfl⟩
+  have h2 : ∃ rs', semLR rs' = semLR rs := ⟨rs, rfl⟩
+  have hp : dmR.pack listD psR 1 [semR r, semLR rs] = some (r :: rs) := by
+    show packB false 1 [semR r, semLR rs] = _
+    simp [packB, h1, h2, semR_inj h1.choose_spec, semLR_inj h2.choose_spec]
+    rfl
+  simp only [DataModel.ctorM]
+  rw [if_pos (by simp [Sem.whole, semR_whole r, semLR_whole rs])]
+  simp only [hp]
+  rfl
+
 /-- **Built**: the run's constructor values `Node(1, Cons(Node(2, Nil), Nil))` are the tree's meaning. -/
 theorem build_rose :
     dmR.ctorM roseD psN 0 [.el0 Nat 1,
       dmR.ctorM listD psR 1 [dmR.ctorM roseD psN 0 [.el0 Nat 2, dmR.ctorM listD psR 0 []], dmR.ctorM listD psR 0 []]]
       = semR (.node 1 [.node 2 []]) := by
-  have hnil : dmR.ctorM listD psR 0 [] = semLR [] := by
-    simp [DataModel.ctorM, dmR, packB, isRose, listD, semLR, carB]
-  have hnode : ∀ a ks, dmR.ctorM roseD psN 0 [.el0 Nat a, semLR ks] = semR (.node a ks) := by
-    intro a ks
-    have he : ∃ ks', semLR ks' = semLR ks := ⟨ks, rfl⟩
-    have hp : dmR.pack roseD psN 0 [.el0 Nat a, semLR ks] = some (RoseN.node a ks) := by
-      show packB true 0 [.el0 Nat a, semLR ks] = _
-      simp [packB, Sem.as, he, semLR_inj he.choose_spec]
-      rfl
-    simp only [DataModel.ctorM]
-    rw [if_pos (by simp [Sem.whole, semLR_whole ks])]
-    simp only [hp]
-    rfl
-  have hcons : ∀ r rs, dmR.ctorM listD psR 1 [semR r, semLR rs] = semLR (r :: rs) := by
-    intro r rs
-    have h1 : ∃ r', semR r' = semR r := ⟨r, rfl⟩
-    have h2 : ∃ rs', semLR rs' = semLR rs := ⟨rs, rfl⟩
-    have hp : dmR.pack listD psR 1 [semR r, semLR rs] = some (r :: rs) := by
-      show packB false 1 [semR r, semLR rs] = _
-      simp [packB, h1, h2, semR_inj h1.choose_spec, semLR_inj h2.choose_spec]
-      rfl
-    simp only [DataModel.ctorM]
-    rw [if_pos (by simp [Sem.whole, semR_whole r, semLR_whole rs])]
-    simp only [hp]
-    rfl
-  rw [hnil, hnode, hcons, hnode]
+  rw [ctorM_lrNil, ctorM_node, ctorM_lrCons, ctorM_node]
 
 /-- **Matched**: a rose's constructor and fields, and its `kids` list's, are read off the value. -/
 theorem match_rose (a : Nat) (r : RoseN) (rs : List RoseN) :

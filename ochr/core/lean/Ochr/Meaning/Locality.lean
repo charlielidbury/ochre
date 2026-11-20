@@ -1239,29 +1239,29 @@ theorem mkTelFillL_congr (Lv : Lvl.{u}) {L : Nat → Prop} {φ φ' : Future} (h�
     exact dite_isSome_congr _ _ (funext fun x => mkTelFillL_congr Lv hφ isRef g hg (k x) (hk x) _ _)
 
 /-- The closure meaning at its sort, the same at two futures agreeing on `L` under `FinalsIn`. -/
-theorem closureAt_congr {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l) (l : Nat)
+theorem closureAt_congr (R : DataRead) {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l) (l : Nat)
     (ds : List PiDom) (out : PiCod) (g : List Sem → Option BodyOut)
     (hg : ∀ args o, g args = some o → FinalsIn L out.isRef o) :
-    closureAt l φ ds out g = closureAt l φ' ds out g := by
+    closureAt R l φ ds out g = closureAt R l φ' ds out g := by
   unfold closureAt
   rcases l with _ | _ | _ | _ | l
   · rfl
-  · simp only [closureL, mkTelL_congr lvl0 hφ out.isRef g hg _ (telL_kind lvl0 ds [] PUnit out)]
-  · simp only [closureL, mkTelL_congr lvl1 hφ out.isRef g hg _ (telL_kind lvl1 ds [] PUnit out)]
-  · simp only [closureL, mkTelL_congr lvl2 hφ out.isRef g hg _ (telL_kind lvl2 ds [] PUnit out)]
+  · simp only [closureL, mkTelL_congr (lvl0 R) hφ out.isRef g hg _ (telL_kind (lvl0 R) ds [] PUnit out)]
+  · simp only [closureL, mkTelL_congr (lvl1 R) hφ out.isRef g hg _ (telL_kind (lvl1 R) ds [] PUnit out)]
+  · simp only [closureL, mkTelL_congr (lvl2 R) hφ out.isRef g hg _ (telL_kind (lvl2 R) ds [] PUnit out)]
   · rfl
 
 /-- A recursion stage's closure, the same at two futures agreeing on `L` under `FinalsIn`. -/
-theorem closureFillAt_congr {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l) (l : Nat)
+theorem closureFillAt_congr (R : DataRead) {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l) (l : Nat)
     (ds : List PiDom) (out : PiCod) (g : List Sem → Option BodyOut)
     (hg : ∀ args o, g args = some o → FinalsIn L out.isRef o) :
-    closureFillAt l φ ds out g = closureFillAt l φ' ds out g := by
+    closureFillAt R l φ ds out g = closureFillAt R l φ' ds out g := by
   unfold closureFillAt
   rcases l with _ | _ | _ | _ | l
   · rfl
-  · simp only [closureFillL, mkTelFillL_congr lvl0 hφ out.isRef g hg _ (telL_kind lvl0 ds [] PUnit out)]
-  · simp only [closureFillL, mkTelFillL_congr lvl1 hφ out.isRef g hg _ (telL_kind lvl1 ds [] PUnit out)]
-  · simp only [closureFillL, mkTelFillL_congr lvl2 hφ out.isRef g hg _ (telL_kind lvl2 ds [] PUnit out)]
+  · simp only [closureFillL, mkTelFillL_congr (lvl0 R) hφ out.isRef g hg _ (telL_kind (lvl0 R) ds [] PUnit out)]
+  · simp only [closureFillL, mkTelFillL_congr (lvl1 R) hφ out.isRef g hg _ (telL_kind (lvl1 R) ds [] PUnit out)]
+  · simp only [closureFillL, mkTelFillL_congr (lvl2 R) hφ out.isRef g hg _ (telL_kind (lvl2 R) ds [] PUnit out)]
   · rfl
 
 /-! ## The call clause: the finals match the borrow parameters

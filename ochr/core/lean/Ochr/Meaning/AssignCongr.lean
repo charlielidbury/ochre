@@ -40,8 +40,8 @@ theorem fixStage_congrA {body : Term} {fb : List PBind × PBind}
     ∀ k, fixStage K ρ φ fb l s ps out piT start body k = fixStage (KA K Δ') ρ' φ fb l s ps out piT start body k
   | 0 => rfl
   | k + 1 => by
-    show fixBodyAt K ρ φ fb s ps out piT start body (closureFillAt l φ ps out (fixStage K ρ φ fb l s ps out piT start body k))
-      = fixBodyAt (KA K Δ') ρ' φ fb s ps out piT start body (closureFillAt l φ ps out (fixStage (KA K Δ') ρ' φ fb l s ps out piT start body k))
+    show fixBodyAt K ρ φ fb s ps out piT start body (closureFillAt K.dm.read l φ ps out (fixStage K ρ φ fb l s ps out piT start body k))
+      = fixBodyAt (KA K Δ') ρ' φ fb s ps out piT start body (closureFillAt K.dm.read l φ ps out (fixStage (KA K Δ') ρ' φ fb l s ps out piT start body k))
     rw [fixStage_congrA hb l s ps out piT start k]
     funext args
     exact fixBodyAt_congrA K Δ' ρ ρ' φ hb s ps out piT start _ args
