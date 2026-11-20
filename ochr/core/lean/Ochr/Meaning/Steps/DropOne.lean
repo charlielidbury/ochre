@@ -811,7 +811,7 @@ theorem content_follow (st : MState) (s : SState) (π : Nat → Nat) (q : Place)
   have hrel : RelF φ s (s.typedFuture φ) := relF_typedFuture φ s
   have hval : s.valAt pos (s.typedFuture φ) =
       Env.mean K.dm K.M K.Γ ρ (fun l => s.typedFuture φ (π l)) st.env pos := (hs.sim.1 _ ⟨hrel, hs.typedFuture_typed φ⟩ pos hpt).symm
-  obtain ⟨s', T', h1, h2⟩ := followMean K ρ hctx hg (fun l => s.typedFuture φ (π l)) pos q hgr hck c
+  obtain ⟨s', T', h1, h2⟩ := followMean K ρ hctx.shapes hg (fun l => s.typedFuture φ (π l)) pos q hgr hck c
     (by unfold ckContent; simp [hck, hc]) (s.tyAt pos)
   rw [hval]
   refine ⟨s', T', h1, ?_⟩

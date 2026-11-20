@@ -216,13 +216,38 @@ def dataCtorBad (Γ : List IndDecl) : Value → Bool
     | none => true
   | _ => false
 
+/-- The content of the borrow `l`, where some position holds it (the sweep's `holderContent`). -/
+def holderContent (env : Env) (l : Nat) : Option Value :=
+  (allPos env).findSome? fun p => match valAt env p with
+    | .borrow m w => if m == l then some w else none
+    | _ => none
+
+/-- The checker's syntactic test that a type is a proposition, as the sweep's (D⋆) asks it: some
+run of `Decide.sortOf` on it gives `0`, from a state the same as `st` up to what no decision reads
+(`SameDec`). -/
+def SortIsProp (st : MState) (T : Value) : Prop :=
+  ∃ st₀ fuel b st', SameDec st₀ st ∧ Runs (Ochr.sortOf fuel T) st₀ b 0 st'
+
+/-- What at the place `p` could mean `⋆` though it is not `⋆` (docs/31 D54, the sweep's
+`meansProof`, mirrored): an unknown of a proposition; a sealed program whose computed type
+(`Machine.placeType?`) is a proposition; a loan whose borrow holds `⋆` or an unknown of a
+proposition; any of these under a mark. -/
+def MeansProof (st : MState) (p : Place) : Value → Prop
+  | .gloan _ w => MeansProof st p w
+  | .abs σ => SortIsProp st (st.absTy.getD σ .bot)
+  | .sealed _ => ∃ st₀ fuel b T st', SameDec st₀ st ∧ Runs (Ochr.placeType? fuel p) st₀ b (some T) st' ∧
+      SortIsProp st T
+  | .loan l => holderContent st.env l = some .proof ∨
+      ∃ σ, holderContent st.env l = some (.abs σ) ∧ SortIsProp st (st.absTy.getD σ .bot)
+  | _ => False
+
 /-- **The checker's typing of places** (docs/31 D34, D40, D47, D49, D51): at every place in scope
 that exists, by its declared reading (`Decisions.placeDecl` at the top frame's readings), a place
 declared an inductive of the declarations holds a constructor value of it or a stand-in (V); every
 loan and mark anywhere in Ω is of a live borrow (L); every constructor value is of a data
 declaration, not named `Nat` (N); a place below a variable holding `⋆` is declared a copy type
-(C⋆); every η record is top-hint-free (Hη). What the drop's reading of a place and its write
-need. Syntactic typing, which `Good`'s membership does not give. Read off the checker and swept;
+(C⋆); every η record is top-hint-free (Hη); a place of a non-copy reading holds nothing that could
+mean `⋆` but is not `⋆` (D⋆). What the drop's reading of a place and its write need. Syntactic typing, which `Good`'s membership does not give. Read off the checker and swept;
 NOT proved preserved: every step's `CtxOk` conclusion owes it. (U), (R), (P), (A) and (M), which
 `movedPlace`'s exits needed, went with main's D94, which made those exits a rejection. (Ty), a
 variable holding a type value is declared a sort, went with D59: the write of `⊥` over a type
@@ -245,6 +270,12 @@ structure ShapeFacts (D : Decisions) (Γ : List IndDecl) (st : MState) : Prop wh
   /-- (Hη) every η record is top-hint-free (a constructor value of fresh unknowns recording its
   parameters, `ctorRefinement`), so it means its unknown at every hint (docs/31 D55) -/
   etaHint : ∀ σ r, (σ, r) ∈ st.etaRefs → r.topHintFree Γ = true
+  /-- (D⋆) a place in scope holding an unknown or a sealed program of a proposition, or a loan whose
+  borrow holds `⋆` or an unknown of a proposition (through marks), is declared a copy type (docs/31
+  D54: the syntactic shadow of `dataMean_ne_proof` and `access_root_not_proof`; the sweep's
+  `dataNotProof`, swept with no violation; a clause since the slice, for the lead to review) -/
+  dataNotProof : ∀ p v, ckContent st.env p = some v → MeansProof st p v →
+    D.copy (D.placeDecl (DecideScope.topReadings st) p) = true
 
 /-- A term's unknowns are below `n`. -/
 def _root_.Ochr.Term.absBelow (n : Nat) (t : Term) : Prop := ∀ σ, t.anyAtom (· == .abs σ) = true → σ < n
@@ -384,6 +415,28 @@ theorem typeState_sim (fuel : Nat) (t : Term) :
 theorem SameDec.symm {st st' : MState} (h : SameDec st st') : SameDec st' st := Eq.symm h
 theorem SameDec.trans {a b c : MState} (h₁ : SameDec a b) (h₂ : SameDec b c) : SameDec a c := Eq.trans h₁ h₂
 
+theorem SortIsProp.of_sameDec {st st' : MState} (h : SameDec st' st) {T : Value} (hT : SortIsProp st' T) :
+    SortIsProp st T := by
+  obtain ⟨st₀, fuel, b, st₁, h₀, hr⟩ := hT
+  exact ⟨st₀, fuel, b, st₁, h₀.trans h, hr⟩
+
+theorem MeansProof.of_sameDec {st st' : MState} (h : SameDec st' st) (he : st'.env = st.env)
+    (ha : st'.absTy = st.absTy) (p : Place) : ∀ v, MeansProof st' p v → MeansProof st p v
+  | .gloan _ w, hm => MeansProof.of_sameDec h he ha p w hm
+  | .abs σ, hm => by simp only [MeansProof] at hm ⊢; rw [← ha]; exact hm.of_sameDec h
+  | .sealed _, hm => by
+    obtain ⟨st₀, fuel, b, T, st₁, h₀, hr, hT⟩ := hm
+    exact ⟨st₀, fuel, b, T, st₁, h₀.trans h, hr, hT.of_sameDec h⟩
+  | .loan l, hm => by
+    simp only [MeansProof] at hm ⊢
+    rw [← he, ← ha]
+    rcases hm with hm | ⟨σ, h1, h2⟩
+    · exact .inl hm
+    · exact .inr ⟨σ, h1, h2.of_sameDec h⟩
+  | .zero, hm | .succ _, hm | .unit, hm | .gfn _, hm | .clo _ _ _, hm | .borrow _ _, hm | .bot, hm
+  | .proof, hm | .tNat, hm | .tUnit, hm | .tEq _ _ _, hm | .tRef _, hm | .tPi _ _ _, hm | .sort _, hm
+  | .ind _ _ _ _ _, hm | .tInd _ _, hm => hm.elim
+
 /-- **The typing of places stays across a change of what no decision reads**, the environment and
 the unknowns' types kept. -/
 theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MState} (hf : ShapeFacts D Γ st)
@@ -391,12 +444,14 @@ theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MSta
     ShapeFacts D Γ st' := by
   have e1 : DecideScope.topReadings st' = DecideScope.topReadings st := by
     unfold DecideScope.topReadings; rw [he]
-  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro p v n args hp hd hn; rw [he] at hp; rw [e1] at hd; exact hf.fits p v n args hp hd hn
   · rw [he]; exact hf.loans
   · rw [he]; exact hf.ctors
   · intro p hne hp; rw [he] at hp; rw [e1]; exact hf.proofCopy p hne hp
   · rw [hη]; exact hf.etaHint
+  · intro p v hp hm; rw [he] at hp; rw [e1]
+    exact hf.dataNotProof p v hp (MeansProof.of_sameDec h he ha p v hm)
 
 /-- **The decisions stay the checker's across what no decision reads** (docs/31 D53): from a state
 with the same decision core (Σ, Δ and the reading mode, `DecCore`) and the same top frame's readings, every scope decision transfers by the simulation of
@@ -703,7 +758,13 @@ finding, so it is not stated on its own.)
 
 With `owned` (before an assignment, D67) the checker ends only the loans inside the part the
 place owns: none at a borrow variable written whole, where the reference's assignment does no
-access either (`assignAt`; the audit's A2). -/
+access either (`assignAt`; the audit's A2).
+
+The checker's typing of places holds after it (`ShapeFacts`, at the same decisions: it reads only
+the place and copy decisions, which name no unknown, and the top frame's readings, which an access
+does not change). Added for the slice (the drop of one place reads it after its access; the old
+`access_ctx`, the whole `CtxOk` at the same context after an access, is false where the access
+grows the table of unknowns, docs/31 D57 (1)); for the lead to review. -/
 def access_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (p : Place) (pos : Pos) (owned : Bool) (s : SState) (π : Nat → Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
@@ -711,7 +772,7 @@ def access_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) :
     (bh : Nat) (h : Runs (do Ochr.accessPath fuel p; Ochr.accessInside fuel p owned) st bh () st'),
     Rel K ρ φ π st'
       (if owned && (p.steps).2.isEmpty && (s.shape pos).isSome then s else s.access pos (dataHit (p.steps).2)) ∧
-    Good K.dm K.M K.Γ ρ st'
+    Good K.dm K.M K.Γ ρ st' ∧ ShapeFacts K.D K.Γ st'
 
 /-- The flight of a result: its label, typed at its content type (the reference's result type
 carries both). The in-flight value is typed by this where `MState.withTemp` holds it untyped

@@ -329,7 +329,7 @@ def FollowMeanP (K : RunCtx) (ρ : Assignment) (st : MState) (f : Future) (pos :
 theorem stepV_proof {x : Step} {v : Value} (h : stepV x .proof = some v) : v = .proof := by
   cases x <;> simp [stepV] at h <;> exact h.symm
 
-theorem followMean_snoc (K : RunCtx) (ρ : Assignment) {st : MState} (hctx : CtxOk K ρ st)
+theorem followMean_snoc (K : RunCtx) (ρ : Assignment) {st : MState} (hsh : ShapeFacts K.D K.Γ st)
     (hwf10 : WF10 K.Γ st) (f : Future) (pos : Pos) {q p : Place} (hpar : parentOf q = some p)
     (ih : FollowMeanP K ρ st f pos p) : FollowMeanP K ρ st f pos q := by
   intro hgr hck v hv T
@@ -353,14 +353,14 @@ theorem followMean_snoc (K : RunCtx) (ρ : Assignment) {st : MState} (hctx : Ctx
       cases e : w.anyAtom (dataCtorBad K.Γ)
       · rfl
       · have := anyAtom_of_follow _ _ _ hfr e
-        rw [hctx.shapes.ctors root hroot] at this; exact absurd this (by simp)
+        rw [hsh.ctors root hroot] at this; exact absurd this (by simp)
     obtain ⟨s', T', h3, h4⟩ := step_mean K.dm K.M K.Γ ρ f _ x hst w v H T₁ hwv
-      (fun n args e hn => hctx.shapes.fits p w n args hw e hn) hbc hN
+      (fun n args e hn => hsh.fits p w n args hw e hn) hbc hN
     exact ⟨s', T', by simp [Sem.follow, h3], h4⟩
 
 /-- **The reference's reading of a place at the join's grain is the meaning of the checker's
 value there**, or `⋆` (a place inside a proof), at every future. -/
-theorem followMean (K : RunCtx) (ρ : Assignment) {st : MState} (hctx : CtxOk K ρ st)
+theorem followMean (K : RunCtx) (ρ : Assignment) {st : MState} (hsh : ShapeFacts K.D K.Γ st)
     (hg : Good K.dm K.M K.Γ ρ st) (f : Future) (pos : Pos) : ∀ q, FollowMeanP K ρ st f pos q
   | .var i => by
     intro _ hck v hv T
@@ -371,9 +371,9 @@ theorem followMean (K : RunCtx) (ρ : Assignment) {st : MState} (hctx : CtxOk K 
     obtain ⟨H, hH⟩ := envMean_ck K.dm K.M K.Γ ρ f hck
     exact ⟨Env.mean K.dm K.M K.Γ ρ f st.env pos, T, by simp [Place.steps, Sem.follow],
       .inr ⟨H, by rw [hH, hv']⟩⟩
-  | .deref p => followMean_snoc K ρ hctx hg.2.2.2.2.2.2.2.2.2.2.1 f pos rfl (followMean K ρ hctx hg f pos p)
-  | .proj _ p => followMean_snoc K ρ hctx hg.2.2.2.2.2.2.2.2.2.2.1 f pos rfl (followMean K ρ hctx hg f pos p)
-  | .field _ p => followMean_snoc K ρ hctx hg.2.2.2.2.2.2.2.2.2.2.1 f pos rfl (followMean K ρ hctx hg f pos p)
+  | .deref p => followMean_snoc K ρ hsh hg.2.2.2.2.2.2.2.2.2.2.1 f pos rfl (followMean K ρ hsh hg f pos p)
+  | .proj _ p => followMean_snoc K ρ hsh hg.2.2.2.2.2.2.2.2.2.2.1 f pos rfl (followMean K ρ hsh hg f pos p)
+  | .field _ p => followMean_snoc K ρ hsh hg.2.2.2.2.2.2.2.2.2.2.1 f pos rfl (followMean K ρ hsh hg f pos p)
 
 /-! ## The write of `⊥` along a place at the grain -/
 
@@ -489,7 +489,7 @@ end
 
 /-- **`NatAlong` along a place at the grain** (the write of `⊥`'s path conditions, `mean_updAt_botS`):
 by the checker's typing of places at every prefix (V, R, A, N), where the write's path exists. -/
-theorem natAlong_grain (K : RunCtx) (ρ : Assignment) {st : MState} (hctx : CtxOk K ρ st) (ψ : Future)
+theorem natAlong_grain (K : RunCtx) (ρ : Assignment) {st : MState} (hsh : ShapeFacts K.D K.Γ st) (ψ : Future)
     (f : Value → Value) : ∀ (ss : List Step) (p : Place) (w : Value),
       GrainOk K.D K.Γ (DecideScope.topReadings st) (Ochr.jdExtend p ss) → ckContent st.env p = some w →
       (Value.updAt f ss w).isSome → NatAlong K.dm K.M K.Γ ρ ψ ss w
@@ -506,12 +506,12 @@ theorem natAlong_grain (K : RunCtx) (ρ : Assignment) {st : MState} (hctx : CtxO
       · rfl
       · have := anyAtom_of_follow _ _ _ hfr e; rw [h] at this; cases this
     refine natAlong_node K.dm K.M K.Γ ρ ψ _ x hst ss f w
-      (fun n args e hn => hctx.shapes.fits p w n args hw e hn)
-      (hsub _ (hctx.shapes.ctors root hroot)) ?_ hu
+      (fun n args e hn => hsh.fits p w n args hw e hn)
+      (hsub _ (hsh.ctors root hroot)) ?_ hu
     intro c hc huc
     have hcc : ckContent st.env (p.stepTo x) = some c := by
       rw [ckContent_snoc (stepTo_steps p x), hw, Option.bind_some, hc]
-    exact natAlong_grain K ρ hctx ψ f ss (p.stepTo x) c hgr hcc huc
+    exact natAlong_grain K ρ hsh ψ f ss (p.stepTo x) c hgr hcc huc
 
 theorem hasBorrow_of_holdsBorrow (l : Nat) : ∀ (v : Value), v.holdsBorrow l = true → v.hasBorrow = true
   | .borrow m w, _ => by simp [Value.hasBorrow, Value.anyAtom]
