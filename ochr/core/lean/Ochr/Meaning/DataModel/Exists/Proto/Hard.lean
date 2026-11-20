@@ -1,4 +1,4 @@
-import Ochr.Meaning.DataModel.Exists.Proto.Knot
+import Ochr.Meaning.DataModel.Canonical.Knot
 
 /-!
 # Prototype: the hard declarations through the knot
@@ -19,7 +19,7 @@ shifted along the unfolding, with self-nesting at the other parameter).
 
 namespace Ochr.Meaning.DataModel.Exists.Proto
 
-open Ochr Ochr.Meaning Ochr.Meaning.DataLib
+open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Canonical
 
 def hn (n : String) : Hint := ⟨n⟩
 

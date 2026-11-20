@@ -11,7 +11,9 @@ of its field type at `r` and the earlier fields (`fieldTyR d r c i (fs.take i)`,
 each field at once the record is known), the value is a member of that type.
 
 * `mem_fitsOneM`: a member of a shape's type fits the shape (`fitsOneM_mem`'s converse).
-* `ctorR_mem`: the tree is a member of `tyR d r` (a data declaration), from `DataLib.mem_iff`.
+* `ctorR_mem`: the tree is a member of `tyR d r` (a data declaration), from `DataLib.mem_iff`, at a
+  record none of whose field shapes is a leaf holding a data code over the model's own carrier
+  (`RecLeafOk`: canonical records, `RecordsFaithful.leafOk`; docs/34 §18).
 * `ctorOut_mem`: the clause's result is a member of the type it gives it, both sorts.
 -/
 
@@ -24,11 +26,18 @@ variable (dm : DataModel)
 
 /-- **A member of a shape's type fits the shape** (the converse of `fitsOneM_mem`; a non-canonical
 shape's type, `err`, has no member). -/
-theorem mem_fitsOneM (s : Shape) (f : Sem) (h : f ∈ₛ[dm.read] dm.shapeTy s) : DataLib.FitsOneM dm.sig s f := by
+theorem mem_fitsOneM (s : Shape) (f : Sem) (h : f ∈ₛ[dm.read] dm.shapeTy s) (hok : dm.LeafOk s) :
+    DataLib.FitsOneM dm.sig s f := by
   cases s with
   | leaf B c =>
     cases c with
-    | data d r A => exact absurd h (by simp [shapeTy, Code0.isData]; exact err_mem_false dm.read f)
+    | data d r A =>
+      have hA : B ≠ dm.car d r := hok d r rfl
+      obtain ⟨b, hb⟩ := h
+      refine ⟨b, ?_⟩
+      have : dm.readFn d r B b = f := hb
+      simp only [readFn, dif_neg hA] at this
+      exact this
     | err => obtain ⟨b, _⟩ := h; exact b.elim
     | prop P => obtain ⟨b, rfl⟩ := h; exact ⟨b, rfl⟩
     | nat => obtain ⟨b, rfl⟩ := h; exact ⟨b, rfl⟩
@@ -54,32 +63,34 @@ theorem fitsM_of_mem (d : IndDecl) (r : Rec) (c : Nat) :
     ∀ (n i : Nat) (e : List Small) (fs : List Sem), fs.length = n →
       (∀ (j : Nat) (f : Sem), fs[j]? = some f →
         f ∈ₛ[dm.read] dm.shapeTy (dm.sig.shape d r c (i + j) (e ++ (fs.take j).map Sem.small))) →
-      DataLib.FitsM dm.sig d r c i n e fs
-  | 0, _, _, fs, hl, _ => List.eq_nil_of_length_eq_zero hl
-  | n + 1, i, e, [], hl, _ => by simp at hl
-  | n + 1, i, e, f :: fs, hl, h => by
-    refine ⟨f, fs, rfl, dm.mem_fitsOneM _ f (by simpa using h 0 f rfl), ?_⟩
-    refine fitsM_of_mem d r c n (i + 1) (e ++ [f.small]) fs (by simpa using hl) (fun j g hg => ?_)
+      dm.RecLeafOk d r → DataLib.FitsM dm.sig d r c i n e fs
+  | 0, _, _, fs, hl, _, _ => List.eq_nil_of_length_eq_zero hl
+  | n + 1, i, e, [], hl, _, _ => by simp at hl
+  | n + 1, i, e, f :: fs, hl, h, hok => by
+    refine ⟨f, fs, rfl, dm.mem_fitsOneM _ f (by simpa using h 0 f rfl) (hok _ _ _), ?_⟩
+    refine fitsM_of_mem d r c n (i + 1) (e ++ [f.small]) fs (by simpa using hl) (fun j g hg => ?_) hok
     have := h (j + 1) g (by simpa using hg)
     simpa [Nat.add_assoc, Nat.add_comm 1 j, List.take_succ_cons, List.append_assoc] using this
 
 /-- **A constructor value built from member fields is a member** of its data type at the record. -/
 theorem ctorR_mem (d : IndDecl) (r : Rec) (c : Nat) (fs : List Sem) (hs : (d.sort == 0) = false)
     (hc : c < d.ctors.length) (hl : fs.length = DataLib.arity d c)
-    (hf : ∀ (i : Nat) (f : Sem), fs[i]? = some f → f ∈ₛ[dm.read] dm.fieldTyR d r c i (fs.take i)) :
+    (hf : ∀ (i : Nat) (f : Sem), fs[i]? = some f → f ∈ₛ[dm.read] dm.fieldTyR d r c i (fs.take i))
+    (hok : dm.RecLeafOk d r) :
     DataModel.ctorR d r c fs ∈ₛ[dm.read] dm.tyR d r := by
   rw [dm.mem_tyR d r hs]
   refine (DataLib.mem_iff dm.sig d r _).2 ⟨⟨c, hc⟩, fs, rfl, ?_⟩
-  exact dm.fitsM_of_mem d r c _ 0 [] fs hl (fun j f hj => by simpa [fieldTyR] using hf j f hj)
+  exact dm.fitsM_of_mem d r c _ 0 [] fs hl (fun j f hj => by simpa [fieldTyR] using hf j f hj) hok
 
 /-- A `Prop`-sorted declaration: such a value witnesses its type, so `•` is a member. -/
 theorem proof_mem_tyR (d : IndDecl) (r : Rec) (c : Nat) (fs : List Sem) (hs : (d.sort == 0) = true)
     (hc : c < d.ctors.length) (hl : fs.length = DataLib.arity d c)
-    (hf : ∀ (i : Nat) (f : Sem), fs[i]? = some f → f ∈ₛ[dm.read] dm.fieldTyR d r c i (fs.take i)) :
+    (hf : ∀ (i : Nat) (f : Sem), fs[i]? = some f → f ∈ₛ[dm.read] dm.fieldTyR d r c i (fs.take i))
+    (hok : dm.RecLeafOk d r) :
     Sem.proof ∈ₛ[dm.read] dm.tyR d r := by
   rw [dm.tyR_prop d r hs]
   refine ⟨⟨⟨_, (DataLib.mem_iff dm.sig d r _).2 ⟨⟨c, hc⟩, fs, rfl, ?_⟩⟩⟩, rfl⟩
-  exact dm.fitsM_of_mem d r c _ 0 [] fs hl (fun j f hj => by simpa [fieldTyR] using hf j f hj)
+  exact dm.fitsM_of_mem d r c _ 0 [] fs hl (fun j f hj => by simpa [fieldTyR] using hf j f hj) hok
 
 end DataModel
 
@@ -87,14 +98,15 @@ end DataModel
 record the clause knows, from fields that are members of their field types at it. -/
 theorem ctorOut_mem (dm : DataModel) (d : IndDecl) (r : Rec) (c : Nat) (fs : List Sem) (s : SState)
     (hc : c < d.ctors.length) (hl : fs.length = DataLib.arity d c)
-    (hf : ∀ (i : Nat) (f : Sem), fs[i]? = some f → f ∈ₛ[dm.read] dm.fieldTyR d r c i (fs.take i)) :
+    (hf : ∀ (i : Nat) (f : Sem), fs[i]? = some f → f ∈ₛ[dm.read] dm.fieldTyR d r c i (fs.take i))
+    (hok : dm.RecLeafOk d r) :
     ∃ v T, ctorOut dm d c fs (some r) s = some ((v, T), s) ∧ T = .plain (dm.tyR d r) ∧ v ∈ₛ[dm.read] T.m := by
   refine ⟨_, _, rfl, rfl, ?_⟩
   cases hs : (d.sort == 0)
   · simp only [hs, Bool.false_eq_true, if_false]
-    exact dm.ctorR_mem d r c fs hs hc hl hf
+    exact dm.ctorR_mem d r c fs hs hc hl hf hok
   · simp only [hs, if_true]
-    exact dm.proof_mem_tyR d r c fs hs hc hl hf
+    exact dm.proof_mem_tyR d r c fs hs hc hl hf hok
 
 /-! ## Checks: `SW`'s and `SO`'s constructors, and a dependent constructor -/
 

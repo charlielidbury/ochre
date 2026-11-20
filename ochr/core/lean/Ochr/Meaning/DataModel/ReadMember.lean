@@ -19,10 +19,11 @@ namespace Ochr.Meaning.DataModel
 
 open Ochr Ochr.Meaning Ochr.Meaning.DataLib
 
-/-- A shape is canonical: a leaf's code is not a data code, a data field's declaration is not
+/-- A shape is canonical: a leaf's code is not a data code over the model's own carrier (a data code
+over a foreign carrier is an ordinary leaf, docs/34 §18), a data field's declaration is not
 `Prop`-sorted, a proof field's is. -/
-def ShapeCanon : Shape → Prop
-  | .leaf _ c => c.isData = false
+def ShapeCanon (dm : DataModel) : Shape → Prop
+  | .leaf B c => ∀ d r, c.dataCode? = some (d, r) → B ≠ dm.car d r
   | .sub d _ => d.sort ≠ 0
   | .prf d _ => d.sort = 0
 
@@ -33,12 +34,9 @@ structure ReadCoherent (dm : DataModel) (Γ : List IndDecl) (P : IndDecl → Rec
     (dm.sig.shape d r c i e = .sub d' r' ∨ dm.sig.shape d r c i e = .prf d' r') → P d' r'
   found : ∀ d r, P d r → Γ.find? (·.name == d.name) = some d
   notNat : ∀ d r, P d r → d.name ≠ "Nat"
-  canon : ∀ d r c i e, P d r → ShapeCanon (dm.sig.shape d r c i e)
+  canon : ∀ d r c i e, P d r → ShapeCanon dm (dm.sig.shape d r c i e)
 
 /-- The declaration and record of a data code. -/
-def _root_.Ochr.Meaning.Code0.dataCode? : {A : Type} → Code0 A → Option (IndDecl × Rec)
-  | _, .data d r _ => some (d, r)
-  | _, _ => none
 
 def _root_.Ochr.Meaning.Code1.dataCode? : {A : Type 1} → Code1 A → Option (IndDecl × Rec)
   | _, .lift _ c => c.dataCode?
@@ -145,8 +143,10 @@ theorem mem_dat_inv {T : TyM} {n : String} {r : Rec} {c : Nat} {gs : List Sem}
 
 variable {dm} {Γ : List IndDecl} {P : IndDecl → Rec → Prop}
 
-/-- A type all of whose data codes are in `P`. -/
-def TyIn (P : IndDecl → Rec → Prop) (U : TyM) : Prop := ∀ d r, U.dataCode? = some (d, r) → P d r
+/-- A type all of whose data codes that have a constructor value as a member are in `P` (a data
+code over a foreign carrier, a leaf's, has only tagged elements: docs/34 §18). -/
+def TyIn (dm : DataModel) (P : IndDecl → Rec → Prop) (U : TyM) : Prop :=
+  ∀ d r n c gs, Sem.dat n r c gs ∈ₛ[dm.read] U → U.dataCode? = some (d, r) → P d r
 
 theorem encLeaf_not_dat : ∀ {B : Type} (c : Code0 B) (b : B) (n : String) (r : Rec) (c' : Nat) (fs : List Sem),
     encLeaf c b ≠ .dat n r c' fs
@@ -162,7 +162,7 @@ is a constructor value, else at the declaration's field type at the member's ear
 theorem field_mem (hcoh : ReadCoherent dm Γ P) {d : IndDecl} {r : Rec} {c : Nat} {gs : List Sem}
     (hP : P d r) (hm : dm.Mem d r (.dat d.name r c gs)) (i : Nat) (f : Sem) (hf : gs[i]? = some f) :
     f ∈ₛ[dm.read] (contentTyS dm Γ d.name r c i (gs.take i) f).m ∧
-      TyIn P (contentTyS dm Γ d.name r c i (gs.take i) f).m := by
+      TyIn dm P (contentTyS dm Γ d.name r c i (gs.take i) f).m := by
   obtain ⟨⟨c', hc'⟩, fs, he, hfits⟩ := (DataLib.mem_iff dm.sig d r _).1 hm
   simp only [Sem.dat.injEq, true_and] at he
   obtain ⟨hc, hfs⟩ := he
@@ -190,14 +190,21 @@ theorem field_mem (hcoh : ReadCoherent dm Γ P) {d : IndDecl} {r : Rec} {c : Nat
   | leaf B cd =>
     obtain ⟨b, rfl⟩ := hfit
     rw [hother (fun n r c fs => encLeaf_not_dat cd b n r c fs), hft]
-    simp only [ShapeCanon] at hcan
     cases cd with
-    | data _ _ _ => simp [Code0.isData] at hcan
+    | data d₀ r₀ _ =>
+      have hA : B ≠ dm.car d₀ r₀ := hcan d₀ r₀ rfl
+      refine ⟨⟨b, ?_⟩, fun _ _ _ _ _ hm _ => ?_⟩
+      · show dm.readFn d₀ r₀ B b = _
+        simp only [DataModel.readFn, dif_neg hA, encLeaf]
+      · obtain ⟨a, ha⟩ := hm
+        have : dm.readFn d₀ r₀ B a = _ := ha
+        simp only [DataModel.readFn, dif_neg hA] at this
+        cases this
     | err => exact b.elim
-    | prop _ => exact ⟨⟨b, rfl⟩, fun _ _ h => by cases h⟩
-    | nat => exact ⟨⟨b, rfl⟩, fun _ _ h => by cases h⟩
-    | unit => exact ⟨⟨b, rfl⟩, fun _ _ h => by cases h⟩
-    | pi _ _ => exact ⟨⟨b, rfl⟩, fun _ _ h => by cases h⟩
+    | prop _ => exact ⟨⟨b, rfl⟩, fun _ _ _ _ _ _ h => by cases h⟩
+    | nat => exact ⟨⟨b, rfl⟩, fun _ _ _ _ _ _ h => by cases h⟩
+    | unit => exact ⟨⟨b, rfl⟩, fun _ _ _ _ _ _ h => by cases h⟩
+    | pi _ _ => exact ⟨⟨b, rfl⟩, fun _ _ _ _ _ _ h => by cases h⟩
   | sub d' r' =>
     have hP' : P d' r' := hcoh.closed d r c i _ d' r' hP (.inl hsh)
     have hm' : dm.Mem d' r' f := hfit
@@ -213,7 +220,7 @@ theorem field_mem (hcoh : ReadCoherent dm Γ P) {d : IndDecl} {r : Rec} {c : Nat
         simp only [dataTyS, hfd']
       · rename_i h; exact absurd rfl (h _ _ _ _)
     rw [hct]
-    refine ⟨(dm.mem_tyR d' r' hs _).2 hm', fun d'' r'' h => ?_⟩
+    refine ⟨(dm.mem_tyR d' r' hs _).2 hm', fun d'' r'' _ _ _ _ h => ?_⟩
     simp only [DataModel.tyR, hs, Bool.false_eq_true, if_false, TyM.dataCode?, Option.some.injEq,
       Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
@@ -224,7 +231,7 @@ theorem field_mem (hcoh : ReadCoherent dm Γ P) {d : IndDecl} {r : Rec} {c : Nat
     have hs : (d'.sort == 0) = true := by simpa [ShapeCanon] using hcan
     simp only [DataModel.shapeTy, hs, if_true]
     rw [dm.tyR_prop d' r' hs]
-    exact ⟨⟨⟨hv⟩, rfl⟩, fun _ _ h => by cases h⟩
+    exact ⟨⟨⟨hv⟩, rfl⟩, fun _ _ _ _ _ _ h => by cases h⟩
 
 theorem movedOfList_get : ∀ {fs gs : List Sem}, MovedOfList Γ fs gs → ∀ (i : Nat) (f : Sem), fs[i]? = some f →
     ∃ g, gs[i]? = some g ∧ MovedOf Γ f g
@@ -289,10 +296,10 @@ theorem step_dat (T : TyS) (st : Step) (n : String) (r : Rec) (c : Nat) (fs : Li
 /-- **One step**: a meaning below a whole member, not `⋆`, stepped; the member steps too, to a
 whole member of the type the run gives it, above the meaning's step. -/
 theorem step_below_member (hcoh : ReadCoherent dm Γ P) (Ts U : TyS) (st : Step) (s w s1 : Sem) (T1 : TyS)
-    (hU : TyIn P U.m) (hw : w.whole) (hsw : MovedOf Γ s w) (hm : w ∈ₛ[dm.read] U.m) (hnp : s ≠ .proof)
+    (hU : TyIn dm P U.m) (hw : w.whole) (hsw : MovedOf Γ s w) (hm : w ∈ₛ[dm.read] U.m) (hnp : s ≠ .proof)
     (h : Sem.step dm Γ Ts st s = some (s1, T1)) :
     ∃ w1 U1, Sem.step dm Γ U st w = some (w1, U1) ∧ MovedOf Γ s1 w1 ∧ w1.whole ∧
-      w1 ∈ₛ[dm.read] U1.m ∧ TyIn P U1.m := by
+      w1 ∈ₛ[dm.read] U1.m ∧ TyIn dm P U1.m := by
   -- `*` is the identity
   by_cases hst : st = .deref
   · subst hst
@@ -302,11 +309,11 @@ theorem step_below_member (hcoh : ReadCoherent dm Γ P) (Ts U : TyS) (st : Step)
   -- the field read of a constructor value of `P` (not named `Nat`)
   have hdatcase : ∀ (n : String) (r : Rec) (c : Nat) (fs gs : List Sem), s = .dat n r c fs → w = .dat n r c gs →
       MovedOfList Γ fs gs → ∃ w1 U1, Sem.step dm Γ U st w = some (w1, U1) ∧ MovedOf Γ s1 w1 ∧ w1.whole ∧
-        w1 ∈ₛ[dm.read] U1.m ∧ TyIn P U1.m := by
+        w1 ∈ₛ[dm.read] U1.m ∧ TyIn dm P U1.m := by
     intro n r c fs gs hs hw' hfg
     subst hs; subst hw'
     obtain ⟨d, hdc, hmd, hdn⟩ := mem_dat_inv dm hm
-    have hP : P d r := hU d r hdc
+    have hP : P d r := hU d r n c gs hm hdc
     have hn : n ≠ "Nat" := hdn ▸ hcoh.notNat d r hP
     obtain ⟨i, hfi, hall⟩ := step_dat Ts st n r c fs hn s1 T1 h hst
     obtain ⟨g, hgi, hmo⟩ := movedOfList_get hfg i s1 hfi
@@ -337,7 +344,7 @@ theorem step_below_member (hcoh : ReadCoherent dm Γ P) (Ts U : TyS) (st : Step)
             simp only [Option.some.injEq, Prod.mk.injEq] at h
             obtain ⟨rfl, rfl⟩ := h
             refine ⟨_, .plain TyM.nat, by simp only [Sem.step, hmN], .refl _, by simp [Sem.whole], ⟨m, rfl⟩,
-              fun _ _ h => by cases h⟩
+              fun _ _ _ _ _ _ h => by cases h⟩
           · cases h
           · simp [Sem.stepField] at h
         | succ i => simp [Sem.step, Sem.stepField] at h
@@ -357,13 +364,13 @@ theorem step_below_member (hcoh : ReadCoherent dm Γ P) (Ts U : TyS) (st : Step)
         simp only [Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, rfl⟩ := h
         refine ⟨.el0 Nat m, .plain TyM.nat, by simp [Sem.step, Sem.asNat, Sem.as], hs', by simp [Sem.whole], ⟨m, rfl⟩,
-          fun _ _ h => by cases h⟩
+          fun _ _ _ _ _ _ h => by cases h⟩
       | succ i => simp [Sem.step, Sem.stepField] at h
     | field g => simp [Sem.step] at h
 
 /-- The induction along the path, the meaning and the member followed at their own types. -/
 theorem follow_below_member_gen (hcoh : ReadCoherent dm Γ P) :
-    ∀ (ss : List Step) (Ts U : TyS) (s w x : Sem) (T' : TyS), TyIn P U.m → w.whole → MovedOf Γ s w →
+    ∀ (ss : List Step) (Ts U : TyS) (s w x : Sem) (T' : TyS), TyIn dm P U.m → w.whole → MovedOf Γ s w →
       w ∈ₛ[dm.read] U.m →
       (∀ k < ss.length, ∀ y V, Sem.follow dm Γ Ts s (ss.take k) = some (y, V) → y ≠ .proof) →
       Sem.follow dm Γ Ts s ss = some (x, T') →
@@ -392,7 +399,7 @@ theorem follow_below_member (dm : DataModel) (Γ : List IndDecl) (_hcov : ∀ d 
     (hw : w.whole) (hsw : DataModel.MovedOf Γ s w) (hm : w ∈ₛ[dm.read] T.m)
     (hnp : ∀ k < ss.length, ∀ y U, Sem.follow dm Γ T s (ss.take k) = some (y, U) → y ≠ .proof)
     (hf : Sem.follow dm Γ T s ss = some (x, T'))
-    (P : IndDecl → Rec → Prop) (hcoh : ReadCoherent dm Γ P) (hT : TyIn P T.m) :
+    (P : IndDecl → Rec → Prop) (hcoh : ReadCoherent dm Γ P) (hT : TyIn dm P T.m) :
     ∃ w' U, Sem.follow dm Γ T w ss = some (w', U) ∧ DataModel.MovedOf Γ x w' ∧ w' ∈ₛ[dm.read] U.m :=
   follow_below_member_gen hcoh ss T T s w x T' hT hw hsw hm hnp hf
 

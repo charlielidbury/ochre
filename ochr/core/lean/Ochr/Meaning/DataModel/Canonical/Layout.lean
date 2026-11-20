@@ -1,7 +1,7 @@
 import Ochr.Meaning.Data
 
 /-!
-# Prototype (task 3): records as path functions, and the universal signature
+# The canonical construction: reading a field type into a record (docs/34 §18)
 
 A record is a function of paths. An entry names what sits at a key, a data type's declaration
 (`.data d _`, the stored record unused) or a leaf's code, and NEVER holds a record: the record of the
@@ -19,46 +19,20 @@ So the carriers (`ucar`) and the types of records (`uTyR`) depend on nothing but
 earlier fields are projected to the constructor's index fields before the record is read
 (`FieldTyIdx` holds at every record, `uShape_idx`).
 
-Task 2a, here: a leaf's type is its code, always (`shapeTyP`), so a data code over a foreign carrier
-(a junk code of `Type₀`'s carrier) is an ordinary leaf.
+A leaf's type is its code, always (`shapeTyP`, every model's `shapeTy`), so a data code over a
+foreign carrier (a junk code of `Type₀`'s carrier) is an ordinary leaf.
 -/
 
-namespace Ochr.Meaning.DataModel.Exists.Proto
+namespace Ochr.Meaning.Canonical
 
 open Ochr Ochr.Meaning Ochr.Meaning.DataLib
 
-/-! ## Keys -/
+/-! The keys (`kindKey`, `contStep`, `paramKey`, `paramContStep`), `contRec`, `projIdx`, the
+universal signature `uShape`/`uSig` and `uShape_idx` are the library's (`DataLib/Universal.lean`,
+ported from here). -/
 
-def kindKey (c i : Nat) (es : List Small) : List RStep := [(c, i, es)]
-def contStep (c i : Nat) (es : List Small) : RStep := (c, i, es ++ [.proof])
-def paramContStep (j : Nat) : RStep := (j, 0, [.other, .other])
-
-/-- The record past a step. -/
-def contRec (r : Rec) (s : RStep) : Rec := fun q => r (s :: q)
-
-/-- The record a data entry stores (unused). -/
+/-- The record a data entry stored before the port (none now). -/
 def dummyRec : Rec := fun _ => .none
-
-/-- The earlier fields, read only at the constructor's index fields (`IndDecl.indexFields`). -/
-def projIdx (d : IndDecl) (c : Nat) (es : List Small) : List Small :=
-  es.zipIdx.map fun sk => if (d.indexFields c).contains sk.2 then sk.1 else .other
-
-/-! ## The universal signature -/
-
-/-- A field's shape, read off the record alone. -/
-def uShape (d : IndDecl) (r : Rec) (c i : Nat) (es : List Small) : Shape :=
-  match r (kindKey c i (projIdx d c es)) with
-  | .data d' _ => if d'.sort == 0 then .prf d' (contRec r (contStep c i (projIdx d c es)))
-      else .sub d' (contRec r (contStep c i (projIdx d c es)))
-  | .leaf B cd => .leaf B cd
-  | _ => .leaf PEmpty .err
-
-def uSig : Sig := ⟨uShape⟩
-
-/-- **`FieldTyIdx` by construction**: the shape reads the earlier fields only at index fields. -/
-theorem uShape_idx (d : IndDecl) (r : Rec) (c i : Nat) (es es' : List Small)
-    (h : projIdx d c es = projIdx d c es') : uShape d r c i es = uShape d r c i es' := by
-  unfold uShape; rw [h]
 
 /-- The carrier of `D` at a record: a function of the record alone. -/
 def ucar (d : IndDecl) (r : Rec) : Type := DataLib.car uSig d r
@@ -67,18 +41,19 @@ def ucar (d : IndDecl) (r : Rec) : Type := DataLib.car uSig d r
 def uTyR (d : IndDecl) (r : Rec) : TyM :=
   if d.sort == 0 then TyM.prop (Nonempty (ucar d r)) else .t0 (ucar d r) (.data d r (ucar d r))
 
-/-- A model on the universal signature: its records and parameter types are the program's. -/
-def uModel (recOf : IndDecl → List Sem → Rec) (paramTy : IndDecl → Nat → List Sem → TyM) : DataModel :=
-  { covers := fun _ => True, sig := uSig, recOf, paramTy }
+/-- Every model's types of data types are these (the signature is universal). -/
+theorem tyR_eq_uTyR (dm : DataModel) (d : IndDecl) (r : Rec) : dm.tyR d r = uTyR d r := rfl
 
-theorem uModel_tyR (R : IndDecl → List Sem → Rec) (P : IndDecl → Nat → List Sem → TyM) (d : IndDecl) (r : Rec) :
-    (uModel R P).tyR d r = uTyR d r := rfl
+theorem car_eq_ucar (dm : DataModel) (d : IndDecl) (r : Rec) : dm.car d r = ucar d r := rfl
 
-/-- **2a**: a shape's type, a leaf's being its code whatever the code. -/
+/-- A shape's type, for every model (`DataModel.shapeTy`, which reads no record function). -/
 def shapeTyP : Shape → TyM
   | .leaf B c => .t0 B c
   | .sub d r => if d.sort == 0 then TyM.err else uTyR d r
   | .prf d r => if d.sort == 0 then uTyR d r else TyM.err
+
+theorem shapeTy_eq_shapeTyP (dm : DataModel) (s : Shape) : dm.shapeTy s = shapeTyP s := by
+  cases s <;> rfl
 
 /-! ## Reading a type into a record: its kind and its continuation -/
 
@@ -133,9 +108,9 @@ def FTy.mean : FTy → TyM
 
 /-- What the record stores at the field's key. -/
 noncomputable def FTy.kind : FTy → Entry
-  | .data d _ => .data d dummyRec
+  | .data d _ => .data d
   | .ty T => match dataView T with
-    | some (d, _) => .data d dummyRec
+    | some (d, _) => .data d
     | none => match T with
       | .t0 B c => .leaf B c
       | _ => .none
@@ -176,4 +151,4 @@ theorem shapeTyP_uShape (d : IndDecl) (r : Rec) (c i : Nat) (es : List Small) (F
       have hs' : (d'.sort == 0) = false := by simpa using hs
       simp [hs', shapeTyP]
 
-end Ochr.Meaning.DataModel.Exists.Proto
+end Ochr.Meaning.Canonical

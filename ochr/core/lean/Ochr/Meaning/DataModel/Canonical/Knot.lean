@@ -1,7 +1,7 @@
-import Ochr.Meaning.DataModel.Exists.Proto.Layout
+import Ochr.Meaning.DataModel.Canonical.Layout
 
 /-!
-# Prototype: the knot, guarded by path length
+# The canonical construction: the knot, guarded by path length (docs/34 §18)
 
 A declaration's canonical record at parameters reads, at a field's key, the field's type (`fty`),
 which may hold the declaration's OWN records (a recursive field `D(ā)`, a nested one `List(D(ā))`,
@@ -16,7 +16,7 @@ parametric in its nestable parameters (`recK_agree`), which is what a later decl
 it uses.
 -/
 
-namespace Ochr.Meaning.DataModel.Exists.Proto
+namespace Ochr.Meaning.Canonical
 
 open Ochr Ochr.Meaning Ochr.Meaning.DataLib
 
@@ -320,4 +320,4 @@ theorem parAgree_one {N : Nat → Bool} (hN : N 0 = true) {n : Nat} (d : IndDecl
     exact .inr ⟨d, r, r', hd, rfl, rfl, h⟩
   | succ j => simp at hv
 
-end Ochr.Meaning.DataModel.Exists.Proto
+end Ochr.Meaning.Canonical

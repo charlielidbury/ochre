@@ -19,7 +19,7 @@ same construction without the equation.)
 
 namespace Ochr.Meaning.DataModel.Exists.Proto
 
-open Ochr Ochr.Meaning Ochr.Meaning.DataLib
+open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Canonical
 
 /-- Parameter lists that differ only at value parameters `V`, there with the same small reading
 and neither a type. -/

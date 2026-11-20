@@ -11,7 +11,7 @@ lives at `DD(DD(Nat))`'s record).
 
 namespace Ochr.Meaning.DataModel.Exists.Proto
 
-open Ochr Ochr.Meaning Ochr.Meaning.DataLib
+open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Canonical
 
 theorem dataView_nondata {B : Type} {c : Code0 B} (h : c.isData = false) : dataView (.t0 B c) = none := by
   unfold dataView
@@ -28,7 +28,7 @@ theorem dataView_nondata {B : Type} {c : Code0 B} (h : c.isData = false) : dataV
 theorem kind_nondata {B : Type} {c : Code0 B} (h : c.isData = false) : (FTy.ty (.t0 B c)).kind = .leaf B c := by
   simp [FTy.kind, dataView_nondata h]
 
-theorem kind_data (d : IndDecl) (r : Rec) (hd : d.sort ≠ 0) : (FTy.ty (uTyR d r)).kind = .data d dummyRec := by
+theorem kind_data (d : IndDecl) (r : Rec) (hd : d.sort ≠ 0) : (FTy.ty (uTyR d r)).kind = .data d := by
   simp [FTy.kind, dataView_uTyR d r hd]
 
 theorem cont_data (d : IndDecl) (r : Rec) (hd : d.sort ≠ 0) : (FTy.ty (uTyR d r)).cont = r := by
@@ -36,24 +36,18 @@ theorem cont_data (d : IndDecl) (r : Rec) (hd : d.sort ≠ 0) : (FTy.ty (uTyR d 
 
 /-- The shape at a key holding a data-sorted declaration: a `sub` at the continuation. -/
 theorem uShape_sub (d : IndDecl) (r : Rec) (c i : Nat) (es : List Small) (d' : IndDecl) (r' : Rec)
-    (hd : d'.sort ≠ 0) (hk : r (kindKey c i (projIdx d c es)) = .data d' dummyRec)
+    (hd : d'.sort ≠ 0) (hk : r (kindKey c i (projIdx d c es)) = .data d')
     (hc : contRec r (contStep c i (projIdx d c es)) = r') : uShape d r c i es = .sub d' r' := by
   have hs : (d'.sort == 0) = false := by simpa using hd
   simp only [uShape, hk, hs, Bool.false_eq_true, if_false, hc]
 
-theorem uShape_leaf (d : IndDecl) (r : Rec) (c i : Nat) (es : List Small) {B : Type} (cd : Code0 B)
-    (hk : r (kindKey c i (projIdx d c es)) = .leaf B cd) : uShape d r c i es = .leaf B cd := by
-  simp only [uShape, hk]
 
 /-! ## `Rose(Nat)` -/
 
 noncomputable def rR : Rec := recK roseK [.ty TyM.nat]
 noncomputable def rL : Rec := recK listK [.ty (uTyR roseD rR)]
 
-theorem projIdx_nil (d : IndDecl) (c : Nat) : projIdx d c [] = [] := rfl
 
-theorem projIdx_len (d : IndDecl) (c : Nat) (es : List Small) : (projIdx d c es).length = es.length := by
-  simp [projIdx]
 
 theorem rose_shape_a (es : List Small) (h : es = []) : uShape roseD rR 0 0 es = .leaf Nat .nat := by
   subst h

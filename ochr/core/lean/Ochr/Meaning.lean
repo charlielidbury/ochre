@@ -124,6 +124,8 @@ import Ochr.Meaning.Closure
 import Ochr.Meaning.ClosureStage
 import Ochr.Meaning.ApplyMem
 import Ochr.Meaning.DataModel.CtorMem
+import Ochr.Meaning.DataModel.Canonical.Knot
+import Ochr.Meaning.DataLib.Universal
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)

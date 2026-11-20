@@ -20,7 +20,7 @@ Shown on `Ev (n : Nat) : Prop := EvZ(h : Eq(Nat, n, 0)) | EvSS(m : Nat, h : Ev(m
 
 namespace Ochr.Meaning.DataModel.Exists.Proto
 
-open Ochr Ochr.Meaning Ochr.Meaning.DataLib
+open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Canonical
 
 /-- `Ev`, as the checker records it (fields `var 1 …` after the parameter `var 0`; the last field
 innermost). -/
