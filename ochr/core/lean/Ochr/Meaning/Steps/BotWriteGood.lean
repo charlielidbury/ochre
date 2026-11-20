@@ -500,6 +500,120 @@ theorem borrow_updAt_bot {steps : List Step} {v : Value} {m : Nat} {w : Value}
       obtain ⟨-, w₁, w₁', -, -, he⟩ := updAt_ind_inv h; cases he
     | _ => simp [Value.updAt] at h
 
+/-! ## Writing `⊥` over `⊥` (the reference's drop of a place already moved, docs/31 D52) -/
+
+/-- Writing a binding's own value back changes nothing. -/
+theorem setAtE_self_bind (env : Env) (f i : Nat) (hp : Pos.bind f i ∈ allPos env) :
+    Env.setAtE env (.bind f i) (valAt env (.bind f i)) = env := by
+  obtain ⟨fr, b, hf, hb⟩ := mem_allPos_bind env f i hp
+  have hv : valAt env (.bind f i) = b.val := by rw [valAt_bind_eq, hf]; simp [hb]
+  rw [hv]
+  simp only [Env.setAtE]
+  apply Array.ext_getElem?
+  intro j
+  rw [Array.getElem?_modify]
+  split
+  · rename_i h; subst h
+    rw [hf]
+    simp only [Option.map_some, Option.some.injEq]
+    have : fr.binds.modify i (fun x => { x with val := b.val }) = fr.binds := by
+      apply Array.ext_getElem?
+      intro k
+      rw [Array.getElem?_modify]
+      split
+      · rename_i h; subst h; rw [hb]; rfl
+      · rfl
+    rw [this]
+  · rfl
+
+/-- Writing `⊥` where `⊥` is changes nothing. -/
+theorem updAt_bot_self : ∀ (steps : List Step) (v : Value), v.follow steps = some .bot →
+    Value.updAt (fun _ => .bot) steps v = some v
+  | [], v, h => by simp only [Value.follow, Option.some.injEq] at h; subst h; simp [Value.updAt]
+  | st :: ss, v, h => by
+    cases v with
+    | gloan m w =>
+      rw [follow_gloan_cons] at h
+      simp only [Value.updAt, updAt_bot_self (st :: ss) w h, Option.map_some]
+    | borrow m w =>
+      cases st with
+      | deref =>
+        simp only [Value.follow, stepV, Option.bind_some] at h
+        simp only [Value.updAt, updAt_bot_self ss w h, Option.map_some]
+      | proj _ | field _ => simp [Value.follow, stepV] at h
+    | succ w =>
+      cases st with
+      | proj i =>
+        cases i with
+        | zero =>
+          simp only [Value.follow, stepV, Option.bind_some] at h
+          simp only [Value.updAt, updAt_bot_self ss w h, Option.map_some]
+        | succ _ => simp [Value.follow, stepV] at h
+      | deref | field _ => simp [Value.follow, stepV] at h
+    | ind ty c hh ps fs =>
+      cases st with
+      | deref => simp [Value.follow, stepV] at h
+      | proj i =>
+        cases c with
+        | succ _ => simp [Value.follow, stepV] at h
+        | zero =>
+          simp only [Value.follow, stepV] at h
+          obtain ⟨w, hw, hf⟩ := Option.bind_eq_some_iff.mp h
+          simp only [Value.updAt, hw, updAt_bot_self ss w hf, Option.map_some, Option.some.injEq]
+          obtain ⟨hlt, rfl⟩ := List.getElem?_eq_some_iff.mp hw
+          rw [List.set_getElem_self]
+      | field g =>
+        simp only [Value.follow, stepV] at h
+        split at h
+        · obtain ⟨w, hw, hf⟩ := Option.bind_eq_some_iff.mp h
+          rename_i hc
+          simp only [Value.updAt, hc, if_true, hw, updAt_bot_self ss w hf, Option.map_some, Option.some.injEq]
+          obtain ⟨hlt, rfl⟩ := List.getElem?_eq_some_iff.mp hw
+          rw [List.set_getElem_self]
+        · simp at h
+    | proof =>
+      exfalso
+      cases st with
+      | deref => simp [Value.follow, stepV] at h
+      | proj _ | field _ =>
+        simp only [Value.follow, stepV, Option.bind_some] at h
+        cases follow_proof ss _ h
+    | _ => simp [Value.follow, stepV] at h
+termination_by steps v => (steps.length, sizeOf v)
+
+/-- **No live borrow has a site at, over or under a `⊥`**: over it by (WF14); at or under it no site
+can be, since nothing along a site's own path is `⊥` (`site_not_bot`). -/
+theorem clear_of_bot {env : Env} {pos : Pos} {steps : List Step} (h14 : WF14 env)
+    (hbot : (valAt env pos).follow steps = some .bot) :
+    ∀ l, liveLoan env l = true → ∀ x ∈ Env.sitesOf env l, x.pos = pos → dataHit steps x.path = false := by
+  intro l hl x hx hxp
+  have hx' := hx
+  simp only [Env.sitesOf, List.mem_flatMap] at hx'
+  obtain ⟨p, -, hxv⟩ := hx'
+  have hpp : x.pos = p := (sitesOf_prefix l p [] _ x hxv).1
+  rw [hxp] at hpp; subst hpp
+  obtain ⟨ψ₀, hxψ, hnb⟩ := site_not_bot l pos [] _ x hxv
+  simp only [List.nil_append] at hxψ
+  cases e : dataHit steps x.path
+  · rfl
+  · exfalso
+    simp only [dataHit, Bool.or_eq_true, List.isPrefixOf_iff_prefix] at e
+    rcases e with e | e
+    · by_cases heq : pathKey x.path = pathKey steps
+      · exact hnb steps (by rw [← hxψ, heq]; exact List.prefix_refl _) hbot
+      · obtain ⟨t, ht⟩ := id e
+        have hlt : x.path.length < steps.length := by
+          have h1 := congrArg List.length ht
+          simp only [pathKey, List.length_append, List.length_map] at h1
+          rcases t with _ | ⟨a, t⟩
+          · simp at ht; exact absurd ht heq
+          · simp at h1; omega
+        apply h14 pos steps hbot l hl x hx hxp x.path.length hlt
+        have hp := List.prefix_iff_eq_take.mp e
+        simp only [pathKey, List.length_map] at hp
+        rw [pathKey, pathKey, List.map_take]; exact hp
+    · exact hnb steps (by rw [← hxψ]; exact e) hbot
+
 /-! ## The assembly -/
 
 section
