@@ -558,11 +558,11 @@ theorem dropAt_below (K : RunCtx) (φ : Future) (q : Place) (pos : Pos) (steps :
     (hd : ∀ st ∈ steps, st = .deref) : Below (dropAt K φ q pos steps s).toMean s.toMean := by
   unfold dropAt
   split
-  all_goals first
-    | exact Below.refl _
-    | (split
-       · exact SState.endLabel_below _ _
-       · split
+  · exact SState.endLabel_below _ _
+  · split
+    all_goals first
+      | exact Below.refl _
+      | (split
          · exact Below.refl _
          · exact (setAt_derefs_below K _ pos _ hd).trans (SState.access_below _ _ _))
 
@@ -1135,11 +1135,11 @@ theorem shapeSub_dropAt (K : RunCtx) (φ : Future) (q : Place) (pos : Pos) (step
     SState.ShapeSub (dropAt K φ q pos steps s) s := by
   unfold dropAt
   split
-  all_goals first
-    | exact SState.ShapeSub.refl _
-    | (split
-       · exact SState.shapeSub_endLabel _ _
-       · split
+  · exact SState.shapeSub_endLabel _ _
+  · split
+    all_goals first
+      | exact SState.ShapeSub.refl _
+      | (split
          · exact SState.ShapeSub.refl _
          · exact (SState.shapeSub_setAt _ pos _).trans (SState.shapeSub_access _ _ _))
 
@@ -1575,11 +1575,11 @@ theorem joinDrop_readsBelow (K : RunCtx) (φ : Future) (entry : List Place) (t :
       generalize accessLentPrefix pos steps s = s₁ at h₁
       unfold dropAt
       split
-      all_goals first
-        | exact h₁
-        | (split
-           · exact SState.readsBelow_endLabel h₁ _
-           · split
+      · exact SState.readsBelow_endLabel h₁ _
+      · split
+        all_goals first
+          | exact h₁
+          | (split
              · exact h₁
              · refine SState.readsBelow_setAt ?_ pos _ fun l hl => ?_
                · exact SState.readsBelow_access h₁ pos _

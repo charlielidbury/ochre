@@ -480,15 +480,18 @@ noncomputable def accessLentPrefix (pos : Pos) (steps : List Step) (s : SState) 
   | some ψ => s.access pos (dataHit ψ)
   | none => s
 
-/-- `Machine.dropAtJoin` of one place, at `(pos, steps)`: missing, moved or a proof, nothing; a
-borrow at a root, its end; a copy, nothing; otherwise [Access] and `moved`. -/
+/-- `Machine.dropAtJoin` of one place, at `(pos, steps)`: a borrow at a root, its end; missing,
+moved or a proof, nothing; a copy, nothing; otherwise [Access] and `moved`. The holder is tested
+first, by the shape, as the checker tests its stored value: a holder's meaning is its content's,
+which reads `moved` when the content was moved out through the borrow (D53 (h)), and the checker
+ends that borrow too (docs/31 D42; it was tested second, after the meaning). -/
 noncomputable def dropAt (q : Place) (pos : Pos) (steps : List Step) (s : SState) : SState :=
-  match Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) steps with
-  | some (.proof, _) | some (.moved, _) | none => s
-  | some _ =>
-    match steps, s.shape pos with
-    | [], some l => s.endLabel l
-    | _, _ =>
+  match steps, s.shape pos with
+  | [], some l => s.endLabel l
+  | _, _ =>
+    match Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) steps with
+    | some (.proof, _) | some (.moved, _) | none => s
+    | some _ =>
       if K.D.copy (K.D.placeDecl (scopeOf s) q) then s else
       let s := s.access pos (dataHit steps)
       s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => .moved) steps (s.valAt pos φ')).getD .err

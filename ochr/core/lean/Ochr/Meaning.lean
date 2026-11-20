@@ -78,6 +78,7 @@ import Ochr.Meaning.Regress.OneCtorEntry
 import Ochr.Meaning.Regress.TwoFills
 import Ochr.Meaning.Regress.ReRootExists
 import Ochr.Meaning.Regress.UnrunArmPlace
+import Ochr.Meaning.Regress.HolderMoved
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)

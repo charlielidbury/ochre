@@ -197,11 +197,11 @@ theorem accessLentPrefix_envLe (pos : Pos) (steps : List Step) (s : SState) : En
 theorem dropAt_envLe (q : Place) (pos : Pos) (steps : List Step) (s : SState) : EnvLe s (dropAt K φ q pos steps s) := by
   unfold dropAt
   split
-  all_goals first
-    | exact EnvLe.refl s
-    | (split
-       · exact envLe_endLabel _ _
-       · split
+  · exact envLe_endLabel _ _
+  · split
+    all_goals first
+      | exact EnvLe.refl s
+      | (split
          · exact EnvLe.refl s
          · exact (envLe_access s pos _).trans (envLe_setAt _ _ _))
 
