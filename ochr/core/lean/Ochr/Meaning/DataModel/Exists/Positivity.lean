@@ -34,6 +34,9 @@ parameter's argument (it cannot mention `D` anyway).
 
 ## The battery
 
+* `SecondHole` below (the D107 agent's, independent of the first: the position a self occurrence
+  gives a parameter was ignored when judging an EARLIER declaration's parameter nestable): accepted
+  today with a proof of `False`; excluded by the greatest fixed point.
 * `Curry` (`ConsistencyCE.lean`), `Chain`, `TyFn`, `PropRoute` below: accepted today, each with a
   closed proof of `False`, and no set model (`X ≅ (X → ⊥) × inhabited`, so `X` is inhabited iff it
   is empty). They go through a self occurrence `Q(Q(A, …), …)` at a parameter `A` that `Q` passes,
@@ -143,6 +146,36 @@ ochr PropRoute {
 
 #guard boomAccepted PropRoute.decls
 
+-- The second hole (found by the D107 agent; independent of the first): nestability of an already
+-- declared inductive ignored where its own self occurrence puts a parameter. `E` passes `B` to `A`'s
+-- position (`E(B, A, 1)`), and `A` goes to the type function `Neg`, so under the greatest fixed
+-- point `B ∉ N(E)` (it occurs only at `E`'s parameter `A`, and `A ∉ N(E)`); `Bad` nests itself at
+-- `B` and is rejected. Today `B` was judged nestable: `Bad ≅ E(Unit, Bad, 0) ≅ E(Bad, Unit, 1) ≅
+-- (Bad → Void)`.
+ochr SecondHole {
+  inductive Void : Type
+  def VF (v : Void) : False := (match v { })
+  def Neg (X : Type) (n : Nat) : Type := (match n { Z => Void, S(k) => (Π(x : X). Void) })
+  inductive E (A : Type) (B : Type) (n : Nat) := MkE(z : E(B, A, 1), e : Eq(Nat, n, 0)) | StopE(f : Neg(A, n))
+  inductive Bad := MkBad(e : E(Unit, Bad, 0))
+  def Lem (g : Π(x : Bad). Void) : False :=
+    VF(g(MkBad(MkE[Unit, Bad, 0](StopE[Bad, Unit, 1](g), refl))))
+  def Delta (x : Bad) : Void := (
+    match x {
+      MkBad(e) => match e {
+        MkE(z, h) => match z {
+          MkE(z2, h2) => match h2 { },
+          StopE(f) => f(MkBad(MkE[Unit, Bad, 0](StopE[Bad, Unit, 1](f), h))),
+        },
+        StopE(f) => match f { },
+      },
+    }
+  )
+  def Boom : False := Lem(Delta)
+}
+
+#guard boomAccepted SecondHole.decls
+
 -- Accepted today, modelled by the construction, and accepted under the condition.
 ochr MustStay uses Nats, Lists, Bools {
   inductive Duo (A : Type) (B : Type) := MkDuo(fst : A, snd : B)
@@ -166,6 +199,10 @@ ochr MustStay uses Nats, Lists, Bools {
   -- a type function at a parameter that is NOT nested (so not affected by the condition)
   def FBB (X : Type) (b : Bool) : Type := (match b { true => (Π(x : X). Nat), false => Unit })
   inductive FBox (A : Type) (b : Bool) := MkFBox(y : FBB(A, b))
+  -- the declaration at a type parameter that types a value parameter whose argument is a value of
+  -- the declaration (D107's question 2; `Proto/ValueParams.lean` models the form with an equation)
+  inductive G2 (A : Type) (a : A) := MkG2(x : A)
+  inductive T2 := Leaf2 | Node2(t : T2, g : G2(T2, t))
 }
 
 -- Rejected today, and to stay rejected.

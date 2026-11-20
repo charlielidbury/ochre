@@ -16,6 +16,7 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
   - `Hard.lean`: `List`, `Box`, `Duo`, `Rose`, `DD`, `RN`, `BB`, `NN`, `RP`, `HN` as knot instances (guardedness proved for each).
   - `Examples.lean`: shapes read off canonical records, and memberships (`rose_example`: a rose tree with a nested forest; `dd_example`: `DNode(DLeaf) : DD(Nat)`).
   - `PropSorted.lean`: `Prop`-sorted declarations through their truth predicate (impredicative least fixed point), no knot: `Ev`, `ev_mem_iff`, `ev_tyR` (`uTyR Ev (recK evK [n]) = prop (evT [n])`).
+  - `ValueParams.lean`: a value parameter whose argument is a value of the declaration being defined (`G1 (A) (a : A) := MkG1(x : A, e : Eq(A, x, a))`, `T1 := Leaf1 | Node1(t : T1, g : G1(T1, t))`): records read value parameters only through small readings (`recK_small`, the generic `smallOnly`), so `T1`'s knot stays guarded and `g`'s type at the actual `t` is the canonical one (`t1_g_faithful`).
   - `Statement.lean`: faithfulness restated (2b length, 2c `fieldTele`'s readings: `teleFrameR`, `paramDecls`; 2d conditional): `FieldsFaithfulR`, `ParamsFaithfulR`, `CtxFaithfulR`.
 - `Probes.lean`: checker verdicts asserted by the build: `DMXFrame` (counterexample 3's programs), `DMXShapes` (the shapes a construction must cover: `DD(DD(A))`, non-uniform nesting `RN`, `BB`, nesting through two declarations `RP`, `NN`, recursive `Prop` field `Ev`, a type function returning data `TF`).
 
@@ -42,6 +43,8 @@ Positivity fix: D107 (checker lane, `positivity1`), input in `Positivity.lean`. 
 
 - `Prop`-sorted declarations need their truth predicates first: `D3 (n) : Prop := D3Z | D3S(w : PB2(D3(n)))` with `PB2 (P : Prop) := MkPB2(x : P)` is accepted, and the run's type of `w` is a DATA type whose record holds `D3`'s own proposition as an opaque leaf; a leaf is fixed before the carriers, so it cannot be read off `D3`'s carrier. Defining the predicate impredicatively first (least predicate closed under the constructors) and putting it in the leaves removes the knot for `Prop`-sorted declarations altogether; `prop (Nonempty car) = prop predicate` by `propext` (`ev_tyR`). Monotonicity of the one-step operator is what positivity gives.
 - The knot needs guardedness at RELATED parameters, not only related records: `DD(DD(A))` passes the declaration's own record inside a parameter.
+
+- Decisions: `exists_dataModel` will name `chainDecisions fuel` (fuel-free, classical; `origin/spine-lead` `DecisionsFF.lean`). Still a function of the state: the canonical record comes from field-type runs under ONE table, while `DataFaithful` asks every state extending the program's Σ, so the construction needs the decisions on a declaration's field-type terms not to change when Σ grows past it (a machine fact, owed). `StatementCE`'s lift used `rfl` on `checkerDecisions` at fixed fuel; under `chainDecisions` those facts need `FuelAgree` for the one decision (historical: the statement is being replaced).
 
 ## Status and next steps
 
