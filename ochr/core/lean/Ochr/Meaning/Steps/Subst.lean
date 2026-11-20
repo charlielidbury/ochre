@@ -38,6 +38,11 @@ reads the fixed future; stored types are untouched (`types = false`: no type hol
 theorem substEnv_loan_step (fuel : Nat) (ih : StepsIHBelow fuel) : substEnv_loan_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
+/-- `substEnv` of a sealed program by a value that means it (the slice's field, main's item 3): the
+substitution lemma for a sealed program replaced, as `substEnv_abs_step`'s for an unknown. Open. -/
+theorem substEnv_neutral_step (fuel : Nat) (ih : StepsIHBelow fuel) : substEnv_neutral_step_stmt K ρ φ (fuel + 1) := by
+  sorry
+
 /-- `substEnv` of an abstract value by a refinement it means (`types = true`: stored types, Δ
 and the goal are refined too): exact, and `Good` is kept. -/
 theorem substEnv_abs_step (fuel : Nat) (ih : StepsIHBelow fuel) : substEnv_abs_step_stmt K ρ φ (fuel + 1) := by
