@@ -1,0 +1,179 @@
+import Ochr.Meaning.Data
+
+/-!
+# Prototype (task 3): records as path functions, and the universal signature
+
+A record is a function of paths. An entry names what sits at a key, a data type's declaration
+(`.data d _`, the stored record unused) or a leaf's code, and NEVER holds a record: the record of the
+data type at a key is the CONTINUATION of the path past that key. Keys (all `RStep`s, told apart
+by the length of their list of small readings):
+* `[(c, i, es)]` with `es.length = i`: what field `i` of constructor `c` is, after the earlier
+  fields read small (`kindKey`);
+* `(c, i, es ++ [.proof]) :: q`: the record of that field's data type, at `q` (`contStep`);
+* `[(j, 0, [.other])]` (`paramKey j`, as today) and `(j, 0, [.other, .other]) :: q`
+  (`paramContStep`): parameter `j`'s entry and the record of its data type.
+
+The signature is then ONE function of the record (`uShape`), with no program in it: a data entry
+gives a `sub` (a `prf` for a `Prop`-sorted declaration) at the continuation, a leaf entry its leaf.
+So the carriers (`ucar`) and the types of records (`uTyR`) depend on nothing but the record. The
+earlier fields are projected to the constructor's index fields before the record is read
+(`FieldTyIdx` holds at every record, `uShape_idx`).
+
+Task 2a, here: a leaf's type is its code, always (`shapeTyP`), so a data code over a foreign carrier
+(a junk code of `Type₀`'s carrier) is an ordinary leaf.
+-/
+
+namespace Ochr.Meaning.DataModel.Exists.Proto
+
+open Ochr Ochr.Meaning Ochr.Meaning.DataLib
+
+/-! ## Keys -/
+
+def kindKey (c i : Nat) (es : List Small) : List RStep := [(c, i, es)]
+def contStep (c i : Nat) (es : List Small) : RStep := (c, i, es ++ [.proof])
+def paramContStep (j : Nat) : RStep := (j, 0, [.other, .other])
+
+/-- The record past a step. -/
+def contRec (r : Rec) (s : RStep) : Rec := fun q => r (s :: q)
+
+/-- The record a data entry stores (unused). -/
+def dummyRec : Rec := fun _ => .none
+
+/-- The earlier fields, read only at the constructor's index fields (`IndDecl.indexFields`). -/
+def projIdx (d : IndDecl) (c : Nat) (es : List Small) : List Small :=
+  es.zipIdx.map fun sk => if (d.indexFields c).contains sk.2 then sk.1 else .other
+
+/-! ## The universal signature -/
+
+/-- A field's shape, read off the record alone. -/
+def uShape (d : IndDecl) (r : Rec) (c i : Nat) (es : List Small) : Shape :=
+  match r (kindKey c i (projIdx d c es)) with
+  | .data d' _ => if d'.sort == 0 then .prf d' (contRec r (contStep c i (projIdx d c es)))
+      else .sub d' (contRec r (contStep c i (projIdx d c es)))
+  | .leaf B cd => .leaf B cd
+  | _ => .leaf PEmpty .err
+
+def uSig : Sig := ⟨uShape⟩
+
+/-- **`FieldTyIdx` by construction**: the shape reads the earlier fields only at index fields. -/
+theorem uShape_idx (d : IndDecl) (r : Rec) (c i : Nat) (es es' : List Small)
+    (h : projIdx d c es = projIdx d c es') : uShape d r c i es = uShape d r c i es' := by
+  unfold uShape; rw [h]
+
+/-- The carrier of `D` at a record: a function of the record alone. -/
+def ucar (d : IndDecl) (r : Rec) : Type := DataLib.car uSig d r
+
+/-- A data type's code at a record. -/
+def uTyR (d : IndDecl) (r : Rec) : TyM :=
+  if d.sort == 0 then TyM.prop (Nonempty (ucar d r)) else .t0 (ucar d r) (.data d r (ucar d r))
+
+/-- A model on the universal signature: its records and parameter types are the program's. -/
+def uModel (recOf : IndDecl → List Sem → Rec) (paramTy : IndDecl → Nat → List Sem → TyM) : DataModel :=
+  { covers := fun _ => True, sig := uSig, recOf, paramTy }
+
+theorem uModel_tyR (R : IndDecl → List Sem → Rec) (P : IndDecl → Nat → List Sem → TyM) (d : IndDecl) (r : Rec) :
+    (uModel R P).tyR d r = uTyR d r := rfl
+
+/-- **2a**: a shape's type, a leaf's being its code whatever the code. -/
+def shapeTyP : Shape → TyM
+  | .leaf B c => .t0 B c
+  | .sub d r => if d.sort == 0 then TyM.err else uTyR d r
+  | .prf d r => if d.sort == 0 then uTyR d r else TyM.err
+
+/-! ## Reading a type into a record: its kind and its continuation -/
+
+theorem data_heq_inj {A A' : Type} {d d' : IndDecl} {r r' : Rec} (hA : A = A')
+    (h : HEq (Code0.data d r A) (Code0.data d' r' A')) : d = d' ∧ r = r' := by
+  subst hA; cases h; exact ⟨rfl, rfl⟩
+
+theorem uTyR_inj {d d' : IndDecl} {r r' : Rec} (hs : d.sort ≠ 0) (hs' : d'.sort ≠ 0)
+    (h : uTyR d r = uTyR d' r') : d = d' ∧ r = r' := by
+  have e1 : (d.sort == 0) = false := by simpa using hs
+  have e2 : (d'.sort == 0) = false := by simpa using hs'
+  simp only [uTyR, e1, e2, Bool.false_eq_true, if_false] at h
+  obtain ⟨hA, hh⟩ := TyM.t0_inj h
+  exact data_heq_inj hA hh
+
+open Classical in
+/-- The declaration and record of a type that is a data type's code at a record (data-sorted,
+the model's carrier): a junk code, a proposition, a number type are not. -/
+noncomputable def dataView (T : TyM) : Option (IndDecl × Rec) :=
+  if h : ∃ p : IndDecl × Rec, p.1.sort ≠ 0 ∧ T = uTyR p.1 p.2 then some h.choose else none
+
+theorem dataView_uTyR (d : IndDecl) (r : Rec) (hs : d.sort ≠ 0) : dataView (uTyR d r) = some (d, r) := by
+  have h : ∃ p : IndDecl × Rec, p.1.sort ≠ 0 ∧ uTyR d r = uTyR p.1 p.2 := ⟨(d, r), hs, rfl⟩
+  unfold dataView
+  rw [dif_pos h]
+  obtain ⟨hs', he⟩ := h.choose_spec
+  obtain ⟨h1, h2⟩ := uTyR_inj hs hs' he
+  congr 1
+  exact Prod.ext h1.symm h2.symm
+
+theorem dataView_some {T : TyM} {d : IndDecl} {r : Rec} (h : dataView T = some (d, r)) :
+    d.sort ≠ 0 ∧ T = uTyR d r := by
+  unfold dataView at h
+  split at h
+  · rename_i hx
+    have := hx.choose_spec
+    simp only [Option.some.injEq] at h
+    rw [h] at this
+    exact this
+  · cases h
+
+/-- **A field's type as the construction reads it**: a declaration at a record (any sort; the
+knot's own occurrences and the formers it nests in come this way, read off the field type's
+syntax), or a type (a parameter's value, a type function's result, an equation, `Nat`). -/
+inductive FTy : Type 3
+  | data (d : IndDecl) (r : Rec)
+  | ty (T : TyM)
+
+def FTy.mean : FTy → TyM
+  | .data d r => uTyR d r
+  | .ty T => T
+
+/-- What the record stores at the field's key. -/
+noncomputable def FTy.kind : FTy → Entry
+  | .data d _ => .data d dummyRec
+  | .ty T => match dataView T with
+    | some (d, _) => .data d dummyRec
+    | none => match T with
+      | .t0 B c => .leaf B c
+      | _ => .none
+
+/-- What the record holds past the field's key: the field's data type's record. -/
+noncomputable def FTy.cont : FTy → Rec
+  | .data _ r => r
+  | .ty T => match dataView T with
+    | some (_, r) => r
+    | none => dummyRec
+
+/-- A field type of carrier level 0 (every first-order field type is). -/
+def FTy.Lvl0 : FTy → Prop
+  | .data _ _ => True
+  | .ty T => ∃ B c, T = .t0 B c
+
+/-- **The core of faithfulness**: a record holding a field type's kind at the field's key and its
+continuation past it means that type there, whatever kind of type it is (a data type of either
+sort, a junk code, a proposition, `Nat`, a function type). -/
+theorem shapeTyP_uShape (d : IndDecl) (r : Rec) (c i : Nat) (es : List Small) (F : FTy) (hF : F.Lvl0)
+    (hk : r (kindKey c i (projIdx d c es)) = F.kind)
+    (hc : contRec r (contStep c i (projIdx d c es)) = F.cont) :
+    shapeTyP (uShape d r c i es) = F.mean := by
+  unfold uShape
+  rw [hk, hc]
+  cases F with
+  | data d' r' =>
+    simp only [FTy.kind, FTy.cont, FTy.mean]
+    by_cases hs : (d'.sort == 0) = true
+    · simp [hs, shapeTyP]
+    · simp [hs, shapeTyP]
+  | ty T =>
+    simp only [FTy.kind, FTy.cont, FTy.mean]
+    rcases hv : dataView T with _ | ⟨d', r'⟩
+    · obtain ⟨B, cd, rfl⟩ := hF
+      simp [shapeTyP]
+    · obtain ⟨hs, rfl⟩ := dataView_some hv
+      have hs' : (d'.sort == 0) = false := by simpa using hs
+      simp [hs', shapeTyP]
+
+end Ochr.Meaning.DataModel.Exists.Proto
