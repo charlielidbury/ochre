@@ -1111,7 +1111,7 @@ reference's state `bindR`): the argument's consumed holder, temporary `0`, reads
 `moved` where the reborrow's final content decodes and `err` where it does not, so it depends on the
 reborrow `1`, which has no site there (its one site is the fill at `y`). `callOf` fixes EVERY position
 through the decoding (`s.mapVals`, `| none => .err`), not only the lent places. -/
-theorem depWithinSites_fails (TU : TyS) (hTU : TU.label = some 1) :
+theorem depWithinSites_fails (dm : DataModel) (TU : TyS) (hTU : TU.label = some 1) :
     let s := SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved)
     s.Live 1 ∧ s.reached (.temp 0 0) (dataHit []) 1 = false ∧
       s.valAt (.temp 0 0) (fun _ => .el0 Nat 0) = .moved ∧
