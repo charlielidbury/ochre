@@ -789,13 +789,44 @@ def substV_loan_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : N
     (bh : Nat) (h : Runs (Ochr.substV fuel (.loan l) w v) st bh v' st'),
     meanV K ρ φ hint v' ⊑ meanV K ρ (φ.upd l (meanV K ρ φ (.plain .err) w)) hint v ∧ st'.core = st.core
 
-/-- `substV` of an abstract value by a refinement `r` it means: exact. -/
+/-- **What a private computation leaves** (`inStatement`, `privately`: `restoreKeep`, D37): Ω, the
+goal, the path condition and the declarations are the snapshot's; the tables of unknowns and labels
+only grow, the old unknowns keeping their types. With `ExtOk`, an extension under which the state
+after meets `CtxOk` and is good, it is the conclusion of every private computation; the relation to
+the reference state, which a private computation does not touch, follows (`Rel.kept`).
+As first stated `mkEqM` and `evalType` kept the state's core unchanged and the conversions said
+nothing of the state after: false, and incomplete. A conversion of two functions or Π-types runs
+their generic calls on a private copy, whose new unknowns' types `restoreKeep` keeps, so the table
+grows (`Regress/EqJ`: `conv`, `mkEqM` and `evalType` at `F` and `G`); and `J` runs its transported
+term from the state its conversion leaves (docs/31 D75). -/
+def KeptAfter (st st' : MState) : Prop :=
+  st'.env = st.env ∧ st'.goal = st.goal ∧ st'.refs = st.refs ∧ st'.inds = st.inds ∧
+    st.absTy.size ≤ st'.absTy.size ∧ (∀ σ, σ < st.absTy.size → st'.absTy[σ]? = st.absTy[σ]?) ∧
+    st.nextLoan ≤ st'.nextLoan
+
+/-- An extension of the assignment, `Δ` and the decisions at the unknowns created between `st` and
+`st'` (D71's rule) under which `st'` meets `CtxOk` and is good. -/
+def ExtOk (st st' : MState) (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) : Prop :=
+  (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
+    CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st'
+
+/-- What a refinement `σ := r` must be for its substitution to keep every meaning (docs/31 D76): it
+means what the assignment gives `σ`, at every future and every hint (it holds no loan and records
+its parameters), it names typed unknowns other than `σ`, and `σ` is typed. -/
+def RefineOk (st : MState) (σ : Nat) (r : Value) : Prop :=
+  (∀ ψ H, ρ σ = meanV K ρ ψ H r) ∧ σ < st.absTy.size ∧ (∀ τ, r.hasAbs τ = true → τ < st.absTy.size) ∧
+    r.hasAbs σ = false ∧ ∀ l, r.hasLoan l = false
+
+/-- `substV` of an abstract value by a refinement it means: the value means the same, at every
+future and hint, under an extension at the unknowns its re-runs keep (a changed sealed program
+re-runs, `nfSealed`, and an `Eq` is rebuilt, `mkEqM`: both private computations, D75). As first
+stated, `⊑` and the core unchanged: the second false, since a re-run keeps its unknowns' types. -/
 def substV_abs_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (σ : Nat) (r v v' : Value) (hint : TyS)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hσ : ρ σ = meanV K ρ φ (.plain (MState.absTyM K.dm K.M K.Γ ρ st σ)) r)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hr : RefineOk K ρ st σ r)
     (bh : Nat) (h : Runs (Ochr.substV fuel (.abs σ) r v) st bh v' st'),
-    (∀ φ, meanV K ρ φ hint v' ⊑ meanV K ρ φ hint v) ∧ st'.core = st.core
+    KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D' ∧
+      ∀ ψ, meanV { K with Δ := Δ', D := D' } ρ' ψ hint v' = meanV K ρ ψ hint v
 
 /-- `substEnv` of a loan (the state-wide half of [End] and of [Close]'s fills): every position
 reads the fixed future; stored types are untouched (`types = false`: no type holds a loan). -/
@@ -807,15 +838,32 @@ def substEnv_loan_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel :
         (MState.mean K.dm K.M K.Γ ρ st).val (φ.upd l (meanV K ρ φ (.plain .err) w)) p) ∧
     (∀ p, Env.shape st'.env p = Env.shape st.env p)
 
-/-- `substEnv` of an abstract value by a refinement it means (`types = true`: stored types, Δ
-and the goal are refined too): exact, and `Good` is kept. -/
+/-- What a substitution over the whole state leaves: which positions exist and which hold borrows
+(Ω's shape) are the snapshot's, so are the goal's presence and the declarations; the tables only
+grow. (The values, stored types, goal and table entries are rewritten; what they MEAN is kept, which
+the relation and `ExtOk` say.) -/
+def SubstShape (st st' : MState) : Prop :=
+  (∀ p, Env.shape st'.env p = Env.shape st.env p) ∧ allPos st'.env = allPos st.env ∧ st'.inds = st.inds ∧
+    st.absTy.size ≤ st'.absTy.size ∧ st.nextLoan ≤ st'.nextLoan
+
+/-- **Replacing an unknown by what a refinement says it is keeps every meaning** (`substEnv` of
+`.abs σ` by `r`, `types = true`: Ω, the stored types, the table and the goal; docs/31 D76): the
+counterpart for unknowns of the substitution lemma for borrows. From a related state, under an
+assignment at which the refinement holds (`RefineOk`), the state after is related to the SAME
+reference state with the same renaming (the reference does not split: every position means what
+it meant), and is good and meets `CtxOk` under an extension at the unknowns the re-runs keep. A
+changed sealed program re-runs (`nfSealed`): a loan-free one may compute (`Regress/SplitSubst`,
+`Pred2(σ)` at `σ := S(σ₁)` is `σ₁`), one holding a hole stays sealed with its text substituted
+(D97); a type is rebuilt (`Eq(…, G, Choose(σ))` at `σ := S(σ₃)` converts `G` and `F`, which keeps an
+unknown); a generalisation record whose program names `σ` is left as it is, and still holds. As
+first stated: `Below` from the checker state's image, the context fixed. -/
 def substEnv_abs_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (σ : Nat) (r : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hσ : ρ σ = meanV K ρ φ (.plain (MState.absTyM K.dm K.M K.Γ ρ st σ)) r)
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) (hr : RefineOk K ρ st σ r)
     (bh : Nat) (h : Runs (Ochr.substEnv fuel (.abs σ) r true) st bh () st'),
-    Below (MState.mean K.dm K.M K.Γ ρ st') (MState.mean K.dm K.M K.Γ ρ st) ∧
-    Good K.dm K.M K.Γ ρ st'
+    SubstShape st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions),
+      ExtOk K ρ st st' ρ' Δ' D' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π st' s
 
 /-- **[Seal]: a re-run of a sealed program means the sealed program** (`nfSealed`: its run from
 the empty state, kept where it is stuck), EXACTLY (since D29 no borrow ends early in a run, so the
@@ -850,44 +898,29 @@ def canonNeutral_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.canonNeutral v) st bh v' st'),
     (∀ φ, meanV K ρ φ hint v' = meanV K ρ φ hint v) ∧ st'.core = st.core
 
-/-- `renormAll`: re-running every sealed program of the state keeps every meaning. -/
+/-- `renormAll` (after a generalised unknown is refined): re-running every sealed program of the
+state keeps every meaning, in the simulation form of `substEnv_abs_step_stmt` (the reference does
+nothing). As first stated: `Below` from the checker state's image, the context fixed. -/
 def renormAll_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.renormAll fuel) st bh () st'),
-    Below (MState.mean K.dm K.M K.Γ ρ st') (MState.mean K.dm K.M K.Γ ρ st) ∧
-    Good K.dm K.M K.Γ ρ st'
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (bh : Nat) (h : Runs (Ochr.renormAll fuel) st bh () st'),
+    SubstShape st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions),
+      ExtOk K ρ st st' ρ' Δ' D' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π st' s
 
-/-- [Split]'s refinement `σ := r` (`refine`): under an assignment that gives `σ` the meaning of
-`r` (the arm the assignment selects, with its fields assigned), the substitution is exact and
-`Good` is kept, the record in `refs` included (it is the path condition the assignment meets). -/
+/-- [Split]'s refinement `σ := r` (`refine`: the substitution, the path condition recorded, the
+re-normalisation when `σ` is a generalisation's), in the simulation form of `substEnv_abs_step_stmt`:
+under an assignment that gives `σ` the meaning of `r` (the arm the assignment selects, with its
+fields assigned) every meaning is kept, and the record is the path condition the assignment meets.
+Assembled in `Steps/SplitAsm.lean`. As first stated: `Below` from the checker state's image. -/
 def refine_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (σ : Nat) (r : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hσ : ρ σ = meanV K ρ φ (.plain (MState.absTyM K.dm K.M K.Γ ρ st σ)) r)
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) (hr : RefineOk K ρ st σ r)
     (bh : Nat) (h : Runs (Ochr.refine fuel σ r) st bh () st'),
-    Below (MState.mean K.dm K.M K.Γ ρ st') (MState.mean K.dm K.M K.Γ ρ st) ∧
-    Good K.dm K.M K.Γ ρ st'
-
-/-- **What a private computation leaves** (`inStatement`, `privately`: `restoreKeep`, D37): Ω, the
-goal, the path condition and the declarations are the snapshot's; the tables of unknowns and labels
-only grow, the old unknowns keeping their types. With `ExtOk`, an extension under which the state
-after meets `CtxOk` and is good, it is the conclusion of every private computation; the relation to
-the reference state, which a private computation does not touch, follows (`Rel.kept`).
-As first stated `mkEqM` and `evalType` kept the state's core unchanged and the conversions said
-nothing of the state after: false, and incomplete. A conversion of two functions or Π-types runs
-their generic calls on a private copy, whose new unknowns' types `restoreKeep` keeps, so the table
-grows (`Regress/EqJ`: `conv`, `mkEqM` and `evalType` at `F` and `G`); and `J` runs its transported
-term from the state its conversion leaves (docs/31 D75). -/
-def KeptAfter (st st' : MState) : Prop :=
-  st'.env = st.env ∧ st'.goal = st.goal ∧ st'.refs = st.refs ∧ st'.inds = st.inds ∧
-    st.absTy.size ≤ st'.absTy.size ∧ (∀ σ, σ < st.absTy.size → st'.absTy[σ]? = st.absTy[σ]?) ∧
-    st.nextLoan ≤ st'.nextLoan
-
-/-- An extension of the assignment, `Δ` and the decisions at the unknowns created between `st` and
-`st'` (D71's rule) under which `st'` meets `CtxOk` and is good. -/
-def ExtOk (st st' : MState) (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) : Prop :=
-  (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
-    CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st'
+    SubstShape st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions),
+      ExtOk K ρ st st' ρ' Δ' D' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π st' s
 
 /-- `Eq` computes soundly: whatever `mkEqM` returns means the proposition `⟦a⟧ = ⟦b⟧` at `A`
 (every outcome, `True`, `False`, a conjunction of field equations, the stuck `Eq`, is a proposition,
@@ -1153,23 +1186,25 @@ def split_coverage_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
       TypedAssignment K.dm K.M K.Γ ρ' st' ∧
       ρ' σ = meanV K ρ' φ (.plain (MState.absTyM K.dm K.M K.Γ ρ' st' σ)) r
 
-/-- [Split-gen] (`generalizeNeutral`): the sealed program `n` at place `p` becomes a fresh `σ`
-with the record `n := σ`; under `ρ` extended at `σ` by `⟦n⟧`, the state means the same and the
-assignment is typed (the path condition). `n` is `p`'s content, a sealed program holding no
+/-- [Split-gen] (`generalizeNeutral`), in the simulation form (docs/31 D76): the sealed program `n`
+at place `p` becomes a fresh `σ` with the record `n := σ`; under an extension giving `σ` the meaning
+of `n` (read at the type the checker gives `σ`) and the unknowns `placeType`'s private copies keep
+their values, the state is related to the same reference state (the substitution of a program by an
+unknown that means it), good, and meets `CtxOk`. `n` is `p`'s content, a sealed program holding no
 loan, as at both callers (`evalMatch`'s scrutinee, `movedPlace`'s prefix); without the first the
 statement was false (`Regress/GenNeutralContent.lean`: generalising `⋆` at `a : Nat` records a
 proof as a number), and the record needs the others (a partly moved value is no member of its
-type; (WF11) forbids a record holding a loan). -/
+type; (WF11) forbids a record holding a loan). The decisions are extended (the fresh unknown's
+frozen reading, D96). As first stated: `Exact` from the checker state's image, `Good` only. -/
 def generalizeNeutral_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (p : Place) (n : Value) (σ : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hn : Runs (Ochr.content p) st 0 n st) (hsealed : ∃ t, n = .sealed t) (hfree : ∀ l, n.hasLoan l = false)
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (hn : ckContent st.env p = some n) (hsealed : ∃ t, n = .sealed t) (hfree : ∀ l, n.hasLoan l = false)
     (bh : Nat) (h : Runs (Ochr.generalizeNeutral fuel p n) st bh σ st'),
-    -- `n` is read at the type the checker gives `σ` (as `refine_step_stmt`'s `hσ`; a free hint
-    -- was refutable: the place read `n` at its own hint, `σ` at the free one)
-    let ρ' := ρ.ext σ (meanV K ρ φ (.plain (MState.absTyM K.dm K.M K.Γ ρ st' σ)) n)
-    Exact (MState.mean K.dm K.M K.Γ ρ' st') (MState.mean K.dm K.M K.Γ ρ st) ∧
-    Good K.dm K.M K.Γ ρ' st'
+    SubstShape st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions),
+      ExtOk K ρ st st' ρ' Δ' D' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π st' s ∧
+      ρ' σ = meanV K ρ (fun _ => .err) (.plain (MState.absTyM K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st' σ)) n
 
 /-- A stuck block closed off (`closeBlock`): the block is a call of an anonymous function of its
 captures, so its sealed result and fills mean what running the match means: the run's match
@@ -1186,17 +1221,25 @@ def closeBlock_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Na
     (bh : Nat) (h : Runs (Ochr.closeBlock fuel mt arms B?) st bh (v, T?) st'),
     SimConcl K ρ φ π st st' s (fun ρ' => run K ρ' φ (hintM K ρ B?) mt) v
 
-/-- Worlds (X1)–(X4), `exitWorld`: the restored state means the snapshot (every component but
-the name counters and the types of unknowns created inside the arm is the snapshot's), and is
-`Good` for any assignment the snapshot was. -/
+/-- Worlds (X1)–(X4), `exitWorld`, in the simulation form (docs/31 D76): leaving an arm's world
+restores the snapshot (Ω, the stored types, the goal, the path condition and the records), keeping
+the counters and the types of the unknowns the arm created, which nothing restored names. From the
+snapshot's goodness and relation, the restored state is related to the snapshot's reference state
+and good under the same assignment and `Δ`, with the decisions extended (the arm's unknowns keep
+their frozen readings, `absDecl`, D96). The refinement the arm made is gone: the sibling world does
+not see it. As first stated: no `CtxOk` after (the next step had none to start from), and before
+that false outright (`Regress/ExitWorld_f32a7048.lean`). -/
 def exitWorld_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (w : World)
-    (hg : Good K.dm K.M K.Γ ρ w.saved)
+    (hg : Good K.dm K.M K.Γ ρ w.saved) (hctx : CtxOk K ρ w.saved)
+    (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π w.saved s)
+    -- the arm's run only issued labels (its counter is the snapshot's or above)
+    (hgrow : w.saved.nextLoan ≤ st.nextLoan)
     (bh : Nat) (h : Runs (Ochr.exitWorld w) st bh () st'),
-    Exact (MState.mean K.dm K.M K.Γ ρ st') (MState.mean K.dm K.M K.Γ ρ w.saved) ∧
-    (∀ σ, σ < w.saved.absTy.size → st'.absTy[σ]? = w.saved.absTy[σ]?) ∧
-    st'.neutrals = w.saved.neutrals ∧ st'.etaRefs = w.saved.etaRefs ∧ st'.goal = w.saved.goal ∧
-    Good K.dm K.M K.Γ ρ st'
+    st'.env = w.saved.env ∧ st'.goal = w.saved.goal ∧ st'.refs = w.saved.refs ∧
+      st'.neutrals = w.saved.neutrals ∧ st'.etaRefs = w.saved.etaRefs ∧
+      w.saved.absTy.size ≤ st'.absTy.size ∧ (∀ σ, σ < w.saved.absTy.size → st'.absTy[σ]? = w.saved.absTy[σ]?) ∧
+      ∃ D' : Decisions, ExtOk K ρ w.saved st' ρ K.Δ D' ∧ Rel { K with Δ := K.Δ, D := D' } ρ φ π st' s
 
 /-! ### The observation area, in the simulation form (docs/31 D26; third lead)
 

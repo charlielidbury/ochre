@@ -1,4 +1,5 @@
 import Ochr.Meaning.Steps.MovedPlace
+import Ochr.Meaning.Steps.SplitAsm
 
 /-!
 # Step lemmas, matches and worlds: `evalMatch`, `evalMatchInd`, `evalMatchByType`,
@@ -111,11 +112,10 @@ match term `mt`; `B?` is the match's annotated type. -/
 theorem closeBlock_step (fuel : Nat) (ih : StepsIHBelow fuel) : closeBlock_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
-/-- Worlds (X1)–(X4), `exitWorld`: the restored state means the snapshot (every component but
-the name counters and the types of unknowns created inside the arm is the snapshot's), and is
-`Good` for any assignment the snapshot was. -/
-theorem exitWorld_step (fuel : Nat) (ih : StepsIHBelow fuel) : exitWorld_step_stmt K ρ φ (fuel + 1) := by
-  sorry
+/-- Worlds (X1)–(X4), `exitWorld`, in the simulation form: assembled in `Steps/SplitAsm.lean`
+(docs/31 D76). -/
+theorem exitWorld_step (fuel : Nat) (ih : StepsIHBelow fuel) : exitWorld_step_stmt K ρ φ (fuel + 1) :=
+  exitWorld_step_asm K ρ φ fuel ih
 
 end
 

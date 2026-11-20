@@ -1,4 +1,4 @@
-import Ochr.Meaning.Steps.IH
+import Ochr.Meaning.Steps.SplitAsm
 
 /-!
 # Step lemmas, substitution: `substV`, `substEnv`, `nfSealed`, `canonNeutral`, `renormAll`,
@@ -57,11 +57,10 @@ theorem canonNeutral_step (fuel : Nat) (ih : StepsIHBelow fuel) : canonNeutral_s
 theorem renormAll_step (fuel : Nat) (ih : StepsIHBelow fuel) : renormAll_step_stmt K ρ φ (fuel + 1) := by
   sorry
 
-/-- [Split]'s refinement `σ := r` (`refine`): under an assignment that gives `σ` the meaning of
-`r` (the arm the assignment selects, with its fields assigned), the substitution is exact and
-`Good` is kept, the record in `refs` included (it is the path condition the assignment meets). -/
-theorem refine_step (fuel : Nat) (ih : StepsIHBelow fuel) : refine_step_stmt K ρ φ (fuel + 1) := by
-  sorry
+/-- [Split]'s refinement `σ := r` (`refine`), in the simulation form: assembled in
+`Steps/SplitAsm.lean` (docs/31 D76). -/
+theorem refine_step (fuel : Nat) (ih : StepsIHBelow fuel) : refine_step_stmt K ρ φ (fuel + 1) :=
+  refine_step_asm K ρ φ fuel ih
 
 end
 
