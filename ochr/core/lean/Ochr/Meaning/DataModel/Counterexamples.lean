@@ -1,16 +1,19 @@
-import Ochr.Meaning.Consistency
-import Ochr.Meaning.DecisionsInst
+import Ochr.Meaning.DataModel.Old
 
 /-!
-# Three records against the current data model (docs/34 §2; kernel-checked)
+# Three records against the data layer before the port (docs/34 §2; kernel-checked)
 
-Each is a statement about the definitions on `spine` as they stand (`Data.lean`, `Sem.lean`,
-`Consistency.lean`), for the spine lead's restatement:
+Each is a statement about the definitions on `spine` at 34ecffdd, before docs/34's port, kept as a
+record against their frozen copy (`DataModel/Old.lean`). The port answers each: faithfulness in
+the existence statement excludes the degenerate model (`Faithful.degenerate_not_faithful`), the
+rank is the height of the meaning (`Regress/DataCodes.lean`, `CountF` computes `3`), and a code
+keeps a record, not parameters (`DataModel/Examples.lean`, `te` is a member of its type).
 
-1. **`exists_dataModel` holds of a model that ignores the program** (`degenerate_meets`): every
+1. **`exists_dataModel` held of a model that ignores the program** (`degenerate_meets`): every
    field type is `err`, the carriers hold the constructors with no fields, nothing is recursive.
-   So the statement, as stated, says nothing about the program; the checker's field types do not
-   mean this model's (`degenerate_fieldTy`).
+   The statement asked of the data model only that it cover the program's declarations
+   (`ProgState.Covered`: `∀ d ∈ P.inds, dm.covers d`) and read whole fields, so it said nothing
+   about the program; the checker's field types do not mean this model's (`degenerate_fieldTy`).
 2. **The rank law does not give guarded recursion through nesting** (`Counterexamples/Rank.lean`).
 3. **A parameter above level 0 is not read back from its code** (`ctorM_large_not_mem`): for
    every data model, a constructor value whose first parameter is a level-1 type value (`te`'s
@@ -20,7 +23,7 @@ Each is a statement about the definitions on `spine` as they stand (`Data.lean`,
 
 namespace Ochr.Meaning.DataModel.Counterexamples
 
-open Ochr.Meaning Ochr.Meaning.DataModel
+open Ochr.Meaning.Old Ochr.Meaning.Old.DataModel
 
 /-! ## 1. The degenerate model -/
 
@@ -66,11 +69,11 @@ noncomputable def degenerate : DataModel where
       | cons f fs => exact absurd (hm 0 (by simp)) (mem_err _ _)
   rank_lt _ _ _ _ h := by cases h
 
-/-- **`exists_dataModel`'s statement holds of the degenerate model**, for every list of items. -/
-theorem degenerate_meets (items : List Item) (fuel : Nat) :
-    ∃ (dm : DataModel) (D : MState → Decisions),
-      (progMeaning dm D (fun _ => .err) {} fuel items).Covered dm ∧ dm.read.WholeFields := by
-  refine ⟨degenerate, fun st => checkerDecisions st 0, fun _ _ => trivial, ?_⟩
+/-- **`exists_dataModel`'s statement held of the degenerate model**, for every program: its data
+model clauses were `Covered` (every declaration of the program covered) and whole fields. -/
+theorem degenerate_meets (inds : List IndDecl) :
+    (∀ d ∈ inds, degenerate.covers d) ∧ degenerate.read.WholeFields := by
+  refine ⟨fun _ _ => trivial, ?_⟩
   intro d ps A a f hf
   simp only [degenerate, readOf] at hf
   split at hf <;> simp at hf

@@ -793,10 +793,11 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     match K.Γ.find? (·.name == ty) with
     | some d =>
       let psM ← runParams d 0 [] ps
-      -- the record known before the fields: the written parameters', or the hint's (`evalCtor`'s
-      -- `sol`; docs/34 §14: a code keeps a record, not parameters); otherwise the fields' types
-      -- solve the parameters (`runFields`; the audit's A9)
-      let rh : Option Rec := if !ps.isEmpty then some (K.dm.recOf d psM) else
+      -- the record known before the fields: the written parameters' (none, for a declaration
+      -- without parameters), or the hint's (`evalCtor`'s `sol`; docs/34 §14: a code keeps a
+      -- record, not parameters); otherwise the fields' types solve the parameters (`runFields`;
+      -- the audit's A9)
+      let rh : Option Rec := if !ps.isEmpty || d.params.isEmpty then some (K.dm.recOf d psM) else
         match hint.data with
         | some (n, r) => if n = ty then some r else none
         | none => none

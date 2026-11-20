@@ -13,33 +13,6 @@ field's meaning, which no stage changes. Nothing reads a carrier from outside.
 
 namespace Ochr.Meaning.DataLib
 
-mutual
-/-- The depth of a meaning: constructor values nested. -/
-def _root_.Ochr.Meaning.Sem.depth : Sem → Nat
-  | .dat _ _ _ fs => Sem.depthList fs + 1
-  | _ => 0
-/-- The largest depth in a list. -/
-def _root_.Ochr.Meaning.Sem.depthList : List Sem → Nat
-  | [] => 0
-  | v :: vs => max v.depth (Sem.depthList vs)
-end
-
-theorem _root_.Ochr.Meaning.Sem.depth_le_depthList : ∀ (vs : List Sem) (v : Sem), v ∈ vs → v.depth ≤ Sem.depthList vs
-  | [], _, h => by cases h
-  | w :: ws, v, h => by
-    simp only [Sem.depthList]
-    rcases List.mem_cons.1 h with rfl | h
-    · exact Nat.le_max_left _ _
-    · exact Nat.le_trans (Sem.depth_le_depthList ws v h) (Nat.le_max_right _ _)
-
-/-- **Every field of a constructor value has smaller depth**: the rank of a meaning decreases
-along every field step, through any declaration (docs/34 §2.2). -/
-theorem _root_.Ochr.Meaning.Sem.depth_field_lt (n : String) (r : Rec) (c : Nat) (fs : List Sem) (v : Sem) (h : v ∈ fs) :
-    v.depth < (Sem.dat n r c fs).depth := by
-  simp only [Sem.depth]
-  exact Nat.lt_succ_of_le (Sem.depth_le_depthList fs v h)
-
-
 /-- A field's shape. -/
 inductive Shape : Type 1
   | leaf (B : Type) (c : Code0 B)

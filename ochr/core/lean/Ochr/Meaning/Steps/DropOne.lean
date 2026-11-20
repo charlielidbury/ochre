@@ -373,17 +373,17 @@ theorem mean_updAt_botS : ∀ (steps : List Step) (H T : TyS) (v v' : Value),
       have HF : ∀ x ∈ fs, ∀ h h', Value.mean K.dm K.M K.Γ ρ φ h x = Value.mean K.dm K.M K.Γ ρ φ h' x :=
         fun x hx => meanK_hintFree K ρ φ x (hfb x hx) (hfs x hx)
       have hi : st.fieldIdx < fs.length := (List.getElem?_eq_some_iff.mp hw).1
-      have hget := meanFields_getElem? K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c fs 0 [] st.fieldIdx w hw
-      have hset := meanFields_setH K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c fs 0 [] st.fieldIdx w' hi HF
+      have hget := meanFields_getElem? K.dm K.M K.Γ ρ φ d (K.dm.recOf d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps)) c fs 0 [] st.fieldIdx w hw
+      have hset := meanFields_setH K.dm K.M K.Γ ρ φ d (K.dm.recOf d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps)) c fs 0 [] st.fieldIdx w' hi HF
       simp only [Nat.zero_add, List.nil_append] at hget hset
       have hwm := List.mem_of_getElem? hw
-      have IH := mean_updAt_botS ss (fieldHint K.dm d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c st.fieldIdx
-        ((Value.meanFields K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c 0 [] fs).take st.fieldIdx))
+      have IH := mean_updAt_botS ss (fieldHint K.dm d (K.dm.recOf d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps)) c st.fieldIdx
+        ((Value.meanFields K.dm K.M K.Γ ρ φ d (K.dm.recOf d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps)) c 0 [] fs).take st.fieldIdx))
         T w w' hw' (hfb w hwm) (hfs w hwm) (hrec w hw)
       rw [mean_ind K.dm K.M K.Γ ρ φ hf hbare hsort, mean_ind K.dm K.M K.Γ ρ φ hf hbare' hsort, hset]
-      obtain ⟨el, hel⟩ := Ochr.Meaning.ctorM_dat K.dm d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c
-        (Value.meanFields K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c 0 [] fs)
-      rw [hel, Sem.updAt_dat' K.dm K.Γ T _ st ss hst hnat hget, IH, Option.map_some, reDat_eq K.dm K.Γ hf]
+      rw [Ochr.Meaning.ctorM_dat, Ochr.Meaning.ctorM_dat, Sem.updAt_dat' K.dm K.Γ T _ st ss hst hnat hget, IH,
+        Option.map_some]
+      rfl
     | _ => simp [Value.updAt] at h
 termination_by steps _ _ v => (steps.length, sizeOf v)
 
@@ -433,14 +433,6 @@ theorem movedOfList_set {Γ : List IndDecl} {a b : Sem} (h : MovedOf Γ a b) :
   | f :: fs, i + 1, hi => by
     simp only [List.getElem?_cons_succ] at hi
     exact .cons (.refl f) (movedOfList_set h fs i hi)
-
-theorem ctorM_partial (dm : DataModel) (d : IndDecl) (ps : List Sem) (c : Nat) (fs : List Sem)
-    (h : ∃ f ∈ fs, ¬ f.whole) : dm.ctorM d ps c fs = .dat d.name ps c fs none := by
-  unfold DataModel.ctorM
-  rw [if_neg]
-  obtain ⟨f, hf, hw⟩ := h
-  exact fun ha => hw (ha f hf)
-
 
 /-- Moving a part out keeps partial membership (`pmem`: a member with parts moved out). -/
 theorem pmem_moved_part {R : DataRead} {Γ : List IndDecl} {s s' : Sem} {T : TyM} (hm : MovedOf Γ s' s)
@@ -522,26 +514,24 @@ theorem movedOf_mean_updAt : ∀ (steps : List Step) (H : TyS) (v v' : Value),
       have HF : ∀ x ∈ fs, ∀ h h', Value.mean K.dm K.M K.Γ ρ φ h x = Value.mean K.dm K.M K.Γ ρ φ h' x :=
         fun x hx => meanK_hintFree K ρ φ x (hfb x hx) (hfs x hx)
       have hi : st.fieldIdx < fs.length := (List.getElem?_eq_some_iff.mp hw).1
-      have hget := meanFields_getElem? K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c fs 0 [] st.fieldIdx w hw
-      have hset := meanFields_setH K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c fs 0 [] st.fieldIdx w' hi HF
+      have hget := meanFields_getElem? K.dm K.M K.Γ ρ φ d (K.dm.recOf d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps)) c fs 0 [] st.fieldIdx w hw
+      have hset := meanFields_setH K.dm K.M K.Γ ρ φ d (K.dm.recOf d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps)) c fs 0 [] st.fieldIdx w' hi HF
       simp only [Nat.zero_add, List.nil_append] at hget hset
       have hwm := List.mem_of_getElem? hw
-      obtain ⟨h1, h2⟩ := movedOf_mean_updAt ss (fieldHint K.dm d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c st.fieldIdx
-        ((Value.meanFields K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c 0 [] fs).take st.fieldIdx))
+      obtain ⟨h1, h2⟩ := movedOf_mean_updAt ss (fieldHint K.dm d (K.dm.recOf d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps)) c st.fieldIdx
+        ((Value.meanFields K.dm K.M K.Γ ρ φ d (K.dm.recOf d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps)) c 0 [] fs).take st.fieldIdx))
         w w' hw' (hfb w hwm) (hfs w hwm) (hrec w hw)
       rw [mean_ind K.dm K.M K.Γ ρ φ hf hbare hsort, mean_ind K.dm K.M K.Γ ρ φ hf hbare' hsort, hset]
-      obtain ⟨el, hel⟩ := Ochr.Meaning.ctorM_dat K.dm d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c
-        (Value.meanFields K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c 0 [] fs)
-      have hpart : ∃ f ∈ (Value.meanFields K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c 0 [] fs).set
-          st.fieldIdx (Value.mean K.dm K.M K.Γ ρ φ (fieldHint K.dm d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c
-            st.fieldIdx ((Value.meanFields K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c 0 [] fs).take
+      have hpart : ∃ f ∈ (Value.meanFields K.dm K.M K.Γ ρ φ d (K.dm.recOf d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps)) c 0 [] fs).set
+          st.fieldIdx (Value.mean K.dm K.M K.Γ ρ φ (fieldHint K.dm d (K.dm.recOf d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps)) c
+            st.fieldIdx ((Value.meanFields K.dm K.M K.Γ ρ φ d (K.dm.recOf d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps)) c 0 [] fs).take
               st.fieldIdx)) w'), ¬ f.whole :=
         ⟨_, List.mem_iff_getElem?.mpr ⟨st.fieldIdx, by
           rw [List.getElem?_set_self]; exact (by
-            have : st.fieldIdx < (Value.meanFields K.dm K.M K.Γ ρ φ d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps) c 0 [] fs).length :=
+            have : st.fieldIdx < (Value.meanFields K.dm K.M K.Γ ρ φ d (K.dm.recOf d (Value.meanParams K.dm K.M K.Γ ρ φ d 0 [] ps)) c 0 [] fs).length :=
               (List.getElem?_eq_some_iff.mp hget).1
             simp [this])⟩, h2⟩
-      rw [hel, ctorM_partial K.dm d _ c _ hpart]
+      rw [Ochr.Meaning.ctorM_dat, Ochr.Meaning.ctorM_dat]
       refine ⟨.dat (movedOfList_set h1 _ _ hget), ?_⟩
       intro hw2
       obtain ⟨f, hf', hnw⟩ := hpart
@@ -900,8 +890,8 @@ theorem logEffect_rel (st st₁ : MState) (s : SState) (π : Nat → Nat) (q : P
      ⟨mem.pos, fun τ hr hlt => mem.absTy τ (hrefd τ hr) hlt, mem.goal⟩,
      ⟨wf.1, wf.2.1, wf.2.2.1, wf.2.2.2.1, ⟨fun τ hr => wf.2.2.2.2.1.1 τ (hrefd τ hr), wf.2.2.2.2.1.2⟩,
       wf.2.2.2.2.2⟩⟩,
-    ⟨hctx.1, hctx.2, fun τ hr hlt => hctx.3 τ (hrefd τ hr) hlt, hctx.4, hctx.5.of_globals rfl,
-      hctx.6.of_sameDec rfl rfl, hctx.7.of_sameDec rfl rfl rfl rfl⟩, rfl⟩
+    ⟨hctx.inds, hctx.covers, hctx.faithful, fun τ hr hlt => hctx.delta τ (hrefd τ hr) hlt, hctx.noLabel,
+      hctx.globals.of_globals rfl, hctx.dec.of_sameDec rfl rfl, hctx.shapes.of_sameDec rfl rfl rfl rfl⟩, rfl⟩
 
 end
 

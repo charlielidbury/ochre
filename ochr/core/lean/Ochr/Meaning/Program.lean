@@ -28,9 +28,9 @@ adds it. An `Accepted` program has no undecided item, so this recursion leaves t
 The checker's verdict boundary is the only place where acceptance is read (`runMachine`'s
 `Outcome.ok`). A rejected or exhausted item contributes nothing, to Σ or to the meaning.
 * An accepted **inductive declaration** contributes its `IndDecl` to Σ (`inds`). Its meaning
-  is the data model's (`DataModel`, a parameter here; the generic model is data-generic's
-  `DataGeneric.lean`). The run reads it through `RunCtx.Γ`. The model must speak for it
-  (`DataModel.covers`; `ProgState.Covered` is that hypothesis for every declaration of Σ).
+  is the data model's (`DataModel`, a parameter here; docs/34). The run reads it through
+  `RunCtx.Γ`. The model must speak for it (`DataModel.covers`; `ProgState.Covered` is that
+  hypothesis for every declaration of Σ) and be faithful to it (`Assembly.DataFaithful`).
 * An accepted **definition** contributes its `GDef` to Σ and its meaning and type to `means`
   (`defMeaning`). Its type is read off the type the checker stores, `GDef.ty` (`globalTyS`):
   `Value.tyS` of it, its code (docs/31 D59: a function type's telescope, a data type's

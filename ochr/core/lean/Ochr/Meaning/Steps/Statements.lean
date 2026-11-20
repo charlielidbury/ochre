@@ -7,6 +7,7 @@ import Ochr.Meaning.WF
 import Ochr.Meaning.CallRef
 import Ochr.Machine
 import Ochr.Check
+import Ochr.Meaning.DataModel.Faithful
 
 /-!
 # The step statements (milestone 3), centralised
@@ -97,7 +98,7 @@ def OutGood (R : DataRead) (ds : List PiDom) (out : PiCod) (args : List Sem) (o 
 does not recurse): `semRank`, the height of the meaning after the data-layer port (D73's R1–R3). -/
 noncomputable def decRank (K : RunCtx) (g : GDef) (args : List Sem) : Nat :=
   match g.fn? with
-  | some (.fix _ _ _ _ (some j) _) => ((args[j]?).map fun a => semRank K.dm K.Γ a).getD 0
+  | some (.fix _ _ _ _ (some j) _) => ((args[j]?).map fun a => semRank a).getD 0
   | _ => 0
 
 /-- **Membership below a bound** (docs/31 D73, D80): the global's meaning is the closure, along a
@@ -387,13 +388,15 @@ theorem _root_.Ochr.Meaning.Decisions.AgreeOld.trans {n m : Nat} {D₁ D₂ D₃
   typeDecl sc t ht := (h₂.typeDecl sc t (Term.absBelow_mono ht hnm)).trans (h₁.typeDecl sc t ht)
   blockCaps sc e t ht := (h₂.blockCaps sc e t (Term.absBelow_mono ht hnm)).trans (h₁.blockCaps sc e t ht)
 
-/-- The run context is the checker state's: its declarations, a data model that speaks for each,
-Δ at the state's unknowns (`DeltaOk`), globals with no label (`run_congr`'s `hK`), Σ
-(`GlobalsOk`), its decisions the checker's (`DecAligned`), and the checker's typing of places
-(`ShapeFacts`). A hypothesis of every statement. -/
+/-- The run context is the checker state's: its declarations, a data model that speaks for each
+and reads their declared types as the run does (`CtxFaithful`, docs/34 §9), Δ at the state's
+unknowns (`DeltaOk`), globals with no label (`run_congr`'s `hK`), Σ (`GlobalsOk`), its decisions
+the checker's (`DecAligned`), and the checker's typing of places (`ShapeFacts`). A hypothesis of
+every statement. -/
 structure CtxOk (K : RunCtx) (ρ : Assignment) (st : MState) : Prop where
   inds : K.Γ = st.inds
   covers : ∀ d ∈ K.Γ, K.dm.covers d
+  faithful : CtxFaithful K
   delta : DeltaOk K ρ st
   noLabel : ∀ n, (K.C.global n).2.label = none
   globals : GlobalsOk K st
@@ -1599,7 +1602,7 @@ def fieldTypesOf_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
     (∀ i T, tys[i]?.map (·.2) = some T →
       (meanV K ρ noFuture (.plain .err) T).asTy =
         K.dm.fieldTy d (Value.meanParams K.dm K.M K.Γ ρ noFuture d 0 [] ps) c i
-          (Value.meanFields K.dm K.M K.Γ ρ noFuture d (Value.meanParams K.dm K.M K.Γ ρ noFuture d 0 [] ps) c 0 [] (fs.take i)))
+          (Value.meanFields K.dm K.M K.Γ ρ noFuture d (K.dm.recOf d (Value.meanParams K.dm K.M K.Γ ρ noFuture d 0 [] ps)) c 0 [] (fs.take i)))
 
 /-- [Repack]'s accepting direction (`repackCheck`): a value checked whole against `T`, with each
 part still lent read as an unknown of its type (D73), is a member of `T` under every typed

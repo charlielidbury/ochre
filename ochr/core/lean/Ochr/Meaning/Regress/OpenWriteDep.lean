@@ -44,14 +44,13 @@ ochr OpenWriteDep uses Nats, Logic {
 namespace Ochr.Meaning.Regress.OpenWriteDep
 open Ochr Ochr.Meaning
 
-/-- **The read of `(w.1).1` after `w.0` is rewritten, in the reference** (D32): `w` means
-`MkWP(2, MkPk(a, b))` whatever its element (whole and of its type or open); the read reaches `b`,
-and `w.1` is typed by its content, `Pk` at its own parameter `m` (`dataTyS`). -/
-theorem read_after_index_rewritten (dm : DataModel) (Γ : List IndDecl) (T : TyS) (m a b : Sem)
-    (el el' : Option ((A : Type) × A)) :
-    Sem.step dm Γ T (.proj 1) (.dat "WP" [] 0 [.el0 Nat 2, .dat "Pk" [m] 0 [a, b] el] el') =
-      some (.dat "Pk" [m] 0 [a, b] el, dataTyS dm Γ "Pk" [m]) ∧
-    ∃ T', Sem.follow dm Γ T (.dat "WP" [] 0 [.el0 Nat 2, .dat "Pk" [m] 0 [a, b] el] el') [.proj 1, .proj 1] =
+/-- **The read of `(w.1).1` after `w.0` is rewritten, in the reference** (D32): `w` means the
+tree `MkWP(2, MkPk(a, b))` (whole and of its type or open); the read reaches `b`, and `w.1` is
+typed by its content, `Pk` at its own record `rk` (`dataTyS`). -/
+theorem read_after_index_rewritten (dm : DataModel) (Γ : List IndDecl) (T : TyS) (r rk : Rec) (a b : Sem) :
+    Sem.step dm Γ T (.proj 1) (.dat "WP" r 0 [.el0 Nat 2, .dat "Pk" rk 0 [a, b]]) =
+      some (.dat "Pk" rk 0 [a, b], dataTyS dm Γ "Pk" rk) ∧
+    ∃ T', Sem.follow dm Γ T (.dat "WP" r 0 [.el0 Nat 2, .dat "Pk" rk 0 [a, b]]) [.proj 1, .proj 1] =
       some (b, T') := ⟨rfl, _, rfl⟩
 
 end Ochr.Meaning.Regress.OpenWriteDep

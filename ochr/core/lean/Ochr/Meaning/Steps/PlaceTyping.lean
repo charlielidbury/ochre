@@ -152,20 +152,19 @@ theorem sem_step_proof (dm : DataModel) (Γ : List IndDecl) (T : TyS) (x : Step)
   | field g => exact ⟨.plain .err, by simp [Sem.step, Sem.stepField]⟩
 
 /-- `.0` into a constructor value of constructor `0` is its first field (not a number's predecessor). -/
-theorem sem_step_proj0_dat (dm : DataModel) (Γ : List IndDecl) (T : TyS) (nm : String) (ps fs : List Sem)
-    (el : Option ((A : Type) × A)) :
-    Sem.step dm Γ T (.proj 0) (.dat nm ps 0 fs el) = Sem.stepField dm Γ 0 0 (.dat nm ps 0 fs el) := by
+theorem sem_step_proj0_dat (dm : DataModel) (Γ : List IndDecl) (T : TyS) (nm : String) (ps : Rec) (fs : List Sem) :
+    Sem.step dm Γ T (.proj 0) (.dat nm ps 0 fs) = Sem.stepField dm Γ 0 0 (.dat nm ps 0 fs) := by
   simp only [Sem.step, Sem.asNat_dat]
 
 /-- A field of a constructor value, by its constructor. -/
-theorem stepField_dat (dm : DataModel) (Γ : List IndDecl) (nm : String) (ps fs : List Sem) (c i : Nat)
-    (el : Option ((A : Type) × A)) {x : Sem} (h : fs[i]? = some x) :
-    ∃ T', Sem.stepField dm Γ c i (.dat nm ps c fs el) = some (x, T') := by
+theorem stepField_dat (dm : DataModel) (Γ : List IndDecl) (nm : String) (ps : Rec) (fs : List Sem) (c i : Nat)
+    {x : Sem} (h : fs[i]? = some x) :
+    ∃ T', Sem.stepField dm Γ c i (.dat nm ps c fs) = some (x, T') := by
   exact ⟨contentTyS dm Γ nm ps c i (fs.take i) x, by simp [Sem.stepField, h]⟩
 
 /-- A constructor's fields' meanings, one by one, each at some hint. -/
 theorem meanFields_get (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (φ : Future)
-    (d : IndDecl) (ps : List Sem) (c : Nat) :
+    (d : IndDecl) (ps : Rec) (c : Nat) :
     ∀ (fs : List Value) (j : Nat) (earlier : List Sem) (i : Nat) (v : Value), fs[i]? = some v →
       ∃ H, (Value.meanFields dm C Γ ρ φ d ps c j earlier fs)[i]? = some (Value.mean dm C Γ ρ φ H v)
   | [], _, _, i, v, h => by simp at h
@@ -176,16 +175,6 @@ theorem meanFields_get (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (�
       subst h; exact ⟨_, rfl⟩
     · simp only [List.getElem?_cons_succ] at h ⊢
       exact meanFields_get dm C Γ ρ φ d ps c ws _ _ i v h
-
-/-- `ctorM` is the constructor value describing itself. -/
-theorem ctorM_dat (dm : DataModel) (d : IndDecl) (ps : List Sem) (c : Nat) (fs : List Sem) :
-    ∃ el, dm.ctorM d ps c fs = .dat d.name ps c fs el := by
-  unfold DataModel.ctorM
-  split
-  · split
-    · exact ⟨_, rfl⟩
-    · exact ⟨_, rfl⟩
-  · exact ⟨_, rfl⟩
 
 section
 variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (f : Future)
@@ -216,12 +205,10 @@ theorem step_mean_ind {n : String} {d : IndDecl} (c : Nat) (hh : Hint) (ps fs' :
   simp only [hd, hps, Bool.false_eq_true, ↓reduceIte]
   split
   · rename_i h0; simp only [beq_iff_eq] at h0; exact absurd h0 hs0
-  · obtain ⟨el, hel⟩ := ctorM_dat dm d (Value.meanParams dm C Γ ρ f d 0 [] ps) c
-      (Value.meanFields dm C Γ ρ f d (Value.meanParams dm C Γ ρ f d 0 [] ps) c 0 [] fs')
-    rw [hel]
-    obtain ⟨H', hH'⟩ := meanFields_get dm C Γ ρ f d (Value.meanParams dm C Γ ρ f d 0 [] ps) c fs' 0 [] i v hv
-    obtain ⟨T', hT'⟩ := stepField_dat dm Γ d.name (Value.meanParams dm C Γ ρ f d 0 [] ps)
-      (Value.meanFields dm C Γ ρ f d (Value.meanParams dm C Γ ρ f d 0 [] ps) c 0 [] fs') c i el hH'
+  · obtain ⟨H', hH'⟩ := meanFields_get dm C Γ ρ f d (dm.recOf d (Value.meanParams dm C Γ ρ f d 0 [] ps)) c fs' 0 [] i v hv
+    obtain ⟨T', hT'⟩ := stepField_dat dm Γ d.name (dm.recOf d (Value.meanParams dm C Γ ρ f d 0 [] ps))
+      (Value.meanFields dm C Γ ρ f d (dm.recOf d (Value.meanParams dm C Γ ρ f d 0 [] ps)) c 0 [] fs') c i hH'
+    show ∃ s' T', Sem.step dm Γ T x (.dat d.name _ c _) = some (s', T') ∧ _
     refine ⟨_, T', ?_, .inr ⟨H', rfl⟩⟩
     rcases hx with ⟨rfl, rfl⟩ | ⟨g, rfl, rfl, hgc⟩
     · rcases i with _ | i

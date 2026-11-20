@@ -154,19 +154,10 @@ theorem runT_hintIndep : ∀ (tl : Bool) (t : Term), Term.tailHintFree K.Γ t = 
     | none => simp only [hfind]
     | some d =>
       rw [hfind] at ht
-      -- the parameters known before the fields do not read the hint: they are written, or there
-      -- are none
-      cases hp : ps.isEmpty with
-      | false => simp only [hfind, Bool.not_false, if_true]
-      | true =>
-        have hq : d.params.length = 0 := by rw [hp] at ht; simpa using ht
-        have hz : ∀ (ps' : List Sem) (n : String),
-            (if n = ty ∧ ps'.length = 0 then ps'.map some else ([] : List (Option Sem))) = [] := by
-          intro ps' n; split
-          · rename_i hx; rw [List.length_eq_zero_iff.mp hx.2]; rfl
-          · rfl
-        simp only [hfind, Bool.not_true, Bool.false_eq_true, if_false, hq, List.replicate_zero]
-        cases h.data K.dm.read <;> cases h'.data K.dm.read <;> simp only [hz]
+      -- the record known before the fields does not read the hint: the parameters are written,
+      -- or there are none
+      have hrh : (!ps.isEmpty || d.params.isEmpty) = true := by simpa using ht
+      simp only [hfind, hrh, if_true]
   | tl, .val v, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     have e := meanV_hintIndep v ht h h'

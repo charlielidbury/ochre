@@ -591,8 +591,8 @@ theorem refs_sim (st : MState) (σ : Nat) (r : Value) (s : SState) (π : Nat →
       ⟨fun τ hr => w6.1 τ (hrefd τ hr), w6.2.1, fun τ v hv => (List.mem_cons.mp hv).elim
         (fun h => by simp only [Prod.mk.injEq] at h; obtain ⟨rfl, rfl⟩ := h; exact hb)
         (fun h => w6.2.2.1 τ v h), w6.2.2.2⟩, wf.2.2.2.2.2⟩⟩,
-    ⟨hctx.1, hctx.2, fun τ hr hlt => hctx.3 τ (hrefd τ hr) hlt, hctx.4, hctx.5.of_globals rfl,
-      hctx.6.of_sameDec rfl rfl, hctx.7.of_sameDec rfl rfl rfl rfl⟩⟩
+    ⟨hctx.inds, hctx.covers, hctx.faithful, fun τ hr hlt => hctx.delta τ (hrefd τ hr) hlt, hctx.noLabel,
+      hctx.globals.of_globals rfl, hctx.dec.of_sameDec rfl rfl, hctx.shapes.of_sameDec rfl rfl rfl rfl⟩⟩
   intro τ v hv
   rcases List.mem_cons.mp hv with h | h
   · simp only [Prod.mk.injEq] at h

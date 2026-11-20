@@ -526,7 +526,7 @@ theorem boxProof :
   show SM.erasedIf (false, false) _ _ = _
   simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false]
   have hf : (Kb dm).Γ.find? (·.name == "PBox") = some pbox := rfl
-  have hrf : runFields (Kb dm) ρ φ true pbox 0 0 [none] [] [.place (.var 0)] (frame [hB])
+  have hrf : runFields (Kb dm) ρ φ true pbox 0 0 none [none] [] [.place (.var 0)] (frame [hB])
       = some (([.proof], [some (.ty (TyM.prop True))]), frame [hB]) := by
     simp only [runFields]
     have hd : (Kb dm).D.declOf (scopeOf (frame [hB])) (Term.place (Place.var 0)) = .other := rfl
@@ -537,6 +537,7 @@ theorem boxProof :
   simp only [hf, runParams, bind, pure]
   rw [show (pbox.sort == 0) = true from rfl]
   erw [hrf]
+  show ctorOut dm pbox 0 [.proof] (none <|> some (dm.recOf pbox [.ty (TyM.prop True)])) (frame [hB]) = _
   rfl
 
 /-! ## A recursive and a nested declaration, built and matched by the run (docs/31 D61)
@@ -548,13 +549,13 @@ member of its type's code; the match clause reads a value's constructor (`indTag
 
 open Ochr.Meaning.Regress.DataCodes in
 /-- The run's constructor clause at a declaration of `Γ`, nothing a statement or a proof, the
-parameters written: the parameters run on copies, the fields at their field types, the value is
-`ctorM` of the fields' meanings. -/
+parameters written: the parameters run on copies, the fields at their field types at the
+parameters' record, the value is `ctorM` of the fields' meanings (the tree). -/
 theorem run_ctor (d : IndDecl) (hd : Γ.find? (·.name == d.name) = some d) (hs : (d.sort == 0) = false)
     (c : Nat) (x : Hint) (ps args : List Term) (hp : ps ≠ []) (hint : TyS) (s : SState)
     (psM : List Sem) (hpm : runParams (Kp dm Γ G) ρ φ d 0 [] ps s = some (psM, s))
-    (fs : List Sem) (sol : List (Option Sem)) (hf : runFields (Kp dm Γ G) ρ φ false d c 0 (psM.map some) [] args s = some ((fs, sol), s))
-    (hsol : sol = psM.map some) :
+    (fs : List Sem) (sol : List (Option Sem))
+    (hf : runFields (Kp dm Γ G) ρ φ false d c 0 (some (dm.recOf d psM)) (psM.map some) [] args s = some ((fs, sol), s)) :
     run (Kp dm Γ G) ρ φ hint (.ctor d.name c x ps args) s
       = some ((dm.ctorM d psM c fs, .plain (dm.tyM d psM)), s) := by
   rw [run, runT]
@@ -564,59 +565,57 @@ theorem run_ctor (d : IndDecl) (hd : Γ.find? (·.name == d.name) = some d) (hs 
   rw [hd']
   simp only [hpm]
   have hne : (!ps.isEmpty) = true := by cases ps <;> simp_all
-  simp only [hne, if_true, hs, hf, hsol]
-  have hall : (List.map some psM).all (·.isSome) = true := by simp
-  have hsv : solved (psM.map some) = psM := by simp [solved, Function.comp_def]
-  simp only [hall, if_true, Bool.false_eq_true, if_false, hsv]
+  simp only [hne, Bool.true_or, if_true]
+  rw [hs]
+  erw [hf]
+  show ctorOut dm d c fs (some (dm.recOf d psM)) s = _
+  simp only [ctorOut, hs, Bool.false_eq_true, if_false]
   rfl
 
 section Lists
-open Ochr.Meaning.Regress.DataCodes
+open Ochr.Meaning.Regress.DataCodes Ochr.Meaning.DataModel.Program
 
 /-- `Nil` and `Cons(h, t)` at `List(Nat)`, the parameter written. -/
 def nilT : Term := .ctor "List" 0 ⟨"Nil"⟩ [.nat] []
 def consT (h : Nat) (t : Term) : Term := .ctor "List" 1 ⟨"Cons"⟩ [.nat] [num h, t]
 
 theorem runParams_nat (D : IndDecl) (s : SState) :
-    runParams (Kp dmL [listD] G) ρ φ D 0 [] [.nat] s = some (psN, s) := rfl
+    runParams (Kp dmP [listD] G) ρ φ D 0 [] [.nat] s = some (psN, s) := rfl
 
 /-- `Nil` runs to the empty list's meaning, at `List(Nat)`. -/
 theorem run_nil (hint : TyS) (s : SState) :
-    run (Kp dmL [listD] G) ρ φ hint nilT s = some ((semL [], .plain (dmL.tyM listD psN)), s) := by
-  rw [show nilT = .ctor listD.name 0 ⟨"Nil"⟩ [.nat] [] from rfl,
-    run_ctor dmL [listD] G ρ φ listD rfl rfl 0 _ [.nat] [] (by simp) hint s psN (runParams_nat G ρ φ listD s)
-      [] _ rfl rfl, ctorM_nil]
+    run (Kp dmP [listD] G) ρ φ hint nilT s = some ((semL [], .plain (dmP.tyM listD psN)), s) :=
+  run_ctor dmP [listD] G ρ φ listD rfl rfl 0 _ [.nat] [] (by simp) hint s psN (runParams_nat G ρ φ listD s)
+    [] _ rfl
 
 /-- `Cons(h, t)` runs to the list's meaning, where `t` runs to the tail's. -/
 theorem run_cons (h : Nat) (t : Term) (l : List Nat) (s : SState)
-    (ht : ∀ hint, run (Kp dmL [listD] G) ρ φ hint t s = some ((semL l, .plain (dmL.tyM listD psN)), s)) (hint : TyS) :
-    run (Kp dmL [listD] G) ρ φ hint (consT h t) s = some ((semL (h :: l), .plain (dmL.tyM listD psN)), s) := by
-  have hf : runFields (Kp dmL [listD] G) ρ φ false listD 1 0 (psN.map some) [] [num h, t] s
+    (ht : ∀ hint, run (Kp dmP [listD] G) ρ φ hint t s = some ((semL l, .plain (dmP.tyM listD psN)), s)) (hint : TyS) :
+    run (Kp dmP [listD] G) ρ φ hint (consT h t) s = some ((semL (h :: l), .plain (dmP.tyM listD psN)), s) := by
+  have hf : runFields (Kp dmP [listD] G) ρ φ false listD 1 0 (some (dmP.recOf listD psN)) (psN.map some) [] [num h, t] s
       = some (([.el0 Nat h, semL l], psN.map some), s) := by
-    have hn : ∀ hint, runT (Kp dmL [listD] G) ρ φ false hint (num h) s = some ((.el0 Nat h, { hint with label := none }), s) :=
-      fun hint => run_num dmL [listD] G ρ φ h hint s
-    have ht' : ∀ hint, runT (Kp dmL [listD] G) ρ φ false hint t s = some ((semL l, .plain (dmL.tyM listD psN)), s) := ht
+    have hn : ∀ hint, runT (Kp dmP [listD] G) ρ φ false hint (num h) s = some ((.el0 Nat h, { hint with label := none }), s) :=
+      fun hint => run_num dmP [listD] G ρ φ h hint s
+    have ht' : ∀ hint, runT (Kp dmP [listD] G) ρ φ false hint t s = some ((semL l, .plain (dmP.tyM listD psN)), s) := ht
     simp only [runFields, SM.stmtIf, Bool.false_and, Bool.false_eq_true, if_false, bind, Option.bind, hn, ht', pure]
-    rw [tyM_list]
     rfl
-  rw [show consT h t = .ctor listD.name 1 ⟨"Cons"⟩ [.nat] [num h, t] from rfl,
-    run_ctor dmL [listD] G ρ φ listD rfl rfl 1 _ [.nat] [num h, t] (by simp) hint s psN (runParams_nat G ρ φ listD s)
-      _ _ hf rfl, ctorM_cons]
+  exact run_ctor dmP [listD] G ρ φ listD rfl rfl 1 _ [.nat] [num h, t] (by simp) hint s psN (runParams_nat G ρ φ listD s)
+    _ _ hf
 
 /-- **`Cons(3, Cons(4, Nil))` runs, by the constructor clause, to the list's meaning**, a member of
-`List(Nat)`'s code (`DataCodes.semL_mem`); the match clause reads it as `Cons` (`indTag`) with its
+`List(Nat)`'s code (`DataCodes.semL_memTy`); the match clause reads it as `Cons` (`indTag`) with its
 fields (`Sem.stepField`). -/
 theorem run_list34 (hint : TyS) (s : SState) :
-    run (Kp dmL [listD] G) ρ φ hint (consT 3 (consT 4 nilT)) s = some ((semL [3, 4], .plain (dmL.tyM listD psN)), s) ∧
-      indTag (semL [3, 4]) (.plain (dmL.tyM listD psN)) = .el0 Nat 1 ∧
-      Sem.stepField dmL [listD] 1 1 (semL [3, 4]) = some (semL [4], .plain (dmL.tyM listD psN)) := by
+    run (Kp dmP [listD] G) ρ φ hint (consT 3 (consT 4 nilT)) s = some ((semL [3, 4], .plain (dmP.tyM listD psN)), s) ∧
+      indTag (semL [3, 4]) (.plain (dmP.tyM listD psN)) = .el0 Nat 1 ∧
+      Sem.stepField dmP [listD] 1 1 (semL [3, 4]) = some (semL [4], .plain (dmP.tyM listD psN)) := by
   refine ⟨run_cons G ρ φ 3 _ [4] s (fun hint => run_cons G ρ φ 4 _ [] s (fun hint => run_nil G ρ φ hint s) hint) hint,
     rfl, rfl⟩
 
 end Lists
 
 section Roses
-open Ochr.Meaning.Regress.DataCodes
+open Ochr.Meaning.Regress.DataCodes Ochr.Meaning.DataModel.Program
 
 /-- The declarations of the rose-tree program. -/
 def ΓR : List IndDecl := [roseD, listD]
@@ -626,57 +625,54 @@ def nodeT (a : Nat) (ks : Term) : Term := .ctor "Rose" 0 ⟨"Node"⟩ [.nat] [nu
 def rnilT : Term := .ctor "List" 0 ⟨"Nil"⟩ [.tind "Rose" [.nat]] []
 def rconsT (r rs : Term) : Term := .ctor "List" 1 ⟨"Cons"⟩ [.tind "Rose" [.nat]] [r, rs]
 
-theorem runParams_roseNat (s : SState) : runParams (Kp dmR ΓR G) ρ φ roseD 0 [] [.nat] s = some (psN, s) := rfl
+theorem runParams_roseNat (s : SState) : runParams (Kp dmP ΓR G) ρ φ roseD 0 [] [.nat] s = some (psN, s) := rfl
 
 /-- `List(Rose(Nat))`'s parameter, the type `Rose(Nat)`, runs to `Rose(Nat)`'s code. -/
 theorem runParams_listRose (s : SState) :
-    runParams (Kp dmR ΓR G) ρ φ listD 0 [] [.tind "Rose" [.nat]] s = some (psR, s) := rfl
+    runParams (Kp dmP ΓR G) ρ φ listD 0 [] [.tind "Rose" [.nat]] s = some (psR, s) := rfl
 
-/-- `Nil` at `List(Rose(Nat))` runs to the empty forest's meaning. -/
+/-- `Nil` at `List(Rose(Nat))` runs to the empty forest. -/
 theorem run_lrNil (hint : TyS) (s : SState) :
-    run (Kp dmR ΓR G) ρ φ hint rnilT s = some ((semLR [], .plain (dmR.tyM listD psR)), s) := by
-  rw [show rnilT = .ctor listD.name 0 ⟨"Nil"⟩ [.tind "Rose" [.nat]] [] from rfl,
-    run_ctor dmR ΓR G ρ φ listD rfl rfl 0 _ _ [] (by simp) hint s psR (runParams_listRose G ρ φ s)
-      [] _ rfl rfl, ctorM_lrNil]
+    run (Kp dmP ΓR G) ρ φ hint rnilT s = some ((nilV, .plain (dmP.tyM listD psR)), s) :=
+  run_ctor dmP ΓR G ρ φ listD rfl rfl 0 _ _ [] (by simp) hint s psR (runParams_listRose G ρ φ s) [] _ rfl
 
-/-- `Node(a, ks)` runs to the tree's meaning, where `ks` runs to the forest's. -/
-theorem run_node (a : Nat) (ks : Term) (l : List RoseN) (s : SState)
-    (hk : ∀ hint, run (Kp dmR ΓR G) ρ φ hint ks s = some ((semLR l, .plain (dmR.tyM listD psR)), s)) (hint : TyS) :
-    run (Kp dmR ΓR G) ρ φ hint (nodeT a ks) s = some ((semR (.node a l), .plain (dmR.tyM roseD psN)), s) := by
-  have hf : runFields (Kp dmR ΓR G) ρ φ false roseD 0 0 (psN.map some) [] [num a, ks] s
-      = some (([.el0 Nat a, semLR l], psN.map some), s) := by
-    have hn : ∀ hint, runT (Kp dmR ΓR G) ρ φ false hint (num a) s = some ((.el0 Nat a, { hint with label := none }), s) :=
-      fun hint => run_num dmR ΓR G ρ φ a hint s
-    have hk' : ∀ hint, runT (Kp dmR ΓR G) ρ φ false hint ks s = some ((semLR l, .plain (dmR.tyM listD psR)), s) := hk
+/-- `Node(a, ks)` runs to the tree, where `ks` runs to the forest. -/
+theorem run_node (a : Nat) (ks : Term) (l : Sem) (s : SState)
+    (hk : ∀ hint, run (Kp dmP ΓR G) ρ φ hint ks s = some ((l, .plain (dmP.tyM listD psR)), s)) (hint : TyS) :
+    run (Kp dmP ΓR G) ρ φ hint (nodeT a ks) s = some ((nodeV a l, .plain (dmP.tyM roseD psN)), s) := by
+  have hf : runFields (Kp dmP ΓR G) ρ φ false roseD 0 0 (some (dmP.recOf roseD psN)) (psN.map some) [] [num a, ks] s
+      = some (([.el0 Nat a, l], psN.map some), s) := by
+    have hn : ∀ hint, runT (Kp dmP ΓR G) ρ φ false hint (num a) s = some ((.el0 Nat a, { hint with label := none }), s) :=
+      fun hint => run_num dmP ΓR G ρ φ a hint s
+    have hk' : ∀ hint, runT (Kp dmP ΓR G) ρ φ false hint ks s = some ((l, .plain (dmP.tyM listD psR)), s) := hk
     simp only [runFields, SM.stmtIf, Bool.false_and, Bool.false_eq_true, if_false, bind, Option.bind, hn, hk', pure]
     rfl
-  rw [show nodeT a ks = .ctor roseD.name 0 ⟨"Node"⟩ [.nat] [num a, ks] from rfl,
-    run_ctor dmR ΓR G ρ φ roseD rfl rfl 0 _ [.nat] [num a, ks] (by simp) hint s psN (runParams_roseNat G ρ φ s)
-      _ _ hf rfl, ctorM_node]
+  exact run_ctor dmP ΓR G ρ φ roseD rfl rfl 0 _ [.nat] [num a, ks] (by simp) hint s psN (runParams_roseNat G ρ φ s)
+    _ _ hf
 
-/-- `Cons(r, rs)` at `List(Rose(Nat))` runs to the forest's meaning. -/
-theorem run_lrCons (r rs : Term) (t : RoseN) (ts : List RoseN) (s : SState)
-    (hr : ∀ hint, run (Kp dmR ΓR G) ρ φ hint r s = some ((semR t, .plain (dmR.tyM roseD psN)), s))
-    (hrs : ∀ hint, run (Kp dmR ΓR G) ρ φ hint rs s = some ((semLR ts, .plain (dmR.tyM listD psR)), s)) (hint : TyS) :
-    run (Kp dmR ΓR G) ρ φ hint (rconsT r rs) s = some ((semLR (t :: ts), .plain (dmR.tyM listD psR)), s) := by
-  have hf : runFields (Kp dmR ΓR G) ρ φ false listD 1 0 (psR.map some) [] [r, rs] s
-      = some (([semR t, semLR ts], psR.map some), s) := by
-    have hr' : ∀ hint, runT (Kp dmR ΓR G) ρ φ false hint r s = some ((semR t, .plain (dmR.tyM roseD psN)), s) := hr
-    have hrs' : ∀ hint, runT (Kp dmR ΓR G) ρ φ false hint rs s = some ((semLR ts, .plain (dmR.tyM listD psR)), s) := hrs
+/-- `Cons(r, rs)` at `List(Rose(Nat))` runs to the forest. -/
+theorem run_lrCons (r rs : Term) (t ts : Sem) (s : SState)
+    (hr : ∀ hint, run (Kp dmP ΓR G) ρ φ hint r s = some ((t, .plain (dmP.tyM roseD psN)), s))
+    (hrs : ∀ hint, run (Kp dmP ΓR G) ρ φ hint rs s = some ((ts, .plain (dmP.tyM listD psR)), s)) (hint : TyS) :
+    run (Kp dmP ΓR G) ρ φ hint (rconsT r rs) s = some ((consV t ts, .plain (dmP.tyM listD psR)), s) := by
+  have hf : runFields (Kp dmP ΓR G) ρ φ false listD 1 0 (some (dmP.recOf listD psR)) (psR.map some) [] [r, rs] s
+      = some (([t, ts], psR.map some), s) := by
+    have hr' : ∀ hint, runT (Kp dmP ΓR G) ρ φ false hint r s = some ((t, .plain (dmP.tyM roseD psN)), s) := hr
+    have hrs' : ∀ hint, runT (Kp dmP ΓR G) ρ φ false hint rs s = some ((ts, .plain (dmP.tyM listD psR)), s) := hrs
     simp only [runFields, SM.stmtIf, Bool.false_and, Bool.false_eq_true, if_false, bind, Option.bind, hr', hrs', pure]
     rfl
-  rw [show rconsT r rs = .ctor listD.name 1 ⟨"Cons"⟩ [.tind "Rose" [.nat]] [r, rs] from rfl,
-    run_ctor dmR ΓR G ρ φ listD rfl rfl 1 _ _ [r, rs] (by simp) hint s psR (runParams_listRose G ρ φ s)
-      _ _ hf rfl, ctorM_lrCons]
+  exact run_ctor dmP ΓR G ρ φ listD rfl rfl 1 _ _ [r, rs] (by simp) hint s psR (runParams_listRose G ρ φ s)
+    _ _ hf
 
-/-- **`Node(1, Cons(Node(2, Nil), Nil))` (the probe's `Tree`) runs, by the constructor clause, to the tree's
-meaning**, a member of `Rose(Nat)`'s code (`DataCodes.semR_mem`); the match clause reads it as `Node` with its
-fields, the second a member of `List(Rose(Nat))`'s code. -/
+/-- **`Node(1, Cons(Node(2, Nil), Nil))` (the probe's `Tree`) runs, by the constructor clause, to the
+tree**, a member of `Rose(Nat)`'s code (`DataCodes.tree_memTy`); the match clause reads it as `Node`
+with its fields, the second a member of `List(Rose(Nat))`'s code. -/
 theorem run_tree (hint : TyS) (s : SState) :
-    run (Kp dmR ΓR G) ρ φ hint (nodeT 1 (rconsT (nodeT 2 rnilT) rnilT)) s
-        = some ((semR (.node 1 [.node 2 []]), .plain (dmR.tyM roseD psN)), s) ∧
-      indTag (semR (.node 1 [.node 2 []])) (.plain (dmR.tyM roseD psN)) = .el0 Nat 0 ∧
-      Sem.stepField dmR ΓR 0 1 (semR (.node 1 [.node 2 []])) = some (semLR [.node 2 []], .plain (dmR.tyM listD psR)) := by
+    run (Kp dmP ΓR G) ρ φ hint (nodeT 1 (rconsT (nodeT 2 rnilT) rnilT)) s
+        = some ((nodeV 1 (consV (nodeV 2 nilV) nilV), .plain (dmP.tyM roseD psN)), s) ∧
+      indTag (nodeV 1 (consV (nodeV 2 nilV) nilV)) (.plain (dmP.tyM roseD psN)) = .el0 Nat 0 ∧
+      Sem.stepField dmP ΓR 0 1 (nodeV 1 (consV (nodeV 2 nilV) nilV))
+        = some (consV (nodeV 2 nilV) nilV, .plain (dmP.tyM listD psR)) := by
   refine ⟨run_node G ρ φ 1 _ _ s (fun hint => run_lrCons G ρ φ _ _ _ _ s
       (fun hint => run_node G ρ φ 2 _ _ s (fun hint => run_lrNil G ρ φ hint s) hint)
       (fun hint => run_lrNil G ρ φ hint s) hint) hint, rfl, rfl⟩

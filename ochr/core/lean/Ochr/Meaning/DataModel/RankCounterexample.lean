@@ -1,8 +1,11 @@
-import Ochr.Meaning.Regress.DataCodes
-import Ochr.Meaning.Places
+import Ochr.Meaning.DataModel.Old
 
 /-!
-# The rank law does not give guarded recursion through nesting (docs/34 §2.2; kernel-checked)
+# The rank law did not give guarded recursion through nesting (docs/34 §2.2; kernel-checked)
+
+A record against the data layer before docs/34's port (its frozen copy, `DataModel/Old.lean`,
+with the old `semRank` and the old `Regress/DataCodes.lean` rose trees copied below). The port's
+rank is the height of the meaning, under which `CountF` computes `3` (`Regress/DataCodes.lean`).
 
 `DataModel.rank_lt` says that a field whose declared type is a direct occurrence of the
 declaration packs an element of smaller rank. The reference run's guarded fixpoint reads
@@ -15,8 +18,8 @@ Here is a data model `dmK` that covers `List` and `Rose`, satisfies every law of
 (its reading is its own, `List`'s direct recursive field is announced by `recArgs` and ranked
 by length), reads `List(Rose(Nat))` and `Rose(Nat)` at the run's codes, and under which the
 forest `k` reached from `f` by two field steps (`f.0.1`, the head tree's `kids`) has the same
-`semRank` as `f` (`semRank_eq`). The generic model's rank (`DataGeneric.crank`, the first stage,
-length plus one for a list) is the same. So `rank_lt` does not give what `CountF` needs, and the
+`semRank` as `f` (`semRank_eq`). The generic model's rank of that time (the first stage, length
+plus one for a list) was the same. So `rank_lt` does not give what `CountF` needs, and the
 model's guarded fixpoint cuts `CountF`'s recursion where the checker computes.
 
 The model is honest at the parameters the program uses (`List` at `Rose(Nat)`, `Rose` at `Nat`)
@@ -25,7 +28,59 @@ and degenerate elsewhere (only fieldless constructors), which the laws allow.
 
 namespace Ochr.Meaning.DataModel.RankCounterexample
 
-open Ochr Ochr.Meaning Ochr.Meaning.DataModel Ochr.Meaning.Regress.DataCodes
+open Ochr Ochr.Meaning.Old Ochr.Meaning.Old.DataModel
+
+/-! ## The old layer's rank and rose trees (copied from `Places.lean` and `Regress/DataCodes.lean`
+at 34ecffdd) -/
+
+/-- The old rank: the rank its own declaration gives the element a constructor value packs (a
+number's, its value, is not needed here). -/
+noncomputable def semRank (dm : DataModel) (Γ : List IndDecl) : Sem → Nat
+  | .dat n ps _ _ (some ⟨A, x⟩) =>
+    match Γ.find? (·.name == n) with
+    | some d => open Classical in if h : A = dm.car d ps then dm.rank (h ▸ x) else 0
+    | none => 0
+  | _ => 0
+
+def listD : IndDecl :=
+  { name := "List", params := [(⟨"A"⟩, .sort 1)],
+    ctors := [("Nil", []), ("Cons", [("h", .place (.var 0)), ("t", .tind "List" [.place (.var 1)])])] }
+
+def roseD : IndDecl :=
+  { name := "Rose", params := [(⟨"A"⟩, .sort 1)],
+    ctors := [("Node", [("a", .place (.var 0)), ("kids", .tind "List" [.tind "Rose" [.place (.var 1)]])])] }
+
+def psN : List Sem := [.ty TyM.nat]
+
+inductive RoseN
+  | node : Nat → List RoseN → RoseN
+
+def cR : Code0 RoseN := .data roseD [.ty Nat .nat] RoseN
+def psR : List Sem := [.ty (.t0 RoseN cR)]
+def cLR : Code0 (List RoseN) := .data listD [.ty RoseN cR] (List RoseN)
+
+mutual
+def semR : RoseN → Sem
+  | .node a ks => .dat "Rose" psN 0 [.el0 Nat a, semLR ks] (some ⟨RoseN, .node a ks⟩)
+def semLR : List RoseN → Sem
+  | [] => .dat "List" psR 0 [] (some ⟨List RoseN, []⟩)
+  | r :: rs => .dat "List" psR 1 [semR r, semLR rs] (some ⟨List RoseN, r :: rs⟩)
+end
+
+theorem semR_inj : ∀ {r r' : RoseN}, semR r = semR r' → r = r'
+  | .node .., .node .., h => by
+    simp only [semR, Sem.dat.injEq, Option.some.injEq] at h
+    exact eq_of_heq (Sigma.mk.inj h.2.2.2.2).2
+
+theorem semLR_inj : ∀ {l l' : List RoseN}, semLR l = semLR l' → l = l'
+  | [], [], _ => rfl
+  | _ :: _, _ :: _, h => by
+    simp only [semLR, Sem.dat.injEq, Option.some.injEq] at h
+    exact eq_of_heq (Sigma.mk.inj h.2.2.2.2).2
+  | [], _ :: _, h => by simp [semLR] at h
+  | _ :: _, [], h => by simp [semLR] at h
+
+/-! ## The model -/
 
 /-- Constructor `c` of `d` exists and has no fields. -/
 def Fieldless (d : IndDecl) (c : Nat) : Prop := ∃ ctor, d.ctors[c]? = some ctor ∧ ctor.2.length = 0

@@ -150,24 +150,23 @@ theorem pair_sites : StaticLend.sameSites (Env.sitesOf stP.env 1) [⟨.bind 1 3,
     StaticLend.sameSites (Env.sitesOf stP.env 3) [⟨.bind 1 4, [.deref, .field ⟨"Pair", 0, 0, ""⟩], false⟩] = true := by
   decide +kernel
 
-noncomputable def SPr (S A B X R T : SBinding) (fx : Sem → Sem) (ps : List Sem) (v1 vs vt : Sem)
-    (e : Sem → Option (Σ A : Type, A)) : SState :=
+noncomputable def SPr (S A B X R T : SBinding) (fx : Sem → Sem) (ps : Rec) (v1 vs vt : Sem) : SState :=
   { env := [SFrame.mk [] [], SFrame.mk [{ S with val := fun _ => vs }, { A with val := fun _ => .moved },
       { B with val := fun _ => .moved }, { X with val := fun ψ => fx (ψ 1) },
-      { R with val := fun ψ => .dat "Pair" ps 0 [ψ 3, v1] (e (ψ 3)) }, { T with val := fun _ => vt }] []],
+      { R with val := fun ψ => .dat "Pair" ps 0 [ψ 3, v1] }, { T with val := fun _ => vt }] []],
     shape := fun p => if p = .bind 1 4 then some 1 else if p = .bind 1 5 then some 3 else none,
     nextLoan := 4, lent := Env.sitesOf stP.env }
 
 /-- **Off field `0`, the value read off a two-field constructor value does not read field `0`**,
 whatever the declaration (its type at field `1` may). -/
-theorem follow_dat_off (n : String) (ps : List Sem) (v1 : Sem) (a a' : Sem) (e e' : Option (Σ A : Type, A)) :
+theorem follow_dat_off (n : String) (ps : Rec) (v1 : Sem) (a a' : Sem) :
     ∀ (steps : List Step) (T : TyS), (pathKey steps).head? ≠ none → (pathKey steps).head? ≠ some (0, 0) →
-      (Sem.follow dm Γ T (.dat n ps 0 [a, v1] e) steps).map Prod.fst =
-        (Sem.follow dm Γ T (.dat n ps 0 [a', v1] e') steps).map Prod.fst
+      (Sem.follow dm Γ T (.dat n ps 0 [a, v1]) steps).map Prod.fst =
+        (Sem.follow dm Γ T (.dat n ps 0 [a', v1]) steps).map Prod.fst
   | [], _, h, _ => absurd rfl h
   | .deref :: ss, T, h1, h2 => by
     simp only [Sem.follow, Sem.step, Option.bind_some]
-    exact follow_dat_off n ps v1 a a' e e' ss T h1 h2
+    exact follow_dat_off n ps v1 a a' ss T h1 h2
   | .proj i :: ss, T, h1, h2 => by
     cases i with
     | zero => exact absurd rfl h2
@@ -219,8 +218,8 @@ theorem siteP3 : (Env.sitesOf stP.env 3).any
   decide +kernel
 
 /-- **A field borrowed through a returned borrow of a pair**: the site below the root. -/
-theorem dws_Pair (S A B X R T : SBinding) (fx : Sem → Sem) (ps : List Sem) (v1 vs vt : Sem)
-    (e : Sem → Option (Σ A : Type, A)) : DepWithinSites dm Γ (SPr S A B X R T fx ps v1 vs vt e) := by
+theorem dws_Pair (S A B X R T : SBinding) (fx : Sem → Sem) (ps : Rec) (v1 vs vt : Sem) :
+    DepWithinSites dm Γ (SPr S A B X R T fx ps v1 vs vt) := by
   intro p steps ψ ψ' h
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
   · rcases f with _ | _ | f
@@ -231,7 +230,7 @@ theorem dws_Pair (S A B X R T : SBinding) (fx : Sem → Sem) (ps : List Sem) (v1
       · simp [SState.valAt, SPr]
       · have h2 : ψ 1 = ψ' 1 := Classical.byContradiction fun hne => by
           have := (h 1 hne).2
-          rw [DepSites.reached_of_rootSited (s := SPr S A B X R T fx ps v1 vs vt e) (p := .bind 1 3) (l := 1)
+          rw [DepSites.reached_of_rootSited (s := SPr S A B X R T fx ps v1 vs vt) (p := .bind 1 3) (l := 1)
             (rs_P 1 3 ⟨rfl, rfl⟩) steps] at this; cases this
         simp [SState.valAt, SPr, h2]
       · by_cases h3 : ψ 3 = ψ' 3
@@ -246,7 +245,7 @@ theorem dws_Pair (S A B X R T : SBinding) (fx : Sem → Sem) (ps : List Sem) (v1
             exact this
           obtain ⟨h1, h2⟩ := off_key00 hxp.2 hd
           simp only [SState.valAt, SPr, SState.tyAt]
-          exact follow_dat_off dm Γ "Pair" ps v1 _ _ _ _ steps _ h1 h2
+          exact follow_dat_off dm Γ "Pair" ps v1 _ _ steps _ h1 h2
       · simp [SState.valAt, SPr]
       · simp [SState.valAt, SPr]
     · simp [SState.valAt, SPr]
@@ -268,10 +267,10 @@ at depends on field `0` (`fieldTy` reading the earlier fields, as a dependent de
 two typed futures differing only at `3` (lent at `(r, [*, .0])`, incomparable with `[*, .1]`) read
 field `1` at different types. The value read is the same (`dws_Pair`). The record of why the
 invariant compares values only. -/
-theorem dws_Pair_dependent_fails (S A B X R T : SBinding) (fx : Sem → Sem) (ps : List Sem) (v1 vs vt : Sem)
-    (e : Sem → Option (Σ A : Type, A)) (x y : Sem)
+theorem dws_Pair_dependent_fails (S A B X R T : SBinding) (fx : Sem → Sem) (ps : Rec) (v1 vs vt : Sem)
+    (x y : Sem)
     (hdep : contentTyS dm Γ "Pair" ps 0 1 [x] v1 ≠ contentTyS dm Γ "Pair" ps 0 1 [y] v1) :
-    ¬ DepWithinSitesT dm Γ (SPr S A B X R T fx ps v1 vs vt e) := by
+    ¬ DepWithinSitesT dm Γ (SPr S A B X R T fx ps v1 vs vt) := by
   intro h
   have := h (.bind 1 4) [.deref, .field ⟨"Pair", 0, 1, ""⟩] (fun l => if l = 3 then x else .err)
     (fun l => if l = 3 then y else .err) (fun l hl => ?_)
@@ -324,24 +323,24 @@ theorem siteLI1 : (Env.sitesOf stLI.env 1).any
     (fun x => decide (x.pos = .bind 1 1) && pathKey x.path == [(0, 0)]) = true := by
   decide +kernel
 
-noncomputable def SLI (C S Vb R : SBinding) (ps : List Sem) (vx vs vr : Sem) (e : Sem → Option (Σ A : Type, A)) : SState :=
+noncomputable def SLI (C S Vb R : SBinding) (ps : Rec) (vx vs vr : Sem) : SState :=
   { env := [SFrame.mk [{ C with val := fun ψ => ψ 0 }] [],
-      SFrame.mk [{ S with val := fun _ => vs }, { Vb with val := fun ψ => .dat "V" ps 0 [ψ 1, vx] (e (ψ 1)) },
+      SFrame.mk [{ S with val := fun _ => vs }, { Vb with val := fun ψ => .dat "V" ps 0 [ψ 1, vx] },
         { R with val := fun _ => vr }] []],
     shape := fun p => if p = .bind 1 1 then some 0 else if p = .bind 1 2 then some 1 else none,
     nextLoan := 2, lent := Env.sitesOf stLI.env }
 
 /-- **A dependent pair with its index lent**: the value read at the dependent field does not read
 the lent index. -/
-theorem dws_LendIndex (C S Vb R : SBinding) (ps : List Sem) (vx vs vr : Sem) (e : Sem → Option (Σ A : Type, A)) :
-    DepWithinSites dm Γ (SLI C S Vb R ps vx vs vr e) := by
+theorem dws_LendIndex (C S Vb R : SBinding) (ps : Rec) (vx vs vr : Sem) :
+    DepWithinSites dm Γ (SLI C S Vb R ps vx vs vr) := by
   intro p steps ψ ψ' h
   rcases p with ⟨f, i⟩ | ⟨f, i⟩
   · rcases f with _ | _ | f
     · rcases i with _ | i
       · have h0 : ψ 0 = ψ' 0 := Classical.byContradiction fun hne => by
           have := (h 0 hne).2
-          rw [DepSites.reached_of_rootSited (s := SLI C S Vb R ps vx vs vr e) (p := .bind 0 0) (l := 0)
+          rw [DepSites.reached_of_rootSited (s := SLI C S Vb R ps vx vs vr) (p := .bind 0 0) (l := 0)
             rsLI0 steps] at this; cases this
         simp [SState.valAt, SLI, h0]
       · simp [SState.valAt, SLI]
@@ -359,7 +358,7 @@ theorem dws_LendIndex (C S Vb R : SBinding) (ps : List Sem) (vx vs vr : Sem) (e 
             exact this
           obtain ⟨hn, hk⟩ := off_key00 hxp.2 hd
           simp only [SState.valAt, SLI, SState.tyAt]
-          exact follow_dat_off dm Γ "V" ps vx _ _ _ _ steps _ hn hk
+          exact follow_dat_off dm Γ "V" ps vx _ _ steps _ hn hk
       · simp [SState.valAt, SLI]
       · simp [SState.valAt, SLI]
     · simp [SState.valAt, SLI]

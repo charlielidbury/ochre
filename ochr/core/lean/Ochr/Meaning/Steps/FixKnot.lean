@@ -73,7 +73,7 @@ inductive SemPart (dm : DataModel) (Γ : List IndDecl) : Sem → Sem → Prop
 every declaration and nesting, as a function of the meaning alone; `semRank` is the height after the
 port). What `recDecreases_stmt` turns [Rec]'s syntactic check into. -/
 theorem semRank_part (dm : DataModel) (Γ : List IndDecl) {a b : Sem} (h : SemPart dm Γ a b) :
-    semRank dm Γ a < semRank dm Γ b := by
+    semRank a < semRank b := by
   sorry
 
 /-! ### The [Rec] link (the spine's; docs/31 D73 item 3) -/

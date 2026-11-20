@@ -154,7 +154,7 @@ theorem erased_proof_untyped (fl : Bool × Bool) (h : fl.2 = true) (x : SM Res) 
 /-- A field whose run is typed `err` solves no parameter of its constructor (`Machine.unifyParams`
 reads the parameter off the field's type; before A17 a proof read at a place was typed `err`, so
 `MkPBox(h)` failed where the checker accepts `ShapeProbes.BoxProof`). -/
-theorem unify_untyped (R : DataRead) (np : Nat) (FT : Term) (sol : List (Option Sem)) :
-    unifyTyS R np FT (.plain .err) sol = sol := rfl
+theorem unify_untyped (dm : DataModel) (np : Nat) (FT : Term) (sol : List (Option Sem)) :
+    unifyTyS dm np FT (.plain .err) sol = sol := rfl
 
 end Ochr.Meaning.Regress.ShapeAgree

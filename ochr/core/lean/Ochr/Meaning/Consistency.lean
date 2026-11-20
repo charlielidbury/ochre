@@ -19,13 +19,13 @@ the leaves below and the step lemmas (`Steps/*.lean`). Writing them found the kn
    the items, an accepted function's closure is a member of its Π-type (`Steps/Tail.checkFix_sound`)
    and an accepted constant's value a member of its goal (`checkConst_sound`), under the globals'
    meanings so far; the data model covers every accepted declaration (`checkInd_sound`).
-3. **`False` means the empty proposition**: the library's `False` has no constructors, so its
-   carrier is empty and `tyM` gives `prop False` (`false_means_empty`, a law of the data model
-   for the library's declaration, which `libModel` and the generic model satisfy).
+3. **`False` means the empty proposition**: the library's `False` has no constructors, so it has
+   no member and `tyM` gives `prop False` (`false_means_empty`, from the data model's library:
+   membership is the least set closed under the constructors, docs/34 §14).
 4. **Consistency**: a parameterless definition of type `False` would mean a member of `prop
    False`, that is, a proof of `False` (`Sem.mem proof (prop P) = P`); so there is none.
-A data model exists for every accepted program (`exists_dataModel`, data-generic's generic
-construction), which turns the relative statement into `consistencyBounded`.
+A data model covering and faithful to every accepted program exists (`exists_dataModel`, docs/34),
+which turns the relative statement into `consistencyBounded`.
 
 What the assembly covers as the run stands (docs/31 D12): definitions whose Π-type is in `Type₀`
 or `Prop`; polymorphic definitions wait on the level-1 construction.
@@ -38,12 +38,16 @@ open Ochr.Meaning Ochr.Surface Ochr.Consistency
 section
 variable (dm : DataModel) (D : MState → Decisions)
 
-/-- **The data model is faithful to the program** (a named hypothesis of the chain, docs/31 D72):
-its field types, parameter types and recursive arguments are the declarations' as the run reads them.
-As `exists_dataModel` stood, a model ignoring the program met it, and `fieldTypesOf_step` is false at
-such a model (the data-model lane, `spine-datamodel`, docs/34); that lane is drafting the statement,
-which replaces this placeholder and becomes a clause of `CtxOk`. -/
-opaque DataFaithful (dm : DataModel) (P : ProgState) : Prop
+/-- **The data model is faithful to the program** (a named hypothesis of the chain, docs/31 D72,
+docs/34 §9): at every checker state over the program's declarations whose globals extend the
+program's (the state a definition's check ends in), the run context's data model reads the
+declared field types, parameter types and records as the run does (`CtxFaithful`, what `CtxOk`
+carries). Before docs/34's port the existence statement asked only `covers`, and a model ignoring
+the program met it (`DataModel/Counterexamples.degenerate_meets`, against the frozen copy); that
+model is not faithful (`DataModel/Degenerate.lean`). The globals are restricted because the
+decisions read them: a field type calling a global is run under the decisions at the state. -/
+def DataFaithful (P : ProgState) : Prop :=
+  ∀ st : MState, st.inds = P.inds → P.globals <+: st.globals → CtxFaithful (P.ctx dm D st)
 
 /-- Every accepted definition so far means a member of its type. -/
 def MeansMember (P : ProgState) : Prop := ∀ n s T, (n, s, T) ∈ P.means → s ∈ₛ[dm.read] T.m
@@ -59,7 +63,7 @@ the context's conditions under the program's context so far (Σ's globals are me
 induction, `hP`; the data model covering and faithful), and it is related to the empty state at its
 counter (`Steps.Rel.start`: it holds no borrow), out of tail position. -/
 theorem const_split (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms = [])
-    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm P)
+    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm D P)
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
     ∃ (f : Nat) (st₁ st₂ st₃ : MState) (b₁ b₂ : Nat) (goal v : Value) (T? : Option Value),
       Good dm (P.ctx dm D st').M (P.ctx dm D st').Γ (fun _ => .err) st₁ ∧ Steps.CtxOk (P.ctx dm D st') (fun _ => .err) st₁ ∧
@@ -99,7 +103,7 @@ theorem const_value (fuel : Nat) (P : ProgState) (d : Def) (st' st₁ : MState) 
 [Return]'s membership (`bodyReturns_sound`, in the extended context, the value in flight), the
 constant's meaning that value's (`const_value`). -/
 theorem step_member_const (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms = [])
-    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm P)
+    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm D P)
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
     ∃ m, defMeaning (fun _ => .err) (P.ctx dm D st') d
         (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot) = some m ∧ m.1 ∈ₛ[dm.read] m.2.m := by
@@ -139,7 +143,7 @@ the final form: `generic_good_stmt` (the generic state related to `bodyFrame` at
 `checkTail_step_stmt` (docs/31 D80). The one place the context's meaning of a global differs from
 `defMeaning`'s: inside this step, the global means the stage-`b` closure (D79). -/
 theorem fix_split (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms ≠ [])
-    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm P)
+    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm D P)
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
     ∃ (l : Nat) (ds : List PiDom) (out : PiCod) (stage : Nat → List Sem → Option BodyOut) (rank : List Sem → Nat),
       l ≤ 3 ∧
@@ -161,7 +165,7 @@ layer's). Not `checkFix_sound`: `CtxOk` at the state it starts from asked the fu
 of its type (`Regress/DefKnot.ctx_contains_fix_member`); it now asks only membership below the bound
 (`RunCtx.cur`, `MemBelow`). -/
 theorem step_member_fix (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.doms ≠ [])
-    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm P)
+    (hP : MeansMember dm P) (hcov : ∀ d' ∈ st'.inds, dm.covers d') (hfaith : DataFaithful dm D P)
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
     ∃ m, defMeaning (fun _ => .err) (P.ctx dm D st') d
         (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot) = some m ∧ m.1 ∈ₛ[dm.read] m.2.m := by
@@ -177,7 +181,7 @@ definition; a definition's meaning is a member by `step_member_const` or `step_m
 theorem step_member (fuel : Nat) (P : ProgState) (it : Item) (hP : MeansMember dm P)
     (hacc : ItemAccepted fuel P it)
     (hcov : ∀ d' ∈ (ProgState.step dm D (fun _ => .err) {} fuel P it).inds, dm.covers d')
-    (hfaith : DataFaithful dm P) :
+    (hfaith : DataFaithful dm D P) :
     MeansMember dm (ProgState.step dm D (fun _ => .err) {} fuel P it) := by
   unfold ItemAccepted at hacc
   rcases hr : (runMachine (checkItem it) { globals := P.globals, inds := P.inds } fuel).1 with ⟨u, st'⟩ | f | e
@@ -236,7 +240,7 @@ theorem defn_member (items : List Item) (fuel : Nat)
     (hacc : ∀ (i : Nat) (it : Item), items[i]? = some it →
       ItemAccepted fuel (progMeaning dm D (fun _ => .err) {} fuel (items.take i)) it)
     (hcov : ∀ k, k ≤ items.length → (progMeaning dm D (fun _ => .err) {} fuel (items.take k)).Covered dm)
-    (hfaith : ∀ k, k ≤ items.length → DataFaithful dm (progMeaning dm D (fun _ => .err) {} fuel (items.take k))) :
+    (hfaith : ∀ k, k ≤ items.length → DataFaithful dm D (progMeaning dm D (fun _ => .err) {} fuel (items.take k))) :
     MeansMember dm (progMeaning dm D (fun _ => .err) {} fuel items) := by
   have key : ∀ k, k ≤ items.length → MeansMember dm (progMeaning dm D (fun _ => .err) {} fuel (items.take k)) := by
     intro k
@@ -256,12 +260,21 @@ theorem defn_member (items : List Item) (fuel : Nat)
   have := key items.length (Nat.le_refl _)
   rwa [List.take_length] at this
 
-/-- (3) The library's `False` means the empty proposition: `tyM` of a declaration with no
-constructors is `prop (Nonempty car)`, and a carrier with no constructor is empty
-(`DataModel.pack_fields`: every element is a constructor applied to fields). -/
+/-- (3) The library's `False` means the empty proposition: `tyM` of a `Prop`-sorted declaration is
+the proposition that it has a member (`DataModel.tyR_prop`), and a declaration with no
+constructors has none (`DataLib.mem_iff`: a member is a constructor applied to fields). -/
 theorem false_means_empty (d : IndDecl) (hd : d.name = "False" ∧ d.ctors = [] ∧ d.sort = 0)
-    (hcov : dm.covers d) : dm.tyM d [] = .prop False := by
-  sorry
+    (_hcov : dm.covers d) : dm.tyM d [] = .prop False := by
+  unfold DataModel.tyM
+  rw [DataModel.tyR_prop dm d _ (by simp [hd.2.2])]
+  congr 1
+  apply propext
+  constructor
+  · rintro ⟨v, hv⟩
+    obtain ⟨⟨c, hc⟩, -⟩ := (DataLib.mem_iff dm.sig d _ v).1 hv
+    rw [hd.2.1] at hc
+    exact absurd hc (Nat.not_lt_zero _)
+  · exact False.elim
 
 /-- The stored type of a parameterless definition declared `: False` is the library's `False`
 applied to nothing, once the library is in front (names are distinct: `Check.declared`). -/
@@ -280,7 +293,7 @@ theorem consistency_rel (q : Program) (fuel : Nat)
     (hcov : ∀ items, ResolvesTo (Prelude.decls ++ q) fuel items →
       (progMeaning dm D (fun _ => .err) {} fuel items).Covered dm)
     (hfaith : ∀ items, ResolvesTo (Prelude.decls ++ q) fuel items →
-      ∀ k, k ≤ items.length → DataFaithful dm (progMeaning dm D (fun _ => .err) {} fuel (items.take k))) :
+      ∀ k, k ≤ items.length → DataFaithful dm D (progMeaning dm D (fun _ => .err) {} fuel (items.take k))) :
     ∀ d ∈ q, ¬ d.IsFalseConst := by
   intro d hd hf
   obtain ⟨items, hres, hacc⟩ := accepted_resolves dm D (Prelude.decls ++ q) fuel acc
@@ -296,17 +309,24 @@ theorem consistency_rel (q : Program) (fuel : Nat)
 
 end
 
-/-- A data model covering every accepted program exists (the generic construction by stages,
-`DataGeneric.lean`, data-generic), with the checker's decisions (`DecisionsInst.checkerDecisions`).
-Since docs/31 D61 a data model also carries its reading (`DataModel.read`, `read_eq`): a field
-holds a full meaning, a data field's read through the model's own reading, so the generic model
-needs a reading coherent with it (`DataGeneric.Coherent`), a fixed point of model and reading not
-yet constructed. The reading also gives whole fields (`DataRead.WholeFields`, docs/31 D68), so
-that the record a borrow-returning call makes, the encoding of its forward value, is whole. -/
+/-- **A data model covering and faithful to every accepted program exists** (docs/34), under the
+checker's decisions (`DecisionsInst.checkerDecisions`: an existential choice of decisions could make
+the runs faithfulness asks for undefined, or align them with nothing). What a data model is since
+docs/34's port: the program decides only which declarations it covers, the signature (each field's
+shape at a record and the earlier fields read small), the record of a declaration at parameters and
+the parameters' types; carriers, membership (the least set closed under the constructors), the
+reading (a bijection onto the members, so whole: `DataModel.read_wholeFields`) and the rank (the
+height of a meaning) are defined from that and their laws are the library's theorems
+(`DataLib`). So the statement owes only `covers` and faithfulness (`DataFaithful`), which excludes
+the degenerate model (`DataModel/Degenerate.lean`). The model relies on one property of the
+checker, kept as an assumption of the construction, not a hypothesis here: the checker never
+decides that two applications of a type former to different arguments are different (a record
+keeps what field types read of the parameters, not the parameters; docs/34 §8, §13). -/
 theorem exists_dataModel (items : List Item) (fuel : Nat) :
-    ∃ (dm : DataModel) (D : MState → Decisions),
-      (progMeaning dm D (fun _ => .err) {} fuel items).Covered dm ∧ dm.read.WholeFields ∧
-      ∀ k, k ≤ items.length → DataFaithful dm (progMeaning dm D (fun _ => .err) {} fuel (items.take k)) := by
+    ∃ dm : DataModel,
+      (progMeaning dm (fun st => checkerDecisions st fuel) (fun _ => .err) {} fuel items).Covered dm ∧
+      ∀ k, k ≤ items.length → DataFaithful dm (fun st => checkerDecisions st fuel)
+        (progMeaning dm (fun st => checkerDecisions st fuel) (fun _ => .err) {} fuel (items.take k)) := by
   sorry
 
 /-- (leaf, checker) An accepted program resolves: `checkProgram`'s first loop gives every
@@ -326,8 +346,9 @@ theorem consistencyBounded_assembled (q : Program) (fuel : Nat)
     (acc : Accepted (Prelude.decls ++ q) fuel) :
     ∀ d ∈ q, ¬ d.IsFalseConst := by
   obtain ⟨items, hres⟩ := resolves_of_accepted (Prelude.decls ++ q) fuel acc
-  obtain ⟨dm, D, hcov, -, hfaith⟩ := exists_dataModel items fuel
-  refine consistency_rel dm D q fuel holes levels acc (fun items' h' => ?_) (fun items' h' => ?_)
+  obtain ⟨dm, hcov, hfaith⟩ := exists_dataModel items fuel
+  refine consistency_rel dm (fun st => checkerDecisions st fuel) q fuel holes levels acc
+    (fun items' h' => ?_) (fun items' h' => ?_)
   · rw [resolvesTo_unique _ _ _ _ h' hres]; exact hcov
   · rw [resolvesTo_unique _ _ _ _ h' hres]; exact hfaith
 

@@ -1,4 +1,5 @@
 import Ochr.Meaning.WF
+import Ochr.Meaning.DataModel.Old
 
 /-!
 # A partly moved constructor value was a member of no type (built)
@@ -7,52 +8,51 @@ docs/31 D24 (third lead, 2026-11-19). Membership of a possibly partly moved valu
 first stated: `s = moved ∨ ∃ t whole, s ⊑ t ∧ t ∈ T`, with `⊑` the order `Sem.le` (`moved` below
 everything, a tuple below a tuple field by field, anything else only below itself).
 
-A constructor value with a moved field means an untyped TUPLE (`ctorM_partly`; since D32 a `dat`
-with no element), and a whole constructor value is never one: it has an element of its carrier. So nothing whole and typed
-lies above a partly moved tuple in `Sem.le`, and `pmem` was false of every one
-(`old_pmem_false`), whatever the type.
+Under D32 a constructor value with a moved field meant an untyped TUPLE (a `dat` with no packed
+element), and a whole constructor value was never one: it had an element of its carrier. So
+nothing whole and typed lay above a partly moved tuple in `Sem.le`, and `pmem` was false of every
+one (`old_pmem_false`, against the frozen copy of that layer, `DataModel/Old.lean`), whatever the
+type. A match that moves a field out leaves its scrutinee partly moved: `match xs { Cons(h, t) => t }`
+leaves `xs = Cons(h, ⊥)`, so `Membership`, and with it `Good`, failed after every such read.
 
-A match that moves a field out leaves its scrutinee partly moved: `match xs { Cons(h, t) => t }`
-leaves `xs = Cons(h, ⊥)`. So `Membership`, and with it `Good`, failed at the state after every
-such read, and every step statement, which assumes `Good` and concludes it, was false or vacuous
-there. A fault of the model's definition, not of the checker.
-
-Fixed: `DataModel.pmem` reads "some whole member of the type with parts moved out"
-(`DataModel.MovedOf`: a tuple lies below a packed element of its carrier whose tag is its own and
-whose fields lie above its fields). `pmem_partly` is the positive form: a packed element with any
-of its fields moved out is a partly moved member of its type.
+Fixed then by `DataModel.pmem` ("some whole member of the type with parts moved out",
+`DataModel.MovedOf`). Since docs/34's port a constructor value is a tree, whole or not, so the
+first statement holds too: a whole member with fields moved out lies below the member in `Sem.le`
+(`first_stated_holds`), and `pmem_partly` is the positive form.
 -/
 
 namespace Ochr.Meaning.Regress.PartlyMoved
-open Ochr Ochr.Meaning
 
-/-- **`pmem` as first stated is false of every partly moved value**, at every type (since D32 a
-partly moved value is a `dat` with no element, below only such values, and those are in no type). -/
-theorem old_pmem_false (R : DataRead) (n : String) (ps : List Sem) (c : Nat) (fs : List Sem) (T : TyM) :
-    ¬ (Sem.dat n ps c fs none = .moved ∨ ∃ t : Sem, t.whole ∧ Sem.dat n ps c fs none ⊑ t ∧ t ∈ₛ[R] T) := by
+/-- **`pmem` as first stated was false of every partly moved value**, at every type, before the
+port (a partly moved value was a `dat` with no element, below only such values, and those were in
+no type). -/
+theorem old_pmem_false (R : Old.DataRead) (n : String) (ps : List Old.Sem) (c : Nat) (fs : List Old.Sem) (T : Old.TyM) :
+    ¬ (Old.Sem.dat n ps c fs none = .moved ∨
+      ∃ t : Old.Sem, t.whole ∧ Old.Sem.le (Old.Sem.dat n ps c fs none) t ∧ Old.Sem.mem R t T) := by
   rintro (h | ⟨t, -, hle, hm⟩)
   · cases h
   · cases hle with
-    | refl => exact Sem.not_mem_dat_none R n ps c fs T hm
-    | dat _ => exact Sem.not_mem_dat_none R n ps c _ T hm
+    | refl => exact Old.Sem.not_mem_dat_none R n ps c fs T hm
+    | dat _ => exact Old.Sem.not_mem_dat_none R n ps c _ T hm
 
-/-- A constructor value some field of which is not whole has no element. -/
-theorem ctorM_partly (dm : DataModel) (d : IndDecl) (ps : List Sem) (c : Nat) (fs : List Sem)
-    (h : ¬ ∀ f ∈ fs, f.whole) : dm.ctorM d ps c fs = .dat d.name ps c fs none := by
-  unfold DataModel.ctorM
-  rw [if_neg h]
+open Ochr Ochr.Meaning
 
 /-- `moved` is not whole: a constructor value with a moved field is such a value. -/
 theorem moved_not_whole : ¬ Sem.moved.whole := by simp [Sem.whole]
 
 /-- **The positive form.** A whole member of a data type with some of its fields moved out is a
-partly moved member of the type, for a covered declaration whose parameters are read back from
-its code (`DataModel.ParamsCoded`; docs/31 D61). -/
-theorem pmem_partly (dm : DataModel) (Γ : List IndDecl) (d : IndDecl) (ps : List Sem) (x : dm.car d ps)
-    (hd : dm.covers d) (hs : (d.sort == 0) = false) (hp : dm.ParamsCoded d ps) (hw : ∀ f ∈ dm.fields x, f.whole)
-    (fs : List Sem) (hfs : DataModel.MovedOfList Γ fs (dm.fields x)) :
-    DataModel.pmem dm.read Γ (.dat d.name ps (dm.tag x) fs none) (dm.tyM d ps) :=
-  .inr ⟨.dat d.name ps (dm.tag x) (dm.fields x) (some ⟨dm.car d ps, x⟩), by simpa [Sem.whole] using hw, .dat hfs,
-    .inl (dm.ctor_mem_tyM d ps hd hs hp x)⟩
+partly moved member of the type. -/
+theorem pmem_partly (dm : DataModel) (Γ : List IndDecl) (d : IndDecl) (r : Rec) (c : Nat) (fs gs : List Sem)
+    (hs : (d.sort == 0) = false) (hm : dm.Mem d r (.dat d.name r c gs)) (hfs : DataModel.MovedOfList Γ fs gs) :
+    DataModel.pmem dm.read Γ (.dat d.name r c fs) (dm.tyR d r) :=
+  .inr ⟨_, DataLib.mem_whole dm.sig d r _ hm, .dat hfs, .inl ((DataModel.mem_tyR dm d r hs _).2 hm)⟩
+
+/-- **`pmem` as first stated now holds**: `Cons(h, ⊥)`, left by `match xs { Cons(h, t) => t }`, is
+below the whole member `Cons(h, t)` it came from. -/
+theorem first_stated_holds (dm : DataModel) (d : IndDecl) (r : Rec) (hs : (d.sort == 0) = false)
+    (h t : Sem) (hm : dm.Mem d r (.dat d.name r 1 [h, t])) :
+    ∃ w : Sem, w.whole ∧ Sem.dat d.name r 1 [h, .moved] ⊑ w ∧ w ∈ₛ[dm.read] dm.tyR d r :=
+  ⟨_, DataLib.mem_whole dm.sig d r _ hm, .dat (.cons (.refl _) (.cons (.moved _) .nil)),
+    (DataModel.mem_tyR dm d r hs _).2 hm⟩
 
 end Ochr.Meaning.Regress.PartlyMoved

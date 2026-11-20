@@ -559,7 +559,34 @@ constructor value is now a tree: the partly moved `P(⊥, ())` is below the whol
 
 namespace JoinDropCounterexample
 
-def decl : IndDecl := { name := "P" }
+def decl : IndDecl := { name := "P", ctors := [("MkP", [("a", .unit), ("b", .unit)])] }
+
+/-- A data model of `P`: both fields `Unit`. -/
+def dm : DataModel where
+  covers d := d = decl
+  sig := ⟨fun _ _ _ _ _ => .leaf Unit .unit⟩
+  recOf _ _ := natRec
+  paramTy _ _ _ := TyM.err
+
+/-- The decisions: the join drops `x.0`, field `0` of variable `x` (what `Decide.jdGrain` keeps
+for a one-constructor type: one arm moved `x.0`, the other did not). -/
+def D : Decisions where
+  flags _ _ := (false, false)
+  placeDecl _ _ := .other
+  declOf _ _ := .other
+  copy _ := false
+  piSort _ _ := 1
+  joinMoves _ _ _ := [.proj 0 (.var 0)]
+  rePointed _ _ := []
+  typeDecl _ _ := .other
+
+/-- The run context (other records reuse it: `Regress/CE4_flipped.lean`). -/
+noncomputable def K : RunCtx where
+  dm := dm
+  Γ := [decl]
+  C := { global := fun _ => (.err, .plain .err), sealed := fun _ _ _ _ => .err,
+         clo := fun _ _ _ _ _ => .err, pi := fun _ _ _ _ _ => .err, paramTy := fun _ _ _ _ => .plain .err }
+  D := D
 
 /-- The whole value `P((), ())`: constructor `0` of `P`, its fields `()` and `()`. -/
 def pv : Sem := .dat "P" natRec 0 [.el0 Unit (), .el0 Unit ()]

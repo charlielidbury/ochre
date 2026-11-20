@@ -57,6 +57,10 @@ def meanC {d : IndDecl} {r : Rec} (x : dm.car d r) : Sem := DataLib.meanC dm.sig
 /-- **The members of `D` at `r`**: the least set of trees closed under `D`'s constructors. -/
 def Mem (d : IndDecl) (r : Rec) (v : Sem) : Prop := DataLib.Mem dm.sig d r v
 
+/-- **The carrier is a copy of the members**: a member is the meaning of an element. -/
+theorem mem_iff_meanC (d : IndDecl) (r : Rec) (v : Sem) : dm.Mem d r v ↔ ∃ x : dm.car d r, dm.meanC x = v :=
+  DataLib.mem_iff_meanC dm.sig d r v
+
 /-- Reading an element of a carrier: its meaning, when the carrier is the model's at the code's
 declaration and record; tagged by its carrier otherwise (no code of the model has that carrier). -/
 noncomputable def readFn (d : IndDecl) (r : Rec) (A : Type) (a : A) : Sem :=

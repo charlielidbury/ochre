@@ -1,20 +1,23 @@
-import Ochr.Meaning.DataModel.Proto.Members
+import Ochr.Meaning.Data
 
 /-!
-# Prototype (b2): the probe programs' declarations, their records and their signature
+# A data model of the probe programs' declarations (docs/34 §10, §14)
 
 The declarations of `DataModel/Probes.lean` (and the library's `Word`, `Bool`, `List`), each with
-the record its type keeps (`*Rec`) and its fields' shapes (`progShape`). A record keeps what the
-declaration's field types read of the parameters: a type parameter's entry (its code, or its
-declaration and record), a value parameter read small, and for a parameter above level 0 nothing
-but the propositions and codes the field types compute from it (`teqRec`: the truth of `a = b`).
-The signature is written by hand here; that it is the reference run's reading of the declared
-field types is faithfulness (docs/34 §6), the assembly's obligation.
+the record its type keeps (`*Rec`), its fields' shapes (`progShape`), and the record at given
+parameters (`progRecOf`): a concrete `DataModel` (`dmP`), on which the concrete runs and
+memberships of `DataModel/Examples.lean`, `Regress/DataCodes.lean` and `Regress/CodeRuns.lean` are
+built. A record keeps what the declaration's field types read of the parameters: a type
+parameter's entry (its code, or its declaration and record, at `paramKey`), a value parameter read
+small, and for a parameter above level 0 nothing but the propositions and codes the field types
+compute from it (`teqRec`: the truth of `a = b`). The signature is written by hand here; that it
+is the reference run's reading of the declared field types is faithfulness (`Faithful.lean`), the
+existence statement's obligation.
 -/
 
-namespace Ochr.Meaning.DataModel.Proto
+namespace Ochr.Meaning.DataModel.Program
 
-open Ochr
+open Ochr Ochr.Meaning Ochr.Meaning.DataLib
 
 def h (n : String) : Hint := ⟨n⟩
 
@@ -64,18 +67,23 @@ def fpD : IndDecl :=
   { name := "FP", params := [(h "f", .pi [h "x"] [.tind "Word" []] (.tind "Word" []))],
     ctors := [("MkFP", [("y", .tind "Word" []), ("e", .eq (.tind "Word" []) (.call (.place (.var 1)) [.place (.var 0)] false) (.place (.var 0)))])] }
 
+/-- The program's declarations. -/
+def progDecls : List IndDecl :=
+  [wordD, boolD, listD, roseD, singleD, teqD, bwD, bhD, vecD, isZD, fin1D, vD, reD, hD, mmD, fpD]
+
 /-! ## Records -/
 
 /-- A type's entry in a record: a data type's declaration and record, a leaf's code. A type of
 level 1 has none (no field is of such a type, (I6)). -/
-def entryOf : Ty → Entry
+def entryOf : TyM → Entry
   | .t0 _ (.data d r _) => .data d r
   | .t0 A c => .leaf A c
-  | .t1 _ _ => .none
+  | _ => .none
 
+/-- An entry's shape (a `Prop`-sorted declaration's: a proof). -/
 def shapeOf : Entry → Shape
   | .leaf B c => .leaf B c
-  | .data d r => .sub d r
+  | .data d r => if d.sort == 0 then .prf d r else .sub d r
   | .none => .leaf PEmpty .err
 
 def constRec (x : Entry) : Rec := fun _ => x
@@ -95,7 +103,7 @@ def teqRec (P : Prop) : Rec := constRec (propEntry P)
 
 /-- `VecF(A, n)`: `A`'s entry and the two equations on `n`, read small. -/
 def vecRec (eA : Entry) (sn : Small) : Rec
-  | [(0, 0, _)] => propEntry (sn = zeroS)
+  | [(0, 0, [])] => propEntry (sn = zeroS)
   | [(1, 3, sm :: _)] => propEntry (sn = succS sm)
   | _ => eA
 
@@ -113,16 +121,16 @@ def reRec (eA : Entry) : Rec
   | _ => eA
 
 /-- A key holding a number: position `k` of a sequence a record keeps. -/
-def keyN (k : Nat) : List Step := [(0, 0, [.node k []])]
+def keyN (k : Nat) : List RStep := [(1, 0, [.node k []])]
 
 /-- `H(f)`: the codes `App0` gives along the unfolding, `f(0), f(1), …` (`f`, of level 1, is not
 kept); a child's record is the parent's shifted by one (`shiftRec`). -/
 def hRec (g : Nat → Entry) : Rec
-  | [(0, 0, [.node k []])] => g k
+  | [(1, 0, [.node k []])] => g k
   | _ => .none
 
 def shiftRec (r : Rec) : Rec
-  | [(0, 0, [.node k []])] => r (keyN (k + 1))
+  | [(1, 0, [.node k []])] => r (keyN (k + 1))
   | st => r st
 
 /-- `MM(G)`: the code `MG(G)` (`G(Word)` matched); `FP(f)`: the equation `f(y) = y`, `y` read
@@ -132,6 +140,10 @@ def fpRec (P : Small → Prop) : Rec
   | [(0, 1, [sy])] => propEntry (P sy)
   | _ => .none
 
+/-- `Π(n : Nat). Nat`'s code (a function in a field, a leaf). -/
+abbrev NatFn : Type := (n : Nat) → Nat × PUnit
+def tNatFn : Tel Code0 PUnit NatFn := .param PUnit false Nat .nat (fun _ => Nat × PUnit) fun _ => .dat PUnit Nat .nat
+
 /-- `BF(b)` and `BG(b)` (`DataModel/Probes.lean`), as the field types they compute. -/
 def bfShape : Small → Shape
   | .node 0 [] => .leaf Nat .nat
@@ -140,7 +152,7 @@ def bfShape : Small → Shape
 
 def bgShape : Small → Shape
   | .node 0 [] => .leaf Nat .nat
-  | .node 1 [] => .leaf (Nat → Nat) (.fn (Nat → Nat))
+  | .node 1 [] => .leaf NatFn (.pi NatFn tNatFn)
   | _ => .leaf PEmpty .err
 
 /-! ## The signature -/
@@ -148,11 +160,11 @@ def bgShape : Small → Shape
 def progShape (d : IndDecl) (r : Rec) (c i : Nat) (e : List Small) : Shape :=
   match d.name, c, i, e with
   | "Word", 1, 0, _ => .sub d r
-  | "List", 1, 0, _ => shapeOf (r [])
+  | "List", 1, 0, _ => shapeOf (r (paramKey 0))
   | "List", 1, 1, _ => .sub d r
-  | "Rose", 0, 0, _ => shapeOf (r [])
+  | "Rose", 0, 0, _ => shapeOf (r (paramKey 0))
   | "Rose", 0, 1, _ => .sub listD (constRec (.data d r))
-  | "Single", 0, 0, _ => shapeOf (r [])
+  | "Single", 0, 0, _ => shapeOf (r (paramKey 0))
   | "Single", 0, 1, e => shapeOf (r [(0, 1, e)])
   | "TEq", 0, 0, _ => shapeOf (r [])
   | "BW", 0, 0, _ => .sub boolD (constRec .none)
@@ -161,14 +173,14 @@ def progShape (d : IndDecl) (r : Rec) (c i : Nat) (e : List Small) : Shape :=
   | "BH", 0, 1, [s] => bgShape s
   | "VecF", 0, 0, e => shapeOf (r [(0, 0, e)])
   | "VecF", 1, 0, _ => .sub wordD (constRec .none)
-  | "VecF", 1, 1, _ => shapeOf (r [])
-  | "VecF", 1, 2, sm :: _ => .sub d (vecRec (r []) sm)
+  | "VecF", 1, 1, _ => shapeOf (r (paramKey 0))
+  | "VecF", 1, 2, sm :: _ => .sub d (vecRec (r (paramKey 0)) sm)
   | "VecF", 1, 3, e => shapeOf (r [(1, 3, e)])
   | "IsZ", 0, 0, _ => shapeOf (r [])
   | "Fin1", 0, 0, _ => shapeOf (r [])
   | "V", 0, 0, _ => .leaf Nat .nat
   | "V", 0, 1, [s] => .sub fin1D (fin1Rec s)
-  | "RE", 0, 0, _ => .sub listD (constRec (r []))
+  | "RE", 0, 0, _ => .sub listD (constRec (r (paramKey 0)))
   | "RE", 0, 1, e => shapeOf (r [(0, 1, e)])
   | "H", 1, 0, _ => shapeOf (r (keyN 0))
   | "H", 1, 1, _ => .sub d (shiftRec r)
@@ -179,9 +191,36 @@ def progShape (d : IndDecl) (r : Rec) (c i : Nat) (e : List Small) : Shape :=
 
 def S : Sig := ⟨progShape⟩
 
+/-- A type parameter's entry (a type used as a value). -/
+def tyEntry : Sem → Entry
+  | .ty T => entryOf T
+  | _ => .none
+
+/-- **The record at parameters**, for the declarations whose parameters are at level 0 (the
+records of `H`, `MM`, `FP` are written at their instances in `Adversarial.lean`: their parameters
+are functions, which the record keeps only through what the field types compute from them). -/
+def progRecOf (d : IndDecl) (ps : List Sem) : Rec :=
+  match d.name, ps with
+  | "List", [A] => constRec (tyEntry A)
+  | "Rose", [A] => constRec (tyEntry A)
+  | "Single", [A, a] => singleRec (tyEntry A) a.small
+  | "TEq", [_, a, b] => teqRec (a = b)
+  | "VecF", [A, n] => vecRec (tyEntry A) n.small
+  | "IsZ", [n] => isZRec n.small
+  | "Fin1", [n] => fin1Rec n.small
+  | "RE", [A] => reRec (tyEntry A)
+  | _, _ => constRec .none
+
+/-- **The probe programs' data model.** Parameter types are not needed by the runs here. -/
+def dmP : DataModel where
+  covers d := d ∈ progDecls
+  sig := S
+  recOf := progRecOf
+  paramTy _ _ _ := TyM.univ 1
+
 /-- A constructor value is a member when its fields fit (`mem_iff`, right to left). -/
-theorem mem_intro (d : IndDecl) (r : Rec) (c : Fin d.ctors.length) (fs : List Val)
-    (hf : FitsM S d r c 0 (arity d c) [] fs) : Mem S d r (.dat d.name r c fs) :=
+theorem mem_intro (d : IndDecl) (r : Rec) (c : Fin d.ctors.length) (fs : List Sem)
+    (hf : FitsM S d r c 0 (arity d c) [] fs) : dmP.Mem d r (.dat d.name r c fs) :=
   (mem_iff S d r _).2 ⟨c, fs, rfl, hf⟩
 
-end Ochr.Meaning.DataModel.Proto
+end Ochr.Meaning.DataModel.Program

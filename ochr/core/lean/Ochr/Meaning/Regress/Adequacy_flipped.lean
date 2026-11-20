@@ -64,36 +64,39 @@ theorem erased_place (p : Place) (hint : TyS) (s : SState) (hfl : (K.D.flags (sc
 
 /-- The audit's A9: a field of type `A` (the one parameter) given a `Nat` solves `A := Nat`
 (`Pair(a, b)`, `Cons(x, xs)`'s head). -/
-example : unifyTyS K.dm.read 1 (.place (.var 0)) (.plain TyM.nat) [none] = [some (.ty TyM.nat)] := rfl
+example : unifyTyS K.dm 1 (.place (.var 0)) (.plain TyM.nat) [none] = [some (.ty TyM.nat)] := rfl
 
 /-- A9: a field of type `List(A)` given a value whose type is `List(Nat)`'s code (its declaration
-and parameters) solves `A := Nat`. -/
-example : unifyTyS K.dm.read 1 (.tind "List" [.place (.var 0)])
-    (.plain (.t0 (List Nat) (.data { name := "List" } [.ty Nat .nat] (List Nat)))) [none]
+and its record, which keeps `A`'s entry at `paramKey 0`) solves `A := Nat`. -/
+example (A : Type) : unifyTyS K.dm 1 (.tind "List" [.place (.var 0)])
+    (.plain (.t0 A (.data { name := "List" } (fun _ => .leaf Nat .nat) A))) [none]
     = [some (.ty TyM.nat)] := by
-  simp [unifyTyS, fillParam, TyS.data, TyM.dataName?, Par0.sems, Par0.sem, TyM.isErr]
+  simp [unifyTyS, fillParam, TyS.data, TyM.dataRec?, TyM.isErr, DataModel.entryTy]
   rfl
 
 /-- A9: a solved parameter is not overwritten, and a field with no type (`err`) solves nothing. -/
-example : unifyTyS K.dm.read 1 (.place (.var 0)) (.plain TyM.nat) [some (.ty TyM.unit)] = [some (.ty TyM.unit)] := rfl
-example : unifyTyS K.dm.read 1 (.place (.var 0)) (.plain .err) [none] = [none] := rfl
+example : unifyTyS K.dm 1 (.place (.var 0)) (.plain TyM.nat) [some (.ty TyM.unit)] = [some (.ty TyM.unit)] := rfl
+example : unifyTyS K.dm 1 (.place (.var 0)) (.plain .err) [none] = [none] := rfl
 
 /-- A9: the constructor clause with every parameter solved by its fields does not fail for want
-of a hint: at no hint, `sol₀` is all unsolved, and the clause's result is decided by `runFields`'
-solution alone. -/
+of a hint: at no hint, no record is known before the fields, `sol₀` is all unsolved, and the
+clause's result is decided by `runFields`' solution alone. -/
 theorem ctor_no_hint (ty : String) (c : Nat) (x : Hint) (args : List Term) (s : SState) (d : IndDecl)
     (hd : K.Γ.find? (·.name == ty) = some d) (hfl : K.D.flags (scopeOf s) (.ctor ty c x [] args) = (false, false))
+    (hp : d.params.isEmpty = false)
     (fs : List Sem) (sol : List (Option Sem)) (s' : SState)
-    (hf : runFields K ρ φ (d.sort == 0) d c 0 (List.replicate d.params.length none) [] args s = some ((fs, sol), s'))
+    (hf : runFields K ρ φ (d.sort == 0) d c 0 none (List.replicate d.params.length none) [] args s = some ((fs, sol), s'))
     (hsol : sol.all (·.isSome) = true) (hs : (d.sort == 0) = false) :
     run K ρ φ (.plain .err) (.ctor ty c x [] args) s
       = some ((K.dm.ctorM d (solved sol) c fs, .plain (K.dm.tyM d (solved sol))), s') := by
   rw [run, runT]
   simp only [SM.erasedIf, hfl, SM.stmtIf, Bool.false_eq_true, if_false, hd, runParams, bind, pure, TyS.plain,
-    List.isEmpty_nil, Bool.not_true, hs, TyS.data, TyM.dataName?, TyM.err]
-  rw [hs] at hf
+    List.isEmpty_nil, Bool.not_true, hp, Bool.or_false, TyS.data, TyM.dataRec?, TyM.err]
   rw [hf]
   simp only [hsol, if_true]
+  show ctorOut K.dm d c fs (some (K.dm.recOf d (solved sol))) s' = _
+  simp only [ctorOut, hs, Bool.false_eq_true, if_false]
+  rfl
 
 end Ochr.Meaning.Regress.AdequacyFlip
 

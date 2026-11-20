@@ -5,12 +5,12 @@ import Ochr.Meaning.DataLib.Carrier
 
 `mem_iff`: a meaning is a member of `D` at `r` exactly when it is a constructor value of `D`
 recording `r`, whose fields each fit their shape at the earlier ones, a data field being a member
-of its own type. This is `DataModel`'s `pack_isSome`, `tag_pack`, `fields_pack` and `pack_fields`
-in one statement, on meanings, with no reading.
+of its own type. It replaces the laws the data model carried before docs/34's port (packing,
+tags and fields), on meanings, with no reading.
 
-A data type's meaning is its code `tyOf d r`: the declaration, the record, the carrier. Encoding a
-carrier element is `meanC` (`encC`), membership is decoding (`memTy`), and the members of
-`tyOf d r` are `Mem d r` (`memTy_tyOf`).
+A data type's meaning is its code `DataModel.tyR d r`: the declaration, the record, the carrier.
+Reading a carrier element is `meanC`, and the members of `tyR d r` are `Mem d r`
+(`DataModel.mem_tyR`).
 -/
 
 namespace Ochr.Meaning.DataLib

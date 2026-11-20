@@ -71,7 +71,7 @@ theorem botPlaces_partly :
 same place at the same grain. (As first written, `movedPlaces` listed only variables whose whole
 meaning is `moved`, so it listed nothing here.) -/
 theorem movedIn_partly :
-    ((Sem.movedIn (.dat "P" [] 0 [.moved, .el0 Nat 0] none) (.var 0)) == [p0]) = true := by
+    ((Sem.movedIn (.dat "P" natRec 0 [.moved, .el0 Nat 0]) (.var 0)) == [p0]) = true := by
   simp [Sem.movedIn, Sem.movedInFields, p0]
   decide
 
@@ -95,13 +95,13 @@ where the checker's holds `⊥` inside a partly moved tuple, and the places move
 the join reads, then differ. -/
 
 /-- The checker's `P(⊥, ⊥)` is below a reference's `P(0, ⊥)` in `Sem.le`. -/
-theorem slack_le : Sem.dat "P" [] 0 [.moved, .moved] none ⊑ Sem.dat "P" [] 0 [.el0 Nat 0, .moved] none :=
+theorem slack_le : Sem.dat "P" natRec 0 [.moved, .moved] ⊑ Sem.dat "P" natRec 0 [.el0 Nat 0, .moved] :=
   .dat (.cons (.moved _) (.cons (.refl _) .nil))
 
 /-- Their entry sets differ: `[p.0, p.1]` against `[p.1]`. -/
 theorem slack_entry :
-    ((Sem.movedIn (.dat "P" [] 0 [.moved, .moved] none) (.var 0)).length,
-      (Sem.movedIn (.dat "P" [] 0 [.el0 Nat 0, .moved] none) (.var 0)).length) = (2, 1) := by
+    ((Sem.movedIn (.dat "P" natRec 0 [.moved, .moved]) (.var 0)).length,
+      (Sem.movedIn (.dat "P" natRec 0 [.el0 Nat 0, .moved]) (.var 0)).length) = (2, 1) := by
   simp [Sem.movedIn, Sem.movedInFields]
 
 end Ochr.Meaning.Regress.JoinProbes

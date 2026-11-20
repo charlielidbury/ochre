@@ -62,8 +62,8 @@ the type it is held at. What it uses on the checker's side:
   position. It is whole because [Borrow] rejects a partly moved place and [Repack] rejects a whole
   borrow of an open value ("*v is borrowed whole, but it is open", `Regress/RecordSites`);
 - a FIELD: the parent is a partial member (`PMem`: a whole member with parts moved out), so the
-  field's content is a field of a member's element, a member of its field type at that element's
-  earlier fields (the data model's `pack_isSome` with `pack_fields`). `contentOf` reads a field at
+  field's content is a field of a member, a member of its field type at that member's earlier
+  fields (`DataLib.mem_iff`: the members are the least set closed under the constructors). `contentOf` reads a field at
   its content's own type (`contentTyS`: a constructor value is typed by what it describes, D29
   point 5 e), except a number, read at the declaration's field type at the earlier fields; a field
   borrowed whole is not open (the [Repack] check above, on the field). -/

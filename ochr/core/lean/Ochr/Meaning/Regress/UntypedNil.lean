@@ -1,5 +1,5 @@
 import Ochr.Meaning.Regress.GenNeutralContent
-import Ochr.Meaning.Regress.DataCodes
+import Ochr.Meaning.DataModel.Program
 import Ochr.Meaning.Steps.Sim
 
 /-!
@@ -24,7 +24,7 @@ already (docs/31 D62); for a body, the callee's meaning being a member of its ty
 
 namespace Ochr.Meaning.Regress.UntypedNil
 open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.Regress.GenNeutralContent
-open Ochr.Meaning.Regress.DataCodes (listD)
+open Ochr.Meaning.DataModel.Program (listD)
 
 /-- `a : Nat ↦ 0`, with `List` declared. -/
 def SL : MState := { env := #[{ binds := #[natB] }], inds := [listD] }
@@ -141,8 +141,8 @@ theorem run_nil_none (K : RunCtx) (ρ : Assignment) (φ : Future) (s : SState)
     (hΓ : K.Γ = [listD]) (hfl : K.D.flags (scopeOf s) nil0 = (false, false)) :
     run K ρ φ (.plain .err) nil0 s = none := by
   have hfl' : K.D.flags (scopeOf s) (Term.ctor "List" 0 ⟨"Nil"⟩ [] []) = (false, false) := hfl
-  simp [run, runT, nil0, SM.erasedIf, hfl', hΓ, listD, runParams, runFields, SM.stmtIf, TyM.dataName?, TyS.plain,
-    TyM.err, SM.fail, bind, pure, TyS.data, TyM.dataName?]
+  simp [run, runT, nil0, SM.erasedIf, hfl', hΓ, listD, runParams, runFields, SM.stmtIf, TyS.plain,
+    TyM.err, bind, pure, TyS.data, TyM.dataRec?, ctorOut, SM.fail]
 
 /-! ## The statements as they stood (spine 6f434832), with no restriction of untyped runs -/
 

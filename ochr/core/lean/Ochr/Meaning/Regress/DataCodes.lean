@@ -1,127 +1,104 @@
 import Ochr.Meaning.Apply1
+import Ochr.Meaning.Places
+import Ochr.Meaning.DataModel.Program
 
 /-!
-# Recursive and nested data types have codes (docs/31 D61; built, kernel-checked)
+# Recursive and nested data types have codes; recursion is guarded by height (docs/31 D61, docs/34 §14; kernel-checked)
 
-The concrete check asked for before the re-proof: a data type's code names its declaration, its
-parameters and its carrier, and an element is read through the data model (`DataModel.read`).
-Here, for a recursive declaration (`List(Nat)`) and a nested one (`Rose(Nat)`, whose field `kids`
-is a `List(Rose(Nat))`):
-- each value, as the run builds it (`ctorM` packs its fields), is a member of its type's code;
+The concrete check of the data layer, at the probe programs' data model (`DataModel.Program.dmP`,
+its signature and records written by hand): a data type's code names its declaration, its record
+and its carrier, and an element is read as its meaning, a tree (`DataModel.read`, the bijection
+between a carrier and its members). Here, for a recursive declaration (`List(Nat)`) and a nested
+one (`Rose(Nat)`, whose field `kids` is a `List(Rose(Nat))`):
+- each value, as the run builds it (`ctorM`: the tree of its declaration, record, constructor and
+  fields), is a member of its type's code;
 - a value is matched by reading its constructor and fields off it (`Sem.parts`);
 - a recursive function over a list (`Len`), built along its type's code by filled stages as the
-  `.fix` clause builds it (D60), is a member of that code and gives `2` at `[3, 4]`.
-The data models here speak for no declaration (`covers` is empty), so their laws hold vacuously;
-their carriers, tags, fields and packing are real, and their reading is their own (`readOf`). As
-D59 designed it (the code read an element through a function it held), `Rose(Nat)`'s code would
-have held itself (docs/31 D61).
+  `.fix` clause builds it (D60), the stage chosen by the height of the argument's meaning
+  (`semRank`), is a member of that code and gives `2` at `[3, 4]`;
+- **`CountF`** over `List(Rose(Nat))`, whose recursive call is at the head tree's forest (two field
+  steps down, through the nested field), built the same way, gives `3` at `F3`'s forest. Under the
+  layer before the port, the rank of the decreasing argument was its own declaration's rank of the
+  element it packed, which does not decrease along that call (`DataModel/RankCounterexample.lean`,
+  against the frozen copy): the stages ran out one call early. The height of the meaning
+  decreases along every field step (`semHeight_field_lt`).
 
-The checker's side (`Regress/ShapeProbes.lean`, each verdict asserted): `Len` over `List(Nat)` is
-accepted and `Len(Cons(3, Cons(4, Nil)))` is `2` by `refl` (`LenTwo`; `3` is rejected); `Rose`,
-the tree `Node(1, Cons(Node(2, Nil), Nil))` and the match `Root` are accepted, and the root is `1`
-by `refl` (`RootOfTree`; `2` is rejected). The model's own run of the same terms, by the
-constructor clause, is in `Regress/CodeRuns.lean` (`run_list34`, `run_tree`): each runs to the value
-built here, read back by the match clause's `indTag` and `Sem.stepField`.
-
-These models do not satisfy the generic model's coherence (`DataGeneric.Coherent`) for a program,
-since they cover nothing; that a covered model of a recursive or nested declaration exists with its
-reading is `exists_dataModel`'s obligation.
+The checker's side (`Regress/ShapeProbes.lean`, `DataModel/Probes.lean`, each verdict asserted):
+`Len` over `List(Nat)` is accepted and `Len(Cons(3, Cons(4, Nil)))` is `2` by `refl` (`LenTwo`;
+`3` is rejected); `Rose`, the tree `Node(1, Cons(Node(2, Nil), Nil))` and the match `Root` are
+accepted; `CountF` is accepted and `F3 : Eq(Nat, CountF(…), 3)` by `refl` (`F2`, at `2`, rejected).
+The model's own run of the constructor terms is in `Regress/CodeRuns.lean` (`run_list34`,
+`run_tree`).
 -/
 
 namespace Ochr.Meaning.Regress.DataCodes
-open Ochr Ochr.Meaning
+open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.DataModel.Program
+
+/-! ## Members of `List` and `Rose`, taken apart -/
+
+/-- A member of `List` at a record is `Nil`, or `Cons(x, t)` with `x` fitting the parameter's
+shape and `t` a member. -/
+theorem list_mem_cases (r : Rec) (v : Sem) (hv : dmP.Mem listD r v) :
+    v = .dat "List" r 0 [] ∨ ∃ x t, v = .dat "List" r 1 [x, t] ∧
+      FitsOneM S (shapeOf (r (paramKey 0))) x ∧ dmP.Mem listD r t := by
+  obtain ⟨⟨c, hc⟩, fs, rfl, hf⟩ := (mem_iff S listD r v).1 hv
+  match c, hc with
+  | 0, _ =>
+    left
+    have : fs = [] := hf
+    subst this; rfl
+  | 1, _ =>
+    right
+    obtain ⟨x, fs', rfl, hx, t, fs'', rfl, ht, hnil⟩ := hf
+    have : fs'' = [] := hnil
+    subst this
+    exact ⟨x, t, rfl, hx, ht⟩
+  | n + 2, hc => exact absurd hc (by simp [listD])
+
+/-- A member of `Rose` at a record is `Node(a, k)`, `k` a member of `List(Rose(…))`. -/
+theorem rose_mem_cases (r : Rec) (v : Sem) (hv : dmP.Mem roseD r v) :
+    ∃ a k, v = .dat "Rose" r 0 [a, k] ∧ FitsOneM S (shapeOf (r (paramKey 0))) a ∧
+      dmP.Mem listD (constRec (.data roseD r)) k := by
+  obtain ⟨⟨c, hc⟩, fs, rfl, hf⟩ := (mem_iff S roseD r v).1 hv
+  match c, hc with
+  | 0, _ =>
+    obtain ⟨a, fs', rfl, ha, k, fs'', rfl, hk, hnil⟩ := hf
+    have : fs'' = [] := hnil
+    subst this
+    exact ⟨a, k, rfl, ha, hk⟩
+  | n + 1, hc => exact absurd hc (by simp [roseD])
 
 /-! ## `List(Nat)`: a recursive declaration -/
 
-/-- `inductive List (A : Type) := Nil | Cons(h : A, t : List(A))`. -/
-def listD : IndDecl :=
-  { name := "List", params := [(⟨"A"⟩, .sort 1)],
-    ctors := [("Nil", []), ("Cons", [("h", .place (.var 0)), ("t", .tind "List" [.place (.var 1)])])] }
+def natE : Entry := .leaf Nat .nat
 
-/-- `List(Nat)`'s parameters' meanings. -/
+/-- `List(Nat)`'s parameters' meanings, and its record: `Nat`'s entry. -/
 def psN : List Sem := [.ty TyM.nat]
+def rN : Rec := constRec natE
 
-/-- The meaning of a list of numbers, as the run gives a constructor value: it names its
-declaration and parameters, its constructor and its fields, and packs the list. -/
+theorem recOf_listNat : dmP.recOf listD psN = rN := rfl
+
+/-- The meaning of a list of numbers: the tree the run's constructor clause gives. -/
 def semL : List Nat → Sem
-  | [] => .dat "List" psN 0 [] (some ⟨List Nat, []⟩)
-  | h :: t => .dat "List" psN 1 [.el0 Nat h, semL t] (some ⟨List Nat, h :: t⟩)
+  | [] => .dat "List" rN 0 []
+  | h :: t => .dat "List" rN 1 [.el0 Nat h, semL t]
 
-def tagL : List Nat → Nat
-  | [] => 0
-  | _ :: _ => 1
+theorem semL_mem : ∀ l : List Nat, dmP.Mem listD rN (semL l)
+  | [] => mem_intro listD rN ⟨0, by decide⟩ [] rfl
+  | h :: t => by
+    refine mem_intro listD rN ⟨1, by decide⟩ _ ?_
+    exact ⟨_, _, rfl, ⟨h, rfl⟩, _, [], rfl, semL_mem t, rfl⟩
 
-def fieldsL : List Nat → List Sem
-  | [] => []
-  | h :: t => [.el0 Nat h, semL t]
-
-theorem semL_inj : ∀ {l l' : List Nat}, semL l = semL l' → l = l'
-  | [], [], _ => rfl
-  | _ :: _, _ :: _, h => by
-    simp only [semL, Sem.dat.injEq, Option.some.injEq] at h
-    exact eq_of_heq (Sigma.mk.inj h.2.2.2.2).2
-  | [], _ :: _, h => by simp [semL] at h
-  | _ :: _, [], h => by simp [semL] at h
-
-open Classical in
-/-- Packing a list's fields: a number and a list's meaning. -/
-noncomputable def packL : Nat → List Sem → Option (List Nat)
-  | 0, [] => some []
-  | 1, [f, s] => (f.as Nat).bind fun h => if hs : ∃ t, semL t = s then some (h :: hs.choose) else none
-  | _, _ => none
-
-/-- A data model of `List(Nat)` (every declaration's carrier is `List Nat`; it speaks for no
-declaration). -/
-noncomputable def dmL : DataModel where
-  covers _ := False
-  car _ _ := List Nat
-  fieldTy _ _ _ _ _ := TyM.err
-  paramTy _ _ _ := TyM.univ 1
-  pack _ _ c fs := packL c fs
-  tag x := tagL x
-  fields x := fieldsL x
-  rank x := x.length
-  tag_pack _ h := h.elim
-  fields_pack _ h := h.elim
-  pack_fields _ h := h.elim
-  pack_isSome h := h.elim
-  rank_lt _ _ h := h.elim
-
-theorem enc_list (l : List Nat) :
-    Code0.enc dmL.read (.data listD [.ty Nat .nat] (List Nat)) l = semL l := by
-  cases l <;> simp [Code0.enc, Par0.sems, Par0.sem, dmL, readOf, tagL, fieldsL, semL, psN, TyM.nat, listD]
-
-/-- `List(Nat)`'s type is the code naming `List`, `Nat`, and the carrier. -/
-theorem tyM_list : dmL.tyM listD psN = .t0 (List Nat) (.data listD [.ty Nat .nat] (List Nat)) := by
-  simp [DataModel.tyM, listD, dmL, DataModel.parsOf, parOf, psN, TyM.nat]
+/-- `List(Nat)`'s type is the code naming `List`, its record, and the carrier. -/
+theorem tyM_list : dmP.tyM listD psN = .t0 (dmP.car listD rN) (.data listD rN (dmP.car listD rN)) := rfl
 
 /-- **Every list's meaning is a member of `List(Nat)`'s code.** -/
-theorem semL_mem (l : List Nat) : semL l ∈ₛ[dmL.read] dmL.tyM listD psN := by
-  rw [tyM_list]; exact ⟨l, enc_list l⟩
-
-theorem semL_whole : ∀ l : List Nat, (semL l).whole
-  | [] => by simp [semL, Sem.whole]
-  | h :: t => by simp [semL, Sem.whole, semL_whole t]
-
-/-- `Nil`, as the run's constructor value (`ctorM` packing no field), is the empty list's meaning. -/
-theorem ctorM_nil : dmL.ctorM listD psN 0 [] = semL [] := by simp [DataModel.ctorM, dmL, packL, semL, listD]
-
-/-- `Cons(h, t)`, as the run's constructor value (`ctorM` packing its fields), is the list's meaning. -/
-theorem ctorM_cons (h : Nat) (t : List Nat) : dmL.ctorM listD psN 1 [.el0 Nat h, semL t] = semL (h :: t) := by
-  have hpack : packL 1 [.el0 Nat h, semL t] = some (h :: t) := by
-    have he : ∃ t', semL t' = semL t := ⟨t, rfl⟩
-    have hs : he.choose = t := semL_inj he.choose_spec
-    simp [packL, Sem.as, he, hs]
-  simp only [DataModel.ctorM]
-  rw [if_pos (by simp [Sem.whole, semL_whole t])]
-  have hp : dmL.pack listD psN 1 [.el0 Nat h, semL t] = some (h :: t) := hpack
-  simp only [hp]
-  rfl
+theorem semL_memTy (l : List Nat) : semL l ∈ₛ[dmP.read] dmP.tyM listD psN :=
+  (DataModel.mem_tyR dmP listD rN rfl _).2 (semL_mem l)
 
 /-- **Built**: the run's constructor values `Cons(3, Cons(4, Nil))` are the list's meaning. -/
 theorem build_list :
-    dmL.ctorM listD psN 1 [.el0 Nat 3, dmL.ctorM listD psN 1 [.el0 Nat 4, dmL.ctorM listD psN 0 []]] = semL [3, 4] := by
-  rw [ctorM_nil, ctorM_cons, ctorM_cons]
+    dmP.ctorM listD psN 1 [.el0 Nat 3, dmP.ctorM listD psN 1 [.el0 Nat 4, dmP.ctorM listD psN 0 []]] = semL [3, 4] := rfl
 
 /-- **Matched**: a list's constructor and fields are read off its meaning. -/
 theorem match_list (h : Nat) (t : List Nat) : (semL (h :: t)).parts = some (1, [.el0 Nat h, semL t]) := rfl
@@ -238,7 +215,10 @@ theorem apply_strict (φ : Future) (g : List Sem → Option BodyOut)
 end
 
 /-- `List(Nat)`'s code. -/
-def cL : Code0 (List Nat) := .data listD [.ty Nat .nat] (List Nat)
+def cL : Code0 (dmP.car listD rN) := .data listD rN (dmP.car listD rN)
+
+/-- An element of the carrier is read as its meaning. -/
+theorem enc_cL (x : dmP.car listD rN) : cL.enc dmP.read x = dmP.meanC x := DataModel.read_car dmP x
 
 /-- `Len`'s body, as the `.fix` clause runs `match l { Nil => Z, Cons(h, t) => S(self(t)) }`: the
 match reads the constructor and fields off the value; the recursive call goes through `self` along
@@ -246,226 +226,196 @@ the code. -/
 noncomputable def lenBody (self : Sem) : List Sem → Option BodyOut
   | [x] => match x.parts with
     | some (0, []) => some ⟨.el0 Nat 0, [], none⟩
-    | some (1, [_, t]) => match applyFnL (lvl0 dmL.read) (tOne dmL.read cL) self [t] with
-      | some (.data r _ _) => (Code0.dec dmL.read .nat r).map fun k => ⟨.el0 Nat (k + 1), [], none⟩
+    | some (1, [_, t]) => match applyFnL (lvl0 dmP.read) (tOne dmP.read cL) self [t] with
+      | some (.data r _ _) => (Code0.dec dmP.read .nat r).map fun k => ⟨.el0 Nat (k + 1), [], none⟩
       | _ => none
     | _ => none
   | _ => none
 
 /-- The stages, each binding `self` to the closure `mk` builds of the stage below. -/
-noncomputable def stage (mk : (List Sem → Option BodyOut) → Sem) (k : Nat) : List Sem → Option BodyOut :=
-  Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none) (fun _ gk => lenBody (mk gk)) k
+noncomputable def stage (body : Sem → List Sem → Option BodyOut) (mk : (List Sem → Option BodyOut) → Sem) (k : Nat) :
+    List Sem → Option BodyOut :=
+  Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none) (fun _ gk => body (mk gk)) k
 
-/-- The decreasing argument's rank: the packed list's length (the model's `rank`). -/
+/-- The decreasing argument's rank, as the `.fix` clause reads it (`RunCongr.fixRank`): the height
+of its meaning. -/
 noncomputable def rankOf : List Sem → Nat
-  | [x] => match x.elt with
-    | some ⟨B, b⟩ => open Classical in if h : B = List Nat then (cast h b).length else 0
-    | none => 0
+  | [x] => semRank x
   | _ => 0
 
-noncomputable def gOf (mk : (List Sem → Option BodyOut) → Sem) : List Sem → Option BodyOut :=
-  fun args => stage mk (rankOf args + 1) args
+noncomputable def gOf (body : Sem → List Sem → Option BodyOut) (mk : (List Sem → Option BodyOut) → Sem) :
+    List Sem → Option BodyOut :=
+  fun args => stage body mk (rankOf args + 1) args
 
-theorem rankOf_list (l : List Nat) : rankOf [semL l] = l.length := by
-  cases l <;> simp [rankOf, semL, Sem.elt]
+/-- The length of a list's spine, on meanings. -/
+def lenV : Sem → Nat
+  | .dat _ _ 1 [_, t] => lenV t + 1
+  | _ => 0
 
-/-- With the stages' closures filled (D60), stage `|l| + 1` gives `l`'s length. -/
-theorem stage_val (φ : Future) : ∀ l : List Nat,
-    stage (closureFillL (lvl0 dmL.read) φ (tOne dmL.read cL)) (l.length + 1) [semL l]
-      = some ⟨.el0 Nat l.length, [], none⟩
-  | [] => by simp [stage, lenBody, semL, Sem.parts]
-  | h :: t => by
-    show lenBody (closureFillL (lvl0 dmL.read) φ (tOne dmL.read cL)
-      (stage (closureFillL (lvl0 dmL.read) φ (tOne dmL.read cL)) (t.length + 1))) [semL (h :: t)] = _
-    have ha := apply_fill dmL.read cL φ _ t t.length (by rw [show cL.enc dmL.read t = semL t from enc_list t]; exact stage_val φ t)
-    rw [show cL.enc dmL.read t = semL t from enc_list t] at ha
-    simp only [lenBody, semL, Sem.parts, ha, Option.map, dec_nat]
-    rfl
+/-- With the stages' closures filled (D60), a stage above a member's height gives its length. -/
+theorem stage_len (φ : Future) : ∀ (n : Nat) (v : Sem), dmP.Mem listD rN v → semHeight v < n →
+    stage lenBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cL)) n [v] = some ⟨.el0 Nat (lenV v), [], none⟩
+  | 0, _, _, hn => absurd hn (Nat.not_lt_zero _)
+  | n + 1, v, hv, hn => by
+    show lenBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cL)
+      (stage lenBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cL)) n)) [v] = _
+    rcases list_mem_cases rN v hv with rfl | ⟨x, t, rfl, -, ht⟩
+    · rfl
+    · have hlt : semHeight t < n := by
+        have := semHeight_field_lt "List" rN 1 [x, t] t (by simp)
+        omega
+      obtain ⟨a, ha⟩ := (DataModel.mem_iff_meanC dmP listD rN t).1 ht
+      have ih := stage_len φ n t ht hlt
+      have happ := apply_fill dmP.read cL φ _ a (lenV t) (by rw [enc_cL, ha]; exact ih)
+      rw [enc_cL, ha] at happ
+      simp only [lenBody, Sem.parts, happ, Option.map, dec_nat]
+      rfl
 
 /-- **`Len` is a member of its type's code, and `Len([3, 4])` is `2`.** -/
 theorem len_member (φ : Future) :
-    (closureL (lvl0 dmL.read) φ (tOne dmL.read cL) (gOf (closureFillL (lvl0 dmL.read) φ (tOne dmL.read cL)))
-        ∈ₛ[dmL.read] piTyL (lvl0 dmL.read) (tOne dmL.read cL)) ∧
-      applyFnL (lvl0 dmL.read) (tOne dmL.read cL)
-        (closureL (lvl0 dmL.read) φ (tOne dmL.read cL) (gOf (closureFillL (lvl0 dmL.read) φ (tOne dmL.read cL))))
+    (closureL (lvl0 dmP.read) φ (tOne dmP.read cL) (gOf lenBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cL)))
+        ∈ₛ[dmP.read] piTyL (lvl0 dmP.read) (tOne dmP.read cL)) ∧
+      applyFnL (lvl0 dmP.read) (tOne dmP.read cL)
+        (closureL (lvl0 dmP.read) φ (tOne dmP.read cL) (gOf lenBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cL))))
         [semL [3, 4]] = some (.data (.el0 Nat 2) TyM.nat []) := by
-  have hg : ∀ l : List Nat, gOf (closureFillL (lvl0 dmL.read) φ (tOne dmL.read cL)) [cL.enc dmL.read l]
-      = some ⟨.el0 Nat l.length, [], none⟩ := by
-    intro l
-    rw [show cL.enc dmL.read l = semL l from enc_list l]
-    show stage _ (rankOf [semL l] + 1) [semL l] = _
-    rw [rankOf_list]; exact stage_val φ l
-  obtain ⟨F, hF, -⟩ := mk_some dmL.read cL φ _ fun l => ⟨_, hg l⟩
-  have hc : closureL (lvl0 dmL.read) φ (tOne dmL.read cL) (gOf (closureFillL (lvl0 dmL.read) φ (tOne dmL.read cL)))
+  have hg : ∀ a : dmP.car listD rN, gOf lenBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cL)) [cL.enc dmP.read a]
+      = some ⟨.el0 Nat (lenV (dmP.meanC a)), [], none⟩ := by
+    intro a
+    rw [enc_cL]
+    exact stage_len φ _ _ ((DataModel.mem_iff_meanC dmP listD rN _).2 ⟨a, rfl⟩) (Nat.lt_succ_self _)
+  obtain ⟨F, hF, -⟩ := mk_some dmP.read cL φ _ fun a => ⟨_, hg a⟩
+  have hc : closureL (lvl0 dmP.read) φ (tOne dmP.read cL) (gOf lenBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cL)))
       = .el0 _ F := by
     unfold closureL; rw [hF]
   refine ⟨by rw [hc]; exact ⟨F, rfl⟩, ?_⟩
-  have := apply_strict dmL.read cL φ _ (fun l => ⟨_, hg l⟩) [3, 4] 2 (hg [3, 4])
-  rwa [show cL.enc dmL.read [3, 4] = semL [3, 4] from enc_list [3, 4]] at this
+  obtain ⟨a, ha⟩ := (DataModel.mem_iff_meanC dmP listD rN _).1 (semL_mem [3, 4])
+  have := apply_strict dmP.read cL φ _ (fun a => ⟨_, hg a⟩) a _ (hg a)
+  rw [enc_cL, ha] at this
+  exact this
 
 /-! ## `Rose(Nat)`: a nested declaration -/
 
-/-- `inductive Rose (A : Type) := Node(a : A, kids : List(Rose(A)))`. -/
-def roseD : IndDecl :=
-  { name := "Rose", params := [(⟨"A"⟩, .sort 1)],
-    ctors := [("Node", [("a", .place (.var 0)), ("kids", .tind "List" [.tind "Rose" [.place (.var 1)]])])] }
+/-- `Rose(Nat)`'s record (`Nat`'s entry), and `List(Rose(Nat))`'s: `List`'s record whose entry is
+`Rose(Nat)`, the record `Rose`'s field `kids` gives. -/
+def rRN : Rec := constRec natE
+def rF : Rec := constRec (.data roseD rRN)
 
-/-- Rose trees of numbers. -/
-inductive RoseN
-  | node : Nat → List RoseN → RoseN
+theorem recOf_roseNat : dmP.recOf roseD psN = rRN := rfl
 
-/-- `Rose(Nat)`'s code: its declaration, its parameter `Nat`, its carrier. It holds no code of
-`List(Rose(Nat))`, so it is a term like any other (as D59 designed it, it would have held one, and
-through it itself). -/
-def cR : Code0 RoseN := .data roseD [.ty Nat .nat] RoseN
+/-- `List(Rose(Nat))`'s parameter: `Rose(Nat)`'s type. -/
+def psR : List Sem := [.ty (dmP.tyM roseD psN)]
 
-/-- The parameters `List` is given in the field `kids`: `Rose(Nat)`'s code. -/
-def psR : List Sem := [.ty (.t0 RoseN cR)]
+theorem recOf_listRose : dmP.recOf listD psR = rF := rfl
 
-/-- `List(Rose(Nat))`'s code, `kids`'s type: it holds `Rose(Nat)`'s code as a parameter. -/
-def cLR : Code0 (List RoseN) := .data listD [.ty RoseN cR] (List RoseN)
+def nilV : Sem := .dat "List" rF 0 []
+def consV (x xs : Sem) : Sem := .dat "List" rF 1 [x, xs]
+def nodeV (a : Nat) (kids : Sem) : Sem := .dat "Rose" rRN 0 [.el0 Nat a, kids]
 
-mutual
-/-- The meaning of a rose tree, as the run gives a constructor value. -/
-def semR : RoseN → Sem
-  | .node a ks => .dat "Rose" psN 0 [.el0 Nat a, semLR ks] (some ⟨RoseN, .node a ks⟩)
-/-- The meaning of a list of rose trees. -/
-def semLR : List RoseN → Sem
-  | [] => .dat "List" psR 0 [] (some ⟨List RoseN, []⟩)
-  | r :: rs => .dat "List" psR 1 [semR r, semLR rs] (some ⟨List RoseN, r :: rs⟩)
-end
+theorem nil_mem : dmP.Mem listD rF nilV := mem_intro listD rF ⟨0, by decide⟩ [] rfl
 
-/-- The second model's declarations: `Rose`, and `List` at rose trees. -/
-def isRose (d : IndDecl) : Bool := d.name == "Rose"
+theorem cons_mem (x xs : Sem) (hx : dmP.Mem roseD rRN x) (hxs : dmP.Mem listD rF xs) : dmP.Mem listD rF (consV x xs) := by
+  refine mem_intro listD rF ⟨1, by decide⟩ _ ?_
+  exact ⟨x, [xs], rfl, hx, xs, [], rfl, hxs, rfl⟩
 
-def carB : Bool → Type
-  | true => RoseN
-  | false => List RoseN
+theorem node_mem (a : Nat) (kids : Sem) (hk : dmP.Mem listD rF kids) : dmP.Mem roseD rRN (nodeV a kids) := by
+  refine mem_intro roseD rRN ⟨0, by decide⟩ _ ?_
+  exact ⟨_, _, rfl, ⟨a, rfl⟩, kids, [], rfl, hk, rfl⟩
 
-def tagB : (b : Bool) → carB b → Nat
-  | true, _ => 0
-  | false, [] => 0
-  | false, _ :: _ => 1
-
-def fieldsB : (b : Bool) → carB b → List Sem
-  | true, .node a ks => [.el0 Nat a, semLR ks]
-  | false, [] => []
-  | false, r :: rs => [semR r, semLR rs]
-
-open Classical in
-/-- Packing: a rose from a number and a list of roses' meaning; a list from a rose's meaning and
-a list's. -/
-noncomputable def packB : (b : Bool) → Nat → List Sem → Option (carB b)
-  | true, 0, [f, s] => (f.as Nat).bind fun a =>
-      if hs : ∃ ks, semLR ks = s then some (RoseN.node a hs.choose) else none
-  | false, 0, [] => some ([] : List RoseN)
-  | false, 1, [s₁, s₂] =>
-      if h : (∃ r, semR r = s₁) ∧ ∃ rs, semLR rs = s₂ then some (h.1.choose :: h.2.choose) else none
-  | _, _, _ => none
-
-/-- A data model of `Rose(Nat)` and `List(Rose(Nat))` (it speaks for no declaration). -/
-noncomputable def dmR : DataModel where
-  covers _ := False
-  car d _ := carB (isRose d)
-  fieldTy _ _ _ _ _ := TyM.err
-  paramTy _ _ _ := TyM.univ 1
-  pack d _ c fs := packB (isRose d) c fs
-  tag {d _} x := tagB (isRose d) x
-  fields {d _} x := fieldsB (isRose d) x
-  rank _ := 0
-  tag_pack _ h := h.elim
-  fields_pack _ h := h.elim
-  pack_fields _ h := h.elim
-  pack_isSome h := h.elim
-  rank_lt _ _ h := h.elim
-
-theorem isRose_rose : isRose roseD = true := rfl
-theorem isRose_list : isRose listD = false := rfl
-
-/-- `Rose(Nat)`'s type is its code. -/
-theorem tyM_rose : dmR.tyM roseD psN = .t0 RoseN cR := by
-  simp [DataModel.tyM, roseD, dmR, DataModel.parsOf, parOf, psN, TyM.nat, isRose, carB, cR]
-
-/-- `List(Rose(Nat))`'s type, at `Rose(Nat)`'s type, is the code that holds `Rose(Nat)`'s. -/
-theorem tyM_listRose : dmR.tyM listD [.ty (dmR.tyM roseD psN)] = .t0 (List RoseN) cLR := by
-  rw [tyM_rose]
-  simp [DataModel.tyM, listD, dmR, DataModel.parsOf, parOf, isRose, carB, cLR]
-
-theorem enc_rose (r : RoseN) : Code0.enc dmR.read cR r = semR r := by
-  cases r
-  simp [Code0.enc, Par0.sems, Par0.sem, dmR, readOf, tagB, fieldsB, semR, psN, TyM.nat, cR, roseD, isRose, carB]
-
-theorem enc_listRose (l : List RoseN) : Code0.enc dmR.read cLR l = semLR l := by
-  cases l <;> simp [Code0.enc, Par0.sems, Par0.sem, dmR, readOf, tagB, fieldsB, semLR, psR, cLR, listD, isRose, carB]
-
-/-- **Every rose tree's meaning is a member of `Rose(Nat)`'s code.** -/
-theorem semR_mem (r : RoseN) : semR r ∈ₛ[dmR.read] dmR.tyM roseD psN := by
-  rw [tyM_rose]; exact ⟨r, enc_rose r⟩
-
-/-- **Every list of rose trees (a `kids` field) is a member of `List(Rose(Nat))`'s code.** -/
-theorem semLR_mem (l : List RoseN) : semLR l ∈ₛ[dmR.read] dmR.tyM listD [.ty (dmR.tyM roseD psN)] := by
-  rw [tyM_listRose]; exact ⟨l, enc_listRose l⟩
-
-theorem semR_inj : ∀ {r r' : RoseN}, semR r = semR r' → r = r'
-  | .node .., .node .., h => by
-    simp only [semR, Sem.dat.injEq, Option.some.injEq] at h
-    exact eq_of_heq (Sigma.mk.inj h.2.2.2.2).2
-
-theorem semLR_inj : ∀ {l l' : List RoseN}, semLR l = semLR l' → l = l'
-  | [], [], _ => rfl
-  | _ :: _, _ :: _, h => by
-    simp only [semLR, Sem.dat.injEq, Option.some.injEq] at h
-    exact eq_of_heq (Sigma.mk.inj h.2.2.2.2).2
-  | [], _ :: _, h => by simp [semLR] at h
-  | _ :: _, [], h => by simp [semLR] at h
-
-mutual
-theorem semR_whole : ∀ r : RoseN, (semR r).whole
-  | .node a ks => by simp [semR, Sem.whole, semLR_whole ks]
-theorem semLR_whole : ∀ l : List RoseN, (semLR l).whole
-  | [] => by simp [semLR, Sem.whole]
-  | r :: rs => by simp [semLR, Sem.whole, semR_whole r, semLR_whole rs]
-end
-
-/-- `Nil` at `List(Rose(Nat))`, as the run's constructor value. -/
-theorem ctorM_lrNil : dmR.ctorM listD psR 0 [] = semLR [] := by
-  simp [DataModel.ctorM, dmR, packB, isRose, listD, semLR, carB]
-
-/-- `Node(a, ks)`, as the run's constructor value, is the tree's meaning. -/
-theorem ctorM_node (a : Nat) (ks : List RoseN) : dmR.ctorM roseD psN 0 [.el0 Nat a, semLR ks] = semR (.node a ks) := by
-  have he : ∃ ks', semLR ks' = semLR ks := ⟨ks, rfl⟩
-  have hp : dmR.pack roseD psN 0 [.el0 Nat a, semLR ks] = some (RoseN.node a ks) := by
-    show packB true 0 [.el0 Nat a, semLR ks] = _
-    simp [packB, Sem.as, he, semLR_inj he.choose_spec]
-    rfl
-  simp only [DataModel.ctorM]
-  rw [if_pos (by simp [Sem.whole, semLR_whole ks])]
-  simp only [hp]
-  rfl
-
-/-- `Cons(r, rs)` at `List(Rose(Nat))`, as the run's constructor value. -/
-theorem ctorM_lrCons (r : RoseN) (rs : List RoseN) : dmR.ctorM listD psR 1 [semR r, semLR rs] = semLR (r :: rs) := by
-  have h1 : ∃ r', semR r' = semR r := ⟨r, rfl⟩
-  have h2 : ∃ rs', semLR rs' = semLR rs := ⟨rs, rfl⟩
-  have hp : dmR.pack listD psR 1 [semR r, semLR rs] = some (r :: rs) := by
-    show packB false 1 [semR r, semLR rs] = _
-    simp [packB, h1, h2, semR_inj h1.choose_spec, semLR_inj h2.choose_spec]
-    rfl
-  simp only [DataModel.ctorM]
-  rw [if_pos (by simp [Sem.whole, semR_whole r, semLR_whole rs])]
-  simp only [hp]
-  rfl
-
-/-- **Built**: the run's constructor values `Node(1, Cons(Node(2, Nil), Nil))` are the tree's meaning. -/
+/-- **Built**: the run's constructor values `Node(1, Cons(Node(2, Nil), Nil))` are the tree. -/
 theorem build_rose :
-    dmR.ctorM roseD psN 0 [.el0 Nat 1,
-      dmR.ctorM listD psR 1 [dmR.ctorM roseD psN 0 [.el0 Nat 2, dmR.ctorM listD psR 0 []], dmR.ctorM listD psR 0 []]]
-      = semR (.node 1 [.node 2 []]) := by
-  rw [ctorM_lrNil, ctorM_node, ctorM_lrCons, ctorM_node]
+    dmP.ctorM roseD psN 0 [.el0 Nat 1,
+      dmP.ctorM listD psR 1 [dmP.ctorM roseD psN 0 [.el0 Nat 2, dmP.ctorM listD psR 0 []], dmP.ctorM listD psR 0 []]]
+      = nodeV 1 (consV (nodeV 2 nilV) nilV) := rfl
+
+/-- **Every such tree is a member of `Rose(Nat)`'s code, its `kids` of `List(Rose(Nat))`'s.** -/
+theorem tree_memTy : nodeV 1 (consV (nodeV 2 nilV) nilV) ∈ₛ[dmP.read] dmP.tyM roseD psN ∧
+    consV (nodeV 2 nilV) nilV ∈ₛ[dmP.read] dmP.tyM listD psR :=
+  ⟨(DataModel.mem_tyR dmP roseD rRN rfl _).2 (node_mem 1 _ (cons_mem _ _ (node_mem 2 _ nil_mem) nil_mem)),
+   (DataModel.mem_tyR dmP listD rF rfl _).2 (cons_mem _ _ (node_mem 2 _ nil_mem) nil_mem)⟩
 
 /-- **Matched**: a rose's constructor and fields, and its `kids` list's, are read off the value. -/
-theorem match_rose (a : Nat) (r : RoseN) (rs : List RoseN) :
-    (semR (.node a (r :: rs))).parts = some (0, [.el0 Nat a, semLR (r :: rs)]) ∧
-      (semLR (r :: rs)).parts = some (1, [semR r, semLR rs]) := ⟨rfl, rfl⟩
+theorem match_rose (a : Nat) (r rs : Sem) :
+    (nodeV a (consV r rs)).parts = some (0, [.el0 Nat a, consV r rs]) ∧
+      (consV r rs).parts = some (1, [r, rs]) := ⟨rfl, rfl⟩
+
+/-! ## `CountF (f : List(Rose(Nat))) : Nat by f`, recursing through the nested field
+
+`match f { Nil => 0, Cons(t, rest) => match t { Node(a, k) => S(CountF(k)) } }` (`DataModel/Probes.lean`):
+the recursive call is at `k`, the head tree's forest, two field steps below `f`. -/
+
+/-- `List(Rose(Nat))`'s code. -/
+def cF : Code0 (dmP.car listD rF) := .data listD rF (dmP.car listD rF)
+
+theorem enc_cF (x : dmP.car listD rF) : cF.enc dmP.read x = dmP.meanC x := DataModel.read_car dmP x
+
+/-- `CountF`'s body, as the `.fix` clause runs it: two matches read off the value, the recursive
+call through `self` along the code. -/
+noncomputable def countBody (self : Sem) : List Sem → Option BodyOut
+  | [x] => match x.parts with
+    | some (0, []) => some ⟨.el0 Nat 0, [], none⟩
+    | some (1, [t, _]) => match t.parts with
+      | some (0, [_, k]) => match applyFnL (lvl0 dmP.read) (tOne dmP.read cF) self [k] with
+        | some (.data r _ _) => (Code0.dec dmP.read .nat r).map fun n => ⟨.el0 Nat (n + 1), [], none⟩
+        | _ => none
+      | _ => none
+    | _ => none
+  | _ => none
+
+/-- What `CountF` computes, on meanings: the depth of the leftmost branch. -/
+def countV : Sem → Nat
+  | .dat _ _ 1 (.dat _ _ 0 [_, k] :: _) => countV k + 1
+  | _ => 0
+
+/-- With the stages' closures filled, a stage above a member's height gives its count: the
+recursive call's forest is two field steps down, so two stages lower in height. -/
+theorem stage_count (φ : Future) : ∀ (n : Nat) (v : Sem), dmP.Mem listD rF v → semHeight v < n →
+    stage countBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cF)) n [v] = some ⟨.el0 Nat (countV v), [], none⟩
+  | 0, _, _, hn => absurd hn (Nat.not_lt_zero _)
+  | n + 1, v, hv, hn => by
+    show countBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cF)
+      (stage countBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cF)) n)) [v] = _
+    rcases list_mem_cases rF v hv with rfl | ⟨x, t, rfl, hx, -⟩
+    · rfl
+    · have hx' : dmP.Mem roseD rRN x := hx
+      obtain ⟨a, k, rfl, -, hk⟩ := rose_mem_cases rRN x hx'
+      have hlt : semHeight k < n := by
+        have h1 := semHeight_field_lt "Rose" rRN 0 [a, k] k (by simp)
+        have h2 := semHeight_field_lt "List" rF 1 [.dat "Rose" rRN 0 [a, k], t] (.dat "Rose" rRN 0 [a, k]) (by simp)
+        omega
+      obtain ⟨y, hy⟩ := (DataModel.mem_iff_meanC dmP listD rF k).1 hk
+      have ih := stage_count φ n k hk hlt
+      have happ := apply_fill dmP.read cF φ _ y (countV k) (by rw [enc_cF, hy]; exact ih)
+      rw [enc_cF, hy] at happ
+      simp only [countBody, Sem.parts, happ, Option.map, dec_nat]
+      rfl
+
+/-- `F3`'s forest: `Cons(Node(1, Cons(Node(2, Cons(Node(3, Nil), Nil)), Nil)), Nil)`. -/
+def f3 : Sem := consV (nodeV 1 (consV (nodeV 2 (consV (nodeV 3 nilV) nilV)) nilV)) nilV
+
+theorem f3_mem : dmP.Mem listD rF f3 :=
+  cons_mem _ _ (node_mem 1 _ (cons_mem _ _ (node_mem 2 _ (cons_mem _ _ (node_mem 3 _ nil_mem) nil_mem)) nil_mem)) nil_mem
+
+/-- **`CountF` is a member of its type's code, and `CountF(F3's forest)` is `3`**, as the checker
+computes (`F3` accepted, `F2` rejected). -/
+theorem countF_three (φ : Future) :
+    (closureL (lvl0 dmP.read) φ (tOne dmP.read cF) (gOf countBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cF)))
+        ∈ₛ[dmP.read] piTyL (lvl0 dmP.read) (tOne dmP.read cF)) ∧
+      applyFnL (lvl0 dmP.read) (tOne dmP.read cF)
+        (closureL (lvl0 dmP.read) φ (tOne dmP.read cF) (gOf countBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cF))))
+        [f3] = some (.data (.el0 Nat 3) TyM.nat []) := by
+  have hg : ∀ a : dmP.car listD rF, gOf countBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cF)) [cF.enc dmP.read a]
+      = some ⟨.el0 Nat (countV (dmP.meanC a)), [], none⟩ := by
+    intro a
+    rw [enc_cF]
+    exact stage_count φ _ _ ((DataModel.mem_iff_meanC dmP listD rF _).2 ⟨a, rfl⟩) (Nat.lt_succ_self _)
+  obtain ⟨F, hF, -⟩ := mk_some dmP.read cF φ _ fun a => ⟨_, hg a⟩
+  have hc : closureL (lvl0 dmP.read) φ (tOne dmP.read cF) (gOf countBody (closureFillL (lvl0 dmP.read) φ (tOne dmP.read cF)))
+      = .el0 _ F := by
+    unfold closureL; rw [hF]
+  refine ⟨by rw [hc]; exact ⟨F, rfl⟩, ?_⟩
+  obtain ⟨a, ha⟩ := (DataModel.mem_iff_meanC dmP listD rF _).1 f3_mem
+  have := apply_strict dmP.read cF φ _ (fun a => ⟨_, hg a⟩) a _ (hg a)
+  rw [enc_cF, ha] at this
+  exact this
 
 end Ochr.Meaning.Regress.DataCodes

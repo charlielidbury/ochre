@@ -39,7 +39,7 @@ theorem dws_fails_succField (b : SBinding) (c : Sem) : ¬ DepWithinSites dm Γ (
   have := h (.bind 0 0) [.field ⟨"Nat", 1, 0, ""⟩] (fun l => if l = 0 then .el0 Nat 5 else .err)
     (fun l => if l = 0 then .moved else .err) (fun l hl => ?_)
   · have e1 : Sem.succ (Sem.el0 Nat 5) = .el0 Nat 6 := Sem.succ_el0 5
-    have e2 : Sem.succ Sem.moved = .dat "Nat" [] 1 [.moved] none := by
+    have e2 : Sem.succ Sem.moved = .dat "Nat" natRec 1 [.moved] := by
       simp [Sem.succ, Sem.asNat, Sem.as, Sem.whole]
     simp [readV, SN, SState.valAt, e1, e2, Sem.follow, Sem.step, Sem.stepField] at this
   · refine ⟨?_, ?_⟩

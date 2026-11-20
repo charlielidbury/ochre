@@ -43,14 +43,14 @@ theorem pm_sites : StaticLend.sameSites (Env.sitesOf stPM.env 0) [⟨.bind 1 1, 
   decide +kernel
 
 /-- The reference's state at the read: frame `1` holds the function, `p`, `q`, `r`, `z`. -/
-def SPM (S P Q R Z : SBinding) (vs vq vb vz vp : Sem) (ps : List Sem) : SState :=
+def SPM (S P Q R Z : SBinding) (vs vq vb vz vp : Sem) (ps : Rec) : SState :=
   { env := [SFrame.mk [] [], SFrame.mk [{ S with val := fun _ => vs }, { P with val := fun ψ => ψ 0 },
-      { Q with val := fun _ => vq }, { R with val := fun _ => .dat "Pair" ps 0 [.moved, vb] none },
+      { Q with val := fun _ => vq }, { R with val := fun _ => .dat "Pair" ps 0 [.moved, vb] },
       { Z with val := fun _ => vz }] []],
     shape := fun p => if p = .bind 1 3 then some 0 else none, nextLoan := 1,
     lent := Env.sitesOf stPM.env, heldMem := fun m => if m = 0 then vp else .err }
 
-variable (S P Q R Z : SBinding) (vs vq vb vz vp : Sem) (ps : List Sem)
+variable (S P Q R Z : SBinding) (vs vq vb vz vp : Sem) (ps : Rec)
 
 theorem positions_SPM : (SPM S P Q R Z vs vq vb vz vp ps).positions =
     [.bind 1 0, .bind 1 1, .bind 1 2, .bind 1 3, .bind 1 4] := by

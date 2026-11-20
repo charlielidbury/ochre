@@ -6,8 +6,8 @@ import Ochr.Meaning.Steps.IH
 
 `Eq` computes (`mkEqM`) to `True`, `False`, a conjunction of field equations, or stays stuck:
 every outcome means the proposition `⟦a⟧ = ⟦b⟧` (docs/24 C10, `Eq` reads no type; distinct
-tags are distinct meanings; whole constructor values are equal iff their fields are, by
-`DataModel.pack_fields`; under D84 a moved field is a definite value, so a partly moved value is
+tags are distinct meanings; constructor values are equal iff their fields are (a constructor
+value is a tree, docs/34 §14); under D84 a moved field is a definite value, so a partly moved value is
 equal only to one with the same moved fields, `Sem.ctor`). Conversion is a *check*: only its
 accepting direction carries an obligation, that convertible values have equal meanings, for
 two values that are members of one type (their recorded parameters then mean the same). The
