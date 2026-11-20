@@ -1,6 +1,6 @@
 # 32. The consistency proof as work units: done and to do
 
-Written 2026-11-19; last updated the same day, after both checker changes landed on main (9c78a376). A map of the whole consistency effort (Target A of docs/18), one row per unit of work of roughly one agent's size. The plan itself is docs/18; the detailed record of the Lean development is docs/31 on the `spine` branch.
+Written 2026-11-19; last updated 2026-11-20, late evening (tables, progress paragraph and diagram brought into line with each other). A map of the whole consistency effort (Target A of docs/18), one row per unit of work of roughly one agent's size. The plan itself is docs/18; the detailed record of the Lean development is docs/31 on the `spine` branch.
 
 The numbers are estimates by the orchestrating session, not measurements.
 
@@ -27,7 +27,7 @@ Not counted, because they are off the consistency path: `id-audit` and `subst-su
 
 ## To do (64%)
 
-No step lemma is proved end to end yet, but the first one is close (2026-11-20, `spine` 0a71dd94): the drop at the join is proved from the drop of one place, and the drop of one place is proved apart from a short list of named obligations (three typing facts, two facts about the checker, and what the run context is after each step). That is the evidence that the statement form supports a proof. What else is done is definitions, the four core lemmas, and attacks that corrected the statements.
+No step lemma is proved end to end yet (2026-11-20, late evening). The furthest along is the drop at the join: it is proved from the drop of one place, and that one is proved apart from named obligations, of which the bookkeeping is now proved and one typing fact is the real work (see "The two things running in parallel"). Calls, the top-level chain, `Id`, and equality and `J` have their statements in final form and are proved from named pieces, with the model's runs checked in Lean beside the checker's verdicts; the pieces themselves are open. What else is done is definitions, the four core lemmas (re-proved on each rebuild of the model), and attacks that corrected the statements.
 
 **What can depend on what.** Nothing depends on a proof: once a statement is fixed, other work assumes it. Work depends only on definitions and statements. So the two rows that change definitions and statements (1 and 2) come first and everything else builds on them, and no arrow in the diagram leaves a prover row except into the assembly. Among the prover rows the order is a choice, not a dependency: the highest P(failure) for the least time first, so that risk comes forward. Matches and arms leads because it holds the first proof of any step, which is the first real test of the statement form.
 
@@ -47,7 +47,7 @@ No step lemma is proved end to end yet, but the first one is close (2026-11-20, 
 | 12 | Provers: simple steps | Borrow primitives, substitution, plain evaluation, tail forms. | 1% | 4% |
 | 13 | Assembly | The top-level theorems, closing the induction, and the data model for a whole program. | 1% | 4% |
 
-**Progress inside the to-do rows** (estimated 2026-11-20; a row moves to the done table only when it is finished). Row 1, reference-run redesigns: about four fifths (the checker redesign, the model rebuilt on it, self-describing data values, coded types built; a nested inductive's code and the older open differences left; re-estimated after D59, 2026-11-21). Row 2, statement migration: about half (the relation re-made, about a fifth of the statements in the new form). Row 3, matches and arms: about half (the drop at the join proved apart from named obligations). Every other row: not started, apart from invariant clauses for row 6 that are tested by the sweep and not yet proved preserved. That is about 14 of the 64 points, so roughly half of the whole effort is done.
+**Progress inside the to-do rows** (estimated 2026-11-20, late evening; a row moves to the done table only when it is finished). Row 1, reference-run redesigns: most of it (the checker redesign, the model rebuilt on it, coded types, records for reads; left: the data layer's port to tree values, whose core lemmas are already proved again). Row 2, statement migration: about two thirds (the relation re-made; calls, the top-level chain, `Id`, equality and `J` in final form; splits and worlds, the well-formedness table, closures and recursion, and dependent values still to be attacked). Row 3, matches and arms: about two fifths (the drop at the join proved apart from named obligations; one of them is the slice's typing fact). Rows 5, 9, 10 and 13 (`Id`, equality, calls, assembly): the step follows from named pieces, the pieces are open; about a fifth each. Row 6: invariant clauses are tested on every recorded checker state, none proved preserved. Row 11: one statement (the checker's reading of a type's sort is sound for the model) is being stated by the slice. Rows 4, 7, 8, 12: not started. That is about 19 of the 64 points, so a little over half of the whole effort is done.
 
 ## Reading the risk column
 
@@ -134,12 +134,13 @@ The bar is "as good as Rust for borrowing, as good as Lean for proving". Where a
 
 ## Dependencies
 
-An arrow from X to Y means Y builds on definitions or statements that X produces. Green is done, yellow is running, grey is to do. No arrow leaves a prover row except into the assembly, because nothing depends on a proof; the order among prover rows is the table's.
+An arrow from X to Y means Y builds on definitions or statements that X produces. Green is done, yellow is running, orange means the step is proved from named pieces and the pieces are open, grey is to do. The percentages are the tables' (time, then P(failure)). No arrow leaves a prover row except into the assembly, because nothing depends on a proof; the order among prover rows is the table's.
 
 ```mermaid
 flowchart TD
     classDef done fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef running fill:#fff59d,stroke:#f9a825,color:#000
+    classDef stated fill:#ffe0b2,stroke:#ef6c00,color:#000
     classDef todo fill:#eeeeee,stroke:#757575,color:#000
     classDef goal fill:#bbdefb,stroke:#1565c0,color:#000
 
@@ -155,21 +156,21 @@ flowchart TD
 
     spine3["spine3: prerequisites and<br/>riskiest steps, attacked<br/>5%"]:::done
 
-    redesign["1. Reference-run redesigns<br/>(borrow-ends redesign folded in)<br/>10%, fail 5%"]:::running
-    migrate["2. Statement migration<br/>(the relation re-made)<br/>4%, fail 3%"]:::todo
+    redesign["1. Reference-run redesigns<br/>(borrow-ends redesign folded in;<br/>left: data layer port)<br/>12%, fail 6%"]:::running
+    migrate["2. Statement migration<br/>(the breadth-first pass)<br/>4%, fail 3%"]:::running
 
-    pMatch["3. Provers: matches and arms<br/>6%, fail 5%"]:::todo
+    pMatch["3. Provers: matches and arms<br/>(the first slice)<br/>7%, fail 4%"]:::running
     dep["4. Provers: dependent values<br/>5%, fail 8%"]:::todo
-    idn["5. Provers: Id<br/>4%, fail 4%"]:::todo
+    idn["5. Provers: Id<br/>4%, fail 4%"]:::stated
     wf["6. Provers: well-formedness<br/>4%, fail 4%"]:::todo
     universes["7. Universes<br/>1%, fail 1%"]:::todo
     tooling["8. Prover tooling<br/>1%, fail under 1%"]:::todo
-    pEq["9. Provers: equality<br/>5%, fail 3%"]:::todo
-    pCalls["10. Provers: calls and stuck calls<br/>9%, fail 4%"]:::todo
+    pEq["9. Provers: equality<br/>5%, fail 3%"]:::stated
+    pCalls["10. Provers: calls and stuck calls<br/>8%, fail 4%"]:::stated
     pTypes["11. Provers: types and decisions<br/>5%, fail 2%"]:::todo
-    pSimple["12. Provers: simple steps<br/>6%, fail 1%"]:::todo
+    pSimple["12. Provers: simple steps<br/>4%, fail 1%"]:::todo
 
-    assembly["13. Assembly<br/>4%, fail 1%"]:::todo
+    assembly["13. Assembly<br/>4%, fail 1%"]:::stated
     goal(["Consistency:<br/>no closed proof of False"]):::goal
 
     tests --> fixes
