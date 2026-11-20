@@ -928,8 +928,11 @@ def meansProof (st : MState) (q : Place) : Value → Option String
 /-- (D⋆) (`dataMean_ne_proof`, `access_root_not_proof`, docs/31 D54): a place in scope of a
 non-copy reading that holds data (not `⋆`, `⊥` or a borrow) holds nothing the reference reads as
 `⋆`, and nothing the checker's access turns into `⋆` (a loan whose borrow holds `⋆`). The atoms
-checked are those whose meaning is not fixed by their form; a constructor value, a number, a type
-or a closure never means `⋆`. -/
+checked are those whose meaning is not fixed by their form. A clause since the slice:
+`ShapeFacts.dataNotProof` (`Steps/Statements.lean`), with `MeansProof` mirroring `meansProof`; the
+Lean form asks it at every place in scope (this walk stops at depth 8 and steps into fields by
+constructor field), and runs `sortOf`/`placeType?` at any fuel from any state the same up to the move
+log and the refinements (`SameDec`), where this runs them at the state itself with fixed fuel. -/
 def dataNotProof : Clause where
   name := "(D⋆) a place of a non-copy reading holding data holds nothing meaning ⋆"
   premises := [
@@ -948,6 +951,41 @@ def dataNotProof : Clause where
         | _ => some ⟨"a place of a non-copy reading holds data meaning ⋆", s!"{q.root}…: {m}"⟩
       | none => some ⟨"a place holding data meaning ⋆ has no declared reading", s!"{q.root}…: {m}"⟩
 
+def isCtorV : Value → Bool
+  | .ind .. => true
+  | _ => false
+
+/-- A value under its marks. -/
+def underMarks : Value → Value
+  | .gloan _ w => underMarks w
+  | v => v
+
+/-- (Vℓ, CANDIDATE, the slice): a loan at a place declared an inductive `n` of the declarations
+(under marks) is of a borrow whose content fits `n` (`fitsInd`). What (V) needs to survive the
+borrow's [End], which puts that content at the place; not a clause (its preservation belongs to
+the access step). A loan whose borrow is not in Ω (inert) is not checked. -/
+def loanContentFits : Clause where
+  name := "(Vℓ, candidate) a loan at a place declared an inductive is of a borrow whose content fits it"
+  premises := [
+    ("a place declared an inductive holds a loan", fun st => (topPlaces st).any fun (q, v) =>
+      (underMarks v matches .loan _) &&
+        (match declAt st q with | some (.ind n _) => (st.inds.find? (·.name == n)).isSome | _ => false)),
+    ("... whose borrow holds a constructor value", fun st => (topPlaces st).any fun (q, v) =>
+      (match underMarks v with
+        | .loan l => (match holderContent st l with | some c => isCtorV (underMarks c) | none => false)
+        | _ => false) &&
+        (match declAt st q with | some (.ind n _) => (st.inds.find? (·.name == n)).isSome | _ => false))]
+  check st := (topPlaces st).filterMap fun (q, v) =>
+    match underMarks v, declAt st q with
+    | .loan l, some (.ind n _) =>
+      if (st.inds.find? (·.name == n)).isNone then none else
+      match holderContent st l with
+      | some c => if fitsInd n c then none
+        else some ⟨"a loan at a place declared an inductive is of a borrow whose content does not fit it",
+          s!"{q.root}…: {n}(…) holds loan {l}, whose borrow holds {clip c.pp}"⟩
+      | none => none
+    | _, _ => none
+
 /-- (Hη) (`ShapeFacts.etaHint`, docs/31 D55): every η record is top-hint-free (a constructor value
 of fresh unknowns that records its parameters, `ctorRefinement`), so it means its unknown at every
 hint (`etaRecorded_sim`). -/
@@ -961,7 +999,7 @@ def etaHintFree : Clause where
     if topHintFree st.inds r then none else some ⟨"an η record reads the hint", s!"σ{σ} := {clip r.pp}"⟩
 
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, etaHintFree, plantedFill, plantedAbs]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, etaHintFree, plantedFill, plantedAbs]
 
 /-! ## The sweep -/
 
