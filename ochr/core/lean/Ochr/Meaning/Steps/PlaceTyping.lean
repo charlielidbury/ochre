@@ -121,19 +121,6 @@ theorem ckContent_root {env : Env} {p : Place} {v : Value} (h : ckContent env p 
     rw [hv, Option.bind_some] at h
     exact ⟨valAt env pos, List.mem_map.mpr ⟨pos, ckVarPos_mem hv, rfl⟩, h⟩
 
-/-- A constructor value of a declared one-constructor inductive with no arity fault is that
-constructor's, with its fields. -/
-theorem arity_one {Γ : List IndDecl} {n : String} {d : IndDecl} {cn} {fs} {c : Nat} {hh : Hint}
-    {ps fs' : List Value} (hd : Γ.find? (·.name == n) = some d) (hc : d.ctors = [(cn, fs)])
-    (har : (Value.ind n c hh ps fs').anyAtom (arityBad Γ) = false) : c = 0 ∧ fs'.length = fs.length := by
-  rw [Value.anyAtom] at har
-  simp only [Bool.or_eq_false_iff] at har
-  have h1 := har.1
-  simp only [arityBad, hd, hc] at h1
-  rcases c with _ | c
-  · simp at h1; exact ⟨rfl, h1⟩
-  · simp at h1
-
 
 /-! ## Following a path on a meaning, step by step -/
 
@@ -204,11 +191,11 @@ section
 variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (f : Future)
 
 /-- The step into a field of a constructor value of a declared inductive that is not bare. -/
-theorem step_mean_ind {n : String} {d : IndDecl} (hh : Hint) (ps fs' : List Value) (x : Step) (i : Nat)
+theorem step_mean_ind {n : String} {d : IndDecl} (c : Nat) (hh : Hint) (ps fs' : List Value) (x : Step) (i : Nat)
     (v : Value) (H T : TyS) (hd : Γ.find? (·.name == n) = some d)
-    (hb : (Value.ind n 0 hh ps fs').anyAtom (Value.bareCtor Γ) = false) (hv : fs'[i]? = some v)
-    (hx : x = .proj i ∨ ∃ g, x = .field g ∧ g.idx = i ∧ g.ctor = 0) :
-    ∃ s' T', Sem.step dm Γ T x (Value.mean dm C Γ ρ f H (.ind n 0 hh ps fs')) = some (s', T') ∧
+    (hb : (Value.ind n c hh ps fs').anyAtom (Value.bareCtor Γ) = false) (hv : fs'[i]? = some v)
+    (hx : (x = .proj i ∧ c = 0) ∨ ∃ g, x = .field g ∧ g.idx = i ∧ g.ctor = c) :
+    ∃ s' T', Sem.step dm Γ T x (Value.mean dm C Γ ρ f H (.ind n c hh ps fs')) = some (s', T') ∧
       (s' = .proof ∨ ∃ H', s' = Value.mean dm C Γ ρ f H' v) := by
   rw [Value.anyAtom] at hb
   simp only [Bool.or_eq_false_iff] at hb
@@ -221,14 +208,14 @@ theorem step_mean_ind {n : String} {d : IndDecl} (hh : Hint) (ps fs' : List Valu
   split
   · obtain ⟨T', hT'⟩ := sem_step_proof dm Γ T x
     exact ⟨.proof, T', hT', .inl rfl⟩
-  · obtain ⟨el, hel⟩ := ctorM_dat dm d (Value.meanParams dm C Γ ρ f d 0 [] ps) 0
-      (Value.meanFields dm C Γ ρ f d (Value.meanParams dm C Γ ρ f d 0 [] ps) 0 0 [] fs')
+  · obtain ⟨el, hel⟩ := ctorM_dat dm d (Value.meanParams dm C Γ ρ f d 0 [] ps) c
+      (Value.meanFields dm C Γ ρ f d (Value.meanParams dm C Γ ρ f d 0 [] ps) c 0 [] fs')
     rw [hel]
-    obtain ⟨H', hH'⟩ := meanFields_get dm C Γ ρ f d (Value.meanParams dm C Γ ρ f d 0 [] ps) 0 fs' 0 [] i v hv
+    obtain ⟨H', hH'⟩ := meanFields_get dm C Γ ρ f d (Value.meanParams dm C Γ ρ f d 0 [] ps) c fs' 0 [] i v hv
     obtain ⟨T', hT'⟩ := stepField_dat dm Γ d.name (Value.meanParams dm C Γ ρ f d 0 [] ps)
-      (Value.meanFields dm C Γ ρ f d (Value.meanParams dm C Γ ρ f d 0 [] ps) 0 0 [] fs') 0 i el hH'
+      (Value.meanFields dm C Γ ρ f d (Value.meanParams dm C Γ ρ f d 0 [] ps) c 0 [] fs') c i el hH'
     refine ⟨_, T', ?_, .inr ⟨H', rfl⟩⟩
-    rcases hx with rfl | ⟨g, rfl, rfl, hgc⟩
+    rcases hx with ⟨rfl, rfl⟩ | ⟨g, rfl, rfl, hgc⟩
     · rcases i with _ | i
       · rw [sem_step_proj0_dat]; exact hT'
       · simpa [Sem.step] using hT'
@@ -239,69 +226,64 @@ the checker's typing of the place): the reference's step from the value's meanin
 the value the checker's step reaches, or `⋆` (a step inside a proof). -/
 theorem step_mean (r : DeclInfo) (x : Step) (hx : StepOk Γ r x) :
     ∀ (w v : Value) (H T : TyS), stepV x w = some v →
-      (∀ n args, r = .ind n args → w.fitsInd n = true) → (∀ A, r = .ref A → w.refFits = true) →
-      w.anyAtom (arityBad Γ) = false → w.anyAtom (Value.bareCtor Γ) = false →
+      (∀ n args, r = .ind n args → (Γ.find? (·.name == n)).isSome → w.fitsInd n = true) →
+      w.anyAtom (Value.bareCtor Γ) = false →
       ∃ s' T', Sem.step dm Γ T x (Value.mean dm C Γ ρ f H w) = some (s', T') ∧
         (s' = .proof ∨ ∃ H', s' = Value.mean dm C Γ ρ f H' v)
-  | .gloan l w, v, H, T, h, hf, hr, ha, hb => by
+  | .gloan l w, v, H, T, h, hf, hb => by
     have e : stepV x (.gloan l w) = stepV x w := by cases x <;> rfl
     rw [e] at h
-    rw [Value.anyAtom] at ha hb
-    simp only [Bool.or_eq_false_iff] at ha hb
+    rw [Value.anyAtom] at hb
+    simp only [Bool.or_eq_false_iff] at hb
     obtain ⟨s', T', h1, h2⟩ := step_mean r x hx w v H T h
-      (fun n args e => by have := hf n args e; simpa [Value.fitsInd] using this)
-      (fun A e => by have := hr A e; simpa [Value.refFits] using this) ha.2 hb.2
+      (fun n args e hn => by have := hf n args e hn; simpa [Value.fitsInd] using this) hb.2
     exact ⟨s', T', by simpa [Value.mean] using h1, h2⟩
-  | .proof, v, H, T, h, _, hr, _, _ => by
+  | .proof, v, H, T, h, _, _ => by
     cases x with
-    | deref => obtain ⟨A, rfl⟩ := hx; simp [Value.refFits] at hr
+    | deref => simp [stepV] at h
     | proj i | field g =>
       simp only [stepV, Option.some.injEq] at h; subst h
       obtain ⟨T', hT'⟩ := sem_step_proof dm Γ T _
       exact ⟨.proof, T', by simpa [Value.mean] using hT', .inl rfl⟩
-  | .borrow l w, v, H, T, h, hf, hr, _, _ => by
+  | .borrow l w, v, H, T, h, hf, _ => by
     cases x with
     | deref =>
       simp only [stepV, Option.some.injEq] at h; subst h
       exact ⟨_, T, by simp [Sem.step, Value.mean], .inr ⟨H, rfl⟩⟩
-    | proj i | field g =>
-      obtain ⟨n, args, d, cn, fs, rfl, -⟩ := hx
-      simp [Value.fitsInd] at hf
-  | .ind ty c hh ps fs', v, H, T, h, hf, hr, ha, hb => by
+    | proj i | field g => simp [stepV] at h
+  | .ind ty c hh ps fs', v, H, T, h, hf, hb => by
     cases x with
-    | deref => obtain ⟨A, rfl⟩ := hx; simp [Value.refFits] at hr
+    | deref => simp [stepV] at h
     | proj i =>
-      obtain ⟨n, args, d, cn, fs, rfl, hd, hc, hi⟩ := hx
-      have hty := hf n args rfl
+      obtain ⟨n, args, d, rfl, hd, -⟩ := hx
+      have hty := hf n args rfl (by simp [hd])
       simp only [Value.fitsInd, beq_iff_eq] at hty; subst hty
-      obtain ⟨rfl, hl⟩ := arity_one hd hc ha
-      exact step_mean_ind dm C Γ ρ f hh ps fs' (.proj i) i v H T hd hb (by simpa [stepV] using h) (.inl rfl)
+      rcases c with _ | c
+      · exact step_mean_ind dm C Γ ρ f 0 hh ps fs' (.proj i) i v H T hd hb (by simpa [stepV] using h) (.inl ⟨rfl, rfl⟩)
+      · simp [stepV] at h
     | field g =>
-      obtain ⟨n, args, d, cn, fs, rfl, hd, hc, hgt, hgc, hi⟩ := hx
-      have hty := hf n args rfl
+      obtain ⟨n, args, d, rfl, hd, -⟩ := hx
+      have hty := hf n args rfl (by simp [hd])
       simp only [Value.fitsInd, beq_iff_eq] at hty; subst hty
-      obtain ⟨rfl, hl⟩ := arity_one hd hc ha
-      exact step_mean_ind dm C Γ ρ f hh ps fs' (.field g) g.idx v H T hd hb (by simpa [stepV, hgt, hgc] using h) (.inr ⟨g, rfl, rfl, hgc⟩)
-  | .bot, v, H, T, h, _, _, _, _ | .loan _, v, H, T, h, _, _, _, _ | .abs _, v, H, T, h, _, _, _, _
-  | .sealed _, v, H, T, h, _, _, _, _ => by cases x <;> simp [stepV] at h
-  | .zero, v, H, T, h, hf, hr, _, _ | .succ _, v, H, T, h, hf, hr, _, _ | .unit, v, H, T, h, hf, hr, _, _
-  | .gfn _, v, H, T, h, hf, hr, _, _ | .clo .., v, H, T, h, hf, hr, _, _ | .tNat, v, H, T, h, hf, hr, _, _
-  | .tUnit, v, H, T, h, hf, hr, _, _ | .tEq .., v, H, T, h, hf, hr, _, _ | .tRef _, v, H, T, h, hf, hr, _, _
-  | .tPi .., v, H, T, h, hf, hr, _, _ | .sort _, v, H, T, h, hf, hr, _, _ | .tInd .., v, H, T, h, hf, hr, _, _ => by
+      simp only [stepV] at h
+      split at h
+      · rename_i hc
+        simp only [Bool.and_eq_true, beq_iff_eq] at hc
+        exact step_mean_ind dm C Γ ρ f c hh ps fs' (.field g) g.idx v H T hd hb h (.inr ⟨g, rfl, rfl, hc.2.symm⟩)
+      · cases h
+  | .bot, _, _, _, h, _, _ | .loan _, _, _, _, h, _, _ | .abs _, _, _, _, h, _, _
+  | .sealed _, _, _, _, h, _, _ | .zero, _, _, _, h, _, _ | .unit, _, _, _, h, _, _
+  | .gfn _, _, _, _, h, _, _ | .clo .., _, _, _, h, _, _ | .tNat, _, _, _, h, _, _
+  | .tUnit, _, _, _, h, _, _ | .tEq .., _, _, _, h, _, _ | .tRef _, _, _, _, h, _, _
+  | .tPi .., _, _, _, h, _, _ | .sort _, _, _, _, h, _, _ | .tInd .., _, _, _, h, _, _ => by
+    cases x <;> simp [stepV] at h
+  | .succ w, v, H, T, h, hf, _ => by
     cases x with
-    | deref => obtain ⟨A, rfl⟩ := hx; simp [Value.refFits] at hr
-    | proj i => obtain ⟨n, args, d, cn, fs, rfl, -⟩ := hx; simp [Value.fitsInd] at hf
-    | field g => obtain ⟨n, args, d, cn, fs, rfl, -⟩ := hx; simp [Value.fitsInd] at hf
+    | deref => simp [stepV] at h
+    | proj i => obtain ⟨n, args, d, rfl, hd, -⟩ := hx; have := hf n args rfl (by simp [hd]); simp [Value.fitsInd] at this
+    | field g => obtain ⟨n, args, d, rfl, hd, -⟩ := hx; have := hf n args rfl (by simp [hd]); simp [Value.fitsInd] at this
 
 end
-
-/-- A field step at the grain is through a declared inductive of the declarations. -/
-theorem stepOk_ind_isSome {Γ : List IndDecl} {r : DeclInfo} {x : Step} (h : StepOk Γ r x) {n : String}
-    {args : List DeclInfo} (e : r = .ind n args) : (Γ.find? (·.name == n)).isSome := by
-  cases x with
-  | deref => obtain ⟨A, rfl⟩ := h; cases e
-  | proj i => obtain ⟨n', a', d, cn, fs, rfl, hd, -⟩ := h; cases e; simp [hd]
-  | field g => obtain ⟨n', a', d, cn, fs, rfl, hd, -⟩ := h; cases e; simp [hd]
 
 /-- The meaning at the position a variable resolves to is its value's meaning, at some hint. -/
 theorem envMean_ck (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (f : Future)
@@ -350,19 +332,13 @@ theorem followMean_snoc (K : RunCtx) (ρ : Assignment) {st : MState} (hctx : Ctx
   · obtain ⟨T', hT'⟩ := sem_step_proof K.dm K.Γ T₁ x
     exact ⟨.proof, T', by simp [Sem.follow, hT'], .inl rfl⟩
   · obtain ⟨root, hroot, hfr⟩ := ckContent_root hw
-    have har : w.anyAtom (arityBad K.Γ) = false := by
-      cases e : w.anyAtom (arityBad K.Γ)
-      · rfl
-      · have := anyAtom_of_follow _ _ _ hfr e
-        rw [hctx.shapes.arity root hroot] at this; exact absurd this (by simp)
     have hbc : w.anyAtom (Value.bareCtor K.Γ) = false := by
       cases e : w.anyAtom (Value.bareCtor K.Γ)
       · rfl
       · have := anyAtom_of_follow _ _ _ hfr e
         rw [hwf10 root hroot] at this; exact absurd this (by simp)
     obtain ⟨s', T', h3, h4⟩ := step_mean K.dm K.M K.Γ ρ f _ x hst w v H T₁ hwv
-      (fun n args e => hctx.shapes.fits p w n args hw e (stepOk_ind_isSome hst e))
-      (fun A e => hctx.shapes.ref p w A hw e) har hbc
+      (fun n args e hn => hctx.shapes.fits p w n args hw e hn) hbc
     exact ⟨s', T', by simp [Sem.follow, h3], h4⟩
 
 /-- **The reference's reading of a place at the join's grain is the meaning of the checker's
@@ -421,71 +397,76 @@ variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment
 holding a borrow, or a declared one-constructor data inductive holding its constructor with the
 field (marks transparent), so the write's path conditions hold there. -/
 theorem natAlong_node (r : DeclInfo) (x : Step) (hx : StepOk Γ r x) (ss : List Step) (f : Value → Value) :
-    ∀ (w : Value), (∀ n args, r = .ind n args → w.fitsInd n = true) → (∀ A, r = .ref A → w.refFits = true) →
-      w.anyAtom (arityBad Γ) = false → w.anyAtom (dataCtorBad Γ) = false →
+    ∀ (w : Value), (∀ n args, r = .ind n args → (Γ.find? (·.name == n)).isSome → w.fitsInd n = true) →
+      w.anyAtom (dataCtorBad Γ) = false →
       (∀ c, stepV x w = some c → (Value.updAt f ss c).isSome → NatAlong dm C Γ ρ ψ ss c) →
       (Value.updAt f (x :: ss) w).isSome → NatAlong dm C Γ ρ ψ (x :: ss) w
-  | .gloan l w, hf, hr, ha, hn, ih, hu => by
+  | .gloan l w, hf, hn, ih, hu => by
     have e : stepV x (.gloan l w) = stepV x w := by cases x <;> rfl
-    rw [Value.anyAtom] at ha hn
-    simp only [Bool.or_eq_false_iff] at ha hn
+    rw [Value.anyAtom] at hn
+    simp only [Bool.or_eq_false_iff] at hn
     have hu' : (Value.updAt f (x :: ss) w).isSome := by
       simp only [Value.updAt, Option.isSome_map] at hu; exact hu
     have := natAlong_node r x hx ss f w
-      (fun n args e => by have := hf n args e; simpa [Value.fitsInd] using this)
-      (fun A e => by have := hr A e; simpa [Value.refFits] using this) ha.2 hn.2
+      (fun n args e hm => by have := hf n args e hm; simpa [Value.fitsInd] using this) hn.2
       (fun c hc => ih c (by rw [e]; exact hc)) hu'
     cases x <;> simpa [NatAlong] using this
-  | .borrow l w, hf, hr, _, _, ih, hu => by
+  | .borrow l w, _, _, ih, hu => by
     cases x with
     | deref =>
       simp only [Value.updAt, Option.isSome_map] at hu
       simp only [NatAlong]
       exact ih w rfl hu
-    | proj i => obtain ⟨n, args, d, cn, fs, rfl, -⟩ := hx; simp [Value.fitsInd] at hf
-    | field g => obtain ⟨n, args, d, cn, fs, rfl, -⟩ := hx; simp [Value.fitsInd] at hf
-  | .ind ty c hh ps fs, hf, hr, ha, hn, ih, hu => by
+    | proj i | field g => simp [Value.updAt] at hu
+  | .ind ty c hh ps fs, hf, hn, ih, hu => by
     cases x with
-    | deref => obtain ⟨A, rfl⟩ := hx; simp [Value.refFits] at hr
+    | deref => simp [Value.updAt] at hu
     | proj i =>
-      obtain ⟨n, args, d, cn, fds, rfl, hd, hc, hi⟩ := hx
-      have hty := hf n args rfl
+      obtain ⟨n, args, d, rfl, hd, -⟩ := hx
+      have hty := hf n args rfl (by simp [hd])
       simp only [Value.fitsInd, beq_iff_eq] at hty; subst hty
-      obtain ⟨rfl, hl⟩ := arity_one hd hc ha
       rw [Value.anyAtom] at hn; simp only [Bool.or_eq_false_iff] at hn
       have hn1 := hn.1
       simp only [dataCtorBad, hd, Bool.or_eq_false_iff, beq_eq_false_iff_ne, ne_eq] at hn1
-      simp only [NatAlong]
-      refine ⟨d, hd, hn1.1, hn1.2, fun w hw => ?_⟩
-      obtain ⟨-, w₁, w₁', hw₁, hu₁, -⟩ := updAt_ind_inv (Option.get_mem hu)
-      simp only [Step.fieldIdx] at hw hw₁
-      rw [hw] at hw₁; cases hw₁
-      exact ih w (by simpa [stepV] using hw) (by rw [hu₁]; rfl)
+      rcases c with _ | c
+      · simp only [NatAlong]
+        refine ⟨d, hd, hn1.1, hn1.2, fun w hw => ?_⟩
+        obtain ⟨-, w₁, w₁', hw₁, hu₁, -⟩ := updAt_ind_inv (Option.get_mem hu)
+        simp only [Step.fieldIdx] at hw hw₁
+        rw [hw] at hw₁; cases hw₁
+        exact ih w (by simpa [stepV] using hw) (by rw [hu₁]; rfl)
+      · simp [Value.updAt] at hu
     | field g =>
-      obtain ⟨n, args, d, cn, fds, rfl, hd, hc, hgt, hgc, hi⟩ := hx
-      have hty := hf n args rfl
+      obtain ⟨n, args, d, rfl, hd, -⟩ := hx
+      have hty := hf n args rfl (by simp [hd])
       simp only [Value.fitsInd, beq_iff_eq] at hty; subst hty
-      obtain ⟨rfl, hl⟩ := arity_one hd hc ha
       rw [Value.anyAtom] at hn; simp only [Bool.or_eq_false_iff] at hn
       have hn1 := hn.1
       simp only [dataCtorBad, hd, Bool.or_eq_false_iff, beq_eq_false_iff_ne, ne_eq] at hn1
+      have hc : (ty == g.ty && c == g.ctor) = true := by
+        cases e : (ty == g.ty && c == g.ctor)
+        · simp [Value.updAt, e] at hu
+        · rfl
       simp only [NatAlong]
       refine ⟨d, hd, hn1.1, hn1.2, fun w hw => ?_⟩
       obtain ⟨-, w₁, w₁', hw₁, hu₁, -⟩ := updAt_ind_inv (Option.get_mem hu)
       simp only [Step.fieldIdx] at hw hw₁
       rw [hw] at hw₁; cases hw₁
-      exact ih w (by simpa [stepV, hgt, hgc] using hw) (by rw [hu₁]; rfl)
-  | .bot, _, _, _, _, _, hu | .loan _, _, _, _, _, _, hu | .abs _, _, _, _, _, _, hu
-  | .sealed _, _, _, _, _, _, hu | .proof, _, _, _, _, _, hu => by
-    cases x <;> simp [Value.updAt] at hu
-  | .zero, hf, hr, _, _, _, _ | .succ _, hf, hr, _, _, _, _ | .unit, hf, hr, _, _, _, _
-  | .gfn _, hf, hr, _, _, _, _ | .clo .., hf, hr, _, _, _, _ | .tNat, hf, hr, _, _, _, _
-  | .tUnit, hf, hr, _, _, _, _ | .tEq .., hf, hr, _, _, _, _ | .tRef _, hf, hr, _, _, _, _
-  | .tPi .., hf, hr, _, _, _, _ | .sort _, hf, hr, _, _, _, _ | .tInd .., hf, hr, _, _, _, _ => by
+      exact ih w (by simp [stepV, hc, hw]) (by rw [hu₁]; rfl)
+  | .succ w, hf, _, _, hu => by
     cases x with
-    | deref => obtain ⟨A, rfl⟩ := hx; simp [Value.refFits] at hr
-    | proj i => obtain ⟨n, args, d, cn, fs, rfl, -⟩ := hx; simp [Value.fitsInd] at hf
-    | field g => obtain ⟨n, args, d, cn, fs, rfl, -⟩ := hx; simp [Value.fitsInd] at hf
+    | deref => simp [Value.updAt] at hu
+    | proj i =>
+      obtain ⟨n, args, d, rfl, hd, -⟩ := hx
+      have := hf n args rfl (by simp [hd]); simp [Value.fitsInd] at this
+    | field g =>
+      obtain ⟨n, args, d, rfl, hd, -⟩ := hx
+      have := hf n args rfl (by simp [hd]); simp [Value.fitsInd] at this
+  | .bot, _, _, _, hu | .loan _, _, _, _, hu | .abs _, _, _, _, hu | .sealed _, _, _, _, hu
+  | .proof, _, _, _, hu | .zero, _, _, _, hu | .unit, _, _, _, hu | .gfn _, _, _, _, hu
+  | .clo .., _, _, _, hu | .tNat, _, _, _, hu | .tUnit, _, _, _, hu | .tEq .., _, _, _, hu
+  | .tRef _, _, _, _, hu | .tPi .., _, _, _, hu | .sort _, _, _, _, hu | .tInd .., _, _, _, hu => by
+    cases x <;> simp [Value.updAt] at hu
 
 end
 
@@ -508,9 +489,8 @@ theorem natAlong_grain (K : RunCtx) (ρ : Assignment) {st : MState} (hctx : CtxO
       · rfl
       · have := anyAtom_of_follow _ _ _ hfr e; rw [h] at this; cases this
     refine natAlong_node K.dm K.M K.Γ ρ ψ _ x hst ss f w
-      (fun n args e => hctx.shapes.fits p w n args hw e (stepOk_ind_isSome hst e))
-      (fun A e => hctx.shapes.ref p w A hw e)
-      (hsub _ (hctx.shapes.arity root hroot)) (hsub _ (hctx.shapes.ctors root hroot)) ?_ hu
+      (fun n args e hn => hctx.shapes.fits p w n args hw e hn)
+      (hsub _ (hctx.shapes.ctors root hroot)) ?_ hu
     intro c hc huc
     have hcc : ckContent st.env (p.stepTo x) = some c := by
       rw [ckContent_snoc (stepTo_steps p x), hw, Option.bind_some, hc]
