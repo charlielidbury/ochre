@@ -101,6 +101,8 @@ theorem good_after (ρ : Assignment) : Good K.dm K.M K.Γ ρ after := by
     refine ⟨?_, ?_, ?_⟩
     · intro k l _ _ x hx; simp [Env.sitesOf, allPos_after] at hx
     · intro pos path _ l _ x hx; simp [Env.sitesOf, allPos_after] at hx
-    · intro v hvv; rw [hv] at hvv; cases hvv
+    · refine ⟨?_, ?_⟩
+      · intro v hvv; rw [hv] at hvv; cases hvv
+      · intro v hvv; rw [hv] at hvv; cases hvv
 
 end Ochr.Meaning.Regress.ExitWorldFlip

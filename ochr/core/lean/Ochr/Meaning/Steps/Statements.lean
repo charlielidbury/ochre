@@ -213,6 +213,14 @@ def _root_.Ochr.Value.refFits : Value → Bool
   | .gloan _ w => w.refFits
   | _ => false
 
+/-- A constructor value of a `Prop`-sorted declaration, of none, or of one named `Nat` (an atom
+test, docs/31 D47). -/
+def dataCtorBad (Γ : List IndDecl) : Value → Bool
+  | .ind n _ _ _ _ => match Γ.find? (·.name == n) with
+    | some d => d.sort == 0 || d.name == "Nat"
+    | none => true
+  | _ => false
+
 /-- A constructor value of a declared inductive with the wrong number of fields (an atom test). -/
 def arityBad (Γ : List IndDecl) : Value → Bool
   | .ind n c _ _ fs => match Γ.find? (·.name == n) with
@@ -252,6 +260,14 @@ structure ShapeFacts (D : Decisions) (Γ : List IndDecl) (st : MState) : Prop wh
   arity : ∀ v ∈ Env.values st.env, v.anyAtom (arityBad Γ) = false
   marks : ∀ v ∈ Env.values st.env, ∀ l ∈ v.outerMarks, liveLoan st.env l = true
   loans : ∀ v ∈ Env.values st.env, ∀ l ∈ v.loans, liveLoan st.env l = true
+  /-- (N) every constructor value is of a data declaration of `Γ` (a `Prop`-sorted one's values are
+  `⋆`, `Machine.evalCtor`, D42), not named `Nat` (numbers are `zero`/`succ`) -/
+  ctors : ∀ v ∈ Env.values st.env, v.anyAtom (dataCtorBad Γ) = false
+  /-- (Ty) a variable of the top frame holding a type value (`Π` or an inductive type) is declared
+  a sort, so a copy: the join never drops it whole -/
+  typeRoot : ∀ i pos, ckVarPos st.env i = some pos →
+    ((∃ c t rd, valAt st.env pos = .tPi c t rd) ∨ ∃ n a, valAt st.env pos = .tInd n a) →
+    ∃ l, D.placeDecl (DecideScope.topReadings st) (.var i) = .sort l
 
 /-- The run context is the checker state's: its declarations, a data model that speaks for each,
 Δ at the state's unknowns (`DeltaOk`), globals with no label (`run_congr`'s `hK`), Σ
@@ -330,7 +346,7 @@ theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MSta
     (h : SameDec st' st) (he : st'.env = st.env) (ha : st'.absTy = st.absTy) : ShapeFacts D Γ st' := by
   have e1 : DecideScope.topReadings st' = DecideScope.topReadings st := by
     unfold DecideScope.topReadings; rw [he]
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro p σ n args hp hd hn; rw [he] at hp; rw [e1] at hd; rw [ha]; exact hf.unknown p σ n args hp hd hn
   · intro p v n args hp hd hn; rw [he] at hp; rw [e1] at hd; exact hf.fits p v n args hp hd hn
   · intro p v A hp hd; rw [he] at hp; rw [e1] at hd; exact hf.ref p v A hp hd
@@ -340,6 +356,8 @@ theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MSta
   · rw [he]; exact hf.arity
   · rw [he]; exact hf.marks
   · rw [he]; exact hf.loans
+  · rw [he]; exact hf.ctors
+  · intro i pos hck hv; rw [he] at hck hv; rw [e1]; exact hf.typeRoot i pos hck hv
 
 /-- **The decisions stay the checker's across what no decision reads** (the move log, the
 refinements): every field by the simulation of `Decide.lean` (`DecideScope.decideSim`). -/

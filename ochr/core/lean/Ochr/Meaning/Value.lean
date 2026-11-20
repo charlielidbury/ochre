@@ -275,4 +275,40 @@ theorem _root_.Ochr.Value.hasLoan_of_hasLoanM {l : Nat} {v : Value} (h : v.hasLo
   Value.anyAtom_mono (fun a ha => by
     cases a <;> simp_all [BEq.beq, Value.beq]) v h
 
+/-! ## Hint-free tails (`HintIndep.lean` proves what they give; (WF16) asks them of Ω) -/
+
+mutual
+/-- No tail of the term reads the hint. -/
+def _root_.Ochr.Term.tailHintFree (Γ : List IndDecl) : Term → Bool
+  | .letIn _ _ w => Term.tailHintFree Γ w
+  | .seq _ w => Term.tailHintFree Γ w
+  | .matchNat _ z u => Term.tailHintFree Γ z && Term.tailHintFree Γ u
+  | .matchInd _ _ arms => Term.armsHintFree Γ arms
+  | .ctor ty _ _ ps _ =>
+    !ps.isEmpty || (match Γ.find? (·.name == ty) with | some d => d.params.isEmpty | none => true)
+  | .val v => Value.topHintFree Γ v
+  -- a primitive is conservatively hint-reading, except the reads [Close] puts at its tails
+  -- (`peek`/`clone` of a place); `J`'s transported term and `inplace` are not needed yet
+  | .prim n [.place _] => n == "peek" || n == "clone"
+  | .prim _ _ => false
+  | _ => true
+termination_by structural t => t
+
+def _root_.Ochr.Term.armsHintFree (Γ : List IndDecl) : List (Hint × Term) → Bool
+  | [] => true
+  | (_, t) :: rest => Term.tailHintFree Γ t && Term.armsHintFree Γ rest
+termination_by structural arms => arms
+
+/-- The hint reaches the value's meaning through no bare constructor and no sealed program with a
+hint-reading tail. -/
+def _root_.Ochr.Value.topHintFree (Γ : List IndDecl) : Value → Bool
+  | .borrow _ w => Value.topHintFree Γ w
+  | .gloan _ w => Value.topHintFree Γ w
+  | .sealed t => Term.tailHintFree Γ t
+  | .ind ty _ _ [] _ => (match Γ.find? (·.name == ty) with | some d => d.params.isEmpty | none => true)
+  | _ => true
+termination_by structural v => v
+end
+
+
 end Ochr.Meaning
