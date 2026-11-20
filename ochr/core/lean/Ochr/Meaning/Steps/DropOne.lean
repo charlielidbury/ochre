@@ -18,15 +18,15 @@ the order the team lead set (model risk first):
    sibling (`mean_updAt_bot_sealed`). Attacking it found D31 (the reference decoded data by its
    carrier) and then the partial-move and open-value faults; since D32 a constructor value
    describes itself, and L2 asks nothing of the hint.
-2. L3, the write keeps the relation (`botWrite_step`), from L2 and the access having ended every
+2. L3, the write keeps the relation (`botWrite_rel`, PROVED, and `botWrite_good`), from L2 and the access having ended every
    borrow lent at, over or under the place (`access_clears`).
 3. The commutation of ends on sites: PROVED (`relend_comm`, `RelendComm.lean`), when every site
    at either holder is inside its content and the two are not lent at each other's holders; it is
    used inside the [Access] statement, an induction-hypothesis field.
 4. The checker's place and the reference's: `rel_resolve` (through `Rel.skel`).
 5. `refine` and `generalizeNeutral` in the simulation form with an extended context
-   (`refine_sim`; both are assembled from smaller obligations in `Steps/DropOneAsm.lean`,
-   `refine_sim'` and `generalizeNeutral_sim`).
+   (both assembled from smaller obligations in `Steps/DropOneAsm.lean`, `refine_sim'` and
+   `generalizeNeutral_sim`; the first forms, unused, are deleted).
 6. `movedPlace`'s branches, last: the place exists (`movedPlace_exists'`, PROVED in `Steps/DropRuns.lean`), the lent prefix
    absorbed by the access at an instance ((WF12), `lentPrefix_absorbed`); the other branches (a
    filled parent accessed whole, an unknown or a sealed program of a one-constructor type refined,
@@ -176,38 +176,6 @@ theorem access_clears (fuel : Nat) (st st' : MState) (q : Place) (pos : Pos) (b 
     (h : Runs (do Ochr.accessPath fuel q; Ochr.accessInside fuel q) st b () st') :
     ∀ l, liveLoan st'.env l = true → ∀ x ∈ Env.sitesOf st'.env l, x.pos = pos →
       dataHit q.steps.2 x.path = false := by
-  sorry
-
-/-- **(2) L3: the write of `⊥` keeps the relation.** After the access (`access_clears`), the
-checker's `setPlace q ⊥` and the reference's write of `moved` at the same path (`dropAt`'s last
-clause) give related states: the meanings by L2 at every compared future, the
-holders unchanged (a field, or a root holding no borrow), and every live borrow's sites unchanged
-(none is at, over or under the place). `Good` is kept: membership by `MovedOf` (a part moved out of
-a member), and every clause survives removing a part. Open: not tried beyond L2. -/
-theorem botWrite_step (st st' : MState) (q : Place) (pos : Pos) (s : SState) (π : Nat → Nat) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
-    (hpos : resolve s q = some (pos, q.steps.2))
-    (hroot : q.steps.2 = [] → Env.shape st.env pos = none)
-    (hclear : ∀ l, liveLoan st.env l = true → ∀ x ∈ Env.sitesOf st.env l, x.pos = pos →
-      dataHit q.steps.2 x.path = false)
-    (hplain : RecPlain K.Γ (valAt st.env pos) ∨
-      (valAt st.env pos).anyAtom (fun a => a.isSealed && !a.topHintFree K.Γ) = false)
-    (h : Runs (Ochr.setPlace q .bot) st b () st') :
-    Rel K ρ φ π st' (s.setAt pos fun φ' =>
-      (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => .moved) q.steps.2 (s.valAt pos φ')).getD .err) ∧
-    Good K.dm K.M K.Γ ρ st' := by
-  sorry
-
-/-- **(5) `refine` in the simulation form.** Under an assignment that already makes the
-refinement true (`ρ σ` is the meaning of `r`, read at `σ`'s type; the new unknowns of `r` given
-their values), the checker's substitution of `r` for `σ` keeps the relation with the same
-reference state: the reference never refines, and every position means the same. Open: the
-old order form (`refine_step_stmt`, Below) is the template; not restated in full yet. -/
-theorem refine_sim (fuel : Nat) (st st' : MState) (σ : Nat) (r : Value) (s : SState) (π : Nat → Nat) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
-    (hσ : ρ σ = meanV K ρ φ (.plain (MState.absTyM K.dm K.M K.Γ ρ st σ)) r)
-    (h : Runs (Ochr.refine fuel σ r) st b () st') :
-    Rel K ρ φ π st' s ∧ Good K.dm K.M K.Γ ρ st' := by
   sorry
 
 /-- **A live label of the reference is the renaming of a live label of the checker** (`SimEq`'s
