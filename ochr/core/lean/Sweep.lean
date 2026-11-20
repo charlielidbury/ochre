@@ -1248,6 +1248,45 @@ def etaNoSelf : Clause where
   check st := st.etaRefs.filterMap fun (σ, r) =>
     if r.hasAbs σ then some ⟨"an η record names its unknown", s!"σ{σ} := {clip r.pp}"⟩ else none
 
+/-- (WF11r) (the slice, for `recordedNeutral_ok`): no [Split] refinement record (`refs`) holds a loan
+or a lent mark, as (WF11) asks of the other two kinds of record. -/
+def refsLoanFree : Clause where
+  name := "(WF11r) no refinement record holds a loan or a lent mark"
+  premises := [("a refinement record", fun st => !st.refs.isEmpty)]
+  check st := st.refs.filterMap fun (σ, r) =>
+    if r.anyAtom isLoanAtom then some ⟨s!"a refinement record holds {loanForm r}", s!"σ{σ} := {clip r.pp}"⟩ else none
+
+/-- (Hr) (the slice, for `recordedNeutral_ok`): every refinement record is top-hint-free, so it
+means its unknown at every hint, as (Hη) for η records. -/
+def refsHintFree : Clause where
+  name := "(Hr) every refinement record is top-hint-free"
+  premises := [("a refinement record", fun st => !st.refs.isEmpty),
+    ("a refinement record of a declaration with parameters", fun st => st.refs.any fun (_, r) => match r with
+      | .ind n _ _ _ _ => match st.inds.find? (·.name == n) with | some d => !d.params.isEmpty | none => false
+      | _ => false)]
+  check st := st.refs.filterMap fun (σ, r) =>
+    if topHintFree st.inds r then none else some ⟨"a refinement record reads the hint", s!"σ{σ} := {clip r.pp}"⟩
+
+/-- (Hn) (the slice, for `recordedNeutral_ok`): every generalisation record's program is
+top-hint-free, so it means its unknown at every hint. -/
+def neutralHintFree : Clause where
+  name := "(Hn) every generalisation record's program is top-hint-free"
+  premises := [("a generalisation record", fun st => !st.neutrals.isEmpty)]
+  check st := st.neutrals.filterMap fun (n, σ) =>
+    if topHintFree st.inds n then none else some ⟨"a generalisation record's program reads the hint", s!"{clip n.pp} := σ{σ}"⟩
+
+/-- REPORT (the slice): the shapes of refinement records, by head. -/
+def refsShapes : Clause where
+  name := "(report) refinement record heads"
+  report := true
+  premises := [("a refinement record", fun st => !st.refs.isEmpty)]
+  check st := st.refs.filterMap fun (_, r) => match r with
+    | .zero => none
+    | .succ (.abs _) => none
+    | .ind _ _ _ _ fs => if fs.all (fun | .abs _ => true | _ => false) then none
+        else some ⟨"a constructor record with a field not an unknown", clip r.pp⟩
+    | _ => some ⟨"a refinement record of another head", clip r.pp⟩
+
 /-- REPORT (the stronger form main asked for first, false): where an η record names an unknown made
 before its own, in its recorded parameters or in its fields. -/
 def etaOlder : Clause where
@@ -1310,7 +1349,7 @@ def readingsSorted : Clause where
     | _ => none
 
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, etaNoSelf, etaOlder, recordNamesEmpty, readingsSorted, plantedFill, plantedAbs, nonCopyProof, untypedBindings, openFields, droppedUnderOpen]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, etaNoSelf, refsLoanFree, refsHintFree, neutralHintFree, refsShapes, etaOlder, recordNamesEmpty, readingsSorted, plantedFill, plantedAbs, nonCopyProof, untypedBindings, openFields, droppedUnderOpen]
 
 /-! ## The sweep -/
 
