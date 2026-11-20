@@ -44,9 +44,13 @@ theorem follow_borrow_root {env : Env} {pos : Pos} {ss : List Step} {l : Nat} {w
       | proj _ | field _ => simp [Value.follow, stepV] at h
     | _ => rw [hv] at hwf1 h; exact hwf1 (anyAtom_of_follow _ _ _ h hb)
 
-/-- **The reference's drop of a data place is its access then its write** (`dropAt`'s last clause):
-the place is not missing, `moved` or `⋆` after the lent prefix's access, it is not a holder at a
-root, and it is not a copy. Open: from `content_follow` after the prefix access; not written. -/
+/-- **The reference's drop of a data place is its access then its write** (`dropAt`'s last clause,
+under the lead's (B), docs/31 D52): after the lent prefix's access the place is no holder at a root,
+the reference reads it, and not as `⋆`, and it is not a copy. Open: the reading after the prefix's
+access (the prefix's access fixes the borrows lent above the place to their holders' contents, at
+the closed future the reading is the same) and that a value the checker holds as data does not
+read `⋆` (an unknown or a sealed program of a proposition, or a loan whose final content is a
+proof; values of propositions are `⋆` in the checker, P5). -/
 theorem dropAt_data (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (v : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2))
     (hv : (valAt st.env pos).follow q.steps.2 = some v) (hb : ∀ l w, v ≠ .borrow l w) (hbot : v ≠ .bot)
@@ -215,7 +219,32 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
     unfold dropAt
     split
     · next l h1 h2 => rw [hnb _ hn hcb h1] at h2; cases h2
-    · rw [hT]; rcases hx with rfl | rfl <;> exact ⟨hs, hg⟩
+    · rw [hT]
+      rcases hx with rfl | ⟨rfl, rfl⟩
+      · exact ⟨hs, hg⟩
+      · -- a place already moved: the reference accesses it, which ends nothing, and writes `moved`
+        -- over `moved`, which changes nothing the relation reads (docs/31 D52)
+        simp only [hcopy, Bool.false_eq_true, if_false]
+        have hclr := clear_of_bot hg.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hn
+        have hacc : s.access pos (dataHit q.steps.2) = s := by
+          apply SState.access_of_unreached
+          intro y hy
+          obtain ⟨l, hl, rfl⟩ := rel_live_ref K ρ φ st s π hs hy
+          unfold SState.reached
+          rw [List.any_eq_false]
+          intro x hx hpx
+          simp only [Bool.and_eq_true, decide_eq_true_eq] at hpx
+          rw [hclr l hl x ((hs.sites l hl x).mp hx) hpx.1] at hpx
+          exact Bool.false_ne_true hpx.2
+        rw [hacc]
+        have hself := updAt_bot_self q.steps.2 _ hn
+        obtain ⟨f, i, hposfi, hpb, hsp, hroot, htype, hplain, hnat⟩ :=
+          botWrite_hyps K ρ φ st s π q pos _ hg hctx hs hck hgrain hcopy (fun he => hnb _ hn (.inl rfl) he) hself
+        subst hposfi
+        have hrel := botWrite_rel K ρ φ st s π f i q.steps.2 _ hs hg.2.2.1 hpb hsp hself hroot htype
+          (fun l hl x hx hxp => hclr l hl x hx hxp) hplain hnat
+        rw [setAtE_self_bind st.env f i hpb] at hrel
+        exact ⟨hrel, hg⟩
   · -- a borrow at a root: both end it
     have hsteps := follow_borrow_root hg.2.2.1 hp hbw
     have hval : valAt st.env pos = .borrow l w' := by
