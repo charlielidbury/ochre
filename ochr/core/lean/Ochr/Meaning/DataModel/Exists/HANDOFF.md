@@ -19,6 +19,13 @@ Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `sp
 - A `let` binding a structure literal across lines inside a tactic block mis-parses; write it as an anonymous constructor on one line.
 - A `generalize` of the program meaning (`progMeaning … = P`) avoids max-recursion in unification.
 
+## Requirements the construction must meet beyond the statement
+
+- `FieldTyIdx` (`origin/rules-trial`, `Rules/SoundEq.lean`): a field's type reads, of the earlier fields, only the index fields, at EVERY record and every pair of field lists. Not a consequence of faithfulness (the lead, 2026-11-20): make the canonical signature project the earlier fields' small readings to `d.indexFields c` before reading the record, so it holds by construction.
+- `FieldLevelsFaithful`, `ReadCoherent` (`Faithful.lean`, `ReadMember.lean`): item 3, after the main line. `ReadCoherent.canon` must admit a leaf whose code is a data code with a foreign carrier (counterexample 1).
+- The data layer's argument for "a member is determined by its small reading and its type" is in `../HANDOFF.md` (last section); it says to define the canonical record through small readings (e.g. an equation as `propEntry (va.small = vb.small)`), agreeing with the run only at typed parameters.
+- `LibOkT`, `UnitOk`: not this lane's (argued from faithfulness in `../HANDOFF.md`).
+
 ## Status and next steps
 
 Reported to the lead (2026-11-20): the consistency counterexample, the three statement defects with repairs, and the record-layout design question. Waiting on: the checker fix for positivity; the restatement of faithfulness (conditional form, length, `teleFrame`'s readings); `shapeTy` of a data-coded leaf; the record layout (records as path functions, no record inside an entry).
