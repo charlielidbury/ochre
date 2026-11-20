@@ -36,15 +36,17 @@ theorem fixBodyAt_congrA {body : Term} {fb : List PBind × PBind}
 
 theorem fixStage_congrA {body : Term} {fb : List PBind × PBind}
     (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KA K Δ') ρ' φ true hint body s₂)
-    (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) :
-    ∀ k, fixStage K ρ φ fb l s ps out piT start body k = fixStage (KA K Δ') ρ' φ fb l s ps out piT start body k
+    (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (dec : Option Nat) (start : Nat) :
+    ∀ k, fixStage K ρ φ fb l s ps out dec start body k = fixStage (KA K Δ') ρ' φ fb l s ps out dec start body k
   | 0 => rfl
   | k + 1 => by
-    show fixBodyAt K ρ φ fb s ps out piT start body (closureFillAt K.dm.read l φ ps out (fixStage K ρ φ fb l s ps out piT start body k))
-      = fixBodyAt (KA K Δ') ρ' φ fb s ps out piT start body (closureFillAt K.dm.read l φ ps out (fixStage (KA K Δ') ρ' φ fb l s ps out piT start body k))
-    rw [fixStage_congrA hb l s ps out piT start k]
+    show fixBodyAt K ρ φ fb s ps out _ start body
+        (closureAt K.dm.read l φ ps _ (stageFn l ps (fixRank dec) k (fixStage K ρ φ fb l s ps out dec start body k)))
+      = fixBodyAt (KA K Δ') ρ' φ fb s ps out _ start body
+        (closureAt K.dm.read l φ ps _ (stageFn l ps (fixRank dec) k (fixStage (KA K Δ') ρ' φ fb l s ps out dec start body k)))
+    rw [fixStage_congrA hb l s ps out dec start k]
     funext args
-    exact fixBodyAt_congrA K Δ' ρ ρ' φ hb s ps out piT start _ args
+    exact fixBodyAt_congrA K Δ' ρ ρ' φ hb s ps out _ start _ args
 
 theorem fixG_congrA {body : Term} {fb : List PBind × PBind}
     (hb : ∀ hint s₂, runT K ρ φ true hint body s₂ = runT (KA K Δ') ρ' φ true hint body s₂)
@@ -54,8 +56,8 @@ theorem fixG_congrA {body : Term} {fb : List PBind × PBind}
   | none => exact funext fun args => fixBodyAt_congrA K Δ' ρ ρ' φ hb s ps out piT start _ args
   | some j =>
     funext args
-    show fixStage K ρ φ fb l s ps out piT start body (fixRank (some j) args + 1) args
-      = fixStage (KA K Δ') ρ' φ fb l s ps out piT start body (fixRank (some j) args + 1) args
+    show fixStage K ρ φ fb l s ps out (some j) start body (fixRank (some j) args + 1) args
+      = fixStage (KA K Δ') ρ' φ fb l s ps out (some j) start body (fixRank (some j) args + 1) args
     rw [fixStage_congrA K Δ' ρ ρ' φ hb]
 
 end

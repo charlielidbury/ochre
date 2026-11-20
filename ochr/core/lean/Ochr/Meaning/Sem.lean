@@ -85,12 +85,13 @@ inductive Code0 : Type → Type 1
   | data (d : IndDecl) (r : List RStep → Entry) (A : Type) : Code0 A
   | pi (C : Type) (t : Tel Code0 PUnit C) : Code0 C
   | err : Code0 PEmpty
-/-- What a record says at a position: a leaf's code, a data type's declaration and record, or
-nothing. -/
+/-- What a record says at a position: a leaf's code, a data type's declaration and record, a
+level-0 value parameter read small (at `paramKey`, docs/34 Handoff 3b), or nothing. -/
 inductive Entry : Type 1
   | none
   | leaf (B : Type) (c : Code0 B)
   | data (d : IndDecl) (r : List RStep → Entry)
+  | small (s : Small)
 end
 
 /-- **A data type's record** (docs/34 §8, §14): what its declaration's field types read of the
@@ -338,6 +339,36 @@ theorem Sem.smallList_eq (vs : List Sem) : Sem.smallList vs = vs.map Sem.small :
   induction vs with
   | nil => rfl
   | cons v vs ih => simp [Sem.smallList, ih]
+
+mutual
+/-- **A meaning rebuilt from its small reading** (what the run's constructor clause solves a value
+parameter to from the `.small` entry a record keeps): a leaf as itself, a constructor tree under
+no declaration and no record. Its small reading is the one it was built from (`small_ofSmall`),
+which is all a record reads of a value parameter (`RecordsFaithful`). -/
+def ofSmall : Small → Sem
+  | .el A a => .el0 A a
+  | .proof => .proof
+  | .node c fs => .dat "" natRec c (ofSmallList fs)
+  | .other => .err
+def ofSmallList : List Small → List Sem
+  | [] => []
+  | s :: ss => ofSmall s :: ofSmallList ss
+end
+
+mutual
+theorem small_ofSmall : ∀ s : Small, (ofSmall s).small = s
+  | .el _ _ => rfl
+  | .proof => rfl
+  | .node c fs => by
+    show Small.node c (Sem.smallList (ofSmallList fs)) = Small.node c fs
+    rw [smallList_ofSmallList fs]
+  | .other => rfl
+theorem smallList_ofSmallList : ∀ ss : List Small, Sem.smallList (ofSmallList ss) = ss
+  | [] => rfl
+  | s :: ss => by
+    show (ofSmall s).small :: Sem.smallList (ofSmallList ss) = s :: ss
+    rw [small_ofSmall s, smallList_ofSmallList ss]
+end
 
 mutual
 /-- The information order used by the step lemmas (docs/18 Def. "less informative"): `moved` is

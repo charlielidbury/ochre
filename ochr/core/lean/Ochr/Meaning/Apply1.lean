@@ -147,54 +147,6 @@ theorem applyTelL_mkTelL (hL : L.Lawful) (φ : Future) (g : List Sem → Option 
   | _, _, .ref .., _, _, _, _, _ :: _, _, _, hfit => hfit.elim
   | _, _, .param .., _, _, _, _, [], _, _, hfit => hfit.elim
 
-/-- The body's run is defined, and of its type, at the given arguments (walking the code: what
-the strict leaf of `mkTelL` asks at them). -/
-def LeafDefL (φ : Future) (g : List Sem → Option BodyOut) : {Fin C : Type u} → Tel L.Code Fin C → List Sem →
-    (List Sem → Option (Fin × List Sem)) → List Sem → Prop
-  | _, _, .dat Fin _ c, acc, mkFin, [] => ((g acc).bind (mkLeafDataL L φ Fin mkFin c)).isSome
-  | _, _, .ref Fin _ c, acc, mkFin, [] => ((g acc).bind (mkLeafRefL L φ Fin mkFin c)).isSome
-  | _, _, .param Fin isRef A c _ k, acc, mkFin, a :: as =>
-    ∀ x, L.dec c a = some x → LeafDefL φ g (k x) (acc ++ [L.enc c x]) (extMkL isRef Fin A mkFin (L.dec c)) as
-  | _, _, .dat .., _, _, _ :: _ => False
-  | _, _, .ref .., _, _, _ :: _ => False
-  | _, _, .param .., _, _, [] => False
-
-/-- **Calling a filled closure where its body is defined runs its body** (a recursion stage read
-below its rank, docs/31 D60). -/
-theorem applyTelL_mkTelFillL (hL : L.Lawful) (φ : Future) (g : List Sem → Option BodyOut) :
-    ∀ {Fin C : Type u} (t : Tel L.Code Fin C) (acc : List Sem) (mkFin : List Sem → Option (Fin × List Sem))
-      (readFin : Fin → List Sem) (F : C) (args : List Sem),
-      FinInv mkFin readFin → mkTelFillL L φ t acc mkFin g = some F → ArgsFitL L t args →
-      LeafDefL L φ g t acc mkFin args →
-      ∃ o r, g (acc ++ args) = some o ∧ applyTelL L t readFin F args = some r ∧ AppMatches L φ o r
-  | _, _, .dat Fin B c, acc, mkFin, readFin, F, [], hF, hmk, _, hdef => by
-    obtain ⟨F', hF'⟩ := Option.isSome_iff_exists.mp hdef
-    have hmk' : mkTelL L φ (.dat Fin B c) acc mkFin g = some F := by
-      simp only [mkTelFillL, hF'] at hmk
-      simp only [mkTelL, hF', hmk]
-    exact applyTelL_mkTelL L hL φ g (.dat Fin B c) acc mkFin readFin F [] hF hmk' trivial
-  | _, _, .ref Fin U c, acc, mkFin, readFin, F, [], hF, hmk, _, hdef => by
-    obtain ⟨F', hF'⟩ := Option.isSome_iff_exists.mp hdef
-    have hmk' : mkTelL L φ (.ref Fin U c) acc mkFin g = some F := by
-      simp only [mkTelFillL, hF'] at hmk
-      simp only [mkTelL, hF', hmk]
-    exact applyTelL_mkTelL L hL φ g (.ref Fin U c) acc mkFin readFin F [] hF hmk' trivial
-  | _, _, .param Fin isRef A c C k, acc, mkFin, readFin, F, a :: as, hF, hmk, ⟨x, hx, hfit⟩, hdef => by
-    simp only [mkTelFillL] at hmk
-    split at hmk
-    · rename_i hall
-      cases hmk
-      have hea : L.enc c x = a := hL.enc_of_dec c hx
-      obtain ⟨o, r, hg, hap, hm⟩ := applyTelL_mkTelFillL hL φ g (k x) (acc ++ [L.enc c x]) _ _ _ as
-        (finInv_ext L hL isRef Fin A c mkFin readFin hF) (Option.some_get (hall x)).symm hfit (hdef x hx)
-      refine ⟨o, r, by simpa [hea] using hg, ?_, hm⟩
-      simp only [applyTelL, hx]
-      exact hap
-    · cases hmk
-  | _, _, .dat .., _, _, _, _, _ :: _, _, _, hfit, _ => hfit.elim
-  | _, _, .ref .., _, _, _, _, _ :: _, _, _, hfit, _ => hfit.elim
-  | _, _, .param .., _, _, _, _, [], _, _, hfit, _ => hfit.elim
-
 /-- **Calling a closure runs its body**, at a lawful level. -/
 theorem applyFnL_closureL (hL : L.Lawful) (φ : Future) {C : Type u} (t : Tel L.Code PUnit C)
     (g : List Sem → Option BodyOut) (args : List Sem)
@@ -235,15 +187,73 @@ noncomputable def closureAt (R : DataRead) (l : Nat) (φ : Future) (ds : List Pi
   | 3 => closureL (lvl2 R) φ (telL (lvl2 R) ds [] PUnit out).2 g
   | _ => .err
 
-/-- The closure of a recursion stage at its declared sort (`mkTelFillL`, docs/31 D60). -/
-noncomputable def closureFillAt (R : DataRead) (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
-    (g : List Sem → Option BodyOut) : Sem :=
-  match l with
-  | 0 => .proof
-  | 1 => closureFillL (lvl0 R) φ (telL (lvl0 R) ds [] PUnit out).2 g
-  | 2 => closureFillL (lvl1 R) φ (telL (lvl1 R) ds [] PUnit out).2 g
-  | 3 => closureFillL (lvl2 R) φ (telL (lvl2 R) ds [] PUnit out).2 g
-  | _ => .err
+/-! ## What the closure lemmas ask of a function type and a returned borrow (`Closure.lean`, `ClosureRef.lean`) -/
+
+/-- A code fits the level a closure of sort `l` is built at: its carrier level is below `l`. -/
+def LevelFit (l : Nat) : TyM → Prop
+  | .t0 .. => 1 ≤ l
+  | .t1 .. => 2 ≤ l
+  | .t2 .. => 3 ≤ l
+
+/-- A type read back from its code at a higher level is itself: no lifted code at the top. -/
+def TyM.Canon : TyM → Prop
+  | .t1 _ (.lift ..) => False
+  | .t2 _ (.lift ..) => False
+  | _ => True
+
+/-- **A returned borrow is good**: the body returns a label `k`, and at every future, the borrow
+parameters' final contents with `k` fixed to two members of the returned borrow's content type
+differ unless the members are equal (the backward function is injective). -/
+def RetGood (R : DataRead) (out : PiCod) (args : List Sem) (o : BodyOut) : Prop :=
+  ∃ k, o.retLabel = some k ∧ ∀ (ψ : Future) (v w : Sem), v ∈ₛ[R] out.cod args → w ∈ₛ[R] out.cod args →
+    o.finals.map (· (ψ.upd k v)) = o.finals.map (· (ψ.upd k w)) → v = w
+
+/-! ## A recursion's stage closure (docs/34, the weakened stage closure)
+
+A stage of a guarded recursion is good only at arguments whose decreasing component has rank below
+its bound, and a closure is built strictly (the carrier holds total functions), so a stage's
+closure is typed at a **weakened** function type: the true codomain below the bound, the unit type
+above (the true proposition at sort `0`). Its function is the stage below the bound and a trivial
+output above (`()`, the borrow arguments handed back unchanged), so it is an honest element
+(`ClosureStage.stage_mem`) and, below the bound, a call reads the stage at the true codomain
+(`stage_apply`). This replaces the fill of docs/31 D60 (an arbitrary element where the stage is
+undefined, `err` where the leaf type is empty). -/
+
+/-- The result type above the bound: the true proposition at sort `0`, `Unit` at a data sort. -/
+def fillTy (l : Nat) : TyM := if l = 0 then TyM.prop True else TyM.unit
+
+/-- The trivial result above the bound, a member of `fillTy l`. -/
+def fillVal (l : Nat) : Sem := if l = 0 then .proof else .el0 Unit ()
+
+/-- **The weakened codomain** at bound `b`: the true codomain at arguments of rank below `b`,
+`fillTy l` above. Whether it is a returned borrow is the true codomain's. -/
+def weakCod (l : Nat) (rk : List Sem → Nat) (b : Nat) (out : PiCod) : PiCod :=
+  ⟨out.isRef, fun args => if rk args < b then out.cod args else fillTy l⟩
+
+/-- The arguments at borrow parameters, as constant final contents, in parameter order: what a
+function that leaves its borrow arguments unchanged hands back. -/
+def refFinals : List PiDom → List Sem → List SVal
+  | d :: ds, a :: as => if d.isRef then (fun _ => a) :: refFinals ds as else refFinals ds as
+  | _, _ => []
+
+/-- Each of `refFinals`' final contents is constant. -/
+theorem refFinals_const : ∀ (ds : List PiDom) (args : List Sem) (c : SVal), c ∈ refFinals ds args →
+    ∃ a, c = fun _ => a
+  | d :: ds, a :: as, c, h => by
+    unfold refFinals at h
+    split at h
+    · rcases List.mem_cons.mp h with rfl | h
+      · exact ⟨a, rfl⟩
+      · exact refFinals_const ds as c h
+    · exact refFinals_const ds as c h
+  | [], _, _, h => by simp [refFinals] at h
+  | _ :: _, [], _, h => by simp [refFinals] at h
+
+/-- **The stage function** at bound `b`: the stage below the bound, the trivial output above it
+(`fillVal l`, the borrow arguments unchanged, label `0`). -/
+noncomputable def stageFn (l : Nat) (ds : List PiDom) (rk : List Sem → Nat) (b : Nat)
+    (stage : List Sem → Option BodyOut) (args : List Sem) : Option BodyOut :=
+  if rk args < b then stage args else some ⟨fillVal l, refFinals ds args, some 0⟩
 
 /-- **At a data sort, a closure is a member of its type at that sort, or `err`** (D12's invariant
 for `Type₀`, `Type₁`, `Type₂`): it is built in the carrier its type's code is indexed by. -/

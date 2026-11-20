@@ -34,28 +34,31 @@ theorem ctxOk_contains_fix_member (K : RunCtx) (ρ : Assignment) (φ : Future) (
     (n : String) (g : GDef) (t : Term) (hg : st.globals.find? (·.name == n) = some g) (hfn : g.fn? = some t)
     (hcur : K.cur = none) :
     meanV K ρ φ (.plain .err) (.clo [] t []) ∈ₛ[K.dm.read] (meanV K ρ noFuture (.plain .err) g.ty).asTy := by
-  have h1 := (hctx.globals.fn n g t hg hfn ρ φ).1
-  have h2 := hctx.globals.mem n g hg (by rw [hcur]; exact fun h => by cases h)
-  have h3 := hctx.globals.ty n g hg ρ
+  have hne : (K.cur.map (·.1)) ≠ some n := by rw [hcur]; exact fun h => by cases h
+  have h1 := (hctx.globals.fn n g t hg hfn hne ρ φ).1
+  have h2 := hctx.globals.mem n g hg hne
+  have h3 := hctx.globals.ty n g hg hne ρ
   rw [h1, h3] at h2
   exact h2
 
 /-- **The knot cut** (docs/31 D73, D79): with the definition being checked named in the context at the
-bound `0`, `CtxOk` asks of its global only `MemBelow 0`: that it be a closure along its type's code,
-of a function asked nothing (no argument has a rank below `0`). Nothing of the conclusion is assumed. -/
-theorem memBelow_zero (K : RunCtx) (G : Sem × TyS) (g : GDef) (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
-    (fn : List Sem → Option BodyOut) (hG : G.1 = closureAt K.dm.read l φ ds out fn)
-    (hT : G.2.m = piTyAt K.dm.read l ds out) : MemBelow K G g 0 :=
-  ⟨l, φ, ds, out, fn, hG, hT, fun _ _ h => absurd h (Nat.not_lt_zero _)⟩
+bound `0`, `CtxOk` asks of its global only `MemBelow 0`: that it be the stage-`0` closure at the
+weakened function type (`Unit`/`True`-valued everywhere), of a function asked nothing (no argument
+has a rank below `0`). Nothing of the conclusion is assumed (`Steps.memBelow_zero`). -/
+theorem memBelow_zero' (K : RunCtx) (g : GDef) (l : Nat) (φ : Future) (ds : List PiDom) (out : PiCod)
+    (fn : List Sem → Option BodyOut) (hl : l ≤ 3) (h0 : l = 0 → out.isRef = false) :
+    MemBelow K (closureAt K.dm.read l φ ds (weakCod l (decRank K g) 0 out) (stageFn l ds (decRank K g) 0 fn),
+      .plain (piTyAt K.dm.read l ds (weakCod l (decRank K g) 0 out))) g 0 :=
+  memBelow_zero K g l φ ds out fn hl h0
 
 /-! ## `Double` through the knot's induction (kernel-checked)
 
 `Double`'s closure as the `.fix` clause builds it (`CodeClosures`: its body as the function on
-meanings it computes, `dblBody`; its stages with filled closures; at arguments of rank `r` the stage
-`r + 1`, `gOf`). The step of the induction on the bound holds at every bound (`double_step`: the stage
-`b + 1` doubles `b`, `stage_val`), so the knot's induction (`stages_total`) makes the fixpoint good at
+meanings it computes, `dblBody`; each stage's `self` the stage below at the weakened function type,
+docs/34; at arguments of rank `r` the stage `r + 1`, `gOf`). The step of the induction on the bound holds at every bound (`double_step`), so the knot's induction (`stages_below`) makes the fixpoint good at
 every member argument (`double_total`), and its closure is a member of its type (`double_member`, the
-closure lemma's membership half on this instance). The checker accepts `Double` and rejects `Same`. -/
+closure lemma's membership half on this instance). The step is in the run's shape: stage `b + 1` is
+good below `b + 1` (`stage_val`: stage `n` doubles every `x < n`). The checker accepts `Double` and rejects `Same`. -/
 
 open Ochr.Meaning.Regress.CodeClosures in
 /-- The domain and codomain of `Π(n : Nat). Nat` as the `.fix` clause reads them. -/
@@ -75,18 +78,18 @@ theorem args_of_members {R : DataRead} {a : List Sem} (h : DomMembers R dsNat a)
     exact ⟨n, rfl⟩
 
 open Ochr.Meaning.Regress.CodeClosures in
-/-- **The step of the induction on the bound, for `Double`**: at member arguments of rank `b` the
-stage `b + 1` is good (whatever the fixpoint below `b`: here the stages compute outright). -/
+/-- **The step of the induction on the bound, for `Double`**, in the run's shape: at member arguments
+of rank below `b + 1` the stage `b + 1` is good (`OutGood'`; whatever stage `b` is below `b`: here the
+stages compute outright). -/
 theorem double_step (R : DataRead) (φ : Future) (b : Nat)
     (_ : ∀ a, DomMembers R dsNat a → rankOf R a < b →
-      ∃ o, stage R (closureFillL (lvl0 R) φ tNN) (rankOf R a + 1) a = some o ∧ OutGood R dsNat outNat a o) :
-    ∀ a, DomMembers R dsNat a → rankOf R a = b →
-      ∃ o, stage R (closureFillL (lvl0 R) φ tNN) (b + 1) a = some o ∧ OutGood R dsNat outNat a o := by
+      ∃ o, stage R φ b a = some o ∧ OutGood' R dsNat outNat a o) :
+    ∀ a, DomMembers R dsNat a → rankOf R a < b + 1 →
+      ∃ o, stage R φ (b + 1) a = some o ∧ OutGood' R dsNat outNat a o := by
   intro a ha hr
   obtain ⟨n, rfl⟩ := args_of_members ha
   rw [rankOf_nat] at hr
-  subst hr
-  refine ⟨_, stage_val φ n, ⟨2 * n, rfl⟩, ?_⟩
+  refine ⟨_, stage_val φ (b + 1) n hr, ⟨⟨⟨2 * n, rfl⟩, ?_⟩, fun h => by simp [outNat] at h, rfl⟩⟩
   intro i d hd hr
   rcases i with _ | i
   · simp only [dsNat, List.getElem?_cons_zero, Option.some.injEq] at hd
@@ -96,15 +99,15 @@ theorem double_step (R : DataRead) (φ : Future) (b : Nat)
 open Ochr.Meaning.Regress.CodeClosures in
 /-- **`Double`'s fixpoint is good at every member argument**, by the knot's induction. -/
 theorem double_total (R : DataRead) (φ : Future) :
-    ∀ a, DomMembers R dsNat a → ∃ o, gOf R (closureFillL (lvl0 R) φ tNN) a = some o ∧ OutGood R dsNat outNat a o :=
-  stages_total (stage R (closureFillL (lvl0 R) φ tNN)) (rankOf R) (DomMembers R dsNat) (OutGood R dsNat outNat)
+    ∀ a, DomMembers R dsNat a → ∃ o, gOf R φ a = some o ∧ OutGood' R dsNat outNat a o :=
+  stages_below (stage R φ) (rankOf R) (DomMembers R dsNat) (OutGood' R dsNat outNat)
     (double_step R φ)
 
 open Ochr.Meaning.Regress.CodeClosures in
 /-- **`Double`'s closure is a member of its type**: the closure lemma's membership half on this
 instance (`closure_mem_of_total` at the level `1`, whose code is `tNN`), from `double_member`. -/
 theorem double_closure_member (R : DataRead) (φ : Future) :
-    closureAt R 1 φ dsNat outNat (gOf R (closureFillL (lvl0 R) φ tNN)) ∈ₛ[R] piTyAt R 1 dsNat outNat :=
+    closureAt R 1 φ dsNat outNat (gOf R φ) ∈ₛ[R] piTyAt R 1 dsNat outNat :=
   (double_member φ).1
 
 end Ochr.Meaning.Regress.DefKnot

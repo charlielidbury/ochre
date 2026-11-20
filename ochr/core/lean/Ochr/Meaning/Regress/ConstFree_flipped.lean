@@ -6,7 +6,8 @@ import Ochr.Meaning.Steps.Statements
 `Regress/ConstFree_70247f07.lean` (unbuilt) records `evalCore_step_stmt` false at a `K.C.global`
 that is not Σ's. With `GlobalsOk K st` (part of `CtxOk`, now a hypothesis of every statement), the
 value conjunct of the statement holds of the record's constant: the checker's `S(Z)`, read at the
-run's result type, is the run's result.
+run's result type, is the run's result. (`GlobalsOk` asks the stored type of every global but the
+definition being checked, `K.cur`, which is typed at the weakened function type; docs/34.)
 -/
 
 namespace Ochr.Meaning.Regress.ConstFlip
@@ -19,10 +20,11 @@ def stG : MState := { globals := [gOne] }
 
 /-- The run of `.const "one"` returns `K.C.global "one"`, and under `GlobalsOk` the checker's value
 means it, at every assignment and future. -/
-theorem const_one_ok (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (s : SState) (hG : GlobalsOk K stG) :
+theorem const_one_ok (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (s : SState) (hG : GlobalsOk K stG)
+    (hcur : (K.cur.map (·.1)) ≠ some "one") :
     ∃ r, run K ρ φ hint (.const "one") s = some (r, s) ∧ meanV K ρ φ r.2 (.succ .zero) = r.1 := by
   refine ⟨K.C.global "one", rfl, ?_⟩
-  have hty := hG.ty "one" gOne rfl ρ
+  have hty := hG.ty "one" gOne rfl hcur ρ
   have hc := hG.const "one" gOne rfl rfl ρ φ
   have hm : (K.C.global "one").2.m = TyM.nat := by rw [hty]; rfl
   rw [hc, hm]

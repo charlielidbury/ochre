@@ -1198,7 +1198,7 @@ theorem mkLeafRefL_congr (Lv : Lvl.{u}) {φ φ' : Future} (Fin : Type u)
       dsimp only
       rw [hfun]
 
-/-- The leaves of `mkTelL` and `mkTelFillL` are the same at two futures agreeing on `L`. -/
+/-- The leaves of `mkTelL` are the same at two futures agreeing on `L`. -/
 theorem leaf_congr (Lv : Lvl.{u}) {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l)
     (isRef : Bool) (g : List Sem → Option BodyOut) (hg : ∀ args o, g args = some o → FinalsIn L isRef o)
     (acc : List Sem) (Fin : Type u) (mkFin : List Sem → Option (Fin × List Sem)) :
@@ -1240,20 +1240,6 @@ theorem mkTelL_congr (Lv : Lvl.{u}) {L : Nat → Prop} {φ φ' : Future} (hφ : 
     simp only [mkTelL]
     exact dite_isSome_congr _ _ (funext fun x => mkTelL_congr Lv hφ isRef g hg (k x) (hk x) _ _)
 
-/-- The same for a recursion stage's filled element. -/
-theorem mkTelFillL_congr (Lv : Lvl.{u}) {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l)
-    (isRef : Bool) (g : List Sem → Option BodyOut) (hg : ∀ args o, g args = some o → FinalsIn L isRef o) :
-    ∀ {Fin C : Type u} (t : Tel Lv.Code Fin C), TelKind Lv isRef t →
-      ∀ (acc : List Sem) (mkFin : List Sem → Option (Fin × List Sem)),
-      mkTelFillL Lv φ t acc mkFin g = mkTelFillL Lv φ' t acc mkFin g
-  | _, _, .dat Fin B c, hk, acc, mkFin => by
-    simp only [mkTelFillL, (leaf_congr Lv hφ isRef g hg acc Fin mkFin).1 c hk]
-  | _, _, .ref Fin U c, hk, acc, mkFin => by
-    simp only [mkTelFillL, (leaf_congr Lv hφ isRef g hg acc Fin mkFin).2 c hk]
-  | _, _, .param Fin isR A c C k, hk, acc, mkFin => by
-    simp only [mkTelFillL]
-    exact dite_isSome_congr _ _ (funext fun x => mkTelFillL_congr Lv hφ isRef g hg (k x) (hk x) _ _)
-
 /-- The closure meaning at its sort, the same at two futures agreeing on `L` under `FinalsIn`. -/
 theorem closureAt_congr (R : DataRead) {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l) (l : Nat)
     (ds : List PiDom) (out : PiCod) (g : List Sem → Option BodyOut)
@@ -1265,19 +1251,6 @@ theorem closureAt_congr (R : DataRead) {L : Nat → Prop} {φ φ' : Future} (hφ
   · simp only [closureL, mkTelL_congr (lvl0 R) hφ out.isRef g hg _ (telL_kind (lvl0 R) ds [] PUnit out)]
   · simp only [closureL, mkTelL_congr (lvl1 R) hφ out.isRef g hg _ (telL_kind (lvl1 R) ds [] PUnit out)]
   · simp only [closureL, mkTelL_congr (lvl2 R) hφ out.isRef g hg _ (telL_kind (lvl2 R) ds [] PUnit out)]
-  · rfl
-
-/-- A recursion stage's closure, the same at two futures agreeing on `L` under `FinalsIn`. -/
-theorem closureFillAt_congr (R : DataRead) {L : Nat → Prop} {φ φ' : Future} (hφ : ∀ l, L l → φ l = φ' l) (l : Nat)
-    (ds : List PiDom) (out : PiCod) (g : List Sem → Option BodyOut)
-    (hg : ∀ args o, g args = some o → FinalsIn L out.isRef o) :
-    closureFillAt R l φ ds out g = closureFillAt R l φ' ds out g := by
-  unfold closureFillAt
-  rcases l with _ | _ | _ | _ | l
-  · rfl
-  · simp only [closureFillL, mkTelFillL_congr (lvl0 R) hφ out.isRef g hg _ (telL_kind (lvl0 R) ds [] PUnit out)]
-  · simp only [closureFillL, mkTelFillL_congr (lvl1 R) hφ out.isRef g hg _ (telL_kind (lvl1 R) ds [] PUnit out)]
-  · simp only [closureFillL, mkTelFillL_congr (lvl2 R) hφ out.isRef g hg _ (telL_kind (lvl2 R) ds [] PUnit out)]
   · rfl
 
 /-! ## The call clause: the finals match the borrow parameters
