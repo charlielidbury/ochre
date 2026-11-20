@@ -169,7 +169,11 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     refine SM.erasedIf_congr ?_
     dsimp only
     apply Option.bind_congr' rfl
-    rintro ⟨tg, s₁⟩ _
+    rintro ⟨tg, s₀⟩ _
+    dsimp only
+    rw [show matchEntry (KA K Δ') φ (!tl) (.matchNat p z u) s₀ = matchEntry K φ (!tl) (.matchNat p z u) s₀ from rfl]
+    generalize matchEntry K φ (!tl) (.matchNat p z u) s₀ = me
+    obtain ⟨s₁, lend⟩ := me
     dsimp only
     split
     · apply Option.bind_congr' (runT_congrA tl z hint s₁ fun σ h => ha σ (by simp [Term.anyAtom, h]))
@@ -182,7 +186,12 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     refine SM.erasedIf_congr ?_
     dsimp only
     apply Option.bind_congr' rfl
-    rintro ⟨tg, s₁⟩ _
+    rintro ⟨tg, s₀⟩ _
+    dsimp only
+    rw [show matchEntry (KA K Δ') φ (!tl && !tg.isProof) (.matchInd p n arms) s₀
+      = matchEntry K φ (!tl && !tg.isProof) (.matchInd p n arms) s₀ from rfl]
+    generalize matchEntry K φ (!tl && !tg.isProof) (.matchInd p n arms) s₀ = me
+    obtain ⟨s₁, lend⟩ := me
     dsimp only
     split
     · rename_i c _
@@ -259,7 +268,10 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
       intro _ s₄ e4; have e := SM.onCopy_state e4; subst e
       apply SM.bind_congr (SM.onCopy_congr (hall h' (hm h' (by simp)) _ _))
       intro _ s₅ e5; have e := SM.onCopy_state e5; subst e
-      exact hall t (hm t (by simp)) _ _
+      dsimp only
+      rw [show ∀ s₀, runT K ρ φ false hint t s₀ = runT (KA K Δ') ρ' φ false hint t s₀ from
+        fun s₀ => hall t (hm t (by simp)) _ s₀]
+      rfl
     by_cases hc : ∃ u, (n = "clone" ∨ n = "peek" ∨ n = "inplace") ∧ args = [u]
     · obtain ⟨u, hn, hargs⟩ := hc
       have hu : u ∈ args := by rw [hargs]; simp
