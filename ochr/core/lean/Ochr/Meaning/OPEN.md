@@ -28,6 +28,50 @@ Kernel-checked FALSE so far: `bodyReturns_sound`, `repackCheck_sound` (`Regress/
 
 `DecTab.back`; the 37 `grows_*` (all of `Steps/MachineMono.lean`; `grows_restoreKeep` FALSE as stated, needs "the snapshot has the current globals and declarations"); `access_absTy`; `eq_split`; `accepted_resolves`, `resolves_of_accepted`, `resolvesTo_unique`, `covered_prefix` (only `dm.covers`); `scopeOf_sstate` (reads only the readings); `consistencyBounded` (the theorem itself is machine-only in statement). Machine-only conclusions under a droppable hypothesis (`M*`): `borrow_wf`, `end_wf`, `assign_wf`, `close_wf`, `capture_wf`, `eval_wf6`. Nearly: `callee_bounded`, `piSort_aligned` (restatable without meanings). The hard ones are one induction over the interpreter's mutual block (`eval`, `endBorrow`→`substEnv`→`nfSealed`→`eval`) for the `grows_*` interpreter group and `access_absTy`.
 
+## Part (b), membership, under the plan of record (docs/31 D86)
+
+The proof's two halves meet at "the strict reference run succeeds" (D83 specifies the strict run). **(I)** is a lemma about the model alone: a successful strict run from a state of members returns a member and leaves such a state; for an erased term, success means its proposition is true. **(II)** is the simulation: the checker's typed run succeeds, so the strict run does; each check of the checker makes its strict clause succeed. Values in flight are members through typed temporaries (D81; the checker change is `checker2`'s). The evaluation statements take "no hole in the term" (D84; `Regress/OpenFalse.eval_hole_false`).
+
+Who: **M1** = `model1` (branch `spine-model`, the strict run and the fundamental lemma); **DL** = the data layer (proved facts, or the existence agent on `spine-exists`); **TR** = the rules trial's conversion lemma (`origin/rules-trial`, `Rules/ComposeT.conv_sound_T`: comparison sound on values well typed inside, under named premises); **SP** = a prover on typed steps; **ML** = the machine-only lane; **OPEN** = no design yet.
+
+### (I) The fundamental lemma's cases (one per clause of the strict run)
+
+| Clause (`Run.lean`) | Its result is a member because | Fact | Who | Status |
+|---|---|---|---|---|
+| `.place` (read), `.prim "clone"/"peek"/"inplace"` | the state's positions are members; a part read at its path is a member of the type read there | `ReadMember.field_mem`, `follow_below_member` | DL | PROVED |
+| `.borrow` | the borrowed content is a member (as above); `⟦&T⟧ = ⟦T⟧` | as above | M1 | routine |
+| `.assign` / `assignAt` | strict: the written value checked at the place's type; the result `()` | strictness | M1 | to build |
+| `.letIn`, `.seq`, matches | the tail's / arm's result; the binding a member by the producer's case | induction | M1 | routine |
+| `.ctor` / `ctorOut` | strict: fields fit the record's field types | `CtorMem.ctorOut_mem`, `proof_mem_tyR` | DL | PROVED (given strictness) |
+| `.call` / `callOf` | decoding at the parameter codes; the callee a member of its function type | `ApplyMem.app_mem'`, `app_mem_ref`, `app_mem_finals`, `callOfL_mem`, `app_mem_unit` (η at `Unit`) | DL | PROVED |
+| `.const n`, `.val (.gfn …)`, `.val (.abs σ)` | the global's / unknown's meaning is a member | `CtxOk.globals` (`MemBelow` for the definition being checked), `TypedAssignment` | — | by hypothesis |
+| `.ascribe` | strict at the annotation | strictness | M1 | to build |
+| `.succ`, `.val (C(…))` | strict | strictness | M1 | to build |
+| `.zero`, `.tt`, `.nat`, `.unit`, `.sort l` | by construction (`sort l : sort (sortSucc l)` is the universe code's decoding) | small lemmas | M1 | to prove |
+| `.eq`, `.id` | a proposition is a member of `Prop` | `EvalMem.prop_mem_univ0` | — | PROVED |
+| `.tind`, `.pi`, `.ref` (type formers) | the code's level is the sort the run gives it; with strict type formers, "well typed inside" | `fix_sortRule`, `sortOf_sound_stmt`; strict type formers (trial's measure) | M1 / DL | OPEN |
+| `.fix` (a closure) | totality of the closure: the local knot | D73 item 5 | OPEN | not designed |
+| erased terms (C1) | the erased run succeeded at its proposition: a proof call's codomain, a `Prop` constructor, `cong`, `symm`, `trans`, `rewrite`, `J` | strictness + the cases above | M1 | to build |
+| `.prim "J"` (data) | the transported term at `P(a)`, its proof true so `P(a) = P(b)` | (C1) on the proof | M1 | to build |
+| `.prim "hole"` | — | excluded by hypothesis | — | — |
+
+### (II) The checks that make the strict clauses succeed (in typed runs)
+
+| Check (`Machine.lean`) | Strict clause it serves | Lemma | Who | Status |
+|---|---|---|---|---|
+| `expectTy` of an ascribed term against its annotation | `.ascribe` | conversion sound on types well typed inside | TR | proved under named premises (trial) |
+| `expectTy` of an assignment's value against the place's type | `assignAt` | the same | TR | as above |
+| `expectTy` of each field against its type (`evalCtor`), parameters solved from fields (`unifyParams`) | `ctorOut` | conversion; unification sound | TR / SP | unification: OPEN |
+| a call's argument types against the parameter types (`callType`) | `callOf`'s decoding | conversion | TR | as above |
+| [Def]'s and [Const]'s conversion of the body's type to the goal, then [Return] | the result at the goal | `EvalMem.return_member` (PROVED from its pieces): conversion + `RepackSound` ([Return]/[Repack]'s honest content, a guess, restating the FALSE `bodyReturns_sound`, `repackCheck_sound`) | TR / SP | `RepackSound` open |
+| the arms of a non-tail match against one type; a stuck block's arms at its declared type | the match's result type | conversion | TR | as above |
+| `Eq`'s sides against its type (`eqChecks`) | `.eq` (with strict meanings) | conversion | TR | as above |
+| `cong`, `symm`, `trans`, `rewrite`, `J`: the shapes of their premises | (C1)'s proposition | conversion (`trans`), `rewriteGoal_step` | TR / SP | open |
+| the checker's sort of a type (`sortOf`) | the type formers' levels | `sortOf_sound_stmt`, `fix_sortRule` | SP / DL | OPEN |
+| [Rec]'s decreasing argument | a recursive call below the bound (`MemBelow`) | `recDecreases` | SP | open |
+
+The membership of a typed temporary at the type the checker returned then follows from (I) and (II) by the simulation (`StrAgree`: the checker's type means the reference's); the projection to the value in flight is `EvalMem.goodT_push_mem` (PROVED). Statement requests queued for the statements' next change: typed temporaries (after `checker2`'s change is on `main`); "no hole in the term" on the evaluation statements and a state clause "no code holds a hole"; the join guarantee as a clause (no temporary holds a label that is not live: after a join's drop, a `let`'s drop, a frame's pop); (WF11)'s sixth conjunct (refinement records hold no loan) and `ShapeFacts.refsHint`, `neutralHint` (the slice's request, swept on `spine-slice` 6e7ba003); `EqJAsm` to use `restoreKeep_grows` and `grows_closeBlock_of` (`spine-machine`); [Entry]'s captures out of `CtxOk` into the [Entry] step's hypothesis.
+
 ## A. The top-level chain (`Consistency.lean`, `Bounded.lean`, `Steps/Knot.lean`)
 
 | Statement | Says | Checked | Size | Status | M |
