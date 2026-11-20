@@ -41,14 +41,19 @@ and write `moved`, nothing where `Sem.updAt` fails). The step statements: `moved
 exactly these open pieces (`#sorry_leaves`; the script is `slice2/Leaves.lean` in the session
 scratchpad, or rebuild it from the idiom below):
 
-1. **`etaFresh_sim`** (MovedPlace): unchanged, the largest. Findings from planning it: the route
-   through the induction hypothesis's `split_coverage` needs that statement in a "for every run"
-   form with the constructor bounded (`∃ c < d.ctors.length, ∀ b r st', Runs (ctorRefinement …
-   c) st b r st' → ∃ ρ', …`): as stated it gives SOME run at its own budget and SOME `c`, so the
-   one-constructor case cannot be pinned to `c = 0` nor to the checker's own run without a fuel
-   determinism fact. Not yet proposed to main. Its `CtxOk` after also asks the block's captures
-   at the new state (as `ctx_botWrite` did) and (Hη≠) for the new record (needs: σ's type does not
-   name σ). Needs `meanV_ext` (DropOneAsm, open, `AssignCongr.lean`'s shape).
+1. **`etaFresh_sim`** (MovedPlace): ASSEMBLED (769ff710), takes the induction hypothesis. Rests on
+   `split_coverage_sim` (open: the PROPOSED simulation form of the IH's `split_coverage`, conclusion
+   `CovConcl` in `Slice/EtaFresh.lean`: for every run of `ctorRefinement` at the constructor, which
+   exists, an extension keeping the extended context, `RefineOk` for the refinement, top-hint-free,
+   and every unknown named once the refinement is recorded typed), `DecTab.back`, and
+   `blockCaps_etaRecord` (open, same nature as `blockCaps_botWrite`). Recording the refinement,
+   `etaRecord_ext`, is proved. Why the restatement: as stated `split_coverage` gives SOME run at its
+   own budget and SOME constructor (no fuel-determinism fact exists to reach the checker's run) and
+   its `TypedAssignment` after says nothing of the fresh fields, which nothing names yet. The same
+   gap (the refinement's unknowns not typed) is in the lead's `RefineOk`: `refine_step_stmt` and
+   `substEnv_abs_step_stmt` look false when the refinement names an unknown nothing names
+   (`Good` then needs its membership after the substitution, and nothing gives it); reported to
+   main, no counterexample built yet. `etaInPlace_sim`'s use is safe (the η record names them).
 2. **`recordedNeutral_ok`** (MovedPlace): ASSEMBLED (`Slice/Recorded.lean`, standard axioms:
    `expandRefsF_mean`, `expandRefsF_anyAtom`, `pathCond_everywhere`, `recordedNeutral_ok_of_facts`).
    Rests on two open leaves in MovedPlace:
