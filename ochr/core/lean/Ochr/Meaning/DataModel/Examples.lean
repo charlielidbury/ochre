@@ -22,7 +22,6 @@ open Ochr Ochr.Meaning Ochr.Meaning.DataLib
 
 /-! ## `Word`, `Bool` -/
 
-def wordR : Rec := constRec .none
 def zeroV : Sem := .dat "Word" wordR 0 []
 def succV (m : Sem) : Sem := .dat "Word" wordR 1 [m]
 
@@ -35,7 +34,6 @@ theorem succ_mem (m : Sem) (hm : dmP.Mem wordD wordR m) : dmP.Mem wordD wordR (s
 theorem small_zeroV : zeroV.small = zeroS := rfl
 theorem small_succV (m : Sem) : (succV m).small = succS m.small := rfl
 
-def boolR : Rec := constRec .none
 def falseV : Sem := .dat "Bool" boolR 0 []
 def trueV : Sem := .dat "Bool" boolR 1 []
 
@@ -46,7 +44,7 @@ def natE : Entry := .leaf Nat .nat
 
 /-! ## `Single(Single(Nat, 0), S1)`: a parameter instantiated at the declaration itself -/
 
-def s1R : Rec := singleRec natE (.el Nat 0)
+def s1R : Rec := singleRec natE natRec (.el Nat 0)
 def s1V : Sem := .dat "Single" s1R 0 [.el0 Nat 0, .proof]
 
 theorem s1_mem : dmP.Mem singleD s1R s1V := by
@@ -56,7 +54,7 @@ theorem s1_mem : dmP.Mem singleD s1R s1V := by
 /-- `Single(Nat, 0)`'s record is the record at its parameters. -/
 theorem s1R_recOf : dmP.recOf singleD [.ty TyM.nat, .el0 Nat 0] = s1R := rfl
 
-def s2R : Rec := singleRec (.data singleD s1R) s1V.small
+def s2R : Rec := singleRec (.data singleD) s1R s1V.small
 def s2V : Sem := .dat "Single" s2R 0 [s1V, .proof]
 
 /-- **`S2 : Single(Single(Nat, 0), S1)` is a member** of its type; nothing about `Single` at
@@ -123,7 +121,7 @@ theorem te4 : ∃ x : dmP.car teqD teR, dmP.read.read teqD teR (dmP.car teqD teR
 
 /-! ## `VecF(Nat, Succ(Zero))` over `Word` -/
 
-def vecR (eA : Entry) (n : Sem) : Rec := vecRec eA n.small
+def vecR (eA : Entry) (n : Sem) : Rec := vecRec eA natRec n.small
 def v0 : Sem := .dat "VecF" (vecR natE zeroV) 0 [.proof]
 def v1 : Sem := .dat "VecF" (vecR natE (succV zeroV)) 1 [zeroV, .el0 Nat 5, v0, .proof]
 
@@ -139,15 +137,14 @@ theorem v1_mem : dmP.Mem vecD (vecR natE (succV zeroV)) v1 := by
 
 /-! ## `BW`, `BH`: type-function fields reading a `Bool` field -/
 
-def bwR : Rec := constRec .none
 theorem bw1_mem : dmP.Mem bwD bwR (.dat "BW" bwR 0 [trueV, .el0 Unit ()]) := by
   refine mem_intro bwD bwR ⟨0, by decide⟩ _ ?_
   exact ⟨_, _, rfl, true_mem, _, [], rfl, ⟨(), rfl⟩, rfl⟩
 theorem bw0_mem : dmP.Mem bwD bwR (.dat "BW" bwR 0 [falseV, .el0 Nat 5]) := by
   refine mem_intro bwD bwR ⟨0, by decide⟩ _ ?_
   exact ⟨_, _, rfl, false_mem, _, [], rfl, ⟨5, rfl⟩, rfl⟩
-theorem bh1_mem (g : NatFn) : dmP.Mem bhD bwR (.dat "BH" bwR 0 [trueV, .el0 NatFn g]) := by
-  refine mem_intro bhD bwR ⟨0, by decide⟩ _ ?_
+theorem bh1_mem (g : NatFn) : dmP.Mem bhD bhR (.dat "BH" bhR 0 [trueV, .el0 NatFn g]) := by
+  refine mem_intro bhD bhR ⟨0, by decide⟩ _ ?_
   exact ⟨_, _, rfl, true_mem, _, [], rfl, ⟨g, rfl⟩, rfl⟩
 
 /-! ## `IsZ(n) : Prop`: the proposition is that a witness tree exists -/
@@ -174,8 +171,8 @@ theorem isZ_zero_true : dmP.tyM isZD [zeroV] = TyM.prop (∃ v, dmP.Mem isZD (is
 
 /-! ## `V := MkV(n : Nat, x : Fin1(n))`: a field typed by an earlier `Nat` field -/
 
-theorem v_mem : dmP.Mem vD bwR (.dat "V" bwR 0 [.el0 Nat 1, .dat "Fin1" (fin1Rec (.el Nat 1)) 0 [.proof]]) := by
-  refine mem_intro vD bwR ⟨0, by decide⟩ _ ?_
+theorem v_mem : dmP.Mem vD vR (.dat "V" vR 0 [.el0 Nat 1, .dat "Fin1" (fin1Rec (.el Nat 1)) 0 [.proof]]) := by
+  refine mem_intro vD vR ⟨0, by decide⟩ _ ?_
   refine ⟨_, _, rfl, ⟨1, rfl⟩, _, [], rfl, ?_, rfl⟩
   refine mem_intro fin1D _ ⟨0, by decide⟩ _ ?_
   exact ⟨_, [], rfl, ⟨⟨rfl⟩, rfl⟩, rfl⟩

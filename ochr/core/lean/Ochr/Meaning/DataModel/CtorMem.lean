@@ -113,6 +113,26 @@ theorem ctorOut_mem (dm : DataModel) (d : IndDecl) (r : Rec) (c : Nat) (fs : Lis
 namespace DataModel.CtorChecks
 open DataModel.ParamSolve DataModel.Program
 
+/-- `Wrap(3)`'s, `Opt2(3)`'s and `Single(Nat, 5)`'s records hold no leaf over a data code, so every
+field shape at them is `LeafOk` (`ctorR_mem`'s side condition, docs/34 §18). -/
+theorem wrap_leafOk : dmS.RecLeafOk wrapD (dmS.recOf wrapD [.el0 Nat 3]) :=
+  recLeafOk_of dmS _ _ fun p B c hp => by
+    change wrapRec (.el Nat 3) p = .leaf B c at hp
+    unfold wrapRec at hp
+    split at hp <;> (try (unfold tagRec at hp; split at hp)) <;> cases hp <;> rfl
+
+theorem opt2_leafOk : dmS.RecLeafOk opt2D (dmS.recOf opt2D [.el0 Nat 3]) :=
+  recLeafOk_of dmS _ _ fun p B c hp => by
+    change opt2Rec (.el Nat 3) p = .leaf B c at hp
+    unfold opt2Rec at hp
+    split at hp <;> (try (unfold tagRec at hp; split at hp)) <;> cases hp <;> rfl
+
+theorem single_leafOk : dmP.RecLeafOk singleD (dmP.recOf singleD [.ty TyM.nat, .el0 Nat 5]) :=
+  recLeafOk_of dmP _ _ fun p B c hp => by
+    change singleRec (.leaf Nat .nat) natRec (.el Nat 5) p = .leaf B c at hp
+    unfold singleRec at hp
+    split at hp <;> (try (unfold natRec at hp)) <;> cases hp <;> rfl
+
 /-- **`SW`**: `MkW(t)` at `Wrap(3)` (the value `sw_ctor` builds) is a member of `Wrap(3)` when `t` is a
 member of `Tag(3)`, the field's type at `Wrap(3)`'s record. -/
 theorem sw_ctor_mem (tv : Sem) (htv : tv ∈ₛ[dmS.read] dmS.tyM tagD [.el0 Nat 3]) :
@@ -120,7 +140,7 @@ theorem sw_ctor_mem (tv : Sem) (htv : tv ∈ₛ[dmS.read] dmS.tyM tagD [.el0 Nat
   dmS.ctorR_mem wrapD _ 0 [tv] rfl (by decide) rfl (fun i f hf => by
     match i, hf with
     | 0, hf => cases hf; exact htv
-    | _ + 1, hf => simp at hf)
+    | _ + 1, hf => simp at hf) wrap_leafOk
 
 /-- **`SO`**: `A2(t)` at `Opt2(3)` (the value `so_ctor` builds) is a member of `Opt2(3)`. -/
 theorem so_ctor_mem (tv : Sem) (htv : tv ∈ₛ[dmS.read] dmS.tyM tagD [.el0 Nat 3]) :
@@ -128,7 +148,7 @@ theorem so_ctor_mem (tv : Sem) (htv : tv ∈ₛ[dmS.read] dmS.tyM tagD [.el0 Nat
   dmS.ctorR_mem opt2D _ 0 [tv] rfl (by decide) rfl (fun i f hf => by
     match i, hf with
     | 0, hf => cases hf; exact htv
-    | _ + 1, hf => simp at hf)
+    | _ + 1, hf => simp at hf) opt2_leafOk
 
 /-- **A dependent constructor**: `MkS(5, refl) : Single(Nat, 5)`, the second field's type the equation
 `x = a` at the first field (read small). -/
@@ -139,7 +159,7 @@ theorem single_mem :
     match i, hf with
     | 0, hf => cases hf; exact ⟨5, rfl⟩
     | 1, hf => cases hf; exact ⟨⟨rfl⟩, rfl⟩
-    | _ + 2, hf => simp at hf)
+    | _ + 2, hf => simp at hf) single_leafOk
 
 end DataModel.CtorChecks
 
