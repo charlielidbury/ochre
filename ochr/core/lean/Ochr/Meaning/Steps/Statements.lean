@@ -241,6 +241,14 @@ def MeansProof (st : MState) (p : Place) : Value → Prop
       ∃ σ, holderContent st.env l = some (.abs σ) ∧ SortIsProp st (st.absTy.getD σ .bot)
   | _ => False
 
+/-- (Rd), a clause of `ShapeFacts` (the lead's decision, docs/31 D78): an unknown whose frozen reading is `Sort l` (D96) has the type `Sort l`.
+`freshAbsR` freezes `valTypeDecl` of the type it pushes, which is `.sort l` exactly at `Sort l`;
+nothing else writes a reading, and a type `Sort l` holds no unknown, so no substitution changes it.
+Swept on the suite's recorded states (docs/31 D77): 40,214 unknowns read as a sort over 76,568
+states, every one of type `Sort l`. -/
+def ReadingsSorted (st : MState) : Prop :=
+  ∀ (σ l : Nat), st.absDecl[σ]? = some (DeclInfo.sort l) → st.absTy[σ]? = some (Value.sort l)
+
 /-- **The checker's typing of places** (docs/31 D34, D40, D47, D49, D51): at every place in scope
 that exists, by its declared reading (`Decisions.placeDecl` at the top frame's readings), a place
 declared an inductive of the declarations holds a constructor value of it or a stand-in (V); every
@@ -276,6 +284,9 @@ structure ShapeFacts (D : Decisions) (Γ : List IndDecl) (st : MState) : Prop wh
   `dataNotProof`, swept with no violation; a clause since the slice, for the lead to review) -/
   dataNotProof : ∀ p v, ckContent st.env p = some v → MeansProof st p v →
     D.copy (D.placeDecl (DecideScope.topReadings st) p) = true
+  /-- (Rd) an unknown read as `Sort l` has the type `Sort l` (docs/31 D77, D78): with `Good` and
+  `CtxOk`, what makes the checker's `sortOf` sound (`sortOf_sound_stmt`) -/
+  readingsSorted : ReadingsSorted st
 
 /-- A term's unknowns are below `n`. -/
 def _root_.Ochr.Term.absBelow (n : Nat) (t : Term) : Prop := ∀ σ, t.anyAtom (· == .abs σ) = true → σ < n
@@ -444,7 +455,7 @@ theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MSta
     ShapeFacts D Γ st' := by
   have e1 : DecideScope.topReadings st' = DecideScope.topReadings st := by
     unfold DecideScope.topReadings; rw [he]
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro p v n args hp hd hn; rw [he] at hp; rw [e1] at hd; exact hf.fits p v n args hp hd hn
   · rw [he]; exact hf.loans
   · rw [he]; exact hf.ctors
@@ -452,6 +463,12 @@ theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MSta
   · rw [hη]; exact hf.etaHint
   · intro p v hp hm; rw [he] at hp; rw [e1]
     exact hf.dataNotProof p v hp (MeansProof.of_sameDec h he ha p v hm)
+  · have hd : st'.absDecl = st.absDecl := by
+      have := congrArg MState.absDecl h
+      simpa using this
+    intro σ l h1
+    rw [hd] at h1; rw [ha]
+    exact hf.readingsSorted σ l h1
 
 /-- **The decisions stay the checker's across what no decision reads** (docs/31 D53): from a state
 with the same decision core (Σ, Δ and the reading mode, `DecCore`) and the same top frame's readings, every scope decision transfers by the simulation of
@@ -1150,11 +1167,11 @@ def movedPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Na
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hpos : resolve s q = some (pos, q.steps.2)) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
     (bh : Nat) (h : Runs (Ochr.movedPlace fuel q) st bh q' st'),
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
-      (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
+      (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
       (s' = s ∨ s' = accessLentPrefix pos q.steps.2 s) ∧
-      CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π st' s' ∧
-      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' ∧ MPOut st' q q'
+      CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π st' s' ∧
+      Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st' ∧ MPOut st' q q'
 
 /-- **[Join], the drop of one place** (`Machine.joinDrop`'s loop body: `movedPlace`, then
 `dropAtJoin`), in the simulation form: from related states, the checker's re-rooting and drop of a
@@ -1169,11 +1186,11 @@ def dropOne_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
     (bh : Nat) (h : Runs (do Ochr.dropAtJoin fuel (← Ochr.movedPlace fuel q)) st bh () st'),
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS), st.absTy.size ≤ st'.absTy.size ∧
-      (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
-      CtxOk { K with Δ := Δ' } ρ' st' ∧
-      Rel { K with Δ := Δ' } ρ' φ π st' (joinDropOne K φ s q) ∧
-      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), st.absTy.size ≤ st'.absTy.size ∧
+      (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
+      CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧
+      Rel { K with Δ := Δ', D := D' } ρ' φ π st' (joinDropOne K φ s q) ∧
+      Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st'
 
 /-- **[Join], the drop** (`Machine.joinDrop`'s loop after the arm: `dropAtJoin` of each place the
 join says is moved, re-rooted by `movedPlace`), in the simulation form: from related states, with
@@ -1191,10 +1208,10 @@ def joinDrop_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (hcopy : ∀ q ∈ K.D.joinMoves (scopeOf s) entry mt, K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
     (bh : Nat) (h : Runs (do for q in K.D.joinMoves (scopeOf s) entry mt do
       Ochr.dropAtJoin fuel (← Ochr.movedPlace fuel q)) st bh () st'),
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
-      CtxOk { K with Δ := Δ' } ρ' st' ∧
-      Rel { K with Δ := Δ' } ρ' φ π st' (joinDrop K φ entry mt s) ∧
-      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+      K.D.AgreeOld st.absTy.size D' ∧ CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧
+      Rel { K with Δ := Δ', D := D' } ρ' φ π st' (joinDrop K φ entry mt s) ∧
+      Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st'
 
 /-- [Match] on `Nat` (`evalMatch`): the run's `.matchNat` clause, in the simulation form. With a
 known constructor the arm runs and the join drops (`joinEntry_stmt`, `joinDrop_step_stmt`); on an
@@ -1315,14 +1332,6 @@ codes of `Nat`, `Unit`, `Sort l`, a proposition, a data type and a Π-type, and 
 def StoredTy (st : MState) (T : Value) : Prop :=
   (∃ (f i : Nat) (b : Binding), st.env[f]?.bind (fun fr => fr.binds[i]?) = some b ∧ b.ty = some T) ∨
     (∃ σ, st.Refd σ ∧ st.absTy[σ]? = some T) ∨ st.goal = some T
-
-/-- (Rd), candidate clause: an unknown whose frozen reading is `Sort l` (D96) has the type `Sort l`.
-`freshAbsR` freezes `valTypeDecl` of the type it pushes, which is `.sort l` exactly at `Sort l`;
-nothing else writes a reading, and a type `Sort l` holds no unknown, so no substitution changes it.
-Swept on the suite's recorded states (docs/31 D77): 40,214 unknowns read as a sort over 76,568
-states, every one of type `Sort l`. -/
-def ReadingsSorted (st : MState) : Prop :=
-  ∀ (σ l : Nat), st.absDecl[σ]? = some (DeclInfo.sort l) → st.absTy[σ]? = some (Value.sort l)
 
 /-- (Sort), candidate: a stored type's code has the level the checker reads of it (`sortOf`, at the
 state). Swept: `sortOf?` reads a sort of every one of the 392,852 stored binding types of the suite's

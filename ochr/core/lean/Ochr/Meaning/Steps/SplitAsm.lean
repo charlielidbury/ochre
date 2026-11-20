@@ -13,8 +13,8 @@ the world restores the snapshot, related as it was.
 
 Here: `refine` assembled from the substitution lemma for unknowns (`substEnv_abs_step`, the
 induction hypothesis), the record (`refs_sim`, proved) and the re-normalisation (`renormAll_step`);
-`exitWorld` assembled from its run (proved) and the restored state's context (a leaf); and
-`access_ctx` restated with the decisions extended (the slice's `access_ctx` is false as stated).
+`exitWorld` assembled from its run (proved) and the restored state's context (a leaf). (`access_ctx`,
+restated with the decisions extended, is in `DropOneAsm.lean` since the slice's merge, D78.)
 -/
 
 namespace Ochr.Meaning.Steps
@@ -23,15 +23,6 @@ open Ochr Ochr.Meaning
 
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
-
-/-- **A value naming only old unknowns means the same under an extension** (leaf;
-`AssignCongr.meanV_congrA` for the assignment, `DecExtend.meanV_congrD` for the decisions, and `Δ`
-read only at the unknowns a value holds). -/
-theorem meanV_ext {n : Nat} {ρ' : Assignment} {Δ' : Nat → TyS} {D' : Decisions} (v : Value) (ψ : Future) (hint : TyS)
-    (hv : ∀ σ, v.hasAbs σ = true → σ < n) (ha : ∀ σ, σ < n → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ)
-    (hd : K.D.AgreeOld n D') :
-    meanV { K with Δ := Δ', D := D' } ρ' ψ hint v = meanV K ρ ψ hint v := by
-  sorry
 
 /-- A refinement that holds at an assignment holds at an extension of it, and stays well-formed
 in a larger table (proved from `meanV_ext`). -/
@@ -141,20 +132,6 @@ theorem exitWorld_step_asm (fuel : Nat) (_ih : StepsIHBelow fuel) : exitWorld_st
   have hk : KeptAfter w.saved st' := ⟨henv, hgoal, hrefs, hinds, hsz, hold, by rw [hnl]; exact hgrow⟩
   obtain ⟨D', he⟩ := exitWorld_ctx K ρ hg hctx h
   exact ⟨henv, hgoal, hrefs, hneut, heta, hsz, hold, D', he, Rel.kept K ρ φ hg hctx hs hk he⟩
-
-/-- **[Access] keeps the run context, with the decisions extended** (leaf; the slice's `access_ctx`
-restated, docs/31 D76). An end of a borrow of a dependent type runs [Repack] (`repackCheck`), whose
-`lentUnknown` makes an unknown for a part still lent, with a frozen reading (D96), and uses it for
-the check only: Ω never names it. So the assignment and `Δ` need no extension (`DeltaOk` and
-`TypedAssignment` read only named unknowns), and the decisions do: `CtxOk`'s alignment is asked of
-every input, and `declOf` of `.val (.abs σ)` reads the new reading, which the fixed `K.D` need not
-give. As stated in `DropOneAsm` (the context unchanged) it is false. -/
-theorem access_ctx_ext (fuel : Nat) (st st' : MState) (q : Place) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (h : Runs (do Ochr.accessPath fuel q; Ochr.accessInside fuel q) st b () st') :
-    st.absTy.size ≤ st'.absTy.size ∧ ∃ D' : Decisions, K.D.AgreeOld st.absTy.size D' ∧
-      CtxOk { K with D := D' } ρ st' := by
-  sorry
 
 end
 

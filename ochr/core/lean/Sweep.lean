@@ -1105,8 +1105,23 @@ def etaHintFree : Clause where
   check st := st.etaRefs.filterMap fun (σ, r) =>
     if topHintFree st.inds r then none else some ⟨"an η record reads the hint", s!"σ{σ} := {clip r.pp}"⟩
 
+/-- (Rd) (`ShapeFacts.readingsSorted`, docs/31 D77, D78): an unknown whose frozen reading is
+`Sort l` (D96) has the type `Sort l`; with `Good` and `CtxOk` it makes the checker's `sortOf` sound
+for the model (`sortOf_sound_stmt`). -/
+def readingsSorted : Clause where
+  name := "(Rd) an unknown read as Sort l has the type Sort l"
+  premises := [("an unknown read as a sort", fun st => st.absDecl.any fun | DeclInfo.sort _ => true | _ => false)]
+  check st := (List.range st.absTy.size).filterMap fun (σ : Nat) =>
+    match (st.absDecl[σ]? : Option DeclInfo) with
+    | some (DeclInfo.sort l) => match (st.absTy[σ]? : Option Value) with
+      | some (Value.sort l') => if l' == l then none else
+          some ⟨"an unknown read as a sort has another sort", s!"σ{σ} : Sort {l'}, read Sort {l}"⟩
+      | some T => some ⟨"an unknown read as a sort has another type", s!"σ{σ} : {clip T.pp}, read Sort {l}"⟩
+      | none => some ⟨"an unknown read as a sort has no type", s!"σ{σ}"⟩
+    | _ => none
+
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, plantedFill, plantedAbs, nonCopyProof, untypedBindings]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, readingsSorted, plantedFill, plantedAbs, nonCopyProof, untypedBindings]
 
 /-! ## The sweep -/
 

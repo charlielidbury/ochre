@@ -1203,6 +1203,18 @@ Also: `eq`, `J` and `letIn` lacked `hok` (incomplete: an untyped side, transport
 |---|---|---|---|---|
 | The table (g, D77) | 0 | 0 (one proposed: the `.val` clause's types, after the port) | 0 | 1 (the run-level substitution lemma for unknowns, as the run stands); one candidate clause, (Rd), swept |
 
+### D78. The slice merged; the drop's statements and leaves with the decisions extended; (Rd) a clause (fifth lead, 2026-11-20)
+
+**Merged** `spine-slice` at ed0ee180 (merge f192e4fc, clean): [Access] concludes the typing of places after the access, the helpers after it read the shape facts, (D⋆) `ShapeFacts.dataNotProof` with its sweep mirror, `access_root_not_proof` restated, `copyRead_aligned` and `runs_valTypeDecl_keep` proved, the slice's sweep reports.
+
+**The decisions extended through the drop** (D71's rule; D76's list of the slice's leaves): `Ext` (moved from `MovedPlace` to `DropOneAsm`) gains the decisions `D'` and their agreement with the old ones (`dec : K.D.AgreeOld st.absTy.size D'`), composed by `Ext.trans`. Restated with it: `access_ctx` (the decisions only: [Repack]'s unknown is named by nothing, so the assignment and `Δ` stay; the relation and `Good` the access left carried over), `dropAtJoin_ctx` (likewise: an end inside the drop can repack), `substEnv_abs_sim`, `renormAll_sim`, `placeType_sim`, `freshAbs_sim`, `substEnv_neutral_sim`, `etaFresh_sim`, `placeTypeQ_sim`, `recorded_sim` (now existential: its substitution re-runs programs), `etaPlace_sim`. Re-proved on them, no `sorry` added: `refine_sim'`, `generalizeNeutral_sim`, `etaInPlace_sim`, `mpTail_sim` (the filled-parent branch uses `access_ctx` in its new form), `movedPlace_step`, `dropOne_step_asm`, `joinDrop_step`; the statements `movedPlace_step_stmt`, `dropOne_step_stmt` and `joinDrop_step_stmt` conclude the extended decisions. New, proved: `grain_agree` (the join's grain reads only the decisions on places, on which an extension agrees) and `joinDropOne_withD` (the reference's drop of one place likewise). `SplitAsm`'s `access_ctx_ext` and `meanV_ext` moved to `DropOneAsm` (one copy each).
+
+**(Rd) is a clause** (the lead's decision on D77): `ShapeFacts.readingsSorted` (an unknown read as `Sort l` has the type `Sort l`), carried by `ShapeFacts.of_sameDec`, and swept with the others (`Sweep.readingsSorted`): 71,526 states checked, the premise (an unknown read as a sort) in 28,233, no violation; the whole sweep passes (both planted clauses reported).
+
+| Area | Checker faults | Model definition changes | Relation changes | Statements found false |
+|---|---|---|---|---|
+| The slice's merge (D78) | 0 | 0 | 0 | 0 new (D76's nine leaves restated as found) |
+
 ### Run against evalCore: audit (second lead, 2026-11-13)
 
 Every case of `Machine.evalAt`/`evalCore` (Machine.lean, line numbers of 75248901) and the helpers it calls, against the matching clause of `run` as it stands after D19 and D21. "Agree" means the same effects, order and result under the aligned decisions; "below" means the checker also ends or drops something the run leaves, which the order `Below` allows. The checker's side of each program is asserted by the build of `Regress/AdequacyProbes.lean` (`AdequacyProbes2`, the accepted program beside a rejected control where one can be written). The run's side is **read off the clause, not kernel-checked**, for every row below; rows fixed earlier (D19, D21) have their kernel-checked records there.
