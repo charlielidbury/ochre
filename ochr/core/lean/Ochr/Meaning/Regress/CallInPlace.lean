@@ -320,7 +320,8 @@ def yFrame : SFrame := { binds := [{ yB with val := fun φ' => φ' 0 }], temps :
 noncomputable def SP (cd d : DeclInfo) (c : Sem) : SState :=
   { env := [yFrame, { binds := [selfP dm ρ φ cd, xB c d] }],
     shape := fun p => if p = .bind 1 1 then some 0 else none, nextLoan := 1,
-    lent := fun m => if m = 0 then [⟨.bind 0 0, [], false⟩] else [] }
+    lent := fun m => if m = 0 then [⟨.bind 0 0, [], false⟩] else [],
+    heldTy := fun m => if m = 0 then yB.ty.m else TyM.err }
 
 theorem callFrame_inc (cd : DeclInfo) (bs : List PBind) (hb : bs = bindsOf (Kc dm) ρ φ (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame [.ref .nat]) :
     callFrame (Kc dm) ρ φ [] [] (fresInc dm ρ φ) cd bs [(.el0 Nat 2, { yB.ty with label := some 0 })] (Attack.S₂ yB 0 (.el0 Nat 2))
@@ -422,7 +423,7 @@ theorem popCallFrame_one (start : Nat) (s : SState) (l f i : Nat) (hl : s.liveLa
       SState.mk (s.endLabel l).env.dropLast
         (fun p => match p with
           | .bind g _ | .temp g _ => if g = s.topIdx then none else (s.endLabel l).shape p)
-        (s.endLabel l).nextLoan (s.endLabel l).lent := by
+        (s.endLabel l).nextLoan (s.endLabel l).lent (s.endLabel l).heldTy := by
   unfold popCallFrame
   simp only [hl, List.filter_cons, List.filter_nil, hh, hf, beq_self_eq_true, Bool.or_true, ne_eq, reduceCtorEq,
     not_false_eq_true, decide_true, Bool.and_self, if_true, List.foldl_cons, List.foldl_nil, Option.bind_none]
@@ -569,13 +570,14 @@ theorem contentOf_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) :
 
 /-- After `&*x` in the frame: `x` reads the reborrow `1`'s final content, the reborrow's content `c`
 parked in a temporary holding `1`, lent at `*x`. -/
-def SB2 (selfB : SBinding) (d : DeclInfo) (c : Sem) : SState :=
+def SB2 (selfB : SBinding) (d : DeclInfo) (T : TyM) (c : Sem) : SState :=
   { env := [{ binds := [selfB, { xB c d with val := fun φ' => φ' 1 }], temps := [fun ψ => ψ 0, fun _ => c] }],
     shape := fun p => if p = .temp 0 1 then some 1 else if p = .bind 0 1 then some 0 else none, nextLoan := 2,
-    lent := fun m => if m = 1 then [⟨.bind 0 1, [.deref], false⟩] else [] }
+    lent := fun m => if m = 1 then [⟨.bind 0 1, [.deref], false⟩] else [],
+    heldTy := fun m => if m = 1 then T else TyM.err }
 
 theorem runBody_id1 (selfB : SBinding) (d : DeclInfo) (a : Nat) (hint : TyS) (tl : Bool) :
-    ∃ T, runT (Kc dm) ρ φ tl hint id1Body (SBs selfB d (.el0 Nat a)) = some ((.el0 Nat a, T), SB2 selfB d (.el0 Nat a)) ∧
+    ∃ T, runT (Kc dm) ρ φ tl hint id1Body (SBs selfB d (.el0 Nat a)) = some ((.el0 Nat a, T), SB2 selfB d T.m (.el0 Nat a)) ∧
       T.label = some 1 := by
   obtain ⟨T, hT⟩ := contentOf_SBs dm φ selfB d (.el0 Nat a)
   refine ⟨{ T with label := some 1 }, ?_, rfl⟩
@@ -583,7 +585,7 @@ theorem runBody_id1 (selfB : SBinding) (d : DeclInfo) (a : Nat) (hint : TyS) (tl
   unfold borrowPlace
   simp only [hT, bind, Option.bind]
   simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
-    Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent, SBs, SB2, xB]
+    Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent, SState.setHeldTy, SBs, SB2, xB]
   done
 
 noncomputable def selfId1 : SBinding := { ty := .plain (piId1 dm), val := fun _ => .err, decl := .pi (fbId1 dm ρ φ).2.2 }
@@ -595,21 +597,21 @@ theorem frame_id1 (c : Sem) :
     SState.takeLabel, SState.holderOf, SState.positions, SBs, xB, dInc, fbId1, bindsOf, runBinds, mkBind]
   exact ⟨rfl, rfl⟩
 
-theorem positions_SB2 (selfB : SBinding) (d : DeclInfo) (c : Sem) :
-    (SB2 selfB d c).positions = [.bind 0 0, .bind 0 1, .temp 0 0, .temp 0 1] := by
+theorem positions_SB2 (selfB : SBinding) (d : DeclInfo) (T : TyM) (c : Sem) :
+    (SB2 selfB d T c).positions = [.bind 0 0, .bind 0 1, .temp 0 0, .temp 0 1] := by
   simp [SB2, SState.positions, List.range']
 
-theorem liveLabels_SB2 (selfB : SBinding) (d : DeclInfo) (c : Sem) : (SB2 selfB d c).liveLabels = [0, 1] := by
+theorem liveLabels_SB2 (selfB : SBinding) (d : DeclInfo) (T : TyM) (c : Sem) : (SB2 selfB d T c).liveLabels = [0, 1] := by
   unfold SState.liveLabels; rw [positions_SB2]; simp [SB2]
   first | rfl | decide | simp [List.mergeSort]
 
-theorem find_SB2 (selfB : SBinding) (d : DeclInfo) (c : Sem) :
-    ((SB2 selfB d c).positions.find? fun p => decide ((SB2 selfB d c).shape p = some 0)) = some (.bind 0 1) := by
+theorem find_SB2 (selfB : SBinding) (d : DeclInfo) (T : TyM) (c : Sem) :
+    ((SB2 selfB d T c).positions.find? fun p => decide ((SB2 selfB d T c).shape p = some 0)) = some (.bind 0 1) := by
   rw [positions_SB2]; simp [SB2]
 
 /-- Ending `x`'s label at the pop: the cell reads the reborrow's final content. -/
-theorem endLabel_SB2_cell (selfB : SBinding) (d : DeclInfo) (c : Sem) (ψ : Future) :
-    ((SB2 selfB d c).endLabel 0).valAt (.temp 0 0) ψ = ψ 1 := by
+theorem endLabel_SB2_cell (selfB : SBinding) (d : DeclInfo) (T : TyM) (c : Sem) (ψ : Future) :
+    ((SB2 selfB d T c).endLabel 0).valAt (.temp 0 0) ψ = ψ 1 := by
   unfold SState.endLabel
   rw [find_SB2]
   simp [SB2, SState.mapVals, SState.valAt, Mean.semEnd, SState.toMean, Future.upd, xB]
@@ -631,7 +633,7 @@ theorem gId1_eval (a : Nat) :
     and_false, decide_false, Bool.false_eq_true, List.foldl_cons, List.foldl_nil, List.map_cons, List.map_nil]
   congr
   funext ψ
-  exact endLabel_SB2_cell _ _ _ ψ
+  exact endLabel_SB2_cell _ _ _ _ ψ
 
 theorem enc_nat (R : DataRead) (x : Nat) : Code0.enc R Code0.nat x = .el0 Nat x := rfl
 
@@ -676,7 +678,8 @@ theorem callOf_id1 (s : SState) (T : TyS) (lab : Nat) :
               match Code0.dec dm.read TyM.nat.code0.snd (φ' (s.takeLabel lab).freshLoan.1) with
               | some x => v (φ'.upd lab (Code0.enc dm.read TyM.nat.code0.snd x))
               | none => .err).pushTempShaped (fun _ => .el0 Nat 2) (s.takeLabel lab).freshLoan.1).setLent
-            (s.takeLabel lab).freshLoan.1 (((s.takeLabel lab).freshLoan.2.lent lab).map fun x => { x with fill := true }))) := by
+            (s.takeLabel lab).freshLoan.1 (((s.takeLabel lab).freshLoan.2.lent lab).map fun x => { x with fill := true })).setHeldTy
+            (s.takeLabel lab).freshLoan.1 ((lvl0 dm.read).toTy TyM.nat.code0.snd)) := by
   obtain ⟨o, r, hg, hap, hm⟩ := applyFnL_closureL (lvl0 dm.read) (lvl0_lawful dm.read) φ
     (telL (lvl0 dm.read) psInc [] PUnit outId1).2 (gId1 dm ρ φ) [.el0 Nat 2] (mkTel_id1 dm ρ φ)
     ⟨(2 : Nat), Attack.dec_nat_el0 dm.read 2, trivial⟩
@@ -709,7 +712,7 @@ theorem callOf_id1 (s : SState) (T : TyS) (lab : Nat) :
     refine ⟨⟨?_, rfl, HEq.rfl⟩, ?_⟩
     · exact hf
     · rw [hf]
-      congr 3
+      congr 4
       funext p v φ'
       split <;> rename_i h <;> rw [h]
 
@@ -731,7 +734,8 @@ the dead `0` at `y`'s old loan site). -/
 def SR (rT : TyS) (yv rv t0 t1 : SVal) : SState :=
   { env := [SFrame.mk [{ yB with val := yv }, { ty := rT, val := rv, decl := .other }] [t0, t1]],
     shape := fun p => if p = .bind 0 1 then some 1 else none, nextLoan := 2,
-    lent := fun m => if m = 1 then [⟨.bind 0 0, [], true⟩] else if m = 0 then [⟨.bind 0 0, [], false⟩] else [] }
+    lent := fun m => if m = 1 then [⟨.bind 0 0, [], true⟩] else if m = 0 then [⟨.bind 0 0, [], false⟩] else [],
+    heldTy := fun m => if m = 1 then TyM.t0 TyM.nat.code0.fst TyM.nat.code0.snd else if m = 0 then yB.ty.m else TyM.err }
 
 /-- The parked temporary `0` after the call's fixing: `moved` where the reborrow's final content decodes. -/
 noncomputable def mv1 : SVal := fun φ' =>
@@ -741,12 +745,13 @@ noncomputable def mv1 : SVal := fun φ' =>
 
 /-- The state after the call `Id1(&y)` by `callOf` (`callOf_id1` at `S₂`, label `0`). -/
 noncomputable def SC1 : SState :=
-  ((((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.2.mapVals fun _ v φ' =>
+  (((((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.2.mapVals fun _ v φ' =>
       match Code0.dec dm.read TyM.nat.code0.snd (φ' ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1) with
       | some x => v (φ'.upd 0 (Code0.enc dm.read TyM.nat.code0.snd x))
       | none => .err).pushTempShaped (fun _ => .el0 Nat 2) ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1).setLent
     ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1
-    ((((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.2.lent 0).map fun x => { x with fill := true })
+    ((((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.2.lent 0).map fun x => { x with fill := true })).setHeldTy
+    ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1 ((lvl0 dm.read).toTy TyM.nat.code0.snd)
 
 /-- The call `Id1(&y)` after `let y = 2`: `2` at the reborrow `1`. -/
 theorem run_callId1 :
@@ -767,8 +772,8 @@ theorem bindR (TU : TyS) (hTU : TU.label = some 1) :
       = SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved) := by
   simp only [SC1, Attack.takeLabel_S₂]
   simp [pushBindShaped, hTU, SState.freshLoan, SState.mapVals, SState.pushTempShaped, SState.pushTemp, SState.setLent,
-    SState.topIdx, SState.takeLabel, SState.holderOf, SState.positions, List.range', SState.setAt, SState.pushBind, SR,
-    yR1, mv1]
+    SState.setHeldTy, SState.topIdx, SState.takeLabel, SState.holderOf, SState.positions, List.range', SState.setAt,
+    SState.pushBind, SR, yR1, mv1]
   refine ⟨⟨?_, ?_⟩, ?_⟩
   · funext φ'; unfold yR1; split <;> rename_i h <;> first | rfl | rw [h]
   · funext φ'; unfold mv1; split <;> rename_i h <;> first | rfl | rw [h]
@@ -919,7 +924,8 @@ own label `0`. -/
 def SPg (selfB : SBinding) (d : DeclInfo) (c : Sem) : SState :=
   { env := [yFrame, SFrame.mk [selfB, xB c d] []],
     shape := fun p => if p = .bind 1 1 then some 0 else none, nextLoan := 1,
-    lent := fun m => if m = 0 then [⟨.bind 0 0, [], false⟩] else [] }
+    lent := fun m => if m = 0 then [⟨.bind 0 0, [], false⟩] else [],
+    heldTy := fun m => if m = 0 then yB.ty.m else TyM.err }
 
 section SPgLemmas
 variable (selfB : SBinding) (d : DeclInfo)
@@ -963,21 +969,22 @@ theorem contentOf_SPg (c : Sem) :
 
 /-- After `&*x` in place: `x` reads the reborrow `1`'s final content, the reborrow (content `c`) parked
 in the callee's frame, lent at `*x`. -/
-def SPg2 (c : Sem) : SState :=
+def SPg2 (T : TyM) (c : Sem) : SState :=
   { env := [yFrame, SFrame.mk [selfB, { xB c d with val := fun φ' => φ' 1 }] [fun _ => c]],
     shape := fun p => if p = .temp 1 0 then some 1 else if p = .bind 1 1 then some 0 else none, nextLoan := 2,
-    lent := fun m => if m = 1 then [⟨.bind 1 1, [.deref], false⟩] else if m = 0 then [⟨.bind 0 0, [], false⟩] else [] }
+    lent := fun m => if m = 1 then [⟨.bind 1 1, [.deref], false⟩] else if m = 0 then [⟨.bind 0 0, [], false⟩] else [],
+    heldTy := fun m => if m = 1 then T else if m = 0 then yB.ty.m else TyM.err }
 
 theorem runBody_id1P (a : Nat) :
     ∃ T : TyS, T.label = some 1 ∧ ∀ (hint : TyS) (tl : Bool),
-      runT (Kc dm) ρ φ tl hint id1Body (SPg selfB d (.el0 Nat a)) = some ((.el0 Nat a, T), SPg2 selfB d (.el0 Nat a)) := by
+      runT (Kc dm) ρ φ tl hint id1Body (SPg selfB d (.el0 Nat a)) = some ((.el0 Nat a, T), SPg2 selfB d T.m (.el0 Nat a)) := by
   obtain ⟨T, hT⟩ := contentOf_SPg dm φ selfB d (.el0 Nat a)
   refine ⟨{ T with label := some 1 }, rfl, fun hint tl => ?_⟩
   simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
   unfold borrowPlace
   simp only [hT, bind, Option.bind]
   simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
-    Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent, SPg, SPg2, xB]
+    Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent, SState.setHeldTy, SPg, SPg2, xB]
   done
 
 /-- The pop where two labels are live: `l`, held in the callee's frame, ends; `k`, returned, is kept
@@ -988,7 +995,7 @@ theorem popCallFrame_two (start : Nat) (s : SState) (l k f i : Nat) (r : Pos) (h
       (SState.mk (s.endLabel l).env.dropLast
         (fun p => match p with
           | .bind g _ | .temp g _ => if g = s.topIdx then none else (s.endLabel l).shape p)
-        (s.endLabel l).nextLoan (s.endLabel l).lent).pushTempShaped ((s.endLabel l).valAt r) k := by
+        (s.endLabel l).nextLoan (s.endLabel l).lent (s.endLabel l).heldTy).pushTempShaped ((s.endLabel l).valAt r) k := by
   unfold popCallFrame
   have hne : (some l ≠ some k) := fun h => hlk (Option.some.inj h)
   simp only [hl, List.filter_cons, List.filter_nil, hh, hf, beq_self_eq_true, Bool.or_true, ne_eq, hne,
@@ -996,29 +1003,29 @@ theorem popCallFrame_two (start : Nat) (s : SState) (l k f i : Nat) (r : Pos) (h
     Bool.false_eq_true, if_false, List.foldl_cons, List.foldl_nil, Option.bind_some, hk, Option.map_some]
   congr 1
 
-theorem positions_SPg2 (c : Sem) :
-    (SPg2 selfB d c).positions = [.bind 0 0, .temp 0 0, .bind 1 0, .bind 1 1, .temp 1 0] := by
+theorem positions_SPg2 (T : TyM) (c : Sem) :
+    (SPg2 selfB d T c).positions = [.bind 0 0, .temp 0 0, .bind 1 0, .bind 1 1, .temp 1 0] := by
   simp [SPg2, yFrame, SState.positions, List.range']
 
-theorem liveLabels_SPg2 (c : Sem) : (SPg2 selfB d c).liveLabels = [0, 1] := by
+theorem liveLabels_SPg2 (T : TyM) (c : Sem) : (SPg2 selfB d T c).liveLabels = [0, 1] := by
   unfold SState.liveLabels; rw [positions_SPg2]; simp [SPg2]
   first | rfl | decide | simp [List.mergeSort]
 
-theorem holderOf_SPg2 (c : Sem) : (SPg2 selfB d c).holderOf 0 = some (.bind 1 1) := by
+theorem holderOf_SPg2 (T : TyM) (c : Sem) : (SPg2 selfB d T c).holderOf 0 = some (.bind 1 1) := by
   unfold SState.holderOf; rw [positions_SPg2]; simp [SPg2]
 
-theorem find_SPg2 (c : Sem) :
-    ((SPg2 selfB d c).positions.find? fun p => decide ((SPg2 selfB d c).shape p = some 0)) = some (.bind 1 1) := by
+theorem find_SPg2 (T : TyM) (c : Sem) :
+    ((SPg2 selfB d T c).positions.find? fun p => decide ((SPg2 selfB d T c).shape p = some 0)) = some (.bind 1 1) := by
   rw [positions_SPg2]; simp [SPg2]
 
 /-- Ending `x`'s label `0` at the pop, as `endLabel` computes it. -/
-theorem endLabel_SPg2 (c : Sem) : (SPg2 selfB d c).endLabel 0 =
-    (let m := (SPg2 selfB d c).toMean.semEnd (.bind 1 1) 0
-     ({ SPg2 selfB d c with shape := m.shape, lent := (SPg2 selfB d c).relend 0 (.bind 1 1) }).mapVals
+theorem endLabel_SPg2 (T : TyM) (c : Sem) : (SPg2 selfB d T c).endLabel 0 =
+    (let m := (SPg2 selfB d T c).toMean.semEnd (.bind 1 1) 0
+     ({ SPg2 selfB d T c with shape := m.shape, lent := (SPg2 selfB d T c).relend 0 (.bind 1 1) }).mapVals
        fun p _ => (m.val · p)) := by
   unfold SState.endLabel; rw [find_SPg2]
 
-theorem holderOf_end_SPg2 (c : Sem) : ((SPg2 selfB d c).endLabel 0).holderOf 1 = some (.temp 1 0) := by
+theorem holderOf_end_SPg2 (T : TyM) (c : Sem) : ((SPg2 selfB d T c).endLabel 0).holderOf 1 = some (.temp 1 0) := by
   rw [endLabel_SPg2]
   unfold SState.holderOf
   simp [SState.positions, SState.mapVals, SPg2, yFrame, List.range', Mean.semEnd, SState.toMean]
@@ -1055,12 +1062,12 @@ theorem id1_inPlace_typed :
   let cd := (Kc dm).D.typeDecl ((Kc dm).D.teleDecls (scopeOf (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame) [.ref .nat]) (.ref .nat)
   let d := ((bindsOf (Kc dm) ρ φ (Attack.S₂ yB 0 (.el0 Nat 2)).pushFrame [.ref .nat]).getD 0 (fun _ => .plain TyM.err, .other)).2
   obtain ⟨Tb, hlb, hTb⟩ := runBody_id1P dm ρ φ (selfId1P dm ρ φ cd) d 2
-  have hpop := popCallFrame_two 1 (SPg2 (selfId1P dm ρ φ cd) d (.el0 Nat 2)) 0 1 1 1 (.temp 1 0)
-    (liveLabels_SPg2 _ _ _) (holderOf_SPg2 _ _ _) rfl (by decide) (holderOf_end_SPg2 _ _ _)
+  have hpop := popCallFrame_two 1 (SPg2 (selfId1P dm ρ φ cd) d Tb.m (.el0 Nat 2)) 0 1 1 1 (.temp 1 0)
+    (liveLabels_SPg2 _ _ _ _) (holderOf_SPg2 _ _ _ _) rfl (by decide) (holderOf_end_SPg2 _ _ _ _)
   have hrun : runCallRef (Kc dm) ρ φ (fresId1 dm ρ φ) [] id1T [] [(.el0 Nat 2, { yB.ty with label := some 0 })]
       (Attack.S₂ yB 0 (.el0 Nat 2)) = some ((.el0 Nat 2, { Tb with label := some 1 }),
-        (popCallFrame 1 (some 1) (SPg2 (selfId1P dm ρ φ cd) d (.el0 Nat 2))).setLent 1
-          (((popCallFrame 1 (some 1) (SPg2 (selfId1P dm ρ φ cd) d (.el0 Nat 2))).lent 1).map fun x => { x with fill := true })) := by
+        (popCallFrame 1 (some 1) (SPg2 (selfId1P dm ρ φ cd) d Tb.m (.el0 Nat 2))).setLent 1
+          (((popCallFrame 1 (some 1) (SPg2 (selfId1P dm ρ φ cd) d Tb.m (.el0 Nat 2))).lent 1).map fun x => { x with fill := true })) := by
     unfold runCallRef runBodyRef
     simp only [id1T, hs₀]
     rw [callFrame_id1 dm ρ φ _ _ rfl, hTb _ _]

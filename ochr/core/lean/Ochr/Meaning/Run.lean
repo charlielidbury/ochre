@@ -431,7 +431,7 @@ noncomputable def borrowPlace (p : Place) : SM Res := fun s => do
   -- the borrow is parked in a temporary, its holder until it is bound (D14)
   let s := s.pushTempShaped (fun _ => v) l
   -- the place is lent to `l`, a plain borrow: one site, its loan (docs/31 D29)
-  some ((v, { T with label := some l }), s.setLent l [⟨pos, steps, false⟩])
+  some ((v, { T with label := some l }), (s.setLent l [⟨pos, steps, false⟩]).setHeldTy l T.m)
 
 /-- The borrow flags of a telescope code's parameters along the arguments given (decoded at their
 parameters' codes): which arguments are borrowed. -/
@@ -471,7 +471,7 @@ noncomputable def callOfL.{u} (L : Lvl.{u}) {C : Type u} (t : Tel L.Code PUnit C
       | some x => v (φ'.updList (fixes (back x)))
       | none => .err
     let s := s.pushTempShaped (fun _ => L.enc c fwd) k
-    some ((L.enc c fwd, ⟨L.toTy c, some k⟩), s.setLent k lentK)
+    some ((L.enc c fwd, ⟨L.toTy c, some k⟩), (s.setLent k lentK).setHeldTy k (L.toTy c))
   | none => none
 
 /-- A call, on the evaluated callee and arguments (docs/18 Def. "reference run", first clause):

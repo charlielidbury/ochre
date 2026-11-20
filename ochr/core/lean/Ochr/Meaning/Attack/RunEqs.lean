@@ -120,10 +120,11 @@ theorem borrowPlace_var0_one (K : RunCtx) (φ : Future) (k : Nat) (b : SBinding)
       = some ((b.val φ, { b.ty with label := some k }),
           { env := [{ binds := [{ b with val := fun φ' => φ' k }], temps := [fun _ => b.val φ] }],
             shape := fun p => if p = .temp 0 0 then some k else none, nextLoan := k + 1,
-            lent := fun m => if m = k then [⟨.bind 0 0, [], false⟩] else [] }) := by
+            lent := fun m => if m = k then [⟨.bind 0 0, [], false⟩] else [],
+            heldTy := fun m => if m = k then b.ty.m else TyM.err }) := by
   simp only [borrowPlace, contentOf_var0_one, bind, Option.bind]
   simp [hw, SState.freshLoan, SState.pushTempShaped, SState.pushTemp, SState.setAt, SState.topIdx,
-    SState.tyAt, SState.valAt, updAt_nil, SState.setLent]
+    SState.tyAt, SState.valAt, updAt_nil, SState.setLent, SState.setHeldTy]
 
 end Ochr.Meaning.Attack
 
@@ -168,7 +169,8 @@ open Ochr.Meaning
 def S₂ (b : SBinding) (k : Nat) (c : Sem) : SState :=
   { env := [{ binds := [{ b with val := fun φ' => φ' k }], temps := [fun _ => c] }],
     shape := fun p => if p = .temp 0 0 then some k else none, nextLoan := k + 1,
-    lent := fun m => if m = k then [⟨.bind 0 0, [], false⟩] else [] }
+    lent := fun m => if m = k then [⟨.bind 0 0, [], false⟩] else [],
+    heldTy := fun m => if m = k then b.ty.m else TyM.err }
 
 /-- Where the call's states lend: `k`, the plain borrow of `c1`; `k+1`, the returned borrow, a fill
 over `c1` (the call's [Lend], docs/31 D29). -/
@@ -189,7 +191,8 @@ theorem takeLabel_S₂ (b : SBinding) (k : Nat) (c : Sem) :
     (S₂ b k c).takeLabel k
       = { env := [{ binds := [{ b with val := fun φ' => φ' k }], temps := [fun _ => .moved] }],
           shape := fun _ => none, nextLoan := k + 1,
-          lent := fun m => if m = k then [⟨.bind 0 0, [], false⟩] else [] } := by
+          lent := fun m => if m = k then [⟨.bind 0 0, [], false⟩] else [],
+          heldTy := fun m => if m = k then b.ty.m else TyM.err } := by
   simp only [SState.takeLabel, holderOf_S₂]
   simp [S₂, SState.setAt]
   funext p; split <;> simp_all
@@ -209,7 +212,8 @@ noncomputable def S₃ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) : SState :=
                                                   | none => .err }],
               temps := [fun φ' => match (φ' (k+1)).as Nat with | some _ => .moved | none => .err,
                         fun _ => Sem.el0 Nat (F n).val.1] }],
-    shape := fun p => if p = .temp 0 1 then some (k+1) else none, nextLoan := k + 2, lent := lentA k }
+    shape := fun p => if p = .temp 0 1 then some (k+1) else none, nextLoan := k + 2, lent := lentA k,
+    heldTy := fun m => if m = k + 1 then TyM.nat else if m = k then b.ty.m else TyM.err }
 
 set_option maxHeartbeats 1000000 in
 theorem callOf_S₂ (R : DataRead) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
@@ -226,7 +230,7 @@ theorem callOf_S₂ (R : DataRead) (F : GCar) (n : Nat) (b : SBinding) (k : Nat)
     List.zipIdx, List.map, List.zip, List.zipWith, Future.updList, List.foldl, List.length, List.modify,
     List.getLast?, Option.some.injEq, List.append, List.modifyTailIdx, List.modifyHead, Nat.add_sub_cancel,
     List.getLast, Future.upd_same, List.modifyTailIdx.go]
-  simp only [S₃, SState.setLent, List.cons_append, List.nil_append, List.length_cons, List.length_nil,
+  simp only [S₃, SState.setLent, SState.setHeldTy, List.cons_append, List.nil_append, List.length_cons, List.length_nil,
     Nat.zero_add, Nat.add_assoc, Nat.reduceAdd, Nat.reduceSub, dec_nat_as]
   congr 2
   · -- the frame: the values agree once the decoded content is cased on (the `match`
@@ -261,7 +265,8 @@ noncomputable def S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) : SState :=
                         { ty := ⟨TyM.nat, some (k+1)⟩, val := fun _ => .el0 Nat (F n).val.1 }],
               temps := [fun φ' => match (φ' (k+1)).as Nat with | some _ => .moved | none => .err,
                         fun _ => .moved] }],
-    shape := fun p => if p = .bind 0 1 then some (k+1) else none, nextLoan := k + 2, lent := lentA k }
+    shape := fun p => if p = .bind 0 1 then some (k+1) else none, nextLoan := k + 2, lent := lentA k,
+    heldTy := fun m => if m = k + 1 then TyM.nat else if m = k then b.ty.m else TyM.err }
 
 theorem positions_S₃ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
     (S₃ F n b k).positions = [.bind 0 0, .temp 0 0, .temp 0 1] := by
@@ -359,7 +364,8 @@ noncomputable def S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
                         { ty := ⟨TyM.nat, some (k+1)⟩, val := fun _ => w }],
               temps := [fun φ' => match (φ' (k+1)).as Nat with | some _ => .moved | none => .err,
                         fun _ => .moved] }],
-    shape := fun p => if p = .bind 0 1 then some (k+1) else none, nextLoan := k + 2, lent := lentA k }
+    shape := fun p => if p = .bind 0 1 then some (k+1) else none, nextLoan := k + 2, lent := lentA k,
+    heldTy := fun m => if m = k + 1 then TyM.nat else if m = k then b.ty.m else TyM.err }
 
 theorem setContent_deref_r (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
     setContent K φ (.bind 0 1) [.deref] w (S₄ F n b k) = some (⟨⟩, S₅ F n b k w) := by
