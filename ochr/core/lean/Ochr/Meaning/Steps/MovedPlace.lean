@@ -205,10 +205,68 @@ theorem resolve_parent {s : SState} {q p : Place} {pos : Pos} (hpar : parentOf q
 theorem grain_parent {D : Decisions} {Γ : List IndDecl} {sc : List DeclInfo} {q p : Place}
     (hpar : parentOf q = some p) (h : GrainOk D Γ sc q) : GrainOk D Γ sc p := by
   obtain ⟨x, hx, -⟩ := steps_parent hpar
-  intro p' ⟨h1, st, rest, hst, h2⟩
-  apply h p'
-  refine ⟨by rw [h1, hx], st, rest ++ [x], hst, ?_⟩
-  rw [hx]; simp [h2]
+  intro p' y rest h1 h2
+  apply h p' y (rest ++ [x])
+  · rw [h1, hx]
+  · rw [hx]; simp [h2]
+
+/-- The grain at the parent step itself. -/
+theorem grain_step {D : Decisions} {Γ : List IndDecl} {sc : List DeclInfo} {q p : Place} {x : Step}
+    (hx : q.steps = (p.steps.1, p.steps.2 ++ [x])) (h : GrainOk D Γ sc q) : StepOk Γ (D.placeDecl sc p) x :=
+  h p x [] (by rw [hx]) (by rw [hx])
+
+/-- The reference's declared readings in scope, as a list expression. -/
+theorem scope_decls (s : SState) : scopeOf s = ((s.env.getLast?.map fun fr => fr.binds.map (·.decl)).getD []).reverse := by
+  unfold scopeOf; cases s.env.getLast? <;> rfl
+
+/-- **The reference's readings in scope are the checker's top frame's** (`Rel`'s skeleton): the
+scope `GrainOk` and the aligned decisions are read at is the one `ShapeFacts` is stated at. -/
+theorem rel_scopeOf (K : RunCtx) (ρ : Assignment) (φ : Future) {st : MState} {s : SState} {π : Nat → Nat}
+    (hs : Rel K ρ φ π st s) : scopeOf s = DecideScope.topReadings st := by
+  have hk := congrArg (fun l => (l.getLast?).map fun bs => bs.map fun x : TyM × Option (List PiParam × PiOut) × Option (String × List Sem) × DeclInfo => x.2.2.2) hs.skel
+  simp only [List.getLast?_map, Option.map_map, Function.comp_def, List.map_map] at hk
+  rw [scope_decls]
+  unfold DecideScope.topReadings
+  have e2 : ((SM' K ρ st).env.getLast?.map fun fr => fr.binds.map (·.decl)) = st.env.back?.map (·.binds.toList.map (·.decl)) := by
+    simp only [SM', MState.sstate]
+    rw [List.getLast?_map, Option.map_map]
+    have hf : ∀ (l : List Frame), (l.zipIdx).getLast?.map Prod.fst = l.getLast? := fun l => by
+      rw [← List.getLast?_map]; simp
+    have e3 : Array.back? st.env = st.env.toList.getLast? := by simp [Array.back?, List.getLast?_eq_getElem?]
+    rw [e3, ← hf st.env.toList, Option.map_map]
+    congr 1
+    funext x
+    simp only [Function.comp_def, List.map_map]
+    have hz : ∀ (l : List Binding), l.zipIdx.map (fun y => y.1.decl) = l.map (·.decl) := fun l => by
+      rw [show (fun y : Binding × Nat => y.1.decl) = (fun b : Binding => b.decl) ∘ Prod.fst from rfl, ← List.map_map]
+      simp
+    exact hz _
+  simp only [bindSkel] at hk
+  rw [← e2, hk]
+
+/-- The content of a place one step below another. -/
+theorem ckContent_snoc {env : Env} {q p : Place} {x : Step} (hx : q.steps = (p.steps.1, p.steps.2 ++ [x])) :
+    ckContent env q = (ckContent env p).bind (stepV x) := by
+  unfold ckContent
+  rw [hx]
+  cases ckVarPos env p.steps.1 with
+  | none => rfl
+  | some pos =>
+    simp only [Option.bind_some]
+    rw [follow_append]
+    cases (valAt env pos).follow p.steps.2 with
+    | none => rfl
+    | some w => simp only [Option.bind_some, Value.follow]; cases stepV x w <;> rfl
+
+/-- A place's content is reached from a value of Ω. -/
+theorem ckContent_root {env : Env} {p : Place} {v : Value} (h : ckContent env p = some v) :
+    ∃ root ∈ Env.values env, root.follow p.steps.2 = some v := by
+  unfold ckContent at h
+  cases hv : ckVarPos env p.steps.1 with
+  | none => simp [hv] at h
+  | some pos =>
+    rw [hv, Option.bind_some] at h
+    exact ⟨valAt env pos, List.mem_map.mpr ⟨pos, ckVarPos_mem hv, rfl⟩, h⟩
 
 theorem lentPrefix_snoc (s : SState) (pos : Pos) (steps : List Step) (x : Step) (ψ : List Step)
     (h : lentPrefix s pos steps = some ψ) : lentPrefix s pos (steps ++ [x]) = some ψ := by
@@ -597,48 +655,196 @@ section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 /-- **An unknown at the parent has a one-constructor type** (the exit of the unknown branch does
-not happen): the place's field step is through a place whose declared type is an inductive with
-one constructor (`GrainOk`), and an unknown's type is its place's declared type; through a borrow
-step the parent would be an unknown of a borrow type, which no unknown has (a generic borrow is
-`borrow_ℓ σ`, `genericValue`). Open: needs both couplings as facts of the state. -/
+not happen): through a field step the parent is declared an inductive of one constructor
+(`GrainOk`), and an unknown at a place declared an inductive has that inductive's type
+(`ShapeFacts.unknown`); through a `*` step the parent is declared a borrow type, where no unknown
+sits (`ShapeFacts.ref`: a generic borrow is `borrow_ℓ σ`). Proved. -/
 theorem exit_abs (st : MState) (s : SState) (π : Nat → Nat) (q p : Place) (σ : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpar : parentOf q = some p)
+    (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s) (hpar : parentOf q = some p)
     (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hp : ckContent st.env p = some (.abs σ)) :
     ∃ n ps d, st.absTy[σ]? = some (.tInd n ps) ∧ st.inds.find? (·.name == n) = some d ∧ d.ctors.length = 1 := by
-  sorry
+  rw [rel_scopeOf K ρ φ hs] at hgrain
+  obtain ⟨x, hx, -⟩ := steps_parent hpar
+  have hst := grain_step hx hgrain
+  cases x with
+  | deref =>
+    obtain ⟨A, hA⟩ := hst
+    have := hctx.shapes.ref p _ A hp hA
+    simp [Value.refFits] at this
+  | proj i =>
+    obtain ⟨n, args, d, cn, fs, hr, hd, hc, -⟩ := hst
+    obtain ⟨ps, hps⟩ := hctx.shapes.unknown p σ n args hp hr (by simp [hd])
+    exact ⟨n, ps, d, hps, hctx.inds ▸ hd, by simp [hc]⟩
+  | field g =>
+    obtain ⟨n, args, d, cn, fs, hr, hd, hc, -⟩ := hst
+    obtain ⟨ps, hps⟩ := hctx.shapes.unknown p σ n args hp hr (by simp [hd])
+    exact ⟨n, ps, d, hps, hctx.inds ▸ hd, by simp [hc]⟩
 
 /-- **A sealed program at the parent has a one-constructor declared type** (the exit of the sealed
-branch does not happen). Through a field step, `GrainOk` gives it (`placeType?` reads the declared
-type). Through a borrow step the parent would hold a bare sealed program of a borrow type, which
-`GrainOk` does not exclude; but a place of a borrow type holds a borrow (`borrow_k ⌈…⌉`: a call
-returning a borrow closes off to one, `closeCall`'s `.ref` kind; a generic borrow is
-`borrow_ℓ σ`), `⊥` or a loan, never a bare sealed program: an invariant to state. Open. -/
+branch does not happen): through a field step the parent is declared an inductive of one
+constructor (`GrainOk`), and `placeType?` of a sealed program at such a place is that inductive
+(`ShapeFacts.placeType`); through a `*` step the parent is declared a borrow type, which holds no
+bare sealed program (`ShapeFacts.ref`: a call returning a borrow closes off to `borrow_k ⌈…⌉`).
+The declarations are read in the state before `placeType?` (`CtxOk.inds`; the caller moves them
+across it). Proved. -/
 theorem exit_sealed (fuel : Nat) (st st' : MState) (s : SState) (π : Nat → Nat) (q p : Place) (t : Term)
     (T? : Option Value) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpar : parentOf q = some p)
+    (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s) (hpar : parentOf q = some p)
     (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hp : ckContent st.env p = some (.sealed t))
-    (hfill : Ochr.fillHoles st.env (.sealed t) = [])
     (h : Runs (Ochr.placeType? fuel p) st b T? st') :
-    ∃ tn args d, T? = some (.tInd tn args) ∧ st'.inds.find? (·.name == tn) = some d ∧ d.ctors.length = 1 := by
+    ∃ tn args d, T? = some (.tInd tn args) ∧ st.inds.find? (·.name == tn) = some d ∧ d.ctors.length = 1 := by
+  rw [rel_scopeOf K ρ φ hs] at hgrain
+  obtain ⟨x, hx, -⟩ := steps_parent hpar
+  have hst := grain_step hx hgrain
+  cases x with
+  | deref =>
+    obtain ⟨A, hA⟩ := hst
+    have := hctx.shapes.ref p _ A hp hA
+    simp [Value.refFits] at this
+  | proj i =>
+    obtain ⟨n, args, d, cn, fs, hr, hd, hc, -⟩ := hst
+    obtain ⟨ps, hps⟩ := hctx.shapes.placeType st rfl fuel p t n args T? b st' hp hr (by simp [hd]) h
+    exact ⟨n, ps, d, hps, hctx.inds ▸ hd, by simp [hc]⟩
+  | field g =>
+    obtain ⟨n, args, d, cn, fs, hr, hd, hc, -⟩ := hst
+    obtain ⟨ps, hps⟩ := hctx.shapes.placeType st rfl fuel p t n args T? b st' hp hr (by simp [hd]) h
+    exact ⟨n, ps, d, hps, hctx.inds ▸ hd, by simp [hc]⟩
+
+/-- A constructor value of a declared one-constructor inductive with no arity fault is that
+constructor's, with its fields. -/
+theorem arity_one {Γ : List IndDecl} {n : String} {d : IndDecl} {cn} {fs} {c : Nat} {hh : Hint}
+    {ps fs' : List Value} (hd : Γ.find? (·.name == n) = some d) (hc : d.ctors = [(cn, fs)])
+    (har : (Value.ind n c hh ps fs').anyAtom (arityBad Γ) = false) : c = 0 ∧ fs'.length = fs.length := by
+  rw [Value.anyAtom] at har
+  simp only [Bool.or_eq_false_iff] at har
+  have h1 := har.1
+  simp only [arityBad, hd, hc] at h1
+  rcases c with _ | c
+  · simp at h1; exact ⟨rfl, h1⟩
+  · simp at h1
+
+/-- **The last exit at a place still missing holds `⊥` or `⋆`**: a parent with no live fill, no
+unknown and no sealed program, through which the place does not exist, is by the checker's typing
+of places (`ShapeFacts`) and the grain: through a field step a constructor value of the declared
+one-constructor inductive has the field (V, A), a loan or a mark is a live fill (L); through a `*`
+step a borrow has its content (R). Proved. -/
+theorem exit_other_missing (st : MState) (s : SState) (π : Nat → Nat) (q p : Place) (v : Value)
+    (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s) (hpar : parentOf q = some p)
+    (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hq : ckContent st.env q = none) (hp : ckContent st.env p = some v)
+    (hfill : Ochr.fillHoles st.env v = []) (habs : ∀ σ, v ≠ .abs σ) (hsealed : ∀ t, v ≠ .sealed t) :
+    v = .bot ∨ v = .proof := by
+  rw [rel_scopeOf K ρ φ hs] at hgrain
+  obtain ⟨x, hx, -⟩ := steps_parent hpar
+  have hst := grain_step hx hgrain
+  rw [ckContent_snoc hx, hp, Option.bind_some] at hq
+  obtain ⟨root, hroot, hf⟩ := ckContent_root hp
+  have hlive : ∀ l, l ∈ v.loans → liveLoan st.env l = true := fun l hl =>
+    hctx.shapes.loans root hroot l (loans_of_follow _ _ _ hf hl)
+  have har : v.anyAtom (arityBad K.Γ) = false := by
+    cases e : v.anyAtom (arityBad K.Γ)
+    · rfl
+    · have := anyAtom_of_follow _ _ _ hf e
+      rw [hctx.shapes.arity root hroot] at this
+      exact absurd this (by simp)
+  cases x with
+  | deref =>
+    obtain ⟨A, hA⟩ := hst
+    have hr := hctx.shapes.ref p v A hp hA
+    cases v with
+    | bot => exact .inl rfl
+    | borrow l w => simp [stepV] at hq
+    | loan l => simp [Ochr.fillHoles, hlive l (by simp [Value.loans])] at hfill
+    | gloan l w => simp [Ochr.fillHoles, hlive l (by simp [Value.loans])] at hfill
+    | _ => simp [Value.refFits] at hr
+  | proj i =>
+    obtain ⟨n, args, d, cn, fs, hr, hd, hc, hi⟩ := hst
+    have hfit := hctx.shapes.fits p v n args hp hr (by simp [hd])
+    cases v with
+    | bot => exact .inl rfl
+    | proof => exact .inr rfl
+    | abs σ => exact absurd rfl (habs σ)
+    | sealed t => exact absurd rfl (hsealed t)
+    | loan l => simp [Ochr.fillHoles, hlive l (by simp [Value.loans])] at hfill
+    | gloan l w => simp [Ochr.fillHoles, hlive l (by simp [Value.loans])] at hfill
+    | ind ty c hh ps fs' =>
+      simp only [Value.fitsInd, beq_iff_eq] at hfit
+      subst hfit
+      obtain ⟨rfl, hl⟩ := arity_one hd hc har
+      simp [stepV] at hq
+      omega
+    | _ => simp [Value.fitsInd] at hfit
+  | field g =>
+    obtain ⟨n, args, d, cn, fs, hr, hd, hc, hty, hctor, hi⟩ := hst
+    have hfit := hctx.shapes.fits p v n args hp hr (by simp [hd])
+    cases v with
+    | bot => exact .inl rfl
+    | proof => exact .inr rfl
+    | abs σ => exact absurd rfl (habs σ)
+    | sealed t => exact absurd rfl (hsealed t)
+    | loan l => simp [Ochr.fillHoles, hlive l (by simp [Value.loans])] at hfill
+    | gloan l w => simp [Ochr.fillHoles, hlive l (by simp [Value.loans])] at hfill
+    | ind ty c hh ps fs' =>
+      simp only [Value.fitsInd, beq_iff_eq] at hfit
+      subst hfit
+      obtain ⟨rfl, hl⟩ := arity_one hd hc har
+      simp [stepV, hty, hctor] at hq
+      omega
+    | _ => simp [Value.fitsInd] at hfit
+
+/-- **A parent the re-rooting made exist leaves the place missing, or holds `⋆`** (through which
+every field exists). Open, and FALSE as stated (docs/31 D41, `Regress/ReRootExists.lean`): where a
+strict prefix of the parent holds a live fill, the inner re-rooting accesses it whole, which can
+give the parent a constructor value through which the place exists; `movedPlace` then returns the
+parent, which holds neither `⊥` nor `⋆`, though the place it was asked for now exists. Recorded on
+the checker's own state at the end of an arm that lends `c` whole: `movedPlace((c.0).0)` returns
+`c.0`, holding `MkIn(σ0, σ1)`. The join does not reach it there (the arm uses `c` whole, so K1(g)
+drops `c`), but this statement is about every place at the grain. Proposed to main (with D41's
+other finding, `Regress/UnrunArmPlace.lean`): `movedPlace` returns the place itself wherever it does
+not make it exist (its drop then does nothing, as the reference's does), so this exit, and the
+grain's index and `*` clauses, are no longer needed. -/
+theorem reRoot_created (fuel : Nat) (st₀ st : MState) (q p : Place) (v : Value) (b : Nat)
+    (hpar : parentOf q = some p) (hq₀ : ckContent st₀.env q = none) (hp₀ : ckContent st₀.env p = none)
+    (hrun : Runs (Ochr.movedPlace fuel p) st₀ b p st) (hp : ckContent st.env p = some v)
+    (hfill : Ochr.fillHoles st.env v = []) (habs : ∀ σ, v ≠ .abs σ) (hsealed : ∀ t, v ≠ .sealed t) :
+    ckContent st.env q = none ∨ v = .proof := by
   sorry
+
+/-- **After its parent is re-rooted to itself, the place is missing, or the parent holds `⋆`.**
+Where the parent existed, `movedPlace` changed nothing (`movedPlace_exists'`): proved. Where the
+re-rooting made it exist: `reRoot_created`. -/
+theorem reRoot_missing (fuel : Nat) (st₀ st : MState) (q p : Place) (v : Value) (b : Nat)
+    (hpar : parentOf q = some p) (hq₀ : ckContent st₀.env q = none)
+    (hrun : Runs (Ochr.movedPlace fuel p) st₀ b p st) (hp : ckContent st.env p = some v)
+    (hfill : Ochr.fillHoles st.env v = []) (habs : ∀ σ, v ≠ .abs σ) (hsealed : ∀ t, v ≠ .sealed t) :
+    ckContent st.env q = none ∨ v = .proof := by
+  cases h0 : ckContent st₀.env p with
+  | none => exact reRoot_created fuel st₀ st q p v b hpar hq₀ h0 hrun hp hfill habs hsealed
+  | some w =>
+    rcases fuel with _ | f
+    · obtain ⟨L, left, log, h⟩ := hrun
+      simp [Ochr.movedPlace, runMachineL_exhausted] at h
+    unfold ckContent at h0
+    cases hv : ckVarPos st₀.env p.steps.1 with
+    | none => simp [hv] at h0
+    | some pos =>
+      rw [hv, Option.bind_some] at h0
+      obtain ⟨-, rfl⟩ := movedPlace_exists' f hv h0 hrun
+      exact .inl hq₀
 
 /-- **Any other parent holds `⊥` or `⋆`** (`movedPlace`'s last exit): the place was missing before
 its parent was re-rooted (`hq₀`, in the state `st₀` the re-rooting started from), and the parent
-now holds no fill, unknown or sealed program. If the parent existed, nothing changed
-(`movedPlace_exists'`) and by the parent's declared inductive type (`GrainOk`, a field step) it
-holds a constructor of that type, whose fields exist, or `⊥` or `⋆`; through a `*` step it holds a
-borrow or `⊥`. If not, it holds a fresh field of a refinement (an unknown or `⋆`). Open: needs the
-checker's syntactic typing of places (docs/31 D34: (V), (R), (A), (M)). As first stated the place
-was asked to be missing after the re-rooting too (`movedPlace_keeps_missing`, deleted): false
-without the grain where the parent became a refinement's proof field `⋆`, through which the place
-exists. -/
+now holds no fill, unknown or sealed program. The place is still missing or the parent is `⋆`
+(`reRoot_missing`), and a parent through which the place is missing is `⊥` or `⋆`
+(`exit_other_missing`). Assembled. -/
 theorem exit_other (fuel : Nat) (st₀ st : MState) (s : SState) (π : Nat → Nat) (q p : Place) (v : Value) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpar : parentOf q = some p)
+    (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s) (hpar : parentOf q = some p)
     (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hq₀ : ckContent st₀.env q = none)
     (hrun : Runs (Ochr.movedPlace fuel p) st₀ b p st) (hp : ckContent st.env p = some v)
     (hfill : Ochr.fillHoles st.env v = [])
     (habs : ∀ σ, v ≠ .abs σ) (hsealed : ∀ t, v ≠ .sealed t) : v = .bot ∨ v = .proof := by
-  sorry
+  rcases reRoot_missing fuel st₀ st q p v b hpar hq₀ hrun hp hfill habs hsealed with hq | rfl
+  · exact exit_other_missing K ρ φ st s π q p v hctx hs hpar hgrain hq hp hfill habs hsealed
+  · exact .inr rfl
 
 /-- **After the shortest lent prefix is accessed whole, no strict prefix of the path is lent**:
 every strict prefix of the path is a prefix of the accessed one or extends it, so a site there is
@@ -790,7 +996,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
         obtain ⟨T, st₅, b₅, habsT, h5⟩ := Runs.bind_inv h4
         obtain ⟨hst₅, hT⟩ := runs_absType_inv habsT
         subst st₅
-        obtain ⟨n, ps, d, hTn, hd, h1⟩ := exit_abs { K with Δ := Δ₁ } ρ₁ φ st₁ s₁ π q p σ hg₁ hrel₁ hpar hgr₁ hc
+        obtain ⟨n, ps, d, hTn, hd, h1⟩ := exit_abs { K with Δ := Δ₁ } ρ₁ φ st₁ s₁ π q p σ hctx₁ hrel₁ hpar hgr₁ hc
         rw [hTn] at hT
         cases hT
         obtain ⟨d', st₆, b₆, hlk, h6⟩ := Runs.bind_inv h5
@@ -812,13 +1018,16 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
         rename_i t
         obtain ⟨T?, st₅, b₅, hpt, h5⟩ := Runs.bind_inv h4
         obtain ⟨tn, args, d, hT?, hd, h1⟩ := exit_sealed { K with Δ := Δ₁ } ρ₁ φ fuel st₁ st₅ s₁ π q p t T? b₄
-          hg₁ hrel₁ hpar hgr₁ hc hfill hpt
+          hctx₁ hrel₁ hpar hgr₁ hc hpt
         obtain ⟨ρ₂, Δ₂, E₂, henv₅⟩ := placeTypeQ_sim { K with Δ := Δ₁ } ρ₁ φ fuel st₁ st₅ p T? s₁ π b₄ hg₁ hctx₁ hrel₁ hpt
         subst T?
+        have hd₅ : st₅.inds.find? (·.name == tn) = some d := by
+          have e : st₅.inds = st₁.inds := E₂.ctx.inds.symm.trans hctx₁.inds
+          rw [e]; exact hd
         obtain ⟨d', st₆, b₆, hlk, h6⟩ := Runs.bind_inv h5
         obtain ⟨hst₆, hd'⟩ := runs_lookupInd_inv hlk
         subst st₆
-        rw [hd] at hd'
+        rw [hd₅] at hd'
         cases hd'
         simp only [h1, BEq.rfl, ↓reduceIte] at h6
         obtain ⟨o, st₇, b₇, hrn, h7⟩ := Runs.bind_inv h6
@@ -851,7 +1060,7 @@ theorem mpTail_sim (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
             E₁.trans K ρ φ (E₂.trans _ _ φ (E₃.trans _ _ φ E₄)), hout₄⟩
       · -- any other content: `⊥` or `⋆`, re-rooted to the parent
         rename_i habs hsea
-        have hcv := exit_other { K with Δ := Δ₁ } ρ₁ φ fuel st st₁ s₁ π q p c bh hg₁ hrel₁ hpar hgr₁ hq hmp hc hfill
+        have hcv := exit_other { K with Δ := Δ₁ } ρ₁ φ fuel st st₁ s₁ π q p c bh hctx₁ hrel₁ hpar hgr₁ hq hmp hc hfill
           (fun σ e => habs σ e) (fun t e => hsea t e)
         obtain ⟨rfl, rfl⟩ := runs_pure_inv h4
         refine ⟨ρ₁, Δ₁, s₁, hs₁q, E₁, .inr ⟨hq1.symm, by rw [hq2]; exact List.prefix_append _ _, ?_⟩⟩
