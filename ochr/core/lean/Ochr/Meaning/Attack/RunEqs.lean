@@ -210,7 +210,7 @@ noncomputable def S₃ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) : SState :=
   { env := [{ binds := [{ b with val := fun φ' => match (φ' (k+1)).as Nat with
                                                   | some x => .el0 Nat ((F n).val.2 x).2
                                                   | none => .err }],
-              temps := [fun φ' => match (φ' (k+1)).as Nat with | some _ => .moved | none => .err,
+              temps := [fun φ' => match (φ' (k+1)).as Nat with | some _ => .moved | none => .moved,
                         fun _ => Sem.el0 Nat (F n).val.1] }],
     shape := fun p => if p = .temp 0 1 then some (k+1) else none, nextLoan := k + 2, lent := lentA k,
     heldTy := fun m => if m = k + 1 then TyM.nat else if m = k then b.ty.m else TyM.err }
@@ -263,7 +263,7 @@ noncomputable def S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) : SState :=
                                                   | some x => .el0 Nat ((F n).val.2 x).2
                                                   | none => .err },
                         { ty := ⟨TyM.nat, some (k+1)⟩, val := fun _ => .el0 Nat (F n).val.1 }],
-              temps := [fun φ' => match (φ' (k+1)).as Nat with | some _ => .moved | none => .err,
+              temps := [fun φ' => match (φ' (k+1)).as Nat with | some _ => .moved | none => .moved,
                         fun _ => .moved] }],
     shape := fun p => if p = .bind 0 1 then some (k+1) else none, nextLoan := k + 2, lent := lentA k,
     heldTy := fun m => if m = k + 1 then TyM.nat else if m = k then b.ty.m else TyM.err }
@@ -362,7 +362,7 @@ noncomputable def S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
                                                   | some x => .el0 Nat ((F n).val.2 x).2
                                                   | none => .err },
                         { ty := ⟨TyM.nat, some (k+1)⟩, val := fun _ => w }],
-              temps := [fun φ' => match (φ' (k+1)).as Nat with | some _ => .moved | none => .err,
+              temps := [fun φ' => match (φ' (k+1)).as Nat with | some _ => .moved | none => .moved,
                         fun _ => .moved] }],
     shape := fun p => if p = .bind 0 1 then some (k+1) else none, nextLoan := k + 2, lent := lentA k,
     heldTy := fun m => if m = k + 1 then TyM.nat else if m = k then b.ty.m else TyM.err }
@@ -407,7 +407,7 @@ noncomputable def S₆ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
                                                   | some x => .el0 Nat ((F n).val.2 x).2
                                                   | none => .err },
                         { ty := ⟨TyM.nat, some (k+1)⟩, val := fun _ => .moved }],
-              temps := [fun _ => match w.as Nat with | some _ => .moved | none => .err,
+              temps := [fun _ => match w.as Nat with | some _ => .moved | none => .moved,
                         fun _ => .moved] }],
     shape := fun _ => none, nextLoan := k + 2, lent := (S₅ F n b k w).relend (k+1) (.bind 0 1) }
 

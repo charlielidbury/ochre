@@ -504,10 +504,10 @@ theorem takeAll_fix_ordKeep {s : SState} (ls : List Nat) (fx : List (Nat × Sem)
   · exact .inr ⟨live_mapVals.mpr (takeAll_live ls hy fun hm => hn (hl y hm)), hby⟩
 
 theorem park_fix_ordKeep {s : SState} (hsa : ShapeAt s) {X : Type u} (ls : List Nat) (dec : Sem → Option X)
-    (fx : X → List (Nat × Sem)) (le : Nat → List Site) (ht : Nat → TyM) (hcov : ∀ x, ∀ l ∈ ls, l ∈ (fx x).map (·.1)) (c : Sem)
+    (fx : X → List (Nat × Sem)) (le : Nat → List Site) (ht : Nat → TyM) (hcov : ∀ x, ∀ l ∈ ls, l ∈ (fx x).map (·.1)) (ee : List (Nat × Sem)) (hcovE : ∀ l ∈ ls, l ∈ ee.map (·.1)) (c : Sem)
     (g : Pos → SVal → SVal)
     (hg : ∀ p v ψ, (∃ x, dec (ψ (ls.foldl takeLabel s).nextLoan) = some x ∧ g p v ψ = v (ψ.updList (fx x))) ∨
-      (dec (ψ (ls.foldl takeLabel s).nextLoan) = none ∧ g p v ψ = .err)) :
+      (dec (ψ (ls.foldl takeLabel s).nextLoan) = none ∧ g p v ψ = v (ψ.updList ee))) :
     OrdKeep L s (((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape
       ((ls.foldl takeLabel s).nextLoan + 1) le ht).mapVals g).pushTempShaped (fun _ => c) (ls.foldl takeLabel s).nextLoan) := by
   generalize hs₁ : ls.foldl takeLabel s = s₁
@@ -564,6 +564,20 @@ theorem park_fix_ordKeep {s : SState} (hsa : ShapeAt s) {X : Type u} (ls : List 
   · rw [hkk, hx'] at hx; cases hx
   · rw [hkk, hx'] at hx; cases hx
   · rw [e, e']
+    apply hv
+    apply updList_dec_agree ee
+    intro y hy hn
+    rcases hy with ⟨hL, hnl⟩ | ⟨hy, hby⟩
+    · by_cases hyk : y = k
+      · rw [hyk]; exact hkk
+      apply hψ y
+      refine .inl ⟨hL, fun h' => ?_⟩
+      rcases hlive' y h' with h'' | h''
+      · exact hnl (takeAll_live_rev ls (by rw [hs₁]; exact h''))
+      · exact hyk h''
+    · apply hψ y
+      refine .inr ⟨live_pushTempShaped_old ((hlive₃ y).mpr ?_), hby⟩
+      rw [← hs₁]; exact takeAll_live ls hy fun hm => hn (hcovE y hm)
 
 theorem callOfL_ordKeep.{v} (Lv : Lvl.{v}) {C : Type v} (t : Tel Lv.Code PUnit C) (fv : Sem) (args : List Res)
     {s s' : SState} {r : Res} (hi : RInv L s) (h : callOfL Lv t fv args s = some (r, s')) :
@@ -606,7 +620,17 @@ theorem callOfL_ordKeep.{v} (Lv : Lvl.{v}) {C : Type v} (t : Tel Lv.Code PUnit C
         apply fixes_cover
         rw [List.length_map, zip_filter_len args _ hlen, hfin x]
         exact Nat.le_refl _
-      apply park_fix_ordKeep hi.2.2 _ (Lv.dec c) _ _ _ hcover (Lv.enc c fwd)
+      have hcoverE : ∀ l ∈ (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id,
+          l ∈ (((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).zip
+            ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.err)).filterMap
+            fun (y : Option Nat × Sem) => y.1.map (·, y.2)).map (·.1) := by
+        have hfx : (fun (y : Option Nat × Sem) => y.1.map (·, y.2)) = (fun (l?, f) => l?.map (·, f)) :=
+          funext fun ⟨_, _⟩ => rfl
+        rw [hfx]
+        apply fixes_cover
+        simp only [List.length_map]
+        exact Nat.le_refl _
+      apply park_fix_ordKeep hi.2.2 _ (Lv.dec c) _ _ _ hcover _ hcoverE (Lv.enc c fwd)
       intro p v ψ
       cases hd : Lv.dec c (ψ ((((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id)).foldl
           SState.takeLabel s).nextLoan) with

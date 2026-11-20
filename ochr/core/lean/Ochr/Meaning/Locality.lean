@@ -1539,9 +1539,9 @@ position reads the fresh label `k`'s final content, decodes it (`dec`) and fixes
 (`fx x` covers them all); `k` is parked with a constant. Keeps (I1) and (I2). -/
 theorem park_fix_inv {L : Nat → Prop} {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (hsa : ShapeAt s)
     {X : Type u} (ls : List Nat) (dec : Sem → Option X) (fx : X → List (Nat × Sem)) (le : Nat → List Site) (ht : Nat → TyM)
-    (hcov : ∀ x, ∀ l ∈ ls, l ∈ (fx x).map (·.1)) (c : Sem) (g : Pos → SVal → SVal)
+    (hcov : ∀ x, ∀ l ∈ ls, l ∈ (fx x).map (·.1)) (ee : List (Nat × Sem)) (hcovE : ∀ l ∈ ls, l ∈ ee.map (·.1)) (c : Sem) (g : Pos → SVal → SVal)
     (hg : ∀ p v ψ, (∃ x, dec (ψ (ls.foldl takeLabel s).nextLoan) = some x ∧ g p v ψ = v (ψ.updList (fx x))) ∨
-      (dec (ψ (ls.foldl takeLabel s).nextLoan) = none ∧ g p v ψ = .err)) :
+      (dec (ψ (ls.foldl takeLabel s).nextLoan) = none ∧ g p v ψ = v (ψ.updList ee))) :
     Inv1 L (((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape ((ls.foldl takeLabel s).nextLoan + 1) le ht).mapVals
         g).pushTempShaped (fun _ => c) (ls.foldl takeLabel s).nextLoan) ∧
     Inv2 L (((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape ((ls.foldl takeLabel s).nextLoan + 1) le ht).mapVals
@@ -1616,6 +1616,15 @@ theorem park_fix_inv {L : Nat → Prop} {s : SState} (h1 : Inv1 L s) (h2 : Inv2 
     · rw [hx] at hx'; cases hx'
     · rw [hx] at hx'; cases hx'
     · rw [ex, ex']
+      have hv₁ : s₁.valAt q = s.valAt q ∨ s₁.valAt q = fun _ => .moved := by
+        rw [← hs₁]; exact takeAll_valAt q ls s
+      rcases hv₁ with e | e
+      · rw [e]
+        apply hf
+        apply updList_dec_agree ee
+        intro y hy hm
+        exact hψ y (hS y hy fun hl => hm (hcovE y hl))
+      · rw [e]
   constructor
   · intro q
     by_cases hq : q ∈ s.positions
@@ -1694,7 +1703,17 @@ theorem callOfL_ref_inv {L : Nat → Prop} (Lv : Lvl.{u}) {C : Type u} (t : Tel 
     apply fixes_cover
     rw [List.length_map, zip_filter_len args _ hlen, hfin x]
     exact Nat.le_refl _
-  apply SState.park_fix_inv h1 h2 hsa _ (Lv.dec c) _ _ _ hcover (Lv.enc c fwd)
+  have hcoverE : ∀ l ∈ (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id,
+      l ∈ (((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).zip
+        ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.err)).filterMap
+        fun (y : Option Nat × Sem) => y.1.map (·, y.2)).map (·.1) := by
+    have hfx : (fun (y : Option Nat × Sem) => y.1.map (·, y.2)) = (fun (l?, f) => l?.map (·, f)) :=
+      funext fun ⟨_, _⟩ => rfl
+    rw [hfx]
+    apply fixes_cover
+    simp only [List.length_map]
+    exact Nat.le_refl _
+  apply SState.park_fix_inv h1 h2 hsa _ (Lv.dec c) _ _ _ hcover _ hcoverE (Lv.enc c fwd)
   intro p v ψ
   cases hd : Lv.dec c (ψ ((((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id)).foldl
       SState.takeLabel s).nextLoan) with

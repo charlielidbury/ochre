@@ -677,7 +677,7 @@ theorem callOf_id1 (s : SState) (T : TyS) (lab : Nat) :
           ((((s.takeLabel lab).freshLoan.2.mapVals fun _ v φ' =>
               match Code0.dec dm.read TyM.nat.code0.snd (φ' (s.takeLabel lab).freshLoan.1) with
               | some x => v (φ'.upd lab (Code0.enc dm.read TyM.nat.code0.snd x))
-              | none => .err).pushTempShaped (fun _ => .el0 Nat 2) (s.takeLabel lab).freshLoan.1).setLent
+              | none => v (φ'.upd lab .err)).pushTempShaped (fun _ => .el0 Nat 2) (s.takeLabel lab).freshLoan.1).setLent
             (s.takeLabel lab).freshLoan.1 (((s.takeLabel lab).freshLoan.2.lent lab).map fun x => { x with fill := true })).setHeldTy
             (s.takeLabel lab).freshLoan.1 ((lvl0 dm.read).toTy TyM.nat.code0.snd)) := by
   obtain ⟨o, r, hg, hap, hm⟩ := applyFnL_closureL (lvl0 dm.read) (lvl0_lawful dm.read) φ
@@ -727,7 +727,7 @@ theorem run_id1Clo (hint : TyS) (s : SState) :
 noncomputable def yR1 : SVal := fun φ' =>
   match Code0.dec dm.read TyM.nat.code0.snd (φ' 1) with
   | some x => (φ'.upd 0 (Code0.enc dm.read TyM.nat.code0.snd x)) 0
-  | none => .err
+  | none => (φ'.upd 0 .err) 0
 
 /-- The frame `y`, `r` with two temporaries, `r` holding the reborrow `1`, lent at `y` as a fill (and
 the dead `0` at `y`'s old loan site). -/
@@ -741,14 +741,14 @@ def SR (rT : TyS) (yv rv t0 t1 : SVal) : SState :=
 noncomputable def mv1 : SVal := fun φ' =>
   match Code0.dec dm.read TyM.nat.code0.snd (φ' 1) with
   | some _ => .moved
-  | none => .err
+  | none => .moved
 
 /-- The state after the call `Id1(&y)` by `callOf` (`callOf_id1` at `S₂`, label `0`). -/
 noncomputable def SC1 : SState :=
   (((((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.2.mapVals fun _ v φ' =>
       match Code0.dec dm.read TyM.nat.code0.snd (φ' ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1) with
       | some x => v (φ'.upd 0 (Code0.enc dm.read TyM.nat.code0.snd x))
-      | none => .err).pushTempShaped (fun _ => .el0 Nat 2) ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1).setLent
+      | none => v (φ'.upd 0 .err)).pushTempShaped (fun _ => .el0 Nat 2) ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1).setLent
     ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1
     ((((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.2.lent 0).map fun x => { x with fill := true })).setHeldTy
     ((Attack.S₂ yB 0 (.el0 Nat 2)).takeLabel 0).freshLoan.1 ((lvl0 dm.read).toTy TyM.nat.code0.snd)
@@ -1106,41 +1106,14 @@ def DepWithinSites (dm : DataModel) (Γ : List IndDecl) (s : SState) : Prop :=
     (∀ l, ψ l ≠ ψ' l → s.Live l ∧ s.reached p (dataHit steps) l = false) →
     Sem.follow dm Γ (s.tyAt p) (s.valAt p ψ) steps = Sem.follow dm Γ (s.tyAt p) (s.valAt p ψ') steps
 
-/-- **It fails after `callOf`'s borrow row** (the lead's step 2, `let y = 2; let r = Id1(&y)`, the
-reference's state `bindR`): the argument's consumed holder, temporary `0`, reads `mv1`, which is
-`moved` where the reborrow's final content decodes and `err` where it does not, so it depends on the
-reborrow `1`, which has no site there (its one site is the fill at `y`). `callOf` fixes EVERY position
-through the decoding (`s.mapVals`, `| none => .err`), not only the lent places. -/
-theorem depWithinSites_fails (dm : DataModel) (TU : TyS) (hTU : TU.label = some 1) :
-    let s := SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved)
-    s.Live 1 ∧ s.reached (.temp 0 0) (dataHit []) 1 = false ∧
-      s.valAt (.temp 0 0) (fun _ => .el0 Nat 0) = .moved ∧
-      s.valAt (.temp 0 0) (Future.upd (fun _ => .el0 Nat 0) 1 .moved) = .err ∧
-      ¬ DepWithinSites dm [] s := by
-  have hd0 : Code0.dec dm.read TyM.nat.code0.snd (.el0 Nat 0) = some (show TyM.nat.code0.fst from (0 : Nat)) :=
-    Attack.dec_nat_el0 dm.read 0
-  have hdm : Code0.dec dm.read TyM.nat.code0.snd Sem.moved = none :=
-    (Attack.dec_nat_as dm.read .moved).trans (by simp [Sem.as]; rfl)
-  have hlive : (SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved)).Live 1 := by
-    show 1 ∈ _; rw [liveLabels_SR]; simp
-  have hreach : (SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved)).reached (.temp 0 0) (dataHit []) 1 = false := by
-    simp [SState.reached, SR]
-  have h1 : (SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved)).valAt (.temp 0 0) (fun _ => .el0 Nat 0) = .moved := by
-    simp only [SR, SState.valAt]
-    show (match Code0.dec dm.read TyM.nat.code0.snd (Sem.el0 Nat 0) with | some _ => Sem.moved | none => .err) = _
-    rw [hd0]
-  have h2 : (SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved)).valAt (.temp 0 0)
-      (Future.upd (fun _ => .el0 Nat 0) 1 .moved) = .err := by
-    simp only [SR, SState.valAt]
-    show (match Code0.dec dm.read TyM.nat.code0.snd (Future.upd (fun _ => Sem.el0 Nat 0) 1 Sem.moved 1) with
-      | some _ => Sem.moved | none => .err) = _
-    rw [show Future.upd (fun _ => Sem.el0 Nat 0) 1 Sem.moved 1 = Sem.moved by simp [Future.upd], hdm]
-  refine ⟨hlive, hreach, h1, h2, fun hd => ?_⟩
-  have := hd (.temp 0 0) [] (fun _ => .el0 Nat 0) (Future.upd (fun _ => .el0 Nat 0) 1 .moved) (fun l hl => by
-    by_cases h : l = 1
-    · subst h; exact ⟨hlive, hreach⟩
-    · exact absurd (by simp [Future.upd, h]) hl)
-  simp only [Sem.follow, h1, h2] at this
-  cases this
+/-- **After (i') the failure of D67 is gone** at the position that showed it: in the reference's
+state after `let y = 2; let r = Id1(&y)` the argument's consumed holder reads `moved` at every
+future, so it no longer depends on the reborrow, which has no site there. (Before (i'), `callOf`'s
+undecodable branch made it `err` where the reborrow's final content did not decode: docs/31 D67.) -/
+theorem consumed_holder_constant (dm : DataModel) (TU : TyS) (ψ : Future) :
+    (SR TU (yR1 dm) (fun _ => .el0 Nat 2) (mv1 dm) (fun _ => .moved)).valAt (.temp 0 0) ψ = .moved := by
+  simp only [SR, SState.valAt]
+  show (match Code0.dec dm.read TyM.nat.code0.snd (ψ 1) with | some _ => Sem.moved | none => Sem.moved) = _
+  cases Code0.dec dm.read TyM.nat.code0.snd (ψ 1) <;> rfl
 
 end Ochr.Meaning.Regress.CallInPlace

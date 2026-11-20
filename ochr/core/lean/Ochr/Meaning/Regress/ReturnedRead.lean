@@ -66,6 +66,7 @@ theorem callOf_reads_decoded (dm : DataModel) (ψ : Future) (h : ψ 1 = .moved) 
   refine ⟨?_, by rw [h]; exact fun h' => by cases h'⟩
   simp only [yR1, h]
   rw [hd]
+  simp [Future.upd]
 
 /-- At a future whose value at the label is a number, the two agree. -/
 theorem callOf_reads_typed (dm : DataModel) (ψ : Future) (n : Nat) (h : ψ 1 = .el0 Nat n) : yR1 dm ψ = ψ 1 := by

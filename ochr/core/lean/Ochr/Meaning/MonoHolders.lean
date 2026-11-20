@@ -162,7 +162,7 @@ theorem callOfL_readsBelow.{u} (L : Lvl.{u}) {C : Type u} (t : Tel L.Code PUnit 
       · dsimp only
         rw [Future.upd_other φ x (Ne.symm hlk)]
         cases hd : L.dec _ (φ s₀.nextLoan) with
-        | none => rfl
+        | none => exact (updList_indep hlt _ φ x).symm
         | some y => exact (updList_indep hlt _ φ x).symm
       · rfl
   · cases h

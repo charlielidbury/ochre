@@ -469,7 +469,10 @@ noncomputable def callOfL.{u} (L : Lvl.{u}) {C : Type u} (t : Tel L.Code PUnit C
     let s := s.mapVals fun _ v φ' =>
       match L.dec c (φ' k) with
       | some x => v (φ'.updList (fixes (back x)))
-      | none => .err
+      -- docs/31 D67: a final content the code does not decode fixes the consumed argument labels to
+      -- `err` and leaves the rest of the position as it was (a position that reads no argument label
+      -- is then unchanged in both branches, and none reads a consumed argument label after the call)
+      | none => v (φ'.updList (fixes (refLabels.map fun _ => .err)))
     let s := s.pushTempShaped (fun _ => L.enc c fwd) k
     some ((L.enc c fwd, ⟨L.toTy c, some k⟩), (s.setLent k lentK).setHeldTy k (L.toTy c))
   | none => none
