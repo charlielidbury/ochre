@@ -351,7 +351,7 @@ noncomputable def contentOf (p : Place) : SM (Sem × TyS × Pos × List Step) :=
   | none => none
 
 /-- The scrutinee of a match after [Access] for its tag only (`tagHit`: the borrows lent on the
-path and at the place; `tag`: `natTag`, `indTag`): the tag at the closed future, `err` where the
+path and at the place; `tag`: `natTag`, `indTag`): the tag at the typed future (D68), `err` where the
 place has none. Borrows inside the scrutinee's fields stay live, as in the checker; an arm that
 reads a field accesses it then. -/
 noncomputable def tagOf (p : Place) (tag : Sem → TyS → Sem) : SM Sem := fun s =>
@@ -533,7 +533,7 @@ borrow too (docs/31 D42). A place already moved is accessed and written `moved` 
 identity, where the checker does nothing; deciding it by reading `moved` from the meaning disagreed
 with the checker wherever data means `moved` (a loan whose borrow's content was moved out, ended
 inside an observation, D68). The place is read as every read of a place reads it (`contentOf`,
-`tagOf`): after its [Access], at the closed future (docs/31 D54); the access is kept only where
+`tagOf`): after its [Access], at the typed future (docs/31 D54, D68); the access is kept only where
 the place is then dropped. Read before the access, the reading was at a state no checker state is
 related to (the checker reads the place, then accesses it; the reference had accessed the lent
 prefix already), and relating it needed the reading to be unchanged by an access. -/

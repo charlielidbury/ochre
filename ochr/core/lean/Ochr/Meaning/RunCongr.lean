@@ -4,8 +4,8 @@ import Ochr.Meaning.RunPresInd
 # Part (E) of the locality induction: the run at two futures
 
 Two futures `φ`, `φ'` that agree on `L`; a state with `RInv L` (part (P), `RunPresInd.lean`). The
-run reads a place's content at the closed future (fixed at every live label, `closedFuture_read`;
-[Access] reads sites only, docs/31 D29),
+run reads a place's content at the typed future (each live label its record, which no future
+changes, `typedFuture_read`, docs/31 D68; [Access] reads sites only, docs/31 D29),
 after ending every borrow (`endAll_FT`), at a loan of the term (in `L`), and through a closure's
 finals (`closureAt_congr`, with `FinalsIn` from the cells' order, `RunOrd.lean`). So the run at
 `φ` is the run at `φ'`.

@@ -279,8 +279,10 @@ noncomputable def pushTempShaped (s : SState) (v : SVal) (l : Nat) : SState :=
   | none => s'
 
 /-- The state's closed future: `φ` with every live label fixed to its holder's current content,
-iterated as `access` iterates (a holder may itself read a live label). A read that skips
-[Access] reads at it, so it depends on `φ` only at labels the state does not hold (D14). -/
+iterated as `access` iterates (a holder may itself read a live label). Until docs/31 D68 the run's
+reads were at it; they are now at `typedFuture` (each live label its record), since the closed
+future is not typed mid-run (`Regress/PartMoveRead.closed_not_typed`). Kept for that record and the
+lemmas about it (`Locality`). -/
 noncomputable def closedFuture (s : SState) (φ : Future) : Future :=
   (List.range s.liveLabels.length).foldl (fun ψ _ =>
     s.liveLabels.foldl (fun ψ l =>

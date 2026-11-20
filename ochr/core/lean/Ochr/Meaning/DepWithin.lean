@@ -7,7 +7,11 @@ The reference-only invariant that replaces the old `access_FT` in its static for
 VALUE read at a path depends on the future only at labels that are not live, or that are lent at
 the place on a path comparable with the one read (by key, `*` erased). Typed or not. The value
 only: a data value describes itself, so the value read needs no type to be found, and a field is
-typed at the closed future, as reads are (`Regress/DepSitesMore.lean`, the dependent pair).
+typed at the future the read is taken at (`Regress/DepSitesMore.lean`, the dependent pair).
+
+Since D68 the simulation does not use this invariant (no proof transports a reading between
+futures; a place is read at the typed future): it stays as a fact about the model, to be finished
+or not (docs/31 D67).
 
 Step 3, risk first: the clauses that write a label-reading meaning. Here `callOf`'s two rows: the
 borrow-free row fixes the consumed argument labels to the finals (`dws_take_fix`), the borrow row
