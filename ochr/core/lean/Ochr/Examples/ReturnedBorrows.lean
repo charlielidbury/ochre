@@ -594,3 +594,58 @@ ochr OneConstructorRuns uses Nats, Fixtures, StaticEnds, OneConstructor {
 
 #guard (run "OneConstructorRuns" OneConstructorRuns).rejectedWith [
   ("SFBUseRun", "no such place *r")]
+
+/-! ## The join's places exist, or the definition is rejected (D94)
+
+A match on a known constructor runs one arm; the others are read for their moves (D84,
+`Decide.jdMoves`) but never checked, so a place there can be ill-typed: a field its constructor
+does not have (`(c.0).5`), or `*` of something that is not a borrow. Before D94 the join re-rooted
+such a place to its longest existing prefix and dropped that whole (`c.0`), so `BadIdx` was
+accepted and `BadIdxRead` rejected for reading the dropped `c.0`. The join's place is now dropped
+when it exists, whatever made it exist; nothing is dropped when its longest existing prefix holds
+`⊥` or `⋆`; and otherwise the definition is rejected where the match is, naming the place (found
+by the meaning spine, docs/31 D41: `Regress/UnrunArmPlace.lean`, `ReRootExists.lean`). -/
+
+ochr JoinPlaces uses Nats, Lists {
+  inductive In := MkIn(a : List(Nat), b : List(Nat))
+  inductive Out := MkOut(i : In, z : List(Nat))
+  def Whole (x : &Out) : &Out := x
+  -- an arm that is not run moves a field `In` does not have
+  reject def BadIdx (xs : List(Nat)) (ys : List(Nat)) (zs : List(Nat)) : Unit := (
+    let k = Z; let c = MkOut(MkIn(xs, ys), zs);
+    match k { Z => (), S m => (let a = (c.0).5; ()) }; ())
+  reject def BadIdxRead (xs : List(Nat)) (ys : List(Nat)) (zs : List(Nat)) : List(Nat) := (
+    let k = Z; let c = MkOut(MkIn(xs, ys), zs);
+    match k { Z => (), S m => (let a = (c.0).5; ()) }; (c.0).1)
+  -- ... and `*` of a place that is not a borrow
+  reject def BadDerefRead (xs : List(Nat)) (ys : List(Nat)) (zs : List(Nat)) : List(Nat) := (
+    let k = Z; let c = MkOut(MkIn(xs, ys), zs);
+    match k { Z => (), S m => (let a = (*(c.0)).0; ()) }; (c.0).1)
+  -- control: a well-typed move of `(c.0).0` drops only it
+  def GoodIdxRead (xs : List(Nat)) (ys : List(Nat)) (zs : List(Nat)) : List(Nat) := (
+    let k = Z; let c = MkOut(MkIn(xs, ys), zs);
+    match k { Z => (), S m => (let a = (c.0).0; ()) }; (c.0).1)
+  -- at an unknown: the join's place through refined unknowns
+  def GoodIdxGen (k : Nat) (c : Out) : List(Nat) := (match k { Z => (), S m => (let a = (c.0).0; ()) }; (c.0).1)
+  -- a place under a value lent whole, in tail position (no entry): the join's access ends the
+  -- lending, and the place itself is dropped (the ReRootExists shape; not observable here, since
+  -- nothing follows the join)
+  def LentTail (xs : List(Nat)) (ys : List(Nat)) (zs : List(Nat)) : Unit := (
+    let k = Z; let c = MkOut(MkIn(xs, ys), zs); let rr = Whole(&c);
+    match k { Z => (), S m => (let a = (c.0).0; ()) })
+  -- the arm that lends `c` uses it whole: the join moves `c` whole (D84's grain)
+  reject def LentRead (xs : List(Nat)) (ys : List(Nat)) (zs : List(Nat)) (us : List(Nat)) (vs : List(Nat)) (ws : List(Nat)) : List(Nat) := (
+    let k = Z; let c = MkOut(MkIn(xs, ys), zs); let e = MkOut(MkIn(us, vs), ws); let rr = Whole(&e);
+    match k { Z => (rr := Whole(&c); ()), S m => (let a = (c.0).0; ()) };
+    (c.0).1)
+  def NotLentRead (xs : List(Nat)) (ys : List(Nat)) (zs : List(Nat)) (us : List(Nat)) (vs : List(Nat)) (ws : List(Nat)) : List(Nat) := (
+    let k = Z; let c = MkOut(MkIn(xs, ys), zs); let e = MkOut(MkIn(us, vs), ws); let rr = Whole(&e);
+    match k { Z => (rr := Whole(&e); ()), S m => (let a = (c.0).0; ()) };
+    (c.0).1)
+}
+
+#guard (run "JoinPlaces" JoinPlaces).rejectedWith [
+  ("BadIdx", "[Join] an arm of the match moves c.0.5, which does not exist: c.0 holds a constructor value without that field"),
+  ("BadIdxRead", "[Join] an arm of the match moves c.0.5, which does not exist: c.0 holds a constructor value without that field"),
+  ("BadDerefRead", "[Join] an arm of the match moves *c.0, which does not exist: c.0 holds a constructor value, which is not a borrow"),
+  ("LentRead", "[Match] on c, which was moved out")]

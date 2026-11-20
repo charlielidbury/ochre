@@ -3397,10 +3397,19 @@ def etaPlace (fuel : Nat) (q : Place) : M Unit := do
 termination_by structural fuel
 
 /-- D53: a place an arm moved out, as it exists in the closed-off (unrefined) state. The
-arm's refinement may have exposed it (`q0.1` of an abstract pair, `n0`'s predecessor):
-through a value of a single-constructor type the abstract value is refined to that
-constructor, a total refinement (as a split with one arm); through any other, the move is
-of the longest prefix that exists, since some arm moves a part of it (fuzz-port M1). -/
+arm's refinement may have exposed it (`q0.1` of an abstract pair): through a value of a
+single-constructor type the abstract value is refined to that constructor, a total refinement
+(as a split with one arm), a sealed one generalised first; a lent parent is reached by ending
+its borrows. D94: what it returns is then
+- the place itself, if it exists now, whatever made it exist (the join drops it, as an
+  instance does);
+- else the longest existing prefix, if that holds `⊥` or `⋆` (the drop does nothing, on every
+  path), or a fill whose borrow the access did not end (below);
+- and otherwise an error: the place does not exist, at an unknown or a stuck program of a type
+  with several constructors, a constructor value without that field, or something that is not a
+  borrow under `*`. The join's places are at the grain of the declared types (`Decide.jdGrain`),
+  so such a place is ill-typed (an arm the run does not take is never checked): before D94 the
+  prefix was dropped whole (fuzz-port M1's "longest prefix that exists"). -/
 def movedPlace (fuel : Nat) (q : Place) : M Place := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   if (← content? q).isSome then return q
@@ -3417,6 +3426,9 @@ def movedPlace (fuel : Nat) (q : Place) : M Place := do
   -- the hole (census, G1)
   if !(fillHoles (← get).env (← content p)).isEmpty then
     accessPath fuel' p; accessInside fuel' p
+    -- kept as it is (D94): a fill whose borrow the access did not end is not generalised, which
+    -- would lose its hole (census, G1), but dropped whole, the conservative direction. The
+    -- access ends every borrow lent at `p`, so no run is known to take this exit
     if !(fillHoles (← get).env (← content p)).isEmpty then return p
     return ← movedPlace fuel' q
   match ← content p with
@@ -3428,23 +3440,34 @@ def movedPlace (fuel : Nat) (q : Place) : M Place := do
         -- D68: the same fields in every private copy (a statement's sides each move out of `σ`);
         -- the record is this world's, since the fields' types are read here (`exitWorld`)
         discard (etaInPlace fuel' σ d ps)
-        movedPlace fuel' q
-      else pure p
-    | _ => pure p
+        return ← movedPlace fuel' q
+    | _ => pure ()
   | n@(.sealed _) =>
     -- D84: a sealed program of a type with one constructor is generalised (D34) and then
     -- η-refined, so its fields are named here as at an instance, where it is that constructor
     -- (the grain is the declared type's, `Decide.jdGrain`)
-    match ← placeType? fuel' p with
-    | some (.tInd tn _) =>
+    if let some (.tInd tn _) ← placeType? fuel' p then
       if (← lookupInd tn).ctors.length == 1 then
         match ← recordedNeutral n with
         | some r => substEnv fuel' n r true
         | none => discard (generalizeNeutral fuel' p n)
-        movedPlace fuel' q
-      else pure p
-    | _ => pure p
-  | _ => pure p
+        return ← movedPlace fuel' q
+  | _ => pure ()
+  -- D94: the place exists now (its parent was reached through a lent prefix): it is what is dropped
+  if (← content? q).isSome then return q
+  match ← content p with
+  | .bot | .proof => pure p     -- the drop does nothing, as on every path
+  | v =>
+    let why := match v with
+      | .abs _ => "an unknown of a type with several constructors"
+      | .sealed _ => "a stuck program of a type with several constructors"
+      | .ind .. => match q with
+        | .deref _ => "a constructor value, which is not a borrow"
+        | _ => "a constructor value without that field"
+      | _ => match q with
+        | .deref _ => "a value that is not a borrow"
+        | _ => "a value without that field"
+    err s!"[Join] an arm of the match moves {← ppPlace q}, which does not exist: {← ppPlace p} holds {why} ({v})"
 termination_by structural fuel
 
 /-- D84 [Join]: the places a match leaves moved, read from its syntax and declared types
