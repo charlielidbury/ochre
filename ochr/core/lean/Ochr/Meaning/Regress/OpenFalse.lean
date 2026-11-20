@@ -15,11 +15,16 @@ use site has, not for a fault of the checker or the model.
    flight can type a label at an empty type, and then `GoodF` holds vacuously (membership is asked
    only at typed futures, of which there are none) while no typed future exists
    (`typedFutureF_exists_false`, the empty frame with the label `0` typed `False`).
+3. `eval_step_stmt` at a typed hole (`eval_hole_false`): the checker's `?` succeeds with a fresh
+   unknown, and the reference has no clause for it, so "the reference's run succeeds" fails. The
+   chain's `NoHoles` never reaches the evaluation statements.
+4. Not a statement: the reference trusts an ascription (`run_ascribe_trusted`), so it is not strict
+   (route (C) of docs/31 D83).
 -/
 
 namespace Ochr.Meaning.Regress.OpenFalse
 open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.Regress.EvalMemGap
-open Ochr.Meaning.Regress.GenNeutralContent (outSt isOk runs_out)
+open Ochr.Meaning.Regress.GenNeutralContent (outSt outVal isOk runs_out)
 
 /-! ## 1. `grows_restoreKeep` -/
 
@@ -55,5 +60,60 @@ theorem typedFutureF_exists_false (K : RunCtx) (ρ : Assignment) :
     (goodF_of_good _ _ _ ρ _ _ (good_S0T K ρ))
   obtain ⟨⟨a⟩, -⟩ := hψ 0 (TyM.prop False) (by simp)
   exact a
+
+/-! ## 3. The evaluation statement at a typed hole -/
+
+/-- A typed hole `?` at `Nat`, from the empty frame with `0` in flight. -/
+abbrev hl : M (Value × Option Value) := Ochr.eval 10 true (.prim "hole" []) (some .tNat)
+
+theorem okH : isOk hl (S0.withTemp .zero) 10 = true := by decide +kernel
+
+/-- The reference has no clause for a hole: its run fails. -/
+theorem run_hole_none (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h : TyS) (s : SState) :
+    runT K ρ φ tl h (.prim "hole" []) s = none := by
+  simp [runT, SM.fail]
+
+/-- **`eval_step_stmt` is false at a typed hole** (fuel 10, any context admitting the state, its
+decisions aligned after): the checker's typed run of `?` at `Nat` succeeds (a fresh unknown,
+docs/07), and the statement concludes that the reference's run succeeds, which it never does. The
+chain assumes `NoHoles` of the program (`consistency_rel`) and never passes it down; the evaluation
+statements need "the term holds no hole". -/
+theorem eval_hole_false (K : RunCtx) (ρ : Assignment) (φ : Future) (hctx : CtxOk K ρ (S0.withTemp .zero))
+    (hD : DecTab K.D (outSt hl (S0.withTemp .zero) 10)) : ¬ eval_step_stmt K ρ φ 10 := by
+  intro hs
+  have hrel : Rel K ρ φ id (S0.withTemp .zero) (SM' K ρ (S0.withTemp .zero)) :=
+    Rel.start K ρ φ _ (fun l hl => by
+      exfalso
+      simp [SState.Live, SState.liveLabels, SM', MState.sstate, Env.shape, S0, MState.withTemp, valAt,
+        SState.positions] at hl)
+  have hr : Runs hl (S0.withTemp .zero) 10 ((outVal hl (S0.withTemp .zero) 10).1, (outVal hl (S0.withTemp .zero) 10).2)
+      (outSt hl (S0.withTemp .zero) 10) := by
+    have := runs_out hl _ 10 okH; revert this; generalize outVal hl (S0.withTemp .zero) 10 = p; intro this; exact this
+  obtain ⟨ρ', Δ', π', -, -, -, -, r, s', hrun, -⟩ :=
+    hs _ (outSt hl (S0.withTemp .zero) 10) true (.prim "hole" []) (some .tNat)
+      (outVal hl (S0.withTemp .zero) 10).1 (outVal hl (S0.withTemp .zero) 10).2 (good_S0T K ρ) hctx _ id hrel
+      (fun h => by cases h) hD 10 hr
+  rw [run_hole_none] at hrun
+  cases hrun
+
+/-! ## 4. The reference run is not strict: an ascription is trusted
+
+The orchestrator's route (C) for untyped runs (docs/31 D83): if the reference run failed wherever a
+value is not a member of the type it is given, "the reference run succeeds" (`hok`) would carry the
+membership the untyped run never checks. Today it does not: the reference's `.ascribe` types any
+value at the annotation. -/
+
+/-- **The reference runs `(0 : Unit)` to `0` typed `Unit`** (where the ascription is neither a
+statement nor erased): a successful run whose result is no member of its type. A strict `.ascribe`
+fails here, so the untyped `let x = (0 : Unit); x` would have no successful reference run, and the
+untyped step, stated under `hok`, would owe nothing there. -/
+theorem run_ascribe_trusted (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h : TyS) (s : SState)
+    (hfl : K.D.flags (scopeOf s) (.ascribe (.val .zero) (.val .tUnit)) = (false, false)) :
+    ∃ R : TyS, runT K ρ φ tl h (.ascribe (.val .zero) (.val .tUnit)) s = some ((.el0 Nat 0, R), s) ∧
+      R.m = TyM.unit ∧ ¬ (Sem.el0 Nat 0 ∈ₛ[K.dm.read] R.m) := by
+  refine ⟨{ TyS.plain TyM.unit with label := none }, ?_, rfl, ?_⟩
+  · simp [runT, SM.erasedIf, SM.stmtIf, hfl, SM.onCopy, bind, pure, meanV, Sem.asTy]
+  · rintro ⟨a, ha⟩
+    exact unit_ne_nat (Sem.el0.inj ha).1
 
 end Ochr.Meaning.Regress.OpenFalse
