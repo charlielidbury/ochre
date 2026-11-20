@@ -38,8 +38,10 @@ after it) and concludes `CtxOk { K with Δ := Δ' }` there; no `D'`, no `AgreeOl
 
 `joinDrop_step` and `dropOne_step_asm` rest on, beyond `MachineMono`'s machine facts:
 - `ctx_botWrite` (DropOneAsm): `CtxOk` after the drop's write of `⊥`. Everything but the block's
-  captures at the new entry set is routine; that part is item 4 (measure on recorded states that
-  the static instance at the new entry set is what `ckBlockCaps` computes there; do not prove).
+  captures at the new entry set is routine; that part is D90's obligation 1 at the state after, a
+  checker-only fact once the table is fixed (MachineMono's list). Item 4 measured it: 338 block
+  entries in the suite, static = checker at all 335 successful ones (3 are [Join] rejections).
+  Probe: scratchpad `probe/EntryProbe.lean`, `probe/entryprobe.patch` (instruments `blockEntry`).
 - `etaFresh_sim` (MovedPlace): a fresh η record means its unknown, the context extended.
 - `recordedNeutral_ok` (MovedPlace): a generalisation record's value means the program (path condition).
 - `Rel.kept` (EqJAsm, the lead's).
