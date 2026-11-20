@@ -180,15 +180,15 @@ theorem copy_sort {st : MState} (hctx : CtxOk K ρ st) (l : Nat) : K.D.copy (.so
 
 /-- **What the write of `⊥` needs, at the drop** (`botWrite_rel`'s hypotheses after the access and
 the log): the place is at a binding of the reference's positions, a whole root written is not a
-holder (the reference's root is none, `hns`) or a type value (a variable holding one is declared a
-sort, (Ty), a copy, which the join does not drop), the value records its parameters (WF10) and
+holder (the reference's root is none, `hns`) or a type value (`htype`; at a place that is no copy,
+`botWrite_hyps`: a variable holding one is declared a sort, (Ty), a copy), the value records its parameters (WF10) and
 holds no sealed program whose tail reads the hint ((WF16); docs/31 D45: first, no sealed program at
 all, false of a value with a closed-off call in a field), and the path conditions of the write hold
 along the place (`natAlong_grain`: the typing of places at every prefix). PROVED (docs/31 D47). -/
-theorem botWrite_hyps (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (v' : Value)
+theorem botWrite_hyps_ty (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (v' : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
-    (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
+    (htype : q.steps.2 = [] → (∀ c t rd, valAt st.env pos ≠ .tPi c t rd) ∧ ∀ n a, valAt st.env pos ≠ .tInd n a)
     (hns : q.steps.2 = [] → s.shape pos = none)
     (hv : Value.updAt (fun _ => .bot) q.steps.2 (valAt st.env pos) = some v') :
     ∃ f i, pos = .bind f i ∧ Pos.bind f i ∈ allPos st.env ∧ Pos.bind f i ∈ s.positions ∧
@@ -218,19 +218,37 @@ theorem botWrite_hyps (st : MState) (s : SState) (π : Nat → Nat) (q : Place) 
     | some l =>
       have := hs.sim.2.1 (.bind f i) l (by simp [IsTemp]) hsh
       rw [hns he] at this; cases this
-  · intro he
-    have hq := place_eq_var_of_nil he
-    have hno : ∀ l, K.D.placeDecl (DecideScope.topReadings st) (.var q.steps.1) ≠ .sort l := by
-      intro l hl
-      have hc := copy_sort K ρ hctx l
-      rw [← hl, ← hsc, ← hq, hcopy] at hc; cases hc
-    refine ⟨fun c t rd hv' => ?_, fun n a hv' => ?_⟩
-    · obtain ⟨l, hl⟩ := hctx.shapes.typeRoot q.steps.1 _ hck (.inl ⟨c, t, rd, hv'⟩); exact hno l hl
-    · obtain ⟨l, hl⟩ := hctx.shapes.typeRoot q.steps.1 _ hck (.inr ⟨n, a, hv'⟩); exact hno l hl
+  · exact htype
   · intro ψ
     refine natAlong_grain K ρ hctx ψ (fun _ => .bot) q.steps.2 (.var q.steps.1) _
       (grainOk_of_steps (by rw [jdExtend_steps]; simp [Place.steps]) hgr) ?_ (by rw [hv]; rfl)
     unfold ckContent; simp [Place.steps, hck, Value.follow]
+
+/-- `botWrite_hyps_ty` at a place that is no copy: a variable holding a type value is declared a
+sort ((Ty)), a copy. -/
+theorem botWrite_hyps (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos) (v' : Value)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
+    (hck : ckVarPos st.env q.steps.1 = some pos) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
+    (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
+    (hns : q.steps.2 = [] → s.shape pos = none)
+    (hv : Value.updAt (fun _ => .bot) q.steps.2 (valAt st.env pos) = some v') :
+    ∃ f i, pos = .bind f i ∧ Pos.bind f i ∈ allPos st.env ∧ Pos.bind f i ∈ s.positions ∧
+      (q.steps.2 = [] → Env.shape st.env pos = none) ∧
+      (q.steps.2 = [] → (∀ c t rd, valAt st.env pos ≠ .tPi c t rd) ∧ ∀ n a, valAt st.env pos ≠ .tInd n a) ∧
+      ((valAt st.env pos).anyAtom (Value.bareCtor K.Γ) = false ∧
+        (valAt st.env pos).anyAtom (fun a => a.isSealed && !a.topHintFree K.Γ) = false) ∧
+      ∀ ψ, NatAlong K.dm K.M K.Γ ρ ψ q.steps.2 (valAt st.env pos) := by
+  refine botWrite_hyps_ty K ρ φ st s π q pos v' hg hctx hs hck hgrain ?_ hns hv
+  intro he
+  have hsc := rel_scopeOf K ρ φ hs
+  have hq := place_eq_var_of_nil he
+  have hno : ∀ l, K.D.placeDecl (DecideScope.topReadings st) (.var q.steps.1) ≠ .sort l := by
+    intro l hl
+    have hc := copy_sort K ρ hctx l
+    rw [← hl, ← hsc, ← hq, hcopy] at hc; cases hc
+  refine ⟨fun c t rd hv' => ?_, fun n a hv' => ?_⟩
+  · obtain ⟨l, hl⟩ := hctx.shapes.typeRoot q.steps.1 _ hck (.inl ⟨c, t, rd, hv'⟩); exact hno l hl
+  · obtain ⟨l, hl⟩ := hctx.shapes.typeRoot q.steps.1 _ hck (.inr ⟨n, a, hv'⟩); exact hno l hl
 
 
 /-- A borrow held at a position of Ω is live. -/
