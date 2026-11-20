@@ -34,6 +34,10 @@ def bodyTail (fuel d : Nat) (model : Bool) (v : Value) : M Value := do
   if model then modify fun s => { s with modelDepth := s.modelDepth - 1 }
   pure r
 
+theorem grows_bodyTail (fuel d : Nat) (model : Bool) (v : Value) : GrowsM (bodyTail fuel d model v) := by
+  unfold bodyTail
+  grows_go
+
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
@@ -129,17 +133,17 @@ theorem runBody_back (fuel : Nat) (st₂ st' : MState) (s₂ : SState) (π : Nat
     (hrun : runT K₀ ρ₁ φ true (.plain ((bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.cod (as.map (·.1)))) body
       (bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).1 = some (r, s₂))
     (hr : meanV K ρ (fun l => φ (π l)) r.2 v₀ = r.1)
-    (d : Nat) (model : Bool) (b : Nat) (v : Value) (h : Runs (bodyTail fuel d model v₀) st₂ b v st') :
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (π' : Nat → Nat), st₂.absTy.size ≤ st'.absTy.size ∧
+    (d : Nat) (model : Bool) (b : Nat) (v : Value) (h : Runs (bodyTail fuel d model v₀) st₂ b v st')
+    (hD : DecTab K.D st') :
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat), st₂.absTy.size ≤ st'.absTy.size ∧
       st₂.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st₂.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
-      K.D.AgreeOld st₂.absTy.size D' ∧
       (∀ l, l < st₂.nextLoan → π' l = π l) ∧
-      meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π' l))
+      meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l))
         { r.2 with label := if (bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.isRef then r.2.label else none } v = r.1 ∧
-      CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧
-      Rel { K with Δ := Δ', D := D' } ρ' φ π' (st'.withTemp v)
+      CtxOk { K with Δ := Δ' } ρ' st' ∧
+      Rel { K with Δ := Δ' } ρ' φ π' (st'.withTemp v)
         (popCallFrame s.nextLoan (if (bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.isRef then r.2.label else none) s₂) ∧
-      GoodF K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' (st'.withTemp v)
+      GoodF K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' (st'.withTemp v)
         (flightOf { r.2 with label := if (bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.isRef then r.2.label else none }) := by
   sorry
 
@@ -150,26 +154,26 @@ theorem runBody_back (fuel : Nat) (st₂ st' : MState) (s₂ : SState) (π : Nat
 the call's: the hypothesis is at every fuel below, `StepsIHBelow`), the back (`runBody_back`), the run in place re-read under the final
 assignment (`runBodyRef_extend`). -/
 theorem runBody_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : runBody_step_stmt K ρ φ (fuel + 1) := by
-  intro st st' fv cs t rd ws v hg hctx s π hs hfix fres hf as has hok bh h
+  intro st st' fv cs t rd ws v hg hctx s π hs hfix fres hf as has hok hD bh h
   obtain ⟨self, hs', ds, c, dec, body, hint, st₁, st₂, b₁, b₂, d, model, v₀, T₀, rfl, hev, htail, htl, habs₁, hnl₁,
     hg₁, hctx₁, hs₁, hhint⟩ := runBody_front K ρ φ fuel st st' fv cs t rd ws v hg hctx s π hs hfix fres hf as has bh h
   have hok' : false = false →
       (runT K ρ φ st₁.tailNext (hintM K ρ hint) body (bodyFrame K ρ φ fres cs rd ds c as s).1).isSome := by
     intro _; rw [htl, hhint]; exact body_isSome_of_runBodyRef K ρ φ fres cs self hs' ds c dec body rd as s hok
-  obtain ⟨ρ₁, Δ₁, D₁, π₁, habs₂, hnl₂, hext₁, hD₁, hπ₁, r, s₂, hrun, hmean, -, hctx₂, hs₂, hg₂⟩ :=
-    (ih (fuel - 1) (Nat.sub_le fuel 1) K ρ φ).eval_step st₁ st₂ false body hint v₀ T₀ hg₁ hctx₁ _ π hs₁ hok' b₁ hev
+  obtain ⟨ρ₁, Δ₁, π₁, habs₂, hnl₂, hext₁, hπ₁, r, s₂, hrun, hmean, -, hctx₂, hs₂, hg₂⟩ :=
+    (ih (fuel - 1) (Nat.sub_le fuel 1) K ρ φ).eval_step st₁ st₂ false body hint v₀ T₀ hg₁ hctx₁ _ π hs₁ hok'
+      (hD.of_rest (grows_bodyTail _ _ _ _) htail) b₁ hev
   rw [htl, hhint] at hrun
-  obtain ⟨ρ₂, Δ₂, D₂, π₂, habs₃, hnl₃, hext₂, hD₂, hπ₂, hmean', hctx₃, hs₃, hg₃⟩ :=
-    runBody_back { K with Δ := Δ₁, D := D₁ } ρ₁ φ (fuel - 1) st₂ st' s₂ π₁ v₀ r hg₂ hctx₂ hs₂ K ρ ρ₁ fres cs rd ds c body as s hrun
-      hmean d model b₂ v htail
+  obtain ⟨ρ₂, Δ₂, π₂, habs₃, hnl₃, hext₂, hπ₂, hmean', hctx₃, hs₃, hg₃⟩ :=
+    runBody_back { K with Δ := Δ₁ } ρ₁ φ (fuel - 1) st₂ st' s₂ π₁ v₀ r hg₂ hctx₂ hs₂ K ρ ρ₁ fres cs rd ds c body as s hrun
+      hmean d model b₂ v htail hD
   have hb := callee_bounded K ρ st fv cs (.fix self hs' ds c dec body) rd ws hg hfix
   have hρ₁ : ∀ σ, σ < (st.withTemps (fv :: ws.toList)).absTy.size → ρ₁ σ = ρ σ := fun σ hσ =>
     (hext₁ σ (Nat.lt_of_lt_of_le hσ habs₁)).1
   have hρ₂ : ∀ σ, σ < (st.withTemps (fv :: ws.toList)).absTy.size → ρ₂ σ = ρ σ := fun σ hσ =>
     ((hext₂ σ (Nat.lt_of_lt_of_le hσ (Nat.le_trans habs₁ habs₂))).1).trans (hρ₁ σ hσ)
-  refine ⟨ρ₂, Δ₂, D₂, π₂, _, _, Nat.le_trans habs₁ (Nat.le_trans habs₂ habs₃),
-    Nat.le_trans hnl₁ (Nat.le_trans hnl₂ hnl₃), fun σ hσ => ⟨hρ₂ σ hσ, ?_⟩,
-    (hD₁.trans hD₂ habs₂).mono habs₁, fun l hl => ?_,
+  refine ⟨ρ₂, Δ₂, π₂, _, _, Nat.le_trans habs₁ (Nat.le_trans habs₂ habs₃),
+    Nat.le_trans hnl₁ (Nat.le_trans hnl₂ hnl₃), fun σ hσ => ⟨hρ₂ σ hσ, ?_⟩, fun l hl => ?_,
     runBodyRef_extend K ρ φ _ cs self hs' ds c dec body rd hb fres as s ρ₁ ρ₂ hρ₁ hρ₂ r s₂ hrun,
     hmean', hctx₃, hs₃, hg₃⟩
   · have hlt₁ := Nat.lt_of_lt_of_le hσ habs₁
@@ -187,11 +191,10 @@ def nestedStart (st : MState) : MState := { st with env := #[{}], obsFrame := no
 the run created, under which the result means the sealed program at every future, and the state
 `restoreKeep` makes is good again. -/
 def NestedOut (st st₁ : MState) (t : Term) (v : Value) (hint : TyS) : Prop :=
-  ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), st.absTy.size ≤ st₁.absTy.size ∧
-    (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
-    (∀ ψ, meanV { K with Δ := Δ', D := D' } ρ' ψ hint v = meanV K ρ ψ hint (.sealed t)) ∧
+  ∃ (ρ' : Assignment) (Δ' : Nat → TyS), st.absTy.size ≤ st₁.absTy.size ∧
+    (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ (∀ ψ, meanV { K with Δ := Δ' } ρ' ψ hint v = meanV K ρ ψ hint (.sealed t)) ∧
     ∀ st₂, Runs (Ochr.restoreKeep st) st₁ 0 () st₂ →
-      CtxOk { K with Δ := Δ', D := D' } ρ' st₂ ∧ Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st₂
+      CtxOk { K with Δ := Δ' } ρ' st₂ ∧ Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st₂
 
 /-- (leaf) The nested start is good and meets the context's conditions, is not in tail position, and
 read as a reference state it is the empty state at the outer counter, holding no borrow. -/
@@ -208,12 +211,12 @@ independence of a tail-hint-free text, `HintIndep.run_hintIndep`), and `restoreK
 the new unknowns' types and records, so its state is good under it. -/
 theorem nested_uniform (st st₁ : MState) (t : Term) (v : Value) (T? : Option Value) (hint : TyS)
     (hg : Good K.dm K.M K.Γ ρ st) (hfree : t.loans = []) (htf : Term.tailHintFree K.Γ t = true)
-    (hstep : ∀ ψ, ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (π' : Nat → Nat), (nestedStart st).absTy.size ≤ st₁.absTy.size ∧
-      (∀ σ, σ < (nestedStart st).absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld (nestedStart st).absTy.size D' ∧
+    (hstep : ∀ ψ, ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat), (nestedStart st).absTy.size ≤ st₁.absTy.size ∧
+      (∀ σ, σ < (nestedStart st).absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
       ∃ (r : Res) (s' : SState), runT K ρ' ψ false (hintM K ρ none) t (emptyState st.nextLoan) = some (r, s') ∧
-        meanV { K with Δ := Δ', D := D' } ρ' (fun l => ψ (π' l)) r.2 v = r.1 ∧
-        CtxOk { K with Δ := Δ', D := D' } ρ' st₁ ∧ Rel { K with Δ := Δ', D := D' } ρ' ψ π' (st₁.withTemp v) s' ∧
-        GoodF K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' (st₁.withTemp v) (flightOf r.2)) :
+        meanV { K with Δ := Δ' } ρ' (fun l => ψ (π' l)) r.2 v = r.1 ∧
+        CtxOk { K with Δ := Δ' } ρ' st₁ ∧ Rel { K with Δ := Δ' } ρ' ψ π' (st₁.withTemp v) s' ∧
+        GoodF K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' (st₁.withTemp v) (flightOf r.2)) :
     NestedOut K ρ st st₁ t v hint := by
   sorry
 
@@ -225,6 +228,7 @@ theorem nestedRun_sim_asm (fuel : Nat) (ih : StepsIHBelow fuel) (st st₁ : MSta
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hfree : t.loans = []) (htf : Term.tailHintFree K.Γ t = true)
     (hok : ∀ ψ, (runT K ρ ψ false (hintM K ρ none) t (emptyState st.nextLoan)).isSome)
+    (hD : DecTab K.D st₁)
     (bh : Nat) (h : Runs (Ochr.eval fuel false t none) (nestedStart st) bh (v, T?) st₁) :
     NestedOut K ρ st st₁ t v hint := by
   obtain ⟨hg₀, hctx₀, htl₀, hsm⟩ := nested_start K ρ st hg hctx
@@ -238,10 +242,10 @@ theorem nestedRun_sim_asm (fuel : Nat) (ih : StepsIHBelow fuel) (st st₁ : MSta
   rw [hsm] at hrel
   have hok' : false = false → (runT K ρ ψ (nestedStart st).tailNext (hintM K ρ none) t (emptyState st.nextLoan)).isSome :=
     fun _ => by rw [htl₀]; exact hok ψ
-  obtain ⟨ρ', Δ', D', π', habs, -, hext, hD, -, r, s', hrun, hmean, -, hctx', hs', hg'⟩ :=
-    (ih.at K ρ ψ).eval_step (nestedStart st) st₁ false t none v T? hg₀ hctx₀ _ id hrel hok' bh h
+  obtain ⟨ρ', Δ', π', habs, -, hext, -, r, s', hrun, hmean, -, hctx', hs', hg'⟩ :=
+    (ih.at K ρ ψ).eval_step (nestedStart st) st₁ false t none v T? hg₀ hctx₀ _ id hrel hok' hD bh h
   rw [htl₀] at hrun
-  exact ⟨ρ', Δ', D', π', habs, hext, hD, r, s', hrun, hmean, hctx', hs', hg'⟩
+  exact ⟨ρ', Δ', π', habs, hext, r, s', hrun, hmean, hctx', hs', hg'⟩
 
 end
 
@@ -260,6 +264,11 @@ def callTailM (fuel : Nat) (g? : Option Nat) (res : DeclInfo) (B : Option Value)
   Ochr.setFlags (false, false)
   modify fun s => { s with callTyLater := if later then some (piTy, ws.toList) else none }
   pure (Ochr.etaUnit res r, B)
+
+theorem grows_callTailM (fuel : Nat) (g? : Option Nat) (res : DeclInfo) (B : Option Value) (later : Bool)
+    (piTy : Value) (ws : Array Value) (r : Value) : GrowsM (callTailM fuel g? res B later piTy ws r) := by
+  unfold callTailM
+  grows_go
 
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
@@ -356,16 +365,17 @@ theorem callFn_tail_ran (fuel : Nat) (st st₁ st₂ st' : MState) (fv : Value) 
 induction hypothesis (`closeCall_step` or `runBody_step`, at the fuel below, with the hypotheses the
 front supplies), then the tail (`callFn_tail_closed`, `callFn_tail_ran`). -/
 theorem callFn_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : callFn_step_stmt K ρ φ (fuel + 1) := by
-  intro st st' typed f args hd fv fT ws tys recUid? res fills want defer v T? hg hctx s π hs hns fres hf as has bh h
+  intro st st' typed f args hd fv fT ws tys recUid? res fills want defer v T? hg hctx s π hs hns fres hf as has hD bh h
   obtain ⟨isRef, st₁, st₂, π₁, w, b₁, hg₁, hctx₁, hs₁, hπ₁, habs, hnl, hf₁, has₁, hpath, b₂, g?, B, later, piTy, hg?,
     htail⟩ := callFn_front K ρ φ fuel st st' typed f args hd fv fT ws tys recUid? res fills want defer v T? hg hctx s π hs
       hns fres hf as has bh h
+  have hD₂ : DecTab K.D st₂ := hD.of_rest (grows_callTailM _ _ _ _ _ _ _ _) htail
   rcases hpath with ⟨kind, res', fills', tys', hcl, hpi, hkind, hres, hfills, htys⟩ | ⟨cs, t, rd, hfix, hok, hrb⟩
   · have hcall := (ih.at K ρ φ).closeCall_step st₁ st₂ fv ws kind res' fills' tys' w hg₁ hctx₁ _ π₁ hs₁ fres hf₁ hpi as
-      has₁ hkind hres hfills htys b₁ hcl
+      has₁ hkind hres hfills htys hD₂ b₁ hcl
     exact callFn_tail_closed K ρ φ fuel st st₁ st₂ st' fv ws s π π₁ isRef fres as w v T? res hπ₁ habs hnl hcall b₂ g? B
       later piTy hg? htail
-  · have hbody := (ih.at K ρ φ).runBody_step st₁ st₂ fv cs t rd ws w hg₁ hctx₁ _ π₁ hs₁ hfix fres hf₁ as has₁ hok b₁ hrb
+  · have hbody := (ih.at K ρ φ).runBody_step st₁ st₂ fv cs t rd ws w hg₁ hctx₁ _ π₁ hs₁ hfix fres hf₁ as has₁ hok hD₂ b₁ hrb
     exact callFn_tail_ran K ρ φ fuel st st₁ st₂ st' fv ws s π π₁ isRef fres as cs t rd w v T? res hπ₁ habs hnl hbody b₂
       g? B later piTy hg? htail
 
@@ -395,10 +405,10 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 /-- The checker's state and the reference's are related after some fills, the context extended:
 the invariant of `closeCall`'s loop. -/
 def FillRel (π : Nat → Nat) (st₀ st : MState) (ws : Array Value) (fv : Value) (s : SState) : Prop :=
-  ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), st₀.absTy.size ≤ st.absTy.size ∧ st₀.nextLoan ≤ st.nextLoan ∧
-    (∀ σ, σ < st₀.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st₀.absTy.size D' ∧ CtxOk { K with Δ := Δ', D := D' } ρ' st ∧
-    Rel { K with Δ := Δ', D := D' } ρ' φ π (st.withTemps (fv :: ws.toList)) s ∧
-    Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' (st.withTemps (fv :: ws.toList))
+  ∃ (ρ' : Assignment) (Δ' : Nat → TyS), st₀.absTy.size ≤ st.absTy.size ∧ st₀.nextLoan ≤ st.nextLoan ∧
+    (∀ σ, σ < st₀.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ CtxOk { K with Δ := Δ' } ρ' st ∧
+    Rel { K with Δ := Δ' } ρ' φ π (st.withTemps (fv :: ws.toList)) s ∧
+    Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' (st.withTemps (fv :: ws.toList))
 
 /-- **One fill** (leaf): from related states, the checker's substitution of a fill for a consumed
 borrow argument's loan and the end of its lending is the reference's fixing of the label to the
@@ -408,48 +418,54 @@ D97), and the places it lent are free on both sides. The renaming is unchanged (
 theorem closeFill_step (fuel : Nat) (st st' : MState) (fv : Value) (ws : Array Value) (s : SState) (π : Nat → Nat)
     (l : Nat) (fill : Value) (fin : SVal) (hfin : ∀ ψ, meanV K ρ ψ (.plain .err) fill = fin ψ)
     (hg : Good K.dm K.M K.Γ ρ (st.withTemps (fv :: ws.toList))) (hctx : CtxOk K ρ st)
-    (hs : Rel K ρ φ π (st.withTemps (fv :: ws.toList)) s) (b : Nat) (h : Runs (closeFillM fuel l fill) st b () st') :
+    (hs : Rel K ρ φ π (st.withTemps (fv :: ws.toList)) s) (b : Nat) (h : Runs (closeFillM fuel l fill) st b () st')
+    (hD : DecTab K.D st') :
     FillRel K ρ φ π st st' ws fv (fixLabelRef (π l) fin s) := by
   sorry
+
+theorem grows_closeLoopM (fuel : Nat) : ∀ fx : List (Nat × Value), GrowsM (closeLoopM fuel fx)
+  | [] => GrowsM.pure _
+  | (l, fill) :: rest => by
+    unfold closeLoopM closeFillM
+    exact (by grows_go : GrowsM (do Ochr.substEnv fuel (.loan l) fill false; Ochr.lendEnv fuel (.ended l []))).bind
+      fun _ => grows_closeLoopM fuel rest
 
 /-- **The fills** (assembled): the loop by induction, one fill at a time (`closeFill_step`), the
 context extended at each; each fill means its final content under every extension of the context at
 the loop's start (`hfin`: the fills name only unknowns of that table). -/
 theorem closeLoop_rel (fuel : Nat) (fv : Value) (ws : Array Value) (π : Nat → Nat) (st₀ : MState) :
-    ∀ (fx : List (Nat × Value)) (fins : List SVal) (Δc : Nat → TyS) (Dc : Decisions) (ρc : Assignment)
+    ∀ (fx : List (Nat × Value)) (fins : List SVal) (Δc : Nat → TyS) (ρc : Assignment)
       (st st' : MState) (s : SState) (b : Nat),
     fx.length = fins.length →
-    (∀ (Δ' : Nat → TyS) (D' : Decisions) (ρ' : Assignment), (∀ σ, σ < st₀.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
-      K.D.AgreeOld st₀.absTy.size D' →
-      ∀ p ∈ fx.zip fins, ∀ ψ, meanV { K with Δ := Δ', D := D' } ρ' ψ (.plain .err) p.1.2 = p.2 ψ) →
-    (∀ σ, σ < st₀.absTy.size → ρc σ = ρ σ ∧ Δc σ = K.Δ σ) → K.D.AgreeOld st₀.absTy.size Dc →
+    (∀ (Δ' : Nat → TyS) (ρ' : Assignment), (∀ σ, σ < st₀.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
+      ∀ p ∈ fx.zip fins, ∀ ψ, meanV { K with Δ := Δ' } ρ' ψ (.plain .err) p.1.2 = p.2 ψ) →
+    (∀ σ, σ < st₀.absTy.size → ρc σ = ρ σ ∧ Δc σ = K.Δ σ) → DecTab K.D st' →
     st₀.absTy.size ≤ st.absTy.size →
-    Good K.dm ({ K with Δ := Δc, D := Dc } : RunCtx).M K.Γ ρc (st.withTemps (fv :: ws.toList)) →
-    CtxOk { K with Δ := Δc, D := Dc } ρc st →
-    Rel { K with Δ := Δc, D := Dc } ρc φ π (st.withTemps (fv :: ws.toList)) s → Runs (closeLoopM fuel fx) st b () st' →
-    FillRel { K with Δ := Δc, D := Dc } ρc φ π st st' ws fv
+    Good K.dm ({ K with Δ := Δc } : RunCtx).M K.Γ ρc (st.withTemps (fv :: ws.toList)) →
+    CtxOk { K with Δ := Δc } ρc st →
+    Rel { K with Δ := Δc } ρc φ π (st.withTemps (fv :: ws.toList)) s → Runs (closeLoopM fuel fx) st b () st' →
+    FillRel { K with Δ := Δc } ρc φ π st st' ws fv
       ((fx.zip fins).foldl (fun s p => fixLabelRef (π p.1.1) p.2 s) s)
-  | [], [], Δc, Dc, ρc, st, st', s, b, _, _, _, _, _, hg, hctx, hs, h => by
+  | [], [], Δc, ρc, st, st', s, b, _, _, _, _, _, hg, hctx, hs, h => by
     obtain ⟨-, rfl⟩ := runs_pure_inv h
-    exact ⟨ρc, Δc, Dc, Nat.le_refl _, Nat.le_refl _, fun _ _ => ⟨rfl, rfl⟩, Decisions.AgreeOld.refl _ _, hctx, hs, hg⟩
-  | (l, fill) :: rest, fin :: fins, Δc, Dc, ρc, st, st', s, b, hlen, hfin, hc, hD, hle, hg, hctx, hs, h => by
+    exact ⟨ρc, Δc, Nat.le_refl _, Nat.le_refl _, fun _ _ => ⟨rfl, rfl⟩, hctx, hs, hg⟩
+  | (l, fill) :: rest, fin :: fins, Δc, ρc, st, st', s, b, hlen, hfin, hc, hD, hle, hg, hctx, hs, h => by
     obtain ⟨_, st₁, b₁, h1, h2⟩ := Runs.bind_inv h
-    obtain ⟨ρ₁, Δ₁, D₁, habs₁, hnl₁, hext₁, hD₁, hctx₁, hs₁, hg₁⟩ :=
-      closeFill_step { K with Δ := Δc, D := Dc } ρc φ fuel st st₁ fv ws s π l fill fin
-        (hfin Δc Dc ρc hc hD _ (List.mem_cons_self ..)) hg hctx hs b h1
+    obtain ⟨ρ₁, Δ₁, habs₁, hnl₁, hext₁, hctx₁, hs₁, hg₁⟩ :=
+      closeFill_step { K with Δ := Δc } ρc φ fuel st st₁ fv ws s π l fill fin
+        (hfin Δc ρc hc _ (List.mem_cons_self ..)) hg hctx hs b h1 (hD.of_rest (grows_closeLoopM _ _) h2)
     have hc₁ : ∀ σ, σ < st₀.absTy.size → ρ₁ σ = ρ σ ∧ Δ₁ σ = K.Δ σ := fun σ hσ =>
       ⟨((hext₁ σ (Nat.lt_of_lt_of_le hσ hle)).1).trans (hc σ hσ).1, ((hext₁ σ (Nat.lt_of_lt_of_le hσ hle)).2).trans (hc σ hσ).2⟩
-    have hD₁' : K.D.AgreeOld st₀.absTy.size D₁ := hD.trans hD₁ hle
-    obtain ⟨ρ₂, Δ₂, D₂, habs₂, hnl₂, hext₂, hD₂, hctx₂, hs₂, hg₂⟩ := closeLoop_rel fuel fv ws π st₀ rest fins Δ₁ D₁ ρ₁ st₁ st'
+    obtain ⟨ρ₂, Δ₂, habs₂, hnl₂, hext₂, hctx₂, hs₂, hg₂⟩ := closeLoop_rel fuel fv ws π st₀ rest fins Δ₁ ρ₁ st₁ st'
       (fixLabelRef (π l) fin s) b₁ (by simpa using hlen)
-      (fun Δ' D' ρ' he hd p hp ψ => hfin Δ' D' ρ' he hd p (List.mem_cons_of_mem _ hp) ψ) hc₁ hD₁'
+      (fun Δ' ρ' he p hp ψ => hfin Δ' ρ' he p (List.mem_cons_of_mem _ hp) ψ) hc₁ hD
       (Nat.le_trans hle habs₁) hg₁ hctx₁ hs₁ h2
-    refine ⟨ρ₂, Δ₂, D₂, Nat.le_trans habs₁ habs₂, Nat.le_trans hnl₁ hnl₂, fun σ hσ => ?_, hD₁.trans hD₂ habs₁, hctx₂, hs₂, hg₂⟩
+    refine ⟨ρ₂, Δ₂, Nat.le_trans habs₁ habs₂, Nat.le_trans hnl₁ hnl₂, fun σ hσ => ?_, hctx₂, hs₂, hg₂⟩
     have h1' := hext₁ σ hσ
     have h2' := hext₂ σ (Nat.lt_of_lt_of_le hσ habs₁)
     exact ⟨h2'.1.trans h1'.1, h2'.2.trans h1'.2⟩
-  | [], _ :: _, _, _, _, _, _, _, _, hlen, _, _, _, _, _, _, _, _ => by simp at hlen
-  | _ :: _, [], _, _, _, _, _, _, _, hlen, _, _, _, _, _, _, _, _ => by simp at hlen
+  | [], _ :: _, _, _, _, _, _, _, hlen, _, _, _, _, _, _, _, _ => by simp at hlen
+  | _ :: _, [], _, _, _, _, _, _, hlen, _, _, _, _, _, _, _, _ => by simp at hlen
 
 /-- **[Close] taken apart** (leaf): a successful `closeCall` checks its arguments (nothing changes) and,
 for a borrow result, takes a fresh label; the state is then related to the reference's; then it runs
@@ -467,10 +483,9 @@ theorem closeCall_split (fuel : Nat) (st st' : MState) (fv : Value) (ws : Array 
       (st.withTemps (fv :: ws.toList)).nextLoan ≤ st₁.nextLoan ∧
       Good K.dm K.M K.Γ ρ (st₁.withTemps (fv :: ws.toList)) ∧ CtxOk K ρ st₁ ∧
       Rel K ρ φ π (st₁.withTemps (fv :: ws.toList)) s ∧ fx.length = fins.length ∧
-      (∀ (Δ' : Nat → TyS) (D' : Decisions) (ρ' : Assignment), (∀ σ, σ < st₁.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
-        K.D.AgreeOld st₁.absTy.size D' →
-        ∀ p ∈ fx.zip fins, ∀ ψ, meanV { K with Δ := Δ', D := D' } ρ' ψ (.plain .err) p.1.2 = p.2 ψ) ∧
-      Runs (closeLoopM fuel fx) st₁ b₁ () st₂ := by
+      (∀ (Δ' : Nat → TyS) (ρ' : Assignment), (∀ σ, σ < st₁.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
+        ∀ p ∈ fx.zip fins, ∀ ψ, meanV { K with Δ := Δ' } ρ' ψ (.plain .err) p.1.2 = p.2 ψ) ∧
+      Runs (closeLoopM fuel fx) st₁ b₁ () st₂ ∧ TablesGrow st₂ st' := by
   sorry
 
 /-- **[Close]'s result** (leaf): after the fills, the checker returns the sealed result (`()` at a
@@ -491,11 +506,12 @@ theorem closeCall_post (fuel : Nat) (st st₁ st₂ st' : MState) (fv : Value) (
 /-- **[Close]** (`closeCall_step_stmt`), assembled: the checks and the fresh label (`closeCall_split`),
 the fills one at a time (`closeLoop_rel`), the result (`closeCall_post`). -/
 theorem closeCall_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : closeCall_step_stmt K ρ φ (fuel + 1) := by
-  intro st st' fv ws kind res fills tys v hg hctx s π hs fres hf hpi as has hkind hres hfills htys bh h
-  obtain ⟨st₁, st₂, b₁, fx, fins, habs, hnl, hg₁, hctx₁, hs₁, hlen, hfin, hloop⟩ :=
+  intro st st' fv ws kind res fills tys v hg hctx s π hs fres hf hpi as has hkind hres hfills htys hD bh h
+  obtain ⟨st₁, st₂, b₁, fx, fins, habs, hnl, hg₁, hctx₁, hs₁, hlen, hfin, hloop, hpost⟩ :=
     closeCall_split K ρ φ fuel st st' fv ws kind res fills tys v hg hctx s π hs fres as has bh h
-  have hrel := closeLoop_rel K ρ φ fuel fv ws π st₁ fx fins K.Δ K.D ρ st₁ st₂ s b₁ hlen hfin (fun _ _ => ⟨rfl, rfl⟩)
-    (Decisions.AgreeOld.refl _ _) (Nat.le_refl _) hg₁ hctx₁ hs₁ hloop
+  have hrel := closeLoop_rel K ρ φ fuel fv ws π st₁ fx fins K.Δ ρ st₁ st₂ s b₁ hlen
+    (fun Δ' ρ' he => hfin Δ' ρ' he) (fun _ _ => ⟨rfl, rfl⟩)
+    (hD.back hpost) (Nat.le_refl _) hg₁ hctx₁ hs₁ hloop
   exact closeCall_post K ρ φ fuel st st₁ st₂ st' fv ws kind res fills tys v s π fres as bh h fx fins b₁ hloop habs hnl hrel
 
 end

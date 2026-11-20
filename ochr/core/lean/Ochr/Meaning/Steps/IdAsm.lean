@@ -70,7 +70,7 @@ passes through are good for every typed extension; typed at the end, an extensio
 each of them. -/
 theorem idType_split (fuel : Nat) (st st' : MState) (typed : Bool) (A t u : Term) (P : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
-    (bh : Nat) (h : Runs (Ochr.idType (fuel + 1) typed A t u) st bh P st') :
+    (hD : DecTab K.D st') (bh : Nat) (h : Runs (Ochr.idType (fuel + 1) typed A t u) st bh P st') :
     ∃ (A' : Value) (tsT tsU : TypeState) (stT stU stR st₁ st₂ : MState) (bT bU b₁ b₂ : Nat)
       (refs : List (Place × Value)) (a b : Value) (as bs : List Value),
       Runs (withLive true (Ochr.typeState fuel t)) st bT tsT stT ∧ Runs (withLive true (Ochr.typeState fuel u)) st bU tsU stU ∧
@@ -82,25 +82,24 @@ theorem idType_split (fuel : Nat) (st st' : MState) (typed : Bool) (A t u : Term
       stR.env = st.env ∧ st.absTy.size ≤ stR.absTy.size ∧
       Runs (Ochr.observe fuel true t A' (footprint st.env [t, u]) refs) stR b₁ (a, as) st₁ ∧
       Runs (Ochr.observe fuel true u A' (footprint st.env [t, u]) refs) st₁ b₂ (b, bs) st₂ ∧
-      st'.env = st.env ∧ st.absTy.size ≤ st'.absTy.size ∧ st.nextLoan ≤ st'.nextLoan ∧
-      ∀ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
-        K.D.AgreeOld st.absTy.size D' →
-        TypedAssignment K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st' →
+      TablesGrow st₂ st' ∧ st'.env = st.env ∧ st.absTy.size ≤ st'.absTy.size ∧ st.nextLoan ≤ st'.nextLoan ∧
+      ∀ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
+        TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' →
         -- typed at the end, typed at each state before, and the states good
-        TypedAssignment K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st₁ ∧
-        TypedAssignment K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st₂ ∧
-        Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' stR ∧ CtxOk { K with Δ := Δ', D := D' } ρ' stR ∧
-        Rel { K with Δ := Δ', D := D' } ρ' φ π stR s ∧
-        CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π (st'.withTemp P) s ∧
-        GoodF K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' (st'.withTemp P) [] ∧
+        TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st₁ ∧
+        TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st₂ ∧
+        Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' stR ∧ CtxOk { K with Δ := Δ' } ρ' stR ∧
+        Rel { K with Δ := Δ' } ρ' φ π stR s ∧
+        CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π (st'.withTemp P) s ∧
+        GoodF K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' (st'.withTemp P) [] ∧
         -- the conjunction's meaning
-        (propOf { K with Δ := Δ', D := D' } ρ' (fun l => φ (π l)) P ↔
-          (meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π l)) (Value.tyS K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' A') a =
-            meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π l)) (Value.tyS K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' A') b ∧
+        (propOf { K with Δ := Δ' } ρ' (fun l => φ (π l)) P ↔
+          (meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Value.tyS K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' A') a =
+            meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Value.tyS K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' A') b ∧
           ∀ (i : Nat) (p : Pos) (x y : Value), (footprint st.env [t, u])[i]? = some p → as[i]? = some x →
             bs[i]? = some y →
-            meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π l)) (Env.hintAt K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st.env p) x =
-              meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π l)) (Env.hintAt K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st.env p) y)) := by
+            meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Env.hintAt K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st.env p) x =
+              meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Env.hintAt K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st.env p) y)) := by
   sorry
 
 /-- **The reference's `Id`** (leaf): `run`'s `.id` clause from the related state: its result, a
@@ -111,19 +110,17 @@ sides name none of them). -/
 theorem id_run (st : MState) (A t u : Term) (A' : Value) (s : SState) (π : Nat → Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) :
     ∃ r, run K ρ φ (.plain .err) (.id A t u) s = some (r, s) ∧
-      ∀ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
-        K.D.AgreeOld st.absTy.size D' →
+      ∀ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
         ((r.1.asTy).true ↔ ∀ ws, obsTyped K.dm.read (K.D.rePointed (scopeOf s) t) ws s →
-          refObs { K with Δ := Δ', D := D' } ρ' φ (K.D.rePointed (scopeOf s) t) ws
-              (Value.tyS K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' A') t s =
-            refObs { K with Δ := Δ', D := D' } ρ' φ (K.D.rePointed (scopeOf s) t) ws
-              (Value.tyS K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' A') u s) ∧
-        ∀ (ρ'' : Assignment) (Δ'' : Nat → TyS) (D'' : Decisions), (∀ σ, σ < st.absTy.size → ρ'' σ = ρ σ ∧ Δ'' σ = K.Δ σ) →
-          K.D.AgreeOld st.absTy.size D'' →
-          ∀ ws v, refObs { K with Δ := Δ', D := D' } ρ' φ (K.D.rePointed (scopeOf s) t) ws
-              (Value.tyS K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' A') v s =
-            refObs { K with Δ := Δ'', D := D'' } ρ'' φ (K.D.rePointed (scopeOf s) t) ws
-              (Value.tyS K.dm ({ K with Δ := Δ'', D := D'' } : RunCtx).M K.Γ ρ'' A') v s := by
+          refObs { K with Δ := Δ' } ρ' φ (K.D.rePointed (scopeOf s) t) ws
+              (Value.tyS K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' A') t s =
+            refObs { K with Δ := Δ' } ρ' φ (K.D.rePointed (scopeOf s) t) ws
+              (Value.tyS K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' A') u s) ∧
+        ∀ (ρ'' : Assignment) (Δ'' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ'' σ = ρ σ ∧ Δ'' σ = K.Δ σ) →
+          ∀ ws v, refObs { K with Δ := Δ' } ρ' φ (K.D.rePointed (scopeOf s) t) ws
+              (Value.tyS K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' A') v s =
+            refObs { K with Δ := Δ'' } ρ'' φ (K.D.rePointed (scopeOf s) t) ws
+              (Value.tyS K.dm ({ K with Δ := Δ'' } : RunCtx).M K.Γ ρ'' A') v s := by
   sorry
 
 /-- **The written values** (leaf, [Obs-ref]): under a typed extension the fresh values `idType` wrote
@@ -132,19 +129,16 @@ written under some typed extension; and some typed extension exists (each conten
 binding's current content). -/
 theorem fresh_realize (st st' : MState) (t : Term) (s : SState) (refs : List (Place × Value))
     (hrefs : refs.map (·.1) = K.D.rePointed (scopeOf s) t) :
-    (∀ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
-        K.D.AgreeOld st.absTy.size D' →
-      TypedAssignment K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st' →
+    (∀ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
+      TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' →
       obsTyped K.dm.read (K.D.rePointed (scopeOf s) t)
-        (refs.map fun x => meanV { K with Δ := Δ', D := D' } ρ' noFuture (.plain .err) x.2) s) ∧
+        (refs.map fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2) s) ∧
     (∀ ws, obsTyped K.dm.read (K.D.rePointed (scopeOf s) t) ws s →
-      ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
-        K.D.AgreeOld st.absTy.size D' ∧
-        TypedAssignment K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st' ∧
-        refs.map (fun x => meanV { K with Δ := Δ', D := D' } ρ' noFuture (.plain .err) x.2) = ws) ∧
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
-        K.D.AgreeOld st.absTy.size D' ∧
-      TypedAssignment K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st' := by
+      ∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+        TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' ∧
+        refs.map (fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2) = ws) ∧
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+        TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' := by
   sorry
 
 /-- (leaf) The footprint's owners are positions of the related reference state. -/
@@ -160,52 +154,53 @@ conjunction holds exactly when the two reference observations at the written val
 from `idType_split`); the reference's `Id` is that for every typed written value (`id_run`), each of
 which some typed extension writes (`fresh_realize`). -/
 theorem idType_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : idType_step_stmt K ρ φ (fuel + 1) := by
-  intro st st' typed A t u P hg hctx s π hs bh h
+  intro st st' typed A t u P hg hctx s π hs hD bh h
   obtain ⟨A', tsT, tsU, stT, stU, stR, st₁, st₂, bT, bU, b₁, b₂, refs, a, b, as, bs, htT, htU, hmv, hcs, hrp, hlo,
-    hrefs, hRenv, -, hob₁, hob₂, henv, habs, hnl, hafter⟩ :=
-    idType_split K ρ φ fuel st st' typed A t u P hg hctx s π hs bh h
+    hrefs, hRenv, -, hob₁, hob₂, hpost, henv, habs, hnl, hafter⟩ :=
+    idType_split K ρ φ fuel st st' typed A t u P hg hctx s π hs hD bh h
+  have hD₂ : DecTab K.D st₂ := hD.back hpost
+  have hD₁ : DecTab K.D st₁ := hD₂.back (hob₂.grows (grows_observe _ _ _ _ _ _))
   obtain ⟨r, hrun, hr⟩ := id_run K ρ φ st A t u A' s π hg hs
   obtain ⟨hfr₁, hfr₂, hfr₃⟩ := fresh_realize K ρ st st' t s refs hrefs
   -- the written values' meanings under an extension
-  let wsOf (Δ' : Nat → TyS) (D' : Decisions) (ρ' : Assignment) : List Sem :=
-    refs.map fun x => meanV { K with Δ := Δ', D := D' } ρ' noFuture (.plain .err) x.2
+  let wsOf (Δ' : Nat → TyS) (ρ' : Assignment) : List Sem :=
+    refs.map fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2
   let W := footprint st.env [t, u]
   let reps := K.D.rePointed (scopeOf s) t
-  let ob (Δ' : Nat → TyS) (D' : Decisions) (ρ' : Assignment) (ws : List Sem) (v : Term) : Option (List Sem) :=
-    refObs { K with Δ := Δ', D := D' } ρ' φ reps ws (Value.tyS K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' A') v s
+  let ob (Δ' : Nat → TyS) (ρ' : Assignment) (ws : List Sem) (v : Term) : Option (List Sem) :=
+    refObs { K with Δ := Δ' } ρ' φ reps ws (Value.tyS K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' A') v s
   -- the key: under a typed extension the conjunction is the equality of the two observations
-  have key : ∀ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
-        K.D.AgreeOld st.absTy.size D' →
-      TypedAssignment K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st' →
-      (propOf { K with Δ := Δ', D := D' } ρ' (fun l => φ (π l)) P ↔ ob Δ' D' ρ' (wsOf Δ' D' ρ') t = ob Δ' D' ρ' (wsOf Δ' D' ρ') u) := by
-    intro ρ' Δ' D' he hD hty
-    obtain ⟨hty₁, hty₂, hgR, hctxR, hsR, -, -, -, hP⟩ := hafter ρ' Δ' D' he hD hty
-    obtain ⟨henv₁, -, -, hob1⟩ := (ih.at { K with Δ := Δ', D := D' } ρ' φ).observe_step stR st₁ true t A' W refs a as hgR hctxR s π hsR
-      b₁ hob₁
-    obtain ⟨⟨hg₁, hctx₁, hs₁⟩, o₁, ho₁, ho₁0, ho₁t⟩ := hob1 ρ' Δ' D' (fun _ _ => ⟨rfl, rfl⟩) (Decisions.AgreeOld.refl _ _) hty₁
-    obtain ⟨-, -, -, hob2⟩ := (ih.at { K with Δ := Δ', D := D' } ρ' φ).observe_step st₁ st₂ true u A' W refs b bs hg₁ hctx₁ s π hs₁
-      b₂ hob₂
-    obtain ⟨-, o₂, ho₂, ho₂0, ho₂t⟩ := hob2 ρ' Δ' D' (fun _ _ => ⟨rfl, rfl⟩) (Decisions.AgreeOld.refl _ _) hty₂
+  have key : ∀ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
+      TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' →
+      (propOf { K with Δ := Δ' } ρ' (fun l => φ (π l)) P ↔ ob Δ' ρ' (wsOf Δ' ρ') t = ob Δ' ρ' (wsOf Δ' ρ') u) := by
+    intro ρ' Δ' he hty
+    obtain ⟨hty₁, hty₂, hgR, hctxR, hsR, -, -, -, hP⟩ := hafter ρ' Δ' he hty
+    obtain ⟨henv₁, -, -, hob1⟩ := (ih.at { K with Δ := Δ' } ρ' φ).observe_step stR st₁ true t A' W refs a as hgR hctxR s π hsR
+      hD₁ b₁ hob₁
+    obtain ⟨⟨hg₁, hctx₁, hs₁⟩, o₁, ho₁, ho₁0, ho₁t⟩ := hob1 ρ' Δ' (fun _ _ => ⟨rfl, rfl⟩) hty₁
+    obtain ⟨-, -, -, hob2⟩ := (ih.at { K with Δ := Δ' } ρ' φ).observe_step st₁ st₂ true u A' W refs b bs hg₁ hctx₁ s π hs₁
+      hD₂ b₂ hob₂
+    obtain ⟨-, o₂, ho₂, ho₂0, ho₂t⟩ := hob2 ρ' Δ' (fun _ _ => ⟨rfl, rfl⟩) hty₂
     rw [hrefs] at ho₁ ho₂
     rw [henv₁, hRenv] at ho₂t
     rw [hRenv] at ho₁t
     have hl₁ := refObs_length _ _ _ ho₁
     have hl₂ := refObs_length _ _ _ ho₂
     -- off the footprint the two observations agree (`footprint_coverage`, at the starting context)
-    have hindep := ((hr ρ' Δ' D' he hD).2 ρ K.Δ K.D (fun _ _ => ⟨rfl, rfl⟩) (Decisions.AgreeOld.refl _ _))
-    have hb₁ : refObs K ρ φ reps (wsOf Δ' D' ρ') (Value.tyS K.dm ({ K with Δ := K.Δ, D := K.D } : RunCtx).M K.Γ ρ A') t s = some o₁ := by
+    have hindep := ((hr ρ' Δ' he).2 ρ K.Δ (fun _ _ => ⟨rfl, rfl⟩))
+    have hb₁ : refObs K ρ φ reps (wsOf Δ' ρ') (Value.tyS K.dm ({ K with Δ := K.Δ } : RunCtx).M K.Γ ρ A') t s = some o₁ := by
       rw [← hindep]; exact ho₁
-    have hb₂ : refObs K ρ φ reps (wsOf Δ' D' ρ') (Value.tyS K.dm ({ K with Δ := K.Δ, D := K.D } : RunCtx).M K.Γ ρ A') u s = some o₂ := by
+    have hb₂ : refObs K ρ φ reps (wsOf Δ' ρ') (Value.tyS K.dm ({ K with Δ := K.Δ } : RunCtx).M K.Γ ρ A') u s = some o₂ := by
       rw [← hindep]; exact ho₂
     have hout : ∀ j, j < s.positions.length → ¬ (∃ p, s.positions[j]? = some p ∧ p ∈ W) →
         o₁.tail[j]? = o₂.tail[j]? := by
       intro j hj hm
       have hpj : s.positions[j]? = some s.positions[j] := List.getElem?_eq_getElem hj
       have hp : s.positions[j] ∉ W := fun hW => hm ⟨_, hpj, hW⟩
-      exact (ih.at K ρ φ).footprint_coverage st stT stU A t u s.positions[j] o₁ o₂ j reps (wsOf Δ' D' ρ') _ tsT tsU hg hctx
+      exact (ih.at K ρ φ).footprint_coverage st stT stU A t u s.positions[j] o₁ o₂ j reps (wsOf Δ' ρ') _ tsT tsU hg hctx
         s π hs bT htT bU htU hmv hcs hrp hlo hp hpj hb₁ hb₂
-    have e1 : ob Δ' D' ρ' (wsOf Δ' D' ρ') t = some o₁ := ho₁
-    have e2 : ob Δ' D' ρ' (wsOf Δ' D' ρ') u = some o₂ := ho₂
+    have e1 : ob Δ' ρ' (wsOf Δ' ρ') t = some o₁ := ho₁
+    have e2 : ob Δ' ρ' (wsOf Δ' ρ') u = some o₂ := ho₂
     rw [e1, e2, Option.some.injEq, obs_eq_iff o₁ o₂ s.positions.length hl₁ hl₂ _ hout, hP, ho₁0, ho₂0, Option.some.injEq]
     apply and_congr_right
     intro _
@@ -235,25 +230,25 @@ theorem idType_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : idType_step_stmt
       rw [← ho₁t i j p hi hpj, ← ho₂t i j p hi hpj, hx, hy] at e
       simpa using e
   -- the reference's `Id` is the equality at every typed written value
-  refine ⟨henv, habs, hnl, r, hrun, ?_, fun hrt ρ' Δ' D' he hD hty =>
-    (key ρ' Δ' D' he hD hty).mpr ((hr ρ' Δ' D' he hD).1.mp hrt _ (hfr₁ ρ' Δ' D' he hD hty))⟩
+  refine ⟨henv, habs, hnl, r, hrun, ?_, fun hrt ρ' Δ' he hty =>
+    (key ρ' Δ' he hty).mpr ((hr ρ' Δ' he).1.mp hrt _ (hfr₁ ρ' Δ' he hty))⟩
   by_cases hrt : (r.1.asTy).true
-  · obtain ⟨ρ', Δ', D', he, hD, hty⟩ := hfr₃
-    obtain ⟨-, -, -, -, -, hctx', hrel', hgf', -⟩ := hafter ρ' Δ' D' he hD hty
-    exact ⟨ρ', Δ', D', he, hD, hctx', hrel', hgf', fun _ => hrt,
-      fun _ => (key ρ' Δ' D' he hD hty).mpr ((hr ρ' Δ' D' he hD).1.mp hrt _ (hfr₁ ρ' Δ' D' he hD hty))⟩
-  · have hnot : ¬ ∀ ws, obsTyped K.dm.read reps ws s → ob K.Δ K.D ρ ws t = ob K.Δ K.D ρ ws u :=
-      fun hall => hrt ((hr ρ K.Δ K.D (fun _ _ => ⟨rfl, rfl⟩) (Decisions.AgreeOld.refl _ _)).1.mpr hall)
+  · obtain ⟨ρ', Δ', he, hty⟩ := hfr₃
+    obtain ⟨-, -, -, -, -, hctx', hrel', hgf', -⟩ := hafter ρ' Δ' he hty
+    exact ⟨ρ', Δ', he, hctx', hrel', hgf', fun _ => hrt,
+      fun _ => (key ρ' Δ' he hty).mpr ((hr ρ' Δ' he).1.mp hrt _ (hfr₁ ρ' Δ' he hty))⟩
+  · have hnot : ¬ ∀ ws, obsTyped K.dm.read reps ws s → ob K.Δ ρ ws t = ob K.Δ ρ ws u :=
+      fun hall => hrt ((hr ρ K.Δ (fun _ _ => ⟨rfl, rfl⟩)).1.mpr hall)
     obtain ⟨ws, hws⟩ := Classical.not_forall.mp hnot
     obtain ⟨hobs, hne⟩ := Classical.not_imp.mp hws
-    obtain ⟨ρ', Δ', D', he, hD, hty, hwsEq⟩ := hfr₂ ws hobs
-    obtain ⟨-, -, -, -, -, hctx', hrel', hgf', -⟩ := hafter ρ' Δ' D' he hD hty
-    refine ⟨ρ', Δ', D', he, hD, hctx', hrel', hgf', fun hP => ?_, fun hr' => absurd hr' hrt⟩
+    obtain ⟨ρ', Δ', he, hty, hwsEq⟩ := hfr₂ ws hobs
+    obtain ⟨-, -, -, -, -, hctx', hrel', hgf', -⟩ := hafter ρ' Δ' he hty
+    refine ⟨ρ', Δ', he, hctx', hrel', hgf', fun hP => ?_, fun hr' => absurd hr' hrt⟩
     exfalso
-    have heq := (key ρ' Δ' D' he hD hty).mp hP
-    have hws' : wsOf Δ' D' ρ' = ws := hwsEq
+    have heq := (key ρ' Δ' he hty).mp hP
+    have hws' : wsOf Δ' ρ' = ws := hwsEq
     rw [hws'] at heq
-    have hi := ((hr ρ' Δ' D' he hD).2 ρ K.Δ K.D (fun _ _ => ⟨rfl, rfl⟩) (Decisions.AgreeOld.refl _ _))
+    have hi := ((hr ρ' Δ' he).2 ρ K.Δ (fun _ _ => ⟨rfl, rfl⟩))
     exact hne ((hi ws t).symm.trans (heq.trans (hi ws u)))
 
 /-! ### The bridge to the frame property's `Id` case (docs/31 D70, D74) -/

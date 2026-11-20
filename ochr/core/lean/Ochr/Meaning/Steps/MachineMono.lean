@@ -103,6 +103,16 @@ theorem GrowsM.ite {α : Type} {c : Prop} [Decidable c] {x y : M α} (hx : Grows
     GrowsM (if c then x else y) := by
   split <;> assumption
 
+theorem GrowsM.forIn {α β : Type} (xs : List α) (b : β) {body : α → β → M (ForInStep β)}
+    (hb : ∀ a b, GrowsM (body a b)) : GrowsM (forIn xs b body) := by
+  induction xs generalizing b with
+  | nil => exact GrowsM.pure b
+  | cons a as ih =>
+    rw [List.forIn_cons]
+    exact (hb a b).bind fun r => by cases r with
+      | done b' => exact GrowsM.pure b'
+      | yield b' => exact ih b'
+
 /-- The tables after a run of `x` only grew. -/
 theorem Runs.grows {α : Type} {x : M α} {st st' : MState} {b : Nat} {a : α} (hx : GrowsM x)
     (h : Runs x st b a st') : TablesGrow st st' :=
@@ -114,7 +124,7 @@ theorem Runs.grows {α : Type} {x : M α} {st st' : MState} {b : Nat} {a : α} (
 at `st` reads only the tables' old entries (it names only unknowns `st` has, and their readings are
 frozen), so it succeeds at `st'` with the same answer, which the decisions give. The one-way
 simulation of `Decide.lean` (`DecideScope.decideSim`) for tables whose old entries agree, the
-converse direction of `DecExtend.decAligned_grow` and the same lemma underneath. Open (the machine
+converse direction of the removed `DecExtend.decAligned_grow` and the same lemma underneath. Open (the machine
 lane). -/
 theorem DecTab.back {D : Decisions} {st st' : MState} (hd : DecTab D st') (hg : TablesGrow st st') :
     DecTab D st := by
@@ -126,18 +136,132 @@ theorem DecTab.of_rest {α : Type} {D : Decisions} {st₁ st' : MState} {rest : 
     (hd : DecTab D st') (hrest : GrowsM rest) (h : Runs rest st₁ b a st') : DecTab D st₁ :=
   hd.back (h.grows hrest)
 
+theorem GrowsM.err {α : Type} (m : String) : GrowsM (Ochr.err m : M α) := by
+  intro st b c st' h
+  obtain ⟨L, left, log, h⟩ := h
+  simp [runMachineL_err] at h
+
+theorem GrowsM.exhausted {α : Type} (m : String) : GrowsM (Ochr.exhausted m : M α) := by
+  intro st b c st' h
+  obtain ⟨L, left, log, h⟩ := h
+  simp [runMachineL_exhausted] at h
+
+theorem GrowsM.map {α β : Type} (g : α → β) {x : M α} (hx : GrowsM x) : GrowsM (g <$> x) := by
+  rw [map_eq_pure_bind]
+  exact hx.bind fun a => GrowsM.pure _
+
+theorem GrowsM.discard {α : Type} {x : M α} (hx : GrowsM x) : GrowsM (discard x) := by
+  show GrowsM (Functor.mapConst PUnit.unit x)
+  rw [LawfulFunctor.map_const]
+  exact hx.map _
+
 /-! ## (a) Every machine function's successful run only extends the tables
 
-One field per machine function a step statement or an assembly runs, at every fuel. The proof is a
-closure induction over the machine's mutual block (`Slice.DecideKeep`'s technique, with
-`TablesGrow` in place of equality): every write of the state either keeps the tables (`modify` of
-the frames, the flags, the log, the records), or pushes an unknown (`freshAbs`), or is a private
-computation's exit, which keeps the names (see the module docstring). Open (the machine lane). -/
-structure MachineGrows (fuel : Nat) : Prop where
-  -- filled as the change of form reaches each assembly
-  dummy : True
+One statement per machine function an assembly runs, at every fuel (added as the change of form
+reaches each assembly). The proof is one closure induction over the machine's mutual block
+(`Slice.DecideKeep`'s technique, with `TablesGrow` in place of equality): every write of the
+state either keeps the tables (the frames, the flags, the log, the records), or pushes an unknown
+(`freshAbs`), or is a private computation's exit, which keeps the names (the module docstring).
+Open (the machine lane). -/
 
-theorem machineGrows : ∀ fuel, MachineGrows fuel := by
-  sorry
+theorem grows_content (p : Place) : GrowsM (Ochr.content p) := by sorry
+theorem grows_content? (p : Place) : GrowsM (Ochr.content? p) := by sorry
+theorem grows_ppPlace (p : Place) : GrowsM (Ochr.ppPlace p) := by sorry
+theorem grows_absType (σ : Nat) : GrowsM (Ochr.absType σ) := by sorry
+theorem grows_lookupInd (n : String) : GrowsM (Ochr.lookupInd n) := by sorry
+theorem grows_recordedNeutral (v : Value) : GrowsM (Ochr.recordedNeutral v) := by sorry
+theorem grows_setPlace (p : Place) (v : Value) : GrowsM (Ochr.setPlace p v) := by sorry
+theorem grows_logEffect (p : Place) (k : String) : GrowsM (Ochr.logEffect p k) := by sorry
+theorem grows_movedPlace (fuel : Nat) (q : Place) : GrowsM (Ochr.movedPlace fuel q) := by sorry
+theorem grows_accessPath (fuel : Nat) (p : Place) : GrowsM (Ochr.accessPath fuel p) := by sorry
+theorem grows_accessInside (fuel : Nat) (p : Place) (o : Bool) : GrowsM (Ochr.accessInside fuel p o) := by sorry
+theorem grows_endBorrow (fuel : Nat) (l : Nat) : GrowsM (Ochr.endBorrow fuel l) := by sorry
+theorem grows_etaInPlace (fuel σ : Nat) (d : IndDecl) (ps : List Value) :
+    GrowsM (Ochr.etaInPlace fuel σ d ps) := by sorry
+theorem grows_placeTypeQ (fuel : Nat) (p : Place) : GrowsM (Ochr.placeType? fuel p) := by sorry
+theorem grows_substEnv (fuel : Nat) (x r : Value) (t : Bool) : GrowsM (Ochr.substEnv fuel x r t) := by sorry
+theorem grows_generalizeNeutral (fuel : Nat) (p : Place) (n : Value) :
+    GrowsM (Ochr.generalizeNeutral fuel p n) := by sorry
+theorem grows_renormAll (fuel : Nat) : GrowsM (Ochr.renormAll fuel) := by sorry
+theorem grows_refine (fuel σ : Nat) (r : Value) : GrowsM (Ochr.refine fuel σ r) := by sorry
+theorem grows_dropAtJoin (fuel : Nat) (q : Place) : GrowsM (Ochr.dropAtJoin fuel q) := by sorry
+
+theorem grows_restoreKeep (saved : MState) : GrowsM (Ochr.restoreKeep saved) := by sorry
+theorem grows_expectTy (fuel : Nat) (w : String) (T : Option Value) (A : Value) :
+    GrowsM (Ochr.expectTy fuel w T A) := by sorry
+theorem grows_mkEqM (fuel : Nat) (A a b : Value) : GrowsM (Ochr.mkEqM fuel A a b) := by sorry
+theorem grows_evalType (fuel : Nat) (t : Term) : GrowsM (Ochr.evalType fuel t) := by sorry
+theorem grows_eval (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value) :
+    GrowsM (Ochr.eval fuel typed t hint) := by sorry
+theorem grows_blockEntry (fuel : Nat) (mt : Term) : GrowsM (Ochr.blockEntry fuel mt) := by sorry
+theorem grows_closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Value) :
+    GrowsM (Ochr.closeBlock fuel mt arms B?) := by sorry
+theorem grows_joinDrop (fuel : Nat) (mt : Term) {run : M (Value × Option Value)} (h : GrowsM run) :
+    GrowsM (Ochr.joinDrop fuel mt run) := by sorry
+theorem grows_demand (b : Bool) : GrowsM (Ochr.demand b) := by sorry
+theorem grows_getFlags : GrowsM Ochr.getFlags := by sorry
+theorem grows_setFlags (f : Bool × Bool) : GrowsM (Ochr.setFlags f) := by sorry
+
+theorem grows_wholeReturned (v : Value) : GrowsM (Ochr.wholeReturned v) := by sorry
+theorem grows_pushTempAt (f : Nat) (v : Value) : GrowsM (Ochr.pushTempAt f v) := by sorry
+theorem grows_topIdx : GrowsM Ochr.topIdx := by sorry
+theorem grows_popFrame (fuel : Nat) : GrowsM (Ochr.popFrame fuel) := by sorry
+theorem grows_popTemp : GrowsM Ochr.popTemp := by sorry
+theorem grows_lendEnv (fuel : Nat) (op : LendOp) : GrowsM (Ochr.lendEnv fuel op) := by sorry
+theorem grows_observe (fuel : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos)
+    (refs : List (Place × Value)) : GrowsM (Ochr.observe fuel typed t A W refs) := by sorry
+
+/-- One step of the closure: a combinator or a machine function's statement. -/
+macro "grows_step" : tactic => `(tactic| first
+  | with_reducible exact GrowsM.pure _
+  | with_reducible exact GrowsM.get
+  | with_reducible exact GrowsM.err _
+  | with_reducible exact GrowsM.exhausted _
+  | with_reducible exact grows_content _
+  | with_reducible exact grows_content? _
+  | with_reducible exact grows_ppPlace _
+  | with_reducible exact grows_absType _
+  | with_reducible exact grows_lookupInd _
+  | with_reducible exact grows_recordedNeutral _
+  | with_reducible exact grows_setPlace _ _
+  | with_reducible exact grows_logEffect _ _
+  | with_reducible exact grows_movedPlace _ _
+  | with_reducible exact grows_accessPath _ _
+  | with_reducible exact grows_accessInside _ _ _
+  | with_reducible exact grows_endBorrow _ _
+  | with_reducible exact grows_etaInPlace _ _ _ _
+  | with_reducible exact grows_placeTypeQ _ _
+  | with_reducible exact grows_substEnv _ _ _ _
+  | with_reducible exact grows_generalizeNeutral _ _ _
+  | with_reducible exact grows_renormAll _
+  | with_reducible exact grows_refine _ _ _
+  | with_reducible exact grows_dropAtJoin _ _
+  | with_reducible exact grows_restoreKeep _
+  | with_reducible exact grows_expectTy _ _ _ _
+  | with_reducible exact grows_mkEqM _ _ _ _
+  | with_reducible exact grows_evalType _ _
+  | with_reducible exact grows_eval _ _ _ _
+  | with_reducible exact grows_blockEntry _ _
+  | with_reducible exact grows_closeBlock _ _ _ _
+  | with_reducible exact grows_demand _
+  | with_reducible exact grows_getFlags
+  | with_reducible exact grows_setFlags _
+  | (with_reducible refine grows_joinDrop _ _ ?_)
+  | with_reducible exact grows_wholeReturned _
+  | with_reducible exact grows_pushTempAt _ _
+  | with_reducible exact grows_topIdx
+  | with_reducible exact grows_popFrame _
+  | with_reducible exact grows_popTemp
+  | with_reducible exact grows_lendEnv _ _
+  | (with_reducible exact GrowsM.modify fun _ => ⟨rfl, rfl, Nat.le_refl _, fun _ _ => rfl, Nat.le_refl _, Nat.le_refl _⟩)
+  | (with_reducible refine GrowsM.bind ?_ (fun _ => ?_))
+  | (with_reducible refine GrowsM.forIn _ _ (fun _ _ => ?_))
+  | (with_reducible refine GrowsM.discard ?_)
+  | (with_reducible refine GrowsM.map _ ?_)
+  | split
+  | (dsimp only))
+
+/-- The closure, to the end: every successful run of the term only extends the tables. -/
+macro "grows_go" : tactic => `(tactic| repeat (any_goals grows_step))
 
 end Ochr.Meaning.Steps

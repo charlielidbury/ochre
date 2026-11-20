@@ -193,59 +193,53 @@ theorem declsOf_accessLentPrefix (s : SState) (pos : Pos) (steps : List Step) :
 
 theorem runCtx_with_self (K : RunCtx) : ({ K with Δ := K.Δ } : RunCtx) = K := by cases K; rfl
 
-theorem runCtx_with_self' (K : RunCtx) : ({ K with Δ := K.Δ, D := K.D } : RunCtx) = K := by cases K; rfl
+theorem runCtx_with_self' (K : RunCtx) : ({ K with Δ := K.Δ } : RunCtx) = K := by cases K; rfl
 
-/-- **A value naming only old unknowns means the same under an extension** (leaf;
-`AssignCongr.meanV_congrA` for the assignment, `DecExtend.meanV_congrD` for the decisions, and `Δ`
-read only at the unknowns a value holds). -/
-theorem meanV_ext {n : Nat} {ρ' : Assignment} {Δ' : Nat → TyS} {D' : Decisions} (v : Value) (ψ : Future) (hint : TyS)
-    (hv : ∀ σ, v.hasAbs σ = true → σ < n) (ha : ∀ σ, σ < n → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ)
-    (hd : K.D.AgreeOld n D') :
-    meanV { K with Δ := Δ', D := D' } ρ' ψ hint v = meanV K ρ ψ hint v := by
+/-- **A value naming only old unknowns means the same under an extension** of the assignment and
+`Δ` (leaf; `AssignCongr.meanV_congrA` for the assignment, and `Δ` read only at the unknowns a value
+holds). The decisions are not extended since the slice's change of form (main's decision,
+2026-11-20), so the decisions' half of this lemma is gone. -/
+theorem meanV_ext {n : Nat} {ρ' : Assignment} {Δ' : Nat → TyS} (v : Value) (ψ : Future) (hint : TyS)
+    (hv : ∀ σ, v.hasAbs σ = true → σ < n) (ha : ∀ σ, σ < n → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) :
+    meanV { K with Δ := Δ' } ρ' ψ hint v = meanV K ρ ψ hint v := by
   sorry
 
 /-- From `st` (related to some reference state under `K`, `ρ`) to `st'`, related to `s'` under an
-assignment, a `Δ` and decisions extended at the unknowns created (docs/31 D71's rule: the decisions
-agree with the old ones on inputs naming only old unknowns), with `Good` and the context kept. -/
-structure Ext (π : Nat → Nat) (st st' : MState) (s' : SState) (ρ' : Assignment) (Δ' : Nat → TyS)
-    (D' : Decisions) : Prop where
+assignment and a `Δ` extended at the unknowns created (docs/31 D71's rule), with `Good` and the
+context kept; the decisions are the context's, fixed for the run (main's decision 2026-11-20). -/
+structure Ext (π : Nat → Nat) (st st' : MState) (s' : SState) (ρ' : Assignment) (Δ' : Nat → TyS) : Prop where
   size : st.absTy.size ≤ st'.absTy.size
   agree : ∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ
-  dec : K.D.AgreeOld st.absTy.size D'
-  ctx : CtxOk { K with Δ := Δ', D := D' } ρ' st'
-  rel : Rel { K with Δ := Δ', D := D' } ρ' φ π st' s'
-  good : Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st'
+  ctx : CtxOk { K with Δ := Δ' } ρ' st'
+  rel : Rel { K with Δ := Δ' } ρ' φ π st' s'
+  good : Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
 
 theorem Ext.refl {π : Nat → Nat} {st : MState} {s : SState} (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hs : Rel K ρ φ π st s) : Ext K ρ φ π st st s ρ K.Δ K.D :=
-  ⟨Nat.le_refl _, fun _ _ => ⟨rfl, rfl⟩, Decisions.AgreeOld.refl _ _, by rw [runCtx_with_self' K]; exact hctx,
-    by rw [runCtx_with_self' K]; exact hs, by rw [runCtx_with_self' K]; exact hg⟩
+    (hs : Rel K ρ φ π st s) : Ext K ρ φ π st st s ρ K.Δ :=
+  ⟨Nat.le_refl _, fun _ _ => ⟨rfl, rfl⟩, by rw [runCtx_with_self K]; exact hctx,
+    by rw [runCtx_with_self K]; exact hs, by rw [runCtx_with_self K]; exact hg⟩
 
 theorem Ext.trans {π : Nat → Nat} {st st₁ st₂ : MState} {s₁ s₂ : SState} {ρ₁ ρ₂ : Assignment} {Δ₁ Δ₂ : Nat → TyS}
-    {D₁ D₂ : Decisions}
-    (h₁ : Ext K ρ φ π st st₁ s₁ ρ₁ Δ₁ D₁) (h₂ : Ext { K with Δ := Δ₁, D := D₁ } ρ₁ φ π st₁ st₂ s₂ ρ₂ Δ₂ D₂) :
-    Ext K ρ φ π st st₂ s₂ ρ₂ Δ₂ D₂ where
+    (h₁ : Ext K ρ φ π st st₁ s₁ ρ₁ Δ₁) (h₂ : Ext { K with Δ := Δ₁ } ρ₁ φ π st₁ st₂ s₂ ρ₂ Δ₂) :
+    Ext K ρ φ π st st₂ s₂ ρ₂ Δ₂ where
   size := Nat.le_trans h₁.size h₂.size
   agree σ hσ := by
     obtain ⟨a, b⟩ := h₂.agree σ (Nat.lt_of_lt_of_le hσ h₁.size)
     obtain ⟨c, d⟩ := h₁.agree σ hσ
     exact ⟨a.trans c, b.trans d⟩
-  dec := Decisions.AgreeOld.trans h₁.dec h₂.dec h₁.size
   ctx := h₂.ctx
   rel := h₂.rel
   good := h₂.good
 
 /-- The same state, the reference state replaced by one the checker's is also related to. -/
-theorem Ext.with_rel {π : Nat → Nat} {st st' : MState} {s' s'' : SState} {ρ' : Assignment} {Δ' : Nat → TyS}
-    {D' : Decisions} (h : Ext K ρ φ π st st' s' ρ' Δ' D') (hr : Rel { K with Δ := Δ', D := D' } ρ' φ π st' s'') :
-    Ext K ρ φ π st st' s'' ρ' Δ' D' :=
-  ⟨h.size, h.agree, h.dec, h.ctx, hr, h.good⟩
+theorem Ext.with_rel {π : Nat → Nat} {st st' : MState} {s' s'' : SState} {ρ' : Assignment} {Δ' : Nat → TyS} (h : Ext K ρ φ π st st' s' ρ' Δ') (hr : Rel { K with Δ := Δ' } ρ' φ π st' s'') :
+    Ext K ρ φ π st st' s'' ρ' Δ' :=
+  ⟨h.size, h.agree, h.ctx, hr, h.good⟩
 
 /-- A step's conclusion in the induction hypothesis's form (`ExtOk` and the relation), as an `Ext`. -/
-theorem Ext.of_extOk {π : Nat → Nat} {st st' : MState} {s' : SState} {ρ' : Assignment} {Δ' : Nat → TyS}
-    {D' : Decisions} (hsz : st.absTy.size ≤ st'.absTy.size) (he : ExtOk K ρ st st' ρ' Δ' D')
-    (hr : Rel { K with Δ := Δ', D := D' } ρ' φ π st' s') : Ext K ρ φ π st st' s' ρ' Δ' D' :=
-  ⟨hsz, he.1, he.2.1, he.2.2.1, hr, he.2.2.2⟩
+theorem Ext.of_extOk {π : Nat → Nat} {st st' : MState} {s' : SState} {ρ' : Assignment} {Δ' : Nat → TyS} (hsz : st.absTy.size ≤ st'.absTy.size) (he : ExtOk K ρ st st' ρ' Δ')
+    (hr : Rel { K with Δ := Δ' } ρ' φ π st' s') : Ext K ρ φ π st st' s' ρ' Δ' :=
+  ⟨hsz, he.1, he.2.1, hr, he.2.2⟩
 
 /-- **The checker's access keeps its run context** (it ends borrows: no global or declaration
 changes). An end of a borrow of a dependent type may keep an unknown nothing names (`repackCheck`,
@@ -262,13 +256,13 @@ since the checker's run on them fails before the access. The drop of one place n
 grow the table (the spine lead's).
 
 RESTATED (docs/31 D76, D78): [Repack]'s new unknown is used for the check only, named by nothing in
-Ω, so the assignment and `Δ` stay; the decisions are extended (`D'`, agreeing on old inputs), and
-the relation and `Good` the access left under `K` carry over to the extended context. -/
+Ω, so the assignment and `Δ` stay; the decisions are the context's, aligned after the access
+(`hD`, main's fixed table, 2026-11-20), and the relation and `Good` the access left carry over. -/
 theorem access_ctx (fuel : Nat) (st st' : MState) (q : Place) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hD : DecTab K.D st')
     (h : Runs (do Ochr.accessPath fuel q; Ochr.accessInside fuel q) st b () st')
     {s' : SState} {π : Nat → Nat} (hs' : Rel K ρ φ π st' s') (hg' : Good K.dm K.M K.Γ ρ st') :
-    ∃ D' : Decisions, Ext K ρ φ π st st' s' ρ K.Δ D' := by
+    Ext K ρ φ π st st' s' ρ K.Δ := by
   sorry
 
 /-- **The drop of one place where the place exists** (`dropOne_step`'s main case), assembled from
@@ -461,14 +455,14 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
 
 /-- **The checker's drop of one place keeps the run context** (`dropAtJoin` ends a borrow, accesses
 and writes: no global or declaration changes, and no unknown is NAMED, but an end's [Repack] may make
-one for its check, as [Access] does: `access_ctx`). Restated with the decisions extended (docs/31
-D78; as first stated, the context unchanged, it was false for the reason `access_ctx` was), the
-relation and `Good` the drop left under `K` carried over. Open: not tried. -/
+one for its check, as [Access] does: `access_ctx`). The decisions aligned after the drop (`hD`,
+main's fixed table; as first stated, the context unchanged and no such hypothesis, it was false for
+the reason `access_ctx` was), the relation and `Good` the drop left carried over. Open: not tried. -/
 theorem dropAtJoin_ctx (fuel : Nat) (st st' : MState) (q : Place) (b : Nat)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hD : DecTab K.D st')
     (h : Runs (Ochr.dropAtJoin (fuel + 1) q) st b () st')
     {s' : SState} {π : Nat → Nat} (hs' : Rel K ρ φ π st' s') (hg' : Good K.dm K.M K.Γ ρ st') :
-    ∃ D' : Decisions, Ext K ρ φ π st st' s' ρ K.Δ D' := by
+    Ext K ρ φ π st st' s' ρ K.Δ := by
   sorry
 
 

@@ -355,49 +355,6 @@ def _root_.Ochr.Term.absBelow (n : Nat) (t : Term) : Prop := ∀ σ, t.anyAtom (
 theorem _root_.Ochr.Term.absBelow_mono {n m : Nat} {t : Term} (h : t.absBelow n) (hnm : n ≤ m) : t.absBelow m :=
   fun σ hσ => Nat.lt_of_lt_of_le (h σ hσ) hnm
 
-/-- **Two decision tables agree on the inputs naming no unknown at or above `n`**: a place's or a
-reading's decision names none (they read the readings in scope, not values); a term's names those
-its embedded values hold. -/
-structure _root_.Ochr.Meaning.Decisions.AgreeOld (n : Nat) (D D' : Decisions) : Prop where
-  placeDecl : ∀ sc p, D'.placeDecl sc p = D.placeDecl sc p
-  copy : ∀ r, D'.copy r = D.copy r
-  flags : ∀ sc t, t.absBelow n → D'.flags sc t = D.flags sc t
-  declOf : ∀ sc t, t.absBelow n → D'.declOf sc t = D.declOf sc t
-  piSort : ∀ sc t, t.absBelow n → D'.piSort sc t = D.piSort sc t
-  joinMoves : ∀ sc entry t, t.absBelow n → D'.joinMoves sc entry t = D.joinMoves sc entry t
-  rePointed : ∀ sc t, t.absBelow n → D'.rePointed sc t = D.rePointed sc t
-  typeDecl : ∀ sc t, t.absBelow n → D'.typeDecl sc t = D.typeDecl sc t
-  blockCaps : ∀ sc entry t, t.absBelow n → D'.blockCaps sc entry t = D.blockCaps sc entry t
-
-theorem _root_.Ochr.Meaning.Decisions.AgreeOld.refl (n : Nat) (D : Decisions) : D.AgreeOld n D :=
-  ⟨fun _ _ => rfl, fun _ => rfl, fun _ _ _ => rfl, fun _ _ _ => rfl, fun _ _ _ => rfl,
-    fun _ _ _ _ => rfl, fun _ _ _ => rfl, fun _ _ _ => rfl, fun _ _ _ _ => rfl⟩
-
-/-- Agreement on the inputs below `n` is agreement below any smaller bound. -/
-theorem _root_.Ochr.Meaning.Decisions.AgreeOld.mono {n k : Nat} {D D' : Decisions} (h : D.AgreeOld n D') (hk : k ≤ n) :
-    D.AgreeOld k D' where
-  placeDecl := h.placeDecl
-  copy := h.copy
-  flags sc t ht := h.flags sc t (Term.absBelow_mono ht hk)
-  declOf sc t ht := h.declOf sc t (Term.absBelow_mono ht hk)
-  piSort sc t ht := h.piSort sc t (Term.absBelow_mono ht hk)
-  joinMoves sc e t ht := h.joinMoves sc e t (Term.absBelow_mono ht hk)
-  rePointed sc t ht := h.rePointed sc t (Term.absBelow_mono ht hk)
-  typeDecl sc t ht := h.typeDecl sc t (Term.absBelow_mono ht hk)
-  blockCaps sc e t ht := h.blockCaps sc e t (Term.absBelow_mono ht hk)
-
-theorem _root_.Ochr.Meaning.Decisions.AgreeOld.trans {n m : Nat} {D₁ D₂ D₃ : Decisions}
-    (h₁ : D₁.AgreeOld n D₂) (h₂ : D₂.AgreeOld m D₃) (hnm : n ≤ m) : D₁.AgreeOld n D₃ where
-  placeDecl sc p := (h₂.placeDecl sc p).trans (h₁.placeDecl sc p)
-  copy r := (h₂.copy r).trans (h₁.copy r)
-  flags sc t ht := (h₂.flags sc t (Term.absBelow_mono ht hnm)).trans (h₁.flags sc t ht)
-  declOf sc t ht := (h₂.declOf sc t (Term.absBelow_mono ht hnm)).trans (h₁.declOf sc t ht)
-  piSort sc t ht := (h₂.piSort sc t (Term.absBelow_mono ht hnm)).trans (h₁.piSort sc t ht)
-  joinMoves sc e t ht := (h₂.joinMoves sc e t (Term.absBelow_mono ht hnm)).trans (h₁.joinMoves sc e t ht)
-  rePointed sc t ht := (h₂.rePointed sc t (Term.absBelow_mono ht hnm)).trans (h₁.rePointed sc t ht)
-  typeDecl sc t ht := (h₂.typeDecl sc t (Term.absBelow_mono ht hnm)).trans (h₁.typeDecl sc t ht)
-  blockCaps sc e t ht := (h₂.blockCaps sc e t (Term.absBelow_mono ht hnm)).trans (h₁.blockCaps sc e t ht)
-
 /-- The run context is the checker state's: its declarations, a data model that speaks for each
 and reads their declared types as the run does (`CtxFaithful`, docs/34 §9), Δ at the state's
 unknowns (`DeltaOk`), globals with no label (`run_congr`'s `hK`), Σ (`GlobalsOk`), its decisions
@@ -855,11 +812,14 @@ def KeptAfter (st st' : MState) : Prop :=
     st.absTy.size ≤ st'.absTy.size ∧ (∀ σ, σ < st.absTy.size → st'.absTy[σ]? = st.absTy[σ]?) ∧
     st.nextLoan ≤ st'.nextLoan
 
-/-- An extension of the assignment, `Δ` and the decisions at the unknowns created between `st` and
-`st'` (D71's rule) under which `st'` meets `CtxOk` and is good. -/
-def ExtOk (st st' : MState) (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) : Prop :=
-  (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
-    CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st'
+/-- An extension of the assignment and `Δ` at the unknowns created between `st` and `st'` (D71's
+rule) under which `st'` meets `CtxOk` and is good. The decisions are the context's, fixed for the
+run (the slice, main's decision 2026-11-20: as the lead first had it, they were extended with `Δ`,
+`D'` agreeing on old inputs, which needed the run's congruence in the decisions; a step now assumes
+them aligned at the state after it, `DecTab K.D st'`, `Steps/MachineMono.lean`). -/
+def ExtOk (st st' : MState) (ρ' : Assignment) (Δ' : Nat → TyS) : Prop :=
+  (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+    CtxOk { K with Δ := Δ' } ρ' st' ∧ Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
 
 /-- The conclusion of a step in the simulation form, for the reference computation `x` run from
 `s`: `x` does not fail, the checker's value `v` (read at the run's future pulled back along the
@@ -875,13 +835,12 @@ result), since the reference parks a returned borrow in a temporary (D14) and th
 temporaries by the borrows they hold; as first stated the state after was compared without it, and
 after `&x` the reference's parked borrow matched nothing (docs/31 D71). -/
 def SimConcl (π : Nat → Nat) (st st' : MState) (s : SState) (x : Assignment → SM Res) (v : Value) : Prop :=
-  ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (π' : Nat → Nat) (r : Res) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
-    st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
-    (∀ l, l < st.nextLoan → π' l = π l) ∧
+  ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
+    st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
     x ρ' s = some (r, s') ∧
-    meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
-    CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π' (st'.withTemp v) s' ∧
-    GoodF K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' (st'.withTemp v) (flightOf r.2)
+    meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
+    CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π' (st'.withTemp v) s' ∧
+    GoodF K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' (st'.withTemp v) (flightOf r.2)
 
 /-- The reference's end of a `let` (`run`'s `.letIn` clause after its tail): the borrow the top
 binding holds ended, or else the borrows lent at it (`letLenders`), then the binding dropped. -/
@@ -894,13 +853,14 @@ noncomputable def letEnd (s : SState) : SState :=
 /-- [Read] (`readPlace`), in the simulation form (docs/31 D80): from a related state, the
 reference's `readPlace` at the same copy decision (`Decisions.copy`, aligned) gives the result the
 checker's value means, the states after related with the value in flight, under an extension at the
-unknowns an end's [Repack] makes (named by nothing) and with the decisions extended. As first
+unknowns an end's [Repack] makes (named by nothing), the decisions aligned after it. As first
 stated: `Below`, from the checker state's image. -/
 def readPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (p : Place) (v : Value) (copy : Bool)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) p) = copy)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.readPlace fuel p) st bh v st'),
     SimConcl K ρ φ π st st' s (fun _ => Ochr.Meaning.readPlace K φ p copy) v
 
@@ -912,6 +872,7 @@ def borrowPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : N
   ∀ (st st' : MState)  (p : Place) (v : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.borrowPlace fuel p) st bh v st'),
     SimConcl K ρ φ π st st' s (fun _ => Ochr.Meaning.borrowPlace K φ p) v
 
@@ -925,11 +886,12 @@ def assignPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : N
     (hgv : GoodF K.dm K.M K.Γ ρ (st.withTemp v) (flightOfWrite v (Env.hintAt K.dm K.M K.Γ ρ st.env pos).m))
     (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π (st.withTemp v) s) (hpos : resolve s p = some (pos, (p.steps).2))
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.assignPlace fuel p v) st bh () st'),
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (π' : Nat → Nat) (r : Res) (s' : SState),
-      (∀ l, l < st.nextLoan → π' l = π l) ∧ ExtOk K ρ st st' ρ' Δ' D' ∧ st.absTy.size ≤ st'.absTy.size ∧
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
+      (∀ l, l < st.nextLoan → π' l = π l) ∧ ExtOk K ρ st st' ρ' Δ' ∧ st.absTy.size ≤ st'.absTy.size ∧
       assignAt K φ p (meanV K ρ φ (.plain .err) v) (match v with | .borrow l _ => some l | _ => none) s = some (r, s') ∧
-      Rel { K with Δ := Δ', D := D' } ρ' φ π' st' s'
+      Rel { K with Δ := Δ' } ρ' φ π' st' s'
 
 /-- The end of a `let` (`dropTopBind`: the top binding dropped, the borrow it holds ended, or the
 borrows lent at it ended, D65), in the simulation form (docs/31 D80): against the reference's end of
@@ -939,10 +901,11 @@ def dropTopBind_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : N
   ∀ (st st' : MState)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.dropTopBind fuel) st bh () st'),
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (π' : Nat → Nat),
-      (∀ l, l < st.nextLoan → π' l = π l) ∧ ExtOk K ρ st st' ρ' Δ' D' ∧ st.absTy.size ≤ st'.absTy.size ∧
-      Rel { K with Δ := Δ', D := D' } ρ' φ π' st' (letEnd s)
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat),
+      (∀ l, l < st.nextLoan → π' l = π l) ∧ ExtOk K ρ st st' ρ' Δ' ∧ st.absTy.size ≤ st'.absTy.size ∧
+      Rel { K with Δ := Δ' } ρ' φ π' st' (letEnd s)
 
 /-- The pop of a frame (`popFrame`: its borrows ended, its positions dropped), in the simulation
 form (docs/31 D80): against the reference's pop of a call frame (`popCallFrame start none`), where
@@ -956,10 +919,11 @@ def popFrame_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (htemps : ∀ fr, st.env[st.env.size - 1]? = some fr → ∀ v ∈ fr.temps, v.hasBorrow = false)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) (start : Nat)
     (hstart : ∀ l, start ≤ l → s.Live l → ∃ f i, (s.holderOf l = some (.bind f i) ∨ s.holderOf l = some (.temp f i)) ∧ f = s.topIdx)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.popFrame fuel) st bh () st'),
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (π' : Nat → Nat),
-      (∀ l, l < st.nextLoan → π' l = π l) ∧ ExtOk K ρ st st' ρ' Δ' D' ∧ st.absTy.size ≤ st'.absTy.size ∧
-      Rel { K with Δ := Δ', D := D' } ρ' φ π' st' (popCallFrame start none s)
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat),
+      (∀ l, l < st.nextLoan → π' l = π l) ∧ ExtOk K ρ st st' ρ' Δ' ∧ st.absTy.size ≤ st'.absTy.size ∧
+      Rel { K with Δ := Δ' } ρ' φ π' st' (popCallFrame start none s)
 
 /-- `substV` of a loan (a fill at [End], [Close]): the value means the value read under the future
 fixed at `ℓ` to the filler's meaning, exactly (D29), under an extension at the unknowns its re-runs
@@ -967,9 +931,10 @@ keep (a changed sealed program re-runs; D75, D76). As first stated: `⊑` and th
 def substV_loan_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (l : Nat) (w v v' : Value) (hint : TyS)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hw : ¬ w.hasLoanM l) (hf : HintFree K ρ φ w)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.substV fuel (.loan l) w v) st bh v' st'),
-    KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D' ∧
-      meanV { K with Δ := Δ', D := D' } ρ' φ hint v' = meanV K ρ (φ.upd l (meanV K ρ φ (.plain .err) w)) hint v
+    KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ' ∧
+      meanV { K with Δ := Δ' } ρ' φ hint v' = meanV K ρ (φ.upd l (meanV K ρ φ (.plain .err) w)) hint v
 
 /-- What a refinement `σ := r` must be for its substitution to keep every meaning (docs/31 D76): it
 means what the assignment gives `σ`, at every future and every hint (it holds no loan and records
@@ -985,9 +950,10 @@ stated, `⊑` and the core unchanged: the second false, since a re-run keeps its
 def substV_abs_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (σ : Nat) (r v v' : Value) (hint : TyS)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hr : RefineOk K ρ st σ r)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.substV fuel (.abs σ) r v) st bh v' st'),
-    KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D' ∧
-      ∀ ψ, meanV { K with Δ := Δ', D := D' } ρ' ψ hint v' = meanV K ρ ψ hint v
+    KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ' ∧
+      ∀ ψ, meanV { K with Δ := Δ' } ρ' ψ hint v' = meanV K ρ ψ hint v
 
 /-- `substEnv` of a loan (the state-wide half of [End] and of [Close]'s fills): every position
 means what it meant at the future fixed at `ℓ`, exactly, under an extension at the unknowns the
@@ -998,9 +964,8 @@ def substEnv_loan_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel :
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hw : ¬ w.hasLoanM l) (hf : HintFree K ρ φ w)
     (bh : Nat) (h : Runs (Ochr.substEnv fuel (.loan l) w false) st bh () st'),
     (∀ p, Env.shape st'.env p = Env.shape st.env p) ∧ st.absTy.size ≤ st'.absTy.size ∧
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
-      K.D.AgreeOld st.absTy.size D' ∧
-      ∀ p, (MState.mean K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st').val φ p =
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+      ∀ p, (MState.mean K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st').val φ p =
         (MState.mean K.dm K.M K.Γ ρ st).val (φ.upd l (meanV K ρ φ (.plain .err) w)) p
 
 /-- What a substitution over the whole state leaves: which positions exist and which hold borrows
@@ -1026,9 +991,10 @@ def substEnv_abs_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
   ∀ (st st' : MState) (σ : Nat) (r : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) (hr : RefineOk K ρ st σ r)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.substEnv fuel (.abs σ) r true) st bh () st'),
-    SubstShape st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions),
-      ExtOk K ρ st st' ρ' Δ' D' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π st' s
+    SubstShape st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS),
+      ExtOk K ρ st st' ρ' Δ' ∧ Rel { K with Δ := Δ' } ρ' φ π st' s
 
 /-- **[Seal]: a re-run of a sealed program means the sealed program** (`nfSealed`: its run from
 the empty state, kept where it is stuck), EXACTLY (since D29 no borrow ends early in a run, so the
@@ -1049,12 +1015,12 @@ def nfSealed_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hholes : ∀ l ∈ t.loans, liveLoan st.env l = true) (htf : Term.tailHintFree K.Γ t = true)
     (hok : ∀ ψ, (runT K ρ ψ false hint t (emptyState 0)).isSome)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.nfSealed fuel t) st bh v st'),
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
-      (∀ ψ, meanV { K with Δ := Δ', D := D' } ρ' ψ hint v = meanV K ρ ψ hint (.sealed t)) ∧
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ (∀ ψ, meanV { K with Δ := Δ' } ρ' ψ hint v = meanV K ρ ψ hint (.sealed t)) ∧
       st'.env = st.env ∧ st'.goal = st.goal ∧ st'.refs = st.refs ∧
       st.absTy.size ≤ st'.absTy.size ∧ (∀ σ, σ < st.absTy.size → st'.absTy[σ]? = st.absTy[σ]?) ∧
-      CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st'
+      CtxOk { K with Δ := Δ' } ρ' st' ∧ Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
 
 /-- `canonNeutral`: a sealed program already generalised in this world is its `σ`, which the
 path condition makes mean the same. -/
@@ -1070,9 +1036,10 @@ def renormAll_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
   ∀ (st st' : MState)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.renormAll fuel) st bh () st'),
-    SubstShape st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions),
-      ExtOk K ρ st st' ρ' Δ' D' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π st' s
+    SubstShape st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS),
+      ExtOk K ρ st st' ρ' Δ' ∧ Rel { K with Δ := Δ' } ρ' φ π st' s
 
 /-- [Split]'s refinement `σ := r` (`refine`: the substitution, the path condition recorded, the
 re-normalisation when `σ` is a generalisation's), in the simulation form of `substEnv_abs_step_stmt`:
@@ -1083,9 +1050,10 @@ def refine_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) :
   ∀ (st st' : MState) (σ : Nat) (r : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) (hr : RefineOk K ρ st σ r)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.refine fuel σ r) st bh () st'),
-    SubstShape st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions),
-      ExtOk K ρ st st' ρ' Δ' D' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π st' s
+    SubstShape st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS),
+      ExtOk K ρ st st' ρ' Δ' ∧ Rel { K with Δ := Δ' } ρ' φ π st' s
 
 /-- `Eq` computes soundly: whatever `mkEqM` returns means the proposition `⟦a⟧ = ⟦b⟧` at `A`
 (every outcome, `True`, `False`, a conjunction of field equations, the stuck `Eq`, is a proposition,
@@ -1095,9 +1063,10 @@ def mkEqM_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : 
   ∀ (st st' : MState)  (A a b P : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hA : ∀ φ, (meanV K ρ φ (.plain .err) A).asTy = (meanV K ρ noFuture (.plain .err) A).asTy)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.mkEqM fuel A a b) st bh P st'),
-    KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D' ∧
-      ∀ φ (hint : TyS), meanV { K with Δ := Δ', D := D' } ρ' φ hint P = .ty (TyM.prop
+    KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ' ∧
+      ∀ φ (hint : TyS), meanV { K with Δ := Δ' } ρ' φ hint P = .ty (TyM.prop
         (meanV K ρ φ (.plain (meanV K ρ noFuture (.plain .err) A).asTy) a = meanV K ρ φ (.plain (meanV K ρ noFuture (.plain .err) A).asTy) b))
 
 /-- Conversion is sound: two values convertible at a state, both (partly moved) members of one
@@ -1107,17 +1076,19 @@ def conv_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : 
   ∀ (st st' : MState)  (v w : Value) (T : TyM)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hv : DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain T) v) T) (hw : DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain T) w) T)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.conv fuel v w) st bh true st'),
     meanV K ρ φ (.plain T) v = meanV K ρ φ (.plain T) w ∧ KeptAfter st st' ∧
-      ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D'
+      ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ'
 
 /-- [Conv-pi]: convertible Π-type values have equal type meanings (equal Lean carriers), by
 `funext` over the generic arguments, which range over the whole domain (docs/18 (V4)). -/
 def convPi_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (P Q : Value)
-    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.convPi fuel P Q) st bh true st'),
+    (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hD : DecTab K.D st')
+    (bh : Nat) (h : Runs (Ochr.convPi fuel P Q) st bh true st'),
     (∀ φ, (meanV K ρ φ (.plain .err) P).asTy = (meanV K ρ φ (.plain .err) Q).asTy) ∧ KeptAfter st st' ∧
-      ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D'
+      ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ'
 
 /-- [Conv-fun]: two function values with convertible observations of their generic calls mean
 the same function (extensionality on good carriers, docs/18 (V5), `Slice.pi_ext`). -/
@@ -1125,9 +1096,10 @@ def convFn_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
   ∀ (st st' : MState)  (f g : Value) (T : TyM)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hf : meanV K ρ φ (.plain T) f ∈ₛ[K.dm.read] T) (hgm : meanV K ρ φ (.plain T) g ∈ₛ[K.dm.read] T)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.convFn fuel f g) st bh true st'),
     meanV K ρ φ (.plain T) f = meanV K ρ φ (.plain T) g ∧ KeptAfter st st' ∧
-      ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D'
+      ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ'
 
 /-- [Rewrite]: when the equation `h : Eq(A, a, b)` is true, the rewritten goal is true iff the
 goal is (the occurrences replaced mean the same). -/
@@ -1135,8 +1107,9 @@ def rewriteGoal_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : N
   ∀ (st st' : MState)  (rev : Bool) (hT : Term) (A a b G G' : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (bhh : Nat) (hh : Runs (Ochr.eval fuel true hT) st bhh (.proof, some (.tEq A a b)) st)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.rewriteGoal fuel rev hT G) st bh G' st'),
-    (KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D') ∧
+    (KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ') ∧
     (∀ φ, propOf K ρ φ (.tEq A a b) → (propOf K ρ φ G' ↔ propOf K ρ φ G))
 
 /-- The meaning of a type value does not depend on the future (docs/27 Lemma 5: no stored type
@@ -1152,8 +1125,9 @@ def callType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
   ∀ (st st' : MState)  (piTy : Value) (ws : Array Value)
     (tys : Array (Option Value)) (B : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.callType fuel piTy ws tys) st bh B st'),
-    (KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D') ∧
+    (KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ') ∧
     (∀ b U, (calleeRes K ρ φ .proof piTy).2.m.codAt? K.dm.read ((argsRes K ρ φ ws).map (·.1)) = some (b, U) →
       (meanV K ρ noFuture (.plain .err) B).asTy = U)
 
@@ -1199,12 +1173,12 @@ def movedPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Na
   ∀ (st st' : MState) (q q' : Place) (pos : Pos) (s : SState) (π : Nat → Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hpos : resolve s q = some (pos, q.steps.2)) (hgrain : GrainOk K.D K.Γ (scopeOf s) q)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.movedPlace fuel q) st bh q' st'),
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
-      (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
-      (s' = s ∨ s' = accessLentPrefix pos q.steps.2 s) ∧
-      CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π st' s' ∧
-      Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st' ∧ MPOut st' q q'
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
+      (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ (s' = s ∨ s' = accessLentPrefix pos q.steps.2 s) ∧
+      CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π st' s' ∧
+      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' ∧ MPOut st' q q'
 
 /-- **[Join], the drop of one place** (`Machine.joinDrop`'s loop body: `movedPlace`, then
 `dropAtJoin`), in the simulation form: from related states, the checker's re-rooting and drop of a
@@ -1218,12 +1192,12 @@ def dropOne_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
   ∀ (st st' : MState) (q : Place) (s : SState) (π : Nat → Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hs : Rel K ρ φ π st s)
     (hgrain : GrainOk K.D K.Γ (scopeOf s) q) (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (do Ochr.dropAtJoin fuel (← Ochr.movedPlace fuel q)) st bh () st'),
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), st.absTy.size ≤ st'.absTy.size ∧
-      (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
-      CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧
-      Rel { K with Δ := Δ', D := D' } ρ' φ π st' (joinDropOne K φ s q) ∧
-      Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st'
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS), st.absTy.size ≤ st'.absTy.size ∧
+      (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ CtxOk { K with Δ := Δ' } ρ' st' ∧
+      Rel { K with Δ := Δ' } ρ' φ π st' (joinDropOne K φ s q) ∧
+      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
 
 /-- **[Join], the drop** (`Machine.joinDrop`'s loop after the arm: `dropAtJoin` of each place the
 join says is moved, re-rooted by `movedPlace`), in the simulation form: from related states, with
@@ -1239,12 +1213,13 @@ def joinDrop_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hgrain : ∀ q ∈ K.D.joinMoves (scopeOf s) entry mt, GrainOk K.D K.Γ (scopeOf s) q)
     (hcopy : ∀ q ∈ K.D.joinMoves (scopeOf s) entry mt, K.D.copy (K.D.placeDecl (scopeOf s) q) = false)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (do for q in K.D.joinMoves (scopeOf s) entry mt do
       Ochr.dropAtJoin fuel (← Ochr.movedPlace fuel q)) st bh () st'),
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
-      K.D.AgreeOld st.absTy.size D' ∧ CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧
-      Rel { K with Δ := Δ', D := D' } ρ' φ π st' (joinDrop K φ entry mt s) ∧
-      Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st'
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+      CtxOk { K with Δ := Δ' } ρ' st' ∧
+      Rel { K with Δ := Δ' } ρ' φ π st' (joinDrop K φ entry mt s) ∧
+      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
 
 /-- [Match] on `Nat` (`evalMatch`): the run's `.matchNat` clause, in the simulation form. With a
 known constructor the arm runs and the join drops (`joinEntry_stmt`, `joinDrop_step_stmt`); on an
@@ -1256,6 +1231,7 @@ def evalMatch_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) (.matchNat p z u) = (false, false))
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.evalMatch fuel typed p z u expected) st bh (v, T?) st'),
     -- the run's hint is the checker's expected type (a free hint against `expected` was refutable
     -- on a hint-dependent arm value)
@@ -1269,6 +1245,7 @@ def evalMatchInd_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) (.matchInd p ty arms) = (false, false))
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.evalMatchInd fuel typed p ty arms expected) st bh (v, T?) st'),
     -- the hint is the checker's expected type, as for `evalMatch` (it was free here)
     SimConcl K ρ φ π st st' s (fun ρ' => run K ρ' φ (hintM K ρ expected) (.matchInd p ty arms)) v
@@ -1283,6 +1260,7 @@ def evalMatchByType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) (.matchInd p ty arms) = (false, false))
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.evalMatchByType fuel typed p ty arms expected) st bh (v, T?) st'),
     SimConcl K ρ φ π st st' s (fun ρ' => run K ρ' φ (hintM K ρ expected) (.matchInd p ty arms)) v
 
@@ -1305,17 +1283,18 @@ unknown that means it), good, and meets `CtxOk`. `n` is `p`'s content, a sealed 
 loan, as at both callers (`evalMatch`'s scrutinee, `movedPlace`'s prefix); without the first the
 statement was false (`Regress/GenNeutralContent.lean`: generalising `⋆` at `a : Nat` records a
 proof as a number), and the record needs the others (a partly moved value is no member of its
-type; (WF11) forbids a record holding a loan). The decisions are extended (the fresh unknown's
-frozen reading, D96). As first stated: `Exact` from the checker state's image, `Good` only. -/
+type; (WF11) forbids a record holding a loan). The decisions are aligned after it (`hD`: the fresh
+unknown's frozen reading, D96). As first stated: `Exact` from the checker state's image, `Good` only. -/
 def generalizeNeutral_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (p : Place) (n : Value) (σ : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hn : ckContent st.env p = some n) (hsealed : ∃ t, n = .sealed t) (hfree : ∀ l, n.hasLoan l = false)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.generalizeNeutral fuel p n) st bh σ st'),
-    SubstShape st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions),
-      ExtOk K ρ st st' ρ' Δ' D' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π st' s ∧
-      ρ' σ = meanV K ρ (fun _ => .err) (.plain (MState.absTyM K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st' σ)) n
+    SubstShape st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS),
+      ExtOk K ρ st st' ρ' Δ' ∧ Rel { K with Δ := Δ' } ρ' φ π st' s ∧
+      ρ' σ = meanV K ρ (fun _ => .err) (.plain (MState.absTyM K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' σ)) n
 
 /-- A stuck block closed off (`closeBlock`): the block is a call of an anonymous function of its
 captures, so its sealed result and fills mean what running the match means: the run's match
@@ -1329,6 +1308,7 @@ def closeBlock_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Na
     (hmt : mt matches .matchNat .. | .matchInd .. | .prim "J" _)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) mt = (false, false))
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.closeBlock fuel mt arms B?) st bh (v, T?) st'),
     SimConcl K ρ φ π st st' s (fun ρ' => run K ρ' φ (hintM K ρ B?) mt) v
 
@@ -1336,7 +1316,7 @@ def closeBlock_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Na
 restores the snapshot (Ω, the stored types, the goal, the path condition and the records), keeping
 the counters and the types of the unknowns the arm created, which nothing restored names. From the
 snapshot's goodness and relation, the restored state is related to the snapshot's reference state
-and good under the same assignment and `Δ`, with the decisions extended (the arm's unknowns keep
+and good under the same assignment and `Δ`, the decisions aligned after it (the arm's unknowns keep
 their frozen readings, `absDecl`, D96). The refinement the arm made is gone: the sibling world does
 not see it. As first stated: no `CtxOk` after (the next step had none to start from), and before
 that false outright (`Regress/ExitWorld_f32a7048.lean`). -/
@@ -1346,11 +1326,12 @@ def exitWorld_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π w.saved s)
     -- the arm's run only issued labels (its counter is the snapshot's or above)
     (hgrow : w.saved.nextLoan ≤ st.nextLoan)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.exitWorld w) st bh () st'),
     st'.env = w.saved.env ∧ st'.goal = w.saved.goal ∧ st'.refs = w.saved.refs ∧
       st'.neutrals = w.saved.neutrals ∧ st'.etaRefs = w.saved.etaRefs ∧
       w.saved.absTy.size ≤ st'.absTy.size ∧ (∀ σ, σ < w.saved.absTy.size → st'.absTy[σ]? = w.saved.absTy[σ]?) ∧
-      ∃ D' : Decisions, ExtOk K ρ w.saved st' ρ K.Δ D' ∧ Rel { K with Δ := K.Δ, D := D' } ρ φ π st' s
+      ExtOk K ρ w.saved st' ρ K.Δ ∧ Rel K ρ φ π st' s
 
 /-! ### The level the checker reads of a stored type (area (g), docs/31 D77; candidates)
 
@@ -1402,19 +1383,20 @@ def observe_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     (refs : List (Place × Value)) (r : Value) (ws : List Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.observe fuel typed t A W refs) st bh (r, ws) st'),
     st'.env = st.env ∧ st.absTy.size ≤ st'.absTy.size ∧ st.nextLoan ≤ st'.nextLoan ∧
-    ∀ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) → K.D.AgreeOld st.absTy.size D' →
-      TypedAssignment K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st' →
+    ∀ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
+      TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' →
       -- the state after (the side ran on a copy) is good again, for the next observation of the
       -- same `Id`, which starts from it (docs/31 D74: as first stated nothing was said of it)
-      (Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st' ∧ CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧
-        Rel { K with Δ := Δ', D := D' } ρ' φ π st' s) ∧
-      ∃ o, refObs K ρ' φ (refs.map (·.1)) (refs.map fun x => meanV { K with Δ := Δ', D := D' } ρ' noFuture (.plain .err) x.2)
+      (Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' ∧ CtxOk { K with Δ := Δ' } ρ' st' ∧
+        Rel { K with Δ := Δ' } ρ' φ π st' s) ∧
+      ∃ o, refObs K ρ' φ (refs.map (·.1)) (refs.map fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2)
           (Value.tyS K.dm K.M K.Γ ρ A) t s = some o ∧
-        o[0]? = some (meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π l)) (Value.tyS K.dm K.M K.Γ ρ A) r) ∧
+        o[0]? = some (meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Value.tyS K.dm K.M K.Γ ρ A) r) ∧
         ∀ (i j : Nat) (p : Pos), W[i]? = some p → s.positions[j]? = some p →
-          ws[i]?.map (meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π l)) (Env.hintAt K.dm K.M K.Γ ρ st.env p)) = o.tail[j]?
+          ws[i]?.map (meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Env.hintAt K.dm K.M K.Γ ρ st.env p)) = o.tail[j]?
 
 /-- Footprint coverage (docs/18 "Footprint coverage", the third of the five lemmas), from a
 related state: a position that was there when the sides started and is outside the footprint of
@@ -1452,16 +1434,16 @@ def idType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) :
   ∀ (st st' : MState)  (typed : Bool) (A t u : Term) (P : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.idType fuel typed A t u) st bh P st'),
     st'.env = st.env ∧ st.absTy.size ≤ st'.absTy.size ∧ st.nextLoan ≤ st'.nextLoan ∧
     ∃ r, run K ρ φ (.plain .err) (.id A t u) s = some (r, s) ∧
-      (∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
-        CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π (st'.withTemp P) s ∧
-        GoodF K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' (st'.withTemp P) [] ∧
-        (((meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π l)) (.plain .err) P).asTy).true ↔ (r.1.asTy).true)) ∧
-      ((r.1.asTy).true → ∀ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) → K.D.AgreeOld st.absTy.size D' →
-        TypedAssignment K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st' →
-        ((meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π l)) (.plain .err) P).asTy).true)
+      (∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π (st'.withTemp P) s ∧
+        GoodF K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' (st'.withTemp P) [] ∧
+        (((meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (.plain .err) P).asTy).true ↔ (r.1.asTy).true)) ∧
+      ((r.1.asTy).true → ∀ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
+        TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' →
+        ((meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (.plain .err) P).asTy).true)
 
 /-- Owners (RULES §4): every position `owners env l` lists holds, directly or through the content
 of a borrow it holds, a loan of `l`; and conversely every position whose meaning depends on `l`
@@ -1482,10 +1464,11 @@ def evalType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
   ∀ (st st' : MState)  (t : Term) (T : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.evalType fuel t) st bh T st'),
-    KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D' ∧
+    KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ' ∧
       ∃ (r : Res), run K ρ' φ (.plain .err) t s = some (r, s) ∧
-        meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π l)) (.plain .err) T = r.1
+        meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (.plain .err) T = r.1
 
 /-- `piSort` agrees with the aligned decision (D55: a type's declared sort is its computed sort). -/
 def piSort_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
@@ -1507,14 +1490,13 @@ def StrAgree (T : Value) (R : TyS) : Prop :=
 /-- `SimConcl`, and the type the checker returns agrees with the reference's (`StrAgree`). -/
 def SimConclT (π : Nat → Nat) (st st' : MState) (s : SState) (x : Assignment → SM Res) (v : Value)
     (T? : Option Value) : Prop :=
-  ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (π' : Nat → Nat) (r : Res) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
-    st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
-    (∀ l, l < st.nextLoan → π' l = π l) ∧
+  ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
+    st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
     x ρ' s = some (r, s') ∧
-    meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
-    (∀ T, T? = some T → StrAgree { K with Δ := Δ', D := D' } ρ' T r.2) ∧
-    CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π' (st'.withTemp v) s' ∧
-    GoodF K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' (st'.withTemp v) (flightOf r.2)
+    meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
+    (∀ T, T? = some T → StrAgree { K with Δ := Δ' } ρ' T r.2) ∧
+    CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π' (st'.withTemp v) s' ∧
+    GoodF K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' (st'.withTemp v) (flightOf r.2)
 
 /-- `capture`: the closure value the checker forms (captures by value, the term rewritten to read
 them as slots), in the simulation form (docs/31 D80): the run's `.fix` clause from the related state
@@ -1527,6 +1509,7 @@ def capture_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hfix : t matches .fix ..)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hns : K.D.flags (scopeOf s) t = (false, false))
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.capture fuel t) st bh (cs, t', rd) st'),
     SimConcl K ρ φ π st st' s (fun ρ' => runT K ρ' φ false (.plain .err) t) (.clo cs t' rd)
 
@@ -1541,6 +1524,7 @@ def evalCtor_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (hns : K.D.flags (scopeOf s) (.ctor ty c h0 pts as) = (false, false))
     (hok : typed = false → (runT K ρ φ st.curTail (hintM K ρ hint) (.ctor ty c h0 pts as) s).isSome)
     (htn : st.tailNext = false)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.evalCtor fuel typed ty c h0 pts as hint) st bh (v, T?) st'),
     SimConclT K ρ φ π st st' s (fun ρ' => runT K ρ' φ st.curTail (hintM K ρ hint) (.ctor ty c h0 pts as)) v T?
 
@@ -1555,6 +1539,7 @@ def evalTInd_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hok : typed = false → (runT K ρ φ st.curTail (.plain .err) (.tind n as) s).isSome)
     (htn : st.tailNext = false)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.evalTInd fuel typed n as) st bh (v, T?) st'),
     KeptAfter st st' ∧ SimConclT K ρ φ π st st' s (fun ρ' => runT K ρ' φ st.curTail (.plain .err) (.tind n as)) v T?
 
@@ -1564,8 +1549,9 @@ def fieldTypesOf_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
   ∀ (st st' : MState)  (d : IndDecl) (ps : List Value) (c : Nat)
     (fs : List Value) (tys : List (String × Value))
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.fieldTypesOf fuel d ps c fs) st bh tys st'),
-    (KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D') ∧
+    (KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ') ∧
     (∀ i T, tys[i]?.map (·.2) = some T →
       (meanV K ρ noFuture (.plain .err) T).asTy =
         K.dm.fieldTy d (Value.meanParams K.dm K.M K.Γ ρ noFuture d 0 [] ps) c i
@@ -1577,8 +1563,9 @@ future. -/
 def repackCheck_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (what : String) (v T : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.repackCheck fuel what v T) st bh () st'),
-    (KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D') ∧
+    (KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ') ∧
     (TypedFuture K.dm K.M K.Γ ρ st φ →
       meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v ∈ₛ[K.dm.read] (meanV K ρ noFuture (.plain .err) T).asTy)
 
@@ -1601,8 +1588,9 @@ meaning of the type the checker reads off it. -/
 def valType_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (v T : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (hv : ∃ p, valAt st.env p = v)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.valType? fuel v) st bh (some T) st'),
-    (KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D') ∧
+    (KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ') ∧
     (TypedFuture K.dm K.M K.Γ ρ st φ →
       DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v) (meanV K ρ noFuture (.plain .err) T).asTy)
 
@@ -1733,6 +1721,7 @@ def callFn_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) :
     (hns : K.D.flags (scopeOf s) (.call f args hd) = (false, false))
     (fres : Res) (hf : run K ρ (fun l => φ (π l)) (.plain .err) (.val fv) s = some (fres, s))
     (as : List Res) (has : ArgsAgree K ρ φ π ws as)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.callFn fuel typed fv fT ws tys hd none recUid? res fills want defer) st bh (v, T?) st'),
     SimConclT K ρ φ π (st.withTemps (fv :: ws.toList)) st' s (fun ρ' => callOf K.dm.read fres as) v T?
 
@@ -1754,6 +1743,7 @@ def runBody_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     (fres : Res) (hf : run K ρ (fun l => φ (π l)) (.plain .err) (.val fv) s = some (fres, s))
     (as : List Res) (has : ArgsAgree K ρ φ π ws as)
     (hok : (runBodyRef K ρ φ fres cs t rd as s).isSome)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.runBody fuel fv cs t rd ws) st bh v st'),
     SimConcl K ρ φ π (st.withTemps (fv :: ws.toList)) st' s (fun ρ' => runBodyRef K ρ' φ fres cs t rd as) v
 
@@ -1781,6 +1771,7 @@ def closeCall_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
     (htys : ∀ (i l : Nat) (w : Value), ws[i]? = some (Value.borrow l w) → ∀ p,
       fres.2.m.paramAt? K.dm.read ((as.map (·.1)).take i) = some p →
       ∃ T : Value, tys[i]? = some (some (Value.tRef T)) ∧ (Value.tyS K.dm K.M K.Γ ρ T).m = p.2)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.closeCall fuel fv ws kind res fills tys) st bh v st'),
     SimConcl K ρ φ π (st.withTemps (fv :: ws.toList)) st' s (fun ρ' => callOf K.dm.read fres as) v
 
@@ -1823,15 +1814,15 @@ def evalCore_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (hns : K.D.flags (scopeOf s) t = (false, false))
     (hok : typed = false → (runT K ρ φ st.curTail (hintM K ρ hint) t s).isSome)
     (htn : st.tailNext = false)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.evalCore fuel typed t hint) st bh (v, T?) st'),
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (π' : Nat → Nat), st.absTy.size ≤ st'.absTy.size ∧
-      st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
-      (∀ l, l < st.nextLoan → π' l = π l) ∧
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat), st.absTy.size ≤ st'.absTy.size ∧
+      st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
       ∃ r s', runT K ρ' φ st.curTail (hintM K ρ hint) t s = some (r, s') ∧
-        meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
-        (∀ T, T? = some T → StrAgree { K with Δ := Δ', D := D' } ρ' T r.2) ∧
-        CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π' (st'.withTemp v) s' ∧
-        GoodF K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' (st'.withTemp v) (flightOf r.2)
+        meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
+        (∀ T, T? = some T → StrAgree { K with Δ := Δ' } ρ' T r.2) ∧
+        CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π' (st'.withTemp v) s' ∧
+        GoodF K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' (st'.withTemp v) (flightOf r.2)
 
 /-- **The induction step as the checker recurses** (docs/31 D20, item 5; the tail flag, D71): every recursive
 position of the checker calls `Machine.eval`, which is `evalAt`: it classifies the term
@@ -1849,18 +1840,18 @@ def eval_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : P
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hok : typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.eval fuel typed t hint) st bh (v, T?) st'),
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (π' : Nat → Nat), st.absTy.size ≤ st'.absTy.size ∧
-      st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
-      (∀ l, l < st.nextLoan → π' l = π l) ∧
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat), st.absTy.size ≤ st'.absTy.size ∧
+      st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
       ∃ r s', runT K ρ' φ st.tailNext (hintM K ρ hint) t s = some (r, s') ∧
-        meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
+        meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
         -- not of a proof: the run does not run one and gives it no type (`SM.erasedIf`), where
         -- the checker returns its proposition (the audit's row 26, and A17). As first stated the
         -- conjunct had no such condition and was false of every proof term
-        (∀ T, T? = some T → (K.D.flags (scopeOf s) t).2 = false → StrAgree { K with Δ := Δ', D := D' } ρ' T r.2) ∧
-        CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π' (st'.withTemp v) s' ∧
-        GoodF K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' (st'.withTemp v) (flightOf r.2)
+        (∀ T, T? = some T → (K.D.flags (scopeOf s) t).2 = false → StrAgree { K with Δ := Δ' } ρ' T r.2) ∧
+        CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π' (st'.withTemp v) s' ∧
+        GoodF K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' (st'.withTemp v) (flightOf r.2)
 
 /-- [Let]: the binding is pushed at the right-hand side's type and dropped after the tail
 (`dropTopBind`); the run's `.letIn` clause. In the simulation form, as `evalCore_step_stmt`, with its
@@ -1873,14 +1864,14 @@ def letIn_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : 
     (hns : K.D.flags (scopeOf s) (.letIn h0 u w) = (false, false))
     (hok : typed = false → (runT K ρ φ st.curTail (hintM K ρ hint) (.letIn h0 u w) s).isSome)
     (htn : st.tailNext = false)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.evalCore fuel typed (.letIn h0 u w) hint) st bh (v, T?) st'),
-    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (π' : Nat → Nat) (r : Res) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
-      st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ K.D.AgreeOld st.absTy.size D' ∧
-      (∀ l, l < st.nextLoan → π' l = π l) ∧
+    ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState), st.absTy.size ≤ st'.absTy.size ∧
+      st.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧ (∀ l, l < st.nextLoan → π' l = π l) ∧
       runT K ρ' φ st.curTail (hintM K ρ hint) (.letIn h0 u w) s = some (r, s') ∧
-      meanV { K with Δ := Δ', D := D' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
-      CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧ Rel { K with Δ := Δ', D := D' } ρ' φ π' (st'.withTemp v) s' ∧
-      GoodF K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' (st'.withTemp v) (flightOf r.2)
+      meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
+      CtxOk { K with Δ := Δ' } ρ' st' ∧ Rel { K with Δ := Δ' } ρ' φ π' (st'.withTemp v) s' ∧
+      GoodF K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' (st'.withTemp v) (flightOf r.2)
 
 /-- `Eq` (the `.eq` form), in the simulation form (D71's rule; docs/31 D75): the type and both
 sides on private copies, the result `mkEqM`'s. The reference runs the same on copies and returns the
@@ -1897,6 +1888,7 @@ def eq_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Pro
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hok : typed = false → (runT K ρ φ st.curTail (hintM K ρ hint) (.eq A a b) s).isSome)
     (htn : st.tailNext = false)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.evalCore fuel typed (.eq A a b) hint) st bh (v, T?) st'),
     SimConclT K ρ φ π st st' s (fun ρ' => runT K ρ' φ st.curTail (hintM K ρ hint) (.eq A a b)) v T?
 
@@ -1916,6 +1908,7 @@ def J_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop
     (hns : K.D.flags (scopeOf s) (.prim "J" [A, a, b, P, hh, u]) = (false, false))
     (hok : typed = false → (runT K ρ φ st.curTail (hintM K ρ hint) (.prim "J" [A, a, b, P, hh, u]) s).isSome)
     (htn : st.tailNext = false)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.evalCore fuel typed (.prim "J" [A, a, b, P, hh, u]) hint) st bh (v, T?) st'),
     SimConclT K ρ φ π st st' s (fun ρ' => runT K ρ' φ st.curTail (hintM K ρ hint) (.prim "J" [A, a, b, P, hh, u])) v T?
 
@@ -1933,10 +1926,11 @@ def proof_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : 
     (hp : (K.D.flags (scopeOf s) t).2 = true)
     -- `eval`, not `evalCore`: it is `evalAt` that runs a proof on a copy (as stated for `evalCore`
     -- a proof-valued `let` whose right-hand side moves a place refuted "the state is unchanged")
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.eval fuel typed t hint) st bh (.proof, some T) st'),
-    KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), ExtOk K ρ st st' ρ' Δ' D' ∧
-      Rel { K with Δ := Δ', D := D' } ρ' φ π st' s ∧
-      Sem.proof ∈ₛ[K.dm.read] (meanV { K with Δ := Δ', D := D' } ρ' φ (.plain .err) T).asTy
+    KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ' ∧
+      Rel { K with Δ := Δ' } ρ' φ π st' s ∧
+      Sem.proof ∈ₛ[K.dm.read] (meanV { K with Δ := Δ' } ρ' φ (.plain .err) T).asTy
 
 /-- η at `Unit` (D80): where a position's declared reading is `Unit`, the value is `()`, and
 `()` is the one element of `⟦Unit⟧`, so the normalisation keeps meaning given membership. -/
@@ -1985,16 +1979,17 @@ def generic_good_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
   ∀ (st st' : MState) (fv : Value) (cs : List Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term)
     (dec : Option Nat) (body : Term) (capRec : Array (Option Nat)) (rd : List (DeclInfo × Value))
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.checkFix fuel fv cs (.fix self hs ds c dec body) capRec rd) st bh () st'),
     ∃ (stgen stend : MState) (erased : Bool) (bt : Nat),
       Runs (Ochr.withErasedIf erased (Ochr.checkTail (fuel - 1) body (fixReturn (fuel - 1) self))) stgen bt () stend ∧
       stgen.tailNext = false ∧
       ∀ (args : List Res), ArgsMember K.dm.read (meanV K ρ φ (.plain .err) (.tPi cs (.pi hs ds c) rd)).asTy args →
-        ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (π : Nat → Nat), ExtOk K ρ st stgen ρ' Δ' D' ∧
-          Rel { K with Δ := Δ', D := D' } ρ' φ π stgen
+        ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π : Nat → Nat), ExtOk K ρ st stgen ρ' Δ' ∧
+          Rel { K with Δ := Δ' } ρ' φ π stgen
             (bodyFrame K ρ' φ (meanV K ρ φ (.plain .err) fv, .plain (meanV K ρ φ (.plain .err) (.tPi cs (.pi hs ds c) rd)).asTy)
               cs rd ds c args (emptyState 0)).1 ∧
-          stgen.goal.map (fun G => (meanV { K with Δ := Δ', D := D' } ρ' noFuture (.plain .err) G).asTy) =
+          stgen.goal.map (fun G => (meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) G).asTy) =
             some ((bodyFrame K ρ' φ (meanV K ρ φ (.plain .err) fv, .plain (meanV K ρ φ (.plain .err) (.tPi cs (.pi hs ds c) rd)).asTy)
               cs rd ds c args (emptyState 0)).2.cod (args.map (·.1)))
 
@@ -2003,12 +1998,13 @@ caller's continuation at each leaf), in the simulation form (docs/31 D80): from 
 the given assignment, the world it selects reaches a leaf where the continuation ran; the leaf's
 value and type are the reference's run of the whole body in tail position (`runT … true`, as
 `bodyAt` and `runBodyRef` run it) at the goal's hint, with the value in flight, under an extension (the
-splits' fields, the generalisations; the decisions extended). As first stated: `⊑`, from the checker
+splits' fields, the generalisations; the decisions aligned after it). As first stated: `⊑`, from the checker
 state's image, the context fixed. -/
 def checkTail_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (t : Term) (k : Value → Value → M Unit)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) (htn : st.tailNext = false)
+    (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.checkTail fuel t k) st bh () st'),
     ∃ (stl stl' : MState) (v T : Value) (bk : Nat), Runs (k v T) stl bk () stl' ∧
       SimConclT K ρ φ π st stl s (fun ρ' => runT K ρ' φ true (hintM K ρ st.goal) t) v (some T)

@@ -69,6 +69,8 @@ theorem const_split (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : 
       Good dm (P.ctx dm D st').M (P.ctx dm D st').Γ (fun _ => .err) st₁ ∧ Steps.CtxOk (P.ctx dm D st') (fun _ => .err) st₁ ∧
       Steps.Rel (P.ctx dm D st') (fun _ => .err) noFuture id st₁ (emptyState st₁.nextLoan) ∧ st₁.tailNext = false ∧
       Steps.Runs (Ochr.eval f true d.body (some goal)) st₁ b₁ (v, T?) st₂ ∧
+      -- the item's final decisions are aligned after the body (the tables only grow to the end)
+      Steps.DecTab (P.ctx dm D st').D st₂ ∧
       Steps.Runs (Ochr.bodyReturns f s!"{d.name} is defined as it" v goal [] "") st₂ b₂ () st₃ ∧
       ((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot = goal := by
   sorry
@@ -88,13 +90,13 @@ type), and at a proposition it is `•` (`constMean`): so the membership [Return
 definition's. -/
 theorem const_value (fuel : Nat) (P : ProgState) (d : Def) (st' st₁ : MState) (goal v : Value) (hd : d.doms = [])
     (hgoal : ((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot = goal)
-    (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions) (π' : Nat → Nat) (r : Res) (s₂ : SState)
+    (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s₂ : SState)
     (hrun : runT (P.ctx dm D st') ρ' noFuture false (Steps.hintM (P.ctx dm D st') (fun _ => .err) (some goal)) d.body
       (emptyState st₁.nextLoan) = some (r, s₂))
-    (hmean : meanV { P.ctx dm D st' with Δ := Δ', D := D' } ρ' (fun l => noFuture (π' l)) r.2 v = r.1) (ψ : Future)
-    (hmem : meanV { P.ctx dm D st' with Δ := Δ', D := D' } ρ' ψ (Value.tyS dm ({ P.ctx dm D st' with Δ := Δ', D := D' } : RunCtx).M
+    (hmean : meanV { P.ctx dm D st' with Δ := Δ' } ρ' (fun l => noFuture (π' l)) r.2 v = r.1) (ψ : Future)
+    (hmem : meanV { P.ctx dm D st' with Δ := Δ' } ρ' ψ (Value.tyS dm ({ P.ctx dm D st' with Δ := Δ' } : RunCtx).M
         (P.ctx dm D st').Γ ρ' goal) v ∈ₛ[dm.read]
-      (meanV { P.ctx dm D st' with Δ := Δ', D := D' } ρ' noFuture (.plain .err) goal).asTy) :
+      (meanV { P.ctx dm D st' with Δ := Δ' } ρ' noFuture (.plain .err) goal).asTy) :
     ∃ m, defMeaning (fun _ => .err) (P.ctx dm D st') d goal = some m ∧ m.1 ∈ₛ[dm.read] m.2.m := by
   sorry
 
@@ -107,17 +109,17 @@ theorem step_member_const (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) 
     (hrun : (runMachine (checkItem (.defn d)) { globals := P.globals, inds := P.inds } fuel).1 = .ok () st') :
     ∃ m, defMeaning (fun _ => .err) (P.ctx dm D st') d
         (((st'.globals.find? (·.name == d.name)).map (·.ty)).getD .bot) = some m ∧ m.1 ∈ₛ[dm.read] m.2.m := by
-  obtain ⟨f, st₁, st₂, st₃, b₁, b₂, goal, v, T?, hg₁, hctx₁, hs₁, htl, hev, hbr, hgoal⟩ :=
+  obtain ⟨f, st₁, st₂, st₃, b₁, b₂, goal, v, T?, hg₁, hctx₁, hs₁, htl, hev, hD₂, hbr, hgoal⟩ :=
     const_split dm D fuel P d st' hd hP hcov hfaith hrun
-  obtain ⟨ρ', Δ', D', π', -, -, -, -, -, r, s₂, hrunr, hmean, -, hctx₂, -, hg₂⟩ :=
+  obtain ⟨ρ', Δ', π', -, -, -, -, r, s₂, hrunr, hmean, -, hctx₂, -, hg₂⟩ :=
     (Steps.stepsIH f (P.ctx dm D st') (fun _ => .err) noFuture).eval_step st₁ st₂ true d.body (some goal) v T? hg₁
-      hctx₁ _ id hs₁ (fun h => absurd h (by decide)) b₁ hev
+      hctx₁ _ id hs₁ (fun h => absurd h (by decide)) hD₂ b₁ hev
   rw [htl] at hrunr
-  obtain ⟨ψ, hψ⟩ := typedFutureF_exists { P.ctx dm D st' with Δ := Δ', D := D' } ρ' _ _ hg₂
-  have hmem := ((Steps.stepsIH f { P.ctx dm D st' with Δ := Δ', D := D' } ρ' ψ).bodyReturns_sound st₂ st₃ _ v goal [] ""
+  obtain ⟨ψ, hψ⟩ := typedFutureF_exists { P.ctx dm D st' with Δ := Δ' } ρ' _ _ hg₂
+  have hmem := ((Steps.stepsIH f { P.ctx dm D st' with Δ := Δ' } ρ' ψ).bodyReturns_sound st₂ st₃ _ v goal [] ""
     (Steps.flightOf r.2) hg₂ hctx₂ b₂ hbr hψ).1
   rw [hgoal]
-  exact const_value dm D fuel P d st' st₁ goal v hd hgoal ρ' Δ' D' π' r s₂ hrunr hmean ψ hmem
+  exact const_value dm D fuel P d st' st₁ goal v hd hgoal ρ' Δ' π' r s₂ hrunr hmean ψ hmem
 
 /-- **`checkDef`'s function branch, taken apart** (leaf; docs/31 D73, D79). Two halves.
 (1) The meaning. The reference runs the definition's `fix` term from the empty state (`run_fix_def`;

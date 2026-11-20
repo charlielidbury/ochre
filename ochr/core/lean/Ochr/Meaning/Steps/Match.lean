@@ -45,38 +45,39 @@ theorem joinDropOne_withΔ (Δ' : Nat → TyS) (s : SState) (q : Place) :
 /-- **[Join], the drop** (docs/31 D29, task C): the checker's loop over the join's list against the
 reference's fold, by induction on the list, one place at a time (`dropOne_step`), the assignment
 and the context's `Δ` extended at each, the scope the list is read in kept (`scopeOf_joinDropOne`). -/
+theorem grows_dropLoop (fuel : Nat) (qs : List Place) : GrowsM (dropLoop fuel qs) := by
+  unfold dropLoop
+  grows_go
+
 theorem joinDrop_step (fuel : Nat) (ih : StepsIHBelow fuel) : joinDrop_step_stmt K ρ φ (fuel + 1) := by
-  intro st st' mt entry hg hctx s π hs hgrain hcopy bh h
+  intro st st' mt entry hg hctx s π hs hgrain hcopy hD bh h
   unfold joinDrop
   change Runs (dropLoop (fuel + 1) (K.D.joinMoves (scopeOf s) entry mt)) st bh () st' at h
-  change ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (D' : Decisions), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
-      K.D.AgreeOld st.absTy.size D' ∧ CtxOk { K with Δ := Δ', D := D' } ρ' st' ∧
-      Rel { K with Δ := Δ', D := D' } ρ' φ π st' ((K.D.joinMoves (scopeOf s) entry mt).foldl (joinDropOne K φ) s) ∧
-      Good K.dm ({ K with Δ := Δ', D := D' } : RunCtx).M K.Γ ρ' st'
+  change ∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
+      CtxOk { K with Δ := Δ' } ρ' st' ∧
+      Rel { K with Δ := Δ' } ρ' φ π st' ((K.D.joinMoves (scopeOf s) entry mt).foldl (joinDropOne K φ) s) ∧
+      Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st'
   generalize hsc : scopeOf s = sc at hgrain hcopy h
   generalize K.D.joinMoves sc entry mt = qs at hgrain hcopy h
   induction qs generalizing K ρ st s bh with
   | nil =>
     rw [runs_dropLoop_nil h]
-    refine ⟨ρ, K.Δ, K.D, fun _ _ => ⟨rfl, rfl⟩, Decisions.AgreeOld.refl _ _, ?_, ?_, ?_⟩
+    refine ⟨ρ, K.Δ, fun _ _ => ⟨rfl, rfl⟩, ?_, ?_, ?_⟩
     · cases K; exact hctx
     · cases K; exact hs
     · cases K; exact hg
   | cons q qs ihq =>
     obtain ⟨st₁, b₁, h1, h2⟩ := runs_dropLoop_cons h
-    obtain ⟨ρ₁, Δ₁, D₁, hsz, hext₁, hdec₁, hctx₁, hs₁, hg₁⟩ := dropOne_step K ρ φ fuel ih st st₁ q s π hg hctx hs
-      (hsc ▸ hgrain q List.mem_cons_self) (hsc ▸ hcopy q List.mem_cons_self) bh h1
+    obtain ⟨ρ₁, Δ₁, hsz, hext₁, hctx₁, hs₁, hg₁⟩ := dropOne_step K ρ φ fuel ih st st₁ q s π hg hctx hs
+      (hsc ▸ hgrain q List.mem_cons_self) (hsc ▸ hcopy q List.mem_cons_self)
+      (hD.of_rest (grows_dropLoop _ _) h2) bh h1
     have hsc₁ : scopeOf (joinDropOne K φ s q) = sc := (scopeOf_joinDropOne K φ s q).trans hsc
-    obtain ⟨ρ₂, Δ₂, D₂, hext₂, hdec₂, hctx₂, hs₂, hg₂⟩ := ihq ({ K with Δ := Δ₁, D := D₁ } : RunCtx) ρ₁ st₁ hg₁ hctx₁
-      (joinDropOne K φ s q) hs₁ b₁ hsc₁ (fun q' hq' => grain_agree hdec₁ (hgrain q' (List.mem_cons_of_mem _ hq')))
-      (fun q' hq' => by
-        show D₁.copy (D₁.placeDecl sc q') = false
-        rw [hdec₁.placeDecl, hdec₁.copy]; exact hcopy q' (List.mem_cons_of_mem _ hq')) h2
-    have e : joinDropOne ({ K with Δ := Δ₁, D := D₁ } : RunCtx) φ = joinDropOne K φ := by
-      funext s' q'; exact joinDropOne_withD K φ hdec₁ s' q'
-    rw [e] at hs₂
-    refine ⟨ρ₂, Δ₂, D₂, fun σ hσ => ⟨(hext₂ σ (Nat.lt_of_lt_of_le hσ hsz)).1.trans (hext₁ σ hσ).1,
-      (hext₂ σ (Nat.lt_of_lt_of_le hσ hsz)).2.trans (hext₁ σ hσ).2⟩, Decisions.AgreeOld.trans hdec₁ hdec₂ hsz, ?_, ?_, ?_⟩
+    obtain ⟨ρ₂, Δ₂, hext₂, hctx₂, hs₂, hg₂⟩ := ihq ({ K with Δ := Δ₁ } : RunCtx) ρ₁ st₁ hg₁ hctx₁
+      (joinDropOne K φ s q) hs₁ hD b₁ hsc₁ (fun q' hq' => hgrain q' (List.mem_cons_of_mem _ hq'))
+      (fun q' hq' => hcopy q' (List.mem_cons_of_mem _ hq')) h2
+    rw [joinDropOne_withΔ] at hs₂
+    refine ⟨ρ₂, Δ₂, fun σ hσ => ⟨(hext₂ σ (Nat.lt_of_lt_of_le hσ hsz)).1.trans (hext₁ σ hσ).1,
+      (hext₂ σ (Nat.lt_of_lt_of_le hσ hsz)).2.trans (hext₁ σ hσ).2⟩, ?_, ?_, ?_⟩
     · exact hctx₂
     · rw [List.foldl_cons]; exact hs₂
     · exact hg₂

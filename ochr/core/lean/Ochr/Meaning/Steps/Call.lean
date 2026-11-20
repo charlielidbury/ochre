@@ -124,11 +124,11 @@ theorem nestedRun_sim (fuel : Nat) (ih : StepsIHBelow fuel) (st st₁ : MState) 
     (v : Value) (T? : Option Value) (hint : TyS)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (hfree : t.loans = []) (htf : Term.tailHintFree K.Γ t = true)
-    (hok : ∀ ψ, (runT K ρ ψ false hint t (emptyState 0)).isSome)
+    (hok : ∀ ψ, (runT K ρ ψ false hint t (emptyState 0)).isSome) (hD : DecTab K.D st₁)
     (bh : Nat) (h : Runs (Ochr.eval fuel false t none)
       { st with env := #[{}], obsFrame := none, depth := st.depth + 1 } bh (v, T?) st₁) :
     NestedOut K ρ st st₁ t v hint := by
-  refine nestedRun_sim_asm K ρ fuel ih st st₁ t v T? hint hg hctx hfree htf (fun ψ => ?_) bh h
+  refine nestedRun_sim_asm K ρ fuel ih st st₁ t v T? hint hg hctx hfree htf (fun ψ => ?_) hD bh h
   -- the induction hypothesis's run is at the empty hint and the outer counter: the same success
   -- (a tail-hint-free text runs alike at every hint; the counter lemma)
   have e1 := run_hintIndep K ρ ψ t htf hint (hintM K ρ none) (emptyState 0)
