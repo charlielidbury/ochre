@@ -251,16 +251,17 @@ theorem nestedRun_sim_asm (fuel : Nat) (ih : StepsIHBelow fuel) (st st₁ : MSta
 end
 
 /-- The checker's tail of a call after the call proper (`Machine.callFn` after `r`, at class `0`): the
-result's lending finished, the flags, the deferred call type, η at `Unit`. A copy of the code as it
-stands, where a borrow result keeps the body's label and the marks of `g` are handed to it
-(`.ended g [k]`); main's D99 replaces that line by the renaming of the result into `g`, and this copy
-with it. -/
+result's lending finished (main's D99: a borrow result renamed into the reserved `g`, its loans and
+marks becoming `g`'s, `LendOp.into`), the flags, the deferred call type, η at `Unit`. A copy of the
+code, pinned by `callFn_front`. -/
 def callTailM (fuel : Nat) (g? : Option Nat) (res : DeclInfo) (B : Option Value) (later : Bool) (piTy : Value)
     (ws : Array Value) (r : Value) : M (Value × Option Value) := do
-  if let some g := g? then
-    match r with
-    | .borrow k _ => Ochr.lendEnv fuel (.ended g [k])
-    | _ => Ochr.lendEnv fuel (.ended g [])
+  let r ← match g?, r with
+    | some g, .borrow k u => do
+      if k != g then Ochr.lendEnv fuel (.into k g)
+      pure (Value.borrow g u)
+    | some g, _ => do Ochr.lendEnv fuel (.ended g []); pure r
+    | none, _ => pure r
   Ochr.setFlags (false, false)
   modify fun s => { s with callTyLater := if later then some (piTy, ws.toList) else none }
   pure (Ochr.etaUnit res r, B)
@@ -325,8 +326,7 @@ theorem callFn_front (fuel : Nat) (st st' : MState) (typed : Bool) (f : Term) (a
 the reserved state (`closeCall_step_stmt`), the tail (the result renamed into `g`, main's D99; η at
 `Unit`, `etaUnit_step_stmt`; the call's type, `callType_step_stmt`) gives the call related to
 `callOf` run from the state before the reservation: reserving `g`, calling, and renaming the fresh
-result into `g` is `callOf` (its fresh label is `g`). Holds after D99; before it, the checker's
-`.ended g [k]` keeps the result's own label (docs/31 D69). -/
+result into `g` is `callOf` (its fresh label is `g`), as main's D99 makes the checker do. -/
 theorem callFn_tail_closed (fuel : Nat) (st st₁ st₂ st' : MState) (fv : Value) (ws : Array Value) (s : SState)
     (π π₁ : Nat → Nat) (isRef : Bool) (fres : Res) (as : List Res) (w v : Value) (T? : Option Value) (res : DeclInfo)
     (hπ₁ : ∀ l, l < (st.withTemps (fv :: ws.toList)).nextLoan → π₁ l = π l)
@@ -343,7 +343,7 @@ theorem callFn_tail_closed (fuel : Nat) (st st₁ st₂ st' : MState) (fv : Valu
 in place from the reserved state (`runBody_step_stmt`), the tail gives the call related to `callOf`
 from the state before the reservation: the run in place with the reservation and the renaming is
 `runCallRef`, which is `callOf` at a related call (`Call.callOf_inPlace_rel`); η and the type as for
-a call that closed off. Holds after D99. -/
+a call that closed off. -/
 theorem callFn_tail_ran (fuel : Nat) (st st₁ st₂ st' : MState) (fv : Value) (ws : Array Value) (s : SState)
     (π π₁ : Nat → Nat) (isRef : Bool) (fres : Res) (as : List Res) (cs : List Value) (t : Term)
     (rd : List (DeclInfo × Value)) (w v : Value) (T? : Option Value) (res : DeclInfo)

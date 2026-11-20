@@ -131,8 +131,8 @@ def lentK (qs : List Pos) : List Site := qs.map fun q => ⟨q, [], true⟩
 
 /-! ## The reborrow that outlives its borrow, at an unknown `n` (D90's G8)
 
-At the hole: `n ↦ ⊥` (moved into the call), `a ↦ ⌈…; *r := loan_3; c1⌉`, `b ↦ ⌈…; c2⌉` (the
-closed-off call's fills over `3`), `r ↦ borrow_3 loan_4`, `s ↦ borrow_4 ⌈…; *r⌉`. -/
+At the hole: `n ↦ ⊥` (moved into the call), `a ↦ ⌈…; *r := loan_2; c1⌉`, `b ↦ ⌈…; c2⌉` (the
+closed-off call's fills over `2`, the label the call reserved, main's D99), `r ↦ borrow_2 loan_4`, `s ↦ borrow_4 ⌈…; *r⌉`. -/
 
 section G8
 def st8 : MState := stateAt "G8At" (atHole "G8At") 5 3 (gl := true)
@@ -140,30 +140,30 @@ def a8 : Pos := .bind 1 2
 def b8 : Pos := .bind 1 3
 def r8 : Pos := .bind 1 4
 
--- the run reached the hole with five bindings, `r` holding `3` and `s` holding `4`
+-- the run reached the hole with five bindings, `r` holding `2` and `s` holding `4`
 #guard (atHole "G8At").length == 5
-#guard Env.shape st8.env r8 == some 3 && Env.shape st8.env (.bind 1 5) == some 4
+#guard Env.shape st8.env r8 == some 2 && Env.shape st8.env (.bind 1 5) == some 4
 -- (1) the call lent its result `a` and `b`, as fills, as the reference's call does
-#guard sameSites (Env.sitesOf st8.env 3) (lentK [a8, b8])
--- (2) [End 3]: the reborrow `4`, lent at `*r` before, is lent at `a` and `b` after, on both sides
+#guard sameSites (Env.sitesOf st8.env 2) (lentK [a8, b8])
+-- (2) [End 2]: the reborrow `4`, lent at `*r` before, is lent at `a` and `b` after, on both sides
 #guard sameSites (Env.sitesOf st8.env 4) [⟨r8, [.deref], false⟩]
-#guard endAgrees st8 3 r8 100000
--- (3) after [End 3], reading `a` ends `4`: the reference reaches it at `a`, the checker ends it
-#guard (refOf st8.env ((refOf st8.env).relend 3 r8)).reached a8 (dataHit []) 4
-#guard liveAfter (do endBorrow 100000 3; read 100000 3) st8 2000000 == some []
--- the program's order (`G8`): `clone(a)` while `r` is live ends `3` (reached at `a`), whose sites
+#guard endAgrees st8 2 r8 100000
+-- (3) after [End 2], reading `a` ends `4`: the reference reaches it at `a`, the checker ends it
+#guard (refOf st8.env ((refOf st8.env).relend 2 r8)).reached a8 (dataHit []) 4
+#guard liveAfter (do endBorrow 100000 2; read 100000 3) st8 2000000 == some []
+-- the program's order (`G8`): `clone(a)` while `r` is live ends `2` (reached at `a`), whose sites
 -- pass to `4`, which the next round ends; the checker's read ends both
-#guard (refOf st8.env).reached a8 (dataHit []) 3 && !(refOf st8.env).reached a8 (dataHit []) 4
+#guard (refOf st8.env).reached a8 (dataHit []) 2 && !(refOf st8.env).reached a8 (dataHit []) 4
 #guard liveAfter (read 100000 3) st8 2000000 == some []
 end G8
 
 /-! ## The same at a known `n` (`G8K`), kernel-checked
 
-At the hole: `a ↦ lent_1 σ0` (a known fill over `1`: `a`'s value, which `r` does not point into),
-`b ↦ lent_1 loan_1` (the identity: `r` points into `b`), `r ↦ borrow_1 loan_3`, `s ↦ borrow_3 σ1`. -/
+At the hole: `a ↦ lent_2 σ0` (a known fill over `2`, the label the call reserved (main's D99): `a`'s value, which `r` does not point into),
+`b ↦ lent_2 loan_2` (the identity: `r` points into `b`), `r ↦ borrow_2 loan_3`, `s ↦ borrow_3 σ1`. -/
 
 section G8K
-def vK : List Value := [.gloan 1 (.abs 0), .gloan 1 (.loan 1), .borrow 1 (.loan 3), .borrow 3 (.abs 1)]
+def vK : List Value := [.gloan 2 (.abs 0), .gloan 2 (.loan 2), .borrow 2 (.loan 3), .borrow 3 (.abs 1)]
 #guard atHole "G8KAt" == vK
 def stK : MState := stateAt "G8KAt" vK 4 2
 def aK : Pos := .bind 1 1
@@ -171,52 +171,52 @@ def bK : Pos := .bind 1 2
 def rK : Pos := .bind 1 3
 
 -- the library's globals change nothing here
-#guard endAgrees (stateAt "G8KAt" vK 4 2 (gl := true)) 1 rK 100000
+#guard endAgrees (stateAt "G8KAt" vK 4 2 (gl := true)) 2 rK 100000
 
-theorem g8k_holders : Env.shape stK.env rK = some 1 ∧ Env.shape stK.env (.bind 1 4) = some 3 := by
+theorem g8k_holders : Env.shape stK.env rK = some 2 ∧ Env.shape stK.env (.bind 1 4) = some 3 := by
   decide +kernel
 /-- (1) the call lent its result `a` and `b`, as fills, as the reference's call does. -/
-theorem g8k_call : sameSites (Env.sitesOf stK.env 1) (lentK [aK, bK]) = true := by decide +kernel
-/-- (2) [End 1]: the reborrow `3`, lent at `*r` before, is lent at `a` and `b` after, on both sides,
+theorem g8k_call : sameSites (Env.sitesOf stK.env 2) (lentK [aK, bK]) = true := by decide +kernel
+/-- (2) [End 2]: the reborrow `3`, lent at `*r` before, is lent at `a` and `b` after, on both sides,
 and the holders agree. -/
 theorem g8k_end : sameSites (Env.sitesOf stK.env 3) [⟨rK, [.deref], false⟩] = true ∧
-    endAgrees stK 1 rK 50 = true := by decide +kernel
-/-- (3) after [End 1], reading `a` ends `3`: the reference reaches it at `a`; the checker's read
+    endAgrees stK 2 rK 50 = true := by decide +kernel
+/-- (3) after [End 2], reading `a` ends `3`: the reference reaches it at `a`; the checker's read
 ends it (`#guard` below). -/
-theorem g8k_read_after_end : (refOf stK.env ((refOf stK.env).relend 1 rK)).reached aK (dataHit []) 3 = true := by
+theorem g8k_read_after_end : (refOf stK.env ((refOf stK.env).relend 2 rK)).reached aK (dataHit []) 3 = true := by
   decide +kernel
-/-- The program's order (`G8K`): reading `a` while `r` is live ends `1` (reached at `a`), whose sites
+/-- The program's order (`G8K`): reading `a` while `r` is live ends `2` (reached at `a`), whose sites
 pass to `3`, which the next round ends; the checker's read ends both (`#guard` below). -/
-theorem g8k_read : (refOf stK.env).reached aK (dataHit []) 1 = true ∧
+theorem g8k_read : (refOf stK.env).reached aK (dataHit []) 2 = true ∧
     (refOf stK.env).reached aK (dataHit []) 3 = false := by decide +kernel
 -- the checker's reads: its [Access] (`firstLiveLoanOnPath`) is well-founded recursion, which the
 -- kernel does not unfold, so they are evaluated
-#guard liveAfter (do endBorrow 50 1; read 50 3) stK 1000 == some []
+#guard liveAfter (do endBorrow 50 2; read 50 3) stK 1000 == some []
 #guard liveAfter (read 50 3) stK 1000 == some []
 end G8K
 
 /-! ## A borrow-returning call at a known argument (Pick at `Z`), kernel-checked
 
-At the hole: `a ↦ lent_0 loan_0` (the identity: `r` points into `a`), `b ↦ lent_0 σ1` (a known
-fill over `0`: `b`'s value), `r ↦ borrow_0 σ0`. The place the result does not point into, `b`, is
+At the hole: `a ↦ lent_2 loan_2` (the identity: `r` points into `a`), `b ↦ lent_2 σ1` (a known
+fill over `2`, the label the call reserved, main's D99: `b`'s value), `r ↦ borrow_2 σ0`. The place the result does not point into, `b`, is
 a site of `r`'s borrow, and reading it ends that borrow. -/
 
 section PZ
-def vZ : List Value := [.gloan 0 (.loan 0), .gloan 0 (.abs 1), .borrow 0 (.abs 0)]
+def vZ : List Value := [.gloan 2 (.loan 2), .gloan 2 (.abs 1), .borrow 2 (.abs 0)]
 #guard atHole "PZAt" == vZ
-def stZ : MState := stateAt "PZAt" vZ 2 2
+def stZ : MState := stateAt "PZAt" vZ 3 2
 def aZ : Pos := .bind 1 1
 def bZ : Pos := .bind 1 2
 
-#guard liveAfter (read 100000 1) (stateAt "PZAt" vZ 2 2 (gl := true)) 2000000 == some []
+#guard liveAfter (read 100000 1) (stateAt "PZAt" vZ 3 2 (gl := true)) 2000000 == some []
 
 /-- (1) the call lent its result `a` and `b`, as fills, as the reference's call does: `b` is a site
 though the result does not point into it. -/
-theorem pz_call : Env.shape stZ.env (.bind 1 3) = some 0 ∧
-    sameSites (Env.sitesOf stZ.env 0) (lentK [aZ, bZ]) = true := by decide +kernel
+theorem pz_call : Env.shape stZ.env (.bind 1 3) = some 2 ∧
+    sameSites (Env.sitesOf stZ.env 2) (lentK [aZ, bZ]) = true := by decide +kernel
 /-- (3) reading `b` ends the result's borrow: the reference reaches it at `b`; the checker's read
 ends it (`#guard` below, as for `G8K`). -/
-theorem pz_read : (refOf stZ.env).reached bZ (dataHit []) 0 = true := by decide +kernel
+theorem pz_read : (refOf stZ.env).reached bZ (dataHit []) 2 = true := by decide +kernel
 #guard liveAfter (read 50 1) stZ 1000 == some []
 end PZ
 

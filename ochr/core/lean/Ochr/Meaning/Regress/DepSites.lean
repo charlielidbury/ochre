@@ -123,20 +123,20 @@ The reference's state after `let r = Pick(Z, &a, &b)`, in the function's frame (
 frame `1` holds the function's own binding, `a`, `b`, `r`), up to the renaming of labels, taken the
 identity as `StaticLend.refOf` takes it. `callOf`'s `.ref` row (i') leaves each lent place reading
 its old meaning (its argument label only) at the future fixing the argument labels to the
-backward function's components at the decoded final content of the result `0`, or to `err`: a
+backward function's components at the decoded final content of the result `2` (the label the call reserved, main's D99), or to `err`: a
 function of that content alone (`fa`, `fb`, arbitrary here). `r` and the consumed temporaries are
-constant. The sites are the checker's (`pz_call`: `0` fills `a` and `b`). -/
+constant. The sites are the checker's (`pz_call`: `2` fills `a` and `b`). -/
 
 def SPZ (S A B R : SBinding) (fa fb : Sem → Sem) (vs vr : Sem) : SState :=
-  { env := [SFrame.mk [] [], SFrame.mk [{ S with val := fun _ => vs }, { A with val := fun ψ => fa (ψ 0) },
-      { B with val := fun ψ => fb (ψ 0) }, { R with val := fun _ => vr }] [fun _ => .moved, fun _ => .moved, fun _ => .moved]],
-    shape := fun p => if p = .bind 1 3 then some 0 else none, nextLoan := 3,
+  { env := [SFrame.mk [] [], SFrame.mk [{ S with val := fun _ => vs }, { A with val := fun ψ => fa (ψ 2) },
+      { B with val := fun ψ => fb (ψ 2) }, { R with val := fun _ => vr }] [fun _ => .moved, fun _ => .moved, fun _ => .moved]],
+    shape := fun p => if p = .bind 1 3 then some 2 else none, nextLoan := 3,
     lent := Env.sitesOf StaticLend.stZ.env,
-    heldTy := fun m => if m = 0 then TyM.nat else TyM.err }
+    heldTy := fun m => if m = 2 then TyM.nat else TyM.err }
 
-theorem rs_PZ_a : (Env.sitesOf StaticLend.stZ.env 0).any (fun x => decide (x.pos = .bind 1 1) && (pathKey x.path).isEmpty) = true := by
+theorem rs_PZ_a : (Env.sitesOf StaticLend.stZ.env 2).any (fun x => decide (x.pos = .bind 1 1) && (pathKey x.path).isEmpty) = true := by
   decide +kernel
-theorem rs_PZ_b : (Env.sitesOf StaticLend.stZ.env 0).any (fun x => decide (x.pos = .bind 1 2) && (pathKey x.path).isEmpty) = true := by
+theorem rs_PZ_b : (Env.sitesOf StaticLend.stZ.env 2).any (fun x => decide (x.pos = .bind 1 2) && (pathKey x.path).isEmpty) = true := by
   decide +kernel
 
 /-- **`Pick` at `Z`.** -/
@@ -149,8 +149,8 @@ theorem dws_PZ (S A B R : SBinding) (fa fb : Sem → Sem) (vs vr : Sem) :
     · simp [SState.valAt, SPZ]
     · rcases i with _ | _ | _ | _ | i
       · simp [SState.valAt, SPZ]
-      · simp [SState.valAt, SPZ, agree_of_rootSited h (l := 0) rs_PZ_a]
-      · simp [SState.valAt, SPZ, agree_of_rootSited h (l := 0) rs_PZ_b]
+      · simp [SState.valAt, SPZ, agree_of_rootSited h (l := 2) rs_PZ_a]
+      · simp [SState.valAt, SPZ, agree_of_rootSited h (l := 2) rs_PZ_b]
       all_goals simp [SState.valAt, SPZ]
     · simp [SState.valAt, SPZ]
   · rcases f with _ | _ | f
@@ -160,9 +160,9 @@ theorem dws_PZ (S A B R : SBinding) (fa fb : Sem → Sem) (vs vr : Sem) :
 
 /-! ## `G8` after the re-rooting end, at a known `n` (`G8K`)
 
-After `let r = Pick(S(Z), &a, &b); let s = &*r` and the end of `r`'s borrow `1` (frame `1`: the
-function, `a`, `b`, `r`, `s`). Before the end `a`, `b` read functions of `1`'s final content and `r`
-reads `s`'s (`3`); [End 1] fixes `1` to what `r` holds, so `a`, `b` read functions of `3`'s final
+After `let r = Pick(S(Z), &a, &b); let s = &*r` and the end of `r`'s borrow `2` (the label the call reserved, main's D99) (frame `1`: the
+function, `a`, `b`, `r`, `s`). Before the end `a`, `b` read functions of `2`'s final content and `r`
+reads `s`'s (`3`); [End 2] fixes `2` to what `r` holds, so `a`, `b` read functions of `3`'s final
 content, `r` is forgotten (`moved`), `s` holds `3`. The sites: the reference's `relend` on the
 checker's sites (`g8k_end`: the checker's after its `endBorrow`): `3` fills `a` and `b`. -/
 
@@ -171,12 +171,12 @@ def SG8K (S A B R T : SBinding) (fa fb : Sem → Sem) (vs vt : Sem) : SState :=
       { B with val := fun ψ => fb (ψ 3) }, { R with val := fun _ => .moved }, { T with val := fun _ => vt }]
       [fun _ => .moved, fun _ => .moved, fun _ => .moved, fun _ => .moved]],
     shape := fun p => if p = .bind 1 4 then some 3 else none, nextLoan := 4,
-    lent := (StaticLend.refOf StaticLend.stK.env).relend 1 StaticLend.rK,
+    lent := (StaticLend.refOf StaticLend.stK.env).relend 2 StaticLend.rK,
     heldTy := fun m => if m = 3 then TyM.nat else TyM.err }
 
-theorem rs_G8K_a : ((StaticLend.refOf StaticLend.stK.env).relend 1 StaticLend.rK 3).any
+theorem rs_G8K_a : ((StaticLend.refOf StaticLend.stK.env).relend 2 StaticLend.rK 3).any
     (fun x => decide (x.pos = .bind 1 1) && (pathKey x.path).isEmpty) = true := by decide +kernel
-theorem rs_G8K_b : ((StaticLend.refOf StaticLend.stK.env).relend 1 StaticLend.rK 3).any
+theorem rs_G8K_b : ((StaticLend.refOf StaticLend.stK.env).relend 2 StaticLend.rK 3).any
     (fun x => decide (x.pos = .bind 1 2) && (pathKey x.path).isEmpty) = true := by decide +kernel
 
 /-- **`G8` after the re-rooting end, `n` known.** -/
@@ -200,13 +200,13 @@ theorem dws_G8K (S A B R T : SBinding) (fa fb : Sem → Sem) (vs vt : Sem) :
 
 /-! ## `G8` after the re-rooting end, at an unknown `n`
 
-The same at `G8At` (frame `1`: the function, `n`, `a`, `b`, `r`, `s`), after [End 3]: `n` moved into
+The same at `G8At` (frame `1`: the function, `n`, `a`, `b`, `r`, `s`), after [End 2] (`r`'s label, the one the call reserved, main's D99): `n` moved into
 the call, `a` and `b` read functions of `s`'s label `4` (the backward function at `ρ`'s `n`, a
 constant of the future), `r` forgotten. The sites are written out and tied to the reference's
 `relend` on the checker's sites by evaluation: the checker's `G8At` state holds sealed fills whose
 re-normalisation calls `Pick`, which the kernel does not run (`StaticLend`). -/
 
-#guard StaticLend.sameSites ((StaticLend.refOf StaticLend.st8.env).relend 3 StaticLend.r8 4)
+#guard StaticLend.sameSites ((StaticLend.refOf StaticLend.st8.env).relend 2 StaticLend.r8 4)
   (StaticLend.lentK [StaticLend.a8, StaticLend.b8])
 
 def SG8 (S N A B R T : SBinding) (fa fb : Sem → Sem) (vs vt : Sem) : SState :=

@@ -2,25 +2,20 @@ import Ochr.Meaning.Steps.Records
 import Ochr.Examples.Nat
 
 /-!
-# A callee that returns its borrow parameter: the result keeps a label issued before the call
+# A callee that returns its borrow parameter: the result is a fresh label (docs/31 D69, main's D99)
 
-`IdP (x : &Nat) : &Nat := x` and `let y = 2; let r = IdP(&y); *r := 5; y` are accepted. At a
-hole after the call the checker holds `y ↦ lent_0 loan_0` and `r ↦ borrow_0 2`: the call's result
-is the borrow `0` the argument `&y` made BEFORE the call (`callFn` runs the body in place, the body
-returns the parameter's borrow, and `.ended g [0]` hands the result's marks `lent_g` to it).
+`IdP (x : &Nat) : &Nat := x` and `let y = 2; let r = IdP(&y); *r := 5; y` are accepted. Before main's
+D99 the checker's result after the call was the borrow `0` the argument `&y` made BEFORE the call
+(`y ↦ lent_0 loan_0`, `r ↦ borrow_0 2`), while the reference's `callOf` returns a fresh label
+(`Steps.callOfL_ref_label`), so any renaming relating the two states sent `0` to a label that did not
+exist before the call, against part (a)'s renaming condition (`result_not_old`). D99 (decided by the
+lead): a borrow-returning call returns the fresh borrow it reserves, the body's returned borrow ended
+into it. Now the checker holds `y ↦ lent_1 loan_1`, `r ↦ borrow_1 2`: the result is the reserved
+label `1` and the argument's `0` occurs nowhere, as in `callOf` and in the reference's in-place
+mirror (`CallRef.runCallRef`).
 
-The reference applies the callee's meaning (`callOf`), whose `.ref` row returns a FRESH label, the
-state's counter (`Steps.callOfL_ref_label`), so never a label issued before the call; the
-argument's label is consumed. After `let r = IdP(&y)` the checker's binding `r` holds `0` and the
-reference's holds its counter, so any renaming relating the two states sends `0` to a label that
-was not `0`'s before the call. Part (a) of the main theorem (and `SimConcl`/`SimConclT`) asks the
-renaming after a step to agree with the one before on every label the checker had issued
-(`∀ l < st.nextLoan, π' l = π l`), which is false here: the statements of `callFn` and of every
-step that runs a call, and `callOf_inPlace`'s renaming (`τ` fixes every label below the counter),
-fail at this program (docs/31 D69).
-
-A second record, for the reference's in-place run: `Pick2 (a : &Nat) (b : &Nat) : &Nat := &*a`
-lends its result at `b`'s lender too.
+A second record: `Pick2 (a : &Nat) (b : &Nat) : &Nat := &*a` lends its result at `b`'s lender too
+(the reserved label's marks at every borrow argument's lender): reading `y` ends `r`.
 -/
 
 open Ochr.Test
@@ -57,14 +52,13 @@ def atHole (name : String) : List Value :=
       | .note _ _ (.hole _ Ω) => some (Ω.map (·.2.2)) | _ => none).headD []
   | none => []
 
--- The checker's state after the call: `r` holds the borrow `0`, the one `&y` made.
-#guard (atHole "UseIdPAt").map Value.pp == ["()", "lent_0 loan_0", "borrow_0 2"]
+-- The checker's state after the call (D99): `r` holds the reserved label `1`; `&y`'s `0` is gone.
+#guard (atHole "UseIdPAt").map Value.pp == ["()", "lent_1 loan_1", "borrow_1 2"]
 
--- After `Pick2(&x, &y)`: `r`'s borrow `3` is lent at `x` and, by the mark, at `y`. The reference's
--- in-place run lends its result every place a borrow argument lent before the call
--- (`CallRef.runCallRef`), as `callOf` does; as first written it kept the sites the pop's [End]s gave
--- the reborrow, `x`'s only.
-#guard (atHole "UsePick2At").map Value.pp == ["()", "lent_3 loan_3", "lent_3 2", "borrow_3 1"]
+-- After `Pick2(&x, &y)` (D99): `r`'s borrow is the reserved `2` (the body's reborrow `3` ended into
+-- it), lent at `x` and, by the mark, at `y`. The reference's in-place run lends its result every
+-- place a borrow argument lent before the call (`CallRef.runCallRef`), as `callOf` does.
+#guard (atHole "UsePick2At").map Value.pp == ["()", "lent_2 loan_2", "lent_2 2", "borrow_2 1"]
 
 /-- **No renaming that agrees before the call relates the result** (the reference's side): the
 result of `callOf`'s `.ref` row is a label no state before the call had issued, so it is not the

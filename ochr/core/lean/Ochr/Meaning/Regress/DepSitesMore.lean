@@ -130,9 +130,9 @@ theorem dws_RR' (S A R T U : SBinding) (vs vt : Sem) : DepWithinSites dm Γ (SRR
 /-! ## A field borrowed through a returned borrow of a pair
 
 `IdP (p : &(Nat × Nat)) : &(Nat × Nat) := &*p`, then `let x = (a, b); let r = IdP(&x); let s = &(*r).0`.
-At the hole the checker holds `a ↦ ⊥`, `b ↦ ⊥`, `x ↦ lent_2 loan_2` (a fill over `2`, the call run
-in place), `r ↦ borrow_2 (loan_3, σ1)`, `s ↦ borrow_3 σ0` (frame `1`: the function, `a`, `b`, `x`,
-`r`, `s`). The reference (identity renaming, the checker's sites): `x` reads a function of `2`'s
+At the hole the checker holds `a ↦ ⊥`, `b ↦ ⊥`, `x ↦ lent_1 loan_1` (a fill over `1`, the label the
+call reserved, main's D99), `r ↦ borrow_1 (loan_3, σ1)`, `s ↦ borrow_3 σ0` (frame `1`: the function, `a`, `b`, `x`,
+`r`, `s`). The reference (identity renaming, the checker's sites): `x` reads a function of `1`'s
 final content (`callOf`'s `.ref` row), `r` reads the pair whose field `0` is `3`'s final content
 and whose field `1` is `σ1`'s meaning (`ctorM`: a constructor value describes itself, its element
 whatever the fields give), `s` holds `σ0`. `3` is lent at `(r, [*, .0])`, BELOW the root: a read of
@@ -140,22 +140,22 @@ whatever the fields give), `s` holds `σ0`. `3` is lent at `(r, [*, .0])`, BELOW
 final content is, whatever the declaration (`follow_dat_off`; the type it is read at may read field `0`, which the
 invariant does not compare). -/
 
-def vP : List Value := [.bot, .bot, .gloan 2 (.loan 2),
-  .borrow 2 (.ind "Pair" 0 ⟨"Mk"⟩ [.tNat, .tNat] [.loan 3, .abs 1]), .borrow 3 (.abs 0)]
+def vP : List Value := [.bot, .bot, .gloan 1 (.loan 1),
+  .borrow 1 (.ind "Pair" 0 ⟨"Mk"⟩ [.tNat, .tNat] [.loan 3, .abs 1]), .borrow 3 (.abs 0)]
 #guard atHole "PairAt" == vP
 def stP : MState := StaticLend.stateAt "PairAt" vP 4 2
 
-/-- The checker's sites: `2` fills `x`; `3` is lent at `(r, [*, .0])`. -/
-theorem pair_sites : StaticLend.sameSites (Env.sitesOf stP.env 2) [⟨.bind 1 3, [], true⟩] = true ∧
+/-- The checker's sites: `1` fills `x`; `3` is lent at `(r, [*, .0])`. -/
+theorem pair_sites : StaticLend.sameSites (Env.sitesOf stP.env 1) [⟨.bind 1 3, [], true⟩] = true ∧
     StaticLend.sameSites (Env.sitesOf stP.env 3) [⟨.bind 1 4, [.deref, .field ⟨"Pair", 0, 0, ""⟩], false⟩] = true := by
   decide +kernel
 
 noncomputable def SPr (S A B X R T : SBinding) (fx : Sem → Sem) (ps : List Sem) (v1 vs vt : Sem)
     (e : Sem → Option (Σ A : Type, A)) : SState :=
   { env := [SFrame.mk [] [], SFrame.mk [{ S with val := fun _ => vs }, { A with val := fun _ => .moved },
-      { B with val := fun _ => .moved }, { X with val := fun ψ => fx (ψ 2) },
+      { B with val := fun _ => .moved }, { X with val := fun ψ => fx (ψ 1) },
       { R with val := fun ψ => .dat "Pair" ps 0 [ψ 3, v1] (e (ψ 3)) }, { T with val := fun _ => vt }] []],
-    shape := fun p => if p = .bind 1 4 then some 2 else if p = .bind 1 5 then some 3 else none,
+    shape := fun p => if p = .bind 1 4 then some 1 else if p = .bind 1 5 then some 3 else none,
     nextLoan := 4, lent := Env.sitesOf stP.env }
 
 /-- **Off field `0`, the value read off a two-field constructor value does not read field `0`**,
@@ -210,7 +210,7 @@ theorem off_key00 {steps π : List Step} (hπ : pathKey π = [(0, 0)]) (hd : dat
       subst hn
       simp [List.isPrefixOf] at hd
 
-theorem rs_P (l i : Nat) (h : l = 2 ∧ i = 3) :
+theorem rs_P (l i : Nat) (h : l = 1 ∧ i = 3) :
     (Env.sitesOf stP.env l).any (fun x => decide (x.pos = .bind 1 i) && (pathKey x.path).isEmpty) = true := by
   obtain ⟨rfl, rfl⟩ := h; decide +kernel
 
@@ -229,10 +229,10 @@ theorem dws_Pair (S A B X R T : SBinding) (fx : Sem → Sem) (ps : List Sem) (v1
       · simp [SState.valAt, SPr]
       · simp [SState.valAt, SPr]
       · simp [SState.valAt, SPr]
-      · have h2 : ψ 2 = ψ' 2 := Classical.byContradiction fun hne => by
-          have := (h 2 hne).2
-          rw [DepSites.reached_of_rootSited (s := SPr S A B X R T fx ps v1 vs vt e) (p := .bind 1 3) (l := 2)
-            (rs_P 2 3 ⟨rfl, rfl⟩) steps] at this; cases this
+      · have h2 : ψ 1 = ψ' 1 := Classical.byContradiction fun hne => by
+          have := (h 1 hne).2
+          rw [DepSites.reached_of_rootSited (s := SPr S A B X R T fx ps v1 vs vt e) (p := .bind 1 3) (l := 1)
+            (rs_P 1 3 ⟨rfl, rfl⟩) steps] at this; cases this
         simp [SState.valAt, SPr, h2]
       · by_cases h3 : ψ 3 = ψ' 3
         · simp [SState.valAt, SPr, h3]
