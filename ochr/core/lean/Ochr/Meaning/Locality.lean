@@ -295,6 +295,8 @@ variable {L}
 
 theorem inv1_setLent {s : SState} {l : Nat} {xs : List Site} : Inv1 L (s.setLent l xs) ↔ Inv1 L s := Iff.rfl
 theorem inv2_setLent {s : SState} {l : Nat} {xs : List Site} : Inv2 L (s.setLent l xs) ↔ Inv2 L s := Iff.rfl
+theorem inv1_setHeldTy {s : SState} {l : Nat} {T : TyM} : Inv1 L (s.setHeldTy l T) ↔ Inv1 L s := Iff.rfl
+theorem inv2_setHeldTy {s : SState} {l : Nat} {T : TyM} : Inv2 L (s.setHeldTy l T) ↔ Inv2 L s := Iff.rfl
 
 theorem holder_indep {s : SState} (h2 : Inv2 L s) {r : Pos} {x : Nat} (hr : r ∈ s.positions)
     (hs : s.shape r = some x) : Indep x (s.valAt r) :=
@@ -1536,13 +1538,13 @@ namespace SState
 position reads the fresh label `k`'s final content, decodes it (`dec`) and fixes the taken labels
 (`fx x` covers them all); `k` is parked with a constant. Keeps (I1) and (I2). -/
 theorem park_fix_inv {L : Nat → Prop} {s : SState} (h1 : Inv1 L s) (h2 : Inv2 L s) (hsa : ShapeAt s)
-    {X : Type u} (ls : List Nat) (dec : Sem → Option X) (fx : X → List (Nat × Sem)) (le : Nat → List Site)
+    {X : Type u} (ls : List Nat) (dec : Sem → Option X) (fx : X → List (Nat × Sem)) (le : Nat → List Site) (ht : Nat → TyM)
     (hcov : ∀ x, ∀ l ∈ ls, l ∈ (fx x).map (·.1)) (c : Sem) (g : Pos → SVal → SVal)
     (hg : ∀ p v ψ, (∃ x, dec (ψ (ls.foldl takeLabel s).nextLoan) = some x ∧ g p v ψ = v (ψ.updList (fx x))) ∨
       (dec (ψ (ls.foldl takeLabel s).nextLoan) = none ∧ g p v ψ = .err)) :
-    Inv1 L (((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape ((ls.foldl takeLabel s).nextLoan + 1) le).mapVals
+    Inv1 L (((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape ((ls.foldl takeLabel s).nextLoan + 1) le ht).mapVals
         g).pushTempShaped (fun _ => c) (ls.foldl takeLabel s).nextLoan) ∧
-    Inv2 L (((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape ((ls.foldl takeLabel s).nextLoan + 1) le).mapVals
+    Inv2 L (((SState.mk (ls.foldl takeLabel s).env (ls.foldl takeLabel s).shape ((ls.foldl takeLabel s).nextLoan + 1) le ht).mapVals
         g).pushTempShaped (fun _ => c) (ls.foldl takeLabel s).nextLoan) := by
   -- names for the stages
   generalize hs₁ : ls.foldl takeLabel s = s₁
@@ -1551,7 +1553,7 @@ theorem park_fix_inv {L : Nat → Prop} {s : SState} (h1 : Inv1 L s) (h2 : Inv2 
   have hk' : k = s.nextLoan := by
     rw [← hk, ← hs₁]; exact (shapeSub_foldl_takeLabel ls s).2
   rw [hs₁, hk] at hg
-  generalize hs₂ : (SState.mk s₁.env s₁.shape (k + 1) le).mapVals g = s₃
+  generalize hs₂ : (SState.mk s₁.env s₁.shape (k + 1) le ht).mapVals g = s₃
   have hpos₃ : s₃.positions = s.positions := by
     rw [← hs₂, positions_mapVals]; exact hpos₁
   have hlive₃ : ∀ y, s₃.Live y ↔ s₁.Live y := by
@@ -1671,7 +1673,7 @@ theorem callOfL_ref_inv {L : Nat → Prop} (Lv : Lvl.{u}) {C : Type u} (t : Tel 
   rw [happ] at h
   simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
   obtain ⟨_, rfl⟩ := h
-  rw [SState.inv1_setLent, SState.inv2_setLent]
+  rw [SState.inv1_setHeldTy, SState.inv2_setHeldTy, SState.inv1_setLent, SState.inv2_setLent]
   -- the lengths: every taken label is fixed, whatever the backward function's argument
   unfold applyFnL at happ
   obtain ⟨F, hu, happ'⟩ : ∃ F, Lv.unpack C fv = some F ∧
@@ -1692,7 +1694,7 @@ theorem callOfL_ref_inv {L : Nat → Prop} (Lv : Lvl.{u}) {C : Type u} (t : Tel 
     apply fixes_cover
     rw [List.length_map, zip_filter_len args _ hlen, hfin x]
     exact Nat.le_refl _
-  apply SState.park_fix_inv h1 h2 hsa _ (Lv.dec c) _ _ hcover (Lv.enc c fwd)
+  apply SState.park_fix_inv h1 h2 hsa _ (Lv.dec c) _ _ _ hcover (Lv.enc c fwd)
   intro p v ψ
   cases hd : Lv.dec c (ψ ((((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id)).foldl
       SState.takeLabel s).nextLoan) with

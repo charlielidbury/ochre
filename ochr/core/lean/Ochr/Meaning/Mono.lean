@@ -333,7 +333,7 @@ theorem endLabel_endLabel (s : SState) {l₁ l₂ : Nat} {r₁ r₂ : Pos}
       ({ s with shape := ((s.toMean.semEnd r₁ l₁).semEnd r₂ l₂).shape, lent := (s.endLabel l₁).relend l₂ r₂ }).mapVals
         fun p _ => (((s.toMean.semEnd r₁ l₁).semEnd r₂ l₂).val · p) := by
   rw [endLabel_of_find _ l₂ r₂ h₂]
-  have e : ({ env := (s.endLabel l₁).env, shape := ((s.endLabel l₁).toMean.semEnd r₂ l₂).shape, nextLoan := (s.endLabel l₁).nextLoan, lent := (s.endLabel l₁).relend l₂ r₂ } : SState) =
+  have e : ({ env := (s.endLabel l₁).env, shape := ((s.endLabel l₁).toMean.semEnd r₂ l₂).shape, nextLoan := (s.endLabel l₁).nextLoan, lent := (s.endLabel l₁).relend l₂ r₂, heldTy := (s.endLabel l₁).heldTy } : SState) =
       ({ s with shape := ((s.toMean.semEnd r₁ l₁).semEnd r₂ l₂).shape, lent := (s.endLabel l₁).relend l₂ r₂ } : SState).mapVals
         fun p _ => ((s.toMean.semEnd r₁ l₁).val · p) := by
     generalize (s.endLabel l₁).relend l₂ r₂ = L₂
@@ -1073,6 +1073,9 @@ def ShapeBelow (s : SState) : Prop := ∀ p l, s.shape p = some l → l < s.next
 theorem shapeBelow_setLent {s : SState} {l : Nat} {xs : List Site} : (s.setLent l xs).ShapeBelow ↔ s.ShapeBelow :=
   Iff.rfl
 
+theorem shapeBelow_setHeldTy {s : SState} {l : Nat} {T : TyM} : (s.setHeldTy l T).ShapeBelow ↔ s.ShapeBelow :=
+  Iff.rfl
+
 /-- `s'` holds only borrows `s` holds, at the same positions, and has the same counter: what every
 step that forgets or rewrites meanings leaves (`endLabel`, `access`, `setAt`, `mapVals`,
 `takeLabel`, `joinDrop`). -/
@@ -1304,7 +1307,8 @@ theorem borrowPlace_fresh (K : RunCtx) (φ : Future) (p : Place) (s : SState) (h
     · cases h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨⟨_, rfl⟩, rfl⟩ := h
-      simp only [SState.shapeBelow_setLent, SState.setLent_shape, SState.setLent_nextLoan]
+      simp only [SState.shapeBelow_setHeldTy, SState.setHeldTy_shape, SState.setHeldTy_nextLoan,
+        SState.shapeBelow_setLent, SState.setLent_shape, SState.setLent_nextLoan]
       refine ⟨SState.shapeBelow_pushTempShaped (SState.ShapeBelow.of_sub (SState.shapeSub_setAt _ _ _) hb) _
           (by rw [SState.nextLoan_setAt]; exact hlt), s₁.freshLoan.1, rfl,
         by rw [SState.nextLoan_pushTempShaped, SState.nextLoan_setAt]; exact hlt,

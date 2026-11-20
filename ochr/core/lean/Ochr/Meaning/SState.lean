@@ -69,6 +69,10 @@ structure SState : Type 3 where
   nextLoan : Nat
   /-- where each borrow is lent (docs/31 D29); read only for the labels the state holds -/
   lent : Nat → List Site := fun _ => []
+  /-- the type of each borrow's content, recorded when the borrow is made (docs/31 D66): the type
+  of its holder's content, which a binding's stored type also gives and a parked temporary has no
+  other record of; read only for the labels the state holds -/
+  heldTy : Nat → TyM := fun _ => TyM.err
 
 namespace SState
 
@@ -172,6 +176,21 @@ def setLent (s : SState) (l : Nat) (xs : List Site) : SState :=
     (s.setLent l xs).tyAt p = s.tyAt p := rfl
 @[simp] theorem setLent_positions (s : SState) (l : Nat) (xs : List Site) :
     (s.setLent l xs).positions = s.positions := rfl
+
+/-- The borrow `l`'s content is of type `T` (docs/31 D66). -/
+def setHeldTy (s : SState) (l : Nat) (T : TyM) : SState :=
+  { s with heldTy := fun m => if m = l then T else s.heldTy m }
+
+@[simp] theorem setHeldTy_env (s : SState) (l : Nat) (T : TyM) : (s.setHeldTy l T).env = s.env := rfl
+@[simp] theorem setHeldTy_shape (s : SState) (l : Nat) (T : TyM) : (s.setHeldTy l T).shape = s.shape := rfl
+@[simp] theorem setHeldTy_nextLoan (s : SState) (l : Nat) (T : TyM) : (s.setHeldTy l T).nextLoan = s.nextLoan := rfl
+@[simp] theorem setHeldTy_lent (s : SState) (l : Nat) (T : TyM) : (s.setHeldTy l T).lent = s.lent := rfl
+@[simp] theorem setHeldTy_valAt (s : SState) (l : Nat) (T : TyM) (p : Pos) :
+    (s.setHeldTy l T).valAt p = s.valAt p := rfl
+@[simp] theorem setHeldTy_tyAt (s : SState) (l : Nat) (T : TyM) (p : Pos) :
+    (s.setHeldTy l T).tyAt p = s.tyAt p := rfl
+@[simp] theorem setHeldTy_positions (s : SState) (l : Nat) (T : TyM) :
+    (s.setHeldTy l T).positions = s.positions := rfl
 
 /-- The top frame's index. -/
 def topIdx (s : SState) : Nat := s.env.length - 1

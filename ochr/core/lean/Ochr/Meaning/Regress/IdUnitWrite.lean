@@ -136,7 +136,7 @@ theorem old_stmt_vacuous (x : Option (Res × SState)) (A : Prop) :
   refine ⟨(.err, .plain .err), ?_⟩
   have hf : ¬ (Sem.err.asTy).true := id
   cases x with
-  | none => exact ⟨⟨[], fun _ => none, 0, fun _ => []⟩, ⟨fun h => (nomatch h.1), fun h => absurd h hf⟩⟩
+  | none => exact ⟨⟨[], fun _ => none, 0, fun _ => [], fun _ => TyM.err⟩, ⟨fun h => (nomatch h.1), fun h => absurd h hf⟩⟩
   | some rs =>
     refine ⟨{ rs.2 with nextLoan := rs.2.nextLoan + 1 }, ⟨fun h => ?_, fun h => absurd h hf⟩⟩
     have e := congrArg (fun o => (o.map (·.2.nextLoan))) h.1
