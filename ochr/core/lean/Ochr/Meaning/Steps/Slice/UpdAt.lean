@@ -131,18 +131,21 @@ theorem updAt_append_none (f : Sem → Sem) : ∀ (p : List Step) (T : TyS) (V w
         | (cases hstep; done)
         | (simp [asNat_proof]; done)
         | skip
+      -- a named field step reads a constructor value of `g`'s declaration only
       split at hstep
-      · rename_i hc0; subst hc0
-        obtain ⟨f0, hf0, he⟩ := Option.map_eq_some_iff.mp hstep
-        simp only [Prod.mk.injEq] at he; obtain ⟨rfl, -⟩ := he
-        have hasN : (Sem.dat n rr g.ctor fs).asNat = none := rfl
-        simp only [hasN]
-        split
-        · rfl
-        · rename_i heq; simp only [Sem.dat.injEq] at heq
-          obtain ⟨rfl, rfl, rfl, rfl⟩ := heq
-          simp [hf0, ih]
-        · rfl
+      · split at hstep
+        · rename_i _ hc0; subst hc0
+          obtain ⟨f0, hf0, he⟩ := Option.map_eq_some_iff.mp hstep
+          simp only [Prod.mk.injEq] at he; obtain ⟨rfl, -⟩ := he
+          have hasN : (Sem.dat n rr g.ctor fs).asNat = none := rfl
+          simp only [hasN]
+          split
+          · rfl
+          · rename_i heq; simp only [Sem.dat.injEq] at heq
+            obtain ⟨rfl, rfl, rfl, rfl⟩ := heq
+            simp [hf0, ih]
+          · rfl
+        · cases hstep
       · cases hstep
 
 end
