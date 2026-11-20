@@ -957,3 +957,32 @@ Decision (the orchestrator, after a measurement). The decision procedures in `Oc
   - The largest relative growth, about 1.3x, is in call-heavy code over long dependent telescopes: `Quicksort.Scan*` and `ArrayLemmas.SwapIsSwapS`.
 - **Available, not taken.** The smallest pure change that would buy the time back is to compute a global's type reading and its Π-type's class once, when the global is added, and store them with its declaration (`GDef`). That is declaration data, not run state, and it covers constants and most calls. It is to be taken only when a workload needs it.
 - **Still written.** `liveScope`, the reader's mode flag, is still set and restored around a reading by `withLive`. RULES and the paper never described the caches, so they are unchanged.
+
+## D96. A decision reads an unknown by its frozen reading (user, 2026-11-21) [lane: frozen-readings]
+Decision (the orchestrator, from the proof lead's finding). The decision procedures also read the table of unknowns' types (Δ): `valueDecl (.abs σ)`, `isPropV`, `sortOf?`, `sortOf`, `typeClass` and `sealedSort?` looked up the type of an unknown embedded in a term. A refinement rewrites Δ, and a sealed program built later embeds newer unknowns, so the model's decisions could not be fixed once: the answer about an old input could change, and a later input's answer depended on a table the run keeps rewriting. The standards say decisions are made from syntax, declarations and declared types.
+- **Rule.**
+  - Each abstract value's declared reading is frozen when the value is made (`MState.absDecl`, written by `freshAbs`, never refined). It is what its type says as a declared type at that moment (`Decide.valTypeDecl`, `freshAbsR`), read from the type and the frozen readings of the unknowns it names.
+  - The six readers above read it through `absReading`, and none of them reads Δ.
+  - A closure's or Π-type's captures are read by the readings it recorded when it was formed (`rd`, D80, D82; `capReadings`), not by reading the captured values: `sortOf` of a Π-type, `valueDecl` of a closure, `valTypeDecl`, `paramDecls`, `paramFlags` and `fnClass`.
+  - The table is kept whole by `restoreKeep` and `exitWorld`, since its entries are written once.
+  - A hole's unknowns carry their readings with the global that made them (`GDef.absDecls`), as their types are carried (`seedHoles`).
+  - The one error that printed an unknown's type, `sortOf` at a non-sort, now says that the type, when it was made, did not read as a sort. No example reaches it.
+  - The model can carry the frozen table as it carries Δ, so "the term alone" is not needed.
+- **What can change a verdict, and what did.** A frozen reading differs from the reading of the current type only where a refinement rewrote an unknown's type to one that reads differently. By D55 a type's declared sort is syntactic: a type function's calls read as its declared codomain whatever their arguments. So for checked programs a refinement does not change a type's reading (`StabilityFootprint`'s probes show it changing only at an unchecked global). Nothing changed:
+  - A dump of every row's verdict, message and location, in both located modes, against main (fc762af7): all 2,173 rows identical.
+  - The adversarial block `Inductives.FrozenReadings` (31 rows) takes the same verdicts and reasons on main and here. It holds unknowns whose type is a type parameter or a stuck type: `TP(n)` refined to a proposition, `TS(n)` to a sort, `TF2(n)` to a function type, and `IdT` at `Prop` and at `Type`. They are read where a decision reads them (the proof-ness and erasure of `KeepTP`'s block, a call's class through `CallTF2Split`'s function, the sort of `KeepTS`'s result, an `Id` over `KeepTP`), at the generic call and at the closed calls (`…Run`, `…Split`).
+  - A function type whose arms differ in class (`TF`) is rejected by D77, and a call through a stuck function type (`CallTF2`, `CallTQ`) is rejected by typing, before any decision reads them.
+  - A borrow type cannot be a type argument (D48 (2)), so it cannot be the type of such an unknown.
+- **What the decision procedures read now.**
+  - Syntax: terms, with the values embedded in them read by their heads, meaning an inductive type's declaration, a global's name, a closure's code, a sealed program's head call's declared codomain.
+  - Declarations.
+  - The readings in scope: bindings' recorded readings and proof flags, and the frame's shape.
+  - The capture readings that closures and Π-types record.
+  - The frozen readings of the unknowns a term names.
+
+  No refinement or run changes these for a given term. A refinement can change the term itself: it substitutes into a sealed program embedded in it, which may then normalise to a different head. The decision on the new term is a function of that term, and that the old and new answers agree is D55 preservation, now needed for sealed programs only, no longer for unknowns. Still written by a reader: the `liveScope` mode flag, set and restored by `withLive` (D95).
+- **Evidence.**
+  - `lake build` green: 2,173 → 2,204 verdicts, with the new block.
+  - `lake exe sweep` (70,526 states) and `--probes`: every clause as before.
+  - Every hand-run probe file reports what it does on main.
+  - RULES P2 and the history line, the paper's §6.3 ("The two paths must agree") and the appendix's *Erasure*, and `notes/two-paths-census.md` say so. The Conclusion ends on page 25.
