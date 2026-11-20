@@ -966,8 +966,20 @@ def dataNotProof : Clause where
         | _ => some ⟨"a place of a non-copy reading holds data meaning ⋆", s!"{q.root}…: {m}"⟩
       | none => some ⟨"a place holding data meaning ⋆ has no declared reading", s!"{q.root}…: {m}"⟩
 
+/-- (Hη) (`ShapeFacts.etaHint`, docs/31 D55): every η record is top-hint-free (a constructor value
+of fresh unknowns that records its parameters, `ctorRefinement`), so it means its unknown at every
+hint (`etaRecorded_sim`). -/
+def etaHintFree : Clause where
+  name := "(Hη) every η record is top-hint-free"
+  premises := [("an η record", fun st => !st.etaRefs.isEmpty),
+    ("an η record of a declaration with parameters", fun st => st.etaRefs.any fun (_, r) => match r with
+      | .ind n _ _ _ _ => match st.inds.find? (·.name == n) with | some d => !d.params.isEmpty | none => false
+      | _ => false)]
+  check st := st.etaRefs.filterMap fun (σ, r) =>
+    if topHintFree st.inds r then none else some ⟨"an η record reads the hint", s!"σ{σ} := {clip r.pp}"⟩
+
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, typeRoots, proofCopy, dataNotProof, plantedFill, plantedAbs]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, typeRoots, proofCopy, dataNotProof, etaHintFree, plantedFill, plantedAbs]
 
 /-! ## The sweep -/
 

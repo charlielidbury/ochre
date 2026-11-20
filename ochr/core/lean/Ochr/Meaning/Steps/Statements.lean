@@ -220,7 +220,8 @@ that exists, by its declared reading (`Decisions.placeDecl` at the top frame's r
 declared an inductive of the declarations holds a constructor value of it or a stand-in (V); every
 loan and mark anywhere in Ω is of a live borrow (L); every constructor value is of a data
 declaration, not named `Nat` (N); a variable holding a type value is declared a sort (Ty); a place
-below a variable holding `⋆` is declared a copy type (C⋆). What the drop's reading of a place and
+below a variable holding `⋆` is declared a copy type (C⋆); every η record is top-hint-free (Hη).
+What the drop's reading of a place and
 its write need. Syntactic typing, which `Good`'s membership does not give. Read off the checker and
 swept; NOT proved preserved: every step's `CtxOk` conclusion owes it. (U), (R), (P), (A) and (M),
 which `movedPlace`'s exits needed, went with main's D94, which made those exits a rejection. -/
@@ -243,6 +244,9 @@ structure ShapeFacts (D : Decisions) (Γ : List IndDecl) (st : MState) : Prop wh
   can: one declared a borrow of a proposition holds `⋆`) -/
   proofCopy : ∀ p, p.steps.2 ≠ [] → ckContent st.env p = some .proof →
     D.copy (D.placeDecl (DecideScope.topReadings st) p) = true
+  /-- (Hη) every η record is top-hint-free (a constructor value of fresh unknowns recording its
+  parameters, `ctorRefinement`), so it means its unknown at every hint (docs/31 D55) -/
+  etaHint : ∀ σ r, (σ, r) ∈ st.etaRefs → r.topHintFree Γ = true
 
 /-- The run context is the checker state's: its declarations, a data model that speaks for each,
 Δ at the state's unknowns (`DeltaOk`), globals with no label (`run_congr`'s `hK`), Σ
@@ -338,15 +342,17 @@ theorem SameDec.trans {a b c : MState} (h₁ : SameDec a b) (h₂ : SameDec b c)
 /-- **The typing of places stays across a change of what no decision reads**, the environment and
 the unknowns' types kept. -/
 theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MState} (hf : ShapeFacts D Γ st)
-    (h : SameDec st' st) (he : st'.env = st.env) (ha : st'.absTy = st.absTy) : ShapeFacts D Γ st' := by
+    (h : SameDec st' st) (he : st'.env = st.env) (ha : st'.absTy = st.absTy) (hη : st'.etaRefs = st.etaRefs) :
+    ShapeFacts D Γ st' := by
   have e1 : DecideScope.topReadings st' = DecideScope.topReadings st := by
     unfold DecideScope.topReadings; rw [he]
-  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro p v n args hp hd hn; rw [he] at hp; rw [e1] at hd; exact hf.fits p v n args hp hd hn
   · rw [he]; exact hf.loans
   · rw [he]; exact hf.ctors
   · intro i pos hck hv; rw [he] at hck hv; rw [e1]; exact hf.typeRoot i pos hck hv
   · intro p hne hp; rw [he] at hp; rw [e1]; exact hf.proofCopy p hne hp
+  · rw [hη]; exact hf.etaHint
 
 /-- **The decisions stay the checker's across what no decision reads** (docs/31 D53): from a state
 with the same decision core (Σ, Δ, the reading mode, and, as a marked hypothesis, the caches,
