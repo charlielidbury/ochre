@@ -33,7 +33,7 @@ inductive Rule where
   -- matching
   | Match | MatchStuck | MatchErr | MatchProp | MatchNone | Proj | Join | Entry
   -- sealed programs and stuck blocks
-  | Seal | SealStuck | SealErr | Block
+  | Seal | SealHole | SealStuck | SealErr | Block
   -- observation, `Id`, conversion, `eq` (@app-conv)
   | Obs | ObsBorrow | ObsRef | Id | IdTypestate
   | ConvRefl | ConvCong | ConvUnit | ConvPi | ConvFun
@@ -42,7 +42,7 @@ inductive Rule where
   | TypePos | TErase | TRead | TBorrow | TAssign | TLet | TLetAnn | TSeq | TCtor
   | TSort | TType | TInd | TRef | TEq | TPi | TJ | TRewrite
   | TGlobal | TConst | TFix | CallType | TCall | TCallProof | Rec
-  | TMatch | Split | SplitGen | TSplitGoal
+  | TMatch | Split | SplitOne | SplitGen | TSplitGoal
   | TailSplit | TailGen | TailMatch | TailLet | TailSeq | TailEnd
   | TMatchProp | TMatchErased | TMatchNone | TailProp
   -- dependent fields (D64)
@@ -60,14 +60,14 @@ def Rule.all : List Rule :=
    .ArgsNil, .Args, .Call, .CallErr, .App, .AppClose, .AppHead, .AppNeutral, .AppNeutralHead,
    .Close, .Lend,
    .Match, .MatchStuck, .MatchErr, .MatchProp, .MatchNone, .Proj, .Join, .Entry,
-   .Seal, .SealStuck, .SealErr, .Block,
+   .Seal, .SealHole, .SealStuck, .SealErr, .Block,
    .Obs, .ObsBorrow, .ObsRef, .Id, .IdTypestate,
    .ConvRefl, .ConvCong, .ConvUnit, .ConvPi, .ConvFun,
    .EqInj, .EqRefl, .EqDisj, .EqStuck,
    .TypePos, .TErase, .TRead, .TBorrow, .TAssign, .TLet, .TLetAnn, .TSeq, .TCtor,
    .TSort, .TType, .TInd, .TRef, .TEq, .TPi, .TJ, .TRewrite,
    .TGlobal, .TConst, .TFix, .CallType, .TCall, .TCallProof, .Rec,
-   .TMatch, .Split, .SplitGen, .TSplitGoal,
+   .TMatch, .Split, .SplitOne, .SplitGen, .TSplitGoal,
    .TailSplit, .TailGen, .TailMatch, .TailLet, .TailSeq, .TailEnd,
    .TMatchProp, .TMatchErased, .TMatchNone, .TailProp,
    .Field, .Open, .Repack, .Return,
@@ -89,7 +89,7 @@ def Rule.name : Rule → String
   | .AppNeutral => "App-neutral" | .AppNeutralHead => "App-neutral-head" | .Close => "Close" | .Lend => "Lend"
   | .Match => "Match" | .MatchStuck => "Match-stuck" | .MatchErr => "Match-err"
   | .MatchProp => "Match-prop" | .MatchNone => "Match-none" | .Proj => "Proj" | .Join => "Join" | .Entry => "Entry"
-  | .Seal => "Seal" | .SealStuck => "Seal-stuck" | .SealErr => "Seal-err" | .Block => "Block"
+  | .Seal => "Seal" | .SealHole => "Seal-hole" | .SealStuck => "Seal-stuck" | .SealErr => "Seal-err" | .Block => "Block"
   | .Obs => "Obs" | .ObsBorrow => "Obs-borrow" | .ObsRef => "Obs-ref" | .Id => "Id"
   | .IdTypestate => "Id-typestate"
   | .ConvRefl => "Conv-refl" | .ConvCong => "Conv-cong" | .ConvUnit => "Conv-unit"
@@ -102,7 +102,7 @@ def Rule.name : Rule → String
   | .TRef => "T-Ref" | .TEq => "T-Eq" | .TPi => "T-Pi" | .TJ => "T-J" | .TRewrite => "T-Rewrite"
   | .TGlobal => "T-Global" | .TConst => "T-Const" | .TFix => "T-Fix" | .CallType => "Call-type"
   | .TCall => "T-Call" | .TCallProof => "T-Call-proof" | .Rec => "Rec"
-  | .TMatch => "T-Match" | .Split => "Split" | .SplitGen => "Split-gen"
+  | .TMatch => "T-Match" | .Split => "Split" | .SplitOne => "Split-one" | .SplitGen => "Split-gen"
   | .TSplitGoal => "T-Split-goal"
   | .TailSplit => "Tail-split" | .TailGen => "Tail-gen" | .TailMatch => "Tail-match"
   | .TailLet => "Tail-let" | .TailSeq => "Tail-seq" | .TailEnd => "Tail-end"
@@ -113,7 +113,7 @@ def Rule.name : Rule → String
 
 /-- The rules the plain trace (`cfg.trace`) has always shown: goals, splits, call types. -/
 def Rule.coarse : Rule → Bool
-  | .Def | .CallType | .Split | .SplitGen | .TSplitGoal | .TailSplit | .TailGen | .TRewrite
+  | .Def | .CallType | .Split | .SplitOne | .SplitGen | .TSplitGoal | .TailSplit | .TailGen | .TRewrite
   | .Block => true
   | _ => false
 

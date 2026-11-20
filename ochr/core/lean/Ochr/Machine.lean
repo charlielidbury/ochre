@@ -875,7 +875,7 @@ def nfSealed (fuel : Nat) (t : Term) : M Value := do
   -- has just put a hole into) is left as it is, never run: what its run would compute cannot be
   -- observed while its borrows live, and ending the last of them runs it
   if t.hasLoanAtom then
-    trace fun _ => s!"[Seal] left sealed: its text holds a hole ({(Value.sealed t).loans.eraseDups})"
+    fire .SealHole fun _ => s!"left sealed: its text holds a hole ({(Value.sealed t).loans.eraseDups})"
     return .sealed t
   let saved ← get
   -- bounded like calls, so that a normalisation loop (breaker-fresh-v16 X5 without D39)
@@ -3345,7 +3345,7 @@ def evalMatchInd (fuel : Nat) (typed : Bool) (p : Place) (ty : String) (arms : L
       -- refines it in place and runs its one arm, as an instance does (above)
       if d.ctors.length == 1 then
         let r ← etaInPlace fuel' σ d ps
-        trace fun _ => s!"[Split] σ{σ} := {r} (one constructor, in place)"
+        fire .SplitOne fun _ => s!"σ{σ} := {r} (one constructor, in place)"
         let expected ← expected.mapM (substV fuel' (.abs σ) r)
         return ← evalMatchInd fuel' typed p ty arms expected tail
       splitArmsThenClose fuel' (.matchInd p ty arms) σ
@@ -4235,7 +4235,7 @@ def checkTailAt (fuel : Nat) (t : Term) (k : Value → Value → M Unit) : M Uni
       -- D93: an unknown of a type with one constructor is refined in place, as `evalMatchInd` does
       if d.ctors.length == 1 then
         let r ← etaInPlace fuel' σ d ps
-        trace fun _ => s!"[Split] σ{σ} := {r} (one constructor, in place)"
+        fire .SplitOne fun _ => s!"σ{σ} := {r} (one constructor, in place)"
         return ← checkTail fuel' t k
       let w ← enterWorld
       for (c, (_, a)) in (List.range d.ctors.length).zip arms do
