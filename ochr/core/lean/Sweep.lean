@@ -677,6 +677,20 @@ def arity : Clause where
       | _ => false
     if v.anyAtom bad then [⟨"a constructor value with the wrong fields", s!"{posName st.env p}: {clip v.pp}"⟩] else []
 
+/-- The labels of every loan and mark anywhere in a value, sealed programs and code included
+(`Value.loans`). -/
+def allLoans (v : Value) : List Nat := v.loans
+
+/-- (L) Every loan and mark anywhere in Ω, inside sealed programs and code included, is of a live
+borrow ([End] substitutes a loan everywhere its borrow ends, and removes its marks). With it, a
+sealed program with no live hole holds no loan (`MovedPlace.sealed_loanFree`). -/
+def loansLive : Clause where
+  name := "(L, candidate) every loan and mark anywhere in Ω is of a live borrow"
+  premises := [("a loan or mark inside a sealed program or code", fun st => (posVals st.env).any fun (_, v) =>
+    v.anyAtom fun | .sealed t => !t.loans.isEmpty | .clo cs t _ => !t.loans.isEmpty || !(Value.loansList cs).isEmpty | _ => false)]
+  check st := (posVals st.env).flatMap fun (p, v) => (allLoans v).eraseDups.filterMap fun l =>
+    if liveLoan st.env l then none else some ⟨"a loan or mark of an ended borrow", s!"{posName st.env p}: label {l} in {clip v.pp}"⟩
+
 /-- Planted, FALSE: "no live borrow has a fill". It reads the same sites and live labels as (ii) and
 (iii), so its violations must be exactly the states (ii)'s first premise counts. -/
 def plantedFill : Clause where
@@ -694,7 +708,7 @@ def plantedAbs : Clause where
     if v.anyAtom (fun | .abs _ => true | _ => false) then some ⟨s!"{c} holds an unknown", s!"{c} {w}: {clip v.pp}"⟩ else none
 
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, plantedFill, plantedAbs]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, plantedFill, plantedAbs]
 
 /-! ## The sweep -/
 
