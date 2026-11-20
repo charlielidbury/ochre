@@ -557,4 +557,66 @@ theorem site_of_fillHole (env : Env) (l : Nat) (pos : Pos) : ∀ (v : Value) (pa
     | _ => simp [Value.follow, stepV] at hf
 termination_by v => sizeOf v
 
+/-! ## A borrow is found only at a root -/
+
+theorem valueAnyAtomList_of_mem {P : Value → Bool} {u : Value} : ∀ {vs : List Value}, u ∈ vs → u.anyAtom P = true →
+    Value.anyAtomList P vs = true
+  | v :: vs, hm, h => by
+    rcases List.mem_cons.mp hm with rfl | hm
+    · simp [Value.anyAtomList, h]
+    · simp [Value.anyAtomList, valueAnyAtomList_of_mem hm h]
+
+theorem anyAtom_of_stepV {P : Value → Bool} : ∀ (st : Step) (v u : Value), stepV st v = some u →
+    u.anyAtom P = true → v.anyAtom P = true
+  | st, .gloan m w, u, h, hu => by
+    have : stepV st (.gloan m w) = stepV st w := by cases st <;> rfl
+    rw [this] at h
+    rw [Value.anyAtom]; simp [anyAtom_of_stepV st w u h hu]
+  | .deref, .borrow _ w, u, h, hu => by
+    simp only [stepV, Option.some.injEq] at h; subst h
+    rw [Value.anyAtom]; simp [hu]
+  | .proj 0, .succ w, u, h, hu => by
+    simp only [stepV, Option.some.injEq] at h; subst h
+    rw [Value.anyAtom]; simp [hu]
+  | .proj i, .ind t 0 hh ps fs, u, h, hu => by
+    simp only [stepV] at h
+    rw [Value.anyAtom]
+    have hm := List.mem_of_getElem? h
+    simp only [Bool.or_eq_true]
+    exact .inr (.inr (valueAnyAtomList_of_mem hm hu))
+  | .field g, .ind t c hh ps fs, u, h, hu => by
+    simp only [stepV] at h
+    split at h
+    · rw [Value.anyAtom]
+      have hm := List.mem_of_getElem? h
+      simp only [Bool.or_eq_true]
+      exact .inr (.inr (valueAnyAtomList_of_mem hm hu))
+    · cases h
+  | .proj _, .proof, u, h, hu | .field _, .proof, u, h, hu => by
+    simp only [stepV, Option.some.injEq] at h; subst h; exact hu
+  | .deref, .zero, _, h, _ | .deref, .succ _, _, h, _ | .deref, .unit, _, h, _ | .deref, .gfn _, _, h, _
+  | .deref, .clo .., _, h, _ | .deref, .loan _, _, h, _ | .deref, .bot, _, h, _ | .deref, .abs _, _, h, _
+  | .deref, .sealed _, _, h, _ | .deref, .proof, _, h, _ | .deref, .tNat, _, h, _ | .deref, .tUnit, _, h, _
+  | .deref, .tEq .., _, h, _ | .deref, .tRef _, _, h, _ | .deref, .tPi .., _, h, _ | .deref, .sort _, _, h, _
+  | .deref, .ind .., _, h, _ | .deref, .tInd .., _, h, _ => by simp [stepV] at h
+  | .proj _, .zero, _, h, _ | .proj (_ + 1), .succ _, _, h, _ | .proj _, .unit, _, h, _ | .proj _, .gfn _, _, h, _
+  | .proj _, .clo .., _, h, _ | .proj _, .borrow .., _, h, _ | .proj _, .loan _, _, h, _ | .proj _, .bot, _, h, _
+  | .proj _, .abs _, _, h, _ | .proj _, .sealed _, _, h, _ | .proj _, .tNat, _, h, _ | .proj _, .tUnit, _, h, _
+  | .proj _, .tEq .., _, h, _ | .proj _, .tRef _, _, h, _ | .proj _, .tPi .., _, h, _ | .proj _, .sort _, _, h, _
+  | .proj _, .ind _ (_ + 1) .., _, h, _ | .proj _, .tInd .., _, h, _ => by simp [stepV] at h
+  | .field _, .zero, _, h, _ | .field _, .succ _, _, h, _ | .field _, .unit, _, h, _ | .field _, .gfn _, _, h, _
+  | .field _, .clo .., _, h, _ | .field _, .borrow .., _, h, _ | .field _, .loan _, _, h, _ | .field _, .bot, _, h, _
+  | .field _, .abs _, _, h, _ | .field _, .sealed _, _, h, _ | .field _, .tNat, _, h, _ | .field _, .tUnit, _, h, _
+  | .field _, .tEq .., _, h, _ | .field _, .tRef _, _, h, _ | .field _, .tPi .., _, h, _ | .field _, .sort _, _, h, _
+  | .field _, .tInd .., _, h, _ => by simp [stepV] at h
+
+theorem anyAtom_of_follow {P : Value → Bool} : ∀ (ss : List Step) (v u : Value), v.follow ss = some u →
+    u.anyAtom P = true → v.anyAtom P = true
+  | [], v, u, h, hu => by simp [Value.follow] at h; subst h; exact hu
+  | s₁ :: ss, v, u, h, hu => by
+    simp only [Value.follow] at h
+    cases hs : stepV s₁ v with
+    | none => simp [hs] at h
+    | some v' => rw [hs, Option.bind_some] at h; exact anyAtom_of_stepV s₁ v v' hs (anyAtom_of_follow ss v' u h hu)
+
 end Ochr.Meaning

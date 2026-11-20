@@ -22,12 +22,26 @@ theorem lentPrefix_nil (s : SState) (pos : Pos) : lentPrefix s pos [] = none := 
 theorem accessLentPrefix_nil (s : SState) (pos : Pos) : accessLentPrefix pos [] s = s := by
   simp [accessLentPrefix, lentPrefix_nil]
 
-/-- **A borrow is found only at a root** ((WF1): a borrow is the whole value of its position). Open:
-by induction on the path; not written. -/
+/-- **A borrow is found only at a root** ((WF1): a borrow is the whole value of its position, never
+inside another value, and nothing below a borrow's content holds one). -/
 theorem follow_borrow_root {env : Env} {pos : Pos} {ss : List Step} {l : Nat} {w : Value}
     (hwf : WF1 env) (hp : pos ∈ allPos env) (h : (valAt env pos).follow ss = some (.borrow l w)) :
     ss = [] := by
-  sorry
+  cases ss with
+  | nil => rfl
+  | cons s₁ ss' =>
+    exfalso
+    have hb : (Value.borrow l w).hasBorrow = true := by simp [Value.hasBorrow, Value.anyAtom]
+    have hwf1 := hwf.1 pos hp
+    cases hv : valAt env pos with
+    | borrow m w' =>
+      rw [hv] at hwf1 h
+      cases s₁ with
+      | deref =>
+        simp only [Value.follow, stepV, Option.bind_some] at h
+        exact hwf1 (anyAtom_of_follow ss' w' _ h hb)
+      | proj _ | field _ => simp [Value.follow, stepV] at h
+    | _ => rw [hv] at hwf1 h; exact hwf1 (anyAtom_of_follow _ _ _ h hb)
 
 /-- **The holder of a borrow the drop ends is not `moved` or `⋆` in the reference** (its content is
 whole: the checker's [End] rejects a borrow whose content is partly moved out, D53; and no proof is
