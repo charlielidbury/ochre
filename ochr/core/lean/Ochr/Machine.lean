@@ -2640,6 +2640,7 @@ def argHint (fuel : Nat) (fv : Value) (fT : Option Value) (ws : Array Value) : M
     for (((d', h), w), pd) in ((ds.zip hs).zip ws.toList).zip pds do
       let A ← evalType fuel' d'
       let pd' ← refineDecl pd
+      takeArgBorrow w
       pushBind h (some A) (etaUnit pd w) pd'.isProof pd'
     some <$> evalType fuel' d
 termination_by structural fuel
@@ -2688,6 +2689,7 @@ def callType (fuel : Nat) (piTy : Value) (ws : Array Value) (tys : Array (Option
       let A ← evalType fuel' d
       noteLoc argLocs[i]?.join (.expected A)
       atLoc argLocs[i]?.join <| expectTy fuel' s!"argument {i + 1} ({h.name})" tys[i]! A
+      takeArgBorrow ws[i]!
       pushBind h (some A) (etaUnit pd ws[i]!) (pf.getD i false) (← refineDecl pd)
     evalType fuel' c
 termination_by structural fuel
@@ -2705,6 +2707,7 @@ def declCallType (fuel : Nat) (piTy : Value) (ws : Array Value) : M Value := do
     let (pds, _) ← paramDecls fuel' cs hs ds c
     for (((d, h), i), pd) in ((ds.zip hs).zipIdx).zip pds do
       let A ← evalType fuel' d
+      takeArgBorrow ws[i]!
       pushBind h (some A) (etaUnit pd ws[i]!) (pf.getD i false) (← refineDecl pd)
     evalType fuel' c
 termination_by structural fuel
@@ -2737,6 +2740,7 @@ def paramTypes (fuel : Nat) (piTy : Value) (ws : List Value) (need : List Nat) :
     for (((((h, w), p), pd), d), i) in ((((hs.zip ws).zip pf).zip pds).zip ds).zipIdx do
       let A ← if want[i]! then some <$> evalType fuel' d else pure none
       out := out.push A
+      takeArgBorrow w
       pushBind h A (etaUnit pd w) p pd
     pure out
 termination_by structural fuel

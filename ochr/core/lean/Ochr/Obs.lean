@@ -88,6 +88,20 @@ def findBorrow (env : Env) (l : Nat) : Option Pos :=
 borrow lives outside the run is inert (RULES §3 [Seal]). -/
 def liveLoan (env : Env) (l : Nat) : Bool := (findBorrow env l).isSome
 
+/-- A private copy that binds a call's arguments to evaluate a parameter or result type (an
+argument's hint, [Call-type], the declared call type, a deferred parameter type) TAKES a borrow
+argument from the position that holds it, leaving `⊥` there in the copy, so the copy's binding
+is the borrow's one holder rather than a second one beside the caller's temporary or the callee's
+parameter (each label has one holder: the meaning spine's (WF1)). An argument in flight (popped
+from the temporaries) has no holder in Ω, and nothing is taken. Only a discarded copy differs. -/
+def takeArgBorrow (w : Value) : M Unit := do
+  let .borrow l _ := w | return
+  let env := (← get).env
+  let some p := findBorrow env l | return
+  match (valAt env p).takeBorrow l with
+  | some (_, rest) => setAt p rest
+  | none => err s!"internal: borrow {l} is held at {repr p} but cannot be taken from it"
+
 def liveLoansIn (env : Env) (v : Value) : List Nat :=
   v.loans.foldl (fun acc l => if !acc.contains l && liveLoan env l then acc ++ [l] else acc) []
 
