@@ -290,29 +290,27 @@ theorem runs_envRel {α : Type} {x : M α} (hx : DecideScope.Sim DecideScope.Env
   exact ⟨t₂, hgoal t₂ ⟨_, _, rfl⟩⟩
 
 /-- **Two states with the same decision core** (`DecideScope.EnvRel` but for the frames: Σ, Δ, the
-reading mode and the caches; docs/31 D53): what the decisions read besides the top frame's
+reading mode; docs/31 D53): what the decisions read besides the top frame's
 readings. -/
 structure DecCore (st st' : MState) : Prop where
   globals : st.globals = st'.globals
   inds : st.inds = st'.inds
   absTy : st.absTy = st'.absTy
   liveScope : st.liveScope = st'.liveScope
-  /-- THE CACHES (pending main's measurement) -/
-  caches : st.constDecls = st'.constDecls ∧ st.classCache = st'.classCache
 
 theorem DecCore.of_sameDec {st st' : MState} (h : SameDec st st') : DecCore st st' := by
-  have e := congrArg (fun s : MState => (s.globals, s.inds, s.absTy, s.liveScope, s.constDecls, s.classCache)) h
+  have e := congrArg (fun s : MState => (s.globals, s.inds, s.absTy, s.liveScope)) h
   simp only [Prod.mk.injEq] at e
-  exact ⟨e.1, e.2.1, e.2.2.1, e.2.2.2.1, e.2.2.2.2.1, e.2.2.2.2.2⟩
+  exact ⟨e.1, e.2.1, e.2.2.1, e.2.2.2⟩
 
 theorem envRel_scope_of_core {st st' : MState} (h : DecCore st st') (sc : List DeclInfo) :
     DecideScope.EnvRel (scopeState st sc) (scopeState st' sc) :=
-  ⟨h.globals, h.inds, h.absTy, h.liveScope, h.caches, fun i => by
+  ⟨h.globals, h.inds, h.absTy, h.liveScope, fun i => by
     rw [DecideScope.liveVal_scopeState, DecideScope.liveVal_scopeState]⟩
 
 theorem envRel_of_core {st st' : MState} (h : DecCore st st') (hl : ∀ i, DecideScope.liveVal st i = DecideScope.liveVal st' i) :
     DecideScope.EnvRel st st' :=
-  ⟨h.globals, h.inds, h.absTy, h.liveScope, h.caches, hl⟩
+  ⟨h.globals, h.inds, h.absTy, h.liveScope, hl⟩
 
 theorem sameDec_envRel_scope {st st' : MState} (h : SameDec st st') (sc : List DeclInfo) :
     DecideScope.EnvRel (scopeState st sc) (scopeState st' sc) :=
@@ -351,8 +349,7 @@ theorem ShapeFacts.of_sameDec {D : Decisions} {Γ : List IndDecl} {st st' : MSta
   · rw [hη]; exact hf.etaHint
 
 /-- **The decisions stay the checker's across what no decision reads** (docs/31 D53): from a state
-with the same decision core (Σ, Δ, the reading mode, and, as a marked hypothesis, the caches,
-`DecCore`) and the same top frame's readings, every scope decision transfers by the simulation of
+with the same decision core (Σ, Δ and the reading mode, `DecCore`) and the same top frame's readings, every scope decision transfers by the simulation of
 `Decide.lean` (`DecideScope.decideSim`); the env's values, the move log, the counters and the
 records may differ. The block's captures (`blockCaps`) read values (D90's first obligation) and are
 asked of the new state separately. -/

@@ -1,7 +1,7 @@
 import Ochr.Meaning.DecisionsInst
 
 /-!
-# Decisions read the state only through Σ, Δ, the caches and the top frame's readings
+# Decisions read the state only through Σ, Δ and the top frame's readings
 
 `DecisionsInst.lean` reads each decision in `scopeState st sc`: the checker state `st` with its
 frames replaced by one frame of readings. The checker reads it in `st` itself. This file proves
@@ -33,8 +33,8 @@ statements should be stated in this live form.
 * `joinMoves` (`Decide.jdMoves`) and `rePointed` (`Decide.typeState`), added with main's D84, are
   outside the 17-function closure. They need their own conjuncts in `DecideSim`.
 * Cross-state alignment (one `K.D` for a whole run, built at one state and used at later states
-  of the same check) needs the caches to be consistent, and Δ's readings to be stable under
-  refinement. For the readings: the branch `probe-valuedecl-stability` finds the flip of
+  of the same check) needs Δ's readings to be stable under refinement (the decision procedures
+  write no cache since main's D95, so there is no cache to keep consistent). For the readings: the branch `probe-valuedecl-stability` finds the flip of
   `valueDecl (.abs σ)` (a stuck type function's `.other`, the later Π-type's `.pi r`)
   unreachable. Typing rejects every consumer while the type is stuck ("not a function type"),
   and refinement keeps a concrete head.
@@ -200,10 +200,9 @@ def liveVal (s : MState) (i : Nat) : DeclInfo :=
   if i < bs.size then bs[bs.size - 1 - i]!.decl else .other
 
 /-- Two states agree on everything a decision reads (docs/31 D53): Σ (`globals`, `inds`), Δ
-(`absTy`), the reading mode (`liveScope`), the top frame's readings (`live`), and, as a separate
-and clearly marked hypothesis, the two caches the decision procedures write into the state
-(`constDecls`, `classCache`), which main is measuring for removal: nothing here is proved about
-their coherence. Everything else may differ: the env's values, the move log, the label and unknown
+(`absTy`), the reading mode (`liveScope`) and the top frame's readings (`live`). (Until main's
+D95 the decision procedures also wrote two caches into the state, `constDecls` and `classCache`,
+carried here as a marked hypothesis; they are gone.) Everything else may differ: the env's values, the move log, the label and unknown
 counters, the records (`refs`, `neutrals`, `etaRefs`), the goal. The simulation below
 (`decideSim`) goes through with only these. (First stated as equality of the whole state but the
 frames, the move log and the refinements.) -/
@@ -212,32 +211,19 @@ structure EnvRel (s₁ s₂ : MState) : Prop where
   inds : s₁.inds = s₂.inds
   absTy : s₁.absTy = s₂.absTy
   liveScope : s₁.liveScope = s₂.liveScope
-  /-- THE CACHES (pending main's measurement; no coherence argument is made) -/
-  caches : s₁.constDecls = s₂.constDecls ∧ s₁.classCache = s₂.classCache
   live : ∀ i, liveVal s₁ i = liveVal s₂ i
 
-theorem EnvRel.constDecls {s₁ s₂ : MState} (h : EnvRel s₁ s₂) : s₁.constDecls = s₂.constDecls := h.caches.1
-theorem EnvRel.classCache {s₁ s₂ : MState} (h : EnvRel s₁ s₂) : s₁.classCache = s₂.classCache := h.caches.2
 
 theorem EnvRel.setLive {s₁ s₂ : MState} (h : EnvRel s₁ s₂) (b : Bool) :
     EnvRel { s₁ with liveScope := b } { s₂ with liveScope := b } :=
-  ⟨h.globals, h.inds, h.absTy, rfl, h.caches, h.live⟩
-
-theorem EnvRel.consConst {s₁ s₂ : MState} (h : EnvRel s₁ s₂) (c : String × DeclInfo) :
-    EnvRel { s₁ with constDecls := c :: s₁.constDecls } { s₂ with constDecls := c :: s₂.constDecls } :=
-  ⟨h.globals, h.inds, h.absTy, h.liveScope, ⟨by rw [h.caches.1], h.caches.2⟩, h.live⟩
-
-theorem EnvRel.consClass {s₁ s₂ : MState} (h : EnvRel s₁ s₂) (c : Value × Nat) :
-    EnvRel { s₁ with classCache := c :: s₁.classCache } { s₂ with classCache := c :: s₂.classCache } :=
-  ⟨h.globals, h.inds, h.absTy, h.liveScope, ⟨h.caches.1, by rw [h.caches.2]⟩, h.live⟩
+  ⟨h.globals, h.inds, h.absTy, rfl, h.live⟩
 
 theorem EnvRel.symm {s₁ s₂ : MState} (h : EnvRel s₁ s₂) : EnvRel s₂ s₁ :=
-  ⟨h.globals.symm, h.inds.symm, h.absTy.symm, h.liveScope.symm, ⟨h.caches.1.symm, h.caches.2.symm⟩,
-    fun i => (h.live i).symm⟩
+  ⟨h.globals.symm, h.inds.symm, h.absTy.symm, h.liveScope.symm, fun i => (h.live i).symm⟩
 
 theorem EnvRel.trans {s₁ s₂ s₃ : MState} (h : EnvRel s₁ s₂) (h' : EnvRel s₂ s₃) : EnvRel s₁ s₃ :=
   ⟨h.globals.trans h'.globals, h.inds.trans h'.inds, h.absTy.trans h'.absTy, h.liveScope.trans h'.liveScope,
-    ⟨h.caches.1.trans h'.caches.1, h.caches.2.trans h'.caches.2⟩, fun i => (h.live i).trans (h'.live i)⟩
+    fun i => (h.live i).trans (h'.live i)⟩
 
 theorem sim_liveDecl (i : Nat) : Sim EnvRel (liveDecl i) := by
   intro s₁ s₂ f l h
@@ -294,8 +280,8 @@ macro "sim_close" : tactic => `(tactic| refine (?_ : Sim EnvRel _) s₁ s₂ f l
 set_option hygiene false in
 /-- One step of a simulation proof, by the shape of the computation: a primitive, a bind (at
 reducible transparency, so that no named function is unfolded), a read of the state (its
-projections rewritten from the first run's state to the second's), a modification of the
-caches or of `liveScope`, `withLive`, a loop, a `mapM`/`allM`, or a branch. -/
+projections rewritten from the first run's state to the second's), a modification of
+`liveScope`, `withLive`, a loop, a `mapM`/`allM`, or a branch. -/
 macro "sim_step" : tactic => `(tactic| first
   | with_reducible exact sim_pure _
   | with_reducible exact sim_err _
@@ -304,12 +290,9 @@ macro "sim_step" : tactic => `(tactic| first
   | with_reducible exact sim_lookupInd _
   | with_reducible exact sim_lookupGlobal _
   | with_reducible exact sim_absType _
-  | with_reducible exact sim_modify fun _ _ h => h.consConst _
-  | with_reducible exact sim_modify fun _ _ h => h.consClass _
   | (with_reducible refine sim_get_bind fun s₁ s₂ h f l => ?_
      try dsimp only
-     try simp only [EnvRel.globals h, EnvRel.inds h, EnvRel.absTy h, EnvRel.constDecls h,
-       EnvRel.classCache h, EnvRel.liveScope h]
+     try simp only [EnvRel.globals h, EnvRel.inds h, EnvRel.absTy h, EnvRel.liveScope h]
      sim_close)
   | (with_reducible refine sim_bind ?_ (fun _ => ?_))
   | (with_reducible refine sim_withLive _ ?_)
@@ -496,7 +479,7 @@ theorem liveVal_scopeState (st : MState) (sc : List DeclInfo) (i : Nat) :
 
 /-- The scope state at the top frame's readings agrees with the state itself. -/
 theorem envRel_scopeState (st : MState) : EnvRel (scopeState st (topReadings st)) st :=
-  ⟨rfl, rfl, rfl, rfl, ⟨rfl, rfl⟩, fun i => by rw [liveVal_scopeState, liveVal_eq]⟩
+  ⟨rfl, rfl, rfl, rfl, fun i => by rw [liveVal_scopeState, liveVal_eq]⟩
 
 theorem runMachine_fst {α : Type} (x : M α) (s : MState) (fuel : Nat) :
     (runMachine x s fuel).1 = (match runAll x s ⟨fuel⟩ #[] with
