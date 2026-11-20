@@ -338,17 +338,18 @@ theorem lentPrefix_none_of_proof (st : MState) (s : SState) (π : Nat → Nat) (
     lentPrefix s pos q.steps.2 = none := by
   sorry
 
-/-- **What the checker's content and the reference's `follow` say of the dropped place**, after the
-access: missing, `⊥`, `⋆` and a borrow on one side are the same on the other (L4: a proof in Ω is
-`⋆`; the relation's readings at the closed future). Open: not tried. -/
+/-- **What the checker's content says of the reference's `follow`** at the dropped place, after
+the access: a `⊥` reads `moved`, a `⋆` reads `proof` (L4: a proof in Ω is `⋆`; the relation's
+readings at the closed future). As first stated it also claimed the converses and that a place
+missing on one side is missing on the other; that is false under a sealed program or an unknown,
+whose meaning has the field the checker cannot follow (the case `movedPlace` refines), and it was
+never used, so it is removed. Open: not tried. -/
 theorem content_follow (st : MState) (s : SState) (π : Nat → Nat) (q : Place) (pos : Pos)
     (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hpos : resolve s q = some (pos, q.steps.2)) :
-    ((valAt st.env pos).follow q.steps.2 = some .bot ↔
+    ((valAt st.env pos).follow q.steps.2 = some .bot →
       ∃ T, Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) q.steps.2 = some (.moved, T)) ∧
-    ((valAt st.env pos).follow q.steps.2 = some .proof ↔
-      ∃ T, Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) q.steps.2 = some (.proof, T)) ∧
-    ((valAt st.env pos).follow q.steps.2 = none ↔
-      Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) q.steps.2 = none) := by
+    ((valAt st.env pos).follow q.steps.2 = some .proof →
+      ∃ T, Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) q.steps.2 = some (.proof, T)) := by
   sorry
 
 /-- **The copy decision is aligned**: the checker's `copyRead` is the reference's declared reading

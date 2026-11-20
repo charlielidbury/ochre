@@ -175,11 +175,11 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
       · exact lentPrefix_none_of_proof K ρ φ st s π q pos hg hs hres hcopy hn
     have hpre : accessLentPrefix pos q.steps.2 s = s := by simp [accessLentPrefix, hlp]
     rw [hpre]
-    obtain ⟨cbot, cproof, -⟩ := content_follow K ρ φ st s π q pos hg hs hres
+    obtain ⟨cbot, cproof⟩ := content_follow K ρ φ st s π q pos hg hs hres
     rcases hn with hn | hn
-    · obtain ⟨T, hT⟩ := cbot.mp hn
+    · obtain ⟨T, hT⟩ := cbot hn
       unfold dropAt; rw [hT]; exact ⟨hs, hg⟩
-    · obtain ⟨T, hT⟩ := cproof.mp hn
+    · obtain ⟨T, hT⟩ := cproof hn
       unfold dropAt; rw [hT]; exact ⟨hs, hg⟩
   · -- a borrow at a root: both end it
     have hsteps := follow_borrow_root hg.2.2.1 hp hbw
