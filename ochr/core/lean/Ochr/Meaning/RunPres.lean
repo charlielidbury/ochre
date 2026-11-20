@@ -256,11 +256,11 @@ theorem dropAt_rinv (q : Place) (pos : Pos) (steps : List Step) {s : SState} (hi
     RInv L (dropAt K φ q pos steps s) := by
   unfold dropAt
   split
-  all_goals first
-    | exact hi
-    | (split
-       · exact endLabel_rinv hi _
-       · split
+  · exact endLabel_rinv hi _
+  · split
+    all_goals first
+      | exact hi
+      | (split
          · exact hi
          · exact setMoved_rinv K L _ _ (access_rinv hi pos _))
 
@@ -450,11 +450,11 @@ theorem dropAt_lou (q : Place) (pos : Pos) (steps : List Step) {s : SState} (hi 
     LoU1 (dropAt K φ q pos steps s) y := by
   unfold dropAt
   split
-  all_goals first
-    | exact hy
-    | (split
-       · exact lou_endLabel L hi.2.1 hy _
-       · split
+  · exact lou_endLabel L hi.2.1 hy _
+  · split
+    all_goals first
+      | exact hy
+      | (split
          · exact hy
          · exact setMoved_lou K _ _ (lou_access L hi hy pos _))
 

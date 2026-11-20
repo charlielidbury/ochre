@@ -43,15 +43,6 @@ theorem follow_borrow_root {env : Env} {pos : Pos} {ss : List Step} {l : Nat} {w
       | proj _ | field _ => simp [Value.follow, stepV] at h
     | _ => rw [hv] at hwf1 h; exact hwf1 (anyAtom_of_follow _ _ _ h hb)
 
-/-- **The holder of a borrow the drop ends is not `moved` or `⋆` in the reference** (its content is
-whole: the checker's [End] rejects a borrow whose content is partly moved out, D53; and no proof is
-borrowed, D66). Open: not tried. -/
-theorem holder_follow (st : MState) (s : SState) (π : Nat → Nat) (pos : Pos) (l : Nat) (w : Value)
-    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st s) (hv : valAt st.env pos = .borrow l w) :
-    ∃ x T, Sem.follow K.dm K.Γ (s.tyAt pos) (s.valAt pos (s.closedFuture φ)) [] = some (x, T) ∧
-      x ≠ .proof ∧ x ≠ .moved := by
-  sorry
-
 /-- **The reference's drop of a data place is its access then its write** (`dropAt`'s last clause):
 the place is not missing, `moved` or `⋆` after the lent prefix's access, it is not a holder at a
 root, and it is not a copy. Open: from `content_follow` after the prefix access; not written. -/
@@ -172,6 +163,22 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
     rw [hst]
     rcases hno with hn | hn
     · rw [hw] at hn; cases hn
+    have hpt : ¬ IsTemp pos := by
+      rcases pos with ⟨f, i⟩ | ⟨f, i⟩
+      · simp [IsTemp]
+      · unfold ckVarPos at hck; split at hck <;> cases hck
+    -- a root holding `⊥` or `⋆` is no holder, in the reference either (`SimEq`'s holders)
+    have hnb : ∀ c, (valAt st.env pos).follow q.steps.2 = some c → (c = .bot ∨ c = .proof) →
+        q.steps.2 = [] → s.shape pos = none := by
+      intro c hc hcp he
+      cases hsp : s.shape pos with
+      | none => rfl
+      | some l' =>
+        obtain ⟨l, hl, -⟩ := hs.sim.2.2.1 pos l' hpt hsp
+        have hl' : Env.shape st.env pos = some l := hl
+        rw [he] at hc; simp only [Value.follow, Option.some.injEq] at hc
+        rw [shape_eq_shapeOf, hc] at hl'
+        rcases hcp with rfl | rfl <;> simp [shapeOf] at hl'
     have hlp : lentPrefix s pos q.steps.2 = none := by
       rcases hn with hn | hn
       · exact lentPrefix_none_of_noop K ρ φ st s π q pos hg hs hres hn
@@ -181,9 +188,15 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
     obtain ⟨cbot, cproof⟩ := content_follow K ρ φ st s π q pos hg hs hres
     rcases hn with hn | hn
     · obtain ⟨T, hT⟩ := cbot hn
-      unfold dropAt; rw [hT]; exact ⟨hs, hg⟩
+      unfold dropAt
+      split
+      · next l h1 h2 => rw [hnb _ hn (.inl rfl) h1] at h2; cases h2
+      · rw [hT]; exact ⟨hs, hg⟩
     · obtain ⟨T, hT⟩ := cproof hn
-      unfold dropAt; rw [hT]; exact ⟨hs, hg⟩
+      unfold dropAt
+      split
+      · next l h1 h2 => rw [hnb _ hn (.inr rfl) h1] at h2; cases h2
+      · rw [hT]; exact ⟨hs, hg⟩
   · -- a borrow at a root: both end it
     have hsteps := follow_borrow_root hg.2.2.1 hp hbw
     have hval : valAt st.env pos = .borrow l w' := by
@@ -198,11 +211,8 @@ theorem dropOne_exists (fuel : Nat) (ih : ∀ K' ρ φ, StepsIH K' ρ φ fuel)
         · unfold ckVarPos at hck; split at hck <;> cases hck
       exact hs.sim.2.1 pos l hpt (by show Env.shape st.env pos = some l; rw [shape_eq_shapeOf, hval]; rfl)
     rw [hsteps, accessLentPrefix_nil]
-    obtain ⟨x, T, hT, hxp, hxm⟩ := holder_follow K ρ φ st s π pos l w' hg hs hval
     have hd : dropAt K φ q pos [] s = s.endLabel (π l) := by
-      unfold dropAt
-      rw [hT]
-      cases x <;> simp_all
+      unfold dropAt; rw [hsh]
     rw [hd]
     exact ⟨hs', hg'⟩
   · -- a copy: excluded
