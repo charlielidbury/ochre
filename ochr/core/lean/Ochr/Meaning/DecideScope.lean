@@ -200,9 +200,12 @@ def liveVal (s : MState) (i : Nat) : DeclInfo :=
   if i < bs.size then bs[bs.size - 1 - i]!.decl else .other
 
 /-- Two states agree on everything a decision reads: equal but for the frames, whose top frame
-has the same readings. -/
+has the same readings, the move log (`placeLog`) and the [Split] refinements (`refs`). No decision
+reads the last two: the simulation below (`decideSim`) goes through with them ignored (added
+2026-11-21, so that the decisions' alignment, `Steps.DecAligned`, passes through the steps that
+write only those). -/
 structure EnvRel (s₁ s₂ : MState) : Prop where
-  rest : { s₁ with env := #[] } = { s₂ with env := #[] }
+  rest : { s₁ with env := #[], placeLog := #[], refs := [] } = { s₂ with env := #[], placeLog := #[], refs := [] }
   live : ∀ i, liveVal s₁ i = liveVal s₂ i
 
 theorem EnvRel.globals {s₁ s₂ : MState} (h : EnvRel s₁ s₂) : s₁.globals = s₂.globals := by
