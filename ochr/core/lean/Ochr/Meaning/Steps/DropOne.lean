@@ -395,16 +395,59 @@ theorem mean_updAt_bot_sealed (H : TyS) (steps : List Step) (v v' : Value)
       some (Value.mean K.dm K.M K.Γ ρ φ H v') :=
   mean_updAt_botS K ρ φ steps H H v v' h hb hs hd
 
-/-- **The checker's access clears the place**: after `accessPath q; accessInside q`, no live borrow
-has a site at, over or under the place (`dataHit`): the path holds no live loan, mark or sealed
-program (`firstLiveLoanOnPath` is `none`) and the content none inside (`liveLoansIn` is empty).
-Open: not tried yet; a fact about the checker's two loops' exits. -/
-theorem access_clears (fuel : Nat) (st st' : MState) (q : Place) (pos : Pos) (b : Nat)
-    (hpos : ckVarPos st.env q.steps.1 = some pos)
-    (h : Runs (do Ochr.accessPath fuel q; Ochr.accessInside fuel q) st b () st') :
-    ∀ l, liveLoan st'.env l = true → ∀ x ∈ Env.sitesOf st'.env l, x.pos = pos →
-      dataHit q.steps.2 x.path = false := by
-  sorry
+/-- **A live label of the checker is live in the reference**: under (WF1) its holder holds it
+whole, so the position has its shape; `SimEq` gives the reference a holder of its renaming (a
+temporary's at some index), and the reference holds borrows only at its positions (`Rel.holders`). -/
+theorem rel_live_ref' (st : MState) (s : SState) (π : Nat → Nat) (hg : Good K.dm K.M K.Γ ρ st)
+    (hs : Rel K ρ φ π st s) {l : Nat} (hl : liveLoan st.env l = true) : π l ∈ s.liveLabels := by
+  unfold liveLoan at hl
+  obtain ⟨p₀, hp₀⟩ := Option.isSome_iff_exists.mp hl
+  have hmem := mem_allPos_of_find st.env l p₀ hp₀
+  have hhold : (valAt st.env p₀).holdsBorrow l = true := by
+    unfold findBorrow at hp₀; exact List.find?_some (p := fun p => (valAt st.env p).holdsBorrow l) hp₀
+  have hsh : Env.shape st.env p₀ = some l := by
+    have hwf1 := hg.2.2.1.1 p₀ hmem
+    cases hv : valAt st.env p₀ with
+    | borrow m w =>
+      rw [hv] at hwf1 hhold
+      simp only [Value.holdsBorrow, Bool.or_eq_true, beq_iff_eq] at hhold
+      rcases hhold with rfl | hw
+      · simp [Env.shape, hv]
+      · exact absurd (hasBorrow_of_holdsBorrow l w hw) hwf1
+    | succ w =>
+      rw [hv] at hwf1 hhold
+      simp only [Value.holdsBorrow] at hhold
+      exact absurd (hasBorrow_of_holdsBorrow l (.succ w) (by simpa [Value.holdsBorrow] using hhold)) hwf1
+    | _ => rw [hv] at hhold; simp [Value.holdsBorrow] at hhold
+  rw [SState.mem_liveLabels]
+  cases p₀ with
+  | bind f i =>
+    have := hs.sim.2.1 (.bind f i) l (by simp [IsTemp]) hsh
+    exact ⟨_, hs.holders _ _ this, this⟩
+  | temp f i =>
+    obtain ⟨j, hj, -⟩ := hs.sim.2.2.2.1 f i l hsh
+    exact ⟨_, hs.holders _ _ hj, hj⟩
+
+/-- **The checker's access clears the place**: after it, no live borrow has a site at, over or
+under the place (`dataHit`). Read through the relation, where the reference's access is at its
+fixpoint (`SState.access_post`): the related reference state is an access of the same position and
+path, the live labels correspond (`rel_live_ref'`) and so do their sites (`Rel.sites`). PROVED
+(docs/31 D48); as first stated it was about the checker's two loops' exits, which needs a frame
+lemma for [End] (what an end leaves untouched). -/
+theorem access_clears (st : MState) (s : SState) (π : Nat → Nat) (pos : Pos) (steps : List Step)
+    (hg : Good K.dm K.M K.Γ ρ st) (hs : Rel K ρ φ π st (s.access pos (dataHit steps))) :
+    ∀ l, liveLoan st.env l = true → ∀ x ∈ Env.sitesOf st.env l, x.pos = pos →
+      dataHit steps x.path = false := by
+  intro l hl x hx hxp
+  cases e : dataHit steps x.path
+  · rfl
+  · exfalso
+    have hlive := rel_live_ref' K ρ φ st _ π hg hs hl
+    have hxs := (hs.sites l hl x).mpr hx
+    have hpost := SState.access_post s pos (dataHit steps) (π l) hlive
+    unfold SState.reached at hpost
+    rw [List.any_eq_false] at hpost
+    exact hpost x hxs (by simp [hxp, e])
 
 /-- **A live label of the reference is the renaming of a live label of the checker** (`SimEq`'s
 holders both ways: a reference holder's label renames a checker holder's). -/
