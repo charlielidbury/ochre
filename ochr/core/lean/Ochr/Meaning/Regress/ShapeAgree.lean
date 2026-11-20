@@ -82,13 +82,13 @@ theorem callOfL_cod.{u} (L : Lvl.{u}) {C : Type u} (t : Tel L.Code PUnit C) (fv 
       exact ⟨true, hc⟩
 
 /-- **A call is typed at the codomain code its callee's type reaches at the arguments.** -/
-theorem callOf_cod (fv : Res) (args : List Res) {s s' : SState} {r : Res}
-    (h : callOf fv args s = some (r, s')) : ∃ b, fv.2.m.codAt? (args.map (·.1)) = some (b, r.2.m) := by
+theorem callOf_cod (R : DataRead) (fv : Res) (args : List Res) {s s' : SState} {r : Res}
+    (h : callOf R fv args s = some (r, s')) : ∃ b, fv.2.m.codAt? R (args.map (·.1)) = some (b, r.2.m) := by
   unfold callOf at h
   split at h
-  · rename_i A C t e; rw [e]; exact callOfL_cod lvl0 t _ _ h
-  · rename_i A C t e; rw [e]; exact callOfL_cod lvl1 t _ _ h
-  · rename_i A C t e; rw [e]; exact callOfL_cod lvl2 t _ _ h
+  · rename_i A C t e; rw [e]; exact callOfL_cod (lvl0 R) t _ _ h
+  · rename_i A C t e; rw [e]; exact callOfL_cod (lvl1 R) t _ _ h
+  · rename_i A C t e; rw [e]; exact callOfL_cod (lvl2 R) t _ _ h
   · cases h
 
 /-- **A call's result has the code its callee's telescope reaches** (the positive form of what was
@@ -98,7 +98,7 @@ called along its own code, and a type computed by a call keeps its structure. -/
 theorem call_cod (hint : TyS) (f : Term) (args : List Term) (hd : Bool) (s s' : SState) (r : Res)
     (hfl : (K.D.flags (scopeOf s) (.call f args hd)).2 = false)
     (h : run K ρ φ hint (.call f args hd) s = some (r, s')) :
-    ∃ (fv : Res) (as : List Res) (b : Bool), fv.2.m.codAt? (as.map (·.1)) = some (b, r.2.m) := by
+    ∃ (fv : Res) (as : List Res) (b : Bool), fv.2.m.codAt? K.dm.read (as.map (·.1)) = some (b, r.2.m) := by
   rw [run, runT] at h
   dsimp only at h
   unfold SM.erasedIf at h
@@ -106,12 +106,12 @@ theorem call_cod (hint : TyS) (f : Term) (args : List Term) (hd : Bool) (s s' : 
   have key : ∀ r₀ s₀, (do
       let fv ← SM.headOf f (fun p => readPlace K φ p true) (runT K ρ φ false (.plain TyM.err) f)
       let as ← runArgs K ρ φ (K.D.flags (scopeOf s) (.call f args hd)).1 fv.2.m [] args
-      callOf fv as) s = some (r₀, s₀) →
-      ∃ (fv : Res) (as : List Res) (b : Bool), fv.2.m.codAt? (as.map (·.1)) = some (b, r₀.2.m) := by
+      callOf K.dm.read fv as) s = some (r₀, s₀) →
+      ∃ (fv : Res) (as : List Res) (b : Bool), fv.2.m.codAt? K.dm.read (as.map (·.1)) = some (b, r₀.2.m) := by
     intro r₀ s₀ h₀
     obtain ⟨fv, s₁, -, h₁⟩ := SM.bind_some h₀
     obtain ⟨as, s₂, -, h₂⟩ := SM.bind_some h₁
-    obtain ⟨b, hb⟩ := callOf_cod fv as h₂
+    obtain ⟨b, hb⟩ := callOf_cod K.dm.read fv as h₂
     exact ⟨fv, as, b, hb⟩
   rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, -, -, r₀, s₀, h₀, rfl⟩
   · exact key r s' h
@@ -121,14 +121,14 @@ theorem call_cod (hint : TyS) (f : Term) (args : List Term) (hd : Bool) (s s' : 
 universe of its declared sort (the positive form of what was `pi_shape`): the code is in the
 value, so a binding `T = Π(n : Nat). Nat` holds it, and so does the checker's `T : Type`. -/
 theorem pi_code (hint : TyS) (hs : List Hint) (ds : List Term) (c : Term) (s : SState) :
-    run K ρ φ hint (.pi hs ds c) s = some ((.ty (piTyAt (K.D.piSort (scopeOf s) (.pi hs ds c))
+    run K ρ φ hint (.pi hs ds c) s = some ((.ty (piTyAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c))
       (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)),
         .plain (TyM.univ (K.D.piSort (scopeOf s) (.pi hs ds c)))), s) :=
   run_pi_def K ρ φ hint hs ds c s
 
 /-- At a data sort the Π-type's code is a function type's (its telescope is what a call walks). -/
-theorem piTyAt_isPi (l : Nat) (hl : l = 1 ∨ l = 2 ∨ l = 3) (ds : List PiDom) (out : PiCod) :
-    (piTyAt l ds out).isPi = true := by
+theorem piTyAt_isPi (R : DataRead) (l : Nat) (hl : l = 1 ∨ l = 2 ∨ l = 3) (ds : List PiDom) (out : PiCod) :
+    (piTyAt R l ds out).isPi = true := by
   rcases hl with rfl | rfl | rfl <;> rfl
 
 /-! ## The future does not matter -/
@@ -154,7 +154,7 @@ theorem erased_proof_untyped (fl : Bool × Bool) (h : fl.2 = true) (x : SM Res) 
 /-- A field whose run is typed `err` solves no parameter of its constructor (`Machine.unifyParams`
 reads the parameter off the field's type; before A17 a proof read at a place was typed `err`, so
 `MkPBox(h)` failed where the checker accepts `ShapeProbes.BoxProof`). -/
-theorem unify_untyped (np : Nat) (FT : Term) (sol : List (Option Sem)) :
-    unifyTyS np FT (.plain .err) sol = sol := rfl
+theorem unify_untyped (R : DataRead) (np : Nat) (FT : Term) (sol : List (Option Sem)) :
+    unifyTyS R np FT (.plain .err) sol = sol := rfl
 
 end Ochr.Meaning.Regress.ShapeAgree

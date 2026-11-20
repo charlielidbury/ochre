@@ -132,8 +132,8 @@ namespace Ochr.Meaning.Attack
 open Ochr.Meaning
 
 /-- Level 0's decoding at `Nat` reads a number by its tag. -/
-theorem dec_nat_as (s : Sem) : Code0.nat.dec s = s.as Nat := by
-  by_cases h : ∃ a, Code0.enc .nat a = s
+theorem dec_nat_as (R : DataRead) (s : Sem) : Code0.nat.dec R s = s.as Nat := by
+  by_cases h : ∃ a, Code0.enc R .nat a = s
   · obtain ⟨a, rfl⟩ := h
     rw [Code0.dec_enc]; simp [Code0.enc, Sem.as]
   · rw [Code0.dec, dif_neg h]
@@ -146,16 +146,16 @@ theorem dec_nat_as (s : Sem) : Code0.nat.dec s = s.as Nat := by
     | _ => rfl
 
 /-- Level 0's decoding at `Nat` on a number is the number. -/
-theorem dec_nat_el0 (n : Nat) : Code0.nat.dec (.el0 Nat n) = some n := Code0.dec_enc .nat n
+theorem dec_nat_el0 (R : DataRead) (n : Nat) : Code0.nat.dec R (.el0 Nat n) = some n := Code0.dec_enc R .nat n
 
 /-- Applying `σ_g`'s meaning `F` (tagged at its carrier) to a number, along its telescope code:
 the borrow-returning result at `Nat`, forward value `(F n).val.1`, and the backward function
 reads the one lent place from the final content. -/
-theorem applyFnL_G (F : GCar) (n : Nat) :
-    applyFnL lvl0 telG (.el0 GCar F) [.el0 Nat n]
+theorem applyFnL_G (R : DataRead) (F : GCar) (n : Nat) :
+    applyFnL (lvl0 R) telG (.el0 GCar F) [.el0 Nat n]
       = some (.ref Nat .nat (F n).val.1 fun v => [.el0 Nat ((F n).val.2 v).2]) := by
   have hu : Sem.as GCar (.el0 GCar F) = some F := by simp [Sem.as]
-  simp only [applyFnL, lvl0, hu, Option.bind_some, telG, applyTelL, dec_nat_el0]
+  simp only [applyFnL, lvl0, hu, Option.bind_some, telG, applyTelL, dec_nat_el0 R]
   rfl
 
 end Ochr.Meaning.Attack
@@ -204,30 +204,30 @@ open Ochr.Meaning
 a fresh label `k+1` for the returned borrow, the lent binding reads the backward function at
 `k+1`'s final content, the result parked in temp `1` holding `k+1`. -/
 noncomputable def S₃ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) : SState :=
-  { env := [{ binds := [{ b with val := fun φ' => match Code0.nat.dec (φ' (k+1)) with
+  { env := [{ binds := [{ b with val := fun φ' => match (φ' (k+1)).as Nat with
                                                   | some x => .el0 Nat ((F n).val.2 x).2
                                                   | none => .err }],
-              temps := [fun φ' => match Code0.nat.dec (φ' (k+1)) with | some _ => .moved | none => .err,
-                        fun _ => lvl0.enc Code0.nat (F n).val.1] }],
+              temps := [fun φ' => match (φ' (k+1)).as Nat with | some _ => .moved | none => .err,
+                        fun _ => Sem.el0 Nat (F n).val.1] }],
     shape := fun p => if p = .temp 0 1 then some (k+1) else none, nextLoan := k + 2, lent := lentA k }
 
 set_option maxHeartbeats 1000000 in
-theorem callOf_S₂ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
-    callOf (Sem.el0 GCar F, TyS.plain (.t0 GCar (.pi GCar telG)))
+theorem callOf_S₂ (R : DataRead) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
+    callOf R (Sem.el0 GCar F, TyS.plain (.t0 GCar (.pi GCar telG)))
         [(Sem.el0 Nat n, { b.ty with label := some k })] (S₂ b k c)
-      = some ((lvl0.enc Code0.nat (F n).val.1, (⟨TyM.nat, some (k+1)⟩ : TyS)), S₃ F n b k) := by
-  have hr : telRefsL lvl0 telG [Sem.el0 Nat n] = [true] := by
-    simp [telRefsL, telG, dec_nat_el0]
+      = some ((Sem.el0 Nat (F n).val.1, (⟨TyM.nat, some (k+1)⟩ : TyS)), S₃ F n b k) := by
+  have hr : telRefsL (lvl0 R) telG [Sem.el0 Nat n] = [true] := by
+    simp [telRefsL, telG, dec_nat_el0 R]
   simp only [callOf, TyS.plain, callOfL, List.map, hr, List.filterMap, List.foldl, List.zip, List.zipWith,
     List.filter, id, Option.map, List.filter_cons_of_pos]
-  have hA := applyFnL_G F n
+  have hA := applyFnL_G R F n
   rw [takeLabel_S₂, hA]
   simp only [SState.freshLoan, SState.mapVals, SState.pushTempShaped, SState.pushTemp, SState.topIdx,
     List.zipIdx, List.map, List.zip, List.zipWith, Future.updList, List.foldl, List.length, List.modify,
     List.getLast?, Option.some.injEq, List.append, List.modifyTailIdx, List.modifyHead, Nat.add_sub_cancel,
     List.getLast, Future.upd_same, List.modifyTailIdx.go]
   simp only [S₃, SState.setLent, List.cons_append, List.nil_append, List.length_cons, List.length_nil,
-    Nat.zero_add, Nat.add_assoc, Nat.reduceAdd, Nat.reduceSub]
+    Nat.zero_add, Nat.add_assoc, Nat.reduceAdd, Nat.reduceSub, dec_nat_as]
   congr 2
   · -- the frame: the values agree once the decoded content is cased on (the `match`
     -- auxiliaries differ by elaboration site)
@@ -235,13 +235,13 @@ theorem callOf_S₂ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
     and_intros
     all_goals first
       | rfl
-      | (funext φ'; cases Code0.nat.dec (φ' (k+1)) <;> rfl)
-      | (funext φ'; cases Code0.nat.dec (φ' (k+1)) <;> simp [Future.updList, Future.upd_same])
+      | (funext φ'; cases (φ' (k+1)).as Nat <;> rfl)
+      | (funext φ'; cases (φ' (k+1)).as Nat <;> simp [Future.updList, Future.upd_same])
       | (trace_state; sorry)
   · funext m'; simp [lentA]
 
 /-- Level 0's encoding at `Nat`, by definition. -/
-theorem lvl0_enc_nat (m : Nat) : lvl0.enc Code0.nat m = .el0 Nat m := rfl
+theorem lvl0_enc_nat (R : DataRead) (m : Nat) : (lvl0 R).enc Code0.nat m = .el0 Nat m := rfl
 
 end Ochr.Meaning.Attack
 
@@ -251,15 +251,15 @@ open Ochr.Meaning
 
 /-- The result's binding: `r : &Nat` holding the returned borrow `k+1`. -/
 noncomputable def rBind (F : GCar) (n : Nat) (k : Nat) : SBinding :=
-  { ty := ⟨TyM.nat, some (k+1)⟩, val := fun _ => lvl0.enc Code0.nat (F n).val.1 }
+  { ty := ⟨TyM.nat, some (k+1)⟩, val := fun _ => Sem.el0 Nat (F n).val.1 }
 
 /-- The state after `let r = σ1(&c1)`: `r` bound, holding `k+1` (its temp consumed). -/
 noncomputable def S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) : SState :=
-  { env := [{ binds := [{ b with val := fun φ' => match Code0.nat.dec (φ' (k+1)) with
+  { env := [{ binds := [{ b with val := fun φ' => match (φ' (k+1)).as Nat with
                                                   | some x => .el0 Nat ((F n).val.2 x).2
                                                   | none => .err },
                         { ty := ⟨TyM.nat, some (k+1)⟩, val := fun _ => .el0 Nat (F n).val.1 }],
-              temps := [fun φ' => match Code0.nat.dec (φ' (k+1)) with | some _ => .moved | none => .err,
+              temps := [fun φ' => match (φ' (k+1)).as Nat with | some _ => .moved | none => .err,
                         fun _ => .moved] }],
     shape := fun p => if p = .bind 0 1 then some (k+1) else none, nextLoan := k + 2, lent := lentA k }
 
@@ -353,11 +353,11 @@ theorem resolve_deref_r (F : GCar) (n : Nat) (b : SBinding) (k : Nat) :
 
 /-- The state after `*r := w` on `S₄`: `r` holds `w`. -/
 noncomputable def S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) : SState :=
-  { env := [{ binds := [{ b with val := fun φ' => match Code0.nat.dec (φ' (k+1)) with
+  { env := [{ binds := [{ b with val := fun φ' => match (φ' (k+1)).as Nat with
                                                   | some x => .el0 Nat ((F n).val.2 x).2
                                                   | none => .err },
                         { ty := ⟨TyM.nat, some (k+1)⟩, val := fun _ => w }],
-              temps := [fun φ' => match Code0.nat.dec (φ' (k+1)) with | some _ => .moved | none => .err,
+              temps := [fun φ' => match (φ' (k+1)).as Nat with | some _ => .moved | none => .err,
                         fun _ => .moved] }],
     shape := fun p => if p = .bind 0 1 then some (k+1) else none, nextLoan := k + 2, lent := lentA k }
 
@@ -397,11 +397,11 @@ open Ochr.Meaning
 /-- The state after [Access] of `c1` on `S₅`: `r`'s borrow ends, fixing `k+1`'s final content to
 `w`; `c1` now reads the backward function at `w`, `r` is forgotten, nothing is live. -/
 noncomputable def S₆ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) : SState :=
-  { env := [{ binds := [{ b with val := fun _ => match Code0.nat.dec w with
+  { env := [{ binds := [{ b with val := fun _ => match w.as Nat with
                                                   | some x => .el0 Nat ((F n).val.2 x).2
                                                   | none => .err },
                         { ty := ⟨TyM.nat, some (k+1)⟩, val := fun _ => .moved }],
-              temps := [fun _ => match Code0.nat.dec w with | some _ => .moved | none => .err,
+              temps := [fun _ => match w.as Nat with | some _ => .moved | none => .err,
                         fun _ => .moved] }],
     shape := fun _ => none, nextLoan := k + 2, lent := (S₅ F n b k w).relend (k+1) (.bind 0 1) }
 
@@ -422,7 +422,7 @@ theorem endLabel_S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (w : Sem) :
            and_intros
            all_goals first
              | rfl
-             | (funext φ'; simp [Future.upd]; cases Code0.nat.dec w <;> rfl)
+             | (funext φ'; simp [Future.upd]; cases w.as Nat <;> rfl)
              | (funext φ'; simp [Future.upd])
              | (trace_state; sorry))
         | (funext p; simp)

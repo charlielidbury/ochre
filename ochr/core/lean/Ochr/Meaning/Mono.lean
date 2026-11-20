@@ -626,7 +626,7 @@ noncomputable def K : RunCtx where
   D := D
 
 /-- The type `P`. (No value is read through it: since docs/31 D32 a value describes itself.) -/
-def tP : TyS := .plain (.t0 Unit (.data "P" [] Unit fun _ => ⟨0, [.mk Unit .unit (), .mk Unit .unit ()]⟩))
+def tP : TyS := .plain (.t0 Unit (.data decl [] Unit))
 
 /-- The whole value `P((), ())`: constructor `0` of `P`, its fields `()` and `()`, its element `()`. -/
 def pv : Sem := .dat "P" [] 0 [.el0 Unit (), .el0 Unit ()] (some ⟨Unit, ()⟩)
@@ -1348,8 +1348,8 @@ theorem callOfL_fresh.{u} (L : Lvl.{u}) {C : Type u} (t : Tel L.Code PUnit C) (f
     exact Nat.lt_irrefl _ this
   · cases h
 
-theorem callOf_fresh (fv : Res) (args : List Res) (s : SState)
-    (hs : s.ShapeBelow) {r : Sem} {T : TyS} {s' : SState} (h : callOf fv args s = some ((r, T), s')) :
+theorem callOf_fresh (R : DataRead) (fv : Res) (args : List Res) (s : SState)
+    (hs : s.ShapeBelow) {r : Sem} {T : TyS} {s' : SState} (h : callOf R fv args s = some ((r, T), s')) :
     s'.ShapeBelow ∧ ∀ l, T.label = some l → l < s'.nextLoan ∧ (∀ q, s.shape q ≠ some l) ∧
       ∀ q q', s'.shape q = some l → s'.shape q' = some l → q = q' := by
   unfold callOf at h

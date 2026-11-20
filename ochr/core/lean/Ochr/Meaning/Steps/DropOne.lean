@@ -441,8 +441,8 @@ theorem ctorM_partial (dm : DataModel) (d : IndDecl) (ps : List Sem) (c : Nat) (
 
 
 /-- Moving a part out keeps partial membership (`pmem`: a member with parts moved out). -/
-theorem pmem_moved_part {Γ : List IndDecl} {s s' : Sem} {T : TyM} (hm : MovedOf Γ s' s)
-    (h : DataModel.pmem Γ s T) : DataModel.pmem Γ s' T := by
+theorem pmem_moved_part {R : DataRead} {Γ : List IndDecl} {s s' : Sem} {T : TyM} (hm : MovedOf Γ s' s)
+    (h : DataModel.pmem R Γ s T) : DataModel.pmem R Γ s' T := by
   rcases h with rfl | ⟨t, hw, hst, ht⟩
   · cases hm <;> exact .inl rfl
   · exact .inr ⟨t, hw, movedOf_trans hm hst, ht⟩

@@ -667,11 +667,11 @@ theorem botWrite_good (st : MState) (pos : Pos) (steps : List Step) (v' : Value)
     by_cases hqp : q = pos
     · subst hqp
       have old := hmem.pos φ hφ' q T hT
-      show DataModel.pmem K.Γ (Env.mean K.dm K.M K.Γ ρ φ (Env.setAtE st.env q v') q) T
+      show DataModel.pmem K.dm.read K.Γ (Env.mean K.dm K.M K.Γ ρ φ (Env.setAtE st.env q v') q) T
       rw [mean_eq_valAt K.dm K.M K.Γ ρ _ _ _ hp', hintAt_setAtE, valAt_setAtE_self v' hp]
       rw [mean_eq_valAt K.dm K.M K.Γ ρ _ _ _ hp] at old
       exact pmem_moved_part (movedOf_mean_updAt K ρ φ steps _ _ v' hv hplain.1 hplain.2 (hnat φ)).1 old
-    · show DataModel.pmem K.Γ (Env.mean K.dm K.M K.Γ ρ φ (Env.setAtE st.env pos v') q) T
+    · show DataModel.pmem K.dm.read K.Γ (Env.mean K.dm K.M K.Γ ρ φ (Env.setAtE st.env pos v') q) T
       rw [mean_setAtE_other K.dm K.M K.Γ ρ st.env pos q v' φ hqp]
       exact hmem.pos φ hφ' q T hT
   have hb6 : ∀ {f i : Nat} {b : Binding}, (Env.setAtE st.env pos v')[f]?.bind (·.binds[i]?) = some b →

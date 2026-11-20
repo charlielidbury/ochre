@@ -32,7 +32,7 @@ theorem fill_means_back (dm : DataModel) (C : CodeMeaning) (n : Nat) (F : GCar) 
   dsimp only
   simp only [List.nil_append, List.cons_append, List.foldl_cons, List.foldl_nil, Nat.zero_max,
     Nat.reduceAdd, Bool.false_eq_true, reduceIte]
-  erw [callOf_S₂ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n)]
+  erw [callOf_S₂ _ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n)]
   dsimp only
   have hp := pushBindShaped_S₃ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0
   simp only [rBind] at hp

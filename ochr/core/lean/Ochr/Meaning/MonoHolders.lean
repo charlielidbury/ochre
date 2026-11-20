@@ -167,8 +167,8 @@ theorem callOfL_readsBelow.{u} (L : Lvl.{u}) {C : Type u} (t : Tel L.Code PUnit 
       · rfl
   · cases h
 
-theorem callOf_readsBelow (fv : Res) (args : List Res) (s : SState) (hs : s.ReadsBelow)
-    {r : Sem} {T : TyS} {s' : SState} (h : callOf fv args s = some ((r, T), s')) : s'.ReadsBelow := by
+theorem callOf_readsBelow (R : DataRead) (fv : Res) (args : List Res) (s : SState) (hs : s.ReadsBelow)
+    {r : Sem} {T : TyS} {s' : SState} (h : callOf R fv args s = some ((r, T), s')) : s'.ReadsBelow := by
   unfold callOf at h
   split at h
   · exact callOfL_readsBelow _ _ _ _ _ hs h
