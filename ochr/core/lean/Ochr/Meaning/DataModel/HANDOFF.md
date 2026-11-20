@@ -24,14 +24,12 @@ All proved, standard axioms; nothing in this item is stated-only.
 - Lead's side, not done: `GlobalsOk.ty` must type `K.cur`'s global at the weakened Π; `fix_split` restated to `OutGood'`/`PiFits`, its induction on "stage `b` good below `b`".
 - Trap: `telL` matches `out.isRef` in a type; `rcases out with ⟨isRef, cod⟩; subst` before reducing a leaf.
 
-## Number-like parameters in records (next item 2, "3b")
+## Number-like parameters in records (item 2, "3b": done 2026-11-20)
 
-- `Entry` gains `small (s : Small)` (stays `Type 1`); update every match on `Entry` (`entryTy`, `Program.shapeOf`/`tyEntry`, `entryOf`).
-- `recOf d ps` keeps each first-order value parameter at `paramKey j` as `.small ps[j].small` (canonical records; `Program.progRecOf` and `ParamSolve.solveRecOf` too).
-- `unifyArgsTyS`: an entry `.small s` against `.place (.var j)` fills `j` with `ofSmall s`, a meaning rebuilt from `s` (`el → el0`, `proof → proof`, `node c fs → .dat "" natRec c …`, `other → err`) with `(ofSmall s).small = s`.
-- New faithfulness clause: `recOf d ps` reads a value parameter only through `.small` (two parameter lists with equal small forms give the same record), so the rebuilt parameter gives the same record, which is all `ctorOut` and `fieldTy` use. Core lemmas: no match on `Entry`, so expected untouched.
-- Then `ParamSolve.sw_fails`/`so_fails` become runs the model gets right (re-prove as successes); `sh_fails` stays.
-- Residual rule for the checker afterwards: do not infer from fields (a) a function or other large parameter, (b) a parameter occurring only at argument positions declared `Type₁` or higher. Everything else (a field's own type at any level, a `Prop`/`Type₀` argument at any depth, a first-order value parameter) is inferred by both.
+- `Sem.lean`: `Entry.small (s : Small)`; `ofSmall`/`ofSmallList` (mutual), `small_ofSmall`. Matches on `Entry`: `Data.entryTy` (`.small _ => err`), `Program.shapeOf` (`=> .leaf PEmpty .err`); others had wildcards.
+- `Run.lean` `unifyArgsTyS`: entry `.small sv` against `.place (.var j)` fills `j` with `ofSmall sv`; other argument forms solve nothing (as `Machine.unifyParams`, which solves only at `var j`).
+- `Faithful.RecordsFaithful` is a structure: `types` (old clause), `values` (a value parameter `v ∈ paramTy = .t0 A c` is kept `.small v.small` at `paramKey j`; membership is asked so a loose `.ty T` from `ParamsTyped` cannot clash with `types`), `smallOnly` (parameter lists differing only at such value parameters with equal small readings give one record). `smallOnly` for the canonical model is a GUESS (see docs/34 §17.5); its key lemma would be "a member is determined by its small reading and its type" (not proved).
+- Records: `Program.singleRec`/`vecRec`/`isZRec`/`fin1Rec` keep the value parameter at `paramKey` (pattern `[(j, 0, [.other])]`); `ParamSolve` records take small readings (`valRec sn`, `opt2Rec sn`), `recOf_ofSmall`, `tag_injective`, `wrap_solves`, `ctor1_runs`, `sw_ctor`/`sw_runs`, `so_ctor`/`so_runs` (successes), `sh_fails` (kept). Adversarial's `fpRec` (FP's level-0 function parameter) does not keep `f` at `paramKey`: not needed by any run; a faithful model would.
 
 ## Traps
 

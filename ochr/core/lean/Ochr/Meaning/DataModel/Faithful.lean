@@ -13,9 +13,13 @@ What a data model owes the program beyond covering its declarations, and what `C
    Under the model itself: a field `List(A)` runs to `dm.tyM List [A]`. Type functions in field
    types read the program's earlier globals, so the run context is the program meaning's.
 2. **Parameter types** (`ParamsFaithful`): the same for the declared parameter types and `paramTy`.
-3. **Records keep the type parameters** (`RecordsFaithful`): the record at parameters keeps a
-   level-0 type parameter's entry at `paramKey`, which is where the run's constructor clause reads a
-   parameter back off a field's type (`unifyTyS`).
+3. **Records keep the parameters `unifyTyS` reads back** (`RecordsFaithful`): the record at
+   parameters keeps a level-0 type parameter's entry, and a value parameter of a level-0 type read
+   small, at `paramKey`, which is where the run's constructor clause reads a parameter back off a
+   field's type (`unifyTyS`); and it reads a value parameter only small, so the rebuilt parameter
+   gives the same record. (Guess, for the canonical model: a member of a data type is determined by
+   its small reading and its type, so records computed from the run's readings of the field types,
+   whose `Eq`s compare members of one type, are functions of the value parameters' small readings.)
 
 Definedness is asked, so a run made undefined cannot make faithfulness vacuous. The degenerate
 model, which met the existence statement before the port, is not faithful
@@ -62,12 +66,24 @@ def ParamsFaithful (K : RunCtx) (ρ : Assignment) : Prop :=
     ∃ r s', run K ρ noFuture (.plain (TyM.univ 2)) PT (paramFrame K.dm d ps) = some (r, s') ∧
       r.1.asTy = K.dm.paramTy d j ps
 
-/-- **A record keeps each level-0 type parameter's entry at `paramKey`** (what `unifyTyS` reads
-back off a field's type). -/
-def RecordsFaithful (K : RunCtx) : Prop :=
-  ∀ d ∈ K.Γ, ∀ (ps : List Sem) (j : Nat) (A : Type) (c : Code0 A),
+/-- **Records keep what `unifyTyS` reads back off a field's type** (docs/34 §14, Handoff 3b): at
+`paramKey`, each level-0 type parameter's entry (`types`) and each value parameter of a level-0
+type read small (`values`); and a record reads a value parameter only small (`smallOnly`: parameter
+lists that differ only in value parameters with the same small readings have the same record), so
+the parameter `unifyTyS` rebuilds from the small reading (`ofSmall`, `small_ofSmall`) gives the
+written one's record. -/
+structure RecordsFaithful (K : RunCtx) : Prop where
+  types : ∀ d ∈ K.Γ, ∀ (ps : List Sem) (j : Nat) (A : Type) (c : Code0 A),
     ParamsTyped K.dm d ps → ps[j]? = some (.ty (.t0 A c)) →
     K.dm.entryTy (K.dm.recOf d ps (paramKey j)) = .t0 A c
+  values : ∀ d ∈ K.Γ, ∀ (ps : List Sem) (j : Nat) (v : Sem) (A : Type) (c : Code0 A),
+    ParamsTyped K.dm d ps → ps[j]? = some v → K.dm.paramTy d j (ps.take j) = .t0 A c →
+    v ∈ₛ[K.dm.read] .t0 A c → K.dm.recOf d ps (paramKey j) = .small v.small
+  smallOnly : ∀ d ∈ K.Γ, ∀ (ps ps' : List Sem), ParamsTyped K.dm d ps → ps'.length = ps.length →
+    (∀ (j : Nat) (v v' : Sem), ps[j]? = some v → ps'[j]? = some v' →
+      v' = v ∨ ((∃ (A : Type) (c : Code0 A), K.dm.paramTy d j (ps.take j) = .t0 A c ∧ v ∈ₛ[K.dm.read] .t0 A c) ∧
+        v'.small = v.small)) →
+    K.dm.recOf d ps' = K.dm.recOf d ps
 
 /-- **A field's level is the one its declaration's check gave it** (the lead's addition, stated,
 not yet part of `CtxFaithful`): at well-typed parameters and earlier fields, a field the checker
@@ -93,6 +109,8 @@ def CtxFaithful (K : RunCtx) : Prop :=
 
 /-- Faithfulness does not read Δ. -/
 theorem CtxFaithful.withΔ {K : RunCtx} (h : CtxFaithful K) (Δ : Nat → TyS) : CtxFaithful { K with Δ := Δ } :=
-  fun Δ' ρ => h Δ' ρ
+  fun Δ' ρ =>
+    let ⟨h1, h2, h3⟩ := h Δ' ρ
+    ⟨h1, h2, ⟨h3.types, h3.values, h3.smallOnly⟩⟩
 
 end Ochr.Meaning

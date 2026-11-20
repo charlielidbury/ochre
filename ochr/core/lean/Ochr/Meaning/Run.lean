@@ -237,9 +237,10 @@ mutual
 type `R` the field's run returned (`Machine.unifyParams`, D46; the audit's A9): where `FT` is a
 parameter variable, the parameter is `R` itself; where it is `D(x̄)` and `R` is `D`'s code at a
 record, each argument is read against the entry the record keeps for that parameter (docs/34
-§14: a type parameter's code at `paramKey`), at any depth (`List(List(A))`, the lead's 3a). Only
+§14: a type parameter's code at `paramKey`), at any depth (`List(List(A))`, the lead's 3a), and a
+level-0 value parameter's small reading (Handoff 3b: `Wrap`'s `n` from `t : Tag(3)`). Only
 unsolved parameters are filled. A type the run does not know (`err`) solves nothing, as the
-checker's field with no type. A parameter the record does not keep (a value or a large one) is not
+checker's field with no type. A parameter the record does not keep (one above level 0) is not
 solved. -/
 def unifyTyS (dm : DataModel) (np : Nat) : Term → TyS → List (Option Sem) → List (Option Sem)
   | .place (.var j), R, sol => if R.m.isErr then sol else fillParam np j (.ty R.m) sol
@@ -257,6 +258,11 @@ def unifyArgsTyS (dm : DataModel) (np : Nat) (r : Rec) : Nat → List Term → L
   | k, a :: as, sol =>
     unifyArgsTyS dm np r (k + 1) as (match r (paramKey k) with
       | .none => sol
+      -- a level-0 value parameter read small (docs/34 Handoff 3b): a parameter variable at its
+      -- position is solved to the meaning rebuilt from it, which gives the same record
+      | .small sv => match a with
+        | .place (.var j) => fillParam np j (ofSmall sv) sol
+        | _ => sol
       | e => unifyTyS dm np a (.plain (dm.entryTy e)) sol)
 termination_by structural _ as => as
 end
