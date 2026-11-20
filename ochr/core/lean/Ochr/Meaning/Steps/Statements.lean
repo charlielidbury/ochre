@@ -515,6 +515,21 @@ structure Rel (π : Nat → Nat) (st : MState) (s : SState) : Prop where
   held in a temporary need not be live in the reference, whose `SimEq` gives its holder a
   temporary index but not that the index exists. -/
   holders : ∀ p l, s.shape p = some l → p ∈ s.positions
+  /-- every live label's content type has a whole member (docs/31 D66; the lead's inhabitation
+  invariant): a typed future exists. Made where a label is made (a borrow's content is a whole
+  member of its type at a typed future; a borrow-returning call's forward value), kept because
+  `heldTy` is written once per label and a write through a borrow changes contents, not types. -/
+  inhabited : ∀ l, s.Live l → ∃ v : Sem, v.whole ∧ v ∈ₛ[K.dm.read] holderTy s l
+
+/-- **A typed future exists** that agrees with any given one off the live labels (docs/31 D66): give
+each live label the whole member the inhabitation clause provides. -/
+theorem Rel.typed_exists {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
+    (hs : Rel K ρ φ π st s) (ψ : Future) :
+    ∃ ψ' : Future, (∀ l, ¬ s.Live l → ψ' l = ψ l) ∧ TypedLive K s ψ' := by
+  classical
+  refine ⟨fun l => if h : s.Live l then (hs.inhabited l h).choose else ψ l, fun l hl => by simp [hl], fun l hl => ?_⟩
+  simp only [dif_pos hl]
+  exact (hs.inhabited l hl).choose_spec
 
 /-! ### Helpers from `Steps/Eq.lean` -/
 

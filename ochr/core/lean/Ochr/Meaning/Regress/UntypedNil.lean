@@ -179,7 +179,8 @@ theorem evalCore_untyped_false (K : RunCtx) (ρ : Assignment) (φ : Future) (hct
   intro h
   obtain ⟨x, hr⟩ := runsC
   obtain ⟨ρ', π', -, -, r, s', hrun, -⟩ :=
-    h SL _ false nil0 none _ none (good_SL K ρ) hctx (SM' K ρ SL) id (Rel.start K ρ φ SL) hfl 10 hr
+    h SL _ false nil0 none _ none (good_SL K ρ) hctx (SM' K ρ SL) id (Rel.start K ρ φ SL (fun l hl => by
+      exfalso; simp [SState.Live, SState.liveLabels, SM', MState.sstate, Env.shape, SL, natB, valAt, allPos, SState.positions] at hl)) hfl 10 hr
   rw [show hintM K ρ none = .plain .err from rfl, run_nil_none K ρ' φ _ hctx.inds hfl] at hrun
   cases hrun
 
@@ -190,7 +191,8 @@ theorem eval_untyped_false (K : RunCtx) (ρ : Assignment) (φ : Future) (hctx : 
   intro h
   obtain ⟨x, hr⟩ := runs
   obtain ⟨ρ', π', -, -, r, s', hrun, -⟩ :=
-    h SL _ false nil0 none _ none (good_SL K ρ) hctx (SM' K ρ SL) id (Rel.start K ρ φ SL) 10 hr
+    h SL _ false nil0 none _ none (good_SL K ρ) hctx (SM' K ρ SL) id (Rel.start K ρ φ SL (fun l hl => by
+      exfalso; simp [SState.Live, SState.liveLabels, SM', MState.sstate, Env.shape, SL, natB, valAt, allPos, SState.positions] at hl)) 10 hr
   rw [show hintM K ρ none = .plain .err from rfl, run_nil_none K ρ' φ _ hctx.inds hfl] at hrun
   cases hrun
 

@@ -96,7 +96,8 @@ theorem stY_const (p : Pos) (ψ ψ' : Future) : (SM' K ρ stY).valAt p ψ = (SM'
 whatever its counter, is simulated by the reference's unchanged state under the identity. -/
 theorem new_fresh_holds (st' : MState) (henv : st'.env = stY.env) :
     Rel K ρ φ id st' (SM' K ρ stY) :=
-  Rel.private_copy K ρ φ (Rel.start K ρ φ stY) henv
+  Rel.private_copy K ρ φ (Rel.start K ρ φ stY (fun l hl => by
+    exfalso; simp [SState.Live, SState.liveLabels, SM', MState.sstate, Env.shape, stY, valAt, allPos, SState.positions] at hl)) henv
     (fun l h => absurd h (no_label_stY l))
 
 end

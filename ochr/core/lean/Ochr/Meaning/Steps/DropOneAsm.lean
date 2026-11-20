@@ -479,7 +479,7 @@ theorem substEnv_abs_sim (fuel : Nat) (st st' : MState) (σ : Nat) (r : Value) (
 
 /-- Recording a refinement changes nothing the relation reads (it reads Ω and the counter). -/
 theorem rel_refs (st : MState) (σ : Nat) (r : Value) (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) :
-    Rel K ρ φ π { st with refs := (σ, r) :: st.refs } s := ⟨hs.1, hs.2, hs.3, hs.4, hs.5, hs.6⟩
+    Rel K ρ φ π { st with refs := (σ, r) :: st.refs } s := ⟨hs.1, hs.2, hs.3, hs.4, hs.5, hs.6, hs.7⟩
 
 theorem mem_of_lookup {β : Type} : ∀ {l : List (Nat × β)} {a : Nat} {b : β}, l.lookup a = some b → (a, b) ∈ l
   | [], _, _, h => by simp [List.lookup] at h
@@ -680,7 +680,7 @@ theorem substEnv_neutral_sim (fuel : Nat) (st st' : MState) (p : Place) (n T : V
 
 /-- Recording a generalisation changes nothing the relation reads. -/
 theorem rel_neutrals (st : MState) (x : List (Value × Nat)) (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s) :
-    Rel K ρ φ π { st with neutrals := x } s := ⟨hs.1, hs.2, hs.3, hs.4, hs.5, hs.6⟩
+    Rel K ρ φ π { st with neutrals := x } s := ⟨hs.1, hs.2, hs.3, hs.4, hs.5, hs.6, hs.7⟩
 
 /-- **`generalizeNeutral` in the simulation form, with an extended context**, assembled: the
 place's type, the fresh unknown, the substitution and the record. The sealed program `n` at `p`

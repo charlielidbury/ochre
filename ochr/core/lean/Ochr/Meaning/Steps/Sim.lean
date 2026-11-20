@@ -69,7 +69,10 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 it, with no renaming. (Until D29 this needed the loan witness at the state as a hypothesis, which
 failed at open dependent values; with static lending the sites of the state read as a reference
 state are the checker's by definition, `MState.sstate`'s `lent`.) -/
-theorem Rel.start (st : MState) : Rel K ρ φ id st (SM' K ρ st) where
+theorem Rel.start (st : MState)
+    (hinh : ∀ l, (SM' K ρ st).Live l → ∃ v : Sem, v.whole ∧ v ∈ₛ[K.dm.read] holderTy (SM' K ρ st) l) :
+    Rel K ρ φ id st (SM' K ρ st) where
+  inhabited := hinh
   skel := rfl
   fresh := fun _ h _ => h
   sim := ⟨fun ψ _ p _ => by
@@ -141,6 +144,7 @@ theorem Rel.private_copy {π : Nat → Nat} {saved st' : MState} {s : SState} (h
   inj := by rw [henv]; exact hr.inj
   sites := by rw [henv]; exact hr.sites
   holders := hr.holders
+  inhabited := hr.inhabited
 
 /-- Steps stated in the simulation form compose: if the first runs from any reference state
 related to `st` into one related to `st₁`, and the second from any related to `st₁` into one
