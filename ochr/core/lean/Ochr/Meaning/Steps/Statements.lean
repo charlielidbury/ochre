@@ -1,6 +1,7 @@
 import Ochr.Meaning.Lemmas
 import Ochr.Meaning.HintIndep
 import Ochr.Meaning.DecisionsInst
+import Ochr.Meaning.DecideScope
 import Ochr.Meaning.Program
 import Ochr.Meaning.WF
 import Ochr.Machine
@@ -105,18 +106,6 @@ so the clause asks what the run reads, as `TypedAssignment.mem` and `Membership.
 def DeltaOk (K : RunCtx) (ρ : Assignment) (st : MState) : Prop :=
   ∀ σ, st.Refd σ → σ < st.absTy.size → K.Δ σ = deltaOf K ρ st σ
 
-/-- The run context is the checker state's: its declarations, a data model that speaks for each,
-Δ at the state's unknowns (`DeltaOk`), globals with no label (`run_congr`'s `hK`), and Σ
-(`GlobalsOk`). A hypothesis of every statement. -/
-structure CtxOk (K : RunCtx) (ρ : Assignment) (st : MState) : Prop where
-  inds : K.Γ = st.inds
-  covers : ∀ d ∈ K.Γ, K.dm.covers d
-  delta : DeltaOk K ρ st
-  noLabel : ∀ n, (K.C.global n).2.label = none
-  globals : GlobalsOk K st
-
-/-! ### Helpers from `Steps/Borrow.lean` -/
-
 /-- `runMachine` from a given log. -/
 def runMachineL {α : Type} (x : M α) (st : MState) (fuel : Nat) (L : Array LogEntry) :
     Outcome α × Nat × Array LogEntry :=
@@ -141,6 +130,176 @@ def Runs {α : Type} (f : M α) (st : MState) (fuel : Nat) (a : α) (st' : MStat
 theorem Runs.of_runMachine {α : Type} {f : M α} {st : MState} {fuel : Nat} {a : α} {st' : MState} {left : Nat}
     {log : Array LogEntry} (h : runMachine f st fuel = (.ok a st', left, log)) : Runs f st fuel a st' :=
   ⟨#[], left, log, h⟩
+
+/-- The checker's entry set of a match (`Machine.staticJoin`): every place under a variable of the
+top frame whose content is `⊥`, at the grain of the value (`botPlaces`). -/
+def entryOf (st : MState) : List Place :=
+  match st.env.back? with
+  | some fr => (List.range fr.binds.size).flatMap fun o =>
+      botPlaces (fr.binds[fr.binds.size - 1 - o]!).val (.var o)
+  | none => []
+
+/-- `Machine.blockEntry`'s captures before their accesses, what `Decisions.blockCaps` reads: the
+places `blockCaptures`' K1(a) asks `movedPlace` of (before re-rooting, in order: a copy of its
+first lines) and its captures in `blockEntry`'s order. -/
+def ckBlockCaps (fuel : Nat) (mt : Term) : M (List Place × List (Place × Nat)) := do
+  let (_, net) ← Ochr.staticJoin fuel mt
+  let mut mv := net
+  for (o, p) in mt.fnOccs 0 do
+    let q := p.mapRoot fun _ => .var o
+    unless ← Ochr.copyRead fuel q do
+      unless mv.any (placeEq · q) do mv := mv ++ [q]
+  let (caps, _, _) ← Ochr.blockCaptures fuel mt net
+  let capsS := caps.qsort fun (a, _) (b, _) =>
+    a.root > b.root || (a.root == b.root && (a.steps.2.length < b.steps.2.length))
+  pure (mv, capsS.toList)
+
+/-- Two checker states the same up to what no decision reads (the move log and the [Split]
+refinements: `DecideScope.EnvRel` ignores both, and its simulation of every decision is proved). -/
+def SameDec (st st' : MState) : Prop :=
+  { st with placeLog := #[], refs := [] } = { st' with placeLog := #[], refs := [] }
+
+/-- **The context's decisions are the checker's at this state** (team lead's decision,
+2026-11-21: assumed and concluded by every step, never a separate hypothesis). Wherever the
+checker's own decision procedure, called as the machine calls it, answers at the state's tables in
+a scope of readings `sc` (`scopeState st sc`; at the top frame's readings this is the call at `st`
+itself, `DecideScope.envRel_scopeState`), the decision `D` in that scope gives the same answer.
+Copy-ness reads no frame. D90's [Entry] captures (`blockCaps`) are read from values by the
+checker (`Machine.blockCaptures`): they are asked at the top frame only, at the places then moved
+(`entryOf`), and of every state the same up to what no decision reads (`SameDec`); that the static
+instance gives them is D90's obligation 1 (`BlockCaps.lean`'s docstring lists the value reads). -/
+structure DecAligned (D : Decisions) (st : MState) : Prop where
+  flags : ∀ fuel sc t fl b st', Runs (do
+      let d ← withLive true (Ochr.declOf fuel false [] [] t)
+      pure ((← Ochr.preFlags t d).getD (false, false))) (scopeState st sc) b fl st' → D.flags sc t = fl
+  placeDecl : ∀ fuel sc p d b st', Runs (withLive true (Ochr.placeDecl fuel [] p)) (scopeState st sc) b d st' →
+    D.placeDecl sc p = d
+  declOf : ∀ fuel sc t d b st', Runs (withLive true (Ochr.declOf fuel false [] [] t)) (scopeState st sc) b d st' →
+    D.declOf sc t = d
+  copy : ∀ fuel r c b st', Runs (Ochr.declCopy fuel r) st b c st' → D.copy r = c
+  piSort : ∀ fuel sc t l b st', Runs (withLive true (Ochr.sortOf fuel (.tPi [] t []))) (scopeState st sc) b l st' →
+    D.piSort sc t = l
+  joinMoves : ∀ fuel sc entry t ms b st', Runs (withLive true (Ochr.jdMoves fuel [] [] t entry)) (scopeState st sc) b ms st' →
+    D.joinMoves sc entry t = ms
+  rePointed : ∀ fuel sc t ts b st', Runs (withLive true (Ochr.typeState fuel t)) (scopeState st sc) b ts st' →
+    D.rePointed sc t = ts.repointed
+  typeDecl : ∀ fuel sc T d b st', Runs (withLive true (Ochr.typeDecl fuel false [] [] T)) (scopeState st sc) b d st' →
+    D.typeDecl sc T = d
+  blockCaps : ∀ st₀, SameDec st₀ st → ∀ fuel mt bc b st', Runs (ckBlockCaps fuel mt) st₀ b bc st' →
+    D.blockCaps (DecideScope.topReadings st) (entryOf st) mt = bc
+
+/-- The run context is the checker state's: its declarations, a data model that speaks for each,
+Δ at the state's unknowns (`DeltaOk`), globals with no label (`run_congr`'s `hK`), Σ
+(`GlobalsOk`), and its decisions the checker's (`DecAligned`). A hypothesis of every statement. -/
+structure CtxOk (K : RunCtx) (ρ : Assignment) (st : MState) : Prop where
+  inds : K.Γ = st.inds
+  covers : ∀ d ∈ K.Γ, K.dm.covers d
+  delta : DeltaOk K ρ st
+  noLabel : ∀ n, (K.C.global n).2.label = none
+  globals : GlobalsOk K st
+  dec : DecAligned K.D st
+
+/-- A run of a decision transfers between states that agree on what decisions read. -/
+theorem runs_envRel {α : Type} {x : M α} (hx : DecideScope.Sim DecideScope.EnvRel x) {s₁ s₂ : MState}
+    (h : DecideScope.EnvRel s₁ s₂) {b : Nat} {a : α} {s₁' : MState} (hr : Runs x s₁ b a s₁') :
+    ∃ s₂', Runs x s₂ b a s₂' := by
+  obtain ⟨L, left, log, hr⟩ := hr
+  have hs := hx s₁ s₂ ⟨b⟩ L h
+  unfold DecideScope.runAll at hs
+  have key : ∀ s, runMachineL x s b L = (match x s ⟨b⟩ L with
+      | ((r, fl), log) => ((match r with
+        | .error e => Outcome.exhausted e.msg
+        | .ok (.error f) => .fail f
+        | .ok (.ok (a, st')) => .ok a st'), fl.left, log)) := fun s => rfl
+  rw [key] at hr
+  have hgoal : ∀ s₂', (∃ left log, runMachineL x s₂ b L = (.ok a s₂', left, log)) → Runs x s₂ b a s₂' :=
+    fun s₂' ⟨left, log, e⟩ => ⟨L, left, log, e⟩
+  simp only [key] at hgoal
+  revert hr hs hgoal
+  generalize x s₁ ⟨b⟩ L = o₁
+  generalize x s₂ ⟨b⟩ L = o₂
+  intro hr hs hgoal
+  rcases o₁ with ⟨⟨e₁ | e₁ | ⟨a₁, t₁⟩, f₁⟩, l₁⟩
+  · simp at hr
+  · simp at hr
+  rcases o₂ with ⟨⟨e₂ | e₂ | ⟨a₂, t₂⟩, f₂⟩, l₂⟩
+  · exact hs.elim
+  · exact hs.elim
+  obtain ⟨rfl, -, rfl, rfl⟩ := hs
+  simp only [Prod.mk.injEq, Outcome.ok.injEq] at hr
+  obtain ⟨⟨rfl, rfl⟩, -⟩ := hr
+  exact ⟨t₂, hgoal t₂ ⟨_, _, rfl⟩⟩
+
+theorem sameDec_envRel_scope {st st' : MState} (h : SameDec st st') (sc : List DeclInfo) :
+    DecideScope.EnvRel (scopeState st sc) (scopeState st' sc) := by
+  refine ⟨?_, fun _ => rfl⟩
+  have := congrArg (fun s : MState => { s with env := #[] }) h
+  simpa [scopeState] using this
+
+theorem sameDec_envRel {st st' : MState} (h : SameDec st st') (he : st.env = st'.env) :
+    DecideScope.EnvRel st st' := by
+  refine ⟨?_, fun i => by simp [DecideScope.liveVal, he]⟩
+  have := congrArg (fun s : MState => { s with env := #[] }) h
+  simpa using this
+
+/-- D84's join set reads only what the other decisions read (open: `jdMoves` is outside
+`DecideScope.decideSim`'s seventeen functions, its docstring's first gap; the same induction is
+expected to cover it). -/
+theorem jdMoves_sim (fuel : Nat) (t : Term) (entry : List Place) :
+    DecideScope.Sim DecideScope.EnvRel (withLive true (Ochr.jdMoves fuel [] [] t entry)) := by
+  sorry
+
+/-- [Id-typestate]'s re-pointed set likewise (open, the same gap: `typeState`). -/
+theorem typeState_sim (fuel : Nat) (t : Term) :
+    DecideScope.Sim DecideScope.EnvRel (withLive true (Ochr.typeState fuel t)) := by
+  sorry
+
+theorem SameDec.symm {st st' : MState} (h : SameDec st st') : SameDec st' st := Eq.symm h
+theorem SameDec.trans {a b c : MState} (h₁ : SameDec a b) (h₂ : SameDec b c) : SameDec a c := Eq.trans h₁ h₂
+
+/-- **The decisions stay the checker's across what no decision reads** (the move log, the
+refinements): every field by the simulation of `Decide.lean` (`DecideScope.decideSim`). -/
+theorem DecAligned.of_sameDec {D : Decisions} {st st' : MState} (hd : DecAligned D st) (h : SameDec st' st)
+    (he : st'.env = st.env) : DecAligned D st' where
+  flags fuel sc t fl b st₁ hr := by
+    obtain ⟨_, hr'⟩ := runs_envRel (DecideScope.sim_bind (DecideScope.sim_withLive _
+      ((DecideScope.decideSim fuel).2.2.2.2.2.2.2.2.1 _ _ _ _)) fun d =>
+        DecideScope.sim_bind (DecideScope.sim_preFlags t d) fun _ => DecideScope.sim_pure _)
+      (sameDec_envRel_scope h sc) hr
+    exact hd.flags fuel sc t fl b _ hr'
+  placeDecl fuel sc p d b st₁ hr := by
+    obtain ⟨_, hr'⟩ := runs_envRel (DecideScope.sim_withLive _ ((DecideScope.decideSim fuel).1 _ _))
+      (sameDec_envRel_scope h sc) hr
+    exact hd.placeDecl fuel sc p d b _ hr'
+  declOf fuel sc t d b st₁ hr := by
+    obtain ⟨_, hr'⟩ := runs_envRel (DecideScope.sim_withLive _ ((DecideScope.decideSim fuel).2.2.2.2.2.2.2.2.1 _ _ _ _))
+      (sameDec_envRel_scope h sc) hr
+    exact hd.declOf fuel sc t d b _ hr'
+  copy fuel r c b st₁ hr := by
+    obtain ⟨_, hr'⟩ := runs_envRel ((DecideScope.decideSim fuel).2.2.2.1 _) (sameDec_envRel h he) hr
+    exact hd.copy fuel r c b _ hr'
+  piSort fuel sc t l b st₁ hr := by
+    obtain ⟨_, hr'⟩ := runs_envRel (DecideScope.sim_withLive _ ((DecideScope.decideSim fuel).2.2.2.2.2.2.1 _))
+      (sameDec_envRel_scope h sc) hr
+    exact hd.piSort fuel sc t l b _ hr'
+  joinMoves fuel sc entry t ms b st₁ hr := by
+    obtain ⟨_, hr'⟩ := runs_envRel (jdMoves_sim fuel t entry) (sameDec_envRel_scope h sc) hr
+    exact hd.joinMoves fuel sc entry t ms b _ hr'
+  rePointed fuel sc t ts b st₁ hr := by
+    obtain ⟨_, hr'⟩ := runs_envRel (typeState_sim fuel t) (sameDec_envRel_scope h sc) hr
+    exact hd.rePointed fuel sc t ts b _ hr'
+  typeDecl fuel sc T d b st₁ hr := by
+    obtain ⟨_, hr'⟩ := runs_envRel (DecideScope.sim_withLive _ ((DecideScope.decideSim fuel).2.2.2.2.2.2.2.2.2.1 _ _ _ _ _ _))
+      (sameDec_envRel_scope h sc) hr
+    exact hd.typeDecl fuel sc T d b _ hr'
+  blockCaps st₀ h₀ := by
+    have e1 : DecideScope.topReadings st' = DecideScope.topReadings st := by
+      unfold DecideScope.topReadings; rw [he]
+    have e2 : entryOf st' = entryOf st := by unfold entryOf; rw [he]
+    rw [e1, e2]
+    exact hd.blockCaps st₀ (h₀.trans h)
+
+/-! ### Helpers from `Steps/Borrow.lean` -/
 
 /-- The meaning of a checker state as the run sees it (read through `K.M`; `CtxOk K ρ st` is a
 hypothesis of every statement). -/
@@ -619,13 +778,6 @@ def SimConcl (π : Nat → Nat) (st st' : MState) (s : SState) (x : Assignment �
     meanV K ρ' (fun l => φ (π' l)) r.2 v = r.1 ∧
     Rel K ρ' φ π' st' s' ∧ Good K.dm K.M K.Γ ρ' st'
 
-/-- The checker's entry set of a match (`Machine.staticJoin`): every place under a variable of the
-top frame whose content is `⊥`, at the grain of the value (`botPlaces`). -/
-def entryOf (st : MState) : List Place :=
-  match st.env.back? with
-  | some fr => (List.range fr.binds.size).flatMap fun o =>
-      botPlaces (fr.binds[fr.binds.size - 1 - o]!).val (.var o)
-  | none => []
 
 /-- **[Join], the entry set** (docs/31 D20 item 1 (e), D24, D29): from related states the
 reference's entry set (`movedPlaces`) is the checker's (`entryOf`, `Machine.staticJoin`'s
@@ -1278,9 +1430,8 @@ def scopeOf_sstate_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat
 def flags_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (t : Term) (fl : Bool × Bool)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    -- the decisions are the checker's own at `st` (`DecisionsInst.checkerDecisions`); the call
-    -- is the live form `Machine.evalAt` makes (decide-scope's `checkerDecisions_flags`)
-    (hD : K.D = checkerDecisions st fuel)
+    -- the call is the live form `Machine.evalAt` makes; that the decisions are the checker's is
+    -- `CtxOk.dec` (no separate hypothesis: team lead's decision, 2026-11-21)
     (bh : Nat) (h : Runs (do
       let d ← withLive true (Ochr.declOf fuel false [] [] t)
       pure ((← Ochr.preFlags t d).getD (false, false))) st bh fl st'),
@@ -1290,7 +1441,6 @@ def flags_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
 def placeDecl_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (p : Place) (d : DeclInfo)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hD : K.D = checkerDecisions st fuel)
     (bh : Nat) (h : Runs (withLive true (Ochr.placeDecl fuel [] p)) st bh d st'),
     K.D.placeDecl (scopeOf (SM' K ρ st)) p = d
 
@@ -1298,7 +1448,6 @@ def placeDecl_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
 def declOf_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (t : Term) (d : DeclInfo)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hD : K.D = checkerDecisions st fuel)
     (bh : Nat) (h : Runs (withLive true (Ochr.declOf fuel false [] [] t)) st bh d st'),
     K.D.declOf (scopeOf (SM' K ρ st)) t = d
 
@@ -1313,7 +1462,6 @@ def copy_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
 def piSort_aligned'_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (hs : List Hint) (ds : List Term) (c : Term) (l : Nat)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hD : K.D = checkerDecisions st fuel)
     (bh : Nat) (h : Runs (withLive true (Ochr.sortOf fuel (.tPi [] (.pi hs ds c) []))) st bh l st'),
     K.D.piSort (scopeOf (SM' K ρ st)) (.pi hs ds c) = l
 
@@ -1322,7 +1470,7 @@ places already `⊥` at the match as its `entry`). -/
 def joinMoves_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (entry ms : List Place) (t : Term)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (bh : Nat) (h : Runs (Ochr.jdMoves fuel [] [] t entry) st bh ms st'),
+    (bh : Nat) (h : Runs (withLive true (Ochr.jdMoves fuel [] [] t entry)) st bh ms st'),
     K.D.joinMoves (scopeOf (SM' K ρ st)) entry t = ms
 
 /-- D84 [Id-typestate]/[Obs-ref]: `Decisions.rePointed` is the `repointed` component of
@@ -1330,7 +1478,7 @@ def joinMoves_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : 
 def rePointed_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (t : Term) (ts : TypeState)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (bh : Nat) (h : Runs (Ochr.typeState fuel t) st bh ts st'),
+    (bh : Nat) (h : Runs (withLive true (Ochr.typeState fuel t)) st bh ts st'),
     K.D.rePointed (scopeOf (SM' K ρ st)) t = ts.repointed
 
 /-- `Decisions.typeDecl` is `Decide.typeDecl`, the reading of a type term (D19, R3: a closure's
@@ -1338,7 +1486,6 @@ frame binds its parameters at their domain terms' readings, `Decide.paramDecls`)
 def typeDecl_aligned_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (T : Term) (d : DeclInfo)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hD : K.D = checkerDecisions st fuel)
     (bh : Nat) (h : Runs (withLive true (Ochr.typeDecl fuel false [] [] T)) st bh d st'),
     K.D.typeDecl (scopeOf (SM' K ρ st)) T = d
 
