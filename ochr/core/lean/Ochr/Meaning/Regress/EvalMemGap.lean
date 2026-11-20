@@ -250,4 +250,30 @@ theorem borrowArg_not_good (K : RunCtx) (ρ : Assignment) : ¬ Good K.dm K.M K.�
   · cases hmo with
     | refl => simp [Sem.whole] at hw
 
+/-! ## [Repack]'s statement, the same way -/
+
+/-- The checker's [Repack] of `0` at `Unit`. -/
+abbrev rp : M Unit := Ochr.repackCheck 10 "it" .zero .tUnit
+
+theorem okR : isOk rp (S0.withTemp .zero) 10 = true := by decide +kernel
+
+/-- **`repackCheck_sound_stmt` is false** (fuel 10, any `K` admitting the empty frame with `0` in
+flight): [Repack] returns at once for a value with no dependent constructor, so it accepts `0` at
+`Unit`, and the statement concludes membership from nothing else. Its honest content is
+conditional: a value that is a member while open (`pmem`'s `OpenIn`) and passes the check is a
+member. -/
+theorem repackCheck_false (K : RunCtx) (ρ : Assignment) (φ : Future) (hctx : CtxOk K ρ (S0.withTemp .zero)) :
+    ¬ repackCheck_sound_stmt K ρ φ 10 := by
+  intro hs
+  have hφ : TypedFuture K.dm K.M K.Γ ρ (S0.withTemp .zero) φ := fun p l _ T hT => by
+    cases p with
+    | temp => simp [MState.posTyM] at hT
+    | bind f i =>
+      simp only [MState.posTyM] at hT
+      split at hT
+      · rename_i b hb; exact absurd hb (noBind_S0T f i b)
+      · cases hT
+  exact zero_not_unit K ρ φ _
+    ((hs _ _ "it" .zero .tUnit (good_S0T K ρ) hctx 10 (runs_out rp _ 10 okR)).2 hφ)
+
 end Ochr.Meaning.Regress.EvalMemGap
