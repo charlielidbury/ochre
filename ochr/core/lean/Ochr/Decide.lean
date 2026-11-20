@@ -930,14 +930,22 @@ type-level match (`DeclInfo.throughMatch`). Such a value is that inductive on ev
 generic call names its fields (`Machine.movedPlace` η-refines an unknown or a sealed program to
 the constructor). Through anything else (a type with several constructors, a type a match
 computes, a type parameter, a number's predecessor) the generic call cannot name the field, and
-the move is of the value whole on every path. `m` is in the frame's indices. -/
+the move is of the value whole on every path. `m` is in the frame's indices.
+
+D101: a `*` step is through a place declared a borrow (`&T`), or the arm is rejected. An arm the
+run does not take is never run, so this is the only check its moves get, and a dereference of
+something that is not a borrow (a proof, a field of a data value) is ill-typed there as anywhere:
+Rust type-checks every arm. Before, such a move reached the drop at the join, which re-rooted it
+to a `⋆` or read through a borrow's mark and did nothing. -/
 def jdGrain (fuel : Nat) (m : Place) : M Place := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let (r, ss) := m.steps
   let mut cur : Place := .var r
   for st in ss do
     let ok ← match st with
-      | .deref => pure true
+      | .deref =>
+        if (← placeDecl fuel' [] cur) matches .ref _ then pure true
+        else err s!"[Join] an arm of the match moves a place through * of a place not declared a borrow"
       | .proj _ | .field _ =>
         match ← placeDecl fuel' [] cur with
         | .ind n _ => pure ((← lookupInd n).ctors.length == 1)

@@ -304,16 +304,22 @@ def dataCtorBad (Γ : List IndDecl) : Value → Bool
 
 /-- What the step `x` from a place of declared reading `r` needs of it, at the join's grain: a field
 step (`.proj i`, `.field g`) is through an inductive of `Γ` with exactly one constructor; a `*` step
-needs nothing (`Decide.jdGrain`). (Restated at main's D94: the index a field step names and the
-borrow type a `*` step goes through were asked too, for `movedPlace`'s exits, which D94 replaced
-by a rejection, docs/31 D51.) -/
+is through a place declared a borrow (`Decide.jdGrain`). (Restated at main's D94: the index a field
+step names and the borrow type a `*` step goes through were asked too, for `movedPlace`'s exits,
+which D94 replaced by a rejection, docs/31 D51. The borrow type is asked again since the slice,
+2026-11-20, with the checker's D101 (`jdGrain` rejects a move through `*` of a place not declared a
+borrow): an arm the run does not take is never checked, so `*h` of a proof `h` reached the join, where the checker re-roots to the
+`⋆` and does nothing; the reference wrote `moved` through the `*` (`Regress/GrainDerefProof.lean`),
+or, under a mark of a live returned borrow above the `⋆`, its lent-prefix access ended a borrow the
+checker kept. With the `*` step's borrow type at the grain no non-copy place of the join is at or
+below a `⋆` (`JoinNoop.not_below_proof`), which is what the reference's drop assumes.) -/
 def StepOk (Γ : List IndDecl) (r : DeclInfo) : Step → Prop
   | .proj _ | .field _ => ∃ n args d, r = .ind n args ∧ Γ.find? (·.name == n) = some d ∧ d.ctors.length = 1
-  | .deref => True
+  | .deref => ∃ d, r = .ref d
 
 /-- **The join's grain** (main's D84, `Decide.jdGrain`): every field step of a dropped place, from its
 prefix, is through a place whose declared reading is an inductive of `Γ` with exactly one
-constructor (`StepOk`). Through anything else (several constructors, a type computed by a match, a
+constructor, and every `*` step through a place declared a borrow (`StepOk`). Through anything else (several constructors, a type computed by a match, a
 type parameter, a number's predecessor) the join moves the value whole. It is what the drop's
 reading of the place needs (`PlaceTyping.followMean`, `natAlong_grain`: no number's predecessor on
 the path, and the constructor value there is of the declared type), which `Decisions.joinMoves`,
