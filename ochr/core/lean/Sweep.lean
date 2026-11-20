@@ -1035,6 +1035,10 @@ def sweep (blocks : List (String × Block)) : IO UInt32 := do
   let mut asExpected := 0
   let mut privateStates := 0
   let mut tailExits := 0
+  -- (Δ↑) along each run, the table of unknowns never shrinks (docs/31 D58, `access_absTy`)
+  let mut pairs := 0
+  let mut shrank := 0
+  let mut shrinkEx : Array String := #[]
   for (bn, b) in blocks do
     let r := runWith (some Prelude) bn b cfg 2000000 (located := true)
     for row in r.rows do
@@ -1050,6 +1054,14 @@ def sweep (blocks : List (String × Block)) : IO UInt32 := do
         | .state l e v st => if e && v.isNone then none else some (l, e, st, v)
         | _ => none
       if sts.isEmpty then continue
+      for h : k in [1:sts.size] do
+        let (_, _, p, _) := sts[k - 1]!
+        let (lq, eq, q, _) := sts[k]!
+        pairs := pairs + 1
+        if q.absTy.size < p.absTy.size || q.nextAbs < p.nextAbs then
+          shrank := shrank + 1
+          if shrinkEx.size < 3 then
+            shrinkEx := shrinkEx.push s!"{bn}.{row.name} at {repr lq} on {if eq then "exit" else "entry"}: absTy {p.absTy.size}→{q.absTy.size}, nextAbs {p.nextAbs}→{q.nextAbs}"
       decls := decls + 1
       let lo := sts.foldl (fun a (l, _, _, _) => min a l.start) sts[0]!.1.start
       let hi := sts.foldl (fun a (l, _, _, _) => max a l.stop) 0
@@ -1091,6 +1103,8 @@ def sweep (blocks : List (String × Block)) : IO UInt32 := do
           stats := stats.set! ci s
   IO.println s!"lake exe sweep (dev tooling): {blocks.length} blocks, {rowsAll} verdicts, {asExpected} as expected with the flag on"
   IO.println s!"states checked: {total} ({entries} on entry, {total - entries} on exit; {privateStates} inside a private copy) in {decls} declarations; not checked: {tailExits} tail terms' exits"
+  IO.println s!"(Δ↑) consecutive recorded states of one run: {pairs}; where the table of unknowns shrank: {shrank}"
+  for x in shrinkEx do IO.println s!"   {x}"
   let mut ok := asExpected == rowsAll
   for h : ci in [0:clauses.length] do
     let c := clauses[ci]
@@ -1150,6 +1164,12 @@ structure EndStat where
   grewTyping : Nat := 0
   grewDecls : Array String := #[]
   examples : Array String := #[]
+  shrank : Nat := 0
+  accesses : Nat := 0
+  accFailed : Nat := 0
+  accGrew : Nat := 0
+  accShrank : Nat := 0
+  shrinkEx : Array String := #[]
 
 /-- Some unknown at or above `n` occurs in a value of Ω, a stored or deferred type, the goal, or a
 record: the syntactic `MState.Refd` of a new unknown (its types' dependencies aside). -/
@@ -1171,11 +1191,31 @@ def endProbe (blocks : List (String × Block)) : IO UInt32 := do
       for e in row.trace do
         let .state _ _ _ st := e | continue
         S := { S with states := S.states + 1 }
+        -- (Δ↑) an access of each variable of the top frame: the table of unknowns never shrinks
+        let nv := match st.env.back? with | some fr => fr.binds.size | none => 0
+        for i in List.range nv do
+          S := { S with accesses := S.accesses + 1 }
+          match (runMachine (do Ochr.accessPath 100000 (.var i); Ochr.accessInside 100000 (.var i)) st 100000).1 with
+          | .ok () st' =>
+            if st'.absTy.size < st.absTy.size || st'.nextAbs < st.nextAbs ||
+                st'.neutrals.length < st.neutrals.length || st'.etaRefs.length < st.etaRefs.length ||
+                st'.refs.length < st.refs.length then
+              S := { S with accShrank := S.accShrank + 1 }
+              if S.shrinkEx.size < 3 then
+                S := { S with shrinkEx := S.shrinkEx.push s!"{bn}.{row.name}: access of variable {i}: absTy {st.absTy.size}→{st'.absTy.size}" }
+            if st'.absTy.size != st.absTy.size then S := { S with accGrew := S.accGrew + 1 }
+          | _ => S := { S with accFailed := S.accFailed + 1 }
         for l in liveLabels st.env do
           let rerun := (posVals st.env).any fun (_, v) => sealedHolds l v
           S := { S with ends := S.ends + 1, reruns := S.reruns + (if rerun then 1 else 0) }
           match (runMachine (Ochr.endBorrow 100000 l) st 100000).1 with
           | .ok () st' =>
+            if st'.absTy.size < st.absTy.size || st'.nextAbs < st.nextAbs ||
+                st'.neutrals.length < st.neutrals.length || st'.etaRefs.length < st.etaRefs.length ||
+                st'.refs.length < st.refs.length then
+              S := { S with shrank := S.shrank + 1 }
+              if S.shrinkEx.size < 3 then
+                S := { S with shrinkEx := S.shrinkEx.push s!"{bn}.{row.name}: ending {l}: absTy {st.absTy.size}→{st'.absTy.size}" }
             let grew := st'.nextAbs != st.nextAbs || st'.absTy.size != st.absTy.size ||
               st'.neutrals.length != st.neutrals.length || st'.etaRefs.length != st.etaRefs.length ||
               st'.refs.length != st.refs.length
@@ -1194,6 +1234,9 @@ def endProbe (blocks : List (String × Block)) : IO UInt32 := do
           | _ => S := { S with failed := S.failed + 1 }
   IO.println s!"end probe (dev tooling): {blocks.length} blocks, {S.states} states, {S.ends} ends run, {S.reruns} touching a sealed program that holds the loan, {S.failed} failed or out of fuel"
   IO.println s!"ends after which the state has more unknowns or records: {S.grew} (with more records: {S.grewRecords}; a new unknown referenced after: {S.grewReferenced}; touching a re-run: {S.grewRerun}; with typing on: {S.grewTyping}), in {S.grewDecls.size} declarations: {", ".intercalate S.grewDecls.toList}"
+  IO.println s!"(Δ↑) ends after which the table of unknowns or a record list shrank: {S.shrank}"
+  IO.println s!"(Δ↑) accesses of a top-frame variable run: {S.accesses} ({S.accFailed} failed or out of fuel); after which the table grew: {S.accGrew}; shrank, or a record list did: {S.accShrank}"
+  for x in S.shrinkEx do IO.println s!"   {x}"
   for x in S.examples do IO.println x
   return 0
 
