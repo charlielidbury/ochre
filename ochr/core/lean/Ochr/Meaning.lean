@@ -107,6 +107,7 @@ import Ochr.Meaning.Steps.Form
 import Ochr.Meaning.Steps.FormErase
 import Ochr.Meaning.Steps.FormKern
 import Ochr.Meaning.Steps.FormMachine
+import Ochr.Meaning.Steps.Machine.FormFacts
 import Ochr.Meaning.Steps.ColumnTemp
 import Ochr.Meaning.Steps.ColumnPlumbAux
 import Ochr.Meaning.Steps.ColumnPlumb
