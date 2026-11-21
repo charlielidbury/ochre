@@ -412,7 +412,7 @@ theorem rel_lend (hK : ∀ n, (K.C.global n).2.label = none) {π : Nat → Nat} 
       simp only [Value.anyAtom, Bool.or_eq_true, borrow_beq_loan, Bool.false_or] at ha
       rcases ha with ha | ha
       · exact .inl (beq_iff_eq.mp ha).symm
-      · rw [hnum.inert.anyAtom _ (by rfl) (by rfl) (fun _ => by rfl)] at ha; cases ha
+      · rw [hnum.inert.anyAtom _ (by rfl) (by rfl) (by rfl) (fun _ => by rfl)] at ha; cases ha
   have hntE2 : ntC st.env fr ∈ allPos (lendE st.env (.bind f j) st.nextLoan b.val) := by
     rw [hpos2]; exact List.mem_append_right _ (List.mem_singleton_self _)
   have hxE2 : Pos.bind f j ∈ allPos (lendE st.env (.bind f j) st.nextLoan b.val) := by

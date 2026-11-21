@@ -195,7 +195,7 @@ theorem rel_lendG (hK : ∀ n, (K.C.global n).2.label = none) {π : Nat → Nat}
       simp only [Value.anyAtom, Bool.or_eq_true, borrow_beq_loan, Bool.false_or] at ha
       rcases ha with ha | ha
       · exact .inl (beq_iff_eq.mp ha).symm
-      · rw [hnum.inert.anyAtom _ (by rfl) (by rfl) (fun _ => by rfl)] at ha; cases ha
+      · rw [hnum.inert.anyAtom _ (by rfl) (by rfl) (by rfl) (fun _ => by rfl)] at ha; cases ha
   refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
   · -- skel
     have h1 := skel_pushTempE K ρ ({ st with env := Env.setAtE st.env (.bind f j) (.loan st.nextLoan), nextLoan := st.nextLoan + 1 } : MState) (.borrow st.nextLoan w)

@@ -58,7 +58,7 @@ theorem rel_pushBind_inert {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Na
     intro l hl ho
     obtain ⟨w, hw, ha⟩ := ho
     rcases mem_values_pushBindE st.env h (some T) v p d fr hfr hne hw with rfl | hw
-    · rw [hv.anyAtom _ rfl rfl (fun _ => rfl)] at ha; cases ha
+    · rw [hv.anyAtom _ rfl rfl rfl (fun _ => rfl)] at ha; cases ha
     · exact hr.fresh l hl ⟨w, hw, ha⟩
   · -- the bindings' meanings
     intro ψ hψ q hq

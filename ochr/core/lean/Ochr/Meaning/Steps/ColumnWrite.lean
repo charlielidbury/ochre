@@ -90,7 +90,7 @@ theorem rel_setNum {π : Nat → Nat} {st : MState} {s : SState} {f i : Nat} {v'
     refine hs.fresh l hl ?_
     obtain ⟨w, hw', ha⟩ := ho
     rcases mem_values_setAtE hw' with rfl | hw''
-    · rw [hv'.inert.anyAtom _ (by rfl) (by rfl) (fun _ => by rfl)] at ha; cases ha
+    · rw [hv'.inert.anyAtom _ (by rfl) (by rfl) (by rfl) (fun _ => by rfl)] at ha; cases ha
     · exact ⟨w, hw'', ha⟩
   · intro ψ hψ p hpt
     have hψ0 := hF ψ hψ

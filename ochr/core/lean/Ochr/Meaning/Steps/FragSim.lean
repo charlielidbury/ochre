@@ -1,5 +1,4 @@
-import Ochr.Meaning.Steps.FragSeq
-import Ochr.Meaning.Steps.FragBorrow
+import Ochr.Meaning.Steps.FragSeqB
 
 /-!
 # The fragment theorem (lead10, lead11)
@@ -42,6 +41,8 @@ structure FragFacts (D : Decisions) : Prop where
   lendG : InvLendG
   /-- D112's invalidation is empty (the fuel-free table's, by definition) -/
   noInv : ∀ sc p, D.invalidated sc p = []
+  seqBor : SeqBorInv
+  popBot : InvPopBot
 
 /-- **The steps of the fragment not yet proved**, each in the form the induction uses: from its
 sub-terms' steps at every extension of `Δ` and the assignment, the step at `evalCore`. The cases
@@ -55,10 +56,6 @@ structure FragCases (K : RunCtx) (φ : Future) : Prop where
     (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m u (FSt Γ) (· = true)) →
     ∀ (Δ : Nat → TyS) (ρ : Assignment),
       CoreSim { K with Δ := Δ } ρ φ (m + 1) (.assign (.deref (.var i)) u) (FSt Γ) (· = true)
-  seqBor : ∀ Γ u w B, FTy Γ u .ref → FTy Γ w B → ∀ m,
-    (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m u (FSt Γ) (· = true)) →
-    (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m w (FSt Γ) (· = true)) →
-    ∀ (Δ : Nat → TyS) (ρ : Assignment), CoreSim { K with Δ := Δ } ρ φ (m + 1) (.seq u w) (FSt Γ) (· = true)
 
 /-- **The fragment theorem** (`eval_sim` at every fragment term): for every term the fragment types,
 every fuel, `Δ` and assignment, the step at `eval` from a state meeting `FSt`, by induction on the
@@ -71,7 +68,7 @@ theorem frag_sim {K : RunCtx} {φ : Future} (hf : FragFacts K.D) (hc : Strict.Fu
     ∀ Γ t A, FTy Γ t A → ∀ n (Δ : Nat → TyS) (ρ : Assignment),
       EvalSim { K with Δ := Δ } ρ φ n t (FSt Γ) (· = true) := by
   obtain ⟨hE, hZ, hS, hVN, hV, hVB, hIE, hI, hlow, hdec, hR, hPL, hL, hDN, hDB, hDL, hIU, hIBU, hSq, hBN, hBL, hBB,
-    hILG, hNI⟩ := hf
+    hILG, hNI, hSB, hIPB⟩ := hf
   have hnat := hR.nat
   intro Γ t A hty
   induction hty with
@@ -114,7 +111,8 @@ theorem frag_sim {K : RunCtx} {φ : Future} (hf : FragFacts K.D) (hc : Strict.Fu
     refine frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.seq Γ u w A B hu hw) (fun _ e => by cases e)
       (fun _ _ _ e => by cases e) (fun m => ?_) n
     by_cases hA : A = .ref
-    · subst hA; exact hcs.seqBor Γ u w B hu hw m (ihu m) (ihw m) Δ ρ
+    · subst hA
+      exact seqB_core (K := { K with Δ := Δ }) hSB hR hdec hIE hIPB hPL ⟨hc.globals, hc.sorts⟩ hu hw (ihu m Δ ρ) (ihw m)
     · exact seqI_core (K := { K with Δ := Δ }) hSq hR hdec hI ⟨hc.globals, hc.sorts⟩ hu hw hA (ihu m Δ ρ) (ihw m)
 
 end Ochr.Meaning.Steps.Form

@@ -182,7 +182,7 @@ theorem rel_afterEnd {π : Nat → Nat} {st : MState} {s t : SState} {l : Nat} {
       P .unit = false → (∀ w, P (.succ w) = false) → P .bot = false → xv.anyAtom P = false := by
     intro l'
     rcases hxv with rfl | rfl
-    · exact ⟨hpre.num.holdsBorrow l', hpre.num.inert.shape, fun P h0 h1 h2 _ => hpre.num.inert.anyAtom P h0 h1 h2⟩
+    · exact ⟨hpre.num.holdsBorrow l', hpre.num.inert.shape, fun P h0 _ h2 _ => hpre.num.anyAtom h0 h2⟩
     · exact ⟨rfl, rfl, fun P _ _ _ hb => by simp [Value.anyAtom, hb]⟩
   have hnoshape : ∀ q, Env.shape (Env.setAtE (Env.setAtE st.env (.bind 0 1) .bot) (.bind 0 0) xv) q = none := by
     intro q

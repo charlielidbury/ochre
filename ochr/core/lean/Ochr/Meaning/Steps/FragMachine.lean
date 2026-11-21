@@ -83,7 +83,9 @@ def DropBorrowInv : Prop :=
 `borrow_l c`, `c` a number, lent by the number binding `px`): `dropValue` parks it, ends `l` (`px ↦ c`,
 the parked holder `⊥`) and pops it, after a quiet stretch (the end's [Repack]); then `w` as in
 `SeqInv`. The mode is kept only under the antecedent (lead11, as `SeqInv`: unconditional it would ask
-the ending machinery of any value to keep the mode, a whole-machine fact). -/
+the ending machinery of any value to keep the mode, a whole-machine fact). The invariant is kept across the quiet stretch WITH the value parked (lead12;
+first stated as `KeepsInv st₁ st₂`, on the states without it, where `px` holds a loan whose borrow is
+nowhere, which `Inv` need not admit: unusable). -/
 def SeqBorInv : Prop :=
   ∀ (n : Nat) (u w : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (D : Decisions),
@@ -96,8 +98,8 @@ def SeqBorInv : Prop :=
       (∀ l c px, v₀ = .borrow l c → c.Num → (∀ q ∈ allPos st₁.env, FVal (valAt st₁.env q)) →
         valAt st₁.env px = .loan l → px ∈ allPos st₁.env →
         (∀ q ∈ allPos st₁.env, ∀ w', valAt st₁.env q ≠ .borrow l w') →
-        ∃ st₂, Quiet st₁ st₂ ∧ KeepsInv st₁ st₂ ∧ Kern { st₂ with env := Env.setAtE st₂.env px c } stW ∧
-          ModeEq st₁ stW) ∧
+        ∃ st₂, Quiet st₁ st₂ ∧ KeepsInv (st₁.withTempT v₀ T₀) (st₂.withTempT v₀ T₀) ∧
+          Kern { st₂ with env := Env.setAtE st₂.env px c } stW ∧ ModeEq st₁ stW) ∧
       stW.tailNext = st.curTail ∧
       Runs (Ochr.eval n true w none) stW bh₂ (v, T?) st'
 
@@ -213,5 +215,11 @@ def InvLendG : Prop :=
     Inv D Γ st.norm →
     Inv D Γ (({ st with env := Env.setAtE st.env (.bind f j) (.loan st.nextLoan), nextLoan := st.nextLoan + 1 } :
       MState).withTempT (.borrow st.nextLoan (valAt st.env (.bind f j))) T?).norm
+
+/-- **`⊥` in flight popped** (state-level; lead12, the `;` after a borrow: the discard ends the borrow,
+leaving `⊥` in the temporary, then pops it). `InvPopInert` for `⊥`. Not run. -/
+def InvPopBot : Prop :=
+  ∀ (D : Decisions) (Γ : List IndDecl) (st : MState) (T? : Option Value),
+    Inv D Γ (st.withTempT .bot T?).norm → Inv D Γ st.norm
 
 end Ochr.Meaning.Steps.Form
