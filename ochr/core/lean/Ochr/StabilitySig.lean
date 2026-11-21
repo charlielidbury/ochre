@@ -438,6 +438,22 @@ macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply (decSP _).decl
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply (decSP _).isPropV)
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply (decSP _).valTypeDecl)
 
+/-- D105: where a constructor's parameter is inferred from a field's type, read from the
+declarations' parameter telescopes (`telescope`, `typePos`). -/
+theorem sigPres_inferablePos (n : Nat) (d : IndDecl) (i : Nat) : SigPres (inferablePos n d i) := by
+  have := fun n => (decSP n).telescope
+  have := fun n => (decSP n).typePos
+  unfold inferablePos; sp
+
+theorem sigPres_inferFrom : ∀ (n : Nat) (FT : Term), SigPres (inferFrom n FT)
+  | 0, FT => by unfold inferFrom; sp
+  | n + 1, FT => by
+    have := sigPres_inferFrom n
+    have := sigPres_inferablePos n
+    unfold inferFrom; sp
+
+macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_inferFrom)
+
 theorem sigPres_freshAbsR (n : Nat) (T : Value) : SigPres (freshAbsR n T) := by unfold freshAbsR; sp
 macro_rules | `(tactic| sp_ext) => `(tactic| with_reducible apply sigPres_freshAbsR)
 theorem sigPres_absOf (n : Nat) (T : Value) : SigPres (absOf n T) := by unfold absOf; sp

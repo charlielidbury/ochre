@@ -436,6 +436,89 @@ ochr PolyLists uses Lists {
 }
 
 
+/-! ## Which parameters are inferred from the fields (D105)
+
+An unwritten parameter of a constructor is inferred from a field's type where it stands, at any
+depth, as an argument at a position declared `Prop` or `Type₀`, or declared a type in `Prop` or
+`Type₀`: a type of data or a proposition, a number, a data value, a proof (`SC`, `SW`, `SO`,
+`SN`). One that stands in the fields' types only at positions of a higher universe is not: a
+type in `Type₁` (`ST`), a value of a type in `Type₁` (`SV`), a function into a universe (`SH`).
+There it is written, or comes from the type the context expects (each `…w` and `…a`). A field
+whose type is the parameter itself still solves it (`Pair`'s `Mk(a, b)`; a field's type is in
+`Prop` or `Type₀`, so that parameter is a proposition or a type of data). The
+checker decides this from the declarations (`Decide.inferablePos`), because the semantic model
+reads a parameter back from a value's type only at the former positions; Lean, which infers
+parameters by unification, infers all of these. -/
+
+ochr ParamInference uses Nats {
+  -- a type parameter, nested (the case studies' pattern: `Cell.MkC(h, t : SliceOf(R))`)
+  inductive Sl (R : Type) := MkSl(c : R)
+  inductive CellT (R : Type) := MkCT(h : Nat, t : Sl(R))
+  def SC (s : Sl(Nat)) : Nat := (let c = MkCT(0, s); 0)
+  def SN (s : Sl(Sl(Nat))) : Nat := (let c = MkSl(s); let d = MkCT(1, c); 0)
+  -- a number
+  inductive Tag (n : Nat) := MkTag(x : Nat)
+  inductive Wrap (n : Nat) := MkW(t : Tag(n))
+  def SW (t : Tag(3)) : Nat := (let w = MkW(t); 0)
+  inductive Opt2 (n : Nat) := A2(t : Tag(n)) | B2(h : Eq(Nat, n, 3))
+  def SO (t : Tag(3)) : Nat := (let w = A2(t); 0)
+  -- a function into a universe
+  def F0 (x : Nat) : Type := Nat
+  inductive HL (f : Π(x : Nat). Type) := MkHL(y : Nat)
+  inductive HW (f : Π(x : Nat). Type) := MkHW(t : HL(f))
+  reject def SH (t : HL(F0)) : Nat := (let w = MkHW(t); 0)
+  def SHw (t : HL(F0)) : Nat := (let w = MkHW[F0](t); 0)
+  def SHa (t : HL(F0)) : Nat := (let w : HW(F0) = MkHW(t); 0)
+  -- a type in `Type₁`
+  inductive LT (T : Type₁) := MkLT(y : Nat)
+  inductive WT (T : Type₁) := MkWT(t : LT(T))
+  reject def ST (t : LT(Type)) : Nat := (let w = MkWT(t); 0)
+  def STw (t : LT(Type)) : Nat := (let w = MkWT[Type](t); 0)
+  def STa (t : LT(Type)) : Nat := (let w : WT(Type) = MkWT(t); 0)
+  -- a value of a type in `Type₁`
+  inductive LV (U : Type₁) (u : U) := MkLV(y : Nat)
+  inductive WV (U : Type₁) (u : U) := MkWV(t : LV(U, u))
+  reject def SV (t : LV(Type, Nat)) : Nat := (let w = MkWV(t); 0)
+  def SVw (t : LV(Type, Nat)) : Nat := (let w = MkWV[Type, Nat](t); 0)
+  def SVa (t : LV(Type, Nat)) : Nat := (let w : WV(Type, Nat) = MkWV(t); 0)
+  -- which fields determine which parameters, at every field position: `R`'s second field is
+  -- of type `A`, which does not determine the phantom `B`; an untyped run (`MkIt`'s body at a
+  -- call) then takes `B` from the type its context declares, as typing does (D89)
+  inductive Bool2 := T2 | F2
+  inductive R (A : Type) (B : Type) := MkR(x : A, y : A)
+  def MkIt (a : Nat) : R(Nat, Bool2) := MkR(clone(a), a)
+  def UseMkIt : Eq(R(Nat, Bool2), MkIt(1), MkR[Nat, Bool2](1, 1)) := refl
+  inductive R2 (A : Type) (B : Type) := MkR2(x : A, y : B)
+  def MkIt2 (a : Nat) : R2(Nat, Nat) := MkR2(clone(a), a)
+}
+
+-- The values an untyped run builds record their parameters: `MkIt(1)`'s `MkR(1, 1)` records both
+-- (before D105 it recorded none: the index read `y : A` as determining `B`).
+#guard_msgs (drop warning) in
+ochr ParamsRecorded uses ParamInference {
+  def At (u : Unit) : Nat := (let v = MkIt(1); let w = MkIt2(1); ?)
+}
+
+/-- At the hole of `At`, each binding's name and, for a constructor value, how many parameters it
+records. -/
+def paramsRecorded : List (String × Nat) :=
+  let r := runWith (some Prelude) "ParamsRecorded" ParamsRecorded (located := true)
+  match r.rows.find? (·.name == "At") with
+  | some row => (row.trace.toList.filterMap fun
+      | .note _ _ (.hole _ Ω) => some (Ω.filterMap fun (n, _, v) => match v with
+          | .ind _ _ _ ps _ => some (n, ps.length)
+          | _ => none)
+      | _ => none).headD []
+  | none => []
+
+#guard paramsRecorded == [("v", 2), ("w", 2)]
+
+#guard (run "ParamInference" ParamInference).rejectedWith [
+  ("SH", "cannot infer the parameter f of MkHW: it stands in its fields' types only at positions of a universe above Type₀"),
+  ("ST", "cannot infer the parameter T of MkWT: it stands in its fields' types only at positions of a universe above Type₀"),
+  ("SV", "cannot infer the parameter U of MkWV: it stands in its fields' types only at positions of a universe above Type₀")]
+
+
 /-! ## What goes wrong without strict positivity
 
 A field of function type can mention the type being declared negatively. Then `L(b)`

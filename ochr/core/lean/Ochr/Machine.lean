@@ -765,20 +765,26 @@ def Term.rigidVars : Term → List Nat
 (D88's inference) when some parameter is determined by no field whose type is not a
 proposition (`Term.rigidVars`): it has no fields, a phantom parameter, only proof fields
 (`Dec`'s `Yes(h : P)`, which untyped runs do not evaluate), or only fields whose types a type
-function computes from it (`DP`'s `y : G(n, x)`). -/
-def ctorNeedsCtx (d : IndDecl) (c : Nat) : Bool :=
+function computes from it (`DP`'s `y : G(n, x)`). D105: a field determines a parameter only
+where it is inferred from it (`Decide.inferFrom`), as typing infers it. In every field's type the
+parameters are `var 0 … var (np - 1)`, the last `var 0`, whatever the field's position (the
+fields come after them, `IndDecl.fieldRefs`); before D105 this read field `i`'s parameter `k` as
+`var (i + np - 1 - k)`, right only for the first field, and `MkR(x : A, y : A)` read as
+determining `R`'s phantom `B`, so an untyped run built it recording no parameters. -/
+def ctorNeedsCtx (fuel : Nat) (d : IndDecl) (c : Nat) : M Bool := do
   let np := d.params.length
   match d.ctors[c]? with
-  | none => false
+  | none => pure false
   | some (_, fields) =>
-    let isProp (i : Nat) (FT : Term) : Bool := match FT with
+    let isProp (FT : Term) : Bool := match FT with
       | .eq .. | .id .. => true
-      | .place (.var j) => j ≥ i && (match d.params[np - 1 - (j - i)]? with
+      | .place (.var j) => j < np && (match d.params[np - 1 - j]? with
           | some (_, .sort 0) => true
           | _ => false)
       | _ => false
-    (List.range np).any fun k =>
-      !(fields.zipIdx.any fun ((_, FT), i) => !isProp i FT && FT.rigidVars.contains (i + (np - 1 - k)))
+    let rigid ← fields.mapM fun (_, FT) => do pure (← inferFrom fuel FT).rigidVars
+    pure <| (List.range np).any fun k =>
+      !(fields.zipIdx.any fun ((_, FT), i) => !isProp FT && (rigid.getD i []).contains (np - 1 - k))
 
 /-- D89: does a tail of `t` (through `let`, `;` and match arms) build a constructor whose
 parameters are not written and that its fields do not determine (`ctorNeedsCtx`), or one of
@@ -790,7 +796,7 @@ def needsCtx (fuel : Nat) (t : Term) : M Bool := do
   match t with
   | .ctor ty c _ [] as =>
     -- or a field needs it, which then takes its type from this constructor's parameters
-    if ctorNeedsCtx (← lookupInd ty) c then return true
+    if ← ctorNeedsCtx fuel' (← lookupInd ty) c then return true
     as.anyM fun a => needsCtx fuel' a
   | .letIn _ _ w | .seq _ w => needsCtx fuel' w
   | .matchNat _ z s => pure ((← needsCtx fuel' z) || (← needsCtx fuel' s))
@@ -1653,7 +1659,8 @@ def indValType? (fuel : Nat) (t : String) (c : Nat) (fs : List Value) : M (Optio
   let mut sol := Array.replicate d.params.length none
   for (v, (_, FT)) in fs.zip fields do
     let some T ← valType? fuel' v | return none
-    sol := unifyParams d.params.length FT T sol
+    -- D105: only where the parameters are inferred from it, as `evalCtor` infers them
+    sol := unifyParams d.params.length (← inferFrom fuel' FT) T sol
   pure ((sol.toList.mapM id).map fun ps => .tInd t ps)
 termination_by structural fuel
 
@@ -2585,6 +2592,9 @@ def evalCtor (fuel : Nat) (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts
   let mut sol : Array (Option Value) := if !pts.isEmpty then evs.map some else match hint with
     | some (.tInd m ps) => if m == ty && ps.length == np then (ps.map some).toArray else Array.replicate np none
     | _ => Array.replicate np none
+  -- D105: the inference at every position a field's type names, read only to say why a
+  -- parameter that `sol` leaves unsolved is not inferred
+  let mut solAll := sol
   let mut tys := #[]
   let mut ws0 : Array Value := #[]
   -- D64: a dependent field's hint is its type at the fields evaluated so far
@@ -2601,7 +2611,12 @@ def evalCtor (fuel : Nat) (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts
       then fieldTypeAt fuel' d sol c i ws0.toList else pure none
     demand wantFields
     let (w, T) ← stmtArgIf fuel' stmtC a (eval fuel' typed a fh)
-    if let some T := T then sol := unifyParams np FT T sol
+    -- D105: a parameter is inferred from the field's type only at the positions the model
+    -- follows (`Decide.inferFrom`)
+    if let some T := T then
+      if sol.any (·.isNone) then
+        sol := unifyParams np (← inferFrom fuel' FT) T sol
+        solAll := unifyParams np FT T solAll
     tys := tys.push T
     pushTemp w T "evalCtor"
     ws0 := ws0.push w
@@ -2617,10 +2632,13 @@ def evalCtor (fuel : Nat) (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts
     let ps := if pts.isEmpty && sol.all (·.isSome) then sol.toList.filterMap id else evs.toList
     return (if proof then .proof else .ind ty c h ps ws.toList, T)
   let mut ps := #[]
-  for (s, (ph, _)) in sol.toList.zip d.params do
+  for ((s, (ph, _)), k) in (sol.toList.zip d.params).zipIdx do
     match s with
     | some p => noBorrowParam ty p; ps := ps.push p
-    | none => err s!"cannot infer the parameter {ph.name} of {h.name}: write it, {h.name}[…](…), or annotate, ({h.name}(…) : {ty}(…))"
+    | none =>
+      if (solAll[k]?.join).isSome then
+        err s!"cannot infer the parameter {ph.name} of {h.name}: it stands in its fields' types only at positions of a universe above Type₀ (a type in Type₁, a value of one, a function into a universe), where a parameter is not inferred (D105): write it, {h.name}[…](…), or annotate, ({h.name}(…) : {ty}(…))"
+      err s!"cannot infer the parameter {ph.name} of {h.name}: write it, {h.name}[…](…), or annotate, ({h.name}(…) : {ty}(…))"
   -- [T-Ctor], D64: each field against its type computed from the earlier fields' values
   for (T, (fname, FT)) in tys.toList.zip (← fieldTypesOf fuel' d ps.toList c ws.toList) do
     expectTy fuel' s!"field {fname} of {h.name}" T FT

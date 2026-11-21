@@ -867,6 +867,46 @@ def declKind (fuel : Nat) (piTy : Value) : M Kind := do
 
 end
 
+/-! ## D105: where a constructor's unwritten parameter is inferred from a field's type -/
+
+/-- D105: parameter `i` of the inductive `d` is a position at which an unwritten parameter of a
+constructor is inferred from a field's type: its declared type is `Prop` or `Type₀` (the argument
+there is a proposition or a type of data), or a type in `Prop` or `Type₀` (a proof, a number, a
+data value). A parameter declared `Type₁` or above, a value of a type in `Type₁` or above, or a
+function into a universe is not: the semantic model reads a parameter back from a value's type
+only at the former (`Meaning/DataModel/ParamSolve.lean` on `spine-datamodel`). Read from the
+declaration's parameter telescope (each type in the scope of the earlier parameters, `typePos`),
+never from a run. -/
+def inferablePos (fuel : Nat) (d : IndDecl) (i : Nat) : M Bool := withLive false do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match d.params[i]? with
+  | none => pure false
+  | some (_, .sort l) => pure (l ≤ 1)
+  | some (_, PT) =>
+    let earlier := d.params.take i
+    let (sc, ns, _) ← telescope fuel' false [] [] (earlier.map (·.1)) (earlier.map (·.2))
+    pure ((← typePos fuel' false sc ns PT) ≤ 1)
+termination_by structural fuel
+
+/-- D105: what of a field's declared type `FT` an unwritten parameter of its constructor is
+inferred from (`Machine.unifyParams` matches it against the type of the field's value): `FT`
+itself, so a field whose type is a parameter (`x : A`) solves it at any level, and the
+arguments of an inductive type former at its inferable positions (`inferablePos`), at any
+depth. An argument at any other position is cut (`unit`, which determines nothing), so a
+parameter that stands in the fields' types only there is not inferred: it must be written, or
+come from the type the context expects. -/
+def inferFrom (fuel : Nat) (FT : Term) : M Term := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match FT with
+  | .tind m as =>
+    let d ← lookupInd m
+    let mut out := #[]
+    for (a, i) in as.zipIdx do
+      out := out.push (← if ← inferablePos fuel' d i then inferFrom fuel' a else pure Term.unit)
+    pure (.tind m out.toList)
+  | _ => pure FT
+termination_by structural fuel
+
 /-- D96: a fresh abstract value of type `T`, its declared reading frozen with it: what `T` says as a
 declared type (`valTypeDecl`), read now, from `T` and the frozen readings of the unknowns it names.
 Returns its name. -/

@@ -355,7 +355,7 @@ A binding stores the type of its value, and [Split] refines stored types, so $A'
 #rules(
   ir(name: "T-Ctor", pv($ty("C")(g_1 : A_1, dots, g_k : A_k) "a constructor of" ty("D") (overline(x) : overline(X))$, $Omega tack.r overline(t) ev^* overline(v) : overline(A') tack.l Omega' quad A'_j equiv A_j [overline(a) slash overline(x)]$), $Omega tack.r ty("C")(overline(a); overline(t)) ev ty("C")(overline(a); overline(v)) : ty("D")(overline(a)) tack.l Omega'$),
 )
-The typed argument judgement $ev^*$ is that of [T-Call]. In [T-Ctor] the parameters $overline(a)$ are evaluated and typed against $overline(X)$ as in [T-Ind] (premises omitted); where the examples omit them, they are inferred from the fields' types or the annotation. A constructor of an inductive declared in `Prop` is a declared proof, so [T-Erase] gives it the value ⋆: `refl : ⊤`, and $chevron.l h, k chevron.r : P and Q$ for $h : P$ and $k : Q$. #lean("evalCore (.ctor, .zero, .succ, .tt)", "evalCtor")
+The typed argument judgement $ev^*$ is that of [T-Call]. In [T-Ctor] the parameters $overline(a)$ are evaluated and typed against $overline(X)$ as in [T-Ind] (premises omitted); where the examples omit them, they are inferred from the fields' types or the annotation: from a field's type only where the parameter stands as its whole type or, at any depth, as an argument at a position declared `Prop` or `Type₀` or a type in one of them, never only at positions of a higher universe (D105). A constructor of an inductive declared in `Prop` is a declared proof, so [T-Erase] gives it the value ⋆: `refl : ⊤`, and $chevron.l h, k chevron.r : P and Q$ for $h : P$ and $k : Q$. #lean("evalCore (.ctor, .zero, .succ, .tt)", "evalCtor")
 
 === Type formers and transport
 
