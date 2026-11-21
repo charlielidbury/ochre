@@ -24,6 +24,10 @@ All in `Steps/FormMachine.lean`; sanity runs in `Steps/ColumnC.lean` (first colu
 - `EvalInv` is now your `EvalInvR` verbatim (the pre-pass pinned by the reading: not `.any`, not a proof, the term not a call; `D.flags` dropped), so `Machine.evalInvR` proves it; with `zeroInv`, `dropNoopInv`, `decBack`, `grows_eval` and `decide_fuel_agree'` it is discharged in `Steps/ColumnCFF.column_C_ff` (moved out of `ColumnC`, which your files import). `column_C_ff` assumes four facts: `SuccInv`, `VarNumInv`, `LetInv`, `InvCore`.
 - Checklist each was read against: the term in tail position; a reading handed down; a lazily typed binding; the place lent; a private copy (`Mode`); an untyped run; the type of the place written; an undecided reading (`.any`); when a decision is read; a decision HANDED DOWN rather than computed (no run ties the table's other answers to it).
 
+## The borrow column (lead8; docs/31 D115)
+
+Proved (standard axioms): `borrow_core`, `letB_core`, `assignDeref_core`, `seq_core`, `readEnd_core`, over `BorrowNumInv`, `AssignDerefInv`, `SeqInv`, `VarEndInv`, `LetInv`, `InvCore`. Open: the assembly `column_B_ff` (plan in `Steps/LEAD-HANDOFF.md`).
+
 ## Facts about the checker the column assumes (the machine lane's next unit)
 
 Each a `Prop` taken as a hypothesis, never proved by the lead. Reviewed by the machine lane against `Machine.lean` (machine1, 2026-11-21); restated by lead7 at the review's corrections (the entry's `tailNext = false` and `tailDecl = none` where `evalCore` is entered; the handed-down reading at `eval`; a typed binding; nothing lent at a write; `InvCore` only at the column's terms, `ColTerm`). Sanity runs: `Steps/ColumnC.lean`, "Sanity runs of the assumed facts" (`#guard`).
