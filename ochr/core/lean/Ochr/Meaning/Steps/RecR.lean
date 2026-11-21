@@ -94,4 +94,38 @@ def sealR : Term := .call (.val (.gfn "R")) [.val (.abs 1)] true
 /-- The value of the recursive call. -/
 def vR : Value := .sealed sealR
 
+/-! ## The facts about the checker -/
+
+/-- **World `Z`'s continuation keeps the counters a world's exit keeps** (`ColumnP.KeepsAtZ` at `R`'s leaf): run on
+`Z` at `Nat` from a state with `leafZR`'s kernel, `k` names no new unknown, changes no unknown's type or reading, and
+issues no label. -/
+def KeepsAtZR (k : Value → Value → M Unit) : Prop :=
+  ∀ (st st' : MState) (bh : Nat), Kern leafZR st → Runs (k .zero .tNat) st bh () st' →
+    st'.nextAbs = st.nextAbs ∧ st'.absTy = st.absTy ∧ st'.absDecl = st.absDecl ∧ st'.nextLoan = st.nextLoan
+
+/-- **The checker's split at `R`'s body** (a fact about the checker alone; the machine lane's to prove): where
+`checkTail` of `R`'s body succeeds from a state with `stR`'s kernel in the plain mode, with no handed-down reading,
+with a continuation `k` that keeps the counters in world `Z`, it ran `k` at two leaves, one per world: on `Z` at `Nat`
+from a state with the kernel `leafZR`, and on the sealed call `⌈R(σ1)⌉` at `Nat` from a state with the kernel `leafSR`.
+`ColumnP.SplitPInv` with world `S`'s arm the recursive call, which closes off (the callee's body is stuck at its match
+on `σ1`). Nothing is asked of the [Rec] context: where the run succeeds, the leaves are these whether or not the
+recursion check ran (guarded in `Steps/RecGuards.lean`: the leaves, the order, the entry conditions, a run with no
+[Rec] context). -/
+def SplitRInv : Prop :=
+  ∀ (fuel : Nat) (k : Value → Value → M Unit) (st st' : MState) (bh : Nat),
+    Kern stR st → Mode st → st.tailDecl = none → KeepsAtZR k →
+    Runs (Ochr.checkTail fuel bodyR k) st bh () st' →
+    (∃ stl bk stk, Kern leafZR stl ∧ Runs (k .zero .tNat) stl bk () stk) ∧
+    (∃ stl bk stk, Kern leafSR stl ∧ Runs (k vR .tNat) stl bk () stk)
+
+/-- **The checker's acceptance of `R`, inverted down to its body's check** (a fact about the checker, assumed; the
+machine lane's to prove): where `checkDef defR` succeeds from the empty state, `checkFix` ran `checkTail` of the body
+(with its return check as the continuation) from a state with `stR`'s kernel, in the plain mode, with no handed-down
+reading, and that continuation keeps the counters in world `Z` (`ColumnP.FixRunP` for `R`; guarded by `checkDef
+defR`'s trace in `Steps/RecGuards.lean`). -/
+def FixRunR : Prop :=
+  ∀ (fuel : Nat) (st₁ : MState), Runs (checkDef defR) {} fuel () st₁ →
+    ∃ (n : Nat) (k : Value → Value → M Unit) (st st' : MState) (bh : Nat),
+      Kern stR st ∧ Mode st ∧ st.tailDecl = none ∧ KeepsAtZR k ∧ Runs (Ochr.checkTail n bodyR k) st bh () st'
+
 end Ochr.Meaning.Steps.Form.ColumnR

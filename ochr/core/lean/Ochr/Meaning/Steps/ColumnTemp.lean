@@ -62,6 +62,18 @@ structure _root_.Ochr.Value.InertA (v : Value) : Prop where
   sitesOf : ∀ l pos path, v.sitesOf l pos path = []
   shape : shapeOf v = none
 
+/-- **A value in which no label occurs, holding no borrow and no holder** (lead17, docs/31 D134): `InertA` with its
+`anyAtom` field cut to the one predicate parking a value reads (`MState.Occurs`), so that a sealed program, whose
+own atom no predicate on numbers and unknowns rules out, qualifies (`⌈R(σ1)⌉`, the value of a recursive call). -/
+structure _root_.Ochr.Value.InertO (v : Value) : Prop where
+  occurs : ∀ l, v.anyAtom (fun a => a == .loan l || (match a with | .borrow l' _ => l' == l | _ => false)) = false
+  holdsBorrow : ∀ l, v.holdsBorrow l = false
+  sitesOf : ∀ l pos path, v.sitesOf l pos path = []
+  shape : shapeOf v = none
+
+theorem _root_.Ochr.Value.InertA.toO {v : Value} (h : v.InertA) : v.InertO :=
+  ⟨fun _ => h.anyAtom _ (by rfl) (by rfl) (by rfl) (fun _ => by rfl) (fun _ => by rfl), h.holdsBorrow, h.sitesOf, h.shape⟩
+
 theorem _root_.Ochr.Value.Inert.toA {v : Value} (h : v.Inert) : v.InertA :=
   ⟨fun P h0 hu hb hs _ => h.anyAtom P h0 hu hb hs, h.holdsBorrow, h.sitesOf, h.shape⟩
 
@@ -162,7 +174,7 @@ theorem findBorrow_pushTempE (env : Env) (v : Value) (fr : Frame) (hfr : env[env
   | none => simp [valAt_pushTempE_new env v fr hfr, hv]
 
 theorem sitesOf_pushTempEA (env : Env) (v : Value) (fr : Frame) (hfr : env[env.size - 1]? = some fr)
-    (hne : 0 < env.size) (hv : v.InertA) (l : Nat) : Env.sitesOf (Env.pushTempE env v) l = Env.sitesOf env l := by
+    (hne : 0 < env.size) (hv : v.InertO) (l : Nat) : Env.sitesOf (Env.pushTempE env v) l = Env.sitesOf env l := by
   simp only [Env.sitesOf]
   rw [allPos_pushTempE env v fr hfr hne, List.flatMap_append, List.flatMap_singleton,
     valAt_pushTempE_new env v fr hfr, hv.sitesOf, List.append_nil]
@@ -201,9 +213,9 @@ theorem skel_pushTempE (st : MState) (v : Value) :
 
 end
 
-/-- **An inert value in flight keeps the relation.** -/
-theorem rel_withTemp_inertA {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
-    (hr : Rel K ρ φ π st s) {v : Value} (hv : v.InertA) : Rel K ρ φ π (st.withTemp v) s := by
+/-- **A value in which no label occurs, in flight, keeps the relation.** -/
+theorem rel_withTemp_inertO {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
+    (hr : Rel K ρ φ π st s) {v : Value} (hv : v.InertO) : Rel K ρ φ π (st.withTemp v) s := by
   rcases hfr : st.env[st.env.size - 1]? with _ | fr
   · -- no frame: nothing is pushed
     have he : (st.withTemp v).env = st.env := by
@@ -235,7 +247,7 @@ theorem rel_withTemp_inertA {K : RunCtx} {ρ : Assignment} {φ : Future} {π : N
     rcases hw with hw | hw
     · exact ⟨w, hw, ha⟩
     · simp only [List.mem_singleton] at hw; subst hw
-      rw [hv.anyAtom _ (by rfl) (by rfl) (by rfl) (fun _ => by rfl) (fun _ => by rfl)] at ha; cases ha
+      exact absurd ha (by rw [Bool.not_eq_true]; exact hv.occurs l)
   · intro ψ hψ p hp
     cases p with
     | temp => exact absurd trivial hp
@@ -290,6 +302,11 @@ theorem rel_withTemp_inertA {K : RunCtx} {ρ : Assignment} {φ : Future} {π : N
     simp only [liveLoan, findBorrow_pushTempE st.env v fr hfr hne _ (hv.holdsBorrow _)] at hl
     rw [sitesOf_pushTempEA st.env v fr hfr hne hv]
     exact hr.sites l hl x
+
+/-- **An inert value in flight keeps the relation.** -/
+theorem rel_withTemp_inertA {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
+    (hr : Rel K ρ φ π st s) {v : Value} (hv : v.InertA) : Rel K ρ φ π (st.withTemp v) s :=
+  rel_withTemp_inertO hr hv.toO
 
 /-- `withTemp` and `withTempT` of one state have one kernel. -/
 theorem kern_withTemp (st : MState) (v : Value) (T? : Option Value) : Kern (st.withTemp v) (st.withTempT v T?) :=
@@ -486,7 +503,7 @@ theorem rel_of_withTemp_inertA {K : RunCtx} {ρ : Assignment} {φ : Future} {π 
     have hl' : liveLoan (Env.pushTempE st.env v) l = true := by
       simp only [liveLoan, findBorrow_pushTempE st.env v fr hfr hne _ (hv.holdsBorrow _)]; exact hl
     have := hr.sites l hl' x
-    rw [show Env.sitesOf (st.withTemp v).env l = Env.sitesOf st.env l from sitesOf_pushTempEA st.env v fr hfr hne hv l] at this
+    rw [show Env.sitesOf (st.withTemp v).env l = Env.sitesOf st.env l from sitesOf_pushTempEA st.env v fr hfr hne hv.toO l] at this
     exact this
 
 theorem rel_of_withTemp_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
@@ -515,7 +532,7 @@ theorem _root_.Ochr.Value.Num.mean {v : Value} (hv : v.Num) :
 
 theorem sitesOf_pushTempE (env : Env) (v : Value) (fr : Frame) (hfr : env[env.size - 1]? = some fr)
     (hne : 0 < env.size) (hv : v.Inert) (l : Nat) : Env.sitesOf (Env.pushTempE env v) l = Env.sitesOf env l :=
-  sitesOf_pushTempEA env v fr hfr hne hv.toA l
+  sitesOf_pushTempEA env v fr hfr hne hv.toA.toO l
 
 theorem rel_withTemp_inert {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
     (hr : Rel K ρ φ π st s) {v : Value} (hv : v.Inert) : Rel K ρ φ π (st.withTemp v) s :=
@@ -526,6 +543,10 @@ theorem rel_of_withTemp_inert {K : RunCtx} {ρ : Assignment} {φ : Future} {π :
   rel_of_withTemp_inertA hv.toA hr
 
 /-- A parked value holding no borrow, unknowns allowed (lead13). -/
+theorem rel_withTempT_inertO {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
+    (hr : Rel K ρ φ π st s) {v : Value} (hv : v.InertO) (T? : Option Value) : Rel K ρ φ π (st.withTempT v T?) s :=
+  Rel.of_kern (kern_withTemp st v T?) (rel_withTemp_inertO hr hv)
+
 theorem rel_withTempT_inertA {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
     (hr : Rel K ρ φ π st s) {v : Value} (hv : v.InertA) (T? : Option Value) : Rel K ρ φ π (st.withTempT v T?) s :=
   Rel.of_kern (kern_withTemp st v T?) (rel_withTemp_inertA hr hv)
