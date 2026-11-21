@@ -377,7 +377,7 @@ ochr Moves84 uses Nats {
   ("LeftOpen", "[Id-typestate] the left side of Id leaves moved, through a borrow, *y, the right side does not"),
   ("LeftOpenBoth", "[D53] a borrow ends while its content is partly moved out (⊥)"),
   ("RePointOne", "[Id-typestate] the left side of Id re-points the borrow y, the right side does not"),
-  ("RePoint", "the body of RePoint has type ⊤, but the goal is Eq(Nat, σ3, σ0) ∧ Eq(Nat, σ1, σ3)"),
+  ("RePoint", "the body of RePoint has type ⊤, but the goal is Eq(Nat, σ3, σ0) ∧ (Eq(Nat, σ1, σ3) ∧ Eq(Nat, σ0, σ1))"),
   ("SwapB", "[Id-typestate] the left side of Id re-points the borrow y1, the right side does not"),
   ("KillRead", "[Id-typestate] a side of Id ends the borrow y"),
   ("KillTemp", "[Id-typestate] a side of Id ends a borrow that a value in flight around the Id holds"),
@@ -390,6 +390,106 @@ ochr Moves84 uses Nats {
   ("GPrWhole", "[Id-typestate] the left side of Id moves x.a, the right side does not"),
   ("LentWhole", "[Id-typestate] the left side of Id moves q.0, the right side does not"),
   ("WholeUseField", "[Id-typestate] the left side of Id moves q, the right side does not")]
+
+/-! ## What a re-pointed borrow points to (D113)
+
+A borrow binding that both sides of `Id` re-point ([Obs-ref]) is observed as a borrow result is
+([Obs-borrow]): by what it points to, its content as the side left it, one more component of the
+conjunction; and by where it points, a fresh value put in its place in the borrow, which the
+owners of its loan then show. D84 wrote the fresh value through the binding after the side ran,
+over what the side had left in the target, unobserved: `Id(Unit, y := &x, (y := &x; *y := 5))`
+was accepted (`HideHide`), although the same continuation, `y := &w; x`, gives 0 after one side
+and 5 after the other (`HideL`, `HideR`). Each hiding `Id` of the red team's (a reborrow, a detour
+that writes the binding's original target, a stuck call's fill, a parameter, a reborrow of a
+second re-pointed binding, a field, different writes, a target `Pick` chooses, a refill with
+another value) stands beside its honest twin, the same sides without the hidden write (`…Same`),
+and the twin that writes on both sides (`…Both`). The content is moved out of the borrow, not
+written through it, so a second re-pointed binding's reborrow of the first stays live until the
+observation's ends, where it fills the first's component (`TwoSame`, `TwoBoth`: rejected before,
+"no such place *y2"); and where it points still tells two sides apart (`TwoApart`). -/
+ochr ObsRef uses Nats, Fixtures {
+  def AddM0 (n : Nat) (r : &Nat) : Unit := match n { Z => (), S _ => *r := 7 }
+  -- (1) re-point to x, write through it on one side
+  reject def HideHide : Unit := (let x = 0; let w = 0; let y = &w; let h : Id(Unit, y := &x, (y := &x; *y := 5)) = refl; ())
+  def HideSame : Unit := (let x = 0; let w = 0; let y = &w; let h : Id(Unit, y := &x, y := &x) = refl; ())
+  def HideBoth : Unit := (let x = 0; let w = 0; let y = &w; let h : Id(Unit, (y := &x; *y := 5), (y := &x; *y := 5)) = refl; ())
+  def HideL : Nat := (let x = 0; let w = 0; let y = &w; y := &x; y := &w; x)
+  def HideR : Nat := (let x = 0; let w = 0; let y = &w; (y := &x; *y := 5); y := &w; x)
+  def HideLv : Eq(Nat, HideL, 0) := refl
+  def HideRv : Eq(Nat, HideR, 5) := refl
+  -- (2) the same through a reborrow `y := &*z`
+  reject def ReHide : Unit := (let x = 0; let z = &x; let w = 0; let y = &w; let h : Id(Unit, y := &*z, (y := &*z; *y := 5)) = refl; ())
+  def ReSame : Unit := (let x = 0; let z = &x; let w = 0; let y = &w; let h : Id(Unit, y := &*z, y := &*z) = refl; ())
+  def ReBoth : Unit := (let x = 0; let z = &x; let w = 0; let y = &w; let h : Id(Unit, (y := &*z; *y := 5), (y := &*z; *y := 5)) = refl; ())
+  -- (3) a detour: a write to y's original target, then away and back
+  reject def DetourHide : Unit := (let x = 0; let w = 0; let y = &w; let h : Id(Unit, (y := &x; y := &w), (*y := 5; y := &x; y := &w)) = refl; ())
+  def DetourSame : Unit := (let x = 0; let w = 0; let y = &w; let h : Id(Unit, (y := &x; y := &w), (y := &x; y := &w)) = refl; ())
+  def DetourBoth : Unit := (let x = 0; let w = 0; let y = &w; let h : Id(Unit, (*y := 5; y := &x; y := &w), (*y := 5; y := &x; y := &w)) = refl; ())
+  def DetourL : Nat := (let x = 0; let w = 0; let y = &w; (y := &x; y := &w); y := &x; w)
+  def DetourR : Nat := (let x = 0; let w = 0; let y = &w; (*y := 5; y := &x; y := &w); y := &x; w)
+  def DetourLv : Eq(Nat, DetourL, 0) := refl
+  def DetourRv : Eq(Nat, DetourR, 5) := refl
+  -- (4) a stuck call's fill behind the re-pointed borrow (generic), and its closed instances
+  reject def FillHide (n : Nat) : Unit := (let x = 0; let w = 0; let y = &w; let h : Id(Unit, y := &x, (y := &x; AddM0(clone(n), &*y))) = refl; ())
+  def FillSame (n : Nat) : Unit := (let x = 0; let w = 0; let y = &w; let h : Id(Unit, y := &x, y := &x) = refl; ())
+  def FillBoth (n : Nat) : Unit := (let x = 0; let w = 0; let y = &w; let h : Id(Unit, (y := &x; AddM0(clone(n), &*y)), (y := &x; AddM0(clone(n), &*y))) = refl; ())
+  def FillHide0 : Unit := (let n = 0; let x = 0; let w = 0; let y = &w; let h : Id(Unit, y := &x, (y := &x; AddM0(clone(n), &*y))) = refl; ())
+  reject def FillHide1 : Unit := (let n = 1; let x = 0; let w = 0; let y = &w; let h : Id(Unit, y := &x, (y := &x; AddM0(clone(n), &*y))) = refl; ())
+  def FillBoth1 : Unit := (let n = 1; let x = 0; let w = 0; let y = &w; let h : Id(Unit, (y := &x; AddM0(clone(n), &*y)), (y := &x; AddM0(clone(n), &*y))) = refl; ())
+  -- (5) a statement of a function, the re-pointed borrow a parameter, and a closed call
+  reject def ParamHide (y : &Nat) (x : Nat) : Id(Unit, y := &x, (y := &x; *y := 5)) := refl
+  def ParamSame (y : &Nat) (x : Nat) : Id(Unit, y := &x, y := &x) := refl
+  def ParamBoth (y : &Nat) (x : Nat) : Id(Unit, (y := &x; *y := 5), (y := &x; *y := 5)) := refl
+  def ParamSameC : Unit := (let w = 0; let x = 0; let y = &w; let h = ParamSame(&*y, 0); ())
+  -- (6) two re-pointed borrows, the second a reborrow of the first
+  reject def TwoHide : Unit := (let x = 0; let w = 0; let v = 0; let y1 = &w; let y2 = &v; let h : Id(Unit, (y1 := &x; y2 := &*y1), (y1 := &x; y2 := &*y1; *y2 := 5)) = refl; ())
+  def TwoSame : Unit := (let x = 0; let w = 0; let v = 0; let y1 = &w; let y2 = &v; let h : Id(Unit, (y1 := &x; y2 := &*y1), (y1 := &x; y2 := &*y1)) = refl; ())
+  def TwoBoth : Unit := (let x = 0; let w = 0; let v = 0; let y1 = &w; let y2 = &v; let h : Id(Unit, (y1 := &x; y2 := &*y1; *y2 := 5), (y1 := &x; y2 := &*y1; *y2 := 5)) = refl; ())
+  -- y2 into y1's target on one side, elsewhere on the other: told apart
+  reject def TwoApart : Unit := (let x = 0; let u = 0; let w = 0; let v = 0; let y1 = &w; let y2 = &v; let h : Id(Unit, (y1 := &x; y2 := &*y1), (y1 := &x; y2 := &u)) = refl; ())
+  -- (7) re-point to a field of a pair
+  reject def FldHide : Unit := (let p = (0, 0); let w = 0; let y = &w; let h : Id(Unit, y := &p.0, (y := &p.0; *y := 5)) = refl; ())
+  def FldSame : Unit := (let p = (0, 0); let w = 0; let y = &w; let h : Id(Unit, y := &p.0, y := &p.0) = refl; ())
+  def FldBoth : Unit := (let p = (0, 0); let w = 0; let y = &w; let h : Id(Unit, (y := &p.0; *y := 5), (y := &p.0; *y := 5)) = refl; ())
+  -- (8) the same target, different writes
+  reject def DiffHide : Unit := (let x = 0; let w = 0; let y = &w; let h : Id(Unit, (y := &x; *y := 6), (y := &x; *y := 5)) = refl; ())
+  def DiffSame : Unit := (let x = 0; let w = 0; let y = &w; let h : Id(Unit, (y := &x; *y := 5), (y := &x; *y := 5)) = refl; ())
+  -- the same write by two routes: before re-pointing (to the owner) and after (through y)
+  def DiffRoutes : Unit := (let x = 0; let w = 0; let y = &w; let h : Id(Unit, (y := &x; *y := 5), (x := 5; y := &x)) = refl; ())
+  -- (9) re-point through Pick: the target unknown
+  reject def PickHide (n : Nat) : Unit := (let a = 0; let b = 0; let w = 0; let y = &w; let h : Id(Unit, y := Pick(clone(n), &a, &b), (y := Pick(clone(n), &a, &b); *y := 5)) = refl; ())
+  def PickSame (n : Nat) : Unit := (let a = 0; let b = 0; let w = 0; let y = &w; let h : Id(Unit, y := Pick(clone(n), &a, &b), y := Pick(clone(n), &a, &b)) = refl; ())
+  def PickBoth (n : Nat) : Unit := (let a = 0; let b = 0; let w = 0; let y = &w; let h : Id(Unit, (y := Pick(clone(n), &a, &b); *y := 5), (y := Pick(clone(n), &a, &b); *y := 5)) = refl; ())
+  reject def PickHide0 : Unit := (let n = 0; let a = 0; let b = 0; let w = 0; let y = &w; let h : Id(Unit, y := Pick(clone(n), &a, &b), (y := Pick(clone(n), &a, &b); *y := 5)) = refl; ())
+  def PickSame0 : Unit := (let n = 0; let a = 0; let b = 0; let w = 0; let y = &w; let h : Id(Unit, y := Pick(clone(n), &a, &b), y := Pick(clone(n), &a, &b)) = refl; ())
+  -- (10) different targets (D84's own row), and the same target (accepted before)
+  reject def ApartTargets (x : Nat) (z : Nat) (y : &Nat) : Id(Unit, (y := &x; ()), (y := &z; ())) := refl
+  def SameTarget (x : Nat) (y : &Nat) : Id(Unit, (y := &x; ()), (y := &x; ())) := refl
+  -- (11) a target moved out through the re-pointed borrow (a type that is not a copy)
+  inductive Tr := Lf | Nd(l : Tr)
+  def OpenBoth (y : &Tr) (x : Tr) : Id(Unit, (y := &x; let a = *y; ()), (y := &x; let b = *y; ())) := refl
+  reject def OpenOne (y : &Tr) (x : Tr) : Id(Unit, (y := &x; let a = *y; ()), (y := &x; ())) := refl
+  reject def RefillHide (y : &Tr) (x : Tr) : Id(Unit, (y := &x; let a = *y; *y := Lf), (y := &x; ())) := refl
+  def RefillSame (y : &Tr) (x : Tr) : Id(Unit, (y := &x; let a = *y; *y := a), (y := &x; ())) := refl
+  def RefillBoth (y : &Tr) (x : Tr) : Id(Unit, (y := &x; let a = *y; *y := Lf), (y := &x; *y := Lf)) := refl
+}
+
+#guard (run "ObsRef" ObsRef).rejectedWith [
+  ("HideHide", "the ascribed term has type ⊤, expected False"),
+  ("ReHide", "the ascribed term has type ⊤, expected False"),
+  ("DetourHide", "the ascribed term has type ⊤, expected False"),
+  ("FillHide", "the ascribed term has type ⊤, expected Eq(Nat, 0, ⌈let c1 = 0; AddM0(σ0, &c1); c1⌉)"),
+  ("FillHide1", "the ascribed term has type ⊤, expected False"),
+  ("ParamHide", "the body of ParamHide has type ⊤, but the goal is Eq(Nat, σ1, 5)"),
+  ("TwoHide", "the ascribed term has type ⊤, expected False"),
+  ("TwoApart", "the ascribed term has type ⊤, expected Eq(Nat, 0, σ1) ∧ Eq(Nat, σ1, 0)"),
+  ("FldHide", "the ascribed term has type ⊤, expected False"),
+  ("DiffHide", "the ascribed term has type ⊤, expected False"),
+  ("PickHide", "the ascribed term has type ⊤, expected Eq(Nat, ⌈let c1 = 0; let c2 = 0; let r = Pick(σ0, &c1, &c2); *r⌉, 5)"),
+  ("PickHide0", "the ascribed term has type ⊤, expected False"),
+  ("ApartTargets", "the body of ApartTargets has type ⊤, but the goal is Eq(Nat, σ3, σ0) ∧ (Eq(Nat, σ1, σ3) ∧ Eq(Nat, σ0, σ1))"),
+  ("OpenOne", "[Id-typestate] the left side of Id leaves moved, through a borrow, *y, the right side does not"),
+  ("RefillHide", "the body of RefillHide has type ⊤, but the goal is Eq(Tr, Lf, σ1)")]
 
 /-! ## `J` at runtime (D85)
 
