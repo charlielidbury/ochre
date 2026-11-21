@@ -355,4 +355,58 @@ theorem sgood_stI (hρ : ∃ m, ρ 0 = .el0 Nat m) : Strict.SGood dm [] φ' (SM'
     exact absurd (valAt_SM_const p ψ (ψ.upd l x)) hne
   uniq := fun p _ l hp _ => by rw [shape_SM] at hp; cases hp
 
+/-! ## The decisions `I`'s body reads, at a table aligned with the checker at `stI`
+
+The checker's decision procedures, run as `DecTab` runs them at the scope states of `stI` (kernel
+evaluation), answer `ParBody.ParDecI` at the top frame's readings `[.other, .pi .other]`. -/
+
+theorem topReadings_stI : DecideScope.topReadings stI = [.other, .pi .other] := rfl
+
+namespace Aux
+
+open Ochr.Meaning.Regress.GenNeutralContent (isOk outVal runs_out)
+
+abbrev flagsRun (t : Term) : M (Bool × Bool) := Ochr.Meaning.Steps.Form.ColumnC.Aux.flagsRun t
+abbrev declRun (t : Term) : M DeclInfo := Ochr.Meaning.Steps.Form.ColumnC.Aux.declRun t
+abbrev isOther (d : DeclInfo) : Bool := Ochr.Meaning.Steps.Form.ColumnC.Aux.isOther d
+
+def RI : List DeclInfo := [.other, .pi .other]
+
+theorem ok_flags_x : isOk (flagsRun (.place (.var 0))) (scopeState stI RI) 1000 = true := by decide +kernel
+theorem val_flags_x : outVal (flagsRun (.place (.var 0))) (scopeState stI RI) 1000 = (false, false) := by
+  decide +kernel
+theorem ok_declOf_x : isOk (declRun (.place (.var 0))) (scopeState stI RI) 1000 = true := by decide +kernel
+theorem val_declOf_x : isOther (outVal (declRun (.place (.var 0))) (scopeState stI RI) 1000) = true := by
+  decide +kernel
+theorem ok_flags_body : isOk (flagsRun bodyI) (scopeState stI RI) 1000 = true := by decide +kernel
+theorem val_flags_body : outVal (flagsRun bodyI) (scopeState stI RI) 1000 = (false, false) := by decide +kernel
+theorem ok_declOf_body : isOk (declRun bodyI) (scopeState stI RI) 1000 = true := by decide +kernel
+theorem val_declOf_body : isOther (outVal (declRun bodyI) (scopeState stI RI) 1000) = true := by decide +kernel
+
+end Aux
+
+/-- **`ParDecI` at `I`'s body**, at every table aligned with the checker at `stI`. -/
+theorem parDecI {D : Decisions} (hd : DecTab D stI) : ParDecI D [.other, .pi .other] := by
+  refine ⟨?_, ?_, ?_⟩
+  · show D.flags Aux.RI _ = _
+    rw [hd.flags 100 Aux.RI (.place (.var 0)) _ 1000 _
+      (Regress.GenNeutralContent.runs_out (Aux.flagsRun (.place (.var 0))) _ 1000 Aux.ok_flags_x), Aux.val_flags_x]
+  · show D.declOf Aux.RI _ = _
+    rw [hd.declOf 100 Aux.RI (.place (.var 0)) _ 1000 _
+      (Regress.GenNeutralContent.runs_out (Aux.declRun (.place (.var 0))) _ 1000 Aux.ok_declOf_x)]
+    exact Ochr.Meaning.Steps.Form.ColumnC.Aux.isOther_eq Aux.val_declOf_x
+  · show D.declOf Aux.RI _ = _
+    rw [hd.declOf 100 Aux.RI bodyI _ 1000 _
+      (Regress.GenNeutralContent.runs_out (Aux.declRun bodyI) _ 1000 Aux.ok_declOf_body)]
+    exact Ochr.Meaning.Steps.Form.ColumnC.Aux.isOther_eq Aux.val_declOf_body
+
+/-- The body is neither a statement nor a proof, at every table aligned with the checker at `stI`. -/
+theorem flags_bodyI {D : Decisions} (hd : DecTab D stI) : D.flags [.other, .pi .other] bodyI = (false, false) := by
+  show D.flags Aux.RI _ = _
+  rw [hd.flags 100 Aux.RI bodyI _ 1000 _
+    (Regress.GenNeutralContent.runs_out (Aux.flagsRun bodyI) _ 1000 Aux.ok_flags_body), Aux.val_flags_body]
+
+/-- `n ↦ σ0` at `Nat`. -/
+theorem absVar_stI : AbsVar 0 stI := ⟨1, 1, nB, 0, rfl, rfl, rfl, rfl, rfl⟩
+
 end Ochr.Meaning.Steps.Form.ColumnI
