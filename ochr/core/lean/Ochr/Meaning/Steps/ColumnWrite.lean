@@ -216,13 +216,13 @@ theorem assign_core (hA : AssignNumInv) (hIC : InvCore) (hc : Strict.FundCtx K) 
   intro st st' typed hint v T? s π hPst hty hm htn htd _ hp hr hS hv hab hnh hfl _ hD bh h
   subst hty
   have htyped : ∀ f j b, ckVarPos st.env i = some (.bind f j) →
-      st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.ty.isSome := by
+      st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.ty = some .tNat := by
     obtain ⟨f0, j0, b0, hpos0, hb0, -, ht0⟩ := hP st hPst
     intro f j b hpos hb
     rw [hpos0, Option.some.injEq, Pos.bind.injEq] at hpos
     obtain ⟨rfl, rfl⟩ := hpos
     rw [hb0, Option.some.injEq] at hb
-    subst hb; rw [ht0]; rfl
+    subst hb; exact ht0
   obtain ⟨st₀, st₁, st₂, hu', v₀, T₀, bh₁, f, j, b, w, hk₀, hm₀, htn₀, htd₀, hru, hD₁, hq, hpos₂, hlk₂, hbw, hk'i,
     rfl, rfl⟩ := hA n i u hint st st' bh v T? K.D hm htn htd htyped hD h
   have hPu₀ := hPu st st₀ hk₀ hPst

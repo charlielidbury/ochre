@@ -155,11 +155,12 @@ variable {D : Decisions}
 /-- `eval` of `Z`: the value `Z` at `Nat`, the kernel kept. -/
 theorem run_zero (hE : EvalInv) (hZ : ZeroInv) {g : Nat} {typed : Bool} {hint : Option Value} {st st' : MState}
     {bh : Nat} {v : Value} {T? : Option Value} (hm : Mode st) (hD : DecTab D st')
-    (hfl : D.flags (DecideScope.topReadings st) .zero = (false, false)) (htd : st.tailDecl = none)
+    (hfl : D.flags (DecideScope.topReadings st) .zero = (false, false))
+    (hany : D.declOf (DecideScope.topReadings st) .zero ≠ .any) (htd : st.tailDecl = none)
     (h : Runs (Ochr.eval (g + 3) typed .zero hint) st bh (v, T?) st') :
     v = .zero ∧ T? = some .tNat ∧ Kern st st' := by
   obtain ⟨st₀, st₁, bh', hk₀, -, -, -, -, -, h₀, hk₁, -⟩ :=
-    hE (g + 1) typed .zero hint st st' bh v T? D hm hD hfl (fun _ e => by cases e) (.inl htd) h
+    hE (g + 1) typed .zero hint st st' bh v T? D hm hD hfl (fun _ e => by cases e) hany (.inl htd) h
   obtain ⟨rfl, rfl, hk, -⟩ := hZ g typed hint st₀ st₁ bh' v T? h₀
   exact ⟨rfl, rfl, hk₀.trans (hk.trans hk₁)⟩
 
@@ -167,16 +168,20 @@ theorem run_zero (hE : EvalInv) (hZ : ZeroInv) {g : Nat} {typed : Bool} {hint : 
 theorem run_SZ (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) {g : Nat} {typed : Bool} {hint : Option Value}
     {st st' : MState} {bh : Nat} {v : Value} {T? : Option Value} (hm : Mode st) (hD : DecTab D st')
     (hflS : D.flags (DecideScope.topReadings st) (.succ .zero) = (false, false))
-    (hflZ : D.flags (DecideScope.topReadings st) .zero = (false, false)) (htd : st.tailDecl = none)
+    (hflZ : D.flags (DecideScope.topReadings st) .zero = (false, false))
+    (hanyS : D.declOf (DecideScope.topReadings st) (.succ .zero) ≠ .any)
+    (hanyZ : D.declOf (DecideScope.topReadings st) .zero ≠ .any) (htd : st.tailDecl = none)
     (h : Runs (Ochr.eval (g + 6) typed (.succ .zero) hint) st bh (v, T?) st') :
     v = .succ .zero ∧ T? = some .tNat ∧ Env.erase st.env = Env.erase st'.env := by
   obtain ⟨st₀, st₁, bh', hk₀, hm₀, -, htn₀, htd₀, -, h₀, hk₁, -⟩ :=
-    hE (g + 4) typed _ hint st st' bh v T? D hm hD hflS (fun _ e => by cases e) (.inl htd) h
+    hE (g + 4) typed _ hint st st' bh v T? D hm hD hflS (fun _ e => by cases e) hanyS (.inl htd) h
   obtain ⟨a, b, v₀, T₀, bh₁, hka, hma, -, htda, hrun, rfl, rfl, hq, hDb, -⟩ :=
-    hS (g + 3) typed .zero hint st₀ st₁ bh' v T? hm₀ htn₀ htd₀ h₀
+    hS (g + 3) typed .zero hint st₀ st₁ bh' v T? .zero hm₀ htn₀ htd₀ h₀
   have hfa : D.flags (DecideScope.topReadings a) .zero = (false, false) := by
     rw [← topReadings_kern (hk₀.trans hka)]; exact hflZ
-  obtain ⟨rfl, -, hkab⟩ := run_zero hE hZ hma (hDb D (DecTab.of_kern hk₁.symm hD)) hfa htda hrun
+  have hza : D.declOf (DecideScope.topReadings a) .zero ≠ .any := by
+    rw [← topReadings_kern (hk₀.trans hka)]; exact hanyZ
+  obtain ⟨rfl, -, hkab⟩ := run_zero hE hZ hma (hDb D (DecTab.of_kern hk₁.symm hD)) hfa hza htda hrun
   exact ⟨rfl, rfl, hk₀.env.trans (hka.env.trans (hkab.env.trans (hq.env.trans hk₁.env)))⟩
 
 /-- `eval` of `x` where the top binding holds a number at `Nat`: its value, at `Nat` in a typed run;
@@ -185,12 +190,13 @@ theorem run_x (hE : EvalInv) (hV : VarNumInv) {g : Nat} {typed : Bool} {hint : O
     {bh : Nat} {v : Value} {T? : Option Value} (hm : Mode st) (hD : DecTab D st') {fr : Frame} {b : Binding}
     (hfr : st.env[st.env.size - 1]? = some fr) (hb : fr.binds.back? = some b) (hn : b.val.Num)
     (ht : b.ty = some .tNat) (hfl : D.flags (DecideScope.topReadings st) (.place (.var 0)) = (false, false))
+    (hany : D.declOf (DecideScope.topReadings st) (.place (.var 0)) ≠ .any)
     (htd : st.tailDecl = none ∨ st.tailDecl = some (D.declOf (DecideScope.topReadings st) (.place (.var 0))))
     (h : Runs (Ochr.eval (g + 6) typed (.place (.var 0)) hint) st bh (v, T?) st') :
     v = b.val ∧ (typed = true → T? = some .tNat) ∧
       ∃ fr' b', st'.env[st'.env.size - 1]? = some fr' ∧ fr'.binds.back? = some b' ∧ (b'.val = .bot ∨ b'.val.Num) := by
   obtain ⟨st₀, st₁, bh', hk₀, hm₀, -, -, -, -, h₀, hk₁, -⟩ :=
-    hE (g + 4) typed _ hint st st' bh v T? D hm hD hfl (fun _ e => by cases e) htd h
+    hE (g + 4) typed _ hint st st' bh v T? D hm hD hfl (fun _ e => by cases e) hany htd h
   obtain ⟨fr₀, hfr₀, hbs₀⟩ := top_of_erase hk₀.env hfr
   have hb₀ : fr₀.binds.back? = some b := by rw [hbs₀]; exact hb
   obtain ⟨hpos, hlk⟩ := ckVarPos_top hfr₀ hb₀
@@ -229,7 +235,8 @@ theorem atX_push (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hd : DecTab K.D s
       AtX { st₁ with env := Env.pushBindE st₁.env x (some .tNat) v₀ p (K.D.declOf (DecideScope.topReadings st₁) (.succ .zero)) } := by
   have hT₀ := hT.kern hk
   obtain ⟨rfl, -, he⟩ :=
-    run_SZ hE hZ hS hm₀ hD₁ (by rw [hT₀.1]; exact flags_SZ hd) (by rw [hT₀.1]; exact flags_Z hd) htd₀ h
+    run_SZ hE hZ hS hm₀ hD₁ (by rw [hT₀.1]; exact flags_SZ hd) (by rw [hT₀.1]; exact flags_Z hd)
+      (by rw [hT₀.1, declOf_SZ hd]; intro e; cases e) (by rw [hT₀.1]; exact declOf_Z_ne hd) htd₀ h
   have hr₁ : DecideScope.topReadings st₁ = [] := by rw [← topReadings_of_erase he]; exact hT₀.1
   have hs₁ : 0 < st₁.env.size := by rw [← size_of_erase he]; exact hT₀.2
   obtain ⟨fr, hfr⟩ : ∃ fr, st₁.env[st₁.env.size - 1]? = some fr := ⟨_, Array.getElem?_eq_getElem (by omega)⟩
@@ -244,17 +251,21 @@ theorem sim_bodyC (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hV : VarNumInv) 
     (hDN : DropNoopInv) (hIC : InvCore) (hc : Strict.FundCtx K) (hd : DecTab K.D stC) (g : Nat) :
     EvalSim K ρ φ (g + 9) bodyC Top (· = true) := by
   have hz : EvalSim K ρ φ (g + 3) .zero Top :=
-    eval_of_core hE (fun a b h ha => ha.kern h) (fun _ e => by cases e) (zero_coreSim hZ hIC)
+    eval_of_core hE (fun a b h ha => ha.kern h) (fun _ e => by cases e)
+      (fun st hst => by rw [hst.1]; exact declOf_Z_ne hd) (zero_coreSim hZ hIC)
   have hsz : EvalSim K ρ φ (g + 6) (.succ .zero) Top :=
     eval_of_core hE (fun a b h ha => ha.kern h) (fun _ e => by cases e)
+      (fun st hst => by rw [hst.1, declOf_SZ hd]; intro e; cases e)
       (succ_core hS hIC .zero hz (fun a b h ha => ha.kern h) (fun st hst => by rw [hst.1]; exact flags_Z hd)
         (fun s => by rw [runT_zero, runT_zero])
         (fun typed st₀ st₁ bh v₀ T₀ hT₀ hm₀ htd₀ hD₁ h => by
-          obtain ⟨rfl, -, -⟩ := run_zero hE hZ hm₀ hD₁ (by rw [hT₀.1]; exact flags_Z hd) htd₀ h
+          obtain ⟨rfl, -, -⟩ := run_zero hE hZ hm₀ hD₁ (by rw [hT₀.1]; exact flags_Z hd)
+            (by rw [hT₀.1]; exact declOf_Z_ne hd) htd₀ h
           exact .zero))
   have hx : ∀ (Δ' : Nat → TyS) (ρ' : Assignment),
       EvalSim { K with Δ := Δ' } ρ' φ (g + 6) (.place (.var 0)) AtX (· = true) := fun Δ' ρ' =>
     eval_of_core hE (fun a b h ha => ha.kern h) (fun _ e => by cases e)
+      (fun st hst => by rw [hst.1, declOf_x hd]; intro e; cases e)
       (CoreSim.mono (var_core (K := { K with Δ := Δ' }) (ρ := ρ') (φ := φ) hV hIC (n := g + 3) (i := 0))
         (fun _ h => h.2.numVar) (fun _ _ => trivial))
   have hlet : CoreSim K ρ φ (g + 7) bodyC Top (· = true) := by
@@ -264,15 +275,18 @@ theorem sim_bodyC (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hV : VarNumInv) 
       (fun st hst => by rw [hst.1]; exact flags_SZ hd) (fun st hst => by rw [hst.1]; exact flags_x hd)
       (fun st₀ st₁ bh v₀ T₀ hT₀ hm₀ htd₀ hD₁ h => by
         obtain ⟨rfl, hT, -⟩ :=
-          run_SZ hE hZ hS hm₀ hD₁ (by rw [hT₀.1]; exact flags_SZ hd) (by rw [hT₀.1]; exact flags_Z hd) htd₀ h
+          run_SZ hE hZ hS hm₀ hD₁ (by rw [hT₀.1]; exact flags_SZ hd) (by rw [hT₀.1]; exact flags_Z hd)
+            (by rw [hT₀.1, declOf_SZ hd]; intro e; cases e) (by rw [hT₀.1]; exact declOf_Z_ne hd) htd₀ h
         exact ⟨.succ .zero, Option.some.inj hT⟩)
       (fun st st₀ st₁ bh v₀ p hst hk hm₀ htd₀ hD₁ h => (atX_push hE hZ hS hd _ hst hk hm₀ htd₀ hD₁ h).2)
       (fun a b h ha => ha.kern h) (fun _ _ => trivial) (fun m σ hσ => by simp [Term.anyAtom] at hσ) rfl
       (fun _ _ _ _ _ => rfl) (fun _ _ _ => rfl)
       (fun stB st₂ bh r T? hB hmB htdB hD₂ h => by
         obtain ⟨fr, b, hfr, hb, hn, ht⟩ := hB.2
-        exact (run_x hE hV hmB hD₂ hfr hb hn ht (by rw [hB.1]; exact flags_x hd) htdB h).2.2)
-  exact eval_of_core hE (fun a b h ha => ha.kern h) (fun _ e => by cases e) hlet
+        exact (run_x hE hV hmB hD₂ hfr hb hn ht (by rw [hB.1]; exact flags_x hd)
+          (by rw [hB.1, declOf_x hd]; intro e; cases e) htdB h).2.2)
+  exact eval_of_core hE (fun a b h ha => ha.kern h) (fun _ e => by cases e)
+    (fun st hst => by rw [hst.1, declOf_bodyC hd]; intro e; cases e) hlet
 
 end
 
@@ -293,23 +307,24 @@ theorem run_body (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hV : VarNumInv) (
     (h : Runs (Ochr.eval (g + 9) true bodyC hint) st bh (v, T?) st') : v = .succ .zero ∧ T? = some .tNat := by
   obtain ⟨st₀, st₁, bh', hk₀, hm₀, -, htn₀, htd₀, hcd₀, h₀, hk₁, -⟩ :=
     hE (g + 7) true bodyC hint st st' bh v T? K.D hm hD (by rw [hT.1]; exact flags_bodyC hd) (fun _ e => by cases e)
-      htd h
-  obtain ⟨du, a₀, a₁, stB, a₂, a₃, v₀, r, T₀, p, b₁, b₂, b₃, hka, hma, -, htda, htdB, hru, hne₁, hdu, hkB, hmB, -,
-    hrw, hrd, hk₃, hD₁, hD₂, -⟩ := hL (g + 6) ⟨"x"⟩ (.succ .zero) (.place (.var 0)) hint st₀ st₁ bh' v T? K.D K.Γ hm₀
-      htn₀ htd₀ (DecTab.of_kern hk₁.symm hD) h₀
+      (by rw [hT.1, declOf_bodyC hd]; intro e; cases e) htd h
+  obtain ⟨du, a₀, a₁, stB, a₂, a₃, v₀, r, T₀, p, b₁, b₂, b₃, hka, hma, -, htda, htdB, hru, hne₁, hdu, hrd₁, hkB, hmB,
+    -, hrw, hrd, hk₃, hD₁, hD₂, -⟩ := hL (g + 6) ⟨"x"⟩ (.succ .zero) (.place (.var 0)) hint st₀ st₁ bh' v T? K.D K.Γ
+      (.succ .zero) hm₀ htn₀ htd₀ (DecTab.of_kern hk₁.symm hD) h₀
   have hT₀ := hT.kern (hk₀.trans hka)
   obtain ⟨rfl, hT₀', -⟩ :=
-    run_SZ hE hZ hS hma hD₁ (by rw [hT₀.1]; exact flags_SZ hd) (by rw [hT₀.1]; exact flags_Z hd) htda hru
+    run_SZ hE hZ hS hma hD₁ (by rw [hT₀.1]; exact flags_SZ hd) (by rw [hT₀.1]; exact flags_Z hd)
+      (by rw [hT₀.1, declOf_SZ hd]; intro e; cases e) (by rw [hT₀.1]; exact declOf_Z_ne hd) htda hru
   cases Option.some.inj hT₀'
   have hX := (atX_push hE hZ hS hd ⟨"x"⟩ (p := p) hT (hk₀.trans hka) hma htda hD₁ hru).2
-  rw [hdu] at hX
+  rw [hrd₁, hdu] at hX
   -- the binding `x` holds `S(Z)` at `Nat` where the read starts
   obtain ⟨fr₁, hfr₁⟩ : ∃ fr, a₁.env[a₁.env.size - 1]? = some fr := ⟨_, Array.getElem?_eq_getElem (by omega)⟩
   obtain ⟨frB, hfrB, hbsB⟩ := top_of_erase hkB.env (top_pushBindE hfr₁ ⟨"x"⟩ (some .tNat) (.succ .zero) p du)
   have hbB : frB.binds.back? = some { hint := ⟨"x"⟩, ty := some .tNat, val := .succ .zero, proof := p, decl := du } := by
     rw [hbsB]; exact Array.back?_push ..
   obtain ⟨rfl, hTr, fr₂, bx, hfr₂, hbx, hbxv⟩ := run_x hE hV hmB hD₂ hfrB hbB (.succ .zero) rfl
-    (by rw [(hX.kern hkB).1]; exact flags_x hd)
+    (by rw [(hX.kern hkB).1]; exact flags_x hd) (by rw [(hX.kern hkB).1, declOf_x hd]; intro e; cases e)
     (by
       rcases htdB with e | e
       · exact .inl e
