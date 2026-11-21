@@ -299,17 +299,21 @@ theorem runT_succ (tl : Bool) (hint : TyS) (u : Term) (s : SState) (hfl : K.D.fl
 needs; the general step needs the value in flight to hold no live loan, so that wrapping it moves no
 site). Hypotheses beside the step for `u` (`hu`): `u`'s run reads no hint (the checker evaluates it
 with none, the strict run at `Nat`), and its value is a number. The strict point (`S` of a member of
-`Nat`) passes because the argument's meaning is a number. -/
-theorem succ_core (hS : SuccInv) (hIC : InvCore) {n : Nat} {u : Term} (hu : EvalSim K ρ φ n u)
-    (hflu : ∀ sc, K.D.flags sc u = (false, false))
+`Nat`) passes because the argument's meaning is a number. `P` is a precondition of the entry state
+(the step for `u` gets `Pu` at the state it starts from, which has the entry's kernel); the
+classification of `u` is asked at the entry's readings only, where `P` holds. -/
+theorem succ_core (hS : SuccInv) (hIC : InvCore) {n : Nat} {u : Term} {P Pu : MState → Prop}
+    (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → P a → Pu b)
+    (hflu : ∀ st, P st → K.D.flags (DecideScope.topReadings st) u = (false, false))
     (hhint : ∀ s : SState, runT K ρ φ false (.plain TyM.nat) u s = runT K ρ φ false (.plain TyM.err) u s)
-    (hnum : ∀ typed st₀ st₁ bh v₀ T₀, Runs (Ochr.eval n typed u none) st₀ bh (v₀, T₀) st₁ → v₀.Num) :
-    CoreSim K ρ φ (n + 1) (.succ u) := by
-  intro st st' typed hint v T? s π _ _ hm htn hp hr hSg hv hab hnh hfl hok hD bh h
+    (hnum : ∀ typed st₀ st₁ bh v₀ T₀, Mode st₀ → DecTab K.D st₁ → Runs (Ochr.eval n typed u none) st₀ bh (v₀, T₀) st₁ →
+      v₀.Num) :
+    CoreSim K ρ φ (n + 1) (.succ u) P := by
+  intro st st' typed hint v T? s π hPst _ hm htn hp hr hSg hv hab hnh hfl hok hD bh h
   obtain ⟨st₀, st₁, v₀, T₀, bh₁, hk₀, hm₀, htn₀, hu₀, rfl, rfl, hq, hDb, -⟩ := hS n typed u hint st st' bh v T? hm h
-  have hv₀ : v₀.Num := hnum typed st₀ st₁ bh₁ v₀ T₀ hu₀
-  have hO := hu st₀ st₁ typed none v₀ T₀ s π trivial trivial hm₀ (hp.of_kern hk₀) (hr.of_kern hk₀) hSg hv
-    (by rw [← hk₀.absTy]; exact hab) hnh (hflu _)
+  have hv₀ : v₀.Num := hnum typed st₀ st₁ bh₁ v₀ T₀ hm₀ (hDb K.D hD) hu₀
+  have hO := hu st₀ st₁ typed none v₀ T₀ s π (hPu st st₀ hk₀ hPst) trivial hm₀ (hp.of_kern hk₀) (hr.of_kern hk₀) hSg hv
+    (by rw [← hk₀.absTy]; exact hab) hnh (by rw [scopeOf_rel hr]; exact hflu st hPst)
     (fun ht => by
       have hs := hok ht
       rw [runT_succ _ _ u s hfl] at hs

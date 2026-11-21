@@ -172,33 +172,37 @@ and a binding that holds no borrow and has no site when it is dropped. From the 
 the starting context) and for `w` (at every extension: it runs after `u` made unknowns), the facts
 about the checker alone (`LetInv`, `DropNoopInv`, `InvCore`), and (I) at `u`. -/
 theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hIC : InvCore) (hc : Strict.FundCtx K)
-    {n : Nat} {x : Hint} {u w : Term} {Pw : MState → Prop}
-    (hu : EvalSim K ρ φ n u)
+    {n : Nat} {x : Hint} {u w : Term} {Plet Pu Pw : MState → Prop}
+    (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → Plet a → Pu b)
     (hw : ∀ (Δ' : Nat → TyS) (ρ' : Assignment), EvalSim { K with Δ := Δ' } ρ' φ n w Pw (· = true))
-    (hflu : ∀ sc, K.D.flags sc u = (false, false)) (hflw : ∀ sc, K.D.flags sc w = (false, false))
-    (hnumu : ∀ st₀ st₁ bh v₀ T₀, Runs (Ochr.eval n true u none) st₀ bh (v₀, some T₀) st₁ → v₀.Num ∧ T₀ = .tNat)
-    (hPw : ∀ (st₁ : MState) (v₀ : Value) (p : Bool) (d : DeclInfo), v₀.Num →
-      Pw { st₁ with env := Env.pushBindE st₁.env x (some .tNat) v₀ p d })
+    (hflu : ∀ st, Plet st → K.D.flags (DecideScope.topReadings st) u = (false, false))
+    (hflw : ∀ st, Pw st → K.D.flags (DecideScope.topReadings st) w = (false, false))
+    (hnumu : ∀ st₀ st₁ bh v₀ T₀, Mode st₀ → DecTab K.D st₁ → Runs (Ochr.eval n true u none) st₀ bh (v₀, some T₀) st₁ →
+      v₀.Num ∧ T₀ = .tNat)
+    (hPw : ∀ (st st₀ st₁ : MState) (bh : Nat) (v₀ : Value) (p : Bool), Plet st → Kern st st₀ → Mode st₀ →
+      DecTab K.D st₁ → Runs (Ochr.eval n true u none) st₀ bh (v₀, some .tNat) st₁ →
+      Pw { st₁ with env := Env.pushBindE st₁.env x (some .tNat) v₀ p (K.D.declOf (DecideScope.topReadings st₁) u) })
     (hPwk : ∀ a b, Kern a b → Pw a → Pw b)
     (hwv : ∀ (Δ' : Nat → TyS) (ρ' : Assignment), w.valsOk (Strict.ValsP { K with Δ := Δ' } ρ' φ))
     (hwa : ∀ m, w.absBelow m) (hwn : w.hasHolePrim = false)
     (hwcong : ∀ (Δ' : Nat → TyS) (ρ' : Assignment) tl hint s,
       runT { K with Δ := Δ' } ρ' φ tl hint w s = runT K ρ φ tl hint w s)
     (hwhint : ∀ tl hint s, runT K ρ φ tl hint w s = runT K ρ φ tl (.plain TyM.err) w s)
-    (hdrop : ∀ stB st₂ bh r T?, Pw stB → Runs (Ochr.eval n true w none) stB bh (r, T?) st₂ →
+    (hdrop : ∀ stB st₂ bh r T?, Pw stB → Mode stB → DecTab K.D st₂ → Runs (Ochr.eval n true w none) stB bh (r, T?) st₂ →
       ∃ fr b, st₂.env[st₂.env.size - 1]? = some fr ∧ fr.binds.back? = some b ∧ (b.val = .bot ∨ b.val.Num)) :
-    CoreSim K ρ φ (n + 1) (.letIn x u w) (fun _ => True) (· = true) := by
-  intro st st' typed hint v T? s π _ hty hm htn hp hr hS hv hab hnh hfl _ hD bh h
+    CoreSim K ρ φ (n + 1) (.letIn x u w) Plet (· = true) := by
+  intro st st' typed hint v T? s π hPst hty hm htn hp hr hS hv hab hnh hfl _ hD bh h
   subst hty
   obtain ⟨du, st₀, st₁, stB, st₂, st₃, v₀, r, T₀, p, bh₁, bh₂, bh₃, hk₀, hm₀, htn₀, hru, hne₁, hdu, hkB, hmB, htnB,
     hrw, hrd, hk₃, hD₁, hD₂, hinvB⟩ := hL n x u w hint st st' bh v T? K.D K.Γ hm hD h
-  obtain ⟨hv₀, rfl⟩ := hnumu st₀ st₁ bh₁ v₀ T₀ hru
+  obtain ⟨hv₀, rfl⟩ := hnumu st₀ st₁ bh₁ v₀ T₀ hm₀ hD₁ hru
   have hvu : u.valsOk (Strict.ValsP K ρ φ) := hv.1
   have hvw : w.valsOk (Strict.ValsP K ρ φ) := hv.2
   -- the step for `u`
-  have hOu := hu st₀ st₁ true none v₀ (some .tNat) s π trivial trivial hm₀ (hp.of_kern hk₀) (hr.of_kern hk₀) hS hvu
+  have hOu := hu st₀ st₁ true none v₀ (some .tNat) s π (hPu st st₀ hk₀ hPst) trivial hm₀ (hp.of_kern hk₀)
+    (hr.of_kern hk₀) hS hvu
     (fun σ hσ => by rw [← hk₀.absTy]; exact hab σ (by simp [Term.anyAtom, hσ])) (by simp [Term.hasHolePrim] at hnh; exact hnh.1)
-    (hflu _) (fun e => by cases e) hD₁ bh₁ hru
+    (by rw [scopeOf_rel hr]; exact hflu st hPst) (fun e => by cases e) hD₁ bh₁ hru
   rw [htn₀] at hOu
   obtain ⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, hau, hlu, hp₁, hr₁⟩ := hOu
   have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := hxu
@@ -233,13 +237,15 @@ theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hIC : InvCore) (hc : Strict.
   have hSB : Strict.SGood K.dm K.Γ φ (s₁.pushBind bB) := by
     rw [← hpb']; exact Strict.sgood_pushBindShaped hS₁ bB rfl hgu hlabu hlouu hs₁ne
   -- the step for `w`, at the extended context
-  have hPB : Pw stB := hPwk _ _ hkB (hPw st₁ v₀ p du hv₀)
+  have hPB : Pw stB := by
+    have := hPw st st₀ st₁ bh₁ v₀ p hPst hk₀ hm₀ hD₁ hru
+    rw [hdu] at this; exact hPwk _ _ hkB this
   have hOw := hw Δ₁ ρ₁ stB st₂ true none r T? (s₁.pushBind bB) π₁ hPB rfl hmB hpB hrB hSB (hwv Δ₁ ρ₁)
-    (fun σ hσ => hwa _ σ hσ) hwn (hflw _) (fun e => by cases e) hD₂ bh₂ hrw
+    (fun σ hσ => hwa _ σ hσ) hwn (by rw [scopeOf_rel hrB]; exact hflw stB hPB) (fun e => by cases e) hD₂ bh₂ hrw
   rw [htnB] at hOw
   obtain ⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩ := hOw
   -- the drop: the binding `let` pushed is now `⊥` or a number, with no loan, borrow or site
-  obtain ⟨fr₂, bx, hfr₂, hbx, hbxv⟩ := hdrop stB st₂ bh₂ r T? hPB hrw
+  obtain ⟨fr₂, bx, hfr₂, hbx, hbxv⟩ := hdrop stB st₂ bh₂ r T? hPB hmB hD₂ hrw
   have hnl : bx.val.loans = [] := by
     rcases hbxv with e | e
     · rw [e]; simp [Value.loans]
