@@ -32,16 +32,29 @@ predicates (`Exists/Proto/PropSorted.lean`). The pieces, in the order a successo
    readings are equal" at the earlier fields (the data layer's argument, `../HANDOFF.md`).
 4. Guardedness of that field type from the checker's nesting rule as D107 states it (the greatest
    fixed point of nestable parameters, `Positivity.lean`): the bridge from the checker to the knot.
-   BELIEVED TRUE (the knot's records enter only through `M(ā)` chains at nestable parameters,
-   read by continuation, `recK_agree`); the hard declarations are instances (`Proto/Hard.lean`).
-5. `Prop`-sorted declarations: the truth predicate as the least predicate closed under the
-   constructors (impredicative), monotone by positivity; `Nonempty car ↔ predicate`
-   (`Proto/PropSorted.ev_mem_iff` for `Ev`). BELIEVED TRUE in general.
-6. The records' parameter clauses (`RecordsFaithful`): `types` by continuation (the canonical
-   record's `paramKey`/`paramContStep` are the parameter's kind and record), `values` (`.small`),
-   `smallOnly` (`Proto/ValueParams.recK_small` generically, given field types that read value
-   parameters only small), `leafOk` (a canonical record stores a data code at the model's carrier
-   as `.data`: `FTy.kind` through `dataView`). BELIEVED TRUE.
+   For DATA-sorted declarations, BELIEVED TRUE (the knot's records enter only through `M(ā)` chains
+   at nestable parameters, read by continuation, `recK_agree`); the hard declarations are instances
+   (`Proto/Hard.lean`). FALSE for a `Prop`-sorted declaration nested at a `Prop` parameter
+   (exists2, 2026-11-21; `PropNestCE.not_guarded`, kernel-checked): `Q : Prop := MkQ(h : And(Q,
+   True))` is accepted, and `And`'s record at `Q`'s proposition keeps that proposition as a leaf,
+   which reads `Q`'s record at every depth. Such declarations go through 5, not the knot.
+5. `Prop`-sorted declarations, ALL of them, truth-first: the truth predicate as the least predicate
+   closed under the constructors (impredicative), then records whose own occurrences are leaves
+   `prop T` (no self-reference, no knot), then `Nonempty car ↔ T` (`Proto/PropSorted.ev_mem_iff`
+   for `Ev`). That `T` is a fixed point needs the one-step operator monotone, which at a nesting
+   like `Q`'s is the monotonicity of each EARLIER declaration's membership in its nestable `Prop`
+   parameters: its own induction over the declarations, not covered by `Ev` (which nests nowhere).
+   BELIEVED TRUE, larger than first thought.
+6. The records' parameter clauses (`RecordsFaithful`). AS FIRST STATED, FALSE for every model at
+   any non-empty `Γ` (`RecordsCE.recordsFaithful_false`, at 1765a998): `types` forced a leaf over a
+   `Prop`-sorted declaration's raw data code at `paramKey 0`, and `leafOk` read `paramKey 0` as a
+   field key. Repaired by the rulings (M-a) (that raw code has no level, so it is in no universe) and
+   (S) (`RecLeafOk` at genuine field keys; `types` at type parameters of a full-length list).
+   Restated, BELIEVED TRUE: `types` by continuation (the canonical record's
+   `paramKey`/`paramContStep` are the parameter's kind and record), `values` (`.small`), `smallOnly`
+   (`Proto/ValueParams.recK_small` generically, given field types that read value parameters only
+   small), `leafOk` (a canonical record stores a data code at the model's carrier as `.data`:
+   `FTy.kind` through `dataView`).
 7. Parameter types (`ParamsFaithful`): `paramTy d j ps` := the run's reading of the parameter type
    at `ps`, by program order; no knot (a parameter type cannot mention its declaration). BELIEVED
    TRUE given 1–2.
@@ -49,11 +62,10 @@ predicates (`Exists/Proto/PropSorted.lean`). The pieces, in the order a successo
    do not change when Σ grows past it (`DataFaithful` asks every state extending the prefix).
 9. Assembly: `exists_dataModel` from 1–8, by induction on the items (`covers := True`).
 
-What consumers additionally ask, item 3 of the lane (after the main line): `FieldLevelsFaithful`
-(BELIEVED TRUE: a proof field's canonical type is a proposition leaf, any other field's a data or
-non-proposition leaf; needs `fieldProof` to agree with the checker's `fieldTermIsProp`, which
-`Decide.placeDecl`'s `.field` case gives), `ReadCoherent` on the records reachable from a stored
-type (BELIEVED TRUE for canonical records: `found` by program order, `canon` is `leafOk`).
+What consumers additionally ask (checked 2026-11-21, exists2): `ReadCoherent` and `MemReads` are gone
+(the typed read, docs/31 D99); `FieldLevelsFaithful` is stated in `Faithful.lean` and asked by no
+consumer yet (BELIEVED TRUE: a proof field's canonical type is a proposition leaf, any other field's a
+data or non-proposition leaf; needs `fieldProof` to agree with the checker's `fieldTermIsProp`).
 -/
 
 namespace Ochr.Meaning.DataModel.Exists.Decomposition
