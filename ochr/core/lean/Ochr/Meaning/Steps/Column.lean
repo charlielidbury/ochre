@@ -133,12 +133,13 @@ theorem Out.of_kern {π : Nat → Nat} {st₀ st₁ st st' : MState} {s : SState
 not an embedded value and whose reading is decided (not `.any`), through the checker's `eval`
 (`EvalInv`). -/
 theorem eval_of_core (hE : EvalInv) {n : Nat} {t : Term} {P : MState → Prop} {TY : Bool → Prop}
-    (hP : ∀ a b, Kern a b → P a → P b) (ht : ∀ w, t ≠ .val w)
-    (hany : ∀ st, P st → K.D.declOf (DecideScope.topReadings st) t ≠ .any) (hc : CoreSim K ρ φ n t P TY) :
+    (hP : ∀ a b, Kern a b → P a → P b) (ht : ∀ w, t ≠ .val w) (hcall : ∀ f as h, t ≠ .call f as h)
+    (hany : ∀ st, P st → K.D.declOf (DecideScope.topReadings st) t ≠ .any ∧
+      (K.D.declOf (DecideScope.topReadings st) t).isProof = false) (hc : CoreSim K ρ φ n t P TY) :
     EvalSim K ρ φ (n + 2) t P TY := by
   intro st st' typed hint v T? s π hPs hty hm htd hp hr hS hv hab hnh hfl hok hD bh h
   obtain ⟨st₀, st₁, bh', hk₀, hm₀, hct, htn, htd₀, hcd₀, h₀, hk₁, -⟩ :=
-    hE n typed t hint st st' bh v T? K.D hm hD (by rw [← scopeOf_rel hr]; exact hfl) ht (hany st hPs) htd h
+    hE n typed t hint st st' bh v T? K.D hm hD ht hcall (hany st hPs).1 (hany st hPs).2 htd h
   have hc' := hc st₀ st₁ typed hint v T? s π (hP st st₀ hk₀ hPs) hty hm₀ htn htd₀ hcd₀ (hp.of_kern hk₀)
     (hr.of_kern hk₀) hS hv
     (by rw [← hk₀.absTy]; exact hab) hnh hfl (by rw [hct]; exact hok) (DecTab.of_kern hk₁.symm hD) bh' h₀

@@ -240,6 +240,9 @@ def isOther : DeclInfo → Bool
 theorem isOther_eq {d : DeclInfo} (h : isOther d = true) : d = duC := by
   cases d <;> first | rfl | cases h
 
+/-- The column's readings are decided and no proofs (`EvalInv`'s conditions). -/
+theorem duC_ok : duC ≠ .any ∧ duC.isProof = false := ⟨fun e => (by cases e), rfl⟩
+
 def isAny : DeclInfo → Bool
   | .any => true
   | _ => false
@@ -262,6 +265,7 @@ theorem val_declOf_x : isOther (outVal (declRun (.place (.var 0))) (scopeState s
   decide +kernel
 theorem ok_declOf_Z : isOk (declRun .zero) (scopeState stC []) 1000 = true := by decide +kernel
 theorem val_declOf_Z : isAny (outVal (declRun .zero) (scopeState stC []) 1000) = false := by decide +kernel
+theorem val_declOf_Z_proof : (outVal (declRun .zero) (scopeState stC []) 1000).isProof = false := by decide +kernel
 theorem ok_flags_x : isOk (flagsRun (.place (.var 0))) (scopeState stC [duC]) 1000 = true := by decide +kernel
 theorem val_flags_x : outVal (flagsRun (.place (.var 0))) (scopeState stC [duC]) 1000 = (false, false) := by
   decide +kernel
@@ -299,10 +303,10 @@ theorem declOf_x : D.declOf [duC] (.place (.var 0)) = duC := by
   rw [hd.declOf 100 [duC] (.place (.var 0)) _ 1000 _ (runs_out (declRun (.place (.var 0))) _ 1000 ok_declOf_x)]
   exact isOther_eq val_declOf_x
 
-/-- `Z`'s reading is decided (`EvalInv`'s condition). -/
-theorem declOf_Z_ne : D.declOf [] .zero ≠ .any := by
+/-- `Z`'s reading is decided and no proof (`EvalInv`'s conditions). -/
+theorem declOf_Z_ok : D.declOf [] .zero ≠ .any ∧ (D.declOf [] .zero).isProof = false := by
   rw [hd.declOf 100 [] .zero _ 1000 _ (runs_out (declRun .zero) _ 1000 ok_declOf_Z)]
-  intro e; have h := val_declOf_Z; rw [e] at h; cases h
+  exact ⟨fun e => (by have h := val_declOf_Z; rw [e] at h; cases h), val_declOf_Z_proof⟩
 
 /-- The reading the checker hands the `let`'s tail (the `let`'s own, at the empty frame) is the
 tail's own reading (at `x`'s): both `other` (EvalInv's tail-reading condition at the tail). -/

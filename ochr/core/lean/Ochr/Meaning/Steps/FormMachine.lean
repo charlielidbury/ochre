@@ -39,15 +39,18 @@ classification agrees with the pre-pass and restores nothing). "Does not erase" 
 aligned table: where it classifies the term as neither a statement nor a proof at the top frame's
 readings, so does the checker's pre-pass, at the term's own reading or at the one its context hands
 it (`tailDecl`). The table is the one aligned at the end of the run (`DecTab.back` carries it to
-the start). The term's reading is decided (not `.any`): where it is `.any` (a hole, an unknown
-constant, a binding read `.any`) the pre-pass returns no classification and the after-the-fact one
-decides; if that erases the term, `evalAt` restores Ω and the kernel after is not `evalCore`'s
-(the machine lane's review, 2026-11-21; every column term reads `.other` or `.unit`). -/
+the start). The pre-pass is pinned by the term's READING, handed down or computed (machine2's
+correction, 2026-11-21): where the reading is handed down (`tailDecl`) `evalAt` runs no `declOf` on
+the term, so the table's `flags` and `declOf` are tied by no run and `D.flags … = (false, false)`
+pins nothing. So: the reading is decided (not `.any`: else the after-the-fact classification decides,
+and an erasure restores Ω), it is not a proof, and the term is not a call (for a call `preFlags`
+also erases at a sort reading). Every column term reads `.other` or `.unit`. This is the machine
+lane's `Machine.EvalInvR`, PROVED (`Machine.evalInvR`). -/
 def EvalInv : Prop :=
   ∀ (n : Nat) (typed : Bool) (t : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value)
     (T? : Option Value) (D : Decisions),
-    Mode st → DecTab D st' → D.flags (DecideScope.topReadings st) t = (false, false) → (∀ w, t ≠ .val w) →
-    D.declOf (DecideScope.topReadings st) t ≠ .any →
+    Mode st → DecTab D st' → (∀ w, t ≠ .val w) → (∀ f as h, t ≠ .call f as h) →
+    D.declOf (DecideScope.topReadings st) t ≠ .any → (D.declOf (DecideScope.topReadings st) t).isProof = false →
     (st.tailDecl = none ∨ st.tailDecl = some (D.declOf (DecideScope.topReadings st) t)) →
     Runs (Ochr.eval (n + 2) typed t hint) st bh (v, T?) st' →
     ∃ (st₀ st₁ : MState) (bh' : Nat), Kern st st₀ ∧ Mode st₀ ∧ st₀.curTail = st.tailNext ∧ st₀.tailNext = false ∧
