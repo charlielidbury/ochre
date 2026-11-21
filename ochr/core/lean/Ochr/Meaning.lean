@@ -178,6 +178,7 @@ import Ochr.Meaning.Steps.RecGuards
 import Ochr.Meaning.Steps.ColumnRRun
 import Ochr.Meaning.Steps.ColumnRSplit
 import Ochr.Meaning.Steps.ColumnR
+import Ochr.Meaning.Steps.CallJ2Fn
 import Ochr.Meaning.Steps.FrameFrag
 import Ochr.Meaning.Steps.GlobalsLocal
 import Ochr.Meaning.Regress.EvalMemRuns
