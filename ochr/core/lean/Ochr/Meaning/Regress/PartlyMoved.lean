@@ -1,5 +1,6 @@
 import Ochr.Meaning.WF
 import Ochr.Meaning.DataModel.Old
+import Ochr.Meaning.DataModel.ReadMember
 
 /-!
 # A partly moved constructor value was a member of no type (built)
@@ -40,12 +41,12 @@ open Ochr Ochr.Meaning
 /-- `moved` is not whole: a constructor value with a moved field is such a value. -/
 theorem moved_not_whole : ¬ Sem.moved.whole := by simp [Sem.whole]
 
-/-- **The positive form.** A whole member of a data type with some of its fields moved out is a
-partly moved member of the type. -/
+/-- **The positive form.** A whole member of a data type with some of its fields moved out is an
+open member of the type (`omem_of_below`). -/
 theorem pmem_partly (dm : DataModel) (Γ : List IndDecl) (d : IndDecl) (r : Rec) (c : Nat) (fs gs : List Sem)
     (hs : (d.sort == 0) = false) (hm : dm.Mem d r (.dat d.name r c gs)) (hfs : DataModel.MovedOfList Γ fs gs) :
-    DataModel.pmem dm.read Γ (.dat d.name r c fs) (dm.tyR d r) :=
-  .inr ⟨_, DataLib.mem_whole dm.sig d r _ hm, .dat hfs, .inl ((DataModel.mem_tyR dm d r hs _).2 hm)⟩
+    DataModel.pmem dm Γ (.dat d.name r c fs) (dm.tyR d r) :=
+  DataModel.omem_of_below (.dat hfs) (DataLib.mem_whole dm.sig d r _ hm) ((DataModel.mem_tyR dm d r hs _).2 hm)
 
 /-- **`pmem` as first stated now holds**: `Cons(h, ⊥)`, left by `match xs { Cons(h, t) => t }`, is
 below the whole member `Cons(h, t)` it came from. -/

@@ -96,7 +96,7 @@ theorem good_SRb (K : RunCtx) (ρ : Assignment) : Good K.dm K.M K.Γ ρ SRb := b
     rcases hp' with rfl | rfl | rfl
     · exact DataModel.pmem_of_mem _ _ (nat_whole _ K.dm h0) h0
     · exact DataModel.pmem_of_mem _ _ (nat_whole _ K.dm h1) h1
-    · exact DataModel.pmem_of_mem K.dm.read K.Γ (by simp [Env.mean, SRb, bs, Value.mean, Sem.whole]) ⟨0, rfl⟩
+    · exact DataModel.pmem_of_mem K.dm K.Γ (by simp [Env.mean, SRb, bs, Value.mean, Sem.whole]) ⟨0, rfl⟩
   · rw [hA]; intro p hp; simp at hp
     rcases hp with rfl | rfl | rfl
     · show ¬ (Value.loan 0).hasBorrow = true; decide

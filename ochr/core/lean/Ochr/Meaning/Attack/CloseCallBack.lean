@@ -36,6 +36,9 @@ theorem fill_means_back (dm : DataModel) (C : CodeMeaning) (n : Nat) (F : GCar) 
   dsimp only
   simp only [List.nil_append, List.cons_append, List.foldl_cons, List.foldl_nil, Nat.zero_max,
     Nat.reduceAdd, Bool.false_eq_true, reduceIte, mem_nat, if_true]
+  erw [if_pos (lentOk_root (K₀ dm C) φ (pos := .bind 0 0) rfl)]
+  erw [invalidate_noInv (K₀ dm C) φ (fun _ _ => rfl)]
+  dsimp only
   -- the strict call: the borrow of `c1` is live and holds `Nat`, `σ1`'s parameter's content type
   erw [if_pos (borrowArgs_S₂ dm.read F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n) rfl)]
   erw [callOf_S₂ _ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n)]
@@ -53,6 +56,9 @@ theorem fill_means_back (dm : DataModel) (C : CodeMeaning) (n : Nat) (F : GCar) 
     rw [if_pos (by exact mem_nat_of_as hφ)]
     simp only [contentOf_deref_r, assignAt, resolve_deref_r, access_S₄, List.isEmpty_cons, Bool.false_and,
       Bool.false_eq_true, reduceIte, setContent_deref_r]
+    erw [if_pos (lentOk_deref_S₅ (K₀ dm C) φ F n _ 0 (.el0 Nat n) (φ 1) rfl (mem_nat_of_as hφ))]
+    erw [invalidate_noInv (K₀ dm C) φ (fun _ _ => rfl)]
+    dsimp only
     simp only [TyS.plain, discardEnd, SM.modify, bind, Option.bind]
     have hc := readPlace_c1 (K₀ dm C) φ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n) (φ 1) rfl
     simp only [K₀, D₀, TyS.plain] at hc

@@ -38,6 +38,17 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 (D19: every clause that can change the state runs under `Decisions.flags`). -/
 def NoStmt (K : RunCtx) : Prop := ∀ sc t, K.D.flags sc t = (false, false)
 
+/-- The decisions invalidate no place at a write or a borrow (D112; the default), so `invalidate`
+is the identity. -/
+def NoInv (K : RunCtx) : Prop := ∀ sc p, K.D.invalidated sc p = []
+
+theorem invalidate_noInv (hinv : NoInv K) (p : Place) (s : SState) : invalidate K φ p s = s := by
+  simp [invalidate, hinv _ _]
+
+/-- A place that resolves to a root satisfies D112's `lentOk`. -/
+theorem lentOk_root {p : Place} {s : SState} {pos : Pos} (h : resolve s p = some (pos, [])) : lentOk K φ p s := by
+  simp [lentOk, h]
+
 theorem stmtIf_noStmt (hfl : NoStmt K) (t : Term) (x : SM Res) (s : SState) :
     SM.erasedIf (K.D.flags (scopeOf s) t) x s = x s := by
   rw [hfl]; rfl
@@ -65,12 +76,17 @@ theorem run_place (hfl : NoStmt K) (p : Place) (hint : TyS) (s : SState) :
   rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem run_borrow (hfl : NoStmt K) (p : Place) (hint : TyS) (s : SState) :
-    run K ρ φ hint (.borrow p) s = SM.strictS K.dm.read (borrowPlace K φ p) s := by
+    run K ρ φ hint (.borrow p) s = (match SM.strictS K.dm.read (borrowPlace K φ p) s with
+      | some (r, s₁) =>
+        let s₂ := invalidate K φ p s₁
+        if lentOk K φ p s₂ then some (r, s₂) else none
+      | none => none) := by
   rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem readPlace_of (p : Place) (b : Bool) (s : SState) (v : Sem) (T : TyS) (pos : Pos) (st : List Step)
     (s' : SState) (h : contentOf K φ p s = some ((v, T, pos, st), s')) :
     readPlace K φ p b s = ((if ¬ v.whole then none else
+      if ¬ ReadGood K.dm.read T.m v then none else
       if b then some ((v, { T with label := none }), s') else do
         let lab := if st.isEmpty then s'.shape pos else none
         let (⟨⟩, s) ← setContent K φ pos st .moved s'
@@ -116,18 +132,11 @@ theorem run_assign (hfl : NoStmt K) (p : Place) (u : Term) (hint : TyS) (s : SSt
         | none => .plain .err) u s
       -- STRICT: the value written is a member of the place's type, its label holds that type
       if v ∈ₛ[K.dm.read] (placeTy K φ p s).m ∧ labTyOk s R.label (placeTy K φ p s).m then
-      match resolve s p with
+      match assignAt K φ p v R.label s with
+      | some (r, s₁) =>
+        let s₂ := invalidate K φ p s₁
+        if lentOk K φ p s₂ then some (r, s₂) else none
       | none => none
-      | some (pos, steps) =>
-        let s := if steps.isEmpty && (s.shape pos).isSome then s else s.access pos (dataHit steps)
-        let s := if steps.isEmpty then (match s.shape pos with | some l => s.endLabel l | none => s) else s
-        match setContent K φ pos steps v s with
-        | none => none
-        | some (⟨⟩, s) =>
-          let s := match R.label, steps with
-            | some l, [] => let s := s.takeLabel l; { s with shape := fun q => if q = pos then some l else s.shape q }
-            | _, _ => s
-          some ((.el0 Unit (), .plain TyM.unit), s)
       else none) := by
   rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
@@ -170,7 +179,8 @@ noncomputable def b3 (n : Nat) : SState :=
   (b2 K n).setAt (.bind 0 1) fun φ' =>
     (Sem.updAt K.dm K.Γ ((b2 K n).tyAt (.bind 0 1)) (fun _ => .el0 Nat 0) [] ((b2 K n).valAt (.bind 0 1) φ')).getD .err
 
-theorem setContent_b2 (n : Nat) : setContent K φ (.bind 0 1) [] (.el0 Nat 0) (b2 K n) = some (⟨⟩, b3 K n) := rfl
+theorem setContent_b2 (n : Nat) : setContent K φ (.bind 0 1) [] (.el0 Nat 0) (b2 K n) = some (⟨⟩, b3 K n) := by
+  rw [setContent_root K φ _ _ _ (Or.inl rfl)]; rfl
 
 /-- After the assignment: `x` holds `y`'s borrow. -/
 noncomputable def b5 (n : Nat) : SState :=
@@ -183,29 +193,6 @@ theorem content_b2_x (n : Nat) : contentOf K φ (.var 0) (b2 K n) = some ((.el0 
   have ha : ∀ hit, (b2 K n).access (.bind 0 1) hit = b2 K n := fun hit =>
     SState.access_of_unreached _ _ _ fun y _ => by simp [SState.reached, b2]
   simp only [contentOf, hr, ha]
-  rfl
-
-theorem assign_b1 (hfl : NoStmt K) (n : Nat) (hint : TyS) :
-    run K ρ φ hint (.assign (.var 0) (.borrow (.var 1))) (b1 K n) = some ((.el0 Unit (), .plain TyM.unit), b5 K n) := by
-  rw [run_assign K ρ φ hfl, content_b1_x]
-  show (run K ρ φ (.plain TyM.nat) (.borrow (.var 1)) (b1 K n) >>= _) = _
-  rw [run_borrow K ρ φ hfl]
-  simp only [SM.strictS]
-  rw [borrow_b1]
-  dsimp only
-  rw [if_pos ⟨(0 : Nat), rfl⟩]
-  dsimp only [Bind.bind, Option.bind]
-  -- the strict write: `Z` is a `Nat`, and the borrow's label holds `Nat`
-  have hpT : placeTy K φ (.var 0) (b2 K n) = .plain TyM.nat := by
-    unfold placeTy; rw [content_b2_x]; rfl
-  rw [hpT, if_pos ⟨⟨(0 : Nat), rfl⟩, fun l hl => by cases hl; simp [b2, TyS.plain]⟩]
-  have hr : resolve (b2 K n) (.var 0) = some (.bind 0 1, []) := rfl
-  have ha : ∀ hit, (b2 K n).access (.bind 0 1) hit = b2 K n := fun hit =>
-    SState.access_of_unreached _ _ _ fun y _ => by simp [SState.reached, b2]
-  rw [hr]
-  dsimp only
-  rw [show (b2 K n).shape (.bind 0 1) = none from rfl]
-  simp only [Option.isSome_none, Bool.and_false, Bool.false_eq_true, if_false, ha]
   rfl
 
 theorem positions_b3 (n : Nat) : (b3 K n).positions = [.bind 0 0, .bind 0 1, .temp 0 0] := by
@@ -227,6 +214,43 @@ theorem take_b3 (n : Nat) : (b3 K n).takeLabel n =
     { ((b3 K n).setAt (.temp 0 0) fun _ => .moved) with
       shape := fun p => if p = .temp 0 0 then none else (b3 K n).shape p } := by
   unfold SState.takeLabel; rw [holder_b3]
+
+theorem resolve_b5 (n : Nat) : resolve (b5 K n) (.var 0) = some (.bind 0 1, []) := by
+  unfold b5; simp only [take_b3]; rfl
+
+theorem assign_b1 (hfl : NoStmt K) (hinv : NoInv K) (n : Nat) (hint : TyS) :
+    run K ρ φ hint (.assign (.var 0) (.borrow (.var 1))) (b1 K n) = some ((.el0 Unit (), .plain TyM.unit), b5 K n) := by
+  rw [run_assign K ρ φ hfl, content_b1_x]
+  show (run K ρ φ (.plain TyM.nat) (.borrow (.var 1)) (b1 K n) >>= _) = _
+  rw [run_borrow K ρ φ hfl]
+  simp only [SM.strictS]
+  rw [borrow_b1]
+  dsimp only
+  rw [if_pos ⟨(0 : Nat), rfl⟩]
+  have hr1 : resolve (b2 K n) (.var 1) = some (.bind 0 0, []) := rfl
+  have hl1 := lentOk_root K φ hr1
+  simp only [invalidate_noInv K φ hinv, hl1, if_true]
+  dsimp only [Bind.bind, Option.bind]
+  -- the strict write: `Z` is a `Nat`, and the borrow's label holds `Nat`
+  have hpT : placeTy K φ (.var 0) (b2 K n) = .plain TyM.nat := by
+    unfold placeTy; rw [content_b2_x]; rfl
+  rw [hpT, if_pos ⟨⟨(0 : Nat), rfl⟩, fun l hl => by cases hl; simp [b2, TyS.plain]⟩]
+  have hr : resolve (b2 K n) (.var 0) = some (.bind 0 1, []) := rfl
+  have ha : ∀ hit, (b2 K n).access (.bind 0 1) hit = b2 K n := fun hit =>
+    SState.access_of_unreached _ _ _ fun y _ => by simp [SState.reached, b2]
+  have hr5 := resolve_b5 K n
+  unfold assignAt
+  rw [hr]
+  dsimp only
+  rw [show (b2 K n).shape (.bind 0 1) = none from rfl]
+  simp only [Option.isSome_none, Bool.and_false, Bool.false_eq_true, if_false, ha]
+  rw [setContent_root K φ _ _ _ (Or.inl rfl)]
+  simp only [List.isEmpty_nil, if_true]
+  have hl5 := lentOk_root K φ hr5
+  have hs : (b2 K n).shape (.bind 0 1) = none := rfl
+  simp only [hs]
+  show (if lentOk K φ (.var 0) (b5 K n) then some ((Sem.el0 Unit (), TyS.plain TyM.unit), b5 K n) else none) = _
+  rw [if_pos hl5]
 
 theorem env_b6 (n : Nat) : (b6 K n).env = [{ binds := [yB' K n], temps := [fun _ => .moved] }] := by
   unfold b6 b5
@@ -311,12 +335,15 @@ theorem b7_shape (n : Nat) : (b7 K n).shape = fun _ => none := by
     | (show (if p = .bind 0 1 then none else (b5 K n).shape p) = none
        rw [shape_b5]; split <;> simp_all)
 
-theorem content_b7 (n : Nat) : ∃ T, contentOf K φ (.var 0) (b7 K n) = some ((.el0 Nat 0, T, .bind 0 0, []), b7 K n) := by
+theorem tyAt_b7 (n : Nat) : (b7 K n).tyAt (.bind 0 0) = .plain TyM.nat := by
+  unfold b7 b5; simp only [take_b3]; rfl
+
+theorem content_b7 (n : Nat) : contentOf K φ (.var 0) (b7 K n) = some ((.el0 Nat 0, .plain TyM.nat, .bind 0 0, []), b7 K n) := by
   have hr : resolve (b7 K n) (.var 0) = some (.bind 0 0, []) := by
     unfold b7 b5; simp only [take_b3]; rfl
   simp only [contentOf, hr, access_noshape _ _ (b7_shape K n) _]
-  rw [b7_val_y]
-  exact ⟨_, rfl⟩
+  rw [b7_val_y, tyAt_b7]
+  rfl
 
 theorem drop_b5 (n : Nat) :
     (match (match (b5 K n).env.getLast? with
@@ -334,7 +361,7 @@ theorem drop_b5 (n : Nat) :
 
 /-- With the proposed drop, `let y = Z; (let x = Z; x := &y); y` reads `Z` at every future: the
 drop ends `x`'s borrow, so `y` gets `x`'s content back (CE5, flipped). -/
-theorem tA_reads_zero (hfl : NoStmt K) (n : Nat) (hint : TyS) :
+theorem tA_reads_zero (hfl : NoStmt K) (hinv : NoInv K) (n : Nat) (hint : TyS) :
     ∃ T s', run K ρ φ hint tA (emptyState n) = some ((.el0 Nat 0, T), s') := by
   rw [tA, run_letIn K ρ φ hfl]
   have h0 : run K ρ φ (.plain .err) .zero (emptyState n) = some ((.el0 Nat 0, .plain TyM.nat), emptyState n) := rfl
@@ -346,15 +373,17 @@ theorem tA_reads_zero (hfl : NoStmt K) (n : Nat) (hint : TyS) :
       = some ((.el0 Nat 0, .plain TyM.nat), (emptyState n).pushBind (yB K n)) := rfl
   rw [h1]
   simp only [Option.bind]
-  rw [show pushBindShaped ((emptyState n).pushBind (yB K n)) _ = b1 K n from rfl, assign_b1 K ρ φ hfl]
+  rw [show pushBindShaped ((emptyState n).pushBind (yB K n)) _ = b1 K n from rfl, assign_b1 K ρ φ hfl hinv]
   simp only
   rw [drop_b5, seq_discard_plain, run_place K ρ φ hfl]
-  obtain ⟨T, hc⟩ := content_b7 K φ n
+  have hc := content_b7 K φ n
   rw [readPlace_of K φ _ _ _ _ _ _ _ _ hc]
-  simp only [Sem.whole, not_true_eq_false, ite_false]
+  have hm : ReadGood K.dm.read (TyS.plain TyM.nat).m (Sem.el0 Nat 0) := Or.inl ⟨(0 : Nat), rfl⟩
+  simp only [Sem.whole, not_true_eq_false, ite_false, hm]
   generalize K.D.copy _ = b
   cases b
   · simp only [Bool.false_eq_true, ite_false, List.isEmpty_nil, ite_true, b7_shape]
+    rw [setContent_root K φ _ _ _ (Or.inl rfl)]
     exact ⟨_, _, rfl⟩
   · exact ⟨_, _, rfl⟩
 end

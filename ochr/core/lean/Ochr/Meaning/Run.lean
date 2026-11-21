@@ -418,14 +418,24 @@ noncomputable def tagOf (p : Place) (tag : Sem → TyS → Sem) : SM Sem := fun 
     some (o (s.valAt pos (s.typedFuture φ)), s)
   | none => none
 
+/-- A typed future of a state: the run's own off the live labels; each live label an open member
+of its recorded content type. -/
+def TypedFut (s : SState) (ψ : Future) : Prop :=
+  (∀ l, l ∉ s.liveLabels → ψ l = φ l) ∧ ∀ l ∈ s.liveLabels, K.dm.pmem K.Γ (ψ l) (s.heldTy l)
+
 /-- Set the content of a place to a constant meaning, pointwise in the future (no access: the
-caller has done it). -/
+caller has done it). STRICT (the orchestrator's rule, 2026-11-21: every write at a field path ends
+with a test over every typed future): the path update is defined at EVERY typed future, not only at
+the run's (`Strict/FieldWriteCE`: a move out of a field of a place reading a live label left `err`
+at the futures where that label holds no such field). On a state related to a checker state the
+definedness does not depend on the future (the access before the write has ended every label read
+along the path: the simulation's obligation, `OPEN.md`). -/
 noncomputable def setContent (pos : Pos) (steps : List Step) (v : Sem) : SM PUnit := fun s =>
   let T := s.tyAt pos
   let old := s.valAt pos
-  match Sem.updAt K.dm K.Γ T (fun _ => v) steps (old (s.typedFuture φ)) with
-  | some _ => some (⟨⟩, s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T (fun _ => v) steps (old φ')).getD .err)
-  | none => none
+  if ∀ ψ, TypedFut K φ s ψ → (Sem.updAt K.dm K.Γ T (fun _ => v) steps (old ψ)).isSome then
+    some (⟨⟩, s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T (fun _ => v) steps (old φ')).getD .err)
+  else none
 
 /-- [Assign]'s write, after the right-hand side ran (the `.assign` clause's tail; the step
 statement `assignPlace_step_stmt` is stated against it): [Access] of the part the place OWNS
@@ -448,11 +458,19 @@ noncomputable def assignAt (p : Place) (v : Sem) (lab : Option Nat) : SM Res := 
         | _, _ => s
       some ((.el0 Unit (), .plain TyM.unit), s)
 
+/-- What a read may return: a member of the type the read gives it (a CLOSED value), or `⋆` or a
+type value at `err`. -/
+def ReadGood (R : DataRead) (T : TyM) (v : Sem) : Prop :=
+  v ∈ₛ[R] T ∨ (T = TyM.err ∧ ((∃ X, v = .ty X) ∨ v = .proof))
+
 /-- [Read]: the content; a copy leaves the place, a move leaves `moved` (D80: by the declared
-reading). Reading `⊥`, or a value holding it, is an error. -/
+reading). Reading `⊥`, or a value holding it, is an error. STRICT (the dependent-values unit; the
+checker's [Repack] at a read whole): the value read is a member of the type the read gives it
+(`ReadGood`): an open value (a tree field at a record its index no longer gives) is not read. -/
 noncomputable def readPlace (p : Place) (copy : Bool) : SM Res := fun s => do
   let ((v, T, pos, steps), s) ← contentOf K φ p s
   if ¬ v.whole then none else
+  if ¬ ReadGood K.dm.read T.m v then none else
   -- PROPOSAL (m2-proofs): a copy carries no holdership: the place's stored type may name a label
   -- it held when bound (or no longer holds); only a move carries the label it holds now
   if copy then some ((v, { T with label := none }), s) else do
@@ -465,6 +483,46 @@ noncomputable def readPlace (p : Place) (copy : Bool) : SM Res := fun s => do
       | some l => (s.takeLabel l).pushTempShaped (fun _ => v) l
       | none => s
     some ((v, { T with label := lab }), s)
+
+/-- A position holds an open member of its type at every typed future. -/
+def PosOk (s : SState) (pos : Pos) : Prop :=
+  ∀ ψ, TypedFut K φ s ψ → K.dm.pmem K.Γ (s.valAt pos ψ) (s.tyAt pos).m
+
+/-- Every position holds what the state invariant asks at every typed future: a binding an open
+member of its stored type (or no data at `err`), a borrow's holder an open member of its label's
+content type. -/
+def StateOk (s : SState) : Prop :=
+  ∀ ψ, TypedFut K φ s ψ →
+    (∀ f i, Pos.bind f i ∈ s.positions →
+      K.dm.pmem K.Γ (s.valAt (.bind f i) ψ) (s.tyAt (.bind f i)).m ∨
+        ((s.tyAt (.bind f i)).m = TyM.err ∧ ((∃ X, s.valAt (.bind f i) ψ = .ty X) ∨ s.valAt (.bind f i) ψ = .proof))) ∧
+    (∀ q l, s.shape q = some l → K.dm.pmem K.Γ (s.valAt q ψ) (s.heldTy l))
+
+/-- STRICT below a root (the dependent-values unit; the checker's tests where lent parts are
+unknowns): after a write or a borrow at a field path, and D112's invalidation, every position holds
+an open member of its type at every typed future (a write of an index, or a lent index, could leave
+a later field outside the type the read gives it; the invalidation's ends pass contents on). A
+write or a borrow at a root or through `*` (`[]`, `[*]`) is whole, tested by the clause itself (the
+orchestrator's rule, 2026-11-21, tests the FIELD paths; testing `[*]` too rejected a write through a
+reference in a call frame whose other positions are not open members, `Regress/CallInPlace`). -/
+def lentOk (p : Place) (s : SState) : Prop :=
+  match resolve s p with
+  | some (_, steps) => steps = [] ∨ steps = [.deref] ∨ StateOk K φ s
+  | none => True
+
+/-- D112 [Open]: a write or a borrow of `p` invalidates the places `Decisions.invalidated` gives:
+each accessed ([Access], its borrows end) and set to `⊥` where it exists. -/
+noncomputable def invalidateOne (s : SState) (q : Place) : SState :=
+  match resolve s q with
+  | some (pos, steps) =>
+    let s' := s.access pos (dataHit steps)
+    match setContent K φ pos steps .moved s' with
+    | some (_, s'') => s''
+    | none => s'
+  | none => s
+
+noncomputable def invalidate (p : Place) (s : SState) : SState :=
+  (K.D.invalidated (scopeOf s) p).foldl (invalidateOne K φ) s
 
 /-- A place's type: its content's type, read on a discarded copy; `err` where the place does not
 resolve. Label-free (`placeTy_label`). The strict assignment tests the value written against it. -/
@@ -597,9 +655,11 @@ prefix already), and relating it needed the reading to be unchanged by an access
 
 No test of the meaning at the place (the slice, 2026-11-20, the orchestrator's decision): a place
 the shared copy decision does not call a copy is accessed and written `moved` whatever the model
-reads there, and nothing is done exactly where the write cannot be made (`Sem.updAt` fails at the
-typed future: the path passes by a field step through a part with no fields, a proof or a moved
-part, which is where the checker's `movedPlace` re-roots to a `⊥` or `⋆` prefix and does nothing).
+reads there, and nothing is done exactly where the write cannot be made at EVERY typed future
+(the orchestrator's write rule, 2026-11-21; `Sem.updAt` fails: the path passes by a field step
+through a part with no fields, a proof or a moved part, which is where the checker's `movedPlace`
+re-roots to a `⊥` or `⋆` prefix and does nothing; on related states the definedness does not depend
+on the future, the simulation's obligation in `OPEN.md`).
 It used to do nothing where the place read `⋆`, mirroring the checker's "a proof: nothing" test on
 its own stored value; the two tests agree only if the checker holds `⋆` exactly where the model
 reads `⋆`, which is the typing of the whole state (sort soundness, the typing of reads, open values,
@@ -612,10 +672,11 @@ noncomputable def dropAt (q : Place) (pos : Pos) (steps : List Step) (s : SState
   | _, _ =>
     let s' := s.access pos (dataHit steps)
     if K.D.copy (K.D.placeDecl (scopeOf s) q) then s else
-    match Sem.updAt K.dm K.Γ (s'.tyAt pos) (fun _ => .moved) steps (s'.valAt pos (s'.typedFuture φ)) with
-    | none => s
-    | some _ =>
+    -- the orchestrator's rule (2026-11-21): the write is made only where it is defined at EVERY typed
+    -- future (on a state related to a checker state, exactly where it is defined at the run's)
+    if ∀ ψ, TypedFut K φ s' ψ → (Sem.updAt K.dm K.Γ (s'.tyAt pos) (fun _ => .moved) steps (s'.valAt pos ψ)).isSome then
       s'.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s'.tyAt pos) (fun _ => .moved) steps (s'.valAt pos φ')).getD .err
+    else s
 
 /-- D84, the drop at the join, as the checker does it (`Machine.joinDrop`: `movedPlace`, then
 `dropAtJoin`), for every place some arm of the match moves (`Decisions.joinMoves`, static, given
@@ -641,9 +702,12 @@ noncomputable def entryReroot (s : SState) (q : Place) : SState := match resolve
   | none => s
 
 /-- A capture's access at a block's entry (`Machine.entryAccess`), as data. -/
-noncomputable def entryCap (s : SState) (qk : Place × Nat) : SState := match resolve s qk.1 with
-  | some (pos, steps) => s.access pos (dataHit steps)
-  | none => s
+noncomputable def entryCap (s : SState) (qk : Place × Nat) : SState :=
+  let s := match resolve s qk.1 with
+    | some (pos, steps) => s.access pos (dataHit steps)
+    | none => s
+  -- D112: a capture by `&` invalidates as a borrow does
+  if qk.2 == 1 then invalidate K φ qk.1 s else s
 
 /-- D90 [Entry] (static ends, rule 2): a non-tail match on a known constructor, and `J`'s
 transported term, first do what the stuck block they would close off does at its entry
@@ -652,7 +716,7 @@ transported term, first do what the stuck block they would close off does at its
 (`entryAccess`: `accessPath`, and `accessInside` where the place exists; below a moved part nothing
 is lent, so the reference's data access ends the same). `bc` is `Decisions.blockCaps`. -/
 noncomputable def entryAccess (bc : List Place × List (Place × Nat)) (s : SState) : SState :=
-  bc.2.foldl entryCap (bc.1.foldl entryReroot s)
+  bc.2.foldl (entryCap K φ) (bc.1.foldl entryReroot s)
 
 /-- The sites, as fills, of the borrows a block takes by move (`joinEnds`' marks for its
 reserved label, made after the entry and before the arm). -/
@@ -699,7 +763,7 @@ the match's start, with the places then moved (`movedPlaces`), as `blockEntry`'s
 noncomputable def matchEntry (ent : Bool) (mt : Term) (s : SState) : SState × (Option Nat → SState → SState) :=
   if ent then
     let bc := K.D.blockCaps (scopeOf s) (movedPlaces φ s) mt
-    let s₁ := entryAccess bc s
+    let s₁ := entryAccess K φ bc s
     (s₁, fun lab s₂ => if isRefDecl (K.D.declOf (scopeOf s₁) mt) then entryLend bc (entrySnapshot bc s₁) lab s₂ else s₂)
   else (s, fun _ s₂ => s₂)
 
@@ -850,7 +914,13 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
   | .place p => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.place p))
       (readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p))) s
   -- STRICT: the borrowed content is a member of its type (a borrow's record is a member)
-  | .borrow p => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.borrow p)) (SM.strictS K.dm.read (borrowPlace K φ p)) s
+  | .borrow p => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.borrow p)) (fun s =>
+      match SM.strictS K.dm.read (borrowPlace K φ p) s with
+      | some (r, s₁) =>
+        -- D112: the borrow invalidates; STRICT below a root: the lender stays an open member
+        let s₂ := invalidate K φ p s₁
+        if lentOk K φ p s₂ then some (r, s₂) else none
+      | none => none) s
   | .assign p u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.assign p u)) (fun s => do
     -- the right-hand side runs BEFORE the place is accessed (`evalCore`'s `.assign`, then
     -- `assignPlace`; D19, R5: accessing first ended the borrows the right-hand side reads
@@ -863,7 +933,13 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     -- STRICT: the value written is a member of the place's type at the write (read on a
     -- discarded copy, `placeTy`; the hint `T` was read before the right-hand side ran)
     if v ∈ₛ[K.dm.read] (placeTy K φ p s).m ∧ labTyOk s R.label (placeTy K φ p s).m then
-      assignAt K φ p v R.label s else none) s
+      match assignAt K φ p v R.label s with
+      | some (r, s₁) =>
+        -- D112: the write invalidates; STRICT below a root: the position stays an open member
+        let s₂ := invalidate K φ p s₁
+        if lentOk K φ p s₂ then some (r, s₂) else none
+      | none => none
+    else none) s
   | .letIn x u w => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.letIn x u w)) (fun s => do
     let ((v, T), s) ← runT false (.plain TyM.err) u s
     let s := pushBindShaped s { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u }

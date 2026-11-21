@@ -156,7 +156,7 @@ theorem sem_step_proof (dm : DataModel) (Γ : List IndDecl) (T : TyS) (x : Step)
 
 /-- `.0` into a constructor value of constructor `0` is its first field (not a number's predecessor). -/
 theorem sem_step_proj0_dat (dm : DataModel) (Γ : List IndDecl) (T : TyS) (nm : String) (ps : Rec) (fs : List Sem) :
-    Sem.step dm Γ T (.proj 0) (.dat nm ps 0 fs) = Sem.stepField dm T 0 0 (.dat nm ps 0 fs) := by
+    Sem.step dm Γ T (.proj 0) (.dat nm ps 0 fs) = Sem.stepField dm Γ T 0 0 (.dat nm ps 0 fs) := by
   simp only [Sem.step, Sem.asNat_dat]
   split
   · rename_i heq; simp only [Sem.dat.injEq] at heq; exact absurd heq.2.2.1 (by decide)
@@ -168,9 +168,9 @@ FALSE AS STATED since route (c) (model lane, 2026-11-21): a read is typed by the
 (`DataModel.readTy`), so it is defined only where `T` is a data code of the value's declaration and
 the field's read type is defined. Kept with `sorry` ONLY to keep this file building (the minimum
 repair); the step statements must carry that hypothesis (`step_mean`'s `T`). -/
-theorem stepField_dat (dm : DataModel) (T : TyS) (nm : String) (ps : Rec) (fs : List Sem) (c i : Nat)
+theorem stepField_dat (dm : DataModel) (Γ : List IndDecl) (T : TyS) (nm : String) (ps : Rec) (fs : List Sem) (c i : Nat)
     {x : Sem} (h : fs[i]? = some x) :
-    ∃ T', Sem.stepField dm T c i (.dat nm ps c fs) = some (x, T') := by
+    ∃ T', Sem.stepField dm Γ T c i (.dat nm ps c fs) = some (x, T') := by
   sorry
 
 /-- A constructor's fields' meanings, one by one, each at some hint. -/
@@ -226,7 +226,7 @@ theorem step_mean_ind {n : String} {d : IndDecl} (c : Nat) (hh : Hint) (ps fs' :
   split
   · rename_i h0; simp only [beq_iff_eq] at h0; exact absurd h0 hs0
   · obtain ⟨H', hH'⟩ := meanFields_get dm C Γ ρ f d (dm.recOf d (Value.meanParams dm C Γ ρ f d 0 [] ps)) c fs' 0 [] i v hv
-    obtain ⟨T', hT'⟩ := stepField_dat dm T d.name (dm.recOf d (Value.meanParams dm C Γ ρ f d 0 [] ps))
+    obtain ⟨T', hT'⟩ := stepField_dat dm Γ T d.name (dm.recOf d (Value.meanParams dm C Γ ρ f d 0 [] ps))
       (Value.meanFields dm C Γ ρ f d (dm.recOf d (Value.meanParams dm C Γ ρ f d 0 [] ps)) c 0 [] fs') c i hH'
     show ∃ s' T', Sem.step dm Γ T x (.dat d.name _ c _) = some (s', T') ∧ _
     refine ⟨_, T', ?_, .inr ⟨H', rfl⟩⟩

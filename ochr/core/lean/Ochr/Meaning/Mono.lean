@@ -1307,27 +1307,29 @@ theorem readPlace_shapeBelow (K : RunCtx) (φ : Future) (p : Place) (copy : Bool
     split at h
     · cases h
     · split at h
-      · cases h; exact ⟨h₁, hsub.2⟩
-      · cases hs2 : setContent K φ pos steps .moved s₁ with
-        | none => simp [hs2] at h
-        | some z =>
-          obtain ⟨u, s₂⟩ := z
-          have hsub2 := setContent_shapeSub K φ pos steps .moved s₁ hs2
-          have h₂ := SState.ShapeBelow.of_sub hsub2 h₁
-          simp only [hs2, Option.bind_some, Option.some.injEq, Prod.mk.injEq] at h
-          obtain ⟨_, rfl⟩ := h
-          split
-          · next l hl =>
-            have hpos : s₁.shape pos = some l := by
-              split at hl
-              · exact hl
-              · cases hl
-            have h₃ := SState.ShapeBelow.of_sub (SState.shapeSub_takeLabel s₂ l) h₂
-            have hn : (s₂.takeLabel l).nextLoan = s.nextLoan :=
-              (SState.shapeSub_takeLabel s₂ l).2.trans (hsub2.2.trans hsub.2)
-            refine ⟨SState.shapeBelow_pushTempShaped h₃ _ (by rw [hn, ← hsub.2]; exact h₁ pos l hpos), ?_⟩
-            rw [SState.nextLoan_pushTempShaped, hn]
-          · exact ⟨h₂, hsub2.2.trans hsub.2⟩
+      · cases h
+      · split at h
+        · cases h; exact ⟨h₁, hsub.2⟩
+        · cases hs2 : setContent K φ pos steps .moved s₁ with
+          | none => simp [hs2] at h
+          | some z =>
+            obtain ⟨u, s₂⟩ := z
+            have hsub2 := setContent_shapeSub K φ pos steps .moved s₁ hs2
+            have h₂ := SState.ShapeBelow.of_sub hsub2 h₁
+            simp only [hs2, Option.bind_some, Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨_, rfl⟩ := h
+            split
+            · next l hl =>
+              have hpos : s₁.shape pos = some l := by
+                split at hl
+                · exact hl
+                · cases hl
+              have h₃ := SState.ShapeBelow.of_sub (SState.shapeSub_takeLabel s₂ l) h₂
+              have hn : (s₂.takeLabel l).nextLoan = s.nextLoan :=
+                (SState.shapeSub_takeLabel s₂ l).2.trans (hsub2.2.trans hsub.2)
+              refine ⟨SState.shapeBelow_pushTempShaped h₃ _ (by rw [hn, ← hsub.2]; exact h₁ pos l hpos), ?_⟩
+              rw [SState.nextLoan_pushTempShaped, hn]
+            · exact ⟨h₂, hsub2.2.trans hsub.2⟩
 
 /-! ### Its semantic companion: no meaning reads a label not yet handed out
 

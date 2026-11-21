@@ -100,7 +100,7 @@ type the read gives it in a value of `d'` (none: nothing asked, a junk leaf). -/
 inductive HWTFields : IndDecl → IndDecl → Rec → Nat → Nat → List Sem → List Value → Prop
   | nil {d d' : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} : HWTFields d d' r c i e []
   | cons {d d' : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} {v : Value} {vs : List Value} :
-      (∀ U, K.dm.readTy d' r c i e (meanV K ρ φ (.plain (K.dm.fieldTyR d r c i e)) v) = some U →
+      (∀ U, K.dm.readTy K.Γ d' r c i e (meanV K ρ φ (.plain (K.dm.fieldTyR d r c i e)) v) = some U →
         HWT (.plain (K.dm.fieldTyR d r c i e)) U v) →
       HWTFields d d' r c (i + 1) (e ++ [meanV K ρ φ (.plain (K.dm.fieldTyR d r c i e)) v]) vs →
       HWTFields d d' r c i e (v :: vs)
@@ -255,12 +255,12 @@ theorem POk.cons {d : IndDecl} {i : Nat} {e : List Sem} {m : Sem} {ms : List Sem
 
 /-- Fields `fs`, from index `i` after the earlier `e`, are members of the types the read gives them
 in a value of `d'` at `r`. -/
-def FOk (dm : DataModel) (d' : IndDecl) (r : Rec) (c i : Nat) (e fs : List Sem) : Prop :=
-  ∀ j f, fs[j]? = some f → ∀ U, dm.readTy d' r c (i + j) (e ++ fs.take j) f = some U → f ∈ₛ[dm.read] U
+def FOk (dm : DataModel) (Γ : List IndDecl) (d' : IndDecl) (r : Rec) (c i : Nat) (e fs : List Sem) : Prop :=
+  ∀ j f, fs[j]? = some f → ∀ U, dm.readTy Γ d' r c (i + j) (e ++ fs.take j) f = some U → f ∈ₛ[dm.read] U
 
-theorem FOk.cons {d' : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} {m : Sem} {ms : List Sem}
-    (h : FOk dm d' r c i e (m :: ms)) :
-    (∀ U, dm.readTy d' r c i e m = some U → m ∈ₛ[dm.read] U) ∧ FOk dm d' r c (i + 1) (e ++ [m]) ms := by
+theorem FOk.cons {Γ : List IndDecl} {d' : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} {m : Sem} {ms : List Sem}
+    (h : FOk dm Γ d' r c i e (m :: ms)) :
+    (∀ U, dm.readTy Γ d' r c i e m = some U → m ∈ₛ[dm.read] U) ∧ FOk dm Γ d' r c (i + 1) (e ++ [m]) ms := by
   refine ⟨fun U hU => h 0 m rfl U (by simpa using hU), fun j v hv U hU => ?_⟩
   refine h (j + 1) v (by simpa using hv) U ?_
   rw [show i + (j + 1) = i + 1 + j by omega]
@@ -268,8 +268,8 @@ theorem FOk.cons {d' : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} {m : Sem} {
 
 /-- **A member's fields fit the types the read gives them** (`DataModel.fits_readTy`), whatever the
 data code: no declaration is found by name. -/
-theorem fOk_of_mem {d' : IndDecl} {r : Rec} {n : String} {c : Nat} {gs : List Sem}
-    (hm : dm.Mem d' r (.dat n r c gs)) : FOk dm d' r c 0 [] gs := by
+theorem fOk_of_mem {Γ : List IndDecl} {d' : IndDecl} {r : Rec} {n : String} {c : Nat} {gs : List Sem}
+    (hm : dm.Mem d' r (.dat n r c gs)) : FOk dm Γ d' r c 0 [] gs := by
   intro j f hf U hU
   obtain ⟨⟨c', hc'⟩, fs, he, hfits⟩ := (DataLib.mem_iff dm.sig d' r _).1 hm
   simp only [Sem.dat.injEq] at he
@@ -417,7 +417,7 @@ theorem hwtParams_of (d : IndDecl) : ∀ (args : List Value) (i : Nat) (e : List
     exact .cons (hwt_of_fit v _ _ cv (.inr (.inl h1))) (hwtParams_of d vs (i + 1) _ cvs h2)
 
 theorem hwtFields_of (d d' : IndDecl) (r : Rec) (c : Nat) : ∀ (fs : List Value) (i : Nat) (e : List Sem),
-    NoPropL K fs → FOk K.dm d' r c i e (meanFields K ρ φ d r c i e fs) → HWTFields K ρ φ d d' r c i e fs
+    NoPropL K fs → FOk K.dm K.Γ d' r c i e (meanFields K ρ φ d r c i e fs) → HWTFields K ρ φ d d' r c i e fs
   | [], _, _, _, _ => .nil
   | v :: vs, i, e, hc, hp => by
     obtain ⟨cv, cvs⟩ := hc
@@ -445,8 +445,9 @@ variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 
 /-- **The payoff, composed**: where a successful strict run from a good state returns the meaning of
 a value `v` (read at `h`) with no `Prop` constructor value inside, `v` is hereditarily well typed at
-the run's type, unless the result is the error-type escape. (It inherits `fund_all`'s guesses; and
-`FundCtx` is uninhabited while `MemReads` asks its partly moved form, `ReadProto.not_memReads_dep`.) -/
+the run's type, unless the result is the error-type escape. (It inherits `fund_all`'s guesses.
+`FundCtx` no longer asks the read hypothesis `MemReads`, whose partly moved form is false,
+`ReadProto.not_memReads_dep`: reads are strict, `Run.ReadGood`.) -/
 theorem hwt_of_run (hc : FundCtx K) {t : Term} (ht : t.valsOk (ValsP K ρ φ)) {tl : Bool} {hint : TyS}
     {s s' : SState} {r : Res} (hs : SGood K.dm K.Γ φ s) (hr : runT K ρ φ tl hint t s = some (r, s'))
     {v : Value} {h : TyS} (hv : meanV K ρ φ h v = r.1) (hcv : NoProp K v) :

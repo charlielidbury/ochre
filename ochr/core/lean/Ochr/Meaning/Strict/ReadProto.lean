@@ -40,7 +40,7 @@ theorem list_tail_read (Γ : List IndDecl) :
   have hdc : (TyS.plain (dmP.tyM listD psN)).m.dataCode? = some (listD, rN) := rfl
   have hsh : dmP.sig.shape listD rN 1 1 [Sem.small (.el0 Nat 3)] =
       .sub listD (DataLib.contRec rN (DataLib.contStep 1 1 [.other])) := rfl
-  have hrt : dmP.readTy listD rN 1 1 [.el0 Nat 3] (semL [4]) = some (dmP.tyM listD psN) := by
+  have hrt : dmP.readTy Γ listD rN 1 1 [.el0 Nat 3] (semL [4]) = some (dmP.tyM listD psN) := by
     simp only [DataModel.readTy, List.map_cons, List.map_nil, hsh]; rfl
   simp only [semL] at hrt
   simp only [Sem.follow, Sem.step, Sem.stepField, hdc, semL, Option.bind]
@@ -50,7 +50,8 @@ end HandModel
 
 /-! ## What neither read gives: a partly moved value with its index moved out
 
-`MemReads` also asks the read lemma of every value BELOW a member (`MovedOf`). A field whose type
+The read clause's old data-layer hypothesis (`MemReads`, deleted with the clause: reads are strict,
+`Run.ReadGood`) also asked the read lemma of every value BELOW a member (`MovedOf`). A field whose type
 reads an earlier INDEX field is read at the key of that field's current content; once the index is
 moved out the key is another's, so the whole field reads at the wrong type. Below: `C(n : Nat, v :
 X(n))` at a record where `v` is a `Nat` leaf at every number `n` and nothing at `⊥`. `C(3, 7)` is a
@@ -97,15 +98,18 @@ theorem moved_index_read (dm : DataModel) (Γ : List IndDecl) :
   have hown : ¬ dm.OwnCarrier Code0.err := by
     rintro ⟨d, r, h, -⟩; cases h
   have hdc : (TyS.plain (dm.tyR dE rE)).m.dataCode? = some (dE, rE) := rfl
-  have hrt : dm.readTy dE rE 0 1 [.moved] (.el0 Nat 7) = some TyM.err := by
+  have hrt : dm.readTy Γ dE rE 0 1 [.moved] (.el0 Nat 7) = some TyM.err := by
     simp only [DataModel.readTy, List.map_cons, List.map_nil, Sem.small, shape_moved, DataModel.shapeReadTy,
       if_neg hown]; rfl
   simp only [Sem.follow, Sem.step, Sem.stepField, gV, hdc, Option.bind]
   simp [show dE.name = "E" from rfl, hrt]
 
-/-- **`MemReads` (its partly moved form) is false even for a declared declaration at a coherent
-record**, in every data model, under the typed read. -/
-theorem not_memReads_dep (dm : DataModel) : ¬ MemReads dm [dE] := by
+/-- **The partly moved read form (the deleted `MemReads`, stated here on its formula) is false even for
+a declared declaration at a coherent record**, in every data model, under the typed read: a whole value
+a read path reaches in a value below a member need not be a member of the type the read gives it. -/
+theorem not_memReads_dep (dm : DataModel) : ¬ ∀ (T : TyS) (w v : Sem), w ∈ₛ[dm.read] T.m →
+    DataModel.MovedOf [dE] v w → ∀ steps x U, Sem.follow dm [dE] T v steps = some (x, U) → x.whole →
+      x ∈ₛ[dm.read] U.m ∨ (U.m = TyM.err ∧ NoData x) := by
   intro h
   rcases h (.plain (dm.tyR dE rE)) _ _ (cE_mem dm) cE_below [.field gV] _ _ (moved_index_read dm [dE])
       (by simp [Sem.whole]) with ⟨a, _⟩ | ⟨-, ⟨T, hT⟩ | hT⟩

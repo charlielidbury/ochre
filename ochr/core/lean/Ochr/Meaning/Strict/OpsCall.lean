@@ -8,9 +8,9 @@ import Ochr.Meaning.MonoHolders
 The consumed borrow arguments' holders read `⊥`; every position reads its old meaning at the future
 with the consumed labels fixed to the callee's final contents, which are members of the parameters'
 content types (`ApplyMem.app_mem_finals`), so of the labels' (`BorrowArgsTyped`): a typed future of
-the state before. At a returned borrow `k` (fresh), a typed future gives `k` a partly moved member;
+the state before. At a returned borrow `k` (fresh), a typed future gives `k` an open member;
 where it decodes, the finals are the backward function's (members); where it does not, `callOfL`
-fixes them to `⊥`, a partly moved member of anything.
+fixes them to `⊥`, an open member of anything.
 
 One hypothesis beyond the stub's (`hlive`): each borrow argument's label is live, or no position
 reads it (`RunPresInd`'s `LoU`, which every run gives its result). A label that is neither (a dead
@@ -154,16 +154,16 @@ end
 /-! ## The future a position reads after the call, typed before it -/
 
 open Classical in
-/-- **Transport**: a future `ψ'` of the state after a call, fixed at the call's finals `F` (each a
-partly moved member of its label's content type), is, on the old positions, a typed future of the
+/-- **Transport**: a future `ψ'` of the state after a call, fixed at the call's finals `F` (each an
+open member of its label's content type), is, on the old positions, a typed future of the
 state before: reset the fixed labels that are not live (no position reads them) and the extra
 labels `E` (not live, unread: the returned borrow's fresh label) to the run's future. -/
 theorem typed_transport {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : SState} (F : List (Nat × Sem))
     (E : List Nat) (ψ' : Future)
-    (hF : ∀ y f, (y, f) ∈ F → PMem dm.read Γ f (s.heldTy y))
+    (hF : ∀ y f, (y, f) ∈ F → PMem dm Γ f (s.heldTy y))
     (hFlive : ∀ y ∈ F.map (·.1), y ∈ s.liveLabels ∨ ∀ p, Indep y (s.valAt p))
     (hE : ∀ y ∈ E, y ∉ s.liveLabels ∧ ∀ p, Indep y (s.valAt p))
-    (hlive : ∀ y ∈ s.liveLabels, y ∉ F.map (·.1) → PMem dm.read Γ (ψ' y) (s.heldTy y))
+    (hlive : ∀ y ∈ s.liveLabels, y ∉ F.map (·.1) → PMem dm Γ (ψ' y) (s.heldTy y))
     (hagree : ∀ y, y ∉ s.liveLabels → y ∉ F.map (·.1) → y ∉ E → ψ' y = φ y) :
     ∃ ψ₀, TypedF dm Γ φ s ψ₀ ∧ ∀ p, s.valAt p (ψ'.updList F) = s.valAt p ψ₀ := by
   let D : List Nat := (F.map (·.1)).filter (fun y => decide (y ∉ s.liveLabels)) ++ E
@@ -190,7 +190,7 @@ theorem typed_transport {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : 
       exact hagree y hy hyF hyE
   · have hyD : y ∉ D := fun hm => (hD y hm).1 hy
     rw [Future.updList_of_not_mem R _ y (by rw [hRk]; exact hyD)]
-    exact updList_prop (fun f => PMem dm.read Γ f (s.heldTy y)) F ψ' y (fun f hf => hF y f hf)
+    exact updList_prop (fun f => PMem dm Γ f (s.heldTy y)) F ψ' y (fun f hf => hF y f hf)
       (fun hn => hlive y hy hn)
   · refine (eq_updList_indep (v := s.valAt p) (ψ'.updList F) R fun e he => ?_).symm
     obtain ⟨y, hy, rfl⟩ := List.mem_map.1 he
@@ -443,29 +443,20 @@ theorem follow_err (dm : DataModel) (Γ : List IndDecl) : ∀ (T : TyS) (steps :
     | field g => simp [Sem.step, Sem.stepField] at h
 
 /-- Where every old binding reads, at `ψ'`, its old meaning at a typed future `ψ₀` of the state
-before, or `⊥`, the bindings and read paths of the state after are good. -/
+before, or `⊥`, the bindings of the state after are good. -/
 theorem sgood_bind_read {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s S : SState} (hs : SGood dm Γ φ s)
     (hpos : ∀ f i, Pos.bind f i ∈ S.positions ↔ Pos.bind f i ∈ s.positions)
     (hty : ∀ f i, S.tyAt (.bind f i) = s.tyAt (.bind f i))
     {ψ' ψ₀ : Future} (hψ₀ : TypedF dm Γ φ s ψ₀)
     (hv : ∀ f i, Pos.bind f i ∈ s.positions →
       S.valAt (.bind f i) ψ' = s.valAt (.bind f i) ψ₀ ∨ S.valAt (.bind f i) ψ' = .moved) :
-    (∀ f i, Pos.bind f i ∈ S.positions → GoodVal dm.read Γ (S.valAt (.bind f i) ψ') (S.tyAt (.bind f i)).m) ∧
-    (∀ f i steps x U, Sem.follow dm Γ (S.tyAt (.bind f i)) (S.valAt (.bind f i) ψ') steps = some (x, U) → x.whole →
-      x ∈ₛ[dm.read] U.m ∨ (U.m = TyM.err ∧ NoData x)) := by
-  refine ⟨fun f i hp => ?_, fun f i steps x U hf hx => ?_⟩
-  · have hp' := (hpos f i).1 hp
-    rw [hty]
-    rcases hv f i hp' with e | e
-    · rw [e]; exact hs.bind ψ₀ hψ₀ f i hp'
-    · rw [e]; exact .inl (.inl rfl)
-  · rw [hty] at hf
-    by_cases hp : Pos.bind f i ∈ S.positions
-    · rcases hv f i ((hpos f i).1 hp) with e | e
-      · rw [e] at hf; exact hs.read ψ₀ hψ₀ f i steps x U hf hx
-      · rw [e] at hf; rw [follow_moved' dm Γ _ _ _ _ hf] at hx; exact absurd hx (by simp [Sem.whole])
-    · rw [SState.valAt_of_not_mem S _ hp] at hf
-      rw [follow_err dm Γ _ _ _ _ hf] at hx; exact absurd hx (by simp [Sem.whole])
+    ∀ f i, Pos.bind f i ∈ S.positions → GoodVal dm Γ (S.valAt (.bind f i) ψ') (S.tyAt (.bind f i)).m := by
+  intro f i hp
+  have hp' := (hpos f i).1 hp
+  rw [hty]
+  rcases hv f i hp' with e | e
+  · rw [e]; exact hs.bind ψ₀ hψ₀ f i hp'
+  · rw [e]; exact .inl (.moved _)
 
 /-! ## The fixes of a call -/
 
@@ -480,7 +471,7 @@ theorem fixes_pmem (hR : Lv.read = dm.read)
       s.heldTy l = (telRefTysL Lv t (args.map (·.1))).getD i TyM.err)
     {fs : List Sem} (hfs : MemList Lv.read fs (telRefTysL Lv t (args.map (·.1)))) :
     ∀ y f, (y, f) ∈ ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).zip fs).filterMap
-      (fun (l?, f) => l?.map (·, f)) → PMem dm.read Γ f (s.heldTy y) := by
+      (fun (l?, f) => l?.map (·, f)) → PMem dm Γ f (s.heldTy y) := by
   intro y f hm
   obtain ⟨i, hi, hf⟩ := fixes_mem hm
   obtain ⟨T, hT, hfT⟩ := MemList.get hfs hf
@@ -488,7 +479,7 @@ theorem fixes_pmem (hR : Lv.read = dm.read)
   rw [List.getD_eq_getElem?_getD, hT, Option.getD_some] at e
   rw [e]
   rw [hR] at hfT
-  exact .inr ⟨f, mem_whole dm.read_wholeFields hfT, .refl f, hfT⟩
+  exact .mem hfT
 
 theorem fixes_keys_live
     (hlive : ∀ l, some l ∈ ((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label) →
@@ -506,11 +497,11 @@ end
 
 /-- **The state after a call returning data**, abstractly: the borrow arguments' holders taken
 (`Ls`), every position read with the taken labels fixed to finals `FF` that cover them and are
-partly moved members of the labels' content types. -/
+open members of the labels' content types. -/
 theorem sgood_mapVals_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : SState} (hs : SGood dm Γ φ s)
     (Ls : List Nat) (FF : List (Nat × Sem))
     (hcov : ∀ l ∈ Ls, l ∈ FF.map (·.1))
-    (hFm : ∀ y f, (y, f) ∈ FF → PMem dm.read Γ f (s.heldTy y))
+    (hFm : ∀ y f, (y, f) ∈ FF → PMem dm Γ f (s.heldTy y))
     (hFl : ∀ y ∈ FF.map (·.1), y ∈ s.liveLabels ∨ ∀ p, Indep y (s.valAt p))
     (hacyc : SState.RInv (fun _ => True) ((Ls.foldl SState.takeLabel s).mapVals fun _ v φ' => v (φ'.updList FF)))
     (hfresh : ((Ls.foldl SState.takeLabel s).mapVals fun _ v φ' => v (φ'.updList FF)).ReadsBelow) :
@@ -545,10 +536,9 @@ theorem sgood_mapVals_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s 
     rcases takeAll_valAt s Ls p with e | e
     · rw [← hs₁, e]; exact .inl (heq p)
     · rw [← hs₁, e]; exact .inr rfl
-  refine ⟨fun ψ' hψ' f i hp => ?_, fun ψ' hψ' p l hl => ?_, fun l hl => ?_, fun f i l hl => ?_, hacyc, hfresh,
-    fun ψ' hψ' f i steps x U hf hx => ?_⟩
+  refine ⟨fun ψ' hψ' f i hp => ?_, fun ψ' hψ' p l hl => ?_, fun l hl => ?_, fun f i l hl => ?_, hacyc, hfresh⟩
   · obtain ⟨ψ₀, hψ₀, hv⟩ := key ψ' hψ'
-    exact (sgood_bind_read hs (fun f i => by rw [hposS]) (fun f i => htyS _) hψ₀ (fun f i hp => hv _ hp)).1 f i hp
+    exact sgood_bind_read hs (fun f i => by rw [hposS]) (fun f i => htyS _) hψ₀ (fun f i hp => hv _ hp) f i hp
   · obtain ⟨ψ₀, hψ₀, hv⟩ := key ψ' hψ'
     rw [hshapeS, ← hs₁] at hl
     have hl' := takeAll_shape s Ls hl
@@ -556,13 +546,10 @@ theorem sgood_mapVals_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s 
     rw [hHT]
     rcases hv p hp with e | e
     · rw [e]; exact hs.holder ψ₀ hψ₀ p l hl'
-    · rw [e]; exact .inl rfl
+    · rw [e]; exact .moved _
   · rw [hHT, hHM]; exact hs.held l (hlive_rev l hl)
   · rw [hshapeS, ← hs₁] at hl
     rw [htyS, hHT]; exact hs.holderTy f i l (takeAll_shape s Ls hl)
-  · obtain ⟨ψ₀, hψ₀, hv⟩ := key ψ' hψ'
-    exact (sgood_bind_read hs (fun f i => by rw [hposS]) (fun f i => htyS _) hψ₀ (fun f i hp => hv _ hp)).2
-      f i steps x U hf hx
 
 /-! ## The state after a call returning a borrow -/
 
@@ -589,14 +576,14 @@ noncomputable def parkState (s₁ : SState) (g : Pos → SVal → SVal) (c : Sem
 /-- **The state after a call returning a borrow**, abstractly (`park_fix_inv`'s shape): the borrow
 arguments' holders taken (`Ls`), the fresh label `k` parked with a member `c` of its content type `Tk`,
 and every old position read at the future fixed at the finals `fx x` (where `k`'s final content
-decodes to `x`) or `ee` (where it does not), each covering the taken labels with partly moved members
+decodes to `x`) or `ee` (where it does not), each covering the taken labels with open members
 of their content types. -/
 theorem sgood_park_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : SState} (hs : SGood dm Γ φ s)
     {X : Type u} (Ls : List Nat) (dec : Sem → Option X) (fx : X → List (Nat × Sem)) (ee : List (Nat × Sem))
     (le : List Site) (Tk : TyM) (c : Sem) (hc : c ∈ₛ[dm.read] Tk) (g : Pos → SVal → SVal)
     (hcov : ∀ x, ∀ l ∈ Ls, l ∈ (fx x).map (·.1)) (hcovE : ∀ l ∈ Ls, l ∈ ee.map (·.1))
-    (hFm : ∀ x y f, (y, f) ∈ fx x → PMem dm.read Γ f (s.heldTy y))
-    (hEm : ∀ y f, (y, f) ∈ ee → PMem dm.read Γ f (s.heldTy y))
+    (hFm : ∀ x y f, (y, f) ∈ fx x → PMem dm Γ f (s.heldTy y))
+    (hEm : ∀ y f, (y, f) ∈ ee → PMem dm Γ f (s.heldTy y))
     (hFl : ∀ x, ∀ y ∈ (fx x).map (·.1), y ∈ s.liveLabels ∨ ∀ p, Indep y (s.valAt p))
     (hEl : ∀ y ∈ ee.map (·.1), y ∈ s.liveLabels ∨ ∀ p, Indep y (s.valAt p))
     (hg : ∀ p v ψ, (∃ x, dec (ψ (Ls.foldl SState.takeLabel s).nextLoan) = some x ∧ g p v ψ = v (ψ.updList (fx x))) ∨
@@ -677,7 +664,7 @@ theorem sgood_park_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : S
       ∀ p ∈ s.positions, S.valAt p ψ' = s.valAt p ψ₀ ∨ S.valAt p ψ' = .moved := by
     intro ψ' hψ'
     -- the finals the future fixes
-    obtain ⟨Fx, hFxm, hFxl, hFxc, hgx⟩ : ∃ Fx : List (Nat × Sem), (∀ y f, (y, f) ∈ Fx → PMem dm.read Γ f (s.heldTy y)) ∧
+    obtain ⟨Fx, hFxm, hFxl, hFxc, hgx⟩ : ∃ Fx : List (Nat × Sem), (∀ y f, (y, f) ∈ Fx → PMem dm Γ f (s.heldTy y)) ∧
         (∀ y ∈ Fx.map (·.1), y ∈ s.liveLabels ∨ ∀ p, Indep y (s.valAt p)) ∧ (∀ l ∈ Ls, l ∈ Fx.map (·.1)) ∧
         ∀ p v, g p v ψ' = v (ψ'.updList Fx) := by
       cases hd : dec (ψ' k) with
@@ -726,18 +713,17 @@ theorem sgood_park_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : S
         · cases hp; rfl
         · rw [hshape₃] at hp; exact absurd (hs.acyc.2.2 p y (hshape₁ hp)).1 hps
       · rw [hvalS, valAt_pushTemp_new _ _ (by rw [← hposS]; exact hpS) (by rw [hpos₃]; exact hps)]
-  refine ⟨fun ψ' hψ' f i hp => ?_, fun ψ' hψ' p l hl => ?_, fun l hl => ?_, fun f i l hl => ?_, hacyc, hfresh,
-    fun ψ' hψ' f i steps x U hf hx => ?_⟩
+  refine ⟨fun ψ' hψ' f i hp => ?_, fun ψ' hψ' p l hl => ?_, fun l hl => ?_, fun f i l hl => ?_, hacyc, hfresh⟩
   · obtain ⟨ψ₀, hψ₀, hv⟩ := key ψ' hψ'
-    exact (sgood_bind_read hs hposB (fun f i => htyS _) hψ₀ (fun f i hp => hv _ hp)).1 f i hp
+    exact sgood_bind_read hs hposB (fun f i => htyS _) hψ₀ (fun f i hp => hv _ hp) f i hp
   · rcases hholder p l hl with ⟨hp, h0, hne⟩ | ⟨-, rfl, hc'⟩
     · obtain ⟨ψ₀, hψ₀, hv⟩ := key ψ' hψ'
       rw [hHTS, if_neg hne]
       rcases hv p hp with e | e
       · rw [e]; exact hs.holder ψ₀ hψ₀ p l h0
-      · rw [e]; exact .inl rfl
+      · rw [e]; exact .moved _
     · rw [hHTS, if_pos rfl, hc']
-      exact .inr ⟨c, mem_whole dm.read_wholeFields hc, .refl c, hc⟩
+      exact .mem hc
   · rw [hHTS, hHMS]
     rcases hliveS_rev l hl with h | rfl
     · rw [if_neg (Nat.ne_of_lt (hlt l h)), if_neg (Nat.ne_of_lt (hlt l h))]; exact hs.held l h
@@ -745,8 +731,6 @@ theorem sgood_park_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : S
   · rcases hholder _ l hl with ⟨hp, h0, hne⟩ | ⟨hp, -, -⟩
     · rw [htyS, hHTS, if_neg hne]; exact hs.holderTy f i l h0
     · exact absurd ((hposB f i).1 (hacyc.2.2 _ l hl).1) hp
-  · obtain ⟨ψ₀, hψ₀, hv⟩ := key ψ' hψ'
-    exact (sgood_bind_read hs hposB (fun f i => htyS _) hψ₀ (fun f i hp => hv _ hp)).2 f i steps x U hf hx
 
 /-! ## A call returning data -/
 
@@ -832,12 +816,12 @@ theorem callOfLS_sgood_ref {dm : DataModel} {Γ : List IndDecl} {φ : Future} (L
   have hFm := fun x => fixes_pmem (Γ := Γ) Lv t args hR ht (hfm x)
   have hEm : ∀ y f, (y, f) ∈ ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).zip
       ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.moved)).filterMap
-      (fun (l?, f) => l?.map (·, f)) → PMem dm.read Γ f (s.heldTy y) := by
+      (fun (l?, f) => l?.map (·, f)) → PMem dm Γ f (s.heldTy y) := by
     intro y f hm
     obtain ⟨i, -, hf⟩ := fixes_mem hm
     rw [List.getElem?_map] at hf
     obtain ⟨_, -, hfe⟩ := Option.map_eq_some_iff.1 hf
-    rw [← hfe]; exact .inl rfl
+    rw [← hfe]; exact .moved _
   have hFl := fun x => fixes_keys_live Lv t args hlive (back x)
   have hEl := fixes_keys_live Lv t args hlive
     ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.moved)
@@ -884,9 +868,9 @@ theorem callOfLS_sgood {dm : DataModel} {Γ : List IndDecl} {φ : Future} (Lv : 
 
 /-- **A call keeps the invariant**, and its result's label (a returned borrow's, fresh) records the
 result's type. Beyond the stub's hypotheses: each borrow argument's label is live or read by no
-position (`hlive`; `RunPresInd`'s `LoU` of each argument's run), see the module docstring. `hMR` and
-`hf` are not needed. -/
-theorem callOfS_sgood {K : RunCtx} {φ : Future} (_hMR : MemReads K.dm K.Γ) {fv : Res} {as : List Res}
+position (`hlive`; `RunPresInd`'s `LoU` of each argument's run), see the module docstring. `hf` is
+not needed. -/
+theorem callOfS_sgood {K : RunCtx} {φ : Future} {fv : Res} {as : List Res}
     {s s' : SState} {r : Res} (hs : SGood K.dm K.Γ φ s) (_hf : GoodRes K.dm.read fv)
     (ht : BorrowArgsTyped K.dm.read fv as s)
     (h : callOf K.dm.read fv as s = some (r, s')) :

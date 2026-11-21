@@ -135,6 +135,13 @@ theorem closure_whole (n : Nat) : (closureL (lvl0 dm.read) noFuture tNN (addBody
   obtain ⟨F, hF⟩ := inner_eq noFuture n
   rw [hF]; simp [Sem.whole]
 
+/-- A closure built along a code is a member of the code's type: a read of it is good. -/
+theorem closure_good (n : Nat) :
+    ReadGood dm.read (piTyL (lvl0 dm.read) tNN) (closureL (lvl0 dm.read) noFuture tNN (addBody dm.read n)) := by
+  obtain ⟨F, hF⟩ := inner_eq noFuture n
+  rw [hF]
+  exact Or.inl ⟨F, by simp [Code0.enc]⟩
+
 /-- **`UseAdder` in the model: `let a = Adder(2); a(3)` is `5`.** The checker accepts `UseAdder`
 (`AdequacyProbes`); with the result's structure carried beside its meaning, the reference's
 binding `a` had no Π-shape and the call `a(3)` failed (the audit's A11). -/
@@ -146,7 +153,7 @@ theorem useAdder (hint : TyS) : ∃ T s', run (Kp dm Γ (gAdder dm.read)) ρ φ 
   simp only [bind, Option.bind]
   rw [Attack.pushBindShaped_noLabel _ _ rfl, Attack.pushBind_emptyState, run_call]
   simp only [bind, Option.bind]
-  erw [AdequacyFlip.head_in_place _ φ _ 0 _ (closure_whole dm 2)]
+  erw [AdequacyFlip.head_in_place _ φ _ 0 _ (closure_whole dm 2) (closure_good dm 2)]
   simp only [runArgs_num]
   erw [callOf_data0 dm tNN _ _ _ _ _ (by simp [telRefsL, tNN, dec_nat]) h5]
   exact ⟨_, _, rfl⟩
@@ -246,6 +253,10 @@ theorem fn_param_code (s : SState) (dcs : List DeclInfo) (pre : List PBind) (acc
       (extendBy s pre acc)).1 acc = .plain (piTyL (lvl0 dm.read) tNN) := by
   simp only [mkBind, run_fnNat, Sem.asTy]
 
+/-- A function value at the code `Π(n : Nat). Nat` is a member of its type. -/
+theorem fn_good (G : NN) : ReadGood dm.read (piTyL (lvl0 dm.read) tNN) (.el0 NN G) :=
+  Or.inl ⟨G, by simp [Code0.enc]⟩
+
 /-- **`UseFn` in the model**: in a frame binding `f` at `Fn(Nat)`'s code to a function `G`,
 `f(3)` is `G(3)`. The checker accepts `UseFn` (`ShapeProbes`); with a type's structure carried
 beside its meaning the reference bound `f` with no Π-shape and `f(n)` failed (the audit's A18). -/
@@ -256,7 +267,7 @@ theorem useFn (G : NN) (hint : TyS) :
           AdequacyFlip.one { ty := .plain (piTyL (lvl0 dm.read) tNN), val := fun _ => .el0 NN G, decl := .other } 0) := by
   rw [run_call]
   simp only [bind, Option.bind]
-  rw [AdequacyFlip.head_in_place _ φ _ 0 _ (by simp [Sem.whole])]
+  rw [AdequacyFlip.head_in_place _ φ _ 0 _ (by simp [Sem.whole]) (fn_good dm G)]
   simp only [runArgs_num]
   erw [callOf_data0 dm tNN _ _ _ _ _ (by simp [telRefsL, tNN, dec_nat]) (apply_any G 3)]
 
@@ -273,14 +284,25 @@ theorem frame_liveLabels (bs : List SBinding) : (frame bs).liveLabels = [] := by
 
 /-- A variable of the frame read in place: its meaning at its type, the frame as it was. -/
 theorem readPlace_frame (K : RunCtx) (bs : List SBinding) (i : Nat) (b : SBinding) (hi : i < bs.length)
-    (hb : bs[bs.length - 1 - i]? = some b) (hw : (b.val φ).whole) :
+    (hb : bs[bs.length - 1 - i]? = some b) (hw : (b.val φ).whole) (hg : ReadGood K.dm.read b.ty.m (b.val φ)) :
     readPlace K φ (.var i) true (frame bs) = some ((b.val φ, { b.ty with label := none }), frame bs) := by
   have hr : resolve (frame bs) (.var i) = some (.bind 0 (bs.length - 1 - i), []) := by
     simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, frame, hi]
   have ha := fun hit => CE4flip.access_noshape (frame bs) (.bind 0 (bs.length - 1 - i)) rfl hit
   have hcf : (frame bs).typedFuture φ = φ := by funext l; simp [SState.typedFuture, frame_liveLabels]
   simp only [readPlace, contentOf, hr, ha, hcf, bind, Option.bind]
-  simp [SState.tyAt, SState.valAt, Sem.follow, frame, hb, hw]
+  simp [SState.tyAt, SState.valAt, Sem.follow, frame, hb, hw, hg]
+
+/-- A variable of the frame whose value is no member of its type is not read (the strict `ReadGood`). -/
+theorem readPlace_frame_none (K : RunCtx) (bs : List SBinding) (i : Nat) (b : SBinding) (hi : i < bs.length)
+    (hb : bs[bs.length - 1 - i]? = some b) (hg : ¬ ReadGood K.dm.read b.ty.m (b.val φ)) :
+    readPlace K φ (.var i) true (frame bs) = none := by
+  have hr : resolve (frame bs) (.var i) = some (.bind 0 (bs.length - 1 - i), []) := by
+    simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, frame, hi]
+  have ha := fun hit => CE4flip.access_noshape (frame bs) (.bind 0 (bs.length - 1 - i)) rfl hit
+  have hcf : (frame bs).typedFuture φ = φ := by funext l; simp [SState.typedFuture, frame_liveLabels]
+  simp only [readPlace, contentOf, hr, ha, hcf, bind, Option.bind]
+  simp [SState.tyAt, SState.valAt, Sem.follow, frame, hb, hg]
 
 theorem run_place (p : Place) (hint : TyS) (s : SState) :
     run (Kp dm Γ G) ρ φ hint (.place p) s = readPlace (Kp dm Γ G) φ p true s := rfl
@@ -293,7 +315,7 @@ theorem run_callVar (bs : List SBinding) (i : Nat) (hi : i < bs.length) (Gf : NN
       = some ((.el0 Nat (Gf n).1, .plain TyM.nat), frame bs) := by
   rw [run_call]
   simp only [bind, Option.bind, SM.headOf]
-  rw [readPlace_frame φ _ bs i _ hi hb (by simp [Sem.whole])]
+  rw [readPlace_frame φ _ bs i _ hi hb (by simp [Sem.whole]) (by show ReadGood _ T.m _; rw [hT]; exact fn_good dm Gf)]
   simp only [runArgs_num]
   obtain ⟨m, l⟩ := T
   simp only at hT; subst hT
@@ -326,10 +348,10 @@ theorem alias (Gf : NN) (hint : TyS) : ∃ T s', run (Kp dm Γ G) ρ φ hint
     rw [run, Attack.run_ascribe (hfl := fun _ _ => rfl)]
     simp only [SM.strictS, bind, SM.onCopy]
     rw [show runT (Kp dm Γ G) ρ φ false (.plain .err) (.place (.var 0)) = readPlace (Kp dm Γ G) φ (.var 0) true from rfl,
-      readPlace_frame φ _ _ 0 _ (by simp) rfl (by simp [Sem.whole])]
+      readPlace_frame φ _ _ 0 _ (by simp) rfl (by simp [Sem.whole]) (by exact Or.inl ⟨⟨NN, ⟨Code0.pi NN tNN, rfl⟩⟩, rfl⟩)]
     simp only [Option.map, Sem.asTy]
     rw [show runT (Kp dm Γ G) ρ φ false (.plain (piTyL (lvl0 dm.read) tNN)) (.place (.var 1)) = readPlace (Kp dm Γ G) φ (.var 1) true from rfl,
-      readPlace_frame φ _ _ 1 _ (by simp) rfl (by simp [Sem.whole, fB])]
+      readPlace_frame φ _ _ 1 _ (by simp) rfl (by simp [Sem.whole, fB]) (fn_good dm Gf)]
     -- the strict ascription: the read carries no label, and `Gf` is a member of its function type
     have hm : Sem.el0 NN Gf ∈ₛ[dm.read] piTyL (lvl0 dm.read) tNN := ⟨Gf, rfl⟩
     simp only [fB, TyS.plain, labTyOk, reduceCtorEq, false_implies, implies_true, if_true]
@@ -349,7 +371,7 @@ theorem alias (Gf : NN) (hint : TyS) : ∃ T s', run (Kp dm Γ G) ρ φ hint
 theorem useFnLet (Gf : NN) (hint : TyS) : ∃ T s', run (Kp dm Γ G) ρ φ hint
     (.letIn ⟨"g"⟩ (.place (.var 0)) (.call (.place (.var 0)) [num 3] false)) (frame [fB Gf])
       = some ((.el0 Nat (Gf 3).1, T), s') := by
-  rw [run_letIn, run_place, readPlace_frame φ _ _ 0 _ (by simp) rfl (by simp [Sem.whole, fB])]
+  rw [run_letIn, run_place, readPlace_frame φ _ _ 0 _ (by simp) rfl (by simp [Sem.whole, fB]) (fn_good dm Gf)]
   simp only [bind, Option.bind]
   rw [Attack.pushBindShaped_noLabel _ _ rfl, frame_push,
     run_callVar dm Γ G ρ φ _ 0 (by simp) Gf _ rfl .other rfl 3]
@@ -383,7 +405,7 @@ theorem idLet (Gf : NN) (hint : TyS) : ∃ T s', run (Kp dm Γ (gId dm.read)) ρ
     simp only
     rw [show runT (Kp dm Γ (gId dm.read)) ρ φ false (TyS.plain (((gId dm.read) "id").snd.m.domAfter (Kp dm Γ (gId dm.read)).dm.read ([] ++ [Sem.ty (piTyL (lvl0 dm.read) tNN)])))
         (Term.place (Place.var 0)) = readPlace (Kp dm Γ (gId dm.read)) φ (.var 0) true from rfl,
-      readPlace_frame φ _ _ 0 _ (by simp) rfl (by simp [Sem.whole, fB])]
+      readPlace_frame φ _ _ 0 _ (by simp) rfl (by simp [Sem.whole, fB]) (fn_good dm Gf)]
     simp only [pure]
     exact callOf_data1 dm tId _ _ _ _ _ (by simp [telRefsL, tId, hA, hx, fB]) happ
   rw [run_letIn, hcall]
@@ -508,7 +530,7 @@ theorem usePred (Pf : PNCar) (hint : TyS) :
     rfl
   rw [run_call]
   simp only [bind, Option.bind, SM.headOf]
-  rw [readPlace_frame φ _ _ 0 _ (by simp) rfl (by simp [Sem.whole])]
+  rw [readPlace_frame φ _ _ 0 _ (by simp) rfl (by simp [Sem.whole]) (by exact Or.inl ⟨Pf, rfl⟩)]
   simp only [runArgs_num]
   erw [callOf_data1 dm tPN _ _ _ _ _ (by simp [telRefsL, tPN, hx]) happ]
 
@@ -543,7 +565,7 @@ theorem run_h (hint : TyS) : run (Kb dm) ρ φ hint (.place (.var 0)) (frame [hB
   show SM.erasedIf (true, true) _ _ = _
   simp only [SM.erasedIf, if_true]
   rw [show (Kb dm).D.copy ((Kb dm).D.placeDecl (scopeOf (frame [hB])) (.var 0)) = true from rfl,
-    readPlace_frame φ _ [hB] 0 hB (by simp) rfl (by simp [Sem.whole, hB])]
+    readPlace_frame φ _ [hB] 0 hB (by simp) rfl (by simp [Sem.whole, hB]) (by exact Or.inl ⟨⟨trivial⟩, rfl⟩)]
   rfl
 
 /-- **`BoxProof` in the model: `MkPBox(h)` is `⋆` at `PBox(True)`.** The field `a : A` is the proof
@@ -659,7 +681,7 @@ fields (`Sem.stepField`). -/
 theorem run_list34 (hint : TyS) (s : SState) :
     run (Kp dmP [listD] G) ρ φ hint (consT 3 (consT 4 nilT)) s = some ((semL [3, 4], .plain (dmP.tyM listD psN)), s) ∧
       indTag (semL [3, 4]) (.plain (dmP.tyM listD psN)) = .el0 Nat 1 ∧
-      Sem.stepField dmP (.plain (dmP.tyM listD psN)) 1 1 (semL [3, 4]) = some (semL [4], .plain (dmP.tyM listD psN)) := by
+      Sem.stepField dmP [listD] (.plain (dmP.tyM listD psN)) 1 1 (semL [3, 4]) = some (semL [4], .plain (dmP.tyM listD psN)) := by
   refine ⟨run_cons G ρ φ 3 _ [4] s (fun hint => run_cons G ρ φ 4 _ [] s (fun hint => run_nil G ρ φ hint s) hint) hint,
     rfl, rfl⟩
 
@@ -747,7 +769,7 @@ theorem run_tree (hint : TyS) (s : SState) :
     run (Kp dmP ΓR G) ρ φ hint (nodeT 1 (rconsT (nodeT 2 rnilT) rnilT)) s
         = some ((nodeV 1 (consV (nodeV 2 nilV) nilV), .plain (dmP.tyM roseD psN)), s) ∧
       indTag (nodeV 1 (consV (nodeV 2 nilV) nilV)) (.plain (dmP.tyM roseD psN)) = .el0 Nat 0 ∧
-      Sem.stepField dmP (.plain (dmP.tyM roseD psN)) 0 1 (nodeV 1 (consV (nodeV 2 nilV) nilV))
+      Sem.stepField dmP ΓR (.plain (dmP.tyM roseD psN)) 0 1 (nodeV 1 (consV (nodeV 2 nilV) nilV))
         = some (consV (nodeV 2 nilV) nilV, .plain (dmP.tyM listD psR)) := by
   refine ⟨run_node G ρ φ 1 _ _ s (fun hint => run_lrCons G ρ φ _ _ _ _ s
       (fun hint => run_node G ρ φ 2 _ _ s (fun hint => run_lrNil G ρ φ hint s) nil_mem hint)

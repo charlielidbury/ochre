@@ -110,10 +110,10 @@ theorem goodT_SB (K : RunCtx) (ρ : Assignment) : GoodT K.dm K.M K.Γ ρ SB1 ttB
     · have e : Env.meanT K.dm K.M K.Γ ρ φ SB1.env ttB (.bind 0 0) = φ 0 := rfl
       rw [e]
       obtain ⟨n, hn⟩ := h0
-      exact DataModel.pmem_of_mem K.dm.read K.Γ (by rw [← hn]; simp [Code0.enc, Sem.whole]) ⟨n, hn⟩
+      exact DataModel.pmem_of_mem K.dm K.Γ (by rw [← hn]; simp [Code0.enc, Sem.whole]) ⟨n, hn⟩
     · have e : Env.meanT K.dm K.M K.Γ ρ φ SB1.env ttB (.temp 0 0) = .el0 Nat 0 := rfl
       rw [e]
-      exact DataModel.pmem_of_mem K.dm.read K.Γ (by simp [Sem.whole]) ⟨0, rfl⟩
+      exact DataModel.pmem_of_mem K.dm K.Γ (by simp [Sem.whole]) ⟨0, rfl⟩
   · intro p T hp
     obtain ⟨-, rfl⟩ := posTyMT_SB1 K ρ p T hp
     rfl
@@ -239,10 +239,10 @@ theorem mean_nV (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Ass
 
 /-- **A number returned at `Nat` is a member of it**, at every data model, assignment and future. -/
 theorem nV_member (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (ψ : Future) (k : Nat) :
-    DataModel.pmem dm.read Γ (Value.mean dm C Γ ρ ψ (Value.tyS dm C Γ ρ .tNat) (nV k))
+    DataModel.pmem dm Γ (Value.mean dm C Γ ρ ψ (Value.tyS dm C Γ ρ .tNat) (nV k))
       (Value.tyM dm C Γ ρ (fun _ => .err) .tNat) := by
   rw [mean_nV]
-  exact DataModel.pmem_of_mem dm.read Γ (by simp [Sem.whole]) ⟨k, rfl⟩
+  exact DataModel.pmem_of_mem dm Γ (by simp [Sem.whole]) ⟨k, rfl⟩
 
 /-- `Cons(3, Cons(4, Nil))` at `List(Nat)` (a constructor), with `List` declared. -/
 def SL0 : MState := { env := #[{}], inds := [DataModel.Program.listD] }
@@ -267,7 +267,7 @@ open Ochr.Meaning.Regress.DataCodes (semL psN rN semL_memTy) in
 (`dmP`), any assignment, future and hints: it means the tree `[3, 4]`, a member of `List(Nat)`'s code
 (the data layer's `semL_memTy`). -/
 theorem vL_member (C : CodeMeaning) (ρ : Assignment) (ψ : Future) (h₁ h₂ h₃ : Hint) :
-    DataModel.pmem dmP.read [listD]
+    DataModel.pmem dmP [listD]
       (Value.mean dmP C [listD] ρ ψ (Value.tyS dmP C [listD] ρ (.tInd "List" [.tNat])) (vL h₁ h₂ h₃))
       (Value.tyM dmP C [listD] ρ (fun _ => .err) (.tInd "List" [.tNat])) := by
   have e : Value.mean dmP C [listD] ρ ψ (Value.tyS dmP C [listD] ρ (.tInd "List" [.tNat])) (vL h₁ h₂ h₃) = semL [3, 4] := by
@@ -281,7 +281,7 @@ theorem vL_member (C : CodeMeaning) (ρ : Assignment) (ψ : Future) (h₁ h₂ h
   have eT : Value.tyM dmP C [listD] ρ (fun _ => .err) (.tInd "List" [.tNat]) = dmP.tyM listD psN := by
     simp [Value.tyM, Value.mean, Value.meanParams, psN, show listD.name = "List" from rfl, hpo, Sem.asTy]
   rw [e, eT]
-  exact DataModel.pmem_of_mem dmP.read [listD] (by simp [semL, Sem.whole]) (semL_memTy [3, 4])
+  exact DataModel.pmem_of_mem dmP [listD] (by simp [semL, Sem.whole]) (semL_memTy [3, 4])
 
 /-! ## 3. An untyped run binds at a type it never checked
 

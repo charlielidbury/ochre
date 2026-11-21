@@ -153,35 +153,37 @@ theorem readPlace_rinv {p : Place} {copy : Bool} {s s' : SState} {r : Res}
     split at h
     · cases h
     · split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        exact ⟨hi₁, fun l hl => by simp at hl⟩
-      · cases hs : setContent K φ pos steps .moved s₁ with
-        | none => rw [hs] at h; cases h
-        | some y =>
-          obtain ⟨⟨⟩, s₂⟩ := y
-          rw [hs] at h
-          obtain ⟨hi₂, hsh₂, hpos₂⟩ := setContent_rinv K φ L hs hi₁
-          simp only [Option.some.injEq, Prod.mk.injEq] at h
+      · cases h
+      · split at h
+        · simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl⟩ := h
-          generalize hlab : (if steps.isEmpty = true then s₁.shape pos else none) = lab
-          cases lab with
-          | none => exact ⟨hi₂, fun l' hl' => by simp at hl'⟩
-          | some l =>
-            have hlive : s₂.Live l := by
-              split at hlab
-              · exact live_of_shape (by rw [hpos₂]; exact hpos) (by rw [hsh₂]; exact hlab)
-              · cases hlab
-            refine ⟨transfer_rinv hi₂ l hlive v, fun l' hl' => ?_⟩
-            simp only [Option.some.injEq] at hl'
-            subst hl'
-            apply lou_live (transfer_rinv hi₂ l hlive v).2.2
-            have hne : (s₂.takeLabel l).env ≠ [] := by
-              intro he
-              obtain ⟨q, hq, _⟩ := (live_iff s₂ l).mp hlive
-              have : q ∈ (s₂.takeLabel l).positions := by rw [takeLabel_positions]; exact hq
-              rw [positions_eq, he] at this; simp at this
-            exact live_pushTempShaped_self _ _ _ hne
+          exact ⟨hi₁, fun l hl => by simp at hl⟩
+        · cases hs : setContent K φ pos steps .moved s₁ with
+          | none => rw [hs] at h; cases h
+          | some y =>
+            obtain ⟨⟨⟩, s₂⟩ := y
+            rw [hs] at h
+            obtain ⟨hi₂, hsh₂, hpos₂⟩ := setContent_rinv K φ L hs hi₁
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl⟩ := h
+            generalize hlab : (if steps.isEmpty = true then s₁.shape pos else none) = lab
+            cases lab with
+            | none => exact ⟨hi₂, fun l' hl' => by simp at hl'⟩
+            | some l =>
+              have hlive : s₂.Live l := by
+                split at hlab
+                · exact live_of_shape (by rw [hpos₂]; exact hpos) (by rw [hsh₂]; exact hlab)
+                · cases hlab
+              refine ⟨transfer_rinv hi₂ l hlive v, fun l' hl' => ?_⟩
+              simp only [Option.some.injEq] at hl'
+              subst hl'
+              apply lou_live (transfer_rinv hi₂ l hlive v).2.2
+              have hne : (s₂.takeLabel l).env ≠ [] := by
+                intro he
+                obtain ⟨q, hq, _⟩ := (live_iff s₂ l).mp hlive
+                have : q ∈ (s₂.takeLabel l).positions := by rw [takeLabel_positions]; exact hq
+                rw [positions_eq, he] at this; simp at this
+              exact live_pushTempShaped_self _ _ _ hne
 
 /-- A meaning rewritten at the future's value at `l`: reads what it read and `l`. -/
 theorem FT.withLabel {S : Nat → Prop} {f : SVal} (hf : FT S f) (l : Nat) (g : Sem → Sem → Sem) :

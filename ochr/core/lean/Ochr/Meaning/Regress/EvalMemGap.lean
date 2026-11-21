@@ -176,7 +176,7 @@ theorem good_withBind_mem (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl)
     (st : MState) (b : Binding) (T : Value) (hT : b.ty = some T) (fr : Frame)
     (hfr : st.env[st.env.size - 1]? = some fr) (hg : Good dm C Γ ρ (st.withBind b)) :
     ∀ φ, TypedFuture dm C Γ ρ (st.withBind b) φ →
-      DataModel.pmem dm.read Γ (Value.mean dm C Γ ρ φ (Value.tyS dm C Γ ρ T) b.val) (Value.tyM dm C Γ ρ (fun _ => .err) T) := by
+      DataModel.pmem dm Γ (Value.mean dm C Γ ρ φ (Value.tyS dm C Γ ρ T) b.val) (Value.tyM dm C Γ ρ (fun _ => .err) T) := by
   intro φ hφ
   have hb' := withBind_bind st b fr hfr
   have hp : MState.posTyM dm C Γ ρ (st.withBind b) (.bind (st.env.size - 1) fr.binds.size) =
@@ -207,13 +207,11 @@ theorem not_good_push (K : RunCtx) (ρ : Assignment) : ¬ Good K.dm K.M K.Γ ρ 
         · simp [MState.posTyM, S0, MState.withBind] at hT
       · simp [MState.posTyM, S0, MState.withBind] at hT
   have hm := good_withBind_mem K.dm K.M K.Γ ρ S0 bx .tUnit rfl {} rfl hg noFuture hφ
-  rcases hm with h | ⟨t, hw, hmo, hin⟩
-  · cases h
-  · cases hmo with
-    | refl =>
-      rcases hin with hin | hin
-      · exact zero_not_unit K ρ noFuture (Value.tyS K.dm K.M K.Γ ρ Value.tUnit) hin
-      · simp [Value.tyM, Value.mean, DataModel.OpenIn, TyM.unit, Sem.asTy] at hin
+  have hm' : DataModel.OMem K.dm K.Γ TyM.unit (Sem.el0 Nat 0) := hm
+  cases hm' with
+  | mem h =>
+    obtain ⟨a, ha⟩ := h
+    exact unit_ne_nat (Sem.el0.inj ha).1
 
 /-! ## A borrow argument in flight leaves its label untyped -/
 
@@ -245,10 +243,9 @@ theorem borrowArg_not_good (K : RunCtx) (ρ : Assignment) : ¬ Good K.dm K.M K.�
   have hm := hg.2.1.pos noFuture hφ _ _ hp
   have e : Env.mean K.dm K.M K.Γ ρ noFuture SB.env (.bind 0 0) = .err := rfl
   rw [e] at hm
-  rcases hm with h | ⟨t, hw, hmo, -⟩
-  · cases h
-  · cases hmo with
-    | refl => simp [Sem.whole] at hw
+  have hm' : DataModel.OMem K.dm K.Γ TyM.nat Sem.err := hm
+  cases hm' with
+  | mem h => obtain ⟨a, ha⟩ := h; cases ha
 
 /-! ## [Repack]'s statement, the same way -/
 

@@ -222,10 +222,15 @@ theorem read_wholeFields : dm.read.WholeFields := by
 /-! ## The type a read gives a field (route (c), 2026-11-21; `Strict/ReadProto.lean` the prototype)
 
 A field is typed from the TYPE the read starts at (a data code carries its declaration) and the
-value's own record, through the universal signature: no declaration is looked up by name. The
-declaration is needed for one thing only, which earlier fields are index fields (the record's key
-projects to them, `projIdx`). `readTy` is THE function for "the type a read gives a field": the
-run's read (`Places.Sem.stepField`), open membership (`OMem`) and the read lemma use it. -/
+value's own record, through the universal signature. The declaration is needed for one thing only,
+which earlier fields are index fields (the record's key projects to them, `projIdx`). One case looks
+a declaration up by name: a tree field holding a tree of ANOTHER declaration than the one its shape
+names at the current earlier fields (what a strong update stored before an index write changed the
+field's declared type; the checker's `depFieldType` types it by its content, `valType?`, its own
+declaration and parameters), typed by its own declaration found in the program's declarations, at
+its own record (`ownTy`). A member never reaches that case (`readTy_fit`). `readTy` is THE function
+for "the type a read gives a field": the run's read (`Places.Sem.stepField`), open membership (`OMem`)
+and the read lemma use it. -/
 
 /-- The declaration and record of a data code, at any carrier level (lifts included). -/
 def _root_.Ochr.Meaning.Code1.dataCode? : {A : Type 1} → Code1 A → Option (IndDecl × Rec)
@@ -255,12 +260,20 @@ noncomputable def shapeReadTy : Shape → Option TyM
   | .sub d r => some (dm.rawTy d r)
   | .prf d r => some (TyM.prop (Nonempty (dm.car d r)))
 
+/-- A tree's own type: its declaration, found by name among the program's declarations, at its own
+record (the checker's `valType?` of a tree). -/
+noncomputable def ownTy (Γ : List IndDecl) (n : String) (r : Rec) : Option TyM :=
+  (Γ.find? (·.name == n)).map (dm.rawTy · r)
+
 /-- **The type field `i` of constructor `c` is read at**, in a value of declaration `d` at its own
-record `r`, given the earlier fields and the field itself: the shape's; a constructor value in a
-data field at ITS OWN record (D112: a tree field keeps the type its own record gives). -/
-noncomputable def readTy (d : IndDecl) (r : Rec) (c i : Nat) (earlier : List Sem) (f : Sem) : Option TyM :=
+record `r`, given the program's declarations, the earlier fields and the field itself: the shape's;
+a constructor value in a data field at ITS OWN record (D112: a tree field keeps the type its own
+record gives), of its OWN declaration where that is not the shape's (`ownTy`: a strong update's
+tree, typed by its content as the checker's `depFieldType` types it). -/
+noncomputable def readTy (Γ : List IndDecl) (d : IndDecl) (r : Rec) (c i : Nat) (earlier : List Sem) (f : Sem) :
+    Option TyM :=
   match dm.sig.shape d r c i (earlier.map Sem.small), f with
-  | .sub d' _, .dat _ r' _ _ => some (dm.rawTy d' r')
+  | .sub d' _, .dat n r' _ _ => if n = d'.name then some (dm.rawTy d' r') else dm.ownTy Γ n r'
   | sh, _ => dm.shapeReadTy sh
 
 /-- **A fitting value is a member of the type its shape is read at.** -/
@@ -298,9 +311,9 @@ theorem fits_readTy {sh : Shape} {f : Sem} {U : TyM} (hf : FitsOneM dm.sig sh f)
     exact ⟨⟨⟨x⟩⟩, rfl⟩
 
 /-- For a value that fits the field's shape, the field's type is the shape's. -/
-theorem readTy_fit {d : IndDecl} {r : Rec} {c i : Nat} {earlier : List Sem} {f : Sem}
+theorem readTy_fit {Γ : List IndDecl} {d : IndDecl} {r : Rec} {c i : Nat} {earlier : List Sem} {f : Sem}
     (hf : FitsOneM dm.sig (dm.sig.shape d r c i (earlier.map Sem.small)) f) :
-    dm.readTy d r c i earlier f = dm.shapeReadTy (dm.sig.shape d r c i (earlier.map Sem.small)) := by
+    dm.readTy Γ d r c i earlier f = dm.shapeReadTy (dm.sig.shape d r c i (earlier.map Sem.small)) := by
   unfold readTy
   generalize dm.sig.shape d r c i (earlier.map Sem.small) = sh at hf ⊢
   cases sh with
@@ -309,18 +322,11 @@ theorem readTy_fit {d : IndDecl} {r : Rec} {c i : Nat} {earlier : List Sem} {f :
     | dat n r' c' fs =>
       obtain ⟨_, _, he, _⟩ := (DataLib.mem_iff dm.sig d' r₀ _).1 hf
       simp only [Sem.dat.injEq] at he
-      obtain ⟨-, rfl, -⟩ := he
+      obtain ⟨hn, rfl, -⟩ := he
+      simp only [hn, if_true]
       rfl
     | _ => rfl
   | _ => rfl
-
-/-- A whole constructor value that is OPEN in the data type `T` (D64): it names `T`'s declaration
-and record and its fields are whole (a field may lie outside the type its earlier fields give; the
-checker types such a field by its content until [Repack]). Membership's `pmem` admits it, as the
-checker's state does (`Regress/OpenWriteDep`). -/
-def OpenIn (_R : DataRead) : TyM → Sem → Prop
-  | .t0 _ (.data d r _), .dat n' r' _ fs => d.name = n' ∧ r = r' ∧ ∀ f ∈ fs, f.whole
-  | _, _ => False
 
 mutual
 /-- `s` is `t` with some of its parts moved out: `moved` is anything with all of it moved, a
@@ -339,15 +345,64 @@ inductive MovedOfList (Γ : List IndDecl) : List Sem → List Sem → Prop
   | cons {f g : Sem} {fs gs : List Sem} : MovedOf Γ f g → MovedOfList Γ fs gs → MovedOfList Γ (f :: fs) (g :: gs)
 end
 
-/-- Membership for a possibly partly moved value (docs/18 part (b) at a binding holding a value
-some field of which was moved out): the value is `⊥` outright, or it is some whole member of the
-type with parts moved out (`MovedOf`). For a whole value this is membership (`pmem_of_mem`). -/
-def pmem (R : DataRead) (Γ : List IndDecl) (s : Sem) (T : TyM) : Prop :=
-  s = .moved ∨ ∃ t : Sem, t.whole ∧ MovedOf Γ s t ∧ (t ∈ₛ[R] T ∨ OpenIn R T t)
+mutual
+/-- **Open membership** (D64, D112; route (c); the dependent-values unit, 2026-11-21): what a position
+holds. `moved`; a member; a partly moved number; or a constructor value of the type's declaration at
+the type's record each of whose fields is `moved` or an open member of the type the READ gives it
+(`readTy`), at some completion of the earlier fields' moved parts (the current earlier fields are
+one: `MovedOfList.refl`). A tree field is read at its own record (D112), so a value whose index was
+rewritten under a tree field is open, not a member; a whole value is a member exactly when closed
+(`closed_iff_mem`). -/
+inductive OMem (Γ : List IndDecl) : TyM → Sem → Prop
+  | moved (T : TyM) : OMem Γ T .moved
+  | mem {T : TyM} {s : Sem} : s ∈ₛ[dm.read] T → OMem Γ T s
+  | succ {T : TyM} {s : Sem} (n : Nat) : Sem.el0 Nat (n + 1) ∈ₛ[dm.read] T → OMem Γ TyM.nat s →
+      OMem Γ T (.dat "Nat" natRec 1 [s])
+  | dat {T : TyM} {d : IndDecl} {r : Rec} {c : Nat} {fs : List Sem} :
+      T.dataCode? = some (d, r) → c < d.ctors.length → fs.length = arity d c →
+      OFields Γ d r c 0 [] fs → OMem Γ T (.dat d.name r c fs)
 
-theorem pmem_of_mem (R : DataRead) (Γ : List IndDecl) {s : Sem} {T : TyM} (hw : s.whole) (h : s ∈ₛ[R] T) :
-    pmem R Γ s T :=
-  .inr ⟨s, hw, .refl s, .inl h⟩
+/-- The fields of an open value, one by one, after the earlier ones. -/
+inductive OFields (Γ : List IndDecl) : IndDecl → Rec → Nat → Nat → List Sem → List Sem → Prop
+  | nil {d : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} : OFields Γ d r c i e []
+  | cons {d : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} {f : Sem} {fs : List Sem} :
+      OField Γ d r c i e f → OFields Γ d r c (i + 1) (e ++ [f]) fs → OFields Γ d r c i e (f :: fs)
+
+/-- One field of an open value, at a completion `e'` of the earlier fields: `moved`; a partly moved
+member of the field's shape (its declared type, fitting); or an open member of the type the read
+gives it (a tree at its own record, D112). -/
+inductive OField (Γ : List IndDecl) : IndDecl → Rec → Nat → Nat → List Sem → Sem → Prop
+  | moved {d : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} : OField Γ d r c i e .moved
+  | fits {d : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} {f : Sem} (e' : List Sem) (t : Sem) :
+      MovedOfList Γ e e' → t.whole → MovedOf Γ f t → FitsOneM dm.sig (dm.sig.shape d r c i (e'.map Sem.small)) t →
+      OField Γ d r c i e f
+  | at {d : IndDecl} {r : Rec} {c i : Nat} {e : List Sem} {f : Sem} (e' : List Sem) (U : TyM) :
+      MovedOfList Γ e e' → dm.readTy Γ d r c i e' f = some U → OMem Γ U f → OField Γ d r c i e f
+end
+
+/-- Partial membership IS open membership (the dependent-values unit: the old "below a whole member,
+or open" definition admitted junk, `Dep/Records`, and its partly moved form read wrong types). -/
+def pmem (Γ : List IndDecl) (s : Sem) (T : TyM) : Prop := dm.OMem Γ T s
+
+theorem pmem_of_mem (Γ : List IndDecl) {s : Sem} {T : TyM} (_hw : s.whole) (h : s ∈ₛ[dm.read] T) :
+    dm.pmem Γ s T :=
+  .mem h
+
+theorem pmem_moved (Γ : List IndDecl) (T : TyM) : dm.pmem Γ .moved T := .moved T
+
+/-- `MovedOfList` is reflexive. -/
+theorem movedOfList_refl' (Γ : List IndDecl) : ∀ (fs : List Sem), MovedOfList Γ fs fs
+  | [] => .nil
+  | f :: fs => .cons (.refl f) (movedOfList_refl' Γ fs)
+
+theorem movedOfList_append {Γ : List IndDecl} : ∀ {a b c d : List Sem}, MovedOfList Γ a b → MovedOfList Γ c d →
+    MovedOfList Γ (a ++ c) (b ++ d)
+  | [], [], _, _, .nil, h => h
+  | _ :: _, _ :: _, _, _, .cons h hs, h' => .cons h (movedOfList_append hs h')
+
+theorem movedOfList_length {Γ : List IndDecl} : ∀ {a b : List Sem}, MovedOfList Γ a b → a.length = b.length
+  | [], [], .nil => rfl
+  | _ :: _, _ :: _, .cons _ hs => by simp [movedOfList_length hs]
 
 end DataModel
 

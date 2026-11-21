@@ -26,12 +26,13 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 def one (b : SBinding) (k : Nat) : SState := { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k }
 
 /-- R2: the head of a call, a place, is read in place. -/
-theorem head_in_place (b : SBinding) (k : Nat) (rn : SM Res) (hw : (b.val φ).whole) :
+theorem head_in_place (b : SBinding) (k : Nat) (rn : SM Res) (hw : (b.val φ).whole)
+    (hg : ReadGood K.dm.read b.ty.m (b.val φ)) :
     SM.headOf (.place (.var 0)) (fun p => readPlace K φ p true) rn (one b k)
       = some ((b.val φ, { b.ty with label := none }), one b k) := by
   show readPlace K φ (.var 0) true (one b k) = _
   rw [readPlace_of φ K (.var 0) true (one b k) _ _ _ _ _ (contentOf_var0_one K φ k b)]
-  simp [hw, one]
+  simp [hw, hg, one]
 
 /-- A statement or erased clause leaves the state as it was and returns no label. -/
 theorem erasedIf_keeps {fl : Bool × Bool} {x : SM Res} {s s' : SState} {r : Res} (hfl : fl.1 = true)

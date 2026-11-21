@@ -46,7 +46,7 @@ theorem updAt_moved_none (f : Sem → Sem) : ∀ (r : List Step) (T : TyS), (∃
 
 /-- A typed field step reads a proof's `⋆` or a constructor value's field (route (c): the read is
 typed by the type it starts at; only its value is used here). -/
-theorem stepField_inv {T U : TyS} {c i : Nat} {s x : Sem} (h : Sem.stepField dm T c i s = some (x, U)) :
+theorem stepField_inv {T U : TyS} {c i : Nat} {s x : Sem} (h : Sem.stepField dm Γ T c i s = some (x, U)) :
     (s = .proof ∧ x = .proof) ∨ ∃ n r fs, s = .dat n r c fs ∧ fs[i]? = some x := by
   unfold Sem.stepField at h
   split at h
@@ -105,9 +105,9 @@ theorem updAt_step_none (f : Sem → Sem) {T T' : TyS} {st : Step} {V V' : Sem}
   -- a field step read by `stepField`
   have hfield : ∀ (c i : Nat), (st = .proj i ∨ ∃ g, st = .field g ∧ g.idx = i ∧ g.ctor = c) →
       (∀ r w, st = .proj 0 → V ≠ .dat "Nat" r 1 [w]) →
-      Sem.stepField dm T c i V = some (V', T') → Sem.updAt dm Γ T f (st :: rest) V = none := by
+      Sem.stepField dm Γ T c i V = some (V', T') → Sem.updAt dm Γ T f (st :: rest) V = none := by
     intro c i hst hnn hs
-    rcases stepField_inv dm hs with ⟨rfl, rfl⟩ | ⟨n, r, fs, rfl, hf0⟩
+    rcases stepField_inv dm Γ hs with ⟨rfl, rfl⟩ | ⟨n, r, fs, rfl, hf0⟩
     · rw [Sem.updAt.eq_def]
       rcases hst with rfl | ⟨g, rfl, -⟩
       · simp only [show Sem.proof.asNat = none from rfl]
@@ -152,7 +152,7 @@ theorem updAt_step_none (f : Sem → Sem) {T T' : TyS} {st : Step} {V V' : Sem}
           simp [hV, hT (.plain TyM.nat)]
         · rename_i hne
           exact hfield 0 0 (.inl rfl) (fun r w _ e => hne r w (by
-            rcases stepField_inv dm hstep with ⟨rfl, -⟩ | ⟨n, r', fs, rfl, -⟩
+            rcases stepField_inv dm Γ hstep with ⟨rfl, -⟩ | ⟨n, r', fs, rfl, -⟩
             · cases e
             · simp only [Sem.dat.injEq] at e; omega) e) hstep
     | succ i => exact hfield 0 (i + 1) (.inl rfl) (fun _ _ h => by cases h) hstep

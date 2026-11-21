@@ -101,7 +101,7 @@ theorem md_field_moved : Sem.step dm Γ T (.field g) .moved = none := rfl
 /-- At a type of `T`'s declaration where the field's read type is defined (route (c): a read is typed
 by the type it starts at). -/
 theorem md_field_dat (r r₀ : Rec) (a b : Sem) (d : IndDecl) (hT : T.m.dataCode? = some (d, r₀))
-    (hd : d.name = "T") (hU : (dm.readTy d r 0 0 [] a).isSome) :
+    (hd : d.name = "T") (hU : (dm.readTy Γ d r 0 0 [] a).isSome) :
     (Sem.step dm Γ T (.field g) (.dat "T" r 0 [a, b])).map Prod.fst = some a := by
   obtain ⟨U, hU⟩ := Option.isSome_iff_exists.mp hU
   simp [Sem.step, Sem.stepField, g, hT, hd, hU]

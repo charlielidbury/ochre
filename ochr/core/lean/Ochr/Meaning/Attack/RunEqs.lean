@@ -25,6 +25,21 @@ theorem stmtIf_noStmt (K : RunCtx) (hfl : ∀ sc t, K.D.flags sc t = (false, fal
     SM.erasedIf (K.D.flags (scopeOf s) t) x s = x s := by
   rw [hfl]; rfl
 
+/-- Where the decisions invalidate no place (D112; the default), `invalidate` is the identity. -/
+theorem invalidate_noInv (K : RunCtx) (φ : Future) (hinv : ∀ sc p, K.D.invalidated sc p = []) (p : Place)
+    (s : SState) : invalidate K φ p s = s := by
+  simp [invalidate, hinv _ _]
+
+/-- A place that resolves through `*` only satisfies `lentOk` (a write or borrow through `*`). -/
+theorem lentOk_deref (K : RunCtx) (φ : Future) {p : Place} {s : SState} {pos : Pos}
+    (h : resolve s p = some (pos, [.deref])) : lentOk K φ p s := by
+  unfold lentOk; rw [h]; exact .inr (.inl rfl)
+
+/-- A place that resolves to a root satisfies D112's `lentOk`. -/
+theorem lentOk_root (K : RunCtx) (φ : Future) {p : Place} {s : SState} {pos : Pos}
+    (h : resolve s p = some (pos, [])) : lentOk K φ p s := by
+  simp [lentOk, h]
+
 open Classical in
 /-- The strict ascription: the value is tested against the annotation, and its label must hold
 the annotation's type. -/
@@ -371,7 +386,8 @@ theorem readPlace_deref_r (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : S
     simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, S₄]
   have hw : (Sem.el0 Nat (F n).val.1).whole := by simp [Sem.whole]
   simp only [readPlace, contentOf, hr, access_S₄, bind, Option.bind]
-  simp [S₄, SState.tyAt, SState.valAt, Sem.follow, Sem.step, hw]
+  have hm : Sem.el0 Nat (F n).val.1 ∈ₛ[K.dm.read] TyM.nat := ⟨(F n).val.1, by simp [Code0.enc]⟩
+  simp [S₄, SState.tyAt, SState.valAt, Sem.follow, Sem.step, hw, ReadGood, hm]
   rfl
 
 end Ochr.Meaning.Attack
@@ -505,6 +521,46 @@ theorem access_S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) (w :
     simp [SState.liveLabels, S₆, h0]
   simp [SState.access, liveLabels_S₅, hd, endLabel_S₅, h6]
 
+/-- D112's strict part at the write `*r := w`: `S₅` holds open members everywhere (`c1` the backward
+function's component, or moved; `r` the written number), so the write below a root passes `lentOk`. -/
+theorem stateOk_S₅ (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) (w : Sem)
+    (hb : b.ty = .plain TyM.nat) (hw : w ∈ₛ[K.dm.read] TyM.nat) : StateOk K φ (S₅ F n b k c w) := by
+  intro ψ _
+  have hm : ∀ y : Nat, Sem.el0 Nat y ∈ₛ[K.dm.read] TyM.nat := fun y => ⟨y, by simp [Code0.enc]⟩
+  refine ⟨fun f i hpi => ?_, fun q l hq => ?_⟩
+  · rw [positions_S₅] at hpi
+    simp only [List.mem_cons, Pos.bind.injEq, reduceCtorEq, or_false, List.not_mem_nil] at hpi
+    rcases hpi with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
+    · left
+      have hv : (S₅ F n b k c w).valAt (.bind 0 0) ψ = match (ψ (k+1)).as Nat with
+          | some x => .el0 Nat ((F n).val.2 x).2 | none => .moved := rfl
+      have ht : (S₅ F n b k c w).tyAt (.bind 0 0) = b.ty := rfl
+      rw [hv, ht, hb]
+      cases (ψ (k+1)).as Nat with
+      | none => exact .moved _
+      | some x => exact .mem (hm _)
+    · left
+      show K.dm.pmem K.Γ w TyM.nat
+      exact .mem hw
+  · simp only [S₅] at hq
+    split at hq
+    · rename_i hp
+      subst hp
+      cases hq
+      show K.dm.pmem K.Γ w (if k + 1 = k + 1 then TyM.nat else _)
+      rw [if_pos rfl]
+      exact .mem hw
+    · cases hq
+
+/-- The write through `*r` on `S₄` is `lentOk`. -/
+theorem lentOk_deref_S₅ (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) (w : Sem)
+    (hb : b.ty = .plain TyM.nat) (hw : w ∈ₛ[K.dm.read] TyM.nat) :
+    lentOk K φ (.deref (.var 0)) (S₅ F n b k c w) := by
+  have hr : resolve (S₅ F n b k c w) (.deref (.var 0)) = some (.bind 0 1, [.deref]) := by
+    simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, S₅]
+  unfold lentOk; rw [hr]
+  exact .inr (.inl rfl)
+
 /-- `peek(c1)` on `S₅`: the backward function's component for `c1` at the written value, when it
 is a number; `err` (not whole, so the read fails) otherwise. -/
 theorem readPlace_c1 (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) (w : Sem)
@@ -523,6 +579,8 @@ theorem readPlace_c1 (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBindi
     funext l; simp [SState.typedFuture, SState.liveLabels, S₆, h0]
   simp only [readPlace, contentOf, hr, access_S₅ F n b k c w (dataHit []) rfl, h6, bind, Option.bind]
   simp only [S₆, SState.tyAt, SState.valAt, Sem.follow, dec_nat_as, hb]
-  cases w.as Nat <;> simp [Sem.whole] <;> rfl
+  have hm : ∀ x : Nat, Sem.el0 Nat x ∈ₛ[K.dm.read] (TyS.plain TyM.nat).m :=
+    fun x => ⟨x, by simp [Code0.enc]⟩
+  cases w.as Nat <;> simp [Sem.whole, ReadGood, hm] <;> rfl
 
 end Ochr.Meaning.Attack

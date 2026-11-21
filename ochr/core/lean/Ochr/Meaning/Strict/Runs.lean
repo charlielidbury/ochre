@@ -91,19 +91,18 @@ theorem succ_nat_runs (hfl : ∀ sc t, K.D.flags sc t = (false, false)) (tl : Bo
   refine ⟨?_, one_mem_nat _⟩
   have hm : Sem.el0 Nat 1 ∈ₛ[K.dm.read] TyM.nat := one_mem_nat K.dm.read
   simp [runT, hfl, SM.erasedIf, SM.stmtIf, SM.strictS, SM.onCopy, bind, pure, Sem.succ_el0, Sem.asTy, hm, TyS.plain]
-/-- **`Type₁` as a term runs, to a value that is no (partly moved) member of the type the run gives
+/-- **`Type₁` as a term runs, to a value that is no (open) member of the type the run gives
 it**: `sort 2 : sort 3`, and the bounded model has no `Type₂` (`TyM.univ 3 = err`). The term occurs in
 accepted programs (a codomain `Type_1`, `Regress/CodeRuns`' `Pred`), so the fundamental lemma's
-conclusion is "a partly moved member, OR the type is `err`" (`GoodRes`), not `pmem` alone; the same
+conclusion is "a member, `⊥`, OR the type is `err`" (`GoodRes`), not `pmem` alone; the same
 holds of the run as it stands (`runT`). -/
 theorem sort_two_runs (tl : Bool) (h : TyS) (s : SState) :
     runT K ρ φ tl h (.sort 2) s = some ((.ty (TyM.univ 2), .plain (TyM.univ 3)), s) ∧
-      ¬ DataModel.pmem K.dm.read K.Γ (.ty (TyM.univ 2)) (TyM.univ 3) ∧ TyM.univ 3 = TyM.err := by
+      ¬ DataModel.pmem K.dm K.Γ (.ty (TyM.univ 2)) (TyM.univ 3) ∧ TyM.univ 3 = TyM.err := by
   refine ⟨by rw [runT]; rfl, ?_, rfl⟩
-  rintro (h | ⟨t, _, hm, ht | ho⟩)
-  · cases h
-  · exact DataModel.err_mem_false _ _ ht
-  · cases hm <;> exact ho
+  intro h
+  cases h with
+  | mem h => exact DataModel.err_mem_false _ _ h
 
 section
 variable (dm : DataModel)

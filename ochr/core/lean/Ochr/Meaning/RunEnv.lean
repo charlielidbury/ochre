@@ -157,19 +157,21 @@ theorem readPlace_envLe {p : Place} {copy : Bool} {s s' : SState} {r : Res}
     split at h
     · cases h
     · split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h
-        rw [← h.2]; exact e₁
-      · cases hs : setContent K φ pos steps .moved s₁ with
-        | none => rw [hs] at h; cases h
-        | some y =>
-          obtain ⟨⟨⟩, s₂⟩ := y
-          rw [hs] at h
-          have e₂ := e₁.trans (setContent_envLe K φ hs)
-          simp only [Option.some.injEq, Prod.mk.injEq] at h
-          rw [← h.2]
-          split
-          · exact e₂.trans ((envLe_takeLabel _ _).trans (envLe_pushTempShaped _ _ _))
-          · exact e₂
+      · cases h
+      · split at h
+        · simp only [Option.some.injEq, Prod.mk.injEq] at h
+          rw [← h.2]; exact e₁
+        · cases hs : setContent K φ pos steps .moved s₁ with
+          | none => rw [hs] at h; cases h
+          | some y =>
+            obtain ⟨⟨⟩, s₂⟩ := y
+            rw [hs] at h
+            have e₂ := e₁.trans (setContent_envLe K φ hs)
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            rw [← h.2]
+            split
+            · exact e₂.trans ((envLe_takeLabel _ _).trans (envLe_pushTempShaped _ _ _))
+            · exact e₂
 
 theorem borrowPlace_envLe {p : Place} {s s' : SState} {r : Res}
     (h : borrowPlace K φ p s = some (r, s')) : EnvLe s s' := by
@@ -351,6 +353,27 @@ theorem setContent_eq (K : RunCtx) (φ : Future) {pos : Pos} {steps : List Step}
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     exact h.2.symm
+  · cases h
+
+/-- A write at a root or through `*` is defined at every future: it writes `v` there. -/
+theorem setContent_root (K : RunCtx) (φ : Future) (pos : Pos) {steps : List Step} (v : Sem) (s : SState)
+    (hst : steps = [] ∨ steps = [.deref]) :
+    setContent K φ pos steps v s = some (⟨⟩, s.setAt pos fun _ => v) := by
+  unfold setContent
+  have hu : ∀ x, Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => v) steps x = some v := by
+    intro x; rcases hst with rfl | rfl
+    · rw [Sem.updAt.eq_def]
+    · rw [Sem.updAt.eq_def]; dsimp only; rw [Sem.updAt.eq_def]
+  simp only [hu, Option.isSome_some, implies_true, if_true, Option.getD_some]
+
+/-- The test of a write: the path update is defined at every typed future. -/
+theorem setContent_defined (K : RunCtx) (φ : Future) {pos : Pos} {steps : List Step} {v : Sem}
+    {s s' : SState} (h : setContent K φ pos steps v s = some (⟨⟩, s')) :
+    ∀ ψ, TypedFut K φ s ψ → (Sem.updAt K.dm K.Γ (s.tyAt pos) (fun _ => v) steps (s.valAt pos ψ)).isSome := by
+  unfold setContent at h
+  simp only at h
+  split at h
+  · assumption
   · cases h
 
 end Ochr.Meaning

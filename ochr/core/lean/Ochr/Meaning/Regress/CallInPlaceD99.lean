@@ -86,7 +86,11 @@ theorem run_id1_r (a : Nat) (hint : TyS) (tl : Bool) :
     Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent,
     SState.setHeldTy, SState.setHeldMem, SPr, SPr2, xB]
   -- the strict borrow: `a` is a `Nat`, `*x`'s type
-  exact ⟨a, rfl⟩
+  rw [if_pos ⟨a, rfl⟩]
+  dsimp only
+  simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
+  rw [if_pos]
+  all_goals first | rfl | exact Attack.lentOk_deref (Kc dm) φ (pos := .bind 1 1) (by simp [resolve, SState.varPos, SState.topIdx, Place.steps, SPr, yFrame, Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)])
 
 end
 

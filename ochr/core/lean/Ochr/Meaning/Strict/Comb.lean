@@ -3,8 +3,9 @@ import Ochr.Meaning.Strict.OpsPlace
 /-!
 # The fundamental lemma: what it takes of the context, and the combinators
 
-`FundCtx`: the data layer's read lemma (`MemReads`), the globals' membership, and no declaration at
-`Type₁` (the model reads every data declaration as a `Type₀` code). `ValsOk`: the orchestrator's
+`FundCtx`: the globals' membership, and no declaration at `Type₁` (the model reads every data
+declaration as a `Type₀` code). (The data layer's read lemma `MemReads` is gone: reads are strict,
+`Run.ReadGood`.) `ValsOk`: the orchestrator's
 decision 5, a precondition on the TERM: each embedded value satisfies the lemma at its `.val`
 (discharged by the simulation from an invariant on the code the state holds).
 
@@ -18,8 +19,6 @@ open Ochr.Meaning
 
 /-- **What the fundamental lemma takes of the context.** -/
 structure FundCtx (K : RunCtx) : Prop where
-  /-- the data layer's read lemma (`ReadMember.follow_below_member` under `ReadCoherent`) -/
-  reads : MemReads K.dm K.Γ
   /-- each global's meaning is a member of its type, and holds no borrow (`CtxOk.globals`) -/
   globals : ∀ n, GoodRes K.dm.read (K.C.global n) ∧ (K.C.global n).2.label = none
   /-- no data declaration at `Type₁` (the model reads a data declaration as a `Type₀` code) -/

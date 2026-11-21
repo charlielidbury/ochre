@@ -161,16 +161,17 @@ theorem fund_rewriteR (h u : Term) : Fund K ρ φ (.prim "rewriteR" [h, u]) := f
   fund_premises [h, u] _ rfl
 
 /-- A place read (copy or move): `readPlace_fund_all`. -/
-theorem fund_place (hc : FundCtx K) (p : Place) : Fund K ρ φ (.place p) := fun tl hint => by
+theorem fund_place (_hc : FundCtx K) (p : Place) : Fund K ρ φ (.place p) := fun tl hint => by
   intro s s' r hs h
   rw [runT] at h
-  exact fund_erasedS (readPlace_fund_all hc.reads p _) s s' r hs h
+  exact fund_erasedS (readPlace_fund_all p _) s s' r hs h
 
-/-- `&p` (strict at the place's type): `borrowPlace_fund`. -/
-theorem fund_borrow (hc : FundCtx K) (p : Place) : Fund K ρ φ (.borrow p) := fun tl hint => by
+/-- `&p` (strict at the place's type, then D112's invalidation and the strict test below a root):
+`borrow_fund`. -/
+theorem fund_borrow (_hc : FundCtx K) (p : Place) : Fund K ρ φ (.borrow p) := fun tl hint => by
   intro s s' r hs h
   rw [runT] at h
-  exact fund_erasedS (borrowPlace_fund hc.reads p) s s' r hs h
+  exact fund_erasedS (borrow_fund p) s s' r hs h
 
 theorem assignAt_res {p : Place} {v : Sem} {lab : Option Nat} {s s' : SState} {r : Res}
     (h : assignAt K φ p v lab s = some (r, s')) : r = (.el0 Unit (), .plain TyM.unit) := by
@@ -182,8 +183,9 @@ theorem assignAt_res {p : Place} {v : Sem} {lab : Option Nat} {s s' : SState} {r
     · cases h
     · simp only [Option.some.injEq] at h; exact (Prod.mk.inj h).1.symm
 
-/-- `p := u` (strict: the value and its label at the place's type at the write): `assignAt_sgood`. -/
-theorem fund_assign (hc : FundCtx K) {p : Place} {u : Term} (hu : Fund K ρ φ u) : Fund K ρ φ (.assign p u) :=
+/-- `p := u` (strict: the value and its label at the place's type at the write; then D112's
+invalidation and the strict test below a root): `assign_tail_fund`. -/
+theorem fund_assign (_hc : FundCtx K) {p : Place} {u : Term} (hu : Fund K ρ φ u) : Fund K ρ φ (.assign p u) :=
     fun tl hint => by
   intro s s' r hs h
   rw [runT] at h
@@ -194,9 +196,7 @@ theorem fund_assign (hc : FundCtx K) {p : Place} {u : Term} (hu : Fund K ρ φ u
   dsimp only at h₀
   obtain ⟨⟨hmem, hl⟩, h₀⟩ := open Classical in ite_none_some h₀
   obtain ⟨-, hlab, hlou, hs₁⟩ := hu false _ _ _ _ hs₀ h2
-  obtain ⟨hg, hlab', hs'⟩ := assignAt_sgood hc.reads hs₁ hmem hl hlab hlou h₀
-  have hr : r₀.2.label = none := by rw [assignAt_res h₀]; rfl
-  exact ⟨hg, hlab', (fun l h' => by rw [hr] at h'; cases h'), hs'⟩
+  exact assign_tail_fund hs₁ hmem hl hlab hlou h₀
 
 theorem statePres_stmtIf {b : Bool} {x : SM Res} (hx : StatePres K.dm K.Γ φ x) :
     StatePres K.dm K.Γ φ (SM.stmtIf b x) := by
@@ -341,7 +341,7 @@ theorem headOf_some' {f : Term} {rd : Place → SM Res} {rn : SM Res} {s s' : SS
 /-- **A call**: the head (a place read in place, or a run), the arguments, then the application: its
 result is a member of the type it is given (`callOf_res_mem`, from `ApplyMem.app_mem'`), the state is
 `callOfS_sgood`'s, a returned borrow's label is parked (`callOfS_lou`). -/
-theorem fund_call (hc : FundCtx K) {f : Term} {args : List Term} {hd : Bool} (hf : Fund K ρ φ f)
+theorem fund_call (_hc : FundCtx K) {f : Term} {args : List Term} {hd : Bool} (hf : Fund K ρ φ f)
     (hargs : ∀ a ∈ args, Fund K ρ φ a) : Fund K ρ φ (.call f args hd) := fun tl hint => by
   intro s s' r hs h
   rw [runT] at h
@@ -350,13 +350,13 @@ theorem fund_call (hc : FundCtx K) {f : Term} {args : List Term} {hd : Bool} (hf
   obtain ⟨fv, s₁, h1, h2⟩ := SM.bind_some h₀
   have hfv : GoodRes K.dm.read fv ∧ SGood K.dm K.Γ φ s₁ := by
     rcases headOf_some' h1 with ⟨p, -, h1⟩ | h1
-    · obtain ⟨hg, -, -, hs'⟩ := readPlace_fund_all hc.reads p true s₀ s₁ fv hs₀ h1; exact ⟨hg, hs'⟩
+    · obtain ⟨hg, -, -, hs'⟩ := readPlace_fund_all p true s₀ s₁ fv hs₀ h1; exact ⟨hg, hs'⟩
     · obtain ⟨hg, -, -, hs'⟩ := hf false _ s₀ s₁ fv hs₀ h1; exact ⟨hg, hs'⟩
   obtain ⟨as, s₂, h3, h4⟩ := SM.bind_some h2
   have hs₂ := runArgsS_pres _ _ args hargs [] s₁ s₂ as hfv.2 h3
   obtain ⟨ht, h5⟩ := open Classical in ite_none_some h4
   obtain ⟨s₄, h6⟩ := callOfS_res h5
-  obtain ⟨hlab, hs₃⟩ := callOfS_sgood hc.reads hs₂ hfv.1 ht h5
+  obtain ⟨hlab, hs₃⟩ := callOfS_sgood hs₂ hfv.1 ht h5
   exact ⟨.inl (callOf_res_mem hfv.1 h6), hlab, callOfS_lou hs₂.acyc.2.2 h5, hs₃⟩
 
 end

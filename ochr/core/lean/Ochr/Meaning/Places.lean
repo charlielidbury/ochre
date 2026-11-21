@@ -61,6 +61,12 @@ structure Decisions : Type where
   paths). Its alignment with `Machine.blockCaptures` is D90's first obligation (docs/31 D37); the
   instance is `BlockCaps.staticBlockCaps`. -/
   blockCaps : List DeclInfo → List Place → Term → List Place × List (Place × Nat) := fun _ _ _ => ([], [])
+  /-- D112 [Open], the dependent-values unit: the places a write or a borrow of `p` invalidates (set
+  to `⊥`): for each field step `(q, g)` of `p` with `g` an index field of its constructor, every
+  sibling `q.j` whose declared field type mentions `g` and is a proof field or a LEAF field (a field
+  not a data inductive at every instance). From declarations alone; its alignment with
+  `Machine.openWrite` is a statement for the simulation. -/
+  invalidated : List DeclInfo → Place → List Place := fun _ _ => []
 
 /-- The scope after a telescope of parameter types: each parameter's reading, read in the scope
 of the earlier ones, innermost first (`Decide.telescope`). -/
@@ -124,9 +130,10 @@ def fieldHint (d : IndDecl) (r : Rec) (c i : Nat) (earlier : List Sem) : TyS :=
 
 /-- Field `i` of constructor `c` of a constructor value read at the type `T` (route (c), D32): the
 field and the type the read gives it (`DataModel.readTy`), from `T`'s declaration (a data code
-carries it) and the value's own record; never a declaration looked up by name. The read fails where
-`T` is no data code, where `T`'s declaration is not the value's (the names differ), and at a junk
-leaf. A field of `⋆` is `⋆` at `err`. `Γ` is not read (kept so that callers read alike). -/
+carries it) and the value's own record; a declaration is looked up by name only for a tree of
+another declaration than the field's (`DataModel.readTy`, `ownTy`). The read fails where `T` is no
+data code, where `T`'s declaration is not the value's (the names differ), and at a junk leaf. A field
+of `⋆` is `⋆` at `err`. -/
 noncomputable def Sem.stepField (T : TyS) (c i : Nat) (s : Sem) : Option (Sem × TyS) :=
   match s with
   | .proof => some (.proof, .plain TyM.err)
@@ -135,7 +142,7 @@ noncomputable def Sem.stepField (T : TyS) (c i : Nat) (s : Sem) : Option (Sem ×
     | some (d, _) =>
       if d.name = n ∧ c' = c then
         match fs[i]? with
-        | some f => (dm.readTy d r c i (fs.take i) f).map fun U => (f, .plain U)
+        | some f => (dm.readTy Γ d r c i (fs.take i) f).map fun U => (f, .plain U)
         | none => none
       else none
     | none => none
@@ -155,19 +162,29 @@ noncomputable def Sem.step (T : TyS) : Step → Sem → Option (Sem × TyS)
     | some 0 => none
     | none => match T.m.dataCode?, s with
       | none, .dat "Nat" _ 1 [w] => some (w, .plain TyM.nat)
-      | _, _ => Sem.stepField dm T 0 0 s
-  | .proj i, s => Sem.stepField dm T 0 i s
+      | _, _ => Sem.stepField dm Γ T 0 0 s
+  | .proj i, s => Sem.stepField dm Γ T 0 i s
   -- a named field step reads only a constructor value of the declaration it names, as the
   -- checker's `stepV` reads only `.ind` values of `g.ty`; never a number (the checker's numbers are
   -- `zero`/`succ`, with no named field; no declaration is named `Nat`, (N))
   | .field g, s => match s with
-    | .dat n _ _ _ => if n = g.ty ∧ n ≠ "Nat" then Sem.stepField dm T g.ctor g.idx s else none
-    | s => Sem.stepField dm T g.ctor g.idx s
+    | .dat n _ _ _ => if n = g.ty ∧ n ≠ "Nat" then Sem.stepField dm Γ T g.ctor g.idx s else none
+    | s => Sem.stepField dm Γ T g.ctor g.idx s
 
 /-- Follow a path on a meaning of type `T`. -/
 noncomputable def Sem.follow (T : TyS) (s : Sem) : List Step → Option (Sem × TyS)
   | [] => some (s, T)
   | st :: sts => (Sem.step dm Γ T st s).bind fun (s', T') => Sem.follow T' s' sts
+
+/-- `S` at a record: the successor of a number, or the tuple `S(s)` at the record `r` of a partly
+moved one (`Sem.succ` is `Sem.succAt natRec`). A write through the predecessor of a tree named
+`Nat` (a declaration of that name, junk to the program) keeps the tree's own record. -/
+noncomputable def Sem.succAt (r : Rec) (s : Sem) : Sem :=
+  match s.asNat with
+  | some n => .el0 Nat (n + 1)
+  | none => open Classical in if s.whole then .err else .dat "Nat" r 1 [s]
+
+theorem Sem.succ_eq_succAt (s : Sem) : s.succ = Sem.succAt natRec s := rfl
 
 /-- Update the sub-meaning at a path, reading the value only (docs/31 D32): a number's
 predecessor through `.0`, a constructor value's field, rebuilt by its own declaration (`reDat`:
@@ -181,9 +198,9 @@ noncomputable def Sem.updAt (T : TyS) (f : Sem → Sem) : List Step → Sem → 
     | .proj 0, some (n + 1) => (Sem.updAt (.plain TyM.nat) f sts (.el0 Nat n)).map Sem.succ
     | _, _ =>
       match s with
-      | .dat "Nat" _ 1 [w] =>
+      | .dat "Nat" r 1 [w] =>
         match st with
-        | .proj 0 => (Sem.updAt (.plain TyM.nat) f sts w).map Sem.succ
+        | .proj 0 => (Sem.updAt (.plain TyM.nat) f sts w).map (Sem.succAt r)
         | _ => none
       | .dat n r c fs =>
         let i := match st with | .proj i => i | .field g => g.idx | .deref => 0

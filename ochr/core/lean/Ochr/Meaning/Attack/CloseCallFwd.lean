@@ -31,6 +31,9 @@ theorem res_means_fwd (dm : DataModel) (C : CodeMeaning) (n : Nat) (F : GCar) (�
   rw [borrowPlace_var0_one _ _ _ _ (by simp [Sem.whole])]
   dsimp only
   simp only [List.nil_append, List.foldl_nil, Nat.zero_add, Bool.false_eq_true, reduceIte, mem_nat, if_true]
+  erw [if_pos (lentOk_root (K₀ dm C) φ (pos := .bind 0 0) rfl)]
+  erw [invalidate_noInv (K₀ dm C) φ (fun _ _ => rfl)]
+  dsimp only
   -- the strict call: the borrow of `c1` is live and holds `Nat`, `σ1`'s parameter's content type
   erw [if_pos (borrowArgs_S₂ dm.read F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n) rfl)]
   erw [callOf_S₂ _ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n)]

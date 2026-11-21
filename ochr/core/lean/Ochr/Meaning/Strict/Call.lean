@@ -52,26 +52,14 @@ theorem callOfL_some {C : Type u} {t : Tel L.Code PUnit C} {fv : Sem} {args : Li
 
 end
 
-/-- A partly moved member that is neither `⊥` nor a constructor tree is a member. -/
-theorem mem_of_pmem_el {R : DataRead} {Γ : List IndDecl} {v : Sem} {T : TyM} (hm : v ≠ .moved)
-    (hd : ∀ n r c fs, v ≠ .dat n r c fs) (h : DataModel.pmem R Γ v T) : v ∈ₛ[R] T := by
-  rcases h with h | ⟨t, _, hmo, ht | ho⟩
-  · exact absurd h hm
-  · cases hmo with
-    | moved => exact absurd rfl hm
-    | refl => exact ht
-    | dat => exact absurd rfl (hd _ _ _ _)
-    | succ => exact absurd rfl (hd _ _ _ _)
-  · cases hmo with
-    | moved => exact absurd rfl hm
-    | refl =>
-      exfalso
-      unfold DataModel.OpenIn at ho
-      split at ho
-      · exact hd _ _ _ _ rfl
-      · exact ho
-    | dat => exact absurd rfl (hd _ _ _ _)
-    | succ => exact absurd rfl (hd _ _ _ _)
+/-- An open member that is neither `⊥` nor a constructor tree is a member. -/
+theorem mem_of_pmem_el {dm : DataModel} {Γ : List IndDecl} {v : Sem} {T : TyM} (hm : v ≠ .moved)
+    (hd : ∀ n r c fs, v ≠ .dat n r c fs) (h : dm.pmem Γ v T) : v ∈ₛ[dm.read] T := by
+  cases h with
+  | moved => exact absurd rfl hm
+  | mem h => exact h
+  | succ => exact absurd rfl (hd _ _ _ _)
+  | dat => exact absurd rfl (hd _ _ _ _)
 
 theorem el0_of_as {A : Type} {v : Sem} {a : A} (h : Sem.as A v = some a) : v ≠ .moved ∧ ∀ n r c fs, v ≠ .dat n r c fs := by
   cases v <;> simp_all [Sem.as]

@@ -160,7 +160,7 @@ def GoodAt (dm : DataModel) (T : TyS) (w : Sem) : Prop :=
   w ∈ₛ[dm.read] T.m ∨ (T.m = TyM.err ∧ ((∃ X, w = .ty X) ∨ w = .proof))
 
 theorem stepField_good {T U : TyS} {c i : Nat} {w x : Sem} (hw : GoodAt dm T w)
-    (h : Sem.stepField dm T c i w = some (x, U)) : GoodAt dm U x := by
+    (h : Sem.stepField dm Γ T c i w = some (x, U)) : GoodAt dm U x := by
   unfold Sem.stepField at h
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -174,7 +174,7 @@ theorem stepField_good {T U : TyS} {c i : Nat} {w x : Sem} (hw : GoodAt dm T w)
         obtain ⟨hn, rfl⟩ := hcond
         split at h
         · rename_i f hf
-          cases hU : dm.readTy d r c' i (fs.take i) f with
+          cases hU : dm.readTy Γ d r c' i (fs.take i) f with
           | none => rw [hU] at h; cases h
           | some U' =>
             rw [hU] at h
@@ -252,5 +252,63 @@ theorem follow_good : ∀ (steps : List Step) {T U : TyS} {w x : Sem}, GoodAt dm
       obtain ⟨w', T'⟩ := p
       rw [hs] at h
       exact follow_good sts (step_good hw hs) h
+
+/-! ## Open membership: what it contains -/
+
+theorem fitsM_length (S : Sig) (d : IndDecl) (r : Rec) (c : Nat) :
+    ∀ (i n : Nat) (e : List Small) (fs : List Sem), FitsM S d r c i n e fs → fs.length = n
+  | _, 0, _, fs, h => by have : fs = [] := h; subst this; rfl
+  | i, n + 1, e, fs, ⟨f, fs', hfs, _, h2⟩ => by
+    subst hfs; simp [fitsM_length S d r c (i + 1) n _ fs' h2]
+
+/-- The fields of a whole member, each moved out or not: open fields, by their shapes at the member's
+own earlier fields (the completion). -/
+theorem ofields_of_below (d : IndDecl) (r : Rec) (c : Nat) : ∀ (fs gs : List Sem) (i n : Nat) (e e' : List Sem),
+    MovedOfList Γ fs gs → MovedOfList Γ e e' → (∀ g ∈ gs, g.whole) →
+    FitsM dm.sig d r c i n (e'.map Sem.small) gs → dm.OFields Γ d r c i e fs
+  | [], [], _, _, _, _, .nil, _, _, _ => .nil
+  | f :: fs, g :: gs, i, n, e, e', .cons hfg hl, he, hw, hfit => by
+    cases n with
+    | zero => cases hfit
+    | succ n =>
+      obtain ⟨g', gs', heq, h1, h2⟩ := hfit
+      simp only [List.cons.injEq] at heq
+      obtain ⟨rfl, rfl⟩ := heq
+      refine .cons (.fits e' g he (hw g (List.mem_cons_self ..)) hfg h1) ?_
+      refine ofields_of_below d r c fs gs (i + 1) n (e ++ [f]) (e' ++ [g]) hl (movedOfList_append he (.cons hfg .nil))
+        (fun x hx => hw x (List.mem_cons_of_mem _ hx)) ?_
+      simpa using h2
+
+/-- **A partly moved member is an open member** (with completions of the earlier fields: without
+them it is false, `Strict/ReadProto.not_memReads_dep`). -/
+theorem omem_of_below : ∀ {s t : Sem}, MovedOf Γ s t → t.whole → ∀ {T : TyM}, t ∈ₛ[dm.read] T → dm.OMem Γ T s
+  | _, _, .moved _, _, T, _ => .moved T
+  | _, _, .refl _, _, _, ht => .mem ht
+  | _, _, .dat (n := n) (r := r) (c := c) (fs := fs) (gs := gs) hl, hw, T, ht => by
+    obtain ⟨d, hdc, hm, hname⟩ := mem_dat_inv dm ht
+    obtain ⟨⟨c', hc'⟩, gs', he, hfits⟩ := (DataLib.mem_iff dm.sig d r _).1 hm
+    simp only [Sem.dat.injEq, true_and] at he
+    obtain ⟨-, hc, hg⟩ := he
+    subst hname
+    subst hc
+    subst hg
+    have hwg : ∀ g ∈ gs, g.whole := by simpa [Sem.whole] using hw
+    refine .dat hdc hc' ?_ (ofields_of_below d r _ fs gs 0 _ [] [] hl .nil hwg hfits)
+    rw [movedOfList_length hl]
+    exact fitsM_length dm.sig d r _ _ _ _ _ hfits
+  | _, _, .succ (s := s) (n := n) h, hw, T, ht => .succ n ht (omem_of_below h (by simp [Sem.whole]) ⟨n, rfl⟩)
+
+/-- A value fitting a declaration's constructor at a record, field by field at the current earlier
+fields: what [Repack] checks. -/
+def Closed (dm : DataModel) (d : IndDecl) (r : Rec) (s : Sem) : Prop :=
+  ∃ c fs, s = .dat d.name r c fs ∧ c < d.ctors.length ∧ FitsM dm.sig d r c 0 (arity d c) [] fs
+
+/-- **Closed is member** at a data sort (the definition of membership, field by field). -/
+theorem closed_iff_mem (d : IndDecl) (r : Rec) (hd : (d.sort == 0) = false) (s : Sem) :
+    Closed dm d r s ↔ s ∈ₛ[dm.read] dm.tyR d r := by
+  rw [DataModel.mem_tyR dm d r hd, DataModel.Mem, DataLib.mem_iff]
+  constructor
+  · rintro ⟨c, fs, rfl, hc, hf⟩; exact ⟨⟨c, hc⟩, fs, rfl, hf⟩
+  · rintro ⟨⟨c, hc⟩, fs, rfl, hf⟩; exact ⟨c, fs, rfl, hc, hf⟩
 
 end Ochr.Meaning.DataModel
