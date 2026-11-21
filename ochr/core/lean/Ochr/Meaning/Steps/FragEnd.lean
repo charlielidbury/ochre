@@ -112,6 +112,17 @@ structure FEnd (E : Env) (px ph : Pos) (l : Nat) (c : Value) : Prop where
   loan1 : ∀ q ∈ allPos E, valAt E q = .loan l → q = px
   bor1 : ∀ q ∈ allPos E, ∀ w, valAt E q = .borrow l w → q = ph
 
+/-- `FEnd` reads only the values, which a temporary's stored type does not change. -/
+theorem FEnd.of_erase {E E' : Env} {px ph : Pos} {l : Nat} {c : Value} (he : E.erase = E'.erase)
+    (h : FEnd E px ph l c) : FEnd E' px ph l c := by
+  have hv : ∀ q, valAt E' q = valAt E q := fun q => by rw [← valAt_erase, ← he, valAt_erase]
+  have ha : allPos E' = allPos E := by rw [← allPos_erase, ← he, allPos_erase]
+  refine ⟨fun q hq => ?_, fun f i m => ?_, ha ▸ h.hpx, ha ▸ h.hph, by rw [hv]; exact h.x, by rw [hv]; exact h.y,
+    h.c, fun q hq e => h.loan1 q (ha ▸ hq) (by rw [← hv]; exact e),
+    fun q hq w e => h.bor1 q (ha ▸ hq) w (by rw [← hv]; exact e)⟩
+  · rw [hv]; exact h.vals q (ha ▸ hq)
+  · rw [hv]; exact h.tempNoLoan f i m
+
 /-- The environment after the end: the holder `⊥`, the lender its content back. -/
 def endE (E : Env) (px ph : Pos) (c : Value) : Env := Env.setAtE (Env.setAtE E ph .bot) px c
 
@@ -643,13 +654,13 @@ theorem relend_keep {s : SState} {L : Nat} {r : Pos} {m : Nat} (hm : m ≠ L) (h
 /-- After the end, no label is reached from `p` if none but the ended one was. -/
 theorem endAt_reached {s : SState} {p : Pos} {hit : List Step → Bool} {L : Nat} {r : Pos} (hu : s.Uniq)
     (hrs : s.shape r = some L) (hreach : ∀ z, s.Live z → s.reached p hit z = true → z = L)
-    (hnosite : ∀ z, z ≠ L → ∀ x ∈ s.lent z, x.pos ≠ r) :
+    (hnosite : ∀ z, s.Live z → z ≠ L → ∀ x ∈ s.lent z, x.pos ≠ r) :
     ∀ z, (s.endAt L r).Live z → (s.endAt L r).reached p hit z = false := by
   intro z hz
   obtain ⟨hz', hne⟩ := (endAt_live_iff hu hrs z).mp hz
   have e : (s.endAt L r).reached p hit z = s.reached p hit z := by
     unfold SState.reached
-    rw [show (s.endAt L r).lent = s.relend L r from rfl, relend_keep hne (hnosite z hne)]
+    rw [show (s.endAt L r).lent = s.relend L r from rfl, relend_keep hne (hnosite z hz' hne)]
   rw [e]
   cases h : s.reached p hit z
   · rfl
@@ -667,7 +678,7 @@ strict where that end is. -/
 theorem access_one {K : RunCtx} {φ : Future} {s : SState} {p : Pos} {hit : List Step → Bool} {L : Nat} {r : Pos}
     (hu : s.Uniq) (hrs : s.shape r = some L) (hrp : r ∈ s.positions) (hreachL : s.reached p hit L = true)
     (hreach : ∀ z, s.Live z → s.reached p hit z = true → z = L)
-    (hnosite : ∀ z, z ≠ L → ∀ x ∈ s.lent z, x.pos ≠ r) :
+    (hnosite : ∀ z, s.Live z → z ≠ L → ∀ x ∈ s.lent z, x.pos ≠ r) :
     s.access p hit = s.endAt L r ∧ (EndOk K φ s L → AccessOk K φ s p hit) := by
   have hL : s.Live L := (SState.live_iff s L).mpr ⟨r, hrp, hrs⟩
   have hhold : s.holderOf L = some r := by

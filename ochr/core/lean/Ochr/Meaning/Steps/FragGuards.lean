@@ -1,0 +1,56 @@
+import Ochr.Meaning.Steps.ColumnB
+
+/-!
+# Sanity runs of the fragment's assumed facts about the checker (lead10; compiled, not kernel-checked)
+
+Each `Prop` of `Steps/FragMachine.lean` run at the entry conditions it must survive (several live
+borrows, the holder bound before or after the lender, the holder a value in flight, the term in tail
+position, a handed-down reading, an untyped run, a mode other than the fragment's).
+-/
+
+namespace Ochr.Meaning.Steps.Form
+
+namespace FragGuards
+
+open Ochr.Meaning.Regress.GenNeutralContent (isOk outSt outVal)
+open ColumnB (vals modeOf)
+
+def bN (x : String) (v : Value) : Binding := { hint := ⟨x⟩, ty := some .tNat, val := v, decl := .other }
+def bR (x : String) (v : Value) : Binding := { hint := ⟨x⟩, ty := some (.tRef .tNat), val := v, decl := .ref .other }
+
+/-- One frame: `x ↦ loan_0`, `z ↦ loan_1`, `y ↦ borrow_0 S(Z)`, `w ↦ borrow_1 Z` (two live borrows). -/
+def st2 : MState :=
+  { env := #[{ binds := #[bN "x" (.loan 0), bN "z" (.loan 1), bR "y" (.borrow 0 (.succ .zero)),
+      bR "w" (.borrow 1 .zero)] }], nextLoan := 2 }
+
+-- `VarLentInv`: the read of `x` (variable 3) ends `0` only: `S(Z)` at `Nat`; `y ↦ ⊥`, `z`, `w` kept;
+-- the standalone decision moves (`x ↦ ⊥`)
+#guard outVal (Ochr.evalCore 100 true (.place (.var 3)) none) st2 1000 == (.succ .zero, some .tNat)
+#guard vals (outSt (Ochr.evalCore 100 true (.place (.var 3)) none) st2 1000) ==
+  [.bot, .loan 1, .bot, .borrow 1 .zero]
+-- the read of `z` (variable 2) ends `1` only
+#guard vals (outSt (Ochr.evalCore 100 true (.place (.var 2)) none) st2 1000) ==
+  [.loan 0, .bot, .borrow 0 (.succ .zero), .bot]
+-- in tail position, under a handed-down reading, untyped: the same value (untyped: no type)
+#guard outVal (Ochr.evalCore 100 true (.place (.var 3)) none) { st2 with curTail := true } 1000 ==
+  (.succ .zero, some .tNat)
+#guard outVal (Ochr.eval 100 true (.place (.var 3)) none) { st2 with tailDecl := some .other } 1000 ==
+  (.succ .zero, some .tNat)
+#guard (outVal (Ochr.evalCore 100 false (.place (.var 3)) none) st2 1000).1 == .succ .zero
+#guard (outVal (Ochr.evalCore 100 false (.place (.var 3)) none) st2 1000).2.all (· == .tNat)
+-- the mode after is the mode before
+#guard modeOf (outSt (Ochr.evalCore 100 true (.place (.var 3)) none) st2 1000) == (false, false, false, 0)
+-- the holder bound BEFORE the lender: the same end
+def st2r : MState :=
+  { env := #[{ binds := #[bR "y" (.borrow 0 (.succ .zero)), bN "x" (.loan 0)] }], nextLoan := 1 }
+#guard outVal (Ochr.evalCore 100 true (.place (.var 0)) none) st2r 1000 == (.succ .zero, some .tNat)
+#guard vals (outSt (Ochr.evalCore 100 true (.place (.var 0)) none) st2r 1000) == [.bot, .bot]
+-- the holder a value in flight (a temporary): the access is rejected (D106), so `VarLentInv` asks a binding
+def stT : MState :=
+  { env := #[{ binds := #[bN "x" (.loan 0)], temps := #[.borrow 0 (.succ .zero)], tempTys := #[some (.tRef .tNat)] }],
+    nextLoan := 1 }
+#guard !isOk (Ochr.evalCore 100 true (.place (.var 0)) none) stT 1000
+
+end FragGuards
+
+end Ochr.Meaning.Steps.Form

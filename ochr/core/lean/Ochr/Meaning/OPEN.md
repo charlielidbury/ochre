@@ -14,6 +14,14 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE FRAGMENT (lead10, 2026-11-21, `spine-lead10`): facts about the checker to review and prove
+
+The simulation for every term of a small fragment (`Z`, `S`, reads/writes of number variables, `&x`, `*y := u`, `let`, `;`; at `Nat`, `Unit`, `&Nat`), by induction (`Steps/Frag*.lean`). Its facts about the checker are in `Steps/FragMachine.lean`, sanity-run in `Steps/FragGuards.lean` (several live borrows, the holder before/after the lender, the holder a value in flight, tail position, a handed-down reading, untyped, the mode after):
+- `VarLentInv`: `evalCore` of a read of a LENT number variable in a fragment environment (`FEnd`: `x ↦ loan_l` at `Nat`, `borrow_l c` held at a binding, `c` a number; loans/borrows of `l` only there; no temporary a loan): quiet [Repack], then the end (`endE`: holder `⊥`, lender `c`), then copy/move by the aligned decision. Generalises `VarEndInv` (B's exact state) to any fragment environment.
+- `InvEnd` (state-level): `Inv` across `endE` (the lender a number binding read `.other`). Generalises `InvEndRead`.
+Proved over them: `FragRead.readLent_core` (the read of a lent variable at `evalCore`, other borrows live), on `FragEnd.rel_end`/`end_ok`/`access_one` (the relation and the strict access across ending ONE label among several; no assumption).
+Also changed for the machine lane (D120): `AssignNumInv`/`AssignDerefInv` gain a last conjunct `u.assignHinted = false → hu = none`.
+
 ## FOR THE MACHINE LANE (`machine2`): the facts to review and prove, as of lead9 (2026-11-21; docs/31 D116)
 
 All in `Steps/FormMachine.lean`; sanity runs in `Steps/ColumnC.lean` (first column) and `Steps/ColumnB.lean` (borrow column, `#guard`s, including the three refutations). `InvCore` and `ColTerm` are GONE (the lead's ruling).
