@@ -87,7 +87,7 @@ not to depend on the future: docs/31 D83's technical point.) -/
 theorem evalMem_of_strict (K' : RunCtx) (ρ' : Assignment) (π' : Nat → Nat) (tl : Bool) (h : TyS) (t : Term)
     (s s' : SState) (r : Res) (v : Value) (hS : SR.SGood K' ρ' φ s) (hrun : SR.runS K' ρ' φ tl h t s = some (r, s'))
     (hmean : meanV K' ρ' (fun l => φ (π' l)) r.2 v = r.1) :
-    DataModel.pmem K'.dm.read K'.Γ (meanV K' ρ' (fun l => φ (π' l)) r.2 v) r.2.m := by
+    DataModel.pmem K'.dm K'.Γ (meanV K' ρ' (fun l => φ (π' l)) r.2 v) r.2.m := by
   rw [hmean]
   exact (SR.fund K' ρ' φ tl h t s s' r hS hrun).1
 

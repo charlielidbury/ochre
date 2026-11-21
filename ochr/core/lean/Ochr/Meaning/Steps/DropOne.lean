@@ -7,6 +7,7 @@ import Ochr.Meaning.SitesFollow
 import Ochr.Meaning.KeyBridge
 import Ochr.Meaning.Steps.PlaceTyping
 import Ochr.Meaning.Steps.Slice.DecideKeep
+import Ochr.Meaning.Strict.WriteMoved
 
 /-!
 # The drop of one place at the join: what `dropOne_step` rests on (docs/31 D30, D31; task C)
@@ -434,12 +435,11 @@ theorem movedOfList_set {Γ : List IndDecl} {a b : Sem} (h : MovedOf Γ a b) :
     simp only [List.getElem?_cons_succ] at hi
     exact .cons (.refl f) (movedOfList_set h fs i hi)
 
-/-- Moving a part out keeps partial membership (`pmem`: a member with parts moved out). -/
-theorem pmem_moved_part {R : DataRead} {Γ : List IndDecl} {s s' : Sem} {T : TyM} (hm : MovedOf Γ s' s)
-    (h : DataModel.pmem R Γ s T) : DataModel.pmem R Γ s' T := by
-  rcases h with rfl | ⟨t, hw, hst, ht⟩
-  · cases hm <;> exact .inl rfl
-  · exact .inr ⟨t, hw, movedOf_trans hm hst, ht⟩
+/-- Moving a part out keeps partial membership (`pmem`, open membership since the dependent-values
+unit: `Strict.omem_movedOf`). -/
+theorem pmem_moved_part {dm : DataModel} {Γ : List IndDecl} {s s' : Sem} {T : TyM} (hm : MovedOf Γ s' s)
+    (h : DataModel.pmem dm Γ s T) : DataModel.pmem dm Γ s' T :=
+  Strict.omem_movedOf hm h
 
 
 /-- **Writing `⊥` at a path moves a part out** of the meaning: the new meaning is the old with
