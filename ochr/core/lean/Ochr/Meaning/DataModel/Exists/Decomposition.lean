@@ -72,6 +72,13 @@ predicates (`Exists/Proto/PropSorted.lean`). The pieces, in the order a successo
    do not change when Σ grows past it (`DataFaithful` asks every state extending the prefix).
 9. Assembly: `exists_dataModel` from 1–8, by induction on the items (`covers := True`).
 
+Step 2 (`Step2.lean`) needed NO hypothesis on the decisions: every field-type run lemma
+(`RunLemmas.lean`) holds under every decision table, so faithfulness for the first-order fragment does
+not depend on the checker's decisions. The general statements of 3, 4 and 5, each attacked, are in
+`General.lean` (outside the default build): `runT_frameLocal`, `GlobalsTyped`/`globals_typed`,
+`knot_exists`, `PropLe`/`mono_prop`, `truth_exists`; three were false or vacuous as first written and
+are restated (their docstrings say how).
+
 What consumers additionally ask (checked 2026-11-21, exists2): `ReadCoherent` and `MemReads` are gone
 (the typed read, docs/31 D99); `FieldLevelsFaithful` is stated in `Faithful.lean` and asked by no
 consumer yet (BELIEVED TRUE: a proof field's canonical type is a proposition leaf, any other field's a
