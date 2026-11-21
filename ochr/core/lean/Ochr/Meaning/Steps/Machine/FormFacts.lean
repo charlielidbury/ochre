@@ -4,6 +4,7 @@ import Ochr.Meaning.Steps.ColumnC
 import Ochr.Meaning.Steps.Machine.InvShape
 import Ochr.Meaning.Steps.Machine.InvSteps
 import Ochr.Meaning.Steps.Machine.PlaceLocalFF
+import Ochr.Meaning.Steps.Machine.SeqInv
 
 /-!
 # The column's facts about the checker alone (`Steps/FormMachine.lean`), proved
@@ -135,5 +136,6 @@ theorem invSteps : InvSteps :=
 #print axioms invEndRead'
 #print axioms invSteps
 #print axioms placeLocal_ff
+#print axioms seqInvR
 
 end Ochr.Meaning.Steps.Machine
