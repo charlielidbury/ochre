@@ -139,7 +139,8 @@ theorem live_sA : sA.liveLabels = [] := live_st _
 /-- `sA` is good. -/
 theorem sA_good (dm : DataModel) : SGood dm [] φw sA := by
   refine ⟨fun ψ hψ f i hp => ?_, fun ψ hψ p l hl => ?_, fun l hl => ?_, fun f i l hl => ?_,
-    ⟨fun p ψ ψ' h => ?_, fun r x _ hs ψ ψ' _ => ?_, fun p x hp => ?_⟩, fun p l ⟨ψ, x, hne⟩ => ?_⟩
+    ⟨fun p ψ ψ' h => ?_, fun r x _ hs ψ ψ' _ => ?_, fun p x hp => ?_⟩, fun p l ⟨ψ, x, hne⟩ => ?_,
+    fun p q l hp _ => by cases hp⟩
   · rw [positions_sA] at hp
     simp only [List.mem_cons, Pos.bind.injEq, List.mem_nil_iff, or_false] at hp
     obtain ⟨rfl, rfl⟩ := hp
@@ -309,7 +310,8 @@ theorem live_sC : sC.liveLabels = [] := live_st _
 /-- `sC` is good. -/
 theorem sC_good (dm : DataModel) : SGood dm [] φw sC := by
   refine ⟨fun ψ hψ f i hp => ?_, fun ψ hψ p l hl => ?_, fun l hl => ?_, fun f i l hl => ?_,
-    ⟨fun p ψ ψ' h => ?_, fun r x _ hs ψ ψ' _ => ?_, fun p x hp => ?_⟩, fun p l ⟨ψ, x, hne⟩ => ?_⟩
+    ⟨fun p ψ ψ' h => ?_, fun r x _ hs ψ ψ' _ => ?_, fun p x hp => ?_⟩, fun p l ⟨ψ, x, hne⟩ => ?_,
+    fun p q l hp _ => by cases hp⟩
   · rw [positions_sC] at hp
     simp only [List.mem_cons, Pos.bind.injEq, List.mem_nil_iff, or_false] at hp
     rcases hp with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
@@ -582,7 +584,8 @@ theorem stateOk_sE2 (dm : DataModel) : StateOk (KE dm) φw (sE2 dm) := by
 theorem sE_good (dm : DataModel) : SGood dm [] φw (sE dm) := by
   have hpos : (sE dm).positions = [.bind 0 0] := by simp [sE, st, SState.positions]
   refine ⟨fun ψ hψ f i hp => ?_, fun ψ hψ p l hl => ?_, fun l hl => ?_, fun f i l hl => ?_,
-    ⟨fun p ψ ψ' h => ?_, fun r x _ hs ψ ψ' _ => ?_, fun p x hp => ?_⟩, fun p l ⟨ψ, x, hne⟩ => ?_⟩
+    ⟨fun p ψ ψ' h => ?_, fun r x _ hs ψ ψ' _ => ?_, fun p x hp => ?_⟩, fun p l ⟨ψ, x, hne⟩ => ?_,
+    fun p q l hp _ => by cases hp⟩
   · rw [hpos] at hp
     simp only [List.mem_cons, Pos.bind.injEq, List.mem_nil_iff, or_false] at hp
     obtain ⟨rfl, rfl⟩ := hp
@@ -684,7 +687,8 @@ theorem valAt_sF_indep (c : Sem) (p : Pos) (ψ : Future) {l : Nat} (hl : l ≠ 0
 /-- `sF c` is good when `c` is a member of `Nat`. -/
 theorem sF_good (dm : DataModel) {c : Sem} (hc : c ∈ₛ[dm.read] TyM.nat) : SGood dm [] φw (sF c) := by
   refine ⟨fun ψ hψ f i hp => ?_, fun ψ hψ p l hl => ?_, fun l hl => ?_, fun f i l hl => ?_,
-    ⟨fun p ψ ψ' h => ?_, fun r x _ hs ψ ψ' _ => ?_, fun p x hp => ?_⟩, fun p l ⟨ψ, x, hne⟩ => ?_⟩
+    ⟨fun p ψ ψ' h => ?_, fun r x _ hs ψ ψ' _ => ?_, fun p x hp => ?_⟩, fun p l ⟨ψ, x, hne⟩ => ?_,
+    fun p q l hp hq => (shape_sF_some hp).1.trans (shape_sF_some hq).1.symm⟩
   · rw [positions_sF] at hp
     simp only [List.mem_cons, Pos.bind.injEq, List.mem_nil_iff, or_false] at hp
     rcases hp with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩

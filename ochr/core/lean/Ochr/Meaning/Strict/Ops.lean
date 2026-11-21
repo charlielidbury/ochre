@@ -102,7 +102,7 @@ theorem sgood_setAt_const {s : SState} {f i : Nat} {v : Sem} (hs : SGood dm Γ �
     rw [tyAt_of_not_mem hn] at hv
     exact DataModel.err_mem_false _ v hv
   have hval := valAt_setAt_const hpos v
-  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ p l hl => ?_, ?_, fun f' i' l hl => ?_, ?_, ?_⟩
+  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ p l hl => ?_, ?_, fun f' i' l hl => ?_, ?_, ?_, ?_⟩
   · rw [typedF_setAt] at hψ
     show GoodVal _ _ ((s.setAt _ _).valAt _ ψ) ((s.setAt _ _).tyAt _).m
     rw [hval, tyAt_setAt]
@@ -121,6 +121,7 @@ theorem sgood_setAt_const {s : SState} {f i : Nat} {v : Sem} (hs : SGood dm Γ �
   · rw [SState.shape_setAt] at hl; rw [tyAt_setAt, heldTy_setAt]; exact hs.holderTy f' i' l hl
   · exact SState.setAt_rinv hs.acyc _ _ (fun _ _ _ => rfl) (fun _ _ _ _ _ => rfl)
   · exact SState.readsBelow_setAt hs.fresh _ _ (fun l ⟨_, _, h⟩ => absurd rfl h)
+  · exact hs.uniq.setAt _ _
 
 /-- **A position rewritten pointwise** (`fun φ' => g (old φ')`: a write at a path, `setContent`) keeps
 the invariant where, at every typed future, the new value is good at the position's types. -/
@@ -133,7 +134,7 @@ theorem sgood_setAt_comp {s : SState} {p : Pos} (g : Sem → Sem) (hs : SGood dm
     intro q ψ; split
     · rename_i hq; subst hq; rw [valAt_setAt_self s _ _ hp]
     · rename_i hq; rw [SState.valAt_setAt_ne s _ _ q (Ne.symm hq)]
-  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l hl => ?_, ?_, fun f' i' l hl => ?_, ?_, ?_⟩
+  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l hl => ?_, ?_, fun f' i' l hl => ?_, ?_, ?_, ?_⟩
   · rw [typedF_setAt] at hψ
     show GoodVal _ _ ((s.setAt _ _).valAt _ ψ) ((s.setAt _ _).tyAt _).m
     rw [hval, tyAt_setAt]
@@ -151,6 +152,7 @@ theorem sgood_setAt_comp {s : SState} {p : Pos} (g : Sem → Sem) (hs : SGood dm
   · exact SState.setAt_rinv hs.acyc p _ ((hs.acyc.1 p).comp g)
       (fun x hx => (hs.acyc.2.1 p x (hs.acyc.2.2 p x hx).1 hx).comp g)
   · exact SState.readsBelow_setAt hs.fresh _ _ (fun l h => hs.fresh p l (SVal.dependsOn_comp h))
+  · exact hs.uniq.setAt _ _
 
 /-- **A position written with a constant that is an open member of its types** (a member, or
 `⊥`: a write of a member, a move out of a whole position) keeps the invariant: at a binding the value
@@ -160,7 +162,7 @@ theorem sgood_setAt_pmem {s : SState} {p : Pos} {v : Sem} (hs : SGood dm Γ φ s
     (hh : ∀ l, s.shape p = some l → PMem dm Γ v (s.heldTy l)) :
     SGood dm Γ φ (s.setAt p fun _ => v) := by
   have hval := valAt_setAt_const hp v
-  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l hl => ?_, ?_, fun f' i' l hl => ?_, ?_, ?_⟩
+  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l hl => ?_, ?_, fun f' i' l hl => ?_, ?_, ?_, ?_⟩
   · rw [typedF_setAt] at hψ
     show GoodVal _ _ ((s.setAt _ _).valAt _ ψ) ((s.setAt _ _).tyAt _).m
     rw [hval, tyAt_setAt]
@@ -177,6 +179,7 @@ theorem sgood_setAt_pmem {s : SState} {p : Pos} {v : Sem} (hs : SGood dm Γ φ s
   · rw [SState.shape_setAt] at hl; rw [tyAt_setAt, heldTy_setAt]; exact hs.holderTy f' i' l hl
   · exact SState.setAt_rinv hs.acyc _ _ (fun _ _ _ => rfl) (fun _ _ _ _ _ => rfl)
   · exact SState.readsBelow_setAt hs.fresh _ _ (fun l ⟨_, _, h⟩ => absurd rfl h)
+  · exact hs.uniq.setAt _ _
 
 /-- **An end keeps the invariant** (`endAt`: the holder `r` of `l` reads `⊥`, every other position its
 old meaning at `ψ := ψ'.upd l (r's content at ψ')`). That `ψ` is typed for the state before: it agrees
@@ -218,7 +221,7 @@ theorem endAt_sgood {s : SState} {l : Nat} {r : Pos} (hs : SGood dm Γ φ s) (hh
     · rw [Future.upd_other _ _ e]
       have := hψ' l' (SState.live_endAt hr hl' e); rwa [hHT] at this
   refine ⟨fun ψ' hψ' f i hpi => ?_, fun ψ' hψ' p l'' hl'' => ?_, fun l' hl' => ?_, fun f i l' hl' => ?_, ?_,
-    ?_⟩
+    ?_, ?_⟩
   · show GoodVal _ _ ((s.endAt l r).valAt _ ψ') ((s.endAt l r).tyAt _).m
     rw [hTy]
     have hp : Pos.bind f i ∈ s.positions := by rwa [SState.endAt_positions] at hpi
@@ -246,6 +249,7 @@ theorem endAt_sgood {s : SState} {l : Nat} {r : Pos} (hs : SGood dm Γ φ s) (hh
     rwa [SState.endLabel_eq hh] at this
   · have := SState.readsBelow_endLabel hs.fresh l
     rwa [SState.endLabel_eq hh] at this
+  · exact hs.uniq.endAt l r
 
 theorem endLabel_sgood {s : SState} (hs : SGood dm Γ φ s) (l : Nat) (hend : EndOkF dm Γ φ s l) :
     SGood dm Γ φ (s.endLabel l) := by

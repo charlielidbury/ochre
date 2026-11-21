@@ -504,11 +504,12 @@ theorem sgood_mapVals_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s 
     (hFm : ∀ y f, (y, f) ∈ FF → f ∈ₛ[dm.read] s.heldTy y)
     (hFl : ∀ y ∈ FF.map (·.1), y ∈ s.liveLabels ∨ ∀ p, Indep y (s.valAt p))
     (hacyc : SState.RInv (fun _ => True) ((Ls.foldl SState.takeLabel s).mapVals fun _ v φ' => v (φ'.updList FF)))
-    (hfresh : ((Ls.foldl SState.takeLabel s).mapVals fun _ v φ' => v (φ'.updList FF)).ReadsBelow) :
+    (hfresh : ((Ls.foldl SState.takeLabel s).mapVals fun _ v φ' => v (φ'.updList FF)).ReadsBelow)
+    (huniq : ((Ls.foldl SState.takeLabel s).mapVals fun _ v φ' => v (φ'.updList FF)).Uniq) :
     SGood dm Γ φ ((Ls.foldl SState.takeLabel s).mapVals fun _ v φ' => v (φ'.updList FF)) := by
-  generalize hs₁ : Ls.foldl SState.takeLabel s = s₁ at hacyc hfresh ⊢
+  generalize hs₁ : Ls.foldl SState.takeLabel s = s₁ at hacyc hfresh huniq ⊢
   have hpos₁ : s₁.positions = s.positions := by rw [← hs₁]; exact SState.takeAll_positions s Ls
-  generalize hS : s₁.mapVals (fun _ v φ' => v (φ'.updList FF)) = S at hacyc hfresh ⊢
+  generalize hS : s₁.mapVals (fun _ v φ' => v (φ'.updList FF)) = S at hacyc hfresh huniq ⊢
   have hposS : S.positions = s.positions := by rw [← hS, SState.positions_mapVals, hpos₁]
   have hliveS : S.liveLabels = s₁.liveLabels := by
     rw [← hS]; unfold SState.liveLabels; rw [SState.positions_mapVals]; rfl
@@ -536,7 +537,7 @@ theorem sgood_mapVals_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s 
     rcases takeAll_valAt s Ls p with e | e
     · rw [← hs₁, e]; exact .inl (heq p)
     · rw [← hs₁, e]; exact .inr rfl
-  refine ⟨fun ψ' hψ' f i hp => ?_, fun ψ' hψ' p l hl => ?_, fun l hl => ?_, fun f i l hl => ?_, hacyc, hfresh⟩
+  refine ⟨fun ψ' hψ' f i hp => ?_, fun ψ' hψ' p l hl => ?_, fun l hl => ?_, fun f i l hl => ?_, hacyc, hfresh, huniq⟩
   · obtain ⟨ψ₀, hψ₀, hv⟩ := key ψ' hψ'
     exact sgood_bind_read hs (fun f i => by rw [hposS]) (fun f i => htyS _) hψ₀ (fun f i hp => hv _ hp) f i hp
   · obtain ⟨ψ₀, hψ₀, hv⟩ := key ψ' hψ'
@@ -573,6 +574,34 @@ noncomputable def parkState (s₁ : SState) (g : Pos → SVal → SVal) (c : Sem
   ((((SState.mk s₁.env s₁.shape (s₁.nextLoan + 1) s₁.lent s₁.heldTy s₁.heldMem).mapVals g).pushTempShaped
     (fun _ => c) s₁.nextLoan).setLent s₁.nextLoan le |>.setHeldTy s₁.nextLoan Tk).setHeldMem s₁.nextLoan c
 
+/-- The parked state keeps each label at one holder: the fresh label is held nowhere before. -/
+theorem parkState_uniq {s₁ : SState} (hu : s₁.Uniq) (hb : ∀ p l, s₁.shape p = some l → l < s₁.nextLoan)
+    (g : Pos → SVal → SVal) (c : Sem) (le : List Site) (Tk : TyM) : (parkState s₁ g c le Tk).Uniq := by
+  have h1 : (SState.mk s₁.env s₁.shape (s₁.nextLoan + 1) s₁.lent s₁.heldTy s₁.heldMem).Uniq := hu
+  exact (h1.mapVals g).pushTempShaped (fun _ => c) (l := s₁.nextLoan)
+    (fun q hq => Nat.lt_irrefl _ (hb q _ hq))
+
+/-- A call keeps each label at one holder: the borrow arguments' holders are taken, the returned
+borrow's fresh label is parked in a new temporary. -/
+theorem callOfLS_uniq (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C) (fv : Sem)
+    (args : List Res) (s : SState) (hu : s.Uniq) (hsa : SState.ShapeAt s) {r : Res} {s' : SState}
+    (h : callOfL Lv t fv args s = some (r, s')) : s'.Uniq := by
+  unfold callOfL at h
+  try dsimp only at h
+  have hsub := SState.shapeSub_foldl_takeLabel ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id) s
+  have hu₀ := hu.of_sub hsub
+  have hb₀ : ∀ p l, (((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id).foldl SState.takeLabel s).shape p = some l →
+      l < (((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id).foldl SState.takeLabel s).nextLoan :=
+    fun p l hp => hsub.2 ▸ (hsa p l (hsub.1 p l hp)).2
+  split at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨_, rfl⟩ := h
+    exact hu₀.mapVals _
+  · simp only [SState.freshLoan, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨_, rfl⟩ := h
+    exact parkState_uniq hu₀ hb₀ _ _ _ _
+  · cases h
+
 /-- **The state after a call returning a borrow**, abstractly (`park_fix_inv`'s shape): the borrow
 arguments' holders taken (`Ls`), the fresh label `k` parked with a member `c` of its content type `Tk`,
 and every old position read at the future fixed at the finals `fx x` (where `k`'s final content
@@ -589,7 +618,8 @@ theorem sgood_park_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : S
     (hg : ∀ p v ψ, (∃ x, dec (ψ (Ls.foldl SState.takeLabel s).nextLoan) = some x ∧ g p v ψ = v (ψ.updList (fx x))) ∨
       (dec (ψ (Ls.foldl SState.takeLabel s).nextLoan) = none ∧ g p v ψ = v (ψ.updList ee)))
     (hacyc : SState.RInv (fun _ => True) (parkState (Ls.foldl SState.takeLabel s) g c le Tk))
-    (hfresh : (parkState (Ls.foldl SState.takeLabel s) g c le Tk).ReadsBelow) :
+    (hfresh : (parkState (Ls.foldl SState.takeLabel s) g c le Tk).ReadsBelow)
+    (huniq : (parkState (Ls.foldl SState.takeLabel s) g c le Tk).Uniq) :
     SGood dm Γ φ (parkState (Ls.foldl SState.takeLabel s) g c le Tk) := by
   have hk : (Ls.foldl SState.takeLabel s).nextLoan = s.nextLoan := (SState.shapeSub_foldl_takeLabel Ls s).2
   have hpos₁ : (Ls.foldl SState.takeLabel s).positions = s.positions := SState.takeAll_positions s Ls
@@ -605,13 +635,13 @@ theorem sgood_park_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : S
     fun y hy => takeAll_live_rev s Ls hy
   generalize Ls.foldl SState.takeLabel s = s₁ at *
   -- the stages
-  generalize hS₃ : (SState.mk s₁.env s₁.shape (s₁.nextLoan + 1) s₁.lent s₁.heldTy s₁.heldMem).mapVals g = S₃ at hacyc hfresh ⊢
+  generalize hS₃ : (SState.mk s₁.env s₁.shape (s₁.nextLoan + 1) s₁.lent s₁.heldTy s₁.heldMem).mapVals g = S₃ at hacyc hfresh huniq ⊢
   have hS : parkState s₁ g c le Tk =
       ((S₃.pushTempShaped (fun _ => c) s₁.nextLoan).setLent s₁.nextLoan le |>.setHeldTy s₁.nextLoan Tk).setHeldMem
         s₁.nextLoan c := by rw [← hS₃]; rfl
-  rw [hS] at hacyc hfresh ⊢
-  generalize hS₄ : S₃.pushTempShaped (fun _ => c) s₁.nextLoan = S₄ at hacyc hfresh ⊢
-  generalize hSdef : ((S₄.setLent s₁.nextLoan le).setHeldTy s₁.nextLoan Tk).setHeldMem s₁.nextLoan c = S at hacyc hfresh ⊢
+  rw [hS] at hacyc hfresh huniq ⊢
+  generalize hS₄ : S₃.pushTempShaped (fun _ => c) s₁.nextLoan = S₄ at hacyc hfresh huniq ⊢
+  generalize hSdef : ((S₄.setLent s₁.nextLoan le).setHeldTy s₁.nextLoan Tk).setHeldMem s₁.nextLoan c = S at hacyc hfresh huniq ⊢
   generalize hkk : s₁.nextLoan = k at *
   -- facts of each stage
   have hpos₃ : S₃.positions = s.positions := by rw [← hS₃, SState.positions_mapVals, ← hpos₁]; rfl
@@ -727,7 +757,7 @@ theorem sgood_park_fix {dm : DataModel} {Γ : List IndDecl} {φ : Future} {s : S
         · cases hp; rfl
         · rw [hshape₃] at hp; exact absurd (hs.acyc.2.2 p y (hshape₁ hp)).1 hps
       · rw [hvalS, valAt_pushTemp_new _ _ (by rw [← hposS]; exact hpS) (by rw [hpos₃]; exact hps)]
-  refine ⟨fun ψ' hψ' f i hp => ?_, fun ψ' hψ' p l hl => ?_, fun l hl => ?_, fun f i l hl => ?_, hacyc, hfresh⟩
+  refine ⟨fun ψ' hψ' f i hp => ?_, fun ψ' hψ' p l hl => ?_, fun l hl => ?_, fun f i l hl => ?_, hacyc, hfresh, huniq⟩
   · obtain ⟨ψ₀, hψ₀, hv⟩ := key ψ' hψ'
     exact sgood_bind_read hs hposB (fun f i => htyS _) hψ₀ (fun f i hp => hv _ hp) f i hp
   · rcases hholder p l hl with ⟨hp, h0, hne⟩ | ⟨-, rfl, hc'⟩
@@ -760,6 +790,7 @@ theorem callOfLS_sgood_data {dm : DataModel} {Γ : List IndDecl} {φ : Future} (
     (h : callOfL Lv t fv args s = some (r, s')) : LabOk dm s' r ∧ SGood dm Γ φ s' := by
   have hacyc := callOfLS_rinv Lv t fv args hs.acyc h
   have hfresh := callOfLS_readsBelow Lv t fv args s hs.fresh h
+  have huniq := callOfLS_uniq Lv t fv args s hs.uniq hs.acyc.2.2 h
   -- the finals: members of the parameters' content types, one per borrow parameter
   obtain ⟨F, -, happ'⟩ : ∃ F, Lv.unpack C fv = some F ∧
       applyTelL Lv t (fun _ => []) F (args.map (·.1)) = some (.data r' T' finals) := by
@@ -783,7 +814,7 @@ theorem callOfLS_sgood_data {dm : DataModel} {Γ : List IndDecl} {φ : Future} (
   simp only [Option.some.injEq, Prod.mk.injEq] at h
   obtain ⟨rfl, rfl⟩ := h
   refine ⟨fun l hl => by simp [TyS.plain] at hl, ?_⟩
-  exact sgood_mapVals_fix hs _ _ hcov hFm hFl hacyc hfresh
+  exact sgood_mapVals_fix hs _ _ hcov hFm hFl hacyc hfresh huniq
 
 end Ochr.Meaning.Strict
 
@@ -839,6 +870,7 @@ theorem callOfLS_sgood_ref {dm : DataModel} {Γ : List IndDecl} {φ : Future} (L
     (h : callOfL Lv t fv args s = some (r, s')) : LabOk dm s' r ∧ SGood dm Γ φ s' := by
   have hacyc := callOfLS_rinv Lv t fv args hs.acyc h
   have hfresh := callOfLS_readsBelow Lv t fv args s hs.fresh h
+  have huniq := callOfLS_uniq Lv t fv args s hs.uniq hs.acyc.2.2 h
   obtain ⟨F, -, happ'⟩ : ∃ F, Lv.unpack C fv = some F ∧
       applyTelL Lv t (fun _ => []) F (args.map (·.1)) = some (.ref U c fwd back) := by
     unfold applyFnL at happ
@@ -876,7 +908,7 @@ theorem callOfLS_sgood_ref {dm : DataModel} {Γ : List IndDecl} {φ : Future} (L
     refine ⟨by simp [SState.setHeldMem, SState.setHeldTy], ?_⟩
     simpa [SState.setHeldMem, SState.setHeldTy] using hc
   · refine sgood_park_fix hs _ (Lv.dec c) _ _ _ _ _ hc _ hcov hcovE hFm
-      (fun v hv => Lvl.dec_of_mem hL hME c v (hR ▸ hv)) hFl hEl ?_ hacyc hfresh
+      (fun v hv => Lvl.dec_of_mem hL hME c v (hR ▸ hv)) hFl hEl ?_ hacyc hfresh huniq
     intro p w ψ
     cases hd : Lv.dec c (ψ ((((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id)).foldl
         SState.takeLabel s).nextLoan) with
