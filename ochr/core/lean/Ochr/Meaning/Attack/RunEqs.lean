@@ -25,14 +25,17 @@ theorem stmtIf_noStmt (K : RunCtx) (hfl : ∀ sc t, K.D.flags sc t = (false, fal
     SM.erasedIf (K.D.flags (scopeOf s) t) x s = x s := by
   rw [hfl]; rfl
 
+open Classical in
+/-- The strict ascription: the value is tested against the annotation, and its label must hold
+the annotation's type. -/
 theorem run_ascribe (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (u A : Term) (s : SState)
     (hfl : ∀ sc t, K.D.flags sc t = (false, false)) :
     runT K ρ φ false hint (.ascribe u A) s =
-      (do
+      SM.strictS K.dm.read (do
         let (TA, _) ← SM.onCopy (runT K ρ φ false (.plain .err) A)
         let T : TyS := .plain TA.asTy
         let (v, R) ← runT K ρ φ false T u
-        pure (v, { T with label := R.label })) s := by
+        fun s => if labTyOk s R.label T.m then some ((v, { T with label := R.label }), s) else none) s := by
   rw [runT]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem run_letIn (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (x : Hint) (u w : Term) (s : SState)
@@ -188,6 +191,45 @@ theorem holderOf_S₂ (b : SBinding) (k : Nat) (c : Sem) : (S₂ b k c).holderOf
   rw [positions_S₂]
   simp [S₂]
 
+/-- A number is a member of `Nat`. -/
+theorem mem_nat (R : DataRead) (m : Nat) : Sem.el0 Nat m ∈ₛ[R] TyM.nat := ⟨m, rfl⟩
+
+/-- A meaning read as a number is a member of `Nat`, and one that reads as none is not. -/
+theorem mem_nat_of_as {R : DataRead} {v : Sem} {x : Nat} (h : v.as Nat = some x) : v ∈ₛ[R] TyM.nat := by
+  cases v with
+  | el0 B b =>
+    simp only [Sem.as] at h
+    split at h
+    · next hB => subst hB; cases h; exact ⟨b, rfl⟩
+    · cases h
+  | _ => cases h
+
+theorem not_mem_nat_of_as {R : DataRead} {v : Sem} (h : v.as Nat = none) : ¬ v ∈ₛ[R] TyM.nat := by
+  rintro ⟨a, rfl⟩
+  simp [Sem.as, Code0.enc] at h
+
+/-- The strict call's test at `S₂`: the borrow passed at `σ1`'s borrow parameter is live and holds
+`Nat`, the parameter's content type. -/
+theorem borrowArgs_S₂ (R : DataRead) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem)
+    (hb : b.ty.m = TyM.nat) :
+    BorrowArgsTyped R (Sem.el0 GCar F, TyS.plain (.t0 GCar (.pi GCar telG)))
+      [(Sem.el0 Nat n, { b.ty with label := some k })] (S₂ b k c) := by
+  have hr : telRefsL (lvl0 R) telG [Sem.el0 Nat n] = [true] := by
+    simp [telRefsL, telG, dec_nat_el0 R]
+  intro i l h
+  simp only [refLabelsOf, refsOf, TyS.plain, List.map_cons, List.map_nil, hr, List.zip_cons_cons,
+    List.zip_nil_right, List.filter_cons_of_pos, List.filter_nil] at h
+  cases i with
+  | succ i => simp at h
+  | zero =>
+    simp only [List.map_cons, List.map_nil, List.getElem?_cons_zero, Option.some.injEq] at h
+    subst h
+    refine ⟨?_, ?_⟩
+    · simp only [SState.liveLabels, List.mem_mergeSort, List.mem_filterMap]
+      exact ⟨.temp 0 0, by rw [positions_S₂]; simp, by simp [S₂]⟩
+    · simp [refTysOf, telRefTysL, telG, TyS.plain, dec_nat_el0 R, S₂, hb]
+      rfl
+
 /-- Consuming the borrow's holder: the temp is `moved`, nothing is in the shape. -/
 theorem takeLabel_S₂ (b : SBinding) (k : Nat) (c : Sem) :
     (S₂ b k c).takeLabel k
@@ -212,7 +254,7 @@ a fresh label `k+1` for the returned borrow, the lent binding reads the backward
 noncomputable def S₃ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) : SState :=
   { env := [{ binds := [{ b with val := fun φ' => match (φ' (k+1)).as Nat with
                                                   | some x => .el0 Nat ((F n).val.2 x).2
-                                                  | none => .err }],
+                                                  | none => .moved }],
               temps := [fun φ' => match (φ' (k+1)).as Nat with | some _ => .moved | none => .moved,
                         fun _ => Sem.el0 Nat (F n).val.1] }],
     shape := fun p => if p = .temp 0 1 then some (k+1) else none, nextLoan := k + 2, lent := lentA k,
@@ -267,7 +309,7 @@ noncomputable def rBind (F : GCar) (n : Nat) (k : Nat) : SBinding :=
 noncomputable def S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) : SState :=
   { env := [{ binds := [{ b with val := fun φ' => match (φ' (k+1)).as Nat with
                                                   | some x => .el0 Nat ((F n).val.2 x).2
-                                                  | none => .err },
+                                                  | none => .moved },
                         { ty := ⟨TyM.nat, some (k+1)⟩, val := fun _ => .el0 Nat (F n).val.1 }],
               temps := [fun φ' => match (φ' (k+1)).as Nat with | some _ => .moved | none => .moved,
                         fun _ => .moved] }],
@@ -367,7 +409,7 @@ theorem resolve_deref_r (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) 
 noncomputable def S₅ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) (w : Sem) : SState :=
   { env := [{ binds := [{ b with val := fun φ' => match (φ' (k+1)).as Nat with
                                                   | some x => .el0 Nat ((F n).val.2 x).2
-                                                  | none => .err },
+                                                  | none => .moved },
                         { ty := ⟨TyM.nat, some (k+1)⟩, val := fun _ => w }],
               temps := [fun φ' => match (φ' (k+1)).as Nat with | some _ => .moved | none => .moved,
                         fun _ => .moved] }],
@@ -413,7 +455,7 @@ open Ochr.Meaning
 noncomputable def S₆ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) (w : Sem) : SState :=
   { env := [{ binds := [{ b with val := fun _ => match w.as Nat with
                                                   | some x => .el0 Nat ((F n).val.2 x).2
-                                                  | none => .err },
+                                                  | none => .moved },
                         { ty := ⟨TyM.nat, some (k+1)⟩, val := fun _ => .moved }],
               temps := [fun _ => match w.as Nat with | some _ => .moved | none => .moved,
                         fun _ => .moved] }],

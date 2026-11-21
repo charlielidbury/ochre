@@ -8,7 +8,7 @@ These are the orchestrator's judgements. The incidents are facts, recorded in `d
 
 | Theme | Size | Who decides | Status |
 |---|---|---|---|
-| 1. Ochr is defined by an algorithm, not by rules | large | the user: it changes what the paper means by "the rules" | a bounded trial on one area is running; interim verdict: a qualified success, with the claim corrected in two places (see the end of Theme 1) |
+| 1. Ochr is defined by an algorithm, not by rules | large | the user: it changes what the paper means by "the rules" | trial finished 2026-11-21: a success for its area, the claim narrowed (see "The trial's final verdict") |
 | 2. One evaluator, written three times | medium | the user, as a refactor of the checker | not started; much of it falls out of theme 1 |
 | 3. Classifications re-derived by parallel readers | small to medium | the orchestrator, change by change | under way piecemeal (two of the eleven changes were this) |
 | 4. Statements are found false by proving them | small (tooling) | the orchestrator | partly in place (tests on recorded states); the next step is costed below |
@@ -96,6 +96,27 @@ Interim verdict (2026-11-20, late evening; the first agent's, written into its h
 - Its recommendation: use the rules route for the first-order obligations; keep the present route for what involves a generic call; close the typing gap separately; adopt the full restore in the checker either way.
 
 The successor proves the model half, measures the cost of strict meanings on two clauses, and writes the final verdict.
+
+### The trial's final verdict (2026-11-21)
+
+**A success for its area, with three corrections to this section's claim.** Two agents, about a day and a half, about 2,100 lines of Lean on the branch `rules-trial`: the two relations (200 lines), the machine half (690: 473 for conversion, 215 for the computation of `Eq`), the model half (920), their composition (90), and a predicate saying a value is well typed inside (170). The result: the checker's comparison of two values is proved sound, and so is its computation of `Eq(A, a, b)` for all six of its rules, each by composing the two halves with nothing in between, every remaining assumption named. The present route had left both obligations open, with three of its statements about them false.
+
+Against the conditions set before it started:
+- *The soundness statements mention no machine state:* met. They mention values, declarations, the model and named hypotheses. Not met for the two rules that compare functions once their premises are instantiated: there the machine's bookkeeping is moved into the premise, not removed (correction one).
+- *The area's false statements could not have been written in the new form:* mostly met. The bookkeeping falsities cannot be stated in the model half at all. But the form is not proof against error: two clauses of the trial's own predicate and one library fact were wrong at first. They were found in minutes, because each rule lists exactly what it needs (correction two).
+- *The link from the machine is a syntactic argument visibly smaller than what it replaces:* met. It was proved in hours with no model in scope, against sixteen named pieces mostly unproved. Not met in the stronger form hoped for: the checker's log names none of the conversion rules, so nothing can re-check a derivation from it today.
+- Neither failure condition holds.
+
+What the trial found that mattered more than what it set out to test (correction three): the main obstacle in this area was never bookkeeping. It was that the checker's comparison is untyped and the model typed, with nothing saying a value is well typed inside, and that no statement said an evaluated value is a member of its type. Both findings were acted on the same night: the model's run was made strict and its fundamental lemma proved; the type formers are being made strict so that having a meaning implies being well typed inside (for values with no code in them; a measured experiment on two of the clauses left every core lemma re-running unchanged).
+
+What to do with the rest of the proof, as the trial recommends and the orchestrator accepts:
+- Use relations and the two-half split where the checker DECIDES A JUDGEMENT BY COMPUTING: comparison, the computation of `Eq`, probably the decisions of a match. A strict run says a value is a member of its type; it never says two values the checker calls convertible are equal. That is the model half's job, and it is now cheap to apply.
+- Where a check is "this value has that type" (a type annotation, a return, the re-check of a dependent value), no relation is needed: the fundamental lemma plus the soundness of comparison at types makes each a small lemma.
+- Everywhere, keep the machine-only part of each area free of the model. It was the cheapest and most reliable part of the trial, and the same was found independently for the facts that the checker's tables only grow.
+
+What is left of this area, counted once: the premises of the two function rules (the generic call; the present route's work); comparison of program code, which is a generalisation of the substitution induction the present route already owes for a stuck call's text, not a new kind of obligation; and two facts for the data layer (a field's type reads only the index fields among the earlier fields, which the new data-type model has by construction; and the meaning of the library's `And`, `True` and `False`).
+
+So theme 1 stands in a narrower form than it was written: not "define the language by rules and prove the machine against them", but "wherever the checker decides by computing, state what it decides as a relation, prove the relation sound in the model, and prove the machine computes it with no model in scope". The wider form, an explicit core with an untrusted elaborator, remains untried.
 
 ## Theme 2. One evaluator, written three times
 

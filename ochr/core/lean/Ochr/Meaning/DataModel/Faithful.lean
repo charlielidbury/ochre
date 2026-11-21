@@ -6,43 +6,63 @@ import Ochr.Meaning.Run
 What a data model owes the program beyond covering its declarations, and what `CtxOk` carries
 (`faithful`) and the existence statement concludes (`Assembly.DataFaithful`):
 
-1. **Field types** (`FieldsFaithful`): at well-typed parameters and earlier fields
-   (`ParamsTyped`, `FieldsTyped`), the reference run of the declared field-type term, in the frame
-   the checker's `fieldTele` evaluates it in (`teleFrame`: the fields, the later ones `moved`, as the
-   checker binds `⊥`, then the parameters, each at its type), is defined and means `dm.fieldTy`.
-   Under the model itself: a field `List(A)` runs to `dm.tyM List [A]`. Type functions in field
-   types read the program's earlier globals, so the run context is the program meaning's.
+1. **Field types** (`FieldsFaithful`): at a parameter list of the declaration's length, well
+   typed with its earlier fields (`ParamsTyped`, `FieldsTyped`), WHEREVER the reference run of the
+   declared field-type term is defined, in the frame the checker's `fieldTele` evaluates it in
+   (`teleFrame`: the fields, each at `prop` or `other` as the checker marks it, the later ones
+   `moved`, then the parameters at their declared readings), it means `dm.fieldTy`. Under the
+   model itself: a field `List(A)` runs to `dm.tyM List [A]`. Type functions in field types read
+   the program's earlier globals, so the run context is the program meaning's.
 2. **Parameter types** (`ParamsFaithful`): the same for the declared parameter types and `paramTy`.
 3. **Records keep the parameters `unifyTyS` reads back** (`RecordsFaithful`): the record at
-   parameters keeps a level-0 type parameter's entry, and a value parameter of a level-0 type read
-   small, at `paramKey`, which is where the run's constructor clause reads a parameter back off a
-   field's type (`unifyTyS`); and it reads a value parameter only small, so the rebuilt parameter
-   gives the same record. (Guess, for the canonical model: a member of a data type is determined by
-   its small reading and its type, so records computed from the run's readings of the field types,
-   whose `Eq`s compare members of one type, are functions of the value parameters' small readings.)
+   parameters keeps a level-0 type parameter's type (read by continuation, `paramTyOf`), and a value
+   parameter of a level-0 type read small, at `paramKey`, which is where the run's constructor
+   clause reads a parameter back off a field's type (`unifyTyS`); and it reads a value parameter
+   only small, so the rebuilt parameter gives the same record.
 
-Definedness is asked, so a run made undefined cannot make faithfulness vacuous. The degenerate
-model, which met the existence statement before the port, is not faithful
-(`DataModel/Degenerate.lean`).
+Restated at the port of docs/34 §18 (`Exists/StatementCE.lean` for why): the length (a list too
+short reads a field for a parameter), the frame's readings (`other` read a type parameter by move,
+the checker copies it), and conditional (definedness at every well-typed input is evaluation
+soundness, which the consumers get from their own simulation of the checker's `evalType`). The
+degenerate model is still not faithful (`DataModel/Degenerate.lean`): its refutation uses a run
+that is defined.
 -/
 
 namespace Ochr.Meaning
 
-/-- A binding holding `v` at type `T`. -/
-def faithBind (T : TyM) (v : Sem) : SBinding := { ty := .plain T, val := fun _ => v }
+/-- A binding holding `v` at type `T`, read as `dc`. -/
+def faithBind (T : TyM) (v : Sem) (dc : DeclInfo := .other) : SBinding := { ty := .plain T, val := fun _ => v, decl := dc }
 
-/-- The frame `Machine.fieldTele` evaluates constructor `c`'s field types in, as meanings: the
-fields (the earlier ones `e`, the rest `moved`, as the checker binds `⊥`), then the parameters,
-each at its type. -/
-noncomputable def teleFrame (dm : DataModel) (d : IndDecl) (ps : List Sem) (c : Nat) (e : List Sem) : SState :=
+/-- The checker's verdict that field `i` of constructor `c` of `d` is a proof field
+(`Decide.fieldTermIsProp`, which `Machine.fieldTele` marks a computed field by), as the decisions
+read it: a field place's reading is `prop` exactly then (`Decide.placeDecl`'s `.field` case reads
+`fieldIsProof` first). -/
+def fieldProof (D : Decisions) (d : IndDecl) (c i : Nat) : Bool :=
+  D.placeDecl [] (.field ⟨d.name, c, i, ""⟩ (.var 0)) matches .prop
+
+/-- The declared readings of the parameters, as `Machine.fieldTele` binds them: each its type term's
+reading in the scope of the earlier parameters (innermost first) above `k` fields read `other`. -/
+def paramDecls (D : Decisions) (d : IndDecl) (k : Nat) : List DeclInfo :=
+  d.params.foldl (fun acc hp => acc ++ [D.typeDecl (acc.reverse ++ List.replicate k .other) hp.2]) []
+
+/-- **The frame `Machine.fieldTele` evaluates field `e.length` of constructor `c` in**, as meanings
+(docs/34 §18, task 2c): the fields (the earlier ones `e`, each read `prop` if the checker reads it as
+a proof and `other` else; the rest `moved`, read `other`, as the checker binds `⊥`), then the
+parameters, each at its type and at its declared reading. -/
+noncomputable def teleFrame (dm : DataModel) (D : Decisions) (d : IndDecl) (ps : List Sem) (c : Nat)
+    (e : List Sem) : SState :=
   let k := ((d.ctors[c]?).map (·.2.length)).getD 0
   let fs := e ++ List.replicate (k - e.length) Sem.moved
-  stateOf 0 (fs.zipIdx.map (fun vi => faithBind (dm.fieldTy d ps c vi.2 (e.take vi.2)) vi.1) ++
-    ps.zipIdx.map (fun vj => faithBind (dm.paramTy d vj.2 (ps.take vj.2)) vj.1))
+  let pds := paramDecls D d k
+  stateOf 0 (fs.zipIdx.map (fun vi => faithBind (dm.fieldTy d ps c vi.2 (e.take vi.2)) vi.1
+      (if vi.2 < e.length && fieldProof D d c vi.2 then .prop else .other)) ++
+    ps.zipIdx.map (fun vj => faithBind (dm.paramTy d vj.2 (ps.take vj.2)) vj.1 (pds.getD vj.2 .other)))
 
-/-- The frame parameter `j`'s declared type is evaluated in: the earlier parameters. -/
-noncomputable def paramFrame (dm : DataModel) (d : IndDecl) (ps : List Sem) : SState :=
-  stateOf 0 (ps.zipIdx.map (fun vj => faithBind (dm.paramTy d vj.2 (ps.take vj.2)) vj.1))
+/-- The frame parameter `j`'s declared type is evaluated in: the earlier parameters at their
+readings. -/
+noncomputable def paramFrame (dm : DataModel) (D : Decisions) (d : IndDecl) (ps : List Sem) : SState :=
+  let pds := paramDecls D d 0
+  stateOf 0 (ps.zipIdx.map (fun vj => faithBind (dm.paramTy d vj.2 (ps.take vj.2)) vj.1 (pds.getD vj.2 .other)))
 
 /-- Parameters each of their declared type at the earlier ones (a type parameter: a type). -/
 def ParamsTyped (dm : DataModel) (d : IndDecl) (ps : List Sem) : Prop :=
@@ -52,18 +72,23 @@ def ParamsTyped (dm : DataModel) (d : IndDecl) (ps : List Sem) : Prop :=
 def FieldsTyped (dm : DataModel) (d : IndDecl) (ps : List Sem) (c : Nat) (e : List Sem) : Prop :=
   ∀ i (h : i < e.length), e[i] ∈ₛ[dm.read] dm.fieldTy d ps c i (e.take i)
 
-/-- **Field types are the run's readings of the declared field-type terms.** -/
+/-- **Field types are the run's readings of the declared field-type terms** (docs/34 §18): at a
+parameter list of the declaration's length (2b), in the frame the checker's `fieldTele` evaluates
+in (2c), WHEREVER the run is defined (2d: definedness comes to the consumers from their own
+simulation of the checker's `evalType`). -/
 def FieldsFaithful (K : RunCtx) (ρ : Assignment) : Prop :=
   ∀ d ∈ K.Γ, ∀ (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term),
-    ParamsTyped K.dm d ps → FieldsTyped K.dm d ps c e → e.length = i → fieldTerm d c i = some FT →
-    ∃ r s', run K ρ noFuture (.plain (TyM.univ 1)) FT (teleFrame K.dm d ps c e) = some (r, s') ∧
+    ps.length = d.params.length → ParamsTyped K.dm d ps → FieldsTyped K.dm d ps c e → e.length = i →
+    fieldTerm d c i = some FT →
+    ∀ r s', run K ρ noFuture (.plain (TyM.univ 1)) FT (teleFrame K.dm K.D d ps c e) = some (r, s') →
       r.1.asTy = K.dm.fieldTy d ps c i e
 
-/-- **Parameter types are the run's readings of the declared parameter types.** -/
+/-- **Parameter types are the run's readings of the declared parameter types**, wherever the run is
+defined. -/
 def ParamsFaithful (K : RunCtx) (ρ : Assignment) : Prop :=
   ∀ d ∈ K.Γ, ∀ (ps : List Sem) (j : Nat) (hn : Hint) (PT : Term),
     ParamsTyped K.dm d ps → ps.length = j → d.params[j]? = some (hn, PT) →
-    ∃ r s', run K ρ noFuture (.plain (TyM.univ 2)) PT (paramFrame K.dm d ps) = some (r, s') ∧
+    ∀ r s', run K ρ noFuture (.plain (TyM.univ 2)) PT (paramFrame K.dm K.D d ps) = some (r, s') →
       r.1.asTy = K.dm.paramTy d j ps
 
 /-- **Records keep what `unifyTyS` reads back off a field's type** (docs/34 §14, Handoff 3b): at
@@ -75,7 +100,7 @@ written one's record. -/
 structure RecordsFaithful (K : RunCtx) : Prop where
   types : ∀ d ∈ K.Γ, ∀ (ps : List Sem) (j : Nat) (A : Type) (c : Code0 A),
     ParamsTyped K.dm d ps → ps[j]? = some (.ty (.t0 A c)) →
-    K.dm.entryTy (K.dm.recOf d ps (paramKey j)) = .t0 A c
+    K.dm.paramTyOf (K.dm.recOf d ps) j = .t0 A c
   values : ∀ d ∈ K.Γ, ∀ (ps : List Sem) (j : Nat) (v : Sem) (A : Type) (c : Code0 A),
     ParamsTyped K.dm d ps → ps[j]? = some v → K.dm.paramTy d j (ps.take j) = .t0 A c →
     v ∈ₛ[K.dm.read] .t0 A c → K.dm.recOf d ps (paramKey j) = .small v.small
@@ -84,6 +109,9 @@ structure RecordsFaithful (K : RunCtx) : Prop where
       v' = v ∨ ((∃ (A : Type) (c : Code0 A), K.dm.paramTy d j (ps.take j) = .t0 A c ∧ v ∈ₛ[K.dm.read] .t0 A c) ∧
         v'.small = v.small)) →
     K.dm.recOf d ps' = K.dm.recOf d ps
+  /-- A record at parameters keeps a data code over the model's own carrier as a `.data` entry,
+  never as a leaf (docs/34 §18): what `ctorOut_mem` and the read lemma ask of a record. -/
+  leafOk : ∀ d ∈ K.Γ, ∀ (ps : List Sem), ParamsTyped K.dm d ps → K.dm.RecLeafOk d (K.dm.recOf d ps)
 
 /-- **A field's level is the one its declaration's check gave it** (the lead's addition, stated,
 not yet part of `CtxFaithful`): at well-typed parameters and earlier fields, a field the checker
@@ -111,6 +139,6 @@ def CtxFaithful (K : RunCtx) : Prop :=
 theorem CtxFaithful.withΔ {K : RunCtx} (h : CtxFaithful K) (Δ : Nat → TyS) : CtxFaithful { K with Δ := Δ } :=
   fun Δ' ρ =>
     let ⟨h1, h2, h3⟩ := h Δ' ρ
-    ⟨h1, h2, ⟨h3.types, h3.values, h3.smallOnly⟩⟩
+    ⟨h1, h2, ⟨h3.types, h3.values, h3.smallOnly, h3.leafOk⟩⟩
 
 end Ochr.Meaning

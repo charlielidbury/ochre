@@ -16,6 +16,7 @@ result, `⌈…; peek(*r)⌉`, whose tail is a read — where `Lemmas.hintFree_o
 -/
 
 namespace Ochr.Meaning
+open Classical
 
 -- `Term.tailHintFree`, `Term.armsHintFree` and `Value.topHintFree` are in `Value.lean` (read by
 -- (WF16), `WF.lean`).
@@ -93,8 +94,45 @@ theorem erasedIf_resVS_congr (fl : Bool × Bool) {x x' : SM Res} {s : SState} (h
     (SM.erasedIf fl x s).map resVS = (SM.erasedIf fl x' s).map resVS := by
   unfold SM.erasedIf
   split
-  · rfl
+  · -- an erased clause runs on a copy and keeps only whether it ran to `•`: read from its value
+    cases hx : x s <;> cases hx' : x' s <;> simp only [hx, hx', Option.map_some, Option.map_none,
+      reduceCtorEq, Option.some.injEq] at h ⊢
+    rename_i a a'
+    obtain ⟨⟨v, T⟩, s₁⟩ := a
+    obtain ⟨⟨v', T'⟩, s₁'⟩ := a'
+    simp only [resVS, Prod.mk.injEq] at h
+    obtain ⟨rfl, -, -⟩ := h
+    cases v <;> rfl
   · exact stmtIf_resVS_congr _ h
+
+/-- An erased match on a proof keeps the equality of its arms' runs up to their types. -/
+theorem anyArm_resVS {n : Nat} {f g : Nat → SM Res} {s : SState}
+    (h : ∀ c, (f c s).map resVS = (g c s).map resVS) :
+    (SM.anyArm n f s).map resVS = (SM.anyArm n g s).map resVS := by
+  have key : ∀ c, SM.ranProof (f c s) = SM.ranProof (g c s) ∧
+      ((f c s).map fun x => ((x.1.1, { x.1.2 with label := none }), s)).map resVS =
+      ((g c s).map fun x => ((x.1.1, { x.1.2 with label := none }), s)).map resVS := by
+    intro c
+    have hc := h c
+    cases hf : f c s with
+    | none => cases hg : g c s with
+      | none => simp
+      | some y => rw [hf, hg] at hc; cases hc
+    | some x => cases hg : g c s with
+      | none => rw [hf, hg] at hc; cases hc
+      | some y =>
+        rw [hf, hg] at hc
+        obtain ⟨⟨v, R⟩, s₁⟩ := x
+        obtain ⟨⟨v', R'⟩, s₂⟩ := y
+        simp only [Option.map_some, Option.some.injEq, resVS, Prod.mk.injEq] at hc
+        obtain ⟨rfl, -, -⟩ := hc
+        cases v <;> simp [resVS, SM.ranProof]
+  unfold SM.anyArm
+  have hp : (fun c => SM.ranProof (f c s)) = (fun c => SM.ranProof (g c s)) := funext fun c => (key c).1
+  rw [hp]
+  split
+  · rename_i c _; exact (key c).2
+  · rfl
 
 mutual
 /-- **A run with a hint-free tail reads no hint**: same value, same state at every hint. -/
@@ -146,6 +184,7 @@ theorem runT_hintIndep : ∀ (tl : Bool) (t : Term), Term.tailHintFree K.Γ t = 
       all_goals first
         | rfl
         | exact bind_resVS_congr (runArm_hintIndep tl arms ht _ h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl => by simp only [Option.map_some, resVS, hl]))
+        | (split <;> first | rfl | exact anyArm_resVS fun c => runArm_hintIndep tl arms ht c h h' _)
   | tl, .ctor ty c hd ps args, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     rw [runT, runT]
@@ -161,10 +200,27 @@ theorem runT_hintIndep : ∀ (tl : Bool) (t : Term), Term.tailHintFree K.Γ t = 
   | tl, .val v, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     have e := meanV_hintIndep v ht h h'
-    -- the `.val` clause's equation is split by its match on `v`: case on `v` first
-    cases v <;> (rw [runT, runT] <;> first
-      | (simp only [Option.map_some, resVS, e])
-      | (intros; simp_all))
+    rw [runT_val_def, runT_val_def, e]
+    cases v with
+    | ind ty c hd ps fs =>
+      -- the strict test reads the type, which the hint reaches only at a bare constructor of a
+      -- parametrised type (not hint-free) or where the meaning is `err` (no test: a failure)
+      simp only [strictVal]
+      by_cases he : meanV K ρ φ h' (.ind ty c hd ps fs) = .err
+      · simp only [he, if_true]
+      · simp only [he, if_false]
+        have hT : valT K ρ φ h (.ind ty c hd ps fs) = valT K ρ φ h' (.ind ty c hd ps fs) := by
+          cases hfd : K.Γ.find? (·.name == ty) with
+          | none => exact absurd (by simp only [meanV, hfd]) he
+          | some d =>
+            cases ps with
+            | nil =>
+              simp only [Value.topHintFree, hfd] at ht
+              simp only [valT, hfd, ht, List.isEmpty_nil, Bool.not_true, Bool.and_false, Bool.false_eq_true, if_false]
+            | cons p ps => simp only [valT, hfd, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false]
+        rw [hT]
+    | clo | sealed => simp only [strictVal]; split <;> simp only [Option.map_none, Option.map_some, resVS]
+    | _ => simp only [strictVal, pure, Option.map_some, resVS]
   | tl, .prim n args, ht, h, h', s => by
     -- only `peek`/`clone` of a place are tail-hint-free primitives, and those read no hint
     rcases args with _ | ⟨u, _ | ⟨u2, rest⟩⟩

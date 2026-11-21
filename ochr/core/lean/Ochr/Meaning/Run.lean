@@ -81,13 +81,18 @@ theorem SM.stmtIf_some {b : Bool} {x : SM (Sem × TyS)} {s s' : SState} {r : Sem
       obtain ⟨rfl, rfl⟩ := h
       exact .inr ⟨rfl, rfl, rfl, rs.1, rs.2, rfl, rfl⟩
 
-/-- An erased term (`Machine.evalAt`): a proof is not run, its value is `⋆` (docs/18: every proof
-is `⋆`, and no step reads a statement's value otherwise; the audit's A3: a match on a proof of a
-proposition with two constructors, into a proposition, has no arm to run); any other statement
-(a type) runs on a copy (`SM.stmtIf`). `fl` is the aligned decision `Decisions.flags` of the term:
-(erased, proof). -/
-def SM.erasedIf (fl : Bool × Bool) (x : SM (Sem × TyS)) : SM (Sem × TyS) := fun s =>
-  if fl.2 then some ((.proof, .plain TyM.err), s) else SM.stmtIf fl.1 x s
+/-- An erased term (C1, docs/31 D83/D86): a proof (`fl.2`) is RUN on a copy, strictly, and is `⋆` at
+`prop True` where its clause ran to `⋆` (a level-0 code is fixed by its truth, so a proof that runs has
+THE true proposition as its type; the orchestrator's decision 1, applied to every proof); a statement
+(`fl.1`) runs on a copy (`SM.stmtIf`). `fl` is the aligned decision `Decisions.flags` of the term:
+(erased, proof). Both tests are computable. -/
+noncomputable def SM.erasedIf (fl : Bool × Bool) (x : SM (Sem × TyS)) : SM (Sem × TyS) := fun s =>
+  if fl.2 then
+    match x s with
+    | some ((.proof, _), _) => some ((.proof, .plain (TyM.prop True)), s)
+    | some _ => none
+    | none => none
+  else SM.stmtIf fl.1 x s
 
 theorem SM.erasedIf_congr {fl : Bool × Bool} {x x' : SM (Sem × TyS)} {s : SState} (h : x s = x' s) :
     SM.erasedIf fl x s = SM.erasedIf fl x' s := by
@@ -99,36 +104,69 @@ theorem SM.erasedIf_some {fl : Bool × Bool} {x : SM (Sem × TyS)} {s s' : SStat
     (h : SM.erasedIf fl x s = some (r, s')) : x s = some (r, s') ∨ (s' = s ∧ r.2.label = none) := by
   unfold SM.erasedIf at h
   split at h
-  · simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, rfl⟩ := h
-    exact .inr ⟨rfl, rfl⟩
+  · split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      exact .inr ⟨rfl, rfl⟩
+    · cases h
+    · cases h
   · rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, e, hl, -⟩
     · exact .inl h
     · exact .inr ⟨e, hl⟩
 
-/-- An erased PLACE (the audit's A17, docs/31 D59): as `SM.erasedIf`, but a proof is `⋆` at the
-type `T s`, the place's stored type, as the checker types a proof it reads at a place (it reads
-the place's type on a private copy). So a constructor parameter solved by a proof field's type is
-solved (`MkPBox(h)`). A proof that is not a place stays untyped. -/
-def SM.erasedAt (fl : Bool × Bool) (T : SState → TyS) (x : SM (Sem × TyS)) : SM (Sem × TyS) := fun s =>
-  if fl.2 then some ((.proof, T s), s) else SM.stmtIf fl.1 x s
-
-theorem SM.erasedAt_congr {fl : Bool × Bool} {T T' : SState → TyS} {x x' : SM (Sem × TyS)} {s : SState}
-    (hT : T s = T' s) (h : x s = x' s) : SM.erasedAt fl T x s = SM.erasedAt fl T' x' s := by
-  simp only [SM.erasedAt, SM.stmtIf, hT, h]
-
-/-- An erased place's run, taken apart, where its type carries no label. -/
-theorem SM.erasedAt_some {fl : Bool × Bool} {T : SState → TyS} {x : SM (Sem × TyS)} {s s' : SState}
-    {r : Sem × TyS} (hT : (T s).label = none) (h : SM.erasedAt fl T x s = some (r, s')) :
-    x s = some (r, s') ∨ (s' = s ∧ r.2.label = none) := by
-  unfold SM.erasedAt at h
+/-- An erased term's run (C1): `•` at `True`, the state as it was. (An erased place is no longer
+`•` at its stored type, the old `SM.erasedAt`: every proof that runs is at the true proposition.) -/
+theorem SM.erasedIf_erased {fl : Bool × Bool} {x : SM (Sem × TyS)} {s s' : SState} {r : Sem × TyS}
+    (hfl : fl.2 = true) (h : SM.erasedIf fl x s = some (r, s')) :
+    s' = s ∧ r = (.proof, .plain (TyM.prop True)) := by
+  unfold SM.erasedIf at h
+  rw [if_pos hfl] at h
   split at h
   · simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
-    exact .inr ⟨rfl, hT⟩
-  · rcases SM.stmtIf_some h with ⟨-, h⟩ | ⟨-, e, hl, -⟩
-    · exact .inl h
-    · exact .inr ⟨e, hl⟩
+    exact ⟨rfl, rfl⟩
+  · cases h
+  · cases h
+
+/-- A run that returned a proof. -/
+def SM.ranProof : Option ((Sem × TyS) × SState) → Bool
+  | some ((.proof, _), _) => true
+  | _ => false
+
+/-- An erased match on a proof with other than one arm (`Or` eliminated into a proposition, the
+lead's ruling 3 of 2026-11-21): the scrutinee, a proof, chooses no arm, so the arms run, each on a
+copy of the state, and the match runs where one of them runs to a proof, at that arm's type, the
+state as it was, no label. No arm runs (none exists, or every one fails, as on an empty
+proposition, of which there is no member): the match fails. The test is computable. -/
+noncomputable def SM.anyArm (n : Nat) (f : Nat → SM (Sem × TyS)) : SM (Sem × TyS) := fun s =>
+  match (List.range n).find? (fun c => SM.ranProof (f c s)) with
+  | some c => (f c s).map fun x => ((x.1.1, { x.1.2 with label := none }), s)
+  | none => none
+
+/-- The arm `SM.anyArm` takes: one that ran to a proof; the state as it was, the label dropped. -/
+theorem SM.anyArm_some {n : Nat} {f : Nat → SM (Sem × TyS)} {s s' : SState} {r : Sem × TyS}
+    (h : SM.anyArm n f s = some (r, s')) :
+    ∃ c R s₁, c < n ∧ f c s = some ((.proof, R), s₁) ∧ r = (.proof, { R with label := none }) ∧ s' = s := by
+  unfold SM.anyArm at h
+  split at h
+  · rename_i c hc
+    have hmem := List.mem_of_find?_eq_some hc
+    have hp := List.find?_some hc
+    cases hf : f c s with
+    | none => rw [hf] at h; cases h
+    | some x =>
+      obtain ⟨⟨v, R⟩, s₁⟩ := x
+      rw [hf] at h hp
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      cases v <;> simp [SM.ranProof] at hp
+      exact ⟨c, R, s₁, List.mem_range.mp hmem, hf, rfl, rfl⟩
+  · cases h
+
+/-- `SM.anyArm` of pointwise equal runs. -/
+theorem SM.anyArm_congr {n : Nat} {f g : Nat → SM (Sem × TyS)} {s : SState} (h : ∀ c, f c s = g c s) :
+    SM.anyArm n f s = SM.anyArm n g s := by
+  simp only [SM.anyArm, h]
 
 /-- A term read as a call reads its head, and as `clone`, `peek` and `inplace` read their
 operand: a place in place (`rd`: not consumed, D53 (e)), anything else by its run (`rn`). -/
@@ -263,7 +301,7 @@ def unifyArgsTyS (dm : DataModel) (np : Nat) (r : Rec) : Nat → List Term → L
       | .small sv => match a with
         | .place (.var j) => fillParam np j (ofSmall sv) sol
         | _ => sol
-      | e => unifyTyS dm np a (.plain (dm.entryTy e)) sol)
+      | _ => unifyTyS dm np a (.plain (dm.paramTyOf r k)) sol)
 termination_by structural _ as => as
 end
 
@@ -428,8 +466,8 @@ noncomputable def readPlace (p : Place) (copy : Bool) : SM Res := fun s => do
       | none => s
     some ((v, { T with label := lab }), s)
 
-/-- The type an erased place is `⋆` at (A17, `SM.erasedAt`): its content's type, read on a
-discarded copy; `err` where the place does not resolve. Label-free (`placeTy_label`). -/
+/-- A place's type: its content's type, read on a discarded copy; `err` where the place does not
+resolve. Label-free (`placeTy_label`). The strict assignment tests the value written against it. -/
 noncomputable def placeTy (p : Place) (s : SState) : TyS :=
   match contentOf K φ p s with
   | some ((_, T, _, _), _) => .plain T.m
@@ -493,7 +531,7 @@ noncomputable def callOfL.{u} (L : Lvl.{u}) {C : Type u} (t : Tel L.Code PUnit C
       -- docs/31 D67: a final content the code does not decode fixes the consumed argument labels to
       -- `err` and leaves the rest of the position as it was (a position that reads no argument label
       -- is then unchanged in both branches, and none reads a consumed argument label after the call)
-      | none => v (φ'.updList (fixes (refLabels.map fun _ => .err)))
+      | none => v (φ'.updList (fixes (refLabels.map fun _ => .moved)))
     let s := s.pushTempShaped (fun _ => L.enc c fwd) k
     some ((L.enc c fwd, ⟨L.toTy c, some k⟩), ((s.setLent k lentK).setHeldTy k (L.toTy c)).setHeldMem k (L.enc c fwd))
   | none => none
@@ -706,6 +744,81 @@ noncomputable def capStep (s : SState) (i : Nat) : SState := match s.varPos i wi
     if K.D.copy (K.D.placeDecl (scopeOf s) (.var i)) then s else s.setAt pos fun _ => .moved
   | none => s
 
+/-- The content types of the borrow parameters a telescope code reaches at the arguments, in order
+(`[]` past an argument that does not decode). -/
+noncomputable def telRefTysL.{u} (L : Lvl.{u}) : {Fin C : Type u} → Tel L.Code Fin C → List Sem → List TyM
+  | _, _, .param _ isRef _ c _ k, a :: as =>
+    match L.dec c a with
+    | some x => (if isRef then [L.toTy c] else []) ++ telRefTysL L (k x) as
+    | none => []
+  | _, _, _, _ => []
+
+/-- STRICT (D83): fail unless the result is a member of the type it is given. -/
+noncomputable def SM.strictS (R : DataRead) (x : SM (Sem × TyS)) : SM (Sem × TyS) := fun s =>
+  match x s with
+  | some (r, s') => if r.1 ∈ₛ[R] r.2.m then some (r, s') else none
+  | none => none
+
+/-- A result's label, if any, has the given content type in the state. -/
+def labTyOk (s : SState) (lab : Option Nat) (T : TyM) : Prop := ∀ l, lab = some l → s.heldTy l = T
+
+/-- STRICT Π-type ("well typed inside", the trial's clause 5): every domain and the codomain have a
+level at every tuple of arguments that are members of the domains before them (an error domain
+used to give the function type over the empty carrier, which has a level and one member). -/
+def PiOk (R : DataRead) : List PiDom → List Sem → PiCod → Prop
+  | [], acc, out => (out.cod acc).level.isSome = true
+  | p :: ps, acc, out => (p.dom acc).level.isSome = true ∧ ∀ a, a ∈ₛ[R] p.dom acc → PiOk R ps (acc ++ [a]) out
+
+/-- STRICT captures (the trial's clause 7): a closure's or Π-closure's captured values are members of
+their recorded types, one for each. -/
+def CapsOk (R : DataRead) : List Sem → List (DeclInfo × TyS) → Prop
+  | [], [] => True
+  | v :: vs, (_, T) :: ts => v ∈ₛ[R] T.m ∧ CapsOk R vs ts
+  | _, _ => False
+
+/-- The borrow flags of a function type's parameters along the arguments (`telRefsL` at its level). -/
+noncomputable def refsOf (R : DataRead) (T : TyM) (as : List Sem) : List Bool :=
+  match T with
+  | .t0 _ (.pi _ t) => telRefsL (lvl0 R) t as
+  | .t1 _ (.pi _ t) => telRefsL (lvl1 R) t as
+  | .t2 _ (.pi _ t) => telRefsL (lvl2 R) t as
+  | _ => []
+
+/-- The content types of a function type's borrow parameters along the arguments (`telRefTysL`). -/
+noncomputable def refTysOf (R : DataRead) (T : TyM) (as : List Sem) : List TyM :=
+  match T with
+  | .t0 _ (.pi _ t) => telRefTysL (lvl0 R) t as
+  | .t1 _ (.pi _ t) => telRefTysL (lvl1 R) t as
+  | .t2 _ (.pi _ t) => telRefTysL (lvl2 R) t as
+  | _ => []
+
+/-- The labels of the arguments at borrow parameters, in parameter order (`callOfL`'s `refLabels`). -/
+noncomputable def refLabelsOf (R : DataRead) (fv : Res) (args : List Res) : List (Option Nat) :=
+  ((args.zip (refsOf R fv.2.m (args.map (·.1)))).filter (·.2)).map (·.1.2.label)
+
+/-- STRICT at a call: each borrow argument's label is live (a borrow ended before the call, by a later
+argument's access of its lender, is not passed) and holds the content type of the parameter it is
+passed at (a borrow is invariant: the callee's final content, a member of the parameter's type,
+becomes what the lender reads). -/
+def BorrowArgsTyped (R : DataRead) (fv : Res) (args : List Res) (s : SState) : Prop :=
+  ∀ (i l : Nat), (refLabelsOf R fv args)[i]? = some (some l) →
+    l ∈ s.liveLabels ∧ s.heldTy l = (refTysOf R fv.2.m (args.map (·.1))).getD i TyM.err
+
+/-- STRICT `.val` (D83 row 8): a constructor value must be a member of the type its record names;
+embedded code (a closure, a sealed program) whose strict meaning is `err` fails (the orchestrator's
+ruling, consistently with strict `.fix`); any other value is typed as before. Written as a function
+of the value so that each constructor's case reduces by `rfl`.
+
+A constructor value whose meaning is `err` (its declaration or its record unknown) fails outright,
+as embedded code does, rather than being tested at the type the run falls back to (the hint): the
+test would read the hint, and a run whose tails read no hint must not (`HintIndep`). In a model whose
+reading gives whole meanings nothing changes, since `err` is a member of no type there. -/
+noncomputable def strictVal (R : DataRead) : Value → Res → SM Res
+  | .ind .., r => fun s => if r.1 = .err then none else SM.strictS R (pure r) s
+  -- embedded code whose strict meaning is an error (its strict run failed) fails, as strict `.fix`
+  | .clo .., r | .sealed _, r => fun s => if r.1 = .err then none else some (r, s)
+  | _, r => pure r
+
 /-- A constructor value's result once its record is known (docs/34 §14): the tree at the record,
 or `•` for a `Prop`-sorted declaration (D42), at the declaration's type there; no record, no
 value. -/
@@ -733,9 +846,11 @@ its untyped runs carry `MState.tailNext` (`runBody`, `evalCore`'s `.letIn` and `
 sealed program's re-run included, is not; a constant's body is run by `eval`, not `checkTail`,
 so it is not either. -/
 noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
-  | .place p => fun s => SM.erasedAt (K.D.flags (scopeOf s) (.place p)) (placeTy K φ p)
+  -- C1: a proof read at a place is read, on a copy, at the place's type
+  | .place p => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.place p))
       (readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p))) s
-  | .borrow p => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.borrow p)) (borrowPlace K φ p) s
+  -- STRICT: the borrowed content is a member of its type (a borrow's record is a member)
+  | .borrow p => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.borrow p)) (SM.strictS K.dm.read (borrowPlace K φ p)) s
   | .assign p u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.assign p u)) (fun s => do
     -- the right-hand side runs BEFORE the place is accessed (`evalCore`'s `.assign`, then
     -- `assignPlace`; D19, R5: accessing first ended the borrows the right-hand side reads
@@ -745,7 +860,10 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       | some ((_, T, _, _), _) => T
       | none => .plain .err
     let ((v, R), s) ← runT false T u s
-    assignAt K φ p v R.label s) s
+    -- STRICT: the value written is a member of the place's type at the write (read on a
+    -- discarded copy, `placeTy`; the hint `T` was read before the right-hand side ran)
+    if v ∈ₛ[K.dm.read] (placeTy K φ p s).m ∧ labTyOk s R.label (placeTy K φ p s).m then
+      assignAt K φ p v R.label s else none) s
   | .letIn x u w => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.letIn x u w)) (fun s => do
     let ((v, T), s) ← runT false (.plain TyM.err) u s
     let s := pushBindShaped s { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u }
@@ -805,13 +923,17 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       some ((r, R), match tg with
         | .proof => s
         | _ => if one then s else lend R.label (joinDrop K φ entry (.matchInd p n arms) s))
-    | none => none) s
+    -- an erased match on a proof with other than one arm: the arms on copies (`SM.anyArm`)
+    | none => match tg with
+      | .proof => SM.anyArm arms.length (fun c => runArm tl hint c arms) s
+      | _ => none) s
   | .tind n args => do
     match K.Γ.find? (·.name == n) with
     | some d =>
       let psM ← runParams d 0 [] args
       -- the type value is the declaration's code at the parameters (docs/31 D59)
-      pure (.ty (K.dm.tyM d psM), .plain (TyM.univ d.sort))
+      -- STRICT: each argument is a member of its parameter type
+      fun s => if paramsOk K.dm d psM then some ((.ty (K.dm.tyM d psM), .plain (TyM.univ d.sort)), s) else none
     | none => SM.fail
   | .ctor ty c x ps args => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.ctor ty c x ps args)) (do
     match K.Γ.find? (·.name == ty) with
@@ -829,7 +951,11 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       -- a constructor of a Prop-sorted inductive is a proof, `⋆` (D42); its arguments are
       -- statement positions, each on its own copy (`stmtArgIf`; D19, R4)
       let (fs, sol) ← runFields (d.sort == 0) d c 0 rh sol₀ [] args
-      ctorOut K.dm d c fs (rh <|> (if sol.all (·.isSome) then some (K.dm.recOf d (solved sol)) else none))
+      -- STRICT: the value built is a member of the type it is given (`ctorOut_mem`: fields that fit)
+      -- STRICT: written parameters are members of their types
+      fun s => if ps.isEmpty ∨ paramsOk K.dm d psM then
+        SM.strictS K.dm.read (ctorOut K.dm d c fs (rh <|> (if sol.all (·.isSome) then some (K.dm.recOf d (solved sol)) else none))) s
+      else none
     | none => SM.fail) s
   | .const n => pure (K.C.global n)
   | .val v => fun s =>
@@ -867,7 +993,8 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       | _ => hint
     -- PROPOSAL (m2-proofs): an embedded value holds no borrow the run made, so its result carries
     -- no label, whatever label the hint (a place's stored type, at an assignment) records
-    some ((meanV hint v, { T with label := none }), s)
+    -- STRICT at a constructor value (D83 row 8): it is a member of the type its record names
+    strictVal K.dm.read v (meanV hint v, { T with label := none }) s
   | .sort l => pure (.ty (TyM.univ l), .plain (TyM.univ (sortSucc l)))
   | .pi hs ds c => fun s =>
     -- [T-Pi]: the parameters' and output's meanings as functions of the earlier parameters
@@ -882,7 +1009,8 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
         | some ((v, _), _) => v.asTy
         | none => TyM.err⟩
     let l := K.D.piSort (scopeOf s) (.pi hs ds c)
-    some ((.ty (piTyAt K.dm.read l ps out), .plain (TyM.univ l)), s)
+    -- STRICT: every domain and the codomain have a level at every typed tuple of arguments
+    if PiOk K.dm.read ps [] out then some ((.ty (piTyAt K.dm.read l ps out), .plain (TyM.univ l)), s) else none
   | .fix self hs ds c dec body => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.fix self hs ds c dec body)) (fun s =>
     -- [Closure] (D51, D53, D80): a closure means a function on its annotated domain, read off
     -- the reference run of its body in the forming frame extended by `self` and the parameters
@@ -929,7 +1057,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
           let s := s.pushTemp fun ψ => ψ l
           let cell : Pos := .temp s.topIdx (((s.env.getLast?).map (·.temps.length)).getD 1 - 1)
           -- the argument is recorded as the label's member (docs/31 D68: where a label is made)
-          let s := pushBindShaped (s.setHeldMem l ap.1) { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
+          let s := pushBindShaped ((s.setHeldMem l ap.1).setHeldTy l T.m) { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
           (s, acc ++ [ap.1], cells ++ [cell])
         else
           (s.pushBind { ty := { T with label := none }, val := fun _ => ap.1, decl := d }, acc ++ [ap.1], cells)
@@ -968,7 +1096,8 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     -- first, and then moves it unless its declared reading is copy (D80): the checker's [Access]
     -- before the capture ends the borrows lent at it (docs/31 D29 point 2, D37)
     let s' := (capOrder (.fix self hs ds c dec body)).foldl (capStep K) s
-    some ((closureOf g, .plain piT), s')) s
+    -- STRICT: the closure is a member of its function type (else it is `err`, `closureL_mem`)
+    SM.strictS K.dm.read (fun s' => some ((closureOf g, .plain piT), s')) s') s
   | .call f args hd => fun s =>
     let fl := K.D.flags (scopeOf s) (.call f args hd)
     -- a statement call runs on a copy that is thrown away (E1; `Decisions.flags`, aligned), and
@@ -982,25 +1111,45 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       let fv ← SM.headOf f (fun p => readPlace K φ p true) (runT false (.plain TyM.err) f)
       -- a statement call's arguments are statement positions, each on its own copy (R4)
       let as ← runArgs fl.1 fv.2.m [] args
-      callOf K.dm.read fv as) s
+      -- STRICT: a borrow argument's label holds its parameter's content type
+      fun s => if BorrowArgsTyped K.dm.read fv as s then callOf K.dm.read fv as s else none) s
   | .nat => pure (.ty TyM.nat, .plain (TyM.univ 1))
   | .unit => pure (.ty TyM.unit, .plain (TyM.univ 1))
   | .zero => pure (.el0 Nat 0, .plain TyM.nat)
   | .tt => pure (.el0 Unit (), .plain TyM.unit)
-  | .succ u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.succ u)) (do
+  | .succ u => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.succ u)) (SM.strictS K.dm.read (do
     let (v, _) ← runT false (.plain TyM.nat) u
-    pure (v.succ, .plain TyM.nat)) s
+    pure (v.succ, .plain TyM.nat))) s
   | .eq A a b => SM.onCopy do
     let (TA, _) ← runT false (.plain TyM.err) A
     let T : TyS := .plain TA.asTy
     let (va, _) ← SM.onCopy (runT false T a)
     let (vb, _) ← SM.onCopy (runT false T b)
-    pure (.ty (TyM.prop (va = vb)), .plain (TyM.univ 0))
-  | .cong _ _ | .prim "symm" _ | .prim "trans" _ | .prim "rewrite" _ | .prim "rewriteR" _ =>
-    pure (.proof, .plain TyM.err)
-  | .ref A => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.ref A)) (do
+    -- STRICT: the type has a level and each side is `⊥` or a member of it (`EqOk`)
+    fun s => if EqOk K.dm.read TA va vb then some ((.ty (TyM.prop (va = vb)), .plain (TyM.univ 0)), s) else none
+  -- decision 1: the premise proofs run, each on a copy; `⋆` at `prop True`
+  | .cong _ h => SM.onCopy (do
+    let _ ← runT false (.plain TyM.err) h
+    pure (.proof, .plain (TyM.prop True)))
+  | .prim "symm" [h] => SM.onCopy (do
+    let _ ← runT false (.plain TyM.err) h
+    pure (.proof, .plain (TyM.prop True)))
+  | .prim "trans" [h, k] => SM.onCopy (do
+    let _ ← runT false (.plain TyM.err) h
+    let _ ← runT false (.plain TyM.err) k
+    pure (.proof, .plain (TyM.prop True)))
+  | .prim "rewrite" [h, u] => SM.onCopy (do
+    let _ ← runT false (.plain TyM.err) h
+    let _ ← runT false (.plain TyM.err) u
+    pure (.proof, .plain (TyM.prop True)))
+  | .prim "rewriteR" [h, u] => SM.onCopy (do
+    let _ ← runT false (.plain TyM.err) h
+    let _ ← runT false (.plain TyM.err) u
+    pure (.proof, .plain (TyM.prop True)))
+  -- STRICT: `&A` is well formed iff `A : Type₀`
+  | .ref A => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.ref A)) (SM.strictS K.dm.read (do
     let (TA, _) ← runT false (.plain TyM.err) A
-    pure (TA, .plain (TyM.univ 1))) s
+    pure (TA, .plain (TyM.univ 1)))) s
   | .id A t u => fun s => do
     -- `Id` observes: each side on a copy of the state, a fresh value written through each
     -- re-pointed borrow binding ([Obs-ref]), every borrow ended, the result and every position
@@ -1011,8 +1160,11 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let reps := K.D.rePointed (scopeOf s) t
     let o₁ ← runT false T t s
     let o₂ ← runT false T u s
-    some ((.ty (TyM.prop (∀ ws : List Sem, obsTyped K.dm.read reps ws s →
-      observation φ reps ws s.positions o₁.1 o₁.2 = observation φ reps ws s.positions o₂.1 o₂.2)), .plain (TyM.univ 0)), s)
+    -- STRICT: the type has a level and each side is `⊥` or a member of it (`EqOk`)
+    if EqOk K.dm.read TA o₁.1.1 o₂.1.1 then
+      some ((.ty (TyM.prop (∀ ws : List Sem, obsTyped K.dm.read reps ws s →
+        observation φ reps ws s.positions o₁.1 o₁.2 = observation φ reps ws s.positions o₂.1 o₂.2)), .plain (TyM.univ 0)), s)
+    else none
   | .prim "J" [A, a, b, P, h, t] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "J" [A, a, b, P, h, t])) (do
     -- `J` means its transported term; its endpoints, motive and proof are statements on copies
     let _ ← SM.onCopy (runT false (.plain TyM.err) A)
@@ -1037,13 +1189,14 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
   | .prim "inplace" [u] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "inplace" [u]))
       (SM.headOf u (fun p => readPlace K φ p true) (runT false hint u)) s
   | .prim _ _ => SM.fail
-  | .ascribe u A => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.ascribe u A)) (do
+  -- STRICT: the term's value is a member of the annotation
+  | .ascribe u A => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.ascribe u A)) (SM.strictS K.dm.read <| do
     -- the annotation is the term's type, its code (the audit's A7: an annotated function is
     -- called along it, an annotated bare constructor reads its parameters off it)
     let (TA, _) ← SM.onCopy (runT false (.plain TyM.err) A)
     let T : TyS := .plain TA.asTy
     let (v, R) ← runT false T u
-    pure (v, { T with label := R.label })) s
+    fun s => if labTyOk s R.label T.m then some ((v, { T with label := R.label }), s) else none) s
 termination_by structural t => t
 
 /-- Arm `c` of a match, run at the match's expected type. -/
@@ -1129,9 +1282,13 @@ noncomputable def meanV (hint : TyS) : Value → Sem
   | .succ v => (meanV (.plain TyM.nat) v).succ
   | .unit => .el0 Unit ()
   | .gfn n => (K.C.global n).1
-  | .clo caps t rd => match runT false (.plain TyM.err) t (stateOf 0 (capsState (capsVals caps) (capsTys rd))) with
-    | some ((v, _), _) => v
-    | none => .err
+  -- STRICT: `err` unless the captures are members of their recorded types (`CapsOk`)
+  | .clo caps t rd =>
+    if CapsOk K.dm.read (capsVals caps) (capsTys rd) then
+      match runT false (.plain TyM.err) t (stateOf 0 (capsState (capsVals caps) (capsTys rd))) with
+      | some ((v, _), _) => v
+      | none => .err
+    else .err
   | .borrow _ w => meanV hint w
   | .gloan _ w => meanV hint w
   | .loan l => φ l
@@ -1148,13 +1305,19 @@ noncomputable def meanV (hint : TyS) : Value → Sem
   | .proof => .proof
   | .tNat => .ty TyM.nat
   | .tUnit => .ty TyM.unit
+  -- STRICT (`Value.mean`'s clause): `err` unless `EqOk`
   | .tEq A a b =>
     let T := TyS.plain (meanV (.plain TyM.err) A).asTy
-    .ty (TyM.prop (meanV T a = meanV T b))
+    if EqOk K.dm.read (meanV (.plain TyM.err) A) (meanV T a) (meanV T b) then .ty (TyM.prop (meanV T a = meanV T b))
+    else .ty TyM.err
   | .tRef A => meanV (.plain TyM.err) A
-  | .tPi caps t rd => match runT false (.plain TyM.err) t (stateOf 0 (capsState (capsVals caps) (capsTys rd))) with
-    | some ((v, _), _) => .ty v.asTy
-    | none => .ty TyM.err
+  -- STRICT: `err` unless `CapsOk` (and, through the `.pi` clause, `PiOk`)
+  | .tPi caps t rd =>
+    if CapsOk K.dm.read (capsVals caps) (capsTys rd) then
+      match runT false (.plain TyM.err) t (stateOf 0 (capsState (capsVals caps) (capsTys rd))) with
+      | some ((v, _), _) => .ty v.asTy
+      | none => .ty TyM.err
+    else .ty TyM.err
   | .sort l => .ty (TyM.univ l)
   | .ind ty c _ ps fs =>
     match K.Γ.find? (·.name == ty) with
@@ -1166,9 +1329,12 @@ noncomputable def meanV (hint : TyS) : Value → Sem
       | some r => if d.sort == 0 then .proof else DataModel.ctorR d r c (meanFields d r c 0 [] fs)
       | none => .err
     | none => .err
+  -- STRICT (`Value.mean`'s clause): `err` unless `paramsOk`
   | .tInd n args =>
     match K.Γ.find? (·.name == n) with
-    | some d => .ty (K.dm.tyM d (meanParams d 0 [] args))
+    | some d =>
+      if paramsOk K.dm d (meanParams d 0 [] args) then .ty (K.dm.tyM d (meanParams d 0 [] args))
+      else .ty TyM.err
     | none => .ty TyM.err
 termination_by structural v => v
 
@@ -1269,18 +1435,24 @@ positive form of `Regress/Knot_dcdd0a34.lean`). -/
 theorem mean_sealed_at_future (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS) (l : Nat) :
     Value.mean K.dm K.M K.Γ ρ φ hint (.sealed (.val (.loan l))) = φ l := by
   show meanV K ρ φ hint (.sealed (.val (.loan l))) = φ l
-  simp [meanV, runT]
+  simp [meanV, runT, strictVal, pure]
 
 /-- The Π-closure clause of the knot: `meanV` of a Π-closure is already a type value. -/
 theorem meanV_tPi_ty (hint : TyS) (caps : List Value) (t : Term) (rd : List (DeclInfo × Value)) :
     meanV K ρ φ hint (.tPi caps t rd) = .ty (meanV K ρ φ (.plain TyM.err) (.tPi caps t rd)).asTy := by
-  show (match run K ρ φ (.plain TyM.err) t (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) with
-      | some ((v, _), _) => Sem.ty v.asTy
-      | none => .ty TyM.err)
-    = .ty (match run K ρ φ (.plain TyM.err) t (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) with
-      | some ((v, _), _) => Sem.ty v.asTy
-      | none => .ty TyM.err).asTy
-  cases run K ρ φ (.plain TyM.err) t (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) <;> rfl
+  show (if CapsOk K.dm.read (capsVals K ρ φ caps) (capsTys K ρ φ rd) then
+        match run K ρ φ (.plain TyM.err) t (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) with
+        | some ((v, _), _) => Sem.ty v.asTy
+        | none => .ty TyM.err
+      else .ty TyM.err)
+    = .ty (if CapsOk K.dm.read (capsVals K ρ φ caps) (capsTys K ρ φ rd) then
+        match run K ρ φ (.plain TyM.err) t (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) with
+        | some ((v, _), _) => Sem.ty v.asTy
+        | none => .ty TyM.err
+      else .ty TyM.err).asTy
+  split
+  · cases run K ρ φ (.plain TyM.err) t (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) <;> rfl
+  · rfl
 
 mutual
 /-- The knot, by induction on the value: each clause is the same text, the code-dependent ones
@@ -1305,12 +1477,20 @@ theorem meanV_eq_mean_aux (hint : TyS) : (v : Value) →
   | .tNat => rfl
   | .tUnit => rfl
   | .tEq A a b => by
-    show Sem.ty (TyM.prop (Value.mean K.dm (codeMeaning K) K.Γ ρ φ
+    show (if EqOk K.dm.read (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain TyM.err) A)
+          (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain TyM.err) A).asTy) a)
+          (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain TyM.err) A).asTy) b)
+        then Sem.ty (TyM.prop (Value.mean K.dm (codeMeaning K) K.Γ ρ φ
           (.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain TyM.err) A).asTy) a
         = Value.mean K.dm (codeMeaning K) K.Γ ρ φ
           (.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain TyM.err) A).asTy) b))
-      = Sem.ty (TyM.prop (meanV K ρ φ (.plain (meanV K ρ φ (.plain TyM.err) A).asTy) a
+        else .ty TyM.err)
+      = (if EqOk K.dm.read (meanV K ρ φ (.plain TyM.err) A)
+          (meanV K ρ φ (.plain (meanV K ρ φ (.plain TyM.err) A).asTy) a)
+          (meanV K ρ φ (.plain (meanV K ρ φ (.plain TyM.err) A).asTy) b)
+        then Sem.ty (TyM.prop (meanV K ρ φ (.plain (meanV K ρ φ (.plain TyM.err) A).asTy) a
         = meanV K ρ φ (.plain (meanV K ρ φ (.plain TyM.err) A).asTy) b))
+        else .ty TyM.err)
     rw [meanV_eq_mean_aux (.plain TyM.err) A, meanV_eq_mean_aux _ a, meanV_eq_mean_aux _ b]
   | .tRef A => meanV_eq_mean_aux (.plain TyM.err) A
   | .tPi caps t rd => (meanV_tPi_ty K ρ φ hint caps t rd).symm

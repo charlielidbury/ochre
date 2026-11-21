@@ -92,7 +92,7 @@ theorem held_a3 (n : Nat) :
 /-- The reference run of `let r = &y; ()` from `y = Z` ends in `aF`. -/
 theorem let_borrow_run (hfl : NoStmt K) (n : Nat) (hint : TyS) :
     run K ρ φ hint tLet (a1 K n) = some ((.el0 Unit (), .plain TyM.unit), aF K n) := by
-  rw [tLet, run_letIn ρ φ K hfl, run_borrow ρ φ K hfl, borrow_a1]
+  rw [tLet, run_letIn ρ φ K hfl, run_borrow ρ φ K hfl, strictBorrow_a1]
   show ((run K ρ φ hint .tt (a3 K n)).bind fun y => some (y.1, (match (match y.2.env.getLast? with
             | some fr => y.2.shape (.bind y.2.topIdx (fr.binds.length - 1))
             | none => none) with

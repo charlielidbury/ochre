@@ -206,8 +206,10 @@ theorem readsSig_largeElim (d : IndDecl) : ReadsSig (largeElim d) := by
   unfold largeElim
   split
   · exact .pure _
-  · exact ReadsSig.allM _ (fun _ => readsSig_fieldTermIsProp _ _) _
-  · exact .pure _
+  · split
+    · exact .pure _
+    · exact ReadsSig.allM _ (fun _ => readsSig_fieldTermIsProp _ _) _
+    · exact .pure _
 
 /-- The erasure pre-pass's flags for a term, given its declared reading, read only the term's
 syntax and the reading (it fails on a reading with no declared type, D63). -/
@@ -342,7 +344,7 @@ theorem substV_tPi (fuel : Nat) (σ : Nat) (r : Value) (cs : List Value) (hs : L
     unfold substV
     simp only []
     refine Post.ite _ (Post.pure ⟨cs, ds, c, rd, rfl, rfl⟩) ?_
-    have hne : (Value.tPi cs (.pi hs ds c) rd == Value.abs σ) = false := rfl
+    have hne : (Value.tPi cs (.pi hs ds c) rd).exact (Value.abs σ) = false := rfl
     simp only [hne, Bool.false_eq_true, ↓reduceIte]
     exact Post.bind_any fun rd' => Post.bind_any fun cs' => Post.bind (substT_pi n _ r hs ds c) fun t' ⟨ds', c', ht, hc⟩ =>
       Post.pure ⟨cs', ds', c', rd', by rw [ht], hc⟩

@@ -40,8 +40,23 @@ theorem runs_setAt (p : Pos) (v : Value) (st : MState) (fuel : Nat) :
 def Env.pushTempE (env : Env) (v : Value) : Env :=
   env.modify (env.size - 1) fun fr => { fr with temps := fr.temps.push v }
 
-theorem runs_pushTemp (v : Value) (st : MState) (fuel : Nat) :
-    Runs (Ochr.pushTemp v) st fuel () { st with env := Env.pushTempE st.env v } := ⟨#[], fuel, #[], rfl⟩
+/-- The environment after the checker's `pushTemp v T` (main's D104): the temporary and its stored
+type, side by side. `Env.pushTempE` (and `MState.withTemp`, which the statements read a value in
+flight through) push the value alone; the statements do not yet speak of temporaries' types. -/
+def Env.pushTempTyE (env : Env) (v : Value) (T : Option Value) : Env :=
+  env.modify (env.size - 1) fun fr => { fr with temps := fr.temps.push v, tempTys := fr.tempTys.push T }
+
+/-- The checker's `pushTemp` (main's D104: with the temporary's stored type `T`, and a dev-tooling
+log entry, `notePush`, which a `Runs` does not constrain). -/
+theorem runs_pushTemp (v : Value) (T : Option Value) (site : String) (st : MState) (fuel : Nat) :
+    Runs (Ochr.pushTemp v T site) st fuel () { st with env := Env.pushTempTyE st.env v T } := by
+  by_cases hc : (st.cfg.recordPushes = true ∧ T = none) ∧ (st.typing = true ∨ v.isBorrow = true)
+  · refine ⟨#[], fuel, #[LogEntry.push site st.typing v st.depth], ?_⟩
+    simp [runMachineL, Ochr.pushTemp, Ochr.notePush, Ochr.topIdx, Ochr.modifyFrame, if_pos hc]
+    rfl
+  · refine ⟨#[], fuel, #[], ?_⟩
+    simp [runMachineL, Ochr.pushTemp, Ochr.notePush, Ochr.topIdx, Ochr.modifyFrame, if_neg hc]
+    rfl
 
 /-- The environment after `pushBind`. -/
 def Env.pushBindE (env : Env) (h : Hint) (ty : Option Value) (v : Value) (proof : Bool) (decl : DeclInfo) : Env :=

@@ -13,6 +13,7 @@ renamed; the two base cases are the only proofs that differ.
 -/
 
 namespace Ochr.Meaning
+open Classical
 
 open SState
 
@@ -177,14 +178,22 @@ theorem run_prim_substAbsSame (hD : DecInvariantAbs K.D σ w) (tl : Bool) (n : S
   have hfl' : ∀ sc, K.D.flags sc (.prim n (Term.substAbsList σ w args)) = K.D.flags sc (.prim n args) := hfl
   funext s
   have hlen := length_substAbsList σ w args
-  by_cases h1 : n = "symm"
-  · subst h1; rw [runT, runT]
-  by_cases h2 : n = "trans"
-  · subst h2; rw [runT, runT]
-  by_cases h3 : n = "rewrite"
-  · subst h3; rw [runT, runT]
-  by_cases h4 : n = "rewriteR"
-  · subst h4; rw [runT, runT]
+  by_cases e1 : ∃ h, n = "symm" ∧ args = [h]
+  · obtain ⟨h0, rfl, rfl⟩ := e1
+    simp only [Term.substAbsList]
+    rw [runT, runT]; simp only [hall h0 (by simp)]
+  by_cases e2 : ∃ h k, n = "trans" ∧ args = [h, k]
+  · obtain ⟨h0, k0, rfl, rfl⟩ := e2
+    simp only [Term.substAbsList]
+    rw [runT, runT]; simp only [hall h0 (by simp), hall k0 (by simp)]
+  by_cases e3 : ∃ h u, n = "rewrite" ∧ args = [h, u]
+  · obtain ⟨h0, u0, rfl, rfl⟩ := e3
+    simp only [Term.substAbsList]
+    rw [runT, runT]; simp only [hall h0 (by simp), hall u0 (by simp)]
+  by_cases e4 : ∃ h u, n = "rewriteR" ∧ args = [h, u]
+  · obtain ⟨h0, u0, rfl, rfl⟩ := e4
+    simp only [Term.substAbsList]
+    rw [runT, runT]; simp only [hall h0 (by simp), hall u0 (by simp)]
   by_cases hJ : ∃ A a b P h t, n = "J" ∧ args = [A, a, b, P, h, t]
   · obtain ⟨A, a, b, P, h', t, rfl, rfl⟩ := hJ
     simp only [Term.substAbsList] at hfl' ⊢
@@ -215,10 +224,20 @@ theorem run_prim_substAbsSame (hD : DecInvariantAbs K.D σ w) (tl : Bool) (n : S
     have : args.length = 1 := by rw [← hlen, e2]; rfl
     obtain ⟨x, hx⟩ := list_one args this
     exact hc ⟨x, e1 ▸ hm, hx⟩
-  rw [runT.eq_42 K ρ ψ tl hint n _ h1 h2 h3 h4 hJs (hcs _ (.inl rfl)).2 (hcs _ (.inr (.inl rfl))).2
-      (hcs _ (.inr (.inr rfl))).2,
-    runT.eq_42 K ρ ψ tl hint n _ h1 h2 h3 h4 hJ' (hcs _ (.inl rfl)).1 (hcs _ (.inr (.inl rfl))).1
-      (hcs _ (.inr (.inr rfl))).1]
+  have f1 : ∀ h, n = "symm" → args = [h] → False := fun h0 a b => e1 ⟨h0, a, b⟩
+  have f2 : ∀ h k, n = "trans" → args = [h, k] → False := fun h0 k0 a b => e2 ⟨h0, k0, a, b⟩
+  have f3 : ∀ h u, n = "rewrite" → args = [h, u] → False := fun h0 u0 a b => e3 ⟨h0, u0, a, b⟩
+  have f4 : ∀ h u, n = "rewriteR" → args = [h, u] → False := fun h0 u0 a b => e4 ⟨h0, u0, a, b⟩
+  have g1 : ∀ h, n = "symm" → Term.substAbsList σ w args = [h] → False := fun h0 a b => by
+    obtain ⟨x, hx⟩ := list_one args (by rw [← hlen, b]; rfl); exact e1 ⟨x, a, hx⟩
+  have g2 : ∀ h k, n = "trans" → Term.substAbsList σ w args = [h, k] → False := fun h0 k0 a b => by
+    obtain ⟨x, y, hx⟩ := list_two args (by rw [← hlen, b]; rfl); exact e2 ⟨x, y, a, hx⟩
+  have g3 : ∀ h u, n = "rewrite" → Term.substAbsList σ w args = [h, u] → False := fun h0 u0 a b => by
+    obtain ⟨x, y, hx⟩ := list_two args (by rw [← hlen, b]; rfl); exact e3 ⟨x, y, a, hx⟩
+  have g4 : ∀ h u, n = "rewriteR" → Term.substAbsList σ w args = [h, u] → False := fun h0 u0 a b => by
+    obtain ⟨x, y, hx⟩ := list_two args (by rw [← hlen, b]; rfl); exact e4 ⟨x, y, a, hx⟩
+  rw [runT, runT]
+  all_goals (first | rfl | exact f1 | exact f2 | exact f3 | exact f4 | exact hJ' | exact (hcs _ (.inl rfl)).1 | exact (hcs _ (.inr (.inl rfl))).1 | exact (hcs _ (.inr (.inr rfl))).1 | exact g1 | exact g2 | exact g3 | exact g4 | exact hJs | exact (hcs _ (.inl rfl)).2 | exact (hcs _ (.inr (.inl rfl))).2 | exact (hcs _ (.inr (.inr rfl))).2)
 
 end SubstAbsPrim
 
@@ -240,19 +259,33 @@ theorem runT_substAbsSame (hF : AbsFillOK K ρ ψ σ w) : ∀ (tl : Bool) (t : T
       | abs σ' =>
         by_cases e : σ' = σ
         · subst e
+          -- the filler's strict `.val` succeeds where the unknown's does (`AbsFillOK.shape`
+          -- compares the two runs, success included), at the same type, with the same meaning
           have h := hF.shape hint s
           rw [run_val_def, run_val_def] at h
-          simp only [Option.map_some, Option.some.injEq] at h
           simp only [Value.substAbs, if_true]
-          rw [h]
+          have hR : strictVal K.dm.read (Value.abs σ') (meanV K ρ ψ hint (Value.abs σ'),
+              { valT K ρ ψ hint (Value.abs σ') with label := none }) s =
+              some ((meanV K ρ ψ hint (Value.abs σ'), { valT K ρ ψ hint (Value.abs σ') with label := none }), s) := rfl
+          rw [hR]; rw [hR] at h
+          have hm : meanV K ρ ψ hint w = meanV K ρ ψ hint (Value.abs σ') := hF.mean hint
+          rw [hm] at h
+          cases hw : strictVal K.dm.read w (meanV K ρ ψ hint (Value.abs σ'), { valT K ρ ψ hint w with label := none }) s with
+          | none => rw [hw] at h; cases h
+          | some x =>
+            obtain ⟨r, s'⟩ := x
+            rw [hw] at h
+            obtain ⟨rfl, rfl⟩ := strictVal_some hw
+            simp only [Option.map_some, Option.some.injEq] at h
+            rw [h]
         · simp only [Value.substAbs, e, if_false]
       | clo caps t rd =>
-        simp only [Value.substAbs, valT, capsVals_substAbsSame hF caps, capsTys_substAbsSame hF rd,
+        simp only [Value.substAbs, valT, strictVal, capsVals_substAbsSame hF caps, capsTys_substAbsSame hF rd,
           runT_substAbsSame hF false t]
       | sealed t =>
-        simp only [Value.substAbs, valT, runT_substAbsSame hF false t hint]
+        simp only [Value.substAbs, valT, strictVal, runT_substAbsSame hF false t hint]
       | ind ty c h ps fs =>
-        simp only [Value.substAbs, valT, meanParams_substAbsSame hF, Value.substAbsList_isEmpty]
+        simp only [Value.substAbs, valT, strictVal, meanParams_substAbsSame hF, Value.substAbsList_isEmpty]
       | _ => rfl
     | assign p u =>
       have hu := fun tl' => runT_substAbsSame hF tl' u
@@ -311,7 +344,10 @@ theorem runT_substAbsSame (hF : AbsFillOK K ρ ψ σ w) : ∀ (tl : Bool) (t : T
       have hfl : ∀ sc, K.D.flags sc (.ref (Term.substAbs σ w u)) = K.D.flags sc (.ref u) :=
         fun sc => hF.dec.1 sc (.ref u)
       rw [runT, runT]; simp only [hu, hfl]
-    | cong a b => rfl
+    | cong a b =>
+      have hb := fun tl' => runT_substAbsSame hF tl' b
+      show runT K ρ ψ tl hint (.cong (Term.substAbs σ w a) (Term.substAbs σ w b)) = _
+      rw [runT, runT]; simp only [hb]
     | ascribe u A =>
       have hu := fun tl' => runT_substAbsSame hF tl' u
       have hA := fun tl' => runT_substAbsSame hF tl' A
@@ -342,7 +378,7 @@ theorem runT_substAbsSame (hF : AbsFillOK K ρ ψ σ w) : ∀ (tl : Bool) (t : T
       show runT K ρ ψ tl hint (.ctor ty c h (Term.substAbsList σ w ps) (Term.substAbsList σ w args)) = _
       have hfl : ∀ sc, K.D.flags sc (.ctor ty c h (Term.substAbsList σ w ps) (Term.substAbsList σ w args))
           = K.D.flags sc (.ctor ty c h ps args) := fun sc => hF.dec.1 sc (.ctor ty c h ps args)
-      rw [runT, runT]; simp only [hp, hf, Term.substAbsList_isEmpty, hfl]
+      rw [runT, runT]; rw [Term.substAbsList_isEmpty]; simp only [hp, hf, hfl]
     | call f args hd =>
       have hf := fun tl' => runT_substAbsSame hF tl' f
       have ha := fun st sh => runArgs_substAbsSame hF st sh args

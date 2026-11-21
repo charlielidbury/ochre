@@ -30,6 +30,7 @@ proof read as a proof.
 
 namespace Ochr.Meaning.Regress.CodeRuns
 open Ochr Ochr.Meaning Ochr.Meaning.Regress.CodeClosures
+open Classical
 
 /-- The probes' decisions: `Attack.D₀` (nothing a statement or a proof, Π-terms at `Type₀`), with
 every place read as a copy (a move would give the same result and leave `⊥` behind). -/
@@ -50,7 +51,8 @@ code, and the application. -/
 theorem run_call (f : Term) (args : List Term) (hd : Bool) (hint : TyS) (s : SState) :
     run (Kp dm Γ G) ρ φ hint (.call f args hd) s =
       (SM.headOf f (fun p => readPlace (Kp dm Γ G) φ p true) (run (Kp dm Γ G) ρ φ (.plain TyM.err) f) >>= fun fv =>
-        runArgs (Kp dm Γ G) ρ φ false fv.2.m [] args >>= fun as => callOf dm.read fv as) s := rfl
+        runArgs (Kp dm Γ G) ρ φ false fv.2.m [] args >>= fun as =>
+          fun s => if BorrowArgsTyped dm.read fv as s then callOf dm.read fv as s else none) s := rfl
 
 theorem run_const (n : String) (hint : TyS) (s : SState) : run (Kp dm Γ G) ρ φ hint (.const n) s = some (G n, s) := rfl
 
@@ -101,7 +103,14 @@ codomain: the application's result, at the code the telescope reached. -/
 theorem callOf_data0 {C : Type} (t : Tel Code0 PUnit C) (F : Sem) (args : List Res) (s : SState) (r : Sem) (T : TyM)
     (hr : (args.zip (telRefsL (lvl0 dm.read) t (args.map (·.1)))).filter (·.2) = [])
     (happ : applyFnL (lvl0 dm.read) t F (args.map (·.1)) = some (.data r T [])) :
-    callOf dm.read (F, .plain (.t0 C (.pi C t))) args s = some ((r, .plain T), s) := by
+    (if BorrowArgsTyped dm.read (F, .plain (.t0 C (.pi C t))) args s then
+      callOf dm.read (F, .plain (.t0 C (.pi C t))) args s else none) = some ((r, .plain T), s) := by
+  -- no borrow parameter among the arguments: the strict test has no label to read
+  have hb : BorrowArgsTyped dm.read (F, .plain (.t0 C (.pi C t))) args s := by
+    intro i l h
+    simp only [refLabelsOf, refsOf, TyS.plain, hr, List.map_nil, List.getElem?_nil] at h
+    cases h
+  rw [if_pos hb]
   change callOfL (lvl0 dm.read) t F args s = some ((r, TyS.plain T), s)
   unfold callOfL; dsimp only; rw [hr, happ]; simp [mapVals_noFix]
 
@@ -198,7 +207,14 @@ theorem fn_apply (φ : Future) :
 theorem callOf_data1 {C : Type 1} (t : Tel Code1 PUnit.{2} C) (F : Sem) (args : List Res) (s : SState) (r : Sem)
     (T : TyM) (hr : (args.zip (telRefsL (lvl1 dm.read) t (args.map (·.1)))).filter (·.2) = [])
     (happ : applyFnL (lvl1 dm.read) t F (args.map (·.1)) = some (.data r T [])) :
-    callOf dm.read (F, .plain (.t1 C (.pi C t))) args s = some ((r, .plain T), s) := by
+    (if BorrowArgsTyped dm.read (F, .plain (.t1 C (.pi C t))) args s then
+      callOf dm.read (F, .plain (.t1 C (.pi C t))) args s else none) = some ((r, .plain T), s) := by
+  -- no borrow parameter among the arguments: the strict test has no label to read
+  have hb : BorrowArgsTyped dm.read (F, .plain (.t1 C (.pi C t))) args s := by
+    intro i l h
+    simp only [refLabelsOf, refsOf, TyS.plain, hr, List.map_nil, List.getElem?_nil] at h
+    cases h
+  rw [if_pos hb]
   change callOfL (lvl1 dm.read) t F args s = some ((r, TyS.plain T), s)
   unfold callOfL; dsimp only; rw [hr, happ]; simp [mapVals_noFix]
 
@@ -288,8 +304,9 @@ theorem run_callVar (bs : List SBinding) (i : Nat) (hi : i < bs.length) (Gf : NN
 /-- `Π(n : Nat). Nat` runs, in any state, to the type value holding its code, typed at `Type₀`. -/
 theorem run_piNN (hs : List Hint) (hint : TyS) (s : SState) :
     run (Kp dm Γ G) ρ φ hint (.pi hs [.nat] .nat) s = some ((.ty (piTyL (lvl0 dm.read) tNN), .plain (TyM.univ 1)), s) := by
-  rw [run, run_pi_def]
-  rfl
+  rw [run, run_pi_def, if_pos]
+  · rfl
+  · exact ⟨rfl, fun _ _ => rfl⟩
 
 /-- The frame `Alias` starts in: `f : Π(n : Nat). Nat` bound to a function `Gf`. -/
 def fB (Gf : NN) : SBinding := { ty := .plain (.t0 NN (.pi NN tNN)), val := fun _ => .el0 NN Gf, decl := .other }
@@ -307,13 +324,16 @@ theorem alias (Gf : NN) (hint : TyS) : ∃ T s', run (Kp dm Γ G) ρ φ hint
       = some ((.el0 NN Gf, .plain (piTyL (lvl0 dm.read) tNN)),
           frame [fB Gf, { ty := .plain (TyM.univ 1), val := fun _ => .ty (piTyL (lvl0 dm.read) tNN), decl := .other }]) := by
     rw [run, Attack.run_ascribe (hfl := fun _ _ => rfl)]
-    simp only [bind, SM.onCopy]
+    simp only [SM.strictS, bind, SM.onCopy]
     rw [show runT (Kp dm Γ G) ρ φ false (.plain .err) (.place (.var 0)) = readPlace (Kp dm Γ G) φ (.var 0) true from rfl,
       readPlace_frame φ _ _ 0 _ (by simp) rfl (by simp [Sem.whole])]
     simp only [Option.map, Sem.asTy]
     rw [show runT (Kp dm Γ G) ρ φ false (.plain (piTyL (lvl0 dm.read) tNN)) (.place (.var 1)) = readPlace (Kp dm Γ G) φ (.var 1) true from rfl,
       readPlace_frame φ _ _ 1 _ (by simp) rfl (by simp [Sem.whole, fB])]
-    rfl
+    -- the strict ascription: the read carries no label, and `Gf` is a member of its function type
+    have hm : Sem.el0 NN Gf ∈ₛ[dm.read] piTyL (lvl0 dm.read) tNN := ⟨Gf, rfl⟩
+    simp only [fB, TyS.plain, labTyOk, reduceCtorEq, false_implies, implies_true, if_true]
+    rw [if_pos (by exact hm)]
   rw [run_letIn, run_piNN]
   simp only [bind, Option.bind]
   rw [Attack.pushBindShaped_noLabel _ _ rfl, frame_push, run_letIn]
@@ -440,7 +460,14 @@ theorem pred_apply (φ : Future) :
 theorem callOf_data2 {C : Type 2} (t : Tel Code2 PUnit.{3} C) (F : Sem) (args : List Res) (s : SState) (r : Sem)
     (T : TyM) (hr : (args.zip (telRefsL (lvl2 dm.read) t (args.map (·.1)))).filter (·.2) = [])
     (happ : applyFnL (lvl2 dm.read) t F (args.map (·.1)) = some (.data r T [])) :
-    callOf dm.read (F, .plain (.t2 C (.pi C t))) args s = some ((r, .plain T), s) := by
+    (if BorrowArgsTyped dm.read (F, .plain (.t2 C (.pi C t))) args s then
+      callOf dm.read (F, .plain (.t2 C (.pi C t))) args s else none) = some ((r, .plain T), s) := by
+  -- no borrow parameter among the arguments: the strict test has no label to read
+  have hb : BorrowArgsTyped dm.read (F, .plain (.t2 C (.pi C t))) args s := by
+    intro i l h
+    simp only [refLabelsOf, refsOf, TyS.plain, hr, List.map_nil, List.getElem?_nil] at h
+    cases h
+  rw [if_pos hb]
   change callOfL (lvl2 dm.read) t F args s = some ((r, TyS.plain T), s)
   unfold callOfL; dsimp only; rw [hr, happ]; simp [mapVals_noFix]
 
@@ -500,7 +527,8 @@ def Kb (dm : DataModel) : RunCtx := { Kp dm [pbox] (fun _ => (.err, .plain TyM.e
 /-- The frame of `BoxProof`'s body: `h : True`, a proof. -/
 def hB : SBinding := { ty := .plain (TyM.prop True), val := fun _ => .proof, decl := .other }
 
-/-- The proof `h`, erased, is `⋆` at its stored type `True` (A17). -/
+/-- The proof `h`, erased, runs on a copy to `⋆` at `True` (the strict run's C1; before it, A17 typed
+an erased place at its stored type, here also `True`). -/
 theorem run_h (hint : TyS) : run (Kb dm) ρ φ hint (.place (.var 0)) (frame [hB])
     = some ((.proof, .plain (TyM.prop True)), frame [hB]) := by
   have hr : resolve (frame [hB]) (.var 0) = some (.bind 0 0, []) := by
@@ -512,14 +540,19 @@ theorem run_h (hint : TyS) : run (Kb dm) ρ φ hint (.place (.var 0)) (frame [hB
     simp [SState.tyAt, SState.valAt, Sem.follow, frame, hB]
     rfl
   rw [run, runT]
-  show SM.erasedAt (true, true) _ _ _ = _
-  simp only [SM.erasedAt, if_true, hp]
+  show SM.erasedIf (true, true) _ _ = _
+  simp only [SM.erasedIf, if_true]
+  rw [show (Kb dm).D.copy ((Kb dm).D.placeDecl (scopeOf (frame [hB])) (.var 0)) = true from rfl,
+    readPlace_frame φ _ [hB] 0 hB (by simp) rfl (by simp [Sem.whole, hB])]
+  rfl
 
 /-- **`BoxProof` in the model: `MkPBox(h)` is `⋆` at `PBox(True)`.** The field `a : A` is the proof
 `h`, which the run does not run; since A17 it is typed at `h`'s stored type `True`, which solves
 `A := True`, so the constructor's run succeeds. The checker accepts `BoxProof` (`ShapeProbes`);
 before A17 the field was typed `err`, `A` stayed unsolved and the run failed. -/
-theorem boxProof :
+theorem boxProof
+    -- STRICT: `⋆` is a member of `PBox(True)` in the data model
+    (hm : Sem.proof ∈ₛ[dm.read] dm.tyM pbox [.ty (TyM.prop True)]) :
     run (Kb dm) ρ φ (.plain TyM.err) (.ctor "PBox" 0 ⟨"MkPBox"⟩ [] [.place (.var 0)]) (frame [hB])
       = some ((.proof, .plain (dm.tyM pbox [.ty (TyM.prop True)])), frame [hB]) := by
   rw [run, runT]
@@ -537,7 +570,13 @@ theorem boxProof :
   simp only [hf, runParams, bind, pure]
   rw [show (pbox.sort == 0) = true from rfl]
   erw [hrf]
-  show ctorOut dm pbox 0 [.proof] (none <|> some (dm.recOf pbox [.ty (TyM.prop True)])) (frame [hB]) = _
+  show (if ([] : List Term).isEmpty = true ∨ paramsOk dm pbox [] then
+    SM.strictS dm.read (ctorOut dm pbox 0 [.proof] (none <|> some (dm.recOf pbox [.ty (TyM.prop True)]))) (frame [hB])
+    else none) = _
+  rw [if_pos (.inl rfl)]
+  simp only [SM.strictS]
+  show (if Sem.proof ∈ₛ[dm.read] dm.tyM pbox [.ty (TyM.prop True)] then _ else none) = _
+  rw [if_pos hm]
   rfl
 
 /-! ## A recursive and a nested declaration, built and matched by the run (docs/31 D61)
@@ -555,7 +594,9 @@ theorem run_ctor (d : IndDecl) (hd : Γ.find? (·.name == d.name) = some d) (hs 
     (c : Nat) (x : Hint) (ps args : List Term) (hp : ps ≠ []) (hint : TyS) (s : SState)
     (psM : List Sem) (hpm : runParams (Kp dm Γ G) ρ φ d 0 [] ps s = some (psM, s))
     (fs : List Sem) (sol : List (Option Sem))
-    (hf : runFields (Kp dm Γ G) ρ φ false d c 0 (some (dm.recOf d psM)) (psM.map some) [] args s = some ((fs, sol), s)) :
+    (hf : runFields (Kp dm Γ G) ρ φ false d c 0 (some (dm.recOf d psM)) (psM.map some) [] args s = some ((fs, sol), s))
+    -- STRICT: the written parameters are members of their types, the value of its type
+    (hpo : paramsOk dm d psM) (hm : dm.ctorM d psM c fs ∈ₛ[dm.read] dm.tyM d psM) :
     run (Kp dm Γ G) ρ φ hint (.ctor d.name c x ps args) s
       = some ((dm.ctorM d psM c fs, .plain (dm.tyM d psM)), s) := by
   rw [run, runT]
@@ -568,8 +609,11 @@ theorem run_ctor (d : IndDecl) (hd : Γ.find? (·.name == d.name) = some d) (hs 
   simp only [hne, Bool.true_or, if_true]
   rw [hs]
   erw [hf]
-  show ctorOut dm d c fs (some (dm.recOf d psM)) s = _
-  simp only [ctorOut, hs, Bool.false_eq_true, if_false]
+  show (if ps.isEmpty = true ∨ paramsOk dm d psM then
+    SM.strictS dm.read (ctorOut dm d c fs (some (dm.recOf d psM))) s else none) = _
+  rw [if_pos (.inr hpo)]
+  simp only [SM.strictS, ctorOut, hs, Bool.false_eq_true, if_false, pure]
+  rw [if_pos (by exact hm)]
   rfl
 
 section Lists
@@ -579,6 +623,13 @@ open Ochr.Meaning.Regress.DataCodes Ochr.Meaning.DataModel.Program
 def nilT : Term := .ctor "List" 0 ⟨"Nil"⟩ [.nat] []
 def consT (h : Nat) (t : Term) : Term := .ctor "List" 1 ⟨"Cons"⟩ [.nat] [num h, t]
 
+/-- `Nat` is a member of `Type₀`, the type of `List`'s parameter in the program's data model. -/
+theorem paramsOk_psN (d : IndDecl) : paramsOk dmP d psN := by
+  intro i v h
+  cases i with
+  | zero => simp only [psN, List.getElem?_cons_zero, Option.some.injEq] at h; subst h; exact ⟨⟨Nat, Code0.nat, rfl⟩, rfl⟩
+  | succ i => simp [psN] at h
+
 theorem runParams_nat (D : IndDecl) (s : SState) :
     runParams (Kp dmP [listD] G) ρ φ D 0 [] [.nat] s = some (psN, s) := rfl
 
@@ -586,7 +637,7 @@ theorem runParams_nat (D : IndDecl) (s : SState) :
 theorem run_nil (hint : TyS) (s : SState) :
     run (Kp dmP [listD] G) ρ φ hint nilT s = some ((semL [], .plain (dmP.tyM listD psN)), s) :=
   run_ctor dmP [listD] G ρ φ listD rfl rfl 0 _ [.nat] [] (by simp) hint s psN (runParams_nat G ρ φ listD s)
-    [] _ rfl
+    [] _ rfl (paramsOk_psN listD) (semL_memTy [])
 
 /-- `Cons(h, t)` runs to the list's meaning, where `t` runs to the tail's. -/
 theorem run_cons (h : Nat) (t : Term) (l : List Nat) (s : SState)
@@ -600,7 +651,7 @@ theorem run_cons (h : Nat) (t : Term) (l : List Nat) (s : SState)
     simp only [runFields, SM.stmtIf, Bool.false_and, Bool.false_eq_true, if_false, bind, Option.bind, hn, ht', pure]
     rfl
   exact run_ctor dmP [listD] G ρ φ listD rfl rfl 1 _ [.nat] [num h, t] (by simp) hint s psN (runParams_nat G ρ φ listD s)
-    _ _ hf
+    _ _ hf (paramsOk_psN listD) (semL_memTy (h :: l))
 
 /-- **`Cons(3, Cons(4, Nil))` runs, by the constructor clause, to the list's meaning**, a member of
 `List(Nat)`'s code (`DataCodes.semL_memTy`); the match clause reads it as `Cons` (`indTag`) with its
@@ -608,7 +659,7 @@ fields (`Sem.stepField`). -/
 theorem run_list34 (hint : TyS) (s : SState) :
     run (Kp dmP [listD] G) ρ φ hint (consT 3 (consT 4 nilT)) s = some ((semL [3, 4], .plain (dmP.tyM listD psN)), s) ∧
       indTag (semL [3, 4]) (.plain (dmP.tyM listD psN)) = .el0 Nat 1 ∧
-      Sem.stepField dmP [listD] 1 1 (semL [3, 4]) = some (semL [4], .plain (dmP.tyM listD psN)) := by
+      Sem.stepField dmP (.plain (dmP.tyM listD psN)) 1 1 (semL [3, 4]) = some (semL [4], .plain (dmP.tyM listD psN)) := by
   refine ⟨run_cons G ρ φ 3 _ [4] s (fun hint => run_cons G ρ φ 4 _ [] s (fun hint => run_nil G ρ φ hint s) hint) hint,
     rfl, rfl⟩
 
@@ -625,20 +676,44 @@ def nodeT (a : Nat) (ks : Term) : Term := .ctor "Rose" 0 ⟨"Node"⟩ [.nat] [nu
 def rnilT : Term := .ctor "List" 0 ⟨"Nil"⟩ [.tind "Rose" [.nat]] []
 def rconsT (r rs : Term) : Term := .ctor "List" 1 ⟨"Cons"⟩ [.tind "Rose" [.nat]] [r, rs]
 
+/-- `Rose(Nat)` is a member of `Type₀`. -/
+theorem paramsOk_psR (d : IndDecl) : paramsOk dmP d psR := by
+  intro i v h
+  cases i with
+  | zero => simp only [psR, List.getElem?_cons_zero, Option.some.injEq] at h; subst h; exact ⟨⟨_, _, rfl⟩, rfl⟩
+  | succ i => simp [psR] at h
+
 theorem runParams_roseNat (s : SState) : runParams (Kp dmP ΓR G) ρ φ roseD 0 [] [.nat] s = some (psN, s) := rfl
 
 /-- `List(Rose(Nat))`'s parameter, the type `Rose(Nat)`, runs to `Rose(Nat)`'s code. -/
 theorem runParams_listRose (s : SState) :
-    runParams (Kp dmP ΓR G) ρ φ listD 0 [] [.tind "Rose" [.nat]] s = some (psR, s) := rfl
+    runParams (Kp dmP ΓR G) ρ φ listD 0 [] [.tind "Rose" [.nat]] s = some (psR, s) := by
+  -- the strict type former: `Nat` is a member of `Rose`'s parameter type
+  have hpo : paramsOk dmP roseD psN := by
+    intro i v h
+    cases i with
+    | zero => simp only [psN, List.getElem?_cons_zero, Option.some.injEq] at h; subst h; exact ⟨⟨_, _, rfl⟩, rfl⟩
+    | succ i => simp [psN] at h
+  have ht : ∀ h, runT (Kp dmP ΓR G) ρ φ false h (.tind "Rose" [.nat]) s
+      = some ((Sem.ty (dmP.tyM roseD psN), TyS.plain (TyM.univ roseD.sort)), s) := by
+    intro h
+    rw [runT]
+    have hf : List.find? (fun x => x.name == "Rose") (Kp dmP ΓR G).Γ = some roseD := rfl
+    simp only [hf, bind, runParams_roseNat]
+    exact if_pos hpo
+  simp only [runParams, SM.onCopy, bind, ht, pure, Option.map_some]
+  rfl
 
 /-- `Nil` at `List(Rose(Nat))` runs to the empty forest. -/
 theorem run_lrNil (hint : TyS) (s : SState) :
     run (Kp dmP ΓR G) ρ φ hint rnilT s = some ((nilV, .plain (dmP.tyM listD psR)), s) :=
   run_ctor dmP ΓR G ρ φ listD rfl rfl 0 _ _ [] (by simp) hint s psR (runParams_listRose G ρ φ s) [] _ rfl
+    (paramsOk_psR listD) ((DataModel.mem_tyR dmP listD rF rfl _).2 nil_mem)
 
 /-- `Node(a, ks)` runs to the tree, where `ks` runs to the forest. -/
 theorem run_node (a : Nat) (ks : Term) (l : Sem) (s : SState)
-    (hk : ∀ hint, run (Kp dmP ΓR G) ρ φ hint ks s = some ((l, .plain (dmP.tyM listD psR)), s)) (hint : TyS) :
+    (hk : ∀ hint, run (Kp dmP ΓR G) ρ φ hint ks s = some ((l, .plain (dmP.tyM listD psR)), s))
+    (hl : dmP.Mem listD rF l) (hint : TyS) :
     run (Kp dmP ΓR G) ρ φ hint (nodeT a ks) s = some ((nodeV a l, .plain (dmP.tyM roseD psN)), s) := by
   have hf : runFields (Kp dmP ΓR G) ρ φ false roseD 0 0 (some (dmP.recOf roseD psN)) (psN.map some) [] [num a, ks] s
       = some (([.el0 Nat a, l], psN.map some), s) := by
@@ -648,12 +723,13 @@ theorem run_node (a : Nat) (ks : Term) (l : Sem) (s : SState)
     simp only [runFields, SM.stmtIf, Bool.false_and, Bool.false_eq_true, if_false, bind, Option.bind, hn, hk', pure]
     rfl
   exact run_ctor dmP ΓR G ρ φ roseD rfl rfl 0 _ [.nat] [num a, ks] (by simp) hint s psN (runParams_roseNat G ρ φ s)
-    _ _ hf
+    _ _ hf (paramsOk_psN roseD) ((DataModel.mem_tyR dmP roseD rRN rfl _).2 (node_mem a l hl))
 
 /-- `Cons(r, rs)` at `List(Rose(Nat))` runs to the forest. -/
 theorem run_lrCons (r rs : Term) (t ts : Sem) (s : SState)
     (hr : ∀ hint, run (Kp dmP ΓR G) ρ φ hint r s = some ((t, .plain (dmP.tyM roseD psN)), s))
-    (hrs : ∀ hint, run (Kp dmP ΓR G) ρ φ hint rs s = some ((ts, .plain (dmP.tyM listD psR)), s)) (hint : TyS) :
+    (hrs : ∀ hint, run (Kp dmP ΓR G) ρ φ hint rs s = some ((ts, .plain (dmP.tyM listD psR)), s))
+    (ht : dmP.Mem roseD rRN t) (hts : dmP.Mem listD rF ts) (hint : TyS) :
     run (Kp dmP ΓR G) ρ φ hint (rconsT r rs) s = some ((consV t ts, .plain (dmP.tyM listD psR)), s) := by
   have hf : runFields (Kp dmP ΓR G) ρ φ false listD 1 0 (some (dmP.recOf listD psR)) (psR.map some) [] [r, rs] s
       = some (([t, ts], psR.map some), s) := by
@@ -662,7 +738,7 @@ theorem run_lrCons (r rs : Term) (t ts : Sem) (s : SState)
     simp only [runFields, SM.stmtIf, Bool.false_and, Bool.false_eq_true, if_false, bind, Option.bind, hr', hrs', pure]
     rfl
   exact run_ctor dmP ΓR G ρ φ listD rfl rfl 1 _ _ [r, rs] (by simp) hint s psR (runParams_listRose G ρ φ s)
-    _ _ hf
+    _ _ hf (paramsOk_psR listD) ((DataModel.mem_tyR dmP listD rF rfl _).2 (cons_mem t ts ht hts))
 
 /-- **`Node(1, Cons(Node(2, Nil), Nil))` (the probe's `Tree`) runs, by the constructor clause, to the
 tree**, a member of `Rose(Nat)`'s code (`DataCodes.tree_memTy`); the match clause reads it as `Node`
@@ -671,11 +747,12 @@ theorem run_tree (hint : TyS) (s : SState) :
     run (Kp dmP ΓR G) ρ φ hint (nodeT 1 (rconsT (nodeT 2 rnilT) rnilT)) s
         = some ((nodeV 1 (consV (nodeV 2 nilV) nilV), .plain (dmP.tyM roseD psN)), s) ∧
       indTag (nodeV 1 (consV (nodeV 2 nilV) nilV)) (.plain (dmP.tyM roseD psN)) = .el0 Nat 0 ∧
-      Sem.stepField dmP ΓR 0 1 (nodeV 1 (consV (nodeV 2 nilV) nilV))
+      Sem.stepField dmP (.plain (dmP.tyM roseD psN)) 0 1 (nodeV 1 (consV (nodeV 2 nilV) nilV))
         = some (consV (nodeV 2 nilV) nilV, .plain (dmP.tyM listD psR)) := by
   refine ⟨run_node G ρ φ 1 _ _ s (fun hint => run_lrCons G ρ φ _ _ _ _ s
-      (fun hint => run_node G ρ φ 2 _ _ s (fun hint => run_lrNil G ρ φ hint s) hint)
-      (fun hint => run_lrNil G ρ φ hint s) hint) hint, rfl, rfl⟩
+      (fun hint => run_node G ρ φ 2 _ _ s (fun hint => run_lrNil G ρ φ hint s) nil_mem hint)
+      (fun hint => run_lrNil G ρ φ hint s) (node_mem 2 _ nil_mem) nil_mem hint)
+      (cons_mem _ _ (node_mem 2 _ nil_mem) nil_mem) hint, rfl, rfl⟩
 
 end Roses
 

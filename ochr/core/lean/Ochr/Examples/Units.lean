@@ -156,3 +156,55 @@ def dupVerdicts (bs : List Ochr.Surface.Block) : List (String × Bool × String)
    ("DupSelf", false, "DupSelf: the constructor name DupSelf is already used (constructors are resolved by name)")]
 
 end Ochr.Units
+
+/-! ## A comparison keeps nothing but names (D103)
+
+`conv`, `convPi` and `convFn` put back, on every exit, the state they started from, keeping only
+the names made inside (the counters, the frozen readings, the new unknowns' types). Before D103 a
+comparison kept the η-records its private copy made: comparing `Π(x : E1). match x { MkE1(e) =>
+Nat }` with `Π(y : E1). Nat`, over `E1 := MkE1(e : Empty)`, refined the generic argument in
+place (D93) and left a record naming an unknown of type `Empty`, after which no assignment of
+the unknowns is typed (found by the rules trial, `Meaning/Rules/EmptyDomain.lean` on
+`rules-trial`). Each comparison below answers `true`, adds its unknowns to the table (names are
+never reused, D37) and now leaves no record. -/
+
+namespace Ochr.Units
+
+#guard_msgs (drop warning) in
+ochr CompareEmpty uses Nats {
+  inductive Empty : Type
+  inductive E1 : Type := MkE1(e : Empty)
+  def F (x : Empty) : Nat := Z
+  def G (y : Empty) : Nat := Z
+  def P2 : Type := Π(x : E1). (match x { MkE1(e) => Nat })
+  def Q2 : Type := Π(y : E1). Nat
+  def F3 (x : E1) (n : (match x { MkE1(e) => Nat })) : Nat := Z
+  def G3 (y : E1) (m : (match y { MkE1(e) => Nat })) : Nat := Z
+  def TAt (n : Nat) : Nat := ?
+}
+
+/-- The checker's state at the hole of `TAt`, after the block's declarations. -/
+def cmpSt : MState :=
+  let r := runWith (some Prelude) "CompareEmpty" CompareEmpty { recordStates := true } (located := true)
+  match r.rows.find? (·.name == "TAt") with
+  | some row => (row.trace.toList.filterMap fun
+      | .state _ false _ st => some st | _ => none).getLast?.getD default
+  | none => default
+
+def cmpVal (n : String) : Value := ((cmpSt.globals.find? (·.name == n)).map (·.val)).getD .unit
+
+/-- A comparison from `cmpSt`: its answer, how many unknowns it added, and how many records
+(η and generalisation) it left. -/
+def cmpLeaves (x : M Bool) : Option (Bool × Nat × Nat) :=
+  match (runMachine x cmpSt 1000000).1 with
+  | .ok b st' => some (b, st'.absTy.size - cmpSt.absTy.size,
+      (st'.etaRefs.length - cmpSt.etaRefs.length) + (st'.neutrals.length - cmpSt.neutrals.length))
+  | _ => none
+
+#guard cmpSt.absTy.size == 1
+#guard cmpLeaves (conv 100000 (.gfn "F") (.gfn "G")) == some (true, 1, 0)
+-- before D103: `some (true, 2, 1)` and `some (true, 3, 1)`, a record naming the unknown of `Empty`
+#guard cmpLeaves (conv 100000 (cmpVal "P2") (cmpVal "Q2")) == some (true, 2, 0)
+#guard cmpLeaves (conv 100000 (.gfn "F3") (.gfn "G3")) == some (true, 3, 0)
+
+end Ochr.Units

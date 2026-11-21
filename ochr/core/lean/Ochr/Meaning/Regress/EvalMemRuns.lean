@@ -272,7 +272,14 @@ theorem vL_member (C : CodeMeaning) (ρ : Assignment) (ψ : Future) (h₁ h₂ h
       (Value.tyM dmP C [listD] ρ (fun _ => .err) (.tInd "List" [.tNat])) := by
   have e : Value.mean dmP C [listD] ρ ψ (Value.tyS dmP C [listD] ρ (.tInd "List" [.tNat])) (vL h₁ h₂ h₃) = semL [3, 4] := by
     simp [vL, Value.mean, Value.meanParams, Value.meanFields, DataModel.ctorR, mean_nV, semL]; rfl
-  have eT : Value.tyM dmP C [listD] ρ (fun _ => .err) (.tInd "List" [.tNat]) = dmP.tyM listD psN := rfl
+  -- the strict type former: `Nat` is a member of `List`'s parameter type
+  have hpo : paramsOk dmP listD [.ty TyM.nat] := by
+    intro i v h
+    cases i with
+    | zero => simp at h; subst h; exact ⟨⟨Nat, .nat, rfl⟩, rfl⟩
+    | succ i => simp at h
+  have eT : Value.tyM dmP C [listD] ρ (fun _ => .err) (.tInd "List" [.tNat]) = dmP.tyM listD psN := by
+    simp [Value.tyM, Value.mean, Value.meanParams, psN, show listD.name = "List" from rfl, hpo, Sem.asTy]
   rw [e, eT]
   exact DataModel.pmem_of_mem dmP.read [listD] (by simp [semL, Sem.whole]) (semL_memTy [3, 4])
 

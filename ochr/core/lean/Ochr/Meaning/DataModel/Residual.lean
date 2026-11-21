@@ -89,35 +89,36 @@ theorem lenV_small : ∀ v : Sem, lenV v = lenS v.small
 
 /-- `LenL`'s closure at `A`: a Lean function on `List`'s carrier at `A`'s record, its body run on
 the encoding of its argument (`closureAt`'s form). -/
-def lenC (eA : Entry) (x : DataLib.car S listD (constRec eA)) : Nat := lenV (DataLib.meanC S x)
+def lenC (eA : Entry) (rA : Rec) (x : DataLib.car S listD (listR eA rA)) : Nat := lenV (DataLib.meanC S x)
 
 open Classical in
 /-- Decoding a meaning into `List`'s carrier at `A`'s record (`Code0.dec`'s form). -/
-noncomputable def decL (eA : Entry) (v : Sem) : Option (DataLib.car S listD (constRec eA)) :=
-  if h : ∃ x : DataLib.car S listD (constRec eA), DataLib.meanC S x = v then some h.choose else none
+noncomputable def decL (eA : Entry) (rA : Rec) (v : Sem) : Option (DataLib.car S listD (listR eA rA)) :=
+  if h : ∃ x : DataLib.car S listD (listR eA rA), DataLib.meanC S x = v then some h.choose else none
 
 /-- **The run's reading of `v`'s type**: decode `xs`, apply `LenL`'s closure, compare with `1`
 (`Succ(Zero)`); `err` where the decoding fails. -/
-noncomputable def runRE (eA : Entry) (xs : Sem) : Shape :=
-  match decL eA xs with
-  | some x => shapeOf (propEntry (lenC eA x = 1))
+noncomputable def runRE (eA : Entry) (rA : Rec) (xs : Sem) : Shape :=
+  match decL eA rA xs with
+  | some x => shapeOf (propEntry (lenC eA rA x = 1)) natRec
   | none => .leaf PEmpty .err
 
 /-- **The signature, defined on meanings alone, is the run's carrier-based reading at every
 well-typed `xs`.** -/
-theorem re_faithful (eA : Entry) (xs : Sem) (hxs : DataLib.Mem S listD (constRec eA) xs) :
-    runRE eA xs = S.shape reD (reRec eA) 0 1 [xs.small] := by
-  have hex : ∃ x : DataLib.car S listD (constRec eA), DataLib.meanC S x = xs := (DataLib.mem_iff_meanC S _ _ _).1 hxs
-  have hdec : decL eA xs = some hex.choose := by simp only [decL, dif_pos hex]
+theorem re_faithful (eA : Entry) (rA : Rec) (xs : Sem) (hxs : DataLib.Mem S listD (listR eA rA) xs) :
+    runRE eA rA xs = S.shape reD (reRec eA rA) 0 1 [xs.small] := by
+  have hex : ∃ x : DataLib.car S listD (listR eA rA), DataLib.meanC S x = xs := (DataLib.mem_iff_meanC S _ _ _).1 hxs
+  have hdec : decL eA rA xs = some hex.choose := by simp only [decL, dif_pos hex]
   simp only [runRE, hdec]
-  show shapeOf (propEntry (lenV (DataLib.meanC S hex.choose) = 1)) = shapeOf (reRec eA [(0, 1, [xs.small])])
+  show shapeOf (propEntry (lenV (DataLib.meanC S hex.choose) = 1)) natRec
+    = shapeOf (reRec eA rA [(0, 1, [xs.small])]) natRec
   rw [hex.choose_spec, lenV_small]
   rfl
 
 /-- At the parameter `RE(Nat)`: `List`'s carrier there is built from `RE`'s own signature. -/
-theorem re_faithful_nested (xs : Sem) (hxs : DataLib.Mem S listD (constRec (.data reD (reRec natE))) xs) :
-    runRE (.data reD (reRec natE)) xs = S.shape reD (reRec (.data reD (reRec natE))) 0 1 [xs.small] :=
-  re_faithful _ xs hxs
+theorem re_faithful_nested (xs : Sem) (hxs : DataLib.Mem S listD (listR (.data reD) (reRec natE natRec)) xs) :
+    runRE (.data reD) (reRec natE natRec) xs = S.shape reD (reRec (.data reD) (reRec natE natRec)) 0 1 [xs.small] :=
+  re_faithful _ _ xs hxs
 
 /-! ## The probe's values -/
 
@@ -127,30 +128,37 @@ def consV (r : Rec) (x xs : Sem) : Sem := .dat "List" r 1 [x, xs]
 
 theorem nil_mem (r : Rec) : DataLib.Mem S listD r (nilV r) := mem_intro listD r ⟨0, by decide⟩ [] rfl
 
-theorem cons_mem (r : Rec) (x xs : Sem) (hx : FitsOneM S (shapeOf (r (paramKey 0))) x) (hxs : DataLib.Mem S listD r xs) :
-    DataLib.Mem S listD r (consV r x xs) := by
-  refine mem_intro listD r ⟨1, by decide⟩ [x, xs] ?_
-  exact ⟨x, [xs], rfl, hx, xs, [], rfl, hxs, rfl⟩
+/-- `Cons(x, xs)` at `List(A)`'s record (`listR`: the signature is universal, so the tail's shape is
+what the record holds past `t`, `List(A)`'s own record), `x` fitting the parameter's shape. -/
+theorem cons_mem (eA : Entry) (rA : Rec) (x xs : Sem) (hx : FitsOneM S (shapeOf eA rA) x)
+    (hxs : DataLib.Mem S listD (listR eA rA) xs) :
+    DataLib.Mem S listD (listR eA rA) (consV (listR eA rA) x xs) := by
+  refine mem_intro listD _ ⟨1, by decide⟩ [x, xs] ?_
+  refine ⟨x, [xs], rfl, ?_, xs, [], rfl, hxs, rfl⟩
+  show FitsOneM S (uShape listD (listR eA rA) 1 0 []) x
+  rw [uShape_shapeOf]
+  exact hx
 
-def re0 : Sem := .dat "RE" (reRec natE) 0 [consV (constRec natE) (.el0 Nat 0) (nilV (constRec natE)), .proof]
-def reR1 : Rec := reRec (.data reD (reRec natE))
+def re0 : Sem := .dat "RE" (reRec natE natRec) 0
+  [consV (listR natE natRec) (.el0 Nat 0) (nilV (listR natE natRec)), .proof]
+def reR1 : Rec := reRec (.data reD) (reRec natE natRec)
 def re1 : Sem := .dat "RE" reR1 0
-  [consV (constRec (.data reD (reRec natE))) re0 (nilV (constRec (.data reD (reRec natE)))), .proof]
+  [consV (listR (.data reD) (reRec natE natRec)) re0 (nilV (listR (.data reD) (reRec natE natRec))), .proof]
 
-theorem re0_mem : DataLib.Mem S reD (reRec natE) re0 := by
+theorem re0_mem : DataLib.Mem S reD (reRec natE natRec) re0 := by
   refine mem_intro reD _ ⟨0, by decide⟩ _ ?_
   refine ⟨_, _, rfl, ?_, _, [], rfl, ⟨⟨rfl⟩, rfl⟩, rfl⟩
-  exact cons_mem _ _ _ ⟨0, rfl⟩ (nil_mem _)
+  exact cons_mem natE natRec _ _ ⟨0, rfl⟩ (nil_mem _)
 
 /-- **`re1 : RE(RE(Nat))` is a member.** -/
 theorem re1_mem : DataLib.Mem S reD reR1 re1 := by
   refine mem_intro reD _ ⟨0, by decide⟩ _ ?_
   refine ⟨_, _, rfl, ?_, _, [], rfl, ⟨⟨rfl⟩, rfl⟩, rfl⟩
-  exact cons_mem _ _ _ re0_mem (nil_mem _)
+  exact cons_mem (.data reD) (reRec natE natRec) _ _ re0_mem (nil_mem _)
 
 /-- `reBad`'s type at the empty list is empty (the checker rejects `reBad`). -/
 theorem reBad_empty (fs : List Sem) :
-    ¬ DataLib.Mem S reD (reRec natE) (.dat "RE" (reRec natE) 0 (nilV (constRec natE) :: fs)) := by
+    ¬ DataLib.Mem S reD (reRec natE natRec) (.dat "RE" (reRec natE natRec) 0 (nilV (listR natE natRec) :: fs)) := by
   rw [DataLib.mem_iff]
   rintro ⟨⟨c, hc⟩, gs, he, hf⟩
   simp only [Sem.dat.injEq, true_and] at he
@@ -158,13 +166,22 @@ theorem reBad_empty (fs : List Sem) :
   obtain ⟨f, fs', hfs, -, f2, fs2, hfs2, h2, -⟩ := hf
   simp only [List.cons.injEq] at hfs
   obtain ⟨rfl, rfl⟩ := hfs
-  have h2' : ∃ p : PLift (lenS (nilV (constRec natE)).small = 1), encLeaf (.prop _) p = f2 := h2
+  have h2' : ∃ p : PLift (lenS (nilV (listR natE natRec)).small = 1), encLeaf (.prop _) p = f2 := h2
   obtain ⟨⟨hp⟩, -⟩ := h2'
   cases hp
 
-/-- `Rose`'s nested field: the run's reading of `List(Rose(A))` (the code `List` at the type
-`Rose(A)`, whose code names `Rose` and its record) is the signature's shape: no carrier read. -/
-theorem rose_faithful (r : Rec) (e : List Small) :
-    shapeOf (entryOf (dmP.tyR listD (constRec (entryOf (dmP.tyR roseD r))))) = S.shape roseD r 0 1 e := rfl
+/-- `Rose`'s nested field: the run's reading of `List(Rose(A))` (`List`'s record at the type
+`Rose(A)`, whose code names `Rose` and its record) is the signature's shape: no carrier read. At
+`Rose`'s records (`roseR`; the signature is universal, so the shape is what the record holds past
+`kids`, `forestR`, which is `List`'s record at `Rose(A)`, `forestR_eq`), and at earlier fields read
+small of `kids`'s length (one, `a`: the key of field `1`). -/
+theorem rose_faithful (eA : Entry) (rA : Rec) (e : List Small) (he : e.length = 1) :
+    S.shape roseD (roseR eA rA) 0 1 e = .sub listD (dmP.recOf listD [.ty (dmP.tyR roseD (roseR eA rA))]) := by
+  obtain ⟨s, rfl⟩ : ∃ s, e = [s] := by
+    match e, he with
+    | [s], _ => exact ⟨s, rfl⟩
+  show uShape roseD (roseR eA rA) 0 1 [s] = .sub listD (listR (.data roseD) (roseR eA rA))
+  rw [← forestR_eq]
+  rfl
 
 end Ochr.Meaning.DataModel.Program

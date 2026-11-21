@@ -18,8 +18,8 @@ use site has, not for a fault of the checker or the model.
 3. `eval_step_stmt` at a typed hole (`eval_hole_false`): the checker's `?` succeeds with a fresh
    unknown, and the reference has no clause for it, so "the reference's run succeeds" fails. The
    chain's `NoHoles` never reaches the evaluation statements.
-4. Not a statement: the reference trusts an ascription (`run_ascribe_trusted`), so it is not strict
-   (route (C) of docs/31 D83).
+4. Not a statement, and now flipped: the reference trusted an ascription, so it was not strict
+   (route (C) of docs/31 D83); the strict run refuses `(0 : Unit)` (`run_ascribe_strict`).
 -/
 
 namespace Ochr.Meaning.Regress.OpenFalse
@@ -103,18 +103,20 @@ value is not a member of the type it is given, "the reference run succeeds" (`ho
 membership the untyped run never checks. Today it does not: the reference's `.ascribe` types any
 value at the annotation. -/
 
-/-- **The reference runs `(0 : Unit)` to `0` typed `Unit`** (where the ascription is neither a
-statement nor erased): a successful run whose result is no member of its type. A strict `.ascribe`
-fails here, so the untyped `let x = (0 : Unit); x` would have no successful reference run, and the
-untyped step, stated under `hok`, would owe nothing there. -/
-theorem run_ascribe_trusted (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h : TyS) (s : SState)
+/-- **The strict run refuses `(0 : Unit)`** (where the ascription is neither a statement nor
+erased). Before the strict run (spine before the port of D83) the reference ran it to `0` typed
+`Unit`, a successful run whose result is no member of its type (`run_ascribe_trusted`); the strict
+`.ascribe` fails, so the untyped `let x = (0 : Unit); x` has no successful reference run, and the
+untyped step, stated under `hok`, owes nothing there. -/
+theorem run_ascribe_strict (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h : TyS) (s : SState)
     (hfl : K.D.flags (scopeOf s) (.ascribe (.val .zero) (.val .tUnit)) = (false, false)) :
-    ∃ R : TyS, runT K ρ φ tl h (.ascribe (.val .zero) (.val .tUnit)) s = some ((.el0 Nat 0, R), s) ∧
-      R.m = TyM.unit ∧ ¬ (Sem.el0 Nat 0 ∈ₛ[K.dm.read] R.m) := by
-  refine ⟨{ TyS.plain TyM.unit with label := none }, ?_, rfl, ?_⟩
-  · simp [runT, SM.erasedIf, SM.stmtIf, hfl, SM.onCopy, bind, pure, meanV, Sem.asTy]
-  · rintro ⟨a, ha⟩
+    runT K ρ φ tl h (.ascribe (.val .zero) (.val .tUnit)) s = none := by
+  have hn : ¬ (Sem.el0 Nat 0 ∈ₛ[K.dm.read] TyM.unit) := by
+    rintro ⟨a, ha⟩
     exact unit_ne_nat (Sem.el0.inj ha).1
+  simp [runT, SM.erasedIf, SM.stmtIf, hfl, SM.onCopy, SM.strictS, strictVal, labTyOk, bind, pure, meanV,
+    Sem.asTy]
+  exact hn
 
 /-! ## 5. The chain's decision table at one fuel against the checker at every fuel
 

@@ -561,10 +561,9 @@ namespace JoinDropCounterexample
 
 def decl : IndDecl := { name := "P", ctors := [("MkP", [("a", .unit), ("b", .unit)])] }
 
-/-- A data model of `P`: both fields `Unit`. -/
+/-- A data model of `P` (its records' fields read nothing here). -/
 def dm : DataModel where
   covers d := d = decl
-  sig := ⟨fun _ _ _ _ _ => .leaf Unit .unit⟩
   recOf _ _ := natRec
   paramTy _ _ _ := TyM.err
 

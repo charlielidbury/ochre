@@ -58,7 +58,6 @@ def B2 : IndDecl := { name := "B2", ctors := [("F2", []), ("T2", [])] }
 /-- A data model of `B1` and `B2`: no fields, the empty record. -/
 def dm : DataModel where
   covers d := d = B1 ∨ d = B2
-  sig := ⟨fun _ _ _ _ _ => .leaf PEmpty .err⟩
   recOf _ _ := natRec
   paramTy _ _ _ := .err
 
@@ -93,7 +92,7 @@ theorem mean_T2 : Value.mean K.dm K.C K.Γ ρ φ H (.ind "B2" 1 ⟨"T2"⟩ [] []
 
 /-- The type `B2` is the code naming `B2` and its record. -/
 theorem mean_B2 : Value.mean K.dm K.C K.Γ ρ φ H (.tInd "B2" []) = .ty (dm.tyR B2 natRec) := by
-  simp [Value.mean, K, B1, B2, Value.meanParams, DataModel.tyM, dm]
+  simp [Value.mean, K, B1, B2, Value.meanParams, DataModel.tyM, dm, paramsOk_nil]
 
 /-- **The reference's match reads constructor `1`** at any type the value is held at: the value is
 read, not decoded through a declaration found by its carrier (`DataOfChoice_189132fd`: the match

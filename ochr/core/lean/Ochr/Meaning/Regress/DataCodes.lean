@@ -7,7 +7,7 @@ import Ochr.Meaning.ClosureStage
 # Recursive and nested data types have codes; recursion is guarded by height (docs/31 D61, docs/34 §14; kernel-checked)
 
 The concrete check of the data layer, at the probe programs' data model (`DataModel.Program.dmP`,
-its signature and records written by hand): a data type's code names its declaration, its record
+its records written by hand, the signature the universal one): a data type's code names its declaration, its record
 and its carrier, and an element is read as its meaning, a tree (`DataModel.read`, the bijection
 between a carrier and its members). Here, for a recursive declaration (`List(Nat)`) and a nested
 one (`Rose(Nat)`, whose field `kids` is a `List(Rose(Nat))`):
@@ -38,12 +38,13 @@ open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.DataModel.Program
 
 /-! ## Members of `List` and `Rose`, taken apart -/
 
-/-- A member of `List` at a record is `Nil`, or `Cons(x, t)` with `x` fitting the parameter's
-shape and `t` a member. -/
-theorem list_mem_cases (r : Rec) (v : Sem) (hv : dmP.Mem listD r v) :
-    v = .dat "List" r 0 [] ∨ ∃ x t, v = .dat "List" r 1 [x, t] ∧
-      FitsOneM S (shapeOf (r (paramKey 0))) x ∧ dmP.Mem listD r t := by
-  obtain ⟨⟨c, hc⟩, fs, rfl, hf⟩ := (mem_iff S listD r v).1 hv
+/-- A member of `List` at `List(A)`'s record (`listR`: the signature is universal, so the shapes are
+what the record holds) is `Nil`, or `Cons(x, t)` with `x` fitting the parameter's shape and `t` a
+member. -/
+theorem list_mem_cases (eA : Entry) (rA : Rec) (v : Sem) (hv : dmP.Mem listD (listR eA rA) v) :
+    v = .dat "List" (listR eA rA) 0 [] ∨ ∃ x t, v = .dat "List" (listR eA rA) 1 [x, t] ∧
+      FitsOneM S (shapeOf eA rA) x ∧ dmP.Mem listD (listR eA rA) t := by
+  obtain ⟨⟨c, hc⟩, fs, rfl, hf⟩ := (mem_iff S listD _ v).1 hv
   match c, hc with
   | 0, _ =>
     left
@@ -54,20 +55,27 @@ theorem list_mem_cases (r : Rec) (v : Sem) (hv : dmP.Mem listD r v) :
     obtain ⟨x, fs', rfl, hx, t, fs'', rfl, ht, hnil⟩ := hf
     have : fs'' = [] := hnil
     subst this
-    exact ⟨x, t, rfl, hx, ht⟩
+    have hx' : FitsOneM S (uShape listD (listR eA rA) 1 0 []) x := hx
+    rw [uShape_shapeOf] at hx'
+    exact ⟨x, t, rfl, hx', ht⟩
   | n + 2, hc => exact absurd hc (by simp [listD])
 
-/-- A member of `Rose` at a record is `Node(a, k)`, `k` a member of `List(Rose(…))`. -/
-theorem rose_mem_cases (r : Rec) (v : Sem) (hv : dmP.Mem roseD r v) :
-    ∃ a k, v = .dat "Rose" r 0 [a, k] ∧ FitsOneM S (shapeOf (r (paramKey 0))) a ∧
-      dmP.Mem listD (constRec (.data roseD r)) k := by
-  obtain ⟨⟨c, hc⟩, fs, rfl, hf⟩ := (mem_iff S roseD r v).1 hv
+/-- A member of `Rose` at `Rose(A)`'s record (`roseR`) is `Node(a, k)`, `k` a member of
+`List(Rose(A))` (at `List`'s record at `Rose(A)`, the record the run gives that type: `forestR_eq`). -/
+theorem rose_mem_cases (eA : Entry) (rA : Rec) (v : Sem) (hv : dmP.Mem roseD (roseR eA rA) v) :
+    ∃ a k, v = .dat "Rose" (roseR eA rA) 0 [a, k] ∧ FitsOneM S (shapeOf eA rA) a ∧
+      dmP.Mem listD (listR (.data roseD) (roseR eA rA)) k := by
+  obtain ⟨⟨c, hc⟩, fs, rfl, hf⟩ := (mem_iff S roseD _ v).1 hv
   match c, hc with
   | 0, _ =>
     obtain ⟨a, fs', rfl, ha, k, fs'', rfl, hk, hnil⟩ := hf
     have : fs'' = [] := hnil
     subst this
-    exact ⟨a, k, rfl, ha, hk⟩
+    have ha' : FitsOneM S (uShape roseD (roseR eA rA) 0 0 []) a := ha
+    rw [uShape_shapeOf] at ha'
+    have hk' : dmP.Mem listD (forestR eA rA) k := hk
+    rw [forestR_eq] at hk'
+    exact ⟨a, k, rfl, ha', hk'⟩
   | n + 1, hc => exact absurd hc (by simp [roseD])
 
 /-! ## `List(Nat)`: a recursive declaration -/
@@ -76,7 +84,7 @@ def natE : Entry := .leaf Nat .nat
 
 /-- `List(Nat)`'s parameters' meanings, and its record: `Nat`'s entry. -/
 def psN : List Sem := [.ty TyM.nat]
-def rN : Rec := constRec natE
+def rN : Rec := listR natE natRec
 
 theorem recOf_listNat : dmP.recOf listD psN = rN := rfl
 
@@ -255,10 +263,10 @@ theorem stage_len (φ : Future) : ∀ (n : Nat) (v : Sem), dmP.Mem listD rN v �
   | 0, _, _, hn => absurd hn (Nat.not_lt_zero _)
   | n + 1, v, hv, hn => by
     show lenBody (selfOne dmP.read cL φ rankOf n (stage lenBody (selfOne dmP.read cL φ rankOf) n)) [v] = _
-    rcases list_mem_cases rN v hv with rfl | ⟨x, t, rfl, -, ht⟩
+    rcases list_mem_cases natE natRec v hv with rfl | ⟨x, t, rfl, -, ht⟩
     · rfl
     · have hlt : semHeight t < n := by
-        have := semHeight_field_lt "List" rN 1 [x, t] t (by simp)
+        have := semHeight_field_lt "List" (listR natE natRec) 1 [x, t] t (by simp)
         omega
       obtain ⟨a, ha⟩ := (DataModel.mem_iff_meanC dmP listD rN t).1 ht
       have ih := stage_len φ n t ht hlt
@@ -298,9 +306,9 @@ theorem len_member (φ : Future) :
 /-! ## `Rose(Nat)`: a nested declaration -/
 
 /-- `Rose(Nat)`'s record (`Nat`'s entry), and `List(Rose(Nat))`'s: `List`'s record whose entry is
-`Rose(Nat)`, the record `Rose`'s field `kids` gives. -/
-def rRN : Rec := constRec natE
-def rF : Rec := constRec (.data roseD rRN)
+`Rose(Nat)`, the record `Rose`'s field `kids` gives (its continuation, `forestR_eq`). -/
+def rRN : Rec := roseR natE natRec
+def rF : Rec := listR (.data roseD) rRN
 
 theorem recOf_roseNat : dmP.recOf roseD psN = rRN := rfl
 
@@ -321,7 +329,10 @@ theorem cons_mem (x xs : Sem) (hx : dmP.Mem roseD rRN x) (hxs : dmP.Mem listD rF
 
 theorem node_mem (a : Nat) (kids : Sem) (hk : dmP.Mem listD rF kids) : dmP.Mem roseD rRN (nodeV a kids) := by
   refine mem_intro roseD rRN ⟨0, by decide⟩ _ ?_
-  exact ⟨_, _, rfl, ⟨a, rfl⟩, kids, [], rfl, hk, rfl⟩
+  refine ⟨_, _, rfl, ⟨a, rfl⟩, kids, [], rfl, ?_, rfl⟩
+  show dmP.Mem listD (forestR natE natRec) kids
+  rw [forestR_eq]
+  exact hk
 
 /-- **Built**: the run's constructor values `Node(1, Cons(Node(2, Nil), Nil))` are the tree. -/
 theorem build_rose :
@@ -375,13 +386,14 @@ theorem stage_count (φ : Future) : ∀ (n : Nat) (v : Sem), dmP.Mem listD rF v 
   | 0, _, _, hn => absurd hn (Nat.not_lt_zero _)
   | n + 1, v, hv, hn => by
     show countBody (selfOne dmP.read cF φ rankOf n (stage countBody (selfOne dmP.read cF φ rankOf) n)) [v] = _
-    rcases list_mem_cases rF v hv with rfl | ⟨x, t, rfl, hx, -⟩
+    rcases list_mem_cases (.data roseD) rRN v hv with rfl | ⟨x, t, rfl, hx, -⟩
     · rfl
     · have hx' : dmP.Mem roseD rRN x := hx
-      obtain ⟨a, k, rfl, -, hk⟩ := rose_mem_cases rRN x hx'
+      obtain ⟨a, k, rfl, -, hk⟩ := rose_mem_cases natE natRec x hx'
       have hlt : semHeight k < n := by
-        have h1 := semHeight_field_lt "Rose" rRN 0 [a, k] k (by simp)
-        have h2 := semHeight_field_lt "List" rF 1 [.dat "Rose" rRN 0 [a, k], t] (.dat "Rose" rRN 0 [a, k]) (by simp)
+        have h1 := semHeight_field_lt "Rose" (roseR natE natRec) 0 [a, k] k (by simp)
+        have h2 := semHeight_field_lt "List" (listR (.data roseD) rRN) 1 [.dat "Rose" (roseR natE natRec) 0 [a, k], t]
+          (.dat "Rose" (roseR natE natRec) 0 [a, k]) (by simp)
         omega
       obtain ⟨y, hy⟩ := (DataModel.mem_iff_meanC dmP listD rF k).1 hk
       have ih := stage_count φ n k hk hlt

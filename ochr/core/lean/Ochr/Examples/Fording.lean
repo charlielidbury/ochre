@@ -212,7 +212,7 @@ ochr FordAttack uses Lists {
   ("LeZ", "`by d`: the decreasing parameter must have an inductive type (or be a borrow of one)")]
 #guard (run "FordAttack" FordAttack).rejectedWith [
   ("SelfEq", "field h of MkSE : Eq(SelfEq, x, x): fields are first-order data (inductive types, Nat, Unit, ×, earlier type functions) or parameters, D36"),
-  ("Loop", "field e of MkLoop : EqF(Loop, x, x): Loop occurs at the parameter A of EqF, which EqF passes to a type function (one may use its argument negatively): not strictly positive (K4, D36)"),
+  ("Loop", "field e of MkLoop : EqF(Loop, x, x): Loop occurs at the parameter A of EqF, which is not nestable in EqF"),
   ("LieVS", "[Repack] a borrow of it ends, but it is open: field h of MkVS: it holds ⊥ (moved out, or a proof invalidated by a write to a field its type mentions)"),
   ("LieVS2", "the assigned value has type ⊤, expected False"),
   ("LentVS", "the proof assigned to h (while part of its value is lent, what the borrow holds unknown: [Open]) has type ⊤, expected Eq(Word, σ2, Zero)"),

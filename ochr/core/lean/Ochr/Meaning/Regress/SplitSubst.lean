@@ -124,7 +124,21 @@ theorem run_pred2 (v : Value) (k : Nat) (hv : ∀ T, meanV (Kp dm Γ (gPred2 dm.
     intro fT
     simp only [runArgs, Bool.false_and]
     show (do let r ← run (Kp dm Γ (gPred2 dm.read)) ρ φ (.plain (fT.domAfter dm.read [])) (.val v); _) s = _
+    -- the strict `.val`: a value meaning a number is no constructor value (whose meaning is a tree,
+    -- `•` or `err`), and a number is not `err`
+    have hsv : ∀ T : TyS, strictVal dm.read v (Sem.el0 Nat (k + 1), T) s = some ((Sem.el0 Nat (k + 1), T), s) := by
+      intro T
+      cases v with
+      | ind ty c h ps fs =>
+        exfalso
+        have := hv (.plain .err)
+        simp only [meanV, Value.mean] at this
+        repeat' split at this
+        all_goals first | cases this | simp [DataModel.ctorR] at this
+      | clo | sealed => simp [strictVal]
+      | _ => rfl
     simp only [bind, run_val_def, hv]
+    erw [hsv]
     rfl
   rw [ha]
   have hg2 : ∀ x : Nat, ∃ k' : Nat, pred2Body dm.read [.el0 Nat x] = some { result := .el0 Nat k', finals := [] } :=
@@ -167,16 +181,11 @@ theorem refine_keeps_type (K : RunCtx) (n : String) (m : Nat) (h0 : ρ 0 = .el0 
     intro T
     show (ρ 1).succ = ρ 0
     rw [h0, h1, succ_el0]
-  show (match K.Γ.find? (·.name == n) with
-      | some d => Sem.ty (K.dm.tyM d (meanParams K ρ φ d 0 [] [.abs 0]))
-      | none => .ty TyM.err) =
-    (match K.Γ.find? (·.name == n) with
-      | some d => Sem.ty (K.dm.tyM d (meanParams K ρ φ d 0 [] [.succ (.abs 1)]))
-      | none => .ty TyM.err)
-  cases K.Γ.find? (·.name == n) with
-  | none => rfl
-  | some d =>
-    simp only [meanParams, e]
+  have hp : ∀ d, meanParams K ρ φ d 0 [] [.abs 0] = meanParams K ρ φ d 0 [] [.succ (.abs 1)] := by
+    intro d; simp only [meanParams, e]
+  cases hf : K.Γ.find? (·.name == n) with
+  | none => simp only [meanV, hf]
+  | some d => simp only [meanV, hf]; rw [hp d]
 
 /-- **The substitution lemma for unknowns on the `SplitSubst` run** (`SubstAbs.lean`): the pure
 substitution `σ₀ := S(σ₁)` makes `⌈Pred2(σ₀)⌉` into `⌈Pred2(S(σ₁))⌉`, and under an assignment meeting it

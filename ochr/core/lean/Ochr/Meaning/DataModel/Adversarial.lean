@@ -10,7 +10,8 @@ that keeps only small things, and its probe's value is a member.
 * `H (f : Π(x : Word). Type) := HB | HS(y : App0(f), r : H(λx. f(Succ(x))))`: non-uniform
   recursion at a large parameter that a field type applies. The record must keep the codes
   `f(0), f(1), …` along the whole unfolding (`hRec`), not only at the root; a child's record is the
-  parent's shifted (`shiftRec`), which is the record of the child's own parameter (`shift_hRec`).
+  continuation past `r` (`shiftRec`), which is the record of the child's own parameter, the
+  parent's shifted by one (`shift_hRec`).
 * `MM (G : Π(X : Type). Word) := MkMM(y : MG(G))`, `MG(G) := match G(Word) {…}`: a large function
   applied in a field type and its result matched. The record keeps the code the match gives.
 * `FP (f : Π(x : Word). Word) := MkFP(y : Word, e : Eq(Word, f(y), y))`: a function-valued
@@ -24,20 +25,13 @@ open Ochr Ochr.Meaning Ochr.Meaning.DataLib
 
 /-! ## `H`: the record keeps the codes along the unfolding -/
 
-theorem shift_hRec (g : Nat → Entry) : shiftRec (hRec g) = hRec (fun k => g (k + 1)) := by
-  funext st
-  unfold shiftRec
-  split
-  · rfl
-  · rename_i hne
-    unfold hRec
-    split
-    · rename_i k; exact absurd rfl (hne k)
-    · rfl
+theorem shift_hRec (g : Nat → Entry) (gr : Nat → Rec) :
+    shiftRec (hRec g gr) = hRec (fun k => g (k + 1)) (fun k => gr (k + 1)) := rfl
 
 /-- `H(λx. Word)`: `App0` gives `Word` at every depth. -/
-def gWord : Nat → Entry := fun _ => .data wordD wordR
-def hR : Rec := hRec gWord
+def gWord : Nat → Entry := fun _ => .data wordD
+def gWordR : Nat → Rec := fun _ => wordR
+def hR : Rec := hRec gWord gWordR
 
 /-- `hh := HS(Zero, HB)` (accepted). -/
 def hhV : Sem := .dat "H" hR 1 [zeroV, .dat "H" (shiftRec hR) 0 []]
@@ -49,8 +43,8 @@ theorem hh_mem : DataLib.Mem S hD hR hhV := by
 
 /-! ## `MM`: a large function applied and matched -/
 
-def mmR0 : Rec := mmRec (.data wordD wordR)
-def mmR1 : Rec := mmRec (.leaf Unit .unit)
+def mmR0 : Rec := mmRec (.data wordD) wordR
+def mmR1 : Rec := mmRec (.leaf Unit .unit) natRec
 
 /-- `mm0 : MM(λX. Zero)` (`MG` gives `Word`) and `mm1 : MM(λX. Succ(Zero))` (`Unit`). -/
 theorem mm0_mem : DataLib.Mem S mmD mmR0 (.dat "MM" mmR0 0 [zeroV]) := by

@@ -211,13 +211,14 @@ theorem grows_getFlags : GrowsM Ochr.getFlags := by sorry
 theorem grows_setFlags (f : Bool × Bool) : GrowsM (Ochr.setFlags f) := by sorry
 
 theorem grows_wholeReturned (v : Value) : GrowsM (Ochr.wholeReturned v) := by sorry
-theorem grows_pushTempAt (f : Nat) (v : Value) : GrowsM (Ochr.pushTempAt f v) := by sorry
+theorem grows_pushTempAt (f : Nat) (v : Value) (T : Option Value) (site : String) :
+    GrowsM (Ochr.pushTempAt f v T site) := by sorry
 theorem grows_topIdx : GrowsM Ochr.topIdx := by sorry
 theorem grows_popFrame (fuel : Nat) : GrowsM (Ochr.popFrame fuel) := by sorry
 theorem grows_popTemp : GrowsM Ochr.popTemp := by sorry
 theorem grows_lendEnv (fuel : Nat) (op : LendOp) : GrowsM (Ochr.lendEnv fuel op) := by sorry
 theorem grows_observe (fuel : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos)
-    (refs : List (Place × Value)) : GrowsM (Ochr.observe fuel typed t A W refs) := by sorry
+    (refs : List (Place × Value × Value)) : GrowsM (Ochr.observe fuel typed t A W refs) := by sorry
 
 /-- One step of the closure: a combinator or a machine function's statement. -/
 macro "grows_step" : tactic => `(tactic| first
@@ -256,7 +257,7 @@ macro "grows_step" : tactic => `(tactic| first
   | with_reducible exact grows_setFlags _
   | (with_reducible refine grows_joinDrop _ _ ?_)
   | with_reducible exact grows_wholeReturned _
-  | with_reducible exact grows_pushTempAt _ _
+  | with_reducible exact grows_pushTempAt _ _ _ _
   | with_reducible exact grows_topIdx
   | with_reducible exact grows_popFrame _
   | with_reducible exact grows_popTemp

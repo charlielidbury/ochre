@@ -62,10 +62,10 @@ theorem run_seq (hfl : NoStmt K) (u w : Term) (hint : TyS) (s : SState) :
 
 theorem run_place (hfl : NoStmt K) (p : Place) (hint : TyS) (s : SState) :
     run K ρ φ hint (.place p) s = readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p)) s := by
-  rw [run, runT]; show SM.erasedAt _ _ _ s = _; rw [hfl]; rfl
+  rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem run_borrow (hfl : NoStmt K) (p : Place) (hint : TyS) (s : SState) :
-    run K ρ φ hint (.borrow p) s = borrowPlace K φ p s := by
+    run K ρ φ hint (.borrow p) s = SM.strictS K.dm.read (borrowPlace K φ p) s := by
   rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem readPlace_of (p : Place) (b : Bool) (s : SState) (v : Sem) (T : TyS) (pos : Pos) (st : List Step)
@@ -114,6 +114,8 @@ theorem run_assign (hfl : NoStmt K) (p : Place) (u : Term) (hint : TyS) (s : SSt
       let ((v, R), s) ← run K ρ φ (match contentOf K φ p s with
         | some ((_, T, _, _), _) => T
         | none => .plain .err) u s
+      -- STRICT: the value written is a member of the place's type, its label holds that type
+      if v ∈ₛ[K.dm.read] (placeTy K φ p s).m ∧ labTyOk s R.label (placeTy K φ p s).m then
       match resolve s p with
       | none => none
       | some (pos, steps) =>
@@ -125,7 +127,8 @@ theorem run_assign (hfl : NoStmt K) (p : Place) (u : Term) (hint : TyS) (s : SSt
           let s := match R.label, steps with
             | some l, [] => let s := s.takeLabel l; { s with shape := fun q => if q = pos then some l else s.shape q }
             | _, _ => s
-          some ((.el0 Unit (), .plain TyM.unit), s)) := by
+          some ((.el0 Unit (), .plain TyM.unit), s)
+      else none) := by
   rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 /-- After `&y`: `y` reads label `n`, the borrow parked in temporary `0`. -/
@@ -186,8 +189,16 @@ theorem assign_b1 (hfl : NoStmt K) (n : Nat) (hint : TyS) :
     run K ρ φ hint (.assign (.var 0) (.borrow (.var 1))) (b1 K n) = some ((.el0 Unit (), .plain TyM.unit), b5 K n) := by
   rw [run_assign K ρ φ hfl, content_b1_x]
   show (run K ρ φ (.plain TyM.nat) (.borrow (.var 1)) (b1 K n) >>= _) = _
-  rw [run_borrow K ρ φ hfl, borrow_b1]
+  rw [run_borrow K ρ φ hfl]
+  simp only [SM.strictS]
+  rw [borrow_b1]
+  dsimp only
+  rw [if_pos ⟨(0 : Nat), rfl⟩]
   dsimp only [Bind.bind, Option.bind]
+  -- the strict write: `Z` is a `Nat`, and the borrow's label holds `Nat`
+  have hpT : placeTy K φ (.var 0) (b2 K n) = .plain TyM.nat := by
+    unfold placeTy; rw [content_b2_x]; rfl
+  rw [hpT, if_pos ⟨⟨(0 : Nat), rfl⟩, fun l hl => by cases hl; simp [b2, TyS.plain]⟩]
   have hr : resolve (b2 K n) (.var 0) = some (.bind 0 1, []) := rfl
   have ha : ∀ hit, (b2 K n).access (.bind 0 1) hit = b2 K n := fun hit =>
     SState.access_of_unreached _ _ _ fun y _ => by simp [SState.reached, b2]
