@@ -2,16 +2,17 @@ import Ochr.Meaning.Regress.CallInPlace
 import Ochr.Examples.Nat
 
 /-!
-# A place a returned reborrow is lent at reads its final content raw; `callOf` reads it decoded (built)
+# A place a returned reborrow is lent at reads its final content raw; `callOf` reads it decoded (built; now agreeing at `moved`)
 
 The checker's side of the finding recorded in docs/31 D66. After `let r = Id1(&a)` (`Id1 (x : &Nat)
 : &Nat := &*x`, run directly), the checker holds `a ↦ lent_k loan_k`, `r ↦ borrow_k …`
 (`a_after_call`, the real run of `ReturnedReadAt` evaluated): `a` means the future at `k`, whatever
 it is (`meanV` of a mark is its content's, of a loan the future at its label). The reference's call
 by `callOf` leaves `a` reading the future at `k` DECODED at the result's code and passed through the
-backward function (`CallInPlace.callOf_id1`): at a future whose value at `k` is not a number (here
-`moved`), `a` reads `err` (`callOf_reads_decoded`). The two agree at every future whose value at
-`k` is a member of `Nat` (`callOf_reads_typed`).
+backward function (`CallInPlace.callOf_id1`). Before the strict run, at a future whose value at `k`
+is not a number (here `moved`), `a` read `err`; `callOfL` now fixes an undecodable final content's
+lenders to `moved`, so `a` reads `moved`, as the checker's mark does (`callOf_reads_decoded`). The
+two agree at every future whose value at `k` is a member of `Nat` (`callOf_reads_typed`).
 -/
 
 open Ochr.Test
@@ -58,15 +59,17 @@ theorem mark_loan_raw (K : RunCtx) (ρ : Assignment) (ψ : Future) (hint : TyS) 
     meanV K ρ ψ hint (.gloan k (.loan k)) = ψ k := rfl
 
 /-- **`callOf`'s `a` reads the returned label decoded**: at a future whose value at the reborrow's
-label is `moved`, `y` (`a`) reads `err`, where the checker's mark reads `moved`. -/
+label is `moved`, `y` (`a`) reads `moved`, as the checker's mark does (before `callOfL` fixed an
+undecodable final content to `moved`, it read `err`). -/
 theorem callOf_reads_decoded (dm : DataModel) (ψ : Future) (h : ψ 1 = .moved) :
-    yR1 dm ψ = .err ∧ ψ 1 ≠ .err := by
+    yR1 dm ψ = .moved ∧ yR1 dm ψ = ψ 1 := by
   have hd : Code0.dec dm.read TyM.nat.code0.snd Sem.moved = none :=
     (Attack.dec_nat_as dm.read .moved).trans (by simp [Sem.as]; rfl)
-  refine ⟨?_, by rw [h]; exact fun h' => by cases h'⟩
-  simp only [yR1, h]
-  rw [hd]
-  simp [Future.upd]
+  have hy : yR1 dm ψ = .moved := by
+    simp only [yR1, h]
+    rw [hd]
+    simp [Future.upd]
+  exact ⟨hy, by rw [hy, h]⟩
 
 /-- At a future whose value at the label is a number, the two agree. -/
 theorem callOf_reads_typed (dm : DataModel) (ψ : Future) (n : Nat) (h : ψ 1 = .el0 Nat n) : yR1 dm ψ = ψ 1 := by

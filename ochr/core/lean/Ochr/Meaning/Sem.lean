@@ -85,17 +85,20 @@ inductive Code0 : Type → Type 1
   | data (d : IndDecl) (r : List RStep → Entry) (A : Type) : Code0 A
   | pi (C : Type) (t : Tel Code0 PUnit C) : Code0 C
   | err : Code0 PEmpty
-/-- What a record says at a position: a leaf's code, a data type's declaration and record, a
-level-0 value parameter read small (at `paramKey`, docs/34 Handoff 3b), or nothing. -/
+/-- What a record says at a key: a leaf's code, a data type's declaration (its record is the
+record's CONTINUATION past the key, never held here: docs/34 §18), a level-0 value parameter read
+small (at `paramKey`, docs/34 Handoff 3b), or nothing. -/
 inductive Entry : Type 1
   | none
   | leaf (B : Type) (c : Code0 B)
-  | data (d : IndDecl) (r : List RStep → Entry)
+  | data (d : IndDecl)
   | small (s : Small)
 end
 
-/-- **A data type's record** (docs/34 §8, §14): what its declaration's field types read of the
-parameters, keyed by paths of steps; small, so codes stay small. -/
+/-- **A data type's record** (docs/34 §8, §14, §18): what its declaration's field types read of the
+parameters, keyed by paths of steps; small, so codes stay small. A function of paths: the record of
+the data type at a key is the continuation past the key (`DataLib.contRec`), so no entry holds a
+record, and a record may mention itself (a recursive or nested field) without an infinite descent. -/
 abbrev Rec : Type 1 := List RStep → Entry
 
 /-- The sort a level-0 code is a type of: `0` for a proposition, `1` for a `Type₀` type. -/

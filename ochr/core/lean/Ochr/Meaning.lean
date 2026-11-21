@@ -80,6 +80,7 @@ import Ochr.Meaning.Regress.OpenWriteDep
 import Ochr.Meaning.Regress.GenNeutralContent
 import Ochr.Meaning.Regress.GrainDerefProof
 import Ochr.Meaning.Regress.StepKindsTable
+import Ochr.Meaning.Regress.JoinPrefixBorrow
 import Ochr.Meaning.Regress.RefsPathCond
 import Ochr.Meaning.Regress.FreshBound
 import Ochr.Meaning.Regress.EntryCheck
@@ -99,9 +100,16 @@ import Ochr.Meaning.Regress.ReturnParam
 import Ochr.Meaning.Regress.FrameCheck
 import Ochr.Meaning.Regress.CallInPlaceD99
 import Ochr.Meaning.Regress.InFlight
+import Ochr.Meaning.Regress.EvalMemGap
+import Ochr.Meaning.Steps.EvalMem
+import Ochr.Meaning.Steps.StrictSim
+import Ochr.Meaning.Regress.EvalMemRuns
+import Ochr.Meaning.Regress.OpenFalse
+import Ochr.Meaning.Regress.Suspects
 import Ochr.Meaning.Regress.DefKnot
 import Ochr.Meaning.Regress.IdWrite
 import Ochr.Meaning.SubstAbs
+import Ochr.Meaning.RunSubstAbs
 import Ochr.Meaning.Regress.EqJ
 import Ochr.Meaning.Regress.SplitSubst
 import Ochr.Meaning.Regress.StarErasure
@@ -115,6 +123,16 @@ import Ochr.Meaning.DataModel.ParamSolve
 import Ochr.Meaning.DataModel.ReadMember
 import Ochr.Meaning.Closure
 import Ochr.Meaning.ClosureStage
+import Ochr.Meaning.ApplyMem
+import Ochr.Meaning.DataModel.CtorMem
+import Ochr.Meaning.DataModel.Canonical.Knot
+import Ochr.Meaning.DataLib.Universal
+import Ochr.Meaning.Strict.Runs
+import Ochr.Meaning.Strict.MemReadsCE
+import Ochr.Meaning.Strict.FieldWriteCE
+import Ochr.Meaning.Strict.Typed
+import Ochr.Meaning.Strict.ReadProto
+import Ochr.Meaning.Strict.Witness
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)

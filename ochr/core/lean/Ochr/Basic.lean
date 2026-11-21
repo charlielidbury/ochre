@@ -519,6 +519,11 @@ def Term.letChain : Term → List Term × Term
 def Value.hasHole (v : Value) : Bool := v.anyAtom fun a => a == .bot
 
 
+/-- D112 amended: a value with its static-ends marks (`lent_g`) peeled off: the content they mark. -/
+def Value.unmark : Value → Value
+  | .gloan _ w => w.unmark
+  | v => v
+
 mutual
 /-- All loan labels occurring in a value (with repetition). -/
 def Value.loans : Value → List Nat

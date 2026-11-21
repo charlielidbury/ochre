@@ -254,7 +254,9 @@ theorem run_succ_zero (K : RunCtx) (ρ : Assignment) (φ : Future) (h : TyS) (s 
   generalize K.D.flags (scopeOf s) (.succ .zero) = fl at hne
   obtain ⟨b, e⟩ := fl
   cases hne
-  cases b <;> rfl
+  have hm : (Sem.el0 Nat 0).succ ∈ₛ[K.dm.read] (TyS.plain TyM.nat).m :=
+    ⟨1, by simp [Sem.succ, Sem.asNat, Sem.as, Code0.enc]⟩
+  cases b <;> simp [SM.erasedIf, SM.stmtIf, SM.strictS, bind, pure, runT, hm] <;> rfl
 
 /-- `Nat`'s stored type value means the carrier `Nat`, with no shape. -/
 theorem globalTyS_nat (K : RunCtx) (ρ : Assignment) : globalTyS ρ K .tNat = .plain TyM.nat := rfl
@@ -285,7 +287,7 @@ theorem one_accepted :
       (st'.globals.find? (·.name == "one")).map (·.ty) = some .tNat := by
   have h : (match (runMachine (checkItem (.defn oneDef)) { globals := [], inds := [], cfg := {} } 2000000).1 with
       | .ok () st' => isNatTy ((st'.globals.find? (·.name == "one")).map (·.ty))
-      | _ => false) = true := by decide
+      | _ => false) = true := by decide +kernel
   revert h
   generalize (runMachine (checkItem (.defn oneDef)) _ 2000000).1 = o
   cases o with

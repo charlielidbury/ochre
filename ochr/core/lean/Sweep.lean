@@ -13,12 +13,14 @@ each declaration's own code (call depth 0), on entry to its evaluation and on a 
 spine's `Good` on every recorded state.
 
 Which states. On entry, the state as recorded. On an evaluated term's exit, the state with the
-term's value counted as a temporary of the top frame, the spine's `MState.withTemp` (a step's
-result is read through it, `Good (st.withTemp v)`); a violation that only that value makes is
+term's value counted as a temporary of the top frame, at the type its evaluation returned (D104),
+the spine's `MState.withTemp` (a step's result is read through it, `Good (st.withTemp v)`); a violation that only that value makes is
 labelled so. A tail term's exit (`checkTail`) comes after its continuation consumed the result,
 which is then in flight with no record of it: those states are counted, not checked. States at a
 call depth above 0 (a callee's body, a sealed program's re-run) are not located, so not recorded:
-a callee's generic call is swept in its own declaration, its instance runs are not.
+a callee's generic call is swept in its own declaration, its instance runs are not, except by
+`--deep` (`Config.recordDeep`), which records the state at every evaluation at call depth above
+0, outside private copies, and checks the same clauses there (`--deep-private`: inside them too).
 
 The clauses are those of branch `spine` at a3e22c78, with (WF8), (WF12) and (iii) restated after
 this sweep's first run (spine, 2026-11-21: see each mirror) (`Ochr/Meaning/WF.lean`; the helpers in
@@ -36,9 +38,12 @@ itself).
 Two deliberately false clauses (`planted…`) guard against a vacuous sweep: the run fails unless
 both are reported.
 
-Usage: `lake exe sweep [Block …]` (all blocks if none named), `lake exe sweep --probes` (the
+Usage: `lake exe sweep [Block …]` (all blocks if none named), `lake exe sweep --deep [Block …]`
+(the states at every call depth above 0, outside private copies; `--deep-private`: inside them
+too), `lake exe sweep --probes` (the
 adversarial programs of `SweepProbes.lean`, written to make clauses' premises arise), `lake exe sweep --ends`
-(`--ends --probes`: from each recorded state, end each live borrow and report new unknowns and records, docs/31 D35), or `Sweep.sweep [("B", B)]` from a
+(`--ends --probes`: from each recorded state, end each live borrow and report new unknowns and records, docs/31 D35), `lake exe
+sweep --pushes [Block …]` (every temporary pushed with no stored type, at every call depth: D104), or `Sweep.sweep [("B", B)]` from a
 file that imports this module and declares the `ochr` block `B` (a minimal program). Exit 0 iff
 every real clause holds on every state, both planted clauses are violated, and every verdict is as
 expected.
@@ -187,7 +192,11 @@ def ppState (st : MState) : String := Id.run do
         | none, none => "(no type)"
       out := out.push s!"    {i} {b.hint.name} : {ty} = {clip b.val.pp}"
     for h : i in [0:fr.temps.size] do
-      out := out.push s!"    t{i} = {clip fr.temps[i].pp}"
+      let ty := match fr.tempTys[i]? with
+        | some (some T) => clip T.pp 120
+        | some none => "(no type)"
+        | none => "(no entry in tempTys)"
+      out := out.push s!"    t{i} : {ty} = {clip fr.temps[i].pp}"
   let tys := (List.range st.absTy.size).map fun σ => s!"σ{σ} : {clip st.absTy[σ]!.pp 80}"
   out := out.push s!"  unknowns: {clip (", ".intercalate tys) 1200}"
   out := out.push s!"  goal: {match st.goal with | some G => clip G.pp | none => "none"}"
@@ -1309,14 +1318,113 @@ def readingsSorted : Clause where
       | none => some ⟨"an unknown read as a sort has no type", s!"σ{σ}"⟩
     | _ => none
 
+/-! ### D104: every value the machine holds has a stored type
+
+Not clauses of the spine's `Good` as it stands (D81 on `spine-lead` proposes the typed temporaries
+it would read): the syntactic shadow of the membership `Good` would ask at a temporary. -/
+
+/-- Every temporary, with its position and its stored type (`Frame.tempTys`). -/
+def tempsOf (env : Env) : List (Pos × Value × Option Value) :=
+  (List.range env.size).flatMap fun f =>
+    let fr := env[f]!
+    (List.range fr.temps.size).map fun i => (Pos.temp f i, fr.temps[i]!, fr.tempTys[i]?.join)
+
+/-- In a typed run (`MState.typing`: the term being evaluated around this point is part of the
+checked program), every temporary but a proof token `⋆` has a stored type (D104: a `⋆` whose
+proposition was computed on a private copy over that copy's unknowns is held with none); in every
+state, each frame has one stored type per temporary. Not checked inside a private copy: typing
+belongs to an evaluation, not to a state, and a typed evaluation on a copy (a parameter's type, a
+side of `Id`) shares frames with the untyped run below it, whose temporaries rightly have none
+(`--deep-private` found 195,314 such states). D104's rule is a fact about pushes, tested at each
+push, at every depth and in every copy, by `--pushes`. -/
+def tempTyped : Clause where
+  name := "(D104) in a typed run every temporary but ⋆ has a stored type"
+  premises := [
+    ("a typed run holds a temporary", fun st => st.typing && !(tempsOf st.env).isEmpty),
+    ("an untyped run holds a temporary (not checked)", fun st => !st.typing && !(tempsOf st.env).isEmpty),
+    ("(not checked) inside a private copy: typing belongs to an evaluation, not to a state, and a typed evaluation on a copy shares frames with the untyped run below it; D104's rule is tested at each push by `--pushes`", fun st =>
+      st.privateDepth > 0 && st.typing && !(tempsOf st.env).isEmpty)]
+  check st :=
+    ((List.range st.env.size).filterMap fun f =>
+      let fr := st.env[f]!
+      if fr.temps.size == fr.tempTys.size then none else
+        some ⟨"a frame's temporaries and their stored types out of step", s!"frame {f}: {fr.temps.size} temporaries, {fr.tempTys.size} types"⟩) ++
+    (if !st.typing || st.privateDepth > 0 then [] else (tempsOf st.env).filterMap fun (p, v, T) =>
+      if T.isSome || v == .proof then none else some ⟨"a temporary with no stored type, in a typed run", s!"{posName st.env p} = {clip v.pp}"⟩)
+
+/-- A type former (not an unknown, a sealed program or another neutral). -/
+def typeFormer : Value → Bool
+  | .tNat | .tUnit | .tEq .. | .tRef _ | .tPi .. | .sort _ | .tInd .. => true
+  | _ => false
+
+/-- The shape a value's stored type must have, where the value's head says it: a borrow at a borrow
+type, and a value at a borrow type a borrow (or `⊥`, its borrow ended by a later access); a
+constructor value at its own declaration's inductive type; a number at `Nat`. A neutral type (an
+unknown, a stuck program) is not checked. A borrow with no stored type is a violation only in a typed
+run: an untyped run holds one with none where it computed none (D104). -/
+def shapeViol (typing : Bool) (v : Value) (T : Option Value) : Option String :=
+  match v, T with
+  | .borrow .., none => if typing then some "a borrow with no stored type, in a typed run" else none
+  | .borrow .., some (.tRef _) => none
+  | .borrow .., some _ => some "a borrow at a type that is not a borrow type"
+  | .bot, _ => none
+  | _, some (.tRef _) => some "a value that is not a borrow at a borrow type"
+  | .ind ty .., some (.tInd ty' _) => if ty == ty' then none else some "a constructor value at another inductive type"
+  | .ind .., some T => if typeFormer T then some "a constructor value at a type former that is not inductive" else none
+  | .zero, some T | .succ _, some T =>
+    if T == .tNat then none else if typeFormer T then some "a number at a type former other than Nat" else none
+  | _, _ => none
+
+def tempShape : Clause where
+  name := "(D104) a temporary's stored type has its value's shape (a borrow at &C, a constructor value at its inductive, a number at Nat)"
+  premises := [
+    ("a temporary holds a borrow", fun st => (tempsOf st.env).any fun (_, v, _) => v.isBorrow),
+    ("... in an untyped run", fun st => !st.typing && (tempsOf st.env).any fun (_, v, _) => v.isBorrow),
+    ("a temporary holds a constructor value", fun st => (tempsOf st.env).any fun (_, v, _) => v matches .ind ..),
+    ("a temporary holds a number", fun st => (tempsOf st.env).any fun (_, v, _) => v matches .zero | .succ _),
+    ("a temporary's stored type is neutral (its shape not checked)", fun st =>
+      (tempsOf st.env).any fun (_, _, T) => match T with | some T => !typeFormer T | none => false)]
+  check st := (tempsOf st.env).filterMap fun (p, v, T) =>
+    (shapeViol st.typing v T).map fun k => ⟨k, s!"{posName st.env p} : {match T with | some T => clip T.pp 120 | none => "(no type)"} = {clip v.pp}"⟩
+
+/-- (WF11) for temporaries: no temporary's stored type holds a loan or a lent mark. -/
+def tempNoLoan : Clause where
+  name := "(D104) no temporary's stored type holds a loan or a lent mark"
+  premises := [("a temporary's stored type mentions a run-time value", fun st =>
+    (tempsOf st.env).any fun (_, _, T) => match T with | some T => T.anyAtom isValueAtom | none => false)]
+  check st := (tempsOf st.env).filterMap fun (p, _, T) => match T with
+    | some T => if T.anyAtom isLoanAtom then some ⟨s!"a temporary's stored type holds {loanForm T}", s!"{posName st.env p}: {clip T.pp}"⟩ else none
+    | none => none
+
+/-- D106: no step ends a borrow a value in flight holds, so a temporary at a borrow type still holds
+its borrow, which is live (it is in Ω): it has not become `⊥` ([End] leaves `⊥` at the holder of a
+borrow it ends). Stated on typed temporaries (D104: a temporary holding a borrow has a borrow type),
+and on states outside private copies: a statement's run on its copy reads the current content,
+which ends a borrow on the copy only, and the copy is discarded (`SubM(&*x, 0, LeZero(*x))`, whose
+proof argument reads `*x` while the first argument borrows it, is ordinary accepted code); those
+states are counted by a premise. -/
+def tempLive : Clause where
+  name := "(D106) outside a private copy, no temporary at a borrow type has lost its borrow"
+  premises := [
+    ("a temporary has a borrow type", fun st => (tempsOf st.env).any fun (_, _, T) => T matches some (.tRef _)),
+    ("(not checked) inside a private copy, a temporary at a borrow type holds ⊥", fun st =>
+      st.privateDepth > 0 && (tempsOf st.env).any fun (_, v, T) => (T matches some (.tRef _)) && v == .bot)]
+  check st := if st.privateDepth > 0 then [] else (tempsOf st.env).filterMap fun (p, v, T) => match T, v with
+    | some (.tRef _), .borrow .. => none
+    | some (.tRef _), .bot => some ⟨"a temporary at a borrow type holds ⊥ (its borrow ended)", posName st.env p⟩
+    | some (.tRef _), _ => some ⟨"a temporary at a borrow type holds a value that is not a borrow", s!"{posName st.env p} = {clip v.pp}"⟩
+    | _, _ => none
+
 def clauses : List Clause :=
-  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, etaNoSelf, etaOlder, recordNamesEmpty, readingsSorted, plantedFill, plantedAbs, nonCopyProof, untypedBindings, openFields, droppedUnderOpen]
+  [wf11, wf12, noopClause, wf1, wf2, wf3, wf4, wf6, wf8, wf9, wf10, tempTyped, tempShape, tempNoLoan,
+   tempLive, marksLive, unknownTyped, valueFits, refHolds, arity, loansLive, shapeFacts, hintFreeSealed, readingsLoanFree, ctorsData, proofCopy, dataNotProof, loanContentFits, typeNotProp, etaHintFree, etaNoSelf, etaOlder, recordNamesEmpty, readingsSorted, plantedFill, plantedAbs, nonCopyProof, untypedBindings, openFields, droppedUnderOpen]
 
 /-! ## The sweep -/
 
 /-- A violation's example: the declaration (its source span, to pick the smallest), the located
 term, and the state. -/
 structure Example where
+  depth : Nat := 0
   block : String
   decl : String
   size : Nat
@@ -1356,8 +1464,11 @@ def slice (s : String) (l : Loc) : String :=
 
 /-- Sweep the blocks; print the report; 0 iff every real clause holds on every state checked,
 both planted clauses are reported, and every verdict is as expected. -/
-def sweep (blocks : List (String × Block)) : IO UInt32 := do
-  let cfg : Config := { recordStates := true }
+def sweep (blocks : List (String × Block)) (deep : Bool := false) (deepPrivate : Bool := false) :
+    IO UInt32 := do
+  -- `--deep`: the states at call depth above 0 (`Config.recordDeep`) are the ones checked; the
+  -- located states at depth 0 are recorded too, only to find each declaration's source
+  let cfg : Config := { recordStates := true, recordDeep := deep, recordDeepPrivate := deepPrivate }
   let mut stats : Array Stat := (clauses.map fun c => ({ premises := c.premises.toArray.map fun _ => 0 } : Stat)).toArray
   let mut total := 0
   let mut entries := 0
@@ -1380,9 +1491,14 @@ def sweep (blocks : List (String × Block)) : IO UInt32 := do
       -- exit is after its continuation (`checkTail`'s `k`), which consumed the result (returned
       -- it, checked it against the goal, dropped the frame): the result is in flight there with
       -- no record of it, so those states are counted and not checked.
-      tailExits := tailExits + (row.trace.filter fun | .state _ true none _ => true | _ => false).size
-      let sts := row.trace.filterMap fun
+      let tails := if deep then row.trace.filter (fun | .deep true none _ => true | _ => false)
+        else row.trace.filter (fun | .state _ true none _ => true | _ => false)
+      tailExits := tailExits + tails.size
+      let locSts := row.trace.filterMap fun
         | .state l e v st => if e && v.isNone then none else some (l, e, st, v)
+        | _ => none
+      let sts := if !deep then locSts else row.trace.filterMap fun
+        | .deep e v st => if e && v.isNone then none else some ((⟨0, 0⟩ : Loc), e, st, v)
         | _ => none
       if sts.isEmpty then continue
       for h : k in [1:sts.size] do
@@ -1394,12 +1510,13 @@ def sweep (blocks : List (String × Block)) : IO UInt32 := do
           if shrinkEx.size < 3 then
             shrinkEx := shrinkEx.push s!"{bn}.{row.name} at {repr lq} on {if eq then "exit" else "entry"}: absTy {p.absTy.size}→{q.absTy.size}, nextAbs {p.nextAbs}→{q.nextAbs}"
       decls := decls + 1
-      let lo := sts.foldl (fun a (l, _, _, _) => min a l.start) sts[0]!.1.start
-      let hi := sts.foldl (fun a (l, _, _, _) => max a l.stop) 0
+      let lo := locSts.foldl (fun a (l, _, _, _) => min a l.start) ((locSts[0]?.map (·.1.start)).getD 0)
+      let hi := locSts.foldl (fun a (l, _, _, _) => max a l.stop) 0
       let key := s!"{bn}.{row.name}"
       for (l, e, st0, flight) in sts do
         let st := match flight with
-          | some v => { st0 with env := st0.env.modify (st0.env.size - 1) fun fr => { fr with temps := fr.temps.push v } }
+          | some (v, T) => { st0 with env := st0.env.modify (st0.env.size - 1) fun fr =>
+              { fr with temps := fr.temps.push v, tempTys := fr.tempTys.push T } }
           | none => st0
         total := total + 1
         if !e then entries := entries + 1
@@ -1424,7 +1541,7 @@ def sweep (blocks : List (String × Block)) : IO UInt32 := do
             let better : Bool := match ks.best with | some ex => decide (hi - lo < ex.size) | none => true
             let best : Option Example :=
               if better then
-                some { block := bn, decl := row.name, size := hi - lo, span := Loc.mk lo hi, loc := l, exit := e
+                some { depth := st.depth, block := bn, decl := row.name, size := hi - lo, span := Loc.mk lo hi, loc := l, exit := e
                        detail := "\n      ".intercalate ((vs.filter (·.kind == k)).map (·.detail))
                        state := ppState st }
               else ks.best
@@ -1432,7 +1549,9 @@ def sweep (blocks : List (String × Block)) : IO UInt32 := do
             let ks : KindStat := { states := ks.states + 1, exits := ks.exits + (if e then 1 else 0), decls := decls', best := best }
             s := { s with kinds := match idx with | some j => s.kinds.set! j (k, ks) | none => s.kinds.push (k, ks) }
           stats := stats.set! ci s
-  IO.println s!"lake exe sweep (dev tooling): {blocks.length} blocks, {rowsAll} verdicts, {asExpected} as expected with the flag on"
+  IO.println s!"lake exe sweep{if deep then (if deepPrivate then " --deep-private" else " --deep") else ""} (dev tooling): {blocks.length} blocks, {rowsAll} verdicts, {asExpected} as expected with the flag on"
+  if deep then
+    IO.println s!"the states checked are those at call depth above 0 (a callee's body, a sealed program's re-run){if deepPrivate then ", inside private copies too" else ", outside private copies"}"
   IO.println s!"states checked: {total} ({entries} on entry, {total - entries} on exit; {privateStates} inside a private copy) in {decls} declarations; not checked: {tailExits} tail terms' exits"
   IO.println s!"(Δ↑) consecutive recorded states of one run: {pairs}; where the table of unknowns shrank: {shrank}"
   for x in shrinkEx do IO.println s!"   {x}"
@@ -1457,12 +1576,15 @@ def sweep (blocks : List (String × Block)) : IO UInt32 := do
       for (k, ks) in s.kinds do
         IO.println s!"   VIOLATED: {k}: {ks.states} states ({ks.states - ks.exits} on entry, {ks.exits} on exit), in {ks.decls.size} declarations: {", ".intercalate (ks.decls.toList.take 8)}{if ks.decls.size > 8 then ", …" else ""}"
         if let some ex := ks.best then
-          IO.println s!"     smallest: {ex.block}.{ex.decl} ({ex.size} bytes), at the term {repr ex.loc} on {if ex.exit then "exit" else "entry"}"
+          if deep then
+            IO.println s!"     smallest: {ex.block}.{ex.decl} ({ex.size} bytes), at call depth {ex.depth}, on {if ex.exit then "exit" else "entry"} of an evaluation"
+          else
+            IO.println s!"     smallest: {ex.block}.{ex.decl} ({ex.size} bytes), at the term {repr ex.loc} on {if ex.exit then "exit" else "entry"}"
           IO.println s!"      {ex.detail}"
           if !c.planted && !c.report then
             match ← blockSource ex.block with
             | some src =>
-              IO.println s!"     source of the term:\n{slice src ex.loc}"
+              if !deep then IO.println s!"     source of the term:\n{slice src ex.loc}"
               IO.println s!"     source of the declaration's body:\n{slice src ex.span}"
             | none => IO.println "     (source file not found)"
             IO.println s!"     state:\n{ex.state}"
@@ -1573,10 +1695,52 @@ def endProbe (blocks : List (String × Block)) : IO UInt32 := do
   for x in S.examples do IO.println x
   return 0
 
+/-! ## `--pushes`: every push of a temporary, at every call depth
+
+The recorded states are only those at located terms at call depth 0, so the clauses above never
+see a callee's body, a sealed program's re-run or the checker's own scaffolding (a stuck block's
+call). `--pushes` runs every block with `Config.recordPushes`, which logs every temporary pushed
+with no stored type in a typed run, or holding a borrow with none (`LogEntry.push`), wherever it
+happens, and counts them by push site. A push with no stored type in a typed run, other than of
+`⋆`, is a violation of D104; a borrow held with none in an untyped run is reported, not a
+violation (D82's laziness computes no type there). -/
+
+def pushes (blocks : List (String × Block)) : IO UInt32 := do
+  let cfg : Config := { recordPushes := true }
+  let mut counts : Array (String × Nat × String) := #[]
+  let mut bad := 0
+  let mut rowsAll := 0
+  let mut asExpected := 0
+  for (bn, b) in blocks do
+    let r := runWith (some Prelude) bn b cfg 2000000
+    for row in r.rows do
+      rowsAll := rowsAll + 1
+      if row.asExpected then asExpected := asExpected + 1
+      for e in row.trace do
+        if let .push site typing v depth := e then
+          let viol := typing && v != .proof
+          if viol then bad := bad + 1
+          let k := s!"{if viol then "VIOLATION, " else ""}{site}: {if typing then "a typed run" else "an untyped run"}, {if v.isBorrow then "a borrow" else if v == .proof then "⋆" else "a value"} with no stored type, at {if depth == 0 then "call depth 0" else "call depth > 0"}"
+          match counts.findIdx? (·.1 == k) with
+          | some j => counts := counts.modify j fun (k, n, ex) => (k, n + 1, ex)
+          | none => counts := counts.push (k, 1, s!"{bn}.{row.name}")
+  IO.println s!"lake exe sweep --pushes (dev tooling): {blocks.length} blocks, {rowsAll} verdicts, {asExpected} as expected with the flag on"
+  for (k, n, ex) in counts.qsort (fun a b => a.1 < b.1) do
+    IO.println s!"  {n}\t{k} (first in {ex})"
+  let ok := bad == 0 && asExpected == rowsAll
+  IO.println (if ok then "sweep --pushes: no temporary but ⋆ pushed with no stored type in a typed run" else s!"sweep --pushes: FAILED ({bad} pushes with no stored type in a typed run)")
+  return if ok then 0 else 1
+
 end Sweep
 
 def main (args : List String) : IO UInt32 :=
   if args == ["--probes"] then Sweep.sweep Sweep.probes else
   if args == ["--ends"] then Sweep.endProbe (Ochr.Registry.programs ++ Ochr.Registry.caseStudies) else
   if args == ["--ends", "--probes"] then Sweep.endProbe Sweep.probes else
+  if args.head? == some "--deep" || args.head? == some "--deep-private" then
+    Sweep.sweep ((Ochr.Registry.programs ++ Ochr.Registry.caseStudies ++ Sweep.probes).filter fun (n, _) =>
+      args.tail.isEmpty || args.tail.contains n) (deep := true) (deepPrivate := args.head? == some "--deep-private") else
+  if args.head? == some "--pushes" then
+    Sweep.pushes ((Ochr.Registry.programs ++ Ochr.Registry.caseStudies ++ Sweep.probes).filter fun (n, _) =>
+      args.tail.isEmpty || args.tail.contains n) else
   Sweep.sweep ((Ochr.Registry.programs ++ Ochr.Registry.caseStudies).filter fun (n, _) => args.isEmpty || args.contains n)

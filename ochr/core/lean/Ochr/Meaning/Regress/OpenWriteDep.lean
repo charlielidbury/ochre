@@ -44,13 +44,18 @@ ochr OpenWriteDep uses Nats, Logic {
 namespace Ochr.Meaning.Regress.OpenWriteDep
 open Ochr Ochr.Meaning
 
-/-- **The read of `(w.1).1` after `w.0` is rewritten, in the reference** (D32): `w` means the
-tree `MkWP(2, MkPk(a, b))` (whole and of its type or open); the read reaches `b`, and `w.1` is
-typed by its content, `Pk` at its own record `rk` (`dataTyS`). -/
-theorem read_after_index_rewritten (dm : DataModel) (Γ : List IndDecl) (T : TyS) (r rk : Rec) (a b : Sem) :
+/-- **The read of `(w.1).1` after `w.0` is rewritten, in the reference** (D32, D112): `w` means the
+tree `MkWP(2, MkPk(a, b))` (whole and of its type or open), read at a type of `WP` whose field `1`
+is a data field of `Pk` at the current index; the read reaches `MkPk(a, b)`, typed at its OWN record
+`rk` (a tree field keeps the type its own record gives, route (c)), and then `b`. -/
+theorem read_after_index_rewritten (dm : DataModel) (Γ : List IndDecl) (T : TyS) (d dPk : IndDecl)
+    (r r₀ rk r₁ : Rec) (a b : Sem) (hT : T.m.dataCode? = some (d, r₀)) (hd : d.name = "WP")
+    (hsh : dm.sig.shape d r 0 1 [Sem.small (.el0 Nat 2)] = .sub dPk r₁) (hPk : dPk.name = "Pk") :
     Sem.step dm Γ T (.proj 1) (.dat "WP" r 0 [.el0 Nat 2, .dat "Pk" rk 0 [a, b]]) =
-      some (.dat "Pk" rk 0 [a, b], dataTyS dm Γ "Pk" rk) ∧
-    ∃ T', Sem.follow dm Γ T (.dat "WP" r 0 [.el0 Nat 2, .dat "Pk" rk 0 [a, b]]) [.proj 1, .proj 1] =
-      some (b, T') := ⟨rfl, _, rfl⟩
+      some (.dat "Pk" rk 0 [a, b], .plain (dm.rawTy dPk rk)) := by
+  have hrt : dm.readTy Γ d r 0 1 [.el0 Nat 2] (.dat "Pk" rk 0 [a, b]) = some (dm.rawTy dPk rk) := by
+    simp only [DataModel.readTy, List.map_cons, List.map_nil, hsh, hPk, if_true]
+  simp only [Sem.step, Sem.stepField, hT, hd, true_and, if_true]
+  simp [hrt]
 
 end Ochr.Meaning.Regress.OpenWriteDep

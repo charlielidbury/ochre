@@ -133,9 +133,9 @@ def contents (Ω : MState) : List (List Value) :=
   Ω.env.toList.map fun fr => fr.binds.toList.map (·.val) ++ fr.temps.toList
 
 /-- Resolution `ρ`: end every borrow, with `v` held as a temporary so that a loan inside it is
-resolved too. -/
+resolved too (with no stored type: none is given here, and the checker never reads one, D104). -/
 def resolve? (v : Value) (Ω : MState) (fuel : Nat) : Option (Value × MState) :=
-  run? (do pushTemp v; endAll fuel; popTemp) Ω fuel
+  run? (do pushTemp v none; endAll fuel; popTemp) Ω fuel
 
 /-- A renaming of the unknowns a run created (those at or above `fresh`): injective, onto
 unknowns at or above `fresh`. -/

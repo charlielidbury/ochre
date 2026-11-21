@@ -12,6 +12,7 @@ ends `r`'s borrow, fixing the returned label's final content to the hole's conte
 namespace Ochr.Meaning.Attack
 
 open Ochr.Meaning
+open Classical
 
 set_option maxHeartbeats 1000000 in
 /-- **(A) The fill means the backward function at the hole** (`CloseCall.lean`'s statement). -/
@@ -25,24 +26,42 @@ theorem fill_means_back (dm : DataModel) (C : CodeMeaning) (n : Nat) (F : GCar) 
   rw [run_letIn (hfl := fun _ _ => rfl), run_ascribe (hfl := fun _ _ => rfl)]
   simp only [run, SM.erasedIf, SM.stmtIf, SM.headOf, SM.onCopy, meanV_abs, meanV_tNat, meanV_loan, K₀, D₀, ρ₀, Δ₀, bind, Option.bind, Option.map,
     pure, Sem.asTy, TyS.plain, Bool.false_eq_true, if_false, runT]
+  -- the strict ascription `σ0 : Nat`: `n` is a `Nat`, and the unknown's run carries no label
+  simp only [SM.strictS, strictVal, pure, labTyOk, reduceCtorEq, false_implies, implies_true, if_true, mem_nat]
   rw [pushBindShaped_noLabel _ _ rfl, pushBind_emptyState]
   simp only [runArgs, bind, pure]
   simp only [run, SM.erasedIf, SM.stmtIf, Bool.false_and, Bool.false_eq_true, if_false, runT]
+  simp only [SM.strictS]
   rw [borrowPlace_var0_one _ _ _ _ (by simp [Sem.whole])]
   dsimp only
   simp only [List.nil_append, List.cons_append, List.foldl_cons, List.foldl_nil, Nat.zero_max,
-    Nat.reduceAdd, Bool.false_eq_true, reduceIte]
+    Nat.reduceAdd, Bool.false_eq_true, reduceIte, mem_nat, if_true]
+  erw [if_pos (lentOk_root (K₀ dm C) φ (pos := .bind 0 0) rfl)]
+  erw [invalidate_noInv (K₀ dm C) φ (fun _ _ => rfl)]
+  dsimp only
+  -- the strict call: the borrow of `c1` is live and holds `Nat`, `σ1`'s parameter's content type
+  erw [if_pos (borrowArgs_S₂ dm.read F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n) rfl)]
   erw [callOf_S₂ _ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n)]
   dsimp only
   have hp := pushBindShaped_S₃ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n)
   simp only [rBind] at hp
-  simp only [hp, contentOf_deref_r, assignAt, resolve_deref_r, access_S₄, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true,
-    reduceIte, setContent_deref_r]
-  simp only [TyS.plain, discardEnd, SM.modify, bind, Option.bind]
-  have hc := readPlace_c1 (K₀ dm C) φ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n) (φ 1) rfl
-  simp only [K₀, D₀, TyS.plain] at hc
-  first
-    | (simp only [hc, Sem.asNat]; cases (φ 1).as Nat <;> simp)
-    | (trace_state; sorry)
+  -- the strict write `*r := loan_1`: the hole's content is written where it is a number (the
+  -- place's type is `Nat`), and the run fails where it is not, so the fill means `err` there
+  simp only [hp, placeTy, contentOf_deref_r, labTyOk, reduceCtorEq, false_implies, implies_true, and_true]
+  cases hφ : (φ 1).as Nat with
+  | none =>
+    rw [if_neg (by exact not_mem_nat_of_as hφ)]
+    simp [Sem.asNat, hφ]
+  | some x =>
+    rw [if_pos (by exact mem_nat_of_as hφ)]
+    simp only [contentOf_deref_r, assignAt, resolve_deref_r, access_S₄, List.isEmpty_cons, Bool.false_and,
+      Bool.false_eq_true, reduceIte, setContent_deref_r]
+    erw [if_pos (lentOk_deref_S₅ (K₀ dm C) φ F n _ 0 (.el0 Nat n) (φ 1) rfl (mem_nat_of_as hφ))]
+    erw [invalidate_noInv (K₀ dm C) φ (fun _ _ => rfl)]
+    dsimp only
+    simp only [TyS.plain, discardEnd, SM.modify, bind, Option.bind]
+    have hc := readPlace_c1 (K₀ dm C) φ F n ⟨.plain TyM.nat, fun _ => .el0 Nat n, .other, none⟩ 0 (.el0 Nat n) (φ 1) rfl
+    simp only [K₀, D₀, TyS.plain] at hc
+    simp only [hc, Sem.asNat, hφ]
 
 end Ochr.Meaning.Attack

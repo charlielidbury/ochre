@@ -16,8 +16,9 @@ where `loan ℓ` already means the filler, substituting it changes nothing, clau
 unknown no congruence step is needed: the assignment already gives `σ` the refinement's meaning, so
 the lemma IS the same-meaning substitution, with the atom `.abs σ` in place of `.loan ℓ`. That
 induction does not look at which atom it replaces except in its base case, so the proof is
-`RunSubst.lean`'s induction generalised from a loan to an atom (`FillOK` per atom), not a fifth
-induction: provided its base case holds, the hypothesis `AbsFillOK` below.
+`RunSubst.lean`'s induction with the atom renamed, not a fifth induction, provided its base case
+holds, the hypothesis `AbsFillOK` below. **Proved** (`RunSubstAbs.lean`: `meanV_substAbs`,
+`run_substAbs`, standard axioms).
 
 **The base case failed at the type the run gave an embedded value** (`absFill_shape_false`, until
 the data-layer port): `run`'s `.val` clause typed `.abs σ` at `Δ σ` and every other data value at the
@@ -103,6 +104,7 @@ end
 end Ochr
 
 namespace Ochr.Meaning
+open Classical
 
 section
 variable (K : RunCtx) (ρ : Assignment)
@@ -129,20 +131,6 @@ structure AbsFillOK (ψ : Future) (σ : Nat) (r : Value) : Prop where
   shape : ∀ hint s, (run K ρ ψ hint (.val r) s).map (·.1.2) = (run K ρ ψ hint (.val (.abs σ)) s).map (·.1.2)
   dec : DecInvariantAbs K.D σ r
 
-/-- **Replacing an unknown by what it means keeps a value's meaning** (open; the proof is
-`meanV_substSame`'s, `RunSubst.lean`, with the atom generalised from `loan ℓ` to `.abs σ`: the
-mutual induction with the run below). -/
-theorem meanV_substAbs (ψ : Future) (σ : Nat) (r : Value) (hF : AbsFillOK K ρ ψ σ r) (v : Value) (hint : TyS) :
-    meanV K ρ ψ hint (Value.substAbs σ r v) = meanV K ρ ψ hint v := by
-  sorry
-
-/-- **Replacing an unknown by what it means keeps a program's run** (open; `runT_substSame`'s
-induction with the atom generalised; at a `.fix` the stages' bodies agree by the same lemma,
-`fixBodyAt_bodyEq`, `fixStage_bodyEq`, `fixG_bodyEq`, which are already stated for any body pair). -/
-theorem run_substAbs (ψ : Future) (σ : Nat) (r : Value) (hF : AbsFillOK K ρ ψ σ r) (tl : Bool) (t : Term)
-    (hint : TyS) : runT K ρ ψ tl hint (Term.substAbs σ r t) = runT K ρ ψ tl hint t := by
-  sorry
-
 /-- **The base case holds wherever `DeltaOk` does** (kernel-checked; since the run's `.val` clause
 types an embedded value by what it is, as the checker does). Where `Δ σ` is `σ`'s stored type read
 as `DeltaOk` reads it (`deltaOf`), a refinement of `σ`, a number where the stored type is `Nat`, a
@@ -155,7 +143,10 @@ theorem absFill_shape (hK : ∀ n, (K.C.global n).2.label = none) (st : MState) 
       ∃ (ty : String) (c : Nat) (h : Hint) (ps fs : List Value) (d : IndDecl),
         st.absTy[σ]? = some (.tInd ty ps) ∧ r = .ind ty c h ps fs ∧
         K.Γ.find? (·.name == ty) = some d ∧ (ps.isEmpty && !d.params.isEmpty) = false ∧
-        ∀ l, Value.anyAtomList (· == .loan l) ps = false) :
+        ∀ l, Value.anyAtomList (· == .loan l) ps = false)
+    -- the strict `.val` clause tests an embedded constructor value against its type: the filler
+    -- means a member of `σ`'s type (what an assignment typing its unknowns gives, `ρ σ ∈ Δ σ`)
+    (hmem : ∀ hint, meanV K ρ ψ hint r ∈ₛ[K.dm.read] (K.Δ σ).m) :
     ∀ hint s, (run K ρ ψ hint (.val r) s).map (·.1.2) = (run K ρ ψ hint (.val (.abs σ)) s).map (·.1.2) := by
   intro hint s
   rw [run_val_def, run_val_def]
@@ -167,14 +158,27 @@ theorem absFill_shape (hK : ∀ n, (K.C.global n).2.label = none) (st : MState) 
       rcases hn with rfl | ⟨v, rfl⟩ <;> rfl
     rw [hv]
     simp only [deltaOf, hT]
-    rfl
+    rcases hn with rfl | ⟨v, rfl⟩ <;> rfl
   · have hP : meanParams K ρ ψ d 0 [] ps = meanParams K ρ (fun _ => .err) d 0 [] ps :=
       meanParams_congrE K ρ ψ (fun _ => .err) hK d ps 0 [] (fun l h => by rw [hl l] at h; cases h)
     have hv : valT K ρ ψ hint (.ind ty c h ps fs) = .plain (K.dm.tyM d (meanParams K ρ (fun _ => .err) d 0 [] ps)) := by
       simp only [valT, hd, hps, Bool.false_eq_true, if_false, hP]
       rfl
+    have hm := hmem hint
+    rw [hΔ] at hm
     rw [hv]
-    simp only [deltaOf, hT, Ochr.Value.tyS, Value.mean, hd, meanParams_eq_mean]
+    simp only [deltaOf, hT, Ochr.Value.tyS, Value.mean, hd, meanParams_eq_mean] at hm ⊢
+    -- `σ`'s type is strict (`paramsOk`): the filler is a member of it, so it is not `err`
+    by_cases hpo : paramsOk K.dm d (meanParams K ρ (fun _ => .err) d 0 [] ps)
+    rotate_left
+    · rw [if_neg hpo] at hm; obtain ⟨a, _⟩ := hm; exact a.elim
+    rw [if_pos hpo] at hm ⊢
+    -- a constructor value of a declared type at a known record means a tree, not `err`
+    have hne : meanV K ρ ψ hint (.ind ty c h ps fs) ≠ .err := by
+      simp only [meanV, Value.mean, hd, hps, Bool.false_eq_true, if_false]
+      split <;> simp [DataModel.ctorR]
+    simp only [strictVal, SM.strictS, pure]
+    rw [if_neg hne, if_pos (by exact hm)]
     rfl
 
 end

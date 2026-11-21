@@ -1,4 +1,5 @@
 import Ochr.Meaning.Regress.CE4_flipped
+import Ochr.Meaning.Regress.CE5_flipped
 import Ochr.Meaning.Steps.Sim
 import Ochr.Machine
 
@@ -34,6 +35,7 @@ here (`sim_stale_temp`).
 
 namespace Ochr.Meaning.Regress.StaleTemp
 open Ochr Ochr.Meaning Ochr.Meaning.Regress.CE4flip
+open Ochr.Meaning.Regress.CE5flip (NoInv invalidate_noInv lentOk_root)
 
 /-- `let r = &y; ()`, in a scope where `y` is variable `0`. -/
 def tLet : Term := .letIn ⟨"r"⟩ (.borrow (.var 0)) .tt
@@ -90,9 +92,11 @@ theorem held_a3 (n : Nat) :
   simp [SState.pushBind, SState.setAt, SState.topIdx, a2]
 
 /-- The reference run of `let r = &y; ()` from `y = Z` ends in `aF`. -/
-theorem let_borrow_run (hfl : NoStmt K) (n : Nat) (hint : TyS) :
+theorem let_borrow_run (hfl : NoStmt K) (hinv : NoInv K) (n : Nat) (hint : TyS) :
     run K ρ φ hint tLet (a1 K n) = some ((.el0 Unit (), .plain TyM.unit), aF K n) := by
-  rw [tLet, run_letIn ρ φ K hfl, run_borrow ρ φ K hfl, borrow_a1]
+  rw [tLet, run_letIn ρ φ K hfl, run_borrow ρ φ K hfl, strictBorrow_a1]
+  have hl1 : lentOk K φ (.var 0) (a2 K n) := lentOk_root K φ (pos := .bind 0 0) rfl
+  simp only [invalidate_noInv K φ hinv, hl1, if_true]
   show ((run K ρ φ hint .tt (a3 K n)).bind fun y => some (y.1, (match (match y.2.env.getLast? with
             | some fr => y.2.shape (.bind y.2.topIdx (fr.binds.length - 1))
             | none => none) with

@@ -28,10 +28,18 @@ Nothing in this file mentions the model: no assignment, no reference state, no m
 ## Other facts the proof owes that are about the machine alone
 
 To be stated here as they are reached (from the slice's knowledge, 2026-11-20):
-- the block's captures after a write: `Decisions.blockCaps` of the checker is static
-  (`BlockCaps.staticBlockCaps`), so at every state the static instance at the state's readings and
-  entry set is `Machine.blockCaptures`'s answer (D90's obligation 1), and in particular after a
-  write of `⊥` changes the entry set (item 4 of the slice's queue measures it first);
+- the block's captures at a state (D90's obligation 1, per state): `Decisions.blockCaps` of the
+  checker is static (`BlockCaps.staticBlockCaps`), reading the state only through the top frame's
+  readings and the entry set (its `⊥` places), so with the table fixed the clause `CtxOk.dec`'s
+  `blockCaps` asks at a state is a fact about the checker alone: at the state's readings and entry
+  set, the static instance is what `Steps.ckBlockCaps` computes there. A write of `⊥` (the join's
+  drop) changes only the entry set, so `ctx_botWrite`'s open part is this fact at the state after.
+  Measured (the slice, item 4, 2026-11-20; probe at every `Machine.blockEntry` of the suite, on the
+  recorded state): 338 block entries, the static instance equal to the checker's captures at all 335
+  where the checker's run succeeds (252 with a nonempty entry set); the other 3 are the checker's own
+  [Join] rejections (`JoinPlaces.BadIdx`, `BadIdxRead`, `BadDerefRead`), where nothing is asked.
+  `CtxOk` asks it for every match term at every state, where the run reads it only at a block's
+  entry; stating it there (the [Entry] step's hypothesis) would spare every other step re-proving it;
 - an access loses no unknown the state names, and makes only unknowns nothing names
   (`repackCheck`'s `lentUnknown`, docs/31 D35, D57);
 - a decision's run leaves the state as it was (PROVED for the decisions the slice reads,
@@ -160,8 +168,8 @@ theorem grows_setFlags (f : Bool × Bool) : GrowsM (Ochr.setFlags f) := growsM_o
 
 theorem grows_wholeReturned (v : Value) : GrowsM (Ochr.wholeReturned v) :=
   growsM_of_growsIn fun _ => growsIn_wholeReturned v
-theorem grows_pushTempAt (f : Nat) (v : Value) : GrowsM (Ochr.pushTempAt f v) :=
-  growsM_of_growsIn fun _ => growsIn_pushTempAt f v
+theorem grows_pushTempAt (f : Nat) (v : Value) (T : Option Value) (site : String) :
+    GrowsM (Ochr.pushTempAt f v T site) := growsM_of_growsIn fun _ => growsIn_pushTempAt f v T site
 theorem grows_topIdx : GrowsM Ochr.topIdx := growsM_of_growsIn fun _ => growsIn_topIdx
 theorem grows_popFrame (fuel : Nat) : GrowsM (Ochr.popFrame fuel) :=
   growsM_of_growsIn fun _ => (machineGrows fuel).popFrame
@@ -169,7 +177,7 @@ theorem grows_popTemp : GrowsM Ochr.popTemp := growsM_of_growsIn fun _ => growsI
 theorem grows_lendEnv (fuel : Nat) (op : LendOp) : GrowsM (Ochr.lendEnv fuel op) :=
   growsM_of_growsIn fun _ => growsIn_lendEnv fuel op
 theorem grows_observe (fuel : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos)
-    (refs : List (Place × Value)) : GrowsM (Ochr.observe fuel typed t A W refs) :=
+    (refs : List (Place × Value × Value)) : GrowsM (Ochr.observe fuel typed t A W refs) :=
   growsM_of_growsIn fun _ => (machineGrows fuel).observe typed t A W refs
 end
 
@@ -210,7 +218,7 @@ macro "grows_step" : tactic => `(tactic| first
   | with_reducible exact grows_setFlags _
   | (with_reducible refine grows_joinDrop _ _ ?_)
   | with_reducible exact grows_wholeReturned _
-  | with_reducible exact grows_pushTempAt _ _
+  | with_reducible exact grows_pushTempAt _ _ _ _
   | with_reducible exact grows_topIdx
   | with_reducible exact grows_popFrame _
   | with_reducible exact grows_popTemp

@@ -1692,7 +1692,7 @@ theorem callOfL_ref_inv {L : Nat → Prop} (Lv : Lvl.{u}) {C : Type u} (t : Tel 
     exact Nat.le_refl _
   have hcoverE : ∀ l ∈ (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id,
       l ∈ (((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).zip
-        ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.err)).filterMap
+        ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.moved)).filterMap
         fun (y : Option Nat × Sem) => y.1.map (·, y.2)).map (·.1) := by
     have hfx : (fun (y : Option Nat × Sem) => y.1.map (·, y.2)) = (fun (l?, f) => l?.map (·, f)) :=
       funext fun ⟨_, _⟩ => rfl

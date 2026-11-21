@@ -193,14 +193,26 @@ theorem runs_expandRefsF_keep (refs : List (Nat × Value)) :
       exact runs_mapM_keep _ (fun x _ _ _ _ hx => runs_expandRefsF_keep refs fuel x hx) _ h1
     | _ => exact (runs_pure_inv h).2
 
+/-- `neutralLookup` (main's D108: a record is found by `Value.exact`) reads the records and changes
+nothing. -/
+theorem runs_neutralLookup_inv {v : Value} {st st' : MState} {b : Nat} {o : Option Nat}
+    (h : Runs (Ochr.neutralLookup v) st b o st') :
+    st' = st ∧ o = (st.neutrals.find? (·.1.exact v)).map (·.2) := by
+  unfold Ochr.neutralLookup at h
+  obtain ⟨x, st₁, b₁, hg, h2⟩ := Runs.bind_inv h
+  obtain ⟨hx, hst₁⟩ := runs_get_inv hg
+  subst x; subst st₁
+  obtain ⟨ho, hst⟩ := runs_pure_inv h2
+  exact ⟨hst, ho⟩
+
 /-- `recordedNeutral` reads the records and changes nothing. -/
 theorem runs_recordedNeutral_inv {v : Value} {st st' : MState} {b : Nat} {o : Option Value}
     (h : Runs (Ochr.recordedNeutral v) st b o st') : st' = st := by
   unfold Ochr.recordedNeutral at h
   split at h
   · obtain ⟨x, st₁, b₁, hg, h2⟩ := Runs.bind_inv h
-    obtain ⟨hx, hst₁⟩ := runs_get_inv hg
-    subst x; subst st₁
+    obtain ⟨hst₁, -⟩ := runs_neutralLookup_inv hg
+    subst st₁
     split at h2
     · obtain ⟨y, st₂, b₂, hg', h3⟩ := Runs.bind_inv h2
       obtain ⟨hy, hst₂⟩ := runs_get_inv hg'
@@ -396,7 +408,7 @@ theorem accessInside_final (p : Place) : ∀ (fuel : Nat) {st st' : MState} {b :
     subst x; subst st₂
     simp only [Bool.false_eq_true, ↓reduceIte] at h2
     have hk : ∀ {b₃ : Nat}, Runs (match liveLoansIn st.env v with
-        | l :: _ => do Ochr.endTopLoan fuel l "accessInside"; Ochr.accessInside fuel p
+        | l :: _ => do Ochr.endTopLoan fuel l "accessInside" (some p); Ochr.accessInside fuel p
         | [] => pure ()) st b₃ u st' → ∃ v, ckContent st'.env p = some v ∧ liveLoansIn st'.env v = [] := by
       intro b₃ h3
       split at h3
@@ -1035,7 +1047,6 @@ theorem joinDropOne_noop (st : MState) (s s₁ : SState) (π : Nat → Nat) (q q
       rw [← hrest]
       simp only [sem_updAt_append_derefs K.dm K.Γ _ rest hd]
       split
-      · exact hs
       · have hself := updAt_bot_self q'.steps.2 _ hf'
         obtain ⟨f, i, hposfi, hpb, hsp, hroot, hplain, hnat⟩ :=
           botWrite_hyps K ρ φ st s₁ π q' pos' _ hg hctx.shapes hs hck' hgr' hnb' hself
@@ -1044,12 +1055,23 @@ theorem joinDropOne_noop (st : MState) (s s₁ : SState) (π : Nat → Nat) (q q
           (fun l hl x hx hxp => hclr l hl x hx hxp) hplain hnat
         rw [setAtE_self_bind st.env f i hpb] at hrel
         exact hrel
+      · exact hs
     · -- through the moved prefix by a field step: the write cannot be made, nothing is done
       obtain ⟨y, hy, hyd⟩ : ∃ y ∈ rest, y ≠ .deref :=
         Classical.byContradiction fun hne => hd fun y hy => Classical.byContradiction fun h => hne ⟨y, hy, h⟩
       have hnone := Slice.updAt_append_none K.dm K.Γ (fun _ => Sem.moved) q'.steps.2 _ _ _ T₁ rest hT
         (Slice.updAt_moved_none K.dm K.Γ (fun _ => Sem.moved) rest T₁ ⟨y, hy, hyd⟩)
-      rw [← hrest, hnone]
+      -- SORRY (model lane, 2026-11-21, for the slice lane): `dropAt` now writes only where the write
+      -- is defined at EVERY typed future (the orchestrator's write rule); here it is undefined at the
+      -- read's future `s₁.typedFuture φ`, which is a typed future once each live label's record is an
+      -- open member of its RECORDED type `heldTy`. The relation's `records` gives membership at
+      -- `holderTy` (the holder's stored type); that the two agree is `SGood.holderTy` on the model
+      -- side, not a clause of `Rel`.
+      have htf : TypedFut K φ s₁ (s₁.typedFuture φ) := by
+        refine ⟨fun l hl => ?_, fun l hl => ?_⟩
+        · simp [SState.typedFuture, hl]
+        · sorry
+      rw [← hrest, if_neg (fun hall => by have h := hall _ htf; rw [hnone] at h; cases h)]
       exact hs
 
 /-- **`dropOne_step`, assembled** (the drop of one place, D84): `movedPlace` in the simulation form
@@ -1087,16 +1109,22 @@ theorem dropOne_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) :
     obtain ⟨pos', hck', hcases⟩ := runs_dropAtJoin_inv hdj
     have hv : (valAt st₁.env pos').follow q'.steps.2 = some .bot ∨ (valAt st₁.env pos').follow q'.steps.2 = some .proof := by
       unfold ckContent at hbt; rw [hck'] at hbt; simpa using hbt
+    -- the re-rooted place does not hold `⋆`: it is a prefix of `q`, which is at the join's grain
+    -- and not a copy (`not_below_proof`). Since main's D102 the checker's drop sends a place's own
+    -- `⋆` to the copy decision, so this is what excludes the copy and data cases there.
+    have hvb : (valAt st₁.env pos').follow q'.steps.2 = some .bot := by
+      rcases hv with e | e
+      · exact e
+      · exfalso
+        refine not_below_proof { K with Δ := Δ₁ } ρ₁ φ st₁ s₁ π q q' hg₁ hctx₁ hrel₁
+          (by rw [scopeOf_alp hs₁or]; exact hgrain) (by rw [scopeOf_alp hs₁or]; exact hcopy) hroot hpre ?_
+        unfold ckContent; rw [hck']; simpa using e
     have hst' : st' = st₁ := by
-      rcases hcases with ⟨-, h⟩ | ⟨l, w, hbw, -⟩ | ⟨v, hv', hb, hp, -⟩ | ⟨v, hv', -, hb, hp, -⟩
+      rcases hcases with ⟨-, h⟩ | ⟨l, w, hbw, -⟩ | ⟨v, hv', hb, -, -⟩ | ⟨v, hv', -, hb, -, -⟩
       · exact h
-      · rcases hv with e | e <;> rw [e] at hbw <;> cases hbw
-      · rcases hv with e | e <;> rw [e] at hv' <;> cases hv'
-        · exact absurd rfl hb
-        · exact absurd rfl hp
-      · rcases hv with e | e <;> rw [e] at hv' <;> cases hv'
-        · exact absurd rfl hb
-        · exact absurd rfl hp
+      · rw [hvb] at hbw; cases hbw
+      · rw [hvb] at hv'; cases hv'; exact absurd rfl hb
+      · rw [hvb] at hv'; cases hv'; exact absurd rfl hb
     subst hst'
     exact ⟨ρ₁, Δ₁, hsz₁, hag₁, hctx₁, hj, hg₁⟩
 

@@ -13,6 +13,7 @@ the substitution changes only embedded values, never a place. A sealed program r
 -/
 
 namespace Ochr.Meaning
+open Classical
 
 open SState
 
@@ -157,8 +158,9 @@ variable (K : RunCtx) (ρ : Assignment) (ψ : Future) (l : Nat) (w : Value)
 
 theorem run_pi_def (hint : TyS) (hs : List Hint) (ds : List Term) (c : Term) (s : SState) {tl : Bool} :
     runT K ρ ψ tl hint (.pi hs ds c) s =
+      if PiOk K.dm.read (runDoms K ρ ψ s ds) [] (codOf K ρ ψ s (bindsOf K ρ ψ s ds) c) then
       some ((.ty (piTyAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ ψ s ds) (codOf K ρ ψ s (bindsOf K ρ ψ s ds) c)),
-        .plain (TyM.univ (K.D.piSort (scopeOf s) (.pi hs ds c)))), s) := by
+        .plain (TyM.univ (K.D.piSort (scopeOf s) (.pi hs ds c)))), s) else none := by
   rw [runT]; rfl
 
 theorem codOf_data {c : Term} (h : ∀ U, c ≠ .ref U) (s : SState) (bs : List PBind) :
@@ -218,6 +220,10 @@ theorem list_six {α : Type _} (xs : List α) (h : xs.length = 6) : ∃ a b c d 
   rcases xs with _ | ⟨a, _ | ⟨b, _ | ⟨c, _ | ⟨d, _ | ⟨e, _ | ⟨f, _ | ⟨g, rest⟩⟩⟩⟩⟩⟩⟩ <;> simp at h
   exact ⟨a, b, c, d, e, f, rfl⟩
 
+theorem list_two {α : Type _} (xs : List α) (h : xs.length = 2) : ∃ a b, xs = [a, b] := by
+  match xs, h with
+  | [a, b], _ => exact ⟨a, b, rfl⟩
+
 theorem list_one {α : Type _} (xs : List α) (h : xs.length = 1) : ∃ a, xs = [a] := by
   rcases xs with _ | ⟨a, _ | ⟨b, rest⟩⟩ <;> simp at h
   exact ⟨a, rfl⟩
@@ -236,14 +242,22 @@ theorem run_prim_substSame (hD : DecInvariant K.D l w) (tl : Bool) (n : String) 
   have hfl' : ∀ sc, K.D.flags sc (.prim n (Term.substLoanList l w args)) = K.D.flags sc (.prim n args) := hfl
   funext s
   have hlen := length_substLoanList l w args
-  by_cases h1 : n = "symm"
-  · subst h1; rw [runT, runT]
-  by_cases h2 : n = "trans"
-  · subst h2; rw [runT, runT]
-  by_cases h3 : n = "rewrite"
-  · subst h3; rw [runT, runT]
-  by_cases h4 : n = "rewriteR"
-  · subst h4; rw [runT, runT]
+  by_cases e1 : ∃ h, n = "symm" ∧ args = [h]
+  · obtain ⟨h0, rfl, rfl⟩ := e1
+    simp only [Term.substLoanList]
+    rw [runT, runT]; simp only [hall h0 (by simp)]
+  by_cases e2 : ∃ h k, n = "trans" ∧ args = [h, k]
+  · obtain ⟨h0, k0, rfl, rfl⟩ := e2
+    simp only [Term.substLoanList]
+    rw [runT, runT]; simp only [hall h0 (by simp), hall k0 (by simp)]
+  by_cases e3 : ∃ h u, n = "rewrite" ∧ args = [h, u]
+  · obtain ⟨h0, u0, rfl, rfl⟩ := e3
+    simp only [Term.substLoanList]
+    rw [runT, runT]; simp only [hall h0 (by simp), hall u0 (by simp)]
+  by_cases e4 : ∃ h u, n = "rewriteR" ∧ args = [h, u]
+  · obtain ⟨h0, u0, rfl, rfl⟩ := e4
+    simp only [Term.substLoanList]
+    rw [runT, runT]; simp only [hall h0 (by simp), hall u0 (by simp)]
   by_cases hJ : ∃ A a b P h t, n = "J" ∧ args = [A, a, b, P, h, t]
   · obtain ⟨A, a, b, P, h', t, rfl, rfl⟩ := hJ
     simp only [Term.substLoanList] at hfl' ⊢
@@ -274,10 +288,20 @@ theorem run_prim_substSame (hD : DecInvariant K.D l w) (tl : Bool) (n : String) 
     have : args.length = 1 := by rw [← hlen, e2]; rfl
     obtain ⟨x, hx⟩ := list_one args this
     exact hc ⟨x, e1 ▸ hm, hx⟩
-  rw [runT.eq_42 K ρ ψ tl hint n _ h1 h2 h3 h4 hJs (hcs _ (.inl rfl)).2 (hcs _ (.inr (.inl rfl))).2
-      (hcs _ (.inr (.inr rfl))).2,
-    runT.eq_42 K ρ ψ tl hint n _ h1 h2 h3 h4 hJ' (hcs _ (.inl rfl)).1 (hcs _ (.inr (.inl rfl))).1
-      (hcs _ (.inr (.inr rfl))).1]
+  have f1 : ∀ h, n = "symm" → args = [h] → False := fun h0 a b => e1 ⟨h0, a, b⟩
+  have f2 : ∀ h k, n = "trans" → args = [h, k] → False := fun h0 k0 a b => e2 ⟨h0, k0, a, b⟩
+  have f3 : ∀ h u, n = "rewrite" → args = [h, u] → False := fun h0 u0 a b => e3 ⟨h0, u0, a, b⟩
+  have f4 : ∀ h u, n = "rewriteR" → args = [h, u] → False := fun h0 u0 a b => e4 ⟨h0, u0, a, b⟩
+  have g1 : ∀ h, n = "symm" → Term.substLoanList l w args = [h] → False := fun h0 a b => by
+    obtain ⟨x, hx⟩ := list_one args (by rw [← hlen, b]; rfl); exact e1 ⟨x, a, hx⟩
+  have g2 : ∀ h k, n = "trans" → Term.substLoanList l w args = [h, k] → False := fun h0 k0 a b => by
+    obtain ⟨x, y, hx⟩ := list_two args (by rw [← hlen, b]; rfl); exact e2 ⟨x, y, a, hx⟩
+  have g3 : ∀ h u, n = "rewrite" → Term.substLoanList l w args = [h, u] → False := fun h0 u0 a b => by
+    obtain ⟨x, y, hx⟩ := list_two args (by rw [← hlen, b]; rfl); exact e3 ⟨x, y, a, hx⟩
+  have g4 : ∀ h u, n = "rewriteR" → Term.substLoanList l w args = [h, u] → False := fun h0 u0 a b => by
+    obtain ⟨x, y, hx⟩ := list_two args (by rw [← hlen, b]; rfl); exact e4 ⟨x, y, a, hx⟩
+  rw [runT, runT]
+  all_goals (first | rfl | exact f1 | exact f2 | exact f3 | exact f4 | exact hJ' | exact (hcs _ (.inl rfl)).1 | exact (hcs _ (.inr (.inl rfl))).1 | exact (hcs _ (.inr (.inr rfl))).1 | exact g1 | exact g2 | exact g3 | exact g4 | exact hJs | exact (hcs _ (.inl rfl)).2 | exact (hcs _ (.inr (.inl rfl))).2 | exact (hcs _ (.inr (.inr rfl))).2)
 
 end SubstPrim
 
@@ -299,19 +323,33 @@ theorem runT_substSame (hF : FillOK K ρ ψ l w) : ∀ (tl : Bool) (t : Term) (h
       | loan l' =>
         by_cases e : l' = l
         · subst e
+          -- the filler's strict `.val` succeeds where the loan's does (`FillShape` compares the two
+          -- runs, success included), at the same type, with the same meaning (`FillOK.mean`)
           have h := hF.shape hint s
           rw [run_val_def, run_val_def] at h
-          simp only [Option.map_some, Option.some.injEq] at h
           simp only [Value.substLoan, if_true]
-          rw [h]
+          have hR : strictVal K.dm.read (Value.loan l') (meanV K ρ ψ hint (Value.loan l'),
+              { valT K ρ ψ hint (Value.loan l') with label := none }) s =
+              some ((meanV K ρ ψ hint (Value.loan l'), { valT K ρ ψ hint (Value.loan l') with label := none }), s) := rfl
+          rw [hR]; rw [hR] at h
+          have hm : meanV K ρ ψ hint w = meanV K ρ ψ hint (Value.loan l') := hF.mean hint
+          rw [hm] at h
+          cases hw : strictVal K.dm.read w (meanV K ρ ψ hint (Value.loan l'), { valT K ρ ψ hint w with label := none }) s with
+          | none => rw [hw] at h; cases h
+          | some x =>
+            obtain ⟨r, s'⟩ := x
+            rw [hw] at h
+            obtain ⟨rfl, rfl⟩ := strictVal_some hw
+            simp only [Option.map_some, Option.some.injEq] at h
+            rw [h]
         · simp only [Value.substLoan, e, if_false]
       | clo caps t rd =>
-        simp only [Value.substLoan, valT, capsVals_substSame hF caps, capsTys_substSame hF rd,
+        simp only [Value.substLoan, valT, strictVal, capsVals_substSame hF caps, capsTys_substSame hF rd,
           runT_substSame hF false t]
       | sealed t =>
-        simp only [Value.substLoan, valT, runT_substSame hF false t hint]
+        simp only [Value.substLoan, valT, strictVal, runT_substSame hF false t hint]
       | ind ty c h ps fs =>
-        simp only [Value.substLoan, valT, meanParams_substSame hF, Value.substLoanList_isEmpty]
+        simp only [Value.substLoan, valT, strictVal, meanParams_substSame hF, Value.substLoanList_isEmpty]
       | _ => rfl
     | assign p u =>
       have hu := fun tl' => runT_substSame hF tl' u
@@ -370,7 +408,10 @@ theorem runT_substSame (hF : FillOK K ρ ψ l w) : ∀ (tl : Bool) (t : Term) (h
       have hfl : ∀ sc, K.D.flags sc (.ref (Term.substLoan l w u)) = K.D.flags sc (.ref u) :=
         fun sc => hF.dec.1 sc (.ref u)
       rw [runT, runT]; simp only [hu, hfl]
-    | cong a b => rfl
+    | cong a b =>
+      have hb := fun tl' => runT_substSame hF tl' b
+      show runT K ρ ψ tl hint (.cong (Term.substLoan l w a) (Term.substLoan l w b)) = _
+      rw [runT, runT]; simp only [hb]
     | ascribe u A =>
       have hu := fun tl' => runT_substSame hF tl' u
       have hA := fun tl' => runT_substSame hF tl' A
@@ -401,7 +442,7 @@ theorem runT_substSame (hF : FillOK K ρ ψ l w) : ∀ (tl : Bool) (t : Term) (h
       show runT K ρ ψ tl hint (.ctor ty c h (Term.substLoanList l w ps) (Term.substLoanList l w args)) = _
       have hfl : ∀ sc, K.D.flags sc (.ctor ty c h (Term.substLoanList l w ps) (Term.substLoanList l w args))
           = K.D.flags sc (.ctor ty c h ps args) := fun sc => hF.dec.1 sc (.ctor ty c h ps args)
-      rw [runT, runT]; simp only [hp, hf, Term.substLoanList_isEmpty, hfl]
+      rw [runT, runT]; rw [Term.substLoanList_isEmpty]; simp only [hp, hf, hfl]
     | call f args hd =>
       have hf := fun tl' => runT_substSame hF tl' f
       have ha := fun st sh => runArgs_substSame hF st sh args

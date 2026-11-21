@@ -304,16 +304,22 @@ def dataCtorBad (Γ : List IndDecl) : Value → Bool
 
 /-- What the step `x` from a place of declared reading `r` needs of it, at the join's grain: a field
 step (`.proj i`, `.field g`) is through an inductive of `Γ` with exactly one constructor; a `*` step
-needs nothing (`Decide.jdGrain`). (Restated at main's D94: the index a field step names and the
-borrow type a `*` step goes through were asked too, for `movedPlace`'s exits, which D94 replaced
-by a rejection, docs/31 D51.) -/
+is through a place declared a borrow (`Decide.jdGrain`). (Restated at main's D94: the index a field
+step names and the borrow type a `*` step goes through were asked too, for `movedPlace`'s exits,
+which D94 replaced by a rejection, docs/31 D51. The borrow type is asked again since the slice,
+2026-11-20, with the checker's D101 (`jdGrain` rejects a move through `*` of a place not declared a
+borrow): an arm the run does not take is never checked, so `*h` of a proof `h` reached the join, where the checker re-roots to the
+`⋆` and does nothing; the reference wrote `moved` through the `*` (`Regress/GrainDerefProof.lean`),
+or, under a mark of a live returned borrow above the `⋆`, its lent-prefix access ended a borrow the
+checker kept. With the `*` step's borrow type at the grain no non-copy place of the join is at or
+below a `⋆` (`JoinNoop.not_below_proof`), which is what the reference's drop assumes.) -/
 def StepOk (Γ : List IndDecl) (r : DeclInfo) : Step → Prop
   | .proj _ | .field _ => ∃ n args d, r = .ind n args ∧ Γ.find? (·.name == n) = some d ∧ d.ctors.length = 1
-  | .deref => True
+  | .deref => ∃ d, r = .ref d
 
 /-- **The join's grain** (main's D84, `Decide.jdGrain`): every field step of a dropped place, from its
 prefix, is through a place whose declared reading is an inductive of `Γ` with exactly one
-constructor (`StepOk`). Through anything else (several constructors, a type computed by a match, a
+constructor, and every `*` step through a place declared a borrow (`StepOk`). Through anything else (several constructors, a type computed by a match, a
 type parameter, a number's predecessor) the join moves the value whole. It is what the drop's
 reading of the place needs (`PlaceTyping.followMean`, `natAlong_grain`: no number's predecessor on
 the path, and the constructor value there is of the declared type), which `Decisions.joinMoves`,
@@ -774,6 +780,27 @@ started with (the audit's A5), as `run`'s `.id` clause reads it. -/
 noncomputable def refObs (reps : List Place) (ws : List Sem) (hint : TyS) (t : Term) (s : SState) : Option (List Sem) :=
   (run K ρ φ hint t s).map fun (r, s') => observation φ reps ws s.positions r s'
 
+/-- **What each re-pointed binding points to, on the reference** (main's D113, [Obs-ref]): after the
+side's run, each re-pointed binding's content (what it points to as the side left it) is moved out
+and held as a temporary, and the written value put in its place; then every live borrow ends (so a
+reborrow of part of a moved-out content fills it), and each held content is read. The checker's
+`observe` returns these as its third component and `idType` compares them (`Eq(T, c, c')`).
+Defined here for the restated `observe_step_stmt`; the model's own observation (`Run.observation`,
+which `run`'s `.id` clause compares) does not yet read them: see `idType_step_stmt`. -/
+noncomputable def refTargetsOf (reps : List Place) (ws : List Sem) (s : SState) : List Sem :=
+  let (s, cs) := (reps.zipIdx).foldl (fun (sc : SState × List Pos) (q, i) =>
+    match resolve sc.1 q, ws[i]? with
+    | some (pos, []), some w =>
+      let s₁ := (sc.1.setAt pos fun _ => w).pushTemp (sc.1.valAt pos)
+      (s₁, sc.2 ++ [Pos.temp s₁.topIdx (((s₁.env.getLast?).map (·.temps.length)).getD 1 - 1)])
+    | _, _ => sc) (s, [])
+  let s := s.liveLabels.foldl SState.endLabel s
+  cs.map fun p => s.valAt p φ
+
+/-- `refTargetsOf` after the side's run, if it succeeds. -/
+noncomputable def refTargets (reps : List Place) (ws : List Sem) (hint : TyS) (t : Term) (s : SState) : Option (List Sem) :=
+  (run K ρ φ hint t s).map fun (_, s') => refTargetsOf φ reps ws s'
+
 /-! ### Helpers from `Steps/Eval.lean` -/
 
 /-- The type the context gives, as a `TyM` (`err` when none). -/
@@ -920,12 +947,12 @@ from a state so related, the reference's `assignAt` at its meaning and label giv
 the checker's after, under an extension (the access ends borrows, which may repack). As first
 stated: `Below`, from the checker state's image. -/
 def assignPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st st' : MState)  (p : Place) (v : Value) (pos : Pos)
+  ∀ (st st' : MState)  (p : Place) (v : Value) (T : Option Value) (pos : Pos)
     (hgv : GoodF K.dm K.M K.Γ ρ (st.withTemp v) (flightOfWrite v (Env.hintAt K.dm K.M K.Γ ρ st.env pos).m))
     (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π (st.withTemp v) s) (hpos : resolve s p = some (pos, (p.steps).2))
     (hD : DecTab K.D st')
-    (bh : Nat) (h : Runs (Ochr.assignPlace fuel p v) st bh () st'),
+    (bh : Nat) (h : Runs (Ochr.assignPlace fuel p v T) st bh () st'),
     ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
       (∀ l, l < st.nextLoan → π' l = π l) ∧ ExtOk K ρ st st' ρ' Δ' ∧ st.absTy.size ≤ st'.absTy.size ∧
       assignAt K φ p (meanV K ρ φ (.plain .err) v) (match v with | .borrow l _ => some l | _ => none) s = some (r, s') ∧
@@ -1134,7 +1161,7 @@ makes `conv` answer `false` more often, so no hypothesis on it. -/
 def conv_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (v w : Value) (T : TyM)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
-    (hv : DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain T) v) T) (hw : DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (.plain T) w) T)
+    (hv : DataModel.pmem K.dm K.Γ (meanV K ρ φ (.plain T) v) T) (hw : DataModel.pmem K.dm K.Γ (meanV K ρ φ (.plain T) w) T)
     (hD : DecTab K.D st')
     (bh : Nat) (h : Runs (Ochr.conv fuel v w) st bh true st'),
     meanV K ρ φ (.plain T) v = meanV K ρ φ (.plain T) w ∧ KeptAfter st st' ∧
@@ -1432,18 +1459,28 @@ survive, D23, so the core is not) and the reference state is untouched. The valu
 returns are read under an assignment extended at the unknowns created inside, among them the
 fresh values [Obs-ref] writes through the re-pointed bindings. -/
 
-/-- `observe` (a side on a private copy, the fresh values `refs` written through the re-pointed
-bindings ([Obs-ref]), every borrow ended, the result and the owners read), from a related state:
-the reference's side run does not fail, and the checker's result and each observed owner mean
-their components of the reference observation, for the written values the fresh unknowns mean.
-The side is run at the hint `A`, as the checker runs it. -/
+/-- `observe` (a side on a private copy; each re-pointed binding's content moved out as one more
+component and the fresh value of `refs` put in its place ([Obs-ref], main's D113); every borrow
+ended; the result, the owners and the components read), from a related state: the reference's side
+run does not fail, and the checker's result, each observed owner and each component mean their
+counterparts of the reference observation (`refObs`, `refTargets`), for the written values the fresh
+unknowns mean. The side is run at the hint `A`, as the checker runs it.
+
+RESTATED BY D113 (2026-11-21, the merge of main into the proof line). Before main's D113 [Obs-ref]
+wrote the fresh value THROUGH each re-pointed binding (`*y := σ_y`, an [Access] and a drop of what
+the side left in the target, unobserved) and `observe` returned the result and the owners. Since
+D113 the binding's content `c` (what it points to as the side left it) is taken out of the borrow
+without an access and held as a temporary, `σ_y` is put in its place (`borrow_k σ_y`), the ends fill
+`c`'s holes, and `observe` returns a third component, the `c`s; `idType` compares them. The
+conclusion gains the components (`cs`, against `refTargets`, each at its binding's content type
+`Tσ`, `refs`' third entry). NOT PROVED (like the statement before it). -/
 def observe_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (t : Term) (A : Value) (W : List Pos)
-    (refs : List (Place × Value)) (r : Value) (ws : List Value)
+    (refs : List (Place × Value × Value)) (r : Value) (ws cs : List Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hD : DecTab K.D st')
-    (bh : Nat) (h : Runs (Ochr.observe fuel typed t A W refs) st bh (r, ws) st'),
+    (bh : Nat) (h : Runs (Ochr.observe fuel typed t A W refs) st bh (r, ws, cs) st'),
     st'.env = st.env ∧ st.absTy.size ≤ st'.absTy.size ∧ st.nextLoan ≤ st'.nextLoan ∧
     ∀ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
       TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' →
@@ -1451,11 +1488,16 @@ def observe_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
       -- same `Id`, which starts from it (docs/31 D74: as first stated nothing was said of it)
       (Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' ∧ CtxOk { K with Δ := Δ' } ρ' st' ∧
         Rel { K with Δ := Δ' } ρ' φ π st' s) ∧
-      ∃ o, refObs K ρ' φ (refs.map (·.1)) (refs.map fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2)
+      (∃ o, refObs K ρ' φ (refs.map (·.1)) (refs.map fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2.1)
           (Value.tyS K.dm K.M K.Γ ρ A) t s = some o ∧
         o[0]? = some (meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Value.tyS K.dm K.M K.Γ ρ A) r) ∧
         ∀ (i j : Nat) (p : Pos), W[i]? = some p → s.positions[j]? = some p →
-          ws[i]?.map (meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Env.hintAt K.dm K.M K.Γ ρ st.env p)) = o.tail[j]?
+          ws[i]?.map (meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Env.hintAt K.dm K.M K.Γ ρ st.env p)) = o.tail[j]?) ∧
+      -- D113: what each re-pointed binding points to, at its content type
+      ∃ c, refTargets K ρ' φ (refs.map (·.1)) (refs.map fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2.1)
+          (Value.tyS K.dm K.M K.Γ ρ A) t s = some c ∧ cs.length = refs.length ∧
+        ∀ (i : Nat) (q : Place) (σ Tσ x : Value), refs[i]? = some (q, σ, Tσ) → cs[i]? = some x →
+          c[i]? = some (meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Value.tyS K.dm K.M K.Γ ρ Tσ) x)
 
 /-- Footprint coverage (docs/18 "Footprint coverage", the third of the five lemmas), from a
 related state: a position that was there when the sides started and is outside the footprint of
@@ -1488,7 +1530,20 @@ reference's is.
 
 As first stated the last conjunct read `(run … = some (r, s') ∧ ⟦P⟧ true) ↔ ⟦r⟧ true` under
 `∃ r s'` (`∧` binds tighter than `↔`), which any `r` that is not the run's result satisfies: it
-said nothing (`Regress/IdUnitWrite.old_stmt_vacuous`). -/
+said nothing (`Regress/IdUnitWrite.old_stmt_vacuous`).
+
+FALSE SINCE MAIN'S D113 (found at the merge of main into the proof line, 2026-11-21; kept as it
+was, as a finding). D113 makes the checker's conjunction also compare what each re-pointed binding
+points to (`Eq(T, c, c')`, `observe`'s third component, `refTargets` on the reference). The model's
+`Id` (`run`'s `.id` clause, `Run.observation`) still compares only the result and the positions,
+and loses what a side left in a re-pointed binding's target exactly as the checker did before D113
+(`observation` puts the written value in the binding's place, so the content is never read). At
+`Hide`'s sides (`y := &x` against `y := &x; *y := 5`, main's `Equality.ObsRef`) the reference's `Id`
+is true and the checker's conjunction contains `Eq(Nat, 0, 5)`, so the last conjunct (`r` true →
+`P` true) is false, and with it the statement. Since a hypothesis of such an `Id` type is used
+through the conjunction, the model must follow: `Run.observation` reads the moved-out contents
+(as `refTargetsOf` does) and the `.id` clause compares them. That is a change to the model's
+definition of `Id`, for the model lane. -/
 def idType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (A t u : Term) (P : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
@@ -1665,7 +1720,7 @@ def valType_sound_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (bh : Nat) (h : Runs (Ochr.valType? fuel v) st bh (some T) st'),
     (KeptAfter st st' ∧ ∃ (ρ' : Assignment) (Δ' : Nat → TyS), ExtOk K ρ st st' ρ' Δ') ∧
     (TypedFuture K.dm K.M K.Γ ρ st φ →
-      DataModel.pmem K.dm.read K.Γ (meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v) (meanV K ρ noFuture (.plain .err) T).asTy)
+      DataModel.pmem K.dm K.Γ (meanV K ρ φ (Value.tyS K.dm K.M K.Γ ρ T) v) (meanV K ρ noFuture (.plain .err) T).asTy)
 
 /-- [Borrow] keeps (WF1)–(WF3): the fresh label is held once, at the destination; the lent
 place's content holds no live loan (after [Access]), so the borrow relation stays acyclic. -/
@@ -1684,8 +1739,8 @@ def end_wf_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop
 /-- [Assign] keeps (WF1)–(WF3): D67 ends the loans in the overwritten owned part, and the old
 content's borrows end ([Drop]). -/
 def assign_wf_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st st' : MState)  (p : Place) (v : Value)
-    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.assignPlace fuel p v) st bh () st'),
+  ∀ (st st' : MState)  (p : Place) (v : Value) (T : Option Value)
+    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.assignPlace fuel p v T) st bh () st'),
     WF1 st'.env ∧ WF2 st'.env ∧ WF3 st'.env
 
 /-- [Close] keeps (WF1)–(WF4): the fills are closed sealed programs (C1), the arguments were
@@ -1809,7 +1864,7 @@ so the statement is for code whose reference run succeeds; for a body, the calle
 member of its type gives it. -/
 def runBody_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value))
-    (ws : Array Value) (v : Value)
+    (ws : Array Value) (B : Option Value) (v : Value)
     (hg : Good K.dm K.M K.Γ ρ (st.withTemps (fv :: ws.toList))) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π (st.withTemps (fv :: ws.toList)) s)
     (hfix : fv = .clo cs t rd ∨ ∃ n, fv = .gfn n ∧ Runs (Ochr.fixOf fv) st 0 (cs, t, rd) st)
@@ -1817,7 +1872,7 @@ def runBody_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     (as : List Res) (has : ArgsAgree K ρ φ π ws as)
     (hok : (runBodyRef K ρ φ fres cs t rd as s).isSome)
     (hD : DecTab K.D st')
-    (bh : Nat) (h : Runs (Ochr.runBody fuel fv cs t rd ws) st bh v st'),
+    (bh : Nat) (h : Runs (Ochr.runBody fuel fv cs t rd ws B) st bh v st'),
     SimConcl K ρ φ π (st.withTemps (fv :: ws.toList)) st' s (fun ρ' => runBodyRef K ρ' φ fres cs t rd as) v
 
 /-- **[Close]** (`closeCall`), every row, in the simulation form: EXACT against `callOf`. The
@@ -2027,7 +2082,7 @@ type converted to the goal. -/
 def fixReturn (fuel : Nat) (self : Hint) (v T : Value) : M Unit := do
   Ochr.wholeReturned v
   Ochr.bodyReturns fuel s!"{self.name} returns it" v T [] ""
-  Ochr.pushTempAt ((← Ochr.topIdx) - 1) v
+  Ochr.pushTempAt ((← Ochr.topIdx) - 1) v (some T) "checkFix"
   Ochr.popFrame fuel
   discard Ochr.popTemp
   let g := (← get).goal.getD .bot

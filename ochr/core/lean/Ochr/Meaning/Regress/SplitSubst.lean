@@ -1,6 +1,7 @@
 import Ochr.Meaning.Steps.Statements
 import Ochr.Meaning.Regress.CodeRuns
 import Ochr.Meaning.SubstAbs
+import Ochr.Meaning.RunSubstAbs
 import Ochr.Examples.Nat
 
 /-!
@@ -123,7 +124,21 @@ theorem run_pred2 (v : Value) (k : Nat) (hv : ∀ T, meanV (Kp dm Γ (gPred2 dm.
     intro fT
     simp only [runArgs, Bool.false_and]
     show (do let r ← run (Kp dm Γ (gPred2 dm.read)) ρ φ (.plain (fT.domAfter dm.read [])) (.val v); _) s = _
+    -- the strict `.val`: a value meaning a number is no constructor value (whose meaning is a tree,
+    -- `•` or `err`), and a number is not `err`
+    have hsv : ∀ T : TyS, strictVal dm.read v (Sem.el0 Nat (k + 1), T) s = some ((Sem.el0 Nat (k + 1), T), s) := by
+      intro T
+      cases v with
+      | ind ty c h ps fs =>
+        exfalso
+        have := hv (.plain .err)
+        simp only [meanV, Value.mean] at this
+        repeat' split at this
+        all_goals first | cases this | simp [DataModel.ctorR] at this
+      | clo | sealed => simp [strictVal]
+      | _ => rfl
     simp only [bind, run_val_def, hv]
+    erw [hsv]
     rfl
   rw [ha]
   have hg2 : ∀ x : Nat, ∃ k' : Nat, pred2Body dm.read [.el0 Nat x] = some { result := .el0 Nat k', finals := [] } :=
@@ -166,16 +181,11 @@ theorem refine_keeps_type (K : RunCtx) (n : String) (m : Nat) (h0 : ρ 0 = .el0 
     intro T
     show (ρ 1).succ = ρ 0
     rw [h0, h1, succ_el0]
-  show (match K.Γ.find? (·.name == n) with
-      | some d => Sem.ty (K.dm.tyM d (meanParams K ρ φ d 0 [] [.abs 0]))
-      | none => .ty TyM.err) =
-    (match K.Γ.find? (·.name == n) with
-      | some d => Sem.ty (K.dm.tyM d (meanParams K ρ φ d 0 [] [.succ (.abs 1)]))
-      | none => .ty TyM.err)
-  cases K.Γ.find? (·.name == n) with
-  | none => rfl
-  | some d =>
-    simp only [meanParams, e]
+  have hp : ∀ d, meanParams K ρ φ d 0 [] [.abs 0] = meanParams K ρ φ d 0 [] [.succ (.abs 1)] := by
+    intro d; simp only [meanParams, e]
+  cases hf : K.Γ.find? (·.name == n) with
+  | none => simp only [meanV, hf]
+  | some d => simp only [meanV, hf]; rw [hp d]
 
 /-- **The substitution lemma for unknowns on the `SplitSubst` run** (`SubstAbs.lean`): the pure
 substitution `σ₀ := S(σ₁)` makes `⌈Pred2(σ₀)⌉` into `⌈Pred2(S(σ₁))⌉`, and under an assignment meeting it
@@ -198,5 +208,27 @@ theorem pred2_instance (m : Nat) (h0 : ρ 0 = .el0 Nat (m + 1)) (h1 : ρ 1 = .el
     rw [run_pred2 dm Γ ρ φ (.abs 0) m (fun _ => h0), run_pred2 dm Γ ρ φ (.succ (.abs 1)) m (fun _ => by
       show (ρ 1).succ = _
       rw [h1, succ_el0])]
+
+/-- **The lemma's hypothesis holds on the `SplitSubst` run once `Δ` types the unknown at its stored
+type** (`DeltaOk`: `σ₀ : Nat`): the filler `S(σ₁)` means `ρ σ₀`, the run types `.val S(σ₁)` at `Nat`
+as it types `.val σ₀`, and the probes' decisions are constant. -/
+theorem pred2_absFill (m : Nat) (h0 : ρ 0 = .el0 Nat (m + 1)) (h1 : ρ 1 = .el0 Nat m) :
+    AbsFillOK { Kp dm Γ (gPred2 dm.read) with Δ := fun _ => .plain TyM.nat } ρ φ 0 (.succ (.abs 1)) where
+  mean hint := by
+    show (ρ 1).succ = ρ 0
+    rw [h0, h1, succ_el0]
+  shape hint s := by rw [run_val_def, run_val_def]; rfl
+  dec := ⟨fun _ _ => rfl, fun _ _ => rfl, fun _ _ => rfl, fun _ _ _ => rfl, fun _ _ => rfl, fun _ _ => rfl,
+    fun _ _ _ => rfl⟩
+
+/-- **The substitution lemma for unknowns, applied on the `SplitSubst` run** (`run_substAbs`): the
+substituted call runs as the call, as `pred2_instance` computed by hand. -/
+theorem pred2_by_lemma (m : Nat) (h0 : ρ 0 = .el0 Nat (m + 1)) (h1 : ρ 1 = .el0 Nat m) (hint : TyS) (s : SState) :
+    run { Kp dm Γ (gPred2 dm.read) with Δ := fun _ => .plain TyM.nat } ρ φ hint
+        (Term.substAbs 0 (.succ (.abs 1)) (.call (.const "Pred2") [.val (.abs 0)] true)) s
+      = run { Kp dm Γ (gPred2 dm.read) with Δ := fun _ => .plain TyM.nat } ρ φ hint
+        (.call (.const "Pred2") [.val (.abs 0)] true) s := by
+  show runT _ ρ φ false hint _ s = runT _ ρ φ false hint _ s
+  rw [run_substAbs _ ρ φ 0 _ (pred2_absFill dm Γ ρ φ m h0 h1) false]
 
 end Ochr.Meaning.Regress.SplitSubstRef

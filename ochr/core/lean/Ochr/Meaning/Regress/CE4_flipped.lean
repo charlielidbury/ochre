@@ -83,15 +83,20 @@ theorem run_seq (hfl : NoStmt K) (u w : Term) (hint : TyS) (s : SState) :
 
 theorem run_place (hfl : NoStmt K) (p : Place) (hint : TyS) (s : SState) :
     run K ρ φ hint (.place p) s = readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p)) s := by
-  rw [run, runT]; show SM.erasedAt _ _ _ s = _; rw [hfl]; rfl
+  rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem run_borrow (hfl : NoStmt K) (p : Place) (hint : TyS) (s : SState) :
-    run K ρ φ hint (.borrow p) s = borrowPlace K φ p s := by
+    run K ρ φ hint (.borrow p) s = (match SM.strictS K.dm.read (borrowPlace K φ p) s with
+      | some (r, s₁) =>
+        let s₂ := invalidate K φ p s₁
+        if lentOk K φ p s₂ then some (r, s₂) else none
+      | none => none) := by
   rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem readPlace_of (p : Place) (b : Bool) (s : SState) (v : Sem) (T : TyS) (pos : Pos) (st : List Step)
     (s' : SState) (h : contentOf K φ p s = some ((v, T, pos, st), s')) :
     readPlace K φ p b s = ((if ¬ v.whole then none else
+      if ¬ ReadGood K.dm.read T.m v then none else
       if b then some ((v, { T with label := none }), s') else do
         let lab := if st.isEmpty then s'.shape pos else none
         let (⟨⟩, s) ← setContent K φ pos st .moved s'
@@ -139,6 +144,14 @@ theorem borrow_a1 (n : Nat) : borrowPlace K φ (.var 0) (a1 K n) = some ((.el0 N
   simp only [Sem.whole, not_true_eq_false, ite_false]
   rfl
 
+/-- The strict borrow of `y`: `Z` is a `Nat`. -/
+theorem strictBorrow_a1 (n : Nat) : SM.strictS K.dm.read (borrowPlace K φ (.var 0)) (a1 K n)
+    = some ((.el0 Nat 0, { TyS.plain TyM.nat with label := some n }), a2 K n) := by
+  simp only [SM.strictS]
+  rw [borrow_a1]
+  dsimp only
+  rw [if_pos ⟨(0 : Nat), rfl⟩]
+
 theorem positions_a2 (n : Nat) : (a2 K n).positions = [.bind 0 0, .temp 0 0] := by
   simp [SState.positions, a2]
 
@@ -153,14 +166,20 @@ theorem noStmt_KF : NoStmt KF := fun _ _ => rfl
 theorem run_call_KF (f : Term) (args : List Term) (hd : Bool) (hint : TyS) (s : SState) :
     run KF ρ φ hint (.call f args hd) s
       = (SM.headOf f (fun p => readPlace KF φ p true) (run KF ρ φ (.plain .err) f) >>= fun fv =>
-          runArgs KF ρ φ false fv.2.m [] args >>= fun as => callOf KF.dm.read fv as) s := rfl
+          runArgs KF ρ φ false fv.2.m [] args >>= fun as =>
+            fun s => if BorrowArgsTyped KF.dm.read fv as s then callOf KF.dm.read fv as s else none) s := rfl
 
 theorem runArgs_borrow (n : Nat) :
     runArgs KF ρ φ false (.t0 FCar (.pi FCar telF)) [] [.borrow (.var 0)] (a1 KF n)
       = some ([(.el0 Nat 0, { TyS.plain TyM.nat with label := some n })], a2 KF n) := by
   show (run KF ρ φ (.plain ((TyM.t0 FCar (.pi FCar telF)).domAfter KF.dm.read [])) (.borrow (.var 0)) >>= fun r =>
       runArgs KF ρ φ false (.t0 FCar (.pi FCar telF)) ([] ++ [r.1]) [] >>= fun rest => pure (r :: rest)) (a1 KF n) = _
-  rw [SM.bind_apply, run_borrow ρ φ KF noStmt_KF, borrow_a1]
+  rw [SM.bind_apply, run_borrow ρ φ KF noStmt_KF, strictBorrow_a1]
+  have hi : invalidate KF φ (.var 0) (a2 KF n) = a2 KF n := rfl
+  have hl : lentOk KF φ (.var 0) (a2 KF n) := by
+    have hr : resolve (a2 KF n) (.var 0) = some (.bind 0 0, []) := rfl
+    simp [lentOk, hr]
+  simp only [hi, if_pos hl]
   rfl
 
 /-- After the call (proposed `callOfL`): the borrow at the non-borrow parameter stays parked. -/
@@ -170,8 +189,19 @@ theorem call_a1 (n : Nat) :
     run KF ρ φ (.plain .err) (.call (.const "f") [.borrow (.var 0)] false) (a1 KF n)
       = some ((.el0 Nat 0, .plain TyM.nat), a4 n) := by
   rw [run_call_KF, SM.bind_apply]
-  show (runArgs KF ρ φ false (.t0 FCar (.pi FCar telF)) [] [.borrow (.var 0)] >>= fun as => callOf KF.dm.read _ as) (a1 KF n) = _
+  show (runArgs KF ρ φ false (.t0 FCar (.pi FCar telF)) [] [.borrow (.var 0)] >>= fun as =>
+    fun s => if BorrowArgsTyped KF.dm.read _ as s then callOf KF.dm.read _ as s else none) (a1 KF n) = _
   rw [SM.bind_apply, runArgs_borrow]
+  have hr0 : telRefsL (lvl0 KF.dm.read) telF [Sem.el0 Nat 0] = [false] := by
+    simp [telRefsL, telF, show Code0.nat.dec KF.dm.read (.el0 Nat 0) = some (0 : Nat) from Code0.dec_enc _ .nat 0]
+  -- the borrow is at a non-borrow parameter: no label to test
+  have hb : BorrowArgsTyped KF.dm.read (.el0 FCar Fid, .plain (.t0 FCar (.pi FCar telF)))
+      [(.el0 Nat 0, { TyS.plain TyM.nat with label := some n })] (a2 KF n) := by
+    intro i l h
+    simp [refLabelsOf, refsOf, TyS.plain, hr0] at h
+  rw [show KF.C.global "f" = (.el0 FCar Fid, .plain (.t0 FCar (.pi FCar telF))) from rfl]
+  dsimp only
+  rw [if_pos hb]
   show callOfL (lvl0 KF.dm.read) telF (.el0 FCar Fid)
     [(.el0 Nat 0, { TyS.plain TyM.nat with label := some n })] (a2 KF n) = _
   have hr : telRefsL (lvl0 KF.dm.read) telF [Sem.el0 Nat 0] = [false] := by
@@ -204,13 +234,13 @@ theorem access_a4 (n : Nat) (hit : List Step → Bool) (ho : hit [] = true) :
   simp only [List.filter_cons, List.filter_nil, hd, if_true, List.foldl_cons, List.foldl_nil]
   exact SState.endLabel_eq (holder_a4 n)
 
-theorem content_a4 (n : Nat) : ∃ T, contentOf KF φ (.var 0) (a4 n)
-    = some ((.el0 Nat 0, T, .bind 0 0, []), (a4 n).endAt n (.temp 0 0)) := by
+theorem content_a4 (n : Nat) : contentOf KF φ (.var 0) (a4 n)
+    = some ((.el0 Nat 0, .plain TyM.nat, .bind 0 0, []), (a4 n).endAt n (.temp 0 0)) := by
   have hr : resolve (a4 n) (.var 0) = some (.bind 0 0, []) := rfl
   simp only [contentOf, hr, access_a4 n (dataHit []) rfl]
   rw [SState.endAt_valAt _ _ _ _ (by rw [positions_a4]; simp)]
   simp only [show (Pos.bind 0 0 = Pos.temp 0 0) = False from by simp, if_false, a4_t, a4_y, Future.upd, if_true]
-  exact ⟨_, rfl⟩
+  rfl
 
 /-- With the proposed `callOfL`, `let y = Z; (f(&y); y)` reads `Z` at every future: the borrow at
 the non-borrow parameter stays parked, and the read of `y` ends it (CE4, flipped). -/
@@ -223,13 +253,15 @@ theorem tF_reads_zero (n : Nat) (hint : TyS) : ∃ T s', run KF ρ φ hint tF (e
   simp only
   rw [seq_discard_plain]
   rw [run_place ρ φ KF noStmt_KF]
-  obtain ⟨T, hc⟩ := content_a4 φ n
+  have hc := content_a4 φ n
   rw [readPlace_of φ KF _ _ _ _ _ _ _ _ hc]
-  simp only [Sem.whole, not_true_eq_false, ite_false]
+  have hm : ReadGood KF.dm.read (TyS.plain TyM.nat).m (Sem.el0 Nat 0) := Or.inl ⟨(0 : Nat), rfl⟩
+  simp only [Sem.whole, not_true_eq_false, ite_false, hm, not_true_eq_false]
   generalize KF.D.copy _ = b
   cases b
   · simp only [Bool.false_eq_true, ite_false, List.isEmpty_nil, ite_true, SState.endAt_shape,
       show (Pos.bind 0 0 = Pos.temp 0 0) = False from by simp]
+    rw [setContent_root KF φ _ _ _ (Or.inl rfl)]
     exact ⟨_, _, rfl⟩
   · exact ⟨_, _, rfl⟩
 end

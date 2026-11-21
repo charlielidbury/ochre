@@ -6,7 +6,7 @@ import Ochr.Meaning.Consistency
 Before docs/34's port, `exists_dataModel` asked of a data model only that it cover the program's
 declarations and read whole fields, and a model that ignores the program met it
 (`Counterexamples.degenerate_meets`, against the frozen copy of that layer). The same model in
-the ported layer, `degenerate` (every declaration covered, every field `err`), still covers
+the ported layer, `degenerate` (every declaration covered, every record empty, so every field `err`), still covers
 everything (`degenerate_covers`), but it is not faithful: at a declaration with a `Nat` field, the
 reference run of the declared field type `Nat` gives `Nat`, not the model's `err`
 (`degenerate_not_faithful`), so no program declaring one has it as a faithful model
@@ -20,7 +20,6 @@ open Ochr Ochr.Meaning Ochr.Meaning.Assembly
 /-- Every declaration covered, every field `err`, every record empty. -/
 def degenerate : DataModel where
   covers _ := True
-  sig := ⟨fun _ _ _ _ _ => .leaf PEmpty .err⟩
   recOf _ _ := natRec
   paramTy _ _ _ := TyM.err
 
@@ -38,11 +37,8 @@ theorem nat_ne_err : TyM.nat ≠ TyM.err := by
 theorem degenerate_not_faithful (K : RunCtx) (hdm : K.dm = degenerate) (hΓ : nbD ∈ K.Γ) (ρ : Assignment) :
     ¬ FieldsFaithful K ρ := by
   intro h
-  obtain ⟨r, s', hr, hT⟩ := h nbD hΓ [] 0 0 [] .nat (fun j hj => absurd hj (by simp))
-    (fun i hi => absurd hi (by simp)) rfl rfl
-  rw [run, runT] at hr
-  simp only [pure, Option.some.injEq] at hr
-  obtain ⟨rfl, -⟩ := hr
+  have hT := h nbD hΓ [] 0 0 [] .nat rfl (fun j hj => absurd hj (by simp))
+    (fun i hi => absurd hi (by simp)) rfl rfl _ _ rfl
   rw [hdm] at hT
   exact nat_ne_err hT
 

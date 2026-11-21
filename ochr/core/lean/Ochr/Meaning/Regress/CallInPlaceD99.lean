@@ -79,12 +79,18 @@ theorem contentOf_SPr (c : Sem) :
 theorem run_id1_r (a : Nat) (hint : TyS) (tl : Bool) :
     runT (Kc dm) ρ φ tl hint id1Body (SPr selfB d (.el0 Nat a) r)
       = some ((.el0 Nat a, { T₀ with label := some 2 }), SPr2 selfB d T₀.m (.el0 Nat a) r) := by
-  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
+  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.strictS]
   unfold borrowPlace
   simp only [contentOf_SPr, bind, Option.bind]
   simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
     Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent,
     SState.setHeldTy, SState.setHeldMem, SPr, SPr2, xB]
+  -- the strict borrow: `a` is a `Nat`, `*x`'s type
+  rw [if_pos ⟨a, rfl⟩]
+  dsimp only
+  simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
+  rw [if_pos]
+  all_goals first | rfl | exact Attack.lentOk_deref (Kc dm) φ (pos := .bind 1 1) (by simp [resolve, SState.varPos, SState.topIdx, Place.steps, SPr, yFrame, Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)])
 
 end
 

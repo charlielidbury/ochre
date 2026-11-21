@@ -101,11 +101,29 @@ def sRefNT : SState :=
 -- the reference state's holders and sites are the checker's
 #guard (allPos stNT.env).all fun p => Env.shape stNT.env p == if p == .bind 1 2 then some 0 else none
 
-/-- **The reference's entry ends `r`'s borrow** (`Run.entryAccess` with the captures above): no
-label is live after it, `r` holds nothing, and `0` has no site, as in the checker. So the
-relation's holders and sites clauses hold after the entry with the identity renaming. -/
-theorem ref_entry : (entryAccess bcNT sRefNT).liveLabels = [] ∧
-    (entryAccess bcNT sRefNT).shape (.bind 1 2) = none ∧ (entryAccess bcNT sRefNT).lent 0 = [] := by
+/-- With no place invalidated by a capture (`Decisions.invalidated` empty, the default), D112's
+`invalidate` is the identity, so a capture's access is the access alone. -/
+theorem entryCap_noInv (K : RunCtx) (φ : Future) (hK : ∀ sc p, K.D.invalidated sc p = []) (s : SState)
+    (qk : Place × Nat) :
+    entryCap K φ s qk = (match resolve s qk.1 with
+      | some (pos, steps) => s.access pos (dataHit steps)
+      | none => s) := by
+  have hi : ∀ s' : SState, invalidate K φ qk.1 s' = s' := fun s' => by simp [invalidate, hK]
+  simp only [entryCap, hi]
+  split <;> rfl
+
+/-- **The reference's entry ends `r`'s borrow** (`Run.entryAccess` with the captures above, under
+the default decisions: no invalidated place): no label is live after it, `r` holds nothing, and
+`0` has no site, as in the checker. So the relation's holders and sites clauses hold after the
+entry with the identity renaming. -/
+theorem ref_entry (K : RunCtx) (φ : Future) (hK : ∀ sc p, K.D.invalidated sc p = []) :
+    (entryAccess K φ bcNT sRefNT).liveLabels = [] ∧
+    (entryAccess K φ bcNT sRefNT).shape (.bind 1 2) = none ∧ (entryAccess K φ bcNT sRefNT).lent 0 = [] := by
+  have hf : entryCap K φ = fun s qk => (match resolve s qk.1 with
+      | some (pos, steps) => s.access pos (dataHit steps)
+      | none => s) := funext fun s => funext fun qk => entryCap_noInv K φ hK s qk
+  unfold entryAccess
+  rw [hf]
   decide +kernel
 
 /-- Without the entry (in tail position, `NTTail`) the reference leaves `r` live, as the checker's

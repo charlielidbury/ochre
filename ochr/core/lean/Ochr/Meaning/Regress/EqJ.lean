@@ -91,31 +91,55 @@ noncomputable def one : Sem := Sem.succ (.el0 Nat 0)
 
 theorem one_eq : one = .el0 Nat 1 := by simp [one, Sem.succ, Sem.asNat, Sem.as]
 
+/-- `S(Z)` passes the strict `S` clause's test: `1` is a `Nat`. -/
+theorem one_mem : (Sem.el0 Nat 0).succ ∈ₛ[dm.read] (TyS.plain TyM.nat).m :=
+  ⟨1, by simp [Sem.succ, Sem.asNat, Sem.as, Code0.enc]⟩
+
+/-- The strict run of `S(Z)`, at any hint, in any state. -/
+theorem run_one_at (T : TyS) (s : SState) :
+    runT (Kp dm [] G) ρ φ false T (Term.zero.succ) s = some ((one, .plain TyM.nat), s) := by
+  rw [runT]
+  show SM.erasedIf (false, false) _ _ = _
+  simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false, SM.strictS]
+  have h0 : (runT (Kp dm [] G) ρ φ false (TyS.plain TyM.nat) Term.zero >>= fun x => pure (x.fst.succ, TyS.plain TyM.nat)) s
+      = some (((Sem.el0 Nat 0).succ, TyS.plain TyM.nat), s) := rfl
+  rw [h0]
+  dsimp only
+  rw [if_pos (by exact one_mem dm)]
+  rfl
+
+theorem run_one (T : TyS) :
+    runT (Kp dm [] G) ρ φ false T (Term.zero.succ) (emptyState 0) = some ((one, .plain TyM.nat), emptyState 0) :=
+  run_one_at dm G ρ φ T _
+
 /-- The reference's `Eq(Nat, S(Z), b)`: the proposition that the two sides' meanings are equal,
 the state untouched. -/
-theorem ref_eq (b : Term) (vb : Sem) (hb : run (Kp dm [] G) ρ φ (.plain TyM.nat) b (emptyState 0) = some ((vb, .plain TyM.nat), emptyState 0)) (hint : TyS) :
+theorem ref_eq (b : Term) (vb : Sem) (hb : run (Kp dm [] G) ρ φ (.plain TyM.nat) b (emptyState 0) = some ((vb, .plain TyM.nat), emptyState 0))
+    -- the strict `Eq`: the right side is a number (the left, `1`, is)
+    (hvb : vb ∈ₛ[dm.read] TyM.nat) (hint : TyS) :
     run (Kp dm [] G) ρ φ hint (.eq .nat (.succ .zero) b) (emptyState 0)
       = some ((.ty (TyM.prop (one = vb)), .plain (TyM.univ 0)), emptyState 0) := by
   have hn : runT (Kp dm [] G) ρ φ false (TyS.plain TyM.err) Term.nat (emptyState 0) =
       some ((.ty TyM.nat, .plain (TyM.univ 1)), emptyState 0) := rfl
   have hs : runT (Kp dm [] G) ρ φ false (.plain (Sem.ty TyM.nat).asTy) (Term.zero.succ) (emptyState 0) =
-      some ((one, .plain TyM.nat), emptyState 0) := rfl
+      some ((one, .plain TyM.nat), emptyState 0) := run_one dm G ρ φ _
   have hb' : runT (Kp dm [] G) ρ φ false (.plain (Sem.ty TyM.nat).asTy) b (emptyState 0) =
       some ((vb, .plain TyM.nat), emptyState 0) := hb
   rw [run, runT]
   show SM.onCopy _ _ = _
   simp only [SM.onCopy, bind, hn, hs, hb', Option.map_some]
+  rw [if_pos ⟨rfl, .inr (by rw [one_eq]; exact ⟨1, rfl⟩), .inr hvb⟩]
   rfl
 
 theorem ref_eqS_true (hint : TyS) : ∃ r, run (Kp dm [] G) ρ φ hint (.eq .nat (.succ .zero) (.succ .zero)) (emptyState 0)
     = some (r, emptyState 0) ∧ (r.1.asTy).true := by
-  refine ⟨_, ref_eq dm G ρ φ (.succ .zero) one rfl hint, ?_⟩
+  refine ⟨_, ref_eq dm G ρ φ (.succ .zero) one (run_one dm G ρ φ _) (by rw [one_eq]; exact ⟨1, rfl⟩) hint, ?_⟩
   show one = one
   rfl
 
 theorem ref_eqSZ_false (hint : TyS) : ∃ r, run (Kp dm [] G) ρ φ hint (.eq .nat (.succ .zero) .zero) (emptyState 0)
     = some (r, emptyState 0) ∧ ¬ (r.1.asTy).true := by
-  refine ⟨_, ref_eq dm G ρ φ .zero (.el0 Nat 0) rfl hint, ?_⟩
+  refine ⟨_, ref_eq dm G ρ φ .zero (.el0 Nat 0) rfl ⟨0, rfl⟩ hint, ?_⟩
   show ¬ one = .el0 Nat 0
   rw [one_eq]
   intro h
@@ -127,6 +151,10 @@ off as a block whose one arm is the transported term, [T-J-stuck]). -/
 theorem ref_J_runs_t (hint : TyS) :
     (run (Kp dm [] G) ρ φ hint (.prim "J" [.nat, .zero, .succ .zero, .nat, .tt, .zero]) (emptyState 0)).map (·.1.1)
       = some (.el0 Nat 0) := by
+  rw [run, runT]
+  show Option.map _ (SM.erasedIf (false, false) _ _) = _
+  simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false, bind, SM.onCopy]
+  simp only [run_one_at dm G ρ φ]
   rfl
 
 end Ochr.Meaning.Regress.EqJRef

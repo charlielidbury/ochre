@@ -6,7 +6,8 @@ import Ochr.Catch
 Ω is a stack of frames (RULES §2). A frame holds named bindings `x : A ↦ v` and
 *temporaries*: values in flight during evaluation (an evaluated argument waiting for
 the next one, the right-hand side of an assignment, a result while its frame is
-popped). Temporaries are part of Ω so that [End] can find and substitute into them.
+popped). Temporaries are part of Ω so that [End] can find and substitute into them. Each
+has a stored type, as a binding has (D104, `Frame.tempTys`), which the checker never reads.
 -/
 
 namespace Ochr
@@ -37,6 +38,13 @@ deriving Inhabited
 structure Frame where
   binds : Array Binding := #[]
   temps : Array Value := #[]
+  /-- D104: each temporary's stored type, beside it (`tempTys[i]` is `temps[i]`'s): the type the
+  machine had in hand when it pushed the value (the type its evaluation returned, or the declared
+  type of the position it is headed for), `none` where it had none (an untyped run that computed
+  none). The checker never reads it (`tyAt` of a temporary is `none`): it is kept so that every
+  value the machine holds has a stored type, as a binding has, and the invariant of the
+  consistency proof is a predicate on the checker's state alone. -/
+  tempTys : Array (Option Value) := #[]
 deriving Inhabited
 
 abbrev Env := Array Frame
@@ -85,7 +93,20 @@ structure IndDecl where
                             -- positions and model code (`implemented by` bodies, model functions)
   unsized : Bool := false   -- declared `unsized` (K2): at runtime, outside model code, a place of this type is
                             -- only borrowed (never read, moved, assigned or matched)
+  nestable : List Bool := [] -- D107: which parameters are nestable (`Check.nestableSet`), in declaration order;
+                            -- computed from the fields and stored by [Ind-decl], empty until then
+  declaring : Bool := false -- D107: the entry [Ind-decl] holds while checking this declaration's own fields, with no
+                            -- constructors yet: they are not known, so a match with no arms on it is not vacuous
 deriving Inhabited
+
+/-- D107: the error of a term that reads the constructors of a type whose declaration is being
+checked (a match on an earlier field of that type, with or without arms, a field projection of
+it, one of its constructors, a split on it): while `D` is declared its entry has no constructors,
+and a reader of the entry would answer as if `D` were empty (`W(let k : False = match b {}; k)`
+with `b : D` was accepted). A decision that reads them and cannot reject answers conservatively
+instead (`declCopy`, `largeElim`; η and the join's grain see no single constructor). -/
+def IndDecl.declaringMsg (d : IndDecl) (what : String) : String :=
+  s!"{what} reads the constructors of {d.name}, which are not known while {d.name} is declared (D107)"
 
 /-- [Ind-decl] (D71, Fording): parameter `i` of `d` is a *type parameter* when its declared
 type is syntactically a sort (`A : Type`, `P : Prop`); any other parameter (`n : Word`,
@@ -142,6 +163,17 @@ structure Config where
   default, and off in every run that produces a verdict (the `ochr` command, the tests): it only
   adds log entries, which no decision reads. -/
   recordStates : Bool := false
+  /-- Dev tooling (`lake exe sweep --pushes`): log each temporary pushed with no stored type in a
+  typed run, or holding a borrow with none (`LogEntry.push`), at every call depth, which
+  `recordStates` does not reach. Off in every run that produces a verdict; no decision reads it. -/
+  recordPushes : Bool := false
+  /-- Dev tooling (`lake exe sweep --deep`): log the whole machine state on entry to every
+  evaluation and on its successful exit at every call depth above 0 (a callee's body, a sealed
+  program's re-run), which `recordStates` does not reach (`LogEntry.deep`); outside private copies,
+  and inside them too with `recordDeepPrivate`. Off in every run that produces a verdict; no
+  decision reads it. -/
+  recordDeep : Bool := false
+  recordDeepPrivate : Bool := false
 deriving Inhabited, Repr, BEq
 
 /-- The universe a sort lives in: `Type_l : Type_{l+1}`, and `Prop : Type₁` beside `Type₀`
@@ -198,10 +230,11 @@ structure MState where
   inPlace : Bool := false                 -- D53: the next read is in place (a call's head, a block's read-only capture)
   modelDepth : Nat := 0                   -- K2/K3: > 0 inside model code, which never runs at runtime
   copying : Bool := false      -- inside `clone`/`peek`: reads copy (the explicit copy, not an erased-read mode)
-  /-- D84 [Id-typestate], ending a borrow: while a side of `Id` runs, the frame the `Id` is formed in and how
-  many bindings and temporaries it had then; a side may not end a borrow one of those holds. A
-  run from a fresh environment (a sealed program's re-run, a comparison) has none. -/
-  obsFrame : Option (Nat × Nat × Nat) := none
+  /-- D84 [Id-typestate], ending a borrow: while a side of `Id` runs, the frame the `Id` is formed in, how
+  many bindings and temporaries it had then, and (D114) the positions of the borrow bindings the
+  side consumes (its type-state's); a side may not end a borrow one of the others holds. A run
+  from a fresh environment (a sealed program's re-run, a comparison) has none. -/
+  obsFrame : Option (Nat × Nat × Nat × List Nat) := none
   typing : Bool := false                  -- the term being evaluated is part of the checked program (`eval true`),
                                           -- where D64's [Repack] points are checked
   locs : Locs := {}                       -- the editor: where the declaration's terms are (`located`)
@@ -224,12 +257,19 @@ inductive Note where
 /-- An entry of the log: a trace line (`Config.trace`), or a note for the editor, at a source
 range, with the [Split] refinements of the path it was made on, or (`Config.recordStates`, dev
 tooling) the whole machine state at a located term: on entry to its evaluation (`exit = false`)
-or as it leaves it, successfully (`exit = true`), with the term's value, which the checker then
-holds in its monad and not in `st` (`flight`, for an evaluated term; none for a tail term). -/
+or as it leaves it, successfully (`exit = true`), with the term's value and the type its
+evaluation returned, which the checker then holds in its monad and not in `st` (`flight`, for an
+evaluated term; none for a tail term). -/
 inductive LogEntry where
   | line (s : String)
   | note (l : Loc) (refs : List (Nat × Value)) (n : Note)
-  | state (l : Loc) (exit : Bool) (flight : Option Value) (st : MState)
+  | state (l : Loc) (exit : Bool) (flight : Option (Value × Option Value)) (st : MState)
+  /-- Dev tooling (`Config.recordPushes`): a temporary pushed at the push site `site` with no stored
+  type, in a typed run (`typing`) or holding a borrow, at call depth `depth`. -/
+  | push (site : String) (typing : Bool) (v : Value) (depth : Nat)
+  /-- Dev tooling (`Config.recordDeep`): the whole state on entry to an evaluation at call depth
+  above 0 (`exit = false`), or as it leaves it successfully, with its value and type (`flight`). -/
+  | deep (exit : Bool) (flight : Option (Value × Option Value)) (st : MState)
 
 /-- The machine monad. The inner `StateM` holds the log (the trace, and the editor's notes),
 which survives both state restores and errors (so a rejected definition still shows how far
@@ -289,6 +329,19 @@ def restoreKeep (saved : MState) : M Unit :=
     { s with nextAbs := cur.nextAbs, nextLoan := cur.nextLoan, neutrals := cur.neutrals, etaRefs := cur.etaRefs,
              absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size,
              absDecl := cur.absDecl }
+
+/-- D103: leave a comparison (`conv`, `convPi`, `convFn`): put back the state it started from,
+keeping only the names made inside, as every private computation keeps them (D37's first half:
+fresh names are never reused, so `nextAbs`, `nextLoan`, `nextRecUid`, the frozen readings
+`absDecl` and the types of the unknowns made inside, the tail of `absTy`, only grow). Unlike
+`restoreKeep`, the records made inside (generalisations `neutrals`, η-refinements `etaRefs`)
+and the copy's changes to the recursion check's candidate lists are dropped: a comparison's
+result is a boolean, which can mention nothing it made. -/
+def restoreNames (saved : MState) : M Unit :=
+  modify fun cur =>
+    { saved with nextAbs := cur.nextAbs, nextLoan := cur.nextLoan, nextRecUid := cur.nextRecUid,
+                 absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size,
+                 absDecl := cur.absDecl }
 
 /-- A [Split] world (notes/split-model.md): the state an arm of a case split starts from.
 Each arm of a split on an unknown `σ` is checked in its own world, the one where `σ` is that
@@ -503,16 +556,29 @@ def liveDecl (i : Nat) : M DeclInfo := do
   let bs := (← get).env[top]!.binds
   pure (if i < bs.size then bs[bs.size - 1 - i]!.decl else .other)
 
-def pushTemp (v : Value) : M Unit := do
-  modifyFrame (← topIdx) fun fr => { fr with temps := fr.temps.push v }
+/-- Dev tooling (`Config.recordPushes`, `lake exe sweep --pushes`): log a push with no stored type in
+a typed run, or of a borrow with none. -/
+def notePush (site : String) (v : Value) (T : Option Value) : M Unit := do
+  let s ← get
+  if s.cfg.recordPushes && T.isNone && (s.typing || v.isBorrow) then
+    modifyThe (Array LogEntry) (·.push (.push site s.typing v s.depth))
 
-def pushTempAt (f : Nat) (v : Value) : M Unit :=
-  modifyFrame f fun fr => { fr with temps := fr.temps.push v }
+/-- Push the temporary `v` onto the top frame with its stored type `T` (D104: the type in hand at
+the push, `none` where there is none; every push site says which, and names itself, `site`, for
+the dev tooling's census). -/
+def pushTemp (v : Value) (T : Option Value) (site : String := "") : M Unit := do
+  notePush site v T
+  modifyFrame (← topIdx) fun fr => { fr with temps := fr.temps.push v, tempTys := fr.tempTys.push T }
 
+def pushTempAt (f : Nat) (v : Value) (T : Option Value) (site : String := "") : M Unit := do
+  notePush site v T
+  modifyFrame f fun fr => { fr with temps := fr.temps.push v, tempTys := fr.tempTys.push T }
+
+/-- Pop the top frame's last temporary, and its stored type with it (never read: D104). -/
 def popTemp : M Value := do
   let f ← topIdx
   match (← get).env[f]!.temps.back? with
-  | some v => modifyFrame f (fun fr => { fr with temps := fr.temps.pop }); pure v
+  | some v => modifyFrame f (fun fr => { fr with temps := fr.temps.pop, tempTys := fr.tempTys.pop }); pure v
   | none => err "internal: no temporary to pop"
 
 def popTemps (n : Nat) : M (Array Value) := do
@@ -535,6 +601,8 @@ def setAt (p : Pos) (v : Value) : M Unit :=
   | .bind f i => modifyFrame f fun fr => { fr with binds := fr.binds.modify i ({ · with val := v }) }
   | .temp f i => modifyFrame f fun fr => { fr with temps := fr.temps.set! i v }
 
+/-- A binding's stored type. A temporary's (`Frame.tempTys`, D104) is not read by the checker, so
+this is `none` there, as it was before temporaries had one. -/
 def tyAt : Pos → M (Option Value)
   | .bind f i => do pure (← get).env[f]!.binds[i]!.ty
   | .temp _ _ => pure none
@@ -553,8 +621,9 @@ def valAt (env : Env) : Pos → Value
   | .temp f i => env[f]!.temps[i]!
 
 /-- Apply `f` to every value position of the state, in one fixed order: each value of Ω and,
-with `types`, the stored type of its binding right after it; then, with `types`, the type of
-every abstract value and the goal. Types are values used as types, so they run erased.
+with `types`, the stored type of its binding or temporary (D104) right after it; then, with
+`types`, the type of every abstract value and the goal. Types are values used as types, so they
+run erased.
 
 This is the one place that says what a change to the state must reach. A refinement
 (`substEnv` with `types`), the fill of a loan (`substEnv` without: types hold no live loan)
@@ -575,6 +644,11 @@ def mapState (f : Value → M Value) (types : Bool) : M Unit := do
           let P' ← withErased (f P)
           let ws' ← withErased (ws.mapM f)
           modifyFrame fi fun fr => { fr with binds := fr.binds.modify i ({ · with lazyTy := some (P', ws', j) }) }
+      -- D104: a temporary's stored type, as a binding's (never read, but kept as Ω's are)
+      if let .temp fi i := p then
+        if let some (some T) := (← get).env[fi]!.tempTys[i]? then
+          let T' ← withErased (f T)
+          modifyFrame fi fun fr => { fr with tempTys := fr.tempTys.set! i (some T') }
   if types then
     withErased do
       let n := (← get).absTy.size

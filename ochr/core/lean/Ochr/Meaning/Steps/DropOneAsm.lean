@@ -46,24 +46,25 @@ theorem follow_borrow_root {env : Env} {pos : Pos} {ss : List Step} {l : Nat} {w
     | _ => rw [hv] at hwf1 h; exact hwf1 (anyAtom_of_follow _ _ _ h hb)
 
 /-- **The reference's drop of a data place is its access then its write** (`dropAt`'s last clause):
-where the place is no holder at a root, it is no copy, and the write can be made at the typed
-future after the access. PROVED. (Restated with `dropAt`, the slice: it asked the reading after the
-access to exist and not be `⋆`, the test `dropAt` no longer makes.) -/
+where the place is no holder at a root, it is no copy, and the write can be made at EVERY typed
+future after the access (the orchestrator's write rule, 2026-11-21; it was: at the typed future).
+PROVED. (Restated with `dropAt`, the slice: it asked the reading after the access to exist and not
+be `⋆`, the test `dropAt` no longer makes.) -/
 theorem dropAt_data (s : SState) (q : Place) (pos : Pos) (steps : List Step)
     (hns : steps = [] → s.shape pos = none)
-    (hupd : ∃ y, Sem.updAt K.dm K.Γ ((s.access pos (dataHit steps)).tyAt pos) (fun _ => .moved) steps
-      ((s.access pos (dataHit steps)).valAt pos ((s.access pos (dataHit steps)).typedFuture φ)) = some y)
+    (hupd : ∀ ψ, TypedFut K φ (s.access pos (dataHit steps)) ψ →
+      (Sem.updAt K.dm K.Γ ((s.access pos (dataHit steps)).tyAt pos) (fun _ => .moved) steps
+        ((s.access pos (dataHit steps)).valAt pos ψ)).isSome)
     (hcopy : K.D.copy (K.D.placeDecl (scopeOf s) q) = false) :
     dropAt K φ q pos steps s = (s.access pos (dataHit steps)).setAt pos fun φ' =>
       (Sem.updAt K.dm K.Γ ((s.access pos (dataHit steps)).tyAt pos) (fun _ => .moved) steps
         ((s.access pos (dataHit steps)).valAt pos φ')).getD .err := by
-  obtain ⟨y, hy⟩ := hupd
   unfold dropAt
   split
   · next h2 => rw [hns rfl] at h2; cases h2
   · dsimp only
     simp only [hcopy, Bool.false_eq_true, if_false]
-    rw [hy]
+    rw [if_pos hupd]
 
 /-- **Nothing is lent at a root holding `⋆`** (`⋆` holds no loan, mark or sealed program). -/
 theorem clear_of_proof_root {env : Env} {pos : Pos} (hproof : valAt env pos = .proof) :
@@ -292,10 +293,10 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
       rcases pos with ⟨f, i⟩ | ⟨f, i⟩
       · simp [IsTemp]
       · unfold ckVarPos at hck; split at hck <;> cases hck
-    rcases hn with hn | hn
+    rcases hn with hn | ⟨hn, -⟩
     rotate_left
-    · -- `⋆` at a place at the join's grain: a copy ((C⋆), true since main's D100), which the join
-      -- does not drop
+    · -- `⋆` at a place at the join's grain (under a `⋆` ancestor, main's D102): a copy ((C⋆), true
+      -- since main's D100), which the join does not drop
       exfalso
       have h := hctx.shapes.proofCopy q (by rw [← rel_scopeOf K ρ φ hs]; exact hgrain)
         (by unfold ckContent; simp [hck, hn])
@@ -336,8 +337,6 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
       rw [hacc]
       simp only [hcopy, Bool.false_eq_true, if_false]
       split
-      · -- the write cannot be made (the path passes through a moved part): nothing
-        exact hs
       · -- a place already moved: the reference writes `moved` over `moved`, which changes nothing
         -- the relation reads (docs/31 D52)
         have hself := updAt_bot_self q.steps.2 _ hn
@@ -348,6 +347,8 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
           (fun l hl x hx hxp => hclr l hl x hx hxp) hplain hnat
         rw [setAtE_self_bind st.env f i hpb] at hrel
         exact hrel
+      · -- the write cannot be made at every typed future: nothing
+        exact hs
   · -- a borrow at a root: both end it
     have hsteps := follow_borrow_root hg.2.2.1 hp hbw
     have hval : valAt st.env pos = .borrow l w' := by
@@ -454,7 +455,22 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
         (fun l => ((accessLentPrefix (.bind f i) q.steps.2 s).access (.bind f i) (dataHit q.steps.2)).typedFuture φ (π l)) hck''
       rw [hval, hH]
       exact ⟨_, mean_updAt_botS { K with Δ := Δ₂ } ρ₂ _ q.steps.2 H _ _ v' hupd hplain.1 hplain.2 (hnat _)⟩
-    rw [dropAt_data K φ _ q (.bind f i) q.steps.2 hns₀ hupdR hcopy₀]
+    -- SORRY (model lane, 2026-11-21, for the slice lane): the reference's drop is now made only
+    -- where the write is defined at EVERY typed future (the orchestrator's write rule; `dropAt`).
+    -- `hupdR` gives it at the typed future, from the relation, whose `sim` speaks of futures giving
+    -- each live label a WHOLE member (`TypedLive`); a typed future of the run gives an OPEN one. The
+    -- step from one to all is the simulation's obligation named in `Meaning/OPEN.md` (II): after the
+    -- access of a write at `x.p`, `x` reads no live label along `p`, so the definedness does not
+    -- depend on the future (regress `Strict/FieldWriteCE`).
+    have hupdAll : ∀ ψ, TypedFut K φ ((accessLentPrefix (.bind f i) q.steps.2 s).access (.bind f i)
+        (dataHit q.steps.2)) ψ →
+        (Sem.updAt K.dm K.Γ (((accessLentPrefix (.bind f i) q.steps.2 s).access (.bind f i)
+          (dataHit q.steps.2)).tyAt (.bind f i)) (fun _ => .moved) q.steps.2
+          (((accessLentPrefix (.bind f i) q.steps.2 s).access (.bind f i) (dataHit q.steps.2)).valAt
+            (.bind f i) ψ)).isSome := by
+      have _ := hupdR
+      sorry
+    rw [dropAt_data K φ _ q (.bind f i) q.steps.2 hns₀ hupdAll hcopy₀]
     have hsz : st.absTy.size ≤ st'.absTy.size := by rw [hst', hX₃]; exact hsz₂
     rw [hst'] at hD hsz ⊢
     exact ⟨ρ₂, Δ₂, hsz, e₂.1,

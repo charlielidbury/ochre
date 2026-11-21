@@ -44,8 +44,8 @@ def callObs (fv T : Value) (inputs : List Value) : M Value := do
   discard popFrameRaw
   let (r, _) ← callFn (← fuelLeft) false fv none args (args.map fun _ => none) false
   let r ← match r with
-    | .borrow k u => do pushTemp (.borrow k (Value.ofNat 7)); pure u
-    | r => do pushTemp r; pure r
+    | .borrow k u => do pushTemp (.borrow k (Value.ofNat 7)) none; pure u
+    | r => do pushTemp r none; pure r
   endAll (← fuelLeft)
   discard popTemp
   pure (obsVal r ((← get).env[0]!.binds.toList.map (·.val)))

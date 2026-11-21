@@ -19,6 +19,7 @@ meaning binds is the fixpoint's business, `callOf_inPlace`):
 
 namespace Ochr.Meaning.Regress.FrameCheck
 open Ochr Ochr.Meaning Ochr.Meaning.Regress.CallInPlace
+open Classical
 
 /-- A cell that still reads its label leaves the caller's frames as they were. -/
 theorem cellFuture_self (ψ : Future) : cellFuture (fun l => l) [0] [fun ψ => ψ 0] ψ = ψ := by
@@ -71,23 +72,34 @@ def T₁ : TyS := { T₀ with label := some 1 }
 theorem run_id1_cl (a : Nat) (hint : TyS) (tl : Bool) :
     runT (Kc dm) ρ φ tl hint id1Body (SBs selfB d (.el0 Nat a) r)
       = some ((.el0 Nat a, T₁), SB2 selfB d T₀.m (.el0 Nat a) r) := by
-  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
+  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.strictS]
   unfold borrowPlace
   simp only [contentOf_SBs_eq, bind, Option.bind]
   simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
     Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent,
     SState.setHeldTy, SState.setHeldMem, SBs, SB2, xB, T₁]
+  -- the strict borrow: `a` is a `Nat`, `*x`'s type
+  rw [if_pos ⟨a, rfl⟩]
+  dsimp only
+  simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
+  rw [if_pos]
+  exact Attack.lentOk_deref (Kc dm) φ (pos := .bind 0 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, SBs, SPg])
 
 /-- `&*x` in place. -/
 theorem run_id1_in (a : Nat) (hint : TyS) (tl : Bool) :
     runT (Kc dm) ρ φ tl hint id1Body (SPg selfB d (.el0 Nat a) r)
       = some ((.el0 Nat a, T₁), SPg2 selfB d T₀.m (.el0 Nat a) r) := by
-  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
+  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.strictS]
   unfold borrowPlace
   simp only [contentOf_SPg_eq, bind, Option.bind]
   simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
     Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent,
     SState.setHeldTy, SState.setHeldMem, SPg, SPg2, xB, T₁]
+  rw [if_pos ⟨a, rfl⟩]
+  dsimp only
+  simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
+  rw [if_pos]
+  exact Attack.lentOk_deref (Kc dm) φ (pos := .bind 1 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, SBs, SPg])
 
 /-- The caller's frame in place reads label `0` only, below the counter. -/
 theorem SPg_start (c : Sem) : FrameStart (SPg selfB d c r) [0] where
@@ -238,7 +250,9 @@ theorem inc_after (c c₀ : Sem) : FrameRel (fun l => l) (SPg selfB d c₀ r) [0
 theorem readPlace_SBs (a : Nat) :
     ∃ T, readPlace (Kc dm) φ (.deref (.var 0)) true (SBs selfB d (.el0 Nat a) r)
       = some ((.el0 Nat a, T), SBs selfB d (.el0 Nat a) r) :=
-  ⟨{ T₀ with label := none }, by simp [readPlace, contentOf_SBs_eq, bind, Option.bind, Sem.whole]⟩
+  ⟨{ T₀ with label := none }, by
+    have hg : ReadGood (Kc dm).dm.read T₀.m (.el0 Nat a) := Or.inl ⟨a, rfl⟩
+    simp [readPlace, contentOf_SBs_eq, bind, Option.bind, Sem.whole, hg]⟩
 
 theorem setContent_SBs (a b : Nat) :
     setContent (Kc dm) φ (.bind 0 1) [.deref] (.el0 Nat b) (SBs selfB d (.el0 Nat a) r)
@@ -250,11 +264,19 @@ theorem run_inc_cl (a : Nat) (hint : TyS) (tl : Bool) :
     runT (Kc dm) ρ φ tl hint incBody (SBs selfB d (.el0 Nat a) r)
       = some ((.el0 Unit (), .plain TyM.unit), SBs selfB d (.el0 Nat (a + 1)) r) := by
   obtain ⟨T', hT'⟩ := readPlace_SBs (r := r) dm φ selfB d a
-  simp only [incBody, runT, SM.erasedIf, SM.erasedAt, SM.stmtIf, flags_Kc, copy_Kc, contentOf_SBs_eq, hT',
-    Bool.false_eq_true, if_false, bind, Option.bind, pure]
-  rw [Sem.succ_el0, show (TyS.plain TyM.nat).label = none from rfl]
+  simp only [incBody, runT, SM.erasedIf, SM.stmtIf, flags_Kc, copy_Kc, hT',
+    Bool.false_eq_true, if_false, bind, Option.bind, pure, SM.strictS]
+  rw [Sem.succ_el0]
+  -- the strict `S` and the strict write: `a + 1` is a `Nat`, `*x`'s type
+  have hm : Sem.el0 Nat (a + 1) ∈ₛ[(Kc dm).dm.read] TyM.nat := ⟨a + 1, rfl⟩
+  have hT₀ : T₀.m = TyM.nat := rfl
+  simp only [hm, if_true, placeTy, contentOf_SBs_eq, hT₀, labTyOk, TyS.plain, reduceCtorEq, false_implies,
+    implies_true, and_true]
   simp only [assignAt, resolve_SBs, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false, access_SBs,
     setContent_SBs]
+  simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
+  rw [if_pos]
+  all_goals first | rfl | exact Attack.lentOk_deref (Kc dm) φ (pos := .bind 0 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, SBs, SPg])
 
 theorem SP_eq (cd : DeclInfo) (c : Sem) : SP dm ρ φ cd d c r = SPg (selfP dm ρ φ cd) d c r := rfl
 

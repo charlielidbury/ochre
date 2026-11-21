@@ -13,6 +13,7 @@ without its state invariant.
 -/
 
 namespace Ochr.Meaning
+open Classical
 
 section
 variable (K : RunCtx) (Δ' : Nat → TyS) (ρ ρ' : Assignment) (φ : Future)
@@ -83,11 +84,13 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
   | tl, .succ u, hint, s, ha => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
+    refine SM.strictS_congr ?_
     apply SM.bind_congr (runT_congrA false u _ s fun σ h => ha σ (by simp [Term.anyAtom, h]))
     intro a s₁ _; rfl
   | tl, .ref A, hint, s, ha => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
+    refine SM.strictS_congr ?_
     apply SM.bind_congr (runT_congrA false A _ s fun σ h => ha σ (by simp [Term.anyAtom, h]))
     intro a s₁ _; rfl
   | tl, .const n, hint, s, ha => by rw [runT, runT]
@@ -96,7 +99,11 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
   | tl, .unit, hint, s, ha => by rw [runT, runT]
   | tl, .zero, hint, s, ha => by rw [runT, runT]
   | tl, .tt, hint, s, ha => by rw [runT, runT]
-  | tl, .cong f g, hint, s, ha => by rw [runT, runT]
+  | tl, .cong f g, hint, s, ha => by
+    rw [runT, runT]
+    have hg : ∀ s, runT K ρ φ false (.plain .err) g s = runT (KA K Δ') ρ' φ false (.plain .err) g s :=
+      fun s => runT_congrA false g _ s fun σ h => ha σ (by simp [Term.anyAtom, h])
+    exact SM.onCopy_congr (premises_congr_all [g] (fun y hy => by rw [List.mem_singleton.mp hy]; exact hg) s)
   | tl, .val v, hint, s, ha => by
     have hv : ∀ σ, v.anyAtom (· == .abs σ) = true → AgreeA K Δ' ρ ρ' σ := fun σ h => ha σ h
     rw [runT_val_def, runT_val_def, meanV_congrA v hint hv]
@@ -120,6 +127,7 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
   | tl, .ascribe u A, hint, s, ha => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
+    refine SM.strictS_congr ?_
     apply SM.bind_congr (SM.onCopy_congr (runT_congrA false A _ s fun σ h => ha σ (by simp [Term.anyAtom, h])))
     rintro ⟨TA, _⟩ s₁ h1
     have e := SM.onCopy_state h1
@@ -197,7 +205,9 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     · rename_i c _
       apply Option.bind_congr' (runArm_congrA tl arms hint c s₁ fun σ h => ha σ (by simp [Term.anyAtom, h]))
       intro _ _; rfl
-    · rfl
+    · split
+      · exact SM.anyArm_congr fun c => runArm_congrA tl arms hint c s₁ fun σ h => ha σ (by simp [Term.anyAtom, h])
+      · rfl
   | tl, .letIn x u w, hint, s, ha => by
     rw [runT, runT]
     refine SM.erasedIf_congr ?_
@@ -245,14 +255,20 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
         run K ρ φ hint t s = run (KA K Δ') ρ' φ hint t s := fun t hm hint s =>
       runAll_congrA args t hm hint s
         (fun σ h => ha σ (by simp only [Term.anyAtom]; exact anyAtomList_of_mem hm h))
-    by_cases h1 : n = "symm"
-    · subst h1; rw [runT, runT]
-    by_cases h2 : n = "trans"
-    · subst h2; rw [runT, runT]
-    by_cases h3 : n = "rewrite"
-    · subst h3; rw [runT, runT]
-    by_cases h4 : n = "rewriteR"
-    · subst h4; rw [runT, runT]
+    have hprem : ∀ xs : List Term, (∀ x ∈ xs, x ∈ args) →
+        SM.onCopy (xs.foldr (fun t k => runT K ρ φ false (.plain TyM.err) t >>= fun _ => k)
+          (pure ((.proof, .plain (TyM.prop True)) : Res))) s =
+        SM.onCopy (xs.foldr (fun t k => runT (KA K Δ') ρ' φ false (.plain TyM.err) t >>= fun _ => k)
+          (pure ((.proof, .plain (TyM.prop True)) : Res))) s := fun xs hxs =>
+      SM.onCopy_congr (premises_congr_all xs (fun x hx s' => hall x (hxs x hx) _ s') s)
+    by_cases e1 : ∃ h, n = "symm" ∧ args = [h]
+    · obtain ⟨h0, rfl, hargs⟩ := e1; subst hargs; rw [runT, runT]; exact hprem [h0] (by simp)
+    by_cases e2 : ∃ h k, n = "trans" ∧ args = [h, k]
+    · obtain ⟨h0, k0, rfl, hargs⟩ := e2; subst hargs; rw [runT, runT]; exact hprem [h0, k0] (by simp)
+    by_cases e3 : ∃ h u, n = "rewrite" ∧ args = [h, u]
+    · obtain ⟨h0, u0, rfl, hargs⟩ := e3; subst hargs; rw [runT, runT]; exact hprem [h0, u0] (by simp)
+    by_cases e4 : ∃ h u, n = "rewriteR" ∧ args = [h, u]
+    · obtain ⟨h0, u0, rfl, hargs⟩ := e4; subst hargs; rw [runT, runT]; exact hprem [h0, u0] (by simp)
     by_cases hJ : ∃ A a b P h t, n = "J" ∧ args = [A, a, b, P, h, t]
     · obtain ⟨A, a, b, P, h', t, rfl, hargs⟩ := hJ
       have hm : ∀ x, x ∈ [A, a, b, P, h', t] → x ∈ args := fun x hx => by rw [hargs]; exact hx
@@ -283,8 +299,12 @@ theorem runT_congrA : ∀ (tl : Bool) (t : Term) (hint : TyS) (s : SState),
     have hc1 : ∀ u, n = "clone" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inl e1, e2⟩
     have hc2 : ∀ u, n = "peek" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inr (.inl e1), e2⟩
     have hc3 : ∀ u, n = "inplace" → args = [u] → False := fun u e1 e2 => hc ⟨u, .inr (.inr e1), e2⟩
-    rw [runT.eq_42 K ρ φ tl hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3,
-      runT.eq_42 (KA K Δ') ρ' φ tl hint n args h1 h2 h3 h4 hJ' hc1 hc2 hc3]
+    have f1 : ∀ h, n = "symm" → args = [h] → False := fun h0 a b => e1 ⟨h0, a, b⟩
+    have f2 : ∀ h k, n = "trans" → args = [h, k] → False := fun h0 k0 a b => e2 ⟨h0, k0, a, b⟩
+    have f3 : ∀ h u, n = "rewrite" → args = [h, u] → False := fun h0 u0 a b => e3 ⟨h0, u0, a, b⟩
+    have f4 : ∀ h u, n = "rewriteR" → args = [h, u] → False := fun h0 u0 a b => e4 ⟨h0, u0, a, b⟩
+    rw [runT, runT]
+    all_goals first | rfl | exact f1 | exact f2 | exact f3 | exact f4 | exact hJ' | exact hc1 | exact hc2 | exact hc3
   | tl, .fix self hs ds c dec body, hint, s, ha => by
     have hbs : bindsOf K ρ φ s ds = bindsOf (KA K Δ') ρ' φ s ds :=
       runBinds_congrA s (K.D.paramDecls (scopeOf s) ds) ds [] (fun σ h => ha σ (by simp [Term.anyAtom, h]))

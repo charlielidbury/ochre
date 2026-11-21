@@ -102,6 +102,31 @@ def takeArgBorrow (w : Value) : M Unit := do
   | some (_, rest) => setAt p rest
   | none => err s!"internal: borrow {l} is held at {repr p} but cannot be taken from it"
 
+/-- D111: a borrow below the root of `v`. A borrow is a whole position's value (D48: never inside
+data, a sealed program, a closure or a type), so this never holds of a value in Ω; the drops and
+the overwrite assert it. -/
+def Value.borrowBelowRoot : Value → Bool
+  | .borrow _ w => w.hasBorrow
+  | v => v.hasBorrow
+
+mutual
+/-- D111: the loans of `v` outside sealed programs (a sealed fill's text holds its borrow's hole,
+D90): every one is live, its borrow in Ω (the meaning spine's (WF2)). A mark `lent_ℓ` is not a
+loan here. -/
+def Value.outerLoans : Value → List Nat
+  | .loan l => [l]
+  | .succ w | .tRef w | .borrow _ w | .gloan _ w => w.outerLoans
+  | .tEq A a b => A.outerLoans ++ a.outerLoans ++ b.outerLoans
+  | .clo cs _ _ | .tPi cs _ _ => Value.outerLoansList cs
+  | .ind _ _ _ ps fs => Value.outerLoansList ps ++ Value.outerLoansList fs
+  | .tInd _ fs => Value.outerLoansList fs
+  | _ => []
+
+def Value.outerLoansList : List Value → List Nat
+  | [] => []
+  | v :: vs => v.outerLoans ++ Value.outerLoansList vs
+end
+
 def liveLoansIn (env : Env) (v : Value) : List Nat :=
   v.loans.foldl (fun acc l => if !acc.contains l && liveLoan env l then acc ++ [l] else acc) []
 

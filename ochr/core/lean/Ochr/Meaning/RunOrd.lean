@@ -223,27 +223,29 @@ theorem readPlace_ordKeep {p : Place} {copy : Bool} {s s' : SState} {r : Res}
     split at h
     · cases h
     · split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        exact o₁
-      · cases hs : setContent K φ pos steps .moved s₁ with
-        | none => rw [hs] at h; cases h
-        | some y =>
-          obtain ⟨⟨⟩, s₂⟩ := y
-          rw [hs] at h
-          have o₂ := o₁.trans e₁ (setContent_ordKeep K φ hpb hs)
-          have e₂ := e₁.trans (setContent_envLe K φ hs)
-          obtain ⟨hi₂, hsh₂, hpos₂⟩ := setContent_rinv K φ L hs hi₁
-          simp only [Option.some.injEq, Prod.mk.injEq] at h
+      · cases h
+      · split at h
+        · simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl⟩ := h
-          split
-          · rename_i l hlab
-            have hlive : s₂.Live l := by
-              split at hlab
-              · exact live_of_shape (by rw [hpos₂]; exact hpos) (by rw [hsh₂]; exact hlab)
-              · cases hlab
-            exact o₂.trans e₂ (ordKeep_transfer hi₂.2.2 hlive _)
-          · exact o₂
+          exact o₁
+        · cases hs : setContent K φ pos steps .moved s₁ with
+          | none => rw [hs] at h; cases h
+          | some y =>
+            obtain ⟨⟨⟩, s₂⟩ := y
+            rw [hs] at h
+            have o₂ := o₁.trans e₁ (setContent_ordKeep K φ hpb hs)
+            have e₂ := e₁.trans (setContent_envLe K φ hs)
+            obtain ⟨hi₂, hsh₂, hpos₂⟩ := setContent_rinv K φ L hs hi₁
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl⟩ := h
+            split
+            · rename_i l hlab
+              have hlive : s₂.Live l := by
+                split at hlab
+                · exact live_of_shape (by rw [hpos₂]; exact hpos) (by rw [hsh₂]; exact hlab)
+                · cases hlab
+              exact o₂.trans e₂ (ordKeep_transfer hi₂.2.2 hlive _)
+            · exact o₂
 
 theorem borrowPlace_ordKeep {p : Place} {s s' : SState} {r : Res}
     (h : borrowPlace K φ p s = some (r, s')) (hi : RInv L s) : OrdKeep L s s' := by
@@ -624,7 +626,7 @@ theorem callOfL_ordKeep.{v} (Lv : Lvl.{v}) {C : Type v} (t : Tel Lv.Code PUnit C
         exact Nat.le_refl _
       have hcoverE : ∀ l ∈ (((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).filterMap id,
           l ∈ (((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).zip
-            ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.err)).filterMap
+            ((((args.zip (telRefsL Lv t (args.map (·.1)))).filter (·.2)).map (·.1.2.label)).map fun _ => Sem.moved)).filterMap
             fun (y : Option Nat × Sem) => y.1.map (·, y.2)).map (·.1) := by
         have hfx : (fun (y : Option Nat × Sem) => y.1.map (·, y.2)) = (fun (l?, f) => l?.map (·, f)) :=
           funext fun ⟨_, _⟩ => rfl
