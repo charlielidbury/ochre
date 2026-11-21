@@ -780,6 +780,27 @@ started with (the audit's A5), as `run`'s `.id` clause reads it. -/
 noncomputable def refObs (reps : List Place) (ws : List Sem) (hint : TyS) (t : Term) (s : SState) : Option (List Sem) :=
   (run K ρ φ hint t s).map fun (r, s') => observation φ reps ws s.positions r s'
 
+/-- **What each re-pointed binding points to, on the reference** (main's D113, [Obs-ref]): after the
+side's run, each re-pointed binding's content (what it points to as the side left it) is moved out
+and held as a temporary, and the written value put in its place; then every live borrow ends (so a
+reborrow of part of a moved-out content fills it), and each held content is read. The checker's
+`observe` returns these as its third component and `idType` compares them (`Eq(T, c, c')`).
+Defined here for the restated `observe_step_stmt`; the model's own observation (`Run.observation`,
+which `run`'s `.id` clause compares) does not yet read them: see `idType_step_stmt`. -/
+noncomputable def refTargetsOf (reps : List Place) (ws : List Sem) (s : SState) : List Sem :=
+  let (s, cs) := (reps.zipIdx).foldl (fun (sc : SState × List Pos) (q, i) =>
+    match resolve sc.1 q, ws[i]? with
+    | some (pos, []), some w =>
+      let s₁ := (sc.1.setAt pos fun _ => w).pushTemp (sc.1.valAt pos)
+      (s₁, sc.2 ++ [Pos.temp s₁.topIdx (((s₁.env.getLast?).map (·.temps.length)).getD 1 - 1)])
+    | _, _ => sc) (s, [])
+  let s := s.liveLabels.foldl SState.endLabel s
+  cs.map fun p => s.valAt p φ
+
+/-- `refTargetsOf` after the side's run, if it succeeds. -/
+noncomputable def refTargets (reps : List Place) (ws : List Sem) (hint : TyS) (t : Term) (s : SState) : Option (List Sem) :=
+  (run K ρ φ hint t s).map fun (_, s') => refTargetsOf φ reps ws s'
+
 /-! ### Helpers from `Steps/Eval.lean` -/
 
 /-- The type the context gives, as a `TyM` (`err` when none). -/
@@ -1438,18 +1459,28 @@ survive, D23, so the core is not) and the reference state is untouched. The valu
 returns are read under an assignment extended at the unknowns created inside, among them the
 fresh values [Obs-ref] writes through the re-pointed bindings. -/
 
-/-- `observe` (a side on a private copy, the fresh values `refs` written through the re-pointed
-bindings ([Obs-ref]), every borrow ended, the result and the owners read), from a related state:
-the reference's side run does not fail, and the checker's result and each observed owner mean
-their components of the reference observation, for the written values the fresh unknowns mean.
-The side is run at the hint `A`, as the checker runs it. -/
+/-- `observe` (a side on a private copy; each re-pointed binding's content moved out as one more
+component and the fresh value of `refs` put in its place ([Obs-ref], main's D113); every borrow
+ended; the result, the owners and the components read), from a related state: the reference's side
+run does not fail, and the checker's result, each observed owner and each component mean their
+counterparts of the reference observation (`refObs`, `refTargets`), for the written values the fresh
+unknowns mean. The side is run at the hint `A`, as the checker runs it.
+
+RESTATED BY D113 (2026-11-21, the merge of main into the proof line). Before main's D113 [Obs-ref]
+wrote the fresh value THROUGH each re-pointed binding (`*y := σ_y`, an [Access] and a drop of what
+the side left in the target, unobserved) and `observe` returned the result and the owners. Since
+D113 the binding's content `c` (what it points to as the side left it) is taken out of the borrow
+without an access and held as a temporary, `σ_y` is put in its place (`borrow_k σ_y`), the ends fill
+`c`'s holes, and `observe` returns a third component, the `c`s; `idType` compares them. The
+conclusion gains the components (`cs`, against `refTargets`, each at its binding's content type
+`Tσ`, `refs`' third entry). NOT PROVED (like the statement before it). -/
 def observe_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (t : Term) (A : Value) (W : List Pos)
-    (refs : List (Place × Value × Value)) (r : Value) (ws : List Value)
+    (refs : List (Place × Value × Value)) (r : Value) (ws cs : List Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hD : DecTab K.D st')
-    (bh : Nat) (h : Runs (Ochr.observe fuel typed t A W refs) st bh (r, ws) st'),
+    (bh : Nat) (h : Runs (Ochr.observe fuel typed t A W refs) st bh (r, ws, cs) st'),
     st'.env = st.env ∧ st.absTy.size ≤ st'.absTy.size ∧ st.nextLoan ≤ st'.nextLoan ∧
     ∀ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
       TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' →
@@ -1457,11 +1488,16 @@ def observe_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
       -- same `Id`, which starts from it (docs/31 D74: as first stated nothing was said of it)
       (Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' ∧ CtxOk { K with Δ := Δ' } ρ' st' ∧
         Rel { K with Δ := Δ' } ρ' φ π st' s) ∧
-      ∃ o, refObs K ρ' φ (refs.map (·.1)) (refs.map fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2.1)
+      (∃ o, refObs K ρ' φ (refs.map (·.1)) (refs.map fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2.1)
           (Value.tyS K.dm K.M K.Γ ρ A) t s = some o ∧
         o[0]? = some (meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Value.tyS K.dm K.M K.Γ ρ A) r) ∧
         ∀ (i j : Nat) (p : Pos), W[i]? = some p → s.positions[j]? = some p →
-          ws[i]?.map (meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Env.hintAt K.dm K.M K.Γ ρ st.env p)) = o.tail[j]?
+          ws[i]?.map (meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Env.hintAt K.dm K.M K.Γ ρ st.env p)) = o.tail[j]?) ∧
+      -- D113: what each re-pointed binding points to, at its content type
+      ∃ c, refTargets K ρ' φ (refs.map (·.1)) (refs.map fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2.1)
+          (Value.tyS K.dm K.M K.Γ ρ A) t s = some c ∧ cs.length = refs.length ∧
+        ∀ (i : Nat) (q : Place) (σ Tσ x : Value), refs[i]? = some (q, σ, Tσ) → cs[i]? = some x →
+          c[i]? = some (meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Value.tyS K.dm K.M K.Γ ρ Tσ) x)
 
 /-- Footprint coverage (docs/18 "Footprint coverage", the third of the five lemmas), from a
 related state: a position that was there when the sides started and is outside the footprint of
@@ -1494,7 +1530,20 @@ reference's is.
 
 As first stated the last conjunct read `(run … = some (r, s') ∧ ⟦P⟧ true) ↔ ⟦r⟧ true` under
 `∃ r s'` (`∧` binds tighter than `↔`), which any `r` that is not the run's result satisfies: it
-said nothing (`Regress/IdUnitWrite.old_stmt_vacuous`). -/
+said nothing (`Regress/IdUnitWrite.old_stmt_vacuous`).
+
+FALSE SINCE MAIN'S D113 (found at the merge of main into the proof line, 2026-11-21; kept as it
+was, as a finding). D113 makes the checker's conjunction also compare what each re-pointed binding
+points to (`Eq(T, c, c')`, `observe`'s third component, `refTargets` on the reference). The model's
+`Id` (`run`'s `.id` clause, `Run.observation`) still compares only the result and the positions,
+and loses what a side left in a re-pointed binding's target exactly as the checker did before D113
+(`observation` puts the written value in the binding's place, so the content is never read). At
+`Hide`'s sides (`y := &x` against `y := &x; *y := 5`, main's `Equality.ObsRef`) the reference's `Id`
+is true and the checker's conjunction contains `Eq(Nat, 0, 5)`, so the last conjunct (`r` true →
+`P` true) is false, and with it the statement. Since a hypothesis of such an `Id` type is used
+through the conjunction, the model must follow: `Run.observation` reads the moved-out contents
+(as `refTargetsOf` does) and the `.id` clause compares them. That is a change to the model's
+definition of `Id`, for the model lane. -/
 def idType_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (A t u : Term) (P : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
