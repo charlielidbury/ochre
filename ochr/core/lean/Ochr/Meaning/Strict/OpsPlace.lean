@@ -1,6 +1,8 @@
 import Ochr.Meaning.Strict.OpsCall
 import Ochr.Meaning.RunCongr
 import Ochr.Meaning.MonoHolders
+import Ochr.Meaning.Strict.WriteMoved
+import Ochr.Meaning.Strict.Struct
 
 /-!
 # The place operations keep the invariant: holder transfers, a `let`'s binding and drop, reads,
@@ -17,11 +19,12 @@ ADDED HYPOTHESES, each with its reason in the docstring: `LoU` of the label in f
 (`sgood_pushBindShaped`, `assignAt_sgood`: the binding or root becomes its holder; `runT_rinv` gives it of
 every result); `readPlace_fund` at `[]`/`[*]` only (a field path is `readPlace_fund_all`'s).
 
-GUESSES (sorry; a write at a FIELD path): `setContent_field_moved_sgood` (a move out of a field; FALSE
-as stated, kernel-checked: `Strict/FieldWriteCE`), `borrowPlace_field_sgood` (a field lent, then the
-invalidation and the strict test), `setContent_field_sgood` (a field assigned, the same). Every write of
-`⊥` at a field path (a read's move, the join's drop, D112's invalidation, so `invalidate_sgood` and
-with it the root cases of `borrow_fund`/`assign_tail_fund`) goes through the first.
+A write at a FIELD path (the orchestrator's write rule, 2026-11-21): `setContent_field_moved_sgood` (a
+move out of a field; the run's test: the write is defined at every typed future; the model lemma
+`WriteMoved.omem_updAt_moved`, which the join's drop and D112's invalidation share), and
+`borrowPlace_field_sgood`/`setContent_field_sgood` (a field lent or assigned: the state between the
+write and the test keeps the invariant's structural part, `Struct.SStruct`, the invalidation keeps it,
+and the test `lentOk` at a field path is `StateOk`, the rest).
 -/
 
 namespace Ochr.Meaning.Strict
@@ -764,23 +767,42 @@ theorem readPlace_fund (p : Place) (hp : p.steps.2 = [] ∨ p.steps.2 = [.deref]
       simp only [hlab] at hlou ⊢
       exact ⟨hgoodT _ rfl, (fun l hl => by cases hl), hlou, hs₂⟩
 
-/-- **GUESS, FALSE AS STATED (kernel-checked: `FieldWriteCE.not_setContent_field_moved_sgood`, and
-through the read's move `FieldWriteCE.not_fund_all`): moving out a part at a FIELD path keeps the
-invariant.** `setContent … steps ⊥` writes `Sem.updAt … steps (old φ')` at EVERY future and `err` where
-that update fails; the run checks only the state's typed future. A position reading a live label at a
-strict prefix of `steps` is, at a typed future giving that label another open member (`⊥`, another
-number), a value the path does not enter, so it reads `err` there, no open member of anything; `SGood`
-does not tie a position's reads of live labels to the sites [Access] ends (`SState.lent`), so the
-[Access] before the write need not end that label. Where the update succeeds at every typed future the
-dependent-values part is expected to hold (a moved field is `OField.moved`; a later field keeps its
-completion, `⊥` being below anything in `MovedOfList`), modulo constructor values of a declaration
-named `Nat` (which `Sem.updAt` steps into as numbers, rebuilding at `natRec`). Repairs: the write
-`getD .err` (`⊥` where the path is absent), a strict test that the update succeeds at every typed
-future, or an invariant in `SGood` tying reads of live labels to lent sites. -/
+/-- `⊥` written into a value with no data: the path enters nothing, so where defined it wrote the
+whole value. -/
+theorem updAt_moved_noData {U : TyS} : ∀ (steps : List Step) {x y : Sem}, NoData x →
+    Sem.updAt K.dm K.Γ U (fun _ => .moved) steps x = some y → y = .moved
+  | [], x, y, _, h => by rw [Sem.updAt.eq_def] at h; simp only [Option.some.injEq] at h; exact h.symm
+  | .deref :: sts, x, y, hx, h => by
+    rw [Sem.updAt.eq_def] at h; exact updAt_moved_noData sts hx h
+  | .proj _ :: sts, x, y, hx, h => by
+    rcases hx with ⟨T, rfl⟩ | rfl <;> (rw [Sem.updAt.eq_def] at h; simp [Sem.asNat, Sem.as] at h)
+  | .field _ :: sts, x, y, hx, h => by
+    rcases hx with ⟨T, rfl⟩ | rfl <;> (rw [Sem.updAt.eq_def] at h; simp [Sem.asNat, Sem.as] at h)
+
+/-- **Moving out a part at a FIELD path keeps the invariant** (the orchestrator's write rule,
+2026-11-21): the run writes only where the path update is DEFINED at every typed future
+(`setContent`'s test, `setContent_defined`), and there `⊥` at a path of an open member leaves an open
+member (`WriteMoved.omem_updAt_moved`); a value with no data is written whole (`updAt_moved_noData`).
+Where the test fails the run fails: a position reading a live label along the path
+(`Strict/FieldWriteCE`), excluded on states related to the checker's by the simulation (`OPEN.md`). -/
 theorem setContent_field_moved_sgood {s s' : SState} (hs : SGood K.dm K.Γ φ s) {f i : Nat} {steps : List Step}
-    (hst : steps ≠ [] ∧ steps ≠ [.deref]) (h : setContent K φ (.bind f i) steps .moved s = some (⟨⟩, s')) :
+    (hp : Pos.bind f i ∈ s.positions) (h : setContent K φ (.bind f i) steps .moved s = some (⟨⟩, s')) :
     SGood K.dm K.Γ φ s' := by
-  sorry
+  have hdef := setContent_defined K φ h
+  rw [setContent_eq K φ h]
+  have key : ∀ ψ, TypedF K.dm K.Γ φ s ψ → ∃ y, Sem.updAt K.dm K.Γ (s.tyAt (.bind f i)) (fun _ => .moved) steps
+      (s.valAt (.bind f i) ψ) = some y := fun ψ hψ => Option.isSome_iff_exists.mp (hdef ψ hψ)
+  refine sgood_setAt_comp (fun x => (Sem.updAt K.dm K.Γ (s.tyAt (.bind f i)) (fun _ => .moved) steps x).getD .err)
+    hs hp (fun ψ hψ f' i' e => ?_) (fun ψ hψ l hl => ?_)
+  · obtain ⟨y, hy⟩ := key ψ hψ
+    simp only [hy, Option.getD_some]
+    cases e
+    rcases hs.bind ψ hψ f i hp with hm | ⟨he, hnd⟩
+    · exact .inl (omem_updAt_moved steps hm hy)
+    · rw [updAt_moved_noData steps hnd hy]; exact .inl (.moved _)
+  · obtain ⟨y, hy⟩ := key ψ hψ
+    simp only [hy, Option.getD_some]
+    exact omem_updAt_moved steps (hs.holder ψ hψ _ l hl) hy
 
 /-- **A read of a place at any path**: the value read is good at the type the read gives it by the
 strict read test (`ReadGood`: a member, or `⋆`/a type value at `err`); the state is good (a move at a
@@ -804,8 +826,10 @@ theorem readPlace_fund_all (p : Place) (copy : Bool) :
       | bind f i => exact ⟨f, i, rfl⟩
       | temp => exact absurd this (by simp [IsTemp])
     have hs₁ := access_sgood hs (.bind f i) (dataHit steps)
+    have hp₁ : Pos.bind f i ∈ (s.access (.bind f i) (dataHit steps)).positions := by
+      rw [access_positions]; exact resolve_mem hres
     dsimp only at h
-    generalize s.access (Pos.bind f i) (dataHit steps) = s₁ at h hf hT hs₁
+    generalize s.access (Pos.bind f i) (dataHit steps) = s₁ at h hf hT hs₁ hp₁
     have hne : steps.isEmpty = false := by cases steps with | nil => exact absurd rfl hst.1 | cons _ _ => rfl
     obtain ⟨-, h⟩ := open Classical in ite_not_none_some h
     obtain ⟨hrg, h⟩ := open Classical in ite_not_none_some h
@@ -817,7 +841,7 @@ theorem readPlace_fund_all (p : Place) (copy : Bool) :
       obtain ⟨⟨⟨⟩, s₂⟩, h2, h⟩ := h
       simp only [hne, Bool.false_eq_true, if_false, Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
-      exact ⟨hg' _, (fun l hl => by cases hl), hlou, setContent_field_moved_sgood hs₁ hst h2⟩
+      exact ⟨hg' _, (fun l hl => by cases hl), hlou, setContent_field_moved_sgood hs₁ hp₁ h2⟩
 
 /-! ## Borrows -/
 
@@ -961,23 +985,111 @@ theorem sgood_borrow_root {s₁ : SState} (hs₁ : SGood K.dm K.Γ φ s₁) {f i
       rw [hSty, hSHT, if_neg hl'l]; exact hs₁.holderTy f' i' l' hsh3
     · exact absurd rfl (hnb f' i')
 
-/-- **GUESS (the dependent-values area): a borrow of a FIELD, then D112's invalidation, keeps the
-invariant where the strict test below a root passes.** `&p.f` makes the lender's FIELD read the fresh
-label's final content (`Sem.updAt … (φ' l)`); the run then invalidates (`invalidate`: [Access] and `⊥`
-at the places `Decisions.invalidated` gives) and tests that the lender's position holds an open member
-of its type at every typed future (`lentOk`, `Run.PosOk`), which is the bind and holder clauses AT THAT
-POSITION. Not proved: the state between the borrow and the test is not good (the lender's later
-dependent fields), so the invalidation's ends and writes are not covered by the lemmas for good states,
-and the test speaks of the lender's position only, while (a) an end inside the invalidation of a label
-the lender holds passes the lender's content (reading the fresh label) to that label's lenders, and (b)
-a `⊥` written at a field path of ANOTHER position is `err` at the typed futures where that path is
-absent (`setContent_field_moved_sgood`, false as stated: `Strict/FieldWriteCE`). With no places
-invalidated it holds (the lender's clauses are the test's; the rest read no fresh label). -/
+/-- **A borrow at any path leaves the structural part of the invariant** (`Struct.SStruct`): the fresh
+label is parked in a new temporary, records the content's type and the content (a member: `hm`, the
+strict test), and is not any old holder's; the lender's new meaning `G` is not read here. -/
+theorem sstruct_borrow_park {s₁ : SState} (hs₁ : SGood K.dm K.Γ φ s₁) {pos : Pos} (hp : pos ∈ s₁.positions)
+    (G : SVal) {v : Sem} {Tm : TyM} (hv : v ∈ₛ[K.dm.read] Tm) (xs : List Site)
+    (hacyc : SState.RInv (fun _ => True) (((((s₁.freshLoan.2.setAt pos G).pushTempShaped
+      (fun _ => v) s₁.nextLoan).setLent s₁.nextLoan xs).setHeldTy s₁.nextLoan Tm).setHeldMem s₁.nextLoan v))
+    (hfresh : (((((s₁.freshLoan.2.setAt pos G).pushTempShaped
+      (fun _ => v) s₁.nextLoan).setLent s₁.nextLoan xs).setHeldTy s₁.nextLoan Tm).setHeldMem s₁.nextLoan v).ReadsBelow) :
+    SStruct K.dm (((((s₁.freshLoan.2.setAt pos G).pushTempShaped
+      (fun _ => v) s₁.nextLoan).setLent s₁.nextLoan xs).setHeldTy s₁.nextLoan Tm).setHeldMem s₁.nextLoan v) := by
+  have hsa₁ := hs₁.acyc.2.2
+  have hlnew : s₁.nextLoan ∉ s₁.liveLabels := fun h => Nat.lt_irrefl _ (hs₁.live_lt h)
+  have hF : s₁.freshLoan.2 = { s₁ with nextLoan := s₁.nextLoan + 1 } := rfl
+  rw [hF] at hacyc hfresh ⊢
+  generalize hl : s₁.nextLoan = l at *
+  generalize hS₂ : ({ s₁ with nextLoan := l + 1 } : SState) = S₂ at hacyc hfresh ⊢
+  have h2pos : S₂.positions = s₁.positions := by rw [← hS₂]; rfl
+  have h2ty : S₂.tyAt = s₁.tyAt := by rw [← hS₂]; rfl
+  have h2sh : S₂.shape = s₁.shape := by rw [← hS₂]
+  have h2HT : S₂.heldTy = s₁.heldTy := by rw [← hS₂]
+  have h2HM : S₂.heldMem = s₁.heldMem := by rw [← hS₂]
+  have h2nl : S₂.nextLoan = l + 1 := by rw [← hS₂]
+  generalize hS₃ : S₂.setAt pos G = S₃ at hacyc hfresh ⊢
+  have h3ty : ∀ q, S₃.tyAt q = s₁.tyAt q := by intro q; rw [← hS₃, tyAt_setAt, h2ty]
+  have h3sh : S₃.shape = s₁.shape := by rw [← hS₃, SState.shape_setAt, h2sh]
+  have h3pos : S₃.positions = s₁.positions := by rw [← hS₃, SState.positions_setAt, h2pos]
+  have h3HT : S₃.heldTy = s₁.heldTy := by rw [← hS₃, heldTy_setAt, h2HT]
+  have h3HM : S₃.heldMem = s₁.heldMem := by rw [← hS₃, heldMem_setAt, h2HM]
+  have h3env : S₃.env ≠ [] := env_ne_of_mem (p := pos) (by rw [h3pos]; exact hp)
+  have hsa₃ : SState.ShapeAt S₃ := by
+    intro q x hq
+    rw [h3sh] at hq
+    obtain ⟨h1, h2⟩ := hsa₁ q x hq
+    refine ⟨by rw [h3pos]; exact h1, ?_⟩
+    rw [← hS₃, nextLoan_setAt, h2nl]; omega
+  have h3live : ∀ y, y ∈ S₃.liveLabels ↔ y ∈ s₁.liveLabels := by
+    intro y; unfold SState.liveLabels; rw [h3pos, h3sh]
+  generalize hS : ((((S₃.pushTempShaped (fun _ => v) l).setLent l xs).setHeldTy l Tm).setHeldMem l v) = S at hacyc hfresh ⊢
+  have hSty : ∀ q, S.tyAt q = s₁.tyAt q := by intro q; rw [← hS]; simp [tyAt_pushTempShaped, h3ty]
+  have hSsh : S.shape = (S₃.pushTempShaped (fun _ => v) l).shape := by rw [← hS]; rfl
+  have hSHT : ∀ y, S.heldTy y = if y = l then Tm else s₁.heldTy y := by
+    intro y; rw [← hS]; simp only [SState.setHeldMem_heldTy]; show (if y = l then Tm else _) = _
+    rw [show ((S₃.pushTempShaped (fun _ => v) l).setLent l xs).heldTy = (S₃.pushTempShaped (fun _ => v) l).heldTy
+      from rfl, heldTy_pushTempShaped, h3HT]
+  have hSHM : ∀ y, S.heldMem y = if y = l then v else s₁.heldMem y := by
+    intro y; rw [← hS]; show (if y = l then v else _) = _
+    rw [SState.setHeldTy_heldMem, show ((S₃.pushTempShaped (fun _ => v) l).setLent l xs).heldMem =
+      (S₃.pushTempShaped (fun _ => v) l).heldMem from rfl, heldMem_pushTempShaped, h3HM]
+  have hSlive : ∀ y, y ∈ S.liveLabels → y ∈ s₁.liveLabels ∨ y = l := by
+    intro y hy
+    have e : y ∈ S.liveLabels ↔ y ∈ (S₃.pushTempShaped (fun _ => v) l).liveLabels := by
+      rw [← hS]; rfl
+    rcases SState.live_pushTempShaped_new hsa₃ (e.1 hy) with h | h
+    · exact .inl ((h3live y).1 h)
+    · exact .inr h
+  refine ⟨fun y hy => ?_, fun f' i' l' hl' => ?_, hacyc, hfresh⟩
+  · rw [hSHM, hSHT]
+    rcases hSlive y hy with h | rfl
+    · have hyl : y ≠ l := fun e => hlnew (e ▸ h)
+      rw [if_neg hyl, if_neg hyl]; exact hs₁.held y h
+    · rw [if_pos rfl, if_pos rfl]; exact hv
+  · rw [hSsh] at hl'
+    rcases pushTempShaped_holder hsa₃ h3env _ l hl' with ⟨hq3, hsh3, -⟩ | ⟨-, hnb, -⟩
+    · rw [h3sh] at hsh3
+      have hl'l : l' ≠ l := fun e => hlnew (e ▸ live_of_shape (h3pos ▸ hq3) hsh3)
+      rw [hSty, hSHT, if_neg hl'l]; exact hs₁.holderTy f' i' l' hsh3
+    · exact absurd rfl (hnb f' i')
+
+/-- **A borrow of a FIELD, then D112's invalidation, keeps the invariant where the strict test passes**
+(the orchestrator's write rule, 2026-11-21). `&p.f` makes the lender's FIELD read the fresh label's
+final content; the state between the borrow and the test need not be good (a later dependent field of
+the lender), but it keeps the invariant's structural part (`sstruct_borrow_park`), the invalidation
+keeps that (`SStruct.invalidate`), and the run's test `lentOk` at a field path is `StateOk`, the value
+clauses at every typed future (`sgood_of_stateOk`). -/
 theorem borrowPlace_field_sgood {p : Place} {s s₁ : SState} {r : Res} (hs : SGood K.dm K.Γ φ s)
     (hfield : p.steps.2 ≠ [] ∧ p.steps.2 ≠ [.deref]) (h : borrowPlace K φ p s = some (r, s₁))
     (hm : r.1 ∈ₛ[K.dm.read] r.2.m) (hok : lentOk K φ p (invalidate K φ p s₁)) :
     SGood K.dm K.Γ φ (invalidate K φ p s₁) := by
-  sorry
+  have hrinv := (borrowPlace_rinv K φ (fun _ => True) h hs.acyc).1
+  have hfr : s₁.ReadsBelow := by obtain ⟨v₀, T₀⟩ := r; exact borrowPlace_readsBelow K φ p s hs.fresh h
+  have hE : EnvLe s s₁ := borrowPlace_envLe K φ h
+  have hb := h
+  unfold borrowPlace at hb
+  simp only [Bind.bind, Option.bind_eq_some_iff] at hb
+  obtain ⟨⟨⟨v, T, pos, steps⟩, s₂⟩, h1, hb⟩ := hb
+  obtain ⟨T', hres, rfl, -, -⟩ := contentOf_view h1
+  have hsteps : steps = p.steps.2 := by
+    unfold resolve at hres; cases hv : s.varPos p.steps.1 <;> simp_all
+  dsimp only at hb
+  by_cases hw : v.whole
+  rotate_left
+  · rw [if_pos hw] at hb; cases hb
+  rw [if_neg (fun hn => hn hw)] at hb
+  simp only [Option.some.injEq, Prod.mk.injEq] at hb
+  obtain ⟨rfl, rfl⟩ := hb
+  have hS₁ : SStruct K.dm _ := sstruct_borrow_park (access_sgood hs pos (dataHit steps))
+    (by rw [access_positions]; exact resolve_mem hres) _ hm _ hrinv hfr
+  have hS := hS₁.invalidate (φ := φ) p
+  have hr : resolve (invalidate K φ p _) p = some (pos, steps) :=
+    (resolve_envLe (hE.trans (invalidate_props K φ (fun _ => True) p hrinv).2.1) p).trans hres
+  unfold lentOk at hok; rw [hr] at hok
+  rcases hok with h0 | hok
+  · exact absurd (hsteps ▸ h0) hfield.1
+  · exact sgood_of_stateOk hS hok
 
 /-- **A borrow's strict content test**: the result is a member whose fresh label records its type and
 the content; at a root or through `*` the state is good (`sgood_borrow_root`). -/
@@ -1146,7 +1258,7 @@ theorem invalidateOne_sgood {s : SState} (hs : SGood K.dm K.Γ φ s) (q : Place)
         simp only [Option.some.injEq, Prod.mk.injEq] at hsc
         rw [← hsc.2]
         exact sgood_setAt_pmem hs₁ hp₁ (fun _ _ _ => .moved _) (fun _ _ => .moved _)
-      · exact setContent_field_moved_sgood hs₁ ⟨fun e => hst (.inl e), fun e => hst (.inr e)⟩ hsc
+      · exact setContent_field_moved_sgood hs₁ hp₁ hsc
 
 theorem invalidate_sgood (p : Place) {s : SState} (hs : SGood K.dm K.Γ φ s) :
     SGood K.dm K.Γ φ (invalidate K φ p s) := by
@@ -1346,21 +1458,27 @@ theorem sgood_hold {s : SState} (hs : SGood K.dm K.Γ φ s) {f i : Nat} (hpos : 
     · rename_i hq; rw [hq]; simp only [Option.some.injEq] at hl'; subst hl'; exact hTl.symm
     · exact hs.holderTy f' i' l' (t1sh _ l' hl').1
 
-/-- **GUESS (the dependent-values area): an assignment to a FIELD, then D112's invalidation, keeps the
-invariant where the strict test below a root passes.** `p.f := v` (a path other than `[]`/`[*]`)
-rebuilds a constructor value with that field `v`, a member of the type the read of `p.f` gives (the
-strict `.assign` test, `placeTy`); the run then invalidates (`invalidate`) and tests that the written
-position holds an open member of its type at every typed future (`lentOk`, `Run.PosOk`), which is the
-bind and holder clauses AT THAT POSITION. Not proved, for the reasons `borrowPlace_field_sgood` gives
-(the state between the write and the test is not good; the invalidation's ends and its `⊥` writes at
-OTHER positions are not covered by the test: `Strict/FieldWriteCE`). -/
+/-- **An assignment to a FIELD, then D112's invalidation, keeps the invariant where the strict test
+passes** (the orchestrator's write rule, 2026-11-21). `p.f := v` (a path other than `[]`/`[*]`) writes
+`v` at the path; the state between the write and the test need not be good (a later dependent field),
+but the write and the invalidation keep the structural part (`SStruct.setContent`,
+`SStruct.invalidate`), and the run's test `lentOk` at a field path is `StateOk` (`sgood_of_stateOk`).
+The value's membership (`hv`) is not used: the test reads the written position whole. -/
 theorem setContent_field_sgood {s s₁ : SState} (hs : SGood K.dm K.Γ φ s) {p : Place} {f i : Nat}
     {steps : List Step} (hres : resolve s p = some (.bind f i, steps)) (hst : steps ≠ [] ∧ steps ≠ [.deref])
-    {v : Sem} (hv : v ∈ₛ[K.dm.read] (placeTy K φ p s).m)
+    {v : Sem} (_hv : v ∈ₛ[K.dm.read] (placeTy K φ p s).m)
     (h : setContent K φ (.bind f i) steps v (s.access (.bind f i) (dataHit steps)) = some (⟨⟩, s₁))
     (hok : lentOk K φ p (invalidate K φ p s₁)) :
     SGood K.dm K.Γ φ (invalidate K φ p s₁) := by
-  sorry
+  have hS₁ : SStruct K.dm s₁ := (hs.struct.access _ _).setContent h
+  have hS := hS₁.invalidate (φ := φ) p
+  have hE : EnvLe s (invalidate K φ p s₁) := (envLe_access s _ _).trans
+    ((setContent_envLe K φ h).trans (invalidate_props K φ (fun _ => True) p hS₁.acyc).2.1)
+  have hr : resolve (invalidate K φ p s₁) p = some (.bind f i, steps) := (resolve_envLe hE p).trans hres
+  unfold lentOk at hok; rw [hr] at hok
+  rcases hok with h0 | hok
+  · exact absurd h0 hst.1
+  · exact sgood_of_stateOk hS hok
 
 /-- The type of a place at a root or through `*`: its binding's stored type. -/
 theorem placeTy_root {s : SState} {p : Place} {f i : Nat} {steps : List Step}

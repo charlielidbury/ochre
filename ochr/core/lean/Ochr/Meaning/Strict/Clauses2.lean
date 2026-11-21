@@ -62,8 +62,8 @@ theorem heldSame_dropAt (q : Place) (pos : Pos) (steps : List Step) (s : SState)
     split
     · exact heldSame_refl _
     · split
-      · exact heldSame_refl _
       · exact (heldSame_access _ _ _).trans (heldSame_setAt _ _ _)
+      · exact heldSame_refl _
 
 theorem heldSame_joinDrop (entry : List Place) (t : Term) (s : SState) : HeldSame s (joinDrop K φ entry t s) := by
   unfold joinDrop

@@ -122,6 +122,36 @@ theorem sgood_setAt_const {s : SState} {f i : Nat} {v : Sem} (hs : SGood dm Γ �
   · exact SState.setAt_rinv hs.acyc _ _ (fun _ _ _ => rfl) (fun _ _ _ _ _ => rfl)
   · exact SState.readsBelow_setAt hs.fresh _ _ (fun l ⟨_, _, h⟩ => absurd rfl h)
 
+/-- **A position rewritten pointwise** (`fun φ' => g (old φ')`: a write at a path, `setContent`) keeps
+the invariant where, at every typed future, the new value is good at the position's types. -/
+theorem sgood_setAt_comp {s : SState} {p : Pos} (g : Sem → Sem) (hs : SGood dm Γ φ s) (hp : p ∈ s.positions)
+    (hb : ∀ ψ, TypedF dm Γ φ s ψ → ∀ f i, p = .bind f i → GoodVal dm Γ (g (s.valAt p ψ)) (s.tyAt p).m)
+    (hh : ∀ ψ, TypedF dm Γ φ s ψ → ∀ l, s.shape p = some l → PMem dm Γ (g (s.valAt p ψ)) (s.heldTy l)) :
+    SGood dm Γ φ (s.setAt p fun φ' => g (s.valAt p φ')) := by
+  have hval : ∀ q ψ, (s.setAt p fun φ' => g (s.valAt p φ')).valAt q ψ =
+      if q = p then g (s.valAt p ψ) else s.valAt q ψ := by
+    intro q ψ; split
+    · rename_i hq; subst hq; rw [valAt_setAt_self s _ _ hp]
+    · rename_i hq; rw [SState.valAt_setAt_ne s _ _ q (Ne.symm hq)]
+  refine ⟨fun ψ hψ f' i' hpi => ?_, fun ψ hψ q l hl => ?_, ?_, fun f' i' l hl => ?_, ?_, ?_⟩
+  · rw [typedF_setAt] at hψ
+    show GoodVal _ _ ((s.setAt _ _).valAt _ ψ) ((s.setAt _ _).tyAt _).m
+    rw [hval, tyAt_setAt]
+    split
+    · rename_i hq; rw [hq]; exact hb ψ hψ f' i' hq.symm
+    · exact hs.bind ψ hψ f' i' (by rwa [SState.positions_setAt] at hpi)
+  · rw [typedF_setAt] at hψ
+    rw [SState.shape_setAt] at hl
+    rw [hval, heldTy_setAt]
+    split
+    · rename_i hq; subst hq; exact hh ψ hψ l hl
+    · exact hs.holder ψ hψ q l hl
+  · rw [liveLabels_setAt, heldTy_setAt, heldMem_setAt]; exact hs.held
+  · rw [SState.shape_setAt] at hl; rw [tyAt_setAt, heldTy_setAt]; exact hs.holderTy f' i' l hl
+  · exact SState.setAt_rinv hs.acyc p _ ((hs.acyc.1 p).comp g)
+      (fun x hx => (hs.acyc.2.1 p x (hs.acyc.2.2 p x hx).1 hx).comp g)
+  · exact SState.readsBelow_setAt hs.fresh _ _ (fun l h => hs.fresh p l (SVal.dependsOn_comp h))
+
 /-- **A position written with a constant that is an open member of its types** (a member, or
 `⊥`: a write of a member, a move out of a whole position) keeps the invariant: at a binding the value
 is an open member of its stored type, at a holder of its label's content type. -/

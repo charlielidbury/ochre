@@ -113,7 +113,7 @@ theorem sgood_dropAt_write {s : SState} (hs : SGood K.dm K.Γ φ s) (q : Place) 
       · have hsc : setContent K φ (.bind f i) steps .moved s' = some (⟨⟩, s'.setAt (.bind f i) fun φ' =>
             (Sem.updAt K.dm K.Γ (s'.tyAt (.bind f i)) (fun _ => .moved) steps (s'.valAt (.bind f i) φ')).getD .err) := by
           unfold setContent; dsimp only; rw [if_pos hu]
-        exact setContent_field_moved_sgood hs' ⟨fun e => hst (.inl e), fun e => hst (.inr e)⟩ hsc
+        exact setContent_field_moved_sgood hs' hpos' hsc
     · exact hs
 
 /-- The drop of one place at a join: a borrow held at a root ends; otherwise the write. -/

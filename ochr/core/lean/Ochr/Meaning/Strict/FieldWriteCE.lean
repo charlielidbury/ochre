@@ -2,24 +2,23 @@ import Ochr.Meaning.Strict.Comb
 import Ochr.Meaning.BotWrite
 
 /-!
-# A write below a part read from a live label is `err` at some typed future (kernel-checked)
+# A write below a part read from a live label: the state that made `fund_all` false, now stuck
 
-`setContent pos steps v` writes, at every future `φ'`, `Sem.updAt … steps (old φ')`, and `err` where
-that update fails (`getD .err`); the run checks only that it succeeds at the state's typed future
-(`SState.typedFuture`: each live label its record). A position whose value READS a live label at a
-strict prefix of `steps` has, at the typed futures that give the label another open member (`⊥`, or
-another number), a value the path does not enter, so the write leaves `err` there, which is no open
-member of anything. `SGood` says nothing that excludes such a position: it does not tie a position's
-reads of live labels to the sites [Access] ends (`SState.lent`), so the [Access] before the write
-need not end the label.
+REGRESS RECORD (kernel-checked). Before the orchestrator's write rule (2026-11-21), `setContent pos
+steps v` wrote `Sem.updAt … steps (old φ')` at every future, `err` where that update failed, and
+tested only the state's typed future. A position whose value READS a live label at a strict prefix of
+`steps` then read `err` at the typed futures giving the label another open member, which is no open
+member of anything; `SGood` does not tie a position's reads of live labels to the sites [Access] ends.
+That made `OpsPlace.setContent_field_moved_sgood` and `Fund.fund_all` false (kernel-checked here at
+the time, commit 9727fbb9's parent).
 
 The state `s₀`: one frame, `x₀ : Nat` reading label `0` whole (`fun ψ => ψ 0`, the lender, with no
 site recorded), `x₁ : Nat` holding `0` (`1`), `heldTy 0 = Nat`, `heldMem 0 = 1`. It is good
-(`s₀_good`). Moving out `x₀.0` (the predecessor; `setContent … [.0] ⊥`) succeeds (at the typed
-future `x₀` reads `1`, whose predecessor is moved out: `S(⊥)`), and leaves `x₀` reading `err` at the
-typed future giving label `0` the number `0` (`s₁_bad`). So `OpsPlace.setContent_field_moved_sgood`
-is false as stated (`not_setContent_field_moved_sgood`), and with it every lemma that writes at a
-field path from a good state alone (the read's move, the join's drop, D112's invalidation).
+(`s₀_good`). The state the old run left after moving out `x₀.0` is not (`s₁_bad`). Under the rule,
+the write is tested defined at every typed future, and at `φ₀` (label `0` the number `0`) the path
+`.0` is absent: the write fails (`setContent_s₀`), the read's move fails (`readPlace_p₀`), and the
+term `x₀.0` is stuck at `s₀` (`runT_p₀`). The simulation's obligation (`Meaning/OPEN.md`) is what
+keeps related states away from `s₀`.
 -/
 
 namespace Ochr.Meaning.Strict.FieldWriteCE
@@ -129,19 +128,23 @@ theorem typedFuture_s₀ : s₀.typedFuture φ₀ 0 = .el0 Nat 1 := by
   show (if 0 ∈ s₀.liveLabels then s₀.heldMem 0 else φ₀ 0) = _
   rw [live_s₀]; simp [s₀]
 
-/-- **Moving out `x₀.0` succeeds** (at the typed future `x₀` reads `1`). -/
+/-- **Moving out `x₀.0` fails** (the orchestrator's write rule, 2026-11-21): at the typed future giving
+label `0` the number `0` (`φ₀` itself), the path `.0` is absent, so the test that the write is defined
+at every typed future fails. Before the rule the run succeeded here, at the state's own typed future
+(`x₀` reads `1`), and left `s₁`. -/
 theorem setContent_s₀ (dm : DataModel) :
-    setContent (Kc dm) φ₀ (.bind 0 0) [.proj 0] .moved s₀ = some (⟨⟩, s₁ dm) := by
+    setContent (Kc dm) φ₀ (.bind 0 0) [.proj 0] .moved s₀ = none := by
   unfold setContent
-  have hT : s₀.tyAt (.bind 0 0) = .plain TyM.nat := rfl
-  have hv : s₀.valAt (.bind 0 0) = fun ψ => ψ 0 := rfl
-  have hu : Sem.updAt dm [] (.plain TyM.nat) (fun _ => .moved) [.proj 0] (.el0 Nat 1) = some (Sem.moved.succ) := by
+  rw [if_neg]
+  intro hall
+  have hTF : TypedFut (Kc dm) φ₀ s₀ φ₀ := ⟨fun _ _ => rfl, fun _ _ => .mem (nat_mem dm 0)⟩
+  have h := hall φ₀ hTF
+  have hu : Sem.updAt dm [] (.plain TyM.nat) (fun _ => .moved) [.proj 0] (Sem.el0 Nat 0) = none := by
     rw [Sem.updAt.eq_def]
     simp [Sem.asNat_el0]
-    exact ⟨_, rfl, rfl⟩
-  simp only [hT, hv, typedFuture_s₀, Kc]
-  rw [hu]
-  rfl
+  change (Sem.updAt dm [] (.plain TyM.nat) (fun _ => .moved) [.proj 0] (Sem.el0 Nat 0)).isSome = true at h
+  rw [hu] at h
+  cases h
 
 /-- **The state after is not good**: at the typed future giving label `0` the number `0`, `x₀` reads
 `err` (the predecessor of `0` does not exist). -/
@@ -165,13 +168,6 @@ theorem s₁_bad (dm : DataModel) : ¬ SGood dm [] φ₀ (s₁ dm) := by
       obtain ⟨a, ha⟩ := h
       cases ha
   · exact absurd (congrArg TyM.level he) (by decide)
-
-/-- **`setContent_field_moved_sgood` (`OpsPlace`) is false as stated**, at every data model. -/
-theorem not_setContent_field_moved_sgood (dm : DataModel) :
-    ¬ ∀ (K : RunCtx) (φ : Future) (s s' : SState) (f i : Nat) (steps : List Step), SGood K.dm K.Γ φ s →
-      (steps ≠ [] ∧ steps ≠ [.deref]) → setContent K φ (.bind f i) steps .moved s = some (⟨⟩, s') →
-      SGood K.dm K.Γ φ s' := fun h =>
-  s₁_bad dm (h (Kc dm) φ₀ s₀ (s₁ dm) 0 0 [.proj 0] (s₀_good dm) ⟨by simp, by simp⟩ (setContent_s₀ dm))
 
 /-! ## The run reaches it: a move out of `x₀.0` -/
 
@@ -200,32 +196,26 @@ theorem contentOf_p₀ (dm : DataModel) :
   rw [hv, hT]
   simp [Sem.follow, Sem.step, Sem.asNat_el0]
 
-/-- **The strict run's move out of `x₀.0` succeeds from the good state `s₀`, and leaves `s₁`.** -/
-theorem readPlace_p₀ (dm : DataModel) :
-    readPlace (Kc dm) φ₀ p₀ false s₀ = some ((.el0 Nat 0, { (TyS.plain TyM.nat) with label := none }), s₁ dm) := by
+/-- **The strict run's move out of `x₀.0` fails from `s₀`**: the run is stuck where the write would
+leave `err` at a typed future. -/
+theorem readPlace_p₀ (dm : DataModel) : readPlace (Kc dm) φ₀ p₀ false s₀ = none := by
   unfold readPlace
   rw [contentOf_p₀]
   have hrg : ReadGood (Kc dm).dm.read ({ (TyS.plain TyM.nat) with label := none } : TyS).m (.el0 Nat 0) :=
     .inl (nat_mem dm 0)
   simp [Sem.whole, hrg, setContent_s₀]
 
-/-- **`OpsPlace.readPlace_fund_all` is false**: the lemma at a read moving out of a field. -/
-theorem not_readPlace_fund_all (dm : DataModel) : ¬ FundAt (Kc dm).dm (Kc dm).Γ φ₀ (readPlace (Kc dm) φ₀ p₀ false) :=
-  fun h => s₁_bad dm (h s₀ (s₁ dm) _ (s₀_good dm) (readPlace_p₀ dm)).2.2.2
-
 /-- `Kc`'s context obligations hold. -/
 theorem fundCtx_Kc (dm : DataModel) : FundCtx (Kc dm) :=
   ⟨fun _ => ⟨.inl (nat_mem dm 0), rfl⟩, fun _ h => absurd h List.not_mem_nil⟩
 
-/-- **The fundamental lemma as stated (`Fund.fund_all`) is false**: at `Kc` (its context holds), the
-term `x₀.0` (a move: `D₀` copies nothing), from the good state `s₀`. -/
-theorem not_fund_all (dm : DataModel) (ρ : Assignment) :
-    ¬ (FundCtx (Kc dm) → ∀ t : Term, t.valsOk (fun v => Fund (Kc dm) ρ φ₀ (.val v)) → Fund (Kc dm) ρ φ₀ t) := by
-  intro h
-  have hrun : runT (Kc dm) ρ φ₀ false (.plain TyM.err) (.place p₀) s₀ =
-      some ((.el0 Nat 0, { (TyS.plain TyM.nat) with label := none }), s₁ dm) := by
-    rw [runT]
-    exact readPlace_p₀ dm
-  exact s₁_bad dm (h (fundCtx_Kc dm) (.place p₀) trivial false _ s₀ (s₁ dm) _ (s₀_good dm) hrun).2.2.2
+/-- **The term `x₀.0` is stuck at `s₀`** (a move: `D₀` copies nothing). The simulation's obligation
+(`Meaning/OPEN.md`: after the access of a write at `x.p`, `x` reads no live label along `p`) is what
+excludes `s₀` from the states related to the checker's: `x₀` reads label `0` whole and nothing ends
+it. -/
+theorem runT_p₀ (dm : DataModel) (ρ : Assignment) :
+    runT (Kc dm) ρ φ₀ false (.plain TyM.err) (.place p₀) s₀ = none := by
+  rw [runT]
+  exact readPlace_p₀ dm
 
 end Ochr.Meaning.Strict.FieldWriteCE
