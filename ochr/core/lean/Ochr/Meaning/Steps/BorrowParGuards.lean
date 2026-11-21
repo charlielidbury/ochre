@@ -131,6 +131,10 @@ def leavesOf (body : Term) (st : MState) : List (MState × Value × Option Value
 #guard (outVal (Ochr.eval 1000 false bodyW none) stWm 100000).1 == vW
 #guard (outVal (Ochr.eval 1000 false bodyK none) stKm 100000).1 == vK
 
+-- `InvMoveBorrow`'s instance at `K` (docs/31 D145): the checker's end kernel is the start with `r` set to `⊥`, and the
+-- value in flight is the borrow `r` held
+#guard kernEq endK { stK with env := Env.setAtE stK.env (.bind 1 1) .bot } && valAt stK.env (.bind 1 1) == vK
+
 /-! ## A result holds at most one label (docs/31 D141)
 
 `OutGood` asks a borrow parameter's final at the futures typed for the result (`BodyOut.held`), and the model's result

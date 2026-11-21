@@ -191,6 +191,9 @@ import Ochr.Meaning.Steps.BorrowParRun
 import Ochr.Meaning.Steps.BorrowParStep
 import Ochr.Meaning.Steps.ColumnW
 import Ochr.Meaning.Steps.BorrowParPre
+import Ochr.Meaning.Steps.MoveOut
+import Ochr.Meaning.Steps.BorrowParStepK
+import Ochr.Meaning.Steps.ColumnK
 import Ochr.Meaning.Steps.CallJ2Step
 import Ochr.Meaning.Steps.FrameFrag
 import Ochr.Meaning.Steps.GlobalsLocal
