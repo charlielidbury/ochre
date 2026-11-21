@@ -638,11 +638,17 @@ def recCheck (fv : Value) (ws : Array Value) (uid? : Option Nat := none) : M Uni
     else frames := frames.push ctx
   set { st with recStack := frames.toList }
 
+/-- D108: the σ a [Split] generalised the sealed program `v` to, if any. The record is a key,
+so it is compared exactly (`Value.exact`: recorded parameters and binder names included), not up
+to conversion's `==`, under which `Nil` recorded at `List(Nat)` and at `List(Unit)` are equal. -/
+def neutralLookup (v : Value) : M (Option Nat) := do
+  pure (((← get).neutrals.find? (·.1.exact v)).map (·.2))
+
 /-- D84: the value a sealed program stands for in this world, when a [Split] here generalised it
 (on any private copy: records survive copies, D37), as `canonNeutral` gives it. -/
 def recordedNeutral (v : Value) : M (Option Value) := do
   match v with
-  | .sealed _ => match (← get).neutrals.lookup v with
+  | .sealed _ => match ← neutralLookup v with
     | some σ => pure (some (← expandRefs (← get).refs (.abs σ)))
     | none => pure none
   | _ => pure none
@@ -652,7 +658,7 @@ derives it again (it is a closed, deterministic computation, so every derivation
 denotes the same value). Returns its refined value if it is one. -/
 def canonNeutral (v : Value) : M Value := do
   match v with
-  | .sealed _ => match (← get).neutrals.lookup v with
+  | .sealed _ => match ← neutralLookup v with
     | some σ => expandRefs (← get).refs (.abs σ)
     | none => pure v
   | _ => pure v
@@ -806,10 +812,12 @@ re-normalised (inner ones first, since the traversal rebuilds bottom-up), and `E
 and `∧` are rebuilt with their smart constructors. -/
 def substV (fuel : Nat) (x r : Value) (v : Value) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  if !(v.anyAtom (· == x)) then return v
-  if v == x then return r
+  -- D108: the target is found exactly (`Value.exact`), as a key: at a sealed program, its recorded
+  -- parameters and binder names count; at `σ` or a loan it is the same as `==`
+  if !(v.anyAtom (·.exact x)) then return v
+  if v.exact x then return r
   match v with
-  | .abs _ | .loan _ => return (if v == x then r else v)
+  | .abs _ | .loan _ => return (if v.exact x then r else v)
   | .succ w => return .succ (← substV fuel' x r w)
   | .borrow l w => return .borrow l (← substV fuel' x r w)
   | .gloan l w => return .gloan l (← substV fuel' x r w)
@@ -829,7 +837,7 @@ termination_by structural fuel
 
 def substT (fuel : Nat) (x r : Value) (t : Term) : M Term := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
-  if !(t.anyAtom (· == x)) then return t
+  if !(t.anyAtom (·.exact x)) then return t
   let go := substT fuel' x r
   match t with
   | .val v => return .val (← substV fuel' x r v)

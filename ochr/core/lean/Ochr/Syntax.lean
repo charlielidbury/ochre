@@ -256,6 +256,100 @@ def Value.beq : Value → Value → Bool
 termination_by structural v => v
 end
 
+/-- D108: exact structural equality, for the places where a value or a program is a KEY: the
+generalisation records ([Split]'s sealed program ↦ its σ, `recordedNeutral`, `canonNeutral`) and
+the target a substitution replaces (`substV` at a sealed program). Unlike `==` (`Value.beq`), it
+compares the parameters a constructor value records, binder names and a field's name. `==`
+ignores them, which is right inside conversion, where both sides have one type and binder names
+are α-equivalence, and wrong as a lookup key: `Nil` recorded at `List(Nat)` and at `List(Unit)`
+are `==`. -/
+def Hint.exact (a b : Hint) : Bool := a.name == b.name
+
+/-- D108: a field reference, its printed name included. -/
+def FieldRef.exact (a b : FieldRef) : Bool := a.ty == b.ty && a.ctor == b.ctor && a.idx == b.idx && a.name == b.name
+
+mutual
+def Place.exact : Place → Place → Bool
+  | .var i, .var j => i == j
+  | .deref p, .deref q => p.exact q
+  | .proj i p, .proj j q => i == j && p.exact q
+  | .field f p, .field g q => f.exact g && p.exact q
+  | _, _ => false
+termination_by structural p => p
+
+def Term.exactList : List Term → List Term → Bool
+  | [], [] => true
+  | a :: as, b :: bs => a.exact b && Term.exactList as bs
+  | _, _ => false
+termination_by structural as => as
+
+def Term.exactHints : List Hint → List Hint → Bool
+  | [], [] => true
+  | a :: as, b :: bs => a.exact b && Term.exactHints as bs
+  | _, _ => false
+termination_by structural as => as
+
+def Term.exactArms : List (Hint × Term) → List (Hint × Term) → Bool
+  | [], [] => true
+  | (h, a) :: as, (k, b) :: bs => h.exact k && a.exact b && Term.exactArms as bs
+  | _, _ => false
+termination_by structural as => as
+
+def Term.exact : Term → Term → Bool
+  | .place p, .place q | .borrow p, .borrow q => p.exact q
+  | .assign p t, .assign q u => p.exact q && t.exact u
+  | .letIn h t u, .letIn k t' u' => h.exact k && t.exact t' && u.exact u'
+  | .seq t u, .seq t' u' => t.exact t' && u.exact u'
+  | .matchNat p z s, .matchNat q z' s' => p.exact q && z.exact z' && s.exact s'
+  | .const n, .const m => n == m
+  | .val v, .val w => v.exact w
+  | .sort l, .sort m => l == m
+  | .pi hs ds c, .pi ks ds' c' => Term.exactHints hs ks && Term.exactList ds ds' && c.exact c'
+  | .fix h hs ds c d b, .fix k ks ds' c' d' b' =>
+    h.exact k && Term.exactHints hs ks && Term.exactList ds ds' && c.exact c' && d == d' && b.exact b'
+  | .call f as h, .call g bs h' => f.exact g && Term.exactList as bs && h == h'
+  | .nat, .nat | .zero, .zero | .unit, .unit | .tt, .tt => true
+  | .succ t, .succ u | .ref t, .ref u => t.exact u
+  | .cong a b, .cong c d | .ascribe a b, .ascribe c d => a.exact c && b.exact d
+  | .eq a b c, .eq d e f | .id a b c, .id d e f => a.exact d && b.exact e && c.exact f
+  | .prim n as, .prim m bs => n == m && Term.exactList as bs
+  | .tind n as, .tind m bs => n == m && Term.exactList as bs
+  | .ctor t c h ps as, .ctor u d k qs bs =>
+    t == u && c == d && h.exact k && Term.exactList ps qs && Term.exactList as bs
+  | .matchInd p t as, .matchInd q u bs => p.exact q && t == u && Term.exactArms as bs
+  | _, _ => false
+termination_by structural t => t
+
+def Value.exactList : List Value → List Value → Bool
+  | [], [] => true
+  | a :: as, b :: bs => a.exact b && Value.exactList as bs
+  | _, _ => false
+termination_by structural as => as
+
+def Value.exactRd : List (DeclInfo × Value) → List (DeclInfo × Value) → Bool
+  | [], [] => true
+  | (d, a) :: as, (e, b) :: bs => d == e && a.exact b && Value.exactRd as bs
+  | _, _ => false
+termination_by structural as => as
+
+def Value.exact : Value → Value → Bool
+  | .zero, .zero | .unit, .unit | .bot, .bot | .proof, .proof
+  | .tNat, .tNat | .tUnit, .tUnit => true
+  | .succ v, .succ w | .tRef v, .tRef w => v.exact w
+  | .gfn n, .gfn m => n == m
+  | .clo cs t r, .clo ds u r' => Value.exactList cs ds && t.exact u && Value.exactRd r r'
+  | .tPi cs t r, .tPi ds u r' => Value.exactList cs ds && t.exact u && Value.exactRd r r'
+  | .borrow l v, .borrow m w | .gloan l v, .gloan m w => l == m && v.exact w
+  | .loan l, .loan m | .abs l, .abs m | .sort l, .sort m => l == m
+  | .sealed t, .sealed u => t.exact u
+  | .tEq a b c, .tEq d e f => a.exact d && b.exact e && c.exact f
+  | .ind t c h ps fs, .ind u d k qs gs =>
+    t == u && c == d && h.exact k && Value.exactList ps qs && Value.exactList fs gs
+  | .tInd n as, .tInd m bs => n == m && Value.exactList as bs
+  | _, _ => false
+termination_by structural v => v
+end
+
 instance : BEq Place := ⟨Place.beq⟩
 instance : BEq Term := ⟨Term.beq⟩
 instance : BEq Value := ⟨Value.beq⟩

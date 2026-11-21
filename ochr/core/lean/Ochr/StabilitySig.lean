@@ -545,8 +545,11 @@ theorem sigPres_expandRefsF (refs : List (Nat × Value)) : ∀ n v, SigPres (exp
 theorem sigPres_expandRefs (refs : List (Nat × Value)) (v : Value) : SigPres (expandRefs refs v) := by
   unfold expandRefs; have := sigPres_expandRefsF refs; sp
 
+theorem sigPres_neutralLookup (v : Value) : SigPres (neutralLookup v) := by
+  unfold neutralLookup; sp
+
 theorem sigPres_canonNeutral (v : Value) : SigPres (canonNeutral v) := by
-  unfold canonNeutral; have := sigPres_expandRefs; sp
+  unfold canonNeutral; have := sigPres_expandRefs; have := sigPres_neutralLookup; sp
 
 theorem sigPres_mapState (f : Value → M Value) (hf : ∀ v, SigPres (f v)) (types : Bool) :
     SigPres (mapState f types) := by
