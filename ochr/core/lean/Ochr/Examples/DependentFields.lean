@@ -1179,6 +1179,823 @@ ochr MarkedFields uses Nats {
   ("LeafMoveIdxPlain", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
   ("LeafMoveIdxRet", "[Read] c.p was moved out or its borrow ended (reading ⊥)")]
 
+/-! ## A field lent to a returned borrow, against a plain borrow: the whole table (D112 amended)
+
+`MarkedFields` asserts a pair of rows for each operation; these blocks assert the whole
+differential table it was checked against. For a tree field (`x : F2(n)`, `F2` being `Void` at
+`Z` and `Two = A | B` otherwise) and a leaf field (`p : Payload(b)`, `Nat` at `Z` and `Unit`
+otherwise), each of nine operations (a read; a write through the borrow; a re-borrow of the field;
+a move into a call; an assignment of the field; a re-borrow through the borrow; a read through
+it; a use of the borrow after the field is read; a write through it, then a read of each), after
+each of four index writes (none; the same value; a change; a change and a restore), with the
+field lent five ways: a plain borrow (`_plain`), a call's returned borrow (`_keep`), the first and
+the second argument of a two-borrow call that returns it (`_fst`, `_snd`), and a call that lends
+it but returns the other argument's borrow (`_other`). Every row is asserted, every rejection by
+its message, every acceptance with its value (`…_v`, by `refl`). On main before typing read
+through a mark, 35 of the 72 rows of four columns differed between the plain borrow and a returned
+one, every one a wrong rejection; now the returned columns agree with the plain one in verdict,
+message and value throughout. A row is named by the field (`T_` tree, `L_` leaf), the operation, the index write (`none`, `same`, `chg`, `chg2`) and the column. `MarkedNested` adds to `MarkedFields`' census a dependent
+constructor value under a mark (a field of a field): read whole, read after the outer index
+changes (typed by what it holds, `V`), and opened through the borrow, which its end repacks. -/
+ochr MarkedTableTree1 uses Nats {
+  inductive Void : Type
+  inductive Two := A | B
+  def F2 (n : Nat) : Type := match n { Z => Void, S(m) => Two, }
+  inductive V := MkV(n : Nat, x : F2(n))
+  def KeepT (r : &Two) : &Two := r
+  def FstT (r : &Two) (s : &Two) : &Two := r
+  def SndT (r : &Two) (s : &Two) : &Two := s
+  def IdT (o : Two) : Two := o
+  def T_read_none_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; let k : Two = x; k) })
+  def T_read_none_plain_v : Eq(Two, T_read_none_plain, A) := refl
+  def T_read_none_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); let k : Two = x; k) })
+  def T_read_none_keep_v : Eq(Two, T_read_none_keep, A) := refl
+  def T_read_none_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); let k : Two = x; k) })
+  def T_read_none_fst_v : Eq(Two, T_read_none_fst, A) := refl
+  def T_read_none_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); let k : Two = x; k) })
+  def T_read_none_snd_v : Eq(Two, T_read_none_snd, A) := refl
+  def T_read_none_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); let k : Two = x; k) })
+  def T_read_none_other_v : Eq(Two, T_read_none_other, A) := refl
+  def T_read_same_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := S(Z); let k : Two = x; k) })
+  def T_read_same_plain_v : Eq(Two, T_read_same_plain, A) := refl
+  def T_read_same_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := S(Z); let k : Two = x; k) })
+  def T_read_same_keep_v : Eq(Two, T_read_same_keep, A) := refl
+  def T_read_same_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := S(Z); let k : Two = x; k) })
+  def T_read_same_fst_v : Eq(Two, T_read_same_fst, A) := refl
+  def T_read_same_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := S(Z); let k : Two = x; k) })
+  def T_read_same_snd_v : Eq(Two, T_read_same_snd, A) := refl
+  def T_read_same_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := S(Z); let k : Two = x; k) })
+  def T_read_same_other_v : Eq(Two, T_read_same_other, A) := refl
+  def T_read_chg_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; let k : Two = x; k) })
+  def T_read_chg_plain_v : Eq(Two, T_read_chg_plain, A) := refl
+  def T_read_chg_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; let k : Two = x; k) })
+  def T_read_chg_keep_v : Eq(Two, T_read_chg_keep, A) := refl
+  def T_read_chg_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; let k : Two = x; k) })
+  def T_read_chg_fst_v : Eq(Two, T_read_chg_fst, A) := refl
+  def T_read_chg_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; let k : Two = x; k) })
+  def T_read_chg_snd_v : Eq(Two, T_read_chg_snd, A) := refl
+  def T_read_chg_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; let k : Two = x; k) })
+  def T_read_chg_other_v : Eq(Two, T_read_chg_other, A) := refl
+  def T_read_chg2_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; n := S(Z); let k : Two = x; k) })
+  def T_read_chg2_plain_v : Eq(Two, T_read_chg2_plain, A) := refl
+  def T_read_chg2_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; n := S(Z); let k : Two = x; k) })
+  def T_read_chg2_keep_v : Eq(Two, T_read_chg2_keep, A) := refl
+  def T_read_chg2_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; n := S(Z); let k : Two = x; k) })
+  def T_read_chg2_fst_v : Eq(Two, T_read_chg2_fst, A) := refl
+  def T_read_chg2_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; n := S(Z); let k : Two = x; k) })
+  def T_read_chg2_snd_v : Eq(Two, T_read_chg2_snd, A) := refl
+  def T_read_chg2_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; n := S(Z); let k : Two = x; k) })
+  def T_read_chg2_other_v : Eq(Two, T_read_chg2_other, A) := refl
+  def T_write_none_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; *r := B; let k : Two = x; k) })
+  def T_write_none_plain_v : Eq(Two, T_write_none_plain, B) := refl
+  def T_write_none_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); *r := B; let k : Two = x; k) })
+  def T_write_none_keep_v : Eq(Two, T_write_none_keep, B) := refl
+  def T_write_none_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); *r := B; let k : Two = x; k) })
+  def T_write_none_fst_v : Eq(Two, T_write_none_fst, B) := refl
+  def T_write_none_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); *r := B; let k : Two = x; k) })
+  def T_write_none_snd_v : Eq(Two, T_write_none_snd, B) := refl
+  def T_write_none_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); *r := B; let k : Two = x; k) })
+  def T_write_none_other_v : Eq(Two, T_write_none_other, A) := refl
+  def T_write_same_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := S(Z); *r := B; let k : Two = x; k) })
+  def T_write_same_plain_v : Eq(Two, T_write_same_plain, B) := refl
+  def T_write_same_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := S(Z); *r := B; let k : Two = x; k) })
+  def T_write_same_keep_v : Eq(Two, T_write_same_keep, B) := refl
+  def T_write_same_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := S(Z); *r := B; let k : Two = x; k) })
+  def T_write_same_fst_v : Eq(Two, T_write_same_fst, B) := refl
+  def T_write_same_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := S(Z); *r := B; let k : Two = x; k) })
+  def T_write_same_snd_v : Eq(Two, T_write_same_snd, B) := refl
+  def T_write_same_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := S(Z); *r := B; let k : Two = x; k) })
+  def T_write_same_other_v : Eq(Two, T_write_same_other, A) := refl
+  def T_write_chg_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; *r := B; let k : Two = x; k) })
+  def T_write_chg_plain_v : Eq(Two, T_write_chg_plain, B) := refl
+  def T_write_chg_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; *r := B; let k : Two = x; k) })
+  def T_write_chg_keep_v : Eq(Two, T_write_chg_keep, B) := refl
+  def T_write_chg_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; *r := B; let k : Two = x; k) })
+  def T_write_chg_fst_v : Eq(Two, T_write_chg_fst, B) := refl
+  def T_write_chg_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; *r := B; let k : Two = x; k) })
+  def T_write_chg_snd_v : Eq(Two, T_write_chg_snd, B) := refl
+  def T_write_chg_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; *r := B; let k : Two = x; k) })
+  def T_write_chg_other_v : Eq(Two, T_write_chg_other, A) := refl
+  def T_write_chg2_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; n := S(Z); *r := B; let k : Two = x; k) })
+  def T_write_chg2_plain_v : Eq(Two, T_write_chg2_plain, B) := refl
+  def T_write_chg2_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; n := S(Z); *r := B; let k : Two = x; k) })
+  def T_write_chg2_keep_v : Eq(Two, T_write_chg2_keep, B) := refl
+  def T_write_chg2_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; n := S(Z); *r := B; let k : Two = x; k) })
+  def T_write_chg2_fst_v : Eq(Two, T_write_chg2_fst, B) := refl
+  def T_write_chg2_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; n := S(Z); *r := B; let k : Two = x; k) })
+  def T_write_chg2_snd_v : Eq(Two, T_write_chg2_snd, B) := refl
+  def T_write_chg2_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; n := S(Z); *r := B; let k : Two = x; k) })
+  def T_write_chg2_other_v : Eq(Two, T_write_chg2_other, A) := refl
+  def T_rebor_none_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_none_plain_v : Eq(Two, T_rebor_none_plain, B) := refl
+  def T_rebor_none_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_none_keep_v : Eq(Two, T_rebor_none_keep, B) := refl
+  def T_rebor_none_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_none_fst_v : Eq(Two, T_rebor_none_fst, B) := refl
+  def T_rebor_none_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_none_snd_v : Eq(Two, T_rebor_none_snd, B) := refl
+  def T_rebor_none_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_none_other_v : Eq(Two, T_rebor_none_other, B) := refl
+  def T_rebor_same_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := S(Z); let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_same_plain_v : Eq(Two, T_rebor_same_plain, B) := refl
+  def T_rebor_same_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := S(Z); let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_same_keep_v : Eq(Two, T_rebor_same_keep, B) := refl
+  def T_rebor_same_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := S(Z); let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_same_fst_v : Eq(Two, T_rebor_same_fst, B) := refl
+  def T_rebor_same_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := S(Z); let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_same_snd_v : Eq(Two, T_rebor_same_snd, B) := refl
+  def T_rebor_same_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := S(Z); let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_same_other_v : Eq(Two, T_rebor_same_other, B) := refl
+  def T_rebor_chg_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_chg_plain_v : Eq(Two, T_rebor_chg_plain, B) := refl
+  def T_rebor_chg_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_chg_keep_v : Eq(Two, T_rebor_chg_keep, B) := refl
+  def T_rebor_chg_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_chg_fst_v : Eq(Two, T_rebor_chg_fst, B) := refl
+  def T_rebor_chg_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_chg_snd_v : Eq(Two, T_rebor_chg_snd, B) := refl
+  def T_rebor_chg_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_chg_other_v : Eq(Two, T_rebor_chg_other, B) := refl
+  def T_rebor_chg2_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; n := S(Z); let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_chg2_plain_v : Eq(Two, T_rebor_chg2_plain, B) := refl
+  def T_rebor_chg2_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; n := S(Z); let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_chg2_keep_v : Eq(Two, T_rebor_chg2_keep, B) := refl
+  def T_rebor_chg2_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; n := S(Z); let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_chg2_fst_v : Eq(Two, T_rebor_chg2_fst, B) := refl
+  def T_rebor_chg2_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; n := S(Z); let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_chg2_snd_v : Eq(Two, T_rebor_chg2_snd, B) := refl
+  def T_rebor_chg2_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; n := S(Z); let s = &x; *s := B; let k : Two = x; k) })
+  def T_rebor_chg2_other_v : Eq(Two, T_rebor_chg2_other, B) := refl
+  def T_move_none_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; let k : Two = IdT(x); k) })
+  def T_move_none_plain_v : Eq(Two, T_move_none_plain, A) := refl
+  def T_move_none_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); let k : Two = IdT(x); k) })
+  def T_move_none_keep_v : Eq(Two, T_move_none_keep, A) := refl
+  def T_move_none_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); let k : Two = IdT(x); k) })
+  def T_move_none_fst_v : Eq(Two, T_move_none_fst, A) := refl
+  def T_move_none_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); let k : Two = IdT(x); k) })
+  def T_move_none_snd_v : Eq(Two, T_move_none_snd, A) := refl
+  def T_move_none_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); let k : Two = IdT(x); k) })
+  def T_move_none_other_v : Eq(Two, T_move_none_other, A) := refl
+  def T_move_same_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := S(Z); let k : Two = IdT(x); k) })
+  def T_move_same_plain_v : Eq(Two, T_move_same_plain, A) := refl
+  def T_move_same_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := S(Z); let k : Two = IdT(x); k) })
+  def T_move_same_keep_v : Eq(Two, T_move_same_keep, A) := refl
+  def T_move_same_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := S(Z); let k : Two = IdT(x); k) })
+  def T_move_same_fst_v : Eq(Two, T_move_same_fst, A) := refl
+  def T_move_same_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := S(Z); let k : Two = IdT(x); k) })
+  def T_move_same_snd_v : Eq(Two, T_move_same_snd, A) := refl
+  def T_move_same_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := S(Z); let k : Two = IdT(x); k) })
+  def T_move_same_other_v : Eq(Two, T_move_same_other, A) := refl
+  def T_move_chg_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; let k : Two = IdT(x); k) })
+  def T_move_chg_plain_v : Eq(Two, T_move_chg_plain, A) := refl
+  def T_move_chg_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; let k : Two = IdT(x); k) })
+  def T_move_chg_keep_v : Eq(Two, T_move_chg_keep, A) := refl
+  def T_move_chg_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; let k : Two = IdT(x); k) })
+  def T_move_chg_fst_v : Eq(Two, T_move_chg_fst, A) := refl
+  def T_move_chg_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; let k : Two = IdT(x); k) })
+  def T_move_chg_snd_v : Eq(Two, T_move_chg_snd, A) := refl
+  def T_move_chg_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; let k : Two = IdT(x); k) })
+  def T_move_chg_other_v : Eq(Two, T_move_chg_other, A) := refl
+  def T_move_chg2_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; n := S(Z); let k : Two = IdT(x); k) })
+  def T_move_chg2_plain_v : Eq(Two, T_move_chg2_plain, A) := refl
+  def T_move_chg2_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; n := S(Z); let k : Two = IdT(x); k) })
+  def T_move_chg2_keep_v : Eq(Two, T_move_chg2_keep, A) := refl
+  def T_move_chg2_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; n := S(Z); let k : Two = IdT(x); k) })
+  def T_move_chg2_fst_v : Eq(Two, T_move_chg2_fst, A) := refl
+  def T_move_chg2_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; n := S(Z); let k : Two = IdT(x); k) })
+  def T_move_chg2_snd_v : Eq(Two, T_move_chg2_snd, A) := refl
+  def T_move_chg2_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; n := S(Z); let k : Two = IdT(x); k) })
+  def T_move_chg2_other_v : Eq(Two, T_move_chg2_other, A) := refl
+  def T_assign_none_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; x := B; let k : Two = x; k) })
+  def T_assign_none_plain_v : Eq(Two, T_assign_none_plain, B) := refl
+  def T_assign_none_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); x := B; let k : Two = x; k) })
+  def T_assign_none_keep_v : Eq(Two, T_assign_none_keep, B) := refl
+  def T_assign_none_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); x := B; let k : Two = x; k) })
+  def T_assign_none_fst_v : Eq(Two, T_assign_none_fst, B) := refl
+  def T_assign_none_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); x := B; let k : Two = x; k) })
+  def T_assign_none_snd_v : Eq(Two, T_assign_none_snd, B) := refl
+  def T_assign_none_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); x := B; let k : Two = x; k) })
+  def T_assign_none_other_v : Eq(Two, T_assign_none_other, B) := refl
+  def T_assign_same_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := S(Z); x := B; let k : Two = x; k) })
+  def T_assign_same_plain_v : Eq(Two, T_assign_same_plain, B) := refl
+  def T_assign_same_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := S(Z); x := B; let k : Two = x; k) })
+  def T_assign_same_keep_v : Eq(Two, T_assign_same_keep, B) := refl
+  def T_assign_same_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := S(Z); x := B; let k : Two = x; k) })
+  def T_assign_same_fst_v : Eq(Two, T_assign_same_fst, B) := refl
+  def T_assign_same_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := S(Z); x := B; let k : Two = x; k) })
+  def T_assign_same_snd_v : Eq(Two, T_assign_same_snd, B) := refl
+  def T_assign_same_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := S(Z); x := B; let k : Two = x; k) })
+  def T_assign_same_other_v : Eq(Two, T_assign_same_other, B) := refl
+  def T_assign_chg_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; x := B; let k : Two = x; k) })
+  def T_assign_chg_plain_v : Eq(Two, T_assign_chg_plain, B) := refl
+  def T_assign_chg_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; x := B; let k : Two = x; k) })
+  def T_assign_chg_keep_v : Eq(Two, T_assign_chg_keep, B) := refl
+  def T_assign_chg_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; x := B; let k : Two = x; k) })
+  def T_assign_chg_fst_v : Eq(Two, T_assign_chg_fst, B) := refl
+  def T_assign_chg_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; x := B; let k : Two = x; k) })
+  def T_assign_chg_snd_v : Eq(Two, T_assign_chg_snd, B) := refl
+  def T_assign_chg_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; x := B; let k : Two = x; k) })
+  def T_assign_chg_other_v : Eq(Two, T_assign_chg_other, B) := refl
+  def T_assign_chg2_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; n := S(Z); x := B; let k : Two = x; k) })
+  def T_assign_chg2_plain_v : Eq(Two, T_assign_chg2_plain, B) := refl
+  def T_assign_chg2_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; n := S(Z); x := B; let k : Two = x; k) })
+  def T_assign_chg2_keep_v : Eq(Two, T_assign_chg2_keep, B) := refl
+  def T_assign_chg2_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; n := S(Z); x := B; let k : Two = x; k) })
+  def T_assign_chg2_fst_v : Eq(Two, T_assign_chg2_fst, B) := refl
+  def T_assign_chg2_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; n := S(Z); x := B; let k : Two = x; k) })
+  def T_assign_chg2_snd_v : Eq(Two, T_assign_chg2_snd, B) := refl
+  def T_assign_chg2_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; n := S(Z); x := B; let k : Two = x; k) })
+  def T_assign_chg2_other_v : Eq(Two, T_assign_chg2_other, B) := refl
+}
+
+ochr MarkedTableTree2 uses Nats {
+  inductive Void : Type
+  inductive Two := A | B
+  def F2 (n : Nat) : Type := match n { Z => Void, S(m) => Two, }
+  inductive V := MkV(n : Nat, x : F2(n))
+  def KeepT (r : &Two) : &Two := r
+  def FstT (r : &Two) (s : &Two) : &Two := r
+  def SndT (r : &Two) (s : &Two) : &Two := s
+  def IdT (o : Two) : Two := o
+  def T_thru_none_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_none_plain_v : Eq(Two, T_thru_none_plain, B) := refl
+  def T_thru_none_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_none_keep_v : Eq(Two, T_thru_none_keep, B) := refl
+  def T_thru_none_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_none_fst_v : Eq(Two, T_thru_none_fst, B) := refl
+  def T_thru_none_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_none_snd_v : Eq(Two, T_thru_none_snd, B) := refl
+  def T_thru_none_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_none_other_v : Eq(Two, T_thru_none_other, A) := refl
+  def T_thru_same_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := S(Z); let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_same_plain_v : Eq(Two, T_thru_same_plain, B) := refl
+  def T_thru_same_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := S(Z); let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_same_keep_v : Eq(Two, T_thru_same_keep, B) := refl
+  def T_thru_same_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := S(Z); let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_same_fst_v : Eq(Two, T_thru_same_fst, B) := refl
+  def T_thru_same_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := S(Z); let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_same_snd_v : Eq(Two, T_thru_same_snd, B) := refl
+  def T_thru_same_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := S(Z); let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_same_other_v : Eq(Two, T_thru_same_other, A) := refl
+  def T_thru_chg_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_chg_plain_v : Eq(Two, T_thru_chg_plain, B) := refl
+  def T_thru_chg_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_chg_keep_v : Eq(Two, T_thru_chg_keep, B) := refl
+  def T_thru_chg_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_chg_fst_v : Eq(Two, T_thru_chg_fst, B) := refl
+  def T_thru_chg_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_chg_snd_v : Eq(Two, T_thru_chg_snd, B) := refl
+  def T_thru_chg_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_chg_other_v : Eq(Two, T_thru_chg_other, A) := refl
+  def T_thru_chg2_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; n := S(Z); let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_chg2_plain_v : Eq(Two, T_thru_chg2_plain, B) := refl
+  def T_thru_chg2_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; n := S(Z); let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_chg2_keep_v : Eq(Two, T_thru_chg2_keep, B) := refl
+  def T_thru_chg2_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; n := S(Z); let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_chg2_fst_v : Eq(Two, T_thru_chg2_fst, B) := refl
+  def T_thru_chg2_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; n := S(Z); let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_chg2_snd_v : Eq(Two, T_thru_chg2_snd, B) := refl
+  def T_thru_chg2_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; n := S(Z); let s = &*r; *s := B; let k : Two = x; k) })
+  def T_thru_chg2_other_v : Eq(Two, T_thru_chg2_other, A) := refl
+  def T_readr_none_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; let k : Two = clone(*r); k) })
+  def T_readr_none_plain_v : Eq(Two, T_readr_none_plain, A) := refl
+  def T_readr_none_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); let k : Two = clone(*r); k) })
+  def T_readr_none_keep_v : Eq(Two, T_readr_none_keep, A) := refl
+  def T_readr_none_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); let k : Two = clone(*r); k) })
+  def T_readr_none_fst_v : Eq(Two, T_readr_none_fst, A) := refl
+  def T_readr_none_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); let k : Two = clone(*r); k) })
+  def T_readr_none_snd_v : Eq(Two, T_readr_none_snd, A) := refl
+  def T_readr_none_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); let k : Two = clone(*r); k) })
+  def T_readr_none_other_v : Eq(Two, T_readr_none_other, B) := refl
+  def T_readr_same_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := S(Z); let k : Two = clone(*r); k) })
+  def T_readr_same_plain_v : Eq(Two, T_readr_same_plain, A) := refl
+  def T_readr_same_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := S(Z); let k : Two = clone(*r); k) })
+  def T_readr_same_keep_v : Eq(Two, T_readr_same_keep, A) := refl
+  def T_readr_same_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := S(Z); let k : Two = clone(*r); k) })
+  def T_readr_same_fst_v : Eq(Two, T_readr_same_fst, A) := refl
+  def T_readr_same_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := S(Z); let k : Two = clone(*r); k) })
+  def T_readr_same_snd_v : Eq(Two, T_readr_same_snd, A) := refl
+  def T_readr_same_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := S(Z); let k : Two = clone(*r); k) })
+  def T_readr_same_other_v : Eq(Two, T_readr_same_other, B) := refl
+  def T_readr_chg_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; let k : Two = clone(*r); k) })
+  def T_readr_chg_plain_v : Eq(Two, T_readr_chg_plain, A) := refl
+  def T_readr_chg_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; let k : Two = clone(*r); k) })
+  def T_readr_chg_keep_v : Eq(Two, T_readr_chg_keep, A) := refl
+  def T_readr_chg_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; let k : Two = clone(*r); k) })
+  def T_readr_chg_fst_v : Eq(Two, T_readr_chg_fst, A) := refl
+  def T_readr_chg_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; let k : Two = clone(*r); k) })
+  def T_readr_chg_snd_v : Eq(Two, T_readr_chg_snd, A) := refl
+  def T_readr_chg_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; let k : Two = clone(*r); k) })
+  def T_readr_chg_other_v : Eq(Two, T_readr_chg_other, B) := refl
+  def T_readr_chg2_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; n := S(Z); let k : Two = clone(*r); k) })
+  def T_readr_chg2_plain_v : Eq(Two, T_readr_chg2_plain, A) := refl
+  def T_readr_chg2_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; n := S(Z); let k : Two = clone(*r); k) })
+  def T_readr_chg2_keep_v : Eq(Two, T_readr_chg2_keep, A) := refl
+  def T_readr_chg2_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; n := S(Z); let k : Two = clone(*r); k) })
+  def T_readr_chg2_fst_v : Eq(Two, T_readr_chg2_fst, A) := refl
+  def T_readr_chg2_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; n := S(Z); let k : Two = clone(*r); k) })
+  def T_readr_chg2_snd_v : Eq(Two, T_readr_chg2_snd, A) := refl
+  def T_readr_chg2_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; n := S(Z); let k : Two = clone(*r); k) })
+  def T_readr_chg2_other_v : Eq(Two, T_readr_chg2_other, B) := refl
+  reject def T_useafter_none_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; let k : Two = x; *r := B; k) })
+  reject def T_useafter_none_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); let k : Two = x; *r := B; k) })
+  reject def T_useafter_none_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); let k : Two = x; *r := B; k) })
+  reject def T_useafter_none_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); let k : Two = x; *r := B; k) })
+  reject def T_useafter_none_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); let k : Two = x; *r := B; k) })
+  reject def T_useafter_same_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := S(Z); let k : Two = x; *r := B; k) })
+  reject def T_useafter_same_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := S(Z); let k : Two = x; *r := B; k) })
+  reject def T_useafter_same_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := S(Z); let k : Two = x; *r := B; k) })
+  reject def T_useafter_same_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := S(Z); let k : Two = x; *r := B; k) })
+  reject def T_useafter_same_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := S(Z); let k : Two = x; *r := B; k) })
+  reject def T_useafter_chg_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; let k : Two = x; *r := B; k) })
+  reject def T_useafter_chg_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; let k : Two = x; *r := B; k) })
+  reject def T_useafter_chg_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; let k : Two = x; *r := B; k) })
+  reject def T_useafter_chg_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; let k : Two = x; *r := B; k) })
+  reject def T_useafter_chg_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; let k : Two = x; *r := B; k) })
+  reject def T_useafter_chg2_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; n := S(Z); let k : Two = x; *r := B; k) })
+  reject def T_useafter_chg2_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; n := S(Z); let k : Two = x; *r := B; k) })
+  reject def T_useafter_chg2_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; n := S(Z); let k : Two = x; *r := B; k) })
+  reject def T_useafter_chg2_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; n := S(Z); let k : Two = x; *r := B; k) })
+  reject def T_useafter_chg2_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; n := S(Z); let k : Two = x; *r := B; k) })
+  def T_wthenread_none_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_none_plain_v : Eq(Two, T_wthenread_none_plain, B) := refl
+  def T_wthenread_none_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_none_keep_v : Eq(Two, T_wthenread_none_keep, B) := refl
+  def T_wthenread_none_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_none_fst_v : Eq(Two, T_wthenread_none_fst, B) := refl
+  def T_wthenread_none_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_none_snd_v : Eq(Two, T_wthenread_none_snd, B) := refl
+  def T_wthenread_none_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_none_other_v : Eq(Two, T_wthenread_none_other, A) := refl
+  def T_wthenread_same_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := S(Z); *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_same_plain_v : Eq(Two, T_wthenread_same_plain, B) := refl
+  def T_wthenread_same_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := S(Z); *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_same_keep_v : Eq(Two, T_wthenread_same_keep, B) := refl
+  def T_wthenread_same_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := S(Z); *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_same_fst_v : Eq(Two, T_wthenread_same_fst, B) := refl
+  def T_wthenread_same_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := S(Z); *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_same_snd_v : Eq(Two, T_wthenread_same_snd, B) := refl
+  def T_wthenread_same_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := S(Z); *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_same_other_v : Eq(Two, T_wthenread_same_other, A) := refl
+  def T_wthenread_chg_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_chg_plain_v : Eq(Two, T_wthenread_chg_plain, B) := refl
+  def T_wthenread_chg_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_chg_keep_v : Eq(Two, T_wthenread_chg_keep, B) := refl
+  def T_wthenread_chg_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_chg_fst_v : Eq(Two, T_wthenread_chg_fst, B) := refl
+  def T_wthenread_chg_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_chg_snd_v : Eq(Two, T_wthenread_chg_snd, B) := refl
+  def T_wthenread_chg_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_chg_other_v : Eq(Two, T_wthenread_chg_other, A) := refl
+  def T_wthenread_chg2_plain : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = &x; n := Z; n := S(Z); *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_chg2_plain_v : Eq(Two, T_wthenread_chg2_plain, B) := refl
+  def T_wthenread_chg2_keep : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let r = KeepT(&x); n := Z; n := S(Z); *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_chg2_keep_v : Eq(Two, T_wthenread_chg2_keep, B) := refl
+  def T_wthenread_chg2_fst : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&x, &y); n := Z; n := S(Z); *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_chg2_fst_v : Eq(Two, T_wthenread_chg2_fst, B) := refl
+  def T_wthenread_chg2_snd : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = SndT(&y, &x); n := Z; n := S(Z); *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_chg2_snd_v : Eq(Two, T_wthenread_chg2_snd, B) := refl
+  def T_wthenread_chg2_other : Two := (let c = MkV(S(Z), A); match c { MkV(n, x) => (let y = B; let r = FstT(&y, &x); n := Z; n := S(Z); *r := B; let k : Two = clone(*r); let j : Two = x; j) })
+  def T_wthenread_chg2_other_v : Eq(Two, T_wthenread_chg2_other, A) := refl
+}
+
+#guard (run "MarkedTableTree2" MarkedTableTree2).rejectedWith [
+  ("T_useafter_none_plain", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_none_keep", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_none_fst", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_none_snd", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_none_other", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_same_plain", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_same_keep", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_same_fst", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_same_snd", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_same_other", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_chg_plain", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_chg_keep", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_chg_fst", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_chg_snd", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_chg_other", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_chg2_plain", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_chg2_keep", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_chg2_fst", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_chg2_snd", "no such place *r: its path does not exist in ⊥"),
+  ("T_useafter_chg2_other", "no such place *r: its path does not exist in ⊥")]
+
+ochr MarkedTableLeaf1 uses Nats {
+  def Payload (b : Nat) : Type := match b { Z => Nat, S _ => Unit }
+  inductive L := MkL(b : Nat, p : Payload(b))
+  def KeepN (r : &Nat) : &Nat := r
+  def FstN (r : &Nat) (s : &Nat) : &Nat := r
+  def SndN (r : &Nat) (s : &Nat) : &Nat := s
+  def IdN (o : Nat) : Nat := o
+  def L_read_none_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; let k : Nat = p; k) })
+  def L_read_none_plain_v : Eq(Nat, L_read_none_plain, 5) := refl
+  def L_read_none_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); let k : Nat = p; k) })
+  def L_read_none_keep_v : Eq(Nat, L_read_none_keep, 5) := refl
+  def L_read_none_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); let k : Nat = p; k) })
+  def L_read_none_fst_v : Eq(Nat, L_read_none_fst, 5) := refl
+  def L_read_none_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); let k : Nat = p; k) })
+  def L_read_none_snd_v : Eq(Nat, L_read_none_snd, 5) := refl
+  def L_read_none_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); let k : Nat = p; k) })
+  def L_read_none_other_v : Eq(Nat, L_read_none_other, 5) := refl
+  reject def L_read_same_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := Z; let k : Nat = p; k) })
+  reject def L_read_same_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := Z; let k : Nat = p; k) })
+  reject def L_read_same_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := Z; let k : Nat = p; k) })
+  reject def L_read_same_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := Z; let k : Nat = p; k) })
+  reject def L_read_same_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := Z; let k : Nat = p; k) })
+  reject def L_read_chg_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); let k : Nat = p; k) })
+  reject def L_read_chg_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); let k : Nat = p; k) })
+  reject def L_read_chg_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); let k : Nat = p; k) })
+  reject def L_read_chg_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); let k : Nat = p; k) })
+  reject def L_read_chg_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); let k : Nat = p; k) })
+  reject def L_read_chg2_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); b := Z; let k : Nat = p; k) })
+  reject def L_read_chg2_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); b := Z; let k : Nat = p; k) })
+  reject def L_read_chg2_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); b := Z; let k : Nat = p; k) })
+  reject def L_read_chg2_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); b := Z; let k : Nat = p; k) })
+  reject def L_read_chg2_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); b := Z; let k : Nat = p; k) })
+  def L_write_none_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; *r := 6; let k : Nat = p; k) })
+  def L_write_none_plain_v : Eq(Nat, L_write_none_plain, 6) := refl
+  def L_write_none_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); *r := 6; let k : Nat = p; k) })
+  def L_write_none_keep_v : Eq(Nat, L_write_none_keep, 6) := refl
+  def L_write_none_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); *r := 6; let k : Nat = p; k) })
+  def L_write_none_fst_v : Eq(Nat, L_write_none_fst, 6) := refl
+  def L_write_none_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); *r := 6; let k : Nat = p; k) })
+  def L_write_none_snd_v : Eq(Nat, L_write_none_snd, 6) := refl
+  def L_write_none_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); *r := 6; let k : Nat = p; k) })
+  def L_write_none_other_v : Eq(Nat, L_write_none_other, 5) := refl
+  reject def L_write_same_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := Z; *r := 6; let k : Nat = p; k) })
+  reject def L_write_same_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := Z; *r := 6; let k : Nat = p; k) })
+  reject def L_write_same_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := Z; *r := 6; let k : Nat = p; k) })
+  reject def L_write_same_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := Z; *r := 6; let k : Nat = p; k) })
+  reject def L_write_same_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := Z; *r := 6; let k : Nat = p; k) })
+  reject def L_write_chg_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); *r := 6; let k : Nat = p; k) })
+  reject def L_write_chg_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); *r := 6; let k : Nat = p; k) })
+  reject def L_write_chg_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); *r := 6; let k : Nat = p; k) })
+  reject def L_write_chg_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); *r := 6; let k : Nat = p; k) })
+  reject def L_write_chg_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); *r := 6; let k : Nat = p; k) })
+  reject def L_write_chg2_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); b := Z; *r := 6; let k : Nat = p; k) })
+  reject def L_write_chg2_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); b := Z; *r := 6; let k : Nat = p; k) })
+  reject def L_write_chg2_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); b := Z; *r := 6; let k : Nat = p; k) })
+  reject def L_write_chg2_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); b := Z; *r := 6; let k : Nat = p; k) })
+  reject def L_write_chg2_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); b := Z; *r := 6; let k : Nat = p; k) })
+  def L_rebor_none_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; let s = &p; *s := 6; let k : Nat = p; k) })
+  def L_rebor_none_plain_v : Eq(Nat, L_rebor_none_plain, 6) := refl
+  def L_rebor_none_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); let s = &p; *s := 6; let k : Nat = p; k) })
+  def L_rebor_none_keep_v : Eq(Nat, L_rebor_none_keep, 6) := refl
+  def L_rebor_none_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); let s = &p; *s := 6; let k : Nat = p; k) })
+  def L_rebor_none_fst_v : Eq(Nat, L_rebor_none_fst, 6) := refl
+  def L_rebor_none_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); let s = &p; *s := 6; let k : Nat = p; k) })
+  def L_rebor_none_snd_v : Eq(Nat, L_rebor_none_snd, 6) := refl
+  def L_rebor_none_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); let s = &p; *s := 6; let k : Nat = p; k) })
+  def L_rebor_none_other_v : Eq(Nat, L_rebor_none_other, 6) := refl
+  reject def L_rebor_same_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := Z; let s = &p; *s := 6; let k : Nat = p; k) })
+  reject def L_rebor_same_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := Z; let s = &p; *s := 6; let k : Nat = p; k) })
+  reject def L_rebor_same_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := Z; let s = &p; *s := 6; let k : Nat = p; k) })
+  reject def L_rebor_same_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := Z; let s = &p; *s := 6; let k : Nat = p; k) })
+  reject def L_rebor_same_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := Z; let s = &p; *s := 6; let k : Nat = p; k) })
+  reject def L_rebor_chg_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); let s = &p; *s := 6; let k : Nat = p; k) })
+  reject def L_rebor_chg_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); let s = &p; *s := 6; let k : Nat = p; k) })
+  reject def L_rebor_chg_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); let s = &p; *s := 6; let k : Nat = p; k) })
+  reject def L_rebor_chg_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); let s = &p; *s := 6; let k : Nat = p; k) })
+  reject def L_rebor_chg_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); let s = &p; *s := 6; let k : Nat = p; k) })
+  reject def L_rebor_chg2_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); b := Z; let s = &p; *s := 6; let k : Nat = p; k) })
+  reject def L_rebor_chg2_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); b := Z; let s = &p; *s := 6; let k : Nat = p; k) })
+  reject def L_rebor_chg2_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); b := Z; let s = &p; *s := 6; let k : Nat = p; k) })
+  reject def L_rebor_chg2_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); b := Z; let s = &p; *s := 6; let k : Nat = p; k) })
+  reject def L_rebor_chg2_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); b := Z; let s = &p; *s := 6; let k : Nat = p; k) })
+  def L_move_none_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; let k : Nat = IdN(p); k) })
+  def L_move_none_plain_v : Eq(Nat, L_move_none_plain, 5) := refl
+  def L_move_none_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); let k : Nat = IdN(p); k) })
+  def L_move_none_keep_v : Eq(Nat, L_move_none_keep, 5) := refl
+  def L_move_none_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); let k : Nat = IdN(p); k) })
+  def L_move_none_fst_v : Eq(Nat, L_move_none_fst, 5) := refl
+  def L_move_none_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); let k : Nat = IdN(p); k) })
+  def L_move_none_snd_v : Eq(Nat, L_move_none_snd, 5) := refl
+  def L_move_none_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); let k : Nat = IdN(p); k) })
+  def L_move_none_other_v : Eq(Nat, L_move_none_other, 5) := refl
+  reject def L_move_same_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := Z; let k : Nat = IdN(p); k) })
+  reject def L_move_same_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := Z; let k : Nat = IdN(p); k) })
+  reject def L_move_same_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := Z; let k : Nat = IdN(p); k) })
+  reject def L_move_same_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := Z; let k : Nat = IdN(p); k) })
+  reject def L_move_same_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := Z; let k : Nat = IdN(p); k) })
+  reject def L_move_chg_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); let k : Nat = IdN(p); k) })
+  reject def L_move_chg_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); let k : Nat = IdN(p); k) })
+  reject def L_move_chg_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); let k : Nat = IdN(p); k) })
+  reject def L_move_chg_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); let k : Nat = IdN(p); k) })
+  reject def L_move_chg_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); let k : Nat = IdN(p); k) })
+  reject def L_move_chg2_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); b := Z; let k : Nat = IdN(p); k) })
+  reject def L_move_chg2_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); b := Z; let k : Nat = IdN(p); k) })
+  reject def L_move_chg2_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); b := Z; let k : Nat = IdN(p); k) })
+  reject def L_move_chg2_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); b := Z; let k : Nat = IdN(p); k) })
+  reject def L_move_chg2_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); b := Z; let k : Nat = IdN(p); k) })
+  def L_assign_none_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; p := 6; let k : Nat = p; k) })
+  def L_assign_none_plain_v : Eq(Nat, L_assign_none_plain, 6) := refl
+  def L_assign_none_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); p := 6; let k : Nat = p; k) })
+  def L_assign_none_keep_v : Eq(Nat, L_assign_none_keep, 6) := refl
+  def L_assign_none_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); p := 6; let k : Nat = p; k) })
+  def L_assign_none_fst_v : Eq(Nat, L_assign_none_fst, 6) := refl
+  def L_assign_none_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); p := 6; let k : Nat = p; k) })
+  def L_assign_none_snd_v : Eq(Nat, L_assign_none_snd, 6) := refl
+  def L_assign_none_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); p := 6; let k : Nat = p; k) })
+  def L_assign_none_other_v : Eq(Nat, L_assign_none_other, 6) := refl
+  def L_assign_same_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := Z; p := 6; let k : Nat = p; k) })
+  def L_assign_same_plain_v : Eq(Nat, L_assign_same_plain, 6) := refl
+  def L_assign_same_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := Z; p := 6; let k : Nat = p; k) })
+  def L_assign_same_keep_v : Eq(Nat, L_assign_same_keep, 6) := refl
+  def L_assign_same_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := Z; p := 6; let k : Nat = p; k) })
+  def L_assign_same_fst_v : Eq(Nat, L_assign_same_fst, 6) := refl
+  def L_assign_same_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := Z; p := 6; let k : Nat = p; k) })
+  def L_assign_same_snd_v : Eq(Nat, L_assign_same_snd, 6) := refl
+  def L_assign_same_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := Z; p := 6; let k : Nat = p; k) })
+  def L_assign_same_other_v : Eq(Nat, L_assign_same_other, 6) := refl
+  reject def L_assign_chg_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); p := 6; let k : Nat = p; k) })
+  reject def L_assign_chg_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); p := 6; let k : Nat = p; k) })
+  reject def L_assign_chg_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); p := 6; let k : Nat = p; k) })
+  reject def L_assign_chg_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); p := 6; let k : Nat = p; k) })
+  reject def L_assign_chg_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); p := 6; let k : Nat = p; k) })
+  def L_assign_chg2_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); b := Z; p := 6; let k : Nat = p; k) })
+  def L_assign_chg2_plain_v : Eq(Nat, L_assign_chg2_plain, 6) := refl
+  def L_assign_chg2_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); b := Z; p := 6; let k : Nat = p; k) })
+  def L_assign_chg2_keep_v : Eq(Nat, L_assign_chg2_keep, 6) := refl
+  def L_assign_chg2_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); b := Z; p := 6; let k : Nat = p; k) })
+  def L_assign_chg2_fst_v : Eq(Nat, L_assign_chg2_fst, 6) := refl
+  def L_assign_chg2_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); b := Z; p := 6; let k : Nat = p; k) })
+  def L_assign_chg2_snd_v : Eq(Nat, L_assign_chg2_snd, 6) := refl
+  def L_assign_chg2_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); b := Z; p := 6; let k : Nat = p; k) })
+  def L_assign_chg2_other_v : Eq(Nat, L_assign_chg2_other, 6) := refl
+}
+
+#guard (run "MarkedTableLeaf1" MarkedTableLeaf1).rejectedWith [
+  ("L_read_same_plain", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_read_same_keep", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_read_same_fst", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_read_same_snd", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_read_same_other", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_read_chg_plain", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_read_chg_keep", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_read_chg_fst", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_read_chg_snd", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_read_chg_other", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_read_chg2_plain", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_read_chg2_keep", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_read_chg2_fst", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_read_chg2_snd", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_read_chg2_other", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_write_same_plain", "no such place *r: its path does not exist in ⊥"),
+  ("L_write_same_keep", "no such place *r: its path does not exist in ⊥"),
+  ("L_write_same_fst", "no such place *r: its path does not exist in ⊥"),
+  ("L_write_same_snd", "no such place *r: its path does not exist in ⊥"),
+  ("L_write_same_other", "no such place *r: its path does not exist in ⊥"),
+  ("L_write_chg_plain", "no such place *r: its path does not exist in ⊥"),
+  ("L_write_chg_keep", "no such place *r: its path does not exist in ⊥"),
+  ("L_write_chg_fst", "no such place *r: its path does not exist in ⊥"),
+  ("L_write_chg_snd", "no such place *r: its path does not exist in ⊥"),
+  ("L_write_chg_other", "no such place *r: its path does not exist in ⊥"),
+  ("L_write_chg2_plain", "no such place *r: its path does not exist in ⊥"),
+  ("L_write_chg2_keep", "no such place *r: its path does not exist in ⊥"),
+  ("L_write_chg2_fst", "no such place *r: its path does not exist in ⊥"),
+  ("L_write_chg2_snd", "no such place *r: its path does not exist in ⊥"),
+  ("L_write_chg2_other", "no such place *r: its path does not exist in ⊥"),
+  ("L_rebor_same_plain", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("L_rebor_same_keep", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("L_rebor_same_fst", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("L_rebor_same_snd", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("L_rebor_same_other", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("L_rebor_chg_plain", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("L_rebor_chg_keep", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("L_rebor_chg_fst", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("L_rebor_chg_snd", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("L_rebor_chg_other", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("L_rebor_chg2_plain", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("L_rebor_chg2_keep", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("L_rebor_chg2_fst", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("L_rebor_chg2_snd", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("L_rebor_chg2_other", "[Borrow] c.p was moved out (borrowing ⊥)"),
+  ("L_move_same_plain", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_move_same_keep", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_move_same_fst", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_move_same_snd", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_move_same_other", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_move_chg_plain", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_move_chg_keep", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_move_chg_fst", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_move_chg_snd", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_move_chg_other", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_move_chg2_plain", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_move_chg2_keep", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_move_chg2_fst", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_move_chg2_snd", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_move_chg2_other", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_assign_chg_plain", "the assigned value has type Nat, expected Unit"),
+  ("L_assign_chg_keep", "the assigned value has type Nat, expected Unit"),
+  ("L_assign_chg_fst", "the assigned value has type Nat, expected Unit"),
+  ("L_assign_chg_snd", "the assigned value has type Nat, expected Unit"),
+  ("L_assign_chg_other", "the assigned value has type Nat, expected Unit")]
+
+ochr MarkedTableLeaf2 uses Nats {
+  def Payload (b : Nat) : Type := match b { Z => Nat, S _ => Unit }
+  inductive L := MkL(b : Nat, p : Payload(b))
+  def KeepN (r : &Nat) : &Nat := r
+  def FstN (r : &Nat) (s : &Nat) : &Nat := r
+  def SndN (r : &Nat) (s : &Nat) : &Nat := s
+  def IdN (o : Nat) : Nat := o
+  def L_thru_none_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; let s = &*r; *s := 6; let k : Nat = p; k) })
+  def L_thru_none_plain_v : Eq(Nat, L_thru_none_plain, 6) := refl
+  def L_thru_none_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); let s = &*r; *s := 6; let k : Nat = p; k) })
+  def L_thru_none_keep_v : Eq(Nat, L_thru_none_keep, 6) := refl
+  def L_thru_none_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); let s = &*r; *s := 6; let k : Nat = p; k) })
+  def L_thru_none_fst_v : Eq(Nat, L_thru_none_fst, 6) := refl
+  def L_thru_none_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); let s = &*r; *s := 6; let k : Nat = p; k) })
+  def L_thru_none_snd_v : Eq(Nat, L_thru_none_snd, 6) := refl
+  def L_thru_none_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); let s = &*r; *s := 6; let k : Nat = p; k) })
+  def L_thru_none_other_v : Eq(Nat, L_thru_none_other, 5) := refl
+  reject def L_thru_same_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := Z; let s = &*r; *s := 6; let k : Nat = p; k) })
+  reject def L_thru_same_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := Z; let s = &*r; *s := 6; let k : Nat = p; k) })
+  reject def L_thru_same_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := Z; let s = &*r; *s := 6; let k : Nat = p; k) })
+  reject def L_thru_same_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := Z; let s = &*r; *s := 6; let k : Nat = p; k) })
+  reject def L_thru_same_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := Z; let s = &*r; *s := 6; let k : Nat = p; k) })
+  reject def L_thru_chg_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); let s = &*r; *s := 6; let k : Nat = p; k) })
+  reject def L_thru_chg_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); let s = &*r; *s := 6; let k : Nat = p; k) })
+  reject def L_thru_chg_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); let s = &*r; *s := 6; let k : Nat = p; k) })
+  reject def L_thru_chg_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); let s = &*r; *s := 6; let k : Nat = p; k) })
+  reject def L_thru_chg_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); let s = &*r; *s := 6; let k : Nat = p; k) })
+  reject def L_thru_chg2_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); b := Z; let s = &*r; *s := 6; let k : Nat = p; k) })
+  reject def L_thru_chg2_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); b := Z; let s = &*r; *s := 6; let k : Nat = p; k) })
+  reject def L_thru_chg2_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); b := Z; let s = &*r; *s := 6; let k : Nat = p; k) })
+  reject def L_thru_chg2_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); b := Z; let s = &*r; *s := 6; let k : Nat = p; k) })
+  reject def L_thru_chg2_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); b := Z; let s = &*r; *s := 6; let k : Nat = p; k) })
+  def L_readr_none_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; let k : Nat = clone(*r); k) })
+  def L_readr_none_plain_v : Eq(Nat, L_readr_none_plain, 5) := refl
+  def L_readr_none_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); let k : Nat = clone(*r); k) })
+  def L_readr_none_keep_v : Eq(Nat, L_readr_none_keep, 5) := refl
+  def L_readr_none_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); let k : Nat = clone(*r); k) })
+  def L_readr_none_fst_v : Eq(Nat, L_readr_none_fst, 5) := refl
+  def L_readr_none_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); let k : Nat = clone(*r); k) })
+  def L_readr_none_snd_v : Eq(Nat, L_readr_none_snd, 5) := refl
+  def L_readr_none_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); let k : Nat = clone(*r); k) })
+  def L_readr_none_other_v : Eq(Nat, L_readr_none_other, 6) := refl
+  reject def L_readr_same_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := Z; let k : Nat = clone(*r); k) })
+  reject def L_readr_same_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := Z; let k : Nat = clone(*r); k) })
+  reject def L_readr_same_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := Z; let k : Nat = clone(*r); k) })
+  reject def L_readr_same_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := Z; let k : Nat = clone(*r); k) })
+  reject def L_readr_same_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := Z; let k : Nat = clone(*r); k) })
+  reject def L_readr_chg_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); let k : Nat = clone(*r); k) })
+  reject def L_readr_chg_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); let k : Nat = clone(*r); k) })
+  reject def L_readr_chg_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); let k : Nat = clone(*r); k) })
+  reject def L_readr_chg_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); let k : Nat = clone(*r); k) })
+  reject def L_readr_chg_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); let k : Nat = clone(*r); k) })
+  reject def L_readr_chg2_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); b := Z; let k : Nat = clone(*r); k) })
+  reject def L_readr_chg2_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); b := Z; let k : Nat = clone(*r); k) })
+  reject def L_readr_chg2_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); b := Z; let k : Nat = clone(*r); k) })
+  reject def L_readr_chg2_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); b := Z; let k : Nat = clone(*r); k) })
+  reject def L_readr_chg2_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); b := Z; let k : Nat = clone(*r); k) })
+  reject def L_useafter_none_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_none_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_none_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_none_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_none_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_same_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := Z; let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_same_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := Z; let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_same_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := Z; let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_same_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := Z; let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_same_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := Z; let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_chg_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_chg_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_chg_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_chg_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_chg_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_chg2_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); b := Z; let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_chg2_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); b := Z; let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_chg2_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); b := Z; let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_chg2_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); b := Z; let k : Nat = p; *r := 6; k) })
+  reject def L_useafter_chg2_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); b := Z; let k : Nat = p; *r := 6; k) })
+  def L_wthenread_none_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  def L_wthenread_none_plain_v : Eq(Nat, L_wthenread_none_plain, 6) := refl
+  def L_wthenread_none_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  def L_wthenread_none_keep_v : Eq(Nat, L_wthenread_none_keep, 6) := refl
+  def L_wthenread_none_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  def L_wthenread_none_fst_v : Eq(Nat, L_wthenread_none_fst, 6) := refl
+  def L_wthenread_none_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  def L_wthenread_none_snd_v : Eq(Nat, L_wthenread_none_snd, 6) := refl
+  def L_wthenread_none_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  def L_wthenread_none_other_v : Eq(Nat, L_wthenread_none_other, 5) := refl
+  reject def L_wthenread_same_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := Z; *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  reject def L_wthenread_same_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := Z; *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  reject def L_wthenread_same_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := Z; *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  reject def L_wthenread_same_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := Z; *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  reject def L_wthenread_same_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := Z; *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  reject def L_wthenread_chg_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  reject def L_wthenread_chg_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  reject def L_wthenread_chg_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  reject def L_wthenread_chg_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  reject def L_wthenread_chg_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  reject def L_wthenread_chg2_plain : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = &p; b := S(Z); b := Z; *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  reject def L_wthenread_chg2_keep : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let r = KeepN(&p); b := S(Z); b := Z; *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  reject def L_wthenread_chg2_fst : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&p, &y); b := S(Z); b := Z; *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  reject def L_wthenread_chg2_snd : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = SndN(&y, &p); b := S(Z); b := Z; *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+  reject def L_wthenread_chg2_other : Nat := (let c = MkL(Z, 5); match c { MkL(b, p) => (let y = 6; let r = FstN(&y, &p); b := S(Z); b := Z; *r := 6; let k : Nat = clone(*r); let j : Nat = p; j) })
+}
+
+#guard (run "MarkedTableLeaf2" MarkedTableLeaf2).rejectedWith [
+  ("L_thru_same_plain", "no such place *r: its path does not exist in ⊥"),
+  ("L_thru_same_keep", "no such place *r: its path does not exist in ⊥"),
+  ("L_thru_same_fst", "no such place *r: its path does not exist in ⊥"),
+  ("L_thru_same_snd", "no such place *r: its path does not exist in ⊥"),
+  ("L_thru_same_other", "no such place *r: its path does not exist in ⊥"),
+  ("L_thru_chg_plain", "no such place *r: its path does not exist in ⊥"),
+  ("L_thru_chg_keep", "no such place *r: its path does not exist in ⊥"),
+  ("L_thru_chg_fst", "no such place *r: its path does not exist in ⊥"),
+  ("L_thru_chg_snd", "no such place *r: its path does not exist in ⊥"),
+  ("L_thru_chg_other", "no such place *r: its path does not exist in ⊥"),
+  ("L_thru_chg2_plain", "no such place *r: its path does not exist in ⊥"),
+  ("L_thru_chg2_keep", "no such place *r: its path does not exist in ⊥"),
+  ("L_thru_chg2_fst", "no such place *r: its path does not exist in ⊥"),
+  ("L_thru_chg2_snd", "no such place *r: its path does not exist in ⊥"),
+  ("L_thru_chg2_other", "no such place *r: its path does not exist in ⊥"),
+  ("L_readr_same_plain", "no such place *r: its path does not exist in ⊥"),
+  ("L_readr_same_keep", "no such place *r: its path does not exist in ⊥"),
+  ("L_readr_same_fst", "no such place *r: its path does not exist in ⊥"),
+  ("L_readr_same_snd", "no such place *r: its path does not exist in ⊥"),
+  ("L_readr_same_other", "no such place *r: its path does not exist in ⊥"),
+  ("L_readr_chg_plain", "no such place *r: its path does not exist in ⊥"),
+  ("L_readr_chg_keep", "no such place *r: its path does not exist in ⊥"),
+  ("L_readr_chg_fst", "no such place *r: its path does not exist in ⊥"),
+  ("L_readr_chg_snd", "no such place *r: its path does not exist in ⊥"),
+  ("L_readr_chg_other", "no such place *r: its path does not exist in ⊥"),
+  ("L_readr_chg2_plain", "no such place *r: its path does not exist in ⊥"),
+  ("L_readr_chg2_keep", "no such place *r: its path does not exist in ⊥"),
+  ("L_readr_chg2_fst", "no such place *r: its path does not exist in ⊥"),
+  ("L_readr_chg2_snd", "no such place *r: its path does not exist in ⊥"),
+  ("L_readr_chg2_other", "no such place *r: its path does not exist in ⊥"),
+  ("L_useafter_none_plain", "no such place *r: its path does not exist in ⊥"),
+  ("L_useafter_none_keep", "no such place *r: its path does not exist in ⊥"),
+  ("L_useafter_none_fst", "no such place *r: its path does not exist in ⊥"),
+  ("L_useafter_none_snd", "no such place *r: its path does not exist in ⊥"),
+  ("L_useafter_none_other", "no such place *r: its path does not exist in ⊥"),
+  ("L_useafter_same_plain", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_useafter_same_keep", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_useafter_same_fst", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_useafter_same_snd", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_useafter_same_other", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_useafter_chg_plain", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_useafter_chg_keep", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_useafter_chg_fst", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_useafter_chg_snd", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_useafter_chg_other", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_useafter_chg2_plain", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_useafter_chg2_keep", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_useafter_chg2_fst", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_useafter_chg2_snd", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_useafter_chg2_other", "[Read] c.p was moved out or its borrow ended (reading ⊥)"),
+  ("L_wthenread_same_plain", "no such place *r: its path does not exist in ⊥"),
+  ("L_wthenread_same_keep", "no such place *r: its path does not exist in ⊥"),
+  ("L_wthenread_same_fst", "no such place *r: its path does not exist in ⊥"),
+  ("L_wthenread_same_snd", "no such place *r: its path does not exist in ⊥"),
+  ("L_wthenread_same_other", "no such place *r: its path does not exist in ⊥"),
+  ("L_wthenread_chg_plain", "no such place *r: its path does not exist in ⊥"),
+  ("L_wthenread_chg_keep", "no such place *r: its path does not exist in ⊥"),
+  ("L_wthenread_chg_fst", "no such place *r: its path does not exist in ⊥"),
+  ("L_wthenread_chg_snd", "no such place *r: its path does not exist in ⊥"),
+  ("L_wthenread_chg_other", "no such place *r: its path does not exist in ⊥"),
+  ("L_wthenread_chg2_plain", "no such place *r: its path does not exist in ⊥"),
+  ("L_wthenread_chg2_keep", "no such place *r: its path does not exist in ⊥"),
+  ("L_wthenread_chg2_fst", "no such place *r: its path does not exist in ⊥"),
+  ("L_wthenread_chg2_snd", "no such place *r: its path does not exist in ⊥"),
+  ("L_wthenread_chg2_other", "no such place *r: its path does not exist in ⊥")]
+
+ochr MarkedNested uses Nats {
+  inductive Void : Type
+  inductive One := O
+  def Fin1 (n : Nat) : Type := match n { Z => Void, S(m) => One, }
+  inductive V := MkV(n : Nat, x : Fin1(n))
+  def G (k : Nat) : Type := match k { Z => V, S _ => One }
+  inductive W := MkW(k : Nat, v : G(k))
+  def KeepV (r : &V) : &V := r
+  def AbsurdV (v : Void) : False := match v {}
+  -- a dependent value under a mark: read whole, plain against returned
+  def NRead : V := (let c = MkW(Z, MkV(S(Z), O)); match c { MkW(k, v) => (let r = &v; let y : V = v; y) })
+  def NReadRet : V := (let c = MkW(Z, MkV(S(Z), O)); match c { MkW(k, v) => (let r = KeepV(&v); let y : V = v; y) })
+  -- the outer index rewritten while the inner value is lent
+  def NIdx : V := (let c = MkW(Z, MkV(S(Z), O)); match c { MkW(k, v) => (let r = &v; k := S(Z); let y : V = v; y) })
+  def NIdxRet : V := (let c = MkW(Z, MkV(S(Z), O)); match c { MkW(k, v) => (let r = KeepV(&v); k := S(Z); let y : V = v; y) })
+  -- the inner value opened through the borrow, then the outer field read
+  reject def NOpen : Void := (let c = MkW(Z, MkV(S(Z), O)); match c { MkW(k, v) => (let r = &v; match *r { MkV(n, x) => (n := Z; ()) }; match v { MkV(n2, x2) => (let z : Void = x2; z) }) })
+  reject def NOpenRet : Void := (let c = MkW(Z, MkV(S(Z), O)); match c { MkW(k, v) => (let r = KeepV(&v); match *r { MkV(n, x) => (n := Z; ()) }; match v { MkV(n2, x2) => (let z : Void = x2; z) }) })
+  -- opened through the borrow, the outer value typed while it is still lent
+  reject def NOpenWhole : W := (let c = MkW(Z, MkV(S(Z), O)); match c { MkW(k, v) => (let r = &v; match *r { MkV(n, x) => (n := Z; ()) }; ()) }; c)
+  reject def NOpenWholeRet : W := (let c = MkW(Z, MkV(S(Z), O)); match c { MkW(k, v) => (let r = KeepV(&v); match *r { MkV(n, x) => (n := Z; ()) }; ()) }; c)
+  def NReadV : Eq(V, NRead, MkV(S(Z), O)) := refl
+  def NReadRetV : Eq(V, NReadRet, MkV(S(Z), O)) := refl
+  def NIdxV : Eq(V, NIdx, MkV(S(Z), O)) := refl
+  def NIdxRetV : Eq(V, NIdxRet, MkV(S(Z), O)) := refl
+}
+
+#guard (run "MarkedNested" MarkedNested).rejectedWith [
+  ("NOpen", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Void"),
+  ("NOpenRet", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Void"),
+  ("NOpenWhole", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Void"),
+  ("NOpenWholeRet", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Void")]
+
 /-! ## Opened dependent values, attacked (D110, D112)
 
 The attack of the dependent-values lane (`Meaning/Dep/HANDOFF.md`), as asserted rows. In order:

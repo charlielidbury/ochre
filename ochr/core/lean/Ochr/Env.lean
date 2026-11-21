@@ -167,6 +167,13 @@ structure Config where
   typed run, or holding a borrow with none (`LogEntry.push`), at every call depth, which
   `recordStates` does not reach. Off in every run that produces a verdict; no decision reads it. -/
   recordPushes : Bool := false
+  /-- Dev tooling (`lake exe sweep --deep`): log the whole machine state on entry to every
+  evaluation and on its successful exit at every call depth above 0 (a callee's body, a sealed
+  program's re-run), which `recordStates` does not reach (`LogEntry.deep`); outside private copies,
+  and inside them too with `recordDeepPrivate`. Off in every run that produces a verdict; no
+  decision reads it. -/
+  recordDeep : Bool := false
+  recordDeepPrivate : Bool := false
 deriving Inhabited, Repr, BEq
 
 /-- The universe a sort lives in: `Type_l : Type_{l+1}`, and `Prop : Type₁` beside `Type₀`
@@ -223,10 +230,11 @@ structure MState where
   inPlace : Bool := false                 -- D53: the next read is in place (a call's head, a block's read-only capture)
   modelDepth : Nat := 0                   -- K2/K3: > 0 inside model code, which never runs at runtime
   copying : Bool := false      -- inside `clone`/`peek`: reads copy (the explicit copy, not an erased-read mode)
-  /-- D84 [Id-typestate], ending a borrow: while a side of `Id` runs, the frame the `Id` is formed in and how
-  many bindings and temporaries it had then; a side may not end a borrow one of those holds. A
-  run from a fresh environment (a sealed program's re-run, a comparison) has none. -/
-  obsFrame : Option (Nat × Nat × Nat) := none
+  /-- D84 [Id-typestate], ending a borrow: while a side of `Id` runs, the frame the `Id` is formed in, how
+  many bindings and temporaries it had then, and (D114) the positions of the borrow bindings the
+  side consumes (its type-state's); a side may not end a borrow one of the others holds. A run
+  from a fresh environment (a sealed program's re-run, a comparison) has none. -/
+  obsFrame : Option (Nat × Nat × Nat × List Nat) := none
   typing : Bool := false                  -- the term being evaluated is part of the checked program (`eval true`),
                                           -- where D64's [Repack] points are checked
   locs : Locs := {}                       -- the editor: where the declaration's terms are (`located`)
@@ -259,6 +267,9 @@ inductive LogEntry where
   /-- Dev tooling (`Config.recordPushes`): a temporary pushed at the push site `site` with no stored
   type, in a typed run (`typing`) or holding a borrow, at call depth `depth`. -/
   | push (site : String) (typing : Bool) (v : Value) (depth : Nat)
+  /-- Dev tooling (`Config.recordDeep`): the whole state on entry to an evaluation at call depth
+  above 0 (`exit = false`), or as it leaves it successfully, with its value and type (`flight`). -/
+  | deep (exit : Bool) (flight : Option (Value × Option Value)) (st : MState)
 
 /-- The machine monad. The inner `StateM` holds the log (the trace, and the editor's notes),
 which survives both state restores and errors (so a rejected definition still shows how far

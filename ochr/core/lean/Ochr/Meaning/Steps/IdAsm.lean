@@ -65,14 +65,17 @@ two type-states agree, as `footprint_coverage` takes them), makes the fresh valu
 the re-pointed bindings (`refs`, at the places the aligned decision `rePointed` names), observes
 each side over the footprint (`observe`, the second from the state the first leaves), and returns
 the conjunction of the components' equalities (`mkEqM_step`): its meaning, under every typed
-extension, is that the results and each owner's two observed values mean the same. The states it
+extension, is that the results, each owner's two observed values, and (main's D113) what each
+re-pointed binding points to after the two sides mean the same. RESTATED BY D113: `observe`
+returns a third component, the re-pointed bindings' targets (`ca`, `cb`), compared at each
+binding's content type (`refs`' third entry); NOT PROVED (like the statement before it). The states it
 passes through are good for every typed extension; typed at the end, an extension is typed at
 each of them. -/
 theorem idType_split (fuel : Nat) (st st' : MState) (typed : Bool) (A t u : Term) (P : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hD : DecTab K.D st') (bh : Nat) (h : Runs (Ochr.idType (fuel + 1) typed A t u) st bh P st') :
     ∃ (A' : Value) (tsT tsU : TypeState) (stT stU stR st₁ st₂ : MState) (bT bU b₁ b₂ : Nat)
-      (refs : List (Place × Value × Value)) (a b : Value) (as bs : List Value),
+      (refs : List (Place × Value × Value)) (a b : Value) (as bs ca cb : List Value),
       Runs (withLive true (Ochr.typeState fuel t)) st bT tsT stT ∧ Runs (withLive true (Ochr.typeState fuel u)) st bU tsU stU ∧
       (jdMissing tsT.moved tsU.moved = none ∧ jdMissing tsU.moved tsT.moved = none) ∧
       (jdMissing tsT.consumed tsU.consumed = none ∧ jdMissing tsU.consumed tsT.consumed = none) ∧
@@ -80,8 +83,8 @@ theorem idType_split (fuel : Nat) (st st' : MState) (typed : Bool) (A t u : Term
       (jdMissing tsT.leftOpen tsU.leftOpen = none ∧ jdMissing tsU.leftOpen tsT.leftOpen = none) ∧
       refs.map (·.1) = K.D.rePointed (scopeOf s) t ∧
       stR.env = st.env ∧ st.absTy.size ≤ stR.absTy.size ∧
-      Runs (Ochr.observe fuel true t A' (footprint st.env [t, u]) refs) stR b₁ (a, as) st₁ ∧
-      Runs (Ochr.observe fuel true u A' (footprint st.env [t, u]) refs) st₁ b₂ (b, bs) st₂ ∧
+      Runs (Ochr.observe fuel true t A' (footprint st.env [t, u]) refs) stR b₁ (a, as, ca) st₁ ∧
+      Runs (Ochr.observe fuel true u A' (footprint st.env [t, u]) refs) st₁ b₂ (b, bs, cb) st₂ ∧
       TablesGrow st₂ st' ∧ st'.env = st.env ∧ st.absTy.size ≤ st'.absTy.size ∧ st.nextLoan ≤ st'.nextLoan ∧
       ∀ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
         TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' →
@@ -99,7 +102,12 @@ theorem idType_split (fuel : Nat) (st st' : MState) (typed : Bool) (A t u : Term
           ∀ (i : Nat) (p : Pos) (x y : Value), (footprint st.env [t, u])[i]? = some p → as[i]? = some x →
             bs[i]? = some y →
             meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Env.hintAt K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st.env p) x =
-              meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Env.hintAt K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st.env p) y)) := by
+              meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Env.hintAt K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st.env p) y) ∧
+          -- D113: what each re-pointed binding points to, at its content type
+          ∀ (i : Nat) (q : Place) (σ Tσ x y : Value), refs[i]? = some (q, σ, Tσ) → ca[i]? = some x →
+            cb[i]? = some y →
+            meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Value.tyS K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' Tσ) x =
+              meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Value.tyS K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' Tσ) y) := by
   sorry
 
 /-- **The reference's `Id`** (leaf): `run`'s `.id` clause from the related state: its result, a
@@ -155,8 +163,8 @@ from `idType_split`); the reference's `Id` is that for every typed written value
 which some typed extension writes (`fresh_realize`). -/
 theorem idType_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : idType_step_stmt K ρ φ (fuel + 1) := by
   intro st st' typed A t u P hg hctx s π hs hD bh h
-  obtain ⟨A', tsT, tsU, stT, stU, stR, st₁, st₂, bT, bU, b₁, b₂, refs, a, b, as, bs, htT, htU, hmv, hcs, hrp, hlo,
-    hrefs, hRenv, -, hob₁, hob₂, hpost, henv, habs, hnl, hafter⟩ :=
+  obtain ⟨A', tsT, tsU, stT, stU, stR, st₁, st₂, bT, bU, b₁, b₂, refs, a, b, as, bs, ca, cb, htT, htU, hmv, hcs, hrp,
+    hlo, hrefs, hRenv, -, hob₁, hob₂, hpost, henv, habs, hnl, hafter⟩ :=
     idType_split K ρ φ fuel st st' typed A t u P hg hctx s π hs hD bh h
   have hD₂ : DecTab K.D st₂ := hD.back hpost
   have hD₁ : DecTab K.D st₁ := hD₂.back (hob₂.grows (grows_observe _ _ _ _ _ _))
@@ -169,66 +177,15 @@ theorem idType_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : idType_step_stmt
   let reps := K.D.rePointed (scopeOf s) t
   let ob (Δ' : Nat → TyS) (ρ' : Assignment) (ws : List Sem) (v : Term) : Option (List Sem) :=
     refObs { K with Δ := Δ' } ρ' φ reps ws (Value.tyS K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' A') v s
-  -- the key: under a typed extension the conjunction is the equality of the two observations
+  -- the key: under a typed extension the conjunction is the equality of the two observations.
+  -- Broken by main's D113, and FALSE since it: the conjunction now also compares what each
+  -- re-pointed binding points to (`idType_split`'s last clause), which the reference's observation
+  -- does not read (`idType_step_stmt`'s docstring; `Hide`). Its proof before D113 (spine 3347196b):
+  -- `observe_step` twice, `footprint_coverage` off the footprint, `obs_eq_iff`.
   have key : ∀ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
       TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' →
       (propOf { K with Δ := Δ' } ρ' (fun l => φ (π l)) P ↔ ob Δ' ρ' (wsOf Δ' ρ') t = ob Δ' ρ' (wsOf Δ' ρ') u) := by
-    intro ρ' Δ' he hty
-    obtain ⟨hty₁, hty₂, hgR, hctxR, hsR, -, -, -, hP⟩ := hafter ρ' Δ' he hty
-    obtain ⟨henv₁, -, -, hob1⟩ := (ih.at { K with Δ := Δ' } ρ' φ).observe_step stR st₁ true t A' W refs a as hgR hctxR s π hsR
-      hD₁ b₁ hob₁
-    obtain ⟨⟨hg₁, hctx₁, hs₁⟩, o₁, ho₁, ho₁0, ho₁t⟩ := hob1 ρ' Δ' (fun _ _ => ⟨rfl, rfl⟩) hty₁
-    obtain ⟨-, -, -, hob2⟩ := (ih.at { K with Δ := Δ' } ρ' φ).observe_step st₁ st₂ true u A' W refs b bs hg₁ hctx₁ s π hs₁
-      hD₂ b₂ hob₂
-    obtain ⟨-, o₂, ho₂, ho₂0, ho₂t⟩ := hob2 ρ' Δ' (fun _ _ => ⟨rfl, rfl⟩) hty₂
-    rw [hrefs] at ho₁ ho₂
-    rw [henv₁, hRenv] at ho₂t
-    rw [hRenv] at ho₁t
-    have hl₁ := refObs_length _ _ _ ho₁
-    have hl₂ := refObs_length _ _ _ ho₂
-    -- off the footprint the two observations agree (`footprint_coverage`, at the starting context)
-    have hindep := ((hr ρ' Δ' he).2 ρ K.Δ (fun _ _ => ⟨rfl, rfl⟩))
-    have hb₁ : refObs K ρ φ reps (wsOf Δ' ρ') (Value.tyS K.dm ({ K with Δ := K.Δ } : RunCtx).M K.Γ ρ A') t s = some o₁ := by
-      rw [← hindep]; exact ho₁
-    have hb₂ : refObs K ρ φ reps (wsOf Δ' ρ') (Value.tyS K.dm ({ K with Δ := K.Δ } : RunCtx).M K.Γ ρ A') u s = some o₂ := by
-      rw [← hindep]; exact ho₂
-    have hout : ∀ j, j < s.positions.length → ¬ (∃ p, s.positions[j]? = some p ∧ p ∈ W) →
-        o₁.tail[j]? = o₂.tail[j]? := by
-      intro j hj hm
-      have hpj : s.positions[j]? = some s.positions[j] := List.getElem?_eq_getElem hj
-      have hp : s.positions[j] ∉ W := fun hW => hm ⟨_, hpj, hW⟩
-      exact (ih.at K ρ φ).footprint_coverage st stT stU A t u s.positions[j] o₁ o₂ j reps (wsOf Δ' ρ') _ tsT tsU hg hctx
-        s π hs bT htT bU htU hmv hcs hrp hlo hp hpj hb₁ hb₂
-    have e1 : ob Δ' ρ' (wsOf Δ' ρ') t = some o₁ := ho₁
-    have e2 : ob Δ' ρ' (wsOf Δ' ρ') u = some o₂ := ho₂
-    rw [e1, e2, Option.some.injEq, obs_eq_iff o₁ o₂ s.positions.length hl₁ hl₂ _ hout, hP, ho₁0, ho₂0, Option.some.injEq]
-    apply and_congr_right
-    intro _
-    constructor
-    · intro hc j hj ⟨p, hpj, hpW⟩
-      obtain ⟨i, hi⟩ := List.mem_iff_getElem?.mp hpW
-      have e₁ := ho₁t i j p hi hpj
-      have e₂ := ho₂t i j p hi hpj
-      have ht₁ : (o₁.tail[j]?).isSome := by
-        rw [List.getElem?_eq_getElem (by simp [List.length_tail, hl₁]; omega)]; rfl
-      have ht₂ : (o₂.tail[j]?).isSome := by
-        rw [List.getElem?_eq_getElem (by simp [List.length_tail, hl₂]; omega)]; rfl
-      rw [← e₁] at ht₁ ⊢; rw [← e₂] at ht₂ ⊢
-      cases hx : as[i]? with
-      | none => rw [hx] at ht₁; cases ht₁
-      | some x =>
-        cases hy : bs[i]? with
-        | none => rw [hy] at ht₂; cases ht₂
-        | some y => simp only [Option.map_some, Option.some.injEq]; exact hc i p x y hi hx hy
-    · intro ht i p x y hi hx hy
-      obtain ⟨j, hpj⟩ := footprint_positions K ρ φ st s π hs [t, u] i p hi
-      have hj : j < s.positions.length := by
-        rcases Nat.lt_or_ge j s.positions.length with h | h
-        · exact h
-        · rw [List.getElem?_eq_none h] at hpj; cases hpj
-      have e := ht j hj ⟨p, hpj, List.mem_of_getElem? hi⟩
-      rw [← ho₁t i j p hi hpj, ← ho₂t i j p hi hpj, hx, hy] at e
-      simpa using e
+    sorry
   -- the reference's `Id` is the equality at every typed written value
   refine ⟨henv, habs, hnl, r, hrun, ?_, fun hrt ρ' Δ' he hty =>
     (key ρ' Δ' he hty).mpr ((hr ρ' Δ' he).1.mp hrt _ (hfr₁ ρ' Δ' he hty))⟩
@@ -263,9 +220,9 @@ content is read directly, or through an earlier call's backward function, inject
 What `FrameProp.run_frame_obs` asks, and so what `Call.callOf_inPlace_rel` needs for a body with an
 `Id` and a borrow parameter. -/
 theorem cells_of_observe (fuel : Nat) (st st' : MState) (t : Term) (A : Value) (W : List Pos)
-    (refs : List (Place × Value × Value)) (r : Value) (ws : List Value)
+    (refs : List (Place × Value × Value)) (r : Value) (ws cs : List Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
-    (bh : Nat) (h : Runs (Ochr.observe fuel true t A W refs) st bh (r, ws) st')
+    (bh : Nat) (h : Runs (Ochr.observe fuel true t A W refs) st bh (r, ws, cs) st')
     (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) (hs₀ : FrameStart s₀ ks) (sc : SState) (hfr : FrameRel σ s₀ ks s sc)
     (Ts : List TyM) (hTs : ∀ (i : Nat) (k : Nat), ks[i]? = some k → Ts[i]? = some (s₀.heldTy k))
     (r' : Res) (sc' : SState) (hside : runT K ρ φ false (Value.tyS K.dm K.M K.Γ ρ A) t sc = some (r', sc')) :
