@@ -85,11 +85,11 @@ end
 /-- **The step at `evalCore`**, for one term: the conclusion of `eval_sim`, for a run of `evalCore`
 entered as `eval` enters it (in `Mode`, the tail flag in `curTail`, the one-shot flag clear), the term
 not erased by the aligned table. -/
-def CoreSim (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (P : MState → Prop := fun _ => True) :
-    Prop :=
+def CoreSim (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (P : MState → Prop := fun _ => True)
+    (TY : Bool → Prop := fun _ => True) : Prop :=
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
     (π : Nat → Nat),
-    P st → Mode st → st.tailNext = false → Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
+    P st → TY typed → Mode st → st.tailNext = false → Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
     K.D.flags (scopeOf s) t = (false, false) →
     (typed = false → (runT K ρ φ st.curTail (hintM K ρ hint) t s).isSome) →
@@ -99,11 +99,11 @@ def CoreSim (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (P
 
 /-- **The step at `eval`**, for one term the aligned table does not erase: `eval_sim` with `Mode` and
 the table's classification as hypotheses. -/
-def EvalSim (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (P : MState → Prop := fun _ => True) :
-    Prop :=
+def EvalSim (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (P : MState → Prop := fun _ => True)
+    (TY : Bool → Prop := fun _ => True) : Prop :=
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
     (π : Nat → Nat),
-    P st → Mode st → Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
+    P st → TY typed → Mode st → Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
     K.D.flags (scopeOf s) t = (false, false) →
     (typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome) →
@@ -127,13 +127,13 @@ theorem Out.of_kern {π : Nat → Nat} {st₀ st₁ st st' : MState} {s : SState
 
 /-- **`eval` around `evalCore`**: the step at `evalCore` gives the step at `eval`, for a term that is
 not an embedded value, through the checker's `eval` (`EvalInv`). -/
-theorem eval_of_core (hE : EvalInv) {n : Nat} {t : Term} {P : MState → Prop} (hP : ∀ a b, Kern a b → P a → P b)
-    (ht : ∀ w, t ≠ .val w) (hc : CoreSim K ρ φ n t P) :
-    EvalSim K ρ φ (n + 2) t P := by
-  intro st st' typed hint v T? s π hPs hm hp hr hS hv hab hnh hfl hok hD bh h
+theorem eval_of_core (hE : EvalInv) {n : Nat} {t : Term} {P : MState → Prop} {TY : Bool → Prop}
+    (hP : ∀ a b, Kern a b → P a → P b) (ht : ∀ w, t ≠ .val w) (hc : CoreSim K ρ φ n t P TY) :
+    EvalSim K ρ φ (n + 2) t P TY := by
+  intro st st' typed hint v T? s π hPs hty hm hp hr hS hv hab hnh hfl hok hD bh h
   obtain ⟨st₀, st₁, bh', hk₀, hm₀, hct, htn, h₀, hk₁, -⟩ :=
     hE n typed t hint st st' bh v T? K.D hm hD (by rw [← scopeOf_rel hr]; exact hfl) ht h
-  have hc' := hc st₀ st₁ typed hint v T? s π (hP st st₀ hk₀ hPs) hm₀ htn (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv
+  have hc' := hc st₀ st₁ typed hint v T? s π (hP st st₀ hk₀ hPs) hty hm₀ htn (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv
     (by rw [← hk₀.absTy]; exact hab) hnh hfl (by rw [hct]; exact hok) (DecTab.of_kern hk₁.symm hD) bh' h₀
   rw [hct] at hc'
   exact Out.of_kern hk₀ hk₁ hc'
@@ -305,10 +305,10 @@ theorem succ_core (hS : SuccInv) (hIC : InvCore) {n : Nat} {u : Term} (hu : Eval
     (hhint : ∀ s : SState, runT K ρ φ false (.plain TyM.nat) u s = runT K ρ φ false (.plain TyM.err) u s)
     (hnum : ∀ typed st₀ st₁ bh v₀ T₀, Runs (Ochr.eval n typed u none) st₀ bh (v₀, T₀) st₁ → v₀.Num) :
     CoreSim K ρ φ (n + 1) (.succ u) := by
-  intro st st' typed hint v T? s π _ hm htn hp hr hSg hv hab hnh hfl hok hD bh h
+  intro st st' typed hint v T? s π _ _ hm htn hp hr hSg hv hab hnh hfl hok hD bh h
   obtain ⟨st₀, st₁, v₀, T₀, bh₁, hk₀, hm₀, htn₀, hu₀, rfl, rfl, hq, hDb, -⟩ := hS n typed u hint st st' bh v T? hm h
   have hv₀ : v₀.Num := hnum typed st₀ st₁ bh₁ v₀ T₀ hu₀
-  have hO := hu st₀ st₁ typed none v₀ T₀ s π trivial hm₀ (hp.of_kern hk₀) (hr.of_kern hk₀) hSg hv
+  have hO := hu st₀ st₁ typed none v₀ T₀ s π trivial trivial hm₀ (hp.of_kern hk₀) (hr.of_kern hk₀) hSg hv
     (by rw [← hk₀.absTy]; exact hab) hnh (hflu _)
     (fun ht => by
       have hs := hok ht

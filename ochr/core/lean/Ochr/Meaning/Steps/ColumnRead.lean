@@ -184,7 +184,7 @@ variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 
 /-- **The read of a variable holding a number stored at `Nat`, at `evalCore`.** -/
 theorem var_core (hV : VarNumInv) (hIC : InvCore) {n i : Nat} : CoreSim K ρ φ (n + 1) (.place (.var i)) (NumVar i) := by
-  intro st st' typed hint v T? s π ⟨f, j, b, hpos, hb, hnum, hty⟩ hm htn hp hr hS hv hab hnh hfl hok hD bh h
+  intro st st' typed hint v T? s π ⟨f, j, b, hpos, hb, hnum, hty⟩ _ hm htn hp hr hS hv hab hnh hfl hok hD bh h
   obtain ⟨rfl, hT, -, hm', st₁, hq, hcopy, hmove⟩ := hV n typed i hint st st' bh v T? f j b K.D hm hpos hb hnum hD h
   have hres : resolve s (.var i) = some (.bind f j, []) := rel_resolve_ck K ρ φ st s π (.var i) _ hr hpos
   have hvb : valAt st.env (.bind f j) = b.val := by

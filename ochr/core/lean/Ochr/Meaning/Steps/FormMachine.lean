@@ -120,7 +120,7 @@ def LetInv : Prop :=
     Mode st → DecTab D st' → Runs (Ochr.evalCore (n + 1) true (.letIn h u w) hint) st bh (v, T?) st' →
     ∃ (du : DeclInfo) (st₀ st₁ stB st₂ st₃ : MState) (v₀ r T₀ : Value) (p : Bool) (bh₁ bh₂ bh₃ : Nat),
       Kern st st₀ ∧ Mode st₀ ∧ st₀.tailNext = false ∧
-      Runs (Ochr.eval n true u none) st₀ bh₁ (v₀, some T₀) st₁ ∧
+      Runs (Ochr.eval n true u none) st₀ bh₁ (v₀, some T₀) st₁ ∧ 0 < st₁.env.size ∧
       D.declOf (DecideScope.topReadings st₁) u = du ∧
       Kern { st₁ with env := Env.pushBindE st₁.env h (some T₀) v₀ p du } stB ∧ Mode stB ∧
       stB.tailNext = st.curTail ∧
