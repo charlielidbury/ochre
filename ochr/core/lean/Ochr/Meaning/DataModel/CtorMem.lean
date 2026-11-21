@@ -169,13 +169,13 @@ theorem sw_runs_strict (ρ : Assignment) (φ : Future) (G : String → Sem × Ty
     (htv : tv ∈ₛ[dmS.read] dmS.tyM tagD [.el0 Nat 3]) (hint : TyS) :
     (run (Kp dmS ΓS G) ρ φ hint (.letIn (hn "w") (.ctor "Wrap" 0 (hn "MkW") [] [.place (.var 0)]) (num 0))
       (frame [bindT (dmS.tyM tagD [.el0 Nat 3]) tv])).isSome :=
-  ParamSolve.sw_runs ρ φ G tv hw (sw_ctor_mem tv htv) hint
+  ParamSolve.sw_runs ρ φ G tv hw (Or.inl htv) (sw_ctor_mem tv htv) hint
 
 theorem so_runs_strict (ρ : Assignment) (φ : Future) (G : String → Sem × TyS) (tv : Sem) (hw : tv.whole)
     (htv : tv ∈ₛ[dmS.read] dmS.tyM tagD [.el0 Nat 3]) (hint : TyS) :
     (run (Kp dmS ΓS G) ρ φ hint (.letIn (hn "w") (.ctor "Opt2" 0 (hn "A2") [] [.place (.var 0)]) (num 0))
       (frame [bindT (dmS.tyM tagD [.el0 Nat 3]) tv])).isSome :=
-  ParamSolve.so_runs ρ φ G tv hw (so_ctor_mem tv htv) hint
+  ParamSolve.so_runs ρ φ G tv hw (Or.inl htv) (so_ctor_mem tv htv) hint
 
 end DataModel.CtorChecks
 
