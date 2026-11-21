@@ -1,4 +1,5 @@
 import Ochr.Meaning.Steps.FragSeq
+import Ochr.Meaning.Steps.FragBorrow
 
 /-!
 # The fragment theorem (lead10, lead11)
@@ -35,14 +36,18 @@ structure FragFacts (D : Decisions) : Prop where
   popUnit : InvPopUnit
   bindUnit : InvBindUnit
   seqInv : SeqInv
+  borNum : BorrowNumInv
+  borLent : BorrowLentInv
+  borBot : BorrowBotInv
+  lendG : InvLendG
+  /-- D112's invalidation is empty (the fuel-free table's, by definition) -/
+  noInv : ∀ sc p, D.invalidated sc p = []
 
 /-- **The steps of the fragment not yet proved**, each in the form the induction uses: from its
 sub-terms' steps at every extension of `Δ` and the assignment, the step at `evalCore`. The cases
 `Z`, `S` and the read are proved (`frag_sim`); these are the lead's open work (`OPEN.md`), stated
 here so that the induction is checked now. -/
 structure FragCases (K : RunCtx) (φ : Future) : Prop where
-  bor : ∀ Γ i, Γ[i]? = some .nat → ∀ m (Δ : Nat → TyS) (ρ : Assignment),
-    CoreSim { K with Δ := Δ } ρ φ (m + 1) (.borrow (.var i)) (FSt Γ) (· = true)
   asg : ∀ Γ i u, Γ[i]? = some .nat → FTy Γ u .nat → ∀ m,
     (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m u (FSt Γ) (· = true)) →
     ∀ (Δ : Nat → TyS) (ρ : Assignment), CoreSim { K with Δ := Δ } ρ φ (m + 1) (.assign (.var i) u) (FSt Γ) (· = true)
@@ -65,7 +70,8 @@ Assumes facts about the checker alone (`EvalInv`, `ZeroInv`, `SuccInv`, `VarNumI
 theorem frag_sim {K : RunCtx} {φ : Future} (hf : FragFacts K.D) (hc : Strict.FundCtx K) (hcs : FragCases K φ) :
     ∀ Γ t A, FTy Γ t A → ∀ n (Δ : Nat → TyS) (ρ : Assignment),
       EvalSim { K with Δ := Δ } ρ φ n t (FSt Γ) (· = true) := by
-  obtain ⟨hE, hZ, hS, hVN, hV, hVB, hIE, hI, hlow, hdec, hR, hPL, hL, hDN, hDB, hDL, hIU, hIBU, hSq⟩ := hf
+  obtain ⟨hE, hZ, hS, hVN, hV, hVB, hIE, hI, hlow, hdec, hR, hPL, hL, hDN, hDB, hDL, hIU, hIBU, hSq, hBN, hBL, hBB,
+    hILG, hNI⟩ := hf
   have hnat := hR.nat
   intro Γ t A hty
   induction hty with
@@ -89,7 +95,7 @@ theorem frag_sim {K : RunCtx} {φ : Future} (hf : FragFacts K.D) (hc : Strict.Fu
   | bor Γ i hi =>
     intro n Δ ρ
     exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.bor Γ i hi) (fun _ e => by cases e)
-      (fun _ _ _ e => by cases e) (fun m => hcs.bor Γ i hi m Δ ρ) n
+      (fun _ _ _ e => by cases e) (fun m => borF_core (K := { K with Δ := Δ }) hBN hBL hBB hIE hILG hPL hNI hi) n
   | asg Γ i u hi hu ih =>
     intro n Δ ρ
     exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.asg Γ i u hi hu) (fun _ e => by cases e)
