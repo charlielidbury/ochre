@@ -174,8 +174,14 @@ def LeafOk : Shape → Prop
   | _ => True
 
 /-- Every field shape of `D` at the record satisfies `LeafOk` (a canonical record's do: it keeps a
-data code at the model's carrier as a `.data` entry, `RecordsFaithful.leafOk`). -/
-def RecLeafOk (d : IndDecl) (r : Rec) : Prop := ∀ c i e, dm.LeafOk (dm.sig.shape d r c i e)
+data code at the model's carrier as a `.data` entry, `RecordsFaithful.leafOk`), at the GENUINE field
+keys only: a constructor `c` of `d`, a field `i` below its arity, the earlier fields' small readings
+`e` (ruling (S), exists2 2026-11-21). The universal signature reads any key `[(c, i, es)]`, and keys
+whose `es` is not of length `i` are a parameter's key or the first step into a parameter's record
+(`paramKey`, `paramContStep`), which hold whatever the parameter is: a type parameter may be a data
+code at any record of `Type₀`, junk leaves included (`Exists/RecordsCE.lean`). -/
+def RecLeafOk (d : IndDecl) (r : Rec) : Prop :=
+  ∀ c i e, c < d.ctors.length → i < DataLib.arity d c → e.length = i → dm.LeafOk (dm.sig.shape d r c i e)
 
 /-- **On a canonical shape, fitting is membership**: a field that fits its shape among the members
 is a member of the shape's type, unless that type is `err` (a non-canonical shape) or the shape is a

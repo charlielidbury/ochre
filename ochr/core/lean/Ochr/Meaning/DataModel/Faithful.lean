@@ -26,6 +26,13 @@ the checker copies it), and conditional (definedness at every well-typed input i
 soundness, which the consumers get from their own simulation of the checker's `evalType`). The
 degenerate model is still not faithful (`DataModel/Degenerate.lean`): its refutation uses a run
 that is defined.
+
+Restated again by the rulings (M-a) and (S) (exists2, 2026-11-21): as it stood, `RecordsFaithful` had
+no instance at any non-empty `Γ` (`Exists/RecordsCE.lean`, at 1765a998). A `Prop`-sorted
+declaration's raw data code was a member of `Type₀` and no record could mean it; it now has no level
+(`Code0.level`, (M-a)). And `leafOk` read every key of the form `[(c, i, es)]`, parameter keys
+included; it now reads the genuine field keys (`RecLeafOk`), `types` speaks of type parameters of a
+full-length list, and `ParamsTyped` asks membership (its "or any type value" disjunct is gone).
 -/
 
 namespace Ochr.Meaning
@@ -64,9 +71,12 @@ noncomputable def paramFrame (dm : DataModel) (D : Decisions) (d : IndDecl) (ps 
   let pds := paramDecls D d 0
   stateOf 0 (ps.zipIdx.map (fun vj => faithBind (dm.paramTy d vj.2 (ps.take vj.2)) vj.1 (pds.getD vj.2 .other)))
 
-/-- Parameters each of their declared type at the earlier ones (a type parameter: a type). -/
+/-- Parameters each a member of its declared type at the earlier ones. (A disjunct "or any type
+value", from 84b67f95 with no stated reason, was deleted by the ruling (S): the run reads a parameter
+strictly, `readPlace`'s `ReadGood`, so at a type value that is not a member the runs faithfulness
+speaks of were undefined anyway, and the disjunct only made `RecordsFaithful` speak of junk.) -/
 def ParamsTyped (dm : DataModel) (d : IndDecl) (ps : List Sem) : Prop :=
-  ∀ j (h : j < ps.length), ps[j] ∈ₛ[dm.read] dm.paramTy d j (ps.take j) ∨ ∃ T, ps[j] = .ty T
+  ∀ j (h : j < ps.length), ps[j] ∈ₛ[dm.read] dm.paramTy d j (ps.take j)
 
 /-- Earlier fields each of their field type at the ones before. -/
 def FieldsTyped (dm : DataModel) (d : IndDecl) (ps : List Sem) (c : Nat) (e : List Sem) : Prop :=
@@ -99,6 +109,7 @@ the parameter `unifyTyS` rebuilds from the small reading (`ofSmall`, `small_ofSm
 written one's record. -/
 structure RecordsFaithful (K : RunCtx) : Prop where
   types : ∀ d ∈ K.Γ, ∀ (ps : List Sem) (j : Nat) (A : Type) (c : Code0 A),
+    ps.length = d.params.length → d.paramIsType j = true →
     ParamsTyped K.dm d ps → ps[j]? = some (.ty (.t0 A c)) →
     K.dm.paramTyOf (K.dm.recOf d ps) j = .t0 A c
   values : ∀ d ∈ K.Γ, ∀ (ps : List Sem) (j : Nat) (v : Sem) (A : Type) (c : Code0 A),
@@ -110,8 +121,10 @@ structure RecordsFaithful (K : RunCtx) : Prop where
         v'.small = v.small)) →
     K.dm.recOf d ps' = K.dm.recOf d ps
   /-- A record at parameters keeps a data code over the model's own carrier as a `.data` entry,
-  never as a leaf (docs/34 §18): what `ctorOut_mem` and the read lemma ask of a record. -/
-  leafOk : ∀ d ∈ K.Γ, ∀ (ps : List Sem), ParamsTyped K.dm d ps → K.dm.RecLeafOk d (K.dm.recOf d ps)
+  never as a leaf, at its genuine field keys (docs/34 §18, ruling (S)): what `ctorOut_mem` and the
+  read lemma ask of a record. -/
+  leafOk : ∀ d ∈ K.Γ, ∀ (ps : List Sem), ps.length = d.params.length → ParamsTyped K.dm d ps →
+    K.dm.RecLeafOk d (K.dm.recOf d ps)
 
 /-- **A field's level is the one its declaration's check gave it** (the lead's addition, stated,
 not yet part of `CtxFaithful`): at well-typed parameters and earlier fields, a field the checker

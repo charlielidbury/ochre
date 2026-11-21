@@ -120,6 +120,18 @@ theorem matchEntry_substAbs (hD : DecInvariantAbs K.D σ w) (φ : Future) (ent :
 theorem fixMoves_substAbs (t : Term) (s : SState) : fixMoves K (Term.substAbs σ w t) s = fixMoves K t s := by
   unfold fixMoves capOrder; rw [freeVars_substAbs]
 
+/-- The strict ends' tests (ruling (A)) read the term only through the decisions. -/
+theorem matchEntryOk_substAbs (hD : DecInvariantAbs K.D σ w) (φ : Future) (ent : Bool) (t : Term) (s : SState) :
+    MatchEntryOk K φ ent (Term.substAbs σ w t) s = MatchEntryOk K φ ent t s := by
+  unfold MatchEntryOk; rw [hD.2.2.2.2.2.2]
+
+theorem joinDropOk_substAbs (hD : DecInvariantAbs K.D σ w) (φ : Future) (t : Term) (entry : List Place) (s : SState) :
+    JoinDropOk K φ entry (Term.substAbs σ w t) s = JoinDropOk K φ entry t s := by
+  unfold JoinDropOk; rw [hD.2.2.2.1]
+
+theorem capOrder_substAbs (t : Term) : capOrder (Term.substAbs σ w t) = capOrder t := by
+  unfold capOrder; rw [freeVars_substAbs]
+
 theorem substAbs_isPlace (u : Term) : (∃ p, Term.substAbs σ w u = .place p) ↔ ∃ p, u = .place p := by
   cases u <;> simp [Term.substAbs]
 
@@ -202,9 +214,14 @@ theorem run_prim_substAbsSame (hD : DecInvariantAbs K.D σ w) (tl : Bool) (n : S
     have hj : ∀ e s, joinDrop K ψ e (.prim "J" [Term.substAbs σ w A, Term.substAbs σ w a, Term.substAbs σ w b,
         Term.substAbs σ w P, Term.substAbs σ w h', Term.substAbs σ w t]) s = joinDrop K ψ e (.prim "J" [A, a, b, P, h', t]) s :=
       joinDrop_substAbs K σ w hD ψ (.prim "J" [A, a, b, P, h', t])
+    have hmeOk : ∀ s, MatchEntryOk K ψ true (Term.substAbs σ w t) s = MatchEntryOk K ψ true t s :=
+      matchEntryOk_substAbs K σ w hD ψ true t
+    have hjOk : ∀ e s, JoinDropOk K ψ e (.prim "J" [Term.substAbs σ w A, Term.substAbs σ w a, Term.substAbs σ w b,
+        Term.substAbs σ w P, Term.substAbs σ w h', Term.substAbs σ w t]) s = JoinDropOk K ψ e (.prim "J" [A, a, b, P, h', t]) s :=
+      joinDropOk_substAbs K σ w hD ψ (.prim "J" [A, a, b, P, h', t])
     rw [runT, runT]
     simp only [hfl', hall A (by simp), hall a (by simp), hall b (by simp),
-      hall P (by simp), hall h' (by simp), hall t (by simp), hme, hj]
+      hall P (by simp), hall h' (by simp), hall t (by simp), hme, hj, hmeOk, hjOk]
   by_cases hc : ∃ u, (n = "clone" ∨ n = "peek" ∨ n = "inplace") ∧ args = [u]
   · obtain ⟨u, hn, rfl⟩ := hc
     simp only [Term.substAbsList] at hfl' ⊢
@@ -320,7 +337,11 @@ theorem runT_substAbsSame (hF : AbsFillOK K ρ ψ σ w) : ∀ (tl : Bool) (t : T
       show runT K ρ ψ tl hint (.matchNat p (Term.substAbs σ w z) (Term.substAbs σ w u)) s = _
       have hfl : ∀ sc, K.D.flags sc (.matchNat p (Term.substAbs σ w z) (Term.substAbs σ w u)) = K.D.flags sc (.matchNat p z u) :=
         fun sc => hF.dec.1 sc (.matchNat p z u)
-      rw [runT, runT]; simp only [hz, hu, hj, hfl, hme]
+      have hjOk : ∀ e s, JoinDropOk K ψ e (.matchNat p (Term.substAbs σ w z) (Term.substAbs σ w u)) s
+          = JoinDropOk K ψ e (.matchNat p z u) s := joinDropOk_substAbs K σ w hF.dec ψ (.matchNat p z u)
+      have hmeOk : ∀ e s, MatchEntryOk K ψ e (.matchNat p (Term.substAbs σ w z) (Term.substAbs σ w u)) s
+          = MatchEntryOk K ψ e (.matchNat p z u) s := fun e => matchEntryOk_substAbs K σ w hF.dec ψ e (.matchNat p z u)
+      rw [runT, runT]; simp only [hz, hu, hj, hfl, hme, hjOk, hmeOk]
     | matchInd p n arms =>
       have ha := fun tl' => runArm_substAbsSame hF tl' arms
       have hj : ∀ e s, joinDrop K ψ e (.matchInd p n (Term.substAbsArms σ w arms)) s
@@ -331,7 +352,11 @@ theorem runT_substAbsSame (hF : AbsFillOK K ρ ψ σ w) : ∀ (tl : Bool) (t : T
       show runT K ρ ψ tl hint (.matchInd p n (Term.substAbsArms σ w arms)) s = _
       have hfl : ∀ sc, K.D.flags sc (.matchInd p n (Term.substAbsArms σ w arms)) = K.D.flags sc (.matchInd p n arms) :=
         fun sc => hF.dec.1 sc (.matchInd p n arms)
-      rw [runT, runT]; simp only [ha, hj, length_substAbsArms, hfl, hme]
+      have hjOk : ∀ e s, JoinDropOk K ψ e (.matchInd p n (Term.substAbsArms σ w arms)) s
+          = JoinDropOk K ψ e (.matchInd p n arms) s := joinDropOk_substAbs K σ w hF.dec ψ (.matchInd p n arms)
+      have hmeOk : ∀ e s, MatchEntryOk K ψ e (.matchInd p n (Term.substAbsArms σ w arms)) s
+          = MatchEntryOk K ψ e (.matchInd p n arms) s := fun e => matchEntryOk_substAbs K σ w hF.dec ψ e (.matchInd p n arms)
+      rw [runT, runT]; simp only [ha, hj, length_substAbsArms, hfl, hme, hjOk, hmeOk]
     | succ u =>
       have hu := fun tl' => runT_substAbsSame hF tl' u
       show runT K ρ ψ tl hint (.succ (Term.substAbs σ w u)) = _
@@ -424,8 +449,10 @@ theorem runT_substAbsSame (hF : AbsFillOK K ρ ψ σ w) : ∀ (tl : Bool) (t : T
       have hfl : ∀ sc, K.D.flags sc (.fix self hs (Term.substAbsList σ w ds) (Term.substAbs σ w c) dec
           (Term.substAbs σ w body)) = K.D.flags sc (.fix self hs ds c dec body) :=
         fun sc => hF.dec.1 sc (.fix self hs ds c dec body)
+      have hco : capOrder (.fix self hs (Term.substAbsList σ w ds) (Term.substAbs σ w c) dec (Term.substAbs σ w body))
+          = capOrder (.fix self hs ds c dec body) := capOrder_substAbs σ w (.fix self hs ds c dec body)
       rw [run_fix_def, run_fix_def, hfl, hps, hds, hbs, codOf_substAbs_of K ρ ψ σ w (hc false) hU, fixCod_substAbs_of K ρ ψ σ w (hc false) hU, hmv,
-        teleDecls_substAbs K σ w hF.dec, hF.dec.2.2.2.2.2.1, fixG_bodyEq K ρ ψ (hb true)]
+        teleDecls_substAbs K σ w hF.dec, hF.dec.2.2.2.2.2.1, fixG_bodyEq K ρ ψ (hb true), hco]
     | prim n args =>
       have hall : ∀ t ∈ args, ∀ hint, run K ρ ψ hint (Term.substAbs σ w t) = run K ρ ψ hint t :=
         fun t hm hint => runAll_substAbsSame hF args t hm hint

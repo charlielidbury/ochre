@@ -134,6 +134,22 @@ theorem anyArm_resVS {n : Nat} {f g : Nat → SM Res} {s : SState}
   · rename_i c _; exact (key c).2
   · rfl
 
+/-- A strict-end test (ruling (A)) before a continuation keeps the equality of runs up to the
+result's type: the test reads only the state. -/
+theorem optCheck_bind_resVS.{u} {P : Prop} {f g : PUnit.{u+1} → Option (Res × SState)}
+    (h : ∀ x, (f x).map resVS = (g x).map resVS) :
+    ((optCheck.{u} P).bind f).map resVS = ((optCheck.{u} P).bind g).map resVS := by
+  unfold optCheck; split
+  · exact h _
+  · rfl
+
+/-- A strict-end test (ruling (A)) as an `if` before a result: the test reads only the state. -/
+theorem ite_map_resVS {c : Prop} [Decidable c] {x y : Res × SState} (h : resVS x = resVS y) :
+    (if c then some x else none).map resVS = (if c then some y else none).map resVS := by
+  split
+  · simp only [Option.map_some, h]
+  · rfl
+
 mutual
 /-- **A run with a hint-free tail reads no hint**: same value, same state at every hint. -/
 theorem runT_hintIndep : ∀ (tl : Bool) (t : Term), Term.tailHintFree K.Γ t = true → ∀ (h h' : TyS) (s : SState),
@@ -147,7 +163,8 @@ theorem runT_hintIndep : ∀ (tl : Bool) (t : Term), Term.tailHintFree K.Γ t = 
     | some x =>
       obtain ⟨⟨v, T⟩, s₁⟩ := x
       simp only [Bind.bind, hu, Option.bind_some']
-      exact bind_resVS_congr (runT_hintIndep tl w ht h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl => by simp only [Option.map_some, resVS, hl]))
+      exact bind_resVS_congr (runT_hintIndep tl w ht h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl =>
+        ite_map_resVS (by simp only [resVS, hl])))
   | tl, .seq u w, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     rw [runT, runT]
@@ -156,34 +173,43 @@ theorem runT_hintIndep : ∀ (tl : Bool) (t : Term), Term.tailHintFree K.Γ t = 
     | none => simp only [Bind.bind, Monad.toBind, instMonadSM, hu]
     | some x =>
       simp only [Bind.bind, Monad.toBind, instMonadSM, hu]
-      exact runT_hintIndep tl w ht h h' _
+      cases hg : SM.guardMod (DiscardOk K φ x.1.2) (discardEnd x.1.2) x.2 with
+      | none => rfl
+      | some y =>
+        obtain ⟨_, s₂⟩ := y
+        exact runT_hintIndep tl w ht h h' _
   | tl, .matchNat p z u, ht, h, h', s => by
     simp only [Term.tailHintFree, Bool.and_eq_true] at ht
     rw [runT, runT]
     refine erasedIf_resVS_congr _ ?_
-    cases hc : tagOf K φ p natTag s with
+    cases hc : SM.guarded (TagOk K φ p) (tagOf K φ p natTag) s with
     | none => simp only [Bind.bind, hc, Option.bind_none', Option.map_none]
     | some x =>
       obtain ⟨tg, s₁⟩ := x
       simp only [Bind.bind, hc, Option.bind_some']
+      refine optCheck_bind_resVS fun _ => ?_
       split <;> rename_i heq <;> (try simp only [heq])
       all_goals first
         | rfl
-        | exact bind_resVS_congr (runT_hintIndep tl z ht.1 h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl => by simp only [Option.map_some, resVS, hl]))
-        | exact bind_resVS_congr (runT_hintIndep tl u ht.2 h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl => by simp only [Option.map_some, resVS, hl]))
+        | exact bind_resVS_congr (runT_hintIndep tl z ht.1 h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl =>
+            optCheck_bind_resVS fun _ => by simp only [Option.map_some, resVS, hl]))
+        | exact bind_resVS_congr (runT_hintIndep tl u ht.2 h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl =>
+            optCheck_bind_resVS fun _ => by simp only [Option.map_some, resVS, hl]))
   | tl, .matchInd p ty arms, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht
     rw [runT, runT]
     refine erasedIf_resVS_congr _ ?_
-    cases hc : tagOf K φ p indTag s with
+    cases hc : SM.guarded (TagOk K φ p) (tagOf K φ p indTag) s with
     | none => simp only [Bind.bind, hc, Option.bind_none', Option.map_none]
     | some x =>
       obtain ⟨tg, s₁⟩ := x
       simp only [Bind.bind, hc, Option.bind_some']
+      refine optCheck_bind_resVS fun _ => ?_
       split <;> rename_i heq <;> (try simp only [heq])
       all_goals first
         | rfl
-        | exact bind_resVS_congr (runArm_hintIndep tl arms ht _ h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl => by simp only [Option.map_some, resVS, hl]))
+        | exact bind_resVS_congr (runArm_hintIndep tl arms ht _ h h' _) _ (tailCont_ok' _ (fun _ _ _ _ hl =>
+            optCheck_bind_resVS fun _ => by simp only [Option.map_some, resVS, hl]))
         | (split <;> first | rfl | exact anyArm_resVS fun c => runArm_hintIndep tl arms ht c h h' _)
   | tl, .ctor ty c hd ps args, ht, h, h', s => by
     simp only [Term.tailHintFree] at ht

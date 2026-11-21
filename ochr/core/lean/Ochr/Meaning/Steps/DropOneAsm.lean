@@ -457,11 +457,12 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
       exact ⟨_, mean_updAt_botS { K with Δ := Δ₂ } ρ₂ _ q.steps.2 H _ _ v' hupd hplain.1 hplain.2 (hnat _)⟩
     -- SORRY (model lane, 2026-11-21, for the slice lane): the reference's drop is now made only
     -- where the write is defined at EVERY typed future (the orchestrator's write rule; `dropAt`).
-    -- `hupdR` gives it at the typed future, from the relation, whose `sim` speaks of futures giving
-    -- each live label a WHOLE member (`TypedLive`); a typed future of the run gives an OPEN one. The
-    -- step from one to all is the simulation's obligation named in `Meaning/OPEN.md` (II): after the
-    -- access of a write at `x.p`, `x` reads no live label along `p`, so the definedness does not
-    -- depend on the future (regress `Strict/FieldWriteCE`).
+    -- `hupdR` gives it at the typed future, from the relation's `sim`, which compares at futures
+    -- giving each live label a WHOLE member of its HOLDER's type (`TypedLive`). Since ruling (A) a
+    -- typed future of the run gives each live label a member of its RECORDED type (`heldTy`), so
+    -- the argument is the same at every typed future (`sim` there, then `mean_updAt_botS`) once
+    -- `heldTy l = holderTy s l` for live `l`: the model's `SGood.holderTy` (a binding holder's
+    -- stored type is its label's record), not yet a clause of `Rel` (add it, or carry `SGood`).
     have hupdAll : ∀ ψ, TypedFut K φ ((accessLentPrefix (.bind f i) q.steps.2 s).access (.bind f i)
         (dataHit q.steps.2)) ψ →
         (Sem.updAt K.dm K.Γ (((accessLentPrefix (.bind f i) q.steps.2 s).access (.bind f i)

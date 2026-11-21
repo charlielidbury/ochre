@@ -154,7 +154,10 @@ theorem ref_J_runs_t (hint : TyS) :
   rw [run, runT]
   show Option.map _ (SM.erasedIf (false, false) _ _) = _
   simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false, bind, SM.onCopy]
-  simp only [run_one_at dm G ρ φ]
+  -- the strict ends of [Entry] and the join: the probes' decisions capture and move nothing
+  have hm : ∀ t s, MatchEntryOk (Kp dm [] G) φ true t s := fun t s _ => ⟨trivial, trivial⟩
+  have hj : ∀ en t s, JoinDropOk (Kp dm [] G) φ en t s := fun en t s => trivial
+  simp only [run_one_at dm G ρ φ, hm, hj, if_true]
   rfl
 
 end Ochr.Meaning.Regress.EqJRef

@@ -926,12 +926,15 @@ def endBorrow (fuel : Nat) (l : Nat) : M Unit := do
     -- D84 [Id-typestate], ending a borrow: a side of `Id` may not end a borrow that a binding
     -- or a temporary outside it holds ([Access] of what it borrows, [Drop] of what it points
     -- to): a continuation could use the borrow after the other side and not after this one.
-    -- Assigning over the binding re-points it (`assignPlace`), which the type-state compares
-    -- Two paths, value-dependent by design (notes/two-paths-census.md, site 28): the frame's loans at formation are the run's; the check only rejects, a borrow the checked run has already ended is one the program cannot use after the `Id`, and a side's access at an instance is an access on the checked run (a stuck block takes every place any arm uses).
-    if let some (f0, n0, t0) := (← get).obsFrame then
+    -- Assigning over the binding re-points it (`assignPlace`), which the type-state compares.
+    -- D114: a binding the side consumes (`own`, its type-state's, from syntax) is exempt: the side
+    -- moves it on every path, so no continuation uses it after either side, and where its borrow
+    -- ends is the path's (a call's or a stuck block's parameter dies, or the join drops it here)
+    -- Two paths, value-dependent by design (notes/two-paths-census.md, site 28): the frame's loans at formation are the run's; the check only rejects, a borrow the checked run has already ended is one the program cannot use after the `Id`, and a side's access at an instance is an access on the checked run (a stuck block takes every place any arm uses); D114: a consumed binding is exempt, read from syntax, so where its borrow ends (by path) is never asked.
+    if let some (f0, n0, t0, own) := (← get).obsFrame then
       match p with
       | .bind f i =>
-        if f == f0 && i < n0 then
+        if f == f0 && i < n0 && !own.contains i then
           let y := env[f]!.binds[i]!.hint.name
           fire .IdTypestate fun _ => s!"a side ends the borrow {y}"
           err s!"[Id-typestate] a side of Id ends the borrow {y}, which a binding outside the Id holds (the side uses or drops what {y} borrows): end it before the Id"
@@ -2164,7 +2167,7 @@ discarded. Every value of a proposition is `⋆` (C7) and only such terms evalua
 def eval (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) : M (Value × Option Value) := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- the editor: an error here is reported at `t`, and hovering `t` shows its value
-  located t (noteValue t (evalAt fuel' typed t hint)) (flight := some)
+  located t (noteValue t (evalAt fuel' typed t hint)) (flight := some) (ownTyping := some typed)
 termination_by structural fuel
 
 def evalAt (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) : M (Value × Option Value) := do
@@ -4188,37 +4191,55 @@ termination_by structural fuel
 
 -- ### Observation and `Id` (RULES §4)
 
-/-- `⟦t⟧^W`: on a private copy of Ω, run `t`, end every borrow, and return the result
-and the final contents of the owners in `W` (a tuple of the machine, not a `Pair` value,
-D52). -/
+/-- `⟦t⟧^W`: on a private copy of Ω, run `t`, end every borrow, and return the result, the
+final contents of the owners in `W`, and what each re-pointed binding of `refs` points to
+([Obs-ref], D113) (a tuple of the machine, not a `Pair` value, D52). -/
 def observe (fuel : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos)
-    (refs : List (Place × Value × Value) := []) : M (Value × List Value) := inStatement do
+    (refs : List (Place × Value × Value) := []) (consumed : List Place := []) :
+    M (Value × List Value × List Value) := inStatement do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   -- D84 [Id-typestate]: while the side runs, a borrow held outside it (by a binding or a
-  -- temporary of this frame) may not end
+  -- temporary of this frame) may not end, but (D114) one held by a binding the side consumes
   let o := (← get).obsFrame
   let f ← topIdx
   let fr := (← get).env[f]!
-  modify fun s => { s with obsFrame := some (f, fr.binds.size, fr.temps.size) }
+  let mut own := []
+  for y in consumed do
+    let .var i := y | err s!"INTERNAL [Id-typestate] the consumed {← ppPlace y} is not a binding (please report)"
+    let .bind _ j ← varPos i | err s!"INTERNAL [Id-typestate] the consumed {← ppPlace y} is not a binding (please report)"
+    own := j :: own
+  modify fun s => { s with obsFrame := some (f, fr.binds.size, fr.temps.size, own) }
   let (v, T) ← onFail (eval fuel' typed t A) (modify fun s => { s with obsFrame := o })      -- A: a hint for a constructor's parameters
   -- the observation itself (writing through re-pointed borrows, ending every borrow) is not the
   -- side: no frame is watched until the copy is discarded (`inStatement` restores the outer one)
   modify fun s => { s with obsFrame := none }
   expectTy fuel' "a side of Id" T A
-  -- D84 [Obs-ref]: each re-pointed borrow binding is observed by where it points, a fresh value
-  -- written through it (the same for both sides), as [Obs-borrow] observes a borrow result
-  pushTemp v T "observe"
+  -- D84, D113 [Obs-ref]: each re-pointed borrow binding `y` holding `borrow_k c` is observed as
+  -- [Obs-borrow] observes a borrow result: what it points to, its content `c` as the side left it,
+  -- is one more component, held as a temporary (so a borrow of part of it, a second re-pointed
+  -- binding's reborrow, fills it as it ends); and where it points by a fresh value, the same for
+  -- both sides, put in its place in the borrow, which the owners of `loan_k` then show. The
+  -- content is moved out of the borrow, not written through it: no [Access], so no reborrow of
+  -- `*y` ends before the observation's ends (D84 wrote `*y := σ_y`, which overwrote what the side
+  -- left in the target, unobserved, and ended a second binding's reborrow first)
   for (y, σ, Tσ) in refs do
-    fire .ObsRef fun _ => s!"{σ} written through a re-pointed borrow"
-    assignPlace fuel' (.deref y) σ (some Tσ)
-  let v ← popTemp
+    let .var i := y | err s!"INTERNAL [Obs-ref] the re-pointed {← ppPlace y} is not a binding (please report)"
+    let pos ← varPos i
+    let .borrow k c ← getAt pos
+      | err s!"INTERNAL [Obs-ref] the re-pointed {← ppPlace y} holds {← getAt pos}, not a borrow (the type-state has it re-pointed and not consumed; please report)"
+    let py ← ppPlace y
+    fire .ObsRef fun _ => s!"{py} points to {c}, observed; {σ} put in its place"
+    setAt pos (.borrow k σ)
+    pushTemp c (some Tσ) "observe"
   let v ← obsResult fuel' v T none
+  let cs ← popTemps refs.length
   let ws ← W.mapM getAt
-  pure (v, ws)
+  pure (v, ws, cs.toList)
 termination_by structural fuel
 
-/-- `Id A t u ≡ And(Eq A r r', And(Eq T₁ w₁ w'₁, …))` over the result and the owners in
-`W = W(t, u)` (just `Eq A r r'` when `W` is empty), both sides from the same Ω on
+/-- `Id A t u ≡ And(Eq A r r', And(Eq T₁ w₁ w'₁, …))` over the result, the owners in
+`W = W(t, u)` and the targets of the re-pointed bindings (D113) (just `Eq A r r'` when there are
+none), both sides from the same Ω on
 independent copies (v2.1, D52: directly, not through a pair, so `A` may be any borrow-free
 type, a proposition or a universe included). [Obs] runs each side with the typing judgement,
 wherever `Id` is evaluated (D63, rule-audit item 9), the machine included (a callee's body, a
@@ -4251,19 +4272,22 @@ def idType (fuel : Nat) (typed : Bool) (A t u : Term) : M Value := do
     refs := refs ++ [(y, ← absAt fuel' d.deref T', T')]
   let st ← get
   let W := footprint st.env [t, u]
-  let (a, as) ← observe fuel' true t A' W refs
-  let (b, bs) ← observe fuel' true u A' W refs
+  let (a, as, ca) ← observe fuel' true t A' W refs tsT.consumed
+  let (b, bs, cb) ← observe fuel' true u A' W refs tsU.consumed
   -- an owner's type is its binding's, its declared type (D82)
   let Ts ← W.mapM fun p => do
     let some T ← bindTy? fuel' p
       | err s!"INTERNAL [Obs] the owner {← getAt p} has no stored type (D82: every binding has its declared type; please report)"
     pure T
-  -- D64 [Repack]: `Id` observes its result and owners whole
+  -- D113 [Obs-ref]: what each re-pointed binding points to, at the content of its declared type
+  let Tc := refs.map (·.2.2)
+  let comps := (A', (a, b)) :: Ts.zip (as.zip bs) ++ Tc.zip (ca.zip cb)
+  -- D64 [Repack]: `Id` observes its result, owners and re-pointed targets whole
   if typed then
-    for (T, (x, y)) in (A', (a, b)) :: Ts.zip (as.zip bs) do
+    for (T, (x, y)) in comps do
       repackCheck fuel' "Id observes it" x T
       repackCheck fuel' "Id observes it" y T
-  let eqs ← ((A', (a, b)) :: Ts.zip (as.zip bs)).mapM fun (T, (x, y)) => mkEqM fuel' T x y
+  let eqs ← comps.mapM fun (T, (x, y)) => mkEqM fuel' T x y
   pure (andList eqs)
 termination_by structural fuel
 

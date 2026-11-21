@@ -318,8 +318,12 @@ theorem SimConclT.of_prefix {st st₂ st' : MState} {s s₂ : SState} {π π₂ 
 
 /-- The reference's `J` clause, whatever the tail flag (proved): neither a statement nor a proof,
 its statement positions on copies (each run succeeds), then its transported term after its entry,
-at the join's grain. -/
+at the join's grain. Since the orchestrator's ruling (A) (strict ends) the entry's and the join's
+ends are tested (`MatchEntryOk`, `JoinDropOk`); the statement takes both (`hme`, `hjd`). -/
 theorem runT_J_some (tl : Bool) (hint : TyS) (A a b P h t : Term) (s : SState)
+    (hme : MatchEntryOk K φ true t s)
+    (hjd : ∀ r R s₂, runT K ρ φ false hint t (matchEntry K φ true t s).1 = some ((r, R), s₂) →
+      JoinDropOk K φ (movedPlaces φ (matchEntry K φ true t s).1) (.prim "J" [A, a, b, P, h, t]) s₂)
     (hns : K.D.flags (scopeOf s) (.prim "J" [A, a, b, P, h, t]) = (false, false))
     (hA : (runT K ρ φ false (.plain .err) A s).isSome) (ha : (runT K ρ φ false (.plain .err) a s).isSome)
     (hb : (runT K ρ φ false (.plain .err) b s).isSome) (hP : (runT K ρ φ false (.plain .err) P s).isSome)
@@ -333,6 +337,24 @@ theorem runT_J_some (tl : Bool) (hint : TyS) (A a b P h t : Term) (s : SState)
   obtain ⟨xb, eb⟩ := Option.isSome_iff_exists.mp hb
   obtain ⟨xP, eP⟩ := Option.isSome_iff_exists.mp hP
   obtain ⟨xh, eh⟩ := Option.isSome_iff_exists.mp hh
+  have key : (open Classical in if MatchEntryOk K φ true t s then
+      (match runT K ρ φ false hint t (matchEntry K φ true t s).1 with
+        | some ((r, R), s₂) =>
+          open Classical in if JoinDropOk K φ (movedPlaces φ (matchEntry K φ true t s).1) (.prim "J" [A, a, b, P, h, t]) s₂ then
+            some ((r, R), joinDrop K φ (movedPlaces φ (matchEntry K φ true t s).1) (.prim "J" [A, a, b, P, h, t]) s₂)
+          else none
+        | none => none) else none) =
+      (match runT K ρ φ false hint t (matchEntry K φ true t s).1 with
+        | some ((r, R), s₂) => some ((r, R), joinDrop K φ (movedPlaces φ (matchEntry K φ true t s).1) (.prim "J" [A, a, b, P, h, t]) s₂)
+        | none => none) := by
+    rw [if_pos hme]
+    cases hr : runT K ρ φ false hint t (matchEntry K φ true t s).1 with
+    | none => rfl
+    | some y =>
+      obtain ⟨⟨r, R⟩, s₂⟩ := y
+      dsimp only
+      rw [if_pos (hjd r R s₂ hr)]
+  rw [← key]
   cases tl <;> (rw [runT]; simp only [SM.erasedIf, SM.stmtIf, hns, Bool.false_eq_true, if_false, SM.onCopy, bind,
     eA, ea, eb, eP, eh, Option.map_some]; rfl)
 
@@ -456,7 +478,11 @@ theorem J_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : J_step_stmt K ρ φ (
     refine SimConclT.of_prefix K ρ φ (Nat.le_trans k₁.2.2.2.2.1 sz₂) (Nat.le_trans k₁.2.2.2.2.2.2 nl₂)
       (fun l hl => hπ₂ l (Nat.lt_of_lt_of_le hl k₁.2.2.2.2.2.2)) e₁₂.1 (fun ρ' hρ' => ?_) harm'
     obtain ⟨h1, h2, h3, h4, h5⟩ := J_stmts_run K ρ φ hg hctx hok ρ' hρ'
-    exact runT_J_some K ρ' φ st.curTail (hintM K ρ hint) A a b P hh u s hns h1 h2 h3 h4 h5
+    -- SORRY (model lane, 2026-11-21, ruling (A), for (II)): the strict ends of `J`'s entry and join:
+    -- every borrow [Entry] and the join's drop end has a member content at every typed future. The
+    -- checker's rule (main's D98: no borrow ends over moved-out content) is what discharges it.
+    exact runT_J_some K ρ' φ st.curTail (hintM K ρ hint) A a b P hh u s (by sorry) (fun _ _ _ _ => by sorry)
+      hns h1 h2 h3 h4 h5
   · -- endpoints not convertible (typed): the stuck block
     obtain ⟨ρ₁, Δ₁, e₁⟩ := hfront hg (hD.back (hcb.grows (grows_closeBlock _ _ _ _)))
     have hs₁ := Rel.kept K ρ φ hg hctx hs k₁ e₁

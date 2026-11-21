@@ -1,3 +1,4 @@
+import Ochr.Meaning.Attack.RunEqs
 import Ochr.Meaning.Lemmas
 import Ochr.Meaning.Mono
 import Ochr.Meaning.Locality
@@ -56,30 +57,38 @@ theorem stmtIf_noStmt (hfl : NoStmt K) (t : Term) (x : SM Res) (s : SState) :
 theorem run_letIn (hfl : NoStmt K) (h : Hint) (u w : Term) (hint : TyS) (s : SState) :
     run K ρ φ hint (.letIn h u w) s = (run K ρ φ (.plain .err) u s).bind (fun x =>
       (run K ρ φ hint w (pushBindShaped x.2 { ty := x.1.2, val := fun _ => x.1.1, decl := K.D.declOf (scopeOf x.2) u })).bind
-        fun y => some (y.1, (match (match y.2.env.getLast? with
+        fun y => if (match (match y.2.env.getLast? with
             | some fr => y.2.shape (.bind y.2.topIdx (fr.binds.length - 1))
             | none => none) with
-          | some l => y.2.endLabel l | none => letLenders y.2).dropLast)) := by
+          | some l => EndOk K φ y.2 l | none => LetLendersOk K φ y.2) then
+          some (y.1, (match (match y.2.env.getLast? with
+            | some fr => y.2.shape (.bind y.2.topIdx (fr.binds.length - 1))
+            | none => none) with
+          | some l => y.2.endLabel l | none => letLenders y.2).dropLast) else none) := by
   rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 /-- The [Drop] of a discarded value that holds no borrow does nothing. -/
 theorem seq_discard_plain (T : TyM) (k : SM Res) (s : SState) :
-    (SM.modify (discardEnd (TyS.plain T)) >>= fun _ => k) s = k s := rfl
+    (SM.guardMod (DiscardOk K φ (TyS.plain T)) (discardEnd (TyS.plain T)) >>= fun _ => k) s = k s := by
+  have h : DiscardOk K φ (TyS.plain T) s := trivial
+  have e : SM.guardMod (DiscardOk K φ (TyS.plain T)) (discardEnd (TyS.plain T)) s = some (⟨⟩, s) := by
+    unfold SM.guardMod; rw [if_pos h]; rfl
+  rw [SM.bind_apply, e]
 
 theorem run_seq (hfl : NoStmt K) (u w : Term) (hint : TyS) (s : SState) :
     run K ρ φ hint (.seq u w) s =
-      (run K ρ φ (.plain .err) u >>= fun r => SM.modify (discardEnd r.2) >>= fun _ => run K ρ φ hint w) s := by
+      (run K ρ φ (.plain .err) u >>= fun r => SM.guardMod (DiscardOk K φ r.2) (discardEnd r.2) >>= fun _ => run K ρ φ hint w) s := by
   rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem run_place (hfl : NoStmt K) (p : Place) (hint : TyS) (s : SState) :
-    run K ρ φ hint (.place p) s = readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p)) s := by
+    run K ρ φ hint (.place p) s = SM.guarded (ContentOk K φ p) (readPlace K φ p (K.D.copy (K.D.placeDecl (scopeOf s) p))) s := by
   rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
 theorem run_borrow (hfl : NoStmt K) (p : Place) (hint : TyS) (s : SState) :
-    run K ρ φ hint (.borrow p) s = (match SM.strictS K.dm.read (borrowPlace K φ p) s with
+    run K ρ φ hint (.borrow p) s = (match SM.strictS K.dm.read (SM.guarded (ContentOk K φ p) (borrowPlace K φ p)) s with
       | some (r, s₁) =>
         let s₂ := invalidate K φ p s₁
-        if lentOk K φ p s₂ then some (r, s₂) else none
+        if InvalidateOk K φ p s₁ ∧ lentOk K φ p s₂ then some (r, s₂) else none
       | none => none) := by
   rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
 
@@ -132,10 +141,10 @@ theorem run_assign (hfl : NoStmt K) (p : Place) (u : Term) (hint : TyS) (s : SSt
         | none => .plain .err) u s
       -- STRICT: the value written is a member of the place's type, its label holds that type
       if v ∈ₛ[K.dm.read] (placeTy K φ p s).m ∧ labTyOk s R.label (placeTy K φ p s).m then
-      match assignAt K φ p v R.label s with
+      match SM.guarded (AssignOk K φ p) (assignAt K φ p v R.label) s with
       | some (r, s₁) =>
         let s₂ := invalidate K φ p s₁
-        if lentOk K φ p s₂ then some (r, s₂) else none
+        if InvalidateOk K φ p s₁ ∧ lentOk K φ p s₂ then some (r, s₂) else none
       | none => none
       else none) := by
   rw [run, runT]; exact stmtIf_noStmt K hfl _ _ s
@@ -218,18 +227,51 @@ theorem take_b3 (n : Nat) : (b3 K n).takeLabel n =
 theorem resolve_b5 (n : Nat) : resolve (b5 K n) (.var 0) = some (.bind 0 1, []) := by
   unfold b5; simp only [take_b3]; rfl
 
+theorem contentOk_b1 (n : Nat) : ContentOk K φ (.var 1) (b1 K n) := by
+  have hr : resolve (b1 K n) (.var 1) = some (.bind 0 0, []) := rfl
+  unfold ContentOk; rw [hr]
+  exact Ochr.Meaning.Attack.accessOk_noLive K φ (liveLabels_noshape _ rfl) _ _
+
+theorem assignOk_b2 (n : Nat) : AssignOk K φ (.var 0) (b2 K n) := by
+  have hr : resolve (b2 K n) (.var 0) = some (.bind 0 1, []) := rfl
+  have hs : (b2 K n).shape (.bind 0 1) = none := rfl
+  have hu : (b2 K n).liveLabels = [n] ∨ True := Or.inr trivial
+  have hacc : AccessOk K φ (b2 K n) (.bind 0 1) (dataHit []) :=
+    Ochr.Meaning.Attack.accessOk_unreached K φ fun y => by simp [SState.reached, b2]
+  have ha : (b2 K n).access (.bind 0 1) (dataHit []) = b2 K n :=
+    SState.access_of_unreached _ _ _ fun y _ => by simp [SState.reached, b2]
+  unfold AssignOk; rw [hr]
+  refine ⟨fun _ => hacc, fun _ l hl => ?_⟩
+  simp only [hs, Option.isSome_none, Bool.and_false, Bool.false_eq_true, if_false, ha] at hl
+  cases hl
+
+theorem guard_noShape (s : SState) (h : s.shape = fun _ => none) :
+    (match (match s.env.getLast? with
+      | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
+      | none => none) with
+    | some l => EndOk K φ s l | none => LetLendersOk K φ s) := by
+  have hl := liveLabels_noshape s h
+  cases hg : s.env.getLast? with
+  | none => show LetLendersOk K φ s; unfold LetLendersOk; rw [hg]; trivial
+  | some fr =>
+    simp only [h]
+    show LetLendersOk K φ s
+    unfold LetLendersOk; rw [hg]
+    exact Ochr.Meaning.Attack.accessOk_noLive K φ hl _ _
+
 theorem assign_b1 (hfl : NoStmt K) (hinv : NoInv K) (n : Nat) (hint : TyS) :
     run K ρ φ hint (.assign (.var 0) (.borrow (.var 1))) (b1 K n) = some ((.el0 Unit (), .plain TyM.unit), b5 K n) := by
   rw [run_assign K ρ φ hfl, content_b1_x]
   show (run K ρ φ (.plain TyM.nat) (.borrow (.var 1)) (b1 K n) >>= _) = _
   rw [run_borrow K ρ φ hfl]
   simp only [SM.strictS]
-  rw [borrow_b1]
+  rw [SM.guarded_of (contentOk_b1 K φ n), borrow_b1]
   dsimp only
   rw [if_pos ⟨(0 : Nat), rfl⟩]
   have hr1 : resolve (b2 K n) (.var 1) = some (.bind 0 0, []) := rfl
   have hl1 := lentOk_root K φ hr1
-  simp only [invalidate_noInv K φ hinv, hl1, if_true]
+  have hv1 := Ochr.Meaning.Attack.invalidateOk_noInv K φ hinv (.var 1) (b2 K n)
+  simp only [invalidate_noInv K φ hinv, hl1, hv1, and_self, if_true]
   dsimp only [Bind.bind, Option.bind]
   -- the strict write: `Z` is a `Nat`, and the borrow's label holds `Nat`
   have hpT : placeTy K φ (.var 0) (b2 K n) = .plain TyM.nat := by
@@ -239,6 +281,7 @@ theorem assign_b1 (hfl : NoStmt K) (hinv : NoInv K) (n : Nat) (hint : TyS) :
   have ha : ∀ hit, (b2 K n).access (.bind 0 1) hit = b2 K n := fun hit =>
     SState.access_of_unreached _ _ _ fun y _ => by simp [SState.reached, b2]
   have hr5 := resolve_b5 K n
+  rw [SM.guarded_of (assignOk_b2 K φ n)]
   unfold assignAt
   rw [hr]
   dsimp only
@@ -249,8 +292,9 @@ theorem assign_b1 (hfl : NoStmt K) (hinv : NoInv K) (n : Nat) (hint : TyS) :
   have hl5 := lentOk_root K φ hr5
   have hs : (b2 K n).shape (.bind 0 1) = none := rfl
   simp only [hs]
-  show (if lentOk K φ (.var 0) (b5 K n) then some ((Sem.el0 Unit (), TyS.plain TyM.unit), b5 K n) else none) = _
-  rw [if_pos hl5]
+  have hv5 := Ochr.Meaning.Attack.invalidateOk_noInv K φ hinv (.var 0) (b5 K n)
+  show (if InvalidateOk K φ (.var 0) (b5 K n) ∧ lentOk K φ (.var 0) (b5 K n) then some ((Sem.el0 Unit (), TyS.plain TyM.unit), b5 K n) else none) = _
+  rw [if_pos ⟨hv5, hl5⟩]
 
 theorem env_b6 (n : Nat) : (b6 K n).env = [{ binds := [yB' K n], temps := [fun _ => .moved] }] := by
   unfold b6 b5
@@ -345,6 +389,28 @@ theorem content_b7 (n : Nat) : contentOf K φ (.var 0) (b7 K n) = some ((.el0 Na
   rw [b7_val_y, tyAt_b7]
   rfl
 
+theorem endOk_b5 (n : Nat) : EndOk K φ (b5 K n) n := by
+  intro r hr ψ _
+  rw [holder_b5] at hr
+  cases hr
+  rw [b5_val_x]
+  have ht : (b5 K n).heldTy n = TyM.nat := by
+    unfold b5; simp only [take_b3]; simp [b3, b2, SState.setAt]
+  show Sem.el0 Nat 0 ∈ₛ[K.dm.read] (b5 K n).heldTy n
+  rw [ht]; exact ⟨(0 : Nat), rfl⟩
+
+theorem guard_b5 (n : Nat) :
+    (match (match (b5 K n).env.getLast? with
+        | some fr => (b5 K n).shape (.bind (b5 K n).topIdx (fr.binds.length - 1))
+        | none => none) with
+      | some l => EndOk K φ (b5 K n) l | none => LetLendersOk K φ (b5 K n)) := by
+  have : (match (b5 K n).env.getLast? with
+        | some fr => (b5 K n).shape (.bind (b5 K n).topIdx (fr.binds.length - 1))
+        | none => none) = some n := by
+    unfold b5; simp only [take_b3]; rfl
+  rw [this]
+  exact endOk_b5 K φ n
+
 theorem drop_b5 (n : Nat) :
     (match (match (b5 K n).env.getLast? with
         | some fr => (b5 K n).shape (.bind (b5 K n).topIdx (fr.binds.length - 1))
@@ -375,17 +441,28 @@ theorem tA_reads_zero (hfl : NoStmt K) (hinv : NoInv K) (n : Nat) (hint : TyS) :
   simp only [Option.bind]
   rw [show pushBindShaped ((emptyState n).pushBind (yB K n)) _ = b1 K n from rfl, assign_b1 K ρ φ hfl hinv]
   simp only
-  rw [drop_b5, seq_discard_plain, run_place K ρ φ hfl]
+  rw [drop_b5, if_pos (guard_b5 K φ n)]
+  dsimp only
+  rw [seq_discard_plain, run_place K ρ φ hfl]
   have hc := content_b7 K φ n
-  rw [readPlace_of K φ _ _ _ _ _ _ _ _ hc]
+  have hok7 : ContentOk K φ (.var 0) (b7 K n) := by
+    have hr : resolve (b7 K n) (.var 0) = some (.bind 0 0, []) := by
+      unfold b7 b5; simp only [take_b3]; rfl
+    unfold ContentOk; rw [hr]
+    exact Ochr.Meaning.Attack.accessOk_noLive K φ (liveLabels_noshape _ (b7_shape K n)) _ _
+  rw [SM.guarded_of hok7, readPlace_of K φ _ _ _ _ _ _ _ _ hc]
   have hm : ReadGood K.dm.read (TyS.plain TyM.nat).m (Sem.el0 Nat 0) := Or.inl ⟨(0 : Nat), rfl⟩
   simp only [Sem.whole, not_true_eq_false, ite_false, hm]
   generalize K.D.copy _ = b
   cases b
   · simp only [Bool.false_eq_true, ite_false, List.isEmpty_nil, ite_true, b7_shape]
     rw [setContent_root K φ _ _ _ (Or.inl rfl)]
+    simp only [bind, Option.bind]
+    rw [if_pos (guard_noShape K φ _ (by simpa [SState.setAt] using b7_shape K n))]
     exact ⟨_, _, rfl⟩
-  · exact ⟨_, _, rfl⟩
+  · simp only [bind, Option.bind, if_true, ite_true]
+    rw [if_pos (guard_noShape K φ _ (b7_shape K n))]
+    exact ⟨_, _, rfl⟩
 end
 
 end Ochr.Meaning.Regress.CE5flip

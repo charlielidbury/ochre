@@ -144,22 +144,39 @@ theorem setContent_SB (a b : Nat) :
 theorem lentOk_SB (c : Sem) : lentOk (Kc dm) φ (.deref (.var 0)) (SB dm ρ φ c r) := by
   unfold lentOk; rw [resolve_SB]; exact .inr (.inl rfl)
 
+theorem contentOk_SB (c : Sem) : ContentOk (Kc dm) φ (.deref (.var 0)) (SB dm ρ φ c r) := by
+  unfold ContentOk; rw [resolve_SB]
+  exact Attack.accessOk_unreached _ φ fun l => reached_SB dm ρ φ c _ _ l
+
+theorem assignOk_SB (c : Sem) : AssignOk (Kc dm) φ (.deref (.var 0)) (SB dm ρ φ c r) := by
+  unfold AssignOk; rw [resolve_SB]
+  exact ⟨fun _ => Attack.accessOk_unreached _ φ fun l => reached_SB dm ρ φ c _ _ l, fun h => by simp at h⟩
+
+theorem holderOf_SB' (c : Sem) : (SB dm ρ φ c r).holderOf 0 = some (.bind 0 1) := holderOf_SB dm ρ φ c
+
+/-- Ending `x`'s label at the pop is strict: `x` holds the number `c`. -/
+theorem endsOk_SB (c : Sem) (hc : c ∈ₛ[(Kc dm).dm.read] TyM.nat) : EndsOk (Kc dm) φ [0] (SB dm ρ φ c r) := by
+  refine ⟨?_, trivial⟩
+  intro q hq ψ _
+  rw [holderOf_SB] at hq
+  cases hq
+  exact hc
+
 /-- `*x := S(*x)` in `Inc`'s frame: `x` holds `a + 1`. -/
 theorem runBody_inc (a : Nat) (hint : TyS) (tl : Bool) :
     runT (Kc dm) ρ φ tl hint incBody (SB dm ρ φ (.el0 Nat a) r) = some ((.el0 Unit (), .plain TyM.unit), SB dm ρ φ (.el0 Nat (a + 1)) r) := by
   obtain ⟨T, hTm, hT⟩ := contentOf_SB_nat (r := r) dm ρ φ (.el0 Nat a)
   obtain ⟨T', hT'⟩ := readPlace_SB (r := r) dm ρ φ a
-  simp only [incBody, runT, SM.erasedIf, SM.stmtIf, flags_Kc, copy_Kc, hT, hT', Bool.false_eq_true, if_false,
-    bind, Option.bind, pure, SM.strictS]
   have hs : (Sem.el0 Nat a).succ = .el0 Nat (a + 1) := Sem.succ_el0 a
-  rw [hs]
+  simp only [incBody, runT, SM.erasedIf, SM.stmtIf, flags_Kc, copy_Kc, hT, SM.guarded_of (contentOk_SB dm ρ φ (r := r) (.el0 Nat a)), hT', Bool.false_eq_true, if_false,
+    bind, Option.bind, pure, SM.strictS, hs]
   -- the strict `S` and the strict write: `a + 1` is a `Nat`, `*x`'s type
   have hm : Sem.el0 Nat (a + 1) ∈ₛ[(Kc dm).dm.read] TyM.nat := ⟨a + 1, rfl⟩
   simp only [hm, if_true, placeTy, hT, hTm, labTyOk, TyS.plain, reduceCtorEq, false_implies, implies_true,
     and_true]
-  simp only [assignAt, resolve_SB, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false, access_SB,
+  simp only [SM.guarded_of (assignOk_SB dm ρ φ (r := r) (.el0 Nat a)), assignAt, resolve_SB, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false, access_SB,
     setContent_SB]
-  simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl), lentOk_SB, if_true]
+  simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl), Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl), lentOk_SB, and_self, if_true]
   rfl
 
 /-- Ending `x`'s label at the pop: the cell reads the content. -/
@@ -184,6 +201,7 @@ theorem gInc_eval (a : Nat) :
   simp only [outInc, Bool.false_eq_true, if_false, List.filter_cons, List.filter_nil, ge_iff_le, Nat.zero_le,
     ne_eq, reduceCtorEq, not_false_eq_true, and_self, decide_true, if_true, List.foldl_cons, List.foldl_nil,
     List.map_cons, List.map_nil]
+  rw [if_pos (endsOk_SB dm ρ φ (Sem.el0 Nat (a + 1)) ⟨a + 1, rfl⟩)]
   congr
   funext ψ
   exact endLabel_SB_cell dm ρ φ _ ψ
@@ -227,6 +245,10 @@ theorem run_incT : ∃ s', runT (Kc dm) ρ φ false (.plain .err) incT (stateOf 
   refine ⟨fixMoves (Kc dm) incT (stateOf 0 (capsState [] [])), ?_⟩
   rw [incT, run_fix_def]
   simp only [SM.erasedIf, SM.stmtIf, flags_Kc, Bool.false_eq_true, if_false, SM.strictS]
+  have hco : capOrder incT = [] := by decide
+  have hc : FoldOk (capStep (Kc dm)) (CapOk (Kc dm) φ) (capOrder incT) (stateOf 0 (capsState [] [])) := by
+    rw [hco]; trivial
+  erw [if_pos hc]
   rw [if_pos (by exact hmem)]
   rfl
 
@@ -320,12 +342,13 @@ theorem runArgs_borrowY (fT : TyM) :
       = some ((.el0 Nat 2, { yB.ty with label := some 0 }), Attack.S₂ yB 0 (.el0 Nat 2)) := by
     rw [runT]
     simp only [SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.strictS]
+    erw [SM.guarded_of (Attack.contentOk_one _ _ _ _)]
     rw [Attack.borrowPlace_var0_one _ _ _ _ (by simp [yB, Sem.whole])]
     dsimp only
     rw [if_pos (by exact ⟨(2 : Nat), rfl⟩)]
     dsimp only
-    erw [if_pos (Attack.lentOk_root (Kc dm) φ (pos := .bind 0 0) rfl)]
     erw [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
+    erw [if_pos ⟨Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl) _ _, Attack.lentOk_root (Kc dm) φ (pos := .bind 0 0) rfl⟩]
     rfl
   simp only [bind, Option.bind, SM.stmtIf, Bool.false_eq_true, if_false, hb, pure]
 
@@ -376,15 +399,22 @@ theorem useInc_callOf (hint : TyS) :
     rw [if_pos (by exact borrowArgs_psInc dm outInc _ yB rfl)]
     exact hc
   have hd : discardEnd TU SI = SI := by simp [discardEnd, hTU]
+  have hdo : SM.guardMod (DiscardOk (Kc dm) φ TU) (discardEnd TU) SI = some (⟨⟩, SI) := by
+    have : DiscardOk (Kc dm) φ TU SI := by unfold DiscardOk; rw [hTU]; trivial
+    unfold SM.guardMod; rw [if_pos this, hd]
+  have hcok : ContentOk (Kc dm) φ (.var 0) SI := by
+    unfold ContentOk; split
+    · exact Attack.accessOk_noLive _ φ (Attack.liveLabels_of_noShape SI SI_shape) _ _
+    · trivial
   have hseq : run (Kc dm) ρ φ hint (.seq (.call (.val incClo) [.borrow (.var 0)] false) (.place (.var 0)))
       ((emptyState 0).pushBind yB) = some ((.el0 Nat 3, Ty), SI) := by
     show runT (Kc dm) ρ φ false hint _ _ = _
     rw [runT]
     simp only [SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
-    show (do let r ← run (Kc dm) ρ φ (.plain .err) _; SM.modify (discardEnd r.2); runT (Kc dm) ρ φ false hint (.place (.var 0))) _ = _
-    simp only [bind, Option.bind, hcall, SM.modify, hd]
+    show (do let r ← run (Kc dm) ρ φ (.plain .err) _; SM.guardMod (DiscardOk (Kc dm) φ r.2) (discardEnd r.2); runT (Kc dm) ρ φ false hint (.place (.var 0))) _ = _
+    simp only [bind, Option.bind, hcall, hdo]
     rw [runT]
-    simp only [SM.erasedIf, flags_Kc, copy_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
+    simp only [SM.erasedIf, flags_Kc, copy_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.guarded_of hcok]
     exact hy
   refine ⟨Ty, ?_⟩
   rw [useIncT, show Kc dm = Kp dm [] (fun _ => (.err, .plain TyM.err)) from rfl, run_letIn, run_num]
@@ -393,6 +423,8 @@ theorem useInc_callOf (hint : TyS) :
   rw [Attack.pushBindShaped_noLabel _ _ rfl]
   rw [show ({ ty := TyS.plain TyM.nat, val := fun _ => .el0 Nat 2, decl := .other } : SBinding)
     = yB from rfl, hseq]
+  simp only [Option.bind_some]
+  erw [if_pos (Attack.letGuard_noShape (Kc dm) φ SI SI_shape)]
   exact ⟨_, rfl⟩
 
 /-! ## `Inc(&y)` in place (`CallRef.runCallRef`): the body run on the caller's state -/
@@ -489,22 +521,30 @@ theorem setContent_SP (a b : Nat) :
 theorem lentOk_SP (c : Sem) : lentOk (Kc dm) φ (.deref (.var 0)) (SP dm ρ φ cd d c r) := by
   unfold lentOk; rw [resolve_SP]; exact .inr (.inl rfl)
 
+theorem contentOk_SP (c : Sem) : ContentOk (Kc dm) φ (.deref (.var 0)) (SP dm ρ φ cd d c r) := by
+  unfold ContentOk; rw [resolve_SP]
+  exact Attack.accessOk_unreached _ φ fun l => reached_SP dm ρ φ cd d c _ l
+
+theorem assignOk_SP (c : Sem) : AssignOk (Kc dm) φ (.deref (.var 0)) (SP dm ρ φ cd d c r) := by
+  unfold AssignOk; rw [resolve_SP]
+  exact ⟨fun _ => Attack.accessOk_unreached _ φ fun l => reached_SP dm ρ φ cd d c _ l, fun h => by simp at h⟩
+
 /-- `*x := S(*x)` run in place, `x` holding `y`'s label: `x` holds `a + 1`. -/
 theorem runBody_incP (a : Nat) (hint : TyS) (tl : Bool) :
     runT (Kc dm) ρ φ tl hint incBody (SP dm ρ φ cd d (.el0 Nat a) r)
       = some ((.el0 Unit (), .plain TyM.unit), SP dm ρ φ cd d (.el0 Nat (a + 1)) r) := by
   obtain ⟨T, hTm, hT⟩ := contentOf_SP_nat (r := r) dm ρ φ cd d (.el0 Nat a)
   obtain ⟨T', hT'⟩ := readPlace_SP (r := r) dm ρ φ cd d a
-  simp only [incBody, runT, SM.erasedIf, SM.stmtIf, flags_Kc, copy_Kc, hT', Bool.false_eq_true, if_false,
-    bind, Option.bind, pure, SM.strictS]
-  rw [Sem.succ_el0]
+  have hs : (Sem.el0 Nat a).succ = .el0 Nat (a + 1) := Sem.succ_el0 a
+  simp only [incBody, runT, SM.erasedIf, SM.stmtIf, flags_Kc, copy_Kc, SM.guarded_of (contentOk_SP dm ρ φ cd d (r := r) (.el0 Nat a)), hT', Bool.false_eq_true, if_false,
+    bind, Option.bind, pure, SM.strictS, hs]
   -- the strict `S` and the strict write: `a + 1` is a `Nat`, `*x`'s type
   have hm : Sem.el0 Nat (a + 1) ∈ₛ[(Kc dm).dm.read] TyM.nat := ⟨a + 1, rfl⟩
   simp only [hm, if_true, placeTy, hT, hTm, labTyOk, TyS.plain, reduceCtorEq, false_implies, implies_true,
     and_true]
-  simp only [assignAt, resolve_SP, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false, access_SP,
+  simp only [SM.guarded_of (assignOk_SP dm ρ φ cd d (r := r) (.el0 Nat a)), assignAt, resolve_SP, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false, access_SP,
     setContent_SP]
-  simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl), lentOk_SP, if_true]
+  simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl), Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl), lentOk_SP, and_self, if_true]
   rfl
 
 theorem find_SP (c : Sem) :
@@ -690,12 +730,23 @@ def SB2 (selfB : SBinding) (d : DeclInfo) (T : TyM) (c r : Sem) : SState :=
     heldTy := fun m => if m = 1 then T else if m = 0 then TyM.nat else TyM.err,
     heldMem := fun m => if m = 1 then c else if m = 0 then r else .err }
 
+theorem contentOk_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) :
+    ContentOk (Kc dm) φ (.deref (.var 0)) (SBs selfB d c r) := by
+  unfold ContentOk; rw [resolve_SBs]
+  exact Attack.accessOk_unreached _ φ fun l => reached_SBs (r := r) selfB d c _ _ l
+
+theorem assignOk_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) :
+    AssignOk (Kc dm) φ (.deref (.var 0)) (SBs selfB d c r) := by
+  unfold AssignOk; rw [resolve_SBs]
+  exact ⟨fun _ => Attack.accessOk_unreached _ φ fun l => reached_SBs (r := r) selfB d c _ _ l, fun h => by simp at h⟩
+
 theorem runBody_id1 (selfB : SBinding) (d : DeclInfo) (a : Nat) (hint : TyS) (tl : Bool) :
     ∃ T, runT (Kc dm) ρ φ tl hint id1Body (SBs selfB d (.el0 Nat a) r) = some ((.el0 Nat a, T), SB2 selfB d T.m (.el0 Nat a) r) ∧
-      T.label = some 1 := by
+      T.label = some 1 ∧ T.m = TyM.nat := by
   obtain ⟨T, hTm, hT⟩ := contentOf_SBs_nat (r := r) dm φ selfB d (.el0 Nat a)
-  refine ⟨{ T with label := some 1 }, ?_, rfl⟩
-  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.strictS]
+  refine ⟨{ T with label := some 1 }, ?_, rfl, hTm⟩
+  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.strictS,
+    SM.guarded_of (contentOk_SBs (r := r) dm φ selfB d (.el0 Nat a))]
   unfold borrowPlace
   simp only [hT, bind, Option.bind]
   simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
@@ -705,7 +756,7 @@ theorem runBody_id1 (selfB : SBinding) (d : DeclInfo) (a : Nat) (hint : TyS) (tl
   dsimp only
   simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
   rw [if_pos]
-  exact Attack.lentOk_deref (Kc dm) φ (pos := .bind 0 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps])
+  exact ⟨Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl) _ _, Attack.lentOk_deref (Kc dm) φ (pos := .bind 0 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps])⟩
 
 noncomputable def selfId1 : SBinding := { ty := .plain (piId1 dm), val := fun _ => .err, decl := .pi (fbId1 dm ρ φ).2.2 }
 
@@ -729,6 +780,22 @@ theorem find_SB2 (selfB : SBinding) (d : DeclInfo) (T : TyM) (c : Sem) :
     ((SB2 selfB d T c r).positions.find? fun p => decide ((SB2 selfB d T c r).shape p = some 0)) = some (.bind 0 1) := by
   rw [positions_SB2]; simp [SB2]
 
+/-- Ending `x`'s label at the pop is strict: `x` reads the reborrow's final content, a `Nat` at the
+futures typed at label `1` (the reborrow's type is `Nat`). -/
+theorem endsOk_SB2 (selfB : SBinding) (d : DeclInfo) (c : Sem) :
+    EndsOk (Kc dm) φ [0] (SB2 selfB d TyM.nat c r) := by
+  refine ⟨?_, trivial⟩
+  intro q hq ψ hψ
+  have hh : (SB2 selfB d TyM.nat c r).holderOf 0 = some (.bind 0 1) := by
+    unfold SState.holderOf; rw [positions_SB2]; simp [SB2]
+  rw [hh] at hq
+  cases hq
+  have h1 : ψ 1 ∈ₛ[(Kc dm).dm.read] TyM.nat := by
+    have := hψ.2 1 (by rw [liveLabels_SB2]; simp)
+    simpa [SB2] using this
+  show ψ 1 ∈ₛ[(Kc dm).dm.read] (if 0 = 0 then TyM.nat else TyM.err)
+  rw [if_pos rfl]; exact h1
+
 /-- Ending `x`'s label at the pop: the cell reads the reborrow's final content. -/
 theorem endLabel_SB2_cell (selfB : SBinding) (d : DeclInfo) (T : TyM) (c : Sem) (ψ : Future) :
     ((SB2 selfB d T c r).endLabel 0).valAt (.temp 0 0) ψ = ψ 1 := by
@@ -744,13 +811,15 @@ theorem gId1_eval (a : Nat) :
   dsimp only
   rw [frame_id1]
   dsimp only
-  obtain ⟨T, hT, hl⟩ := runBody_id1 dm ρ φ (selfId1 dm ρ φ) (dInc dm) a ((fbId1 dm ρ φ).2.1 [.el0 Nat a]) true
+  obtain ⟨T, hT, hl, hTm⟩ := runBody_id1 dm ρ φ (selfId1 dm ρ φ) (dInc dm) a ((fbId1 dm ρ φ).2.1 [.el0 Nat a]) true
   rw [hT]
   dsimp only
   rw [liveLabels_SB2]
   simp only [outId1, if_true, hl, List.filter_cons, List.filter_nil, ge_iff_le, Nat.zero_le, ne_eq, reduceCtorEq,
     not_false_eq_true, and_self, decide_true, if_true, Option.some.injEq, Nat.one_ne_zero, not_true_eq_false,
-    and_false, decide_false, Bool.false_eq_true, List.foldl_cons, List.foldl_nil, List.map_cons, List.map_nil]
+    and_false, decide_false, Bool.false_eq_true, List.foldl_cons, List.foldl_nil, List.map_cons, List.map_nil, ↓reduceIte]
+  rw [hTm] at *
+  rw [if_pos (endsOk_SB2 dm φ (selfId1 dm ρ φ) (dInc dm) _)]
   congr
   funext ψ
   exact endLabel_SB2_cell _ _ _ _ ψ
@@ -792,6 +861,10 @@ theorem run_id1T : ∃ s', runT (Kc dm) ρ φ false (.plain .err) id1T (stateOf 
   refine ⟨fixMoves (Kc dm) id1T (stateOf 0 (capsState [] [])), ?_⟩
   rw [id1T, run_fix_def]
   simp only [SM.erasedIf, SM.stmtIf, flags_Kc, Bool.false_eq_true, if_false, SM.strictS]
+  have hco : capOrder id1T = [] := by decide
+  have hc : FoldOk (capStep (Kc dm)) (CapOk (Kc dm) φ) (capOrder id1T) (stateOf 0 (capsState [] [])) := by
+    rw [hco]; trivial
+  erw [if_pos hc]
   rw [if_pos (by exact hmem)]
   rfl
 
@@ -990,6 +1063,18 @@ theorem placeTy_SR_r : (placeTy (Kc dm) φ (.deref (.var 0)) (SR rT yv rv t0 t1)
   rw [access_SR_r]
   simp [Sem.follow, Sem.step, SState.tyAt, SState.valAt, SR, TyS.plain]
 
+theorem reached_SR_r (hit : List Step → Bool) (l : Nat) : (SR rT yv rv t0 t1).reached (.bind 0 1) hit l = false := by
+  unfold SState.reached
+  by_cases h1 : l = 1
+  · subst h1; simp [SR]
+  · by_cases h0 : l = 0
+    · subst h0; simp [SR]
+    · simp [SR, h1, h0]
+
+theorem assignOk_SR : AssignOk (Kc dm) φ (.deref (.var 0)) (SR rT yv rv t0 t1) := by
+  unfold AssignOk; rw [resolve_SR_r]
+  exact ⟨fun _ => Attack.accessOk_unreached _ φ fun l => reached_SR_r rT yv rv t0 t1 _ l, fun h => by simp at h⟩
+
 /-- `*r := 5`: `r`'s content is `5`; no borrow ends (the reborrow is lent at `y`, not at `r`). -/
 theorem runAssign_SR (hint : TyS) (hrT : rT.m = TyM.nat) :
     run (Kc dm) ρ φ hint (.assign (.deref (.var 0)) (num 5)) (SR rT yv rv t0 t1)
@@ -1001,21 +1086,40 @@ theorem runAssign_SR (hint : TyS) (hrT : rT.m = TyM.nat) :
     let ((v, R), s) ← runT (Kc dm) ρ φ false _ (num 5) (SR rT yv rv t0 t1)
     (if v ∈ₛ[(Kc dm).dm.read] (placeTy (Kc dm) φ (.deref (.var 0)) s).m ∧
         labTyOk s R.label (placeTy (Kc dm) φ (.deref (.var 0)) s).m then
-      match assignAt (Kc dm) φ (.deref (.var 0)) v R.label s with
+      match SM.guarded (AssignOk (Kc dm) φ (.deref (.var 0))) (assignAt (Kc dm) φ (.deref (.var 0)) v R.label) s with
       | some (r, s₁) =>
         let s₂ := invalidate (Kc dm) φ (.deref (.var 0)) s₁
-        if lentOk (Kc dm) φ (.deref (.var 0)) s₂ then some (r, s₂) else none
+        if InvalidateOk (Kc dm) φ (.deref (.var 0)) s₁ ∧ lentOk (Kc dm) φ (.deref (.var 0)) s₂ then some (r, s₂) else none
       | none => none else none)) = _
   simp only [bind, Option.bind]
   rw [show runT (Kc dm) ρ φ false _ (num 5) (SR rT yv rv t0 t1) = _ from run_num dm [] _ ρ φ 5 _ _]
   dsimp only
   -- the strict write: `5` is a `Nat`, `*r`'s type
   rw [if_pos ⟨by rw [placeTy_SR_r, hrT]; exact ⟨5, rfl⟩, fun l h => by cases h⟩]
-  simp only [assignAt, resolve_SR_r, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false, access_SR_r,
+  simp only [SM.guarded_of (assignOk_SR dm φ rT yv rv t0 t1), assignAt, resolve_SR_r, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false, access_SR_r,
     setContent_SR]
   simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
   rw [if_pos]
-  all_goals first | rfl | exact Attack.lentOk_deref (Kc dm) φ (pos := .bind 0 1) (resolve_SR_r _ _ _ _ _)
+  all_goals first | rfl | exact ⟨Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl) _ _, Attack.lentOk_deref (Kc dm) φ (pos := .bind 0 1) (resolve_SR_r _ _ _ _ _)⟩
+
+theorem endOk_SR5 : EndOk (Kc dm) φ (SR rT yv (fun _ => .el0 Nat 5) t0 t1) 1 := by
+  intro q hq ψ _
+  have hh : (SR rT yv (fun _ => .el0 Nat 5) t0 t1).holderOf 1 = some (.bind 0 1) := find_SR rT yv _ t0 t1
+  rw [hh] at hq
+  cases hq
+  exact ⟨(5 : Nat), rfl⟩
+
+/-- Reading `y` after `*r := 5` ends the reborrow `1` over `r`'s content `5`, strictly. -/
+theorem contentOk_SR5 : ContentOk (Kc dm) φ (.var 1) (SR rT yv (fun _ => .el0 Nat 5) t0 t1) := by
+  unfold ContentOk; rw [resolve_SR_y]
+  intro j hj
+  rw [liveLabels_SR] at hj
+  have hj0 : j = 0 := by simpa using hj
+  subst hj0
+  have hd : (SR rT yv (fun _ => .el0 Nat 5) t0 t1).reached (.bind 0 0) (dataHit []) 1 = true := by
+    simp [SState.reached, SR, dataHit]
+  simp only [List.range_zero, List.foldl_nil, liveLabels_SR, List.filter_cons, List.filter_nil, hd, if_true]
+  exact ⟨endOk_SR5 dm φ rT yv t0 t1, trivial⟩
 
 /-- Reading `y` after `*r := 5`: the read of `y` ends the reborrow `1` (lent at `y`), whose final
 content `5` `y` then reads. -/
@@ -1075,12 +1179,11 @@ theorem useId1_callOf (hint : TyS) :
     show runT (Kc dm) ρ φ false hint _ _ = _
     rw [runT]
     simp only [SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
-    show (do let r ← run (Kc dm) ρ φ (.plain .err) _; SM.modify (discardEnd r.2); runT (Kc dm) ρ φ false hint (.place (.var 1))) _ = _
-    simp only [bind, Option.bind, runAssign_SR (hrT := hTm), SM.modify]
-    rw [show discardEnd (.plain TyM.unit) (SR TU (yR1 dm) (fun _ => .el0 Nat 5) (mv1 dm) (fun _ => .moved))
-      = SR TU (yR1 dm) (fun _ => .el0 Nat 5) (mv1 dm) (fun _ => .moved) from rfl]
+    show (do let r ← run (Kc dm) ρ φ (.plain .err) _; SM.guardMod (DiscardOk (Kc dm) φ r.2) (discardEnd r.2); runT (Kc dm) ρ φ false hint (.place (.var 1))) _ = _
+    simp only [bind, Option.bind, runAssign_SR (hrT := hTm)]
+    erw [Attack.guardMod_discard_plain (Kc dm) φ TyM.unit]
     rw [runT]
-    simp only [SM.erasedIf, flags_Kc, copy_Kc, Bool.false_eq_true, if_false, SM.stmtIf]
+    simp only [SM.erasedIf, flags_Kc, copy_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.guarded_of (contentOk_SR5 dm φ TU (yR1 dm) (mv1 dm) (fun _ => .moved))]
     exact hy
   refine ⟨Ty, ?_⟩
   rw [useId1T, show Kc dm = Kp dm [] (fun _ => (.err, .plain TyM.err)) from rfl, run_letIn, run_num]
@@ -1094,6 +1197,11 @@ theorem useId1_callOf (hint : TyS) :
   simp only [bind, Option.bind]
   rw [show ({ ty := TU, val := fun _ => .el0 Nat 2 } : SBinding) = { ty := TU, val := fun _ => .el0 Nat 2, decl := .other }
     from rfl, hb, hseq]
+  have hsh := endLabel_SR_shape TU (yR1 dm) (fun _ => .el0 Nat 5) (mv1 dm) (fun _ => .moved)
+  dsimp only
+  erw [if_pos (Attack.letGuard_noShape (Kc dm) φ _ hsh)]
+  simp only [held_noShape' _ hsh]
+  erw [if_pos (Attack.letGuard_noShape (Kc dm) φ _ (Attack.shape_letLenders_dropLast _ hsh))]
   exact ⟨_, rfl⟩
 
 /-! ## `Id1(&y)` in place (`CallRef.runCallRef`) -/
@@ -1164,12 +1272,17 @@ def SPg2 (T : TyM) (c r : Sem) : SState :=
     heldTy := fun m => if m = 1 then T else if m = 0 then yB.ty.m else TyM.err,
     heldMem := fun m => if m = 1 then c else if m = 0 then r else .err }
 
+theorem contentOk_SPg (c : Sem) : ContentOk (Kc dm) φ (.deref (.var 0)) (SPg selfB d c r) := by
+  unfold ContentOk; rw [resolve_SPg]
+  exact Attack.accessOk_unreached _ φ fun l => reached_SPg (r := r) selfB d c _ l
+
 theorem runBody_id1P (a : Nat) :
     ∃ T : TyS, T.label = some 1 ∧ ∀ (hint : TyS) (tl : Bool),
       runT (Kc dm) ρ φ tl hint id1Body (SPg selfB d (.el0 Nat a) r) = some ((.el0 Nat a, T), SPg2 selfB d T.m (.el0 Nat a) r) := by
   obtain ⟨T, hTm, hT⟩ := contentOf_SPg_nat (r := r) dm φ selfB d (.el0 Nat a)
   refine ⟨{ T with label := some 1 }, rfl, fun hint tl => ?_⟩
-  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.strictS]
+  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.strictS,
+    SM.guarded_of (contentOk_SPg (r := r) dm φ selfB d (.el0 Nat a))]
   unfold borrowPlace
   simp only [hT, bind, Option.bind]
   simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
@@ -1179,7 +1292,7 @@ theorem runBody_id1P (a : Nat) :
   dsimp only
   simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
   rw [if_pos]
-  exact Attack.lentOk_deref (Kc dm) φ (pos := .bind 1 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps])
+  exact ⟨Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl) _ _, Attack.lentOk_deref (Kc dm) φ (pos := .bind 1 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps])⟩
 
 /-- The pop where two labels are live: `l`, held in the callee's frame, ends; `k`, returned, is kept
 and its holder moves to the caller's frame. -/

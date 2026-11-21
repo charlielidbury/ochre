@@ -101,10 +101,16 @@ the data type at a key is the continuation past the key (`DataLib.contRec`), so 
 record, and a record may mention itself (a recursive or nested field) without an infinite descent. -/
 abbrev Rec : Type 1 := List RStep → Entry
 
-/-- The sort a level-0 code is a type of: `0` for a proposition, `1` for a `Type₀` type. -/
+/-- The sort a level-0 code is a type of: `0` for a proposition, `1` for a `Type₀` type. A data
+code of a `Prop`-sorted declaration has NO level (the orchestrator's ruling (M-a), 2026-11-21): such a
+declaration means, as a type, only its proposition (`DataModel.tyR`: `prop (Nonempty car)`), so its
+raw code over the model's carrier is the meaning of no type the checker has. With level `1` it was a
+member of `Type₀`, and a type parameter at it had no faithful record and made the strict `MkBox[A](x)`
+fail where the checker accepts (`DataModel/Exists/RecordsCE.lean`). -/
 def Code0.level : {A : Type} → Code0 A → Option Nat
   | _, .prop _ => some 0
   | _, .err => none
+  | _, .data d _ _ => if d.sort == 0 then none else some 1
   | _, _ => some 1
 
 /-- **Codes of carrier level 1**: a level-0 code lifted; the universe `Prop`, decoding to the

@@ -72,7 +72,8 @@ def T₁ : TyS := { T₀ with label := some 1 }
 theorem run_id1_cl (a : Nat) (hint : TyS) (tl : Bool) :
     runT (Kc dm) ρ φ tl hint id1Body (SBs selfB d (.el0 Nat a) r)
       = some ((.el0 Nat a, T₁), SB2 selfB d T₀.m (.el0 Nat a) r) := by
-  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.strictS]
+  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.strictS,
+    SM.guarded_of (contentOk_SBs (r := r) dm φ selfB d (.el0 Nat a))]
   unfold borrowPlace
   simp only [contentOf_SBs_eq, bind, Option.bind]
   simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
@@ -83,13 +84,14 @@ theorem run_id1_cl (a : Nat) (hint : TyS) (tl : Bool) :
   dsimp only
   simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
   rw [if_pos]
-  exact Attack.lentOk_deref (Kc dm) φ (pos := .bind 0 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, SBs, SPg])
+  exact ⟨Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl) _ _, Attack.lentOk_deref (Kc dm) φ (pos := .bind 0 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, SBs, SPg])⟩
 
 /-- `&*x` in place. -/
 theorem run_id1_in (a : Nat) (hint : TyS) (tl : Bool) :
     runT (Kc dm) ρ φ tl hint id1Body (SPg selfB d (.el0 Nat a) r)
       = some ((.el0 Nat a, T₁), SPg2 selfB d T₀.m (.el0 Nat a) r) := by
-  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.strictS]
+  simp only [id1Body, runT, SM.erasedIf, flags_Kc, Bool.false_eq_true, if_false, SM.stmtIf, SM.strictS,
+    SM.guarded_of (contentOk_SPg (r := r) dm φ selfB d (.el0 Nat a))]
   unfold borrowPlace
   simp only [contentOf_SPg_eq, bind, Option.bind]
   simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
@@ -99,7 +101,7 @@ theorem run_id1_in (a : Nat) (hint : TyS) (tl : Bool) :
   dsimp only
   simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
   rw [if_pos]
-  exact Attack.lentOk_deref (Kc dm) φ (pos := .bind 1 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, SBs, SPg])
+  exact ⟨Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl) _ _, Attack.lentOk_deref (Kc dm) φ (pos := .bind 1 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, SBs, SPg])⟩
 
 /-- The caller's frame in place reads label `0` only, below the counter. -/
 theorem SPg_start (c : Sem) : FrameStart (SPg selfB d c r) [0] where
@@ -264,19 +266,20 @@ theorem run_inc_cl (a : Nat) (hint : TyS) (tl : Bool) :
     runT (Kc dm) ρ φ tl hint incBody (SBs selfB d (.el0 Nat a) r)
       = some ((.el0 Unit (), .plain TyM.unit), SBs selfB d (.el0 Nat (a + 1)) r) := by
   obtain ⟨T', hT'⟩ := readPlace_SBs (r := r) dm φ selfB d a
+  have hs : (Sem.el0 Nat a).succ = .el0 Nat (a + 1) := Sem.succ_el0 a
   simp only [incBody, runT, SM.erasedIf, SM.stmtIf, flags_Kc, copy_Kc, hT',
-    Bool.false_eq_true, if_false, bind, Option.bind, pure, SM.strictS]
-  rw [Sem.succ_el0]
+    Bool.false_eq_true, if_false, bind, Option.bind, pure, SM.strictS, hs,
+    SM.guarded_of (contentOk_SBs (r := r) dm φ selfB d (.el0 Nat a))]
   -- the strict `S` and the strict write: `a + 1` is a `Nat`, `*x`'s type
   have hm : Sem.el0 Nat (a + 1) ∈ₛ[(Kc dm).dm.read] TyM.nat := ⟨a + 1, rfl⟩
   have hT₀ : T₀.m = TyM.nat := rfl
   simp only [hm, if_true, placeTy, contentOf_SBs_eq, hT₀, labTyOk, TyS.plain, reduceCtorEq, false_implies,
     implies_true, and_true]
-  simp only [assignAt, resolve_SBs, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false, access_SBs,
+  simp only [SM.guarded_of (assignOk_SBs (r := r) dm φ selfB d (.el0 Nat a)), assignAt, resolve_SBs, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false, access_SBs,
     setContent_SBs]
   simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
   rw [if_pos]
-  all_goals first | rfl | exact Attack.lentOk_deref (Kc dm) φ (pos := .bind 0 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, SBs, SPg])
+  all_goals first | rfl | exact ⟨Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl) _ _, Attack.lentOk_deref (Kc dm) φ (pos := .bind 0 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, SBs, SPg])⟩
 
 theorem SP_eq (cd : DeclInfo) (c : Sem) : SP dm ρ φ cd d c r = SPg (selfP dm ρ φ cd) d c r := rfl
 
