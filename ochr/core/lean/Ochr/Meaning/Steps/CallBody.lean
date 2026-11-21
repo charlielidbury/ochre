@@ -1,5 +1,6 @@
 import Ochr.Meaning.Steps.ParBody
 import Ochr.Meaning.Steps.CallGuards
+import Ochr.Meaning.Steps.Machine.ReadInv
 
 /-!
 # The callee's body, run UNTYPED in place: the step in the form (lead15, 2026-11-21; docs/31 D127)
@@ -17,6 +18,10 @@ used: the strict run of `S(#0)` from a related state succeeds by itself (the rea
 conjunct asks nothing then; `S` returns `Nat`. Nothing in `Sim`/`Out` had to change.
 
 Assumes one fact about the checker, `BodyLazyInv` (stated here, `#guard`ed), and `InvNumA`.
+
+Of the decision table the step asks only the one decision the run reads (`CopyDec`: the copy decision of
+the read of `#0` at the start state), not a whole `DecTab` at the run's end, which a caller working under
+its own check's table cannot supply (docs/31 D133).
 -/
 
 namespace Ochr.Meaning.Steps.Form
@@ -25,18 +30,38 @@ open Ochr Ochr.Meaning Ochr.Meaning.Steps
 
 namespace CallBody
 
+/-- **The one decision the read of `p` makes, at `st`** (`Machine.copyRead`: `declCopy` of the place's
+reading, `placeDecl` at the top frame's readings): wherever the checker's procedure answers at `st`, `D`
+answers the same. What a step whose run reads `p` once asks of the table, in place of a whole `DecTab`
+(docs/31 D133). -/
+def CopyDec (D : Decisions) (st : MState) (p : Place) : Prop :=
+  ∀ fuel c b st', Runs (Ochr.copyRead fuel p) st b c st' →
+    D.copy (D.placeDecl (DecideScope.topReadings st) p) = c
+
+/-- A whole table aligned at `st` gives the one decision. -/
+theorem copyDec_of_decTab {D : Decisions} {st : MState} (hd : DecTab D st) (p : Place) : CopyDec D st p := by
+  intro fuel c b st' h
+  obtain ⟨k, d, b₁, b₂, rfl, hpd, hdc, -⟩ := Machine.runs_copyRead_inv h
+  obtain ⟨_, hpd'⟩ := runs_envRel (DecideScope.sim_withLive _ ((DecideScope.decideSim k).1 _ _))
+    (DecideScope.envRel_scopeState st).symm hpd
+  rw [hd.placeDecl k _ p d b₁ _ hpd']
+  exact hd.copy k d c b₂ st hdc
+
 /-- **The untyped run of `I`'s body from a callee frame** (a fact about the checker alone, assumed; the
 machine lane's): where `#0` resolves to a binding holding a closed numeral whose type is DEFERRED
 (`ty = none`: the callee's parameter as `runBodyCore` binds it), every successful UNTYPED `eval` of
 `S(#0)` (in the plain mode, no reading handed down) returns `S` of the numeral at `Nat`; it is quiet
-and keeps the invariant up to the read, which copies or moves `#0` as the aligned copy decision says.
-The read itself returns no type (`Steps/CallGuards.lean`); `S` gives `Nat`. `VarNumAInv` does not cover
-the read: it asks `b.ty.isSome`. -/
+and keeps the invariant up to the read, which copies or moves `#0` as the copy decision says. Of the
+table it asks only that decision, at the START state (`CopyDec D st (.var 0)`; narrowed from a whole
+`DecTab D st'` at the end state, docs/31 D133). The read itself returns no type
+(`Steps/CallGuards.lean`); `S` gives `Nat`. `VarNumAInv` does not cover the read: it asks
+`b.ty.isSome`. -/
 def BodyLazyInv : Prop :=
   ∀ (n : Nat) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value) (f j : Nat)
     (b : Binding) (D : Decisions),
     Mode st → st.tailDecl = none → ckVarPos st.env 0 = some (.bind f j) →
-    st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.val.Num → b.ty = none → DecTab D st' →
+    st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.val.Num → b.ty = none →
+    CopyDec D st (.var 0) →
     Runs (Ochr.eval n false bodyI hint) st bh (v, T?) st' →
     v = .succ b.val ∧ T? = some .tNat ∧ ∃ st₁, Quiet st st₁ ∧ KeepsInv st st₁ ∧
       (D.copy (D.placeDecl (DecideScope.topReadings st) (.var 0)) = true → Kern st₁ st') ∧
@@ -61,6 +86,11 @@ def withArg (w : Value) : MState :=
   calleeOk (outSt (Ochr.eval 100 false bodyI h) st 100000) .bot
 -- the read alone returns no type
 #guard (outVal (Ochr.evalCore 100 false (.place (.var 0)) none) (withArg (.succ .zero)) 100000).2.isNone
+-- the one decision the read makes, at the callee's start state: a move (the parameter's reading `.other`
+-- is not a copy type), in or out of tail position
+#guard [Value.zero, .succ .zero].all fun w => [true, false].all fun tl =>
+  isOk (Ochr.copyRead 100 (.var 0)) { withArg w with tailNext := tl } 1000 &&
+  outVal (Ochr.copyRead 100 (.var 0)) { withArg w with tailNext := tl } 1000 == false
 
 end Guards
 
@@ -89,16 +119,18 @@ theorem num_mean {v : Value} (h : v.Num) : ∃ m : Nat, ∀ (K : RunCtx) (ρ : A
 whose parameter is lazily typed and holds a closed numeral read `Nat` by the context, and every
 reference state related to it and good, the strict run of `S(#0)` succeeds with `S` of the numeral,
 at `Nat`, and the states after (the parameter moved or kept, as the aligned copy decision says) are
-related, with `Pre` again. The untyped hypothesis `hok` is not used. Assumes `BodyLazyInv` (checker)
-and `InvNumA` (checker, read and judged true). -/
+related, with `Pre` again. The untyped hypothesis `hok` is not used. Of the table it asks the flags of
+the body and of the read (`hd`, `hfl`) and the read's copy decision at the start state (`hcd`), not a
+whole `DecTab` (docs/31 D133). Assumes `BodyLazyInv` (checker) and `InvNumA` (checker, read and judged
+true). -/
 theorem bodyLazy_out (hB : BodyLazyInv) (hN : InvNumA) {R : List DeclInfo} (hd : ParDecI K.D R) (n : Nat)
     (st st' : MState) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState) (π : Nat → Nat)
     (hP : LazyNum K ρ R st) (hm : Mode st) (hp : Pre K ρ st) (hr : Rel K ρ φ π st s)
-    (hfl : K.D.flags (scopeOf s) bodyI = (false, false)) (hD : DecTab K.D st') (bh : Nat)
+    (hfl : K.D.flags (scopeOf s) bodyI = (false, false)) (hcd : CopyDec K.D st (.var 0)) (bh : Nat)
     (h : Runs (Ochr.eval n false bodyI hint) st bh (v, T?) st') :
     Out K ρ φ π st st' s (runT K ρ φ st.tailNext (hintM K ρ hint) bodyI) v T? := by
   obtain ⟨⟨f, j, b, hpos, hb, hbv, hty, htyK⟩, hR, htd⟩ := hP
-  obtain ⟨rfl, rfl, st₁, hq, hki, hcopy, hmove⟩ := hB n hint st st' bh v T? f j b K.D hm htd hpos hb hbv hty hD h
+  obtain ⟨rfl, rfl, st₁, hq, hki, hcopy, hmove⟩ := hB n hint st st' bh v T? f j b K.D hm htd hpos hb hbv hty hcd h
   have hres : resolve s (.var 0) = some (.bind f j, []) := rel_resolve_ck K ρ φ st s π (.var 0) _ hr hpos
   have hvb : valAt st.env (.bind f j) = b.val := by
     rw [valAt_bind_eq]; rcases hfr : st.env[f]? with _ | fr
@@ -240,12 +272,14 @@ theorem bodyLazy_out (hB : BodyLazyInv) (hN : InvNumA) {R : List DeclInfo} (hd :
     · exact rel_withTempT_inertA (hr₁.of_kern hk) hsN.inert.toA _
 
 /-- **The same, in the form of `EvalSim`** (`typed = false`); its untyped hypothesis `hok` is unused
-(`bodyLazy_out` does without it). -/
+(`bodyLazy_out` does without it); the form's whole table at the run's end gives the read's decision at
+its start (`DecTab.of_rest`, `copyDec_of_decTab`). -/
 theorem bodyLazy_sim (hB : BodyLazyInv) (hN : InvNumA) {R : List DeclInfo} (hd : ParDecI K.D R) :
     ∀ n, EvalSim K ρ φ n bodyI (LazyNum K ρ R) (· = false) := by
   intro n st st' typed hint v T? s π hP htyp hm _ hp hr _ _ _ _ hfl _ hD bh h
   subst htyp
-  exact bodyLazy_out hB hN hd n st st' hint v T? s π hP hm hp hr hfl hD bh h
+  exact bodyLazy_out hB hN hd n st st' hint v T? s π hP hm hp hr hfl
+    (copyDec_of_decTab (hD.of_rest (grows_eval _ _ _ _) h) _) bh h
 
 end
 

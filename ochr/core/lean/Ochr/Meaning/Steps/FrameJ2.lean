@@ -192,13 +192,13 @@ theorem closureRun_of_checker (hB : CallBody.BodyLazyInv) (hN : InvNumA) (hFJ : 
     (hfs : FrameStart (inPlaceJ2 K.dm.read s₂ f a) [])
     (hrel : FrameRelS K.dm.read (fun l => s₂.nextLoan + l) (inPlaceJ2 K.dm.read s₂ f a) [] 0
       (inPlaceJ2 K.dm.read s₂ f a) (closureJ2 K.dm.read φ a))
-    (hfl : K.D.flags (scopeOf (inPlaceJ2 K.dm.read s₂ f a)) bodyI = (false, false)) (hD : DecTab K.D st')
+    (hfl : K.D.flags (scopeOf (inPlaceJ2 K.dm.read s₂ f a)) bodyI = (false, false)) (hcd : CallBody.CopyDec K.D st (.var 0))
     (h : Runs (Ochr.eval n false bodyI hint) st bh (v, T?) st') (tl : Bool) (h' : TyS) :
     ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
       runT K ρ φ tl h' bodyI (closureJ2 K.dm.read φ a) = some (r, s') ∧
       ∃ T : TyS, meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) T v = r.1 := by
   obtain ⟨ρ', Δ', π', r, s₁, -, hx, hmean, -, -, -, -⟩ :=
-    CallBody.bodyLazy_out (K := K) (ρ := ρ) (φ := φ) hB hN hd n st st' hint v T? _ π hP hm hp hr hfl hD bh h
+    CallBody.bodyLazy_out (K := K) (ρ := ρ) (φ := φ) hB hN hd n st st' hint v T? _ π hP hm hp hr hfl hcd bh h
   have hag := hFJ K ρ φ s₂ f a st.tailNext tl (hintM K ρ hint) h' hc hfs hS hrel
   rw [hx] at hag
   cases hcl : runT K ρ φ tl h' bodyI (closureJ2 K.dm.read φ a) with

@@ -849,12 +849,12 @@ theorem closureRun_of_checker_free (hB : BodyLazyInv) (hN : InvNumA)
     (hfs : FrameStart (inPlaceJ2 K.dm.read s₂ f a) [])
     (hrel : FrameRelS K.dm.read (fun l => s₂.nextLoan + l) (inPlaceJ2 K.dm.read s₂ f a) [] 0
       (inPlaceJ2 K.dm.read s₂ f a) (closureJ2 K.dm.read φ a))
-    (hfl : K.D.flags (scopeOf (inPlaceJ2 K.dm.read s₂ f a)) bodyI = (false, false)) (hD : DecTab K.D st')
+    (hfl : K.D.flags (scopeOf (inPlaceJ2 K.dm.read s₂ f a)) bodyI = (false, false)) (hcd : CallBody.CopyDec K.D st (.var 0))
     (h : Runs (Ochr.eval n false bodyI hint) st bh (v, T?) st') (tl : Bool) (h' : TyS) :
     ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
       runT K ρ φ tl h' bodyI (closureJ2 K.dm.read φ a) = some (r, s') ∧
       ∃ T : TyS, meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) T v = r.1 :=
-  closureRun_of_checker hB hN frameJ2_holds hd hc hP hm hp hr hS hfs hrel hfl hD h tl h'
+  closureRun_of_checker hB hN frameJ2_holds hd hc hP hm hp hr hS hfs hrel hfl hcd h tl h'
 
 /-! ## The frame property restated over `FrameRelS`: the general statement (open) -/
 
