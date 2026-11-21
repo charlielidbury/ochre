@@ -254,7 +254,10 @@ borrowers ended, `endLoansOfTopTemp`, so the loans' condition is needed; lead8);
 no hint (a typed run's tail) in the sequence's tail position, the mode after `u` carried to `w`'s
 entry (`ModeEq`, as `LetInv`; lead9: first stated as `Mode stW`, which no inversion of `.seq` alone
 gives, `u`'s end mode being `u`'s run's fact). The invariant where `w` starts is the caller's
-(`InvPopInert`, lead9; first stated here as a conjunct, dropped with `InvCore`). -/
+(`InvPopInert`, lead9; first stated here as a conjunct, dropped with `InvCore`). The mode is kept
+(`ModeEq st₁ stW`) under the same antecedent as the kernel (machine3, 2026-11-21: unconditional it asks
+the drop of any value, i.e. the ending machinery, to keep the mode, a whole-machine fact). PROVED
+(`Machine.seqInv`). -/
 def SeqInv : Prop :=
   ∀ (n : Nat) (u w : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (D : Decisions),
@@ -263,7 +266,7 @@ def SeqInv : Prop :=
     ∃ (st₀ st₁ stW : MState) (v₀ : Value) (T₀ : Option Value) (bh₁ bh₂ : Nat),
       Kern st st₀ ∧ Mode st₀ ∧ st₀.tailNext = false ∧ st₀.tailDecl = none ∧
       (stW.tailDecl = none ∨ stW.tailDecl = st.curDecl) ∧ Runs (Ochr.eval n true u none) st₀ bh₁ (v₀, T₀) st₁ ∧
-      DecTab D st₁ ∧ ((∀ l, v₀.holdsBorrow l = false) → v₀.loans = [] → Kern st₁ stW) ∧ ModeEq st₁ stW ∧
+      DecTab D st₁ ∧ ((∀ l, v₀.holdsBorrow l = false) → v₀.loans = [] → Kern st₁ stW ∧ ModeEq st₁ stW) ∧
       stW.tailNext = st.curTail ∧
       Runs (Ochr.eval n true w none) stW bh₂ (v, T?) st'
 

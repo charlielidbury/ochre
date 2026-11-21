@@ -284,11 +284,11 @@ theorem run_seq (hE : EvalInv) (hZ : ZeroInv) (hA : AssignDerefInv) (hVE : VarEn
     hE (g + 7) true seqB hint st st' bh v T? D hm hD (fun _ e => by cases e) (fun _ _ _ e => by cases e)
       (by rw [hXY.readings, declOf_seq hd]; exact duC_ok.1) (by rw [hXY.readings, declOf_seq hd]; exact duC_ok.2)
       htd h
-  obtain ⟨a₀, a₁, aW, v₀, T₀, bh₁, bh₂, hka, hma, -, htda, htdW, hru, hD₁, hdrop, hmeW, -, hrw⟩ :=
+  obtain ⟨a₀, a₁, aW, v₀, T₀, bh₁, bh₂, hka, hma, -, htda, htdW, hru, hD₁, hdrop, -, hrw⟩ :=
     hSq (g + 6) writeB (.place (.var 1)) hint st₀ st₁ bh' v T? D hm₀ htn₀ htd₀ (DecTab.of_kern hk₁.symm hD) h₀
   obtain ⟨rfl, -, hm₁, hXY₁⟩ := run_write hE hZ hA hd (hXY.kern (hk₀.trans hka)) hma htda hD₁ hru
-  have hXYW := hXY₁.kern (hdrop (fun _ => rfl) rfl)
-  obtain ⟨rfl, hT, -, p, q, xv, hxv, he⟩ := run_read hE hVE hd hXYW (hm₁.of_modeEq hmeW)
+  have hXYW := hXY₁.kern (hdrop (fun _ => rfl) rfl).1
+  obtain ⟨rfl, hT, -, p, q, xv, hxv, he⟩ := run_read hE hVE hd hXYW (hm₁.of_modeEq (hdrop (fun _ => rfl) rfl).2)
     (by
       rcases htdW with e | e
       · exact .inl e
