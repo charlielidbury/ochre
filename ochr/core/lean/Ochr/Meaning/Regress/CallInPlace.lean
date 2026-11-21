@@ -78,6 +78,7 @@ def xB (c : Sem) (d : DeclInfo) : SBinding := { ty := { (TyS.plain TyM.nat) with
 noncomputable def SB (c r : Sem) : SState :=
   { env := [{ binds := [cellB] }, { binds := [selfInc dm ρ φ, xB c (dInc dm)] }],
     shape := fun p => if p = .bind 1 1 then some 0 else none, nextLoan := 1,
+    lent := fun m => if m = 0 then [⟨.bind 0 0, [], false⟩] else [],
     heldTy := fun m => if m = 0 then TyM.nat else TyM.err,
     heldMem := fun m => if m = 0 then r else .err }
 
@@ -86,7 +87,7 @@ theorem frame_inc (c : Sem) :
       = (SB dm ρ φ c c, [c], [.bind 0 0]) := by
   simp [fixStep, psInc, stateOf, SState.under, SState.pushCell, List.range', SState.freshLoan, SState.pushTemp, SState.pushBind, SState.topIdx, pushBindShaped,
     SState.takeLabel, SState.holderOf, SState.positions, SB, xB, dInc, fbInc, bindsOf, runBinds, mkBind, SState.setHeldMem,
-    SState.setHeldTy]
+    SState.setHeldTy, SState.setLent]
   repeat' first | rfl | apply And.intro
 
 theorem positions_SB (c : Sem) : (SB dm ρ φ c r).positions = [.bind 0 0, .bind 1 0, .bind 1 1] := by
@@ -98,12 +99,12 @@ theorem liveLabels_SB (c : Sem) : (SB dm ρ φ c r).liveLabels = [0] := by
 theorem holderOf_SB (c : Sem) : (SB dm ρ φ c r).holderOf 0 = some (.bind 1 1) := by
   unfold SState.holderOf; rw [positions_SB]; simp [SB]
 
-theorem reached_SB (c : Sem) (p : Pos) (hit : List Step → Bool) (l : Nat) : (SB dm ρ φ c r).reached p hit l = false := by
+theorem reached_SB (c : Sem) (hit : List Step → Bool) (l : Nat) : (SB dm ρ φ c r).reached (.bind 1 1) hit l = false := by
   simp [SState.reached, SB]
 
-theorem access_SB (c : Sem) (p : Pos) (hit : List Step → Bool) : (SB dm ρ φ c r).access p hit = SB dm ρ φ c r := by
+theorem access_SB (c : Sem) (hit : List Step → Bool) : (SB dm ρ φ c r).access (.bind 1 1) hit = SB dm ρ φ c r := by
   unfold SState.access
-  have h : ∀ n : Nat, (List.range n).foldl (fun s _ => (s.liveLabels.filter (s.reached p hit)).foldl SState.endLabel s)
+  have h : ∀ n : Nat, (List.range n).foldl (fun s _ => (s.liveLabels.filter (s.reached (.bind 1 1) hit)).foldl SState.endLabel s)
       (SB dm ρ φ c r) = SB dm ρ φ c r := by
     intro n; induction n with
     | zero => rfl
@@ -156,11 +157,11 @@ theorem lentOk_SB (c : Sem) : lentOk (Kc dm) φ (.deref (.var 0)) (SB dm ρ φ c
 
 theorem contentOk_SB (c : Sem) : ContentOk (Kc dm) φ (.deref (.var 0)) (SB dm ρ φ c r) := by
   unfold ContentOk; rw [resolve_SB]
-  exact Attack.accessOk_unreached _ φ fun l => reached_SB dm ρ φ c _ _ l
+  exact Attack.accessOk_unreached _ φ fun l => reached_SB dm ρ φ c _ l
 
 theorem assignOk_SB (c : Sem) : AssignOk (Kc dm) φ (.deref (.var 0)) (SB dm ρ φ c r) := by
   unfold AssignOk; rw [resolve_SB]
-  exact ⟨fun _ => Attack.accessOk_unreached _ φ fun l => reached_SB dm ρ φ c _ _ l, fun h => by simp at h⟩
+  exact ⟨fun _ => Attack.accessOk_unreached _ φ fun l => reached_SB dm ρ φ c _ l, fun h => by simp at h⟩
 
 theorem holderOf_SB' (c : Sem) : (SB dm ρ φ c r).holderOf 0 = some (.bind 1 1) := holderOf_SB dm ρ φ c
 
@@ -712,6 +713,7 @@ noncomputable def selfId1M : Sem := closureAt dm.read 1 φ psInc (weakCod 1 (fix
 def SBs (selfB : SBinding) (d : DeclInfo) (c r : Sem) : SState :=
   { env := [{ binds := [cellB] }, { binds := [selfB, xB c d] }],
     shape := fun p => if p = .bind 1 1 then some 0 else none, nextLoan := 1,
+    lent := fun m => if m = 0 then [⟨.bind 0 0, [], false⟩] else [],
     heldTy := fun m => if m = 0 then TyM.nat else TyM.err,
     heldMem := fun m => if m = 0 then r else .err }
 
@@ -725,14 +727,14 @@ theorem liveLabels_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) : (SBs selfB 
 theorem holderOf_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) : (SBs selfB d c r).holderOf 0 = some (.bind 1 1) := by
   unfold SState.holderOf; rw [positions_SBs]; simp [SBs]
 
-theorem reached_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) (p : Pos) (hit : List Step → Bool) (l : Nat) :
-    (SBs selfB d c r).reached p hit l = false := by
+theorem reached_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) (hit : List Step → Bool) (l : Nat) :
+    (SBs selfB d c r).reached (.bind 1 1) hit l = false := by
   simp [SState.reached, SBs]
 
-theorem access_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) (p : Pos) (hit : List Step → Bool) :
-    (SBs selfB d c r).access p hit = SBs selfB d c r := by
+theorem access_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) (hit : List Step → Bool) :
+    (SBs selfB d c r).access (.bind 1 1) hit = SBs selfB d c r := by
   unfold SState.access
-  have h : ∀ n : Nat, (List.range n).foldl (fun s _ => (s.liveLabels.filter (s.reached p hit)).foldl SState.endLabel s)
+  have h : ∀ n : Nat, (List.range n).foldl (fun s _ => (s.liveLabels.filter (s.reached (.bind 1 1) hit)).foldl SState.endLabel s)
       (SBs selfB d c r) = SBs selfB d c r := by
     intro n; induction n with
     | zero => rfl
@@ -770,19 +772,19 @@ parked in a temporary holding `1`, lent at `*x`. -/
 def SB2 (selfB : SBinding) (d : DeclInfo) (T : TyM) (c r : Sem) : SState :=
   { env := [{ binds := [cellB] }, { binds := [selfB, { xB c d with val := fun φ' => φ' 1 }], temps := [fun _ => c] }],
     shape := fun p => if p = .temp 1 0 then some 1 else if p = .bind 1 1 then some 0 else none, nextLoan := 2,
-    lent := fun m => if m = 1 then [⟨.bind 1 1, [.deref], false⟩] else [],
+    lent := fun m => if m = 1 then [⟨.bind 1 1, [.deref], false⟩] else if m = 0 then [⟨.bind 0 0, [], false⟩] else [],
     heldTy := fun m => if m = 1 then T else if m = 0 then TyM.nat else TyM.err,
     heldMem := fun m => if m = 1 then c else if m = 0 then r else .err }
 
 theorem contentOk_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) :
     ContentOk (Kc dm) φ (.deref (.var 0)) (SBs selfB d c r) := by
   unfold ContentOk; rw [resolve_SBs]
-  exact Attack.accessOk_unreached _ φ fun l => reached_SBs (r := r) selfB d c _ _ l
+  exact Attack.accessOk_unreached _ φ fun l => reached_SBs (r := r) selfB d c _ l
 
 theorem assignOk_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) :
     AssignOk (Kc dm) φ (.deref (.var 0)) (SBs selfB d c r) := by
   unfold AssignOk; rw [resolve_SBs]
-  exact ⟨fun _ => Attack.accessOk_unreached _ φ fun l => reached_SBs (r := r) selfB d c _ _ l, fun h => by simp at h⟩
+  exact ⟨fun _ => Attack.accessOk_unreached _ φ fun l => reached_SBs (r := r) selfB d c _ l, fun h => by simp at h⟩
 
 theorem runBody_id1 (selfB : SBinding) (d : DeclInfo) (a : Nat) (hint : TyS) (tl : Bool) :
     ∃ T, runT (Kc dm) ρ φ tl hint id1Body (SBs selfB d (.el0 Nat a) r) = some ((.el0 Nat a, T), SB2 selfB d T.m (.el0 Nat a) r) ∧
@@ -809,7 +811,7 @@ theorem frame_id1 (c : Sem) :
       = (SBs (selfId1 dm ρ φ) (dInc dm) c c, [c], [.bind 0 0]) := by
   simp [fixStep, psInc, stateOf, SState.under, SState.pushCell, List.range', SState.freshLoan, SState.pushTemp, SState.pushBind, SState.topIdx, pushBindShaped,
     SState.takeLabel, SState.holderOf, SState.positions, SBs, xB, dInc, fbId1, bindsOf, runBinds, mkBind, SState.setHeldMem,
-    SState.setHeldTy]
+    SState.setHeldTy, SState.setLent]
   repeat' first | rfl | apply And.intro
 
 theorem positions_SB2 (selfB : SBinding) (d : DeclInfo) (T : TyM) (c : Sem) :

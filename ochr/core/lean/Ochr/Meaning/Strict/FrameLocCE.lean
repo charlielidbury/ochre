@@ -62,12 +62,12 @@ theorem run_read (dm : DataModel) (ρ : Assignment) (φ : Future) (k c : Nat) (t
       some ((φ k, .plain TyM.nat, .bind 1 0, []), sL k c) := by
     unfold contentOf
     simp only [resolve, Place.steps, hv, Option.map_some]
-    rw [Steps.Form.FrameFrag.access_self hnr,
+    rw [Steps.Form.FrameFrag.access_self (fun l _ => hnr l),
       show (sL k c).typedFuture φ = φ from funext fun l => by simp [SState.typedFuture, live_sL]]
     simp [Sem.follow, SState.valAt, SState.tyAt, sL, xL]
   have hok : ContentOk (Kw dm []) φ (.var 0) (sL k c) := by
     simp only [ContentOk, resolve, Place.steps, hv, Option.map_some]
-    exact Steps.Form.FrameFrag.accessOk_self _ _ hnr
+    exact Steps.Form.FrameFrag.accessOk_self _ _ (fun l _ => hnr l)
   have heq : runT (Kw dm []) ρ φ tl hint (.place (.var 0)) (sL k c) = readPlace (Kw dm []) φ (.var 0) false (sL k c) := by
     rw [runT]
     show SM.erasedIf (false, false) (SM.guarded (ContentOk (Kw dm []) φ (.var 0))

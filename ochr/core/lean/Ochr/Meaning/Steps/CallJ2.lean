@@ -240,13 +240,13 @@ theorem closureRun_J2 (hB : BodyLazyInv) (hN : InvNumA)
     (hP : LazyNum K ρ R st) (hm : Mode st) (hp : Pre K ρ st) (hr : Rel K ρ φ π st (inPlaceJ2 K.dm.read s₂ f a))
     (hrel : FrameRelS K.dm.read (fun l => s₂.nextLoan + l) (inPlaceJ2 K.dm.read s₂ f a) [] 0
       (inPlaceJ2 K.dm.read s₂ f a) (closureJ2 K.dm.read φ a))
-    (hfl : K.D.flags (scopeOf (inPlaceJ2 K.dm.read s₂ f a)) bodyI = (false, false)) (hD : DecTab K.D st')
+    (hfl : K.D.flags (scopeOf (inPlaceJ2 K.dm.read s₂ f a)) bodyI = (false, false)) (hcd : CallBody.CopyDec K.D st (.var 0))
     (h : Runs (Ochr.eval n false bodyI hint) st bh (v, T?) st') (tl : Bool) (h' : TyS) :
     ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
       runT K ρ φ tl h' bodyI (closureJ2 K.dm.read φ a) = some (r, s') ∧
       ∃ T : TyS, meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) T v = r.1 := by
   obtain ⟨ρ', Δ', π', r, s₁, -, hx, hmean, -, -, -, -⟩ :=
-    bodyLazy_out (K := K) (ρ := ρ) (φ := φ) hB hN hd n st st' hint v T? _ π hP hm hp hr hfl hD bh h
+    bodyLazy_out (K := K) (ρ := ρ) (φ := φ) hB hN hd n st st' hint v T? _ π hP hm hp hr hfl hcd bh h
   have hag : FrameAgreeS K.dm.read (fun l => s₂.nextLoan + l) (inPlaceJ2 K.dm.read s₂ f a) [] 0
       (runT K ρ φ st.tailNext (hintM K ρ hint) bodyI (inPlaceJ2 K.dm.read s₂ f a))
       (runT K ρ φ tl h' bodyI (closureJ2 K.dm.read φ a)) := by
@@ -415,6 +415,103 @@ theorem lazyNum_stCJ2 (hpd : K.D.paramDecls [] [.nat] = [.other]) {st : MState} 
 
 end
 
+/-! ## The decisions `I`'s body reads in place, at `J2`'s one table (docs/31 D133)
+
+`J2`'s check has one table, aligned with the checker at `J2`'s start `stJ2`. In place, `I`'s body reads
+the flags of the read and of the body and the read's reading at the callee frame's readings
+`[.other, .pi .other]` (`ParDecI`), and the read's copy decision at the callee state (`CallBody.CopyDec`).
+Kernel evaluation of the checker's procedures at `scopeState stJ2 [.other, .pi .other]` and at `stJ2`
+gives each, as `ColumnI.parDecI` does at `stI`: no checker fact. -/
+
+namespace Aux
+
+open Ochr.Meaning.Regress.GenNeutralContent (isOk outVal)
+
+abbrev RI : List DeclInfo := [.other, .pi .other]
+abbrev stJ2 : MState := FrameJ2.Guards.stJ2
+abbrev flagsRun (t : Term) : M (Bool × Bool) := Ochr.Meaning.Steps.Form.ColumnC.Aux.flagsRun t
+abbrev declRun (t : Term) : M DeclInfo := Ochr.Meaning.Steps.Form.ColumnC.Aux.declRun t
+abbrev isOther (d : DeclInfo) : Bool := Ochr.Meaning.Steps.Form.ColumnC.Aux.isOther d
+
+theorem ok_flags_x : isOk (flagsRun (.place (.var 0))) (scopeState stJ2 RI) 1000 = true := by decide +kernel
+theorem val_flags_x : outVal (flagsRun (.place (.var 0))) (scopeState stJ2 RI) 1000 = (false, false) := by
+  decide +kernel
+theorem ok_declOf_x : isOk (declRun (.place (.var 0))) (scopeState stJ2 RI) 1000 = true := by decide +kernel
+theorem val_declOf_x : isOther (outVal (declRun (.place (.var 0))) (scopeState stJ2 RI) 1000) = true := by
+  decide +kernel
+theorem ok_flags_body : isOk (flagsRun bodyI) (scopeState stJ2 RI) 1000 = true := by decide +kernel
+theorem val_flags_body : outVal (flagsRun bodyI) (scopeState stJ2 RI) 1000 = (false, false) := by
+  decide +kernel
+theorem ok_declOf_body : isOk (declRun bodyI) (scopeState stJ2 RI) 1000 = true := by decide +kernel
+theorem val_declOf_body : isOther (outVal (declRun bodyI) (scopeState stJ2 RI) 1000) = true := by
+  decide +kernel
+
+/-- The read's reading, as `DecTab.placeDecl` runs it. -/
+abbrev pdRun : M DeclInfo := withLive true (Ochr.placeDecl 100 [] (.var 0))
+theorem ok_pd : isOk pdRun (scopeState stJ2 RI) 1000 = true := by decide +kernel
+theorem val_pd : isOther (outVal pdRun (scopeState stJ2 RI) 1000) = true := by decide +kernel
+theorem ok_cp : isOk (Ochr.declCopy 100 .other) stJ2 1000 = true := by decide +kernel
+theorem val_cp : outVal (Ochr.declCopy 100 .other) stJ2 1000 = false := by decide +kernel
+
+end Aux
+
+open Ochr.Meaning.Regress.GenNeutralContent (runs_out) in
+/-- **`ParDecI` for `I`'s body in place, at `J2`'s table.** -/
+theorem parDecJ2 {D : Decisions} (hd : DecTab D FrameJ2.Guards.stJ2) : ParDecI D [.other, .pi .other] := by
+  refine ⟨?_, ?_, ?_⟩
+  · show D.flags Aux.RI _ = _
+    rw [hd.flags 100 Aux.RI (.place (.var 0)) _ 1000 _
+      (runs_out (Aux.flagsRun (.place (.var 0))) _ 1000 Aux.ok_flags_x), Aux.val_flags_x]
+  · show D.declOf Aux.RI _ = _
+    rw [hd.declOf 100 Aux.RI (.place (.var 0)) _ 1000 _
+      (runs_out (Aux.declRun (.place (.var 0))) _ 1000 Aux.ok_declOf_x)]
+    exact ColumnC.Aux.isOther_eq Aux.val_declOf_x
+  · show D.declOf Aux.RI _ = _
+    rw [hd.declOf 100 Aux.RI bodyI _ 1000 _ (runs_out (Aux.declRun bodyI) _ 1000 Aux.ok_declOf_body)]
+    exact ColumnC.Aux.isOther_eq Aux.val_declOf_body
+
+open Ochr.Meaning.Regress.GenNeutralContent (runs_out) in
+/-- `I`'s body in place is neither a statement nor a proof, at `J2`'s table. -/
+theorem flags_bodyI_J2 {D : Decisions} (hd : DecTab D FrameJ2.Guards.stJ2) :
+    D.flags [.other, .pi .other] bodyI = (false, false) := by
+  show D.flags Aux.RI _ = _
+  rw [hd.flags 100 Aux.RI bodyI _ 1000 _ (runs_out (Aux.flagsRun bodyI) _ 1000 Aux.ok_flags_body),
+    Aux.val_flags_body]
+
+/-- A reading `.other` is never a copy type: every successful run of `declCopy` on it answers `false`. -/
+theorem declCopy_other {k : Nat} {st st' : MState} {b : Nat} {c : Bool}
+    (h : Runs (Ochr.declCopy k .other) st b c st') : c = false := by
+  cases k with
+  | zero => unfold Ochr.declCopy at h; simp only [Machine.runs_exhausted_iff] at h
+  | succ k =>
+    unfold Ochr.declCopy at h
+    exact (runs_pure_inv h).1
+
+open Ochr.Meaning.Regress.GenNeutralContent (runs_out) in
+/-- **The read's copy decision at the callee state, from `J2`'s table** (`CallBody.CopyDec`, what
+`BodyLazyInv` and `closureRun_J2` ask): at every state with `stCJ2`'s kernel, the checker's `copyRead` of
+`#0` answers `false` (a move), and so does `J2`'s table at the callee's readings. No checker fact. -/
+theorem copyDec_calleeJ2 {D : Decisions} (hd : DecTab D FrameJ2.Guards.stJ2) {st : MState} (hk : Kern stCJ2 st) :
+    CallBody.CopyDec D st (.var 0) := by
+  intro fuel c b st' h
+  obtain ⟨k, d, b₁, b₂, rfl, hpd, hdc, -⟩ := Machine.runs_copyRead_inv h
+  have hR : DecideScope.topReadings st = Aux.RI := by rw [← ColumnC.topReadings_kern hk]; rfl
+  have hcore : DecCore st FrameJ2.Guards.stJ2 :=
+    ⟨hk.globals.symm.trans rfl, hk.inds.symm.trans rfl, hk.absDecl.symm.trans rfl, hk.liveScope.symm.trans rfl⟩
+  obtain ⟨_, h₁⟩ := runs_envRel (DecideScope.sim_withLive _ ((DecideScope.decideSim k).1 _ _))
+    (DecideScope.envRel_scopeState st).symm hpd
+  rw [hR] at h₁
+  obtain ⟨_, h₂⟩ := runs_envRel (DecideScope.sim_withLive _ ((DecideScope.decideSim k).1 _ _))
+    (envRel_scope_of_core hcore _) h₁
+  have e1 : D.placeDecl Aux.RI (.var 0) = d := hd.placeDecl k _ (.var 0) d b₁ _ h₂
+  have e2 : D.placeDecl Aux.RI (.var 0) = .other := by
+    rw [hd.placeDecl 100 Aux.RI (.var 0) _ 1000 _ (runs_out Aux.pdRun _ 1000 Aux.ok_pd)]
+    exact ColumnC.Aux.isOther_eq Aux.val_pd
+  have e3 : D.copy .other = false := by
+    rw [hd.copy 100 .other _ 1000 _ (runs_out (Ochr.declCopy 100 .other) _ 1000 Aux.ok_cp), Aux.val_cp]
+  rw [← e1, e2] at hdc
+  rw [hR, e2, e3, declCopy_other hdc]
+
 /-! ## The reference's run of the call `I(x)` -/
 
 /-- `J2`'s call. -/
@@ -544,19 +641,26 @@ end
 
 /-! ## The checker's call `I(x)`, decomposed: one fact -/
 
+/-- The sealed call a call of `I` on `S(Z)` closes off to, where `I`'s body ends stuck (the form of `ColumnR.vR`). -/
+def sealJ2 : Value := .sealed (.call (.val (.gfn "I")) [.val (.succ .zero)] true)
+
 /-- **The checker's call `I(x)` at `J2`, decomposed** (a fact about the checker alone, assumed; the machine lane's to
 read and prove): every successful typed `eval` of `I(x)` from a state with `stX1`'s kernel (`x ↦ S(Z)`), in the plain
 mode, not in tail position, with no reading handed down, outside any private copy, returns its value at `Nat`
 (`callType`) and ends with `stX`'s kernel (the argument's read moved `x`, the callee's frame popped); and it ran `I`'s
 body UNTYPED, with no hint, from a state with `stCJ2`'s kernel in the plain mode with no handed-down reading, to that
-same value (`runBodyCore`). What `closureRun_J2` takes from the checker's side. Guarded below. -/
+same value (`runBodyCore`), OR the body ended stuck and the call closed off to the sealed call `⌈I(S(Z))⌉`
+(`sealJ2`; docs/31 D139, the orchestrator's ruling for lead18: a call's inversion is stated as this disjunction, never
+with "the callee's body never ends stuck"; the sealed call means the same closure applied). What `closureRun_J2` and
+`CallJ2Step.mean_callJ2` take from the checker's side. Guarded below (the first disjunct holds at every guarded run). -/
 def CallJ2Inv : Prop :=
   ∀ (n : Nat) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value),
     Kern stX1 st → Mode st → st.tailNext = false → st.tailDecl = none → st.privateDepth = 0 →
     Runs (Ochr.eval n true callJ2 hint) st bh (v, T?) st' →
     T? = some .tNat ∧ Kern stX st' ∧
-      ∃ (m : Nat) (stc stc' : MState) (bh' : Nat) (T₀ : Option Value),
-        Kern stCJ2 stc ∧ Mode stc ∧ stc.tailDecl = none ∧ Runs (Ochr.eval m false bodyI none) stc bh' (v, T₀) stc'
+      ((∃ (m : Nat) (stc stc' : MState) (bh' : Nat) (T₀ : Option Value),
+        Kern stCJ2 stc ∧ Mode stc ∧ stc.tailDecl = none ∧ Runs (Ochr.eval m false bodyI none) stc bh' (v, T₀) stc') ∨
+       v = sealJ2)
 
 namespace Guards
 

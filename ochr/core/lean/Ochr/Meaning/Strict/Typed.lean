@@ -107,7 +107,8 @@ inductive HWTFields : IndDecl → IndDecl → Rec → Nat → Nat → List Sem �
 
 /-- Captures, each at its recorded type (read at no hint, as `capsVals` reads it). -/
 inductive HWTCaps : List Value → List (DeclInfo × Value) → Prop
-  | nil : HWTCaps [] []
+  -- the readings may run on past the captures (a stuck block's parameters', docs/31 D137): not read
+  | nil {rd : List (DeclInfo × Value)} : HWTCaps [] rd
   | cons {v : Value} {vs : List Value} {dI : DeclInfo} {T : Value} {rd : List (DeclInfo × Value)} :
       HWT (.plain TyM.err) (capTy K ρ φ T) v → HWTCaps vs rd → HWTCaps (v :: vs) ((dI, T) :: rd)
 end
@@ -427,8 +428,7 @@ theorem hwtFields_of (d d' : IndDecl) (r : Rec) (c : Nat) : ∀ (fs : List Value
 
 theorem hwtCaps_of : ∀ (cs : List Value) (rd : List (DeclInfo × Value)),
     NoPropL K cs → CapsOk K.dm.read (capsVals K ρ φ cs) (capsTys K ρ φ rd) → HWTCaps K ρ φ cs rd
-  | [], [], _, _ => .nil
-  | [], _ :: _, _, hk => by simp [capsVals, capsTys, CapsOk] at hk
+  | [], _, _, _ => .nil
   | _ :: _, [], _, hk => by simp [capsVals, capsTys, CapsOk] at hk
   | v :: vs, (dI, T) :: rd, hc, hk => by
     obtain ⟨cv, cvs⟩ := hc

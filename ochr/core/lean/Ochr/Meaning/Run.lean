@@ -1000,11 +1000,13 @@ def PiOk (R : DataRead) : List PiDom → List Sem → PiCod → Prop
   | p :: ps, acc, out => (p.dom acc).level.isSome = true ∧ ∀ a, a ∈ₛ[R] p.dom acc → PiOk R ps (acc ++ [a]) out
 
 /-- STRICT captures (the trial's clause 7): a closure's or Π-closure's captured values are members of
-their recorded types, one for each. -/
+their recorded types, one for each. The recorded readings may run on past the captures: a stuck
+block's closure keeps its PARAMETERS' readings there (`Syntax.lean`'s `Value.clo`; the checker reads
+them as `rd.drop caps.length`), which this test does not read (docs/31 D137, ruling (A)). -/
 def CapsOk (R : DataRead) : List Sem → List (DeclInfo × TyS) → Prop
-  | [], [] => True
+  | [], _ => True
   | v :: vs, (_, T) :: ts => v ∈ₛ[R] T.m ∧ CapsOk R vs ts
-  | _, _ => False
+  | _ :: _, [] => False
 
 /-- The borrow flags of a function type's parameters along the arguments (`telRefsL` at its level). -/
 noncomputable def refsOf (R : DataRead) (T : TyM) (as : List Sem) : List Bool :=
@@ -1406,7 +1408,8 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
           -- docs/31 D126: the cell is a binding of frame 0, `x° ↦ loan l` at the content type, as
           -- the checker's `checkFix` makes it
           let cell : Pos := .bind 0 (((s.env[0]?).map (·.binds.length)).getD 0)
-          let s := s.pushCell { ty := .plain T.m, val := fun ψ => ψ l, decl := .other }
+          -- docs/31 D138: the cell is the label's one loan site, as the checker's `loan l` is
+          let s := (s.pushCell { ty := .plain T.m, val := fun ψ => ψ l, decl := .other }).setLent l [⟨cell, [], false⟩]
           -- the argument is recorded as the label's member (docs/31 D68: where a label is made)
           let s := pushBindShaped ((s.setHeldMem l ap.1).setHeldTy l T.m) { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
           (s, acc ++ [ap.1], cells ++ [cell])

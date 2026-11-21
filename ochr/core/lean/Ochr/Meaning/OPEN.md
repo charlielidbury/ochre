@@ -14,6 +14,31 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE BORROW-PARAMETER COLUMNS `W`, `K`; D138 BUILT; D137 (B)'S TEST (lead19, 2026-11-22, `spine-lead19`; docs/31 D140 to D144)
+
+- **D138 built**: a borrow parameter's cell is its label's loan site (`fixStep`). `rel_startW`, `rel_startK` (every clause of `Rel` at the start), no assumed fact. `FrameProp.FrameRel.lentCl` restated (a closure may lend at its cells).
+- **`W` closed at the column level with NO assumed fact**: `ColumnW.column_W_ff` (the reference forms `W`'s closure, a member of `Π(r : &Nat). Nat`, at the checker's table). The body step in the form, `body_simW`/`body_outW` (applied at the start with `pre_stW`, `rel_startW`, `sgood_SBW`), ASSUMES `BodyWInv`, `InvNumA` (checker facts, unproved).
+- **OPEN, RULING ASKED (D141)**: `OutGood` (`Steps/Statements.lean`) asks borrow-parameter finals to be members at every future; FALSE (K) for any function returning its borrow parameter (`ColumnW.not_outGood_K`, `closure_ref_hyp_false_K`): the final is the returned borrow's final content. Through `OutGood'` this makes `MemBelow` (`GlobalsOk`), `FixKnot`'s and `Consistency.lean`'s stage obligations false for such globals. Recommended: the final clause at futures that give the returned label a member of the codomain.
+- **`K`'s body step**: not written. Needs a new checker fact for `Inv` after moving a borrow into flight (proposed `InvMoveBorrow`) and the relation after the move (template: `ColumnLetB.rel_pushBind_borrow`, the inverse move).
+- **D137 (B)**: not dropped; its test is `Regress/BlockReadings.A3` (stored reading `.pi .other`, the model's `.other`); `KeepTP` closes no block.
+- Unchanged from lead18: `Q`'s step and column; `J2`'s `Pre`/`Rel` after the call, the `let`, `column_J2_ff`.
+
+## THE FIRST CLOSED-OFF BLOCK (`Q`), THE FIRST BORROW PARAMETERS (`W`, `K`), `J2`'S CALL (lead18, 2026-11-21, `spine-lead18`; docs/31 D137 to D139)
+
+- **Two model faults found, both ruled (A):** (1) D137, FIXED (ecb7288d): `CapsOk` reads a closure's captures against the first readings only (a stuck block keeps its parameters' readings in `rd`); `ColumnQMean.mean_vQ` proves the block means the reference's result. (B), the parameters' readings from `rd` in the `.fix` run, is decided and not built; its regression (main's `FrozenReadings.KeepTP`) is not pinned yet. (2) D138, NOT BUILT: `fixStep` must record a borrow parameter's cell as its label's loan site; until then `BorrowParStart.rel_start_false` stands (no `fixBodyAt` state for a borrow parameter is related to the checker's start).
+- **Facts about the checker (machine lane), stated and `#guard`ed, unproved:** `ColumnQ.BlockQInv` (`Steps/BlockQ.lean`: the typed `eval` of `Q`'s match from `stQ`'s kernel returns `⌈anonQ(σ0)⌉ : Nat` and ends with `endQ`'s kernel); `ColumnQ.FixRunQ` (`checkDef defQ` inverted to the body's typed `eval`); `ColumnW.BodyWInv`, `ColumnW.BodyKInv` (`Steps/BorrowPar.lean`: each body's typed `eval` from its start kernel: value, type, end kernel). Guards: `Steps/BlockGuards.lean`, `Steps/BorrowParGuards.lean`.
+- **Restated (D139, the orchestrator's ruling):** `CallJ2.CallJ2Inv`'s last conjunct is a disjunction: the body's untyped run to the value, or the sealed call `sealJ2`.
+- Proved (standard axioms, no assumed fact): `ColumnQMean.runMatchQ`, `runBodyQ` (the reference's direct run of a non-tail match: [Entry], one arm, the join), `gA_run`, `gA_mem`, `runT_anonFix`, `callOf_A` (the block's code as a closure gives the same number); `CallJ2Step.runT_callJ2_J2`, `mean_sealJ2`, `ColumnQMean.mean_vQ`; `mean_callJ2` assumes `CallJ2Inv`, `BodyLazyInv`.
+- Next: `Q`'s step (`Out` for the match: `Ext` gives the leftover `σ1` any number; `Rel` by one `botWrite_rel` at `n` after `rel_transfer`), the body via `SuccInv`/`EvalInv`, `column_Q_ff`/`_def`; on ruling (2), `Rel` at `W`'s/`K`'s start, the bodies' steps, membership in `Π(r : &Nat). …` (one final, the cell's content); `J2`: `Pre`/`Rel` after the call in each branch, the `let`, `column_J2_ff`.
+
+## THE FIRST RECURSIVE FUNCTION, `R` (lead17, 2026-11-21, `spine-lead17`; docs/31 D133, D134)
+
+`def R (n : Nat) : Nat by n := match n { Z => Z, S m => R(m) }`; the checker pinned in `Steps/RecGuards.lean` (the self-call on `σ1` closes off to the sealed program `⌈R(σ1)⌉ : Nat`; `recCheck` keeps the candidate since `σ1` is a strict subterm of `S(σ1)`).
+- **Facts about the checker (machine lane), stated and `#guard`ed, unproved:** `ColumnR.SplitRInv` (`Steps/RecR.lean`: `SplitPInv` for `R`'s body; the leaves `leafZR` on `Z : Nat` and `leafSR` on `⌈R(σ1)⌉ : Nat`, with `KeepsAtZR`); `ColumnR.FixRunR` (`checkDef defR` inverted to the body's `checkTail`).
+- **Restated (D133):** `CallBody.BodyLazyInv` takes `CopyDec D st (.var 0)` (the read's copy decision at the body's start) instead of `DecTab D st'` at its end; `VarNumAInv` keeps the old pattern (same narrowing recommended).
+Proved (standard axioms): `ColumnRSplit.split_outR`/`split_simR` (`TailSim` for `R`'s body at stage `b + 1`, context `KR … (GR … b fn) b`, from every assignment with `ρ σ0 ≤ b`; hypothesis `GoodBelow` (the outer induction); checker: `SplitRInv`; model: none); `ColumnR.goodBelow_stg` (the knot: every reference stage good below its bound; no assumption); **`ColumnR.column_R_run` (the closure a member of `Π(n : Nat). Nat`; NO assumption)**; `column_R_ff` (+ `TailSim` at every stage with the hypothesis discharged; checker: `SplitRInv`; model: none); `column_R_def` (+ `FixRunR`). `CallJ2.copyDec_calleeJ2`, `parDecJ2`, `flags_bodyI_J2` (J2's table gives the callee's decisions; no assumption).
+Next for recursion: a recursive function whose result is used after the call (`S(R(m))`, a `let` around the call), where the relation at the leaf carries the sealed call into the continuation; a recursive function with a λ capturing its own name (D123's stage 2, `Regress/SelfCapture.R7`).
+
 ## THE FIRST SPLIT, AND J2'S CALLEE (lead16, 2026-11-21, `spine-lead16`; docs/31 D131, D132)
 
 Open statements added, none with `sorry` (all are named hypotheses):
@@ -22,7 +47,7 @@ Open statements added, none with `sorry` (all are named hypotheses):
 
 Proved (standard axioms): `ColumnPSplit.split_outP`/`split_simP` (`TailSim` for `P`'s body from every related reference state; checker: `SplitPInv`; model: none); `ColumnP.column_P_ff` (checker: `SplitPInv`; model: none); `column_P_def` (+ `FixRunP`); `CallJ2.rel_calleeJ2`, `pre_stCJ2`, `lazyNum_stCJ2`, `hint_nLazy`, `hpi_of_globals` (no assumption); `CallJ2.closureRun_J2` (checker: `BodyLazyInv`, `InvNumA`; model: none; without `FundCtx`/`SGood`/`FrameStart`).
 
-Open at `J2` (docs/31 D132): the table at the callee body's end (`BodyLazyInv` asks a whole `DecTab` there; narrowing proposed), the reference's run of `I(x)`, `callOf` of `J2`'s own closure, the `let` around the call.
+Open at `J2` (docs/31 D132, D133, D135, D136): the call's step in the form and the `let` around it. Closed: `callOf` of `J2`'s own closure and its membership at `J2`'s table (`CallJ2Fn.callOf_fJ_J2`, `fJ_mem_J2`; no assumption); `frameRelS_start`'s lent-site hypothesis (D135: held labels only, vacuous at `J2`). The table at the callee is closed (D133: `BodyLazyInv` takes only the read's copy decision, `CallBody.CopyDec`, which `CallJ2.copyDec_calleeJ2` gives at `J2`'s table by kernel evaluation; `parDecJ2`, `flags_bodyI_J2` likewise). The reference's run of `I(x)` is built (`runT_callJ2`, `caller_of_rel`).
 
 ## THE FRAME PROPERTY (model6, 2026-11-21, `spine-model6`; docs/31 D129, D130)
 

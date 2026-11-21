@@ -138,15 +138,23 @@ theorem id1_start (c : Sem) : FrameRel (fun l => l) (SPg selfB d c r) [0] (SPg s
   held := fun l hl => by
     have h0 : l = 0 := by simpa [SState.Live, liveLabels_SBs] using hl
     subst h0; simp [SPg, SBs, yB]; rfl
-  lentTop := fun l x hx => by
+  lentTop := fun l x hx _ => by
     constructor
     · intro hm
       by_cases hl : l = 0
       · subst hl; simp [SPg] at hm; subst hm; simp [Pos.frameOf, SState.topIdx, SPg] at hx
       · simp [SPg, hl] at hm
-    · intro hm; simp [SBs] at hm
-  lentImg := fun m _ _ _ => ⟨m, rfl⟩
-  lentCl := fun l x hx => by simp [SBs] at hx
+    · intro hm
+      by_cases hl : l = 0
+      · subst hl
+        obtain ⟨pos, path, fill⟩ := x
+        cases pos <;> simp [SBs, upPos] at hm
+      · simp [SBs, hl] at hm
+  lentImg := fun m _ _ _ _ => ⟨m, rfl⟩
+  lentCl := fun l x hx => by
+    by_cases hl : l = 0
+    · subst hl; simp [SBs] at hx; subst hx; exact .inr ⟨0, by simp, rfl⟩
+    · simp [SBs, hl] at hx
   lentCaller := fun _ _ _ _ => rfl
   topLabels := fun l hl => by
     have h0 : l = 0 := by simpa [SState.Live, liveLabels_SBs] using hl
@@ -185,7 +193,7 @@ theorem id1_after (T : TyM) (c c₀ : Sem) :
     have h01 : l = 0 ∨ l = 1 := by
       have := hl; simp only [SState.Live, liveLabels_SB2] at this; simpa using this
     rcases h01 with rfl | rfl <;> simp [SPg2, SB2, yB] <;> rfl
-  lentTop := fun l x hx => by
+  lentTop := fun l x hx _ => by
     obtain ⟨pos, path, fill⟩ := x
     by_cases h1 : l = 1
     · subst h1
@@ -196,11 +204,13 @@ theorem id1_after (T : TyM) (c c₀ : Sem) :
         rcases pos with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hx <;> subst hx <;>
           simp [SPg2, SB2, upPos]
       · simp [SPg2, SB2, h1, h0]
-  lentImg := fun m _ _ _ => ⟨m, rfl⟩
+  lentImg := fun m _ _ _ _ => ⟨m, rfl⟩
   lentCl := fun l x hx => by
     by_cases h1 : l = 1
-    · subst h1; simp [SB2] at hx; subst hx; exact ⟨.bind 1 1, rfl, rfl⟩
-    · simp [SB2, h1] at hx
+    · subst h1; simp [SB2] at hx; subst hx; exact .inl ⟨.bind 1 1, rfl, rfl⟩
+    · by_cases h0 : l = 0
+      · subst h0; simp [SB2] at hx; subst hx; exact .inr ⟨0, by simp, rfl⟩
+      · simp [SB2, h1, h0] at hx
   lentCaller := fun l p hp hl => by
     rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;> simp [SPg] at hl
   topLabels := fun l hl => by
@@ -240,8 +250,8 @@ theorem inc_after (c c₀ : Sem) : FrameRel (fun l => l) (SPg selfB d c₀ r) [0
       simp [upPos, SBs, SPg]
   clShape := (id1_start selfB d c).clShape
   held := fun l hl => (id1_start (r := r) selfB d c).held l hl
-  lentTop := fun l x hx => (id1_start (r := r) selfB d c).lentTop l x (by simpa [SState.topIdx, SPg] using hx)
-  lentImg := fun m _ _ _ => ⟨m, rfl⟩
+  lentTop := fun l x hx hl => (id1_start (r := r) selfB d c).lentTop l x (by simpa [SState.topIdx, SPg] using hx) hl
+  lentImg := fun m _ _ _ _ => ⟨m, rfl⟩
   lentCl := (id1_start selfB d c).lentCl
   lentCaller := fun _ _ _ _ => rfl
   topLabels := fun l hl => by

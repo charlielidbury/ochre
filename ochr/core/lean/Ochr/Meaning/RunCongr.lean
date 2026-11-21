@@ -534,7 +534,8 @@ noncomputable def fixStep (sa : SState × List Sem × List Pos) (ap : Sem × PiD
     -- docs/31 D126: the cell is a binding of frame 0, `x° ↦ loan l` at the content type, as the
     -- checker's `checkFix` makes it
     let cell : Pos := .bind 0 (((s.env[0]?).map (·.binds.length)).getD 0)
-    let s := s.pushCell { ty := .plain T.m, val := fun ψ => ψ l, decl := .other }
+    -- docs/31 D138: the cell is the label's one loan site, as the checker's `loan l` is
+    let s := (s.pushCell { ty := .plain T.m, val := fun ψ => ψ l, decl := .other }).setLent l [⟨cell, [], false⟩]
     -- the argument is recorded as the label's member (docs/31 D68: where a label is made)
     let s := pushBindShaped ((s.setHeldMem l ap.1).setHeldTy l T.m) { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
     (s, acc ++ [ap.1], cells ++ [cell])
@@ -756,6 +757,36 @@ theorem pushBindShaped_setHeldTy (s : SState) (l : Nat) (T : TyM) (b : SBinding)
     simp only [SState.setHeldTy_env]
     cases h : ((s.takeLabel k).pushBind b).env.getLast? <;> rfl
 
+/-- The loan sites are read by nothing the forming invariant reads (docs/31 D138: the cell is its label's site). -/
+theorem formInv_setLent {start : Nat} {s : SState} {l : Nat} {xs : List Site} {acc : List Sem} {cells : List Pos} :
+    FormInv L start (s.setLent l xs, acc, cells) ↔ FormInv L start (s, acc, cells) := Iff.rfl
+
+theorem setAt_setLent (s : SState) (l : Nat) (xs : List Site) (p : Pos) (g : SVal) :
+    (s.setLent l xs).setAt p g = (s.setAt p g).setLent l xs := by
+  cases p <;> rfl
+
+theorem takeLabel_setLent (s : SState) (l : Nat) (xs : List Site) (k : Nat) :
+    (s.setLent l xs).takeLabel k = (s.takeLabel k).setLent l xs := by
+  unfold SState.takeLabel
+  have hh : (s.setLent l xs).holderOf k = s.holderOf k := rfl
+  rw [hh]
+  cases h : s.holderOf k with
+  | none => rfl
+  | some r => dsimp only; rw [setAt_setLent]; rfl
+
+theorem pushBindShaped_setLent (s : SState) (l : Nat) (xs : List Site) (b : SBinding) :
+    pushBindShaped (s.setLent l xs) b = (pushBindShaped s b).setLent l xs := by
+  unfold pushBindShaped
+  cases b.ty.label with
+  | none => rfl
+  | some k =>
+    dsimp only
+    rw [takeLabel_setLent]
+    have he : (((s.takeLabel k).setLent l xs).pushBind b) = ((s.takeLabel k).pushBind b).setLent l xs := rfl
+    rw [he]
+    simp only [SState.setLent_env]
+    cases h : ((s.takeLabel k).pushBind b).env.getLast? <;> rfl
+
 theorem topIdx_pushBindShaped (s : SState) (b : SBinding) : (pushBindShaped s b).topIdx = s.topIdx := by
   unfold SState.topIdx; rw [(envPush_pushBindShaped s b).1]
 
@@ -770,8 +801,8 @@ theorem fixStep_inv {start : Nat} {sa : SState × List Sem × List Pos} (h : For
   unfold fixStep
   dsimp only
   split
-  · simp only [SState.freshLoan, pushBindShaped_setHeldTy, pushBindShaped_setHeldMem]
-    rw [formInv_setHeldTy, formInv_setHeldMem]
+  · simp only [SState.freshLoan, pushBindShaped_setHeldTy, pushBindShaped_setHeldMem, pushBindShaped_setLent]
+    rw [formInv_setHeldTy, formInv_setHeldMem, formInv_setLent]
     generalize hs₀ : ({ s with nextLoan := s.nextLoan + 1 } : SState) = s₀
     have hi₀ : RInv L s₀ := by rw [← hs₀]; exact freshLoan_rinv hi
     have hpos₀ : s₀.positions = s.positions := by rw [← hs₀]; rfl

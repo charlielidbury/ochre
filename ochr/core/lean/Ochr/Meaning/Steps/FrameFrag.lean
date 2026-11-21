@@ -166,7 +166,7 @@ structure Recs (L : List SFrame) (S S' s s' : SState) : Prop where
   hm : s.heldMem = S.heldMem
   ht : s.heldTy = S.heldTy
   topShape : ∀ p : Pos, p.frameOf = L.length → S.shape p = none
-  topLent : ∀ l (x : Site), x ∈ S.lent l → x.pos.frameOf ≠ L.length
+  topLent : ∀ l (x : Site), (∃ p, S.shape p = some l) → x ∈ S.lent l → x.pos.frameOf ≠ L.length
   shape' : ∀ p, s'.shape p = none
   lent' : ∀ l, s'.lent l = []
   next' : s'.nextLoan = S'.nextLoan
@@ -311,10 +311,10 @@ end
 /-! ## What the label-free run reads -/
 
 /-- [Access] at a position no live label is lent at changes nothing. -/
-theorem access_self {s : SState} {p : Pos} {hit : List Step → Bool} (h : ∀ l, s.reached p hit l = false) :
+theorem access_self {s : SState} {p : Pos} {hit : List Step → Bool} (h : ∀ l, s.Live l → s.reached p hit l = false) :
     s.access p hit = s := by
   have hstep : (s.liveLabels.filter (s.reached p hit)).foldl SState.endLabel s = s := by
-    rw [List.filter_eq_nil_iff.2 (fun l _ => by simp [h l])]; rfl
+    rw [List.filter_eq_nil_iff.2 (fun l hl => by simp [h l hl])]; rfl
   unfold SState.access
   dsimp only
   generalize List.range s.liveLabels.length = xs
@@ -324,10 +324,10 @@ theorem access_self {s : SState} {p : Pos} {hit : List Step → Bool} (h : ∀ l
 
 /-- Its ends (none) are strict-OK. -/
 theorem accessOk_self (K : RunCtx) (φ : Future) {s : SState} {p : Pos} {hit : List Step → Bool}
-    (h : ∀ l, s.reached p hit l = false) : AccessOk K φ s p hit := by
+    (h : ∀ l, s.Live l → s.reached p hit l = false) : AccessOk K φ s p hit := by
   have hround : accRound p hit s = s := by
     unfold accRound
-    rw [List.filter_eq_nil_iff.2 (fun l _ => by simp [h l])]; rfl
+    rw [List.filter_eq_nil_iff.2 (fun l hl => by simp [h l hl])]; rfl
   have hk : ∀ k, (List.range k).foldl (fun t _ => accRound p hit t) s = s := by
     intro k
     generalize List.range k = xs
@@ -335,7 +335,7 @@ theorem accessOk_self (K : RunCtx) (φ : Future) {s : SState} {p : Pos} {hit : L
     | nil => rfl
     | cons x xs ih => rw [List.foldl_cons, hround, ih]
   intro k _
-  rw [hk k, List.filter_eq_nil_iff.2 (fun l _ => by simp [h l])]
+  rw [hk k, List.filter_eq_nil_iff.2 (fun l hl => by simp [h l hl])]
   trivial
 
 /-- A write at a whole place: its definedness test always passes. -/
@@ -374,12 +374,14 @@ theorem lf_var {n : Nat} {s s' : SState} (h : LF i bS bS' L S S' n s s') {j : Na
 
 /-- No live label is lent at a position of the in-place callee's frame, nor anywhere in the closure. -/
 theorem lf_noReach {n : Nat} {s s' : SState} (h : LF i bS bS' L S S' n s s') (k : Nat) (hit : List Step → Bool) :
-    (∀ l, s.reached (.bind L.length k) hit l = false) ∧ (∀ l, s'.reached (.bind 1 k) hit l = false) := by
+    (∀ l, s.Live l → s.reached (.bind L.length k) hit l = false) ∧
+      (∀ l, s'.Live l → s'.reached (.bind 1 k) hit l = false) := by
   obtain ⟨-, -, -, -, -, -, -, hr⟩ := h
-  refine ⟨fun l => ?_, fun l => ?_⟩
-  · simp only [SState.reached, List.any_eq_false, Bool.and_eq_true, decide_eq_true_eq, not_and]
+  refine ⟨fun l hl => ?_, fun l _ => ?_⟩
+  · obtain ⟨p, -, hp⟩ := (SState.live_iff s l).1 hl
+    simp only [SState.reached, List.any_eq_false, Bool.and_eq_true, decide_eq_true_eq, not_and]
     intro x hx e
-    exact absurd (by rw [e]; rfl) (hr.topLent l x (hr.lent ▸ hx))
+    exact absurd (by rw [e]; rfl) (hr.topLent l x ⟨p, hr.shape ▸ hp⟩ (hr.lent ▸ hx))
   · simp [SState.reached, hr.lent' l]
 
 end
@@ -712,11 +714,11 @@ theorem lf_start {S S' : SState} {C F' : SFrame} {n : Nat} (hrel : FrameRelS R �
   refine ⟨b, b', hb, hb', hself, hselfRen, L, by rw [hL]; simp, htop0, F, F', C, hL, he', ?_, by omega, ?_⟩
   · refine ⟨hlen', hFi, hFi', heq, fun j x hj hx => ?_, htemps, fun v hv => htp v (htemps ▸ hv)⟩
     rw [heq j hj] at hx; exact hpl j x hj hx
-  · refine ⟨rfl, rfl, rfl, rfl, rfl, fun p hp => ?_, fun l x hx hp => ?_, hsh', hlt', rfl⟩
+  · refine ⟨rfl, rfl, rfl, rfl, rfl, fun p hp => ?_, fun l x hh hx hp => ?_, hsh', hlt', rfl⟩
     · have := hFR.topShape p (by rw [hp, htop0])
       rw [this]; simp [setTopBind, hsh']
-    · obtain ⟨l', rfl⟩ := hFR.lentImg l x (by rw [hp, htop0]) hx
-      have := (hFR.lentTop l' x (by rw [hp, htop0])).1 hx
+    · obtain ⟨l', rfl⟩ := hFR.lentImg l x (by rw [hp, htop0]) hh hx
+      have := (hFR.lentTop l' x (by rw [hp, htop0]) hh).1 hx
       simp [setTopBind, hlt'] at this
 
 /-- **`FrameRelS` read back off `LF`**, against the relation at the call. -/
@@ -735,7 +737,7 @@ theorem lf_end {S S' s s' : SState} {bS bS' : SBinding} {L : List SFrame} {n : N
   have hnl : ∀ l, ¬ (setTopBind s' i bS).Live l := not_live_of_shape hshape''
   refine ⟨bS, bS', by simp [topBind?, he, ht.self], by simp [topBind?, he', ht.self'], hself, ?_⟩
   refine ⟨hFR.inj, fun j => ?_, ⟨?_, ?_⟩, fun f hf => ?_, fun p hp ψ => ?_, fun p hp => ?_, ?_, fun p hp => ?_,
-    fun q l hq => ?_, fun l hl => absurd hl (hnl l), fun l x hx => ?_, fun m x hx hm => ?_, fun l x hx => ?_,
+    fun q l hq => ?_, fun l hl => absurd hl (hnl l), fun l x hx hh => ?_, fun m x hx hh hm => ?_, fun l x hx => ?_,
     fun l p hp hs => ?_, fun l hl => absurd hl (hnl l)⟩
   · have := hFR.fresh j
     simp only [setTopBind] at this ⊢
@@ -763,8 +765,10 @@ theorem lf_end {S S' s s' : SState} {bS bS' : SBinding} {L : List SFrame} {n : N
   · rw [hshape''] at hq; cases hq
   · rw [hlent'', hr.lent]
     simp only [List.not_mem_nil, iff_false]
-    intro hm; exact hr.topLent _ x hm (by rw [hx, htop0])
-  · rw [hr.lent] at hm; exact absurd (by rw [hx, htop0]) (hr.topLent m x hm)
+    obtain ⟨p, hp⟩ := hh
+    intro hm; exact hr.topLent _ x ⟨p, by rw [← hr.shape]; exact hp⟩ hm (by rw [hx, htop0])
+  · obtain ⟨p, hp⟩ := hh
+    rw [hr.lent] at hm; exact absurd (by rw [hx, htop0]) (hr.topLent m x ⟨p, by rw [← hr.shape]; exact hp⟩ hm)
   · rw [hlent''] at hx; cases hx
   · rw [hr.lent]; exact hFR.lentCaller l p hp hs
 
@@ -849,12 +853,12 @@ theorem closureRun_of_checker_free (hB : BodyLazyInv) (hN : InvNumA)
     (hfs : FrameStart (inPlaceJ2 K.dm.read s₂ f a) [])
     (hrel : FrameRelS K.dm.read (fun l => s₂.nextLoan + l) (inPlaceJ2 K.dm.read s₂ f a) [] 0
       (inPlaceJ2 K.dm.read s₂ f a) (closureJ2 K.dm.read φ a))
-    (hfl : K.D.flags (scopeOf (inPlaceJ2 K.dm.read s₂ f a)) bodyI = (false, false)) (hD : DecTab K.D st')
+    (hfl : K.D.flags (scopeOf (inPlaceJ2 K.dm.read s₂ f a)) bodyI = (false, false)) (hcd : CallBody.CopyDec K.D st (.var 0))
     (h : Runs (Ochr.eval n false bodyI hint) st bh (v, T?) st') (tl : Bool) (h' : TyS) :
     ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
       runT K ρ φ tl h' bodyI (closureJ2 K.dm.read φ a) = some (r, s') ∧
       ∃ T : TyS, meanV { K with Δ := Δ' } ρ' (fun l => φ (π' l)) T v = r.1 :=
-  closureRun_of_checker hB hN frameJ2_holds hd hc hP hm hp hr hS hfs hrel hfl hD h tl h'
+  closureRun_of_checker hB hN frameJ2_holds hd hc hP hm hp hr hS hfs hrel hfl hcd h tl h'
 
 /-! ## The frame property restated over `FrameRelS`: the general statement (open) -/
 
