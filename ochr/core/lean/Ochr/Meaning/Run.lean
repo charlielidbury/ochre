@@ -1332,7 +1332,8 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
   | .fix self hs ds c dec body => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.fix self hs ds c dec body)) (fun s =>
     -- [Closure] (D51, D53, D80): a closure means a function on its annotated domain, read off
     -- the reference run of its body in the forming frame extended by `self` and the parameters
-    -- (the body's layout `[caps…, self, x̄]`). A recursive `fix` means its guarded fixpoint by
+    -- (the body's layout `[caps…, self, x̄]`), under a fresh bottom frame (docs/31 D126: the
+    -- checker's `checkFix` frames, `[{}, {caps…, self, x̄}]` for a closure formed in one frame). A recursive `fix` means its guarded fixpoint by
     -- stages (docs/24 §4): stage 0 is undefined, stage `k + 1` binds `self` to stage `k`'s
     -- closure at the weakened function type (the true codomain at arguments of rank below `k`,
     -- `Unit` above, docs/34), and the function at arguments whose decreasing argument has rank
@@ -1364,7 +1365,9 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       -- is ([Def]): a fresh label `lᵢ`, a *cell* (a temporary of the frame: temporaries do not
       -- shift de Bruijn indices) reading `lᵢ`'s final content, and the parameter holding the
       -- content as the borrow's holder (D14). Returning the parameter returns its label.
-      let s₁ := s.pushBind { ty := .plain selfT, val := fun _ => selfM, decl := .pi cd }
+      -- docs/31 D126: under a fresh bottom frame (`SState.under`), as the checker's `checkFix`
+      -- frames the body: frame 0 for the cells, the top frame the captures, `self`, the parameters
+      let s₁ := s.under.pushBind { ty := .plain selfT, val := fun _ => selfM, decl := .pi cd }
       -- each parameter is bound at its type (its code) and at its declared reading (`bs`)
       let step (sa : SState × List Sem × List Pos) (ap : Sem × PiDom) : SState × List Sem × List Pos :=
         let (s, acc, cells) := sa

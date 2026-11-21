@@ -34,7 +34,7 @@ theorem bindRen_id (b : SBinding) : BindRen (fun l => l) b b := by
 /-- The top-frame clause where both frames hold the same bindings and the in-place one no temporary
 (at the call), or one temporary after the cell (after `&*x`). -/
 theorem top_same (bs : List SBinding) (ts : List SVal) (cell : SVal) :
-    ∃ F F', [SFrame.mk bs ts].getLast? = some F ∧ [SFrame.mk bs (cell :: ts)] = [F'] ∧ F.binds.length = F'.binds.length ∧
+    ∃ F F', [SFrame.mk bs ts].getLast? = some F ∧ [({} : SFrame), SFrame.mk bs (cell :: ts)] = [{}, F'] ∧ F.binds.length = F'.binds.length ∧
       (∀ (i : Nat) b b', F.binds[i]? = some b → F'.binds[i]? = some b' → BindRen (fun l => l) b b') ∧
       F'.temps.length = [0].length + F.temps.length ∧
       ∀ (j : Nat) v, F.temps[j]? = some v → ∃ v', F'.temps[j + [0].length]? = some v' ∧ ∀ ψ, v ψ = v' (renF (fun l => l) ψ) := by
@@ -50,7 +50,7 @@ variable (dm : DataModel) (ρ : Assignment) (φ : Future) (selfB : SBinding) (d 
 def T₀ : TyS := { (xB (.el0 Nat 0) .other).ty with label := none }
 
 theorem contentOf_SBs_eq (c : Sem) :
-    contentOf (Kc dm) φ (.deref (.var 0)) (SBs selfB d c r) = some ((c, T₀, .bind 0 1, [.deref]), SBs selfB d c r) := by
+    contentOf (Kc dm) φ (.deref (.var 0)) (SBs selfB d c r) = some ((c, T₀, .bind 1 1, [.deref]), SBs selfB d c r) := by
   unfold contentOf
   rw [resolve_SBs]
   dsimp only
@@ -84,7 +84,7 @@ theorem run_id1_cl (a : Nat) (hint : TyS) (tl : Bool) :
   dsimp only
   simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
   rw [if_pos]
-  exact ⟨Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl) _ _, Attack.lentOk_deref (Kc dm) φ (pos := .bind 0 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, SBs, SPg])⟩
+  exact ⟨Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl) _ _, Attack.lentOk_deref (Kc dm) φ (pos := .bind 1 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, SBs, SPg])⟩
 
 /-- `&*x` in place. -/
 theorem run_id1_in (a : Nat) (hint : TyS) (tl : Bool) :
@@ -131,7 +131,7 @@ theorem id1_start (c : Sem) : FrameRel (fun l => l) (SPg selfB d c r) [0] (SPg s
     rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;>
       simp [upPos, SBs, SPg]
   clShape := fun q l hq => by
-    by_cases h : q = .bind 0 1
+    by_cases h : q = .bind 1 1
     · exact ⟨.bind 1 1, rfl, h⟩
     · simp [SBs, h] at hq
   held := fun l hl => by
@@ -175,9 +175,9 @@ theorem id1_after (T : TyM) (c c₀ : Sem) :
     rcases p with ⟨f, i⟩ | ⟨f, i⟩ <;> simp [Pos.frameOf, SState.topIdx, SPg] at hp <;> subst hp <;>
       rcases i with _ | _ | i <;> simp [upPos, SB2, SPg2]
   clShape := fun q l hq => by
-    by_cases h1 : q = .temp 0 1
+    by_cases h1 : q = .temp 1 1
     · exact ⟨.temp 1 0, rfl, h1⟩
-    · by_cases h2 : q = .bind 0 1
+    · by_cases h2 : q = .bind 1 1
       · exact ⟨.bind 1 1, rfl, h2⟩
       · simp [SB2, h1, h2] at hq
   held := fun l hl => by
@@ -257,7 +257,7 @@ theorem readPlace_SBs (a : Nat) :
     simp [readPlace, contentOf_SBs_eq, bind, Option.bind, Sem.whole, hg]⟩
 
 theorem setContent_SBs (a b : Nat) :
-    setContent (Kc dm) φ (.bind 0 1) [.deref] (.el0 Nat b) (SBs selfB d (.el0 Nat a) r)
+    setContent (Kc dm) φ (.bind 1 1) [.deref] (.el0 Nat b) (SBs selfB d (.el0 Nat a) r)
       = some (⟨⟩, SBs selfB d (.el0 Nat b) r) := by
   simp [setContent, Attack.updAt_deref, Attack.updAt_nil, SState.setAt, SBs, xB, SState.valAt]
 
@@ -279,7 +279,7 @@ theorem run_inc_cl (a : Nat) (hint : TyS) (tl : Bool) :
     setContent_SBs]
   simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
   rw [if_pos]
-  all_goals first | rfl | exact ⟨Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl) _ _, Attack.lentOk_deref (Kc dm) φ (pos := .bind 0 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, SBs, SPg])⟩
+  all_goals first | rfl | exact ⟨Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl) _ _, Attack.lentOk_deref (Kc dm) φ (pos := .bind 1 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, SBs, SPg])⟩
 
 theorem SP_eq (cd : DeclInfo) (c : Sem) : SP dm ρ φ cd d c r = SPg (selfP dm ρ φ cd) d c r := rfl
 

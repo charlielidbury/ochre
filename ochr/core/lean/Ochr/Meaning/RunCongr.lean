@@ -1,4 +1,5 @@
 import Ochr.Meaning.RunPresInd
+import Ochr.Meaning.Under
 
 /-!
 # Part (E) of the locality induction: the run at two futures
@@ -541,7 +542,7 @@ noncomputable def fixStep (sa : SState × List Sem × List Pos) (ap : Sem × PiD
 /-- The closure's body run, at a meaning of `self` and arguments (`bodyAt`). -/
 noncomputable def fixBodyAt (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) (body : Term)
     (selfM : Sem) (args : List Sem) : Option BodyOut :=
-  let s₁ := s.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }
+  let s₁ := s.under.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }
   let (s₂, _, cells) := (args.zip ps).foldl (fixStep fb) (s₁, [], [])
   match runT K ρ φ true (fb.2.1 args) body s₂ with
   | some ((r, R), s₃) =>
@@ -869,8 +870,8 @@ theorem fixBodyAt_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none
   unfold fixBodyAt
   dsimp only
   have hF := foldl_fixStep_inv (fb := fb) (args.zip ps) _
-    (formInv_init (L := L) hi { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 } selfM rfl)
-  generalize (args.zip ps).foldl (fixStep fb) (s.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }, [], []) = F at hF ⊢
+    (formInv_init (L := L) (rinv_under hi) { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 } selfM rfl)
+  generalize (args.zip ps).foldl (fixStep fb) (s.under.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }, [], []) = F at hF ⊢
   obtain ⟨s₂, acc, cells⟩ := F
   dsimp only
   rw [hb _ s₂ hF.1]
@@ -903,10 +904,10 @@ theorem fixBodyAt_finals (hK : ∀ n, (K.C.global n).2.label = none) {s : SState
     (ps : List PiDom) (out : PiCod) (piT : TyM) (body : Term) (selfM : Sem) (args : List Sem) (o : BodyOut)
     (h : fixBodyAt K ρ φ fb s ps out piT s.nextLoan body selfM args = some o) : FinalsIn L out.isRef o := by
   have hF := foldl_fixStep_inv (fb := fb) (args.zip ps) _
-    (formInv_init (L := L) hi { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 } selfM rfl)
+    (formInv_init (L := L) (rinv_under hi) { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 } selfM rfl)
   unfold fixBodyAt at h
   dsimp only at h
-  generalize hFF : (args.zip ps).foldl (fixStep fb) (s.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }, [], []) = F at hF h
+  generalize hFF : (args.zip ps).foldl (fixStep fb) (s.under.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }, [], []) = F at hF h
   obtain ⟨s₂, acc, cells⟩ := F
   obtain ⟨hi₂, hst₂, hcells⟩ := hF
   dsimp only at h hi₂ hst₂ hcells

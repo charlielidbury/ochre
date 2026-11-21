@@ -7,7 +7,7 @@ import Ochr.Meaning.Strict.Fund
 
 The checker runs a known callee's body in place: its frame pushed on the caller's state. The
 reference applies the callee's meaning, built from runs of the body in the closure's own frame: one
-frame, its own labels from `0`, each borrow parameter at a label of its own with a CELL, a temporary
+frame (above an empty frame 0, `SState.under`, docs/31 D126), its own labels from `0`, each borrow parameter at a label of its own with a CELL, a temporary
 reading the label's final content (`Run.lean`'s `.fix` clause, `bodyAt`). `callOf_inPlace`
 (`Steps/Call.lean`) says the two agree; it rests on this file's one simulation, which is both the
 frame property and the renaming of labels:
@@ -21,7 +21,8 @@ frame property and the renaming of labels:
 
 The relation (`FrameRel σ s₀ ks s s'`), between an in-place state `s` and a closure state `s'`, for the
 in-place state `s₀` at the call and the parameter labels `ks` (in place, in cell order):
-- the closure has one frame; in place the caller's frames of `s₀` lie below the callee's;
+- the closure has one frame, above an empty frame 0 (docs/31 D126: the checker's frame 0, where the
+  borrow parameters' cells are to move); in place the caller's frames of `s₀` lie below the callee's;
 - the top frames hold the same bindings, read through `σ` (an in-place value at `ψ` is the closure's at
   `ψ ∘ σ`); the closure's temporaries are the cells, then the in-place ones, so an in-place top
   position `p` is the closure's `upPos c p`;
@@ -80,14 +81,14 @@ def _root_.Ochr.Pos.frameOf : Pos → Nat
   | .bind f _ => f
   | .temp f _ => f
 
-/-- Where an in-place top-frame position sits in the closure's frame: frame `0`, a temporary after
-the `c` cells. -/
+/-- Where an in-place top-frame position sits in the closure's frame: frame `1` (the closure's
+frame, above its empty frame 0, docs/31 D126), a temporary after the `c` cells. -/
 def upPos (c : Nat) : Pos → Pos
-  | .bind _ i => .bind 0 i
-  | .temp _ j => .temp 0 (j + c)
+  | .bind _ i => .bind 1 i
+  | .temp _ j => .temp 1 (j + c)
 
 /-- The closure frame's first `c` temporaries: the cells. -/
-def cellsOf (c : Nat) (s' : SState) : List SVal := ((s'.env.headD {}).temps).take c
+def cellsOf (c : Nat) (s' : SState) : List SVal := ((s'.env.getD 1 {}).temps).take c
 
 /-- The closure's future of an in-place future: each closure label read at its in-place name. -/
 def renF (σ : Nat → Nat) (ψ : Future) : Future := fun l => ψ (σ l)
@@ -111,8 +112,9 @@ structure FrameRel (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) (s s' : SS
   /-- the renaming is one to one, and the closure's fresh labels are the in-place fresh labels -/
   inj : ∀ l l', σ l = σ l' → l = l'
   fresh : ∀ j, σ (s'.nextLoan + j) = s.nextLoan + j
-  /-- in place, the caller's frames and the callee's; the closure, its frame alone -/
-  frames : s.env.length = s₀.env.length ∧ s'.env.length = 1
+  /-- in place, the caller's frames and the callee's; the closure, its frame alone above an empty
+  frame 0 (`SState.under`, docs/31 D126) -/
+  frames : s.env.length = s₀.env.length ∧ s'.env.length = 2
   /-- the caller's frames keep their bindings' types and readings and their temporaries' number -/
   lowerSkel : ∀ f, f < s₀.topIdx →
     (s.env[f]?).map (fun fr => (fr.binds.map fun b => (b.ty, b.decl), fr.temps.length)) =
@@ -124,7 +126,7 @@ structure FrameRel (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) (s s' : SS
   lowerShape : ∀ p, p.frameOf < s₀.topIdx → s.shape p = s₀.shape p
   /-- the same bindings in the top frame, renamed; the closure's temporaries are the cells, then the
   in-place ones, renamed -/
-  top : ∃ F F', s.env.getLast? = some F ∧ s'.env = [F'] ∧ F.binds.length = F'.binds.length ∧
+  top : ∃ F F', s.env.getLast? = some F ∧ s'.env = [{}, F'] ∧ F.binds.length = F'.binds.length ∧
     (∀ (i : Nat) b b', F.binds[i]? = some b → F'.binds[i]? = some b' → BindRen σ b b') ∧
     F'.temps.length = ks.length + F.temps.length ∧
     ∀ (j : Nat) v, F.temps[j]? = some v → ∃ v', F'.temps[j + ks.length]? = some v' ∧ ∀ ψ, v ψ = v' (renF σ ψ)

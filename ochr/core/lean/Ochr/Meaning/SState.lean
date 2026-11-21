@@ -251,6 +251,29 @@ def varPos (s : SState) (i : Nat) : Option Pos :=
 
 def pushFrame (s : SState) : SState := { s with env := s.env ++ [{}] }
 
+/-- A position one frame up: where `p` is in `s.under`. -/
+def _root_.Ochr.Pos.up : Pos → Pos
+  | .bind f i => .bind (f + 1) i
+  | .temp f i => .temp (f + 1) i
+
+/-- Where a position of `s.under` is in `s`: frame `f + 1` is `s`'s frame `f`; frame 0 is new. -/
+def _root_.Ochr.Pos.down? : Pos → Option Pos
+  | .bind (f + 1) i => some (.bind f i)
+  | .temp (f + 1) i => some (.temp f i)
+  | _ => none
+
+/-- The state under a fresh bottom frame: frame `f` becomes frame `f + 1`, frame 0 is new and empty,
+the holders and the sites move up with their frames. A closure's body runs in its creation state so
+(`.fix`'s `bodyAt`, docs/31 D126), with `self` and the parameters pushed on the top frame: the
+checker's `checkFix` frames, frame 0 for the borrow parameters' cells and the top frame holding the
+captures, `self` and the parameters. For a global (formed in `[{}]`) the body's state is
+`[{}, {self, params}]`; for a closure value (its code run in `stateOf 0 caps`), `[{}, {caps, self,
+params}]`. -/
+def under (s : SState) : SState :=
+  { s with env := {} :: s.env,
+           shape := fun p => p.down?.bind s.shape,
+           lent := fun l => (s.lent l).map fun x => { x with pos := x.pos.up } }
+
 def pushBind (s : SState) (b : SBinding) : SState :=
   { s with env := s.env.modify s.topIdx fun fr => { fr with binds := fr.binds ++ [b] } }
 

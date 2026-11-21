@@ -30,7 +30,7 @@ theorem fixBodyAt_congrA {body : Term} {fb : List PBind × PBind}
     fixBodyAt K ρ φ fb s ps out piT start body selfM args = fixBodyAt (KA K Δ') ρ' φ fb s ps out piT start body selfM args := by
   unfold fixBodyAt
   dsimp only
-  generalize (args.zip ps).foldl (fixStep fb) (s.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }, [], []) = F
+  generalize (args.zip ps).foldl (fixStep fb) (s.under.pushBind { ty := .plain piT, val := fun _ => selfM, decl := .pi fb.2.2 }, [], []) = F
   obtain ⟨s₂, acc, cells⟩ := F
   dsimp only
   rw [hb]

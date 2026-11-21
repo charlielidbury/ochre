@@ -6,7 +6,8 @@ import Ochr.Meaning.FrameProp
 # Two frames the fundamental lemma does not cover, attacked (kernel-checked)
 
 **(1) A non-recursive closure bound `self` to `err`, so a body that writes at a field path never ran.**
-The `.fix` clause runs a closure's body in a frame `[caps…, self, x̄]` (`bodyAt`); for a closure with no
+The `.fix` clause runs a closure's body in a frame `[caps…, self, x̄]` (`bodyAt`; since docs/31 D126 above an
+empty frame 0, as the states here are); for a closure with no
 decreasing parameter `self` was bound to `err` at the closure's own function type (`fixG`'s old `none`
 case), on the ground that such a body never reads `self` (the checker has no `self` in scope there). But
 the strict test after an assignment or a borrow at a field path (`lentOk`, i.e. `StateOk`) asks EVERY
@@ -141,12 +142,12 @@ theorem run_body_iff (dm : DataModel) (ρ : Assignment) (low : List SFrame) (T :
   · rw [if_neg (fun h' => h (hlent.1 h'.2)), if_neg h]
 
 
-theorem positions_sX0 (T : TyM) (m x : Sem) : (sX [] T m x).positions = [.bind 0 0, .bind 0 1] := by
+theorem positions_sX0 (T : TyM) (m x : Sem) : (sX [{}] T m x).positions = [.bind 1 0, .bind 1 1] := by
   simp [sX, SState.positions, List.range']
 
 /-- With `self` an open member of its type and no caller frame, every binding is: the test passes. -/
 theorem stateOk_goodSelf (dm : DataModel) (T : TyM) (m : Sem) (hm : dm.pmem [] m T) :
-    StateOk (Kw dm []) φw (sX [] T m (.el0 Nat 1)) := by
+    StateOk (Kw dm []) φw (sX [{}] T m (.el0 Nat 1)) := by
   intro ψ _
   refine ⟨fun f i hpi => ?_, fun q l hq => by cases hq⟩
   rw [positions_sX0] at hpi
@@ -175,13 +176,13 @@ theorem not_stateOk_err (dm : DataModel) (s : SState) (hl : s.liveLabels = []) (
 `err`** at any type other than `err` (its function type among them), in or out of tail position, at
 every hint. -/
 theorem body_errSelf (dm : DataModel) (ρ : Assignment) (T : TyM) (hT : T ≠ TyM.err) (tl : Bool) (hint : TyS) :
-    runT (Kw dm []) ρ φw tl hint body (sX [] T .err (.el0 Nat 1)) = none := by
-  rw [run_body_iff, if_neg (not_stateOk_err dm _ (live_sX _ _ _ _) 0 0 (by rw [positions_sX0]; simp) rfl (by simpa [SState.tyAt, sX, selfB, TyS.plain] using hT))]
+    runT (Kw dm []) ρ φw tl hint body (sX [{}] T .err (.el0 Nat 1)) = none := by
+  rw [run_body_iff, if_neg (not_stateOk_err dm _ (live_sX _ _ _ _) 1 0 (by rw [positions_sX0]; simp) rfl (by simpa [SState.tyAt, sX, selfB, TyS.plain] using hT))]
 
 /-- **With `self` an open member (`moved`), the same body runs.** -/
 theorem body_goodSelf (dm : DataModel) (ρ : Assignment) (T : TyM) (tl : Bool) (hint : TyS) :
-    runT (Kw dm []) ρ φw tl hint body (sX [] T .moved (.el0 Nat 1)) =
-      some ((.el0 Unit (), .plain TyM.unit), sX [] T .moved (.el0 Nat 1)) := by
+    runT (Kw dm []) ρ φw tl hint body (sX [{}] T .moved (.el0 Nat 1)) =
+      some ((.el0 Unit (), .plain TyM.unit), sX [{}] T .moved (.el0 Nat 1)) := by
   rw [run_body_iff, if_pos (stateOk_goodSelf dm T .moved (.moved T))]
 
 /-! ## (2) The frame property: a caller frame holding `err` -/
@@ -201,8 +202,8 @@ theorem body_inPlace_junk (dm : DataModel) (ρ : Assignment) (T : TyM) (tl : Boo
 /-- The two states are related, as `FrameProp.run_frame` asks: the identity renaming, no parameter,
 the caller's frame `lowJunk` below. -/
 theorem frameRel_junk (T : TyM) :
-    FrameRel (fun l => l) (sX lowJunk T .moved (.el0 Nat 1)) [] (sX lowJunk T .moved (.el0 Nat 1)) (sX [] T .moved (.el0 Nat 1)) := by
-  have hnl : ∀ l, ¬ (sX [] T .moved (.el0 Nat 1)).Live l := fun l hl => by
+    FrameRel (fun l => l) (sX lowJunk T .moved (.el0 Nat 1)) [] (sX lowJunk T .moved (.el0 Nat 1)) (sX [{}] T .moved (.el0 Nat 1)) := by
+  have hnl : ∀ l, ¬ (sX [{}] T .moved (.el0 Nat 1)).Live l := fun l hl => by
     simp [SState.Live, live_sX] at hl
   refine ⟨fun l l' h => h, fun j => by simp [sX], ⟨rfl, rfl⟩, fun f _ => rfl, fun p _ ψ => ?_, fun p _ => rfl, ?_,
     fun p _ => by simp [sX], fun q l hq => by simp [sX] at hq, fun l hl => absurd hl (hnl l),
