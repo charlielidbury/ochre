@@ -106,6 +106,7 @@ import Ochr.Meaning.Steps.StrictSim
 import Ochr.Meaning.Regress.EvalMemRuns
 import Ochr.Meaning.Regress.OpenFalse
 import Ochr.Meaning.Regress.Suspects
+import Ochr.Meaning.Regress.FieldWriteGap
 import Ochr.Meaning.Regress.DefKnot
 import Ochr.Meaning.Regress.IdWrite
 import Ochr.Meaning.SubstAbs
