@@ -1,9 +1,9 @@
 # Machine lane: working note (keep current; a successor continues from this alone)
 
-Worktree `/home/charlielidbury/repos/ochre-machine2`, branch `spine-machine2` (machine2, from 2026-11-21 evening;
-push there; never `spine` or `main`). Lean project `ochr/core/lean`; build `taskset -c 0-14 lake build <Module>` (long builds in
+Worktree `/home/charlielidbury/repos/ochre-machine3`, branch `spine-machine3` (machine3, from 2026-11-21 night;
+before it machine2 in `ochre-machine2`/`spine-machine2`; push to your own branch; never `spine` or `main`). Lean project `ochr/core/lean`; build `taskset -c 0-14 lake build <Module>` (long builds in
 the background), and `taskset -c 0-14 lake build OchrMeaning` before each push. Report to the lead
-(`main`) by SendMessage, then end the turn. Owned: `Steps/MachineMono.lean`, everything under
+(`team-lead`) by SendMessage, then end the turn. Owned: `Steps/MachineMono.lean`, everything under
 `Steps/Machine/`. Never edit the checker or other files (to check a consumer, copy it into a scratch
 module here, build that, delete it).
 
@@ -143,6 +143,41 @@ whole block, the same shape as (a) but relational; see the queue).
      statement the change makes false is a finding.
   Still owed from the borrow column's review: `AssignDerefInv` and `SeqInv` in their fixed forms, the
   LetInv readings conjunct for a write-free `u`.
+
+### machine3 (2026-11-21 night): InvSteps, PlaceLocal, the first unconditional column, SeqInv
+
+- Form point RULED: keep `KeepsInv` (lead9's). The extended `Quiet` (fields: `nextAbs` in step with
+  `absTy`, the new unknowns' types clean, AND `absDecl`: old readings kept, new ones sorted, since
+  `ShapeFacts.readingsSorted` reads it) with the whole-machine induction is scheduled for when a
+  column first compares unequal values (`InvExpectTy` beyond `==`).
+- Six of the ten `InvSteps` were false at a free table (`Inv D Γ` takes any `D`; `ShapeFacts.fits`
+  reads `D.placeDecl` at the top readings). Fix adopted word for word by lead9: `Form.PlaceLocal`
+  (root-locality + no inductive under `.other`/`.ref .other`), on the push/pop and write lemmas.
+- Proved (standard axioms; `FormFacts` prints all): `invSteps : InvSteps` (`InvEnv.lean` generic
+  value-level transfer `inv_step`; `InvPos.lean` position-level `PosRel`/`inv_of_posRel`;
+  `PlaceLocal.lean` `readClauses_reroot` for a binding pushed/popped; `InvSteps.lean` the ten,
+  `invLend`/`invEndRead'` via `inv_step` directly); `invExpectTyEq`; `placeLocal_ff`
+  (`PlaceLocalFF.lean`: `Fwd2` two-computation simulation of `placeDecl` on a re-rooted place,
+  `ResIn` result invariant); `column_C_free` (`ColumnCFree.lean`; the lead must import it from
+  `Ochr/Meaning.lean`); `seqInvR` (`SeqInv.lean`, `SeqInv` with `ModeEq` under the Kern
+  antecedent, reported: unconditional it is a whole-machine fact) and `runs_dropValue_inert`.
+- NEXT (the borrow column, for `column_B_free` = `column_B_ff` with everything discharged):
+  1. `VarEndInv`: TRUE by reading. The run: `placeType` (x at Nat); `repackAt` at x holding
+     `loan l` is the identity (`hasDependent (.loan _) = false`, so `repackCheck` returns);
+     `readPlace` = `accessPath` (firstLiveLoanOnPath (loan l) [] = some l, live; `endTopLoan` (F4
+     check passes: one frame; not a temp) → `endBorrow l`: findBorrow = `bind 0 1`; obsFrame check
+     passes on success; `takeBorrow` = (w, ⊥); typed: `tyAt` y = `&Nat` → `repackCheck w Nat` (num:
+     identity, `runs_repackCheck_num`); `hasHole w = false`; `setAt y ⊥`; `substEnv (.loan l) w false`
+     = `mapState (substV …) false` over [x, y]: x ↦ w, y stays ⊥ (needs `substV` on `.loan l` and
+     `.bot` inverted); `lendEnv (.ended l [])` = `mapState (lendV …)`: identity on a number and ⊥
+     (to invert)), then `accessPath` again: none (`firstLiveLoanOnPath_num`); then the rest of
+     `readPlace` as `runs_readPlace_num` (copy that proof, minus its accessPath step). The work is
+     the `mapState` loop over a two-element `allPos` and `substV`/`lendV` on simple values.
+  2. `AssignDerefInv` (fixed form, `w` not a borrow): review against `evalCore`'s `.assign`
+     (lentProofAssign, the hint/`Tp0` placeType?, `eval u`, the type check, accessPath at `*y`
+     (no ending: `firstLiveLoanOnPath` on `borrow l w` at `[deref]` meets a number), `assignPlace`,
+     `openWrite`), then prove. Not yet reviewed.
+  3. Then `column_B_free` (as `column_C_free`, with `seqInvR` once the lead adopts the fix).
 
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
@@ -308,6 +343,10 @@ The earlier queue (still owed, after the column):
    facts; the well-formedness preservation statements, `borrow_wf` suspected false).
 
 ## Build state
+
+2026-11-21 night, `spine-machine3` (machine3; `spine-lead9` f6c88026 merged): `OchrMeaning` green;
+`invSteps`, `placeLocal_ff`, `column_C_free` (built explicitly until the root imports it), `seqInvR`
+proved, standard axioms.
 
 2026-11-21 night, `spine-machine2` (machine2; `spine` 63ca5e66 and `spine-lead8` 73ce48c3 merged): `OchrMeaning`
 green; `DecTab.back`, `DropNoopInv`, `EvalInvR`, `SuccInvR`, `LetInvR`, `VarNumInv`, `BorrowNumInv`, `runs_expectTy_of_beq` proved
