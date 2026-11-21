@@ -57,6 +57,22 @@ theorem access_noLive {s : SState} (hl : s.liveLabels = []) (p : Pos) (hit : Lis
   rw [hl]
   rfl
 
+/-- With no live label, nothing ends: every end test holds. -/
+theorem accessOk_noLive {K : RunCtx} {φ : Future} {s : SState} (hl : s.liveLabels = []) (p : Pos)
+    (hit : List Step → Bool) : AccessOk K φ s p hit := fun k hk => by rw [hl] at hk; cases hk
+
+theorem contentOk_noLive {K : RunCtx} {φ : Future} {s : SState} (hl : s.liveLabels = []) (q : Place) :
+    ContentOk K φ q s := by
+  unfold ContentOk; split
+  · exact accessOk_noLive hl _ _
+  · trivial
+
+theorem tagOk_noLive {K : RunCtx} {φ : Future} {s : SState} (hl : s.liveLabels = []) (q : Place) :
+    TagOk K φ q s := by
+  unfold TagOk; split
+  · exact accessOk_noLive hl _ _
+  · trivial
+
 /-! ## The context: numbers only, nothing a proof, nothing copied -/
 
 /-- The decisions: nothing a statement or a proof, nothing copied; the join drops `x.0`; a write
@@ -151,7 +167,8 @@ theorem run_move (dm : DataModel) (inv : List Place) (ρ : Assignment) (hint : T
     runT (Kw dm inv) ρ φw false hint (.place (pred 0)) sA =
       some ((.el0 Nat 0, { (TyS.plain TyM.nat) with label := none }), sB) := by
   rw [runT]
-  show readPlace (Kw dm inv) φw (pred 0) false sA = _
+  show SM.guarded (ContentOk (Kw dm inv) φw (pred 0)) (readPlace (Kw dm inv) φw (pred 0) false) sA = _
+  rw [SM.guarded_of (contentOk_noLive live_sA _)]
   have hc : contentOf (Kw dm inv) φw (pred 0) sA =
       some ((.el0 Nat 0, { (TyS.plain TyM.nat) with label := none }, .bind 0 0, [.proj 0]), sA) := by
     unfold contentOf
@@ -252,10 +269,15 @@ theorem run_refill (dm : DataModel) (ρ : Assignment) (hint : TyS) :
   simp only [hconst, Option.bind_eq_bind, Option.bind_some]
   rw [placeTy_sB]
   rw [if_pos ⟨nat_mem dm 0, fun _ h => by cases h⟩]
-  rw [show (TyS.plain TyM.nat).label = none from rfl, assignAt_sB]
+  have hao : AssignOk (Kw dm []) φw (pred 0) sB := by
+    unfold AssignOk
+    rw [show resolve sB (pred 0) = some (.bind 0 0, [.proj 0]) from rfl]
+    exact ⟨fun _ => accessOk_noLive live_sB _ _, fun h => by cases h⟩
+  rw [show (TyS.plain TyM.nat).label = none from rfl, SM.guarded_of hao, assignAt_sB]
   dsimp only
   have hinv : invalidate (Kw dm []) φw (pred 0) sA' = sA' := rfl
   rw [hinv, if_pos]
+  refine ⟨trivial, ?_⟩
   unfold lentOk
   rw [show resolve sA' (pred 0) = some (.bind 0 0, [.proj 0]) from rfl]
   exact .inr (.inr (stateOk_sA' dm []))
@@ -347,13 +369,31 @@ theorem run_join (dm : DataModel) (inv : List Place) (ρ : Assignment) (hint : T
   rw [runT]
   show SM.erasedIf (false, false) _ sC = _
   simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false]
+  rw [SM.guarded_of (tagOk_noLive live_sC _)]
   simp only [htag, Option.bind_eq_bind, Option.bind_some]
+  rw [optCheck_of (show MatchEntryOk (Kw dm inv) φw (!true) (.matchNat (.var 0) (.const "c") (.place (pred 1))) sC
+    from fun h => by cases h)]
+  simp only [Option.bind_some]
   rw [show matchEntry (Kw dm inv) φw (!true) (.matchNat (.var 0) (.const "c") (.place (pred 1))) sC =
     (sC, fun _ s₂ => s₂) from rfl]
   dsimp only
   rw [Sem.asNat_el0]
   dsimp only
   rw [hconst]
+  simp only [Option.bind_some]
+  have hjd : JoinDropOk (Kw dm inv) φw (movedPlaces φw sC) (.matchNat (.var 0) (.const "c") (.place (pred 1))) sC := by
+    unfold JoinDropOk
+    show FoldOk _ _ [pred 1] sC
+    refine ⟨?_, trivial⟩
+    unfold JoinStepOk
+    rw [show resolve sC (pred 1) = some (.bind 0 0, [.proj 0]) from rfl]
+    have hlp : accessLentPrefix (.bind 0 0) [.proj 0] sC = sC := by
+      unfold accessLentPrefix lentPrefix; rw [live_sC]; rfl
+    refine ⟨by unfold LentPrefixOk lentPrefix; rw [live_sC]; trivial, ?_⟩
+    rw [hlp]
+    unfold DropOk
+    exact fun _ _ => accessOk_noLive live_sC _ _
+  rw [optCheck_of hjd]
   simp only [Option.bind_some]
   rw [show Term.matchNat (.var 0) (.const "c") (.place (pred 1)) = tJoin from rfl, joinDrop_sC]
 
@@ -480,6 +520,25 @@ theorem invalidate_sE1 (dm : DataModel) : invalidate (KE dm) φw (.field gN (.va
     congr 3
   rw [hsc]
 
+/-- The invalidation's access of `x.v` reaches no label (the borrow is lent at `x.n`): no end. -/
+theorem invalidateOk_sE1 (dm : DataModel) : InvalidateOk (KE dm) φw (.field gN (.var 0)) (sE1 dm) := by
+  show FoldOk _ _ [Place.field gV (.var 0)] (sE1 dm)
+  refine ⟨?_, trivial⟩
+  unfold InvalOneOk
+  rw [show resolve (sE1 dm) (.field gV (.var 0)) = some (.bind 0 0, [.field gV]) from rfl]
+  have hdh : dataHit [.field gV] [.field gN] = false := by decide
+  have hlent : (sE1 dm).lent = fun m => if m = 0 then [⟨.bind 0 0, [.field gN], false⟩] else [] := by
+    funext m; by_cases hm : m = 0
+    · subst hm; rfl
+    · rw [if_neg hm]; show (if m = 0 then _ else _) = _; rw [if_neg hm]; rfl
+  show AccessOk (KE dm) φw (sE1 dm) (.bind 0 0) (dataHit [.field gV])
+  exact accessOkF_unreached (Γ := (KE dm).Γ) (fun l => by
+    unfold SState.reached
+    rw [hlent]
+    by_cases hl : l = 0
+    · subst hl; simp [hdh]
+    · simp [hl])
+
 /-- **The strict test passes after the invalidation**: at every typed future (label `0` any open
 member of `Nat`), `x` is `C(l, ⊥)`, an open member of `E` (its index read at `Nat`, its dependent
 field moved), and the temporary holds `3`. -/
@@ -543,11 +602,12 @@ theorem run_borrow (dm : DataModel) (ρ : Assignment) (tl : Bool) (hint : TyS) :
   show SM.erasedIf (false, false) _ (sE dm) = _
   simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false]
   unfold SM.strictS
-  rw [borrowPlace_sE]
+  rw [SM.guarded_of (contentOk_noLive (live_sE dm) _), borrowPlace_sE]
   dsimp only
   rw [if_pos (show Sem.el0 Nat 3 ∈ₛ[(KE dm).dm.read] (TyS.plain TyM.nat).m from nat_mem dm 3)]
   dsimp only
   rw [invalidate_sE1, if_pos]
+  refine ⟨invalidateOk_sE1 dm, ?_⟩
   unfold lentOk
   rw [show resolve (sE2 dm) (.field gN (.var 0)) = some (.bind 0 0, [.field gN]) from rfl]
   exact .inr (.inr (stateOk_sE2 dm))

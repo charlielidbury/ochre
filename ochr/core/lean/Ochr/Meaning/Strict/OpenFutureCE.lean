@@ -1,20 +1,22 @@
 import Ochr.Meaning.Strict.Witness
 
 /-!
-# A good state the relation cannot tell from a checker state, on which a field write is stuck
+# A good state the relation cannot tell from a checker state: the stuck field write, dissolved
 
-lead7's counterexample (2026-11-21), kernel-checked on the model side. The invariant `SGood` and the
-write rule's tests quantify over TYPED futures, which give each live label an OPEN member of its
-recorded type (`⊥` included). The relation `Rel` compares the reference with the checker only at
-futures giving each live label a WHOLE member (`TypedLive`). A position may read a live label in a
-way only the open futures see.
+REGRESS RECORD (kernel-checked). lead7's counterexample (2026-11-21), on the model side: under the
+invariant as it was, typed futures gave each live label an OPEN member of its recorded type (`⊥`
+included), while the relation `Rel` compares the reference with the checker only at futures giving
+each live label a WHOLE member (`TypedLive`); a position could read a live label in a way only the
+open futures see, and the strict write `x.0 := c` was stuck on a good state the relation could not
+tell from the checker's. The orchestrator's ruling (A) (docs/31 D106) made typed futures give each
+live label a whole MEMBER of its recorded type, and ends strict. The case DISSOLVES: `ψbot` (label
+`0` holding `⊥`) is no typed future (`ψbot_not_typed`), and the write is now defined at every typed
+future (`setContent_ok`).
 
 The state `s₀`: one frame; `z : Nat` reads label `0` (`fun ψ => ψ 0`, lent at its root); `y : Nat`
 holds label `0`, recorded at `Nat` with the member `0`; `x : Nat` means `1` where label `0` holds a
-number and `0` elsewhere (`xv`). It is good (`s₀_good`). At every future giving label `0` a number,
-`x` means `1` (`x_at_numbers`), as the checker's `x = S(Z)` does: the relation sees `1`. The strict
-assignment `x.0 := c` fails (`run_stuck`): at the typed future giving label `0` the value `⊥`, `x`
-means `0`, which has no predecessor.
+number and `0` elsewhere (`xv`). It is good (`s₀_good`); at every future giving label `0` a number,
+`x` means `1` (`x_at_numbers`), as the checker's `x = S(Z)` does.
 -/
 
 namespace Ochr.Meaning.Strict.OpenFutureCE
@@ -83,7 +85,7 @@ theorem s₀_good (dm : DataModel) : SGood dm [] φ₀ s₀ := by
   · rw [positions_s₀] at hp
     simp only [List.mem_cons, Pos.bind.injEq, List.mem_nil_iff, or_false] at hp
     rcases hp with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
-    · exact .inl (hψ.2 0 (by rw [live_s₀]; simp))
+    · exact .inl (.mem (hψ.2 0 (by rw [live_s₀]; simp)))
     · exact .inl (.mem (nat_mem dm 0))
     · show GoodVal dm [] (xv ψ) TyM.nat
       unfold xv; split
@@ -138,56 +140,30 @@ theorem contentOf_s₀ (dm : DataModel) :
 theorem placeTy_s₀ (dm : DataModel) : placeTy (Kc dm) φ₀ p₀ s₀ = .plain TyM.nat := by
   unfold placeTy; rw [contentOf_s₀]; rfl
 
-/-- The typed future giving label `0` the value `⊥`. -/
+/-- The future giving label `0` the value `⊥`: a typed future before the ruling, none after. -/
 def ψbot : Future := fun l => if l = 0 then .moved else φ₀ l
 
-theorem ψbot_typed (dm : DataModel) : TypedFut (Kc dm) φ₀ s₀ ψbot := by
-  refine ⟨fun l hl => ?_, fun l hl => ?_⟩
-  · have : l ≠ 0 := fun e => hl (by rw [e, live_s₀]; simp)
-    simp [ψbot, this]
-  · rw [live_s₀] at hl
-    simp only [List.mem_cons, List.mem_nil_iff, or_false] at hl
-    subst hl
-    exact .moved _
+theorem ψbot_not_typed (dm : DataModel) : ¬ TypedFut (Kc dm) φ₀ s₀ ψbot := by
+  intro h
+  have h0 := h.2 0 (by rw [live_s₀]; simp)
+  obtain ⟨n, hn⟩ := h0
+  simp [ψbot, Code0.enc, Code1.enc, Code2.enc] at hn
 
-/-- **The write `x.0 := 0` is undefined at `ψbot`**, so `setContent` fails. -/
-theorem setContent_stuck (dm : DataModel) :
-    setContent (Kc dm) φ₀ (.bind 0 2) [.proj 0] (.el0 Nat 0) s₀ = none := by
+/-- **The write `x.0 := 0` is defined at every typed future** (each gives label `0` a number, where
+`x` means `1`): the test that was failing passes. -/
+theorem setContent_ok (dm : DataModel) :
+    setContent (Kc dm) φ₀ (.bind 0 2) [.proj 0] (.el0 Nat 0) s₀ = some (⟨⟩, s₀.setAt (.bind 0 2) fun φ' =>
+      (Sem.updAt dm [] (.plain TyM.nat) (fun _ => .el0 Nat 0) [.proj 0] (xv φ')).getD .err) := by
   unfold setContent
-  rw [if_neg]
-  intro hall
-  have h := hall ψbot (ψbot_typed dm)
-  have hx : s₀.valAt (.bind 0 2) ψbot = .el0 Nat 0 := by
-    show xv ψbot = _
-    unfold xv
-    rw [if_neg]
-    rintro ⟨n, hn⟩
-    simp [ψbot] at hn
-  have hu : Sem.updAt dm [] (.plain TyM.nat) (fun _ => .el0 Nat 0) [.proj 0] (Sem.el0 Nat 0) = none := by
-    rw [Sem.updAt.eq_def]
-    simp [Sem.asNat_el0]
-  change (Sem.updAt dm [] (.plain TyM.nat) (fun _ => .el0 Nat 0) [.proj 0] (s₀.valAt (.bind 0 2) ψbot)).isSome = true at h
-  rw [hx, hu] at h
-  cases h
-
-theorem assignAt_stuck (dm : DataModel) : assignAt (Kc dm) φ₀ p₀ (.el0 Nat 0) none s₀ = none := by
-  unfold assignAt
-  rw [show resolve s₀ p₀ = some (.bind 0 2, [.proj 0]) from rfl]
-  dsimp only
-  simp only [List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false]
-  rw [access_s₀ _ (by decide), setContent_stuck]
-
-/-- **The strict assignment `x.0 := c` is stuck at the good state `s₀`**, though `x` means `1` at
-every future the relation compares at (`x_at_numbers`). -/
-theorem run_stuck (dm : DataModel) (ρ : Assignment) (hint : TyS) :
-    runT (Kc dm) ρ φ₀ false hint (.assign p₀ (.const "c")) s₀ = none := by
-  have hconst : ∀ T, runT (Kc dm) ρ φ₀ false T (.const "c") s₀ = some ((.el0 Nat 0, .plain TyM.nat), s₀) := by
-    intro T; rw [runT]; rfl
-  rw [runT]
-  show SM.erasedIf (false, false) _ s₀ = _
-  simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false]
-  simp only [hconst, Option.bind_eq_bind, Option.bind_some]
-  rw [placeTy_s₀, if_pos ⟨nat_mem dm 0, fun _ h => by cases h⟩,
-    show (TyS.plain TyM.nat).label = none from rfl, assignAt_stuck]
+  rw [if_pos]
+  · rfl
+  intro ψ hψ
+  obtain ⟨n, hn⟩ := hψ.2 0 (by rw [live_s₀]; simp)
+  have hx : s₀.valAt (.bind 0 2) ψ = .el0 Nat 1 := x_at_numbers ψ ⟨n, hn.symm⟩
+  change (Sem.updAt dm [] (.plain TyM.nat) (fun _ => .el0 Nat 0) [.proj 0] (s₀.valAt (.bind 0 2) ψ)).isSome = true
+  rw [hx, Sem.updAt.eq_def]
+  simp [Sem.asNat_el0]
+  rw [Sem.updAt.eq_def]
+  simp
 
 end Ochr.Meaning.Strict.OpenFutureCE

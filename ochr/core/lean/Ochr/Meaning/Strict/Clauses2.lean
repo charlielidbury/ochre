@@ -114,12 +114,12 @@ theorem fund_seq {u w : Term} (hu : Fund K ρ φ u) (hw : Fund K ρ φ w) : Fund
   intro s₀ s₃ r₀ hs₀ h₀
   obtain ⟨a, s₁, h1, h2⟩ := SM.bind_some h₀
   obtain ⟨⟨⟩, s₂, h3, h4⟩ := SM.bind_some h2
-  have e := SM.modify_some h3
+  obtain ⟨hdok, e⟩ := SM.guardMod_some h3
   subst e
   have hs₁ := (hu false _ _ _ _ hs₀ h1).2.2.2
   have hs₂ : SGood K.dm K.Γ φ (discardEnd a.2 s₁) := by
-    unfold discardEnd; split
-    · exact endLabel_sgood hs₁ _
+    unfold discardEnd; unfold DiscardOk at hdok; split
+    · rename_i l hl; rw [hl] at hdok; exact endLabel_sgood hs₁ _ hdok
     · exact hs₁
   exact hw tl hint _ _ _ hs₂ h4
 
@@ -133,6 +133,7 @@ theorem fund_letIn (_hc : FundCtx K) {x : Hint} {u w : Term} (hu : Fund K ρ φ 
   intro s₀ s₄ r₀ hs₀ h₀
   simp only [Bind.bind, Option.bind_eq_some_iff] at h₀
   obtain ⟨⟨⟨v, T⟩, s₁⟩, h1, ⟨⟨r', R⟩, s₃⟩, h2, h3⟩ := h₀
+  obtain ⟨hend, h3⟩ := open Classical in ite_none_some h3
   obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h3)
   obtain ⟨hv, hlab, hlou, hs₁⟩ := hu false _ _ _ _ hs₀ h1
   have hs₂ : SGood K.dm K.Γ φ (pushBindShaped s₁ { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s₁) u }) := by
@@ -140,7 +141,7 @@ theorem fund_letIn (_hc : FundCtx K) {x : Hint} {u w : Term} (hu : Fund K ρ φ 
     · rw [pushBindShaped_nil _ _ hne]; exact hs₁
     · exact sgood_pushBindShaped hs₁ _ rfl hv hlab hlou hne
   obtain ⟨hg, hlab₃, hlou₃, hs₃⟩ := hw tl hint _ _ _ hs₂ h2
-  refine ⟨hg, hlab₃.of_held (heldSame_letDrop _ _), ?_, sgood_letDrop hs₃⟩
+  refine ⟨hg, hlab₃.of_held (heldSame_letDrop _ _), ?_, sgood_letDrop hs₃ hend⟩
   exact (letDrop_rinv (fun _ => True) hs₃.acyc hlou₃ _ (by unfold SState.dropped; cases s₃.env.getLast? <;> rfl)).2.1
 
 end
@@ -157,11 +158,12 @@ variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 record and liveness. -/
 theorem fund_join (_hc : FundCtx K) {s₂ : SState} {r : Res} (lend : Option Nat → SState → SState)
     (hlend : ∀ lab s, lend lab s = s ∨ ∃ k xs, lend lab s = s.setLent k xs) (entry : List Place) (t : Term)
-    (hg : GoodRes K.dm.read r) (hlab : LabOk K.dm s₂ r) (hlou : LoU s₂ r.2.label) (hs₂ : SGood K.dm K.Γ φ s₂) :
+    (hg : GoodRes K.dm.read r) (hlab : LabOk K.dm s₂ r) (hlou : LoU s₂ r.2.label) (hs₂ : SGood K.dm K.Γ φ s₂)
+    (hjok : JoinDropOk K φ entry t s₂) :
     GoodRes K.dm.read r ∧ LabOk K.dm (lend r.2.label (joinDrop K φ entry t s₂)) r ∧
       LoU (lend r.2.label (joinDrop K φ entry t s₂)) r.2.label ∧
       SGood K.dm K.Γ φ (lend r.2.label (joinDrop K φ entry t s₂)) := by
-  have hj := sgood_joinDrop hs₂ entry t
+  have hj := sgood_joinDrop hs₂ entry t hjok
   have hjl : LoU (joinDrop K φ entry t s₂) r.2.label := fun y hy =>
     joinDrop_lou K φ (fun _ => True) entry t hs₂.acyc (hlou y hy)
   have hjh := hlab.of_held (heldSame_joinDrop (K := K) (φ := φ) entry t s₂)
@@ -178,8 +180,10 @@ theorem fund_matchNat (hc : FundCtx K) {p : Place} {z u : Term} (hz : Fund K ρ 
   intro s₀ s₃ r₀ hs₀ h₀
   simp only [Bind.bind, Option.bind_eq_some_iff] at h₀
   obtain ⟨⟨tg, s₁⟩, h1, h₀⟩ := h₀
-  have hs₁ := sgood_tagOf hs₀ h1
-  have hs₁' := sgood_matchEntry (K := K) (φ := φ) hs₁ (!tl) (.matchNat p z u)
+  obtain ⟨htok, h1⟩ := SM.guarded_some h1
+  have hs₁ := sgood_tagOf hs₀ htok h1
+  obtain ⟨_, hme, h₀⟩ := h₀
+  have hs₁' := sgood_matchEntry (K := K) (φ := φ) hs₁ (!tl) (.matchNat p z u) (optCheck_some hme)
   have hlend := matchEntry_lend K φ (!tl) (.matchNat p z u) s₁
   generalize matchEntry K φ (!tl) (.matchNat p z u) s₁ = me at h₀ hs₁' hlend
   obtain ⟨s₂, lend⟩ := me
@@ -190,17 +194,21 @@ theorem fund_matchNat (hc : FundCtx K) {p : Place} {z u : Term} (hz : Fund K ρ 
     | some a =>
       rw [h2] at h₀
       obtain ⟨⟨r', R⟩, s₄⟩ := a
+      simp only [Option.bind_some, Option.bind_eq_some_iff] at h₀
+      obtain ⟨_, hjd, h₀⟩ := h₀
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₀)
       obtain ⟨hg, hlab, hlou, hs₄⟩ := hz tl hint _ _ _ hs₁' h2
-      exact fund_join hc lend hlend _ _ hg hlab hlou hs₄
+      exact fund_join hc lend hlend _ _ hg hlab hlou hs₄ (optCheck_some hjd)
   · cases h2 : runT K ρ φ tl hint u s₂ with
     | none => rw [h2] at h₀; cases h₀
     | some a =>
       rw [h2] at h₀
       obtain ⟨⟨r', R⟩, s₄⟩ := a
+      simp only [Option.bind_some, Option.bind_eq_some_iff] at h₀
+      obtain ⟨_, hjd, h₀⟩ := h₀
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₀)
       obtain ⟨hg, hlab, hlou, hs₄⟩ := hu tl hint _ _ _ hs₁' h2
-      exact fund_join hc lend hlend _ _ hg hlab hlou hs₄
+      exact fund_join hc lend hlend _ _ hg hlab hlou hs₄ (optCheck_some hjd)
   · cases h₀
 
 end
@@ -233,9 +241,11 @@ theorem fund_matchInd (hc : FundCtx K) {p : Place} {n : String} {arms : List (Hi
   intro s₀ s₃ r₀ hs₀ h₀
   simp only [Bind.bind, Option.bind_eq_some_iff] at h₀
   obtain ⟨⟨tg, s₁⟩, h1, h₀⟩ := h₀
-  have hs₁ := sgood_tagOf hs₀ h1
-  generalize hent : (!tl && !tg.isProof && !oneCtor K.Γ n) = ent at h₀
-  have hs₁' := sgood_matchEntry (K := K) (φ := φ) hs₁ ent (.matchInd p n arms)
+  obtain ⟨htok, h1⟩ := SM.guarded_some h1
+  have hs₁ := sgood_tagOf hs₀ htok h1
+  obtain ⟨_, hme, h₀⟩ := h₀
+  generalize hent : (!tl && !tg.isProof && !oneCtor K.Γ n) = ent at h₀ hme
+  have hs₁' := sgood_matchEntry (K := K) (φ := φ) hs₁ ent (.matchInd p n arms) (optCheck_some hme)
   have hlend := matchEntry_lend K φ ent (.matchInd p n arms) s₁
   generalize matchEntry K φ ent (.matchInd p n arms) s₁ = me at h₀ hs₁' hlend
   obtain ⟨s₂, lend⟩ := me
@@ -247,13 +257,22 @@ theorem fund_matchInd (hc : FundCtx K) {p : Place} {n : String} {arms : List (Hi
     | some a =>
       rw [h2] at h₀
       obtain ⟨⟨r', R⟩, s₄⟩ := a
+      simp only [Option.bind_some, Option.bind_eq_some_iff] at h₀
+      obtain ⟨_, hjd, h₀⟩ := h₀
+      have hjd := optCheck_some hjd
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₀)
       obtain ⟨hg, hlab, hlou, hs₄⟩ := fund_runArmS arms ha tl hint c _ _ _ hs₁' h2
       split
       · exact ⟨hg, hlab, hlou, hs₄⟩
-      · split
+      · rename_i hnp
+        split
         · exact ⟨hg, hlab, hlou, hs₄⟩
-        · exact fund_join hc lend hlend _ _ hg hlab hlou hs₄
+        · rename_i hone
+          refine fund_join hc lend hlend _ _ hg hlab hlou hs₄ ?_
+          rcases hjd with hp | ho | hj
+          · exact absurd hp (by cases tg <;> simp_all [Sem.isProof])
+          · exact absurd ho (by simpa using hone)
+          · exact hj
   · -- an erased match on a proof with other than one arm: an arm ran, on a copy, to a proof at a
     -- type the lemma at the arm makes good; the state as it was, no label
     split at h₀
@@ -294,19 +313,22 @@ theorem fund_J (hc : FundCtx K) {A a b P h t : Term} (ht : Fund K ρ φ t) :
   obtain ⟨_, t₅, g₅, k₅⟩ := SM.bind_some k₄
   rw [SM.onCopy_state g₅] at k₅
   dsimp only at k₅
-  have hs₁ := sgood_matchEntry (K := K) (φ := φ) hs₀ true t
+  obtain ⟨hme, k₅⟩ := open Classical in ite_none_some k₅
+  have hs₁ := sgood_matchEntry (K := K) (φ := φ) hs₀ true t hme
   generalize (matchEntry K φ true t s₀).1 = s₂ at k₅ hs₁
   have h₀ := k₅
   split at h₀
   · rename_i r' R s₄ h2
+    obtain ⟨hjd, h₀⟩ := open Classical in ite_none_some h₀
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₀)
     obtain ⟨hg, hlab, hlou, hs₄⟩ := ht false hint _ _ _ hs₁ h2
-    exact fund_join hc (fun _ s => s) (fun _ _ => .inl rfl) _ _ hg hlab hlou hs₄
+    exact fund_join hc (fun _ s => s) (fun _ _ => .inl rfl) _ _ hg hlab hlou hs₄ hjd
   · cases h₀
 
 /-- `clone`, `peek`, `inplace` of a term: a place read in place, or the term's run. -/
 theorem fund_inPlace (_hc : FundCtx K) {u : Term} (hu : Fund K ρ φ u) {fl : Bool × Bool} (tl : Bool) (hint : TyS) :
-    FundAt K.dm K.Γ φ (SM.erasedIf fl (SM.headOf u (fun p => readPlace K φ p true) (runT K ρ φ false hint u))) := by
+    FundAt K.dm K.Γ φ (SM.erasedIf fl (SM.headOf u (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true))
+      (runT K ρ φ false hint u))) := by
   refine fund_erasedS ?_
   intro s s' r hs h
   rcases headOf_some' h with ⟨p, -, h⟩ | h
@@ -324,12 +346,14 @@ section
 variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 
 /-- One capture of a closure being formed: an access, then a move at the variable's root. -/
-theorem sgood_capStep (_hc : FundCtx K) {s : SState} (hs : SGood K.dm K.Γ φ s) (i : Nat) :
+theorem sgood_capStep (_hc : FundCtx K) {s : SState} (hs : SGood K.dm K.Γ φ s) (i : Nat) (hok : CapOk K φ s i) :
     SGood K.dm K.Γ φ (capStep K s i) := by
   unfold capStep
+  unfold CapOk at hok
   split
   · rename_i pos hv
-    have hs₁ := access_sgood hs pos (dataHit [])
+    rw [hv] at hok
+    have hs₁ := access_sgood hs pos (dataHit []) hok
     have hp₁ : pos ∈ (s.access pos (dataHit [])).positions := by rw [access_positions]; exact varPos_mem hv
     dsimp only
     split
@@ -338,9 +362,9 @@ theorem sgood_capStep (_hc : FundCtx K) {s : SState} (hs : SGood K.dm K.Γ φ s)
   · exact hs
 
 theorem sgood_foldl_capStep (hc : FundCtx K) : ∀ (is : List Nat) {s : SState}, SGood K.dm K.Γ φ s →
-    SGood K.dm K.Γ φ (is.foldl (capStep K) s)
-  | [], _, h => h
-  | i :: is, _, h => sgood_foldl_capStep hc is (sgood_capStep hc h i)
+    FoldOk (capStep K) (CapOk K φ) is s → SGood K.dm K.Γ φ (is.foldl (capStep K) s)
+  | [], _, h, _ => h
+  | i :: is, _, h, hok => sgood_foldl_capStep hc is (sgood_capStep hc h i hok.1) hok.2
 
 /-- **A closure formed** (strict: a member of its function type; else `err` and the run fails): the
 captures accessed and the non-copy ones moved. -/
@@ -351,10 +375,11 @@ theorem fund_fix (hc : FundCtx K) {self : Hint} {hs : List Hint} {ds : List Term
   refine fund_erasedS ?_ s s' r hs' h
   intro s₀ s₁ r₀ hs₀ h₀
   dsimp only at h₀
+  obtain ⟨hcap, h₀⟩ := open Classical in ite_none_some h₀
   obtain ⟨h₀, hm⟩ := strictS_some h₀
   simp only [Option.some.injEq] at h₀
   obtain ⟨rfl, rfl⟩ := Prod.mk.inj h₀
-  exact ⟨.inl hm, (fun l h' => by cases h'), (fun l h' => by cases h'), sgood_foldl_capStep hc _ hs₀⟩
+  exact ⟨.inl hm, (fun l h' => by cases h'), (fun l h' => by cases h'), sgood_foldl_capStep hc _ hs₀ hcap⟩
 
 end
 

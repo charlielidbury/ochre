@@ -580,7 +580,12 @@ theorem sgood_dropLast {s : SState} (hs : SGood K.dm K.Γ φ s)
     · exact hs.fresh q l ⟨ψ, x, by simpa [SState.toMean, SState.valAt_dropLast s _ hd] using hne⟩
 
 /-- A `let`'s drop: the borrow its binding holds ends, or the borrows lent at it end, then it goes. -/
-theorem sgood_letDrop {s : SState} (hs : SGood K.dm K.Γ φ s) :
+theorem sgood_letDrop {s : SState} (hs : SGood K.dm K.Γ φ s)
+    (hok : match (match s.env.getLast? with
+        | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
+        | none => none) with
+      | some l => EndOk K φ s l
+      | none => LetLendersOk K φ s) :
     SGood K.dm K.Γ φ ((match (match s.env.getLast? with
         | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
         | none => none) with
@@ -589,7 +594,7 @@ theorem sgood_letDrop {s : SState} (hs : SGood K.dm K.Γ φ s) :
   have hi := hs.acyc
   generalize hH : (match s.env.getLast? with
       | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
-      | none => none) = held
+      | none => none) = held at hok
   have hheld : held = match s.dropped with | some r => s.shape r | none => none := by
     rw [← hH]; unfold SState.dropped; cases s.env.getLast? <;> rfl
   apply sgood_dropLast
@@ -597,10 +602,13 @@ theorem sgood_letDrop {s : SState} (hs : SGood K.dm K.Γ φ s) :
     | none =>
       show SGood _ _ _ (letLenders s)
       unfold letLenders
+      unfold LetLendersOk at hok
       split
-      · exact access_sgood hs _ _
+      · rename_i fr hfr
+        rw [hfr] at hok
+        exact access_sgood hs _ _ hok
       · exact hs
-    | some l => exact endLabel_sgood hs l
+    | some l => exact endLabel_sgood hs l hok
   · intro r x hr hx
     cases held with
     | none =>
@@ -692,13 +700,19 @@ theorem ite_not_none_some {α : Type _} {p : Prop} [Decidable p] {a : Option α}
   · rw [if_neg (fun hn => hn hp)] at h; exact ⟨hp, h⟩
   · rw [if_pos hp] at h; cases h
 
+/-- The read's test gives the access's (STRICT END, ruling (A)). -/
+theorem contentOk_access {p : Place} {s : SState} {pos : Pos} {steps : List Step} (hok : ContentOk K φ p s)
+    (hres : resolve s p = some (pos, steps)) : AccessOkF K.dm K.Γ φ s pos (dataHit steps) := by
+  unfold ContentOk at hok; rw [hres] at hok; exact hok
+
 /-- **A read of a place at a root or through `*`**, copied or moved: the value read is the binding's
 whole content, good at its stored type by the strict read test (`ReadGood`); a move writes `⊥` there
 and, at a holder, parks the borrow. (A move at a FIELD path writes `⊥` into a field:
 `setContent_field_moved_sgood`, in `readPlace_fund_all`.) -/
 theorem readPlace_fund (p : Place) (hp : p.steps.2 = [] ∨ p.steps.2 = [.deref])
-    (copy : Bool) : FundAt K.dm K.Γ φ (readPlace K φ p copy) := by
+    (copy : Bool) : FundAt K.dm K.Γ φ (SM.guarded (ContentOk K φ p) (readPlace K φ p copy)) := by
   intro s s' r hs h
+  obtain ⟨hok, h⟩ := SM.guarded_some h
   have hlou := (readPlace_rinv K φ (fun _ => True) h hs.acyc).2
   unfold readPlace at h
   simp only [Bind.bind, Option.bind_eq_some_iff] at h
@@ -711,7 +725,7 @@ theorem readPlace_fund (p : Place) (hp : p.steps.2 = [] ∨ p.steps.2 = [.deref]
     cases pos with
     | bind f i => exact ⟨f, i, rfl⟩
     | temp => exact absurd this (by simp [IsTemp])
-  have hs₁ := access_sgood hs (.bind f i) (dataHit steps)
+  have hs₁ := access_sgood hs (.bind f i) (dataHit steps) (contentOk_access hok hres)
   have hp₁ : Pos.bind f i ∈ (s.access (.bind f i) (dataHit steps)).positions := by
     rw [access_positions]; exact resolve_mem hres
   dsimp only at h
@@ -808,11 +822,12 @@ theorem setContent_field_moved_sgood {s s' : SState} (hs : SGood K.dm K.Γ φ s)
 strict read test (`ReadGood`: a member, or `⋆`/a type value at `err`); the state is good (a move at a
 FIELD path through `setContent_field_moved_sgood`). -/
 theorem readPlace_fund_all (p : Place) (copy : Bool) :
-    FundAt K.dm K.Γ φ (readPlace K φ p copy) := by
+    FundAt K.dm K.Γ φ (SM.guarded (ContentOk K φ p) (readPlace K φ p copy)) := by
   intro s s' r hs h
   by_cases hp : p.steps.2 = [] ∨ p.steps.2 = [.deref]
   · exact readPlace_fund p hp copy s s' r hs h
-  · have hlou := (readPlace_rinv K φ (fun _ => True) h hs.acyc).2
+  · obtain ⟨hok, h⟩ := SM.guarded_some h
+    have hlou := (readPlace_rinv K φ (fun _ => True) h hs.acyc).2
     unfold readPlace at h
     simp only [Bind.bind, Option.bind_eq_some_iff] at h
     obtain ⟨⟨⟨v, T, pos, steps⟩, s₁⟩, h1, h⟩ := h
@@ -825,7 +840,7 @@ theorem readPlace_fund_all (p : Place) (copy : Bool) :
       cases pos with
       | bind f i => exact ⟨f, i, rfl⟩
       | temp => exact absurd this (by simp [IsTemp])
-    have hs₁ := access_sgood hs (.bind f i) (dataHit steps)
+    have hs₁ := access_sgood hs (.bind f i) (dataHit steps) (contentOk_access hok hres)
     have hp₁ : Pos.bind f i ∈ (s.access (.bind f i) (dataHit steps)).positions := by
       rw [access_positions]; exact resolve_mem hres
     dsimp only at h
@@ -1061,7 +1076,7 @@ the lender), but it keeps the invariant's structural part (`sstruct_borrow_park`
 keeps that (`SStruct.invalidate`), and the run's test `lentOk` at a field path is `StateOk`, the value
 clauses at every typed future (`sgood_of_stateOk`). -/
 theorem borrowPlace_field_sgood {p : Place} {s s₁ : SState} {r : Res} (hs : SGood K.dm K.Γ φ s)
-    (hfield : p.steps.2 ≠ [] ∧ p.steps.2 ≠ [.deref]) (h : borrowPlace K φ p s = some (r, s₁))
+    (hfield : p.steps.2 ≠ [] ∧ p.steps.2 ≠ [.deref]) (hco : ContentOk K φ p s) (h : borrowPlace K φ p s = some (r, s₁))
     (hm : r.1 ∈ₛ[K.dm.read] r.2.m) (hok : lentOk K φ p (invalidate K φ p s₁)) :
     SGood K.dm K.Γ φ (invalidate K φ p s₁) := by
   have hrinv := (borrowPlace_rinv K φ (fun _ => True) h hs.acyc).1
@@ -1081,7 +1096,7 @@ theorem borrowPlace_field_sgood {p : Place} {s s₁ : SState} {r : Res} (hs : SG
   rw [if_neg (fun hn => hn hw)] at hb
   simp only [Option.some.injEq, Prod.mk.injEq] at hb
   obtain ⟨rfl, rfl⟩ := hb
-  have hS₁ : SStruct K.dm _ := sstruct_borrow_park (access_sgood hs pos (dataHit steps))
+  have hS₁ : SStruct K.dm _ := sstruct_borrow_park (access_sgood hs pos (dataHit steps) (contentOk_access hco hres))
     (by rw [access_positions]; exact resolve_mem hres) _ hm _ hrinv hfr
   have hS := hS₁.invalidate (φ := φ) p
   have hr : resolve (invalidate K φ p _) p = some (pos, steps) :=
@@ -1095,14 +1110,15 @@ theorem borrowPlace_field_sgood {p : Place} {s s₁ : SState} {r : Res} (hs : SG
 /-- **A borrow's strict content test**: the result is a member whose fresh label records its type and
 the content; at a root or through `*` the state is good (`sgood_borrow_root`). -/
 theorem borrowPlace_res (p : Place) {s s' : SState} {r : Res} (hs : SGood K.dm K.Γ φ s)
-    (h : SM.strictS K.dm.read (borrowPlace K φ p) s = some (r, s')) :
-    r.1 ∈ₛ[K.dm.read] r.2.m ∧ LabOk K.dm s' r ∧ LoU s' r.2.label ∧ borrowPlace K φ p s = some (r, s') ∧
-      ((p.steps.2 = [] ∨ p.steps.2 = [.deref]) → SGood K.dm K.Γ φ s') := by
+    (h : SM.strictS K.dm.read (SM.guarded (ContentOk K φ p) (borrowPlace K φ p)) s = some (r, s')) :
+    r.1 ∈ₛ[K.dm.read] r.2.m ∧ LabOk K.dm s' r ∧ LoU s' r.2.label ∧ ContentOk K φ p s ∧
+      borrowPlace K φ p s = some (r, s') ∧ ((p.steps.2 = [] ∨ p.steps.2 = [.deref]) → SGood K.dm K.Γ φ s') := by
   unfold SM.strictS at h
-  cases hb : borrowPlace K φ p s with
-  | none => rw [hb] at h; cases h
+  cases hbg : SM.guarded (ContentOk K φ p) (borrowPlace K φ p) s with
+  | none => rw [hbg] at h; cases h
   | some x =>
-    rw [hb] at h
+    rw [hbg] at h
+    obtain ⟨hco, hb⟩ := SM.guarded_some hbg
     obtain ⟨r₀, s₀⟩ := x
     simp only at h
     by_cases hm : r₀.1 ∈ₛ[K.dm.read] r₀.2.m
@@ -1133,7 +1149,7 @@ theorem borrowPlace_res (p : Place) {s s' : SState} {r : Res} (hs : SGood K.dm K
       simp only [Option.some.injEq] at hl; subst hl
       simp only [SState.setHeldMem, SState.setHeldTy, if_true]
       exact ⟨trivial, hm⟩
-    refine ⟨hm, hlab, hrinv.2, rfl, fun hp => ?_⟩
+    refine ⟨hm, hlab, hrinv.2, hco, hb₀, fun hp => ?_⟩
     · obtain ⟨T', hres, rfl, hf, hT⟩ := contentOf_view h1
       have hsteps : steps = p.steps.2 := by
         unfold resolve at hres; cases hv : s.varPos p.steps.1 <;> simp_all
@@ -1143,7 +1159,7 @@ theorem borrowPlace_res (p : Place) {s s' : SState} {r : Res} (hs : SGood K.dm K
         cases pos with
         | bind f i => exact ⟨f, i, rfl⟩
         | temp => exact absurd this (by simp [IsTemp])
-      have hs₁ := access_sgood hs (.bind f i) (dataHit steps)
+      have hs₁ := access_sgood hs (.bind f i) (dataHit steps) (contentOk_access hco hres)
       have hp₁ : Pos.bind f i ∈ (s.access (.bind f i) (dataHit steps)).positions := by
         rw [access_positions]; exact resolve_mem hres
       generalize s.access (Pos.bind f i) (dataHit steps) = s₁ at hf hT hs₁ hp₁ hlab ⊢
@@ -1230,7 +1246,7 @@ theorem labOk_invalidate {p : Place} {s : SState} {r : Res} (h : LabOk K.dm s r)
 
 /-- **D112's invalidation of one place keeps the invariant**: [Access], then `⊥` at the place (at a
 root or through `*` a whole write of `⊥`; at a field path `setContent_field_moved_sgood`). -/
-theorem invalidateOne_sgood {s : SState} (hs : SGood K.dm K.Γ φ s) (q : Place) :
+theorem invalidateOne_sgood {s : SState} (hs : SGood K.dm K.Γ φ s) (q : Place) (hok : InvalOneOk K φ s q) :
     SGood K.dm K.Γ φ (invalidateOne K φ s q) := by
   unfold invalidateOne
   cases hres : resolve s q with
@@ -1238,7 +1254,7 @@ theorem invalidateOne_sgood {s : SState} (hs : SGood K.dm K.Γ φ s) (q : Place)
   | some ps =>
     obtain ⟨pos, steps⟩ := ps
     dsimp only
-    have hs₁ := access_sgood hs pos (dataHit steps)
+    have hs₁ := access_sgood hs pos (dataHit steps) (by unfold InvalOneOk at hok; rw [hres] at hok; exact hok)
     obtain ⟨f, i, rfl⟩ : ∃ f i, pos = .bind f i := by
       have := resolve_bind hres
       cases pos with
@@ -1261,13 +1277,14 @@ theorem invalidateOne_sgood {s : SState} (hs : SGood K.dm K.Γ φ s) (q : Place)
         exact sgood_setAt_pmem hs₁ hp₁ (fun _ _ _ => .moved _) (fun _ _ => .moved _)
       · exact setContent_field_moved_sgood hs₁ hp₁ hsc
 
-theorem invalidate_sgood (p : Place) {s : SState} (hs : SGood K.dm K.Γ φ s) :
+theorem invalidate_sgood (p : Place) {s : SState} (hs : SGood K.dm K.Γ φ s) (hok : InvalidateOk K φ p s) :
     SGood K.dm K.Γ φ (invalidate K φ p s) := by
   unfold invalidate
-  generalize K.D.invalidated (scopeOf s) p = qs
+  unfold InvalidateOk at hok
+  generalize K.D.invalidated (scopeOf s) p = qs at hok
   induction qs generalizing s with
   | nil => exact hs
-  | cons q qs ih => simp only [List.foldl_cons]; exact ih (invalidateOne_sgood hs q)
+  | cons q qs ih => simp only [List.foldl_cons]; exact ih (invalidateOne_sgood hs q hok.1) hok.2
 
 theorem lou_invalidate' (p : Place) {s : SState} (hi : SState.RInv (fun _ => True) s) {lab : Option Nat}
     (h : LoU s lab) : LoU (invalidate K φ p s) lab :=
@@ -1277,24 +1294,24 @@ open Classical in
 /-- **A borrow `&p`, the whole clause** (the strict content test, D112's invalidation, the strict test
 below a root `lentOk`). -/
 theorem borrow_fund (p : Place) :
-    FundAt K.dm K.Γ φ (fun s => match SM.strictS K.dm.read (borrowPlace K φ p) s with
+    FundAt K.dm K.Γ φ (fun s => match SM.strictS K.dm.read (SM.guarded (ContentOk K φ p) (borrowPlace K φ p)) s with
       | some (r, s₁) =>
         let s₂ := invalidate K φ p s₁
-        if lentOk K φ p s₂ then some (r, s₂) else none
+        if InvalidateOk K φ p s₁ ∧ lentOk K φ p s₂ then some (r, s₂) else none
       | none => none) := by
   intro s s' r hs h
   simp only at h
   split at h
   · rename_i r₀ s₁ hb
-    obtain ⟨hok, h⟩ := open Classical in ite_none_some h
+    obtain ⟨⟨hinv, hok⟩, h⟩ := open Classical in ite_none_some h
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
-    obtain ⟨hm, hlab, hlou, hb', hroot⟩ := borrowPlace_res p hs hb
+    obtain ⟨hm, hlab, hlou, hco, hb', hroot⟩ := borrowPlace_res p hs hb
     have hi₁ := (borrowPlace_rinv K φ (fun _ => True) hb' hs.acyc).1
     refine ⟨.inl hm, labOk_invalidate hlab, lou_invalidate' p hi₁ hlou, ?_⟩
     by_cases hp : p.steps.2 = [] ∨ p.steps.2 = [.deref]
-    · exact invalidate_sgood p (hroot hp)
-    · exact borrowPlace_field_sgood hs ⟨fun e => hp (.inl e), fun e => hp (.inr e)⟩ hb' hm hok
+    · exact invalidate_sgood p (hroot hp) hinv
+    · exact borrowPlace_field_sgood hs ⟨fun e => hp (.inl e), fun e => hp (.inr e)⟩ hco hb' hm hok
   · cases h
 
 /-! ## Assignments -/
@@ -1502,16 +1519,19 @@ borrow written at a root makes the root its holder, so the label is live after; 
 of every result. -/
 theorem assignAt_sgood {p : Place} {v : Sem} {R : TyS} {s s' : SState} {r : Res}
     (hs : SGood K.dm K.Γ φ s) (hv : v ∈ₛ[K.dm.read] (placeTy K φ p s).m) (hl : labTyOk s R.label (placeTy K φ p s).m)
-    (hlab : LabOk K.dm s (v, R)) (hlou : LoU s R.label) (h : assignAt K φ p v R.label s = some (r, s'))
-    (hok : lentOk K φ p (invalidate K φ p s')) :
+    (hlab : LabOk K.dm s (v, R)) (hlou : LoU s R.label) (hao : AssignOk K φ p s)
+    (h : assignAt K φ p v R.label s = some (r, s'))
+    (hinv : InvalidateOk K φ p s') (hok : lentOk K φ p (invalidate K φ p s')) :
     GoodRes K.dm.read r ∧ LabOk K.dm s' r ∧ SGood K.dm K.Γ φ (invalidate K φ p s') := by
+  unfold AssignOk at hao
   unfold assignAt at h
   cases hres : resolve s p with
   | none => rw [hres] at h; cases h
   | some ps =>
   obtain ⟨pos, steps⟩ := ps
   rw [hres] at h
-  dsimp only at h
+  rw [hres] at hao
+  dsimp only at h hao
   obtain ⟨f, i, rfl⟩ : ∃ f i, pos = .bind f i := by
     have := resolve_bind hres
     cases pos with
@@ -1520,8 +1540,11 @@ theorem assignAt_sgood {p : Place} {v : Sem} {R : TyS} {s s' : SState} {r : Res}
   have hpos : Pos.bind f i ∈ s.positions := resolve_mem hres
   have hpb : ¬ IsTemp (Pos.bind f i) := resolve_bind hres
   generalize hs₁e : (if (steps.isEmpty && (s.shape (Pos.bind f i)).isSome) = true then s
-      else s.access (Pos.bind f i) (dataHit steps)) = s₁ at h
-  have hs₁ : SGood K.dm K.Γ φ s₁ := by rw [← hs₁e]; split; exact hs; exact access_sgood hs _ _
+      else s.access (Pos.bind f i) (dataHit steps)) = s₁ at h hao
+  have hs₁ : SGood K.dm K.Γ φ s₁ := by
+    rw [← hs₁e]; split
+    · exact hs
+    · rename_i hc; exact access_sgood hs _ _ (hao.1 (by simpa using hc))
   have hpos₁ : Pos.bind f i ∈ s₁.positions := by
     rw [← hs₁e]; split; exact hpos; rw [access_positions]; exact hpos
   have hty₁ : ∀ q, s₁.tyAt q = s.tyAt q := by intro q; rw [← hs₁e]; split; rfl; exact tyAt_access _ _ _ q
@@ -1538,7 +1561,7 @@ theorem assignAt_sgood {p : Place} {v : Sem} {R : TyS} {s s' : SState} {r : Res}
   obtain ⟨rfl, rfl⟩ := h
   refine ⟨.inl ⟨(), rfl⟩, (fun l hl => by cases hl), ?_⟩
   by_cases hst : steps = [] ∨ steps = [.deref]
-  · apply invalidate_sgood
+  · refine invalidate_sgood p ?_ hinv
     have hvT : v ∈ₛ[K.dm.read] (s.tyAt (.bind f i)).m := by rw [← placeTy_root hres hst]; exact hv
     rcases hst with rfl | rfl
     · -- a root: the old borrow ends, the value is written, a written borrow is held there
@@ -1552,7 +1575,7 @@ theorem assignAt_sgood {p : Place} {v : Sem} {R : TyS} {s s' : SState} {r : Res}
         | none => simp only [hsh] at hsc; exact ⟨s₁, hs₁, hpos₁, hty₁, hHT₁, hHM₁, hsc⟩
         | some l =>
           simp only [hsh] at hsc
-          exact ⟨s₁.endLabel l, endLabel_sgood hs₁ l, by rw [endLabel_positions]; exact hpos₁,
+          exact ⟨s₁.endLabel l, endLabel_sgood hs₁ l (hao.2 rfl l hsh), by rw [endLabel_positions]; exact hpos₁,
             fun q => by rw [tyAt_endLabel, hty₁], by rw [heldTy_endLabel, hHT₁], by rw [heldMem_endLabel, hHM₁], hsc⟩
       have e3 : s₃ = s₂.setAt (.bind f i) fun _ => v := by
         have : setContent K φ (Pos.bind f i) [] v s₂ = some (⟨⟩, s₂.setAt (.bind f i) fun _ => v) :=
@@ -1605,18 +1628,19 @@ the strict test below a root). -/
 theorem assign_tail_fund {p : Place} {v : Sem} {R : TyS} {s s' : SState} {r : Res}
     (hs : SGood K.dm K.Γ φ s) (hv : v ∈ₛ[K.dm.read] (placeTy K φ p s).m) (hl : labTyOk s R.label (placeTy K φ p s).m)
     (hlab : LabOk K.dm s (v, R)) (hlou : LoU s R.label)
-    (h : (match assignAt K φ p v R.label s with
+    (h : (match SM.guarded (AssignOk K φ p) (assignAt K φ p v R.label) s with
       | some (r, s₁) =>
         let s₂ := invalidate K φ p s₁
-        if lentOk K φ p s₂ then some (r, s₂) else none
+        if InvalidateOk K φ p s₁ ∧ lentOk K φ p s₂ then some (r, s₂) else none
       | none => none) = some (r, s')) :
     GoodRes K.dm.read r ∧ LabOk K.dm s' r ∧ LoU s' r.2.label ∧ SGood K.dm K.Γ φ s' := by
   split at h
-  · rename_i r₀ s₁ ha
-    obtain ⟨hok, h⟩ := open Classical in ite_none_some h
+  · rename_i r₀ s₁ hag
+    obtain ⟨hao, ha⟩ := SM.guarded_some hag
+    obtain ⟨⟨hinv, hok⟩, h⟩ := open Classical in ite_none_some h
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
-    obtain ⟨hg, -, hs'⟩ := assignAt_sgood hs hv hl hlab hlou ha hok
+    obtain ⟨hg, -, hs'⟩ := assignAt_sgood hs hv hl hlab hlou hao ha hinv hok
     obtain ⟨-, hr, -, -⟩ := assignAt_rinv K φ (fun _ => True) ha hs.acyc hlou
     exact ⟨hg, (fun l h' => by rw [hr] at h'; cases h'), (fun l h' => by rw [hr] at h'; cases h'), hs'⟩
   · cases h

@@ -219,15 +219,20 @@ end Ochr.Meaning.Strict
 namespace Ochr.Meaning.Strict
 open Ochr.Meaning
 
-/-- **A named fact the simulation may use (the checker's rule, D98; D53 for a parameter's borrow at
-the function's end): no borrow ends over moved-out content.** On a reference state related to a state
-the checker reaches, the holder of a label about to end holds a WHOLE value at every typed future. The
-fundamental lemma does not need it (its typed futures give live labels open members, and
-`endAt_sgood` holds without it); the simulation may use it where it wants an ended borrow's content
-whole (e.g. to relate the reference's lenders after an end to the checker's, at whole-member
-futures). Not proved here: it is a fact about the checker, to be read off `Machine` by the simulation
-side. -/
-def EndWhole (dm : DataModel) (Γ : List IndDecl) (φ : Future) (s : SState) (l : Nat) : Prop :=
-  ∀ r, s.holderOf l = some r → ∀ ψ, TypedF dm Γ φ s ψ → (s.valAt r ψ).whole
+/-- **The strict end, at the invariant's level** (ruling (A), docs/31 D106; it was `EndWhole`, a named
+fact the lemma did not use): the borrow `l` ends only where its holder's content is a member of its
+recorded type at every typed future. The run's test `Run.EndOk K φ` is this at `K.dm K.Γ`
+(definitionally); the simulation discharges it from the checker's rule (main's D98: no borrow ends
+over moved-out content). -/
+def EndOkF (dm : DataModel) (Γ : List IndDecl) (φ : Future) (s : SState) (l : Nat) : Prop :=
+  ∀ r, s.holderOf l = some r → ∀ ψ, TypedF dm Γ φ s ψ → s.valAt r ψ ∈ₛ[dm.read] s.heldTy l
+
+/-- Every end [Access] makes is a strict end (`Run.AccessOk K φ` at `K.dm K.Γ`). -/
+def AccessOkF (dm : DataModel) (Γ : List IndDecl) (φ : Future) (s : SState) (p : Pos) (hit : List Step → Bool) :
+    Prop :=
+  ∀ k, k < s.liveLabels.length →
+    FoldOk SState.endLabel (EndOkF dm Γ φ) (((List.range k).foldl (fun t _ => accRound p hit t) s).liveLabels.filter
+      (((List.range k).foldl (fun t _ => accRound p hit t) s).reached p hit))
+      ((List.range k).foldl (fun t _ => accRound p hit t) s)
 
 end Ochr.Meaning.Strict

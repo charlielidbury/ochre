@@ -216,6 +216,10 @@ it. -/
 theorem runT_p₀ (dm : DataModel) (ρ : Assignment) :
     runT (Kc dm) ρ φ₀ false (.plain TyM.err) (.place p₀) s₀ = none := by
   rw [runT]
-  exact readPlace_p₀ dm
+  show SM.guarded (ContentOk (Kc dm) φ₀ p₀) (readPlace (Kc dm) φ₀ p₀ false) s₀ = none
+  unfold SM.guarded
+  split
+  · exact readPlace_p₀ dm
+  · rfl
 
 end Ochr.Meaning.Strict.FieldWriteCE
