@@ -7,7 +7,7 @@ import Ochr.Meaning.Steps.ColumnLet
 The `let` of a borrow-valued right-hand side. On the checker's side the borrow leaves the monad and
 is bound (`LetInv`); on the reference's, `pushBindShaped` moves the label from the temporary that
 parks it to the new binding (`takeLabel`, by `holderOf`), which needs the reference to hold the label
-at one position (`Rel.uniq`, docs/31 D114).
+at one position (`Strict.SGood.uniq`, docs/31 D114, D117).
 
 * `PBS.eq`: the reference's push of a binding holding a label, unfolded at a temporary holder.
 * `rel_pushBind_borrow`: the relation after the push, where the borrow is the only live one.
@@ -79,7 +79,7 @@ variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 /-- **The relation after the `let` of a borrow** (the borrow in flight the only live one): the
 checker binds it; the reference moves its label from the temporary that parked it to the binding. -/
 theorem rel_pushBind_borrow {π : Nat → Nat} {st : MState} {s : SState} {T? : Option Value} {l : Nat} {w : Value}
-    (hr : Rel K ρ φ π (st.withTempT (.borrow l w) T?) s) (hne : 0 < st.env.size)
+    (hr : Rel K ρ φ π (st.withTempT (.borrow l w) T?) s) (huniq : s.Uniq) (hne : 0 < st.env.size)
     (hnb : ∀ q l', q ∈ allPos st.env → (valAt st.env q).holdsBorrow l' = false) (hw : w.Num)
     (h : Hint) (T : Value) (p : Bool) (d : DeclInfo) (R : TyS) (hR : (Value.tyS K.dm K.M K.Γ ρ T).m = R.m)
     (hRl : R.label = some (π l)) (hheld : s.heldTy (π l) = R.m) (c : Sem)
@@ -133,7 +133,7 @@ theorem rel_pushBind_borrow {π : Nat → Nat} {st : MState} {s : SState} {T? : 
     obtain ⟨l₀, h₀, he⟩ := rel_live_ref K ρ φ _ s π hr' hlv
     obtain rfl := hliveC l₀ h₀
     subst he
-    exact ⟨hr'.uniq q _ _ hq hj₀, rfl⟩
+    exact ⟨huniq q _ _ hq hj₀, rfl⟩
   have hhold : s.holderOf (π l) = some (.temp (st.env.size - 1) j₀) := by
     obtain ⟨r, hr₀⟩ := SState.holderOf_of_live ((SState.live_iff s _).mpr ⟨_, hr'.holders _ _ hj₀, hj₀⟩)
     rw [hr₀, (hshS r _ (SState.holderOf_spec hr₀).2).1]
@@ -260,7 +260,7 @@ theorem rel_pushBind_borrow {π : Nat → Nat} {st : MState} {s : SState} {T? : 
         have := hψ.2 l' ((hliveX l').mpr ((hliveS l').mp hl'))
         obtain rfl := (hliveS l').mp hl'
         rw [hhtX] at this; rw [hhtS]; exact this⟩
-  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
   · -- skel
     have ht3sk : t₃.env.map (fun fr => fr.binds.map bindSkel) = s.env.map (fun fr => fr.binds.map bindSkel) := by
       rw [ht₃]; exact skel_setAt _ _ _
@@ -332,13 +332,6 @@ theorem rel_pushBind_borrow {π : Nat → Nat} {st : MState} {s : SState} {T? : 
     rw [hhtS] at this
     show (t₃.heldMem (π l)).whole ∧ t₃.heldMem (π l) ∈ₛ[K.dm.read] R.m
     rw [ht3mem]; exact this
-  · intro q₁ q₂ l' h₁ h₂
-    rw [hshX] at h₁ h₂
-    split at h₁
-    · split at h₂
-      · next e₁ e₂ => rw [e₁, e₂]
-      · cases h₂
-    · cases h₁
 
 end
 
@@ -405,9 +398,6 @@ theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hPL : Place
     (hPwk : ∀ a b, Kern a b → Pw a → Pw b)
     (hwv : ∀ (Δ' : Nat → TyS) (ρ' : Assignment), w.valsOk (Strict.ValsP { K with Δ := Δ' } ρ' φ))
     (hwa : ∀ m, w.absBelow m) (hwn : w.hasHolePrim = false)
-    (hwcong : ∀ (Δ' : Nat → TyS) (ρ' : Assignment) tl hint s,
-      runT { K with Δ := Δ' } ρ' φ tl hint w s = runT K ρ φ tl hint w s)
-    (hwhint : ∀ tl hint s, runT K ρ φ tl hint w s = runT K ρ φ tl (.plain TyM.err) w s)
     (hdrop : ∀ stB st₂ bh r T?, Pw stB → Mode stB →
       (stB.tailDecl = none ∨ stB.tailDecl = some (K.D.declOf (DecideScope.topReadings stB) w)) → DecTab K.D st₂ →
       Runs (Ochr.eval n true w none) stB bh (r, T?) st₂ →
@@ -447,7 +437,7 @@ theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hPL : Place
       pushBindShaped s₁ bB := by
     rw [scopeOf_rel hr, hdu]
   have hrB : Rel { K with Δ := Δ₁ } ρ₁ φ π₁ stB (pushBindShaped s₁ bB) :=
-    (rel_pushBind_borrow hr₁ hne₁ hnb₁ hwb x (.tRef .tNat) p du ru.2 hru2 hrul (hlabu (π₁ lb) hrul).1 ru.1
+    (rel_pushBind_borrow hr₁ hS₁.uniq hne₁ hnb₁ hwb x (.tRef .tNat) p du ru.2 hru2 hrul (hlabu (π₁ lb) hrul).1 ru.1
       (fun φ' hint' => by rw [hru1]; exact hmv _ _ _ _ _ _)).of_kern hkB
   have hpB : Pre { K with Δ := Δ₁ } ρ₁ stB :=
     ⟨hp₁.ctx.of_eq (by show stB.inds = st₁.inds; rw [← hkB.inds])
@@ -513,7 +503,7 @@ theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hPL : Place
     rw [hpos]; exact rel_noSites_at hr₂ (fun l => by rw [hbv]; exact hns l _))
   -- the reference's `let`
   have hxw' : runT K ρ φ st.curTail (.plain TyM.err) w (pushBindShaped s₁ bB) = some (rw', s₂) := by
-    rw [← hwhint _ (hintM { K with Δ := Δ₁ } ρ₁ none), ← hwcong Δ₁ ρ₁]; exact hxw
+    rw [← wcong hwa Δ₁ ρ₁]; exact hxw
   have hxl : runT K ρ φ st.curTail (hintM K ρ hint) (.letIn x u w) s = some (rw', s₂.dropLast) := by
     rw [runT_letIn _ _ x u w s hfl, hxu']
     have hllok : LetLendersOk K φ s₂ := by
@@ -573,8 +563,7 @@ theorem rel_setBorrowNum {π : Nat → Nat} {st : MState} {s : SState} {f i : Na
         have := hψ.2 l ((SState.live_setAt _ _ _ l).mpr hl)
         rwa [holderTy_setAt] at this⟩
   have hp' : Pos.bind f i ∈ allPos (Env.setAtE st.env (Pos.bind f i) (.borrow lb v')) := by rw [allPos_setAtE]; exact hp
-  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, fun p q l hp hq => by
-    rw [SState.shape_setAt'] at hp hq; exact hs.uniq p q l hp hq⟩
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
   · rw [skel_setAtE K ρ st f i (.borrow lb v'), hs.skel]
     exact (skel_setAt s _ _).symm
   · intro l' hl ho
@@ -850,10 +839,7 @@ theorem seq_core (hSq : SeqInv) (hI : InvSteps) (hc : Strict.FundCtx K) {n : Nat
       st₀.tailDecl = none → DecTab K.D st₁ → Runs (Ochr.eval n true u none) st₀ bh (v₀, T₀) st₁ → Pw st₁)
     (hPwk : ∀ a b, Kern a b → Pw a → Pw b)
     (hwv : ∀ (Δ' : Nat → TyS) (ρ' : Assignment), w.valsOk (Strict.ValsP { K with Δ := Δ' } ρ' φ))
-    (hwa : ∀ m, w.absBelow m) (hwn : w.hasHolePrim = false)
-    (hwcong : ∀ (Δ' : Nat → TyS) (ρ' : Assignment) tl hint s,
-      runT { K with Δ := Δ' } ρ' φ tl hint w s = runT K ρ φ tl hint w s)
-    (hwhint : ∀ tl hint s, runT K ρ φ tl hint w s = runT K ρ φ tl (.plain TyM.err) w s) :
+    (hwa : ∀ m, w.absBelow m) (hwn : w.hasHolePrim = false) :
     CoreSim K ρ φ (n + 1) (.seq u w) Pseq (· = true) := by
   intro st st' typed hint v T? s π hPst hty hm htn htd hcd hp hr hS hv hab hnh hfl _ hD bh h
   subst hty
@@ -890,7 +876,7 @@ theorem seq_core (hSq : SeqInv) (hI : InvSteps) (hc : Strict.FundCtx K) {n : Nat
   rw [htnW] at hOw
   obtain ⟨ρ₂, Δ₂, π₂, rw', s₂, he₂, hxw, hmw, haw, hlw, hp₂, hr₂⟩ := hOw
   have hxw' : runT K ρ φ st.curTail (.plain TyM.err) w s₁ = some (rw', s₂) := by
-    rw [← hwhint _ (hintM { K with Δ := Δ₁ } ρ₁ none), ← hwcong Δ₁ ρ₁]; exact hxw
+    rw [← wcong hwa Δ₁ ρ₁]; exact hxw
   have hxs : runT K ρ φ st.curTail (hintM K ρ hint) (.seq u w) s = some (rw', s₂) := by
     rw [runT_seq _ _ u w s hfl]
     simp only [bind, Option.bind]

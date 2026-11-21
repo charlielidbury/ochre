@@ -22,9 +22,9 @@ def _root_.Ochr.Env.popBindE (env : Env) : Env :=
 /-- **(P1) A binding pushed for a number keeps the relation**: the checker pushes `v` at the stored
 type `T`, the reference pushes the number's meaning `c` at a type of the same code, both with the
 same declared reading `d`. -/
-theorem rel_pushBind_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState}
+theorem rel_pushBind_inert {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState}
     {s : SState} (hr : Rel K ρ φ π st s) (hne : 0 < st.env.size) (h : Hint) (T : Value) {v : Value}
-    (hv : v.Num) (p : Bool) (d : DeclInfo) (R : TyS) (hR : (Value.tyS K.dm K.M K.Γ ρ T).m = R.m) (c : Sem)
+    (hv : v.Inert) (p : Bool) (d : DeclInfo) (R : TyS) (hR : (Value.tyS K.dm K.M K.Γ ρ T).m = R.m) (c : Sem)
     (hc : ∀ (φ' : Future) (hint : TyS), Value.mean K.dm K.M K.Γ ρ φ' hint v = c) :
     Rel K ρ φ π { st with env := Env.pushBindE st.env h (some T) v p d }
       (s.pushBind { ty := R, val := fun _ => c, decl := d }) := by
@@ -50,15 +50,15 @@ theorem rel_pushBind_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat 
   have hlv : ∀ l, liveLoan (Env.pushBindE st.env h (some T) v p d) l = liveLoan st.env l :=
     fun l => liveLoan_pushBindE st.env h (some T) v p d fr hfr hne l (hv.holdsBorrow l)
   have hvshape : Env.shape (Env.pushBindE st.env h (some T) v p d) (.bind (st.env.size - 1) fr.binds.size) = none := by
-    simp only [Env.shape, valAt_pushBindE_new st.env h (some T) v p d fr hfr]; cases hv <;> rfl
-  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, hr.uniq⟩
+    simp only [Env.shape, valAt_pushBindE_new st.env h (some T) v p d fr hfr]; exact hv.shape
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
   · -- skel
     rw [skel_pushBindE K ρ st h T v p d fr hfr, sskel_pushBind, hr.skel, htop, hbs, hR]
   · -- fresh
     intro l hl ho
     obtain ⟨w, hw, ha⟩ := ho
     rcases mem_values_pushBindE st.env h (some T) v p d fr hfr hne hw with rfl | hw
-    · rw [hv.anyAtom (by rfl) (fun _ => by rfl)] at ha; cases ha
+    · rw [hv.anyAtom _ rfl rfl (fun _ => rfl)] at ha; cases ha
     · exact hr.fresh l hl ⟨w, hw, ha⟩
   · -- the bindings' meanings
     intro ψ hψ q hq
@@ -131,6 +131,15 @@ theorem rel_pushBind_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat 
     rw [hhty]
     exact hr.records l ((hlive l).mp hl)
 
+/-- `rel_pushBind_inert` at a number. -/
+theorem rel_pushBind_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState}
+    {s : SState} (hr : Rel K ρ φ π st s) (hne : 0 < st.env.size) (h : Hint) (T : Value) {v : Value}
+    (hv : v.Num) (p : Bool) (d : DeclInfo) (R : TyS) (hR : (Value.tyS K.dm K.M K.Γ ρ T).m = R.m) (c : Sem)
+    (hc : ∀ (φ' : Future) (hint : TyS), Value.mean K.dm K.M K.Γ ρ φ' hint v = c) :
+    Rel K ρ φ π { st with env := Env.pushBindE st.env h (some T) v p d }
+      (s.pushBind { ty := R, val := fun _ => c, decl := d }) :=
+  rel_pushBind_inert hr hne h T hv.inert p d R hR c hc
+
 /-! ### (P2) as stated is false: `loans` does not walk a closure's recorded readings
 
 `Value.loans` skips the declared types a closure records for its captures (`.clo cs t rd`'s `rd`,
@@ -199,19 +208,6 @@ theorem rel_s0 (K : RunCtx) (ρ : Assignment) (φ : Future) : Rel K ρ φ id stv
     · exact absurd hrs (by show Env.shape stv.env (.bind 0 0) ≠ some l; simp [Env.shape, valAt, stv, frv, bv, wv])
     · rcases List.mem_singleton.mp hrp with rfl
       exact (⟨0, rfl⟩ : Sem.el0 Nat 0 ∈ₛ[K.dm.read] TyM.nat)
-  uniq := fun p q l hp hq => by
-    have hb : Env.shape stv.env (.bind 0 0) = none := rfl
-    have h1 : p ∈ allPos stv.env := mem_allPos_of_shape (l := l) hp
-    have h2 : q ∈ allPos stv.env := mem_allPos_of_shape (l := l) hq
-    rw [allPos_stv] at h1 h2
-    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at h1 h2
-    have hp' : Env.shape stv.env p = some l := hp
-    have hq' : Env.shape stv.env q = some l := hq
-    rcases h1 with rfl | rfl <;> rcases h2 with rfl | rfl
-    · rfl
-    · rw [hb] at hp'; cases hp'
-    · rw [hb] at hq'; cases hq'
-    · rfl
 
 /-- **P2's hypotheses hold and its conclusion fails**, at every run context, assignment and future. -/
 theorem rel_popBind_false (K : RunCtx) (ρ : Assignment) (φ : Future) :
@@ -280,7 +276,7 @@ theorem rel_popBind_noSites {K : RunCtx} {ρ : Assignment} {φ : Future} {π : N
     rw [he]; exact liveLoan_popTop st.env fr hfr hn hne l (by rw [hbv]; exact hnb l)
   have hst : ∀ l, Env.sitesOf (Env.popBindE st.env) l = Env.sitesOf st.env l := fun l => by
     rw [he]; exact sitesOf_popTop st.env fr hfr hn hne l (by rw [hbv]; exact hns l)
-  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
   · -- skel
     show (SM' K ρ { st with env := st.env.modify (st.env.size - 1) popTop }).env.map _ = _
     rw [skel_popTop K ρ st fr hfr, sskel_dropLast, hr.skel, htop]
@@ -359,9 +355,6 @@ theorem rel_popBind_noSites {K : RunCtx} {ρ : Assignment} {φ : Future} {π : N
     intro l hl
     rw [hhty]
     exact hr.records l ((hlive l).mp hl)
-  · intro p q l hp hq
-    rw [hshe] at hp hq
-    exact hr.uniq p q l hp hq
 
 /-- **(P2, with WF15's clause) The top binding popped, where it holds no borrow and no loan, keeps
 the relation**, when no closure in its value records a declared type holding a loan or a mark (the

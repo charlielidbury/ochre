@@ -874,7 +874,7 @@ theorem logEffect_rel (st st₁ : MState) (s : SState) (π : Nat → Nat) (q : P
   obtain ⟨ta, mem, wf⟩ := hg
   have hrefd : ∀ τ, ({ st with placeLog := X } : MState).Refd τ → st.Refd τ :=
     fun τ h => refd_of_same (st := st) (st' := { st with placeLog := X }) rfl rfl rfl rfl rfl h
-  exact ⟨⟨hs.1, hs.2, hs.3, hs.4, hs.5, hs.6, hs.7, hs.8⟩,
+  exact ⟨⟨hs.1, hs.2, hs.3, hs.4, hs.5, hs.6, hs.7⟩,
     ⟨⟨fun τ hr hlt => ta.mem τ (hrefd τ hr) hlt, ta.neutral, ta.eta, ta.refs⟩,
      ⟨mem.pos, fun τ hr hlt => mem.absTy τ (hrefd τ hr) hlt, mem.goal⟩,
      ⟨wf.1, wf.2.1, wf.2.2.1, wf.2.2.2.1, ⟨fun τ hr => wf.2.2.2.2.1.1 τ (hrefd τ hr), wf.2.2.2.2.1.2⟩,

@@ -115,6 +115,11 @@ def EvalSim (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (P
     ∀ bh, Runs (Ochr.eval n typed t hint) st bh (v, T?) st' →
     Out K ρ φ π st st' s (runT K ρ φ st.tailNext (hintM K ρ hint) t) v T?
 
+/-- A step for every run gives the step for the typed ones. -/
+theorem EvalSim.restrict {K : RunCtx} {ρ : Assignment} {φ : Future} {n : Nat} {t : Term} {P : MState → Prop}
+    {TY : Bool → Prop} (h : EvalSim K ρ φ n t P) : EvalSim K ρ φ n t P TY :=
+  fun st st' typed hint v T? s π hP _ => h st st' typed hint v T? s π hP trivial
+
 section
 variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 
@@ -156,7 +161,7 @@ theorem _root_.Ochr.Meaning.Steps.Rel.of_env_le {K : RunCtx} {ρ : Assignment} {
   have e1 : SM' K ρ st' = { SM' K ρ st with nextLoan := st'.nextLoan } := by simp only [SM', MState.sstate, he]
   have e2 : MState.mean K.dm K.M K.Γ ρ st' = MState.mean K.dm K.M K.Γ ρ st := by simp only [MState.mean, he]
   have e3 : ∀ l, st'.Occurs l ↔ st.Occurs l := fun l => by unfold MState.Occurs; rw [he]
-  refine ⟨?_, ?_, ?_, ?_, ?_, hr.holders, hr.records, hr.uniq⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, hr.holders, hr.records⟩
   · rw [e1]; exact hr.skel
   · intro l _ ho
     have ho' := (e3 l).mp ho
@@ -311,19 +316,19 @@ with none, the strict run at `Nat`), and its value is a number. The strict point
 (the step for `u` gets `Pu` at the state it starts from, which has the entry's kernel); the
 classification of `u` is asked at the entry's readings only, where `P` holds. -/
 theorem succ_core (hS : SuccInv) (hI : InvSteps) {n : Nat} {u : Term} {P Pu : MState → Prop}
-    (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → P a → Pu b)
+    (hu : EvalSim K ρ φ n u Pu (· = true)) (hPu : ∀ a b, Kern a b → P a → Pu b)
     (hflu : ∀ st, P st → K.D.flags (DecideScope.topReadings st) u = (false, false))
     (hhint : ∀ s : SState, runT K ρ φ false (.plain TyM.nat) u s = runT K ρ φ false (.plain TyM.err) u s)
-    (hnum : ∀ typed st₀ st₁ bh v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
-      Runs (Ochr.eval n typed u none) st₀ bh (v₀, T₀) st₁ → v₀.Num ∧ ∀ T, T₀ = some T → (T == .tNat) = true) :
+    (hnum : ∀ st₀ st₁ bh v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
+      Runs (Ochr.eval n true u none) st₀ bh (v₀, T₀) st₁ → v₀.Num ∧ ∀ T, T₀ = some T → (T == .tNat) = true) :
     CoreSim K ρ φ (n + 1) (.succ u) P (· = true) := by
   intro st st' typed hint v T? s π hPst hty hm htn htd _ hp hr hSg hv hab hnh hfl hok hD bh h
   subst hty
   obtain ⟨st₀, st₁, v₀, T₀, bh₁, hk₀, hm₀, htn₀, htd₀, hu₀, rfl, rfl, hq, -, hDb, hty⟩ :=
     hS n true u hint st st' bh v T? hm htn htd h
   obtain ⟨st₂, bh₂, hx₂, hk₂⟩ := hty rfl
-  obtain ⟨hv₀, hTy⟩ := hnum true st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ htd₀ (hDb K.D hD) hu₀
-  have hO := hu st₀ st₁ true none v₀ T₀ s π (hPu st st₀ hk₀ hPst) trivial hm₀ (.inl htd₀) (hp.of_kern hk₀)
+  obtain ⟨hv₀, hTy⟩ := hnum st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ htd₀ (hDb K.D hD) hu₀
+  have hO := hu st₀ st₁ true none v₀ T₀ s π (hPu st st₀ hk₀ hPst) rfl hm₀ (.inl htd₀) (hp.of_kern hk₀)
     (hr.of_kern hk₀) hSg hv
     (by rw [← hk₀.absTy]; exact hab) hnh (by rw [scopeOf_rel hr]; exact hflu st hPst)
     (fun ht => by

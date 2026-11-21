@@ -254,9 +254,9 @@ theorem sim_bodyC (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hV : VarNumInv) 
   have hsz : EvalSim K ρ φ (g + 6) (.succ .zero) Top (· = true) :=
     eval_of_core hE (fun a b h ha => ha.kern h) (fun _ e => by cases e) (fun _ _ _ e => by cases e)
       (fun st hst => by rw [hst.1, declOf_SZ hd]; exact Aux.duC_ok)
-      (succ_core hS hI hz (fun a b h ha => ha.kern h) (fun st hst => by rw [hst.1]; exact flags_Z hd)
+      (succ_core hS hI hz.restrict (fun a b h ha => ha.kern h) (fun st hst => by rw [hst.1]; exact flags_Z hd)
         (fun s => by rw [runT_zero, runT_zero])
-        (fun typed st₀ st₁ bh v₀ T₀ hT₀ hm₀ htd₀ hD₁ h => by
+        (fun st₀ st₁ bh v₀ T₀ hT₀ hm₀ htd₀ hD₁ h => by
           obtain ⟨rfl, rfl, -, -⟩ := run_zero hE hZ hm₀ hD₁ (by rw [hT₀.1]; exact flags_Z hd)
             (by rw [hT₀.1]; exact declOf_Z_ok hd) htd₀ h
           exact ⟨.zero, fun T hT => by cases hT; rfl⟩))
@@ -281,7 +281,6 @@ theorem sim_bodyC (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hV : VarNumInv) 
           ((topReadings_kern hk₀).trans (topReadings_of_erase he)).symm, hm₁⟩)
       (fun st st₀ st₁ bh v₀ p hst hk hm₀ htd₀ hD₁ h => (atX_push hE hZ hS hd _ hst hk hm₀ htd₀ hD₁ h).2)
       (fun a b h ha => ha.kern h) (fun _ _ => trivial) (fun m σ hσ => by simp [Term.anyAtom] at hσ) rfl
-      (fun _ _ _ _ _ => rfl) (fun _ _ _ => rfl)
       (fun stB st₂ bh r T? hB hmB htdB hD₂ h => by
         obtain ⟨fr, b, hfr, hb, hn, ht⟩ := hB.2
         exact (run_x hE hV hmB hD₂ hfr hb hn ht (by rw [hB.1]; exact flags_x hd)

@@ -52,32 +52,38 @@ theorem popped_eq {st₂ st₃ st' : MState} {r v : Value} {T? : Option Value} (
 
 /-! ## The assignment's facts across the push and the pop -/
 
-theorem asg_pushBind_num {K : RunCtx} {ρ : Assignment} {st : MState} {v₀ : Value} (hv₀ : v₀.Num)
-    (ha : Asg K ρ (st.withTempT v₀ (some .tNat)).norm) (hne : 0 < st.env.size) (x : Hint) (p : Bool)
-    (d : DeclInfo) : Asg K ρ ({ st with env := Env.pushBindE st.env x (some .tNat) v₀ p d } : MState).norm := by
+theorem asg_pushBind_inert {K : RunCtx} {ρ : Assignment} {st : MState} {v₀ : Value} (hv₀ : v₀.Inert) (Tb : Value)
+    (hTb : ∀ σ, Value.hasAbs σ Tb = false)
+    (ha : Asg K ρ (st.withTempT v₀ (some Tb)).norm) (hne : 0 < st.env.size) (x : Hint) (p : Bool)
+    (d : DeclInfo) : Asg K ρ ({ st with env := Env.pushBindE st.env x (some Tb) v₀ p d } : MState).norm := by
   rcases hfr : st.env[st.env.size - 1]? with _ | fr
   · rw [Array.getElem?_eq_none_iff] at hfr; omega
-  refine ha.of_refd rfl rfl rfl rfl rfl fun σ hσ => refd_mono_withTempT v₀ (some .tNat) σ ?_
-  refine refd_sub (st := st) (st' := { st with env := Env.pushBindE st.env x (some .tNat) v₀ p d })
+  refine ha.of_refd rfl rfl rfl rfl rfl fun σ hσ => refd_mono_withTempT v₀ (some Tb) σ ?_
+  refine refd_sub (st := st) (st' := { st with env := Env.pushBindE st.env x (some Tb) v₀ p d })
     rfl rfl rfl rfl ?_ ?_ ?_ σ hσ
   · intro w hw σ' hσ'
-    rcases mem_values_pushBindE st.env x (some .tNat) v₀ p d fr hfr hne hw with rfl | hw'
+    rcases mem_values_pushBindE st.env x (some Tb) v₀ p d fr hfr hne hw with rfl | hw'
     · rw [hv₀.hasAbs] at hσ'; cases hσ'
     · exact ⟨w, hw', hσ'⟩
   · intro f i b T σ' hb hT hσ'
     by_cases e : Pos.bind f i = .bind (st.env.size - 1) fr.binds.size
     · cases e
-      rw [bind_pushBindE_new st.env x (some .tNat) v₀ p d fr hfr] at hb
-      cases hb; cases hT; cases hσ'
-    · rw [bind_pushBindE_ne st.env x (some .tNat) v₀ p d fr hfr f i e] at hb
+      rw [bind_pushBindE_new st.env x (some Tb) v₀ p d fr hfr] at hb
+      cases hb; cases hT; rw [hTb] at hσ'; cases hσ'
+    · rw [bind_pushBindE_ne st.env x (some Tb) v₀ p d fr hfr f i e] at hb
       exact .ty f i b T (by show st.env.erase[f]?.bind _ = _; rw [lookup_erase]; exact hb) hT hσ'
   · intro f i b P ws j σ' hb hl hσ'
     by_cases e : Pos.bind f i = .bind (st.env.size - 1) fr.binds.size
     · cases e
-      rw [bind_pushBindE_new st.env x (some .tNat) v₀ p d fr hfr] at hb
+      rw [bind_pushBindE_new st.env x (some Tb) v₀ p d fr hfr] at hb
       cases hb; cases hl
-    · rw [bind_pushBindE_ne st.env x (some .tNat) v₀ p d fr hfr f i e] at hb
+    · rw [bind_pushBindE_ne st.env x (some Tb) v₀ p d fr hfr f i e] at hb
       exact .lazyTy f i b P ws j (by show st.env.erase[f]?.bind _ = _; rw [lookup_erase]; exact hb) hl hσ'
+
+theorem asg_pushBind_num {K : RunCtx} {ρ : Assignment} {st : MState} {v₀ : Value} (hv₀ : v₀.Num)
+    (ha : Asg K ρ (st.withTempT v₀ (some .tNat)).norm) (hne : 0 < st.env.size) (x : Hint) (p : Bool)
+    (d : DeclInfo) : Asg K ρ ({ st with env := Env.pushBindE st.env x (some .tNat) v₀ p d } : MState).norm :=
+  asg_pushBind_inert hv₀.inert .tNat (fun _ => rfl) ha hne x p d
 
 theorem asg_popBind {K : RunCtx} {ρ : Assignment} {st : MState} (ha : Asg K ρ st.norm) (fr : Frame)
     (hfr : st.env[st.env.size - 1]? = some fr) (hn : 0 < fr.binds.size) :
@@ -170,6 +176,12 @@ theorem runT_letIn (tl : Bool) (hint : TyS) (x : Hint) (u w : Term) (s : SState)
       else none) := by
   rw [runT]; show SM.erasedIf (K.D.flags (scopeOf s) _) _ s = _; rw [hfl]; rfl
 
+/-- **A term with no unknowns runs alike at every `Δ` and assignment** (`runT_congrA`): the tail of a
+`let` or a sequence runs after the right-hand side made unknowns, at the extended context. -/
+theorem wcong {w : Term} (hwa : ∀ m, w.absBelow m) (Δ' : Nat → TyS) (ρ' : Assignment) {tl : Bool} {hint : TyS}
+    {s : SState} : runT { K with Δ := Δ' } ρ' φ tl hint w s = runT K ρ φ tl hint w s :=
+  (runT_congrA K Δ' ρ ρ' φ tl w hint s fun σ h => absurd (hwa 0 σ h) (Nat.not_lt_zero _)).symm
+
 /-- **A typed `let h = u; w` at `evalCore`**, for a right-hand side whose value is a number at `Nat`
 and a binding that holds no borrow and has no site when it is dropped. From the steps for `u` (at
 the starting context) and for `w` (at every extension: it runs after `u` made unknowns), the facts
@@ -192,9 +204,6 @@ theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hPL : PlaceL
     (hPwk : ∀ a b, Kern a b → Pw a → Pw b)
     (hwv : ∀ (Δ' : Nat → TyS) (ρ' : Assignment), w.valsOk (Strict.ValsP { K with Δ := Δ' } ρ' φ))
     (hwa : ∀ m, w.absBelow m) (hwn : w.hasHolePrim = false)
-    (hwcong : ∀ (Δ' : Nat → TyS) (ρ' : Assignment) tl hint s,
-      runT { K with Δ := Δ' } ρ' φ tl hint w s = runT K ρ φ tl hint w s)
-    (hwhint : ∀ tl hint s, runT K ρ φ tl hint w s = runT K ρ φ tl (.plain TyM.err) w s)
     (hdrop : ∀ stB st₂ bh r T?, Pw stB → Mode stB →
       (stB.tailDecl = none ∨ stB.tailDecl = some (K.D.declOf (DecideScope.topReadings stB) w)) → DecTab K.D st₂ →
       Runs (Ochr.eval n true w none) stB bh (r, T?) st₂ →
@@ -298,7 +307,7 @@ theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hPL : PlaceL
     rw [hpos]; exact rel_noSites_at hr₂ (fun l => by rw [hbv]; exact hns l _))
   -- the reference's `let`
   have hxw' : runT K ρ φ st.curTail (.plain TyM.err) w (s₁.pushBind bB) = some (rw', s₂) := by
-    rw [← hwhint _ (hintM { K with Δ := Δ₁ } ρ₁ none), ← hwcong Δ₁ ρ₁]; exact hxw
+    rw [← wcong hwa Δ₁ ρ₁]; exact hxw
   have hxl : runT K ρ φ st.curTail (hintM K ρ hint) (.letIn x u w) s = some (rw', s₂.dropLast) := by
     rw [runT_letIn _ _ x u w s hfl, hxu']
     have hllok : LetLendersOk K φ s₂ := by
