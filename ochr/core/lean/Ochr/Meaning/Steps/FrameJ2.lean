@@ -146,8 +146,9 @@ theorem callFrame_J2 (K : RunCtx) (ρ : Assignment) (φ : Future) (s₂ : SState
   subst hbs
   rfl
 
-/-- **The instance of the frame property `J2`'s step needs** (a model fact, assumed; the model lane's to
-prove; docs/31 D128). At every context with `FundCtx` and every caller state `s₂` (here `J2`'s frame
+/-- **The instance of the frame property `J2`'s step needs** (a model fact; docs/31 D128; PROVED by
+`FrameFrag.frameJ2_holds`, docs/31 D129, with none of the hypotheses `FundCtx`, `FrameStart`, `SGood`
+used). At every context with `FundCtx` and every caller state `s₂` (here `J2`'s frame
 `{x ↦ moved : Nat}`, but any): the run of `I`'s body `S(#0)` in place, from `s₂` with the callee's frame
 pushed, and the run in the closure's own state, at any tail flags and hints, agree. Its hypotheses,
 spelled out:

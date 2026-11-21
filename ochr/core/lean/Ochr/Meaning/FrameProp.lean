@@ -161,36 +161,21 @@ def FrameAgree (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) : Option (Res 
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- **The frame property with a renaming of labels** (docs/31 D62, D70; open, the one simulation the
-call steps rest on). From related states a term runs to the same result and related states, or
-fails on both sides, when it holds no `Id` or the frame has no parameter (the `Id` clause is
-`run_frame_obs`, under its hypothesis). Proof: induction on the term, clause by clause. What reads a
-state reads the top frame (`resolve`, `scopeOf`, `movedPlaces`), the holders and sites at the top
-frame (an [Access] at a top position reaches no caller borrow: none is lent there, `FrameStart`), or
-the records of the frame's labels (the read's typed future: a caller's label is read by no top
-position); what writes the caller's frames is [End] of a frame label (`semEnd`: in place it reads the
-holder where the closure updates the cell, both `lowerVal`'s substitution; the extra update at a
-non-parameter label is invisible, the caller's frames reading below the call's counter) and a call's
-fixing of its consumed arguments (`callOf`'s `mapVals`, the same); a label issued is renamed by
-`σ`'s fresh clause; a closure formed in the body means its body's runs from the extended states,
-related again (the property on the subterm).
-
-RESTATED (model3, 2026-11-21, docs/31 D113): the in-place state is good (`hg`), with the context and
-the term's embedded values as the fundamental lemma asks (`hc`, `hv`), so that `Strict.fund_all` carries
-it through every sub-run. As first stated it was false (`Strict/FrameCE.run_frame_false`): the strict
-test after a write at a field path reads every position of the state, so in place it reads the
-caller's frames, of which `FrameRel` says nothing; a caller binding holding `err` made the run in place
-fail where the closure's ran. Also open about `FrameRel` (not restated here): its `held` clause asks the
-parameters' records (`heldMem`) to agree, which fails at the call whenever a borrow argument was written
-through before the call (in place the record is the content when the borrow was made, in the closure the
-argument); nothing reads a parameter's record, so the clause should ask `heldMem` off the parameters
-only, and `heldTy` at the parameters too (the strict ends read it). And the call's own frames differ at
-`self` (in place the callee, in the closure the stage below), which the knot owes, not this lemma. -/
-theorem run_frame (hc : Strict.FundCtx K) (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) (hs₀ : FrameStart s₀ ks)
-    (tl : Bool) (hint : TyS) (t : Term) (hv : t.valsOk (Strict.ValsP K ρ φ)) (hid : t.idFree = true ∨ ks = [])
-    (s s' : SState) (h : FrameRel σ s₀ ks s s') (hg : Strict.SGood K.dm K.Γ φ s) :
-    FrameAgree σ s₀ ks (runT K ρ φ tl hint t s) (runT K ρ φ tl hint t s') := by
-  sorry
+/- **The frame property with a renaming of labels, as D113 restated it, is FALSE** (model6, docs/31 D129;
+`Strict/FrameLocCE.run_frame_loc_false`) and was deleted here: `FrameRel` compares two values as functions
+of the future through the renaming, but the run reads a value at the state's typed future, which gives a
+label no position holds the run's future `φ` itself: in the closure at `l`, in place at `σ l`. A
+callee-frame value reading such a label (allowed by `FrameRel`, `FrameStart` and `SGood`) is read
+differently on the two sides. No call makes such a state; the relation needs a locality clause (the
+closure's positions read only its live labels). The restated property, over `FrameRelS` (docs/31 D127)
+with that clause, is `Steps/FrameFrag.RunFrameS` (a named proposition); proved on the label-free fragment
+(`Steps/FrameFrag.run_frameS_lf`), which gives `FrameJ2`. Its proof plan, clause by clause, is as first
+written: what reads a state reads the top frame, the holders and sites at the top frame, or the records of
+the frame's labels; what writes the caller's frames is [End] of a frame label and a call's fixing of its
+consumed arguments; a label issued is renamed by `σ`'s fresh clause; a closure formed in the body means
+its body's runs from the extended states, related again. Also open about `FrameRel` (D113): its `held`
+clause asks the parameters' records (`heldMem`) to agree, which fails at the call whenever a borrow
+argument was written through before the call. -/
 
 /-- The caller's frames tell apart any two lists of whole members of the parameters' types (`Ts`): what
 an `Id` observation in place needs (a place lent to a parameter reads its final content directly, or

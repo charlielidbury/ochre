@@ -165,6 +165,7 @@ import Ochr.Meaning.Steps.CallGuards
 import Ochr.Meaning.Steps.ColumnJ
 import Ochr.Meaning.Steps.CallBody
 import Ochr.Meaning.Steps.FrameJ2
+import Ochr.Meaning.Steps.FrameFrag
 import Ochr.Meaning.Regress.EvalMemRuns
 import Ochr.Meaning.Regress.OpenFalse
 import Ochr.Meaning.Regress.Suspects
@@ -204,6 +205,7 @@ import Ochr.Meaning.Strict.WitnessHint
 import Ochr.Meaning.Strict.WitnessFix
 import Ochr.Meaning.Strict.OpenFutureCE
 import Ochr.Meaning.Strict.FrameCE
+import Ochr.Meaning.Strict.FrameLocCE
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
