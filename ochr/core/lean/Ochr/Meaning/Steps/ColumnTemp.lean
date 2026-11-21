@@ -349,4 +349,110 @@ theorem asg_withTempT_num {K : RunCtx} {ρ : Assignment} {st : MState} (h : Asg 
     (hv : v.Num) (T? : Option Value) : Asg K ρ (st.withTempT v T?).norm :=
   h.of_refd rfl rfl rfl rfl rfl (refd_withTempT_num hv T?)
 
+/-- **Removing a number in flight keeps the relation** (the converse of `rel_withTemp_num`). -/
+theorem rel_of_withTemp_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
+    {v : Value} (hv : v.Num) (hr : Rel K ρ φ π (st.withTemp v) s) : Rel K ρ φ π st s := by
+  rcases hfr : st.env[st.env.size - 1]? with _ | fr
+  · have he : (st.withTemp v).env = st.env := by
+      simp only [MState.withTemp]
+      apply Array.ext_getElem?
+      intro f
+      rw [Array.getElem?_modify]
+      split
+      · next h => subst h; rw [hfr]; rfl
+      · rfl
+    exact hr.of_env he.symm rfl
+  have hne : 0 < st.env.size := by
+    rcases Nat.eq_zero_or_pos st.env.size with h | h
+    · have : st.env[st.env.size - 1]? = none := Array.getElem?_eq_none (by omega)
+      rw [this] at hfr; cases hfr
+    · exact h
+  have henv : (st.withTemp v).env = Env.pushTempE st.env v := rfl
+  have hold : ∀ f i, Pos.temp f i ∈ allPos st.env → Pos.temp f i ≠ .temp (st.env.size - 1) fr.temps.size := by
+    intro f i hq e; cases e
+    obtain ⟨fr', hf', hi⟩ := mem_allPos_temp st.env _ _ hq
+    rw [hfr] at hf'; cases hf'
+    exact absurd hi (Nat.lt_irrefl _)
+  have hsk := hr.skel
+  have hsim := hr.sim
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, hr.holders, hr.records⟩
+  · have : (SM' K ρ { st with env := Env.pushTempE st.env v }).env.map (fun fr => fr.binds.map bindSkel) = _ := hsk
+    rw [skel_pushTempE] at this; exact this
+  · intro l hl ho
+    apply hr.fresh l hl
+    obtain ⟨w, hw, ha⟩ := ho
+    exact ⟨w, by rw [henv, values_pushTempE st.env v fr hfr hne]; exact List.mem_append_left _ hw, ha⟩
+  · intro ψ hψ p hp
+    cases p with
+    | temp => exact absurd trivial hp
+    | bind f i =>
+      have := hsim.1 ψ hψ (.bind f i) hp
+      show Env.mean K.dm K.M K.Γ ρ _ st.env (.bind f i) = _
+      rw [← this]
+      show _ = Env.mean K.dm K.M K.Γ ρ _ (Env.pushTempE st.env v) (.bind f i)
+      rw [mean_pushTempE_other K.dm K.M K.Γ ρ st.env v fr hfr _ _ (by intro e; cases e)]
+  · intro p l hp h
+    cases p with
+    | temp => exact absurd trivial hp
+    | bind f i =>
+      apply hsim.2.1 _ l hp
+      show Env.shape (Env.pushTempE st.env v) _ = _
+      rw [shape_pushTempE_bind]; exact h
+  · intro p l' hp h
+    cases p with
+    | temp => exact absurd trivial hp
+    | bind f i =>
+      obtain ⟨l, h1, h2⟩ := hsim.2.2.1 _ l' hp h
+      refine ⟨l, ?_, h2⟩
+      have : Env.shape (Env.pushTempE st.env v) (.bind f i) = some l := h1
+      rw [shape_pushTempE_bind] at this; exact this
+  · intro f i l h
+    have hq := mem_allPos_of_shape h
+    have e := hold f i hq
+    have h' : Env.shape (Env.pushTempE st.env v) (.temp f i) = some l := by
+      simp only [Env.shape, valAt_pushTempE_old st.env v fr hfr f i e]; exact h
+    obtain ⟨j, hj, hjv⟩ := hsim.2.2.2.1 f i l h'
+    refine ⟨j, hj, fun ψ hψ => ?_⟩
+    rw [← hjv ψ hψ]
+    show Env.mean K.dm K.M K.Γ ρ _ st.env (.temp f i) = Env.mean K.dm K.M K.Γ ρ _ (Env.pushTempE st.env v) (.temp f i)
+    rw [mean_pushTempE_other K.dm K.M K.Γ ρ st.env v fr hfr _ _ e]
+  · intro f j l' h
+    obtain ⟨i, l, h1, h2⟩ := hsim.2.2.2.2 f j l' h
+    refine ⟨i, l, ?_, h2⟩
+    have h1' : Env.shape (Env.pushTempE st.env v) (.temp f i) = some l := h1
+    by_cases e : Pos.temp f i = .temp (st.env.size - 1) fr.temps.size
+    · cases e
+      simp only [Env.shape, valAt_pushTempE_new st.env v fr hfr] at h1'
+      cases hv <;> cases h1'
+    · simp only [Env.shape, valAt_pushTempE_old st.env v fr hfr f i e] at h1'
+      exact h1'
+  · intro l l' hl hl' hπ
+    apply hr.inj l l'
+    · show liveLoan (Env.pushTempE st.env v) l = true
+      simp only [liveLoan, findBorrow_pushTempE st.env v fr hfr hne _ (hv.holdsBorrow _)]; exact hl
+    · show liveLoan (Env.pushTempE st.env v) l' = true
+      simp only [liveLoan, findBorrow_pushTempE st.env v fr hfr hne _ (hv.holdsBorrow _)]; exact hl'
+    · exact hπ
+  · intro l hl x
+    have hl' : liveLoan (Env.pushTempE st.env v) l = true := by
+      simp only [liveLoan, findBorrow_pushTempE st.env v fr hfr hne _ (hv.holdsBorrow _)]; exact hl
+    have := hr.sites l hl' x
+    rw [show Env.sitesOf (st.withTemp v).env l = Env.sitesOf st.env l from sitesOf_pushTempE st.env v fr hfr hne hv l] at this
+    exact this
+
+theorem rel_of_withTempT_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
+    {v : Value} (hv : v.Num) {T? : Option Value} (hr : Rel K ρ φ π (st.withTempT v T?) s) : Rel K ρ φ π st s :=
+  rel_of_withTemp_num hv (Rel.of_kern (kern_withTemp st v T?).symm hr)
+
+/-- A number means a number, at every context, assignment, future and hint. -/
+theorem _root_.Ochr.Value.Num.mean {v : Value} (hv : v.Num) :
+    ∃ m : Nat, ∀ (K : RunCtx) (ρ : Assignment) (φ : Future) (hint : TyS), meanV K ρ φ hint v = .el0 Nat m := by
+  induction hv with
+  | zero => exact ⟨0, fun _ _ _ _ => rfl⟩
+  | succ _ ih =>
+    obtain ⟨m, hm⟩ := ih
+    refine ⟨m + 1, fun K ρ φ hint => ?_⟩
+    show (meanV K ρ φ (.plain TyM.nat) _).succ = _
+    rw [hm, Sem.succ, Sem.asNat_el0]
+
 end Ochr.Meaning.Steps.Form

@@ -59,12 +59,15 @@ structure CtxS (K : RunCtx) (st : MState) : Prop where
   globals : GlobalsOk K st
 
 /-- The checker's syntactic invariant: the clauses of well-formedness (part (c)) that read no meaning
-(all but (WF7) and (WF9), which read types' meanings and join `Asg` when a step needs them), and the
-checker's typing of places. Read off the checker and swept; its preservation is a fact about the
+(all but (WF7) and (WF9), which read types' meanings and join `Asg` when a step needs them), the
+checker's typing of places, and the label counter above every label that occurs (borrows included;
+(WF6) bounds the loans: a step whose private computation advances the counter keeps the relation by
+it). Read off the checker and swept; its preservation is a fact about the
 checker alone, given the decisions (`D`) and the declarations (`Γ`), which no extension changes. -/
 def Inv (D : Decisions) (Γ : List IndDecl) (st : MState) : Prop :=
   WF1 st.env ∧ WF2 st.env ∧ WF3 st.env ∧ WF4 st.env ∧ WF6 st ∧ WF8 st ∧ WF10 Γ st ∧ WF11 st ∧
-    WF12 st.env ∧ WF14 st.env ∧ WF15 st.env ∧ WF16 Γ st ∧ ShapeFacts D Γ st
+    WF12 st.env ∧ WF14 st.env ∧ WF15 st.env ∧ WF16 Γ st ∧ ShapeFacts D Γ st ∧
+    (∀ l, st.Occurs l → l < st.nextLoan)
 
 /-- The meaning-level facts about the unknowns of the checker's state: the assignment is typed and on
 the path condition, the unknowns' types and the goal have levels, and `Δ` is the state's. -/

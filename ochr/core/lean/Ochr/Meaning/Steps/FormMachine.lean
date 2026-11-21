@@ -62,4 +62,33 @@ def InvCore : Prop :=
     Inv D Γ st.norm → DecTab D st' → Runs (Ochr.evalCore n typed t hint) st bh (v, T?) st' →
     Inv D Γ (st'.withTempT v T?).norm
 
+/-- **A quiet step**: what a private computation leaves (a comparison, main's D103: it keeps nothing
+but the counters of fresh names and the types of the unknowns it made, which nothing names): the
+kernel but the counters and the new tail of Δ. -/
+structure Quiet (st st' : MState) : Prop where
+  env : st.env.erase = st'.env.erase
+  globals : st.globals = st'.globals
+  inds : st.inds = st'.inds
+  refs : st.refs = st'.refs
+  etaRefs : st.etaRefs = st'.etaRefs
+  goal : st.goal = st'.goal
+  neutrals : st.neutrals = st'.neutrals
+  liveScope : st.liveScope = st'.liveScope
+  nextLoan : st.nextLoan ≤ st'.nextLoan
+  absSize : st.absTy.size ≤ st'.absTy.size
+  absTy : ∀ σ, σ < st.absTy.size → st'.absTy[σ]? = st.absTy[σ]?
+
+/-- **`evalCore` of `S(u)`**: `u` evaluated with no hint from a state with the kernel and mode it was
+entered with and the one-shot flag clear; the value `S v₀` at `Nat`; in a typed run, `u`'s type
+checked against `Nat` (`expectTy`), which is quiet; in an untyped one, nothing after. -/
+def SuccInv : Prop :=
+  ∀ (n : Nat) (typed : Bool) (u : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value)
+    (T? : Option Value),
+    Mode st → Runs (Ochr.evalCore (n + 1) typed (.succ u) hint) st bh (v, T?) st' →
+    ∃ (st₀ st₁ : MState) (v₀ : Value) (T₀ : Option Value) (bh₁ : Nat), Kern st st₀ ∧ Mode st₀ ∧
+      st₀.tailNext = false ∧ Runs (Ochr.eval n typed u none) st₀ bh₁ (v₀, T₀) st₁ ∧ v = .succ v₀ ∧
+      T? = some .tNat ∧ Quiet st₁ st' ∧ (∀ D, DecTab D st' → DecTab D st₁) ∧
+      (typed = true → ∃ (T : Value) (st₂ : MState) (bh₂ : Nat), T₀ = some T ∧
+        Runs (Ochr.expectTy n "the argument of S" (some T) .tNat) st₁ bh₂ () st₂ ∧ Kern st₂ st')
+
 end Ochr.Meaning.Steps.Form
