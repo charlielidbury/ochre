@@ -238,7 +238,7 @@ caller's holders and lent sites are its own positions. -/
 theorem frameRelS_start (R : DataRead) (φ : Future) (s₂ : SState) (f : Sem) (a : Nat)
     (hf : f ∈ₛ[R] piTyAt R 1 psI outI)
     (hsh : ∀ p : Pos, p.frameOf = s₂.env.length → s₂.shape p = none)
-    (hlent : ∀ l (x : Site), x ∈ s₂.lent l → x.pos.frameOf < s₂.env.length) :
+    (hlent : ∀ l (x : Site), (∃ p, s₂.shape p = some l) → x ∈ s₂.lent l → x.pos.frameOf < s₂.env.length) :
     FrameRelS R (fun l => s₂.nextLoan + l) (inPlaceJ2 R s₂ f a) [] 0 (inPlaceJ2 R s₂ f a) (closureJ2 R φ a) := by
   let bIn : SBinding := { ty := .plain (piTyAt R 1 psI outI), val := fun _ => f, decl := .pi .other }
   let bCl : SBinding := { ty := .plain (selfTy R), val := fun _ => selfSem R φ, decl := .pi .other }
@@ -272,11 +272,14 @@ theorem frameRelS_start (R : DataRead) (φ : Future) (s₂ : SState) (f : Sem) (
   · intro p hp; rw [hclsh, hsh']; exact hsh p (by rw [hp, htop])
   · intro q l hq; rw [hclsh] at hq; cases hq
   · intro l hl; exact absurd hl (hlive l)
-  · intro l x hx
+  · intro l x hx hh
     rw [hcll, hlt']
     simp only [List.not_mem_nil, iff_false]
-    intro hm; have := hlent _ x hm; rw [hx, htop] at this; omega
-  · intro m x hx hm; rw [hlt'] at hm; have := hlent _ x hm; rw [hx, htop] at this; omega
+    obtain ⟨p, hp⟩ := hh
+    intro hm; have := hlent _ x ⟨p, by rw [← hsh']; exact hp⟩ hm; rw [hx, htop] at this; omega
+  · intro m x hx hh hm
+    obtain ⟨p, hp⟩ := hh
+    rw [hlt'] at hm; have := hlent _ x ⟨p, by rw [← hsh']; exact hp⟩ hm; rw [hx, htop] at this; omega
   · intro l x hx; rw [hcll] at hx; cases hx
 
 
