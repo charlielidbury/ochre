@@ -293,10 +293,10 @@ theorem dropOne_exists (fuel : Nat) (ih : StepsIHBelow fuel)
       rcases pos with ⟨f, i⟩ | ⟨f, i⟩
       · simp [IsTemp]
       · unfold ckVarPos at hck; split at hck <;> cases hck
-    rcases hn with hn | hn
+    rcases hn with hn | ⟨hn, -⟩
     rotate_left
-    · -- `⋆` at a place at the join's grain: a copy ((C⋆), true since main's D100), which the join
-      -- does not drop
+    · -- `⋆` at a place at the join's grain (under a `⋆` ancestor, main's D102): a copy ((C⋆), true
+      -- since main's D100), which the join does not drop
       exfalso
       have h := hctx.shapes.proofCopy q (by rw [← rel_scopeOf K ρ φ hs]; exact hgrain)
         (by unfold ckContent; simp [hck, hn])

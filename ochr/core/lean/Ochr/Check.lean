@@ -183,81 +183,79 @@ def Term.mentionsTypeArms (n : String) : List (Hint × Term) → Bool
 termination_by structural ts => ts
 end
 
+/-- K4's nesting condition, as a table: `nest m j` says whether parameter `j` of the inductive
+`m` is *nestable* (D107). Read from the declarations (`IndDecl.nestable`, stored when each was
+declared) and, for the declaration being checked, from the set computed from its own fields
+(`nestableSet`); a name with no entry has no nestable parameter. -/
+abbrev NestTable := String → Nat → Bool
+
 mutual
-/-- `paramNestable` with fuel: each step, into a field type, an argument or another
-declaration, spends one unit, and running out is exhaustion (`exhausted`, the checker does not
-know), never an answer. -/
-def paramNestableF (fuel : Nat) (d : IndDecl) (i : Nat) : M Bool :=
-  match fuel with
-  | 0 => exhausted "out of fuel"
-  | fuel + 1 => do
-    let np := d.params.length
-    d.ctors.allM fun (_, fields) =>
-      fields.allM fun (_, FT) => paramNestableGo fuel d (np - 1 - i) FT
-termination_by structural fuel
+/-- D107: does the parameter `v` (a de Bruijn index of a field type's scope) occur in `t` only at
+nestable positions: as the whole of `t`, or inside an argument of an inductive `m(…)` at a
+parameter `j` with `nest m j`, and nestably inside that argument again? An occurrence anywhere
+else (a type function's argument, an equation, a value argument, a `Π`, a borrow) is not
+nestable: there the type `v` stands for may be used negatively. Structural, total, no fuel. -/
+def Term.nestOk (nest : NestTable) (v : Nat) : Term → Bool
+  | .place (.var _) => true
+  | .tind m as => Term.nestOkArgs nest v m 0 as
+  | t => !(t.freeVars.contains v)
+termination_by structural t => t
 
-/-- The walk of a field type of `d` for the parameter at index `v`. -/
-def paramNestableGo (fuel : Nat) (d : IndDecl) (v : Nat) (t : Term) : M Bool :=
-  match fuel with
-  | 0 => exhausted "out of fuel"
-  | fuel + 1 =>
-    match t with
-    | .place (.var _) => pure true
-    | .nat | .unit => pure true
-    | .tind m as => paramNestableArgs fuel d v m 0 as
-    | t => pure !(t.freeVars.contains v)
-termination_by structural fuel
-
-/-- The arguments of `m(…)` in a field type of `d`, the first at `m`'s parameter `idx`. -/
-def paramNestableArgs (fuel : Nat) (d : IndDecl) (v : Nat) (m : String) (idx : Nat) (as : List Term) :
-    M Bool :=
-  match fuel with
-  | 0 => exhausted "out of fuel"
-  | fuel + 1 =>
-    match as with
-    | [] => pure true
-    | a :: as => do
-      let ok ← (do
-        if !(a.freeVars.contains v) then return true
-        if m == d.name then return (← paramNestableGo fuel d v a)
-        let dm ← lookupInd m
-        let r1 ← paramNestableF fuel dm idx
-        let r2 ← paramNestableGo fuel d v a
-        pure (r1 && r2) : M Bool)
-      if ok then paramNestableArgs fuel d v m (idx + 1) as else pure false
-termination_by structural fuel
+/-- The arguments of `m(…)`, the first at `m`'s parameter `j`. -/
+def Term.nestOkArgs (nest : NestTable) (v : Nat) (m : String) (j : Nat) : List Term → Bool
+  | [] => true
+  | a :: as => (!(a.freeVars.contains v) || (nest m j && a.nestOk nest v)) && Term.nestOkArgs nest v m (j + 1) as
+termination_by structural as => as
 end
 
-/-- K4's nesting condition: parameter `i` of `d` occurs in `d`'s field types only where the
-type it stands for occurs positively in the simplest form: as a field type itself, or as an
-argument of an inductive at one of that inductive's nestable parameters (the type itself
-counts as nestable at a uniform recursive use). A parameter passed to a type function
-(`Neg(A)`), or occurring anywhere else, is not nestable: a later declaration may not put
-the type it declares there, since the function may use it negatively. The walk is bounded by
-the fuel the checker has left (`paramNestableF`). -/
-def paramNestable (d : IndDecl) (i : Nat) : M Bool := do
-  paramNestableF (← getThe Fuel).left d i
+/-- D107, K4's nesting condition: the nestable parameters of `d`, the GREATEST set `N` of its
+type parameters such that each `i ∈ N` occurs in every field type of `d` only nestably
+(`Term.nestOk`), where an occurrence inside `d`'s own `d(…)` counts at parameter `j` only if
+`j ∈ N` (so the greatest fixed point), and one inside an earlier inductive `m(…)` at `j` only if
+`nest m j` (its stored set). A value parameter is never nestable. Computed from "every type
+parameter" by removing, each round, the parameters that occur elsewhere, until a round removes
+none: each round but the last removes one, so `np` rounds reach the fixed point. A parameter passed
+to a type function (`Neg(A)`), to an equation, into a value argument, or on to a parameter that is
+not nestable (`E(B, A)` with `E`'s `A` not nestable, finding 1 of D107) is not nestable. The list
+is in declaration order (`nestable[i]` for parameter `i`). -/
+def nestableSet (nest : NestTable) (d : IndDecl) : List Bool := Id.run do
+  let np := d.params.length
+  let mut S := (List.range np).map d.paramIsType
+  for _ in [0:np] do
+    let cur := S
+    let nest' : NestTable := fun m j => if m == d.name then cur.getD j false else nest m j
+    let S' := (List.range np).map fun i => cur.getD i false &&
+      d.ctors.all fun (_, fields) => fields.all fun (_, FT) => FT.nestOk nest' (np - 1 - i)
+    if S' == cur then break
+    S := S'
+  pure S
+
+/-- The table of the declarations in Σ: each one's set, stored when it was declared (D107). -/
+def nestTableOf (inds : List IndDecl) : NestTable := fun m j =>
+  match inds.find? (·.name == m) with
+  | some e => e.nestable.getD j false
+  | none => false
 
 mutual
 /-- K4's nesting condition, for its message: an occurrence of the type being declared `n` at
-a parameter of an inductive that is not nestable there (`paramNestable`), as the inner
-inductive and the parameter's name. -/
-def nestViolation (n : String) : Term → M (Option (String × String))
+a parameter of an inductive that is not nestable there (`nest`; `n`'s own parameters
+included, D107), as the inner inductive and the parameter's name. -/
+def nestViolation (nest : NestTable) (n : String) : Term → M (Option (String × String))
   | .tind m as => do
     let dm ← lookupInd m
-    nestViolationArgs n m dm 0 as
+    nestViolationArgs nest n m dm 0 as
   | _ => pure none
 termination_by structural t => t
 
 /-- The arguments of `m(…)`, the first at `m`'s parameter `i`: the first violation. -/
-def nestViolationArgs (n m : String) (dm : IndDecl) (i : Nat) : List Term → M (Option (String × String))
+def nestViolationArgs (nest : NestTable) (n m : String) (dm : IndDecl) (i : Nat) :
+    List Term → M (Option (String × String))
   | [] => pure none
   | a :: as => do
-    let nestable ← paramNestable dm i
-    if m != n && a.mentionsType n && !nestable then
+    if dm.paramIsType i && a.mentionsType n && !(nest m i) then
       return some (m, (dm.params[i]!).1.name)
-    if let some r ← nestViolation n a then return some r
-    nestViolationArgs n m dm (i + 1) as
+    if let some r ← nestViolation nest n a then return some r
+    nestViolationArgs nest n m dm (i + 1) as
 termination_by structural as => as
 end
 
@@ -274,29 +272,30 @@ parameters and earlier fields not mentioning `n`, so a recursive occurrence may 
 arguments than the declared parameters (`VecF(A, m)` inside `VecF(A, n)`). No `Π`, no `&`,
 no sort: strict positivity in its simplest form. A parameter is instantiated only at first-order
 types in a field, so a negative occurrence cannot hide behind one (`Box(Π(x : Bad). Void)` is
-rejected); and a type being declared may be nested only at a parameter the inner inductive
-does not pass to a type function (K4's nesting condition: `NBox(A) := MkNBox(f : Neg(A))`,
-then `Bad := MkBad(b : NBox(Bad))`, is the D36 attack again). -/
-def firstOrderTerm (n : String) (np k : Nat) : Term → M Bool
+rejected); and a type being declared may be nested only at a nestable parameter of an inductive
+(K4's nesting condition, `nest`: `NBox(A) := MkNBox(f : Neg(A))`, then `Bad := MkBad(b :
+NBox(Bad))`, is the D36 attack again), its own occurrences included (D107: `Q(Q(A, n), 1)` at a
+parameter `A` that `Q` passes to a type function is Curry's paradox). -/
+def firstOrderTerm (nest : NestTable) (n : String) (np k : Nat) : Term → M Bool
   | .nat | .unit => pure true
   | .place (.var j) => pure (j < np)
   | .tind m as => do
     let dm ← lookupInd m
-    firstOrderArgs n np k m dm 0 as
+    firstOrderArgs nest n np k m dm 0 as
   | .call (.const f) as _ => do
     let some g := (← get).globals.find? (·.name == f) | return false
     let .tPi _ (.pi _ _ cod) _ := g.ty | return false
     unless cod matches .sort _ do return false
-    firstOrderCallArgs n np k as
+    firstOrderCallArgs nest n np k as
   -- D71: an equation field (a proof), over first-order data, none of whose parts mentions `n`
   | .eq A a b => do
     if A.mentionsType n || a.mentionsType n || b.mentionsType n then return false
-    firstOrderTerm n np k A
+    firstOrderTerm nest n np k A
   | _ => pure false
 termination_by structural t => t
 
 /-- The arguments of an inductive `m(…)` in a field type, the first at `m`'s parameter `i`. -/
-def firstOrderArgs (n : String) (np k : Nat) (m : String) (dm : IndDecl) (i : Nat) :
+def firstOrderArgs (nest : NestTable) (n : String) (np k : Nat) (m : String) (dm : IndDecl) (i : Nat) :
     List Term → M Bool
   | [] => pure true
   | a :: as => do
@@ -304,15 +303,15 @@ def firstOrderArgs (n : String) (np k : Nat) (m : String) (dm : IndDecl) (i : Na
       -- D71: at a value parameter, any erased term not mentioning `n` (a non-uniform occurrence
       -- of `n` itself may take an earlier field here)
       if !dm.paramIsType i then return !a.mentionsType n
-      unless ← firstOrderTerm n np k a do return false
-      -- K4's nesting condition
-      if m != n && a.mentionsType n then paramNestable dm i else pure true
+      unless ← firstOrderTerm nest n np k a do return false
+      -- K4's nesting condition, at `n`'s own occurrences too (D107)
+      pure (!a.mentionsType n || nest m i)
       : M Bool)
-    if ok then firstOrderArgs n np k m dm (i + 1) as else pure false
+    if ok then firstOrderArgs nest n np k m dm (i + 1) as else pure false
 termination_by structural as => as
 
 /-- The arguments of a call of a type function in a field type (K4). -/
-def firstOrderCallArgs (n : String) (np k : Nat) : List Term → M Bool
+def firstOrderCallArgs (nest : NestTable) (n : String) (np k : Nat) : List Term → M Bool
   | [] => pure true
   | a :: as => do
     let ok ← (do
@@ -320,9 +319,9 @@ def firstOrderCallArgs (n : String) (np k : Nat) : List Term → M Bool
       match a with
       | .place (.var j) => pure (j < np + k)      -- a parameter, or a field (data)
       | .zero | .succ _ => pure true
-      | _ => firstOrderTerm n np k a
+      | _ => firstOrderTerm nest n np k a
       : M Bool)
-    if ok then firstOrderCallArgs n np k as else pure false
+    if ok then firstOrderCallArgs nest n np k as else pure false
 termination_by structural as => as
 end
 
@@ -340,7 +339,13 @@ def checkInd (d : IndDecl) : M Unit := do
     if (← declared cn) || cn == n || (d.ctors.filter (·.1 == cn)).length > 1 then
       err s!"{n}: the constructor name {cn} is already used (constructors are resolved by name)"
   if d.sort > 1 then err s!"{n}: an inductive type is in Prop or Type"
-  modify fun s => { s with env := #[{}], inds := s.inds ++ [{ d with ctors := [] }] }
+  -- D107: the nestable parameters, of `d` from the fields being declared (its entry below has no
+  -- constructors and no nestable parameter, so nothing reads `d`'s nesting from it), of every
+  -- earlier inductive from the set stored when it was declared
+  let earlier := nestTableOf (← get).inds
+  let ownSet := nestableSet earlier d
+  let nest : NestTable := fun m j => if m == n then ownSet.getD j false else earlier m j
+  modify fun s => { s with env := #[{}], inds := s.inds ++ [{ d with ctors := [], nestable := [], declaring := true }] }
   let np := d.params.length
   let pnames := (d.params.map (·.1.name)).reverse
   -- D64 [Ind]: a field's type mentions only the parameters and the earlier fields
@@ -374,10 +379,10 @@ def checkInd (d : IndDecl) : M Unit := do
       if T.typeHasRef then err s!"field {fname} of {cn}: no borrows inside data"
       if (← sortOf (← fuelLeft) T) > 1 then err s!"field {fname} of {cn}: its type must be in Prop or Type"
       -- K4's nesting condition
-      if let some (m, a) ← nestViolation n FT then
-        err s!"field {fname} of {cn} : {FT.pp names}: {n} occurs at the parameter {a} of {m}, which {m} passes to a type function (one may use its argument negatively): not strictly positive (K4, D36)"
+      if let some (m, a) ← nestViolation nest n FT then
+        err s!"field {fname} of {cn} : {FT.pp names}: {n} occurs at the parameter {a} of {m}, which is not nestable in {m}: {m} passes it to a type function, an equation, a value or a parameter that is not nestable, any of which may use its argument negatively: not strictly positive (K4, D36, D107)"
       -- D36, K4
-      if !(← firstOrderTerm n np fields.length FT) then
+      if !(← firstOrderTerm nest n np fields.length FT) then
         err s!"field {fname} of {cn} : {FT.pp names}: fields are first-order data (inductive types, Nat, Unit, ×, earlier type functions) or parameters, D36"
       -- K4: a type function's result is first-order data too (at the generic telescope); D71: or
       -- an equation, which makes the field a proof field like a written `Eq`
@@ -391,7 +396,7 @@ def checkInd (d : IndDecl) : M Unit := do
         unless ← declCopy (← fuelLeft) r do
           err s!"[D53] {n} is declared copy, but the field {fname} of {cn} has the type {T}, which is not a copy type"
       genericValue (← fuelLeft) T
-  modify fun s => { s with env := #[{}], inds := s.inds.map fun e => if e.name == n then d else e }
+  modify fun s => { s with env := #[{}], inds := s.inds.map fun e => if e.name == n then { d with nestable := ownSet } else e }
 
 def checkItem : Item → M Unit
   | .defn d => do seedHoles; checkDef d

@@ -23,18 +23,20 @@ namespace Ochr.Meaning.Steps
 open Ochr Ochr.Meaning
 
 /-- The end of `Machine.runBody` after its body's run: the returned value checked whole, parked below
-the callee's frame, the frame popped (its borrows ended), the depth restored, the value taken back,
-and a model function's depth counter undone. -/
-def bodyTail (fuel d : Nat) (model : Bool) (v : Value) : M Value := do
+the callee's frame at the call's type `B` (main's D104: the stored type of that temporary is the
+declared type of the position it is headed for), the frame popped (its borrows ended), the depth
+restored, the value taken back, and a model function's depth counter undone. -/
+def bodyTail (fuel d : Nat) (model : Bool) (B : Option Value) (v : Value) : M Value := do
   Ochr.wholeReturned v
-  Ochr.pushTempAt ((← Ochr.topIdx) - 1) v
+  Ochr.pushTempAt ((← Ochr.topIdx) - 1) v B "runBodyCore"
   Ochr.popFrame fuel
   modify fun s => { s with depth := d }
   let r ← Ochr.popTemp
   if model then modify fun s => { s with modelDepth := s.modelDepth - 1 }
   pure r
 
-theorem grows_bodyTail (fuel d : Nat) (model : Bool) (v : Value) : GrowsM (bodyTail fuel d model v) := by
+theorem grows_bodyTail (fuel d : Nat) (model : Bool) (B : Option Value) (v : Value) :
+    GrowsM (bodyTail fuel d model B v) := by
   unfold bodyTail
   grows_go
 
@@ -84,18 +86,18 @@ place's (`bodyFrame`) under the same assignment and renaming (a push issues no l
 types are evaluated on copies, which may only add unknowns), and the body's hint is the code's
 codomain at the arguments. -/
 theorem runBody_front (fuel : Nat) (st st' : MState) (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value))
-    (ws : Array Value) (v : Value)
+    (ws : Array Value) (B : Option Value) (v : Value)
     (hg : Good K.dm K.M K.Γ ρ (st.withTemps (fv :: ws.toList))) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π (st.withTemps (fv :: ws.toList)) s)
     (hfix : fv = .clo cs t rd ∨ ∃ n, fv = .gfn n ∧ Runs (Ochr.fixOf fv) st 0 (cs, t, rd) st)
     (fres : Res) (hf : run K ρ (fun l => φ (π l)) (.plain .err) (.val fv) s = some (fres, s))
     (as : List Res) (has : ArgsAgree K ρ φ π ws as)
-    (bh : Nat) (h : Runs (Ochr.runBody (fuel + 1) fv cs t rd ws) st bh v st') :
+    (bh : Nat) (h : Runs (Ochr.runBody (fuel + 1) fv cs t rd ws B) st bh v st') :
     ∃ (self : Hint) (hs' : List Hint) (ds : List Term) (c : Term) (dec : Option Nat) (body : Term)
       (hint : Option Value) (st₁ st₂ : MState) (b₁ b₂ d : Nat) (model : Bool) (v₀ : Value) (T₀ : Option Value),
       t = .fix self hs' ds c dec body ∧
       Runs (Ochr.eval (fuel - 1) false body hint) st₁ b₁ (v₀, T₀) st₂ ∧
-      Runs (bodyTail (fuel - 1) d model v₀) st₂ b₂ v st' ∧
+      Runs (bodyTail (fuel - 1) d model B v₀) st₂ b₂ v st' ∧
       st₁.tailNext = true ∧ (st.withTemps (fv :: ws.toList)).absTy.size ≤ st₁.absTy.size ∧
       (st.withTemps (fv :: ws.toList)).nextLoan ≤ st₁.nextLoan ∧
       Good K.dm K.M K.Γ ρ st₁ ∧ CtxOk K ρ st₁ ∧
@@ -133,7 +135,7 @@ theorem runBody_back (fuel : Nat) (st₂ st' : MState) (s₂ : SState) (π : Nat
     (hrun : runT K₀ ρ₁ φ true (.plain ((bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).2.cod (as.map (·.1)))) body
       (bodyFrame K₀ ρ₀ φ fres cs rd ds c as s).1 = some (r, s₂))
     (hr : meanV K ρ (fun l => φ (π l)) r.2 v₀ = r.1)
-    (d : Nat) (model : Bool) (b : Nat) (v : Value) (h : Runs (bodyTail fuel d model v₀) st₂ b v st')
+    (d : Nat) (model : Bool) (B : Option Value) (b : Nat) (v : Value) (h : Runs (bodyTail fuel d model B v₀) st₂ b v st')
     (hD : DecTab K.D st') :
     ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat), st₂.absTy.size ≤ st'.absTy.size ∧
       st₂.nextLoan ≤ st'.nextLoan ∧ (∀ σ, σ < st₂.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
@@ -154,19 +156,19 @@ theorem runBody_back (fuel : Nat) (st₂ st' : MState) (s₂ : SState) (π : Nat
 the call's: the hypothesis is at every fuel below, `StepsIHBelow`), the back (`runBody_back`), the run in place re-read under the final
 assignment (`runBodyRef_extend`). -/
 theorem runBody_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : runBody_step_stmt K ρ φ (fuel + 1) := by
-  intro st st' fv cs t rd ws v hg hctx s π hs hfix fres hf as has hok hD bh h
+  intro st st' fv cs t rd ws B v hg hctx s π hs hfix fres hf as has hok hD bh h
   obtain ⟨self, hs', ds, c, dec, body, hint, st₁, st₂, b₁, b₂, d, model, v₀, T₀, rfl, hev, htail, htl, habs₁, hnl₁,
-    hg₁, hctx₁, hs₁, hhint⟩ := runBody_front K ρ φ fuel st st' fv cs t rd ws v hg hctx s π hs hfix fres hf as has bh h
+    hg₁, hctx₁, hs₁, hhint⟩ := runBody_front K ρ φ fuel st st' fv cs t rd ws B v hg hctx s π hs hfix fres hf as has bh h
   have hok' : false = false →
       (runT K ρ φ st₁.tailNext (hintM K ρ hint) body (bodyFrame K ρ φ fres cs rd ds c as s).1).isSome := by
     intro _; rw [htl, hhint]; exact body_isSome_of_runBodyRef K ρ φ fres cs self hs' ds c dec body rd as s hok
   obtain ⟨ρ₁, Δ₁, π₁, habs₂, hnl₂, hext₁, hπ₁, r, s₂, hrun, hmean, -, hctx₂, hs₂, hg₂⟩ :=
     (ih (fuel - 1) (Nat.sub_le fuel 1) K ρ φ).eval_step st₁ st₂ false body hint v₀ T₀ hg₁ hctx₁ _ π hs₁ hok'
-      (hD.of_rest (grows_bodyTail _ _ _ _) htail) b₁ hev
+      (hD.of_rest (grows_bodyTail _ _ _ _ _) htail) b₁ hev
   rw [htl, hhint] at hrun
   obtain ⟨ρ₂, Δ₂, π₂, habs₃, hnl₃, hext₂, hπ₂, hmean', hctx₃, hs₃, hg₃⟩ :=
     runBody_back { K with Δ := Δ₁ } ρ₁ φ (fuel - 1) st₂ st' s₂ π₁ v₀ r hg₂ hctx₂ hs₂ K ρ ρ₁ fres cs rd ds c body as s hrun
-      hmean d model b₂ v htail hD
+      hmean d model B b₂ v htail hD
   have hb := callee_bounded K ρ st fv cs (.fix self hs' ds c dec body) rd ws hg hfix
   have hρ₁ : ∀ σ, σ < (st.withTemps (fv :: ws.toList)).absTy.size → ρ₁ σ = ρ σ := fun σ hσ =>
     (hext₁ σ (Nat.lt_of_lt_of_le hσ habs₁)).1
@@ -291,7 +293,9 @@ borrow result the reservation of `g` with its marks) leaves a state related to t
 for a neutral head, or after a body run that is stuck, whose state `catchStuck` restores), with
 [Close]'s readings tied to the callee's code (`closeCall_step_stmt`'s side conditions), or a known
 callee's body runs (`runBody`), whose run in place succeeds (`runBody_step_stmt`'s `hok`: the
-callee's meaning is a member of its type at member arguments); then the tail (`callTailM`). -/
+callee's meaning is a member of its type at member arguments); then the tail (`callTailM`). `B`
+is the call's type as the front computed it: the body run in place holds its result at it across
+the frame's pop (main's D104), and the tail returns it. -/
 theorem callFn_front (fuel : Nat) (st st' : MState) (typed : Bool) (f : Term) (args : List Term) (hd : Bool) (fv : Value)
     (fT : Option Value) (ws : Array Value) (tys : Array (Option Value)) (recUid? : Option Nat)
     (res : DeclInfo) (fills : Array Bool) (want defer : Bool) (v : Value) (T? : Option Value)
@@ -301,7 +305,7 @@ theorem callFn_front (fuel : Nat) (st st' : MState) (typed : Bool) (f : Term) (a
     (fres : Res) (hf : run K ρ (fun l => φ (π l)) (.plain .err) (.val fv) s = some (fres, s))
     (as : List Res) (has : ArgsAgree K ρ φ π ws as)
     (bh : Nat) (h : Runs (Ochr.callFn (fuel + 1) typed fv fT ws tys hd none recUid? res fills want defer) st bh (v, T?) st') :
-    ∃ (isRef : Bool) (st₁ st₂ : MState) (π₁ : Nat → Nat) (w : Value) (b₁ : Nat),
+    ∃ (isRef : Bool) (st₁ st₂ : MState) (π₁ : Nat → Nat) (w : Value) (b₁ : Nat) (B : Option Value),
       Good K.dm K.M K.Γ ρ (st₁.withTemps (fv :: ws.toList)) ∧ CtxOk K ρ st₁ ∧
       Rel K ρ φ π₁ (st₁.withTemps (fv :: ws.toList)) (reserveRef isRef as s) ∧
       (∀ l, l < (st.withTemps (fv :: ws.toList)).nextLoan → π₁ l = π l) ∧
@@ -321,8 +325,8 @@ theorem callFn_front (fuel : Nat) (st st' : MState) (typed : Bool) (f : Term) (a
        (∃ (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)),
           (fv = .clo cs t rd ∨ ∃ n, fv = .gfn n ∧ Runs (Ochr.fixOf fv) st₁ 0 (cs, t, rd) st₁) ∧
           (runBodyRef K ρ φ fres cs t rd as (reserveRef isRef as s)).isSome ∧
-          Runs (Ochr.runBody fuel fv cs t rd ws) st₁ b₁ w st₂)) ∧
-      ∃ (b₂ : Nat) (g? : Option Nat) (B : Option Value) (later : Bool) (piTy : Value),
+          Runs (Ochr.runBody fuel fv cs t rd ws B) st₁ b₁ w st₂)) ∧
+      ∃ (b₂ : Nat) (g? : Option Nat) (later : Bool) (piTy : Value),
         g?.isSome = isRef ∧ Runs (callTailM fuel g? res B later piTy ws w) st₂ b₂ (v, T?) st' := by
   sorry
 
@@ -366,7 +370,7 @@ induction hypothesis (`closeCall_step` or `runBody_step`, at the fuel below, wit
 front supplies), then the tail (`callFn_tail_closed`, `callFn_tail_ran`). -/
 theorem callFn_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : callFn_step_stmt K ρ φ (fuel + 1) := by
   intro st st' typed f args hd fv fT ws tys recUid? res fills want defer v T? hg hctx s π hs hns fres hf as has hD bh h
-  obtain ⟨isRef, st₁, st₂, π₁, w, b₁, hg₁, hctx₁, hs₁, hπ₁, habs, hnl, hf₁, has₁, hpath, b₂, g?, B, later, piTy, hg?,
+  obtain ⟨isRef, st₁, st₂, π₁, w, b₁, B, hg₁, hctx₁, hs₁, hπ₁, habs, hnl, hf₁, has₁, hpath, b₂, g?, later, piTy, hg?,
     htail⟩ := callFn_front K ρ φ fuel st st' typed f args hd fv fT ws tys recUid? res fills want defer v T? hg hctx s π hs
       hns fres hf as has bh h
   have hD₂ : DecTab K.D st₂ := hD.of_rest (grows_callTailM _ _ _ _ _ _ _ _) htail
@@ -375,7 +379,7 @@ theorem callFn_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : callFn_step_stmt
       has₁ hkind hres hfills htys hD₂ b₁ hcl
     exact callFn_tail_closed K ρ φ fuel st st₁ st₂ st' fv ws s π π₁ isRef fres as w v T? res hπ₁ habs hnl hcall b₂ g? B
       later piTy hg? htail
-  · have hbody := (ih.at K ρ φ).runBody_step st₁ st₂ fv cs t rd ws w hg₁ hctx₁ _ π₁ hs₁ hfix fres hf₁ as has₁ hok hD₂ b₁ hrb
+  · have hbody := (ih.at K ρ φ).runBody_step st₁ st₂ fv cs t rd ws B w hg₁ hctx₁ _ π₁ hs₁ hfix fres hf₁ as has₁ hok hD₂ b₁ hrb
     exact callFn_tail_ran K ρ φ fuel st st₁ st₂ st' fv ws s π π₁ isRef fres as cs t rd w v T? res hπ₁ habs hnl hbody b₂
       g? B later piTy hg? htail
 

@@ -708,6 +708,94 @@ ochr JoinDeref uses Nats {
   ("DData", "[Join] an arm of the match moves a place through * of a place not declared a borrow"),
   ("ParamDead", "[D53] a borrow ends while its content is partly moved out (⊥)")]
 
+/-! ### A value in flight keeps its borrows across the join (D106)
+
+At a match's join, the places another arm moves are dropped while the arm's result is in flight.
+D65's check rejects a drop whose own value holds a loan of a borrow a value in flight holds; D106
+makes the rule uniform: no drop at the join ends a borrow a value in flight holds, however it ends
+it, including when the dropped place lies under a prefix lent to that borrow, which the drop
+reaches by accessing the prefix (`movedPlace`). The same holds for the drop of a `let`'s binding
+while its result is in flight and for a frame's pop while the body's result is (`dropTopBind`).
+The proof's thirteen attempts (`Meaning/Regress/JoinPrefixBorrow.lean` on `spine-slice`): one arm
+moves a non-copy field, the other returns a borrow of the whole, of a prefix one level down,
+through a borrow parameter's content, through a local borrow or in a pair; known and unknown
+scrutinee, tail and not. All were rejected before; in tail position on a known scrutinee (`TK`) the
+join's access ended the result's borrow (the run returned `⊥ : &P`) and only D53 rejected it later.
+It is now rejected where the join's access of the prefix would end the result's borrow ([Access], D106). `TU`, the same on an unknown scrutinee, is split
+at the generic call rather than joined: D53 rejects its moving arm. -/
+
+ochr JoinPrefix uses Nats {
+  inductive L := LNil | LCons(h : Nat, t : L)
+  inductive P := MkP(a : L, b : L)
+  inductive Q := MkQ(p : P, c : L)
+  reject def NK1 (x : P) (y : P) : L := (
+    let r0 = &x; let ry = &y; let k = Z;
+    let r = match k { Z => r0, S m => (let a = x.1; ry) };
+    clone((*r).1))
+  reject def NK2 (x : P) (y : P) : L := (
+    let k = Z;
+    let r = match k { Z => &x, S m => (let a = x.1; &y) };
+    clone((*r).1))
+  reject def NU1 (n : Nat) (x : P) (y : P) : L := (
+    let r0 = &x; let ry = &y;
+    let r = match n { Z => r0, S m => (let a = x.1; ry) };
+    clone((*r).1))
+  reject def NU2 (n : Nat) (x : P) (y : P) : L := (
+    let r = match n { Z => &x, S m => (let a = x.1; &y) };
+    clone((*r).1))
+  reject def NKW (x : P) (y : P) : P := (
+    let r0 = &x; let ry = &y; let k = Z;
+    let r = match k { Z => r0, S m => (let a = x.1; ry) };
+    (*r).1 := LNil;
+    x)
+  reject def TK (x : &P) (y : &P) : &P := (
+    let r0 = &*x; let k = Z;
+    match k { Z => r0, S m => (let a = (*x).1; y) })
+  reject def TU (n : Nat) (x : &P) (y : &P) : &P := (
+    let r0 = &*x;
+    match n { Z => r0, S m => (let a = (*x).1; y) })
+  reject def ND (x : Q) (y : P) : L := (
+    let r0 = &x.0; let ry = &y; let k = Z;
+    let r = match k { Z => r0, S m => (let a = (x.0).1; ry) };
+    clone((*r).1))
+  reject def NP (x : P) (y : P) : L := (
+    let r0 = &x; let ry = &y; let k = Z;
+    let pr = match k { Z => (r0, Z), S m => (let a = x.1; (ry, Z)) };
+    let r = pr.0;
+    clone((*r).1))
+  reject def ND2 (x : Q) (y : P) : L := (
+    let k = Z;
+    let r = match k { Z => &x.0, S m => (let a = (x.0).1; &y) };
+    clone((*r).1))
+  reject def NDR (x : &P) (y : &P) : L := (
+    let k = Z;
+    let r = match k { Z => &*x, S m => (let a = (*x).1; &*y) };
+    clone((*r).1))
+  reject def NLB (x : P) (y : P) : L := (
+    let rx = &x; let k = Z;
+    let r = match k { Z => &*rx, S m => (let a = x.1; &y) };
+    clone((*r).1))
+  reject def TPair (n : Nat) (x : &P) (y : &P) : &P := (
+    let r0 = &*x;
+    let pr = match n { Z => (r0, Z), S m => (let a = (*x).1; (y, Z)) };
+    pr.0)
+}
+
+#guard (run "JoinPrefix" JoinPrefix).rejectedWith [
+  ("NK1", "[Read] r0 was moved out or its borrow ended"),
+  ("NU1", "[Read] r0 was moved out or its borrow ended"),
+  ("NKW", "[Read] r0 was moved out or its borrow ended"),
+  ("ND", "[Read] r0 was moved out or its borrow ended"),
+  ("NP", "[Read] r0 was moved out or its borrow ended"),
+  ("TPair", "[Read] r0 was moved out or its borrow ended"),
+  ("NLB", "no such place *rx"),
+  ("NK2", "[Join] x is moved by another arm of the match"),
+  ("NU2", "[Join] x is moved by another arm of the match"),
+  ("ND2", "[Join] x.0 is moved by another arm of the match"),
+  ("NDR", "[Join] *x is moved by another arm of the match"),
+  ("TK", "[Access] reading or writing *x ends a borrow that a value in flight holds"),
+  ("TU", "[D53] a borrow ends while its content is partly moved out")]
+
 /-! ## A sealed program whose text holds a loan is not run (D97)
 
 A fill (what a stuck call or block leaves at a place it lends to a returned borrow) holds the

@@ -64,6 +64,17 @@ def fieldTermIsProp (d : IndDecl) (FT : Term) : M Bool := do
     | none => pure false
   | _ => pure false
 
+/-- D110, D112 [Open]: a strong update (an assignment to a dependent TREE field,
+`Machine.strongUpdate`) stores its value unchecked, and the field is then typed by what it holds.
+That is meaningful only for a value whose content determines its type: a constructor value of a
+data inductive, which records its declaration and parameters (D112: a tree, `DeclInfo.isTree`).
+A proof, a borrow, a type or a function is not (D110: `Boom` stored `⋆` in a field whose type then
+read as `Void`), and neither is a number or the unit value (D112: the set model reads a leaf at its
+field's declared type, so a field never holds a leaf of another type). Any other value is an
+ordinary checked write. Decided from the right-hand side's declared type (`declOf`), never from
+its value or its computed type. -/
+def strongStorable (d : DeclInfo) : Bool := d.isTree
+
 /-- A field place is a proof iff its declared type is a proposition (syntactic, D42). -/
 def fieldIsProof (g : FieldRef) : M Bool := do
   let d ← lookupInd g.ty
@@ -80,6 +91,8 @@ def ctorIsProof (ty : String) : M Bool := do
 /-- D45: large elimination (a match on a proof producing a non-proof) is allowed only
 from a subsingleton: zero constructors, or one whose fields are all propositions. -/
 def largeElim (d : IndDecl) : M Bool := do
+  -- D107: a type being declared has no constructors yet in its entry: not known to be a subsingleton
+  if d.declaring then return false
   match d.ctors with
   | [] => pure true
   | [(_, fields)] => fields.allM fun (_, FT) => fieldTermIsProp d FT
@@ -294,6 +307,8 @@ def declCopy (fuel : Nat) (r : DeclInfo) : M Bool := do
   | .ind n args =>
     let d ← lookupInd n
     if d.copy || d.sort == 0 then return true
+    -- D107: a type being declared has no constructors yet in its entry: not known to be a copy
+    if d.declaring then return false
     if d.ctors.any (fun (_, fs) => fs.any fun (_, FT) => FT.mentionsTInd n) then return false
     -- D64: a type with a dependent constructor is a copy type only when declared `copy`
     if (List.range d.ctors.length).any d.dependent then return false
@@ -660,6 +675,25 @@ def telescope (fuel : Nat) (chk : Bool) (sc : List DeclInfo) (ns : List String) 
   pure (sc, ns, l)
 termination_by structural fuel
 
+/-- D112 [Open]: field `i` of constructor `c` of `d` is a LEAF field: dependent (its declared type
+mentions an earlier field), not a proof field, and its declared type, read in the telescope of the
+parameters and the earlier fields (`typeDecl`, through type-function bodies), is not a TREE at
+every instance (`DeclInfo.isTree`): it may hold a number, the unit value, a function or a value of
+a type parameter. A leaf does not say which instance of the field's type it was written at, so
+it is never typed by its content: like a proof field, it is invalidated by a write or borrow
+through an index field its type mentions, and an assignment to it is checked at its type at the
+current contents ([Open]). Decided from the declaration alone. -/
+def fieldIsLeaf (fuel : Nat) (d : IndDecl) (c i : Nat) : M Bool := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  if !d.fieldDependent c i then return false
+  let some (_, fields) := d.ctors[c]? | return false
+  let some (_, FT) := fields[i]? | return false
+  if ← fieldTermIsProp d FT then return false
+  let (sc, ns, _) ← telescope fuel' false [] [] (d.params.map (·.1)) (d.params.map (·.2))
+  let earlier := fields.take i
+  let (sc, ns, _) ← telescope fuel' false sc ns (earlier.map fun (f, _) => ⟨f⟩) (earlier.map (·.2))
+  pure !(← typeDecl fuel' false sc ns FT).isTree
+
 /-- What a runtime value's declared type says (an embedded value, a capture). -/
 def valueDecl (fuel : Nat) (v : Value) : M DeclInfo := withLive false do
   let fuel' + 1 := fuel | exhausted "out of fuel"
@@ -855,6 +889,46 @@ def declKind (fuel : Nat) (piTy : Value) : M Kind := do
   | _ => err s!"not a function type: {piTy}"
 
 end
+
+/-! ## D105: where a constructor's unwritten parameter is inferred from a field's type -/
+
+/-- D105: parameter `i` of the inductive `d` is a position at which an unwritten parameter of a
+constructor is inferred from a field's type: its declared type is `Prop` or `Type₀` (the argument
+there is a proposition or a type of data), or a type in `Prop` or `Type₀` (a proof, a number, a
+data value). A parameter declared `Type₁` or above, a value of a type in `Type₁` or above, or a
+function into a universe is not: the semantic model reads a parameter back from a value's type
+only at the former (`Meaning/DataModel/ParamSolve.lean` on `spine-datamodel`). Read from the
+declaration's parameter telescope (each type in the scope of the earlier parameters, `typePos`),
+never from a run. -/
+def inferablePos (fuel : Nat) (d : IndDecl) (i : Nat) : M Bool := withLive false do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match d.params[i]? with
+  | none => pure false
+  | some (_, .sort l) => pure (l ≤ 1)
+  | some (_, PT) =>
+    let earlier := d.params.take i
+    let (sc, ns, _) ← telescope fuel' false [] [] (earlier.map (·.1)) (earlier.map (·.2))
+    pure ((← typePos fuel' false sc ns PT) ≤ 1)
+termination_by structural fuel
+
+/-- D105: what of a field's declared type `FT` an unwritten parameter of its constructor is
+inferred from (`Machine.unifyParams` matches it against the type of the field's value): `FT`
+itself, so a field whose type is a parameter (`x : A`) solves it at any level, and the
+arguments of an inductive type former at its inferable positions (`inferablePos`), at any
+depth. An argument at any other position is cut (`unit`, which determines nothing), so a
+parameter that stands in the fields' types only there is not inferred: it must be written, or
+come from the type the context expects. -/
+def inferFrom (fuel : Nat) (FT : Term) : M Term := do
+  let fuel' + 1 := fuel | exhausted "out of fuel"
+  match FT with
+  | .tind m as =>
+    let d ← lookupInd m
+    let mut out := #[]
+    for (a, i) in as.zipIdx do
+      out := out.push (← if ← inferablePos fuel' d i then inferFrom fuel' a else pure Term.unit)
+    pure (.tind m out.toList)
+  | _ => pure FT
+termination_by structural fuel
 
 /-- D96: a fresh abstract value of type `T`, its declared reading frozen with it: what `T` says as a
 declared type (`valTypeDecl`), read now, from `T` and the frozen readings of the unknowns it names.

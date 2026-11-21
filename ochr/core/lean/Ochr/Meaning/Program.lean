@@ -287,7 +287,7 @@ theorem one_accepted :
       (st'.globals.find? (·.name == "one")).map (·.ty) = some .tNat := by
   have h : (match (runMachine (checkItem (.defn oneDef)) { globals := [], inds := [], cfg := {} } 2000000).1 with
       | .ok () st' => isNatTy ((st'.globals.find? (·.name == "one")).map (·.ty))
-      | _ => false) = true := by decide
+      | _ => false) = true := by decide +kernel
   revert h
   generalize (runMachine (checkItem (.defn oneDef)) _ 2000000).1 = o
   cases o with

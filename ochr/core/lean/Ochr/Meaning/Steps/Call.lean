@@ -91,13 +91,13 @@ a moved-out content, main's D98; the body is typed), and the caller's places det
 borrow argument is lent where its final content is read directly, or through an earlier call's
 backward function, injective on members). -/
 theorem callOf_inPlace_rel (fuel : Nat) (st st' : MState) (fv : Value) (cs : List Value) (t : Term)
-    (rd : List (DeclInfo × Value)) (ws : Array Value) (v : Value)
+    (rd : List (DeclInfo × Value)) (ws : Array Value) (B : Option Value) (v : Value)
     (hg : Good K.dm K.M K.Γ ρ (st.withTemps (fv :: ws.toList))) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π (st.withTemps (fv :: ws.toList)) s)
     (hfix : fv = .clo cs t rd ∨ ∃ n, fv = .gfn n ∧ Runs (Ochr.fixOf fv) st 0 (cs, t, rd) st)
     (fres : Res) (hf : run K ρ (fun l => φ (π l)) (.plain .err) (.val fv) s = some (fres, s))
     (as : List Res) (has : ArgsAgree K ρ φ π ws as)
-    (bh : Nat) (h : Runs (Ochr.runBody fuel fv cs t rd ws) st bh v st')
+    (bh : Nat) (h : Runs (Ochr.runBody fuel fv cs t rd ws B) st bh v st')
     (r₁ : Res) (s₁ : SState) (hin : runCallRef K ρ φ fres cs t rd as s = some (r₁, s₁)) :
     ∃ s', callOf K.dm.read fres as s = some (r₁, s') ∧
       ∀ (st'' : MState) (π' : Nat → Nat) (K' : RunCtx) (ρ' : Assignment), K'.dm = K.dm → K'.D = K.D →

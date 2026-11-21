@@ -20,14 +20,15 @@ the type, and solved from its fields, has only type parameters, read either as a
 (`ArrayOf.MkArray(s : SliceOf(R))`, `Cell.MkC(h, t : SliceOf(R))`, `GBucket.GCons(…, t :
 GBucket(V))`). The model reads both (`cell_solves` is the pattern).
 
-**Constructed programs** (`DataModel/Probes.lean`, `DMProbeSolve`, all accepted, asserted by the
-build): `SW` (`let w = MkW(t)`, `t : Tag(3)`: `Wrap`'s value parameter `n` from `Tag(n)`), `SO`
+**Constructed programs** (`DataModel/Probes.lean`, `DMProbeSolve`, asserted by the build; `SW`
+and `SO` accepted, `SH` rejected since main's D105): `SW` (`let w = MkW(t)`, `t : Tag(3)`: `Wrap`'s value parameter `n` from `Tag(n)`), `SO`
 (`let w = A2(t)`: `Opt2`'s `n` from `Tag(n)`, where `Opt2`'s record depends on `n` through its other
 constructor's equation) and `SH` (`let w = MkHW(t)`, `t : HL(F0)`: `HW`'s parameter, a function into
 `Type₀`, from `HL(f)`). `SW` and `SO` now run to the checker's answer (`sw_ctor`, `so_ctor`: the
 tree at `Wrap(3)`'s and `Opt2(3)`'s record and type; before 3b both failed, `Tag(3)` and `Tag(4)`
 being one type). `SH` still fails (`sh_fails`): a parameter above level 0 has no small reading, so
-the checker's inference there is outside the model, and the residual rule (docs/34 §17.5) excludes it.
+the checker's inference there is outside the model, and the residual rule (docs/34 §17.5) excludes it:
+main's D105 made it the checker's rule, so the checker now rejects `SH` too.
 -/
 
 namespace Ochr.Meaning.DataModel.ParamSolve
@@ -277,7 +278,7 @@ theorem sw_runs (G : String → Sem × TyS) (tv : Sem) (hw : tv.whole) (hg : Rea
 
 /-- **`SH` in the model**: from a frame holding `t : HL(F0)`, the run of `let w = MkHW(t); 0` fails,
 whatever `F0` means: `HW`'s parameter is a function into `Type₀` (above level 0), which no record
-keeps. The checker accepts `SH`; the residual rule (docs/34) excludes it. -/
+keeps. The checker rejects `SH` since main's D105 (the residual rule of docs/34), so the two agree. -/
 theorem sh_fails (G : String → Sem × TyS) (f tv : Sem) (hw : tv.whole) (hint : TyS) :
     run (Kp dmS ΓS G) ρ φ hint (.letIn (hn "w") (.ctor "HW" 0 (hn "MkHW") [] [.place (.var 0)]) (num 0))
       (frame [bindT (dmS.tyM hlD [f]) tv]) = none := by

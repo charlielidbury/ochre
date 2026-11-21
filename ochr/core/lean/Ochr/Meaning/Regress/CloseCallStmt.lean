@@ -56,10 +56,10 @@ theorem old_false_of_run (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Na
 /-- `runBody_step_stmt` as the pilot stated it: `fT` free, not even an input of `runBody`. -/
 def runBody_step_stmt_old (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (fv : Value) (cs : List Value) (t : Term)
-    (rd : List (DeclInfo × Value)) (ws : Array Value) (v : Value) (fT : Value)
+    (rd : List (DeclInfo × Value)) (ws : Array Value) (B : Option Value) (v : Value) (fT : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hΔ : DeltaOk K ρ st) (hargs : ArgsLoanFree st.env ws)
     (hfv : fv = .clo cs t rd ∨ ∃ n, fv = .gfn n)
-    (h : Runs (Ochr.runBody fuel fv cs t rd ws) st fuel v st'),
+    (h : Runs (Ochr.runBody fuel fv cs t rd ws B) st fuel v st'),
     ∃ r s', callOf K.dm.read (calleeRes K ρ φ fv fT) (argsRes K ρ φ ws) (SM' K ρ st) = some (r, s') ∧
       meanV K ρ φ r.2 v ⊑ r.1 ∧
       Below (MState.mean K.dm K.M K.Γ ρ st') s'.toMean ∧ Good K.dm K.M K.Γ ρ st'
@@ -70,13 +70,13 @@ state: take `fT := .zero`. (`callFn_step_stmt` had the weaker version of the sam
 the callee through the run.) -/
 theorem runBody_old_false_of_run (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat)
     (st st' : MState) (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value))
-    (ws : Array Value) (v : Value)
+    (ws : Array Value) (B : Option Value) (v : Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hΔ : DeltaOk K ρ st) (hargs : ArgsLoanFree st.env ws)
     (hfv : fv = .clo cs t rd ∨ ∃ n, fv = .gfn n)
-    (h : Runs (Ochr.runBody fuel fv cs t rd ws) st fuel v st') :
+    (h : Runs (Ochr.runBody fuel fv cs t rd ws B) st fuel v st') :
     ¬ runBody_step_stmt_old K ρ φ fuel := by
   intro hstmt
-  obtain ⟨r, s', hc, _⟩ := hstmt st st' fv cs t rd ws v .zero hg hΔ hargs hfv h
+  obtain ⟨r, s', hc, _⟩ := hstmt st st' fv cs t rd ws B v .zero hg hΔ hargs hfv h
   rw [callOf_none_of_err _ _ _ _ (calleeRes_zero_code ..)] at hc
   cases hc
 

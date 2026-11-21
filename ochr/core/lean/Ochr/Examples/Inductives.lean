@@ -436,6 +436,89 @@ ochr PolyLists uses Lists {
 }
 
 
+/-! ## Which parameters are inferred from the fields (D105)
+
+An unwritten parameter of a constructor is inferred from a field's type where it stands, at any
+depth, as an argument at a position declared `Prop` or `Type₀`, or declared a type in `Prop` or
+`Type₀`: a type of data or a proposition, a number, a data value, a proof (`SC`, `SW`, `SO`,
+`SN`). One that stands in the fields' types only at positions of a higher universe is not: a
+type in `Type₁` (`ST`), a value of a type in `Type₁` (`SV`), a function into a universe (`SH`).
+There it is written, or comes from the type the context expects (each `…w` and `…a`). A field
+whose type is the parameter itself still solves it (`Pair`'s `Mk(a, b)`; a field's type is in
+`Prop` or `Type₀`, so that parameter is a proposition or a type of data). The
+checker decides this from the declarations (`Decide.inferablePos`), because the semantic model
+reads a parameter back from a value's type only at the former positions; Lean, which infers
+parameters by unification, infers all of these. -/
+
+ochr ParamInference uses Nats {
+  -- a type parameter, nested (the case studies' pattern: `Cell.MkC(h, t : SliceOf(R))`)
+  inductive Sl (R : Type) := MkSl(c : R)
+  inductive CellT (R : Type) := MkCT(h : Nat, t : Sl(R))
+  def SC (s : Sl(Nat)) : Nat := (let c = MkCT(0, s); 0)
+  def SN (s : Sl(Sl(Nat))) : Nat := (let c = MkSl(s); let d = MkCT(1, c); 0)
+  -- a number
+  inductive Tag (n : Nat) := MkTag(x : Nat)
+  inductive Wrap (n : Nat) := MkW(t : Tag(n))
+  def SW (t : Tag(3)) : Nat := (let w = MkW(t); 0)
+  inductive Opt2 (n : Nat) := A2(t : Tag(n)) | B2(h : Eq(Nat, n, 3))
+  def SO (t : Tag(3)) : Nat := (let w = A2(t); 0)
+  -- a function into a universe
+  def F0 (x : Nat) : Type := Nat
+  inductive HL (f : Π(x : Nat). Type) := MkHL(y : Nat)
+  inductive HW (f : Π(x : Nat). Type) := MkHW(t : HL(f))
+  reject def SH (t : HL(F0)) : Nat := (let w = MkHW(t); 0)
+  def SHw (t : HL(F0)) : Nat := (let w = MkHW[F0](t); 0)
+  def SHa (t : HL(F0)) : Nat := (let w : HW(F0) = MkHW(t); 0)
+  -- a type in `Type₁`
+  inductive LT (T : Type₁) := MkLT(y : Nat)
+  inductive WT (T : Type₁) := MkWT(t : LT(T))
+  reject def ST (t : LT(Type)) : Nat := (let w = MkWT(t); 0)
+  def STw (t : LT(Type)) : Nat := (let w = MkWT[Type](t); 0)
+  def STa (t : LT(Type)) : Nat := (let w : WT(Type) = MkWT(t); 0)
+  -- a value of a type in `Type₁`
+  inductive LV (U : Type₁) (u : U) := MkLV(y : Nat)
+  inductive WV (U : Type₁) (u : U) := MkWV(t : LV(U, u))
+  reject def SV (t : LV(Type, Nat)) : Nat := (let w = MkWV(t); 0)
+  def SVw (t : LV(Type, Nat)) : Nat := (let w = MkWV[Type, Nat](t); 0)
+  def SVa (t : LV(Type, Nat)) : Nat := (let w : WV(Type, Nat) = MkWV(t); 0)
+  -- which fields determine which parameters, at every field position: `R`'s second field is
+  -- of type `A`, which does not determine the phantom `B`; an untyped run (`MkIt`'s body at a
+  -- call) then takes `B` from the type its context declares, as typing does (D89)
+  inductive Bool2 := T2 | F2
+  inductive R (A : Type) (B : Type) := MkR(x : A, y : A)
+  def MkIt (a : Nat) : R(Nat, Bool2) := MkR(clone(a), a)
+  def UseMkIt : Eq(R(Nat, Bool2), MkIt(1), MkR[Nat, Bool2](1, 1)) := refl
+  inductive R2 (A : Type) (B : Type) := MkR2(x : A, y : B)
+  def MkIt2 (a : Nat) : R2(Nat, Nat) := MkR2(clone(a), a)
+}
+
+-- The values an untyped run builds record their parameters: `MkIt(1)`'s `MkR(1, 1)` records both
+-- (before D105 it recorded none: the index read `y : A` as determining `B`).
+#guard_msgs (drop warning) in
+ochr ParamsRecorded uses ParamInference {
+  def At (u : Unit) : Nat := (let v = MkIt(1); let w = MkIt2(1); ?)
+}
+
+/-- At the hole of `At`, each binding's name and, for a constructor value, how many parameters it
+records. -/
+def paramsRecorded : List (String × Nat) :=
+  let r := runWith (some Prelude) "ParamsRecorded" ParamsRecorded (located := true)
+  match r.rows.find? (·.name == "At") with
+  | some row => (row.trace.toList.filterMap fun
+      | .note _ _ (.hole _ Ω) => some (Ω.filterMap fun (n, _, v) => match v with
+          | .ind _ _ _ ps _ => some (n, ps.length)
+          | _ => none)
+      | _ => none).headD []
+  | none => []
+
+#guard paramsRecorded == [("v", 2), ("w", 2)]
+
+#guard (run "ParamInference" ParamInference).rejectedWith [
+  ("SH", "cannot infer the parameter f of MkHW: it stands in its fields' types only at positions of a universe above Type₀"),
+  ("ST", "cannot infer the parameter T of MkWT: it stands in its fields' types only at positions of a universe above Type₀"),
+  ("SV", "cannot infer the parameter U of MkWV: it stands in its fields' types only at positions of a universe above Type₀")]
+
+
 /-! ## What goes wrong without strict positivity
 
 A field of function type can mention the type being declared negatively. Then `L(b)`
@@ -576,6 +659,482 @@ ochr PositivityPaper {
   -- twin of Bad4: proves the true `False → False` rather than `False`
   def Bad4Ok (h : False) : False := LOk(MkBadOk(h))
 }
+
+/-! ## A type nested at its own parameter (D107)
+
+Nesting is allowed only at a *nestable* parameter: one the inductive uses only as a whole field
+type or at nestable parameters of inductives, never in a type function, an equation or a value,
+where its argument may be used negatively (K4). Until D107 the condition was skipped for the type
+being declared: while `Q` was checked its entry had no constructors, so the occurrence `Q(Q(A, n),
+1)` of `Q` at its own parameter `A` went unchecked, though `Q` passes `A` to `Neg`. `Neg(A, n)` is
+`False` at `0` and `A → False` at a successor, and stuck at the generic `n`, so the field is not a
+function type there. Then `Q(Unit, 0)` is `Q(Unit, 0) → False` (Curry's paradox), `Delta` is the
+diagonal, and `Boom` was a closed proof of `False`: `Delta` is a proof, so its call on its own
+encoding is never run. Now the nestable parameters of the type being declared are computed from
+its own fields, as the greatest set that the fields use only nestably (a parameter that `Q`'s own
+occurrence carries to a parameter outside the set is outside it too). -/
+
+ochr PositivitySelf {
+  def Neg (X : Type) (n : Nat) : Prop := (match n { Z => False, S _ => (Π(x : X). False) })
+  reject inductive Q (A : Type) (n : Nat) := MkQ(z : Q(Q(A, n), 1), e : Eq(Nat, n, 0)) | Stop(f : Neg(A, n))
+  -- twin of Q: `Stop` holds an `A` rather than `Neg(A, n)`, so `A` is nestable in `QOk`
+  inductive QOk (A : Type) (n : Nat) := MkQOk(z : QOk(QOk(A, n), 1), e : Eq(Nat, n, 0)) | StopOk(a : A)
+  reject def Delta (x : Q(Unit, 0)) : False := (
+    match x {
+      MkQ(z, e) => match z {
+        MkQ(z2, e2) => e2,
+        Stop(f) => f(x),
+      },
+      Stop(f) => f,
+    }
+  )
+  reject def Boom : False := Delta(MkQ[Unit, 0](Stop[Q(Unit, 0), 1](Delta), refl))
+  -- twin of Boom: a `QOk(Unit, 0)` holds a `Unit`, not a refutation of itself
+  def QOk0 : QOk(Unit, 0) := MkQOk[Unit, 0](StopOk[QOk(Unit, 0), 1](StopOk[Unit, 0](())), refl)
+  -- the same through `Prop`: a proposition nested at its own parameter
+  def NegP (X : Prop) (n : Nat) : Prop := (match n { Z => False, S _ => (Π(x : X). False) })
+  reject inductive QP (A : Prop) (n : Nat) : Prop := MkQP(z : QP(QP(A, n), 1), e : Eq(Nat, n, 0)) | StopP(f : NegP(A, n))
+  -- twin of QP: `StopP` holds a proof of `A`
+  inductive QPOk (A : Prop) (n : Nat) : Prop := MkQPOk(z : QPOk(QPOk(A, n), 1), e : Eq(Nat, n, 0)) | StopPOk(a : A)
+}
+
+#guard (run "PositivitySelf" PositivitySelf).rejectedWith [
+  ("Q", "field z of MkQ : Q(Q(A, n), 1): Q occurs at the parameter A of Q, which is not nestable in Q"),
+  ("Delta", "unknown"),
+  ("Boom", "unknown"),
+  ("QP", "field z of MkQP : QP(QP(A, n), 1): QP occurs at the parameter A of QP, which is not nestable in QP")]
+
+/-! The program that found it, as found (with `Bit`, an option type whose "none" is empty at
+`B0`, and the diagonal behind a lemma), and the same hole reached through a chain of two
+inductives, through a parameter that is a type function, and through a proof field. -/
+
+ochr PositivityCurry {
+  inductive Bit := B0 | B1
+  inductive Void : Type
+  def VF (v : Void) : False := (match v { })
+  def FF (b : Bit) : Type := (match b { B0 => Void, B1 => Unit })
+  inductive OptB (X : Type) (b : Bit) := NoneB(h : FF(b)) | SomeB(x : X)
+  def FB (X : Type) (b : Bit) : Type := (match b { B1 => (Π(x : X). Void), B0 => Unit })
+  reject inductive Q (A : Type) (b : Bit) := MkQ(y : FB(A, b), z : OptB(Q(Q(A, b), B1), b))
+  reject def Delta (x : Q(Unit, B0)) : Void := (
+    match x {
+      MkQ(y, z) => match z {
+        NoneB(h) => h,
+        SomeB(w) => match w {
+          MkQ(f, z2) => f(MkQ[Unit, B0](y, SomeB[Q(Q(Unit, B0), B1), B0](MkQ[Q(Unit, B0), B1](f, z2)))),
+        },
+      },
+    }
+  )
+  reject def Lem (g : Π(x : Q(Unit, B0)). Void) : False :=
+    VF(g(MkQ[Unit, B0]((), SomeB[Q(Q(Unit, B0), B1), B0](MkQ[Q(Unit, B0), B1](g, NoneB[Q(Q(Q(Unit, B0), B1), B1), B1](()))))))
+  reject def Boom : False := Lem(Delta)
+}
+
+#guard (run "PositivityCurry" PositivityCurry).rejectedWith [
+  ("Q", "field z of MkQ : OptB(Q(Q(A, b), B1), b): Q occurs at the parameter A of Q, which is not nestable in Q"),
+  ("Delta", "unknown"), ("Lem", "unknown"), ("Boom", "unknown")]
+
+ochr PositivityChain {
+  inductive Bit := B0 | B1
+  inductive Void : Type
+  def VF (v : Void) : False := (match v { })
+  def FF (b : Bit) : Type := (match b { B0 => Void, B1 => Unit })
+  inductive OptB (X : Type) (b : Bit) := NoneB(h : FF(b)) | SomeB(x : X)
+  def FB (X : Type) (b : Bit) : Type := (match b { B1 => (Π(x : X). Void), B0 => Unit })
+  inductive P (A : Type) (b : Bit) := MkP(y : FB(A, b))
+  reject inductive Q (A : Type) (b : Bit) := MkQ(p : P(A, b), z : OptB(Q(Q(A, b), B1), b))
+  reject def Delta (x : Q(Unit, B0)) : Void := (
+    match x {
+      MkQ(p, z) => match z {
+        NoneB(h) => h,
+        SomeB(w) => match w {
+          MkQ(p2, z2) => match p2 {
+            MkP(f) => f(MkQ[Unit, B0](p, SomeB[Q(Q(Unit, B0), B1), B0](MkQ[Q(Unit, B0), B1](MkP[Q(Unit, B0), B1](f), z2)))),
+          },
+        },
+      },
+    }
+  )
+  reject def Lem (g : Π(x : Q(Unit, B0)). Void) : False :=
+    VF(g(MkQ[Unit, B0](MkP[Unit, B0](()), SomeB[Q(Q(Unit, B0), B1), B0](MkQ[Q(Unit, B0), B1](MkP[Q(Unit, B0), B1](g), NoneB[Q(Q(Q(Unit, B0), B1), B1), B1](()))))))
+  reject def Boom : False := Lem(Delta)
+}
+
+#guard (run "PositivityChain" PositivityChain).rejectedWith [
+  ("Q", "field z of MkQ : OptB(Q(Q(A, b), B1), b): Q occurs at the parameter A of Q, which is not nestable in Q"),
+  ("Delta", "unknown"), ("Lem", "unknown"), ("Boom", "unknown")]
+
+ochr PositivityTyFn {
+  inductive Bit := B0 | B1
+  inductive Void : Type
+  def VF (v : Void) : False := (match v { })
+  def FF (b : Bit) : Type := (match b { B0 => Void, B1 => Unit })
+  inductive OptB (X : Type) (b : Bit) := NoneB(h : FF(b)) | SomeB(x : X)
+  def AppB (G : Π(X : Type). Type) (A : Type) (b : Bit) : Type := (match b { B1 => G(A), B0 => Unit })
+  def Neg (X : Type) : Type := (Π(x : X). Void)
+  reject inductive QG (G : Π(X : Type). Type) (A : Type) (b : Bit) := MkQG(y : AppB(G, A, b), z : OptB(QG(G, QG(G, A, b), B1), b))
+  reject def Delta (x : QG(Neg, Unit, B0)) : Void := (
+    match x {
+      MkQG(y, z) => match z {
+        NoneB(h) => h,
+        SomeB(w) => match w {
+          MkQG(f, z2) => f(MkQG[Neg, Unit, B0](y, SomeB[QG(Neg, QG(Neg, Unit, B0), B1), B0](MkQG[Neg, QG(Neg, Unit, B0), B1](f, z2)))),
+        },
+      },
+    }
+  )
+  reject def Lem (g : Π(x : QG(Neg, Unit, B0)). Void) : False :=
+    VF(g(MkQG[Neg, Unit, B0]((), SomeB[QG(Neg, QG(Neg, Unit, B0), B1), B0](MkQG[Neg, QG(Neg, Unit, B0), B1](g, NoneB[QG(Neg, QG(Neg, QG(Neg, Unit, B0), B1), B1), B1](()))))))
+  reject def Boom : False := Lem(Delta)
+}
+
+#guard (run "PositivityTyFn" PositivityTyFn).rejectedWith [
+  ("QG", "field z of MkQG : OptB(QG(G, QG(G, A, b), B1), b): QG occurs at the parameter A of QG, which is not nestable in QG"),
+  ("Delta", "unknown"), ("Lem", "unknown"), ("Boom", "unknown")]
+
+ochr PositivityPropRoute {
+  inductive Bit := B0 | B1
+  def FFP (b : Bit) : Prop := (match b { B0 => False, B1 => True })
+  inductive OptP (X : Type) (b : Bit) := NoneP(h : FFP(b)) | SomeP(x : X)
+  def FBP (X : Type) (b : Bit) : Prop := (match b { B1 => (Π(x : X). False), B0 => True })
+  reject inductive QP (A : Type) (b : Bit) := MkQP(y : FBP(A, b), z : OptP(QP(QP(A, b), B1), b))
+  reject def Delta (x : QP(Unit, B0)) : False := (
+    match x {
+      MkQP(y, z) => match z {
+        NoneP(h) => h,
+        SomeP(w) => match w {
+          MkQP(f, z2) => f(MkQP[Unit, B0](y, SomeP[QP(QP(Unit, B0), B1), B0](MkQP[QP(Unit, B0), B1](f, z2)))),
+        },
+      },
+    }
+  )
+  reject def Boom : False := Delta(MkQP[Unit, B0](I, SomeP[QP(QP(Unit, B0), B1), B0](MkQP[QP(Unit, B0), B1](Delta, NoneP[QP(QP(QP(Unit, B0), B1), B1), B1](I)))))
+}
+
+#guard (run "PositivityPropRoute" PositivityPropRoute).rejectedWith [
+  ("QP", "field z of MkQP : OptP(QP(QP(A, b), B1), b): QP occurs at the parameter A of QP, which is not nestable in QP"),
+  ("Delta", "unknown"), ("Boom", "unknown")]
+
+/-! The nestable parameters of an inductive declared earlier are computed the same way, as the
+greatest set its fields use only nestably, its own occurrences counted at their positions (D107).
+Before, any parameter an inductive's own occurrence carried was taken to be nestable, wherever
+it carried it: `E`'s `B` reaches only `E(B, A, 1)`, at the position of `A`, which `E` passes to
+`Neg`, so `B` is not nestable, and `Bad` nested at it is `Bad → False`. -/
+
+ochr PositivitySwap {
+  def Neg (X : Type) (n : Nat) : Prop := (match n { Z => False, S _ => (Π(x : X). False) })
+  inductive E (A : Type) (B : Type) (n : Nat) := MkE(z : E(B, A, 1), e : Eq(Nat, n, 0)) | StopE(f : Neg(A, n))
+  reject inductive Bad := MkBad(e : E(Unit, Bad, 0))
+  -- twin of Bad: `Bad` at no parameter of `E`
+  inductive BadOk := MkBadOk(e : E(Unit, Unit, 0))
+  reject def Delta (x : Bad) : False := (
+    match x {
+      MkBad(e) => match e {
+        MkE(z, h) => match z {
+          MkE(z2, h2) => h2,
+          StopE(f) => f(x),
+        },
+        StopE(f) => f,
+      },
+    }
+  )
+  reject def Boom : False := Delta(MkBad(MkE[Unit, Bad, 0](StopE[Bad, Unit, 1](Delta), refl)))
+  -- a swap that keeps both parameters nestable (the greatest set, not "the same position")
+  inductive Alt (A : Type) (B : Type) := ANil | ACons(a : A, rest : Alt(B, A))
+  inductive Zig := MkZig(z : Alt(Zig, Nat))
+}
+
+#guard (run "PositivitySwap" PositivitySwap).rejectedWith [
+  ("Bad", "field e of MkBad : E(Unit, Bad, 0): Bad occurs at the parameter B of E, which is not nestable in E"),
+  ("Delta", "unknown"), ("Boom", "unknown")]
+
+/-! Finding 1 as the data model's battery states it (with `Void`, and the diagonal behind a lemma). -/
+
+ochr PositivitySecondHole {
+  inductive Void : Type
+  def VF (v : Void) : False := (match v { })
+  def Neg (X : Type) (n : Nat) : Type := (match n { Z => Void, S(k) => (Π(x : X). Void) })
+  inductive E (A : Type) (B : Type) (n : Nat) := MkE(z : E(B, A, 1), e : Eq(Nat, n, 0)) | StopE(f : Neg(A, n))
+  reject inductive Bad := MkBad(e : E(Unit, Bad, 0))
+  reject def Lem (g : Π(x : Bad). Void) : False :=
+    VF(g(MkBad(MkE[Unit, Bad, 0](StopE[Bad, Unit, 1](g), refl))))
+  reject def Delta (x : Bad) : Void := (
+    match x {
+      MkBad(e) => match e {
+        MkE(z, h) => match z {
+          MkE(z2, h2) => match h2 { },
+          StopE(f) => f(MkBad(MkE[Unit, Bad, 0](StopE[Bad, Unit, 1](f), h))),
+        },
+        StopE(f) => match f { },
+      },
+    }
+  )
+  reject def Boom : False := Lem(Delta)
+}
+
+#guard (run "PositivitySecondHole" PositivitySecondHole).rejectedWith [
+  ("Bad", "field e of MkBad : E(Unit, Bad, 0): Bad occurs at the parameter B of E, which is not nestable in E"),
+  ("Lem", "unknown"), ("Delta", "unknown"), ("Boom", "unknown")]
+
+/-! Other routes from a declared type to a negative position, each rejected for its reason: through
+a chain of inductives (at a computed value parameter, under `Box`), a type function at the type
+itself (directly, under `Box`, at an index field, at a nested occurrence), an equation, a borrow,
+a parameter that is a type function (applied in a field, applied by a global, given a lambda that
+mentions the type). A value parameter whose type is a type parameter, with the type nested at it,
+is positive and accepted. -/
+
+ochr PositivityRoutes {
+  inductive Void : Type
+  def Neg (X : Type) (n : Nat) : Prop := (match n { Z => False, S _ => (Π(x : X). False) })
+  def NegV (X : Type) (n : Nat) : Type := (match n { Z => Unit, S _ => (Π(x : X). Void) })
+  inductive Box (A : Type) := MkBox(x : A)
+  inductive F (A : Type) (n : Nat) := MkF(f : Neg(A, n))
+  inductive E1 (A : Type) := MkE1(x : F(A, 1))
+  inductive E2 (A : Type) (n : Nat) := MkE2(x : F(A, n))
+  inductive E3 (A : Type) := MkE3(x : Box(F(A, 1)))
+  reject inductive Bad1 := MkBad1(e : E1(Bad1))
+  reject inductive Bad2 := MkBad2(e : E2(Bad2, 0))
+  reject inductive Bad3 := MkBad3(e : E3(Bad3))
+  -- twin of Bad1–Bad3: the type nested at `Box`, which keeps its parameter
+  inductive Ok1 := MkOk1(e : Box(Ok1)) | Nil1
+  reject inductive Bad4 := MkBad4(f : Neg(Bad4, 1))
+  reject inductive Bad5 := MkBad5(b : Box(NegV(Bad5, 1)))
+  reject inductive Bad6 := MkBad6(n : Nat, f : Neg(Bad6, n))
+  reject inductive Bad7 (n : Nat) := MkBad7(f : Neg(Box(Bad7(n)), n))
+  reject inductive Bad8 := MkBad8(b : Bad8, e : Eq(Bad8, b, b))
+  reject inductive Bad9 := MkBad9(r : &Bad9)
+  reject inductive H1 (G : Π(x : Nat). Type) := MkH1(x : G(0))
+  def App (G : Π(X : Type). Type) (A : Type) : Type := G(A)
+  inductive H2 (G : Π(X : Type). Type) (A : Type) := MkH2(x : App(G, A))
+  def NegT (X : Type) : Type := Π(x : X). Void
+  reject inductive Bad10 := MkBad10(h : H2(NegT, Bad10))
+  reject inductive Bad11 := MkBad11(h : H2(λ(X : Type) : Type => (Π(x : Bad11). Void), Unit))
+  -- twin of Bad10, Bad11: `H2` given the type at no parameter
+  inductive Ok10 := MkOk10(h : H2(NegT, Unit))
+  inductive G1 (A : Type) (a : A) := MkG1(x : A)
+  inductive T1 := Leaf1 | Node1(t : T1, g : G1(T1, t))
+}
+
+#guard (run "PositivityRoutes" PositivityRoutes).rejectedWith [
+  ("Bad1", "field e of MkBad1 : E1(Bad1): Bad1 occurs at the parameter A of E1, which is not nestable in E1"),
+  ("Bad2", "field e of MkBad2 : E2(Bad2, 0): Bad2 occurs at the parameter A of E2, which is not nestable in E2"),
+  ("Bad3", "field e of MkBad3 : E3(Bad3): Bad3 occurs at the parameter A of E3, which is not nestable in E3"),
+  ("Bad4", "field f of MkBad4 : Neg(Bad4, 1): fields are first-order data"),
+  ("Bad5", "field b of MkBad5 : Box(NegV(Bad5, 1)): fields are first-order data"),
+  ("Bad6", "field f of MkBad6 : Neg(Bad6, n): fields are first-order data"),
+  ("Bad7", "field f of MkBad7 : Neg(Box(Bad7(n)), n): fields are first-order data"),
+  ("Bad8", "field e of MkBad8 : Eq(Bad8, b, b): fields are first-order data"),
+  ("Bad9", "field r of MkBad9: no borrows inside data"),
+  ("H1", "field x of MkH1 : G(0): fields are first-order data"),
+  ("Bad10", "field h of MkBad10 : H2(NegT, Bad10): Bad10 occurs at the parameter A of H2, which is not nestable in H2"),
+  ("Bad11", "field h of MkBad11 : H2(")]
+
+/-! While a declaration is checked, its entry in Σ has no constructors yet, and a reader of that
+entry would answer as if the type were empty (D107). A value argument in a field type may be any
+term over the earlier fields not mentioning the type, and a match with no arms names no
+constructor, so `E` was accepted with a field type that is ill-typed once `E` has its
+constructors. Now any term that reads the constructors of the type being declared (a match on an
+earlier field of it, with or without arms, by type for a proposition, a field projection of it,
+one of its constructors) is rejected for that reason; a decision that reads them and cannot
+reject answers conservatively (not a copy, not a subsingleton, no single constructor). -/
+
+ochr PositivityDeclaring uses Lists {
+  inductive W (h : False) := MkW
+  inductive Tag (n : Nat) := MkTag
+  -- a match with no arms on an earlier field of the type, of data and of a proposition (by type)
+  reject inductive E := Leaf | Node(b : E, w : W(let k : False = match b {}; k))
+  reject inductive EP : Prop := LeafP | NodeP(b : EP, w : W(let k : False = match b {}; k))
+  -- the same through a list built without naming the type
+  reject inductive EL := LeafL | NodeL(b : EL, w : W(let l = Cons(b, Nil); match l { Nil => (let k : False = match b {}; k), Cons(h, t) => (let k : False = match h {}; k) }))
+  -- a match with arms, a field projection, a constructor of the type being declared
+  reject inductive EA := LeafA | NodeA(b : EA, t : Tag(match b { LeafA => 0, NodeA(c, u) => 1 }))
+  reject inductive EJ := NodeJ(b : EJ, t : Tag(let x = b.0; 0))
+  reject inductive EC := LeafC | NodeC(b : EC, t : Tag(let x = LeafC; 0))
+  -- an earlier field of the type read twice: it is not known to be a copy
+  reject inductive ED := LeafD | NodeD(b : ED, t : Tag(let x = b; let y = b; 0))
+  -- twins: what reads no constructor of the type being declared is accepted
+  inductive EOk (h : False) := LeafOk | NodeOk(b : EOk(h), w : W(let k : False = match h {}; k))
+  inductive EOnce := LeafO | NodeO(b : EOnce, t : Tag(let x = b; 0))
+  inductive EClone := LeafCl | NodeCl(b : EClone, t : Tag(let x = clone(b); 0))
+  -- a copy declaration counts the type itself as a copy (D53), whatever its entry says
+  inductive Box (A : Type) := MkBox(x : A)
+  copy inductive ECopy := LeafCp | NodeCp(b : Box(ECopy))
+}
+
+#guard (run "PositivityDeclaring" PositivityDeclaring).rejectedWith [
+  ("E", "a match on b reads the constructors of E, which are not known while E is declared (D107)"),
+  ("EP", "a match on b reads the constructors of EP, which are not known while EP is declared (D107)"),
+  ("EL", "a match on l.h reads the constructors of EL, which are not known while EL is declared (D107)"),
+  ("EA", "a match on b reads the constructors of EA, which are not known while EA is declared (D107)"),
+  ("EJ", "b.0 reads the constructors of EJ, which are not known while EJ is declared (D107)"),
+  ("EC", "the constructor LeafC reads the constructors of EC, which are not known while EC is declared (D107)"),
+  ("ED", "[Read] b was moved out or its borrow ended")]
+
+/-! Nested declarations that stay accepted: each nests the type at a parameter that the inner
+inductive uses only as a whole field type or at nestable parameters, its own occurrences
+included (`DD(DD(A))`, `Box(BB(Box(A)))`, `List(RN(Duo(A, A)))`); `HN` shifts a large value
+parameter along the unfolding while nesting itself at `A`. With a recursive proposition as a
+field, a type function returning data, and a type function at a parameter that is not nested.
+The data model's construction models each (D107's battery). -/
+
+ochr PositivityKeep uses Nats, Lists, Bools {
+  inductive Duo (A : Type) (B : Type) := MkDuo(fst : A, snd : B)
+  inductive Box (A : Type) := MkBox(x : A)
+  inductive DD (A : Type) := DLeaf | DNode(x : DD(DD(A)))
+  inductive RN (A : Type) := NodeN(a : A, kids : List(RN(Duo(A, A))))
+  inductive BB (A : Type) := BLeaf(a : A) | BNode(b : Box(BB(Box(A))))
+  inductive RP (A : Type) := NodeP(a : A, kids : List(Duo(RP(A), Nat)))
+  inductive NN (A : Type) := NNode(kids : List(List(NN(A))))
+  def App0 (f : Π(x : Nat). Type) : Type := f(0)
+  inductive HN (f : Π(x : Nat). Type) (A : Type) := HB(a : A) | HS(y : App0(f), r : HN(λ(x : Nat) : Type => f(S(x)), HN(f, A)))
+  inductive Ev (n : Nat) : Prop := EvZ(h : Eq(Nat, n, 0)) | EvSS(m : Nat, h : Ev(m), e : Eq(Nat, n, S(S(m))))
+  inductive WithEv := MkWE(n : Nat, p : Ev(n))
+  def EvT (b : Bool) : Type := (match b { false => Nat, true => List(Nat) })
+  inductive TF := MkTF(b : Bool, x : EvT(b))
+  def FBB (X : Type) (b : Bool) : Type := (match b { true => (Π(x : X). Nat), false => Unit })
+  inductive FBox (A : Type) (b : Bool) := MkFBox(y : FBB(A, b))
+  -- nested at the nestable parameters of the battery's own types
+  inductive UseDD := MkUseDD(d : DD(UseDD)) | EndDD
+  inductive UseBB := MkUseBB(b : BB(UseBB)) | EndBB
+  inductive UseHN := MkUseHN(h : HN(λ(x : Nat) : Type => Nat, UseHN)) | EndHN
+  -- and not at `FBox`'s, which it passes to a type function
+  reject inductive UseFBox := MkUseFBox(b : FBox(UseFBox, true))
+}
+
+#guard (run "PositivityKeep" PositivityKeep).rejectedWith [
+  ("UseFBox", "field b of MkUseFBox : FBox(UseFBox, true): UseFBox occurs at the parameter A of FBox, which is not nestable in FBox")]
+
+/-! The data model's probes of nested and large declarations (D107's battery, from the data-model
+lanes): each stays accepted, and each rejection keeps its reason. -/
+
+ochr PositivityProbesNest uses Nats, Lists, Bools {
+  inductive Rose (A : Type) := Node(a : A, kids : List(Rose(A)))
+  -- recursion on a forest through the head tree's own forest
+  def CountF (f : List(Rose(Nat))) : Nat by f := (
+    match f {
+      Nil => 0,
+      Cons(t, rest) => match t {
+        Node(a, k) => S(CountF(k)),
+      },
+    }
+  )
+  def F3 : Eq(Nat, CountF(Cons(Node(1, Cons(Node(2, Cons(Node(3, Nil), Nil)), Nil)), Nil)), 3) := refl
+  reject def F2 : Eq(Nat, CountF(Cons(Node(1, Cons(Node(2, Cons(Node(3, Nil), Nil)), Nil)), Nil)), 2) := refl
+  -- a field compared with a parameter, at a parameter type, instantiated at itself
+  inductive Single (A : Type) (a : A) := MkS(x : A, e : Eq(A, x, a))
+  def S1 : Single(Nat, 0) := MkS(0, refl)
+  def S2 : Single(Single(Nat, 0), S1) := MkS(S1, refl)
+  -- a type-function field reading an earlier field of declared data type
+  def BF (b : Bool) : Type := (match b { false => Nat, true => Unit })
+  inductive BW := MkBW(b : Bool, x : BF(b))
+  def BW1 : BW := MkBW(true, ())
+  def BW0 : BW := MkBW(false, 5)
+  -- a type-function field computing to a function type at an instance
+  def BG (b : Bool) : Type := (match b { false => Nat, true => (Π(n : Nat). Nat) })
+  inductive BH := MkBH(b : Bool, x : BG(b))
+  -- W-type shapes: a field that is a function into the declared type (controls)
+  reject inductive WT := WLeaf | WNode(f : Π(n : Nat). WT)
+  def FnTy (A : Type) : Type := (Π(n : Nat). A)
+  reject inductive WT2 := WLeaf2 | WNode2(f : FnTy(WT2))
+}
+
+#guard (run "PositivityProbesNest" PositivityProbesNest).rejectedWith [
+  ("F2", "the body of F2 has type ⊤, but the goal is False"),
+  ("WT", "field f of WNode : Π(n : Nat). WT: fields are first-order data"),
+  ("WT2", "field f of WNode2 : FnTy(WT2): fields are first-order data")]
+
+ochr PositivityProbesLarge uses Nats, Lists, WordType {
+  -- an equation between parameters of a type of sort `Type₁`
+  inductive TEq (U : Type₁) (a : U) (b : U) := MkTEq(h : Eq(U, a, b))
+  def te : TEq(Type, Word, Word) := MkTEq[Type, Word, Word](refl)
+  def te2 : TEq(Π(x : Word). Type, λ(x : Word) : Type => Word, λ(y : Word) : Type => Word) :=
+    MkTEq[Π(x : Word). Type, λ(x : Word) : Type => Word, λ(y : Word) : Type => Word](refl)
+  reject def te3 : TEq(Π(x : Word). Type, λ(x : Word) : Type => Word, λ(y : Word) : Type => Unit) :=
+    MkTEq[Π(x : Word). Type, λ(x : Word) : Type => Word, λ(y : Word) : Type => Unit](refl)
+  -- a large type through a universe parameter
+  def IdT (A : Type) (x : A) : A := x
+  def te4 : TEq(Type, Word, Word) := IdT(TEq(Type, Word, Word), te)
+  -- type functions taking, and applying, a large parameter in a field type
+  def Pick (U : Type₁) (a : U) : Type := Word
+  inductive LP (U : Type₁) (a : U) := MkLP(x : Pick(U, a))
+  def App0 (f : Π(x : Word). Type) : Type := f(Zero)
+  inductive HL3 (f : Π(x : Word). Type) := MkHL3(y : App0(f))
+  def h3 : HL3(λ(x : Word) : Type => Word) := MkHL3[λ(x : Word) : Type => Word](Zero)
+  reject def h3bad : HL3(λ(x : Word) : Type => Unit) := MkHL3[λ(x : Word) : Type => Unit](Zero)
+  inductive H (f : Π(x : Word). Type) := HB | HS(y : App0(f), r : H(λ(x : Word) : Type => f(Succ(x))))
+  -- the residual: a field type applying a function to parameter-typed data, used at itself
+  inductive RV (A : Type) := MkRV(xs : List(A), v : Eq(Word, LenL(A, xs), LenL(A, xs)))
+  def rv0 : RV(Nat) := MkRV[Nat](Nil, refl)
+  def rv1 : RV(RV(Nat)) := MkRV[RV(Nat)](Cons(rv0, Nil), refl)
+}
+
+#guard (run "PositivityProbesLarge" PositivityProbesLarge).rejectedWith [
+  ("te3", "field h of MkTEq has type ⊤, expected Eq(Π(x : Word). Type"),
+  ("h3bad", "field y of MkHL3 has type Word, expected Unit")]
+
+ochr PositivityProbesAdv uses Nats, Lists, WordType {
+  inductive Tag (n : Word) := MkTag(x : Word)
+  reject def TagNe (h : Eq(Type, Tag(Zero), Tag(Succ(Zero)))) : False := h
+  reject def ListNe (h : Eq(Type, List(Word), List(Unit))) : False := h
+  inductive PH (U : Type₁) := MkPH
+  reject def PHNe (h : Eq(Type, PH(Type), PH(Prop))) : False := h
+  inductive TEq (U : Type₁) (a : U) (b : U) := MkTEq(h : Eq(U, a, b))
+  reject def TEqNe (h : Eq(Type, TEq(Type, Word, Word), TEq(Type, Unit, Unit))) : False := h
+  reject def TEqNe2 (h : Eq(Type, TEq(Type, Word, Word), TEq(Π(x : Word). Type, λ(x : Word) : Type => Word, λ(x : Word) : Type => Word))) : False := h
+  inductive TagA (n : Word) := MkTA(x : Word)
+  inductive TagB (n : Word) := MkTB(x : Word)
+  reject def TagAB (h : Eq(Type, TagA(Zero), TagB(Zero))) : False := h
+  inductive RE (A : Type) := MkRE(xs : List(A), v : Eq(Word, LenL(A, xs), Succ(Zero)))
+  def re0 : RE(Nat) := MkRE[Nat](Cons(0, Nil), refl)
+  def re1 : RE(RE(Nat)) := MkRE[RE(Nat)](Cons(re0, Nil), refl)
+  reject def reBad : RE(Nat) := MkRE[Nat](Nil, refl)
+  reject inductive RoseL (A : Type) := NodeL(kids : List(RoseL(A)), v : Eq(Word, LenL(RoseL(A), kids), LenL(RoseL(A), kids)))
+  inductive FP (f : Π(x : Word). Word) := MkFP(y : Word, e : Eq(Word, f(y), y))
+  def App0 (f : Π(x : Word). Type) : Type := f(Zero)
+  inductive H (f : Π(x : Word). Type) := HB | HS(y : App0(f), r : H(λ(x : Word) : Type => f(Succ(x))))
+  def hh : H(λ(x : Word) : Type => Word) := HS[λ(x : Word) : Type => Word](Zero, HB)
+  def AppU (U : Type₁) (F : Π(x : U). Type) (a : U) : Type := F(a)
+  reject inductive LB (U : Type₁) (F : Π(x : U). Type) (a : U) := MkLB(y : AppU(U, F, a))
+  def MG (G : Π(X : Type). Word) : Type := (match G(Word) { Zero => Word, Succ(k) => Unit })
+  inductive MM (G : Π(X : Type). Word) := MkMM(y : MG(G))
+  def mm0 : MM(λ(X : Type) : Word => Zero) := MkMM[λ(X : Type) : Word => Zero](Zero)
+  reject def mm0Bad : MM(λ(X : Type) : Word => Zero) := MkMM[λ(X : Type) : Word => Zero](())
+  def mm1 : MM(λ(X : Type) : Word => Succ(Zero)) := MkMM[λ(X : Type) : Word => Succ(Zero)](())
+}
+
+#guard (run "PositivityProbesAdv" PositivityProbesAdv).rejectedWith [
+  ("TagNe", "the body of TagNe has type Eq(Type, Tag(Zero), Tag(Succ(Zero))), but the goal is False"),
+  ("ListNe", "the body of ListNe has type Eq(Type, List(Word), List(Unit)), but the goal is False"),
+  ("PHNe", "the body of PHNe has type Eq(Type, PH(Type), PH(Prop)), but the goal is False"),
+  ("TEqNe", "the body of TEqNe has type Eq(Type, TEq(Type, Word, Word), TEq(Type, Unit, Unit)), but the goal is False"),
+  ("TEqNe2", "the body of TEqNe2 has type Eq(Type, TEq(Type, Word, Word), TEq(Π(x : Word). Type"),
+  ("TagAB", "the body of TagAB has type Eq(Type, TagA(Zero), TagB(Zero)), but the goal is False"),
+  ("reBad", "field v of MkRE has type ⊤, expected False"),
+  ("RoseL", "field v of NodeL : Eq(Word, LenL(RoseL(A), kids), LenL(RoseL(A), kids)): fields are first-order data"),
+  ("LB", "κ is not a type: its declared type is not a sort"),
+  ("mm0Bad", "field y of MkMM has type Unit, expected Word")]
+
+/-! The battery's controls: a later declaration nested at a parameter passed to a type function,
+and large elimination from a proposition that is not a subsingleton (D45). -/
+
+ochr PositivityControls uses Nats, Bools {
+  inductive Void : Type
+  def FB (X : Type) (b : Bool) : Type := (match b { true => (Π(x : X). Void), false => Unit })
+  inductive P (A : Type) (b : Bool) := MkP(y : FB(A, b))
+  -- a later declaration nested at a parameter passed to a type function (K4)
+  reject inductive E := MkE(p : P(E, true))
+  -- large elimination from a proposition with two constructors, or a data field (D45)
+  inductive POr : Prop := PL | PR
+  reject def f (p : POr) : Bool := (match p { PL => false, PR => true })
+  inductive PS : Prop := MkPS(n : Nat)
+  reject def get (p : PS) : Nat := (match p { MkPS(n) => n })
+}
+
+#guard (run "PositivityControls" PositivityControls).rejectedWith [
+  ("E", "field p of MkE : P(E, true): E occurs at the parameter A of P, which is not nestable in P"),
+  ("f", "[D45] a match on a proof of POr returns a non-proof"),
+  ("get", "[D45] a match on a proof of PS returns a non-proof")]
 
 /-! ## Decisions read an unknown by the reading frozen when it was made (D96)
 
