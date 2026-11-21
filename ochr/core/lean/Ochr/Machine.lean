@@ -2242,6 +2242,10 @@ def evalAt (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value := none) 
       let (_, p) ← getFlags
       pure (p, p)
     | .cong _ _ | .prim "trans" _ | .prim "symm" _ => pure (true, true)
+    -- D116: `clone(p)` is what `p` is: its declared reading is its operand's (`Decide.declOf`), and
+    -- a proposition is a copy (D100), so the clone of a proof is that proof, `⋆` flagged a proof,
+    -- and of data a copy of the data (the operand's flags, set by its own evaluation)
+    | .prim "clone" _ => getFlags
     | .prim "hole" _ => getFlags     -- set by `evalCore`: a proof iff its type is a proposition
     | .prim "rewrite" _ | .prim "rewriteR" _ => pure (true, true)   -- D60: `J`, a proof
     | .ctor ty _ _ _ _ => let p ← ctorIsProof ty; pure (p, p)   -- D42: a Prop inductive's value is a proof
