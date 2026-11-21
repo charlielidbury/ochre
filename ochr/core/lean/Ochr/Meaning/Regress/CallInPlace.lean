@@ -574,10 +574,34 @@ theorem popCallFrame_one (start : Nat) (s : SState) (l f i : Nat) (hl : s.liveLa
         (fun p => match p with
           | .bind g _ | .temp g _ => if g = s.topIdx then none else (s.endLabel l).shape p)
         (s.endLabel l).nextLoan (s.endLabel l).lent (s.endLabel l).heldTy (s.endLabel l).heldMem := by
-  unfold popCallFrame
+  unfold popCallFrame popEnds
   simp only [hl, List.filter_cons, List.filter_nil, hh, hf, beq_self_eq_true, Bool.or_true, ne_eq, reduceCtorEq,
     not_false_eq_true, decide_true, Bool.and_self, if_true, List.foldl_cons, List.foldl_nil, Option.bind_none]
   congr 1
+
+/-- The pop's ends where the only live label is held in the callee's frame and nothing is returned. -/
+theorem popEnds_one (start : Nat) (s : SState) (l f i : Nat) (hl : s.liveLabels = [l])
+    (hh : s.holderOf l = some (.bind f i)) (hf : f = s.topIdx) : popEnds start none s = [l] := by
+  unfold popEnds
+  simp [hl, hh, hf]
+
+/-- The pop's ends where two labels are live: `l`, held in the callee's frame, and `k`, returned. -/
+theorem popEnds_two (start : Nat) (s : SState) (l k f i : Nat) (hl : s.liveLabels = [l, k])
+    (hh : s.holderOf l = some (.bind f i)) (hf : f = s.topIdx) (hlk : l ≠ k) : popEnds start (some k) s = [l] := by
+  unfold popEnds
+  have hne : (some l ≠ some k) := fun h => hlk (Option.some.inj h)
+  simp only [hl, List.filter_cons, List.filter_nil, hh, hf, beq_self_eq_true, Bool.or_true, ne_eq, hne,
+    not_false_eq_true, decide_true, Bool.and_self, if_true, not_true_eq_false, decide_false, Bool.and_false,
+    Bool.false_eq_true, if_false]
+
+/-- The pop's end of `x`'s label is strict: `x` holds the number `c`. -/
+theorem endsOk_SP (cd d : DeclInfo) (c : Sem) (hc : c ∈ₛ[(Kc dm).dm.read] TyM.nat) :
+    EndsOk (Kc dm) φ [0] (SP dm ρ φ cd d c r) := by
+  refine ⟨?_, trivial⟩
+  intro q hq ψ _
+  rw [holderOf_SP] at hq
+  cases hq
+  exact hc
 
 attribute [local irreducible] SP in
 /-- The pop after the body: `x`'s label `0` ends (its holder is in the callee's frame), `y` reads
@@ -621,6 +645,10 @@ theorem inc_inPlace :
   unfold runCallRef runBodyRef
   simp only [incT, hs₀, codOf_inc]
   rw [callFrame_inc dm ρ φ _ _ rfl, runBody_incP]
+  dsimp only
+  have hk : (if outInc.isRef = true then (TyS.plain TyM.unit).label else none) = none := rfl
+  rw [hk, popEnds_one _ _ 0 1 1 (liveLabels_SP dm ρ φ _ _ _) (holderOf_SP dm ρ φ _ _ _) rfl,
+    if_pos (endsOk_SP dm ρ φ _ _ (Sem.el0 Nat (2 + 1)) ⟨2 + 1, rfl⟩)]
   rfl
 
 /-- **`Inc(&y)`: the call by `callOf` and the call in place agree** (`callOf_inPlace` on a borrow
@@ -1303,7 +1331,7 @@ theorem popCallFrame_two (start : Nat) (s : SState) (l k f i : Nat) (r : Pos) (h
         (fun p => match p with
           | .bind g _ | .temp g _ => if g = s.topIdx then none else (s.endLabel l).shape p)
         (s.endLabel l).nextLoan (s.endLabel l).lent (s.endLabel l).heldTy (s.endLabel l).heldMem).pushTempShaped ((s.endLabel l).valAt r) k := by
-  unfold popCallFrame
+  unfold popCallFrame popEnds
   have hne : (some l ≠ some k) := fun h => hlk (Option.some.inj h)
   simp only [hl, List.filter_cons, List.filter_nil, hh, hf, beq_self_eq_true, Bool.or_true, ne_eq, hne,
     not_false_eq_true, decide_true, Bool.and_self, if_true, not_true_eq_false, decide_false, Bool.and_false,
