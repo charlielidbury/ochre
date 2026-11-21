@@ -341,17 +341,17 @@ theorem fixStep_qset {fb fb' : List PBind × PBind} (hB : BAgree 0 fb.1 fb'.1) {
   rw [← hr]
   have tail : ∀ (T : TyS) (d : DeclInfo),
       (if pd.isRef = true then
-        (pushBindShaped ((((qset Q β X).freshLoan.2.pushCell { ty := .plain T.m, val := fun ψ => ψ (qset Q β X).freshLoan.1, decl := .other }).setHeldMem (qset Q β X).freshLoan.1 v).setHeldTy (qset Q β X).freshLoan.1 T.m)
+        (pushBindShaped (((((qset Q β X).freshLoan.2.pushCell { ty := .plain T.m, val := fun ψ => ψ (qset Q β X).freshLoan.1, decl := .other }).setLent (qset Q β X).freshLoan.1 [⟨Pos.bind 0 ((((qset Q β X).freshLoan.2.env[0]?).map (·.binds.length)).getD 0), [], false⟩]).setHeldMem (qset Q β X).freshLoan.1 v).setHeldTy (qset Q β X).freshLoan.1 T.m)
           { ty := { T with label := some (qset Q β X).freshLoan.1 }, val := fun _ => v, decl := d },
           acc ++ [v], cells ++ [Pos.bind 0 ((((qset Q β X).freshLoan.2.env[0]?).map (·.binds.length)).getD 0)])
       else ((qset Q β X).pushBind { ty := { T with label := none }, val := fun _ => v, decl := d }, acc ++ [v], cells)) =
       (qset Q β (if pd.isRef = true then
-        (pushBindShaped (((X.freshLoan.2.pushCell { ty := .plain T.m, val := fun ψ => ψ X.freshLoan.1, decl := .other }).setHeldMem X.freshLoan.1 v).setHeldTy X.freshLoan.1 T.m)
+        (pushBindShaped ((((X.freshLoan.2.pushCell { ty := .plain T.m, val := fun ψ => ψ X.freshLoan.1, decl := .other }).setLent X.freshLoan.1 [⟨Pos.bind 0 (((X.freshLoan.2.env[0]?).map (·.binds.length)).getD 0), [], false⟩]).setHeldMem X.freshLoan.1 v).setHeldTy X.freshLoan.1 T.m)
           { ty := { T with label := some X.freshLoan.1 }, val := fun _ => v, decl := d },
           acc ++ [v], cells ++ [Pos.bind 0 (((X.freshLoan.2.env[0]?).map (·.binds.length)).getD 0)])
       else (X.pushBind { ty := { T with label := none }, val := fun _ => v, decl := d }, acc ++ [v], cells)).1,
        (if pd.isRef = true then
-        (pushBindShaped (((X.freshLoan.2.pushCell { ty := .plain T.m, val := fun ψ => ψ X.freshLoan.1, decl := .other }).setHeldMem X.freshLoan.1 v).setHeldTy X.freshLoan.1 T.m)
+        (pushBindShaped ((((X.freshLoan.2.pushCell { ty := .plain T.m, val := fun ψ => ψ X.freshLoan.1, decl := .other }).setLent X.freshLoan.1 [⟨Pos.bind 0 (((X.freshLoan.2.env[0]?).map (·.binds.length)).getD 0), [], false⟩]).setHeldMem X.freshLoan.1 v).setHeldTy X.freshLoan.1 T.m)
           { ty := { T with label := some X.freshLoan.1 }, val := fun _ => v, decl := d },
           acc ++ [v], cells ++ [Pos.bind 0 (((X.freshLoan.2.env[0]?).map (·.binds.length)).getD 0)])
       else (X.pushBind { ty := { T with label := none }, val := fun _ => v, decl := d }, acc ++ [v], cells)).2) := by
@@ -362,7 +362,7 @@ theorem fixStep_qset {fb fb' : List PBind × PBind} (hB : BAgree 0 fb.1 fb'.1) {
     · simp only [if_true]
       rw [qset_freshLoan]
       dsimp only
-      rw [qset_pushCell X.freshLoan.2 (fun p hp => hP.pos p hp), qset_setHeldMem, qset_setHeldTy,
+      rw [qset_pushCell X.freshLoan.2 (fun p hp => hP.pos p hp), qset_setLent, qset_setHeldMem, qset_setHeldTy,
         qset_pushBindShaped _ (by intro p hp; exact mem_positions_pushCell _ _ (hP.pos p hp))
           (by intro p hp; exact hP.shape p hp), qset_env0]
   cases hb : fb.1[acc.length]? with
@@ -395,11 +395,11 @@ theorem fixStep_positions (fb : List PBind × PBind) (X : SState) (acc : List Se
   · exact mem_positions_pushBindShaped _ (mem_positions_pushCell _ _ hp)
   · exact mem_positions_pushBind _ _ hp
 
-theorem topGrow_refStep {X : SState} (ht : 0 < X.topIdx) (c b : SBinding) (l : Nat) (v : Sem) (T : TyM) :
-    TopGrow X (pushBindShaped (((X.freshLoan.2.pushCell c).setHeldMem l v).setHeldTy l T) b) 1 := by
+theorem topGrow_refStep {X : SState} (ht : 0 < X.topIdx) (c b : SBinding) (l : Nat) (xs : List Site) (v : Sem) (T : TyM) :
+    TopGrow X (pushBindShaped ((((X.freshLoan.2.pushCell c).setLent l xs).setHeldMem l v).setHeldTy l T) b) 1 := by
   have h1 : TopGrow X X.freshLoan.2 0 := TopGrow.of_env rfl
   have h2 := topGrow_pushCell (s := X.freshLoan.2) ht c
-  have h3 := topGrow_pushBindShaped (((X.freshLoan.2.pushCell c).setHeldMem l v).setHeldTy l T) b
+  have h3 := topGrow_pushBindShaped ((((X.freshLoan.2.pushCell c).setLent l xs).setHeldMem l v).setHeldTy l T) b
   have := (h1.trans h2).trans ((TopGrow.of_env (s := X.freshLoan.2.pushCell c) rfl).trans h3)
   simpa using this
 
@@ -408,7 +408,7 @@ theorem fixStep_topGrow (fb : List PBind × PBind) {X : SState} (ht : 0 < X.topI
   unfold fixStep
   dsimp only
   split
-  · exact topGrow_refStep ht _ _ _ _ _
+  · exact topGrow_refStep ht _ _ _ _ _ _
   · exact topGrow_pushBind _ _
 
 theorem fixStep_cells (fb : List PBind × PBind) (X : SState) (acc : List Sem) (cells : List Pos) (x : Sem × PiDom) :

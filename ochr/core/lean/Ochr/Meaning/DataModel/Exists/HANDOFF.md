@@ -1,6 +1,6 @@
 # Existence of the data model: handoff (working file)
 
-Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists3`, worktree `/home/charlielidbury/repos/ochre-exists3` (exists2's `spine-exists2` is retired). Durable record: `ochr/docs/34-data-model-existence.md` §18 (read it first; §18.5 is frame locality) and docs/31 D110. This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-21 by `exists4` (branch `spine-exists4`).
+Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists3`, worktree `/home/charlielidbury/repos/ochre-exists3` (exists2's `spine-exists2` is retired). Durable record: `ochr/docs/34-data-model-existence.md` §18 (read it first; §18.5 is frame locality) and docs/31 D110. This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-22 by `exists5` (branch `spine-exists5`, worktree as above; it carries the proof line through f6c59f58: the merge needed only `Fix.lean`'s parameter push to take D138's loan site (`setLent` after `pushCell`) and `FrameLocalCE`'s access lemmas to take the new liveness argument).
 
 ## Frame locality: done (exists4)
 

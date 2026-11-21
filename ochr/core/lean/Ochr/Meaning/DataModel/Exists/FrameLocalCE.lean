@@ -44,7 +44,7 @@ def sH (m : Nat) : SState :=
     heldTy := fun _ => TyM.nat, heldMem := fun _ => .el0 Nat m }
 
 theorem live_sH (m : Nat) : (sH m).liveLabels = [0] := by
-  simp [SState.liveLabels, SState.positions, sH, List.range', List.mergeSort]
+  simp [SState.liveLabels, SState.positions, sH, List.range']
 
 /-- Reading `x` gives label `0`'s recorded member. -/
 theorem run_read (dm : DataModel) (ρ : Assignment) (φ : Future) (m : Nat) (tl : Bool) (hint : TyS) :
@@ -59,11 +59,11 @@ theorem run_read (dm : DataModel) (ρ : Assignment) (φ : Future) (m : Nat) (tl 
       some ((.el0 Nat m, .plain TyM.nat, .bind 0 1, []), sH m) := by
     unfold contentOf
     simp only [resolve, Place.steps, hv, Option.map_some]
-    rw [Steps.Form.FrameFrag.access_self hnr]
+    rw [Steps.Form.FrameFrag.access_self (fun l _ => hnr l)]
     rw [hx, hT]; dsimp only; rw [htf]; simp [Sem.follow]
   have hok : ContentOk (Kw dm []) φ (.var 0) (sH m) := by
     simp only [ContentOk, resolve, Place.steps, hv, Option.map_some]
-    exact Steps.Form.FrameFrag.accessOk_self _ _ hnr
+    exact Steps.Form.FrameFrag.accessOk_self _ _ (fun l _ => hnr l)
   have heq : runT (Kw dm []) ρ φ tl hint (.place (.var 0)) (sH m) =
       readPlace (Kw dm []) φ (.var 0) false (sH m) := by
     rw [runT]
