@@ -707,4 +707,126 @@ theorem fields_ev (K : RunCtx) (hdm : K.dm = dmS) (hΓ : K.Γ = step2Decls) (ρ 
     rw [← hk]
     rfl
 
+/-- `Q`'s field type is the run's: `And` at `Q`'s own type, which means its truth, `False`. -/
+theorem fields_q (K : RunCtx) (hdm : K.dm = dmS) (hΓ : K.Γ = step2Decls) (ρ : Assignment)
+    (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term) (hlen : ps.length = 0) (he : e.length = i)
+    (hFT : fieldTerm qD c i = some FT)
+    {r : Res} {s' : SState} (hr : run K ρ noFuture (.plain (TyM.univ 1)) FT (teleFrame K.dm K.D qD ps c e) = some (r, s')) :
+    r.1.asTy = dmS.fieldTy qD ps c i e := by
+  cases K with
+  | mk dm Γ C D Δ Λ cur =>
+  dsimp only at hdm hΓ hr
+  subst hdm hΓ
+  unfold run at hr
+  have hps : ps = [] := List.eq_nil_of_length_eq_zero hlen
+  subst hps
+  have hc : c = 0 ∧ i = 0 ∧ FT = .tind "And" [.tind "Q" [], .tind "True" []] := by
+    rcases c with _ | c <;> rcases i with _ | i <;> simp [fieldTerm, qD] at hFT <;> simp [hFT]
+  obtain ⟨rfl, rfl, rfl⟩ := hc
+  obtain ⟨d, v, w, T, U, s₁, s₂, hd, hv, hw, hr1⟩ := runT_tind2 _ ρ noFuture false _ "And" _ _ _ hr
+  have hdd : d = andD := by dsimp only at hd; rw [find_and] at hd; exact (Option.some.inj hd).symm
+  subst hdd
+  obtain ⟨dq, hdq, hv1⟩ := runT_tind0 _ ρ noFuture false _ "Q" _ hv
+  have hq : dq = qD := by dsimp only at hdq; rw [find_q] at hdq; exact (Option.some.inj hdq).symm
+  subst hq
+  obtain ⟨dt, hdt, hw1⟩ := runT_tind0 _ ρ noFuture false _ "True" _ hw
+  have ht : dt = trueD := by dsimp only at hdt; rw [find_true] at hdt; exact (Option.some.inj hdt).symm
+  subst ht
+  simp only at hv1 hw1
+  rw [hr1, hv1, hw1, fieldTy_knot dmS qK qD rfl [] (recOf_q []) 0 0 e he (by simp [qK, FTy.Lvl0])]
+  dsimp only
+  rw [tyM_and, tyM_q, tyM_true]
+  simp [qK, FTy.mean, Sem.asTy]
+
+/-- The library's two-parameter declarations at step 2's model: their fields are their parameters. -/
+theorem fields_two (K : RunCtx) (hdm : K.dm = dmS) (hΓ : K.Γ = step2Decls) (ρ : Assignment) (d : IndDecl)
+    (hd2 : d = pairD ∨ d = andD) (ps : List Sem) (c i : Nat) (e : List Sem) (FT : Term) (hlen : ps.length = 2)
+    (hpt : ParamsTyped dmS d ps) (he : e.length = i) (hFT : fieldTerm d c i = some FT)
+    {r : Res} {s' : SState} (hr : run K ρ noFuture (.plain (TyM.univ 1)) FT (teleFrame K.dm K.D d ps c e) = some (r, s')) :
+    r.1.asTy = dmS.fieldTy d ps c i e := by
+  cases K with
+  | mk dm Γ C D Δ Λ cur =>
+  dsimp only at hdm hΓ hr
+  subst hdm hΓ
+  unfold run at hr
+  obtain ⟨rfl, hi, rfl⟩ := fieldTerm_two hd2 hFT
+  have harity : e.length ≤ DataLib.arity d 0 := by
+    rcases hd2 with rfl | rfl <;> simp [DataLib.arity, pairD, andD] <;> omega
+  have h1 := runT_teleFrame_param _ ρ noFuture false _ dmS D d ps 0 e harity i (by omega) (by omega) hr
+  rw [h1]
+  have hrec : dmS.recOf d ps = recK (twoK d) ps := by rcases hd2 with rfl | rfl; exact recOf_pair ps; exact recOf_and ps
+  -- the parameter is a type of level 1 or 0
+  obtain ⟨A, cd, hA⟩ : ∃ (A : Type) (cd : Code0 A), ps[i] = .ty (.t0 A cd) := by
+    rcases hd2 with rfl | rfl
+    · obtain ⟨A, cd, hA, -⟩ := typed_univ1 hpt i (by omega) (paramTy_univ1 _ (by simp) i _)
+      exact ⟨A, cd, hA⟩
+    · obtain ⟨P, hP⟩ := typed_univ0 hpt i (by omega) (paramTy_and' i _)
+      exact ⟨_, _, hP⟩
+  have hp := parTy_of (show i < ps.length by omega) hA
+  have hfty : ∀ es, (twoK d).fty (recK (twoK d)) ps 0 i es = .ty (parTy ps i) := by
+    intro es
+    show (if 0 = 0 ∧ i = 0 then FTy.ty (parTy ps 0) else if 0 = 0 ∧ i = 1 then FTy.ty (parTy ps 1) else FTy.ty TyM.err) = _
+    rcases (show i = 0 ∨ i = 1 by omega) with rfl | rfl <;> simp
+  rw [fieldTy_knot dmS (twoK d) d rfl ps hrec 0 i e he (by rw [hfty, hp]; exact ⟨A, cd, rfl⟩), hfty, hp, hA]
+  rfl
+
+/-- **`FieldsFaithful` at step 2's program.** -/
+theorem fieldsFaithful (K : RunCtx) (hdm : K.dm = dmS) (hΓ : K.Γ = step2Decls) (ρ : Assignment) :
+    FieldsFaithful K ρ := by
+  intro d hd ps c i e FT hlen hpt hft he hFT r s' hr
+  rw [hdm] at hpt hft ⊢
+  rw [hΓ] at hd
+  rcases mem_step2 hd with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  · exact fields_two K hdm hΓ ρ pairD (.inl rfl) ps c i e FT (by simpa [pairD] using hlen) hpt he hFT hr
+  · simp [fieldTerm, falseD] at hFT
+  · rcases c with _ | c <;> simp [fieldTerm, trueD] at hFT
+  · exact fields_two K hdm hΓ ρ andD (.inr rfl) ps c i e FT (by simpa [andD] using hlen) hpt he hFT hr
+  · rcases c with _ | _ | c <;> simp [fieldTerm, boolD] at hFT
+  · exact fields_list K hdm hΓ ρ ps c i e FT (by simpa [listD] using hlen) hpt he hFT hr
+  · exact fields_rose K hdm hΓ ρ ps c i e FT (by simpa [roseD] using hlen) hpt he hFT hr
+  · exact fields_ev K hdm hΓ ρ ps c i e FT (by simpa [evD] using hlen) hft he hFT hr
+  · exact fields_q K hdm hΓ ρ ps c i e FT (by simpa [qD] using hlen) he hFT hr
+
+/-- **`ParamsFaithful` at step 2's program**: the parameters' declared types run to their meanings. -/
+theorem paramsFaithful (K : RunCtx) (hdm : K.dm = dmS) (hΓ : K.Γ = step2Decls) (ρ : Assignment) :
+    ParamsFaithful K ρ := by
+  intro d hd ps j hn PT _ _ hPT r s' hr
+  rw [hΓ] at hd
+  unfold run at hr
+  rw [hdm]
+  have hsort : ∀ l, PT = .sort l → r.1.asTy = TyM.univ l := by
+    intro l hl; subst hl; rw [runT_sort] at hr; cases hr; rfl
+  rcases mem_step2 hd with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  · rw [hsort 1 (by rcases j with _ | _ | j <;> simp [pairD] at hPT <;> exact hPT.2.symm), paramTy_univ1 _ (by simp)]
+  · simp [falseD] at hPT
+  · simp [trueD] at hPT
+  · rw [hsort 0 (by rcases j with _ | _ | j <;> simp [andD] at hPT <;> exact hPT.2.symm), paramTy_and']
+  · simp [boolD] at hPT
+  · rw [hsort 1 (by rcases j with _ | j <;> simp [listD] at hPT <;> exact hPT.2.symm), paramTy_univ1 _ (by simp)]
+  · rw [hsort 1 (by rcases j with _ | j <;> simp [roseD] at hPT <;> exact hPT.2.symm), paramTy_univ1 _ (by simp)]
+  · have hP : PT = .nat := by rcases j with _ | j <;> simp [evD] at hPT <;> exact hPT.2.symm
+    subst hP
+    rw [runT_nat] at hr; cases hr
+    rw [paramTy_ev]; rfl
+  · simp [qD] at hPT
+
+/-- **`CtxFaithful` at step 2's program.** -/
+theorem ctxFaithful (K : RunCtx) (hdm : K.dm = dmS) (hΓ : K.Γ = step2Decls) : CtxFaithful K :=
+  fun Δ ρ => ⟨fieldsFaithful { K with Δ := Δ } hdm hΓ ρ, paramsFaithful { K with Δ := Δ } hdm hΓ ρ,
+    recordsFaithful K hdm hΓ⟩
+
+/-- **`DataFaithful` at every program state declaring step 2's program**, under any decisions. -/
+theorem dataFaithful (D : MState → Decisions) (P : ProgState) (hP : P.inds = step2Decls) :
+    Assembly.DataFaithful dmS D P :=
+  fun st hst _ => ctxFaithful (P.ctx dmS D st) rfl (by show st.inds = _; rw [hst, hP])
+
+/-- The program state after step 2's declarations (no global). -/
+def step2State : ProgState := { inds := step2Decls }
+
+/-- **The existence statement's conclusion at step 2's program state** (layer A), under the
+checker's decisions. -/
+theorem instance_data (fuel : Nat) :
+    ∃ dm : DataModel, step2State.Covered dm ∧ Assembly.DataFaithful dm (chainDecisions fuel) step2State :=
+  ⟨dmS, fun _ _ => trivial, dataFaithful _ _ rfl⟩
+
 end Ochr.Meaning.DataModel.Exists.Step2
