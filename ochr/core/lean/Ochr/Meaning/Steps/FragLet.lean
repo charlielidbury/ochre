@@ -690,7 +690,7 @@ theorem letF_core (hL : LetInv) (hR : FragRun K.D) (hdec : FragDec K.D) (hDN : D
   obtain ⟨du, st₀, st₁, stB, st₂, st₃, v₀, r, T₀, p, bh₁, bh₂, bh₃, hk₀, hm₀, htn₀, htd₀, htdB, hru, hdu,
     hkB, hmeB, htnB, hrw, hrd, hk₃, -, hD₁, hD₂⟩ := hL m x u w hint st st' bh v T? K.D hm htn htd hD h
   have hP₀ : FSt Γ st₀ := hPst.kern hk₀
-  obtain ⟨rfl, hv₀, hme₁, hrd₁, hsz₁, hF₁⟩ := hR Γ u A m none st₀ st₁ bh₁ v₀ T₀ hu hP₀ hm₀ (.inl htd₀) hD₁ hru
+  obtain ⟨rfl, hv₀, hme₁, hrd₁, hsz₁, hF₁⟩ := hR Γ u A m none st₀ st₁ bh₁ v₀ T₀ hu hP₀ (hp.of_kern hk₀).inv.2.2.2.2.2.2.2.2.2.2.2.2.2 hm₀ (.inl htd₀) hD₁ hru
   have hm₁ : Mode st₁ := hm₀.of_modeEq hme₁
   have hmB : Mode stB := hm₁.of_modeEq hmeB
   have hduA : du = A.rd := hdu.symm.trans (hdec Γ u A st hu hPst).2
@@ -725,7 +725,7 @@ theorem letF_core (hL : LetInv) (hR : FragRun K.D) (hdec : FragDec K.D) (hDN : D
       (pushBindShaped s₁ { ty := ru.2, val := fun _ => ru.1, decl := A.rd }) = some (rw', s₂) := by
     rw [← wcong (fun m' => hw.absBelow m') Δ₁ ρ₁]; exact hxw
   obtain ⟨-, -, -, hS₂⟩ := Strict.fund_all hc w hvw st.curTail (.plain TyM.err) _ s₂ rw' hSB hxw'
-  obtain ⟨-, -, -, -, hszW, hF₂⟩ := hR (A :: Γ) w B m none stB st₂ bh₂ r T? hw hPB hmB htdB' hD₂ hrw
+  obtain ⟨-, -, -, -, hszW, hF₂⟩ := hR (A :: Γ) w B m none stB st₂ bh₂ r T? hw hPB hpB.inv.2.2.2.2.2.2.2.2.2.2.2.2.2 hmB htdB' hD₂ hrw
   -- the drop
   obtain ⟨s₃, hLD, htt, ⟨hga, hgl⟩, hP₃, hR₃⟩ := drop_frag (K := { K with Δ := Δ₂ }) (ρ := ρ₂) (π := π₂)
     hDN hDB hDL hI hIU hIE hPL hF₂ hp₂ hr₂ hS₂ hrd

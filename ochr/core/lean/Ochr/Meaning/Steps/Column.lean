@@ -319,7 +319,8 @@ theorem succ_core (hS : SuccInv) (hI : InvSteps) {n : Nat} {u : Term} {P Pu : MS
     (hu : EvalSim K ρ φ n u Pu (· = true)) (hPu : ∀ a b, Kern a b → P a → Pu b)
     (hflu : ∀ st, P st → K.D.flags (DecideScope.topReadings st) u = (false, false))
     (hhint : ∀ s : SState, runT K ρ φ false (.plain TyM.nat) u s = runT K ρ φ false (.plain TyM.err) u s)
-    (hnum : ∀ st₀ st₁ bh v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
+    (hnum : ∀ st₀ st₁ bh v₀ T₀, Pu st₀ → (∀ l, st₀.norm.Occurs l → l < st₀.norm.nextLoan) → Mode st₀ →
+      st₀.tailDecl = none → DecTab K.D st₁ →
       Runs (Ochr.eval n true u none) st₀ bh (v₀, T₀) st₁ → v₀.Num ∧ ∀ T, T₀ = some T → (T == .tNat) = true) :
     CoreSim K ρ φ (n + 1) (.succ u) P (· = true) := by
   intro st st' typed hint v T? s π hPst hty hm htn htd _ hp hr hSg hv hab hnh hfl hok hD bh h
@@ -327,7 +328,7 @@ theorem succ_core (hS : SuccInv) (hI : InvSteps) {n : Nat} {u : Term} {P Pu : MS
   obtain ⟨st₀, st₁, v₀, T₀, bh₁, hk₀, hm₀, htn₀, htd₀, hu₀, rfl, rfl, hq, -, hDb, hty⟩ :=
     hS n true u hint st st' bh v T? hm htn htd h
   obtain ⟨st₂, bh₂, hx₂, hk₂⟩ := hty rfl
-  obtain ⟨hv₀, hTy⟩ := hnum st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ htd₀ (hDb K.D hD) hu₀
+  obtain ⟨hv₀, hTy⟩ := hnum st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) (hp.of_kern hk₀).inv.2.2.2.2.2.2.2.2.2.2.2.2.2 hm₀ htd₀ (hDb K.D hD) hu₀
   have hO := hu st₀ st₁ true none v₀ T₀ s π (hPu st st₀ hk₀ hPst) rfl hm₀ (.inl htd₀) (hp.of_kern hk₀)
     (hr.of_kern hk₀) hSg hv
     (by rw [← hk₀.absTy]; exact hab) hnh (by rw [scopeOf_rel hr]; exact hflu st hPst)

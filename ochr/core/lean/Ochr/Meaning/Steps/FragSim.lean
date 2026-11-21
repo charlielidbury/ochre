@@ -71,8 +71,8 @@ theorem frag_sim {K : RunCtx} {φ : Future} (hf : FragFacts K.D) (hc : Strict.Fu
       (fun _ _ _ e => by cases e) (fun m => ?_) n
     exact succ_core hS hI (ih m Δ ρ) (fun a b hk ha => ha.kern hk) (fun st hst => (hdec Γ u .nat st hu hst).1)
       (fun s => frag_hint hu _ _ _ s)
-      (fun st₀ st₁ bh v₀ T₀ hP hm htd hD h => by
-        obtain ⟨hv, rfl⟩ := hnat Γ u m st₀ st₁ bh v₀ T₀ hu hP hm htd hD h
+      (fun st₀ st₁ bh v₀ T₀ hP hfr hm htd hD h => by
+        obtain ⟨hv, rfl⟩ := hnat Γ u m st₀ st₁ bh v₀ T₀ hu hP hfr hm htd hD h
         exact ⟨hv, fun T e => by cases e; rfl⟩)
   | var Γ i hi =>
     intro n Δ ρ

@@ -230,7 +230,7 @@ theorem seqB_core (hSB : SeqBorInv) (hR : FragRun K.D) (hdec : FragDec K.D) (hIE
   obtain ⟨st₀, st₁, stW, v₀, T₀, bh₁, bh₂, hk₀, hm₀, htn₀, htd₀, htdW, hru, hD₁, hdrop, htnW, hrw⟩ :=
     hSB m u w hint st st' bh v T? K.D hm htn htd hD h
   have hP₀ : FSt Γ st₀ := hPst.kern hk₀
-  obtain ⟨rfl, ⟨l, c, rfl, hcN⟩, hme₁, -, -, hF₁⟩ := hR Γ u .ref m none st₀ st₁ bh₁ v₀ T₀ hu hP₀ hm₀ (.inl htd₀) hD₁ hru
+  obtain ⟨rfl, ⟨l, c, rfl, hcN⟩, hme₁, -, -, hF₁⟩ := hR Γ u .ref m none st₀ st₁ bh₁ v₀ T₀ hu hP₀ (hp.of_kern hk₀).inv.2.2.2.2.2.2.2.2.2.2.2.2.2 hm₀ (.inl htd₀) hD₁ hru
   -- the step for `u`
   have hOu := ihu st₀ st₁ true none (.borrow l c) (some FT.ref.ty) s π hP₀ rfl hm₀ (.inl htd₀) (hp.of_kern hk₀)
     (hr.of_kern hk₀) hS (hu.valsOk _) (fun σ hσ => hu.absBelow _ σ hσ) hu.noHole

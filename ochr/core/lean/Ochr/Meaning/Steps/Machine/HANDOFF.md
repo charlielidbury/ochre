@@ -285,6 +285,111 @@ a `match` written in a lemma statement elaborates to its own matcher, so `rw` wi
 explicit arguments (`runs_forIn_fold`); `(… : c.Bland)` type ascriptions do not give dot-notation on
 `Value.Bland`: call `Ochr.Value.Bland.anyAtom (v := c) …`.
 
+### machine6 (2026-11-21): 17 of 18 `FragOpen` facts proved; `FragRun` false as stated, its proof under way
+
+PROVED (standard axioms, root-imported, branch `spine-machine6`):
+- `FragEndRuns.lean`: `runs_endBorrow_fend`, `runs_endTopLoan_fend` (from `EndAt` = `FEnd` without the
+  temporaries clause, which no end reads; `FEnd.endAt` converts): `endBorrow l` ends at exactly
+  `{ s with env := endE s.env px ph c }`.
+- `FragEnds.lean`: `dropBorrowInv` (+ `dropBorrowInvM`, which also gives `ModeEq st st'`), `varLentInv`,
+  `borrowLentInv`, `seqBorInv` (`runs_dropValue_borrow`, `popTempE_endE_push`).
+- `FragAssign.lean`: `assignVarInv` (`runs_assignPlace_after`: [Assign] at a root after its path access),
+  `assignDerefInvF` (`noRun_assignPlace_deref_bot`).
+- `FragDecs.lean`: `fragDec` (any end state, any `bc`): `declOf_frag` builds the unchecked `declOf` run as
+  a `runAll` equation (forward runs: `runAll_bind`, `runAll_withLive_pure`, `runs_of_runAll`).
+RESTATED: `AssignVarInv`'s `ModeEq st₁ st'` conjunct gained the antecedent "x's old content is a number,
+`⊥`, or lent to a binding (`FEnd`)" (unconditional it is a whole-machine fact; consumer unchanged).
+
+FALSE: `FragRun` (Steps/Frag.lean). `FSt` says nothing about the label counter; `&x` lends at the counter.
+Counterexample: `z ↦ loan_0`, `w ↦ borrow_0 Z`, `x ↦ Z`, `nextLoan = 0`; `&x` gives `x ↦ loan_0` and
+`borrow_0 Z` in flight; the run succeeds; `FStT.loan1`/`bor1` fail. Proposed to the lead (fix (A)): one
+more antecedent, `∀ l, st.norm.Occurs l → l < st.nextLoan` (Inv's last conjunct; every consumer has it
+from `Pre`). AWAITING THE LEAD'S RULING (A, or (B): a freshness field in `FSt`/`FStT`).
+
+IN PROGRESS: `FragRunF` (`FragRunProof.lean`): `FragRun` with `Fresh st` at the entry and `Fresh` at the
+end with the value in flight (`RunOut`). Done: `frag_lift_run` (a case at `evalCore`, `CoreCase`, gives the
+step at `eval`: `evalLow`, `evalInvR`, the Kern transfers), `core_zero`. The groundwork, all proved
+(`FragRunLemmas.lean`): `Fresh`; `SameSkel`; `FStT.mono` (a value change with one skeleton adding no
+label); `FSt.toT`, `FStT.toFSt`, `FStT.of_erase`; `FSt.pushNum` (number or `()` in flight); `FStT.setAt`;
+`FStT.ofEnd` (end at bindings); `FSt.lend` (`&x`, needs `Fresh`); `FStT.popBind`; `frag_drop` (the `let`'s
+drop: `DropOut` = FStT Γ, Fresh, ModeEq, top temps, readings `.tail`, size); Fresh across each. In
+`FragRunProof.lean`: `FSt.setInert`, `FSt.ofEnd`, `topReadings_setAt`, `FSt.nat_at`.
+
+NEXT (the recipe): prove `fragRunF (hdec : FragDec D) : FragRunF D` by `induction hty`, each case
+`frag_lift_run hdec hty (core_X …)`, the IH an `eval`-level `RunOut`. Cases:
+1. `var` (`FSt.var_cases`): number: `varNumInv` (T? from `hTs`/`hT` and `b.ty = Nat`), `Quiet` → `FSt.of_erase`
+   and `Fresh.of_erase`; copy: `Kern` then `pushNum`; move (`cases hc : D.copy …`): `FSt.setInert` with `⊥`
+   (`holds_bot`) then `Kern`, `pushNum`. Lent: `varLentInv`, `FSt.ofEnd hF.endAt` (then `setInert` ⊥ on a
+   move). Moved: `varBotInv` contradiction. topReadings: `topReadings_of_erase`, `topReadings_setAt`,
+   `topReadings_endE`.
+2. `bor`: number: `borrowNumInv`, then `FSt.lend` at `stq` (Fresh from `Quiet.nextLoan`); lent:
+   `borrowLentInv`, `FSt.ofEnd` then `FSt.lend` at the ended state; moved: `borrowBotInv`.
+3. `succ`: `succInv`, IH on `u` (`.inl` tail), `FStT.untemp` (FragSeq), `Quiet` → of_erase, `pushNum`.
+4. `asg`: `assignVarInv`, IH on `u` (hint `hu`), `untemp`; x at `st₁` by `FSt.top`: number/⊥ → `setInert`;
+   loan → `FSt.fend` then `FSt.ofEnd` then `setInert`; mode via the restated antecedent; `pushNum .unit`.
+5. `asgD`: `assignDerefInvF`, IH, `untemp`; y holds ⊥ (contradiction by the new conjunct) or `borrow l w`:
+   `FStT.setAt` with `borrow l v₀` (labels kept), `toFSt`.
+6. `letIn`: `letInvR`/`LetInv`, IH on `u`, `du = A.rd` (FragDec), `fst_push` (FragLet) then `Kern`; Fresh of
+   the pushed state from Fresh with the value in flight; IH on `w` (tailDecl `.inr` via FragDec, as
+   `letF_core`); `frag_drop` at `st₂.withTempT r T?`; `popped_of_topTemps` (FragLet) gives `v = r`;
+   readings: `topReadings_pushBindE`/`popBindE` (InvSteps).
+7. `seq`: `A ≠ ref`: `seqInv` (its `Kern stu stW ∧ ModeEq` under no-borrow/no-loan), `untemp`, IH on `w`;
+   `A = ref`: `seqBorInv`, its antecedents from `FStT` at `stu.withTempT` (`FStT.noHold`), `FStT.endTemp`
+   (FragSeqB) gives `FSt` after `px ↦ c`; Fresh by `Fresh.setAt`.
+Then `frag_run_free` in `FragFree.lean` = `frag_run_ff` with `FragOpen` built from the proved facts and
+`fragRunF` adapted to the lead's ruling (under (A): `FragRun` restated with the counter antecedent; its
+consumers pass `Inv`'s last conjunct; `Fresh` from it via `occurs_of_pos` + `occ_loan`/`occ_numBorrow`).
+
+RULING (lead, 2026-11-21): fix (A); FSt/FStT unchanged; the restatement and the consumer edits on this branch,
+one line per consumer passing Inv's last conjunct (`hp.inv`'s 14th conjunct, from the `Pre` each consumer
+holds at that state). NOT DONE (machine6 at its context limit). The call sites of FragRun: FragLet.lean
+693 (u at st₀: `hp.of_kern hk₀`) and 728 (w at stB: `hpB`), FragSeq.lean 100, FragSeqB.lean 233, FragAsg.lean
+116 and 241, FragTop.lean 58 (`(pre_stC dm D ρ).of_kern hk`), and FragSim.lean 75 through `FragRun.nat`
+(FragNatRun). SNAG at the last: FragSim's `S(u)` case calls FragNatRun inside `Column.succ_core`'s `hnum`
+callback, which receives only `Pu st₀` (= FSt Γ), not `Pre`; so FragNatRun cannot be given the counter
+fact there without changing `succ_core`'s `hnum` to also receive it (Column.lean: one line in the
+statement, one at its use (line 330: `(hp.of_kern hk₀).inv`), and one binder in each of its two other
+callers, ColumnC.lean 257 and ColumnBSim.lean 146). Reported to the lead.
+
+Traps met (machine6): the names `FT`, `topTemps` are ambiguous inside `Machine` (write `Form.FT`,
+`Form.topTemps`); a lemma named `Fresh.endE`/`FStT.endE` shadows `endE` inside its own statement (named
+`ofEnd`); a lemma about `FSt`/`FStT` must be declared `_root_.Ochr.Meaning.Steps.Form.FSt.x` for dot
+notation; `{ s with a := …, b := … }` split over two lines needs newline-separated fields without commas;
+`subst` after `obtain ⟨…, h⟩` can re-expose a shadowed `h` (name the new hypothesis freshly); `show` of
+a goal on `{ s with env := E }.env` with metavariables fails (use `change` with explicit terms).
+
+### machine7 (2026-11-21): all 18 `FragOpen` facts proved; `frag_run_free` has no assumed fact
+
+PROVED (standard axioms, root-imported, branch `spine-machine7`):
+- `FragRun` RESTATED per the lead's ruling (fix A): one more antecedent, the label counter above every
+  label that occurs (`∀ l, st.norm.Occurs l → l < st.norm.nextLoan`, Inv's last conjunct); `FragNatRun`
+  likewise; `FSt`/`FStT` unchanged. Consumers pass the conjunct from the `Pre` they hold; `Column.succ_core`'s
+  `hnum` takes it too (ColumnC/ColumnBSim: one ignored binder). Commit a4d0ef081 (edits by machine6).
+- `FragRunProof.lean`: `fragRunF` (by induction on `FTy`, each case at `evalCore` lifted by
+  `frag_lift_run`): `core_zero`, `core_var`, `core_bor`, `core_succ`, `core_asg`, `core_asgD`, `core_let`,
+  `core_seq_inert` (first part `Nat`/`Unit`, `seqInv`), `core_seq_bor` (first part `&Nat`, `seqBorInv`);
+  `fresh_of_counter` (Inv's conjunct gives `Fresh` at a fragment state); `fragRun : FragDec D → FragRun D`.
+  Helpers there: `core_out_of`/`core_out_num` (a case's end from the state of its last write),
+  `Fresh.pushBind`, `FSt.setKeep`, `FSt.holds_nat`, `FSt.ty_at`, `topReadings_lent`, `quiet_size`.
+- `FragFree.lean`: `fragOpen_ff st' : FragOpen (checkerDecisionsFF st')` and `frag_run_free` = `frag_run_ff`
+  with it: the fragment's run theorem with NO assumed fact.
+Not touched: `FragTop.lean`'s docstrings still call `FragOpen` "the facts not yet proved" (outside this
+lane's files).
+
+READ, NOT PROVED (lead14's statements in `Steps/ParFacts.lean` on `spine-lead14`, against the checker):
+- `VarNumAInv`: TRUE as stated. The read of a variable holding `Sᵏ(Z)` or `Sᵏ(σ)` takes the number's
+  code path in `evalCore`/`readPlace`/`repackAt`: `hasDependent` is false on `.abs` (so [Repack]
+  returns at once), `firstLiveLoanOnPath`, `loans`, `ownedLoans`, `outerLoans`, `hasHole` see no atom in
+  `.abs σ`, the read's `match` takes the `_` arm. The one new step is `unsizedCheck` on a bare `.abs σ`
+  at runtime (`absType σ`, `isUnsizedType`): it only reads the state, or fails. Proof = `varNumInv`'s
+  (`ReadInv.lean`) with `NumAt.num` generalised, `runs_hasDependent` and `runs_unsizedCheck` for NumA,
+  and the value split `zero | succ | abs`.
+- `InvNumA`: all three TRUE as stated. A numeral over an unknown holds no loan, borrow, `⊥`, closure,
+  sealed program or constructor value, so every clause of `Inv` reading Ω's values is as for a number;
+  the one new obligation is (WF6)'s bound on the unknowns occurring in Ω (`Refd σ → σ < absTy.size`),
+  which `push` gets from `NumAt` (`absTy[σ]? = some Nat`); `pop` and `setBot` only remove atoms
+  (`fitsInd ⊥ = true` for (V); the `⊥` at a path-free binding holding no loan meets (WF14)).
+
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
 Reachable from `checkProgram`: `Loc.termAddr` (`opaque`/`implemented_by`, the standard's one allowed
@@ -449,6 +554,9 @@ The earlier queue (still owed, after the column):
    facts; the well-formedness preservation statements, `borrow_wf` suspected false).
 
 ## Build state
+
+2026-11-21, `spine-machine7` (machine7; from `spine-machine6` 117a755e6): `OchrMeaning` green; `frag_run_free`,
+`fragOpen_ff`, `fragRun`, `fragRunF`: standard axioms (no fact assumed).
 
 2026-11-21, `spine-machine5` (machine5; `spine` aa410844 merged): `OchrMeaning` green; `column_C_free`,
 `column_B_free`, `frag_run_ff` and the nine fragment facts proved so far: standard axioms.

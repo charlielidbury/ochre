@@ -113,7 +113,7 @@ theorem asgF_core (hAV : AssignVarInv) (hR : FragRun K.D) (hdec : FragDec K.D) (
   obtain ⟨st₀, st₁, hu', v₀, T₀, bh₁, hk₀, hm₀, htn₀, htd₀, hru, hD₁, rfl, rfl, hpost⟩ :=
     hAV m i u hint st st' bh v T? K.D hm htn htd (fun f j b hpos hb => (hPst.natVar hi hpos b hb).1) hD h
   have hP₀ : FSt Γ st₀ := hPst.kern hk₀
-  obtain ⟨rfl, hv₀, -, -, -, hF₁⟩ := hR Γ u .nat m hu' st₀ st₁ bh₁ v₀ T₀ hu hP₀ hm₀ (.inl htd₀) hD₁ hru
+  obtain ⟨rfl, hv₀, -, -, -, hF₁⟩ := hR Γ u .nat m hu' st₀ st₁ bh₁ v₀ T₀ hu hP₀ (hp.of_kern hk₀).inv.2.2.2.2.2.2.2.2.2.2.2.2.2 hm₀ (.inl htd₀) hD₁ hru
   -- the step for `u`
   have hOu := ihu st₀ st₁ true hu' v₀ (some FT.nat.ty) s π hP₀ rfl hm₀ (.inl htd₀) (hp.of_kern hk₀)
     (hr.of_kern hk₀) hS (hu.valsOk _) (fun σ hσ => hu.absBelow _ σ hσ) hu.noHole
@@ -238,7 +238,7 @@ theorem asgDF_core (hAD : AssignDerefInvF) (hR : FragRun K.D) (hdec : FragDec K.
   obtain ⟨st₀, st₁, hu', v₀, T₀, bh₁, hk₀, hm₀, htn₀, htd₀, hru, hD₁, rfl, rfl, hnbot, hpost⟩ :=
     hAD m i u hint st st' bh v T? K.D hm htn htd (fun f j b hpos hb => (hPst.refVar hi hpos b hb).1) hD h
   have hP₀ : FSt Γ st₀ := hPst.kern hk₀
-  obtain ⟨rfl, hv₀, -, -, -, hF₁⟩ := hR Γ u .nat m hu' st₀ st₁ bh₁ v₀ T₀ hu hP₀ hm₀ (.inl htd₀) hD₁ hru
+  obtain ⟨rfl, hv₀, -, -, -, hF₁⟩ := hR Γ u .nat m hu' st₀ st₁ bh₁ v₀ T₀ hu hP₀ (hp.of_kern hk₀).inv.2.2.2.2.2.2.2.2.2.2.2.2.2 hm₀ (.inl htd₀) hD₁ hru
   -- `y` at `u`'s end: not `⊥`, so `borrow_l w`, `w` a number, at `&Nat`
   have hP₁ : FSt Γ st₁ := hF₁.untemp (.inl hv₀)
   obtain ⟨f, j, b, hpos₁, hlk₁, htb', hdo, hhold⟩ := hP₁.top i .ref hi

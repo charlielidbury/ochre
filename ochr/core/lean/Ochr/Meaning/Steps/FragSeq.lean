@@ -97,7 +97,7 @@ theorem seqI_core (hSq : SeqInv) (hR : FragRun K.D) (hdec : FragDec K.D) (hI : I
   obtain ⟨st₀, st₁, stW, v₀, T₀, bh₁, bh₂, hk₀, hm₀, htn₀, htd₀, htdW, hru, hD₁, hdrop, htnW, hrw⟩ :=
     hSq m u w hint st st' bh v T? K.D hm htn htd hD h
   have hP₀ : FSt Γ st₀ := hPst.kern hk₀
-  obtain ⟨rfl, hv₀, hme₁, -, -, hF₁⟩ := hR Γ u A m none st₀ st₁ bh₁ v₀ T₀ hu hP₀ hm₀ (.inl htd₀) hD₁ hru
+  obtain ⟨rfl, hv₀, hme₁, -, -, hF₁⟩ := hR Γ u A m none st₀ st₁ bh₁ v₀ T₀ hu hP₀ (hp.of_kern hk₀).inv.2.2.2.2.2.2.2.2.2.2.2.2.2 hm₀ (.inl htd₀) hD₁ hru
   have hin : v₀.Num ∨ v₀ = .unit := by
     cases A with
     | nat => exact .inl hv₀
