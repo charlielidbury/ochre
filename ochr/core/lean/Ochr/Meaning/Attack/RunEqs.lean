@@ -371,7 +371,8 @@ theorem readPlace_deref_r (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : S
     simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, S₄]
   have hw : (Sem.el0 Nat (F n).val.1).whole := by simp [Sem.whole]
   simp only [readPlace, contentOf, hr, access_S₄, bind, Option.bind]
-  simp [S₄, SState.tyAt, SState.valAt, Sem.follow, Sem.step, hw]
+  have hm : Sem.el0 Nat (F n).val.1 ∈ₛ[K.dm.read] TyM.nat := ⟨(F n).val.1, by simp [Code0.enc]⟩
+  simp [S₄, SState.tyAt, SState.valAt, Sem.follow, Sem.step, hw, ReadGood, hm]
   rfl
 
 end Ochr.Meaning.Attack
@@ -523,6 +524,8 @@ theorem readPlace_c1 (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBindi
     funext l; simp [SState.typedFuture, SState.liveLabels, S₆, h0]
   simp only [readPlace, contentOf, hr, access_S₅ F n b k c w (dataHit []) rfl, h6, bind, Option.bind]
   simp only [S₆, SState.tyAt, SState.valAt, Sem.follow, dec_nat_as, hb]
-  cases w.as Nat <;> simp [Sem.whole] <;> rfl
+  have hm : ∀ x : Nat, Sem.el0 Nat x ∈ₛ[K.dm.read] (TyS.plain TyM.nat).m :=
+    fun x => ⟨x, by simp [Code0.enc]⟩
+  cases w.as Nat <;> simp [Sem.whole, ReadGood, hm] <;> rfl
 
 end Ochr.Meaning.Attack
