@@ -187,7 +187,18 @@ whole block, the same shape as (a) but relational; see the queue).
      (lentProofAssign, the hint/`Tp0` placeType?, `eval u`, the type check, accessPath at `*y`
      (no ending: `firstLiveLoanOnPath` on `borrow l w` at `[deref]` meets a number), `assignPlace`,
      `openWrite`), then prove. Not yet reviewed.
-  3. Then `column_B_free` (as `column_C_free`, with `seqInvR` once the lead adopts the fix).
+  3. Then `column_B_free` (as `column_C_free`; `SeqInv` is now restated in FormMachine and proved,
+     `FormFacts.seqInv`, 9a54a71e, the orchestrator having let this lane apply forced statement fixes
+     itself while the lead lane is empty: edit FormMachine + the minimal consumer lines, keep
+     OchrMeaning green, list every edit in the report).
+  4. Asked by the orchestrator (from the retired lead): `DropNoopInv` concludes only `Kern`; also
+     conclude `ModeEq st st'` if true of the code (dropTopBind on a loan-free, borrow-free binding:
+     topIdx, gets, `endLoansOfTopBind` no-op, the pop: no mode field touched, so it should be), prove
+     the stronger form, apply the statement change (FormMachine + consumers in ColumnLet/ColumnLetB),
+     report it.
+  5. The model lane (`model4`) is changing the reference run under the columns (SGood `uniq`, `.letIn`
+     reading before `u`, typed hints); after it lands, merge `origin/spine` and check `column_C_free`
+     still builds unchanged; tell the orchestrator at once if not.
 
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
