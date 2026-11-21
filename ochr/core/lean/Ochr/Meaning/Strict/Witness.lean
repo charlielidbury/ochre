@@ -9,7 +9,9 @@ import Ochr.Meaning.Strict.ReadProto
 succeed from good states and write at a field path: a move out of a field (`w_move`), a refill of the
 moved part (`w_refill`), the join's drop of a field (`w_joinDrop`), and a borrow of an index field
 whose dependent sibling D112 invalidates (`w_borrowIndex`). Each says the run succeeds (so the strict
-tests pass on it) and, by the lemma, leaves a good state.
+tests pass on it) and, by the lemma, leaves a good state. For the strict end (ruling (A), docs/31
+D106): a borrow ended over content moved out through it fails the run (`run_endBad`), and one ended
+after the moved part is refilled runs (`w_endOk`).
 -/
 
 namespace Ochr.Meaning.Strict.Witness
@@ -37,6 +39,10 @@ theorem typedFut_noLive {s : SState} (hl : s.liveLabels = []) {ψ : Future} (h :
 theorem typedFut_self_noLive {s : SState} (hl : s.liveLabels = []) : TypedFut K φ s φ :=
   ⟨fun _ _ => rfl, fun l h => by rw [hl] at h; cases h⟩
 
+/-- The run's future is typed where it gives each live label a member of its record's type. -/
+theorem typedFut_self_live {s : SState} (h : ∀ l ∈ s.liveLabels, φ l ∈ₛ[K.dm.read] s.heldTy l) : TypedFut K φ s φ :=
+  ⟨fun _ _ => rfl, h⟩
+
 end
 
 /-- [Access] that reaches no label is the identity. -/
@@ -56,6 +62,22 @@ theorem access_noLive {s : SState} (hl : s.liveLabels = []) (p : Pos) (hit : Lis
   unfold SState.access
   rw [hl]
   rfl
+
+/-- With no live label, nothing ends: every end test holds. -/
+theorem accessOk_noLive {K : RunCtx} {φ : Future} {s : SState} (hl : s.liveLabels = []) (p : Pos)
+    (hit : List Step → Bool) : AccessOk K φ s p hit := fun k hk => by rw [hl] at hk; cases hk
+
+theorem contentOk_noLive {K : RunCtx} {φ : Future} {s : SState} (hl : s.liveLabels = []) (q : Place) :
+    ContentOk K φ q s := by
+  unfold ContentOk; split
+  · exact accessOk_noLive hl _ _
+  · trivial
+
+theorem tagOk_noLive {K : RunCtx} {φ : Future} {s : SState} (hl : s.liveLabels = []) (q : Place) :
+    TagOk K φ q s := by
+  unfold TagOk; split
+  · exact accessOk_noLive hl _ _
+  · trivial
 
 /-! ## The context: numbers only, nothing a proof, nothing copied -/
 
@@ -151,7 +173,8 @@ theorem run_move (dm : DataModel) (inv : List Place) (ρ : Assignment) (hint : T
     runT (Kw dm inv) ρ φw false hint (.place (pred 0)) sA =
       some ((.el0 Nat 0, { (TyS.plain TyM.nat) with label := none }), sB) := by
   rw [runT]
-  show readPlace (Kw dm inv) φw (pred 0) false sA = _
+  show SM.guarded (ContentOk (Kw dm inv) φw (pred 0)) (readPlace (Kw dm inv) φw (pred 0) false) sA = _
+  rw [SM.guarded_of (contentOk_noLive live_sA _)]
   have hc : contentOf (Kw dm inv) φw (pred 0) sA =
       some ((.el0 Nat 0, { (TyS.plain TyM.nat) with label := none }, .bind 0 0, [.proj 0]), sA) := by
     unfold contentOf
@@ -252,10 +275,15 @@ theorem run_refill (dm : DataModel) (ρ : Assignment) (hint : TyS) :
   simp only [hconst, Option.bind_eq_bind, Option.bind_some]
   rw [placeTy_sB]
   rw [if_pos ⟨nat_mem dm 0, fun _ h => by cases h⟩]
-  rw [show (TyS.plain TyM.nat).label = none from rfl, assignAt_sB]
+  have hao : AssignOk (Kw dm []) φw (pred 0) sB := by
+    unfold AssignOk
+    rw [show resolve sB (pred 0) = some (.bind 0 0, [.proj 0]) from rfl]
+    exact ⟨fun _ => accessOk_noLive live_sB _ _, fun h => by cases h⟩
+  rw [show (TyS.plain TyM.nat).label = none from rfl, SM.guarded_of hao, assignAt_sB]
   dsimp only
   have hinv : invalidate (Kw dm []) φw (pred 0) sA' = sA' := rfl
   rw [hinv, if_pos]
+  refine ⟨trivial, ?_⟩
   unfold lentOk
   rw [show resolve sA' (pred 0) = some (.bind 0 0, [.proj 0]) from rfl]
   exact .inr (.inr (stateOk_sA' dm []))
@@ -347,13 +375,31 @@ theorem run_join (dm : DataModel) (inv : List Place) (ρ : Assignment) (hint : T
   rw [runT]
   show SM.erasedIf (false, false) _ sC = _
   simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false]
+  rw [SM.guarded_of (tagOk_noLive live_sC _)]
   simp only [htag, Option.bind_eq_bind, Option.bind_some]
+  rw [optCheck_of (show MatchEntryOk (Kw dm inv) φw (!true) (.matchNat (.var 0) (.const "c") (.place (pred 1))) sC
+    from fun h => by cases h)]
+  simp only [Option.bind_some]
   rw [show matchEntry (Kw dm inv) φw (!true) (.matchNat (.var 0) (.const "c") (.place (pred 1))) sC =
     (sC, fun _ s₂ => s₂) from rfl]
   dsimp only
   rw [Sem.asNat_el0]
   dsimp only
   rw [hconst]
+  simp only [Option.bind_some]
+  have hjd : JoinDropOk (Kw dm inv) φw (movedPlaces φw sC) (.matchNat (.var 0) (.const "c") (.place (pred 1))) sC := by
+    unfold JoinDropOk
+    show FoldOk _ _ [pred 1] sC
+    refine ⟨?_, trivial⟩
+    unfold JoinStepOk
+    rw [show resolve sC (pred 1) = some (.bind 0 0, [.proj 0]) from rfl]
+    have hlp : accessLentPrefix (.bind 0 0) [.proj 0] sC = sC := by
+      unfold accessLentPrefix lentPrefix; rw [live_sC]; rfl
+    refine ⟨by unfold LentPrefixOk lentPrefix; rw [live_sC]; trivial, ?_⟩
+    rw [hlp]
+    unfold DropOk
+    exact fun _ _ => accessOk_noLive live_sC _ _
+  rw [optCheck_of hjd]
   simp only [Option.bind_some]
   rw [show Term.matchNat (.var 0) (.const "c") (.place (pred 1)) = tJoin from rfl, joinDrop_sC]
 
@@ -480,6 +526,25 @@ theorem invalidate_sE1 (dm : DataModel) : invalidate (KE dm) φw (.field gN (.va
     congr 3
   rw [hsc]
 
+/-- The invalidation's access of `x.v` reaches no label (the borrow is lent at `x.n`): no end. -/
+theorem invalidateOk_sE1 (dm : DataModel) : InvalidateOk (KE dm) φw (.field gN (.var 0)) (sE1 dm) := by
+  show FoldOk _ _ [Place.field gV (.var 0)] (sE1 dm)
+  refine ⟨?_, trivial⟩
+  unfold InvalOneOk
+  rw [show resolve (sE1 dm) (.field gV (.var 0)) = some (.bind 0 0, [.field gV]) from rfl]
+  have hdh : dataHit [.field gV] [.field gN] = false := by decide
+  have hlent : (sE1 dm).lent = fun m => if m = 0 then [⟨.bind 0 0, [.field gN], false⟩] else [] := by
+    funext m; by_cases hm : m = 0
+    · subst hm; rfl
+    · rw [if_neg hm]; show (if m = 0 then _ else _) = _; rw [if_neg hm]; rfl
+  show AccessOk (KE dm) φw (sE1 dm) (.bind 0 0) (dataHit [.field gV])
+  exact accessOkF_unreached (Γ := (KE dm).Γ) (fun l => by
+    unfold SState.reached
+    rw [hlent]
+    by_cases hl : l = 0
+    · subst hl; simp [hdh]
+    · simp [hl])
+
 /-- **The strict test passes after the invalidation**: at every typed future (label `0` any open
 member of `Nat`), `x` is `C(l, ⊥)`, an open member of `E` (its index read at `Nat`, its dependent
 field moved), and the temporary holds `3`. -/
@@ -489,7 +554,7 @@ theorem stateOk_sE2 (dm : DataModel) : StateOk (KE dm) φw (sE2 dm) := by
   have hl : (sE2 dm).liveLabels = [0] := by unfold sE2; rw [liveLabels_setAt, live_sE1]
   have hψ0 : dm.OMem [] TyM.nat (ψ 0) := by
     have := hψ.2 0 (by rw [hl]; simp)
-    exact this
+    exact .mem this
   refine ⟨fun f i hpi => ?_, fun q l hq => ?_⟩
   · rw [hp] at hpi
     simp only [List.mem_cons, Pos.bind.injEq, List.mem_nil_iff, or_false, reduceCtorEq] at hpi
@@ -543,11 +608,12 @@ theorem run_borrow (dm : DataModel) (ρ : Assignment) (tl : Bool) (hint : TyS) :
   show SM.erasedIf (false, false) _ (sE dm) = _
   simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false]
   unfold SM.strictS
-  rw [borrowPlace_sE]
+  rw [SM.guarded_of (contentOk_noLive (live_sE dm) _), borrowPlace_sE]
   dsimp only
   rw [if_pos (show Sem.el0 Nat 3 ∈ₛ[(KE dm).dm.read] (TyS.plain TyM.nat).m from nat_mem dm 3)]
   dsimp only
   rw [invalidate_sE1, if_pos]
+  refine ⟨invalidateOk_sE1 dm, ?_⟩
   unfold lentOk
   rw [show resolve (sE2 dm) (.field gN (.var 0)) = some (.bind 0 0, [.field gN]) from rfl]
   exact .inr (.inr (stateOk_sE2 dm))
@@ -560,5 +626,335 @@ theorem w_borrowIndex (dm : DataModel) (ρ : Assignment) (tl : Bool) (hint : TyS
     (sE_good dm) (run_borrow dm ρ tl hint)).2.2.2⟩
 
 end Borrow
+
+/-! ## Ends (ruling (A)): a borrow ended over moved-out content fails, one ended after a refill runs
+
+`y` holds the borrow `0` of `x` (`x` reads `0`'s final content); `(*y).0` is moved out through the
+borrow, then `x` is read, which ends the borrow (its [Access] reaches the site at `x`). Without a
+refill the holder's content is `S(⊥)`, no member of `Nat`, and the strict end fails the run
+(`run_endBad`), as the checker rejects ending a borrow over moved-out content (main's D98). With the
+refill `(*y).0 := c` first, the content is `1` and the run succeeds (`run_endOk`); the lemma applies
+(`w_endOk`). -/
+
+section Ends
+
+/-- `x : Nat`, the lender of label `0`. -/
+def bxL : SBinding := { ty := .plain TyM.nat, val := fun ψ => ψ 0 }
+
+/-- `y : Nat`, the holder of label `0`, holding `1`. -/
+def byH (c : Sem) : SBinding := { ty := .plain TyM.nat, val := fun _ => c }
+
+/-- `x` (variable `1`) lends label `0` at its root to `y` (variable `0`), which holds `c`. -/
+def sF (c : Sem) : SState where
+  env := [{ binds := [bxL, byH c] }]
+  shape := fun p => if p = .bind 0 1 then some 0 else none
+  nextLoan := 1
+  lent := fun l => if l = 0 then [⟨.bind 0 0, [], false⟩] else []
+  heldTy := fun _ => TyM.nat
+  heldMem := fun _ => .el0 Nat 1
+
+theorem positions_sF (c : Sem) : (sF c).positions = [.bind 0 0, .bind 0 1] := by
+  simp [sF, SState.positions, List.range']
+
+theorem live_sF (c : Sem) : (sF c).liveLabels = [0] := by
+  unfold SState.liveLabels; rw [positions_sF]; simp [sF]
+
+theorem shape_sF_some {c : Sem} {p : Pos} {l : Nat} (h : (sF c).shape p = some l) : p = .bind 0 1 ∧ l = 0 := by
+  simp only [sF] at h
+  split at h
+  · rename_i hp; cases h; exact ⟨hp, rfl⟩
+  · cases h
+
+theorem valAt_sF_indep (c : Sem) (p : Pos) (ψ : Future) {l : Nat} (hl : l ≠ 0) (x : Sem) :
+    (sF c).valAt p (ψ.upd l x) = (sF c).valAt p ψ := by
+  cases p with
+  | bind f i =>
+    rcases f with _ | f
+    · rcases i with _ | _ | i
+      · show (ψ.upd l x) 0 = ψ 0
+        rw [Future.upd_other _ _ (Ne.symm hl)]
+      · rfl
+      · rfl
+    · rfl
+  | temp f i =>
+    rcases f with _ | f
+    · rfl
+    · rfl
+
+/-- `sF c` is good when `c` is a member of `Nat`. -/
+theorem sF_good (dm : DataModel) {c : Sem} (hc : c ∈ₛ[dm.read] TyM.nat) : SGood dm [] φw (sF c) := by
+  refine ⟨fun ψ hψ f i hp => ?_, fun ψ hψ p l hl => ?_, fun l hl => ?_, fun f i l hl => ?_,
+    ⟨fun p ψ ψ' h => ?_, fun r x _ hs ψ ψ' _ => ?_, fun p x hp => ?_⟩, fun p l ⟨ψ, x, hne⟩ => ?_⟩
+  · rw [positions_sF] at hp
+    simp only [List.mem_cons, Pos.bind.injEq, List.mem_nil_iff, or_false] at hp
+    rcases hp with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
+    · exact .inl (.mem (hψ.2 0 (by rw [live_sF]; simp)))
+    · exact .inl (.mem hc)
+  · obtain ⟨rfl, rfl⟩ := shape_sF_some hl
+    exact .mem hc
+  · rw [live_sF] at hl; simp only [List.mem_cons, List.mem_nil_iff, or_false] at hl; subst hl
+    exact nat_mem dm 1
+  · obtain ⟨he, rfl⟩ := shape_sF_some hl
+    cases he; rfl
+  · have : ψ = ψ' := funext fun y => h y (.inl trivial)
+    rw [this]
+  · obtain ⟨rfl, rfl⟩ := shape_sF_some hs
+    rfl
+  · obtain ⟨rfl, rfl⟩ := shape_sF_some hp
+    exact ⟨by rw [positions_sF]; simp, by show 0 < 1; omega⟩
+  · show l < 1
+    by_cases hl : l = 0
+    · omega
+    · exact absurd (valAt_sF_indep c p ψ hl x).symm hne
+
+/-- The place `(*y).0`, the predecessor of `y`'s content (`y` is variable `0`). -/
+def qY : Place := .proj 0 (.deref (.var 0))
+
+theorem resolve_qY (c : Sem) : resolve (sF c) qY = some (.bind 0 1, [.deref, .proj 0]) := rfl
+
+/-- Nothing is lent at `y`: an access of `y` ends nothing. -/
+theorem reached_sF_y (c : Sem) (hit : List Step → Bool) (l : Nat) : (sF c).reached (.bind 0 1) hit l = false := by
+  unfold SState.reached
+  by_cases hl : l = 0
+  · subst hl; simp [sF]
+  · simp [sF, hl]
+
+theorem contentOk_sF_qY (dm : DataModel) (c : Sem) : ContentOk (Kw dm []) φw qY (sF c) := by
+  unfold ContentOk; rw [resolve_qY]
+  exact accessOkF_unreached (Γ := (Kw dm []).Γ) (reached_sF_y c _)
+
+theorem updAt_qY_one (dm : DataModel) (Γ : List IndDecl) (T : TyS) :
+    Sem.updAt dm Γ T (fun _ => .moved) [.deref, .proj 0] (.el0 Nat 1) = some Sem.moved.succ := by
+  rw [Sem.updAt_deref']; exact updAt_pred_one dm Γ _
+
+theorem sF_set (c c' : Sem) : (sF c).setAt (.bind 0 1) (fun _ => c') = sF c' := rfl
+
+/-- **The move of `(*y).0` runs** from `y = 1`: it reads `0` and leaves `y = S(⊥)`, the borrow live. -/
+theorem run_moveY (dm : DataModel) (ρ : Assignment) (hint : TyS) :
+    runT (Kw dm []) ρ φw false hint (.place qY) (sF (.el0 Nat 1)) =
+      some ((.el0 Nat 0, { (TyS.plain TyM.nat) with label := none }), sF Sem.moved.succ) := by
+  rw [runT]
+  show SM.guarded (ContentOk (Kw dm []) φw qY) (readPlace (Kw dm []) φw qY false) (sF (.el0 Nat 1)) = _
+  rw [SM.guarded_of (contentOk_sF_qY dm _)]
+  have hc : contentOf (Kw dm []) φw qY (sF (.el0 Nat 1)) =
+      some ((.el0 Nat 0, { (TyS.plain TyM.nat) with label := none }, .bind 0 1, [.deref, .proj 0]), sF (.el0 Nat 1)) := by
+    unfold contentOf
+    rw [resolve_qY]
+    dsimp only
+    rw [access_unreached (reached_sF_y _ _)]
+    show (match Sem.follow dm [] (.plain TyM.nat) (.el0 Nat 1) [.deref, .proj 0] with
+      | some (v, T) => some ((v, if [Step.deref, Step.proj 0].isEmpty then TyS.plain TyM.nat else { T with label := none },
+          Pos.bind 0 1, [Step.deref, Step.proj 0]), sF (.el0 Nat 1))
+      | none => none) = _
+    simp [Sem.follow, Sem.step, Sem.asNat_el0]
+  unfold readPlace
+  rw [hc]
+  have hrg : ReadGood dm.read ({ (TyS.plain TyM.nat) with label := none } : TyS).m (.el0 Nat 0) :=
+    .inl (nat_mem dm 0)
+  have hsc : setContent (Kw dm []) φw (.bind 0 1) [.deref, .proj 0] .moved (sF (.el0 Nat 1)) =
+      some (⟨⟩, sF Sem.moved.succ) := by
+    rw [← sF_set (.el0 Nat 1) Sem.moved.succ]
+    exact setContent_const rfl (updAt_qY_one dm [] _)
+  simp only [Kw, Dw] at hsc
+  simp [Sem.whole, hrg, Kw, Dw, hsc]
+
+theorem holderOf_sF (c : Sem) : (sF c).holderOf 0 = some (.bind 0 1) := by
+  unfold SState.holderOf; rw [positions_sF]; simp [sF]
+
+/-- The access of `x` reaches the borrow `0` (lent at `x`'s root): one round ends it. -/
+theorem accessRound_sF_x (c : Sem) :
+    ((sF c).liveLabels.filter ((sF c).reached (.bind 0 0) (dataHit []))) = [0] := by
+  rw [live_sF]; simp [SState.reached, sF, dataHit]
+
+/-- **The strict end fails over moved-out content**: reading `x` would end the borrow while its holder
+holds a value that is no member of `Nat`, at the typed future `φw`. -/
+theorem not_contentOk_x (dm : DataModel) {c : Sem} (hc : ¬ c ∈ₛ[dm.read] TyM.nat) :
+    ¬ ContentOk (Kw dm []) φw (.var 1) (sF c) := by
+  unfold ContentOk
+  rw [show resolve (sF c) (.var 1) = some (.bind 0 0, []) from rfl]
+  intro h
+  have h0 := h 0 (by rw [live_sF]; simp)
+  simp only [List.range_zero, List.foldl_nil] at h0
+  rw [accessRound_sF_x] at h0
+  have hend : EndOk (Kw dm []) φw (sF c) 0 := h0.1
+  have := hend (.bind 0 1) (holderOf_sF c) φw (typedFut_self_live (fun l hl => by
+    rw [live_sF] at hl; simp only [List.mem_cons, List.mem_nil_iff, or_false] at hl; subst hl; exact nat_mem dm 0))
+  exact hc this
+
+/-- **Without the refill the run fails**: `(*y).0` moved out, then reading `x` ends the borrow over the
+moved-out content (the strict end, ruling (A); the checker rejects this program by main's D98). -/
+theorem run_endBad (dm : DataModel) (ρ : Assignment) (tl : Bool) (hint : TyS) :
+    runT (Kw dm []) ρ φw tl hint (.seq (.place qY) (.place (.var 1))) (sF (.el0 Nat 1)) = none := by
+  have hbad : ¬ ContentOk (Kw dm []) φw (.var 1) (sF Sem.moved.succ) :=
+    not_contentOk_x dm (by rw [moved_succ]; rintro ⟨n, hn⟩; cases hn)
+  rw [runT]
+  show SM.erasedIf (false, false) _ (sF (.el0 Nat 1)) = _
+  simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false]
+  show (runT (Kw dm []) ρ φw false (.plain TyM.err) (.place qY) >>= fun r =>
+    SM.guardMod (DiscardOk (Kw dm []) φw r.2) (discardEnd r.2) >>= fun _ =>
+      runT (Kw dm []) ρ φw tl hint (.place (.var 1))) (sF (.el0 Nat 1)) = none
+  simp only [Bind.bind, run_moveY]
+  rw [SM.guardMod_of (show DiscardOk (Kw dm []) φw { (TyS.plain TyM.nat) with label := none } (sF Sem.moved.succ) from trivial)]
+  dsimp only
+  rw [runT]
+  show SM.guarded (ContentOk (Kw dm []) φw (.var 1)) (readPlace (Kw dm []) φw (.var 1) false) (discardEnd _ (sF Sem.moved.succ)) = none
+  have hd : discardEnd { (TyS.plain TyM.nat) with label := none } (sF Sem.moved.succ) = sF Sem.moved.succ := rfl
+  rw [hd]
+  unfold SM.guarded
+  rw [if_neg hbad]
+
+theorem contentOf_sF_qY_moved (dm : DataModel) :
+    contentOf (Kw dm []) φw qY (sF Sem.moved.succ) =
+      some ((.moved, { (TyS.plain TyM.nat) with label := none }, .bind 0 1, [.deref, .proj 0]), sF Sem.moved.succ) := by
+  unfold contentOf
+  rw [resolve_qY]
+  dsimp only
+  rw [access_unreached (reached_sF_y _ _)]
+  show (match Sem.follow dm [] (.plain TyM.nat) Sem.moved.succ [.deref, .proj 0] with
+    | some (v, T) => some ((v, if [Step.deref, Step.proj 0].isEmpty then TyS.plain TyM.nat else { T with label := none },
+        Pos.bind 0 1, [Step.deref, Step.proj 0]), sF Sem.moved.succ)
+    | none => none) = _
+  rw [moved_succ]
+  rfl
+
+theorem updAt_qY_refill (dm : DataModel) (Γ : List IndDecl) (T : TyS) :
+    Sem.updAt dm Γ T (fun _ => .el0 Nat 0) [.deref, .proj 0] Sem.moved.succ = some (.el0 Nat 1) := by
+  rw [Sem.updAt_deref']; exact updAt_refill dm Γ _
+
+/-- **The refill `(*y).0 := c` runs** while the borrow is live: `y` is `1` again; the strict test
+below a root (`StateOk`) passes at every typed future. -/
+theorem run_assignY (dm : DataModel) (ρ : Assignment) (hint : TyS) :
+    runT (Kw dm []) ρ φw false hint (.assign qY (.const "c")) (sF Sem.moved.succ) =
+      some ((.el0 Unit (), .plain TyM.unit), sF (.el0 Nat 1)) := by
+  have hconst : ∀ T, runT (Kw dm []) ρ φw false T (.const "c") (sF Sem.moved.succ) =
+      some ((.el0 Nat 0, .plain TyM.nat), sF Sem.moved.succ) := by
+    intro T; rw [runT]; rfl
+  have hpt : placeTy (Kw dm []) φw qY (sF Sem.moved.succ) = .plain TyM.nat := by
+    unfold placeTy; rw [contentOf_sF_qY_moved]; rfl
+  have hao : AssignOk (Kw dm []) φw qY (sF Sem.moved.succ) := by
+    unfold AssignOk; rw [resolve_qY]
+    exact ⟨fun _ => accessOkF_unreached (Γ := (Kw dm []).Γ) (reached_sF_y _ _), fun h => by cases h⟩
+  have hassign : assignAt (Kw dm []) φw qY (.el0 Nat 0) none (sF Sem.moved.succ) =
+      some ((.el0 Unit (), .plain TyM.unit), sF (.el0 Nat 1)) := by
+    unfold assignAt
+    rw [resolve_qY]
+    dsimp only
+    simp only [List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false]
+    rw [access_unreached (reached_sF_y _ _)]
+    have hsc : setContent (Kw dm []) φw (.bind 0 1) [.deref, .proj 0] (.el0 Nat 0) (sF Sem.moved.succ) =
+        some (⟨⟩, sF (.el0 Nat 1)) := by
+      rw [← sF_set Sem.moved.succ (.el0 Nat 1)]
+      exact setContent_const rfl (updAt_qY_refill dm [] _)
+    rw [hsc]
+  rw [runT]
+  show SM.erasedIf (false, false) _ (sF Sem.moved.succ) = _
+  simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false]
+  simp only [hconst, Option.bind_eq_bind, Option.bind_some]
+  rw [hpt, if_pos ⟨nat_mem dm 0, fun _ h => by cases h⟩,
+    show (TyS.plain TyM.nat).label = none from rfl, SM.guarded_of hao, hassign]
+  dsimp only
+  have hinv : invalidate (Kw dm []) φw qY (sF (.el0 Nat 1)) = sF (.el0 Nat 1) := rfl
+  rw [hinv, if_pos]
+  refine ⟨trivial, ?_⟩
+  unfold lentOk
+  rw [resolve_qY]
+  have hs := sF_good dm (nat_mem dm 1)
+  exact .inr (.inr fun ψ hψ => ⟨fun f i hp => hs.bind ψ hψ f i hp, fun q l hq => hs.holder ψ hψ q l hq⟩)
+
+/-- Reading `x` accesses it: one round, which ends the borrow `0` at its holder `y`. -/
+theorem access_sF_x (c : Sem) : (sF c).access (.bind 0 0) (dataHit []) = (sF c).endAt 0 (.bind 0 1) := by
+  show (List.range (sF c).liveLabels.length).foldl
+    (fun s _ => (s.liveLabels.filter (s.reached (.bind 0 0) (dataHit []))).foldl SState.endLabel s) (sF c) = _
+  rw [show (sF c).liveLabels.length = 1 by rw [live_sF]; rfl]
+  simp only [List.range_one, List.foldl_cons, List.foldl_nil]
+  rw [accessRound_sF_x]
+  simp only [List.foldl_cons, List.foldl_nil]
+  exact SState.endLabel_eq (holderOf_sF c)
+
+/-- **The strict end holds after the refill**: the holder's content is `1`, a member of `Nat`. -/
+theorem contentOk_x_one (dm : DataModel) : ContentOk (Kw dm []) φw (.var 1) (sF (.el0 Nat 1)) := by
+  unfold ContentOk
+  rw [show resolve (sF (.el0 Nat 1)) (.var 1) = some (.bind 0 0, []) from rfl]
+  intro k hk
+  rw [live_sF] at hk
+  obtain rfl : k = 0 := by simpa using hk
+  simp only [List.range_zero, List.foldl_nil]
+  rw [accessRound_sF_x]
+  refine ⟨fun r hr ψ _ => ?_, trivial⟩
+  rw [holderOf_sF] at hr; cases hr
+  exact nat_mem dm 1
+
+theorem valAt_x_after_end (ψ : Future) :
+    ((sF (.el0 Nat 1)).endAt 0 (.bind 0 1)).valAt (.bind 0 0) ψ = .el0 Nat 1 := by
+  rw [SState.endAt_valAt _ _ _ _ (by rw [positions_sF]; simp)]
+  show (if Pos.bind 0 0 = Pos.bind 0 1 then Sem.moved else (ψ.upd 0 (Sem.el0 Nat 1)) 0) = _
+  rw [if_neg (by decide), Future.upd_same]
+
+/-- The end's state, then `x` moved out. -/
+noncomputable def sX : SState := ((sF (.el0 Nat 1)).endAt 0 (.bind 0 1)).setAt (.bind 0 0) fun _ => .moved
+
+/-- **Reading `x` runs after the refill**: the borrow ends (its content `1`, a member) and `x` reads `1`. -/
+theorem run_readX (dm : DataModel) (ρ : Assignment) (tl : Bool) (hint : TyS) :
+    runT (Kw dm []) ρ φw tl hint (.place (.var 1)) (sF (.el0 Nat 1)) =
+      some ((.el0 Nat 1, { (TyS.plain TyM.nat) with label := none }), sX) := by
+  rw [runT]
+  show SM.guarded (ContentOk (Kw dm []) φw (.var 1)) (readPlace (Kw dm []) φw (.var 1) false) (sF (.el0 Nat 1)) = _
+  rw [SM.guarded_of (contentOk_x_one dm)]
+  have hc : contentOf (Kw dm []) φw (.var 1) (sF (.el0 Nat 1)) =
+      some ((.el0 Nat 1, TyS.plain TyM.nat, .bind 0 0, []), (sF (.el0 Nat 1)).endAt 0 (.bind 0 1)) := by
+    unfold contentOf
+    rw [show resolve (sF (.el0 Nat 1)) (.var 1) = some (.bind 0 0, []) from rfl]
+    dsimp only
+    rw [access_sF_x, valAt_x_after_end]
+    rfl
+  unfold readPlace
+  rw [hc]
+  have hrg : ReadGood dm.read (TyS.plain TyM.nat).m (.el0 Nat 1) := .inl (nat_mem dm 1)
+  have hsh : ((sF (.el0 Nat 1)).endAt 0 (.bind 0 1)).shape (.bind 0 0) = none := by
+    rw [SState.endAt_shape]; simp [sF]
+  have hsc : setContent (Kw dm []) φw (.bind 0 0) [] .moved ((sF (.el0 Nat 1)).endAt 0 (.bind 0 1)) =
+      some (⟨⟩, sX) := setContent_root _ _ _ _ _ (.inl rfl)
+  simp only [Kw, Dw] at hsc
+  simp [Sem.whole, hrg, Kw, Dw, hsh, hsc]
+
+/-- The program with the refill: `(*y).0; ((*y).0 := c; x)`. -/
+def tEndOk : Term := .seq (.place qY) (.seq (.assign qY (.const "c")) (.place (.var 1)))
+
+/-- **With the refill the run succeeds**: the move through the borrow, the refill, then the read of
+`x`, whose access ends the borrow over the whole content `1`. -/
+theorem run_endOk (dm : DataModel) (ρ : Assignment) (tl : Bool) (hint : TyS) :
+    runT (Kw dm []) ρ φw tl hint tEndOk (sF (.el0 Nat 1)) =
+      some ((.el0 Nat 1, { (TyS.plain TyM.nat) with label := none }), sX) := by
+  unfold tEndOk
+  rw [runT]
+  show SM.erasedIf (false, false) _ (sF (.el0 Nat 1)) = _
+  simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false]
+  show (runT (Kw dm []) ρ φw false (.plain TyM.err) (.place qY) >>= fun r =>
+    SM.guardMod (DiscardOk (Kw dm []) φw r.2) (discardEnd r.2) >>= fun _ =>
+      runT (Kw dm []) ρ φw tl hint (.seq (.assign qY (.const "c")) (.place (.var 1)))) (sF (.el0 Nat 1)) = _
+  simp only [Bind.bind, run_moveY]
+  rw [SM.guardMod_of (show DiscardOk (Kw dm []) φw { (TyS.plain TyM.nat) with label := none } (sF Sem.moved.succ) from trivial)]
+  dsimp only
+  rw [show discardEnd { (TyS.plain TyM.nat) with label := none } (sF Sem.moved.succ) = sF Sem.moved.succ from rfl]
+  rw [runT]
+  show SM.erasedIf (false, false) _ (sF Sem.moved.succ) = _
+  simp only [SM.erasedIf, SM.stmtIf, Bool.false_eq_true, if_false]
+  show (runT (Kw dm []) ρ φw false (.plain TyM.err) (.assign qY (.const "c")) >>= fun r =>
+    SM.guardMod (DiscardOk (Kw dm []) φw r.2) (discardEnd r.2) >>= fun _ =>
+      runT (Kw dm []) ρ φw tl hint (.place (.var 1))) (sF Sem.moved.succ) = _
+  simp only [Bind.bind, run_assignY]
+  rw [SM.guardMod_of (show DiscardOk (Kw dm []) φw (TyS.plain TyM.unit) (sF (.el0 Nat 1)) from trivial)]
+  dsimp only
+  rw [show discardEnd (TyS.plain TyM.unit) (sF (.el0 Nat 1)) = sF (.el0 Nat 1) from rfl]
+  exact run_readX dm ρ tl hint
+
+/-- **The fundamental lemma applied to a run that ends a borrow over refilled content.** -/
+theorem w_endOk (dm : DataModel) (ρ : Assignment) (tl : Bool) (hint : TyS) :
+    runT (Kw dm []) ρ φw tl hint tEndOk (sF (.el0 Nat 1)) =
+      some ((.el0 Nat 1, { (TyS.plain TyM.nat) with label := none }), sX) ∧ SGood dm [] φw sX :=
+  ⟨run_endOk dm ρ tl hint, (fund_all (fundCtx_Kw dm []) tEndOk (by simp [tEndOk, Term.valsOk]) tl hint
+    (sF (.el0 Nat 1)) sX _ (sF_good dm (nat_mem dm 1)) (run_endOk dm ρ tl hint)).2.2.2⟩
+
+end Ends
 
 end Ochr.Meaning.Strict.Witness

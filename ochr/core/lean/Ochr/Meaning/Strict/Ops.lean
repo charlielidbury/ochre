@@ -184,8 +184,8 @@ with `φ` off the live labels before (they include `l`), at `l` it is `r`'s cont
 member of `heldTy l` (`holder`, at `ψ'` with `l` set to its record, which `r` does not read), and
 elsewhere it is `ψ'`. Why the typed futures give a live label an OPEN member: a borrow may
 end with parts of its content moved out (D53 (h)), and its lenders then read those parts moved. -/
-theorem endAt_sgood {s : SState} {l : Nat} {r : Pos} (hs : SGood dm Γ φ s) (hh : s.holderOf l = some r) :
-    SGood dm Γ φ (s.endAt l r) := by
+theorem endAt_sgood {s : SState} {l : Nat} {r : Pos} (hs : SGood dm Γ φ s) (hh : s.holderOf l = some r)
+    (hend : EndOkF dm Γ φ s l) : SGood dm Γ φ (s.endAt l r) := by
   have hr : s.shape r = some l := (SState.holderOf_spec hh).2
   have hlive : l ∈ s.liveLabels := (SState.live_iff s l).2 ⟨r, (SState.holderOf_spec hh).1, hr⟩
   have hTy : ∀ q, (s.endAt l r).tyAt q = s.tyAt q := fun q => by unfold SState.endAt; rw [tyAt_mapVals]; rfl
@@ -203,7 +203,7 @@ theorem endAt_sgood {s : SState} {l : Nat} {r : Pos} (hs : SGood dm Γ φ s) (hh
     by_cases e : l' = l
     · subst e
       rw [Future.upd_same]
-      have hm : PMem dm Γ (s.heldMem l') (s.heldTy l') := .mem (hs.held l' hl')
+      have hm : s.heldMem l' ∈ₛ[dm.read] s.heldTy l' := hs.held l' hl'
       have ht : TypedF dm Γ φ s (ψ'.upd l' (s.heldMem l')) := by
         refine ⟨fun y hy => ?_, fun y hy => ?_⟩
         · have hne : y ≠ l' := fun e => hy (e ▸ hl')
@@ -212,7 +212,8 @@ theorem endAt_sgood {s : SState} {l : Nat} {r : Pos} (hs : SGood dm Γ φ s) (hh
         · subst ey; rw [Future.upd_same]; exact hm
         · rw [Future.upd_other _ _ ey]
           have := hψ' y (SState.live_endAt hr hy ey); rwa [hHT] at this
-      have := hs.holder _ ht r l' hr
+      -- the strict end: the holder's content is a MEMBER at every typed future
+      have := hend r hh _ ht
       rwa [hs.holderIndep hr ψ' (s.heldMem l')] at this
     · rw [Future.upd_other _ _ e]
       have := hψ' l' (SState.live_endAt hr hl' e); rwa [hHT] at this
@@ -246,23 +247,44 @@ theorem endAt_sgood {s : SState} {l : Nat} {r : Pos} (hs : SGood dm Γ φ s) (hh
   · have := SState.readsBelow_endLabel hs.fresh l
     rwa [SState.endLabel_eq hh] at this
 
-theorem endLabel_sgood {s : SState} (hs : SGood dm Γ φ s) (l : Nat) : SGood dm Γ φ (s.endLabel l) := by
+theorem endLabel_sgood {s : SState} (hs : SGood dm Γ φ s) (l : Nat) (hend : EndOkF dm Γ φ s l) :
+    SGood dm Γ φ (s.endLabel l) := by
   cases h : s.holderOf l with
   | none => rw [SState.endLabel_of_none h]; exact hs
-  | some r => rw [SState.endLabel_eq h]; exact endAt_sgood hs h
+  | some r => rw [SState.endLabel_eq h]; exact endAt_sgood hs h hend
 
-theorem foldl_endLabel_sgood : ∀ (ls : List Nat) {s : SState}, SGood dm Γ φ s → SGood dm Γ φ (ls.foldl SState.endLabel s)
-  | [], _, h => h
-  | l :: ls, _, h => foldl_endLabel_sgood ls (endLabel_sgood h l)
+theorem foldl_endLabel_sgood : ∀ (ls : List Nat) {s : SState}, SGood dm Γ φ s →
+    FoldOk SState.endLabel (EndOkF dm Γ φ) ls s → SGood dm Γ φ (ls.foldl SState.endLabel s)
+  | [], _, h, _ => h
+  | l :: ls, _, h, hok => foldl_endLabel_sgood ls (endLabel_sgood h l hok.1) hok.2
 
-/-- **[Access] keeps the invariant**: a fold of ends. -/
-theorem access_sgood {s : SState} (hs : SGood dm Γ φ s) (p : Pos) (hit : List Step → Bool) :
-    SGood dm Γ φ (s.access p hit) := by
-  rw [SState.access_eq, SState.foldl_range_iterR]
-  generalize s.liveLabels.length = k
-  induction k with
-  | zero => exact hs
-  | succ k ih => exact foldl_endLabel_sgood _ ih
+/-- An access that reaches no label makes no end: its test holds (and it is the identity). -/
+theorem accessOkF_unreached {s : SState} {p : Pos} {hit : List Step → Bool} (h : ∀ l, s.reached p hit l = false) :
+    AccessOkF dm Γ φ s p hit := by
+  have hround : accRound p hit s = s := by
+    unfold accRound
+    rw [List.filter_eq_nil_iff.mpr (fun l _ => by simp [h l])]; rfl
+  have hk : ∀ k, (List.range k).foldl (fun t _ => accRound p hit t) s = s := by
+    intro k
+    induction k with
+    | zero => rfl
+    | succ k ih => rw [List.range_succ, List.foldl_append, ih]; exact hround
+  intro k _
+  rw [hk k, List.filter_eq_nil_iff.mpr (fun l _ => by simp [h l])]
+  trivial
+
+/-- **[Access] keeps the invariant** where every end it makes is strict: a fold of rounds of ends. -/
+theorem access_sgood {s : SState} (hs : SGood dm Γ φ s) (p : Pos) (hit : List Step → Bool)
+    (hok : AccessOkF dm Γ φ s p hit) : SGood dm Γ φ (s.access p hit) := by
+  have key : ∀ k, k ≤ s.liveLabels.length → SGood dm Γ φ ((List.range k).foldl (fun t _ => accRound p hit t) s) := by
+    intro k
+    induction k with
+    | zero => intro _; exact hs
+    | succ k ih =>
+      intro hk
+      rw [List.range_succ, List.foldl_append]
+      exact foldl_endLabel_sgood _ (ih (by omega)) (hok k (by omega))
+  exact key _ (Nat.le_refl _)
 
 end
 
