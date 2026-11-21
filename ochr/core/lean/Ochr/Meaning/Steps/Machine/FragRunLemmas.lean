@@ -674,4 +674,239 @@ theorem _root_.Ochr.Meaning.Steps.Form.FSt.lend {Γ : List Form.FT} {s : MState}
     · rcases e with e | ⟨w, e⟩ <;> cases e; omega
     · exact Nat.lt_succ_of_lt (hlt q hq1 l e)
 
+/-! ## The `let`'s drop -/
+
+theorem popBind_mem {E : Env} {fr : Frame} (hfr : E[E.size - 1]? = some fr) (hn : 0 < fr.binds.size) {q : Pos} :
+    q ∈ allPos (Env.popBindE E) ↔ q ∈ allPos E ∧ q ≠ .bind (E.size - 1) (fr.binds.size - 1) := by
+  have hne : 0 < E.size := by
+    rcases Nat.eq_zero_or_pos E.size with e | e
+    · rw [Array.getElem?_eq_none (by omega)] at hfr; cases hfr
+    · exact e
+  constructor
+  · exact mem_allPos_popTop E fr hfr hn hne
+  · rintro ⟨hq, hqt⟩
+    obtain ⟨A, B, h1, h2⟩ := allPos_popTop E fr hfr hn hne
+    show q ∈ allPos (E.modify (E.size - 1) popTop)
+    rw [h2]; rw [h1] at hq
+    rcases List.mem_append.mp hq with h | h
+    · exact List.mem_append_left _ h
+    · rcases List.mem_cons.mp h with h | h
+      · exact absurd h hqt
+      · exact List.mem_append_right _ h
+
+/-- **The top binding, holding no label, popped**: variable `i + 1` becomes `i`. -/
+theorem _root_.Ochr.Meaning.Steps.Form.FStT.popBind {Γ : List Form.FT} {A : Form.FT} {s : MState}
+    (h : FStT (A :: Γ) s) {fr : Frame} (hfr : s.env[s.env.size - 1]? = some fr) (hn : 0 < fr.binds.size)
+    (hnl : ∀ l, valAt s.env (.bind (s.env.size - 1) (fr.binds.size - 1)) ≠ .loan l)
+    (hnb : ∀ l c, valAt s.env (.bind (s.env.size - 1) (fr.binds.size - 1)) ≠ .borrow l c) :
+    FStT Γ { s with env := Env.popBindE s.env } := by
+  have hmem := fun q => popBind_mem (q := q) hfr hn
+  have hv : ∀ q, q ≠ .bind (s.env.size - 1) (fr.binds.size - 1) → valAt (Env.popBindE s.env) q = valAt s.env q :=
+    fun q hq => valAt_popTop_ne s.env fr hfr q hq
+  have hsz : (Env.popBindE s.env).size = s.env.size := by simp [Env.popBindE]
+  refine ⟨fun q hq => ?_, fun f i hq => ?_, fun q q' l hq hq' e e' => ?_, fun q q' l w w' hq hq' e e' => ?_,
+    fun q l hq e => ?_, fun q l c hq e => ?_, fun i A' hi => ?_, fun f j f' j' l c hq hq' e e' => ?_,
+    fun f j b l hb e => ?_, by show 0 < (Env.popBindE s.env).size; rw [hsz]; exact h.frame,
+    fun f i l c hq e fr₀ hfr₀ => ?_⟩
+  · obtain ⟨hq1, hq2⟩ := (hmem q).mp hq
+    show FVal (valAt (Env.popBindE s.env) q); rw [hv q hq2]; exact h.vals q hq1
+  · obtain ⟨hq1, hq2⟩ := (hmem _).mp hq
+    show _ ∨ _; rw [hv _ hq2]; exact h.temps f i hq1
+  · obtain ⟨hq1, hq2⟩ := (hmem q).mp hq
+    obtain ⟨hq1', hq2'⟩ := (hmem q').mp hq'
+    have e1 : valAt (Env.popBindE s.env) q = _ := e
+    have e2 : valAt (Env.popBindE s.env) q' = _ := e'
+    rw [hv q hq2] at e1; rw [hv q' hq2'] at e2
+    exact h.loan1 q q' l hq1 hq1' e1 e2
+  · obtain ⟨hq1, hq2⟩ := (hmem q).mp hq
+    obtain ⟨hq1', hq2'⟩ := (hmem q').mp hq'
+    have e1 : valAt (Env.popBindE s.env) q = _ := e
+    have e2 : valAt (Env.popBindE s.env) q' = _ := e'
+    rw [hv q hq2] at e1; rw [hv q' hq2'] at e2
+    exact h.bor1 q q' l w w' hq1 hq1' e1 e2
+  · obtain ⟨hq1, hq2⟩ := (hmem q).mp hq
+    have e1 : valAt (Env.popBindE s.env) q = _ := e
+    rw [hv q hq2] at e1
+    obtain ⟨q', c, hq', hy⟩ := h.held q l hq1 e1
+    have hne : q' ≠ .bind (s.env.size - 1) (fr.binds.size - 1) := fun e2 => by rw [e2] at hy; exact hnb _ _ hy
+    exact ⟨q', c, (hmem q').mpr ⟨hq', hne⟩, by show valAt (Env.popBindE s.env) q' = _; rw [hv q' hne]; exact hy⟩
+  · obtain ⟨hq1, hq2⟩ := (hmem q).mp hq
+    have e1 : valAt (Env.popBindE s.env) q = _ := e
+    rw [hv q hq2] at e1
+    obtain ⟨q', hq', hx⟩ := h.lender q l c hq1 e1
+    have hne : q' ≠ .bind (s.env.size - 1) (fr.binds.size - 1) := fun e2 => by rw [e2] at hx; exact hnl _ hx
+    exact ⟨q', (hmem q').mpr ⟨hq', hne⟩, by show valAt (Env.popBindE s.env) q' = _; rw [hv q' hne]; exact hx⟩
+  · obtain ⟨f, j, b, hck, hb, h1, h2, h3⟩ := h.top (i + 1) A' hi
+    have hne : Pos.bind f j ≠ .bind (s.env.size - 1) (fr.binds.size - 1) := by
+      intro e2
+      cases e2
+      unfold ckVarPos at hck
+      split at hck
+      · next hlt =>
+        have e3 := (Pos.bind.inj (Option.some.inj hck)).2
+        rw [getElem!_def, hfr] at hlt e3
+        dsimp only at hlt e3
+        omega
+      · cases hck
+    refine ⟨f, j, b, ?_, ?_, h1, h2, h3⟩
+    · show ckVarPos (Env.popBindE s.env) i = _
+      rw [ckVarPos_popBindE s.env fr hfr hn]; exact hck
+    · show (Env.popBindE s.env)[f]?.bind _ = _
+      rw [show Env.popBindE s.env = s.env.modify (s.env.size - 1) popTop from rfl, bind_popTop_ne s.env fr hfr f j hne]
+      exact hb
+  · obtain ⟨hq1, hq2⟩ := (hmem _).mp hq
+    obtain ⟨hq1', hq2'⟩ := (hmem _).mp hq'
+    have e1 : valAt (Env.popBindE s.env) _ = _ := e
+    have e2 : valAt (Env.popBindE s.env) _ = _ := e'
+    rw [hv _ hq2] at e1; rw [hv _ hq2'] at e2
+    exact h.order f j f' j' l c hq1 hq1' e1 e2
+  · have hb' : (Env.popBindE s.env)[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b := hb
+    by_cases e2 : Pos.bind f j = .bind (s.env.size - 1) (fr.binds.size - 1)
+    · cases e2
+      rw [show Env.popBindE s.env = s.env.modify (s.env.size - 1) popTop from rfl, bind_popTop_old s.env fr hfr] at hb'
+      cases hb'
+    · rw [show Env.popBindE s.env = s.env.modify (s.env.size - 1) popTop from rfl, bind_popTop_ne s.env fr hfr f j e2] at hb'
+      exact h.lent f j b l hb' e
+  · obtain ⟨hq1, hq2⟩ := (hmem _).mp hq
+    have e1 : valAt (Env.popBindE s.env) _ = _ := e
+    rw [hv _ hq2] at e1
+    have hfr₀' : (Env.popBindE s.env)[s.env.size - 1]? = some fr₀ := by
+      have := hfr₀; simp only [show ({ s with env := Env.popBindE s.env } : MState).env = Env.popBindE s.env from rfl, hsz] at this
+      exact this
+    have ht : (Env.popBindE s.env)[s.env.size - 1]? = some (popTop fr) := by
+      simp only [Env.popBindE, Array.getElem?_modify, if_true, hfr, Option.map_some]; rfl
+    rw [ht] at hfr₀'; cases hfr₀'
+    obtain ⟨h1, h2⟩ := h.tempLast f i l c hq1 e1 fr hfr
+    exact ⟨by show f = (Env.popBindE s.env).size - 1; rw [hsz]; exact h1, by rw [h2]; rfl⟩
+
+theorem Fresh.popBind {s : MState} (h : Fresh s) {fr : Frame} (hfr : s.env[s.env.size - 1]? = some fr)
+    (hn : 0 < fr.binds.size) : Fresh { s with env := Env.popBindE s.env } := by
+  intro q hq l e
+  obtain ⟨hq1, hq2⟩ := (popBind_mem hfr hn).mp hq
+  have e1 : valAt (Env.popBindE s.env) q = .loan l ∨ ∃ w, valAt (Env.popBindE s.env) q = .borrow l w := e
+  have hv : valAt (Env.popBindE s.env) q = valAt s.env q := valAt_popTop_ne s.env fr hfr q hq2
+  rw [hv] at e1
+  exact h q hq1 l e1
+
+theorem size_of_kern {a b : MState} (hk : Kern a b) : b.env.size = a.env.size := by
+  have := congrArg Array.size hk.env; simp only [Env.erase_size] at this; exact this.symm
+
+theorem topTemps_of_kern {a b : MState} (hk : Kern a b) : Form.topTemps b.env = Form.topTemps a.env := by
+  rw [← topTemps_erase, ← hk.env, topTemps_erase]
+
+/-- What the `let`'s drop leaves, from the state its tail left (`W`, the value in flight). -/
+def DropOut (Γ : List Form.FT) (W st₃ : MState) : Prop :=
+  FStT Γ st₃ ∧ Fresh st₃ ∧ ModeEq W st₃ ∧ Form.topTemps st₃.env = Form.topTemps W.env ∧
+    DecideScope.topReadings st₃ = (DecideScope.topReadings W).tail ∧ st₃.env.size = W.env.size
+
+theorem dropOut_of_pop {Γ : List Form.FT} {A : Form.FT} {W X st₃ : MState} {fr : Frame}
+    (hX : FStT (A :: Γ) X) (hfX : Fresh X) (hfr : X.env[X.env.size - 1]? = some fr) (hn : 0 < fr.binds.size)
+    (hnl : ∀ l, valAt X.env (.bind (X.env.size - 1) (fr.binds.size - 1)) ≠ .loan l)
+    (hnb : ∀ l c, valAt X.env (.bind (X.env.size - 1) (fr.binds.size - 1)) ≠ .borrow l c)
+    (hXW : X.nextLoan = W.nextLoan) (htt : Form.topTemps X.env = Form.topTemps W.env)
+    (htr : DecideScope.topReadings X = DecideScope.topReadings W) (hsz : X.env.size = W.env.size)
+    (hk : Kern { X with env := Env.popBindE X.env } st₃) (hme : ModeEq W st₃) : DropOut Γ W st₃ := by
+  refine ⟨(hX.popBind hfr hn hnl hnb).of_erase hk.env, (hfX.popBind hfr hn).of_erase hk.env (Nat.le_of_eq hk.nextLoan),
+    hme, ?_, ?_, ?_⟩
+  · rw [topTemps_of_kern hk]; show Form.topTemps (Env.popBindE X.env) = _; rw [topTemps_popBindE, htt]
+  · rw [← ColumnC.topReadings_kern hk, topReadings_popBindE X.env fr hfr hn X rfl, htr]
+  · rw [size_of_kern hk]; show (Env.popBindE X.env).size = _; simp [Env.popBindE, hsz]
+
+/-- **The `let`'s drop of its binding** from a fragment state with the tail's value in flight: the
+binding holds a number, `⊥` or `()` (popped), or a borrow (ended, then popped); it cannot be lent
+(only younger bindings and the value in flight borrow it: the drop fails). -/
+theorem frag_drop {Γ : List Form.FT} {A : Form.FT} {W st₃ : MState} {n bh : Nat} (hF : FStT (A :: Γ) W)
+    (hfW : Fresh W) (hrd : Runs (Ochr.dropTopBind n) W bh () st₃) : DropOut Γ W st₃ := by
+  obtain ⟨f, j, b, hck, hlk, -, -, hhold⟩ := hF.top 0 A rfl
+  obtain ⟨fr, hfr, hb, rfl, rfl⟩ := top_var0 hck hlk
+  have hn : 0 < fr.binds.size := by
+    obtain ⟨fr', b', hf', hj'⟩ := mem_allPos_bind _ _ _ (lookup_pos hlk).1
+    rw [hfr] at hf'; cases hf'; have := lt_of_getElem?' hj'; omega
+  have hval : valAt W.env (.bind (W.env.size - 1) (fr.binds.size - 1)) = b.val := lookup_val hlk
+  have hcases : b.val = .bot ∨ b.val.Num ∨ b.val = .unit ∨ (∃ m, b.val = .loan m) ∨
+      (∃ l c, b.val = .borrow l c ∧ c.Num) := by
+    cases A with
+    | nat => rcases hhold with h | h | h
+             · exact .inr (.inl h)
+             · exact .inl h
+             · exact .inr (.inr (.inr (.inl h)))
+    | unit => rcases hhold with h | h
+              · exact .inr (.inr (.inl h))
+              · exact .inl h
+    | ref => rcases hhold with h | ⟨l, c, h, hc⟩
+             · exact .inl h
+             · exact .inr (.inr (.inr (.inr ⟨l, c, h, hc⟩)))
+  have hnoop : (b.val = .bot ∨ b.val.Num ∨ b.val = .unit) → DropOut Γ W st₃ := by
+    intro hv
+    have hl : b.val.loans = [] := by
+      rcases hv with e | e | e
+      · rw [e]; rfl
+      · exact Value.Num.loans_nil e
+      · rw [e]; rfl
+    have hnb' : ∀ l w, b.val ≠ .borrow l w := fun l w e => by
+      rcases hv with e' | e' | e'
+      · rw [e'] at e; cases e
+      · exact e'.not_borrow l w e
+      · rw [e'] at e; cases e
+    obtain ⟨hk, hme⟩ := dropNoopInvM n W st₃ bh fr b hfr hb hl hnb' hrd
+    refine dropOut_of_pop hF hfW hfr hn (fun l e => ?_) (fun l c e => ?_) rfl rfl rfl rfl hk hme
+    · rw [hval] at e
+      rcases hv with e' | e' | e'
+      · rw [e'] at e; cases e
+      · exact FVal.num_ne_loan e' l e
+      · rw [e'] at e; cases e
+    · rw [hval] at e; exact hnb' l c e
+  rcases hcases with hv | hv | hv | ⟨m, hv⟩ | ⟨l, c, hv, hc⟩
+  · exact hnoop (.inl hv)
+  · exact hnoop (.inr (.inl hv))
+  · exact hnoop (.inr (.inr hv))
+  · exfalso
+    have hph := (lookup_pos hlk).1
+    obtain ⟨q', c, hq', hy⟩ := hF.held _ m hph (by rw [hval, hv])
+    cases q' with
+    | bind f' j' =>
+      obtain ⟨fr', b', hf', hj'⟩ := mem_allPos_bind _ _ _ hq'
+      have hf'lt := lt_of_getElem?' hf'
+      rcases hF.order _ _ f' j' m c hph hq' (by rw [hval, hv]) hy with h1 | ⟨h1, h2⟩
+      · omega
+      · subst h1; rw [hfr] at hf'; cases hf'; have := lt_of_getElem?' hj'; omega
+    | temp f' i' =>
+      exact dropLentFail n W st₃ bh fr b m f' i' c hfr hb hv hq' hy (fun q hq hh => by
+        obtain ⟨w', hw⟩ := (FVal.holdsBorrow (hF.vals q hq) m).mp hh
+        exact hF.bor1 q _ m w' c hq hq' hw hy) hrd
+  · -- the binding holds a borrow: its lender is a binding (no temporary holds a loan)
+    have hph := (lookup_pos hlk).1
+    obtain ⟨px, hpx, hx⟩ := hF.lender _ l c hph (by rw [hval, hv])
+    have hnoT : ∀ f i m, Pos.temp f i ∈ allPos W.env → valAt W.env (.temp f i) ≠ .loan m := by
+      intro f i m hq e
+      rcases hF.temps f i hq with h1 | h1 | ⟨_, _, h1⟩ <;> rw [e] at h1 <;> cases h1
+    have hFE : FEnd W.env px (.bind (W.env.size - 1) (fr.binds.size - 1)) l c :=
+      ⟨hF.vals, hnoT, hpx, hph, hx, by rw [hval, hv], hc, fun q hq e => hF.loan1 q px l hq hpx e hx,
+        fun q hq w e => hF.bor1 q _ l w c hq hph e (by rw [hval, hv])⟩
+    obtain ⟨hk, hme⟩ := dropBorrowInvM n W st₃ bh fr b px l c hfr hb hv hFE hrd
+    cases px with
+    | temp f i => exact absurd hx (hnoT f i l hpx)
+    | bind fx jx =>
+    have hE := hF.ofEnd hFE.endAt
+    have hfE := hfW.ofEnd hFE.endAt
+    obtain ⟨fr₁, hfr₁, hb₁⟩ : ∃ fr₁, (endE W.env (.bind fx jx) (.bind (W.env.size - 1) (fr.binds.size - 1)) c)[
+        (endE W.env (.bind fx jx) (.bind (W.env.size - 1) (fr.binds.size - 1)) c).size - 1]? = some fr₁ ∧
+        fr₁.binds.size = fr.binds.size := by
+      rw [size_endE]
+      simp only [endE, Env.setAtE, Array.getElem?_modify, hfr]
+      split <;> split <;> exact ⟨_, rfl, by simp⟩
+    have hszE : (endE W.env (.bind fx jx) (.bind (W.env.size - 1) (fr.binds.size - 1)) c).size = W.env.size := size_endE _ _ _ _
+    have htop : valAt (endE W.env (.bind fx jx) (.bind (W.env.size - 1) (fr.binds.size - 1)) c)
+        (.bind ((endE W.env (.bind fx jx) (.bind (W.env.size - 1) (fr.binds.size - 1)) c).size - 1) (fr₁.binds.size - 1)) = .bot := by
+      rw [hszE, hb₁, hFE.endAt.valAt_endE, if_neg hFE.endAt.ne, if_pos rfl]
+    refine dropOut_of_pop (X := { W with env := endE W.env (.bind fx jx) (.bind (W.env.size - 1) (fr.binds.size - 1)) c })
+      hE hfE hfr₁ (by rw [hb₁]; exact hn) (fun l' e => ?_) (fun l' c' e => ?_) rfl ?_ ?_ hszE hk hme
+    · have e' : valAt (endE W.env (.bind fx jx) (.bind (W.env.size - 1) (fr.binds.size - 1)) c) _ = _ := e
+      rw [htop] at e'; cases e'
+    · have e' : valAt (endE W.env (.bind fx jx) (.bind (W.env.size - 1) (fr.binds.size - 1)) c) _ = _ := e
+      rw [htop] at e'; cases e'
+    · show Form.topTemps (endE W.env _ _ c) = _
+      rw [endE, topTemps_setAtE_bind, topTemps_setAtE_bind]
+    · exact topReadings_endE W _ _ c
+
 end Ochr.Meaning.Steps.Machine
