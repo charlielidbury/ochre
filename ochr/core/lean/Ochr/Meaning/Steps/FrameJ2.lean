@@ -136,6 +136,16 @@ bottom frame, then `I ↦` stage 0 at the weakened type `Π(n : Nat). Unit`, the
 noncomputable def closureJ2 (R : DataRead) (φ : Future) (a : Nat) : SState :=
   ((emptyState 0).under.pushBind { ty := .plain (selfTy R), val := fun _ => selfSem R φ, decl := .pi .other }).pushBind (nBind a)
 
+/-- **`inPlaceJ2` is `CallRef.callFrame` at `J2`'s call** (glue (c) of docs/31 D128's plan, first part):
+with no capture, the global's result `(f, Π(n : Nat). Nat)`, the reading `.other` and the binders the
+`.fix` clause reads at `.nat` (`ColumnIFix.bindsOf_nat`), by definition. -/
+theorem callFrame_J2 (K : RunCtx) (ρ : Assignment) (φ : Future) (s₂ : SState) (f : Sem) (a : Nat)
+    (bs : List PBind) (hbs : bs = [(fun _ => .plain TyM.nat, .other)]) :
+    callFrame K ρ φ [] [] (f, .plain (piTyAt K.dm.read 1 psI outI)) .other bs [(.el0 Nat a, .plain TyM.nat)] s₂ =
+      inPlaceJ2 K.dm.read s₂ f a := by
+  subst hbs
+  rfl
+
 /-- **The instance of the frame property `J2`'s step needs** (a model fact, assumed; the model lane's to
 prove; docs/31 D128). At every context with `FundCtx` and every caller state `s₂` (here `J2`'s frame
 `{x ↦ moved : Nat}`, but any): the run of `I`'s body `S(#0)` in place, from `s₂` with the callee's frame
