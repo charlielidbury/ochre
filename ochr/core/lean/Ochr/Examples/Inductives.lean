@@ -1193,6 +1193,8 @@ ochr FrozenReadings uses Nats, Logic {
 
 #guard (run "FrozenReadings" FrozenReadings).rejectedWith [
   ("CallTF", "[D77]"), ("CallTFRun", "unknown constant CallTF"),
-  ("KeepTF", "[D63]"), ("KeepTFSplit", "[D77]"), ("KeepTFSplitRun", "unknown constant KeepTFSplit"),
+  -- `KeepTFSplit` names `KeepTF`, which is rejected, so not declared: D118 rejects it before it runs
+  -- (before D118, its run reached [D77] first)
+  ("KeepTF", "[D63]"), ("KeepTFSplit", "unknown constant KeepTF"), ("KeepTFSplitRun", "unknown constant KeepTFSplit"),
   ("CallTF2", "argument 2 (f) has type ⌈TF2(σ0)⌉, expected Π(m : Nat). Nat"), ("CallTF2Run", "unknown constant CallTF2"),
   ("CallTQ", "not a function type"), ("CallTQRun", "unknown constant CallTQ")]
