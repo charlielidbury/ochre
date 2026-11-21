@@ -22,7 +22,17 @@ predicates (`Exists/Proto/PropSorted.lean`). The pieces, in the order a successo
    the same run. BELIEVED TRUE for field-type terms of accepted declarations (they navigate only
    into values of declarations known when they were checked); the statement needs a
    `Term.declNames`. Not stated here.
-3. The canonical field type of an accepted declaration: an interpreter over the first-order
+3. (Step 2's findings, exists2 2026-11-21, `Step2.lean`.) A field typed by a call of a global type
+   function reads the PROGRAM MEANING of that global (`ProgState.baseC`): the canonical record of
+   such a declaration is a function of the earlier globals' meanings, which are computed under the
+   same model at earlier declarations (well founded by program order, through 1 and 2). And it is
+   faithful only if each such global, applied at members, returns members of `Type₀` or does not run
+   (`Step2.EvTGood`): a global returning a type of another level, or a junk code, has no faithful
+   record. For the program meaning this is the strict run's closure formation (membership of the
+   function type) with `app_mem'` and the stored type's code being the closure's (`fix_split`'s
+   first claim): an obligation of 3 not listed before. A call's value depends on the callee and the
+   argument values only (`RunLemmas.callOf_val`), so the record can be keyed by small readings.
+   The canonical field type of an accepted declaration: an interpreter over the first-order
    fragment `Check.firstOrderTerm` admits (a parameter: its value as a type; `M(ā)`: `FTy.data M`
    at `M`'s canonical record at the arguments' meanings, the declaration's own occurrences through
    the record function the knot passes; anything else, an equation, a type-function call, `Nat`,
@@ -61,6 +71,13 @@ predicates (`Exists/Proto/PropSorted.lean`). The pieces, in the order a successo
 8. The machine fact the lead routed to the machine-only lane: a declaration's field-type decisions
    do not change when Σ grows past it (`DataFaithful` asks every state extending the prefix).
 9. Assembly: `exists_dataModel` from 1–8, by induction on the items (`covers := True`).
+
+Step 2 (`Step2.lean`) needed NO hypothesis on the decisions: every field-type run lemma
+(`RunLemmas.lean`) holds under every decision table, so faithfulness for the first-order fragment does
+not depend on the checker's decisions. The general statements of 3, 4 and 5, each attacked, are in
+`General.lean` (outside the default build): `runT_frameLocal`, `GlobalsTyped`/`globals_typed`,
+`knot_exists`, `PropLe`/`mono_prop`, `truth_exists`; three were false or vacuous as first written and
+are restated (their docstrings say how).
 
 What consumers additionally ask (checked 2026-11-21, exists2): `ReadCoherent` and `MemReads` are gone
 (the typed read, docs/31 D99); `FieldLevelsFaithful` is stated in `Faithful.lean` and asked by no
