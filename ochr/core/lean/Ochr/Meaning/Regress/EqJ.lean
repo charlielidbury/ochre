@@ -105,7 +105,8 @@ theorem ref_eq (b : Term) (vb : Sem) (hb : run (Kp dm [] G) ρ φ (.plain TyM.na
   rw [run, runT]
   show SM.onCopy _ _ = _
   simp only [SM.onCopy, bind, hn, hs, hb', Option.map_some]
-  rfl
+  -- STRICT experiment: the strict `Eq` needs `one` and `vb` members of `Nat`
+  sorry
 
 theorem ref_eqS_true (hint : TyS) : ∃ r, run (Kp dm [] G) ρ φ hint (.eq .nat (.succ .zero) (.succ .zero)) (emptyState 0)
     = some (r, emptyState 0) ∧ (r.1.asTy).true := by

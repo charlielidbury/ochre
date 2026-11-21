@@ -57,11 +57,14 @@ variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
 theorem mean_vBad (hΓ : K.Γ = []) (hint : TyS) :
     meanV K ρ φ hint vBad = .ty (TyM.prop (Sem.ty TyM.err = Sem.ty TyM.nat)) := by
-  simp [vBad, meanV, hΓ, Sem.asTy]
+  -- STRICT experiment: FALSE now. The strict `Eq` means `err` (its left side, a type, is no
+  -- member of `Nat`), so `vBad` is no member of `Prop`: counterexample 1 dies
+  sorry
 
 theorem mean_vGood (hint : TyS) :
     meanV K ρ φ hint vGood = .ty (TyM.prop (Sem.ty TyM.nat = Sem.ty TyM.nat)) := by
-  simp [vGood, meanV, Sem.asTy]
+  -- STRICT experiment: FALSE now, for the same reason (`Nat` is no member of `Nat`)
+  sorry
 
 /-- A proposition is a member of `Prop`. -/
 theorem prop_pmem (P : Prop) : DataModel.pmem K.dm.read K.Γ (.ty (TyM.prop P)) (TyM.univ 0) :=
@@ -188,7 +191,7 @@ theorem mkEqM_step_stmt_false (hctx : CtxOk K ρ SF) (h0 : ρ 0 = .moved) : ¬ m
   have lhs : meanV { K with Δ := Δ', D := D' } ρ' φ (.plain TyM.err) vFalse = .ty (TyM.prop False) := by
     show meanV { K with Δ := Δ', D := D' } ρ' φ (.plain TyM.err) (.tInd "False" []) = _
     simp only [meanV, hΓ]
-    simp [dFalse, meanParams]
+    simp [dFalse, meanParams, DataModel.strictInd, DataModel.paramsOk]
     exact hF
   rw [lhs] at e
   simp only [meanV, h0] at e

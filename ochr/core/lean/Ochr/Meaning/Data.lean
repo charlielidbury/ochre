@@ -232,6 +232,27 @@ theorem pmem_of_mem (R : DataRead) (Γ : List IndDecl) {s : Sem} {T : TyM} (hw :
     pmem R Γ s T :=
   .inr ⟨s, hw, .refl s, .inl h⟩
 
+/-! ## Strictness (the rules trial's experiment, branch `rules-trial-strict`; not on any other
+branch): `Eq` and `D(ā)` mean an error unless their parts are well typed. -/
+
+/-- A side of an `Eq`: moved, or a whole member of the equation's type (D84). -/
+def eqSideOk (R : DataRead) (T : TyM) (x : Sem) : Prop := x = .moved ∨ (x.whole ∧ x ∈ₛ[R] T)
+
+open Classical in
+/-- Strict `Eq(A, a, b)`, from the meanings of `A` (as a type) and of the sides. -/
+noncomputable def strictEq (R : DataRead) (T : TyM) (x y : Sem) : Sem :=
+  if T.level.isSome ∧ eqSideOk R T x ∧ eqSideOk R T y then .ty (TyM.prop (x = y)) else .ty TyM.err
+
+/-- An inductive's parameters, each a member of its parameter type at the earlier ones. -/
+noncomputable def paramsOk (d : IndDecl) : Nat → List Sem → List Sem → Prop
+  | _, _, [] => True
+  | i, e, s :: ss => s ∈ₛ[dm.read] dm.paramTy d i e ∧ paramsOk d (i + 1) (e ++ [s]) ss
+
+open Classical in
+/-- Strict `D(ā)`, from the parameters' meanings. -/
+noncomputable def strictInd (d : IndDecl) (ps : List Sem) : Sem :=
+  if dm.paramsOk d 0 [] ps then .ty (dm.tyM d ps) else .ty TyM.err
+
 end DataModel
 
 end Ochr.Meaning

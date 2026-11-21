@@ -153,8 +153,8 @@ theorem vBad_not_hwt (T : TyM) : ¬ HWT K ρ φ T Counter.vBad := by
     cases ha with
     | atom hm _ => exact hm
     | tInd hp _ _ =>
-      revert hp; simp only [meanV]
-      split <;> exact ty_not_pmem_nat K _
+      revert hp; simp only [meanV, DataModel.strictInd]
+      split <;> (try split) <;> exact ty_not_pmem_nat K _
 
 /-! The first statement of A under the predicate (`convV_sound_hwt`, a `sorry`'d guess: convertible
 values, both `HWT` at one type, mean the same there, from `PremSound` and `LibOk`) is replaced by

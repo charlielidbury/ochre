@@ -792,7 +792,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     | some d =>
       let psM ← runParams d 0 [] args
       -- the type value is the declaration's code at the parameters (docs/31 D59)
-      pure (.ty (K.dm.tyM d psM), .plain (TyM.univ d.sort))
+      pure (K.dm.strictInd d psM, .plain (TyM.univ d.sort))
     | none => SM.fail
   | .ctor ty c x ps args => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.ctor ty c x ps args)) (do
     match K.Γ.find? (·.name == ty) with
@@ -973,7 +973,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let T : TyS := .plain TA.asTy
     let (va, _) ← SM.onCopy (runT false T a)
     let (vb, _) ← SM.onCopy (runT false T b)
-    pure (.ty (TyM.prop (va = vb)), .plain (TyM.univ 0))
+    pure (DataModel.strictEq K.dm.read TA.asTy va vb, .plain (TyM.univ 0))
   | .cong _ _ | .prim "symm" _ | .prim "trans" _ | .prim "rewrite" _ | .prim "rewriteR" _ =>
     pure (.proof, .plain TyM.err)
   | .ref A => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.ref A)) (do
@@ -1128,7 +1128,7 @@ noncomputable def meanV (hint : TyS) : Value → Sem
   | .tUnit => .ty TyM.unit
   | .tEq A a b =>
     let T := TyS.plain (meanV (.plain TyM.err) A).asTy
-    .ty (TyM.prop (meanV T a = meanV T b))
+    DataModel.strictEq K.dm.read T.m (meanV T a) (meanV T b)
   | .tRef A => meanV (.plain TyM.err) A
   | .tPi caps t rd => match runT false (.plain TyM.err) t (stateOf 0 (capsState (capsVals caps) (capsTys rd))) with
     | some ((v, _), _) => .ty v.asTy
@@ -1146,7 +1146,7 @@ noncomputable def meanV (hint : TyS) : Value → Sem
     | none => .err
   | .tInd n args =>
     match K.Γ.find? (·.name == n) with
-    | some d => .ty (K.dm.tyM d (meanParams d 0 [] args))
+    | some d => K.dm.strictInd d (meanParams d 0 [] args)
     | none => .ty TyM.err
 termination_by structural v => v
 
@@ -1283,12 +1283,15 @@ theorem meanV_eq_mean_aux (hint : TyS) : (v : Value) →
   | .tNat => rfl
   | .tUnit => rfl
   | .tEq A a b => by
-    show Sem.ty (TyM.prop (Value.mean K.dm (codeMeaning K) K.Γ ρ φ
-          (.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain TyM.err) A).asTy) a
-        = Value.mean K.dm (codeMeaning K) K.Γ ρ φ
-          (.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain TyM.err) A).asTy) b))
-      = Sem.ty (TyM.prop (meanV K ρ φ (.plain (meanV K ρ φ (.plain TyM.err) A).asTy) a
-        = meanV K ρ φ (.plain (meanV K ρ φ (.plain TyM.err) A).asTy) b))
+    -- (strict experiment: the clause's formula restated)
+    show DataModel.strictEq K.dm.read (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain TyM.err) A).asTy
+        (Value.mean K.dm (codeMeaning K) K.Γ ρ φ
+          (.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain TyM.err) A).asTy) a)
+        (Value.mean K.dm (codeMeaning K) K.Γ ρ φ
+          (.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain TyM.err) A).asTy) b)
+      = DataModel.strictEq K.dm.read (meanV K ρ φ (.plain TyM.err) A).asTy
+        (meanV K ρ φ (.plain (meanV K ρ φ (.plain TyM.err) A).asTy) a)
+        (meanV K ρ φ (.plain (meanV K ρ φ (.plain TyM.err) A).asTy) b)
     rw [meanV_eq_mean_aux (.plain TyM.err) A, meanV_eq_mean_aux _ a, meanV_eq_mean_aux _ b]
   | .tRef A => meanV_eq_mean_aux (.plain TyM.err) A
   | .tPi caps t rd => (meanV_tPi_ty K ρ φ hint caps t rd).symm

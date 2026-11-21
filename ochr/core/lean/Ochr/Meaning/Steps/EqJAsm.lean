@@ -115,7 +115,7 @@ theorem runT_eq_some (tl : Bool) (hint : TyS) (A a b : Term) (s : SState) (rA ra
     (hA : runT K ρ φ false (.plain .err) A s = some (rA, s))
     (ha : runT K ρ φ false (.plain rA.1.asTy) a s = some (ra, sa))
     (hb : runT K ρ φ false (.plain rA.1.asTy) b s = some (rb, sb)) :
-    runT K ρ φ tl hint (.eq A a b) s = some ((.ty (TyM.prop (ra.1 = rb.1)), .plain (TyM.univ 0)), s) := by
+    runT K ρ φ tl hint (.eq A a b) s = some ((DataModel.strictEq K.dm.read rA.1.asTy ra.1 rb.1, .plain (TyM.univ 0)), s) := by
   cases tl <;> (rw [runT]; simp only [SM.onCopy, bind, hA, ha, hb, Option.map_some]; rfl)
 
 /-- **`Eq` taken apart** (leaf): `evalCore`'s `.eq` clause is, on a private copy of the state, the
@@ -262,11 +262,12 @@ theorem eq_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : eq_step_stmt K ρ φ
   have hsf := Rel.kept K ρ φ hg hctx hs kf ef
   obtain ⟨hrel, hgf⟩ := inFlight_noLoan { K with Δ := Δ₅, D := D₅ } ρ₅ φ v (.plain (TyM.univ 0))
     (eq_value_noLoan fuel hm) rfl ef.2.2.2 ef.2.2.1 hsf
-  refine ⟨ρ₅, Δ₅, D₅, π, (.ty (TyM.prop (ra'.1 = rb'.1)), .plain (TyM.univ 0)), s, kf.2.2.2.2.1,
+  refine ⟨ρ₅, Δ₅, D₅, π, (DataModel.strictEq K.dm.read rA'.1.asTy ra'.1 rb'.1, .plain (TyM.univ 0)), s, kf.2.2.2.2.1,
     kf.2.2.2.2.2.2, ef.1, ef.2.1, fun _ _ => rfl,
     runT_eq_some K ρ₅ φ st.curTail _ A a b s rA' ra' rb' sa'' sb'' hA' ha' hb', ?_, ?_, ef.2.2.1, hrel, hgf⟩
-  · refine (hmk _ _).trans ?_
-    rw [hva, hvb]
+  · -- STRICT experiment: `mkEqM`'s value means `⟦a⟧ = ⟦b⟧`; the reference's strict `Eq` is that only
+    -- when its sides are members of the type (the sides' membership: `Rules/InFlight.EvalMemConcl`)
+    sorry
   · intro T hT'
     rw [hT] at hT'
     cases hT'

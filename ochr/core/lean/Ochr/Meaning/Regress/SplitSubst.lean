@@ -167,10 +167,10 @@ theorem refine_keeps_type (K : RunCtx) (n : String) (m : Nat) (h0 : ρ 0 = .el0 
     show (ρ 1).succ = ρ 0
     rw [h0, h1, succ_el0]
   show (match K.Γ.find? (·.name == n) with
-      | some d => Sem.ty (K.dm.tyM d (meanParams K ρ φ d 0 [] [.abs 0]))
+      | some d => K.dm.strictInd d (meanParams K ρ φ d 0 [] [.abs 0])
       | none => .ty TyM.err) =
     (match K.Γ.find? (·.name == n) with
-      | some d => Sem.ty (K.dm.tyM d (meanParams K ρ φ d 0 [] [.succ (.abs 1)]))
+      | some d => K.dm.strictInd d (meanParams K ρ φ d 0 [] [.succ (.abs 1)])
       | none => .ty TyM.err)
   cases K.Γ.find? (·.name == n) with
   | none => rfl

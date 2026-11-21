@@ -96,7 +96,7 @@ noncomputable def Value.mean (ρ : Assignment) (φ : Future) (hint : TyS) : Valu
   | .tUnit => .ty TyM.unit
   | .tEq A a b =>
     let T := TyS.plain (Value.mean ρ φ (.plain TyM.err) A).asTy
-    .ty (TyM.prop (Value.mean ρ φ T a = Value.mean ρ φ T b))
+    DataModel.strictEq dm.read T.m (Value.mean ρ φ T a) (Value.mean ρ φ T b)
   | .tRef A => Value.mean ρ φ (.plain TyM.err) A
   | .tPi caps t rd => .ty (C.pi ρ φ caps t rd)
   | .sort l => .ty (TyM.univ l)
@@ -112,7 +112,7 @@ noncomputable def Value.mean (ρ : Assignment) (φ : Future) (hint : TyS) : Valu
     | none => .err
   | .tInd n args =>
     match Γ.find? (·.name == n) with
-    | some d => .ty (dm.tyM d (Value.meanParams ρ φ d 0 [] args))
+    | some d => dm.strictInd d (Value.meanParams ρ φ d 0 [] args)
     | none => .ty TyM.err
 termination_by structural v => v
 

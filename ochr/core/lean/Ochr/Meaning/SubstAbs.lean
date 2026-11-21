@@ -175,7 +175,9 @@ theorem absFill_shape (hK : ∀ n, (K.C.global n).2.label = none) (st : MState) 
       rfl
     rw [hv]
     simp only [deltaOf, hT, Ochr.Value.tyS, Value.mean, hd, meanParams_eq_mean]
-    rfl
+    -- STRICT experiment: `strictInd` reduces to `tyM` only if the stored type's parameters are
+    -- members of their parameter types (`paramsOk`), which nothing here supplies
+    sorry
 
 end
 

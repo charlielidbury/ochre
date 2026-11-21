@@ -191,7 +191,8 @@ theorem not_typed (hΓ : K.Γ = [dEmpty, dE1]) (C : CodeMeaning) (ρ' : Assignme
     · rw [Array.getElem?_eq_none h] at h2; cases h2
   have hm := ht.mem 1 hr hsz
   simp only [MState.absTyM, h2, Value.tyM, Value.mean, hΓ] at hm
-  simp [dEmpty, Value.meanParams, Sem.asTy, DataModel.tyM, DataModel.tyR, Sem.mem] at hm
+  simp [dEmpty, Value.meanParams, Sem.asTy, DataModel.tyM, DataModel.tyR, Sem.mem, DataModel.strictInd,
+    DataModel.paramsOk] at hm
   obtain ⟨x, -⟩ := hm
   exact car_empty K.dm dEmpty rfl _ x
 

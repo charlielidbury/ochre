@@ -629,7 +629,9 @@ theorem runParams_roseNat (s : SState) : runParams (Kp dmP ΓR G) ρ φ roseD 0 
 
 /-- `List(Rose(Nat))`'s parameter, the type `Rose(Nat)`, runs to `Rose(Nat)`'s code. -/
 theorem runParams_listRose (s : SState) :
-    runParams (Kp dmP ΓR G) ρ φ listD 0 [] [.tind "Rose" [.nat]] s = some (psR, s) := rfl
+    runParams (Kp dmP ΓR G) ρ φ listD 0 [] [.tind "Rose" [.nat]] s = some (psR, s) := by
+  -- STRICT experiment: the classical `if` of `strictInd` needs `Nat ∈ paramTy Rose 0 []`
+  sorry
 
 /-- `Nil` at `List(Rose(Nat))` runs to the empty forest. -/
 theorem run_lrNil (hint : TyS) (s : SState) :
