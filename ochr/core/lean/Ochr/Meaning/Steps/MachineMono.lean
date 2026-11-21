@@ -1,5 +1,9 @@
 import Ochr.Meaning.Steps.Statements
 import Ochr.Meaning.RunLib
+import Ochr.Meaning.Steps.Machine.All
+import Ochr.Meaning.Steps.Machine.False
+import Ochr.Meaning.Steps.Machine.DecideFuel
+import Ochr.Meaning.Steps.Machine.DecideFuelFF
 
 /-!
 # Facts about the machine alone (the slice, main's decision 2026-11-20; its own lane)
@@ -41,7 +45,12 @@ To be stated here as they are reached (from the slice's knowledge, 2026-11-20):
   (`repackCheck`'s `lentUnknown`, docs/31 D35, D57);
 - a decision's run leaves the state as it was (PROVED for the decisions the slice reads,
   `Slice.DecideKeep`), and a successful run at one fuel is a successful run with the same answer
-  at every larger fuel (the decisions are asked at any fuel, `DecAligned`);
+  at every larger fuel (the decisions are asked at any fuel, `DecAligned`): PROVED for every field of
+  `Decisions` but `blockCaps` (`Machine.fuelAgree_flags`, `_placeDecl`, `_declOf`, `_copy`, `_piSort`,
+  `_joinMoves`, `_rePointed`, `_typeDecl`: two successes at any fuels and budgets agree;
+  `Machine.FuelMono`). The checker's block captures (`ckBlockCaps`) run the machine itself
+  (`movedPlace`, `blockCaptures`), so theirs is a fuel induction over the whole machine block, and
+  `blockCaptures` (now fuel-bounded) make it a relational induction over the whole block, not yet done;
 - a comparison's private copy leaves no record naming an unknown it made (main's comparison fix),
   and `placeType?`'s private copies likewise (to be swept before `placeType?`'s step is stated);
 - (WF1)–(WF16) and `ShapeFacts` are kept by every step: about checker states only, but each step's
@@ -53,78 +62,8 @@ namespace Ochr.Meaning.Steps
 
 open Ochr Ochr.Meaning
 
-/-- **The tables a decision reads only grow** from `st` to `st'`: the globals and the declarations
-are kept, the frozen readings of the old unknowns are kept and new ones may follow, and the
-counters of unknowns and labels are not lowered. -/
-structure TablesGrow (st st' : MState) : Prop where
-  globals : st'.globals = st.globals
-  inds : st'.inds = st.inds
-  size : st.absDecl.size ≤ st'.absDecl.size
-  old : ∀ σ, σ < st.absDecl.size → st'.absDecl[σ]? = st.absDecl[σ]?
-  nextAbs : st.nextAbs ≤ st'.nextAbs
-  nextLoan : st.nextLoan ≤ st'.nextLoan
-
-theorem TablesGrow.refl (st : MState) : TablesGrow st st :=
-  ⟨rfl, rfl, Nat.le_refl _, fun _ _ => rfl, Nat.le_refl _, Nat.le_refl _⟩
-
-theorem TablesGrow.trans {st₁ st₂ st₃ : MState} (h₁ : TablesGrow st₁ st₂) (h₂ : TablesGrow st₂ st₃) :
-    TablesGrow st₁ st₃ :=
-  ⟨h₂.globals.trans h₁.globals, h₂.inds.trans h₁.inds, Nat.le_trans h₁.size h₂.size,
-    fun σ hσ => (h₂.old σ (Nat.lt_of_lt_of_le hσ h₁.size)).trans (h₁.old σ hσ),
-    Nat.le_trans h₁.nextAbs h₂.nextAbs, Nat.le_trans h₁.nextLoan h₂.nextLoan⟩
-
-/-- Every successful run of `x` only extends the tables. -/
-def GrowsM {α : Type} (x : M α) : Prop := ∀ st b a st', Runs x st b a st' → TablesGrow st st'
-
-theorem GrowsM.bind {α β : Type} {x : M α} {k : α → M β} (hx : GrowsM x) (hk : ∀ a, GrowsM (k a)) :
-    GrowsM (x >>= k) := by
-  intro st b c st' h
-  obtain ⟨L, left, log, h⟩ := h
-  rw [runMachineL_bind] at h
-  rcases e : runMachineL x st b L with ⟨o, b₁, L₁⟩
-  rw [e] at h
-  rcases o with ⟨a, st₁⟩ | f | m
-  · exact (hx st b a st₁ ⟨L, b₁, L₁, e⟩).trans (hk a st₁ b₁ c st' ⟨L₁, left, log, h⟩)
-  · cases h
-  · cases h
-
-theorem GrowsM.pure {α : Type} (a : α) : GrowsM (Pure.pure a : M α) := by
-  intro st b c st' h
-  obtain ⟨L, left, log, h⟩ := h
-  simp only [runMachineL_pure, Prod.mk.injEq, Outcome.ok.injEq] at h
-  rw [← h.1.2]; exact TablesGrow.refl st
-
-theorem GrowsM.get : GrowsM (MonadState.get : M MState) := by
-  intro st b c st' h
-  obtain ⟨L, left, log, h⟩ := h
-  simp only [runMachineL_get, Prod.mk.injEq, Outcome.ok.injEq] at h
-  rw [← h.1.2]; exact TablesGrow.refl st
-
-/-- A write of the state that keeps the tables. -/
-theorem GrowsM.modify {g : MState → MState} (hg : ∀ s, TablesGrow s (g s)) : GrowsM (modify g : M Unit) := by
-  intro st b c st' h
-  obtain ⟨L, left, log, h⟩ := h
-  simp only [runMachineL_modify, Prod.mk.injEq, Outcome.ok.injEq] at h
-  rw [← h.1.2]; exact hg st
-
-theorem GrowsM.ite {α : Type} {c : Prop} [Decidable c] {x y : M α} (hx : GrowsM x) (hy : GrowsM y) :
-    GrowsM (if c then x else y) := by
-  split <;> assumption
-
-theorem GrowsM.forIn {α β : Type} (xs : List α) (b : β) {body : α → β → M (ForInStep β)}
-    (hb : ∀ a b, GrowsM (body a b)) : GrowsM (forIn xs b body) := by
-  induction xs generalizing b with
-  | nil => exact GrowsM.pure b
-  | cons a as ih =>
-    rw [List.forIn_cons]
-    exact (hb a b).bind fun r => by cases r with
-      | done b' => exact GrowsM.pure b'
-      | yield b' => exact ih b'
-
-/-- The tables after a run of `x` only grew. -/
-theorem Runs.grows {α : Type} {x : M α} {st st' : MState} {b : Nat} {a : α} (hx : GrowsM x)
-    (h : Runs x st b a st') : TablesGrow st st' :=
-  hx st b a st' h
+/-! `TablesGrow`, `GrowsM` and their closure lemmas are in `Steps/Machine/Defs.lean` (imported here);
+the proofs of (a) are under `Steps/Machine/` (its `HANDOFF.md` says how they go). -/
 
 /-! ## (b) Alignment at a larger table is alignment at a smaller one -/
 
@@ -144,25 +83,6 @@ theorem DecTab.of_rest {α : Type} {D : Decisions} {st₁ st' : MState} {rest : 
     (hd : DecTab D st') (hrest : GrowsM rest) (h : Runs rest st₁ b a st') : DecTab D st₁ :=
   hd.back (h.grows hrest)
 
-theorem GrowsM.err {α : Type} (m : String) : GrowsM (Ochr.err m : M α) := by
-  intro st b c st' h
-  obtain ⟨L, left, log, h⟩ := h
-  simp [runMachineL_err] at h
-
-theorem GrowsM.exhausted {α : Type} (m : String) : GrowsM (Ochr.exhausted m : M α) := by
-  intro st b c st' h
-  obtain ⟨L, left, log, h⟩ := h
-  simp [runMachineL_exhausted] at h
-
-theorem GrowsM.map {α β : Type} (g : α → β) {x : M α} (hx : GrowsM x) : GrowsM (g <$> x) := by
-  rw [map_eq_pure_bind]
-  exact hx.bind fun a => GrowsM.pure _
-
-theorem GrowsM.discard {α : Type} {x : M α} (hx : GrowsM x) : GrowsM (discard x) := by
-  show GrowsM (Functor.mapConst PUnit.unit x)
-  rw [LawfulFunctor.map_const]
-  exact hx.map _
-
 /-! ## (a) Every machine function's successful run only extends the tables
 
 One statement per machine function an assembly runs, at every fuel (added as the change of form
@@ -172,53 +92,94 @@ state either keeps the tables (the frames, the flags, the log, the records), or 
 (`freshAbs`), or is a private computation's exit, which keeps the names (the module docstring).
 Open (the machine lane). -/
 
-theorem grows_content (p : Place) : GrowsM (Ochr.content p) := by sorry
-theorem grows_content? (p : Place) : GrowsM (Ochr.content? p) := by sorry
-theorem grows_ppPlace (p : Place) : GrowsM (Ochr.ppPlace p) := by sorry
-theorem grows_absType (σ : Nat) : GrowsM (Ochr.absType σ) := by sorry
-theorem grows_lookupInd (n : String) : GrowsM (Ochr.lookupInd n) := by sorry
-theorem grows_recordedNeutral (v : Value) : GrowsM (Ochr.recordedNeutral v) := by sorry
-theorem grows_setPlace (p : Place) (v : Value) : GrowsM (Ochr.setPlace p v) := by sorry
-theorem grows_logEffect (p : Place) (k : String) : GrowsM (Ochr.logEffect p k) := by sorry
-theorem grows_movedPlace (fuel : Nat) (q : Place) : GrowsM (Ochr.movedPlace fuel q) := by sorry
-theorem grows_accessPath (fuel : Nat) (p : Place) : GrowsM (Ochr.accessPath fuel p) := by sorry
-theorem grows_accessInside (fuel : Nat) (p : Place) (o : Bool) : GrowsM (Ochr.accessInside fuel p o) := by sorry
-theorem grows_endBorrow (fuel : Nat) (l : Nat) : GrowsM (Ochr.endBorrow fuel l) := by sorry
+open Machine in
+section
+theorem grows_content (p : Place) : GrowsM (Ochr.content p) := growsM_of_growsIn fun _ => growsIn_content p
+theorem grows_content? (p : Place) : GrowsM (Ochr.content? p) := growsM_of_growsIn fun _ => growsIn_content? p
+theorem grows_ppPlace (p : Place) : GrowsM (Ochr.ppPlace p) := growsM_of_growsIn fun _ => growsIn_ppPlace p
+theorem grows_absType (σ : Nat) : GrowsM (Ochr.absType σ) := growsM_of_growsIn fun _ => growsIn_absType σ
+theorem grows_lookupInd (n : String) : GrowsM (Ochr.lookupInd n) := growsM_of_growsIn fun _ => growsIn_lookupInd n
+theorem grows_recordedNeutral (v : Value) : GrowsM (Ochr.recordedNeutral v) :=
+  growsM_of_growsIn fun _ => growsIn_recordedNeutral v
+theorem grows_setPlace (p : Place) (v : Value) : GrowsM (Ochr.setPlace p v) := growsM_of_growsIn fun _ => growsIn_setPlace p v
+theorem grows_logEffect (p : Place) (k : String) : GrowsM (Ochr.logEffect p k) :=
+  growsM_of_growsIn fun _ => growsIn_logEffect p k
+theorem grows_movedPlace (fuel : Nat) (q : Place) : GrowsM (Ochr.movedPlace fuel q) :=
+  growsM_of_growsIn fun _ => (machineGrows fuel).movedPlace q
+theorem grows_accessPath (fuel : Nat) (p : Place) : GrowsM (Ochr.accessPath fuel p) :=
+  growsM_of_growsIn fun _ => (machineGrows fuel).accessPath p
+theorem grows_accessInside (fuel : Nat) (p : Place) (o : Bool) : GrowsM (Ochr.accessInside fuel p o) :=
+  growsM_of_growsIn fun _ => (machineGrows fuel).accessInside p o
+theorem grows_endBorrow (fuel : Nat) (l : Nat) : GrowsM (Ochr.endBorrow fuel l) :=
+  growsM_of_growsIn fun _ => (machineGrows fuel).endBorrow l
 theorem grows_etaInPlace (fuel σ : Nat) (d : IndDecl) (ps : List Value) :
-    GrowsM (Ochr.etaInPlace fuel σ d ps) := by sorry
-theorem grows_placeTypeQ (fuel : Nat) (p : Place) : GrowsM (Ochr.placeType? fuel p) := by sorry
-theorem grows_substEnv (fuel : Nat) (x r : Value) (t : Bool) : GrowsM (Ochr.substEnv fuel x r t) := by sorry
+    GrowsM (Ochr.etaInPlace fuel σ d ps) := growsM_of_growsIn fun _ => (machineGrows fuel).etaInPlace σ d ps
+theorem grows_placeTypeQ (fuel : Nat) (p : Place) : GrowsM (Ochr.placeType? fuel p) :=
+  growsM_of_growsIn fun _ => (machineGrows fuel).placeType? p
+theorem grows_substEnv (fuel : Nat) (x r : Value) (t : Bool) : GrowsM (Ochr.substEnv fuel x r t) :=
+  growsM_of_growsIn fun _ => (machineGrows fuel).substEnv x r t
 theorem grows_generalizeNeutral (fuel : Nat) (p : Place) (n : Value) :
-    GrowsM (Ochr.generalizeNeutral fuel p n) := by sorry
-theorem grows_renormAll (fuel : Nat) : GrowsM (Ochr.renormAll fuel) := by sorry
-theorem grows_refine (fuel σ : Nat) (r : Value) : GrowsM (Ochr.refine fuel σ r) := by sorry
-theorem grows_dropAtJoin (fuel : Nat) (q : Place) : GrowsM (Ochr.dropAtJoin fuel q) := by sorry
+    GrowsM (Ochr.generalizeNeutral fuel p n) := growsM_of_growsIn fun _ => (machineGrows fuel).generalizeNeutral p n
+theorem grows_renormAll (fuel : Nat) : GrowsM (Ochr.renormAll fuel) :=
+  growsM_of_growsIn fun _ => (machineGrows fuel).renormAll
+theorem grows_refine (fuel σ : Nat) (r : Value) : GrowsM (Ochr.refine fuel σ r) :=
+  growsM_of_growsIn fun _ => (machineGrows fuel).refine σ r
+theorem grows_dropAtJoin (fuel : Nat) (q : Place) : GrowsM (Ochr.dropAtJoin fuel q) :=
+  growsM_of_growsIn fun _ => (machineGrows fuel).dropAtJoin q
 
+/-- FALSE as stated (`Machine.not_grows_restoreKeep`, kernel-checked): `restoreKeep saved` takes the
+globals and the declarations from `saved`. It keeps the tables when `saved` has the current ones,
+which holds at every use in the machine: `restoreKeep_grows` below, `Machine.growsIn_restoreKeep`.
+Kept (with its `sorry`) only while its users (`EqJAsm.eq_step_asm`) move to `restoreKeep_grows`. -/
 theorem grows_restoreKeep (saved : MState) : GrowsM (Ochr.restoreKeep saved) := by sorry
+/-- **`restoreKeep` to an earlier state of the same run only extends the tables** (the corrected
+`grows_restoreKeep`): the snapshot `saved` is a state the run has grown from (`TablesGrow saved cur`),
+so it has the current globals and declarations, which are all `restoreKeep` takes from it. -/
+theorem restoreKeep_grows {saved cur st' : MState} {b : Nat} (hs : TablesGrow saved cur)
+    (h : Runs (Ochr.restoreKeep saved) cur b () st') : TablesGrow cur st' :=
+  (growsIn_restoreKeep (G := (saved.globals, saved.inds)) ⟨rfl, rfl⟩).runs ⟨hs.globals, hs.inds⟩ h
 theorem grows_expectTy (fuel : Nat) (w : String) (T : Option Value) (A : Value) :
-    GrowsM (Ochr.expectTy fuel w T A) := by sorry
-theorem grows_mkEqM (fuel : Nat) (A a b : Value) : GrowsM (Ochr.mkEqM fuel A a b) := by sorry
-theorem grows_evalType (fuel : Nat) (t : Term) : GrowsM (Ochr.evalType fuel t) := by sorry
+    GrowsM (Ochr.expectTy fuel w T A) := growsM_of_growsIn fun _ => (machineGrows fuel).expectTy w T A
+theorem grows_mkEqM (fuel : Nat) (A a b : Value) : GrowsM (Ochr.mkEqM fuel A a b) :=
+  growsM_of_growsIn fun _ => (machineGrows fuel).mkEqM A a b
+theorem grows_evalType (fuel : Nat) (t : Term) : GrowsM (Ochr.evalType fuel t) :=
+  growsM_of_growsIn fun _ => (machineGrows fuel).evalType t
 theorem grows_eval (fuel : Nat) (typed : Bool) (t : Term) (hint : Option Value) :
-    GrowsM (Ochr.eval fuel typed t hint) := by sorry
-theorem grows_blockEntry (fuel : Nat) (mt : Term) : GrowsM (Ochr.blockEntry fuel mt) := by sorry
+    GrowsM (Ochr.eval fuel typed t hint) := growsM_of_growsIn fun _ => (machineGrows fuel).eval typed t hint
+theorem grows_blockEntry (fuel : Nat) (mt : Term) : GrowsM (Ochr.blockEntry fuel mt) :=
+  growsM_of_growsIn fun _ => (machineGrows fuel).blockEntry mt
+/-- FALSE as stated: the arms run inside `closeBlock`, and an arm's world exit (`exitWorld`) keeps
+the arm's frozen readings and counters, so an arm that lowers them leaves them lowered. True when
+every arm only extends the tables: `grows_closeBlock_of`. Kept (with its `sorry`) only while its
+user (`EqJAsm`) moves to `grows_closeBlock_of`. -/
 theorem grows_closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Value) :
     GrowsM (Ochr.closeBlock fuel mt arms B?) := by sorry
+/-- `closeBlock` whose arms only extend the tables only extends the tables. -/
+theorem grows_closeBlock_of (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Value)
+    (h : ∀ a ∈ arms, GrowsM a.setup ∧ ∀ r, GrowsM (a.body r)) : GrowsM (Ochr.closeBlock fuel mt arms B?) :=
+  growsM_of_growsIn fun _ => (machineGrows fuel).closeBlock mt arms
+    (fun a ha => ⟨growsIn_of_growsM (h a ha).1, fun r => growsIn_of_growsM ((h a ha).2 r)⟩) B?
 theorem grows_joinDrop (fuel : Nat) (mt : Term) {run : M (Value × Option Value)} (h : GrowsM run) :
-    GrowsM (Ochr.joinDrop fuel mt run) := by sorry
-theorem grows_demand (b : Bool) : GrowsM (Ochr.demand b) := by sorry
-theorem grows_getFlags : GrowsM Ochr.getFlags := by sorry
-theorem grows_setFlags (f : Bool × Bool) : GrowsM (Ochr.setFlags f) := by sorry
+    GrowsM (Ochr.joinDrop fuel mt run) :=
+  growsM_of_growsIn fun _ => (machineGrows fuel).joinDrop mt run (growsIn_of_growsM h)
+theorem grows_demand (b : Bool) : GrowsM (Ochr.demand b) := growsM_of_growsIn fun _ => growsIn_demand b
+theorem grows_getFlags : GrowsM Ochr.getFlags := growsM_of_growsIn fun _ => growsIn_getFlags
+theorem grows_setFlags (f : Bool × Bool) : GrowsM (Ochr.setFlags f) := growsM_of_growsIn fun _ => growsIn_setFlags f
 
-theorem grows_wholeReturned (v : Value) : GrowsM (Ochr.wholeReturned v) := by sorry
+theorem grows_wholeReturned (v : Value) : GrowsM (Ochr.wholeReturned v) :=
+  growsM_of_growsIn fun _ => growsIn_wholeReturned v
 theorem grows_pushTempAt (f : Nat) (v : Value) (T : Option Value) (site : String) :
-    GrowsM (Ochr.pushTempAt f v T site) := by sorry
-theorem grows_topIdx : GrowsM Ochr.topIdx := by sorry
-theorem grows_popFrame (fuel : Nat) : GrowsM (Ochr.popFrame fuel) := by sorry
-theorem grows_popTemp : GrowsM Ochr.popTemp := by sorry
-theorem grows_lendEnv (fuel : Nat) (op : LendOp) : GrowsM (Ochr.lendEnv fuel op) := by sorry
+    GrowsM (Ochr.pushTempAt f v T site) := growsM_of_growsIn fun _ => growsIn_pushTempAt f v T site
+theorem grows_topIdx : GrowsM Ochr.topIdx := growsM_of_growsIn fun _ => growsIn_topIdx
+theorem grows_popFrame (fuel : Nat) : GrowsM (Ochr.popFrame fuel) :=
+  growsM_of_growsIn fun _ => (machineGrows fuel).popFrame
+theorem grows_popTemp : GrowsM Ochr.popTemp := growsM_of_growsIn fun _ => growsIn_popTemp
+theorem grows_lendEnv (fuel : Nat) (op : LendOp) : GrowsM (Ochr.lendEnv fuel op) :=
+  growsM_of_growsIn fun _ => growsIn_lendEnv fuel op
 theorem grows_observe (fuel : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos)
-    (refs : List (Place × Value × Value)) : GrowsM (Ochr.observe fuel typed t A W refs) := by sorry
+    (refs : List (Place × Value × Value)) : GrowsM (Ochr.observe fuel typed t A W refs) :=
+  growsM_of_growsIn fun _ => (machineGrows fuel).observe typed t A W refs []
+end
 
 /-- One step of the closure: a combinator or a machine function's statement. -/
 macro "grows_step" : tactic => `(tactic| first

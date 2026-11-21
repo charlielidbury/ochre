@@ -52,4 +52,32 @@ ochr DMXShapes uses Nats, Lists, Bools {
   inductive TF := MkTF(b : Bool, x : EvT(b))
 }
 
+-- The boundary of the finding that a field's type can read a global's meaning (exists2,
+-- 2026-11-21): a type function whose codomain is `Type₁` cannot type a field (`D1`); one returning
+-- `Type₀` cannot be declared at `Type₁` (`G2`, universes are not cumulative) nor return `Type` at
+-- `Type` (`TT`); an equation side calling a function (`Ev` with `S(S(m))`), a type function of the
+-- declaration's own type parameter (`D3`), one that is a function type at some instances only (`D5`)
+-- and a `Prop`-valued one (`D6`) are accepted; a type function applied to the declaration is not
+-- (`D4`). So every global a field type calls has codomain `Prop` or `Type₀`.
+ochr DMXBoundary uses Nats, Bools {
+  def G (b : Bool) : Type₁ := (match b { false => Type, true => Type })
+  reject inductive D1 := MkD1(b : Bool, x : G(b))
+  reject def G2 (b : Bool) : Type₁ := (match b { false => Nat, true => Nat })
+  inductive Ev (n : Nat) : Prop := EvZ(h : Eq(Nat, n, 0)) | EvSS(m : Nat, h : Ev(m), e : Eq(Nat, n, S(S(m))))
+  def F (X : Type) : Type := X
+  inductive D3 (A : Type) := MkD3(x : F(A))
+  reject inductive D4 (A : Type) := MkD4(x : F(D4(A)))
+  def FB (X : Type) (b : Bool) : Type := (match b { true => (Π(x : X). Nat), false => Unit })
+  inductive D5 (A : Type) := MkD5(b : Bool, y : FB(A, b))
+  def PP (b : Bool) : Prop := (match b { true => True, false => False })
+  inductive D6 := MkD6(b : Bool, h : PP(b))
+  reject def TT (b : Bool) : Type := (match b { true => Type, false => Nat })
+}
+
+#guard (run "DMXBoundary" DMXBoundary).rejectedWith [
+  ("D1", "field x of MkD1: its type must be in Prop or Type"),
+  ("G2", "the body of G2 has type Type, but the goal is Type₁"),
+  ("D4", "field x of MkD4 : F(D4(A)): fields are first-order data (inductive types, Nat, Unit, ×, earlier type functions) or parameters, D36"),
+  ("TT", "the body of TT has type Type₁, but the goal is Type")]
+
 end Ochr.Meaning.DataModel.Exists.Probes

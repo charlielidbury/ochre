@@ -107,6 +107,7 @@ import Ochr.Meaning.Steps.Form
 import Ochr.Meaning.Steps.FormErase
 import Ochr.Meaning.Steps.FormKern
 import Ochr.Meaning.Steps.FormMachine
+import Ochr.Meaning.Steps.Machine.FormFacts
 import Ochr.Meaning.Steps.ColumnTemp
 import Ochr.Meaning.Steps.ColumnPlumbAux
 import Ochr.Meaning.Steps.ColumnPlumb
@@ -142,6 +143,8 @@ import Ochr.Meaning.DataModel.CtorMem
 import Ochr.Meaning.DataModel.Canonical.Knot
 import Ochr.Meaning.DataModel.Exists.PreludeModel
 import Ochr.Meaning.DataModel.Exists.PropNestCE
+import Ochr.Meaning.DataModel.Exists.Step2
+import Ochr.Meaning.DataModel.Exists.Piece3
 import Ochr.Meaning.DataLib.Universal
 import Ochr.Meaning.Strict.Runs
 import Ochr.Meaning.Strict.MemReadsCE

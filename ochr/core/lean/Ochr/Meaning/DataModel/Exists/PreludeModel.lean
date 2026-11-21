@@ -353,7 +353,7 @@ theorem fieldsFaithful (K : RunCtx) (hdm : K.dm = dmPre) (hΓ : K.Γ = preludeDe
     rw [hvar] at hr
     have harity : e.length ≤ DataLib.arity d 0 := by
       rcases hd2 with rfl | rfl <;> simp [DataLib.arity, pairD, andD] <;> omega
-    have h1 := runT_teleFrame_param _ ρ noFuture false _ dmPre D d ps 0 e harity i (by omega) hr
+    have h1 := runT_teleFrame_param _ ρ noFuture false _ dmPre D d ps 0 e harity i (by omega) rfl hr
     rw [h1, fieldTy_two hd2 hpt i hi hpl e he]
 
 /-- **`ParamsFaithful` at the library**: a parameter's declared sort runs to its universe. -/
