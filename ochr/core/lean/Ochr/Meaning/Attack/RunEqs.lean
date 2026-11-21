@@ -421,6 +421,95 @@ theorem readPlace_deref_r (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : S
   simp [S₄, SState.tyAt, SState.valAt, Sem.follow, Sem.step, hw, ReadGood, hm]
   rfl
 
+/-- The strict end tests on `S₄` (ruling (A)): the read of `*r` reaches no label. -/
+theorem contentOk_deref_S₄ (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
+    ContentOk K φ (.deref (.var 0)) (S₄ F n b k c) := by
+  have hr : resolve (S₄ F n b k c) (.deref (.var 0)) = some (.bind 0 1, [.deref]) := by
+    simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, S₄]
+  unfold ContentOk; rw [hr]
+  exact accessOk_unreached K φ fun l => not_reached_r F n b k c _ l
+
+theorem positions_S₄' (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
+    (S₄ F n b k c).positions = [.bind 0 0, .bind 0 1, .temp 0 0, .temp 0 1] := by
+  simp [S₄, SState.positions, List.range', List.map]
+
+/-- Ending `k+1` over `r`'s constant content `(F n).val.1`, a `Nat`, passes. -/
+theorem endOk_S₄ (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
+    EndOk K φ (S₄ F n b k c) (k+1) := by
+  intro r hr ψ _
+  have hh : (S₄ F n b k c).holderOf (k+1) = some (.bind 0 1) := by
+    unfold SState.holderOf
+    rw [positions_S₄']
+    simp [S₄]
+  rw [hh] at hr
+  cases hr
+  show Sem.el0 Nat (F n).val.1 ∈ₛ[K.dm.read] (if k + 1 = k + 1 then TyM.nat else _)
+  rw [if_pos rfl]
+  exact ⟨(F n).val.1, by simp [Code0.enc]⟩
+
+theorem held_S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
+    (match (S₄ F n b k c).env.getLast? with
+      | some fr => (S₄ F n b k c).shape (.bind (S₄ F n b k c).topIdx (fr.binds.length - 1))
+      | none => none) = some (k+1) := by
+  simp [S₄, SState.topIdx]
+
+theorem holderOf_S₄ (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
+    (S₄ F n b k c).holderOf (k+1) = some (.bind 0 1) := by
+  unfold SState.holderOf
+  rw [positions_S₄']
+  simp [S₄]
+
+/-- After `let r`'s end and drop, no shape is left. -/
+theorem shape_S₄_end (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
+    (((S₄ F n b k c).endLabel (k+1)).dropLast).shape = fun _ => none := by
+  rw [SState.endLabel_eq (holderOf_S₄ F n b k c)]
+  funext q
+  rw [SState.dropLast_shape, SState.endAt_shape]
+  by_cases hq : q = .bind 0 1
+  · simp [hq]
+  · simp [hq, S₄]
+
+theorem guard_S₄ (K : RunCtx) (φ : Future) (F : GCar) (n : Nat) (b : SBinding) (k : Nat) (c : Sem) :
+    (match (match (S₄ F n b k c).env.getLast? with
+      | some fr => (S₄ F n b k c).shape (.bind (S₄ F n b k c).topIdx (fr.binds.length - 1))
+      | none => none) with
+    | some l => EndOk K φ (S₄ F n b k c) l | none => LetLendersOk K φ (S₄ F n b k c)) := by
+  have h : (match (S₄ F n b k c).env.getLast? with
+      | some fr => (S₄ F n b k c).shape (.bind (S₄ F n b k c).topIdx (fr.binds.length - 1))
+      | none => none) = some (k+1) := by
+    simp [S₄, SState.topIdx]
+  rw [h]
+  exact endOk_S₄ K φ F n b k c
+
+theorem liveLabels_of_noShape (s : SState) (h : s.shape = fun _ => none) : s.liveLabels = [] := by
+  simp only [SState.liveLabels, h]
+  generalize s.positions = ps
+  induction ps <;> simp_all [List.filterMap]
+
+/-- A state with no shape: the `let`'s end passes its test. -/
+theorem letGuard_noShape (K : RunCtx) (φ : Future) (s : SState) (h : s.shape = fun _ => none) :
+    (match (match s.env.getLast? with
+      | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
+      | none => none) with
+    | some l => EndOk K φ s l | none => LetLendersOk K φ s) := by
+  have hl := liveLabels_of_noShape s h
+  cases hg : s.env.getLast? with
+  | none => show LetLendersOk K φ s; unfold LetLendersOk; rw [hg]; trivial
+  | some fr =>
+    simp only [h]
+    show LetLendersOk K φ s
+    unfold LetLendersOk; rw [hg]
+    exact accessOk_noLive K φ hl _ _
+
+/-- A state holding just a binding, with no shape: reading or borrowing its variable `0` ends nothing. -/
+theorem contentOk_one (K : RunCtx) (φ : Future) (k : Nat) (b : SBinding) :
+    ContentOk K φ (.var 0) { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k } := by
+  have hr : resolve { env := [{ binds := [b] }], shape := fun _ => none, nextLoan := k } (.var 0)
+      = some (.bind 0 0, []) := by
+    simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps]
+  unfold ContentOk; rw [hr]
+  exact accessOk_noLive K φ (liveLabels_of_noShape _ rfl) _ _
+
 end Ochr.Meaning.Attack
 
 namespace Ochr.Meaning.Attack
