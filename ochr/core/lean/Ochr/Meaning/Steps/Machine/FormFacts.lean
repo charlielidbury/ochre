@@ -1,14 +1,14 @@
 import Ochr.Meaning.Steps.FormMachine
 import Ochr.Meaning.Steps.DropOne
 import Ochr.Meaning.Steps.ColumnC
-import Ochr.Meaning.Steps.Machine.ReadInv
+import Ochr.Meaning.Steps.Machine.BorrowInv
 
 /-!
 # The column's facts about the checker alone (`Steps/FormMachine.lean`), proved
 
 `FormMachine.lean` states, as `Prop`s, the facts about the checker's runs that the first column
 (`ColumnC.column_C_ff`) assumes. Proved as stated: `ZeroInv`, `DropNoopInv`, `ColumnC.DecBack`
-(`MachineMono.DecTab.back`), `VarNumInv` (`ReadInv.lean`). Proved in the form proposed to the lead where the stated one is not
+(`MachineMono.DecTab.back`), `VarNumInv` (`ReadInv.lean`), `BorrowNumInv` (`BorrowInv.lean`). Proved in the form proposed to the lead where the stated one is not
 provable from the checker's code alone (`Steps/Machine/EvalInv.lean`, `StepInv.lean`; each docstring
 says what differs and why): `EvalInvR`, `SuccInvR`, `LetInvR`.
 
@@ -96,5 +96,6 @@ theorem dropNoopInv : DropNoopInv := by
 #print axioms succInvR
 #print axioms letInvR
 #print axioms varNumInv
+#print axioms borrowNumInv
 
 end Ochr.Meaning.Steps.Machine
