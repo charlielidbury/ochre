@@ -103,11 +103,16 @@ about the checker alone, as `Prop`s in `Steps/FormMachine.lean` (`EvalInv`, `Zer
 Judged against `Machine.lean` (reported to the lead 2026-11-21):
 - PROVED: `ZeroInv` (`FormFacts.zeroInv`: the run computed by `rfl` at `bh = k + 1`).
 - TRUE, not yet proved: `DropNoopInv` (`dropTopBind`: `borrowBelowRoot` false on success, not a borrow,
-  `endLoansOfTopBind` finds no live loan since `loans = []`, pop). Trap met: after `unfold
-  Ochr.endLoansOfTopBind at h`, peeling `get`s with `Runs.bind_inv`/`runs_get_inv` did not expose the
-  `match …binds.back?` (the `let some b := (← get)… | pure ()` elaboration; `split at h` refused it).
-  Try instead a computed equation at the run level (`runMachineL … = …` by `simp [hb]` after `unfold`),
-  or invert through `runAll` with `rcases` on the outcome, or `generalize` the discriminant first.
+  `endLoansOfTopBind` finds no live loan since `loans = []`, then the pop). Two attempts failed the same
+  way: in `endLoansOfTopBind (j+1)`, rewritten by `Ochr.endLoansOfTopBind.eq_1` (the per-case equation
+  for `fuel'.succ`; `unfold` leaves the fuel's match), peeling `get` with `Runs.bind_inv` +
+  `runs_get_inv` leaves a hypothesis that still prints as `do let __do_lift ← get; match …` and
+  `rw [hb]`/`split` find nothing. Diagnose first with `set_option pp.explicit true in trace_state`
+  right after the first `Runs.bind_inv` (is the remainder a β-redex, or does the do-elaboration of
+  `let some b := (← get).… | pure ()` put a second bind or a `have __do_jp` join point in front?).
+  `dropTopBind` itself peels fine (`topIdx`, `get`, then the binding's match, which `rw [hb']` and
+  `split` handle; its branches are `have __do_jp := …` join points: `simp only [] at h` or
+  `intro`-style zeta before `Runs.bind_inv`).
 - TRUE: `DecBack` (`∀ D st st', DecTab D st' → TablesGrow st st' → DecTab D st`). Plan: a ONE-WAY
   simulation `Fwd R x` (every success from `s₁` is one from `s₂`, same value, fuel, log; `R` after),
   closure lemmas as `FuelDefs.lean`'s, the seventeen-function induction as `DecideFuel.lean`'s. The
@@ -130,10 +135,31 @@ Judged against `Machine.lean` (reported to the lead 2026-11-21):
   - `InvCore` as stated is the whole checker's well-formedness preservation (the largest machine item;
     `borrow_wf` suspected false): restrict to the column's forms with sub-run hypotheses.
   - `SuccInv`, `LetInv` need "a typed `eval` returns `some` type" (a machine lemma).
-- Suggested tool for the inversions: a small `runs_inv` tactic peeling `bind`/`get`/`pure`/`modify`/
-  `ite`/`match` in a `Runs` hypothesis (the `Runs.bind_inv`, `runs_get_inv`, `runs_pure_inv`,
-  `runs_err_false` lemmas of `Steps/DropOne.lean`, plus `FormFacts.runs_modify_inv`,
-  `runs_err_bind_false`, `runs_topIdx_inv`), with the trap above in mind.
+- Suggested tool for the inversions: a `runs_inv` tactic, the dual of `grows_go`: on a hypothesis
+  `h : Runs x st b a st'` it dispatches on `x`'s head constant: `bind` (`Runs.bind_inv`, naming the
+  intermediate state and value), `get` (`runs_get_inv`, substituting), `pure` (`runs_pure_inv`),
+  `modify` (`FormFacts.runs_modify_inv`), `err`/`exhausted` (contradiction), `ite`/`match` (`split at h`,
+  or rewriting a known discriminant first), a `have __do_jp` join point (zeta), a function with an
+  inversion lemma (a table like `@[grows]`'s: `runs_topIdx_inv`, `runs_varPos_inv`,
+  `runs_content?_inv`, `runs_setPlace_inv`, …), and leaves a sub-run of an unknown computation as a
+  named hypothesis. Rewrite a function at `n + 1` with its `f.eq_1` (the per-case equation; `unfold`
+  leaves the fuel's match). Each inversion statement is then: run `runs_inv`, close the leftovers.
+- The entry facts the corrected inversions need: `st.tailNext = false` at `evalCore`'s entry (from
+  `EvalInv`, since `evalAt` clears it); the handed reading at a `let`'s tail is the tail's own
+  (`declOf`'s `.letIn` case: `w` in scope `du :: sc`, which is the live frame after `pushBind` with
+  `du' = refineDecl du = du`); a typed `eval` returns `some` type; a typed run's bindings have a stored
+  type (`ty.isSome`, `lazyTy = none`: `deferCallTy` only when `!typed`); `Mode` is kept by every
+  sub-run of these forms (none touches `headEval` after `evalAt`, `copying`, `inPlace`, `erasedDepth`).
+
+- (8b) PROBED 2026-11-21: FALSE as stated (reported to the lead). Accepted by the checker:
+  `def H4 : Nat := (let z = 0; match z { Z => 0, S n => NoSuchNameD })` and, with
+  `inductive P (f : Π(x : Nat). Nat) := MkP`, `inductive Q4 := MkQ4(p : P(λ(y : Nat) : Nat => (let z =
+  0; match z { Z => 0, S n => NoSuchNameE })))`: a match on a known constructor runs only its arm, so
+  the other arm's constants are never looked up. Rejected ("unknown constant", `lookupGlobal`): an
+  undeclared name in a λ's body anywhere else (a λ is checked when formed, an unknown scrutinee split
+  into every arm). The checker change proposed (the lead's decision): [Ind-decl] and [Def] check
+  syntactically that every constant a declaration's terms mention is declared; (8b) is then its
+  postcondition.
 
 The earlier queue (still owed, after the column):
    - (M-a) data writes have no live loan or mark on their path. Not a property of one function: a
@@ -192,7 +218,8 @@ The earlier queue (still owed, after the column):
 
 ## Build state
 
-2026-11-21, `spine-machine` after merging `spine` 1e226c6a: the whole lane builds; `machineGrows` has NO
+2026-11-21 evening, `spine-machine` 6ad1cd32e (after merging `spine` c0c95fb6 and `spine-lead7`; the root
+imports `Steps/Machine/FormFacts`): `OchrMeaning` green. Since the merge with `spine` 1e226c6a the whole lane builds; `machineGrows` has NO
 `sorry` (`#print axioms`: the three standard), all 118 steps proved on the merged checker (main's D102
 to D114, the fuel-bounded loop and D103's `restoreNames` included); `decide_fuel_agree'` proved. What the
 merge broke (repaired): five new block functions and ten changed signatures (regenerated), `pushTemp`'s
