@@ -1,4 +1,4 @@
-import Ochr.Meaning.Steps.ColumnTemp
+import Ochr.Meaning.Steps.ColumnPlumbAux
 
 /-!
 # Bindings pushed and popped, on both sides (lead7, the column; statements by the lead, proofs open)
@@ -28,7 +28,108 @@ theorem rel_pushBind_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat 
     (hc : ∀ (φ' : Future) (hint : TyS), Value.mean K.dm K.M K.Γ ρ φ' hint v = c) :
     Rel K ρ φ π { st with env := Env.pushBindE st.env h (some T) v p d }
       (s.pushBind { ty := R, val := fun _ => c, decl := d }) := by
-  sorry
+  generalize hb : ({ ty := R, val := fun _ => c, decl := d } : SBinding) = b
+  have hbv : b.val = fun _ => c := by rw [← hb]
+  have hbs : bindSkel b = (R.m, d) := by rw [← hb]; rfl
+  -- the two top frames, aligned by the skeleton
+  obtain ⟨fr, hfr⟩ : ∃ fr, st.env[st.env.size - 1]? = some fr :=
+    ⟨_, Array.getElem?_eq_getElem (by omega : st.env.size - 1 < st.env.size)⟩
+  obtain ⟨frs, hfrs, htop, hlen⟩ := skel_align K ρ st s hr.skel fr hfr
+  have hnew : Pos.bind s.topIdx frs.binds.length = Pos.bind (st.env.size - 1) fr.binds.size := by rw [htop, hlen]
+  -- the reference's new position holds nothing, so liveness, holders and their types are kept
+  have hsh : s.shape (Pos.bind s.topIdx frs.binds.length) = none := by
+    cases e : s.shape (Pos.bind s.topIdx frs.binds.length) with
+    | none => rfl
+    | some l => exact absurd (hr.holders _ l e) (newS_not_mem s frs hfrs)
+  have hlive : ∀ l, (s.pushBind b).Live l ↔ s.Live l := live_pushBind' s b frs hfrs hsh
+  have hhty : ∀ l, holderTy (s.pushBind b) l = holderTy s l := holderTy_pushBind s b frs hfrs hsh
+  have hF : ∀ ψ, (RelF φ (s.pushBind b) ψ ∧ TypedLive K (s.pushBind b) ψ) → RelF φ s ψ ∧ TypedLive K s ψ :=
+    fun ψ hψ => ⟨fun l hl => hψ.1 l (fun h' => hl ((hlive l).mp h')),
+      fun l hl => by have := hψ.2 l ((hlive l).mpr hl); rwa [hhty] at this⟩
+  -- the checker's new position holds a number: no borrow, no site
+  have hlv : ∀ l, liveLoan (Env.pushBindE st.env h (some T) v p d) l = liveLoan st.env l :=
+    fun l => liveLoan_pushBindE st.env h (some T) v p d fr hfr hne l (hv.holdsBorrow l)
+  have hvshape : Env.shape (Env.pushBindE st.env h (some T) v p d) (.bind (st.env.size - 1) fr.binds.size) = none := by
+    simp only [Env.shape, valAt_pushBindE_new st.env h (some T) v p d fr hfr]; cases hv <;> rfl
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
+  · -- skel
+    rw [skel_pushBindE K ρ st h T v p d fr hfr, sskel_pushBind, hr.skel, htop, hbs, hR]
+  · -- fresh
+    intro l hl ho
+    obtain ⟨w, hw, ha⟩ := ho
+    rcases mem_values_pushBindE st.env h (some T) v p d fr hfr hne hw with rfl | hw
+    · rw [hv.anyAtom (by rfl) (fun _ => by rfl)] at ha; cases ha
+    · exact hr.fresh l hl ⟨w, hw, ha⟩
+  · -- the bindings' meanings
+    intro ψ hψ q hq
+    show Env.mean K.dm K.M K.Γ ρ _ (Env.pushBindE st.env h (some T) v p d) q = (s.pushBind b).valAt q ψ
+    by_cases hqn : q = .bind (st.env.size - 1) fr.binds.size
+    · subst hqn
+      rw [mean_pushBindE_new K.dm K.M K.Γ ρ st.env h v p d fr hfr _ T, hc, ← hnew,
+        valAt_pushBind_new s b frs hfrs, hbv]
+    · rw [mean_pushBindE_ne K.dm K.M K.Γ ρ st.env h (some T) v p d fr hfr _ q hqn,
+        valAt_pushBind_ne s b frs hfrs q (by rw [hnew]; exact hqn)]
+      exact hr.sim.1 ψ (hF ψ hψ) q hq
+  · -- holders at bindings, checker to reference
+    intro q l hq hs
+    change Env.shape (Env.pushBindE st.env h (some T) v p d) q = some l at hs
+    by_cases hqn : q = .bind (st.env.size - 1) fr.binds.size
+    · subst hqn; rw [hvshape] at hs; cases hs
+    · rw [shape_pushBindE_ne st.env h (some T) v p d fr hfr q hqn] at hs
+      exact hr.sim.2.1 q l hq hs
+  · -- holders at bindings, reference to checker
+    intro q l' hq hs
+    obtain ⟨l, h1, h2⟩ := hr.sim.2.2.1 q l' hq hs
+    have hqn : q ≠ .bind (st.env.size - 1) fr.binds.size := by
+      rintro rfl
+      have hs' : s.shape (Pos.bind s.topIdx frs.binds.length) = some l' := by rw [hnew]; exact hs
+      rw [hsh] at hs'; cases hs'
+    refine ⟨l, ?_, h2⟩
+    show Env.shape (Env.pushBindE st.env h (some T) v p d) q = some l
+    rw [shape_pushBindE_ne st.env h (some T) v p d fr hfr q hqn]; exact h1
+  · -- borrows in flight, checker to reference
+    intro f i l hs
+    have hqn : Pos.temp f i ≠ .bind (st.env.size - 1) fr.binds.size := by intro e; cases e
+    change Env.shape (Env.pushBindE st.env h (some T) v p d) (.temp f i) = some l at hs
+    rw [shape_pushBindE_ne st.env h (some T) v p d fr hfr _ hqn] at hs
+    obtain ⟨j, hj, hjv⟩ := hr.sim.2.2.2.1 f i l hs
+    refine ⟨j, hj, fun ψ hψ => ?_⟩
+    show Env.mean K.dm K.M K.Γ ρ _ (Env.pushBindE st.env h (some T) v p d) (.temp f i) =
+      (s.pushBind b).valAt (.temp f j) ψ
+    rw [mean_pushBindE_ne K.dm K.M K.Γ ρ st.env h (some T) v p d fr hfr _ _ hqn,
+      valAt_pushBind_ne s b frs hfrs _ (by intro e; cases e)]
+    exact hjv ψ (hF ψ hψ)
+  · -- borrows in flight, reference to checker
+    intro f j l' hs
+    obtain ⟨i, l, h1, h2⟩ := hr.sim.2.2.2.2 f j l' hs
+    refine ⟨i, l, ?_, h2⟩
+    show Env.shape (Env.pushBindE st.env h (some T) v p d) (.temp f i) = some l
+    rw [shape_pushBindE_ne st.env h (some T) v p d fr hfr _ (by intro e; cases e)]; exact h1
+  · -- inj
+    intro l l' hl hl' hπ
+    have hl1 : liveLoan (Env.pushBindE st.env h (some T) v p d) l = true := hl
+    have hl2 : liveLoan (Env.pushBindE st.env h (some T) v p d) l' = true := hl'
+    rw [hlv] at hl1 hl2
+    exact hr.inj l l' hl1 hl2 hπ
+  · -- sites
+    intro l hl x
+    have hl1 : liveLoan (Env.pushBindE st.env h (some T) v p d) l = true := hl
+    rw [hlv] at hl1
+    show x ∈ s.lent (π l) ↔ x ∈ Env.sitesOf (Env.pushBindE st.env h (some T) v p d) l
+    rw [sitesOf_pushBindE st.env h (some T) v p d fr hfr hne l (fun pos path => hv.sitesOf l pos path)]
+    exact hr.sites l hl1 x
+  · -- holders
+    intro q l hs
+    obtain ⟨A, B, h1, h2⟩ := positions_pushBind' s b frs hfrs
+    have hq := hr.holders q l hs
+    rw [h1] at hq; rw [h2]
+    rcases List.mem_append.mp hq with hq | hq
+    · exact List.mem_append_left _ hq
+    · exact List.mem_append_right _ (List.mem_cons_of_mem _ hq)
+  · -- records
+    intro l hl
+    rw [hhty]
+    exact hr.records l ((hlive l).mp hl)
 
 /-! ### (P2) as stated is false: `loans` does not walk a closure's recorded readings
 
