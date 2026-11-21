@@ -71,6 +71,12 @@ theorem run_letIn (x : Hint) (u w : Term) (hint : TyS) (s : SState) :
           some ((r, R), s.dropLast)
         else none) := rfl
 
+theorem held_noShape' (s : SState) (h : s.shape = fun _ => none) :
+    (match s.env.getLast? with
+      | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
+      | none => none) = none := by
+  cases s.env.getLast? <;> simp [h]
+
 theorem held_one (b : SBinding) (k : Nat) :
     (match (AdequacyFlip.one b k).env.getLast? with
       | some fr => (AdequacyFlip.one b k).shape (.bind (AdequacyFlip.one b k).topIdx (fr.binds.length - 1))
