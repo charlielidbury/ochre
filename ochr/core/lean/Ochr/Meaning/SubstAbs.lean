@@ -104,6 +104,7 @@ end
 end Ochr
 
 namespace Ochr.Meaning
+open Classical
 
 section
 variable (K : RunCtx) (ρ : Assignment)
@@ -167,6 +168,11 @@ theorem absFill_shape (hK : ∀ n, (K.C.global n).2.label = none) (st : MState) 
     rw [hΔ] at hm
     rw [hv]
     simp only [deltaOf, hT, Ochr.Value.tyS, Value.mean, hd, meanParams_eq_mean] at hm ⊢
+    -- `σ`'s type is strict (`paramsOk`): the filler is a member of it, so it is not `err`
+    by_cases hpo : paramsOk K.dm d (meanParams K ρ (fun _ => .err) d 0 [] ps)
+    rotate_left
+    · rw [if_neg hpo] at hm; obtain ⟨a, _⟩ := hm; exact a.elim
+    rw [if_pos hpo] at hm ⊢
     -- a constructor value of a declared type at a known record means a tree, not `err`
     have hne : meanV K ρ ψ hint (.ind ty c h ps fs) ≠ .err := by
       simp only [meanV, Value.mean, hd, hps, Bool.false_eq_true, if_false]

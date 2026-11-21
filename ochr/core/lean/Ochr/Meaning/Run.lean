@@ -762,9 +762,19 @@ noncomputable def SM.strictS (R : DataRead) (x : SM (Sem × TyS)) : SM (Sem × T
 /-- A result's label, if any, has the given content type in the state. -/
 def labTyOk (s : SState) (lab : Option Nat) (T : TyM) : Prop := ∀ l, lab = some l → s.heldTy l = T
 
-/-- Written constructor parameters are members of their declared types at the earlier ones. -/
-def paramsOk (dm : DataModel) (d : IndDecl) (ps : List Sem) : Prop :=
-  ∀ i v, ps[i]? = some v → v ∈ₛ[dm.read] dm.paramTy d i (ps.take i)
+/-- STRICT Π-type ("well typed inside", the trial's clause 5): every domain and the codomain have a
+level at every tuple of arguments that are members of the domains before them (an error domain
+used to give the function type over the empty carrier, which has a level and one member). -/
+def PiOk (R : DataRead) : List PiDom → List Sem → PiCod → Prop
+  | [], acc, out => (out.cod acc).level.isSome = true
+  | p :: ps, acc, out => (p.dom acc).level.isSome = true ∧ ∀ a, a ∈ₛ[R] p.dom acc → PiOk R ps (acc ++ [a]) out
+
+/-- STRICT captures (the trial's clause 7): a closure's or Π-closure's captured values are members of
+their recorded types, one for each. -/
+def CapsOk (R : DataRead) : List Sem → List (DeclInfo × TyS) → Prop
+  | [], [] => True
+  | v :: vs, (_, T) :: ts => v ∈ₛ[R] T.m ∧ CapsOk R vs ts
+  | _, _ => False
 
 /-- The borrow flags of a function type's parameters along the arguments (`telRefsL` at its level). -/
 noncomputable def refsOf (R : DataRead) (T : TyM) (as : List Sem) : List Bool :=
@@ -922,7 +932,8 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     | some d =>
       let psM ← runParams d 0 [] args
       -- the type value is the declaration's code at the parameters (docs/31 D59)
-      pure (.ty (K.dm.tyM d psM), .plain (TyM.univ d.sort))
+      -- STRICT: each argument is a member of its parameter type
+      fun s => if paramsOk K.dm d psM then some ((.ty (K.dm.tyM d psM), .plain (TyM.univ d.sort)), s) else none
     | none => SM.fail
   | .ctor ty c x ps args => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.ctor ty c x ps args)) (do
     match K.Γ.find? (·.name == ty) with
@@ -998,7 +1009,8 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
         | some ((v, _), _) => v.asTy
         | none => TyM.err⟩
     let l := K.D.piSort (scopeOf s) (.pi hs ds c)
-    some ((.ty (piTyAt K.dm.read l ps out), .plain (TyM.univ l)), s)
+    -- STRICT: every domain and the codomain have a level at every typed tuple of arguments
+    if PiOk K.dm.read ps [] out then some ((.ty (piTyAt K.dm.read l ps out), .plain (TyM.univ l)), s) else none
   | .fix self hs ds c dec body => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.fix self hs ds c dec body)) (fun s =>
     -- [Closure] (D51, D53, D80): a closure means a function on its annotated domain, read off
     -- the reference run of its body in the forming frame extended by `self` and the parameters
@@ -1113,7 +1125,8 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let T : TyS := .plain TA.asTy
     let (va, _) ← SM.onCopy (runT false T a)
     let (vb, _) ← SM.onCopy (runT false T b)
-    pure (.ty (TyM.prop (va = vb)), .plain (TyM.univ 0))
+    -- STRICT: the type is a type of a universe and each side is `⊥` or a member of it (`EqOk`)
+    fun s => if EqOk K.dm.read TA va vb then some ((.ty (TyM.prop (va = vb)), .plain (TyM.univ 0)), s) else none
   -- decision 1: the premise proofs run, each on a copy; `⋆` at `prop True`
   | .cong _ h => SM.onCopy (do
     let _ ← runT false (.plain TyM.err) h
@@ -1147,8 +1160,11 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let reps := K.D.rePointed (scopeOf s) t
     let o₁ ← runT false T t s
     let o₂ ← runT false T u s
-    some ((.ty (TyM.prop (∀ ws : List Sem, obsTyped K.dm.read reps ws s →
-      observation φ reps ws s.positions o₁.1 o₁.2 = observation φ reps ws s.positions o₂.1 o₂.2)), .plain (TyM.univ 0)), s)
+    -- STRICT: the type is a type of a universe and each side is `⊥` or a member of it (`EqOk`)
+    if EqOk K.dm.read TA o₁.1.1 o₂.1.1 then
+      some ((.ty (TyM.prop (∀ ws : List Sem, obsTyped K.dm.read reps ws s →
+        observation φ reps ws s.positions o₁.1 o₁.2 = observation φ reps ws s.positions o₂.1 o₂.2)), .plain (TyM.univ 0)), s)
+    else none
   | .prim "J" [A, a, b, P, h, t] => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.prim "J" [A, a, b, P, h, t])) (do
     -- `J` means its transported term; its endpoints, motive and proof are statements on copies
     let _ ← SM.onCopy (runT false (.plain TyM.err) A)
@@ -1266,9 +1282,13 @@ noncomputable def meanV (hint : TyS) : Value → Sem
   | .succ v => (meanV (.plain TyM.nat) v).succ
   | .unit => .el0 Unit ()
   | .gfn n => (K.C.global n).1
-  | .clo caps t rd => match runT false (.plain TyM.err) t (stateOf 0 (capsState (capsVals caps) (capsTys rd))) with
-    | some ((v, _), _) => v
-    | none => .err
+  -- STRICT: `err` unless the captures are members of their recorded types (`CapsOk`)
+  | .clo caps t rd =>
+    if CapsOk K.dm.read (capsVals caps) (capsTys rd) then
+      match runT false (.plain TyM.err) t (stateOf 0 (capsState (capsVals caps) (capsTys rd))) with
+      | some ((v, _), _) => v
+      | none => .err
+    else .err
   | .borrow _ w => meanV hint w
   | .gloan _ w => meanV hint w
   | .loan l => φ l
@@ -1285,13 +1305,19 @@ noncomputable def meanV (hint : TyS) : Value → Sem
   | .proof => .proof
   | .tNat => .ty TyM.nat
   | .tUnit => .ty TyM.unit
+  -- STRICT (`Value.mean`'s clause): `err` unless `EqOk`
   | .tEq A a b =>
     let T := TyS.plain (meanV (.plain TyM.err) A).asTy
-    .ty (TyM.prop (meanV T a = meanV T b))
+    if EqOk K.dm.read (meanV (.plain TyM.err) A) (meanV T a) (meanV T b) then .ty (TyM.prop (meanV T a = meanV T b))
+    else .ty TyM.err
   | .tRef A => meanV (.plain TyM.err) A
-  | .tPi caps t rd => match runT false (.plain TyM.err) t (stateOf 0 (capsState (capsVals caps) (capsTys rd))) with
-    | some ((v, _), _) => .ty v.asTy
-    | none => .ty TyM.err
+  -- STRICT: `err` unless `CapsOk` (and, through the `.pi` clause, `PiOk`)
+  | .tPi caps t rd =>
+    if CapsOk K.dm.read (capsVals caps) (capsTys rd) then
+      match runT false (.plain TyM.err) t (stateOf 0 (capsState (capsVals caps) (capsTys rd))) with
+      | some ((v, _), _) => .ty v.asTy
+      | none => .ty TyM.err
+    else .ty TyM.err
   | .sort l => .ty (TyM.univ l)
   | .ind ty c _ ps fs =>
     match K.Γ.find? (·.name == ty) with
@@ -1303,9 +1329,12 @@ noncomputable def meanV (hint : TyS) : Value → Sem
       | some r => if d.sort == 0 then .proof else DataModel.ctorR d r c (meanFields d r c 0 [] fs)
       | none => .err
     | none => .err
+  -- STRICT (`Value.mean`'s clause): `err` unless `paramsOk`
   | .tInd n args =>
     match K.Γ.find? (·.name == n) with
-    | some d => .ty (K.dm.tyM d (meanParams d 0 [] args))
+    | some d =>
+      if paramsOk K.dm d (meanParams d 0 [] args) then .ty (K.dm.tyM d (meanParams d 0 [] args))
+      else .ty TyM.err
     | none => .ty TyM.err
 termination_by structural v => v
 
@@ -1411,13 +1440,19 @@ theorem mean_sealed_at_future (K : RunCtx) (ρ : Assignment) (φ : Future) (hint
 /-- The Π-closure clause of the knot: `meanV` of a Π-closure is already a type value. -/
 theorem meanV_tPi_ty (hint : TyS) (caps : List Value) (t : Term) (rd : List (DeclInfo × Value)) :
     meanV K ρ φ hint (.tPi caps t rd) = .ty (meanV K ρ φ (.plain TyM.err) (.tPi caps t rd)).asTy := by
-  show (match run K ρ φ (.plain TyM.err) t (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) with
-      | some ((v, _), _) => Sem.ty v.asTy
-      | none => .ty TyM.err)
-    = .ty (match run K ρ φ (.plain TyM.err) t (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) with
-      | some ((v, _), _) => Sem.ty v.asTy
-      | none => .ty TyM.err).asTy
-  cases run K ρ φ (.plain TyM.err) t (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) <;> rfl
+  show (if CapsOk K.dm.read (capsVals K ρ φ caps) (capsTys K ρ φ rd) then
+        match run K ρ φ (.plain TyM.err) t (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) with
+        | some ((v, _), _) => Sem.ty v.asTy
+        | none => .ty TyM.err
+      else .ty TyM.err)
+    = .ty (if CapsOk K.dm.read (capsVals K ρ φ caps) (capsTys K ρ φ rd) then
+        match run K ρ φ (.plain TyM.err) t (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) with
+        | some ((v, _), _) => Sem.ty v.asTy
+        | none => .ty TyM.err
+      else .ty TyM.err).asTy
+  split
+  · cases run K ρ φ (.plain TyM.err) t (stateOf 0 (capsState (capsVals K ρ φ caps) (capsTys K ρ φ rd))) <;> rfl
+  · rfl
 
 mutual
 /-- The knot, by induction on the value: each clause is the same text, the code-dependent ones
@@ -1442,12 +1477,20 @@ theorem meanV_eq_mean_aux (hint : TyS) : (v : Value) →
   | .tNat => rfl
   | .tUnit => rfl
   | .tEq A a b => by
-    show Sem.ty (TyM.prop (Value.mean K.dm (codeMeaning K) K.Γ ρ φ
+    show (if EqOk K.dm.read (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain TyM.err) A)
+          (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain TyM.err) A).asTy) a)
+          (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain TyM.err) A).asTy) b)
+        then Sem.ty (TyM.prop (Value.mean K.dm (codeMeaning K) K.Γ ρ φ
           (.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain TyM.err) A).asTy) a
         = Value.mean K.dm (codeMeaning K) K.Γ ρ φ
           (.plain (Value.mean K.dm (codeMeaning K) K.Γ ρ φ (.plain TyM.err) A).asTy) b))
-      = Sem.ty (TyM.prop (meanV K ρ φ (.plain (meanV K ρ φ (.plain TyM.err) A).asTy) a
+        else .ty TyM.err)
+      = (if EqOk K.dm.read (meanV K ρ φ (.plain TyM.err) A)
+          (meanV K ρ φ (.plain (meanV K ρ φ (.plain TyM.err) A).asTy) a)
+          (meanV K ρ φ (.plain (meanV K ρ φ (.plain TyM.err) A).asTy) b)
+        then Sem.ty (TyM.prop (meanV K ρ φ (.plain (meanV K ρ φ (.plain TyM.err) A).asTy) a
         = meanV K ρ φ (.plain (meanV K ρ φ (.plain TyM.err) A).asTy) b))
+        else .ty TyM.err)
     rw [meanV_eq_mean_aux (.plain TyM.err) A, meanV_eq_mean_aux _ a, meanV_eq_mean_aux _ b]
   | .tRef A => meanV_eq_mean_aux (.plain TyM.err) A
   | .tPi caps t rd => (meanV_tPi_ty K ρ φ hint caps t rd).symm

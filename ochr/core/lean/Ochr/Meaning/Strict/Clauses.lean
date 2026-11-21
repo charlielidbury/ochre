@@ -38,7 +38,9 @@ theorem fund_eq (A a b : Term) : Fund K ρ φ (.eq A a b) := fun tl hint => by
   obtain ⟨x, s₁, h1, h2⟩ := SM.bind_some h
   obtain ⟨y, s₂, h3, h4⟩ := SM.bind_some h2
   obtain ⟨z, s₃, h5, h6⟩ := SM.bind_some h4
-  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h6)
+  obtain ⟨-, h6⟩ := open Classical in ite_none_some h6
+  simp only [Option.some.injEq] at h6
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj h6
   exact ⟨.inl (ty_univ0_mem _), rfl⟩
 
 /-- `Id(A, t, u)`: a proposition; the state is the one it started from. -/
@@ -47,6 +49,7 @@ theorem fund_id (A t u : Term) : Fund K ρ φ (.id A t u) := fun tl hint => by
   rw [runT] at h
   simp only [Bind.bind, Option.bind_eq_some_iff] at h
   obtain ⟨_, _, _, _, _, _, h⟩ := h
+  obtain ⟨-, h⟩ := open Classical in ite_none_some h
   simp only [Option.some.injEq, Prod.mk.injEq] at h
   obtain ⟨rfl, rfl⟩ := h
   exact ⟨.inl (ty_univ0_mem _), (fun l h' => by cases h'), (fun l h' => by cases h'), hs⟩
@@ -55,6 +58,7 @@ theorem fund_id (A t u : Term) : Fund K ρ φ (.id A t u) := fun tl hint => by
 theorem fund_pi (hs : List Hint) (ds : List Term) (c : Term) : Fund K ρ φ (.pi hs ds c) := fun tl hint => by
   intro s s' r hs' h
   rw [runT] at h
+  obtain ⟨-, h⟩ := open Classical in ite_none_some h
   simp only [Option.some.injEq, Prod.mk.injEq] at h
   obtain ⟨rfl, rfl⟩ := h
   exact ⟨goodRes_pi _ _ _, (fun l h' => by cases h'), (fun l h' => by cases h'), hs'⟩
@@ -85,7 +89,9 @@ theorem fund_tind (hc : FundCtx K) (n : String) (args : List Term) : Fund K ρ �
     obtain ⟨psM, s₁, h1, h2⟩ := SM.bind_some h
     have e := runParamsS_state d args 0 [] s s₁ psM h1
     subst e
-    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h2)
+    obtain ⟨-, h2⟩ := open Classical in ite_none_some h2
+    simp only [Option.some.injEq] at h2
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj h2
     exact ⟨goodRes_tyR K.dm d _ (hc.sorts d (List.mem_of_find?_eq_some hd)), (fun l h' => by cases h'),
       (fun l h' => by cases h'), hs⟩
 

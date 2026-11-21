@@ -13,6 +13,7 @@ the substitution changes only embedded values, never a place. A sealed program r
 -/
 
 namespace Ochr.Meaning
+open Classical
 
 open SState
 
@@ -157,8 +158,9 @@ variable (K : RunCtx) (ρ : Assignment) (ψ : Future) (l : Nat) (w : Value)
 
 theorem run_pi_def (hint : TyS) (hs : List Hint) (ds : List Term) (c : Term) (s : SState) {tl : Bool} :
     runT K ρ ψ tl hint (.pi hs ds c) s =
+      if PiOk K.dm.read (runDoms K ρ ψ s ds) [] (codOf K ρ ψ s (bindsOf K ρ ψ s ds) c) then
       some ((.ty (piTyAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c)) (runDoms K ρ ψ s ds) (codOf K ρ ψ s (bindsOf K ρ ψ s ds) c)),
-        .plain (TyM.univ (K.D.piSort (scopeOf s) (.pi hs ds c)))), s) := by
+        .plain (TyM.univ (K.D.piSort (scopeOf s) (.pi hs ds c)))), s) else none := by
   rw [runT]; rfl
 
 theorem codOf_data {c : Term} (h : ∀ U, c ≠ .ref U) (s : SState) (bs : List PBind) :

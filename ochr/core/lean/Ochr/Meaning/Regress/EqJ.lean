@@ -114,7 +114,9 @@ theorem run_one (T : TyS) :
 
 /-- The reference's `Eq(Nat, S(Z), b)`: the proposition that the two sides' meanings are equal,
 the state untouched. -/
-theorem ref_eq (b : Term) (vb : Sem) (hb : run (Kp dm [] G) ρ φ (.plain TyM.nat) b (emptyState 0) = some ((vb, .plain TyM.nat), emptyState 0)) (hint : TyS) :
+theorem ref_eq (b : Term) (vb : Sem) (hb : run (Kp dm [] G) ρ φ (.plain TyM.nat) b (emptyState 0) = some ((vb, .plain TyM.nat), emptyState 0))
+    -- the strict `Eq`: the right side is a number (the left, `1`, is)
+    (hvb : vb ∈ₛ[dm.read] TyM.nat) (hint : TyS) :
     run (Kp dm [] G) ρ φ hint (.eq .nat (.succ .zero) b) (emptyState 0)
       = some ((.ty (TyM.prop (one = vb)), .plain (TyM.univ 0)), emptyState 0) := by
   have hn : runT (Kp dm [] G) ρ φ false (TyS.plain TyM.err) Term.nat (emptyState 0) =
@@ -126,17 +128,18 @@ theorem ref_eq (b : Term) (vb : Sem) (hb : run (Kp dm [] G) ρ φ (.plain TyM.na
   rw [run, runT]
   show SM.onCopy _ _ = _
   simp only [SM.onCopy, bind, hn, hs, hb', Option.map_some]
+  rw [if_pos ⟨⟨1, ⟨Nat, .nat, rfl⟩, rfl⟩, .inr (by rw [one_eq]; exact ⟨1, rfl⟩), .inr hvb⟩]
   rfl
 
 theorem ref_eqS_true (hint : TyS) : ∃ r, run (Kp dm [] G) ρ φ hint (.eq .nat (.succ .zero) (.succ .zero)) (emptyState 0)
     = some (r, emptyState 0) ∧ (r.1.asTy).true := by
-  refine ⟨_, ref_eq dm G ρ φ (.succ .zero) one (run_one dm G ρ φ _) hint, ?_⟩
+  refine ⟨_, ref_eq dm G ρ φ (.succ .zero) one (run_one dm G ρ φ _) (by rw [one_eq]; exact ⟨1, rfl⟩) hint, ?_⟩
   show one = one
   rfl
 
 theorem ref_eqSZ_false (hint : TyS) : ∃ r, run (Kp dm [] G) ρ φ hint (.eq .nat (.succ .zero) .zero) (emptyState 0)
     = some (r, emptyState 0) ∧ ¬ (r.1.asTy).true := by
-  refine ⟨_, ref_eq dm G ρ φ .zero (.el0 Nat 0) rfl hint, ?_⟩
+  refine ⟨_, ref_eq dm G ρ φ .zero (.el0 Nat 0) rfl ⟨0, rfl⟩ hint, ?_⟩
   show ¬ one = .el0 Nat 0
   rw [one_eq]
   intro h

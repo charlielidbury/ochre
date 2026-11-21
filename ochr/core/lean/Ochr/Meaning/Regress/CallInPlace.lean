@@ -225,13 +225,15 @@ theorem run_incT : ∃ s', runT (Kc dm) ρ φ false (.plain .err) incT (stateOf 
   rw [if_pos (by exact hmem)]
   rfl
 
+open Classical in
 /-- **`Inc`'s closure means the closure of its body run**, at its code. -/
 theorem meanV_incClo (hint : TyS) :
     meanV (Kc dm) ρ φ hint incClo = closureAt dm.read 1 φ psInc outInc (gInc dm ρ φ) := by
   obtain ⟨s', h⟩ := run_incT dm ρ φ
-  show (match runT (Kc dm) ρ φ false (.plain .err) incT (stateOf 0 (capsState [] [])) with
-    | some ((v, _), _) => v | none => .err) = _
-  rw [h]
+  -- the strict closure: no captures, so `CapsOk` holds
+  show (if CapsOk (Kc dm).dm.read [] [] then (match runT (Kc dm) ρ φ false (.plain .err) incT (stateOf 0 (capsState [] [])) with
+    | some ((v, _), _) => v | none => .err) else .err) = _
+  rw [if_pos (show CapsOk (Kc dm).dm.read [] [] from trivial), h]
 
 /-- `Inc`'s closure is typed at its code. -/
 theorem valT_incClo (hint : TyS) : valT (Kc dm) ρ φ hint incClo = .plain (piInc dm) := by
@@ -769,12 +771,14 @@ theorem run_id1T : ∃ s', runT (Kc dm) ρ φ false (.plain .err) id1T (stateOf 
   rw [if_pos (by exact hmem)]
   rfl
 
+open Classical in
 theorem meanV_id1Clo (hint : TyS) :
     meanV (Kc dm) ρ φ hint id1Clo = closureAt dm.read 1 φ psInc outId1 (gId1 dm ρ φ) := by
   obtain ⟨s', h⟩ := run_id1T dm ρ φ
-  show (match runT (Kc dm) ρ φ false (.plain .err) id1T (stateOf 0 (capsState [] [])) with
-    | some ((v, _), _) => v | none => .err) = _
-  rw [h]
+  -- the strict closure: no captures, so `CapsOk` holds
+  show (if CapsOk (Kc dm).dm.read [] [] then (match runT (Kc dm) ρ φ false (.plain .err) id1T (stateOf 0 (capsState [] [])) with
+    | some ((v, _), _) => v | none => .err) else .err) = _
+  rw [if_pos (show CapsOk (Kc dm).dm.read [] [] from trivial), h]
 
 theorem valT_id1Clo (hint : TyS) : valT (Kc dm) ρ φ hint id1Clo = .plain (piId1 dm) := by
   obtain ⟨s', h⟩ := run_id1T dm ρ φ

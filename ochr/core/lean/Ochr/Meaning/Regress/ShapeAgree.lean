@@ -123,11 +123,14 @@ theorem call_cod (hint : TyS) (f : Term) (args : List Term) (hd : Bool) (s s' : 
 /-- **The run of a Π-term returns the type value holding the function type's code**, typed at the
 universe of its declared sort (the positive form of what was `pi_shape`): the code is in the
 value, so a binding `T = Π(n : Nat). Nat` holds it, and so does the checker's `T : Type`. -/
-theorem pi_code (hint : TyS) (hs : List Hint) (ds : List Term) (c : Term) (s : SState) :
+theorem pi_code (hint : TyS) (hs : List Hint) (ds : List Term) (c : Term) (s : SState)
+    -- the strict Π-type: every domain and the codomain have a level at every typed argument tuple
+    (hok : PiOk K.dm.read (runDoms K ρ φ s ds) [] (codOf K ρ φ s (bindsOf K ρ φ s ds) c)) :
     run K ρ φ hint (.pi hs ds c) s = some ((.ty (piTyAt K.dm.read (K.D.piSort (scopeOf s) (.pi hs ds c))
       (runDoms K ρ φ s ds) (codOf K ρ φ s (bindsOf K ρ φ s ds) c)),
-        .plain (TyM.univ (K.D.piSort (scopeOf s) (.pi hs ds c)))), s) :=
-  run_pi_def K ρ φ hint hs ds c s
+        .plain (TyM.univ (K.D.piSort (scopeOf s) (.pi hs ds c)))), s) := by
+  show runT K ρ φ false hint (.pi hs ds c) s = _
+  rw [run_pi_def K ρ φ hint hs ds c s, if_pos hok]
 
 /-- At a data sort the Π-type's code is a function type's (its telescope is what a call walks). -/
 theorem piTyAt_isPi (R : DataRead) (l : Nat) (hl : l = 1 ∨ l = 2 ∨ l = 3) (ds : List PiDom) (out : PiCod) :

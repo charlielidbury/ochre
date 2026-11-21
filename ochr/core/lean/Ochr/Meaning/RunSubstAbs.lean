@@ -13,6 +13,7 @@ renamed; the two base cases are the only proofs that differ.
 -/
 
 namespace Ochr.Meaning
+open Classical
 
 open SState
 

@@ -72,6 +72,33 @@ noncomputable def Sem.succ (s : Sem) : Sem :=
   | some n => .el0 Nat (n + 1)
   | none => open Classical in if s.whole then .err else .dat "Nat" natRec 1 [s]
 
+/-! ## Strict type formers ("well typed inside", the orchestrator's decision of 2026-11-21)
+
+The checker's comparison of values is untyped, and membership of a type value in a universe says
+nothing about the values inside it (`Eq(A, a, b)` is a proposition whatever `a` and `b` are). So
+the type formers mean `err` (and their clauses of the reference run fail) unless their parts are
+typed: then "has a meaning" implies "well typed inside" (`Strict/Typed.lean`), and no typing
+predicate is carried as an invariant. -/
+
+/-- A side of an equation (`Eq`, `Id`): `moved` (D84: a side may be `⊥`) or a member of the
+equation's type (whole, at the model's reading: `DataModel.read_wholeFields`; a partly moved member
+is too weak, D84's sides are `⊥` or whole). -/
+def SideOk (R : DataRead) (T : TyM) (v : Sem) : Prop := v = .moved ∨ v ∈ₛ[R] T
+
+/-- An equation's type `TA` (the meaning of its type term) is a type of one of the model's universes,
+and both sides are `SideOk` at it. (A type with a level and no universe, `Type₁`'s members or a
+lifted code, is no type a component can be typed at: the bounded model has no universe for it.) -/
+def EqOk (R : DataRead) (TA : Sem) (a b : Sem) : Prop :=
+  (∃ l, TA ∈ₛ[R] TyM.univ l) ∧ SideOk R TA.asTy a ∧ SideOk R TA.asTy b
+
+/-- Parameters are members of their declared types at the earlier ones (an inductive type
+applied to arguments; written constructor parameters). -/
+def paramsOk (dm : DataModel) (d : IndDecl) (ps : List Sem) : Prop :=
+  ∀ i v, ps[i]? = some v → v ∈ₛ[dm.read] dm.paramTy d i (ps.take i)
+
+@[simp] theorem paramsOk_nil (dm : DataModel) (d : IndDecl) : paramsOk dm d [] := by
+  intro i v h; simp at h
+
 section
 variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl)
 
@@ -94,9 +121,13 @@ noncomputable def Value.mean (ρ : Assignment) (φ : Future) (hint : TyS) : Valu
   | .proof => .proof
   | .tNat => .ty TyM.nat
   | .tUnit => .ty TyM.unit
+  -- STRICT: `err` unless the type is a type of a universe and the sides are `⊥` or members of it (`EqOk`)
   | .tEq A a b =>
     let T := TyS.plain (Value.mean ρ φ (.plain TyM.err) A).asTy
-    .ty (TyM.prop (Value.mean ρ φ T a = Value.mean ρ φ T b))
+    open Classical in
+    if EqOk dm.read (Value.mean ρ φ (.plain TyM.err) A) (Value.mean ρ φ T a) (Value.mean ρ φ T b) then
+      .ty (TyM.prop (Value.mean ρ φ T a = Value.mean ρ φ T b))
+    else .ty TyM.err
   | .tRef A => Value.mean ρ φ (.plain TyM.err) A
   | .tPi caps t rd => .ty (C.pi ρ φ caps t rd)
   | .sort l => .ty (TyM.univ l)
@@ -110,9 +141,13 @@ noncomputable def Value.mean (ρ : Assignment) (φ : Future) (hint : TyS) : Valu
       | some r => if d.sort == 0 then .proof else DataModel.ctorR d r c (Value.meanFields ρ φ d r c 0 [] fs)
       | none => .err
     | none => .err
+  -- STRICT: `err` unless each argument is a member of its parameter type (`paramsOk`)
   | .tInd n args =>
     match Γ.find? (·.name == n) with
-    | some d => .ty (dm.tyM d (Value.meanParams ρ φ d 0 [] args))
+    | some d =>
+      open Classical in
+      if paramsOk dm d (Value.meanParams ρ φ d 0 [] args) then .ty (dm.tyM d (Value.meanParams ρ φ d 0 [] args))
+      else .ty TyM.err
     | none => .ty TyM.err
 termination_by structural v => v
 

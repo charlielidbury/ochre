@@ -181,16 +181,11 @@ theorem refine_keeps_type (K : RunCtx) (n : String) (m : Nat) (h0 : ρ 0 = .el0 
     intro T
     show (ρ 1).succ = ρ 0
     rw [h0, h1, succ_el0]
-  show (match K.Γ.find? (·.name == n) with
-      | some d => Sem.ty (K.dm.tyM d (meanParams K ρ φ d 0 [] [.abs 0]))
-      | none => .ty TyM.err) =
-    (match K.Γ.find? (·.name == n) with
-      | some d => Sem.ty (K.dm.tyM d (meanParams K ρ φ d 0 [] [.succ (.abs 1)]))
-      | none => .ty TyM.err)
-  cases K.Γ.find? (·.name == n) with
-  | none => rfl
-  | some d =>
-    simp only [meanParams, e]
+  have hp : ∀ d, meanParams K ρ φ d 0 [] [.abs 0] = meanParams K ρ φ d 0 [] [.succ (.abs 1)] := by
+    intro d; simp only [meanParams, e]
+  cases hf : K.Γ.find? (·.name == n) with
+  | none => simp only [meanV, hf]
+  | some d => simp only [meanV, hf]; rw [hp d]
 
 /-- **The substitution lemma for unknowns on the `SplitSubst` run** (`SubstAbs.lean`): the pure
 substitution `σ₀ := S(σ₁)` makes `⌈Pred2(σ₀)⌉` into `⌈Pred2(S(σ₁))⌉`, and under an assignment meeting it

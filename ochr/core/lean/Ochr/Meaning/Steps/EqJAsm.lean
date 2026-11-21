@@ -118,9 +118,11 @@ the type's code, the proposition that the sides' meanings are equal; the state u
 theorem runT_eq_some (tl : Bool) (hint : TyS) (A a b : Term) (s : SState) (rA ra rb : Res) (sa sb : SState)
     (hA : runT K ρ φ false (.plain .err) A s = some (rA, s))
     (ha : runT K ρ φ false (.plain rA.1.asTy) a s = some (ra, sa))
-    (hb : runT K ρ φ false (.plain rA.1.asTy) b s = some (rb, sb)) :
+    (hb : runT K ρ φ false (.plain rA.1.asTy) b s = some (rb, sb))
+    -- the strict `Eq` (model lane, "well typed inside"): its type is a type, its sides `⊥` or members
+    (hok : EqOk K.dm.read rA.1 ra.1 rb.1) :
     runT K ρ φ tl hint (.eq A a b) s = some ((.ty (TyM.prop (ra.1 = rb.1)), .plain (TyM.univ 0)), s) := by
-  cases tl <;> (rw [runT]; simp only [SM.onCopy, bind, hA, ha, hb, Option.map_some]; rfl)
+  cases tl <;> (rw [runT]; simp only [SM.onCopy, bind, hA, ha, hb, Option.map_some]; rw [if_pos hok]; rfl)
 
 /-- **`Eq` taken apart** (leaf): `evalCore`'s `.eq` clause is, on a private copy of the state, the
 type (`evalType`), each side on a copy of its own (from the state the type left, as the run's), the
@@ -279,9 +281,13 @@ theorem eq_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : eq_step_stmt K ρ φ
   have hsf := Rel.kept K ρ φ hg hctx hs kf ef
   obtain ⟨hrel, hgf⟩ := inFlight_noLoan { K with Δ := Δ₅ } ρ₅ φ v (.plain (TyM.univ 0))
     (eq_value_noLoan fuel hm) rfl ef.2.2 ef.2.1 hsf
+  -- OWED (model lane, 2026-11-21: the strict `Eq` of "well typed inside"): the reference's `Eq` runs
+  -- only where its type is a type of a universe and each side is `⊥` or a member of it. A checked
+  -- `Eq` (`eqChecks`) gives it; not derived here (the step statements are the lead's to rewrite).
+  have hEqOk : EqOk K.dm.read rA'.1 ra'.1 rb'.1 := sorry
   refine ⟨ρ₅, Δ₅, π, (.ty (TyM.prop (ra'.1 = rb'.1)), .plain (TyM.univ 0)), s, kf.2.2.2.2.1,
     kf.2.2.2.2.2.2, ef.1, fun _ _ => rfl,
-    runT_eq_some K ρ₅ φ st.curTail _ A a b s rA' ra' rb' sa'' sb'' hA' ha' hb', ?_, ?_, ef.2.1, hrel, hgf⟩
+    runT_eq_some K ρ₅ φ st.curTail _ A a b s rA' ra' rb' sa'' sb'' hA' ha' hb' hEqOk, ?_, ?_, ef.2.1, hrel, hgf⟩
   · refine (hmk _ _).trans ?_
     rw [hva, hvb]
   · intro T hT'

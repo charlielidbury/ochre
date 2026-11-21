@@ -13,6 +13,7 @@ without its state invariant.
 -/
 
 namespace Ochr.Meaning
+open Classical
 
 section
 variable (K : RunCtx) (Δ' : Nat → TyS) (ρ ρ' : Assignment) (φ : Future)

@@ -16,6 +16,7 @@ This file: the primitives. Each congruence holds at a state with `RInv L`.
 namespace Ochr.Meaning
 
 open SState
+open Classical
 
 section
 variable (K : RunCtx) {φ φ' : Future} {L : Nat → Prop}

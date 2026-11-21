@@ -16,6 +16,7 @@ result, `⌈…; peek(*r)⌉`, whose tail is a read — where `Lemmas.hintFree_o
 -/
 
 namespace Ochr.Meaning
+open Classical
 
 -- `Term.tailHintFree`, `Term.armsHintFree` and `Value.topHintFree` are in `Value.lean` (read by
 -- (WF16), `WF.lean`).

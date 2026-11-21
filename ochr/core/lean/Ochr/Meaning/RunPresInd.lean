@@ -667,12 +667,14 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     obtain ⟨x, s₂, _, h2⟩ := SM.bind_some h1
     obtain ⟨y, s₃, _, h3⟩ := SM.bind_some h2
     obtain ⟨z, s₄, _, h4⟩ := SM.bind_some h3
-    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h4)
+    obtain ⟨-, h4⟩ := open Classical in ite_none_some h4
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h4)
     exact rinv_pure L hi rfl
   | tl, .id A t u, hint, s, s', r, hi, h => by
     rw [runT] at h
     simp only [Bind.bind, Option.bind_eq_some_iff] at h
     obtain ⟨_, _, _, _, _, _, h⟩ := h
+    obtain ⟨-, h⟩ := open Classical in ite_none_some h
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
     exact rinv_pure L hi rfl
@@ -817,6 +819,7 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
       | cases h4
   | tl, .pi hs ds c, hint, s, s', r, hi, h => by
     rw [runT] at h
+    obtain ⟨-, h⟩ := open Classical in ite_none_some h
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
     exact rinv_pure L hi rfl
   | tl, .tind n args, hint, s, s', r, hi, h => by
@@ -828,7 +831,8 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
       obtain ⟨ps, s₁, h1, h2⟩ := SM.bind_some h
       have e := runParams_state K ρ φ d args 0 [] s s₁ ps h1
       subst e
-      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (SM.pure_some h2)
+      obtain ⟨-, h2⟩ := open Classical in ite_none_some h2
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h2)
       exact rinv_pure L hi rfl
   | tl, .ctor ty c hh ps args, hint, s, s', r, hi, h => by
     rw [runT] at h

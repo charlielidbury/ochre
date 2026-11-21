@@ -304,8 +304,9 @@ theorem run_callVar (bs : List SBinding) (i : Nat) (hi : i < bs.length) (Gf : NN
 /-- `Π(n : Nat). Nat` runs, in any state, to the type value holding its code, typed at `Type₀`. -/
 theorem run_piNN (hs : List Hint) (hint : TyS) (s : SState) :
     run (Kp dm Γ G) ρ φ hint (.pi hs [.nat] .nat) s = some ((.ty (piTyL (lvl0 dm.read) tNN), .plain (TyM.univ 1)), s) := by
-  rw [run, run_pi_def]
-  rfl
+  rw [run, run_pi_def, if_pos]
+  · rfl
+  · exact ⟨rfl, fun _ _ => rfl⟩
 
 /-- The frame `Alias` starts in: `f : Π(n : Nat). Nat` bound to a function `Gf`. -/
 def fB (Gf : NN) : SBinding := { ty := .plain (.t0 NN (.pi NN tNN)), val := fun _ => .el0 NN Gf, decl := .other }
@@ -686,7 +687,22 @@ theorem runParams_roseNat (s : SState) : runParams (Kp dmP ΓR G) ρ φ roseD 0 
 
 /-- `List(Rose(Nat))`'s parameter, the type `Rose(Nat)`, runs to `Rose(Nat)`'s code. -/
 theorem runParams_listRose (s : SState) :
-    runParams (Kp dmP ΓR G) ρ φ listD 0 [] [.tind "Rose" [.nat]] s = some (psR, s) := rfl
+    runParams (Kp dmP ΓR G) ρ φ listD 0 [] [.tind "Rose" [.nat]] s = some (psR, s) := by
+  -- the strict type former: `Nat` is a member of `Rose`'s parameter type
+  have hpo : paramsOk dmP roseD psN := by
+    intro i v h
+    cases i with
+    | zero => simp only [psN, List.getElem?_cons_zero, Option.some.injEq] at h; subst h; exact ⟨⟨_, _, rfl⟩, rfl⟩
+    | succ i => simp [psN] at h
+  have ht : ∀ h, runT (Kp dmP ΓR G) ρ φ false h (.tind "Rose" [.nat]) s
+      = some ((Sem.ty (dmP.tyM roseD psN), TyS.plain (TyM.univ roseD.sort)), s) := by
+    intro h
+    rw [runT]
+    have hf : List.find? (fun x => x.name == "Rose") (Kp dmP ΓR G).Γ = some roseD := rfl
+    simp only [hf, bind, runParams_roseNat]
+    exact if_pos hpo
+  simp only [runParams, SM.onCopy, bind, ht, pure, Option.map_some]
+  rfl
 
 /-- `Nil` at `List(Rose(Nat))` runs to the empty forest. -/
 theorem run_lrNil (hint : TyS) (s : SState) :

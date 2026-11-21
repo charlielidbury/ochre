@@ -159,7 +159,12 @@ theorem access_other_field (s : SState) (p : Pos) (l : Nat)
 /-- The audit's A16: a checker binding whose stored type is a Π-type reads, in the reference state,
 as the code its Π-term runs to in the frame of its captures, so it can be called (before D59 it
 was read with that Π's shape, `tyShape`; before that with none, and `callOf` failed). -/
-theorem stored_pi_code (caps : List Value) (hs : List Hint) (ds : List Term) (c : Term) (rd : List (DeclInfo × Value)) :
+theorem stored_pi_code (caps : List Value) (hs : List Hint) (ds : List Term) (c : Term) (rd : List (DeclInfo × Value))
+    -- the strict Π-closure: its captures are typed, and so are its domains and codomain
+    (hcap : CapsOk K.dm.read (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))
+    (hok : PiOk K.dm.read (runDoms K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) ds) []
+      (codOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd)))
+          (bindsOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) ds) c)) :
     (Value.tyS K.dm K.M K.Γ ρ (.tPi caps (.pi hs ds c) rd)).m =
       piTyAt K.dm.read (K.D.piSort (scopeOf (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))))
           (.pi hs ds c))
@@ -167,7 +172,7 @@ theorem stored_pi_code (caps : List Value) (hs : List Hint) (ds : List Term) (c 
         (codOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd)))
           (bindsOf K ρ noFuture (stateOf 0 (capsState (capsVals K ρ noFuture caps) (capsTys K ρ noFuture rd))) ds) c) := by
   show (meanV K ρ noFuture (.plain .err) (.tPi caps (.pi hs ds c) rd)).asTy = _
-  rw [meanV, run_pi_def]
+  rw [meanV, if_pos hcap, run_pi_def, if_pos hok]
   rfl
 
 /-- The audit's A10: a closure's capture whose recorded type is a Π-type is bound at that type's
@@ -181,11 +186,14 @@ theorem captured_pi_code (d : DeclInfo) (caps : List Value) (t : Term) (rd rest 
 can be called (`Regress/NoShape_R6.lean` records the failure before: a parameter was bound at
 `.plain _`). The `.fix` clause's frame binds parameter `i` at `(runBinds …)[i].1 acc`. -/
 theorem pi_param_code (s : SState) (dcs : List DeclInfo) (pre : List PBind) (hs : List Hint)
-    (ds : List Term) (c : Term) (acc : List Sem) :
+    (ds : List Term) (c : Term) (acc : List Sem)
+    (hok : PiOk K.dm.read (runDoms K ρ φ (extendBy s pre acc) ds) []
+      (codOf K ρ φ (extendBy s pre acc) (bindsOf K ρ φ (extendBy s pre acc) ds) c)) :
     ((mkBind dcs pre fun acc => run K ρ φ (.plain .err) (.pi hs ds c) (extendBy s pre acc)).1 acc).m
       = piTyAt K.dm.read (K.D.piSort (scopeOf (extendBy s pre acc)) (.pi hs ds c)) (runDoms K ρ φ (extendBy s pre acc) ds)
           (codOf K ρ φ (extendBy s pre acc) (bindsOf K ρ φ (extendBy s pre acc) ds) c) := by
   simp only [mkBind, run, run_pi_def]
+  rw [if_pos hok]
   rfl
 
 /-- ... and that binder is the one `runBinds` gives a Π-typed parameter. -/
