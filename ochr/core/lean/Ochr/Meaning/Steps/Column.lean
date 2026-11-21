@@ -43,7 +43,7 @@ theorem zero_core (hZ : ZeroInv) (hIC : InvCore) {n : Nat} {typed : Bool} {hint 
     Out K ρ φ π st st' s (runT K ρ φ st.curTail (hintM K ρ hint) .zero) v T? := by
   obtain ⟨rfl, rfl, hk, -⟩ := hZ n typed hint st st' bh v T? h
   have hinv : Inv K.D K.Γ (st'.withTempT .zero (some .tNat)).norm :=
-    hIC (n + 1) typed .zero hint st st' bh .zero (some .tNat) K.D K.Γ hp.inv hD h
+    hIC (n + 1) typed .zero hint st st' bh .zero (some .tNat) K.D K.Γ .zero hp.inv hD h
   refine ⟨ρ, K.Δ, π, (.el0 Nat 0, .plain TyM.nat), s, ⟨?_, ?_, fun _ _ => ⟨rfl, rfl⟩, fun _ _ => rfl⟩,
     runT_zero _ _ _, rfl, fun T hT => ?_, rfl, ?_, ?_⟩
   · rw [hk.absTy]; exact Nat.le_refl _
@@ -89,7 +89,9 @@ def CoreSim (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (P
     (TY : Bool → Prop := fun _ => True) : Prop :=
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
     (π : Nat → Nat),
-    P st → TY typed → Mode st → st.tailNext = false → Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
+    P st → TY typed → Mode st → st.tailNext = false → st.tailDecl = none →
+    st.curDecl = some (K.D.declOf (DecideScope.topReadings st) t) → Pre K ρ st → Rel K ρ φ π st s →
+    Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
     K.D.flags (scopeOf s) t = (false, false) →
     (typed = false → (runT K ρ φ st.curTail (hintM K ρ hint) t s).isSome) →
@@ -103,7 +105,9 @@ def EvalSim (K : RunCtx) (ρ : Assignment) (φ : Future) (n : Nat) (t : Term) (P
     (TY : Bool → Prop := fun _ => True) : Prop :=
   ∀ (st st' : MState) (typed : Bool) (hint : Option Value) (v : Value) (T? : Option Value) (s : SState)
     (π : Nat → Nat),
-    P st → TY typed → Mode st → Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
+    P st → TY typed → Mode st →
+    (st.tailDecl = none ∨ st.tailDecl = some (K.D.declOf (DecideScope.topReadings st) t)) →
+    Pre K ρ st → Rel K ρ φ π st s → Strict.SGood K.dm K.Γ φ s →
     t.valsOk (Strict.ValsP K ρ φ) → t.absBelow st.absTy.size → t.hasHolePrim = false →
     K.D.flags (scopeOf s) t = (false, false) →
     (typed = false → (runT K ρ φ st.tailNext (hintM K ρ hint) t s).isSome) →
@@ -130,10 +134,11 @@ not an embedded value, through the checker's `eval` (`EvalInv`). -/
 theorem eval_of_core (hE : EvalInv) {n : Nat} {t : Term} {P : MState → Prop} {TY : Bool → Prop}
     (hP : ∀ a b, Kern a b → P a → P b) (ht : ∀ w, t ≠ .val w) (hc : CoreSim K ρ φ n t P TY) :
     EvalSim K ρ φ (n + 2) t P TY := by
-  intro st st' typed hint v T? s π hPs hty hm hp hr hS hv hab hnh hfl hok hD bh h
-  obtain ⟨st₀, st₁, bh', hk₀, hm₀, hct, htn, h₀, hk₁, -⟩ :=
-    hE n typed t hint st st' bh v T? K.D hm hD (by rw [← scopeOf_rel hr]; exact hfl) ht h
-  have hc' := hc st₀ st₁ typed hint v T? s π (hP st st₀ hk₀ hPs) hty hm₀ htn (hp.of_kern hk₀) (hr.of_kern hk₀) hS hv
+  intro st st' typed hint v T? s π hPs hty hm htd hp hr hS hv hab hnh hfl hok hD bh h
+  obtain ⟨st₀, st₁, bh', hk₀, hm₀, hct, htn, htd₀, hcd₀, h₀, hk₁, -⟩ :=
+    hE n typed t hint st st' bh v T? K.D hm hD (by rw [← scopeOf_rel hr]; exact hfl) ht htd h
+  have hc' := hc st₀ st₁ typed hint v T? s π (hP st st₀ hk₀ hPs) hty hm₀ htn htd₀ hcd₀ (hp.of_kern hk₀)
+    (hr.of_kern hk₀) hS hv
     (by rw [← hk₀.absTy]; exact hab) hnh hfl (by rw [hct]; exact hok) (DecTab.of_kern hk₁.symm hD) bh' h₀
   rw [hct] at hc'
   exact Out.of_kern hk₀ hk₁ hc'
@@ -303,16 +308,18 @@ with none, the strict run at `Nat`), and its value is a number. The strict point
 (the step for `u` gets `Pu` at the state it starts from, which has the entry's kernel); the
 classification of `u` is asked at the entry's readings only, where `P` holds. -/
 theorem succ_core (hS : SuccInv) (hIC : InvCore) {n : Nat} {u : Term} {P Pu : MState → Prop}
-    (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → P a → Pu b)
+    (hcu : ColTerm u) (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → P a → Pu b)
     (hflu : ∀ st, P st → K.D.flags (DecideScope.topReadings st) u = (false, false))
     (hhint : ∀ s : SState, runT K ρ φ false (.plain TyM.nat) u s = runT K ρ φ false (.plain TyM.err) u s)
-    (hnum : ∀ typed st₀ st₁ bh v₀ T₀, Pu st₀ → Mode st₀ → DecTab K.D st₁ →
+    (hnum : ∀ typed st₀ st₁ bh v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
       Runs (Ochr.eval n typed u none) st₀ bh (v₀, T₀) st₁ → v₀.Num) :
     CoreSim K ρ φ (n + 1) (.succ u) P := by
-  intro st st' typed hint v T? s π hPst _ hm htn hp hr hSg hv hab hnh hfl hok hD bh h
-  obtain ⟨st₀, st₁, v₀, T₀, bh₁, hk₀, hm₀, htn₀, hu₀, rfl, rfl, hq, hDb, -⟩ := hS n typed u hint st st' bh v T? hm h
-  have hv₀ : v₀.Num := hnum typed st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ (hDb K.D hD) hu₀
-  have hO := hu st₀ st₁ typed none v₀ T₀ s π (hPu st st₀ hk₀ hPst) trivial hm₀ (hp.of_kern hk₀) (hr.of_kern hk₀) hSg hv
+  intro st st' typed hint v T? s π hPst _ hm htn htd _ hp hr hSg hv hab hnh hfl hok hD bh h
+  obtain ⟨st₀, st₁, v₀, T₀, bh₁, hk₀, hm₀, htn₀, htd₀, hu₀, rfl, rfl, hq, hDb, -⟩ :=
+    hS n typed u hint st st' bh v T? hm htn htd h
+  have hv₀ : v₀.Num := hnum typed st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ htd₀ (hDb K.D hD) hu₀
+  have hO := hu st₀ st₁ typed none v₀ T₀ s π (hPu st st₀ hk₀ hPst) trivial hm₀ (.inl htd₀) (hp.of_kern hk₀)
+    (hr.of_kern hk₀) hSg hv
     (by rw [← hk₀.absTy]; exact hab) hnh (by rw [scopeOf_rel hr]; exact hflu st hPst)
     (fun ht => by
       have hs := hok ht
@@ -351,7 +358,7 @@ theorem succ_core (hS : SuccInv) (hIC : InvCore) {n : Nat} {u : Term} {P Pu : MS
     rw [hm', Sem.succ, Sem.asNat_el0]
   · cases hT; exact strAgree_tNat
   · refine ⟨hp₁.ctx.of_eq (hq.inds.symm) (hq.globals.symm), ?_, ?_⟩
-    · exact hIC (n + 1) typed (.succ u) hint st st' bh (.succ v₀) (some .tNat) K.D K.Γ hp.inv hD h
+    · exact hIC (n + 1) typed (.succ u) hint st st' bh (.succ v₀) (some .tNat) K.D K.Γ (.succ hcu) hp.inv hD h
     · have ha : Asg { K with Δ := Δ₁ } ρ₁ (st'.withTempT v₀ T₀).norm := Asg.of_quiet hq' hp₁.asg hp₁.inv.wf6
       exact ha.of_refd rfl rfl rfl rfl rfl fun σ hσ =>
         refd_mono_withTempT v₀ T₀ σ (refd_withTempT_num hsucc (some .tNat) σ hσ)
