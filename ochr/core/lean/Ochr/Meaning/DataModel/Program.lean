@@ -341,7 +341,7 @@ theorem mem_intro (d : IndDecl) (r : Rec) (c : Fin d.ctors.length) (fs : List Se
 theorem recLeafOk_of (dm : DataModel) (d : IndDecl) (r : Rec)
     (h : ∀ (p : List RStep) (B : Type) (c : Code0 B), r p = .leaf B c → c.dataCode? = none) :
     dm.RecLeafOk d r := by
-  intro c i e
+  intro c i e _ _ _
   show dm.LeafOk (uShape d r c i e)
   unfold uShape
   split

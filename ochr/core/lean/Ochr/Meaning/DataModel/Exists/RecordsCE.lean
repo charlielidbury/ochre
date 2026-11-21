@@ -83,51 +83,21 @@ theorem tyR_ne_xTy (dm : DataModel) (d : IndDecl) (r' r : Rec) : dm.tyR d r' ≠
     obtain ⟨rfl, -⟩ := data_heq_inj hA hh
     exact hs (by decide)
 
-/-- `projIdx` of a list of `.other`s is itself. -/
+/-- `projIdx` of a list of `.other`s is itself: `paramKey 0` is the key the universal signature reads
+for field `0` of constructor `0` with one earlier field, which is how `leafOk` came to read it before
+(S) scoped `RecLeafOk` to genuine field keys. -/
 theorem projIdx_other (d : IndDecl) (c : Nat) : projIdx d c [.other] = [.other] := by
   simp only [projIdx, List.zipIdx_cons, List.zipIdx_nil, List.map_cons, List.map_nil]
   split <;> rfl
 
-/-- **`RecordsFaithful` has no instance once `Γ` holds a declaration.** -/
-theorem recordsFaithful_false (K : RunCtx) (d : IndDecl) (hd : d ∈ K.Γ) : ¬ RecordsFaithful K := by
-  intro h
-  let ps : List Sem := [.ty (xTy dummyRec)]
-  have hpt : ParamsTyped K.dm d ps := fun j hj => .inr ⟨xTy dummyRec, by
-    cases j with
-    | zero => rfl
-    | succ j => simp [ps] at hj⟩
-  have ht := h.types d hd ps 0 _ _ hpt rfl
-  have hl := h.leafOk d hd ps hpt 0 0 [.other]
-  generalize hr : K.dm.recOf d ps = r at ht hl
-  have hsh : K.dm.sig.shape d r 0 0 [.other] = uShape d r 0 0 [.other] := rfl
-  rw [hsh] at hl
-  unfold uShape at hl
-  rw [projIdx_other] at hl
-  have hk : kindKey 0 0 [.other] = paramKey 0 := rfl
-  rw [hk] at hl
-  unfold DataModel.paramTyOf at ht
-  revert ht hl
-  cases r (paramKey 0) with
-  | none => intro ht; exact absurd ht (err_ne_xTy _)
-  | small s => intro ht; exact absurd ht (err_ne_xTy _)
-  | data d' => intro ht; exact absurd ht (tyR_ne_xTy _ _ _ _)
-  | leaf B c =>
-    intro ht hl
-    obtain ⟨hA, hh⟩ := TyM.t0_inj ht
-    subst hA
-    cases eq_of_heq hh
-    exact hl eD dummyRec rfl rfl
+theorem kindKey_paramKey : kindKey 0 0 [.other] = paramKey 0 := rfl
 
-/-- Hence no data model is faithful to a non-empty `Γ`. -/
-theorem ctxFaithful_false (K : RunCtx) (d : IndDecl) (hd : d ∈ K.Γ) : ¬ CtxFaithful K :=
-  fun h => recordsFaithful_false K d hd (h (fun _ => .plain TyM.err) (fun _ => .err)).2.2
-
-/-- And `DataFaithful` holds of a program state only if it declares nothing: the existence
-statement's conclusion fails at every prefix holding a declaration. -/
-theorem dataFaithful_false (dm : DataModel) (D : MState → Decisions) (P : ProgState) (d : IndDecl)
-    (hd : d ∈ P.inds) : ¬ Assembly.DataFaithful dm D P := by
-  intro h
-  exact ctxFaithful_false _ d hd (h { globals := P.globals, inds := P.inds } rfl (List.prefix_refl _))
+/-! The refutation itself (`recordsFaithful_false`: `RecordsFaithful K` false at every `K` with a
+declaration in `Γ`; `ctxFaithful_false`; `dataFaithful_false`), against the statement as it stood,
+is at 1765a998. It went through three things the rulings removed: `.ty (xTy r)` a member of
+`Type₀` (now `xTy_not_mem_univ`), `ParamsTyped`'s "or any type value" disjunct (gone), and `leafOk`
+reading `paramKey 0` (now `RecLeafOk` reads genuine field keys only). The restated bundle is
+inhabited at the library's declarations: `PreludeModel.lean`. -/
 
 end Ochr.Meaning.DataModel.Exists.RecordsCE
 
