@@ -340,6 +340,17 @@ Then `frag_run_free` in `FragFree.lean` = `frag_run_ff` with `FragOpen` built fr
 `fragRunF` adapted to the lead's ruling (under (A): `FragRun` restated with the counter antecedent; its
 consumers pass `Inv`'s last conjunct; `Fresh` from it via `occurs_of_pos` + `occ_loan`/`occ_numBorrow`).
 
+RULING (lead, 2026-11-21): fix (A); FSt/FStT unchanged; the restatement and the consumer edits on this branch,
+one line per consumer passing Inv's last conjunct (`hp.inv`'s 14th conjunct, from the `Pre` each consumer
+holds at that state). NOT DONE (machine6 at its context limit). The call sites of FragRun: FragLet.lean
+693 (u at st₀: `hp.of_kern hk₀`) and 728 (w at stB: `hpB`), FragSeq.lean 100, FragSeqB.lean 233, FragAsg.lean
+116 and 241, FragTop.lean 58 (`(pre_stC dm D ρ).of_kern hk`), and FragSim.lean 75 through `FragRun.nat`
+(FragNatRun). SNAG at the last: FragSim's `S(u)` case calls FragNatRun inside `Column.succ_core`'s `hnum`
+callback, which receives only `Pu st₀` (= FSt Γ), not `Pre`; so FragNatRun cannot be given the counter
+fact there without changing `succ_core`'s `hnum` to also receive it (Column.lean: one line in the
+statement, one at its use (line 330: `(hp.of_kern hk₀).inv`), and one binder in each of its two other
+callers, ColumnC.lean 257 and ColumnBSim.lean 146). Reported to the lead.
+
 Traps met (machine6): the names `FT`, `topTemps` are ambiguous inside `Machine` (write `Form.FT`,
 `Form.topTemps`); a lemma named `Fresh.endE`/`FStT.endE` shadows `endE` inside its own statement (named
 `ofEnd`); a lemma about `FSt`/`FStT` must be declared `_root_.Ochr.Meaning.Steps.Form.FSt.x` for dot
