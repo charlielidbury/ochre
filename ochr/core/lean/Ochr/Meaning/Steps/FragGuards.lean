@@ -111,6 +111,25 @@ def stA : MState := { env := #[{ binds := #[bN "a" (.succ .zero)] }] }
 -- the mode after is the mode before
 #guard modeOf (outSt (Ochr.eval 100 true (.letIn ⟨"y"⟩ (.borrow (.var 0)) .zero) none) stA 1000) == (false, false, false, 0)
 
+-- `BorrowLentInv`: `&x` of a lent `x` (variable 3 of `st2`, another borrow live): ends `0`, lends at `2`
+#guard outVal (Ochr.evalCore 100 true (.borrow (.var 3)) none) st2 1000 == (.borrow 2 (.succ .zero), some (.tRef .tNat))
+#guard vals (outSt (Ochr.evalCore 100 true (.borrow (.var 3)) none) st2 1000) == [.loan 2, .loan 1, .bot, .borrow 1 .zero]
+#guard modeOf (outSt (Ochr.evalCore 100 true (.borrow (.var 3)) none) st2 1000) == (false, false, false, 0)
+-- `BorrowBotInv`
+#guard !isOk (Ochr.evalCore 100 true (.borrow (.var 0)) none) stB0 1000
+-- `AssignVarInv`: lent (ends `0`, then overwrites), moved, a number read by `u`
+#guard outVal (Ochr.evalCore 100 true (.assign (.var 3) .zero) none) st2 1000 == (.unit, some .tUnit)
+#guard vals (outSt (Ochr.evalCore 100 true (.assign (.var 3) .zero) none) st2 1000) == [.zero, .loan 1, .bot, .borrow 1 .zero]
+#guard vals (outSt (Ochr.evalCore 100 true (.assign (.var 0) .zero) none) stB0 1000) == [.zero]
+#guard vals (outSt (Ochr.evalCore 100 true (.assign (.var 0) (.succ (.place (.var 0)))) none) stX1 1000) == [.succ (.succ .zero)]
+-- `AssignDerefInvF`: another borrow live: kept; `y ↦ ⊥`: the write fails
+#guard vals (outSt (Ochr.evalCore 100 true (.assign (.deref (.var 1)) .zero) none) st2 1000) ==
+  [.loan 0, .loan 1, .borrow 0 .zero, .borrow 1 .zero]
+def stYB : MState := { env := #[{ binds := #[bN "x" (.succ .zero), bR "y" .bot] }] }
+#guard !isOk (Ochr.evalCore 100 true (.assign (.deref (.var 0)) .zero) none) stYB 1000
+-- `*y := x` with `y = &x`: `u`'s read of `x` ends `y`'s borrow, then the write fails
+#guard !isOk (Ochr.eval 100 true (.letIn ⟨"y"⟩ (.borrow (.var 0)) (.assign (.deref (.var 0)) (.place (.var 1)))) none) stA 1000
+
 end FragGuards
 
 end Ochr.Meaning.Steps.Form

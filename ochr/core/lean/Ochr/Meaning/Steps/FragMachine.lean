@@ -127,4 +127,74 @@ def InvPopUnit : Prop :=
     Inv D Γ st.norm → Inv D Γ { st with env := Env.popBindE st.env }.norm
 
 
+/-! ## For the open cases `&x`, `x := u`, `*y := u` (lead11, stated for the machine lane's review) -/
+
+/-- **`evalCore` of `&x` for `x` LENT** (`.borrow (.var i)`; the generalisation of `BorrowNumInv`): `x`
+at `.bind f j`, stored at `Nat`, holds `loan_m` whose borrow `borrow_m c` is held at the binding
+`.bind f' j'` (`FEnd`; a temporary holder is a value in flight, whose end the access rejects, D106).
+After a quiet stretch (the end's [Repack]) the access ends `m` (`endE`), then `x` is lent at the
+counter: the value is `borrow_{st₁.nextLoan} c` at `&Nat`. `#eval`ed in `FragGuards`. -/
+def BorrowLentInv : Prop :=
+  ∀ (n i : Nat) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value) (f j : Nat)
+    (b : Binding) (f' j' m : Nat) (c : Value) (D : Decisions),
+    Mode st → ckVarPos st.env i = some (.bind f j) → st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
+    b.ty = some .tNat → FEnd st.env (.bind f j) (.bind f' j') m c → DecTab D st' →
+    Runs (Ochr.evalCore (n + 1) true (.borrow (.var i)) hint) st bh (v, T?) st' →
+    Mode st' ∧ ∃ st₁, Quiet st st₁ ∧ KeepsInv st st₁ ∧ v = .borrow st₁.nextLoan c ∧ T? = some (.tRef .tNat) ∧
+      Kern { st₁ with env := Env.setAtE (endE st₁.env (.bind f j) (.bind f' j') c) (.bind f j) (.loan st₁.nextLoan),
+        nextLoan := st₁.nextLoan + 1 } st'
+
+/-- **`&x` of a MOVED number variable fails** (typed). -/
+def BorrowBotInv : Prop :=
+  ∀ (n i : Nat) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value) (f j : Nat)
+    (b : Binding),
+    ckVarPos st.env i = some (.bind f j) → st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
+    b.val = .bot → b.ty = some .tNat →
+    ¬ Runs (Ochr.evalCore (n + 1) true (.borrow (.var i)) hint) st bh (v, T?) st'
+
+/-- **`evalCore` of a typed write at a ROOT number variable** (`x := u`; `AssignNumInv` is the field
+write `x.0 := u`): `u` run from the entry's kernel, in mode, the one-shot flag clear, at the hint the
+checker hands (left free); then, where `u`'s value is a number, after a quiet stretch (the place's
+type, the comparison of `u`'s type with it, the end's [Repack]), the write: `x`'s old content a number
+or `⊥` is overwritten; `x` LENT (`FEnd` at `u`'s end, holder a binding) has its borrow ended first
+(`endE`), then is overwritten. The invariant across the quiet stretch where `u`'s type is `Nat` (as
+`AssignDerefInv`). `#eval`ed in `FragGuards` (number, lent with another borrow live, moved). -/
+def AssignVarInv : Prop :=
+  ∀ (n i : Nat) (u : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
+    (D : Decisions),
+    Mode st → st.tailNext = false → st.tailDecl = none →
+    (∀ f j b, ckVarPos st.env i = some (.bind f j) → st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
+      b.ty = some .tNat) → DecTab D st' →
+    Runs (Ochr.evalCore (n + 1) true (.assign (.var i) u) hint) st bh (v, T?) st' →
+    ∃ (st₀ st₁ : MState) (hu : Option Value) (v₀ : Value) (T₀ : Option Value) (bh₁ : Nat),
+      Kern st st₀ ∧ Mode st₀ ∧ st₀.tailNext = false ∧ st₀.tailDecl = none ∧ Runs (Ochr.eval n true u hu) st₀ bh₁ (v₀, T₀) st₁ ∧
+      DecTab D st₁ ∧ v = .unit ∧ T? = some .tUnit ∧
+      ∀ f j b, ckVarPos st₁.env i = some (.bind f j) → st₁.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
+        v₀.Num →
+        ∃ st₂, Quiet st₁ st₂ ∧ ((∀ T, T₀ = some T → (T == .tNat) = true) → KeepsInv st₁ st₂) ∧ ModeEq st₁ st' ∧
+          ((b.val.Num ∨ b.val = .bot) → Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) v₀ } st') ∧
+          (∀ f' j' m c, FEnd st₁.env (.bind f j) (.bind f' j') m c →
+            Kern { st₂ with env := Env.setAtE (endE st₂.env (.bind f j) (.bind f' j') c) (.bind f j) v₀ } st')
+
+/-- **`AssignDerefInv` with the case it leaves out**: where `y` holds `⊥` at `u`'s end (its borrow
+ended by `u`, e.g. `*y := x` with `y = &x`) the write fails. Stated as `AssignDerefInv`'s
+decomposition with one more conjunct (the machine lane's proof of `AssignDerefInv` plus that case). -/
+def AssignDerefInvF : Prop :=
+  ∀ (n i : Nat) (u : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
+    (D : Decisions),
+    Mode st → st.tailNext = false → st.tailDecl = none →
+    (∀ f j b, ckVarPos st.env i = some (.bind f j) → st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
+      b.ty = some (.tRef .tNat)) → DecTab D st' →
+    Runs (Ochr.evalCore (n + 1) true (.assign (.deref (.var i)) u) hint) st bh (v, T?) st' →
+    ∃ (st₀ st₁ : MState) (hu : Option Value) (v₀ : Value) (T₀ : Option Value) (bh₁ : Nat),
+      Kern st st₀ ∧ Mode st₀ ∧ st₀.tailNext = false ∧ st₀.tailDecl = none ∧ Runs (Ochr.eval n true u hu) st₀ bh₁ (v₀, T₀) st₁ ∧
+      DecTab D st₁ ∧ v = .unit ∧ T? = some .tUnit ∧
+      (∀ f j b, ckVarPos st₁.env i = some (.bind f j) → st₁.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
+        b.val ≠ .bot) ∧
+      ∀ f j b l w, ckVarPos st₁.env i = some (.bind f j) → st₁.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
+        b.val = .borrow l w → w.Num →
+        ∃ st₂, Quiet st₁ st₂ ∧ ((∀ T, T₀ = some T → (T == .tNat) = true) → KeepsInv st₁ st₂) ∧ ModeEq st₁ st' ∧
+          ckVarPos st₂.env i = some (.bind f j) ∧ st₂.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b ∧
+          Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.borrow l v₀) } st'
+
 end Ochr.Meaning.Steps.Form

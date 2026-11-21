@@ -27,7 +27,7 @@ Facts about the checker it assumes (the bundle `FragFacts`). Proved by the machi
 - `DropLentFail` (`FragMachine`, lead11): the drop of a binding lent to the value in flight fails (`let x = Z; &x` is rejected).
 - `InvBindUnit`, `InvPopUnit` (state-level, lead11): the unit twins of `InvBindNum`, `InvPopBind`. Not run.
 - `FragDec D` (the decisions' lane): at a fragment state a fragment term of type `A` is classified neither statement nor proof and read `A.rd`. NOT yet checked against the fuel-free table.
-- For the next case (`;` after a borrow), stated, sanity-run, NOT yet used: `SeqBorInv` (lead11: its `ModeEq st₁ stW` moved under the antecedent, as in `SeqInv`).
+- For the open cases, stated, sanity-run, NOT yet used: `SeqBorInv` (`;` after a borrow; lead11: its `ModeEq st₁ stW` moved under the antecedent, as in `SeqInv`); `BorrowLentInv` (`&x` of a lent `x`: end, then lend), `BorrowBotInv` (`&x` of a moved `x` fails), `AssignVarInv` (`x := u` at a root: a number or `⊥` overwritten; lent: end, then overwrite), `AssignDerefInvF` (`AssignDerefInv` plus: `y` holding `⊥` at `u`'s end makes the write fail, e.g. `*y := x` with `y = &x`). `&x` of a number needs no new fact: `BorrowNumInv` (proved) allows other live borrows.
 `FSt` gained (lead11) `order` (a lender's binding precedes its holder's), `lent` (a lent binding is a number variable read `.other`), `frame` (a top frame exists).
 
 For the model lane (from lead10): `Run.lean`'s `.succ` still hands `.plain nat` to its argument where the typed checker hands none (harmless for the fragment: `Frag.frag_hint`).
