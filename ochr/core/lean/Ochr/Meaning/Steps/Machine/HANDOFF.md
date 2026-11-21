@@ -376,6 +376,20 @@ PROVED (standard axioms, root-imported, branch `spine-machine7`):
 Not touched: `FragTop.lean`'s docstrings still call `FragOpen` "the facts not yet proved" (outside this
 lane's files).
 
+READ, NOT PROVED (lead14's statements in `Steps/ParFacts.lean` on `spine-lead14`, against the checker):
+- `VarNumAInv`: TRUE as stated. The read of a variable holding `Sᵏ(Z)` or `Sᵏ(σ)` takes the number's
+  code path in `evalCore`/`readPlace`/`repackAt`: `hasDependent` is false on `.abs` (so [Repack]
+  returns at once), `firstLiveLoanOnPath`, `loans`, `ownedLoans`, `outerLoans`, `hasHole` see no atom in
+  `.abs σ`, the read's `match` takes the `_` arm. The one new step is `unsizedCheck` on a bare `.abs σ`
+  at runtime (`absType σ`, `isUnsizedType`): it only reads the state, or fails. Proof = `varNumInv`'s
+  (`ReadInv.lean`) with `NumAt.num` generalised, `runs_hasDependent` and `runs_unsizedCheck` for NumA,
+  and the value split `zero | succ | abs`.
+- `InvNumA`: all three TRUE as stated. A numeral over an unknown holds no loan, borrow, `⊥`, closure,
+  sealed program or constructor value, so every clause of `Inv` reading Ω's values is as for a number;
+  the one new obligation is (WF6)'s bound on the unknowns occurring in Ω (`Refd σ → σ < absTy.size`),
+  which `push` gets from `NumAt` (`absTy[σ]? = some Nat`); `pop` and `setBot` only remove atoms
+  (`fitsInd ⊥ = true` for (V); the `⊥` at a path-free binding holding no loan meets (WF14)).
+
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
 Reachable from `checkProgram`: `Loc.termAddr` (`opaque`/`implemented_by`, the standard's one allowed
