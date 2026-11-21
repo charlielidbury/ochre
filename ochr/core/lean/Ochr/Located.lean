@@ -17,33 +17,51 @@ def atLoc {α : Type} (l : Option Loc) (x : M α) : M α :=
   | none => x
   | some l => locateErrors l x
 
-/-- The evaluation `x` of the term `t`, located: an error escaping it is reported at `t`'s
-source range, unless a term inside it already was (the innermost wins). Only in the checked
-declaration's own code at this point: at call depth 0 (a callee's body and a sealed program's
-re-run raise `depth`; their errors belong to the call, or the point, that started them). A call
-also makes its arguments' ranges the ones `callType` reads. With `Config.recordStates` (dev
-tooling, `Sweep.lean`), the whole state is logged at such a term on entry and on a successful
-exit (`noteState`), with the value and type `flight` reads off the result. -/
-@[inline] def located {α : Type} (t : Term) (x : M α) (flight : α → Option (Value × Option Value) := fun _ => none) : M α := do
+/-- Dev tooling (`Config.recordStates`): log the whole state at the located term `l`. -/
+def noteStateAt (l : Option Loc) (exit : Bool) (v : Option (Value × Option Value)) : M Unit := do
+  let s ← get
+  if s.cfg.recordStates then
+    if let some l := l then modifyThe (Array LogEntry) (·.push (.state l exit v s))
+
+/-- `located` without the record at call depths above 0 (`Config.recordDeep`). -/
+@[inline] def locatedCore {α : Type} (t : Term) (x : M α) (flight : α → Option (Value × Option Value)) : M α := do
   let s ← get
   if s.locs.table.isEmpty then x else
   let a := termAddr t
   let here := s.depth == 0 && s.locs.on
   let saved := (s.locs.callArgs, s.locs.here)
   let l := if here then s.locs.table.get? a else none
-  noteState l false none
+  noteStateAt l false none
   set { s with locs.callArgs := if here then s.locs.args.getD a #[] else #[],
                locs.here := if l.isSome then l else s.locs.here }
   let r ← if here then atLoc l x else x
   modify fun s => { s with locs.callArgs := saved.1, locs.here := saved.2 }
-  noteState l true (flight r)
+  noteStateAt l true (flight r)
   pure r
-where
-  /-- Dev tooling (`Config.recordStates`): log the whole state at the located term `l`. -/
-  noteState (l : Option Loc) (exit : Bool) (v : Option (Value × Option Value)) : M Unit := do
-    let s ← get
-    if s.cfg.recordStates then
-      if let some l := l then modifyThe (Array LogEntry) (·.push (.state l exit v s))
+
+/-- The evaluation `x` of the term `t`, located: an error escaping it is reported at `t`'s
+source range, unless a term inside it already was (the innermost wins). Only in the checked
+declaration's own code at this point: at call depth 0 (a callee's body and a sealed program's
+re-run raise `depth`; their errors belong to the call, or the point, that started them). A call
+also makes its arguments' ranges the ones `callType` reads. With `Config.recordStates` (dev
+tooling, `Sweep.lean`), the whole state is logged at such a term on entry and on a successful
+exit (`noteStateAt`), with the value and type `flight` reads off the result; with
+`Config.recordDeep`, at every evaluation at call depth above 0 too (`LogEntry.deep`). -/
+@[inline] def located {α : Type} (t : Term) (x : M α) (flight : α → Option (Value × Option Value) := fun _ => none)
+    (ownTyping : Option Bool := none) : M α := do
+  let s ← get
+  -- dev tooling (`Config.recordDeep`): the state at every evaluation at call depth above 0
+  let deep := s.cfg.recordDeep && s.depth > 0 && (s.privateDepth == 0 || s.cfg.recordDeepPrivate)
+  if deep then modifyThe (Array LogEntry) (·.push (.deep false none s))
+  let r ← locatedCore t x flight
+  if deep then
+    -- on exit the value in flight is the term's own, typed or not as its run is (`ownTyping`), not
+    -- as the enclosing term's, whose flag the state has again (a callee body's top term: untyped,
+    -- inside a typed call)
+    let s' ← get
+    let s' := match ownTyping with | some b => { s' with typing := b } | none => s'
+    modifyThe (Array LogEntry) (·.push (.deep true (flight r) s'))
+  pure r
 
 /-- Run `x` with no term located: it is not the declaration's own code at this point. -/
 def unlocated {α : Type} (x : M α) : M α := do
