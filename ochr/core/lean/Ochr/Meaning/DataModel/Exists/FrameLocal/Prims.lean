@@ -494,6 +494,437 @@ theorem Pre.discardEnd {s : SState} (h : Pre Q β s) (R : TyS) : Pre Q β (disca
   | none => exact h
   | some l => exact h.endLabel l
 
+theorem Pre.of_env {s t : SState} (h : Pre Q β s) (he : t.env = s.env) (hs : t.shape = s.shape) : Pre Q β t :=
+  h.of_envLe (EnvLe.of_env he) (fun p hp => by rw [hs]; exact h.shape p hp)
+
+theorem borrowPlace_qset {s : SState} (h : Pre Q β s) {p : Place} (hp : RAvoid Q s p) :
+    Comm Q β (borrowPlace K φ p) s := by
+  unfold Comm borrowPlace
+  show Option.bind (contentOf K φ p (qset Q β s)) _ = qmap Q β (Option.bind (contentOf K φ p s) _)
+  rw [contentOf_qset K φ h hp]
+  cases hc : contentOf K φ p s with
+  | none => rfl
+  | some y =>
+    obtain ⟨⟨v, T, pos, steps⟩, s₁⟩ := y
+    obtain ⟨hr, rfl⟩ := contentOf_some K φ hc
+    have hq : ¬ Q pos := hp pos steps hr
+    have h₁ := h.access pos (dataHit steps)
+    simp only [qmap, Option.map_some, Option.bind_some]
+    split
+    · rfl
+    · rw [qset_freshLoan]
+      dsimp only
+      have h₂ : Pre Q β (s.access pos (dataHit steps)).freshLoan.2 := h₁.of_env rfl rfl
+      rw [qset_tyAt_not _ hq, qset_valAt_not _ hq, qset_setAt _ hq, qset_pushTempShaped _ h.temp]
+      rfl
+
+theorem qset_ifAccess {s : SState} (h : Pre Q β s) (c : Bool) (pos : Pos) (hit : List Step → Bool) :
+    (if c then qset Q β s else (qset Q β s).access pos hit) = qset Q β (if c then s else s.access pos hit) := by
+  cases c
+  · simp only [Bool.false_eq_true, if_false]; exact qset_access' h pos hit
+  · rfl
+
+theorem Pre.ifAccess {s : SState} (h : Pre Q β s) (c : Bool) (pos : Pos) (hit : List Step → Bool) :
+    Pre Q β (if c then s else s.access pos hit) := by
+  cases c
+  · exact h.access pos hit
+  · exact h
+
+theorem assignOk_qset {s : SState} (h : Pre Q β s) {p : Place} (hp : RAvoid Q s p) :
+    AssignOk K φ p (qset Q β s) ↔ AssignOk K φ p s := by
+  unfold AssignOk
+  rw [qset_resolve]
+  cases hr : resolve s p with
+  | none => exact Iff.rfl
+  | some ps =>
+    obtain ⟨pos, steps⟩ := ps
+    have hq : ¬ Q pos := hp pos steps hr
+    dsimp only
+    have hsh : (qset Q β s).shape pos = s.shape pos := by simp [hq]
+    rw [hsh, qset_ifAccess h, accessOk_qset K φ h]
+    have h₁ := h.ifAccess (steps.isEmpty && (s.shape pos).isSome) pos (dataHit steps)
+    refine and_congr Iff.rfl (imp_congr_right fun _ => forall_congr' fun l => ?_)
+    simp only [qset_shape, if_neg hq]
+    rw [endOk_qset K φ h₁]
+
+theorem assignAt_qset {s : SState} (h : Pre Q β s) {p : Place} (hp : RAvoid Q s p) (v : Sem) (lab : Option Nat) :
+    Comm Q β (assignAt K φ p v lab) s := by
+  unfold Comm assignAt
+  rw [qset_resolve]
+  cases hr : resolve s p with
+  | none => rfl
+  | some ps =>
+    obtain ⟨pos, steps⟩ := ps
+    have hq : ¬ Q pos := hp pos steps hr
+    dsimp only
+    have hsh : (qset Q β s).shape pos = s.shape pos := by simp [hq]
+    rw [hsh, qset_ifAccess h]
+    have h₁ := h.ifAccess (steps.isEmpty && (s.shape pos).isSome) pos (dataHit steps)
+    generalize (if (steps.isEmpty && (s.shape pos).isSome) = true then s else s.access pos (dataHit steps)) = s₁ at h₁
+    have hs1 : (qset Q β s₁).shape pos = s₁.shape pos := by simp [hq]
+    cases hst : steps.isEmpty
+    · simp only [hst, Bool.false_eq_true, if_false]
+      have h₂ := h₁
+      generalize s₁ = s₂ at h₂ ⊢
+      have hc := setContent_qset K φ hq h₂ steps v
+      unfold Comm at hc
+      rw [hc]
+      cases hs : setContent K φ pos steps v s₂ with
+      | none => rfl
+      | some z =>
+        obtain ⟨u, s₃⟩ := z
+        obtain ⟨g, rfl⟩ := setContent_state K φ hs
+        have h₃ := h₂.setAt pos g
+        simp only [qmap, Option.map_some]
+        cases lab with
+        | none => rfl
+        | some l =>
+          cases steps with
+          | nil =>
+            simp only [Option.some.injEq, Prod.mk.injEq, true_and]
+            rw [qset_takeLabel h₃.shape]
+            refine state_eq rfl ?_ rfl rfl rfl rfl
+            funext q
+            by_cases e : q = pos
+            · subst e; simp [hq]
+            · simp [e]
+          | cons _ _ => rfl
+    · simp only [hst, if_true]
+      rw [hs1]
+      cases hsl : s₁.shape pos with
+      | none =>
+        dsimp only
+        have h₂ := h₁
+        generalize s₁ = s₂ at h₂ ⊢
+        have hc := setContent_qset K φ hq h₂ steps v
+        unfold Comm at hc
+        rw [hc]
+        cases hs : setContent K φ pos steps v s₂ with
+        | none => rfl
+        | some z =>
+          obtain ⟨u, s₃⟩ := z
+          obtain ⟨g, rfl⟩ := setContent_state K φ hs
+          have h₃ := h₂.setAt pos g
+          simp only [qmap, Option.map_some]
+          cases lab with
+          | none => rfl
+          | some l =>
+            cases steps with
+            | nil =>
+              simp only [Option.some.injEq, Prod.mk.injEq, true_and]
+              rw [qset_takeLabel h₃.shape]
+              refine state_eq rfl ?_ rfl rfl rfl rfl
+              funext q
+              by_cases e : q = pos
+              · subst e; simp [hq]
+              · simp [e]
+            | cons _ _ => rfl
+      | some l =>
+        dsimp only
+        rw [qset_endLabel' h₁ l]
+        have h₂ := h₁.endLabel l
+        generalize s₁.endLabel l = s₂ at h₂ ⊢
+        have hc := setContent_qset K φ hq h₂ steps v
+        unfold Comm at hc
+        rw [hc]
+        cases hs : setContent K φ pos steps v s₂ with
+        | none => rfl
+        | some z =>
+          obtain ⟨u, s₃⟩ := z
+          obtain ⟨g, rfl⟩ := setContent_state K φ hs
+          have h₃ := h₂.setAt pos g
+          simp only [qmap, Option.map_some]
+          cases lab with
+          | none => rfl
+          | some l =>
+            cases steps with
+            | nil =>
+              simp only [Option.some.injEq, Prod.mk.injEq, true_and]
+              rw [qset_takeLabel h₃.shape]
+              refine state_eq rfl ?_ rfl rfl rfl rfl
+              funext q
+              by_cases e : q = pos
+              · subst e; simp [hq]
+              · simp [e]
+            | cons _ _ => rfl
+
+theorem labTyOk_qset (s : SState) (lab : Option Nat) (T : TyM) : labTyOk (qset Q β s) lab T ↔ labTyOk s lab T :=
+  Iff.rfl
+
+theorem borrowArgsTyped_qset {s : SState} (h : Pre Q β s) (R : DataRead) (fv : Res) (args : List Res) :
+    BorrowArgsTyped R fv args (qset Q β s) ↔ BorrowArgsTyped R fv args s := by
+  unfold BorrowArgsTyped; rw [qset_liveLabels h.shape, qset_heldTy]
+
+theorem qset_mapVals_const {X : SState} (h : Pre Q β X) (F : Pos → SVal → SVal)
+    (hF : ∀ p c, F p (fun _ => c) = fun _ => c) : (qset Q β X).mapVals F = qset Q β (X.mapVals F) :=
+  qset_mapVals X F F h.temp (fun f i _ _ hq => by
+    obtain ⟨c, hc⟩ := h.const _ hq; rw [hc, hF]) (fun _ _ _ => rfl)
+
+theorem Pre.mapVals {X : SState} (h : Pre Q β X) (F : Pos → SVal → SVal) : Pre Q β (X.mapVals F) :=
+  h.of_envLe (envLe_mapVals X F) h.shape
+
+theorem Pre.freshLoan {X : SState} (h : Pre Q β X) : Pre Q β X.freshLoan.2 := h.of_env rfl rfl
+
+theorem qset_foldl_takeLabel : ∀ (ls : List Nat) {s : SState}, Pre Q β s →
+    ls.foldl SState.takeLabel (qset Q β s) = qset Q β (ls.foldl SState.takeLabel s) ∧
+      Pre Q β (ls.foldl SState.takeLabel s)
+  | [], _, h => ⟨rfl, h⟩
+  | l :: ls, s, h => by
+    simp only [List.foldl_cons]
+    rw [qset_takeLabel h.shape]
+    exact qset_foldl_takeLabel ls (h.takeLabel l)
+
+theorem callOfL_qset.{u} {s : SState} (h : Pre Q β s) (Lv : Lvl.{u}) {C : Type u} (t : Tel Lv.Code PUnit C)
+    (fv : Sem) (args : List Res) : Comm Q β (callOfL Lv t fv args) s := by
+  unfold Comm callOfL
+  dsimp only
+  rw [(qset_foldl_takeLabel _ h).1]
+  split
+  · rw [qset_mapVals_const (qset_foldl_takeLabel _ h).2 _ (fun _ _ => rfl)]; rfl
+  · rw [qset_freshLoan]
+    dsimp only
+    rw [qset_mapVals_const (qset_foldl_takeLabel _ h).2.freshLoan _ (fun p c => by funext φ'; split <;> rfl)]
+    rw [qset_pushTempShaped _ h.temp]
+    rfl
+  · rfl
+
+theorem callOf_qset {s : SState} (h : Pre Q β s) (R : DataRead) (fv : Res) (args : List Res) :
+    Comm Q β (callOf R fv args) s := by
+  unfold Comm callOf
+  split
+  · exact callOfL_qset h _ _ _ _
+  · exact callOfL_qset h _ _ _ _
+  · exact callOfL_qset h _ _ _ _
+  · rfl
+
 end
+
+/-! ## Moved places, the scope, the join's drop -/
+
+mutual
+theorem movedIn_whole : (v : Sem) → (q : Place) → v.whole → Sem.movedIn v q = []
+  | .el0 _ _, _, _ => by simp [Sem.movedIn]
+  | .el1 _ _, _, _ => by simp [Sem.movedIn]
+  | .el2 _ _, _, _ => by simp [Sem.movedIn]
+  | .ty _, _, _ => by simp [Sem.movedIn]
+  | .proof, _, _ => by simp [Sem.movedIn]
+  | .err, _, _ => by simp [Sem.movedIn]
+  | .moved, _, h => absurd h (by simp [Sem.whole])
+  | .dat t r c fs, q, h => by
+    have h' : ∀ f ∈ fs, f.whole := by simpa [Sem.whole] using h
+    rw [Sem.movedIn]
+    split
+    · exact movedInNat_whole fs q h'
+    · exact movedInFields_whole t c q 0 fs h'
+theorem movedInFields_whole (t : String) (c : Nat) (q : Place) :
+    (i : Nat) → (fs : List Sem) → (∀ f ∈ fs, f.whole) → Sem.movedInFields t c q i fs = []
+  | _, [], _ => by simp [Sem.movedInFields]
+  | i, w :: ws, h => by
+    rw [Sem.movedInFields, movedIn_whole w _ (h w (by simp)),
+      movedInFields_whole t c q (i + 1) ws (fun f hf => h f (by simp [hf]))]
+    rfl
+theorem movedInNat_whole : (fs : List Sem) → (q : Place) → (∀ f ∈ fs, f.whole) → Sem.movedInNat fs q = []
+  | [], _, _ => by simp [Sem.movedInNat]
+  | w :: _, q, h => by rw [Sem.movedInNat]; exact movedIn_whole w _ (h w (by simp))
+end
+
+section
+variable (K : RunCtx) (φ : Future) {Q : Pos → Prop} {β β' : Pos → SBinding}
+
+theorem Good.whole {K : RunCtx} {b : SBinding} (hb : Good K b) (ψ : Future) : (b.val ψ).whole := by
+  obtain ⟨c, hc, hw, -⟩ := hb; rw [hc]; exact hw
+
+theorem pos_bind {s : SState} {p : Pos} (h : Pre Q β s) (hq : Q p) : ∃ f i, p = .bind f i := by
+  cases p with
+  | bind f i => exact ⟨f, i, rfl⟩
+  | temp f i => exact absurd hq (h.temp f i)
+
+theorem movedPlaces_qset {s : SState} (h : Pre Q β' s) (hfix : qset Q β s = s) (hg : ∀ p, Q p → Good K (β p))
+    (hg' : ∀ p, Q p → Good K (β' p)) : movedPlaces φ (qset Q β' s) = movedPlaces φ s := by
+  unfold movedPlaces
+  have hlf : (qset Q β' s).lentFuture φ = s.lentFuture φ := by
+    unfold SState.lentFuture; rw [qset_liveLabels h.shape]
+  rw [qset_getLast, hlf, qset_shape_eq h.shape]
+  cases s.env.getLast? with
+  | none => rfl
+  | some fr =>
+    simp only [Option.map_some, qframe_binds_length, qset_varPos]
+    congr 1; funext i
+    cases hv : s.varPos i with
+    | none => rfl
+    | some pos =>
+      dsimp only
+      by_cases hq : Q pos
+      · obtain ⟨f, j, rfl⟩ := pos_bind h hq
+        have hp := h.pos _ hq
+        rw [qset_valAt_of s hq hp, fix_valAt hfix hq hp, movedIn_whole _ _ ((hg' _ hq).whole _),
+          movedIn_whole _ _ ((hg _ hq).whole _)]
+      · rw [qset_valAt_not s hq]
+
+theorem scopeOf_qset_decl (s : SState) (hd : ∀ p, Q p → (β' p).decl = (β p).decl) :
+    scopeOf (qset Q β' s) = scopeOf (qset Q β s) := by
+  unfold scopeOf
+  rw [qset_getLast, qset_getLast]
+  cases s.env.getLast? with
+  | none => rfl
+  | some fr =>
+    simp only [Option.map_some]
+    congr 1
+    apply List.ext_getElem?
+    intro i
+    simp only [List.getElem?_map, qframe_binds_get]
+    cases fr.binds[i]? with
+    | none => rfl
+    | some b =>
+      by_cases hq : Q (.bind s.topIdx i)
+      · simp [hq, hd _ hq]
+      · simp [hq]
+
+theorem scopeOf_qset {s : SState} (hfix : qset Q β s = s) (hd : ∀ p, Q p → (β' p).decl = (β p).decl) :
+    scopeOf (qset Q β' s) = scopeOf s := by
+  rw [scopeOf_qset_decl s hd, hfix]
+
+theorem lentPrefix_qset {s : SState} (h : Pre Q β s) (pos : Pos) (steps : List Step) :
+    lentPrefix (qset Q β s) pos steps = lentPrefix s pos steps := by
+  unfold lentPrefix; rw [qset_liveLabels h.shape, qset_reached]
+
+theorem accessLentPrefix_qset {s : SState} (h : Pre Q β s) (pos : Pos) (steps : List Step) :
+    accessLentPrefix pos steps (qset Q β s) = qset Q β (accessLentPrefix pos steps s) := by
+  unfold accessLentPrefix; rw [lentPrefix_qset h]
+  cases lentPrefix s pos steps with
+  | none => rfl
+  | some ψ => exact qset_access' h _ _
+
+theorem Pre.accessLentPrefix {s : SState} (h : Pre Q β s) (pos : Pos) (steps : List Step) :
+    Pre Q β (accessLentPrefix pos steps s) := by
+  unfold Ochr.Meaning.accessLentPrefix
+  cases lentPrefix s pos steps with
+  | none => exact h
+  | some ψ => exact h.access _ _
+
+theorem lentPrefixOk_qset {s : SState} (h : Pre Q β s) (pos : Pos) (steps : List Step) :
+    LentPrefixOk K φ pos steps (qset Q β s) ↔ LentPrefixOk K φ pos steps s := by
+  unfold LentPrefixOk; rw [lentPrefix_qset h]
+  cases lentPrefix s pos steps with
+  | none => exact Iff.rfl
+  | some ψ => exact accessOk_qset K φ h _ _
+
+theorem dropAt_qset {s : SState} (h : Pre Q β s) {pos : Pos} (hq : ¬ Q pos) (hsc : scopeOf (qset Q β s) = scopeOf s)
+    (q : Place) (steps : List Step) :
+    dropAt K φ q pos steps (qset Q β s) = qset Q β (dropAt K φ q pos steps s) ∧ Pre Q β (dropAt K φ q pos steps s) := by
+  unfold dropAt
+  have hsh : (qset Q β s).shape pos = s.shape pos := by simp [hq]
+  rw [hsh, hsc]
+  have ha := h.access pos (dataHit steps)
+  rcases steps with _ | ⟨st, sts⟩
+  · cases hl : s.shape pos with
+    | some l => exact ⟨qset_endLabel' h l, h.endLabel l⟩
+    | none =>
+      dsimp only
+      rw [qset_access' h, qset_tyAt_not _ hq, typedFut_qset K φ ha]
+      simp only [qset_valAt_not _ hq]
+      split
+      · exact ⟨rfl, h⟩
+      · split
+        · exact ⟨qset_setAt _ hq _, ha.setAt _ _⟩
+        · exact ⟨rfl, h⟩
+  · dsimp only
+    rw [qset_access' h, qset_tyAt_not _ hq, typedFut_qset K φ ha]
+    simp only [qset_valAt_not _ hq]
+    split
+    · exact ⟨rfl, h⟩
+    · split
+      · exact ⟨qset_setAt _ hq _, ha.setAt _ _⟩
+      · exact ⟨rfl, h⟩
+
+theorem dropOk_qset {s : SState} (h : Pre Q β s) {pos : Pos} (hq : ¬ Q pos) (hsc : scopeOf (qset Q β s) = scopeOf s)
+    (q : Place) (steps : List Step) : DropOk K φ q pos steps (qset Q β s) ↔ DropOk K φ q pos steps s := by
+  unfold DropOk
+  have hsh : (qset Q β s).shape pos = s.shape pos := by simp [hq]
+  rw [hsh, hsc]
+  have ha := h.access pos (dataHit steps)
+  rcases steps with _ | ⟨st, sts⟩
+  · cases hl : s.shape pos with
+    | some l => exact endOk_qset K φ h l
+    | none =>
+      dsimp only
+      rw [qset_access' h, qset_tyAt_not _ hq, typedFut_qset K φ ha, accessOk_qset K φ h]
+      simp only [qset_valAt_not _ hq]
+  · dsimp only
+    rw [qset_access' h, qset_tyAt_not _ hq, typedFut_qset K φ ha, accessOk_qset K φ h]
+    simp only [qset_valAt_not _ hq]
+
+end
+
+/-! ## Roots of places -/
+
+theorem steps_fst : ∀ q : Place, q.steps.1 = q.root
+  | .var _ => rfl
+  | .deref p => by simp only [Place.steps, Place.root]; exact steps_fst p
+  | .proj _ p => by simp only [Place.steps, Place.root]; exact steps_fst p
+  | .field _ p => by simp only [Place.steps, Place.root]; exact steps_fst p
+
+theorem rAvoid_of_root {Q : Pos → Prop} {s : SState} {q : Place} (h : ∀ pos, s.varPos q.root = some pos → ¬ Q pos) :
+    RAvoid Q s q := by
+  intro pos steps hr
+  simp only [resolve, steps_fst] at hr
+  cases hv : s.varPos q.root with
+  | none => rw [hv] at hr; cases hr
+  | some pos' =>
+    rw [hv] at hr
+    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hr
+    exact hr.1 ▸ h pos' hv
+
+mutual
+theorem movedIn_root : (v : Sem) → (q : Place) → ∀ x ∈ Sem.movedIn v q, x.root = q.root
+  | .moved, q, x, hx => by simp [Sem.movedIn] at hx; rw [hx]
+  | .dat t r c fs, q, x, hx => by
+    rw [Sem.movedIn] at hx
+    split at hx
+    · exact movedInNat_root fs q x hx
+    · exact movedInFields_root t c q 0 fs x hx
+  | .el0 _ _, _, _, hx | .el1 _ _, _, _, hx | .el2 _ _, _, _, hx | .ty _, _, _, hx | .proof, _, _, hx
+  | .err, _, _, hx => by simp [Sem.movedIn] at hx
+theorem movedInFields_root (t : String) (c : Nat) (q : Place) :
+    (i : Nat) → (fs : List Sem) → ∀ x ∈ Sem.movedInFields t c q i fs, x.root = q.root
+  | _, [], x, hx => by simp [Sem.movedInFields] at hx
+  | i, w :: ws, x, hx => by
+    rw [Sem.movedInFields, List.mem_append] at hx
+    rcases hx with hx | hx
+    · rw [movedIn_root w _ x hx]; rfl
+    · exact movedInFields_root t c q (i + 1) ws x hx
+theorem movedInNat_root : (fs : List Sem) → (q : Place) → ∀ x ∈ Sem.movedInNat fs q, x.root = q.root
+  | [], _, x, hx => by simp [Sem.movedInNat] at hx
+  | w :: _, q, x, hx => by rw [Sem.movedInNat] at hx; rw [movedIn_root w _ x hx]; rfl
+end
+
+/-- A place already moved is rooted at a variable whose binding is not whole there. -/
+theorem mem_movedPlaces {φ : Future} {s : SState} {x : Place} (hx : x ∈ movedPlaces φ s) :
+    ∃ pos, s.varPos x.root = some pos ∧ ∃ q, x ∈ Sem.movedIn (s.valAt pos (s.lentFuture φ)) q := by
+  unfold movedPlaces at hx
+  cases hl : s.env.getLast? with
+  | none => rw [hl] at hx; cases hx
+  | some fr =>
+    rw [hl] at hx
+    simp only [List.mem_flatMap, List.mem_range] at hx
+    obtain ⟨i, -, hx⟩ := hx
+    cases hv : s.varPos i with
+    | none => rw [hv] at hx; cases hx
+    | some pos =>
+      rw [hv] at hx
+      dsimp only at hx
+      have hr := movedIn_root _ _ x hx
+      refine ⟨pos, ?_, _, hx⟩
+      rw [hr]; split <;> exact hv
+
+theorem rAvoid_of_moved {K : RunCtx} {φ : Future} {Q : Pos → Prop} {β : Pos → SBinding} {s : SState}
+    (h : Pre Q β s) (hfix : qset Q β s = s) (hg : ∀ p, Q p → Good K (β p)) {x : Place}
+    (hx : x ∈ movedPlaces φ s) : RAvoid Q s x := by
+  obtain ⟨pos, hv, q, hq⟩ := mem_movedPlaces hx
+  refine rAvoid_of_root fun pos' hv' hQ => ?_
+  rw [hv] at hv'; cases hv'
+  obtain ⟨f, i, rfl⟩ := pos_bind h hQ
+  rw [fix_valAt hfix hQ (h.pos _ hQ), movedIn_whole _ _ ((hg _ hQ).whole _)] at hq
+  cases hq
 
 end Ochr.Meaning.DataModel.Exists.FrameLocal
