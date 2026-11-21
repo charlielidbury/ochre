@@ -149,4 +149,99 @@ theorem fn_clause_I_tab (dm : DataModel) (D : Decisions) (hd : DecTab D Ochr.Mea
   let ⟨hfl, hps, hpd⟩ := fixDecJ hd
   fn_clause_I dm D hfl hps hpd st hg
 
+section
+variable {dm : DataModel} {D : Decisions} {ρ : Assignment} {φ : Future}
+
+/-- **The call of `I`'s meaning at any number `a`**: `a + 1` at `Nat`, the state as it was (`ColumnJ.callOf_fI`
+at `0`, generalised; for `J2`'s call at `1`, docs/31 D128's step (2)). Assumes what `callOf_fI` does: the
+checker's typed run of `I`'s body at its generic call and the checker facts `VarNumAInv`, `InvNumA` (the
+others are proved: `EvalInv`, `SuccInv`, `InvSteps`, `EvalLow` are the machine lane's). -/
+theorem callOf_fI_at (hE : EvalInv) (hS : SuccInv) (hI : InvSteps) (hV : VarNumAInv) (hN : InvNumA) (hlow : EvalLow)
+    (hDI : DecTab D stI) {n : Nat} {hint : Option Value} {st st' : MState} {bh : Nat} {v : Value} {T? : Option Value}
+    (hk : Kern stI st) (hm : Mode st) (htd : st.tailDecl = none) (hD : DecTab D st')
+    (h : Runs (Ochr.eval n true bodyI hint) st bh (v, T?) st') (a : Nat) (s : SState) :
+    callOf dm.read (fI dm D ρ φ, .plain (piTyAt dm.read 1 psI outI)) [(.el0 Nat a, .plain TyM.nat)] s =
+      some ((.el0 Nat (a + 1), .plain TyM.nat), s) := by
+  obtain ⟨o, ho, hr, -⟩ := gIf_run (dm := dm) (ρ := ρ) (φ := φ) hE hS hI hV hN hlow hDI hk hm htd hD h a
+  obtain ⟨s', hs'⟩ := closure_apply' dm.read 1 φ psI outI (gIf dm D ρ φ) ⟨Nat.le_refl 1, by omega⟩ rfl
+    (fun _ _ => Nat.le_refl 1) (gIf_tot hE hS hI hV hN hlow hDI hk hm htd hD h) [(.el0 Nat a, .plain TyM.nat)] s o
+    ⟨rfl, fun i x d hx hd => by
+      rcases i with _ | i
+      · simp [psI] at hx hd; subst hx; subst hd; exact ⟨a, rfl⟩
+      · simp at hx⟩
+    (fun i d hd => by rcases i with _ | i <;> simp [psI] at hd; subst hd; exact Nat.le_refl 1)
+    trivial ho
+  have hss : s' = s := callOf_unlabelled_state _ _ _ _ _ _ hs' (fun a ha => by simp at ha; subst ha; rfl) rfl
+  subst hss
+  unfold fI
+  rw [hs', hr]
+  rfl
+
+end
+
+/-- `GlobalsOk.fn` for `I` in `J`'s context also at every table aligned with the checker at `I`'s generic
+call (`stI`; `ColumnI.fixDecI` gives the same three decisions). -/
+theorem fn_clause_I_tabI (dm : DataModel) (D : Decisions) (hd : DecTab D stI) (st : MState) (hg : st.globals = [gI]) :
+    ∀ n g t, st.globals.find? (·.name == n) = some g → g.fn? = some t →
+      ((KJ dm D (fJ dm D)).cur.map (·.1)) ≠ some n → ∀ ρ φ,
+      ((KJ dm D (fJ dm D)).C.global n).1 = meanV (KJ dm D (fJ dm D)) ρ φ (.plain .err) (.clo [] t []) ∧
+      ∀ r s', run (KJ dm D (fJ dm D)) ρ φ (.plain .err) t (stateOf 0 []) = some (r, s') →
+        r.2.m = ((KJ dm D (fJ dm D)).C.global n).2.m := by
+  obtain ⟨hd1, -, hps, hfl⟩ := fixDecI hd
+  exact fn_clause_I dm D (by rw [hfl]) hps (by simp [Decisions.paramDecls, Decisions.teleDecls, hd1]) st hg
+
+section
+variable {dm : DataModel} {D : Decisions} {ρ : Assignment} {φ : Future}
+
+open Classical
+
+open Ochr.Meaning.Strict.Witness (fixClo fixTy run_fix_of_mem) in
+/-- **`fJ` is `fI`** at a table aligned with the checker at `I`'s generic call (`stI`), where the checker
+ran `I`'s body: the closure `J`'s context gives `I` is the one column `I`'s membership is about, at every
+assignment and future. So `GlobalsOk.mem` for `I` in `KJ dm D (fJ dm D)` is `ColumnJ.fI_mem` at such a
+table. Assumes what `fI_mem` does (checker facts `VarNumAInv`, `InvNumA`; the others are the machine
+lane's). -/
+theorem fJ_eq_fI (hE : EvalInv) (hS : SuccInv) (hI : InvSteps) (hV : VarNumAInv) (hN : InvNumA) (hlow : EvalLow)
+    (hDI : DecTab D stI) {n : Nat} {hint : Option Value} {st st' : MState} {bh : Nat} {v : Value} {T? : Option Value}
+    (hk : Kern stI st) (hm : Mode st) (htd : st.tailDecl = none) (hD : DecTab D st')
+    (h : Runs (Ochr.eval n true bodyI hint) st bh (v, T?) st') :
+    fJ dm D = fI dm D ρ φ := by
+  obtain ⟨hd1, -, hps, hfl⟩ := fixDecI hDI
+  have e1 : fJ dm D = meanV (KJ dm D .err) ρ φ (.plain .err) (.clo [] fixI []) :=
+    meanV_clo_closed _ (fun _ => rfl) fixI (fun _ => rfl) (fun _ => rfl) _ _ _ _
+  have hfix : fixClo (KJ dm D .err) ρ φ (stateOf 0 []) [⟨"n"⟩] [.nat] .nat none bodyI = fI dm D ρ φ := by
+    rw [← fixClo_I (dm := dm) (ρ := ρ) (φ := φ) hDI]; rfl
+  have hpd : (KJ dm D .err).D.paramDecls (scopeOf (stateOf 0 [])) [.nat] = [.other] := by
+    show D.paramDecls [] [.nat] = [.other]
+    simp [Decisions.paramDecls, Decisions.teleDecls, hd1]
+  have hty : fixTy (KJ dm D .err) ρ φ (stateOf 0 []) [⟨"n"⟩] [.nat] .nat = piTyAt dm.read 1 psI outI := by
+    unfold fixTy Strict.Witness.fixSort
+    rw [runDoms_nat _ ρ φ _ hpd, codOf_nat]
+    show piTyAt dm.read (D.piSort [] _) psI outI = _
+    rw [hps]
+  have hrun := run_fix_of_mem (K := KJ dm D .err) (ρ := ρ) (φ := φ) false (.plain .err) ⟨"I"⟩ [⟨"n"⟩] [.nat] .nat none
+    bodyI (stateOf 0 []) hfl (by show FoldOk _ _ [] _; trivial)
+    (by rw [hfix, hty]; exact fI_mem hE hS hI hV hN hlow hDI hk hm htd hD h)
+  rw [e1]
+  show (if CapsOk dm.read [] [] then
+      (match runT (KJ dm D .err) ρ φ false (.plain .err) fixI (stateOf 0 (capsState [] [])) with
+        | some ((w, _), _) => w
+        | none => .err) else .err) = _
+  rw [if_pos (show CapsOk dm.read [] [] from trivial)]
+  unfold fixI
+  rw [show capsState [] [] = [] from rfl, hrun]
+  exact hfix
+
+/-- **`GlobalsOk.mem`'s content for `I` in `J`'s context**: `fJ` is a member of `Π(n : Nat). Nat`, at a
+table aligned with the checker at `stI`, from the checker's run of `I`'s body (`fJ_eq_fI`, `fI_mem`). -/
+theorem fJ_mem (hE : EvalInv) (hS : SuccInv) (hI : InvSteps) (hV : VarNumAInv) (hN : InvNumA) (hlow : EvalLow)
+    (hDI : DecTab D stI) {n : Nat} {hint : Option Value} {st st' : MState} {bh : Nat} {v : Value} {T? : Option Value}
+    (hk : Kern stI st) (hm : Mode st) (htd : st.tailDecl = none) (hD : DecTab D st')
+    (h : Runs (Ochr.eval n true bodyI hint) st bh (v, T?) st') :
+    fJ dm D ∈ₛ[dm.read] piTyAt dm.read 1 psI outI := by
+  rw [fJ_eq_fI (ρ := fun _ => .err) (φ := noFuture) hE hS hI hV hN hlow hDI hk hm htd hD h]
+  exact fI_mem hE hS hI hV hN hlow hDI hk hm htd hD h
+
+end
+
 end Ochr.Meaning.Steps.Form.GlobalsLocal
