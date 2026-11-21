@@ -134,11 +134,14 @@ structure FrameRel (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) (s s' : SS
   the call; no run reads a parameter's record, while the strict ends read every held type, and at the
   call the parameters' held types agree by the call's strict test, `BorrowArgsTyped`) -/
   held : ∀ l, s'.Live l → (σ l ∉ ks → s.heldMem (σ l) = s'.heldMem l) ∧ s.heldTy (σ l) = s'.heldTy l
-  /-- the same sites in the top frame, renamed; only the frame's labels have one there; the closure
-  has no other -/
-  lentTop : ∀ l (x : Site), x.pos.frameOf = s₀.topIdx →
+  /-- the same sites in the top frame for the in-place state's held labels (those with a holder), renamed;
+  only the frame's labels have one there; the closure has no other. Asked of HELD labels only (lead17, docs/31
+  D135): the run reads the sites of live labels only ([Access] and the strict ends go round `liveLabels`), and a
+  dead label's sites are constrained by nothing at the call (`Rel` relates live labels' sites only), so asked of
+  every label the relation could not be started from a related caller state -/
+  lentTop : ∀ l (x : Site), x.pos.frameOf = s₀.topIdx → (∃ p, s.shape p = some (σ l)) →
     (x ∈ s.lent (σ l) ↔ { x with pos := upPos ks.length x.pos } ∈ s'.lent l)
-  lentImg : ∀ m (x : Site), x.pos.frameOf = s₀.topIdx → x ∈ s.lent m → ∃ l, m = σ l
+  lentImg : ∀ m (x : Site), x.pos.frameOf = s₀.topIdx → (∃ p, s.shape p = some m) → x ∈ s.lent m → ∃ l, m = σ l
   lentCl : ∀ l (x : Site), x ∈ s'.lent l → ∃ p, p.frameOf = s₀.topIdx ∧ x.pos = upPos ks.length p
   /-- the caller's borrows keep their sites -/
   lentCaller : ∀ l p, p.frameOf < s₀.topIdx → s₀.shape p = some l → s.lent l = s₀.lent l
