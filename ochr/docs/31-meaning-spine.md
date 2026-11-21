@@ -1990,6 +1990,12 @@ One file per checker area, one lemma per rule, each of the form "if `runMachine 
 
 **Changed.** `assign_core`, `assignDeref_core` take `hhint` again (as on `spine` before D120); `AssignNumInv` loses D120's last conjunct; `AssignDerefInv` is the machine lane's proved statement, unchanged. Both columns: no assumed fact, standard axioms.
 
+### D122. The fragment's states: `FSt` gains `order`, `lent`, `frame`; `FStT` for a value in flight; `FragRun` (eleventh lead, 2026-11-21; `spine-lead11`)
+
+**Why.** The fragment's `let` (now proved, `FragLet.letF_core`) needs three facts of its states that `FSt` did not carry. (1) The binding a `let` drops may be lent: `endLoansOfTopBind` would end its borrower. In the fragment the borrower can only be the value in flight (then the checker rejects, `DropLentFail`), because a lender's binding precedes its holder's (`&x` needs `x` in scope, and no fragment write stores a borrow into an older binding): `FSt.order`. Without it a lent dropped binding's borrower could be an older binding and the drop's case analysis does not close. (2) `InvEnd` asks the lender be a binding read `.other`: `FSt.lent` (a lent binding is a number variable). (3) The `let` pushes into a top frame: `FSt.frame`. And a sub-term's run ends with its value in flight, which `FSt.held` ("every loan's borrow is held at a binding") excludes when the value is a borrow: rather than weaken `FSt` (the entry condition of every sub-term, where no borrow is in flight), the run facts conclude `FStT`, the same clauses on the end state with the value parked as the last temporary of the top frame, which may hold that borrow (`tempLast`).
+
+**Changed.** `FSt` + `order`, `lent`, `frame`. New `FT.val`, `FStT`, `FragRun` (`Frag.lean`; `FragNatRun` is its corollary). `FragCases` loses `letIn`; it and `frag_sim` moved to `Steps/FragSim.lean`, which bundles the assumed facts as `FragFacts`. Nothing in `Pre`, `Ext`, `Out`, `Sim`, `Rel` changed.
+
 ## HANDOVER (written 2026-11-09 at 8736099f, for a lead picking this up cold)
 
 ### Architecture, in one pass

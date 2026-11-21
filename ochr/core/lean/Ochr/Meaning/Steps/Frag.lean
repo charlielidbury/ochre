@@ -84,6 +84,8 @@ structure FSt (Γ : List FT) (st : MState) : Prop where
   /-- a lent binding is a number variable (only `&x` of one lends) -/
   lent : ∀ (f j : Nat) (b : Binding) (l : Nat), st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.val = .loan l →
     b.ty = some .tNat ∧ b.decl = .other
+  /-- there is a top frame -/
+  frame : 0 < st.env.size
 
 /-- A binding found by lookup is a position, holding its value. -/
 theorem lookup_pos {env : Env} {f j : Nat} {b : Binding} (hb : env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b) :
@@ -147,7 +149,8 @@ theorem FSt.of_erase {Γ : List FT} {a b : MState} (he : a.env.erase = b.env.era
     fun q l hq e => ?_, fun q l c hq e => ?_, fun i A hi => ?_,
     fun f j f' j' l c hq hq' e e' => h.order f j f' j' l c (ha ▸ hq) (ha ▸ hq') (by rw [← hv]; exact e)
       (by rw [← hv]; exact e'),
-    fun f j b' l hb e => h.lent f j b' l (by rw [← hl]; exact hb) e⟩
+    fun f j b' l hb e => h.lent f j b' l (by rw [← hl]; exact hb) e,
+    by have := congrArg Array.size he; simp only [Env.erase_size] at this; have := h.frame; omega⟩
   · rw [hv]; exact h.vals q (ha ▸ hq)
   · rw [hv]; exact h.temps f i (ha ▸ hq)
   · exact h.loan1 q q' l (ha ▸ hq) (ha ▸ hq') (by rw [← hv]; exact e) (by rw [← hv]; exact e')
@@ -195,6 +198,10 @@ structure FStT (Γ : List FT) (st : MState) : Prop where
     valAt st.env (.bind f j) = .loan l → valAt st.env (.bind f' j') = .borrow l c → f < f' ∨ (f = f' ∧ j < j')
   lent : ∀ (f j : Nat) (b : Binding) (l : Nat), st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.val = .loan l →
     b.ty = some .tNat ∧ b.decl = .other
+  frame : 0 < st.env.size
+  /-- only the top frame's last temporary (the value in flight) may hold a borrow -/
+  tempLast : ∀ f i l c, Pos.temp f i ∈ allPos st.env → valAt st.env (.temp f i) = .borrow l c →
+    ∀ fr, st.env[st.env.size - 1]? = some fr → f = st.env.size - 1 ∧ i = fr.temps.size - 1
 
 /-- **What a fragment term's typed run leaves** (a fact about the checker alone, by induction over
 the fragment from the inversion facts; for the machine lane; it replaces `FragNatRun`): from a
@@ -265,80 +272,5 @@ end
 theorem CoreSim.restrict {K : RunCtx} {ρ : Assignment} {φ : Future} {n : Nat} {t : Term} {P : MState → Prop}
     {TY : Bool → Prop} (h : CoreSim K ρ φ n t P) : CoreSim K ρ φ n t P TY :=
   fun st st' typed hint v T? s π hP _ => h st st' typed hint v T? s π hP trivial
-
-/-- **The steps of the fragment not yet proved**, each in the form the induction uses: from its
-sub-terms' steps at every extension of `Δ` and the assignment, the step at `evalCore`. The cases
-`Z`, `S` and the read are proved (`frag_sim`); these are the lead's open work (`OPEN.md`), stated
-here so that the induction is checked now. -/
-structure FragCases (K : RunCtx) (φ : Future) : Prop where
-  bor : ∀ Γ i, Γ[i]? = some .nat → ∀ m (Δ : Nat → TyS) (ρ : Assignment),
-    CoreSim { K with Δ := Δ } ρ φ (m + 1) (.borrow (.var i)) (FSt Γ) (· = true)
-  asg : ∀ Γ i u, Γ[i]? = some .nat → FTy Γ u .nat → ∀ m,
-    (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m u (FSt Γ) (· = true)) →
-    ∀ (Δ : Nat → TyS) (ρ : Assignment), CoreSim { K with Δ := Δ } ρ φ (m + 1) (.assign (.var i) u) (FSt Γ) (· = true)
-  asgD : ∀ Γ i u, Γ[i]? = some .ref → FTy Γ u .nat → ∀ m,
-    (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m u (FSt Γ) (· = true)) →
-    ∀ (Δ : Nat → TyS) (ρ : Assignment),
-      CoreSim { K with Δ := Δ } ρ φ (m + 1) (.assign (.deref (.var i)) u) (FSt Γ) (· = true)
-  letIn : ∀ Γ x u w A B, FTy Γ u A → FTy (A :: Γ) w B → ∀ m,
-    (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m u (FSt Γ) (· = true)) →
-    (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m w (FSt (A :: Γ)) (· = true)) →
-    ∀ (Δ : Nat → TyS) (ρ : Assignment), CoreSim { K with Δ := Δ } ρ φ (m + 1) (.letIn x u w) (FSt Γ) (· = true)
-  seq : ∀ Γ u w A B, FTy Γ u A → FTy Γ w B → ∀ m,
-    (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m u (FSt Γ) (· = true)) →
-    (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m w (FSt Γ) (· = true)) →
-    ∀ (Δ : Nat → TyS) (ρ : Assignment), CoreSim { K with Δ := Δ } ρ φ (m + 1) (.seq u w) (FSt Γ) (· = true)
-
-/-- **The fragment theorem** (`eval_sim` at every fragment term): for every term the fragment types,
-every fuel, `Δ` and assignment, the step at `eval` from a state meeting `FSt`, by induction on the
-typing, each sub-term's step an induction hypothesis at every extension. `Z`, `S` and the read
-(a number, a lent variable, a moved one) are proved here; the other five cases are `FragCases`.
-Assumes facts about the checker alone (`EvalInv`, `ZeroInv`, `SuccInv`, `VarNumInv`, `VarLentInv`,
-`VarBotInv`, `EvalLow`, `FragNatRun`, `InvEnd`, `InvSteps`, `PlaceLocal`) and about the table
-(`FragDec`). -/
-theorem frag_sim {K : RunCtx} {φ : Future} (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hVN : VarNumInv)
-    (hV : VarLentInv) (hVB : VarBotInv) (hIE : InvEnd) (hI : InvSteps) (hlow : EvalLow) (hdec : FragDec K.D)
-    (hnat : FragNatRun K.D) (hPL : PlaceLocal K.D) (hcs : FragCases K φ) :
-    ∀ Γ t A, FTy Γ t A → ∀ n (Δ : Nat → TyS) (ρ : Assignment),
-      EvalSim { K with Δ := Δ } ρ φ n t (FSt Γ) (· = true) := by
-  intro Γ t A hty
-  induction hty with
-  | zero Γ =>
-    intro n Δ ρ
-    exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.zero Γ) (fun _ e => by cases e)
-      (fun _ _ _ e => by cases e) (fun m => ColumnC.zero_coreSim hZ hI) n
-  | succ Γ u hu ih =>
-    intro n Δ ρ
-    refine frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.succ Γ u hu) (fun _ e => by cases e)
-      (fun _ _ _ e => by cases e) (fun m => ?_) n
-    exact succ_core hS hI (ih m Δ ρ) (fun a b hk ha => ha.kern hk) (fun st hst => (hdec Γ u .nat st hu hst).1)
-      (fun s => frag_hint hu _ _ _ s)
-      (fun st₀ st₁ bh v₀ T₀ hP hm htd hD h => by
-        obtain ⟨hv, rfl⟩ := hnat Γ u m st₀ st₁ bh v₀ T₀ hu hP hm htd hD h
-        exact ⟨hv, fun T e => by cases e; rfl⟩)
-  | var Γ i hi =>
-    intro n Δ ρ
-    exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.var Γ i hi) (fun _ e => by cases e)
-      (fun _ _ _ e => by cases e) (fun m => (fvar_core (K := { K with Δ := Δ }) hVN hV hVB hIE hI hPL hi).restrict) n
-  | bor Γ i hi =>
-    intro n Δ ρ
-    exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.bor Γ i hi) (fun _ e => by cases e)
-      (fun _ _ _ e => by cases e) (fun m => hcs.bor Γ i hi m Δ ρ) n
-  | asg Γ i u hi hu ih =>
-    intro n Δ ρ
-    exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.asg Γ i u hi hu) (fun _ e => by cases e)
-      (fun _ _ _ e => by cases e) (fun m => hcs.asg Γ i u hi hu m (ih m) Δ ρ) n
-  | asgD Γ i u hi hu ih =>
-    intro n Δ ρ
-    exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.asgD Γ i u hi hu) (fun _ e => by cases e)
-      (fun _ _ _ e => by cases e) (fun m => hcs.asgD Γ i u hi hu m (ih m) Δ ρ) n
-  | letIn Γ x u w A B hu hw ihu ihw =>
-    intro n Δ ρ
-    exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.letIn Γ x u w A B hu hw) (fun _ e => by cases e)
-      (fun _ _ _ e => by cases e) (fun m => hcs.letIn Γ x u w A B hu hw m (ihu m) (ihw m) Δ ρ) n
-  | seq Γ u w A B hu hw ihu ihw =>
-    intro n Δ ρ
-    exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.seq Γ u w A B hu hw) (fun _ e => by cases e)
-      (fun _ _ _ e => by cases e) (fun m => hcs.seq Γ u w A B hu hw m (ihu m) (ihw m) Δ ρ) n
 
 end Ochr.Meaning.Steps.Form

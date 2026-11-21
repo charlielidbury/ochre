@@ -14,18 +14,24 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
-## THE FRAGMENT (lead10, 2026-11-21, `spine-lead10`): facts about the checker to review and prove
+## THE FRAGMENT (lead11, 2026-11-21, `spine-lead11`): the machine lane's queue
 
-The simulation for every term of a small fragment (`Z`, `S`, reads/writes of number variables, `&x`, `*y := u`, `let`, `;`; at `Nat`, `Unit`, `&Nat`), by induction (`Steps/Frag*.lean`). Its facts about the checker are in `Steps/FragMachine.lean`, sanity-run in `Steps/FragGuards.lean` (several live borrows, the holder before/after the lender, the holder a value in flight, tail position, a handed-down reading, untyped, the mode after):
-- `VarLentInv`: `evalCore` of a read of a LENT number variable in a fragment environment (`FEnd`: `x ↦ loan_l` at `Nat`, `borrow_l c` held at a binding, `c` a number; loans/borrows of `l` only there; no temporary a loan): quiet [Repack], then the end (`endE`: holder `⊥`, lender `c`), then copy/move by the aligned decision. Generalises `VarEndInv` (B's exact state) to any fragment environment.
-- `InvEnd` (state-level): `Inv` across `endE` (the lender a number binding read `.other`). Generalises `InvEndRead`.
-- `VarBotInv`: a read of a moved number variable fails. `EvalLow`: `eval` below fuel `3` fails (not an embedded value). Both sanity-run.
-- `FragNatRun D` (by induction over the fragment, from the inversion facts; checker alone): a typed run of a `Nat`-typed fragment term from `FSt` returns a number at `Nat`. The `let`/`;`/write cases will need the rest of the fragment's run facts (`FSt` after, the value's shape, readings and mode kept): to be stated with them.
-- `FragDec D` (the decisions' lane): at a fragment state, a fragment term of type `A` is classified neither statement nor proof and read `A.rd` (`.other`, `.unit`, `.ref .other`). NOT yet checked against the fuel-free table.
-- For the open `let`/`;` cases, stated now for review (sanity-run): `DropBorrowInv` (a `let`'s drop of a binding holding `borrow_l c`: quiet, then `endE` at that binding, then the pop; other borrows kept; the tail's value parked meanwhile), `SeqBorInv` (`u; w` with `u`'s value `borrow_l c`: `dropValue` ends it, `px ↦ c`).
-THE FRAGMENT THEOREM `Frag.frag_sim` (standard axioms): every fragment term, every fuel, Δ and assignment, `EvalSim` from `FSt Γ`, by induction on the typing `FTy` with the sub-terms' steps as induction hypotheses at every extension. Proved cases: `Z`, `S`, the read (a number `var_core`, lent `readLent_core`, moved `VarBotInv`). OPEN CASES (the lead's, bundled as `FragCases`, a hypothesis of `frag_sim`): `&x` (with others live; x lent: end then lend), `x := u` at a root, `*y := u` (others live), `let` (value a number, `()` or a borrow; the drop ending the binding's borrow: `rel_end` at a binding holder), `;` (discard of a borrow: `rel_end` at a temporary holder).
-Proved over them: `FragRead.readLent_core` (the read of a lent variable at `evalCore`, other borrows live), on `FragEnd.rel_end`/`end_ok`/`access_one` (the relation and the strict access across ending ONE label among several; no assumption).
-(D120's hint conjunct on `AssignNumInv`/`AssignDerefInv` is GONE, docs/31 D121: the steps take `hhint`, which `Frag.frag_hint` discharges for every fragment term; `AssignDerefInv` is the machine lane's proved statement.)
+`Steps/FragSim.frag_sim` (standard axioms): `eval_sim` for EVERY term of the fragment (`Z`, `S`, reads/writes of number variables, `&x`, `*y := u`, `let`, `;`; at `Nat`, `Unit`, `&Nat`), every fuel, `Δ` and assignment, by induction on the typing `FTy`. PROVED cases: `Z`, `S`, the read (number, lent, moved), `let` at every type (`FragLet.letF_core`: the push of a number, `()`, or a borrow with others live, `FragPush.rel_pushBind_borrowG`; the drop ending nothing, ending the binding's borrow `drop_bor`, or failing `DropLentFail`). OPEN cases (the lead's, the bundle `FragCases`): `&x`, `x := u`, `*y := u`, `;`.
+
+Facts about the checker it assumes (the bundle `FragFacts`). Proved by the machine lane (discharge at instantiation): `EvalInv`, `ZeroInv`, `SuccInv`, `VarNumInv`, `InvSteps`, `LetInv`, `DropNoopInv`, `PlaceLocal` (fuel-free table). TO REVIEW AND PROVE (each sanity-run in `Steps/FragGuards.lean` unless said):
+- `VarLentInv` (`FragMachine`): `evalCore` of a read of a LENT number variable in a fragment environment (`FEnd`): quiet [Repack], the end (`endE`), copy/move by the aligned decision. Generalises `VarEndInv`.
+- `VarBotInv`: a read of a moved number variable fails. `EvalLow`: `eval` below fuel 3 fails.
+- `InvEnd` (state-level): `Inv` across `endE` (lender a number binding read `.other`). Not run (Inv is not computable).
+- `FragRun D` (`Frag.lean`; replaces `FragNatRun`, now its corollary `FragRun.nat`): a typed run of a fragment term of type `A` from `FSt Γ`, at ANY hint (the write facts leave `u`'s hint free), entered as `eval` is: its type is `A`, its value `A.val` (a number, `()`, a borrow of a number), `ModeEq` across it, readings and frame count kept, and `FStT Γ` of the end state with the value in flight (`FSt` but the last temporary of the top frame may hold the borrow in flight, `tempLast`). By induction over the fragment from the inversion facts; it needs the run facts of every case, so it is the last fact of the fragment to prove.
+- `DropBorrowInv` (`FragMachine`): a `let`'s drop of a binding holding `borrow_l c`: quiet, `endE` at that binding, pop; other borrows kept.
+- `DropLentFail` (`FragMachine`, lead11): the drop of a binding lent to the value in flight fails (`let x = Z; &x` is rejected).
+- `InvBindUnit`, `InvPopUnit` (state-level, lead11): the unit twins of `InvBindNum`, `InvPopBind`. Not run.
+- `FragDec D` (the decisions' lane): at a fragment state a fragment term of type `A` is classified neither statement nor proof and read `A.rd`. NOT yet checked against the fuel-free table.
+- For the next case (`;`), stated, sanity-run: `SeqBorInv`.
+`FSt` gained (lead11) `order` (a lender's binding precedes its holder's), `lent` (a lent binding is a number variable read `.other`), `frame` (a top frame exists).
+
+For the model lane (from lead10): `Run.lean`'s `.succ` still hands `.plain nat` to its argument where the typed checker hands none (harmless for the fragment: `Frag.frag_hint`).
+D120's hint conjunct on `AssignNumInv`/`AssignDerefInv` is GONE (docs/31 D121): the steps take `hhint`, which `Frag.frag_hint` discharges for every fragment term.
 
 ## FOR THE MACHINE LANE (`machine2`): the facts to review and prove, as of lead9 (2026-11-21; docs/31 D116)
 

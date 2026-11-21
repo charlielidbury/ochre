@@ -78,6 +78,39 @@ def stD (tmp : Value) (T : Value) : MState := { env := #[frD tmp T], nextLoan :=
 #guard outVal (Ochr.evalCore 100 true (.seq (.borrow (.var 0)) (.place (.var 0))) none) stX1 1000 == (.succ .zero, some .tNat)
 #guard isOk (Ochr.evalCore 100 true (.seq (.borrow (.var 0)) (.place (.var 0))) none) { stX1 with curTail := true } 1000
 
+/-! ## lead11: the `let` of the fragment -/
+
+-- `DropLentFail`: the drop of a binding lent to the value in flight fails, alone or with another
+-- borrow live (`z ↦ loan_1`, `w ↦ borrow_1 Z`), typed or under a private copy
+def stL : MState :=
+  { env := #[{ binds := #[bN "x" (.loan 0)], temps := #[.borrow 0 .zero], tempTys := #[some (.tRef .tNat)] }],
+    nextLoan := 1 }
+#guard !isOk (Ochr.dropTopBind 100) stL 1000
+def frL2 : Frame :=
+  { binds := #[bN "z" (.loan 1), bR "w" (.borrow 1 .zero), bN "x" (.loan 0)], temps := #[.borrow 0 .zero],
+    tempTys := #[some (.tRef .tNat)] }
+def stL2 : MState := { env := #[frL2], nextLoan := 2 }
+#guard !isOk (Ochr.dropTopBind 100) stL2 1000
+#guard !isOk (Ochr.dropTopBind 100) { stL2 with copying := true } 1000
+-- so `let x = Z; &x` is rejected
+def stA : MState := { env := #[{ binds := #[bN "a" (.succ .zero)] }] }
+#guard !isOk (Ochr.eval 100 true (.letIn ⟨"x"⟩ .zero (.borrow (.var 0))) none) stA 1000
+-- `FragRun`: `let y = &a; &a` (the second borrow ends the first; the drop of `y`, now `⊥`, ends
+-- nothing): a borrow at `&Nat` in flight, `a ↦ loan_1`; at a hint, in tail position, the same
+#guard outVal (Ochr.eval 100 true (.letIn ⟨"y"⟩ (.borrow (.var 0)) (.borrow (.var 1))) none) stA 1000 ==
+  (.borrow 1 (.succ .zero), some (.tRef .tNat))
+#guard vals (outSt (Ochr.eval 100 true (.letIn ⟨"y"⟩ (.borrow (.var 0)) (.borrow (.var 1))) none) stA 1000) == [.loan 1]
+#guard outVal (Ochr.eval 100 true (.letIn ⟨"y"⟩ (.borrow (.var 0)) (.borrow (.var 1))) (some (.tRef .tNat))) stA 1000 ==
+  (.borrow 1 (.succ .zero), some (.tRef .tNat))
+#guard outVal (Ochr.eval 100 true (.letIn ⟨"y"⟩ (.borrow (.var 0)) (.borrow (.var 1))) none) { stA with tailNext := true } 1000 ==
+  (.borrow 1 (.succ .zero), some (.tRef .tNat))
+-- `FragRun` at a hint the term does not have: the checker's value and type are the term's
+#guard outVal (Ochr.eval 100 true .zero (some .tUnit)) stA 1000 == (.zero, some .tNat)
+-- `DropBorrowInv` through a whole `let`: `let y = &a; Z` gives `a` its content back
+#guard vals (outSt (Ochr.eval 100 true (.letIn ⟨"y"⟩ (.borrow (.var 0)) .zero) none) stA 1000) == [.succ .zero]
+-- the mode after is the mode before
+#guard modeOf (outSt (Ochr.eval 100 true (.letIn ⟨"y"⟩ (.borrow (.var 0)) .zero) none) stA 1000) == (false, false, false, 0)
+
 end FragGuards
 
 end Ochr.Meaning.Steps.Form

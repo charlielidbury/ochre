@@ -52,32 +52,38 @@ theorem popped_eq {st₂ st₃ st' : MState} {r v : Value} {T? : Option Value} (
 
 /-! ## The assignment's facts across the push and the pop -/
 
-theorem asg_pushBind_num {K : RunCtx} {ρ : Assignment} {st : MState} {v₀ : Value} (hv₀ : v₀.Num)
-    (ha : Asg K ρ (st.withTempT v₀ (some .tNat)).norm) (hne : 0 < st.env.size) (x : Hint) (p : Bool)
-    (d : DeclInfo) : Asg K ρ ({ st with env := Env.pushBindE st.env x (some .tNat) v₀ p d } : MState).norm := by
+theorem asg_pushBind_inert {K : RunCtx} {ρ : Assignment} {st : MState} {v₀ : Value} (hv₀ : v₀.Inert) (Tb : Value)
+    (hTb : ∀ σ, Value.hasAbs σ Tb = false)
+    (ha : Asg K ρ (st.withTempT v₀ (some Tb)).norm) (hne : 0 < st.env.size) (x : Hint) (p : Bool)
+    (d : DeclInfo) : Asg K ρ ({ st with env := Env.pushBindE st.env x (some Tb) v₀ p d } : MState).norm := by
   rcases hfr : st.env[st.env.size - 1]? with _ | fr
   · rw [Array.getElem?_eq_none_iff] at hfr; omega
-  refine ha.of_refd rfl rfl rfl rfl rfl fun σ hσ => refd_mono_withTempT v₀ (some .tNat) σ ?_
-  refine refd_sub (st := st) (st' := { st with env := Env.pushBindE st.env x (some .tNat) v₀ p d })
+  refine ha.of_refd rfl rfl rfl rfl rfl fun σ hσ => refd_mono_withTempT v₀ (some Tb) σ ?_
+  refine refd_sub (st := st) (st' := { st with env := Env.pushBindE st.env x (some Tb) v₀ p d })
     rfl rfl rfl rfl ?_ ?_ ?_ σ hσ
   · intro w hw σ' hσ'
-    rcases mem_values_pushBindE st.env x (some .tNat) v₀ p d fr hfr hne hw with rfl | hw'
+    rcases mem_values_pushBindE st.env x (some Tb) v₀ p d fr hfr hne hw with rfl | hw'
     · rw [hv₀.hasAbs] at hσ'; cases hσ'
     · exact ⟨w, hw', hσ'⟩
   · intro f i b T σ' hb hT hσ'
     by_cases e : Pos.bind f i = .bind (st.env.size - 1) fr.binds.size
     · cases e
-      rw [bind_pushBindE_new st.env x (some .tNat) v₀ p d fr hfr] at hb
-      cases hb; cases hT; cases hσ'
-    · rw [bind_pushBindE_ne st.env x (some .tNat) v₀ p d fr hfr f i e] at hb
+      rw [bind_pushBindE_new st.env x (some Tb) v₀ p d fr hfr] at hb
+      cases hb; cases hT; rw [hTb] at hσ'; cases hσ'
+    · rw [bind_pushBindE_ne st.env x (some Tb) v₀ p d fr hfr f i e] at hb
       exact .ty f i b T (by show st.env.erase[f]?.bind _ = _; rw [lookup_erase]; exact hb) hT hσ'
   · intro f i b P ws j σ' hb hl hσ'
     by_cases e : Pos.bind f i = .bind (st.env.size - 1) fr.binds.size
     · cases e
-      rw [bind_pushBindE_new st.env x (some .tNat) v₀ p d fr hfr] at hb
+      rw [bind_pushBindE_new st.env x (some Tb) v₀ p d fr hfr] at hb
       cases hb; cases hl
-    · rw [bind_pushBindE_ne st.env x (some .tNat) v₀ p d fr hfr f i e] at hb
+    · rw [bind_pushBindE_ne st.env x (some Tb) v₀ p d fr hfr f i e] at hb
       exact .lazyTy f i b P ws j (by show st.env.erase[f]?.bind _ = _; rw [lookup_erase]; exact hb) hl hσ'
+
+theorem asg_pushBind_num {K : RunCtx} {ρ : Assignment} {st : MState} {v₀ : Value} (hv₀ : v₀.Num)
+    (ha : Asg K ρ (st.withTempT v₀ (some .tNat)).norm) (hne : 0 < st.env.size) (x : Hint) (p : Bool)
+    (d : DeclInfo) : Asg K ρ ({ st with env := Env.pushBindE st.env x (some .tNat) v₀ p d } : MState).norm :=
+  asg_pushBind_inert hv₀.inert .tNat (fun _ => rfl) ha hne x p d
 
 theorem asg_popBind {K : RunCtx} {ρ : Assignment} {st : MState} (ha : Asg K ρ st.norm) (fr : Frame)
     (hfr : st.env[st.env.size - 1]? = some fr) (hn : 0 < fr.binds.size) :
