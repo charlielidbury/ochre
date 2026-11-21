@@ -133,6 +133,7 @@ import Ochr.Meaning.Strict.FieldWriteCE
 import Ochr.Meaning.Strict.Typed
 import Ochr.Meaning.Strict.ReadProto
 import Ochr.Meaning.Strict.Witness
+import Ochr.Meaning.Strict.OpenFutureCE
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)
