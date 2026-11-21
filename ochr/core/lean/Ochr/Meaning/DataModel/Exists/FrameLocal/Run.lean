@@ -85,6 +85,75 @@ theorem observation_qset_iff (φ : Future) (reps : List Place) (ws : List Sem) {
 
 end
 
+/-! ## A binding pushed -/
+
+theorem varPos_push {s t : SState} (h : EnvPush s t) (i : Nat) : t.varPos (i + 1) = s.varPos i := by
+  have ht : t.topIdx = s.topIdx := by simp only [SState.topIdx, h.1]
+  unfold SState.varPos
+  rw [List.getLast?_eq_getElem?, List.getLast?_eq_getElem?]
+  cases hs : s.env[s.env.length - 1]? with
+  | none =>
+    have : t.env[t.env.length - 1]? = none := by
+      have := h.1; rw [List.getElem?_eq_none_iff] at hs ⊢; omega
+    rw [this]
+  | some fr =>
+    obtain ⟨fr', h', hb, -⟩ := h.2 _ fr hs
+    have e : t.env.length - 1 = s.env.length - 1 := by rw [h.1]
+    rw [e, h']
+    dsimp only
+    simp only [SState.topIdx, if_true] at hb
+    rw [hb, ht]
+    by_cases hi : i < fr.binds.length
+    · rw [if_pos (by omega), if_pos hi]
+      congr 2; omega
+    · rw [if_neg (by omega), if_neg hi]
+
+theorem varPos_zero_push {Q : Pos → Prop} {s t : SState} (h : EnvPush s t) (hQ : ∀ p, Q p → p ∈ s.positions) :
+    ∀ pos, t.varPos 0 = some pos → ¬ Q pos := by
+  intro pos hp
+  unfold SState.varPos at hp
+  rw [List.getLast?_eq_getElem?] at hp
+  cases hs : s.env[s.env.length - 1]? with
+  | none =>
+    have : t.env[t.env.length - 1]? = none := by
+      have := h.1; rw [List.getElem?_eq_none_iff] at hs ⊢; omega
+    rw [this] at hp; cases hp
+  | some fr =>
+    obtain ⟨fr', h', hb, -⟩ := h.2 _ fr hs
+    have e : t.env.length - 1 = s.env.length - 1 := by rw [h.1]
+    rw [e, h'] at hp
+    simp only [SState.topIdx, if_true] at hb
+    dsimp only at hp
+    rw [if_pos (by omega)] at hp
+    cases hp
+    have ht : t.topIdx = s.topIdx := by simp only [SState.topIdx, h.1]
+    rw [ht, hb, Nat.add_sub_cancel]
+    exact not_q_new hQ hs
+
+/-- The variables of a term under one more binder, at the state with that binding pushed. -/
+theorem VarsAvoid.push {Q : Pos → Prop} {s t : SState} {T u : Term} (hV : VarsAvoid Q s T)
+    (hsub : ∀ x ∈ u.placeOccs 1, x ∈ T.placeOccs 0) (h : EnvPush s t) (hQ : ∀ p, Q p → p ∈ s.positions) :
+    VarsAvoid Q t u := by
+  intro v hv pos hp
+  by_cases hv0 : v = 0
+  · subst hv0
+    exact varPos_zero_push h hQ pos hp
+  · rcases freeVars_sub hsub v hv with h0 | h0
+    · omega
+    · have e : v = (v - 1) + 1 := by omega
+      rw [e, varPos_push h] at hp
+      exact hV _ h0 pos hp
+
+theorem Adm.push {K : RunCtx} {Q : Pos → Prop} {β β' : Pos → SBinding} {s : SState} (h : Adm K Q β β' s)
+    (b : SBinding) : Adm K Q β β' (pushBindShaped s b) := by
+  have hfix : qset Q β (pushBindShaped s b) = pushBindShaped s b := by
+    rw [← qset_pushBindShaped s h.twin.pre.pos h.twin.pre.shape b, h.twin.fix]
+  have hsh : ∀ p, Q p → (pushBindShaped s b).shape p = none := fun p hp => by rw [← hfix]; simp [hp]
+  have hpos : ∀ p, Q p → p ∈ (pushBindShaped s b).positions := fun p hp =>
+    mem_positions_pushBindShaped b (h.twin.pre.pos p hp)
+  exact ⟨⟨⟨h.twin.pre.temp, hpos, hsh, h.twin.pre.const⟩, ⟨h.twin.pre.temp, hpos, hsh, h.twin.pre'.const⟩, hfix,
+    EnvLe.refl _⟩, h.decl, h.good, h.good'⟩
+
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
@@ -119,6 +188,59 @@ theorem Adm.afterArm (hK : ∀ n, (K.C.global n).2.label = none) {Q : Pos → Pr
   obtain ⟨hR₁, -, he, -⟩ := runArm_rinv K ρ φ _ hK tl arms hint c s s₁ a hR hu
   exact ⟨hA.next he (fix_of_comm hc hA.twin.fix hu), hR₁, he⟩
 
+/-- The assignment's write, after its right-hand side `x` (a computation commuting at `β'` and at
+`β`): the place is outside `Q`, and the invalidated places share its root (`DecLocal.inv`). -/
+theorem assign_tail (hD : DecLocal K.D) {Q : Pos → Prop} {β β' : Pos → SBinding} {p : Place} {x : SM Res}
+    {s : SState} (hA : Adm K Q β β' s) (hp : RAvoid Q s p) (cx' : Comm Q β' x s) (cx : Comm Q β x s)
+    (hx : ∀ a X, x s = some (a, X) → EnvLe s X ∧ RInv (fun _ => True) X ∧ LoU X a.2.label) :
+    (do
+      let ((v, R), s) ← x (qset Q β' s)
+      if v ∈ₛ[K.dm.read] (placeTy K φ p s).m ∧ labTyOk s R.label (placeTy K φ p s).m then
+        match SM.guarded (AssignOk K φ p) (assignAt K φ p v R.label) s with
+        | some (r, s₁) =>
+          let s₂ := invalidate K φ p s₁
+          if InvalidateOk K φ p s₁ ∧ lentOk K φ p s₂ then some (r, s₂) else none
+        | none => none
+      else none) =
+    qmap Q β' (do
+      let ((v, R), s) ← x s
+      if v ∈ₛ[K.dm.read] (placeTy K φ p s).m ∧ labTyOk s R.label (placeTy K φ p s).m then
+        match SM.guarded (AssignOk K φ p) (assignAt K φ p v R.label) s with
+        | some (r, s₁) =>
+          let s₂ := invalidate K φ p s₁
+          if InvalidateOk K φ p s₁ ∧ lentOk K φ p s₂ then some (r, s₂) else none
+        | none => none
+      else none) := by
+  unfold Comm at cx'
+  rw [cx']
+  cases h1 : x s with
+  | none => rfl
+  | some y =>
+    obtain ⟨⟨v, R⟩, X⟩ := y
+    obtain ⟨e₁, hR₁, hy₁⟩ := hx _ _ h1
+    have hA₁ := hA.next e₁ (fix_of_comm cx hA.twin.fix h1)
+    have hpX := hp.of_envLe e₁
+    simp only [qmap, Option.map_some, Option.bind_eq_bind, Option.bind_some]
+    rw [placeTy_qset K φ hA₁.twin.pre' hpX, propext (labTyOk_qset X R.label _)]
+    split
+    · have cg := comm_guarded (assignOk_qset K φ hA₁.twin.pre' hpX) fun _ => assignAt_qset K φ hA₁.twin.pre' hpX v R.label
+      have cg0 := comm_guarded (Q := Q) (β := β) (assignOk_qset K φ hA₁.twin.pre hpX) fun _ =>
+        assignAt_qset K φ hA₁.twin.pre hpX v R.label
+      unfold Comm at cg
+      rw [cg]
+      cases h2 : SM.guarded (AssignOk K φ p) (assignAt K φ p v R.label) X with
+      | none => rfl
+      | some z =>
+        obtain ⟨r, s₁⟩ := z
+        have e₂ := (assignAt_rinv K φ _ (SM.guarded_some h2).2 hR₁ hy₁).2.2.1
+        have hA₂ := hA₁.next e₂ (fix_of_comm cg0 hA₁.twin.fix h2)
+        obtain ⟨ei, ti, oi⟩ := hA₂.twin.invalidate K φ hA₂.decl (p := p)
+          (fun q hq => rAvoid_root ((hpX.of_envLe e₂)) (hD.inv _ _ _ hq))
+        simp only [qmap, Option.map_some]
+        rw [ei, propext oi, lentOk_qset K φ ti.pre' ti.fix hA.good hA.good']
+        split <;> rfl
+    · rfl
+
 theorem mem_placeOccsList {a : Term} {as : List Term} (ha : a ∈ as) {c : Nat} {x : Nat × Place × PKind}
     (hx : x ∈ a.placeOccs c) : x ∈ Term.placeOccsList c as := by
   induction as with
@@ -139,6 +261,12 @@ theorem mem_placeOccsArms {a : Hint × Term} {as : List (Hint × Term)} (ha : a 
     rcases List.mem_cons.mp ha with rfl | h'
     · exact .inl hx
     · exact .inr (ih h')
+
+theorem root_mem_assign (p : Place) (u : Term) : p.root ∈ (Term.assign p u).freeVars :=
+  (mem_freeVars _ _).mpr ⟨0, p, .assign, by simp [Term.placeOccs], Nat.zero_le _, rfl⟩
+
+theorem Comm.eq {α : Type 3} {Q : Pos → Prop} {β : Pos → SBinding} {x : SM α} {s : SState} (h : Comm Q β x s) :
+    x (qset Q β s) = qmap Q β (x s) := h
 
 theorem root_mem_matchNat (p : Place) (z u : Term) : p.root ∈ (Term.matchNat p z u).freeVars :=
   (mem_freeVars _ _).mpr ⟨0, p, .scrut, by simp [Term.placeOccs], Nat.zero_le _, rfl⟩
@@ -404,6 +532,105 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
           exact comm_anyArm fun c => runArm_qset hK hD tl (.plain TyM.err) c arms S₁ Q β β' hA₁
             (fun a ha => (hVa a ha).of_envLe e₁) hR₁
         all_goals rfl
+  | tl, .borrow p, hint, s, Q, β, β', hA, hV, hR => by
+    unfold Comm; rw [runT]; dsimp only; rw [hA.scope]
+    refine comm_erasedIf ?_
+    have hp : RAvoid Q s p := rAvoid_of_vars hV (root_mem_borrow p)
+    have cb := comm_strictS (R := K.dm.read) (comm_guarded (contentOk_qset K φ hA.twin.pre' p) fun _ =>
+      borrowPlace_qset K φ hA.twin.pre' hp)
+    have cb0 := comm_strictS (R := K.dm.read) (comm_guarded (Q := Q) (β := β) (contentOk_qset K φ hA.twin.pre p) fun _ =>
+      borrowPlace_qset K φ hA.twin.pre hp)
+    unfold Comm at cb ⊢
+    dsimp only
+    rw [cb]
+    cases hb : SM.strictS K.dm.read (SM.guarded (ContentOk K φ p) (borrowPlace K φ p)) s with
+    | none => rfl
+    | some y =>
+      obtain ⟨r₀, s₁⟩ := y
+      have hb' := (SM.guarded_some (SM.strictS_some hb).1).2
+      have e₁ := borrowPlace_envLe K φ hb'
+      have hA₁ : Adm K Q β β' s₁ := hA.next e₁ (fix_of_comm cb0 hA.twin.fix hb)
+      obtain ⟨ei, ti, oi⟩ := hA₁.twin.invalidate K φ hA₁.decl (p := p)
+        (fun q hq => rAvoid_root (hp.of_envLe e₁) (hD.inv _ _ _ hq))
+      simp only [qmap, Option.map_some]
+      rw [ei, propext oi, lentOk_qset K φ ti.pre' ti.fix hA.good hA.good']
+      split <;> rfl
+  | tl, .assign p u, hint, s, Q, β, β', hA, hV, hR => by
+    unfold Comm; rw [runT]; dsimp only; rw [hA.scope]
+    refine comm_erasedIf ?_
+    have hp : RAvoid Q s p := rAvoid_of_vars hV (root_mem_assign p u)
+    have hVu : VarsAvoid Q s u := hV.sub fun x hx => by simp [Term.placeOccs, hx]
+    have cc := contentOf_qset K φ hA.twin.pre' hp
+    unfold Comm at cc ⊢
+    dsimp only
+    rw [cc]
+    have tail := fun T => assign_tail K φ hD hA hp (runT_qset hK hD false u T s Q β β' hA hVu hR)
+      (runT_qset hK hD false u T s Q β β hA.self hVu hR) fun a X h =>
+        have := runT_rinv K ρ φ _ hK false u T s X a hR h
+        ⟨this.2.2.1, this.1, this.2.1⟩
+    by_cases hh : u.assignHinted = true
+    · simp only [hh, if_true]
+      cases contentOf K φ p s with
+      | none => exact tail _
+      | some y => exact tail _
+    · simp only [hh, if_false, Bool.false_eq_true]
+      exact tail _
+  | tl, .letIn x u w, hint, s, Q, β, β', hA, hV, hR => by
+    unfold Comm; rw [runT]; dsimp only; rw [hA.scope]
+    refine comm_erasedIf ?_
+    have hVu : VarsAvoid Q s u := hV.sub fun x hx => by simp [Term.placeOccs, hx]
+    have cu := runT_qset hK hD false u (.plain TyM.err) s Q β β' hA hVu hR
+    unfold Comm at cu ⊢
+    dsimp only
+    rw [cu]
+    cases h1 : runT K ρ φ false (.plain TyM.err) u s with
+    | none => rfl
+    | some y =>
+      obtain ⟨⟨v, T⟩, X⟩ := y
+      obtain ⟨hA₁, hR₁, e₁⟩ := Adm.after K ρ φ hK hA hR h1 (runT_qset hK hD false u _ s Q β β hA.self hVu hR)
+      have hy₁ := (runT_rinv K ρ φ _ hK false u _ s X (v, T) hR h1).2.1
+      simp only [qmap, Option.map_some, Option.bind_eq_bind, Option.bind_some]
+      rw [hA.scope]
+      generalize hb : ({ ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u } : SBinding) = b
+      rw [qset_pushBindShaped X hA₁.twin.pre'.pos hA₁.twin.pre'.shape b]
+      have hA₂ := hA₁.push b
+      have hR₂ : RInv (fun _ => True) (pushBindShaped X b) := by
+        subst hb
+        exact pushBindShaped_rinv hR₁ _ v rfl fun l hl => by
+          rcases hy₁ l hl with ⟨h' | h', hn⟩
+          · exact ⟨.inl h', hn⟩
+          · exact ⟨.inr (.inr h'), hn⟩
+      have hVw : VarsAvoid Q (pushBindShaped X b) w :=
+        VarsAvoid.push (hV.of_envLe e₁) (fun x hx => by simp [Term.placeOccs, hx]) (envPush_pushBindShaped X b)
+          hA₁.twin.pre.pos
+      have cw := runT_qset hK hD tl w (.plain TyM.err) _ Q β β' hA₂ hVw hR₂
+      unfold Comm at cw
+      rw [cw]
+      cases h2 : runT K ρ φ tl (.plain TyM.err) w (pushBindShaped X b) with
+      | none => rfl
+      | some z =>
+        obtain ⟨⟨r, R⟩, Z⟩ := z
+        obtain ⟨hA₃, -, -⟩ := Adm.after K ρ φ hK hA₂ hR₂ h2 (runT_qset hK hD tl w _ _ Q β β hA₂.self hVw hR₂)
+        have hP := hA₃.twin.pre'
+        simp only [qmap, Option.map_some, Option.bind_some, qset_getLast, qset_topIdx, qset_shape_eq hP.shape]
+        cases hg : Z.env.getLast? with
+        | none =>
+          simp only [Option.map_none]
+          rw [propext (letLendersOk_qset K φ hP), letLenders_qset hP, qset_dropLast]
+          split <;> rfl
+        | some fr =>
+          simp only [Option.map_some, qframe_binds_length]
+          cases Z.shape (.bind Z.topIdx (fr.binds.length - 1)) with
+          | none =>
+            dsimp only
+            rw [propext (letLendersOk_qset K φ hP), letLenders_qset hP, qset_dropLast]
+            split <;> rfl
+          | some l =>
+            dsimp only
+            rw [qset_endLabel' hP, qset_dropLast]
+            by_cases hE : EndOk K φ Z l
+            · rw [if_pos ((endOk_qset K φ hP l).2 hE), if_pos hE]; rfl
+            · rw [if_neg (fun h => hE ((endOk_qset K φ hP l).1 h)), if_neg hE]; rfl
   | _, _, _, _, _, _, _, _, _, _ => sorry
 
 theorem runArm_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D) :
