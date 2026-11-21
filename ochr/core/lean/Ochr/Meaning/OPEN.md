@@ -16,9 +16,9 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 
 ## THE FRAGMENT (lead11, 2026-11-21, `spine-lead11`): the machine lane's queue
 
-`Steps/FragSim.frag_sim` (standard axioms): `eval_sim` for EVERY term of the fragment (`Z`, `S`, reads/writes of number variables, `&x`, `*y := u`, `let`, `;`; at `Nat`, `Unit`, `&Nat`), every fuel, `Δ` and assignment, by induction on the typing `FTy`. PROVED cases: `Z`, `S`, the read (number, lent, moved), `let` at every type (`FragLet.letF_core`: the push of a number, `()`, or a borrow with others live, `FragPush.rel_pushBind_borrowG`; the drop ending nothing, ending the binding's borrow `drop_bor`, or failing `DropLentFail`). OPEN cases (the lead's, the bundle `FragCases`): `&x`, `x := u`, `*y := u`, `;`.
+`Steps/FragSim.frag_sim` (standard axioms): `eval_sim` for EVERY term of the fragment (`Z`, `S`, reads/writes of number variables, `&x`, `*y := u`, `let`, `;`; at `Nat`, `Unit`, `&Nat`), every fuel, `Δ` and assignment, by induction on the typing `FTy`. PROVED cases: `Z`, `S`, the read (number, lent, moved), `;` after a number or `()` (`FragSeq.seqI_core`, on the proved `SeqInv`), `let` at every type (`FragLet.letF_core`: the push of a number, `()`, or a borrow with others live, `FragPush.rel_pushBind_borrowG`; the drop ending nothing, ending the binding's borrow `drop_bor`, or failing `DropLentFail`). OPEN cases (the lead's, the bundle `FragCases`): `&x`, `x := u`, `*y := u`, `;` after a borrow (`seqBor`).
 
-Facts about the checker it assumes (the bundle `FragFacts`). Proved by the machine lane (discharge at instantiation): `EvalInv`, `ZeroInv`, `SuccInv`, `VarNumInv`, `InvSteps`, `LetInv`, `DropNoopInv`, `PlaceLocal` (fuel-free table). TO REVIEW AND PROVE (each sanity-run in `Steps/FragGuards.lean` unless said):
+Facts about the checker it assumes (the bundle `FragFacts`). Proved by the machine lane (discharge at instantiation): `EvalInv`, `ZeroInv`, `SuccInv`, `VarNumInv`, `InvSteps`, `LetInv`, `DropNoopInv`, `SeqInv`, `PlaceLocal` (fuel-free table). TO REVIEW AND PROVE (each sanity-run in `Steps/FragGuards.lean` unless said):
 - `VarLentInv` (`FragMachine`): `evalCore` of a read of a LENT number variable in a fragment environment (`FEnd`): quiet [Repack], the end (`endE`), copy/move by the aligned decision. Generalises `VarEndInv`.
 - `VarBotInv`: a read of a moved number variable fails. `EvalLow`: `eval` below fuel 3 fails.
 - `InvEnd` (state-level): `Inv` across `endE` (lender a number binding read `.other`). Not run (Inv is not computable).
@@ -27,7 +27,7 @@ Facts about the checker it assumes (the bundle `FragFacts`). Proved by the machi
 - `DropLentFail` (`FragMachine`, lead11): the drop of a binding lent to the value in flight fails (`let x = Z; &x` is rejected).
 - `InvBindUnit`, `InvPopUnit` (state-level, lead11): the unit twins of `InvBindNum`, `InvPopBind`. Not run.
 - `FragDec D` (the decisions' lane): at a fragment state a fragment term of type `A` is classified neither statement nor proof and read `A.rd`. NOT yet checked against the fuel-free table.
-- For the next case (`;`), stated, sanity-run: `SeqBorInv`.
+- For the next case (`;` after a borrow), stated, sanity-run, NOT yet used: `SeqBorInv` (lead11: its `ModeEq st₁ stW` moved under the antecedent, as in `SeqInv`).
 `FSt` gained (lead11) `order` (a lender's binding precedes its holder's), `lent` (a lent binding is a number variable read `.other`), `frame` (a top frame exists).
 
 For the model lane (from lead10): `Run.lean`'s `.succ` still hands `.plain nat` to its argument where the typed checker hands none (harmless for the fragment: `Frag.frag_hint`).

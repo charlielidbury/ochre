@@ -82,7 +82,8 @@ def DropBorrowInv : Prop :=
 /-- **`evalCore` of a typed `u; w` whose first part is a borrow** (`.seq`; `SeqInv` for the value
 `borrow_l c`, `c` a number, lent by the number binding `px`): `dropValue` parks it, ends `l` (`px ↦ c`,
 the parked holder `⊥`) and pops it, after a quiet stretch (the end's [Repack]); then `w` as in
-`SeqInv`. -/
+`SeqInv`. The mode is kept only under the antecedent (lead11, as `SeqInv`: unconditional it would ask
+the ending machinery of any value to keep the mode, a whole-machine fact). -/
 def SeqBorInv : Prop :=
   ∀ (n : Nat) (u w : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (D : Decisions),
@@ -95,8 +96,9 @@ def SeqBorInv : Prop :=
       (∀ l c px, v₀ = .borrow l c → c.Num → (∀ q ∈ allPos st₁.env, FVal (valAt st₁.env q)) →
         valAt st₁.env px = .loan l → px ∈ allPos st₁.env →
         (∀ q ∈ allPos st₁.env, ∀ w', valAt st₁.env q ≠ .borrow l w') →
-        ∃ st₂, Quiet st₁ st₂ ∧ KeepsInv st₁ st₂ ∧ Kern { st₂ with env := Env.setAtE st₂.env px c } stW) ∧
-      ModeEq st₁ stW ∧ stW.tailNext = st.curTail ∧
+        ∃ st₂, Quiet st₁ st₂ ∧ KeepsInv st₁ st₂ ∧ Kern { st₂ with env := Env.setAtE st₂.env px c } stW ∧
+          ModeEq st₁ stW) ∧
+      stW.tailNext = st.curTail ∧
       Runs (Ochr.eval n true w none) stW bh₂ (v, T?) st'
 
 /-! ## For the `let` of the fragment (lead11) -/
