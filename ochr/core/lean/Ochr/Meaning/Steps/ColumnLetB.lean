@@ -443,9 +443,9 @@ theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hPL : Place
   -- the push, on both sides
   have hsc₁ : scopeOf s₁ = DecideScope.topReadings st₁ := by rw [scopeOf_rel hr₁, topReadings_withTempT]
   let bB : SBinding := { ty := ru.2, val := fun _ => ru.1, decl := du }
-  have hpb : pushBindShaped s₁ { ty := ru.2, val := fun _ => ru.1, decl := K.D.declOf (scopeOf s₁) u } =
+  have hpb : pushBindShaped s₁ { ty := ru.2, val := fun _ => ru.1, decl := K.D.declOf (scopeOf s) u } =
       pushBindShaped s₁ bB := by
-    rw [hsc₁, hrd₁, hdu]
+    rw [scopeOf_rel hr, hdu]
   have hrB : Rel { K with Δ := Δ₁ } ρ₁ φ π₁ stB (pushBindShaped s₁ bB) :=
     (rel_pushBind_borrow hr₁ hne₁ hnb₁ hwb x (.tRef .tNat) p du ru.2 hru2 hrul (hlabu (π₁ lb) hrul).1 ru.1
       (fun φ' hint' => by rw [hru1]; exact hmv _ _ _ _ _ _)).of_kern hkB

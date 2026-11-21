@@ -136,7 +136,7 @@ theorem fund_letIn (_hc : FundCtx K) {x : Hint} {u w : Term} (hu : Fund K ρ φ 
   obtain ⟨hend, h3⟩ := open Classical in ite_none_some h3
   obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h3)
   obtain ⟨hv, hlab, hlou, hs₁⟩ := hu false _ _ _ _ hs₀ h1
-  have hs₂ : SGood K.dm K.Γ φ (pushBindShaped s₁ { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s₁) u }) := by
+  have hs₂ : SGood K.dm K.Γ φ (pushBindShaped s₁ { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s₀) u }) := by
     by_cases hne : s₁.env = []
     · rw [pushBindShaped_nil _ _ hne]; exact hs₁
     · exact sgood_pushBindShaped hs₁ _ rfl hv hlab hlou hne

@@ -1273,7 +1273,7 @@ theorem runT_congrE (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool
     apply Option.bind_congr' (runT_congrE hK false u _ s L hφ (fun l h => ht l (by simp [Term.anyAtom, h])) hi)
     rintro ⟨⟨v, T⟩, s₁⟩ h1
     obtain ⟨hi₁, hy₁, -, -⟩ := runT_rinv K ρ φ L hK false u _ s s₁ (v, T) hi h1
-    have hi₂ := pushBindShaped_rinv hi₁ { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s₁) u } v rfl
+    have hi₂ := pushBindShaped_rinv hi₁ { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u } v rfl
       fun l hl => by
         rcases hy₁ l hl with ⟨h' | h', hn⟩
         · exact ⟨.inl h', hn⟩

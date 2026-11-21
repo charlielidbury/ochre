@@ -131,7 +131,7 @@ theorem endOk_sG2 : EndOk (Kw dm []) φw sG2 0 := by
   rw [valAt_sG2_y, heldTy_sG2]; exact nat_mem dm 1
 
 theorem pushBind_sG1 :
-    pushBindShaped sG1 ⟨{ (TyS.plain TyM.nat) with label := some 0 }, fun _ => Sem.el0 Nat 1, (Kw dm []).D.declOf (scopeOf sG1) (.borrow (.var 0)), none⟩ = sG2 := rfl
+    pushBindShaped sG1 ⟨{ (TyS.plain TyM.nat) with label := some 0 }, fun _ => Sem.el0 Nat 1, (Kw dm []).D.declOf (scopeOf sA) (.borrow (.var 0)), none⟩ = sG2 := rfl
 
 /-- **`let y = &x; c` runs**: the borrow is made, moved into `y`, and ended by the drop over `1`. -/
 theorem run_letBorrow (ρ : Assignment) (x : Hint) (tl : Bool) (hint : TyS) :

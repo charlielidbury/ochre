@@ -840,12 +840,12 @@ theorem runT_rinv (hK : ∀ n, (K.C.global n).2.label = none) : ∀ (tl : Bool) 
     obtain ⟨-, h3⟩ := open Classical in ite_none_some h3
     obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h3)
     obtain ⟨hi₁, hy₁, e₁, o₁⟩ := runT_rinv hK false u _ s s₁ (v, T) hi h1
-    have hi₂ := pushBindShaped_rinv hi₁ { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s₁) u } v rfl
+    have hi₂ := pushBindShaped_rinv hi₁ { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u } v rfl
       fun l hl => by
         rcases hy₁ l hl with ⟨h' | h', hn⟩
         · exact ⟨.inl h', hn⟩
         · exact ⟨.inr (.inr h'), hn⟩
-    have o₂ := ordKeep_pushBindShaped hi₁ { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s₁) u } hy₁
+    have o₂ := ordKeep_pushBindShaped hi₁ { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u } hy₁
     obtain ⟨hi₃, hy₃, e₃, o₃⟩ := runT_rinv hK tl w hint _ s₃ (r', R) hi₂ h2
     dsimp only
     refine ⟨(letDrop_rinv L hi₃ hy₃ _ ?_).1, (letDrop_rinv L hi₃ hy₃ _ ?_).2.1,

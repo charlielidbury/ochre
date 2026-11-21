@@ -1133,8 +1133,12 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       | none => none
     else none) s
   | .letIn x u w => fun s => SM.erasedIf (K.D.flags (scopeOf s) (.letIn x u w)) (fun s => do
+    -- the binding's reading is read BEFORE `u` runs, as the checker reads it (`evalCore`'s
+    -- `.letIn`: `declOf` under `withLive`, then `eval u`; docs/31 D118): `u` may write, and a
+    -- reading taken after it would be of a scope the checker never read
+    let d := K.D.declOf (scopeOf s) u
     let ((v, T), s) ← runT false (.plain TyM.err) u s
-    let s := pushBindShaped s { ty := T, val := fun _ => v, decl := K.D.declOf (scopeOf s) u }
+    let s := pushBindShaped s { ty := T, val := fun _ => v, decl := d }
     let ((r, R), s) ← runT tl hint w s
     -- [Drop] of the binding: the borrow it holds *now* ends, then it is forgotten (PROPOSAL,
     -- m2-proofs, CE5: not the label its type carried when it was bound, which it may have moved
