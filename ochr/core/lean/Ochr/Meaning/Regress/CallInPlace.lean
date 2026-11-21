@@ -349,7 +349,8 @@ theorem readY_SI : ∃ T, readPlace (Kc dm) φ (.var 0) true SI = some ((.el0 Na
     simp [SI, SState.mapVals, Attack.takeLabel_S₂, SState.valAt, Future.updList, Future.upd]
   have hg : ReadGood (Kc dm).dm.read (SI.tyAt (.bind 0 0)).m (Sem.el0 Nat 3) := Or.inl (by
     have ht : (SI.tyAt (.bind 0 0)).m = TyM.nat := by
-      simp [SI, SState.mapVals, SState.tyAt, Attack.S₂, yB, TyS.plain, List.zipIdx]
+      simp only [SI, Attack.takeLabel_S₂]
+      simp [SState.mapVals, SState.tyAt, Attack.S₂, yB, TyS.plain]
     rw [ht]; exact ⟨(3 : Nat), rfl⟩)
   obtain ⟨T, hT⟩ : ∃ T, SI.tyAt (.bind 0 0) = T := ⟨_, rfl⟩
   rw [hT] at hg
