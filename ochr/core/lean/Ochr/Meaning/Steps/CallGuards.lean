@@ -162,6 +162,25 @@ def stCJ : MState :=
 #guard outVal (Ochr.eval 100 false bodyI none) stCJ 100000 == (.succ .zero, some .tNat)
 #guard calleeOk (outSt (Ochr.eval 100 false bodyI none) stCJ 100000) .bot
 
+/-! ## A non-recursive body never reads its own binding (D31)
+
+The callee's frame binds `self` (above), but the checker rejects every read of it in the body of a
+function with no decreasing parameter: read whole, called, or bound by a `let`. So in a run of an
+accepted non-recursive body nothing reads `self`, in place or in the closure's frame, where the two
+bind different values (docs/31 D127). -/
+
+/-- `def f (n : Nat) : B := body` with `body` reading `self` (`#1`: the frame is `[self, n]`). -/
+def selfReader (body : Term) (B : Term) : Def := { name := "K", hs := [⟨"n"⟩], doms := [.nat], cod := B, body := body }
+
+def rejectedD31 (d : Def) : Bool :=
+  match runMachine (checkDef d) {} 100000 with
+  | (.fail (.error m _), _, _) => (m.splitOn "is not in scope in its own body").length > 1
+  | _ => false
+
+#guard rejectedD31 (selfReader (.place (.var 1)) (.pi [⟨"m"⟩] [.nat] .nat))
+#guard rejectedD31 (selfReader (.call (.place (.var 1)) [.zero] false) .nat)
+#guard rejectedD31 (selfReader (.seq (.letIn ⟨"g"⟩ (.place (.var 1)) .tt) .tt) .unit)
+
 end CallGuards
 
 end Ochr.Meaning.Steps.Form
