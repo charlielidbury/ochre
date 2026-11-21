@@ -377,4 +377,54 @@ theorem runT_tind2 (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h :
   obtain ⟨U, s₂, h2⟩ := hk 1 b w rfl rfl
   exact ⟨d, v, w, T, U, s₁, s₂, hd, by simpa using h1, by simpa using h2, by rw [hr']⟩
 
+/-! ## A call's value depends on the callee and the argument values only -/
+
+theorem callOfL_val.{u} (L : Lvl.{u}) {C : Type u} (t : Tel L.Code PUnit C) (fv : Sem) (args args' : List Res)
+    (s s₂ : SState) {r : Res} {s' : SState} (h : callOfL L t fv args s = some (r, s'))
+    (hv : args.map (·.1) = args'.map (·.1)) :
+    ∃ r₂ s₃, callOfL L t fv args' s₂ = some (r₂, s₃) ∧ r₂.1 = r.1 := by
+  unfold callOfL at h ⊢
+  dsimp only at h ⊢
+  rw [← hv]
+  split at h
+  · rename_i r0 T finals happ
+    simp only [Option.some.injEq] at h
+    obtain ⟨rfl, -⟩ := Prod.mk.inj h
+    exact ⟨_, _, rfl, rfl⟩
+  · rename_i U c fwd back happ
+    simp only [Option.some.injEq] at h
+    obtain ⟨rfl, -⟩ := Prod.mk.inj h
+    exact ⟨_, _, rfl, rfl⟩
+  · cases h
+
+/-- **A call's value depends only on the callee and the argument values**: not on the state, the
+arguments' types or their labels. -/
+theorem callOf_val (R : DataRead) (fv : Res) (args args' : List Res) (s s₂ : SState) {r : Res} {s' : SState}
+    (h : callOf R fv args s = some (r, s')) (hv : args.map (·.1) = args'.map (·.1)) :
+    ∃ r₂ s₃, callOf R fv args' s₂ = some (r₂, s₃) ∧ r₂.1 = r.1 := by
+  unfold callOf at h ⊢
+  split at h
+  · exact callOfL_val _ _ _ _ _ _ _ h hv
+  · exact callOfL_val _ _ _ _ _ _ _ h hv
+  · exact callOfL_val _ _ _ _ _ _ _ h hv
+  · cases h
+
+/-- `runArgs` at one argument: the argument's run (in place or on a copy), at the callee's first domain. -/
+theorem runArgs_one (K : RunCtx) (ρ : Assignment) (φ : Future) (stmt : Bool) (fT : TyM) (a : Term) (s : SState)
+    {as : List Res} {s' : SState} (h : runArgs K ρ φ stmt fT [] [a] s = some (as, s')) :
+    ∃ v T s₁, runT K ρ φ false (.plain (fT.domAfter K.dm.read [])) a s = some ((v, T), s₁) ∧ as.map (·.1) = [v] := by
+  simp only [runArgs, bind] at h
+  revert h
+  generalize hb : (stmt && !(K.D.declOf (scopeOf s) a matches .ref _)) = b
+  cases hst : SM.stmtIf b (runT K ρ φ false (.plain (fT.domAfter K.dm.read [])) a) s with
+  | none => intro h; simp [hst] at h
+  | some p =>
+    obtain ⟨r, s₁⟩ := p
+    intro h
+    simp only [hst, runArgs, pure, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    rcases SM.stmtIf_some hst with ⟨-, hx⟩ | ⟨-, -, -, r₀, s₀, hx, rfl⟩
+    · exact ⟨r.1, r.2, s₁, hx, rfl⟩
+    · exact ⟨r₀.1, r₀.2, s₀, hx, rfl⟩
+
 end Ochr.Meaning.DataModel.Exists.RunLemmas

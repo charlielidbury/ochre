@@ -128,6 +128,7 @@ import Ochr.Meaning.DataModel.CtorMem
 import Ochr.Meaning.DataModel.Canonical.Knot
 import Ochr.Meaning.DataModel.Exists.PreludeModel
 import Ochr.Meaning.DataModel.Exists.PropNestCE
+import Ochr.Meaning.DataModel.Exists.Step2
 import Ochr.Meaning.DataLib.Universal
 import Ochr.Meaning.Strict.Runs
 import Ochr.Meaning.Strict.MemReadsCE
