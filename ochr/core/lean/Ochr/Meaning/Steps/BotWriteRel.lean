@@ -224,7 +224,7 @@ theorem botWrite_rel (st : MState) (s : SState) (π : Nat → Nat) (f i : Nat) (
     (hnat : ∀ ψ, NatAlong K.dm K.M K.Γ ρ ψ steps (valAt st.env (.bind f i))) :
     Rel K ρ φ π { st with env := Env.setAtE st.env (.bind f i) v' }
       (s.setAt (.bind f i) fun φ' =>
-        (Sem.updAt K.dm K.Γ (s.tyAt (.bind f i)) (fun _ => .moved) steps (s.valAt (.bind f i) φ')).getD .err) := by
+        (Sem.updAt K.dm K.Γ (s.tyAt (.bind f i)) (fun _ => .moved) steps (s.valAt (.bind f i) φ')).getD .moved) := by
   -- the borrows held are the same, so liveness is
   have hwf := hwf1.1 (Pos.bind f i) hp
   have hhold : ∀ l, v'.holdsBorrow l = (valAt st.env (Pos.bind f i)).holdsBorrow l := holdsBorrow_updAt_bot hwf
@@ -246,9 +246,9 @@ theorem botWrite_rel (st : MState) (s : SState) (π : Nat → Nat) (f i : Nat) (
     · exact shape_setAtE_other st.env (Pos.bind f i) q v' hq
   -- the reference's live labels are the same
   have hF : ∀ ψ, (RelF φ (s.setAt (Pos.bind f i) fun φ' =>
-      (Sem.updAt K.dm K.Γ (s.tyAt (Pos.bind f i)) (fun _ => .moved) steps (s.valAt (Pos.bind f i) φ')).getD .err) ψ ∧
+      (Sem.updAt K.dm K.Γ (s.tyAt (Pos.bind f i)) (fun _ => .moved) steps (s.valAt (Pos.bind f i) φ')).getD .moved) ψ ∧
       TypedLive K (s.setAt (Pos.bind f i) fun φ' =>
-      (Sem.updAt K.dm K.Γ (s.tyAt (Pos.bind f i)) (fun _ => .moved) steps (s.valAt (Pos.bind f i) φ')).getD .err) ψ) →
+      (Sem.updAt K.dm K.Γ (s.tyAt (Pos.bind f i)) (fun _ => .moved) steps (s.valAt (Pos.bind f i) φ')).getD .moved) ψ) →
       RelF φ s ψ ∧ TypedLive K s ψ :=
     fun ψ hψ => ⟨fun l hl => hψ.1 l (fun h => hl ((SState.live_setAt _ _ _ l).mp h)),
       fun l hl => by
@@ -269,10 +269,10 @@ theorem botWrite_rel (st : MState) (s : SState) (π : Nat → Nat) (f i : Nat) (
     show Env.mean K.dm K.M K.Γ ρ (fun l => ψ (π l)) (Env.setAtE st.env (Pos.bind f i) v') p = _
     by_cases hpp : p = Pos.bind f i
     · rw [hpp, valAt_setAt_self _ _ _ hsp]
-      show _ = (Sem.updAt K.dm K.Γ (s.tyAt (Pos.bind f i)) (fun _ => .moved) steps (s.valAt (Pos.bind f i) ψ)).getD .err
+      show _ = (Sem.updAt K.dm K.Γ (s.tyAt (Pos.bind f i)) (fun _ => .moved) steps (s.valAt (Pos.bind f i) ψ)).getD .moved
       rw [← hs.sim.1 ψ hψ0 (Pos.bind f i) (by simp [IsTemp])]
       show _ = (Sem.updAt K.dm K.Γ (s.tyAt (Pos.bind f i)) (fun _ => .moved) steps
-        (Env.mean K.dm K.M K.Γ ρ (fun l => ψ (π l)) st.env (Pos.bind f i))).getD .err
+        (Env.mean K.dm K.M K.Γ ρ (fun l => ψ (π l)) st.env (Pos.bind f i))).getD .moved
       rw [mean_eq_valAt K.dm K.M K.Γ ρ _ _ _ hp', hintAt_setAtE, valAt_setAtE_self v' hp,
         mean_eq_valAt K.dm K.M K.Γ ρ _ _ _ hp,
         mean_updAt_botS K ρ _ steps _ _ _ v' hv hplain.1 hplain.2 (hnat _)]

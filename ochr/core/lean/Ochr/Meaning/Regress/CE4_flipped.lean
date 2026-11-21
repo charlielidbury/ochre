@@ -115,7 +115,7 @@ theorem content_a1 (n : Nat) : contentOf K φ (.var 0) (a1 K n) = some ((.el0 Na
 /-- After `&y` at counter `n`: `y` reads label `n`, and the borrow is parked in temporary `0`. -/
 noncomputable def a2 (n : Nat) : SState :=
   { env := [{ binds := [{ ty := .plain TyM.nat,
-                          val := fun φ' => (Sem.updAt K.dm K.Γ (.plain TyM.nat) (fun _ => φ' n) [] (Sem.el0 Nat 0)).getD .err,
+                          val := fun φ' => (Sem.updAt K.dm K.Γ (.plain TyM.nat) (fun _ => φ' n) [] (Sem.el0 Nat 0)).getD .moved,
                           decl := K.D.declOf (scopeOf (emptyState n)) .zero }],
               temps := [fun _ => .el0 Nat 0] }],
     shape := fun p => if p = .temp 0 0 then some n else none,
@@ -131,7 +131,7 @@ theorem borrow_a1 (n : Nat) : borrowPlace K φ (.var 0) (a1 K n) = some ((.el0 N
         let (l, s) := s.freshLoan
         let T0 := s.tyAt pos
         let old := s.valAt pos
-        let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .err
+        let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .moved
         let s := s.pushTempShaped (fun _ => v) l
         some ((v, { T with label := some l }), ((s.setLent l [⟨pos, steps, false⟩]).setHeldTy l T.m).setHeldMem l v)
       | none => none) = _

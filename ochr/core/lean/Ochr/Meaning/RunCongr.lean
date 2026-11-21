@@ -151,12 +151,29 @@ theorem posOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv 
     rw [← e]; exact hp ψ' hψ'
   exact ⟨key hφ, key (fun l hl => (hφ l hl).symm)⟩
 
+/-- The whole state's open membership at every typed future reads the run's future only on `L`. -/
+theorem stateOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) :
+    StateOk K φ s ↔ StateOk K φ' s := by
+  have key : ∀ {φ₁ φ₂ : Future}, (∀ l, L l → φ₁ l = φ₂ l) → StateOk K φ₁ s → StateOk K φ₂ s := by
+    intro φ₁ φ₂ h12 hp ψ hψ
+    let ψ' : Future := fun l => if l ∈ s.liveLabels then ψ l else φ₁ l
+    have hψ' : TypedFut K φ₁ s ψ' :=
+      ⟨fun l hl => by simp [ψ', hl], fun l hl => by simpa [ψ', hl] using hψ.2 l hl⟩
+    have e : ∀ q, s.valAt q ψ' = s.valAt q ψ := fun q => hi.1 q ψ' ψ (fun l hl => by
+      by_cases hm : l ∈ s.liveLabels
+      · simp [ψ', hm]
+      · rcases hl with hL | hlive
+        · simp only [ψ', hm, if_false]; rw [h12 l hL, hψ.1 l hm]
+        · exact absurd hlive hm)
+    obtain ⟨hb, hh⟩ := hp ψ' hψ'
+    exact ⟨fun f i hm => by rw [← e]; exact hb f i hm, fun q l hl => by rw [← e]; exact hh q l hl⟩
+  exact ⟨key hφ, key (fun l hl => (hφ l hl).symm)⟩
+
 theorem lentOk_congr (hφ : ∀ l, L l → φ l = φ' l) {s : SState} (hi : RInv L s) (p : Place) :
     lentOk K φ p s ↔ lentOk K φ' p s := by
   unfold lentOk
   split
-  · rename_i pos steps _
-    exact or_congr Iff.rfl (posOk_congr K hφ hi pos)
+  · exact or_congr Iff.rfl (stateOk_congr K hφ hi)
   · exact Iff.rfl
 
 theorem assignAt_congr (hφ : ∀ l, L l → φ l = φ' l) {s₁ : SState} (hi₁ : RInv L s₁) (p : Place) (v : Sem)

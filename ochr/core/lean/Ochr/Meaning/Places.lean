@@ -175,6 +175,16 @@ noncomputable def Sem.follow (T : TyS) (s : Sem) : List Step → Option (Sem × 
   | [] => some (s, T)
   | st :: sts => (Sem.step dm Γ T st s).bind fun (s', T') => Sem.follow T' s' sts
 
+/-- `S` at a record: the successor of a number, or the tuple `S(s)` at the record `r` of a partly
+moved one (`Sem.succ` is `Sem.succAt natRec`). A write through the predecessor of a tree named
+`Nat` (a declaration of that name, junk to the program) keeps the tree's own record. -/
+noncomputable def Sem.succAt (r : Rec) (s : Sem) : Sem :=
+  match s.asNat with
+  | some n => .el0 Nat (n + 1)
+  | none => open Classical in if s.whole then .err else .dat "Nat" r 1 [s]
+
+theorem Sem.succ_eq_succAt (s : Sem) : s.succ = Sem.succAt natRec s := rfl
+
 /-- Update the sub-meaning at a path, reading the value only (docs/31 D32): a number's
 predecessor through `.0`, a constructor value's field, rebuilt by its own declaration (`reDat`:
 a field set to `moved` makes it a partly moved value). `T` is not consulted (kept so that callers
@@ -187,9 +197,9 @@ noncomputable def Sem.updAt (T : TyS) (f : Sem → Sem) : List Step → Sem → 
     | .proj 0, some (n + 1) => (Sem.updAt (.plain TyM.nat) f sts (.el0 Nat n)).map Sem.succ
     | _, _ =>
       match s with
-      | .dat "Nat" _ 1 [w] =>
+      | .dat "Nat" r 1 [w] =>
         match st with
-        | .proj 0 => (Sem.updAt (.plain TyM.nat) f sts w).map Sem.succ
+        | .proj 0 => (Sem.updAt (.plain TyM.nat) f sts w).map (Sem.succAt r)
         | _ => none
       | .dat n r c fs =>
         let i := match st with | .proj i => i | .field g => g.idx | .deref => 0

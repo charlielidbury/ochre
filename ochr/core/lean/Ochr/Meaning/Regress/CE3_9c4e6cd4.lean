@@ -77,7 +77,7 @@ theorem content_a1 (n : Nat) : contentOf K φ (.var 0) (a1 K n) = some ((.el0 Na
 
 /-- After `&y` at counter `n`: `y` reads label `n`'s final content; no holder is recorded. -/
 noncomputable def a2 (n : Nat) : SState :=
-  (a1 K n).freshLoan.2.setAt (.bind 0 0) (fun φ' => (Sem.updAt K.dm K.Γ (.ty0 Nat) (fun _ => φ' n) [] (Sem.el0 Nat 0)).getD .err)
+  (a1 K n).freshLoan.2.setAt (.bind 0 0) (fun φ' => (Sem.updAt K.dm K.Γ (.ty0 Nat) (fun _ => φ' n) [] (Sem.el0 Nat 0)).getD .moved)
 
 theorem borrow_a1 (n : Nat) : borrowPlace K φ (.var 0) (a1 K n) = some ((.el0 Nat 0, { TyS.plain (.ty0 Nat) with label := some n }), a2 K n) := by
   show (match contentOf K φ (.var 0) (a1 K n) with
@@ -86,7 +86,7 @@ theorem borrow_a1 (n : Nat) : borrowPlace K φ (.var 0) (a1 K n) = some ((.el0 N
         let (l, s) := s.freshLoan
         let T0 := (s.tyAt pos).m
         let old := s.valAt pos
-        let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .err
+        let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .moved
         some ((v, { T with label := some l }), s)
       | none => none) = _
   rw [content_a1]
@@ -198,7 +198,7 @@ theorem content_c1 (ψ : Future) (v : Value) :
 /-- `x` after a move. -/
 noncomputable def c2 (ψ : Future) (v : Value) : SState :=
   (c1 K ρ ψ v).setAt (.bind 0 0) fun φ'' =>
-    (Sem.updAt K.dm K.Γ TyM.err (fun _ => Sem.moved) [] ((c1 K ρ ψ v).valAt (.bind 0 0) φ'')).getD .err
+    (Sem.updAt K.dm K.Γ TyM.err (fun _ => Sem.moved) [] ((c1 K ρ ψ v).valAt (.bind 0 0) φ'')).getD .moved
 
 theorem content_c2 (ψ : Future) (v : Value) :
     contentOf K ψ (.var 0) (c2 K ρ ψ v) = some ((.moved, .plain .err, .bind 0 0, []), c2 K ρ ψ v) := by

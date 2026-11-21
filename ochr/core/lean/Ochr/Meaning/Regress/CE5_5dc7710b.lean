@@ -106,7 +106,7 @@ theorem run_assign (p : Place) (u : Term) (hint : TyS) (s : SState) :
 
 /-- After `&y`: `y` reads label `n`, the borrow parked in temporary `0`. -/
 noncomputable def b2 (n : Nat) : SState :=
-  { env := [{ binds := [{ yB K n with val := fun φ' => (Sem.updAt K.dm K.Γ (.ty0 Nat) (fun _ => φ' n) [] (Sem.el0 Nat 0)).getD .err },
+  { env := [{ binds := [{ yB K n with val := fun φ' => (Sem.updAt K.dm K.Γ (.ty0 Nat) (fun _ => φ' n) [] (Sem.el0 Nat 0)).getD .moved },
                         xB K n],
               temps := [fun _ => .el0 Nat 0] }],
     shape := fun p => if p = .temp 0 0 then some n else none,
@@ -119,7 +119,7 @@ theorem borrow_b1 (n : Nat) : borrowPlace K φ (.var 1) (b1 K n) = some ((.el0 N
         let (l, s) := s.freshLoan
         let T0 := (s.tyAt pos).m
         let old := s.valAt pos
-        let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .err
+        let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .moved
         let s := s.pushTempShaped (fun _ => v) l
         some ((v, { T with label := some l }), s)
       | none => none) = _
@@ -138,7 +138,7 @@ theorem holder_b2 (n : Nat) : (b2 K n).holderOf n = some (.temp 0 0) := by
 
 noncomputable def b3 (n : Nat) : SState :=
   (b2 K n).setAt (.bind 0 1) fun φ' =>
-    (Sem.updAt K.dm K.Γ ((b2 K n).tyAt (.bind 0 1)).m (fun _ => .el0 Nat 0) [] ((b2 K n).valAt (.bind 0 1) φ')).getD .err
+    (Sem.updAt K.dm K.Γ ((b2 K n).tyAt (.bind 0 1)).m (fun _ => .el0 Nat 0) [] ((b2 K n).valAt (.bind 0 1) φ')).getD .moved
 
 theorem setContent_b2 (n : Nat) : setContent K φ (.bind 0 1) [] (.el0 Nat 0) (b2 K n) = some (⟨⟩, b3 K n) := rfl
 
@@ -169,7 +169,7 @@ theorem holder_b3 (n : Nat) : (b3 K n).holderOf n = some (.temp 0 0) := by
 noncomputable def b6 (n : Nat) : SState := (b5 K n).dropLast
 
 noncomputable def yB' (n : Nat) : SBinding :=
-  { yB K n with val := fun φ' => (Sem.updAt K.dm K.Γ (.ty0 Nat) (fun _ => φ' n) [] (Sem.el0 Nat 0)).getD .err }
+  { yB K n with val := fun φ' => (Sem.updAt K.dm K.Γ (.ty0 Nat) (fun _ => φ' n) [] (Sem.el0 Nat 0)).getD .moved }
 
 theorem take_b3 (n : Nat) : (b3 K n).takeLabel n =
     { ((b3 K n).setAt (.temp 0 0) fun _ => .moved) with

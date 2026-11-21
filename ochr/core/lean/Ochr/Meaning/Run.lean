@@ -419,12 +419,14 @@ noncomputable def tagOf (p : Place) (tag : Sem → TyS → Sem) : SM Sem := fun 
   | none => none
 
 /-- Set the content of a place to a constant meaning, pointwise in the future (no access: the
-caller has done it). -/
+caller has done it). At a future where the path is absent the place reads `moved` (it read `err`,
+which no open member is: `Strict/FieldWriteCE`, a move out of a field of a place reading a live label
+left the state bad at the futures where that label holds no such field). -/
 noncomputable def setContent (pos : Pos) (steps : List Step) (v : Sem) : SM PUnit := fun s =>
   let T := s.tyAt pos
   let old := s.valAt pos
   match Sem.updAt K.dm K.Γ T (fun _ => v) steps (old (s.typedFuture φ)) with
-  | some _ => some (⟨⟩, s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T (fun _ => v) steps (old φ')).getD .err)
+  | some _ => some (⟨⟩, s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T (fun _ => v) steps (old φ')).getD .moved)
   | none => none
 
 /-- [Assign]'s write, after the right-hand side ran (the `.assign` clause's tail; the step
@@ -483,13 +485,23 @@ def TypedFut (s : SState) (ψ : Future) : Prop :=
 def PosOk (s : SState) (pos : Pos) : Prop :=
   ∀ ψ, TypedFut K φ s ψ → K.dm.pmem K.Γ (s.valAt pos ψ) (s.tyAt pos).m
 
+/-- Every position holds what the state invariant asks at every typed future: a binding an open
+member of its stored type (or no data at `err`), a borrow's holder an open member of its label's
+content type. -/
+def StateOk (s : SState) : Prop :=
+  ∀ ψ, TypedFut K φ s ψ →
+    (∀ f i, Pos.bind f i ∈ s.positions →
+      K.dm.pmem K.Γ (s.valAt (.bind f i) ψ) (s.tyAt (.bind f i)).m ∨
+        ((s.tyAt (.bind f i)).m = TyM.err ∧ ((∃ X, s.valAt (.bind f i) ψ = .ty X) ∨ s.valAt (.bind f i) ψ = .proof))) ∧
+    (∀ q l, s.shape q = some l → K.dm.pmem K.Γ (s.valAt q ψ) (s.heldTy l))
+
 /-- STRICT below a root (the dependent-values unit; the checker's tests where lent parts are
-unknowns): after a write or a borrow at a field path, the position written holds an open member
-of its type at every typed future (a write of an index, or a lent index, could leave a later field
-outside the type the read gives it). -/
+unknowns): after a write or a borrow at a field path, and D112's invalidation, every position holds
+an open member of its type at every typed future (a write of an index, or a lent index, could leave
+a later field outside the type the read gives it; the invalidation's ends pass contents on). -/
 def lentOk (p : Place) (s : SState) : Prop :=
   match resolve s p with
-  | some (pos, steps) => steps = [] ∨ PosOk K φ s pos
+  | some (_, steps) => steps = [] ∨ StateOk K φ s
   | none => True
 
 /-- D112 [Open]: a write or a borrow of `p` invalidates the places `Decisions.invalidated` gives:
@@ -525,7 +537,7 @@ noncomputable def borrowPlace (p : Place) : SM Res := fun s => do
   let (l, s) := s.freshLoan
   let T0 := s.tyAt pos
   let old := s.valAt pos
-  let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .err
+  let s := s.setAt pos fun φ' => (Sem.updAt K.dm K.Γ T0 (fun _ => φ' l) steps (old φ')).getD .moved
   -- the borrow is parked in a temporary, its holder until it is bound (D14)
   let s := s.pushTempShaped (fun _ => v) l
   -- the place is lent to `l`, a plain borrow: one site, its loan (docs/31 D29)
@@ -655,7 +667,7 @@ noncomputable def dropAt (q : Place) (pos : Pos) (steps : List Step) (s : SState
     match Sem.updAt K.dm K.Γ (s'.tyAt pos) (fun _ => .moved) steps (s'.valAt pos (s'.typedFuture φ)) with
     | none => s
     | some _ =>
-      s'.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s'.tyAt pos) (fun _ => .moved) steps (s'.valAt pos φ')).getD .err
+      s'.setAt pos fun φ' => (Sem.updAt K.dm K.Γ (s'.tyAt pos) (fun _ => .moved) steps (s'.valAt pos φ')).getD .moved
 
 /-- D84, the drop at the join, as the checker does it (`Machine.joinDrop`: `movedPlace`, then
 `dropAtJoin`), for every place some arm of the match moves (`Decisions.joinMoves`, static, given
