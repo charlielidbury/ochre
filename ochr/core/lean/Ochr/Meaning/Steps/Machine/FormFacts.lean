@@ -1,5 +1,6 @@
 import Ochr.Meaning.Steps.FormMachine
 import Ochr.Meaning.Steps.DropOne
+import Ochr.Meaning.Steps.ColumnC
 
 /-!
 # The column's facts about the checker alone (`Steps/FormMachine.lean`), proved
@@ -35,6 +36,10 @@ theorem zeroInv : ZeroInv := by
     obtain ⟨⟨⟨rfl, rfl⟩, rfl⟩, -⟩ := h
     exact ⟨rfl, rfl, Kern.rfl' _, id⟩
 
+/-- **`DecBack`**: alignment at a larger table is alignment at a smaller one (`DecTab.back`, proved in
+`DecBack.lean`). -/
+theorem decBack : ColumnC.DecBack := fun _ _ _ hd hg => DecTab.back hd hg
+
 theorem runs_modify_inv {g : MState → MState} {st st' : MState} {b : Nat} {u : Unit}
     (h : Runs (modify g : M Unit) st b u st') : st' = g st := by
   obtain ⟨L, left, log, h⟩ := h
@@ -52,5 +57,7 @@ theorem runs_topIdx_inv {st st' : MState} {b f : Nat} (h : Runs (topIdx : M Nat)
   obtain ⟨_, s₁, b₁, h₁, h⟩ := Runs.bind_inv h
   obtain ⟨rfl, rfl⟩ := runs_get_inv h₁
   exact runs_pure_inv h
+
+#print axioms decBack
 
 end Ochr.Meaning.Steps.Machine
