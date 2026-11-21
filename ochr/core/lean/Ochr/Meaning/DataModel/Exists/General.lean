@@ -1,4 +1,4 @@
-import Ochr.Meaning.DataModel.Exists.Piece3
+import Ochr.Meaning.DataModel.Exists.Defs
 import Ochr.Meaning.DataModel.Exists.Step2
 
 /-!
@@ -18,7 +18,7 @@ and how it was attacked. Read `HANDOFF.md` first.
 
 namespace Ochr.Meaning.DataModel.Exists.General
 
-open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Canonical
+open Ochr Ochr.Meaning Ochr.Meaning.DataLib Ochr.Meaning.Canonical Ochr.Meaning.DataModel.Exists
 
 /-! ## Frame locality -/
 
@@ -58,17 +58,6 @@ theorem runT_frameLocal (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool)
 
 /-! ## Finding 2: the globals a field type calls -/
 
-/-- **The globals of a program state are typed where a field type can call them**: each global whose
-stored type is a function type into a sort, applied (`callOf`) at members of its domains, returns a
-member of the codomain, a code of `Prop` or of `Type₀` (`Probes.DMXBoundary`: the checker admits no
-other codomain in a field type), or does not run. `Step2.EvTGood` is this at one global. -/
-def GlobalsTyped (dm : DataModel) (P : ProgState) : Prop :=
-  ∀ (n : String) (g : GDef), P.globals.find? (·.name == n) = some g →
-    (∃ caps hs ds l rd, g.ty = .tPi caps (.pi hs ds (.sort l)) rd ∧ l ≤ 1) →
-  ∀ (args : List Res) (s : SState) (r : Res) (s' : SState),
-    callOf dm.read (P.baseC.global n) args s = some (r, s') →
-      ∃ (A : Type) (c : Code0 A), r.1 = .ty (.t0 A c) ∧ (c.level = some 1 ∨ c.level = some 0)
-
 /-- **Finding 2's obligation** (BELIEVED TRUE; asked at every argument, which costs nothing for a
 closure: `callOf` decodes each argument at its domain's code, so at a non-member it does not run).
 Only at globals whose stored codomain is `Prop` or `Type₀`: first stated at every global it was FALSE
@@ -87,13 +76,23 @@ theorem globals_typed (dm : DataModel) (D : MState → Decisions) (fuel : Nat) (
 
 /-! ## Pieces 3 and 4: a data-sorted declaration's knot -/
 
-open Classical in
-/-- The model with `d`'s records replaced. -/
-noncomputable def setRec (dm : DataModel) (d : IndDecl) (R : List Sem → Rec) : DataModel :=
-  { dm with recOf := fun d' => if d' = d then R else dm.recOf d' }
+/-- **A data-sorted declaration's canonical knot, as first written: FALSE** (exists5, 2026-11-22;
+`KnotCE.knotOld_false`, kernel-checked; docs/34 §18.6). Kept for the record until the restatement
+replaces it. Counterexample: `Pt (A : Type) (a : A) := MkPt`, `D2 := D2Leaf | D2Node(x : D2,
+p : Pt(D2, x))`, both accepted. Field `p`'s type passes the earlier field `x`, a member carrying the knot's
+own record, as a VALUE argument to `Pt`, and `hpar` compares value parameters by equality only, so an
+earlier record may read the knot's record through it at any depth (one that puts the flip of what it
+reads at a short path satisfies `hpar`, and then no knot exists). The statement also lacked that `d` is
+accepted (its field types first-order, `d` only at nestable parameters). Two more shapes the checker
+accepts (and Lean rejects) defeat the planned interpreter without making this false: an equation side
+reading an earlier field whose type mentions `d` or a nestable parameter (`LD`, `W`/`UW`: the field's
+kind is the run's result, whose definedness reads the record, so the kinds are not record-free), and
+`d` nested through a `Prop`-sorted declaration at a `Prop` parameter (`D := MkD(q : Q(PP(D)))`: the
+record holds "`D` is inhabited"). Restatement pending a ruling on adopting Lean's two rules in the
+checker (docs/34 §18.6).
 
-/-- **A data-sorted declaration's canonical knot** (BELIEVED TRUE; pieces 3 and 4 in the form the
-assembly uses). Given a run context whose model is faithful on the declarations before `d` and whose
+Earlier docstring (exists2): BELIEVED TRUE; pieces 3 and 4 in the form the
+assembly uses. Given a run context whose model is faithful on the declarations before `d` and whose
 globals are typed, there is a guarded knot (`KnotSpec`, its nestable parameters `d.nestable`) whose
 field types at its own fixed point are the run's (under the model whose records for `d` are the
 knot's), wherever the run is defined at typed parameters and fields. First stated without `hpar` and
