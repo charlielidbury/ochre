@@ -88,6 +88,8 @@ end Aux
 
 open Aux
 
+theorem duY_ok : duY ≠ .any ∧ duY.isProof = false := ⟨fun e => (by cases e), rfl⟩
+
 section
 variable {D : Decisions} (hd : DecTab D stC)
 include hd
@@ -120,7 +122,6 @@ theorem declOf_write_ok : D.declOf [duY, duC] writeB ≠ .any ∧ (D.declOf [duY
   rw [declOf_of hd ok_declOf_write]
   exact ⟨fun e => (by have h := val_declOf_write; rw [e] at h; cases h), val_declOf_write_proof⟩
 
-theorem duY_ok : duY ≠ .any ∧ duY.isProof = false := ⟨fun e => (by cases e), rfl⟩
 
 end
 

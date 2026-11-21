@@ -26,7 +26,8 @@ All in `Steps/FormMachine.lean`; sanity runs in `Steps/ColumnC.lean` (first colu
 
 ## The borrow column (lead8; docs/31 D115, D116)
 
-Proved (standard axioms): `borrow_core`, `letB_core`, `assignDeref_core`, `seq_core`, `readEnd_core`, over `BorrowNumInv`, `AssignDerefInv`, `SeqInv`, `VarEndInv`, `LetInv` (proved), `DropNoopInv` (proved) and `InvSteps`. Open: the assembly `column_B_ff` (plan in `Steps/LEAD-HANDOFF.md`).
+Proved (standard axioms): the five steps and the ASSEMBLY `ColumnB.column_B_ff` (`Steps/ColumnBFF.lean`, lead9): every run of the checker's `eval` on `B`'s body from the constant-body start state makes the strict run succeed with `0`, a member of `Nat`, at `Nat`. It assumes three unproved facts about the checker's runs, `AssignDerefInv`, `SeqInv`, `VarEndInv` (the last judged true by machine2), the state-level `InvSteps`, and `PlaceLocal` of the fuel-free table (`placeLocal_ff`, machine3). Files: `ColumnBStart` (decisions at `B`'s three scopes, kernel-evaluated), `ColumnBRuns` (states by exact environment; the checker's runs of each sub-term), `ColumnBSim` (`sim_bodyB`, `column_B`), `ColumnBFF`.
+- FOUND at the assembly, for the machine lane: `DropNoopInv` concludes only `Kern`, so the mode after any `let` is unknown (`LetInv`'s `ModeEq st₃ st'` needs `Mode st₃`); `B` never needs it (nothing follows a `let` but its frame's end), a `let` followed by anything in a sequence would. Add `ModeEq st st'` (or `Mode`) to `DropNoopInv`.
 
 ## Facts about the checker the columns assume
 
