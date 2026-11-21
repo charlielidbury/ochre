@@ -271,7 +271,7 @@ variable (L : Lvl.{u})
 
 /-- A good total function is good from the start of the telescope. -/
 theorem goodFrom_start {Fit : TyM → Prop} (φ : Future) (g : List Sem → Option BodyOut) (ds : List PiDom) (out : PiCod)
-    (hcod : ∀ args, DomMembers L.read ds args → Fit (out.cod args))
+    (hdata : out.isRef = false) (hcod : ∀ args, DomMembers L.read ds args → Fit (out.cod args))
     (htot : ∀ args, DomMembers L.read ds args →
       ∃ o, g args = some o ∧ OutGood L.read ds out args o ∧ o.finals.length = (ds.filter (·.isRef)).length) :
     ∀ rest, DomMembersFrom L ds [] rest → ∃ o, g ([] ++ rest) = some o ∧ Fit (out.cod ([] ++ rest)) ∧
@@ -284,7 +284,7 @@ theorem goodFrom_start {Fit : TyM → Prop} (φ : Future) (g : List Sem → Opti
   · intro j gd f hj; simp at hj
   · intro i d hd hdr
     obtain ⟨f, hf, hmem⟩ := hfin i d hd hdr
-    exact ⟨f φ, by simp [hf], by simpa using hmem φ⟩
+    exact ⟨f φ, by simp [hf], by simpa using hmem φ (heldTyped_data rest o hdata φ)⟩
 
 /-- **The closure lemma, membership half, at a level**: a closure whose function is defined and
 good at every member argument (one final content per borrow parameter) is a member of its code, at
@@ -296,7 +296,7 @@ theorem closureL_mem_of_total (hL : L.Lawful) {Fit : TyM → Prop} (hF : L.Fits 
       ∃ o, g args = some o ∧ OutGood L.read ds out args o ∧ o.finals.length = (ds.filter (·.isRef)).length) :
     closureL L φ (telL L ds [] PUnit out).2 g ∈ₛ[L.read] piTyL L (telL L ds [] PUnit out).2 := by
   have hs := mkTelL_telL_some L hF φ g out hdata ds [] PUnit _ [] (mkFinOk_start)
-    (goodFrom_start L φ g ds out hcod htot)
+    (goodFrom_start L φ g ds out hdata hcod htot)
   obtain ⟨F, hF'⟩ := Option.isSome_iff_exists.mp hs
   unfold closureL
   rw [hF']
@@ -379,7 +379,7 @@ theorem closureL_apply (hL : L.Lawful) {Fit : TyM → Prop} (hF : L.Fits Fit) (�
     ∃ s', callOfL L (telL L ds [] PUnit out).2 (closureL L φ (telL L ds [] PUnit out).2 g) args s =
       some ((o.result, .plain (out.cod (args.map (·.1)))), s') := by
   have hs := mkTelL_telL_some L hF φ g out hdata ds [] PUnit _ [] (mkFinOk_start)
-    (goodFrom_start L φ g ds out hcod htot)
+    (goodFrom_start L φ g ds out hdata hcod htot)
   obtain ⟨F, hF'⟩ := Option.isSome_iff_exists.mp hs
   have hfit : ArgsFitL L (telL L ds [] PUnit out).2 (args.map (·.1)) :=
     argsFit_telL L hL hF out ds [] PUnit _ ⟨hmem.1, fun i a d ha hd => by simpa using hmem.2 i a d ha hd⟩

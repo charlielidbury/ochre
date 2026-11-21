@@ -131,4 +131,14 @@ def leavesOf (body : Term) (st : MState) : List (MState × Value × Option Value
 #guard (outVal (Ochr.eval 1000 false bodyW none) stWm 100000).1 == vW
 #guard (outVal (Ochr.eval 1000 false bodyK none) stKm 100000).1 == vK
 
+/-! ## A result holds at most one label (docs/31 D141)
+
+`OutGood` asks a borrow parameter's final at the futures typed for the result (`BodyOut.held`), and the model's result
+holds at most one label. So does the checker's: a borrow sits inside no data (core D8, D48; the census in core
+DECISIONS rejects a constructor, pair or box of borrows), and `&` is only ever the whole declared type, so a borrow of a
+borrow is rejected too. -/
+#guard match runMachine (checkDef { defK with name := "KK", doms := [.ref (.ref .nat)], cod := .ref (.ref .nat) }) {} 100000 with
+  | (.fail (.error m _), _, _) => m.startsWith "[D48]"
+  | _ => false
+
 end Ochr.Meaning.Steps.Form.ColumnW.Guards

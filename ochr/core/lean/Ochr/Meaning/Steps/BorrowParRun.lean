@@ -210,7 +210,7 @@ theorem fixBodyAt_K (fb : List PBind × PBind) {d : DeclInfo} (h1 : fb.1 = [(fun
 
 end
 
-/-! ## Membership: `W`'s closure is a member; `K`'s cannot be shown one by the closure lemma as stated -/
+/-! ## Membership: `W`'s and `K`'s closures are members (`K`'s after docs/31 D141's restatement of `OutGood`) -/
 
 section
 variable {K : RunCtx} {ρ : Assignment} {φ : Future}
@@ -232,16 +232,25 @@ theorem closure_mem_W (fb : List PBind × PBind) {d : DeclInfo} (h1 : fb.1 = [(f
     refine ⟨_, fixBodyAt_W K ρ φ fb h1 _ _ hfl m, ⟨⟨m, rfl⟩, fun i d' hi hd => ?_⟩, rfl⟩
     rcases i with _ | i
     · simp [psW] at hi; subst hi
-      exact ⟨fun _ => .el0 Nat m, rfl, fun _ => ⟨m, rfl⟩⟩
+      exact ⟨fun _ => .el0 Nat m, rfl, fun _ _ => ⟨m, rfl⟩⟩
     · simp [psW] at hi
 
 /-- `K`'s body's output, at a number `m`: the result `m`, the cell's final the future at the returned label `0`. -/
 noncomputable def oK (m : Nat) : BodyOut := ⟨.el0 Nat m, [fun ψ => ψ 0], some 0⟩
 
-/-- **FINDING (docs/31 D141): `K`'s output is not `OutGood`**: `OutGood` asks each borrow parameter's final to be a
-member of its content type at EVERY future, and `K`'s cell's final is `ψ 0`, the content the caller leaves in the
-returned borrow, which is a member only at the futures that give label `0` one. -/
-theorem not_outGood_K (R : DataRead) (m : Nat) : ¬ OutGood R psW outK [.el0 Nat m] (oK m) := by
+/-- `OutGood`'s final clause AS FIRST STATED (before docs/31 D141): each borrow parameter's final a member of its
+content type at EVERY future. Kept here only as the statement `not_outGood_K` refutes. -/
+def OutGoodEvery (R : DataRead) (ds : List PiDom) (out : PiCod) (args : List Sem) (o : BodyOut) : Prop :=
+  o.result ∈ₛ[R] out.cod args ∧
+    ∀ (i : Nat) (d : PiDom), ds[i]? = some d → d.isRef = true →
+      ∃ f, o.finals[((ds.take i).filter (·.isRef)).length]? = some f ∧ ∀ ψ, f ψ ∈ₛ[R] d.dom (args.take i)
+
+/-- **FINDING (docs/31 D141), the refutation of the old clause**: `K`'s output is not good in the sense first stated
+(`OutGoodEvery`): it asked each borrow parameter's final to be a member of its content type at EVERY future, and `K`'s
+cell's final is `ψ 0`, the content the caller leaves in the returned borrow, a member only at the futures that give
+label `0` one. So the old clause failed for every function returning its borrow parameter; `OutGood` is restated at
+the futures typed for the result. -/
+theorem not_outGood_K (R : DataRead) (m : Nat) : ¬ OutGoodEvery R psW outK [.el0 Nat m] (oK m) := by
   rintro ⟨-, h⟩
   obtain ⟨f, hf, hmem⟩ := h 0 _ rfl rfl
   simp only [oK, psW, List.take_zero, List.filter_nil, List.length_nil, List.getElem?_cons_zero, Option.some.injEq] at hf
@@ -249,34 +258,45 @@ theorem not_outGood_K (R : DataRead) (m : Nat) : ¬ OutGood R psW outK [.el0 Nat
   obtain ⟨n, hn⟩ := hmem (fun _ => .err)
   cases hn
 
-/-- So the closure lemma at a returned borrow (`closure_mem_of_total_ref'`, and `stage_mem_ref` through it) cannot
-show `K`'s closure a member: its hypothesis fails at every number. -/
-theorem closure_ref_hyp_false_K (fb : List PBind × PBind) {d : DeclInfo} (h1 : fb.1 = [(fun _ => .plain TyM.nat, d)])
+/-- **`K`'s output is good** (`OutGood`, restated by docs/31 D141): the result `m` a member of `Nat`, and the cell's
+final `ψ 0` a member of `Nat` at every future typed for the result, i.e. one that gives the returned label `0` a member
+of the codomain's content type `Nat`. -/
+theorem outGood_K (R : DataRead) (m : Nat) : OutGood R psW outK [.el0 Nat m] (oK m) := by
+  refine ⟨⟨m, rfl⟩, fun i d hi hd => ?_⟩
+  rcases i with _ | i
+  · simp only [psW, List.getElem?_cons_zero, Option.some.injEq] at hi; subst hi
+    refine ⟨fun ψ => ψ 0, rfl, fun ψ hψ => hψ 0 _ ?_⟩
+    simp [BodyOut.held, outK, oK]
+  · simp [psW] at hi
+
+/-- `K`'s backward function is injective and its label is `0` (`RetGood`): the cell's final at the future that leaves
+`v` in the returned borrow is `v`. -/
+theorem retGood_K (R : DataRead) (m : Nat) : RetGood R outK [.el0 Nat m] (oK m) :=
+  ⟨0, rfl, fun ψ v w _ _ h => by simpa [oK, Future.upd] using h⟩
+
+/-- `K`'s output is good in the sense the definition being checked is asked of (`OutGood'`, inside `MemBelow` and the
+per-stage obligations): `OutGood`, `RetGood`, one final for the one borrow parameter. -/
+theorem outGood'_K (R : DataRead) (m : Nat) : OutGood' R psW outK [.el0 Nat m] (oK m) :=
+  ⟨outGood_K R m, fun _ => retGood_K R m, rfl⟩
+
+/-- **`K`'s closure is a member of `Π(r : &Nat). &Nat`** (`ClosureRef.closure_mem_of_total_ref'`), at every `fb`
+reading the parameter at `Nat`, decisions that classify `r` as neither a statement nor a proof, and `r` read as not
+copied: at each number the body returns it under label `0`, and the cell's final is what the caller leaves in the
+returned borrow (`outGood_K`, `retGood_K`). No assumed fact. It replaces `closure_ref_hyp_false_K`, which showed the
+closure lemma's hypothesis false under the old clause. -/
+theorem closure_mem_K (fb : List PBind × PBind) {d : DeclInfo} (h1 : fb.1 = [(fun _ => .plain TyM.nat, d)])
     (piT : TyM) (hfl : K.D.flags [d, .pi fb.2.2] bodyK = (false, false))
     (hcp : K.D.copy (K.D.placeDecl [d, .pi fb.2.2] (.var 0)) = false) :
-    ¬ ∀ args, DomMembers K.dm.read psW args →
-      ∃ o, fixG K ρ φ fb 1 (emptyState 0) psW outK piT 0 none bodyK args = some o ∧ OutGood K.dm.read psW outK args o ∧
-        RetGood K.dm.read outK args o ∧ o.finals.length = (psW.filter (·.isRef)).length := by
-  intro h
-  obtain ⟨o, ho, hg, -⟩ := h [.el0 Nat 0] ⟨rfl, fun i a d' ha hd => by
-    rcases i with _ | i
-    · simp [psW] at ha hd; subst ha; subst hd; exact ⟨0, rfl⟩
-    · simp at ha⟩
-  have e : fixG K ρ φ fb 1 (emptyState 0) psW outK piT 0 none bodyK [.el0 Nat 0] = some (oK 0) :=
-    fixBodyAt_K K ρ φ fb h1 _ _ hfl hcp 0
-  rw [e] at ho; cases ho
-  exact not_outGood_K _ 0 hg
-
-/-- What `K`'s output DOES meet: the returned-borrow leaf the closure's construction asks (`ClosureRef.RefLeafOk`): the
-result a member, the returned label `0`, the final a member at every future that gives label `0` a member of the
-codomain, and the backward function injective (`RetGood`). -/
-theorem outGoodRet_K (R : DataRead) (m : Nat) :
-    (oK m).result ∈ₛ[R] outK.cod [.el0 Nat m] ∧ (oK m).retLabel = some 0 ∧
-      (∀ ψ, ψ 0 ∈ₛ[R] outK.cod [.el0 Nat m] → ∀ f ∈ (oK m).finals, f ψ ∈ₛ[R] TyM.nat) ∧
-      RetGood R outK [.el0 Nat m] (oK m) := by
-  refine ⟨⟨m, rfl⟩, rfl, fun ψ hψ f hf => ?_, ⟨0, rfl, fun ψ v w _ _ h => ?_⟩⟩
-  · simp only [oK, List.mem_singleton] at hf; subst hf; exact hψ
-  · simpa [oK, Future.upd] using h
+    closureAt K.dm.read 1 φ psW outK (fixG K ρ φ fb 1 (emptyState 0) psW outK piT 0 none bodyK)
+      ∈ₛ[K.dm.read] piTyAt K.dm.read 1 psW outK := by
+  refine closure_mem_of_total_ref' K.dm.read 1 φ psW outK _ ⟨Nat.le_refl 1, by omega⟩ rfl
+    (fun _ _ => Nat.le_refl 1) fun args ha => ?_
+  obtain ⟨hlen, hargs⟩ := ha
+  match args, hlen with
+  | [x], _ =>
+    obtain ⟨m, hx⟩ := hargs 0 x _ rfl rfl
+    subst hx
+    exact ⟨oK m, fixBodyAt_K K ρ φ fb h1 _ _ hfl hcp m, outGood_K _ m, retGood_K _ m, rfl⟩
 
 end
 

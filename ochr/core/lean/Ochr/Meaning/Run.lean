@@ -394,6 +394,22 @@ checker is not, `Strict/OpenFutureCE`.) -/
 def TypedFut (s : SState) (ψ : Future) : Prop :=
   (∀ l, l ∉ s.liveLabels → ψ l = φ l) ∧ ∀ l ∈ s.liveLabels, ψ l ∈ₛ[K.dm.read] s.heldTy l
 
+/-- **A future typed at held labels** (docs/31 D141): each label of `held` is given a whole member of the type it is
+held at. `TypedFut`'s second clause is this at the state's live labels and their recorded types (`typedFut_iff_held`);
+a function's output asks its borrow parameters' finals at the futures typed at the labels its RESULT holds
+(`Steps.OutGood`, `BodyOut.held`), the labels the frame pop keeps live. -/
+def HeldTyped (R : DataRead) (held : List (Nat × TyM)) (ψ : Future) : Prop :=
+  ∀ l T, (l, T) ∈ held → ψ l ∈ₛ[R] T
+
+theorem typedFut_iff_held (s : SState) (ψ : Future) :
+    TypedFut K φ s ψ ↔
+      (∀ l, l ∉ s.liveLabels → ψ l = φ l) ∧ HeldTyped K.dm.read (s.liveLabels.map fun l => (l, s.heldTy l)) ψ := by
+  refine and_congr Iff.rfl ⟨fun h l T hm => ?_, fun h l hl => h l _ (List.mem_map.2 ⟨l, hl, rfl⟩)⟩
+  obtain ⟨l', hl', e⟩ := List.mem_map.1 hm
+  simp only [Prod.mk.injEq] at e
+  obtain ⟨rfl, rfl⟩ := e
+  exact h l' hl'
+
 /-- **STRICT END** (ruling (A)): the borrow `l` may end only where its holder's content is a member of
 its recorded content type at every typed future (the checker's rule, main's D98: no borrow ends over
 moved-out content). -/
