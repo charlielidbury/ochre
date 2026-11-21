@@ -479,7 +479,7 @@ A field's type may mention the constructor's earlier fields, as in the sized vec
 
 A state (Ω, Δ, Σ) is _well formed_ when the following hold. They are the four conditions of @sec-meta-model, spelled out, plus typing.
 
-+ *Borrows are unique and outermost.* Each label ℓ has at most one $"borrow"_ell$ in Ω, and a borrow occurs only as the whole value of a binding or temporary: never inside data, a sealed program, a closure or a type.
++ *Borrows are unique and outermost.* Each label ℓ has at most one $"borrow"_ell$ in Ω, and a borrow occurs only as the whole value of a binding or temporary: never inside data, a sealed program, a closure or a type. The checker asserts it where a value is overwritten or dropped, and asserts at every read that the content holds no loan whose borrow is gone (D111).
 + *Loans are bound.* Every $"loan"_ell$ and every mark $lent(ell, w)$ in Ω has its $"borrow"_ell$ in Ω, except inside a [Seal] run, where a loan whose borrow lies outside the run is inert. Outside sealed programs a label occurs as a loan at most once; inside sealed programs it may occur any number of times, since the hole of a returned borrow sits in the fill of every borrowed argument (@fig-app-close). Every occurrence of a returned borrow's label lies inside one of its fills, which sit at the same places on the generic call's path and an instance's (D90).
 + *Loans are acyclic.* The relation "$"loan"_ell$ occurs in the content of $"borrow"_m$" is acyclic, so $"owners"$ is well defined.
 + *Captures are values.* Closures and Π-closures capture no borrow and no ⊥, and sealed programs are closed.

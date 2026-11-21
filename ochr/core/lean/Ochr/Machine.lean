@@ -1173,6 +1173,10 @@ def readPlace (fuel : Nat) (p : Place) : M Value := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   accessPath fuel' p; accessInside fuel' p
   let v ← content p
+  -- D111: every loan outside a sealed program is live; after the access ended the live ones
+  -- inside, none is left (a loan whose borrow is gone would be read as data of any type)
+  if v.outerLoans.any (!liveLoan (← get).env ·) then
+    err s!"INTERNAL [Read] {← ppPlace p} holds a loan whose borrow is not in Ω (D111: every loan outside a sealed program is live; please report)"
   unsizedCheck p v "read"
   let erased := (← get).erasedDepth > 0
   let inPlace := (← get).inPlace
@@ -1246,6 +1250,10 @@ def assignPlace (fuel : Nat) (p : Place) (v : Value) (T : Option Value) : M Unit
   accessPath fuel' p; accessInside fuel' p true
   let old ← content p
   unsizedCheck p old "assigned"
+  -- D111: a borrow is a whole position's value (D48), so none lies below the old content's root,
+  -- where overwriting it would end nothing and leave its lender a loan forever
+  if old.borrowBelowRoot then
+    err s!"INTERNAL [Drop] the old content of {← ppPlace p} holds a borrow below its root (D111: a borrow is a whole position's value; please report)"
   match old with
   | .borrow l _ =>
     -- D84: re-pointing a borrow binding ends its old borrow; inside a side of `Id` that is a
@@ -1273,6 +1281,9 @@ def dropTopBind (fuel : Nat) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   let f ← topIdx
   let some b := (← get).env[f]!.binds.back? | err "internal: no binding to drop"
+  -- D111: a borrow is a whole position's value (D48); a frame's pop drops its bindings here too
+  if b.val.borrowBelowRoot then
+    err s!"INTERNAL [Drop] {b.hint.name} holds a borrow below its root (D111: a borrow is a whole position's value; please report)"
   match b.val with
   | .borrow l _ => endBorrow fuel' l
   | _ => endLoansOfTopBind fuel' f
@@ -1296,6 +1307,9 @@ termination_by structural fuel
 def dropValue (fuel : Nat) (v : Value) (T : Option Value) : M Unit := do
   let fuel' + 1 := fuel | exhausted "out of fuel"
   pushTemp v T "dropValue"
+  -- D111: a borrow is a whole position's value (D48)
+  if v.borrowBelowRoot then
+    err s!"INTERNAL [Drop] a discarded value holds a borrow below its root (D111: a borrow is a whole position's value; please report)"
   match v with
   | .borrow l _ => endBorrow fuel' l
   | _ => endLoansOfTopTemp fuel'

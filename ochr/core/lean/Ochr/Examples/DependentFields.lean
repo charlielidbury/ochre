@@ -949,6 +949,9 @@ ochr StrongUpdate uses Nats {
   -- a borrow, a type, a function
   reject def Leak : Nat := (let c = MkV3(Z, 0); match c { MkV3(n, x) => (let w = Z; x := &w; *x := S(Z); x := 0; w), })
   reject def ViaLoan : Void := (let c = MkV(S(Z), O); match c { MkV(n, x) => (let w = O; x := &w; x := O; x := w; n := Z; let z : Void = match x {}; z), })
+  -- D111: the dangling loan read as data of another type; a read of a loan whose borrow is gone is
+  -- now an internal error, never reached since a borrow cannot be stored below a root
+  reject def DanglingRead : Nat := (let c = MkV3(Z, 0); match c { MkV3(n, x) => (let w = O; x := &w; x := 0; let v : One = w; match v { O => 0, }), })
   reject def AType : Nat := (let c = MkV3(Z, 0); match c { MkV3(n, x) => (x := Nat; 0), })
   reject def AFunction : Nat := (let c = MkV3(Z, 0); match c { MkV3(n, x) => (x := (λ(u : Unit) : Nat => Z); 0), })
   -- the controls: the index rewritten alone (`x` keeps `O`, now not of `Void`); data of another
@@ -974,6 +977,7 @@ ochr StrongUpdate uses Nats {
   ("ViaReturned", "the assigned value has type ⊤, expected ⌈Fin1(σ1)⌉"),
   ("Leak", "the assigned value has type &Nat, expected Nat"),
   ("ViaLoan", "the assigned value has type &One, expected One"),
+  ("DanglingRead", "the assigned value has type &One, expected Nat"),
   ("AType", "the assigned value has type Type, expected Nat"),
   ("AFunction", "the assigned value has type Π(u : Unit). Nat, expected Nat"),
   ("Ctl1", "a match with no arms on c.x : One, which has constructors"),
