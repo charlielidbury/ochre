@@ -254,9 +254,9 @@ theorem sim_bodyC (hE : EvalInv) (hZ : ZeroInv) (hS : SuccInv) (hV : VarNumInv) 
   have hsz : EvalSim K ρ φ (g + 6) (.succ .zero) Top (· = true) :=
     eval_of_core hE (fun a b h ha => ha.kern h) (fun _ e => by cases e) (fun _ _ _ e => by cases e)
       (fun st hst => by rw [hst.1, declOf_SZ hd]; exact Aux.duC_ok)
-      (succ_core hS hI hz (fun a b h ha => ha.kern h) (fun st hst => by rw [hst.1]; exact flags_Z hd)
+      (succ_core hS hI hz.restrict (fun a b h ha => ha.kern h) (fun st hst => by rw [hst.1]; exact flags_Z hd)
         (fun s => by rw [runT_zero, runT_zero])
-        (fun typed st₀ st₁ bh v₀ T₀ hT₀ hm₀ htd₀ hD₁ h => by
+        (fun st₀ st₁ bh v₀ T₀ hT₀ hm₀ htd₀ hD₁ h => by
           obtain ⟨rfl, rfl, -, -⟩ := run_zero hE hZ hm₀ hD₁ (by rw [hT₀.1]; exact flags_Z hd)
             (by rw [hT₀.1]; exact declOf_Z_ok hd) htd₀ h
           exact ⟨.zero, fun T hT => by cases hT; rfl⟩))

@@ -49,4 +49,19 @@ def InvEnd : Prop :=
     (∀ f j, px = .bind f j → ∀ b, st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.decl = .other) →
     Inv D Γ st.norm → Inv D Γ { st with env := endE st.env px ph c }.norm
 
+/-- **`evalCore` of a read of a MOVED number variable fails** (`readPlace`: "[Read] reading ⊥"; the
+typed run's [Repack] first, then the read). -/
+def VarBotInv : Prop :=
+  ∀ (n : Nat) (typed : Bool) (i : Nat) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value)
+    (T? : Option Value) (f j : Nat) (b : Binding),
+    ckVarPos st.env i = some (.bind f j) → st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
+    b.val = .bot → b.ty = some .tNat →
+    ¬ Runs (Ochr.evalCore (n + 1) typed (.place (.var i)) hint) st bh (v, T?) st'
+
+/-- **`eval` below fuel `3` fails** for a term that is not an embedded value (`eval` and `evalAt` each
+take one unit, `evalCore 0` is out of fuel at once). -/
+def EvalLow : Prop :=
+  ∀ (m : Nat) (typed : Bool) (t : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (r : Value × Option Value),
+    m < 3 → (∀ w, t ≠ .val w) → ¬ Runs (Ochr.eval m typed t hint) st bh r st'
+
 end Ochr.Meaning.Steps.Form

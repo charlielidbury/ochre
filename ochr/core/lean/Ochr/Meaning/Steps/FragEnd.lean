@@ -103,7 +103,7 @@ and held at `ph` (`borrow_l c`, `c` a number); every position holds a fragment v
 holds a loan; `loan_l` and `borrow_l` lie at those positions only. -/
 structure FEnd (E : Env) (px ph : Pos) (l : Nat) (c : Value) : Prop where
   vals : ∀ q ∈ allPos E, FVal (valAt E q)
-  tempNoLoan : ∀ f i m, valAt E (.temp f i) ≠ .loan m
+  tempNoLoan : ∀ f i m, Pos.temp f i ∈ allPos E → valAt E (.temp f i) ≠ .loan m
   hpx : px ∈ allPos E
   hph : ph ∈ allPos E
   x : valAt E px = .loan l
@@ -117,11 +117,11 @@ theorem FEnd.of_erase {E E' : Env} {px ph : Pos} {l : Nat} {c : Value} (he : E.e
     (h : FEnd E px ph l c) : FEnd E' px ph l c := by
   have hv : ∀ q, valAt E' q = valAt E q := fun q => by rw [← valAt_erase, ← he, valAt_erase]
   have ha : allPos E' = allPos E := by rw [← allPos_erase, ← he, allPos_erase]
-  refine ⟨fun q hq => ?_, fun f i m => ?_, ha ▸ h.hpx, ha ▸ h.hph, by rw [hv]; exact h.x, by rw [hv]; exact h.y,
+  refine ⟨fun q hq => ?_, fun f i m hq => ?_, ha ▸ h.hpx, ha ▸ h.hph, by rw [hv]; exact h.x, by rw [hv]; exact h.y,
     h.c, fun q hq e => h.loan1 q (ha ▸ hq) (by rw [← hv]; exact e),
     fun q hq w e => h.bor1 q (ha ▸ hq) w (by rw [← hv]; exact e)⟩
   · rw [hv]; exact h.vals q (ha ▸ hq)
-  · rw [hv]; exact h.tempNoLoan f i m
+  · rw [hv]; exact h.tempNoLoan f i m (ha ▸ hq)
 
 /-- The environment after the end: the holder `⊥`, the lender its content back. -/
 def endE (E : Env) (px ph : Pos) (c : Value) : Env := Env.setAtE (Env.setAtE E ph .bot) px c
@@ -418,7 +418,7 @@ namespace FEnd
 variable {E : Env} {px ph : Pos} {l : Nat} {c : Value} (h : FEnd E px ph l c)
 include h
 
-theorem px_ne_temp (f i : Nat) : px ≠ .temp f i := fun e => h.tempNoLoan f i l (by rw [← e]; exact h.x)
+theorem px_ne_temp (f i : Nat) : px ≠ .temp f i := fun e => h.tempNoLoan f i l (e ▸ h.hpx) (by rw [← e]; exact h.x)
 
 theorem mem_sitesOf {m : Nat} {x : Site} (hx : x ∈ Env.sitesOf E m) :
     x.pos ∈ allPos E ∧ valAt E x.pos = .loan m := by
@@ -578,7 +578,7 @@ theorem rel_end {π : Nat → Nat} {st : MState} {s : SState} (hr : Rel K ρ φ 
           Env.mean K.dm K.M K.Γ ρ _ st.env (.temp f i)
         have hmem := mem_allPos_of_shape hsh
         rw [he.mean_endE_other _ hmem (fun e => he.px_ne_temp f i e.symm) hti]
-        exact he.mean_E_future hmem (fun m' hm' => absurd hm' (he.tempNoLoan f i m'))
+        exact he.mean_E_future hmem (fun m' hm' => absurd hm' (he.tempNoLoan f i m' hmem))
   · -- the temporaries, back
     intro f j l'' hsh
     rw [SState.endAt_shape] at hsh; simp only at hsh
@@ -613,7 +613,7 @@ theorem rel_end {π : Nat → Nat} {st : MState} {s : SState} (hr : Rel K ρ φ 
         | bind f j =>
           rw [hrp] at e; rw [e, ← (hrb f j hrp).trans hrp, he.y] at hyv; cases hyv
         | temp f j =>
-          rw [hrp] at e; rw [e] at hyv; exact he.tempNoLoan f j l' hyv
+          rw [hrp] at e; rw [e] at hyv hyp; exact he.tempNoLoan f j l' hyp hyv
       rw [if_neg hyr, List.mem_singleton] at hxy
       subst hxy; exact hy
     · intro hx
@@ -624,7 +624,7 @@ theorem rel_end {π : Nat → Nat} {st : MState} {s : SState} (hr : Rel K ρ φ 
         | bind f j =>
           rw [hrp] at e; rw [e, ← (hrb f j hrp).trans hrp, he.y] at hyv; cases hyv
         | temp f j =>
-          rw [hrp] at e; rw [e] at hyv; exact he.tempNoLoan f j l' hyv
+          rw [hrp] at e; rw [e] at hyv hyp; exact he.tempNoLoan f j l' hyp hyv
       rw [if_neg hxr]; exact List.mem_singleton_self _
   · -- holders
     intro q l' hq

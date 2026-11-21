@@ -51,6 +51,19 @@ def stT : MState :=
     nextLoan := 1 }
 #guard !isOk (Ochr.evalCore 100 true (.place (.var 0)) none) stT 1000
 
+-- `VarBotInv`: reading a moved variable fails, typed or not, in any mode
+def stB0 : MState := { env := #[{ binds := #[bN "x" .bot] }] }
+#guard !isOk (Ochr.evalCore 100 true (.place (.var 0)) none) stB0 1000
+#guard !isOk (Ochr.evalCore 100 false (.place (.var 0)) none) stB0 1000
+#guard !isOk (Ochr.evalCore 100 true (.place (.var 0)) none) { stB0 with copying := true } 1000
+
+-- `EvalLow`: below fuel `3` every fragment form fails (and at `3` the leaves run)
+def stX1 : MState := { env := #[{ binds := #[bN "x" (.succ .zero)] }] }
+#guard [Term.zero, .succ .zero, .place (.var 0), .borrow (.var 0), .assign (.var 0) .zero,
+    .letIn ⟨"y"⟩ .zero .zero, .seq .zero .zero].all fun t =>
+  [0, 1, 2].all fun m => !isOk (Ochr.eval m true t none) stX1 1000
+#guard isOk (Ochr.eval 3 true .zero none) stX1 1000
+
 end FragGuards
 
 end Ochr.Meaning.Steps.Form
