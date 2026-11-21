@@ -520,4 +520,31 @@ theorem decTab_back {D : Decisions} {st st' : MState} (hd : Steps.DecTab D st') 
   typeDecl := fun fuel sc T d b _ h => hd.typeDecl fuel sc T d b _
     (runs_fwd ((fwd_withLive_true ((decideFwd fuel).typeDecl false [] [] T [] [])).2 _ _ (envTab_scopeState hg sc)) h)
 
+/-! ## The decisions at a checker state are the table's at its own readings -/
+
+/-- `TabLe` and the same live readings (a state against `scopeState` at its own readings). -/
+structure LiveEq (s₁ s₂ : MState) : Prop extends TabLe s₁ s₂ where
+  live : ∀ i, liveVal s₁ i = liveVal s₂ i
+
+theorem fwd_withLive_true' {α : Type} {x : M α} (hx : Fwd LiveLe x) : Fwd LiveEq (withLive true x) :=
+  fwd_withLive true (fun _ _ h => ⟨⟨h.globals, h.inds, h.absDecl⟩, rfl, fun _ i => h.live i⟩) hx
+
+theorem liveEq_scopeState (st : MState) : LiveEq st (scopeState st (topReadings st)) :=
+  ⟨⟨rfl, rfl, fun _ _ h => h⟩, fun i => ((envRel_scopeState st).live i).symm⟩
+
+/-- The machine's own reading of a term (`withLive true (declOf …)`, at a state the table is aligned
+at) is the table's at the state's top readings. -/
+theorem decTab_declOf_at {D : Decisions} {st st' : MState} {fuel : Nat} {t : Term} {d : DeclInfo} {b : Nat}
+    (hd : Steps.DecTab D st) (h : Steps.Runs (withLive true (Ochr.declOf fuel false [] [] t)) st b d st') :
+    D.declOf (topReadings st) t = d :=
+  hd.declOf fuel _ t d b _
+    (runs_fwd ((fwd_withLive_true' ((decideFwd fuel).declOf false [] [] t)).2 _ _ (liveEq_scopeState st)) h)
+
+/-- The same for a place's reading (`withLive true (placeDecl …)`). -/
+theorem decTab_placeDecl_at {D : Decisions} {st st' : MState} {fuel : Nat} {p : Place} {d : DeclInfo} {b : Nat}
+    (hd : Steps.DecTab D st) (h : Steps.Runs (withLive true (Ochr.placeDecl fuel [] p)) st b d st') :
+    D.placeDecl (topReadings st) p = d :=
+  hd.placeDecl fuel _ p d b _
+    (runs_fwd ((fwd_withLive_true' ((decideFwd fuel).placeDecl [] p)).2 _ _ (liveEq_scopeState st)) h)
+
 end Ochr.Meaning.Steps.Machine
