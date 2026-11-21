@@ -197,9 +197,9 @@ section
 variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 
 /-- **The read of a variable holding a number stored at `Nat`, at `evalCore`.** -/
-theorem var_core (hV : VarNumInv) (hIC : InvCore) {n i : Nat} : CoreSim K ρ φ (n + 1) (.place (.var i)) (NumVar i) := by
+theorem var_core (hV : VarNumInv) (hI : InvSteps) {n i : Nat} : CoreSim K ρ φ (n + 1) (.place (.var i)) (NumVar i) := by
   intro st st' typed hint v T? s π ⟨f, j, b, hpos, hb, hnum, hty⟩ _ hm htn _ _ hp hr hS hv hab hnh hfl hok hD bh h
-  obtain ⟨rfl, hT, -, hm', st₁, hq, hcopy, hmove⟩ :=
+  obtain ⟨rfl, hT, -, hm', st₁, hq, hki, hcopy, hmove⟩ :=
     hV n typed i hint st st' bh v T? f j b K.D hm hpos hb hnum (by rw [hty]; rfl) hD h
   have hres : resolve s (.var i) = some (.bind f j, []) := rel_resolve_ck K ρ φ st s π (.var i) _ hr hpos
   have hvb : valAt st.env (.bind f j) = b.val := by
@@ -238,7 +238,13 @@ theorem var_core (hV : VarNumInv) (hIC : InvCore) {n i : Nat} : CoreSim K ρ φ 
   have hlab : ∀ l, st.Occurs l → l < st.nextLoan := hp.labels
   have hr₁ : Rel K ρ φ π st₁ s := hr.of_quiet hq hlab
   have ha₁ : Asg K ρ st₁.norm := Asg.of_quiet hq hp.asg hp.inv.wf6
-  have hinv := hIC (n + 1) typed (.place (.var i)) hint st st' bh b.val T? K.D K.Γ (.var i) hp.inv hD h
+  have hinv : Inv K.D K.Γ (st'.withTempT b.val T?).norm := by
+    have h₁ : Inv K.D K.Γ st₁.norm := hki K.D K.Γ hp.inv
+    refine hI.pushInert K.D K.Γ st' _ _ (.inl hnum) ?_
+    cases hc : K.D.copy (K.D.placeDecl (DecideScope.topReadings st) (.var i))
+    · rw [← (hmove hc).norm]
+      exact hI.setBot K.D K.Γ st₁ f j (by rw [← valAt_erase, ← hq.env, valAt_erase, hvb]; exact hnum) h₁
+    · rw [← (hcopy hc).norm]; exact h₁
   have hmeanV : ∀ ψ hint', meanV K ρ ψ hint' b.val = .el0 Nat m := fun ψ hint' => by
     rw [← meanV_eq_mean]; exact hmv _ _ _ _ _ _
   have hagree : ∀ T, T? = some T → StrAgree K ρ T { s.tyAt (.bind f j) with label := none } := by
