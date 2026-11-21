@@ -406,6 +406,43 @@ theorem flags_bodyI {D : Decisions} (hd : DecTab D stI) : D.flags [.other, .pi .
   rw [hd.flags 100 Aux.RI bodyI _ 1000 _
     (Regress.GenNeutralContent.runs_out (Aux.flagsRun bodyI) _ 1000 Aux.ok_flags_body), Aux.val_flags_body]
 
+namespace Aux
+
+open Ochr.Meaning.Regress.GenNeutralContent (isOk outVal)
+
+/-- The runs `DecTab.typeDecl` and `DecTab.piSort` read, at fuel `100`. -/
+abbrev typeDeclRun (T : Term) : M DeclInfo := withLive true (Ochr.typeDecl 100 false [] [] T)
+abbrev piSortRun (t : Term) : M Nat := withLive true (Ochr.sortOf 100 (.tPi [] t []))
+
+theorem ok_td_nat (sc : List DeclInfo) (hsc : sc = [] ∨ sc = [.other]) :
+    isOk (typeDeclRun .nat) (scopeState stI sc) 1000 = true := by
+  rcases hsc with rfl | rfl <;> decide +kernel
+theorem val_td_nat (sc : List DeclInfo) (hsc : sc = [] ∨ sc = [.other]) :
+    isOther (outVal (typeDeclRun .nat) (scopeState stI sc) 1000) = true := by
+  rcases hsc with rfl | rfl <;> decide +kernel
+theorem ok_piSort : isOk (piSortRun (.pi [⟨"n"⟩] [.nat] .nat)) (scopeState stI []) 1000 = true := by decide +kernel
+theorem val_piSort : outVal (piSortRun (.pi [⟨"n"⟩] [.nat] .nat)) (scopeState stI []) 1000 = 1 := by decide +kernel
+theorem ok_flags_fix : isOk (flagsRun fixI) (scopeState stI []) 1000 = true := by decide +kernel
+theorem val_flags_fix : outVal (flagsRun fixI) (scopeState stI []) 1000 = (false, false) := by decide +kernel
+
+end Aux
+
+/-- **The reference `.fix` clause's decisions for `I`, at the empty scope** (where a global's `fix`
+is formed, `stateOf 0 []`), at every table aligned with the checker at `stI`: the parameter and the
+codomain read `.other`, the Π-type has sort `1` (`Type₀`), the `fix` is neither a statement nor a proof. -/
+theorem fixDecI {D : Decisions} (hd : DecTab D stI) :
+    D.typeDecl [] .nat = .other ∧ D.typeDecl [.other] .nat = .other ∧ D.piSort [] (.pi [⟨"n"⟩] [.nat] .nat) = 1 ∧
+      D.flags [] fixI = (false, false) := by
+  open Ochr.Meaning.Regress.GenNeutralContent in
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · rw [hd.typeDecl 100 [] .nat _ 1000 _ (runs_out (Aux.typeDeclRun .nat) _ 1000 (Aux.ok_td_nat [] (.inl rfl)))]
+    exact Ochr.Meaning.Steps.Form.ColumnC.Aux.isOther_eq (Aux.val_td_nat [] (.inl rfl))
+  · rw [hd.typeDecl 100 [.other] .nat _ 1000 _
+      (runs_out (Aux.typeDeclRun .nat) _ 1000 (Aux.ok_td_nat [.other] (.inr rfl)))]
+    exact Ochr.Meaning.Steps.Form.ColumnC.Aux.isOther_eq (Aux.val_td_nat [.other] (.inr rfl))
+  · rw [hd.piSort 100 [] _ _ 1000 _ (runs_out (Aux.piSortRun _) _ 1000 Aux.ok_piSort), Aux.val_piSort]
+  · rw [hd.flags 100 [] fixI _ 1000 _ (runs_out (Aux.flagsRun fixI) _ 1000 Aux.ok_flags_fix), Aux.val_flags_fix]
+
 /-- `n ↦ σ0` at `Nat`. -/
 theorem absVar_stI : AbsVar 0 stI := ⟨1, 1, nB, 0, rfl, rfl, rfl, rfl, rfl⟩
 

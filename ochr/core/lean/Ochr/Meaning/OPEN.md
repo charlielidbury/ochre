@@ -14,6 +14,10 @@ Reading-based verdicts were produced by four read-only agents and spot-checked b
 - **U (D81)**: untyped runs bind at types they never check (`Regress/EvalMemRuns` part 3); `Good` cannot be maintained through them.
 - **L (docs/35, trial)**: a comparison's private copy keeps η records that can name an unknown of an empty type, after which no extension is good; to be removed by the checker change "a comparison keeps nothing but names" (D103). Marked +L.
 
+## THE FIRST COLUMNS WITH A PARAMETER, CONTINUED (lead14, 2026-11-21, `spine-lead14`)
+
+`I`'s body start state: `Pre`, `Rel`, `SGood` PROVED with no checker fact (`Steps/ColumnIStart.lean`); `ParDecI` and the reference `.fix` clause's decisions at scope `[]` PROVED from the aligned table by kernel evaluation (`parDecI`, `fixDecI`); the body's reference run from the start state PROVED (`Steps/ColumnI.body_runI`: `S(a)` at `Nat`, no live label) from `VarNumAInv`, `InvNumA` (machine lane, unreviewed; each now `#guard`ed in `Steps/ParGuards.lean` where it can run) and proved facts. Still assumed for `column_I`: `FrameDrop0` (model lane); still to STATE: `FixRunI` (machine lane). `P`: BLOCKED on a ruling (docs/31 D125: at a tail-position match the reference drops at the join, the checker's split does not; `Regress/TailJoin.lean`). The surface's `S(n)` is a call of `succFn` (docs/31 D124): column `I` is `succFn`'s body.
+
 ## THE FIRST COLUMNS WITH A PARAMETER (lead13, 2026-11-21, `spine-lead13`): `I`, then `P`
 
 `def I (n : Nat) : Nat := S(n)` and `def P (n : Nat) : Nat := match n { Z => Z, S m => m }`, each to "the `.fix` closure is a member of its type". The body's start state needed a change to the relation's types (docs/31 D123, `Binding.refTy`: a binding marked as the function being checked has the context's type). Facts stated so far (`Steps/ParFacts.lean`):
