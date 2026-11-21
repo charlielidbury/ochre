@@ -1380,7 +1380,8 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
           -- docs/31 D126: the cell is a binding of frame 0, `x° ↦ loan l` at the content type, as
           -- the checker's `checkFix` makes it
           let cell : Pos := .bind 0 (((s.env[0]?).map (·.binds.length)).getD 0)
-          let s := s.pushCell { ty := .plain T.m, val := fun ψ => ψ l, decl := .other }
+          -- docs/31 D138: the cell is the label's one loan site, as the checker's `loan l` is
+          let s := (s.pushCell { ty := .plain T.m, val := fun ψ => ψ l, decl := .other }).setLent l [⟨cell, [], false⟩]
           -- the argument is recorded as the label's member (docs/31 D68: where a label is made)
           let s := pushBindShaped ((s.setHeldMem l ap.1).setHeldTy l T.m) { ty := { T with label := some l }, val := fun _ => ap.1, decl := d }
           (s, acc ++ [ap.1], cells ++ [cell])
