@@ -5,6 +5,7 @@ import Ochr.Meaning.Steps.Machine.InvShape
 import Ochr.Meaning.Steps.Machine.InvSteps
 import Ochr.Meaning.Steps.Machine.PlaceLocalFF
 import Ochr.Meaning.Steps.Machine.SeqInv
+import Ochr.Meaning.Steps.Machine.VarEndInv
 
 /-!
 # The column's facts about the checker alone (`Steps/FormMachine.lean`), proved
