@@ -24,6 +24,7 @@ Written 2026-11-21 from the final report of the agent that landed D90 to D103, a
 - **The machine is shared.** Long jobs need `taskset -c 0-14`, and timings are comparable only when interleaved at equal load. Never `git stash` (the stash is shared by every worktree): commit work in progress and amend.
 - **Proofs about the checker.** A probe that edits a function `StabilitySig.lean` reasons about breaks the build. Stub the proof with `sorry` only in the probe run, and restore from a saved copy.
 - **One verification job at a time in a checkout.** A second job's `git checkout` switches the tree under the first.
+- **Never wait on a job with `pgrep -f <name>`.** The waiting shell's own command line contains the name, so `until ! pgrep -f "Dump.lean"; do sleep 10; done` matches itself and never ends. Five such loops, from four different agents, were found still polling hours after their agents had retired, and one agent's turn hung for four hours behind one. Let the tool's background mode notify you, or wait on a PID (`tail --pid=$PID -f /dev/null`).
 
 ## More from later landings (D107 to D109)
 
