@@ -186,6 +186,7 @@ import Ochr.Meaning.Steps.ColumnQMean
 import Ochr.Meaning.Steps.BorrowPar
 import Ochr.Meaning.Steps.BorrowParGuards
 import Ochr.Meaning.Steps.BorrowParStart
+import Ochr.Meaning.Steps.CallJ2Step
 import Ochr.Meaning.Steps.FrameFrag
 import Ochr.Meaning.Steps.GlobalsLocal
 import Ochr.Meaning.Regress.EvalMemRuns

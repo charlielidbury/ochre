@@ -641,19 +641,26 @@ end
 
 /-! ## The checker's call `I(x)`, decomposed: one fact -/
 
+/-- The sealed call a call of `I` on `S(Z)` closes off to, where `I`'s body ends stuck (the form of `ColumnR.vR`). -/
+def sealJ2 : Value := .sealed (.call (.val (.gfn "I")) [.val (.succ .zero)] true)
+
 /-- **The checker's call `I(x)` at `J2`, decomposed** (a fact about the checker alone, assumed; the machine lane's to
 read and prove): every successful typed `eval` of `I(x)` from a state with `stX1`'s kernel (`x ↦ S(Z)`), in the plain
 mode, not in tail position, with no reading handed down, outside any private copy, returns its value at `Nat`
 (`callType`) and ends with `stX`'s kernel (the argument's read moved `x`, the callee's frame popped); and it ran `I`'s
 body UNTYPED, with no hint, from a state with `stCJ2`'s kernel in the plain mode with no handed-down reading, to that
-same value (`runBodyCore`). What `closureRun_J2` takes from the checker's side. Guarded below. -/
+same value (`runBodyCore`), OR the body ended stuck and the call closed off to the sealed call `⌈I(S(Z))⌉`
+(`sealJ2`; docs/31 D139, the orchestrator's ruling for lead18: a call's inversion is stated as this disjunction, never
+with "the callee's body never ends stuck"; the sealed call means the same closure applied). What `closureRun_J2` and
+`CallJ2Step.mean_callJ2` take from the checker's side. Guarded below (the first disjunct holds at every guarded run). -/
 def CallJ2Inv : Prop :=
   ∀ (n : Nat) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value),
     Kern stX1 st → Mode st → st.tailNext = false → st.tailDecl = none → st.privateDepth = 0 →
     Runs (Ochr.eval n true callJ2 hint) st bh (v, T?) st' →
     T? = some .tNat ∧ Kern stX st' ∧
-      ∃ (m : Nat) (stc stc' : MState) (bh' : Nat) (T₀ : Option Value),
-        Kern stCJ2 stc ∧ Mode stc ∧ stc.tailDecl = none ∧ Runs (Ochr.eval m false bodyI none) stc bh' (v, T₀) stc'
+      ((∃ (m : Nat) (stc stc' : MState) (bh' : Nat) (T₀ : Option Value),
+        Kern stCJ2 stc ∧ Mode stc ∧ stc.tailDecl = none ∧ Runs (Ochr.eval m false bodyI none) stc bh' (v, T₀) stc') ∨
+       v = sealJ2)
 
 namespace Guards
 
