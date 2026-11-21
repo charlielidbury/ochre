@@ -36,20 +36,19 @@ def DiffAt (dm : DataModel) (X : Nat → Prop) (s s' : SState) : Prop :=
         (b'.val = b.val ∨ (X p ∧ ∀ ψ, (b.val ψ).whole ∧ (b'.val ψ).whole ∧
           b.val ψ ∈ₛ[dm.read] b.ty.m ∧ b'.val ψ ∈ₛ[dm.read] b.ty.m))
 
-/-- **Frame locality** (BELIEVED TRUE; the core lemma left of piece 3). A run reads its frame only at
-the variables its term mentions: from two states differing at bindings the term does not mention, each
-holding whole members of its type there, the run gives the same result and states that differ the same
-way. The uniform form proves pieces 1 and 2 with it (two run contexts agreeing on the declarations the
-term reaches); this is the frame half.
+/-- **Frame locality, as first written: FALSE** (exists3, 2026-11-21; docs/34 §18.5). Kept for the
+record; the restatement is `FrameLocal.runT_qset` (an equation over the transform `qset`).
+Attacked: (1) `DiffAt` does not compare `lent`, `heldTy`, `heldMem`, and a live label's recorded member
+is what a place reading that label reads (kernel-checked: `FrameLocalCE.frameLocal_false`, `X` empty);
+(2) a value at `X` may read the future, and `Id`'s observation reads every position after ending every
+borrow, so two sides that end a borrow differently see an `X` binding differently (argued); (3) the
+decisions (`joinMoves`, `blockCaps`, `invalidated`, `rePointed`) may name a place at `X`, and a drop
+at a field of an `X` binding is defined at one value and not the other (argued). The restatement asks
+constant values at `X` (the canonical frame's are), compares every record, and assumes `DecLocal`.
 
-Attacked (2026-11-21) by reading every place the run looks at a whole state rather than a place the
-term names: `movedPlaces` (the moved parts of every binding: none in a whole value), `lentOk`/`StateOk`
-(every position an open member: both are members), `SM.guarded (ContentOk …)`/`AccessOk` (the labels at
-a place: none), `JoinDropOk` and the decisions' `joinMoves`/`blockCaps` (the moved places and the scope's
-readings, the same), `typedFuture` (labels), `Id`'s observation (it compares the two sides' final states
-position by position; a position in `X` is the same in both sides). None reads a value at `X`. Proof
-template: `RunCongr.run_congr` (an induction over the run's mutual block with a relation preserved by
-every clause). -/
+Earlier attack (exists2): the whole-state scans `movedPlaces`, `lentOk`/`StateOk`, `SM.guarded`,
+`JoinDropOk`, `typedFuture`, `Id`'s observation read no value at `X` that the term does not reach;
+that reading missed counts 1 to 3. -/
 theorem runT_frameLocal (K : RunCtx) (ρ : Assignment) (φ : Future) (tl : Bool) (h : TyS) (t : Term)
     (X : Nat → Prop) (s s' : SState) (hd : DiffAt K.dm X s s') (hone : s.env.length = 1)
     (hX : ∀ v ∈ t.freeVars, ∀ p, s.varPos v = some (.bind 0 p) → ¬ X p)

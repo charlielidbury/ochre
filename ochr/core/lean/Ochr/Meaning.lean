@@ -201,6 +201,9 @@ import Ochr.Meaning.DataModel.Exists.PreludeModel
 import Ochr.Meaning.DataModel.Exists.PropNestCE
 import Ochr.Meaning.DataModel.Exists.Step2
 import Ochr.Meaning.DataModel.Exists.Piece3
+import Ochr.Meaning.DataModel.Exists.FrameLocalCE
+import Ochr.Meaning.DataModel.Exists.FrameLocal.Vars
+import Ochr.Meaning.DataModel.Exists.FrameLocal.Prims
 import Ochr.Meaning.DataLib.Universal
 import Ochr.Meaning.Strict.Runs
 import Ochr.Meaning.Strict.MemReadsCE
