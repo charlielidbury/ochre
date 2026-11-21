@@ -15,10 +15,10 @@ false), and returns `S(σ₀)` at `Nat` (`Steps/ParGuards.lean`).
 New relative to the fragment: values holding an unknown. `Value.NumA` is a numeral over an unknown or
 over `Z`; the facts below are the fragment's `Num` facts with `NumA` (and the unknown's type `Nat`).
 
-The reference: the `.fix` clause makes a closure whose body runs, at each argument, in ONE frame
-(`RunCongr.fixBodyAt`: `self`, then the parameters, pushed on the closure's creation state), where the
-checker's body state has two. `FrameDrop0` relates the two (the model's frame property,
-`FrameProp.run_frame`, at no parameter label and an empty caller frame).
+The reference: the `.fix` clause makes a closure whose body runs, at each argument, in the checker's
+frames (docs/31 D126: `RunCongr.fixBodyAt` pushes `self` and the parameters on the creation state under a
+fresh bottom frame, `SState.under`), so for `I` the two start states are equal (`ColumnIRun.start_I`).
+The model fact `FrameDrop0` that bridged one frame and two (lead14) is deleted with it.
 -/
 
 namespace Ochr.Meaning.Steps.Form
@@ -68,19 +68,5 @@ structure InvNumA : Prop where
   setBot : ∀ (D : Decisions) (Γ : List IndDecl) (st : MState) (f j : Nat),
     (valAt st.env (.bind f j)).NumA → Inv D Γ st.norm →
     Inv D Γ { st with env := Env.setAtE st.env (.bind f j) .bot }.norm
-
-/-! ## A fact about the reference run (the model lane's) -/
-
-/-- **The reference run does not see an empty bottom frame** (`FrameProp.run_frame` at no parameter
-label, the caller's frames one empty frame; the model lane's): a run from a state whose frames are an
-empty frame under `fr`, with no borrow anywhere, succeeds where the run from `fr` alone does, with the
-same result, and leaves no live label where the other leaves none. -/
-def FrameDrop0 (K : RunCtx) (ρ : Assignment) (φ : Future) : Prop :=
-  ∀ (tl : Bool) (hint : TyS) (t : Term) (s : SState) (fr : SFrame) (r : Res) (s' : SState),
-    t.valsOk (Strict.ValsP K ρ φ) → Strict.SGood K.dm K.Γ φ s →
-    s.env = [{}, fr] → (∀ p, s.shape p = none) →
-    runT K ρ φ tl hint t s = some (r, s') → s'.liveLabels = [] →
-    ∃ s'', runT K ρ φ tl hint t { env := [fr], shape := fun _ => none, nextLoan := s.nextLoan } = some (r, s'') ∧
-      s''.liveLabels = []
 
 end Ochr.Meaning.Steps.Form

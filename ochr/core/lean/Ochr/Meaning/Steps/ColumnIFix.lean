@@ -4,14 +4,12 @@ import Ochr.Meaning.Strict.WitnessFix
 /-!
 # The column `I`: the `.fix` clause's reading of `I`, and its body frame (lead14)
 
-The reference's `.fix` clause forms `I`'s closure (for a global, in `stateOf 0 []`) and runs its body,
-at each argument, in one frame (`RunCongr.fixBodyAt`): `self` (the stage-0 closure at the weakened type),
-then the parameter. Here: the clause's reading of `Π(n : Nat). Nat` (`runDoms = psI`, `codOf = outI`),
-the body's run reading neither the assignment, the tail flag nor the hint (`runT_bodyI`), `EndsOk []`,
-and the body frame `frI` both sides hold. Still to prove (next lead): the checker's start state read as
-a reference state is `[{}, frI]` (`SM'`'s bindings: `Binding.refTy_marked`/`_unmarked`, `Aux.valAt_SM_eq`;
-the structure-instance `show` needs each binding on one line), `fixBodyAt`'s state is `[frI]`, and the
-bridge between the two, `FrameDrop0` (docs/31 D126).
+The reference's `.fix` clause forms `I`'s closure (for a global, in the empty state) and runs its body,
+at each argument, in the checker's frames (`RunCongr.fixBodyAt` under `SState.under`, docs/31 D126):
+`[{}, frI]`, `self` (the stage-0 closure at the weakened type), then the parameter. Here: the clause's
+reading of `Π(n : Nat). Nat` (`runDoms = psI`, `codOf = outI`), the body's run reading neither the
+assignment, the tail flag nor the hint (`runT_bodyI`), `EndsOk []`, and the body frame `frI`. The
+assembly (the two start states equal, the closure a member, the `.fix` run) is `Steps/ColumnIRun.lean`.
 -/
 
 namespace Ochr.Meaning.Steps.Form.ColumnI
