@@ -655,9 +655,11 @@ prefix already), and relating it needed the reading to be unchanged by an access
 
 No test of the meaning at the place (the slice, 2026-11-20, the orchestrator's decision): a place
 the shared copy decision does not call a copy is accessed and written `moved` whatever the model
-reads there, and nothing is done exactly where the write cannot be made (`Sem.updAt` fails at the
-typed future: the path passes by a field step through a part with no fields, a proof or a moved
-part, which is where the checker's `movedPlace` re-roots to a `⊥` or `⋆` prefix and does nothing).
+reads there, and nothing is done exactly where the write cannot be made at EVERY typed future
+(the orchestrator's write rule, 2026-11-21; `Sem.updAt` fails: the path passes by a field step
+through a part with no fields, a proof or a moved part, which is where the checker's `movedPlace`
+re-roots to a `⊥` or `⋆` prefix and does nothing; on related states the definedness does not depend
+on the future, the simulation's obligation in `OPEN.md`).
 It used to do nothing where the place read `⋆`, mirroring the checker's "a proof: nothing" test on
 its own stored value; the two tests agree only if the checker holds `⋆` exactly where the model
 reads `⋆`, which is the typing of the whole state (sort soundness, the typing of reads, open values,

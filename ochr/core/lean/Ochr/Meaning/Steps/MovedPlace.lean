@@ -1047,7 +1047,6 @@ theorem joinDropOne_noop (st : MState) (s s₁ : SState) (π : Nat → Nat) (q q
       rw [← hrest]
       simp only [sem_updAt_append_derefs K.dm K.Γ _ rest hd]
       split
-      · exact hs
       · have hself := updAt_bot_self q'.steps.2 _ hf'
         obtain ⟨f, i, hposfi, hpb, hsp, hroot, hplain, hnat⟩ :=
           botWrite_hyps K ρ φ st s₁ π q' pos' _ hg hctx.shapes hs hck' hgr' hnb' hself
@@ -1056,12 +1055,23 @@ theorem joinDropOne_noop (st : MState) (s s₁ : SState) (π : Nat → Nat) (q q
           (fun l hl x hx hxp => hclr l hl x hx hxp) hplain hnat
         rw [setAtE_self_bind st.env f i hpb] at hrel
         exact hrel
+      · exact hs
     · -- through the moved prefix by a field step: the write cannot be made, nothing is done
       obtain ⟨y, hy, hyd⟩ : ∃ y ∈ rest, y ≠ .deref :=
         Classical.byContradiction fun hne => hd fun y hy => Classical.byContradiction fun h => hne ⟨y, hy, h⟩
       have hnone := Slice.updAt_append_none K.dm K.Γ (fun _ => Sem.moved) q'.steps.2 _ _ _ T₁ rest hT
         (Slice.updAt_moved_none K.dm K.Γ (fun _ => Sem.moved) rest T₁ ⟨y, hy, hyd⟩)
-      rw [← hrest, hnone]
+      -- SORRY (model lane, 2026-11-21, for the slice lane): `dropAt` now writes only where the write
+      -- is defined at EVERY typed future (the orchestrator's write rule); here it is undefined at the
+      -- read's future `s₁.typedFuture φ`, which is a typed future once each live label's record is an
+      -- open member of its RECORDED type `heldTy`. The relation's `records` gives membership at
+      -- `holderTy` (the holder's stored type); that the two agree is `SGood.holderTy` on the model
+      -- side, not a clause of `Rel`.
+      have htf : TypedFut K φ s₁ (s₁.typedFuture φ) := by
+        refine ⟨fun l hl => ?_, fun l hl => ?_⟩
+        · simp [SState.typedFuture, hl]
+        · sorry
+      rw [← hrest, if_neg (fun hall => by have h := hall _ htf; rw [hnone] at h; cases h)]
       exact hs
 
 /-- **`dropOne_step`, assembled** (the drop of one place, D84): `movedPlace` in the simulation form
