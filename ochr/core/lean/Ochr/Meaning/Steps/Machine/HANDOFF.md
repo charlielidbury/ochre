@@ -1,7 +1,7 @@
 # Machine lane: working note (keep current; a successor continues from this alone)
 
-Worktree `/home/charlielidbury/repos/ochre-machine3`, branch `spine-machine3` (machine3, from 2026-11-21 night;
-before it machine2 in `ochre-machine2`/`spine-machine2`; push to your own branch; never `spine` or `main`). Lean project `ochr/core/lean`; build `taskset -c 0-14 lake build <Module>` (long builds in
+Worktree `/home/charlielidbury/repos/ochre-machine4`, branch `spine-machine4` (machine4, from 2026-11-21 night;
+before it machine3 in `ochre-machine3`/`spine-machine3`, machine2 in `ochre-machine2`/`spine-machine2`; push to your own branch; never `spine` or `main`). Lean project `ochr/core/lean`; build `taskset -c 0-14 lake build <Module>` (long builds in
 the background), and `taskset -c 0-14 lake build OchrMeaning` before each push. Report to the lead
 (`team-lead`) by SendMessage, then end the turn. Owned: `Steps/MachineMono.lean`, everything under
 `Steps/Machine/`. Never edit the checker or other files (to check a consumer, copy it into a scratch
@@ -200,6 +200,25 @@ whole block, the same shape as (a) but relational; see the queue).
      reading before `u`, typed hints); after it lands, merge `origin/spine` and check `column_C_free`
      still builds unchanged; tell the orchestrator at once if not.
 
+### machine4 (2026-11-21 night): the borrow column closed with nothing assumed
+
+- `varEndInv` (`VarEndInv.lean`, "The assembly"): the variable's position is derived from the run's
+  success (`ckVarPos_one_two`: every branch of `.place` runs `varPos 1` first; `allPos = [b00, b01]`
+  does not fix `env.size = 1`); the copy decision read at the ENDED state, whose top readings and
+  tables are the entry's.
+- `AssignDerefInv` was FALSE (y lent at u's end: the access ends y's borrower) and two conjuncts were
+  whole-machine facts (ModeEq across an ending, KeepsInv across a comparison of unequal types);
+  RESTATED in FormMachine (conditions on u's END state `st₁`, under the conclusion), consumers
+  adapted (`assignDeref_core`'s `hnum` also gives u's type is Nat; `run_write`; `sim_write_read`),
+  proved (`AssignDerefInv.lean`). Trap met: the hint's `if … (u matches …)` is duplicated by the
+  do-elaborator's inlined join point; naming the condition (`by_cases`, `generalize`) timed out at
+  whnf; `Runs.ite_bind_inv` (shared continuation) inverts it without naming it.
+- `column_B_free` (`ColumnBFree.lean`, root-imported), `dropNoopInvM` (DropNoopInv + `ModeEq st st'`;
+  FormMachine's `DropNoopInv` NOT restated: no consumer needs the mode; its `holdsBorrow` hypothesis
+  is unused).
+- NEXT: step 5 of the brief (merge `origin/main`: D115/D116; regenerate `gen/`; repair; list sorries),
+  only after telling the orchestrator.
+
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
 Reachable from `checkProgram`: `Loc.termAddr` (`opaque`/`implemented_by`, the standard's one allowed
@@ -364,6 +383,10 @@ The earlier queue (still owed, after the column):
    facts; the well-formedness preservation statements, `borrow_wf` suspected false).
 
 ## Build state
+
+2026-11-21 night, `spine-machine4` (machine4; `spine` 847f05ab and `spine-machine3` 761d0ce9 merged):
+`OchrMeaning` green; `varEndInv`, `assignDerefInv`, `dropNoopInvM`, `column_B_free`, `column_C_free`
+standard axioms.
 
 2026-11-21 night, `spine-machine3` (machine3; `spine-lead9` f6c88026 merged): `OchrMeaning` green;
 `invSteps`, `placeLocal_ff`, `column_C_free` (built explicitly until the root imports it), `seqInvR`

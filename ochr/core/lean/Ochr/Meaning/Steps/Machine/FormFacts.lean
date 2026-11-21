@@ -61,10 +61,14 @@ theorem runs_endLoansOfTopBind_noop {k f : Nat} {st st' : MState} {bh : Nat} {b 
     exact (runs_pure_inv h).2
 
 open Ochr.Meaning.DecideScope Ochr.Meaning.Steps.Slice in
-/-- **`DropNoopInv`**: [Drop] of a binding that holds no loan and no borrow ends nothing and pops it
-(`endLoansOfTopBind` finds no live loan in a value with no loan). -/
-theorem dropNoopInv : DropNoopInv := by
-  intro n st st' bh fr b hfr hb hl hnb hhb h
+/-- **`DropNoopInv` with the mode** (asked by the retired lead, machine4 2026-11-21): the drop also
+keeps the mode's fields (`ModeEq st st'`): nothing it runs (`topIdx`, the binding read, the check,
+`endLoansOfTopBind` finding no live loan, the pop) touches `headEval`, `copying`, `inPlace` or
+`erasedDepth`. -/
+theorem dropNoopInvM (n : Nat) (st st' : MState) (bh : Nat) (fr : Frame) (b : Binding)
+    (hfr : st.env[st.env.size - 1]? = some fr) (hb : fr.binds.back? = some b) (hl : b.val.loans = [])
+    (hnb : ∀ l w, b.val ≠ .borrow l w) (h : Runs (Ochr.dropTopBind n) st bh () st') :
+    Kern { st with env := Env.popBindE st.env } st' ∧ ModeEq st st' := by
   cases n with
   | zero => unfold Ochr.dropTopBind at h; simp only [runs_exhausted_iff] at h
   | succ k =>
@@ -94,7 +98,12 @@ theorem dropNoopInv : DropNoopInv := by
       unfold modifyFrame at h₂
       have := runs_modify_inv h₂
       subst this
-      exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+      exact ⟨⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩, ⟨rfl, rfl, rfl, rfl⟩⟩
+
+/-- **`DropNoopInv`**: [Drop] of a binding that holds no loan and no borrow ends nothing and pops it
+(`endLoansOfTopBind` finds no live loan in a value with no loan). -/
+theorem dropNoopInv : DropNoopInv := fun n st st' bh fr b hfr hb hl hnb _ h =>
+  (dropNoopInvM n st st' bh fr b hfr hb hl hnb h).1
 /-- The type check of a value without a type does nothing. -/
 theorem runs_expectTy_none {n : Nat} {w : String} {A : Value} {st st' : MState} {b : Nat}
     (h : Runs (Ochr.expectTy n w none A) st b () st') : st' = st := by
@@ -122,6 +131,7 @@ theorem seqInv : SeqInv := seqInvR
 
 #print axioms decBack
 #print axioms dropNoopInv
+#print axioms dropNoopInvM
 #print axioms evalInvR
 #print axioms succInvR
 #print axioms letInvR
