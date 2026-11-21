@@ -181,18 +181,24 @@ def AssignNumInv : Prop :=
 /-- **`evalCore` of a typed borrow of a variable holding a number** (`&x`; `Machine.evalCore`'s
 `.borrow`, `borrowPlace`): the place's type read and [Repack]ed privately (quiet), the access ends
 nothing (nothing is lent at a number), a fresh label `l` (the counter), `x` holds `loan_l`, the value
-`borrow_l v` at `&` of the binding's type; D112's invalidation writes nothing at a root. -/
+`borrow_l v` at `&` of the binding's type; D112's invalidation writes nothing at a root. The binding
+has its stored type (`b.ty.isSome`): as first stated (lead7) it did not, and at a binding typed lazily
+(`ty := none`, a deferred codomain in `lazyTy`) the checker's typed run returns `&Nat` where the
+conclusion said `none` (`ColumnB`'s sanity runs, `stLazy`; lead8). -/
 def BorrowNumInv : Prop :=
   ∀ (n i : Nat) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value) (f j : Nat)
     (b : Binding) (D : Decisions),
     Mode st → ckVarPos st.env i = some (.bind f j) → st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
-    b.val.Num → DecTab D st' →
+    b.val.Num → b.ty.isSome → DecTab D st' →
     Runs (Ochr.evalCore (n + 1) true (.borrow (.var i)) hint) st bh (v, T?) st' →
     Mode st' ∧ ∃ st₁, Quiet st st₁ ∧ v = .borrow st₁.nextLoan b.val ∧ T? = b.ty.map .tRef ∧
       Kern { st₁ with env := Env.setAtE st₁.env (.bind f j) (.loan st₁.nextLoan), nextLoan := st₁.nextLoan + 1 } st'
 
 /-- **`evalCore` of a typed write through a borrow variable** (`*y := u`, `y` holding `borrow_l w`):
-as `AssignNumInv`, the path `[*]`: after the write `y` holds `borrow_l v₀`. -/
+as `AssignNumInv`, the path `[*]`: after the write `y` holds `borrow_l v₀`, where nothing is lent
+inside `y`'s content. As first stated (lead7) that condition was missing, and where `y`'s content is
+reborrowed (`y ↦ borrow_0 loan_1`, `r ↦ borrow_1 S(Z)`) the write's access ends `r` (`r ↦ ⊥`), which
+the conclusion excluded (`ColumnB`'s sanity runs, `stReb`; lead8). -/
 def AssignDerefInv : Prop :=
   ∀ (n i : Nat) (u : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (D : Decisions),
@@ -203,7 +209,8 @@ def AssignDerefInv : Prop :=
       Kern st st₀ ∧ Mode st₀ ∧ st₀.tailNext = false ∧ st₀.tailDecl = none ∧ Runs (Ochr.eval n true u hu) st₀ bh₁ (v₀, T₀) st₁ ∧
       DecTab D st₁ ∧ Quiet st₁ st₂ ∧ ckVarPos st₂.env i = some (.bind f j) ∧
       st₂.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b ∧ b.val = .borrow l w ∧
-      Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.borrow l v₀) } st' ∧ v = .unit ∧ T? = some .tUnit
+      ((∀ l', (valAt st₂.env (.bind f j)).sitesOf l' (.bind f j) [] = []) →
+        Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.borrow l v₀) } st') ∧ v = .unit ∧ T? = some .tUnit
 
 /-- **`evalCore` of a typed `u; w`** (`Machine.evalCore`'s `.seq`), for a first part whose value
 holds no borrow: `u` evaluated with no hint from the entry's kernel, in mode, the one-shot flag
@@ -224,12 +231,15 @@ def SeqInv : Prop :=
 read: one frame, `x ↦ loan_l : Nat`, `y ↦ borrow_l w : &Nat`, `w` a number): the access ends `l`
 (`endBorrow`: `y`'s content `w` goes back to `x`, `y` holds `⊥`; [Repack] of a number passes, D98's
 test passes: the content is whole: (M-c)); then the read copies or moves as the aligned decision
-says. Quiet besides. -/
+says. Quiet besides. `x` is stored at `Nat`: as first stated (lead7) nothing said so, and with `x`
+stored at `Unit` the typed read returns `0` at `Unit` where the conclusion said `Nat` (`ColumnB`'s
+sanity runs, `stUnitX`; lead8). -/
 def VarEndInv : Prop :=
   ∀ (n : Nat) (typed : Bool) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (l : Nat) (w : Value) (D : Decisions),
     Mode st → allPos st.env = [.bind 0 0, .bind 0 1] → valAt st.env (.bind 0 0) = .loan l →
-    valAt st.env (.bind 0 1) = .borrow l w → w.Num → DecTab D st' →
+    valAt st.env (.bind 0 1) = .borrow l w → w.Num →
+    (∀ bx, st.env[0]?.bind (fun fr : Frame => fr.binds[0]?) = some bx → bx.ty = some .tNat) → DecTab D st' →
     Runs (Ochr.evalCore (n + 1) typed (.place (.var 1)) hint) st bh (v, T?) st' →
     v = w ∧ (typed = true → T? = some .tNat) ∧ Mode st' ∧ ∃ st₁, Quiet st st₁ ∧
       (D.copy (D.placeDecl (DecideScope.topReadings st) (.var 1)) = true →

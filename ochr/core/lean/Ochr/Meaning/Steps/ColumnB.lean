@@ -156,4 +156,94 @@ theorem atRead_access {π : Nat → Nat} {st : MState} {s : SState} {l : Nat} {w
 
 end
 
+/-! ## Sanity runs of the borrow column's assumed facts (the checker's own runs, compiled, not kernel-checked)
+
+`B`'s body as the checker reads it, accepted, its run giving `0` at `Nat`; then each assumed `Prop` of
+`FormMachine.lean` for the column (`BorrowNumInv`, `AssignDerefInv`, `SeqInv`, `VarEndInv`) run at
+the entry conditions it must survive (the term in tail position and not, a handed-down reading, an
+untyped run), and at the three states that refuted their first statements (a lazily typed binding,
+a reborrowed content, a lender stored at another type). Mode excludes a private copy (`erasedDepth`). -/
+
+namespace ColumnB
+
+open Ochr.Meaning.Regress.GenNeutralContent (isOk outSt outVal)
+open ColumnC (stC stX)
+
+/-- `def B : Nat := (let x = S(Z); let y = &x; *y := Z; x)`. -/
+def bodyB : Term := .letIn ⟨"x"⟩ (.succ .zero) (.letIn ⟨"y"⟩ (.borrow (.var 0))
+  (.seq (.assign (.deref (.var 0)) .zero) (.place (.var 1))))
+
+def defB : Def := { name := "B", hs := [], doms := [], cod := .nat, body := bodyB }
+
+def acceptedB : Bool :=
+  match checkDefs {} [.defn defB] with
+  | [(_, .accepted, _)] => true
+  | _ => false
+
+#guard acceptedB
+#guard outVal (Ochr.eval 100 true bodyB (some .tNat)) stC 1000 == (.zero, some .tNat)
+#guard (outSt (Ochr.eval 100 true bodyB (some .tNat)) stC 1000).env[0]!.binds.size == 0
+
+def vals (st : MState) : List Value := (st.env[0]!.binds.toList).map (·.val)
+
+/-- One frame, `x ↦ loan_0 : Nat`, `y ↦ borrow_0 c : &Nat`: `B`'s state after `let y = &x`. -/
+def stXY (c : Value) : MState :=
+  { env := #[{ binds := #[{ hint := ⟨"x"⟩, ty := some .tNat, val := .loan 0, decl := .other },
+     { hint := ⟨"y"⟩, ty := some (.tRef .tNat), val := .borrow 0 c, decl := .other }] }], nextLoan := 1 }
+
+-- `BorrowNumInv`: `&x` from `x ↦ S(Z)`: `borrow_0 S(Z)` at `&Nat`, `x ↦ loan_0`, the counter one up;
+-- in tail position and under a handed-down reading the same
+#guard outVal (Ochr.evalCore 100 true (.borrow (.var 0)) none) (stX (.succ .zero)) 1000 ==
+  (.borrow 0 (.succ .zero), some (.tRef .tNat))
+#guard vals (outSt (Ochr.evalCore 100 true (.borrow (.var 0)) none) (stX (.succ .zero)) 1000) == [.loan 0]
+#guard (outSt (Ochr.evalCore 100 true (.borrow (.var 0)) none) (stX (.succ .zero)) 1000).nextLoan == 1
+#guard outVal (Ochr.evalCore 100 true (.borrow (.var 0)) none) { stX (.succ .zero) with curTail := true } 1000 ==
+  (.borrow 0 (.succ .zero), some (.tRef .tNat))
+#guard outVal (Ochr.eval 100 true (.borrow (.var 0)) none) { stX (.succ .zero) with tailDecl := some .other } 1000 ==
+  (.borrow 0 (.succ .zero), some (.tRef .tNat))
+-- the first statement's refutation: `x` typed lazily (`ty := none`, a deferred codomain `Nat`): the
+-- typed run returns `&Nat`, not `b.ty.map .tRef = none`
+def stLazy : MState :=
+  let b : Binding := { hint := ⟨"x"⟩, ty := none, val := .succ .zero, decl := .other }
+  { env := #[{ binds := #[{ b with lazyTy := some (.tPi [] (.pi [] [] .nat) [], [], 0) }] }] }
+#guard outVal (Ochr.evalCore 100 true (.borrow (.var 0)) none) stLazy 1000 == (.borrow 0 (.succ .zero), some (.tRef .tNat))
+
+-- `AssignDerefInv`: `*y := Z`: `y ↦ borrow_0 Z`, `()` at `Unit`; in tail position the same
+#guard outVal (Ochr.evalCore 100 true (.assign (.deref (.var 0)) .zero) none) (stXY (.succ .zero)) 1000 ==
+  (.unit, some .tUnit)
+#guard vals (outSt (Ochr.evalCore 100 true (.assign (.deref (.var 0)) .zero) none) (stXY (.succ .zero)) 1000) ==
+  [.loan 0, .borrow 0 .zero]
+#guard vals (outSt (Ochr.evalCore 100 true (.assign (.deref (.var 0)) .zero) none)
+  { stXY (.succ .zero) with curTail := true } 1000) == [.loan 0, .borrow 0 .zero]
+-- the first statement's refutation: `y`'s content reborrowed by `r`; the write ends `r`
+def stReb : MState :=
+  { env := #[{ binds := #[{ hint := ⟨"x"⟩, ty := some .tNat, val := .loan 0, decl := .other },
+     { hint := ⟨"y"⟩, ty := some (.tRef .tNat), val := .borrow 0 (.loan 1), decl := .other },
+     { hint := ⟨"r"⟩, ty := some (.tRef .tNat), val := .borrow 1 (.succ .zero), decl := .other }] }], nextLoan := 2 }
+#guard vals (outSt (Ochr.evalCore 100 true (.assign (.deref (.var 1)) .zero) none) stReb 1000) ==
+  [.loan 0, .borrow 0 .zero, .bot]
+
+-- `SeqInv`: `(*y := Z); x` from `B`'s state: `0` at `Nat`, both `⊥`; the tail under a handed-down reading
+#guard outVal (Ochr.evalCore 100 true (.seq (.assign (.deref (.var 0)) .zero) (.place (.var 1))) none)
+  (stXY (.succ .zero)) 1000 == (.zero, some .tNat)
+#guard vals (outSt (Ochr.evalCore 100 true (.seq (.assign (.deref (.var 0)) .zero) (.place (.var 1))) none)
+  (stXY (.succ .zero)) 1000) == [.bot, .bot]
+#guard isOk (Ochr.eval 100 true (.seq (.assign (.deref (.var 0)) .zero) (.place (.var 1))) none)
+  { stXY (.succ .zero) with tailDecl := some .other } 1000
+
+-- `VarEndInv`: the read of `x` ends `y`: `0` at `Nat`; the move leaves both `⊥`; in tail position the
+-- same; untyped, the value with no type
+#guard outVal (Ochr.evalCore 100 true (.place (.var 1)) none) (stXY .zero) 1000 == (.zero, some .tNat)
+#guard vals (outSt (Ochr.evalCore 100 true (.place (.var 1)) none) (stXY .zero) 1000) == [.bot, .bot]
+#guard outVal (Ochr.evalCore 100 true (.place (.var 1)) none) { stXY .zero with curTail := true } 1000 ==
+  (.zero, some .tNat)
+#guard outVal (Ochr.evalCore 100 false (.place (.var 1)) none) (stXY .zero) 1000 == (.zero, none)
+-- the first statement's refutation: `x` stored at `Unit`: `0` at `Unit`
+def stUnitX : MState :=
+  { stXY .zero with env := #[{ binds := #[{ hint := ⟨"x"⟩, ty := some .tUnit, val := .loan 0, decl := .other },
+     { hint := ⟨"y"⟩, ty := some (.tRef .tNat), val := .borrow 0 .zero, decl := .other }] }] }
+#guard outVal (Ochr.evalCore 100 true (.place (.var 1)) none) stUnitX 1000 == (.zero, some .tUnit)
+
+end ColumnB
+
 end Ochr.Meaning.Steps.Form
