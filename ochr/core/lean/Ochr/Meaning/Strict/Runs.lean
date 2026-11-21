@@ -145,7 +145,7 @@ theorem refl_eq_runs (hok : dm.RecLeafOk trueD (trueR dm)) (tl : Bool) (h : TyS)
   have hr : ∀ h s, runT (Kt dm Dpf) ρ φ false h (.ctor "True" 0 x [] []) s =
       some ((.proof, .plain (TyM.prop True)), s) := fun h s => (refl_runs ρ φ dm hok false h x s).1
   have hok0 : EqOk (Kt dm Dpf).dm.read (.ty TyM.nat) (.el0 Nat 0) (.el0 Nat 0) :=
-    ⟨⟨1, ⟨Nat, .nat, rfl⟩, rfl⟩, .inr ⟨0, rfl⟩, .inr ⟨0, rfl⟩⟩
+    ⟨rfl, .inr ⟨0, rfl⟩, .inr ⟨0, rfl⟩⟩
   have he : ∀ h s, runT (Kt dm Dpf) ρ φ false h (.eq .nat .zero .zero) s =
       some ((.ty (TyM.prop True), .plain (TyM.univ 0)), s) := by
     intro h s; simp [runT, SM.onCopy, bind, pure, hok0]
@@ -164,7 +164,7 @@ theorem refl_neq_none (hok : dm.RecLeafOk trueD (trueR dm)) (tl : Bool) (h : TyS
       some ((.proof, .plain (TyM.prop True)), s) := fun h s => (refl_runs ρ φ dm hok false h x s).1
   have h1 : Sem.el0 Nat 1 ∈ₛ[dm.read] (TyS.plain TyM.nat).m := one_mem_nat _
   have hok1 : EqOk dm.read (.ty TyM.nat) (.el0 Nat 0) (.el0 Nat 1) :=
-    ⟨⟨1, ⟨Nat, .nat, rfl⟩, rfl⟩, .inr ⟨0, rfl⟩, .inr ⟨1, rfl⟩⟩
+    ⟨rfl, .inr ⟨0, rfl⟩, .inr ⟨1, rfl⟩⟩
   have he : ∀ h s, runT (Kt dm Dpf) ρ φ false h (.eq .nat .zero (.succ .zero)) s =
       some ((.ty (TyM.prop False), .plain (TyM.univ 0)), s) := by
     intro h s; simp [runT, Dpf, Kt, SM.erasedIf, SM.stmtIf, SM.strictS, SM.onCopy, bind, pure, Sem.succ_el0, h1, hok1]

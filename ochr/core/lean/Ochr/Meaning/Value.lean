@@ -11,8 +11,9 @@ Under an assignment `ρ` of the abstract values and a future `φ` of the live bo
 * a constructor value means the tree recording its type's record (`DataModel.ctorR`; docs/34),
   whatever its fields hold;
 * a type value means `ty T`: `Nat`, `Unit`, `sort l`, `D(ā)` by the data model, `Eq(A, a, b)` the
-  proposition `⟦a⟧ = ⟦b⟧` (so `Eq` reads no type: docs/24 C10), `&A` the content type `⟦A⟧`
-  (a borrow is read as what it holds, so a borrow-typed place means its content);
+  proposition `⟦a⟧ = ⟦b⟧`, `&A` the content type `⟦A⟧` (a borrow is read as what it holds, so a
+  borrow-typed place means its content). Strict (below): `Eq(A, a, b)` and `D(ā)` mean `ty err`
+  unless their parts are typed (`EqOk`, `paramsOk`);
 * `borrow_ℓ w` means `⟦w⟧`, its *current* content; `loan_ℓ` means `φ ℓ`, the *final* content
   of the borrow that took it (docs/27 §3);
 * a global, a closure, a Π-closure and a sealed program mean what running code means, through
@@ -85,11 +86,12 @@ equation's type (whole, at the model's reading: `DataModel.read_wholeFields`; a 
 is too weak, D84's sides are `⊥` or whole). -/
 def SideOk (R : DataRead) (T : TyM) (v : Sem) : Prop := v = .moved ∨ v ∈ₛ[R] T
 
-/-- An equation's type `TA` (the meaning of its type term) is a type of one of the model's universes,
-and both sides are `SideOk` at it. (A type with a level and no universe, `Type₁`'s members or a
-lifted code, is no type a component can be typed at: the bounded model has no universe for it.) -/
+/-- An equation's type `TA` (the meaning of its type term) is a type with a level, and both sides
+are `SideOk` at it. A level, not membership in a universe (the orchestrator, 2026-11-21, on the
+trial's advice): the bounded model has no universe holding a level-3 type, and `Eq(Type₁, X, Y)`
+would otherwise be excluded. -/
 def EqOk (R : DataRead) (TA : Sem) (a b : Sem) : Prop :=
-  (∃ l, TA ∈ₛ[R] TyM.univ l) ∧ SideOk R TA.asTy a ∧ SideOk R TA.asTy b
+  TA.asTy.level.isSome = true ∧ SideOk R TA.asTy a ∧ SideOk R TA.asTy b
 
 /-- Parameters are members of their declared types at the earlier ones (an inductive type
 applied to arguments; written constructor parameters). -/
@@ -121,7 +123,7 @@ noncomputable def Value.mean (ρ : Assignment) (φ : Future) (hint : TyS) : Valu
   | .proof => .proof
   | .tNat => .ty TyM.nat
   | .tUnit => .ty TyM.unit
-  -- STRICT: `err` unless the type is a type of a universe and the sides are `⊥` or members of it (`EqOk`)
+  -- STRICT: `err` unless the type has a level and the sides are `⊥` or members of it (`EqOk`)
   | .tEq A a b =>
     let T := TyS.plain (Value.mean ρ φ (.plain TyM.err) A).asTy
     open Classical in

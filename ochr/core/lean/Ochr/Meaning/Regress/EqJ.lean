@@ -128,7 +128,7 @@ theorem ref_eq (b : Term) (vb : Sem) (hb : run (Kp dm [] G) ρ φ (.plain TyM.na
   rw [run, runT]
   show SM.onCopy _ _ = _
   simp only [SM.onCopy, bind, hn, hs, hb', Option.map_some]
-  rw [if_pos ⟨⟨1, ⟨Nat, .nat, rfl⟩, rfl⟩, .inr (by rw [one_eq]; exact ⟨1, rfl⟩), .inr hvb⟩]
+  rw [if_pos ⟨rfl, .inr (by rw [one_eq]; exact ⟨1, rfl⟩), .inr hvb⟩]
   rfl
 
 theorem ref_eqS_true (hint : TyS) : ∃ r, run (Kp dm [] G) ρ φ hint (.eq .nat (.succ .zero) (.succ .zero)) (emptyState 0)

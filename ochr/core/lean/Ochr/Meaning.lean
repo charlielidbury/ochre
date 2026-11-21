@@ -128,6 +128,7 @@ import Ochr.Meaning.DataModel.Canonical.Knot
 import Ochr.Meaning.DataLib.Universal
 import Ochr.Meaning.Strict.Runs
 import Ochr.Meaning.Strict.MemReadsCE
+import Ochr.Meaning.Strict.Typed
 
 /-!
 # The consistency spine (`ochr/docs/18`, `ochr/docs/31`)

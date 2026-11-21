@@ -1125,7 +1125,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let T : TyS := .plain TA.asTy
     let (va, _) ← SM.onCopy (runT false T a)
     let (vb, _) ← SM.onCopy (runT false T b)
-    -- STRICT: the type is a type of a universe and each side is `⊥` or a member of it (`EqOk`)
+    -- STRICT: the type has a level and each side is `⊥` or a member of it (`EqOk`)
     fun s => if EqOk K.dm.read TA va vb then some ((.ty (TyM.prop (va = vb)), .plain (TyM.univ 0)), s) else none
   -- decision 1: the premise proofs run, each on a copy; `⋆` at `prop True`
   | .cong _ h => SM.onCopy (do
@@ -1160,7 +1160,7 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
     let reps := K.D.rePointed (scopeOf s) t
     let o₁ ← runT false T t s
     let o₂ ← runT false T u s
-    -- STRICT: the type is a type of a universe and each side is `⊥` or a member of it (`EqOk`)
+    -- STRICT: the type has a level and each side is `⊥` or a member of it (`EqOk`)
     if EqOk K.dm.read TA o₁.1.1 o₂.1.1 then
       some ((.ty (TyM.prop (∀ ws : List Sem, obsTyped K.dm.read reps ws s →
         observation φ reps ws s.positions o₁.1 o₁.2 = observation φ reps ws s.positions o₂.1 o₂.2)), .plain (TyM.univ 0)), s)
