@@ -1939,6 +1939,14 @@ One file per checker area, one lemma per rule, each of the form "if `runMachine 
 
 **Considered.** The uniform home is `Strict.SGood` (it is a property of the strict run, kept by every operation, so (I) would prove it once); `Strict/` is the model lane's. Until it moves there, `Rel` carries it as it carries `holders`.
 
+### D115. The borrow column: five steps with a live label, proved; the assembly open (eighth lead, 2026-11-21; `spine-lead8` 37117383)
+
+**What.** For `def B : Nat := (let x = S(Z); let y = &x; *y := Z; x)`, the first column with a live label, each step in D107's form (`CoreSim`, typed runs), on the three standard axioms: `borrow_core` (`Steps/ColumnBorrow.lean`), `letB_core`, `assignDeref_core`, `seq_core` (`Steps/ColumnLetB.lean`), `readEnd_core` (`Steps/ColumnReadEnd.lean`). The assembly at `B`'s start state (`column_B_ff`) is not done; `Steps/LEAD-HANDOFF.md` has its plan.
+
+**What carried the live label.** No change to `Pre`, `Ext`, `Out` or `Sim`; one to `Rel` (D114, `uniq`). The new label is renamed by extending the renaming (`renameAt π lc lr`, `Out`'s label conjunct); the relation is compared at futures that may give the new label any whole member, the old positions reading no label at or above the reference's counter (`SGood.indep_fresh`) and the checker's only labels that occur (renamed below it, `Rel.fresh`); temporaries are matched by label (the two sides' temporary indices differ); the record is the borrowed content, which the strict `.borrow` tests. The strict END at the read (ruling (A), D106) passes through the relation (`typedFut_rel`, `heldTy_eq_holderTy`), and the lender is read through the future at the holder's content (`SGood.holderIndep`, `Rel.records`), as lead7's plan said.
+
+**Assumed** (facts about the checker alone, `FormMachine.lean`, unreviewed): `BorrowNumInv`, `AssignDerefInv`, `SeqInv`, `VarEndInv`, `LetInv`, `InvCore` over `ColTerm` extended by `&x`, `*y := u`, `u; w`. Three of the four borrow facts as first stated were false (a lazily typed binding, a reborrowed content, the lender at another type; refuted by the checker's compiled runs, `ColumnB`'s sanity runs) and are restated. One precondition beyond the column's: no position has a site of a label at or above the counter (a mark is a site and not an `Occurs`, so `Inv`'s labels-below-counter clause does not give it).
+
 ## HANDOVER (written 2026-11-09 at 8736099f, for a lead picking this up cold)
 
 ### Architecture, in one pass
