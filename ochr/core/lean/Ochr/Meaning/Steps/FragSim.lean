@@ -1,4 +1,4 @@
-import Ochr.Meaning.Steps.FragSeqB
+import Ochr.Meaning.Steps.FragAsg
 
 /-!
 # The fragment theorem (lead10, lead11)
@@ -43,15 +43,14 @@ structure FragFacts (D : Decisions) : Prop where
   noInv : ∀ sc p, D.invalidated sc p = []
   seqBor : SeqBorInv
   popBot : InvPopBot
+  asgVar : AssignVarInv
+  setBotNum : InvSetBotNum
 
 /-- **The steps of the fragment not yet proved**, each in the form the induction uses: from its
 sub-terms' steps at every extension of `Δ` and the assignment, the step at `evalCore`. The cases
 `Z`, `S` and the read are proved (`frag_sim`); these are the lead's open work (`OPEN.md`), stated
 here so that the induction is checked now. -/
 structure FragCases (K : RunCtx) (φ : Future) : Prop where
-  asg : ∀ Γ i u, Γ[i]? = some .nat → FTy Γ u .nat → ∀ m,
-    (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m u (FSt Γ) (· = true)) →
-    ∀ (Δ : Nat → TyS) (ρ : Assignment), CoreSim { K with Δ := Δ } ρ φ (m + 1) (.assign (.var i) u) (FSt Γ) (· = true)
   asgD : ∀ Γ i u, Γ[i]? = some .ref → FTy Γ u .nat → ∀ m,
     (∀ (Δ : Nat → TyS) (ρ : Assignment), EvalSim { K with Δ := Δ } ρ φ m u (FSt Γ) (· = true)) →
     ∀ (Δ : Nat → TyS) (ρ : Assignment),
@@ -68,7 +67,7 @@ theorem frag_sim {K : RunCtx} {φ : Future} (hf : FragFacts K.D) (hc : Strict.Fu
     ∀ Γ t A, FTy Γ t A → ∀ n (Δ : Nat → TyS) (ρ : Assignment),
       EvalSim { K with Δ := Δ } ρ φ n t (FSt Γ) (· = true) := by
   obtain ⟨hE, hZ, hS, hVN, hV, hVB, hIE, hI, hlow, hdec, hR, hPL, hL, hDN, hDB, hDL, hIU, hIBU, hSq, hBN, hBL, hBB,
-    hILG, hNI, hSB, hIPB⟩ := hf
+    hILG, hNI, hSB, hIPB, hAV, hISB⟩ := hf
   have hnat := hR.nat
   intro Γ t A hty
   induction hty with
@@ -96,7 +95,8 @@ theorem frag_sim {K : RunCtx} {φ : Future} (hf : FragFacts K.D) (hc : Strict.Fu
   | asg Γ i u hi hu ih =>
     intro n Δ ρ
     exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.asg Γ i u hi hu) (fun _ e => by cases e)
-      (fun _ _ _ e => by cases e) (fun m => hcs.asg Γ i u hi hu m (ih m) Δ ρ) n
+      (fun _ _ _ e => by cases e) (fun m => asgF_core (K := { K with Δ := Δ }) hAV hR hdec hI hIE hISB hPL hNI
+        ⟨hc.globals, hc.sorts⟩ hi hu (ih m Δ ρ)) n
   | asgD Γ i u hi hu ih =>
     intro n Δ ρ
     exact frag_lift (K := { K with Δ := Δ }) hE hlow hdec (.asgD Γ i u hi hu) (fun _ e => by cases e)

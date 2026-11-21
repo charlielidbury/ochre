@@ -57,12 +57,13 @@ theorem sitesOf_setAtE_inert {env : Env} {pos : Pos} {v' : Value} (hp : pos ∈ 
 section
 variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 
-/-- **The write of a number over a number at a binding keeps the relation**: the checker's new
-value and the reference's new meaning agree at every future the relation compares at; nothing else
-changes (a number holds no borrow, is lent nothing, names no label). -/
+/-- **The write of a number over a number (or `⊥`, lead12: any inert value) at a binding keeps the
+relation**: the checker's new value and the reference's new meaning agree at every future the
+relation compares at; nothing else changes (a number holds no borrow, is lent nothing, names no
+label). -/
 theorem rel_setNum {π : Nat → Nat} {st : MState} {s : SState} {f i : Nat} {v' : Value} {g : SVal} {k : Nat}
     (hs : Rel K ρ φ π st s) (hp : Pos.bind f i ∈ allPos st.env) (hsp : Pos.bind f i ∈ s.positions)
-    (hw : (valAt st.env (.bind f i)).Num) (hv' : v'.Num)
+    (hw : (valAt st.env (.bind f i)).Inert) (hv' : v'.Num)
     (hk : ∀ (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (φ : Future) (hint : TyS),
       Value.mean dm C Γ ρ φ hint v' = .el0 Nat k)
     (hg : ∀ ψ, RelF φ s ψ ∧ TypedLive K s ψ → g ψ = .el0 Nat k) :
@@ -73,7 +74,7 @@ theorem rel_setNum {π : Nat → Nat} {st : MState} {s : SState} {f i : Nat} {v'
   have hshape : ∀ q, Env.shape (Env.setAtE st.env (Pos.bind f i) v') q = Env.shape st.env q := by
     intro q
     by_cases hq : q = Pos.bind f i
-    · rw [hq, shape_eq_shapeOf, shape_eq_shapeOf, valAt_setAtE_self v' hp, hv'.inert.shape, hw.inert.shape]
+    · rw [hq, shape_eq_shapeOf, shape_eq_shapeOf, valAt_setAtE_self v' hp, hv'.inert.shape, hw.shape]
     · exact shape_setAtE_other st.env (Pos.bind f i) q v' hq
   have hF : ∀ ψ, (RelF φ (s.setAt (Pos.bind f i) g) ψ ∧ TypedLive K (s.setAt (Pos.bind f i) g) ψ) →
       RelF φ s ψ ∧ TypedLive K s ψ :=
@@ -124,7 +125,7 @@ theorem rel_setNum {π : Nat → Nat} {st : MState} {s : SState} {f i : Nat} {v'
     exact hs.inj l l' hl hl' he
   · intro l hl x
     rw [hlive] at hl
-    rw [SState.lent_setAt, hs.sites l hl x, sitesOf_setAtE_inert hp hw.inert hv'.inert l]
+    rw [SState.lent_setAt, hs.sites l hl x, sitesOf_setAtE_inert hp hw hv'.inert l]
   · intro p l h
     rw [SState.shape_setAt'] at h
     rw [SState.positions_setAt]
@@ -374,7 +375,7 @@ theorem assign_core (hA : AssignNumInv) (hI : InvSteps) (hPL : PlaceLocal K.D) (
       exact hI.pushInert K.D K.Γ st' _ _ (.inr rfl) h₂
     · have : Asg { K with Δ := Δ₁ } ρ₁ st'.norm := by rw [← hk'.norm]; exact hX
       exact asg_withTempT_inert this Value.inert_unit _
-  · have hR := rel_setNum hr₂ hposA hposS (by rw [hvb₂]; exact hnb') (Value.Num.succ hv₀) hmS hgv
+  · have hR := rel_setNum hr₂ hposA hposS (by rw [hvb₂]; exact hnb'.inert) (Value.Num.succ hv₀) hmS hgv
     exact rel_withTempT_inert (hR.of_kern hk') Value.inert_unit _
 
 end

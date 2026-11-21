@@ -222,4 +222,12 @@ def InvPopBot : Prop :=
   ∀ (D : Decisions) (Γ : List IndDecl) (st : MState) (T? : Option Value),
     Inv D Γ (st.withTempT .bot T?).norm → Inv D Γ st.norm
 
+/-- **A moved binding overwritten by a number** (state-level; lead12, `x := u` after `x` was moved):
+`InvSetNum` for an old content `⊥`, at a binding stored at `Nat` read `.other`. Not run. -/
+def InvSetBotNum : Prop :=
+  ∀ (D : Decisions) (Γ : List IndDecl) (st : MState) (f j : Nat) (v₀ : Value),
+    PlaceLocal D → (∀ b, st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.decl = .other ∧ b.ty = some .tNat) →
+    valAt st.env (.bind f j) = .bot → v₀.Num → Inv D Γ st.norm →
+    Inv D Γ { st with env := Env.setAtE st.env (.bind f j) v₀ }.norm
+
 end Ochr.Meaning.Steps.Form
