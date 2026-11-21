@@ -90,16 +90,52 @@ a computation), `regen.py` (writes the `Step*` files grouped as listed, `Zero.le
 instances, re-applying the hand edits). Then paste `fields.lean` into `IH.lean`'s structure. If the
 scripts are lost: each step is `intro …; unfold Ochr.f; grows_go ih`, each base `unfold Ochr.f; grows_go`.
 
-## The queue (the lead's, 2026-11-21) and how each would be stated
+## The queue (the lead's, 2026-11-21 afternoon): the column's facts first
 
-1. Close the induction: every step on the merged checker (see Build state).
-2. `DecTab.back` (`MachineMono`): a ONE-WAY simulation of the decision procedures from a state to one
-   whose tables extend it (old frozen readings equal, globals and declarations equal):
-   `SimFwd R x` = every success from `s₁` is a success from `s₂` with the same value, `R` after.
-   `DecideScope.Sim` needs both runs to end alike, so it does not fit; the `FuelLe` closure lemmas
-   are the template (same shape: success transfers one way). Moderate: a re-run of the
-   seventeen-function induction with `absReading` the one place the relation matters.
-3. The five facts lead7 needs (statements proposed; none written yet):
+TARGET: `Steps.Form.ColumnC.column_C_ff` (on `spine-lead7`, merged here at f3e86f763) assumes ten facts
+about the checker alone, as `Prop`s in `Steps/FormMachine.lean` (`EvalInv`, `ZeroInv`, `SuccInv`,
+`VarNumInv`, `LetInv`, `DropNoopInv`, `InvCore`) and `ColumnC.lean` (`DecBack`), plus
+`DecideFuelAgree` (PROVED: `decide_fuel_agree'`) and `GrowsM` of the body's `eval` (PROVED:
+`machineGrows`), plus `AssignNumInv` for the field-write column. Proofs go in
+`Steps/Machine/FormFacts.lean` (downstream of `FormMachine`, which imports `MachineMono` through
+`StrictSim`; the root `Ochr/Meaning.lean` must import it: the lead's line).
+
+Judged against `Machine.lean` (reported to the lead 2026-11-21):
+- PROVED: `ZeroInv` (`FormFacts.zeroInv`: the run computed by `rfl` at `bh = k + 1`).
+- TRUE, not yet proved: `DropNoopInv` (`dropTopBind`: `borrowBelowRoot` false on success, not a borrow,
+  `endLoansOfTopBind` finds no live loan since `loans = []`, pop). Trap met: after `unfold
+  Ochr.endLoansOfTopBind at h`, peeling `get`s with `Runs.bind_inv`/`runs_get_inv` did not expose the
+  `match …binds.back?` (the `let some b := (← get)… | pure ()` elaboration; `split at h` refused it).
+  Try instead a computed equation at the run level (`runMachineL … = …` by `simp [hb]` after `unfold`),
+  or invert through `runAll` with `rcases` on the outcome, or `generalize` the discriminant first.
+- TRUE: `DecBack` (`∀ D st st', DecTab D st' → TablesGrow st st' → DecTab D st`). Plan: a ONE-WAY
+  simulation `Fwd R x` (every success from `s₁` is one from `s₂`, same value, fuel, log; `R` after),
+  closure lemmas as `FuelDefs.lean`'s, the seventeen-function induction as `DecideFuel.lean`'s. The
+  relation: tables (`globals`, `inds` equal; `absDecl` a prefix, read only by `absReading`, which fails
+  past the end), `liveScope` equal, and the frames' readings equal WHEN `liveScope` is true (only
+  `placeDecl`'s `.var` case reads the frame, through `liveDecl`, and only then). The `copy` field runs
+  `declCopy` at the two raw states (frames differ): `declCopy` reads no frame before `fieldDecl`'s
+  `withLive false`, so prove it under the tables-only relation with a lemma `withLive false` lifting it.
+- FALSE as written, with fixes (the lead decides whether `FormMachine` is restated):
+  - `SuccInv`, `LetInv`, `AssignNumInv` conclude `st₀.tailNext = false` but nothing in those `evalCore`
+    cases clears it (`evalAt` does, before): add `st.tailNext = false`.
+  - `EvalInv`: where `st.tailDecl = some d` the pre-pass classifies by `d`, not by `D.flags` at the
+    term's own reading: add `st.tailDecl = none ∨ st.tailDecl = some (D.declOf (topReadings st) t)`. At a
+    `let`'s tail the handed reading is the tail's own (`declOf`'s `.letIn` reads `w` in scope
+    `du :: sc` = the live frame after the push): a lemma to prove for the column.
+  - `VarNumInv`, `AssignNumInv`: a lazily typed binding's type is computed privately and the copy's exit
+    (`restoreKeep`) keeps fresh names and η/generalisation records: add `b.ty.isSome`.
+  - `AssignNumInv`: the write's [Access] ends `x`'s borrowers (not quiet) where `x` is lent: assume
+    nothing lends `x` at `st₁`, or conclude with the access run.
+  - `InvCore` as stated is the whole checker's well-formedness preservation (the largest machine item;
+    `borrow_wf` suspected false): restrict to the column's forms with sub-run hypotheses.
+  - `SuccInv`, `LetInv` need "a typed `eval` returns `some` type" (a machine lemma).
+- Suggested tool for the inversions: a small `runs_inv` tactic peeling `bind`/`get`/`pure`/`modify`/
+  `ite`/`match` in a `Runs` hypothesis (the `Runs.bind_inv`, `runs_get_inv`, `runs_pure_inv`,
+  `runs_err_false` lemmas of `Steps/DropOne.lean`, plus `FormFacts.runs_modify_inv`,
+  `runs_err_bind_false`, `runs_topIdx_inv`), with the trap above in mind.
+
+The earlier queue (still owed, after the column):
    - (M-a) data writes have no live loan or mark on their path. Not a property of one function: a
      trace property of `setPlace`'s call sites. Proposed form: each split lemma of a writing rule
      (`assign_split` and the like, which expose the state before the write) gains a conjunct
