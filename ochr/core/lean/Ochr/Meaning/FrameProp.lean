@@ -1,5 +1,6 @@
 import Ochr.Meaning.CallRef
 import Ochr.Meaning.Locality
+import Ochr.Meaning.Strict.Fund
 
 /-!
 # The frame property of the reference's run, with a renaming of labels (docs/31 D62, D70)
@@ -175,9 +176,22 @@ holder where the closure updates the cell, both `lowerVal`'s substitution; the e
 non-parameter label is invisible, the caller's frames reading below the call's counter) and a call's
 fixing of its consumed arguments (`callOf`'s `mapVals`, the same); a label issued is renamed by
 `σ`'s fresh clause; a closure formed in the body means its body's runs from the extended states,
-related again (the property on the subterm). -/
-theorem run_frame (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) (hs₀ : FrameStart s₀ ks) (tl : Bool)
-    (hint : TyS) (t : Term) (hid : t.idFree = true ∨ ks = []) (s s' : SState) (h : FrameRel σ s₀ ks s s') :
+related again (the property on the subterm).
+
+RESTATED (model3, 2026-11-21, docs/31 D113): the in-place state is good (`hg`), with the context and
+the term's embedded values as the fundamental lemma asks (`hc`, `hv`), so that `Strict.fund_all` carries
+it through every sub-run. As first stated it was false (`Strict/FrameCE.run_frame_false`): the strict
+test after a write at a field path reads every position of the state, so in place it reads the
+caller's frames, of which `FrameRel` says nothing; a caller binding holding `err` made the run in place
+fail where the closure's ran. Also open about `FrameRel` (not restated here): its `held` clause asks the
+parameters' records (`heldMem`) to agree, which fails at the call whenever a borrow argument was written
+through before the call (in place the record is the content when the borrow was made, in the closure the
+argument); nothing reads a parameter's record, so the clause should ask `heldMem` off the parameters
+only, and `heldTy` at the parameters too (the strict ends read it). And the call's own frames differ at
+`self` (in place the callee, in the closure the stage below), which the knot owes, not this lemma. -/
+theorem run_frame (hc : Strict.FundCtx K) (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) (hs₀ : FrameStart s₀ ks)
+    (tl : Bool) (hint : TyS) (t : Term) (hv : t.valsOk (Strict.ValsP K ρ φ)) (hid : t.idFree = true ∨ ks = [])
+    (s s' : SState) (h : FrameRel σ s₀ ks s s') (hg : Strict.SGood K.dm K.Γ φ s) :
     FrameAgree σ s₀ ks (runT K ρ φ tl hint t s) (runT K ρ φ tl hint t s') := by
   sorry
 
@@ -226,46 +240,16 @@ variable (K : RunCtx) (ρ : Assignment)
 not depend on the starting label counter: fresh labels are names. Stated for the states code runs
 from: one frame of future-free bindings whose types carry no label and no holder, compared on the
 result's meaning and type. As first stated (any state whose holders are below both counters) it was
-false, finding 7. Now a corollary of the frame property: no caller frame, no parameter, the renaming
-the shift from one counter to the other. -/
+false, finding 7. It is the frame property's case with no caller frame and no parameter, the renaming
+the shift from one counter to the other; it was proved from `run_frame` until that was restated with
+the in-place state good (model3, docs/31 D113), which this case does not need (with no caller frame
+there is nothing for the state-wide test to read that the closure's run does not read too), so it is
+open again, with the same proof once the frame property's no-caller-frame case is. -/
 theorem run_counter_indep (φ : Future) (hint : TyS) (t : Term) (bs : List SBinding) (n n' : Nat)
     (hbs : ∀ b ∈ bs, ∀ ψ ψ', b.val ψ = b.val ψ') (hlab : ∀ b ∈ bs, b.ty.label = none) :
     (run K ρ φ hint t (stateOf n bs)).map (fun r => (r.1.1, r.1.2.m))
       = (run K ρ φ hint t (stateOf n' bs)).map (fun r => (r.1.1, r.1.2.m)) := by
-  -- the closure side runs at the smaller counter, in place at the larger
-  suffices H : ∀ a b, a ≤ b → (run K ρ φ hint t (stateOf b bs)).map (fun r => (r.1.1, r.1.2.m))
-      = (run K ρ φ hint t (stateOf a bs)).map (fun r => (r.1.1, r.1.2.m)) by
-    rcases Nat.le_total n n' with hn | hn
-    · exact (H n n' hn).symm
-    · exact H n' n hn
-  intro a b hab
-  have hst : FrameStart (stateOf b bs) [] :=
-    ⟨fun p hp => by simp [SState.topIdx, stateOf] at hp, by simp, fun p l hp => by simp [SState.topIdx, stateOf] at hp,
-      fun p l x hp => by simp [SState.topIdx, stateOf] at hp, List.nodup_nil⟩
-  have hrel : FrameRel (fun l => l + (b - a)) (stateOf b bs) [] (stateOf b bs) (stateOf a bs) := by
-    refine ⟨fun l l' h => by simpa using h, fun j => by simp [stateOf]; omega, ⟨rfl, rfl⟩,
-      fun f hf => by simp [SState.topIdx, stateOf] at hf, fun p hp => by simp [SState.topIdx, stateOf] at hp,
-      fun p hp => by simp [SState.topIdx, stateOf] at hp, ?_, fun p _ => by simp [stateOf],
-      fun q l hq => by simp [stateOf] at hq, fun l hl => ?_, fun l x _ => by simp [stateOf],
-      fun m x _ hx => by simp [stateOf] at hx, fun l x hx => by simp [stateOf] at hx,
-      fun l p hp => by simp [SState.topIdx, stateOf] at hp, fun l hl => ?_⟩
-    · refine ⟨{ binds := bs }, { binds := bs }, rfl, rfl, rfl, fun i b₁ b₂ h₁ h₂ => ?_, by simp, fun j v hv => by simp at hv⟩
-      rw [h₁] at h₂; cases h₂
-      have hm : b₁ ∈ bs := List.mem_of_getElem? h₁
-      refine ⟨?_, rfl, rfl, fun ψ => hbs b₁ hm _ _⟩
-      have hl := hlab b₁ hm
-      cases b₁ with | mk ty v d rb => cases ty with | mk m lab => simp only at hl ⊢; subst hl; rfl
-    · exfalso; simp [SState.Live, SState.liveLabels, stateOf] at hl
-    · exfalso; simp [SState.Live, SState.liveLabels, stateOf] at hl
-  have h := run_frame K ρ φ (fun l => l + (b - a)) (stateOf b bs) [] hst false hint t (Or.inr rfl) _ _ hrel
-  unfold run
-  rcases h1 : runT K ρ φ false hint t (stateOf b bs) with _ | ⟨r, s₁⟩ <;>
-    rcases h2 : runT K ρ φ false hint t (stateOf a bs) with _ | ⟨r', s₁'⟩ <;> rw [h1, h2] at h <;>
-    simp only [FrameAgree] at h
-  all_goals first
-    | rfl
-    | exact h.elim
-    | (obtain ⟨e1, e2, -⟩ := h; simp [e1, e2])
+  sorry
 
 end
 

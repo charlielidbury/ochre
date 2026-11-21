@@ -49,14 +49,20 @@ noncomputable def fbInc : List PBind × (List Sem → TyS) × DeclInfo :=
 /-- `Inc`'s type: `Π(x : &Nat). Unit`'s code. -/
 noncomputable def piInc : TyM := piTyAt dm.read 1 psInc outInc
 
-/-- `Inc`'s body run (`Run.lean`'s `bodyAt`, named in `RunCongr`), `self` read as `err`. -/
+/-- `Inc`'s function (`Run.lean`'s `.fix` clause, named in `RunCongr`): no decreasing parameter, so
+stage `1` at rank `0`, `self` the weakened stage `0` (docs/31 D113). -/
 noncomputable def gInc : List Sem → Option BodyOut :=
-  fixBodyAt (Kc dm) ρ φ (fbInc dm ρ φ) (stateOf 0 []) psInc outInc (piInc dm) 0 incBody .err
+  fixG (Kc dm) ρ φ (fbInc dm ρ φ) 1 (stateOf 0 []) psInc outInc (piInc dm) 0 none incBody
+
+/-- `self`'s type and meaning in `Inc`'s frame: stage `0` at the weakened function type (never read). -/
+noncomputable def selfIncT : TyM := piTyAt dm.read 1 psInc (weakCod 1 (fixRank none) 0 outInc)
+noncomputable def selfIncM : Sem := closureAt dm.read 1 φ psInc (weakCod 1 (fixRank none) 0 outInc)
+  (stageFn 1 psInc (fixRank none) 0 (fixStage (Kc dm) ρ φ (fbInc dm ρ φ) 1 (stateOf 0 []) psInc outInc none 0 incBody 0))
 
 /-! ## `Inc`'s body run in its own frame -/
 
-/-- `self`'s binding in `Inc`'s frame (read as `err`: `Inc` does not recurse). -/
-noncomputable def selfInc : SBinding := { ty := .plain (piInc dm), val := fun _ => .err, decl := .pi (fbInc dm ρ φ).2.2 }
+/-- `self`'s binding in `Inc`'s frame (`Inc` does not recurse: stage `0`, never read). -/
+noncomputable def selfInc : SBinding := { ty := .plain (selfIncT dm), val := fun _ => selfIncM dm ρ φ, decl := .pi (fbInc dm ρ φ).2.2 }
 
 /-- The parameter's declared reading, as the clause reads it. -/
 noncomputable def dInc : DeclInfo := ((Kc dm).D.paramDecls [] [.ref .nat]).getD 0 .other
@@ -189,8 +195,10 @@ theorem endLabel_SB_cell (c : Sem) (ψ : Future) : ((SB dm ρ φ c r).endLabel 0
 /-- **`Inc`'s body run at `a`**: `()`, and `x`'s final content `a + 1`. -/
 theorem gInc_eval (a : Nat) :
     gInc dm ρ φ [.el0 Nat a] = some ⟨.el0 Unit (), [fun _ => .el0 Nat (a + 1)], none⟩ := by
-  unfold gInc fixBodyAt
-  rw [show ({ ty := .plain (piInc dm), val := fun _ => .err, decl := .pi (fbInc dm ρ φ).2.2 } : SBinding)
+  show fixBodyAt (Kc dm) ρ φ (fbInc dm ρ φ) (stateOf 0 []) psInc outInc (selfIncT dm) 0 incBody (selfIncM dm ρ φ)
+    [.el0 Nat a] = _
+  unfold fixBodyAt
+  rw [show ({ ty := .plain (selfIncT dm), val := fun _ => selfIncM dm ρ φ, decl := .pi (fbInc dm ρ φ).2.2 } : SBinding)
       = selfInc dm ρ φ from rfl]
   dsimp only
   rw [frame_inc]
@@ -574,10 +582,34 @@ theorem popCallFrame_one (start : Nat) (s : SState) (l f i : Nat) (hl : s.liveLa
         (fun p => match p with
           | .bind g _ | .temp g _ => if g = s.topIdx then none else (s.endLabel l).shape p)
         (s.endLabel l).nextLoan (s.endLabel l).lent (s.endLabel l).heldTy (s.endLabel l).heldMem := by
-  unfold popCallFrame
+  unfold popCallFrame popEnds
   simp only [hl, List.filter_cons, List.filter_nil, hh, hf, beq_self_eq_true, Bool.or_true, ne_eq, reduceCtorEq,
     not_false_eq_true, decide_true, Bool.and_self, if_true, List.foldl_cons, List.foldl_nil, Option.bind_none]
   congr 1
+
+/-- The pop's ends where the only live label is held in the callee's frame and nothing is returned. -/
+theorem popEnds_one (start : Nat) (s : SState) (l f i : Nat) (hl : s.liveLabels = [l])
+    (hh : s.holderOf l = some (.bind f i)) (hf : f = s.topIdx) : popEnds start none s = [l] := by
+  unfold popEnds
+  simp [hl, hh, hf]
+
+/-- The pop's ends where two labels are live: `l`, held in the callee's frame, and `k`, returned. -/
+theorem popEnds_two (start : Nat) (s : SState) (l k f i : Nat) (hl : s.liveLabels = [l, k])
+    (hh : s.holderOf l = some (.bind f i)) (hf : f = s.topIdx) (hlk : l ≠ k) : popEnds start (some k) s = [l] := by
+  unfold popEnds
+  have hne : (some l ≠ some k) := fun h => hlk (Option.some.inj h)
+  simp only [hl, List.filter_cons, List.filter_nil, hh, hf, beq_self_eq_true, Bool.or_true, ne_eq, hne,
+    not_false_eq_true, decide_true, Bool.and_self, if_true, not_true_eq_false, decide_false, Bool.and_false,
+    Bool.false_eq_true, if_false]
+
+/-- The pop's end of `x`'s label is strict: `x` holds the number `c`. -/
+theorem endsOk_SP (cd d : DeclInfo) (c : Sem) (hc : c ∈ₛ[(Kc dm).dm.read] TyM.nat) :
+    EndsOk (Kc dm) φ [0] (SP dm ρ φ cd d c r) := by
+  refine ⟨?_, trivial⟩
+  intro q hq ψ _
+  rw [holderOf_SP] at hq
+  cases hq
+  exact hc
 
 attribute [local irreducible] SP in
 /-- The pop after the body: `x`'s label `0` ends (its holder is in the callee's frame), `y` reads
@@ -621,6 +653,10 @@ theorem inc_inPlace :
   unfold runCallRef runBodyRef
   simp only [incT, hs₀, codOf_inc]
   rw [callFrame_inc dm ρ φ _ _ rfl, runBody_incP]
+  dsimp only
+  have hk : (if outInc.isRef = true then (TyS.plain TyM.unit).label else none) = none := rfl
+  rw [hk, popEnds_one _ _ 0 1 1 (liveLabels_SP dm ρ φ _ _ _) (holderOf_SP dm ρ φ _ _ _) rfl,
+    if_pos (endsOk_SP dm ρ φ _ _ (Sem.el0 Nat (2 + 1)) ⟨2 + 1, rfl⟩)]
   rfl
 
 /-- **`Inc(&y)`: the call by `callOf` and the call in place agree** (`callOf_inPlace` on a borrow
@@ -662,7 +698,11 @@ noncomputable def fbId1 : List PBind × (List Sem → TyS) × DeclInfo :=
 noncomputable def piId1 : TyM := piTyAt dm.read 1 psInc outId1
 
 noncomputable def gId1 : List Sem → Option BodyOut :=
-  fixBodyAt (Kc dm) ρ φ (fbId1 dm ρ φ) (stateOf 0 []) psInc outId1 (piId1 dm) 0 id1Body .err
+  fixG (Kc dm) ρ φ (fbId1 dm ρ φ) 1 (stateOf 0 []) psInc outId1 (piId1 dm) 0 none id1Body
+
+noncomputable def selfId1T : TyM := piTyAt dm.read 1 psInc (weakCod 1 (fixRank none) 0 outId1)
+noncomputable def selfId1M : Sem := closureAt dm.read 1 φ psInc (weakCod 1 (fixRank none) 0 outId1)
+  (stageFn 1 psInc (fixRank none) 0 (fixStage (Kc dm) ρ φ (fbId1 dm ρ φ) 1 (stateOf 0 []) psInc outId1 none 0 id1Body 0))
 
 /-- A frame `self`, `x` holding `c` at label `0`, `x`'s cell (as `SB`, any `self`). -/
 def SBs (selfB : SBinding) (d : DeclInfo) (c r : Sem) : SState :=
@@ -758,7 +798,7 @@ theorem runBody_id1 (selfB : SBinding) (d : DeclInfo) (a : Nat) (hint : TyS) (tl
   rw [if_pos]
   exact ⟨Attack.invalidateOk_noInv (Kc dm) φ (fun _ _ => rfl) _ _, Attack.lentOk_deref (Kc dm) φ (pos := .bind 0 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps])⟩
 
-noncomputable def selfId1 : SBinding := { ty := .plain (piId1 dm), val := fun _ => .err, decl := .pi (fbId1 dm ρ φ).2.2 }
+noncomputable def selfId1 : SBinding := { ty := .plain (selfId1T dm), val := fun _ => selfId1M dm ρ φ, decl := .pi (fbId1 dm ρ φ).2.2 }
 
 theorem frame_id1 (c : Sem) :
     ([c].zip psInc).foldl (fixStep (fbId1 dm ρ φ)) ((stateOf 0 []).pushBind (selfId1 dm ρ φ), [], [])
@@ -805,8 +845,10 @@ theorem endLabel_SB2_cell (selfB : SBinding) (d : DeclInfo) (T : TyM) (c : Sem) 
 
 theorem gId1_eval (a : Nat) :
     gId1 dm ρ φ [.el0 Nat a] = some ⟨.el0 Nat a, [fun ψ => ψ 1], some 1⟩ := by
-  unfold gId1 fixBodyAt
-  rw [show ({ ty := .plain (piId1 dm), val := fun _ => .err, decl := .pi (fbId1 dm ρ φ).2.2 } : SBinding)
+  show fixBodyAt (Kc dm) ρ φ (fbId1 dm ρ φ) (stateOf 0 []) psInc outId1 (selfId1T dm) 0 id1Body (selfId1M dm ρ φ)
+    [.el0 Nat a] = _
+  unfold fixBodyAt
+  rw [show ({ ty := .plain (selfId1T dm), val := fun _ => selfId1M dm ρ φ, decl := .pi (fbId1 dm ρ φ).2.2 } : SBinding)
       = selfId1 dm ρ φ from rfl]
   dsimp only
   rw [frame_id1]
@@ -1303,7 +1345,7 @@ theorem popCallFrame_two (start : Nat) (s : SState) (l k f i : Nat) (r : Pos) (h
         (fun p => match p with
           | .bind g _ | .temp g _ => if g = s.topIdx then none else (s.endLabel l).shape p)
         (s.endLabel l).nextLoan (s.endLabel l).lent (s.endLabel l).heldTy (s.endLabel l).heldMem).pushTempShaped ((s.endLabel l).valAt r) k := by
-  unfold popCallFrame
+  unfold popCallFrame popEnds
   have hne : (some l ≠ some k) := fun h => hlk (Option.some.inj h)
   simp only [hl, List.filter_cons, List.filter_nil, hh, hf, beq_self_eq_true, Bool.or_true, ne_eq, hne,
     not_false_eq_true, decide_true, Bool.and_self, if_true, not_true_eq_false, decide_false, Bool.and_false,

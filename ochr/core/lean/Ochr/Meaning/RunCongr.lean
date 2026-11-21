@@ -569,11 +569,11 @@ noncomputable def fixStage (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod
     (fun k gk => fixBodyAt K ρ φ fb s ps out (piTyAt K.dm.read l ps (weakCod l (fixRank dec) k out)) start body
       (closureAt K.dm.read l φ ps (weakCod l (fixRank dec) k out) (stageFn l ps (fixRank dec) k gk)))
 
-/-- The closure's function: the guarded fixpoint by stages, or the body with `self` erroneous. -/
+/-- The closure's function: the guarded fixpoint by stages; without a decreasing parameter, stage 1 at
+rank `0` (`self` the weakened stage 0, never read). `piT` is no longer read (kept for the callers). -/
 noncomputable def fixG (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat)
-    (dec : Option Nat) (body : Term) : List Sem → Option BodyOut := match dec with
-  | some _ => fun args => fixStage K ρ φ fb l s ps out dec start body (fixRank dec args + 1) args
-  | none => fixBodyAt K ρ φ fb s ps out piT start body .err
+    (dec : Option Nat) (body : Term) : List Sem → Option BodyOut :=
+  fun args => fixStage K ρ φ fb l s ps out dec start body (fixRank dec args + 1) args
 
 /-- Forming the closure accesses each capture, oldest first, and moves the non-copy ones. -/
 noncomputable def fixMoves (t : Term) (s : SState) : SState :=
@@ -978,14 +978,9 @@ theorem fixG_congr {body : Term} (hK : ∀ n, (K.C.global n).2.label = none) (h�
     {s : SState} (hi : RInv L s) (l : Nat) (ps : List PiDom) (out : PiCod) (piT : TyM) (dec : Option Nat) :
     fixG K ρ φ fb l s ps out piT s.nextLoan dec body = fixG K ρ φ' fb l s ps out piT s.nextLoan dec body ∧
       ∀ args o, fixG K ρ φ fb l s ps out piT s.nextLoan dec body args = some o → FinalsIn L out.isRef o := by
-  cases dec with
-  | none =>
-    refine ⟨funext fun args => fixBodyAt_congr K ρ hK hφ hb hi ps out piT _ args, fun args o h => ?_⟩
-    exact fixBodyAt_finals K ρ hK hi ps out piT body _ args o h
-  | some j =>
-    refine ⟨funext fun args => ?_, fun args o h => ?_⟩
-    · exact congrFun (fixStage_congr K ρ hK hφ hb hi l ps out (some j) (fixRank (some j) args + 1)).1 args
-    · exact (fixStage_congr K ρ hK hφ hb hi l ps out (some j) (fixRank (some j) args + 1)).2 args o h
+  refine ⟨funext fun args => ?_, fun args o h => ?_⟩
+  · exact congrFun (fixStage_congr K ρ hK hφ hb hi l ps out dec (fixRank dec args + 1)).1 args
+  · exact (fixStage_congr K ρ hK hφ hb hi l ps out dec (fixRank dec args + 1)).2 args o h
 
 end FixCongr
 
