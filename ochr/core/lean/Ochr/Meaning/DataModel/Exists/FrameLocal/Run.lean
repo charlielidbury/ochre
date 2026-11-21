@@ -1,4 +1,4 @@
-import Ochr.Meaning.DataModel.Exists.FrameLocal.Setup
+import Ochr.Meaning.DataModel.Exists.FrameLocal.Agree
 
 /-!
 # Frame locality, part 5: the induction over the run (exists3; IN PROGRESS, outside the default build)
@@ -156,6 +156,117 @@ theorem Adm.push {K : RunCtx} {Q : Pos → Prop} {β β' : Pos → SBinding} {s 
 
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
+
+/-! ## Bindings pushed by `extendBy` -/
+
+theorem Adm.pushBind {K : RunCtx} {Q : Pos → Prop} {β β' : Pos → SBinding} {s : SState} (h : Adm K Q β β' s)
+    (b : SBinding) : Adm K Q β β' (s.pushBind b) := by
+  have hfix : qset Q β (s.pushBind b) = s.pushBind b := by
+    rw [← qset_pushBind s h.twin.pre.pos b, h.twin.fix]
+  have hsh : ∀ p, Q p → (s.pushBind b).shape p = none := fun p hp => by rw [← hfix]; simp [hp]
+  have hpos : ∀ p, Q p → p ∈ (s.pushBind b).positions := fun p hp =>
+    mem_positions_pushBind s b (h.twin.pre.pos p hp)
+  exact ⟨⟨⟨h.twin.pre.temp, hpos, hsh, h.twin.pre.const⟩, ⟨h.twin.pre.temp, hpos, hsh, h.twin.pre'.const⟩, hfix,
+    EnvLe.refl _⟩, h.decl, h.good, h.good'⟩
+
+theorem Adm.pushes {K : RunCtx} {Q : Pos → Prop} {β β' : Pos → SBinding} :
+    ∀ (l : List SBinding) {s : SState}, Adm K Q β β' s → Adm K Q β β' (l.foldl (fun s b => s.pushBind b) s)
+  | [], _, h => h
+  | b :: l, _, h => Adm.pushes l (h.pushBind b)
+
+theorem Adm.extend {K : RunCtx} {Q : Pos → Prop} {β β' : Pos → SBinding} {s : SState} (h : Adm K Q β β' s)
+    (bs : List PBind) (acc : List Sem) : Adm K Q β β' (extendBy s bs acc) := h.pushes _
+
+theorem qset_pushes {Q : Pos → Prop} {β : Pos → SBinding} :
+    ∀ (l : List SBinding) (s : SState), (∀ p, Q p → p ∈ s.positions) →
+      l.foldl (fun s b => s.pushBind b) (qset Q β s) = qset Q β (l.foldl (fun s b => s.pushBind b) s)
+  | [], _, _ => rfl
+  | b :: l, s, hQ => by
+    simp only [List.foldl_cons]
+    rw [qset_pushBind s hQ b]
+    exact qset_pushes l _ fun p hp => mem_positions_pushBind s b (hQ p hp)
+
+theorem qset_extendBy {Q : Pos → Prop} {β : Pos → SBinding} (s : SState) (hQ : ∀ p, Q p → p ∈ s.positions)
+    (bs : List PBind) (acc : List Sem) : extendBy (qset Q β s) bs acc = qset Q β (extendBy s bs acc) :=
+  qset_pushes _ s hQ
+
+theorem varPos_pushes : ∀ (l : List SBinding) (s : SState) (i : Nat),
+    (l.foldl (fun s b => s.pushBind b) s).varPos (i + l.length) = s.varPos i
+  | [], s, i => rfl
+  | b :: l, s, i => by
+    simp only [List.foldl_cons, List.length_cons]
+    rw [show i + (l.length + 1) = (i + 1) + l.length by omega, varPos_pushes l _ (i + 1), varPos_push (envPush_pushBind s b)]
+
+theorem varPos_pushes_new {Q : Pos → Prop} : ∀ (l : List SBinding) (s : SState), (∀ p, Q p → p ∈ s.positions) →
+    ∀ i, i < l.length → ∀ pos, (l.foldl (fun s b => s.pushBind b) s).varPos i = some pos → ¬ Q pos
+  | [], _, _, i, hi, _, _ => absurd hi (Nat.not_lt_zero _)
+  | b :: l, s, hQ, i, hi, pos, hp => by
+    simp only [List.foldl_cons] at hp
+    have hQ' : ∀ p, Q p → p ∈ (s.pushBind b).positions := fun p hq => mem_positions_pushBind s b (hQ p hq)
+    by_cases hil : i < l.length
+    · exact varPos_pushes_new l _ hQ' i hil pos hp
+    · have e : i = 0 + l.length := by simp at hi; omega
+      rw [e, varPos_pushes] at hp
+      exact varPos_zero_push (envPush_pushBind s b) hQ pos hp
+
+theorem extendBinds_length (bs : List PBind) (acc : List Sem) : (extendBinds bs acc).length = acc.length := by
+  simp [extendBinds]
+
+/-- The variables of a term under `k` more binders, at the state with `k` arguments pushed. -/
+theorem VarsAvoid.extend {Q : Pos → Prop} {s : SState} {T u : Term} {k : Nat} (hV : VarsAvoid Q s T)
+    (hsub : ∀ x ∈ u.placeOccs k, x ∈ T.placeOccs 0) (hQ : ∀ p, Q p → p ∈ s.positions) (bs : List PBind)
+    {acc : List Sem} (ha : acc.length = k) : VarsAvoid Q (extendBy s bs acc) u := by
+  intro v hv pos hp
+  unfold extendBy at hp
+  have hl := extendBinds_length bs acc
+  by_cases hvk : v < k
+  · exact varPos_pushes_new _ s hQ v (by omega) pos hp
+  · rcases freeVars_sub hsub v hv with h0 | h0
+    · omega
+    · rw [show v = (v - k) + (extendBinds bs acc).length by omega, varPos_pushes] at hp
+      exact hV _ h0 pos hp
+
+/-- A domain term `&A` runs `A`. -/
+def domTerm : Term → Term
+  | .ref A => A
+  | d => d
+
+theorem runBinds_cons (s : SState) (dcs : List DeclInfo) (pre : List PBind) (d : Term) (ds : List Term) :
+    runBinds K ρ φ s dcs pre (d :: ds) =
+      mkBind dcs pre (fun acc => runT K ρ φ false (.plain TyM.err) (domTerm d) (extendBy s pre acc)) ::
+        runBinds K ρ φ s dcs (pre ++ [mkBind dcs pre (fun acc => runT K ρ φ false (.plain TyM.err) (domTerm d)
+          (extendBy s pre acc))]) ds := by
+  cases d <;> rfl
+
+theorem runBinds_length (s : SState) (dcs : List DeclInfo) : ∀ (ds : List Term) (pre : List PBind),
+    (runBinds K ρ φ s dcs pre ds).length = ds.length
+  | [], _ => by simp [runBinds]
+  | d :: ds, pre => by rw [runBinds_cons, List.length_cons, runBinds_length s dcs ds]; rfl
+
+theorem BAgree.cons {n : Nat} {b b' : PBind} {bs bs' : List PBind} (he : b.2 = b'.2)
+    (hb : ∀ acc : List Sem, acc.length = n → b.1 acc = b'.1 acc) (h : BAgree (n + 1) bs bs') :
+    BAgree n (b :: bs) (b' :: bs') := by
+  refine ⟨by simp [h.1], fun i c c' hc hc' => ?_⟩
+  cases i with
+  | zero =>
+    simp only [List.getElem?_cons_zero, Option.some.injEq] at hc hc'
+    subst hc hc'
+    exact ⟨he, fun acc ha => hb acc (by omega)⟩
+  | succ i =>
+    simp only [List.getElem?_cons_succ] at hc hc'
+    obtain ⟨hd, hty⟩ := h.2 i c c' hc hc'
+    exact ⟨hd, fun acc ha => hty acc (by omega)⟩
+
+/-- The result of a Π-term across agreeing descriptions. -/
+theorem pi_result (R : DataRead) (l : Nat) {ps ps' : List PiDom} {out out' : PiCod} (h : DomAgree 0 ps ps')
+    (hc : CodAgree ps.length out out') (s : SState) (f : SState → SState) :
+    (if PiOk R ps' [] out' then some ((Sem.ty (piTyAt R l ps' out'), TyS.plain (TyM.univ l)), f s) else none) =
+      Option.map (fun x => (x.1, f x.2))
+        (if PiOk R ps [] out then some ((Sem.ty (piTyAt R l ps out), TyS.plain (TyM.univ l)), s) else none) := by
+  have hc' : CodAgree (([] : List Sem).length + ps.length) out out' := by simpa using hc
+  rw [piOk_congr R ps ps' [] out out' h hc', piTyAt_congr R l ps ps' out out' h hc]
+  split <;> rfl
+
 
 /-- After a subterm: the next state is admissible, from the equation at `β` and the run's layout. -/
 theorem Adm.after (hK : ∀ n, (K.C.global n).2.label = none) {Q : Pos → Prop} {β β' : Pos → SBinding}
@@ -820,6 +931,46 @@ theorem runT_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D
     have f4 : ∀ h u, n = "rewriteR" → args = [h, u] → False := fun h0 u0 a b => e4 ⟨h0, u0, a, b⟩
     rw [runT]
     all_goals first | exact comm_fail _ | exact f1 | exact f2 | exact f3 | exact f4 | exact hJ' | exact hc1 | exact hc2 | exact hc3
+  | tl, .pi hs ds c, hint, s, Q, β, β', hA, hV, hR => by
+    unfold Comm; rw [runT]; dsimp only; rw [hA.scope]
+    have hB := runBinds_qset hK hD s Q β β' hA hR (.pi hs ds c) hV (K.D.paramDecls (scopeOf s) ds) ds [] []
+      (BAgree.refl 0 []) (fun x hx => by simp at hx; simp [Term.placeOccs, hx])
+    have hlen := runBinds_length K ρ φ s (K.D.paramDecls (scopeOf s) ds) ds []
+    have hpsl : (psOf (runBinds K ρ φ s (K.D.paramDecls (scopeOf s) ds) [] ds) ds).length = ds.length :=
+      psOf_length _ _ hlen
+    have hext : ∀ acc, extendBy (qset Q β' s) (runBinds K ρ φ (qset Q β' s) (K.D.paramDecls (scopeOf s) ds) [] ds) acc =
+        qset Q β' (extendBy s (runBinds K ρ φ s (K.D.paramDecls (scopeOf s) ds) [] ds) acc) := fun acc => by
+      rw [← extendBy_agree hB, qset_extendBy s hA.twin.pre.pos]
+    have hcod : ∀ u : Term, (∀ x ∈ u.placeOccs ds.length, x ∈ (Term.pi hs ds c).placeOccs 0) →
+        ∀ acc : List Sem, acc.length = ds.length →
+          runT K ρ φ false (.plain TyM.err) u (qset Q β' (extendBy s (runBinds K ρ φ s (K.D.paramDecls (scopeOf s) ds) [] ds) acc)) =
+          qmap Q β' (runT K ρ φ false (.plain TyM.err) u (extendBy s (runBinds K ρ φ s (K.D.paramDecls (scopeOf s) ds) [] ds) acc)) →
+          (match runT K ρ φ false (.plain TyM.err) u (extendBy (qset Q β' s) (runBinds K ρ φ (qset Q β' s) (K.D.paramDecls (scopeOf s) ds) [] ds) acc) with
+            | some ((v, _), _) => v.asTy
+            | none => TyM.err) =
+          (match runT K ρ φ false (.plain TyM.err) u (extendBy s (runBinds K ρ φ s (K.D.paramDecls (scopeOf s) ds) [] ds) acc) with
+            | some ((v, _), _) => v.asTy
+            | none => TyM.err) := by
+      intro u _ acc _ hu
+      rw [hext, hu]
+      cases runT K ρ φ false (.plain TyM.err) u (extendBy s (runBinds K ρ φ s (K.D.paramDecls (scopeOf s) ds) [] ds) acc) <;> rfl
+    have hc0 : ∀ x ∈ c.placeOccs ds.length, x ∈ (Term.pi hs ds c).placeOccs 0 := fun x hx => by
+      simp [Term.placeOccs, hx]
+    have hcIH : ∀ acc : List Sem, acc.length = ds.length →
+        runT K ρ φ false (.plain TyM.err) c (qset Q β' (extendBy s (runBinds K ρ φ s (K.D.paramDecls (scopeOf s) ds) [] ds) acc)) =
+          qmap Q β' (runT K ρ φ false (.plain TyM.err) c (extendBy s (runBinds K ρ φ s (K.D.paramDecls (scopeOf s) ds) [] ds) acc)) :=
+      fun acc ha => runT_qset hK hD false c _ _ Q β β' (hA.extend _ acc)
+        (hV.extend hc0 hA.twin.pre.pos _ ha) (rinv_extendBy hR _ acc)
+    unfold qmap
+    refine pi_result K.dm.read _ (psOf_agree hB ds) ?_ s (qset Q β')
+    rw [hpsl]
+    cases c
+    case ref U =>
+      have hU0 : ∀ x ∈ U.placeOccs ds.length, x ∈ (Term.pi hs ds (.ref U)).placeOccs 0 := fun x hx =>
+        hc0 x (by simpa [Term.placeOccs] using hx)
+      exact ⟨rfl, fun acc ha => (hcod U hU0 acc ha (runT_qset hK hD false U _ _ Q β β' (hA.extend _ acc)
+        (hV.extend hU0 hA.twin.pre.pos _ ha) (rinv_extendBy hR _ acc))).symm⟩
+    all_goals exact ⟨rfl, fun acc ha => (hcod _ hc0 acc ha (hcIH acc ha)).symm⟩
   | _, _, _, _, _, _, _, _, _, _ => sorry
 
 theorem runArm_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D) :
@@ -872,6 +1023,56 @@ theorem runAll_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K
     rcases List.mem_cons.mp ht with e | ht'
     · rw [e]; exact runT_qset hK hD tl a hint s Q β β' hA (e ▸ hV) hR
     · exact runAll_qset hK hD as t ht' tl hint s Q β β' hA hV hR
+
+theorem runBinds_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D) (s : SState) (Q : Pos → Prop)
+    (β β' : Pos → SBinding) (hA : Adm K Q β β' s) (hR : RInv (fun _ => True) s) (T : Term) (hV : VarsAvoid Q s T)
+    (dcs : List DeclInfo) : ∀ (ds : List Term) (pre pre' : List PBind), BAgree 0 pre pre' →
+      (∀ x ∈ Term.placeOccsDoms pre.length ds, x ∈ T.placeOccs 0) →
+      BAgree pre.length (runBinds K ρ φ s dcs pre ds) (runBinds K ρ φ (qset Q β' s) dcs pre' ds)
+  | [], pre, pre', _, _ => by simp only [runBinds]; exact BAgree.refl _ _
+  | d :: ds, pre, pre', hp, hsub => by
+    have hsubd : ∀ x ∈ d.placeOccs pre.length, x ∈ T.placeOccs 0 := fun x hx =>
+      hsub x (by simp [Term.placeOccsDoms, hx])
+    have key : ∀ u : Term, (∀ acc : List Sem, acc.length = pre.length →
+        runT K ρ φ false (.plain TyM.err) u (qset Q β' (extendBy s pre acc)) =
+          qmap Q β' (runT K ρ φ false (.plain TyM.err) u (extendBy s pre acc))) →
+        BAgree pre.length
+          (mkBind dcs pre (fun acc => runT K ρ φ false (.plain TyM.err) u (extendBy s pre acc)) ::
+            runBinds K ρ φ s dcs (pre ++ [mkBind dcs pre (fun acc => runT K ρ φ false (.plain TyM.err) u
+              (extendBy s pre acc))]) ds)
+          (mkBind dcs pre' (fun acc => runT K ρ φ false (.plain TyM.err) u (extendBy (qset Q β' s) pre' acc)) ::
+            runBinds K ρ φ (qset Q β' s) dcs (pre' ++ [mkBind dcs pre' (fun acc => runT K ρ φ false (.plain TyM.err) u
+              (extendBy (qset Q β' s) pre' acc))]) ds) := by
+      intro u hu
+      have he : (mkBind dcs pre (fun acc => runT K ρ φ false (.plain TyM.err) u (extendBy s pre acc))).2 =
+          (mkBind dcs pre' (fun acc => runT K ρ φ false (.plain TyM.err) u (extendBy (qset Q β' s) pre' acc))).2 := by
+        simp only [mkBind, hp.1]
+      have hb : ∀ acc : List Sem, acc.length = pre.length →
+          (mkBind dcs pre (fun acc => runT K ρ φ false (.plain TyM.err) u (extendBy s pre acc))).1 acc =
+            (mkBind dcs pre' (fun acc => runT K ρ φ false (.plain TyM.err) u (extendBy (qset Q β' s) pre' acc))).1 acc := by
+        intro acc ha
+        simp only [mkBind]
+        rw [← extendBy_agree hp, qset_extendBy s hA.twin.pre.pos, hu acc ha]
+        cases runT K ρ φ false (.plain TyM.err) u (extendBy s pre acc) <;> rfl
+      refine BAgree.cons he hb ?_
+      have := runBinds_qset hK hD s Q β β' hA hR T hV dcs ds _ _ (hp.snoc he fun acc ha => hb acc (by simpa using ha))
+        (fun x hx => hsub x (by simp only [Term.placeOccsDoms, List.mem_append]; right; simpa using hx))
+      simpa using this
+    have hd : ∀ acc : List Sem, acc.length = pre.length →
+        runT K ρ φ false (.plain TyM.err) d (qset Q β' (extendBy s pre acc)) =
+          qmap Q β' (runT K ρ φ false (.plain TyM.err) d (extendBy s pre acc)) := fun acc ha =>
+      runT_qset hK hD false d _ _ Q β β' (hA.extend pre acc)
+        (hV.extend hsubd hA.twin.pre.pos pre ha) (rinv_extendBy hR pre acc)
+    cases d
+    case ref A =>
+      have hA' : ∀ acc : List Sem, acc.length = pre.length →
+          runT K ρ φ false (.plain TyM.err) A (qset Q β' (extendBy s pre acc)) =
+            qmap Q β' (runT K ρ φ false (.plain TyM.err) A (extendBy s pre acc)) := fun acc ha =>
+        runT_qset hK hD false A _ _ Q β β' (hA.extend pre acc)
+          (hV.extend (fun x hx => hsubd x (by simpa [Term.placeOccs] using hx)) hA.twin.pre.pos pre ha)
+          (rinv_extendBy hR pre acc)
+      rw [runBinds_cons, runBinds_cons]; exact key A hA'
+    all_goals (rw [runBinds_cons, runBinds_cons]; exact key _ hd)
 
 theorem runParams_qset (hK : ∀ n, (K.C.global n).2.label = none) (hD : DecLocal K.D)
     (d : IndDecl) :
