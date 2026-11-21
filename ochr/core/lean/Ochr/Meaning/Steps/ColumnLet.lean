@@ -173,7 +173,7 @@ theorem runT_letIn (tl : Bool) (hint : TyS) (x : Hint) (u w : Term) (s : SState)
 and a binding that holds no borrow and has no site when it is dropped. From the steps for `u` (at
 the starting context) and for `w` (at every extension: it runs after `u` made unknowns), the facts
 about the checker alone (`LetInv`, `DropNoopInv`) and the invariant across the push and the drop (`InvSteps`), and (I) at `u`. -/
-theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hc : Strict.FundCtx K)
+theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hPL : PlaceLocal K.D) (hc : Strict.FundCtx K)
     {n : Nat} {x : Hint} {u w : Term} {Plet Pu Pw : MState → Prop}
     (htail : ∀ st stB, Plet st → Pw stB →
       K.D.declOf (DecideScope.topReadings st) (.letIn x u w) = K.D.declOf (DecideScope.topReadings stB) w)
@@ -240,7 +240,7 @@ theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hc : Strict.
   have hpB : Pre { K with Δ := Δ₁ } ρ₁ stB :=
     ⟨hp₁.ctx.of_eq (by show stB.inds = st₁.inds; rw [← hkB.inds])
       (by show stB.globals = st₁.globals; rw [← hkB.globals]),
-     by rw [← hkB.norm, hduo]; exact hI.bindNum K.D K.Γ st₁ x v₀ _ p hv₀ hne₁ hp₁.inv,
+     by rw [← hkB.norm, hduo]; exact hI.bindNum K.D K.Γ st₁ x v₀ _ p hPL hv₀ hne₁ hp₁.inv,
      by rw [← hkB.norm]; exact asg_pushBind_num hv₀ hp₁.asg hne₁ x p du⟩
   have hs₁ne : s₁.env ≠ [] := by
     obtain ⟨frs, hfrs, -, -⟩ := skel_align { K with Δ := Δ₁ } ρ₁ st₁ s₁ hr₁'.skel fr₁ hfr₁
@@ -311,7 +311,7 @@ theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hc : Strict.
     (he₁.congr hk₀.absTy hk₀.nextLoan hkB.absTy hkB.nextLoan).trans (he₂.congr rfl rfl hk'.absTy hk'.nextLoan)
   refine ⟨ρ₂, Δ₂, π₂, rw', s₂.dropLast, hext, hxl, hmw, haw, hlw, ?_, ?_⟩
   · refine Pre.of_kern hk' ⟨hp₂.ctx.of_eq rfl rfl, ?_, asg_popBind hp₂.asg frW hfrW hn₂⟩
-    exact hI.popBind K.D K.Γ (st₂.withTempT v T?) frW bx hfrW hbW hbxv hp₂.inv
+    exact hI.popBind K.D K.Γ (st₂.withTempT v T?) frW bx hPL hfrW hbW hbxv hp₂.inv
   · exact (rel_popBind_noSites hr₂ frW bx hfrW hbW (fun l => hns l _) hnb).of_kern hk'
 
 end

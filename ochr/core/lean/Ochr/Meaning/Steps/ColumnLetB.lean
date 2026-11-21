@@ -385,7 +385,7 @@ number at `&Nat`, the only borrow live after `u` (`hbor`), and a binding that ho
 has no site when it is dropped (the borrow ended in `w`). As `let_core`, with the push of a borrow
 (`rel_pushBind_borrow`): the reference moves the label from the temporary that parks it to the
 binding. -/
-theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hc : Strict.FundCtx K)
+theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hPL : PlaceLocal K.D) (hc : Strict.FundCtx K)
     {n : Nat} {x : Hint} {u w : Term} {Plet Pu Pw : MState → Prop}
     (htail : ∀ st stB, Plet st → Pw stB →
       K.D.declOf (DecideScope.topReadings st) (.letIn x u w) = K.D.declOf (DecideScope.topReadings stB) w)
@@ -452,7 +452,7 @@ theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hc : Strict
   have hpB : Pre { K with Δ := Δ₁ } ρ₁ stB :=
     ⟨hp₁.ctx.of_eq (by show stB.inds = st₁.inds; rw [← hkB.inds])
       (by show stB.globals = st₁.globals; rw [← hkB.globals]),
-     by rw [← hkB.norm, hduo]; exact hI.bindBorrow K.D K.Γ st₁ x lb wb _ p hwb hne₁ hp₁.inv,
+     by rw [← hkB.norm, hduo]; exact hI.bindBorrow K.D K.Γ st₁ x lb wb _ p hPL hwb hne₁ hp₁.inv,
      by rw [← hkB.norm]; exact asg_pushBind_borrow hwb hp₁.asg hne₁ x p du⟩
   have hs₁ne : s₁.env ≠ [] := by
     have hfr₁' : (st₁.withTempT (.borrow lb wb) (some (.tRef .tNat))).env[
@@ -527,7 +527,7 @@ theorem letB_core (hL : LetInv) (hDN : DropNoopInv) (hI : InvSteps) (hc : Strict
     (he₁.congr hk₀.absTy hk₀.nextLoan hkB.absTy hkB.nextLoan).trans (he₂.congr rfl rfl hk'.absTy hk'.nextLoan)
   refine ⟨ρ₂, Δ₂, π₂, rw', s₂.dropLast, hext, hxl, hmw, haw, hlw, ?_, ?_⟩
   · refine Pre.of_kern hk' ⟨hp₂.ctx.of_eq rfl rfl, ?_, asg_popBind hp₂.asg frW hfrW hn₂⟩
-    exact hI.popBind K.D K.Γ (st₂.withTempT v T?) frW bx hfrW hbW hbxv hp₂.inv
+    exact hI.popBind K.D K.Γ (st₂.withTempT v T?) frW bx hPL hfrW hbW hbxv hp₂.inv
   · exact (rel_popBind_noSites hr₂ frW bx hfrW hbW (fun l => hns l _) hnb).of_kern hk'
 
 end
@@ -659,9 +659,12 @@ holding `borrow_l w`, `w` and `u`'s value numbers). The strict run's tests pass:
 at `[*]` ends nothing (nothing is lent inside `y`); the update through `*` is defined at every typed
 future (`*` is transparent to `Sem.updAt`); the write is at `[*]` (`lentOk`); the holder keeps its
 label (`rel_setBorrowNum`). -/
-theorem assignDeref_core (hA : AssignDerefInv) (hI : InvSteps) (hc : Strict.FundCtx K) {n i : Nat} {u : Term}
+theorem assignDeref_core (hA : AssignDerefInv) (hI : InvSteps) (hPL : PlaceLocal K.D) (hc : Strict.FundCtx K)
+    {n i : Nat} {u : Term}
     {P Pu : MState → Prop} (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → P a → Pu b)
     (hP : ∀ st, P st → DerefVar i st)
+    (hdy : ∀ st, P st → ∀ f j b, ckVarPos st.env i = some (.bind f j) →
+      st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.decl = .ref .other)
     (hflu : ∀ st, P st → K.D.flags (DecideScope.topReadings st) u = (false, false))
     (hhint : ∀ (T : TyS) (s : SState), runT K ρ φ false T u s = runT K ρ φ false (.plain TyM.err) u s)
     (hnum : ∀ st₀ st₁ bh hint v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
@@ -724,7 +727,7 @@ theorem assignDeref_core (hA : AssignDerefInv) (hI : InvSteps) (hc : Strict.Fund
     rw [htyS]; simp only [Env.hintAt, hlk₂, htb']; rfl
   have hns : ∀ l, (valAt st₂.env (.bind f j)).sitesOf l (.bind f j) [] = [] := fun l => by
     rw [hvb₂, hbw]; exact hwn.sitesOf l _ _
-  have hk' := hk'i hns
+  have hk' := hk'i (fun m z => hwn.not_borrow m z) hns
   have hacc : ∀ hit, s₁.access (.bind f j) hit = s₁ := fun _ => access_noSites (rel_noSites_at hr₂ hns)
   have haok : ∀ hit, AccessOk K φ s₁ (.bind f j) hit := fun _ => accessOk_noSites (rel_noSites_at hr₂ hns)
   have hres : resolve s₁ (.deref (.var i)) = some (.bind f j, [.deref]) :=
@@ -802,7 +805,11 @@ theorem assignDeref_core (hA : AssignDerefInv) (hI : InvSteps) (hc : Strict.Fund
     · have h₁ : Inv K.D K.Γ st₁.norm := hI.popInert K.D K.Γ st₁ v₀ T₀ (.inl hv₀) hp₁.inv
       have h₂ : Inv K.D K.Γ st'.norm := by
         rw [← hk'.norm]
-        exact hI.writeDeref K.D K.Γ st₂ f j lb w v₀ (by rw [hvb₂, hbw]) hwn hv₀ (hki K.D K.Γ h₁)
+        exact hI.writeDeref K.D K.Γ st₂ f j lb w v₀ hPL
+          (fun b' hb' => hdy st hPst f j b'
+            (by rw [← ckVarPos_erase, hk₀.env.trans (he₀₁.trans hq.env), ckVarPos_erase]; exact hpos₂)
+            (by rw [← lookup_erase, hk₀.env.trans (he₀₁.trans hq.env), lookup_erase]; exact hb'))
+          (by rw [hvb₂, hbw]) hwn hv₀ (hki K.D K.Γ h₁)
       exact hI.pushInert K.D K.Γ st' _ _ (.inr rfl) h₂
     · have : Asg { K with Δ := Δ₁ } ρ₁ st'.norm := by rw [← hk'.norm]; exact hX
       exact asg_withTempT_inert this Value.inert_unit _

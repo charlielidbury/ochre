@@ -315,14 +315,14 @@ theorem succ_core (hS : SuccInv) (hI : InvSteps) {n : Nat} {u : Term} {P Pu : MS
     (hflu : ∀ st, P st → K.D.flags (DecideScope.topReadings st) u = (false, false))
     (hhint : ∀ s : SState, runT K ρ φ false (.plain TyM.nat) u s = runT K ρ φ false (.plain TyM.err) u s)
     (hnum : ∀ typed st₀ st₁ bh v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
-      Runs (Ochr.eval n typed u none) st₀ bh (v₀, T₀) st₁ → v₀.Num) :
+      Runs (Ochr.eval n typed u none) st₀ bh (v₀, T₀) st₁ → v₀.Num ∧ ∀ T, T₀ = some T → (T == .tNat) = true) :
     CoreSim K ρ φ (n + 1) (.succ u) P (· = true) := by
   intro st st' typed hint v T? s π hPst hty hm htn htd _ hp hr hSg hv hab hnh hfl hok hD bh h
   subst hty
   obtain ⟨st₀, st₁, v₀, T₀, bh₁, hk₀, hm₀, htn₀, htd₀, hu₀, rfl, rfl, hq, -, hDb, hty⟩ :=
     hS n true u hint st st' bh v T? hm htn htd h
   obtain ⟨st₂, bh₂, hx₂, hk₂⟩ := hty rfl
-  have hv₀ : v₀.Num := hnum true st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ htd₀ (hDb K.D hD) hu₀
+  obtain ⟨hv₀, hTy⟩ := hnum true st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ htd₀ (hDb K.D hD) hu₀
   have hO := hu st₀ st₁ true none v₀ T₀ s π (hPu st st₀ hk₀ hPst) trivial hm₀ (.inl htd₀) (hp.of_kern hk₀)
     (hr.of_kern hk₀) hSg hv
     (by rw [← hk₀.absTy]; exact hab) hnh (by rw [scopeOf_rel hr]; exact hflu st hPst)
@@ -364,7 +364,7 @@ theorem succ_core (hS : SuccInv) (hI : InvSteps) {n : Nat} {u : Term} {P Pu : MS
   · cases hT; exact strAgree_tNat
   · refine ⟨hp₁.ctx.of_eq (hq.inds.symm) (hq.globals.symm), ?_, ?_⟩
     · have h₁ : Inv K.D K.Γ st₁.norm := hI.popInert K.D K.Γ st₁ v₀ T₀ (.inl hv₀) hp₁.inv
-      have h₂ : Inv K.D K.Γ st'.norm := by rw [← hk₂.norm]; exact hI.expectTy n _ T₀ .tNat st₁ st₂ bh₂ hx₂ K.D K.Γ h₁
+      have h₂ : Inv K.D K.Γ st'.norm := by rw [← hk₂.norm]; exact hI.expectTy n _ T₀ .tNat st₁ st₂ bh₂ hTy hx₂ K.D K.Γ h₁
       exact hI.pushInert K.D K.Γ st' _ _ (.inl hsucc) h₂
     · have ha : Asg { K with Δ := Δ₁ } ρ₁ (st'.withTempT v₀ T₀).norm := Asg.of_quiet hq' hp₁.asg hp₁.inv.wf6
       exact ha.of_refd rfl rfl rfl rfl rfl fun σ hσ =>

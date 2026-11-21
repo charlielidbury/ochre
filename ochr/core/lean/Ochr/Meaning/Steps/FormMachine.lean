@@ -116,11 +116,13 @@ def SuccInv : Prop :=
       (typed = true → ∃ (st₂ : MState) (bh₂ : Nat),
         Runs (Ochr.expectTy n "the argument of S" T₀ .tNat) st₁ bh₂ () st₂ ∧ Kern st₂ st')
 
-/-- **A type check keeps the invariant** (`expectTy`, a comparison, D103: quiet; lead9): what `S(u)`
-needs after `u`'s type is checked. A fact about the comparison's run, not about states (`KeepsInv`). -/
+/-- **A type check of a type against itself keeps the invariant** (`expectTy`, a comparison, D103:
+quiet; lead9): what `S(u)` needs after `u`'s type is checked. A fact about the comparison's run, not
+about states (`KeepsInv`). Restricted to the identity case (`T₀ == A`; the machine lane, 2026-11-21:
+for arbitrary types it is a whole-machine fact, the unknowns a comparison makes being anything). -/
 def InvExpectTy : Prop :=
   ∀ (n : Nat) (w : String) (T : Option Value) (A : Value) (st st' : MState) (bh : Nat),
-    Runs (Ochr.expectTy n w T A) st bh () st' → KeepsInv st st'
+    (∀ T₀, T = some T₀ → (T₀ == A) = true) → Runs (Ochr.expectTy n w T A) st bh () st' → KeepsInv st st'
 
 /-- **`evalCore` of a variable holding a number** (`.place (.var i)`; the column's read): the value is
 the binding's, its type the binding's stored type (a typed run has one); the run's [Repack] and the
@@ -223,8 +225,13 @@ def BorrowNumInv : Prop :=
 as `AssignNumInv`, the path `[*]`: after the write `y` holds `borrow_l v₀`, where nothing is lent
 inside `y`'s content. As first stated (lead7) that condition was missing, and where `y`'s content is
 reborrowed (`y ↦ borrow_0 loan_1`, `r ↦ borrow_1 S(Z)`) the write's access ends `r` (`r ↦ ⊥`), which
-the conclusion excluded (`ColumnB`'s sanity runs, `stReb`; lead8). `y` is stored at `&Nat` (the
-step's entry condition: a whole write through `*`, no strong update, no lent proof). -/
+the conclusion excluded (`ColumnB`'s sanity runs, `stReb`; lead8). And where `y`'s old content `w`
+is itself a borrow, the write's drop of it ends that borrow (`assignPlace`: `match old with |
+.borrow m _ => endBorrow m`), so with `y ↦ borrow_l (borrow_m z)`, `x ↦ loan_m` the write gives `z`
+back to `x` and "only `y` changed" is FALSE (the machine lane's review, 2026-11-21; the sites
+condition does not exclude it, a borrow being no loan): the `Kern` clause now also asks `w` not a
+borrow. `y` is stored at `&Nat` (the step's entry condition: a whole write through `*`, no strong
+update, no lent proof). -/
 def AssignDerefInv : Prop :=
   ∀ (n i : Nat) (u : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (D : Decisions),
@@ -237,7 +244,7 @@ def AssignDerefInv : Prop :=
       Kern st st₀ ∧ Mode st₀ ∧ st₀.tailNext = false ∧ st₀.tailDecl = none ∧ Runs (Ochr.eval n true u hu) st₀ bh₁ (v₀, T₀) st₁ ∧
       DecTab D st₁ ∧ Quiet st₁ st₂ ∧ KeepsInv st₁ st₂ ∧ ModeEq st₁ st' ∧ ckVarPos st₂.env i = some (.bind f j) ∧
       st₂.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b ∧ b.val = .borrow l w ∧
-      ((∀ l', (valAt st₂.env (.bind f j)).sitesOf l' (.bind f j) [] = []) →
+      ((∀ m z, w ≠ .borrow m z) → (∀ l', (valAt st₂.env (.bind f j)).sitesOf l' (.bind f j) [] = []) →
         Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.borrow l v₀) } st') ∧ v = .unit ∧ T? = some .tUnit
 
 /-- **`evalCore` of a typed `u; w`** (`Machine.evalCore`'s `.seq`), for a first part whose value
@@ -291,6 +298,19 @@ concludes, by one of the lemmas below, each "`Inv` before, the change, `Inv` aft
 types, so a temporary's `T?` is free. A pushed binding's reading is `.other` (for a borrow, `.ref
 .other`): every reading the columns bind; a reading `.ind n _` would ask the value fit `n` ((V)). -/
 
+/-- **A place's reading depends only on its root variable's reading and its steps, and under a root
+read `.other` or `.ref .other` no place reads an inductive** (the machine lane's fix, 2026-11-21,
+word for word; `Machine.placeLocal_ff` proves it of the fuel-free table). `Inv`'s (V) reads
+`D.placeDecl (topReadings st) p` at every place with content, for the step's FREE table `D`, which
+its alignment (`DecTab`) pins only where a `placeDecl` run succeeds: a lemma that pushes or pops a
+binding (the readings and the indices move) or puts a number where a loan or nothing was (a number's
+`.0` is its predecessor) needs `D` tied across scopes, which this is. -/
+structure PlaceLocal (D : Decisions) : Prop where
+  root : ∀ (sc sc' : List DeclInfo) (p p' : Place), p.steps.2 = p'.steps.2 →
+    sc.getD p.steps.1 .other = sc'.getD p'.steps.1 .other → D.placeDecl sc p = D.placeDecl sc' p'
+  other : ∀ p n args, D.placeDecl [.other] p ≠ .ind n args
+  ref : ∀ p n args, D.placeDecl [.ref .other] p ≠ .ind n args
+
 /-- A number or `()` pushed as a temporary (`Z`, `S`, a read's value, a write's `()`). -/
 def InvPushInert : Prop :=
   ∀ (D : Decisions) (Γ : List IndDecl) (st : MState) (v : Value) (T? : Option Value),
@@ -310,6 +330,7 @@ def InvSetBot : Prop :=
 /-- A binding holding a number overwritten by a number (`x.0 := u` at `Nat`: `S(w)` to `S(v₀)`). -/
 def InvSetNum : Prop :=
   ∀ (D : Decisions) (Γ : List IndDecl) (st : MState) (f j : Nat) (v₀ : Value),
+    PlaceLocal D → (∀ b, st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.decl = .other) →
     (valAt st.env (.bind f j)).Num → v₀.Num → Inv D Γ st.norm →
     Inv D Γ { st with env := Env.setAtE st.env (.bind f j) v₀ }.norm
 
@@ -317,7 +338,7 @@ def InvSetNum : Prop :=
 the temporary that parked it is gone, the binding holds it). -/
 def InvBindNum : Prop :=
   ∀ (D : Decisions) (Γ : List IndDecl) (st : MState) (h : Hint) (v : Value) (T? : Option Value) (p : Bool),
-    v.Num → 0 < st.env.size → Inv D Γ (st.withTempT v T?).norm →
+    PlaceLocal D → v.Num → 0 < st.env.size → Inv D Γ (st.withTempT v T?).norm →
     Inv D Γ { st with env := Env.pushBindE st.env h (some .tNat) v p .other }.norm
 
 /-- The value in flight, a borrow of a number, moved into a binding pushed at `&Nat` read `.ref .other`
@@ -325,13 +346,13 @@ def InvBindNum : Prop :=
 def InvBindBorrow : Prop :=
   ∀ (D : Decisions) (Γ : List IndDecl) (st : MState) (h : Hint) (l : Nat) (w : Value) (T? : Option Value)
     (p : Bool),
-    w.Num → 0 < st.env.size → Inv D Γ (st.withTempT (.borrow l w) T?).norm →
+    PlaceLocal D → w.Num → 0 < st.env.size → Inv D Γ (st.withTempT (.borrow l w) T?).norm →
     Inv D Γ { st with env := Env.pushBindE st.env h (some (.tRef .tNat)) (.borrow l w) p (.ref .other) }.norm
 
 /-- The top binding, `⊥` or a number, popped (`let`'s drop; the tail's value parked above it). -/
 def InvPopBind : Prop :=
   ∀ (D : Decisions) (Γ : List IndDecl) (st : MState) (fr : Frame) (b : Binding),
-    st.env[st.env.size - 1]? = some fr → fr.binds.back? = some b → (b.val = .bot ∨ b.val.Num) →
+    PlaceLocal D → st.env[st.env.size - 1]? = some fr → fr.binds.back? = some b → (b.val = .bot ∨ b.val.Num) →
     Inv D Γ st.norm → Inv D Γ { st with env := Env.popBindE st.env }.norm
 
 /-- A binding holding a number at `Nat` lent at the counter, the borrow in flight (`&x`), where no
@@ -347,6 +368,7 @@ def InvLend : Prop :=
 (`*y := u`). -/
 def InvWriteDeref : Prop :=
   ∀ (D : Decisions) (Γ : List IndDecl) (st : MState) (f j l : Nat) (w v₀ : Value),
+    PlaceLocal D → (∀ b, st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.decl = .ref .other) →
     valAt st.env (.bind f j) = .borrow l w → w.Num → v₀.Num → Inv D Γ st.norm →
     Inv D Γ { st with env := Env.setAtE st.env (.bind f j) (.borrow l v₀) }.norm
 
@@ -354,6 +376,7 @@ def InvWriteDeref : Prop :=
 borrow_l w`; `y` set to `⊥`, `x` to `w` (then read by a copy) or `⊥` (a move). -/
 def InvEndRead : Prop :=
   ∀ (D : Decisions) (Γ : List IndDecl) (st : MState) (l : Nat) (w xv : Value),
+    PlaceLocal D → (∀ b, st.env[0]?.bind (fun fr : Frame => fr.binds[0]?) = some b → b.decl = .other) →
     allPos st.env = [.bind 0 0, .bind 0 1] → valAt st.env (.bind 0 0) = .loan l →
     valAt st.env (.bind 0 1) = .borrow l w → w.Num → (xv = w ∨ xv = .bot) → Inv D Γ st.norm →
     Inv D Γ { st with env := Env.setAtE (Env.setAtE st.env (.bind 0 1) .bot) (.bind 0 0) xv }.norm
