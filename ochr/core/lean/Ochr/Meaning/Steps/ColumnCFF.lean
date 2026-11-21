@@ -42,18 +42,19 @@ namespace Ochr.Meaning.Steps.Form.ColumnC
 
 open Ochr Ochr.Meaning Ochr.Meaning.Steps Ochr.Meaning.Steps.Form
 
-/-- **The column applied to `C`, at the fuel-free table of the end state**: assumes two unreviewed
-facts about the checker alone: `VarNumInvK` (the machine lane's proved `VarNumInv` with `KeepsInv`
-beside its `Quiet.refl` stretch) and the state-level lemmas `InvSteps` (lead9). -/
-theorem column_C_ff (hVK : VarNumInvK) (hI : InvSteps) {g : Nat} (dm : DataModel)
+/-- **The column applied to `C`, at the fuel-free table of the end state**: assumes the state-level
+lemmas `InvSteps` (lead9; the machine lane's `machine3`, in progress) and that the fuel-free table
+is local in its places (`PlaceLocal`, the machine lane's `placeLocal_ff`, in progress). -/
+theorem column_C_ff (hI : InvSteps) {g : Nat} (dm : DataModel)
     (ρ : Assignment) (φ : Future) {st st' : MState} {bh : Nat} {v : Value} {T? : Option Value} (hk : Kern stC st)
     (hm : Mode st) (htd : st.tailDecl = none)
-    (h : Runs (Ochr.eval (g + 9) true bodyC (some .tNat)) st bh (v, T?) st') :
+    (h : Runs (Ochr.eval (g + 9) true bodyC (some .tNat)) st bh (v, T?) st')
+    (hPL : PlaceLocal (checkerDecisionsFF st')) :
     ∃ r s', runT (KC dm (checkerDecisionsFF st')) ρ φ st.tailNext (hintM (KC dm (checkerDecisionsFF st')) ρ (some .tNat))
         bodyC (SM' (KC dm (checkerDecisionsFF st')) ρ stC) = some (r, s') ∧
       r.1 = .el0 Nat 1 ∧ r.1 ∈ₛ[dm.read] TyM.nat ∧ r.2.m = TyM.nat :=
-  column_C Machine.evalInvR Machine.zeroInv succInv Machine.varNumInv hVK letInv Machine.dropNoopInv hI Machine.decBack
-    (grows_eval _ _ _ _) dm _ ρ φ hk hm htd
+  column_C Machine.evalInvR Machine.zeroInv succInv Machine.varNumInv letInv Machine.dropNoopInv hI Machine.decBack
+    (grows_eval _ _ _ _) dm _ hPL ρ φ hk hm htd
     (decTab_ff st' _ (fun _ => Machine.decide_fuel_agree' _) (Machine.decide_fuel_agree' st')) h
 
 end Ochr.Meaning.Steps.Form.ColumnC

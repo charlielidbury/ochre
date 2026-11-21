@@ -607,7 +607,7 @@ def BorrowPre (i : Nat) (st : MState) : Prop :=
 (`BorrowPre`). The strict run's tests pass: the access ends nothing; the content, the number, is a
 member of `Nat`; the invalidation is empty; the write is at a root. The renaming is extended at the
 new label, and the result's label is the checker's, renamed. -/
-theorem borrow_core (hB : BorrowNumInvK) (hI : InvSteps) {n i : Nat} {P : MState → Prop}
+theorem borrow_core (hB : BorrowNumInv) (hI : InvSteps) {n i : Nat} {P : MState → Prop}
     (hP : ∀ st, P st → BorrowPre i st) (hinv : ∀ sc, K.D.invalidated sc (.var i) = []) :
     CoreSim K ρ φ (n + 1) (.borrow (.var i)) P (· = true) := by
   intro st st' typed hint v T? s π hPst hty hm htn htd _ hp hr hS hv hab hnh hfl _ hD bh h

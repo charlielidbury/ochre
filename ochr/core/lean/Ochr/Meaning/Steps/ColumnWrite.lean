@@ -205,9 +205,12 @@ run leaves Ω as it was. The strict run's tests all pass: the access ends nothin
 is lent at a binding holding a number); the field update is defined at every typed future (there `x`
 means its number, by the relation, at the futures it compares at, which every typed future of a good
 state is: `typedFut_rel`); the state after holds open members everywhere (`stateOk_setNum`). -/
-theorem assign_core (hA : AssignNumInv) (hI : InvSteps) (hc : Strict.FundCtx K) {n i : Nat} {u : Term}
+theorem assign_core (hA : AssignNumInv) (hI : InvSteps) (hPL : PlaceLocal K.D) (hc : Strict.FundCtx K)
+    {n i : Nat} {u : Term}
     {P Pu : MState → Prop} (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → P a → Pu b)
     (hP : ∀ st, P st → NumVar i st)
+    (hdx : ∀ st, P st → ∀ f j b, ckVarPos st.env i = some (.bind f j) →
+      st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.decl = .other)
     (hflu : ∀ st, P st → K.D.flags (DecideScope.topReadings st) u = (false, false))
     (hhint : ∀ (T : TyS) (s : SState), runT K ρ φ false T u s = runT K ρ φ false (.plain TyM.err) u s)
     (hnum : ∀ st₀ st₁ bh hint v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
@@ -364,7 +367,11 @@ theorem assign_core (hA : AssignNumInv) (hI : InvSteps) (hc : Strict.FundCtx K) 
     · have h₁ : Inv K.D K.Γ st₁.norm := hI.popInert K.D K.Γ st₁ v₀ T₀ (.inl hv₀) hp₁.inv
       have h₂ : Inv K.D K.Γ st'.norm := by
         rw [← hk'.norm]
-        exact hI.setNum K.D K.Γ st₂ f j _ (by rw [hvb₂]; exact hnb') (.succ hv₀) (hki K.D K.Γ h₁)
+        exact hI.setNum K.D K.Γ st₂ f j _ hPL
+          (fun b' hb' => hdx st hPst f j b'
+            (by rw [← ckVarPos_erase, hk₀.env.trans (he₀₁.trans hq.env), ckVarPos_erase]; exact hpos₂)
+            (by rw [← lookup_erase, hk₀.env.trans (he₀₁.trans hq.env), lookup_erase]; exact hb'))
+          (by rw [hvb₂]; exact hnb') (.succ hv₀) (hki K.D K.Γ h₁)
       exact hI.pushInert K.D K.Γ st' _ _ (.inr rfl) h₂
     · have : Asg { K with Δ := Δ₁ } ρ₁ st'.norm := by rw [← hk'.norm]; exact hX
       exact asg_withTempT_inert this Value.inert_unit _
