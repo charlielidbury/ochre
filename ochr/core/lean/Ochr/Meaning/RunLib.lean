@@ -246,17 +246,18 @@ theorem substEnv_loan_spec (fuel : Nat) (l : Nat) (w : Value) (st st' : MState) 
 /-! ## [End]'s run: the holder emptied, the substitution walk, then the marks handed on -/
 
 /-- `endBorrow` with fuel, its body (main's D90: after the substitution, the marks of the ended
-borrow are handed to the live borrows of its final content, `lendEnv (.ended l …)`). -/
+borrow are handed to the live borrows of its final content, `lendEnv (.ended l …)`; main's D114: in
+an observation, a binding the side consumes, `obsFrame`'s fourth component, may be ended). -/
 theorem endBorrow_succ (n l : Nat) :
     Ochr.endBorrow (n + 1) l = (do
       let env := (← get).env
       match findBorrow env l with
       | none => pure ()
       | some p =>
-        if let some (f0, n0, t0) := (← get).obsFrame then
+        if let some (f0, n0, t0, own) := (← get).obsFrame then
           match p with
           | .bind f i =>
-            if f == f0 && i < n0 then
+            if f == f0 && i < n0 && !own.contains i then
               let y := env[f]!.binds[i]!.hint.name
               fire .IdTypestate fun _ => s!"a side ends the borrow {y}"
               err s!"[Id-typestate] a side of Id ends the borrow {y}, which a binding outside the Id holds (the side uses or drops what {y} borrows): end it before the Id"
