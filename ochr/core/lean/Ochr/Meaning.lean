@@ -147,6 +147,7 @@ import Ochr.Meaning.Steps.ParFacts
 import Ochr.Meaning.Steps.ParRead
 import Ochr.Meaning.Steps.ParSucc
 import Ochr.Meaning.Steps.ParBody
+import Ochr.Meaning.Steps.ColumnIStart
 import Ochr.Meaning.Steps.ParGuards
 import Ochr.Meaning.Regress.EvalMemRuns
 import Ochr.Meaning.Regress.OpenFalse

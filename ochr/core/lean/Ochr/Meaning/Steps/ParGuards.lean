@@ -1,5 +1,4 @@
-import Ochr.Meaning.Steps.ParBody
-import Ochr.Meaning.Steps.ColumnB
+import Ochr.Meaning.Steps.ColumnIStart
 import Ochr.Test
 
 /-!
@@ -17,13 +16,18 @@ Numerals (`1`, `Term.ofNat`) are the surface's direct `S`.
 entry, `Config.recordStates`, for the surface `P` and for a surface function with `I`'s signature):
 frame 0 empty; frame 1 holding the function's binding of itself `f ↦ .gfn f` at `Π(n : Nat). Nat`,
 read `.pi .other`, MARKED (`recUid = some 0`), then `n ↦ σ0` at `Nat` read `.other`; `absTy = [Nat]`,
-`nextAbs = 1`, no loan, the goal `Nat`, typed, no refinement. The state does not depend on the body.
+`nextAbs = 1`, no loan, the goal `Nat`, typed, no refinement; Σ the function's own global, as `checkDef`
+pushed it. It does not depend on the body (two bodies below), and its kernel is `ColumnI.stI`, where
+`Pre`, `Rel` and `SGood` are proved (`Steps/ColumnIStart.lean`).
 -/
 
 open Ochr.Test
 
-ochr ParProbe {
+ochr ParProbeI {
   def Ip (n : Nat) : Nat := S(n)
+}
+
+ochr ParProbeP {
   def Pp (n : Nat) : Nat := match n { Z => Z, S m => m }
 }
 
@@ -34,10 +38,10 @@ namespace ParGuards
 open Ochr Ochr.Surface
 open Ochr.Meaning.Regress.GenNeutralContent (isOk outSt outVal)
 
-/-- The resolved body of a declaration of `ParProbe`. -/
-def bodyOf (name : String) : Term :=
-  match ParProbe.decls.find? (·.name == name) with
-  | some d => match runResolve ParProbe.decls d 100000 with
+/-- The resolved body of a declaration of a block. -/
+def bodyOf (b : Block) (name : String) : Term :=
+  match b.decls.find? (·.name == name) with
+  | some d => match runResolve b.decls d 100000 with
     | (.ok (.ok (.defn df)), _) => df.body
     | _ => .zero
   | none => .zero
@@ -45,14 +49,14 @@ def bodyOf (name : String) : Term :=
 /-- `P`'s body is the surface's `match n { Z => Z, S m => m }`. -/
 def bodyP : Term := .matchNat (.var 0) .zero (.place (.proj 0 (.var 0)))
 
-#guard bodyOf "Pp" == bodyP
+#guard bodyOf ParProbeP "Pp" == bodyP
 -- the surface `S(n)` is a call of `succFn`, whose body is `I`'s
-#guard bodyOf "Ip" == .call succFn [.place (.var 0)] false
+#guard bodyOf ParProbeI "Ip" == .call succFn [.place (.var 0)] false
 #guard succFn == .fix ⟨"_"⟩ [⟨"n"⟩] [.nat] .nat none bodyI
 
-/-- The checker's recorded states on entry to the located terms of a `ParProbe` declaration. -/
-def entries (name : String) : List MState :=
-  let r := Ochr.Test.runWith none "ParProbe" ParProbe { recordStates := true } (located := true)
+/-- The checker's recorded states on entry to the located terms of a declaration of a block. -/
+def entries (b : Block) (name : String) : List MState :=
+  let r := Ochr.Test.runWith none b.name b { recordStates := true } (located := true)
   match r.rows.find? (·.name == name) with
   | some row => row.trace.toList.filterMap fun
       | .state _ false _ st => some st | _ => none
@@ -68,45 +72,55 @@ def bindOk (b : Binding) (x : String) (v : Value) (T : Value) (d : DeclInfo) (ma
   b.hint.name == x && b.val == v && b.ty == some T && declIs b.decl d && !b.proof && b.recUid == mark &&
     !b.cap && b.lazyTy.isNone
 
-def piNat : Value := .tPi [] (.pi [⟨"n"⟩] [.nat] .nat) []
+open ColumnI (piNat)
 
-/-- The body's start state of a function `f (n : Nat) : Nat`, as `checkFix` makes it. -/
-def stF (f : String) : MState :=
-  { env := #[{}, { binds := #[{ hint := ⟨f⟩, ty := some piNat, val := .gfn f, decl := .pi .other, recUid := some 0 },
-      { hint := ⟨"n"⟩, ty := some .tNat, val := .abs 0, decl := .other }] }],
-    nextAbs := 1, absTy := #[.tNat], absDecl := #[.other], goal := some .tNat, typing := true,
-    recStack := [{ fn := .gfn f, entries := #[some 0], cands := [], uid := 0 }], nextRecUid := 1 }
+/-- A global as `checkDef` pushes it for `f (n : Nat) : Nat := body`. -/
+def globalOk (g : GDef) (f : String) (body : Term) : Bool :=
+  g.name == f && g.ty == piNat && g.fn? == some (.fix ⟨f⟩ [⟨"n"⟩] [.nat] .nat none body) && g.val == .gfn f &&
+    !g.model && g.absTys.isEmpty && g.absDecls.isEmpty
 
-/-- The recorded state agrees with `stF f` on every field the relation and the steps read. -/
-def startOk (f : String) (st : MState) : Bool :=
+/-- The body's start state agrees with `ColumnI.stI` (renamed to `f`, `f`'s body `body`) on its kernel
+(`MState.norm`: what `Pre`, `Rel` and the steps read). -/
+def kernelOk (f : String) (body : Term) (st : MState) : Bool :=
   st.env.size == 2 && st.env[0]!.binds.isEmpty && st.env[0]!.temps.isEmpty && st.env[1]!.temps.isEmpty &&
   st.env[1]!.binds.size == 2 &&
   bindOk st.env[1]!.binds[0]! f (.gfn f) piNat (.pi .other) (some 0) &&
   bindOk st.env[1]!.binds[1]! "n" (.abs 0) .tNat .other none &&
-  st.absTy == #[.tNat] && st.nextAbs == 1 && st.nextLoan == 0 && st.goal == some .tNat && st.typing &&
-  st.refs.isEmpty && st.etaRefs.isEmpty && st.neutrals.isEmpty && !st.curTail && st.tailDecl.isNone &&
-  !st.copying && !st.inPlace && !st.headEval && st.erasedDepth == 0 && st.privateDepth == 0 &&
-  st.depth == 0 && st.obsFrame.isNone && st.absDecl.size == 1 && st.nextRecUid == 1 &&
+  (match st.globals with | [g] => globalOk g f body | _ => false) && st.inds.isEmpty &&
+  st.absTy == #[.tNat] && st.nextAbs == 1 && st.nextLoan == 0 && st.goal == some .tNat &&
+  st.refs.isEmpty && st.etaRefs.isEmpty && st.neutrals.isEmpty && !st.liveScope &&
+  st.absDecl.size == 1 && declIs st.absDecl[0]! .other
+
+/-- ... and on the mode the run starts in: typed, not in tail position, no reading handed down, no
+private copy, one [Rec] context (not recursive). -/
+def modeOk (f : String) (st : MState) : Bool :=
+  st.typing && !st.curTail && !st.tailNext && st.tailDecl.isNone && !st.copying && !st.inPlace && !st.headEval &&
+  st.erasedDepth == 0 && st.privateDepth == 0 && st.depth == 0 && st.obsFrame.isNone && st.nextRecUid == 1 &&
   (match st.recStack with
     | [r] => r.fn == .gfn f && r.entries == #[some 0] && r.cands.isEmpty && r.uid == 0
-    | _ => false) &&
-  declIs st.absDecl[0]! .other
+    | _ => false)
 
 -- the first recorded state of each function is its body's entry: the same for every body
-#guard (entries "Pp").head?.any (startOk "Pp")
-#guard (entries "Ip").head?.any (startOk "Ip")
--- and the hand-built state passes the same test
-#guard startOk "I" (stF "I")
+#guard (entries ParProbeP "Pp").head?.any fun st => kernelOk "Pp" bodyP st && modeOk "Pp" st
+#guard (entries ParProbeI "Ip").head?.any fun st => kernelOk "Ip" (.call succFn [.place (.var 0)] false) st && modeOk "Ip" st
 
-/-- `I` and `P` as core definitions: accepted by `checkDef`. -/
+/-- The full start state of `I`'s body: the kernel `ColumnI.stI` in the mode `checkFix` starts it in. -/
+def stI : MState :=
+  let rc : RecCtx := { fn := .gfn "I", entries := #[some 0], cands := [], uid := 0 }
+  { ColumnI.stI with typing := true, recStack := [rc], nextRecUid := 1 }
+
+-- the hand-built kernel passes the same test
+#guard kernelOk "I" bodyI ColumnI.stI && kernelOk "I" bodyI stI && modeOk "I" stI
+
+/-- `I` and `P` as core definitions: accepted by `checkDef`, which leaves exactly their global. -/
 def defI : Def := { name := "I", hs := [⟨"n"⟩], doms := [.nat], cod := .nat, body := bodyI }
 def defP : Def := { name := "P", hs := [⟨"n"⟩], doms := [.nat], cod := .nat, body := bodyP }
 #guard isOk (checkDef defI) {} 100000
 #guard isOk (checkDef defP) {} 100000
+#guard match (outSt (checkDef defI) {} 100000).globals with | [g] => globalOk g "I" bodyI | _ => false
+#guard match (outSt (checkDef defP) {} 100000).globals with | [g] => globalOk g "P" bodyP | _ => false
 
 /-! ## `I`'s body from the start state: `S(σ0)` at `Nat`, `n` moved -/
-
-def stI : MState := stF "I"
 
 #guard outVal (Ochr.eval 100 true bodyI (some .tNat)) stI 100000 == (.succ (.abs 0), some .tNat)
 #guard ((outSt (Ochr.eval 100 true bodyI (some .tNat)) stI 100000).env[1]!.binds.map (·.val)) ==
@@ -123,6 +137,8 @@ under a handed-down reading; in a private copy (`copying`: `clone`'s mode, where
 def withN (v : Value) : MState :=
   { stI with env := stI.env.set! 1 { binds := #[stI.env[1]!.binds[0]!, { stI.env[1]!.binds[1]! with val := v }] } }
 
+def modeOf (st : MState) : Bool × Bool × Bool × Nat := (st.headEval, st.copying, st.inPlace, st.erasedDepth)
+
 def readN (typed : Bool) : M (Value × Option Value) := Ochr.evalCore 100 typed (.place (.var 0)) none
 
 #guard [Value.abs 0, .succ (.abs 0), .succ (.succ .zero)].all fun v =>
@@ -136,7 +152,7 @@ def readN (typed : Bool) : M (Value × Option Value) := Ochr.evalCore 100 typed 
   (outVal (readN false) (withN v) 100000).1 == v &&
   (outVal (readN false) (withN v) 100000).2.all (· == .tNat) &&
   -- the mode after is the mode before
-  ColumnB.modeOf (outSt (readN true) (withN v) 100000) == (false, false, false, 0)
+  modeOf (outSt (readN true) (withN v) 100000) == (false, false, false, 0)
 -- in `clone`'s mode the read copies: the binding keeps its value
 #guard ((outSt (readN true) { withN (.abs 0) with copying := true } 100000).env[1]!.binds.map
   (·.val)) == #[.gfn "I", .abs 0]
