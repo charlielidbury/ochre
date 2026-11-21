@@ -306,12 +306,12 @@ theorem succ_core (hS : SuccInv) (hIC : InvCore) {n : Nat} {u : Term} {P Pu : MS
     (hu : EvalSim K ρ φ n u Pu) (hPu : ∀ a b, Kern a b → P a → Pu b)
     (hflu : ∀ st, P st → K.D.flags (DecideScope.topReadings st) u = (false, false))
     (hhint : ∀ s : SState, runT K ρ φ false (.plain TyM.nat) u s = runT K ρ φ false (.plain TyM.err) u s)
-    (hnum : ∀ typed st₀ st₁ bh v₀ T₀, Mode st₀ → DecTab K.D st₁ → Runs (Ochr.eval n typed u none) st₀ bh (v₀, T₀) st₁ →
-      v₀.Num) :
+    (hnum : ∀ typed st₀ st₁ bh v₀ T₀, Pu st₀ → Mode st₀ → DecTab K.D st₁ →
+      Runs (Ochr.eval n typed u none) st₀ bh (v₀, T₀) st₁ → v₀.Num) :
     CoreSim K ρ φ (n + 1) (.succ u) P := by
   intro st st' typed hint v T? s π hPst _ hm htn hp hr hSg hv hab hnh hfl hok hD bh h
   obtain ⟨st₀, st₁, v₀, T₀, bh₁, hk₀, hm₀, htn₀, hu₀, rfl, rfl, hq, hDb, -⟩ := hS n typed u hint st st' bh v T? hm h
-  have hv₀ : v₀.Num := hnum typed st₀ st₁ bh₁ v₀ T₀ hm₀ (hDb K.D hD) hu₀
+  have hv₀ : v₀.Num := hnum typed st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ (hDb K.D hD) hu₀
   have hO := hu st₀ st₁ typed none v₀ T₀ s π (hPu st st₀ hk₀ hPst) trivial hm₀ (hp.of_kern hk₀) (hr.of_kern hk₀) hSg hv
     (by rw [← hk₀.absTy]; exact hab) hnh (by rw [scopeOf_rel hr]; exact hflu st hPst)
     (fun ht => by

@@ -47,6 +47,20 @@ theorem access_noSites {s : SState} {pos : Pos} {hit : List Step → Bool}
   | nil => rfl
   | cons _ L ih => rw [List.foldl_cons, hstep, ih]
 
+/-- **A read's ends are strict-OK where nothing is lent at the place**: its access ends nothing. -/
+theorem accessOk_noSites {K : RunCtx} {φ : Future} {s : SState} {pos : Pos} {hit : List Step → Bool}
+    (h : ∀ l ∈ s.liveLabels, ∀ x ∈ s.lent l, x.pos ≠ pos) : AccessOk K φ s pos hit := by
+  have hnil : s.liveLabels.filter (s.reached pos hit) = [] := List.filter_eq_nil_iff.mpr fun l hl => by
+    simp only [SState.reached, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq, not_exists, not_and]
+    intro x hx hpos; exact absurd hpos (h l hl x hx)
+  have hround : accRound pos hit s = s := by unfold accRound; rw [hnil]; rfl
+  have hk : ∀ k, (List.range k).foldl (fun t _ => accRound pos hit t) s = s := by
+    intro k; generalize List.range k = L
+    induction L with
+    | nil => rfl
+    | cons _ L ih => rw [List.foldl_cons, hround, ih]
+  intro k _; rw [hk, hnil]; trivial
+
 section
 variable {K : RunCtx} {ρ : Assignment} {φ : Future}
 
@@ -215,7 +229,10 @@ theorem var_core (hV : VarNumInv) (hIC : InvCore) {n i : Nat} : CoreSim K ρ φ 
   have hrg : ReadGood K.dm.read (s.tyAt (.bind f j)).m (.el0 Nat m) := .inl (by rw [htyN]; exact ⟨m, rfl⟩)
   have hrun : runT K ρ φ st.curTail (hintM K ρ hint) (.place (.var i)) s =
       readPlace K φ (.var i) (K.D.copy (K.D.placeDecl (DecideScope.topReadings st) (.var i))) s := by
-    rw [runT]; show SM.erasedIf (K.D.flags (scopeOf s) _) _ s = _; rw [hfl, hsc]; rfl
+    have hcok : ContentOk K φ (.var i) s := by
+      unfold ContentOk; rw [hres]; exact accessOk_noSites (rel_noSites_at hr hns)
+    rw [runT]; show SM.erasedIf (K.D.flags (scopeOf s) _) _ s = _; rw [hfl, hsc]
+    show SM.guarded _ _ s = _; unfold SM.guarded; rw [if_pos hcok]
   have hwhole : (Sem.el0 Nat m).whole := by simp [Sem.whole]
   have hlab : ∀ l, st.Occurs l → l < st.nextLoan := hp.labels
   have hr₁ : Rel K ρ φ π st₁ s := hr.of_quiet hq hlab

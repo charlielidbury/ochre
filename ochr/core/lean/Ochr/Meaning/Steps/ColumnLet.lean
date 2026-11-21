@@ -163,8 +163,10 @@ theorem runT_letIn (tl : Bool) (hint : TyS) (x : Hint) (u w : Term) (s : SState)
       let held : Option Nat := match s.env.getLast? with
         | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
         | none => none
-      let s := match held with | some l => s.endLabel l | none => letLenders s
-      some ((r, R), s.dropLast)) := by
+      if (match held with | some l => EndOk K φ s l | none => LetLendersOk K φ s) then
+        let s := match held with | some l => s.endLabel l | none => letLenders s
+        some ((r, R), s.dropLast)
+      else none) := by
   rw [runT]; show SM.erasedIf (K.D.flags (scopeOf s) _) _ s = _; rw [hfl]; rfl
 
 /-- **A typed `let h = u; w` at `evalCore`**, for a right-hand side whose value is a number at `Nat`
@@ -177,8 +179,8 @@ theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hIC : InvCore) (hc : Strict.
     (hw : ∀ (Δ' : Nat → TyS) (ρ' : Assignment), EvalSim { K with Δ := Δ' } ρ' φ n w Pw (· = true))
     (hflu : ∀ st, Plet st → K.D.flags (DecideScope.topReadings st) u = (false, false))
     (hflw : ∀ st, Pw st → K.D.flags (DecideScope.topReadings st) w = (false, false))
-    (hnumu : ∀ st₀ st₁ bh v₀ T₀, Mode st₀ → DecTab K.D st₁ → Runs (Ochr.eval n true u none) st₀ bh (v₀, some T₀) st₁ →
-      v₀.Num ∧ T₀ = .tNat)
+    (hnumu : ∀ st₀ st₁ bh v₀ T₀, Pu st₀ → Mode st₀ → DecTab K.D st₁ →
+      Runs (Ochr.eval n true u none) st₀ bh (v₀, some T₀) st₁ → v₀.Num ∧ T₀ = .tNat)
     (hPw : ∀ (st st₀ st₁ : MState) (bh : Nat) (v₀ : Value) (p : Bool), Plet st → Kern st st₀ → Mode st₀ →
       DecTab K.D st₁ → Runs (Ochr.eval n true u none) st₀ bh (v₀, some .tNat) st₁ →
       Pw { st₁ with env := Env.pushBindE st₁.env x (some .tNat) v₀ p (K.D.declOf (DecideScope.topReadings st₁) u) })
@@ -195,7 +197,7 @@ theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hIC : InvCore) (hc : Strict.
   subst hty
   obtain ⟨du, st₀, st₁, stB, st₂, st₃, v₀, r, T₀, p, bh₁, bh₂, bh₃, hk₀, hm₀, htn₀, hru, hne₁, hdu, hkB, hmB, htnB,
     hrw, hrd, hk₃, hD₁, hD₂, hinvB⟩ := hL n x u w hint st st' bh v T? K.D K.Γ hm hD h
-  obtain ⟨hv₀, rfl⟩ := hnumu st₀ st₁ bh₁ v₀ T₀ hm₀ hD₁ hru
+  obtain ⟨hv₀, rfl⟩ := hnumu st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ hD₁ hru
   have hvu : u.valsOk (Strict.ValsP K ρ φ) := hv.1
   have hvw : w.valsOk (Strict.ValsP K ρ φ) := hv.2
   -- the step for `u`
@@ -287,9 +289,12 @@ theorem let_core (hL : LetInv) (hDN : DropNoopInv) (hIC : InvCore) (hc : Strict.
     rw [hwhint, ← hwhint _ (hintM { K with Δ := Δ₁ } ρ₁ none), ← hwcong Δ₁ ρ₁]; exact hxw
   have hxl : runT K ρ φ st.curTail (hintM K ρ hint) (.letIn x u w) s = some (rw', s₂.dropLast) := by
     rw [runT_letIn _ _ x u w s hfl, hxu']
+    have hllok : LetLendersOk K φ s₂ := by
+      unfold LetLendersOk; rw [hlast]
+      exact accessOk_noSites (by rw [hpos]; exact rel_noSites_at hr₂ (fun l => by rw [hbv]; exact hns l _))
     simp only [bind, Option.bind]
     rw [hpb, hxw']
-    simp only [hlast, hsh, hll]
+    simp only [hlast, hsh, hll, if_pos hllok]
   -- the conclusion
   have hext : Ext K ρ π st st' ρ₂ Δ₂ π₂ :=
     (he₁.congr hk₀.absTy hk₀.nextLoan hkB.absTy hkB.nextLoan).trans (he₂.congr rfl rfl hk'.absTy hk'.nextLoan)
