@@ -217,6 +217,147 @@ theorem rel_popBind_false (K : RunCtx) (ρ : Assignment) (φ : Future) :
 
 end PopBindCE
 
+/-- **(P2, corrected) The top binding popped, where it has no site and holds no borrow, keeps the
+relation.** P2 with `loans = []` replaced by the absence of sites at it, which is what the relation
+reads (`Value.Num.sitesOf` gives it for a number; `rel_popBind_rd` derives it from `loans = []`
+and WF15's clause for the value). -/
+theorem rel_popBind_noSites {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState}
+    {s : SState} (hr : Rel K ρ φ π st s) (fr : Frame) (b : Binding) (hfr : st.env[st.env.size - 1]? = some fr)
+    (hb : fr.binds.back? = some b)
+    (hns : ∀ l, b.val.sitesOf l (.bind (st.env.size - 1) (fr.binds.size - 1)) [] = [])
+    (hnb : ∀ l, b.val.holdsBorrow l = false) :
+    Rel K ρ φ π { st with env := Env.popBindE st.env } s.dropLast := by
+  have hne : 0 < st.env.size := by
+    rcases Nat.eq_zero_or_pos st.env.size with h | h
+    · rw [Array.getElem?_eq_none (by omega)] at hfr; cases hfr
+    · exact h
+  rw [Array.back?_eq_getElem?] at hb
+  have hn : 0 < fr.binds.size := by
+    rcases Nat.eq_zero_or_pos fr.binds.size with h | h
+    · rw [Array.getElem?_eq_none (by omega)] at hb; cases hb
+    · exact h
+  have hbv : valAt st.env (.bind (st.env.size - 1) (fr.binds.size - 1)) = b.val := by
+    rw [valAt_bind_lookup, hfr]; simp only [Option.bind_some, hb]; rfl
+  have he : Env.popBindE st.env = st.env.modify (st.env.size - 1) popTop := rfl
+  obtain ⟨frs, hfrs, htop, hlen⟩ := skel_align K ρ st s hr.skel fr hfr
+  have hn' : 0 < frs.binds.length := by omega
+  have hold : Pos.bind s.topIdx (frs.binds.length - 1) = Pos.bind (st.env.size - 1) (fr.binds.size - 1) := by
+    rw [htop, hlen]
+  -- the popped binding holds no borrow, so the reference's holds none either
+  have hvsh : Env.shape st.env (.bind (st.env.size - 1) (fr.binds.size - 1)) = none := by
+    rw [shape_eq_shapeOf, hbv]
+    cases e : b.val with
+    | borrow l w => have := hnb l; rw [e] at this; simp [Value.holdsBorrow] at this
+    | _ => rfl
+  have hsh : s.shape (Pos.bind s.topIdx (frs.binds.length - 1)) = none := by
+    cases e : s.shape (Pos.bind s.topIdx (frs.binds.length - 1)) with
+    | none => rfl
+    | some l' =>
+      obtain ⟨l, h1, _⟩ := hr.sim.2.2.1 _ l' (by simp [IsTemp]) e
+      rw [hold] at h1
+      change Env.shape st.env _ = _ at h1
+      rw [hvsh] at h1; cases h1
+  have hshe : ∀ q, s.dropLast.shape q = s.shape q := shape_dropLast_eq s frs hfrs hsh
+  have hlive : ∀ l, s.dropLast.Live l ↔ s.Live l := live_dropLast' s frs hfrs hn' hsh
+  have hhty : ∀ l, holderTy s.dropLast l = holderTy s l := holderTy_dropLast s frs hfrs hn' hsh
+  have hF : ∀ ψ, (RelF φ s.dropLast ψ ∧ TypedLive K s.dropLast ψ) → RelF φ s ψ ∧ TypedLive K s ψ :=
+    fun ψ hψ => ⟨fun l hl => hψ.1 l (fun h' => hl ((hlive l).mp h')),
+      fun l hl => by have := hψ.2 l ((hlive l).mpr hl); rwa [hhty] at this⟩
+  have hlv : ∀ l, liveLoan (Env.popBindE st.env) l = liveLoan st.env l := fun l => by
+    rw [he]; exact liveLoan_popTop st.env fr hfr hn hne l (by rw [hbv]; exact hnb l)
+  have hst : ∀ l, Env.sitesOf (Env.popBindE st.env) l = Env.sitesOf st.env l := fun l => by
+    rw [he]; exact sitesOf_popTop st.env fr hfr hn hne l (by rw [hbv]; exact hns l)
+  refine ⟨?_, ?_, ⟨?_, ?_, ?_, ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
+  · -- skel
+    show (SM' K ρ { st with env := st.env.modify (st.env.size - 1) popTop }).env.map _ = _
+    rw [skel_popTop K ρ st fr hfr, sskel_dropLast, hr.skel, htop]
+  · -- fresh
+    intro l hl ho
+    obtain ⟨w, hw, ha⟩ := ho
+    exact hr.fresh l hl ⟨w, mem_values_popTop st.env fr hfr hn hne hw, ha⟩
+  · -- the bindings' meanings
+    intro ψ hψ q hq
+    show Env.mean K.dm K.M K.Γ ρ _ (st.env.modify (st.env.size - 1) popTop) q = s.dropLast.valAt q ψ
+    by_cases hqo : q = .bind (st.env.size - 1) (fr.binds.size - 1)
+    · subst hqo
+      rw [mean_popTop_old K.dm K.M K.Γ ρ st.env fr hfr, ← hold, valAt_dropLast_old s frs hfrs]
+    · rw [mean_popTop_ne K.dm K.M K.Γ ρ st.env fr hfr _ q hqo,
+        valAt_dropLast_ne s frs hfrs q (by rw [hold]; exact hqo)]
+      exact hr.sim.1 ψ (hF ψ hψ) q hq
+  · -- holders at bindings, checker to reference
+    intro q l hq hs
+    change Env.shape (st.env.modify (st.env.size - 1) popTop) q = some l at hs
+    obtain ⟨_, hqo⟩ := mem_allPos_popTop st.env fr hfr hn hne (mem_allPos_of_shape hs)
+    rw [shape_popTop_ne st.env fr hfr q hqo] at hs
+    rw [hshe]
+    exact hr.sim.2.1 q l hq hs
+  · -- holders at bindings, reference to checker
+    intro q l' hq hs
+    rw [hshe] at hs
+    obtain ⟨l, h1, h2⟩ := hr.sim.2.2.1 q l' hq hs
+    have hqo : q ≠ .bind (st.env.size - 1) (fr.binds.size - 1) := by
+      rintro rfl; change Env.shape st.env _ = _ at h1; rw [hvsh] at h1; cases h1
+    refine ⟨l, ?_, h2⟩
+    show Env.shape (st.env.modify (st.env.size - 1) popTop) q = some l
+    rw [shape_popTop_ne st.env fr hfr q hqo]; exact h1
+  · -- borrows in flight, checker to reference
+    intro f i l hs
+    have hqo : Pos.temp f i ≠ .bind (st.env.size - 1) (fr.binds.size - 1) := by intro e; cases e
+    change Env.shape (st.env.modify (st.env.size - 1) popTop) (.temp f i) = some l at hs
+    rw [shape_popTop_ne st.env fr hfr _ hqo] at hs
+    obtain ⟨j, hj, hjv⟩ := hr.sim.2.2.2.1 f i l hs
+    refine ⟨j, by rw [hshe]; exact hj, fun ψ hψ => ?_⟩
+    show Env.mean K.dm K.M K.Γ ρ _ (st.env.modify (st.env.size - 1) popTop) (.temp f i) =
+      s.dropLast.valAt (.temp f j) ψ
+    rw [mean_popTop_ne K.dm K.M K.Γ ρ st.env fr hfr _ _ hqo, valAt_dropLast_ne s frs hfrs _ (by intro e; cases e)]
+    exact hjv ψ (hF ψ hψ)
+  · -- borrows in flight, reference to checker
+    intro f j l' hs
+    rw [hshe] at hs
+    obtain ⟨i, l, h1, h2⟩ := hr.sim.2.2.2.2 f j l' hs
+    refine ⟨i, l, ?_, h2⟩
+    show Env.shape (st.env.modify (st.env.size - 1) popTop) (.temp f i) = some l
+    rw [shape_popTop_ne st.env fr hfr _ (by intro e; cases e)]; exact h1
+  · -- inj
+    intro l l' hl hl' hπ
+    have hl1 : liveLoan (Env.popBindE st.env) l = true := hl
+    have hl2 : liveLoan (Env.popBindE st.env) l' = true := hl'
+    rw [hlv] at hl1 hl2
+    exact hr.inj l l' hl1 hl2 hπ
+  · -- sites
+    intro l hl x
+    have hl1 : liveLoan (Env.popBindE st.env) l = true := hl
+    rw [hlv] at hl1
+    show x ∈ s.lent (π l) ↔ x ∈ Env.sitesOf (Env.popBindE st.env) l
+    rw [hst]
+    exact hr.sites l hl1 x
+  · -- holders
+    intro q l hs
+    rw [hshe] at hs
+    obtain ⟨A, B, h1, h2⟩ := positions_dropLast' s frs hfrs hn'
+    have hq := hr.holders q l hs
+    rw [h1, List.mem_append, List.mem_cons] at hq
+    rw [h2]
+    rcases hq with hq | rfl | hq
+    · exact List.mem_append_left _ hq
+    · rw [hsh] at hs; cases hs
+    · exact List.mem_append_right _ hq
+  · -- records
+    intro l hl
+    rw [hhty]
+    exact hr.records l ((hlive l).mp hl)
+
+/-- **(P2, with WF15's clause) The top binding popped, where it holds no borrow and no loan, keeps
+the relation**, when no closure in its value records a declared type holding a loan or a mark (the
+clause of (WF15) for this value, `WF15 st.env` at it): P2's hypotheses plus that one. -/
+theorem rel_popBind_rd {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
+    (hr : Rel K ρ φ π st s) (fr : Frame) (b : Binding) (hfr : st.env[st.env.size - 1]? = some fr)
+    (hb : fr.binds.back? = some b) (hnl : b.val.loans = []) (hnb : ∀ l, b.val.holdsBorrow l = false)
+    (hrd : ∀ l, b.val.anyAtom (Value.rdLoan l) = false) :
+    Rel K ρ φ π { st with env := Env.popBindE st.env } s.dropLast :=
+  rel_popBind_noSites hr fr b hfr hb
+    (fun l => sitesOf_nil_of_hasLoan l _ [] b.val (hasLoan_false_of_loans_nil hnl l (hrd l))) hnb
+
 /-- **(P2) The top binding popped, where it holds no borrow and no loan, keeps the relation**: the
 checker pops it, the reference drops its last binding (`SState.dropLast`). -/
 theorem rel_popBind {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
