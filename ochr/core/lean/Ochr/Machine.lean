@@ -3924,7 +3924,11 @@ def blockCaptures (fuel : Nat) (mt : Term) (armMovedAll : List Place) :
   let mut split : List (Place × Option Nat) := []
   let mut todo := caps.toList
   let mut out : Array (Place × Nat) := #[]
-  while !todo.isEmpty do
+  -- D109: a loop over the fuel, not a `while` (which Lean builds on a `partial` function): each
+  -- round takes one place off `todo`, which ends when every split place's fields are taken, and
+  -- running out of fuel first is "I don't know" (`exhausted`), never caught and never deciding
+  for _ in [0:fuel'] do
+    if todo.isEmpty then break
     let (q, k) := todo.head!
     todo := todo.tail!
     let inner := moved.filter fun m => placePrefix q m && !(placeEq m q)
@@ -3946,6 +3950,7 @@ def blockCaptures (fuel : Nat) (mt : Term) (armMovedAll : List Place) :
         if under.isEmpty && !(moved.any fun m => placePrefix ch m) then continue
         let m := under.foldl (fun m (_, k) => max m k) 0
         todo := todo ++ [(ch, if moved.any (placeEq · ch) then 2 else m)]
+  unless todo.isEmpty do exhausted "out of fuel"
   pure (out, split, moved)
 termination_by structural fuel
 
