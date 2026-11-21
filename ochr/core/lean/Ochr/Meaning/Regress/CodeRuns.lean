@@ -50,12 +50,13 @@ variable (dm : DataModel) (Γ : List IndDecl) (G : String → Sem × TyS) (ρ : 
 code, and the application. -/
 theorem run_call (f : Term) (args : List Term) (hd : Bool) (hint : TyS) (s : SState) :
     run (Kp dm Γ G) ρ φ hint (.call f args hd) s =
-      (SM.headOf f (fun p => readPlace (Kp dm Γ G) φ p true) (run (Kp dm Γ G) ρ φ (.plain TyM.err) f) >>= fun fv =>
+      (SM.headOf f (fun p => SM.guarded (ContentOk (Kp dm Γ G) φ p) (readPlace (Kp dm Γ G) φ p true)) (run (Kp dm Γ G) ρ φ (.plain TyM.err) f) >>= fun fv =>
         runArgs (Kp dm Γ G) ρ φ false fv.2.m [] args >>= fun as =>
           fun s => if BorrowArgsTyped dm.read fv as s then callOf dm.read fv as s else none) s := rfl
 
 theorem run_const (n : String) (hint : TyS) (s : SState) : run (Kp dm Γ G) ρ φ hint (.const n) s = some (G n, s) := rfl
 
+open Classical in
 theorem run_letIn (x : Hint) (u w : Term) (hint : TyS) (s : SState) :
     run (Kp dm Γ G) ρ φ hint (.letIn x u w) s =
       (do
@@ -65,8 +66,28 @@ theorem run_letIn (x : Hint) (u w : Term) (hint : TyS) (s : SState) :
         let held : Option Nat := match s.env.getLast? with
           | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
           | none => none
-        let s := match held with | some l => s.endLabel l | none => letLenders s
-        some ((r, R), s.dropLast)) := rfl
+        if (match held with | some l => EndOk (Kp dm Γ G) φ s l | none => LetLendersOk (Kp dm Γ G) φ s) then
+          let s := match held with | some l => s.endLabel l | none => letLenders s
+          some ((r, R), s.dropLast)
+        else none) := rfl
+
+theorem held_one (b : SBinding) (k : Nat) :
+    (match (AdequacyFlip.one b k).env.getLast? with
+      | some fr => (AdequacyFlip.one b k).shape (.bind (AdequacyFlip.one b k).topIdx (fr.binds.length - 1))
+      | none => none) = none := by
+  cases (AdequacyFlip.one b k).env.getLast? <;> rfl
+
+theorem letLendersOk_noShape (K : RunCtx) (φ : Future) (s : SState) (h : s.shape = fun _ => none) :
+    LetLendersOk K φ s := by
+  have hg := Attack.letGuard_noShape K φ s h
+  cases hl : s.env.getLast? with
+  | none => unfold LetLendersOk; rw [hl]; trivial
+  | some fr =>
+    unfold LetLendersOk; rw [hl]
+    exact Attack.accessOk_noLive K φ (Attack.liveLabels_of_noShape s h) _ _
+
+theorem letLendersOk_one (K : RunCtx) (φ : Future) (b : SBinding) (k : Nat) :
+    LetLendersOk K φ (AdequacyFlip.one b k) := letLendersOk_noShape K φ _ rfl
 
 theorem meanV_num (K : RunCtx) (n : Nat) : ∀ hint : TyS,
     meanV K ρ φ hint (Nat.rec Value.zero (fun _ v => .succ v) n) = .el0 Nat n := by
@@ -156,6 +177,7 @@ theorem useAdder (hint : TyS) : ∃ T s', run (Kp dm Γ (gAdder dm.read)) ρ φ 
   erw [AdequacyFlip.head_in_place _ φ _ 0 _ (closure_whole dm 2) (closure_good dm 2)]
   simp only [runArgs_num]
   erw [callOf_data0 dm tNN _ _ _ _ _ (by simp [telRefsL, tNN, dec_nat]) h5]
+  simp only [Option.bind_some, held_one, letLendersOk_one, if_true]
   exact ⟨_, _, rfl⟩
 
 /-! ## `UseFn`: a type computed by a call keeps its code -/
@@ -283,7 +305,7 @@ theorem frame_liveLabels (bs : List SBinding) : (frame bs).liveLabels = [] := by
   simp [SState.liveLabels, frame, CE4flip.filterMap_none]
 
 /-- A variable of the frame read in place: its meaning at its type, the frame as it was. -/
-theorem readPlace_frame (K : RunCtx) (bs : List SBinding) (i : Nat) (b : SBinding) (hi : i < bs.length)
+theorem readPlace_frame_raw (K : RunCtx) (bs : List SBinding) (i : Nat) (b : SBinding) (hi : i < bs.length)
     (hb : bs[bs.length - 1 - i]? = some b) (hw : (b.val φ).whole) (hg : ReadGood K.dm.read b.ty.m (b.val φ)) :
     readPlace K φ (.var i) true (frame bs) = some ((b.val φ, { b.ty with label := none }), frame bs) := by
   have hr : resolve (frame bs) (.var i) = some (.bind 0 (bs.length - 1 - i), []) := by
@@ -294,7 +316,7 @@ theorem readPlace_frame (K : RunCtx) (bs : List SBinding) (i : Nat) (b : SBindin
   simp [SState.tyAt, SState.valAt, Sem.follow, frame, hb, hw, hg]
 
 /-- A variable of the frame whose value is no member of its type is not read (the strict `ReadGood`). -/
-theorem readPlace_frame_none (K : RunCtx) (bs : List SBinding) (i : Nat) (b : SBinding) (hi : i < bs.length)
+theorem readPlace_frame_none_raw (K : RunCtx) (bs : List SBinding) (i : Nat) (b : SBinding) (hi : i < bs.length)
     (hb : bs[bs.length - 1 - i]? = some b) (hg : ¬ ReadGood K.dm.read b.ty.m (b.val φ)) :
     readPlace K φ (.var i) true (frame bs) = none := by
   have hr : resolve (frame bs) (.var i) = some (.bind 0 (bs.length - 1 - i), []) := by
@@ -304,8 +326,66 @@ theorem readPlace_frame_none (K : RunCtx) (bs : List SBinding) (i : Nat) (b : SB
   simp only [readPlace, contentOf, hr, ha, hcf, bind, Option.bind]
   simp [SState.tyAt, SState.valAt, Sem.follow, frame, hb, hg]
 
+theorem frame_shape (bs : List SBinding) : (frame bs).shape = fun _ => none := rfl
+
+theorem held_frame (bs : List SBinding) :
+    (match (frame bs).env.getLast? with
+      | some fr => (frame bs).shape (.bind (frame bs).topIdx (fr.binds.length - 1))
+      | none => none) = none := by
+  cases (frame bs).env.getLast? <;> simp [frame_shape]
+
+theorem letLenders_frame (bs : List SBinding) : letLenders (frame bs) = frame bs := by
+  unfold letLenders; split
+  · exact Attack.access_noShape _ rfl _ _
+  · rfl
+
+theorem dropLast_frame_shape (bs : List SBinding) : (frame bs).dropLast.shape = fun _ => none := by
+  funext q; rw [SState.dropLast_shape]; split <;> rfl
+
+theorem held_frame_dropLast (bs : List SBinding) :
+    (match (frame bs).dropLast.env.getLast? with
+      | some fr => (frame bs).dropLast.shape (.bind (frame bs).dropLast.topIdx (fr.binds.length - 1))
+      | none => none) = none := by
+  cases (frame bs).dropLast.env.getLast? <;> simp [dropLast_frame_shape]
+
+theorem letLendersOk_frame (K : RunCtx) (φ : Future) (bs : List SBinding) : LetLendersOk K φ (frame bs) :=
+  letLendersOk_noShape K φ _ rfl
+
+theorem letLendersOk_frame_dropLast (K : RunCtx) (φ : Future) (bs : List SBinding) :
+    LetLendersOk K φ (frame bs).dropLast :=
+  letLendersOk_noShape K φ _ (dropLast_frame_shape bs)
+
+/-- The strict `let`-end test passes where the state has no shape (a frame of plain bindings). -/
+theorem ite_guard_noShape (K : RunCtx) (φ : Future) (s : SState) (h : s.shape = fun _ => none) {α : Type _}
+    (t : Option α) :
+    (if (match (match s.env.getLast? with
+      | some fr => s.shape (.bind s.topIdx (fr.binds.length - 1))
+      | none => none) with
+    | some l => EndOk K φ s l | none => LetLendersOk K φ s) then t else none) = t :=
+  if_pos (Attack.letGuard_noShape K φ s h)
+
+theorem contentOk_frame (K : RunCtx) (bs : List SBinding) (i : Nat) : ContentOk K φ (.var i) (frame bs) := by
+  unfold ContentOk; split
+  · exact Attack.accessOk_noLive K φ (frame_liveLabels bs) _ _
+  · trivial
+
+/-- A variable of the frame read in place: its meaning at its type, the frame as it was (no label is
+live, so the strict access ends nothing). -/
+theorem readPlace_frame (K : RunCtx) (bs : List SBinding) (i : Nat) (b : SBinding) (hi : i < bs.length)
+    (hb : bs[bs.length - 1 - i]? = some b) (hw : (b.val φ).whole) (hg : ReadGood K.dm.read b.ty.m (b.val φ)) :
+    SM.guarded (ContentOk K φ (.var i)) (readPlace K φ (.var i) true) (frame bs)
+      = some ((b.val φ, { b.ty with label := none }), frame bs) := by
+  rw [SM.guarded_of (contentOk_frame φ K bs i)]
+  exact readPlace_frame_raw φ K bs i b hi hb hw hg
+
+theorem readPlace_frame_none (K : RunCtx) (bs : List SBinding) (i : Nat) (b : SBinding) (hi : i < bs.length)
+    (hb : bs[bs.length - 1 - i]? = some b) (hg : ¬ ReadGood K.dm.read b.ty.m (b.val φ)) :
+    SM.guarded (ContentOk K φ (.var i)) (readPlace K φ (.var i) true) (frame bs) = none := by
+  rw [SM.guarded_of (contentOk_frame φ K bs i)]
+  exact readPlace_frame_none_raw φ K bs i b hi hb hg
+
 theorem run_place (p : Place) (hint : TyS) (s : SState) :
-    run (Kp dm Γ G) ρ φ hint (.place p) s = readPlace (Kp dm Γ G) φ p true s := rfl
+    run (Kp dm Γ G) ρ φ hint (.place p) s = SM.guarded (ContentOk (Kp dm Γ G) φ p) (readPlace (Kp dm Γ G) φ p true) s := rfl
 
 /-- A call through a variable of the frame bound at `Π(n : Nat). Nat`'s code, applied to `n`. -/
 theorem run_callVar (bs : List SBinding) (i : Nat) (hi : i < bs.length) (Gf : NN) (T : TyS) (hT : T.m = piTyL (lvl0 dm.read) tNN)
@@ -347,10 +427,10 @@ theorem alias (Gf : NN) (hint : TyS) : ∃ T s', run (Kp dm Γ G) ρ φ hint
           frame [fB Gf, { ty := .plain (TyM.univ 1), val := fun _ => .ty (piTyL (lvl0 dm.read) tNN), decl := .other }]) := by
     rw [run, Attack.run_ascribe (hfl := fun _ _ => rfl)]
     simp only [SM.strictS, bind, SM.onCopy]
-    rw [show runT (Kp dm Γ G) ρ φ false (.plain .err) (.place (.var 0)) = readPlace (Kp dm Γ G) φ (.var 0) true from rfl,
+    rw [show runT (Kp dm Γ G) ρ φ false (.plain .err) (.place (.var 0)) = SM.guarded (ContentOk (Kp dm Γ G) φ (.var 0)) (readPlace (Kp dm Γ G) φ (.var 0) true) from rfl,
       readPlace_frame φ _ _ 0 _ (by simp) rfl (by simp [Sem.whole]) (by exact Or.inl ⟨⟨NN, ⟨Code0.pi NN tNN, rfl⟩⟩, rfl⟩)]
     simp only [Option.map, Sem.asTy]
-    rw [show runT (Kp dm Γ G) ρ φ false (.plain (piTyL (lvl0 dm.read) tNN)) (.place (.var 1)) = readPlace (Kp dm Γ G) φ (.var 1) true from rfl,
+    rw [show runT (Kp dm Γ G) ρ φ false (.plain (piTyL (lvl0 dm.read) tNN)) (.place (.var 1)) = SM.guarded (ContentOk (Kp dm Γ G) φ (.var 1)) (readPlace (Kp dm Γ G) φ (.var 1) true) from rfl,
       readPlace_frame φ _ _ 1 _ (by simp) rfl (by simp [Sem.whole, fB]) (fn_good dm Gf)]
     -- the strict ascription: the read carries no label, and `Gf` is a member of its function type
     have hm : Sem.el0 NN Gf ∈ₛ[dm.read] piTyL (lvl0 dm.read) tNN := ⟨Gf, rfl⟩
@@ -364,6 +444,7 @@ theorem alias (Gf : NN) (hint : TyS) : ∃ T s', run (Kp dm Γ G) ρ φ hint
   simp only [bind, Option.bind]
   rw [Attack.pushBindShaped_noLabel _ _ rfl, frame_push,
     run_callVar dm Γ G ρ φ _ 0 (by simp) Gf _ rfl .other rfl 3]
+  simp only [Option.bind_some, held_frame, held_frame_dropLast, letLenders_frame, letLendersOk_frame, letLendersOk_frame_dropLast, if_true]
   exact ⟨_, _, rfl⟩
 
 /-- **`UseFnLet` in the model: `let g = f; g(3)` is `f(3)`**, `f` bound at `Π(n : Nat). Nat`'s code
@@ -375,6 +456,7 @@ theorem useFnLet (Gf : NN) (hint : TyS) : ∃ T s', run (Kp dm Γ G) ρ φ hint
   simp only [bind, Option.bind]
   rw [Attack.pushBindShaped_noLabel _ _ rfl, frame_push,
     run_callVar dm Γ G ρ φ _ 0 (by simp) Gf _ rfl .other rfl 3]
+  simp only [Option.bind_some, held_frame, held_frame_dropLast, letLenders_frame, letLendersOk_frame, letLendersOk_frame_dropLast, if_true]
   exact ⟨_, _, rfl⟩
 
 /-! ## `let g = id(Nat → Nat, f); g(Z)`: a type argument keeps its code -/
@@ -404,7 +486,7 @@ theorem idLet (Gf : NN) (hint : TyS) : ∃ T s', run (Kp dm Γ (gId dm.read)) ρ
         (frame [fB Gf]) = some ((.ty (piTyL (lvl0 dm.read) tNN), .plain (TyM.univ 1)), frame [fB Gf]) from run_piNN dm Γ (gId dm.read) ρ φ _ _ _]
     simp only
     rw [show runT (Kp dm Γ (gId dm.read)) ρ φ false (TyS.plain (((gId dm.read) "id").snd.m.domAfter (Kp dm Γ (gId dm.read)).dm.read ([] ++ [Sem.ty (piTyL (lvl0 dm.read) tNN)])))
-        (Term.place (Place.var 0)) = readPlace (Kp dm Γ (gId dm.read)) φ (.var 0) true from rfl,
+        (Term.place (Place.var 0)) = SM.guarded (ContentOk (Kp dm Γ (gId dm.read)) φ (.var 0)) (readPlace (Kp dm Γ (gId dm.read)) φ (.var 0) true) from rfl,
       readPlace_frame φ _ _ 0 _ (by simp) rfl (by simp [Sem.whole, fB]) (fn_good dm Gf)]
     simp only [pure]
     exact callOf_data1 dm tId _ _ _ _ _ (by simp [telRefsL, tId, hA, hx, fB]) happ
@@ -412,6 +494,7 @@ theorem idLet (Gf : NN) (hint : TyS) : ∃ T s', run (Kp dm Γ (gId dm.read)) ρ
   simp only [bind, Option.bind]
   rw [Attack.pushBindShaped_noLabel _ _ rfl, frame_push,
     run_callVar dm Γ (gId dm.read) ρ φ _ 0 (by simp) Gf _ rfl .other rfl 0]
+  simp only [Option.bind_some, held_frame, held_frame_dropLast, letLenders_frame, letLendersOk_frame, letLendersOk_frame_dropLast, if_true]
   exact ⟨_, _, rfl⟩
 
 /-! ## `UsePred`: a predicate type computed by a call, at `Type₁` -/
