@@ -926,12 +926,12 @@ from a state so related, the reference's `assignAt` at its meaning and label giv
 the checker's after, under an extension (the access ends borrows, which may repack). As first
 stated: `Below`, from the checker state's image. -/
 def assignPlace_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st st' : MState)  (p : Place) (v : Value) (pos : Pos)
+  ∀ (st st' : MState)  (p : Place) (v : Value) (T : Option Value) (pos : Pos)
     (hgv : GoodF K.dm K.M K.Γ ρ (st.withTemp v) (flightOfWrite v (Env.hintAt K.dm K.M K.Γ ρ st.env pos).m))
     (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π (st.withTemp v) s) (hpos : resolve s p = some (pos, (p.steps).2))
     (hD : DecTab K.D st')
-    (bh : Nat) (h : Runs (Ochr.assignPlace fuel p v) st bh () st'),
+    (bh : Nat) (h : Runs (Ochr.assignPlace fuel p v T) st bh () st'),
     ∃ (ρ' : Assignment) (Δ' : Nat → TyS) (π' : Nat → Nat) (r : Res) (s' : SState),
       (∀ l, l < st.nextLoan → π' l = π l) ∧ ExtOk K ρ st st' ρ' Δ' ∧ st.absTy.size ≤ st'.absTy.size ∧
       assignAt K φ p (meanV K ρ φ (.plain .err) v) (match v with | .borrow l _ => some l | _ => none) s = some (r, s') ∧
@@ -1445,7 +1445,7 @@ their components of the reference observation, for the written values the fresh 
 The side is run at the hint `A`, as the checker runs it. -/
 def observe_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState)  (typed : Bool) (t : Term) (A : Value) (W : List Pos)
-    (refs : List (Place × Value)) (r : Value) (ws : List Value)
+    (refs : List (Place × Value × Value)) (r : Value) (ws : List Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hD : DecTab K.D st')
@@ -1457,7 +1457,7 @@ def observe_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
       -- same `Id`, which starts from it (docs/31 D74: as first stated nothing was said of it)
       (Good K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' ∧ CtxOk { K with Δ := Δ' } ρ' st' ∧
         Rel { K with Δ := Δ' } ρ' φ π st' s) ∧
-      ∃ o, refObs K ρ' φ (refs.map (·.1)) (refs.map fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2)
+      ∃ o, refObs K ρ' φ (refs.map (·.1)) (refs.map fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2.1)
           (Value.tyS K.dm K.M K.Γ ρ A) t s = some o ∧
         o[0]? = some (meanV { K with Δ := Δ' } ρ' (fun l => φ (π l)) (Value.tyS K.dm K.M K.Γ ρ A) r) ∧
         ∀ (i j : Nat) (p : Pos), W[i]? = some p → s.positions[j]? = some p →
@@ -1690,8 +1690,8 @@ def end_wf_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop
 /-- [Assign] keeps (WF1)–(WF3): D67 ends the loans in the overwritten owned part, and the old
 content's borrows end ([Drop]). -/
 def assign_wf_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
-  ∀ (st st' : MState)  (p : Place) (v : Value)
-    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.assignPlace fuel p v) st bh () st'),
+  ∀ (st st' : MState)  (p : Place) (v : Value) (T : Option Value)
+    (hwf : WF K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (bh : Nat) (h : Runs (Ochr.assignPlace fuel p v T) st bh () st'),
     WF1 st'.env ∧ WF2 st'.env ∧ WF3 st'.env
 
 /-- [Close] keeps (WF1)–(WF4): the fills are closed sealed programs (C1), the arguments were
@@ -1815,7 +1815,7 @@ so the statement is for code whose reference run succeeds; for a body, the calle
 member of its type gives it. -/
 def runBody_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) : Prop :=
   ∀ (st st' : MState) (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value))
-    (ws : Array Value) (v : Value)
+    (ws : Array Value) (B : Option Value) (v : Value)
     (hg : Good K.dm K.M K.Γ ρ (st.withTemps (fv :: ws.toList))) (hctx : CtxOk K ρ st)
     (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π (st.withTemps (fv :: ws.toList)) s)
     (hfix : fv = .clo cs t rd ∨ ∃ n, fv = .gfn n ∧ Runs (Ochr.fixOf fv) st 0 (cs, t, rd) st)
@@ -1823,7 +1823,7 @@ def runBody_step_stmt (K : RunCtx) (ρ : Assignment) (φ : Future) (fuel : Nat) 
     (as : List Res) (has : ArgsAgree K ρ φ π ws as)
     (hok : (runBodyRef K ρ φ fres cs t rd as s).isSome)
     (hD : DecTab K.D st')
-    (bh : Nat) (h : Runs (Ochr.runBody fuel fv cs t rd ws) st bh v st'),
+    (bh : Nat) (h : Runs (Ochr.runBody fuel fv cs t rd ws B) st bh v st'),
     SimConcl K ρ φ π (st.withTemps (fv :: ws.toList)) st' s (fun ρ' => runBodyRef K ρ' φ fres cs t rd as) v
 
 /-- **[Close]** (`closeCall`), every row, in the simulation form: EXACT against `callOf`. The
@@ -2033,7 +2033,7 @@ type converted to the goal. -/
 def fixReturn (fuel : Nat) (self : Hint) (v T : Value) : M Unit := do
   Ochr.wholeReturned v
   Ochr.bodyReturns fuel s!"{self.name} returns it" v T [] ""
-  Ochr.pushTempAt ((← Ochr.topIdx) - 1) v
+  Ochr.pushTempAt ((← Ochr.topIdx) - 1) v (some T) "checkFix"
   Ochr.popFrame fuel
   discard Ochr.popTemp
   let g := (← get).goal.getD .bot

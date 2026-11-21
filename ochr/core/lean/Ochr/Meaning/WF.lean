@@ -22,25 +22,12 @@ namespace Ochr.Meaning
 
 /-! ## Syntactic helpers -/
 
-mutual
-/-- The loans of a value outside its sealed programs: the ones (WF2) counts, since a loan inside a
-sealed program whose borrow is outside the run is inert and may occur any number of times. A
-closure's or Π-closure's code embeds no live loan (WF4), so only their captures are read. -/
-def _root_.Ochr.Value.outerLoans : Value → List Nat
-  | .loan l => [l]
-  | .succ w | .tRef w | .borrow _ w | .gloan _ w => w.outerLoans
-  | .tEq A a b => A.outerLoans ++ a.outerLoans ++ b.outerLoans
-  | .clo cs _ _ | .tPi cs _ _ => Value.outerLoansList cs
-  | .ind _ _ _ ps fs => Value.outerLoansList ps ++ Value.outerLoansList fs
-  | .tInd _ fs => Value.outerLoansList fs
-  | _ => []
-termination_by structural v => v
-
-def _root_.Ochr.Value.outerLoansList : List Value → List Nat
-  | [] => []
-  | v :: vs => v.outerLoans ++ Value.outerLoansList vs
-termination_by structural vs => vs
-end
+/- `Value.outerLoans` and `Value.outerLoansList`, the loans of a value outside its sealed programs
+(the ones (WF2) counts, since a loan inside a sealed program whose borrow is outside the run is
+inert and may occur any number of times; a closure's or Π-closure's code embeds no live loan
+(WF4), so only their captures are read), were defined here. Main's D111 copied them into the
+checker (`Ochr/Obs.lean`, clause for clause the same) to assert (WF2) at a read, so they are the
+checker's now, and this file uses those. -/
 
 /-- The values held at the positions of Ω (not the values inside them). -/
 def _root_.Ochr.Env.values (env : Env) : List Value := (allPos env).map (valAt env)

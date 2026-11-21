@@ -72,7 +72,7 @@ theorem idType_split (fuel : Nat) (st st' : MState) (typed : Bool) (A t u : Term
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (hD : DecTab K.D st') (bh : Nat) (h : Runs (Ochr.idType (fuel + 1) typed A t u) st bh P st') :
     ∃ (A' : Value) (tsT tsU : TypeState) (stT stU stR st₁ st₂ : MState) (bT bU b₁ b₂ : Nat)
-      (refs : List (Place × Value)) (a b : Value) (as bs : List Value),
+      (refs : List (Place × Value × Value)) (a b : Value) (as bs : List Value),
       Runs (withLive true (Ochr.typeState fuel t)) st bT tsT stT ∧ Runs (withLive true (Ochr.typeState fuel u)) st bU tsU stU ∧
       (jdMissing tsT.moved tsU.moved = none ∧ jdMissing tsU.moved tsT.moved = none) ∧
       (jdMissing tsT.consumed tsU.consumed = none ∧ jdMissing tsU.consumed tsT.consumed = none) ∧
@@ -127,16 +127,16 @@ theorem id_run (st : MState) (A t u : Term) (A' : Value) (s : SState) (π : Nat 
 mean typed values of the re-pointed bindings' content types; every such list of typed values is so
 written under some typed extension; and some typed extension exists (each content type has the
 binding's current content). -/
-theorem fresh_realize (st st' : MState) (t : Term) (s : SState) (refs : List (Place × Value))
+theorem fresh_realize (st st' : MState) (t : Term) (s : SState) (refs : List (Place × Value × Value))
     (hrefs : refs.map (·.1) = K.D.rePointed (scopeOf s) t) :
     (∀ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) →
       TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' →
       obsTyped K.dm.read (K.D.rePointed (scopeOf s) t)
-        (refs.map fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2) s) ∧
+        (refs.map fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2.1) s) ∧
     (∀ ws, obsTyped K.dm.read (K.D.rePointed (scopeOf s) t) ws s →
       ∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
         TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' ∧
-        refs.map (fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2) = ws) ∧
+        refs.map (fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2.1) = ws) ∧
     ∃ (ρ' : Assignment) (Δ' : Nat → TyS), (∀ σ, σ < st.absTy.size → ρ' σ = ρ σ ∧ Δ' σ = K.Δ σ) ∧
         TypedAssignment K.dm ({ K with Δ := Δ' } : RunCtx).M K.Γ ρ' st' := by
   sorry
@@ -164,7 +164,7 @@ theorem idType_step_asm (fuel : Nat) (ih : StepsIHBelow fuel) : idType_step_stmt
   obtain ⟨hfr₁, hfr₂, hfr₃⟩ := fresh_realize K ρ st st' t s refs hrefs
   -- the written values' meanings under an extension
   let wsOf (Δ' : Nat → TyS) (ρ' : Assignment) : List Sem :=
-    refs.map fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2
+    refs.map fun x => meanV { K with Δ := Δ' } ρ' noFuture (.plain .err) x.2.1
   let W := footprint st.env [t, u]
   let reps := K.D.rePointed (scopeOf s) t
   let ob (Δ' : Nat → TyS) (ρ' : Assignment) (ws : List Sem) (v : Term) : Option (List Sem) :=
@@ -263,7 +263,7 @@ content is read directly, or through an earlier call's backward function, inject
 What `FrameProp.run_frame_obs` asks, and so what `Call.callOf_inPlace_rel` needs for a body with an
 `Id` and a borrow parameter. -/
 theorem cells_of_observe (fuel : Nat) (st st' : MState) (t : Term) (A : Value) (W : List Pos)
-    (refs : List (Place × Value)) (r : Value) (ws : List Value)
+    (refs : List (Place × Value × Value)) (r : Value) (ws : List Value)
     (hg : Good K.dm K.M K.Γ ρ st) (hctx : CtxOk K ρ st) (s : SState) (π : Nat → Nat) (hs : Rel K ρ φ π st s)
     (bh : Nat) (h : Runs (Ochr.observe fuel true t A W refs) st bh (r, ws) st')
     (σ : Nat → Nat) (s₀ : SState) (ks : List Nat) (hs₀ : FrameStart s₀ ks) (sc : SState) (hfr : FrameRel σ s₀ ks s sc)

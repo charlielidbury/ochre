@@ -27,6 +27,11 @@ rejected, by one of four rules:
   and the definition is rejected by D53 when that parameter's borrow ends over a partly moved
   content (`TK`, `TU`). So D53 is what catches the tail case; were it relaxed, [Return] would have to
   reject a `⊥` result of a borrow type.
+
+Since main's D106 (no access ends a borrow a value in flight holds, checked at the one place every
+access ends a borrow, `endTopLoan`), the tail case on a known scrutinee (`TK`) is rejected at the
+join's access itself, with [Access]'s message, before the borrow can end; on an unknown scrutinee
+(`TU`) the match is split, not joined, and D53 still rejects the moving arm. No verdict changed.
 -/
 
 open Ochr.Test
@@ -100,5 +105,7 @@ ochr JoinPrefixBorrow uses Nats {
   ("NU2", "[Join] x is moved by another arm of the match"),
   ("ND2", "[Join] x.0 is moved by another arm of the match"),
   ("NDR", "[Join] *x is moved by another arm of the match"),
-  ("TK", "[D53] a borrow ends while its content is partly moved out"),
+  -- main's D106 (no access ends a borrow a value in flight holds): `TK` is now rejected at the
+  -- join's access itself, which used to end the result's borrow and leave D53 to catch it later.
+  ("TK", "[Access] reading or writing *x ends a borrow that a value in flight holds"),
   ("TU", "[D53] a borrow ends while its content is partly moved out")]

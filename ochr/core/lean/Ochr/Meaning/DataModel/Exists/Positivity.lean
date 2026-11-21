@@ -34,6 +34,12 @@ parameter's argument (it cannot mention `D` anyway).
 
 ## The battery
 
+Main's D107 landed the condition below (the nestable parameters a greatest fixed point, own
+occurrences included), so every paradox block of the battery is now REJECTED: its declaration of the
+paradox type and the definitions over it are `reject`, and each `boomAccepted` guard is negated. The
+text below says "accepted today" of the checker before D107. `MustStay` stays accepted; `Controls`
+stay rejected, `E` with D107's message.
+
 * `SecondHole` below (the D107 agent's, independent of the first: the position a self occurrence
   gives a parameter was ignored when judging an EARLIER declaration's parameter nestable): accepted
   today with a proof of `False`; excluded by the greatest fixed point.
@@ -75,8 +81,8 @@ ochr Chain {
   inductive OptB (X : Type) (b : Bit) := NoneB(h : FF(b)) | SomeB(x : X)
   def FB (X : Type) (b : Bit) : Type := (match b { B1 => (Π(x : X). Void), B0 => Unit })
   inductive P (A : Type) (b : Bit) := MkP(y : FB(A, b))
-  inductive Q (A : Type) (b : Bit) := MkQ(p : P(A, b), z : OptB(Q(Q(A, b), B1), b))
-  def Delta (x : Q(Unit, B0)) : Void := (
+  reject inductive Q (A : Type) (b : Bit) := MkQ(p : P(A, b), z : OptB(Q(Q(A, b), B1), b))
+  reject def Delta (x : Q(Unit, B0)) : Void := (
     match x {
       MkQ(p, z) => match z {
         NoneB(h) => h,
@@ -88,12 +94,13 @@ ochr Chain {
       },
     }
   )
-  def Lem (g : Π(x : Q(Unit, B0)). Void) : False :=
+  reject def Lem (g : Π(x : Q(Unit, B0)). Void) : False :=
     VF(g(MkQ[Unit, B0](MkP[Unit, B0](()), SomeB[Q(Q(Unit, B0), B1), B0](MkQ[Q(Unit, B0), B1](MkP[Q(Unit, B0), B1](g), NoneB[Q(Q(Q(Unit, B0), B1), B1), B1](()))))))
-  def Boom : False := Lem(Delta)
+  reject def Boom : False := Lem(Delta)
 }
 
-#guard boomAccepted Chain.decls
+-- rejected since main's D107 (was accepted with a closed proof of `False`)
+#guard !boomAccepted Chain.decls
 
 -- Through a parameter that is a type function (a parameter of `Type₁`): `QG` passes `A` to the
 -- global `AppB`, which applies the parameter `G`; at `G := Neg` the field is `QG(…) → Void`.
@@ -105,8 +112,8 @@ ochr TyFn {
   inductive OptB (X : Type) (b : Bit) := NoneB(h : FF(b)) | SomeB(x : X)
   def AppB (G : Π(X : Type). Type) (A : Type) (b : Bit) : Type := (match b { B1 => G(A), B0 => Unit })
   def Neg (X : Type) : Type := (Π(x : X). Void)
-  inductive QG (G : Π(X : Type). Type) (A : Type) (b : Bit) := MkQG(y : AppB(G, A, b), z : OptB(QG(G, QG(G, A, b), B1), b))
-  def Delta (x : QG(Neg, Unit, B0)) : Void := (
+  reject inductive QG (G : Π(X : Type). Type) (A : Type) (b : Bit) := MkQG(y : AppB(G, A, b), z : OptB(QG(G, QG(G, A, b), B1), b))
+  reject def Delta (x : QG(Neg, Unit, B0)) : Void := (
     match x {
       MkQG(y, z) => match z {
         NoneB(h) => h,
@@ -116,12 +123,13 @@ ochr TyFn {
       },
     }
   )
-  def Lem (g : Π(x : QG(Neg, Unit, B0)). Void) : False :=
+  reject def Lem (g : Π(x : QG(Neg, Unit, B0)). Void) : False :=
     VF(g(MkQG[Neg, Unit, B0]((), SomeB[QG(Neg, QG(Neg, Unit, B0), B1), B0](MkQG[Neg, QG(Neg, Unit, B0), B1](g, NoneB[QG(Neg, QG(Neg, QG(Neg, Unit, B0), B1), B1), B1](()))))))
-  def Boom : False := Lem(Delta)
+  reject def Boom : False := Lem(Delta)
 }
 
-#guard boomAccepted TyFn.decls
+-- rejected since main's D107 (was accepted with a closed proof of `False`)
+#guard !boomAccepted TyFn.decls
 
 -- Through `Prop`: the negative occurrence is a proof field (`FBP(X, B1)` is `X → False`), and the
 -- diagonal is itself a proof, so `Delta` applied to its own encoding is never run.
@@ -130,8 +138,8 @@ ochr PropRoute {
   def FFP (b : Bit) : Prop := (match b { B0 => False, B1 => True })
   inductive OptP (X : Type) (b : Bit) := NoneP(h : FFP(b)) | SomeP(x : X)
   def FBP (X : Type) (b : Bit) : Prop := (match b { B1 => (Π(x : X). False), B0 => True })
-  inductive QP (A : Type) (b : Bit) := MkQP(y : FBP(A, b), z : OptP(QP(QP(A, b), B1), b))
-  def Delta (x : QP(Unit, B0)) : False := (
+  reject inductive QP (A : Type) (b : Bit) := MkQP(y : FBP(A, b), z : OptP(QP(QP(A, b), B1), b))
+  reject def Delta (x : QP(Unit, B0)) : False := (
     match x {
       MkQP(y, z) => match z {
         NoneP(h) => h,
@@ -141,10 +149,11 @@ ochr PropRoute {
       },
     }
   )
-  def Boom : False := Delta(MkQP[Unit, B0](I, SomeP[QP(QP(Unit, B0), B1), B0](MkQP[QP(Unit, B0), B1](Delta, NoneP[QP(QP(QP(Unit, B0), B1), B1), B1](I)))))
+  reject def Boom : False := Delta(MkQP[Unit, B0](I, SomeP[QP(QP(Unit, B0), B1), B0](MkQP[QP(Unit, B0), B1](Delta, NoneP[QP(QP(QP(Unit, B0), B1), B1), B1](I)))))
 }
 
-#guard boomAccepted PropRoute.decls
+-- rejected since main's D107 (was accepted with a closed proof of `False`)
+#guard !boomAccepted PropRoute.decls
 
 -- The second hole (found by the D107 agent; independent of the first): nestability of an already
 -- declared inductive ignored where its own self occurrence puts a parameter. `E` passes `B` to `A`'s
@@ -157,10 +166,10 @@ ochr SecondHole {
   def VF (v : Void) : False := (match v { })
   def Neg (X : Type) (n : Nat) : Type := (match n { Z => Void, S(k) => (Π(x : X). Void) })
   inductive E (A : Type) (B : Type) (n : Nat) := MkE(z : E(B, A, 1), e : Eq(Nat, n, 0)) | StopE(f : Neg(A, n))
-  inductive Bad := MkBad(e : E(Unit, Bad, 0))
-  def Lem (g : Π(x : Bad). Void) : False :=
+  reject inductive Bad := MkBad(e : E(Unit, Bad, 0))
+  reject def Lem (g : Π(x : Bad). Void) : False :=
     VF(g(MkBad(MkE[Unit, Bad, 0](StopE[Bad, Unit, 1](g), refl))))
-  def Delta (x : Bad) : Void := (
+  reject def Delta (x : Bad) : Void := (
     match x {
       MkBad(e) => match e {
         MkE(z, h) => match z {
@@ -171,10 +180,11 @@ ochr SecondHole {
       },
     }
   )
-  def Boom : False := Lem(Delta)
+  reject def Boom : False := Lem(Delta)
 }
 
-#guard boomAccepted SecondHole.decls
+-- rejected since main's D107 (was accepted with a closed proof of `False`)
+#guard !boomAccepted SecondHole.decls
 
 -- Accepted today, modelled by the construction, and accepted under the condition.
 ochr MustStay uses Nats, Lists, Bools {
@@ -220,7 +230,8 @@ ochr Controls uses Nats, Bools {
 }
 
 #guard (run "Controls" Controls).rejectedWith [
-  ("E", "field p of MkE : P(E, true): E occurs at the parameter A of P, which P passes to a type function"),
+  -- the message since main's D107 (the nesting condition names the greatest set of nestable parameters)
+  ("E", "field p of MkE : P(E, true): E occurs at the parameter A of P, which is not nestable in P"),
   ("f", "[D45] a match on a proof of POr returns a non-proof"),
   ("get", "[D45] a match on a proof of PS returns a non-proof")]
 

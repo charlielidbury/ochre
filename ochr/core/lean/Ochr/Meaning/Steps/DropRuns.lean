@@ -101,19 +101,46 @@ theorem runs_fire_inv {r : Rule} {m : Unit → String} {st st' : MState} {b : Na
           Outcome.ok.injEq] at h; exact h.1.2.symm)
       | (simp only [Prod.mk.injEq, Outcome.ok.injEq] at h; exact h.1.2.symm)
 
-/-- The cases of the checker's drop of one place (`Machine.dropAtJoin`): the place is missing,
-`⊥` or `⋆` (nothing happens); it holds a borrow (its end); it is a copy (nothing happens); or it is
-accessed, logged and written `⊥`. -/
+/-- `v == ⋆` (`Value.beq`) holds only of `⋆`. -/
+theorem eq_proof_of_beq {v : Value} (h : (v == Value.proof) = true) : v = .proof := by
+  cases v <;> first | rfl | simp [BEq.beq, Value.beq] at h
+
+/-- `underProof` (main's D102) reads the places above `q` and changes nothing. -/
+theorem runs_underProof_inv : ∀ {q : Place} {st st' : MState} {b : Nat} {c : Bool},
+    Runs (Ochr.underProof q) st b c st' → st' = st
+  | .var _, st, st', b, c, h => by
+    obtain ⟨L, left, log, h⟩ := h
+    simp only [Ochr.underProof, runMachineL_pure, Prod.mk.injEq, Outcome.ok.injEq] at h
+    exact h.1.2.symm
+  | .deref q, st, st', b, c, h | .proj _ q, st, st', b, c, h | .field _ q, st, st', b, c, h => by
+    simp only [Ochr.underProof] at h
+    obtain ⟨o, st₁, b₁, hc, hk⟩ := Runs.bind_inv h
+    rw [(runs_content?_inv hc).1] at hk
+    split at hk
+    · obtain ⟨L, left, log, hk⟩ := hk
+      simp only [runMachineL_pure, Prod.mk.injEq, Outcome.ok.injEq] at hk
+      exact hk.1.2.symm
+    · exact runs_underProof_inv hk
+
+/-- The cases of the checker's drop of one place (`Machine.dropAtJoin`): the place is missing or
+`⊥`, or holds `⋆` under a `⋆` ancestor (`underProof`, main's D102) (nothing happens); it holds a
+borrow (its end); it is a copy (nothing happens); or it is accessed, logged and written `⊥`. Since
+main's D102 a place's own `⋆` is no longer skipped by its value: unless a strict prefix holds `⋆`,
+it goes to the copy decision like any value (and since D100 every proof is a copy), so the copy and
+data cases admit `⋆`, with `underProof` having answered `false`. -/
 theorem runs_dropAtJoin_inv {fuel : Nat} {q : Place} {st st' : MState} {b : Nat}
     (h : Runs (Ochr.dropAtJoin (fuel + 1) q) st b () st') :
     ∃ pos, ckVarPos st.env q.steps.1 = some pos ∧
       ((((valAt st.env pos).follow q.steps.2 = none ∨ (valAt st.env pos).follow q.steps.2 = some .bot ∨
-          (valAt st.env pos).follow q.steps.2 = some .proof) ∧ st' = st) ∨
+          ((valAt st.env pos).follow q.steps.2 = some .proof ∧ ∃ b₀, Runs (Ochr.underProof q) st b₀ true st)) ∧
+          st' = st) ∨
       (∃ l w, (valAt st.env pos).follow q.steps.2 = some (.borrow l w) ∧
         ∃ st₁ b₁ b₂, Runs (Ochr.logEffect q "moves") st b₁ () st₁ ∧ Runs (Ochr.endBorrow fuel l) st₁ b₂ () st') ∨
-      (∃ v, (valAt st.env pos).follow q.steps.2 = some v ∧ v ≠ .bot ∧ v ≠ .proof ∧
+      (∃ v, (valAt st.env pos).follow q.steps.2 = some v ∧ v ≠ .bot ∧
+        (v = .proof → ∃ b₀, Runs (Ochr.underProof q) st b₀ false st) ∧
         ∃ b₁, Runs (Ochr.copyRead fuel q) st b₁ true st') ∨
-      (∃ v, (valAt st.env pos).follow q.steps.2 = some v ∧ (∀ l w, v ≠ .borrow l w) ∧ v ≠ .bot ∧ v ≠ .proof ∧
+      (∃ v, (valAt st.env pos).follow q.steps.2 = some v ∧ (∀ l w, v ≠ .borrow l w) ∧ v ≠ .bot ∧
+        (v = .proof → ∃ b₀, Runs (Ochr.underProof q) st b₀ false st) ∧
         ∃ st₁ st₂ st₃ b₁ b₂ b₃ b₄, Runs (Ochr.copyRead fuel q) st b₁ false st₁ ∧
           Runs (do Ochr.accessPath fuel q; Ochr.accessInside fuel q) st₁ b₂ () st₂ ∧
           Runs (Ochr.logEffect q "moves") st₂ b₃ () st₃ ∧ Runs (Ochr.setPlace q .bot) st₃ b₄ () st')) := by
@@ -134,52 +161,76 @@ theorem runs_dropAtJoin_inv {fuel : Nat} {q : Place} {st st' : MState} {b : Nat}
   split at h
   · exact .inl ⟨.inl rfl, hpure h⟩
   · exact .inl ⟨.inr (.inl rfl), hpure h⟩
-  · exact .inl ⟨.inr (.inr rfl), hpure h⟩
   · rename_i l w
     obtain ⟨_, st₂, b₂, hf, hk1⟩ := Runs.bind_inv h
     have e2 := runs_fire_inv hf
     rw [e2] at hk1
     obtain ⟨_, st₃, b₃, hl, hk2⟩ := Runs.bind_inv hk1
     exact .inr (.inl ⟨l, w, rfl, st₃, b₂, b₃, hl, hk2⟩)
-  · rename_i _o v hbot hproof hborrow
-    obtain ⟨c, st₂, b₂, hcr, hk1⟩ := Runs.bind_inv h
-    cases c with
-    | true =>
-      simp only [if_true] at hk1
-      have e := hpure hk1
-      exact .inr (.inr (.inl ⟨v, rfl, fun e => hbot e, fun e => hproof e, b₁, by rw [e]; exact hcr⟩))
-    | false =>
-      simp only [Bool.false_eq_true, if_false] at hk1
-      obtain ⟨g, st₃, b₃, hg, hk2⟩ := Runs.bind_inv hk1
-      obtain ⟨L, left, log, hg⟩ := hg
-      simp only [runMachineL_get, Prod.mk.injEq, Outcome.ok.injEq] at hg
-      obtain ⟨⟨hg1, hg2⟩, -⟩ := hg
-      rw [← hg2, ← hg1] at hk2
-      obtain ⟨_, st₄, b₄, hloop, hk3⟩ := Runs.bind_inv hk2
-      have e4 : st₄ = st₂ := by
-        refine runs_forIn_keep _ (fun x st0 b0 r st1 hb => ?_) _ hloop
-        obtain ⟨g', st5, b5, hg', hb2⟩ := Runs.bind_inv hb
-        obtain ⟨L, left, log, hg'⟩ := hg'
-        simp only [runMachineL_get, Prod.mk.injEq, Outcome.ok.injEq] at hg'
-        obtain ⟨⟨hg1', hg2'⟩, -⟩ := hg'
-        rw [← hg2', ← hg1'] at hb2
-        split at hb2
-        · obtain ⟨_, st6, b6, hpp, hb3⟩ := Runs.bind_inv hb2
-          obtain ⟨_, st7, b7, herr, -⟩ := Runs.bind_inv hb3
-          obtain ⟨L, left, log, herr⟩ := herr
-          simp [runMachineL_err] at herr
-        · obtain ⟨L, left, log, hb2⟩ := hb2
-          simp only [runMachineL_pure, Prod.mk.injEq, Outcome.ok.injEq] at hb2
-          exact hb2.1.2.symm
-      rw [e4] at hk3
-      obtain ⟨qs, st₅, b₅, hpp, hk4⟩ := Runs.bind_inv hk3
-      rw [runs_ppPlace_inv hpp] at hk4
-      obtain ⟨_, st₆, b₆, hf, hk5⟩ := Runs.bind_inv hk4
-      rw [runs_fire_inv hf] at hk5
-      simp only [← bind_assoc] at hk5
-      obtain ⟨_, st₈, b₈, hk6, hset⟩ := Runs.bind_inv hk5
-      obtain ⟨_, st₇, b₇, hacc, hlog⟩ := Runs.bind_inv hk6
-      exact .inr (.inr (.inr ⟨v, rfl, fun l w e => hborrow l w e, fun e => hbot e, fun e => hproof e,
-        st₂, st₇, st₈, b₁, b₆, b₇, b₈, hcr, hacc, hlog, hset⟩))
+  · rename_i _o v hbot hborrow
+    -- `underProof` runs whatever `v` is (the do-notation lifts it before the test) and changes nothing
+    obtain ⟨u, st₀, b₀, hu, h2⟩ := Runs.bind_inv h
+    clear h
+    have e0 : st₀ = st := runs_underProof_inv hu
+    subst e0
+    have h := h2
+    clear h2
+    split at h
+    · rename_i hpu
+      have hvp : v = .proof := eq_proof_of_beq ((Bool.and_eq_true _ _).mp hpu).1
+      have hut : u = true := ((Bool.and_eq_true _ _).mp hpu).2
+      subst hvp hut
+      obtain ⟨L, left, log, h⟩ := h
+      simp only [runMachineL_pure, Prod.mk.injEq, Outcome.ok.injEq] at h
+      exact .inl ⟨.inr (.inr ⟨rfl, b₁, hu⟩), h.1.2.symm⟩
+    · rename_i hpu
+      have hup : v = .proof → ∃ b₀', Runs (Ochr.underProof q) st₀ b₀' false st₀ := by
+        intro hvp
+        subst hvp
+        have : u = false := by
+          cases u
+          · rfl
+          · exact absurd (by simp [BEq.beq, Value.beq]) hpu
+        subst this
+        exact ⟨b₁, hu⟩
+      obtain ⟨c, st₂, b₂, hcr, hk1⟩ := Runs.bind_inv h
+      cases c with
+      | true =>
+        simp only [if_true] at hk1
+        have e := hpure hk1
+        exact .inr (.inr (.inl ⟨v, rfl, fun e => hbot e, hup, b₀, by rw [e]; exact hcr⟩))
+      | false =>
+        simp only [Bool.false_eq_true, if_false] at hk1
+        obtain ⟨g, st₃, b₃, hg, hk2⟩ := Runs.bind_inv hk1
+        obtain ⟨L, left, log, hg⟩ := hg
+        simp only [runMachineL_get, Prod.mk.injEq, Outcome.ok.injEq] at hg
+        obtain ⟨⟨hg1, hg2⟩, -⟩ := hg
+        rw [← hg2, ← hg1] at hk2
+        obtain ⟨_, st₄, b₄, hloop, hk3⟩ := Runs.bind_inv hk2
+        have e4 : st₄ = st₂ := by
+          refine runs_forIn_keep _ (fun x st0 b0 r st1 hb => ?_) _ hloop
+          obtain ⟨g', st5, b5, hg', hb2⟩ := Runs.bind_inv hb
+          obtain ⟨L, left, log, hg'⟩ := hg'
+          simp only [runMachineL_get, Prod.mk.injEq, Outcome.ok.injEq] at hg'
+          obtain ⟨⟨hg1', hg2'⟩, -⟩ := hg'
+          rw [← hg2', ← hg1'] at hb2
+          split at hb2
+          · obtain ⟨_, st6, b6, hpp, hb3⟩ := Runs.bind_inv hb2
+            obtain ⟨_, st7, b7, herr, -⟩ := Runs.bind_inv hb3
+            obtain ⟨L, left, log, herr⟩ := herr
+            simp [runMachineL_err] at herr
+          · obtain ⟨L, left, log, hb2⟩ := hb2
+            simp only [runMachineL_pure, Prod.mk.injEq, Outcome.ok.injEq] at hb2
+            exact hb2.1.2.symm
+        rw [e4] at hk3
+        obtain ⟨qs, st₅, b₅, hpp, hk4⟩ := Runs.bind_inv hk3
+        rw [runs_ppPlace_inv hpp] at hk4
+        obtain ⟨_, st₆, b₆, hf, hk5⟩ := Runs.bind_inv hk4
+        rw [runs_fire_inv hf] at hk5
+        simp only [← bind_assoc] at hk5
+        obtain ⟨_, st₈, b₈, hk6, hset⟩ := Runs.bind_inv hk5
+        obtain ⟨_, st₇, b₇, hacc, hlog⟩ := Runs.bind_inv hk6
+        exact .inr (.inr (.inr ⟨v, rfl, fun l w e => hborrow l w e, fun e => hbot e, hup,
+          st₂, st₇, st₈, b₀, b₆, b₇, b₈, hcr, hacc, hlog, hset⟩))
 
 end Ochr.Meaning.Steps

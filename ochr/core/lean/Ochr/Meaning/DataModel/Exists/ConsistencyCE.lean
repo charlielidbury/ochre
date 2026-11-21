@@ -1,7 +1,12 @@
 import Ochr.Consistency
 
 /-!
-# The checker accepts a closed proof of `False` (a positivity hole), checked natively
+# The checker accepted a closed proof of `False` (a positivity hole), checked natively
+
+**Closed by main's D107** (the nesting condition covers the type being declared; nestable
+parameters are a greatest fixed point): `Q` is now rejected, and with it `Delta`, `Lem` and `Boom`,
+so the block below is marked `reject` there and the guard that the program is accepted is negated.
+The rest of this text describes the checker before D107.
 
 `Q (A : Type) (b : Bit) := MkQ(y : FB(A, b), z : OptB(Q(Q(A, b), B1), b))` is accepted. Positivity
 (`Check.firstOrderTerm`, K4) lets it through on three counts, each allowed on its own:
@@ -37,8 +42,8 @@ ochr Curry {
   def FF (b : Bit) : Type := (match b { B0 => Void, B1 => Unit })
   inductive OptB (X : Type) (b : Bit) := NoneB(h : FF(b)) | SomeB(x : X)
   def FB (X : Type) (b : Bit) : Type := (match b { B1 => (Π(x : X). Void), B0 => Unit })
-  inductive Q (A : Type) (b : Bit) := MkQ(y : FB(A, b), z : OptB(Q(Q(A, b), B1), b))
-  def Delta (x : Q(Unit, B0)) : Void := (
+  reject inductive Q (A : Type) (b : Bit) := MkQ(y : FB(A, b), z : OptB(Q(Q(A, b), B1), b))
+  reject def Delta (x : Q(Unit, B0)) : Void := (
     match x {
       MkQ(y, z) => match z {
         NoneB(h) => h,
@@ -48,9 +53,9 @@ ochr Curry {
       },
     }
   )
-  def Lem (g : Π(x : Q(Unit, B0)). Void) : False :=
+  reject def Lem (g : Π(x : Q(Unit, B0)). Void) : False :=
     VF(g(MkQ[Unit, B0]((), SomeB[Q(Q(Unit, B0), B1), B0](MkQ[Q(Unit, B0), B1](g, NoneB[Q(Q(Q(Unit, B0), B1), B1), B1](()))))))
-  def Boom : False := Lem(Delta)
+  reject def Boom : False := Lem(Delta)
 }
 
 /-- The user's declarations (after the library). -/
@@ -60,7 +65,8 @@ def q : Program := Curry.decls
 -- `Prelude.decls ++ q` accepted at fuel 2000000), and `q` has a parameterless definition of type
 -- `False`
 #guard !q.any (·.hasHole)
-#guard accepts {} 2000000 (Prelude.decls ++ q)
+-- rejected since main's D107: the declaration of `Q` fails the nesting condition
+#guard !accepts {} 2000000 (Prelude.decls ++ q)
 #guard q.any fun d => d.ind?.isNone && d.params.isEmpty && d.name == "Boom" &&
   (match d.ret.unloc with | .ident "False" => true | _ => false)
 
