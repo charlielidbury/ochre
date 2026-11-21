@@ -152,15 +152,6 @@ theorem Runs.noteValue_inv {t : Term} {x : M (Value × Option Value)} {st st' : 
     | (split at h2))
   all_goals (obtain ⟨rfl, rfl⟩ := runs_pure_inv h2; exact ⟨b, hx⟩)
 
-set_option maxHeartbeats 1000000 in
-example (n : Nat) (typed : Bool) (t : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (r : Value × Option Value)
-    (hh : st.headEval = false) (hv : ∀ w, t ≠ .val w)
-    (h : Runs (Ochr.evalAt (n+1) typed t hint) st bh r st') : False := by
-  unfold Ochr.evalAt at h
-  peel h
-  trace_state
-  sorry
-
 /-! ## The decision procedures the evaluation reads keep the state -/
 
 theorem keep_getFlags : Keep getFlags := by unfold getFlags; keep_go
