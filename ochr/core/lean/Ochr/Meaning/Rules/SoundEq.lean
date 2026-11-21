@@ -90,7 +90,7 @@ theorem eqArgs_cases {A : Value} {t : String} {ps qs args : List Value} (h : eqA
 section
 variable (K : RunCtx) (ρ : Assignment) (φ : Future)
 
-/-- The library's propositions mean what they say, stated for arguments whose meaning does not
+/-- **Obligation on the data layer.** The library's propositions mean what they say, stated for arguments whose meaning does not
 depend on the hint they are read at (`Rules/Sound.lean`'s `LibOk.and` asked it of arguments
 meaning propositions at hint `err`, while `D(ā)` reads its arguments at the parameter types). -/
 structure LibOkT : Prop where
@@ -107,7 +107,7 @@ def FieldTysSound (G : Premises) : Prop :=
     tyOf K ρ φ T = K.dm.fieldTyR d (K.dm.recOf d (meanParams K ρ φ d 0 [] args)) c j
       ((meanFields K ρ φ d (K.dm.recOf d (meanParams K ρ φ d 0 [] args)) c 0 [] fs).take j)
 
-/-- A fact of the data model (D64): a field's type reads, of the earlier fields, only the index
+/-- **Obligation on the data layer** (D64): a field's type reads, of the earlier fields, only the index
 fields (those some field type of the declaration mentions). -/
 def FieldTyIdx : Prop :=
   ∀ d r c j (e e' : List Sem), e.length = e'.length →
