@@ -1982,6 +1982,14 @@ One file per checker area, one lemma per rule, each of the form "if `runMachine 
 
 **Changed.** `Rel` loses `uniq`; `Rel.start` loses its hypothesis; `ColumnLetB.rel_pushBind_borrow` takes `s.Uniq` (its caller passes `SGood.uniq` of the reference state after the right-hand side). `let_core`, `letB_core`, `seq_core` lose `hwhint` and `hwcong` (`ColumnLet.wcong`). `assign_core` and `assignDeref_core` lose `hhint` (the right-hand side's run at the place's type equals its run at none): they take `u.assignHinted = false`, and `AssignNumInv`/`AssignDerefInv` gain the conjunct "where `u` is not a constructor or an embedded value, the checker hands it no hint" (`Machine.evalCore`'s `.assign`, read: `if typed && (u matches .ctor .. | .val _) then placeType? … else none`), which the reference's `Term.assignHinted` mirrors. `succ_core` keeps its `hhint`: `Run.lean`'s `.succ` still runs its argument at `Nat` while the typed checker hands none (D119 did not change that clause; harmless for terms whose run reads no hint). Both column theorems (`column_C_free`, `column_B_ff`) hold with unchanged statements, on the standard axioms.
 
+**Superseded in part (D121):** the assign steps' change above was reverted at the merge with the machine lane's proved `AssignDerefInv`; they take `hhint` again and no fact carries a hint conjunct.
+
+### D121. The assign steps keep `hhint`; no hint conjunct on the machine's facts (eleventh lead, 2026-11-21; `spine-lead11`)
+
+**Why.** The machine lane meanwhile restated and PROVED `AssignDerefInv` (its conclusions after `u`'s run under "`y` holds `borrow_l w`, `w` a number, at `st₁`"), without D120's last conjunct (`u.assignHinted = false → hu = none`). Re-adding it would put an unproved fact back under `column_B_free`. It is not needed: the conjunct only served to rewrite `u`'s strict run at the hint the checker handed it into its run at no hint, and for every fragment term that run reads no hint at all (`Frag.frag_hint`, proved by unfolding: each clause the fragment uses hands its sub-terms fixed hints), and for the column's `u = Z` likewise (`runT_zero`). So the hypothesis `hhint` (the right-hand side's strict run is the same at every hint) is discharged by the caller with no fact about the checker.
+
+**Changed.** `assign_core`, `assignDeref_core` take `hhint` again (as on `spine` before D120); `AssignNumInv` loses D120's last conjunct; `AssignDerefInv` is the machine lane's proved statement, unchanged. Both columns: no assumed fact, standard axioms.
+
 ## HANDOVER (written 2026-11-09 at 8736099f, for a lead picking this up cold)
 
 ### Architecture, in one pass

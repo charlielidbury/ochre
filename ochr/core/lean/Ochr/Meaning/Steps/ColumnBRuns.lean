@@ -184,8 +184,7 @@ theorem run_write (hE : EvalInv) (hZ : ZeroInv) (hA : AssignDerefInv) (hd : DecT
       (.inl htd) h
   obtain ⟨p, q, l, hp⟩ := hXY.kern hk₀
   obtain ⟨-, -, hl, hck, -⟩ := env_facts hp (erase_E2 _ _ _ _)
-  obtain ⟨a₀, a₁, a₂, hu, v₀, T₀, bh₁, f, j, b, lb, w, hka, hma, -, htda, hru, hD₁, hq, -, hme, hck₂, hl₂, hbw, hkw,
-    rfl, rfl, -⟩ := hA (g + 3) 0 .zero hint st₀ st₁ bh' v T? D hm₀ htn₀ htd₀
+  obtain ⟨a₀, a₁, hu, v₀, T₀, bh₁, hka, hma, -, htda, hru, hD₁, rfl, rfl, hpost⟩ := hA (g + 3) 0 .zero hint st₀ st₁ bh' v T? D hm₀ htn₀ htd₀
       (fun f j b hc hb => by
         rw [hck, ck_E2_0] at hc; cases hc
         rw [hl] at hb; have hb' : some (byB q (.borrow l (.succ .zero))) = some b := hb; cases hb'; rfl)
@@ -193,15 +192,12 @@ theorem run_write (hE : EvalInv) (hZ : ZeroInv) (hA : AssignDerefInv) (hd : DecT
   have hra : DecideScope.topReadings a₀ = [duY, duC] := (PXY.readings ⟨p, q, l, hp⟩).symm ▸ topReadings_kern hka |>.symm
   obtain ⟨rfl, rfl, hkz, hmz⟩ := run_zero hE hZ hma hD₁ (by rw [hra]; exact flags_Zy hd)
     (by rw [hra, declOf_Zy hd]; exact duC_ok) htda hru
-  have hp₂ : a₂.env.erase = E2 p q (.loan l) (.borrow l (.succ .zero)) :=
-    hq.env.symm.trans (hkz.env.symm.trans (hka.env.symm.trans hp))
-  obtain ⟨-, hv₂, hl₂', hck₂', -⟩ := env_facts hp₂ (erase_E2 _ _ _ _)
-  rw [hck₂', ck_E2_0] at hck₂; cases hck₂
-  rw [hl₂'] at hl₂; have hb₂ : some (byB q (.borrow l (.succ .zero))) = some b := hl₂; cases hb₂
-  cases hbw
-  have hk := hkw (fun m z e => by cases e) (fun l' => by
-    rw [hv₂]; show Value.sitesOf l' (.bind 0 1) ([] ++ [.deref]) (Value.succ .zero) = []
-    exact Value.Num.sitesOf (.succ .zero) l' (.bind 0 1) ([] ++ [.deref]))
+  have hp₁ : a₁.env.erase = E2 p q (.loan l) (.borrow l (.succ .zero)) :=
+    hkz.env.symm.trans (hka.env.symm.trans hp)
+  obtain ⟨-, -, hl₁', hck₁', -⟩ := env_facts hp₁ (erase_E2 _ _ _ _)
+  obtain ⟨a₂, hq, -, hme, -, -, hk⟩ := hpost 0 1 (byB q (.borrow l (.succ .zero))) l (.succ .zero)
+    (by rw [hck₁', ck_E2_0]) (by rw [hl₁']; rfl) rfl (.succ .zero)
+  have hp₂ : a₂.env.erase = E2 p q (.loan l) (.borrow l (.succ .zero)) := hq.env.symm.trans hp₁
   refine ⟨rfl, rfl, hmm (hmz.of_modeEq hme), p, q, l, ?_⟩
   rw [← hk₁.env, ← hk.env]
   show Env.erase (Env.setAtE a₂.env (.bind 0 1) (.borrow l .zero)) = _
@@ -284,11 +280,11 @@ theorem run_seq (hE : EvalInv) (hZ : ZeroInv) (hA : AssignDerefInv) (hVE : VarEn
     hE (g + 7) true seqB hint st st' bh v T? D hm hD (fun _ e => by cases e) (fun _ _ _ e => by cases e)
       (by rw [hXY.readings, declOf_seq hd]; exact duC_ok.1) (by rw [hXY.readings, declOf_seq hd]; exact duC_ok.2)
       htd h
-  obtain ⟨a₀, a₁, aW, v₀, T₀, bh₁, bh₂, hka, hma, -, htda, htdW, hru, hD₁, hdrop, hmeW, -, hrw⟩ :=
+  obtain ⟨a₀, a₁, aW, v₀, T₀, bh₁, bh₂, hka, hma, -, htda, htdW, hru, hD₁, hdrop, -, hrw⟩ :=
     hSq (g + 6) writeB (.place (.var 1)) hint st₀ st₁ bh' v T? D hm₀ htn₀ htd₀ (DecTab.of_kern hk₁.symm hD) h₀
   obtain ⟨rfl, -, hm₁, hXY₁⟩ := run_write hE hZ hA hd (hXY.kern (hk₀.trans hka)) hma htda hD₁ hru
-  have hXYW := hXY₁.kern (hdrop (fun _ => rfl) rfl)
-  obtain ⟨rfl, hT, -, p, q, xv, hxv, he⟩ := run_read hE hVE hd hXYW (hm₁.of_modeEq hmeW)
+  have hXYW := hXY₁.kern (hdrop (fun _ => rfl) rfl).1
+  obtain ⟨rfl, hT, -, p, q, xv, hxv, he⟩ := run_read hE hVE hd hXYW (hm₁.of_modeEq (hdrop (fun _ => rfl) rfl).2)
     (by
       rcases htdW with e | e
       · exact .inl e

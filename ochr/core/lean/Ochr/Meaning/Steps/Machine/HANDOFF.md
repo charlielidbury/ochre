@@ -1,9 +1,9 @@
 # Machine lane: working note (keep current; a successor continues from this alone)
 
-Worktree `/home/charlielidbury/repos/ochre-machine2`, branch `spine-machine2` (machine2, from 2026-11-21 evening;
-push there; never `spine` or `main`). Lean project `ochr/core/lean`; build `taskset -c 0-14 lake build <Module>` (long builds in
+Worktree `/home/charlielidbury/repos/ochre-machine4`, branch `spine-machine4` (machine4, from 2026-11-21 night;
+before it machine3 in `ochre-machine3`/`spine-machine3`, machine2 in `ochre-machine2`/`spine-machine2`; push to your own branch; never `spine` or `main`). Lean project `ochr/core/lean`; build `taskset -c 0-14 lake build <Module>` (long builds in
 the background), and `taskset -c 0-14 lake build OchrMeaning` before each push. Report to the lead
-(`main`) by SendMessage, then end the turn. Owned: `Steps/MachineMono.lean`, everything under
+(`team-lead`) by SendMessage, then end the turn. Owned: `Steps/MachineMono.lean`, everything under
 `Steps/Machine/`. Never edit the checker or other files (to check a consumer, copy it into a scratch
 module here, build that, delete it).
 
@@ -143,6 +143,81 @@ whole block, the same shape as (a) but relational; see the queue).
      statement the change makes false is a finding.
   Still owed from the borrow column's review: `AssignDerefInv` and `SeqInv` in their fixed forms, the
   LetInv readings conjunct for a write-free `u`.
+
+### machine3 (2026-11-21 night): InvSteps, PlaceLocal, the first unconditional column, SeqInv
+
+- Form point RULED: keep `KeepsInv` (lead9's). The extended `Quiet` (fields: `nextAbs` in step with
+  `absTy`, the new unknowns' types clean, AND `absDecl`: old readings kept, new ones sorted, since
+  `ShapeFacts.readingsSorted` reads it) with the whole-machine induction is scheduled for when a
+  column first compares unequal values (`InvExpectTy` beyond `==`).
+- Six of the ten `InvSteps` were false at a free table (`Inv D Γ` takes any `D`; `ShapeFacts.fits`
+  reads `D.placeDecl` at the top readings). Fix adopted word for word by lead9: `Form.PlaceLocal`
+  (root-locality + no inductive under `.other`/`.ref .other`), on the push/pop and write lemmas.
+- Proved (standard axioms; `FormFacts` prints all): `invSteps : InvSteps` (`InvEnv.lean` generic
+  value-level transfer `inv_step`; `InvPos.lean` position-level `PosRel`/`inv_of_posRel`;
+  `PlaceLocal.lean` `readClauses_reroot` for a binding pushed/popped; `InvSteps.lean` the ten,
+  `invLend`/`invEndRead'` via `inv_step` directly); `invExpectTyEq`; `placeLocal_ff`
+  (`PlaceLocalFF.lean`: `Fwd2` two-computation simulation of `placeDecl` on a re-rooted place,
+  `ResIn` result invariant); `column_C_free` (`ColumnCFree.lean`; the lead must import it from
+  `Ochr/Meaning.lean`); `seqInvR` (`SeqInv.lean`, `SeqInv` with `ModeEq` under the Kern
+  antecedent, reported: unconditional it is a whole-machine fact) and `runs_dropValue_inert`.
+- NEXT (the borrow column, for `column_B_free` = `column_B_ff` with everything discharged):
+  1. `VarEndInv`: TRUE by reading; ALL PIECES PROVED in `VarEndInv.lean`, only the assembly
+     `varEndInv : VarEndInv` remains (pattern: `ReadInv.varNumInv`, lines ~353-391):
+     - `runs_repackAt_lent` (repackAt at `x ↦ loan_l` is the identity);
+     - `runs_accessPath_lent` (the path access ends `l`: result `{st with env := setAtE (setAtE env
+       (bind 0 1) ⊥) (bind 0 0) w}`), built from `runs_endTopLoan_two`, `runs_endBorrow_two`,
+       `runs_endTail_two`, `runs_mapState_two`, `runs_substV_hit/miss`, `runs_lendV_miss`,
+       `setAtE_same`, `setAtE_comm`, `findBorrow_two`;
+     - `runs_readPlace_after` (machine2's `runs_readPlace_num` with its access step generic: give
+       `hacc` = `runs_accessPath_lent`, and `NumAt` at the ended state).
+     Assembly: `DecTab.back` to `st`; unfold `evalCore`, tick, `wanted`, `placeOperand?`,
+     `runs_projIn_var`; typed: `runs_placeType_var` (needs `ckVarPos st.env 1 = some (bind 0 0)`:
+     NOT a hypothesis of `VarEndInv` (an extra empty frame above would make the top frame empty);
+     derive it from the run's success: `varPos 1` succeeded, so `ckVarPos st.env 1 = some pos`
+     (`runs_varPos_inv`), `pos ∈ allPos` (`ckVarPos_mem`, InvSteps), and `pos = bind 0 1` would
+     need a third binding in frame 0, contradicting `allPos = [b00, b01]`; simplest is a lemma
+     taking `∃ pos, ckVarPos st.env 1 = some pos`, the pos obtained inside placeType's inversion or
+     before it), then `runs_repackAt_lent`, then `runs_readPlace_after`; untyped: `placeTypeQ` or
+     none, as varNumInv. The copy decision: `decTab_placeDecl_at` at the ENDED state; its top
+     readings equal `st`'s (setAtE keeps decls: `back_setAtE`), so `D.copy (D.placeDecl (topReadings
+     st) (.var 1))` is the run's `c`. `Quiet st st` (`Quiet.refl`), `KeepsInv` trivially; Kern:
+     the ended state with `placeLog := X` (move) is `Kern`-equal to the conclusion's.
+  2. `AssignDerefInv` (fixed form, `w` not a borrow): review against `evalCore`'s `.assign`
+     (lentProofAssign, the hint/`Tp0` placeType?, `eval u`, the type check, accessPath at `*y`
+     (no ending: `firstLiveLoanOnPath` on `borrow l w` at `[deref]` meets a number), `assignPlace`,
+     `openWrite`), then prove. Not yet reviewed.
+  3. Then `column_B_free` (as `column_C_free`; `SeqInv` is now restated in FormMachine and proved,
+     `FormFacts.seqInv`, 9a54a71e, the orchestrator having let this lane apply forced statement fixes
+     itself while the lead lane is empty: edit FormMachine + the minimal consumer lines, keep
+     OchrMeaning green, list every edit in the report).
+  4. Asked by the orchestrator (from the retired lead): `DropNoopInv` concludes only `Kern`; also
+     conclude `ModeEq st st'` if true of the code (dropTopBind on a loan-free, borrow-free binding:
+     topIdx, gets, `endLoansOfTopBind` no-op, the pop: no mode field touched, so it should be), prove
+     the stronger form, apply the statement change (FormMachine + consumers in ColumnLet/ColumnLetB),
+     report it.
+  5. The model lane (`model4`) is changing the reference run under the columns (SGood `uniq`, `.letIn`
+     reading before `u`, typed hints); after it lands, merge `origin/spine` and check `column_C_free`
+     still builds unchanged; tell the orchestrator at once if not.
+
+### machine4 (2026-11-21 night): the borrow column closed with nothing assumed
+
+- `varEndInv` (`VarEndInv.lean`, "The assembly"): the variable's position is derived from the run's
+  success (`ckVarPos_one_two`: every branch of `.place` runs `varPos 1` first; `allPos = [b00, b01]`
+  does not fix `env.size = 1`); the copy decision read at the ENDED state, whose top readings and
+  tables are the entry's.
+- `AssignDerefInv` was FALSE (y lent at u's end: the access ends y's borrower) and two conjuncts were
+  whole-machine facts (ModeEq across an ending, KeepsInv across a comparison of unequal types);
+  RESTATED in FormMachine (conditions on u's END state `st₁`, under the conclusion), consumers
+  adapted (`assignDeref_core`'s `hnum` also gives u's type is Nat; `run_write`; `sim_write_read`),
+  proved (`AssignDerefInv.lean`). Trap met: the hint's `if … (u matches …)` is duplicated by the
+  do-elaborator's inlined join point; naming the condition (`by_cases`, `generalize`) timed out at
+  whnf; `Runs.ite_bind_inv` (shared continuation) inverts it without naming it.
+- `column_B_free` (`ColumnBFree.lean`, root-imported), `dropNoopInvM` (DropNoopInv + `ModeEq st st'`;
+  FormMachine's `DropNoopInv` NOT restated: no consumer needs the mode; its `holdsBorrow` hypothesis
+  is unused).
+- NEXT: step 5 of the brief (merge `origin/main`: D115/D116; regenerate `gen/`; repair; list sorries),
+  only after telling the orchestrator.
 
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
@@ -308,6 +383,14 @@ The earlier queue (still owed, after the column):
    facts; the well-formedness preservation statements, `borrow_wf` suspected false).
 
 ## Build state
+
+2026-11-21 night, `spine-machine4` (machine4; `spine` 847f05ab and `spine-machine3` 761d0ce9 merged):
+`OchrMeaning` green; `varEndInv`, `assignDerefInv`, `dropNoopInvM`, `column_B_free`, `column_C_free`
+standard axioms.
+
+2026-11-21 night, `spine-machine3` (machine3; `spine-lead9` f6c88026 merged): `OchrMeaning` green;
+`invSteps`, `placeLocal_ff`, `column_C_free` (built explicitly until the root imports it), `seqInvR`
+proved, standard axioms.
 
 2026-11-21 night, `spine-machine2` (machine2; `spine` 63ca5e66 and `spine-lead8` 73ce48c3 merged): `OchrMeaning`
 green; `DecTab.back`, `DropNoopInv`, `EvalInvR`, `SuccInvR`, `LetInvR`, `VarNumInv`, `BorrowNumInv`, `runs_expectTy_of_beq` proved

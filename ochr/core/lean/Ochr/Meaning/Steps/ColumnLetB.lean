@@ -655,9 +655,10 @@ theorem assignDeref_core (hA : AssignDerefInv) (hI : InvSteps) (hPL : PlaceLocal
     (hdy : ∀ st, P st → ∀ f j b, ckVarPos st.env i = some (.bind f j) →
       st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b → b.decl = .ref .other)
     (hflu : ∀ st, P st → K.D.flags (DecideScope.topReadings st) u = (false, false))
-    (hah : u.assignHinted = false)
+    (hhint : ∀ (T : TyS) (s : SState), runT K ρ φ false T u s = runT K ρ φ false (.plain TyM.err) u s)
     (hnum : ∀ st₀ st₁ bh hint v₀ T₀, Pu st₀ → Mode st₀ → st₀.tailDecl = none → DecTab K.D st₁ →
-      Runs (Ochr.eval n true u hint) st₀ bh (v₀, T₀) st₁ → v₀.Num ∧ Env.erase st₀.env = Env.erase st₁.env)
+      Runs (Ochr.eval n true u hint) st₀ bh (v₀, T₀) st₁ → v₀.Num ∧ Env.erase st₀.env = Env.erase st₁.env ∧
+        ∀ T, T₀ = some T → (T == .tNat) = true)
     (hinv : ∀ sc, K.D.invalidated sc (.deref (.var i)) = []) :
     CoreSim K ρ φ (n + 1) (.assign (.deref (.var i)) u) P (· = true) := by
   intro st st' typed hint v T? s π hPst hty hm htn htd _ hp hr hS hv hab hnh hfl _ hD bh h
@@ -670,10 +671,14 @@ theorem assignDeref_core (hA : AssignDerefInv) (hI : InvSteps) (hPL : PlaceLocal
     obtain ⟨rfl, rfl⟩ := hpos
     rw [hb0, Option.some.injEq] at hb
     subst hb; exact ht0
-  obtain ⟨st₀, st₁, st₂, hu', v₀, T₀, bh₁, f, j, b, lb, w, hk₀, hm₀, htn₀, htd₀, hru, hD₁, hq, hki, -, hpos₂, hlk₂, hbw,
-    hk'i, rfl, rfl, hhu⟩ := hA n i u hint st st' bh v T? K.D hm htn htd htyped hD h
+  obtain ⟨st₀, st₁, hu', v₀, T₀, bh₁, hk₀, hm₀, htn₀, htd₀, hru, hD₁, rfl, rfl, hpost⟩ :=
+    hA n i u hint st st' bh v T? K.D hm htn htd htyped hD h
   have hPu₀ := hPu st st₀ hk₀ hPst
-  obtain ⟨hv₀, he₀₁⟩ := hnum st₀ st₁ bh₁ hu' v₀ T₀ hPu₀ hm₀ htd₀ hD₁ hru
+  obtain ⟨hv₀, he₀₁, hT₀⟩ := hnum st₀ st₁ bh₁ hu' v₀ T₀ hPu₀ hm₀ htd₀ hD₁ hru
+  -- `y` at `u`'s end is as it was: `borrow_l w`, `w` a number, at `&Nat`
+  obtain ⟨f, j, b, lb, w, hpos₁, hlk₁, hbw, hwn, htb'⟩ := (hP st hPst).of_erase (hk₀.env.trans he₀₁)
+  obtain ⟨st₂, hq, hki, -, hpos₂, hlk₂, hk'⟩ := hpost f j b lb w hpos₁ hlk₁ hbw hwn
+  replace hki := hki hT₀
   have hvu : u.valsOk (Strict.ValsP K ρ φ) := hv
   -- the step for `u`
   have hOu := hu st₀ st₁ true hu' v₀ T₀ s π hPu₀ trivial hm₀ (.inl htd₀) (hp.of_kern hk₀) (hr.of_kern hk₀) hS hvu
@@ -682,7 +687,7 @@ theorem assignDeref_core (hA : AssignDerefInv) (hI : InvSteps) (hPL : PlaceLocal
     (by rw [scopeOf_rel hr]; exact hflu st hPst) (fun e => by cases e) hD₁ bh₁ hru
   rw [htn₀] at hOu
   obtain ⟨ρ₁, Δ₁, π₁, ru, s₁, he₁, hxu, hmu, -, hlu, hp₁, hr₁⟩ := hOu
-  have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := by rw [hhu hah] at hxu; exact hxu
+  have hxu' : runT K ρ φ false (.plain TyM.err) u s = some (ru, s₁) := by rw [← hhint]; exact hxu
   obtain ⟨-, -, -, hS₁⟩ := Strict.fund_all hc u hvu false (.plain TyM.err) s s₁ ru hS hxu'
   -- `u`'s value: a number, with no label
   obtain ⟨m, hmv⟩ := hv₀.vmean
@@ -691,13 +696,6 @@ theorem assignDeref_core (hA : AssignDerefInv) (hI : InvSteps) (hPL : PlaceLocal
   -- after `u` and the quiet steps, `y` is as it was: `borrow_l w`, at `&Nat`
   have hr₂ : Rel { K with Δ := Δ₁ } ρ₁ φ π₁ st₂ s₁ :=
     rel_of_withTempT_num hv₀ (hr₁.of_quiet (hq.withTempT v₀ T₀) hp₁.labels)
-  obtain ⟨f', j', b', lb', w', hpos', hlk', hbw', hwn', htb'⟩ :=
-    (hP st hPst).of_erase (hk₀.env.trans (he₀₁.trans hq.env))
-  rw [hpos₂, Option.some.injEq, Pos.bind.injEq] at hpos'
-  obtain ⟨rfl, rfl⟩ := hpos'
-  rw [hlk₂, Option.some.injEq] at hlk'
-  subst hlk'
-  have hwn : w.Num := by rw [hbw] at hbw'; cases hbw'; exact hwn'
   obtain ⟨mw, hmw⟩ := hwn.vmean
   have hmx : ∀ (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl) (ρ : Assignment) (φ : Future) (hint : TyS),
       Value.mean dm C Γ ρ φ hint b.val = .el0 Nat mw := by
@@ -716,7 +714,6 @@ theorem assignDeref_core (hA : AssignDerefInv) (hI : InvSteps) (hPL : PlaceLocal
     rw [htyS]; simp only [Env.hintAt, hlk₂, htb']; rfl
   have hns : ∀ l, (valAt st₂.env (.bind f j)).sitesOf l (.bind f j) [] = [] := fun l => by
     rw [hvb₂, hbw]; exact hwn.sitesOf l _ _
-  have hk' := hk'i (fun m z => hwn.not_borrow m z) hns
   have hacc : ∀ hit, s₁.access (.bind f j) hit = s₁ := fun _ => access_noSites (rel_noSites_at hr₂ hns)
   have haok : ∀ hit, AccessOk K φ s₁ (.bind f j) hit := fun _ => accessOk_noSites (rel_noSites_at hr₂ hns)
   have hres : resolve s₁ (.deref (.var i)) = some (.bind f j, [.deref]) :=
@@ -758,7 +755,7 @@ theorem assignDeref_core (hA : AssignDerefInv) (hI : InvSteps) (hPL : PlaceLocal
   have hxa : runT K ρ φ st.curTail (hintM K ρ hint) (.assign (.deref (.var i)) u) s =
       some ((.el0 Unit (), .plain TyM.unit), s₁.setAt (.bind f j) g) := by
     rw [runT_assign _ _ _ _ s hfl]
-    simp only [hah, Bool.false_eq_true, ↓reduceIte, hxu', bind, Option.bind]
+    simp only [hhint, hxu', bind, Option.bind]
     rw [hpt, if_pos ⟨by rw [hru1]; exact ⟨m, rfl⟩, fun l hl => by rw [hrul] at hl; cases hl⟩]
     unfold SM.guarded; rw [if_pos hAok, hasg]
     simp only [hinvs, if_pos (And.intro hinvok hlent)]
@@ -846,10 +843,10 @@ theorem seq_core (hSq : SeqInv) (hI : InvSteps) (hc : Strict.FundCtx K) {n : Nat
     CoreSim K ρ φ (n + 1) (.seq u w) Pseq (· = true) := by
   intro st st' typed hint v T? s π hPst hty hm htn htd hcd hp hr hS hv hab hnh hfl _ hD bh h
   subst hty
-  obtain ⟨st₀, st₁, stW, v₀, T₀, bh₁, bh₂, hk₀, hm₀, htn₀, htd₀, htdW, hru, hD₁, hdrop, hmeW, htnW, hrw⟩ :=
+  obtain ⟨st₀, st₁, stW, v₀, T₀, bh₁, bh₂, hk₀, hm₀, htn₀, htd₀, htdW, hru, hD₁, hdrop, htnW, hrw⟩ :=
     hSq n u w hint st st' bh v T? K.D hm htn htd hD h
   obtain ⟨rfl, hm₁⟩ := hunit st₀ st₁ bh₁ v₀ T₀ (hPu st st₀ hk₀ hPst) hm₀ htd₀ hD₁ hru
-  have hmW : Mode stW := hm₁.of_modeEq hmeW
+  have hmW : Mode stW := hm₁.of_modeEq (hdrop (fun _ => rfl) rfl).2
   have hvu : u.valsOk (Strict.ValsP K ρ φ) := hv.1
   -- the step for `u`
   have hOu := hu st₀ st₁ true none .unit T₀ s π (hPu st st₀ hk₀ hPst) rfl hm₀ (.inl htd₀) (hp.of_kern hk₀)
@@ -862,7 +859,7 @@ theorem seq_core (hSq : SeqInv) (hI : InvSteps) (hc : Strict.FundCtx K) {n : Nat
   obtain ⟨-, -, -, hS₁⟩ := Strict.fund_all hc u hvu false (.plain TyM.err) s s₁ ru hS hxu'
   have hrul : ru.2.label = none := by rw [hlu]; rfl
   -- the drop of `()`: nothing on either side
-  have hkW : Kern st₁ stW := hdrop (fun _ => rfl) rfl
+  have hkW : Kern st₁ stW := (hdrop (fun _ => rfl) rfl).1
   have hrW : Rel { K with Δ := Δ₁ } ρ₁ φ π₁ stW s₁ := (rel_of_withTempT_inert Value.inert_unit hr₁).of_kern hkW
   have hpW : Pre { K with Δ := Δ₁ } ρ₁ stW :=
     ⟨hp₁.ctx.of_eq (by show stW.inds = st₁.inds; rw [← hkW.inds]) (by show stW.globals = st₁.globals; rw [← hkW.globals]),

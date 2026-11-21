@@ -117,6 +117,8 @@ import Ochr.Meaning.Steps.ColumnLet
 import Ochr.Meaning.Steps.ColumnStart
 import Ochr.Meaning.Steps.ColumnC
 import Ochr.Meaning.Steps.ColumnCFF
+import Ochr.Meaning.Steps.Machine.ColumnCFree
+import Ochr.Meaning.Steps.Machine.ColumnBFree
 import Ochr.Meaning.Steps.ColumnWrite
 import Ochr.Meaning.Steps.ColumnB
 import Ochr.Meaning.Steps.ColumnBStart

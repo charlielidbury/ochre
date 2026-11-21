@@ -178,8 +178,7 @@ def DropNoopInv : Prop :=
 
 /-- **`evalCore` of a typed write at the field `0` of a variable** (`x.0 := u`; the column's write):
 `u` evaluated from the entry's kernel, in mode, the one-shot flag clear (with whatever hint the
-checker hands it: the place's type for a constructor or an embedded value, none otherwise: the last conjunct, lead10, which the
-reference's `.assign` mirrors by `Term.assignHinted`, docs/31 D119); then
+checker hands it: the place's type for a constructor or an embedded value, none otherwise); then
 quiet steps (the place's type, read privately; `u`'s type checked against the field's; the
 accesses, which end nothing where nothing is lent; the temporary `assignPlace` parks `u`'s value in
 and takes back); the variable then holds `S(w)` (the path exists) and the write leaves it holding
@@ -202,8 +201,7 @@ def AssignNumInv : Prop :=
       DecTab D st₁ ∧ Quiet st₁ st₂ ∧ KeepsInv st₁ st₂ ∧ ModeEq st₁ st' ∧ ckVarPos st₂.env i = some (.bind f j) ∧
       st₂.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b ∧ b.val = .succ w ∧
       ((∀ l, (valAt st₂.env (.bind f j)).sitesOf l (.bind f j) [] = []) →
-        Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.succ v₀) } st') ∧ v = .unit ∧ T? = some .tUnit ∧
-      (u.assignHinted = false → hu = none)
+        Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.succ v₀) } st') ∧ v = .unit ∧ T? = some .tUnit
 
 /-! ## The borrow column (`def B : Nat := let x = S(Z); let y = &x; *y := Z; x`) -/
 
@@ -233,7 +231,18 @@ is itself a borrow, the write's drop of it ends that borrow (`assignPlace`: `mat
 back to `x` and "only `y` changed" is FALSE (the machine lane's review, 2026-11-21; the sites
 condition does not exclude it, a borrow being no loan): the `Kern` clause now also asks `w` not a
 borrow. `y` is stored at `&Nat` (the step's entry condition: a whole write through `*`, no strong
-update, no lent proof). -/
+update, no lent proof).
+RESTATED by the machine lane (machine4, 2026-11-21, reading `evalCore`'s `.assign` and `assignPlace`):
+what follows `u`'s run is concluded only where `y` holds `borrow_l w` with `w` a number at `u`'s END
+(`st₁`), and the invariant across `u`'s type check only where that type is `Nat`. As stated before,
+(1) it was FALSE where `y` itself is lent at `st₁` (`y ↦ loan_m`, `r ↦ borrow_m (borrow_0 Z)`, an
+entry state no typed program reaches, `&y` of a borrow-typed place being rejected, but one the
+statement admitted): the write's access ends `r` and gives `y` back `borrow_0 Z`, so no state quiet
+from `st₁` has `y` holding a borrow; (2) its `ModeEq st₁ st'` across an access that ends a borrow
+(`y ↦ borrow_l loan_m`) and its `KeepsInv` across a comparison of `u`'s type with `Nat` when they
+differ are whole-machine facts (an ending runs [Repack], a comparison makes unknowns), true by
+reading but not facts of this step. `u`'s end state is not the entry's, so the conditions are on
+`st₁`, under the conclusion. -/
 def AssignDerefInv : Prop :=
   ∀ (n i : Nat) (u : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (D : Decisions),
@@ -241,14 +250,14 @@ def AssignDerefInv : Prop :=
     (∀ f j b, ckVarPos st.env i = some (.bind f j) → st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
       b.ty = some (.tRef .tNat)) → DecTab D st' →
     Runs (Ochr.evalCore (n + 1) true (.assign (.deref (.var i)) u) hint) st bh (v, T?) st' →
-    ∃ (st₀ st₁ st₂ : MState) (hu : Option Value) (v₀ : Value) (T₀ : Option Value) (bh₁ f j : Nat) (b : Binding)
-      (l : Nat) (w : Value),
+    ∃ (st₀ st₁ : MState) (hu : Option Value) (v₀ : Value) (T₀ : Option Value) (bh₁ : Nat),
       Kern st st₀ ∧ Mode st₀ ∧ st₀.tailNext = false ∧ st₀.tailDecl = none ∧ Runs (Ochr.eval n true u hu) st₀ bh₁ (v₀, T₀) st₁ ∧
-      DecTab D st₁ ∧ Quiet st₁ st₂ ∧ KeepsInv st₁ st₂ ∧ ModeEq st₁ st' ∧ ckVarPos st₂.env i = some (.bind f j) ∧
-      st₂.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b ∧ b.val = .borrow l w ∧
-      ((∀ m z, w ≠ .borrow m z) → (∀ l', (valAt st₂.env (.bind f j)).sitesOf l' (.bind f j) [] = []) →
-        Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.borrow l v₀) } st') ∧ v = .unit ∧ T? = some .tUnit ∧
-      (u.assignHinted = false → hu = none)
+      DecTab D st₁ ∧ v = .unit ∧ T? = some .tUnit ∧
+      ∀ f j b l w, ckVarPos st₁.env i = some (.bind f j) → st₁.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b →
+        b.val = .borrow l w → w.Num →
+        ∃ st₂, Quiet st₁ st₂ ∧ ((∀ T, T₀ = some T → (T == .tNat) = true) → KeepsInv st₁ st₂) ∧ ModeEq st₁ st' ∧
+          ckVarPos st₂.env i = some (.bind f j) ∧ st₂.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b ∧
+          Kern { st₂ with env := Env.setAtE st₂.env (.bind f j) (.borrow l v₀) } st'
 
 /-- **`evalCore` of a typed `u; w`** (`Machine.evalCore`'s `.seq`), for a first part whose value
 holds no borrow and no loan: `u` evaluated with no hint from the entry's kernel, in mode, the
@@ -257,7 +266,10 @@ borrowers ended, `endLoansOfTopTemp`, so the loans' condition is needed; lead8);
 no hint (a typed run's tail) in the sequence's tail position, the mode after `u` carried to `w`'s
 entry (`ModeEq`, as `LetInv`; lead9: first stated as `Mode stW`, which no inversion of `.seq` alone
 gives, `u`'s end mode being `u`'s run's fact). The invariant where `w` starts is the caller's
-(`InvPopInert`, lead9; first stated here as a conjunct, dropped with `InvCore`). -/
+(`InvPopInert`, lead9; first stated here as a conjunct, dropped with `InvCore`). The mode is kept
+(`ModeEq st₁ stW`) under the same antecedent as the kernel (machine3, 2026-11-21: unconditional it asks
+the drop of any value, i.e. the ending machinery, to keep the mode, a whole-machine fact). PROVED
+(`Machine.seqInv`). -/
 def SeqInv : Prop :=
   ∀ (n : Nat) (u w : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (D : Decisions),
@@ -266,7 +278,7 @@ def SeqInv : Prop :=
     ∃ (st₀ st₁ stW : MState) (v₀ : Value) (T₀ : Option Value) (bh₁ bh₂ : Nat),
       Kern st st₀ ∧ Mode st₀ ∧ st₀.tailNext = false ∧ st₀.tailDecl = none ∧
       (stW.tailDecl = none ∨ stW.tailDecl = st.curDecl) ∧ Runs (Ochr.eval n true u none) st₀ bh₁ (v₀, T₀) st₁ ∧
-      DecTab D st₁ ∧ ((∀ l, v₀.holdsBorrow l = false) → v₀.loans = [] → Kern st₁ stW) ∧ ModeEq st₁ stW ∧
+      DecTab D st₁ ∧ ((∀ l, v₀.holdsBorrow l = false) → v₀.loans = [] → Kern st₁ stW ∧ ModeEq st₁ stW) ∧
       stW.tailNext = st.curTail ∧
       Runs (Ochr.eval n true w none) stW bh₂ (v, T?) st'
 
