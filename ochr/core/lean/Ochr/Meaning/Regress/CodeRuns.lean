@@ -293,6 +293,17 @@ theorem readPlace_frame (K : RunCtx) (bs : List SBinding) (i : Nat) (b : SBindin
   simp only [readPlace, contentOf, hr, ha, hcf, bind, Option.bind]
   simp [SState.tyAt, SState.valAt, Sem.follow, frame, hb, hw, hg]
 
+/-- A variable of the frame whose value is no member of its type is not read (the strict `ReadGood`). -/
+theorem readPlace_frame_none (K : RunCtx) (bs : List SBinding) (i : Nat) (b : SBinding) (hi : i < bs.length)
+    (hb : bs[bs.length - 1 - i]? = some b) (hg : ¬ ReadGood K.dm.read b.ty.m (b.val φ)) :
+    readPlace K φ (.var i) true (frame bs) = none := by
+  have hr : resolve (frame bs) (.var i) = some (.bind 0 (bs.length - 1 - i), []) := by
+    simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, frame, hi]
+  have ha := fun hit => CE4flip.access_noshape (frame bs) (.bind 0 (bs.length - 1 - i)) rfl hit
+  have hcf : (frame bs).typedFuture φ = φ := by funext l; simp [SState.typedFuture, frame_liveLabels]
+  simp only [readPlace, contentOf, hr, ha, hcf, bind, Option.bind]
+  simp [SState.tyAt, SState.valAt, Sem.follow, frame, hb, hg]
+
 theorem run_place (p : Place) (hint : TyS) (s : SState) :
     run (Kp dm Γ G) ρ φ hint (.place p) s = readPlace (Kp dm Γ G) φ p true s := rfl
 
