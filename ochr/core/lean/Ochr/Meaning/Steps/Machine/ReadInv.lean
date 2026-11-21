@@ -328,7 +328,7 @@ theorem varNum_read {n i f j : Nat} {bd : Binding} {typed : Bool} {D : Decisions
     (hT' : ∀ T₀, T' = some T₀ → bd.ty = some T₀) (hTs : typed = true → T'.isSome)
     (hr : Runs (do let __do_lift ← Ochr.readPlace n (Place.var i); pure (__do_lift, T')) s b' (v, T?) st') :
     v = bd.val ∧ (∀ T₀, T? = some T₀ → bd.ty = some T₀) ∧ (typed = true → T?.isSome) ∧ Mode st' ∧
-      ∃ st₁, Quiet s st₁ ∧
+      ∃ st₁, Quiet s st₁ ∧ KeepsInv s st₁ ∧
         (D.copy (D.placeDecl (DecideScope.topReadings s) (.var i)) = true → Kern st₁ st') ∧
         (D.copy (D.placeDecl (DecideScope.topReadings s) (.var i)) = false →
           Kern { st₁ with env := Env.setAtE st₁.env (.bind f j) .bot } st') := by
@@ -343,10 +343,10 @@ theorem varNum_read {n i f j : Nat} {bd : Binding} {typed : Bool} {D : Decisions
   cases c with
   | true =>
     obtain rfl := hct rfl
-    exact ⟨rfl, hT', hTs, hm, _, Quiet.refl _, fun _ => Kern.rfl' _, (fun e => by cases e)⟩
+    exact ⟨rfl, hT', hTs, hm, _, Quiet.refl _, fun _ _ h => h, fun _ => Kern.rfl' _, (fun e => by cases e)⟩
   | false =>
     obtain ⟨X, rfl⟩ := hcf rfl
-    exact ⟨rfl, hT', hTs, ⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩, _, Quiet.refl _, (fun e => by cases e),
+    exact ⟨rfl, hT', hTs, ⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩, _, Quiet.refl _, fun _ _ h => h, (fun e => by cases e),
       fun _ => ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
 
 set_option maxHeartbeats 4000000 in

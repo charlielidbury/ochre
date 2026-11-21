@@ -108,22 +108,41 @@ whole block, the same shape as (a) but relational; see the queue).
   at the TOP READINGS, so they need the table aligned at the new state; a number set where a place
   reads `.ind n _` violates `fits`. The general "every run keeps `absTy.size = nextAbs`" (WF6 across a
   private exit) is a whole-machine induction like `machineGrows`, to schedule when a step needs it.
+- `lead9` (origin/spine-lead9 332b0a1e) adopted `SuccInvR`/`LetInvR` word for word, deleted `InvCore` and
+  `ColTerm`, and bundled ten state-level Props as `InvSteps` (top of `OPEN.md`); `column_C_ff` now
+  assumes exactly `VarNumInv` + `InvSteps`. Its finding: `Inv` across a `Quiet` stretch is not
+  state-level (`Quiet` leaves `nextAbs` and the new unknowns' types free; WF6's `absTy.size = nextAbs`
+  and WF8/WF11 on `absTy` read them). It added `KeepsInv st st₁` beside each `Quiet` (in `VarNumInv`,
+  `BorrowNumInv`, `AssignNumInv`, `AssignDerefInv`, `VarEndInv`) and `InvExpectTy` for `S`. This
+  RESTATES `VarNumInv` and `BorrowNumInv` (proved here in the earlier form).
+- JUDGEMENT (machine2) between `KeepsInv` (lead9's) and extending `Quiet` with two fields (`nextAbs` in
+  step with `absTy`'s size; the new unknowns' types clean): both are true of the code, and for a
+  comparison of values that are not `==` BOTH rest on the same whole-machine invariant (every run keeps
+  `absTy.size = nextAbs` and makes only clean types: an induction of `machineGrows`' size), so neither
+  avoids it in general. For the columns NOW, `KeepsInv` is cheaper: every `Quiet` witness in
+  `varNumInv` and `borrowNumInv` is the state itself (`Quiet.refl`), so the new conjunct is
+  `fun _ _ h => h`, a one-line change to each proof; `InvExpectTy` for the column's `S(u)` with
+  `u : Nat` follows from `runs_expectTy_of_beq` (the check is the identity). Extending `Quiet` is the
+  more uniform endpoint but forces `quiet_conv` to prove the two fields for EVERY comparison at once,
+  i.e. the whole-machine induction immediately. Recommendation: keep `KeepsInv` now; move to the
+  extended `Quiet` (with the induction) when a column first needs a comparison of unequal values.
 - NEXT, in order (the orchestrator's, 2026-11-21 night):
-  1. the first column's state-level `Inv` lemmas, from the statements `lead9` puts in
-     `FormMachine.lean` / the top of `OPEN.md` on `origin/spine-lead9` (review each for truth first;
-     if absent, state them here as transformations and tell the orchestrator);
-  2. the unconditional corollary of `ColumnCFF.column_C_ff` (its remaining hypotheses: the lead's
-     `SuccInv`/`LetInv` replaced by `succInvR`/`letInvR`, `varNumInv`, and the Inv lemmas);
-  3. the borrow column: `VarEndInv` (the inversion of `endTopLoan`/`endBorrow` at the two-binding
-     state), `AssignDerefInv` and `SeqInv` in their fixed forms, the LetInv readings conjunct for a
-     write-free `u`, the borrow column's state-level lemmas;
-  4. THEN (not before the corollary): merge `origin/main` into the proof line (D115 at 226dcdd6:
-     calls' heads and arguments, constructor fields, an assignment's right-hand side, a borrow made
-     during invalidation, an arm's result at the join, the comparison's generic arguments held as
-     typed temporaries; `evalCall`, `callFn`, `runBodyCore`, `closeCall`, `evalCtor`, `joinEnds`,
-     `convFnRun` changed; D116 pending: `clone` of a proof place returns the proof), re-run the
-     generator (`gen/`, "Regenerating" above) so `machineGrows` holds, repair `Steps/` minimally,
-     list every `sorry` left with its reason; a statement the change makes false is a finding.
+  1. settle the `KeepsInv` / `Quiet` decision above with the orchestrator (recommended: `KeepsInv`);
+  2. the ten `InvSteps` (review each for truth first; note `ShapeFacts.fits` reads `D.placeDecl` at
+     the TOP READINGS: a push/pop needs the table aligned at the new state, and a number where a
+     place reads `.ind n _` violates `fits`);
+  3. re-prove `VarNumInv` and `BorrowNumInv` in lead9's restated form (add `fun _ _ h => h`);
+  4. `VarEndInv` (the inversion of `endTopLoan`/`endBorrow` at the two-binding state);
+  5. the unconditional corollary of `ColumnCFF.column_C_ff` (`varNumInv` + the `InvSteps`);
+  6. then merge `origin/main` into the proof line (D115 at 226dcdd6: calls' heads and arguments,
+     constructor fields, an assignment's right-hand side, a borrow made during invalidation, an arm's
+     result at the join, the comparison's generic arguments held as typed temporaries; `evalCall`,
+     `callFn`, `runBodyCore`, `closeCall`, `evalCtor`, `joinEnds`, `convFnRun` changed; D116 pending:
+     `clone` of a proof place returns the proof), re-run the generator (`gen/`, "Regenerating" above)
+     so `machineGrows` holds, repair `Steps/` minimally, list every `sorry` left with its reason; a
+     statement the change makes false is a finding.
+  Still owed from the borrow column's review: `AssignDerefInv` and `SeqInv` in their fixed forms, the
+  LetInv readings conjunct for a write-free `u`.
 
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 

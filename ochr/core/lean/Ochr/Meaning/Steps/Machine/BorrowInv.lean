@@ -113,7 +113,7 @@ theorem borrowNumInv : BorrowNumInv := by
     obtain ⟨hvt, rfl⟩ := runs_pure_inv h₆
     simp only [Prod.mk.injEq] at hvt
     obtain ⟨rfl, rfl⟩ := hvt
-    exact ⟨⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩, s₅, Quiet.refl _, rfl, rfl,
+    exact ⟨⟨hm.headEval, hm.copying, hm.inPlace, hm.erased⟩, s₅, Quiet.refl _, fun _ _ h => h, rfl, rfl,
       ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
 
 end Ochr.Meaning.Steps.Machine
