@@ -341,4 +341,17 @@ theorem fuelAgree_rePointed (t : Term) :
 theorem fuelAgree_typeDecl (T : Term) : FuelAgree (fun n => withLive true (Ochr.typeDecl n false [] [] T)) :=
   fuelAgree_of_step fun n => fuelLe_withLive _ ((decideFuelLe n).typeDecl _ _ _ _ _ _)
 
+theorem fuelAgree_typeState (t : Term) : FuelAgree (fun n => withLive true (Ochr.typeState n t)) :=
+  fuelAgree_of_step fun n => fuelLe_withLive _ (fuelLe_typeState _ _)
+
+open Ochr.Meaning.Steps in
+/-- `DecisionsFF.decide_fuel_agree` in the form that file states it (`SucceedsAt`: some fuel, some
+budget), for any family whose successes agree across fuels (`FuelAgree` here). `DecisionsFF.lean`
+imports only `Statements`, so it can import this file and close its leaf with this lemma, one
+field of `DecideFuelAgree` per `fuelAgree_*` above (`flagsD t` is `fun f => …` definitionally). -/
+theorem fuelAgreeFF_of {α : Type} {x : Nat → M α} (h : FuelAgree x) (st : MState) :
+    ∀ a a', (∃ f b st', Runs (x f) st b a st') → (∃ f b st', Runs (x f) st b a' st') → a = a' := by
+  rintro a a' ⟨f, b, s₁, h₁⟩ ⟨f', b', s₂, h₂⟩
+  exact (h st f f' b b' a a' s₁ s₂ h₁ h₂).1
+
 end Ochr.Meaning.Steps.Machine

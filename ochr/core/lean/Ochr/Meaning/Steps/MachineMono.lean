@@ -3,6 +3,7 @@ import Ochr.Meaning.RunLib
 import Ochr.Meaning.Steps.Machine.All
 import Ochr.Meaning.Steps.Machine.False
 import Ochr.Meaning.Steps.Machine.DecideFuel
+import Ochr.Meaning.Steps.Machine.DecideFuelFF
 
 /-!
 # Facts about the machine alone (the slice, main's decision 2026-11-20; its own lane)
@@ -49,7 +50,7 @@ To be stated here as they are reached (from the slice's knowledge, 2026-11-20):
   `_joinMoves`, `_rePointed`, `_typeDecl`: two successes at any fuels and budgets agree;
   `Machine.FuelMono`). The checker's block captures (`ckBlockCaps`) run the machine itself
   (`movedPlace`, `blockCaptures`), so theirs is a fuel induction over the whole machine block, and
-  `blockCaptures`' `while` loop blocks it as it blocks (a);
+  `blockCaptures` (now fuel-bounded) make it a relational induction over the whole block, not yet done;
 - a comparison's private copy leaves no record naming an unknown it made (main's comparison fix),
   and `placeType?`'s private copies likewise (to be swept before `placeType?`'s step is stated);
 - (WF1)–(WF16) and `ShapeFacts` are kept by every step: about checker states only, but each step's
@@ -150,8 +151,7 @@ theorem grows_blockEntry (fuel : Nat) (mt : Term) : GrowsM (Ochr.blockEntry fuel
 /-- FALSE as stated: the arms run inside `closeBlock`, and an arm's world exit (`exitWorld`) keeps
 the arm's frozen readings and counters, so an arm that lowers them leaves them lowered. True when
 every arm only extends the tables: `grows_closeBlock_of`. Kept (with its `sorry`) only while its
-user (`EqJAsm`) moves to `grows_closeBlock_of`. No kernel-checked counterexample: every run of
-`closeBlock` goes through `blockCaptures`'s `while` loop, which the kernel cannot evaluate. -/
+user (`EqJAsm`) moves to `grows_closeBlock_of`. -/
 theorem grows_closeBlock (fuel : Nat) (mt : Term) (arms : List BlockArm) (B? : Option Value) :
     GrowsM (Ochr.closeBlock fuel mt arms B?) := by sorry
 /-- `closeBlock` whose arms only extend the tables only extends the tables. -/
@@ -178,7 +178,7 @@ theorem grows_lendEnv (fuel : Nat) (op : LendOp) : GrowsM (Ochr.lendEnv fuel op)
   growsM_of_growsIn fun _ => growsIn_lendEnv fuel op
 theorem grows_observe (fuel : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos)
     (refs : List (Place × Value × Value)) : GrowsM (Ochr.observe fuel typed t A W refs) :=
-  growsM_of_growsIn fun _ => (machineGrows fuel).observe typed t A W refs
+  growsM_of_growsIn fun _ => (machineGrows fuel).observe typed t A W refs []
 end
 
 /-- One step of the closure: a combinator or a machine function's statement. -/

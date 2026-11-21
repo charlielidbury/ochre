@@ -3,7 +3,7 @@ import Ochr.Meaning.Steps.Machine.IH
 /-!
 # The step of the induction for the machine's block: observations, Id, tail position, [Fix]
 
-Each function at fuel `n + 1`, its body walked by `grows_go ih` (the induction hypothesis at `n`).
+Each function at fuel `nf + 1`, its body walked by `grows_go ih` (the induction hypothesis at `nf`).
 -/
 
 namespace Ochr.Meaning.Steps.Machine
@@ -13,27 +13,38 @@ open Ochr Ochr.Meaning Ochr.Meaning.Steps
 variable {tb : Tab} {nf : Nat}
 
 /-- `observe` at `n + 1` (as `evalType_succ`: the fuel's match sits under `inStatement`). -/
-theorem observe_succ (n : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos) (refs : List (Place × Value)) :
-    Ochr.observe (n + 1) typed t A W refs = inStatement (do
+theorem observe_succ (n : Nat) (typed : Bool) (t : Term) (A : Value) (W : List Pos)
+    (refs : List (Place × Value × Value)) (consumed : List Place) :
+    Ochr.observe (n + 1) typed t A W refs consumed = inStatement (do
       let o := (← get).obsFrame
       let f ← topIdx
       let fr := (← get).env[f]!
-      modify fun s => { s with obsFrame := some (f, fr.binds.size, fr.temps.size) }
+      let mut own := []
+      for y in consumed do
+        let .var i := y | err s!"INTERNAL [Id-typestate] the consumed {← ppPlace y} is not a binding (please report)"
+        let .bind _ j ← varPos i | err s!"INTERNAL [Id-typestate] the consumed {← ppPlace y} is not a binding (please report)"
+        own := j :: own
+      modify fun s => { s with obsFrame := some (f, fr.binds.size, fr.temps.size, own) }
       let (v, T) ← onFail (eval n typed t A) (modify fun s => { s with obsFrame := o })
       modify fun s => { s with obsFrame := none }
       expectTy n "a side of Id" T A
-      pushTemp v
-      for (y, σ) in refs do
-        fire .ObsRef fun _ => s!"{σ} written through a re-pointed borrow"
-        assignPlace n (.deref y) σ
-      let v ← popTemp
-      let v ← obsResult n v none
+      for (y, σ, Tσ) in refs do
+        let .var i := y | err s!"INTERNAL [Obs-ref] the re-pointed {← ppPlace y} is not a binding (please report)"
+        let pos ← varPos i
+        let .borrow k c ← getAt pos
+          | err s!"INTERNAL [Obs-ref] the re-pointed {← ppPlace y} holds {← getAt pos}, not a borrow (the type-state has it re-pointed and not consumed; please report)"
+        let py ← ppPlace y
+        fire .ObsRef fun _ => s!"{py} points to {c}, observed; {σ} put in its place"
+        setAt pos (.borrow k σ)
+        pushTemp c (some Tσ) "observe"
+      let v ← obsResult n v T none
+      let cs ← popTemps refs.length
       let ws ← W.mapM getAt
-      pure (v, ws)) := rfl
+      pure (v, ws, cs.toList)) := rfl
 
 theorem step_observe (ih : MachineGrows tb nf) :
-    ∀ (typed : Bool) (t : Term) (A : Value) (W : List Pos) (refs : List (Place × Value)), GrowsIn tb (Ochr.observe ((nf + 1)) typed t A W refs) := by
-  intro typed t A W refs
+    ∀ (typed : Bool) (t : Term) (A : Value) (W : List Pos) (refs : List (Place × Value × Value)) (consumed : List Place), GrowsIn tb (Ochr.observe ((nf + 1)) typed t A W refs consumed) := by
+  intro typed t A W refs consumed
   rw [observe_succ]; grows_go ih
 
 theorem step_idType (ih : MachineGrows tb nf) :

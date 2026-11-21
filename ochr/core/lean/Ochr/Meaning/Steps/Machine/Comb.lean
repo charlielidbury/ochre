@@ -220,6 +220,13 @@ theorem growsIn_restoreKeep {saved : MState} (h : OnTab G saved) : GrowsIn G (re
   exact growsIn_modify' fun s hs => ⟨h.1.trans hs.1.symm, h.2.trans hs.2.symm, Nat.le_refl _,
     fun _ _ => rfl, Nat.le_refl _, Nat.le_refl _⟩
 
+/-- `restoreNames` (a comparison's exit, D103) to a state with the current globals and declarations
+keeps the tables: it keeps the counters and the frozen readings the comparison made. -/
+theorem growsIn_restoreNames {saved : MState} (h : OnTab G saved) : GrowsIn G (restoreNames saved) := by
+  unfold restoreNames
+  exact growsIn_modify' fun s hs => ⟨h.1.trans hs.1.symm, h.2.trans hs.2.symm, Nat.le_refl _,
+    fun _ _ => rfl, Nat.le_refl _, Nat.le_refl _⟩
+
 theorem growsIn_exitWorld {w : World} (h : OnTab G w.saved) : GrowsIn G (exitWorld w) := by
   unfold exitWorld
   exact growsIn_modify' fun s hs => ⟨h.1.trans hs.1.symm, h.2.trans hs.2.symm, Nat.le_refl _,

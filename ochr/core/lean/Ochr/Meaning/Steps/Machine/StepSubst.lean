@@ -3,7 +3,7 @@ import Ochr.Meaning.Steps.Machine.IH
 /-!
 # The step of the induction for the machine's block: substitution and normal forms
 
-Each function at fuel `n + 1`, its body walked by `grows_go ih` (the induction hypothesis at `n`).
+Each function at fuel `nf + 1`, its body walked by `grows_go ih` (the induction hypothesis at `nf`).
 -/
 
 namespace Ochr.Meaning.Steps.Machine

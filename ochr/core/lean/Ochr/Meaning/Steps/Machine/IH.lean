@@ -3,7 +3,7 @@ import Ochr.Meaning.Steps.Machine.MachineLeaves
 /-!
 # The induction hypothesis over the machine's mutual block
 
-`Machine.lean`'s mutual block (113 functions, every one reaching every other: one strongly
+`Machine.lean`'s mutual block (118 functions, every one reaching every other: one strongly
 connected call graph) recurs on the fuel, each call at the fuel one less. So the property is
 proved for all of them at once, by induction on the fuel: `MachineGrows tb nf` says every function
 of the block at fuel `nf` only extends the tables, from a state with the tables `tb`. A function
@@ -37,6 +37,9 @@ theorem growsIn_bind_ret {G : Tab} {α β : Type} {x : M α} {k : α → M β} {
 @[grows] theorem growsIn_joinLogged {G : Tab} (st : List Place) : GrowsIn G (joinLogged st) := by
   unfold joinLogged; grows_go
 
+@[grows] theorem growsIn_lentInFields {G : Tab} (q : Place) (g : FieldRef) : GrowsIn G (lentInFields q g) := by
+  unfold lentInFields; grows_go
+
 /-- Every function of the machine's mutual block at fuel `nf` only extends the tables, from a
 state with the tables `tb`. -/
 structure MachineGrows (tb : Tab) (nf : Nat) : Prop where
@@ -50,18 +53,19 @@ structure MachineGrows (tb : Tab) (nf : Nat) : Prop where
   repackAt : ∀ (p : Place) (T : Value) (what : String), GrowsIn tb (Ochr.repackAt nf p T what)
   bodyReturns : ∀ (what : String) (v : Value) (T : Value) (lent : List Place) (lentWhat : String), GrowsIn tb (Ochr.bodyReturns nf what v T lent lentWhat)
   endAll : GrowsIn tb (Ochr.endAll nf)
-  obsResult : ∀ (r : Value) (σw? : Option Nat), GrowsIn tb (Ochr.obsResult nf r σw?)
-  endTopLoan : ∀ (l : Nat) (site : String), GrowsIn tb (Ochr.endTopLoan nf l site)
+  obsResult : ∀ (r : Value) (T : Option Value) (σw? : Option Nat), GrowsIn tb (Ochr.obsResult nf r T σw?)
+  endTopLoan : ∀ (l : Nat) (site : String) (p? : Option Place), GrowsIn tb (Ochr.endTopLoan nf l site p?)
   accessPath : ∀ (p : Place), GrowsIn tb (Ochr.accessPath nf p)
   accessInside : ∀ (p : Place) (owned : Bool), GrowsIn tb (Ochr.accessInside nf p owned)
+  openWrite : ∀ (p : Place), GrowsIn tb (Ochr.openWrite nf p)
   accessNeutralHead : ∀ (p : Place), GrowsIn tb (Ochr.accessNeutralHead nf p)
   readPlace : ∀ (p : Place), GrowsIn tb (Ochr.readPlace nf p)
   copyRead : ∀ (p : Place), GrowsIn tb (Ochr.copyRead nf p)
   borrowPlace : ∀ (p : Place), GrowsIn tb (Ochr.borrowPlace nf p)
-  assignPlace : ∀ (p : Place) (v : Value), GrowsIn tb (Ochr.assignPlace nf p v)
+  assignPlace : ∀ (p : Place) (v : Value) (T : Option Value), GrowsIn tb (Ochr.assignPlace nf p v T)
   dropTopBind : GrowsIn tb (Ochr.dropTopBind nf)
   endLoansOfTopBind : ∀ (f : Nat), GrowsIn tb (Ochr.endLoansOfTopBind nf f)
-  dropValue : ∀ (v : Value), GrowsIn tb (Ochr.dropValue nf v)
+  dropValue : ∀ (v : Value) (T : Option Value), GrowsIn tb (Ochr.dropValue nf v T)
   endLoansOfTopTemp : GrowsIn tb (Ochr.endLoansOfTopTemp nf)
   popFrame : GrowsIn tb (Ochr.popFrame nf)
   placeType? : ∀ (p : Place), GrowsIn tb (Ochr.placeType? nf p)
@@ -69,7 +73,8 @@ structure MachineGrows (tb : Tab) (nf : Nat) : Prop where
   natPlace : ∀ (q : Place), GrowsIn tb (Ochr.natPlace nf q)
   projIn : ∀ (p : Place), GrowsIn tb (Ochr.projIn nf p)
   projMatch : ∀ (q : Place) (i : Nat) (k : Place → Term), GrowsIn tb (Ochr.projMatch nf q i k)
-  depFieldType : ∀ (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Place), GrowsIn tb (Ochr.depFieldType nf d ps g q)
+  depFieldType : ∀ (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Place) (declared : Bool), GrowsIn tb (Ochr.depFieldType nf d ps g q declared)
+  fieldDeclType : ∀ (p : Place), GrowsIn tb (Ochr.fieldDeclType nf p)
   packedErr : ∀ (v : Value) (T : Value), GrowsIn tb (Ochr.packedErr nf v T)
   convVal : ∀ (v : Value) (T : Value), GrowsIn tb (Ochr.convVal nf v T)
   valType? : ∀ (v : Value), GrowsIn tb (Ochr.valType? nf v)
@@ -98,13 +103,15 @@ structure MachineGrows (tb : Tab) (nf : Nat) : Prop where
   eval : ∀ (typed : Bool) (t : Term) (hint : Option Value), GrowsIn tb (Ochr.eval nf typed t hint)
   evalAt : ∀ (typed : Bool) (t : Term) (hint : Option Value), GrowsIn tb (Ochr.evalAt nf typed t hint)
   evalCore : ∀ (typed : Bool) (t : Term) (hint : Option Value), GrowsIn tb (Ochr.evalCore nf typed t hint)
+  unknownLent : ∀ (what : String) (ls : List Nat), GrowsIn tb (Ochr.unknownLent nf what ls)
   lentProofAssign : ∀ (p : Place) (u : Term), GrowsIn tb (Ochr.lentProofAssign nf p u)
+  lentLeafCheck : ∀ (p : Place) (Tv : Option Value), GrowsIn tb (Ochr.lentLeafCheck nf p Tv)
   evalTInd : ∀ (typed : Bool) (n : String) (as : List Term), GrowsIn tb (Ochr.evalTInd nf typed n as)
   evalParams : ∀ (n : String) (as : List Term) (typed : Bool), GrowsIn tb (Ochr.evalParams nf n as typed)
   checkParams : ∀ (d : IndDecl) (n : String) (vs : Array Value) (tys : Array (Option Value)), GrowsIn tb (Ochr.checkParams nf d n vs tys)
   evalCtor : ∀ (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts : List Term) (as : List Term) (hint : Option Value), GrowsIn tb (Ochr.evalCtor nf typed ty c h pts as hint)
   stmtCallee : ∀ (fv : Value) (fT : Option Value) (cls? : Option Nat), GrowsIn tb (Ochr.stmtCallee nf fv fT cls?)
-  evalCall : ∀ (typed : Bool) (f : Term) (as : List Term) (head : Bool) (cls? : Option Nat) (res? : Option DeclInfo), GrowsIn tb (Ochr.evalCall nf typed f as head cls? res?)
+  evalCall : ∀ (typed : Bool) (f : Term) (as : List Term) (head : Bool) (cls? : Option Nat) (res? : Option DeclInfo) (given : Option (Value × List Value)), GrowsIn tb (Ochr.evalCall nf typed f as head cls? res? given)
   argHint : ∀ (fv : Value) (fT : Option Value) (ws : Array Value), GrowsIn tb (Ochr.argHint nf fv fT ws)
   funType? : ∀ (fv : Value) (fT : Option Value), GrowsIn tb (Ochr.funType? nf fv fT)
   funType : ∀ (fv : Value) (fT : Option Value), GrowsIn tb (Ochr.funType nf fv fT)
@@ -112,9 +119,9 @@ structure MachineGrows (tb : Tab) (nf : Nat) : Prop where
   declCallType : ∀ (piTy : Value) (ws : Array Value), GrowsIn tb (Ochr.declCallType nf piTy ws)
   paramTypes : ∀ (piTy : Value) (ws : List Value) (need : List Nat), GrowsIn tb (Ochr.paramTypes nf piTy ws need)
   bindTy? : ∀ (pos : Pos), GrowsIn tb (Ochr.bindTy? nf pos)
-  endBorrowArgs : ∀ (ws : Array Value), GrowsIn tb (Ochr.endBorrowArgs nf ws)
-  runBody : ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value), GrowsIn tb (Ochr.runBody nf fv cs t rd ws)
-  runBodyCore : ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (body : Term), GrowsIn tb (Ochr.runBodyCore nf fv cs t rd ws self hs ds c body)
+  endBorrowArgs : ∀ (ws : Array Value) (tys : Array (Option Value)), GrowsIn tb (Ochr.endBorrowArgs nf ws tys)
+  runBody : ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) (B : Option Value), GrowsIn tb (Ochr.runBody nf fv cs t rd ws B)
+  runBodyCore : ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) (B : Option Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (body : Term), GrowsIn tb (Ochr.runBodyCore nf fv cs t rd ws B self hs ds c body)
   callFn : ∀ (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array Value) (tys : Array (Option Value)) (head : Bool) (cls? : Option Nat) (recUid? : Option Nat) (res : DeclInfo) (fills : Array Bool) (want : Bool) (defer : Bool), GrowsIn tb (Ochr.callFn nf typed fv fT ws tys head cls? recUid? res fills want defer)
   closeCall : ∀ (fv : Value) (ws : Array Value) (kind : Kind) (res : DeclInfo) (fills : Array Bool) (tys : Array (Option Value)), GrowsIn tb (Ochr.closeCall nf fv ws kind res fills tys)
   refine : ∀ (σ : Nat) (r : Value), GrowsIn tb (Ochr.refine nf σ r)
@@ -143,7 +150,7 @@ structure MachineGrows (tb : Tab) (nf : Nat) : Prop where
   dropAtJoin : ∀ (q : Place), GrowsIn tb (Ochr.dropAtJoin nf q)
   blockCaptures : ∀ (mt : Term) (armMovedAll : List Place), GrowsIn tb (Ochr.blockCaptures nf mt armMovedAll)
   closeBlock : ∀ (mt : Term) (arms : List BlockArm) (harms : ∀ a ∈ arms, GrowsIn tb a.setup ∧ ∀ r, GrowsIn tb (a.body r)) (B? : Option Value), GrowsIn tb (Ochr.closeBlock nf mt arms B?)
-  observe : ∀ (typed : Bool) (t : Term) (A : Value) (W : List Pos) (refs : List (Place × Value)), GrowsIn tb (Ochr.observe nf typed t A W refs)
+  observe : ∀ (typed : Bool) (t : Term) (A : Value) (W : List Pos) (refs : List (Place × Value × Value)) (consumed : List Place), GrowsIn tb (Ochr.observe nf typed t A W refs consumed)
   idType : ∀ (typed : Bool) (A : Term) (t : Term) (u : Term), GrowsIn tb (Ochr.idType nf typed A t u)
   stuckScrutinee : ∀ (t : Term), GrowsIn tb (Ochr.stuckScrutinee nf t)
   findSplit : ∀ (f : String) (G : Value), GrowsIn tb (Ochr.findSplit nf f G)

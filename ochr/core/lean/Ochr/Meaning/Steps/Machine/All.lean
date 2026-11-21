@@ -8,7 +8,7 @@ import Ochr.Meaning.Steps.Machine.StepCall
 import Ochr.Meaning.Steps.Machine.StepMatch
 import Ochr.Meaning.Steps.Machine.StepJoin
 import Ochr.Meaning.Steps.Machine.StepTail
-import Ochr.Meaning.Steps.Machine.StepPending
+import Ochr.Meaning.Steps.Machine.StepConv
 
 /-!
 # The induction over the machine's block, assembled
@@ -56,7 +56,6 @@ theorem retOk_joinCont_zero (mt : Term) (k : Value → Value → M Unit) (_ : �
   cases h
 
 theorem machineGrows_zero : MachineGrows tb 0 where
-
   substV := zero_substV
   substT := zero_substT
   substEnv := zero_substEnv
@@ -71,6 +70,7 @@ theorem machineGrows_zero : MachineGrows tb 0 where
   endTopLoan := zero_endTopLoan
   accessPath := zero_accessPath
   accessInside := zero_accessInside
+  openWrite := zero_openWrite
   accessNeutralHead := zero_accessNeutralHead
   readPlace := zero_readPlace
   copyRead := zero_copyRead
@@ -87,6 +87,7 @@ theorem machineGrows_zero : MachineGrows tb 0 where
   projIn := zero_projIn
   projMatch := zero_projMatch
   depFieldType := zero_depFieldType
+  fieldDeclType := zero_fieldDeclType
   packedErr := zero_packedErr
   convVal := zero_convVal
   valType? := zero_valTypeQ
@@ -115,7 +116,9 @@ theorem machineGrows_zero : MachineGrows tb 0 where
   eval := zero_eval
   evalAt := zero_evalAt
   evalCore := zero_evalCore
+  unknownLent := zero_unknownLent
   lentProofAssign := zero_lentProofAssign
+  lentLeafCheck := zero_lentLeafCheck
   evalTInd := zero_evalTInd
   evalParams := zero_evalParams
   checkParams := zero_checkParams
@@ -186,6 +189,7 @@ theorem machineGrows_succ (nf : Nat) (ih : MachineGrows tb nf) : MachineGrows tb
   endTopLoan := step_endTopLoan ih
   accessPath := step_accessPath ih
   accessInside := step_accessInside ih
+  openWrite := step_openWrite ih
   accessNeutralHead := step_accessNeutralHead ih
   readPlace := step_readPlace ih
   copyRead := step_copyRead ih
@@ -202,6 +206,7 @@ theorem machineGrows_succ (nf : Nat) (ih : MachineGrows tb nf) : MachineGrows tb
   projIn := step_projIn ih
   projMatch := step_projMatch ih
   depFieldType := step_depFieldType ih
+  fieldDeclType := step_fieldDeclType ih
   packedErr := step_packedErr ih
   convVal := step_convVal ih
   valType? := step_valTypeQ ih
@@ -230,7 +235,9 @@ theorem machineGrows_succ (nf : Nat) (ih : MachineGrows tb nf) : MachineGrows tb
   eval := step_eval ih
   evalAt := step_evalAt ih
   evalCore := step_evalCore ih
+  unknownLent := step_unknownLent ih
   lentProofAssign := step_lentProofAssign ih
+  lentLeafCheck := step_lentLeafCheck ih
   evalTInd := step_evalTInd ih
   evalParams := step_evalParams ih
   checkParams := step_checkParams ih

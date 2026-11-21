@@ -21,8 +21,12 @@ variable {G : Tab}
 @[grows] theorem growsIn_pushFrame (fr : Frame) : GrowsIn G (pushFrame fr) := by unfold pushFrame; grows_go
 @[grows] theorem growsIn_pushBind (h : Hint) (ty : Option Value) (v : Value) (proof : Bool) (decl : DeclInfo) :
     GrowsIn G (pushBind h ty v proof decl) := by unfold pushBind; grows_go
-@[grows] theorem growsIn_pushTemp (v : Value) : GrowsIn G (pushTemp v) := by unfold pushTemp; grows_go
-@[grows] theorem growsIn_pushTempAt (f : Nat) (v : Value) : GrowsIn G (pushTempAt f v) := by unfold pushTempAt; grows_go
+@[grows] theorem growsIn_notePush (site : String) (v : Value) (T : Option Value) : GrowsIn G (notePush site v T) := by
+  unfold notePush; grows_go
+@[grows] theorem growsIn_pushTemp (v : Value) (T : Option Value) (site : String) : GrowsIn G (pushTemp v T site) := by
+  unfold pushTemp; grows_go
+@[grows] theorem growsIn_pushTempAt (f : Nat) (v : Value) (T : Option Value) (site : String) :
+    GrowsIn G (pushTempAt f v T site) := by unfold pushTempAt; grows_go
 @[grows] theorem growsIn_popTemp : GrowsIn G popTemp := by unfold popTemp; grows_go
 @[grows] theorem growsIn_varPos (i : Nat) : GrowsIn G (varPos i) := by unfold varPos; grows_go
 @[grows] theorem growsIn_getAt (p : Pos) : GrowsIn G (getAt p) := by unfold getAt; grows_go

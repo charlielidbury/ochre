@@ -3,7 +3,7 @@ import Ochr.Meaning.Steps.Machine.IH
 /-!
 # The step of the induction for the machine's block: calls
 
-Each function at fuel `n + 1`, its body walked by `grows_go ih` (the induction hypothesis at `n`).
+Each function at fuel `nf + 1`, its body walked by `grows_go ih` (the induction hypothesis at `nf`).
 -/
 
 namespace Ochr.Meaning.Steps.Machine
@@ -12,14 +12,24 @@ open Ochr Ochr.Meaning Ochr.Meaning.Steps
 
 variable {tb : Tab} {nf : Nat}
 
+theorem step_unknownLent (ih : MachineGrows tb nf) :
+    ∀ (what : String) (ls : List Nat), GrowsIn tb (Ochr.unknownLent ((nf + 1)) what ls) := by
+  intro what ls
+  unfold Ochr.unknownLent; grows_go ih
+
+theorem step_lentLeafCheck (ih : MachineGrows tb nf) :
+    ∀ (p : Place) (Tv : Option Value), GrowsIn tb (Ochr.lentLeafCheck ((nf + 1)) p Tv) := by
+  intro p Tv
+  unfold Ochr.lentLeafCheck; grows_go ih
+
 theorem step_stmtCallee (ih : MachineGrows tb nf) :
     ∀ (fv : Value) (fT : Option Value) (cls? : Option Nat), GrowsIn tb (Ochr.stmtCallee ((nf + 1)) fv fT cls?) := by
   intro fv fT cls?
   unfold Ochr.stmtCallee; grows_go ih
 
 theorem step_evalCall (ih : MachineGrows tb nf) :
-    ∀ (typed : Bool) (f : Term) (as : List Term) (head : Bool) (cls? : Option Nat) (res? : Option DeclInfo), GrowsIn tb (Ochr.evalCall ((nf + 1)) typed f as head cls? res?) := by
-  intro typed f as head cls? res?
+    ∀ (typed : Bool) (f : Term) (as : List Term) (head : Bool) (cls? : Option Nat) (res? : Option DeclInfo) (given : Option (Value × List Value)), GrowsIn tb (Ochr.evalCall ((nf + 1)) typed f as head cls? res? given) := by
+  intro typed f as head cls? res? given
   unfold Ochr.evalCall; grows_go ih
 
 theorem step_argHint (ih : MachineGrows tb nf) :
@@ -58,18 +68,18 @@ theorem step_bindTyQ (ih : MachineGrows tb nf) :
   unfold Ochr.bindTy?; grows_go ih
 
 theorem step_endBorrowArgs (ih : MachineGrows tb nf) :
-    ∀ (ws : Array Value), GrowsIn tb (Ochr.endBorrowArgs ((nf + 1)) ws) := by
-  intro ws
+    ∀ (ws : Array Value) (tys : Array (Option Value)), GrowsIn tb (Ochr.endBorrowArgs ((nf + 1)) ws tys) := by
+  intro ws tys
   unfold Ochr.endBorrowArgs; grows_go ih
 
 theorem step_runBody (ih : MachineGrows tb nf) :
-    ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value), GrowsIn tb (Ochr.runBody ((nf + 1)) fv cs t rd ws) := by
-  intro fv cs t rd ws
+    ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) (B : Option Value), GrowsIn tb (Ochr.runBody ((nf + 1)) fv cs t rd ws B) := by
+  intro fv cs t rd ws B
   unfold Ochr.runBody; grows_go ih
 
 theorem step_runBodyCore (ih : MachineGrows tb nf) :
-    ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (body : Term), GrowsIn tb (Ochr.runBodyCore ((nf + 1)) fv cs t rd ws self hs ds c body) := by
-  intro fv cs t rd ws self hs ds c body
+    ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) (B : Option Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (body : Term), GrowsIn tb (Ochr.runBodyCore ((nf + 1)) fv cs t rd ws B self hs ds c body) := by
+  intro fv cs t rd ws B self hs ds c body
   unfold Ochr.runBodyCore; grows_go ih
 
 set_option maxHeartbeats 2000000 in

@@ -3,7 +3,7 @@ import Ochr.Meaning.Steps.Machine.IH
 /-!
 # The step of the induction for the machine's block: the join and stuck blocks
 
-Each function at fuel `n + 1`, its body walked by `grows_go ih` (the induction hypothesis at `n`).
+Each function at fuel `nf + 1`, its body walked by `grows_go ih` (the induction hypothesis at `nf`).
 -/
 
 namespace Ochr.Meaning.Steps.Machine
@@ -41,6 +41,16 @@ theorem step_entryAccess (ih : MachineGrows tb nf) :
     ∀ (capsS : Array (Place × Nat)), GrowsIn tb (Ochr.entryAccess ((nf + 1)) capsS) := by
   intro capsS
   unfold Ochr.entryAccess; grows_go ih
+
+theorem step_dropAtJoin (ih : MachineGrows tb nf) :
+    ∀ (q : Place), GrowsIn tb (Ochr.dropAtJoin ((nf + 1)) q) := by
+  intro q
+  unfold Ochr.dropAtJoin; grows_go ih
+
+theorem step_blockCaptures (ih : MachineGrows tb nf) :
+    ∀ (mt : Term) (armMovedAll : List Place), GrowsIn tb (Ochr.blockCaptures ((nf + 1)) mt armMovedAll) := by
+  intro mt armMovedAll
+  unfold Ochr.blockCaptures; grows_go ih
 
 theorem step_closeBlock (ih : MachineGrows tb nf) :
     ∀ (mt : Term) (arms : List BlockArm) (harms : ∀ a ∈ arms, GrowsIn tb a.setup ∧ ∀ r, GrowsIn tb (a.body r)) (B? : Option Value), GrowsIn tb (Ochr.closeBlock ((nf + 1)) mt arms B?) := by

@@ -3,7 +3,7 @@ import Ochr.Meaning.Steps.Machine.IH
 /-!
 # The step of the induction for the machine's block: evaluation
 
-Each function at fuel `n + 1`, its body walked by `grows_go ih` (the induction hypothesis at `n`).
+Each function at fuel `nf + 1`, its body walked by `grows_go ih` (the induction hypothesis at `nf`).
 -/
 
 namespace Ochr.Meaning.Steps.Machine
@@ -37,6 +37,7 @@ theorem step_evalAt (ih : MachineGrows tb nf) :
   intro typed t hint
   unfold Ochr.evalAt; grows_go ih
 
+set_option maxHeartbeats 4000000 in
 theorem step_evalCore (ih : MachineGrows tb nf) :
     ∀ (typed : Bool) (t : Term) (hint : Option Value), GrowsIn tb (Ochr.evalCore ((nf + 1)) typed t hint) := by
   intro typed t hint

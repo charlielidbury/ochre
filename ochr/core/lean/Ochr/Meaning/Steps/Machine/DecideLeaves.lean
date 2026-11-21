@@ -65,8 +65,16 @@ end keep
   cases fuel <;> (unfold sortOf?; grows_go)
 @[grows] theorem growsIn_isBorrowable fuel T : GrowsIn G (isBorrowable fuel T) := by
   cases fuel <;> (unfold isBorrowable; grows_go)
-@[grows] theorem growsIn_paramDecls fuel cs rd hs ds c : GrowsIn G (paramDecls fuel cs rd hs ds c) := by
-  cases fuel <;> (unfold paramDecls; grows_go)
+@[grows] theorem growsIn_paramDecls fuel cs rd hs ds c : GrowsIn G (Ochr.paramDecls fuel cs rd hs ds c) := by
+  cases fuel <;> (unfold Ochr.paramDecls; grows_go)
+@[grows] theorem growsIn_inferablePos fuel d i : GrowsIn G (inferablePos fuel d i) := by
+  cases fuel <;> (unfold inferablePos; grows_go)
+@[grows] theorem growsIn_inferFrom fuel FT : GrowsIn G (inferFrom fuel FT) := by
+  induction fuel generalizing FT with
+  | zero => unfold inferFrom; grows_go
+  | succ n ih => unfold inferFrom; grows_go
+@[grows] theorem growsIn_fieldIsLeaf fuel d c i : GrowsIn G (fieldIsLeaf fuel d c i) := by
+  cases fuel <;> (unfold fieldIsLeaf; grows_go)
 @[grows] theorem growsIn_stmtArgInPlace fuel a : GrowsIn G (stmtArgInPlace fuel a) := by
   unfold stmtArgInPlace; grows_go
 @[grows] theorem growsIn_pushCaps fuel cs rd : GrowsIn G (pushCaps fuel cs rd) := by

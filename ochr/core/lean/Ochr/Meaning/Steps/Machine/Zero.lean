@@ -62,13 +62,13 @@ theorem zero_endAll :
   unfold Ochr.endAll; grows_go
 
 theorem zero_obsResult :
-    ∀ (r : Value) (σw? : Option Nat), GrowsIn tb (Ochr.obsResult 0 r σw?) := by
-  intro r σw?
+    ∀ (r : Value) (T : Option Value) (σw? : Option Nat), GrowsIn tb (Ochr.obsResult 0 r T σw?) := by
+  intro r T σw?
   unfold Ochr.obsResult; grows_go
 
 theorem zero_endTopLoan :
-    ∀ (l : Nat) (site : String), GrowsIn tb (Ochr.endTopLoan 0 l site) := by
-  intro l site
+    ∀ (l : Nat) (site : String) (p? : Option Place), GrowsIn tb (Ochr.endTopLoan 0 l site p?) := by
+  intro l site p?
   unfold Ochr.endTopLoan; grows_go
 
 theorem zero_accessPath :
@@ -80,6 +80,11 @@ theorem zero_accessInside :
     ∀ (p : Place) (owned : Bool), GrowsIn tb (Ochr.accessInside 0 p owned) := by
   intro p owned
   unfold Ochr.accessInside; grows_go
+
+theorem zero_openWrite :
+    ∀ (p : Place), GrowsIn tb (Ochr.openWrite 0 p) := by
+  intro p
+  unfold Ochr.openWrite; grows_go
 
 theorem zero_accessNeutralHead :
     ∀ (p : Place), GrowsIn tb (Ochr.accessNeutralHead 0 p) := by
@@ -102,8 +107,8 @@ theorem zero_borrowPlace :
   unfold Ochr.borrowPlace; grows_go
 
 theorem zero_assignPlace :
-    ∀ (p : Place) (v : Value), GrowsIn tb (Ochr.assignPlace 0 p v) := by
-  intro p v
+    ∀ (p : Place) (v : Value) (T : Option Value), GrowsIn tb (Ochr.assignPlace 0 p v T) := by
+  intro p v T
   unfold Ochr.assignPlace; grows_go
 
 theorem zero_dropTopBind :
@@ -116,8 +121,8 @@ theorem zero_endLoansOfTopBind :
   unfold Ochr.endLoansOfTopBind; grows_go
 
 theorem zero_dropValue :
-    ∀ (v : Value), GrowsIn tb (Ochr.dropValue 0 v) := by
-  intro v
+    ∀ (v : Value) (T : Option Value), GrowsIn tb (Ochr.dropValue 0 v T) := by
+  intro v T
   unfold Ochr.dropValue; grows_go
 
 theorem zero_endLoansOfTopTemp :
@@ -154,9 +159,14 @@ theorem zero_projMatch :
   unfold Ochr.projMatch; grows_go
 
 theorem zero_depFieldType :
-    ∀ (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Place), GrowsIn tb (Ochr.depFieldType 0 d ps g q) := by
-  intro d ps g q
+    ∀ (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Place) (declared : Bool), GrowsIn tb (Ochr.depFieldType 0 d ps g q declared) := by
+  intro d ps g q declared
   unfold Ochr.depFieldType; grows_go
+
+theorem zero_fieldDeclType :
+    ∀ (p : Place), GrowsIn tb (Ochr.fieldDeclType 0 p) := by
+  intro p
+  unfold Ochr.fieldDeclType; grows_go
 
 theorem zero_packedErr :
     ∀ (v : Value) (T : Value), GrowsIn tb (Ochr.packedErr 0 v T) := by
@@ -299,10 +309,20 @@ theorem zero_evalCore :
   intro typed t hint
   unfold Ochr.evalCore; grows_go
 
+theorem zero_unknownLent :
+    ∀ (what : String) (ls : List Nat), GrowsIn tb (Ochr.unknownLent 0 what ls) := by
+  intro what ls
+  unfold Ochr.unknownLent; grows_go
+
 theorem zero_lentProofAssign :
     ∀ (p : Place) (u : Term), GrowsIn tb (Ochr.lentProofAssign 0 p u) := by
   intro p u
   unfold Ochr.lentProofAssign; grows_go
+
+theorem zero_lentLeafCheck :
+    ∀ (p : Place) (Tv : Option Value), GrowsIn tb (Ochr.lentLeafCheck 0 p Tv) := by
+  intro p Tv
+  unfold Ochr.lentLeafCheck; grows_go
 
 theorem zero_evalTInd :
     ∀ (typed : Bool) (n : String) (as : List Term), GrowsIn tb (Ochr.evalTInd 0 typed n as) := by
@@ -330,8 +350,8 @@ theorem zero_stmtCallee :
   unfold Ochr.stmtCallee; grows_go
 
 theorem zero_evalCall :
-    ∀ (typed : Bool) (f : Term) (as : List Term) (head : Bool) (cls? : Option Nat) (res? : Option DeclInfo), GrowsIn tb (Ochr.evalCall 0 typed f as head cls? res?) := by
-  intro typed f as head cls? res?
+    ∀ (typed : Bool) (f : Term) (as : List Term) (head : Bool) (cls? : Option Nat) (res? : Option DeclInfo) (given : Option (Value × List Value)), GrowsIn tb (Ochr.evalCall 0 typed f as head cls? res? given) := by
+  intro typed f as head cls? res? given
   unfold Ochr.evalCall; grows_go
 
 theorem zero_argHint :
@@ -370,18 +390,18 @@ theorem zero_bindTyQ :
   unfold Ochr.bindTy?; grows_go
 
 theorem zero_endBorrowArgs :
-    ∀ (ws : Array Value), GrowsIn tb (Ochr.endBorrowArgs 0 ws) := by
-  intro ws
+    ∀ (ws : Array Value) (tys : Array (Option Value)), GrowsIn tb (Ochr.endBorrowArgs 0 ws tys) := by
+  intro ws tys
   unfold Ochr.endBorrowArgs; grows_go
 
 theorem zero_runBody :
-    ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value), GrowsIn tb (Ochr.runBody 0 fv cs t rd ws) := by
-  intro fv cs t rd ws
+    ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) (B : Option Value), GrowsIn tb (Ochr.runBody 0 fv cs t rd ws B) := by
+  intro fv cs t rd ws B
   unfold Ochr.runBody; grows_go
 
 theorem zero_runBodyCore :
-    ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (body : Term), GrowsIn tb (Ochr.runBodyCore 0 fv cs t rd ws self hs ds c body) := by
-  intro fv cs t rd ws self hs ds c body
+    ∀ (fv : Value) (cs : List Value) (t : Term) (rd : List (DeclInfo × Value)) (ws : Array Value) (B : Option Value) (self : Hint) (hs : List Hint) (ds : List Term) (c : Term) (body : Term), GrowsIn tb (Ochr.runBodyCore 0 fv cs t rd ws B self hs ds c body) := by
+  intro fv cs t rd ws B self hs ds c body
   unfold Ochr.runBodyCore; grows_go
 
 theorem zero_callFn :
@@ -524,9 +544,9 @@ theorem zero_closeBlock :
   unfold Ochr.closeBlock; grows_go
 
 theorem zero_observe :
-    ∀ (typed : Bool) (t : Term) (A : Value) (W : List Pos) (refs : List (Place × Value)), GrowsIn tb (Ochr.observe 0 typed t A W refs) := by
-  intro typed t A W refs
-  have e : Ochr.observe 0 typed t A W refs = inStatement (exhausted "out of fuel") := rfl
+    ∀ (typed : Bool) (t : Term) (A : Value) (W : List Pos) (refs : List (Place × Value × Value)) (consumed : List Place), GrowsIn tb (Ochr.observe 0 typed t A W refs consumed) := by
+  intro typed t A W refs consumed
+  have e : Ochr.observe 0 typed t A W refs consumed = inStatement (exhausted "out of fuel") := rfl
   rw [e]; grows_go
 
 theorem zero_idType :

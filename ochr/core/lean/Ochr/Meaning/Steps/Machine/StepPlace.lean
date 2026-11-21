@@ -3,7 +3,7 @@ import Ochr.Meaning.Steps.Machine.IH
 /-!
 # The step of the induction for the machine's block: reads, borrows, assignments, drops, a place's type
 
-Each function at fuel `n + 1`, its body walked by `grows_go ih` (the induction hypothesis at `n`).
+Each function at fuel `nf + 1`, its body walked by `grows_go ih` (the induction hypothesis at `nf`).
 -/
 
 namespace Ochr.Meaning.Steps.Machine
@@ -11,6 +11,11 @@ namespace Ochr.Meaning.Steps.Machine
 open Ochr Ochr.Meaning Ochr.Meaning.Steps
 
 variable {tb : Tab} {nf : Nat}
+
+theorem step_openWrite (ih : MachineGrows tb nf) :
+    ∀ (p : Place), GrowsIn tb (Ochr.openWrite ((nf + 1)) p) := by
+  intro p
+  unfold Ochr.openWrite; grows_go ih
 
 theorem step_readPlace (ih : MachineGrows tb nf) :
     ∀ (p : Place), GrowsIn tb (Ochr.readPlace ((nf + 1)) p) := by
@@ -28,8 +33,8 @@ theorem step_borrowPlace (ih : MachineGrows tb nf) :
   unfold Ochr.borrowPlace; grows_go ih
 
 theorem step_assignPlace (ih : MachineGrows tb nf) :
-    ∀ (p : Place) (v : Value), GrowsIn tb (Ochr.assignPlace ((nf + 1)) p v) := by
-  intro p v
+    ∀ (p : Place) (v : Value) (T : Option Value), GrowsIn tb (Ochr.assignPlace ((nf + 1)) p v T) := by
+  intro p v T
   unfold Ochr.assignPlace; grows_go ih
 
 theorem step_dropTopBind (ih : MachineGrows tb nf) :
@@ -42,8 +47,8 @@ theorem step_endLoansOfTopBind (ih : MachineGrows tb nf) :
   unfold Ochr.endLoansOfTopBind; grows_go ih
 
 theorem step_dropValue (ih : MachineGrows tb nf) :
-    ∀ (v : Value), GrowsIn tb (Ochr.dropValue ((nf + 1)) v) := by
-  intro v
+    ∀ (v : Value) (T : Option Value), GrowsIn tb (Ochr.dropValue ((nf + 1)) v T) := by
+  intro v T
   unfold Ochr.dropValue; grows_go ih
 
 theorem step_endLoansOfTopTemp (ih : MachineGrows tb nf) :
@@ -80,8 +85,8 @@ theorem step_projMatch (ih : MachineGrows tb nf) :
   unfold Ochr.projMatch; grows_go ih
 
 theorem step_depFieldType (ih : MachineGrows tb nf) :
-    ∀ (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Place), GrowsIn tb (Ochr.depFieldType ((nf + 1)) d ps g q) := by
-  intro d ps g q
+    ∀ (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Place) (declared : Bool), GrowsIn tb (Ochr.depFieldType ((nf + 1)) d ps g q declared) := by
+  intro d ps g q declared
   unfold Ochr.depFieldType; grows_go ih
 
 end Ochr.Meaning.Steps.Machine

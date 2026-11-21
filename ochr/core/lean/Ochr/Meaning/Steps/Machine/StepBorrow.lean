@@ -3,7 +3,7 @@ import Ochr.Meaning.Steps.Machine.IH
 /-!
 # The step of the induction for the machine's block: borrows ([End], [Access], [Repack])
 
-Each function at fuel `n + 1`, its body walked by `grows_go ih` (the induction hypothesis at `n`).
+Each function at fuel `nf + 1`, its body walked by `grows_go ih` (the induction hypothesis at `nf`).
 -/
 
 namespace Ochr.Meaning.Steps.Machine
@@ -42,13 +42,13 @@ theorem step_endAll (ih : MachineGrows tb nf) :
   unfold Ochr.endAll; grows_go ih
 
 theorem step_obsResult (ih : MachineGrows tb nf) :
-    ∀ (r : Value) (σw? : Option Nat), GrowsIn tb (Ochr.obsResult ((nf + 1)) r σw?) := by
-  intro r σw?
+    ∀ (r : Value) (T : Option Value) (σw? : Option Nat), GrowsIn tb (Ochr.obsResult ((nf + 1)) r T σw?) := by
+  intro r T σw?
   unfold Ochr.obsResult; grows_go ih
 
 theorem step_endTopLoan (ih : MachineGrows tb nf) :
-    ∀ (l : Nat) (site : String), GrowsIn tb (Ochr.endTopLoan ((nf + 1)) l site) := by
-  intro l site
+    ∀ (l : Nat) (site : String) (p? : Option Place), GrowsIn tb (Ochr.endTopLoan ((nf + 1)) l site p?) := by
+  intro l site p?
   unfold Ochr.endTopLoan; grows_go ih
 
 theorem step_accessPath (ih : MachineGrows tb nf) :

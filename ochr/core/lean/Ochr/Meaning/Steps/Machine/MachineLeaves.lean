@@ -17,6 +17,11 @@ variable {G : Tab}
 @[grows] theorem growsIn_fuelLeft : GrowsIn G fuelLeft := by unfold fuelLeft; grows_go
 @[grows] theorem growsIn_ppPlace p : GrowsIn G (ppPlace p) := by unfold ppPlace; grows_go
 @[grows] theorem growsIn_content? p : GrowsIn G (content? p) := by unfold content?; grows_go
+@[grows] theorem growsIn_underProof : (p : Place) → GrowsIn G (underProof p)
+  | .var _ => by unfold underProof; grows_go
+  | .deref q => by have ih : GrowsIn G (underProof q) := growsIn_underProof q; unfold underProof; grows_go
+  | .proj _ q => by have ih : GrowsIn G (underProof q) := growsIn_underProof q; unfold underProof; grows_go
+  | .field _ q => by have ih : GrowsIn G (underProof q) := growsIn_underProof q; unfold underProof; grows_go
 @[grows] theorem growsIn_content p : GrowsIn G (content p) := by unfold content; grows_go
 @[grows] theorem growsIn_setPlace p v : GrowsIn G (setPlace p v) := by unfold setPlace; grows_go
 @[grows] theorem growsIn_expandRefsF refs fuel v : GrowsIn G (expandRefsF refs fuel v) := by
@@ -24,7 +29,6 @@ variable {G : Tab}
   | zero => unfold expandRefsF; grows_go
   | succ n ih => unfold expandRefsF; grows_go
 @[grows] theorem growsIn_expandRefs refs v : GrowsIn G (expandRefs refs v) := by unfold expandRefs; grows_go
-@[grows] theorem growsIn_openWrite p : GrowsIn G (openWrite p) := by unfold openWrite; grows_go
 @[grows] theorem growsIn_atRuntime : GrowsIn G atRuntime := by unfold atRuntime; grows_go
 @[grows] theorem growsIn_abstractMatchCheck p ty : GrowsIn G (abstractMatchCheck p ty) := by
   unfold abstractMatchCheck; grows_go
@@ -92,9 +96,12 @@ theorem growsIn_hasDependent_both :
 @[grows] theorem growsIn_markCapRec m : GrowsIn G (markCapRec m) := by unfold markCapRec; grows_go
 @[grows] theorem growsIn_markLastRec u : GrowsIn G (markLastRec u) := by unfold markLastRec; grows_go
 @[grows] theorem growsIn_callRecUid f : GrowsIn G (callRecUid f) := by unfold callRecUid; grows_go
+@[grows] theorem growsIn_neutralLookup v : GrowsIn G (neutralLookup v) := by unfold neutralLookup; grows_go
 @[grows] theorem growsIn_recordedNeutral v : GrowsIn G (recordedNeutral v) := by unfold recordedNeutral; grows_go
 @[grows] theorem growsIn_canonNeutral v : GrowsIn G (canonNeutral v) := by unfold canonNeutral; grows_go
 @[grows] theorem growsIn_armMoves log f0 n0 : GrowsIn G (armMoves log f0 n0) := by unfold armMoves; grows_go
+@[grows] theorem growsIn_ctorNeedsCtx fuel d c : GrowsIn G (ctorNeedsCtx fuel d c) := by
+  unfold ctorNeedsCtx; grows_go
 @[grows] theorem growsIn_needsCtx fuel t : GrowsIn G (needsCtx fuel t) := by
   induction fuel generalizing t with
   | zero => unfold needsCtx; grows_go
@@ -149,24 +156,29 @@ theorem growsAt_set {s s₀ : MState} (h₀ : TablesGrow s s₀) : GrowsAt s (se
 theorem keep_modifyThe_log (g : Array LogEntry → Array LogEntry) : Keep (modifyThe (Array LogEntry) g : M Unit) := by
   intro s f l a s' f' l' h; cases h; rfl
 
-theorem keep_noteState (l : Option Loc) (exit : Bool) (v : Option Value) : Keep (located.noteState l exit v) := by
-  unfold located.noteState
+theorem keep_noteStateAt (l : Option Loc) (exit : Bool) (v : Option (Value × Option Value)) :
+    Keep (noteStateAt l exit v) := by
+  unfold noteStateAt
   keep_go
   all_goals exact keep_modifyThe_log _
 
-@[grows] theorem growsIn_located {α : Type} (t : Term) {x : M α} (flight : α → Option Value) (hx : GrowsIn G x) :
-    GrowsIn G (located t x flight) := by
-  unfold located
+@[grows] theorem growsIn_locatedCore {α : Type} (t : Term) {x : M α} (flight : α → Option (Value × Option Value))
+    (hx : GrowsIn G x) : GrowsIn G (locatedCore t x flight) := by
+  unfold locatedCore
   refine growsIn_get_bind_at fun s hs => ?_
   split
   · exact growsAt_of_growsIn hs hx
   · dsimp only
-    refine growsAt_keep_bind (keep_noteState _ _ _) fun _ => ?_
+    refine growsAt_keep_bind (keep_noteStateAt _ _ _) fun _ => ?_
     refine growsAt_set_bind (tablesGrow_of_eq rfl rfl rfl rfl rfl) hs fun _ => ?_
     grows_go
     all_goals first
-      | exact growsIn_of_keep (keep_noteState _ _ _)
+      | exact growsIn_of_keep (keep_noteStateAt _ _ _)
       | skip
+
+@[grows] theorem growsIn_located {α : Type} (t : Term) {x : M α} (flight : α → Option (Value × Option Value))
+    (ownTyping : Option Bool) (hx : GrowsIn G x) : GrowsIn G (located t x flight ownTyping) := by
+  unfold located; grows_go
 
 @[grows] theorem growsIn_locatedTail (t : Term) {x : M Unit} (hx : GrowsIn G x) : GrowsIn G (locatedTail t x) := by
   unfold locatedTail; grows_go
