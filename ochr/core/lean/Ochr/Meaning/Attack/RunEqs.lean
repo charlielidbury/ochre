@@ -30,6 +30,11 @@ theorem invalidate_noInv (K : RunCtx) (φ : Future) (hinv : ∀ sc p, K.D.invali
     (s : SState) : invalidate K φ p s = s := by
   simp [invalidate, hinv _ _]
 
+/-- A place that resolves through `*` only satisfies `lentOk` (a write or borrow through `*`). -/
+theorem lentOk_deref (K : RunCtx) (φ : Future) {p : Place} {s : SState} {pos : Pos}
+    (h : resolve s p = some (pos, [.deref])) : lentOk K φ p s := by
+  unfold lentOk; rw [h]; exact .inr (.inl rfl)
+
 /-- A place that resolves to a root satisfies D112's `lentOk`. -/
 theorem lentOk_root (K : RunCtx) (φ : Future) {p : Place} {s : SState} {pos : Pos}
     (h : resolve s p = some (pos, [])) : lentOk K φ p s := by
