@@ -105,7 +105,7 @@ theorem call_cod (hint : TyS) (f : Term) (args : List Term) (hd : Bool) (s s' : 
   unfold SM.erasedIf at h
   rw [if_neg (by simp [hfl])] at h
   have key : ∀ r₀ s₀, (do
-      let fv ← SM.headOf f (fun p => readPlace K φ p true) (runT K ρ φ false (.plain TyM.err) f)
+      let fv ← SM.headOf f (fun p => SM.guarded (ContentOk K φ p) (readPlace K φ p true)) (runT K ρ φ false (.plain TyM.err) f)
       let as ← runArgs K ρ φ (K.D.flags (scopeOf s) (.call f args hd)).1 fv.2.m [] args
       fun s => if BorrowArgsTyped K.dm.read fv as s then callOf K.dm.read fv as s else none) s = some (r₀, s₀) →
       ∃ (fv : Res) (as : List Res) (b : Bool), fv.2.m.codAt? K.dm.read (as.map (·.1)) = some (b, r₀.2.m) := by

@@ -91,18 +91,53 @@ theorem held_a3 (n : Nat) :
   simp only [rB, take_a2]
   simp [SState.pushBind, SState.setAt, SState.topIdx, a2]
 
+theorem heldTy_takeLabel (s : SState) (l : Nat) : (s.takeLabel l).heldTy = s.heldTy := by
+  unfold SState.takeLabel
+  cases h : s.holderOf l with
+  | none => simp [h]
+  | some r => cases r <;> simp [h, SState.setAt]
+
+theorem heldTy_pushBindShaped (s : SState) (b : SBinding) : (pushBindShaped s b).heldTy = s.heldTy := by
+  unfold pushBindShaped
+  split
+  · simp only []
+    split
+    · simp [SState.pushBind, heldTy_takeLabel]
+    · simp [SState.pushBind, heldTy_takeLabel]
+  · simp [SState.pushBind]
+
+theorem endOk_a3 (n : Nat) : EndOk K φ (a3 K n) n := by
+  intro r hr ψ _
+  rw [holder_a3] at hr
+  cases hr
+  have hv : (a3 K n).valAt (.bind 0 1) ψ = .el0 Nat 0 := by
+    unfold a3 pushBindShaped; simp only [rB, take_a2]
+    simp [SState.valAt, SState.pushBind, SState.setAt, SState.topIdx, a2]
+  have ht : (a3 K n).heldTy n = TyM.nat := by
+    unfold a3; rw [heldTy_pushBindShaped]; simp [a2]
+  rw [hv]
+  show Sem.el0 Nat 0 ∈ₛ[K.dm.read] (a3 K n).heldTy n
+  rw [ht]; exact ⟨(0 : Nat), rfl⟩
+
+theorem guard_a3 (n : Nat) :
+    (match (match (a3 K n).env.getLast? with
+        | some fr => (a3 K n).shape (.bind (a3 K n).topIdx (fr.binds.length - 1))
+        | none => none) with
+      | some l => EndOk K φ (a3 K n) l | none => LetLendersOk K φ (a3 K n)) := by
+  rw [held_a3]
+  exact endOk_a3 K φ n
+
 /-- The reference run of `let r = &y; ()` from `y = Z` ends in `aF`. -/
 theorem let_borrow_run (hfl : NoStmt K) (hinv : NoInv K) (n : Nat) (hint : TyS) :
     run K ρ φ hint tLet (a1 K n) = some ((.el0 Unit (), .plain TyM.unit), aF K n) := by
-  rw [tLet, run_letIn ρ φ K hfl, run_borrow ρ φ K hfl, strictBorrow_a1]
+  rw [tLet, run_letIn ρ φ K hfl, run_borrow ρ φ K hfl, strictBorrow_a1g]
   have hl1 : lentOk K φ (.var 0) (a2 K n) := lentOk_root K φ (pos := .bind 0 0) rfl
-  simp only [invalidate_noInv K φ hinv, hl1, if_true]
-  show ((run K ρ φ hint .tt (a3 K n)).bind fun y => some (y.1, (match (match y.2.env.getLast? with
-            | some fr => y.2.shape (.bind y.2.topIdx (fr.binds.length - 1))
-            | none => none) with
-          | some l => y.2.endLabel l | none => letLenders y.2).dropLast)) = _
-  have htt : run K ρ φ hint .tt (a3 K n) = some ((.el0 Unit (), .plain TyM.unit), a3 K n) := rfl
-  rw [htt]
+  have hv1 := Ochr.Meaning.Attack.invalidateOk_noInv K φ hinv (.var 0) (a2 K n)
+  simp only [invalidate_noInv K φ hinv, hl1, hv1, and_self, if_true, Option.bind_some]
+  have htt : run K ρ φ hint .tt (pushBindShaped (a2 K n) (rB K n)) = some ((.el0 Unit (), .plain TyM.unit), a3 K n) := rfl
+  erw [htt]
+  simp only [Option.bind_some]
+  erw [if_pos (guard_a3 K φ n)]
   show some ((Sem.el0 Unit (), TyS.plain TyM.unit), (match (match (a3 K n).env.getLast? with
             | some fr => (a3 K n).shape (.bind (a3 K n).topIdx (fr.binds.length - 1))
             | none => none) with
