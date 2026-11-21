@@ -58,3 +58,12 @@ Its final report, 2026-11-21, kept for whoever lands the next change.
 - **Showing a fact about a state.** A hole `?` with `located := true` prints Ω at that point. For a fact at depth, `lake exe sweep --deep-private <Block>` with a block filter takes seconds.
 - **Dependent-field code:** a field's parameters are `var 0 … var (np-1)` whichever field it is; the fields come after the parameters (`IndDecl.fieldRefs`).
 - **Known and unfixed on main:** `Fuzz.Lib` has not built since D84 (`AddMZeroL` fails [Id-typestate]); it is not a default target.
+
+## From the lane that landed D113 and D114
+
+Its final report, 2026-11-21.
+
+- **A generated table can check nothing and still read as clean.** A single `ochr` block of about a thousand definitions overflows the elaborator's recursion depth: `lake env lean` prints "maximum recursion depth has been reached" (and "unknown declaration" for the block) and checks no row. A script that reads the absence of errors as "all accepted" then reports a clean result from a run that checked nothing; two of this lane's reports did, before the re-run. So every generated run asserts its expected number of rows (or of rejections) and greps for that message, and a large table is split into blocks of a few hundred rows (one per kind and operation). A generated asserted block is mutation-tested once: change one value row and one guard, and see both fail.
+- **`lake env lean` stops at 100 errors.** A probe file of plain `def`s with more rejections than that is cut short ("maximum number of errors (100 …) reached, exiting"); pass `-DmaxErrors=100000` on the command line (`set_option` in the file does not reach it).
+- **Differential twins for a class hunt.** For a fault in one of two routes to the same state (a plain borrow against a call's returned borrow; a move into a call, into a stuck block, or a drop at the join), generate one row per operation and per route, check the routes' verdicts and values agree row by row, and keep the generator: the same table, asserted, guards the fix (`DependentFields.MarkedTable…`, `Equality.IdConsumed`). For `Id`, put each hiding pair beside its honest twin and the twin that does the hidden thing on both sides (`Equality.ObsRef`).
+- **A paused account leaves orphans.** A background chain killed by its parent can leave a `lake build` and its `gcc` running in a worktree; find them by `readlink /proc/<pid>/cwd` before restarting a build there.
