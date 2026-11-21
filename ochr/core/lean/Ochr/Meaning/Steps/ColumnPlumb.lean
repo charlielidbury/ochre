@@ -30,6 +30,92 @@ theorem rel_pushBind_num {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat 
       (s.pushBind { ty := R, val := fun _ => c, decl := d }) := by
   sorry
 
+/-! ### (P2) as stated is false: `loans` does not walk a closure's recorded readings
+
+`Value.loans` skips the declared types a closure records for its captures (`.clo cs t rd`'s `rd`,
+D82), while `Value.hasLoan`, hence `Value.sitesOf` of a sealed program, walks them
+(`SitesFollow.mem_loans_of_hasLoan` needs `rdHasLoan` false for the converse). A binding holding
+`⌈clo [] Z [(_, loan 0)]⌉` has `loans = []` and no borrow, yet is a FILL site of the live label `0`
+(held by a temporary). Popping it removes that site from the checker's `sitesOf`, and the
+reference's `lent` keeps it, so `Rel.sites` fails after the pop. (WF15 excludes such values; `Rel`
+and P2's hypotheses do not.) -/
+
+namespace PopBindCE
+
+/-- A sealed program whose closure records a declared type holding the loan `0`. -/
+def wv : Value := .sealed (.val (.clo [] (.val .zero) [(.other, .loan 0)]))
+
+def bv : Binding := { hint := default, ty := some .tNat, val := wv }
+
+/-- One frame: the binding, and a temporary holding the borrow `0`. -/
+def frv : Frame := { binds := #[bv], temps := #[.borrow 0 .zero] }
+
+def stv : MState := { env := #[frv], nextLoan := 1 }
+
+/-- The checker's state read as a reference state, with the live label's record a number. -/
+noncomputable def s0 (K : RunCtx) (ρ : Assignment) : SState :=
+  { SM' K ρ stv with heldTy := fun _ => TyM.nat, heldMem := fun _ => .el0 Nat 0 }
+
+theorem allPos_stv : allPos stv.env = [.bind 0 0, .temp 0 0] := by rw [allPos_eq]; rfl
+
+theorem sitesOf_stv : Env.sitesOf stv.env 0 = [⟨.bind 0 0, [], true⟩] := by
+  rw [Env.sitesOf, allPos_stv]; rfl
+
+theorem allPos_pop : allPos (Env.popBindE stv.env) = [.temp 0 0] := by rw [allPos_eq]; rfl
+
+theorem sitesOf_pop : Env.sitesOf (Env.popBindE stv.env) 0 = [] := by
+  rw [Env.sitesOf, allPos_pop]; rfl
+
+theorem rel_s0 (K : RunCtx) (ρ : Assignment) (φ : Future) : Rel K ρ φ id stv (s0 K ρ) where
+  skel := rfl
+  fresh := fun _ h _ => h
+  sim := ⟨fun ψ _ p _ => by
+      show _ = (MState.sstate K.dm K.M K.Γ ρ stv).valAt p ψ
+      rw [sstate_valAt]; rfl,
+    fun _ _ _ h => h,
+    fun _ l' _ h => ⟨l', h, rfl⟩,
+    fun f i l h => ⟨i, h, fun ψ _ => by
+      show _ = (MState.sstate K.dm K.M K.Γ ρ stv).valAt (.temp f i) ψ
+      rw [sstate_valAt]; rfl⟩,
+    fun f j l' h => ⟨j, l', h, rfl⟩⟩
+  inj := fun _ _ _ _ h => h
+  sites := fun _ _ _ => Iff.rfl
+  holders := fun p l h => by
+    show p ∈ (MState.sstate K.dm K.M K.Γ ρ stv).positions
+    rw [sstate_positions]
+    exact mem_allPos_of_shape (l := l) h
+  records := fun l hl => by
+    refine ⟨show Sem.whole (.el0 Nat 0) by simp [Sem.whole], ?_⟩
+    obtain ⟨r, hr⟩ := SState.holderOf_of_live hl
+    obtain ⟨hrp, hrs⟩ := SState.holderOf_spec hr
+    have hpos : (s0 K ρ).positions = [.bind 0 0, .temp 0 0] := by
+      show (MState.sstate K.dm K.M K.Γ ρ stv).positions = _
+      rw [sstate_positions, allPos_stv]
+    rw [hpos] at hrp
+    unfold holderTy
+    rw [hr]
+    rcases List.mem_cons.mp hrp with rfl | hrp
+    · exact absurd hrs (by show Env.shape stv.env (.bind 0 0) ≠ some l; simp [Env.shape, valAt, stv, frv, bv, wv])
+    · rcases List.mem_singleton.mp hrp with rfl
+      exact (⟨0, rfl⟩ : Sem.el0 Nat 0 ∈ₛ[K.dm.read] TyM.nat)
+
+/-- **P2's hypotheses hold and its conclusion fails**, at every run context, assignment and future. -/
+theorem rel_popBind_false (K : RunCtx) (ρ : Assignment) (φ : Future) :
+    ∃ (st : MState) (s : SState) (fr : Frame) (b : Binding), Rel K ρ φ id st s ∧
+      st.env[st.env.size - 1]? = some fr ∧ fr.binds.back? = some b ∧ b.val.loans = [] ∧
+      (∀ l, b.val.holdsBorrow l = false) ∧
+      ¬ Rel K ρ φ id { st with env := Env.popBindE st.env } s.dropLast := by
+  refine ⟨stv, s0 K ρ, frv, bv, rel_s0 K ρ φ, rfl, rfl, rfl, fun _ => rfl, fun h => ?_⟩
+  have hl : liveLoan (Env.popBindE stv.env) 0 = true := by
+    simp [liveLoan, findBorrow, allPos_pop]; rfl
+  have hx := (h.sites 0 hl ⟨.bind 0 0, [], true⟩).mp (by
+    show _ ∈ Env.sitesOf stv.env 0
+    rw [sitesOf_stv]; exact List.mem_singleton.mpr rfl)
+  rw [sitesOf_pop] at hx
+  cases hx
+
+end PopBindCE
+
 /-- **(P2) The top binding popped, where it holds no borrow and no loan, keeps the relation**: the
 checker pops it, the reference drops its last binding (`SState.dropLast`). -/
 theorem rel_popBind {K : RunCtx} {ρ : Assignment} {φ : Future} {π : Nat → Nat} {st : MState} {s : SState}
