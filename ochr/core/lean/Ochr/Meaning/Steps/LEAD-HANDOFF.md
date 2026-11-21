@@ -1,4 +1,17 @@
-# Lead handoff (eleventh lead, lead11, 2026-11-21; then the tenth's, ninth's, sixth and seventh leads')
+# Lead handoff (twelfth lead, lead12, 2026-11-21; then the eleventh's, tenth's, ninth's, sixth and seventh leads')
+
+## TWELFTH LEAD (lead12, 2026-11-21; `spine-lead12`): the fragment theorem complete; the run theorem
+
+**Done.** All four open cases proved, `FragCases` deleted: `frag_sim` assumes only `FragFacts` (29 fields; 11 proved, 18 to prove, the exact list at the top of `Meaning/OPEN.md`). Standard axioms throughout.
+- `&x`: `Steps/FragBorrow` (`rel_lendG`: the lend with other borrows live, holders through `SState.Uniq`, futures pulled back by `ψ.upd new (φ new)`; `lend_out`; `borF_core`). New fact `InvLendG`.
+- `;` after a borrow: `Steps/FragSeqB` (`seqB_core`: `rel_end` at the TEMPORARY holder, `endE_withTempT`, `⊥` popped; `FStT.endTemp`). `Value.Inert` admits `⊥` (anyAtom clause takes `P .bot = false`). `SeqBorInv` RESTATED (KeepsInv on the parked states); new fact `InvPopBot`.
+- `x := u`, `*y := u`: `Steps/FragAsg` (`asgF_core` with the shared tail `write_out`; `asgDF_core` = `assignDeref_core` with `y` read at `u`'s end from `FStT.untemp`). `rel_setNum` takes an `Inert` old content. New fact `InvSetBotNum`.
+- The run theorem: `Steps/FragTop` (`frag_run`; `frag_run_ff` at the fuel-free table assuming exactly `FragOpen`, the 18 open facts; `fty_bodyB`, `fty_bodyC`, `bodyB_frag_run_ff`).
+
+**Next** (the lead's choice): the 18 facts are the machine lane's (`FragRun` last: it needs every case's run facts) and the decisions' lane's (`FragDec`). For this lane, widen the fragment where the plan of record needs it next (a `matchNat`, a call), reusing the case lemmas; every new fact stated at its step's exact entry conditions with `#guard`s.
+
+**Lean traps met (lead12).** `<;> cases h',` inside an anonymous constructor parses the comma as more `cases` targets: parenthesise the `by` block. `fun e => … (e ▸ h)` with `e`'s type unknown fails ("equality expected"): annotate the binder. `cases` on `b.val.Num` (a projection) fails: `generalize` or state the lemma over a value. `Sem.updAt` has no `simp` equations: `rw [Sem.updAt.eq_def]` (`updAt_nil`). `(Value.loan n == Value.loan n) = true` is not `show`-able as `(n == n) = true`: go through `FVal.hasLoanM` and `occurs_of_hasLoanM`. A long `exact f … _ …` whose `_` is a struct-update state timed out at `whnf`: name the state and build each argument as a `have`. `Machine.*` lemmas (`ckVarPos_setAtE`, `erase_setAtE`) are usable from a Frag file by importing `Steps.Machine.InvSteps` (no Machine file imports a Frag file).
+
 
 For the next lead. Read first: docs/31 "WHERE THINGS STAND" and D81 to D104 (on `spine`), docs/18 on main (rewritten to the plan of record), then this. The sixth lead's own entries are D81 (typed temporaries), D82 (the inventory, `Meaning/OPEN.md`), D83 (the strict run's specification), D84 (the decision table read with no fuel; holes), D86 (the plan of record), D96 (`Steps/StrictSim.lean`)## ELEVENTH LEAD (lead11, 2026-11-21; `spine-lead11`): `let` and `;` (after an inert value) proved; the plan for the rest
 
