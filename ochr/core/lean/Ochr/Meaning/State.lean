@@ -107,6 +107,14 @@ is a borrow in Ω for (WF2)). -/
 def _root_.Ochr.MState.withTemp (st : MState) (v : Value) : MState :=
   { st with env := st.env.modify (st.env.size - 1) fun fr => { fr with temps := fr.temps.push v } }
 
+/-- The state with `v` in flight at its stored type `T?` (main's D104): what the checker's
+`pushTemp v T?` makes, the temporary's type pushed beside it (`Frame.tempTys`). `withTemp` pushes
+the value only, leaving `tempTys` shorter than `temps`; it is kept for the statements not yet
+migrated (lead7's form, `Steps/Form.lean`, uses this one). -/
+def _root_.Ochr.MState.withTempT (st : MState) (v : Value) (T? : Option Value) : MState :=
+  { st with env := st.env.modify (st.env.size - 1) fun fr =>
+      { fr with temps := fr.temps.push v, tempTys := fr.tempTys.push T? } }
+
 /-- The components of `MState` that `⟦Ω⟧_ρ` and its typed form read (the module docstring). -/
 structure MState.Core where
   env : Env

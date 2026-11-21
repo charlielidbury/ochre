@@ -103,6 +103,12 @@ import Ochr.Meaning.Regress.InFlight
 import Ochr.Meaning.Regress.EvalMemGap
 import Ochr.Meaning.Steps.EvalMem
 import Ochr.Meaning.Steps.StrictSim
+import Ochr.Meaning.Steps.Form
+import Ochr.Meaning.Steps.FormErase
+import Ochr.Meaning.Steps.FormKern
+import Ochr.Meaning.Steps.FormMachine
+import Ochr.Meaning.Steps.ColumnTemp
+import Ochr.Meaning.Steps.Column
 import Ochr.Meaning.Regress.EvalMemRuns
 import Ochr.Meaning.Regress.OpenFalse
 import Ochr.Meaning.Regress.Suspects
