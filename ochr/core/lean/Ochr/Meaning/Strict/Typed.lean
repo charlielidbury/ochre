@@ -1,5 +1,6 @@
 import Ochr.Meaning.Strict.Fund
 import Ochr.Meaning.DataModel.ReadMember
+import Ochr.Meaning.DataModel.Program
 
 /-!
 # "Well typed inside": a value with a meaning is hereditarily well typed (the strict type formers' payoff)
@@ -542,6 +543,46 @@ theorem eq_types_not_hwt (K : RunCtx) (ρ : Assignment) (φ : Future) (h : TyS) 
       · cases hn
       · have := congrArg TyM.level h1; simp [TyM.nat, TyM.err, TyM.level, Code0.level] at this
     | _ => cases hw
+  | _ => cases hv
+
+/-- **Non-vacuity witness for `hwt_of_fit`**: its whole context holds at a concrete instance (the probes'
+data model, no declarations, the empty coherent set) and it gives `Eq(Nat, 0, 0)` hereditarily well
+typed at `Prop`, from which its sides' typing is read off. -/
+theorem hwt_witness (C : CodeMeaning) (D : Decisions) (ρ : Assignment) (φ : Future) :
+    HWT ({ dm := DataModel.Program.dmP, Γ := [], C := C, D := D } : RunCtx) ρ φ (.plain TyM.err) (TyM.univ 0)
+      (.tEq .tNat .zero .zero) := by
+  let K : RunCtx := { dm := DataModel.Program.dmP, Γ := [], C := C, D := D }
+  have hcoh : ReadCoherent K.dm K.Γ (fun _ _ => False) :=
+    ⟨fun _ _ _ _ _ _ _ h => h.elim, fun _ _ h => h.elim, fun _ _ h => h.elim, fun _ _ _ _ _ h => h.elim⟩
+  have hpar : ∀ d i e, TyIn K.dm (fun _ _ => False) (K.dm.paramTy d i e) := by
+    intro d i e d' r n c gs _ h
+    have hu1 : (K.dm.paramTy d i e).dataCode? = none := rfl
+    rw [hu1] at h; cases h
+  have hok : EqOk K.dm.read (meanV K ρ φ (.plain .err) .tNat) (meanV K ρ φ (.plain (capTy K ρ φ .tNat)) .zero)
+      (meanV K ρ φ (.plain (capTy K ρ φ .tNat)) .zero) := ⟨rfl, .inr ⟨0, rfl⟩, .inr ⟨0, rfl⟩⟩
+  have hnat : (capTy K ρ φ .tNat).dataCode? = none := rfl
+  have hcv : CohVal K ρ φ (fun _ _ => False) (.tEq .tNat .zero .zero) := by
+    simp only [CohVal]
+    refine ⟨fun _ _ _ _ _ _ h => ?_, trivial, trivial, trivial⟩
+    rw [hnat] at h; cases h
+  have hu : (TyM.univ 0).dataCode? = none := rfl
+  have hT : TyIn K.dm (fun _ _ => False) (TyM.univ 0) := by
+    intro d r n c gs _ h; rw [hu] at h; cases h
+  refine hwt_of_fit hcoh hpar _ _ _ hcv hT ?_
+  rw [meanV_tEq', if_pos hok]
+  exact .inr (.inl (ty_univ0_mem _))
+
+/-- What the witness gives: the side `0` of `Eq(Nat, 0, 0)` is hereditarily well typed at `Nat`. -/
+theorem hwt_witness_side (C : CodeMeaning) (D : Decisions) (ρ : Assignment) (φ : Future) :
+    HWT ({ dm := DataModel.Program.dmP, Γ := [], C := C, D := D } : RunCtx) ρ φ (.plain TyM.nat) TyM.nat .zero := by
+  have h := hwt_witness C D ρ φ
+  generalize hv : Value.tEq .tNat .zero .zero = v at h
+  cases h with
+  | tEq _ _ ha _ =>
+    simp only [Value.tEq.injEq] at hv
+    obtain ⟨rfl, rfl, rfl⟩ := hv
+    exact ha
+  | atom hx _ => subst hv; cases hx
   | _ => cases hv
 
 end Ochr.Meaning.Strict
