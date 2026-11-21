@@ -79,7 +79,11 @@ theorem run_id1_cl (a : Nat) (hint : TyS) (tl : Bool) :
     Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent,
     SState.setHeldTy, SState.setHeldMem, SBs, SB2, xB, T₁]
   -- the strict borrow: `a` is a `Nat`, `*x`'s type
-  exact ⟨a, rfl⟩
+  rw [if_pos ⟨a, rfl⟩]
+  dsimp only
+  simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
+  rw [if_pos]
+  exact Attack.lentOk_deref (Kc dm) φ (pos := .bind 0 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, SBs, SPg])
 
 /-- `&*x` in place. -/
 theorem run_id1_in (a : Nat) (hint : TyS) (tl : Bool) :
@@ -91,7 +95,11 @@ theorem run_id1_in (a : Nat) (hint : TyS) (tl : Bool) :
   simp [Sem.whole, SState.freshLoan, SState.tyAt, SState.valAt, SState.setAt,
     Attack.updAt_deref, Attack.updAt_nil, SState.pushTempShaped, SState.pushTemp, SState.topIdx, SState.setLent,
     SState.setHeldTy, SState.setHeldMem, SPg, SPg2, xB, T₁]
-  exact ⟨a, rfl⟩
+  rw [if_pos ⟨a, rfl⟩]
+  dsimp only
+  simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
+  rw [if_pos]
+  exact Attack.lentOk_deref (Kc dm) φ (pos := .bind 1 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, SBs, SPg])
 
 /-- The caller's frame in place reads label `0` only, below the counter. -/
 theorem SPg_start (c : Sem) : FrameStart (SPg selfB d c r) [0] where
@@ -242,7 +250,9 @@ theorem inc_after (c c₀ : Sem) : FrameRel (fun l => l) (SPg selfB d c₀ r) [0
 theorem readPlace_SBs (a : Nat) :
     ∃ T, readPlace (Kc dm) φ (.deref (.var 0)) true (SBs selfB d (.el0 Nat a) r)
       = some ((.el0 Nat a, T), SBs selfB d (.el0 Nat a) r) :=
-  ⟨{ T₀ with label := none }, by simp [readPlace, contentOf_SBs_eq, bind, Option.bind, Sem.whole]⟩
+  ⟨{ T₀ with label := none }, by
+    have hg : ReadGood (Kc dm).dm.read T₀.m (.el0 Nat a) := Or.inl ⟨a, rfl⟩
+    simp [readPlace, contentOf_SBs_eq, bind, Option.bind, Sem.whole, hg]⟩
 
 theorem setContent_SBs (a b : Nat) :
     setContent (Kc dm) φ (.bind 0 1) [.deref] (.el0 Nat b) (SBs selfB d (.el0 Nat a) r)
@@ -264,7 +274,9 @@ theorem run_inc_cl (a : Nat) (hint : TyS) (tl : Bool) :
     implies_true, and_true]
   simp only [assignAt, resolve_SBs, List.isEmpty_cons, Bool.false_and, Bool.false_eq_true, if_false, access_SBs,
     setContent_SBs]
-  rfl
+  simp only [Attack.invalidate_noInv (Kc dm) φ (fun _ _ => rfl)]
+  rw [if_pos]
+  all_goals first | rfl | exact Attack.lentOk_deref (Kc dm) φ (pos := .bind 0 1) (by simp [resolve, SState.varPos, SState.topIdx, Ochr.Place.steps, SBs, SPg])
 
 theorem SP_eq (cd : DeclInfo) (c : Sem) : SP dm ρ φ cd d c r = SPg (selfP dm ρ φ cd) d c r := rfl
 
