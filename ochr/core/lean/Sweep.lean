@@ -569,18 +569,24 @@ def tempsOf (env : Env) : List (Pos × Value × Option Value) :=
 /-- In a typed run (`MState.typing`: the term being evaluated around this point is part of the
 checked program), every temporary but a proof token `⋆` has a stored type (D104: a `⋆` whose
 proposition was computed on a private copy over that copy's unknowns is held with none); in every
-state, each frame has one stored type per temporary. -/
+state, each frame has one stored type per temporary. Not checked inside a private copy: typing
+belongs to an evaluation, not to a state, and a typed evaluation on a copy (a parameter's type, a
+side of `Id`) shares frames with the untyped run below it, whose temporaries rightly have none
+(`--deep-private` found 195,314 such states). D104's rule is a fact about pushes, tested at each
+push, at every depth and in every copy, by `--pushes`. -/
 def tempTyped : Clause where
   name := "(D104) in a typed run every temporary but ⋆ has a stored type"
   premises := [
     ("a typed run holds a temporary", fun st => st.typing && !(tempsOf st.env).isEmpty),
-    ("an untyped run holds a temporary (not checked)", fun st => !st.typing && !(tempsOf st.env).isEmpty)]
+    ("an untyped run holds a temporary (not checked)", fun st => !st.typing && !(tempsOf st.env).isEmpty),
+    ("(not checked) inside a private copy: typing belongs to an evaluation, not to a state, and a typed evaluation on a copy shares frames with the untyped run below it; D104's rule is tested at each push by `--pushes`", fun st =>
+      st.privateDepth > 0 && st.typing && !(tempsOf st.env).isEmpty)]
   check st :=
     ((List.range st.env.size).filterMap fun f =>
       let fr := st.env[f]!
       if fr.temps.size == fr.tempTys.size then none else
         some ⟨"a frame's temporaries and their stored types out of step", s!"frame {f}: {fr.temps.size} temporaries, {fr.tempTys.size} types"⟩) ++
-    (if !st.typing then [] else (tempsOf st.env).filterMap fun (p, v, T) =>
+    (if !st.typing || st.privateDepth > 0 then [] else (tempsOf st.env).filterMap fun (p, v, T) =>
       if T.isSome || v == .proof then none else some ⟨"a temporary with no stored type, in a typed run", s!"{posName st.env p} = {clip v.pp}"⟩)
 
 /-- A type former (not an unknown, a sealed program or another neutral). -/
