@@ -300,4 +300,109 @@ theorem runs_accessPath_lent {k : Nat} {s s' : MState} {b : Nat} {l : Nat} {w : 
       simp only [hw0, firstLiveLoanOnPath_num hw] at h₃
       exact (runs_pure_inv h₃).2
 
+theorem runs_repackCheck_loan {k : Nat} {w : String} {l : Nat} {T : Value} {st st' : MState} {b : Nat}
+    (h : Runs (repackCheck k w (.loan l) T) st b () st') : st' = st := by
+  cases k with
+  | zero => unfold repackCheck at h; simp only [runs_exhausted_iff] at h
+  | succ k' =>
+    unfold repackCheck at h
+    peel h
+    obtain ⟨d, s₃, b₃, hd, h₃⟩ := Runs.bind_inv h
+    unfold hasDependent at hd
+    obtain ⟨rfl, rfl⟩ := runs_pure_inv hd
+    simp only [Bool.not_false, if_true] at h₃
+    exact (runs_pure_inv h₃).2
+
+theorem runs_repackAt_lent {n : Nat} {T : Value} {w : String} {st st' : MState} {b l : Nat}
+    (hcv : ckVarPos st.env 1 = some (.bind 0 0)) (hx : valAt st.env (.bind 0 0) = .loan l)
+    (h : Runs (repackAt n (.var 1) T w) st b () st') : st' = st := by
+  cases n with
+  | zero => unfold repackAt at h; simp only [runs_exhausted_iff] at h
+  | succ k =>
+    unfold repackAt at h
+    obtain ⟨o, s₁, b₁, hc, h₁⟩ := Runs.bind_inv h
+    obtain ⟨rfl, pos, hp, rfl⟩ := runs_content?_inv hc
+    simp only [Place.steps] at hp
+    rw [hcv] at hp; cases hp
+    simp only [Place.steps, Value.follow, hx] at h₁
+    obtain ⟨m, s₂, b₂, hm, h₂⟩ := Runs.bind_inv h₁
+    obtain ⟨-, rfl⟩ := runs_ppPlace_inv hm
+    exact runs_repackCheck_loan h₂
+
+/-- `runs_readPlace_num` from a state whose path access leads to the number state `st` (the read of
+a lent variable: the access ends the borrow first). The proof is machine2's, its first step generic. -/
+theorem runs_readPlace_after {n i f j : Nat} {bd : Binding} {st₀ st st' : MState} {b : Nat} {v : Value}
+    (hacc : ∀ m b₀ s₁, n = m + 1 → Runs (Ochr.accessPath m (.var i)) st₀ b₀ () s₁ → s₁ = st)
+    (hn : NumAt st i f j bd) (hip : st.inPlace = false) (hcp : st.copying = false)
+    (h : Runs (Ochr.readPlace n (.var i)) st₀ b v st') :
+    v = bd.val ∧ ∃ k d c b₁ b₂, Runs (withLive true (Ochr.placeDecl k [] (.var i))) st b₁ d st ∧
+      Runs (declCopy k d) st b₂ c st ∧ (c = true → st' = st) ∧
+      (c = false → ∃ X, st' = { st with env := Env.setAtE st.env (.bind f j) .bot, placeLog := X }) := by
+  cases n with
+  | zero => unfold Ochr.readPlace at h; simp only [runs_exhausted_iff] at h
+  | succ m =>
+    unfold Ochr.readPlace at h
+    obtain ⟨_, s₁, b₁, ha, h₁⟩ := Runs.bind_inv h
+    clear h
+    have := hacc m _ _ rfl ha
+    subst this
+    obtain ⟨_, s₂, b₂, hai, h₂⟩ := Runs.bind_inv h₁
+    clear h₁
+    have := runs_accessInside_num hn hai
+    subst this
+    obtain ⟨w, s₃, b₃, hc, h₃⟩ := Runs.bind_inv h₂
+    clear h₂
+    obtain ⟨rfl, rfl⟩ := runs_content_var hn hc
+    peel h₃
+    rw [Value.Num.outerLoans_nil hn.num] at h₃
+    simp only [List.any_nil, Bool.false_eq_true, if_false] at h₃
+    peel h₃
+    obtain ⟨_, s₄, b₄, hu, h₄⟩ := Runs.bind_inv h₃
+    clear h₃
+    have := runs_unsizedCheck_num hn.num hu
+    subst this
+    peel h₄
+    simp only [hip, Bool.false_eq_true, if_false] at h₄
+    peel h₄
+    have hnum := hn.num
+    have hx : ∀ x : Value, x.Num → x = .zero ∨ ∃ w, x = .succ w := fun x hx => by
+      cases hx with
+      | zero => exact .inl rfl
+      | succ _ => exact .inr ⟨_, rfl⟩
+    have hh : ∀ x, bd.val = x → x.hasHole = false := fun x ex => ex ▸ Value.Num.hasHole hnum
+    rcases hx _ hnum with e | ⟨w', e⟩ <;> rw [e] at h₄ <;>
+      simp only [BEq.beq, Value.beq, Bool.false_eq_true, if_false, runs_get_bind, hcp] at h₄ <;>
+      rw [hh _ e] at h₄ <;> simp only [Bool.false_eq_true, if_false] at h₄ <;>
+      (obtain ⟨c, s₅, b₅, hcr, h₅⟩ := Runs.bind_inv h₄
+       clear h₄
+       obtain ⟨k, d, b₆, b₇, rfl, hpd, hdc, rfl⟩ := runs_copyRead_inv hcr
+       cases c with
+       | true =>
+         simp only [if_true] at h₅
+         obtain ⟨_, s₆, b₈, hf, h₆⟩ := Runs.bind_inv h₅
+         have := Steps.runs_fire_inv hf
+         subst this
+         obtain ⟨rfl, rfl⟩ := runs_pure_inv h₆
+         exact ⟨e.symm, k, d, true, b₆, b₇, hpd, hdc, fun _ => rfl, fun h => by cases h⟩
+       | false =>
+         simp only [Bool.false_eq_true, if_false] at h₅
+         obtain ⟨cap, s₆, b₈, hic, h₆⟩ := Runs.bind_inv h₅
+         obtain ⟨rfl, rfl⟩ := runs_isCapture_inv hn hic
+         split at h₆
+         · obtain ⟨_, s₇, b₉, hpp, h₇⟩ := Runs.bind_inv h₆
+           exact absurd h₇ (fun h => by simp only [runs_err_bind] at h)
+         · obtain ⟨_, s₇, b₉, hf, h₇⟩ := Runs.bind_inv h₆
+           have := Steps.runs_fire_inv hf
+           subst this
+           obtain ⟨_, s₈, b₁₀, hle, h₈⟩ := Runs.bind_inv h₇
+           obtain ⟨X, rfl⟩ := runs_logEffect_inv hle
+           obtain ⟨_, s₉, b₁₁, hsp, h₉⟩ := Runs.bind_inv h₈
+           obtain ⟨pos, v', hp, hu', rfl⟩ := runs_setPlace_inv hsp
+           simp only [Place.steps] at hp hu'
+           rw [hn.pos] at hp; cases hp
+           simp only [Value.updAt, Option.some.injEq] at hu'
+           subst hu'
+           obtain ⟨rfl, rfl⟩ := runs_pure_inv h₉
+           exact ⟨e.symm, k, d, false, b₆, b₇, hpd, hdc, (fun h => by cases h), fun _ => ⟨X, rfl⟩⟩)
+
 end Ochr.Meaning.Steps.Machine

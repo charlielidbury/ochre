@@ -162,17 +162,27 @@ whole block, the same shape as (a) but relational; see the queue).
   `Ochr/Meaning.lean`); `seqInvR` (`SeqInv.lean`, `SeqInv` with `ModeEq` under the Kern
   antecedent, reported: unconditional it is a whole-machine fact) and `runs_dropValue_inert`.
 - NEXT (the borrow column, for `column_B_free` = `column_B_ff` with everything discharged):
-  1. `VarEndInv`: TRUE by reading. The run: `placeType` (x at Nat); `repackAt` at x holding
-     `loan l` is the identity (`hasDependent (.loan _) = false`, so `repackCheck` returns);
-     `readPlace` = `accessPath` (firstLiveLoanOnPath (loan l) [] = some l, live; `endTopLoan` (F4
-     check passes: one frame; not a temp) → `endBorrow l`: findBorrow = `bind 0 1`; obsFrame check
-     passes on success; `takeBorrow` = (w, ⊥); typed: `tyAt` y = `&Nat` → `repackCheck w Nat` (num:
-     identity, `runs_repackCheck_num`); `hasHole w = false`; `setAt y ⊥`; `substEnv (.loan l) w false`
-     = `mapState (substV …) false` over [x, y]: x ↦ w, y stays ⊥ (needs `substV` on `.loan l` and
-     `.bot` inverted); `lendEnv (.ended l [])` = `mapState (lendV …)`: identity on a number and ⊥
-     (to invert)), then `accessPath` again: none (`firstLiveLoanOnPath_num`); then the rest of
-     `readPlace` as `runs_readPlace_num` (copy that proof, minus its accessPath step). The work is
-     the `mapState` loop over a two-element `allPos` and `substV`/`lendV` on simple values.
+  1. `VarEndInv`: TRUE by reading; ALL PIECES PROVED in `VarEndInv.lean`, only the assembly
+     `varEndInv : VarEndInv` remains (pattern: `ReadInv.varNumInv`, lines ~353-391):
+     - `runs_repackAt_lent` (repackAt at `x ↦ loan_l` is the identity);
+     - `runs_accessPath_lent` (the path access ends `l`: result `{st with env := setAtE (setAtE env
+       (bind 0 1) ⊥) (bind 0 0) w}`), built from `runs_endTopLoan_two`, `runs_endBorrow_two`,
+       `runs_endTail_two`, `runs_mapState_two`, `runs_substV_hit/miss`, `runs_lendV_miss`,
+       `setAtE_same`, `setAtE_comm`, `findBorrow_two`;
+     - `runs_readPlace_after` (machine2's `runs_readPlace_num` with its access step generic: give
+       `hacc` = `runs_accessPath_lent`, and `NumAt` at the ended state).
+     Assembly: `DecTab.back` to `st`; unfold `evalCore`, tick, `wanted`, `placeOperand?`,
+     `runs_projIn_var`; typed: `runs_placeType_var` (needs `ckVarPos st.env 1 = some (bind 0 0)`:
+     NOT a hypothesis of `VarEndInv` (an extra empty frame above would make the top frame empty);
+     derive it from the run's success: `varPos 1` succeeded, so `ckVarPos st.env 1 = some pos`
+     (`runs_varPos_inv`), `pos ∈ allPos` (`ckVarPos_mem`, InvSteps), and `pos = bind 0 1` would
+     need a third binding in frame 0, contradicting `allPos = [b00, b01]`; simplest is a lemma
+     taking `∃ pos, ckVarPos st.env 1 = some pos`, the pos obtained inside placeType's inversion or
+     before it), then `runs_repackAt_lent`, then `runs_readPlace_after`; untyped: `placeTypeQ` or
+     none, as varNumInv. The copy decision: `decTab_placeDecl_at` at the ENDED state; its top
+     readings equal `st`'s (setAtE keeps decls: `back_setAtE`), so `D.copy (D.placeDecl (topReadings
+     st) (.var 1))` is the run's `c`. `Quiet st st` (`Quiet.refl`), `KeepsInv` trivially; Kern:
+     the ended state with `placeLog := X` (move) is `Kern`-equal to the conclusion's.
   2. `AssignDerefInv` (fixed form, `w` not a borrow): review against `evalCore`'s `.assign`
      (lentProofAssign, the hint/`Tp0` placeType?, `eval u`, the type check, accessPath at `*y`
      (no ending: `firstLiveLoanOnPath` on `borrow l w` at `[deref]` meets a number), `assignPlace`,
