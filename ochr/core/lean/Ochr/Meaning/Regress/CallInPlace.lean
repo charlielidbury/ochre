@@ -735,6 +735,11 @@ theorem contentOk_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) :
   unfold ContentOk; rw [resolve_SBs]
   exact Attack.accessOk_unreached _ φ fun l => reached_SBs (r := r) selfB d c _ _ l
 
+theorem assignOk_SBs (selfB : SBinding) (d : DeclInfo) (c : Sem) :
+    AssignOk (Kc dm) φ (.deref (.var 0)) (SBs selfB d c r) := by
+  unfold AssignOk; rw [resolve_SBs]
+  exact ⟨fun _ => Attack.accessOk_unreached _ φ fun l => reached_SBs (r := r) selfB d c _ _ l, fun h => by simp at h⟩
+
 theorem runBody_id1 (selfB : SBinding) (d : DeclInfo) (a : Nat) (hint : TyS) (tl : Bool) :
     ∃ T, runT (Kc dm) ρ φ tl hint id1Body (SBs selfB d (.el0 Nat a) r) = some ((.el0 Nat a, T), SB2 selfB d T.m (.el0 Nat a) r) ∧
       T.label = some 1 ∧ T.m = TyM.nat := by
