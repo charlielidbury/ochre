@@ -40,3 +40,21 @@ Written 2026-11-21 from the final report of the agent that landed D90 to D103, a
 ## Before fixing a fault: hunt its class
 
 Added by the orchestrator from the night of 2026-11-20. Each of the two soundness faults found that night turned into several once the fixing agent, before changing anything, tried every other route to the same root: the positivity hole had a second, independent hole of the same kind; the unchecked write to a dependent field had three routes to `False`. So: reproduce with a control in the same file; shrink and re-check; state the root as "the checker trusts X without checking it"; list every other place it does that; write one program per place and run it; send each accepted wrong program as it is found; only then fix, and assert every program of the hunt.
+
+## From the lane that landed D104 to D111 and the sweep at every call depth
+
+Its final report, 2026-11-21, kept for whoever lands the next change.
+
+- **Cost is instructions retired, not time.** `perf stat -e instructions:u -x, -o f taskset -c 6 <exe>`, reading the `cpu_core` line. Paired wall-clock runs of one binary varied by up to 70% with the load on the sibling hyperthread (cores 2k and 2k+1 share a P-core; 12 to 19 are E-cores); instruction counts agree to 0.05%.
+- **Background jobs go through the tool's own background mode.** A shell `&` job is killed when the call returns; one verification chain was lost that way.
+- **The dump tool** is a scratch `VerdictDump.lean` plus an uncommitted `lean_exe vdump` entry in the lakefile, kept as a patch file. Revert the lakefile before every commit and rebase (a rebase refuses with it dirty, and `git stash` is forbidden). Building both sides at once with the cores split 0 to 7 and 8 to 14 halves a cycle. A rebase that touched only `docs/` needs no rebuild; check with `git diff --stat <old> <new> -- ochr/core`.
+- **Main moves under a landing.** It moved six times during D111's. Budget for repeated rebase, build and dump cycles.
+- **Rules about borrows ending belong in `endTopLoan`,** the one place every [Access] ends a borrow (D106). D65's earlier checks in the drops stay for their messages and test the same condition.
+- **A temporary's stored type (D104) is never read by the checker:** `tyAt` of a temporary is `none`, so [Repack] at a borrow's end runs only when a binding holds the borrow. Harmless so far, because a temporary is never a place's root.
+- **Typing belongs to an evaluation, not to a state.** The sweep's `MState.typing` is the innermost evaluation's flag, while frames are shared by nested runs of different typing. A clause of the form "in a typed run, every …" is therefore unsound at depth or inside private copies; test facts about pushes with `--pushes`, which logs at the push.
+- **`evalCall` has a `given` parameter** (the head's and the arguments' types from the caller), used only by `closeBlock`. Use it rather than computing types for untyped calls.
+- **A new function in `Decide` reached from one proved in `StabilitySig`** needs a `SigPres` lemma and an `sp_ext` registration (see D105's `sigPres_inferFrom`).
+- **A wrong decision can hide as cost.** The index bug in `ctorNeedsCtx` cost 13% of checking time, in codomains computed for hints nobody needed.
+- **Showing a fact about a state.** A hole `?` with `located := true` prints Ω at that point. For a fact at depth, `lake exe sweep --deep-private <Block>` with a block filter takes seconds.
+- **Dependent-field code:** a field's parameters are `var 0 … var (np-1)` whichever field it is; the fields come after the parameters (`IndDecl.fieldRefs`).
+- **Known and unfixed on main:** `Fuzz.Lib` has not built since D84 (`AddMZeroL` fails [Id-typestate]); it is not a default target.
