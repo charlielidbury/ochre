@@ -605,3 +605,61 @@ theorem fixBodyAt_qset (hK : ∀ n, (K.C.global n).2.label = none) {Q : Pos → 
 
 end
 
+/-! ## The stages of a closure -/
+
+theorem weakCod_agree {n l k : Nat} {rk : List Sem → Nat} {out out' : PiCod} (h : CodAgree n out out') :
+    CodAgree n (weakCod l rk k out) (weakCod l rk k out') :=
+  ⟨h.1, fun acc ha => by simp only [weakCod]; rw [h.2 acc ha]⟩
+
+theorem refFinals_agree : ∀ {n : Nat} {ps ps' : List PiDom}, DomAgree n ps ps' → ∀ args : List Sem,
+    refFinals ps args = refFinals ps' args
+  | _, [], [], _, _ => rfl
+  | _, [], _ :: _, h, _ => absurd h.1 (by simp)
+  | _, _ :: _, [], h, _ => absurd h.1 (by simp)
+  | _, p :: ps, p' :: ps', h, [] => by cases p; cases p'; rfl
+  | _, p :: ps, p' :: ps', h, a :: as => by
+    simp only [refFinals]
+    rw [h.head.1, refFinals_agree h.tail as]
+
+section
+variable (K : RunCtx) (ρ : Assignment) (φ : Future)
+
+theorem fixStage_succ (fb : List PBind × PBind) (l : Nat) (s : SState) (ps : List PiDom) (out : PiCod)
+    (dec : Option Nat) (start : Nat) (body : Term) (k : Nat) :
+    fixStage K ρ φ fb l s ps out dec start body (k + 1) =
+      fixBodyAt K ρ φ fb s ps out (piTyAt K.dm.read l ps (weakCod l (fixRank dec) k out)) start body
+        (closureAt K.dm.read l φ ps (weakCod l (fixRank dec) k out)
+          (stageFn l ps (fixRank dec) k (fixStage K ρ φ fb l s ps out dec start body k))) := rfl
+
+/-- **The stages agree at full argument lists**, by induction on the stage: stage `k + 1`'s `self` is
+stage `k`'s closure, the same on both sides (`closureAt_congr'`), and its body output is
+`fixBodyAt_qset`'s. -/
+theorem fixStage_qset (hK : ∀ n, (K.C.global n).2.label = none) {Q : Pos → Prop} {β β' : Pos → SBinding}
+    {s : SState} (hA : Adm K Q β β' s) (hR : RInv (fun _ => True) s) {T body : Term} (hV : VarsAvoid Q s T)
+    (n : Nat) (hsub : ∀ x ∈ body.placeOccs (n + 1), x ∈ T.placeOccs 0)
+    (hb : ∀ (hint : TyS) (X : SState) (Q₁ : Pos → Prop) (β₁ β₁' : Pos → SBinding), Adm K Q₁ β₁ β₁' X →
+      VarsAvoid Q₁ X body → RInv (fun _ => True) X → Comm Q₁ β₁' (runT K ρ φ true hint body) X)
+    {fb fb' : List PBind × PBind} (hB : BAgree 0 fb.1 fb'.1) (hd2 : fb.2.2 = fb'.2.2)
+    {ps ps' : List PiDom} (hps : DomAgree 0 ps ps') (hpl : ps.length = n) {out out' : PiCod}
+    (hco : CodAgree n out out') (hcod : ∀ args : List Sem, args.length = n → fb.2.1 args = fb'.2.1 args)
+    (l : Nat) (dec : Option Nat) : ∀ (k : Nat) (args : List Sem), args.length = n →
+      fixStage K ρ φ fb' l (qset Q β' s) ps' out' dec (qset Q β' s).nextLoan body k args =
+        fixStage K ρ φ fb l s ps out dec s.nextLoan body k args
+  | 0, _, _ => rfl
+  | k + 1, args, ha => by
+    rw [fixStage_succ, fixStage_succ]
+    have hw : CodAgree ps.length (weakCod l (fixRank dec) k out) (weakCod l (fixRank dec) k out') := by
+      rw [hpl]; exact weakCod_agree hco
+    have hg : ∀ a : List Sem, a.length = ps.length →
+        stageFn l ps (fixRank dec) k (fixStage K ρ φ fb l s ps out dec s.nextLoan body k) a =
+          stageFn l ps' (fixRank dec) k (fixStage K ρ φ fb' l (qset Q β' s) ps' out' dec (qset Q β' s).nextLoan body k) a := by
+      intro a ha'
+      simp only [stageFn]
+      rw [fixStage_qset hK hA hR hV n hsub hb hB hd2 hps hpl hco hcod l dec k a (by rw [ha', hpl]),
+        refFinals_agree hps a]
+    rw [← piTyAt_congr K.dm.read l ps ps' _ _ hps hw,
+      ← closureAt_congr' K.dm.read l φ ps ps' _ _ _ _ hps hw hg]
+    exact fixBodyAt_qset K ρ φ hK hA hR hV n hsub hb hB hd2 hps hpl hco.1 _ _ args ha (hcod args ha)
+
+end
+

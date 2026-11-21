@@ -1,29 +1,12 @@
 # Existence of the data model: handoff (working file)
 
-Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists3`, worktree `/home/charlielidbury/repos/ochre-exists3` (exists2's `spine-exists2` is retired). Durable record: `ochr/docs/34-data-model-existence.md` §18 (read it first; §18.5 is frame locality) and docs/31 D110. This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-21 by `exists3` (its last commit), on `spine` 217dd501.
+Lane: prove `Assembly.exists_dataModel` (`Meaning/Consistency.lean`). Branch `spine-exists3`, worktree `/home/charlielidbury/repos/ochre-exists3` (exists2's `spine-exists2` is retired). Durable record: `ochr/docs/34-data-model-existence.md` §18 (read it first; §18.5 is frame locality) and docs/31 D110. This file holds what only a successor needs; delete it when the lane's work is merged. Last updated 2026-11-21 by `exists4` (branch `spine-exists4`).
 
-## exists3's step 1: frame locality (read this first)
+## Frame locality: done (exists4)
 
-`General.runT_frameLocal` was FALSE (docs/34 §18.5: three counts, the first kernel-checked in `FrameLocalCE.lean`). Its restatement is `FrameLocal/Run.lean`'s `runT_qset`, an equation: `runT … t (qset Q β' s) = (runT … t s).map (qset Q β')`. Files, in dependency order (all but `Run.lean` in the default build, no `sorry`):
-- `FrameLocal/Vars.lean`: `placeOccs_add` (occurrences under binders), `mem_freeVars`, `freeVars_sub` (a subterm's free variables under `n` binders).
-- `FrameLocal/Qset.lean`: the transform `qset Q β` and its algebra against every state primitive.
-- `FrameLocal/Prims.lean`: `Comm Q β x s` (`x (qset Q β s) = qmap Q β (x s)`), the SM combinators (`comm_bind`, `comm_erasedIf`, `comm_guarded`, …), and every run primitive and strict test; `Pre` is what a primitive needs.
-- `FrameLocal/Join.lean`: folds over decision-given places under `Twin` (both families' `Pre`, fixed by `qset Q β`, the start's layout): join drop, [Entry], `matchEntry_qset`, `capStep_qset`, `obsEnd_qset`.
-- `FrameLocal/Setup.lean`: `DecLocal`, `VarsAvoid`, `Adm`; `Adm.self`, `Adm.next`, `fix_of_comm` (the invariant read off the equation at `β' := β`), `VarsAvoid.sub`/`of_envLe`.
-- `FrameLocal/Run.lean` (OUTSIDE the build: one catch-all `sorry`): the mutual induction. Proved clauses: `.place`, `.const`, `.sort`, `.nat`, `.unit`, `.zero`, `.tt`, `.val`, `.succ`, `.ref`, `.seq` (the template for a clause with a continuation: `Adm.after` gives the next state's `Adm`, `RInv` and layout), `.eq`, `.cong`, `.ascribe`, `.tind`, and the companion `runParams_qset`. Open: `.borrow`, `.assign`, `.letIn`, `.matchNat`, `.matchInd`, `.ctor`, `.pi`, `.fix`, `.call`, `.prim` (symm/trans/rewrite/rewriteR/J/clone/peek/inplace), `.id`, and the companions `runArm`, `runFields`, `runArgs`, `runBinds`.
+`FrameLocal/Run.lean`'s **`runT_qset`** is proved, in the default build, standard axioms; it assumes `DecLocal` (and the usual `hK`). Files, in dependency order: `Vars`, `Qset`, `Prims`, `Join`, `Setup` (exists3), `Agree` (descriptions that agree at the right arity: a Π's binders and a closure's stages differ between the two sides at argument lists of the wrong length, and every consumer reads them only at the right one), `Fix` (the closure's body frame one frame up: `fixBodyAt_qset`, `fixStage_qset`), `Run` (the mutual induction with companions `runArm_qset`, `runParams_qset`, `runFields_qset`, `runArgs_qset`, `runAll_qset`, `runBinds_qset`). `capOrder` is a structural insertion sort on this branch (`mem_capOrder`), commit 39c93c86: it touches `Meaning/Run.lean`, so the merge must take it.
 
-Recipes for the open clauses:
-- Every clause: `unfold Comm; rw [runT]; dsimp only; rw [hA.scope]` (one `rw [runT]` rewrites both sides), then the combinators.
-- A place of the term: `rAvoid_of_vars hV (root mem)`; write `root_mem_*` lemmas like `root_mem_place` from `Term.placeOccs`.
-- After a primitive at `s` (not a subterm run), the next state's fix comes from the same primitive's lemma at `β` (instantiate `β' := β`; `qset Q β s = s`), as in `Twin.step`.
-- `.letIn`/`.pi`/`.fix` bind variables: needs `varPos (pushBind s b) (i+1) = s.varPos i` and `varPos … 0` the new binding (not yet written; `pushBind_getLast` is in `Qset.lean`), with `freeVars_sub` at `n = 1` (let) or `n = ds.length (+1)` (Π, `fix`).
-- `.fix`: use `RunCongr.run_fix_def`/`fixBodyAt`/`fixG` (exists) and `qset_under` (Q moves up: `Qup`, `βup`); the body's IH is at `Qup Q`; `rinv_under`, `formInv_init`, `foldl_fixStep_inv` give the body's `RInv`. The closure's function is equal on both sides by funext over the body's IH (both directions are the one equation). Captures: `capStep_qset` needs `hcap`.
-- `.id`: `observation_eq` + `obsEnd_qset`; the proposition is equal by `propext`: the two observations differ from `s`'s only at `Q`, where each side reads its own constant (the lists agree componentwise off `Q`).
-- `.pi`: `runBinds` at `extendBy s bs acc` (pushes beyond `Q`); `rinv_extendBy` exists.
-
-Open questions for the lead (asked 2026-11-21, carry on meanwhile): (1) `capOrder`'s `Array.qsort` blocks `hcap`; proposed `List.mergeSort`. (2) `DecLocal` for the chain's decisions is an obligation on the checker's static analyses (`jdMoves`, `typeState`, `staticBlockCaps`; `invalidated` is empty there).
-
-Then the plan below continues at step 2 (`globals_typed`).
+Next: `DecLocal` (step 3 of the lane: restate it at the class of terms that occur in field types; a `#guard` on `Step2.lean`'s declarations; the list of the checker's static analyses it concerns), then the plan below continues at step 2 (`globals_typed`).
 
 ## State
 
