@@ -7,11 +7,10 @@ import Ochr.Meaning.Steps.Machine.StepInv
 # The column's facts about the checker alone (`Steps/FormMachine.lean`), proved
 
 `FormMachine.lean` states, as `Prop`s, the facts about the checker's runs that the first column
-(`ColumnC.column_C_ff`) assumes. This file proves those that are true as written; the others are
-mis-stated (the machine lane's report of 2026-11-21: an entry with `tailNext` set, a lazily typed
-binding, a lent place, `tailDecl`) and are to be proved here in corrected form. Proved so far:
-`ZeroInv` (the run computed by `rfl`). `DropNoopInv` is true but its inversion is not done (see
-`Steps/Machine/HANDOFF.md`).
+(`ColumnC.column_C_ff`) assumes. Proved as stated: `ZeroInv`, `DropNoopInv`, `ColumnC.DecBack`
+(`MachineMono.DecTab.back`). Proved in the form proposed to the lead where the stated one is not
+provable from the checker's code alone (`Steps/Machine/EvalInv.lean`, `StepInv.lean`; each docstring
+says what differs and why): `EvalInvR`, `SuccInvR`, `LetInvR`.
 
 This file is downstream of `FormMachine.lean` (which imports `MachineMono` through `StrictSim`), so
 `Ochr/Meaning.lean` imports it (the lead's line).
@@ -99,5 +98,6 @@ theorem dropNoopInv : DropNoopInv := by
 #print axioms dropNoopInv
 #print axioms evalInvR
 #print axioms succInvR
+#print axioms letInvR
 
 end Ochr.Meaning.Steps.Machine
