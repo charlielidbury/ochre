@@ -271,7 +271,8 @@ theorem seqB_core (hSB : SeqBorInv) (hR : FragRun K.D) (hdec : FragDec K.D) (hIE
     hntq q hq (hF₁.bor1 q _ l w' c (hWmem _ hq) hNmem (by rw [hWold _ hq]; exact e) hWnew)
   -- the discard, on the checker's side
   obtain ⟨st₂, hq, hki, hkW, hmeW⟩ := hdrop l c (.bind fx jx) rfl hcN
-    (fun q hq => by rw [← hWold q hq]; exact hF₁.vals q (hWmem q hq)) hx hpx hnoB
+    (fun q hq => by rw [← hWold q hq]; exact hF₁.vals q (hWmem q hq)) hx hpx
+    (fun q hq e => hF₁.loan1 q _ l (hWmem _ hq) hpxW (by rw [hWold _ hq]; exact e) hxW) hnoB
   -- the end of `l` at the value in flight, after the quiet stretch
   have heW : FEnd (st₁.withTempT (.borrow l c) (some FT.ref.ty)).env (.bind fx jx) (.temp (st₁.env.size - 1) fr.temps.size) l c :=
     ⟨hF₁.vals, fun f' i' m' hq' e => (by

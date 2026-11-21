@@ -85,7 +85,9 @@ the parked holder `⊥`) and pops it, after a quiet stretch (the end's [Repack])
 `SeqInv`. The mode is kept only under the antecedent (lead11, as `SeqInv`: unconditional it would ask
 the ending machinery of any value to keep the mode, a whole-machine fact). The invariant is kept across the quiet stretch WITH the value parked (lead12;
 first stated as `KeepsInv st₁ st₂`, on the states without it, where `px` holds a loan whose borrow is
-nowhere, which `Inv` need not admit: unusable). -/
+nowhere, which `Inv` need not admit: unusable). `px` is the ONLY position holding `loan_l` (machine5's
+review, 2026-11-21: the end's `substEnv` gives `c` to EVERY position holding `loan_l`; with `x, z ↦
+loan_l` and `u` the read of a `y ↦ borrow_l c`, both get `c` where the conclusion gives it to `px`). -/
 def SeqBorInv : Prop :=
   ∀ (n : Nat) (u w : Term) (hint : Option Value) (st st' : MState) (bh : Nat) (v : Value) (T? : Option Value)
     (D : Decisions),
@@ -97,6 +99,7 @@ def SeqBorInv : Prop :=
       DecTab D st₁ ∧
       (∀ l c px, v₀ = .borrow l c → c.Num → (∀ q ∈ allPos st₁.env, FVal (valAt st₁.env q)) →
         valAt st₁.env px = .loan l → px ∈ allPos st₁.env →
+        (∀ q ∈ allPos st₁.env, valAt st₁.env q = .loan l → q = px) →
         (∀ q ∈ allPos st₁.env, ∀ w', valAt st₁.env q ≠ .borrow l w') →
         ∃ st₂, Quiet st₁ st₂ ∧ KeepsInv (st₁.withTempT v₀ T₀) (st₂.withTempT v₀ T₀) ∧
           Kern { st₂ with env := Env.setAtE st₂.env px c } stW ∧ ModeEq st₁ stW) ∧
