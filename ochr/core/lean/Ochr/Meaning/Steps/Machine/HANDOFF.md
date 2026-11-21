@@ -81,9 +81,49 @@ whole block, the same shape as (a) but relational; see the queue).
   reading, not `D.flags`), `SuccInvR` (typed clause on `T₀` as returned, no `some`), `LetInvR` (`u`'s
   reading at the ENTRY, `T₀ : Option`, `ModeEq` for the mode, no Inv clause, no `0 < size`).
   `AssignNumInv` is FALSE without `b.ty = some .tNat` (a field step under a non-number is a match).
-- Open in the column: `VarNumInv` (needs `accessPath`/`accessInside`/`repackAt`/`readPlace`
-  inversions: `firstLiveLoanOnPath` is well-founded, so a Num root needs a lemma that it finds
-  nothing), `InvCore` (ColTerm), `AssignNumInv` (fixed form).
+- `ReadInv.lean`: `varNumInv` (= the lead's `VarNumInv`, exact). `BorrowInv.lean`: `borrowNumInv` (= the
+  lead's `BorrowNumInv`, exact, spine-lead8). The read machinery at a variable holding a number:
+  `NumAt`, `runs_placeType_var`, `runs_repackAt_num`, `runs_accessPath_num`, `runs_accessInside_num`,
+  `runs_content_var`, `runs_readPlace_num`, `runs_borrowPlace_num`, `runs_copyRead_inv`,
+  `runs_isCapture_inv`, `runs_unsizedCheck_num`, `runs_openWrite_var`, `runs_freshLoan_inv`.
+  Two traps: a case split on `bd.val`'s shape (`rcases hx _ hn.num with e | ⟨w, e⟩; rw [e] at h`)
+  reduces readPlace's `match v`; `obtain ⟨rfl, rfl⟩` on a state equation may eliminate the NAMED state
+  (`st`) in favour of the local one, so state a sub-lemma over an arbitrary state (`varNum_read`)
+  rather than naming states after substitutions.
+- Ruled by the orchestrator (2026-11-21, OPEN.md on spine-lead8): `InvCore` DROPPED; the invariant is
+  carried by state-level lemmas `Inv D Γ st.norm → Inv D Γ st'.norm`, one per kernel shape an
+  inversion fact concludes (first column: a number binding set to ⊥, a binding pushed at Nat holding
+  a number, the top binding popped, a number temporary pushed, `setAtE (.succ v₀)`; the borrow
+  column's five are listed in OPEN.md). The lead states them in `FormMachine.lean`; this lane proves
+  them. `Inv` under `Kern` is free (`Kern a b` is `a.norm = b.norm`).
+- Reviewed (reported 2026-11-21): `AssignDerefInv` FALSE by reading (y's old content a borrow:
+  assignPlace's [Drop] ends it; fix `(∀ m z, w ≠ .borrow m z)` in the Kern clause's antecedent);
+  `SeqInv` needs `ModeEq st₁ stW` for `Mode stW` and loses its Inv clause; lead8's LetInv conjunct
+  `topReadings st₁ = topReadings st` is provable only for u without a write (Z, S, variables, let:
+  an induction through `eval`; a write at a non-Nat variable runs the [Proj] match); `VarEndInv` true
+  (its work: `endTopLoan`/`endBorrow` inverted at the two-binding state).
+- `InvShape.lean`: `inv_of_kern` (free), `runs_conv_of_beq` / `runs_expectTy_of_beq` (a comparison of
+  `==`-equal values is the identity: the column's `S(u)` with `u : Nat`). Its docstring warns: the
+  state-level lemmas over a push/pop of a binding meet `ShapeFacts.fits`, which reads `D.placeDecl`
+  at the TOP READINGS, so they need the table aligned at the new state; a number set where a place
+  reads `.ind n _` violates `fits`. The general "every run keeps `absTy.size = nextAbs`" (WF6 across a
+  private exit) is a whole-machine induction like `machineGrows`, to schedule when a step needs it.
+- NEXT, in order (the orchestrator's, 2026-11-21 night):
+  1. the first column's state-level `Inv` lemmas, from the statements `lead9` puts in
+     `FormMachine.lean` / the top of `OPEN.md` on `origin/spine-lead9` (review each for truth first;
+     if absent, state them here as transformations and tell the orchestrator);
+  2. the unconditional corollary of `ColumnCFF.column_C_ff` (its remaining hypotheses: the lead's
+     `SuccInv`/`LetInv` replaced by `succInvR`/`letInvR`, `varNumInv`, and the Inv lemmas);
+  3. the borrow column: `VarEndInv` (the inversion of `endTopLoan`/`endBorrow` at the two-binding
+     state), `AssignDerefInv` and `SeqInv` in their fixed forms, the LetInv readings conjunct for a
+     write-free `u`, the borrow column's state-level lemmas;
+  4. THEN (not before the corollary): merge `origin/main` into the proof line (D115 at 226dcdd6:
+     calls' heads and arguments, constructor fields, an assignment's right-hand side, a borrow made
+     during invalidation, an arm's result at the join, the comparison's generic arguments held as
+     typed temporaries; `evalCall`, `callFn`, `runBodyCore`, `closeCall`, `evalCtor`, `joinEnds`,
+     `convFnRun` changed; D116 pending: `clone` of a proof place returns the proof), re-run the
+     generator (`gen/`, "Regenerating" above) so `machineGrows` holds, repair `Steps/` minimally,
+     list every `sorry` left with its reason; a statement the change makes false is a finding.
 
 ## Non-total constructs in the checker (read-only census, 2026-11-21, at the merge with spine 1e226c6a)
 
@@ -250,8 +290,9 @@ The earlier queue (still owed, after the column):
 
 ## Build state
 
-2026-11-21 night, `spine-machine2` (machine2; `spine` 63ca5e66 and `spine-lead7` fd366a34 merged): `OchrMeaning`
-green; `DecTab.back`, `DropNoopInv`, `EvalInvR`, `SuccInvR`, `LetInvR` proved (`FormFacts` prints their axioms).
+2026-11-21 night, `spine-machine2` (machine2; `spine` 63ca5e66 and `spine-lead8` 73ce48c3 merged): `OchrMeaning`
+green; `DecTab.back`, `DropNoopInv`, `EvalInvR`, `SuccInvR`, `LetInvR`, `VarNumInv`, `BorrowNumInv`, `runs_expectTy_of_beq` proved
+(`FormFacts` prints their axioms).
 
 2026-11-21 evening, `spine-machine` 6ad1cd32e (after merging `spine` c0c95fb6 and `spine-lead7`; the root
 imports `Steps/Machine/FormFacts`): `OchrMeaning` green. Since the merge with `spine` 1e226c6a the whole lane builds; `machineGrows` has NO

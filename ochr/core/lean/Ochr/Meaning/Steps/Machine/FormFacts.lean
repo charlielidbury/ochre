@@ -1,14 +1,14 @@
 import Ochr.Meaning.Steps.FormMachine
 import Ochr.Meaning.Steps.DropOne
 import Ochr.Meaning.Steps.ColumnC
-import Ochr.Meaning.Steps.Machine.StepInv
+import Ochr.Meaning.Steps.Machine.InvShape
 
 /-!
 # The column's facts about the checker alone (`Steps/FormMachine.lean`), proved
 
 `FormMachine.lean` states, as `Prop`s, the facts about the checker's runs that the first column
 (`ColumnC.column_C_ff`) assumes. Proved as stated: `ZeroInv`, `DropNoopInv`, `ColumnC.DecBack`
-(`MachineMono.DecTab.back`). Proved in the form proposed to the lead where the stated one is not
+(`MachineMono.DecTab.back`), `VarNumInv` (`ReadInv.lean`), `BorrowNumInv` (`BorrowInv.lean`). Proved in the form proposed to the lead where the stated one is not
 provable from the checker's code alone (`Steps/Machine/EvalInv.lean`, `StepInv.lean`; each docstring
 says what differs and why): `EvalInvR`, `SuccInvR`, `LetInvR`.
 
@@ -39,10 +39,6 @@ theorem zeroInv : ZeroInv := by
 /-- **`DecBack`**: alignment at a larger table is alignment at a smaller one (`DecTab.back`, proved in
 `DecBack.lean`). -/
 theorem decBack : ColumnC.DecBack := fun _ _ _ hd hg => DecTab.back hd hg
-
-open Ochr.Meaning.DecideScope Ochr.Meaning.Steps.Slice in
-theorem liveLoansIn_nil {env : Env} {v : Value} (h : v.loans = []) : liveLoansIn env v = [] := by
-  simp [liveLoansIn, h]
 
 open Ochr.Meaning.DecideScope Ochr.Meaning.Steps.Slice in
 theorem runs_endLoansOfTopBind_noop {k f : Nat} {st st' : MState} {bh : Nat} {b : Binding}
@@ -99,5 +95,8 @@ theorem dropNoopInv : DropNoopInv := by
 #print axioms evalInvR
 #print axioms succInvR
 #print axioms letInvR
+#print axioms varNumInv
+#print axioms borrowNumInv
+#print axioms runs_expectTy_of_beq
 
 end Ochr.Meaning.Steps.Machine
