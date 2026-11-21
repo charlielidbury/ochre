@@ -489,7 +489,7 @@ theorem stateOk_sE2 (dm : DataModel) : StateOk (KE dm) φw (sE2 dm) := by
   have hl : (sE2 dm).liveLabels = [0] := by unfold sE2; rw [liveLabels_setAt, live_sE1]
   have hψ0 : dm.OMem [] TyM.nat (ψ 0) := by
     have := hψ.2 0 (by rw [hl]; simp)
-    exact this
+    exact .mem this
   refine ⟨fun f i hpi => ?_, fun q l hq => ?_⟩
   · rw [hp] at hpi
     simp only [List.mem_cons, Pos.bind.injEq, List.mem_nil_iff, or_false, reduceCtorEq] at hpi

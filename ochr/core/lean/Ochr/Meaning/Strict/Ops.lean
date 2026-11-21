@@ -203,7 +203,7 @@ theorem endAt_sgood {s : SState} {l : Nat} {r : Pos} (hs : SGood dm Γ φ s) (hh
     by_cases e : l' = l
     · subst e
       rw [Future.upd_same]
-      have hm : PMem dm Γ (s.heldMem l') (s.heldTy l') := .mem (hs.held l' hl')
+      have hm : s.heldMem l' ∈ₛ[dm.read] s.heldTy l' := hs.held l' hl'
       have ht : TypedF dm Γ φ s (ψ'.upd l' (s.heldMem l')) := by
         refine ⟨fun y hy => ?_, fun y hy => ?_⟩
         · have hne : y ≠ l' := fun e => hy (e ▸ hl')
@@ -212,8 +212,9 @@ theorem endAt_sgood {s : SState} {l : Nat} {r : Pos} (hs : SGood dm Γ φ s) (hh
         · subst ey; rw [Future.upd_same]; exact hm
         · rw [Future.upd_other _ _ ey]
           have := hψ' y (SState.live_endAt hr hy ey); rwa [hHT] at this
-      have := hs.holder _ ht r l' hr
-      rwa [hs.holderIndep hr ψ' (s.heldMem l')] at this
+      -- PROBE (A): the holder's content is an OPEN member of `heldTy` (`hs.holder`); a typed future
+      -- now needs a MEMBER: the strict end
+      sorry
     · rw [Future.upd_other _ _ e]
       have := hψ' l' (SState.live_endAt hr hl' e); rwa [hHT] at this
   refine ⟨fun ψ' hψ' f i hpi => ?_, fun ψ' hψ' p l'' hl'' => ?_, fun l' hl' => ?_, fun f i l' hl' => ?_, ?_,

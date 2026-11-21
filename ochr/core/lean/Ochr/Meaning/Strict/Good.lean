@@ -50,6 +50,9 @@ def PMem (dm : DataModel) (Γ : List IndDecl) (v : Sem) (T : TyM) : Prop := dm.p
 
 theorem PMem.pmem {dm : DataModel} {Γ : List IndDecl} {v : Sem} {T : TyM} (h : PMem dm Γ v T) : dm.pmem Γ v T := h
 
+/-- PROBE (A): a typed future's value for a live label, a whole MEMBER. -/
+def WMem (dm : DataModel) (_Γ : List IndDecl) (v : Sem) (T : TyM) : Prop := v ∈ₛ[dm.read] T
+
 /-- A binding's value is good: an open member of its stored type, or a type value at `err`. -/
 def GoodVal (dm : DataModel) (Γ : List IndDecl) (v : Sem) (T : TyM) : Prop :=
   dm.pmem Γ v T ∨ (T = TyM.err ∧ NoData v)
@@ -60,7 +63,7 @@ variable (dm : DataModel) (Γ : List IndDecl) (φ : Future)
 /-- A future typed at a state: it agrees with the run's future off the live labels, and gives each
 live label an open member of its recorded content type. -/
 def TypedF (s : SState) (ψ : Future) : Prop :=
-  (∀ l, l ∉ s.liveLabels → ψ l = φ l) ∧ ∀ l ∈ s.liveLabels, PMem dm Γ (ψ l) (s.heldTy l)
+  (∀ l, l ∉ s.liveLabels → ψ l = φ l) ∧ ∀ l ∈ s.liveLabels, WMem dm Γ (ψ l) (s.heldTy l)
 
 /-- **The model-side invariant.** -/
 structure SGood (s : SState) : Prop where

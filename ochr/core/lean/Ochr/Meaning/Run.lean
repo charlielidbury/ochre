@@ -421,7 +421,7 @@ noncomputable def tagOf (p : Place) (tag : Sem → TyS → Sem) : SM Sem := fun 
 /-- A typed future of a state: the run's own off the live labels; each live label an open member
 of its recorded content type. -/
 def TypedFut (s : SState) (ψ : Future) : Prop :=
-  (∀ l, l ∉ s.liveLabels → ψ l = φ l) ∧ ∀ l ∈ s.liveLabels, K.dm.pmem K.Γ (ψ l) (s.heldTy l)
+  (∀ l, l ∉ s.liveLabels → ψ l = φ l) ∧ ∀ l ∈ s.liveLabels, ψ l ∈ₛ[K.dm.read] s.heldTy l
 
 /-- Set the content of a place to a constant meaning, pointwise in the future (no access: the
 caller has done it). STRICT (the orchestrator's rule, 2026-11-21: every write at a field path ends
