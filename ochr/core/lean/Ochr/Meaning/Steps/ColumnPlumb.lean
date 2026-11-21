@@ -43,7 +43,23 @@ borrows lent at the top binding does nothing when no live label is lent there. -
 theorem letLenders_noop {s : SState} (fr : SFrame) (hfr : s.env.getLast? = some fr)
     (h : ∀ l ∈ s.liveLabels, ∀ x ∈ s.lent l, x.pos ≠ .bind s.topIdx (fr.binds.length - 1)) :
     letLenders s = s := by
-  sorry
+  unfold letLenders
+  rw [hfr]
+  dsimp only
+  have hstep : (s.liveLabels.filter (s.reached (.bind s.topIdx (fr.binds.length - 1)) (dataHit []))).foldl
+      SState.endLabel s = s := by
+    rw [List.filter_eq_nil_iff.mpr]
+    · rfl
+    intro l hl
+    simp only [SState.reached, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq, not_exists, not_and]
+    intro x hx hpos
+    exact absurd hpos (h l hl x hx)
+  unfold SState.access
+  dsimp only
+  generalize List.range s.liveLabels.length = L
+  induction L with
+  | nil => rfl
+  | cons _ L ih => rw [List.foldl_cons, hstep, ih]
 
 /-- **(P4) The unknowns a state names, against another's**: a state with the same records, goal and Δ
 whose values name only unknowns some value of the other names, and whose bindings' stored and
@@ -57,6 +73,21 @@ theorem refd_sub {st st' : MState} (hg : st'.goal = st.goal) (hn : st'.neutrals 
     (hlz : ∀ (f i : Nat) (b : Binding) (P : Value) (ws : List Value) (j σ : Nat), st'.env[f]?.bind (fun fr : Frame => fr.binds[i]?) = some b →
       b.lazyTy = some (P, ws, j) → (P.hasAbs σ = true ∨ ∃ w ∈ ws, w.hasAbs σ = true) → st.norm.Refd σ) :
     ∀ σ, st'.norm.Refd σ → st.norm.Refd σ := by
-  sorry
+  have hb : ∀ (m : MState) (f i : Nat), m.norm.env[f]?.bind (fun fr : Frame => fr.binds[i]?) =
+      m.env[f]?.bind (fun fr : Frame => fr.binds[i]?) := fun m f i => by
+    show m.env.erase[f]?.bind _ = _
+    rw [Env.erase_get?]; cases m.env[f]? <;> rfl
+  intro σ h
+  induction h with
+  | val w hw hab =>
+    have hw' : w ∈ Env.values st'.env := by rw [← values_erase]; exact hw
+    obtain ⟨w', hw'', hab'⟩ := hv w hw' _ hab
+    exact .val w' (show w' ∈ Env.values st.env.erase by rw [values_erase]; exact hw'') hab'
+  | ty f i b T hb' hT hab => exact hty f i b T _ (by rw [← hb]; exact hb') hT hab
+  | lazyTy f i b P ws j hb' hT hab => exact hlz f i b P ws j _ (by rw [← hb]; exact hb') hT hab
+  | goal G hG hab => exact .goal G (show st.goal = some G by rw [← hg]; exact hG) hab
+  | neutral n σ' hm hab => exact .neutral n σ' (show (n, σ') ∈ st.neutrals by rw [← hn]; exact hm) hab
+  | eta σ' w hm hab => exact .eta σ' w (show (σ', w) ∈ st.etaRefs by rw [← he]; exact hm) hab
+  | dep σ' T _ hT hab ih => exact .dep σ' T ih (show st.absTy[σ']? = some T by rw [← ha]; exact hT) hab
 
 end Ochr.Meaning.Steps.Form
