@@ -32,6 +32,10 @@ Since main's D106 (no access ends a borrow a value in flight holds, checked at t
 access ends a borrow, `endTopLoan`), the tail case on a known scrutinee (`TK`) is rejected at the
 join's access itself, with [Access]'s message, before the borrow can end; on an unknown scrutinee
 (`TU`) the match is split, not joined, and D53 still rejects the moving arm. No verdict changed.
+
+Since main's D119 (each world of a split in tail position ends with the match's join, as a known
+constructor's arm does) `TU` is rejected for `TK`'s reason, at the join's access in its world `Z`
+(before, by D53 in its world `S`). Still rejected; only the message moved.
 -/
 
 open Ochr.Test
@@ -108,4 +112,5 @@ ochr JoinPrefixBorrow uses Nats {
   -- main's D106 (no access ends a borrow a value in flight holds): `TK` is now rejected at the
   -- join's access itself, which used to end the result's borrow and leave D53 to catch it later.
   ("TK", "[Access] reading or writing *x ends a borrow that a value in flight holds"),
-  ("TU", "[D53] a borrow ends while its content is partly moved out")]
+  -- main's D119 (the split in tail position joins in each world): `TU` as `TK`
+  ("TU", "[Access] reading or writing *x ends a borrow that a value in flight holds")]
