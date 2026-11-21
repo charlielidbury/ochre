@@ -174,7 +174,7 @@ theorem skel_pushTempE (st : MState) (v : Value) :
       (SM' K ρ st).env.map (fun fr => fr.binds.map bindSkel) := by
   apply List.ext_getElem?
   intro f'
-  simp only [SM', MState.sstate, List.getElem?_map, List.getElem?_zipIdx, Option.map_map,
+  simp only [SM', MState.sstate, Binding.refTy, List.getElem?_map, List.getElem?_zipIdx, Option.map_map,
     Array.getElem?_toList, hintAt_pushTempE]
   simp only [Env.pushTempE, Array.getElem?_modify]
   by_cases hf : st.env.size - 1 = f'

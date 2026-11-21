@@ -75,9 +75,9 @@ theorem rel_noSites_at {π : Nat → Nat} {st : MState} {s : SState} (hr : Rel K
 
 /-- **The reference's binding is the checker's**: a binding of the checker's state is a position of the
 reference's, at a type of the same code as the checker's stored type. -/
-theorem rel_bind_ty {π : Nat → Nat} {st : MState} {s : SState} (hr : Rel K ρ φ π st s) {f j : Nat} {b : Binding}
+theorem rel_bind_refTy {π : Nat → Nat} {st : MState} {s : SState} (hr : Rel K ρ φ π st s) {f j : Nat} {b : Binding}
     (hb : st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b) :
-    Pos.bind f j ∈ s.positions ∧ (s.tyAt (.bind f j)).m = (Env.hintAt K.dm K.M K.Γ ρ st.env (.bind f j)).m := by
+    Pos.bind f j ∈ s.positions ∧ (s.tyAt (.bind f j)).m = (Binding.refTy K.dm K.M K.Γ ρ st.env f j b).m := by
   have hsk := hr.skel
   have e := congrArg (fun L => L[f]?.bind fun l => l[j]?) hsk
   simp only [List.getElem?_map, Option.bind_map, Function.comp_def, List.getElem?_map] at e
@@ -86,7 +86,7 @@ theorem rel_bind_ty {π : Nat → Nat} {st : MState} {s : SState} (hr : Rel K ρ
   rw [hfr] at hb
   simp only [Option.bind_some] at hb
   have hsl : (SM' K ρ st).env[f]?.bind (fun sf : SFrame => sf.binds[j]?) =
-      some { ty := Env.hintAt K.dm K.M K.Γ ρ st.env (.bind f j),
+      some { ty := Binding.refTy K.dm K.M K.Γ ρ st.env f j b,
              val := fun ψ => Env.mean K.dm K.M K.Γ ρ ψ st.env (.bind f j), decl := b.decl } := by
     simp only [SM', MState.sstate, List.getElem?_map, List.getElem?_zipIdx, Array.getElem?_toList, hfr,
       Option.map_some, Option.bind_some, Nat.zero_add, hb]
@@ -101,6 +101,14 @@ theorem rel_bind_ty {π : Nat → Nat} {st : MState} {s : SState} (hr : Rel K ρ
   refine ⟨(SState.mem_positions s _).mpr (by simp [SState.lookup, hs]), ?_⟩
   show (match s.env[f]?.bind (·.binds[j]?) with | some b => b.ty | none => .plain TyM.err).m = _
   rw [hs]; exact e'.1.symm
+
+/-- ... at its stored type's code, where the binding is not stored at a Π-type. -/
+theorem rel_bind_ty {π : Nat → Nat} {st : MState} {s : SState} (hr : Rel K ρ φ π st s) {f j : Nat} {b : Binding}
+    (hb : st.env[f]?.bind (fun fr : Frame => fr.binds[j]?) = some b)
+    (hp : b.piTyped = false := by first | simp [Binding.piTyped, *] | simp_all [Binding.piTyped]) :
+    Pos.bind f j ∈ s.positions ∧ (s.tyAt (.bind f j)).m = (Env.hintAt K.dm K.M K.Γ ρ st.env (.bind f j)).m := by
+  obtain ⟨h1, h2⟩ := rel_bind_refTy hr hb
+  exact ⟨h1, by rw [h2, Binding.refTy_of_ty K.dm K.M K.Γ ρ st.env f j b hp]⟩
 
 end
 

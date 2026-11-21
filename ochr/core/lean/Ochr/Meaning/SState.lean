@@ -330,14 +330,45 @@ def _root_.Ochr.Env.sitesOf (env : Env) (l : Nat) : List Site :=
 section
 variable (dm : DataModel) (C : CodeMeaning) (Γ : List IndDecl)
 
+/-- A binding stored at a Π-type (`tPi`). -/
+def _root_.Ochr.Binding.piTyped (b : Binding) : Bool :=
+  match b.ty with
+  | some (.tPi _ _ _) => true
+  | _ => false
+
+/-- **A binding's reference type** (docs/31 D123): its stored type's code (`Env.hintAt`), except at a
+binding the checker marks as naming a function whose body is being checked (D78's `recUid`: the
+function's binding of itself, and a closure's capture of it; stored at its Π-type), whose reference type is the context's
+type of that function, `(C.global b.hint.name).2`. Such a binding holds the function `.gfn f` (its
+name `f` the binding's: the checker rejects every other use of the name, `Steps/ParFacts.lean`), whose
+meaning is already the context's (`Value.mean`'s `.gfn` clause); for the definition being checked the
+context has the stage closure at the weakened type (`MemBelow`), which is what the reference's body
+frame binds (`fixBodyAt`), where the stored type is the full Π-type: no relation comparing stored
+types position by position could hold at a function body's start. Keyed on the mark, as the
+checker's own [Rec] is (D78: by syntax, never by comparing values), so no write changes it. -/
+noncomputable def _root_.Ochr.Binding.refTy (ρ : Assignment) (env : Env) (f i : Nat) (b : Binding) : TyS :=
+  if b.recUid.isSome && b.piTyped then (C.global b.hint.name).2 else Env.hintAt dm C Γ ρ env (.bind f i)
+
+theorem _root_.Ochr.Binding.refTy_unmarked (ρ : Assignment) (env : Env) (f i : Nat) (b : Binding)
+    (h : b.recUid = none) : Binding.refTy dm C Γ ρ env f i b = Env.hintAt dm C Γ ρ env (.bind f i) := by
+  unfold Binding.refTy; rw [h]; rfl
+
+theorem _root_.Ochr.Binding.refTy_of_ty (ρ : Assignment) (env : Env) (f i : Nat) (b : Binding)
+    (h : b.piTyped = false) : Binding.refTy dm C Γ ρ env f i b = Env.hintAt dm C Γ ρ env (.bind f i) := by
+  unfold Binding.refTy; rw [h, Bool.and_false]; rfl
+
+theorem _root_.Ochr.Binding.refTy_marked (ρ : Assignment) (env : Env) (f i : Nat) (b : Binding) (u : Nat)
+    (h : b.recUid = some u) (hp : b.piTyped = true) : Binding.refTy dm C Γ ρ env f i b = (C.global b.hint.name).2 := by
+  unfold Binding.refTy; rw [h, hp]; rfl
+
 /-- The checker's state read as a semantic state: each binding's value as a function of the
-future at its stored type, each temporary's, the shape, and the label counter. A binding of a
+future at its reference type (`Binding.refTy`), each temporary's, the shape, and the label counter. A binding of a
 function of itself carries no recursion mark here (the checker's `RecCtx` is a check's input);
 the reference run sets it when it pushes a frame. -/
 noncomputable def _root_.Ochr.MState.sstate (ρ : Assignment) (st : MState) : SState :=
   { env := st.env.toList.zipIdx.map fun (fr, f) =>
       { binds := fr.binds.toList.zipIdx.map fun (b, i) =>
-          { ty := Env.hintAt dm C Γ ρ st.env (.bind f i),
+          { ty := Binding.refTy dm C Γ ρ st.env f i b,
             val := fun φ => Env.mean dm C Γ ρ φ st.env (.bind f i),
             decl := b.decl },
         temps := fr.temps.toList.zipIdx.map fun (_, i) => fun φ => Env.mean dm C Γ ρ φ st.env (.temp f i) },

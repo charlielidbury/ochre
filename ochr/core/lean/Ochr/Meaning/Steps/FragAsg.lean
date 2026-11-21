@@ -145,7 +145,7 @@ theorem asgF_core (hAV : AssignVarInv) (hR : FragRun K.D) (hdec : FragDec K.D) (
   obtain ⟨hx₂, hxv₂⟩ := lookup_pos hb₂
   have hres₁ : resolve s₁ (.var i) = some (.bind f j, []) :=
     rel_resolve_ck { K with Δ := Δ₁ } ρ₁ φ st₂ s₁ π₁ (.var i) _ hr₂ hpos₂
-  obtain ⟨hxs, htyS⟩ := rel_bind_ty hr₂ hb₂
+  obtain ⟨hxs, htyS⟩ := rel_bind_ty hr₂ hb₂ (by simp [Binding.piTyped, hty₁, FT.ty])
   have htyN : (s₁.tyAt (.bind f j)).m = TyM.nat := by rw [htyS]; simp only [Env.hintAt, hb₂, hty₁]; rfl
   have hshS : s₁.shape (.bind f j) = none := by
     rcases e : s₁.shape (.bind f j) with _ | l'
@@ -275,7 +275,7 @@ theorem asgDF_core (hAD : AssignDerefInvF) (hR : FragRun K.D) (hdec : FragDec K.
     rcases hfr : st₂.env[f]? with _ | fr
     · rw [hfr] at hlk₂; cases hlk₂
     · rw [hfr] at hlk₂; exact bind_mem_allPos st₂.env f j fr b hfr hlk₂
-  obtain ⟨hposS, htyS⟩ := rel_bind_ty hr₂ hlk₂
+  obtain ⟨hposS, htyS⟩ := rel_bind_ty hr₂ hlk₂ (by simp [Binding.piTyped, htb', FT.ty])
   have htyN : (s₁.tyAt (.bind f j)).m = TyM.nat := by
     rw [htyS]; simp only [Env.hintAt, hlk₂, htb']; rfl
   have hns : ∀ l, (valAt st₂.env (.bind f j)).sitesOf l (.bind f j) [] = [] := fun l => by

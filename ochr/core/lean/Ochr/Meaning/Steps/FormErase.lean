@@ -57,6 +57,10 @@ theorem hintAt_erase (env : Env) (p : Pos) : Env.hintAt dm C Γ ρ env.erase p =
   | temp => rfl
   | bind f i => simp only [Env.hintAt, Env.erase_get?]; cases env[f]? <;> rfl
 
+theorem refTy_erase (env : Env) (f i : Nat) (b : Binding) :
+    Binding.refTy dm C Γ ρ env.erase f i b = Binding.refTy dm C Γ ρ env f i b := by
+  unfold Binding.refTy; rw [hintAt_erase]
+
 theorem mean_erase (φ : Future) (env : Env) (p : Pos) : Env.mean dm C Γ ρ φ env.erase p = Env.mean dm C Γ ρ φ env p := by
   cases p with
   | bind f i => simp only [Env.mean, hintAt_erase, Env.erase_get?]; cases env[f]? <;> rfl
@@ -70,7 +74,7 @@ theorem sstate_erase (st : MState) :
     simp only [Function.comp, Frame.erase_binds, Frame.erase_temps]
     congr 2
     · funext ⟨b, i⟩; congr 1
-      · exact hintAt_erase dm C Γ ρ st.env _
+      · exact refTy_erase dm C Γ ρ st.env _ _ _
       · funext φ; exact mean_erase dm C Γ ρ φ st.env _
     · funext ⟨_, i⟩; funext φ; exact mean_erase dm C Γ ρ φ st.env _
   · exact shape_erase st.env

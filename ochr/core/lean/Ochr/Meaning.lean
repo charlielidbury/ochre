@@ -81,6 +81,7 @@ import Ochr.Meaning.Regress.GenNeutralContent
 import Ochr.Meaning.Regress.GrainDerefProof
 import Ochr.Meaning.Regress.StepKindsTable
 import Ochr.Meaning.Regress.JoinPrefixBorrow
+import Ochr.Meaning.Regress.SelfCapture
 import Ochr.Meaning.Regress.RefsPathCond
 import Ochr.Meaning.Regress.FreshBound
 import Ochr.Meaning.Regress.EntryCheck
@@ -138,6 +139,7 @@ import Ochr.Meaning.Steps.FragLet
 import Ochr.Meaning.Steps.FragSeq
 import Ochr.Meaning.Steps.FragSim
 import Ochr.Meaning.Steps.FragTop
+import Ochr.Meaning.Steps.ParFacts
 import Ochr.Meaning.Regress.EvalMemRuns
 import Ochr.Meaning.Regress.OpenFalse
 import Ochr.Meaning.Regress.Suspects

@@ -697,16 +697,24 @@ theorem sstate_valAt (st : MState) (p : Pos) (φ : Future) :
       | none => rfl
       | some v => simp [Nat.zero_add, hf, hi, Env.mean]
 
-/-- A binding's type in the semantic state is its hint (its stored type's code; since D59 a
-type value carries its own structure, so nothing is added from the value it holds). -/
+/-- A binding's type in the semantic state is its reference type (`Binding.refTy`: its stored type's
+code, or the context's type at a binding marked as a function being checked, docs/31 D123). -/
 theorem sstate_tyAt_bind (st : MState) (f i : Nat) (fr : Frame) (b : Binding)
     (hf : st.env[f]? = some fr) (hi : fr.binds[i]? = some b) :
-    (MState.sstate dm C Γ ρ st).tyAt (.bind f i) = Env.hintAt dm C Γ ρ st.env (.bind f i) := by
+    (MState.sstate dm C Γ ρ st).tyAt (.bind f i) = Binding.refTy dm C Γ ρ st.env f i b := by
   simp only [SState.tyAt, MState.sstate, List.getElem?_map, List.getElem?_zipIdx,
     Array.getElem?_toList, Option.map_map, Option.bind_map, hf, Option.map_some, Option.bind_some,
     Function.comp, hi, Nat.zero_add]
 
-theorem sstate_tyAt_m (st : MState) (p : Pos) :
+/-- ... its hint, at a binding not so marked. -/
+theorem sstate_tyAt_bind_hint (st : MState) (f i : Nat) (fr : Frame) (b : Binding)
+    (hf : st.env[f]? = some fr) (hi : fr.binds[i]? = some b) (hg : b.recUid = none) :
+    (MState.sstate dm C Γ ρ st).tyAt (.bind f i) = Env.hintAt dm C Γ ρ st.env (.bind f i) := by
+  rw [sstate_tyAt_bind dm C Γ ρ st f i fr b hf hi, Binding.refTy_unmarked dm C Γ ρ _ _ _ _ hg]
+
+theorem sstate_tyAt_m (st : MState) (p : Pos)
+    (hg : ∀ (f i : Nat) (fr : Frame) (b : Binding), st.env[f]? = some fr → fr.binds[i]? = some b →
+      b.recUid = none) :
     ((MState.sstate dm C Γ ρ st).tyAt p).m = (Env.hintAt dm C Γ ρ st.env p).m := by
   cases p with
   | bind f i =>
@@ -715,7 +723,7 @@ theorem sstate_tyAt_m (st : MState) (p : Pos) :
     | some fr =>
       cases hi : fr.binds[i]? with
       | none => simp [SState.tyAt, MState.sstate, Env.hintAt, hf, hi]
-      | some b => rw [sstate_tyAt_bind dm C Γ ρ st f i fr b hf hi]
+      | some b => rw [sstate_tyAt_bind_hint dm C Γ ρ st f i fr b hf hi (hg f i fr b hf hi)]
   | temp f i => rfl
 
 /-- The semantic state's positions are the environment's. -/

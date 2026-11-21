@@ -216,7 +216,7 @@ theorem rel_frames {st : MState} {s : SState} {π : Nat → Nat} (hs : Rel K ρ 
   have hf := congrArg (fun l => (l[f]?).map List.length) hk
   simp only [List.getElem?_map, Option.map_map] at hf
   have e1 : ((SM' K ρ st).env[f]?.map fun fr : SFrame => fr.binds.length) = (st.env[f]?.map fun fr : Frame => fr.binds.size) := by
-    simp only [SM', MState.sstate, List.getElem?_map, List.getElem?_zipIdx, Option.map_map, Array.getElem?_toList]
+    simp only [SM', MState.sstate, Binding.refTy, List.getElem?_map, List.getElem?_zipIdx, Option.map_map, Array.getElem?_toList]
     rcases st.env[f]? with _ | fr
     · rfl
     · simp [Function.comp_def]

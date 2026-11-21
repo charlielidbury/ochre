@@ -64,7 +64,7 @@ theorem scopeOf_eq_skel (s : SState) :
 
 theorem scopeOf_sstate' (st : MState) : scopeOf (SM' K ρ st) = DecideScope.topReadings st := by
   unfold scopeOf DecideScope.topReadings
-  simp only [SM', MState.sstate, List.getLast?_map, List.getLast?_zipIdx, Array.getLast?_toList]
+  simp only [SM', MState.sstate, Binding.refTy, List.getLast?_map, List.getLast?_zipIdx, Array.getLast?_toList]
   cases st.env.back? with
   | none => rfl
   | some fr =>

@@ -296,8 +296,8 @@ theorem readEnd_core (hVE : VarEndInv) (hI : InvSteps) (hPL : PlaceLocal K.D) {n
   obtain ⟨mw, hmw⟩ := hpre.num.vmean
   obtain ⟨bx, hlkx, -⟩ := hpre.lookup 0 (by omega)
   obtain ⟨byy, hlky, -⟩ := hpre.lookup 1 (by omega)
-  obtain ⟨hxs, htyX⟩ := rel_bind_ty hr hlkx
-  obtain ⟨hys, htyY⟩ := rel_bind_ty hr hlky
+  obtain ⟨hxs, htyX⟩ := rel_bind_ty hr hlkx (by simp [Binding.piTyped, hpre.tyx bx hlkx])
+  obtain ⟨hys, htyY⟩ := rel_bind_ty hr hlky (by simp [Binding.piTyped, hpre.tyy byy hlky])
   have htyXn : (s.tyAt (.bind 0 0)).m = TyM.nat := by rw [htyX]; exact hAR.tx
   have htyYn : (s.tyAt (.bind 0 1)).m = TyM.nat := by rw [htyY]; exact hAR.ty
   obtain ⟨hy, honly⟩ := atRead_shape hr hAR

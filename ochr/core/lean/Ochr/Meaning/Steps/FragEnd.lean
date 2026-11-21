@@ -214,7 +214,7 @@ theorem skel_setAtE_temp (st : MState) (f i : Nat) (v' : Value) :
       (SM' K ρ st).env.map (fun fr => fr.binds.map bindSkel) := by
   apply List.ext_getElem?
   intro f'
-  simp only [SM', MState.sstate, List.getElem?_map, List.getElem?_zipIdx, Option.map_map,
+  simp only [SM', MState.sstate, Binding.refTy, List.getElem?_map, List.getElem?_zipIdx, Option.map_map,
     Array.getElem?_toList, hintAt_setAtE]
   simp only [Env.setAtE, Array.getElem?_modify]
   by_cases hf : f = f'

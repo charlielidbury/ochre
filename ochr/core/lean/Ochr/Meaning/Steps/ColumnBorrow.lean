@@ -333,7 +333,7 @@ theorem rel_lend (hK : ∀ n, (K.C.global n).2.label = none) {π : Nat → Nat} 
   have hx : Pos.bind f j ∈ allPos st.env := bind_mem_allPos _ f j fr₀ b e₀ hb₀
   have hxv : valAt st.env (.bind f j) = b.val := by
     rw [valAt_bind_eq, e₀, Option.getD_some, hb₀, Option.getD_some]
-  have hxs : Pos.bind f j ∈ s.positions := (rel_bind_ty hr hlk).1
+  have hxs : Pos.bind f j ∈ s.positions := (rel_bind_refTy hr hlk).1
   have hntx : ntC st.env fr ≠ .bind f j := by simp [ntC]
   have hntE : ntC st.env fr ∉ allPos st.env := fun h => by
     obtain ⟨fr', hf', hi⟩ := mem_allPos_temp st.env _ _ h

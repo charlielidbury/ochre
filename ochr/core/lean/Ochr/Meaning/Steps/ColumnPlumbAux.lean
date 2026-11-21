@@ -368,7 +368,7 @@ variable (K : RunCtx) (ρ : Assignment)
 theorem skel_eq (st : MState) :
     (SM' K ρ st).env.map (fun fr => fr.binds.map bindSkel) =
       st.env.toList.zipIdx.map (fun (fr, f) =>
-        fr.binds.toList.zipIdx.map (fun (b, i) => ((Env.hintAt K.dm K.M K.Γ ρ st.env (.bind f i)).m, b.decl))) := by
+        fr.binds.toList.zipIdx.map (fun (b, i) => ((Binding.refTy K.dm K.M K.Γ ρ st.env f i b).m, b.decl))) := by
   simp only [SM', MState.sstate, List.map_map, Function.comp_def, bindSkel]
 
 theorem skel_pushBindE (st : MState) (h : Hint) (T v : Value) (pf : Bool) (d : DeclInfo) (fr : Frame)
@@ -395,9 +395,11 @@ theorem skel_pushBindE (st : MState) (h : Hint) (T v : Value) (pf : Bool) (d : D
     · apply List.map_congr_left
       intro x hx
       have hlt := List.snd_lt_of_mem_zipIdx hx
+      simp only [Binding.refTy]
       rw [hintAt_pushBindE_ne K.dm K.M K.Γ ρ st.env h (some T) v pf d fr hfr _ (by
         intro e; injection e with _ e2; simp at hlt; omega)]
     · simp only [Nat.zero_add, Array.length_toList]
+      simp only [Binding.refTy, Option.isSome_none, Bool.false_and, Bool.false_eq_true, if_false]
       rw [hintAt_pushBindE_new K.dm K.M K.Γ ρ st.env h v pf d fr hfr T]
   · simp only [hf, if_false]
     have e : (Env.pushBindE st.env h (some T) v pf d)[f]? = st.env[f]? := by
@@ -411,6 +413,7 @@ theorem skel_pushBindE (st : MState) (h : Hint) (T v : Value) (pf : Bool) (d : D
       congr 1
       apply List.map_congr_left
       intro x _
+      simp only [Binding.refTy]
       rw [hintAt_pushBindE_ne K.dm K.M K.Γ ρ st.env h (some T) v pf d fr hfr _ (by
         intro e; injection e with e1; exact hf (by omega))]
 
@@ -754,6 +757,7 @@ theorem skel_popTop (K : RunCtx) (ρ : Assignment) (st : MState) (fr : Frame) (h
       | none => rfl
       | some bi =>
         simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq, and_true]
+        simp only [Binding.refTy]
         rw [hintAt_popTop_ne K.dm K.M K.Γ ρ st.env fr hfr _ (by
           intro e; injection e with _ e2; omega)]
     · rfl
@@ -769,6 +773,7 @@ theorem skel_popTop (K : RunCtx) (ρ : Assignment) (st : MState) (fr : Frame) (h
       congr 1
       apply List.map_congr_left
       intro x _
+      simp only [Binding.refTy]
       rw [hintAt_popTop_ne K.dm K.M K.Γ ρ st.env fr hfr _ (by
         intro e; injection e with e1; exact hf (by omega))]
 
