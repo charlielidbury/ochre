@@ -25,6 +25,18 @@ Written 2026-11-21 from the final report of the agent that landed D90 to D103, a
 - **Proofs about the checker.** A probe that edits a function `StabilitySig.lean` reasons about breaks the build. Stub the proof with `sorry` only in the probe run, and restore from a saved copy.
 - **One verification job at a time in a checkout.** A second job's `git checkout` switches the tree under the first.
 
+## More from later landings (D107 to D109)
+
+- **Build the exact commit you push.** Merging a sibling's examples or `Registry` changes is a rebase too. Never push and then build: `main` must not hold a commit nobody has built, even for a minute, because other lanes fetch it.
+- **`RULES.md` line 3.** Split your own clause off at the `v2.1 also has D` that follows it, then prepend it to HEAD's line. Splitting on a fixed prefix such as "D10" once swallowed a following "D110" clause and duplicated it.
+- **A dump from before a rebase does not carry over.** Run the baseline at the new `origin/main` in a second detached worktree, its `.lake` reflink-copied from your own build, in parallel with your branch's run. A whole cycle (build, dump, sweep, probe files) takes about 15 minutes on both sides.
+- **A change that adds rows to an existing block.** `sweep` over main's blocks will not match. Sweep that block alone on both sides and show the two differences are equal.
+- **Showing that a change of equality or of a decision moves nothing.** Build a throwaway variant that computes both answers and rejects with a marker string wherever they differ, then grep the dump and the probe outputs for the marker. Proofs in `StabilityDecide` / `StabilityFootprint` break on such variants: stub them with `sorry` in the probe build only, from saved copies, and restore before the real build.
+- **The session scratch directory is shared by every agent.** Write logs under a subdirectory of your own.
+- **What is reachable from `checkProgram`.** `Scratch/Reach.lean` walks every constant reachable from it and lists those the kernel cannot see into, with the chain that reaches each. Grepping does not do this job: an earlier census by grep missed a `while` loop.
+- **Before starting a fix, look for a worktree that already has it.** Two agents once built the same fix at the same time; `git worktree list` and a glance at uncommitted changes in the sibling worktrees costs a minute.
+- **Differential rows.** When a fix makes two forms behave alike (a plain borrow and a borrow a call returns; a generic function and its closed calls), generate the table: every operation by every variant, the two columns side by side, verdict and value. Count the rows that differ before and after.
+
 ## Before fixing a fault: hunt its class
 
 Added by the orchestrator from the night of 2026-11-20. Each of the two soundness faults found that night turned into several once the fixing agent, before changing anything, tried every other route to the same root: the positivity hole had a second, independent hole of the same kind; the unchecked write to a dependent field had three routes to `False`. So: reproduce with a control in the same file; shrink and re-check; state the root as "the checker trusts X without checking it"; list every other place it does that; write one program per place and run it; send each accepted wrong program as it is found; only then fix, and assert every program of the hunt.
