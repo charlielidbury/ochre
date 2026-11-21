@@ -5,19 +5,19 @@ import Ochr.Meaning.FrameProp
 /-!
 # Two frames the fundamental lemma does not cover, attacked (kernel-checked)
 
-**(1) A non-recursive closure binds `self` to `err`, so a body that writes at a field path never runs.**
+**(1) A non-recursive closure bound `self` to `err`, so a body that writes at a field path never ran.**
 The `.fix` clause runs a closure's body in a frame `[caps…, self, x̄]` (`bodyAt`); for a closure with no
-decreasing parameter `self` is bound to `err` at the closure's own function type (`fixG`'s `none` case),
-on the ground that such a body never reads `self` (the checker has no `self` in scope there). But the
-strict test after an assignment or a borrow at a field path (`lentOk`, i.e. `StateOk`) asks EVERY binding
-of the state to hold an open member of its stored type, and `err` is an open member of no type. So the
-body of `fix (x : Nat) : Unit := x.0 := c` fails at every argument, its closure is `err`, and the strict
-`.fix` clause fails (`setT_none`). The checker accepts the same shape at a declared type
-(`def SetFstOwned (p : Pair(Nat, Nat)) : Unit := p.0 := Z`, and the suite's `PartMove`, whose
-`(*r).0 := z` is such a write): accepted programs with no meaning. With `self` an open member (here
-`moved`) the same body runs (`body_goodSelf`). The run's exemption of `[*]` from the test
-(`Run.lentOk`, "testing `[*]` rejected a run the checker accepts, `Regress/CallInPlace`") was this fault
-met at `*x := S(*x)`, and hid it there.
+decreasing parameter `self` was bound to `err` at the closure's own function type (`fixG`'s old `none`
+case), on the ground that such a body never reads `self` (the checker has no `self` in scope there). But
+the strict test after an assignment or a borrow at a field path (`lentOk`, i.e. `StateOk`) asks EVERY
+binding of the state to hold an open member of its stored type, and `err` is an open member of no type.
+So the body of `x.0 := c` failed in such a frame at every argument (`body_errSelf`), and with it every
+accepted closure of that shape: `def SetFstOwned (p : Pair(Nat, Nat)) : Unit := p.0 := Z`, `SetFst`
+through a borrow, the suite's `PartMove` (accepted programs with no meaning; kernel-checked at the `.fix`
+clause on `spine-model3` fa8847a6, `setT_none`, removed with the fix). With `self` an open member the same
+body runs (`body_goodSelf`). Repaired (docs/31 D113): a non-recursive `fix` is the recursive one at rank
+`0`, its `self` the weakened stage `0`, a member of that type. The run's exemption of `[*]` from the test,
+made for `*x := S(*x)` in `Regress/CallInPlace`, was this fault met there; it is gone too.
 
 **(2) The frame property as stated is false: the run in place tests the caller's frames.**
 `FrameProp.run_frame` relates a run in place (the caller's frames below the callee's) with the run in the
@@ -184,99 +184,6 @@ theorem body_goodSelf (dm : DataModel) (ρ : Assignment) (T : TyM) (tl : Bool) (
       some ((.el0 Unit (), .plain TyM.unit), sX [] T .moved (.el0 Nat 1)) := by
   rw [run_body_iff, if_pos (stateOk_goodSelf dm T .moved (.moved T))]
 
-/-! ## (1) at the `.fix` clause: `fix (x : Nat) : Unit := x.0 := c` has no meaning -/
-
-/-- The closure term: one parameter `x : Nat`, codomain `Unit`, no decreasing parameter. -/
-def setT : Term := .fix ⟨"SetP"⟩ [⟨"x"⟩] [.nat] .unit none body
-
-def psN : List PiDom := [⟨false, fun _ => TyM.nat⟩]
-def outU : PiCod := ⟨false, fun _ => TyM.unit⟩
-
-theorem runDoms_set (dm : DataModel) (ρ : Assignment) :
-    runDoms (Kw dm []) ρ φw (stateOf 0 []) [.nat] = psN := rfl
-
-theorem codOf_set (dm : DataModel) (ρ : Assignment) (bs : List PBind) :
-    codOf (Kw dm []) ρ φw (stateOf 0 []) bs .unit = outU := rfl
-
-/-- The closure's frame at argument `1`, as `bodyAt` builds it, is `[self ↦ err, x ↦ 1]`. -/
-theorem frame_set (dm : DataModel) (ρ : Assignment) (T : TyM) :
-    ([Sem.el0 Nat 1].zip psN).foldl (fixStep
-        (bindsOf (Kw dm []) ρ φw (stateOf 0 []) [.nat], fixCod (Kw dm []) ρ φw (stateOf 0 [])
-          (bindsOf (Kw dm []) ρ φw (stateOf 0 []) [.nat]) .unit, .other))
-      ((stateOf 0 []).pushBind (selfB T .err), [], []) = (sX [] T .err (.el0 Nat 1), [Sem.el0 Nat 1], []) := by
-  have hnat : ∀ s, runT (Kw dm []) ρ φw false (.plain TyM.err) .nat s = some ((.ty TyM.nat, .plain (TyM.univ 1)), s) := by
-    intro s; rw [runT]; rfl
-  have hpd : (Kw dm []).D.paramDecls (scopeOf ((stateOf 0 []).pushBind (selfB T .err))) [.nat] = [.other] := rfl
-  have hpd' : (Kw dm []).D.paramDecls (scopeOf (stateOf 0 [])) [.nat] = [.other] := rfl
-  simp [fixStep, psN, stateOf, SState.pushBind, SState.topIdx, sX, selfB, xB, bindsOf, runBinds, mkBind, TyS.plain, hnat,
-    Sem.asTy, hpd, hpd', extendBy, extendBinds]
-  refine ⟨?_, rfl⟩
-  rw [runT]; rfl
-
-/-- `fix (x : Nat) : Unit := x.0 := c`'s function type is a function type, not `err`. -/
-theorem piSet_ne_err (dm : DataModel) : piTyAt dm.read 1 psN outU ≠ TyM.err := by
-  intro h
-  have := congrArg TyM.isErr h
-  simp [piTyAt, piTyL, TyM.isErr, TyM.err, lvl0, Lvl.toTy] at this
-
-/-- The closure's function: `fixG`'s `none` case, the body with `self` `err`. -/
-noncomputable def gSet (dm : DataModel) (ρ : Assignment) : List Sem → Option BodyOut :=
-  fixG (Kw dm []) ρ φw (bindsOf (Kw dm []) ρ φw (stateOf 0 []) [.nat], fixCod (Kw dm []) ρ φw (stateOf 0 [])
-      (bindsOf (Kw dm []) ρ φw (stateOf 0 []) [.nat]) .unit, .other) 1 (stateOf 0 []) psN outU
-    (piTyAt dm.read 1 psN outU) 0 none body
-
-/-- **The body fails at the argument `1`.** -/
-theorem gSet_one (dm : DataModel) (ρ : Assignment) : gSet dm ρ [Sem.el0 Nat 1] = none := by
-  simp only [gSet, fixG, fixBodyAt]
-  have hself : ({ ty := .plain (piTyAt dm.read 1 psN outU), val := fun _ => .err, decl := .pi .other } : SBinding) =
-      selfB (piTyAt dm.read 1 psN outU) .err := rfl
-  rw [hself, frame_set]
-  simp only
-  rw [body_errSelf dm ρ _ (piSet_ne_err dm)]
-
-/-- **The closure is `err`**: its body fails at the argument `1`, so its telescope is not built
-(`ClosureCE.mkTelL_param_some`). -/
-theorem closure_set_err (dm : DataModel) (ρ : Assignment) : closureAt dm.read 1 φw psN outU (gSet dm ρ) = .err := by
-  simp only [closureAt, closureL]
-  split
-  · rename_i F hF
-    exfalso
-    have h1 := ClosureCE.mkTelL_param_some hF (by exact (1 : Nat))
-    have hg : gSet dm ρ ([] ++ [Code0.enc dm.read TyM.nat.code0.snd (by exact (1 : Nat))]) = none := gSet_one dm ρ
-    simp only [telL, psN, outU, mkTelL] at h1
-    rw [hg] at h1
-    simp at h1
-  · rfl
-
-open Classical in
-/-- **The strict `.fix` clause fails at `fix (x : Nat) : Unit := x.0 := c`**, at every data model, in
-or out of tail position, at every hint: the closure it builds is `err`, a member of no type. -/
-theorem setT_none (dm : DataModel) (ρ : Assignment) (tl : Bool) (hint : TyS) :
-    runT (Kw dm []) ρ φw tl hint setT (stateOf 0 []) = none := by
-  rw [setT, run_fix_def]
-  simp only [SM.erasedIf, SM.stmtIf]
-  show (if FoldOk (capStep (Kw dm [])) (CapOk (Kw dm []) φw) (capOrder setT) (stateOf 0 []) then _ else none) = none
-  have hco : capOrder setT = [] := by decide
-  rw [hco, if_pos (show FoldOk (capStep (Kw dm [])) (CapOk (Kw dm []) φw) [] (stateOf 0 []) from trivial)]
-  have hcl : closureAt dm.read ((Kw dm []).D.piSort (scopeOf (stateOf 0 [])) (.pi [⟨"x"⟩] [.nat] .unit))
-      φw (runDoms (Kw dm []) ρ φw (stateOf 0 []) [.nat])
-      (codOf (Kw dm []) ρ φw (stateOf 0 []) (bindsOf (Kw dm []) ρ φw (stateOf 0 []) [.nat]) .unit)
-      (fixG (Kw dm []) ρ φw (bindsOf (Kw dm []) ρ φw (stateOf 0 []) [.nat], fixCod (Kw dm []) ρ φw (stateOf 0 [])
-          (bindsOf (Kw dm []) ρ φw (stateOf 0 []) [.nat]) .unit,
-          (Kw dm []).D.typeDecl ((Kw dm []).D.teleDecls (scopeOf (stateOf 0 [])) [.nat]) .unit)
-        ((Kw dm []).D.piSort (scopeOf (stateOf 0 [])) (.pi [⟨"x"⟩] [.nat] .unit)) (stateOf 0 [])
-        (runDoms (Kw dm []) ρ φw (stateOf 0 []) [.nat])
-        (codOf (Kw dm []) ρ φw (stateOf 0 []) (bindsOf (Kw dm []) ρ φw (stateOf 0 []) [.nat]) .unit)
-        (piTyAt dm.read ((Kw dm []).D.piSort (scopeOf (stateOf 0 [])) (.pi [⟨"x"⟩] [.nat] .unit))
-          (runDoms (Kw dm []) ρ φw (stateOf 0 []) [.nat])
-          (codOf (Kw dm []) ρ φw (stateOf 0 []) (bindsOf (Kw dm []) ρ φw (stateOf 0 []) [.nat]) .unit))
-        (stateOf 0 []).nextLoan none body) = .err := closure_set_err dm ρ
-  simp only [SM.strictS]
-  rw [if_neg]
-  intro h
-  erw [hcl] at h
-  exact absurd (mem_whole dm.read_wholeFields h) (by simp [Sem.whole])
-
 /-! ## (2) The frame property: a caller frame holding `err` -/
 
 /-- The caller's frame: one binding `z : Nat` holding `err`. -/
@@ -314,7 +221,8 @@ theorem frameStart_junk (T : TyM) : FrameStart (sX lowJunk T .moved (.el0 Nat 1)
         rcases i with _ | _ | i <;> simp [SState.valAt, sX, lowJunk, natB],
     by simp, fun p l _ hp => by simp [sX] at hp, fun p l x _ hp => by simp [sX] at hp, List.nodup_nil⟩
 
-/-- **`FrameProp.run_frame` is false as stated**, at every data model: from related states with no
+/-- **`FrameProp.run_frame` as first stated is false**, at every data model (restated since with the
+in-place state good): from related states with no
 parameter, the run in place fails (the caller's frame holds `err`, and the test after a write at a
 field path reads it) where the run in the closure's frame succeeds. The repair: the in-place state good
 (`Strict.SGood`), which excludes the caller's `err`. -/

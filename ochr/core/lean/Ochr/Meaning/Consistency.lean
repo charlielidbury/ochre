@@ -188,7 +188,7 @@ theorem fix_canon (fuel : Nat) (P : ProgState) (d : Def) (st' : MState) (hd : d.
 neither a statement nor a proof, by the aligned flags): the closure built along the code
 `piTyAt l ds out`, at the declared sort `l ≤ 3`, of its function, the guarded fixpoint by stages
 (`fixG`: at arguments of rank `r`, the stage `r + 1`, `fixStage`, the rank `fixRank`; a non-recursive
-function is its body with `self` erroneous, the stage `1` at rank `0`); and the stored type's code is
+function is the stage `1` at rank `0`, its `self` the weakened stage `0`, never read; docs/31 D113); and the stored type's code is
 that code (the checker stores `Π(x̄ : Ā). B`, which the `fix` term's domains and codomain run to).
 (2) The function type fits its sort (`Steps.PiFits` at every member argument: at sort `0` a
 borrow-free codomain that is a proposition, at a data sort `l ≤ 3` a codomain that fits the level):

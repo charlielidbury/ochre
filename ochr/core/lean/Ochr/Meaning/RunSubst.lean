@@ -150,12 +150,9 @@ theorem fixStage_bodyEq {body body' : Term} (hb : ∀ hint, runT K ρ ψ true hi
 theorem fixG_bodyEq {body body' : Term} (hb : ∀ hint, runT K ρ ψ true hint body' = runT K ρ ψ true hint body)
     (lv : Nat) (s : SState) (ps : List PiDom) (out : PiCod) (piT : TyM) (start : Nat) (dec : Option Nat) :
     fixG K ρ ψ fb lv s ps out piT start dec body' = fixG K ρ ψ fb lv s ps out piT start dec body := by
-  cases dec with
-  | none => exact congrFun (fixBodyAt_bodyEq K ρ ψ hb s ps out piT start) _
-  | some j =>
-    funext args
-    simp only [fixG]
-    exact congrFun (fixStage_bodyEq K ρ ψ hb lv s ps out (some j) start _) args
+  funext args
+  simp only [fixG]
+  exact congrFun (fixStage_bodyEq K ρ ψ hb lv s ps out dec start _) args
 
 theorem fixMoves_substLoan (t : Term) (s : SState) : fixMoves K (Term.substLoan l w t) s = fixMoves K t s := by
   unfold fixMoves capOrder; rw [freeVars_substLoan]

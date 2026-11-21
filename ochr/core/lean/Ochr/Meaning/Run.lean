@@ -554,9 +554,13 @@ def StateOk (s : SState) : Prop :=
 unknowns): after a write or a borrow at a field path, and D112's invalidation, every position holds
 an open member of its type at every typed future (a write of an index, or a lent index, could leave
 a later field outside the type the read gives it; the invalidation's ends pass contents on). A
-write or a borrow at a root or through `*` (`[]`, `[*]`) is whole, tested by the clause itself (the
-orchestrator's rule, 2026-11-21, tests the FIELD paths; testing `[*]` too rejected a write through a
-reference in a call frame whose other positions are not open members, `Regress/CallInPlace`). -/
+write or a borrow at a root or through `*` (`[]`, `[*]`) is whole, tested by the clause itself. The
+exemption of `[*]` was made when testing it rejected `*x := S(*x)` in `Regress/CallInPlace`; the cause
+was the non-recursive `self` bound to `err` (docs/31 D113), now gone, so the test could come back. It
+is kept out: from a good state the test at `[*]` always passes (`Strict/OpsPlace` proves the root and
+`*` cases from the clause's own membership test), and restoring it means restating the regress runs
+through `*`, which are stated over states with an arbitrary `self` or arbitrary meanings (docs/31
+D113). -/
 def lentOk (p : Place) (s : SState) : Prop :=
   match resolve s p with
   | some (_, steps) => steps = [] ∨ steps = [.deref] ∨ StateOk K φ s
@@ -1367,9 +1371,12 @@ noncomputable def runT (tl : Bool) (hint : TyS) : Term → SM Res
       Nat.rec (motive := fun _ => List Sem → Option BodyOut) (fun _ => none)
         (fun k gk => bodyAt (piTyAt K.dm.read l ps (weakCod l rankOf k out))
           (closureAt K.dm.read l φ ps (weakCod l rankOf k out) (stageFn l ps rankOf k gk)))
-    let g : List Sem → Option BodyOut := match dec with
-      | some _ => fun args => stage (rankOf args + 1) args
-      | none => bodyAt piT .err
+    -- a non-recursive `fix` is the recursive one at rank `0` (`rankOf` is `0` without `dec`): its
+    -- `self` is stage 0's closure at the weakened type, a member of it (`stage_mem`), never read (the
+    -- checker has no `self` in scope there, D31). It was `err`, an open member of nothing, and the
+    -- strict test after a write at a field path, which reads every binding, failed on every such
+    -- body (`Strict/FrameCE`: `SetFstOwned`, `PartMove`, accepted, had no meaning; docs/31 D113)
+    let g : List Sem → Option BodyOut := fun args => stage (rankOf args + 1) args
     -- forming the closure (`Machine.capture`) accesses each captured variable, oldest binding
     -- first, and then moves it unless its declared reading is copy (D80): the checker's [Access]
     -- before the capture ends the borrows lent at it (docs/31 D29 point 2, D37)
